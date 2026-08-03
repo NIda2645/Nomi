@@ -2,7 +2,11 @@ import React from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { Scene3DTrajectory, Scene3DTrajectoryBinding } from '../scene3dTypes'
 import { buildTrajectoryCurve, clampRatio, remapTrajectoryTimeRatio, wrapRatio } from './trajectoryUtils'
-import { setScene3DPlayheadSeconds, useScene3DTrajectoryRuntimeStore } from './trajectoryRuntimeStore'
+import {
+  isScene3DObjectRuntimeHeld,
+  setScene3DPlayheadSeconds,
+  useScene3DTrajectoryRuntimeStore,
+} from './trajectoryRuntimeStore'
 
 type UseTrajectoryAnimationOptions = {
   isPlaying: boolean
@@ -63,6 +67,7 @@ export function useTrajectoryAnimation({
 
       if (trajectory.closed && playheadSeconds < binding.startTime) {
         binding.objects.forEach((boundObject) => {
+          if (isScene3DObjectRuntimeHeld(boundObject.objectId)) return
           objectRefMap.get(boundObject.objectId)?.forEach((target) => {
             const object = target.ref.current
             if (object) object.visible = false
@@ -76,6 +81,9 @@ export function useTrajectoryAnimation({
       if (binding.direction === 'reverse') tBase = 1 - tBase
 
       binding.objects.forEach((boundObject) => {
+        // 用户拖拽优先：手上的对象直驱层不碰——盖章会把它钉回采样点，拖拽就不跟手了
+        // （松手后由宿主把轨迹平移对齐到新位置，见 translateBoundTrajectoryToHeldPosition）。
+        if (isScene3DObjectRuntimeHeld(boundObject.objectId)) return
         const targets = objectRefMap.get(boundObject.objectId)
         if (!targets || targets.length === 0) return
 

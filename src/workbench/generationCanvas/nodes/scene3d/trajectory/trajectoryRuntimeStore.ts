@@ -80,6 +80,23 @@ export function clearScene3DObjectRefs(): void {
   useScene3DTrajectoryRuntimeStore.getState().objectRefMap.clear()
 }
 
+// 用户手上的对象（marker 拖拽 / TransformControls 手势进行中）。直驱层每帧盖章前查它：
+// 手上的对象一律跳过——否则「预设动画写 transform + 手拖」双写入者打架，marker 被钉回
+// 轨迹采样点、拖拽不跟手（2026-08-03 群反馈根因）。非响应式：useFrame 逐帧读，不进 zustand。
+const heldObjectIds = new Set<string>()
+
+export function holdScene3DObjectRuntime(objectId: string): void {
+  heldObjectIds.add(objectId)
+}
+
+export function releaseScene3DObjectRuntime(objectId: string): void {
+  heldObjectIds.delete(objectId)
+}
+
+export function isScene3DObjectRuntimeHeld(objectId: string): boolean {
+  return heldObjectIds.has(objectId)
+}
+
 export function setScene3DObjectRuntimeRefsVisible(objectId: string, visible: boolean): void {
   const targets = useScene3DTrajectoryRuntimeStore.getState().objectRefMap.get(objectId)
   targets?.forEach((target) => {
