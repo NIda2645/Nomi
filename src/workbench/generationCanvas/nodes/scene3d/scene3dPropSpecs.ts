@@ -3,7 +3,7 @@
 // 每种道具 = 图元组合的数据 spec，新增 kind 只加一条 spec。origin 在**地面中心**
 // （y=0 落地即贴地；objectVisualHalfHeight 对 prop 返回 0，绑轨迹时底面贴着轨迹走，如车沿路径开）。
 import type { Scene3DObject, Scene3DPropKind, Scene3DVector3 } from './scene3dTypes'
-import { createScene3DObjectId } from './scene3dSerializer'
+import { createScene3DObjectId } from './scene3dBindingIds'
 
 export type PropPartGeometry = 'box' | 'cylinder' | 'sphere' | 'cone'
 
@@ -270,3 +270,4 @@ export function buildPlacedProps(props: ScenePropPlacement[] | undefined): Scene
     return object
   })
 }
+

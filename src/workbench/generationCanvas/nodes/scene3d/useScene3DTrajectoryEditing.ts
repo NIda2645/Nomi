@@ -4,7 +4,7 @@ import {
   createScene3DTrajectoryGroupId,
   createScene3DTrajectoryId,
   createScene3DTrajectoryPointId,
-} from './scene3dSerializer'
+} from './scene3dBindingIds'
 import { UNGROUPED_TRAJECTORY_GROUP_ID } from './scene3dConstants'
 import { trajectoryBindTargetsFromState } from './scene3dTrajectoryState'
 import { syncSceneTimelineDuration } from './scene3dTimeline'

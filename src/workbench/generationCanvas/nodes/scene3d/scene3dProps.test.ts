@@ -31,6 +31,15 @@ describe('语义道具 spec 完整性', () => {
 })
 
 describe('道具序列化往返', () => {
+  it('**每一种** propKind 都能存档往返不降级（白名单从 PROP_KINDS derive；手列曾在扩容时掉队）', () => {
+    const state = normalizeScene3DState({
+      objects: PROP_KINDS.map((kind, index) => ({ id: `prop-${index}`, type: 'prop', propKind: kind })),
+    })
+    const survived = state.objects.map((object) => object.propKind)
+    expect(survived).toEqual(PROP_KINDS)
+    for (const object of state.objects) expect(object.type).toBe('prop')
+  })
+
   it('prop 对象带 propKind 往返；未知 kind 降级 mesh 不丢对象', () => {
     const state = normalizeScene3DState({
       objects: [

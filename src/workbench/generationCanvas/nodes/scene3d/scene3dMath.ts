@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createScene3DCameraId, createScene3DObjectId } from './scene3dSerializer'
+import { createScene3DCameraId, createScene3DObjectId } from './scene3dBindingIds'
 import {
   SCENE3D_ASPECT_RATIOS,
   type Scene3DAspectRatio,

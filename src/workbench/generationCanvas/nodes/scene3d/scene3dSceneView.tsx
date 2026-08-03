@@ -39,12 +39,10 @@ import {
   MannequinFootRings,
   MannequinAssetBoundary,
   StaticObjectVisual,
-  objectGroundFootprint,
-  objectVisualHalfHeight,
-  objectTransformAnchorPosition,
   singleMannequinLabelPosition,
   crowdLabelPositions,
 } from './scene3dObjects'
+import { objectGroundFootprint, objectTransformAnchorPosition, objectVisualHalfHeight } from './scene3dCrowd'
 
 export function CameraFrustumLines({
   cameraData,

@@ -1,6 +1,7 @@
 // 站位 builder：语义 spec（人话词汇）→ Scene3DState。纯函数，配单测 stagingBuilder.test.ts。
 // 复用预设 pose（已校准）+ 默认 scale/颜色 + cameraLookAtRotation。见 docs/plan/2026-06-21-staging-reference-tool.md。
-import { createDefaultScene3DState, createScene3DObjectId, createScene3DCameraId } from './scene3dSerializer'
+import { createDefaultScene3DState } from './scene3dSerializer'
+import { createScene3DObjectId, createScene3DCameraId } from './scene3dBindingIds'
 import { cameraLookAtRotation } from './scene3dMath'
 import {
   MANNEQUIN_DEFAULT_SCALE,
