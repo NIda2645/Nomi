@@ -76,9 +76,8 @@ export function unregisterScene3DObjectRef(objectId: string, ref: RefObject<THRE
   map.set(objectId, next)
 }
 
-export function clearScene3DObjectRefs(): void {
-  useScene3DTrajectoryRuntimeStore.getState().objectRefMap.clear()
-}
+// 刻意没有「整表清空」API：注册表由 marker 组件的挂载生命周期维护（自注册/自注销），
+// 全局 clear 会抹掉活注册且没人补——等于换个门重引入「盖章落在表外」的僵尸类 bug。
 
 // 用户手上的对象（marker 拖拽 / TransformControls 手势进行中）。直驱层每帧盖章前查它：
 // 手上的对象一律跳过——否则「预设动画写 transform + 手拖」双写入者打架，marker 被钉回

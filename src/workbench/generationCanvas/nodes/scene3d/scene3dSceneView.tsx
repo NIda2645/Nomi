@@ -25,6 +25,7 @@ import {
 } from './scene3dConstants'
 import { SCENE3D_ASPECT_RATIOS } from './scene3dTypes'
 import type { Scene3DCamera, Scene3DObject, Scene3DVector3, Scene3DTransformMode } from './scene3dTypes'
+import { useScene3DObjectRefRegistration } from './trajectory/useScene3DObjectRefRegistration'
 import {
   holdScene3DObjectRuntime,
   releaseScene3DObjectRuntime,
@@ -163,6 +164,11 @@ export function SceneObjectView({
 }): JSX.Element {
   const visualRef = React.useRef<THREE.Group>(null!) as React.MutableRefObject<THREE.Group>
   const anchorRef = React.useRef<THREE.Group>(null!) as React.MutableRefObject<THREE.Group>
+  // 轨迹存脚底坐标，直驱 marker 需要抬到视觉中心；隐藏对象不应被播放层重新显示。
+  useScene3DObjectRefRegistration(object.id, visualRef, {
+    enabled: object.visible,
+    positionOffsetY: objectVisualHalfHeight(object),
+  })
   const transformRef = React.useRef<any>(null)
   const transformDraggingRef = React.useRef(false)
   const orbitControlsActiveRef = React.useRef(orbitControlsActive)
@@ -374,6 +380,8 @@ export function CameraHelperView({
   onTransform: (patch: Partial<Scene3DCamera>) => void
 }): JSX.Element {
   const markerRef = React.useRef<THREE.Group>(null)
+  // 注册生命周期跟随 marker，取景往返重挂后不会继续写已经离场的 Object3D。
+  useScene3DObjectRefRegistration(cameraData.id, markerRef, { enabled: cameraData.visible })
   // 位置拖拽会话（pointerId + capture 目标）。move/up 走 window 级监听（与 aim 拖拽同模式）：
   // r3f 的 pointer capture 一旦被环境打断（lostpointercapture 清 capturedMap），group 级
   // move 就只剩 raycast 命中才送——marker 若被直驱层钉住、指针滑出命中球即拖拽中途冻死

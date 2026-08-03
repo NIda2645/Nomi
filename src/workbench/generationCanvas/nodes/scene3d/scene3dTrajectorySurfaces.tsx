@@ -25,7 +25,6 @@ export function Scene3DTrajectoryLayer({
       {trajectory.timelineOpen ? (
         <TrajectoryPlayback
           bindings={state.trajectoryBindings}
-          objects={state.objects}
           isPlaying={trajectory.isPlaying}
           setIsPlaying={trajectory.setIsPlaying}
           playheadRef={trajectory.playheadRef}
