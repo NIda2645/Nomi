@@ -138,6 +138,7 @@ export const zhGenerationCommon = {
       },
       shortcuts: {
         blankDrag: '空白左拖',
+        blankClick: '空白单击',
         shiftDrag: 'Shift + 左拖',
         shiftClick: 'Shift + 单击',
         spaceDrag: 'Space + 左拖',
@@ -152,8 +153,8 @@ export const zhGenerationCommon = {
         escape: 'Escape',
       },
       actions: {
-        boxSelect: '框选',
-        addBoxSelect: '追加框选',
+        boxSelect: '框选（追加到选区）',
+        clearSelection: '取消选中',
         toggleSelection: '追加 / 移除',
         pan: '平移',
         zoom: '缩放',
@@ -1210,6 +1211,7 @@ export const enGenerationCommon = {
       },
       shortcuts: {
         blankDrag: 'Drag empty space',
+        blankClick: 'Click empty space',
         shiftDrag: 'Shift + drag',
         shiftClick: 'Shift + click',
         spaceDrag: 'Space + drag',
@@ -1224,8 +1226,8 @@ export const enGenerationCommon = {
         escape: 'Escape',
       },
       actions: {
-        boxSelect: 'Box select',
-        addBoxSelect: 'Add box selection',
+        boxSelect: 'Box select (adds to selection)',
+        clearSelection: 'Clear selection',
         toggleSelection: 'Add / remove',
         pan: 'Pan',
         zoom: 'Zoom',

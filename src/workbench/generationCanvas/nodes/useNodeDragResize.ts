@@ -1,5 +1,10 @@
 // BaseGenerationNode 的拖拽 + 缩放交互（rAF 批处理 / 指针捕获 / 拖到时间轴 / 八向缩放）。
-// 从 BaseGenerationNode.tsx 抽出为 hook，**逐字节保留** handler 体与 rAF 时机；返回 4 个指针 handler。
+// 从 BaseGenerationNode.tsx 抽出为 hook；返回 4 个指针 handler。
+//
+// 拖动态只在**跨过拖拽阈值那一刻**升起（不是按下就升）：短按仍是点击，浮层不该闪一下。
+// 升的是画布级标志（setCanvasDragging → stage 上一个 DOM 属性），拖任何节点都让**全部**节点的
+// 工具条/提示词面板隐身（2026-08-08 起要求，2026-08-09 扩到全画布：拖 B 的时候 A 的面板也不该杵着）。
+// 不进 React：可见性是 CSS 的事，位移本身仍走 ref + rAF。
 import React from 'react'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
@@ -9,6 +14,7 @@ import { getTrackTypeForClipType } from '../../timeline/timelineTypes'
 import { buildGenerationNodeTimelineClip } from '../../timeline/buildGenerationNodeTimelineClip'
 import { toast } from '../../../ui/toast'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
+import { setCanvasDragging } from '../components/canvasDraggingFlag'
 import i18n from '../../../i18n'
 import {
   clampNumber,
@@ -271,6 +277,7 @@ export function useNodeDragResize({
     // 否则节点会无按键跟着光标跑。
     if (event.buttons === 0) {
       dragStartRef.current = null
+      setCanvasDragging(event.currentTarget, false)
       return
     }
     const effectiveZoom = useGenerationCanvasStore.getState().canvasZoom || 1
@@ -279,6 +286,8 @@ export function useNodeDragResize({
     if (!dragStart.dragging) {
       if (Math.abs(deltaX) < 2 && Math.abs(deltaY) < 2) return
       dragStart.dragging = true
+      setCanvasDragging(event.currentTarget, true) // 真开拖：全画布的浮条/提示词面板一起收起
+
       // 真开拖这一刻才抢 capture：从此 move/up 稳定送达外壳（可拖出画布），且 click 会被
       // 重定向到外壳=拖完不会误触子元素（label 不弹文件框）。短按（阈值内）永远不 capture，
       // 子元素 click 默认行为（弹文件框/按钮）完好——这是「短按点、长按拖」两全的机制保证。
@@ -342,6 +351,7 @@ export function useNodeDragResize({
     }
     dragStartRef.current = null
     resizeStartRef.current = null
+    if (dragStart?.dragging) setCanvasDragging(event.currentTarget, false)
     if (
       typeof event.currentTarget.hasPointerCapture === 'function' &&
       typeof event.currentTarget.releasePointerCapture === 'function' &&

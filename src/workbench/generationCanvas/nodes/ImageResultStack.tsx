@@ -118,6 +118,8 @@ export function ImageResultStackControls({
           'absolute bottom-2 right-2 z-[8] inline-flex overflow-hidden rounded-full',
           'border border-nomi-line bg-nomi-paper text-nomi-ink shadow-nomi-md',
           'pointer-events-auto',
+          // 它压在图上，属于「节点的工具条」：拖动期间和浮条/提示词面板一起隐身（画布保持干净）。
+          'group-data-[dragging=true]/canvas:invisible',
         )}
         onPointerDown={(event) => event.stopPropagation()}
       >

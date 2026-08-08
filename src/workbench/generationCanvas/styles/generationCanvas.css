@@ -2,8 +2,8 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  /* 空白左键拖=框选；空格+左键/中键/右键拖=平移（data-panning 切 grabbing） */
-  cursor: default;
+  /* 空白左键拖=平移（grab→grabbing 是「拖我就能移动」的可见承诺）；Shift+左键拖=框选 */
+  cursor: grab;
   user-select: none;
   background:
     radial-gradient(circle, var(--nomi-ink-20) 1px, transparent 1.2px),

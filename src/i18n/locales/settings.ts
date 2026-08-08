@@ -71,7 +71,7 @@ export const zhSettings = {
     screenshotOpenSettings: '打开系统设置',
     canvasGesture: '画布滚轮',
     canvasGestureHint:
-      '在生成画布里滚动滚轮（触控板双指滑）时做什么。不管选哪档，空白处左键拖动直接框选，按住 Shift 是追加框选；空格+左键拖、中键拖或右键拖才平移。',
+      '在生成画布里滚动滚轮（触控板双指滑）时做什么。不管选哪档，空白处左键拖动都是平移画布，Shift+左键拖是框选（加进当前选区），点一下空白取消选中。',
     canvasGestureZoom: '缩放',
     canvasGestureZoomHint: '滚轮直接缩放，锚在光标。多数节点编辑器（ComfyUI 等）的习惯。',
     canvasGesturePan: '平移',
@@ -172,7 +172,7 @@ export const enSettings = {
     screenshotOpenSettings: 'Open System Settings',
     canvasGesture: 'Canvas wheel',
     canvasGestureHint:
-      'What the wheel (or a trackpad two-finger swipe) does on the generation canvas. Either way, left-drag empty space directly box-selects; hold Shift to add to the selection. Use Space+left-drag, middle-drag, or right-drag to pan.',
+      'What the wheel (or a trackpad two-finger swipe) does on the generation canvas. Either way, left-drag empty space pans the canvas, Shift+left-drag box-selects (adding to the current selection), and a click on empty space clears it.',
     canvasGestureZoom: 'Zoom',
     canvasGestureZoomHint: 'The wheel zooms directly, anchored at the cursor. What most node editors (ComfyUI and friends) do.',
     canvasGesturePan: 'Pan',

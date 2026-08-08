@@ -474,7 +474,14 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
     // 外层只做定位锚（不裁剪），宽度跟随内层卡（w-max 包住按内容长开的卡，便于 -translate-x-1/2 居中）。
     <div
       ref={anchorRef}
-      className={cn('generation-canvas-v2-node__composer', 'absolute left-1/2 z-[8] w-max')}
+      className={cn(
+        'generation-canvas-v2-node__composer',
+        'absolute left-1/2 z-[8] w-max',
+        // 画布拖动期间隐身（拖节点、拖选区/组框、拖画布平移都算；状态源=stage 的 data-dragging，见 canvasDraggingFlag）。
+        // 刻意用 visibility 而非条件卸载：里面是 TipTap 编辑器实例，卸载 = 丢未提交的输入 +
+        // 每次拖动重建编辑器（拖动是最高频动作）。
+        'group-data-[dragging=true]/canvas:invisible',
+      )}
       data-flipped={flipUp ? 'true' : 'false'}
       style={{
         // 用户反馈③：反向缩放抵消画布 scale(zoom) → 面板恒定屏幕尺寸（缩小画布只缩上面的卡片框，

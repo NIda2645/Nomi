@@ -6,8 +6,8 @@
  *   · 触控板党：双指滑就该平移（Figma / Miro / tldraw），滚轮全给缩放会让双指滑变成缩放，最别扭。
  * 故 `'wheel-zoom'` 为默认（ComfyUI 习惯优先），`'modifier-zoom'` 留给笔记本 / 触控板用户。
  *
- * **只管滚轮这一个轴**：空白左键拖=框选（Shift 追加）/ 空格+左键·中键·右键拖=平移，两档共用、不可配——
- * 那些手势两拨人都更好，做成可配只会变成两套平行手势世界（违 P1）且逼用户学（违 D1）。
+ * **只管滚轮这一个轴**：空白左键拖=平移 / Shift+左键拖=框选 / 空格+左键·中键·右键拖=平移（2026-08-08 语义），
+ * 两档共用、不可配——那些手势两拨人都更好，做成可配只会变成两套平行手势世界（违 P1）且逼用户学（违 D1）。
  *
  * 不进 `workbenchStore`：它已 789/800 行（R9 上限）。`useSyncExternalStore` + 模块级 pub/sub
  * 是本仓既有轻量响应式模式（conversationPersistence / useFilmstrip / journeyTourActivity 等）。

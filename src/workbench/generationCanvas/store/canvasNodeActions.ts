@@ -252,6 +252,11 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     })
   },
   clearSelection: () => {
+    // 已经是「空选区 + 无待连」时直接返回：点空白是高频动作（现在拖画布也走这条路），
+    // 每次都 set 会造出新的 selectedNodeIds 数组，把「选区变了」的信号广播给每个订阅者
+    // （节点选择器、边层 memo…）——明明什么都没变。幂等守卫放在 store 这层，所有入口通吃。
+    const state = get()
+    if (state.selectedNodeIds.length === 0 && state.pendingConnectionSourceId === '') return
     set({ selectedNodeIds: [], pendingConnectionSourceId: '', pendingConnectionSourceSide: 'right' })
   },
   // v0.7.5: 全选当前分类的所有节点（如果传 categoryId 则限定，否则全选画布所有节点）

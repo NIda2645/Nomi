@@ -29,11 +29,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 const ts = require('typescript')
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
+// fileURLToPath 而非 new URL().pathname：后者在 Windows 上给出 `/E:/…`，
+// path.resolve 会把它当相对路径拼成 `E:\E:\…`，门岗在 Windows 机器上直接 ENOENT 崩掉。
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SRC = path.join(ROOT, 'src')
 const HANDLERS = new Set(['onClick', 'onChange', 'onPointerDown', 'onSubmit'])
 

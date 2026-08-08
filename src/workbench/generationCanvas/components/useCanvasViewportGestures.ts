@@ -1,20 +1,22 @@
 // 画布视口手势控制器（从 GenerationCanvas 抽出，R9/R12 防巨壳）。
-// 收口三类输入（2026-07-31 用户拍板 #832，2026-08-03 补齐二选一）：
+// 收口三类输入（2026-07-31 用户拍板 #832，2026-08-03 补齐二选一，2026-08-08 平移改回默认手势）：
 //   · 滚轮：**语义可配**（canvasGesturePreference）——默认缩放锚光标（ComfyUI 式），
 //     可切成平移（Figma 式，给触控板党）；⌘/Ctrl+滚轮与捏合**两档恒缩放**。卡内可滚区放行原生滚动。
-//   · 空格+左键拖 / 中键拖 / 右键拖 = 平移（右键拖超阈值才吞掉右键菜单）。
-//   · 空白左键拖统一交给 useMarqueeSelection，视口层不再占用框选的自然入口。
+//   · 空白左键拖 = 平移（bubble 阶段接，节点/控件的 stopPropagation 先赢）；未超阈值的那一下算「点空白」，
+//     由上层清空选区。Shift+左键留给 useMarqueeSelection 框选。
+//   · 空格+左键拖 / 中键拖 / 右键拖 = 平移（capture 阶段接，压在节点上也生效；右键拖超阈值才吞掉右键菜单）。
 // 同时托管视口变换原语（scheduleOffset / setViewportTransform / zoomAtStagePoint），
 // 平移与离散缩放都走 rAF 批处理，消除快速输入的多次 setState 抖动。
 import React from 'react'
 import { clampNumber, getWheelZoomFactor } from './generationCanvasGeometry'
 import { findScrollableAncestor } from './canvasScroll'
 import { resolveWheelIntent, useCanvasGestureScheme } from './canvasGesturePreference'
+import { setCanvasDragging } from './canvasDraggingFlag'
 import {
   canvasDragExceededThreshold,
+  isCanvasCapturePanPointer,
   isCanvasPanButtonHeld,
   resolveCanvasPanButtonFromMove,
-  resolveCanvasPointerDownAction,
   shouldPreventDefaultForCanvasPanStart,
 } from './canvasPointerGestureModel'
 
@@ -33,16 +35,16 @@ type UseCanvasViewportGesturesArgs = {
 }
 
 export type CanvasViewportGestures = {
-  isPanning: boolean
-  /** 空格按住中 → 外壳切 grab 光标，提示「现在拖就是平移」 */
-  isSpaceHeld: boolean
   scheduleOffset: (offset: Offset) => void
   setViewportTransform: (zoom: number, offset: Offset) => void
   animateViewportTo: (zoom: number, offset: Offset, duration?: number) => void
   zoomAtStagePoint: (zoom: number, point: { x: number; y: number }) => void
   handlePointerDownCapture: (event: React.PointerEvent<HTMLDivElement>) => void
+  /** bubble 阶段的空白左键平移入口：由上层仲裁确认「这是画布空白」后才调。 */
+  handleEmptyPanPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
   handlePointerMove: (event: React.PointerEvent<HTMLDivElement>) => boolean
-  handlePointerUp: (event: React.PointerEvent<HTMLDivElement>) => void
+  /** 返回 true 表示「这一下是空白点击（没拖动）」，上层据此清空选区。 */
+  handlePointerUp: (event: React.PointerEvent<HTMLDivElement>) => boolean
   handlePointerCancel: (event: React.PointerEvent<HTMLDivElement>) => void
   /** onContextMenu 先调它：右键拖平移后返回 true 表示该吞掉菜单 */
   shouldSuppressContextMenu: () => boolean
@@ -64,33 +66,49 @@ export function useCanvasViewportGestures({
   const isPanningRef = React.useRef(false)
   const panStartRef = React.useRef<{
     pointerId: number
+    /** 按下点：只用来判「拖了没有」（4px 阈值 / 是不是一次点击），**不用来算位移**。 */
     clientX: number
     clientY: number
-    offsetX: number
-    offsetY: number
+    /** 位移基准 = 上一次指针位置。增量而非「起点+总位移」，见 handlePointerMove 处注释。 */
+    lastClientX: number
+    lastClientY: number
     button: 0 | 1 | 2
+    /** 空格发起的左键平移：松开空格要立刻收尾（裸左键平移不能被空格的 keyup 打断）。 */
+    spaceInitiated: boolean
     moved: boolean
   } | null>(null)
   const lastPointerPositionRef = React.useRef<{ pointerId: number; clientX: number; clientY: number } | null>(null)
   const activePointerButtonsRef = React.useRef(0)
   const suppressContextMenuRef = React.useRef(false)
   const spaceHeldRef = React.useRef(false)
-  const [isPanning, setIsPanning] = React.useState(false)
-  const [isSpaceHeld, setIsSpaceHeld] = React.useState(false)
   const gestureScheme = useCanvasGestureScheme()
+
+  // 光标是**纯表现状态**，不进 React（2026-08-08 用户报「点一下空白，连线层按下松开各刷新一次」的根因：
+  // 它原本是 useState → 每次按下/松开都让整个画布组件重渲 + 写属性 + 全 stage 子树重算样式，
+  // 而它只干一件事：把光标从 grab 换成 grabbing）。
+  //   · 左键（最高频）→ 交给 CSS `:active`，零 JS、零属性写入、零渲染。
+  //   · 空格 / 中键 / 右键 → CSS 表达不了（空格没按键、:active 只认主键），补一个 data 属性，
+  //     但走 imperative DOM 写，仍然不惊动 React。
+  const setStagePanFlag = React.useCallback((attribute: 'data-panning' | 'data-space-pan', on: boolean) => {
+    const stage = stageRef.current
+    if (!stage) return
+    if (on) stage.setAttribute(attribute, 'true')
+    else stage.removeAttribute(attribute) // 属性本就不在时是 no-op，不会白白触发样式重算
+  }, [stageRef])
 
   const resetPanState = React.useCallback(() => {
     isPanningRef.current = false
-    setIsPanning(false)
+    setStagePanFlag('data-panning', false)
+    setCanvasDragging(stageRef.current, false)
     panStartRef.current = null
     lastPointerPositionRef.current = null
-  }, [])
+  }, [setStagePanFlag, stageRef])
 
   const releaseSpace = React.useCallback(() => {
     if (!spaceHeldRef.current) return
     spaceHeldRef.current = false
-    setIsSpaceHeld(false)
-  }, [])
+    setStagePanFlag('data-space-pan', false)
+  }, [setStagePanFlag])
 
   const cancelAnim = React.useCallback(() => {
     if (animFrameRef.current !== null) {
@@ -229,14 +247,14 @@ export function useCanvasViewportGestures({
       if (!stageRef.current || stageRef.current.offsetParent === null) return
       if (!spaceHeldRef.current) {
         spaceHeldRef.current = true
-        setIsSpaceHeld(true)
+        setStagePanFlag('data-space-pan', true)
       }
       event.preventDefault() // 否则空格会滚页 / 触发按钮
     }
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.code !== 'Space' && event.key !== ' ') return
       releaseSpace()
-      if (panStartRef.current?.button === 0) finishPan(panStartRef.current.pointerId)
+      if (panStartRef.current?.spaceInitiated) finishPan(panStartRef.current.pointerId)
     }
     const handleBlur = () => {
       releaseSpace()
@@ -253,7 +271,7 @@ export function useCanvasViewportGestures({
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [finishPan, readOnly, releaseSpace, resetPanState, stageRef])
+  }, [finishPan, readOnly, releaseSpace, resetPanState, setStagePanFlag, stageRef])
 
   const beginPan = React.useCallback((
     event: React.PointerEvent<HTMLDivElement>,
@@ -264,30 +282,34 @@ export function useCanvasViewportGestures({
     setActiveEdge(null)
     suppressContextMenuRef.current = false
     isPanningRef.current = true
-    setIsPanning(true)
+    // 裸左键平移不写属性：CSS `:active` 已经把光标切成 grabbing（见 stage 的 active:cursor-grabbing）。
+    // 只有 CSS 认不出的入口（中键/右键/空格）才补属性，把高频路径的写入降到零。
+    setStagePanFlag('data-panning', button !== 0 || spaceHeldRef.current)
     panStartRef.current = {
       pointerId: event.pointerId,
       clientX: startPoint?.clientX ?? event.clientX,
       clientY: startPoint?.clientY ?? event.clientY,
-      offsetX: offsetRef.current.x,
-      offsetY: offsetRef.current.y,
+      lastClientX: startPoint?.clientX ?? event.clientX,
+      lastClientY: startPoint?.clientY ?? event.clientY,
       button,
+      spaceInitiated: button === 0 && spaceHeldRef.current,
       moved: false,
     }
     try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* 无活动指针时忽略 */ }
-  }, [offsetRef, setActiveEdge, setContextNodeMenu])
+  }, [setActiveEdge, setContextNodeMenu, setStagePanFlag])
+
+  // 空白左键平移（bubble 阶段）：走到这里说明上层仲裁已确认「命中的是画布空白」——
+  // 节点、工具条、边命中区都在自己的 pointerdown 里 stopPropagation，压根到不了这。
+  const handleEmptyPanPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault() // 挡掉原生的框选文本/拖图，光标不留残影
+    beginPan(event, 0)
+  }, [beginPan])
 
   // 捕获阶段：空格/中键/右键拖在节点之上也能平移（抢在节点 pointerdown 前）。
   const handlePointerDownCapture = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     activePointerButtonsRef.current = event.buttons
     lastPointerPositionRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY }
-    const action = resolveCanvasPointerDownAction({
-      button: event.button,
-      spaceHeld: spaceHeldRef.current,
-      interactiveTarget: false,
-      readOnly,
-    })
-    if (action === 'pan') {
+    if (isCanvasCapturePanPointer({ button: event.button, spaceHeld: spaceHeldRef.current })) {
       if (shouldPreventDefaultForCanvasPanStart(event.button)) event.preventDefault()
       event.stopPropagation()
       beginPan(event, event.button as 0 | 1 | 2)
@@ -301,7 +323,7 @@ export function useCanvasViewportGestures({
     const target = event.target instanceof Element ? event.target : null
     if (target?.closest('.generation-canvas-v2__edge-hit, .generation-canvas-v2__edge-cut, .generation-canvas-v2__edge-control, [role="menu"], [role="menuitem"], [role="menuitemradio"]')) return
     setActiveEdge(null)
-  }, [activeEdgeId, beginPan, readOnly, setActiveEdge, setContextNodeMenu])
+  }, [activeEdgeId, beginPan, setActiveEdge, setContextNodeMenu])
 
   const handlePointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     activePointerButtonsRef.current = event.buttons
@@ -309,10 +331,7 @@ export function useCanvasViewportGestures({
     lastPointerPositionRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY }
     if (
       isPanningRef.current && panStartRef.current &&
-      !isCanvasPanButtonHeld(panStartRef.current.button, {
-        buttons: event.buttons,
-        spaceHeld: spaceHeldRef.current,
-      })
+      !isCanvasPanButtonHeld(panStartRef.current.button, { buttons: event.buttons })
     ) {
       finishPan(event.pointerId)
       return false
@@ -330,27 +349,41 @@ export function useCanvasViewportGestures({
     const start = panStartRef.current
     if (!start.moved) {
       const exceededThreshold = canvasDragExceededThreshold(start.clientX, start.clientY, event.clientX, event.clientY)
+      // 右键在阈值内不动画布，也**不推进基准**——超阈值那一刻要把这 4px 一次性补上（与右键菜单判定共用起点）。
       if (!exceededThreshold && start.button === 2) return true
       if (exceededThreshold) {
         start.moved = true
+        // 真拖起来才升拖动态（点一下空白不升，否则又变成「点空白也在刷新」）。
+        // 平移同样算「我在摆位置/找位置」：浮层一起收起（2026-08-09 用户拍板）。
+        setCanvasDragging(stageRef.current, true)
         if (start.button === 2) suppressContextMenuRef.current = true // 右键拖→吞菜单
       }
     }
-    scheduleOffset({
-      x: start.offsetX + (event.clientX - start.clientX),
-      y: start.offsetY + (event.clientY - start.clientY),
-    })
+    // 位移用**增量**（当前 offset + 这一步指针位移），不是「按下时的 offset + 指针总位移」。
+    // 根因（2026-08-08 用户报「按住左键滚轮缩放会抖」）：绝对式基准一旦被外部改写 offset 就过期——
+    // 缩放锚光标时 zoomAtStagePoint 会修正 offset，而下一个 pointermove 又按老基准把它算回去，
+    // 一滚一抹 = 每帧在两个位置间跳。增量式让平移天然继承任何外部改写（缩放/最小地图跳转/快捷键缩放）。
+    const deltaX = event.clientX - start.lastClientX
+    const deltaY = event.clientY - start.lastClientY
+    start.lastClientX = event.clientX
+    start.lastClientY = event.clientY
+    scheduleOffset({ x: offsetRef.current.x + deltaX, y: offsetRef.current.y + deltaY })
     return true
-  }, [beginPan, finishPan, scheduleOffset])
+  }, [beginPan, finishPan, offsetRef, scheduleOffset, stageRef])
 
   const handlePointerUp = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     activePointerButtonsRef.current = event.buttons
     lastPointerPositionRef.current = null
-    if (!isPanningRef.current) return
+    if (!isPanningRef.current) return false
+    // 没跨过 4px 阈值的裸左键平移 = 用户其实是「点了一下空白」。平移和点空白共用同一个手势，
+    // 只能在抬手这一刻按位移分辨；分辨结果交给上层（清空选区不是视口层的职责）。
+    const start = panStartRef.current
+    const emptyClick = Boolean(start && start.button === 0 && !start.spaceInitiated && !start.moved)
     // document 级连线监听器会在 React stage handler 之后收到同一个 native pointerup。
-    // 只标记会冲突的 Space+左键；右键必须保留默认 contextmenu 派发。
+    // 只标记会冲突的左键平移；右键必须保留默认 contextmenu 派发。
     if (event.button === 0) event.preventDefault()
     finishPan(event.pointerId)
+    return emptyClick
   }, [finishPan])
 
   const handlePointerCancel = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -401,13 +434,12 @@ export function useCanvasViewportGestures({
   }, [handleWheel, stageRef])
 
   return {
-    isPanning,
-    isSpaceHeld,
     scheduleOffset,
     setViewportTransform,
     animateViewportTo,
     zoomAtStagePoint,
     handlePointerDownCapture,
+    handleEmptyPanPointerDown,
     handlePointerMove,
     handlePointerUp,
     handlePointerCancel,

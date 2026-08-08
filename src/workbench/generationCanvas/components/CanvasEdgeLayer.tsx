@@ -12,9 +12,6 @@ export type ActiveEdge = {
   position?: { x: number; y: number }
 }
 
-// 同一 target 的「有类型标签」入边超过此数 → 标记 data-dense，标签默认收起、hover/激活才显（防糊）。
-const EDGE_TAG_DENSE_THRESHOLD = 3
-
 type CanvasEdgeLayerProps = {
   edges: GenerationCanvasEdge[]
   nodeById: Map<string, GenerationCanvasNode>
@@ -24,8 +21,8 @@ type CanvasEdgeLayerProps = {
   visibleNodeIds: Set<string> | null
   /** 大图/远缩放时只画线条，延后标签、命中热区、端点等重 UI。 */
   lightweight?: boolean
-  /** 聚焦节点（当前单选）：其关联边点亮，其余边默认淡化——根治多锚点「毛线球」。null = 全部淡化。 */
-  focusedNodeId: string | null
+  /** 当前选中的节点：其关联边点亮并显示类型标签，其余边淡化且无标签——根治多锚点「毛线球」。 */
+  selectedNodeIds: Set<string>
   activeEdge: ActiveEdge | null
   readOnly: boolean
   pendingConnectionSourceId: string
@@ -40,13 +37,17 @@ type CanvasEdgeLayerProps = {
 // 节点连接线层（贝塞尔路径 + 命中区 + 断开剪刀 + 待连预览）。从 GenerationCanvas.tsx 抽出。
 // memo（P0-D）：平移不改本层 props（edges/nodeById/zoom 稳，offset 不传进来）→ 小/中图平移整层跳过；
 // >50 节点时 visibleNodeIds 每帧变仍会重渲，但 edgeGeoms 已 memo 化故不重算 bezier。
+//
+// 标签（连线类型胶囊）的显示门 = **选中**（2026-08-08 用户拍板）：没选中任何节点时画布上一个标签都没有，
+// 选中谁才浮出谁的入/出边类型。此前是「有类型就常显 + 超 3 条折叠 + hover 揭示」——三段补丁叠在一起，
+// 既糊画面又要为 hover 维护一份 state（每次划过整层重渲）。选中门把这三段一起消掉（P1/P2）。
 function CanvasEdgeLayer({
   edges,
   nodeById,
   zoom,
   visibleNodeIds,
   lightweight = false,
-  focusedNodeId,
+  selectedNodeIds,
   activeEdge,
   readOnly,
   pendingConnectionSourceId,
@@ -59,17 +60,6 @@ function CanvasEdgeLayer({
 }: CanvasEdgeLayerProps): JSX.Element {
   const { t } = useTranslation()
   const activeEdgeId = activeEdge?.id ?? null
-  const [hoveredEdgeId, setHoveredEdgeId] = React.useState<string | null>(null)
-  // 密度判定：按 target 统计「有类型标签」（非泛 reference）入边数，超阈值的 target 其标签默认收起。
-  const labeledCountByTarget = React.useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const edge of edges) {
-      const mode = edge.mode || 'reference'
-      if (mode === 'reference') continue
-      counts.set(edge.target, (counts.get(edge.target) || 0) + 1)
-    }
-    return counts
-  }, [edges])
   const tagScale = 1 / (zoom || 1)
   // P0-D 平移性能：边几何（bezier 路径 / 端点 / 中点）是节点坐标的纯函数，与 offset(平移)/zoom 无关。
   // 抽进 useMemo([edges, nodeById]) → 平移时不重算（即使外层因虚拟化 visibleNodeIds 变而重渲，
@@ -104,12 +94,11 @@ function CanvasEdgeLayer({
   return (
     <>
     <svg className="generation-canvas-v2__edges" aria-label={t('generationCommon.canvas.edge.aria')}>
-      {edgeGeoms.map(({ edge, source, target, endX, endY, midX, midY, path, mode, isTyped }) => {
+      {edgeGeoms.map(({ edge, source, target, endX, endY, midX, midY, path, mode }) => {
         // 视口裁剪：两端都在可见集外的边不渲染（大图性能，B3）
         if (visibleNodeIds && !visibleNodeIds.has(edge.source) && !visibleNodeIds.has(edge.target)) return null
         const isActiveEdge = activeEdgeId === edge.id
-        const isDense = (labeledCountByTarget.get(edge.target) || 0) > EDGE_TAG_DENSE_THRESHOLD
-        const isIncident = focusedNodeId != null && (edge.source === focusedNodeId || edge.target === focusedNodeId)
+        const isIncident = selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)
         const renderInteractiveEdge = !lightweight || isActiveEdge || isIncident
         return (
           <g
@@ -119,7 +108,6 @@ function CanvasEdgeLayer({
             data-edge-id={edge.id}
             data-active={isActiveEdge ? 'true' : undefined}
             data-incident={isIncident ? 'true' : undefined}
-            data-dense={isTyped && isDense ? 'true' : undefined}
           >
             <path className="generation-canvas-v2__edge-path" d={path} />
             {renderInteractiveEdge ? (
@@ -142,8 +130,6 @@ function CanvasEdgeLayer({
                     position: getCanvasPointFromClientPoint(event.clientX, event.clientY) ?? { x: midX, y: midY },
                   })
                 }}
-                onPointerEnter={() => setHoveredEdgeId(edge.id)}
-                onPointerLeave={() => setHoveredEdgeId((current) => current === edge.id ? null : current)}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return
                   event.preventDefault()
@@ -178,13 +164,11 @@ function CanvasEdgeLayer({
       {edgeGeoms.map(({ edge, source, target, midX, midY, mode, isTyped }) => {
         if (visibleNodeIds && !visibleNodeIds.has(edge.source) && !visibleNodeIds.has(edge.target)) return null
         const isActiveEdge = activeEdgeId === edge.id
-        const isIncident = focusedNodeId != null && (edge.source === focusedNodeId || edge.target === focusedNodeId)
-        const renderInteractiveEdge = !lightweight || isActiveEdge || isIncident
-        if (!isActiveEdge && (!renderInteractiveEdge || !isTyped)) return null
+        // 标签只给「选中节点的边」和「正在改模式的那条边」。没选中 = 一个标签都不画（也省掉整层的布局与合成）。
+        const isIncident = selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)
+        if (!isActiveEdge && (!isIncident || !isTyped)) return null
         const modeLabel = t(`generationCommon.canvas.edge.modes.${mode}`)
         const position = isActiveEdge && activeEdge?.position ? activeEdge.position : { x: midX, y: midY }
-        const isDense = isTyped && (labeledCountByTarget.get(edge.target) || 0) > EDGE_TAG_DENSE_THRESHOLD
-        const isHovered = hoveredEdgeId === edge.id
         const selectableModes = isActiveEdge ? availableEdgeModes(source, target) : []
         const controlStyle: React.CSSProperties = {
           left: position.x,
@@ -196,14 +180,9 @@ function CanvasEdgeLayer({
           return (
             <div
               key={edge.id}
-              className={cn(
-                'generation-canvas-v2__edge-control absolute pointer-events-auto opacity-100 transition-opacity duration-150',
-                isDense && !isIncident && !isHovered && 'opacity-0 pointer-events-none',
-              )}
+              className="generation-canvas-v2__edge-control absolute pointer-events-auto"
               style={controlStyle}
               data-edge-id={edge.id}
-              onPointerEnter={() => setHoveredEdgeId(edge.id)}
-              onPointerLeave={() => setHoveredEdgeId((current) => current === edge.id ? null : current)}
             >
               {readOnly ? (
                 <span className="generation-canvas-v2__edge-tag-pill inline-flex h-6 items-center rounded-pill border border-nomi-accent/40 bg-nomi-paper px-2 text-caption font-semibold leading-none whitespace-nowrap text-nomi-accent shadow-nomi-sm">{modeLabel}</span>

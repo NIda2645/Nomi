@@ -22,6 +22,10 @@ export function FloatingToolbarShell({ ariaLabel, children }: { ariaLabel: strin
         'inline-flex items-center gap-1 min-h-9 px-1.5 py-1',
         'border border-nomi-line rounded-nomi',
         'bg-nomi-paper shadow-nomi-md',
+        // 画布上**任何**节点被拖动时隐身（用户 2026-08-08 提、08-09 扩到全画布）：工具条跟着飞、
+        // 或杵在原地看着别人被拖走，都脏。用 visibility 不卸载——松手要原样回来，也不丢按钮忙态。
+        // 状态源见 canvasDraggingFlag（stage 上的 data-dragging）。
+        'group-data-[dragging=true]/canvas:invisible',
       )}
       data-node-floating-toolbar="true"
       style={{ transform: `translateX(-50%) scale(${1 / (canvasZoom || 1)})`, transformOrigin: 'bottom center' }}
