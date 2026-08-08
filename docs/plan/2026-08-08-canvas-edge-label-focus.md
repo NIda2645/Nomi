@@ -4,7 +4,7 @@ Date: 2026-08-08
 
 ## Scope
 
-- Mute typed edge labels by default so they sit at the same visual level as idle edges.
+- Collapse typed edge labels by default while retaining the idle relationship line.
 - Restore full label emphasis when the pointer is over that edge or when either connected node is the single selected node.
 - Keep the active edge menu fully emphasized.
 - Extend the existing real Electron canvas walkthrough to cover the three states.
@@ -21,7 +21,7 @@ Revert the component class-state change and the matching walkthrough assertions.
 
 ## Acceptance
 
-1. With no node or edge focused, a typed label is visible but visually muted.
+1. With no node or edge focused, a typed label is fully hidden and does not intercept pointer input.
 2. Hovering its edge makes both the edge and label fully emphasized.
 3. Selecting either connected asset/node makes the corresponding edge and label fully emphasized.
 4. Moving away and clearing selection restores the muted state.

@@ -12,9 +12,6 @@ export type ActiveEdge = {
   position?: { x: number; y: number }
 }
 
-// 同一 target 的「有类型标签」入边超过此数 → 标记 data-dense，标签默认收起、hover/激活才显（防糊）。
-const EDGE_TAG_DENSE_THRESHOLD = 3
-
 type CanvasEdgeLayerProps = {
   edges: GenerationCanvasEdge[]
   nodeById: Map<string, GenerationCanvasNode>
@@ -60,16 +57,6 @@ function CanvasEdgeLayer({
   const { t } = useTranslation()
   const activeEdgeId = activeEdge?.id ?? null
   const [hoveredEdgeId, setHoveredEdgeId] = React.useState<string | null>(null)
-  // 密度判定：按 target 统计「有类型标签」（非泛 reference）入边数，超阈值的 target 其标签默认收起。
-  const labeledCountByTarget = React.useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const edge of edges) {
-      const mode = edge.mode || 'reference'
-      if (mode === 'reference') continue
-      counts.set(edge.target, (counts.get(edge.target) || 0) + 1)
-    }
-    return counts
-  }, [edges])
   const tagScale = 1 / (zoom || 1)
   // P0-D 平移性能：边几何（bezier 路径 / 端点 / 中点）是节点坐标的纯函数，与 offset(平移)/zoom 无关。
   // 抽进 useMemo([edges, nodeById]) → 平移时不重算（即使外层因虚拟化 visibleNodeIds 变而重渲，
@@ -104,11 +91,10 @@ function CanvasEdgeLayer({
   return (
     <>
     <svg className="generation-canvas-v2__edges" aria-label={t('generationCommon.canvas.edge.aria')}>
-      {edgeGeoms.map(({ edge, source, target, endX, endY, midX, midY, path, mode, isTyped }) => {
+      {edgeGeoms.map(({ edge, source, target, endX, endY, midX, midY, path, mode }) => {
         // 视口裁剪：两端都在可见集外的边不渲染（大图性能，B3）
         if (visibleNodeIds && !visibleNodeIds.has(edge.source) && !visibleNodeIds.has(edge.target)) return null
         const isActiveEdge = activeEdgeId === edge.id
-        const isDense = (labeledCountByTarget.get(edge.target) || 0) > EDGE_TAG_DENSE_THRESHOLD
         const isIncident = focusedNodeId != null && (edge.source === focusedNodeId || edge.target === focusedNodeId)
         const isHovered = hoveredEdgeId === edge.id
         const renderInteractiveEdge = !lightweight || isActiveEdge || isIncident
@@ -121,7 +107,6 @@ function CanvasEdgeLayer({
             data-active={isActiveEdge ? 'true' : undefined}
             data-incident={isIncident ? 'true' : undefined}
             data-hovered={isHovered ? 'true' : undefined}
-            data-dense={isTyped && isDense ? 'true' : undefined}
           >
             <path className="generation-canvas-v2__edge-path" d={path} />
             {renderInteractiveEdge ? (
@@ -185,7 +170,6 @@ function CanvasEdgeLayer({
         if (!isActiveEdge && (!renderInteractiveEdge || !isTyped)) return null
         const modeLabel = t(`generationCommon.canvas.edge.modes.${mode}`)
         const position = isActiveEdge && activeEdge?.position ? activeEdge.position : { x: midX, y: midY }
-        const isDense = isTyped && (labeledCountByTarget.get(edge.target) || 0) > EDGE_TAG_DENSE_THRESHOLD
         const isHovered = hoveredEdgeId === edge.id
         const isEmphasized = isIncident || isHovered
         const selectableModes = isActiveEdge ? availableEdgeModes(source, target) : []
@@ -201,11 +185,7 @@ function CanvasEdgeLayer({
               key={edge.id}
               className={cn(
                 'generation-canvas-v2__edge-control absolute pointer-events-auto transition-opacity duration-150',
-                isDense && !isEmphasized
-                  ? 'opacity-0 pointer-events-none'
-                  : isEmphasized
-                    ? 'opacity-100'
-                    : 'opacity-20',
+                isEmphasized ? 'opacity-100' : 'opacity-0 pointer-events-none',
               )}
               style={controlStyle}
               data-edge-id={edge.id}

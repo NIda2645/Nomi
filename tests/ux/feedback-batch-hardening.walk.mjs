@@ -112,19 +112,22 @@ fs.writeFileSync(projectFile, `${JSON.stringify(project, null, 2)}\n`)
   const edgeControl = win.locator('.generation-canvas-v2__edge-control[data-edge-id="edge-style"]')
   const edgeTag = edgeControl.locator('.generation-canvas-v2__edge-tag-pill').filter({ hasText: '风格' })
   const opacityOf = (locator) => locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity))
+  const pointerEventsOf = (locator) => locator.evaluate((element) => getComputedStyle(element).pointerEvents)
   const strokeOpacityOf = (locator) => locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).strokeOpacity))
   const expectNear = async (actualPromise, expected, state) => {
     const actual = await actualPromise
     if (Math.abs(actual - expected) > 0.05) throw new Error(`${state}: expected ${expected}, received ${actual}`)
   }
 
-  await expectNear(opacityOf(edgeControl), 0.2, 'idle edge label opacity')
+  await expectNear(opacityOf(edgeControl), 0, 'collapsed edge label opacity')
+  if (await pointerEventsOf(edgeControl) !== 'none') throw new Error('collapsed edge label intercepted pointer events')
   await expectNear(strokeOpacityOf(edgePath), 0.18, 'idle edge opacity')
-  await shot(win, '01-edge-label-muted.png')
+  await shot(win, '01-edge-label-collapsed.png')
 
   await edgeHit.hover({ force: true })
   await win.waitForTimeout(220)
   await expectNear(opacityOf(edgeControl), 1, 'hovered edge label opacity')
+  if (await pointerEventsOf(edgeControl) !== 'auto') throw new Error('hovered edge label was not interactive')
   await expectNear(strokeOpacityOf(edgePath), 1, 'hovered edge opacity')
   await shot(win, '02-edge-label-hover.png')
 
@@ -136,7 +139,8 @@ fs.writeFileSync(projectFile, `${JSON.stringify(project, null, 2)}\n`)
 
   await win.locator('.generation-canvas-v2__stage').click({ position: { x: 500, y: 760 }, force: true })
   await win.waitForTimeout(220)
-  await expectNear(opacityOf(edgeControl), 0.2, 'cleared selection edge label opacity')
+  await expectNear(opacityOf(edgeControl), 0, 'cleared selection edge label opacity')
+  if (await pointerEventsOf(edgeControl) !== 'none') throw new Error('cleared edge label intercepted pointer events')
 
   await win.locator('[data-node-id="shot-node"]').click()
   await win.waitForTimeout(600)
