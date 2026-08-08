@@ -282,7 +282,6 @@ function BaseGenerationNodeImpl({
       )}
       data-node-id={node.id}
       data-kind={node.kind}
-      data-expanded={selected ? 'true' : 'false'}
       data-selected={selected ? 'true' : 'false'}
       data-focus-flash={focusFlash ? 'true' : 'false'}
       data-appear={appear ? 'true' : undefined}

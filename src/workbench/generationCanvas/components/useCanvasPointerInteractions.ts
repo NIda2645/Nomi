@@ -2,8 +2,10 @@
 // 把 useCanvasViewportGestures（平移/缩放）与 useMarqueeSelection（框选）组合成一组
 // stage handler，让 GenerationCanvas 只挂一处、不必关心二者分工：
 //   · capture 阶段：空格/中键/右键平移抢在节点之前（gestures）。
-//   · bubble 阶段：空白左键统一进入框选；Shift 只切换追加模式。
+//   · bubble 阶段：**这里是唯一的仲裁点**——空白左键拖=平移、Shift+左键拖=框选、
+//     空白左键点一下（没超阈值）=清空选区。命中节点/控件的事件根本到不了这（它们自己 stopPropagation）。
 import React from 'react'
+import { resolveCanvasPointerDownAction, isCanvasInteractiveTarget } from './canvasPointerGestureModel'
 import { useCanvasViewportGestures } from './useCanvasViewportGestures'
 import { useMarqueeSelection, type MarqueeRect } from './useMarqueeSelection'
 
@@ -24,8 +26,6 @@ type Args = {
 }
 
 export type CanvasPointerInteractions = {
-  isPanning: boolean
-  isSpaceHeld: boolean
   marqueeRect: MarqueeRect | null
   setViewportTransform: (zoom: number, offset: Offset) => void
   animateViewportTo: (zoom: number, offset: Offset, duration?: number) => void
@@ -50,18 +50,26 @@ export function useCanvasPointerInteractions(args: Args): CanvasPointerInteracti
     activeEdgeId: args.activeEdgeId,
   })
   const marquee = useMarqueeSelection({
-    readOnly: args.readOnly,
     stageRef: args.stageRef,
     offsetRef: args.offsetRef,
     zoomRef: args.zoomRef,
     activeCategoryId: args.activeCategoryId,
-    clearSelection: args.clearSelection,
     selectNodesInRect: args.selectNodesInRect,
   })
+  const { readOnly, clearSelection } = args
 
   const onPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    marquee.handlePointerDown(event)
-  }, [marquee])
+    // spaceHeld 恒传 false：空格档已在 capture 阶段接走并 stopPropagation，走不到这。
+    const action = resolveCanvasPointerDownAction({
+      button: event.button,
+      spaceHeld: false,
+      shiftKey: event.shiftKey,
+      interactiveTarget: isCanvasInteractiveTarget(event.target),
+      readOnly,
+    })
+    if (action === 'pan') gestures.handleEmptyPanPointerDown(event)
+    else if (action === 'marquee') marquee.handlePointerDown(event)
+  }, [gestures, marquee, readOnly])
   const onPointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const panOwnsPointer = gestures.handlePointerMove(event)
     if (panOwnsPointer) {
@@ -71,17 +79,17 @@ export function useCanvasPointerInteractions(args: Args): CanvasPointerInteracti
     marquee.handlePointerMove(event)
   }, [gestures, marquee])
   const onPointerUp = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    gestures.handlePointerUp(event)
+    // 「拖动画布」与「点空白取消选中」是同一个手势，抬手时才分得开（见 gestures.handlePointerUp）。
+    const emptyClick = gestures.handlePointerUp(event)
+    if (emptyClick && !readOnly) clearSelection()
     marquee.handlePointerUp(event)
-  }, [gestures, marquee])
+  }, [clearSelection, gestures, marquee, readOnly])
   const onPointerCancel = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     gestures.handlePointerCancel(event)
     marquee.handlePointerCancel(event)
   }, [gestures, marquee])
 
   return {
-    isPanning: gestures.isPanning,
-    isSpaceHeld: gestures.isSpaceHeld,
     marqueeRect: marquee.marqueeRect,
     setViewportTransform: gestures.setViewportTransform,
     animateViewportTo: gestures.animateViewportTo,

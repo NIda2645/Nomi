@@ -21,7 +21,8 @@ describe('generation canvas control structure', () => {
     expect(dragToConnect).toContain('shouldFinishCanvasConnection(event.button, event.defaultPrevented)')
     expect(viewportGestures).toContain('resolveCanvasPanButtonFromMove')
     expect(viewportGestures).toContain('isCanvasPanButtonHeld')
-    expect(viewportGestures).toContain("panStartRef.current?.button === 0")
+    // 空格中途松手只收尾「空格发起的」那次平移——裸左键平移不能被它打断（08-08 语义）。
+    expect(viewportGestures).toContain('panStartRef.current?.spaceInitiated')
     expect(viewportGestures).toMatch(
       /const handlePointerUp[\s\S]*?if \(!isPanningRef\.current\) return[\s\S]*?if \(event\.button === 0\) event\.preventDefault\(\)/,
     )
@@ -47,13 +48,14 @@ describe('generation canvas control structure', () => {
     expect(canvasStyles).not.toContain('generation-canvas-v2__gesture-hint')
   })
 
-  it('keeps settings copy aligned with blank-drag marquee selection', () => {
+  it('keeps settings copy aligned with drag-pans-first gestures', () => {
     const settings = source('../../../i18n/locales/settings.ts')
 
-    expect(settings).not.toContain('空白处按住拖都是平移、Shift+拖都是框选')
-    expect(settings).not.toContain('dragging empty space always pans and Shift+drag always box-selects')
-    expect(settings).toContain('空白处左键拖动直接框选')
-    expect(settings).toContain('left-drag empty space directly box-selects')
+    // 08-07 的 selection-first 文案已被 08-08 用户拍板推翻，不许回潮。
+    expect(settings).not.toContain('空白处左键拖动直接框选')
+    expect(settings).not.toContain('left-drag empty space directly box-selects')
+    expect(settings).toContain('空白处左键拖动都是平移画布，Shift+左键拖是框选')
+    expect(settings).toContain('left-drag empty space pans the canvas, Shift+left-drag box-selects')
   })
 
   it('keeps Space available to focused controls and gives disabled tooltip triggers a name', () => {
@@ -96,6 +98,68 @@ describe('generation canvas control structure', () => {
 
     expect(pointerInteractions).toContain('const panOwnsPointer = gestures.handlePointerMove(event)')
     expect(pointerInteractions).toContain('marquee.cancel()')
+  })
+
+  it('keeps one arbiter for blank-canvas pointers', () => {
+    const pointerInteractions = source('./useCanvasPointerInteractions.ts')
+    const marquee = source('./useMarqueeSelection.ts')
+
+    expect(pointerInteractions).toContain('resolveCanvasPointerDownAction')
+    expect(pointerInteractions).toContain('gestures.handleEmptyPanPointerDown(event)')
+    expect(pointerInteractions).toContain('marquee.handlePointerDown(event)')
+    // 「什么算画布空白」只在模型层定义一次；框选 hook 不再自带第二份守卫清单。
+    expect(marquee).not.toContain('EMPTY_TARGET_GUARD')
+  })
+
+  it('keeps panning incremental so a mid-pan zoom cannot fight it', () => {
+    const viewportGestures = source('./useCanvasViewportGestures.ts')
+
+    // 绝对式基准（按下时的 offset + 指针总位移）会被任何外部改写 offset 的动作作废——
+    // 平移中滚轮缩放时每帧互相抹回去 = 抖动（2026-08-08 用户报）。
+    expect(viewportGestures).toContain('scheduleOffset({ x: offsetRef.current.x + deltaX, y: offsetRef.current.y + deltaY })')
+    expect(viewportGestures).not.toContain('start.offsetX')
+    expect(viewportGestures).not.toContain('start.offsetY')
+  })
+
+  it('keeps panning off the React store hot path', () => {
+    const generationCanvas = source('./GenerationCanvas.tsx')
+
+    expect(generationCanvas).toContain('will-change-transform')
+    expect(generationCanvas).toContain('useCanvasTransformStoreSync(zoom, offset)')
+    expect(generationCanvas).not.toContain('setCanvasTransform(zoom, offset)')
+  })
+
+  it('gates edge labels on selection instead of density plus hover', () => {
+    const edgeLayer = source('./CanvasEdgeLayer.tsx')
+
+    expect(edgeLayer).toContain('selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)')
+    expect(edgeLayer).not.toContain('EDGE_TAG_DENSE_THRESHOLD')
+    expect(edgeLayer).not.toContain('hoveredEdgeId')
+  })
+
+  it('hides every node overlay from one canvas-level dragging flag', () => {
+    const dragResize = source('../nodes/useNodeDragResize.ts')
+    const selectionDrag = source('./useCanvasSelectionDrag.ts')
+    const viewportGestures = source('./useCanvasViewportGestures.ts')
+    const generationCanvas = source('./GenerationCanvas.tsx')
+    const composer = source('../nodes/NodeGenerationComposer.tsx')
+    const floatingToolbar = source('../nodes/NodeFloatingToolbar.tsx')
+    const imageStack = source('../nodes/ImageResultStack.tsx')
+
+    // 四条拖动路径（单节点 / 选区框 / 组框 / 画布平移）升同一个画布级标志，浮层各自声明隐身——
+    // 不再是「只有被拖的那张卡收起来」（2026-08-09 用户：拖 B 的时候 A 的面板也不该杵着；平移同理）。
+    expect(dragResize).toContain('setCanvasDragging(event.currentTarget, true)')
+    expect(selectionDrag).toContain('setCanvasDragging(null, true)')
+    expect(viewportGestures).toContain('setCanvasDragging(stageRef.current, true)')
+    expect(generationCanvas).toContain("'group/canvas'")
+    for (const overlay of [composer, floatingToolbar, imageStack]) {
+      expect(overlay).toContain('group-data-[dragging=true]/canvas:invisible')
+    }
+    // 平移那条必须在**跨过阈值之后**才升：按下就升 = 点一下空白也白写两次属性（08-08 的坑）。
+    expect(viewportGestures).toMatch(/start\.moved = true[\s\S]{0,220}setCanvasDragging\(stageRef\.current, true\)/)
+    // 旧的按节点作用域已删干净（P1：不留并行版）
+    expect(composer).not.toContain('/node:invisible')
+    expect(dragResize).not.toContain('setDragging(')
   })
 
   it('routes every icon-only navigation action through a styled tooltip component', () => {

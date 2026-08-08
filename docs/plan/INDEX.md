@@ -1,6 +1,6 @@
 # docs/plan 索引地图
 
-> 64 篇方案/执行文档按**主题**分组的查找表。文件本身保持平铺（彼此有 50+ 处路径互链，移动会断链），本表负责「按主题/状态秒定位」。
+> 68 篇方案/执行文档按**主题**分组的查找表。文件本身保持平铺（彼此有 50+ 处路径互链，移动会断链），本表负责「按主题/状态秒定位」。
 > 新增 plan 时**顺手在本表对应主题下加一行**。
 > 状态图例：✅ 已落地 ｜ 🚧 进行中/待实施 ｜ 📋 方案待拍板 ｜ ⛔ 已撤销/废弃 ｜ 📎 交接/日志
 
@@ -40,6 +40,8 @@
 | [2026-06-06-HANDOFF.md](2026-06-06-HANDOFF.md) | 生成节点「通用化」项目交接 | 📎 |
 | [2026-06-06-P0-P1-execution-log.md](2026-06-06-P0-P1-execution-log.md) | 通用素材系统 P0+P1 执行日志 | 📎 |
 | [2026-06-06-reference-at-and-sources.md](2026-06-06-reference-at-and-sources.md) | 通用「素材引用」系统（非 Seedance 专用） | 🚧 |
+| [2026-08-08-canvas-drag-pan-and-quiet-render.md](2026-08-08-canvas-drag-pan-and-quiet-render.md) | **画布手势现行契约**：拖=平移 / Shift=框选 / 滚轮锚光标；平移零重绘、边标签按选中显示、拖节点收浮层（推翻 08-07 selection-first）| ✅ |
+| [2026-08-07-generation-canvas-gesture-semantics.md](2026-08-07-generation-canvas-gesture-semantics.md) | selection-first 手势 + 操作帮助面板（手势那半已被 08-08 推翻，帮助面板/纯模型仲裁保留）| ⛔ |
 | [2026-06-06-drop-and-wire-execution.md](2026-06-06-drop-and-wire-execution.md) | 拖入/连线→参考（drop-and-wire） | 🚧 |
 | [2026-07-04-scene3d-reference-pack.md](2026-07-04-scene3d-reference-pack.md) | Scene3D 导演参考包：白膜置景/运镜首尾帧/录 take → 目标视频参考槽 | 🚧 |
 | [2026-05-31-asset-node-and-canvas-perf.md](2026-05-31-asset-node-and-canvas-perf.md) | 素材节点(≠生成节点) + A1.5 组件抽取 | ✅ |

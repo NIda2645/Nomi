@@ -26,7 +26,7 @@ const SCAN_DIRS = ["src", "electron"];
 // 改小某个数 = 你成功瘦身后锁定的新上限。新增条目应经人工评审。
 const ALLOWLIST = {
   "electron/runtime.ts": 543, // …→ 550（2026-07-27）→ 543（2026-08-01 ComfyUI 请求变换接入时顺手压实 executeProfileOperation 尾段）
-  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 735, // …→ 739（2026-08-01 锁定）→ 735（2026-08-02 rebase 后锁定）
+  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 734, // …→ 735（2026-08-02 rebase 后锁定）→ 734（2026-08-09 拖动态改画布级，死属性 data-expanded/data-dragging 一并清掉）
   // PR#21 白板节点引入（2026-06-25）：WhiteboardDrawingTool（1032）与 WhiteboardLeaferCanvas（3406）两巨壳
   // 已按 Rule 9 全部拆完、双双出白名单。LeaferCanvas → whiteboardCanvasTypes/Export/NodeOps/Geometry 四纯模块
   // + whiteboardSceneRender（渲染树）+ useWhiteboardDrawing/BoxSelection/SelectionActions/SceneSync 四交互 hook，

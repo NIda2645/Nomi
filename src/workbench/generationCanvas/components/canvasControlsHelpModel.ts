@@ -23,7 +23,9 @@ export function canvasControlsHelpSections(
   platform: string,
 ): CanvasControlsHelpSection[] {
   const shortcutValues = { mod: platformModifier(platform) }
+  // 平移排第一行：它是默认手势（空白左键拖），其余三个是「压在节点上也要平移」的补充入口。
   const panRows: CanvasControlsHelpRow[] = [
+    { shortcutKey: 'blankDrag', actionKey: 'pan' },
     { shortcutKey: 'spaceDrag', actionKey: 'pan' },
     { shortcutKey: 'middleOrRightDrag', actionKey: 'pan' },
   ]
@@ -35,9 +37,9 @@ export function canvasControlsHelpSections(
     {
       id: 'selection',
       rows: [
-        { shortcutKey: 'blankDrag', actionKey: 'boxSelect' },
-        { shortcutKey: 'shiftDrag', actionKey: 'addBoxSelect' },
+        { shortcutKey: 'shiftDrag', actionKey: 'boxSelect' },
         { shortcutKey: 'shiftClick', actionKey: 'toggleSelection' },
+        { shortcutKey: 'blankClick', actionKey: 'clearSelection' },
       ],
     },
     { id: 'pan', rows: panRows },

@@ -43,6 +43,7 @@ import {
   getSelectedBounds,
 } from './generationCanvasGeometry'
 import { useCanvasViewport } from './useCanvasViewport'
+import { useCanvasTransformStoreSync } from './useCanvasTransformStoreSync'
 import CanvasEdgeLayer, { type ActiveEdge } from './CanvasEdgeLayer'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { shouldRenderFullNodeContent, shouldUseLightweightNodeRendering } from './canvasNodeLevelOfDetail'
@@ -106,7 +107,6 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
   const startConnection = useGenerationCanvasStore((state) => state.startConnection)
   const clearSelection = useGenerationCanvasStore((state) => state.clearSelection)
   const selectNodesInRect = useGenerationCanvasStore((state) => state.selectNodesInRect)
-  const setCanvasTransform = useGenerationCanvasStore((state) => state.setCanvasTransform)
   const deleteSelectedNodes = useGenerationCanvasStore((state) => state.deleteSelectedNodes)
   const copySelectedNodes = useGenerationCanvasStore((state) => state.copySelectedNodes)
   const cutSelectedNodes = useGenerationCanvasStore((state) => state.cutSelectedNodes)
@@ -148,6 +148,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     zoom,
     offset,
     stageRef,
+    canvasLayerRef,
     stageSize,
     visibleNodesForRender,
     visibleEdgeNodeIds,
@@ -218,7 +219,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     activeEdgeId,
     selectNodesInRect,
   })
-  const { isPanning, isSpaceHeld, setViewportTransform, animateViewportTo, zoomAtStagePoint } = pointer
+  const { setViewportTransform, animateViewportTo, zoomAtStagePoint } = pointer
   const { handleGroupFramePointerDown, handleSelectionBoundsPointerDown } = useCanvasSelectionDrag({
     readOnly,
     selectedNodeCount: selectedNodeIds.length,
@@ -276,10 +277,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     }, 1400)
   }, [activeCategoryId, allNodes, animateViewportTo, categoryViewports, pendingFocusNodeId, stageSizeRef, zoomRef])
 
-  // Keep the store viewport in sync so nodes can read the same zoom/pan model.
-  React.useEffect(() => {
-    setCanvasTransform(zoom, offset)
-  }, [offset, setCanvasTransform, zoom])
+  useCanvasTransformStoreSync(zoom, offset) // 缩放即时、纯平移节流：别每帧惊动全部节点（见 hook 头注释）
 
   React.useEffect(() => {
     if (!contextNodeMenu) return undefined
@@ -610,10 +608,10 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
         ) : null}
         {!readOnly ? <CanvasToolbar getInsertionPosition={getToolbarInsertionPosition} categoryId={activeCategoryId} /> : null}
         <div
-          className="generation-canvas-v2__stage"
+          // 光标：按住即 grabbing 走 CSS `:active`（零 JS）；空格/中键/右键那几档由手势 hook
+          // 直写 data-panning / data-space-pan——都不经过 React，点一下画布不再触发任何重渲染。
+          className={cn('generation-canvas-v2__stage', 'group/canvas', 'active:cursor-grabbing')}
           ref={stageRef}
-          data-panning={isPanning ? 'true' : undefined}
-          data-space-pan={isSpaceHeld ? 'true' : undefined}
           onPointerDownCapture={handleStagePointerDownCapture}
           onPointerDown={handleStagePointerDown}
           onPointerMove={handleStagePointerMove}
@@ -637,7 +635,9 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
           onDrop={handleStageDrop}
         >
           <div
-            className={cn('generation-canvas-v2__canvas', 'absolute inset-0 origin-top-left')}
+            ref={canvasLayerRef}
+            // will-change：这层交给合成器，平移只搬像素不重绘（否则每帧重新光栅化整片节点 = 重绘区整屏泛绿的根因）。
+            className={cn('generation-canvas-v2__canvas', 'absolute inset-0 origin-top-left will-change-transform')}
             style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})` }}
           >
             {selectedBounds && selectedCount > 1 ? (
@@ -665,7 +665,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
               zoom={zoom}
               visibleNodeIds={visibleEdgeNodeIds}
               lightweight={lightweightNodeMode}
-              focusedNodeId={selectedNodeIds.length === 1 ? selectedNodeIds[0] : null}
+              selectedNodeIds={selectedSet}
               activeEdge={activeEdge}
               readOnly={readOnly}
               pendingConnectionSourceId={connectionCreateMenu?.sourceNodeId ?? pendingConnectionSourceId}

@@ -1,5 +1,10 @@
 # Generation Canvas Gesture Semantics Implementation Plan
 
+> ⛔ **手势结论已于 2026-08-08 被用户真机推翻**，现行契约见
+> [2026-08-08-canvas-drag-pan-and-quiet-render.md](2026-08-08-canvas-drag-pan-and-quiet-render.md)：
+> 空白左键拖=**平移**，Shift+左键拖=框选（追加）。本文其余成果（显式平移和弦保连线、
+> 上下文帮助面板替代常驻提示、纯模型仲裁 `canvasPointerGestureModel`）仍然有效并被继续使用。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the generation canvas selection-first: blank primary drag box-selects, explicit pan chords preserve in-progress connections, and contextual help replaces the persistent hint.

@@ -1,5 +1,7 @@
-// 框选 marquee：空白左键拖直接框选；Shift 只决定「追加」而不是「能不能开始」。
-// 纯点击空白也由这里统一收口：普通点击清空，Shift+点击保留当前选区。
+// 框选 marquee：**Shift + 左键拖**才进（裸左键是平移，2026-08-08 用户拍板）。
+// 既然入口只有 Shift，框选就恒「追加」——Shift 在本产品里到处都是「多选修饰键」
+// （Shift+点节点=加选），同一个键不该在这里换成另一种意思。要只框这一批：先点空白清空。
+// 是否该进框选由 useCanvasPointerInteractions 一处仲裁（canvasPointerGestureModel），这里只管拉框本身。
 import React from 'react'
 import { canvasDragExceededThreshold } from './canvasPointerGestureModel'
 
@@ -8,12 +10,10 @@ type Offset = { x: number; y: number }
 export type MarqueeRect = { left: number; top: number; width: number; height: number }
 
 type UseMarqueeSelectionArgs = {
-  readOnly: boolean
   stageRef: React.RefObject<HTMLDivElement>
   offsetRef: React.MutableRefObject<Offset>
   zoomRef: React.MutableRefObject<number>
   activeCategoryId: string
-  clearSelection: () => void
   selectNodesInRect: (rect: { x1: number; y1: number; x2: number; y2: number }, categoryId?: string, additive?: boolean) => void
 }
 
@@ -26,19 +26,14 @@ export type MarqueeSelection = {
   handlePointerCancel: (event: React.PointerEvent<HTMLDivElement>) => void
 }
 
-const EMPTY_TARGET_GUARD =
-  '.generation-canvas-v2-node, .generation-canvas-v2-toolbar, .generation-canvas-v2__zoom-bar, .generation-canvas-v2__minimap, .generation-canvas-v2__selection-toolbar, .generation-canvas-v2__edge-hit, .generation-canvas-v2__edge-cut, button, input, textarea, select, [role="menu"], [role="menuitem"]'
-
 export function useMarqueeSelection({
-  readOnly,
   stageRef,
   offsetRef,
   zoomRef,
   activeCategoryId,
-  clearSelection,
   selectNodesInRect,
 }: UseMarqueeSelectionArgs): MarqueeSelection {
-  const startRef = React.useRef<{ clientX: number; clientY: number; moved: boolean; additive: boolean } | null>(null)
+  const startRef = React.useRef<{ clientX: number; clientY: number; moved: boolean } | null>(null)
   const [marqueeRect, setMarqueeRect] = React.useState<MarqueeRect | null>(null)
 
   const cancelMarquee = React.useCallback(() => {
@@ -71,13 +66,10 @@ export function useMarqueeSelection({
   }, [stageRef])
 
   const handlePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (readOnly || event.button !== 0) return
-    const target = event.target instanceof Element ? event.target : null
-    if (target?.closest(EMPTY_TARGET_GUARD)) return
-    startRef.current = { clientX: event.clientX, clientY: event.clientY, moved: false, additive: event.shiftKey }
+    startRef.current = { clientX: event.clientX, clientY: event.clientY, moved: false }
     setMarqueeRect(null)
     try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* 无活动指针时忽略 */ }
-  }, [readOnly])
+  }, [])
 
   const handlePointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const start = startRef.current
@@ -102,10 +94,8 @@ export function useMarqueeSelection({
     ) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
-    if (!start.moved) {
-      if (!start.additive) clearSelection()
-      return
-    }
+    // Shift+点空白（没拉出框）：Shift 是「加选」，加了个空集合 = 保持现有选区不动。
+    if (!start.moved) return
     if (!stage) return
     const bounds = stage.getBoundingClientRect()
     const z = zoomRef.current || 1
@@ -115,8 +105,8 @@ export function useMarqueeSelection({
     })
     const a = toCanvas(start.clientX, start.clientY)
     const b = toCanvas(event.clientX, event.clientY)
-    selectNodesInRect({ x1: a.x, y1: a.y, x2: b.x, y2: b.y }, activeCategoryId, start.additive)
-  }, [activeCategoryId, clearSelection, offsetRef, selectNodesInRect, stageRef, zoomRef])
+    selectNodesInRect({ x1: a.x, y1: a.y, x2: b.x, y2: b.y }, activeCategoryId, true)
+  }, [activeCategoryId, offsetRef, selectNodesInRect, stageRef, zoomRef])
 
   const handlePointerCancel = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     cancelMarquee()

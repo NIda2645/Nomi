@@ -37,12 +37,24 @@ describe('canvas controls help model', () => {
     const trackpadPanRows = canvasControlsHelpSections('modifier-zoom', 'MacIntel')
       .find((section) => section.id === 'pan')?.rows
 
-    expect(mousePanRows?.map((row) => row.shortcutKey)).toEqual(['spaceDrag', 'middleOrRightDrag'])
+    expect(mousePanRows?.map((row) => row.shortcutKey)).toEqual(['blankDrag', 'spaceDrag', 'middleOrRightDrag'])
     expect(trackpadPanRows?.map((row) => row.shortcutKey)).toEqual([
+      'blankDrag',
       'spaceDrag',
       'middleOrRightDrag',
       'wheelOrTwoFinger',
     ])
+  })
+
+  it('teaches the drag-pans-first contract: blank drag pans, Shift drag box-selects', () => {
+    const sections = canvasControlsHelpSections('wheel-zoom', 'Win32')
+    const selection = sections.find((section) => section.id === 'selection')?.rows ?? []
+    const pan = sections.find((section) => section.id === 'pan')?.rows ?? []
+
+    expect(pan[0]).toEqual({ shortcutKey: 'blankDrag', actionKey: 'pan' })
+    expect(selection.map((row) => row.shortcutKey)).toEqual(['shiftDrag', 'shiftClick', 'blankClick'])
+    expect(selection.find((row) => row.shortcutKey === 'shiftDrag')?.actionKey).toBe('boxSelect')
+    expect(selection.some((row) => row.actionKey === 'addBoxSelect')).toBe(false)
   })
 
   it('derives the displayed modifier from the platform without changing actions', () => {

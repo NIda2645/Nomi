@@ -105,9 +105,10 @@ export function TextClipStyleControls({ timeline, selectedTextClipId }: Props): 
             value: font.id,
             label: t(`timelinePreview.textStyle.fonts.${font.id}` as 'timelinePreview.textStyle.fonts.default'),
           }))}
-          onChange={(value) => {
-            if (selectedTextClipId) updateTimelineTextClipFont(selectedTextClipId, value)
-          }}
+          // 无守卫：本组件在 selectedTextClip 为空时已整体 return null（见上），
+          // 走到这里 id 必然有效。原来的 `if (selectedTextClipId)` 是死守卫，
+          // 反而让控件看起来「可能点了没反应」（设计系统 §4.1 C1 门岗判为违规）。
+          onChange={(value) => updateTimelineTextClipFont(selectedTextClipId, value)}
         />
       </div>
     </>
