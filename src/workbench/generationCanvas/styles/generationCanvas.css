@@ -237,13 +237,13 @@
 }
 
 /* 点亮：hover 该边 / 该边属于聚焦（单选）节点 / 该边被选中。 */
-.generation-canvas-v2__edge:hover .generation-canvas-v2__edge-path,
+.generation-canvas-v2__edge[data-hovered='true'] .generation-canvas-v2__edge-path,
 .generation-canvas-v2__edge[data-incident='true'] .generation-canvas-v2__edge-path,
 .generation-canvas-v2__edge[data-active='true'] .generation-canvas-v2__edge-path {
   stroke-opacity: 1;
 }
 
-.generation-canvas-v2__edge:hover .generation-canvas-v2__edge-dot,
+.generation-canvas-v2__edge[data-hovered='true'] .generation-canvas-v2__edge-dot,
 .generation-canvas-v2__edge[data-incident='true'] .generation-canvas-v2__edge-dot,
 .generation-canvas-v2__edge[data-active='true'] .generation-canvas-v2__edge-dot {
   opacity: 1;

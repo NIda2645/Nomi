@@ -110,6 +110,7 @@ function CanvasEdgeLayer({
         const isActiveEdge = activeEdgeId === edge.id
         const isDense = (labeledCountByTarget.get(edge.target) || 0) > EDGE_TAG_DENSE_THRESHOLD
         const isIncident = focusedNodeId != null && (edge.source === focusedNodeId || edge.target === focusedNodeId)
+        const isHovered = hoveredEdgeId === edge.id
         const renderInteractiveEdge = !lightweight || isActiveEdge || isIncident
         return (
           <g
@@ -119,6 +120,7 @@ function CanvasEdgeLayer({
             data-edge-id={edge.id}
             data-active={isActiveEdge ? 'true' : undefined}
             data-incident={isIncident ? 'true' : undefined}
+            data-hovered={isHovered ? 'true' : undefined}
             data-dense={isTyped && isDense ? 'true' : undefined}
           >
             <path className="generation-canvas-v2__edge-path" d={path} />
@@ -185,6 +187,7 @@ function CanvasEdgeLayer({
         const position = isActiveEdge && activeEdge?.position ? activeEdge.position : { x: midX, y: midY }
         const isDense = isTyped && (labeledCountByTarget.get(edge.target) || 0) > EDGE_TAG_DENSE_THRESHOLD
         const isHovered = hoveredEdgeId === edge.id
+        const isEmphasized = isIncident || isHovered
         const selectableModes = isActiveEdge ? availableEdgeModes(source, target) : []
         const controlStyle: React.CSSProperties = {
           left: position.x,
@@ -197,11 +200,16 @@ function CanvasEdgeLayer({
             <div
               key={edge.id}
               className={cn(
-                'generation-canvas-v2__edge-control absolute pointer-events-auto opacity-100 transition-opacity duration-150',
-                isDense && !isIncident && !isHovered && 'opacity-0 pointer-events-none',
+                'generation-canvas-v2__edge-control absolute pointer-events-auto transition-opacity duration-150',
+                isDense && !isEmphasized
+                  ? 'opacity-0 pointer-events-none'
+                  : isEmphasized
+                    ? 'opacity-100'
+                    : 'opacity-20',
               )}
               style={controlStyle}
               data-edge-id={edge.id}
+              data-emphasized={isEmphasized ? 'true' : undefined}
               onPointerEnter={() => setHoveredEdgeId(edge.id)}
               onPointerLeave={() => setHoveredEdgeId((current) => current === edge.id ? null : current)}
             >
