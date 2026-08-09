@@ -55,6 +55,14 @@ export function eligibleGenerationNodeIds(
     .map((node) => node.id)
 }
 
+export function shouldShowCanvasBatchGenerateDock(input: {
+  readOnly: boolean
+  selectedCount: number
+  eligibleCount: number
+}): boolean {
+  return !input.readOnly && input.selectedCount === 0 && input.eligibleCount > 0
+}
+
 export type CanvasGenerationExecutionGroup = {
   executionKind: GenerationNodeExecutionKind
   nodeIds: string[]

@@ -429,6 +429,7 @@ try {
       hasControlsInWindowbar: Boolean(controls),
       hasControlsInHeader: Boolean(headerControls),
       windowbarAppRegion: getComputedStyle(windowbar).getPropertyValue("-webkit-app-region"),
+      headerAppRegion: getComputedStyle(header).getPropertyValue("-webkit-app-region"),
       controlsAppRegion: controls ? getComputedStyle(controls).getPropertyValue("-webkit-app-region") : null,
     };
   });
@@ -437,6 +438,7 @@ try {
   assert(layout.hasControlsInWindowbar, "window controls live in the separate top titlebar");
   assert(!layout.hasControlsInHeader, "project header no longer contains window controls");
   assert(layout.windowbarAppRegion === "drag", `workbench titlebar uses native drag region (${layout.windowbarAppRegion})`);
+  assert(layout.headerAppRegion !== "drag", `functional app header is not a native drag region (${layout.headerAppRegion || "auto"})`);
   assert(layout.controlsAppRegion === "no-drag", `workbench window controls are excluded from native drag (${layout.controlsAppRegion})`);
   assert(Math.abs(layout.windowbar.top) <= 1, `titlebar starts at window top (top=${layout.windowbar.top})`);
   assert(layout.windowbar.height >= 30 && layout.windowbar.height <= 34, `titlebar height is 32px-ish (height=${layout.windowbar.height})`);

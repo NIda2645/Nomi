@@ -14,9 +14,10 @@ import { confirmAndRunNode } from '../generationCanvas/runner/generationRunContr
 import { confirmAndRunPlan } from '../generationCanvas/components/batchPlanPreview'
 import { buildDependencyWaves } from '../generationCanvas/runner/dependencyWaves'
 import { buildTaskCenterView, formatElapsed, type TaskCenterRow } from './taskCenterEntries'
+import { currentWorkbenchFloatingTopOffset } from '../../ui/app-shell/windowChrome'
 
 const PANEL_WIDTH = 380
-const TOP_OFFSET = 64
+const TOP_OFFSET = currentWorkbenchFloatingTopOffset()
 const RIGHT_OFFSET = 12
 /** 进行中的已跑时长要走字，1s 一跳就够（别 rAF，白烧 CPU）。 */
 const TICK_MS = 1000

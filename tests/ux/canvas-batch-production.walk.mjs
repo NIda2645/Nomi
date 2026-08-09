@@ -319,6 +319,8 @@ try {
   await dialog.getByRole('button', { name: '生成', exact: true }).click()
   await win.waitForFunction(() => document.querySelectorAll('[data-kind="image"][data-status="success"]').length >= 2, null, { timeout: 30000 })
   await snap(win, 'generate-all-completed')
+  await win.waitForTimeout(400)
+  check(await generateAll.count() === 0, '全部节点完成后批量生成底栏退出，不显示“生成全部 0 个”')
   const sourceCall = wireCalls.find((call) => call.prompt.includes('源图'))
   const targetCall = wireCalls.find((call) => call.prompt.includes('下游图'))
   check(Boolean(sourceCall && targetCall), '依赖波次两个请求都完成')
@@ -350,7 +352,7 @@ try {
 
   await win.locator('button[aria-label="设置"]').first().click()
   await win.getByRole('button', { name: '通用', exact: true }).click()
-  await win.locator('button[aria-label="切换到深色模式"]').click()
+  await win.locator('button[aria-label="切换到深色模式"], button[aria-label="切换到浅色模式"]').click()
   await win.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '关闭', exact: true }).click()
   await win.waitForTimeout(700)
   await snap(win, 'dark-mixed-selection-models')
@@ -399,7 +401,8 @@ try {
   const runningBox = await runningAlert.boundingBox()
   check(Boolean(runningBox && Math.abs(runningBox.width - 344) <= 1), '通知宽度为 344px', JSON.stringify(runningBox))
   const notificationRootTop = await notificationRoot.evaluate((element) => Number.parseFloat(getComputedStyle(element).top))
-  check(Math.abs(notificationRootTop - 68) <= 1, '通知容器位于 56px 顶栏下方 12px', JSON.stringify({ notificationRootTop, runningBox }))
+  const expectedNotificationTop = process.platform === 'win32' ? 100 : 68
+  check(Math.abs(notificationRootTop - expectedNotificationTop) <= 1, `通知容器避开窗口栏和顶栏（top=${expectedNotificationTop}px）`, JSON.stringify({ notificationRootTop, runningBox }))
   check(Boolean(runningBox && runningBox.y >= notificationRootTop), '堆叠通知不会越过通知容器顶部', JSON.stringify({ notificationRootTop, runningBox }))
   const failedAlert = notificationRoot.getByRole('alert').filter({ hasText: /生成失败/ }).first()
   await failedAlert.waitFor({ timeout: 15000 })

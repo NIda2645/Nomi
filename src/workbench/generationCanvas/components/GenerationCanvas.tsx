@@ -54,6 +54,7 @@ import { useCanvasSelectionDrag } from './useCanvasSelectionDrag'
 import { CanvasSelectionToolbar } from './CanvasSelectionToolbar'
 import { CanvasBatchGenerateDock } from './CanvasBatchGenerateDock'
 import { useCanvasProductionActions } from './useCanvasProductionActions'
+import { shouldShowCanvasBatchGenerateDock } from './canvasProductionScope'
 import { useCanvasScreenshotCapture } from './useCanvasScreenshotCapture'
 import '../styles/generationCanvas.css'
 
@@ -768,7 +769,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
             />
           ) : null}
         </div>
-        {!readOnly && selectedCount === 0 && nodes.length > 0 ? <CanvasBatchGenerateDock {...production} /> : null}
+        {shouldShowCanvasBatchGenerateDock({ readOnly, selectedCount, eligibleCount: production.eligibleIds.length }) ? <CanvasBatchGenerateDock {...production} /> : null}
         <CanvasNavigationStack
           readOnly={readOnly}
           nodes={nodes}

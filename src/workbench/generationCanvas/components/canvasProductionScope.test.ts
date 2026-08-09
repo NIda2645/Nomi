@@ -6,6 +6,7 @@ import {
   groupGenerationNodesByExecutionKind,
   normalizeCanvasBatchConcurrency,
   readCanvasBatchConcurrency,
+  shouldShowCanvasBatchGenerateDock,
   writeCanvasBatchConcurrency,
 } from './canvasProductionScope'
 
@@ -38,6 +39,15 @@ describe('eligibleGenerationNodeIds', () => {
     const nodes = [node('a', 'image', 'idle'), node('b', 'video', 'error'), node('c', 'image', 'idle')]
 
     expect(eligibleGenerationNodeIds(nodes, { nodeIds: ['c', 'missing', 'a'] })).toEqual(['a', 'c'])
+  })
+})
+
+describe('shouldShowCanvasBatchGenerateDock', () => {
+  it('shows only for an editable unselected canvas with pending work', () => {
+    expect(shouldShowCanvasBatchGenerateDock({ readOnly: false, selectedCount: 0, eligibleCount: 2 })).toBe(true)
+    expect(shouldShowCanvasBatchGenerateDock({ readOnly: false, selectedCount: 0, eligibleCount: 0 })).toBe(false)
+    expect(shouldShowCanvasBatchGenerateDock({ readOnly: false, selectedCount: 1, eligibleCount: 2 })).toBe(false)
+    expect(shouldShowCanvasBatchGenerateDock({ readOnly: true, selectedCount: 0, eligibleCount: 2 })).toBe(false)
   })
 })
 

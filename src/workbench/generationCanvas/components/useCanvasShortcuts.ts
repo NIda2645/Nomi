@@ -15,6 +15,26 @@ type CanvasZoomShortcutInput = {
   altKey: boolean
 }
 
+const CANVAS_TEXT_EDITING_SELECTOR = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
+
+type ClosestTarget = {
+  closest?: (selector: string) => unknown
+  parentElement?: ClosestTarget | null
+}
+
+function hasEditableAncestor(target: EventTarget | null): boolean {
+  const candidate = target as unknown as ClosestTarget | null
+  const element = typeof candidate?.closest === 'function' ? candidate : candidate?.parentElement
+  return Boolean(element?.closest?.(CANVAS_TEXT_EDITING_SELECTOR))
+}
+
+export function isCanvasTextEditingContext(
+  eventTarget: EventTarget | null,
+  activeElement: EventTarget | null,
+): boolean {
+  return hasEditableAncestor(eventTarget) || hasEditableAncestor(activeElement)
+}
+
 export function canvasZoomShortcutDirection(input: CanvasZoomShortcutInput): -1 | 0 | 1 {
   if ((!input.ctrlKey && !input.metaKey) || input.altKey) return 0
   if (input.code === 'Equal' || input.code === 'NumpadAdd' || input.key === '+' || input.key === '=') return 1
@@ -81,8 +101,7 @@ export function useCanvasShortcuts(opts: {
     }
     const shouldIgnoreCanvasShortcut = (target: EventTarget | null): boolean => {
       if (document.querySelector('[data-nomi-whiteboard-modal="true"]')) return true
-      const element = target instanceof HTMLElement ? target : null
-      if (element?.closest('input, textarea, select, [contenteditable="true"]')) return true
+      if (isCanvasTextEditingContext(target, document.activeElement)) return true
       if (!stageRef.current || stageRef.current.offsetParent === null) return true
       return false
     }
@@ -172,9 +191,11 @@ export function useCanvasShortcuts(opts: {
       }
     }
     const handlePaste = (event: ClipboardEvent) => {
+      // A real paste owns this keystroke even when it belongs to an editor. Cancel the keydown
+      // fallback before the editing guard so stale canvas clipboard nodes cannot appear later.
+      clearPasteFallback()
       if (shouldIgnoreCanvasShortcut(event.target)) return
       event.preventDefault()
-      clearPasteFallback()
       const pastePosition = getPastePosition()
       void pasteClipboardMediaToGenerationCanvas({
         clipboardData: event.clipboardData,

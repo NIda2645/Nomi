@@ -22,6 +22,7 @@ import { useGenerationCanvasStore } from '../generationCanvas/store/generationCa
 import { useHasTextModel } from '../library/useHasTextModel'
 import { useJourneyTourActive } from './journeyTourActivity'
 import { DesignProgress } from '../../design'
+import { currentWorkbenchFloatingTopOffset } from '../../ui/app-shell/windowChrome'
 import {
   type ChecklistStep,
   type ChecklistState,
@@ -115,7 +116,10 @@ export function OnboardingChecklist(): JSX.Element | null {
     const el = triggerRef.current
     if (!el) return
     const r = el.getBoundingClientRect()
-    setAnchor({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) })
+    setAnchor({
+      top: Math.max(r.bottom + 8, currentWorkbenchFloatingTopOffset()),
+      right: Math.max(8, window.innerWidth - r.right),
+    })
   }, [])
 
   React.useEffect(() => {

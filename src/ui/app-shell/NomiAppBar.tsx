@@ -15,7 +15,6 @@ import { OnboardingChecklist } from '../../workbench/onboarding/OnboardingCheckl
 import { TaskCenterButton } from '../../workbench/taskCenter/TaskCenterButton'
 import { useGenerationCanvasStore } from '../../workbench/generationCanvas/store/generationCanvasStore'
 import { cn } from '../../utils/cn'
-import { handleWindowTitlebarDoubleClick } from './windowTitlebarDoubleClick'
 import { APP_BAR_ACTION_GROUPS } from './appBarActionGroups'
 
 // 平台分流：win32 下品牌/关于 + 上手清单都让位给 WorkbenchShell 的自绘标题栏（windowbar），
@@ -79,14 +78,12 @@ export default function NomiAppBar({
     <header
       className={cn(
         'nomi-appbar',
-        isWindows && 'app-drag',
         'relative z-[120] grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center',
         'h-[var(--workbench-topbar-height)] px-[18px]',
         'border-b border-workbench-border bg-workbench-surface',
         'max-[700px]:grid-cols-[auto_minmax(0,1fr)_auto] max-[700px]:gap-x-1.5 max-[700px]:px-2',
       )}
       aria-label={t('appBar.workspace')}
-      onDoubleClick={handleWindowTitlebarDoubleClick}
     >
       <div
         className={cn(

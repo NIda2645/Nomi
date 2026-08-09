@@ -11,9 +11,10 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Portal } from '@mantine/core'
 import { OnboardingDrawer } from './OnboardingDrawer'
+import { currentWorkbenchFloatingTopOffset } from '../app-shell/windowChrome'
 
 const PANEL_WIDTH = 320
-const TOP_OFFSET = 64    // 留出 AppBar (56px) + 一点空隙
+const TOP_OFFSET = currentWorkbenchFloatingTopOffset()
 const RIGHT_OFFSET = 12
 
 type Props = {
