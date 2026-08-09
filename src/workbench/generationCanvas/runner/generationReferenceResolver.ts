@@ -32,6 +32,65 @@ function pushUnique(output: string[], value: unknown) {
   if (url && !output.includes(url)) output.push(url)
 }
 
+// Canvas selection/viewport updates frequently re-render every mounted node
+// while the immutable nodes/edges arrays stay the same. Keep the graph
+// indexes outside the resolver so those renders do not rebuild O(nodes + edges)
+// maps for every node.
+const nodesByIdCache = new WeakMap<GenerationCanvasNode[], Map<string, GenerationCanvasNode>>()
+const sortedEdgesCache = new WeakMap<GenerationCanvasEdge[], GenerationCanvasEdge[]>()
+const edgesByTargetCache = new WeakMap<GenerationCanvasEdge[], Map<string, GenerationCanvasEdge[]>>()
+const assetKindByUrlCache = new WeakMap<GenerationCanvasNode[], Map<string, 'image' | 'video' | 'audio'>>()
+
+function getNodesById(nodes: GenerationCanvasNode[]): Map<string, GenerationCanvasNode> {
+  const cached = nodesByIdCache.get(nodes)
+  if (cached) return cached
+  const next = new Map(nodes.map((candidate) => [candidate.id, candidate]))
+  nodesByIdCache.set(nodes, next)
+  return next
+}
+
+function getSortedEdges(edges: GenerationCanvasEdge[]): GenerationCanvasEdge[] {
+  const cached = sortedEdgesCache.get(edges)
+  if (cached) return cached
+  const next = sortEdgesByOrder(edges)
+  sortedEdgesCache.set(edges, next)
+  return next
+}
+
+function getEdgesByTarget(edges: GenerationCanvasEdge[]): Map<string, GenerationCanvasEdge[]> {
+  const cached = edgesByTargetCache.get(edges)
+  if (cached) return cached
+  const next = new Map<string, GenerationCanvasEdge[]>()
+  for (const edge of getSortedEdges(edges)) {
+    const targetEdges = next.get(edge.target)
+    if (targetEdges) targetEdges.push(edge)
+    else next.set(edge.target, [edge])
+  }
+  edgesByTargetCache.set(edges, next)
+  return next
+}
+
+function getAssetKindByUrl(nodes: GenerationCanvasNode[]): Map<string, 'image' | 'video' | 'audio'> {
+  const cached = assetKindByUrlCache.get(nodes)
+  if (cached) return cached
+  const next = new Map<string, 'image' | 'video' | 'audio'>()
+  for (const candidate of nodes) {
+    const rType = candidate.result?.type
+    const kind: 'image' | 'video' | 'audio' =
+      rType === 'video' || (!rType && candidate.kind === 'video')
+        ? 'video'
+        : rType === 'audio' || (!rType && candidate.kind === 'audio')
+          ? 'audio'
+          : 'image'
+    for (const u of [candidate.result?.url, ...(candidate.history || []).map((h) => h.url)]) {
+      const url = asUrl(u)
+      if (url && !next.has(url)) next.set(url, kind)
+    }
+  }
+  assetKindByUrlCache.set(nodes, next)
+  return next
+}
+
 /**
  * 目标当前模式是否把「通用 reference 的视频源」当**首帧接力**消费（而非参考视频）。
  * 与显示侧 assignEdgeToSlot 的视频落槽序 ['video_ref','source_video','first_frame'] 同口径：
@@ -55,7 +114,8 @@ export function resolveGenerationReferences(
 ): ResolvedGenerationReferences {
   const nodes = context.nodes || [node]
   const edges = context.edges || []
-  const nodesById = new Map(nodes.map((candidate) => [candidate.id, candidate]))
+  const nodesById = getNodesById(nodes)
+  const edgesByTarget = getEdgesByTarget(edges)
   const referenceImages: string[] = []
   const styleReferenceImages: string[] = []
   const characterReferenceImages: string[] = []
@@ -67,8 +127,7 @@ export function resolveGenerationReferences(
 
   // **按 order 升序**遍历 → referenceImages（喂 buildArchetypeInputParams 的数组槽）顺序稳定，
   // 与显示侧 resolveReferenceSlots 同一口径，保住 character1..N（audit 2026-06-16 §1d「数组参考收口到有序边」）。
-  for (const edge of sortEdgesByOrder(edges)) {
-    if (edge.target !== node.id) continue
+  for (const edge of edgesByTarget.get(node.id) || []) {
     const sourceUrl = findNodeResultUrl(nodesById, edge.source)
     if (!sourceUrl) continue
     if (edge.mode === 'first_frame') {
@@ -139,18 +198,7 @@ export function resolveGenerationReferences(
 
   // B4：按源节点资产类型把视频/音频 URL 从 referenceImages 分流出去——否则连线进来的视频参考会被当
   // 图片参考发（甚至经下面 fallback 冒充首帧）。URL→kind 由各节点 result.type / kind 派生（单源）。
-  const assetKindByUrl = new Map<string, 'image' | 'video' | 'audio'>()
-  for (const candidate of nodes) {
-    const rType = candidate.result?.type
-    const kind: 'image' | 'video' | 'audio' =
-      rType === 'video' || (!rType && candidate.kind === 'video') ? 'video'
-      : rType === 'audio' || (!rType && candidate.kind === 'audio') ? 'audio'
-      : 'image'
-    for (const u of [candidate.result?.url, ...((candidate.history || []).map((h) => h.url))]) {
-      const url = asUrl(u)
-      if (url && !assetKindByUrl.has(url)) assetKindByUrl.set(url, kind)
-    }
-  }
+  const assetKindByUrl = getAssetKindByUrl(nodes)
   const imageReferenceImages: string[] = []
   const referenceVideos: string[] = []
   const referenceAudios: string[] = []

@@ -1,0 +1,710 @@
+{
+  "baseline": {
+    "label": "baseline-hot",
+    "commit": "62b1270493927161d0369f7eaf9fa3ce1a7919df"
+  },
+  "candidate": {
+    "label": "final-hot",
+    "commit": "62b1270493927161d0369f7eaf9fa3ce1a7919df"
+  },
+  "thresholds": {
+    "maxRegression": 0.1,
+    "noiseFloor": 0.05
+  },
+  "pass": false,
+  "missingScenarios": [],
+  "hardFailures": [],
+  "budgetFailures": [
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "frameGapP95Ms",
+      "actualP95": 33.3,
+      "max": 33,
+      "pass": false
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "frameGapP95Ms",
+      "actualP95": 53.2,
+      "max": 33,
+      "pass": false
+    }
+  ],
+  "regressions": [],
+  "advisoryRegressions": [
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 223.3,
+      "after": 326.7,
+      "absoluteChange": 103.4,
+      "changePct": 46.3,
+      "classification": "advisory-regression"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 237.9,
+      "after": 373,
+      "absoluteChange": 135.1,
+      "changePct": 56.8,
+      "classification": "advisory-regression"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 294.4,
+      "after": 364.5,
+      "absoluteChange": 70.1,
+      "changePct": 23.8,
+      "classification": "advisory-regression"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 270.7,
+      "after": 412.7,
+      "absoluteChange": 142,
+      "changePct": 52.5,
+      "classification": "advisory-regression"
+    }
+  ],
+  "improvements": [
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "frameGapP95Ms",
+      "statistic": "p95",
+      "before": 33,
+      "after": 14.4,
+      "absoluteChange": 18.6,
+      "changePct": -56.4,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 76.7,
+      "after": 56.5,
+      "absoluteChange": 20.2,
+      "changePct": -26.3,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "frameGapP95Ms",
+      "statistic": "p95",
+      "before": 43.6,
+      "after": 33.3,
+      "absoluteChange": 10.3,
+      "changePct": -23.6,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 84.7,
+      "after": 74.3,
+      "absoluteChange": 10.4,
+      "changePct": -12.3,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "fps",
+      "statistic": "median",
+      "before": 60.2,
+      "after": 73.2,
+      "absoluteChange": 13,
+      "changePct": -21.6,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "frameGapP95Ms",
+      "statistic": "p95",
+      "before": 82.8,
+      "after": 53.2,
+      "absoluteChange": 29.6,
+      "changePct": -35.7,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 432.6,
+      "after": 93,
+      "absoluteChange": 339.6,
+      "changePct": -78.5,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "longTaskMs",
+      "statistic": "p95",
+      "before": 325,
+      "after": 60,
+      "absoluteChange": 265,
+      "changePct": -81.5,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "longTaskP95Ms",
+      "statistic": "p95",
+      "before": 75,
+      "after": 60,
+      "absoluteChange": 15,
+      "changePct": -20,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "scriptDurationMs",
+      "statistic": "median",
+      "before": 466.2,
+      "after": 376.1,
+      "absoluteChange": 90.1,
+      "changePct": -19.3,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "layoutDurationMs",
+      "statistic": "median",
+      "before": 24.1,
+      "after": 20.4,
+      "absoluteChange": 3.7,
+      "changePct": -15.4,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 331.7,
+      "after": 56.3,
+      "absoluteChange": 275.4,
+      "changePct": -83,
+      "classification": "improvement"
+    }
+  ],
+  "comparisons": [
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "fps",
+      "statistic": "median",
+      "before": 104.7,
+      "after": 108.8,
+      "absoluteChange": 4.1,
+      "changePct": -3.9,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "frameGapP95Ms",
+      "statistic": "p95",
+      "before": 33,
+      "after": 14.4,
+      "absoluteChange": 18.6,
+      "changePct": -56.4,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 76.7,
+      "after": 56.5,
+      "absoluteChange": 20.2,
+      "changePct": -26.3,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "longTaskMs",
+      "statistic": "p95",
+      "before": 0,
+      "after": 0,
+      "absoluteChange": 0,
+      "changePct": 0,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "layoutCount",
+      "statistic": "median",
+      "before": 5,
+      "after": 5,
+      "absoluteChange": 0,
+      "changePct": 0,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "recalcStyleCount",
+      "statistic": "median",
+      "before": 159,
+      "after": 165,
+      "absoluteChange": 6,
+      "changePct": 3.8,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "scriptDurationMs",
+      "statistic": "median",
+      "before": 60.8,
+      "after": 59.9,
+      "absoluteChange": 0.9,
+      "changePct": -1.5,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "layoutDurationMs",
+      "statistic": "median",
+      "before": 2.1,
+      "after": 2,
+      "absoluteChange": 0.1,
+      "changePct": -4.8,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "jsHeapUsedMB",
+      "statistic": "median",
+      "before": 24.8,
+      "after": 29.8,
+      "absoluteChange": 5,
+      "changePct": 20.2,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-image",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 223.3,
+      "after": 326.7,
+      "absoluteChange": 103.4,
+      "changePct": 46.3,
+      "classification": "advisory-regression"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "fps",
+      "statistic": "median",
+      "before": 93.5,
+      "after": 94.8,
+      "absoluteChange": 1.3,
+      "changePct": -1.4,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "frameGapP95Ms",
+      "statistic": "p95",
+      "before": 43.6,
+      "after": 33.3,
+      "absoluteChange": 10.3,
+      "changePct": -23.6,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 84.7,
+      "after": 74.3,
+      "absoluteChange": 10.4,
+      "changePct": -12.3,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "longTaskMs",
+      "statistic": "p95",
+      "before": 56,
+      "after": 57,
+      "absoluteChange": 1,
+      "changePct": 1.8,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "longTaskP95Ms",
+      "statistic": "p95",
+      "before": 56,
+      "after": 57,
+      "absoluteChange": 1,
+      "changePct": 1.8,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "layoutCount",
+      "statistic": "median",
+      "before": 22,
+      "after": 23,
+      "absoluteChange": 1,
+      "changePct": 4.5,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "recalcStyleCount",
+      "statistic": "median",
+      "before": 163,
+      "after": 163,
+      "absoluteChange": 0,
+      "changePct": 0,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "scriptDurationMs",
+      "statistic": "median",
+      "before": 157.3,
+      "after": 147.4,
+      "absoluteChange": 9.9,
+      "changePct": -6.3,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "layoutDurationMs",
+      "statistic": "median",
+      "before": 10.9,
+      "after": 9.2,
+      "absoluteChange": 1.7,
+      "changePct": -15.6,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "jsHeapUsedMB",
+      "statistic": "median",
+      "before": 29.8,
+      "after": 29.8,
+      "absoluteChange": 0,
+      "changePct": 0,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/node-drag-video",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 237.9,
+      "after": 373,
+      "absoluteChange": 135.1,
+      "changePct": 56.8,
+      "classification": "advisory-regression"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "fps",
+      "statistic": "median",
+      "before": 60.2,
+      "after": 73.2,
+      "absoluteChange": 13,
+      "changePct": -21.6,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "frameGapP95Ms",
+      "statistic": "p95",
+      "before": 82.8,
+      "after": 53.2,
+      "absoluteChange": 29.6,
+      "changePct": -35.7,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 432.6,
+      "after": 93,
+      "absoluteChange": 339.6,
+      "changePct": -78.5,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "longTaskMs",
+      "statistic": "p95",
+      "before": 325,
+      "after": 60,
+      "absoluteChange": 265,
+      "changePct": -81.5,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "longTaskP95Ms",
+      "statistic": "p95",
+      "before": 75,
+      "after": 60,
+      "absoluteChange": 15,
+      "changePct": -20,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "layoutCount",
+      "statistic": "median",
+      "before": 62,
+      "after": 67,
+      "absoluteChange": 5,
+      "changePct": 8.1,
+      "classification": "watch"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "recalcStyleCount",
+      "statistic": "median",
+      "before": 229,
+      "after": 245,
+      "absoluteChange": 16,
+      "changePct": 7,
+      "classification": "watch"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "scriptDurationMs",
+      "statistic": "median",
+      "before": 466.2,
+      "after": 376.1,
+      "absoluteChange": 90.1,
+      "changePct": -19.3,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "layoutDurationMs",
+      "statistic": "median",
+      "before": 24.1,
+      "after": 20.4,
+      "absoluteChange": 3.7,
+      "changePct": -15.4,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "jsHeapUsedMB",
+      "statistic": "median",
+      "before": 29.8,
+      "after": 24.8,
+      "absoluteChange": 5,
+      "changePct": -16.8,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/click-select",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 294.4,
+      "after": 364.5,
+      "absoluteChange": 70.1,
+      "changePct": 23.8,
+      "classification": "advisory-regression"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "fps",
+      "statistic": "median",
+      "before": 110.3,
+      "after": 105.7,
+      "absoluteChange": 4.6,
+      "changePct": 4.2,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "frameGapP95Ms",
+      "statistic": "p95",
+      "before": 10,
+      "after": 12.9,
+      "absoluteChange": 2.9,
+      "changePct": 29,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 99.6,
+      "after": 94.7,
+      "absoluteChange": 4.9,
+      "changePct": -4.9,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "longTaskMs",
+      "statistic": "p95",
+      "before": 0,
+      "after": 0,
+      "absoluteChange": 0,
+      "changePct": 0,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "layoutCount",
+      "statistic": "median",
+      "before": 68,
+      "after": 66,
+      "absoluteChange": 2,
+      "changePct": -2.9,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "recalcStyleCount",
+      "statistic": "median",
+      "before": 263,
+      "after": 269,
+      "absoluteChange": 6,
+      "changePct": 2.3,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "scriptDurationMs",
+      "statistic": "median",
+      "before": 151.6,
+      "after": 162.8,
+      "absoluteChange": 11.2,
+      "changePct": 7.4,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "layoutDurationMs",
+      "statistic": "median",
+      "before": 5.9,
+      "after": 5.4,
+      "absoluteChange": 0.5,
+      "changePct": -8.5,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "jsHeapUsedMB",
+      "statistic": "median",
+      "before": 24.8,
+      "after": 29.8,
+      "absoluteChange": 5,
+      "changePct": 20.2,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/marquee-select",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 241.6,
+      "after": 289.1,
+      "absoluteChange": 47.5,
+      "changePct": 19.7,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "fps",
+      "statistic": "median",
+      "before": 116.3,
+      "after": 117.2,
+      "absoluteChange": 0.9,
+      "changePct": -0.8,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "frameGapP95Ms",
+      "statistic": "p95",
+      "before": 10.4,
+      "after": 9.5,
+      "absoluteChange": 0.9,
+      "changePct": -8.7,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "maxFrameGapMs",
+      "statistic": "p95",
+      "before": 331.7,
+      "after": 56.3,
+      "absoluteChange": 275.4,
+      "changePct": -83,
+      "classification": "improvement"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "layoutCount",
+      "statistic": "median",
+      "before": 170,
+      "after": 168,
+      "absoluteChange": 2,
+      "changePct": -1.2,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "recalcStyleCount",
+      "statistic": "median",
+      "before": 802,
+      "after": 805,
+      "absoluteChange": 3,
+      "changePct": 0.4,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "scriptDurationMs",
+      "statistic": "median",
+      "before": 783.2,
+      "after": 751.4,
+      "absoluteChange": 31.8,
+      "changePct": -4.1,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "layoutDurationMs",
+      "statistic": "median",
+      "before": 27.3,
+      "after": 28.2,
+      "absoluteChange": 0.9,
+      "changePct": 3.3,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "jsHeapUsedMB",
+      "statistic": "median",
+      "before": 29.8,
+      "after": 24.8,
+      "absoluteChange": 5,
+      "changePct": -16.8,
+      "classification": "noise"
+    },
+    {
+      "scenario": "L/media-reveal",
+      "metric": "rendererWorkingSetMB",
+      "statistic": "median",
+      "before": 270.7,
+      "after": 412.7,
+      "absoluteChange": 142,
+      "changePct": 52.5,
+      "classification": "advisory-regression"
+    }
+  ]
+}

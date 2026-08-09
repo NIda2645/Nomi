@@ -92,14 +92,16 @@ async function findBlankPoint(preferBottom = false) {
   return getWin().evaluate((bottom) => {
     const stage = document.querySelector('.generation-canvas-v2__stage')
     const rect = stage.getBoundingClientRect()
-    const rows = bottom ? [0.78, 0.7, 0.62] : [0.2, 0.28, 0.36, 0.5]
+    const rows = bottom
+      ? [0.88, 0.78, 0.68, 0.58, 0.48, 0.38, 0.28, 0.18, 0.1]
+      : [0.2, 0.28, 0.36, 0.5, 0.64, 0.76, 0.88, 0.12]
     for (const ry of rows) {
-      for (const rx of [0.62, 0.7, 0.78, 0.86, 0.54]) {
+      for (const rx of [0.62, 0.7, 0.78, 0.86, 0.93, 0.54, 0.42, 0.3, 0.2, 0.12, 0.06]) {
         const x = rect.left + rect.width * rx
         const y = rect.top + rect.height * ry
         const hit = document.elementFromPoint(x, y)
         if (!hit || !stage.contains(hit)) continue
-        if (hit.closest('.generation-canvas-v2-node, button, input, textarea, [role="menu"], [role="toolbar"], .generation-canvas-v2__edge-hit, .generation-canvas-v2__minimap, .generation-canvas-v2__navigation-stack')) continue
+        if (hit.closest('.generation-canvas-v2-node, .generation-canvas-v2-toolbar, .generation-canvas-v2__zoom-bar, .generation-canvas-v2__selection-bounds, .generation-canvas-v2__selection-toolbar, button, input, textarea, [role="menu"], [role="toolbar"], .generation-canvas-v2__edge-hit, .generation-canvas-v2__minimap, .generation-canvas-v2__navigation-stack')) continue
         return { x: Math.round(x), y: Math.round(y) }
       }
     }
@@ -132,7 +134,7 @@ async function firstBlankOf(candidates) {
       if (point.y < rect.top + 8 || point.y > rect.bottom - 8) continue
       const hit = document.elementFromPoint(point.x, point.y)
       if (!hit || !stage.contains(hit)) continue
-      if (hit.closest('.generation-canvas-v2-node, button, input, textarea, [role="menu"], [role="toolbar"], .generation-canvas-v2__edge-hit, .generation-canvas-v2__minimap, .generation-canvas-v2__navigation-stack')) continue
+      if (hit.closest('.generation-canvas-v2-node, .generation-canvas-v2-toolbar, .generation-canvas-v2__zoom-bar, .generation-canvas-v2__selection-bounds, .generation-canvas-v2__selection-toolbar, button, input, textarea, [role="menu"], [role="toolbar"], .generation-canvas-v2__edge-hit, .generation-canvas-v2__minimap, .generation-canvas-v2__navigation-stack')) continue
       return { x: Math.round(point.x), y: Math.round(point.y) }
     }
     return null
@@ -405,14 +407,23 @@ try {
   const imageNode = getWin().locator('.generation-canvas-v2-node[data-kind="image"]').first()
   const videoNode = getWin().locator('.generation-canvas-v2-node[data-kind="video"]').first()
 
+  // 中途缩放可能把节点中心推到视口外；连线前先把两张卡完整收回可视区域。
+  await getWin().locator('.generation-canvas-v2__zoom-bar button').first().click()
+  await getWin().waitForTimeout(420)
+
   // 先摆位置：把视频节点拖到图片节点的右下方空地（真实动作，也给连线握把腾出空间）。
   const deselectPoint = await findBlankPoint()
   await getWin().mouse.click(deselectPoint.x, deselectPoint.y)
   await getWin().waitForTimeout(200)
   const videoStart = await videoNode.boundingBox()
+  const visibleStage = await getWin().locator('.generation-canvas-v2__stage').boundingBox()
+  const videoTarget = {
+    x: Math.min(videoStart.x + videoStart.width / 2 + 60, visibleStage.x + visibleStage.width - videoStart.width / 2 - 24),
+    y: Math.min(videoStart.y + 200, visibleStage.y + visibleStage.height - videoStart.height - 24),
+  }
   await getWin().mouse.move(videoStart.x + videoStart.width / 2, videoStart.y + 12)
   await getWin().mouse.down()
-  await getWin().mouse.move(videoStart.x + videoStart.width / 2 + 60, videoStart.y + 260, { steps: 14 })
+  await getWin().mouse.move(videoTarget.x, videoTarget.y, { steps: 14 })
   await getWin().mouse.up()
   await getWin().waitForTimeout(400)
 
@@ -434,7 +445,11 @@ try {
   assert(handleHit.magnetic, '图片节点右侧握把可点', JSON.stringify(handleHit))
   await getWin().mouse.move(handlePoint.x, handlePoint.y)
   await getWin().mouse.down()
-  await getWin().mouse.move(videoBox.x + videoBox.width / 2, videoBox.y + videoBox.height / 2, { steps: 16 })
+  const videoVisibleTarget = {
+    x: (Math.max(videoBox.x, visibleStage.x) + Math.min(videoBox.x + videoBox.width, visibleStage.x + visibleStage.width)) / 2,
+    y: (Math.max(videoBox.y, visibleStage.y) + Math.min(videoBox.y + videoBox.height, visibleStage.y + visibleStage.height)) / 2,
+  }
+  await getWin().mouse.move(videoVisibleTarget.x, videoVisibleTarget.y, { steps: 16 })
   await getWin().mouse.up()
   await getWin().waitForTimeout(700)
   const edgeCount = await getWin().evaluate(() => document.querySelectorAll('.generation-canvas-v2__edge').length)

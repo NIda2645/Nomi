@@ -94,7 +94,7 @@ function BaseGenerationNodeImpl({
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
   const moveNode = useGenerationCanvasStore((state) => state.moveNode)
   const moveSelectedNodes = useGenerationCanvasStore((state) => state.moveSelectedNodes)
-  const isMultiSelectActive = useGenerationCanvasStore((state) => state.selectedNodeIds.length > 1)
+  const isMultiSelectActive = useGenerationCanvasStore((state) => selected && state.selectedNodeIds.length > 1)
   const sourceNodeTitle = useGenerationCanvasStore((state) => {
     if (!node.derivedFrom) return undefined
     return state.nodes.find((candidate) => candidate.id === node.derivedFrom)?.title

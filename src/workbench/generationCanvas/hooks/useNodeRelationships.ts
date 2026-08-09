@@ -21,10 +21,7 @@ import type { GenerationCanvasNode, GenerationCanvasEdge } from '../model/genera
 type UsageMap = Map<string, Set<string>>
 const usageCache = new WeakMap<readonly GenerationCanvasEdge[], UsageMap>()
 
-function buildUsageMap(
-  nodes: readonly GenerationCanvasNode[],
-  edges: readonly GenerationCanvasEdge[],
-): UsageMap {
+function buildUsageMap(nodes: readonly GenerationCanvasNode[], edges: readonly GenerationCanvasEdge[]): UsageMap {
   const cached = usageCache.get(edges)
   if (cached) return cached
   const shotIds = new Set<string>()
@@ -109,6 +106,20 @@ function buildMountedCardsMap(
 
 const EMPTY_MOUNTED: MountedCard[] = []
 
+const frameSourceCache = new WeakMap<readonly GenerationCanvasEdge[], Map<string, boolean>>()
+
+function buildFrameSourceMap(edges: readonly GenerationCanvasEdge[]): Map<string, boolean> {
+  const cached = frameSourceCache.get(edges)
+  if (cached) return cached
+  const map = new Map<string, boolean>()
+  for (const edge of edges) {
+    if (edge.mode && edge.mode !== 'first_frame' && edge.mode !== 'last_frame' && edge.mode !== 'reference') continue
+    map.set(edge.target, true)
+  }
+  frameSourceCache.set(edges, map)
+  return map
+}
+
 /** 纯查询（可单测）：节点 nodeId 挂了哪些角色/场景设定卡（按连边顺序、去重）。 */
 export function listMountedCards(
   nodeId: string,
@@ -154,15 +165,10 @@ export function useNodeVariantCount(nodeId: string): number {
  * 占位文案据此区分「没连边 → 提示拖图」vs「已连、上游未生成 → 提示等待」。
  */
 export function useHasFrameSourceEdge(nodeId: string, enabled: boolean): boolean {
-  return useGenerationCanvasStore((state) =>
-    enabled &&
-    state.edges.some(
-      (edge) =>
-        edge.target === nodeId &&
-        (!edge.mode || edge.mode === 'first_frame' || edge.mode === 'last_frame' || edge.mode === 'reference'),
-    ),
-  )
+  return useGenerationCanvasStore((state) => enabled && Boolean(buildFrameSourceMap(state.edges).get(nodeId)))
 }
+
+const shotIndexCache = new WeakMap<readonly GenerationCanvasNode[], Map<string, number | null>>()
 
 /**
  * 当前分镜节点的 1-based 镜头编号。
@@ -175,7 +181,11 @@ export function useHasFrameSourceEdge(nodeId: string, enabled: boolean): boolean
 export function useShotIndex(nodeId: string, categoryId: string | undefined): number | null {
   return useGenerationCanvasStore((state) => {
     if (categoryId !== 'shots') return null
-    const node = state.nodes.find((candidate) => candidate.id === nodeId)
-    return typeof node?.shotIndex === 'number' ? node.shotIndex : null
+    const cached = shotIndexCache.get(state.nodes)
+    const indexes =
+      cached ||
+      new Map(state.nodes.map((node) => [node.id, typeof node.shotIndex === 'number' ? node.shotIndex : null]))
+    if (!cached) shotIndexCache.set(state.nodes, indexes)
+    return indexes.get(nodeId) ?? null
   })
 }

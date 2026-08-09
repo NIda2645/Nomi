@@ -1,0 +1,2311 @@
+{
+  "label": "xl-boundary",
+  "commit": "62b1270493927161d0369f7eaf9fa3ce1a7919df",
+  "dirty": true,
+  "platform": "darwin",
+  "arch": "arm64",
+  "machine": {
+    "cpu": "Apple M5",
+    "logicalCpus": 10,
+    "totalMemoryGB": 24
+  },
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "sampleCount": 1,
+  "warmupCount": 1,
+  "scales": [
+    "XL"
+  ],
+  "scenarios": [
+    "node-drag-video",
+    "click-select",
+    "marquee-select",
+    "media-reveal",
+    "reload-heavy"
+  ],
+  "results": [
+    {
+      "scale": "XL",
+      "scenario": "node-drag-video",
+      "runIndex": 1,
+      "fixture": {
+        "scale": "XL",
+        "imageNodes": 160,
+        "videoNodes": 160,
+        "nodes": 320,
+        "edges": 640,
+        "clips": 80,
+        "imageBytes": [
+          54708,
+          210153
+        ],
+        "videoBytes": [
+          386990,
+          386940
+        ]
+      },
+      "probe": {
+        "elapsedMs": 1489,
+        "frames": 153,
+        "fps": 102.8,
+        "frameGapP50Ms": 8.3,
+        "frameGapP95Ms": 17.3,
+        "maxFrameGapMs": 64.9,
+        "longTasks": 1,
+        "longTaskMs": 57,
+        "longTaskP95Ms": 57,
+        "maxLoadingImages": 0,
+        "maxLoadingVideos": 0,
+        "maxActiveVideos": 1,
+        "firstMutationMs": 32.1,
+        "mutations": {
+          "stage": 1,
+          "edges": 21,
+          "labels": 6
+        }
+      },
+      "cdpBefore": {
+        "LayoutCount": 0,
+        "RecalcStyleCount": 2,
+        "ScriptDurationMs": 0,
+        "LayoutDurationMs": 0,
+        "TaskDurationMs": 2.8,
+        "JSHeapUsedMB": 21,
+        "domNodes": 2719,
+        "domDocuments": 7,
+        "jsEventListeners": 1182
+      },
+      "cdpAfter": {
+        "LayoutCount": 23,
+        "RecalcStyleCount": 175,
+        "ScriptDurationMs": 155.2,
+        "LayoutDurationMs": 9.3,
+        "TaskDurationMs": 340.8,
+        "JSHeapUsedMB": 28.3,
+        "domNodes": 3055,
+        "domDocuments": 9,
+        "jsEventListeners": 1937
+      },
+      "cdpDelta": {
+        "LayoutCount": 23,
+        "RecalcStyleCount": 173,
+        "ScriptDurationMs": 155.2,
+        "LayoutDurationMs": 9.3,
+        "TaskDurationMs": 338,
+        "JSHeapUsedMB": 7.3,
+        "domNodes": 336,
+        "domDocuments": 2,
+        "jsEventListeners": 755
+      },
+      "beforePage": {
+        "domNodes": 1555,
+        "canvasNodes": 20,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 6,
+        "videoElements": 6,
+        "visibleMedia": 12,
+        "loadedImages": 6,
+        "loadedVideos": 6,
+        "activeVideos": 0,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 28,
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "zoom": 1
+        }
+      },
+      "page": {
+        "domNodes": 1699,
+        "canvasNodes": 20,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 7,
+        "videoElements": 6,
+        "visibleMedia": 13,
+        "loadedImages": 7,
+        "loadedVideos": 6,
+        "activeVideos": 1,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 28,
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "zoom": 1
+        }
+      },
+      "actionDetails": {
+        "nodeId": "canvas-perf-video-0"
+      },
+      "nodeIdentity": {
+        "before": 20,
+        "after": 20,
+        "common": 20,
+        "preserved": 20,
+        "commonIdentityPreserved": true,
+        "targetNodeId": "canvas-perf-video-0",
+        "targetIdentityPreserved": true
+      },
+      "appMetrics": {
+        "rendererWorkingSetMB": 327.4,
+        "gpuWorkingSetMB": 124.1,
+        "processCount": 5,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 77734,
+            "workingSetMB": 171.7
+          },
+          {
+            "type": "GPU",
+            "pid": 77735,
+            "workingSetMB": 124.1
+          },
+          {
+            "type": "Utility",
+            "pid": 77736,
+            "workingSetMB": 30
+          },
+          {
+            "type": "Tab",
+            "pid": 77737,
+            "workingSetMB": 327.4
+          },
+          {
+            "type": "Utility",
+            "pid": 77738,
+            "workingSetMB": 32.8
+          }
+        ]
+      },
+      "runtimeVersions": {
+        "app": "0.19.0",
+        "electron": "31.7.7",
+        "chrome": "126.0.6478.234",
+        "node": "20.18.0",
+        "v8": "12.6.228.30-electron.0"
+      },
+      "pageErrors": [],
+      "consoleErrors": [],
+      "elapsedMs": 18495
+    },
+    {
+      "scale": "XL",
+      "scenario": "click-select",
+      "runIndex": 1,
+      "fixture": {
+        "scale": "XL",
+        "imageNodes": 160,
+        "videoNodes": 160,
+        "nodes": 320,
+        "edges": 640,
+        "clips": 80,
+        "imageBytes": [
+          54708,
+          210153
+        ],
+        "videoBytes": [
+          386990,
+          386940
+        ]
+      },
+      "probe": {
+        "elapsedMs": 1530,
+        "frames": 107,
+        "fps": 69.9,
+        "frameGapP50Ms": 8.4,
+        "frameGapP95Ms": 50.6,
+        "maxFrameGapMs": 94.8,
+        "longTasks": 1,
+        "longTaskMs": 58,
+        "longTaskP95Ms": 58,
+        "maxLoadingImages": 0,
+        "maxLoadingVideos": 0,
+        "maxActiveVideos": 0,
+        "firstMutationMs": 26.4,
+        "mutations": {
+          "stage": 0,
+          "edges": 88,
+          "labels": 40
+        }
+      },
+      "cdpBefore": {
+        "LayoutCount": 0,
+        "RecalcStyleCount": 2,
+        "ScriptDurationMs": 0,
+        "LayoutDurationMs": 0,
+        "TaskDurationMs": 5.8,
+        "JSHeapUsedMB": 23.3,
+        "domNodes": 2720,
+        "domDocuments": 7,
+        "jsEventListeners": 1183
+      },
+      "cdpAfter": {
+        "LayoutCount": 66,
+        "RecalcStyleCount": 244,
+        "ScriptDurationMs": 402,
+        "LayoutDurationMs": 19.6,
+        "TaskDurationMs": 763.9,
+        "JSHeapUsedMB": 31.8,
+        "domNodes": 3961,
+        "domDocuments": 8,
+        "jsEventListeners": 4360
+      },
+      "cdpDelta": {
+        "LayoutCount": 66,
+        "RecalcStyleCount": 242,
+        "ScriptDurationMs": 402,
+        "LayoutDurationMs": 19.6,
+        "TaskDurationMs": 758.1,
+        "JSHeapUsedMB": 8.5,
+        "domNodes": 1241,
+        "domDocuments": 1,
+        "jsEventListeners": 3177
+      },
+      "beforePage": {
+        "domNodes": 1555,
+        "canvasNodes": 20,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 6,
+        "videoElements": 6,
+        "visibleMedia": 12,
+        "loadedImages": 6,
+        "loadedVideos": 6,
+        "activeVideos": 0,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 29.8,
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "zoom": 1
+        }
+      },
+      "page": {
+        "domNodes": 1540,
+        "canvasNodes": 20,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 6,
+        "videoElements": 6,
+        "visibleMedia": 12,
+        "loadedImages": 6,
+        "loadedVideos": 6,
+        "activeVideos": 0,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 29.8,
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "zoom": 1
+        }
+      },
+      "actionDetails": {
+        "selectedAfterClear": 0,
+        "blank": {
+          "x": 1477,
+          "y": 727
+        },
+        "blankHit": {
+          "tag": "DIV",
+          "className": "generation-canvas-v2__canvas absolute inset-0 origin-top-left will-change-transform",
+          "id": "",
+          "ancestors": [
+            {
+              "tag": "DIV",
+              "className": "generation-canvas-v2__canvas absolute inset-0 origin-top-left will-change-transform",
+              "id": ""
+            },
+            {
+              "tag": "DIV",
+              "className": "generation-canvas-v2__stage group/canvas active:cursor-grabbing",
+              "id": ""
+            },
+            {
+              "tag": "DIV",
+              "className": "generation-canvas-v2__main relative w-full h-full min-w-0 min-h-0",
+              "id": ""
+            },
+            {
+              "tag": "SECTION",
+              "className": "generation-canvas-v2 grid grid-rows-[minmax(0,1fr)] w-full h-full min-w-0 min-h-0 bg-workbench-bg text-workbench-ink",
+              "id": ""
+            },
+            {
+              "tag": "DIV",
+              "className": "relative w-full h-full",
+              "id": ""
+            },
+            {
+              "tag": "DIV",
+              "className": "workbench-generation__canvas min-w-0 min-h-0 overflow-hidden border-b border-[var(--workbench-border)] relative",
+              "id": ""
+            }
+          ],
+          "stageRect": {
+            "x": 60,
+            "y": 56,
+            "width": 1540,
+            "height": 799,
+            "top": 56,
+            "right": 1600,
+            "bottom": 855,
+            "left": 60
+          },
+          "mediaRects": [
+            {
+              "tag": "IMG",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-none select-none",
+              "nodeId": "canvas-perf-image-0",
+              "nodeRect": {
+                "x": 140,
+                "y": 136,
+                "width": 320,
+                "height": 180,
+                "top": 136,
+                "right": 460,
+                "bottom": 316,
+                "left": 140
+              },
+              "x": 140,
+              "y": 136,
+              "right": 460,
+              "bottom": 316,
+              "pointerEvents": "none"
+            },
+            {
+              "tag": "VIDEO",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-auto bg-nomi-ink-05 select-none",
+              "nodeId": "canvas-perf-video-0",
+              "nodeRect": {
+                "x": 530,
+                "y": 136,
+                "width": 320,
+                "height": 180,
+                "top": 136,
+                "right": 850,
+                "bottom": 316,
+                "left": 530
+              },
+              "x": 530,
+              "y": 136,
+              "right": 850,
+              "bottom": 316,
+              "pointerEvents": "auto"
+            },
+            {
+              "tag": "IMG",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-none select-none",
+              "nodeId": "canvas-perf-image-1",
+              "nodeRect": {
+                "x": 920,
+                "y": 136,
+                "width": 320,
+                "height": 180,
+                "top": 136,
+                "right": 1240,
+                "bottom": 316,
+                "left": 920
+              },
+              "x": 920,
+              "y": 136,
+              "right": 1240,
+              "bottom": 316,
+              "pointerEvents": "none"
+            },
+            {
+              "tag": "VIDEO",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-auto bg-nomi-ink-05 select-none",
+              "nodeId": "canvas-perf-video-1",
+              "nodeRect": {
+                "x": 1310,
+                "y": 136,
+                "width": 320,
+                "height": 180,
+                "top": 136,
+                "right": 1630,
+                "bottom": 316,
+                "left": 1310
+              },
+              "x": 1310,
+              "y": 136,
+              "right": 1630,
+              "bottom": 316,
+              "pointerEvents": "auto"
+            },
+            {
+              "tag": "IMG",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-none select-none",
+              "nodeId": "canvas-perf-image-6",
+              "nodeRect": {
+                "x": 140,
+                "y": 436,
+                "width": 320,
+                "height": 180,
+                "top": 436,
+                "right": 460,
+                "bottom": 616,
+                "left": 140
+              },
+              "x": 140,
+              "y": 436,
+              "right": 460,
+              "bottom": 616,
+              "pointerEvents": "none"
+            },
+            {
+              "tag": "VIDEO",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-auto bg-nomi-ink-05 select-none",
+              "nodeId": "canvas-perf-video-6",
+              "nodeRect": {
+                "x": 530,
+                "y": 436,
+                "width": 320,
+                "height": 180,
+                "top": 436,
+                "right": 850,
+                "bottom": 616,
+                "left": 530
+              },
+              "x": 530,
+              "y": 436,
+              "right": 850,
+              "bottom": 616,
+              "pointerEvents": "auto"
+            },
+            {
+              "tag": "IMG",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-none select-none",
+              "nodeId": "canvas-perf-image-7",
+              "nodeRect": {
+                "x": 920,
+                "y": 436,
+                "width": 320,
+                "height": 180,
+                "top": 436,
+                "right": 1240,
+                "bottom": 616,
+                "left": 920
+              },
+              "x": 920,
+              "y": 436,
+              "right": 1240,
+              "bottom": 616,
+              "pointerEvents": "none"
+            },
+            {
+              "tag": "VIDEO",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-auto bg-nomi-ink-05 select-none",
+              "nodeId": "canvas-perf-video-7",
+              "nodeRect": {
+                "x": 1310,
+                "y": 436,
+                "width": 320,
+                "height": 180,
+                "top": 436,
+                "right": 1630,
+                "bottom": 616,
+                "left": 1310
+              },
+              "x": 1310,
+              "y": 436,
+              "right": 1630,
+              "bottom": 616,
+              "pointerEvents": "auto"
+            },
+            {
+              "tag": "IMG",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-none select-none",
+              "nodeId": "canvas-perf-image-12",
+              "nodeRect": {
+                "x": 140,
+                "y": 736,
+                "width": 320,
+                "height": 180,
+                "top": 736,
+                "right": 460,
+                "bottom": 916,
+                "left": 140
+              },
+              "x": 140,
+              "y": 736,
+              "right": 460,
+              "bottom": 916,
+              "pointerEvents": "none"
+            },
+            {
+              "tag": "VIDEO",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-auto bg-nomi-ink-05 select-none",
+              "nodeId": "canvas-perf-video-12",
+              "nodeRect": {
+                "x": 530,
+                "y": 736,
+                "width": 320,
+                "height": 180,
+                "top": 736,
+                "right": 850,
+                "bottom": 916,
+                "left": 530
+              },
+              "x": 530,
+              "y": 736,
+              "right": 850,
+              "bottom": 916,
+              "pointerEvents": "auto"
+            },
+            {
+              "tag": "IMG",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-none select-none",
+              "nodeId": "canvas-perf-image-13",
+              "nodeRect": {
+                "x": 920,
+                "y": 736,
+                "width": 320,
+                "height": 180,
+                "top": 736,
+                "right": 1240,
+                "bottom": 916,
+                "left": 920
+              },
+              "x": 920,
+              "y": 736,
+              "right": 1240,
+              "bottom": 916,
+              "pointerEvents": "none"
+            },
+            {
+              "tag": "VIDEO",
+              "className": "w-full h-full min-h-0 object-contain pointer-events-auto bg-nomi-ink-05 select-none",
+              "nodeId": "canvas-perf-video-13",
+              "nodeRect": {
+                "x": 1310,
+                "y": 736,
+                "width": 320,
+                "height": 180,
+                "top": 736,
+                "right": 1630,
+                "bottom": 916,
+                "left": 1310
+              },
+              "x": 1310,
+              "y": 736,
+              "right": 1630,
+              "bottom": 916,
+              "pointerEvents": "auto"
+            }
+          ],
+          "nodeRects": [
+            {
+              "id": "canvas-perf-image-0",
+              "x": 140,
+              "y": 136,
+              "right": 460,
+              "bottom": 316
+            },
+            {
+              "id": "canvas-perf-video-0",
+              "x": 530,
+              "y": 136,
+              "right": 850,
+              "bottom": 316
+            },
+            {
+              "id": "canvas-perf-image-1",
+              "x": 920,
+              "y": 136,
+              "right": 1240,
+              "bottom": 316
+            },
+            {
+              "id": "canvas-perf-video-1",
+              "x": 1310,
+              "y": 136,
+              "right": 1630,
+              "bottom": 316
+            },
+            {
+              "id": "canvas-perf-image-2",
+              "x": 1700,
+              "y": 136,
+              "right": 2020,
+              "bottom": 316
+            },
+            {
+              "id": "canvas-perf-image-6",
+              "x": 140,
+              "y": 436,
+              "right": 460,
+              "bottom": 616
+            }
+          ]
+        }
+      },
+      "nodeIdentity": {
+        "before": 20,
+        "after": 20,
+        "common": 20,
+        "preserved": 20,
+        "commonIdentityPreserved": true,
+        "targetNodeId": null,
+        "targetIdentityPreserved": null
+      },
+      "appMetrics": {
+        "rendererWorkingSetMB": 474,
+        "gpuWorkingSetMB": 141.6,
+        "processCount": 5,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 77868,
+            "workingSetMB": 222.5
+          },
+          {
+            "type": "GPU",
+            "pid": 77869,
+            "workingSetMB": 141.6
+          },
+          {
+            "type": "Utility",
+            "pid": 77870,
+            "workingSetMB": 39
+          },
+          {
+            "type": "Tab",
+            "pid": 77871,
+            "workingSetMB": 474
+          },
+          {
+            "type": "Utility",
+            "pid": 77872,
+            "workingSetMB": 36.7
+          }
+        ]
+      },
+      "runtimeVersions": {
+        "app": "0.19.0",
+        "electron": "31.7.7",
+        "chrome": "126.0.6478.234",
+        "node": "20.18.0",
+        "v8": "12.6.228.30-electron.0"
+      },
+      "pageErrors": [],
+      "consoleErrors": [],
+      "elapsedMs": 18547
+    },
+    {
+      "scale": "XL",
+      "scenario": "marquee-select",
+      "runIndex": 1,
+      "fixture": {
+        "scale": "XL",
+        "imageNodes": 160,
+        "videoNodes": 160,
+        "nodes": 320,
+        "edges": 640,
+        "clips": 80,
+        "imageBytes": [
+          54708,
+          210153
+        ],
+        "videoBytes": [
+          386990,
+          386940
+        ]
+      },
+      "probe": {
+        "elapsedMs": 1915,
+        "frames": 205,
+        "fps": 107,
+        "frameGapP50Ms": 8.3,
+        "frameGapP95Ms": 9.5,
+        "maxFrameGapMs": 60,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskP95Ms": null,
+        "maxLoadingImages": 0,
+        "maxLoadingVideos": 0,
+        "maxActiveVideos": 1,
+        "firstMutationMs": 156.8,
+        "mutations": {
+          "stage": 2,
+          "edges": 53,
+          "labels": 21
+        }
+      },
+      "cdpBefore": {
+        "LayoutCount": 9,
+        "RecalcStyleCount": 52,
+        "ScriptDurationMs": 17.4,
+        "LayoutDurationMs": 4.7,
+        "TaskDurationMs": 117.8,
+        "JSHeapUsedMB": 26.9,
+        "domNodes": 3284,
+        "domDocuments": 15,
+        "jsEventListeners": 1311
+      },
+      "cdpAfter": {
+        "LayoutCount": 76,
+        "RecalcStyleCount": 329,
+        "ScriptDurationMs": 184.1,
+        "LayoutDurationMs": 10.3,
+        "TaskDurationMs": 595.4,
+        "JSHeapUsedMB": 33.6,
+        "domNodes": 3942,
+        "domDocuments": 15,
+        "jsEventListeners": 2303
+      },
+      "cdpDelta": {
+        "LayoutCount": 67,
+        "RecalcStyleCount": 277,
+        "ScriptDurationMs": 166.7,
+        "LayoutDurationMs": 5.6,
+        "TaskDurationMs": 477.6,
+        "JSHeapUsedMB": 6.7,
+        "domNodes": 658,
+        "domDocuments": 0,
+        "jsEventListeners": 992
+      },
+      "beforePage": {
+        "domNodes": 1902,
+        "canvasNodes": 30,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 9,
+        "videoElements": 6,
+        "visibleMedia": 15,
+        "loadedImages": 9,
+        "loadedVideos": 6,
+        "activeVideos": 1,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 35.6,
+        "transform": {
+          "x": 231.993,
+          "y": 120.215,
+          "zoom": 0.69871
+        }
+      },
+      "page": {
+        "domNodes": 2178,
+        "canvasNodes": 30,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 9,
+        "videoElements": 6,
+        "visibleMedia": 15,
+        "loadedImages": 9,
+        "loadedVideos": 6,
+        "activeVideos": 0,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 35.6,
+        "transform": {
+          "x": 231.993,
+          "y": 120.215,
+          "zoom": 0.69871
+        }
+      },
+      "actionDetails": {
+        "selected": 15,
+        "bounds": {
+          "left": 347.88983154296875,
+          "top": 232.11138916015625,
+          "right": 1933.96240234375,
+          "bottom": 1196.331787109375
+        }
+      },
+      "nodeIdentity": {
+        "before": 30,
+        "after": 30,
+        "common": 30,
+        "preserved": 30,
+        "commonIdentityPreserved": true,
+        "targetNodeId": null,
+        "targetIdentityPreserved": null
+      },
+      "appMetrics": {
+        "rendererWorkingSetMB": 353.5,
+        "gpuWorkingSetMB": 144.5,
+        "processCount": 5,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 77952,
+            "workingSetMB": 216.7
+          },
+          {
+            "type": "GPU",
+            "pid": 77953,
+            "workingSetMB": 144.5
+          },
+          {
+            "type": "Utility",
+            "pid": 77954,
+            "workingSetMB": 40.9
+          },
+          {
+            "type": "Tab",
+            "pid": 77955,
+            "workingSetMB": 353.5
+          },
+          {
+            "type": "Utility",
+            "pid": 77956,
+            "workingSetMB": 37.3
+          }
+        ]
+      },
+      "runtimeVersions": {
+        "app": "0.19.0",
+        "electron": "31.7.7",
+        "chrome": "126.0.6478.234",
+        "node": "20.18.0",
+        "v8": "12.6.228.30-electron.0"
+      },
+      "pageErrors": [],
+      "consoleErrors": [],
+      "elapsedMs": 20435
+    },
+    {
+      "scale": "XL",
+      "scenario": "media-reveal",
+      "runIndex": 1,
+      "fixture": {
+        "scale": "XL",
+        "imageNodes": 160,
+        "videoNodes": 160,
+        "nodes": 320,
+        "edges": 640,
+        "clips": 80,
+        "imageBytes": [
+          54708,
+          210153
+        ],
+        "videoBytes": [
+          386990,
+          386940
+        ]
+      },
+      "probe": {
+        "elapsedMs": 5384,
+        "frames": 628,
+        "fps": 116.6,
+        "frameGapP50Ms": 8.4,
+        "frameGapP95Ms": 9.3,
+        "maxFrameGapMs": 60.3,
+        "longTasks": 3,
+        "longTaskMs": 157,
+        "longTaskP95Ms": 54,
+        "maxLoadingImages": 0,
+        "maxLoadingVideos": 0,
+        "maxActiveVideos": 0,
+        "firstMutationMs": 29.9,
+        "mutations": {
+          "stage": 10,
+          "edges": 92,
+          "labels": 0
+        }
+      },
+      "cdpBefore": {
+        "LayoutCount": 0,
+        "RecalcStyleCount": 5,
+        "ScriptDurationMs": 0,
+        "LayoutDurationMs": 0,
+        "TaskDurationMs": 6.3,
+        "JSHeapUsedMB": 20.9,
+        "domNodes": 2719,
+        "domDocuments": 7,
+        "jsEventListeners": 1182
+      },
+      "cdpAfter": {
+        "LayoutCount": 169,
+        "RecalcStyleCount": 813,
+        "ScriptDurationMs": 800.2,
+        "LayoutDurationMs": 35.5,
+        "TaskDurationMs": 1760.6,
+        "JSHeapUsedMB": 30.5,
+        "domNodes": 4163,
+        "domDocuments": 7,
+        "jsEventListeners": 1704
+      },
+      "cdpDelta": {
+        "LayoutCount": 169,
+        "RecalcStyleCount": 808,
+        "ScriptDurationMs": 800.2,
+        "LayoutDurationMs": 35.5,
+        "TaskDurationMs": 1754.3,
+        "JSHeapUsedMB": 9.6,
+        "domNodes": 1444,
+        "domDocuments": 0,
+        "jsEventListeners": 522
+      },
+      "beforePage": {
+        "domNodes": 1555,
+        "canvasNodes": 20,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 6,
+        "videoElements": 6,
+        "visibleMedia": 12,
+        "loadedImages": 6,
+        "loadedVideos": 6,
+        "activeVideos": 0,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 28,
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "zoom": 1
+        }
+      },
+      "page": {
+        "domNodes": 2097,
+        "canvasNodes": 36,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 15,
+        "videoElements": 10,
+        "visibleMedia": 15,
+        "loadedImages": 15,
+        "loadedVideos": 10,
+        "activeVideos": 0,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 28,
+        "transform": {
+          "x": -400,
+          "y": -950,
+          "zoom": 1
+        }
+      },
+      "actionDetails": {
+        "snapshots": [
+          {
+            "domNodes": 1703,
+            "canvasNodes": 25,
+            "lightweightCanvasNodes": 0,
+            "imageElements": 8,
+            "videoElements": 8,
+            "visibleMedia": 16,
+            "loadedImages": 8,
+            "loadedVideos": 8,
+            "activeVideos": 0,
+            "resourceCount": 0,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": -80,
+              "y": -190,
+              "zoom": 1
+            }
+          },
+          {
+            "domNodes": 1858,
+            "canvasNodes": 30,
+            "lightweightCanvasNodes": 0,
+            "imageElements": 12,
+            "videoElements": 8,
+            "visibleMedia": 15,
+            "loadedImages": 12,
+            "loadedVideos": 8,
+            "activeVideos": 0,
+            "resourceCount": 0,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": -160,
+              "y": -380,
+              "zoom": 1
+            }
+          },
+          {
+            "domNodes": 2097,
+            "canvasNodes": 36,
+            "lightweightCanvasNodes": 0,
+            "imageElements": 15,
+            "videoElements": 10,
+            "visibleMedia": 20,
+            "loadedImages": 15,
+            "loadedVideos": 10,
+            "activeVideos": 0,
+            "resourceCount": 0,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": -240,
+              "y": -570,
+              "zoom": 1
+            }
+          },
+          {
+            "domNodes": 2097,
+            "canvasNodes": 36,
+            "lightweightCanvasNodes": 0,
+            "imageElements": 12,
+            "videoElements": 8,
+            "visibleMedia": 15,
+            "loadedImages": 12,
+            "loadedVideos": 8,
+            "activeVideos": 0,
+            "resourceCount": 0,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": -320,
+              "y": -760,
+              "zoom": 1
+            }
+          },
+          {
+            "domNodes": 2097,
+            "canvasNodes": 36,
+            "lightweightCanvasNodes": 0,
+            "imageElements": 15,
+            "videoElements": 10,
+            "visibleMedia": 15,
+            "loadedImages": 15,
+            "loadedVideos": 10,
+            "activeVideos": 0,
+            "resourceCount": 0,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": -400,
+              "y": -950,
+              "zoom": 1
+            }
+          }
+        ]
+      },
+      "nodeIdentity": {
+        "before": 20,
+        "after": 36,
+        "common": 15,
+        "preserved": 15,
+        "commonIdentityPreserved": true,
+        "targetNodeId": null,
+        "targetIdentityPreserved": null
+      },
+      "appMetrics": {
+        "rendererWorkingSetMB": 551.7,
+        "gpuWorkingSetMB": 124.8,
+        "processCount": 5,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 78104,
+            "workingSetMB": 233.8
+          },
+          {
+            "type": "GPU",
+            "pid": 78105,
+            "workingSetMB": 124.8
+          },
+          {
+            "type": "Utility",
+            "pid": 78106,
+            "workingSetMB": 43.2
+          },
+          {
+            "type": "Tab",
+            "pid": 78107,
+            "workingSetMB": 551.7
+          },
+          {
+            "type": "Utility",
+            "pid": 78108,
+            "workingSetMB": 37.9
+          }
+        ]
+      },
+      "runtimeVersions": {
+        "app": "0.19.0",
+        "electron": "31.7.7",
+        "chrome": "126.0.6478.234",
+        "node": "20.18.0",
+        "v8": "12.6.228.30-electron.0"
+      },
+      "pageErrors": [],
+      "consoleErrors": [],
+      "elapsedMs": 22553
+    },
+    {
+      "scale": "XL",
+      "scenario": "reload-heavy",
+      "runIndex": 1,
+      "fixture": {
+        "scale": "XL",
+        "imageNodes": 160,
+        "videoNodes": 160,
+        "nodes": 320,
+        "edges": 640,
+        "clips": 80,
+        "imageBytes": [
+          54708,
+          210153
+        ],
+        "videoBytes": [
+          386990,
+          386940
+        ]
+      },
+      "probe": {
+        "elapsedMs": 2109,
+        "frames": 244,
+        "fps": 115.1,
+        "frameGapP50Ms": 8.3,
+        "frameGapP95Ms": 9.4,
+        "maxFrameGapMs": 25.6,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskP95Ms": null,
+        "maxLoadingImages": 4,
+        "maxLoadingVideos": 0,
+        "maxActiveVideos": 0,
+        "firstMutationMs": 268.1,
+        "mutations": {
+          "stage": 0,
+          "edges": 2139,
+          "labels": 0
+        }
+      },
+      "cdpBefore": {
+        "LayoutCount": 0,
+        "RecalcStyleCount": 2,
+        "ScriptDurationMs": 0,
+        "LayoutDurationMs": 0,
+        "TaskDurationMs": 3.9,
+        "JSHeapUsedMB": 20.9,
+        "domNodes": 2719,
+        "domDocuments": 7,
+        "jsEventListeners": 1182
+      },
+      "cdpAfter": {
+        "LayoutCount": 52,
+        "RecalcStyleCount": 159,
+        "ScriptDurationMs": 317.5,
+        "LayoutDurationMs": 41.8,
+        "TaskDurationMs": 942.4,
+        "JSHeapUsedMB": 27,
+        "domNodes": 11158,
+        "domDocuments": 8,
+        "jsEventListeners": 1159
+      },
+      "cdpDelta": {
+        "LayoutCount": 52,
+        "RecalcStyleCount": 157,
+        "ScriptDurationMs": 317.5,
+        "LayoutDurationMs": 41.8,
+        "TaskDurationMs": 938.5,
+        "JSHeapUsedMB": 6.1,
+        "domNodes": 8439,
+        "domDocuments": 1,
+        "jsEventListeners": -23
+      },
+      "beforePage": {
+        "domNodes": 1555,
+        "canvasNodes": 20,
+        "lightweightCanvasNodes": 0,
+        "imageElements": 6,
+        "videoElements": 6,
+        "visibleMedia": 12,
+        "loadedImages": 6,
+        "loadedVideos": 6,
+        "activeVideos": 0,
+        "resourceCount": 0,
+        "jsHeapUsedMB": 28,
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "zoom": 1
+        }
+      },
+      "page": {
+        "domNodes": 3951,
+        "canvasNodes": 320,
+        "lightweightCanvasNodes": 320,
+        "imageElements": 0,
+        "videoElements": 0,
+        "visibleMedia": 0,
+        "loadedImages": 0,
+        "loadedVideos": 0,
+        "activeVideos": 0,
+        "resourceCount": 1,
+        "jsHeapUsedMB": 28,
+        "transform": {
+          "x": 535.895,
+          "y": 0,
+          "zoom": 0.0981572
+        }
+      },
+      "actionDetails": {
+        "snapshots": [
+          {
+            "domNodes": 1555,
+            "canvasNodes": 20,
+            "lightweightCanvasNodes": 0,
+            "imageElements": 6,
+            "videoElements": 6,
+            "visibleMedia": 12,
+            "loadedImages": 6,
+            "loadedVideos": 6,
+            "activeVideos": 0,
+            "resourceCount": 0,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "zoom": 1
+            }
+          },
+          {
+            "domNodes": 3951,
+            "canvasNodes": 320,
+            "lightweightCanvasNodes": 320,
+            "imageElements": 0,
+            "videoElements": 0,
+            "visibleMedia": 0,
+            "loadedImages": 0,
+            "loadedVideos": 0,
+            "activeVideos": 0,
+            "resourceCount": 1,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": 535.895,
+              "y": 0,
+              "zoom": 0.0981572
+            }
+          },
+          {
+            "domNodes": 3951,
+            "canvasNodes": 320,
+            "lightweightCanvasNodes": 320,
+            "imageElements": 0,
+            "videoElements": 0,
+            "visibleMedia": 0,
+            "loadedImages": 0,
+            "loadedVideos": 0,
+            "activeVideos": 0,
+            "resourceCount": 0,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": 535.895,
+              "y": 0,
+              "zoom": 0.0981572
+            }
+          },
+          {
+            "domNodes": 3951,
+            "canvasNodes": 320,
+            "lightweightCanvasNodes": 320,
+            "imageElements": 0,
+            "videoElements": 0,
+            "visibleMedia": 0,
+            "loadedImages": 0,
+            "loadedVideos": 0,
+            "activeVideos": 0,
+            "resourceCount": 1,
+            "jsHeapUsedMB": 28,
+            "transform": {
+              "x": 535.895,
+              "y": 0,
+              "zoom": 0.0981572
+            }
+          }
+        ],
+        "reloadDurationsMs": [
+          197,
+          219,
+          206
+        ],
+        "reloadProbes": [
+          {
+            "elapsedMs": 704,
+            "frames": 81,
+            "fps": 115.1,
+            "frameGapP50Ms": 8.3,
+            "frameGapP95Ms": 9.1,
+            "maxFrameGapMs": 25.5,
+            "longTasks": 0,
+            "longTaskMs": 0,
+            "longTaskP95Ms": null,
+            "maxLoadingImages": 4,
+            "maxLoadingVideos": 0,
+            "maxActiveVideos": 0,
+            "firstMutationMs": 297.4,
+            "mutations": {
+              "stage": 0,
+              "edges": 713,
+              "labels": 0
+            }
+          },
+          {
+            "elapsedMs": 704,
+            "frames": 80,
+            "fps": 113.7,
+            "frameGapP50Ms": 8.3,
+            "frameGapP95Ms": 9.4,
+            "maxFrameGapMs": 24.8,
+            "longTasks": 0,
+            "longTaskMs": 0,
+            "longTaskP95Ms": null,
+            "maxLoadingImages": 0,
+            "maxLoadingVideos": 0,
+            "maxActiveVideos": 0,
+            "firstMutationMs": 268.1,
+            "mutations": {
+              "stage": 0,
+              "edges": 713,
+              "labels": 0
+            }
+          },
+          {
+            "elapsedMs": 701,
+            "frames": 83,
+            "fps": 118.4,
+            "frameGapP50Ms": 8.3,
+            "frameGapP95Ms": 9.4,
+            "maxFrameGapMs": 25.6,
+            "longTasks": 0,
+            "longTaskMs": 0,
+            "longTaskP95Ms": null,
+            "maxLoadingImages": 0,
+            "maxLoadingVideos": 0,
+            "maxActiveVideos": 0,
+            "firstMutationMs": 266.6,
+            "mutations": {
+              "stage": 0,
+              "edges": 713,
+              "labels": 0
+            }
+          }
+        ],
+        "reloadHeapDeltaMB": 0
+      },
+      "nodeIdentity": null,
+      "appMetrics": {
+        "rendererWorkingSetMB": 928.3,
+        "gpuWorkingSetMB": 124.7,
+        "processCount": 5,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 78207,
+            "workingSetMB": 228.7
+          },
+          {
+            "type": "GPU",
+            "pid": 78208,
+            "workingSetMB": 124.7
+          },
+          {
+            "type": "Utility",
+            "pid": 78209,
+            "workingSetMB": 31.1
+          },
+          {
+            "type": "Tab",
+            "pid": 78210,
+            "workingSetMB": 928.3
+          },
+          {
+            "type": "Utility",
+            "pid": 78211,
+            "workingSetMB": 31.4
+          }
+        ]
+      },
+      "runtimeVersions": {
+        "app": "0.19.0",
+        "electron": "31.7.7",
+        "chrome": "126.0.6478.234",
+        "node": "20.18.0",
+        "v8": "12.6.228.30-electron.0"
+      },
+      "pageErrors": [],
+      "consoleErrors": [],
+      "elapsedMs": 19989
+    }
+  ],
+  "summary": {
+    "XL/node-drag-video": {
+      "samples": 1,
+      "errors": 0,
+      "metrics": {
+        "coldFirstCanvasMs": null,
+        "coldMediaSettledMs": null,
+        "fps": {
+          "median": 102.8,
+          "p95": 102.8,
+          "samples": [
+            102.8
+          ]
+        },
+        "frameGapP95Ms": {
+          "median": 17.3,
+          "p95": 17.3,
+          "samples": [
+            17.3
+          ]
+        },
+        "maxFrameGapMs": {
+          "median": 64.9,
+          "p95": 64.9,
+          "samples": [
+            64.9
+          ]
+        },
+        "longTaskMs": {
+          "median": 57,
+          "p95": 57,
+          "samples": [
+            57
+          ]
+        },
+        "longTaskP95Ms": {
+          "median": 57,
+          "p95": 57,
+          "samples": [
+            57
+          ]
+        },
+        "maxLoadingImages": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxLoadingVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxActiveVideos": {
+          "median": 1,
+          "p95": 1,
+          "samples": [
+            1
+          ]
+        },
+        "layoutCount": {
+          "median": 23,
+          "p95": 23,
+          "samples": [
+            23
+          ]
+        },
+        "recalcStyleCount": {
+          "median": 173,
+          "p95": 173,
+          "samples": [
+            173
+          ]
+        },
+        "scriptDurationMs": {
+          "median": 155.2,
+          "p95": 155.2,
+          "samples": [
+            155.2
+          ]
+        },
+        "layoutDurationMs": {
+          "median": 9.3,
+          "p95": 9.3,
+          "samples": [
+            9.3
+          ]
+        },
+        "jsHeapUsedMB": {
+          "median": 28,
+          "p95": 28,
+          "samples": [
+            28
+          ]
+        },
+        "visibleMedia": {
+          "median": 13,
+          "p95": 13,
+          "samples": [
+            13
+          ]
+        },
+        "loadedImages": {
+          "median": 7,
+          "p95": 7,
+          "samples": [
+            7
+          ]
+        },
+        "loadedVideos": {
+          "median": 6,
+          "p95": 6,
+          "samples": [
+            6
+          ]
+        },
+        "activeVideos": {
+          "median": 1,
+          "p95": 1,
+          "samples": [
+            1
+          ]
+        },
+        "rendererWorkingSetMB": {
+          "median": 327.4,
+          "p95": 327.4,
+          "samples": [
+            327.4
+          ]
+        },
+        "reloadHeapDeltaMB": null,
+        "reloadDurationP95Ms": null
+      },
+      "verdict": {
+        "pass": true,
+        "hardFailures": [],
+        "budgetChecks": [
+          {
+            "metric": "frameGapP95Ms",
+            "actualP95": 17.3,
+            "max": 33,
+            "pass": true
+          },
+          {
+            "metric": "maxFrameGapMs",
+            "actualP95": 64.9,
+            "max": 100,
+            "pass": true
+          },
+          {
+            "metric": "longTaskP95Ms",
+            "actualP95": 57,
+            "max": 80,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingImages",
+            "actualP95": 0,
+            "max": 4,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingVideos",
+            "actualP95": 0,
+            "max": 1,
+            "pass": true
+          },
+          {
+            "metric": "maxActiveVideos",
+            "actualP95": 1,
+            "max": 1,
+            "pass": true
+          }
+        ]
+      }
+    },
+    "XL/click-select": {
+      "samples": 1,
+      "errors": 0,
+      "metrics": {
+        "coldFirstCanvasMs": null,
+        "coldMediaSettledMs": null,
+        "fps": {
+          "median": 69.9,
+          "p95": 69.9,
+          "samples": [
+            69.9
+          ]
+        },
+        "frameGapP95Ms": {
+          "median": 50.6,
+          "p95": 50.6,
+          "samples": [
+            50.6
+          ]
+        },
+        "maxFrameGapMs": {
+          "median": 94.8,
+          "p95": 94.8,
+          "samples": [
+            94.8
+          ]
+        },
+        "longTaskMs": {
+          "median": 58,
+          "p95": 58,
+          "samples": [
+            58
+          ]
+        },
+        "longTaskP95Ms": {
+          "median": 58,
+          "p95": 58,
+          "samples": [
+            58
+          ]
+        },
+        "maxLoadingImages": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxLoadingVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxActiveVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "layoutCount": {
+          "median": 66,
+          "p95": 66,
+          "samples": [
+            66
+          ]
+        },
+        "recalcStyleCount": {
+          "median": 242,
+          "p95": 242,
+          "samples": [
+            242
+          ]
+        },
+        "scriptDurationMs": {
+          "median": 402,
+          "p95": 402,
+          "samples": [
+            402
+          ]
+        },
+        "layoutDurationMs": {
+          "median": 19.6,
+          "p95": 19.6,
+          "samples": [
+            19.6
+          ]
+        },
+        "jsHeapUsedMB": {
+          "median": 29.8,
+          "p95": 29.8,
+          "samples": [
+            29.8
+          ]
+        },
+        "visibleMedia": {
+          "median": 12,
+          "p95": 12,
+          "samples": [
+            12
+          ]
+        },
+        "loadedImages": {
+          "median": 6,
+          "p95": 6,
+          "samples": [
+            6
+          ]
+        },
+        "loadedVideos": {
+          "median": 6,
+          "p95": 6,
+          "samples": [
+            6
+          ]
+        },
+        "activeVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "rendererWorkingSetMB": {
+          "median": 474,
+          "p95": 474,
+          "samples": [
+            474
+          ]
+        },
+        "reloadHeapDeltaMB": null,
+        "reloadDurationP95Ms": null
+      },
+      "verdict": {
+        "pass": false,
+        "hardFailures": [],
+        "budgetChecks": [
+          {
+            "metric": "frameGapP95Ms",
+            "actualP95": 50.6,
+            "max": 33,
+            "pass": false
+          },
+          {
+            "metric": "maxFrameGapMs",
+            "actualP95": 94.8,
+            "max": 100,
+            "pass": true
+          },
+          {
+            "metric": "longTaskP95Ms",
+            "actualP95": 58,
+            "max": 80,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingImages",
+            "actualP95": 0,
+            "max": 4,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingVideos",
+            "actualP95": 0,
+            "max": 1,
+            "pass": true
+          },
+          {
+            "metric": "maxActiveVideos",
+            "actualP95": 0,
+            "max": 1,
+            "pass": true
+          }
+        ]
+      }
+    },
+    "XL/marquee-select": {
+      "samples": 1,
+      "errors": 0,
+      "metrics": {
+        "coldFirstCanvasMs": null,
+        "coldMediaSettledMs": null,
+        "fps": {
+          "median": 107,
+          "p95": 107,
+          "samples": [
+            107
+          ]
+        },
+        "frameGapP95Ms": {
+          "median": 9.5,
+          "p95": 9.5,
+          "samples": [
+            9.5
+          ]
+        },
+        "maxFrameGapMs": {
+          "median": 60,
+          "p95": 60,
+          "samples": [
+            60
+          ]
+        },
+        "longTaskMs": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "longTaskP95Ms": null,
+        "maxLoadingImages": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxLoadingVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxActiveVideos": {
+          "median": 1,
+          "p95": 1,
+          "samples": [
+            1
+          ]
+        },
+        "layoutCount": {
+          "median": 67,
+          "p95": 67,
+          "samples": [
+            67
+          ]
+        },
+        "recalcStyleCount": {
+          "median": 277,
+          "p95": 277,
+          "samples": [
+            277
+          ]
+        },
+        "scriptDurationMs": {
+          "median": 166.7,
+          "p95": 166.7,
+          "samples": [
+            166.7
+          ]
+        },
+        "layoutDurationMs": {
+          "median": 5.6,
+          "p95": 5.6,
+          "samples": [
+            5.6
+          ]
+        },
+        "jsHeapUsedMB": {
+          "median": 35.6,
+          "p95": 35.6,
+          "samples": [
+            35.6
+          ]
+        },
+        "visibleMedia": {
+          "median": 15,
+          "p95": 15,
+          "samples": [
+            15
+          ]
+        },
+        "loadedImages": {
+          "median": 9,
+          "p95": 9,
+          "samples": [
+            9
+          ]
+        },
+        "loadedVideos": {
+          "median": 6,
+          "p95": 6,
+          "samples": [
+            6
+          ]
+        },
+        "activeVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "rendererWorkingSetMB": {
+          "median": 353.5,
+          "p95": 353.5,
+          "samples": [
+            353.5
+          ]
+        },
+        "reloadHeapDeltaMB": null,
+        "reloadDurationP95Ms": null
+      },
+      "verdict": {
+        "pass": true,
+        "hardFailures": [],
+        "budgetChecks": [
+          {
+            "metric": "frameGapP95Ms",
+            "actualP95": 9.5,
+            "max": 33,
+            "pass": true
+          },
+          {
+            "metric": "maxFrameGapMs",
+            "actualP95": 60,
+            "max": 100,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingImages",
+            "actualP95": 0,
+            "max": 4,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingVideos",
+            "actualP95": 0,
+            "max": 1,
+            "pass": true
+          },
+          {
+            "metric": "maxActiveVideos",
+            "actualP95": 1,
+            "max": 1,
+            "pass": true
+          }
+        ]
+      }
+    },
+    "XL/media-reveal": {
+      "samples": 1,
+      "errors": 0,
+      "metrics": {
+        "coldFirstCanvasMs": null,
+        "coldMediaSettledMs": null,
+        "fps": {
+          "median": 116.6,
+          "p95": 116.6,
+          "samples": [
+            116.6
+          ]
+        },
+        "frameGapP95Ms": {
+          "median": 9.3,
+          "p95": 9.3,
+          "samples": [
+            9.3
+          ]
+        },
+        "maxFrameGapMs": {
+          "median": 60.3,
+          "p95": 60.3,
+          "samples": [
+            60.3
+          ]
+        },
+        "longTaskMs": {
+          "median": 157,
+          "p95": 157,
+          "samples": [
+            157
+          ]
+        },
+        "longTaskP95Ms": {
+          "median": 54,
+          "p95": 54,
+          "samples": [
+            54
+          ]
+        },
+        "maxLoadingImages": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxLoadingVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxActiveVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "layoutCount": {
+          "median": 169,
+          "p95": 169,
+          "samples": [
+            169
+          ]
+        },
+        "recalcStyleCount": {
+          "median": 808,
+          "p95": 808,
+          "samples": [
+            808
+          ]
+        },
+        "scriptDurationMs": {
+          "median": 800.2,
+          "p95": 800.2,
+          "samples": [
+            800.2
+          ]
+        },
+        "layoutDurationMs": {
+          "median": 35.5,
+          "p95": 35.5,
+          "samples": [
+            35.5
+          ]
+        },
+        "jsHeapUsedMB": {
+          "median": 28,
+          "p95": 28,
+          "samples": [
+            28
+          ]
+        },
+        "visibleMedia": {
+          "median": 15,
+          "p95": 15,
+          "samples": [
+            15
+          ]
+        },
+        "loadedImages": {
+          "median": 15,
+          "p95": 15,
+          "samples": [
+            15
+          ]
+        },
+        "loadedVideos": {
+          "median": 10,
+          "p95": 10,
+          "samples": [
+            10
+          ]
+        },
+        "activeVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "rendererWorkingSetMB": {
+          "median": 551.7,
+          "p95": 551.7,
+          "samples": [
+            551.7
+          ]
+        },
+        "reloadHeapDeltaMB": null,
+        "reloadDurationP95Ms": null
+      },
+      "verdict": {
+        "pass": true,
+        "hardFailures": [],
+        "budgetChecks": [
+          {
+            "metric": "frameGapP95Ms",
+            "actualP95": 9.3,
+            "max": 33,
+            "pass": true
+          },
+          {
+            "metric": "maxFrameGapMs",
+            "actualP95": 60.3,
+            "max": 100,
+            "pass": true
+          },
+          {
+            "metric": "longTaskP95Ms",
+            "actualP95": 54,
+            "max": 80,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingImages",
+            "actualP95": 0,
+            "max": 4,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingVideos",
+            "actualP95": 0,
+            "max": 1,
+            "pass": true
+          },
+          {
+            "metric": "maxActiveVideos",
+            "actualP95": 0,
+            "max": 1,
+            "pass": true
+          }
+        ]
+      }
+    },
+    "XL/reload-heavy": {
+      "samples": 1,
+      "errors": 0,
+      "metrics": {
+        "coldFirstCanvasMs": null,
+        "coldMediaSettledMs": null,
+        "fps": {
+          "median": 115.1,
+          "p95": 115.1,
+          "samples": [
+            115.1
+          ]
+        },
+        "frameGapP95Ms": {
+          "median": 9.4,
+          "p95": 9.4,
+          "samples": [
+            9.4
+          ]
+        },
+        "maxFrameGapMs": {
+          "median": 25.6,
+          "p95": 25.6,
+          "samples": [
+            25.6
+          ]
+        },
+        "longTaskMs": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "longTaskP95Ms": null,
+        "maxLoadingImages": {
+          "median": 4,
+          "p95": 4,
+          "samples": [
+            4
+          ]
+        },
+        "maxLoadingVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "maxActiveVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "layoutCount": {
+          "median": 52,
+          "p95": 52,
+          "samples": [
+            52
+          ]
+        },
+        "recalcStyleCount": {
+          "median": 157,
+          "p95": 157,
+          "samples": [
+            157
+          ]
+        },
+        "scriptDurationMs": {
+          "median": 317.5,
+          "p95": 317.5,
+          "samples": [
+            317.5
+          ]
+        },
+        "layoutDurationMs": {
+          "median": 41.8,
+          "p95": 41.8,
+          "samples": [
+            41.8
+          ]
+        },
+        "jsHeapUsedMB": {
+          "median": 28,
+          "p95": 28,
+          "samples": [
+            28
+          ]
+        },
+        "visibleMedia": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "loadedImages": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "loadedVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "activeVideos": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "rendererWorkingSetMB": {
+          "median": 928.3,
+          "p95": 928.3,
+          "samples": [
+            928.3
+          ]
+        },
+        "reloadHeapDeltaMB": {
+          "median": 0,
+          "p95": 0,
+          "samples": [
+            0
+          ]
+        },
+        "reloadDurationP95Ms": {
+          "median": 219,
+          "p95": 219,
+          "samples": [
+            219
+          ]
+        }
+      },
+      "verdict": {
+        "pass": true,
+        "hardFailures": [],
+        "budgetChecks": [
+          {
+            "metric": "frameGapP95Ms",
+            "actualP95": 9.4,
+            "max": 33,
+            "pass": true
+          },
+          {
+            "metric": "maxFrameGapMs",
+            "actualP95": 25.6,
+            "max": 100,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingImages",
+            "actualP95": 4,
+            "max": 4,
+            "pass": true
+          },
+          {
+            "metric": "maxLoadingVideos",
+            "actualP95": 0,
+            "max": 1,
+            "pass": true
+          },
+          {
+            "metric": "maxActiveVideos",
+            "actualP95": 0,
+            "max": 1,
+            "pass": true
+          },
+          {
+            "metric": "reloadHeapDeltaMB",
+            "actualP95": 0,
+            "max": 10,
+            "pass": true
+          }
+        ]
+      }
+    }
+  },
+  "runtimeVersions": {
+    "app": "0.19.0",
+    "electron": "31.7.7",
+    "chrome": "126.0.6478.234",
+    "node": "20.18.0",
+    "v8": "12.6.228.30-electron.0"
+  },
+  "pass": false
+}
