@@ -63,7 +63,7 @@
     "eval:generate-quality": "node ./scripts/eval-review-images.mjs",
     "eval:journey": "node ./scripts/eval-journey.mjs",
     "dist": "electron-builder",
-    "dist:mac:dir": "electron-builder --mac dir --arm64",
+    "dist:mac:dir": "electron-builder --mac dir --arm64 && node tests/ux/packaged-mcp-smoke.e2e.mjs release/mac-arm64/Nomi.app",
     "postinstall": "node ./scripts/install-git-hooks.cjs",
     "test:e2e": "node tests/ux/smoke.e2e.mjs",
     "test:site": "pnpm run check:site && node tests/ux/marketing-quickstart.static.mjs && node tests/ux/download-selection.contract.mjs",
@@ -176,6 +176,7 @@
       "dist-electron/**",
       "public/**",
       "resources/**",
+      "skills/**",
       "build/icon.png",
       "build/icon.ico"
     ],

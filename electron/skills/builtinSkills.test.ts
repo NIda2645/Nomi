@@ -20,6 +20,13 @@ function builtinSkillJsonDirs(): string[] {
 describe("built-in skill packs", () => {
   const dirs = builtinSkillJsonDirs();
 
+  it("ships the built-in skill tree in packaged applications", () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf8")) as {
+      build?: { files?: string[] };
+    };
+    expect(packageJson.build?.files).toContain("skills/**");
+  });
+
   it("finds at least the brand-promo playbook + legacy packs", () => {
     expect(dirs).toContain("brand-promo");
     expect(dirs.length).toBeGreaterThanOrEqual(4);

@@ -2,7 +2,7 @@
 
 ## Verdict
 
-No unresolved P0 or P1 issue was found in the Production Run MCP boundary. The built Electron journey, MCP Apps host journey, focused security tests, and full repository gates passed on the same worktree and build.
+No unresolved P0 or P1 issue remains in the Production Run MCP boundary. Final installation testing found that the package whitelist omitted `skills/**`; repository tests had masked this because the skill loader also checks the working directory. The whitelist and release test were fixed, and the built Electron journey, MCP Apps host journey, installed-package MCP smoke, focused security tests, and full repository gates passed on the same worktree and build.
 
 ## Attack Matrix
 
@@ -17,6 +17,7 @@ No unresolved P0 or P1 issue was found in the Production Run MCP boundary. The b
 | Filtered event is reread forever | Durable cursor advances beyond suppressed events | `productionRunService.test.ts` | Pass |
 | MCP Apps fabricates progress or floods media/actions | Canonical state maps to one truthful sentence, at most one preview, and one Nomi CTA | `nomiMcpApps.test.ts`, 9-assertion host render journey | Pass |
 | Fixture reaches production builds or calls a provider | Fixture requires both E2E flags and `app.isPackaged === false`; it uses bundled FFmpeg only | `productionRunE2eFixture.test.ts`, real journey | Pass |
+| Packaged MCP silently loses built-in director/writer skills | `skills/**` is packaged and the final app is launched from an isolated working directory | `builtinSkills.test.ts`, `packaged-mcp-smoke.e2e.mjs` (13 tools, 24 resources, full director body) | Pass |
 
 ## Residual Product Boundaries
 
@@ -29,6 +30,7 @@ No unresolved P0 or P1 issue was found in the Production Run MCP boundary. The b
 
 ```bash
 pnpm run gates
+pnpm run dist:mac:dir
 node tests/ux/production-mcp-journey.e2e.mjs
 node tests/ux/mcp-apps-host-render.e2e.mjs
 ```
