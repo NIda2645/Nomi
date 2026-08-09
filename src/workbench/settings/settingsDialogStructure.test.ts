@@ -12,6 +12,8 @@ describe('settings dialog structure', () => {
     }
     expect(settingsSource).toContain('<AiModelsSection')
     expect(settingsSource).toContain('<AutomationPermissionsSection')
+    expect(settingsSource).toContain('sm:flex-row')
+    expect(settingsSource).toContain('overflow-x-auto')
   })
 
   it('keeps notification policy in settings instead of duplicating it in task center', () => {

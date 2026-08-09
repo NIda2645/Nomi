@@ -39,6 +39,7 @@ import { lazyWithChunkBoundary } from '../ui/chunkBoundary'
 import { releaseWorkbenchProjectRuntimeState } from './project/releaseWorkbenchProjectSession'
 import { useSpendConfirmStore } from './generationCanvas/spend/spendConfirm'
 import { runAssetSurfaceMigrations } from './assets/assetSurfaceMigration'
+import { useProductionRunStore } from './production/productionRunStore'
 
 type AppView = 'library' | 'studio'
 
@@ -122,6 +123,8 @@ export default function NomiStudioApp(): JSX.Element {
   const generationAiCollapsed = useGenerationCanvasStore((state) => state.generationAiCollapsed)
   const [modelCatalogOpened, setModelCatalogOpened] = React.useState(false)
   const [settingsOpened, setSettingsOpened] = React.useState(false)
+  const [settingsInitialTab, setSettingsInitialTab] = React.useState<'file' | 'ai' | 'automation' | 'general' | 'about'>('file')
+  const [settingsInitialSection, setSettingsInitialSection] = React.useState<'automation' | null>(null)
   const [handbookOpened, setHandbookOpened] = React.useState(false)
   const [browserOpened, setBrowserOpened] = React.useState(false)
   const [browserMounted, setBrowserMounted] = React.useState(false)
@@ -188,6 +191,18 @@ export default function NomiStudioApp(): JSX.Element {
     const handleOpenModelCatalog = () => setModelCatalogOpened(true)
     window.addEventListener('nomi-open-model-catalog', handleOpenModelCatalog)
     return () => window.removeEventListener('nomi-open-model-catalog', handleOpenModelCatalog)
+  }, [])
+
+  React.useEffect(() => {
+    const handleOpenSettings = (event: Event) => {
+      const detail = (event as CustomEvent<{ tab?: string; section?: string }>).detail
+      const tab = detail?.tab
+      setSettingsInitialTab(tab === 'automation' ? 'automation' : 'file')
+      setSettingsInitialSection(detail?.section === 'automation' ? 'automation' : null)
+      setSettingsOpened(true)
+    }
+    window.addEventListener('nomi-open-settings', handleOpenSettings)
+    return () => window.removeEventListener('nomi-open-settings', handleOpenSettings)
   }, [])
 
   React.useEffect(() => {
@@ -360,6 +375,25 @@ export default function NomiStudioApp(): JSX.Element {
     },
     [hydrateProject],
   )
+
+  React.useEffect(() => {
+    const onDeepLink = getDesktopBridge()?.app?.onProductionDeepLink
+    if (!onDeepLink) return undefined
+    return onDeepLink((payload) => {
+      const projectId = typeof payload?.projectId === 'string' ? payload.projectId.trim() : ''
+      const runId = typeof payload?.runId === 'string' ? payload.runId.trim() : ''
+      if (!projectId || !runId) return
+      void (async () => {
+        useWorkbenchStore.getState().setWorkspaceMode('generation')
+        if (activeProjectIdRef.current !== projectId) {
+          const opened = await hydrateProject(projectId, { replaceUrl: true })
+          if (!opened) return
+        }
+        useGenerationCanvasStore.getState().setGenerationAiCollapsed(false)
+        await useProductionRunStore.getState().navigateTo(projectId, runId, payload.artifactId)
+      })().catch((error) => console.error('production deep link failed', error))
+    })
+  }, [hydrateProject])
 
   const openWorkspaceFolder = React.useCallback(async () => {
     await openWorkspaceFromLibrary({
@@ -644,7 +678,11 @@ export default function NomiStudioApp(): JSX.Element {
           onOpenFolder={() => void openWorkspaceFolder()}
           onRevealProjectFolder={revealProjectFolder}
           onOpenModelCatalog={() => setModelCatalogOpened(true)}
-          onOpenSettings={() => setSettingsOpened(true)}
+          onOpenSettings={() => {
+            setSettingsInitialTab('file')
+            setSettingsInitialSection(null)
+            setSettingsOpened(true)
+          }}
           onPlayJourneyTour={playJourneyTour}
           journeyTourSeen={hasSeenJourneyTour()}
           hasTextModel={hasTextModel}
@@ -658,7 +696,7 @@ export default function NomiStudioApp(): JSX.Element {
           </React.Suspense>
         ) : null}
         {settingsOpened ? (
-          <SettingsDialog onClose={() => setSettingsOpened(false)} onReplaySplash={() => setSplashDone(false)} />
+          <SettingsDialog initialTab={settingsInitialTab} initialSection={settingsInitialSection} onClose={() => setSettingsOpened(false)} onReplaySplash={() => setSplashDone(false)} />
         ) : null}
         {/* 付费确认卡提全局：外部 MCP 想在「非当前项目」生成时，用户停在项目库首页也能弹卡确认
                     （治静默黑洞，用户拍板 A）。同一全局 store，库/studio 任一时刻只一个分支渲染、不双弹。 */}
@@ -695,7 +733,11 @@ export default function NomiStudioApp(): JSX.Element {
           projectName={activeProject?.name}
           onBackToLibrary={backToLibrary}
           onOpenModelCatalog={() => setModelCatalogOpened(true)}
-          onOpenSettings={() => setSettingsOpened(true)}
+          onOpenSettings={() => {
+            setSettingsInitialTab('file')
+            setSettingsInitialSection(null)
+            setSettingsOpened(true)
+          }}
           onRenameProject={handleRenameProject}
         />
 
@@ -705,7 +747,7 @@ export default function NomiStudioApp(): JSX.Element {
           </React.Suspense>
         ) : null}
         {settingsOpened ? (
-          <SettingsDialog onClose={() => setSettingsOpened(false)} onReplaySplash={() => setSplashDone(false)} />
+          <SettingsDialog initialTab={settingsInitialTab} initialSection={settingsInitialSection} onClose={() => setSettingsOpened(false)} onReplaySplash={() => setSplashDone(false)} />
         ) : null}
 
         {handbookOpened ? (

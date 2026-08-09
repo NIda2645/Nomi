@@ -56,6 +56,7 @@ import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
 import { desktopT, registerI18nIpc, setDesktopLocale } from "./i18n";
 import { registerSettingsIpc } from "./settings/registerSettingsIpc";
 import { registerProductionRunIpc } from "./productionRun/productionRunIpc";
+import { installProductionRunDesktopLifecycle } from "./productionRun/productionRunDesktopLifecycle";
 installMainProcessLifecycle(app);
 const configuredUserDataDir = String(process.env.NOMI_ELECTRON_USER_DATA_DIR || "").trim();
 if (configuredUserDataDir) {
@@ -72,23 +73,12 @@ if (configuredUserDataDir) {
 const isMcpStdio = process.env.NOMI_MCP_STDIO === "1";
 const allowE2eMultiInstance = process.env.NOMI_E2E_ALLOW_MULTI_INSTANCE === "1";
 const hasSingleInstanceLock = isMcpStdio ? false : allowE2eMultiInstance ? true : app.requestSingleInstanceLock();
-if (!isMcpStdio && !allowE2eMultiInstance) {
-  if (!hasSingleInstanceLock) {
-    app.quit();
-  } else {
-    app.on("second-instance", () => {
-      const [existing] = BrowserWindow.getAllWindows();
-      if (existing) {
-        if (existing.isMinimized()) existing.restore();
-        existing.focus();
-      }
-    });
-  }
-}
+const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({ isMcpStdio, allowE2eMultiInstance, hasSingleInstanceLock });
 if (isMcpStdio) {
   void app
     .whenReady()
     .then(async () => {
+      ensureArtifactPreviewSecret();
       const { startMcpStdioServer } = await import("./capabilityCore/mcpStdioServer");
       await startMcpStdioServer();
     })
@@ -729,6 +719,12 @@ if (hasSingleInstanceLock)
     .whenReady()
     .then(async () => {
       setDesktopLocale(app.getLocale());
+      ensureArtifactPreviewSecret();
+      try {
+        app.setAsDefaultProtocolClient("nomi");
+      } catch {
+        // Registration is best-effort in dev and on platforms that disallow it.
+      }
       registerLocalProtocol();
       installContentSecurityPolicy(session.defaultSession);
       // 写入内置模型种子（Seedance 等主流模型档案）；幂等、存在即跳过，不覆盖用户已有记录。
@@ -750,6 +746,7 @@ if (hasSingleInstanceLock)
         });
       }
       await createWindow();
+      flushPendingProductionDeepLink();
       setTimeout(
         () => {
           // 全局截图热键：默认关，只有用户在设置里开过才会真注册（见 screenshot/screenshotHotkey.ts）。
@@ -771,7 +768,7 @@ if (hasSingleInstanceLock)
         if (BrowserWindow.getAllWindows().length === 0) {
           void createWindow().catch((error) => {
             console.error("[nomi:desktop] failed to recreate window:", error);
-          });
+          }).then(() => flushPendingProductionDeepLink());
         }
       });
     })
@@ -779,12 +776,10 @@ if (hasSingleInstanceLock)
       console.error("[nomi:desktop] failed to start:", error);
       app.quit();
     });
-
 app.on("window-all-closed", () => {
   if (isRecreatingMainWindow) return;
   if (process.platform !== "darwin") app.quit();
 });
-
 // 退出时中止所有在跑导出，否则 ffmpeg 子进程会变孤儿（继续占 CPU/写文件，直到自己跑完）。
 // abort → ffmpegRunner 监听 abort 后 kill 子进程。同步、不抛，绝不拖住退出。
 app.on("before-quit", () => {

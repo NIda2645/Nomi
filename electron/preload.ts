@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 type SyncResult<T> = { ok: true; value: T } | { ok: false; error: string };
+type ProductionDeepLinkPayload = { projectId: string; runId: string; artifactId?: string };
+let queuedProductionDeepLink: ProductionDeepLinkPayload | null = null;
+const productionDeepLinkListeners = new Set<(payload: ProductionDeepLinkPayload) => void>();
+ipcRenderer.on("nomi:production-deep-link", (_event, payload: ProductionDeepLinkPayload) => {
+  queuedProductionDeepLink = payload;
+  for (const listener of productionDeepLinkListeners) listener(payload);
+  if (productionDeepLinkListeners.size > 0) queuedProductionDeepLink = null;
+});
 
 function invokeSync<T>(channel: string, ...args: unknown[]): T {
   const result = ipcRenderer.sendSync(channel, ...args) as SyncResult<T>;
@@ -55,6 +63,15 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
   app: {
     reopenLibraryWindow: () => ipcRenderer.send("nomi:app:reopen-library-window"),
     hardReloadWindow: () => ipcRenderer.send("nomi:app:hard-reload-window"),
+    onProductionDeepLink: (cb: (payload: ProductionDeepLinkPayload) => void) => {
+      productionDeepLinkListeners.add(cb);
+      if (queuedProductionDeepLink) {
+        const pending = queuedProductionDeepLink;
+        queueMicrotask(() => cb(pending));
+        queuedProductionDeepLink = null;
+      }
+      return () => productionDeepLinkListeners.delete(cb);
+    },
   },
   settings: {
     projectLocation: {

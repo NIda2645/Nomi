@@ -6,25 +6,53 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconListDetails } from '@tabler/icons-react'
+import type { ProductionRunSummary } from '../../../electron/productionRun/productionRunTypes'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, WorkbenchButton } from '../../design'
+import { getDesktopBridge } from '../../desktop/bridge'
 import { cn } from '../../utils/cn'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useGenerationQueueStore } from '../generationCanvas/runner/generationQueueStore'
+import { useProductionRunStore } from '../production/productionRunStore'
+import { useWorkbenchStore } from '../workbenchStore'
 import { TaskCenterPanel } from './TaskCenterPanel'
 import { buildTaskCenterView, resolveTaskButtonTone } from './taskCenterEntries'
+import { buildProductionRunTaskRows } from './productionRunTaskCenter'
 import { useBatchFinishNotifier } from './useBatchFinishNotifier'
 
 type Props = {
+  projectId?: string | null
   /** 点任务行时把用户带到画布上那个节点。 */
   onRevealNode?: (nodeId: string) => void
 }
 
-export function TaskCenterButton({ onRevealNode }: Props): JSX.Element {
+export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Element {
   const { t } = useTranslation()
   const [opened, setOpened] = React.useState(false)
   const entries = useGenerationQueueStore((state) => state.entries)
   const batches = useGenerationQueueStore((state) => state.batches)
   const nodes = useGenerationCanvasStore((state) => state.nodes)
+  const [productionRuns, setProductionRuns] = React.useState<ProductionRunSummary[]>([])
+
+  const refreshProductionRuns = React.useCallback(async (): Promise<void> => {
+    if (!projectId) {
+      setProductionRuns([])
+      return
+    }
+    const bridge = getDesktopBridge()?.productionRuns
+    if (!bridge) return
+    try {
+      setProductionRuns(await bridge.list(projectId))
+    } catch {
+      // Preserve the last durable snapshot while a transient IPC refresh fails.
+    }
+  }, [projectId])
+
+  React.useEffect(() => {
+    void refreshProductionRuns()
+    if (!projectId) return
+    const id = window.setInterval(() => void refreshProductionRuns(), 1_500)
+    return () => window.clearInterval(id)
+  }, [projectId, refreshProductionRuns])
 
   // 失焦提醒的订阅住这里：本按钮全程挂载（跟着顶栏），是最稳的宿主。
   useBatchFinishNotifier()
@@ -41,10 +69,33 @@ export function TaskCenterButton({ onRevealNode }: Props): JSX.Element {
     }
   }, [])
 
-  const summary = React.useMemo(
-    () => buildTaskCenterView({ entries, batches, nodes, fallbackTitle: '', now: Date.now() }).summary,
-    [entries, batches, nodes],
-  )
+  const summary = React.useMemo(() => {
+    const generation = buildTaskCenterView({ entries, batches, nodes, fallbackTitle: '', now: Date.now() }).summary
+    const production = buildProductionRunTaskRows(productionRuns, {
+      title: t('taskCenter.productionRun.title'),
+      statuses: {
+        draft: t('taskCenter.productionRun.statuses.draft'),
+        awaiting_direction: t('taskCenter.productionRun.statuses.awaitingDirection'),
+        awaiting_storyboard_review: t('taskCenter.productionRun.statuses.awaitingStoryboardReview'),
+        awaiting_contract: t('taskCenter.productionRun.statuses.awaitingContract'),
+        ready: t('taskCenter.productionRun.statuses.ready'),
+        running: t('taskCenter.productionRun.statuses.running'),
+        pausing: t('taskCenter.productionRun.statuses.pausing'),
+        paused: t('taskCenter.productionRun.statuses.paused'),
+        needs_attention: t('taskCenter.productionRun.statuses.needsAttention'),
+        awaiting_rough_cut_review: t('taskCenter.productionRun.statuses.awaitingRoughCutReview'),
+        awaiting_export: t('taskCenter.productionRun.statuses.awaitingExport'),
+        exporting: t('taskCenter.productionRun.statuses.exporting'),
+        completed: t('taskCenter.productionRun.statuses.completed'),
+        cancelled: t('taskCenter.productionRun.statuses.cancelled'),
+      },
+    })
+    return {
+      ...generation,
+      running: generation.running + production.filter((row) => row.group === 'running').length,
+      queued: generation.queued + production.filter((row) => row.group === 'queued').length,
+    }
+  }, [entries, batches, nodes, productionRuns, t])
   const tone = resolveTaskButtonTone(summary)
   const pending = summary.running + summary.queued
 
@@ -86,6 +137,12 @@ export function TaskCenterButton({ onRevealNode }: Props): JSX.Element {
       <TaskCenterPanel
         opened={opened}
         onClose={() => setOpened(false)}
+        productionRuns={productionRuns}
+        onRevealProductionRun={(targetProjectId, runId) => {
+          useWorkbenchStore.getState().setWorkspaceMode('generation')
+          useGenerationCanvasStore.getState().setGenerationAiCollapsed(false)
+          void useProductionRunStore.getState().navigateTo(targetProjectId, runId)
+        }}
         {...(onRevealNode ? { onRevealNode } : {})}
       />
     </>

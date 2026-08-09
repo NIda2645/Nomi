@@ -307,6 +307,7 @@ export type DesktopBridge = DesktopMediaBridge & {
   app?: {
     reopenLibraryWindow: () => void
     hardReloadWindow?: () => void
+    onProductionDeepLink?: (cb: (payload: { projectId: string; runId: string; artifactId?: string }) => void) => () => void
   }
   settings?: DesktopSettingsBridge
   productionRuns?: DesktopProductionRunBridge

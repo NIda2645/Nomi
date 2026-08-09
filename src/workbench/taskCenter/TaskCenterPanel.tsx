@@ -15,6 +15,9 @@ import { confirmAndRunPlan } from '../generationCanvas/components/batchPlanPrevi
 import { buildDependencyWaves } from '../generationCanvas/runner/dependencyWaves'
 import { buildTaskCenterView, formatElapsed, type TaskCenterRow } from './taskCenterEntries'
 import { currentWorkbenchFloatingTopOffset } from '../../ui/app-shell/windowChrome'
+import type { ProductionRunSummary } from '../../../electron/productionRun/productionRunTypes'
+import type { TaskCenterProjection } from './taskCenterProjection'
+import { buildProductionRunTaskRows } from './productionRunTaskCenter'
 
 const PANEL_WIDTH = 380
 const TOP_OFFSET = currentWorkbenchFloatingTopOffset()
@@ -25,11 +28,13 @@ const TICK_MS = 1000
 type Props = {
   opened: boolean
   onClose: () => void
+  productionRuns: readonly ProductionRunSummary[]
+  onRevealProductionRun?: (projectId: string, runId: string) => void
   /** 点某一行 → 切到生成区并选中该节点。 */
   onRevealNode?: (nodeId: string) => void
 }
 
-export function TaskCenterPanel({ opened, onClose, onRevealNode }: Props): JSX.Element | null {
+export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProductionRun, onRevealNode }: Props): JSX.Element | null {
   const { t } = useTranslation()
   const panelRef = React.useRef<HTMLDivElement>(null)
   const entries = useGenerationQueueStore((state) => state.entries)
@@ -73,10 +78,38 @@ export function TaskCenterPanel({ opened, onClose, onRevealNode }: Props): JSX.E
     () => buildTaskCenterView({ entries, batches, nodes, fallbackTitle: t('taskCenter.untitledShot'), now }),
     [entries, batches, nodes, t, now],
   )
+  const productionRows = React.useMemo(() => buildProductionRunTaskRows(productionRuns, {
+    title: t('taskCenter.productionRun.title'),
+    statuses: {
+      draft: t('taskCenter.productionRun.statuses.draft'),
+      awaiting_direction: t('taskCenter.productionRun.statuses.awaitingDirection'),
+      awaiting_storyboard_review: t('taskCenter.productionRun.statuses.awaitingStoryboardReview'),
+      awaiting_contract: t('taskCenter.productionRun.statuses.awaitingContract'),
+      ready: t('taskCenter.productionRun.statuses.ready'),
+      running: t('taskCenter.productionRun.statuses.running'),
+      pausing: t('taskCenter.productionRun.statuses.pausing'),
+      paused: t('taskCenter.productionRun.statuses.paused'),
+      needs_attention: t('taskCenter.productionRun.statuses.needsAttention'),
+      awaiting_rough_cut_review: t('taskCenter.productionRun.statuses.awaitingRoughCutReview'),
+      awaiting_export: t('taskCenter.productionRun.statuses.awaitingExport'),
+      exporting: t('taskCenter.productionRun.statuses.exporting'),
+      completed: t('taskCenter.productionRun.statuses.completed'),
+      cancelled: t('taskCenter.productionRun.statuses.cancelled'),
+    },
+  }), [productionRuns, t])
 
   if (!opened) return null
 
-  const { rows, summary } = view
+  const generationRows = view.rows
+  const rows: TaskCenterProjection[] = [...generationRows, ...productionRows].sort((left, right) => {
+    const order = { running: 0, queued: 1, done: 2 }
+    return order[left.group] - order[right.group]
+  })
+  const summary = {
+    ...view.summary,
+    running: view.summary.running + productionRows.filter((row) => row.group === 'running').length,
+    queued: view.summary.queued + productionRows.filter((row) => row.group === 'queued').length,
+  }
   const running = rows.filter((row) => row.group === 'running')
   const queued = rows.filter((row) => row.group === 'queued')
   const done = rows.filter((row) => row.group === 'done')
@@ -87,11 +120,11 @@ export function TaskCenterPanel({ opened, onClose, onRevealNode }: Props): JSX.E
     if (node) requestComfyuiCancel(node)
   }
   const cancelAllQueued = () => {
-    const batchIds = new Set(queued.map((row) => row.batchId))
+    const batchIds = new Set(queued.filter((row): row is TaskCenterRow => row.kind === 'generation').map((row) => row.batchId))
     batchIds.forEach((batchId) => useGenerationQueueStore.getState().cancelBatchRemaining(batchId))
   }
   // 失败重试：只对失败的重建依赖波次 → 走既有轻确认铸新令牌（不绕付费闸），成功的不重付。
-  const failedRows = done.filter((row) => row.outcome === 'error' && !row.recoverable)
+  const failedRows = done.filter((row): row is TaskCenterRow => row.kind === 'generation' && row.outcome === 'error' && !row.recoverable)
   const retryAllFailed = () => {
     const state = useGenerationCanvasStore.getState()
     void confirmAndRunPlan(
@@ -100,6 +133,23 @@ export function TaskCenterPanel({ opened, onClose, onRevealNode }: Props): JSX.E
         { nodes: state.nodes, edges: state.edges },
       ),
     )
+  }
+  const reveal = (row: TaskCenterProjection) => {
+    onClose()
+    if (row.kind === 'generation') {
+      onRevealNode?.(row.nodeId)
+      return
+    }
+    if (row.kind === 'production_run') {
+      onRevealProductionRun?.(row.projectId, row.runId)
+    }
+  }
+  const runAction = async (row: TaskCenterProjection): Promise<void> => {
+    const action = row.action
+    if (!action) return
+    if (action.kind === 'cancel_generation_queue') cancelQueued(row as TaskCenterRow)
+    else if (action.kind === 'interrupt_generation') interruptRunning(row as TaskCenterRow)
+    else if (action.kind === 'retry_generation') await confirmAndRunNode(action.nodeId)
   }
 
   return (
@@ -114,7 +164,7 @@ export function TaskCenterPanel({ opened, onClose, onRevealNode }: Props): JSX.E
           position: 'fixed',
           top: TOP_OFFSET,
           right: RIGHT_OFFSET,
-          width: PANEL_WIDTH,
+          width: `min(${PANEL_WIDTH}px, calc(100vw - 24px))`,
           maxHeight: `calc(100vh - ${TOP_OFFSET + 16}px)`,
           borderRadius: 'var(--nomi-radius-lg)',
           zIndex: 4000,
@@ -150,7 +200,7 @@ export function TaskCenterPanel({ opened, onClose, onRevealNode }: Props): JSX.E
             <SectionHeader icon={<IconLoader2 size={13} stroke={1.8} />} label={t('taskCenter.sections.running', { count: running.length })} />
           ) : null}
           {running.map((row) => (
-            <TaskRow key={row.id} row={row} onReveal={onRevealNode} onCancel={() => interruptRunning(row)} />
+            <TaskRow key={row.id} row={row} onReveal={reveal} onAction={() => void runAction(row)} />
           ))}
 
           {queued.length > 0 ? (
@@ -161,7 +211,7 @@ export function TaskCenterPanel({ opened, onClose, onRevealNode }: Props): JSX.E
             />
           ) : null}
           {queued.map((row) => (
-            <TaskRow key={row.id} row={row} onReveal={onRevealNode} onCancel={() => cancelQueued(row)} />
+            <TaskRow key={row.id} row={row} onReveal={reveal} onAction={() => void runAction(row)} />
           ))}
 
           {done.length > 0 ? (
@@ -171,10 +221,8 @@ export function TaskCenterPanel({ opened, onClose, onRevealNode }: Props): JSX.E
             <TaskRow
               key={row.id}
               row={row}
-              onReveal={onRevealNode}
-              {...(row.outcome === 'error' && !row.recoverable
-                ? { onRetry: () => void confirmAndRunNode(row.nodeId) }
-                : {})}
+              onReveal={reveal}
+              onAction={() => void runAction(row)}
             />
           ))}
 
@@ -272,13 +320,11 @@ function SummaryAction({ label, onClick }: { label: string; onClick: () => void 
 function TaskRow({
   row,
   onReveal,
-  onCancel,
-  onRetry,
+  onAction,
 }: {
-  row: TaskCenterRow
-  onReveal?: (nodeId: string) => void
-  onCancel?: () => void
-  onRetry?: () => void
+  row: TaskCenterProjection
+  onReveal?: (row: TaskCenterProjection) => void
+  onAction?: () => void
 }): JSX.Element {
   const { t } = useTranslation()
   const failed = row.outcome === 'error' && !row.recoverable
@@ -286,9 +332,9 @@ function TaskRow({
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onReveal?.(row.nodeId)}
+      onClick={() => onReveal?.(row)}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') onReveal?.(row.nodeId)
+        if (event.key === 'Enter' || event.key === ' ') onReveal?.(row)
       }}
       className="flex gap-2.5 px-3.5 py-2 items-start cursor-pointer hover:bg-nomi-ink-05 transition-[background] duration-[var(--nomi-transition-fast)]"
     >
@@ -296,13 +342,17 @@ function TaskRow({
         <div className={['text-body-sm truncate', failed ? 'text-nomi-ink' : 'text-nomi-ink-80'].join(' ')}>{row.title}</div>
         <div className={['text-micro mt-0.5 truncate', failed ? 'text-nomi-danger' : 'text-nomi-ink-60'].join(' ')}>
           {row.group === 'queued'
-            ? row.waveIndex > 0
-              ? t('taskCenter.row.waitingWave', { wave: row.waveIndex + 1 })
-              : t('taskCenter.row.waitingSlot')
+            ? row.kind === 'generation'
+              ? row.waveIndex > 0
+                ? t('taskCenter.row.waitingWave', { wave: row.waveIndex + 1 })
+                : t('taskCenter.row.waitingSlot')
+              : row.phaseText
             : row.group === 'running'
               ? [row.phaseText, row.elapsedMs !== undefined ? t('taskCenter.row.elapsed', { time: formatElapsed(row.elapsedMs) }) : '']
                   .filter(Boolean)
                   .join(' · ')
+              : row.kind === 'production_run'
+                ? row.phaseText
               : row.outcome === 'cancelled'
                 ? t('taskCenter.row.cancelled')
                 : row.recoverable
@@ -318,7 +368,7 @@ function TaskRow({
             <div className="h-full bg-nomi-accent rounded-full transition-[width] duration-[var(--nomi-transition-fast)]" style={{ width: `${row.percent}%` }} />
           </div>
         ) : null}
-        {row.cancel === 'none' && row.group === 'running' ? (
+        {row.kind === 'generation' && row.cancel === 'none' && row.group === 'running' ? (
           // 诚实交付：云端提交后停不下来，钱已经花了。给个假的取消按钮等于撒谎。
           <div className="flex items-center gap-1 text-micro text-nomi-ink-40 mt-1">
             <IconLock size={11} stroke={1.8} />
@@ -326,27 +376,20 @@ function TaskRow({
           </div>
         ) : null}
       </div>
-      {row.cancel !== 'none' && onCancel ? (
+      {row.action && onAction ? (
         <button
           type="button"
           onClick={(event) => {
             event.stopPropagation()
-            onCancel()
+            onAction()
           }}
           className="shrink-0 text-micro text-nomi-ink-60 border border-nomi-line rounded-full px-2 py-0.5 hover:text-nomi-ink hover:border-nomi-ink-40 transition-[color,border-color] duration-[var(--nomi-transition-fast)]"
         >
-          {row.cancel === 'free' ? t('taskCenter.row.cancel') : t('taskCenter.row.interrupt')}
-        </button>
-      ) : onRetry ? (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onRetry()
-          }}
-          className="shrink-0 text-micro text-nomi-ink-60 border border-nomi-line rounded-full px-2 py-0.5 hover:text-nomi-ink hover:border-nomi-ink-40 transition-[color,border-color] duration-[var(--nomi-transition-fast)]"
-        >
-          {t('taskCenter.row.retry')}
+          {row.action.kind === 'retry_generation'
+            ? t('taskCenter.row.retry')
+            : row.cancel === 'free'
+              ? t('taskCenter.row.cancel')
+              : t('taskCenter.row.interrupt')}
         </button>
       ) : null}
     </div>
