@@ -1,5 +1,6 @@
 import { installCrashHandlers } from "./crashLog";
 import { installParentProcessWatchdog } from "./parentProcessWatchdog";
+import { installProcessStdioErrorGuards } from "./processStdio";
 
 type ElectronAppLifecycle = {
   readonly isPackaged: boolean;
@@ -11,6 +12,7 @@ type MainProcessLifecycleDependencies = {
   env?: NodeJS.ProcessEnv;
   installCrashHandlers?: typeof installCrashHandlers;
   installParentProcessWatchdog?: typeof installParentProcessWatchdog;
+  installProcessStdioErrorGuards?: typeof installProcessStdioErrorGuards;
 };
 
 function readLauncherPid(env: NodeJS.ProcessEnv): number | undefined {
@@ -25,6 +27,9 @@ export function installMainProcessLifecycle(
   const crashHandlerInstaller = dependencies.installCrashHandlers ?? installCrashHandlers;
   const watchdogInstaller =
     dependencies.installParentProcessWatchdog ?? installParentProcessWatchdog;
+  const stdioGuardInstaller =
+    dependencies.installProcessStdioErrorGuards ?? installProcessStdioErrorGuards;
+  stdioGuardInstaller();
   crashHandlerInstaller();
   const stopParentProcessWatchdog = watchdogInstaller({
     // 正装由操作系统管理；只有开发/测试实例应跟随临时启动器退出。

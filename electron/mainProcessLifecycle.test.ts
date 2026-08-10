@@ -19,15 +19,21 @@ describe("installMainProcessLifecycle", () => {
     const { app, beforeQuit } = createApp(false);
     const stop = vi.fn();
     const installCrashHandlers = vi.fn();
+    const installProcessStdioErrorGuards = vi.fn();
     const installParentProcessWatchdog = vi.fn(() => stop);
 
     installMainProcessLifecycle(app, {
       env: { NOMI_LAUNCHER_PID: "42" },
       installCrashHandlers,
+      installProcessStdioErrorGuards,
       installParentProcessWatchdog,
     });
 
+    expect(installProcessStdioErrorGuards).toHaveBeenCalledOnce();
     expect(installCrashHandlers).toHaveBeenCalledOnce();
+    expect(installProcessStdioErrorGuards.mock.invocationCallOrder[0]).toBeLessThan(
+      installCrashHandlers.mock.invocationCallOrder[0],
+    );
     expect(installParentProcessWatchdog).toHaveBeenCalledWith(expect.objectContaining({
       enabled: true,
       parentPid: 42,
@@ -40,13 +46,16 @@ describe("installMainProcessLifecycle", () => {
   it("打包实例不启用开发父进程守卫", () => {
     const { app } = createApp(true);
     const installParentProcessWatchdog = vi.fn(() => vi.fn());
+    const installProcessStdioErrorGuards = vi.fn();
 
     installMainProcessLifecycle(app, {
       env: { NOMI_LAUNCHER_PID: "42" },
       installCrashHandlers: vi.fn(),
+      installProcessStdioErrorGuards,
       installParentProcessWatchdog,
     });
 
+    expect(installProcessStdioErrorGuards).toHaveBeenCalledOnce();
     expect(installParentProcessWatchdog).toHaveBeenCalledWith(expect.objectContaining({
       enabled: false,
       parentPid: 42,
