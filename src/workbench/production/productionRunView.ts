@@ -5,7 +5,9 @@ import type {
 } from '../../../electron/productionRun/productionRunTypes'
 
 export type ProductionRunTone = 'working' | 'attention' | 'danger' | 'success' | 'neutral'
-export type ProductionRunPrimaryAction = 'open-stage' | 'open-gate' | 'review-storyboard' | 'reconcile' | 'review-rough-cut' | 'open-export' | null
+export type ProductionRunPrimaryAction = 'open-stage' | 'open-gate' | 'review-storyboard' | 'reconcile' | 'review-rough-cut' | 'open-export' | 'resume-run' | null
+/** A4 情境控制（§1.5 L2：进行中才出现，不占常驻预算）。 */
+export type ProductionRunControl = 'pause' | 'cancel'
 
 export type ProductionRunView = {
   tone: ProductionRunTone
@@ -13,6 +15,8 @@ export type ProductionRunView = {
   descriptionKey: string
   percent?: number
   primaryAction: ProductionRunPrimaryAction
+  /** 面板情境控制行：running → 暂停+取消；paused/pausing → 取消（继续走 primaryAction）。 */
+  controls: ProductionRunControl[]
   targetId?: string
   originHost: string
   preview?: {
@@ -74,6 +78,7 @@ export function buildProductionRunView(
       .map((skill) => [`${skill.name}\u0000${skill.version}`, skill]),
   ).values()]
   const base = {
+    controls: [] as ProductionRunControl[],
     originHost: ['nomi', 'claude', 'codex', 'cursor'].includes(run.origin.host)
       ? run.origin.host
       : (['claude', 'codex', 'cursor'].includes(run.origin.actorId || '') ? run.origin.actorId! : 'external'),
@@ -171,6 +176,17 @@ export function buildProductionRunView(
       targetId: job?.jobId ?? run.stageId,
     }
   }
+  if (run.status === 'paused' || run.status === 'pausing') {
+    return {
+      ...base,
+      tone: 'attention',
+      titleKey: run.status === 'paused' ? 'production.status.paused' : 'production.status.pausing',
+      descriptionKey: run.status === 'paused' ? 'production.description.paused' : 'production.description.pausing',
+      primaryAction: run.status === 'paused' ? 'resume-run' : null,
+      controls: ['cancel'],
+      targetId: job?.jobId ?? run.stageId,
+    }
+  }
   const vendorStateAt = job?.lastVendorStateChangeAt ? Date.parse(job.lastVendorStateChangeAt) : Number.NaN
   const vendorIsStale = job && ['provider_accepted', 'polling', 'retry_wait'].includes(job.status)
     && Number.isFinite(vendorStateAt) && now - vendorStateAt >= staleAfterMs
@@ -192,6 +208,7 @@ export function buildProductionRunView(
     descriptionKey: run.status === 'draft' ? 'production.description.draft' : 'production.description.running',
     ...(percent === undefined ? {} : { percent }),
     primaryAction: 'open-stage',
+    controls: run.status === 'running' ? ['pause', 'cancel'] : [],
     targetId: job?.jobId ?? run.stageId,
   }
 }

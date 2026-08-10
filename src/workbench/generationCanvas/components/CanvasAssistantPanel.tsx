@@ -640,6 +640,7 @@ export default function CanvasAssistantPanel({
           artifacts={productionStatus.production.run.artifacts}
           focusedArtifactId={productionStatus.focusedArtifactId}
           onPrimaryAction={(action) => { void productionStatus.onPrimaryAction(action) }}
+          onControl={(action) => { void productionStatus.onControl(action) }}
         />
       ) : null}
       <AssistantTimeline

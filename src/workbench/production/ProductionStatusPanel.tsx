@@ -15,6 +15,8 @@ type Props = {
   artifacts?: ProductionArtifact[]
   focusedArtifactId?: string | null
   onPrimaryAction: (action: Exclude<ProductionRunPrimaryAction, null>) => void
+  /** A4 情境控制（暂停/取消）：view.controls 非空才渲染，见 productionRunView。 */
+  onControl: (action: 'pause' | 'cancel') => void
 }
 
 const toneClass: Record<ProductionRunView['tone'], string> = {
@@ -47,6 +49,7 @@ export function ProductionStatusPanel({
   artifacts = [],
   focusedArtifactId = null,
   onPrimaryAction,
+  onControl,
 }: Props): JSX.Element {
   const { t } = useTranslation()
   const actionInFlightRef = React.useRef(false)
@@ -179,6 +182,22 @@ export function ProductionStatusPanel({
           <StatusIcon tone={view.tone} />
           {t(`generationCommon.production.runAction.${action}`)}
         </WorkbenchButton>
+      ) : null}
+
+      {view.controls.length ? (
+        <div className={cn('flex gap-1.5')}>
+          {view.controls.map((control) => (
+            <WorkbenchButton
+              key={control}
+              data-production-control={control}
+              className={cn('flex-1')}
+              disabled={actionInFlight}
+              onClick={() => onControl(control)}
+            >
+              {t(`generationCommon.production.control.${control}`)}
+            </WorkbenchButton>
+          ))}
+        </div>
       ) : null}
 
       <details className={cn('group border-t border-nomi-line-soft pt-2')}>

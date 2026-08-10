@@ -178,6 +178,37 @@ export function buildToolOutcome(
     }
   }
 
+  if (toolName === 'nomi_control_run') {
+    const action = str(args.action)
+    const status = str(value.status)
+    const hint = RUN_STATUS_HINT[status]
+    const budget = rec(value.budget)
+    const done = action === 'pause'
+      ? L(ctx, '✓ 已暂停', '✓ Paused')
+      : action === 'resume'
+        ? L(ctx, '✓ 已继续', '✓ Resumed')
+        : action === 'cancel'
+          ? L(ctx, '✓ 已取消', '✓ Cancelled')
+          : `✓ ${action}`
+    const text = [
+      `${done} · ${runId}${str(value.stageId) ? ` · ${str(value.stageId)}` : ''}`,
+      echoLine(ctx, [
+        typeof budget.actual === 'number' ? `${L(ctx, '已花费', 'spent')} ${budget.actual}` : null,
+        action === 'pause' ? L(ctx, '未提交的任务不计费', 'unsubmitted jobs are not charged') : null,
+        action === 'cancel' ? L(ctx, '已完成的产物保留在项目里', 'finished artifacts stay in the project') : null,
+      ]),
+      hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
+    ].filter(Boolean).join('\n') + openLine
+    return {
+      text,
+      outcome: {
+        kind: 'run_control', runId, projectId, action, status: status || null,
+        budget: { actual: budget.actual ?? null },
+        nextActions: hint ? [hint.action] : [],
+      },
+    }
+  }
+
   if (toolName === 'nomi_generate') {
     const intent = str(args.intent)
     const label = INTENT_LABEL[intent]

@@ -38,7 +38,7 @@ export type DispatchContext = {
   runTask: RunTaskFn
   fetchTaskResult?: FetchTaskResultFn
   makeGateway: (projectId: string) => ProjectGateway
-  productionRuns: Pick<ProductionRunService, 'createDraft' | 'readProjection' | 'readEvents' | 'readArtifactProjection'>
+  productionRuns: Pick<ProductionRunService, 'createDraft' | 'readProjection' | 'readEvents' | 'readArtifactProjection' | 'readFull' | 'command'>
   /** Transport-owned authority. Request bodies may provide only an audit label, never trust. */
   origin?: { host: CapabilityOriginHost; actorId?: string }
 }
@@ -158,6 +158,24 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         requiredIdentifier(params.runId, 'run'),
         requiredIdentifier(params.artifactId, 'artifact'),
       )
+    case 'production.control': {
+      // A4：pause/resume/cancel。commandId 按 (action, revision) 确定 → 同一状态下重复触发天然幂等。
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'action']))
+      const action = String(params.action || '')
+      if (!['pause', 'resume', 'cancel'].includes(action)) throw new RpcError('Invalid production control action', 400)
+      const projectId = requiredIdentifier(params.projectId, 'project')
+      const runId = requiredIdentifier(params.runId, 'run')
+      const full = ctx.productionRuns.readFull(projectId, runId)
+      if (!full) throw new RpcError(`Production run not found: ${runId}`, 404)
+      await ctx.productionRuns.command(projectId, runId, {
+        commandId: `mcp-control-${action}-${full.revision}`,
+        expectedRevision: full.revision,
+        type: 'run.control',
+        payload: { action },
+        issuedAt: new Date().toISOString(),
+      })
+      return ctx.productionRuns.readProjection(projectId, runId)
+    }
     case 'canvas.read':
       return readProjectCanvas(ctx.makeGateway(projectIdOf(params)))
     case 'canvas.addNodes':

@@ -103,6 +103,25 @@ export function useProductionStatus() {
           useWorkbenchStore.getState().setWorkspaceMode('preview')
           return
         }
+        if (action === 'resume-run') {
+          // A4：从断点继续（run.control 与 MCP 侧同一命令收口）。
+          try {
+            await executeCommand(run.projectId, run.runId, {
+              commandId: globalThis.crypto.randomUUID(),
+              expectedRevision: run.revision,
+              type: 'run.control',
+              payload: { action: 'resume' },
+              issuedAt: new Date().toISOString(),
+            })
+            await useProductionRunStore.getState().loadRun(run.projectId, run.runId)
+          } catch (error) {
+            await alertDialog({
+              title: t('generationCommon.production.control.failed'),
+              message: error instanceof Error ? error.message : String(error),
+            })
+          }
+          return
+        }
         if (action === 'reconcile') {
           if (targetJob?.nodeId) useGenerationCanvasStore.getState().selectNode(targetJob.nodeId)
           const found = await confirmDialog({
@@ -247,6 +266,43 @@ export function useProductionStatus() {
     [executeCommand, production.run, t, view?.targetId],
   )
 
+  // A4 情境控制：暂停直接执行；取消是破坏性动作先 confirmDialog（§3.5）。两者与 MCP 同走 run.control。
+  const onControl = React.useCallback(
+    async (action: 'pause' | 'cancel') => {
+      const run = production.run
+      if (!run || actionInFlightRef.current) return
+      actionInFlightRef.current = true
+      try {
+        if (action === 'cancel') {
+          const confirmed = await confirmDialog({
+            title: t('generationCommon.production.control.cancelTitle'),
+            message: t('generationCommon.production.control.cancelMessage'),
+            confirmLabel: t('generationCommon.production.control.cancelConfirm'),
+            cancelLabel: t('common.cancel'),
+            danger: true,
+          })
+          if (!confirmed) return
+        }
+        await executeCommand(run.projectId, run.runId, {
+          commandId: globalThis.crypto.randomUUID(),
+          expectedRevision: run.revision,
+          type: 'run.control',
+          payload: { action },
+          issuedAt: new Date().toISOString(),
+        })
+        await useProductionRunStore.getState().loadRun(run.projectId, run.runId)
+      } catch (error) {
+        await alertDialog({
+          title: t('generationCommon.production.control.failed'),
+          message: error instanceof Error ? error.message : String(error),
+        })
+      } finally {
+        actionInFlightRef.current = false
+      }
+    },
+    [executeCommand, production.run, t],
+  )
+
   const navigationTarget = production.navigationTarget
   const focusedArtifactId =
     navigationTarget &&
@@ -255,5 +311,5 @@ export function useProductionStatus() {
       ? (navigationTarget.artifactId ?? null)
       : null
 
-  return { production, view, focusedArtifactId, onPrimaryAction }
+  return { production, view, focusedArtifactId, onPrimaryAction, onControl }
 }

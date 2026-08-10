@@ -225,6 +225,22 @@ const TOOLS = [
     }),
   },
   {
+    name: 'nomi_control_run',
+    description: '控制制作 Run：pause 暂停（保住已花预算与已完成镜头）/ resume 从断点继续（不重做不重付）/ cancel 取消（未提交任务不计费）。用户说「停一下 / 继续 / 别做了」时用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        runId: { type: 'string' },
+        action: { type: 'string', enum: ['pause', 'resume', 'cancel'] },
+      },
+      required: ['projectId', 'runId', 'action'],
+      additionalProperties: false,
+    },
+    method: 'production.control',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, action: a.action }),
+  },
+  {
     name: 'nomi_generate',
     description: '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。',
     inputSchema: {

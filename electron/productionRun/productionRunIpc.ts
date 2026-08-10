@@ -5,7 +5,7 @@ import { getProductionRunService } from "./productionRunRuntime";
 import type { ProductionRunService } from "./productionRunService";
 import type { CreateProductionRunInput, RunCommand } from "./productionRunTypes";
 
-const RENDERER_COMMAND_TYPES = new Set(["run.status", "gate.decide", "artifact.adopt", "plan.attach", "policy.refresh", "job.reconcile"]);
+const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "plan.attach", "policy.refresh", "job.reconcile"]);
 
 function identifier(value: unknown, label: string): string {
   const normalized = typeof value === "string" ? value.trim() : "";
