@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Nomi MCP「对话原生」体验样张：六幕对话剧本 × 终端/桌面双形态，含五道确认门模型。" />
+  <title>Nomi MCP · 对话原生体验样张</title>
+  <style>
+    @font-face {
+      font-family: "Inter Variable";
+      src: url("../../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2");
+      font-weight: 100 900; font-style: normal; font-display: swap;
+    }
+    @font-face {
+      font-family: "Fraunces Variable";
+      src: url("../../../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2") format("woff2");
+      font-weight: 100 900; font-style: normal; font-display: swap;
+    }
+
+    /* ===== 真实 Nomi token（docs/design/nomi-design-system.md §2.1，值照抄）===== */
+    :root {
+      color-scheme: light;
+      --bg: oklch(0.985 0.003 90);
+      --paper: oklch(1 0 0);
+      --ink: oklch(0.22 0.01 80);
+      --ink-80: oklch(0.32 0.01 80);
+      --ink-60: oklch(0.50 0.01 80);
+      --ink-40: oklch(0.68 0.01 80);
+      --ink-30: oklch(0.78 0.01 80);
+      --ink-20: oklch(0.88 0.005 80);
+      --ink-10: oklch(0.94 0.003 80);
+      --ink-05: oklch(0.97 0.003 80);
+      --line: oklch(0.91 0.004 80);
+      --line-soft: oklch(0.95 0.003 80);
+      --accent: oklch(0.55 0.13 250);
+      --accent-soft: color-mix(in oklch, var(--accent) 12%, var(--paper));
+      --warning: oklch(0.62 0.14 75);
+      --warning-soft: color-mix(in oklch, var(--warning) 12%, var(--paper));
+      --success: #34c759;
+      --success-soft: rgba(52,199,89,.12);
+      --success-ink: #248a3d;
+      --danger: #ff3b30;
+      --danger-soft: rgba(255,59,48,.1);
+      --r-sm: 6px; --r: 10px; --r-lg: 14px;
+      --shadow-sm: 0 8px 24px color-mix(in oklch, var(--ink) 8%, transparent);
+      --shadow-md: 0 18px 56px color-mix(in oklch, var(--ink) 12%, transparent);
+      --fast: 140ms cubic-bezier(.2, .7, .3, 1);
+      --sans: "Inter Variable", Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --display: "Fraunces Variable", Fraunces, "Songti SC", serif;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      /* 终端侧（Claude Code 暗色终端的近似，非 Nomi token，仅样张示意） */
+      --term-bg: #1e1e20;
+      --term-ink: #d6d6d3;
+      --term-dim: #8a8a86;
+      --term-frame: #333336;
+      --term-accent: #c2c0f0;
+      --term-warm: #e0b56a;
+      --term-ok: #7ec98f;
+      --term-err: #e8756a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font-family: var(--sans); font-size: 14px; line-height: 1.55;
+    }
+    button { font: inherit; color: inherit; cursor: pointer; }
+
+    .page { width: min(1240px, calc(100% - 48px)); margin: 0 auto; }
+
+    /* ===== 页头 ===== */
+    .hero { padding: 56px 0 28px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 9px; margin-bottom: 16px;
+      color: var(--ink-60); font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 28px; height: 1px; background: var(--accent); }
+    h1 {
+      margin: 0; font-family: var(--display); font-size: clamp(34px, 4.6vw, 54px);
+      line-height: 1.04; font-weight: 580; letter-spacing: -.03em;
+    }
+    h1 .accent { color: var(--accent); }
+    .hero-copy { max-width: 780px; margin: 16px 0 0; color: var(--ink-60); font-size: 15px; line-height: 1.75; }
+    .hero-copy strong { color: var(--ink); font-weight: 650; }
+    .hero-note {
+      display: grid; grid-template-columns: auto 1fr; gap: 12px; max-width: 780px;
+      margin-top: 18px; padding: 12px 14px; border-left: 2px solid var(--accent);
+      background: color-mix(in oklch, var(--paper) 78%, transparent); color: var(--ink-60); font-size: 12px;
+    }
+    .hero-note b { color: var(--ink); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; white-space: nowrap; }
+
+    /* ===== 幕切换 ===== */
+    .acts {
+      position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 14px;
+      padding: 12px 0; background: color-mix(in oklch, var(--bg) 92%, transparent); backdrop-filter: blur(14px);
+    }
+    .segmented { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--ink-10); }
+    .segmented button {
+      min-height: 36px; padding: 0 13px; border: 0; border-radius: 999px; background: transparent;
+      color: var(--ink-60); transition: background var(--fast), color var(--fast);
+      display: inline-flex; align-items: center; gap: 7px;
+    }
+    .segmented button .no { font-family: var(--mono); font-size: 10px; opacity: .7; }
+    .segmented button[aria-selected="true"] {
+      background: var(--paper); color: var(--ink); font-weight: 650;
+      box-shadow: 0 2px 8px color-mix(in oklch, var(--ink) 8%, transparent);
+    }
+    .acts .hint { color: var(--ink-40); font-family: var(--mono); font-size: 10px; }
+
+    /* ===== 舞台 ===== */
+    .stage { display: grid; grid-template-columns: 1.04fr .96fr; gap: 16px; align-items: start; margin-top: 10px; }
+
+    /* --- 客户端卡（终端 CLI / 桌面富渲染 双形态） --- */
+    .term {
+      border-radius: var(--r-lg); background: var(--term-bg); box-shadow: var(--shadow-md);
+      overflow: hidden; border: 1px solid #000; transition: background var(--fast);
+    }
+    .term-bar {
+      display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+      background: #2a2a2d; border-bottom: 1px solid #1a1a1c;
+    }
+    .dots { display: flex; gap: 6px; }
+    .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+    .term-title { flex: 1; text-align: center; color: #9a9a96; font-family: var(--mono); font-size: 11px; }
+    .client-toggle { display: flex; gap: 3px; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.08); }
+    .client-toggle button {
+      border: 0; background: transparent; color: #9a9a96;
+      font-family: var(--mono); font-size: 10px; padding: 3px 10px; border-radius: 999px;
+    }
+    .client-toggle button[aria-selected="true"] { background: #3a3a3e; color: #fff; }
+    .term-body { padding: 16px 18px 20px; font-family: var(--mono); font-size: 12px; line-height: 1.75; color: var(--term-ink); min-height: 500px; }
+    .t-user { color: var(--term-ink); }
+    .t-user::before { content: "❯ "; color: var(--term-dim); }
+    .t-gap { height: 12px; }
+    .t-tool { color: var(--term-dim); }
+    .t-tool .bullet { color: var(--term-warm); }
+    .t-tool .fn { color: var(--term-ink); font-weight: 600; }
+    .t-result { color: var(--term-dim); padding-left: 18px; }
+    .t-result .tick { color: var(--term-ok); }
+    .t-result .err { color: var(--term-err); }
+    .t-sub { color: var(--term-dim); padding-left: 34px; }
+    .t-sub b { color: var(--term-ink); font-weight: 600; }
+    .t-progress { padding-left: 18px; color: var(--term-accent); }
+    .t-progress .spin { display: inline-block; animation: spin-frames 1s steps(8) infinite; }
+    @keyframes spin-frames { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+    .t-say { margin-top: 10px; color: var(--term-ink); white-space: pre-wrap; }
+    .t-say .dim { color: var(--term-dim); }
+    .t-say .link { color: var(--term-accent); text-decoration: underline; text-underline-offset: 2px; }
+    .t-elicit {
+      margin: 12px 0 4px; border: 1px solid var(--term-frame); border-radius: 8px; overflow: hidden;
+      background: #232326;
+    }
+    .t-elicit-head { padding: 8px 12px; border-bottom: 1px solid var(--term-frame); color: var(--term-warm); }
+    .t-elicit-body { padding: 10px 12px; }
+    .t-elicit-body .msg { color: var(--term-ink); margin-bottom: 8px; white-space: pre-wrap; }
+    .t-opt { padding: 3px 0; color: var(--term-dim); }
+    .t-opt.sel { color: var(--term-ink); }
+    .t-opt.sel::before { content: "❯ "; color: var(--term-accent); }
+    .t-opt:not(.sel)::before { content: "  "; white-space: pre; }
+    .t-elicit-foot { padding: 7px 12px; border-top: 1px solid var(--term-frame); color: var(--term-dim); font-size: 11px; }
+
+    /* --- 桌面富渲染形态（Claude Desktop / claude.ai / Cursor：MCP Apps 层） --- */
+    .term.desk { background: var(--paper); border-color: var(--line); }
+    .term.desk .term-bar { background: var(--ink-05); border-bottom-color: var(--line); }
+    .term.desk .term-title { color: var(--ink-60); }
+    .term.desk .client-toggle { background: var(--ink-10); }
+    .term.desk .client-toggle button { color: var(--ink-60); }
+    .term.desk .client-toggle button[aria-selected="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .desk-body { display: none; padding: 16px 18px 20px; min-height: 500px; }
+    .term.desk .term-body { display: none; }
+    .term.desk .desk-body { display: block; }
+    .desk-user { width: fit-content; max-width: 75%; margin-left: auto; padding: 8px 12px; border-radius: 12px 12px 3px 12px; background: var(--ink); color: var(--paper); font-size: 12.5px; }
+    .desk-claude { display: flex; align-items: center; gap: 7px; margin: 14px 0 6px; color: var(--ink-60); font-size: 11px; }
+    .desk-claude .sun { color: #d97757; font-size: 13px; }
+    .desk-say { font-size: 12.5px; color: var(--ink-80); line-height: 1.65; white-space: pre-wrap; margin-bottom: 6px; }
+    .rich-card { border: 1px solid var(--line); border-radius: var(--r); background: var(--paper); box-shadow: var(--shadow-sm); overflow: hidden; margin: 10px 0; }
+    .rich-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); }
+    .rich-head .nomi-mark { width: 18px; height: 18px; }
+    .rich-head b { font-size: 12.5px; }
+    .rich-head .pill { margin-left: auto; padding: 3px 8px; border-radius: 999px; font-size: 10px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+    .rich-head .pill.warn { background: var(--warning-soft); color: color-mix(in oklch, var(--warning) 80%, var(--ink)); }
+    .rich-head .pill.ok { background: var(--success-soft); color: var(--success-ink); }
+    .rich-body { padding: 12px; }
+    .rich-title { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 10px; }
+    .chip { padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--ink-05); font-size: 10.5px; color: var(--ink-80); font-family: var(--mono); }
+    .opt-row {
+      display: grid; gap: 2px; padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+      margin-bottom: 6px; cursor: pointer; transition: border-color var(--fast), background var(--fast);
+    }
+    .opt-row:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .opt-row b { font-size: 12px; }
+    .opt-row span { font-size: 11px; color: var(--ink-60); }
+    .rich-img {
+      border-radius: var(--r-sm); border: 1px solid var(--line-soft); aspect-ratio: 16/9; margin-bottom: 10px; position: relative;
+      background: linear-gradient(150deg, color-mix(in oklch, var(--accent) 24%, var(--paper)), color-mix(in oklch, var(--warning) 22%, var(--paper)));
+    }
+    .rich-img.video::after {
+      content: "▶"; position: absolute; inset: 0; margin: auto; width: 32px; height: 32px; border-radius: 50%;
+      background: var(--paper); display: grid; place-items: center; font-size: 12px;
+      box-shadow: 0 0 0 6px color-mix(in oklch, var(--paper) 25%, transparent);
+    }
+    .rich-progress { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .rich-progress .track { height: 4px; border-radius: 999px; background: var(--ink-10); overflow: hidden; }
+    .rich-progress .fill { height: 100%; width: 19%; background: var(--accent); border-radius: 999px; }
+    .rich-progress span { font-size: 10.5px; color: var(--ink-60); font-family: var(--mono); }
+    .rich-ledger { display: grid; gap: 4px; margin-bottom: 10px; font-size: 11.5px; color: var(--ink-60); }
+    .rich-ledger .row { display: flex; justify-content: space-between; }
+    .rich-ledger b { font-family: var(--mono); color: var(--ink-80); font-weight: 500; }
+    .rich-actions { display: flex; gap: 6px; }
+    .rich-btn { flex: 1; min-height: 30px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-size: 12px; }
+    .rich-btn.primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+    .rich-btn.primary:hover { background: var(--accent); border-color: var(--accent); }
+    .rich-note { margin-top: 8px; font-size: 10.5px; color: var(--ink-40); }
+
+    /* --- Nomi 窗口 --- */
+    .nomi-win {
+      position: relative; border-radius: var(--r-lg); background: var(--bg);
+      border: 1px solid var(--line); box-shadow: var(--shadow-md); overflow: hidden;
+    }
+    .nomi-bar {
+      display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+      background: var(--paper); border-bottom: 1px solid var(--line);
+    }
+    .nomi-brand { display: inline-flex; align-items: center; gap: 7px; margin-left: 6px; }
+    .nomi-mark { position: relative; width: 20px; height: 20px; border-radius: 5px; background: var(--ink); flex: none; }
+    .nomi-mark::before, .nomi-mark::after, .nomi-mark i {
+      content: ""; position: absolute; top: 5px; bottom: 5px; width: 2.2px; border-radius: 2px; background: var(--paper);
+    }
+    .nomi-mark::before { left: 5px; } .nomi-mark::after { right: 5px; }
+    .nomi-mark i { left: 8.9px; transform: rotate(-31deg); }
+    .rich-head .nomi-mark::before, .rich-head .nomi-mark::after, .rich-head .nomi-mark i { top: 4.5px; bottom: 4.5px; width: 2px; }
+    .rich-head .nomi-mark::before { left: 4.5px; } .rich-head .nomi-mark::after { right: 4.5px; }
+    .rich-head .nomi-mark i { left: 8px; }
+    .nomi-word { font-family: var(--display); font-size: 14px; font-weight: 650; }
+    .nomi-word em { color: var(--accent); font-style: normal; }
+    .nomi-bar .ctx { margin-left: auto; color: var(--ink-40); font-size: 11px; }
+    .nomi-body { display: grid; grid-template-columns: 1fr 300px; min-height: 500px; }
+
+    .canvas-ghost {
+      position: relative; background: radial-gradient(var(--ink-10) 1px, transparent 1px);
+      background-size: 22px 22px; border-right: 1px solid var(--line); padding: 18px;
+    }
+    .node-ghost {
+      position: absolute; width: 150px; border-radius: var(--r); background: var(--paper);
+      border: 1px solid var(--line); box-shadow: var(--shadow-sm); overflow: hidden;
+    }
+    .node-ghost .pill {
+      position: absolute; top: 7px; left: 7px; z-index: 2; padding: 2px 7px; border-radius: 6px;
+      background: var(--ink); color: var(--paper); font-size: 9px; font-weight: 500;
+    }
+    .node-ghost .img {
+      height: 84px;
+      background: repeating-linear-gradient(45deg, var(--ink-05) 0 10px, var(--ink-10) 10px 20px);
+    }
+    .node-ghost .img.filled-1 { background: linear-gradient(150deg, color-mix(in oklch, var(--accent) 26%, var(--paper)), color-mix(in oklch, var(--warning) 24%, var(--paper))); }
+    .node-ghost .img.filled-2 { background: linear-gradient(150deg, color-mix(in oklch, var(--ink) 30%, var(--paper)), color-mix(in oklch, var(--accent) 22%, var(--paper))); }
+    .node-ghost .cbar { height: 26px; border-top: 1px solid var(--line-soft); background: var(--paper); }
+
+    .assist { display: flex; flex-direction: column; background: var(--paper); min-height: 100%; }
+    .assist-head {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .assist-head .nomi-mark { width: 18px; height: 18px; }
+    .assist-head b { font-size: 13px; font-weight: 650; }
+    .assist-head .x { margin-left: auto; color: var(--ink-40); font-size: 12px; }
+
+    .psp { display: grid; gap: 10px; padding: 12px; border-bottom: 1px solid var(--line-soft); }
+    .psp-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .psp-status .lhs { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--ink-80); }
+    .psp-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .tone-working { background: var(--accent); } .tone-attention { background: var(--warning); }
+    .tone-danger { background: var(--danger); } .tone-success { background: var(--success); } .tone-neutral { background: var(--ink-30); }
+    .psp-origin { font-size: 11px; color: var(--ink-40); }
+    .psp-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.35; }
+    .psp-desc { margin: 2px 0 0; font-size: 12px; color: var(--ink-60); line-height: 1.55; }
+    .psp-preview { border-radius: var(--r); border: 1px solid var(--line-soft); background: var(--ink-05); overflow: hidden; }
+    .psp-thumb { aspect-ratio: 16/9; display: grid; place-items: center; color: var(--ink-40); font-size: 12px; text-align: center; padding: 0 12px; }
+    .psp-thumb.filled { background: linear-gradient(150deg, color-mix(in oklch, var(--accent) 24%, var(--paper)), color-mix(in oklch, var(--warning) 22%, var(--paper))); position: relative; }
+    .psp-thumb.video::after {
+      content: "▶"; position: absolute; width: 34px; height: 34px; border-radius: 50%;
+      background: var(--paper); display: grid; place-items: center; font-size: 13px; color: var(--ink);
+      box-shadow: 0 0 0 7px color-mix(in oklch, var(--paper) 22%, transparent);
+    }
+    .psp-cap { display: flex; justify-content: space-between; padding: 7px 10px; font-size: 12px; }
+    .psp-cap b { font-weight: 500; color: var(--ink-80); }
+    .psp-cap span { color: var(--ink-40); }
+    .psp-primary {
+      width: 100%; min-height: 34px; border: 1px solid var(--ink); border-radius: 999px;
+      background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 500;
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      transition: background var(--fast);
+    }
+    .psp-primary:hover { background: var(--accent); border-color: var(--accent); }
+    .psp-controls { display: flex; gap: 6px; }
+    .psp-quiet {
+      flex: 1; min-height: 30px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--paper); color: var(--ink-80); font-size: 12px;
+      transition: background var(--fast);
+    }
+    .psp-quiet:hover { background: var(--ink-05); }
+    .psp-details { border-top: 1px solid var(--line-soft); padding-top: 8px; font-size: 12px; color: var(--ink-60); }
+    .psp-details summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 5px; font-weight: 500; }
+    .psp-details summary::before { content: "›"; transition: transform var(--fast); }
+    .psp-details[open] summary::before { transform: rotate(90deg); }
+    .psp-ledger { display: grid; gap: 4px; margin-top: 8px; }
+    .psp-ledger .row { display: flex; justify-content: space-between; }
+    .psp-ledger .row b { font-family: var(--mono); font-weight: 500; color: var(--ink-80); }
+
+    .assist-thread { flex: 1; padding: 12px; color: var(--ink-40); font-size: 12px; display: grid; align-content: end; gap: 8px; }
+    .assist-bubble { padding: 8px 10px; border-radius: var(--r); background: var(--ink-05); color: var(--ink-60); font-size: 12px; }
+    .assist-composer { border-top: 1px solid var(--line-soft); padding: 10px 12px; }
+    .assist-input {
+      min-height: 44px; border: 1px solid var(--line); border-radius: var(--r);
+      color: var(--ink-40); font-size: 12px; padding: 8px 10px;
+    }
+
+    .spend-overlay {
+      position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+      background: color-mix(in oklch, var(--ink) 20%, transparent);
+    }
+    .spend-card {
+      width: min(560px, 90%); border-radius: var(--r-lg); border: 1px solid var(--line);
+      background: var(--paper); box-shadow: var(--shadow-md); padding: 16px;
+    }
+    .spend-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .spend-icon {
+      width: 32px; height: 32px; border-radius: var(--r); display: grid; place-items: center;
+      background: var(--ink); color: var(--paper); font-size: 15px;
+    }
+    .spend-head .tt { min-width: 0; }
+    .spend-head .tt p { margin: 0; }
+    .spend-title { font-size: 16px; font-weight: 500; }
+    .spend-sub { font-size: 11px; color: var(--ink-60); }
+    .spend-msg { font-size: 13px; color: var(--ink-80); margin: 0 0 10px; }
+    .spend-rows { border: 1px solid var(--line-soft); border-radius: var(--r-sm); margin-bottom: 10px; }
+    .spend-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; font-size: 12px; }
+    .spend-row + .spend-row { border-top: 1px solid var(--line-soft); }
+    .spend-row span { color: var(--ink-60); } .spend-row b { color: var(--ink-80); font-weight: 500; }
+    .spend-count { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .spend-count .track { flex: 1; height: 4px; border-radius: 999px; background: var(--ink-05); overflow: hidden; }
+    .spend-count .fill { height: 100%; width: 72%; border-radius: 999px; background: var(--ink-30); }
+    .spend-count span { font-size: 11px; color: var(--ink-60); font-variant-numeric: tabular-nums; }
+    .spend-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .spend-btn { min-height: 32px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-size: 13px; }
+    .spend-btn.primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+    .spend-btn.primary:hover { background: var(--accent); border-color: var(--accent); }
+    .spend-sync {
+      margin-top: 10px; padding: 8px 10px; border-radius: var(--r-sm);
+      background: var(--accent-soft); color: var(--ink-80); font-size: 11px; line-height: 1.55;
+    }
+
+    .sys-notif {
+      position: absolute; top: 46px; right: 12px; z-index: 25; width: 280px;
+      border-radius: var(--r-lg); background: color-mix(in oklch, var(--paper) 88%, transparent);
+      backdrop-filter: blur(16px); border: 1px solid var(--line); box-shadow: var(--shadow-md);
+      padding: 10px 12px; display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center;
+    }
+    .sys-notif .nomi-mark { width: 26px; height: 26px; }
+    .sys-notif b { display: block; font-size: 12px; }
+    .sys-notif span { display: block; font-size: 11px; color: var(--ink-60); }
+
+    .tag {
+      display: inline-flex; align-items: center; gap: 5px; margin-top: 6px;
+      padding: 2px 8px; border-radius: 999px; background: var(--accent-soft);
+      color: var(--accent); font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em;
+      border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
+    }
+    .term:not(.desk) .tag { background: color-mix(in srgb, var(--term-accent) 14%, transparent); color: var(--term-accent); border-color: color-mix(in srgb, var(--term-accent) 30%, transparent); }
+    .tag.new::after { content: "新增"; padding-left: 5px; margin-left: 2px; border-left: 1px solid currentColor; font-weight: 700; }
+    .tag.today::after { content: "已有"; padding-left: 5px; margin-left: 2px; border-left: 1px solid currentColor; }
+
+    .notes { margin: 18px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .note { padding: 13px 14px; border-left: 2px solid var(--accent); background: var(--ink-05); border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+    .note b { display: block; font-size: 12px; margin-bottom: 3px; }
+    .note p { margin: 0; color: var(--ink-60); font-size: 11.5px; line-height: 1.6; }
+    .note .mech { font-family: var(--mono); font-size: 9.5px; color: var(--accent); letter-spacing: .04em; }
+
+    /* 五门总览 */
+    .gates { margin: 56px 0 0; }
+    .gates h2 { margin: 0 0 6px; font-family: var(--display); font-size: 22px; font-weight: 570; }
+    .gates > p { margin: 0 0 16px; color: var(--ink-60); font-size: 13px; max-width: 900px; line-height: 1.75; }
+    .gate-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+    .gate { padding: 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--paper); }
+    .gate .no { color: var(--accent); font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; }
+    .gate b { display: block; margin: 6px 0 4px; font-size: 13px; }
+    .gate p { margin: 0; color: var(--ink-60); font-size: 11px; line-height: 1.6; }
+    .gate .cost { display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); color: var(--ink-40); font-size: 10px; }
+    .gate.dim { opacity: .82; }
+    .gate-foot { margin-top: 12px; padding: 12px 14px; border-left: 2px solid var(--warning); background: var(--warning-soft); color: var(--ink-80); font-size: 12px; line-height: 1.7; border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+
+    .why { margin: 24px 0 0; padding: 22px 24px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--paper); }
+    .why h2 { margin: 0 0 8px; font-family: var(--display); font-size: 22px; font-weight: 570; }
+    .why p { margin: 0; max-width: 900px; color: var(--ink-60); font-size: 13px; line-height: 1.8; }
+    footer { padding: 28px 0 40px; color: var(--ink-40); font-family: var(--mono); font-size: 9px; text-align: center; }
+
+    @media (max-width: 980px) {
+      .stage { grid-template-columns: 1fr; }
+      .notes { grid-template-columns: 1fr; }
+      .gate-strip { grid-template-columns: 1fr 1fr; }
+      .nomi-body { grid-template-columns: 1fr; }
+      .canvas-ghost { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">MCP conversation-native · 2026-08-11 · 取代 08-10 blueprint §03</div>
+      <h1>把对话<span class="accent">当界面</span>设计。</h1>
+      <p class="hero-copy">Claude Code / Codex 里不渲染图片、不渲染卡片——用户能看见的只有<strong>对话本身</strong>。所以体验 = 一场好对话：<strong>接住时复述确认，该定方向时给方案选，干活时报进展，花钱前请示，交付时给结果和链接</strong>。同一份数据两级呈现：终端是文本，桌面客户端（Claude Desktop / claude.ai / Cursor）是真卡片。Nomi 窗口退位为「媒体与控制室」。</p>
+      <div class="hero-note"><b>核心取舍</b><span>确认不是越多越好也不是越少越好——按「错向代价 × 确认成本」设五道门（方向 / 剧本分镜 / 预算 / 样片 / 粗剪），其余全部自主跑但留痕可纠；配三档信任档位，用户一句话可调。左卡右上角可切「终端 / 桌面富渲染」看同一幕的两种形态。</span></div>
+    </section>
+
+    <div class="acts" role="tablist" aria-label="六幕切换">
+      <div class="segmented">
+        <button role="tab" aria-selected="true" data-act="act1"><span class="no">壹</span>接住</button>
+        <button role="tab" aria-selected="false" data-act="act2"><span class="no">贰</span>定方向</button>
+        <button role="tab" aria-selected="false" data-act="act3"><span class="no">叁</span>预算</button>
+        <button role="tab" aria-selected="false" data-act="act4"><span class="no">肆</span>样片与汇报</button>
+        <button role="tab" aria-selected="false" data-act="act5"><span class="no">伍</span>交付</button>
+        <button role="tab" aria-selected="false" data-act="act6"><span class="no">陆</span>掌控与救火</button>
+      </div>
+      <span class="hint">点击换幕 · 左卡右上角切「终端 / 桌面」</span>
+    </div>
+
+    <div class="stage">
+      <!-- ============ 客户端侧（终端 / 桌面双形态） ============ -->
+      <section class="term" id="client-card" aria-label="Claude 客户端">
+        <div class="term-bar">
+          <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+          <span class="term-title" id="client-title">Claude Code — ~/videos/brand</span>
+          <div class="client-toggle" role="tablist" aria-label="客户端形态">
+            <button role="tab" aria-selected="true" data-client="cli">终端 CLI</button>
+            <button role="tab" aria-selected="false" data-client="desk">桌面富渲染</button>
+          </div>
+        </div>
+        <div class="term-body" id="term-body"><!-- JS 填充 --></div>
+        <div class="desk-body" id="desk-body"><!-- JS 填充 --></div>
+      </section>
+
+      <!-- ============ Nomi 侧 ============ -->
+      <section class="nomi-win" aria-label="Nomi 窗口">
+        <div class="nomi-bar">
+          <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+          <span class="nomi-brand"><span class="nomi-mark" aria-hidden="true"><i></i></span><span class="nomi-word">No<em>m</em>i</span></span>
+          <span class="ctx">品牌宣传片 · 生成画布</span>
+        </div>
+        <div class="nomi-body">
+          <div class="canvas-ghost" aria-hidden="true">
+            <div class="node-ghost" style="top:24px;left:16px;"><span class="pill">分镜 01</span><div class="img" id="ghost1"></div><div class="cbar"></div></div>
+            <div class="node-ghost" style="top:150px;left:52px;"><span class="pill">分镜 02</span><div class="img" id="ghost2"></div><div class="cbar"></div></div>
+            <div class="node-ghost" style="top:276px;left:20px;"><span class="pill">分镜 03</span><div class="img" id="ghost3"></div><div class="cbar"></div></div>
+          </div>
+          <aside class="assist" aria-label="生成助手面板（真实结构）">
+            <div class="assist-head"><span class="nomi-mark" aria-hidden="true"><i></i></span><b>生成助手</b><span class="x">×</span></div>
+            <div class="psp" id="psp"><!-- JS 填充 --></div>
+            <div class="assist-thread">
+              <div class="assist-bubble" id="assist-bubble">画布对话流（原有位置，不动）</div>
+            </div>
+            <div class="assist-composer"><div class="assist-input">和 Nomi 生成助手对话…</div></div>
+          </aside>
+        </div>
+        <div id="nomi-overlays"></div>
+      </section>
+    </div>
+
+    <div class="notes" id="notes"><!-- JS 填充 --></div>
+
+    <section class="gates">
+      <h2>五道门：哪里停，哪里不停</h2>
+      <p>判断公式：<b>错向代价（定错后下游要重做多少）× 确认成本（表态要几秒）</b>。比值高才设门；其余自主跑、参数回显留痕、随时可纠。<b>模型不单独设门</b>——它是预算合同里可见可改的一行，不是用户目标（通用第一）。单张图/单段视频的小任务只走预算确认，不套五门。</p>
+      <div class="gate-strip">
+        <div class="gate"><span class="no">GATE 1 · 新增</span><b>创意方向</b><p>3 个一句话候选 + 兜底「我来描述」。文本门，对话内 10 秒完成。</p><span class="cost">错向代价：全片 ¥86 ｜ 确认成本：读 3 行</span></div>
+        <div class="gate"><span class="no">GATE 2 · 新增</span><b>剧本与分镜</b><p>只给结构要点（开场/中段/收尾 + 关键口播），16 镜清单可展开。</p><span class="cost">错向代价：16 镜全废 ｜ 成本：读 5 行</span></div>
+        <div class="gate dim"><span class="no">GATE 3 · 已建成</span><b>预算合同</b><p>模型/供应商/上限/信任档位。现有 SpendConfirmDialog + 对话弹框双路。</p><span class="cost">代价：真金白银 ｜ 成本：看一张合同</span></div>
+        <div class="gate"><span class="no">GATE 4 · 新增</span><b>样片</b><p>先花小钱出定妆 + 首镜，看过再批量。视觉门：桌面端卡内看图，终端深链去 Nomi。</p><span class="cost">代价：15 镜风格全错 ｜ 成本：看 1 图 1 段</span></div>
+        <div class="gate dim"><span class="no">GATE 5 · 状态机已有</span><b>粗剪</b><p>awaiting_rough_cut_review 已定义，补呈现即可。视觉门同样片。</p><span class="cost">代价：成片返工 ｜ 成本：看一遍粗剪</span></div>
+      </div>
+      <div class="gate-foot"><b>信任档位（run 级，写进合同可查证）：</b>关键确认（默认，五门全开）／ 只管钱（跳过创意与样片门，留预算 + 不可逆）／ 全程确认（每镜提交前都停）。对话里说「别问了直接出」= 降到只管钱。</div>
+    </section>
+
+    <section class="why">
+      <h2>为什么不是仪表盘？</h2>
+      <p>2026-08-11 实查（官方文档 + changelog）：Claude Code 终端<b>不渲染</b>工具结果里的图片（只有模型看得见）、<b>不渲染</b> MCP Apps 卡片（官方宿主名单没有它），工具调用默认折叠成一行。08-10 版 blueprint 的「聊天端媒体卡 + run-card」在主力客户端上等于不存在。反之，上面六幕用到的每个机制——转述（工具结果→模型讲人话）、行内进度（notifications/progress，Claude Code 实时渲染且防超时）、反问弹窗（elicitation，v2.1.76+ 原生表单）、resource_link 深链、系统通知（Nomi 自发）——全部是官方支持且今天就可见的。同一份 run 事件流喂所有端：Desktop / Cursor 用户额外看到已实现的 MCP Apps 状态卡（增强层，不是中心）。Higgsfield 官网演示里的品牌调用卡（logo + 提示词 + 参数 chips）就发生在这一层——它在终端里的等价物，正是各幕的「参数回显」文本行：降级不降义。</p>
+    </section>
+
+    <footer>NOMI MCP CONVERSATION-NATIVE EXPERIENCE · INTERACTIVE MOCKUP · 2026-08-11 · 依据 docs/research/2026-08-11-mcp-experience-research.md · Nomi 侧按 nomi-design-system.md §2 真值绘制</footer>
+  </main>
+
+  <script>
+    // ================= 终端侧构件 =================
+    const T = {
+      user: (s) => `<div class="t-user">${s}</div>`,
+      gap: () => `<div class="t-gap"></div>`,
+      tool: (fn, args) => `<div class="t-tool"><span class="bullet">⏺</span> <span class="fn">${fn}</span> <span>(MCP · nomi)</span>${args ? ` <span>${args}</span>` : ''}</div>`,
+      result: (s) => `<div class="t-result">⎿ ${s}</div>`,
+      progress: (s) => `<div class="t-progress">⎿ <span class="spin">⣾</span> ${s}</div>`,
+      sub: (s) => `<div class="t-sub">${s}</div>`,
+      say: (s) => `<div class="t-say">${s}</div>`,
+      tag: (s, kind) => `<div class="tag ${kind || ''}">${s}</div>`,
+      elicit: (msg, opts, sel) => `
+        <div class="t-elicit">
+          <div class="t-elicit-head">◆ Nomi 请求确认</div>
+          <div class="t-elicit-body">
+            <div class="msg">${msg}</div>
+            ${opts.map((o, i) => `<div class="t-opt ${i === sel ? 'sel' : ''}">${o}</div>`).join('')}
+          </div>
+          <div class="t-elicit-foot">enter 选择 · esc 关闭 — Claude Code 原生渲染的 MCP 表单</div>
+        </div>`,
+    }
+
+    // ================= 桌面富渲染构件（MCP Apps 层：Desktop / claude.ai / Cursor） =================
+    const D = {
+      user: (s) => `<div class="desk-user">${s}</div>`,
+      claude: (s) => `<div class="desk-claude"><span class="sun">✳</span>Claude</div><div class="desk-say">${s}</div>`,
+      tag: (s) => `<div class="tag new">${s}</div>`,
+      card: (o) => `
+        <div class="rich-card">
+          <div class="rich-head"><span class="nomi-mark"><i></i></span><b>Nomi · 制作</b>${o.pill ? `<span class="pill ${o.pillKind || ''}">${o.pill}</span>` : ''}</div>
+          <div class="rich-body">
+            ${o.title ? `<p class="rich-title">${o.title}</p>` : ''}
+            ${o.chips ? `<div class="chips">${o.chips.map((c) => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
+            ${o.img ? `<div class="rich-img ${o.video ? 'video' : ''}"></div>` : ''}
+            ${o.progress ? `<div class="rich-progress"><div class="track"><div class="fill"></div></div><span>${o.progress}</span></div>` : ''}
+            ${o.ledger ? `<div class="rich-ledger">${o.ledger.map((r) => `<div class="row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('')}</div>` : ''}
+            ${o.options ? o.options.map((p) => `<div class="opt-row"><b>${p[0]}</b>${p[1] ? `<span>${p[1]}</span>` : ''}</div>`).join('') : ''}
+            ${o.actions ? `<div class="rich-actions">${o.actions.map((a, i) => `<button class="rich-btn ${i === 0 ? 'primary' : ''}">${a}</button>`).join('')}</div>` : ''}
+            ${o.note ? `<div class="rich-note">${o.note}</div>` : ''}
+          </div>
+        </div>`,
+    }
+
+    function psp(v) {
+      return `
+        <div class="psp-status">
+          <span class="lhs"><span class="psp-dot tone-${v.tone}"></span>${v.toneLabel}</span>
+          <span class="psp-origin">${v.origin}</span>
+        </div>
+        <div>
+          <p class="psp-title">${v.title}</p>
+          <p class="psp-desc">${v.desc}</p>
+        </div>
+        <figure class="psp-preview" style="margin:0">
+          <div class="psp-thumb ${v.thumb}">${v.thumb ? '' : '暂无产物'}</div>
+          <figcaption class="psp-cap"><b>${v.thumbCap}</b><span>${v.kindCap}</span></figcaption>
+        </figure>
+        <button class="psp-primary">${v.primary}</button>
+        ${v.controls ? `<div class="psp-controls"><button class="psp-quiet">暂停</button><button class="psp-quiet">取消制作</button></div>${T.tag('run 控制：状态机已有，补入口', 'new')}` : ''}
+        <details class="psp-details" ${v.ledger ? 'open' : ''}>
+          <summary>制作详情</summary>
+          ${v.ledger ? `<div class="psp-ledger">
+            <div class="row"><span>预算上限</span><b>¥99.74</b></div>
+            <div class="row"><span>已花费</span><b>¥23.40</b></div>
+            <div class="row"><span>已完成镜头</span><b>4 / 16</b></div>
+          </div>${T.tag('后端台账已有 → 接到眼前', 'new')}` : ''}
+        </details>
+        ${v.tagHtml || ''}`
+    }
+
+    // ================= 六幕 =================
+    const ACTS = {
+      act1: {
+        term: [
+          T.user('帮我生成一条 60 秒的品牌宣传片，主角用画布里的「小满」'),
+          T.gap(),
+          T.tool('nomi_start_playbook', '(playbook: "brand.promo")'),
+          T.result('<span class="tick">✓</span> runId run_7f32 · 草稿已建 · 未花费'),
+          T.sub('<b>16 镜头</b> · gpt-image-2 出图 · kling 出视频 · <b>16:9</b> · <b>60s</b> · 上限 <b>¥99.74</b>'),
+          T.tag('① 结构化回执 + 参数回显：调了什么规格一眼可读（Higgsfield chips 的文本版）', 'new'),
+          T.say('Nomi 接住了这个任务，已建好制作草稿：\n  · 16 个镜头（3 个「小满」特写），走 brand.promo 剧本\n  · 预算上限 ¥99.74（gpt-image-2 出图 + kling 出视频）\n  · <span class="dim">还没有花一分钱</span>\n\n开写之前先定创意方向，我拟几个候选给你选。'),
+          T.tag('② 模型转述：对话里的第一大信息通道', 'today'),
+        ],
+        desk: [
+          D.user('帮我生成一条 60 秒的品牌宣传片，主角用画布里的「小满」'),
+          D.claude('接住了。已在 Nomi 建好制作草稿，先定方向再开写。'),
+          D.card({ pill: '草稿 · 未花费', title: '品牌宣传片 · 制作草稿', chips: ['brand.promo', '16 镜头', '16:9', '60s', '上限 ¥99.74'], actions: ['去定方向', '查看草稿'] }),
+          D.tag('同一份数据：终端是文本行，这里是真卡片（MCP Apps，widget 基建已实现）'),
+        ],
+        nomi: {
+          tone: 'neutral', toneLabel: '草稿', origin: '来自 Codex · 刚刚',
+          title: '制作草稿已创建', desc: '16 镜头 · 等待定方向与预算批准，未产生任何花费',
+          thumb: '', thumbCap: '最新产物', kindCap: '待生成',
+          primary: '查看草稿', controls: false, ledger: false,
+          tagHtml: T.tag('同一事件流：面板与对话读同一份 run', 'today'),
+        },
+        ghosts: ['', '', ''],
+        notes: [
+          { mech: 'STRUCTURED RESULT', t: '接住 = 复述确认', p: '工具回执带全 runId、规格、预算、「还没花钱」。模型照此复述，用户 3 秒建立信任：接住了、要花多少、下一步是什么。' },
+          { mech: 'NARRATION', t: '转述是设计出来的', p: '现状回执是一句硬编码中文；改为结构化字段 + 参数回显 + i18n，转述质量从「碰运气」变「可控」。' },
+          { mech: 'ONE EVENT STREAM', t: '两端同源', p: 'Nomi 状态面板（真实组件 ProductionStatusPanel）与对话读同一份 run 事件流，永不打架。' },
+        ],
+      },
+      act2: {
+        term: [
+          T.say('开写之前先定方向。按「城市清晨 + 产品陪伴」我拟了三个候选：'),
+          T.elicit('这条宣传片走哪个方向？', [
+            'A · 城市烟火气 —— 小满穿行清晨街市，蒸汽与霓虹里的陪伴感',
+            'B · 极简产品美学 —— 棚拍大光比，材质与线条特写',
+            'C · 快节奏踩点混剪 —— 鼓点卡切，15 个场景闪回',
+            '都不要，我来描述',
+          ], 0),
+          T.tag('⑨ 创意方向门：给方案选，不闷头干', 'new'),
+          T.say('<span class="dim">（选了 A）</span>好，「城市烟火气」。剧本与 16 镜分镜已拟好：\n  开场：雨后清晨的街市蒸汽（镜 1-3）\n  中段：小满与产品的三次相遇（镜 4-12）\n  收尾：天台日出举杯 + 口播「陪你把日子过热」（镜 13-16）'),
+          T.elicit('剧本与分镜就按这个做？', ['就这样，去做预算', '调整（告诉我哪里不对）', '重写'], 0),
+          T.tag('⑩ 剧本与分镜门：只给结构要点，10 秒能表态', 'new'),
+        ],
+        desk: [
+          D.claude('开写之前先定方向，三个候选：'),
+          D.card({ pill: '等你定方向', pillKind: 'warn', title: '这条宣传片走哪个方向？', options: [
+            ['A · 城市烟火气', '小满穿行清晨街市，蒸汽与霓虹里的陪伴感'],
+            ['B · 极简产品美学', '棚拍大光比，材质与线条特写'],
+            ['C · 快节奏踩点混剪', '鼓点卡切，15 个场景闪回'],
+          ], actions: ['都不要，我来描述'], note: '选项即按钮，点了就走——不用打字。' }),
+          D.tag('创意门在富客户端 = 真选项卡（同一 gate 数据）'),
+        ],
+        nomi: {
+          tone: 'attention', toneLabel: '等你定方向', origin: '来自 Codex · 刚刚',
+          title: '方向草案已备好', desc: '三个方向 + 分镜结构 · 在对话里选即可，Nomi 同步显示',
+          thumb: '', thumbCap: '最新产物', kindCap: '待生成',
+          primary: '查看方向草案', controls: false, ledger: false,
+        },
+        ghosts: ['', '', ''],
+        notes: [
+          { mech: 'GATE ECONOMICS', t: '哪里设门：错向代价 × 确认成本', p: '方向错 = 下游 ¥86 全废，确认只要读三行字——这种地方必须停。反过来，每镜的构图/seed 这类微决策不问：参数回显留痕，随时可纠。' },
+          { mech: 'OPTIONS NOT FORMS', t: '给方案，不给填空题', p: '「你想要什么风格」是把工作扔回给用户；三个具体候选 + 「都不要」兜底，10 秒定向。' },
+          { mech: 'TEXT GATES IN CHAT', t: '文本门全客户端可用', p: '方向/剧本/分镜是文字，反问弹窗装得下——终端和桌面都原地完成，不用切窗口。' },
+        ],
+      },
+      act3: {
+        term: [
+          T.user('就这样'),
+          T.gap(),
+          T.tool('nomi_approve_contract', '(runId: "run_7f32")'),
+          T.elicit('制作合同：品牌宣传片 · 16 镜头\n预算上限 ¥99.74（gpt-image-2 ×16 · kling ×16）\n信任档位：关键确认（可说「别问了直接出」降为只管钱）\n超出上限会自动停下再次请示。', ['批准并开始（¥99.74）', '换个模型/供应商', '本次取消'], 0),
+          T.tag('③ 反问弹窗 elicitation：对话里的真 UI（Claude Code v2.1.76+）', 'new'),
+          T.say('<span class="dim">（按回车，10 秒完成确认，全程没离开终端）</span>'),
+        ],
+        desk: [
+          D.claude('合同好了，过目：'),
+          D.card({ pill: '等你确认', pillKind: 'warn', title: '制作合同 · 上限 ¥99.74', chips: ['gpt-image-2 ×16', 'kling ×16', '运镜 v2', '跨镜一致性 v3'], ledger: [['信任档位', '关键确认（默认）'], ['超限行为', '自动停下再请示']], actions: ['批准并开始 · ¥99.74', '换模型', '取消'] }),
+          D.tag('模型不单独设门：合同里可见可改的一行'),
+        ],
+        nomi: {
+          tone: 'attention', toneLabel: '等待确认', origin: '来自 Codex · 38 秒前',
+          title: '需要批准预算', desc: '制作合同已就绪 · ¥99.74 上限等你确认',
+          thumb: '', thumbCap: '最新产物', kindCap: '待生成',
+          primary: '确认预算门', controls: false, ledger: false,
+        },
+        ghosts: ['', '', ''],
+        overlays: `
+          <div class="sys-notif"><span class="nomi-mark" aria-hidden="true"><i></i></span><div><b>Nomi · 等你确认</b><span>品牌宣传片 · 预算 ¥99.74 — 点击查看</span></div></div>
+          <div class="spend-overlay">
+            <div class="spend-card">
+              <div class="spend-head">
+                <span class="spend-icon">▤</span>
+                <div class="tt"><p class="spend-title">批准制作合同</p><p class="spend-sub">经 AI 助手（MCP）驱动 · 每次必确认</p></div>
+              </div>
+              <p class="spend-msg">品牌宣传片 · 16 镜头 · 预算上限 ¥99.74，超出会停下再次请示。</p>
+              <div class="spend-rows">
+                <div class="spend-row"><span>图像</span><b>gpt-image-2 · 16 张</b></div>
+                <div class="spend-row"><span>视频</span><b>kling · 16 段</b></div>
+                <div class="spend-row"><span>技能</span><b>运镜 v2 · 跨镜一致性 v3</b></div>
+                <div class="spend-row"><span>信任档位</span><b>关键确认（默认）</b></div>
+              </div>
+              <div class="spend-count"><div class="track"><div class="fill"></div></div><span>43 秒后自动忽略</span></div>
+              <div class="spend-actions"><button class="spend-btn">忽略</button><button class="spend-btn primary">批准并开始 · ¥99.74</button></div>
+              <div class="spend-sync">同源互斥：这是现有 SpendConfirmDialog（不新造）。你在<b>对话里</b>答了，这里自动收起；在<b>这里</b>答了，对话那头立即继续。决议写回同一事件流。</div>
+            </div>
+          </div>`,
+        notes: [
+          { mech: 'ELICITATION', t: '确认只设在方向、钱、不可逆', p: '打断要省着用。skills 加载、只读查询一律不问（已声明只读标记，Codex 会自动放行）；模型收进合同一行，在乎就当场改。' },
+          { mech: 'DUAL PATH', t: '两条路答一个问题', p: 'Nomi 在前台→原生弹窗（现有组件）；不在→对话里弹框 + 系统通知兜底。用户在哪就在哪答，答案只有一份。' },
+          { mech: 'TRUST DIAL', t: '三档信任，run 级可调', p: '关键确认（默认五门）／只管钱（留预算 + 不可逆）／全程确认（每镜都停）。「别问了直接出」= 档位写进合同，可查证、可恢复。' },
+        ],
+      },
+      act4: {
+        term: [
+          T.tool('nomi_generate', '(runId: "run_7f32", stage: "sample")'),
+          T.result('<span class="tick">✓</span> 样片就绪 · 小满定妆 1 张 + 首镜 5s · 实花 ¥6.20'),
+          T.say('样片好了。终端显示不了图——在 Nomi 里过目：<span class="link">nomi://open/run_7f32/sample</span>\n<span class="dim">（桌面端 / Cursor 用户在对话卡里直接看图）</span>'),
+          T.elicit('样片满意吗？', ['满意，批量生成剩余 15 镜', '换个风格重来（只亏 ¥6.20）'], 0),
+          T.tag('⑪ 样片门：先小样后批量，错向只亏一镜钱', 'new'),
+          T.tool('nomi_generate', '(runId: "run_7f32", stage: "material")'),
+          T.result('<span class="tick">✓</span> 已提交 镜头 03 · <b style="color:var(--term-ink)">kling</b> · 9:16 · 5s · 参考 2 张（小满定妆 · 场景板）'),
+          T.tag('⑧ 参数回显：每次提交都报模型/比例/时长/参考', 'new'),
+          T.progress('镜头 3/16 · 供应商已受理 · 已用 01:42'),
+          T.tag('④ 行内进度 notifications/progress：实时刷新 + 重置空闲超时', 'new'),
+        ],
+        desk: [
+          D.claude('样片好了（¥6.20）：定妆 + 首镜。'),
+          D.card({ pill: '样片等你过目', pillKind: 'warn', title: '小满定妆 + 首镜（5s）', img: true, actions: ['满意，批量 15 镜', '换个风格'], note: '图在卡里直接看——桌面端不用跳去 Nomi。' }),
+          D.card({ pill: '制作中', title: '批量生成', progress: '镜头 3/16 · 已用 01:42' }),
+          D.tag('视觉门的主场：富客户端直接看图拍板'),
+        ],
+        nomi: {
+          tone: 'working', toneLabel: '制作中', origin: '来自 Codex · 进行中',
+          title: '样片已确认 · 批量进行中', desc: '正在生成镜头 03 · 已完成 2/16 · 已用 01:42',
+          thumb: 'filled', thumbCap: '最新产物', kindCap: '图片 · 镜头 02',
+          primary: '打开第 03 镜头', controls: true, ledger: false,
+        },
+        ghosts: ['filled-1', 'filled-2', ''],
+        overlays: `<div class="sys-notif"><span class="nomi-mark" aria-hidden="true"><i></i></span><div><b>Nomi · 样片等你过目</b><span>定妆 + 首镜已生成 — 点击查看</span></div></div>`,
+        notes: [
+          { mech: 'SAMPLE GATE', t: 'effect-first：先小样后批量', p: '视觉方向没法用文字确认。先花 ¥6 出定妆 + 首镜，看过再批量 15 镜——错了只亏样片钱，不亏全片。' },
+          { mech: 'PARAM ECHO', t: '参数随调用回显', p: 'Higgsfield 卡片上那排 [模型][比例][时长] 签，在终端是提交回执文本，在桌面端是真 chips。同一数据，两级呈现。' },
+          { mech: 'PROGRESS', t: '真实阶段 + 顺便保活', p: '进度来自真实事件（提交/受理/下载/校验），没有总量就不显示百分比；每条进度都重置客户端空闲超时，长渲染不再被误判失败。' },
+        ],
+      },
+      act5: {
+        term: [
+          T.tool('nomi_subscribe_run', '(cursor: 41)'),
+          T.result('<span class="tick">✓</span> run.completed · 成片 60s · 总用时 08:24 · 实花 ¥86.20 / 上限 ¥99.74'),
+          T.gap(),
+          T.say('完成 ✓ 总用时 08:24，实际花费 ¥86.20（低于上限 ¥99.74）。\n  · 成片（60s · 1080p）和 16 个镜头已存入项目「品牌宣传片」\n  · 镜头 07 的口播与画面稍有出入，建议重看\n\n在 Nomi 里看片：<span class="link">nomi://open/run_7f32</span>'),
+          T.tag('⑤ resource_link 深链：一键拉起 Nomi 到这个 run', 'new'),
+        ],
+        desk: [
+          D.claude('完成 ✓ 总用时 08:24，实花 ¥86.20（低于上限）。镜头 07 口播与画面稍有出入，建议重看。'),
+          D.card({ pill: '已完成', pillKind: 'ok', title: '成片 60s · 实花 ¥86.20', img: true, video: true, actions: ['播放成片', '打开项目'] }),
+        ],
+        nomi: {
+          tone: 'success', toneLabel: '已完成', origin: '来自 Codex · 刚刚',
+          title: '制作完成', desc: '成片 60 秒 · 16 镜头全部就绪 · 实花 ¥86.20',
+          thumb: 'filled video', thumbCap: '最新产物', kindCap: '成片 · 60s',
+          primary: '播放成片', controls: false, ledger: false,
+        },
+        ghosts: ['filled-1', 'filled-2', 'filled-1'],
+        overlays: `<div class="sys-notif"><span class="nomi-mark" aria-hidden="true"><i></i></span><div><b>Nomi · 制作完成</b><span>品牌宣传片 60s — 点击播放</span></div></div>`,
+        notes: [
+          { mech: 'HONEST DELIVERY', t: '交付带账单和瑕疵', p: '完成语报实花 vs 上限，并主动标出「镜头 07 口播有出入」——诚实交付比报喜更建立信任。' },
+          { mech: 'DEEP LINK', t: '像素在 Nomi，链接在对话', p: '终端不硬塞显示不了的图；给可点深链，点开 Nomi 正好停在这个 run 的成片上。聊天是控制面，Nomi 是归档处。' },
+          { mech: 'NOTIFY', t: '后台也不漏', p: '用户切走了？系统通知报完成，点击即深链拉起。等审批/样片/失败/完成四类才通知，不制造噪音。' },
+        ],
+      },
+      act6: {
+        term: [
+          T.user('先停一下，镜头风格好像不对'),
+          T.gap(),
+          T.tool('nomi_control_run', '(runId: "run_7f32", action: "pause")'),
+          T.result('<span class="tick">✓</span> 已暂停于镜头 05 · 已花 ¥23.40 · 未提交的镜头不计费'),
+          T.tag('⑥ run 控制工具：对话天然是遥控器', 'new'),
+          T.say('已暂停。镜头 1-4 完好（¥23.40），第 5 镜未提交不花钱。\n要我改风格描述后从镜头 5 继续吗？已完成的不会重做。'),
+          T.gap(),
+          T.tool('nomi_generate', '(resume)'),
+          T.result('<span class="err">✗</span> NOMI-P402 · 模型服务连接失败 · 可恢复'),
+          T.say('镜头 5 提交失败：API Key 可能失效（诊断号 <span class="dim">NOMI-P402</span>）。\n已完成的 4 镜安全。两条路：\n  1. 在 Nomi 设置更新 API Key，我从镜头 5 继续\n  2. 换用已配置的 minimax 跑剩余镜头'),
+          T.tag('⑦ 错误 = 原因 + 诊断号 + 可选出路，agent 直接转述', 'new'),
+        ],
+        desk: [
+          D.user('先停一下，镜头风格好像不对'),
+          D.claude('已暂停。镜头 1-4 完好，第 5 镜未提交不花钱。'),
+          D.card({ pill: '已暂停', pillKind: 'warn', title: '停于镜头 05', ledger: [['预算上限', '¥99.74'], ['已花费', '¥23.40'], ['已完成镜头', '4 / 16']], actions: ['从镜头 05 继续', '取消制作'] }),
+        ],
+        nomi: {
+          tone: 'attention', toneLabel: '已暂停', origin: '来自 Codex · 1 分钟前',
+          title: '制作已暂停', desc: '停于镜头 05 · 已花 ¥23.40 · 已完成内容安全',
+          thumb: 'filled', thumbCap: '最新产物', kindCap: '图片 · 镜头 04',
+          primary: '从镜头 05 继续', controls: true, ledger: true,
+        },
+        ghosts: ['filled-1', 'filled-2', 'filled-2'],
+        notes: [
+          { mech: 'PAUSE/RESUME', t: '停下不等于作废', p: '暂停保住已花的钱和已生成的镜头；继续从断点走，不重做不重付。状态机与台账后端都在，缺的只是入口和转述。' },
+          { mech: 'ERROR CONTRACT', t: '错误是接口不是日志', p: '每个失败带 errorCode + 人话原因 + 恢复动作 + 诊断号。agent 能转述、能代操作，用户不用猜。' },
+          { mech: 'LEDGER', t: '账本接到眼前', p: '预算台账（已授权/已花/剩余）后端记了从未展示——详情里摊开，暂停时刻用户最想看的就是这个。' },
+        ],
+      },
+    }
+
+    // ================= 渲染 =================
+    const termBody = document.getElementById('term-body')
+    const deskBody = document.getElementById('desk-body')
+    const pspEl = document.getElementById('psp')
+    const notesEl = document.getElementById('notes')
+    const overlaysEl = document.getElementById('nomi-overlays')
+    const clientCard = document.getElementById('client-card')
+    const clientTitle = document.getElementById('client-title')
+    const tabs = [...document.querySelectorAll('[data-act]')]
+    const clientBtns = [...document.querySelectorAll('[data-client]')]
+
+    function render(actId) {
+      const act = ACTS[actId]
+      tabs.forEach((b) => b.setAttribute('aria-selected', String(b.dataset.act === actId)))
+      termBody.innerHTML = act.term.join('')
+      deskBody.innerHTML = (act.desk || []).join('')
+      pspEl.innerHTML = psp(act.nomi)
+      overlaysEl.innerHTML = act.overlays || ''
+      notesEl.innerHTML = act.notes.map((n) => `<div class="note"><span class="mech">${n.mech}</span><b>${n.t}</b><p>${n.p}</p></div>`).join('')
+      ;['ghost1', 'ghost2', 'ghost3'].forEach((id, i) => {
+        document.getElementById(id).className = `img ${act.ghosts[i]}`.trim()
+      })
+      document.getElementById('assist-bubble').textContent = actId === 'act2'
+        ? '「三个方向草案已同步到此」'
+        : actId === 'act6'
+          ? '「已暂停制作 · 预算台账见上方详情」'
+          : '画布对话流（原有位置，不动）'
+    }
+    function setClient(mode) {
+      clientBtns.forEach((b) => b.setAttribute('aria-selected', String(b.dataset.client === mode)))
+      clientCard.classList.toggle('desk', mode === 'desk')
+      clientTitle.textContent = mode === 'desk' ? 'Claude Desktop — 对话（MCP Apps 渲染）' : 'Claude Code — ~/videos/brand'
+    }
+    tabs.forEach((b) => b.addEventListener('click', () => render(b.dataset.act)))
+    clientBtns.forEach((b) => b.addEventListener('click', () => setClient(b.dataset.client)))
+    render('act1')
+  </script>
+</body>
+</html>
