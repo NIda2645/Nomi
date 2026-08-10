@@ -19,6 +19,8 @@ import {
   buildNomiDraftFromGenerate,
   buildNomiRunFromProjection,
 } from './mcpAppWidget'
+import { buildToolOutcome, buildToolErrorOutcome, buildProgressStartMessage, type ResultLocale } from './mcpToolResults'
+import { createProgressReporter } from './mcpProgress'
 
 export type McpInvokeOptions = { spendConfirmed?: boolean }
 
@@ -38,6 +40,8 @@ export interface McpTransport {
   invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown>
   /** Nomi 是否开着（有活实例）。开着→付费确认走应用内卡，关着→走 elicitation。 */
   isAppOpen(): boolean
+  /** 结果/进度文案语言（可选；缺省 zh-CN，跟 App 语言设置走）。 */
+  getLocale?(): ResultLocale
 }
 
 const PROTOCOL_VERSION = '2025-11-25'
@@ -298,66 +302,45 @@ export function createMcpProtocol(transport: McpTransport) {
     send({ jsonrpc: '2.0', id, error: { code, message } })
   }
 
-  // tool result 载荷：文本兜底（宿主无 UI 时也看得到，且 content[].text 不变=终端体验零回归）+ 挂 widget 的
-  // 工具额外带 structuredContent.nomiDraft / nomiRun（宿主注入 iframe/window.openai 渲活面板）+ _meta.ui.resourceUri
-  // （标准）与 openai/outputTemplate（ChatGPT 别名）。always 附——宿主不支持则忽略这些附加字段（spec 设计），
-  // 跨 Claude/ChatGPT/参考宿主通用（P4）；不 gate on 客户端声明，否则 ChatGPT 不声明该扩展就拿不到 widget。
-  function productionResultText(toolName: string, result: unknown): string | null {
-    const value = result && typeof result === 'object' && !Array.isArray(result) ? result as Record<string, unknown> : {}
-    const openInNomi = typeof value.openInNomi === 'string' ? value.openInNomi : ''
-    if (toolName === 'nomi_start_playbook') {
-      return `Nomi 已创建制作草稿 ${String(value.runId || '')}；尚未批准预算，也没有调用付费生成。${openInNomi ? `\n在 Nomi 打开 ${openInNomi}` : ''}`
-    }
-    if (toolName === 'nomi_get_run') {
-      const artifacts = Array.isArray(value.artifacts) ? value.artifacts as Array<Record<string, unknown>> : []
-      const latest = artifacts.at(-1)
-      const preview = latest?.preview && typeof latest.preview === 'object' ? latest.preview as Record<string, unknown> : undefined
-      return `[Nomi] ${String(value.runId || '')} · ${String(value.status || 'unknown')} · ${String(value.stageId || 'unknown')}${preview?.url ? `\n最新预览 ${String(preview.url)}（${String(preview.expiresAt || '限时')}）` : ''}${openInNomi ? `\n在 Nomi 打开 ${openInNomi}` : ''}`
-    }
-    if (toolName === 'nomi_subscribe_run') {
-      const events = Array.isArray(value.events) ? value.events as Array<Record<string, unknown>> : []
-      const lines = events.map((event) => `[Nomi] ${String(event.type || 'event')} · ${String(event.message || '')}`)
-      return `${lines.length ? lines.join('\n') : '[Nomi] 暂无新的重要事件'}\nnext cursor ${String(value.nextCursor ?? 0)}`
-    }
-    if (toolName === 'nomi_get_artifact') {
-      const preview = value.preview && typeof value.preview === 'object' ? value.preview as Record<string, unknown> : undefined
-      const nomiUri = typeof value.nomiUri === 'string' ? value.nomiUri : ''
-      return `[Nomi] ${String(value.kind || 'artifact')} · ${String(value.status || 'unknown')} · ${String(value.artifactId || '')}${nomiUri ? `\n产物 ${nomiUri}` : ''}${preview?.url ? `\n预览 ${String(preview.url)}（${String(preview.expiresAt || '限时')}）` : ''}${openInNomi ? `\n在 Nomi 打开 ${openInNomi}` : ''}`
-    }
-    return null
-  }
+  // 结果/进度文案语言：跟 transport 给的 App 语言设置，缺省 zh-CN。
+  const locale = (): ResultLocale => transport.getLocale?.() ?? 'zh-CN'
 
+  // tool result 载荷：文本兜底（宿主无 UI 时也看得到）+ structuredContent.nomiOutcome（模型稳定字段，
+  // A2 收口在 mcpToolResults.ts——文本=转述原材料+参数回显，双语）。挂 widget 的工具额外带
+  // nomiDraft / nomiRun（宿主注入 iframe/window.openai 渲活面板）+ _meta.ui.resourceUri（标准）与
+  // openai/outputTemplate（ChatGPT 别名）。always 附——宿主不支持则忽略这些附加字段（spec 设计），
+  // 跨 Claude/ChatGPT/参考宿主通用（P4）；不 gate on 客户端声明，否则 ChatGPT 不声明该扩展就拿不到 widget。
   function buildToolResultPayload(toolName: string, args: Record<string, unknown>, result: unknown): Record<string, unknown> {
+    const { text, outcome } = buildToolOutcome(toolName, args, result, locale())
     const payload: Record<string, unknown> = {
-      content: [{ type: 'text', text: productionResultText(toolName, result) ?? JSON.stringify(result, null, 2) }],
+      content: [{ type: 'text', text: text ?? JSON.stringify(result, null, 2) }],
     }
+    const structured: Record<string, unknown> = {}
+    if (outcome) structured.nomiOutcome = outcome
     const uiUri = TOOL_UI_RESOURCE[toolName]
     if (uiUri && ['nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact'].includes(toolName)) {
-      payload.structuredContent = {
-        nomiRun: buildNomiRunFromProjection({
-          projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
-          runId: typeof args.runId === 'string' ? args.runId : undefined,
-          result,
-        }),
-        // The widget needs a compact presentation frame; the AI client needs the complete safe
-        // projection to reason about gates, cursors, jobs and artifact identities. The service
-        // owns redaction before this protocol boundary.
-        nomiRunData: result,
-      }
+      structured.nomiRun = buildNomiRunFromProjection({
+        projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
+        runId: typeof args.runId === 'string' ? args.runId : undefined,
+        result,
+      })
+      // The widget needs a compact presentation frame; the AI client needs the complete safe
+      // projection to reason about gates, cursors, jobs and artifact identities. The service
+      // owns redaction before this protocol boundary.
+      structured.nomiRunData = result
       payload._meta = { ui: { resourceUri: uiUri }, 'openai/outputTemplate': uiUri }
     } else if (toolName === 'nomi_generate' && uiUri) {
-      payload.structuredContent = {
-        nomiDraft: buildNomiDraftFromGenerate({
-          intent: typeof args.intent === 'string' ? args.intent : undefined,
-          prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
-          projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
-          vendor: typeof args.vendor === 'string' ? args.vendor : undefined,
-          modelKey: typeof args.modelKey === 'string' ? args.modelKey : undefined,
-          result,
-        }),
-      }
+      structured.nomiDraft = buildNomiDraftFromGenerate({
+        intent: typeof args.intent === 'string' ? args.intent : undefined,
+        prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
+        projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
+        vendor: typeof args.vendor === 'string' ? args.vendor : undefined,
+        modelKey: typeof args.modelKey === 'string' ? args.modelKey : undefined,
+        result,
+      })
       payload._meta = { ui: { resourceUri: uiUri }, 'openai/outputTemplate': uiUri }
     }
+    if (Object.keys(structured).length) payload.structuredContent = structured
     return payload
   }
 
@@ -459,6 +442,19 @@ export function createMcpProtocol(transport: McpTransport) {
         return
       }
       const args = (params?.arguments as Record<string, unknown>) || {}
+      // A1 进度桥：客户端在 _meta.progressToken 要了进度才发（规范）；只挂长任务工具。
+      // 心跳报真实已用时长（兼保活，Claude Code stdio 无声 30min 会掐）；真事件经 emit 透出。
+      const meta = (params?._meta && typeof params._meta === 'object' && !Array.isArray(params._meta))
+        ? params._meta as Record<string, unknown>
+        : {}
+      const rawToken = meta.progressToken
+      const isLongTool = tool.name === 'nomi_generate' || tool.name === 'nomi_start_playbook'
+      const progress = createProgressReporter({
+        send,
+        progressToken: isLongTool && (typeof rawToken === 'string' || typeof rawToken === 'number') ? rawToken : undefined,
+        startMessage: buildProgressStartMessage(tool.name, args, locale()) ?? undefined,
+        locale: locale(),
+      })
       try {
         const built = tool.build(args) as Record<string, unknown>
         if (tool.name === 'nomi_start_playbook') {
@@ -490,8 +486,15 @@ export function createMcpProtocol(transport: McpTransport) {
         const result = await transport.invoke(tool.method, built)
         reply(id, buildToolResultPayload(tool.name, args, result))
       } catch (error) {
-        // 工具执行失败用 isError 返回（让模型看到错误而非协议级 error）。
-        reply(id, { content: [{ type: 'text', text: `错误：${error instanceof Error ? error.message : String(error)}` }], isError: true })
+        // A6 错误契约：isError 返回（模型看到错误而非协议级 error），带人话原因 + 恢复动作 + 诊断码。
+        const err = buildToolErrorOutcome(tool.name, error, locale())
+        reply(id, {
+          content: [{ type: 'text', text: err.text }],
+          isError: true,
+          structuredContent: { nomiOutcome: err.outcome },
+        })
+      } finally {
+        progress.stop()
       }
       return
     }
