@@ -61,6 +61,23 @@ describe('production run view', () => {
     expect(buildProductionRunView(unknown, now).percent).toBeUndefined()
   })
 
+  it('A4 情境控制行：running→暂停+取消；paused→继续为主动作+取消；draft/completed→无', () => {
+    expect(buildProductionRunView(run(), now).controls).toEqual(['pause', 'cancel'])
+    expect(buildProductionRunView(run({ status: 'paused' }), now)).toMatchObject({
+      tone: 'attention',
+      titleKey: 'production.status.paused',
+      primaryAction: 'resume-run',
+      controls: ['cancel'],
+    })
+    expect(buildProductionRunView(run({ status: 'pausing' }), now)).toMatchObject({
+      titleKey: 'production.status.pausing',
+      primaryAction: null,
+      controls: ['cancel'],
+    })
+    expect(buildProductionRunView(run({ status: 'draft', jobs: [], stages: [] }), now).controls).toEqual([])
+    expect(buildProductionRunView(run({ status: 'completed', jobs: [] }), now).controls).toEqual([])
+  })
+
   it('prioritizes a pending contextual gate with one approval action', () => {
     const value = run({
       status: 'awaiting_contract',
