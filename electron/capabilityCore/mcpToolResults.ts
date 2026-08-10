@@ -22,7 +22,9 @@ const INTENT_LABEL: Record<string, { zh: string; en: string }> = {
 const RUN_STATUS_HINT: Record<string, { zh: string; en: string; nextZh: string; nextEn: string; action: string }> = {
   draft: { zh: '草稿', en: 'draft', nextZh: '下一步：定创意方向（尚未花费）', nextEn: 'Next: pick a creative direction (nothing spent yet)', action: 'pick_direction' },
   awaiting_direction: { zh: '等你定方向', en: 'awaiting direction', nextZh: '下一步：在对话里选一个创意方向', nextEn: 'Next: choose a creative direction in the conversation', action: 'pick_direction' },
+  awaiting_storyboard_review: { zh: '分镜等你审阅', en: 'storyboard awaiting review', nextZh: '下一步：审阅分镜；确认后才会生成制作合同', nextEn: 'Next: review the storyboard; the contract is created after you confirm', action: 'review_storyboard' },
   awaiting_contract: { zh: '等待批准预算', en: 'awaiting budget approval', nextZh: '下一步：批准制作合同后才会开始付费生成', nextEn: 'Next: approve the production contract before any paid generation', action: 'approve_contract' },
+  ready: { zh: '已就绪', en: 'ready', nextZh: '合同已批准，生成即将开始', nextEn: 'Contract approved; generation starts shortly', action: 'watch_or_pause' },
   running: { zh: '制作进行中', en: 'running', nextZh: '可随时说「先停一下」暂停', nextEn: 'Say "pause" anytime to pause the run', action: 'watch_or_pause' },
   pausing: { zh: '正在暂停', en: 'pausing', nextZh: '正在安全停下，已提交的镜头会先收尾', nextEn: 'Stopping safely; in-flight shots will settle first', action: 'wait' },
   paused: { zh: '已暂停', en: 'paused', nextZh: '已完成内容与已花预算安全；可继续或取消', nextEn: 'Finished shots and spend are safe; resume or cancel', action: 'resume_or_cancel' },

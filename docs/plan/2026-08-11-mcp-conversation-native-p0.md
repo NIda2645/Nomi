@@ -35,7 +35,12 @@
 - **改动**：新模块 `electron/capabilityCore/mcpToolResults.ts` 收口全部结果文本（替换 mcpProtocol.ts 内散落的硬编码中文——P1 改造非并行）：`structuredContent` 补 `runId/projectId/params{model,ratio,duration,refs}/budget{cap,spent}/nextActions[]`；text 首行=状态一句话，次行=参数回显（样张①⑧格式）；locale 跟 App 语言设置（zh-CN/en 两份词表，复用 src/i18n 的 key 结构、electron 侧轻量查表）。
 - **验收**：单测对 4 个生产工具结果做 schema + 双语快照；`check:i18n` 不新增违规。
 
-### A3 确认双路同源互斥（前台弹窗 / 后台对话弹框）
+### A3 确认双路同源互斥（前台弹窗 / 后台对话弹框）**【改判：随 Phase B 做】**
+
+> 2026-08-11 实施判断：A3 动的是付费确认竞态（renderer spend store 是单 pending 槽 + elicitation 双发收敛），
+> 与 Phase B 的门呈现层是同一块地——分开动会改两遍。且现状缺口仅「Nomi 开着但在后台」一种场景
+> （开着→弹窗可用，关着→elicitation 已可用），配合 A5 系统通知已能把人叫回来。归入 Phase B 一起做，
+> 顺带写并发审批测试（blueprint 疑点）。
 - **目标**：Nomi 前台 → SpendConfirmDialog（现状）；Nomi 后台/未开 → elicitation + 系统通知。**一个决定只有一份答案**：先答者生效，后到者幂等忽略，决议写回同一事件流。
 - **改动**：`mcpProtocol.ts` confirmSpend 路径 + `rendererBridge.ts`：以 gate/grant id 为幂等键统一决议收口（现 pending Map 已按 id，补「已决议后二次 resolve = no-op + 收起另一路」）；前台判定用 `mainWindow.isFocused()`；elicitation 超时沿用 300s、弹窗 65s 不变。
 - **验收**：单测双路并发决议幂等；blueprint 疑点「两个并发审批互相覆盖」写并发测试证伪/证实并修。
