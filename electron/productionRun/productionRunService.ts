@@ -16,6 +16,8 @@ import {
   type ArtifactProjection,
 } from './artifactProjection'
 import { buildProductionDeepLink } from './productionDeepLink'
+import { applyRunControl } from './productionRunControl'
+import { withEventTap } from './productionRunEventTap'
 import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
@@ -208,19 +210,8 @@ function eventProjection(event: RunEvent): ProductionEventProjection {
 }
 
 export function createProductionRunService(deps: ServiceDeps = {}) {
-  const rawRepository = deps.repository ?? createProductionRunRepository()
-  // A5：execute 是全部持久化事件的单一必经点——在此旁路广播（通知钩子吞错，不碰主流程）。
-  const onEvents = deps.onEvents
-  const repository: ProductionRunRepository = onEvents
-    ? {
-        ...rawRepository,
-        execute: (projectId, runId, runCommand) => {
-          const result = rawRepository.execute(projectId, runId, runCommand)
-          try { onEvents(result.events, result.run) } catch { /* 通知钩子不许影响制作 */ }
-          return result
-        },
-      }
-    : rawRepository
+  // A5：事件旁路装饰（通知等），见 productionRunEventTap.ts。
+  const repository = withEventTap(deps.repository ?? createProductionRunRepository(), deps.onEvents)
   const sleep = deps.sleep ?? ((delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)))
   const projectRootResolver = deps.projectRootResolver ?? ((projectId: string) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()))
   const previewSecret = deps.previewSecret ?? getArtifactPreviewSecret()
@@ -611,42 +602,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       return result
     }
     if (runCommand.type === 'run.control') {
-      // A4 run 控制（plan 2026-08-11-mcp-conversation-native-p0）：pause/resume/cancel 单一收口，
-      // MCP（dispatcher production.control）与渲染端（run.control 白名单）走同一分支。
-      // 幂等近似：已在目标态 → 原样返回不写事件（对话里连说两次「停」不该炸）。
-      const action = typeof runCommand.payload.action === 'string' ? runCommand.payload.action : ''
-      let current = requireRun(safeProjectId, safeRunId)
-      const ACTIVE_JOB_STATUSES = ['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content']
-      const actionLabel = action === 'pause' ? '暂停' : action === 'resume' ? '继续' : '取消'
-      const illegal = () => new Error(`无法${actionLabel}：制作当前状态是 ${current.status}，不允许这个操作`)
-      if (action === 'pause') {
-        if (['pausing', 'paused'].includes(current.status)) return { run: current, events: [] }
-        if (current.status !== 'running') throw illegal()
-        let result = repository.execute(safeProjectId, safeRunId, { ...runCommand, type: 'run.status', payload: { status: 'pausing' } })
-        current = result.run
-        // 没有在途任务（已提交给供应商还没收尾的）就直接落停；有则停在 pausing，由收尾流程转 paused。
-        if (!current.jobs.some((job) => ACTIVE_JOB_STATUSES.includes(job.status))) {
-          result = repository.execute(safeProjectId, safeRunId, {
-            ...runCommand,
-            commandId: `${runCommand.commandId}:settle`,
-            expectedRevision: current.revision,
-            type: 'run.status',
-            payload: { status: 'paused' },
-          })
-        }
-        return result
-      }
-      if (action === 'resume') {
-        if (current.status === 'running') return { run: current, events: [] }
-        if (!['paused', 'needs_attention'].includes(current.status)) throw illegal()
-        return repository.execute(safeProjectId, safeRunId, { ...runCommand, type: 'run.status', payload: { status: 'running' } })
-      }
-      if (action === 'cancel') {
-        if (current.status === 'cancelled') return { run: current, events: [] }
-        if (current.status === 'completed') throw illegal()
-        return repository.execute(safeProjectId, safeRunId, { ...runCommand, type: 'run.status', payload: { status: 'cancelled' } })
-      }
-      throw new Error('Invalid production control action')
+      // A4 run 控制：逻辑在 productionRunControl.ts（MCP 与渲染端同一收口）。
+      return applyRunControl(repository, safeProjectId, safeRunId, requireRun(safeProjectId, safeRunId), runCommand)
     }
     if (runCommand.type === 'plan.attach') {
       const current = requireRun(safeProjectId, safeRunId)
