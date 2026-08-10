@@ -69,6 +69,8 @@ type ServiceDeps = {
     assets?: Array<{ type?: string; url?: string; thumbnailUrl?: string }>
     error?: string
   }>
+  /** A5：每批持久化事件的旁路监听（系统通知等）。异常被吞，绝不影响制作主流程。 */
+  onEvents?: (events: RunEvent[], run: ProductionRun) => void
 }
 
 const MEANINGFUL_EVENT_TYPES = new Set([
@@ -206,7 +208,19 @@ function eventProjection(event: RunEvent): ProductionEventProjection {
 }
 
 export function createProductionRunService(deps: ServiceDeps = {}) {
-  const repository = deps.repository ?? createProductionRunRepository()
+  const rawRepository = deps.repository ?? createProductionRunRepository()
+  // A5：execute 是全部持久化事件的单一必经点——在此旁路广播（通知钩子吞错，不碰主流程）。
+  const onEvents = deps.onEvents
+  const repository: ProductionRunRepository = onEvents
+    ? {
+        ...rawRepository,
+        execute: (projectId, runId, runCommand) => {
+          const result = rawRepository.execute(projectId, runId, runCommand)
+          try { onEvents(result.events, result.run) } catch { /* 通知钩子不许影响制作 */ }
+          return result
+        },
+      }
+    : rawRepository
   const sleep = deps.sleep ?? ((delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)))
   const projectRootResolver = deps.projectRootResolver ?? ((projectId: string) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()))
   const previewSecret = deps.previewSecret ?? getArtifactPreviewSecret()
