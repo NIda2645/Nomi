@@ -150,7 +150,8 @@ function primaryTaskKind(kind: BillingModelKind): ProfileKind {
   return "chat";
 }
 
-const defaultCatalog: ProviderAdapterCatalogPort = {
+/** 导出仅为单测直接驱动真实 promote（验证结果不得决定 enabled 的不变量钉在那里）。 */
+export const defaultCatalog: ProviderAdapterCatalogPort = {
   stage(input) {
     const before = readCatalog();
     const existingVendor = before.vendors.find((vendor) => vendor.key === input.vendorKey);
@@ -219,18 +220,19 @@ const defaultCatalog: ProviderAdapterCatalogPort = {
     mutateCatalog((tx) => {
       const existingVendor = before.vendors.find((vendor) => vendor.key === input.run.vendorKey);
       if (!existingVendor) throw new Error(`Provider disappeared before adapter promotion: ${input.run.vendorKey}`);
-      tx.upsertVendor({ ...existingVendor, enabled: input.verifiedModes.length > 0 || existingVendor.enabled });
+      // 验证结果不再决定「给不给用」（2026-08-12）：用户明确要求加的东西就该加进来，
+      // 没验过的标记出来让他自己试——我们的探测比模型本身更容易错（接 DeepSeek 那次即是）。
+      tx.upsertVendor({ ...existingVendor, enabled: true });
       for (const candidate of input.draft.models) {
         const existing = before.models.find(
           (model) => model.vendorKey === input.run.vendorKey && model.modelKey === candidate.modelKey,
         );
         if (!existing) continue;
         const modeResults = input.run.models.find((model) => model.modelKey === candidate.modelKey)?.modes || [];
-        const verifiedForModel = modeResults.filter((mode) => mode.state === "verified");
         const oldMeta = asRecord(existing.meta);
         tx.upsertModel({
           ...existing,
-          enabled: existing.enabled || verifiedForModel.length > 0,
+          enabled: true,
           meta: adapterModelMetadataForPromotion({
             oldMeta,
             candidate,
@@ -505,9 +507,18 @@ export class ProviderAdapterService {
       let results = await this.verifyDraft(id, connection, candidate, 1, compilation.failures);
       const maxRepairs = this.dependencies.maxRepairs ?? 2;
       let repairError: string | undefined;
+      // 自动修复重新生成的是「HTTP 接法草稿」，而文本模型的验证走 streamTextTask（生产同一条路）、
+      // 压根不读这份草稿——对文本失败重修等于原样再发一次同样的请求，必然同样失败。
+      // 旧行为：白转 2 轮、界面还写着「正在根据真实错误自动修复…」（假的），用户干等 2 分钟拿同一个结果。
+      // 只让「修得动的」失败（真正按草稿发请求的非文本模型）触发重修。(2026-08-12)
+      const repairableKeys = new Set(
+        connection.models.filter((model) => model.kind !== "text").map((model) => model.modelKey),
+      );
       for (let repairAttempt = 1; repairAttempt <= maxRepairs; repairAttempt += 1) {
         const compiledKeys = new Set(candidate.models.map((model) => model.modelKey));
-        const failure = results.find((result) => result.state === "failed" && compiledKeys.has(result.modelKey));
+        const failure = results.find(
+          (result) => result.state === "failed" && compiledKeys.has(result.modelKey) && repairableKeys.has(result.modelKey),
+        );
         if (!failure) break;
         this.store.updateRun(id, (run) => ({ ...run, stage: "repairing", repairAttempt, updatedAt: this.dependencies.now() }));
         try {

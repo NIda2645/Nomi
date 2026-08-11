@@ -58,6 +58,39 @@ describe("verifyAdapterMode", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  // 回归钉子（2026-08-11 用户接 DeepSeek V4 踩到）：思考型模型先吐 reasoning 再吐正文，
+  // 而 textStream 只含正文。探测额度太小 → 正文被截空 → 旧代码判「模型不可用」，把好模型判死。
+  // 这里钉的是「空正文要分因」：我们自己截断的不算模型的错，真空回复才算。
+  const textModel = { ...model, modelKey: "chat-v1", labelZh: "Chat V1", kind: "text" as const };
+  const chatMode = mode({ taskKind: "chat", create: { method: "POST", path: "/chat" } });
+
+  it("counts a thinking model as reachable when our own token cap truncated it before the answer", async () => {
+    const verifyText = vi.fn().mockResolvedValue({
+      text: "",
+      finishReason: "length",
+      reasoning: "The user wants the single word ready, so I should reply with",
+    });
+
+    const verification = await verifyAdapterMode(
+      { vendor, model: textModel, apiKey: "sk-test", mode: chatMode },
+      { verifyText },
+    );
+
+    expect(verification.ok).toBe(true);
+  });
+
+  it("still fails a model that returns nothing at all", async () => {
+    const verifyText = vi.fn().mockResolvedValue({ text: "", finishReason: "stop" });
+
+    const verification = await verifyAdapterMode(
+      { vendor, model: textModel, apiKey: "sk-test", mode: chatMode },
+      { verifyText },
+    );
+
+    expect(verification.ok).toBe(false);
+    if (!verification.ok) expect(verification.error).toContain("empty reply");
+  });
+
   it("passes a synchronous media result only after the returned asset is readable", async () => {
     const execute = vi.fn().mockResolvedValue({ response: { url: "https://cdn.example.com/out.png" }, request: {} });
     const normalize = vi.fn().mockResolvedValue({

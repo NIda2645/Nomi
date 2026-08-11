@@ -255,6 +255,26 @@ describe("ProviderAdapterService", () => {
     expect(service.getRun(started.id)?.stage).toBe("completed");
   });
 
+  // 回归钉子（2026-08-11 用户接 DeepSeek 踩到「自动修复一直失败」）：文本模型验证走
+  // streamTextTask（生产同一条路）、根本不读编译出来的 HTTP 草稿，所以重修草稿对文本失败
+  // 是个空操作——旧代码照样空转 2 轮、界面还写着「正在根据真实错误自动修复…」，用户白等。
+  it("does not burn repair rounds on a text failure that repairing the HTTP draft cannot change", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.verify = async ({ mode }) =>
+      mode.taskKind === "chat"
+        ? { ok: false, taskKind: mode.taskKind, stage: "create", error: "empty reply" }
+        : { ok: true, taskKind: mode.taskKind };
+    deps.repair = vi.fn(async () => draft());
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start(startInput);
+
+    await service.executeRun(started.id);
+
+    expect(deps.repair).not.toHaveBeenCalled();
+    expect(service.getRun(started.id)?.repairAttempt).toBe(0);
+  });
+
   it("does not publish a failed candidate when no mode passed", async () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
