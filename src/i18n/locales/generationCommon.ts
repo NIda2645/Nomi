@@ -929,6 +929,9 @@ export const zhGenerationCommon = {
     status: {
       submissionUnknown: '提交结果不明，Nomi 已停止自动重试',
       approvalRequired: '继续制作前需要你的确认',
+      directionGate: '等你定创意方向',
+      sampleGate: '样片好了，等你过目',
+      exportGate: '成片等你批准导出',
       needsAttention: '当前制作阶段需要处理',
       providerStale: '供应商长时间没有返回新状态',
       completed: '本次制作已完成',
@@ -944,6 +947,9 @@ export const zhGenerationCommon = {
     description: {
       submissionUnknown: '请求可能已经到达供应商；再次提交可能重复扣费，后续任务已停在安全边界。',
       approvalRequired: '请核对当前制作范围和支出边界；批准前不会继续调用付费模型。',
+      directionGate: '方向定了才会拟分镜。这一步不调用模型，也不花钱。',
+      sampleGate: '先看这一镜样片：满意就继续剩下的镜头，不满意只亏这一镜的钱。',
+      exportGate: '导出会把粗剪合成成片；这一步由你明确批准后才执行。',
       needsAttention: '自动流程已经暂停，请查看当前镜头或阶段并处理失败原因。',
       providerStale: 'Nomi 仍会查询已有任务，但不会因为等待过久而重复提交。',
       completed: '所有已批准阶段都已完成，产物仍保存在当前本地项目中。',
@@ -2083,6 +2089,9 @@ export const enGenerationCommon = {
     status: {
       submissionUnknown: 'Submission result is unknown; Nomi stopped automatic retries',
       approvalRequired: 'Your approval is required before production continues',
+      directionGate: 'Waiting on your creative direction',
+      sampleGate: 'The sample shot is ready for you',
+      exportGate: 'The final cut is waiting for your export approval',
       needsAttention: 'The current production stage needs attention',
       providerStale: 'The provider has not returned a new state for a while',
       completed: 'This production run is complete',
@@ -2098,6 +2107,9 @@ export const enGenerationCommon = {
     description: {
       submissionUnknown: 'The request may have reached the provider. Retrying could charge twice, so later work is paused at a safe boundary.',
       approvalRequired: 'Review the production scope and spending boundary. No paid model will run before approval.',
+      directionGate: 'The storyboard is drafted only after the direction is set. This step calls no model and costs nothing.',
+      sampleGate: 'Check this one sample shot: approve to continue the rest, or stop and only lose this shot.',
+      exportGate: 'Exporting assembles the rough cut into the final file; it runs only after you approve.',
       needsAttention: 'Automation is paused. Open the current shot or stage to resolve the failure.',
       providerStale: 'Nomi will keep checking the existing task without resubmitting it because of the delay.',
       completed: 'Every approved stage is complete, and the artifacts remain in this local project.',

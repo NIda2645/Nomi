@@ -146,10 +146,12 @@ async function waitForWaitingGate(rpc, projectId, runId, gateIdPrefix, timeoutMs
   throw new Error(`Run ${runId} did not raise a waiting gate ${gateIdPrefix}*`)
 }
 
-async function openRunFromTaskCenter(window) {
+async function openRunFromTaskCenter(window, shotName) {
   await window.locator('[data-task-center-trigger="true"]').click()
   const row = window.locator('[data-nomi-right-panel="tasks"]', { hasText: 'brand.promo' }).locator('[role="button"]', { hasText: 'brand.promo' }).first()
   await row.waitFor({ timeout: 10_000 })
+  // 走查证据：任务中心是制作任务的家（R13 人眼判断它装不装得下状态与产物）。
+  if (shotName) await window.screenshot({ path: path.join(shotsDir, shotName) })
   await row.click()
   await window.locator('[data-production-status-title]').waitFor({ timeout: 10_000 })
 }
@@ -214,7 +216,7 @@ try {
   check(Boolean(runId), 'MCP creates a durable Production Run without approving spend')
   check(started.structuredContent.nomiRunData.budget.authorized === 0, 'draft has zero authorized spend')
 
-  await openRunFromTaskCenter(window)
+  await openRunFromTaskCenter(window, '00-task-center.png')
   check((await window.locator('[data-production-status-title]').textContent())?.length > 0, 'Task Center reopens the exact Run and expands the assistant')
   await window.screenshot({ path: path.join(shotsDir, '01-direction-gate.png') })
 

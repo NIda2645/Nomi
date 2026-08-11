@@ -5,6 +5,19 @@ import type {
 } from '../../../electron/productionRun/productionRunTypes'
 
 export type ProductionRunTone = 'working' | 'attention' | 'danger' | 'success' | 'neutral'
+/** 门类：决定文案与「在哪决定」。方向/样片不花钱，预算/导出才是钱与不可逆。 */
+export type ProductionGateKind = 'direction' | 'sample' | 'contract' | 'export' | 'stage'
+/** 决定的家：origin=发起端（CLI）主决策、Nomi 只指路兜底；nomi=用户自主发起，门在 Nomi 是主路径。 */
+export type ProductionDecisionHome = 'origin' | 'nomi'
+
+/** gateId/scope → 门类（gateId 前缀是 driver 侧的既有约定，scope 兜底）。 */
+export function gateKindOf(gate: { gateId: string; scope: string }): ProductionGateKind {
+  if (gate.gateId.startsWith('gate-direction-')) return 'direction'
+  if (gate.gateId.startsWith('gate-sample-')) return 'sample'
+  if (gate.scope === 'budget_envelope') return 'contract'
+  if (gate.scope === 'export') return 'export'
+  return 'stage'
+}
 export type ProductionRunPrimaryAction = 'open-stage' | 'open-gate' | 'review-storyboard' | 'reconcile' | 'review-rough-cut' | 'open-export' | 'resume-run' | null
 /** A4 情境控制（§1.5 L2：进行中才出现，不占常驻预算）。 */
 export type ProductionRunControl = 'pause' | 'cancel'
@@ -17,6 +30,10 @@ export type ProductionRunView = {
   primaryAction: ProductionRunPrimaryAction
   /** 面板情境控制行：running → 暂停+取消；paused/pausing → 取消（继续走 primaryAction）。 */
   controls: ProductionRunControl[]
+  /** 有门在等时的门类（决定文案 + 指路措辞）；无门为 undefined。 */
+  gateKind?: ProductionGateKind
+  /** 门该在哪决定：外部驱动 → 指路回 CLI（Nomi 只兜底）；nomi 自主发起 → 门在 Nomi 是主路径。 */
+  decisionHome: ProductionDecisionHome
   targetId?: string
   originHost: string
   preview?: {
@@ -77,11 +94,14 @@ export function buildProductionRunView(
     run.gates.flatMap((gate) => gate.contract?.skills ?? [])
       .map((skill) => [`${skill.name}\u0000${skill.version}`, skill]),
   ).values()]
+  const originHost = ['nomi', 'claude', 'codex', 'cursor'].includes(run.origin.host)
+    ? run.origin.host
+    : (['claude', 'codex', 'cursor'].includes(run.origin.actorId || '') ? run.origin.actorId! : 'external')
   const base = {
     controls: [] as ProductionRunControl[],
-    originHost: ['nomi', 'claude', 'codex', 'cursor'].includes(run.origin.host)
-      ? run.origin.host
-      : (['claude', 'codex', 'cursor'].includes(run.origin.actorId || '') ? run.origin.actorId! : 'external'),
+    // 谁发起的谁决定：nomi 自主发起时没有 CLI 可用，门在 Nomi 是主路径。
+    decisionHome: (originHost === 'nomi' ? 'nomi' : 'origin') as ProductionDecisionHome,
+    originHost,
     preview: latestSafePreview(run.artifacts),
     details: {
       completedStages: run.stages.filter((stage) => stage.status === 'completed').length,
@@ -157,12 +177,22 @@ export function buildProductionRunView(
     }
   }
   if (waitingGate) {
+    // N3：四类门不再共用一套「核对支出边界」文案——方向/样片门根本不花钱，说付费是误导。
+    const gateKind = gateKindOf(waitingGate)
+    const copyKey = gateKind === 'direction'
+      ? 'directionGate'
+      : gateKind === 'sample'
+        ? 'sampleGate'
+        : gateKind === 'export'
+          ? 'exportGate'
+          : 'approvalRequired'
     return {
       ...base,
       tone: 'attention',
-      titleKey: 'production.status.approvalRequired',
-      descriptionKey: 'production.description.approvalRequired',
+      titleKey: `production.status.${copyKey}`,
+      descriptionKey: `production.description.${copyKey}`,
       primaryAction: 'open-gate',
+      gateKind,
       targetId: waitingGate.gateId,
     }
   }
