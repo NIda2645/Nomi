@@ -229,6 +229,9 @@ try {
   check(await candidateRows.count() === 3, 'direction dialog renders all three candidates')
   await window.locator('[data-direction-candidate="kinetic"]').click()
   check(await window.locator('[data-direction-candidate="kinetic"]').getAttribute('data-direction-selected') === 'true', 'clicking a candidate selects it')
+  // 选择稳定性：600ms 后选中不得被任何重渲染/轮询重置回默认（验收抓到的视觉回落疑点）。
+  await window.waitForTimeout(600)
+  check(await window.locator('[data-direction-candidate="kinetic"]').getAttribute('data-direction-selected') === 'true', 'selection survives re-renders (no reset to first candidate)')
   await window.screenshot({ path: path.join(shotsDir, '01a-direction-candidates.png') })
   const directionOverlay = window.locator('.fixed.inset-0').filter({ has: window.locator('button') }).last()
   await directionOverlay.locator('button').last().click()
