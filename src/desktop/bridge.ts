@@ -611,6 +611,12 @@ export type DesktopBridge = DesktopMediaBridge & {
     upsertVendorApiKey: (vendorKey: string, payload: unknown) => unknown
     clearVendorApiKey: (vendorKey: string) => unknown
     upsertModel: (payload: unknown) => unknown
+    /**
+     * 改类型 = 改 kind + 按新 kind 重建调用通道（单事务，见 electron/catalog/modelRetype.ts）。
+     * 刻意不复用 upsertModel：只改 kind 不重建通道等于把「类型错」换成「没有通道」，仍然跑不了。
+     * 可选（`?`）：旧 preload 没有这个方法，调用方须自己兜住 undefined。
+     */
+    retypeModel?: (payload: { vendorKey: string; modelKey: string; kind: string }) => unknown
     /** 自定义调用（2026-08-04）：契约（编辑器变量表/模板）。旧 preload 可能没有 → 可选。 */
     customCallContract?: () => {
       variables: Array<{ name: string; type: string }>

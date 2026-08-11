@@ -1,19 +1,22 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconRefresh, IconReplace, IconSettings } from '@tabler/icons-react'
+import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconRefresh, IconReplace, IconSettings, IconWand } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { WorkbenchButton } from '../../../design'
 import { isKnownVendor } from '../../../config/knownVendors'
+import { notifyModelOptionsRefresh } from '../../../config/modelCatalogCache'
+import { getDesktopBridge } from '../../../desktop/bridge'
 import { setPendingCustomCallIntent } from '../../../ui/onboarding/customCallIntent'
 import { isComfyuiVendorKey } from '../runner/comfyuiTaskControl'
 import { nodeSelectedModelAddress } from './controls/parameterControlModel'
 import { classifyGenerationError } from '../runner/generationRunController'
-import { narrateErrorActionLabel, type GenerationErrorAction } from '../../observability/narrate'
+import { narrateErrorActionLabel, narrateModelKind, type GenerationErrorAction } from '../../observability/narrate'
 
 const ACTION_ICON: Record<GenerationErrorAction, typeof IconRefresh> = {
   retry: IconRefresh,
   'switch-model': IconReplace,
   'open-model-access': IconSettings,
+  'fix-model-kind': IconWand,
 }
 
 /**
@@ -93,13 +96,58 @@ export function NodeErrorReport({
     window.dispatchEvent(new CustomEvent('nomi-open-model-catalog'))
   }, [])
 
+  /**
+   * 一键改对类型：改 kind 的同时按新 kind 重建调用通道（electron 侧 retypeModel 单事务），改完直接重跑。
+   * 只有在**三个事实都齐**时才给这个按钮：模型地址（节点 meta 的双键）+ 错误里带出的目标类型。
+   * 缺任一项就返回 undefined，让下面既有的降级逻辑把主按钮换成「去模型接入」——宁可少一个按钮，
+   * 也不给一个点了不知道会对谁生效的按钮（§1.6 C1：可点即有效）。
+   */
+  const kindFixTarget = React.useMemo(() => {
+    if (report.kind !== 'model-kind-mismatch' || !report.modelKindFix) return null
+    const { vendorKey } = nodeSelectedModelAddress(meta)
+    if (!vendorKey) return null
+    return { vendorKey, ...report.modelKindFix }
+  }, [meta, report])
+
+  const handleFixModelKind = React.useCallback(
+    (event: React.MouseEvent) => {
+      event.stopPropagation()
+      if (!kindFixTarget) return
+      const retype = getDesktopBridge()?.modelCatalog.retypeModel
+      if (!retype) {
+        window.dispatchEvent(new CustomEvent('nomi-open-model-catalog'))
+        return
+      }
+      try {
+        retype({
+          vendorKey: kindFixTarget.vendorKey,
+          modelKey: kindFixTarget.modelKey,
+          kind: kindFixTarget.requested,
+        })
+      } catch {
+        // 改不动（内置/agent 路的模型不许套通用模板重建通道）→ 把用户送去那一页自己处理，
+        // 别静默吞掉让按钮看起来没反应。
+        window.dispatchEvent(new CustomEvent('nomi-open-model-catalog'))
+        return
+      }
+      // 目录变了，下拉/运行前解析都得重取，否则刚改完这次重试仍按旧目录解析、白撞一次。
+      // 复用既有唯一刷新入口（清缓存 + 广播），不另造一套失效机制。
+      notifyModelOptionsRefresh()
+      onRetry?.()
+    },
+    [kindFixTarget, onRetry],
+  )
+
   const actionHandlers: Record<GenerationErrorAction, ((event: React.MouseEvent) => void) | undefined> = {
     retry: onRetry ? handleRetry : undefined,
     'switch-model': handleSwitchModel,
     'open-model-access': handleOpenModelAccess,
+    'fix-model-kind': kindFixTarget ? handleFixModelKind : undefined,
   }
   const primaryAction = actionHandlers[report.primary] ? report.primary : 'open-model-access'
   const secondaryAction = report.secondary !== primaryAction && actionHandlers[report.secondary] ? report.secondary : null
+  // 「改成图片」要点出改成**哪个**类型，否则按钮只是「改类型」——用户还得自己再想一步。
+  const actionLabelParams = kindFixTarget ? { kind: narrateModelKind(kindFixTarget.requested) } : undefined
 
   const handleCopy = React.useCallback(
     async (event: React.MouseEvent) => {
@@ -176,19 +224,24 @@ export function NodeErrorReport({
       ) : null}
 
       {/* 主动作按类型走（narrate 的 ACTION_BY_KIND）：确定性失败给「换个模型/去模型接入」，
-          偶发失败才给「重试」。以前一律红「重试」，和「重试还会是同样结果」的文案自相矛盾。 */}
-      <div className="flex items-center gap-2">
+          偶发失败才给「重试」。以前一律红「重试」，和「重试还会是同样结果」的文案自相矛盾。
+
+          flex-wrap + 每颗 shrink-0 whitespace-nowrap：不加的话 flex 会压缩次要按钮，把文案**从词中间
+          断开**成「换个模/型」「复制详/情」（2026-08-11 走查截图实拍）。几何断言抓不到它——没有溢出、
+          没有越界，只是难看得像坏了。窄处该做的是整颗换行，不是把字劈两半（AssistantErrorCard 同款处理）。 */}
+      <div className="flex flex-wrap items-center gap-2">
         {(() => {
           const PrimaryIcon = ACTION_ICON[primaryAction]
+          const label = narrateErrorActionLabel(primaryAction, 'primary', actionLabelParams)
           return (
             <WorkbenchButton
               size="sm"
               onClick={actionHandlers[primaryAction]}
-              aria-label={narrateErrorActionLabel(primaryAction, 'primary')}
-              className="bg-workbench-danger text-nomi-paper border-0 hover:bg-workbench-danger-soft"
+              aria-label={label}
+              className="shrink-0 whitespace-nowrap bg-workbench-danger text-nomi-paper border-0 hover:bg-workbench-danger-soft"
             >
               <PrimaryIcon size={13} stroke={1.6} />
-              {narrateErrorActionLabel(primaryAction, 'primary')}
+              {label}
             </WorkbenchButton>
           )
         })()}
@@ -196,12 +249,12 @@ export function NodeErrorReport({
           <button
             type="button"
             onClick={actionHandlers[secondaryAction]}
-            className="text-caption text-nomi-ink-40 hover:text-nomi-ink"
+            className="shrink-0 whitespace-nowrap text-caption text-nomi-ink-40 hover:text-nomi-ink"
           >
-            {narrateErrorActionLabel(secondaryAction, 'secondary')}
+            {narrateErrorActionLabel(secondaryAction, 'secondary', actionLabelParams)}
           </button>
         ) : null}
-        <button type="button" onClick={handleCopy} className="text-caption text-nomi-ink-40 hover:text-nomi-ink">
+        <button type="button" onClick={handleCopy} className="shrink-0 whitespace-nowrap text-caption text-nomi-ink-40 hover:text-nomi-ink">
           {copied ? t('generationCommon.error.copied') : t('generationCommon.error.copyDetails')}
         </button>
         <div className="min-w-0 flex-1" />
@@ -212,7 +265,7 @@ export function NodeErrorReport({
             setShowRaw((value) => !value)
           }}
           aria-expanded={showRaw}
-          className="inline-flex items-center gap-0.5 text-micro text-nomi-ink-40 hover:text-nomi-ink-60"
+          className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap text-micro text-nomi-ink-40 hover:text-nomi-ink-60"
         >
           {t('generationCommon.error.technicalDetails')}
           {showRaw ? <IconChevronDown size={13} stroke={1.6} /> : <IconChevronRight size={13} stroke={1.6} />}

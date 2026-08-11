@@ -191,6 +191,7 @@ export const zhGenerationCommon = {
       retry: { main: '重试', alt: '仍要重试' },
       switchModel: { main: '换个模型', alt: '换个模型' },
       modelAccess: { main: '去模型接入', alt: '去模型接入' },
+      fixModelKind: { main: '改成{{kind}}并重试', alt: '改成{{kind}}' },
     },
     progress: {
       queued: '准备生成',
@@ -225,6 +226,10 @@ export const zhGenerationCommon = {
       },
       network: { reason: '网络超时', hint: '网络问题，请检查网络后重试。' },
       modelConfig: { reason: '模型未配置', hint: '这个模型没配好，请去「模型接入」页设置。' },
+      modelKindMismatch: {
+        reason: '模型类型登记错了',
+        hint: '接入时是按模型名猜的类型，这个猜错了：「{{model}}」被登记成了{{registered}}模型，而这里要的是{{requested}}模型。改成{{requested}}就能用。',
+      },
       modelNotOpen: {
         reason: '模型未开通',
         hint: '这个模型你的服务商账户还没开通。请到服务商控制台开通它（火山方舟：在 Ark 控制台「开通管理」激活对应模型），或在「模型接入」换一个已开通的模型。',
@@ -1343,6 +1348,7 @@ export const enGenerationCommon = {
       retry: { main: 'Retry', alt: 'Retry anyway' },
       switchModel: { main: 'Switch model', alt: 'Switch model' },
       modelAccess: { main: 'Open model access', alt: 'Open model access' },
+      fixModelKind: { main: 'Set to {{kind}} and retry', alt: 'Set to {{kind}}' },
     },
     progress: {
       queued: 'Preparing generation',
@@ -1377,6 +1383,10 @@ export const enGenerationCommon = {
       },
       network: { reason: 'Network timeout', hint: 'Check your network connection and try again.' },
       modelConfig: { reason: 'Model not configured', hint: 'Configure this model in Model access.' },
+      modelKindMismatch: {
+        reason: 'Model registered as the wrong type',
+        hint: 'Types are guessed from the model name when you connect a provider, and this one guessed wrong: "{{model}}" is registered as {{registered}}, but this needs {{requested}}. Set it to {{requested}} and it will work.',
+      },
       modelNotOpen: {
         reason: 'Model not activated',
         hint: 'Activate this model in the provider console, or choose an already activated model in Model access.',

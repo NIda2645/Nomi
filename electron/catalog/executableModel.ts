@@ -15,14 +15,22 @@ export function findExecutableModel(
   if (!vendor) throw new Error(`Vendor is not enabled: ${vendorKey}`);
   // 精确 modelKey 优先于 alias（修双键 OR 误路由，selectExecutableModel 纯函数单测覆盖）。
   const model = selectExecutableModel(state.models, vendorKey, modelKey, kind);
-  // 分两种说法（旧实现都压成一句英文 `Model is not enabled`，落进 unknown 桶 → 用户看到技术原话 +
-  // 误导的「稍等重试」）：记录**整条不在了** = 已退役下线（我们主动移除，见 seedBuiltins 退役清单）
-  // → 渲染层归 model-retired、给「换个模型」；记录还在只是被停用 → 归 model-config、给「去模型接入」。
+  // 分**三**种说法。旧实现只分两种，把「类型登记错了」压进了 `Model is not enabled`——那句话是**假的**
+  // （模型明明启用着），渲染层据此说「模型未配置·去模型接入页设置」，而用户去了那页只会看到一切正常，
+  // 没有一个字指向真实缺口（接入时 guessModelKind 按关键词猜错了类型）。三分之后各归各的动作：
+  //  · 记录整条不在了 = 已退役下线（seedBuiltins 退役清单主动移除）→ model-retired，给「换个模型」；
+  //  · 记录在、但被停用                                        → model-config，给「去模型接入」；
+  //  · 记录在、也启用着、只是 kind 与本次请求不符               → model-kind-mismatch，给「改成 X」。
+  // 第三种带上两个 kind：错误文案要说得出「登记为什么、这里要什么」，渲染层不该去反猜。
   if (!model) {
-    const known = state.models.some(
+    const registered = state.models.find(
       (item) => item.vendorKey === vendorKey && (item.modelKey === modelKey || item.modelAlias === modelKey),
     );
-    throw new Error(known ? `Model is not enabled: ${modelKey}` : `Model is retired: ${modelKey}`);
+    if (!registered) throw new Error(`Model is retired: ${modelKey}`);
+    if (registered.enabled && kind && registered.kind !== kind) {
+      throw new Error(`Model kind mismatch: ${modelKey} (registered=${registered.kind}, requested=${kind})`);
+    }
+    throw new Error(`Model is not enabled: ${modelKey}`);
   }
   const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendorKey]);
   if (vendor.authType !== "none" && !apiKey) throw new Error(`API key missing: ${vendorKey}`);

@@ -44,7 +44,7 @@ export function AiModelsSection({
     }
   }, [])
 
-  const health = buildProviderHealthView(providers)
+  const health = buildProviderHealthView(providers, models, { modelsLoaded: catalogLoaded })
   const requiredProviderModels = React.useMemo(
     () => productionPolicyRequirement?.requiredProviderModels ?? [],
     [productionPolicyRequirement],
@@ -102,11 +102,27 @@ export function AiModelsSection({
           <div className="divide-y divide-nomi-line">
             {health.map((provider) => (
               <div key={provider.key} className="flex min-h-12 items-center justify-between gap-4 py-2">
-                <div className="min-w-0 truncate text-body-sm text-nomi-ink">{provider.name}</div>
+                {/* 名字下带一行能力摘要（「文本 82 · 图片 0」）。徽标只能回答「连上没有」，
+                    这一行回答「能干什么」——接入时类型猜错导致「82 个全是文本」时，这是唯一
+                    不用点开任何东西就能看出来的地方。 */}
+                <div className="min-w-0">
+                  <div className="truncate text-body-sm text-nomi-ink">{provider.name}</div>
+                  {catalogLoaded ? (
+                    <div className="mt-0.5 truncate text-caption text-nomi-ink-40">
+                      {provider.capabilities.length > 0
+                        ? provider.capabilities
+                          .map((cap) => `${t(`runtime.modelCatalog.kind.${cap.kind}` as 'runtime.modelCatalog.kind.image', { defaultValue: cap.kind })} ${cap.count}`)
+                          .join(' · ')
+                        : t('settings.ai.noEnabledModels')}
+                    </div>
+                  ) : null}
+                </div>
                 <span
                   className={provider.state === 'connected' || provider.state === 'local'
                     ? 'shrink-0 text-caption text-nomi-success'
-                    : 'shrink-0 text-caption text-nomi-ink-40'}
+                    : provider.state === 'no-models'
+                      ? 'shrink-0 text-caption text-nomi-warning'
+                      : 'shrink-0 text-caption text-nomi-ink-40'}
                 >
                   {t(`settings.ai.health.${provider.state}`)}
                 </span>

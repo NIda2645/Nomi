@@ -22,6 +22,7 @@ import {
   upsertModelCatalogVendor,
   upsertModelCatalogVendorApiKey,
 } from "./catalog/catalogStore";
+import { retypeModelCatalogModel } from "./catalog/modelRetype";
 import { runTaskWithIdempotency } from "./submissionLedger";
 import { runTaskIpcGuard } from "./tasks/taskIpcGuard";
 import { mintSpendGrant } from "./spendGrant";
@@ -445,6 +446,9 @@ function registerIpc(): void {
   registerSyncIpc("nomi:model-catalog:vendor-api-key:upsert", upsertModelCatalogVendorApiKey);
   registerSyncIpc("nomi:model-catalog:vendor-api-key:clear", clearModelCatalogVendorApiKey);
   registerSyncIpc("nomi:model-catalog:model:upsert", upsertModelCatalogModel);
+  // 改类型是**领域操作**不是字段 upsert：改 kind 的同时要按新 kind 重建调用通道，否则只是把
+  // 「类型错」换成「没有通道」（见 catalog/modelRetype.ts 文件头）。故走自己的 IPC，不复用 upsert。
+  registerSyncIpc("nomi:model-catalog:model:retype", retypeModelCatalogModel);
   registerSyncIpc("nomi:model-catalog:model:delete", deleteModelCatalogModel);
   registerSyncIpc("nomi:model-catalog:models:delete", deleteModelCatalogModels);
   registerSyncIpc("nomi:model-catalog:mapping:upsert", upsertModelCatalogMapping);

@@ -14,7 +14,7 @@ export const zhRuntime = {
     incomplete: '模型目录配置不完整',
     ready: '模型目录可用',
     noKind: '没有可用{{kind}}模型',
-    kind: { image: '图像', video: '视频', audio: '音频', text: '文本' },
+    kind: { image: '图像', video: '视频', audio: '音频', text: '文本', model3d: '3D' },
     noImageModel: '未找到可用图片模型：请先在系统模型管理中启用 image 模型。',
     imageModelUnselected: '未选择图片模型：请在节点参数中选择一个已启用的 image 模型。',
     imageModelUnavailable: '图片模型不可用：{{model}}。请在系统模型管理中启用该模型，或在节点参数中重新选择模型。',
@@ -193,7 +193,7 @@ export const enRuntime = {
     incomplete: 'The model catalog configuration is incomplete',
     ready: 'Model catalog is available',
     noKind: 'No {{kind}} models are available',
-    kind: { image: 'image', video: 'video', audio: 'audio', text: 'text' },
+    kind: { image: 'image', video: 'video', audio: 'audio', text: 'text', model3d: '3D' },
     noImageModel: 'No image model is available. Enable an image model in system model settings.',
     imageModelUnselected: 'No image model selected. Choose an enabled image model in the node parameters.',
     imageModelUnavailable:

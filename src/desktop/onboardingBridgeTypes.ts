@@ -45,7 +45,7 @@ export type DesktopOnboardingBridge = {
     apiKey: string
     providerKind?: ProviderKind
     headers?: Record<string, string>
-    models: Array<{ id: string; displayName?: string; kind?: 'text' | 'image' | 'video' | 'audio' }>
+    models: Array<{ id: string; displayName?: string; kind?: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
   }) => Promise<{
     ok: boolean
     vendorKey?: string
@@ -74,7 +74,7 @@ export type DesktopOnboardingBridge = {
     headers?: Record<string, string>
   }) => Promise<{ ok: boolean; models?: string[]; status?: number; error?: string }>
   guessKinds: (payload: { ids: string[] }) => Promise<{
-    kinds: Record<string, 'text' | 'image' | 'video' | 'audio'>
+    kinds: Record<string, 'text' | 'image' | 'video' | 'audio' | 'model3d'>
   }>
   /**
    * 这家现在能不能用。凭证由主进程自取（renderer 只有 hasApiKey 布尔），所以自动检查

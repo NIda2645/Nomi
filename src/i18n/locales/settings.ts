@@ -6,7 +6,8 @@ export const zhSettings = {
     title: 'AI 与模型',
     connections: '模型连接',
     empty: '还没有可用的模型连接。请先在模型目录中添加供应商与模型。',
-    health: { connected: '已连接', local: '本地可用', 'needs-key': '需要密钥', disabled: '已停用' },
+    health: { connected: '已连接', local: '本地可用', 'needs-key': '需要密钥', disabled: '已停用', 'no-models': '无可用模型' },
+    noEnabledModels: '没有已启用的模型',
     upload: {
       title: '数据上传',
       minimize: '仅发送当前任务需要的素材',
@@ -118,7 +119,8 @@ export const enSettings = {
     title: 'AI & models',
     connections: 'Model connections',
     empty: 'No model connection is available yet. Add a provider and model in the model catalog first.',
-    health: { connected: 'Connected', local: 'Available locally', 'needs-key': 'Key required', disabled: 'Disabled' },
+    health: { connected: 'Connected', local: 'Available locally', 'needs-key': 'Key required', disabled: 'Disabled', 'no-models': 'No usable models' },
+    noEnabledModels: 'No enabled models',
     upload: {
       title: 'Data upload',
       minimize: 'Send only assets needed for the current task',

@@ -491,6 +491,9 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       invokeSync("nomi:model-catalog:vendor-api-key:upsert", vendorKey, payload),
     clearVendorApiKey: (vendorKey: string) => invokeSync("nomi:model-catalog:vendor-api-key:clear", vendorKey),
     upsertModel: (payload: unknown) => invokeSync("nomi:model-catalog:model:upsert", payload),
+    /** 改类型 = 改 kind + 按新 kind 重建调用通道（单事务）。见 catalog/modelRetype.ts。 */
+    retypeModel: (payload: { vendorKey: string; modelKey: string; kind: string }) =>
+      invokeSync("nomi:model-catalog:model:retype", payload),
     customCallContract: () => invokeSync("nomi:model-catalog:custom-call:contract"),
     customCallAiInstruction: (payload: unknown) => invokeSync("nomi:model-catalog:custom-call:ai-instruction", payload),
     customCallTestRun: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-run", payload),

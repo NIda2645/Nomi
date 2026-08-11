@@ -14,6 +14,29 @@ import {
 } from "./catalogStore";
 
 /**
+ * 目录 kind → 它的**主** taskKind（建 create mapping 用的那个通道）。
+ *
+ * 单一真相源：接入落库（commitOnboardedModelToCatalog）与改类型重建通道（catalog/modelRetype.ts）
+ * 必须给出同一个答案，否则「改成图片」建出来的通道和「接入时选图片」建出来的不是同一条，
+ * 就成了两套并行实现（P1）。附带 kind 合法性校验：未知 kind 直接抛，不静默落进某个桶。
+ *
+ * 注：这里只给主通道；image_edit / image_to_video 那两条附属通道由 draftShapeForKind 产出、
+ * 调用方各自按 targetKind 注册（两处逻辑一致，见各自注释）。
+ */
+export function primaryTaskKindForModelKind(kind: string): ProfileKind {
+  if (kind === "text") return "chat";
+  if (kind === "image") return "text_to_image";
+  if (kind === "video") return "text_to_video";
+  if (kind === "audio") return "text_to_audio";
+  // model3d：中转**没有**通用 3D 调用通道（newapiTransportFor 只有 image/video/audio），所以这条
+  // 通道名永不被使用——draftShapeForKind 不给 3D 任何 mappingCreate，注册那步天然跳过。留它是为了
+  // 类型完整 + 诚实表达 3D 属于哪一族。为什么仍要收下 3D：不给它独立身份就只能落进 text 兜底桶，
+  // 既污染文本下拉、被选中还会被当聊天模型塞进 /chat/completions。
+  if (kind === "model3d") return "text_to_3d";
+  throw new Error(`Unsupported model kind '${kind}'`);
+}
+
+/**
  * 把「档案声明了、但 mapping body 里没有 {{request.params.*}} 槽」的参数键补进 body
  * （档案/onboarding 字段 → 传输 body 的对账）。原属已下线的「AI 读文档」子系统，因
  * commitOnboardedModelToCatalog 仍需要它对账参数，迁来此处单源保留（P1）。
@@ -90,13 +113,8 @@ export function commitOnboardedModelToCatalog(payload: {
   }
   if (!userApiKey) throw new Error("userApiKey required to commit a model");
 
-  let billingKind: BillingModelKind;
-  let taskKind: ProfileKind;
-  if (targetKind === "text") { billingKind = "text"; taskKind = "chat"; }
-  else if (targetKind === "image") { billingKind = "image"; taskKind = "text_to_image"; }
-  else if (targetKind === "video") { billingKind = "video"; taskKind = "text_to_video"; }
-  else if (targetKind === "audio") { billingKind = "audio"; taskKind = "text_to_audio"; }
-  else throw new Error(`Unsupported model kind '${targetKind}'`);
+  const billingKind = targetKind as BillingModelKind;
+  const taskKind = primaryTaskKindForModelKind(targetKind);
 
   const auth = (draft.vendorAuth || {}) as JsonRecord;
   const authType = (auth.type as Vendor["authType"]) || "bearer";
@@ -322,15 +340,20 @@ function paramsToOnboardingFields(
 }
 
 /** 按 kind 给出 commit draft 的 targetKind + 标准参数 + 传输 mapping（图片同步无 query / 视频异步带 query；
- *  图片另带 image_edit 改图 op = 图生图）。 */
-function draftShapeForKind(
-  kind: "text" | "image" | "video" | "audio",
+ *  图片另带 image_edit 改图 op = 图生图）。
+ *
+ *  **这是「某个 kind 该配哪套调用通道」的唯一真相源。** 导出是因为改类型（catalog/modelRetype.ts）
+ *  必须按新 kind 重建通道——只翻 kind 标签而不重建通道等于假修：文本模型刻意不带任何 mapping
+ *  （chat 直连），所以被误判成文本的图片模型是「kind 错 + 通道没建」两个洞，只补一个下一步就撞
+ *  selectTaskMapping 返回 null，换个看不懂的错继续失败。两处共用本函数 = 不造并行版（P1）。 */
+export function draftShapeForKind(
+  kind: "text" | "image" | "video" | "audio" | "model3d",
   modelKey = "",
   imageEditProtocol?: NewapiImageEditProtocol | null,
   /** 探测确认这家中转提供该模型档案的原生端点时传入 → 直接用那份完整报文，不用通用最小模板。 */
   nativeProfile?: NativeWireProfile | null,
 ): {
-  targetKind: "text" | "image" | "video" | "audio";
+  targetKind: "text" | "image" | "video" | "audio" | "model3d";
   modelFields: JsonRecord[];
   mappingCreate?: HttpOperation;
   mappingEdit?: HttpOperation;
@@ -398,6 +421,10 @@ function draftShapeForKind(
     const t = newapiTransportFor("audio");
     return { targetKind: "audio", modelFields: paramsToOnboardingFields(t.params), mappingCreate: t.create };
   }
+  // 3D 与 text 一样不带 mapping，但**理由完全相反**：text 是不需要（chat 走 AI SDK 直连），
+  // 3D 是没有（OpenAI 兼容面上根本没有 3D 生成端点，newapiTransportFor 也只有三种）。
+  // 所以 3D 只登记身份、等有通道那天这些条目直接能用；接入向导会明着标它现在跑不了（D4 缺口明标）。
+  if (kind === "model3d") return { targetKind: "model3d", modelFields: [] };
   return { targetKind: "text", modelFields: [] };
 }
 
@@ -409,7 +436,7 @@ export function commitManualOpenAiCompatibleModels(payload: {
   models: Array<{
     id: string;
     displayName?: string;
-    kind?: "text" | "image" | "video" | "audio";
+    kind?: "text" | "image" | "video" | "audio" | "model3d";
     imageEditProtocol?: NewapiImageEditProtocol;
     /** 探测确认这家提供该档案原生端点时由 onboardingIpc 传入 → 用原生完整报文替代通用最小模板。 */
     nativeWireArchetypeId?: string;
@@ -457,7 +484,7 @@ export function commitManualOpenAiCompatibleModels(payload: {
       return {
         id,
         displayName: String(m?.displayName || "").trim(),
-        kind: (k === "image" || k === "video" || k === "text" || k === "audio" ? k : guessModelKind(id)) as "text" | "image" | "video" | "audio",
+        kind: (k === "image" || k === "video" || k === "text" || k === "audio" || k === "model3d" ? k : guessModelKind(id)) as "text" | "image" | "video" | "audio" | "model3d",
         imageEditProtocol: m?.imageEditProtocol,
         nativeWireArchetypeId: m?.nativeWireArchetypeId,
       };
