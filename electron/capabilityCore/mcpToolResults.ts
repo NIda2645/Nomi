@@ -97,6 +97,13 @@ function directionCandidateLines(ctx: Ctx, candidates: DirectionCandidate[]): st
   ]
 }
 
+/** B2：waiting 的样片门 id（首镜出来了，等用户过目）。 */
+function waitingSampleGateId(value: Record<string, unknown>): string | null {
+  const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
+  const gate = gates.find((item) => str(item.gateId).startsWith('gate-sample-') && str(item.status) === 'waiting')
+  return gate ? str(gate.gateId) : null
+}
+
 export type ToolOutcome = {
   /** CLI 文本（模型转述原材料）。null = 该工具维持 JSON 直出（画布低层工具）。 */
   text: string | null
@@ -157,11 +164,18 @@ export function buildToolOutcome(
     // B1：方向门在等 + 已有候选 → 把三选一清单摊进转述（模型据此走 elicitation 问真人）。
     const direction = waitingDirectionGate(value)
     const candidateLines = direction ? directionCandidateLines(ctx, direction.candidates) : []
+    // B2：样片门在等 → 提示样片就绪、去 Nomi 过目、满意批量 / 换风格重来（终端看不了图，给深链）。
+    const sampleGateId = waitingSampleGateId(value)
+    const sampleLines = sampleGateId ? [
+      L(ctx, '样片就绪：首镜已生成，先过目再批量剩余镜头。', 'Sample ready: the first shot is generated — review it before the full batch.'),
+      L(ctx, '  满意就批准继续；想改风格就否决（会暂停，改提示词后可继续）。', '  Approve to continue, or reject to pause and adjust the prompt.'),
+    ] : []
     const text = [
       `[Nomi] ${runId} · ${hint ? L(ctx, hint.zh, hint.en) : status} · ${str(value.stageId) || 'unknown'}`,
       budgetLine ? `  ${budgetLine}` : null,
       preview.url ? `${L(ctx, '最新预览', 'Latest preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
       ...candidateLines,
+      ...sampleLines,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
@@ -171,7 +185,8 @@ export function buildToolOutcome(
         budget: { authorized: budget.authorized ?? null, actual: budget.actual ?? null },
         latestPreviewUrl: str(preview.url) || null,
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
-        nextActions: direction && direction.candidates.length ? ['decide_direction'] : hint ? [hint.action] : [],
+        ...(sampleGateId ? { sampleGateId } : {}),
+        nextActions: direction && direction.candidates.length ? ['decide_direction'] : sampleGateId ? ['review_sample'] : hint ? [hint.action] : [],
         openInNomi: openInNomi || null,
       },
     }
@@ -269,13 +284,17 @@ export function buildToolOutcome(
     const chosen = isDirection && chosenKey
       ? gateCandidates.find((candidate) => candidate.key === chosenKey)
       : undefined
+    const isSample = gateId.startsWith('gate-sample-')
     const head = decision === 'approved'
-      ? (isDirection ? L(ctx, '✓ 方向已定', '✓ Direction settled') : L(ctx, '✓ 已批准', '✓ Approved'))
-      : L(ctx, '✓ 已否决', '✓ Rejected')
+      ? (isDirection ? L(ctx, '✓ 方向已定', '✓ Direction settled')
+        : isSample ? L(ctx, '✓ 样片通过，批量生成剩余镜头', '✓ Sample approved — generating the rest')
+        : L(ctx, '✓ 已批准', '✓ Approved'))
+      : (isSample ? L(ctx, '✓ 样片打回，已暂停', '✓ Sample rejected — run paused') : L(ctx, '✓ 已否决', '✓ Rejected'))
     const text = [
       `${head} · ${gateId}`,
       chosen ? `  ${chosen.title} —— ${chosen.oneLiner}` : null,
       decision === 'rejected' && isDirection ? L(ctx, '方向未变，可重新给方案或让用户自己描述。', 'Direction unchanged; propose again or let the user describe their own.') : null,
+      decision === 'rejected' && isSample ? L(ctx, '已生成的样片保留；改提示词后从这里继续，不重付已花的。', 'The generated sample is kept; adjust the prompt and resume — no double charge.') : null,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {

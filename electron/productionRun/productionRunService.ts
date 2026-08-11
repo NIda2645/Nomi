@@ -455,6 +455,25 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === `gate-contract-v${result.run.planVersion}`) {
       void driveGeneration(result.run)
     }
+    // B2 样片门：批准 → 续跑剩余镜头（重踢 driver）；否决 → 暂停 run，让用户改提示词后再继续（不作废已生成的样片）。
+    if (runCommand.type === 'gate.decide' && runCommand.payload.gateId === `gate-sample-v${result.run.planVersion}`) {
+      if (runCommand.payload.status === 'approved') {
+        void driveGeneration(result.run)
+      } else if (runCommand.payload.status === 'rejected' && result.run.status === 'running') {
+        try {
+          applyRunControl(repository, safeProjectId, safeRunId, result.run, {
+            commandId: `${runCommand.commandId}:sample-reject-pause`,
+            expectedRevision: result.run.revision,
+            type: 'run.control',
+            payload: { action: 'pause' },
+            issuedAt: new Date().toISOString(),
+          })
+        } catch (error) {
+          // 暂停失败不掩盖否决本身（门已落 rejected）；run 状态仍可查、可手动暂停。
+          console.error('[nomi:production] sample gate reject pause failed:', error instanceof Error ? error.message : String(error))
+        }
+      }
+    }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === `gate-export-v${result.run.planVersion}`) {
       void driveExport(result.run)
     }

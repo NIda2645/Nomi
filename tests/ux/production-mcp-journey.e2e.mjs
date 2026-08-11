@@ -136,6 +136,16 @@ async function waitForRunStatus(rpc, projectId, runId, expected, timeoutMs = 20_
   throw new Error(`Run ${runId} did not reach ${expected}; last=${run?.status || 'missing'}`)
 }
 
+async function waitForWaitingGate(rpc, projectId, runId, gateIdPrefix, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const run = await getRunData(rpc, projectId, runId)
+    if (run?.gates?.some((gate) => gate.gateId.startsWith(gateIdPrefix) && gate.status === 'waiting')) return run
+    await delay(250)
+  }
+  throw new Error(`Run ${runId} did not raise a waiting gate ${gateIdPrefix}*`)
+}
+
 async function openRunFromTaskCenter(window) {
   await window.locator('[data-task-center-trigger="true"]').click()
   const row = window.locator('[data-nomi-right-panel="tasks"]', { hasText: 'brand.promo' }).locator('[role="button"]', { hasText: 'brand.promo' }).first()
@@ -241,6 +251,15 @@ try {
   check(run.jobs.length === 1 && run.budget.authorized === 0, 'restart recovers the waiting contract without submitting or spending')
 
   await approveCurrentProductionGate(gui.window)
+
+  // B2 样片门：合同批准后先出首镜样片、停门等过目；批准后才批量剩余 + 编排。
+  await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-sample-', 30_000)
+  const atSample = await getRunData(mcp.rpc, projectId, runId)
+  check(atSample.status === 'running' && atSample.gates.some((gate) => gate.gateId.startsWith('gate-sample-') && gate.status === 'waiting'), 'first shot raises a sample gate while the run stays running')
+  await gui.window.screenshot({ path: path.join(shotsDir, '03a-sample-gate.png') })
+  await openRunFromTaskCenter(gui.window)
+  await approveCurrentProductionGate(gui.window)
+
   run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_rough_cut_review', 30_000)
   check(run.jobs[0]?.status === 'adopted', 'approved fixture generation reaches adopted exactly once')
   check(run.artifacts.some((artifact) => artifact.kind === 'video') && run.artifacts.some((artifact) => artifact.kind === 'timeline'), 'generation and assembly produce local video and timeline artifacts')

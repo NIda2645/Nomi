@@ -82,6 +82,25 @@ export function normalizeDirectionCandidates(value: unknown): Array<{ key: strin
   return out
 }
 
+/** B2 样片门 id（每个 planVersion 一道，与合同/导出门同构命名）。 */
+function sampleGateId(planVersion: number): string {
+  return `gate-sample-v${planVersion}`
+}
+
+/** B2：样片门是否在等（waiting）。等 → driver 不再提交新镜头（窗口化的花钱边界）。 */
+function hasWaitingSampleGate(run: ProductionRun): boolean {
+  return run.gates.some((gate) => gate.gateId === sampleGateId(run.planVersion) && gate.status === 'waiting')
+}
+
+/**
+ * B2：这个 run 要不要设样片门。默认要（key_confirm）；B3 接信任档位后 budget_only 跳过。
+ * 读 run.policy.trustLevel（B3 才加字段；这里向后兼容读——没有字段=按默认要）。
+ */
+export function shouldSampleGate(run: ProductionRun): boolean {
+  const trustLevel = (run.policy as { trustLevel?: string }).trustLevel
+  return trustLevel !== 'budget_only'
+}
+
 export type DriverOps = {
   proposeDirections: (run: ProductionRun) => Promise<void>
   proposeStoryboard: (run: ProductionRun) => Promise<void>
@@ -198,6 +217,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       for (const job of jobs) {
         current = requireRun(run.projectId, run.runId)
         if (current.status !== 'running') break // 花钱边界：暂停/取消后不再提交（已提交的收不回，只能跑完收尾）
+        if (hasWaitingSampleGate(current)) break // B2 样片门：等过目期间不提交剩余镜头（喊停最多亏样片这一镜）
         if (job.status === 'authorized') current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submit_intent_persisted' }, `driver-${job.jobId}-intent`).run
         current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submitting' }, `driver-${job.jobId}-submit`).run
         try {
@@ -220,10 +240,31 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
           if (asset?.url && relativePath) {
             current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'ready' }, `driver-${job.jobId}-ready`).run
             const kind = asset.type === 'video' ? 'video' : asset.type === 'audio' ? 'audio' : 'image'
+            const sampleArtifactId = artifactIdentifierForJob(job.jobId)
             current = executeInternal(run.projectId, run.runId, current, 'artifact.add', {
-              artifact: { artifactId: artifactIdentifierForJob(job.jobId), stageId: 'generate', jobId: job.jobId, kind, status: 'adopted', projectRelativePath: relativePath, ...(thumbnailRelativePath ? { thumbnailRelativePath } : {}), createdAt: new Date().toISOString(), adoptedAt: new Date().toISOString() },
+              artifact: { artifactId: sampleArtifactId, stageId: 'generate', jobId: job.jobId, kind, status: 'adopted', projectRelativePath: relativePath, ...(thumbnailRelativePath ? { thumbnailRelativePath } : {}), createdAt: new Date().toISOString(), adoptedAt: new Date().toISOString() },
             }, `driver-${job.jobId}-artifact`).run
             current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'adopted' }, `driver-${job.jobId}-adopted`).run
+            // B2 样片门：首镜（第一个 adopted 的 generate 任务）落地后停一次，看过再批量。
+            // scope 'stage'、jobIds=[]（不授权花钱，只呈现）；run 保持 running + gate.waiting（面板/转述显示「等确认」）。
+            // 仅 run 仍 running 时设（用户已暂停/取消则不注入门——暂停语义优先，A3 花钱边界不被样片门搅乱）；
+            // 已存在样片门（本 planVersion）或档位跳过 → 不重复设，继续窗口化循环。
+            const adoptedGenerateCount = current.jobs.filter((candidate) => candidate.stageId === 'generate' && candidate.status === 'adopted').length
+            if (current.status === 'running' && adoptedGenerateCount === 1 && shouldSampleGate(current) && !current.gates.some((gate) => gate.gateId === sampleGateId(current.planVersion))) {
+              const sampleGate = {
+                gateId: sampleGateId(current.planVersion),
+                scope: 'stage' as const,
+                status: 'waiting' as const,
+                planHash: crypto.createHash('sha256').update(sampleArtifactId).digest('hex'),
+                jobIds: [],
+                title: 'Review the sample before the full batch',
+                summary: `Look at the first shot (${sampleArtifactId}) in Nomi before Nomi generates the remaining shots. Approve to continue, or pause to adjust.`,
+                createdAt: new Date().toISOString(),
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              }
+              current = executeInternal(run.projectId, run.runId, current, 'gate.add', { gate: sampleGate }, `driver-${run.runId}-sample-gate`).run
+              return // 停在样片门；批准时 gate.decide 钩子重踢 driveGeneration 续跑剩余镜头。
+            }
           } else {
             current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'needs_attention', patch: { errorCode: 'asset_not_localized', errorMessage: '生成已返回，但项目内没有可预览的本地素材' } }, `driver-${job.jobId}-asset-attention`).run
             if (current.status !== 'needs_attention') {

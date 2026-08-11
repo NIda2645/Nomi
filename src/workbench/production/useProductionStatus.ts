@@ -37,6 +37,13 @@ function localizedGateCopy(
       message: translate(hasCandidates ? 'generationCommon.production.gate.directionPickSummary' : 'generationCommon.production.gate.directionSummary'),
     }
   }
+  if (gate.scope === 'stage' && gate.gateId.startsWith('gate-sample-')) {
+    // B2：样片门——先看首镜再批量。批准=满意继续；取消=换风格重来（会暂停）。
+    return {
+      title: translate('generationCommon.production.gate.sampleTitle'),
+      message: translate('generationCommon.production.gate.sampleSummary'),
+    }
+  }
   return { title: gate.title, message: gate.summary }
 }
 
@@ -194,13 +201,15 @@ export function useProductionStatus() {
         const contract = gate.scope === 'stage' ? undefined : buildProductionContractView(activeRun, gate)
         // B1：方向门候选（driver 拟好后挂在 gate 上）。有候选 → 弹单选，捕获选中 key 带进决议留痕。
         const isDirectionGate = gate.scope === 'stage' && gate.gateId.startsWith('gate-direction-')
+        const isSampleGateApproval = gate.scope === 'stage' && gate.gateId.startsWith('gate-sample-')
         const directionCandidates = isDirectionGate ? (gate.directionCandidates ?? []) : []
         let directionChoiceKey: string | null = directionCandidates[0]?.key ?? null
         let openingPolicySettings = false
         const approved = await useSpendConfirmStore.getState().requestConfirm({
           title: gateCopy.title,
           message: gateCopy.message,
-          confirmLabel: t('generationCommon.production.gate.approve'),
+          // B2：样片门批准=「满意，批量生成」；其余门=「批准并继续」。
+          confirmLabel: t(isSampleGateApproval ? 'generationCommon.production.gate.sampleApprove' : 'generationCommon.production.gate.approve'),
           source: activeRun.origin.host === 'nomi' ? 'user' : 'agent',
           kind: gate.scope === 'stage' ? 'plan' : 'contract',
           ...(contract ? { contract } : {}),
@@ -217,9 +226,11 @@ export function useProductionStatus() {
             },
           } : {}),
         })
+        const isSampleGate = gate.scope === 'stage' && gate.gateId.startsWith('gate-sample-')
         if (!approved) {
           if (openingPolicySettings) return
-          if (gate.scope !== 'budget_envelope') return
+          // 预算门否决=撤销制作；样片门否决=换风格重来（service 会把它变成暂停）。其余门（方向/plan）取消=不表态。
+          if (gate.scope !== 'budget_envelope' && !isSampleGate) return
           try {
             await executeCommand(activeRun.projectId, activeRun.runId, {
               commandId: globalThis.crypto.randomUUID(),
