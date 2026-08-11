@@ -106,6 +106,17 @@ function dataUrlMatches(url: string, kind: Model["kind"]): boolean {
   return url.toLowerCase().startsWith(prefix);
 }
 
+/** 取 http(s) origin；非法/非 http 一律 null（拿不到就不放行，保守失败）。 */
+function originOf(baseUrlHint: string | null | undefined): string | null {
+  if (!baseUrlHint) return null;
+  try {
+    const url = new URL(baseUrlHint);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function verifyAdapterMode(
   input: { vendor: Vendor; model: Model; apiKey: string; mode: AdapterModeDraft },
   dependencies: AdapterVerifierDependencies = {},
@@ -124,6 +135,8 @@ export async function verifyAdapterMode(
   ));
   const mapping = mappingFor(input.vendor, input.model, input.mode);
   const request = verificationRequest(input.model, input.mode);
+  // 本次验证正在打的那个端点的 origin（用户刚亲手填的），产物 URL 与它同源才准下载。
+  const verifiedOrigin = originOf(input.vendor.baseUrlHint);
   let stage: "localize_reference" | "create" | "poll" | "verify_asset" = input.mode.referenceParam
     ? "localize_reference"
     : "create";
@@ -215,6 +228,15 @@ export async function verifyAdapterMode(
         timeoutMs: 20_000,
         maxBytes: input.model.kind === "video" ? 25 * 1024 * 1024 : 12 * 1024 * 1024,
         allowContentTypes: allowedContentTypes(input.model.kind),
+        // 自建/局域网端点产出的图片视频，URL 本身就在私网上（http://127.0.0.1:8080/asset/x.png）。
+        // 不放行就必然卡在 verify_asset：「Refusing to fetch private/loopback host」→ 本地端点的
+        // 图片/视频能力**永远无法通过验证**（真实走查跑出来的，见 tests/ux/local-gateway-onboarding.walk.mjs）。
+        //
+        // 与 assetLocalization.trustedLocalOutputOrigin 只放行 curated ComfyUI 的那条决策不冲突：
+        // 那条防的是「持久化 vendor 字段自行长期打开私网下载」；这里的放行是**本次验证内**、
+        // 且只认与用户刚亲手填的那个端点**完全同源**的 URL（hardenedFetch 比对 origin 全等，
+        // 且放行私网时会同时关掉重定向跟随，杜绝跳转绕过）。换个私网地址照样拒。
+        ...(verifiedOrigin ? { allowedPrivateOrigins: [verifiedOrigin] } : {}),
       });
     }
     return { ok: true, taskKind: input.mode.taskKind, requestSummary };

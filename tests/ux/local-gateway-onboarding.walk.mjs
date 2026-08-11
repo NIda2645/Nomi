@@ -24,24 +24,84 @@ fs.rmSync(userData, { recursive: true, force: true })
 fs.mkdirSync(userData, { recursive: true })
 
 // ── 假网关：模仿 sub2api / new-api 这类自建网关的 OpenAI 兼容口 ──
+// 覆盖到「接入验证真的能通过」所需的全部线缆：模型列表、SSE 流式文本、同步出图、
+// chat 多模态图生图、视频异步 create + 轮询、以及产物字节本身（验证会去下载产物）。
 const MODELS = ['gpt-5.2', 'gpt-5.4-mini', 'gpt-image-2', 'kling-v2-master']
+// 1x1 PNG / 极小 mp4 头：产物验证要能真的下载到字节。
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
+const MP4_STUB = Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE=', 'base64')
+const videoTasks = new Map()
+
 const gateway = http.createServer((req, res) => {
   const url = req.url || ''
-  const send = (code, body) => {
-    res.writeHead(code, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(body))
-  }
-  if (url.startsWith('/v1/models')) {
-    return send(200, { object: 'list', data: MODELS.map((id) => ({ id, object: 'model', owned_by: 'local' })) })
-  }
-  if (url.startsWith('/v1/chat/completions')) {
-    return send(200, { id: 'c1', choices: [{ index: 0, message: { role: 'assistant', content: 'ready' }, finish_reason: 'stop' }] })
-  }
-  if (url.startsWith('/v1/images/generations')) {
-    return send(200, { created: 1, data: [{ b64_json: 'aGVsbG8=' }] })
-  }
-  return send(404, { error: { message: 'not found' } })
+  const chunks = []
+  req.on('data', (c) => chunks.push(c))
+  req.on('end', () => {
+    let body = {}
+    try {
+      body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
+    } catch {
+      body = {}
+    }
+    const send = (code, payload) => {
+      res.writeHead(code, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(payload))
+    }
+
+    if (url.startsWith('/asset/')) {
+      const isVideo = url.endsWith('.mp4')
+      res.writeHead(200, { 'Content-Type': isVideo ? 'video/mp4' : 'image/png' })
+      return res.end(isVideo ? MP4_STUB : PNG_1X1)
+    }
+    if (url.startsWith('/v1/models')) {
+      return send(200, { object: 'list', data: MODELS.map((id) => ({ id, object: 'model', owned_by: 'local' })) })
+    }
+    if (url.startsWith('/v1/chat/completions')) {
+      // 图生图：请求里带了参考图 → 回 message.images[0].url（通用中转的图生图口径）。
+      const hasImage = JSON.stringify(body.messages || []).includes('image_url')
+      if (hasImage && !body.stream) {
+        return send(200, { choices: [{ index: 0, message: { role: 'assistant', images: [{ url: `${assetBase()}/asset/edit.png` }] }, finish_reason: 'stop' }] })
+      }
+      // 文本验证走 AI SDK，默认要 SSE 流；非流式请求仍回普通 JSON。
+      if (body.stream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+        const id = 'chatcmpl-local'
+        const model = body.model || 'gpt-5.2'
+        const frame = (delta, finish) => `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: 1, model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`
+        res.write(frame({ role: 'assistant', content: '' }, null))
+        res.write(frame({ content: 'ready' }, null))
+        res.write(frame({}, 'stop'))
+        res.write('data: [DONE]\n\n')
+        return res.end()
+      }
+      return send(200, { id: 'c1', object: 'chat.completion', created: 1, model: body.model, choices: [{ index: 0, message: { role: 'assistant', content: 'ready' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })
+    }
+    if (url.startsWith('/v1/images/generations')) {
+      return send(200, { created: 1, data: [{ url: `${assetBase()}/asset/a.png` }] })
+    }
+    // 视频轮询：GET /v1/video/generations/<task_id>
+    const pollMatch = url.match(/^\/v1\/video\/generations\/([^/?]+)/)
+    if (pollMatch) {
+      const id = pollMatch[1]
+      const seen = (videoTasks.get(id) || 0) + 1
+      videoTasks.set(id, seen)
+      if (seen < 2) return send(200, { task_id: id, status: 'processing' })
+      return send(200, { task_id: id, status: 'succeeded', data: [{ url: `${assetBase()}/asset/v.mp4` }] })
+    }
+    if (url.startsWith('/v1/video/generations')) {
+      const id = `task-${videoTasks.size + 1}`
+      videoTasks.set(id, 0)
+      return send(200, { task_id: id, status: 'processing' })
+    }
+    return send(404, { error: { message: `no such endpoint: ${url}` } })
+  })
 })
+function assetBase() {
+  return gatewayBase.replace(/\/v1$/, '')
+}
 await new Promise((resolve) => gateway.listen(0, '127.0.0.1', resolve))
 const gatewayBase = `http://127.0.0.1:${gateway.address().port}/v1`
 console.log(`— 假网关就绪: ${gatewayBase} —`)
