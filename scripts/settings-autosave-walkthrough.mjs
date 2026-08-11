@@ -2,14 +2,12 @@
 // 验证链：项目库顶栏齿轮 → 设置页出现（左tab右内容）→ 目录显示预设值 → 开自动另存开关 →
 // download-prefs.json 落 autoSaveEnabled=true → 切「通用」tab（占位）→ Esc 关闭。
 // 用法：node scripts/settings-autosave-walkthrough.mjs（需先 pnpm build）
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.settings-autosave-walk')
 fs.mkdirSync(outDir, { recursive: true })
@@ -20,30 +18,21 @@ const saveTargetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autosave-target-'))
 const prefsFile = path.join(settingsDir, 'download-prefs.json')
 fs.writeFileSync(prefsFile, JSON.stringify({ autoSaveEnabled: false, autoSaveDir: saveTargetDir }, null, 2))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: projectsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'settings-autosave',
+  settingsDir,
+  projectsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
 })
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
 const errors = []
 let failed = false
 
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
   await win.waitForTimeout(1800)
 
   // 项目库顶栏齿轮

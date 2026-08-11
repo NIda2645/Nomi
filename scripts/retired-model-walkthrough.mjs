@@ -11,14 +11,12 @@
 // 再把它从目录摘掉重启。生成若真发出也会在 findExecutableModel 就抛错，早于付费调用，不花钱。
 //
 // 用法：pnpm build 后 node scripts/retired-model-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.retired-walk')
 mkdirSync(outDir, { recursive: true })
@@ -56,17 +54,11 @@ const fail = (msg) => { console.log('  ✗ ' + msg); failed = true }
 const pass = (msg) => console.log('  ✓ ' + msg)
 
 function launch() {
-  return electron.launch({
-    executablePath: require('electron'),
-    args: ['.', `--user-data-dir=${userDataDir}`],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_SETTINGS_DIR: settingsDir,
-      NOMI_PROJECTS_DIR: projectsDir,
-    },
+  return launchNomiApp({
+    name: 'retired-model',
+    settingsDir,
+    projectsDir,
+    userDataDir,
   })
 }
 
@@ -100,9 +92,8 @@ async function readPickerRows(win) {
 
 // ── 第一次启动：验 ① ②，并让节点选中走查专用模型 ────────────────────────────
 {
-  const app = await launch()
+  const { app, win } = await launch()
   try {
-    const win = await app.firstWindow()
     const bw = await app.browserWindow(win)
     await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1500, height: 1000 })).catch(() => {})
     await openCanvas(win, { fresh: true })
@@ -182,9 +173,8 @@ async function readPickerRows(win) {
   writeFileSync(catalogPath, JSON.stringify(catalog))
   console.log('  [准备] 已把 ' + DOOMED_KEY + ' 从目录摘掉（节点里那条 modelKey 就此悬空 = 用户升级后的真实状态）')
 
-  const app = await launch()
+  const { app, win } = await launch()
   try {
-    const win = await app.firstWindow()
     const bw = await app.browserWindow(win)
     await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1500, height: 1000 })).catch(() => {})
     await openCanvas(win, { fresh: false })

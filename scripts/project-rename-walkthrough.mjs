@@ -1,44 +1,33 @@
 // R13 真机走查：项目库列表双击改名（#888，群反馈「现在需要点击去才能改名字」）。
 // 验证链：项目库 → 双击项目名 → 变输入框 → 改名 Enter → 卡片名更新 + 磁盘 project.json name 改了。
 // 用法：node scripts/project-rename-walkthrough.mjs（需先 pnpm build）
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.project-rename-walk')
 fs.mkdirSync(outDir, { recursive: true })
 const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rename-settings-'))
 const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rename-projects-'))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: projectsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'project-rename',
+  settingsDir,
+  projectsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
 })
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
 const errors = []
 let failed = false
 
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
   await win.waitForTimeout(1800)
 
   // 建一个项目再回到项目库（让列表里有卡片可改名）

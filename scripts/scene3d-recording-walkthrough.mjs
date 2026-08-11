@@ -5,13 +5,11 @@
 //  E — 录制前给相机套「右横移跟拍」→ 最终 take 保留该运镜轨迹，且不生成重采样「机位路径」。
 // 读取口：window.__nomiLastRecordedTake（仅 NOMI_E2E，useScene3DTakeRecorder 停止时挂）。
 // 用法：pnpm run build && node scripts/scene3d-recording-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, rmSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.scene3d-recording-lab')
 rmSync(outDir, { recursive: true, force: true })
@@ -21,18 +19,12 @@ let failures = 0
 const ok = (msg) => console.log('  ✓ ' + msg)
 const fail = (msg) => { console.error('  ✗ ' + msg); failures += 1 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
-})
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'scene3d-recording', isolate: false })
 try {
-  const win = await app.firstWindow()
   const shot = async (name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     window.__nomiE2E = true
     window.localStorage.setItem('__nomiE2E', '1')

@@ -2,14 +2,12 @@
 // 写故事 → 拆镜头（图片分镜）→ 真 planner → 确认落画布 → 断言：切到生成区 + 这批镜头已被
 // 自动全选 → 既有多选浮条「生成 N 个」直接浮现（批量入口零学习成本）。不点生成（零图片额度，
 // 只花 planner 文本额度几分钱）。用法：pnpm build 后 node scripts/storyboard-autoselect-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, copyFileSync, existsSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.batch-walk')
 mkdirSync(outDir, { recursive: true })
@@ -25,27 +23,18 @@ copyFileSync(devCatalog, path.join(isolatedSettings, 'model-catalog.json'))
 
 const STORY = '清晨的渔村码头，少年阿澈把一只旧木箱搬上小船。他回头望了一眼岸边的灯塔，咬咬牙解开缆绳。海面起雾，船影渐渐消失在白色雾气里。'
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_SETTINGS_DIR: isolatedSettings,
-    NOMI_PROJECTS_DIR: isolatedProjects,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'storyboard-autoselect',
+  settingsDir: isolatedSettings,
+  projectsDir: isolatedProjects,
 })
 const errors = []
 let failed = false
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
   await win.waitForTimeout(1800)
 
   await win.getByText('新建空白项目', { exact: false }).first().click()

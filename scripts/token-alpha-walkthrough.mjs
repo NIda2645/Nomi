@@ -2,13 +2,11 @@
 // 场景：深色分镜图滚到画布手势提示条正下 → 提示条必须有真实玻璃底（此前 bg-nomi-paper/95
 // 被 Tailwind JIT 静默丢弃 = 透明裸字）。断言 computed background 非透明 + 截图人眼判定。
 // 用法：node scripts/token-alpha-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 import zlib from 'node:zlib'
-const require = createRequire(import.meta.url)
 // 运行时手写一张 420x280 纯深色 PNG（issue #32 场景：深色分镜图压在提示条下）
 function darkPng(){const w=420,h=280;const crc=(b)=>{let c=~0;for(const x of b){c^=x;for(let i=0;i<8;i++)c=(c>>>1)^(0xEDB88320&-(c&1))}return~c>>>0}
 const chunk=(t,d)=>{const c=Buffer.concat([Buffer.from(t),d]);const len=Buffer.alloc(4);len.writeUInt32BE(d.length);const cc=Buffer.alloc(4);cc.writeUInt32BE(crc(c));return Buffer.concat([len,c,cc])}
@@ -19,14 +17,17 @@ const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '
 const outDir = path.join(repoRoot, '.token-alpha-lab'); fs.mkdirSync(outDir, { recursive: true })
 const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i32-s-'))
 const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i32-p-'))
-const app = await electron.launch({ executablePath: require('electron'), args: ['.'], cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1', NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'), NOMI_SETTINGS_DIR: settingsDir, NOMI_PROJECTS_DIR: projectsDir } })
+const { app, win } = await launchNomiApp({
+  name: 'token-alpha',
+  settingsDir,
+  projectsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+})
 let failed = false
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded'); await win.waitForTimeout(1800)
+  await win.waitForTimeout(1800)
   // 重置手势提示已读（共享 localStorage 可能已标读）
   await win.evaluate(() => localStorage.removeItem('nomi:canvas-gesture-hint:v1'))
   await win.getByText('新建空白项目', { exact: false }).first().click(); await win.waitForTimeout(2400)

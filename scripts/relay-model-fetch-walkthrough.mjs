@@ -12,15 +12,13 @@
 //   B. 用户报障的真实中转 + 故意写错的 key：验「越过 200 HTML 走到 /v1/models」+ 报出的是上游
 //      人话（Invalid token）而不是整坨裸 JSON。
 // 用法：node scripts/relay-model-fetch-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.relay-fetch-walk')
 mkdirSync(outDir, { recursive: true })
@@ -55,17 +53,10 @@ await new Promise((r) => mock.listen(8899, '127.0.0.1', r))
 const MOCK_URL = 'http://127.0.0.1:8899'
 console.log('  🟢 假 new-api（/models 回 SPA 网页，/v1/models 回 3 个视频模型）on ' + MOCK_URL)
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'relay-model-fetch',
+  settingsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
 })
 const errors = []
 
@@ -84,12 +75,10 @@ async function fillAndFetch(win, baseUrl, apiKey, waitMs) {
 }
 
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1440, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
   await win.waitForTimeout(1800)
 
   await win.getByRole('button', { name: '接入模型', exact: false }).first().click()

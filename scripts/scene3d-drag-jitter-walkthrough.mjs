@@ -2,13 +2,11 @@
 // 阶段A（默认）：城市街道模板 → 点 inspector 选中假人 → 截图看 gizmo 位置。
 // 阶段B（传 --drag x1 y1 x2 y2）：从 (x1,y1) 按下慢速拖到 (x2,y2)，途中每步截图，人眼判断是否来回跳。
 // 用法：pnpm build 后 node scripts/scene3d-drag-jitter-walkthrough.mjs [--drag 840 520 1100 520] [--row 相机]
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.scene3d-drag-jitter-walk')
 mkdirSync(outDir, { recursive: true })
@@ -21,18 +19,12 @@ const rowText = rowIdx >= 0 ? args[rowIdx + 1] : '角色'
 const throttleIdx = args.indexOf('--throttle')
 const throttleRate = throttleIdx >= 0 ? Number(args[throttleIdx + 1]) : 0
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
-})
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'scene3d-drag-jitter', isolate: false })
 try {
-  const win = await app.firstWindow()
   const shot = async (n) => { await win.screenshot({ path: path.join(outDir, n) }); console.log('  📸 ' + n) }
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     window.localStorage.setItem('__nomiE2E', '1')
     window.localStorage.setItem('nomi.onboarding.scene3dCoach.v1', '1')

@@ -4,13 +4,11 @@
 //  ① contained overlay 的跨窗探针在画布挂载时返回 true（fix 现在消费的正是它，单测 canvasImportAvailabilitySource 锁死消费）；
 //  ② 从 overlay 派发导入 → 经 IPC → 父窗画布真加 React Flow 节点（素材真落画布，refute「0 节点」）。
 // 用法：pnpm run build && node scripts/browser-contained-canvas-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, rmSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.browser-contained-lab')
 rmSync(outDir, { recursive: true, force: true })
@@ -20,17 +18,11 @@ let failures = 0
 const ok = (msg) => console.log('  ✓ ' + msg)
 const fail = (msg) => { console.error('  ✗ ' + msg); failures += 1 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
-})
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'browser-contained-canvas', isolate: false })
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1']) window.localStorage.setItem(k, 'seen')
   })

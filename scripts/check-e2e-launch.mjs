@@ -10,9 +10,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-// 只守已经收敛完的两片。`scripts/` 下还有约 60 个同病的一次性走查脚本没迁——把它一起纳进来
-// 会当场红门、逼出一个「一半迁了一半没迁」的中间态，那正是本次要避免的。等它们迁完再加进来。
-const SCAN_DIRS = ['tests', 'evals']
+// 三片全守。`scripts/` 下那 56 个同病的一次性走查脚本已于 2026-08-11 第二批迁完
+//（见 docs/plan/2026-08-11-e2e-launcher-convergence.md），故这里加回 'scripts'——
+// 门岗范围与「已收敛的范围」对齐，不再留「扫不到的角落」。
+const SCAN_DIRS = ['tests', 'evals', 'scripts']
 /** 唯一允许调 electron.launch 的地方。 */
 const LAUNCHER = path.join('tests', 'ux', '_launchApp.mjs')
 

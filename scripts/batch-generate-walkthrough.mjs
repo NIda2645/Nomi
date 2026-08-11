@@ -2,15 +2,11 @@
 // ⌘A 全选 → 浮条「生成 3 个」→ 轻确认一次 → 真实并发生成到全部落定。
 // 回答「我们现在能不能批量产出」。真花额度（3 张图，默认模型=用户同款路径）。
 // 用法：pnpm build 后 node scripts/batch-generate-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { mkdirSync, copyFileSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.batch-walk')
 mkdirSync(outDir, { recursive: true })
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
@@ -36,28 +32,18 @@ if (disableKeys.length > 0) {
 
 const PROMPTS = ['一只橘色小猫的特写，柔和自然光', '一杯冒热气的拿铁咖啡放在木桌上', '雨后城市街道的霓虹倒影']
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_SETTINGS_DIR: isolatedSettings,
-    NOMI_PROJECTS_DIR: isolatedProjects,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'batch-generate',
+  settingsDir: isolatedSettings,
+  projectsDir: isolatedProjects,
 })
 const errors = []
 let failed = false
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
 
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)

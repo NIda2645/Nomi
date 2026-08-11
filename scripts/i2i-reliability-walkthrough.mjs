@@ -5,14 +5,12 @@
 // B（诚实护栏 + chip 失效态）：kie GPT Image 2 切「图生图」零参考 → 生成钮禁用 + 人话 tooltip；
 //    上传一张参考后删掉底层文件 → chip 显示「图已失效」。
 // 截图人眼判断。用法：node scripts/i2i-reliability-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.i2i-reliability-lab')
 fs.mkdirSync(outDir, { recursive: true })
@@ -69,18 +67,12 @@ function prepDirs(tag, withKieKey) {
 }
 
 async function launch(dirs) {
-  return electron.launch({
-    executablePath: require('electron'),
-    args: ['.'],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-      NOMI_SETTINGS_DIR: dirs.settingsDir,
-      NOMI_PROJECTS_DIR: dirs.projectsDir,
-    },
+  return launchNomiApp({
+    name: 'i2i-reliability',
+    env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+    settingsDir: dirs.settingsDir,
+    projectsDir: dirs.projectsDir,
+    settleMs: 0, // openBlankProjectWithImageNode 内部自己等 domcontentloaded + 2000ms
   })
 }
 
@@ -118,9 +110,8 @@ let failed = false
 {
   console.log('▶ A 存量中转自愈')
   const dirs = prepDirs('a', false)
-  const app = await launch(dirs)
+  const { app, win } = await launch(dirs)
   try {
-    const win = await app.firstWindow()
     const bw = await app.browserWindow(win)
     await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
     win.on('pageerror', (e) => errors.push('A ' + String(e)))
@@ -169,9 +160,8 @@ let failed = false
 {
   console.log('▶ B 图生图护栏 + chip 失效态')
   const dirs = prepDirs('b', true)
-  const app = await launch(dirs)
+  const { app, win } = await launch(dirs)
   try {
-    const win = await app.firstWindow()
     const bw = await app.browserWindow(win)
     await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
     win.on('pageerror', (e) => errors.push('B ' + String(e)))
@@ -222,12 +212,16 @@ let failed = false
     for (const p of pngs) fs.rmSync(p)
     // 重启实例（绕开已加载 <img> 与协议缓存）→ 重开项目 → chip 必须走真实 404 → 「图已失效」。
     await app.close()
-    const app2 = await launch(dirs)
-    const win2 = await app2.firstWindow()
+    // 重启实例用固定的 settleMs:2000，不经共用 launch() helper（后者省掉等待给 openBlankProjectWithImageNode 自己做）。
+    const { app: app2, win: win2 } = await launchNomiApp({
+      name: 'i2i-reliability',
+      env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+      settingsDir: dirs.settingsDir,
+      projectsDir: dirs.projectsDir,
+      settleMs: 2000,
+    })
     const bw2 = await app2.browserWindow(win2)
     await bw2.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
-    await win2.waitForLoadState('domcontentloaded')
-    await win2.waitForTimeout(2000)
     await win2.getByText('未命名项目', { exact: false }).first().click()
     await win2.waitForTimeout(2600)
     await win2.keyboard.press('Escape')

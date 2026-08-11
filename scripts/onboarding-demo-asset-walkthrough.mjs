@@ -4,32 +4,26 @@
 // 打包版打开即 CSP 拒载 + 裂图。断言：console 无 CSP 报错、图 URL 全是 nomi-local、图真解码出来了、
 // 落盘的 project.json 里没有构建产物地址。截图人眼判定。
 // 用法：node scripts/onboarding-demo-asset-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const outDir = path.join(repoRoot, '.onboarding-demo-lab')
 fs.mkdirSync(outDir, { recursive: true })
 const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'demo-s-'))
 const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'demo-p-'))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
+const { app, win } = await launchNomiApp({
+  name: 'onboarding-demo-asset',
   env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
     // 关键：走 dist 产物，不是 dev server——本次事故只在这条路径上暴露。
     NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: projectsDir,
   },
+  settingsDir,
+  projectsDir,
+  settleMs: 2000,
 })
 
 let failed = false
@@ -39,15 +33,12 @@ const fail = (msg) => {
 }
 
 try {
-  const win = await app.firstWindow()
   const consoleLines = []
   win.on('console', (msg) => consoleLines.push(msg.text()))
   win.on('pageerror', (err) => consoleLines.push('pageerror: ' + err.message))
 
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(2000)
 
   await win.getByText('看 Nomi 怎么出片', { exact: false }).first().click()
 

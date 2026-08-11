@@ -99,6 +99,9 @@ lint 看不见这片地，就自己给它一道门 —— 这是「这类 bug �
 `check:e2e-launch` 只扫 `tests/` + `evals/`。**`scripts/` 下还有 56 个同病的一次性走查脚本没迁**——
 本次范围是 `tests/ux/`，把 `scripts/` 一起纳入会当场红门、逼出正要避免的中间态。已单独记为后续项。
 
+> ⚠️ 上面这段是**第一批当时**的状态。第二批（见下）已把那 56 个迁完并把 `'scripts'` 加回
+> `SCAN_DIRS`，现在门岗扫的是 `tests` + `evals` + `scripts` 三片。
+
 ### 验收实跑（本机 Nomi.app **正在运行**，PID 13403）
 
 | 脚本 | 结果 |
@@ -117,3 +120,78 @@ lint 看不见这片地，就自己给它一道门 —— 这是「这类 bug �
 `tests/ux/**` 被 eslint ignore，所以另跑了一轮 `no-undef` / `no-unused-vars`：
 迁移引入的 15 处死代码（含 1 处**真会崩**的 `createRequire is not defined`）已全部清掉；
 剩余 9 处经与 HEAD 逐条比对确认是**既有**死代码，未顺手改（不在本次范围）。
+
+---
+
+## 第二批：`scripts/` 下 56 个脚本（2026-08-11 续做）
+
+上一批诚实标注的「后续项」。做完这批，门岗 `SCAN_DIRS` 才能加回 `'scripts'`——
+在此之前加就是当场红门。
+
+### 分组依据：**按脚本今天用的是哪个 profile 分**，不按「像不像要真 key」猜
+
+这是一次**纯重构**，判据必须可推导。路径解析事实（`electron/runtimePaths.ts:20-31`、
+`electron/settings/settingsRoot.ts`）：
+
+- `settingsRoot` = `NOMI_SETTINGS_DIR` ?? `userData`
+- `projectsRoot` = `NOMI_PROJECTS_DIR` ?? 设置里的自定义位置 ?? `~/Documents/Nomi Projects`
+- API key 存在 `<settingsRoot>/model-catalog.json`，用 safeStorage 加密；解密身份绑的是
+  **app name（keychain）**，不是 userData 路径（`electron/catalog/secrets.ts:45-57`、
+  `electron/capabilityCore/host.ts:23-27`）。启动器不改 app name → **隔离 userData 不影响解密**，
+  真正决定「读不读得到 key」的是 `settingsRoot` 指哪。
+
+于是判据只有一条：
+
+| 组 | 判据 | 处理 | 数量 |
+|---|---|---|---|
+| A | 脚本自己设了 `NOMI_SETTINGS_DIR` / `NOMI_PROJECTS_DIR` | 把它算好的目录**原样传进** `launchNomiApp`（`settingsDir`/`projectsDir`/`userDataDir`） | 44 |
+| B | 一个目录 env 都没设 = 今天就跑在**真实 profile** 上 | `isolate: false` | 12 |
+
+B 组为什么不能顺手隔离：它们今天读的就是真 catalog 里的真 key（`staging-ab.mjs:66` 直接
+upsert apimart key 后真出图）、真项目库（`pose-lab-app-verify.mjs:30` 有卡就点已有项目）。
+一刀切隔离 = 「跑得起来但结果全错」，正是上一批第 3 条坑的同款。
+
+A 组的 seeding 顺序必须保住：不少脚本**先**把真 catalog 拷进自己的 settingsDir 再起飞
+（`model-panel-shot.mjs`、`retired-model-walkthrough.mjs` 等 9 个从
+`~/Library/Application Support/nomi/model-catalog.json` 拷）。启动器**只建目录不清空**，
+所以「先拷后起」原样成立——这条在上一批已经改对了，这批直接受益。
+
+### 验收门
+
+与第一批同：`check:e2e-launch`（含 `scripts`）→ `node --check` → 手动 `no-undef`/`no-unused-vars`
+（`scripts/**` 同样被 eslint ignore）→ **本机 Nomi.app 开着时实跑 ≥3 个** → `pnpm run gates`。
+
+### 实做记录（2026-08-11 完成）
+
+**门岗加回 `'scripts'` 并做了负向测试**：故意塞一个直接调 `electron.launch` 的探针进 `scripts/`，
+门岗当场红（exit 1）并点名行号；移除后复绿。不做这步的话，「门是绿的」证明不了「门能拦住」。
+门岗自己那行正则（`/electron\.launch\s*\(/`）不会自伤——它匹配的是字面 `.`，源码里是 `\.`。
+
+**逐文件对账（不只看语法过）**：写了一版比对脚本，把每个文件的 HEAD 版与迁移版并排比：
+HEAD 的 env 里每个非必需 key 是否还在、三个目录 env 是否都落到对应 option、`--user-data-dir`
+是否从 arg 改成了 option、`isolate:false` 是否**当且仅当** HEAD 没设任何目录 env。56 个全过。
+（跑第一版时 6 个误报，根因是我的正则按行首锚定、而那几个 env 对象写在一行里——修正则后归零。
+这条值得记：对账脚本本身也会骗人。）
+
+**静态校验**：`scripts/**` 同样被 eslint ignore，故照第一批的做法另跑一轮 `no-undef` /
+`no-unused-vars`（临时 flat config）。**迁移引入的死代码 0 处**。剩余告警全是
+`win.evaluate()` 回调里的浏览器全局（`CustomEvent`/`FileReader`/`atob`…）与 1 处既有死变量
+（`browser-live-capture-sweep.mjs` 的 `MAGIC`，HEAD 版就在，只是行号被 import 删减挪了），未顺手改。
+
+**验收实跑（本机 Nomi.app 正在运行，PID 13403）**
+
+| 脚本 | 结果 |
+|---|---|
+| `pose-lab-app-verify.mjs`（B 组，迁移前**两条 env 都没设**） | ✅ 2 张截图、跑到底 |
+| `project-rename-walkthrough.mjs`（A 组） | ✅ 3 张截图，断言全过 |
+| `settings-autosave-walkthrough.mjs`（A 组） | ✅ 4 张截图，断言全过 |
+| `token-alpha-walkthrough.mjs`（A 组） | ⚠️ 能起来并跑断言，卡在 `画布手势提示` 这个**陈旧 locator**——已用 HEAD 版实跑复现同样失败，属既有问题、非本次回归，未动 |
+
+**最有说服力的两条**：
+
+1. `pose-lab-app-verify.mjs` 的 HEAD 版在 Nomi.app 开着时**0.5 秒就死**，抛的是
+   `electron.launch: Target page, context or browser has been closed`——单实例锁没抢到、主进程自己
+   退了，零截图零线索，看起来就像脚本自己写坏了。迁移后同样条件下正常出图跑完。
+2. **两种 profile 语义确实是分开的、且都对**：A 组 `project-rename` 的截图里项目库**只有 1 个**
+   刚建的项目（干净隔离库），B 组 `pose-lab` 的截图里是用户**真实**项目库里那个 19 节点的真项目。
+   要是当初把 B 组一刀切隔离，它会「跑得起来但打开的是空库」——正是这次特意避开的坑。

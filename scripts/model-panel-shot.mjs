@@ -1,12 +1,10 @@
 // 一次性：拍「模型接入」面板真实样子（出样张前必须先看真实 UI，零额度零 vendor 调用）。
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, copyFileSync, existsSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.model-panel-shot')
 mkdirSync(outDir, { recursive: true })
@@ -19,18 +17,15 @@ mkdirSync(projects, { recursive: true })
 const devCatalog = path.join(os.homedir(), 'Library', 'Application Support', 'nomi', 'model-catalog.json')
 if (existsSync(devCatalog)) copyFileSync(devCatalog, path.join(settings, 'model-catalog.json'))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1', NOMI_SETTINGS_DIR: settings, NOMI_PROJECTS_DIR: projects },
+const { app, win } = await launchNomiApp({
+  name: 'model-panel-shot',
+  settingsDir: settings,
+  projectsDir: projects,
+  settleMs: 2000,
 })
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(2000)
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)
 

@@ -3,18 +3,16 @@
 // 捕捞 → 分型判 MSE → 自动当前帧（页面 canvas 原生分辨率）→ 落库标注 captureQuality='frame' +
 // 素材卡「视频当前帧」→ 右键「导入画布」→ 画布节点 +1（contained IPC 管道 + 探测）。
 // 用法：pnpm build && node scripts/browser-mse-canvas-walkthrough.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp, repoRoot } from '../tests/ux/_launchApp.mjs'
 import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.browser-mse-lab')
 fs.rmSync(outDir, { recursive: true, force: true })
 fs.mkdirSync(outDir, { recursive: true })
@@ -69,22 +67,13 @@ const server = http.createServer((req, res) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
 const port = server.address().port
 
-let app = null
+const { app, win } = await launchNomiApp({
+  name: 'browser-mse-canvas',
+  settingsDir,
+  projectsDir,
+  userDataDir: path.join(base, 'udata'),
+})
 try {
-  app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.', `--user-data-dir=${path.join(base, 'udata')}`],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_PROJECTS_DIR: projectsDir,
-      NOMI_SETTINGS_DIR: settingsDir,
-    },
-  })
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     window.localStorage.setItem('__nomiE2E', '1')
     for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) window.localStorage.setItem(k, 'seen')
