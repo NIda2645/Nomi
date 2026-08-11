@@ -21,6 +21,22 @@ const MULTIPART_PUBLIC_SUFFIXES = new Set([
   "com.tw",
 ]);
 
+// 主机名有没有可能存在公开文档站。没有 → 根本不该去猜 docs./wiki. 子域。
+//
+// 为什么必须先问这一句（issue #62 根因）：registrableDomain 是「按域名取注册域」的逻辑，对
+// IP 字面量是胡来——192.168.18.254 会被截成 "18.254"，拼出 http://docs.18.254；按 WHATWG 规则
+// 主机末段是纯数字要当 IPv4 解析，"docs" 不是数字 → new URL 直接抛 Invalid URL，整个接入流程判死。
+// 而且就算不抛也没意义：局域网/本机地址（自建 ComfyUI、Ollama、内网中转）不可能有公开文档站。
+export function canHostPublicDocs(hostname: string): boolean {
+  const host = hostname.toLowerCase().trim().replace(/\.$/, "");
+  if (!host) return false;
+  const bare = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+  // IP 字面量（含公网 IP：docs.203.0.113.5 同样不存在）。IPv6 靠冒号判，不依赖 node:net 以便同构复用。
+  if (bare.includes(":") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(bare)) return false;
+  if (host === "localhost") return false;
+  return ![".localhost", ".local", ".internal", ".home.arpa"].some((suffix) => host.endsWith(suffix));
+}
+
 function registrableDomain(hostname: string): string {
   const parts = hostname.toLowerCase().replace(/\.$/, "").split(".").filter(Boolean);
   if (parts.length <= 2) return parts.join(".");
@@ -131,6 +147,9 @@ export async function discoverProviderDocs(options: {
   maxCorpusBytes?: number;
 }): Promise<DiscoveredDocs> {
   const baseUrl = new URL(options.baseUrl);
+  // 不可能有公开文档站的主机（IP 字面量 / localhost / 内网域）：不猜、不爬、不抛，诚实返回「没有」。
+  // 调用方据此改走内置 OpenAI 兼容契约，而不是把用户的自建端点判成接入失败。
+  if (!canHostPublicDocs(baseUrl.hostname)) return { sources: [], corpus: "" };
   const domain = registrableDomain(baseUrl.hostname);
   const fetchText = options.fetchText || hardenedFetchText;
   const maxPages = options.maxPages ?? 16;

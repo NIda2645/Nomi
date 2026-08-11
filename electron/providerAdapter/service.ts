@@ -12,7 +12,8 @@ import { decryptApiKeyRecord } from "../catalog/secrets";
 import type { AiSdkProviderKind, BillingModelKind, Model, ProfileKind, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
 import { AdapterNeedsAiError, compileProviderAdapter, repairProviderAdapter } from "./compiler";
-import { discoverProviderDocs, type DiscoveredDocs } from "./docsDiscovery";
+import { canHostPublicDocs, discoverProviderDocs, type DiscoveredDocs } from "./docsDiscovery";
+import { buildOpenAiCompatibleDraft } from "./builtinOpenAiCompatibleDraft";
 import { connectionFingerprint, ProviderAdapterStore, recoverableAdapterRuns } from "./store";
 import type {
   AdapterAuthType,
@@ -477,6 +478,15 @@ export class ProviderAdapterService {
 
     try {
       this.setStage(id, "discovering_docs");
+      // 自建/局域网端点没有公开文档可读（详见 builtinOpenAiCompatibleDraft 头注释）：不猜文档、不叫 AI，
+      // 用内置 OpenAI 兼容契约出说明卡，直接进真实验证。也顺带免掉「必须先配好一个文本模型当编译大脑」
+      // 这个前置条件——首次接入本地模型的用户本来就还没有大脑可用。
+      const builtinDraft = this.builtinDraftForUndocumentedEndpoint(connection);
+      if (builtinDraft) {
+        const builtinResults = await this.verifyDraft(id, connection, builtinDraft, 1, []);
+        await this.promoteFinal(id, builtinDraft, builtinResults);
+        return;
+      }
       const docs = await this.dependencies.discover({
         baseUrl: String(connection.vendor.baseUrlHint || ""),
         modelKeys: initial.selectedModelKeys,
@@ -539,6 +549,28 @@ export class ProviderAdapterService {
       if (error instanceof AdapterNeedsAiError) this.finishWithError(id, "needs_ai", error.message);
       else this.finishWithError(id, "failed", error instanceof Error ? error.message : String(error));
     }
+  }
+
+  /** 主机可能有公开文档 → null（照走抓文档 + AI 编译）；不可能（IP/localhost/内网域）→ 内置 OpenAI 兼容说明卡。 */
+  private builtinDraftForUndocumentedEndpoint(connection: LoadedConnection): ProviderAdapterDraft | null {
+    const baseUrl = String(connection.vendor.baseUrlHint || "");
+    let hostname: string;
+    try {
+      hostname = new URL(baseUrl).hostname;
+    } catch {
+      return null; // 连 URL 都不合法 → 交给原路径如实报错，别在这里吞掉
+    }
+    if (canHostPublicDocs(hostname)) return null;
+    return buildOpenAiCompatibleDraft({
+      baseUrl,
+      authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+      ...(connection.vendor.providerKind ? { providerKind: connection.vendor.providerKind } : {}),
+      models: connection.models.map((model) => ({
+        modelKey: model.modelKey,
+        labelZh: model.labelZh,
+        kind: model.kind,
+      })),
+    });
   }
 
   private async verifyDraft(

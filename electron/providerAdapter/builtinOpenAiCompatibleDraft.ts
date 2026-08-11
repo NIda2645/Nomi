@@ -1,0 +1,100 @@
+// 自建/局域网端点的内置接入契约（issue #62 / #4「无法添加本地模型」/ #43 ComfyUI 同源）。
+//
+// 正常接入流程是「抓这家的官方文档 → AI 编译出调用说明卡 → 真实验证 → 落库」，隐含前提是
+// **这家有公开文档站**。用户填 192.168.x.x / 127.0.0.1（自建 ComfyUI、Ollama、vLLM、内网中转）
+// 时前提不成立：不存在 docs.192.168.18.254 这个网站。旧实现不但去猜，还把 IP 当域名截成
+// "18.254" 拼出 http://docs.18.254 → WHATWG 按 IPv4 解析失败 → Invalid URL → 整个接入判死禁用，
+// 用户表现为「换 Key、换模型名、换端口都没用」。
+//
+// 这类端点几乎全是 OpenAI 兼容口（业界事实标准），说明卡是同一张、已知的——那就别猜文档也别叫 AI，
+// 直接用内置模板。模板不另起一份：复用 catalog/newapiTransport 这张中转接入用了很久的单一真相源，
+// 图生图协议、i2v 通道、参数键名那些血泪细节都在里面（P1 不造并行版）。
+// 后半段不打折：仍然拿真实请求验过才启用，不假设它能用。
+import { newapiTransportFor } from "../catalog/newapiTransport";
+import type { BillingModelKind, HttpOperation } from "../catalog/types";
+import type { AdapterAuthType, AdapterModeDraft, AdapterModelDraft, ProviderAdapterDraft } from "./types";
+import type { AiSdkProviderKind } from "../catalog/types";
+
+// 文本的 OpenAI 兼容 wire。声明它是为了让说明卡形状完整、也把线缆写明；实际文本请求走
+// buildLanguageModelForVendor（AI SDK），验证也在 verifier 里短路成 streamTextTask，不发这条。
+const OPENAI_COMPATIBLE_CHAT_OP: HttpOperation = {
+  method: "POST",
+  path: "/v1/chat/completions",
+  headers: { Authorization: "Bearer {{user_api_key}}", "Content-Type": "application/json" },
+  body: {
+    model: "{{model.modelKey}}",
+    messages: [{ role: "user", content: "{{request.prompt}}" }],
+    stream: false,
+  },
+};
+
+type ParamControl = ReturnType<typeof newapiTransportFor>["params"][number];
+type DraftParameters = NonNullable<AdapterModelDraft["parameters"]>;
+
+/** ParamControl → 说明卡参数。image-url 类（视频首帧）说明卡形状不支持，丢弃即可：
+ *  首帧实际由 taskParams 从节点连线聚合成 request.params.image_url，不依赖这个 UI 控件。 */
+function toDraftParameters(params: readonly ParamControl[]): DraftParameters {
+  const supported: DraftParameters = [];
+  for (const param of params) {
+    if (param.type !== "select" && param.type !== "number" && param.type !== "text" && param.type !== "boolean") continue;
+    supported.push({
+      key: param.key,
+      label: param.label,
+      type: param.type,
+      ...(param.options.length > 0 ? { options: param.options } : {}),
+      ...(param.defaultValue !== undefined ? { default: param.defaultValue } : {}),
+      ...(param.min !== undefined ? { min: param.min } : {}),
+      ...(param.max !== undefined ? { max: param.max } : {}),
+    });
+  }
+  return supported;
+}
+
+function modesForKind(kind: BillingModelKind): AdapterModeDraft[] {
+  // 没有文档出处就诚实留空——这张卡来自内置标准契约，不是从某个页面读出来的（D4 缺口明着标）。
+  const noSources = { sourceUrls: [] as string[] };
+  if (kind === "text") return [{ taskKind: "chat", create: OPENAI_COMPATIBLE_CHAT_OP, ...noSources }];
+  // 3D 没有通用 OpenAI 兼容契约 → 不编造。返回空 modes，验证阶段如实报「这个模型没有可用通道」。
+  if (kind !== "image" && kind !== "video" && kind !== "audio") return [];
+  const transport = newapiTransportFor(kind);
+  const async = {
+    ...(transport.query ? { query: transport.query } : {}),
+    ...(transport.statusMapping ? { statusMapping: transport.statusMapping } : {}),
+  };
+  const modes: AdapterModeDraft[] = [{ taskKind: transport.taskKind, create: transport.create, ...async, ...noSources }];
+  // 图生图 / 图生视频各自注册一条：runtime 按 taskKind 选投递通道，缺了它连参考图的节点会被直接拒发。
+  if (transport.edit) modes.push({ taskKind: "image_edit", create: transport.edit, ...noSources });
+  if (transport.imageToVideo) {
+    modes.push({ taskKind: "image_to_video", create: transport.imageToVideo, ...async, ...noSources });
+  }
+  return modes;
+}
+
+export function buildOpenAiCompatibleDraft(input: {
+  baseUrl: string;
+  authType: AdapterAuthType;
+  providerKind?: AiSdkProviderKind;
+  models: ReadonlyArray<{ modelKey: string; labelZh: string; kind: BillingModelKind }>;
+}): ProviderAdapterDraft {
+  return {
+    provider: {
+      baseUrl: input.baseUrl,
+      authType: input.authType,
+      ...(input.providerKind ? { providerKind: input.providerKind } : {}),
+    },
+    sources: [],
+    models: input.models.map((model): AdapterModelDraft => {
+      const parameters =
+        model.kind === "image" || model.kind === "video" || model.kind === "audio"
+          ? toDraftParameters(newapiTransportFor(model.kind).params)
+          : [];
+      return {
+        modelKey: model.modelKey,
+        labelZh: model.labelZh,
+        kind: model.kind,
+        ...(parameters.length > 0 ? { parameters } : {}),
+        modes: modesForKind(model.kind),
+      };
+    }),
+  };
+}
