@@ -6,6 +6,7 @@ import type { Mapping, Model, ProfileKind } from "../catalog/types";
 import { readCatalog } from "../catalog/catalogStore";
 import { desktopT } from "../i18n";
 import { classifyTaskCacheMiss, wasTaskAdmitted } from "./taskAdmission";
+import { taskFailureMessageFromResponse } from "./responseParsing";
 import { activeTaskProjectFallback, unlocalizedTaskAsset } from "./activeProjectFallback";
 import { traceVendorCompleted } from "../events/vendorCallTrace";
 import { rememberTaskResult } from "../vendor/fingerprintCache";
@@ -110,7 +111,10 @@ function rebuildCachedTaskFromPayload(taskId: string, raw: JsonRecord): CachedTa
   };
 }
 
-/** 跑一次续查（缓存命中 / 无状态重建 共用单一真相）：有 query op 走 query；无则尝试 raw 里已带的资产。 */
+/**
+ * 跑一次续查（缓存命中 / 无状态重建 共用单一真相）：有 query op 走 query；无则尝试 raw 里已带的
+ * 资产；两条都不成立 → **诚实报失败**（这个任务根本查不了，不是「还没好」，见函数末尾）。
+ */
 async function executeTaskQuery(taskId: string, cached: CachedTask): Promise<{ vendor: string; result: TaskResult }> {
   const queryOperation = cached.mapping?.query;
   if (cached.mapping && queryOperation && cached.model) {
@@ -190,10 +194,37 @@ async function executeTaskQuery(taskId: string, cached: CachedTask): Promise<{ v
     return { vendor: cached.vendor, result: lateResult };
   }
 
-  return {
-    vendor: cached.vendor,
-    result: { id: taskId, kind: cached.request.kind, status: "queued", assets: [], raw: cached.raw },
+  // ── 「查不了」是**终态事实**，不是「还没好」（同一病根的第二条路径，见本文件顶部）──────────
+  // 走到这里，两件事同时成立且此后都不会再变：
+  //   ① 没有可发的 query —— 同步模型（如通用中转的图像 mapping：newapiTransport.ts:304 只给 create，
+  //      catalogCommit.ts:222 因此不写 query 键）或无 mapping 的 fallback 提交（runtime.ts:505）。
+  //      `cached.mapping` 是受理那刻的快照，不会自己长出 query op。
+  //   ② create 响应里也没有产物。而 `cached.raw` **只在**上面那段 query 分支里被改写——对没有
+  //      query op 的任务那段永不执行，raw 于是永远冻结在 create 那一刻。
+  // 同样的输入喂给同一个 extractAssetUrl ⇒ 答案永远相同。fallback 那条路更绝：它正是在
+  // extractAssetUrl 为空时才受理的（runtime.ts:502-506），这里注定再算一次同一个空值。
+  // 此处过去返回 queued —— 而 queued 是**「再查一次」的指令**：渲染层于是一路空转到硬超时
+  // （快道 2min / 视频 20min），最后报一句含糊的「可能仍在上游运行」，真因一次都没到过用户眼前。
+  // 事实既然终态且**可知**，就如实报失败，并带上上游自己给的原因（中转的「no available channel」/
+  // 余额不足就写在 create 响应体里，此前整条被丢掉）。
+  // 注：`cached.model` 在所有受理点都必填（runtime.ts:445/506、本文件 165 的 `...cached`、重建），
+  // 故落到这里的判据就是「无 query op」，文案如实这么说。
+  const upstreamReason = taskFailureMessageFromResponse(cached.raw, cached.mapping?.create?.response_mapping ?? null);
+  const unpollable: TaskResult = {
+    id: taskId,
+    kind: cached.request.kind,
+    status: "failed",
+    assets: [],
+    raw: cached.raw,
+    error:
+      desktopT("tasks.noQueryOperation") +
+      (upstreamReason ? desktopT("tasks.upstreamSaid", { detail: upstreamReason }) : ""),
   };
+  traceVendorCompleted(cached.projectId, { runId: taskId, nodeId: cached.nodeId, status: "failed", assetCount: 0 });
+  // 与其它终态一致地清缓存；额外好处：用户之后「重新拉取」会走无状态重建，那条路**重读 catalog**，
+  // 模型若后来补上了 query op 就真能查出来（留着旧快照反而钉死在「永远查不了」）。
+  taskCache.delete(taskId);
+  return { vendor: cached.vendor, result: unpollable };
 }
 
 /** 提交时 projectId 空窗会毒化整个任务生命周期（cached.projectId 恒空 → 每次轮询都跳过本地化、

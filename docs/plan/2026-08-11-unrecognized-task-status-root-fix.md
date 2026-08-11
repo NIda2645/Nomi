@@ -94,3 +94,63 @@ create 响应只带 `task_id` 没有 status 是完全正常的排队，不能计
 - 不改 `TaskResult` / `TaskResultDto` 公共类型（判定在收口点完成，渲染层无感）
 - 不改三个轮询循环各自的超时值
 - 不改 `NEWAPI_STATUS_MAPPING`（那是止血 commit 的事，且在并行分支上）
+
+---
+
+# 追加：同一病根的第二条路径 —— 「没有 query op 也回 queued」
+
+日期：2026-08-11（承接上文，同一收口点 `executeTaskQuery`）
+
+## 病根（一句话）
+
+`executeTaskQuery` 末尾的兜底 `return { status: "queued" }` 在**根本没有查询接口**时也照回 —— 而
+`queued` 是「再查一次」的指令。于是每一轮都答「还在排队」，直到硬超时。
+
+上文修的是「上游给了个不认得的动词」；这条是「**我们压根没有第二次请求可发**」。两者同一个
+病根：**兜底语义默认乐观**。上文的修复够不着这里 —— 那条判定要求 `unrecognizedStatus` 非空，
+而同步 create 的响应通常连 status 字段都没有（`rawStatus` 为空 ⇒ `unrecognizedStatus` 也为空，
+这正是「不误伤」的第一道保险）。
+
+## 可达性（先验证再动手，不是猜的）
+
+两条真实进入路径：
+
+| # | 受理点 | 怎么进来 |
+|---|---|---|
+| A | `runtime.ts:445` | 有 mapping 但**无 query op**。`newapiTransportFor("image")`（`newapiTransport.ts:304`）只给 `create`，`catalogCommit.ts:222` 因此不写 `query` 键 ⇒ **所有中转图像模型**都是这形状。create 回 200 但无产物、无状态动词、无 error（如空 `data[]`、通道不可用）→ `resolveTaskStatus` 归成 `queued` → 非终态 → 受理 |
+| B | `runtime.ts:506` | 无 mapping 的 fallback 提交，`if (!assetUrl) admitTask(...)` |
+
+B 尤其致命：它**正是在 `extractAssetUrl` 为空时才受理**，而轮询兜底再调一次同一个
+`extractAssetUrl(cached.raw)` —— 同函数、同入参，**注定**得到同一个空值。这条路 100% 永远转圈。
+
+关键不变量：`cached.mapping` 是受理那刻的快照；`cached.raw` **只在** query 分支里被改写，
+对无 query op 的任务那段永不执行 ⇒ 两个输入都冻结 ⇒ 答案永远相同 ⇒ **事实是终态且可知**。
+
+## 用户体验（改前 → 改后）
+
+- 改前：节点转圈 2min（快道）/ 20min（视频），最后一句含糊的「可能仍在上游运行·可找回」。
+  中转写在 create 响应里的真因（`no available channel`、余额不足）**一次都没到过用户眼前**。
+- 改后：第一次轮询（~1.5s）就落 `failed`，文案说清「这个模型没有配置查询结果接口，而本次
+  创建没有返回产物」，并把上游原话附在后面。
+
+## 改动
+
+| 文件 | 改什么 |
+|---|---|
+| `electron/tasks/taskResultQuery.ts` | 末尾兜底 `queued` → 终态 `failed` + `desktopT` 文案 + 上游原话；`traceVendorCompleted` 记终态；`taskCache.delete` |
+| `electron/i18n.ts` | 2 个新 key `tasks.noQueryOperation` / `tasks.upstreamSaid`（zh-CN + en，R15） |
+| `electron/tasks/unpollableTaskQuery.test.ts` | 新回归（与 `unrecognizedTaskStatusQuery.test.ts` 同风格：只桩 HTTP 边界与 catalog 磁盘读） |
+
+**为什么修在轮询层而不是受理层**：`executeTaskQuery` 是「这个任务什么状态？」的**唯一**收口点
+（缓存命中 / 无状态重建 / 三条轮询循环全经它）。修在受理层要改 N 个 admit 点，且将来新增一个
+admit 点就会漏 —— 修在收口点一处覆盖全部入口。（另：`runtime.ts` 巨壳门岗基线 540/540，也加不了行。）
+
+**清缓存的额外好处**：之后「重新拉取」会走无状态重建，那条路**重读 catalog** —— 模型若后来补上
+query op 就真能查出来；留着旧快照反而把它钉死在「永远查不了」。
+
+## 验收门
+
+- `electron/tasks/unpollableTaskQuery.test.ts`：无 query op 首轮即 failed（路径 A/B 各一条）、
+  上游原话透传、终态后不退回非终态、**且**「create 已带产物」的分支照旧 succeeded（不误杀）
+- 已验证 5 条用例在修复前 4 条失败（`expected 'queued' to be 'failed'`），修复后全过
+- `pnpm run gates` 全过
