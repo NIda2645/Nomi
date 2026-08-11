@@ -6,6 +6,8 @@
 // structuredContent.nomiOutcome 给模型稳定字段（runId/params/nextActions/error），不再让它从文本里抠 ID。
 // 纯逻辑、不碰 electron —— 与 mcpProtocol 同边界，可裸 node 单测。
 
+import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
+
 export type ResultLocale = 'zh-CN' | 'en'
 
 type Ctx = { locale: ResultLocale }
@@ -27,7 +29,7 @@ const RUN_STATUS_HINT: Record<string, { zh: string; en: string; nextZh: string; 
   ready: { zh: '已就绪', en: 'ready', nextZh: '合同已批准，生成即将开始', nextEn: 'Contract approved; generation starts shortly', action: 'watch_or_pause' },
   running: { zh: '制作进行中', en: 'running', nextZh: '可随时说「先停一下」暂停', nextEn: 'Say "pause" anytime to pause the run', action: 'watch_or_pause' },
   pausing: { zh: '正在暂停', en: 'pausing', nextZh: '正在安全停下，已提交的镜头会先收尾', nextEn: 'Stopping safely; in-flight shots will settle first', action: 'wait' },
-  paused: { zh: '已暂停', en: 'paused', nextZh: '已完成内容与已花预算安全；可继续或取消', nextEn: 'Finished shots and spend are safe; resume or cancel', action: 'resume_or_cancel' },
+  paused: { zh: '已暂停', en: 'paused', nextZh: '已提交的花费不退但产物保留；未提交的不再花钱。可继续或取消', nextEn: 'Submitted spend is not refundable but its output is kept; nothing new will be charged. Resume or cancel', action: 'resume_or_cancel' },
   awaiting_rough_cut_review: { zh: '粗剪等你审阅', en: 'rough cut awaiting review', nextZh: '下一步：在 Nomi 里过一遍粗剪', nextEn: 'Next: review the rough cut in Nomi', action: 'review_rough_cut' },
   needs_attention: { zh: '需要处理', en: 'needs attention', nextZh: '有任务卡住了，看错误详情选恢复动作', nextEn: 'A job is stuck; check the error details for recovery actions', action: 'recover' },
   completed: { zh: '已完成', en: 'completed', nextZh: '产物已保存到项目，可在 Nomi 里查看', nextEn: 'Artifacts are saved to the project; open them in Nomi', action: 'open_in_nomi' },
@@ -185,18 +187,27 @@ export function buildToolOutcome(
     const status = str(value.status)
     const hint = RUN_STATUS_HINT[status]
     const budget = rec(value.budget)
+    // 诚实敞口（D4）：已提交给供应商的任务收不回、钱已花——如实报数量，别让用户以为「停=零损失」。
+    const jobsArr = Array.isArray(value.jobs) ? (value.jobs as Array<Record<string, unknown>>) : []
+    const inFlight = jobsArr.filter((job) => ACTIVE_JOB_STATUSES.includes(str(job.status))).length
     const done = action === 'pause'
-      ? L(ctx, '✓ 已暂停', '✓ Paused')
+      ? (status === 'pausing' ? L(ctx, '✓ 正在暂停', '✓ Pausing') : L(ctx, '✓ 已暂停', '✓ Paused'))
       : action === 'resume'
         ? L(ctx, '✓ 已继续', '✓ Resumed')
         : action === 'cancel'
           ? L(ctx, '✓ 已取消', '✓ Cancelled')
           : `✓ ${action}`
+    const exposure = inFlight > 0 && (action === 'pause' || action === 'cancel')
+      ? L(ctx,
+          `⚠ ${inFlight} 个已提交的任务无法撤回，会跑完并计费${action === 'pause' ? '；完成后自动落停' : ''}（结果保留，不浪费已花的钱）`,
+          `⚠ ${inFlight} submitted job(s) cannot be recalled and will finish and bill${action === 'pause' ? '; the run settles to paused afterwards' : ''} (results are kept)`)
+      : null
     const text = [
       `${done} · ${runId}${str(value.stageId) ? ` · ${str(value.stageId)}` : ''}`,
+      exposure,
       echoLine(ctx, [
         typeof budget.actual === 'number' ? `${L(ctx, '已花费', 'spent')} ${budget.actual}` : null,
-        action === 'pause' ? L(ctx, '未提交的任务不计费', 'unsubmitted jobs are not charged') : null,
+        action === 'pause' ? L(ctx, '未提交的任务不再提交、不计费', 'unsubmitted jobs will not be submitted or charged') : null,
         action === 'cancel' ? L(ctx, '已完成的产物保留在项目里', 'finished artifacts stay in the project') : null,
       ]),
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
@@ -206,6 +217,7 @@ export function buildToolOutcome(
       outcome: {
         kind: 'run_control', runId, projectId, action, status: status || null,
         budget: { actual: budget.actual ?? null },
+        inFlightJobs: inFlight,
         nextActions: hint ? [hint.action] : [],
       },
     }

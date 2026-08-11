@@ -61,6 +61,36 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
   })
 })
 
+describe('nomi_control_run 诚实敞口（中转已提交≈收不回）', () => {
+  it('pausing 且有在途任务：⚠ 报数量 + 会跑完并计费 + 自动落停；outcome 带 inFlightJobs', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_control_run',
+      { projectId: 'p1', runId: 'run_1', action: 'pause' },
+      { runId: 'run_1', status: 'pausing', jobs: [
+        { jobId: 'j1', status: 'polling' },
+        { jobId: 'j2', status: 'provider_accepted' },
+        { jobId: 'j3', status: 'authorized' },
+      ] },
+    )
+    expect(text).toContain('✓ 正在暂停')
+    expect(text).toContain('⚠ 2 个已提交的任务无法撤回，会跑完并计费')
+    expect(text).toContain('完成后自动落停')
+    expect(text).toContain('未提交的任务不再提交、不计费')
+    expect(outcome).toMatchObject({ kind: 'run_control', inFlightJobs: 2 })
+  })
+
+  it('paused 无在途：不出 ⚠ 行；cancel 有在途：⚠ 仍会计费', () => {
+    const clean = buildToolOutcome('nomi_control_run', { runId: 'r', action: 'pause' }, { runId: 'r', status: 'paused', jobs: [] })
+    expect(clean.text).toContain('✓ 已暂停')
+    expect(clean.text).not.toContain('⚠')
+    const cancelled = buildToolOutcome('nomi_control_run', { runId: 'r', action: 'cancel' }, {
+      runId: 'r', status: 'cancelled', jobs: [{ jobId: 'j1', status: 'downloading' }],
+    })
+    expect(cancelled.text).toContain('⚠ 1 个已提交的任务无法撤回，会跑完并计费')
+    expect(cancelled.text).toContain('已完成的产物保留在项目里')
+  })
+})
+
 describe('buildToolErrorOutcome (A6 错误契约)', () => {
   it('已知错误码：人话原因 + 诊断码 + 恢复动作编号列表', () => {
     const { text, outcome } = buildToolErrorOutcome('nomi_generate', new Error('generate failed: renderer_or_provider_unknown'))

@@ -16,7 +16,7 @@ import {
   type ArtifactProjection,
 } from './artifactProjection'
 import { buildProductionDeepLink } from './productionDeepLink'
-import { applyRunControl } from './productionRunControl'
+import { applyRunControl, settlePauseIfQuiet } from './productionRunControl'
 import { withEventTap } from './productionRunEventTap'
 import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
@@ -399,6 +399,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       const jobs = current.jobs.filter((job) => job.status === 'authorized' || job.status === 'submit_intent_persisted')
       for (const job of jobs) {
         current = requireRun(run.projectId, run.runId)
+        if (current.status !== 'running') break // 花钱边界：暂停/取消后不再提交（已提交的收不回，只能跑完收尾）
         if (job.status === 'authorized') current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submit_intent_persisted' }, `driver-${job.jobId}-intent`).run
         current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submitting' }, `driver-${job.jobId}-submit`).run
         try {
@@ -444,7 +445,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           return
         }
       }
-      current = requireRun(run.projectId, run.runId)
+      current = settlePauseIfQuiet(repository, run.projectId, run.runId, requireRun(run.projectId, run.runId))
+      if (current.status !== 'running') return
       if (current.jobs.some((job) => !['adopted', 'cancelled_remote', 'detached'].includes(job.status))) return
       current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'generate', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-generate`).run
       current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'qa', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-qa`).run
@@ -603,7 +605,9 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     }
     if (runCommand.type === 'run.control') {
       // A4 run 控制：逻辑在 productionRunControl.ts（MCP 与渲染端同一收口）。
-      return applyRunControl(repository, safeProjectId, safeRunId, requireRun(safeProjectId, safeRunId), runCommand)
+      const controlled = applyRunControl(repository, safeProjectId, safeRunId, requireRun(safeProjectId, safeRunId), runCommand)
+      if (runCommand.payload.action === 'resume' && controlled.run.status === 'running') void driveGeneration(controlled.run) // 恢复必须重踢 driver：只回状态不回工作=假 resume
+      return controlled
     }
     if (runCommand.type === 'plan.attach') {
       const current = requireRun(safeProjectId, safeRunId)

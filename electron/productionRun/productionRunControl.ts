@@ -6,8 +6,29 @@
 import type { ProductionRunRepository } from './productionRunRepository'
 import type { ProductionRun, RunCommand, RunCommandResult } from './productionRunTypes'
 
-/** 已提交给供应商、还没收尾的任务状态（此时暂停停在 pausing，由收尾流程转 paused）。 */
-const ACTIVE_JOB_STATUSES = ['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content']
+/**
+ * 已提交给供应商、还没收尾的任务状态。中转商物理现实：这些任务**无法撤回、钱已花出**——
+ * 暂停/取消都只能让它们跑完收尾（结果保留不浪费），能守住的边界是「不再提交新任务」。
+ */
+export const ACTIVE_JOB_STATUSES = ['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content']
+
+/** 暂停收尾：pausing 且已无在途任务 → 落 paused。driver 提交循环退出时调（也可幂等重入）。 */
+export function settlePauseIfQuiet(
+  repository: Pick<ProductionRunRepository, 'execute'>,
+  projectId: string,
+  runId: string,
+  current: ProductionRun,
+): ProductionRun {
+  if (current.status !== 'pausing') return current
+  if (current.jobs.some((job) => ACTIVE_JOB_STATUSES.includes(job.status))) return current
+  return repository.execute(projectId, runId, {
+    commandId: `pause-settle-${current.revision}`,
+    expectedRevision: current.revision,
+    type: 'run.status',
+    payload: { status: 'paused' },
+    issuedAt: new Date().toISOString(),
+  }).run
+}
 
 /**
  * 应用一次控制命令。幂等近似：已在目标态 → 原样返回不写事件（对话里连说两次「停」不该炸）；

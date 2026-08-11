@@ -68,6 +68,12 @@
 ## Phase B（次轮，另出 plan 细化）
 创意/剧本/样片三门接入 playbook driver（编排从 stub 转真：`awaiting_direction` 状态已在，缺 driver 推进与 gate 载荷）；信任档位（合同字段 + 门跳过逻辑 + SpendConfirmDialog 增行）；粗剪门呈现；MCP Apps gate 卡（方向门=选项卡/样片门=卡内图，复用 mcpAppWidget.ts 基建）；Codex granular elicitation 配置写入 mcpConfig。
 
+**暂停的花钱语义（2026-08-11 用户指出「中转已提交≈收不回」后定调）**：
+- 物理现实：中转商无撤回接口，钱在提交瞬间已花。能守住的边界只有「不再提交新任务」——已实现（driver 提交门 + pausing 收尾落停 + resume 重踢，productionRunPauseSemantics.test 锁死）；已提交的如实披露数量（⚠ N 个无法撤回会跑完并计费）。
+- **Phase B 结构治本 = 提交窗口化**：driver 按小窗提交（在途窗口 1-2 镜），窗口大小即「喊停的最大敞口」；样片门天然是第一窗。逐镜提交 vs 全批提交是花钱敞口的量级差。
+- 供应商侧撤回：个别 provider 若有 cancel 端点则走 job `cancel_requested → cancelled_remote`；没有 → `too_late` 如实标（状态机已预留，接入时逐家核对 API，禁凭记忆 R5）。
+- 注意：productionRunService.ts 已顶 800 上限，Phase B 动它前先抽层。
+
 ## 不动项
 13 个现有工具的名字与语义（只加 `nomi_control_run`、只扩结果字段）；SpendConfirmDialog 视觉（Phase B 才加信任档位行）；ConnectAssistantCard；画布助手对话流；MEANINGFUL_EVENT_TYPES 语义（只消费不改义）。
 
