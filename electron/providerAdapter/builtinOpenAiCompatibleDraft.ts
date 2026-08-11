@@ -50,22 +50,39 @@ function toDraftParameters(params: readonly ParamControl[]): DraftParameters {
   return supported;
 }
 
-function modesForKind(kind: BillingModelKind): AdapterModeDraft[] {
+// 按鉴权方式重写鉴权头。newapiTransport 的模板是给「中转站」写的，那边永远有 key，所以把
+// `Authorization: Bearer {{user_api_key}}` 写死了。自建端点常常**根本不需要 key**（ComfyUI、
+// Ollama、LM Studio 默认无鉴权）——照抄就会发出一个空的 `Authorization: Bearer `，有的服务直接拒。
+// 鉴权头必须随 authType derive，不能钉死（接入矩阵测试跑出来的）。
+function withAuthHeader(operation: HttpOperation, authType: AdapterAuthType): HttpOperation {
+  const headers: Record<string, string> = { ...(operation.headers || {}) };
+  delete headers.Authorization;
+  if (authType === "bearer") headers.Authorization = "Bearer {{user_api_key}}";
+  else if (authType === "x-api-key") headers["x-api-key"] = "{{user_api_key}}";
+  // none：不带鉴权头。query：key 走查询参数，同样不该出现在头里。
+  const next: HttpOperation = { ...operation };
+  if (Object.keys(headers).length > 0) next.headers = headers;
+  else delete next.headers;
+  return next;
+}
+
+function modesForKind(kind: BillingModelKind, authType: AdapterAuthType): AdapterModeDraft[] {
   // 没有文档出处就诚实留空——这张卡来自内置标准契约，不是从某个页面读出来的（D4 缺口明着标）。
   const noSources = { sourceUrls: [] as string[] };
-  if (kind === "text") return [{ taskKind: "chat", create: OPENAI_COMPATIBLE_CHAT_OP, ...noSources }];
+  const auth = (operation: HttpOperation) => withAuthHeader(operation, authType);
+  if (kind === "text") return [{ taskKind: "chat", create: auth(OPENAI_COMPATIBLE_CHAT_OP), ...noSources }];
   // 3D 没有通用 OpenAI 兼容契约 → 不编造。返回空 modes，验证阶段如实报「这个模型没有可用通道」。
   if (kind !== "image" && kind !== "video" && kind !== "audio") return [];
   const transport = newapiTransportFor(kind);
   const async = {
-    ...(transport.query ? { query: transport.query } : {}),
+    ...(transport.query ? { query: auth(transport.query) } : {}),
     ...(transport.statusMapping ? { statusMapping: transport.statusMapping } : {}),
   };
-  const modes: AdapterModeDraft[] = [{ taskKind: transport.taskKind, create: transport.create, ...async, ...noSources }];
+  const modes: AdapterModeDraft[] = [{ taskKind: transport.taskKind, create: auth(transport.create), ...async, ...noSources }];
   // 图生图 / 图生视频各自注册一条：runtime 按 taskKind 选投递通道，缺了它连参考图的节点会被直接拒发。
-  if (transport.edit) modes.push({ taskKind: "image_edit", create: transport.edit, ...noSources });
+  if (transport.edit) modes.push({ taskKind: "image_edit", create: auth(transport.edit), ...noSources });
   if (transport.imageToVideo) {
-    modes.push({ taskKind: "image_to_video", create: transport.imageToVideo, ...async, ...noSources });
+    modes.push({ taskKind: "image_to_video", create: auth(transport.imageToVideo), ...async, ...noSources });
   }
   return modes;
 }
@@ -93,7 +110,7 @@ export function buildOpenAiCompatibleDraft(input: {
         labelZh: model.labelZh,
         kind: model.kind,
         ...(parameters.length > 0 ? { parameters } : {}),
-        modes: modesForKind(model.kind),
+        modes: modesForKind(model.kind, input.authType),
       };
     }),
   };
