@@ -41,6 +41,24 @@ export const ARCHETYPE_WIRE_DEFAULTS: Record<string, Record<string, Record<strin
       }
     }
   },
+  "minimax-h3-apimart": {
+    "text_to_video": {
+      "*": {
+        "resolution": "2K",
+        "aspect_ratio": "16:9",
+        "duration": 5,
+        "watermark": false
+      }
+    },
+    "image_to_video": {
+      "*": {
+        "resolution": "2K",
+        "aspect_ratio": "adaptive",
+        "duration": 5,
+        "watermark": false
+      }
+    }
+  },
   "minimax-h3": {
     "text_to_video": {
       "*": {
@@ -292,6 +310,30 @@ export const ARCHETYPE_WIRE_DEFAULTS: Record<string, Record<string, Record<strin
         "duration": 5,
         "generate_audio": true,
         "model": "doubao-seedance-2.0-fast"
+      }
+    }
+  },
+  "seedance-2.5-apimart": {
+    "text_to_video": {
+      "*": {
+        "size": "adaptive",
+        "resolution": "720p",
+        "duration": 5,
+        "generate_audio": true,
+        "watermark": false,
+        "output_format": "mp4",
+        "return_last_frame": false
+      }
+    },
+    "image_to_video": {
+      "*": {
+        "size": "adaptive",
+        "resolution": "720p",
+        "duration": 5,
+        "generate_audio": true,
+        "watermark": false,
+        "output_format": "mp4",
+        "return_last_frame": false
       }
     }
   },

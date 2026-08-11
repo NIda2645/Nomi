@@ -19,6 +19,9 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "seedance2.5",
     "seedance25"
   ],
+  "minimax-h3-apimart": [
+    "MiniMax-H3"
+  ],
   "minimax-h3": [
     "minimax-h3",
     "minimax-h3/text-to-video",
@@ -126,6 +129,13 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "doubao-seedance-2-0-fast-face",
     "doubao-seedance-2.0-mini",
     "doubao-seedance-2-0-mini"
+  ],
+  "seedance-2.5-apimart": [
+    "doubao-seedance-2.5",
+    "doubao-seedance-2-5"
+  ],
+  "minimax-h3-regeneration": [
+    "MiniMax-H3-Regeneration"
   ],
   "vidu-q3": [
     "viduq3",
