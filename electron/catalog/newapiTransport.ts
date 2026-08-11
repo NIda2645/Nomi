@@ -26,7 +26,13 @@ export const NEWAPI_STATUS_MAPPING: Record<string, string[]> = {
   queued: ["queued", "pending", "submitted", "not_start", "notstart"],
   running: ["processing", "running", "in_progress", "queueing"],
   succeeded: ["succeeded", "success", "completed", "done"],
-  failed: ["failed", "fail", "error", "cancelled", "canceled", "timeout"],
+  // 失败动词必须尽量收全：**没认出来的动词会落进 queued（= 继续轮询）**，于是一个已经失败的
+  // 任务在用户眼里变成「永远转圈」，既不出结果也不报错。往返测试实测 "failure"/"rejected"
+  // 此前就是这个下场（2026-08-11）。这里只能缓解，未知动词的兜底语义另行处理。
+  failed: [
+    "failed", "fail", "failure", "error", "cancelled", "canceled", "timeout",
+    "rejected", "refused", "expired", "aborted",
+  ],
 };
 
 // 铁律翻译（用户自建中转的关键）：通用 new-api 站走 OpenAI 兼容契约 → size 是像素。中性「比例

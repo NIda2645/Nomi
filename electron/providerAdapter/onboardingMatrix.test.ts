@@ -65,6 +65,11 @@ const MODEL_ID_MATRIX: Array<{ id: string; expected: string }> = [
   { id: "veo-3.1", expected: "video" },
   { id: "wan2.5-i2v", expected: "video" },
   { id: "doubao-seedance-1-0-pro", expected: "video" },
+  // 用户 2026-08-11 反馈：这两个此前都落进文本桶 → 「grok 接不进去、识别不出类型」「想接 H3」
+  { id: "grok-imagine", expected: "image" },
+  { id: "grok-imagine-video", expected: "video" },
+  { id: "MiniMax-H3", expected: "video" },
+  { id: "MiniMax-Hailuo-2.3", expected: "video" },
   // 音频
   { id: "whisper-1", expected: "audio" },
   { id: "seed-tts-2.0", expected: "audio" },

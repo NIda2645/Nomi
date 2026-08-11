@@ -14,6 +14,8 @@ const VIDEO_PATTERNS = [
   "video", "kling", "sora", "veo", "runway", "gen-3", "gen3", "luma", "ray",
   "cogvideo", "hailuo", "minimax-hailuo", "seedance", "wan2", "wanx", "mochi",
   "pika", "vidu", "ltx", "hunyuan-video", "jimeng-video", "i2v", "t2v",
+  // MiniMax 视频族：hailuo 之外还有 H3（图生视频，用户 2026-08-11 反馈想接但被分进文本桶）。
+  "minimax-h3", "hailuo",
 ];
 
 // 图片模型族（命中即判 image）。
@@ -22,6 +24,9 @@ const IMAGE_PATTERNS = [
   "stable-diffusion", "stable-image", "seedream", "nano-banana", "qwen-image",
   "imagen", "ideogram", "recraft", "kolors", "playground", "z-image", "hidream",
   "jimeng", "irag", "cogview", "t2i",
+  // xAI Grok Imagine：裸 id 就叫 grok-imagine（不含 image/video 词根），此前落进文本桶 →
+  // 用户报「grok 接不进去、识别不出 image/video 类型」。带后缀的 -image/-video 由通用词根命中。
+  "grok-imagine",
 ];
 
 // 配音/音频模型族（命中即判 audio）。覆盖 TTS / 语音合成 / 语音对话 / 转写 / 音乐生成——
