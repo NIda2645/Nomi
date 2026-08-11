@@ -1,4 +1,5 @@
-import type { ProductionGate, ProductionRun } from '../../../../electron/productionRun/productionRunTypes'
+import type { ProductionGate, ProductionRun, TrustLevel } from '../../../../electron/productionRun/productionRunTypes'
+import { trustLevelOf } from '../../../../electron/productionRun/productionRunTypes'
 import {
   evaluateProductionPolicyReadiness,
   type ProductionPolicyReadiness,
@@ -7,6 +8,8 @@ import {
 export type ProductionContractView = {
   planVersion: number
   planHash: string
+  /** B3：run 级信任档位（合同行显示打扰程度；老 run 无字段 → key_confirm）。 */
+  trustLevel: TrustLevel
   specs: {
     durationSeconds: number | null
     aspectRatio: string | null
@@ -46,6 +49,7 @@ export function buildProductionContractView(run: ProductionRun, gate: Production
   return {
     planVersion: run.planVersion,
     planHash: gate.planHash,
+    trustLevel: trustLevelOf(run.policy),
     specs: {
       durationSeconds: finiteNonNegative(contract?.specs.durationSeconds),
       aspectRatio: contract?.specs.aspectRatio?.trim() || null,

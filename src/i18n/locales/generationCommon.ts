@@ -1069,6 +1069,12 @@ export const zhGenerationCommon = {
       policyMissing: '待设置',
       irreversibleNote: '本次批准只覆盖这份制作摘要。发布、删除和覆盖文件仍需单独确认。',
       planIdentity: '计划 v{{version}} · {{hash}}',
+      trustLevel: '信任档位',
+      trustLevelValue: {
+        key_confirm: '关键确认（默认，五门全开）',
+        budget_only: '只管钱（跳过创意与样片门）',
+        confirm_all: '全程确认（每镜提交前都停）',
+      },
     },
   },
   savePrompt: {
@@ -2217,6 +2223,12 @@ export const enGenerationCommon = {
       policyMissing: 'Needs setup',
       irreversibleNote: 'This approval covers only this production summary. Publishing, deletion, and file replacement still require separate approval.',
       planIdentity: 'Plan v{{version}} · {{hash}}',
+      trustLevel: 'Trust level',
+      trustLevelValue: {
+        key_confirm: 'Key confirmations (default; all gates on)',
+        budget_only: 'Budget only (skips creative + sample gates)',
+        confirm_all: 'Confirm everything (stops before each shot)',
+      },
     },
   },
   savePrompt: {

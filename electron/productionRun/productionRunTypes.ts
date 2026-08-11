@@ -2,6 +2,29 @@ export const PRODUCTION_RUN_SCHEMA_VERSION = 1;
 
 export type AutomationMode = "guided" | "balanced" | "policy-auto";
 
+/**
+ * B3 信任档位（run 级，写进 policy 可查证）——决定「创意门 / 样片门」打不打扰，钱门永不受影响：
+ * - key_confirm（默认）：五门全开——方向门 + 样片门都停，用户逐项拍板。
+ * - budget_only：跳过创意门与样片门（自动批准、事件留痕），只留预算门与不可逆动作。「别问了直接出」= 降到这档。
+ * - confirm_all：控制欲最强——每镜提交前都停（本期仅埋事件钩子，不实现每镜门，见 plan 范围）。
+ * 预算门（budget_envelope）任何档位都不跳。
+ */
+export type TrustLevel = "key_confirm" | "budget_only" | "confirm_all";
+
+export const DEFAULT_TRUST_LEVEL: TrustLevel = "key_confirm";
+
+const TRUST_LEVELS: readonly TrustLevel[] = ["key_confirm", "budget_only", "confirm_all"];
+
+/** B3：把任意输入收敛成合法档位（非法/缺省 → key_confirm）。单一收口，别在各处硬编码判断。 */
+export function normalizeTrustLevel(value: unknown): TrustLevel {
+  return TRUST_LEVELS.includes(value as TrustLevel) ? (value as TrustLevel) : DEFAULT_TRUST_LEVEL;
+}
+
+/** 读一个 run 的有效档位（老 run 无字段 → 默认）。 */
+export function trustLevelOf(policy: Pick<AutomationPolicy, "trustLevel">): TrustLevel {
+  return normalizeTrustLevel(policy.trustLevel);
+}
+
 export type AutomationPolicy = {
   mode: AutomationMode;
   trustedHosts: string[];
@@ -10,6 +33,8 @@ export type AutomationPolicy = {
   maxSpend: number | null;
   maxAttemptsPerJob: number;
   minimizeUploads: boolean;
+  /** B3 信任档位。老 run 文件无此字段 → 读作默认 key_confirm（向后兼容）。 */
+  trustLevel?: TrustLevel;
 };
 
 export type BudgetLedgerSummary = {

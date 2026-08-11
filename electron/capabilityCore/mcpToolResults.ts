@@ -104,6 +104,17 @@ function waitingSampleGateId(value: Record<string, unknown>): string | null {
   return gate ? str(gate.gateId) : null
 }
 
+/** B3：信任档位人话标签（合同/状态/改档转述都用这一处）。 */
+const TRUST_LABEL: Record<string, { zh: string; en: string }> = {
+  key_confirm: { zh: '关键确认（默认，五门全开）', en: 'key confirmations (default; all gates on)' },
+  budget_only: { zh: '只管钱（跳过创意与样片门）', en: 'budget only (skips creative + sample gates)' },
+  confirm_all: { zh: '全程确认（每镜提交前都停）', en: 'confirm everything (stops before each shot)' },
+}
+function trustLabel(ctx: Ctx, level: string): string {
+  const hint = TRUST_LABEL[level] || TRUST_LABEL.key_confirm
+  return L(ctx, hint.zh, hint.en)
+}
+
 export type ToolOutcome = {
   /** CLI 文本（模型转述原材料）。null = 该工具维持 JSON 直出（画布低层工具）。 */
   text: string | null
@@ -134,15 +145,20 @@ export function buildToolOutcome(
       goal ? `${L(ctx, '目标', 'goal')}「${truncate(goal)}」` : null,
       duration,
     ])
+    // B3：合同转述带信任档位——budget_only 时明说创意/样片门会自动过，agent 别再多问。
+    const trustLevel = str(value.trustLevel) || 'key_confirm'
     const text = [
       `✓ ${L(ctx, '制作草稿已创建', 'Production draft created')} ${runId} · ${L(ctx, '未花费', 'nothing spent')}`,
       echo ? `  ${echo}` : null,
-      L(ctx, '还没批准预算，也没有调用付费生成。下一步：定创意方向。', 'No budget approved and no paid generation yet. Next: settle the creative direction.'),
+      `  ${L(ctx, '信任档位', 'Trust level')}：${trustLabel(ctx, trustLevel)}`,
+      trustLevel === 'budget_only'
+        ? L(ctx, '还没批准预算，也没有调用付费生成。已按「只管钱」自动跳过创意与样片门，下一步等预算门。', 'No budget approved and no paid generation yet. Under budget-only, creative and sample gates auto-approve — next stop is the budget gate.')
+        : L(ctx, '还没批准预算，也没有调用付费生成。下一步：定创意方向。', 'No budget approved and no paid generation yet. Next: settle the creative direction.'),
     ].filter(Boolean).join('\n') + openLine
     return {
       text,
       outcome: {
-        kind: 'run_draft', runId, projectId,
+        kind: 'run_draft', runId, projectId, trustLevel,
         params: { playbook: str(args.playbook), goal, durationSeconds: brief.durationSeconds ?? null },
         nextActions: ['pick_direction'],
         openInNomi: openInNomi || null,
@@ -170,9 +186,12 @@ export function buildToolOutcome(
       L(ctx, '样片就绪：首镜已生成，先过目再批量剩余镜头。', 'Sample ready: the first shot is generated — review it before the full batch.'),
       L(ctx, '  满意就批准继续；想改风格就否决（会暂停，改提示词后可继续）。', '  Approve to continue, or reject to pause and adjust the prompt.'),
     ] : []
+    // B3：状态转述带当前信任档位（非默认时才占一行，避免默认档噪音）。
+    const trustLevel = str(value.trustLevel) || 'key_confirm'
     const text = [
       `[Nomi] ${runId} · ${hint ? L(ctx, hint.zh, hint.en) : status} · ${str(value.stageId) || 'unknown'}`,
       budgetLine ? `  ${budgetLine}` : null,
+      trustLevel !== 'key_confirm' ? `  ${L(ctx, '信任档位', 'Trust level')}：${trustLabel(ctx, trustLevel)}` : null,
       preview.url ? `${L(ctx, '最新预览', 'Latest preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
       ...candidateLines,
       ...sampleLines,
@@ -181,7 +200,7 @@ export function buildToolOutcome(
     return {
       text,
       outcome: {
-        kind: 'run_status', runId, projectId, status, stageId: str(value.stageId) || null,
+        kind: 'run_status', runId, projectId, status, stageId: str(value.stageId) || null, trustLevel,
         budget: { authorized: budget.authorized ?? null, actual: budget.actual ?? null },
         latestPreviewUrl: str(preview.url) || null,
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
@@ -222,6 +241,26 @@ export function buildToolOutcome(
         previewUrl: str(preview.url) || null, nomiUri: nomiUri || null,
         nextActions: ['open_in_nomi'],
         openInNomi: openInNomi || null,
+      },
+    }
+  }
+
+  if (toolName === 'nomi_control_run' && str(args.action) === 'set_trust') {
+    // B3 改档转述：报新档位 + 它意味着什么（budget_only=接下来创意/样片门不再打扰；预算门仍在）。
+    const trustLevel = str(args.trustLevel) || 'key_confirm'
+    const text = [
+      `✓ ${L(ctx, '信任档位已改为', 'Trust level set to')}：${trustLabel(ctx, trustLevel)} · ${runId}`,
+      trustLevel === 'budget_only'
+        ? L(ctx, '接下来的创意方向门与样片门会自动通过；预算门仍会请示，不会偷偷花钱。', 'Creative direction and sample gates will auto-approve from here; the budget gate still asks — nothing is spent silently.')
+        : trustLevel === 'confirm_all'
+          ? L(ctx, '每镜提交前都会停下确认。', 'The run will stop before each shot for confirmation.')
+          : L(ctx, '五门全开，逐项确认。', 'All gates are on; you confirm each step.'),
+    ].filter(Boolean).join('\n') + openLine
+    return {
+      text,
+      outcome: {
+        kind: 'run_control', runId, projectId, action: 'set_trust', trustLevel,
+        nextActions: [],
       },
     }
   }

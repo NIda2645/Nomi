@@ -10,7 +10,7 @@ import crypto from 'node:crypto'
 
 import { settlePauseIfQuiet } from './productionRunControl'
 import type { ProductionRunRepository } from './productionRunRepository'
-import type { ProductionRun } from './productionRunTypes'
+import { trustLevelOf, type ProductionRun } from './productionRunTypes'
 
 /** Job ids intentionally contain a namespace separator (`job:run:node`), but artifact ids are
  * public deep-link identifiers. Keep the mapping stable, collision-resistant, and URL-safe. */
@@ -93,12 +93,10 @@ function hasWaitingSampleGate(run: ProductionRun): boolean {
 }
 
 /**
- * B2：这个 run 要不要设样片门。默认要（key_confirm）；B3 接信任档位后 budget_only 跳过。
- * 读 run.policy.trustLevel（B3 才加字段；这里向后兼容读——没有字段=按默认要）。
+ * B2/B3：这个 run 要不要设样片门。budget_only（「别问了直接出」）跳过，只留预算门；其余档位都设。
  */
 export function shouldSampleGate(run: ProductionRun): boolean {
-  const trustLevel = (run.policy as { trustLevel?: string }).trustLevel
-  return trustLevel !== 'budget_only'
+  return trustLevelOf(run.policy) !== 'budget_only'
 }
 
 export type DriverOps = {
@@ -218,6 +216,10 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
         current = requireRun(run.projectId, run.runId)
         if (current.status !== 'running') break // 花钱边界：暂停/取消后不再提交（已提交的收不回，只能跑完收尾）
         if (hasWaitingSampleGate(current)) break // B2 样片门：等过目期间不提交剩余镜头（喊停最多亏样片这一镜）
+        // B3 confirm_all（每镜提交前都停）本期不实现每镜门——范围控制（见 plan「不动项」）。
+        // 未来落每镜门的唯一钩子点就在此：trustLevelOf(current.policy)==='confirm_all' 时，
+        // 提交前建一道 scope 'stage' 的 per-shot gate 并 break（复用下方样片门的注入写法）。
+        // 现档位语义靠类型与转述兜住：confirm_all 的合同/状态转述已明说「每镜提交前都停」。
         if (job.status === 'authorized') current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submit_intent_persisted' }, `driver-${job.jobId}-intent`).run
         current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submitting' }, `driver-${job.jobId}-submit`).run
         try {

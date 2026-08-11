@@ -22,6 +22,7 @@ import { withEventTap } from './productionRunEventTap'
 import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
+import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
 import type {
   AutomationPolicy,
   CreateProductionRunInput,
@@ -51,6 +52,8 @@ export type ProductionRunProjection = {
   gates: SafeProductionGate[]
   jobs: SafeProductionJob[]
   artifacts: Array<Omit<ArtifactProjection, 'projectId' | 'runId' | 'openInNomi'>>
+  /** B3：信任档位（run 级）。老 run 无字段 → 默认 key_confirm。用于合同/状态转述。 */
+  trustLevel: import('./productionRunTypes').TrustLevel
   createdAt: string
   updatedAt: string
   openInNomi: string
@@ -132,6 +135,8 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
     budget: { ...run.budget },
     planVersion: run.planVersion,
     snapshotCursor: run.snapshotCursor,
+    // B3：run 级信任档位（老 run 无字段 → 默认 key_confirm）。合同/状态转述据此显示打扰程度。
+    trustLevel: trustLevelOf(run.policy),
     stages: run.stages.map((stage) => ({
       stageId: stage.stageId, title: safeExternalText(stage.title), status: stage.status, order: stage.order,
       ...(stage.startedAt ? { startedAt: stage.startedAt } : {}),
@@ -263,8 +268,12 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     if (!['draft', 'awaiting_direction'].includes(run.status) || run.jobs.length > 0 || (run.status === 'draft' && run.gates.length > 0) || run.budget.authorized !== 0) {
       throw new Error('Production draft invariant failed')
     }
-    // B1：草稿一建好就异步拟方向候选（GUI 有 LLM 才成；关着则保持兜底 gate）。不阻塞返回。
-    if (run.status === 'awaiting_direction') void proposeDirections(run)
+    if (run.status === 'awaiting_direction') {
+      // B3：budget_only（「别问了直接出」）→ 自动批准创意方向门（留痕），不拟候选、不打扰。
+      // 其余档位 → 异步拟方向候选（GUI 有 LLM 才成；关着则保持兜底 gate）。均不阻塞返回。
+      if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
+      else void proposeDirections(run)
+    }
     return runProjection(run, projectRootResolver, previewSecret)
   }
 
@@ -375,6 +384,22 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       void driveReconciliation(safeProjectId, safeRunId, jobId)
       return result
     }
+    if (runCommand.type === 'run.control' && runCommand.payload.action === 'set_trust') {
+      // B3：对话改档（「别问了直接出」= 降 budget_only）。写 policy + 事件留痕（policy.set→policy.updated）。
+      // 若正卡在创意/样片门等待且新档位是 budget_only → 顺手自动批准该门，让「直接出」立刻生效。
+      const current = requireRun(safeProjectId, safeRunId)
+      const trustLevel = normalizeTrustLevel(runCommand.payload.trustLevel)
+      const result = repository.execute(safeProjectId, safeRunId, {
+        ...runCommand,
+        type: 'policy.set',
+        payload: { policy: { ...current.policy, trustLevel } },
+      })
+      if (trustLevel === 'budget_only') {
+        const waitingCreativeGate = result.run.gates.find((gate) => gate.status === 'waiting' && gate.scope === 'stage' && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-')))
+        if (waitingCreativeGate) void autoApproveGate(safeProjectId, safeRunId, waitingCreativeGate.gateId)
+      }
+      return result
+    }
     if (runCommand.type === 'run.control') {
       // A4 run 控制：逻辑在 productionRunControl.ts（MCP 与渲染端同一收口）。
       const controlled = applyRunControl(repository, safeProjectId, safeRunId, requireRun(safeProjectId, safeRunId), runCommand)
@@ -480,6 +505,28 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     return result
   }
 
+  /**
+   * B3：按信任档位自动批准一道创意门（budget_only 用）。走同一条 command 路径（driver 钩子照常触发），
+   * commandId 自证「按档位自动批准」= 留痕（事件流透出 commandId）。门已不在 waiting（并发/重放）→ 静默跳过。
+   */
+  async function autoApproveGate(projectId: string, runId: string, gateId: string): Promise<void> {
+    try {
+      const current = requireRun(projectId, runId)
+      const gate = current.gates.find((item) => item.gateId === gateId)
+      if (!gate || gate.status !== 'waiting') return
+      await command(projectId, runId, {
+        commandId: `auto-trust-budget-only:${gateId}:${current.revision}`,
+        expectedRevision: current.revision,
+        type: 'gate.decide',
+        payload: { gateId, status: 'approved' },
+        issuedAt: new Date().toISOString(),
+      })
+    } catch (error) {
+      // 自动批准失败不掩盖 run：门仍 waiting、可手动批。
+      console.error('[nomi:production] auto-approve gate failed:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
   async function resumeUnfinishedRuns(projectId: string): Promise<void> {
     const safeProjectId = identifier(projectId, 'project')
     if (recoveryInFlight.has(safeProjectId)) return
@@ -510,8 +557,11 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         if (current.status === 'exporting') {
           try { current = executeInternal(safeProjectId, current.runId, current, 'run.status', { status: 'needs_attention' }, `recovery-${current.runId}-export-attention-${current.revision}`).run } catch { /* preserve exporting state for inspection */ }
         }
-        // B1：草稿建好时 GUI 关着 → 方向候选没拟成；重开时补拟（gate 还 waiting 且无候选才跑）。
-        if (current.status === 'awaiting_direction') void proposeDirections(current)
+        // B1/B3：草稿建好时 GUI 关着 → 重开时补动作。budget_only 自动批准方向门，其余补拟候选（gate 还 waiting 且无候选才跑）。
+        if (current.status === 'awaiting_direction') {
+          if (trustLevelOf(current.policy) === 'budget_only') void autoApproveGate(current.projectId, current.runId, 'gate-direction-v1')
+          else void proposeDirections(current)
+        }
         if (current.status === 'running' && current.stageId === 'direction') void proposeStoryboard(current)
         if (current.status === 'ready') void driveGeneration(current)
       }

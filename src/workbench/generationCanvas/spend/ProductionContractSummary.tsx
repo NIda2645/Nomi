@@ -91,6 +91,16 @@ export function ProductionContractSummary({ view }: { view: ProductionContractVi
         </div>
       </div>
 
+      <div
+        data-production-trust-level={view.trustLevel}
+        className={cn('flex items-center justify-between gap-4 border-b border-nomi-line-soft py-2.5')}
+      >
+        <span className={cn('text-micro text-nomi-ink-40')}>{t('generationCommon.production.contract.trustLevel')}</span>
+        <span className={cn('text-caption font-semibold text-nomi-ink text-right')}>
+          {t(`generationCommon.production.contract.trustLevelValue.${view.trustLevel}`)}
+        </span>
+      </div>
+
       <div className={cn('flex items-center justify-between gap-4 bg-nomi-ink-05 px-3 py-3')}>
         <div className={cn('min-w-0')}>
           <div className={cn('text-body-sm font-semibold text-nomi-ink')}>
