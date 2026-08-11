@@ -30,9 +30,11 @@ function localizedGateCopy(
     }
   }
   if (gate.scope === 'stage' && gate.gateId.startsWith('gate-direction-')) {
+    // B1：有候选 → 用「选方向」文案（配单选行）；没候选（LLM 关着的兜底）→ 保持原「确认创作方向」。
+    const hasCandidates = (gate.directionCandidates?.length ?? 0) > 0
     return {
-      title: translate('generationCommon.production.gate.directionTitle'),
-      message: translate('generationCommon.production.gate.directionSummary'),
+      title: translate(hasCandidates ? 'generationCommon.production.gate.directionPickTitle' : 'generationCommon.production.gate.directionTitle'),
+      message: translate(hasCandidates ? 'generationCommon.production.gate.directionPickSummary' : 'generationCommon.production.gate.directionSummary'),
     }
   }
   return { title: gate.title, message: gate.summary }
@@ -190,6 +192,10 @@ export function useProductionStatus() {
         }
         const gateCopy = localizedGateCopy(gate, (key) => t(key))
         const contract = gate.scope === 'stage' ? undefined : buildProductionContractView(activeRun, gate)
+        // B1：方向门候选（driver 拟好后挂在 gate 上）。有候选 → 弹单选，捕获选中 key 带进决议留痕。
+        const isDirectionGate = gate.scope === 'stage' && gate.gateId.startsWith('gate-direction-')
+        const directionCandidates = isDirectionGate ? (gate.directionCandidates ?? []) : []
+        let directionChoiceKey: string | null = directionCandidates[0]?.key ?? null
         let openingPolicySettings = false
         const approved = await useSpendConfirmStore.getState().requestConfirm({
           title: gateCopy.title,
@@ -198,6 +204,10 @@ export function useProductionStatus() {
           source: activeRun.origin.host === 'nomi' ? 'user' : 'agent',
           kind: gate.scope === 'stage' ? 'plan' : 'contract',
           ...(contract ? { contract } : {}),
+          ...(directionCandidates.length ? {
+            directionCandidates: directionCandidates.map((candidate) => ({ key: candidate.key, title: candidate.title, oneLiner: candidate.oneLiner })),
+            onDirectionDecision: (key: string | null) => { directionChoiceKey = key },
+          } : {}),
           ...(gate.scope === 'budget_envelope' && contract && !contract.policy.ready ? {
             onOpenPolicySettings: () => {
               openingPolicySettings = true
@@ -232,7 +242,7 @@ export function useProductionStatus() {
             commandId: globalThis.crypto.randomUUID(),
             expectedRevision: activeRun.revision,
             type: 'gate.decide',
-            payload: { gateId: gate.gateId, status: 'approved' },
+            payload: { gateId: gate.gateId, status: 'approved', ...(directionChoiceKey ? { choiceKey: directionChoiceKey } : {}) },
             issuedAt: new Date().toISOString(),
           })
           await useProductionRunStore.getState().loadRun(activeRun.projectId, activeRun.runId)

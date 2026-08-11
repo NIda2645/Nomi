@@ -73,6 +73,30 @@ function truncate(text: string, max = 40): string {
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
 }
 
+type DirectionCandidate = { key: string; title: string; oneLiner: string }
+
+/** B1：从投影里挑出「waiting 的方向门 + 其候选」（用于转述三选一 + 结构化字段）。 */
+function waitingDirectionGate(value: Record<string, unknown>): { gateId: string; candidates: DirectionCandidate[] } | null {
+  const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
+  const gate = gates.find((item) => str(item.gateId).startsWith('gate-direction-') && str(item.status) === 'waiting')
+  if (!gate) return null
+  const rawCandidates = Array.isArray(gate.directionCandidates) ? (gate.directionCandidates as Array<Record<string, unknown>>) : []
+  const candidates = rawCandidates
+    .map((candidate) => ({ key: str(candidate.key), title: str(candidate.title), oneLiner: str(candidate.oneLiner) }))
+    .filter((candidate) => candidate.key && candidate.title)
+  return { gateId: str(gate.gateId), candidates }
+}
+
+/** B1：候选清单转述（每行一句话方向 + 兜底「都不要，我来描述」）——给模型走 elicitation 前的原材料。 */
+function directionCandidateLines(ctx: Ctx, candidates: DirectionCandidate[]): string[] {
+  if (!candidates.length) return []
+  return [
+    L(ctx, '定方向（三选一，选完我再拟分镜）：', 'Pick a direction (choose one; I will draft the storyboard after):'),
+    ...candidates.map((candidate) => `  · ${candidate.title} —— ${candidate.oneLiner}`),
+    `  · ${L(ctx, '都不要，我来描述', 'None of these — I will describe my own')}`,
+  ]
+}
+
 export type ToolOutcome = {
   /** CLI 文本（模型转述原材料）。null = 该工具维持 JSON 直出（画布低层工具）。 */
   text: string | null
@@ -130,10 +154,14 @@ export function buildToolOutcome(
       typeof budget.authorized === 'number' ? `${L(ctx, '预算上限', 'budget cap')} ${budget.authorized}` : null,
       typeof budget.actual === 'number' ? `${L(ctx, '已花费', 'spent')} ${budget.actual}` : null,
     ])
+    // B1：方向门在等 + 已有候选 → 把三选一清单摊进转述（模型据此走 elicitation 问真人）。
+    const direction = waitingDirectionGate(value)
+    const candidateLines = direction ? directionCandidateLines(ctx, direction.candidates) : []
     const text = [
       `[Nomi] ${runId} · ${hint ? L(ctx, hint.zh, hint.en) : status} · ${str(value.stageId) || 'unknown'}`,
       budgetLine ? `  ${budgetLine}` : null,
       preview.url ? `${L(ctx, '最新预览', 'Latest preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
+      ...candidateLines,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
@@ -142,7 +170,8 @@ export function buildToolOutcome(
         kind: 'run_status', runId, projectId, status, stageId: str(value.stageId) || null,
         budget: { authorized: budget.authorized ?? null, actual: budget.actual ?? null },
         latestPreviewUrl: str(preview.url) || null,
-        nextActions: hint ? [hint.action] : [],
+        ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
+        nextActions: direction && direction.candidates.length ? ['decide_direction'] : hint ? [hint.action] : [],
         openInNomi: openInNomi || null,
       },
     }
@@ -219,6 +248,44 @@ export function buildToolOutcome(
         budget: { actual: budget.actual ?? null },
         inFlightJobs: inFlight,
         nextActions: hint ? [hint.action] : [],
+      },
+    }
+  }
+
+  if (toolName === 'nomi_decide_gate') {
+    // B1：门决议回执。方向门批准 → 报选中方向 + 下一步（拟分镜）；否决 → 报「不变、可重来」。
+    const decision = str(args.decision)
+    const gateId = str(args.gateId)
+    const status = str(value.status)
+    const hint = RUN_STATUS_HINT[status]
+    const isDirection = gateId.startsWith('gate-direction-')
+    // 决议后该门已非 waiting → 直接按 gateId 找它（任意状态），从其候选里解析选中项报出。
+    const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
+    const decidedGate = gates.find((item) => str(item.gateId) === gateId)
+    const gateCandidates = decidedGate && Array.isArray(decidedGate.directionCandidates)
+      ? (decidedGate.directionCandidates as Array<Record<string, unknown>>).map((candidate) => ({ key: str(candidate.key), title: str(candidate.title), oneLiner: str(candidate.oneLiner) }))
+      : []
+    const chosenKey = str(args.choiceKey) || (decidedGate ? str(decidedGate.decidedChoiceKey) : '')
+    const chosen = isDirection && chosenKey
+      ? gateCandidates.find((candidate) => candidate.key === chosenKey)
+      : undefined
+    const head = decision === 'approved'
+      ? (isDirection ? L(ctx, '✓ 方向已定', '✓ Direction settled') : L(ctx, '✓ 已批准', '✓ Approved'))
+      : L(ctx, '✓ 已否决', '✓ Rejected')
+    const text = [
+      `${head} · ${gateId}`,
+      chosen ? `  ${chosen.title} —— ${chosen.oneLiner}` : null,
+      decision === 'rejected' && isDirection ? L(ctx, '方向未变，可重新给方案或让用户自己描述。', 'Direction unchanged; propose again or let the user describe their own.') : null,
+      hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
+    ].filter(Boolean).join('\n') + openLine
+    return {
+      text,
+      outcome: {
+        kind: 'gate_decision', runId, projectId, gateId, decision,
+        ...(chosen ? { choiceKey: chosen.key } : {}),
+        status: status || null,
+        nextActions: hint ? [hint.action] : [],
+        openInNomi: openInNomi || null,
       },
     }
   }

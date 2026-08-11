@@ -24,9 +24,13 @@ function rendererCommandPayload(type: string, value: unknown): Record<string, un
     return { status: typeof raw.status === "string" ? raw.status.trim() : raw.status };
   }
   if (type === "gate.decide") {
+    // B1：方向门批准可带 choiceKey（用户选中的候选）。key 形状受限，非法则丢弃（reducer 再校验属不属该门）。
+    const rawChoice = typeof raw.choiceKey === "string" ? raw.choiceKey.trim() : "";
+    const choiceKey = /^[A-Za-z0-9._-]{1,40}$/.test(rawChoice) ? rawChoice : undefined;
     return {
       gateId: identifier(raw.gateId, "gate"),
       status: typeof raw.status === "string" ? raw.status.trim() : raw.status,
+      ...(choiceKey ? { choiceKey } : {}),
     };
   }
   if (type === "plan.attach") {

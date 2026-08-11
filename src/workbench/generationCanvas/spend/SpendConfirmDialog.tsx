@@ -17,9 +17,13 @@ export function SpendConfirmDialog() {
   const resolvePending = useSpendConfirmStore((state) => state.resolvePending)
   const [suppress, setSuppress] = React.useState(false)
   const [remainingMs, setRemainingMs] = React.useState(0)
+  // B1：方向门单选（默认选第一个候选）。换 pending 时重置到第一个。
+  const directionCandidates = pending?.directionCandidates ?? []
+  const [choiceKey, setChoiceKey] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (!pending) setSuppress(false)
+    setChoiceKey(pending?.directionCandidates?.[0]?.key ?? null)
   }, [pending])
 
   // 倒计时：设了 countdownMs 才跑。每 200ms 收敛，到点自动按「未确认」返回（不死等——外部调用方那头在等）。
@@ -95,6 +99,32 @@ export function SpendConfirmDialog() {
         </div>
 
         <p className={cn('text-body-sm text-nomi-ink-80 leading-relaxed mb-3')}>{pending.message}</p>
+
+        {directionCandidates.length ? (
+          <div className={cn('mb-3 grid gap-1.5')} role="radiogroup" data-direction-candidates>
+            {directionCandidates.map((candidate) => {
+              const selected = candidate.key === choiceKey
+              return (
+                <button
+                  key={candidate.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  data-direction-candidate={candidate.key}
+                  data-direction-selected={selected ? 'true' : 'false'}
+                  onClick={() => setChoiceKey(candidate.key)}
+                  className={cn(
+                    'grid gap-0.5 rounded-nomi-sm border px-2.5 py-2 text-left transition-colors cursor-pointer',
+                    selected ? 'border-nomi-accent bg-nomi-accent-soft' : 'border-nomi-line hover:border-nomi-accent',
+                  )}
+                >
+                  <span className={cn('text-caption font-medium text-nomi-ink')}>{candidate.title}</span>
+                  <span className={cn('text-micro text-nomi-ink-60')}>{candidate.oneLiner}</span>
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
 
         {pending.kind === 'contract' && pending.contract ? (
           <ProductionContractSummary view={pending.contract} />
@@ -183,7 +213,11 @@ export function SpendConfirmDialog() {
               className={cn(
                 'h-8 px-4 cursor-pointer bg-nomi-ink text-nomi-paper border-nomi-ink hover:bg-nomi-accent hover:text-nomi-paper',
               )}
-              onClick={() => resolvePending(true, suppress)}
+              onClick={() => {
+                // B1：方向门确认时先回传选中候选（沿用 onOpenPolicySettings 的回调模式），再 resolve。
+                if (directionCandidates.length) pending.onDirectionDecision?.(choiceKey)
+                resolvePending(true, suppress)
+              }}
             >
               {pending.confirmLabel || t('generationCommon.spend.confirm')}
             </WorkbenchButton>

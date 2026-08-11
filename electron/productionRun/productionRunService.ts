@@ -82,6 +82,7 @@ const MEANINGFUL_EVENT_TYPES = new Set([
   'run.stage.changed',
   'stage.updated',
   'gate.waiting',
+  'gate.candidates',
   'gate.decided',
   'artifact.ready',
   'artifact.adopted',
@@ -140,6 +141,9 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
       gateId: gate.gateId, scope: gate.scope, status: gate.status, title: safeExternalText(gate.title), summary: safeExternalText(gate.summary),
       createdAt: gate.createdAt, expiresAt: gate.expiresAt, ...(gate.decidedAt ? { decidedAt: gate.decidedAt } : {}),
       ...(gate.contract ? { contract: safeProductionContract(gate.contract) } : {}),
+      // B1：方向候选透出（文本经 sanitizer）；决议后回填的 choiceKey 供转述/审计。
+      ...(gate.directionCandidates ? { directionCandidates: gate.directionCandidates.map((candidate) => ({ key: candidate.key, title: safeExternalText(candidate.title), oneLiner: safeExternalText(candidate.oneLiner) })) } : {}),
+      ...(gate.decidedChoiceKey ? { decidedChoiceKey: gate.decidedChoiceKey } : {}),
     })),
     jobs: run.jobs.map((job) => ({
       jobId: job.jobId, stageId: job.stageId, status: job.status, attempt: job.attempt,
@@ -227,6 +231,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   const inFlight = new Set<string>()
   const recoveryInFlight = new Set<string>()
   const reconciliationInFlight = new Set<string>()
+  const directionsInFlight = new Set<string>()
   const reconcileProviderTask = deps.reconcileProviderTask ?? (async (job) => {
     if (!job.providerTaskId) throw new Error('供应商任务标识尚未收到，不能自动对账')
     const runtime = await import('../runtime')
@@ -258,6 +263,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     if (!['draft', 'awaiting_direction'].includes(run.status) || run.jobs.length > 0 || (run.status === 'draft' && run.gates.length > 0) || run.budget.authorized !== 0) {
       throw new Error('Production draft invariant failed')
     }
+    // B1：草稿一建好就异步拟方向候选（GUI 有 LLM 才成；关着则保持兜底 gate）。不阻塞返回。
+    if (run.status === 'awaiting_direction') void proposeDirections(run)
     return runProjection(run, projectRootResolver, previewSecret)
   }
 
@@ -316,7 +323,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
 
   // B0：driver 编排（拟分镜 / 生成 / 导出 / 对账）抽到 productionRunDriverOps.ts，行为零变化。
   // service 保留其依赖的路径工具 + in-flight 去重集，经参数注入，仍可单测（R9 ≤800）。
-  const { proposeStoryboard, driveGeneration, driveExport, driveReconciliation } = createDriverOps({
+  const { proposeDirections, proposeStoryboard, driveGeneration, driveExport, driveReconciliation } = createDriverOps({
     repository,
     sleep,
     requireRun,
@@ -329,6 +336,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     reconcileProviderTask,
     inFlight,
     reconciliationInFlight,
+    directionsInFlight,
   })
 
   async function command(projectId: string, runId: string, runCommand: RunCommand) {
@@ -483,6 +491,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         if (current.status === 'exporting') {
           try { current = executeInternal(safeProjectId, current.runId, current, 'run.status', { status: 'needs_attention' }, `recovery-${current.runId}-export-attention-${current.revision}`).run } catch { /* preserve exporting state for inspection */ }
         }
+        // B1：草稿建好时 GUI 关着 → 方向候选没拟成；重开时补拟（gate 还 waiting 且无候选才跑）。
+        if (current.status === 'awaiting_direction') void proposeDirections(current)
         if (current.status === 'running' && current.stageId === 'direction') void proposeStoryboard(current)
         if (current.status === 'ready') void driveGeneration(current)
       }

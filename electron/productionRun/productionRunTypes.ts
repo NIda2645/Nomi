@@ -120,6 +120,16 @@ export type ProductionJob = {
   updatedAt: string;
 };
 
+/**
+ * B1 创意方向候选：AI 拟的一句话方向，用户在对话/面板里三选一（或「都不要，自己描述」）。
+ * key = 稳定选项标识（决议时回填进事件留痕）；oneLiner = 一句话描述（用户可读，走 i18n 转述）。
+ */
+export type ProductionDirectionCandidate = {
+  key: string;
+  title: string;
+  oneLiner: string;
+};
+
 export type ProductionGate = {
   gateId: string;
   scope: "stage" | "job_set" | "budget_envelope" | "export" | "publish";
@@ -129,9 +139,13 @@ export type ProductionGate = {
   title: string;
   summary: string;
   contract?: ProductionContract;
+  /** B1：方向门候选（仅 gate-direction-*）。driver 拟好后 gate.set_candidates 挂上，投影透出。 */
+  directionCandidates?: ProductionDirectionCandidate[];
   createdAt: string;
   expiresAt: string;
   decidedAt?: string;
+  /** B1：方向门被批准时用户选中的候选 key（decide payload choiceKey → 事件留痕）。 */
+  decidedChoiceKey?: string;
 };
 
 export type ProductionArtifact = {

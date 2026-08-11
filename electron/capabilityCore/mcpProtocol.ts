@@ -241,6 +241,27 @@ const TOOLS = [
     build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, action: a.action }),
   },
   {
+    name: 'nomi_decide_gate',
+    description:
+      '对制作 Run 的一道确认门表态：approved 批准 / rejected 否决。方向门（gate-direction-*）可带 choiceKey 指定选中的候选。'
+      + '用法纪律：**先用 elicitation 枚举（把候选 + 「都不要，我来描述」列给真人）问过用户、拿到 accept 才准调本工具**，别替用户拍板；'
+      + '预算门请继续走既有付费确认，不要用本工具跳过。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        runId: { type: 'string' },
+        gateId: { type: 'string', description: '门 id，例如 gate-direction-v1' },
+        decision: { type: 'string', enum: ['approved', 'rejected'] },
+        choiceKey: { type: 'string', description: '方向门专用：用户选中的候选 key（来自 gate.waiting 的 directionCandidates）' },
+      },
+      required: ['projectId', 'runId', 'gateId', 'decision'],
+      additionalProperties: false,
+    },
+    method: 'production.decide-gate',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, gateId: a.gateId, decision: a.decision, choiceKey: a.choiceKey }),
+  },
+  {
     name: 'nomi_generate',
     description: '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。',
     inputSchema: {

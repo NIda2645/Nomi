@@ -48,6 +48,8 @@ export type DriverOpsDeps = {
   /** 去重集：driver 单飞（一个 run 同时只跑一条编排）；由 service 持有并传入以跨调用共享。 */
   inFlight: Set<string>
   reconciliationInFlight: Set<string>
+  /** B1：方向拟案单飞集（与 inFlight 分开——方向阶段与生成/分镜阶段互斥不重叠，独立锁更清晰）。 */
+  directionsInFlight: Set<string>
 }
 
 function planValue(value: unknown): Record<string, unknown> {
@@ -58,7 +60,30 @@ function planValue(value: unknown): Record<string, unknown> {
   return plan as Record<string, unknown>
 }
 
+/** B1：把 renderer 拟的方向候选清洗成 2-3 个安全条目（key 唯一/安全、title+oneLiner 非空截断）；
+ * 不足 2 个或全废 → 抛错，让 driver 保持现状 gate（title/summary 兜底），不硬塞空候选。 */
+export function normalizeDirectionCandidates(value: unknown): Array<{ key: string; title: string; oneLiner: string }> {
+  const list = Array.isArray(value) ? value : []
+  const seen = new Set<string>()
+  const out: Array<{ key: string; title: string; oneLiner: string }> = []
+  for (let index = 0; index < list.length && out.length < 3; index += 1) {
+    const item = list[index]
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const raw = item as Record<string, unknown>
+    const rawKey = typeof raw.key === 'string' ? raw.key.trim() : ''
+    const key = /^[A-Za-z0-9._-]{1,40}$/.test(rawKey) ? rawKey : `dir-${index + 1}`
+    const title = typeof raw.title === 'string' ? raw.title.trim() : ''
+    const oneLiner = typeof raw.oneLiner === 'string' ? raw.oneLiner.trim() : ''
+    if (!title || !oneLiner || seen.has(key)) continue
+    seen.add(key)
+    out.push({ key, title: title.slice(0, 80), oneLiner: oneLiner.slice(0, 200) })
+  }
+  if (out.length < 2) throw new Error('Direction planner returned fewer than two usable candidates')
+  return out
+}
+
 export type DriverOps = {
+  proposeDirections: (run: ProductionRun) => Promise<void>
   proposeStoryboard: (run: ProductionRun) => Promise<void>
   driveGeneration: (run: ProductionRun) => Promise<void>
   driveExport: (run: ProductionRun) => Promise<void>
@@ -69,7 +94,38 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
   const {
     repository, sleep, requireRun, executeInternal, requestRenderer, writeProjectJson,
     localAssetPath, projectRelativePath, stageValue, reconcileProviderTask, inFlight, reconciliationInFlight,
+    directionsInFlight,
   } = deps
+
+  async function proposeDirections(run: ProductionRun): Promise<void> {
+    // B1：run 停在 awaiting_direction、方向门 waiting 且还没候选 → 让 renderer 的 LLM 拟 2-3 个方向。
+    // GUI 关着 / 拟失败 → 保持现状 gate（title/summary 兜底），错误吞掉不影响主流程（诚实降级）。
+    if (directionsInFlight.has(run.runId)) return
+    if (run.status !== 'awaiting_direction') return
+    const gate = run.gates.find((item) => item.gateId === 'gate-direction-v1' && item.status === 'waiting')
+    if (!gate || (gate.directionCandidates?.length ?? 0) > 0) return
+    directionsInFlight.add(run.runId)
+    try {
+      const planResult = await requestRenderer('production.plan-directions', {
+        projectId: run.projectId,
+        runId: run.runId,
+        brief: run.brief,
+        playbook: run.playbook,
+      }, 5 * 60_000)
+      const candidates = normalizeDirectionCandidates((planResult as Record<string, unknown> | null)?.candidates)
+      const current = requireRun(run.projectId, run.runId)
+      const currentGate = current.gates.find((item) => item.gateId === 'gate-direction-v1' && item.status === 'waiting')
+      if (!currentGate || (currentGate.directionCandidates?.length ?? 0) > 0) return
+      writeProjectJson(run.projectId, `.nomi/runs/${run.runId}/direction-v1.json`, {
+        schemaVersion: 1, kind: 'direction', brief: current.brief, status: 'awaiting_direction', candidates,
+      })
+      executeInternal(run.projectId, run.runId, current, 'gate.set_candidates', { gateId: 'gate-direction-v1', candidates }, `driver-${run.runId}-direction-candidates`)
+    } catch (error) {
+      console.error('[nomi:production] direction planning failed:', error instanceof Error ? error.message : String(error))
+    } finally {
+      directionsInFlight.delete(run.runId)
+    }
+  }
 
   async function proposeStoryboard(run: ProductionRun): Promise<void> {
     if (inFlight.has(run.runId)) return
@@ -309,5 +365,5 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     }
   }
 
-  return { proposeStoryboard, driveGeneration, driveExport, driveReconciliation }
+  return { proposeDirections, proposeStoryboard, driveGeneration, driveExport, driveReconciliation }
 }

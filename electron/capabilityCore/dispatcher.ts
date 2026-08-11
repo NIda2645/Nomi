@@ -176,6 +176,29 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       })
       return ctx.productionRuns.readProjection(projectId, runId)
     }
+    case 'production.decide-gate': {
+      // B1：agent 已用 elicitation 问过真人，拿到 accept 才调这里表态一道门（方向门可带 choiceKey）。
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'gateId', 'decision', 'choiceKey']))
+      const decision = String(params.decision || '')
+      if (decision !== 'approved' && decision !== 'rejected') throw new RpcError('Invalid production gate decision', 400)
+      const projectId = requiredIdentifier(params.projectId, 'project')
+      const runId = requiredIdentifier(params.runId, 'run')
+      const gateId = requiredIdentifier(params.gateId, 'gate')
+      const rawChoice = typeof params.choiceKey === 'string' ? params.choiceKey.trim() : ''
+      const choiceKey = /^[A-Za-z0-9._-]{1,40}$/.test(rawChoice) ? rawChoice : undefined
+      const full = ctx.productionRuns.readFull(projectId, runId)
+      if (!full) throw new RpcError(`Production run not found: ${runId}`, 404)
+      const gate = full.gates.find((item) => item.gateId === gateId)
+      if (!gate) throw new RpcError(`Production gate not found: ${gateId}`, 404)
+      await ctx.productionRuns.command(projectId, runId, {
+        commandId: `mcp-decide-${gateId}-${decision}-${full.revision}`,
+        expectedRevision: full.revision,
+        type: 'gate.decide',
+        payload: { gateId, status: decision, ...(choiceKey ? { choiceKey } : {}) },
+        issuedAt: new Date().toISOString(),
+      })
+      return ctx.productionRuns.readProjection(projectId, runId)
+    }
     case 'canvas.read':
       return readProjectCanvas(ctx.makeGateway(projectIdOf(params)))
     case 'canvas.addNodes':

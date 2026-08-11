@@ -26,6 +26,13 @@ export type SpendConfirmRequest = {
   kind?: 'generation' | 'reference' | 'plan' | 'contract'
   /** Durable production summary shown inside the existing confirmation shell. */
   contract?: ProductionContractView
+  /**
+   * B1 方向门候选（仅 kind:'plan' 的创意方向门）：显示单选行（默认选第一个），确认时把选中的 key
+   * 经 onDirectionDecision 回传。为空则方向门退回普通「批准/取消」文案（LLM 关着没拟出候选的兜底）。
+   */
+  directionCandidates?: Array<{ key: string; title: string; oneLiner: string }>
+  /** B1：方向门确认时回传选中候选 key（沿用 onOpenPolicySettings 的「请求对象带回调」模式，不改 boolean 契约）。 */
+  onDirectionDecision?: (choiceKey: string | null) => void
   /** Recovery for an incomplete contract policy. Closing through this action is not a rejection. */
   onOpenPolicySettings?: () => void
   /** 明细行（节点 / 模型 / 预估），让用户一眼看懂谁要花钱、花在哪。 */
