@@ -71,6 +71,17 @@ export function createProductionRunE2eRenderer(options: FixtureOptions) {
     const projectRoot = options.projectRootResolver(projectId)
     if (!projectRoot) throw new Error('Production fixture project root is unavailable')
 
+    if (operation === 'production.plan-directions') {
+      // B1 方向门候选（fixture，零额度）：让 e2e 真机走查看到「三选一」方向门的真实渲染。
+      return {
+        candidates: [
+          { key: 'documentary', title: 'Documentary warmth', oneLiner: 'Real creators, real desks — an honest local-first workflow.' },
+          { key: 'kinetic', title: 'Kinetic product cut', oneLiner: 'Fast beat-synced shots of the canvas and timeline in motion.' },
+          { key: 'minimal', title: 'Minimal studio', oneLiner: 'Clean macro shots of UI and typography on seamless backdrops.' },
+        ],
+      }
+    }
+
     if (operation === 'production.plan-storyboard') {
       return {
         text: 'Production E2E fixture storyboard',
