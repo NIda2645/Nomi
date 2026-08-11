@@ -69,8 +69,6 @@ export type KnownVendor = {
   /** 「新手推荐」软标：仅未接入时显示，帮纯新人在多家里有个默认起点（聚合中转一个 key 全解锁）。
    *  软提示，不钦点、不占 C 位（用户拍板：留但只当软提示）。 */
   recommended?: boolean
-  /** 可安全复用通用 GET /models 探测的供应商；未声明则保存后只显示「未测试」。 */
-  connectionTest?: 'models'
 }
 
 export const KNOWN_VENDORS: readonly KnownVendor[] = [
@@ -80,7 +78,6 @@ export const KNOWN_VENDORS: readonly KnownVendor[] = [
     glyph: 'A',
     tagline: '一个 key，解锁全部预置模型',
     recommended: true, // 聚合中转，一个 key 解锁图/视频/文本/配音 → 新手最省事的起点
-    connectionTest: 'models',
 
     promo: {
       text: '如果你愿意，可以用我们的链接注册；不愿意也可以直接去官方注册。',
@@ -94,7 +91,6 @@ export const KNOWN_VENDORS: readonly KnownVendor[] = [
     vendorKey: 'agnes',
     glyph: 'Ag',
     tagline: '全模态免费 · 一个 key 解锁文本/图片/视频',
-    connectionTest: 'models',
     credentialPlaceholder: '粘贴 Agnes API Key',
     credentialHint:
       '免费：去 platform.agnes-ai.com 邮箱注册（不绑卡）→ 创建 API Key。免费层有速率上限（RPM 20），个人/原型够用。凭证本地加密存储。',
@@ -120,7 +116,6 @@ export const KNOWN_VENDORS: readonly KnownVendor[] = [
     logo: new URL('../assets/vendor-logos/modelscope.png', import.meta.url).href,
     glyph: '魔',
     tagline: '官方原生 · 绑定阿里云每天免费额度',
-    connectionTest: 'models',
     promo: {
       text: '魔搭社区由阿里达摩院运营，绑定阿里云账号后每天有免费推理额度。去官网拿 API Key。',
       ctaLabel: '去魔搭注册',

@@ -16,10 +16,12 @@ async function waitFor(check: () => boolean, timeoutMs = 500): Promise<void> {
 }
 
 describe('ProductionRunService driver round 1', () => {
-  it('initializes direction gate and never calls the renderer or provider at draft time', () => {
+  it('initializes direction gate with zero paid work at draft time, safe even if direction planning cannot run', () => {
     const root = makeRoot()
     const repository = createProductionRunRepository({ projectDirResolver: () => root })
-    const requestRenderer = async () => { throw new Error('must not run before direction approval') }
+    // B1：createDraft 会异步试拟方向候选（免费 LLM prompt）。此处让它失败 → 证明「拟方向拿不到也不影响
+    // 草稿有效」：仍是等方向 + 兜底 gate + 零任务零预算，没有任何付费/供应商工作。
+    const requestRenderer = async () => { throw new Error('direction planner unavailable in this test') }
     const service = createProductionRunService({ repository, projectRootResolver: () => root, requestRenderer })
 
     const run = service.createDraft({
@@ -41,6 +43,8 @@ describe('ProductionRunService driver round 1', () => {
     const root = makeRoot()
     const repository = createProductionRunRepository({ projectDirResolver: () => root })
     const requestRenderer = async (op: string) => {
+      // B1：createDraft 会先异步拟方向候选（production.plan-directions）；分镜案仍走 plan-storyboard。
+      if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
       expect(op).toBe('production.plan-storyboard')
       return { text: '已完成分镜规划', plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
     }
@@ -115,6 +119,7 @@ describe('ProductionRunService driver round 1', () => {
     const calls: string[] = []
     const requestRenderer = async (op: string) => {
       calls.push(op)
+      if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
       if (op === 'production.plan-storyboard') return { plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
       if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
       if (op === 'production.arrange') return { arranged: 1, total: 1 }
@@ -145,6 +150,12 @@ describe('ProductionRunService driver round 1', () => {
     expect(calls).not.toContain('production.generate-node')
     const contract = await service.command('project-1', 'run-driver-3', { commandId: 'contract-3', expectedRevision: attached.run.revision, type: 'gate.decide', payload: { gateId: 'gate-contract-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
     expect(contract.run.budget.authorized).toBe(10)
+    // B2 样片门：首镜落地后停一次；批准后才继续到编排。
+    await waitFor(() => service.readFull('project-1', 'run-driver-3').gates.some((gate) => gate.gateId === 'gate-sample-v1' && gate.status === 'waiting'))
+    const atSample = service.readFull('project-1', 'run-driver-3')
+    expect(atSample.status).toBe('running')
+    expect(calls).not.toContain('production.arrange') // 样片门期间未进编排
+    await service.command('project-1', 'run-driver-3', { commandId: 'sample-3', expectedRevision: atSample.revision, type: 'gate.decide', payload: { gateId: 'gate-sample-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
     await waitFor(() => calls.includes('production.arrange'))
     const roughCut = service.readFull('project-1', 'run-driver-3')
     expect(roughCut.status).toBe('awaiting_rough_cut_review')

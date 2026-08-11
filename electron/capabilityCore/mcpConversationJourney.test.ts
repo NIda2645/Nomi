@@ -30,11 +30,20 @@ function makeJourney() {
   const service = createProductionRunService({
     repository,
     projectRootResolver: () => root,
-    // 方向门批准后 driver 会真提分镜案（production.plan-storyboard）——给一个最小有效回应。
-    requestRenderer: async () => ({
-      text: '已完成分镜规划',
-      plan: { title: '品牌宣传片', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: '清晨街市蒸汽中的小满' }] },
-    }),
+    // 方向门先拟候选（B1 · production.plan-directions），批准后 driver 真提分镜案（production.plan-storyboard）。
+    requestRenderer: async (op: string) => {
+      if (op === 'production.plan-directions') {
+        return { candidates: [
+          { key: 'street', title: '城市烟火气', oneLiner: '小满穿行清晨街市，蒸汽与霓虹里的陪伴感' },
+          { key: 'studio', title: '极简产品美学', oneLiner: '棚拍大光比，材质与线条特写' },
+          { key: 'montage', title: '快节奏踩点混剪', oneLiner: '鼓点卡切，15 个场景闪回' },
+        ] }
+      }
+      return {
+        text: '已完成分镜规划',
+        plan: { title: '品牌宣传片', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: '清晨街市蒸汽中的小满' }] },
+      }
+    },
   })
   const frames: RpcFrame[] = []
   const transport: McpTransport = {
@@ -61,6 +70,19 @@ function makeJourney() {
           expectedRevision: full.revision,
           type: 'run.control',
           payload: { action: params.action },
+          issuedAt: new Date().toISOString(),
+        })
+        return service.readProjection(String(params.projectId), String(params.runId))
+      }
+      if (method === 'production.decide-gate') {
+        const full = service.readFull(String(params.projectId), String(params.runId))
+        if (!full) throw new Error('run missing')
+        const choiceKey = typeof params.choiceKey === 'string' ? params.choiceKey : undefined
+        await service.command(String(params.projectId), String(params.runId), {
+          commandId: `mcp-decide-${String(params.gateId)}-${String(params.decision)}-${full.revision}`,
+          expectedRevision: full.revision,
+          type: 'gate.decide',
+          payload: { gateId: params.gateId, status: params.decision, ...(choiceKey ? { choiceKey } : {}) },
           issuedAt: new Date().toISOString(),
         })
         return service.readProjection(String(params.projectId), String(params.runId))
@@ -110,40 +132,59 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     expect(outcome(started).kind).toBe('run_draft')
     expect(outcome(started).nextActions).toEqual(['pick_direction'])
 
-    // ── 贰 · 定方向：用户批准方向门（真 gate.decide），driver 真提分镜案 ────────
-    await service.command('project-1', runId, {
-      commandId: 'journey-direction-approve', expectedRevision: service.readFull('project-1', runId)!.revision,
-      type: 'gate.decide', payload: { gateId: 'gate-direction-v1', status: 'approved' },
-      issuedAt: new Date().toISOString(),
-    })
-    await new Promise((resolve) => setTimeout(resolve, 0)) // 让异步 proposeStoryboard 落盘
-    expect(service.readFull('project-1', runId)!.status).toBe('awaiting_storyboard_review')
+    // ── 贰 · 定方向（B1 三选一）：driver 拟候选 → nomi_get_run 转述候选 → 走 nomi_decide_gate ────
+    // driver 异步拟好 2-3 个候选并挂到方向门（createDraft 后触发的 proposeDirections）。
+    await vi.waitFor(() => {
+      const gate = service.readFull('project-1', runId)!.gates.find((item) => item.gateId === 'gate-direction-v1')
+      expect(gate?.directionCandidates?.length).toBe(3)
+    }, { timeout: 3000 })
+
+    // 候选进转述：模型据此把「三选一 + 都不要」列给真人（elicitation 的原材料）。
+    const withOptions = await call(3, 'nomi_get_run', { projectId: 'project-1', runId })
+    expect(text(withOptions)).toContain('城市烟火气')
+    expect(text(withOptions)).toContain('都不要，我来描述')
+    expect(outcome(withOptions).nextActions).toEqual(['decide_direction'])
+    const optionKeys = (outcome(withOptions).directionCandidates as Array<{ key: string }>).map((candidate) => candidate.key)
+    expect(optionKeys).toEqual(['street', 'studio', 'montage'])
+
+    // 模型已用 elicitation 问过真人拿到 accept（此处用 send 断言协议层可发 elicitation/create 帧的能力在 spend 路径已验，
+    // 方向门本身不弹 elicitation——由 agent 侧发；这里直接走 agent 已获批后的 nomi_decide_gate）。
+    const decided = await call(4, 'nomi_decide_gate', { projectId: 'project-1', runId, gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio' })
+    expect(text(decided)).toContain('✓ 方向已定')
+    expect(text(decided)).toContain('极简产品美学')
+    expect(outcome(decided).kind).toBe('gate_decision')
+    expect(outcome(decided).choiceKey).toBe('studio')
+
+    await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_storyboard_review') }, { timeout: 3000 })
+    // choiceKey 留痕进 gate（可审计「用户当时选了哪个方向」）。
+    expect(service.readFull('project-1', runId)!.gates.find((item) => item.gateId === 'gate-direction-v1')!.decidedChoiceKey).toBe('studio')
 
     // ── 状态可转述：分镜等审阅 → 人话 + 下一步 ──────────────────────────────
-    const status = await call(3, 'nomi_get_run', { projectId: 'project-1', runId })
+    const status = await call(5, 'nomi_get_run', { projectId: 'project-1', runId })
     expect(text(status)).toContain('分镜等你审阅')
     expect(outcome(status).nextActions).toEqual(['review_storyboard'])
 
     // ── 陆 · 掌控与错误契约：非法暂停给人话拒绝，取消合法且不计费 ─────────────
-    const illegalPause = await call(4, 'nomi_control_run', { projectId: 'project-1', runId, action: 'pause' })
+    const illegalPause = await call(6, 'nomi_control_run', { projectId: 'project-1', runId, action: 'pause' })
     expect(illegalPause.result?.isError).toBe(true)
     expect(text(illegalPause)).toContain('✗')
     expect(text(illegalPause)).toContain('无法暂停')
 
-    const cancelled = await call(5, 'nomi_control_run', { projectId: 'project-1', runId, action: 'cancel' })
+    const cancelled = await call(7, 'nomi_control_run', { projectId: 'project-1', runId, action: 'cancel' })
     expect(text(cancelled)).toContain('✓ 已取消')
     expect(text(cancelled)).toContain('已完成的产物保留在项目里')
     expect(outcome(cancelled).kind).toBe('run_control')
     expect(service.readFull('project-1', runId)!.status).toBe('cancelled')
 
-    // ── 事件流：durable cursor 把整段旅程逐行透出 ────────────────────────────
-    const events = await call(6, 'nomi_subscribe_run', { projectId: 'project-1', runId, afterCursor: 0 })
+    // ── 事件流：durable cursor 把整段旅程逐行透出（含方向候选事件）────────────
+    const events = await call(8, 'nomi_subscribe_run', { projectId: 'project-1', runId, afterCursor: 0 })
     expect(text(events)).toContain('[Nomi] run.created')
+    expect(text(events)).toContain('gate.candidates')
     expect(text(events)).toContain('gate.decided')
     expect(text(events)).toMatch(/next cursor \d+/)
 
     // ── 错误契约：不存在的 run 返回人话 isError ─────────────────────────────
-    const missing = await call(7, 'nomi_control_run', { projectId: 'project-1', runId: 'run-missing', action: 'pause' })
+    const missing = await call(9, 'nomi_control_run', { projectId: 'project-1', runId: 'run-missing', action: 'pause' })
     expect(missing.result?.isError).toBe(true)
     expect(text(missing)).toContain('✗')
   })

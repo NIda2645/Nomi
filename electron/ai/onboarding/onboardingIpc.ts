@@ -1,9 +1,16 @@
 import { ipcMain } from "electron";
 import type { AiSdkProviderKind } from "../../catalog/types";
-import { describeIllegalHeader, findIllegalHeader, findNonHeaderSafeChar, isJsonRecord, pickUpstreamMessage } from "../../jsonUtils";
+import { describeIllegalHeader, findIllegalHeader, findNonHeaderSafeChar } from "../../jsonUtils";
 import { guessModelKind } from "../../catalog/modelKindHeuristic";
-import { parseModelListResponse } from "./modelListResponse";
+import {
+  buildAuthHeaders,
+  describeNetworkErrorLazy,
+  fetchModelList,
+  readExtraHeaders,
+  upstreamErrorText,
+} from "./modelListProbe";
 import { normalizeProviderKind } from "../../catalog/catalogStore";
+import { checkVendorHealth } from "./vendorHealth";
 
 // ---------------------------------------------------------------------------
 // Onboarding — 中转拉取式接入 IPC（手填地址+key → 拉模型 → 按 id 分类 → 保存）。
@@ -12,80 +19,6 @@ import { normalizeProviderKind } from "../../catalog/catalogStore";
 
 /** 单协议探测结果。mismatch=true 表示像「路由/协议不对」（可换下一个协议试）。 */
 type ProtocolProbe = { ok: boolean; status?: number; error?: string; mismatch?: boolean };
-
-async function describeNetworkErrorLazy(error: unknown): Promise<string> {
-  const { describeNetworkError } = await import("../../systemProxy");
-  return describeNetworkError(error);
-}
-
-/** 上游失败体 → 那句人话。键优先级表住 jsonUtils（全仓唯一），挑不出来才退回原文/HTTP 码。 */
-function upstreamErrorText(bodyText: string, status: number): string {
-  let parsed: unknown;
-  try { parsed = bodyText ? JSON.parse(bodyText) : null; } catch { parsed = null; }
-  const said = isJsonRecord(parsed) ? pickUpstreamMessage(parsed) : "";
-  return said || bodyText.trim().slice(0, 300) || `HTTP ${status}`;
-}
-
-/** payload.headers（用户自填的中转请求头）→ 干净的 kv。三个 handler 共用。 */
-function readExtraHeaders(raw: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (raw && typeof raw === "object") {
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      const key = String(k).trim();
-      const value = String(v ?? "").trim();
-      if (key && value) out[key] = value;
-    }
-  }
-  return out;
-}
-
-/** 按协议给鉴权头（anthropic 用 x-api-key + 版本；其余 Bearer）。拉模型/可达性探测共用。 */
-function buildAuthHeaders(
-  providerKind: AiSdkProviderKind,
-  apiKey: string,
-  extraHeaders: Record<string, string>,
-): Record<string, string> {
-  return providerKind === "anthropic"
-    ? { "anthropic-version": "2023-06-01", ...(apiKey ? { "x-api-key": apiKey } : {}), ...extraHeaders }
-    : { ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}), ...extraHeaders };
-}
-
-/**
- * 拉这个上游开放的模型列表。候选 URL：openai-compatible 的 baseUrl 通常已含 /v1 → /models；
- * 但很多 new-api 后台给的是**裸地址**——那样 /models 会 404 或（更坑）被后台 SPA 200 回一页
- * index.html。所以依次试 /models 与 /v1/models，且**命中判据是「解析得出模型列表」而不是
- * 「HTTP 200」**（只看 200 会被 SPA 骗到提前收工，真正对的 /v1/models 永远轮不到）。
- * list-models 与「测试连接」的可达性探测共用这一条，不各写一份（P1）。
- */
-async function fetchModelList(
-  providerKind: AiSdkProviderKind,
-  baseUrl: string,
-  headers: Record<string, string>,
-  signal: AbortSignal,
-): Promise<{ ok: true; models: string[] } | { ok: false; status?: number; error: string }> {
-  const candidates =
-    providerKind === "anthropic"
-      ? [`${baseUrl}/v1/models`]
-      : [`${baseUrl}/models`, `${baseUrl}/v1/models`];
-  let lastErr = "";
-  let lastStatus: number | undefined;
-  // 某候选回了「合法但空」的列表：先记下，仍继续试下一个候选（可能那个才有货）；全试完还是空，
-  // 才如实报「这个地址确实没列出模型」。
-  let sawEmptyList = false;
-  for (const url of candidates) {
-    let res: Response;
-    try { res = await fetch(url, { method: "GET", headers, signal }); }
-    catch (e) { lastErr = await describeNetworkErrorLazy(e); continue; }
-    const text = await res.text().catch(() => "");
-    if (!res.ok) { lastStatus = res.status; lastErr = upstreamErrorText(text, res.status); continue; }
-    const models = parseModelListResponse(text);
-    if (models === null) { lastStatus = res.status; lastErr = `${url} 返回的不是模型列表（像是网页）`; continue; }
-    if (models.length === 0) { sawEmptyList = true; continue; }
-    return { ok: true, models };
-  }
-  if (sawEmptyList) return { ok: true, models: [] };
-  return { ok: false, status: lastStatus, error: lastErr || "拉取不到模型列表" };
-}
 
 /**
  * 用极小请求体探测一个 wire protocol 是否接受。三协议各自的 URL/认证/body 形状：
@@ -137,6 +70,14 @@ async function probeOneProtocol(
 
 export function registerOnboardingIpc(): void {
   // 「AI 读文档」接入路径已下线（Issue #8：改为中转拉取式接入图片/视频/文本）。
+
+  // 供应商连接健康：模型面板每次打开时按家自查「现在能不能用」。凭证由主进程自取——
+  // renderer 只有 hasApiKey 布尔，这也是旧实现「只在粘贴 key 那一刻能测」的根因。
+  ipcMain.handle("nomi:onboarding:vendor-health", async (_event, payload: Record<string, unknown>) => {
+    const vendorKey = String(payload?.vendorKey || "").trim();
+    if (!vendorKey) return { vendorKey: "", state: "unsupported" as const, checkedAt: Date.now() };
+    return checkVendorHealth(vendorKey, payload?.force === true);
+  });
 
   // PRIMARY model-adding path — manual provider entry (BaseURL + key + models).
   // Deterministic openai-compatible text commit; reuses the single catalog write

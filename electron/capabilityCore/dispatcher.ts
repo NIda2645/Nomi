@@ -44,7 +44,7 @@ export type DispatchContext = {
 }
 
 const PRODUCTION_START_FIELDS = new Set([
-  'projectId', 'playbook', 'playbookVersion', 'host', 'actorId', 'brief',
+  'projectId', 'playbook', 'playbookVersion', 'host', 'actorId', 'brief', 'trustLevel',
 ])
 
 function requiredIdentifier(value: unknown, label: string): string {
@@ -100,6 +100,12 @@ function productionStartInput(params: Record<string, unknown>, authority: Dispat
   const forbidden = Object.keys(params).find((key) => !PRODUCTION_START_FIELDS.has(key))
   if (forbidden) throw new RpcError(`Production start field is not allowed: ${forbidden}`, 400)
   const actorId = authority?.actorId ?? optionalText(params.actorId, 'origin actor', 160)
+  // B3：可选信任档位随草稿一起声明（不传 = 服务侧默认 key_confirm）。非法值早拒，不静默兜底。
+  let trustLevel: string | undefined
+  if (params.trustLevel !== undefined) {
+    trustLevel = String(params.trustLevel)
+    if (!['key_confirm', 'budget_only', 'confirm_all'].includes(trustLevel)) throw new RpcError('Invalid trust level', 400)
+  }
   return {
     projectId: requiredIdentifier(params.projectId, 'project'),
     playbook: {
@@ -111,6 +117,7 @@ function productionStartInput(params: Record<string, unknown>, authority: Dispat
       ...(actorId ? { actorId } : {}),
     },
     brief: productionBrief(params.brief),
+    ...(trustLevel ? { policy: { trustLevel: trustLevel as import('../productionRun/productionRunTypes').TrustLevel } } : {}),
   }
 }
 
@@ -159,19 +166,55 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         requiredIdentifier(params.artifactId, 'artifact'),
       )
     case 'production.control': {
-      // A4：pause/resume/cancel。commandId 按 (action, revision) 确定 → 同一状态下重复触发天然幂等。
-      assertOnlyFields(params, new Set(['projectId', 'runId', 'action']))
+      // A4：pause/resume/cancel。B3：set_trust（配 trustLevel）改信任档位。
+      // commandId 按 (action[/trustLevel], revision) 确定 → 同一状态下重复触发天然幂等。
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'action', 'trustLevel']))
       const action = String(params.action || '')
-      if (!['pause', 'resume', 'cancel'].includes(action)) throw new RpcError('Invalid production control action', 400)
+      if (!['pause', 'resume', 'cancel', 'set_trust'].includes(action)) throw new RpcError('Invalid production control action', 400)
       const projectId = requiredIdentifier(params.projectId, 'project')
       const runId = requiredIdentifier(params.runId, 'run')
       const full = ctx.productionRuns.readFull(projectId, runId)
       if (!full) throw new RpcError(`Production run not found: ${runId}`, 404)
+      if (action === 'set_trust') {
+        const trustLevel = String(params.trustLevel || '')
+        if (!['key_confirm', 'budget_only', 'confirm_all'].includes(trustLevel)) throw new RpcError('Invalid trust level', 400)
+        await ctx.productionRuns.command(projectId, runId, {
+          commandId: `mcp-control-set_trust-${trustLevel}-${full.revision}`,
+          expectedRevision: full.revision,
+          type: 'run.control',
+          payload: { action, trustLevel },
+          issuedAt: new Date().toISOString(),
+        })
+        return ctx.productionRuns.readProjection(projectId, runId)
+      }
       await ctx.productionRuns.command(projectId, runId, {
         commandId: `mcp-control-${action}-${full.revision}`,
         expectedRevision: full.revision,
         type: 'run.control',
         payload: { action },
+        issuedAt: new Date().toISOString(),
+      })
+      return ctx.productionRuns.readProjection(projectId, runId)
+    }
+    case 'production.decide-gate': {
+      // B1：agent 已用 elicitation 问过真人，拿到 accept 才调这里表态一道门（方向门可带 choiceKey）。
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'gateId', 'decision', 'choiceKey']))
+      const decision = String(params.decision || '')
+      if (decision !== 'approved' && decision !== 'rejected') throw new RpcError('Invalid production gate decision', 400)
+      const projectId = requiredIdentifier(params.projectId, 'project')
+      const runId = requiredIdentifier(params.runId, 'run')
+      const gateId = requiredIdentifier(params.gateId, 'gate')
+      const rawChoice = typeof params.choiceKey === 'string' ? params.choiceKey.trim() : ''
+      const choiceKey = /^[A-Za-z0-9._-]{1,40}$/.test(rawChoice) ? rawChoice : undefined
+      const full = ctx.productionRuns.readFull(projectId, runId)
+      if (!full) throw new RpcError(`Production run not found: ${runId}`, 404)
+      const gate = full.gates.find((item) => item.gateId === gateId)
+      if (!gate) throw new RpcError(`Production gate not found: ${gateId}`, 404)
+      await ctx.productionRuns.command(projectId, runId, {
+        commandId: `mcp-decide-${gateId}-${decision}-${full.revision}`,
+        expectedRevision: full.revision,
+        type: 'gate.decide',
+        payload: { gateId, status: decision, ...(choiceKey ? { choiceKey } : {}) },
         issuedAt: new Date().toISOString(),
       })
       return ctx.productionRuns.readProjection(projectId, runId)

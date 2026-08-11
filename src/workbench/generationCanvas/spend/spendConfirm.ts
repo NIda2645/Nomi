@@ -26,6 +26,13 @@ export type SpendConfirmRequest = {
   kind?: 'generation' | 'reference' | 'plan' | 'contract'
   /** Durable production summary shown inside the existing confirmation shell. */
   contract?: ProductionContractView
+  /**
+   * B1 方向门候选（仅 kind:'plan' 的创意方向门）：显示单选行（默认选第一个），确认时把选中的 key
+   * 经 onDirectionDecision 回传。为空则方向门退回普通「批准/取消」文案（LLM 关着没拟出候选的兜底）。
+   */
+  directionCandidates?: Array<{ key: string; title: string; oneLiner: string }>
+  /** B1：方向门确认时回传选中候选 key（沿用 onOpenPolicySettings 的「请求对象带回调」模式，不改 boolean 契约）。 */
+  onDirectionDecision?: (choiceKey: string | null) => void
   /** Recovery for an incomplete contract policy. Closing through this action is not a rejection. */
   onOpenPolicySettings?: () => void
   /** 明细行（节点 / 模型 / 预估），让用户一眼看懂谁要花钱、花在哪。 */
@@ -40,24 +47,45 @@ export type SpendConfirmRequest = {
 type Pending = SpendConfirmRequest & { resolve: (ok: boolean) => void }
 
 type SpendConfirmState = {
+  /** 当前显示的确认（队首）。null = 无待确认。对话框只读这一个。 */
   pending: Pending | null
+  /**
+   * B4：等待中的确认队列（队首之外的排队者）。根治「单槽覆盖」——
+   * 两个审批同时来时后者不再冲掉前者的 resolve，而是排队，前一个决议后自动出下一个。
+   * FIFO：先到先显。
+   */
+  queue: Pending[]
   lightSuppressed: boolean
-  /** 弹确认；resolve true/false。light 且本会话已抑制 → 直接 true 不弹。 */
+  /** 弹确认；resolve true/false。light 且本会话已抑制 → 直接 true 不弹。已有在显 → 入队等候（不覆盖）。 */
   requestConfirm: (req: SpendConfirmRequest) => Promise<boolean>
-  /** 对话框按钮回调：ok=确认；suppressLight=勾了「本会话不再提示」。 */
+  /** 对话框按钮回调：ok=确认；suppressLight=勾了「本会话不再提示」。决议队首后自动晋升下一个。 */
   resolvePending: (ok: boolean, suppressLight?: boolean) => void
 }
 
 export const useSpendConfirmStore = create<SpendConfirmState>()((set, get) => ({
   pending: null,
+  queue: [],
   lightSuppressed: false,
   requestConfirm: (req) => {
     if (req.light && get().lightSuppressed) return Promise.resolve(true)
-    return new Promise<boolean>((resolve) => set({ pending: { ...req, resolve } }))
+    return new Promise<boolean>((resolve) => {
+      const entry = { ...req, resolve }
+      // 队首空着就直接显；否则排队（根治：绝不覆盖已在等待的 resolve）。
+      if (get().pending) set((state) => ({ queue: [...state.queue, entry] }))
+      else set({ pending: entry })
+    })
   },
   resolvePending: (ok, suppressLight) => {
     const p = get().pending
-    set({ pending: null, ...(ok && suppressLight ? { lightSuppressed: true } : {}) })
+    // 先决议当前队首，再从队列晋升下一个到显示位（空则 null）。
+    set((state) => {
+      const [next, ...rest] = state.queue
+      return {
+        pending: next ?? null,
+        queue: rest,
+        ...(ok && suppressLight ? { lightSuppressed: true } : {}),
+      }
+    })
     p?.resolve(ok)
   },
 }))

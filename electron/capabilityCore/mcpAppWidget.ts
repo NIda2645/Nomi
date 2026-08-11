@@ -32,6 +32,17 @@ export type NomiDraftShot = {
   /** 缩略图 URL（可能被宿主 CSP 拦；widget onerror 优雅降级为占位）。 */
   thumbnailUrl?: string
 }
+/**
+ * B6 · 等待中的门（widget gate 卡）。direction=方向门（候选单选，卡内可批）｜sample=样片门（上方缩略图
+ * 即样片，卡内可批）｜contract/export=钱与导出（卡内只读——金额确认走弹窗/对话双路，不给一键批钱）。
+ */
+export type NomiDraftGate = {
+  gateId: string
+  kind: 'direction' | 'sample' | 'contract' | 'export' | 'stage'
+  title?: string
+  summary?: string
+  candidates?: Array<{ key: string; title: string; oneLiner?: string }>
+}
 export type NomiDraftState = {
   kind?: 'generation' | 'reference' | 'plan' | 'production'
   title?: string
@@ -43,6 +54,8 @@ export type NomiDraftState = {
   /** 深链：宿主支持 ui/open-link 时「在 Nomi 中打开」跳这里。 */
   deepLink?: string
   runId?: string
+  /** 第一个 waiting 门；卡内渲染确认区（样张桌面形态贰/肆幕）。 */
+  gate?: NomiDraftGate
 }
 
 /** Convert a safe MCP production projection into the same compact widget state used by generation. */
@@ -106,6 +119,36 @@ export function buildNomiRunFromProjection(args: {
     const previewUrl = safePreviewUrl(ownPreview.url)
     if (previewUrl) shots.push({ index: 1, title: String(value.kind), status: value.status === 'ready' || value.status === 'adopted' ? 'success' as const : 'queued' as const, kind: value.kind === 'video' ? 'video' as const : 'image' as const, thumbnailUrl: previewUrl })
   }
+  // B6：第一个 waiting 门 → widget gate 卡（候选文本已经过 service 投影的 sanitizer）。
+  const gatesRaw = Array.isArray(value.gates) ? value.gates as Array<Record<string, unknown>> : []
+  const waitingGate = gatesRaw.find((candidate) => candidate.status === 'waiting')
+  let gate: NomiDraftGate | undefined
+  if (waitingGate) {
+    const gateId = String(waitingGate.gateId || '')
+    const rawCandidates = Array.isArray(waitingGate.directionCandidates)
+      ? (waitingGate.directionCandidates as Array<Record<string, unknown>>)
+          .filter((candidate) => typeof candidate.key === 'string' && typeof candidate.title === 'string')
+          .map((candidate) => ({
+            key: String(candidate.key),
+            title: String(candidate.title),
+            ...(typeof candidate.oneLiner === 'string' ? { oneLiner: candidate.oneLiner } : {}),
+          }))
+      : []
+    const gateKind: NomiDraftGate['kind'] = rawCandidates.length
+      ? 'direction'
+      : gateId.startsWith('gate-sample-')
+        ? 'sample'
+        : waitingGate.scope === 'budget_envelope'
+          ? 'contract'
+          : waitingGate.scope === 'export' ? 'export' : 'stage'
+    gate = {
+      gateId,
+      kind: gateKind,
+      ...(typeof waitingGate.title === 'string' && waitingGate.title ? { title: waitingGate.title } : {}),
+      ...(typeof waitingGate.summary === 'string' && waitingGate.summary ? { summary: waitingGate.summary } : {}),
+      ...(rawCandidates.length ? { candidates: rawCandidates } : {}),
+    }
+  }
   const latestEvent = Array.isArray(value.events) ? (value.events as Array<Record<string, unknown>>).at(-1) : undefined
   const candidateDeepLink = typeof value.openInNomi === 'string' ? value.openInNomi : ''
   const deepLink = /^nomi:\/\/project\/[A-Za-z0-9._-]+\/run\/[A-Za-z0-9._-]+(?:\?artifact=[A-Za-z0-9._-]+)?$/.test(candidateDeepLink)
@@ -127,6 +170,7 @@ export function buildNomiRunFromProjection(args: {
     ...(projectId ? { projectId } : {}),
     ...(runId ? { runId } : {}),
     ...(deepLink ? { deepLink } : {}),
+    ...(gate ? { gate } : {}),
   }
 }
 
@@ -251,6 +295,17 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
   .cap { padding: 5px 7px; font-size: 11px; color: var(--ink-60); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .msg { margin: 0 0 10px; font-size: 12px; color: var(--ink-60); line-height: 1.5; }
   .empty { padding: 20px 12px; text-align: center; color: var(--ink-40); font-size: 12px; }
+  .gate { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 10px; background: var(--accent-soft); margin: 0 0 10px; display: grid; gap: 8px; }
+  .gate[hidden] { display: none; }
+  .gate-head { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .gate-sum { font-size: 11px; color: var(--ink-60); line-height: 1.5; }
+  .cand { font: inherit; text-align: left; display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); cursor: pointer; }
+  .cand:hover { border-color: var(--accent); }
+  .cand.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--paper)); }
+  .cand-t { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .cand-o { font-size: 11px; color: var(--ink-60); }
+  .gate-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .gate-hint { font-size: 11px; color: var(--ink-40); }
   .foot { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
   .btn { font: inherit; font-size: 12px; cursor: pointer; border-radius: 8px; padding: 6px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-80); }
   .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -268,6 +323,7 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
   <div class="body" id="bodyWrap">
   <div class="empty" id="empty">等待 Nomi 传入生成或制作 Run…</div>
     <p class="msg" id="msg" hidden></p>
+    <div class="gate" id="gate" hidden></div>
     <div class="grid" id="grid"></div>
   </div>
   <div class="foot" id="foot" hidden>
@@ -280,8 +336,20 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
   "use strict";
   var STATUS_LABEL = { running: "进行中", succeeded: "已完成", failed: "需要处理", available: "可查看", unknown: "状态未知" };
   var SHOT_LABEL = { queued: "排队", running: "生成中", success: "已出", error: "失败" };
+  // B6 gate 卡：direction/sample 卡内可批（tools/call 代理，SEP-1865）；钱与导出只读——不给一键批钱。
+  var GATE_HINT = {
+    direction: "选一个方向；批准前不会调用付费模型。",
+    sample: "上方就是样片；满意就继续批量，不满意去 Nomi 调整。",
+    contract: "预算确认在 Nomi 弹窗或对话里完成（金额不做卡内一键批）。",
+    export: "导出确认在 Nomi 或对话里完成。",
+    stage: "这一步确认在 Nomi 或对话里完成。"
+  };
   var state = null;
   var rpcId = 0;
+  var selectedKey = null;
+  var decideInFlight = false;
+  var decideFailed = false;
+  var decideReqId = null;
 
   function post(msg) { try { window.parent.postMessage(msg, "*"); } catch (e) {} }
   function notify(method, params) { post({ jsonrpc: "2.0", method: method, params: params || {} }); }
@@ -315,7 +383,9 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
     var st = state.status || "unknown";
     badge.textContent = STATUS_LABEL[st] || st;
     badge.className = "badge " + st;
+    if (state.gate) { badge.textContent = "等你确认"; badge.className = "badge running"; }
     if (state.message) { msg.hidden = false; msg.textContent = state.message; } else { msg.hidden = true; }
+    renderGate();
     var shots = Array.isArray(state.shots) ? state.shots : [];
     grid.innerHTML = shots.map(function (s) {
       var sst = s.status || "queued";
@@ -332,6 +402,55 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
     reportSize();
   }
 
+  function renderGate() {
+    var wrap = document.getElementById("gate");
+    if (!state || !state.gate) { wrap.hidden = true; wrap.innerHTML = ""; selectedKey = null; decideFailed = false; return; }
+    var g = state.gate;
+    var cands = Array.isArray(g.candidates) ? g.candidates : [];
+    if (selectedKey === null && cands.length) selectedKey = cands[0].key;
+    var canDecide = (g.kind === "direction" || g.kind === "sample") && state.projectId && state.runId;
+    var html = '<div class="gate-head">' + esc(g.title || "等你确认") + "</div>";
+    if (g.summary) html += '<div class="gate-sum">' + esc(g.summary) + "</div>";
+    html += cands.map(function (c) {
+      var sel = c.key === selectedKey;
+      return '<button type="button" class="cand' + (sel ? " sel" : "") + '" data-key="' + esc(c.key) + '" aria-pressed="' + (sel ? "true" : "false") + '">'
+        + '<span class="cand-t">' + esc(c.title) + "</span>"
+        + (c.oneLiner ? '<span class="cand-o">' + esc(c.oneLiner) + "</span>" : "")
+        + "</button>";
+    }).join("");
+    // 可批的门（direction/sample）summary 已把话说清 → 不再重复 kind 提示（R2）；钱/导出门的只读边界恒显。
+    var hintText = decideFailed
+      ? "这个宿主暂不支持卡内确认——去 Nomi 或在对话里说即可。"
+      : (canDecide && g.summary ? "" : (GATE_HINT[g.kind] || GATE_HINT.stage));
+    html += '<div class="gate-foot">'
+      + (canDecide ? '<button type="button" class="btn primary" id="decideBtn"' + (decideInFlight ? " disabled" : "") + ">"
+          + (decideInFlight ? "提交中…" : g.kind === "sample" ? "满意，继续批量" : "批准并继续") + "</button>" : "")
+      + (hintText ? '<span class="gate-hint">' + esc(hintText) + "</span>" : "") + "</div>";
+    wrap.innerHTML = html;
+    wrap.hidden = false;
+    Array.prototype.forEach.call(wrap.querySelectorAll(".cand"), function (el) {
+      el.addEventListener("click", function () { selectedKey = el.getAttribute("data-key"); renderGate(); });
+    });
+    var decideBtn = document.getElementById("decideBtn");
+    if (decideBtn) decideBtn.addEventListener("click", decideGate);
+    reportSize();
+  }
+
+  function decideGate() {
+    if (!state || !state.gate || decideInFlight) return;
+    var g = state.gate;
+    var args = { projectId: state.projectId, runId: state.runId, gateId: g.gateId, decision: "approved" };
+    if (g.kind === "direction" && selectedKey) args.choiceKey = selectedKey;
+    decideInFlight = true;
+    decideFailed = false;
+    rpcId += 1;
+    decideReqId = "view-" + rpcId;
+    post({ jsonrpc: "2.0", id: decideReqId, method: "tools/call", params: { name: "nomi_decide_gate", arguments: args } });
+    renderGate();
+    // 宿主不支持 tools/call 代理时不会回帧：8s 后按失败降级（按钮复活 + 指路 Nomi/对话）。
+    setTimeout(function () { if (decideInFlight) { decideInFlight = false; decideFailed = true; renderGate(); } }, 8000);
+  }
+
   function ingest(sc) {
     // 宿主注入的 tool result / tool input：生成读 nomiDraft，Production Run 读 nomiRun。
     if (sc && typeof sc === "object") {
@@ -343,6 +462,15 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
   window.addEventListener("message", function (ev) {
     var m = ev && ev.data;
     if (!m || typeof m !== "object") return;
+    // B6：卡内决议（tools/call nomi_decide_gate）的响应——成功即收起门等宿主推新状态；失败降级指路。
+    if (m.id && m.id === decideReqId && m.method === undefined) {
+      decideInFlight = false;
+      decideReqId = null;
+      if (m.error || (m.result && m.result.isError)) { decideFailed = true; }
+      else if (state) { state.gate = undefined; state.message = "已提交决定，等待 Nomi 状态刷新…"; }
+      render();
+      return;
+    }
     switch (m.method) {
       case "ui/notifications/tool-result":
       case "ui/notifications/tool-input":

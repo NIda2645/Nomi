@@ -158,6 +158,11 @@ const TOOLS = [
           required: ['goal'],
           additionalProperties: false,
         },
+        trustLevel: {
+          type: 'string',
+          enum: ['key_confirm', 'budget_only', 'confirm_all'],
+          description: '可选信任档位：key_confirm 默认（方向/样片门都停）/ budget_only 只管钱（跳过创意与样片门）/ confirm_all 每镜确认。用户一上来就说「别问了直接出」时设 budget_only。',
+        },
       },
       required: ['projectId', 'playbook', 'brief'],
       additionalProperties: false,
@@ -168,6 +173,7 @@ const TOOLS = [
       playbook: a.playbook,
       playbookVersion: a.playbookVersion,
       brief: a.brief,
+      ...(a.trustLevel ? { trustLevel: a.trustLevel } : {}),
     }),
   },
   {
@@ -226,19 +232,43 @@ const TOOLS = [
   },
   {
     name: 'nomi_control_run',
-    description: '控制制作 Run：pause 暂停（保住已花预算与已完成镜头）/ resume 从断点继续（不重做不重付）/ cancel 取消（未提交任务不计费）。用户说「停一下 / 继续 / 别做了」时用。',
+    description:
+      '控制制作 Run：pause 暂停（保住已花预算与已完成镜头）/ resume 从断点继续（不重做不重付）/ cancel 取消（未提交任务不计费）'
+      + ' / set_trust 改信任档位（配 trustLevel）。用户说「停一下 / 继续 / 别做了」用前三个；说「别问了直接出」= set_trust 到 budget_only（跳过创意与样片门，只留预算门）。',
     inputSchema: {
       type: 'object',
       properties: {
         projectId: { type: 'string' },
         runId: { type: 'string' },
-        action: { type: 'string', enum: ['pause', 'resume', 'cancel'] },
+        action: { type: 'string', enum: ['pause', 'resume', 'cancel', 'set_trust'] },
+        trustLevel: { type: 'string', enum: ['key_confirm', 'budget_only', 'confirm_all'], description: 'action=set_trust 时必填：key_confirm 五门全开 / budget_only 只管钱 / confirm_all 每镜确认' },
       },
       required: ['projectId', 'runId', 'action'],
       additionalProperties: false,
     },
     method: 'production.control',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, action: a.action }),
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, action: a.action, ...(a.trustLevel ? { trustLevel: a.trustLevel } : {}) }),
+  },
+  {
+    name: 'nomi_decide_gate',
+    description:
+      '对制作 Run 的一道确认门表态：approved 批准 / rejected 否决。方向门（gate-direction-*）可带 choiceKey 指定选中的候选。'
+      + '用法纪律：**先用 elicitation 枚举（把候选 + 「都不要，我来描述」列给真人）问过用户、拿到 accept 才准调本工具**，别替用户拍板；'
+      + '预算门请继续走既有付费确认，不要用本工具跳过。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        runId: { type: 'string' },
+        gateId: { type: 'string', description: '门 id，例如 gate-direction-v1' },
+        decision: { type: 'string', enum: ['approved', 'rejected'] },
+        choiceKey: { type: 'string', description: '方向门专用：用户选中的候选 key（来自 gate.waiting 的 directionCandidates）' },
+      },
+      required: ['projectId', 'runId', 'gateId', 'decision'],
+      additionalProperties: false,
+    },
+    method: 'production.decide-gate',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, gateId: a.gateId, decision: a.decision, choiceKey: a.choiceKey }),
   },
   {
     name: 'nomi_generate',

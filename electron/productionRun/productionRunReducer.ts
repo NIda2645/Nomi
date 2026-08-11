@@ -2,6 +2,7 @@ import { transitionJob, transitionRun } from "./productionRunState";
 import type {
   BudgetLedgerSummary,
   ProductionArtifact,
+  ProductionDirectionCandidate,
   ProductionGate,
   ProductionJob,
   ProductionJobStatus,
@@ -43,6 +44,23 @@ function artifact(payload: Record<string, unknown>): ProductionArtifact {
     throw new Error("Invalid artifact status");
   }
   return value as ProductionArtifact;
+}
+
+/** B1：校验方向候选 —— 2-3 个、key 唯一且安全、title/oneLiner 非空且截断。别信 LLM 原样入库。 */
+function directionCandidates(value: unknown): ProductionDirectionCandidate[] {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 3) throw new Error("Direction candidates must be 2 or 3 options");
+  const seen = new Set<string>();
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`Invalid direction candidate ${index}`);
+    const raw = item as Record<string, unknown>;
+    const key = typeof raw.key === "string" ? raw.key.trim() : "";
+    const title = typeof raw.title === "string" ? raw.title.trim() : "";
+    const oneLiner = typeof raw.oneLiner === "string" ? raw.oneLiner.trim() : "";
+    if (!/^[A-Za-z0-9._-]{1,40}$/.test(key) || seen.has(key)) throw new Error(`Invalid direction candidate key ${index}`);
+    if (!title || !oneLiner) throw new Error(`Direction candidate ${index} needs a title and one-liner`);
+    seen.add(key);
+    return { key, title: title.slice(0, 80), oneLiner: oneLiner.slice(0, 200) };
+  });
 }
 
 function replaceById<T>(items: T[], id: string, readId: (item: T) => string, update: (item: T) => T): T[] {
@@ -117,6 +135,20 @@ export function applyProductionCommand(
       if (current.gates.some((item) => item.gateId === gate.gateId)) throw new Error(`Duplicate gate: ${gate.gateId}`);
       return { run: { ...current, gates: [...current.gates, gate], updatedAt: now }, eventType: "gate.waiting", message: gate.gateId };
     }
+    case "gate.set_candidates": {
+      // B1：方向门候选挂到 waiting 的 gate 上（driver 拟好后调）。只允许方向门、只在 waiting 时设。
+      const gateId = text(command.payload, "gateId");
+      const candidates = directionCandidates(command.payload.candidates);
+      const currentGate = current.gates.find((gate) => gate.gateId === gateId);
+      if (!currentGate) throw new Error(`Production entity not found: ${gateId}`);
+      if (currentGate.scope !== "stage" || !gateId.startsWith("gate-direction-")) throw new Error("Direction candidates apply only to a direction gate");
+      if (currentGate.status !== "waiting") throw new Error(`Production gate is already decided: ${gateId}`);
+      const gates = replaceById(current.gates, gateId, (gate) => gate.gateId, (gate) => ({
+        ...gate,
+        directionCandidates: candidates,
+      }));
+      return { run: { ...current, gates, updatedAt: now }, eventType: "gate.candidates", message: gateId };
+    }
     case "gate.decide": {
       const gateId = text(command.payload, "gateId");
       const status = text(command.payload, "status") as ProductionGate["status"];
@@ -124,10 +156,16 @@ export function applyProductionCommand(
       const currentGate = current.gates.find((gate) => gate.gateId === gateId);
       if (!currentGate) throw new Error(`Production entity not found: ${gateId}`);
       if (currentGate.status !== "waiting") throw new Error(`Production gate is already decided: ${gateId}`);
+      // B1：方向门批准可带 choiceKey（用户选中的候选）。校验它确属该门候选之一，留痕进 gate。
+      const rawChoice = typeof command.payload.choiceKey === "string" ? command.payload.choiceKey.trim() : "";
+      const choiceKey = status === "approved" && rawChoice && (currentGate.directionCandidates ?? []).some((candidate) => candidate.key === rawChoice)
+        ? rawChoice
+        : undefined;
       const gates = replaceById(current.gates, gateId, (gate) => gate.gateId, (gate) => ({
         ...gate,
         status,
         decidedAt: now,
+        ...(choiceKey ? { decidedChoiceKey: choiceKey } : {}),
       }));
       const jobs = status === "approved"
         ? current.jobs.map((job) => currentGate.jobIds.includes(job.jobId) && job.status === "authorization_required"

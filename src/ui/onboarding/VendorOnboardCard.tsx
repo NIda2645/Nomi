@@ -17,6 +17,9 @@ import { confirmDialog } from '../../design'
 import type { KnownVendor } from '../../config/knownVendors'
 import { FoldableModelCard } from './FoldableModelCard'
 import { ModelChipGroups, type ChipModel } from './ModelChipGroups'
+import { useVendorHealth } from './useVendorHealth'
+import { vendorConnectionPill } from './vendorConnectionView'
+import { VendorConnectionNotice } from './VendorConnectionNotice'
 
 type VendorOnboardCardProps = {
   directory: KnownVendor
@@ -33,8 +36,6 @@ type VendorOnboardCardProps = {
   /** key 绑定/清除后刷新外层。 */
   onChanged: () => void
 }
-
-type ConnectionState = 'idle' | 'testing' | 'verified' | 'failed'
 
 export function VendorOnboardCard({
   directory,
@@ -54,11 +55,12 @@ export function VendorOnboardCard({
   const [error, setError] = React.useState('')
   const [urlEditing, setUrlEditing] = React.useState(false)
   const [urlDraft, setUrlDraft] = React.useState('')
-  const [connectionState, setConnectionState] = React.useState<ConnectionState>('idle')
+  // 连接状态的唯一来源（主进程自取凭证探测）。地址一改 fingerprint 就变，effect 自动重探；
+  // 换 key 不改地址，所以解锁后要显式 recheck()。
+  const { connection, recheck } = useVendorHealth(directory.vendorKey, { hasApiKey, baseUrl })
 
   React.useEffect(() => {
     setEditing(!hasApiKey)
-    if (!hasApiKey) setConnectionState('idle')
   }, [hasApiKey])
 
   const total = models.length
@@ -82,7 +84,7 @@ export function VendorOnboardCard({
     setDrafts((prev) => ({ ...prev, [key]: value }))
   }, [])
 
-  const handleUnlock = React.useCallback(async () => {
+  const handleUnlock = React.useCallback(() => {
     const parts = fields.map((field) => (drafts[field.key] ?? '').trim())
     if (parts.some((part) => !part)) {
       setError(
@@ -102,30 +104,10 @@ export function VendorOnboardCard({
       bridge.modelCatalog.upsertVendorApiKey(directory.vendorKey, { apiKey, enabled: true })
       setDrafts({})
       setEditing(false)
-      setConnectionState(directory.connectionTest === 'models' ? 'testing' : 'idle')
       onChanged()
-      // 保存是本地同步写入；网络探测放到旁路，避免把用户锁在卡片上 12 秒。
-      setBusy(false)
-      // 只对明确声明兼容 GET /models 的供应商自动测试；原生供应商的健康端点不同，
-      // 不能拿通用 OpenAI 探针误报「连接失败」。保存永远不被网络阻塞。
-      if (directory.connectionTest === 'models' && baseUrl) {
-        const result = await bridge.onboarding.testConnection({
-          baseUrl,
-          apiKey,
-          probe: 'reachability',
-          autoProbe: false,
-        })
-        if (result.ok) {
-          setConnectionState('verified')
-        } else {
-          setConnectionState('failed')
-          setError(
-            t('onboardingProviders.vendorCard.connectionTestFailed', {
-              message: result.error || t('onboardingProviders.vendorCard.connectionUntested'),
-            }),
-          )
-        }
-      }
+      // 保存是本地同步写入，永不被网络阻塞。连通性交给旁路的 useVendorHealth——
+      // 换 key 不改地址（fingerprint 不变），所以这里显式重探一次。
+      recheck()
     } catch (e) {
       setError(
         t('onboardingProviders.vendorCard.unlockFailed', { message: e instanceof Error ? e.message : String(e) }),
@@ -133,7 +115,7 @@ export function VendorOnboardCard({
     } finally {
       setBusy(false)
     }
-  }, [fields, drafts, isMulti, directory.vendorKey, directory.credentialJoin, directory.connectionTest, baseUrl, onChanged, t])
+  }, [fields, drafts, isMulti, directory.vendorKey, directory.credentialJoin, onChanged, recheck, t])
 
   const handleDisconnect = React.useCallback(async () => {
     const bridge = getDesktopBridge()
@@ -172,18 +154,20 @@ export function VendorOnboardCard({
     try {
       bridge.modelCatalog.upsertVendor({ key: directory.vendorKey, baseUrlHint: next })
       setUrlEditing(false)
-      setConnectionState(hasApiKey ? 'idle' : connectionState)
+      // 地址变了 → useVendorHealth 的 fingerprint 变 → 自动重探，这里不用手动触发。
       onChanged()
     } catch (e) {
       setError(t('onboardingProviders.vendorCard.saveFailed', { message: e instanceof Error ? e.message : String(e) }))
     } finally {
       setBusy(false)
     }
-  }, [urlDraft, directory.vendorKey, hasApiKey, connectionState, onChanged, t])
+  }, [urlDraft, directory.vendorKey, onChanged, t])
 
   const openPromo = React.useCallback(() => {
     if (directory.promo) window.open(directory.promo.url, '_blank', 'noopener')
   }, [directory.promo])
+
+  const pill = connection ? vendorConnectionPill(connection) : null
 
   return (
     <FoldableModelCard
@@ -193,18 +177,8 @@ export function VendorOnboardCard({
       glyphTone={directory.logo ? 'logo' : 'ink'}
       name={vendorName}
       subtitle={hasApiKey ? t('onboardingProviders.vendorCard.modelsAvailable', { count: total }) : directory.tagline}
-      status={hasApiKey && connectionState === 'verified' ? 'ok' : 'todo'}
-      statusLabel={
-        !hasApiKey
-          ? undefined
-          : connectionState === 'testing'
-            ? t('onboardingProviders.vendorCard.connectionTesting')
-            : connectionState === 'verified'
-              ? t('onboardingProviders.vendorCard.connectionVerified')
-              : directory.connectionTest === 'models'
-                ? t('onboardingProviders.vendorCard.connectionUntested')
-                : t('onboardingProviders.vendorCard.connectionTestUnavailable')
-      }
+      status={pill?.status ?? 'todo'}
+      statusLabel={pill ? t(pill.labelKey) : undefined}
       badge={
         !hasApiKey && directory.recommended ? (
           <span className="text-micro font-semibold text-nomi-accent bg-nomi-accent-soft rounded-full px-2 py-[2px] whitespace-nowrap">
@@ -349,6 +323,9 @@ export function VendorOnboardCard({
       )}
 
       {error ? <div className="text-caption text-workbench-danger">{error}</div> : null}
+
+      {/* 连接状态说明：紧挨地址行，用户看完原因就能就地改地址（地址编辑仍是下面那支铅笔，不另开入口）。 */}
+      <VendorConnectionNotice connection={connection} onRecheck={recheck} disabled={busy} />
 
       {urlEditing ? (
         <div className="flex gap-2">

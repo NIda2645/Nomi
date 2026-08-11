@@ -262,3 +262,37 @@ describe('buildNomiRunFromProjection（纯函数）', () => {
     expect(artifact.shots).toHaveLength(1)
   })
 })
+
+describe('buildNomiRunFromProjection · B6 gate 卡映射', () => {
+  const base = { projectId: 'p1', runId: 'r1' }
+  it('direction waiting gate → kind=direction + 候选/标题/摘要透传', () => {
+    const state = buildNomiRunFromProjection({ ...base, result: {
+      runId: 'r1', projectId: 'p1', status: 'awaiting_direction',
+      gates: [{ gateId: 'gate-direction-v1', scope: 'stage', status: 'waiting', title: '确认创意方向', summary: '选一个再拟分镜', directionCandidates: [
+        { key: 'a', title: '方向 A', oneLiner: '一句话 A' },
+        { key: 'b', title: '方向 B' },
+        { key: 'c', title: '方向 C', oneLiner: '一句话 C' },
+      ] }],
+    } })
+    expect(state.gate).toMatchObject({ gateId: 'gate-direction-v1', kind: 'direction', title: '确认创意方向' })
+    expect(state.gate?.candidates).toHaveLength(3)
+    expect(state.gate?.candidates?.[1]).toEqual({ key: 'b', title: '方向 B' })
+  })
+  it('sample / contract / export gate 识别正确；非 waiting 门不产出 gate', () => {
+    const sample = buildNomiRunFromProjection({ ...base, result: { runId: 'r1', status: 'running', gates: [{ gateId: 'gate-sample-v1', scope: 'stage', status: 'waiting', title: '样片等你过目' }] } })
+    expect(sample.gate?.kind).toBe('sample')
+    const contract = buildNomiRunFromProjection({ ...base, result: { runId: 'r1', status: 'awaiting_contract', gates: [{ gateId: 'gate-contract-v1', scope: 'budget_envelope', status: 'waiting' }] } })
+    expect(contract.gate?.kind).toBe('contract')
+    const exportGate = buildNomiRunFromProjection({ ...base, result: { runId: 'r1', status: 'awaiting_export', gates: [{ gateId: 'gate-export-v1', scope: 'export', status: 'waiting' }] } })
+    expect(exportGate.gate?.kind).toBe('export')
+    const decided = buildNomiRunFromProjection({ ...base, result: { runId: 'r1', status: 'running', gates: [{ gateId: 'gate-direction-v1', scope: 'stage', status: 'approved', directionCandidates: [{ key: 'a', title: 'A' }] }] } })
+    expect(decided.gate).toBeUndefined()
+  })
+  it('widget HTML 含 gate 容器与卡内决议通道（nomi_decide_gate via tools/call），钱门只读提示在', () => {
+    expect(NOMI_LIVE_DRAFT_WIDGET_HTML).toContain('id="gate"')
+    expect(NOMI_LIVE_DRAFT_WIDGET_HTML).toContain('nomi_decide_gate')
+    expect(NOMI_LIVE_DRAFT_WIDGET_HTML).toContain('批准并继续')
+    expect(NOMI_LIVE_DRAFT_WIDGET_HTML).toContain('满意，继续批量')
+    expect(NOMI_LIVE_DRAFT_WIDGET_HTML).toContain('金额不做卡内一键批')
+  })
+})

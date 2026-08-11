@@ -136,6 +136,16 @@ async function waitForRunStatus(rpc, projectId, runId, expected, timeoutMs = 20_
   throw new Error(`Run ${runId} did not reach ${expected}; last=${run?.status || 'missing'}`)
 }
 
+async function waitForWaitingGate(rpc, projectId, runId, gateIdPrefix, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const run = await getRunData(rpc, projectId, runId)
+    if (run?.gates?.some((gate) => gate.gateId.startsWith(gateIdPrefix) && gate.status === 'waiting')) return run
+    await delay(250)
+  }
+  throw new Error(`Run ${runId} did not raise a waiting gate ${gateIdPrefix}*`)
+}
+
 async function openRunFromTaskCenter(window) {
   await window.locator('[data-task-center-trigger="true"]').click()
   const row = window.locator('[data-nomi-right-panel="tasks"]', { hasText: 'brand.promo' }).locator('[role="button"]', { hasText: 'brand.promo' }).first()
@@ -208,8 +218,26 @@ try {
   check((await window.locator('[data-production-status-title]').textContent())?.length > 0, 'Task Center reopens the exact Run and expands the assistant')
   await window.screenshot({ path: path.join(shotsDir, '01-direction-gate.png') })
 
-  await approveCurrentProductionGate(window)
+  // B1/B5 方向门三选一（获批样张贰幕）：MCP 投影带候选 → GUI 渲染可点 → 选中留痕。
+  const atDirection = (await callTool(mcp.rpc, 'nomi_get_run', { projectId, runId })).structuredContent.nomiRunData
+  const directionGate = atDirection.gates.find((gate) => gate.gateId === 'gate-direction-v1')
+  check(directionGate?.directionCandidates?.length === 3, 'direction gate projects three LLM-planned candidates over MCP')
+  check(directionGate.directionCandidates.some((candidate) => candidate.key === 'kinetic'), 'candidate keys survive the safe projection')
+  await window.locator('[data-production-primary-action]').click()
+  const candidateRows = window.locator('[data-direction-candidate]')
+  await candidateRows.first().waitFor({ timeout: 5_000 })
+  check(await candidateRows.count() === 3, 'direction dialog renders all three candidates')
+  await window.locator('[data-direction-candidate="kinetic"]').click()
+  check(await window.locator('[data-direction-candidate="kinetic"]').getAttribute('data-direction-selected') === 'true', 'clicking a candidate selects it')
+  // 选择稳定性：600ms 后选中不得被任何重渲染/轮询重置回默认（验收抓到的视觉回落疑点）。
+  await window.waitForTimeout(600)
+  check(await window.locator('[data-direction-candidate="kinetic"]').getAttribute('data-direction-selected') === 'true', 'selection survives re-renders (no reset to first candidate)')
+  await window.screenshot({ path: path.join(shotsDir, '01a-direction-candidates.png') })
+  const directionOverlay = window.locator('.fixed.inset-0').filter({ has: window.locator('button') }).last()
+  await directionOverlay.locator('button').last().click()
   let run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_storyboard_review')
+  const decidedDirection = run.gates.find((gate) => gate.gateId === 'gate-direction-v1')
+  check(decidedDirection?.decidedChoiceKey === 'kinetic', 'approval records the chosen direction as decidedChoiceKey')
   check(run.artifacts.some((artifact) => artifact.kind === 'script') && run.artifacts.some((artifact) => artifact.kind === 'storyboard'), 'direction approval produces durable script and storyboard artifacts')
   const events = await callTool(mcp.rpc, 'nomi_subscribe_run', { projectId, runId, afterCursor: 0, waitMs: 0 })
   check(events.structuredContent?.nomiRunData?.events?.some((event) => event.type === 'skill.loaded'), 'MCP event stream exposes durable skill evidence')
@@ -241,6 +269,15 @@ try {
   check(run.jobs.length === 1 && run.budget.authorized === 0, 'restart recovers the waiting contract without submitting or spending')
 
   await approveCurrentProductionGate(gui.window)
+
+  // B2 样片门：合同批准后先出首镜样片、停门等过目；批准后才批量剩余 + 编排。
+  await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-sample-', 30_000)
+  const atSample = await getRunData(mcp.rpc, projectId, runId)
+  check(atSample.status === 'running' && atSample.gates.some((gate) => gate.gateId.startsWith('gate-sample-') && gate.status === 'waiting'), 'first shot raises a sample gate while the run stays running')
+  await gui.window.screenshot({ path: path.join(shotsDir, '03a-sample-gate.png') })
+  await openRunFromTaskCenter(gui.window)
+  await approveCurrentProductionGate(gui.window)
+
   run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_rough_cut_review', 30_000)
   check(run.jobs[0]?.status === 'adopted', 'approved fixture generation reaches adopted exactly once')
   check(run.artifacts.some((artifact) => artifact.kind === 'video') && run.artifacts.some((artifact) => artifact.kind === 'timeline'), 'generation and assembly produce local video and timeline artifacts')

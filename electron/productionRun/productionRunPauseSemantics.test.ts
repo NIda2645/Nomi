@@ -27,7 +27,16 @@ describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () 
     let generateCalls = 0
     let releaseFirst!: () => void
     const firstJobParked = new Promise<void>((resolve) => { releaseFirst = resolve })
+    // 提交顺序守护：driver 必须一次只在途一镜（顺序 for 循环）。并发化会悄悄放大喊停敞口 → 这里锁死。
+    let inFlightGenerate = 0
+    let maxConcurrentGenerate = 0
     const requestRenderer = async (op: string) => {
+      if (op === 'production.plan-directions') {
+        return { candidates: [
+          { key: 'a', title: '方向一', oneLiner: 'x' },
+          { key: 'b', title: '方向二', oneLiner: 'y' },
+        ] }
+      }
       if (op === 'production.plan-storyboard') {
         return { plan: { title: 'promo', anchors: [], shots: [
           { index: 1, shotKind: 'video', prompt: 'shot one' },
@@ -36,8 +45,14 @@ describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () 
       }
       if (op === 'production.generate-node') {
         generateCalls += 1
-        if (generateCalls === 1) await firstJobParked // 镜 1 停在「已提交、供应商在跑」的窗口期
-        return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
+        inFlightGenerate += 1
+        maxConcurrentGenerate = Math.max(maxConcurrentGenerate, inFlightGenerate)
+        try {
+          if (generateCalls === 1) await firstJobParked // 镜 1 停在「已提交、供应商在跑」的窗口期
+          return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
+        } finally {
+          inFlightGenerate -= 1
+        }
       }
       if (op === 'production.arrange') return { arranged: 2, total: 2 }
       throw new Error(`unexpected renderer op: ${op}`)
@@ -101,5 +116,7 @@ describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () 
     expect(generateCalls).toBe(2) // 不重做不重付：镜 1 没有被重新提交
     const done = service.readFull('project-1', runId)!
     expect(done.jobs.every((j) => j.status === 'adopted')).toBe(true)
+    // B2 守护：全程在途最多一镜（顺序提交=喊停敞口恒为 1 镜）。并发化会让此断言变红。
+    expect(maxConcurrentGenerate).toBe(1)
   })
 })

@@ -76,4 +76,20 @@ export type DesktopOnboardingBridge = {
   guessKinds: (payload: { ids: string[] }) => Promise<{
     kinds: Record<string, 'text' | 'image' | 'video' | 'audio'>
   }>
+  /**
+   * 这家现在能不能用。凭证由主进程自取（renderer 只有 hasApiKey 布尔），所以自动检查
+   * 必须走这条而不是 testConnection——后者要调用方手上有明文 key。
+   * force = 用户点了「重新检查」，跳过新鲜期缓存。
+   */
+  vendorHealth: (payload: { vendorKey: string; force?: boolean }) => Promise<VendorHealth>
+}
+
+export type VendorHealthState = 'reachable' | 'unreachable' | 'unsupported'
+
+export type VendorHealth = {
+  vendorKey: string
+  state: VendorHealthState
+  /** 非 reachable 时的人话原因（上游那句话 / 网络错描述）。 */
+  reason?: string
+  checkedAt: number
 }

@@ -73,6 +73,48 @@ function truncate(text: string, max = 40): string {
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
 }
 
+type DirectionCandidate = { key: string; title: string; oneLiner: string }
+
+/** B1：从投影里挑出「waiting 的方向门 + 其候选」（用于转述三选一 + 结构化字段）。 */
+function waitingDirectionGate(value: Record<string, unknown>): { gateId: string; candidates: DirectionCandidate[] } | null {
+  const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
+  const gate = gates.find((item) => str(item.gateId).startsWith('gate-direction-') && str(item.status) === 'waiting')
+  if (!gate) return null
+  const rawCandidates = Array.isArray(gate.directionCandidates) ? (gate.directionCandidates as Array<Record<string, unknown>>) : []
+  const candidates = rawCandidates
+    .map((candidate) => ({ key: str(candidate.key), title: str(candidate.title), oneLiner: str(candidate.oneLiner) }))
+    .filter((candidate) => candidate.key && candidate.title)
+  return { gateId: str(gate.gateId), candidates }
+}
+
+/** B1：候选清单转述（每行一句话方向 + 兜底「都不要，我来描述」）——给模型走 elicitation 前的原材料。 */
+function directionCandidateLines(ctx: Ctx, candidates: DirectionCandidate[]): string[] {
+  if (!candidates.length) return []
+  return [
+    L(ctx, '定方向（三选一，选完我再拟分镜）：', 'Pick a direction (choose one; I will draft the storyboard after):'),
+    ...candidates.map((candidate) => `  · ${candidate.title} —— ${candidate.oneLiner}`),
+    `  · ${L(ctx, '都不要，我来描述', 'None of these — I will describe my own')}`,
+  ]
+}
+
+/** B2：waiting 的样片门 id（首镜出来了，等用户过目）。 */
+function waitingSampleGateId(value: Record<string, unknown>): string | null {
+  const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
+  const gate = gates.find((item) => str(item.gateId).startsWith('gate-sample-') && str(item.status) === 'waiting')
+  return gate ? str(gate.gateId) : null
+}
+
+/** B3：信任档位人话标签（合同/状态/改档转述都用这一处）。 */
+const TRUST_LABEL: Record<string, { zh: string; en: string }> = {
+  key_confirm: { zh: '关键确认（默认，五门全开）', en: 'key confirmations (default; all gates on)' },
+  budget_only: { zh: '只管钱（跳过创意与样片门）', en: 'budget only (skips creative + sample gates)' },
+  confirm_all: { zh: '全程确认（每镜提交前都停）', en: 'confirm everything (stops before each shot)' },
+}
+function trustLabel(ctx: Ctx, level: string): string {
+  const hint = TRUST_LABEL[level] || TRUST_LABEL.key_confirm
+  return L(ctx, hint.zh, hint.en)
+}
+
 export type ToolOutcome = {
   /** CLI 文本（模型转述原材料）。null = 该工具维持 JSON 直出（画布低层工具）。 */
   text: string | null
@@ -103,15 +145,20 @@ export function buildToolOutcome(
       goal ? `${L(ctx, '目标', 'goal')}「${truncate(goal)}」` : null,
       duration,
     ])
+    // B3：合同转述带信任档位——budget_only 时明说创意/样片门会自动过，agent 别再多问。
+    const trustLevel = str(value.trustLevel) || 'key_confirm'
     const text = [
       `✓ ${L(ctx, '制作草稿已创建', 'Production draft created')} ${runId} · ${L(ctx, '未花费', 'nothing spent')}`,
       echo ? `  ${echo}` : null,
-      L(ctx, '还没批准预算，也没有调用付费生成。下一步：定创意方向。', 'No budget approved and no paid generation yet. Next: settle the creative direction.'),
+      `  ${L(ctx, '信任档位', 'Trust level')}：${trustLabel(ctx, trustLevel)}`,
+      trustLevel === 'budget_only'
+        ? L(ctx, '还没批准预算，也没有调用付费生成。已按「只管钱」自动跳过创意与样片门，下一步等预算门。', 'No budget approved and no paid generation yet. Under budget-only, creative and sample gates auto-approve — next stop is the budget gate.')
+        : L(ctx, '还没批准预算，也没有调用付费生成。下一步：定创意方向。', 'No budget approved and no paid generation yet. Next: settle the creative direction.'),
     ].filter(Boolean).join('\n') + openLine
     return {
       text,
       outcome: {
-        kind: 'run_draft', runId, projectId,
+        kind: 'run_draft', runId, projectId, trustLevel,
         params: { playbook: str(args.playbook), goal, durationSeconds: brief.durationSeconds ?? null },
         nextActions: ['pick_direction'],
         openInNomi: openInNomi || null,
@@ -130,19 +177,35 @@ export function buildToolOutcome(
       typeof budget.authorized === 'number' ? `${L(ctx, '预算上限', 'budget cap')} ${budget.authorized}` : null,
       typeof budget.actual === 'number' ? `${L(ctx, '已花费', 'spent')} ${budget.actual}` : null,
     ])
+    // B1：方向门在等 + 已有候选 → 把三选一清单摊进转述（模型据此走 elicitation 问真人）。
+    const direction = waitingDirectionGate(value)
+    const candidateLines = direction ? directionCandidateLines(ctx, direction.candidates) : []
+    // B2：样片门在等 → 提示样片就绪、去 Nomi 过目、满意批量 / 换风格重来（终端看不了图，给深链）。
+    const sampleGateId = waitingSampleGateId(value)
+    const sampleLines = sampleGateId ? [
+      L(ctx, '样片就绪：首镜已生成，先过目再批量剩余镜头。', 'Sample ready: the first shot is generated — review it before the full batch.'),
+      L(ctx, '  满意就批准继续；想改风格就否决（会暂停，改提示词后可继续）。', '  Approve to continue, or reject to pause and adjust the prompt.'),
+    ] : []
+    // B3：状态转述带当前信任档位（非默认时才占一行，避免默认档噪音）。
+    const trustLevel = str(value.trustLevel) || 'key_confirm'
     const text = [
       `[Nomi] ${runId} · ${hint ? L(ctx, hint.zh, hint.en) : status} · ${str(value.stageId) || 'unknown'}`,
       budgetLine ? `  ${budgetLine}` : null,
+      trustLevel !== 'key_confirm' ? `  ${L(ctx, '信任档位', 'Trust level')}：${trustLabel(ctx, trustLevel)}` : null,
       preview.url ? `${L(ctx, '最新预览', 'Latest preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
+      ...candidateLines,
+      ...sampleLines,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
       text,
       outcome: {
-        kind: 'run_status', runId, projectId, status, stageId: str(value.stageId) || null,
+        kind: 'run_status', runId, projectId, status, stageId: str(value.stageId) || null, trustLevel,
         budget: { authorized: budget.authorized ?? null, actual: budget.actual ?? null },
         latestPreviewUrl: str(preview.url) || null,
-        nextActions: hint ? [hint.action] : [],
+        ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
+        ...(sampleGateId ? { sampleGateId } : {}),
+        nextActions: direction && direction.candidates.length ? ['decide_direction'] : sampleGateId ? ['review_sample'] : hint ? [hint.action] : [],
         openInNomi: openInNomi || null,
       },
     }
@@ -178,6 +241,26 @@ export function buildToolOutcome(
         previewUrl: str(preview.url) || null, nomiUri: nomiUri || null,
         nextActions: ['open_in_nomi'],
         openInNomi: openInNomi || null,
+      },
+    }
+  }
+
+  if (toolName === 'nomi_control_run' && str(args.action) === 'set_trust') {
+    // B3 改档转述：报新档位 + 它意味着什么（budget_only=接下来创意/样片门不再打扰；预算门仍在）。
+    const trustLevel = str(args.trustLevel) || 'key_confirm'
+    const text = [
+      `✓ ${L(ctx, '信任档位已改为', 'Trust level set to')}：${trustLabel(ctx, trustLevel)} · ${runId}`,
+      trustLevel === 'budget_only'
+        ? L(ctx, '接下来的创意方向门与样片门会自动通过；预算门仍会请示，不会偷偷花钱。', 'Creative direction and sample gates will auto-approve from here; the budget gate still asks — nothing is spent silently.')
+        : trustLevel === 'confirm_all'
+          ? L(ctx, '每镜提交前都会停下确认。', 'The run will stop before each shot for confirmation.')
+          : L(ctx, '五门全开，逐项确认。', 'All gates are on; you confirm each step.'),
+    ].filter(Boolean).join('\n') + openLine
+    return {
+      text,
+      outcome: {
+        kind: 'run_control', runId, projectId, action: 'set_trust', trustLevel,
+        nextActions: [],
       },
     }
   }
@@ -219,6 +302,48 @@ export function buildToolOutcome(
         budget: { actual: budget.actual ?? null },
         inFlightJobs: inFlight,
         nextActions: hint ? [hint.action] : [],
+      },
+    }
+  }
+
+  if (toolName === 'nomi_decide_gate') {
+    // B1：门决议回执。方向门批准 → 报选中方向 + 下一步（拟分镜）；否决 → 报「不变、可重来」。
+    const decision = str(args.decision)
+    const gateId = str(args.gateId)
+    const status = str(value.status)
+    const hint = RUN_STATUS_HINT[status]
+    const isDirection = gateId.startsWith('gate-direction-')
+    // 决议后该门已非 waiting → 直接按 gateId 找它（任意状态），从其候选里解析选中项报出。
+    const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
+    const decidedGate = gates.find((item) => str(item.gateId) === gateId)
+    const gateCandidates = decidedGate && Array.isArray(decidedGate.directionCandidates)
+      ? (decidedGate.directionCandidates as Array<Record<string, unknown>>).map((candidate) => ({ key: str(candidate.key), title: str(candidate.title), oneLiner: str(candidate.oneLiner) }))
+      : []
+    const chosenKey = str(args.choiceKey) || (decidedGate ? str(decidedGate.decidedChoiceKey) : '')
+    const chosen = isDirection && chosenKey
+      ? gateCandidates.find((candidate) => candidate.key === chosenKey)
+      : undefined
+    const isSample = gateId.startsWith('gate-sample-')
+    const head = decision === 'approved'
+      ? (isDirection ? L(ctx, '✓ 方向已定', '✓ Direction settled')
+        : isSample ? L(ctx, '✓ 样片通过，批量生成剩余镜头', '✓ Sample approved — generating the rest')
+        : L(ctx, '✓ 已批准', '✓ Approved'))
+      : (isSample ? L(ctx, '✓ 样片打回，已暂停', '✓ Sample rejected — run paused') : L(ctx, '✓ 已否决', '✓ Rejected'))
+    const text = [
+      `${head} · ${gateId}`,
+      chosen ? `  ${chosen.title} —— ${chosen.oneLiner}` : null,
+      decision === 'rejected' && isDirection ? L(ctx, '方向未变，可重新给方案或让用户自己描述。', 'Direction unchanged; propose again or let the user describe their own.') : null,
+      decision === 'rejected' && isSample ? L(ctx, '已生成的样片保留；改提示词后从这里继续，不重付已花的。', 'The generated sample is kept; adjust the prompt and resume — no double charge.') : null,
+      hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
+    ].filter(Boolean).join('\n') + openLine
+    return {
+      text,
+      outcome: {
+        kind: 'gate_decision', runId, projectId, gateId, decision,
+        ...(chosen ? { choiceKey: chosen.key } : {}),
+        status: status || null,
+        nextActions: hint ? [hint.action] : [],
+        openInNomi: openInNomi || null,
       },
     }
   }
