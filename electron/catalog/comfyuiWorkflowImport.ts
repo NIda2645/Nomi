@@ -224,6 +224,34 @@ function normalizeParamBindings(binding: WorkflowBinding): WorkflowParamBinding[
   return (binding.numeric ?? []).map(numericToParam);
 }
 
+/** 复合键：节点 + 输入名（分隔符与本文件 enumFor 的 `classType inputKey` 同款空格；
+ *  导出是为了调用方/测试**别各自硬写分隔符**——写歪了不报错、只会静默对不上）。 */
+export function inputKeyOf(nodeId: string, inputKey: string): string {
+  return `${nodeId} ${inputKey}`;
+}
+
+/**
+ * 已被「角色」占用的输入（提示词 / 首帧 / 尾帧 / 源视频）。
+ *
+ * 角色和可调参数**抢同一个 setInput 目标**：角色写 {{request.prompt}} 之类，参数写
+ * {{request.params.X}}。同一个 (nodeId,inputKey) 两边都占时后写的赢，而参数是后写的
+ * ——用户的提示词会被参数默认值静默顶掉，跑出来的片子跟他写的没关系，且界面上看不出任何异常。
+ * 所以「一个输入只能有一个身份」是硬不变量，由 buildImportedWorkflow 执行、渲染层据此过滤候选。
+ */
+export function roleBoundInputKeys(binding: WorkflowBinding): Set<string> {
+  const keys = new Set<string>();
+  const roles: Array<[string | undefined, string | undefined]> = [
+    [binding.promptNodeId, binding.promptInputKey],
+    [binding.firstFrameNodeId, binding.firstFrameInputKey],
+    [binding.lastFrameNodeId, binding.lastFrameInputKey],
+    [binding.sourceVideoNodeId, binding.sourceVideoInputKey],
+  ];
+  for (const [nodeId, inputKey] of roles) {
+    if (nodeId && inputKey) keys.add(inputKeyOf(nodeId, inputKey));
+  }
+  return keys;
+}
+
 /** 解析 + 校验 workflow_api.json。非 API 格式（UI 保存格式）给明确可行动的提示。 */
 export function parseComfyApiWorkflow(text: string): ComfyGraph {
   let json: unknown;
@@ -377,16 +405,15 @@ export function analyzeComfyWorkflow(graph: ComfyGraph): WorkflowAnalysis {
 
   const positiveId = findPositiveTargetId(graph);
   const suggestedPrompt = pickSuggestedPrompt(textInputs, positiveId);
-  // 选中当提示词的那个输入，不该再出现在「生成时可用参数」里——它是提示词本身，不是可调参数。
-  // 上面收 widgetInputs 是**在文本分类之前无条件跑的**，所以内联提示词会被两边各收一次。
-  // 用户 2026-08-03 反馈实见：MiniMax H3 工作流里「我提示词应该输入的那个节点」跑进了参数列表。
-  // 只摘掉被选中的这一个，其余文本输入仍可当参数绑（多文本工作流不受影响）。
-  if (suggestedPrompt) {
-    const dup = widgetInputs.findIndex(
-      (w) => w.nodeId === suggestedPrompt.nodeId && w.inputKey === suggestedPrompt.inputKey,
-    );
-    if (dup >= 0) widgetInputs.splice(dup, 1);
-  }
+  // ⚠️ widgetInputs 是**完整**的标量池，故意不在这里摘掉提示词。
+  //
+  // 2026-08-03 那版在这里 splice 掉「被建议当提示词的那一个」，治了症状没治根：候选池被钉死在
+  // 分析那一刻的建议上。用户一旦自己改提示词绑定（自动认错时他一定会改），新选中的那个还留在
+  // 参数池里、原先被摘走的那个也回不来——这正是用户 2026-08-11 又报一次的形态。
+  // 根因是「谁该被排除」取决于**当前绑定**，不是分析时的一次性猜测，所以排除必须由消费方按
+  // 当前 binding 现算（渲染层 comfyuiParamCandidates.ts），这里只负责给全量事实。
+  // 真正的correctness兜底在 buildImportedWorkflow：同一个输入既当提示词又当参数时，
+  // 参数占位会把 {{request.prompt}} 覆盖掉（用户的提示词静默丢失），那里结构性拒掉。
   const startImageId = findLinkedInputTargetId(graph, ["start_image", "first_image", "first_frame", "image", "video"]);
   const endImageId = findLinkedInputTargetId(graph, ["end_image", "last_image", "last_frame"]);
   // 视频输入（LoadVideo.file）另立一槽 —— 它收的是**视频**，绝不能当首帧图发出去
@@ -499,7 +526,7 @@ export function collectGraphEnumOptions(graph: ComfyGraph, index: ComfyObjectInf
       if (typeof value !== "string") continue; // combo widget 值必为字符串；连线/数值不核
       const options = enums.get(inputKey);
       if (!options || options.length === 0) continue;
-      const key = `${node.class_type} ${inputKey}`;
+      const key = `${node.class_type} ${inputKey}`;
       if (seen.has(key)) continue;
       seen.add(key);
       out.push({ classType: node.class_type ?? "", inputKey, options: options.slice(0, ENUM_BAKE_CAP) });
@@ -535,7 +562,13 @@ export function buildImportedWorkflow(graph: ComfyGraph, binding: WorkflowBindin
   const enumFor = new Map((enumOptions ?? []).map((e) => [`${e.classType} ${e.inputKey}`, e.options]));
   const parameters: ParamControl[] = [];
   const seen = new Set<string>();
+  // 角色占用的输入必须先于参数循环取出来：下面的 setInput 会覆盖上面刚写好的角色占位。
+  const roleBound = roleBoundInputKeys(binding);
   for (const np of normalizeParamBindings(binding)) {
+    // 一个输入只能有一个身份。撞上角色时**丢掉这个参数**、保住角色——
+    // 反过来（保参数）意味着用户输入框里打的提示词根本不会送进 ComfyUI，而且界面上完全看不出来。
+    // 丢掉参数只是少一个可调项，是看得见的小损失。旧草稿/手改过的 catalog 也在这里被纠正。
+    if (roleBound.has(inputKeyOf(np.nodeId, np.inputKey))) continue;
     let paramKey = normalizeParamKey(np.paramKey, `comfy_${np.inputKey}`);
     while (seen.has(paramKey)) paramKey = `${paramKey}_${np.nodeId}`; // 同名去重（两个 sampler 都有 seed）
     seen.add(paramKey);

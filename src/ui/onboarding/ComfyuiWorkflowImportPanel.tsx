@@ -13,6 +13,7 @@ import { cn } from '../../utils/cn'
 import { NomiSelect } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { toast } from '../toast'
+import { paramCandidates } from './comfyuiParamCandidates'
 
 type Candidate = {
   nodeId: string; inputKey: string; classType: string; title?: string; value: string | number | boolean
@@ -288,11 +289,15 @@ export function ComfyuiWorkflowImportPanel({ onImported, initial, onCancel, vend
       const parsed = parseNodeValue(raw)
       if (!parsed) return b
       const { nodeId, inputKey } = parsed
-      if (role === 'prompt') return { ...b, promptNodeId: nodeId, promptInputKey: inputKey }
-      if (role === 'sourceVideo') return { ...b, sourceVideoNodeId: nodeId, sourceVideoInputKey: inputKey }
+      // 角色抢走这个输入时，原本绑同一处的参数行必须撤掉：一个输入只能有一个身份，
+      // 否则导入时参数占位会把角色占位覆盖掉（用户的提示词静默失效）。留着那行等于骗他配了个不生效的参数。
+      const params = (b.params ?? []).filter((p) => !(p.nodeId === nodeId && p.inputKey === inputKey))
+      const next = { ...b, params }
+      if (role === 'prompt') return { ...next, promptNodeId: nodeId, promptInputKey: inputKey }
+      if (role === 'sourceVideo') return { ...next, sourceVideoNodeId: nodeId, sourceVideoInputKey: inputKey }
       return role === 'firstFrame'
-        ? { ...b, firstFrameNodeId: nodeId, firstFrameInputKey: inputKey }
-        : { ...b, lastFrameNodeId: nodeId, lastFrameInputKey: inputKey }
+        ? { ...next, firstFrameNodeId: nodeId, firstFrameInputKey: inputKey }
+        : { ...next, lastFrameNodeId: nodeId, lastFrameInputKey: inputKey }
     })
   }
   // 媒体输入分流：LoadVideo.file 收的是**视频**，和首帧图不是一回事（当首帧发 = 把 mp4 当图传，必失败）。
@@ -305,7 +310,10 @@ export function ComfyuiWorkflowImportPanel({ onImported, initial, onCancel, vend
       return { ...b, outputNodeId: nodeId, outputKind: out?.kind }
     })
   }
-  const widgetCandidates = analysis?.widgetInputs?.length ? analysis.widgetInputs : analysis?.numericInputs ?? []
+  // 候选池按**当前** binding 现算：用户改了提示词节点，新选中的立刻从参数里消失、旧的立刻回来。
+  // （钉死在 analysis.suggested 上正是 2026-08-03/08-11 两次反馈的那个 bug，见 comfyuiParamCandidates.ts）
+  const allWidgetInputs = analysis?.widgetInputs?.length ? analysis.widgetInputs : analysis?.numericInputs ?? []
+  const widgetCandidates = paramCandidates(allWidgetInputs, binding)
   const paramTypeOptions = [
     { value: 'number', label: t('onboardingProviders.comfyWorkflow.paramTypeNumber') },
     { value: 'text', label: t('onboardingProviders.comfyWorkflow.paramTypeText') },
