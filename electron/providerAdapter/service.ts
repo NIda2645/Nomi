@@ -142,6 +142,13 @@ export function adapterModelMetadataForPromotion(input: {
   };
 }
 
+/**
+ * 文本模式 create 的占位。文本的验证与生产都走 streamTextTask（AI SDK 那条路），
+ * 从不按这份 create 发请求，promote 也不会为文本建 mapping——它只是让草稿结构完整。
+ * 写成真实的 OpenAI 兼容路径而不是空对象，是为了让人读到时不误会「这里少填了东西」。
+ */
+const TEXT_PRODUCTION_PATH_CREATE = { method: "POST", path: "/chat/completions" } as const;
+
 function primaryTaskKind(kind: BillingModelKind): ProfileKind {
   if (kind === "image") return "text_to_image";
   if (kind === "video") return "text_to_video";
@@ -478,32 +485,64 @@ export class ProviderAdapterService {
     }
 
     try {
-      this.setStage(id, "discovering_docs");
-      const docs = await this.dependencies.discover({
-        baseUrl: String(connection.vendor.baseUrlHint || ""),
-        modelKeys: initial.selectedModelKeys,
-      });
-      if (docs.sources.length === 0 || !docs.corpus.trim()) throw new Error("No official API documentation could be discovered on the provider site");
-      this.store.updateRun(id, (run) => ({
-        ...run,
-        sourceUrls: docs.sources.map((source) => source.url),
-        updatedAt: this.dependencies.now(),
-      }));
-      const languageModels = this.dependencies.resolveLanguageModels(connection);
-      this.setStage(id, "compiling");
-      const selectedModels = connection.models.map((model) => ({
-        modelKey: model.modelKey,
-        label: model.labelZh,
-        kind: model.kind,
-      }));
-      const compilation = await this.dependencies.compile({
-        languageModels,
-        providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
-        authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
-        selectedModels,
-        docs: docs.sources,
-      });
-      let candidate = compilation.draft;
+      // 分级（2026-08-12）：只有「Nomi 不知道接法」的模型才值得查文档 + AI 编译。
+      // 文本的接法全行业已统一到 OpenAI /v1/chat/completions（DeepSeek、Kimi、GLM、Qwen、
+      // 阶跃、MiniMax、豆包、xAI、Mistral 全是；Anthropic、Gemini 也都开了兼容层），
+      // 何况文本验证走 streamTextTask（生产同一条路）、根本不读编译出来的草稿——
+      // 编译它纯属白花时间，还平添「文档没抓到 / 编译失败」这些真实使用路径没有的失败模式。
+      // 旧行为：全部无差别走完整流程，两个 DeepSeek 文本模型烧掉 132 秒后判死。
+      const mediaModels = connection.models.filter((model) => model.kind !== "text");
+      const needsCompile = mediaModels.length > 0;
+      let docs: DiscoveredDocs = { sources: [], corpus: "" };
+      let compilation: ProviderAdapterCompilation = {
+        draft: {
+          provider: {
+            baseUrl: String(connection.vendor.baseUrlHint || ""),
+            authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+            ...(connection.vendor.providerKind ? { providerKind: connection.vendor.providerKind } : {}),
+          },
+          sources: [],
+          models: [],
+        },
+        failures: [],
+      };
+      const languageModels = needsCompile ? this.dependencies.resolveLanguageModels(connection) : [];
+      if (needsCompile) {
+        this.setStage(id, "discovering_docs");
+        docs = await this.dependencies.discover({
+          baseUrl: String(connection.vendor.baseUrlHint || ""),
+          modelKeys: mediaModels.map((model) => model.modelKey),
+        });
+        if (docs.sources.length === 0 || !docs.corpus.trim()) throw new Error("No official API documentation could be discovered on the provider site");
+        this.store.updateRun(id, (run) => ({
+          ...run,
+          sourceUrls: docs.sources.map((source) => source.url),
+          updatedAt: this.dependencies.now(),
+        }));
+        this.setStage(id, "compiling");
+        compilation = await this.dependencies.compile({
+          languageModels,
+          providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
+          authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+          selectedModels: mediaModels.map((model) => ({ modelKey: model.modelKey, label: model.labelZh, kind: model.kind })),
+          docs: docs.sources,
+        });
+      }
+      // 文本条目不经 AI：接法固定、模式表也固定（chat）。合进草稿只为让验证与展示有位置。
+      // 文本条目**以这里为单一真相**——编译器万一也吐了同名文本条目（误分类/被喂了不该喂的），
+      // 一律以这份为准替换掉，否则同一个模型会出现两条、验证跑两遍（有回归钉子）。
+      const textModels = connection.models.filter((model) => model.kind === "text");
+      const textModelKeys = new Set(textModels.map((model) => model.modelKey));
+      const withTextModels = (compiled: readonly AdapterModelDraft[]): AdapterModelDraft[] => [
+        ...compiled.filter((model) => !textModelKeys.has(model.modelKey)),
+        ...textModels.map((model) => ({
+          modelKey: model.modelKey,
+          labelZh: model.labelZh,
+          kind: "text" as const,
+          modes: [{ taskKind: "chat" as const, create: TEXT_PRODUCTION_PATH_CREATE, testParams: {}, sourceUrls: [] }],
+        })),
+      ];
+      let candidate: ProviderAdapterDraft = { ...compilation.draft, models: withTextModels(compilation.draft.models) };
       let results = await this.verifyDraft(id, connection, candidate, 1, compilation.failures);
       const maxRepairs = this.dependencies.maxRepairs ?? 2;
       let repairError: string | undefined;
@@ -522,10 +561,12 @@ export class ProviderAdapterService {
         if (!failure) break;
         this.store.updateRun(id, (run) => ({ ...run, stage: "repairing", repairAttempt, updatedAt: this.dependencies.now() }));
         try {
-          candidate = await this.dependencies.repair({
+          // 只让重修碰它修得动的那些模型，修完再把文本条目按单一真相合回去——
+          // 否则重修会顺手用 AI 重新生成文本条目，把确定性的那份覆盖掉。
+          const repaired = await this.dependencies.repair({
             languageModels,
             providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
-            selectedModelKeys: candidate.models.map((model) => model.modelKey),
+            selectedModelKeys: candidate.models.filter((model) => repairableKeys.has(model.modelKey)).map((model) => model.modelKey),
             previousDraft: candidate,
             failure: {
               stage: failure.stage || "create",
@@ -535,6 +576,7 @@ export class ProviderAdapterService {
             },
             docs: docs.sources,
           });
+          candidate = { ...repaired, models: withTextModels(repaired.models) };
         } catch (error) {
           repairError = redactAdapterSecrets(error instanceof Error ? error.message : String(error));
           break;

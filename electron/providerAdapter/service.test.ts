@@ -93,8 +93,10 @@ function fakeCatalog(): ProviderAdapterCatalogPort & {
       this.staged.push(input.models.map((model) => model.modelKey));
       return { vendor, models };
     },
-    load() {
-      return { vendor, models, apiKey: "sk-test" };
+    // 与真实 defaultCatalog.load 一致：按本次选中的模型过滤（分级要靠它判断有没有媒体模型）。
+    load(_vendorKey, selectedModelKeys) {
+      const selected = new Set(selectedModelKeys);
+      return { vendor, models: models.filter((model) => selected.has(model.modelKey)), apiKey: "sk-test" };
     },
     promote(input) {
       this.promoted.push({
@@ -222,19 +224,24 @@ describe("ProviderAdapterService", () => {
     await service.executeRun(started.id);
 
     expect(catalog.staged).toEqual([["text-v1", "paint-v2"]]);
-    expect(catalog.promoted[0]?.verified).toEqual(["text-v1/chat", "paint-v2/text_to_image"]);
+    // 草稿次序＝先编译出来的媒体模型，再合入确定性的文本条目（分级，2026-08-12）。
+    expect(catalog.promoted[0]?.verified).toEqual(["paint-v2/text_to_image", "text-v1/chat"]);
     expect(service.getRun(started.id)?.stage).toBe("partial");
   });
 
   it("retests every mode after an AI repair so a fix cannot regress a prior pass", async () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
-    const verify = vi
-      .fn()
-      .mockImplementationOnce(async ({ mode }) => ({ ok: true, taskKind: mode.taskKind }))
-      .mockImplementationOnce(async ({ mode }) => ({ ok: true, taskKind: mode.taskKind }))
-      .mockImplementationOnce(async ({ mode }) => ({ ok: false, taskKind: mode.taskKind, stage: "create", error: "bad image field" }))
-      .mockImplementation(async ({ mode }) => ({ ok: true, taskKind: mode.taskKind }));
+    // 按 taskKind 定位失败，不按调用次序——次序会随分级（媒体先编译、文本后合入）而变，
+    // 而这条测的意图是「某个媒体模式失败过一次 → 重修 → 全量重测」，与次序无关。
+    let imageEditAttempts = 0;
+    const verify = vi.fn(async ({ mode }) => {
+      if (mode.taskKind === "image_edit") {
+        imageEditAttempts += 1;
+        if (imageEditAttempts === 1) return { ok: false, taskKind: mode.taskKind, stage: "create", error: "bad image field" };
+      }
+      return { ok: true, taskKind: mode.taskKind };
+    });
     deps.verify = verify;
     deps.repair = vi.fn(async () => draft());
     const service = new ProviderAdapterService(store(), deps);
@@ -248,9 +255,9 @@ describe("ProviderAdapterService", () => {
     }));
     expect(verify).toHaveBeenCalledTimes(6);
     expect(catalog.promoted[0]?.verified).toEqual([
-      "text-v1/chat",
       "paint-v2/text_to_image",
       "paint-v2/image_edit",
+      "text-v1/chat",
     ]);
     expect(service.getRun(started.id)?.stage).toBe("completed");
   });
@@ -330,25 +337,48 @@ describe("ProviderAdapterService", () => {
   it("continues verification and partial publication when one selected model cannot be compiled", async () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
+    // 编译不出来的只可能是媒体模型——文本压根不进编译器（分级，2026-08-12）。
     deps.compile = async () => ({
-      draft: { ...draft(), models: [draft().models[1]] },
-      failures: [{ modelKey: "text-v1", error: "No documented chat mode" }],
+      draft: { ...draft(), models: [] },
+      failures: [{ modelKey: "paint-v2", error: "No documented image mode" }],
     });
     const service = new ProviderAdapterService(store(), deps);
     const started = service.start(startInput);
 
     await service.executeRun(started.id);
 
-    expect(catalog.promoted[0]?.verified).toEqual(["paint-v2/text_to_image", "paint-v2/image_edit"]);
+    expect(catalog.promoted[0]?.verified).toEqual(["text-v1/chat"]);
     expect(service.getRun(started.id)).toMatchObject({
       stage: "partial",
       models: expect.arrayContaining([
         expect.objectContaining({
-          modelKey: "text-v1",
+          modelKey: "paint-v2",
           modes: [expect.objectContaining({ state: "failed", stage: "compile" })],
         }),
       ]),
     });
+  });
+
+  // 分级的核心不变量（2026-08-12）：文本的接法行业已统一，且文本验证走 streamTextTask、
+  // 根本不读编译出来的草稿——查文档 + AI 编译对它是纯开销，还平添「文档没抓到 / 编译失败」
+  // 这些真实使用路径没有的失败模式。用户接两个 DeepSeek 文本模型曾为此烧掉 132 秒后判死。
+  it("never discovers docs or compiles when only text models were selected", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.discover = vi.fn(async () => ({ sources: [{ url: "https://docs.example.com/api", text: "API reference" }], corpus: "API reference" }));
+    deps.compile = vi.fn(async () => ({ draft: draft(), failures: [] }));
+    deps.resolveLanguageModels = vi.fn(() => [{} as LanguageModelV1]);
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [{ modelKey: "text-v1", labelZh: "Text V1", kind: "text" as const }] });
+
+    await service.executeRun(started.id);
+
+    expect(deps.discover).not.toHaveBeenCalled();
+    expect(deps.compile).not.toHaveBeenCalled();
+    // 连「得先有个文本大脑」都不再需要——加第一个文本模型不该反过来要求已经有文本模型。
+    expect(deps.resolveLanguageModels).not.toHaveBeenCalled();
+    expect(catalog.promoted[0]?.verified).toEqual(["text-v1/chat"]);
+    expect(service.getRun(started.id)?.stage).toBe("completed");
   });
 
   it("schedules interrupted non-terminal runs for resume", () => {
