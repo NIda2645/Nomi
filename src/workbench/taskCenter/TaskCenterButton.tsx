@@ -57,6 +57,14 @@ export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Elemen
   // 失焦提醒的订阅住这里：本按钮全程挂载（跟着顶栏），是最稳的宿主。
   useBatchFinishNotifier()
 
+  // 制作深链落点：外部 AI（MCP）深链进来 → 打开任务中心（制作任务的家），
+  // 沿用仓内既有的 window CustomEvent 约定（同 'nomi-open-settings'）。
+  React.useEffect(() => {
+    const handler = () => setOpened(true)
+    window.addEventListener('nomi-open-task-center', handler)
+    return () => window.removeEventListener('nomi-open-task-center', handler)
+  }, [])
+
   // E2E 专用桥（同 CameraMoveCaptureHost 的既有写法）：仅当 localStorage['__nomiE2E']==='1' 时把队列 store
   // 挂到 window，供 R13 走查在页面上下文里摆出各种队列状态截图取证。生产从不置该标志 → 永不暴露。
   React.useEffect(() => {

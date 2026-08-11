@@ -973,6 +973,12 @@ export const zhGenerationCommon = {
       focusedArtifact: '已定位产物',
       pending: '等待产物',
       details: '制作详情',
+      playPreview: '播放这段预览',
+      openPreview: '打开这个产物',
+    },
+    route: {
+      waiting: '{{host}} 那边等你决定——回到那边一句话就行',
+      fallback: '也可以在这里决定',
     },
     runAction: {
       'open-stage': '查看当前阶段',
@@ -2133,6 +2139,12 @@ export const enGenerationCommon = {
       focusedArtifact: 'Focused artifact',
       pending: 'Waiting for artifact',
       details: 'Production details',
+      playPreview: 'Play this preview',
+      openPreview: 'Open this artifact',
+    },
+    route: {
+      waiting: '{{host}} is waiting on your decision — just answer there',
+      fallback: 'Or decide here',
     },
     runAction: {
       'open-stage': 'Open current stage',

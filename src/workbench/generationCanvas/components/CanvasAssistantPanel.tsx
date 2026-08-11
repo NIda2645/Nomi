@@ -42,8 +42,6 @@ import { AttachmentRail } from '../../ai/composer/AttachmentRail'
 import { AutoGrowTextarea } from '../../ai/composer/AutoGrowTextarea'
 import { COMPOSER_ATTACHMENT_ACCEPT, useComposerAttachments } from '../../ai/composer/useComposerAttachments'
 import type { ComposerAttachment } from '../../ai/composer/composerAttachmentTypes'
-import { ProductionStatusPanel } from '../../production/ProductionStatusPanel'
-import { useProductionStatus } from '../../production/useProductionStatus'
 
 type PendingToolCall = {
   toolCallId: string
@@ -108,7 +106,6 @@ export default function CanvasAssistantPanel({
   // S9:每轮对话结束后递增,触发记忆卡重取(本轮新事件可能提炼出新事实)。
   const [memoryRefreshKey, setMemoryRefreshKey] = React.useState(0)
   const threadBottomRef = React.useRef<HTMLDivElement | null>(null)
-  const productionStatus = useProductionStatus()
 
   // toolCallId → pending call 查找表(approveCalls 事务批要按序取多个 call,函数式 setState 取不到)。
   const pendingByIdRef = React.useRef(new Map<string, PendingToolCall>())
@@ -633,16 +630,8 @@ export default function CanvasAssistantPanel({
         </div>
       </header>
       <MemoryFold refreshKey={memoryRefreshKey} />
-      {productionStatus.production.run && productionStatus.view ? (
-        <ProductionStatusPanel
-          projectId={productionStatus.production.run.projectId}
-          view={productionStatus.view}
-          artifacts={productionStatus.production.run.artifacts}
-          focusedArtifactId={productionStatus.focusedArtifactId}
-          onPrimaryAction={(action) => { void productionStatus.onPrimaryAction(action) }}
-          onControl={(action) => { void productionStatus.onControl(action) }}
-        />
-      ) : null}
+      {/* 制作任务不再挂这里：它的家是任务中心（顶栏常驻、任何视图可开）。助手面板只和 Nomi 聊画布，
+          不再让两套操作相邻（plan 2026-08-11-nomi-side-viewer-and-fallback N2）。 */}
       <AssistantTimeline
         messages={messages}
         staleBoundaryId={staleBoundaryId}
