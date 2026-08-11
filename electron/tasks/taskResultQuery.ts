@@ -4,6 +4,7 @@
 import { trim, type JsonRecord } from "../jsonUtils";
 import type { Mapping, Model, ProfileKind } from "../catalog/types";
 import { readCatalog } from "../catalog/catalogStore";
+import { desktopT } from "../i18n";
 import { classifyTaskCacheMiss, wasTaskAdmitted } from "./taskAdmission";
 import { activeTaskProjectFallback, unlocalizedTaskAsset } from "./activeProjectFallback";
 import { traceVendorCompleted } from "../events/vendorCallTrace";
@@ -21,6 +22,60 @@ import {
   localizeTaskAsset,
   taskCache,
 } from "../runtime";
+
+// ── 未登记状态动词的有界容忍（根因修复，见 docs/plan/2026-08-11-unrecognized-task-status-root-fix.md）──
+//
+// 病根：归一时「不认得的动词」曾被压成 queued，而 queued = 「继续轮询」的指令 —— 上游已经返回
+// failure/rejected，系统却读成「还在排队」，把预算烧完也没把真因报出来（用户视角 = 永远转圈）。
+// 补动词表只是止血，下一个没见过的词照样中招；这里治的是**兜底语义默认乐观**本身。
+//
+// 判定必须**同时**满足下面两个条件（绝不一见未知就判死）。取舍是不对称的：
+//   · 误杀（未知动词其实表示「进行中」）→ 用户损失一次**已付费**的生成，更贵；
+//   · 误等（未知动词表示失败）→ 只浪费时间，不丢钱。
+// 所以窗口取偏宽的 2 分钟而非几秒；对视频（硬超时 20min）仍是提前一个数量级报错。真误杀了，
+// 失败文案也明说「可能仍在上游运行」并带上原始动词，用户能去平台核对、我们能据日志补表。
+const UNRECOGNIZED_STATUS_MIN_POLLS = 4;
+const UNRECOGNIZED_STATUS_GRACE_MS = 120_000;
+
+/** (vendor, 动词) 去重：轮询每 1.5-3s 一轮，不去重会把日志刷爆。 */
+const reportedUnrecognizedStatuses = new Set<string>();
+
+/**
+ * 诊断出口：看到这条日志就知道该往哪家的 statusMapping 补哪个词
+ * （如 catalog/newapiTransport.ts 的 NEWAPI_STATUS_MAPPING）。
+ */
+function reportUnrecognizedStatus(cached: CachedTask, taskId: string, verb: string): void {
+  const dedupeKey = `${cached.vendor}::${verb.toLowerCase()}`;
+  if (reportedUnrecognizedStatuses.has(dedupeKey)) return;
+  reportedUnrecognizedStatuses.add(dedupeKey);
+  console.warn(
+    `[nomi:task] 上游返回了未登记的任务状态动词 "${verb}" —— 已按「未知」处理（暂继续轮询）。` +
+      ` vendor=${cached.vendor} model=${cached.model?.modelKey || "?"} kind=${cached.request.kind} taskId=${taskId}。` +
+      ` 若它其实是终态，请补进该 vendor 的 statusMapping。`,
+  );
+}
+
+/**
+ * 推进未知动词连击（纯函数，直接可测）。认得的动词 → undefined（清零）。
+ *
+ * 动词换了**不重新起算时钟**，只更新报错要用的词：否则上游在两个未知动词间来回切，
+ * 就能让计时永远归零、绕过判定 —— 那等于这个修复不存在。
+ */
+export function advanceUnrecognizedStatusStreak(
+  previous: CachedTask["unrecognizedStatusStreak"],
+  unrecognizedStatus: string,
+  now: number,
+): CachedTask["unrecognizedStatusStreak"] {
+  if (!unrecognizedStatus) return undefined;
+  if (!previous) return { verb: unrecognizedStatus, polls: 1, firstSeenAt: now };
+  return { verb: unrecognizedStatus, polls: previous.polls + 1, firstSeenAt: previous.firstSeenAt };
+}
+
+/** 连击是否已耗尽容忍窗口（次数与时长**都**要够，见上方取舍说明）。 */
+export function unrecognizedStatusExhausted(streak: CachedTask["unrecognizedStatusStreak"], now: number): boolean {
+  if (!streak) return false;
+  return streak.polls >= UNRECOGNIZED_STATUS_MIN_POLLS && now - streak.firstSeenAt >= UNRECOGNIZED_STATUS_GRACE_MS;
+}
 
 /**
  * 无状态重建续查上下文（治本核心）：内存 taskCache 是 TTL 1h/上限 200/重启即空 的工作缓存，
@@ -85,10 +140,26 @@ async function executeTaskQuery(taskId: string, cached: CachedTask): Promise<{ v
       vendor,
       model,
     });
-    if (normalized.result.status === "succeeded" || normalized.result.status === "failed") {
+    // 未知动词的有界容忍：连击够久 → 把「假装排队」翻成诚实的失败，并如实带上原始动词。
+    const now = Date.now();
+    const streak = advanceUnrecognizedStatusStreak(cached.unrecognizedStatusStreak, normalized.unrecognizedStatus, now);
+    if (normalized.unrecognizedStatus) reportUnrecognizedStatus(cached, taskId, normalized.unrecognizedStatus);
+    const result = unrecognizedStatusExhausted(streak, now)
+      ? {
+          ...normalized.result,
+          status: "failed" as const,
+          error: desktopT("tasks.unrecognizedStatus", {
+            status: streak?.verb || "",
+            polls: streak?.polls || 0,
+            seconds: Math.round((now - (streak?.firstSeenAt || now)) / 1000),
+          }),
+        }
+      : normalized.result;
+
+    if (result.status === "succeeded" || result.status === "failed") {
       // 终态才入日志(轮询 tick 不记);cache.delete 保证单次触发
-      traceVendorCompleted(cached.projectId, { runId: taskId, nodeId: cached.nodeId, status: normalized.result.status, assetCount: normalized.result.assets.length });
-      rememberTaskResult(cached.projectId || "", cached.fingerprint, normalized.result);
+      traceVendorCompleted(cached.projectId, { runId: taskId, nodeId: cached.nodeId, status: result.status, assetCount: result.assets.length });
+      rememberTaskResult(cached.projectId || "", cached.fingerprint, result);
       taskCache.delete(taskId);
     } else {
       admitTask(taskId, {
@@ -98,9 +169,11 @@ async function executeTaskQuery(taskId: string, cached: CachedTask): Promise<{ v
           ...(cached.providerMeta || {}),
           ...normalized.providerMeta,
         },
+        // 必须显式回写：认得的动词会让 streak 变 undefined，靠 ...cached 会把旧连击带回来。
+        unrecognizedStatusStreak: streak,
       });
     }
-    return { vendor: cached.vendor, result: normalized.result };
+    return { vendor: cached.vendor, result };
   }
 
   const assetUrl = extractAssetUrl(cached.raw);
