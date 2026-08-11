@@ -14,15 +14,13 @@
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconStack2, IconChevronRight, IconPlus, IconPhoto, IconVideo, IconMessageCircle, IconMusic, IconTrash, IconRefresh } from '@tabler/icons-react'
+import { IconChevronRight, IconPlus, IconPhoto, IconVideo, IconMessageCircle, IconMusic, IconRefresh } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 import { OnboardingWizard } from './OnboardingWizard'
-import { FoldableModelCard } from './FoldableModelCard'
 import { VendorOnboardCard } from './VendorOnboardCard'
 import { AvailableGroup } from './AvailableGroup'
 import { type ChipModel } from './ModelChipGroups'
-import { ModelEnableEditor } from './ModelEnableEditor'
-import { CustomVendorManage } from './CustomVendorManage'
+import { CustomVendorCard } from './CustomVendorCard'
 import { CustomCallEditor, type CustomCallTarget } from './CustomCallEditor'
 import { consumePendingCustomCallIntent } from './customCallIntent'
 import { confirmAndDeleteVendor } from './vendorDeleteAction'
@@ -32,7 +30,6 @@ import { ComfyuiLocalCard, COMFYUI_VENDOR_KEY } from './ComfyuiLocalCard'
 import { AddComfyuiInstanceButton } from './AddComfyuiInstanceButton'
 import { isComfyuiVendorKey } from '../../workbench/generationCanvas/runner/comfyuiTaskControl'
 import { NetworkSection } from './NetworkSection'
-import { adapterProviderState } from './adapterVerificationViewModel'
 import { CODEX_LOCAL_VENDOR_KEY } from './codexLocalProvider'
 import { CodexLocalImageCard } from './CodexLocalImageCard'
 import { KNOWN_VENDORS, isKnownVendor } from '../../config/knownVendors'
@@ -412,52 +409,21 @@ export function OnboardingDrawer(): JSX.Element {
             <div className="text-micro font-semibold text-nomi-ink-40 pt-1 px-0.5">{t('onboardingProviders.drawer.connected')}</div>
             {connectedKnown.map(renderVendorCard)}
             {otherVendorGroups.map((group) => {
-              const enabledN = group.models.filter((m) => m.enabled).length
               const meta = vendorMeta.get(group.vendorKey)
-              const adapterCard = adapterProviderState(group.models)
-              const adapterStatusLabel = adapterCard.state === 'configured'
-                ? t('onboardingProviders.drawer.configured')
-                : t(`onboardingProviders.adapterVerification.cardStatus.${adapterCard.state}`)
               return (
-                <FoldableModelCard
+                <CustomVendorCard
                   key={group.vendorKey}
-                  glyph={<IconStack2 size={16} stroke={1.6} />}
-                  glyphTone="soft"
+                  vendorKey={group.vendorKey}
                   name={group.name}
-                  subtitle={t('onboardingProviders.drawer.modelsEnabled', { enabled: enabledN, total: group.models.length })}
-                  status={adapterCard.state === 'configured' || adapterCard.state === 'verified' ? 'ok' : 'todo'}
-                  statusLabel={adapterStatusLabel}
-                  defaultExpanded={false}
-                  headerAction={
-                    <button
-                      type="button"
-                      aria-label={t('onboardingProviders.drawer.deleteVendorAria', { name: group.name })}
-                      title={t('onboardingProviders.drawer.deleteVendorTitle')}
-                      onClick={() => void handleDeleteVendor(group.vendorKey, group.name, group.models.length)}
-                      className={cn(
-                        'grid place-items-center size-7 rounded-nomi-sm text-nomi-ink-40 transition-colors',
-                        'hover:bg-[var(--workbench-danger-soft)] hover:text-workbench-danger',
-                      )}
-                    >
-                      <IconTrash size={15} stroke={1.7} />
-                    </button>
-                  }
-                >
-                  <ModelEnableEditor
-                    models={group.models}
-                    onToggle={handleSetEnabled}
-                    onDelete={handleDelete}
-                    onCustomCall={(row) => openCustomCall(row.vendorKey, row.modelKey)}
-                  />
-                  <CustomVendorManage
-                    vendorKey={group.vendorKey}
-                    vendorName={group.name}
-                    baseUrl={meta?.baseUrl ?? ''}
-                    hasApiKey={meta?.hasApiKey ?? true}
-                    modelCount={group.models.length}
-                    onChanged={refresh}
-                  />
-                </FoldableModelCard>
+                  models={group.models}
+                  baseUrl={meta?.baseUrl ?? ''}
+                  hasApiKey={meta?.hasApiKey ?? true}
+                  onToggle={handleSetEnabled}
+                  onDelete={handleDelete}
+                  onCustomCall={(row) => openCustomCall(row.vendorKey, row.modelKey)}
+                  onDeleteVendor={() => void handleDeleteVendor(group.vendorKey, group.name, group.models.length)}
+                  onChanged={refresh}
+                />
               )
             })}
             {comfyuiConnected.map((inst) => (

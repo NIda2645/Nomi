@@ -14,6 +14,8 @@ import { cn } from '../../utils/cn'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { confirmDialog } from '../../design'
 import { confirmAndDeleteVendor } from './vendorDeleteAction'
+import { VendorConnectionNotice } from './VendorConnectionNotice'
+import type { VendorConnection } from './useVendorHealth'
 
 type CustomVendorManageProps = {
   vendorKey: string
@@ -21,6 +23,9 @@ type CustomVendorManageProps = {
   baseUrl: string
   hasApiKey: boolean
   modelCount: number
+  /** 连接健康（由 CustomVendorCard 持有，与卡片胶囊同一份，不各自探）。 */
+  connection: VendorConnection | null
+  onRecheck: () => void
   /** 变更后刷新外层目录。 */
   onChanged: () => void
 }
@@ -31,6 +36,8 @@ export function CustomVendorManage({
   baseUrl,
   hasApiKey,
   modelCount,
+  connection,
+  onRecheck,
   onChanged,
 }: CustomVendorManageProps): JSX.Element {
   const { t } = useTranslation()
@@ -60,12 +67,14 @@ export function CustomVendorManage({
       setKeyDraft('')
       setKeyEditing(false)
       onChanged()
+      // 换 key 不改地址（健康检查的 fingerprint 不变），所以显式重探一次。
+      onRecheck()
     } catch (e) {
       setError(t('onboardingProviders.vendorCard.saveFailed', { message: e instanceof Error ? e.message : String(e) }))
     } finally {
       setBusy(false)
     }
-  }, [keyDraft, vendorKey, onChanged, t])
+  }, [keyDraft, vendorKey, onChanged, onRecheck, t])
 
   const handleDisconnect = React.useCallback(async () => {
     const bridge = getDesktopBridge()
@@ -188,6 +197,9 @@ export function CustomVendorManage({
           </div>
         </div>
       )}
+
+      {/* 连接状态：紧挨地址行——填错 BaseURL 正是这类家最常见的失败原因（StepFun 反馈）。 */}
+      <VendorConnectionNotice connection={connection} onRecheck={onRecheck} disabled={busy} />
 
       {/* 接入地址（可就地改——StepFun 那类填错地址的根因入口）*/}
       {urlEditing ? (

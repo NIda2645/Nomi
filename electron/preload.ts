@@ -458,6 +458,13 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
         status?: number;
         error?: string;
       }>,
+    vendorHealth: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:onboarding:vendor-health", payload) as Promise<{
+        vendorKey: string;
+        state: "reachable" | "unreachable" | "unsupported";
+        reason?: string;
+        checkedAt: number;
+      }>,
   },
   update: {
     appInfo: () => ipcRenderer.invoke("nomi:app:version"),

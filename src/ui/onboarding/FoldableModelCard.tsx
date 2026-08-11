@@ -17,7 +17,8 @@ type FoldableModelCardProps = {
   glyphTone?: 'ink' | 'soft' | 'logo'
   name: string
   subtitle: string
-  status: 'ok' | 'todo'
+  /** ok=绿点常态 / todo=灰点待办 / error=红底红字（需要用户行动的异常，值得跳出来）。 */
+  status: 'ok' | 'todo' | 'error'
   /** 状态胶囊文案；缺省按 status：ok→已连通 / todo→待接入。 */
   statusLabel?: string
   /** 名字右侧的软标（如「新手推荐」）；不传则不显。 */
@@ -76,9 +77,19 @@ export function FoldableModelCard({
         </span>
         {badge ? <span className="shrink-0">{badge}</span> : null}
         <span
-          className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded-full bg-nomi-ink-10 text-micro font-semibold text-nomi-ink-60 shrink-0"
+          className={cn(
+            'inline-flex items-center gap-1.5 px-2 py-[3px] rounded-full text-micro font-semibold shrink-0',
+            status === 'error'
+              ? 'bg-[var(--workbench-danger-soft)] text-workbench-danger'
+              : 'bg-nomi-ink-10 text-nomi-ink-60',
+          )}
         >
-          <span className={cn('w-1.5 h-1.5 rounded-full', status === 'ok' ? 'bg-workbench-success' : 'bg-nomi-ink-30')} />
+          <span
+            className={cn(
+              'w-1.5 h-1.5 rounded-full',
+              status === 'ok' ? 'bg-workbench-success' : status === 'error' ? 'bg-workbench-danger' : 'bg-nomi-ink-30',
+            )}
+          />
           {statusLabel ?? (status === 'ok' ? t('onboardingProviders.modelControls.connected') : t('onboardingProviders.modelControls.pending'))}
         </span>
         <IconChevronDown
