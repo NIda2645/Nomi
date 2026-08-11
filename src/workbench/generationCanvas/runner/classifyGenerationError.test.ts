@@ -388,3 +388,33 @@ describe('模型已下线 ≠ 模型被停用（删模型不能变成坑换坑�
     expect(report.primary).toBe('open-model-access')
   })
 })
+
+// 眼见链末端：未登记状态动词的根因修复（electron/tasks/taskResultQuery）把上游原始动词写进
+// TaskResult.error，而错误卡显示的是 classifyGenerationError(...).reason（NodeErrorReport 里的
+// 加粗大标题）。若哪天有分类器把这条消息吃掉、替换成自己的人话文案，用户就又看不到 "failure"
+// 这个原始动词了——那正是这次修复要送到用户眼前的东西。这里把它钉死。
+// 文案真相源：electron/i18n.ts 的 tasks.unrecognizedStatus / tasks.pollTimedOut。
+describe('未登记状态动词：原始动词必须原样送到错误卡标题', () => {
+  const UNRECOGNIZED =
+    '上游返回了无法识别的任务状态：「failure」。连续查询 4 次、持续 160 秒都是这个状态，Nomi 按失败处理。该任务也可能仍在供应商侧运行——请到供应商后台核对。'
+
+  it('分类不吞掉消息，reason 原样带着上游动词', () => {
+    const report = classifyGenerationError(UNRECOGNIZED)
+    expect(report.reason).toContain('failure')
+    expect(report.reason).toBe(UNRECOGNIZED)
+  })
+
+  it('不被别的分类器误抢（消息里的数字不该被当成余额/限流码）', () => {
+    const report = classifyGenerationError(UNRECOGNIZED)
+    expect(report.reason).not.toBe('余额不足')
+    expect(report.reason).not.toBe('配额或限流')
+    expect(report.reason).not.toBe('这个模型已经下线了')
+  })
+
+  it('轮询超时文案同样不被吞（含「超时」二字，别被网络超时抢走原文）', () => {
+    const report = classifyGenerationError(
+      '等待生成结果超时（已等 240 秒，最后状态：queued）。任务可能仍在供应商侧运行——请到供应商后台核对，或稍后重新拉取结果。',
+    )
+    expect(report.reason).toContain('仍在供应商侧运行')
+  })
+})
