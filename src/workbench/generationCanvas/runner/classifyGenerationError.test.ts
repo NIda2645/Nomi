@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { classifyGenerationError } from './generationRunController'
+import { desktopT } from '../../../../electron/i18n'
 
 describe('classifyGenerationError — 已知分类', () => {
   it('API Key 无效', () => {
@@ -416,5 +417,41 @@ describe('未登记状态动词：原始动词必须原样送到错误卡标题'
       '等待生成结果超时（已等 240 秒，最后状态：queued）。任务可能仍在供应商侧运行——请到供应商后台核对，或稍后重新拉取结果。',
     )
     expect(report.reason).toContain('仍在供应商侧运行')
+  })
+})
+
+// 眼见链末端 ②：「没有 query op」的根因修复（同上一条的姊妹路径）。这里**直接读 electron/i18n
+// 的真串**而不是抄一份——抄的那份会跟着源漂移，测试就变成自说自话。
+// 钉的是两件事，都是实测踩到过的：
+//  ① 长度：错误卡大标题走 truncateLine，**超 100 字截尾**，而被截掉的恰是「该怎么办」那半句。
+//     初版文案 110 字，用户看到的结尾是「…确认这次调用是否真的出…」——行动指引整段丢失。
+//  ② 不被别的分类器抢走（文案里有「配置」「失败处理」这类高频关键词）。
+describe('无 query op：诚实失败文案要完整送到错误卡标题', () => {
+  const NO_QUERY = desktopT('tasks.noQueryOperation')
+
+  it('短到不会被标题截断（含上游原话时也要留得下）', () => {
+    const report = classifyGenerationError(NO_QUERY)
+    expect(report.reason).toBe(NO_QUERY)
+    expect(report.reason).not.toContain('…')
+    // 留出上游原话的余量：中转的「no available channel」一类要能跟着一起显示。
+    const withDetail = NO_QUERY + desktopT('tasks.upstreamSaid', { detail: 'no available channel' })
+    expect(classifyGenerationError(withDetail).reason).toContain('no available channel')
+  })
+
+  it('「该怎么办」那半句必须活着到用户眼前（被截掉就等于没说）', () => {
+    expect(classifyGenerationError(NO_QUERY).reason).toContain('接入配置')
+  })
+
+  it('不被别的分类器误抢（「配置」「失败」都是高频词）', () => {
+    const report = classifyGenerationError(NO_QUERY)
+    expect(report.reason).not.toBe('模型未配置')
+    expect(report.reason).not.toBe('生成失败')
+    expect(report.reason).not.toBe('余额不足')
+  })
+
+  it('上游原话里有真因时让真因赢——余额不足要给「去充值」而不是我们的通用文案', () => {
+    const report = classifyGenerationError(NO_QUERY + desktopT('tasks.upstreamSaid', { detail: 'insufficient balance' }))
+    expect(report.reason).toBe('余额不足')
+    expect(report.primary).toBe('open-model-access')
   })
 })

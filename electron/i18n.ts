@@ -29,7 +29,9 @@ const translations = {
     "tasks.unknown": "未知任务：该任务不在本地待办缓存中（可能从未受理或 id 有误）。",
     "tasks.unrecognizedStatus": "上游返回了无法识别的任务状态：「{{status}}」。连续查询 {{polls}} 次、持续 {{seconds}} 秒都是这个状态，Nomi 按失败处理。该任务也可能仍在供应商侧运行——请到供应商后台核对。",
     "tasks.pollTimedOut": "等待生成结果超时（已等 {{seconds}} 秒，最后状态：{{status}}）。任务可能仍在供应商侧运行——请到供应商后台核对，或稍后重新拉取结果。",
-    "tasks.noQueryOperation": "这个模型没有配置「查询结果」接口（属于创建即返回结果的同步模型），但本次创建没有返回任何产物——没有第二次查询可发，Nomi 按失败处理。请检查该模型的接入配置，或到供应商后台确认这次调用是否真的出了结果。",
+    // ⚠️ 长度纪律：错误卡大标题走 classifyError.truncateLine，**超 100 字会被截尾**（那正是
+    // 「该怎么办」那半句）。这两条 key 因此写得短，完整上下文留在 raw / 上游原话里。
+    "tasks.noQueryOperation": "这个模型没有配置「查询结果」接口，而本次创建也没有返回任何产物——没有第二次查询可发，已按失败处理。请检查该模型的接入配置。",
     "tasks.upstreamSaid": "（上游原话：{{detail}}）",
     "updater.devUnavailable": "开发模式下不可用，请在安装版中检查更新",
     "agent.confirmTimeout": "工具确认超时（长时间无响应，已自动跳过）",
@@ -63,7 +65,7 @@ const translations = {
     "tasks.unknown": "Unknown task: it is not in the local pending-task cache. It may never have been accepted, or its ID may be incorrect.",
     "tasks.unrecognizedStatus": "The provider returned an unrecognized task status: “{{status}}”. It stayed that way for {{polls}} polls over {{seconds}}s, so Nomi is treating the task as failed. It may still be running on the provider side — check your provider dashboard.",
     "tasks.pollTimedOut": "Timed out waiting for the result (waited {{seconds}}s, last status: {{status}}). The task may still be running on the provider side — check your provider dashboard or fetch the result again later.",
-    "tasks.noQueryOperation": "This model has no result-query operation configured (it is a sync model that returns the result on create), but the create call came back with no asset — there is no second request to make, so Nomi is treating the task as failed. Check this model's connection settings, or confirm in your provider dashboard whether the call actually produced a result.",
+    "tasks.noQueryOperation": "This model has no result-query operation and the create call returned nothing. Check its setup.",
     "tasks.upstreamSaid": " (Upstream said: {{detail}})",
     "updater.devUnavailable": "Updates are unavailable in development mode. Check for updates in an installed build.",
     "agent.confirmTimeout": "Tool confirmation timed out and the action was skipped",
