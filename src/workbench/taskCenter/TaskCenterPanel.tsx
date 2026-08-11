@@ -22,7 +22,6 @@ import { ProductionRunTaskCard } from '../production/ProductionRunTaskCard'
 import { useProductionStatus } from '../production/useProductionStatus'
 
 const PANEL_WIDTH = 380
-const TOP_OFFSET = currentWorkbenchFloatingTopOffset()
 const RIGHT_OFFSET = 12
 /** 进行中的已跑时长要走字，1s 一跳就够（别 rAF，白烧 CPU）。 */
 const TICK_MS = 1000
@@ -39,6 +38,9 @@ type Props = {
 export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProductionRun, onRevealNode }: Props): JSX.Element | null {
   const { t } = useTranslation()
   const panelRef = React.useRef<HTMLDivElement>(null)
+  // 渲染时现算，别提到模块作用域：模块常量在 import 那一刻定死，拿不到 platform 就悄悄
+  // 回落成 mac 的 64px，Windows 上浮卡上移 32px 贴进自绘窗口栏（issue #58 同因）。
+  const topOffset = currentWorkbenchFloatingTopOffset()
   const entries = useGenerationQueueStore((state) => state.entries)
   const batches = useGenerationQueueStore((state) => state.batches)
   const nodes = useGenerationCanvasStore((state) => state.nodes)
@@ -189,13 +191,15 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
         role="dialog"
         aria-label={t('taskCenter.title')}
         data-nomi-right-panel="tasks"
-        className="flex flex-col overflow-hidden bg-nomi-paper border border-nomi-line shadow-nomi-lg"
+        // app-no-drag：与模型设置浮卡同因同治（issue #58）——Portal 到 body 的浮层不是窗口栏后代，
+        // 拿不到窗口栏内的拖拽豁免，压在 Windows 自绘拖拽带上的按钮点击会被系统当拖窗口吞掉。
+        className="app-no-drag flex flex-col overflow-hidden bg-nomi-paper border border-nomi-line shadow-nomi-lg"
         style={{
           position: 'fixed',
-          top: TOP_OFFSET,
+          top: topOffset,
           right: RIGHT_OFFSET,
           width: `min(${PANEL_WIDTH}px, calc(100vw - 24px))`,
-          maxHeight: `calc(100vh - ${TOP_OFFSET + 16}px)`,
+          maxHeight: `calc(100vh - ${topOffset + 16}px)`,
           borderRadius: 'var(--nomi-radius-lg)',
           zIndex: 4000,
           animation: 'nomi-panel-pop 140ms cubic-bezier(.2, .7, .3, 1)',
