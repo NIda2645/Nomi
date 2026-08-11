@@ -10,6 +10,8 @@ type InstallArgs = {
   isMcpStdio: boolean;
   allowE2eMultiInstance: boolean;
   hasSingleInstanceLock: boolean;
+  /** 零窗口时把主窗口建回来（main.ts 收口的唯一入口）。 */
+  ensureMainWindow: () => void | Promise<void>;
 };
 
 export function installProductionRunDesktopLifecycle(args: InstallArgs): {
@@ -70,14 +72,20 @@ export function installProductionRunDesktopLifecycle(args: InstallArgs): {
     if (!args.hasSingleInstanceLock) {
       app.quit();
     } else {
+      // 用户再次启动 app（双击图标 / 点任务栏），我们是唯一实例 → 必须让他看见一个窗口。
+      // 曾经这里只 focus 已存在的窗口，零窗口时静默空转：新进程拿不到锁已自杀，老进程又不建窗，
+      // 于是「怎么点都打不开，只能杀进程」（issue #62）。零窗口必须建窗，这是本分支的不变量。
       app.on("second-instance", (_event, commandLine) => {
         const deepLink = commandLine.find((value) => value.startsWith("nomi://"));
         if (deepLink) handleProductionDeepLink(deepLink);
         const [existing] = BrowserWindow.getAllWindows();
-        if (existing) {
-          if (existing.isMinimized()) existing.restore();
-          existing.focus();
+        if (!existing) {
+          void args.ensureMainWindow();
+          return;
         }
+        if (existing.isMinimized()) existing.restore();
+        existing.show(); // 窗口被隐藏时同样「打不开」，与 deliverProductionDeepLink 保持一致
+        existing.focus();
       });
     }
   }

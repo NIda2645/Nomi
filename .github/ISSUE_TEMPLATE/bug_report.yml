@@ -1,0 +1,51 @@
+name: Bug report / 报告故障
+description: Something is broken, crashes, or does not behave as expected. / 崩溃、报错或行为不符合预期。
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write in English or 中文 — both are fine. Please do not paste API keys or other credentials.
+        中英文皆可。请勿粘贴 API key 等凭据。
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened / 发生了什么
+      description: What you saw, and what you expected instead. / 你看到的现象，以及你原本期望的结果。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system / 操作系统
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Nomi version / 版本
+      description: Settings → About. / 设置 →「关于」。
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs / 截图或日志
+      description: Optional, but it usually turns a guess into a fix. / 选填，但通常能把猜测变成确诊。
+    validations:
+      required: false

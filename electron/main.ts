@@ -52,6 +52,7 @@ import { verifyMcp } from "./capabilityCore/mcpVerify";
 import { registerLocalProtocol } from "./protocol/localProtocol";
 import { installMainWindowInteractions } from "./mainWindowInteractions";
 import { getMainWindow, setMainWindow } from "./mainWindowRegistry";
+import { createMainWindowGuard } from "./mainWindowPresence";
 import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
 import { desktopT, registerI18nIpc, setDesktopLocale } from "./i18n";
 import { registerSettingsIpc } from "./settings/registerSettingsIpc";
@@ -73,7 +74,7 @@ if (configuredUserDataDir) {
 const isMcpStdio = process.env.NOMI_MCP_STDIO === "1";
 const allowE2eMultiInstance = process.env.NOMI_E2E_ALLOW_MULTI_INSTANCE === "1";
 const hasSingleInstanceLock = isMcpStdio ? false : allowE2eMultiInstance ? true : app.requestSingleInstanceLock();
-const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({ isMcpStdio, allowE2eMultiInstance, hasSingleInstanceLock });
+const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({ isMcpStdio, allowE2eMultiInstance, hasSingleInstanceLock, ensureMainWindow: () => ensureMainWindow() });
 if (isMcpStdio) {
   void app
     .whenReady()
@@ -354,6 +355,9 @@ async function createWindow(
   return mainWindow;
 }
 
+// 零窗口自愈的唯一入口（issue #62）；activate / second-instance / 窗口重建失败都走它。
+const ensureMainWindow = createMainWindowGuard({ createWindow, onWindowReady: () => flushPendingProductionDeepLink() });
+
 function recreateMainWindowFromSender(sender: WebContents, options: { preserveRoute: boolean; reason: string }): void {
   if (isRecreatingMainWindow) return;
   const oldWindow = BrowserWindow.fromWebContents(sender);
@@ -375,6 +379,9 @@ function recreateMainWindowFromSender(sender: WebContents, options: { preserveRo
     })
     .finally(() => {
       isRecreatingMainWindow = false;
+      // 重建失败时旧窗已销毁、window-all-closed 又被上面的重建标记跳过了 → 会永久停在零窗口。
+      // 补建兜底，保证「进程活着」蕴含「有窗口可点」。
+      void ensureMainWindow();
     });
 }
 
@@ -764,12 +771,9 @@ if (hasSingleInstanceLock)
         lowMemoryMode ? 15000 : 3000,
       );
 
+      // macOS 关窗后进程不退（见下方 window-all-closed），点 Dock 图标靠这里把窗口建回来。
       app.on("activate", () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-          void createWindow().catch((error) => {
-            console.error("[nomi:desktop] failed to recreate window:", error);
-          }).then(() => flushPendingProductionDeepLink());
-        }
+        void ensureMainWindow();
       });
     })
     .catch((error) => {
