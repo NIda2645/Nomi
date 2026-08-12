@@ -41,6 +41,17 @@ export default function AssistantModelPicker({ className }: { className?: string
         if (!alive) return
         setModels(rows)
         setLoaded(true)
+        // 存量偏好自愈：老记录允许 vendorKey 为空（见 assistantModelPref 的 getter），
+        // 那样拼出的身份匹配不上任何选项 → 下拉显示空白。这里按 modelKey 找回它真正的供应商
+        // 并把完整身份写回去，用户不必重选。改身份格式必须管存量，否则老用户一升级就白框。
+        const pref = getAssistantModelPref()
+        if (pref && !pref.vendorKey) {
+          const found = rows.find((row) => row.modelKey === pref.modelKey)
+          if (found) {
+            setAssistantModelPref({ vendorKey: found.vendorKey, modelKey: found.modelKey })
+            setSelected(encodeModelIdentity(found))
+          }
+        }
         // 无偏好时不再显示「自动选模型」：直接落一个具体默认模型（智能挑、能用），并显示其名。
         if (!getAssistantModelPref()?.modelKey && rows.length > 0) {
           const def = pickDefaultModel(rows)
