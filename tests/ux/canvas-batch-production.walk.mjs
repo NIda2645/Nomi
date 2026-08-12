@@ -414,6 +414,23 @@ try {
   check(await win.evaluate(() => window.localStorage.getItem('nomi.canvas.batch-concurrency')) === '2', '重试后并发偏好仍为 2')
   await snap(win, 'retry-completed-dark')
 
+  // Bottom batch dock must not cover the collapsed timeline handle, and it needs a real escape hatch.
+  await clearSelection(win)
+  const finalBatchDock = win.locator('[data-batch-dock="true"]')
+  await finalBatchDock.waitFor({ timeout: 5000 })
+  const timelineHandle = win.getByRole('button', { name: '展开生成时间轴' })
+  check(await timelineHandle.count() === 1, '批量底栏没有盖住时间轴展开入口')
+  const dismissBatchDock = win.getByRole('button', { name: '隐藏批量生成栏' })
+  check(await dismissBatchDock.count() === 1, '批量底栏提供可识别的隐藏入口')
+  await dismissBatchDock.click()
+  await win.waitForTimeout(400)
+  check(await finalBatchDock.count() === 0, '隐藏批量底栏后不再遮挡画布底部')
+  check(await timelineHandle.count() === 1, '隐藏批量底栏后时间轴入口仍可用')
+  await timelineHandle.click()
+  await win.waitForTimeout(700)
+  check(await win.locator('section[aria-label="生成时间轴"]').count() === 1, '时间轴可从底部入口正常展开')
+  await snap(win, 'timeline-unblocked')
+
   const unexpectedConsoleErrors = consoleErrors.filter((message) => !/mock fail once|HTTP 500|生成失败/i.test(message))
   check(pageErrors.length === 0, '页面运行无 pageerror', pageErrors.join(' | '))
   check(unexpectedConsoleErrors.length === 0, '控制台无意外 error', unexpectedConsoleErrors.join(' | '))

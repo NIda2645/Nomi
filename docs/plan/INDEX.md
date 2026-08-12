@@ -45,6 +45,7 @@
 | [2026-08-09-prompt-paste-node-duplication.md](2026-08-09-prompt-paste-node-duplication.md) | 外部提示词粘贴进编辑器时不再误触画布节点粘贴兜底 | ✅ |
 | [2026-08-09-windows-drag-floating-surfaces.md](2026-08-09-windows-drag-floating-surfaces.md) | Windows 顶部浮层避开自绘窗口栏与功能顶栏拖拽区 | ✅ |
 | [2026-08-09-batch-dock-terminal-dismiss.md](2026-08-09-batch-dock-terminal-dismiss.md) | 批量生成全部完成后隐藏“生成全部 0 个”底栏 | ✅ |
+| [2026-08-13-batch-dock-timeline-occlusion.md](2026-08-13-batch-dock-timeline-occlusion.md) | 批量生成底栏避让时间轴把手并支持按当前批次隐藏 | ✅ |
 | [2026-08-09-canvas-performance-benchmark.md](2026-08-09-canvas-performance-benchmark.md) | **画布性能基准**：大量图片/视频 + 高频微操作，统一采样交互、渲染、媒体和内存指标 | ✅ |
 | [2026-08-07-generation-canvas-gesture-semantics.md](2026-08-07-generation-canvas-gesture-semantics.md) | selection-first 手势 + 操作帮助面板（手势那半已被 08-08 推翻，帮助面板/纯模型仲裁保留）| ⛔ |
 | [2026-06-06-drop-and-wire-execution.md](2026-06-06-drop-and-wire-execution.md) | 拖入/连线→参考（drop-and-wire） | 🚧 |

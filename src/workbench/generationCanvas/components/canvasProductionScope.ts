@@ -8,6 +8,10 @@ import {
 export const CANVAS_BATCH_CONCURRENCY_STORAGE_KEY = 'nomi.canvas.batch-concurrency'
 export const DEFAULT_CANVAS_BATCH_CONCURRENCY = 6
 
+export function canvasBatchDockScopeKey(eligibleIds: readonly string[]): string {
+  return eligibleIds.join('\u0000')
+}
+
 type CanvasBatchConcurrencyStorage = Pick<Storage, 'getItem' | 'setItem'>
 
 export function normalizeCanvasBatchConcurrency(value: unknown): number {
@@ -59,8 +63,11 @@ export function shouldShowCanvasBatchGenerateDock(input: {
   readOnly: boolean
   selectedCount: number
   eligibleCount: number
+  eligibleScopeKey?: string
+  dismissedScopeKey?: string | null
 }): boolean {
-  return !input.readOnly && input.selectedCount === 0 && input.eligibleCount > 0
+  if (input.readOnly || input.selectedCount !== 0 || input.eligibleCount <= 0) return false
+  return input.dismissedScopeKey === undefined || input.dismissedScopeKey !== input.eligibleScopeKey
 }
 
 export type CanvasGenerationExecutionGroup = {
