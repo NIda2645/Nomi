@@ -1,7 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Portal } from '@mantine/core'
-import { IconAdjustmentsHorizontal, IconBrain, IconFolder, IconInfoCircle, IconLock, IconX } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconBrain, IconFolder, IconInfoCircle, IconLock, IconPlugConnected, IconX } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 import { DesignSwitch } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
@@ -13,21 +13,38 @@ import { CanvasGestureSection } from './CanvasGestureSection'
 import { AboutSection } from './AboutSection'
 import { ProjectLocationSection } from './ProjectLocationSection'
 import { AiModelsSection } from './AiModelsSection'
+import { lazyWithChunkBoundary } from '../../ui/chunkBoundary'
 import { AutomationPermissionsSection } from './AutomationPermissionsSection'
 import { defaultAutomationPolicySettings } from './settingsAutomationView'
 import type { AutomationPolicySettings } from '../../../electron/settings/automationPolicyContract'
 import type { ProductionPolicyRequirement } from '../production/productionPolicyRecovery'
+
+// ⚠️ 必须懒加载：SettingsDialog 本身是 NomiStudioApp 里**同步 import** 的，而接入面整棵树
+// （OnboardingWizard / 各家 VendorCard / ComfyUI 那套）是个 160KB+ 的独立 chunk。直接 import
+// 会把它整个拽进首屏主包——实测首帧慢到走查 60s 启动超时。走 chunkBoundary 保住边界，
+// 顺带 chunk 挂了只降级这一个 tab、不拖死设置页。
+const OnboardingDrawer = lazyWithChunkBoundary('模型接入', () =>
+  import('../../ui/onboarding/OnboardingDrawer').then((module) => ({ default: module.OnboardingDrawer })),
+)
 
 // 语言用「母语名」直读，不随界面语言翻译——换语言时两个名字都稳定可认（沿用 PR#50 的判断）。
 const LOCALE_LABEL_KEY: Record<AppLocale, string> = { 'zh-CN': 'common.chinese', en: 'common.english' }
 
 // 集中设置页（2026-08-01 用户拍板样张）：左 tab 右内容。首批「文件与保存」做实——自动另存开关+目录；
 // 其余 tab 占位。复用 OnboardingFloatingPanel 的外壳交互（Portal + Esc + 点遮罩关），布局是居中大 modal。
-type SettingsTab = 'file' | 'ai' | 'automation' | 'general' | 'about'
+// 2026-08-12 用户拍板：五 tab 变六 tab，「模型」独立成一档。
+// 为什么原拍板不再成立：定五 tab 那会儿「模型」= 几个 API key，塞进「AI 与模型」够用；
+// 现在多实例 ComfyUI + 自定义工作流已长成一个要整页的子系统。而那个 tab 里的东西
+// （默认模型策略 / 上传边界）其实服务的是 **MCP 代跑护栏**（trustedHosts=nomi/claude/codex/cursor），
+// 不是「我的模型」——名不副实正是「改 api url 翻半天找不到」的根因，故一并改名「AI 策略」。
+// 手法按 §1.5.3 取代价最低的那档：**分组**（代价 0），不是把东西收进 ▾。
+// plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md
+type SettingsTab = 'file' | 'models' | 'ai' | 'automation' | 'general' | 'about'
 export type SettingsInitialSection = 'automation' | 'cursor-host' | 'ai-models' | 'production-policy' | null
 
 const TABS: { id: SettingsTab; icon: typeof IconFolder; labelKey: string }[] = [
   { id: 'file', icon: IconFolder, labelKey: 'settings.tab.file' },
+  { id: 'models', icon: IconPlugConnected, labelKey: 'settings.tab.models' },
   { id: 'ai', icon: IconBrain, labelKey: 'settings.tab.ai' },
   { id: 'automation', icon: IconLock, labelKey: 'settings.tab.automation' },
   { id: 'general', icon: IconAdjustmentsHorizontal, labelKey: 'settings.tab.general' },
@@ -225,6 +242,18 @@ export function SettingsDialog({
                 </div>
 
                 <ProjectLocationSection />
+              </div>
+            ) : tab === 'models' ? (
+              // 直接渲染既有 OnboardingDrawer——**同一个组件**，不为设置另写一份模型列表（P1）。
+              // 画布上的浮卡渲染的也是它：设置是家，浮卡是干活时不遮挡工作区的加速器
+              // （浮卡「无遮罩」是 2026-06 拍板，设置对话框有 bg-black/45，不能拿它顶替浮卡）。
+              <div data-settings-section="models">
+                <h2 className="mb-4 text-title font-medium text-nomi-ink">{t('settings.tab.models')}</h2>
+                {/* 本地 Suspense：chunk 还在下载时只让这个 tab 显示占位，别把 suspend 抛给
+                    上层边界（那会连整张设置浮层一起卸掉重挂）。 */}
+                <React.Suspense fallback={<div className="text-caption text-nomi-ink-40">{t('settings.automation.loading')}</div>}>
+                  <OnboardingDrawer />
+                </React.Suspense>
               </div>
             ) : tab === 'ai' ? (
               <fieldset

@@ -13,7 +13,7 @@
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconServerBolt, IconPlugConnected, IconCircleCheck, IconAlertTriangle, IconPhoto, IconMovie, IconRefresh, IconExternalLink, IconCheck, IconX, IconTrash, IconPencil } from '@tabler/icons-react'
+import { IconServerBolt, IconPlugConnected, IconCircleCheck, IconAlertTriangle, IconPhoto, IconMovie, IconRefresh, IconExternalLink, IconCheck, IconX, IconTrash, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { toast } from '../toast'
@@ -22,6 +22,7 @@ import { FoldableModelCard } from './FoldableModelCard'
 import { ComfyuiWorkflowImportPanel } from './ComfyuiWorkflowImportPanel'
 import { ComfyuiPresetSection } from './ComfyuiPresetSection'
 import { ComfyuiTemplateLibrary } from './ComfyuiTemplateLibrary'
+import { ComfyuiWorkflowSettingsPage } from './workflowPage/ComfyuiWorkflowSettingsPage'
 
 /** 与后端 comfyuiLocal.ts 的 vendor key 对齐（稳定契约）。 */
 export const COMFYUI_VENDOR_KEY = 'comfyui-local'
@@ -46,34 +47,19 @@ type ComfyuiLocalCardProps = {
   onChanged: () => void
 }
 
-type WorkflowBinding = {
-  promptNodeId?: string; promptInputKey?: string
-  firstFrameNodeId?: string; firstFrameInputKey?: string
-  lastFrameNodeId?: string; lastFrameInputKey?: string
-  outputNodeId?: string; outputKind?: 'image' | 'video'
-  numeric: Array<{ nodeId: string; inputKey: string; paramKey: string; label: string; default: number }>
-}
-type WorkflowDraft = { text: string; binding?: WorkflowBinding }
-
-function readWorkflowDraft(meta: unknown): WorkflowDraft | null {
-  if (!meta || typeof meta !== 'object') return null
-  const draft = (meta as { comfyWorkflowImport?: unknown }).comfyWorkflowImport
-  if (!draft || typeof draft !== 'object') return null
-  const text = (draft as { text?: unknown }).text
-  const binding = (draft as { binding?: unknown }).binding
-  if (typeof text !== 'string' || !binding || typeof binding !== 'object') return null
-  const numeric = (binding as { numeric?: unknown }).numeric
-  if (!Array.isArray(numeric)) return null
-  return { text, binding: binding as WorkflowBinding }
-}
-
-function readWorkflowDraftFromMapping(mappings: ComfyuiLocalCardProps['mappings'], modelKey: string, vendorKeyForMapping: string): WorkflowDraft | null {
+/**
+ * 这条工作流能不能进「工作流设置」整页 = 有没有留下可回读的图。
+ * 判据与整页数据层 useWorkflowCatalog 的 draftOf 一致（meta 草稿优先，老导入回落 mapping 里的模板图）——
+ * 两处都只问「有没有图」，不各自另立一套，否则会出现「卡里可点、进去说没草稿」。
+ */
+function hasWorkflowGraph(meta: unknown, mappings: ComfyuiLocalCardProps['mappings'], modelKey: string, vendorKeyForMapping: string): boolean {
+  const draft = meta && typeof meta === 'object' ? (meta as { comfyWorkflowImport?: unknown }).comfyWorkflowImport : null
+  if (draft && typeof draft === 'object' && typeof (draft as { text?: unknown }).text === 'string') return true
   const mapping = mappings?.find((item) => item.vendorKey === vendorKeyForMapping && item.modelKey === modelKey)
   const create = mapping?.create
   const body = create && typeof create === 'object' ? (create as { body?: unknown }).body : null
   const prompt = body && typeof body === 'object' ? (body as { prompt?: unknown }).prompt : null
-  if (!prompt || typeof prompt !== 'object' || Array.isArray(prompt)) return null
-  return { text: JSON.stringify(prompt, null, 2) }
+  return Boolean(prompt && typeof prompt === 'object' && !Array.isArray(prompt))
 }
 
 export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, models, mappings, onChanged }: ComfyuiLocalCardProps): JSX.Element | null {
@@ -86,7 +72,8 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
   const [checking, setChecking] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
-  const [editingWorkflowKey, setEditingWorkflowKey] = React.useState<string | null>(null)
+  // 打开「工作流设置」整页（'' = 只开页不预选某条）。整页是配置动作的唯一入口（2026-08-12 拍板）。
+  const [workflowPageKey, setWorkflowPageKey] = React.useState<string | null>(null)
   const [activeWorkflowActionKey, setActiveWorkflowActionKey] = React.useState<string | null>(null)
   const [addrDraft, setAddrDraft] = React.useState(baseUrl || 'http://127.0.0.1:8188')
   const shownAddr = baseUrl || 'http://127.0.0.1:8188'
@@ -221,7 +208,19 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
     </div>
   )
 
+  // 整页在卡之外单挂（Portal 到 body）：卡收起来它也还开着，且不受卡内布局约束。
+  const workflowPage = workflowPageKey !== null ? (
+    <ComfyuiWorkflowSettingsPage
+      vendorKey={key}
+      {...(workflowPageKey ? { initialModelKey: workflowPageKey } : {})}
+      onClose={() => setWorkflowPageKey(null)}
+      onChanged={onChanged}
+    />
+  ) : null
+
   return (
+    <>
+    {workflowPage}
     <FoldableModelCard
       glyph={<IconServerBolt size={16} stroke={1.6} />}
       glyphTone="ink"
@@ -268,70 +267,61 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
             </div>
           )}
 
+          {/* 工作流行 = 进「工作流设置」整页的入口。**整行可点**，不再单挂一个铅笔：
+              「配置这条工作流」只有一个家（§1.5.2），点它要配的那个东西本身是最短的路
+              （原来铅笔只在 hover 时冒出来，用户得先猜到那儿有东西）。删除仍是 hover 出现的次要动作。 */}
           {models.map((m) => {
             const isVideo = m.kind === 'video'
             const Icon = isVideo ? IconMovie : IconPhoto
             const canDelete = m.modelKey !== BUILTIN_COMFYUI_TXT2IMG_MODEL_KEY
-            const draft = canDelete ? readWorkflowDraft(m.meta) ?? readWorkflowDraftFromMapping(mappings, m.modelKey, key) : null
-            const canEdit = Boolean(draft)
+            const canConfigure = canDelete && hasWorkflowGraph(m.meta, mappings, m.modelKey, key)
             const actionsVisible = activeWorkflowActionKey === m.modelKey
+            const rowBody = (
+              <>
+                <Icon size={16} className="text-nomi-ink-60 shrink-0" />
+                <div className="flex-1 min-w-0 text-left"><div className="text-body-sm text-nomi-ink truncate">{m.labelZh}</div><div className="text-micro text-nomi-ink-30">{isVideo ? t('onboardingProviders.comfyWorkflow.video') : t('onboardingProviders.comfyWorkflow.image')} {t('onboardingProviders.comfyLocal.workflowKindSuffix')}</div></div>
+              </>
+            )
             return (
-            <React.Fragment key={m.modelKey}>
               <div
-                className="flex items-center gap-2.5 px-3 py-2 bg-nomi-ink-05 rounded-nomi-sm"
+                key={m.modelKey}
+                className="flex items-center gap-2.5 pr-3 bg-nomi-ink-05 rounded-nomi-sm"
                 onMouseEnter={() => setActiveWorkflowActionKey(m.modelKey)}
-                onMouseLeave={() => setActiveWorkflowActionKey((key) => key === m.modelKey ? null : key)}
+                onMouseLeave={() => setActiveWorkflowActionKey((current) => current === m.modelKey ? null : current)}
                 onFocus={() => setActiveWorkflowActionKey(m.modelKey)}
                 onBlur={(event) => {
                   if (!event.currentTarget.contains(event.relatedTarget)) {
-                    setActiveWorkflowActionKey((key) => key === m.modelKey ? null : key)
+                    setActiveWorkflowActionKey((current) => current === m.modelKey ? null : current)
                   }
                 }}
               >
-                <Icon size={16} className="text-nomi-ink-60" />
-                <div className="flex-1 min-w-0"><div className="text-body-sm text-nomi-ink truncate">{m.labelZh}</div><div className="text-micro text-nomi-ink-30">{isVideo ? t('onboardingProviders.comfyWorkflow.video') : t('onboardingProviders.comfyWorkflow.image')} {t('onboardingProviders.comfyLocal.workflowKindSuffix')}</div></div>
-                {canDelete ? (
-                  <span className="flex h-7 w-16 shrink-0 items-center justify-end">
-                    {actionsVisible ? (
-                    <span className="flex items-center gap-1">
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          aria-label={t('onboardingProviders.comfyLocal.editWorkflowAria', { name: m.labelZh })}
-                          title={t('onboardingProviders.comfyLocal.editWorkflowTitle')}
-                          onClick={() => setEditingWorkflowKey(m.modelKey)}
-                          className="grid size-7 place-items-center rounded-nomi-sm text-nomi-ink-30 hover:bg-nomi-ink-10 hover:text-nomi-ink-60"
-                        >
-                          <IconPencil size={14} stroke={1.7} />
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        aria-label={t('onboardingProviders.comfyLocal.deleteWorkflowAria', { name: m.labelZh })}
-                        title={t('onboardingProviders.comfyLocal.deleteWorkflowActionTitle')}
-                        onClick={() => void handleDeleteModel(m)}
-                        className="grid size-7 place-items-center rounded-nomi-sm text-nomi-ink-30 hover:bg-nomi-ink-10 hover:text-workbench-danger"
-                      >
-                        <IconTrash size={14} stroke={1.7} />
-                      </button>
-                    </span>
-                    ) : (
-                      <span className="text-micro text-nomi-accent bg-nomi-accent-soft px-2 py-0.5 rounded-full">{t('onboardingProviders.comfyLocal.modelEnabled')}</span>
-                    )}
-                  </span>
+                {canConfigure ? (
+                  <button
+                    type="button"
+                    onClick={() => setWorkflowPageKey(m.modelKey)}
+                    aria-label={t('comfyuiWorkflowPage.openAria', { name: m.labelZh })}
+                    className="flex flex-1 min-w-0 items-center gap-2.5 px-3 py-2 rounded-nomi-sm hover:text-nomi-accent"
+                  >
+                    {rowBody}
+                    <IconChevronRight size={14} stroke={1.8} className="shrink-0 text-nomi-ink-30" />
+                  </button>
                 ) : (
-                  <span className="text-micro text-nomi-accent bg-nomi-accent-soft px-2 py-0.5 rounded-full">{t('onboardingProviders.comfyLocal.modelEnabled')}</span>
+                  <div className="flex flex-1 min-w-0 items-center gap-2.5 px-3 py-2">{rowBody}</div>
+                )}
+                {canDelete && actionsVisible ? (
+                  <button
+                    type="button"
+                    aria-label={t('onboardingProviders.comfyLocal.deleteWorkflowAria', { name: m.labelZh })}
+                    title={t('onboardingProviders.comfyLocal.deleteWorkflowActionTitle')}
+                    onClick={() => void handleDeleteModel(m)}
+                    className="grid size-7 shrink-0 place-items-center rounded-nomi-sm text-nomi-ink-30 hover:bg-nomi-ink-10 hover:text-workbench-danger"
+                  >
+                    <IconTrash size={14} stroke={1.7} />
+                  </button>
+                ) : (
+                  <span className="text-micro text-nomi-accent bg-nomi-accent-soft px-2 py-0.5 rounded-full shrink-0">{t('onboardingProviders.comfyLocal.modelEnabled')}</span>
                 )}
               </div>
-              {editingWorkflowKey === m.modelKey && draft ? (
-                <ComfyuiWorkflowImportPanel
-                  vendorKey={key}
-                  initial={{ modelKey: m.modelKey, labelZh: m.labelZh, text: draft.text, binding: draft.binding }}
-                  onCancel={() => setEditingWorkflowKey(null)}
-                  onImported={() => { setEditingWorkflowKey(null); onChanged() }}
-                />
-              ) : null}
-            </React.Fragment>
             )
           })}
 
@@ -341,8 +331,19 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
           {/* 预置模板（S5）：内置 WAN2.2，离线也有一条能用的路（ComfyUI 没模板包时的兜底） */}
           <ComfyuiPresetSection modelLabels={models.map((m) => m.labelZh)} onImported={onChanged} />
 
-          {/* 自定义工作流导入（S4）：内置文生图之外，用户可导入自己的 WAN 文生/图生视频等工作流 */}
+          {/* 自定义工作流导入（S4）：贴 workflow_api.json，属**接入**动作，留在卡里。
+              导入之后的一切配置（改绑定/改字段/改名/删）都在「工作流设置」整页，不留第二套（P1）。 */}
           <ComfyuiWorkflowImportPanel vendorKey={key} onImported={onChanged} />
+
+          {/* 整页的常规入口：没有工作流可点的那一行时（比如只剩内置文生图），这里也进得去改地址/加机器。 */}
+          <button
+            type="button"
+            onClick={() => setWorkflowPageKey('')}
+            className={cn('self-start inline-flex items-center gap-1.5 h-8 px-3 rounded-nomi-sm border border-nomi-line',
+              'text-caption text-nomi-ink-60 hover:text-nomi-accent hover:border-nomi-accent')}
+          >
+            {t('comfyuiWorkflowPage.open')}<IconChevronRight size={13} stroke={1.8} />
+          </button>
 
           {addrRow}
 
@@ -362,5 +363,6 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
         </>
       )}
     </FoldableModelCard>
+    </>
   )
 }

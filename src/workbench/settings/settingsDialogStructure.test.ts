@@ -7,10 +7,17 @@ const aiModelsSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/s
 const taskCenterSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/taskCenter/TaskCenterPanel.tsx'), 'utf8')
 
 describe('settings dialog structure', () => {
-  it('uses the approved five-tab information architecture', () => {
-    for (const id of ["'file'", "'ai'", "'automation'", "'general'", "'about'"]) {
+  // 2026-08-12 由五 tab 扩到六 tab（用户拍板）。原五 tab 拍板为什么不再成立：
+  // 定它那会儿「模型」= 几个 API key，塞进「AI 与模型」够用；现在多实例 ComfyUI + 自定义工作流
+  // 已长成一个要整页的子系统。而原 ai tab 里的东西服务的是 MCP 代跑护栏（trustedHosts /
+  // allowedProviders / maxSpend），不是「我的模型」——名不副实正是群里「改 api url 翻半天
+  // 找不到」的根因，故拆出「模型」tab 并把原 tab 改名「AI 策略」。
+  it('uses the approved six-tab information architecture', () => {
+    for (const id of ["'file'", "'models'", "'ai'", "'automation'", "'general'", "'about'"]) {
       expect(settingsSource).toContain(`id: ${id}`)
     }
+    // 模型的家 = 直接渲染既有 OnboardingDrawer，不为设置另写一份模型列表（P1 无并行实现）。
+    expect(settingsSource).toContain('<OnboardingDrawer />')
     expect(settingsSource).toContain('<AiModelsSection')
     expect(settingsSource).toContain('<AutomationPermissionsSection')
     expect(settingsSource).toContain('sm:flex-row')
