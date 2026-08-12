@@ -29,6 +29,11 @@ export const CUSTOM_CALL_VARIABLES: CustomCallVariableDoc[] = [
   { name: "baseUrl", type: "string", desc: "vendor base URL exactly as configured (may already end with /v1)" },
   { name: "apiKey", type: "string", desc: "vendor API key (add your own auth header when using `request`)" },
   {
+    name: "config",
+    type: "Record<string, string>",
+    desc: "user-defined key/value pairs from this provider's custom config panel. The escape hatch for anything Nomi does not model: a second secret (AK/SK signing), region, api-version header, tenant id, account id. Read as config.<name>",
+  },
+  {
     name: "http",
     type: "{ post(path, body?, opts?): Promise<any>; get(path, opts?): Promise<any>; url(path): string }",
     desc: "convenience client: prefixes baseUrl for relative paths, sets Authorization: Bearer apiKey (override via opts.headers), JSON in/out; opts = { headers?, query? }",

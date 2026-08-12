@@ -77,6 +77,25 @@ export function collectCustomCallAssets(result: unknown): string[] {
   return out;
 }
 
+/**
+ * 供应商「自定义配置」→ 注入给脚本的 config。住 vendor.meta.customConfig，只收字符串值
+ * （用户手填的东西，别让脏类型漏进脚本）。空表也给 {}，脚本里 config.x 取不到就是 undefined，
+ * 不用先判空。
+ */
+export function customConfigOf(vendor: Vendor): Record<string, string> {
+  const meta = vendor.meta && typeof vendor.meta === "object" ? (vendor.meta as JsonRecord) : {};
+  const raw = meta.customConfig;
+  if (!isJsonRecord(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const name = key.trim();
+    if (!name) continue;
+    if (typeof value === "string") out[name] = value;
+    else if (typeof value === "number" || typeof value === "boolean") out[name] = String(value);
+  }
+  return out;
+}
+
 /** params 里的标准参考键 → 便捷视图（键名与 archetypeInput 标准键一一对应，单源在那边）。 */
 export function referencesViewFromParams(params: JsonRecord): {
   firstFrame?: string;
@@ -230,6 +249,9 @@ export async function runCustomCallScript(input: {
     model: modelId,
     baseUrl,
     apiKey,
+    // 用户在「自定义配置」里填的任意键值。Nomi 只准备了一个密钥槽，而腾讯要 SecretId+SecretKey、
+    // Kling 要 AK+SK 每 30 分钟重签——与其我们一个个猜着加字段（永远追不上），不如给一张空白表。
+    config: customConfigOf(input.vendor),
     http,
     request: doRequest,
     poll,
