@@ -65,6 +65,7 @@ tests/system/runs/
 .library-cover-walk-lab/
 .project-asset-healthcheck-lab/
 .toolbar-order-lab/
+.text-error-lab/
 
 # 3D 预设动作校准台的本地输出（pose-lab）
 .pose-lab/
