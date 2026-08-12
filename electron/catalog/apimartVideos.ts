@@ -56,6 +56,7 @@ const VIDEO_URLS = "{{request.params.video_urls}}"; // seedance 全能参考 vid
 const AUDIO_URLS = "{{request.params.audio_urls}}"; // seedance 全能参考 audio_ref 槽 inputKey=audio_urls
 const FIRST_FRAME_IMAGE = "{{request.params.first_frame_image}}"; // hailuo first_frame 槽 inputKey=first_frame_image
 const SEED = "{{request.params.seed}}"; // 可选种子（无默认 → 未填则模板丢弃）
+const RETURN_LAST_FRAME = "{{request.params.return_last_frame}}"; // Seedance 2.5 独有：返回尾帧图
 const NEGATIVE_PROMPT = "{{request.params.negative_prompt}}"; // 负向提示词（可选，未填则丢弃）
 const GENERATION_TYPE = "{{request.params.generation_type}}"; // 首尾帧/参考图模式标记（mode.fixedParams 注入，Veo/Omni）
 // 首尾帧角色数组：整串一个 {{}} → 模板引擎原样透传 [{url,role}] 不 stringify（同 kie 整串透传）。
@@ -155,6 +156,16 @@ export const APIMART_VIDEO_MODELS: ApimartVideoModel[] = [
   // body 形状一致（SEEDANCE_*_BODY 单源 P1）：i2vBody 一条覆盖 图生/全能参考/首尾帧 三模式——
   // image_urls + video_urls/audio_urls + image_with_roles(与 image_urls 互斥) + seed；空键由模板自动丢（M2）。
   videoModel({ modelKey: "doubao-seedance-2.0", labelZh: "Seedance 2.0", archetypeId: "seedance-2-apimart", modelRef: VARIANT_MODEL_REF, t2vBody: SEEDANCE_T2V_BODY, i2vBody: SEEDANCE_I2V_BODY }),
+  // Seedance 2.5（2026-08-12 接入，逐项对账 docs.apimart.ai/cn/api-reference/videos/doubao-seedance-2-5）。
+  // 与 2.0 的通道差异：无变体（官方 model 固定 doubao-seedance-2.5，故用默认 {{model.modelKey}}）、
+  // 多一个 return_last_frame（2.5 独有，返回尾帧图）。参考通道键名与 2.0 相同（image_urls /
+  // video_urls / audio_urls / image_with_roles），故沿用同款 body 形状 + 该字段。
+  // size 在首尾帧模式由档案 fixedParams 钉成 adaptive（官方硬约束），不在这里 drop —— 值照发即可。
+  videoModel({
+    modelKey: "doubao-seedance-2.5", labelZh: "Seedance 2.5", archetypeId: "seedance-2.5-apimart",
+    t2vBody: { ...SEEDANCE_T2V_BODY, return_last_frame: RETURN_LAST_FRAME },
+    i2vBody: { ...SEEDANCE_I2V_BODY, return_last_frame: RETURN_LAST_FRAME },
+  }),
   // Wan 2.7（2026-07-29 升级角色参考）：三模式经 per-mode modelEnum 发不同 model（t2v/i2v=wan2.7、
   // 角色参考=wan2.7-r2v）→ body model 改取 {{request.params.model}}。i2v/ref 共用一条 i2v mapping：
   // i2v 走 image_urls（首/尾帧）；ref 走 image_with_roles（combineSlotsInto 产 [{url,role:'reference_image'}]）

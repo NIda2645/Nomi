@@ -25,7 +25,7 @@ export const ARCHETYPE_WIRE_DEFAULTS: Record<string, Record<string, Record<strin
     "text_to_video": {
       "*": {
         "resolution": "720p",
-        "aspect_ratio": "16:9",
+        "aspect_ratio": "adaptive",
         "duration": 5,
         "generate_audio": true,
         "return_last_frame": false
@@ -34,7 +34,7 @@ export const ARCHETYPE_WIRE_DEFAULTS: Record<string, Record<string, Record<strin
     "image_to_video": {
       "*": {
         "resolution": "720p",
-        "aspect_ratio": "16:9",
+        "aspect_ratio": "adaptive",
         "duration": 5,
         "generate_audio": true,
         "return_last_frame": false
@@ -292,6 +292,26 @@ export const ARCHETYPE_WIRE_DEFAULTS: Record<string, Record<string, Record<strin
         "duration": 5,
         "generate_audio": true,
         "model": "doubao-seedance-2.0-fast"
+      }
+    }
+  },
+  "seedance-2.5-apimart": {
+    "text_to_video": {
+      "*": {
+        "size": "adaptive",
+        "resolution": "720p",
+        "duration": 5,
+        "generate_audio": true,
+        "return_last_frame": false
+      }
+    },
+    "image_to_video": {
+      "*": {
+        "size": "adaptive",
+        "resolution": "720p",
+        "duration": 5,
+        "generate_audio": true,
+        "return_last_frame": false
       }
     }
   },
