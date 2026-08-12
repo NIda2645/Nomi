@@ -224,7 +224,12 @@ export const zhGenerationCommon = {
         reason: '生成超时',
         hint: '视频生成较慢，等待超过上限。任务可能仍在进行，请稍后重新生成，或换更快的模型（如 Seedance Fast）。',
       },
-      network: { reason: '网络超时', hint: '网络问题，请检查网络后重试。' },
+      // 这桶同时装「超时」和「压根没连上」（ECONNREFUSED/ENOTFOUND/fetch failed），所以标题
+      // 不能写死「超时」。首要嫌疑是代理没覆盖到海外接口——和参考图图床那条同一个真凶。
+      network: {
+        reason: '连不上服务商',
+        hint: '请求没发到服务商——多半是本机网络或代理没覆盖到它（海外接口尤其常见）。先检查网络和代理，再重试。',
+      },
       modelConfig: { reason: '模型未配置', hint: '这个模型没配好，请去「模型接入」页设置。' },
       modelKindMismatch: {
         reason: '模型类型登记错了',
@@ -1381,7 +1386,10 @@ export const enGenerationCommon = {
         reason: 'Generation timed out',
         hint: 'Video generation exceeded the wait limit and may still be running. Try again later or use a faster model such as Seedance Fast.',
       },
-      network: { reason: 'Network timeout', hint: 'Check your network connection and try again.' },
+      network: {
+        reason: 'Cannot reach the provider',
+        hint: 'The request never reached the provider — usually your network or proxy does not cover it (common for overseas endpoints). Check your network and proxy, then retry.',
+      },
       modelConfig: { reason: 'Model not configured', hint: 'Configure this model in Model access.' },
       modelKindMismatch: {
         reason: 'Model registered as the wrong type',

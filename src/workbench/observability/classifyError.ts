@@ -148,11 +148,25 @@ function detectLegacyErrorKind(raw: string): GenerationErrorKind | null {
     return 'quota'
   // 我们自己的轮询超时(视频长任务常见)——不是网络问题,任务多半还在服务商侧跑。
   if (raw.includes('轮询超时') || lower.includes('task poll timeout')) return 'poll-timeout'
+  // 连不上 ≠ 超时。以前这桶只认 timeout 一族，「压根没连上」的那半边全漏进 unknown，拿到
+  // 「可能是服务商临时故障或额度问题，建议稍等重试」——把用户自己的网络/代理问题甩锅给一个
+  // 根本没被请求到的服务商，而重试必再撞（同 output-truncated 的理由）。三处真实来源都得认：
+  //   · `fetch failed`     Node/undici——主进程 fetch 断网/代理不通时的原话（最常撞的一条）
+  //   · `Failed to fetch`  浏览器 TypeError（网络层掐断，2026-08-12 群反馈的网页版报错原文）
+  //   · `网络请求失败`      我们自己 electron/systemProxy.ts 的兜底文案，中文，匹配不到 'network'
+  // ENOTFOUND 带 E 前缀，和下面「model not found」（中间有空格）不会互吞。
   if (
     lower.includes('timeout') ||
     lower.includes('etimedout') ||
     lower.includes('econnreset') ||
-    lower.includes('network')
+    lower.includes('econnrefused') ||
+    lower.includes('enotfound') ||
+    lower.includes('eai_again') ||
+    lower.includes('socket hang up') ||
+    lower.includes('fetch failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('network') ||
+    raw.includes('网络请求失败')
   )
     return 'network'
   // `Model is not enabled: x` = 目录里记录还在、只是被停用（退役下线走另一条专用签名）。

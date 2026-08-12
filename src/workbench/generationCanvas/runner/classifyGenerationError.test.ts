@@ -14,9 +14,32 @@ describe('classifyGenerationError — 已知分类', () => {
     expect(r.reason).toBe('配额或限流')
   })
 
-  it('网络超时', () => {
+  it('超时归「连不上服务商」', () => {
     const r = classifyGenerationError('request failed: ETIMEDOUT')
-    expect(r.reason).toBe('网络超时')
+    expect(r.reason).toBe('连不上服务商')
+  })
+
+  // 2026-08-12：network 桶原先只认 timeout 一族，「压根没连上」那半边全落 unknown，拿到
+  // 「服务商临时故障或额度问题，建议稍等重试」——甩锅给没被请求到的服务商，且重试必再撞。
+  // 每条都是真实来源，不是造的：undici / 浏览器 / DNS / 我们自己的代理兜底文案。
+  it.each([
+    ['Node/undici 主进程断网', 'TypeError: fetch failed'],
+    ['浏览器 fetch 被掐断（群反馈网页版原文）', 'TypeError: Failed to fetch'],
+    ['端口没人听', 'connect ECONNREFUSED 127.0.0.1:8188'],
+    ['DNS 解析不到', 'getaddrinfo ENOTFOUND api.apimart.ai'],
+    ['DNS 临时失败', 'getaddrinfo EAI_AGAIN api.apimart.ai'],
+    ['连接被中途掐断', 'Error: socket hang up'],
+    ['我们自己的代理兜底文案（中文，匹配不到 network）', '网络请求失败：无法连接到该地址。'],
+  ])('连不上归「连不上服务商」并指向网络/代理，不甩锅额度：%s', (_label, message) => {
+    const r = classifyGenerationError(message)
+    expect(r.reason).toBe('连不上服务商')
+    expect(r.hint).toMatch(/代理/)
+    expect(r.hint).not.toMatch(/临时故障|额度问题/)
+  })
+
+  it('ENOTFOUND 不吞「model not found」（中间有空格，两条签名互不误伤）', () => {
+    const r = classifyGenerationError('Error: model not found: seedream-9')
+    expect(r.reason).toBe('模型未配置')
   })
 
   it('余额不足（中文）与限流区分开', () => {
