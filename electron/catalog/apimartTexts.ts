@@ -1,3 +1,6 @@
+import type { HttpOperation, ProfileKind } from "./types";
+import { APIMART_CREATE_TASK_ID_PATH, APIMART_STATUS_MAPPING } from "./apimartVendor";
+
 // apimart 文本模型（创作助手 / 拆镜头的「大脑」）的 curated 种子。
 //
 // 为什么需要它（Issue #9 根因）：创作助手是 agent，主控需要一个 kind="text" 的 LLM
@@ -45,4 +48,59 @@ export type ApimartTextModel = {
 export const APIMART_TEXT_MODELS: ApimartTextModel[] = [
   { modelKey: "deepseek-v4-pro", labelZh: "DeepSeek V4 Pro" },
   { modelKey: "gemini-3.5-flash", labelZh: "Gemini 3.5 Flash", meta: { supportsImageInput: true } },
+  { modelKey: "MiniMax-H3-Context-IR", labelZh: "MiniMax H3 · Context-IR 提示词增强", meta: { promptRefineOnly: true } },
+];
+
+const CONTEXT_IR_CREATE_OP: HttpOperation = {
+  method: "POST",
+  path: "/v1/videos/generations",
+  headers: { Authorization: "Bearer {{user_api_key}}", "Content-Type": "application/json" },
+  body: {
+    model: "{{model.modelKey}}",
+    prompt: "{{request.prompt}}",
+    duration: "{{request.params.duration}}",
+    aspect_ratio: "{{request.params.aspect_ratio}}",
+    first_frame_image: "{{request.params.first_frame_image}}",
+    last_frame_image: "{{request.params.last_frame_image}}",
+    image_urls: "{{request.params.image_urls}}",
+    video_urls: "{{request.params.video_urls}}",
+    audio_urls: "{{request.params.audio_urls}}",
+  },
+  response_mapping: { task_id: APIMART_CREATE_TASK_ID_PATH },
+  provider_meta_mapping: { task_id: APIMART_CREATE_TASK_ID_PATH },
+  defaultParams: { duration: 5, aspect_ratio: "16:9" },
+};
+
+const CONTEXT_IR_QUERY_OP: HttpOperation = {
+  method: "GET",
+  path: "/v1/tasks/{{providerMeta.task_id}}",
+  headers: { Authorization: "Bearer {{user_api_key}}" },
+  response_mapping: {
+    task_id: "data.id",
+    status: "data.status",
+    text: "data.result.prompt",
+    error_message: "data.error.message",
+  },
+};
+
+export type ApimartTextMapping = {
+  id: string;
+  taskKind: ProfileKind;
+  modelKey: string;
+  name: string;
+  create: HttpOperation;
+  query: HttpOperation;
+  statusMapping: Record<string, string[]>;
+};
+
+export const APIMART_TEXT_MAPPINGS: ApimartTextMapping[] = [
+  {
+    id: "seed-apimart-minimax-h3-context-ir-prompt_refine",
+    taskKind: "prompt_refine",
+    modelKey: "MiniMax-H3-Context-IR",
+    name: "MiniMax H3 · Context-IR 提示词增强",
+    create: CONTEXT_IR_CREATE_OP,
+    query: CONTEXT_IR_QUERY_OP,
+    statusMapping: APIMART_STATUS_MAPPING,
+  },
 ];
