@@ -1,7 +1,8 @@
 // 下载另存文件名加固（2026-07-30 群反馈「下载改保存名闪退」的 defaultPath 半边）。
 // Windows 原生保存对话框在 defaultPath 文件名含非法/控制字符、尾部点空格、保留设备名时会异常；
 // 这些字符若进 defaultPath 就是闪退面之一。sanitizeDownloadName 是纯函数，直接钉规则。
-// （另一半根因=modal 附到辅助窗口，改用 getMainWindow 可靠父窗口，属副作用逻辑，走真机走查。）
+// （另一半根因=给对话框传父窗口造成跨线程模态属主，已彻底不传；见 downloadAsset.ts 根因注释
+//   与 nativeDialogParent.invariant.test.ts 的全仓结构闸。）
 import { describe, expect, it } from "vitest";
 import { sanitizeDownloadName } from "./downloadAsset";
 

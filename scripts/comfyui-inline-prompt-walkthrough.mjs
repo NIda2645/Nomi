@@ -61,11 +61,11 @@ try {
   await win.waitForTimeout(1000)
   await win.getByText('有本地 ComfyUI', { exact: false }).first().click()
   await win.waitForTimeout(500)
-  await win.getByText('ComfyUI · 本地', { exact: false }).first().click()
+  await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(400)
   await win.getByRole('button', { name: '启用 ComfyUI', exact: false }).first().click()
   await win.waitForTimeout(2200)
-  await win.getByText('ComfyUI · 本地', { exact: false }).first().click()
+  await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(600)
 
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()

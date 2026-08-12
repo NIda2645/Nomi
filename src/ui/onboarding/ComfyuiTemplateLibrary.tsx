@@ -15,6 +15,7 @@ import { IconBooks, IconCheck, IconX, IconExternalLink, IconRefresh, IconAlertTr
 import { cn } from '../../utils/cn'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { toast } from '../toast'
+import { resolvePrecheckGateAction } from './precheckGate'
 
 type TemplateEntry = {
   name: string; title: string; description: string; group: string; groupType: string
@@ -202,7 +203,12 @@ function CatChip({ active, label, onClick }: { active: boolean; label: string; o
   )
 }
 
-/** 展开块：转换中 / 缺件清单 / 就绪可启用。缺件时按钮不给点（这就是「缺件闸」）。 */
+/**
+ * 展开块：转换中 / 缺件清单 / 可启用。
+ *
+ * 2026-08-11：缺件**不再死拦**（用户原话「comfyui 文件是否缺失不做强制检测」）。缺什么照列，
+ * 但按钮走 resolvePrecheckGateAction 的 arm→confirm 二次确认——与 manual 接入、预置模板区同一份门槛（P1）。
+ */
 function TemplateDetailBlock({
   entry, detail, busy, onEnable,
 }: {
@@ -212,6 +218,9 @@ function TemplateDetailBlock({
   onEnable: (entry: TemplateEntry, d: Detail) => void
 }): JSX.Element {
   const { t } = useTranslation()
+  const [armed, setArmed] = React.useState(false)
+  // 换模板 / 点「刷新」重取详情 → 判断依据变了，之前那次「仍要启用」的确认作废。
+  React.useEffect(() => { setArmed(false) }, [detail])
   if (detail === 'loading' || detail === null) {
     return <div className="px-4 py-1.5 text-micro text-nomi-ink-40">{t('onboardingProviders.comfyTemplates.preparing')}</div>
   }
@@ -226,6 +235,12 @@ function TemplateDetailBlock({
   const missingFiles = detail.missingEnumValues
   const missingNodes = detail.unknownNodeTypes
   const ready = detail.serverReachable && missingFiles.length === 0 && missingNodes.length === 0
+  // 非阻断门槛：真正 disabled 的只有「忙」；缺件/未连接一律 arm→confirm。
+  const gate = resolvePrecheckGateAction({ actionable: !busy, precheckPassed: ready, forceArmed: armed })
+  // 风险话术按成因给（D6：说清「会发生什么」，不是笼统一句「可能失败」）。
+  const riskNote = !detail.serverReachable
+    ? t('onboardingProviders.comfyTemplates.riskOffline')
+    : t('onboardingProviders.comfyTemplates.riskMissing', { count: missingFiles.length + missingNodes.length })
   return (
     <div className="px-4 pb-2 flex flex-col gap-1">
       {!detail.serverReachable ? (
@@ -253,12 +268,19 @@ function TemplateDetailBlock({
       <div className="flex items-center gap-2 pt-0.5">
         <button
           type="button"
-          disabled={!ready || busy}
-          onClick={() => onEnable(entry, detail)}
-          className={cn('inline-flex items-center h-7 px-3 rounded-nomi-sm bg-nomi-ink text-nomi-paper',
+          disabled={gate === 'disabled'}
+          // arm = 首次点击（缺件/未连接）→ 只把风险摊开，不启用；再点一次才真启用。
+          onClick={() => { if (gate === 'arm') setArmed(true); else onEnable(entry, detail) }}
+          title={gate === 'arm' || gate === 'confirm' ? riskNote : undefined}
+          // shrink-0 + nowrap：面板只有 ~340px 宽，不钉住会被旁边说明挤成方块/折行（走查截图实见）。
+          className={cn('inline-flex shrink-0 items-center h-7 px-3 whitespace-nowrap rounded-nomi-sm bg-nomi-ink text-nomi-paper',
             'text-micro font-medium hover:bg-nomi-accent disabled:opacity-45')}
         >
-          {t('onboardingProviders.comfyTemplates.enableButton')}
+          {gate === 'arm'
+            ? t('onboardingProviders.comfyTemplates.enableAnyway')
+            : gate === 'confirm'
+              ? t('onboardingProviders.comfyTemplates.enableConfirm')
+              : t('onboardingProviders.comfyTemplates.enableButton')}
         </button>
         {entry.tutorialUrl ? (
           <button
@@ -269,10 +291,17 @@ function TemplateDetailBlock({
             {t('onboardingProviders.comfyTemplates.tutorial')}<IconExternalLink size={10} stroke={1.6} />
           </button>
         ) : null}
-        {!ready && detail.serverReachable ? (
-          <span className="text-micro text-nomi-ink-30">{t('onboardingProviders.comfyTemplates.gateNote')}</span>
+        {!ready && detail.serverReachable && gate !== 'confirm' ? (
+          <span className="min-w-0 text-micro text-nomi-ink-30">{t('onboardingProviders.comfyTemplates.gateNote')}</span>
         ) : null}
       </div>
+      {/* 风险话术放按钮**下方**：放上方会把主按钮往下顶，用户点完第一下得再去找第二下（走查实见）。 */}
+      {gate === 'confirm' ? (
+        <div className="flex items-start gap-1.5 rounded-nomi-sm bg-[var(--workbench-danger-soft)] px-2 py-1.5">
+          <IconAlertTriangle size={12} className="shrink-0 mt-0.5 text-workbench-danger" />
+          <span className="text-micro text-nomi-ink leading-relaxed">{riskNote}</span>
+        </div>
+      ) : null}
     </div>
   )
 }

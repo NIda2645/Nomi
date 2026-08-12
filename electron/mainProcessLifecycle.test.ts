@@ -43,6 +43,24 @@ describe("installMainProcessLifecycle", () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
+  it("装齐三层崩溃证据：JS 异常 / 原生 minidump / 进程死亡，且 Crashpad 挂在 app 上", () => {
+    const { app } = createApp(true);
+    const installProcessGoneHandlers = vi.fn();
+    const startNativeCrashCapture = vi.fn();
+
+    installMainProcessLifecycle(app, {
+      installCrashHandlers: vi.fn(),
+      installProcessStdioErrorGuards: vi.fn(),
+      installParentProcessWatchdog: vi.fn(() => vi.fn()),
+      installProcessGoneHandlers,
+      startNativeCrashCapture,
+    });
+
+    expect(startNativeCrashCapture).toHaveBeenCalledOnce();
+    // 进程死亡要挂在 app 上（辅助窗口的渲染进程挂单个 webContents 会漏）——由 crashLog 自绑 app。
+    expect(installProcessGoneHandlers).toHaveBeenCalledOnce();
+  });
+
   it("打包实例不启用开发父进程守卫", () => {
     const { app } = createApp(true);
     const installParentProcessWatchdog = vi.fn(() => vi.fn());

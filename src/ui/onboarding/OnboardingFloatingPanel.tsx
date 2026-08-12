@@ -14,7 +14,6 @@ import { OnboardingDrawer } from './OnboardingDrawer'
 import { currentWorkbenchFloatingTopOffset } from '../app-shell/windowChrome'
 
 const PANEL_WIDTH = 320
-const TOP_OFFSET = currentWorkbenchFloatingTopOffset()
 const RIGHT_OFFSET = 12
 
 type Props = {
@@ -25,6 +24,10 @@ type Props = {
 export function OnboardingFloatingPanel({ opened, onClose }: Props): JSX.Element | null {
   const { t } = useTranslation()
   const panelRef = React.useRef<HTMLDivElement>(null)
+  // 渲染时现算，**不能提到模块作用域**：模块常量在 import 求值那一刻定死，
+  // 拿不到 window.nomiDesktop.platform 就悄悄回落成 mac 的 64px，Windows 上整张浮卡上移 32px
+  // 贴进自绘窗口栏（issue #58 的位移就是这么来的）。offset 依赖运行时输入 → 随输入 derive。
+  const topOffset = currentWorkbenchFloatingTopOffset()
 
   // ESC 关闭
   React.useEffect(() => {
@@ -81,13 +84,18 @@ export function OnboardingFloatingPanel({ opened, onClose }: Props): JSX.Element
         // color:var(--workbench-danger) 解析成纯黑而非红 —— 面板里 60+ 处成功/危险配色一直是死的
         // （「已接入」绿框没有底色、错误文字不是红的）。带上 workbench-shell 把 token 作用域接回来，
         // 与 CreationAiPanel / Scene3DFullscreen 同一做法。该 class 只定义变量、不画任何属性，故零布局影响。
-        className="workbench-shell"
+        // app-no-drag（连同 `.app-no-drag *` 覆盖全部后代）：Windows 是 frame:false + 自绘窗口栏，
+        // 拖拽区靠 -webkit-app-region 命中测试划出来，而命中测试**看几何、不看 DOM 层级**——
+        // Portal 到 body 的浮层不是窗口栏的后代，拿不到窗口栏内那条 `.app-drag button` 豁免，
+        // 压在拖拽带上的按钮点击就被系统当成拖窗口吃掉（issue #58：× 中心点不动，偏上下才灵）。
+        // 定位算对只是让它别压上去，这条才是「压上去也不失灵」的根治：浮层一律退出拖拽区。
+        className="workbench-shell app-no-drag"
         style={{
           position: 'fixed',
-          top: TOP_OFFSET,
+          top: topOffset,
           right: RIGHT_OFFSET,
           width: PANEL_WIDTH,
-          maxHeight: `calc(100vh - ${TOP_OFFSET + 16}px)`,
+          maxHeight: `calc(100vh - ${topOffset + 16}px)`,
           background: 'var(--nomi-paper)',
           borderRadius: 'var(--nomi-radius-lg)',
           boxShadow: 'var(--nomi-shadow-lg)',

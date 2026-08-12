@@ -107,13 +107,35 @@ export function browserChromeMenuHtml(items: BrowserChromeMenuItem[]): string {
 </html>`;
 }
 
-function closeBrowserChromeMenu(record: BrowserChromeMenuRecord, id: string | null): void {
-  if (record.settled) return;
+// 关闭菜单是两件安全性质完全不同的事，必须拆开（别再合成一个函数）：
+//   ① 结算——纯 JS 状态（登记表 + resolve promise），任何时刻调都安全；
+//   ② 拆窗——原生操作，在某些时刻调会崩（见下面 blur 处的注释）。
+// 合在一起时，凡是想推迟拆窗的入口都只能连结算一起推迟，于是留出一段「已 blur 但仍可被
+// select 结算」的窗口期。拆开后：结算永远同步做完，拆窗按入口的安全性各自决定时机。
+
+/**
+ * 结算并把菜单摘出登记表。返回 false = 这次调用不是赢家（已被别的事件结算过），
+ * 调用方不得再动窗口——这就是「同一个菜单只会 resolve 一次、只会被拆一次」的唯一守卫。
+ */
+function settleBrowserChromeMenu(record: BrowserChromeMenuRecord, id: string | null): boolean {
+  if (record.settled) return false;
   record.settled = true;
   browserChromeMenusByWindow.delete(record.ownerWindowId);
-  browserChromeMenusByWebContents.delete(record.window.webContents.id);
+  // 用建窗时的快照 id，不读 record.window.webContents：owner 关闭那条路径是「先 destroy
+  // 菜单窗、再结算」，此刻窗口已 closed，Electron 文档明说 closed 后不该再碰这个对象。
+  browserChromeMenusByWebContents.delete(record.webContentsId);
   record.resolve({ id });
+  return true;
+}
+
+/** 拆窗：窗口可能已被别处（owner 关闭 / 用户点叉）销毁，故每次都重判，重入即 no-op。 */
+function destroyBrowserChromeMenuWindow(record: BrowserChromeMenuRecord): void {
   if (!record.window.isDestroyed()) record.window.close();
+}
+
+function closeBrowserChromeMenu(record: BrowserChromeMenuRecord, id: string | null): void {
+  if (!settleBrowserChromeMenu(record, id)) return;
+  destroyBrowserChromeMenuWindow(record);
 }
 
 export function showBrowserChromeMenu(
@@ -155,12 +177,25 @@ export function showBrowserChromeMenu(
     const record: BrowserChromeMenuRecord = {
       ownerWindowId: owner.id,
       window: menuWindow,
+      webContentsId: menuWindow.webContents.id,
       settled: false,
       resolve,
     };
     browserChromeMenusByWindow.set(owner.id, record);
-    browserChromeMenusByWebContents.set(menuWindow.webContents.id, record);
-    menuWindow.once("blur", () => closeBrowserChromeMenu(record, null));
+    browserChromeMenusByWebContents.set(record.webContentsId, record);
+    // blur 是唯一「窗口在自己的原生焦点转移途中把自己拆掉」的入口，也是本文件唯一需要推迟拆窗的地方。
+    // 为什么危险：这是个 parent: owner 的子窗口，blur 由原生层在焦点转移**进行中**派发；Windows 上
+    // 第三方输入法（搜狗等）的候选窗是真·顶层窗口、会抢激活，能在我们没预期的时机把这个 blur 打出来，
+    // 而「在焦点转移中途销毁一个带 parent 的子窗口」是已知的崩溃型写法——同 downloadAsset.ts:64
+    //「别给原生对话框挂短生命周期父窗口」那条的同族根因。
+    // 怎么防：结算同步做完（立刻摘出登记表，后续 blur/closed/select 一律进不来，也就不会二次拆窗），
+    // 只把原生拆窗推迟一轮事件循环，让这次焦点转移在原生层先走完。
+    // 用 setImmediate 不用 queueMicrotask：微任务在原生事件派发帧内就排空了，等于没推迟。
+    // 注：这是防御性加固，并未确认对应任何已上报的崩溃。
+    menuWindow.once("blur", () => {
+      if (!settleBrowserChromeMenu(record, null)) return;
+      setImmediate(() => destroyBrowserChromeMenuWindow(record));
+    });
     menuWindow.once("closed", () => closeBrowserChromeMenu(record, null));
     owner.once("closed", () => {
       if (!menuWindow.isDestroyed()) menuWindow.destroy();

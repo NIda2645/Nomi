@@ -5,6 +5,7 @@ import { enPreviewSource, zhPreviewSource } from './locales/previewSource'
 import { enAssetLibrary, zhAssetLibrary } from './locales/assetLibrary'
 import { enSettings, zhSettings } from './locales/settings'
 import { enOnboardingProviders, zhOnboardingProviders } from './locales/onboardingProviders'
+import { enComfyuiWorkflowPage, zhComfyuiWorkflowPage } from './locales/comfyuiWorkflowPage'
 import { enLibraries, zhLibraries } from './locales/libraries'
 import { enScene3d, zhScene3d } from './locales/scene3d'
 import { enScene3dJourney, zhScene3dJourney } from './locales/scene3dJourney'
@@ -346,6 +347,7 @@ export const zhCN = {
   assetLibrary: zhAssetLibrary,
   settings: zhSettings,
   onboardingProviders: zhOnboardingProviders,
+  comfyuiWorkflowPage: zhComfyuiWorkflowPage,
   libraries: zhLibraries,
   scene3d: {
     ...zhScene3d,
@@ -705,6 +707,7 @@ export const en = {
   assetLibrary: enAssetLibrary,
   settings: enSettings,
   onboardingProviders: enOnboardingProviders,
+  comfyuiWorkflowPage: enComfyuiWorkflowPage,
   libraries: enLibraries,
   scene3d: {
     ...enScene3d,
