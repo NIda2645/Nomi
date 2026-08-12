@@ -49,6 +49,17 @@ describe('isKnownModelChipKind（三个渲染侧共用的「有没有 i18n 标�
   })
 
   /**
+   * 判据必须是「值比对」，不能退回 `kind in 某对象字面量`——`in` 会命中 Object.prototype 的继承属性，
+   * 于是 kind='constructor' 被判成已知、直接送进 t()，用户看到的是原始 i18n key 而不是兜底字符串。
+   * 这就是 Issue #23 同一类（别信后端给的 kind 串）。三处旧判据都踩着这个洞，收口时一并关上。
+   */
+  it('原型链上的属性名不算已知 kind（旧的 `in` 判据会误判成真）', () => {
+    for (const inherited of ['constructor', 'toString', 'hasOwnProperty', 'valueOf', '__proto__']) {
+      expect(isKnownModelChipKind(inherited)).toBe(false)
+    }
+  })
+
+  /**
    * 判据说「已知」，渲染侧就直接 t(`…kind.${kind}`) 不再兜底——所以清单里加了第六类却忘了加词条，
    * 用户看到的会是原始 key（`onboardingProviders.modelControls.kind.xxx`）。在这儿钉死两边同步。
    */
