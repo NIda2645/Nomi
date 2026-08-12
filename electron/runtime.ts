@@ -392,8 +392,8 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
     assertAndConsumeSpendGrant(grantId, nodeId);
     return runAudioTask({ vendor, model, apiKey, request, kind, taskId, projectId, nodeId, mapping });
   }
-  if (customCallScript && wantedKind !== "text") // 先于 mapping/fallback；localizeTaskAsset 注入避免循环依赖
-    return runCustomCallTask({ vendor, model, apiKey, script: customCallScript, request, kind, wantedKind, projectId, nodeId, grantId, taskId, localizeTaskAsset });
+  if (customCallScript) // 先于 mapping/fallback；注入避免循环依赖。文本也走这里（去掉 wantedKind!=="text" 排除：那等于「接不上的文本模型毫无出路」，而用户最初踩的正是文本模型）；文本脚本 return { text }
+    return runCustomCallTask({ vendor, model, apiKey, script: customCallScript, request, kind, wantedKind, projectId, nodeId, grantId, taskId, localizeTaskAsset, writeAsset });
   if (mapping) {
     // S8 指纹缓存:同配方(参数没动)秒回上次成功结果,零 vendor 调用;强制重跑经 extras.forceRerun 绕读。
     const recipe = buildNormalizedRecipe({

@@ -48,6 +48,11 @@ export const CUSTOM_CALL_VARIABLES: CustomCallVariableDoc[] = [
     type: "(fn: () => Promise<T>, extract: (v: T) => R | null | undefined | false, opts?: { intervalMs?: number; timeoutMs?: number }) => Promise<R>",
     desc: "repeat fn until extract returns a truthy value; default interval 2.5s, timeout 10min",
   },
+  {
+    name: "saveFile",
+    type: "(bytes: Buffer | ArrayBuffer | Uint8Array, ext: string, contentType?: string) => Promise<string>",
+    desc: "write raw bytes into the project as a local asset and get back a usable URL. Use this when the upstream returns a binary body instead of a URL (do NOT build a giant data: URL for video)",
+  },
   { name: "sleep", type: "(ms: number) => Promise<void>", desc: "delay helper (abort-aware)" },
   { name: "signal", type: "AbortSignal", desc: "cancellation signal; http/request already honor it" },
 ];
@@ -58,6 +63,8 @@ export const CUSTOM_CALL_INJECTED_KEYS = CUSTOM_CALL_VARIABLES.map((v) => v.name
 export const CUSTOM_CALL_RETURN_CONTRACT =
   "The script body must `return` the final result: an asset URL string (or data URL), an array of them, " +
   "or an object like { url } / { urls: [...] } / { video_url } / { image_url } / { b64_json }. " +
+  "For a TEXT model, return { text: \"...\" } instead. " +
+  "If the upstream hands you raw bytes rather than a URL, call saveFile(bytes, 'mp4') and return what it gives you. " +
   "For async upstreams, poll inside the script until done and return the final asset. Throw an Error with the upstream message on failure.";
 
 export type CustomCallTemplate = { id: string; script: string };
