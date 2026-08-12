@@ -42,13 +42,15 @@ function asModelKind(value: unknown): ModelKind {
   return (MODEL_KINDS as string[]).includes(String(value)) ? (value as ModelKind) : 'text'
 }
 
-export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset }: {
+export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, onSelfConnect }: {
   opened: boolean
   onClose: () => void
   /** Called once a model is committed to the catalog. */
   onCommitted?: (model: unknown) => void
   /** 打开时预选的预设（如面板「接入你的中转站」卡传 'newapi'，直接进中转拉取流，Issue #8）。 */
   initialPreset?: string
+  /** 验证失败时打开该模型的自定义调用编辑器（宿主抽屉的 openCustomCall）。 */
+  onSelfConnect?: (vendorKey: string, modelKey: string) => void
 }): JSX.Element {
   const { t } = useTranslation()
   const kindOptions = React.useMemo(
@@ -718,6 +720,10 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset }
               onClose()
             }}
             onBack={() => { setScreen('form'); setAdapterRun(null) }}
+            {...(onSelfConnect
+              ? { onSelfConnect: (modelKey: string) => onSelfConnect(adapterRun.vendorKey, modelKey) }
+              : {})}
+            onRetry={() => void startAdapterVerification(models.map((m) => ({ id: m.id, kind: m.kind })))}
           />
         )}
 

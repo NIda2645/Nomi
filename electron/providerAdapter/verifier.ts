@@ -9,6 +9,7 @@ import {
   type TaskRequest,
   type TaskResult,
 } from "../runtime";
+import { VendorRequestError, type VendorErrorCategory } from "../vendor/vendorHttp";
 import type { AdapterModeDraft } from "./types";
 import { redactAdapterSecrets } from "./redaction";
 
@@ -32,6 +33,15 @@ export type AdapterVerificationResult =
       taskKind: AdapterModeDraft["taskKind"];
       stage: "localize_reference" | "create" | "poll" | "verify_asset";
       error: string;
+      /**
+       * 失败归类。**在抛出点就已查表定好**（vendorHttp：401/403→auth、402→balance、429→quota、
+       * 400/422→input、5xx→server），这里只是把它带出来，不是重新判断。
+       * 不带的话渲染层只能拿 error 字符串做关键词匹配去猜——正是 2026-08-12
+       * `fix(errors): 文本侧错误也在源头留住 category` 修掉的反模式：猜就按类漏，且反复漏
+       * （那次注释里记着 5 轮同型补丁）。
+       */
+      errorCategory?: VendorErrorCategory;
+      httpStatus?: number;
       requestSummary?: unknown;
     };
 
@@ -260,6 +270,16 @@ export async function verifyAdapterMode(
   } catch (error) {
     const message = errorMessage(error);
     if (stage === "localize_reference" && !/素材|asset|upload|local|上传/i.test(message)) stage = "create";
-    return { ok: false, taskKind: input.mode.taskKind, stage, error: message, requestSummary };
+    // 归类不在这里判——原样取抛出点已经查表定好的那个（见 errorCategory 注释）。
+    const structured = error instanceof VendorRequestError ? error.structured : undefined;
+    return {
+      ok: false,
+      taskKind: input.mode.taskKind,
+      stage,
+      error: message,
+      ...(structured?.category ? { errorCategory: structured.category } : {}),
+      ...(structured?.httpStatus ? { httpStatus: structured.httpStatus } : {}),
+      requestSummary,
+    };
   }
 }

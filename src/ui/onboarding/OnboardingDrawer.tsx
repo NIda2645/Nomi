@@ -580,6 +580,8 @@ export function OnboardingDrawer(): JSX.Element {
         onClose={() => setWizardOpen(false)}
         onCommitted={refresh}
         initialPreset={wizardPreset}
+        // 验证失败时的终极逃生口：复用抽屉已有的 openCustomCall，不另造入口（§1.5 一功能一个家）。
+        onSelfConnect={openCustomCall}
       />
       <CustomCallEditor target={customCallTarget} onClose={() => setCustomCallTarget(null)} onSaved={refresh} />
     </div>
