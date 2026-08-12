@@ -173,6 +173,8 @@ export type BrowserChromeMenuItem =
 export type BrowserChromeMenuRecord = {
   ownerWindowId: number;
   window: BrowserWindow;
+  /** 建窗时快照：拆窗后不得再读 window.webContents（Electron 文档明令 closed 后不要再碰窗口对象）。 */
+  webContentsId: number;
   settled: boolean;
   resolve: (result: { id: string | null }) => void;
 };
