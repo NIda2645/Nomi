@@ -45,6 +45,8 @@ export const dialog = {
     Promise.resolve({ canceled: true }),
 };
 
+export const crashReporter = { start: noop };
+
 export const shell = {
   openExternal: (): Promise<void> => Promise.resolve(),
   openPath: (): Promise<string> => Promise.resolve(""),
@@ -71,6 +73,7 @@ export default {
   contextBridge,
   BrowserWindow,
   dialog,
+  crashReporter,
   shell,
   safeStorage,
   net,

@@ -204,9 +204,8 @@ function registerDevDiagnostics(mainWindow: BrowserWindow, rendererUrl: string):
   mainWindow.webContents.on("dom-ready", () => {
     console.log("[nomi:desktop] renderer dom ready");
   });
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
-    console.error("[nomi:desktop] renderer process gone:", details);
-  });
+  // render-process-gone 不在这里挂：已由 installProcessGoneHandlers 装在 app 上（落盘 + console），
+  // 覆盖所有窗口而不只是主窗，且生产环境也留证。
   mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
     console.error(`[nomi:desktop] preload failed: ${preloadPath}`, error);
   });
