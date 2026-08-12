@@ -7,15 +7,11 @@
 // 本走查不打真实上游、不花额度：自带一个假的 OpenAI 兼容网关跑在 127.0.0.1 随机端口。
 // 用法: node tests/ux/local-gateway-onboarding.walk.mjs
 // 产出: tests/ux/shots/local-gateway/*.png —— 人眼判断，不只看断言。
-import { _electron as electron } from 'playwright'
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/local-gateway')
 fs.rmSync(shotsDir, { recursive: true, force: true })
 fs.mkdirSync(shotsDir, { recursive: true })
@@ -114,24 +110,8 @@ async function snap(win, name) {
   console.log(`  · shot ${tag}`)
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${userData}`],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    // 不加这条会被单实例锁挡住直接超时（model-onboarding.walk.mjs 就是栽在这）。
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_ELECTRON_USER_DATA_DIR: userData,
-    NOMI_SETTINGS_DIR: userData,
-    NOMI_PROJECTS_DIR: path.join(userData, 'projects'),
-  },
-})
-const win = await app.firstWindow()
-await win.waitForLoadState('domcontentloaded')
-await win.waitForTimeout(1800)
-
+// 统一启动器（tests/ux/_launchApp.mjs）：必需 env 由它钉死，手抄样板漏一条就是静默挂死。
+const { app, win } = await launchNomiApp({ name: 'local-gateway-onboarding', userDataDir: userData })
 // 清场：跳过 splash / 引导。
 await win.evaluate(() => {
   for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) {

@@ -3,14 +3,12 @@
 // 给 project.json 的图片节点种 result(data:图) 当「画布成图」；
 // Phase2 重启开同一项目 → 打开画板 → 画板内导入 1 张图 → 截「画板」/「成图」tab。
 // 用法：node scripts/whiteboard-library-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.whiteboard-library-walk')
 const settingsDir = path.join(os.tmpdir(), 'wb-walk-settings-fixed')
@@ -21,34 +19,25 @@ for (const d of [outDir, settingsDir, projectsDir]) mkdirSync(d, { recursive: tr
 const PNG_FILES = ['/tmp/wb-red.png', '/tmp/wb-blue.png']
 const PNG = (i) => `data:image/png;base64,${readFileSync(PNG_FILES[i % PNG_FILES.length]).toString('base64')}`
 
-const launch = () => electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: projectsDir,
-  },
+const launch = () => launchNomiApp({
+  name: 'whiteboard-library',
+  settingsDir,
+  projectsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 1800,
 })
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
-const boot = async (app) => {
-  const win = await app.firstWindow()
+// 启动器已经等到 domcontentloaded + settle，这里只剩「把窗口摆成走查尺寸」。
+const boot = async (app, win) => {
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
-  return win
 }
 
 // ---------- Phase 1：建项目 + 加节点（纯 UI）----------
 {
-  const app = await launch()
+  const { app, win } = await launch()
   try {
-    const win = await boot(app)
+    await boot(app, win)
     await win.getByText('新建空白项目', { exact: false }).first().click()
     await win.waitForTimeout(2500)
     const genTab = win.getByRole('tab', { name: '生成', exact: false }).first()
@@ -101,10 +90,10 @@ const boot = async (app) => {
 
 // ---------- Phase 2：开项目 → 画板 → 截图 ----------
 {
-  const app = await launch()
+  const { app, win } = await launch()
   const errors = []
   try {
-    const win = await boot(app)
+    await boot(app, win)
     win.on('pageerror', (e) => errors.push(String(e)))
     win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
     await win.waitForTimeout(1500)

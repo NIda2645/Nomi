@@ -376,7 +376,8 @@ export default function NomiStudioApp(): JSX.Element {
           const opened = await hydrateProject(projectId, { replaceUrl: true })
           if (!opened) return
         }
-        useGenerationCanvasStore.getState().setGenerationAiCollapsed(false)
+        // 深链落到制作任务的新家：任务中心（不再展开画布助手面板——制作已从那儿搬走）。
+        window.dispatchEvent(new CustomEvent('nomi-open-task-center'))
         await useProductionRunStore.getState().navigateTo(projectId, runId, payload.artifactId)
       })().catch((error) => console.error('production deep link failed', error))
     })
@@ -692,13 +693,6 @@ export default function NomiStudioApp(): JSX.Element {
           </React.Suspense>
         ) : null}
         {settingsDialog}
-        {/* 付费确认卡提全局：外部 MCP 想在「非当前项目」生成时，用户停在项目库首页也能弹卡确认
-                    （治静默黑洞，用户拍板 A）。同一全局 store，库/studio 任一时刻只一个分支渲染、不双弹。 */}
-        {hasPendingSpendConfirm ? (
-          <React.Suspense fallback={null}>
-            <SpendConfirmDialog />
-          </React.Suspense>
-        ) : null}
         <ConfirmDialogHost />
       </>
     ) : (
@@ -709,11 +703,6 @@ export default function NomiStudioApp(): JSX.Element {
               {/* relative 包一层:S2b 计划 overlay 与画布同坐标系,且不喂巨壳 */}
               <div className={cn('relative w-full h-full')}>
                 <GenerationCanvas />
-                {hasPendingSpendConfirm ? (
-                  <React.Suspense fallback={null}>
-                    <SpendConfirmDialog />
-                  </React.Suspense>
-                ) : null}
               </div>
             </React.Suspense>
           }
@@ -758,6 +747,14 @@ export default function NomiStudioApp(): JSX.Element {
     <>
       {globalBrowserDialog}
       {viewContent}
+      {/* 付费确认卡挂在公共根：制作任务的家是任务中心（顶栏常驻、创作/生成/预览都能开），
+          门的兜底决策必须在任一视图都弹得出来。原先库页一处、生成区插槽内一处——创作/预览视图
+          下根本没挂载，在那儿点确认永远没反应（本轮走查实测抓出）。单一挂载，不留并行版（P1）。 */}
+      {hasPendingSpendConfirm ? (
+        <React.Suspense fallback={null}>
+          <SpendConfirmDialog />
+        </React.Suspense>
+      ) : null}
       {/* 开屏动画提到视图之外（原先只挂在库页分支）：重放入口已归位到设置「关于」，
           而设置在库页和 studio 都能开——不提上来的话从 studio 点「重看开屏动画」不会有任何反应。 */}
       {!splashDone ? (

@@ -8,7 +8,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -29,6 +29,17 @@ const sharedEnv = {
   NOMI_SETTINGS_DIR: userDataDir,
   NOMI_PROJECTS_DIR: projectsDir,
   NOMI_CAPABILITY_DIR: capabilityDir,
+}
+
+const launchGuiOptions = {
+  name: 'production-mcp-journey',
+  userDataDir,
+  settingsDir: userDataDir,
+  projectsDir,
+  env: {
+    NOMI_E2E_PRODUCTION_FIXTURE: '1',
+    NOMI_CAPABILITY_DIR: capabilityDir,
+  },
 }
 
 let passed = 0
@@ -53,16 +64,8 @@ async function terminateOwnedChild(child, graceMs = 2_000) {
 }
 
 async function launchGui() {
-  const app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.', `--user-data-dir=${userDataDir}`],
-    cwd: repoRoot,
-    env: sharedEnv,
-  })
-  const window = await app.firstWindow()
-  await window.waitForLoadState('domcontentloaded')
+  const { app, win: window } = await launchNomiApp(launchGuiOptions)
   await window.setViewportSize({ width: 1440, height: 900 })
-  await window.waitForTimeout(1_500)
   return { app, window }
 }
 
@@ -146,16 +149,27 @@ async function waitForWaitingGate(rpc, projectId, runId, gateIdPrefix, timeoutMs
   throw new Error(`Run ${runId} did not raise a waiting gate ${gateIdPrefix}*`)
 }
 
-async function openRunFromTaskCenter(window) {
-  await window.locator('[data-task-center-trigger="true"]').click()
-  const row = window.locator('[data-nomi-right-panel="tasks"]', { hasText: 'brand.promo' }).locator('[role="button"]', { hasText: 'brand.promo' }).first()
-  await row.waitFor({ timeout: 10_000 })
-  await row.click()
+/**
+ * 制作任务的家 = 任务中心（不再跳去画布助手面板）。打开顶栏任务 → 卡就地长在里面。
+ * 走查证据：shotName 传了就截图，人眼判断卡的状态/产物/指路是否成立（R13）。
+ */
+async function openRunFromTaskCenter(window, shotName) {
+  const panel = window.locator('[data-nomi-right-panel="tasks"]')
+  if (!(await panel.isVisible().catch(() => false))) {
+    await window.locator('[data-task-center-trigger="true"]').click()
+  }
+  await window.locator('[data-production-task-card]').waitFor({ timeout: 10_000 })
   await window.locator('[data-production-status-title]').waitFor({ timeout: 10_000 })
+  // 面板有 140ms pop 动画：不等落定就截图会拍到半透明重影，证据不可读。
+  if (shotName) {
+    await window.waitForTimeout(260)
+    await window.screenshot({ path: path.join(shotsDir, shotName) })
+  }
 }
 
 async function approveCurrentProductionGate(window) {
-  await window.locator('[data-production-primary-action]').click()
+  await openRunFromTaskCenter(window)
+  await window.locator('[data-production-primary-action]').first().click()
   const overlay = window.locator('.fixed.inset-0').filter({ has: window.locator('button') }).last()
   await overlay.waitFor({ timeout: 5_000 })
   await overlay.locator('button').last().click()
@@ -214,8 +228,10 @@ try {
   check(Boolean(runId), 'MCP creates a durable Production Run without approving spend')
   check(started.structuredContent.nomiRunData.budget.authorized === 0, 'draft has zero authorized spend')
 
-  await openRunFromTaskCenter(window)
-  check((await window.locator('[data-production-status-title]').textContent())?.length > 0, 'Task Center reopens the exact Run and expands the assistant')
+  await openRunFromTaskCenter(window, '00-task-center.png')
+  check((await window.locator('[data-production-status-title]').textContent())?.length > 0, 'Task Center hosts the run card itself (no hop to the assistant panel)')
+  check(await window.locator('[data-nomi-right-panel="tasks"] [data-production-task-card]').count() === 1, 'the production card lives inside the Task Center panel')
+  check(await window.locator('.generation-canvas-v2-assistant [data-production-task-card]').count() === 0, 'the canvas assistant panel no longer hosts production controls')
   await window.screenshot({ path: path.join(shotsDir, '01-direction-gate.png') })
 
   // B1/B5 方向门三选一（获批样张贰幕）：MCP 投影带候选 → GUI 渲染可点 → 选中留痕。
@@ -274,15 +290,21 @@ try {
   await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-sample-', 30_000)
   const atSample = await getRunData(mcp.rpc, projectId, runId)
   check(atSample.status === 'running' && atSample.gates.some((gate) => gate.gateId.startsWith('gate-sample-') && gate.status === 'waiting'), 'first shot raises a sample gate while the run stays running')
-  await gui.window.screenshot({ path: path.join(shotsDir, '03a-sample-gate.png') })
-  await openRunFromTaskCenter(gui.window)
+  // 截图要拍到卡本身（拍在开面板之前只会拍到空画布，等于没证据）。
+  await openRunFromTaskCenter(gui.window, '03a-sample-gate.png')
   await approveCurrentProductionGate(gui.window)
 
   run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_rough_cut_review', 30_000)
   check(run.jobs[0]?.status === 'adopted', 'approved fixture generation reaches adopted exactly once')
   check(run.artifacts.some((artifact) => artifact.kind === 'video') && run.artifacts.some((artifact) => artifact.kind === 'timeline'), 'generation and assembly produce local video and timeline artifacts')
+  await openRunFromTaskCenter(gui.window)
+  // 获批样张：视频先出封面 + 播放键（原生 controls chrome 在窄卡里又挤又脏），点了才进播放态。
+  check(await gui.window.locator('[data-production-preview] video').count() === 0, 'rough-cut preview starts as a cover, not a raw player')
+  await gui.window.locator('[data-production-preview-open]').click()
+  const roughCutVideo = gui.window.locator('[data-production-preview] video')
+  await roughCutVideo.waitFor({ timeout: 5_000 })
+  check(await roughCutVideo.count() === 1, 'clicking the cover reveals exactly one playable video in Nomi')
   await gui.window.screenshot({ path: path.join(shotsDir, '03-rough-cut-player.png') })
-  check(await gui.window.locator('[data-production-preview] video').count() === 1, 'rough-cut Run shows one playable video in Nomi')
 
   await gui.window.locator('[data-production-primary-action]').click()
   const roughCutConfirm = gui.window.locator('[data-confirm-dialog-confirm="true"]:visible')
@@ -314,8 +336,9 @@ try {
   check(probe.streams?.some((stream) => stream.codec_type === 'video' && stream.codec_name === 'h264'), 'final MP4 contains H.264 video')
   check(probe.streams?.some((stream) => stream.codec_type === 'audio' && stream.codec_name === 'aac'), 'final MP4 contains AAC audio')
 
+  // 窄窗（900×700）下的完成态：卡必须仍然装得下（380px 浮层 + 产物预览不挤爆）。
   await gui.window.setViewportSize({ width: 900, height: 700 })
-  await gui.window.screenshot({ path: path.join(shotsDir, '04-completed-900x700.png') })
+  await openRunFromTaskCenter(gui.window, '04-completed-900x700.png')
   console.log(`\nPRODUCTION MCP JOURNEY PASS: ${passed} assertions`)
   console.log(`  Run: ${runId}`)
   console.log(`  MP4: ${exportPath}`)

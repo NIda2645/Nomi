@@ -1,15 +1,13 @@
 // R13 真机走查：自定义调用编辑器全链（模型行入口 → 编辑器弹窗 → 插入模板 → 试跑失败态摊开 → 试跑成功）。
 // 试跑打到本脚本起的 mock 中转（先 400 再 200），验证 transcript 摊开与 AI 修复入口。截图人眼判断。
 // 用法：node scripts/custom-call-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.custom-call-recon')
 mkdirSync(outDir, { recursive: true })
@@ -36,27 +34,18 @@ const mock = http.createServer((req, res) => {
 await new Promise((r) => mock.listen(8791, '127.0.0.1', r))
 console.log('  🟢 mock relay on 127.0.0.1:8791')
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'custom-call',
+  settingsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 1600,
 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1440, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1600)
   const skip = win.getByRole('button', { name: /跳过|Skip/ }).first()
   if (await skip.isVisible().catch(() => false)) await skip.click()
   await win.waitForTimeout(300)

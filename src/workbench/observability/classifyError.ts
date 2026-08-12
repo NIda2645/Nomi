@@ -5,6 +5,7 @@
 import {
   narrateGenerationError,
   narrateGenerationErrorActions,
+  narrateModelKind,
   type GenerationErrorAction,
   type GenerationErrorKind,
 } from './narrate'
@@ -30,6 +31,11 @@ export type GenerationErrorReport = {
    * 只在它与 reason 不同、且有信息量时给（unknown 类的 reason 本身就是原话，不重复）。
    */
   providerMessage?: string
+  /**
+   * 仅 model-kind-mismatch：一键改对所需的三个事实。让 UI **直接读**，不从文案里反解——
+   * 文案是给人看的、还要翻译，用正则从它里面抠 modelKey 是必然会烂的耦合。
+   */
+  modelKindFix?: { modelKey: string; registered: string; requested: string }
   /** Original raw error message (any "→ hint" tail from older builds stripped). */
   raw: string
 }
@@ -142,11 +148,25 @@ function detectLegacyErrorKind(raw: string): GenerationErrorKind | null {
     return 'quota'
   // 我们自己的轮询超时(视频长任务常见)——不是网络问题,任务多半还在服务商侧跑。
   if (raw.includes('轮询超时') || lower.includes('task poll timeout')) return 'poll-timeout'
+  // 连不上 ≠ 超时。以前这桶只认 timeout 一族，「压根没连上」的那半边全漏进 unknown，拿到
+  // 「可能是服务商临时故障或额度问题，建议稍等重试」——把用户自己的网络/代理问题甩锅给一个
+  // 根本没被请求到的服务商，而重试必再撞（同 output-truncated 的理由）。三处真实来源都得认：
+  //   · `fetch failed`     Node/undici——主进程 fetch 断网/代理不通时的原话（最常撞的一条）
+  //   · `Failed to fetch`  浏览器 TypeError（网络层掐断，2026-08-12 群反馈的网页版报错原文）
+  //   · `网络请求失败`      我们自己 electron/systemProxy.ts 的兜底文案，中文，匹配不到 'network'
+  // ENOTFOUND 带 E 前缀，和下面「model not found」（中间有空格）不会互吞。
   if (
     lower.includes('timeout') ||
     lower.includes('etimedout') ||
     lower.includes('econnreset') ||
-    lower.includes('network')
+    lower.includes('econnrefused') ||
+    lower.includes('enotfound') ||
+    lower.includes('eai_again') ||
+    lower.includes('socket hang up') ||
+    lower.includes('fetch failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('network') ||
+    raw.includes('网络请求失败')
   )
     return 'network'
   // `Model is not enabled: x` = 目录里记录还在、只是被停用（退役下线走另一条专用签名）。
@@ -323,12 +343,33 @@ function detectModelRetired(raw: string): boolean {
 }
 
 /**
+ * 「目录里登记的类型和这次要的对不上」——electron 侧 findExecutableModel 的专用签名
+ * `Model kind mismatch: <modelKey> (registered=<kind>, requested=<kind>)`，不是猜文案。
+ *
+ * 为什么单列一类：接入中转时类型是按 id 关键词猜的（guessModelKind，猜不中默认 text），必然有
+ * 猜错的。旧实现把这种情形也压成 `Model is not enabled` → 归 model-config → 用户读到「模型未配置·
+ * 请去模型接入页设置」。那句话是**假的**（模型明明启用着），而且指了个死路：去那页只会看到一切正常。
+ * 抽出三个事实（哪个模型/登记成什么/这里要什么）后，文案才说得出真实缺口，按钮才能一键改对。
+ */
+const MODEL_KIND_MISMATCH_RE = /Model kind mismatch: (.+?) \(registered=(\w+), requested=(\w+)\)/
+
+function detectModelKindMismatch(raw: string): { model: string; registered: string; requested: string } | null {
+  const m = MODEL_KIND_MISMATCH_RE.exec(raw)
+  return m ? { model: m[1], registered: m[2], requested: m[3] } : null
+}
+
+/**
  * kind → 完整 report（文案 + 动作 + 上游原话）。收口原先重复 7 遍的四行样板：
  * 每处都得记着调 narrate、算 providerMessage、带 raw——漏一样就是一处失语。
  * `upstream` 给 undefined = 从 raw 里抠可读首行。
  */
-function reportFor(kind: GenerationErrorKind, raw: string, upstream: string | undefined): GenerationErrorReport {
-  const { reason, hint } = narrateGenerationError(kind)
+function reportFor(
+  kind: GenerationErrorKind,
+  raw: string,
+  upstream: string | undefined,
+  params?: Record<string, string>,
+): GenerationErrorReport {
+  const { reason, hint } = narrateGenerationError(kind, params)
   const providerMessage = pickProviderMessage(upstream ?? extractReadableErrorLine(raw), reason)
   return { kind, reason, hint, raw, ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
 }
@@ -343,6 +384,24 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       .trim() || i18n.t('generationCommon.observability.error.unknown.reason')
   // 已退役下线**最先**判：判据是 electron 抛的专用签名（确定性事实），不该被任何猜文案的检测抢走。
   if (detectModelRetired(cleanRaw)) return reportFor('model-retired', cleanRaw, undefined)
+  // 类型不符同理是专用签名，同层最先判。upstream 显式给 ''：这是**我们自己**的内部信号，
+  // 不是服务商原话——落进「服务商说：」那个框里会是彻头彻尾的栽赃（那家根本没被请求到）。
+  const kindMismatch = detectModelKindMismatch(cleanRaw)
+  if (kindMismatch) {
+    const params = {
+      model: kindMismatch.model,
+      registered: narrateModelKind(kindMismatch.registered),
+      requested: narrateModelKind(kindMismatch.requested),
+    }
+    return {
+      ...reportFor('model-kind-mismatch', cleanRaw, '', params),
+      modelKindFix: {
+        modelKey: kindMismatch.model,
+        registered: kindMismatch.registered,
+        requested: kindMismatch.requested,
+      },
+    }
+  }
   // 账号档位闸（会员/企业 Key/网页授权）先判——它的关键词（会员/授权/开通即梦会员）比
   // model-not-open 更具体；反过来放后面会被宽词抢走（即梦 CLI 兜底文案曾被判成「模型未开通」
   // 并给出火山 Ark 指引，2026-07-06 真机走查抓出）。reason 出自 narrate，服务商原话单独提到可见区。

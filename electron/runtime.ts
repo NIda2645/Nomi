@@ -20,14 +20,7 @@ import { executeProcessOperation } from "./catalog/processOperation";
 import { executeTextTask } from "./textTaskRunner";
 import { runAudioTask } from "./audioTaskRunner";
 import { firstString, isJsonRecord, trim, type JsonRecord } from "./jsonUtils";
-import {
-  collectAssetUrls,
-  firstMappedString,
-  providerMetaFromResponse,
-  taskFailureMessageFromResponse,
-  taskStatusFromResponse,
-  valuesFromMapping,
-} from "./tasks/responseParsing";
+import { collectAssetUrls, firstMappedString, providerMetaFromResponse, resolveTaskStatus, taskFailureMessageFromResponse, valuesFromMapping } from "./tasks/responseParsing";
 import { extractAssetUrl } from "./tasks/assetUrlExtract";
 import { applyResponseTransform } from "./tasks/responseTransforms";
 import { applyRequestTransform } from "./tasks/requestTransforms";
@@ -185,6 +178,8 @@ export type CachedTask = {
   wantedKind?: BillingModelKind;
   /** S8 指纹:异步任务终态成功时写回指纹缓存用。 */
   fingerprint?: string;
+  /** 未知状态动词连击（规则见 tasks/taskResultQuery）：本对象已是逐任务跨轮询的载体，故状态存这。 */
+  unrecognizedStatusStreak?: { verb: string; polls: number; firstSeenAt: number };
 };
 
 // 可执行模型解析下沉到 catalog/executableModel（R12 净减）；re-export 保住 textTaskRunner/taskResultQuery 既有 import 面。
@@ -317,7 +312,8 @@ export async function buildProfileTaskResult(input: {
   /** S4-1:provenance 统一在本出口写(修主路径漏写根因),需要 vendor/model。 */
   vendor?: Vendor;
   model?: Model;
-}): Promise<{ result: TaskResult; providerMeta: JsonRecord }> {
+  // unrecognizedStatus 随返回对象带出，**不进 TaskResult 公共类型**：判定只在 tasks/taskResultQuery 收口。
+}): Promise<{ result: TaskResult; providerMeta: JsonRecord; unrecognizedStatus: string }> {
   // 命名响应变换（P4，如 ComfyUI /history 归一）：response_mapping 前对 raw response 应用一次；未声明→原样。
   const response = applyResponseTransform(input.operation.response_transform, input.response, {
     baseUrl: String(input.vendor?.baseUrlHint || ""),
@@ -339,7 +335,7 @@ export async function buildProfileTaskResult(input: {
   const assetUrls = Array.from(
     new Set([...mappedAssetValues.flatMap(collectAssetUrls), ...collectAssetUrls(extractAssetUrl(response))]),
   );
-  const status = taskStatusFromResponse(response, responseMapping, input.mapping.statusMapping, assetUrls);
+  const { status, unrecognizedStatus } = resolveTaskStatus(response, responseMapping, input.mapping.statusMapping, assetUrls);
   const type: "image" | "video" | "model3d" =
     input.wantedKind === "video" ? "video" : input.wantedKind === "model3d" ? "model3d" : "image";
   const assets = input.projectId
@@ -347,6 +343,7 @@ export async function buildProfileTaskResult(input: {
     : assetUrls.map((url) => unlocalizedTaskAsset(type, url));
   return {
     providerMeta,
+    unrecognizedStatus,
     result: {
       id: taskId,
       kind: input.request.kind,

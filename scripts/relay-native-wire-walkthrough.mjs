@@ -8,15 +8,13 @@
 //      → 保持通用模板；同样一次请求应被 L3 第三闸**拒发并说人话**（尾帧/角色图/参考视频发不出），
 //        而不是静默退化成纯文生把钱扣了。
 // 用法：node scripts/relay-native-wire-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const MODEL = 'doubao-seedance-2-0-260128'
@@ -110,22 +108,13 @@ async function runCase({ label, rich, port }) {
   const settingsDir = mkdtempSync(path.join(os.tmpdir(), 'native-wire-walk-'))
   seedCatalog(settingsDir, vendorKey, baseUrl)
 
-  const app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.'],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-      NOMI_SETTINGS_DIR: settingsDir,
-    },
+  const { app, win } = await launchNomiApp({
+    name: 'relay-native-wire',
+    settingsDir,
+    env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+    settleMs: 4000, // 等启动后的异步体检跑完
   })
   try {
-    const win = await app.firstWindow()
-    await win.waitForLoadState('domcontentloaded')
-    await win.waitForTimeout(4000) // 等启动后的异步体检跑完
 
     const mappings = await win.evaluate(() => window.nomiDesktop.modelCatalog.listMappings())
     const mine = mappings.filter((m) => m.vendorKey === vendorKey && m.taskKind === 'image_to_video')

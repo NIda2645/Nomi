@@ -31,6 +31,8 @@ type CustomVendorCardProps = {
   onToggle: ModelEditorProps['onToggle']
   onDelete: ModelEditorProps['onDelete']
   onCustomCall: ModelEditorProps['onCustomCall']
+  /** 改类型（接入时按模型名猜的，猜错在这里改）。 */
+  onRetype: ModelEditorProps['onRetype']
   onDeleteVendor: () => void
   onChanged: () => void
 }
@@ -44,6 +46,7 @@ export function CustomVendorCard({
   onToggle,
   onDelete,
   onCustomCall,
+  onRetype,
   onDeleteVendor,
   onChanged,
 }: CustomVendorCardProps): JSX.Element {
@@ -84,7 +87,7 @@ export function CustomVendorCard({
         </button>
       }
     >
-      <ModelEnableEditor models={models} onToggle={onToggle} onDelete={onDelete} onCustomCall={onCustomCall} />
+      <ModelEnableEditor models={models} onToggle={onToggle} onDelete={onDelete} onCustomCall={onCustomCall} onRetype={onRetype} />
       <CustomVendorManage
         vendorKey={vendorKey}
         vendorName={name}

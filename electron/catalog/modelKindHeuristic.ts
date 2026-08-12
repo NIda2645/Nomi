@@ -6,10 +6,21 @@
 //
 // 单一真相源：关键词表只在这里。新增模型族（如某新视频模型）在对应表加一行即可。
 
-export type GuessableModelKind = "image" | "video" | "audio" | "text";
+export type GuessableModelKind = "image" | "video" | "audio" | "text" | "model3d";
 
-// 视频模型族（命中即判 video）。放最前——有些 id 同时含 image 词根但其实是视频（少见，保守起见
-// 视频词优先级最高，因为视频更"重"、判错代价大）。
+// 3D 模型族（命中即判 model3d）。放**最前**——这批词是全表里最具体的：一个 id 里出现
+// 3d / trellis / meshy / tripo，它几乎不可能是别的类。不给它独立桶的话（旧实现），hunyuan3d
+// 一类必然落进 text 兜底桶：既污染文本下拉，被选中还会被当聊天模型塞进 /chat/completions。
+// 注意：中转目前**没有通用 3D 调用通道**（newapiTransportFor 只有 image/video/audio），所以这里
+// 判对 = 分类诚实（不冒充文本模型），不等于接进来就能跑；接入向导会明着标这一点。
+// 内置渠道（RunningHub 混元/HiTem/Meshy）的 3D 各有手写 mapping，不走这条启发式。
+const MODEL3D_PATTERNS = [
+  "3d", "trellis", "meshy", "tripo", "triposr", "rodin", "instantmesh", "mesh",
+  "zero123", "shap-e", "point-e", "hunyuan3d", "hitem", "craftsman", "glb",
+];
+
+// 视频模型族（命中即判 video）。有些 id 同时含 image 词根但其实是视频（少见，保守起见
+// 视频词优先级高于图片，因为视频更"重"、判错代价大）。
 const VIDEO_PATTERNS = [
   "video", "kling", "sora", "veo", "runway", "gen-3", "gen3", "luma", "ray",
   "cogvideo", "hailuo", "minimax-hailuo", "seedance", "wan2", "wanx", "mochi",
@@ -44,11 +55,15 @@ function idContains(id: string, patterns: string[]): boolean {
 }
 
 /** 从模型 id 猜类型。默认 text（最安全：文本模型不需要 mapping，判错也只是多一个能聊天的条目）。
- *  判定顺序 video → audio → image → text：视频最重、判错代价最大优先；音频独立词表先于 image/text
- *  命中，避免「speech/voice」类被吞进文本。 */
+ *  判定顺序 model3d → video → audio → image → text：3D 词表最具体（命中即几乎确定）故最先；
+ *  再按视频最重、判错代价最大优先；音频独立词表先于 image/text 命中，避免「speech/voice」类被吞进文本。
+ *
+ *  猜错是**必然**的（关键词判类的本质），所以纠错通道必须一直在：接入第二屏每行标出猜到的类型可就地改，
+ *  落库之后在模型抽屉里每行仍可改（改 kind 同时按新类型重建调用通道，见 catalog/modelRetype.ts）。 */
 export function guessModelKind(modelId: string): GuessableModelKind {
   const id = String(modelId || "").toLowerCase().trim();
   if (!id) return "text";
+  if (idContains(id, MODEL3D_PATTERNS)) return "model3d";
   if (idContains(id, VIDEO_PATTERNS)) return "video";
   if (idContains(id, AUDIO_PATTERNS)) return "audio";
   if (idContains(id, IMAGE_PATTERNS)) return "image";

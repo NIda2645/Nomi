@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import type { AiSdkProviderKind } from "../../catalog/types";
 import { describeIllegalHeader, findIllegalHeader, findNonHeaderSafeChar } from "../../jsonUtils";
-import { guessModelKind } from "../../catalog/modelKindHeuristic";
+import { guessModelKind, type GuessableModelKind } from "../../catalog/modelKindHeuristic";
 import {
   buildAuthHeaders,
   describeNetworkErrorLazy,
@@ -121,7 +121,7 @@ export function registerOnboardingIpc(): void {
       const models = await Promise.all(rawModels.map(async (m) => {
         const id = String(m?.id || "");
         const k = m?.kind;
-        const kind = (k === "image" || k === "video" || k === "text" || k === "audio" ? k : undefined) as "text" | "image" | "video" | "audio" | undefined;
+        const kind = (k === "image" || k === "video" || k === "text" || k === "audio" || k === "model3d" ? k : undefined) as GuessableModelKind | undefined;
         const displayName = m?.displayName ? String(m.displayName) : undefined;
         const explicit = typeof m?.imageEditProtocol === "string" ? (m.imageEditProtocol as "chat-completions-image-url" | "xai-json-edits" | "openai-multipart-edits") : undefined;
         const effectiveKind = kind || (id ? guessModelKind(id) : undefined);
@@ -161,10 +161,10 @@ export function registerOnboardingIpc(): void {
   });
 
   // 类型启发式（Issue #8）：从 /v1/models 拉到/手填的模型 id 没带类型，主进程按关键词猜
-  // 图片/视频/文本（单一真相源 guessModelKind），返回给 UI 预填「类型」下拉，用户可改。
+  // 图片/视频/文本/配音/3D（单一真相源 guessModelKind），返回给 UI 标在每行上，用户可就地改。
   ipcMain.handle("nomi:onboarding:guess-kinds", async (_event, payload: Record<string, unknown>) => {
     const ids = Array.isArray(payload?.ids) ? (payload.ids as unknown[]).map((x) => String(x || "")) : [];
-    const kinds: Record<string, "text" | "image" | "video" | "audio"> = {};
+    const kinds: Record<string, GuessableModelKind> = {};
     for (const id of ids) if (id) kinds[id] = guessModelKind(id);
     return { kinds };
   });

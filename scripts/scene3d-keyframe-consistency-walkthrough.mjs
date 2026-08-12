@@ -3,7 +3,7 @@
 // ffmpeg 抽 MP4 首/尾帧与 PNG 做 SSIM 对账——同相机同时间点构图必须一致，且全部产物零 editor-only 元素
 //（TransformControls 球/轴/轨迹点）。截图落 .scene3d-keyframe-lab/ 供人眼终审。
 // 用法：pnpm build && node scripts/scene3d-keyframe-consistency-walkthrough.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -33,24 +33,16 @@ let failures = 0
 const ok = (msg) => console.log('  ✓ ' + msg)
 const fail = (msg) => { console.error('  ✗ ' + msg); failures += 1 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(base, 'udata')}`],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_PROJECTS_DIR: projectsDir,
-    NOMI_SETTINGS_DIR: settingsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-keyframe',
+  settingsDir,
+  projectsDir,
+  userDataDir: path.join(base, 'udata'),
 })
 try {
-  const win = await app.firstWindow()
   const shot = async (name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     window.localStorage.setItem('__nomiE2E', '1')
     for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) window.localStorage.setItem(k, 'seen')

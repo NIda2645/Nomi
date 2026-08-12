@@ -123,6 +123,8 @@ export function OnboardingDrawer(): JSX.Element {
         enabled: m.enabled !== false,
         meta: m.meta,
         hasCustomCall: Boolean((m.customCall as { script?: unknown } | undefined)?.script),
+        // 只有手动/中转拉取路接进来的模型可改类型——正好也只有那条路会按 id 关键词猜类型（会猜错）。
+        canRetype: (m.onboarding as { addedVia?: unknown } | undefined)?.addedVia === 'manual',
       }))
       // 自定义调用脚本正文（编辑器回填用）；行上只带 hasCustomCall 布尔，正文单独成表不肥 ChipModel。
       const scripts = new Map<string, string>()
@@ -237,6 +239,23 @@ export function OnboardingDrawer(): JSX.Element {
     }
   }, [refresh, t])
 
+  /**
+   * 改类型（接入时按 id 猜错了的那批）。**不是 upsert 一个字段**：走专用 IPC，主进程会在同一事务里
+   * 按新 kind 重建调用通道 —— 只翻标签不重建通道的话，模型立刻能进对应下拉、点生成却撞「没有通道」，
+   * 等于把用户从一个坑挪到另一个坑（见 electron/catalog/modelRetype.ts 文件头）。
+   */
+  const handleRetype = React.useCallback((row: ChipModel, kind: string) => {
+    const bridge = getDesktopBridge()
+    const retype = bridge?.modelCatalog.retypeModel
+    if (!retype) return
+    try {
+      retype({ vendorKey: row.vendorKey, modelKey: row.modelKey, kind })
+      refresh()
+    } catch (e) {
+      void alertDialog({ title: t('onboardingProviders.drawer.operationFailed'), message: e instanceof Error ? e.message : String(e) })
+    }
+  }, [refresh, t])
+
   // 卡头快捷删除整家供应商（与 CustomVendorManage 的删除按钮共用 confirmAndDeleteVendor，P1）。
   const handleDeleteVendor = React.useCallback(async (vendorKey: string, vendorName: string, modelCount: number) => {
     const res = await confirmAndDeleteVendor({ vendorKey, vendorName, modelCount, onChanged: refresh })
@@ -317,6 +336,32 @@ export function OnboardingDrawer(): JSX.Element {
     return counts
   }, [models, vendorMeta])
 
+  /**
+   * 「类型可能被猜错了」的诊断（本次修复的主症状入口）。
+   *
+   * 病象：中转一次拉几十个模型，类型是按 id 关键词猜的，猜不中一律落 text。猜错之后模型不会报错，
+   * 而是**从对应下拉里消失**（生成侧每层都按 kind 过滤）——用户看到的是「没有可用图像模型」，
+   * 但设置页一片绿、模型也都在列表里，没有一个字指向真实缺口。这条横幅就是那个缺失的字。
+   *
+   * 判据刻意收窄成这个 bug 的**指纹**，不是「哪类为零就喊」（那会变成常年噪音：只接文本模型的
+   * 用户本来就该是零）。三条同时成立才提示：
+   *   ① 有一批可改类型的模型（≥3 条，说明是拉取进来的批量，不是手挑两个）；
+   *   ② 它们几乎全挤在同一类（≥80%）——这正是「猜不中→全落 text」的形状；
+   *   ③ 至少还有一类是零。
+   * 即便如此也**不下结论**：文案说「里面若有 X 模型，点右边改过来」，给线索不替用户断言（D4）。
+   */
+  const kindGuessGap = React.useMemo(() => {
+    const retypeable = models.filter((m) => m.canRetype && m.enabled)
+    if (retypeable.length < 3) return null
+    const byKind = new Map<string, number>()
+    for (const m of retypeable) byKind.set(String(m.kind), (byKind.get(String(m.kind)) ?? 0) + 1)
+    const [dominantKind, dominantCount] = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (dominantCount / retypeable.length < 0.8) return null
+    const missing = KIND_CAPS.filter(({ kind }) => kind !== dominantKind && (coveredKindCounts.get(kind) ?? 0) === 0)
+    if (missing.length === 0) return null
+    return { dominantKind, count: retypeable.length, missing: missing.map((c) => c.labelKey) }
+  }, [models, coveredKindCounts])
+
   // 其他（自定义中转）按 vendor 拆成每家一张卡，卡名用用户在接入时填的「来源名称」（vendorMeta.name）。
   // 根因修复：此前全塞进单张「其他模型」卡、只按 kind 分组，多家糊一起分不清哪个 key 对哪家。
   // name 字段本就存在（接入向导「来源名称」→ Vendor.name），这里只是把它显示出来、按家拆开。
@@ -378,6 +423,26 @@ export function OnboardingDrawer(): JSX.Element {
         </div>
       </div>
 
+      {/* 类型猜错诊断：紧贴能力条下方——用户正是被那条「图片 未接」逼过来的，答案就该在它旁边。
+          左描边 + 弱底（非整块警告色）：这是线索不是报错，别喧宾夺主（判据与措辞理由见 kindGuessGap）。 */}
+      {kindGuessGap ? (
+        <div className="px-4 pb-2" data-drawer-kind-gap>
+          <div className="border-l-2 border-nomi-warning bg-[color-mix(in_oklch,var(--nomi-warning)_10%,var(--nomi-paper))] px-2.5 py-2">
+            <div className="text-caption font-medium text-nomi-ink">
+              {t('onboardingProviders.drawer.kindGapTitle', {
+                kinds: kindGuessGap.missing.map((k) => t(k)).join(' / '),
+              })}
+            </div>
+            <div className="mt-0.5 text-micro leading-relaxed text-nomi-ink-60">
+              {t('onboardingProviders.drawer.kindGapBody', {
+                count: kindGuessGap.count,
+                kind: t(`onboardingProviders.modelControls.kind.${kindGuessGap.dominantKind}` as 'onboardingProviders.modelControls.kind.text'),
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* 网络（代理）行：能力条之下、「已接入」之上。位置理由见 NetworkSection 头注释——
           面板已顶到视口高度上限，放底部就等于「用户最急的时候要滚过十几张卡才找得到」。 */}
       <NetworkSection />
@@ -421,6 +486,7 @@ export function OnboardingDrawer(): JSX.Element {
                   onToggle={handleSetEnabled}
                   onDelete={handleDelete}
                   onCustomCall={(row) => openCustomCall(row.vendorKey, row.modelKey)}
+                  onRetype={handleRetype}
                   onDeleteVendor={() => void handleDeleteVendor(group.vendorKey, group.name, group.models.length)}
                   onChanged={refresh}
                 />

@@ -14,6 +14,7 @@
 import crypto from 'node:crypto'
 import { listProjects, createProject, readProject } from '../projects/repository'
 import { readCatalog } from '../catalog/catalogStore'
+import { desktopT } from '../i18n'
 import {
   addNodes,
   connectNodes,
@@ -42,6 +43,8 @@ type TaskResultLike = {
     text?: string | null
   }>
   raw?: unknown
+  /** 终态失败的真实原因（与 runtime.TaskResult.error 同义；轮询超时兜底也走这个字段）。 */
+  error?: string
 }
 
 /** runTask 的形状（注入式，便于单测构造请求体而不真打 vendor）。 */
@@ -348,7 +351,20 @@ export async function generateOnProject(
       const pollIntervalMs = kind === 'text_to_video' || kind === 'image_to_video' ? 3000 : 1500
       const startedAt = Date.now()
       while (result.status && !TERMINAL_STATUSES.has(result.status)) {
-        if (Date.now() - startedAt > timeoutMs) break
+        if (Date.now() - startedAt > timeoutMs) {
+          // 到点必须落**终态**：旧版直接 break，result 保持 queued/running 且不带 error —— 调用方
+          // （MCP/agent/CLI）拿到一个永远非终态的结果，等同「转圈但没人告诉你出了什么事」。
+          // 超时≠上游一定失败，故文案明说任务可能仍在供应商侧运行。
+          result = {
+            ...result,
+            status: 'failed',
+            error: desktopT('tasks.pollTimedOut', {
+              seconds: Math.round((Date.now() - startedAt) / 1000),
+              status: result.status || 'unknown',
+            }),
+          }
+          break
+        }
         await delay(pollIntervalMs)
         const polled = await fetchTaskResultFn({
           taskId: result.id || '',

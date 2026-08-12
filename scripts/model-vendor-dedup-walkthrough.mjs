@@ -6,14 +6,12 @@
 //   ② 参数面板「供应商」分段控件两项可选、能锁非默认那家
 //   ③ 锁定甲后等 vendor 同步 effect 跑过，仍是甲（不被翻回乙）；project.json 落的 modelVendor=甲
 // 用法：node scripts/model-vendor-dedup-walkthrough.mjs（需先 pnpm build）
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.model-dedup-walk')
 fs.mkdirSync(outDir, { recursive: true })
@@ -57,31 +55,22 @@ const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'model-dedup-walk-sett
 const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'model-dedup-walk-projects-'))
 fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify(catalogFixture(), null, 2))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: projectsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'model-vendor-dedup',
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settingsDir,
+  projectsDir,
+  settleMs: 1800,
 })
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
 const errors = []
 let failed = false
 
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2200)

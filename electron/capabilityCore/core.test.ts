@@ -219,6 +219,31 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(kind).toBe('image_to_video')
   })
 
+  // 病根回归：轮询到点旧版只 break，result 保持 queued 且不带 error —— 调用方（MCP/agent/CLI）
+  // 拿到一个**永远非终态**的结果，等同「一直转圈但没人告诉你出了什么事」。到点必须落终态。
+  it('generate：轮询超时必须落 failed + 诚实原因，不能静默返回 queued', async () => {
+    const project = createNamedProject('轮询超时测试')
+    const previous = process.env.NOMI_POLL_TIMEOUT_MS
+    process.env.NOMI_POLL_TIMEOUT_MS = '1'
+    try {
+      let polls = 0
+      const out = await generateOnProject(
+        { projectId: project.id, intent: 'image', prompt: '一只猫', vendor: 'apimart', modelKey: 'seedream-4' },
+        createDiskGateway(project.id),
+        async () => ({ id: 'task-stuck', status: 'queued', assets: [] }),
+        async () => {
+          polls += 1
+          return { result: { id: 'task-stuck', status: 'queued', assets: [] } }
+        },
+      )
+      expect(polls).toBeGreaterThan(0)
+      expect(out.status).toBe('failed')
+    } finally {
+      if (previous === undefined) delete process.env.NOMI_POLL_TIMEOUT_MS
+      else process.env.NOMI_POLL_TIMEOUT_MS = previous
+    }
+  })
+
   it('未知项目抛清晰错误', async () => {
     await expect(readProjectCanvas(createDiskGateway('ghost-id'))).rejects.toThrow(/项目不存在/)
   })

@@ -8,14 +8,12 @@
 // 不填时是否被模板丢弃（不发空值）。
 //
 // 用法：pnpm build 后 node scripts/poll-cadence-live-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.poll-cadence-walk')
 mkdirSync(outDir, { recursive: true })
@@ -55,25 +53,15 @@ copyFileSync(devCatalog, iso)
   }
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_SETTINGS_DIR: settings,
-    NOMI_PROJECTS_DIR: projects,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'poll-cadence-live',
+  settingsDir: settings,
+  projectsDir: projects,
 })
 let failed = false
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)
   await win.locator('[aria-label="工作区切换"]').getByText('生成', { exact: true }).click()

@@ -18,6 +18,8 @@ import { currentWorkbenchFloatingTopOffset } from '../../ui/app-shell/windowChro
 import type { ProductionRunSummary } from '../../../electron/productionRun/productionRunTypes'
 import type { TaskCenterProjection } from './taskCenterProjection'
 import { buildProductionRunTaskRows } from './productionRunTaskCenter'
+import { ProductionRunTaskCard } from '../production/ProductionRunTaskCard'
+import { useProductionStatus } from '../production/useProductionStatus'
 
 const PANEL_WIDTH = 380
 const TOP_OFFSET = currentWorkbenchFloatingTopOffset()
@@ -41,6 +43,9 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
   const batches = useGenerationQueueStore((state) => state.batches)
   const nodes = useGenerationCanvasStore((state) => state.nodes)
   const [now, setNow] = React.useState(() => Date.now())
+  // N1：制作任务的家搬到这里（原先在画布助手面板里，见 plan 2026-08-11-nomi-side-viewer-and-fallback）。
+  // 只在面板打开时加载/轮询完整 run——关着时徽标由 TaskCenterButton 的 summary 轮询维持。
+  const production = useProductionStatus({ enabled: opened })
 
   React.useEffect(() => {
     if (!opened) return
@@ -144,6 +149,31 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
       onRevealProductionRun?.(row.projectId, row.runId)
     }
   }
+  /**
+   * 制作任务在这里长成完整卡（看片台 + 兜底）；其余任务仍是紧凑行。
+   * 只有 store 已载入的那个 run 出卡——其它 run 拿不到完整数据（gates/artifacts），保持行不撒谎。
+   */
+  const renderRow = (row: TaskCenterProjection): JSX.Element => {
+    if (row.kind === 'production_run' && production.view && production.production.run?.runId === row.runId) {
+      const run = production.production.run
+      return (
+        <div key={row.id} className="px-2.5 pb-1.5">
+          <ProductionRunTaskCard
+            projectId={run.projectId}
+            view={production.view}
+            playbookName={run.playbook.name}
+            artifacts={run.artifacts}
+            focusedArtifactId={production.focusedArtifactId}
+            onPrimaryAction={(action) => { void production.onPrimaryAction(action) }}
+            onControl={(action) => { void production.onControl(action) }}
+            onOpenPreview={() => reveal(row)}
+          />
+        </div>
+      )
+    }
+    return <TaskRow key={row.id} row={row} onReveal={reveal} onAction={() => void runAction(row)} />
+  }
+
   const runAction = async (row: TaskCenterProjection): Promise<void> => {
     const action = row.action
     if (!action) return
@@ -199,9 +229,7 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
           {running.length > 0 ? (
             <SectionHeader icon={<IconLoader2 size={13} stroke={1.8} />} label={t('taskCenter.sections.running', { count: running.length })} />
           ) : null}
-          {running.map((row) => (
-            <TaskRow key={row.id} row={row} onReveal={reveal} onAction={() => void runAction(row)} />
-          ))}
+          {running.map((row) => renderRow(row))}
 
           {queued.length > 0 ? (
             <SectionHeader
@@ -210,21 +238,12 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
               note={t('taskCenter.freeToCancel')}
             />
           ) : null}
-          {queued.map((row) => (
-            <TaskRow key={row.id} row={row} onReveal={reveal} onAction={() => void runAction(row)} />
-          ))}
+          {queued.map((row) => renderRow(row))}
 
           {done.length > 0 ? (
             <SectionHeader icon={<IconCheck size={13} stroke={1.8} />} label={t('taskCenter.sections.done', { count: done.length })} />
           ) : null}
-          {done.map((row) => (
-            <TaskRow
-              key={row.id}
-              row={row}
-              onReveal={reveal}
-              onAction={() => void runAction(row)}
-            />
-          ))}
+          {done.map((row) => renderRow(row))}
 
           {rows.length === 0 ? (
             <div className="px-3.5 py-9 text-center text-caption text-nomi-ink-40 leading-relaxed">

@@ -191,6 +191,7 @@ export const zhGenerationCommon = {
       retry: { main: '重试', alt: '仍要重试' },
       switchModel: { main: '换个模型', alt: '换个模型' },
       modelAccess: { main: '去模型接入', alt: '去模型接入' },
+      fixModelKind: { main: '改成{{kind}}并重试', alt: '改成{{kind}}' },
     },
     progress: {
       queued: '准备生成',
@@ -223,8 +224,17 @@ export const zhGenerationCommon = {
         reason: '生成超时',
         hint: '视频生成较慢，等待超过上限。任务可能仍在进行，请稍后重新生成，或换更快的模型（如 Seedance Fast）。',
       },
-      network: { reason: '网络超时', hint: '网络问题，请检查网络后重试。' },
+      // 这桶同时装「超时」和「压根没连上」（ECONNREFUSED/ENOTFOUND/fetch failed），所以标题
+      // 不能写死「超时」。首要嫌疑是代理没覆盖到海外接口——和参考图图床那条同一个真凶。
+      network: {
+        reason: '连不上服务商',
+        hint: '请求没发到服务商——多半是本机网络或代理没覆盖到它（海外接口尤其常见）。先检查网络和代理，再重试。',
+      },
       modelConfig: { reason: '模型未配置', hint: '这个模型没配好，请去「模型接入」页设置。' },
+      modelKindMismatch: {
+        reason: '模型类型登记错了',
+        hint: '接入时是按模型名猜的类型，这个猜错了：「{{model}}」被登记成了{{registered}}模型，而这里要的是{{requested}}模型。改成{{requested}}就能用。',
+      },
       modelNotOpen: {
         reason: '模型未开通',
         hint: '这个模型你的服务商账户还没开通。请到服务商控制台开通它（火山方舟：在 Ark 控制台「开通管理」激活对应模型），或在「模型接入」换一个已开通的模型。',
@@ -929,6 +939,9 @@ export const zhGenerationCommon = {
     status: {
       submissionUnknown: '提交结果不明，Nomi 已停止自动重试',
       approvalRequired: '继续制作前需要你的确认',
+      directionGate: '等你定创意方向',
+      sampleGate: '样片好了，等你过目',
+      exportGate: '成片等你批准导出',
       needsAttention: '当前制作阶段需要处理',
       providerStale: '供应商长时间没有返回新状态',
       completed: '本次制作已完成',
@@ -944,6 +957,9 @@ export const zhGenerationCommon = {
     description: {
       submissionUnknown: '请求可能已经到达供应商；再次提交可能重复扣费，后续任务已停在安全边界。',
       approvalRequired: '请核对当前制作范围和支出边界；批准前不会继续调用付费模型。',
+      directionGate: '方向定了才会拟分镜。这一步不调用模型，也不花钱。',
+      sampleGate: '先看这一镜样片：满意就继续剩下的镜头，不满意只亏这一镜的钱。',
+      exportGate: '导出会把粗剪合成成片；这一步由你明确批准后才执行。',
       needsAttention: '自动流程已经暂停，请查看当前镜头或阶段并处理失败原因。',
       providerStale: 'Nomi 仍会查询已有任务，但不会因为等待过久而重复提交。',
       completed: '所有已批准阶段都已完成，产物仍保存在当前本地项目中。',
@@ -967,6 +983,12 @@ export const zhGenerationCommon = {
       focusedArtifact: '已定位产物',
       pending: '等待产物',
       details: '制作详情',
+      playPreview: '播放这段预览',
+      openPreview: '打开这个产物',
+    },
+    route: {
+      waiting: '{{host}} 那边等你决定——回到那边一句话就行',
+      fallback: '也可以在这里决定',
     },
     runAction: {
       'open-stage': '查看当前阶段',
@@ -1331,6 +1353,7 @@ export const enGenerationCommon = {
       retry: { main: 'Retry', alt: 'Retry anyway' },
       switchModel: { main: 'Switch model', alt: 'Switch model' },
       modelAccess: { main: 'Open model access', alt: 'Open model access' },
+      fixModelKind: { main: 'Set to {{kind}} and retry', alt: 'Set to {{kind}}' },
     },
     progress: {
       queued: 'Preparing generation',
@@ -1363,8 +1386,15 @@ export const enGenerationCommon = {
         reason: 'Generation timed out',
         hint: 'Video generation exceeded the wait limit and may still be running. Try again later or use a faster model such as Seedance Fast.',
       },
-      network: { reason: 'Network timeout', hint: 'Check your network connection and try again.' },
+      network: {
+        reason: 'Cannot reach the provider',
+        hint: 'The request never reached the provider — usually your network or proxy does not cover it (common for overseas endpoints). Check your network and proxy, then retry.',
+      },
       modelConfig: { reason: 'Model not configured', hint: 'Configure this model in Model access.' },
+      modelKindMismatch: {
+        reason: 'Model registered as the wrong type',
+        hint: 'Types are guessed from the model name when you connect a provider, and this one guessed wrong: "{{model}}" is registered as {{registered}}, but this needs {{requested}}. Set it to {{requested}} and it will work.',
+      },
       modelNotOpen: {
         reason: 'Model not activated',
         hint: 'Activate this model in the provider console, or choose an already activated model in Model access.',
@@ -2083,6 +2113,9 @@ export const enGenerationCommon = {
     status: {
       submissionUnknown: 'Submission result is unknown; Nomi stopped automatic retries',
       approvalRequired: 'Your approval is required before production continues',
+      directionGate: 'Waiting on your creative direction',
+      sampleGate: 'The sample shot is ready for you',
+      exportGate: 'The final cut is waiting for your export approval',
       needsAttention: 'The current production stage needs attention',
       providerStale: 'The provider has not returned a new state for a while',
       completed: 'This production run is complete',
@@ -2098,6 +2131,9 @@ export const enGenerationCommon = {
     description: {
       submissionUnknown: 'The request may have reached the provider. Retrying could charge twice, so later work is paused at a safe boundary.',
       approvalRequired: 'Review the production scope and spending boundary. No paid model will run before approval.',
+      directionGate: 'The storyboard is drafted only after the direction is set. This step calls no model and costs nothing.',
+      sampleGate: 'Check this one sample shot: approve to continue the rest, or stop and only lose this shot.',
+      exportGate: 'Exporting assembles the rough cut into the final file; it runs only after you approve.',
       needsAttention: 'Automation is paused. Open the current shot or stage to resolve the failure.',
       providerStale: 'Nomi will keep checking the existing task without resubmitting it because of the delay.',
       completed: 'Every approved stage is complete, and the artifacts remain in this local project.',
@@ -2121,6 +2157,12 @@ export const enGenerationCommon = {
       focusedArtifact: 'Focused artifact',
       pending: 'Waiting for artifact',
       details: 'Production details',
+      playPreview: 'Play this preview',
+      openPreview: 'Open this artifact',
+    },
+    route: {
+      waiting: '{{host}} is waiting on your decision — just answer there',
+      fallback: 'Or decide here',
     },
     runAction: {
       'open-stage': 'Open current stage',

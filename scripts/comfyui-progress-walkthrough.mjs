@@ -4,8 +4,7 @@
 // 只有取消能结束任务。验：① 遮罩出现确定圆环+节点人话+取消钮+预览帧 ② 点取消 → /interrupt
 // 被打 + 节点回 idle（无红错误卡）。
 // 用法：pnpm build && node scripts/comfyui-progress-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import crypto from 'node:crypto'
 import path from 'node:path'
@@ -13,7 +12,6 @@ import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.comfyui-progress-walk')
 mkdirSync(outDir, { recursive: true })
@@ -123,28 +121,19 @@ const pump = setInterval(() => {
   }
 }, 600)
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: mkdtempSync(path.join(os.tmpdir(), 'comfyui-progress-proj-')),
-  },
+const { app, win } = await launchNomiApp({
+  name: 'comfyui-progress',
+  settingsDir,
+  projectsDir: mkdtempSync(path.join(os.tmpdir(), 'comfyui-progress-proj-')),
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 1800,
 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)

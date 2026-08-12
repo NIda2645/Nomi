@@ -47,9 +47,9 @@ function localizedGateCopy(
   return { title: gate.title, message: gate.summary }
 }
 
-export function useProductionStatus() {
+export function useProductionStatus(options: { enabled?: boolean } = {}) {
   const { t } = useTranslation()
-  const production = useActiveProductionRun()
+  const production = useActiveProductionRun(undefined, options)
   const actionInFlightRef = React.useRef(false)
   const view = React.useMemo(() => (production.run ? buildProductionRunView(production.run) : null), [production.run])
   const executeCommand = React.useCallback(

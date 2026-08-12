@@ -54,8 +54,16 @@ export function adapterProviderState(models: AdapterCardInput[]): {
   return { state, enabled: models.filter(model => model.enabled).length, total: models.length }
 }
 
+/**
+ * 只在**验证正在跑**的时候锁——那会儿改了也会被跑完的结果覆盖。
+ *
+ * 曾经把 `failed` 也锁上，那是「接不进来」的最后一道墙（2026-08-11 用户接 DeepSeek 踩到）：
+ * 验证没过 → 模型停用 → 勾选框还点不动 → 改了地址也不会重验 → 只能删掉整个供应商重来。
+ * 而失败若源于我们自己探测的 bug（那次正是），重来多少遍都一样。
+ * 判死权不归探测：没验过的照样能启用、能用，用户自己说了算。
+ */
 export function isAdapterModelLocked(meta: unknown): boolean {
   const root = meta && typeof meta === 'object' ? meta as Record<string, unknown> : {}
   const adapter = root.adapter && typeof root.adapter === 'object' ? root.adapter as Record<string, unknown> : {}
-  return adapter.state === 'testing' || adapter.state === 'failed'
+  return adapter.state === 'testing'
 }

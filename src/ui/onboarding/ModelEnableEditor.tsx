@@ -9,8 +9,9 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconSearch, IconTrash, IconCheck, IconCode } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
+import { NomiSelect } from '../../design'
 import type { ChipModel } from './ModelChipGroups'
-import { groupModelsByKind, MODEL_CHIP_KIND_LABEL } from './modelChipGrouping'
+import { groupModelsByKind, MODEL_CHIP_KIND_LABEL, type ModelChipKind } from './modelChipGrouping'
 import { bulkToggleTargets, enabledCount, filterModelsByQuery, modelRowKey, selectedModelRows } from './modelEnableEditing'
 import { isAdapterModelLocked } from './adapterVerificationViewModel'
 
@@ -22,11 +23,21 @@ type ModelEnableEditorProps = {
   onDelete: (rows: ChipModel[]) => void
   /** 传入则每行显示「自定义调用」动作（仅中转/自定义家用；已设脚本=图标点亮+角标）。 */
   onCustomCall?: (row: ChipModel) => void
+  /**
+   * 传入则可改类型的行上出现类型选择器（改 kind + 重建调用通道，父层包 IPC）。
+   * 为什么这个控件必须**常驻可见**而不是收进 hover/二级：接入时的类型是猜的、必然有猜错的，
+   * 而猜错之后模型不是报错、是**从对应下拉里消失**——用户永远不会想到「去某个二级菜单改类型」。
+   * 把它摆在行上，「这条被登记成什么」和「原来能改」才同时可见（这正是此前唯一缺失的信息）。
+   */
+  onRetype?: (row: ChipModel, kind: string) => void
 }
+
+/** 可选类型（顺序 = 分组展示序，单源自 modelChipGrouping 的已知 kind）。 */
+const RETYPE_KINDS: ModelChipKind[] = ['text', 'image', 'video', 'audio', 'model3d']
 
 const PILL = 'h-6 px-2.5 rounded-full border text-micro inline-flex items-center gap-1'
 
-export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall }: ModelEnableEditorProps): JSX.Element {
+export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall, onRetype }: ModelEnableEditorProps): JSX.Element {
   const { t } = useTranslation()
   const [query, setQuery] = React.useState('')
   const [selectMode, setSelectMode] = React.useState(false)
@@ -222,6 +233,20 @@ export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall }: 
                     >
                       {m.labelZh}
                     </button>
+                    {onRetype && m.canRetype ? (
+                      <NomiSelect
+                        value={m.kind}
+                        options={RETYPE_KINDS.map((k) => ({
+                          value: k,
+                          label: t(`onboardingProviders.modelControls.kind.${k}` as 'onboardingProviders.modelControls.kind.text'),
+                        }))}
+                        onChange={(next) => { if (next !== m.kind) onRetype(m, next) }}
+                        ariaLabel={t('onboardingProviders.modelControls.retypeAria', { name: m.labelZh })}
+                        title={t('onboardingProviders.modelControls.retypeTitle')}
+                        size="xs"
+                        className="shrink-0"
+                      />
+                    ) : null}
                     {onCustomCall ? (
                       <button
                         type="button"

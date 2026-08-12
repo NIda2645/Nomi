@@ -86,6 +86,11 @@ export type GenerationErrorKind =
   | 'poll-timeout'
   | 'network'
   | 'model-config'
+  // 「目录里登记的类型 ≠ 这次请求要的类型」。与 model-config 分开是因为它们的**真相不同**：
+  // model-config = 真没配好；这条 = 配好了、只是接入时按 id 关键词猜错了类别（guessModelKind
+  // 必然有猜错的）。压成同一类的话用户看到「模型未配置」，去那页只会看到一切正常——没有一个字
+  // 指向真实缺口，所以没人会去用那个改类型的控件。
+  | 'model-kind-mismatch'
   | 'model-not-open'
   | 'model-unavailable-upstream'
   | 'model-retired'
@@ -106,6 +111,7 @@ const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   'poll-timeout': 'pollTimeout',
   network: 'network',
   'model-config': 'modelConfig',
+  'model-kind-mismatch': 'modelKindMismatch',
   'model-not-open': 'modelNotOpen',
   'model-unavailable-upstream': 'modelUnavailableUpstream',
   'model-retired': 'modelRetired',
@@ -120,12 +126,27 @@ const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   unknown: 'unknown',
 }
 
-export function narrateGenerationError(kind: GenerationErrorKind): { reason: string; hint: string } {
+/**
+ * `params` 给需要说出**具体事实**的类别插值（目前只有 model-kind-mismatch：要说清「哪个模型、
+ * 登记成什么、这里要什么」）。泛泛一句「类型不对」等于没说——用户得知道改成哪个才算数。
+ * 不需要插值的类别原样返回，词表仍是唯一文案来源（P1）。
+ */
+export function narrateGenerationError(
+  kind: GenerationErrorKind,
+  params?: Record<string, string>,
+): { reason: string; hint: string } {
   const key = ERROR_KEY_BY_KIND[kind]
   return {
-    reason: i18n.t(`generationCommon.observability.error.${key}.reason`),
-    hint: i18n.t(`generationCommon.observability.error.${key}.hint`),
+    reason: i18n.t(`generationCommon.observability.error.${key}.reason`, params),
+    hint: i18n.t(`generationCommon.observability.error.${key}.hint`, params),
   }
+}
+
+/** kind → 人话类别名（「图片」「视频」…）。单源复用 runtime 词表，错误卡与空目录提示说法一致。 */
+export function narrateModelKind(kind: string): string {
+  return i18n.t(`runtime.modelCatalog.kind.${kind}` as 'runtime.modelCatalog.kind.image', {
+    defaultValue: kind,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +160,10 @@ export function narrateGenerationError(kind: GenerationErrorKind): { reason: str
 // 正下方、一直可编辑，加个按钮是多余（R2：好产品不靠按钮解释），那两类的动作给 retry。
 // ---------------------------------------------------------------------------
 
-export type GenerationErrorAction = 'retry' | 'switch-model' | 'open-model-access'
+// fix-model-kind：**直接把缺口补上**（改类型 + 按新类型重建调用通道），不是又把用户送去某一页
+// 自己找。这是这次唯一新增的动作——因为它是唯一一类「我们确切知道哪里错、也确切知道怎么改对」的
+// 失败。其余类别我们只知道现象、改不动，所以只能给「去哪儿」或「换一个」。
+export type GenerationErrorAction = 'retry' | 'switch-model' | 'open-model-access' | 'fix-model-kind'
 
 const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorAction> = {
   // 换模型才有救：上游/目录层面就没有这个模型，配置和重试都改不了它。
@@ -149,6 +173,8 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorAction> = {
   // 用户真机：方舟 Seedance 拒写实人脸参考图）。用户真正的两条路是「换图」和「换模型」，
   // 换图就在画布上（连着的那个节点，不需要按钮），所以按钮给「换个模型」——各家审核松紧不同。
   'input-image-blocked': 'switch-model',
+  // 一键改对：我们知道它登记成了什么、也知道这里要什么，那就别让用户去猜去找（D1 effect-first）。
+  'model-kind-mismatch': 'fix-model-kind',
   // 去模型接入：密钥/开通/分组/档位/配置——都在那一页能解。
   auth: 'open-model-access',
   balance: 'open-model-access',
@@ -174,17 +200,34 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorAction> = {
 /**
  * 主动作 + 次动作。次动作恒为「另一个最可能有用的」：主动作不是重试 → 次给重试（想试还能试，
  * 不堵死用户）；主动作就是重试 → 次给换模型（等不及就换一家）。
+ *
+ * 例外 fix-model-kind：次动作给「换个模型」而不是「重试」。类型不符是**确定性**失败，不改就重试
+ * 一万次都是同一堵墙——把重试摆在旁边等于再骗一次（同 model-retired 的理由）。
  */
 export function narrateGenerationErrorActions(kind: GenerationErrorKind): {
   primary: GenerationErrorAction
   secondary: GenerationErrorAction
 } {
   const primary = ACTION_BY_KIND[kind]
-  return { primary, secondary: primary === 'retry' ? 'switch-model' : 'retry' }
+  return { primary, secondary: primary === 'retry' || primary === 'fix-model-kind' ? 'switch-model' : 'retry' }
 }
 
-/** 动作按钮文案（次动作用 `.alt` 变体，如「仍要重试」——避免和主按钮读起来一样重）。 */
-export function narrateErrorActionLabel(action: GenerationErrorAction, variant: 'primary' | 'secondary'): string {
-  const key = action === 'switch-model' ? 'switchModel' : action === 'open-model-access' ? 'modelAccess' : 'retry'
-  return i18n.t(`generationCommon.observability.action.${key}.${variant === 'secondary' ? 'alt' : 'main'}`)
+const ACTION_KEY: Record<GenerationErrorAction, string> = {
+  'switch-model': 'switchModel',
+  'open-model-access': 'modelAccess',
+  'fix-model-kind': 'fixModelKind',
+  retry: 'retry',
+}
+
+/** 动作按钮文案（次动作用 `.alt` 变体，如「仍要重试」——避免和主按钮读起来一样重）。
+ *  `params` 供需要点名的动作插值（fix-model-kind 要说「改成**图片**」，光说「改类型」用户还得再想一步）。 */
+export function narrateErrorActionLabel(
+  action: GenerationErrorAction,
+  variant: 'primary' | 'secondary',
+  params?: Record<string, string>,
+): string {
+  return i18n.t(
+    `generationCommon.observability.action.${ACTION_KEY[action]}.${variant === 'secondary' ? 'alt' : 'main'}`,
+    params,
+  )
 }

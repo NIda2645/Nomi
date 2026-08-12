@@ -12,6 +12,13 @@ import {
 import type { AdapterModeDraft } from "./types";
 import { redactAdapterSecrets } from "./redaction";
 
+// 文本探测的额度上限。**上限不是花费**——模型答完 "ready" 就停，实际只出几十 token，
+// 设大不多花一分钱；设小却会把整类思考型模型判死：DeepSeek V4 / R1 / o 系默认先思考，
+// 思考的 token 同样计入 max_tokens，而 AI SDK 的 textStream 只含正文。旧值 24 被思考
+// 全部吃光 → 正文为空 → 误判「模型不可用」（2026-08-11 用户接 deepseek-v4-pro/flash
+// 实测：max_tokens=24 → finish_reason=length、content=""；=2048 → "ready"，仅用 35 token）。
+const TEXT_PROBE_MAX_TOKENS = 2_048;
+
 const REFERENCE_URL = "nomi-local://adapter-test/reference.png";
 const REFERENCE_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8AARAwMjDAGDAAANgQCAf6mRpsAAAAASUVORK5CYII=",
@@ -47,7 +54,7 @@ export type AdapterVerifierDependencies = {
     apiKey: string;
     prompt: string;
     imageUrl?: string;
-  }) => Promise<{ text: string }>;
+  }) => Promise<{ text: string; finishReason?: string; reasoning?: string }>;
 };
 
 const defaultReadFixture: LocalAssetReader = (url) =>
@@ -129,7 +136,7 @@ export async function verifyAdapterMode(
     {
       ...textInput,
       temperature: 0,
-      maxTokens: 24,
+      maxTokens: TEXT_PROBE_MAX_TOKENS,
     },
     { abortSignal: AbortSignal.timeout(45_000) },
   ));
@@ -160,7 +167,17 @@ export async function verifyAdapterMode(
         modelKey: input.model.modelKey,
         taskKind: input.mode.taskKind,
       };
-      if (!textResult.text.trim()) throw new Error("Text verification returned no readable text");
+      // 空正文有两种，别混为一谈（根因修复 2026-08-12）：
+      // ① 思考型模型把额度花在思考上、被我们的上限截断 → 端点/鉴权/模型都是通的，算通过。
+      //    （否则无论上限设多大，思考更久的模型仍会被判死——这类 bug 只有这样才不再复发。）
+      // ② 真的什么都没回 → 才是失败，且要说清「空回复」而不是含糊的 no readable text。
+      if (!textResult.text.trim()) {
+        const truncatedWhileThinking =
+          textResult.finishReason === "length" || Boolean(textResult.reasoning?.trim());
+        if (!truncatedWhileThinking) {
+          throw new Error("Model connected but returned an empty reply (no text and no reasoning)");
+        }
+      }
       return { ok: true, taskKind: input.mode.taskKind, requestSummary };
     }
 

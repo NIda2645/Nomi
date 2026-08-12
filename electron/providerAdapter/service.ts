@@ -12,8 +12,8 @@ import { decryptApiKeyRecord } from "../catalog/secrets";
 import type { AiSdkProviderKind, BillingModelKind, Model, ProfileKind, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
 import { AdapterNeedsAiError, compileProviderAdapter, repairProviderAdapter } from "./compiler";
-import { canHostPublicDocs, discoverProviderDocs, type DiscoveredDocs } from "./docsDiscovery";
-import { buildOpenAiCompatibleDraft } from "./builtinOpenAiCompatibleDraft";
+import { discoverProviderDocs, type DiscoveredDocs } from "./docsDiscovery";
+import { builtinDraftForUndocumentedEndpoint } from "./builtinOpenAiCompatibleDraft";
 import { connectionFingerprint, ProviderAdapterStore, recoverableAdapterRuns } from "./store";
 import type {
   AdapterAuthType,
@@ -143,6 +143,13 @@ export function adapterModelMetadataForPromotion(input: {
   };
 }
 
+/**
+ * 文本模式 create 的占位。文本的验证与生产都走 streamTextTask（AI SDK 那条路），
+ * 从不按这份 create 发请求，promote 也不会为文本建 mapping——它只是让草稿结构完整。
+ * 写成真实的 OpenAI 兼容路径而不是空对象，是为了让人读到时不误会「这里少填了东西」。
+ */
+const TEXT_PRODUCTION_PATH_CREATE = { method: "POST", path: "/chat/completions" } as const;
+
 function primaryTaskKind(kind: BillingModelKind): ProfileKind {
   if (kind === "image") return "text_to_image";
   if (kind === "video") return "text_to_video";
@@ -151,7 +158,8 @@ function primaryTaskKind(kind: BillingModelKind): ProfileKind {
   return "chat";
 }
 
-const defaultCatalog: ProviderAdapterCatalogPort = {
+/** 导出仅为单测直接驱动真实 promote（验证结果不得决定 enabled 的不变量钉在那里）。 */
+export const defaultCatalog: ProviderAdapterCatalogPort = {
   stage(input) {
     const before = readCatalog();
     const existingVendor = before.vendors.find((vendor) => vendor.key === input.vendorKey);
@@ -220,18 +228,19 @@ const defaultCatalog: ProviderAdapterCatalogPort = {
     mutateCatalog((tx) => {
       const existingVendor = before.vendors.find((vendor) => vendor.key === input.run.vendorKey);
       if (!existingVendor) throw new Error(`Provider disappeared before adapter promotion: ${input.run.vendorKey}`);
-      tx.upsertVendor({ ...existingVendor, enabled: input.verifiedModes.length > 0 || existingVendor.enabled });
+      // 验证结果不再决定「给不给用」（2026-08-12）：用户明确要求加的东西就该加进来，
+      // 没验过的标记出来让他自己试——我们的探测比模型本身更容易错（接 DeepSeek 那次即是）。
+      tx.upsertVendor({ ...existingVendor, enabled: true });
       for (const candidate of input.draft.models) {
         const existing = before.models.find(
           (model) => model.vendorKey === input.run.vendorKey && model.modelKey === candidate.modelKey,
         );
         if (!existing) continue;
         const modeResults = input.run.models.find((model) => model.modelKey === candidate.modelKey)?.modes || [];
-        const verifiedForModel = modeResults.filter((mode) => mode.state === "verified");
         const oldMeta = asRecord(existing.meta);
         tx.upsertModel({
           ...existing,
-          enabled: existing.enabled || verifiedForModel.length > 0,
+          enabled: true,
           meta: adapterModelMetadataForPromotion({
             oldMeta,
             candidate,
@@ -477,54 +486,95 @@ export class ProviderAdapterService {
     }
 
     try {
-      this.setStage(id, "discovering_docs");
-      // 自建/局域网端点没有公开文档可读（详见 builtinOpenAiCompatibleDraft 头注释）：不猜文档、不叫 AI，
-      // 用内置 OpenAI 兼容契约出说明卡，直接进真实验证。也顺带免掉「必须先配好一个文本模型当编译大脑」
-      // 这个前置条件——首次接入本地模型的用户本来就还没有大脑可用。
-      const builtinDraft = this.builtinDraftForUndocumentedEndpoint(connection);
+      // 自建/局域网端点没有公开文档可读（为什么见 builtinOpenAiCompatibleDraft 头注释）：不猜文档、
+      // 不叫 AI，直接用内置 OpenAI 兼容契约进真实验证。必须在下面的分级之前——媒体模型也一样适用。
+      const builtinDraft = builtinDraftForUndocumentedEndpoint(connection);
       if (builtinDraft) {
-        const builtinResults = await this.verifyDraft(id, connection, builtinDraft, 1, []);
-        await this.promoteFinal(id, builtinDraft, builtinResults);
+        await this.promoteFinal(id, builtinDraft, await this.verifyDraft(id, connection, builtinDraft, 1, []));
         return;
       }
-      const docs = await this.dependencies.discover({
-        baseUrl: String(connection.vendor.baseUrlHint || ""),
-        modelKeys: initial.selectedModelKeys,
-      });
-      if (docs.sources.length === 0 || !docs.corpus.trim()) throw new Error("No official API documentation could be discovered on the provider site");
-      this.store.updateRun(id, (run) => ({
-        ...run,
-        sourceUrls: docs.sources.map((source) => source.url),
-        updatedAt: this.dependencies.now(),
-      }));
-      const languageModels = this.dependencies.resolveLanguageModels(connection);
-      this.setStage(id, "compiling");
-      const selectedModels = connection.models.map((model) => ({
-        modelKey: model.modelKey,
-        label: model.labelZh,
-        kind: model.kind,
-      }));
-      const compilation = await this.dependencies.compile({
-        languageModels,
-        providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
-        authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
-        selectedModels,
-        docs: docs.sources,
-      });
-      let candidate = compilation.draft;
+      // 分级（2026-08-12）：只有「Nomi 不知道接法」的模型才值得查文档 + AI 编译。
+      // 文本的接法全行业已统一到 OpenAI /v1/chat/completions（DeepSeek、Kimi、GLM、Qwen、
+      // 阶跃、MiniMax、豆包、xAI、Mistral 全是；Anthropic、Gemini 也都开了兼容层），
+      // 何况文本验证走 streamTextTask（生产同一条路）、根本不读编译出来的草稿——
+      // 编译它纯属白花时间，还平添「文档没抓到 / 编译失败」这些真实使用路径没有的失败模式。
+      // 旧行为：全部无差别走完整流程，两个 DeepSeek 文本模型烧掉 132 秒后判死。
+      const mediaModels = connection.models.filter((model) => model.kind !== "text");
+      const needsCompile = mediaModels.length > 0;
+      let docs: DiscoveredDocs = { sources: [], corpus: "" };
+      let compilation: ProviderAdapterCompilation = {
+        draft: {
+          provider: {
+            baseUrl: String(connection.vendor.baseUrlHint || ""),
+            authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+            ...(connection.vendor.providerKind ? { providerKind: connection.vendor.providerKind } : {}),
+          },
+          sources: [],
+          models: [],
+        },
+        failures: [],
+      };
+      const languageModels = needsCompile ? this.dependencies.resolveLanguageModels(connection) : [];
+      if (needsCompile) {
+        this.setStage(id, "discovering_docs");
+        docs = await this.dependencies.discover({
+          baseUrl: String(connection.vendor.baseUrlHint || ""),
+          modelKeys: mediaModels.map((model) => model.modelKey),
+        });
+        if (docs.sources.length === 0 || !docs.corpus.trim()) throw new Error("No official API documentation could be discovered on the provider site");
+        this.store.updateRun(id, (run) => ({
+          ...run,
+          sourceUrls: docs.sources.map((source) => source.url),
+          updatedAt: this.dependencies.now(),
+        }));
+        this.setStage(id, "compiling");
+        compilation = await this.dependencies.compile({
+          languageModels,
+          providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
+          authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+          selectedModels: mediaModels.map((model) => ({ modelKey: model.modelKey, label: model.labelZh, kind: model.kind })),
+          docs: docs.sources,
+        });
+      }
+      // 文本条目不经 AI：接法固定、模式表也固定（chat）。合进草稿只为让验证与展示有位置。
+      // 文本条目**以这里为单一真相**——编译器万一也吐了同名文本条目（误分类/被喂了不该喂的），
+      // 一律以这份为准替换掉，否则同一个模型会出现两条、验证跑两遍（有回归钉子）。
+      const textModels = connection.models.filter((model) => model.kind === "text");
+      const textModelKeys = new Set(textModels.map((model) => model.modelKey));
+      const withTextModels = (compiled: readonly AdapterModelDraft[]): AdapterModelDraft[] => [
+        ...compiled.filter((model) => !textModelKeys.has(model.modelKey)),
+        ...textModels.map((model) => ({
+          modelKey: model.modelKey,
+          labelZh: model.labelZh,
+          kind: "text" as const,
+          modes: [{ taskKind: "chat" as const, create: TEXT_PRODUCTION_PATH_CREATE, testParams: {}, sourceUrls: [] }],
+        })),
+      ];
+      let candidate: ProviderAdapterDraft = { ...compilation.draft, models: withTextModels(compilation.draft.models) };
       let results = await this.verifyDraft(id, connection, candidate, 1, compilation.failures);
       const maxRepairs = this.dependencies.maxRepairs ?? 2;
       let repairError: string | undefined;
+      // 自动修复重新生成的是「HTTP 接法草稿」，而文本模型的验证走 streamTextTask（生产同一条路）、
+      // 压根不读这份草稿——对文本失败重修等于原样再发一次同样的请求，必然同样失败。
+      // 旧行为：白转 2 轮、界面还写着「正在根据真实错误自动修复…」（假的），用户干等 2 分钟拿同一个结果。
+      // 只让「修得动的」失败（真正按草稿发请求的非文本模型）触发重修。(2026-08-12)
+      const repairableKeys = new Set(
+        connection.models.filter((model) => model.kind !== "text").map((model) => model.modelKey),
+      );
       for (let repairAttempt = 1; repairAttempt <= maxRepairs; repairAttempt += 1) {
         const compiledKeys = new Set(candidate.models.map((model) => model.modelKey));
-        const failure = results.find((result) => result.state === "failed" && compiledKeys.has(result.modelKey));
+        const failure = results.find(
+          (result) => result.state === "failed" && compiledKeys.has(result.modelKey) && repairableKeys.has(result.modelKey),
+        );
         if (!failure) break;
         this.store.updateRun(id, (run) => ({ ...run, stage: "repairing", repairAttempt, updatedAt: this.dependencies.now() }));
         try {
-          candidate = await this.dependencies.repair({
+          // 只让重修碰它修得动的那些模型，修完再把文本条目按单一真相合回去——
+          // 否则重修会顺手用 AI 重新生成文本条目，把确定性的那份覆盖掉。
+          const repaired = await this.dependencies.repair({
             languageModels,
             providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
-            selectedModelKeys: candidate.models.map((model) => model.modelKey),
+            selectedModelKeys: candidate.models.filter((model) => repairableKeys.has(model.modelKey)).map((model) => model.modelKey),
             previousDraft: candidate,
             failure: {
               stage: failure.stage || "create",
@@ -534,6 +584,7 @@ export class ProviderAdapterService {
             },
             docs: docs.sources,
           });
+          candidate = { ...repaired, models: withTextModels(repaired.models) };
         } catch (error) {
           repairError = redactAdapterSecrets(error instanceof Error ? error.message : String(error));
           break;
@@ -549,28 +600,6 @@ export class ProviderAdapterService {
       if (error instanceof AdapterNeedsAiError) this.finishWithError(id, "needs_ai", error.message);
       else this.finishWithError(id, "failed", error instanceof Error ? error.message : String(error));
     }
-  }
-
-  /** 主机可能有公开文档 → null（照走抓文档 + AI 编译）；不可能（IP/localhost/内网域）→ 内置 OpenAI 兼容说明卡。 */
-  private builtinDraftForUndocumentedEndpoint(connection: LoadedConnection): ProviderAdapterDraft | null {
-    const baseUrl = String(connection.vendor.baseUrlHint || "");
-    let hostname: string;
-    try {
-      hostname = new URL(baseUrl).hostname;
-    } catch {
-      return null; // 连 URL 都不合法 → 交给原路径如实报错，别在这里吞掉
-    }
-    if (canHostPublicDocs(hostname)) return null;
-    return buildOpenAiCompatibleDraft({
-      baseUrl,
-      authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
-      ...(connection.vendor.providerKind ? { providerKind: connection.vendor.providerKind } : {}),
-      models: connection.models.map((model) => ({
-        modelKey: model.modelKey,
-        labelZh: model.labelZh,
-        kind: model.kind,
-      })),
-    });
   }
 
   private async verifyDraft(

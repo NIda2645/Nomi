@@ -2,14 +2,12 @@
 // 每场景出图两次：A=纯文本、B=文本+staging 灰模图。比 B 是否更牢锁住站位/动作/朝向。
 // 真实图像额度(非视频)。需 vite(staging-one) + apimart key。
 // 用法：pnpm dev:renderer(后台) && pnpm run build && APIMART_E2E=1 node scripts/staging-ab.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import { chromium } from 'playwright'
-import { createRequire } from 'node:module'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.pose-lab')
 mkdirSync(outDir, { recursive: true })
@@ -58,11 +56,9 @@ await browser.close()
 
 // ── Phase 2：electron 真实 A/B 生成 ──
 console.log('▶ Phase 2: 真实图像 A/B 生成')
-const app = await electron.launch({ executablePath: require('electron'), args: ['.'], cwd: repoRoot, env: { ...process.env } })
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'staging-ab', isolate: false })
 try {
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
   if (process.env.APIMART_API_KEY) await win.evaluate((k) => window.nomiDesktop.modelCatalog.upsertVendorApiKey('apimart', { apiKey: k, enabled: true }), process.env.APIMART_API_KEY)
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)

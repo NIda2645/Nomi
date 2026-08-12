@@ -2,13 +2,11 @@
 // 验（截图人眼为准）：① 应用预设 → 时间轴显示长度 = 内容长度（非偏长 10s）；
 // ② 再应用预设（追加）→ 尺子增长；③ 拖绑定条右沿缩短 → 拖动期间尺子冻结不跳、松手 re-fit 回缩（shrink，旧只增不减的反面）。
 // 用法：pnpm run build && node scripts/scene3d-timeline-length-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.scene3d-timeline-lab')
 mkdirSync(outDir, { recursive: true })
@@ -17,23 +15,16 @@ let failures = 0
 const ok = (m) => console.log('  ✓ ' + m)
 const fail = (m) => { console.error('  ✗ ' + m); failures += 1 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
-})
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'scene3d-timeline-length', isolate: false })
 try {
-  const win = await app.firstWindow()
   const shot = async (n) => { await win.screenshot({ path: path.join(outDir, n) }); console.log('  📸 ' + n) }
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     window.localStorage.setItem('__nomiE2E', '1')
     window.localStorage.setItem('nomi.onboarding.scene3dCoach.v1', '1')
   })
-  await win.waitForTimeout(1500)
 
   // 读时间轴头部显示的总时长文案（TrajectoryTimeline 头 {formatSeconds(totalDuration)}，如 "5.0s"）。
   const readTimelineDuration = async () => win.evaluate(() => {

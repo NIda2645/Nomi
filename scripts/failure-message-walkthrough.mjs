@@ -2,14 +2,12 @@
 // 确定性 404，见 2026-07-30 直连探针）→ 建图片节点 → 打提示词 → 生成 → 等失败 →
 // 截图 + 打印错误卡的**真实 DOM 文案**，核对用户看到的是上游原话而不是「模型任务执行失败 (taskId=…)」。
 // 失败不计费（apimart credits_cost: 0）。用法：pnpm build 后 node scripts/failure-message-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.failure-walk')
 mkdirSync(outDir, { recursive: true })
@@ -45,25 +43,15 @@ copyFileSync(devCatalog, isolatedCatalog)
   console.log('  [准备] 图片模型只留 ' + DEAD_MODEL + '（命中 ' + kept + ' 条）')
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_SETTINGS_DIR: isolatedSettings,
-    NOMI_PROJECTS_DIR: isolatedProjects,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'failure-message',
+  settingsDir: isolatedSettings,
+  projectsDir: isolatedProjects,
 })
 let failed = false
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
 
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)

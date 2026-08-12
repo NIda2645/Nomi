@@ -2,10 +2,8 @@
 // 起假 ComfyUI(node http, :8188) → 起 Nomi(comfyui-local 已启用) → 接入卡显示已连上 → 展开 →
 // 导入面板 → 贴 WAN i2v workflow → 分析 → 看绑定编辑器 → 导入 → 模型出现在卡里。截图人眼判断。
 import http from 'node:http'
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'; import { fileURLToPath } from 'node:url'; import { mkdirSync, writeFileSync, mkdtempSync } from 'node:fs'; import os from 'node:os'
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.feedback-walk'); mkdirSync(outDir, { recursive: true })
 const settingsDir = mkdtempSync(path.join(os.tmpdir(), 'nomi-comfy-e2e-'))
@@ -26,13 +24,12 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(8188, '127.0.0.1', r))
 console.log('  mock ComfyUI on :8188')
 const clickByText = (win, t) => win.evaluate((tx) => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent && x.textContent.includes(tx)); if (b) { b.scrollIntoView({ block: 'center' }); b.click(); return true } return false }, t)
-const app = await electron.launch({ executablePath: require('electron'), args: ['.'], cwd: repoRoot, env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1', NOMI_SETTINGS_DIR: settingsDir } })
+const { app, win } = await launchNomiApp({ name: 'comfyui-e2e', settingsDir, settleMs: 2000 })
 const errors = []
 try {
-  const win = await app.firstWindow(); win.setDefaultTimeout(12000); const bw = await app.browserWindow(win)
+  win.setDefaultTimeout(12000); const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded'); await win.waitForTimeout(2000)
   await win.getByText('模型接入', { exact: false }).first().click(); await win.waitForTimeout(1500)
   await win.getByText('本地 ComfyUI', { exact: false }).first().click(); await win.waitForTimeout(1500) // 展开；卡内探测 /system_stats
   console.log('  /system_stats hits:', rx.stats)

@@ -12,11 +12,14 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Stack, Group, Text } from '@mantine/core'
 import { IconArrowLeft, IconRefresh, IconMessage, IconPhoto, IconVideo, IconMicrophone, IconCube, IconPlus, IconCheck } from '@tabler/icons-react'
-import { DesignButton, DesignCheckbox, DesignSearchInput, DesignTextInput } from '../../design'
+import { DesignButton, DesignCheckbox, DesignSearchInput, DesignTextInput, NomiSelect } from '../../design'
 import { groupModelsByKind } from './modelChipGrouping'
 import { cn } from '../../utils/cn'
 
 export type PickerModel = { id: string; kind: string }
+
+/** 行内可选类型（与模型抽屉、目录 BillingModelKind 同一套，别在这儿另起一份）。 */
+const PICKER_KINDS = ['text', 'image', 'video', 'audio', 'model3d']
 
 const KIND_ICON: Record<string, typeof IconMessage> = {
   text: IconMessage,
@@ -57,9 +60,20 @@ export function ModelPickerScreen({
   const [manual, setManual] = React.useState<PickerModel[]>([])
   const [manualInput, setManualInput] = React.useState('')
   const [query, setQuery] = React.useState('')
+  /**
+   * 就地改类型。分组本身是「猜的结果」，但用户读不出那是**自己在拍板**——行上只有 id 和勾选框，
+   * 猜错了根本看不出来，落库之后又只能在模型抽屉里改。把类型摆到行上并可改，猜测才真正
+   * 「可见可改」（这也是 modelKindHeuristic 注释里承诺过、却一直只在下一屏兑现的那个纠错口）。
+   */
+  const [overrides, setOverrides] = React.useState<Map<string, string>>(() => new Map())
+  const setKind = React.useCallback((id: string, kind: string) => {
+    setOverrides(prev => new Map(prev).set(id, kind))
+    // 改了类型多半就是要它——顺手勾上，省一次点击（改完还要自己再勾一下是纯摩擦）。
+    setSelected(prev => new Set(prev).add(id))
+  }, [])
 
   // 池 = 手填 ∪ 已选 ∪ 拉到的（去重保首次）。已选放在拉取之前，保证手动加过的 id 仍渲染、
-  // 且用户改过的类型优先于启发式猜测。
+  // 且用户改过的类型优先于启发式猜测。overrides 是本屏的就地改类型——最后一道，永远压过猜测。
   const pool = React.useMemo(() => {
     const seen = new Set<string>()
     const out: PickerModel[] = []
@@ -67,10 +81,10 @@ export function ModelPickerScreen({
       const id = m.id.trim()
       if (!id || seen.has(id)) continue
       seen.add(id)
-      out.push({ id, kind: m.kind })
+      out.push({ id, kind: overrides.get(id) ?? m.kind })
     }
     return out
-  }, [candidates, manual, initialSelected])
+  }, [candidates, manual, initialSelected, overrides])
 
   const q = query.trim().toLowerCase()
   const visible = q ? pool.filter(m => m.id.toLowerCase().includes(q)) : pool
@@ -153,6 +167,10 @@ export function ModelPickerScreen({
         )}
       </Group>
 
+      {/* 分组是猜的结果——明说一句，否则用户读不出这是自己该核对的东西（猜错的代价：模型直接
+          从对应下拉里消失，且事后很难联想到是类型问题）。 */}
+      <Text size="xs" c="var(--nomi-ink-40)">{t('onboardingProviders.modelControls.kindGuessNote')}</Text>
+
       {/* 分组清单 */}
       <Stack gap={4} mah={260} style={{ overflowY: 'auto' }}>
         {groups.length === 0 ? (
@@ -172,6 +190,11 @@ export function ModelPickerScreen({
                     <Text size="xs" fw={600} c="var(--nomi-ink-60)">
                       {kind in KIND_ICON ? t(`onboardingProviders.modelControls.kind.${kind}` as 'onboardingProviders.modelControls.kind.text') : kind} <Text span fw={400} c="var(--nomi-ink-40)">{models.length}</Text>
                     </Text>
+                    {/* 3D 能被正确登记（不再冒充文本模型），但中转侧没有通用 3D 调用端点——
+                        接进来暂时跑不了。明着标出来，别让用户勾完才发现（D4 缺口明标）。 */}
+                    {kind === 'model3d' ? (
+                      <Text size="xs" fw={400} c="var(--nomi-warning)">{t('onboardingProviders.modelControls.model3dNoChannel')}</Text>
+                    ) : null}
                   </Group>
                   <button type="button" onClick={() => toggleGroup(ids)} className="text-micro text-nomi-accent hover:underline">
                     {allOn ? t('onboardingProviders.modelControls.deselectGroup') : t('onboardingProviders.modelControls.selectGroup')}
@@ -180,23 +203,40 @@ export function ModelPickerScreen({
                 {models.map(m => {
                   const on = selected.has(m.id)
                   return (
-                    <button
+                    <div
                       key={m.id}
-                      type="button"
-                      onClick={() => toggle(m.id)}
                       className={cn(
-                        'flex items-center gap-2.5 px-2.5 py-1.5 rounded-nomi text-left w-full',
+                        'flex items-center gap-2.5 px-2.5 py-1.5 rounded-nomi w-full',
                         'transition-colors duration-100 hover:bg-nomi-ink-05',
                       )}
                     >
-                      <DesignCheckbox checked={on} readOnly tabIndex={-1} aria-hidden />
-                      <span
-                        className="text-body-sm text-nomi-ink truncate"
-                        style={{ fontFamily: 'var(--nomi-font-mono, monospace)' }}
+                      <button
+                        type="button"
+                        onClick={() => toggle(m.id)}
+                        className="flex items-center gap-2.5 min-w-0 flex-1 text-left bg-transparent border-0 p-0 cursor-pointer"
                       >
-                        {m.id}
-                      </span>
-                    </button>
+                        <DesignCheckbox checked={on} readOnly tabIndex={-1} aria-hidden />
+                        <span
+                          className="text-body-sm text-nomi-ink truncate"
+                          style={{ fontFamily: 'var(--nomi-font-mono, monospace)' }}
+                        >
+                          {m.id}
+                        </span>
+                      </button>
+                      {/* 类型摆在行上、就地可改：分组只暗示「我们猜的」，这个控件才让用户知道
+                          「这是可以改的」。猜错在这里改一下，比落库后再去别处找便宜得多。 */}
+                      <NomiSelect
+                        value={m.kind}
+                        options={PICKER_KINDS.map(k => ({
+                          value: k,
+                          label: t(`onboardingProviders.modelControls.kind.${k}` as 'onboardingProviders.modelControls.kind.text'),
+                        }))}
+                        onChange={next => { if (next !== m.kind) setKind(m.id, next) }}
+                        ariaLabel={t('onboardingProviders.modelControls.retypeAria', { name: m.id })}
+                        size="xs"
+                        className="shrink-0"
+                      />
+                    </div>
                   )
                 })}
               </Stack>

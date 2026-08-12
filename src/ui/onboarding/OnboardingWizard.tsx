@@ -31,8 +31,16 @@ const PROVIDER_KIND_LABEL: Record<ProviderKind, string> = {
 }
 
 type Phase = 'input' | 'running' | 'success' | 'error'
-type ModelKind = 'text' | 'image' | 'video' | 'audio'
-const KIND_ORDER: ModelKind[] = ['image', 'video', 'audio', 'text']
+// model3d 必须在这个联合里。少了它的后果不是「3D 没做」，而是 hunyuan3d 这类**必定**被下面的
+// 收敛硬掰成 text——既污染文本下拉，被选中还会当聊天模型塞进 /chat/completions。目录层本来就支持
+// model3d（BillingModelKind / primaryTaskKind text_to_3d），断点只在这条 UI 类型上。
+type ModelKind = 'text' | 'image' | 'video' | 'audio' | 'model3d'
+const KIND_ORDER: ModelKind[] = ['image', 'video', 'audio', 'model3d', 'text']
+const MODEL_KINDS: ModelKind[] = ['text', 'image', 'video', 'audio', 'model3d']
+
+function asModelKind(value: unknown): ModelKind {
+  return (MODEL_KINDS as string[]).includes(String(value)) ? (value as ModelKind) : 'text'
+}
 
 export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset }: {
   opened: boolean
@@ -190,10 +198,8 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset }
       setPhase('error')
       return
     }
-    const cleanModels = picked.map(m => ({
-      id: m.id,
-      kind: (m.kind === 'image' || m.kind === 'video' || m.kind === 'audio' ? m.kind : 'text') as ModelKind,
-    })).filter(m => m.id.trim())
+    // 只对**真正认不出**的值兜底成 text（脏数据/将来新增的第六类），不再把 model3d 一并掰进去。
+    const cleanModels = picked.map(m => ({ id: m.id, kind: asModelKind(m.kind) })).filter(m => m.id.trim())
     if (cleanModels.length === 0) return
     setModels(cleanModels)
     setSaving(true)

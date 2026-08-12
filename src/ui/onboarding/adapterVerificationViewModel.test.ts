@@ -72,10 +72,16 @@ describe('isAdapterRunTerminal', () => {
 })
 
 describe('isAdapterModelLocked', () => {
-  it('prevents unverified staged models from being manually enabled', () => {
+  it('only locks while a verification run is still in flight', () => {
     expect(isAdapterModelLocked({ adapter: { state: 'testing' } })).toBe(true)
-    expect(isAdapterModelLocked({ adapter: { state: 'failed' } })).toBe(true)
     expect(isAdapterModelLocked({ adapter: { state: 'partial' } })).toBe(false)
     expect(isAdapterModelLocked(undefined)).toBe(false)
+  })
+
+  // 「接不进来」的最后一道墙（2026-08-11 用户接 DeepSeek 踩到）：验证没过就锁住勾选框，
+  // 用户改了地址也没法自己启用，只能删掉整个供应商重来——而失败若是我们探测的 bug，
+  // 重来多少遍都一样。判死权不归探测。
+  it('never locks a model just because verification failed', () => {
+    expect(isAdapterModelLocked({ adapter: { state: 'failed' } })).toBe(false)
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { classifyGenerationError } from './generationRunController'
+import { desktopT } from '../../../../electron/i18n'
 
 describe('classifyGenerationError — 已知分类', () => {
   it('API Key 无效', () => {
@@ -13,9 +14,32 @@ describe('classifyGenerationError — 已知分类', () => {
     expect(r.reason).toBe('配额或限流')
   })
 
-  it('网络超时', () => {
+  it('超时归「连不上服务商」', () => {
     const r = classifyGenerationError('request failed: ETIMEDOUT')
-    expect(r.reason).toBe('网络超时')
+    expect(r.reason).toBe('连不上服务商')
+  })
+
+  // 2026-08-12：network 桶原先只认 timeout 一族，「压根没连上」那半边全落 unknown，拿到
+  // 「服务商临时故障或额度问题，建议稍等重试」——甩锅给没被请求到的服务商，且重试必再撞。
+  // 每条都是真实来源，不是造的：undici / 浏览器 / DNS / 我们自己的代理兜底文案。
+  it.each([
+    ['Node/undici 主进程断网', 'TypeError: fetch failed'],
+    ['浏览器 fetch 被掐断（群反馈网页版原文）', 'TypeError: Failed to fetch'],
+    ['端口没人听', 'connect ECONNREFUSED 127.0.0.1:8188'],
+    ['DNS 解析不到', 'getaddrinfo ENOTFOUND api.apimart.ai'],
+    ['DNS 临时失败', 'getaddrinfo EAI_AGAIN api.apimart.ai'],
+    ['连接被中途掐断', 'Error: socket hang up'],
+    ['我们自己的代理兜底文案（中文，匹配不到 network）', '网络请求失败：无法连接到该地址。'],
+  ])('连不上归「连不上服务商」并指向网络/代理，不甩锅额度：%s', (_label, message) => {
+    const r = classifyGenerationError(message)
+    expect(r.reason).toBe('连不上服务商')
+    expect(r.hint).toMatch(/代理/)
+    expect(r.hint).not.toMatch(/临时故障|额度问题/)
+  })
+
+  it('ENOTFOUND 不吞「model not found」（中间有空格，两条签名互不误伤）', () => {
+    const r = classifyGenerationError('Error: model not found: seedream-9')
+    expect(r.reason).toBe('模型未配置')
   })
 
   it('余额不足（中文）与限流区分开', () => {
@@ -385,6 +409,72 @@ describe('模型已下线 ≠ 模型被停用（删模型不能变成坑换坑�
   it('「被停用」仍归模型未配置 → 去模型接入（记录还在，那儿能开回来）', () => {
     const report = classifyGenerationError('Model is not enabled: some-model')
     expect(report.reason).not.toBe('这个模型已经下线了')
+    expect(report.primary).toBe('open-model-access')
+  })
+})
+
+// 眼见链末端：未登记状态动词的根因修复（electron/tasks/taskResultQuery）把上游原始动词写进
+// TaskResult.error，而错误卡显示的是 classifyGenerationError(...).reason（NodeErrorReport 里的
+// 加粗大标题）。若哪天有分类器把这条消息吃掉、替换成自己的人话文案，用户就又看不到 "failure"
+// 这个原始动词了——那正是这次修复要送到用户眼前的东西。这里把它钉死。
+// 文案真相源：electron/i18n.ts 的 tasks.unrecognizedStatus / tasks.pollTimedOut。
+describe('未登记状态动词：原始动词必须原样送到错误卡标题', () => {
+  const UNRECOGNIZED =
+    '上游返回了无法识别的任务状态：「failure」。连续查询 4 次、持续 160 秒都是这个状态，Nomi 按失败处理。该任务也可能仍在供应商侧运行——请到供应商后台核对。'
+
+  it('分类不吞掉消息，reason 原样带着上游动词', () => {
+    const report = classifyGenerationError(UNRECOGNIZED)
+    expect(report.reason).toContain('failure')
+    expect(report.reason).toBe(UNRECOGNIZED)
+  })
+
+  it('不被别的分类器误抢（消息里的数字不该被当成余额/限流码）', () => {
+    const report = classifyGenerationError(UNRECOGNIZED)
+    expect(report.reason).not.toBe('余额不足')
+    expect(report.reason).not.toBe('配额或限流')
+    expect(report.reason).not.toBe('这个模型已经下线了')
+  })
+
+  it('轮询超时文案同样不被吞（含「超时」二字，别被网络超时抢走原文）', () => {
+    const report = classifyGenerationError(
+      '等待生成结果超时（已等 240 秒，最后状态：queued）。任务可能仍在供应商侧运行——请到供应商后台核对，或稍后重新拉取结果。',
+    )
+    expect(report.reason).toContain('仍在供应商侧运行')
+  })
+})
+
+// 眼见链末端 ②：「没有 query op」的根因修复（同上一条的姊妹路径）。这里**直接读 electron/i18n
+// 的真串**而不是抄一份——抄的那份会跟着源漂移，测试就变成自说自话。
+// 钉的是两件事，都是实测踩到过的：
+//  ① 长度：错误卡大标题走 truncateLine，**超 100 字截尾**，而被截掉的恰是「该怎么办」那半句。
+//     初版文案 110 字，用户看到的结尾是「…确认这次调用是否真的出…」——行动指引整段丢失。
+//  ② 不被别的分类器抢走（文案里有「配置」「失败处理」这类高频关键词）。
+describe('无 query op：诚实失败文案要完整送到错误卡标题', () => {
+  const NO_QUERY = desktopT('tasks.noQueryOperation')
+
+  it('短到不会被标题截断（含上游原话时也要留得下）', () => {
+    const report = classifyGenerationError(NO_QUERY)
+    expect(report.reason).toBe(NO_QUERY)
+    expect(report.reason).not.toContain('…')
+    // 留出上游原话的余量：中转的「no available channel」一类要能跟着一起显示。
+    const withDetail = NO_QUERY + desktopT('tasks.upstreamSaid', { detail: 'no available channel' })
+    expect(classifyGenerationError(withDetail).reason).toContain('no available channel')
+  })
+
+  it('「该怎么办」那半句必须活着到用户眼前（被截掉就等于没说）', () => {
+    expect(classifyGenerationError(NO_QUERY).reason).toContain('接入配置')
+  })
+
+  it('不被别的分类器误抢（「配置」「失败」都是高频词）', () => {
+    const report = classifyGenerationError(NO_QUERY)
+    expect(report.reason).not.toBe('模型未配置')
+    expect(report.reason).not.toBe('生成失败')
+    expect(report.reason).not.toBe('余额不足')
+  })
+
+  it('上游原话里有真因时让真因赢——余额不足要给「去充值」而不是我们的通用文案', () => {
+    const report = classifyGenerationError(NO_QUERY + desktopT('tasks.upstreamSaid', { detail: 'insufficient balance' }))
+    expect(report.reason).toBe('余额不足')
     expect(report.primary).toBe('open-model-access')
   })
 })

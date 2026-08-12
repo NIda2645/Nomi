@@ -23,6 +23,12 @@ export type ChipModel = {
   meta?: unknown
   /** 该模型是否已设自定义调用脚本（模型行图标点亮 + 角标；chip 不消费）。 */
   hasCustomCall?: boolean
+  /**
+   * 这一条的类型能不能由用户改（= 接入来源为手动/中转拉取，其调用通道可按新 kind 安全重建）。
+   * 内置种子与 agent 路的模型为 false：它们的 mapping 是手写/按文档推导出来的，套通用模板会破坏。
+   * 判据来自 model.onboarding.addedVia，推导链见 electron/catalog/modelRetype.ts 文件头。
+   */
+  canRetype?: boolean
 }
 
 type ModelChipGroupsProps = {

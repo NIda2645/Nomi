@@ -3,7 +3,7 @@
 //    导入损坏视频 → 播放守卫显示人话原因（不再无声灰壳）。
 // A) 图片节点连参考图（建边自动切图生图·既有）→ **换模型** → 生成方式不再回落「文生图」（本次修复）。
 // 截图进 .feedback-walk/ 人眼判断。用法：node scripts/feedback-mode-video-walkthrough.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -62,22 +62,19 @@ const readModeBar = (win) => win.evaluate(() => {
   }
 })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1', NOMI_SETTINGS_DIR: isolatedSettings, NOMI_PROJECTS_DIR: isolatedProjects },
+const { app, win } = await launchNomiApp({
+  name: 'feedback-mode-video',
+  settingsDir: isolatedSettings,
+  projectsDir: isolatedProjects,
+  settleMs: 1200,
 })
 const errors = []
 let failed = false
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1200)
   // 隔离档案无语言设置 → 可能跟随系统落 en；走查选择器用 zh，先钉中文再走
   await win.evaluate(() => window.localStorage.setItem('nomi:locale:v1', 'zh-CN'))
   await win.reload()

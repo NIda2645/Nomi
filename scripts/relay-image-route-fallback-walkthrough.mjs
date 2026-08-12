@@ -6,15 +6,13 @@
 //    ——4dd0be1f「标准参考面不被档案吞」的线上实证）。
 // C：mock 全路由 403 → 节点错误卡必须是「中转分组未开通生图路由」新文案（不再误报 API Key 无效）。
 // 用法：node scripts/relay-image-route-fallback-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.relay-fallback-walk')
 fs.mkdirSync(outDir, { recursive: true })
@@ -120,25 +118,19 @@ async function launchApp() {
   const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-fb-settings-'))
   const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-fb-projects-'))
   seedCatalog(settingsDir)
-  const app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.'],
-    cwd: repoRoot,
-    env: {
-      ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-      NOMI_SETTINGS_DIR: settingsDir, NOMI_PROJECTS_DIR: projectsDir,
-    },
+  const { app, win } = await launchNomiApp({
+    name: 'relay-image-route-fallback',
+    settingsDir,
+    projectsDir,
+    env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+    settleMs: 2000,
   })
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { const t = m.text(); if (m.type() === 'error' || /guard|拒发|image_edit|fallback|mapping|refus|reject/i.test(t)) errors.push(`[${m.type()}] ` + t) })
   app.process().stdout?.on('data', (d) => { const t = String(d); if (/guard|image_edit|fallback|mapping|403|chat/i.test(t)) console.log('  [main] ' + t.trim().slice(0, 200)) })
   app.process().stderr?.on('data', (d) => { console.log('  [main-err] ' + String(d).trim().slice(0, 200)) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(2000)
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2600)
   await win.keyboard.press('Escape')

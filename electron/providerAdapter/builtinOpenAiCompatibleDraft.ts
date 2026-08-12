@@ -11,7 +11,8 @@
 // 图生图协议、i2v 通道、参数键名那些血泪细节都在里面（P1 不造并行版）。
 // 后半段不打折：仍然拿真实请求验过才启用，不假设它能用。
 import { newapiTransportFor } from "../catalog/newapiTransport";
-import type { BillingModelKind, HttpOperation } from "../catalog/types";
+import { canHostPublicDocs } from "./docsDiscovery";
+import type { BillingModelKind, HttpOperation, Model, Vendor } from "../catalog/types";
 import type { AdapterAuthType, AdapterModeDraft, AdapterModelDraft, ProviderAdapterDraft } from "./types";
 import type { AiSdkProviderKind } from "../catalog/types";
 
@@ -85,6 +86,26 @@ function modesForKind(kind: BillingModelKind, authType: AdapterAuthType): Adapte
     modes.push({ taskKind: "image_to_video", create: auth(transport.imageToVideo), ...async, ...noSources });
   }
   return modes;
+}
+
+/** 主机可能有公开文档 → null（照走抓文档 + AI 编译）；不可能（IP/localhost/内网域）→ 内置说明卡。 */
+export function builtinDraftForUndocumentedEndpoint(
+  connection: { vendor: Vendor; models: readonly Model[] },
+): ProviderAdapterDraft | null {
+  const baseUrl = String(connection.vendor.baseUrlHint || "");
+  let hostname: string;
+  try {
+    hostname = new URL(baseUrl).hostname;
+  } catch {
+    return null; // 连 URL 都不合法 → 交给原路径如实报错，别在这里吞掉
+  }
+  if (canHostPublicDocs(hostname)) return null;
+  return buildOpenAiCompatibleDraft({
+    baseUrl,
+    authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+    ...(connection.vendor.providerKind ? { providerKind: connection.vendor.providerKind } : {}),
+    models: connection.models.map((model) => ({ modelKey: model.modelKey, labelZh: model.labelZh, kind: model.kind })),
+  });
 }
 
 export function buildOpenAiCompatibleDraft(input: {

@@ -22,6 +22,7 @@ import {
   upsertModelCatalogVendor,
   upsertModelCatalogVendorApiKey,
 } from "./catalog/catalogStore";
+import { retypeModelCatalogModel } from "./catalog/modelRetype";
 import { runTaskWithIdempotency } from "./submissionLedger";
 import { runTaskIpcGuard } from "./tasks/taskIpcGuard";
 import { mintSpendGrant } from "./spendGrant";
@@ -379,9 +380,7 @@ function recreateMainWindowFromSender(sender: WebContents, options: { preserveRo
     })
     .finally(() => {
       isRecreatingMainWindow = false;
-      // 重建失败时旧窗已销毁、window-all-closed 又被上面的重建标记跳过了 → 会永久停在零窗口。
-      // 补建兜底，保证「进程活着」蕴含「有窗口可点」。
-      void ensureMainWindow();
+      void ensureMainWindow(); // 重建失败会永久停在零窗口（window-all-closed 已被重建标记跳过）→ 补建兜底
     });
 }
 
@@ -452,6 +451,9 @@ function registerIpc(): void {
   registerSyncIpc("nomi:model-catalog:vendor-api-key:upsert", upsertModelCatalogVendorApiKey);
   registerSyncIpc("nomi:model-catalog:vendor-api-key:clear", clearModelCatalogVendorApiKey);
   registerSyncIpc("nomi:model-catalog:model:upsert", upsertModelCatalogModel);
+  // 改类型是**领域操作**不是字段 upsert：改 kind 的同时要按新 kind 重建调用通道，否则只是把
+  // 「类型错」换成「没有通道」（见 catalog/modelRetype.ts 文件头）。故走自己的 IPC，不复用 upsert。
+  registerSyncIpc("nomi:model-catalog:model:retype", retypeModelCatalogModel);
   registerSyncIpc("nomi:model-catalog:model:delete", deleteModelCatalogModel);
   registerSyncIpc("nomi:model-catalog:models:delete", deleteModelCatalogModels);
   registerSyncIpc("nomi:model-catalog:mapping:upsert", upsertModelCatalogMapping);
@@ -771,10 +773,7 @@ if (hasSingleInstanceLock)
         lowMemoryMode ? 15000 : 3000,
       );
 
-      // macOS 关窗后进程不退（见下方 window-all-closed），点 Dock 图标靠这里把窗口建回来。
-      app.on("activate", () => {
-        void ensureMainWindow();
-      });
+      app.on("activate", () => void ensureMainWindow()); // macOS 关窗后进程不退，点 Dock 靠这条把窗口建回来
     })
     .catch((error) => {
       console.error("[nomi:desktop] failed to start:", error);

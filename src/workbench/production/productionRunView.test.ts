@@ -101,6 +101,28 @@ describe('production run view', () => {
     })
   })
 
+  it('N3 门类分文案：方向/样片门不再说「支出边界」，各说各的一句话', () => {
+    const gate = (gateId: string, scope: 'stage' | 'budget_envelope' | 'export') => ({
+      gateId, scope, status: 'waiting' as const, planHash: 'p', jobIds: [],
+      title: 'gate', summary: 'summary',
+      createdAt: '2026-08-08T08:00:00.000Z', expiresAt: '2026-08-08T09:00:00.000Z',
+    })
+    const direction = buildProductionRunView(run({ status: 'awaiting_direction', gates: [gate('gate-direction-v1', 'stage')] }), now)
+    expect(direction).toMatchObject({
+      titleKey: 'production.status.directionGate',
+      descriptionKey: 'production.description.directionGate',
+      gateKind: 'direction',
+      decisionHome: 'origin', // fixture origin=codex → 门首选发起端，Nomi 只指路兜底
+    })
+    const sample = buildProductionRunView(run({ status: 'running', gates: [gate('gate-sample-v1', 'stage')] }), now)
+    expect(sample).toMatchObject({ titleKey: 'production.status.sampleGate', gateKind: 'sample' })
+    const contract = buildProductionRunView(run({ status: 'awaiting_contract', gates: [gate('gate-contract-v1', 'budget_envelope')] }), now)
+    expect(contract).toMatchObject({ titleKey: 'production.status.approvalRequired', gateKind: 'contract' })
+    // origin=nomi（用户自主发起，没有 CLI 可用）→ 门在 Nomi 是主路径
+    const own = buildProductionRunView(run({ status: 'awaiting_direction', origin: { host: 'nomi' }, gates: [gate('gate-direction-v1', 'stage')] }), now)
+    expect(own.decisionHome).toBe('nomi')
+  })
+
   it('requires rough-cut review before exposing the waiting export gate', () => {
     const exportGate = {
       gateId: 'gate-export-v1',
