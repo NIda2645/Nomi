@@ -1,12 +1,9 @@
 export const zhSettings = {
   title: '设置',
   close: '关闭',
-  tab: { file: '文件与保存', ai: 'AI 与模型', automation: '自动化与权限', general: '通用', about: '关于' },
+  tab: { file: '文件与保存', models: '模型', ai: 'AI 策略', automation: '自动化与权限', general: '通用', about: '关于' },
   ai: {
-    title: 'AI 与模型',
-    connections: '模型连接',
-    empty: '还没有可用的模型连接。请先在模型目录中添加供应商与模型。',
-    health: { connected: '已连接', local: '本地可用', 'needs-key': '需要密钥', disabled: '已停用' },
+    title: 'AI 策略',
     upload: {
       title: '数据上传',
       minimize: '仅发送当前任务需要的素材',
@@ -113,12 +110,9 @@ export const zhSettings = {
 export const enSettings = {
   title: 'Settings',
   close: 'Close',
-  tab: { file: 'File & saving', ai: 'AI & models', automation: 'Automation & permissions', general: 'General', about: 'About' },
+  tab: { file: 'File & saving', models: 'Models', ai: 'AI policy', automation: 'Automation & permissions', general: 'General', about: 'About' },
   ai: {
-    title: 'AI & models',
-    connections: 'Model connections',
-    empty: 'No model connection is available yet. Add a provider and model in the model catalog first.',
-    health: { connected: 'Connected', local: 'Available locally', 'needs-key': 'Key required', disabled: 'Disabled' },
+    title: 'AI policy',
     upload: {
       title: 'Data upload',
       minimize: 'Send only assets needed for the current task',
