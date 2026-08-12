@@ -315,6 +315,24 @@ export const ARCHETYPE_WIRE_DEFAULTS: Record<string, Record<string, Record<strin
       }
     }
   },
+  "minimax-h3-apimart": {
+    "text_to_video": {
+      "*": {
+        "resolution": "2K",
+        "aspect_ratio": "16:9",
+        "duration": 5,
+        "watermark": false
+      }
+    },
+    "image_to_video": {
+      "*": {
+        "resolution": "2K",
+        "aspect_ratio": "adaptive",
+        "duration": 5,
+        "watermark": false
+      }
+    }
+  },
   "vidu-q3": {
     "image_to_video": {
       "*": {

@@ -25,6 +25,11 @@ describe("archetypeIdForModel", () => {
     expect(archetypeIdForModel("bytedance/seedance-2")).toBe("seedance-2");
   });
 
+  it("同名模型保留官方 key 大小写，分别命中 APIMart 与 KIE 档案", () => {
+    expect(archetypeIdForModel("MiniMax-H3")).toBe("minimax-h3-apimart");
+    expect(archetypeIdForModel("minimax-h3")).toBe("minimax-h3");
+  });
+
   it("认不出的返回 null（不瞎猜）", () => {
     expect(archetypeIdForModel("some-unknown-model-xyz")).toBeNull();
     expect(archetypeIdForModel("")).toBeNull();

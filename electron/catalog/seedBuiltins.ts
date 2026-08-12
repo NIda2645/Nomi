@@ -42,7 +42,7 @@ import { APIMART_VENDOR_SEED } from "./apimartVendor";
 import { APIMART_IMAGE_MODELS, APIMART_IMAGE_QUERY, APIMART_IMAGE_STATUS } from "./apimartImages";
 import { APIMART_VIDEO_MODELS, APIMART_VIDEO_QUERY, APIMART_VIDEO_STATUS } from "./apimartVideos";
 import { APIMART_AUDIO_MODELS } from "./apimartAudios";
-import { APIMART_TEXT_MODELS } from "./apimartTexts";
+import { APIMART_TEXT_MAPPINGS, APIMART_TEXT_MODELS } from "./apimartTexts";
 import { AGNES_VENDOR_SEED, AGNES_VIDEO_QUERY_OP, AGNES_STATUS_MAPPING } from "./agnesVendor";
 import { AGNES_IMAGE_MODELS } from "./agnesImages";
 import { AGNES_VIDEO_MODELS } from "./agnesVideos";
@@ -147,6 +147,10 @@ const APIMART_CURATED_MODELS: CuratedModel[] = [
   ...APIMART_AUDIO_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: m.kind, archetypeId: m.archetypeId })),
 ];
 const APIMART_CURATED_MAPPINGS: CuratedMapping[] = [
+  ...APIMART_TEXT_MAPPINGS.map((mp) => ({
+    id: mp.id, taskKind: mp.taskKind, modelKey: mp.modelKey, name: mp.name,
+    create: mp.create, query: mp.query, statusMapping: mp.statusMapping,
+  })),
   ...APIMART_IMAGE_MODELS.flatMap((m) =>
     m.mappings.map((mp) => ({
       id: mp.id, taskKind: mp.taskKind, modelKey: m.modelKey, name: mp.name,
