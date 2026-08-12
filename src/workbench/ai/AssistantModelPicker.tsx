@@ -2,7 +2,8 @@
 // 写偏好到 localStorage（assistantModelPref），runWorkbenchAgent 自动带进 payload，两个面板都生效。
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { listWorkbenchModelCatalogModels, type ModelCatalogModelDto } from '../api/modelCatalogApi'
+import { listWorkbenchModelCatalogModels, listWorkbenchModelCatalogVendors, type ModelCatalogModelDto } from '../api/modelCatalogApi'
+import { decodeModelIdentity, encodeModelIdentity, labelForModel } from './assistantModelIdentity'
 import { getAssistantModelPref, setAssistantModelPref } from './assistantModelPref'
 import { NomiSelect, NomiSkeleton } from '../../design'
 
@@ -20,11 +21,21 @@ function pickDefaultModel(models: ModelCatalogModelDto[]): ModelCatalogModelDto 
 export default function AssistantModelPicker({ className }: { className?: string } = {}): JSX.Element | null {
   const { t } = useTranslation()
   const [models, setModels] = React.useState<ModelCatalogModelDto[]>([])
+  const [vendorNames, setVendorNames] = React.useState<Record<string, string>>({})
   const [loaded, setLoaded] = React.useState(false)
-  const [modelKey, setModelKey] = React.useState<string>(() => getAssistantModelPref()?.modelKey || '')
+  // 选中值是**两段身份**（vendorKey + modelKey）——只用 modelKey 会在同名模型上张冠李戴，见 assistantModelIdentity。
+  const [selected, setSelected] = React.useState<string>(() => {
+    const pref = getAssistantModelPref()
+    return pref ? encodeModelIdentity(pref) : ''
+  })
 
   React.useEffect(() => {
     let alive = true
+    void listWorkbenchModelCatalogVendors()
+      .then((rows) => {
+        if (alive) setVendorNames(Object.fromEntries(rows.map((v) => [v.key, v.name])))
+      })
+      .catch(() => {})
     listWorkbenchModelCatalogModels({ kind: 'text', enabled: true })
       .then((rows) => {
         if (!alive) return
@@ -35,7 +46,7 @@ export default function AssistantModelPicker({ className }: { className?: string
           const def = pickDefaultModel(rows)
           if (def) {
             setAssistantModelPref({ vendorKey: def.vendorKey, modelKey: def.modelKey })
-            setModelKey(def.modelKey)
+            setSelected(encodeModelIdentity(def))
           }
         }
       })
@@ -45,7 +56,10 @@ export default function AssistantModelPicker({ className }: { className?: string
           setLoaded(true)
         }
       })
-    const sync = () => setModelKey(getAssistantModelPref()?.modelKey || '')
+    const sync = () => {
+      const pref = getAssistantModelPref()
+      setSelected(pref ? encodeModelIdentity(pref) : '')
+    }
     window.addEventListener('nomi:assistant-model-changed', sync)
     return () => {
       alive = false
@@ -61,9 +75,10 @@ export default function AssistantModelPicker({ className }: { className?: string
   if (models.length === 0) return null
 
   const handleChange = (next: string) => {
-    setModelKey(next)
-    const picked = models.find((m) => m.modelKey === next)
-    if (picked) setAssistantModelPref({ vendorKey: picked.vendorKey, modelKey: picked.modelKey })
+    setSelected(next)
+    // 按两段身份回解：同名模型下再也不会绑到另一个供应商去。
+    const identity = decodeModelIdentity(next)
+    if (identity) setAssistantModelPref(identity)
   }
 
   return (
@@ -73,8 +88,8 @@ export default function AssistantModelPicker({ className }: { className?: string
       size="xs"
       className={className}
       triggerMaxWidth={160}
-      value={modelKey}
-      options={models.map((m) => ({ value: m.modelKey, label: m.labelZh || m.modelKey }))}
+      value={selected}
+      options={models.map((m) => ({ value: encodeModelIdentity(m), label: labelForModel(m, models, vendorNames) }))}
       onChange={handleChange}
     />
   )
