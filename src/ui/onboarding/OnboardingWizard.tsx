@@ -18,7 +18,7 @@ import { AdapterVerificationScreen } from './AdapterVerificationScreen'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { DesktopProviderAdapterRun } from '../../desktop/bridge'
 import type { ProviderKind } from '../../desktop/providerKind'
-import { resolveManualSaveAction } from './onboardingSaveGate'
+import { resolvePrecheckGateAction } from './precheckGate'
 import { PROVIDER_PRESETS } from './providerPresets'
 import { cn } from '../../utils/cn'
 import { Field } from './onboardingWizardSupport'
@@ -362,9 +362,9 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
   const hasModelId = models.some(m => m.id.trim().length > 0)
   // 非阻断门槛（R3 拍板）：字段齐即可保存；测试未通过走二次确认（arm→confirm），不死拦。
   const manualFieldsReady = baseUrlValid && userApiKey.trim().length > 0 && hasModelId && !saving
-  const manualSaveAction = resolveManualSaveAction({
-    fieldsReady: manualFieldsReady,
-    testPassed: testState === 'ok',
+  const manualSaveAction = resolvePrecheckGateAction({
+    actionable: manualFieldsReady,
+    precheckPassed: testState === 'ok',
     forceArmed: forceSaveArmed,
   })
   const selectedPreset = PROVIDER_PRESETS.find(p => p.id === presetId)

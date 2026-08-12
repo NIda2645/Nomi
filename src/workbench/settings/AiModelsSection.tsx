@@ -44,7 +44,7 @@ export function AiModelsSection({
     }
   }, [])
 
-  const health = buildProviderHealthView(providers, models, { modelsLoaded: catalogLoaded })
+  const health = buildProviderHealthView(providers)
   const requiredProviderModels = React.useMemo(
     () => productionPolicyRequirement?.requiredProviderModels ?? [],
     [productionPolicyRequirement],
@@ -94,49 +94,10 @@ export function AiModelsSection({
     <div data-settings-section="ai-models">
       <h2 className="mb-5 text-title font-medium text-nomi-ink">{t('settings.ai.title')}</h2>
 
-      <section className="mb-6" aria-labelledby="settings-model-connections-title">
-        <h3 id="settings-model-connections-title" className="mb-2 text-caption font-medium text-nomi-ink-60">
-          {t('settings.ai.connections')}
-        </h3>
-        {health.length > 0 ? (
-          <div className="divide-y divide-nomi-line">
-            {health.map((provider) => (
-              <div key={provider.key} className="flex min-h-12 items-center justify-between gap-4 py-2">
-                {/* 名字下带一行能力摘要（「文本 82 · 图片 0」）。徽标只能回答「连上没有」，
-                    这一行回答「能干什么」——接入时类型猜错导致「82 个全是文本」时，这是唯一
-                    不用点开任何东西就能看出来的地方。 */}
-                <div className="min-w-0">
-                  <div className="truncate text-body-sm text-nomi-ink">{provider.name}</div>
-                  {catalogLoaded ? (
-                    <div className="mt-0.5 truncate text-caption text-nomi-ink-40">
-                      {provider.capabilities.length > 0
-                        ? provider.capabilities
-                          .map((cap) => `${t(`runtime.modelCatalog.kind.${cap.kind}` as 'runtime.modelCatalog.kind.image', { defaultValue: cap.kind })} ${cap.count}`)
-                          .join(' · ')
-                        : t('settings.ai.noEnabledModels')}
-                    </div>
-                  ) : null}
-                </div>
-                <span
-                  className={provider.state === 'connected' || provider.state === 'local'
-                    ? 'shrink-0 text-caption text-nomi-success'
-                    : provider.state === 'no-models'
-                      ? 'shrink-0 text-caption text-nomi-warning'
-                      : 'shrink-0 text-caption text-nomi-ink-40'}
-                >
-                  {t(`settings.ai.health.${provider.state}`)}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-nomi-sm bg-nomi-ink-05 px-3 py-3 text-caption leading-relaxed text-nomi-ink-60">
-            {t('settings.ai.empty')}
-          </div>
-        )}
-      </section>
-
-      <section className="mb-6 border-t border-nomi-line pt-4" aria-labelledby="settings-upload-title">
+      {/* 2026-08-12 删掉顶部那段只读「模型连接」列表：模型的家搬去「模型」tab 之后，
+          它就是第二个家；而且下面「默认模型策略」的勾选框本来就逐个列了 provider 且带状态，
+          纯重复（P1 加新必删旧）。health 仍被策略区用来排序/取显示名，故变量保留。 */}
+      <section className="mb-6" aria-labelledby="settings-upload-title">
         <h3 id="settings-upload-title" className="mb-1 text-caption font-medium text-nomi-ink-60">
           {t('settings.ai.upload.title')}
         </h3>
