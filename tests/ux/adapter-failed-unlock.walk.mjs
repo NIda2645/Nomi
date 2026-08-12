@@ -2,7 +2,7 @@
 // 用法: node tests/ux/adapter-failed-unlock.walk.mjs
 // 产出: tests/ux/shots/adapter-unlock/*.png —— 人眼判断：失败模型是否出现在列表里、
 // 勾选框是不是可点（旧行为 cursor-not-allowed 点不动，只能删掉整个供应商重来）。
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -56,18 +56,21 @@ async function snap(win, name) {
   console.log(`  · shot ${tag}`)
 }
 
-const app = await electron.launch({
-  args: ['.', `--user-data-dir=${userData}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_SETTINGS_DIR: settingsDir, NODE_ENV: 'production' },
+// 走统一启动器：手抄的 launch 漏了 NOMI_E2E / NOMI_E2E_ALLOW_MULTI_INSTANCE，本机开着
+// Nomi.app 时抢不到单实例锁会静默挂死到超时（零截图零提示）。settleMs:0 把等待留在下面，
+// 保持「先改窗口尺寸再等渲染」的原顺序，免得先按默认尺寸排一遍版再回流。
+const { app, win } = await launchNomiApp({
+  name: 'adapter-unlock',
+  userDataDir: userData,
+  settingsDir,
+  env: { NODE_ENV: 'production' },
+  settleMs: 0,
 })
-const win = await app.firstWindow()
 // Electron 是真实 OS 窗口，setViewportSize 不管用，得从主进程改窗口尺寸。
 await app.evaluate(({ BrowserWindow }) => {
   const w = BrowserWindow.getAllWindows()[0]
   if (w) { w.setSize(1680, 1050); w.center() }
 }).catch(() => {})
-await win.waitForLoadState('domcontentloaded')
 await win.waitForTimeout(3500)
 await snap(win, 'app-loaded')
 
