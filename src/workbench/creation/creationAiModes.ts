@@ -1,4 +1,5 @@
 import type { WorkbenchDocument } from '../workbenchTypes'
+import { ASSET_MASTER_PROMPT } from './assetMasterPrompt'
 
 export type CreationAiModeId =
   | 'general'
@@ -65,12 +66,9 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
     shortLabel: '素材',
     title: '角色/场景/道具',
     description: '拆出角色、场景、道具，并生成生图提示词。',
-    prompt: [
-      '本轮任务：素材规划。基于故事或剧本拆分视觉资产。',
-      '按角色 C01-C99、场景 S01-S99、道具 P01-P99 编号。',
-      '每个资产输出名称、用途、视觉标记、生成提示词。所有提示词保持同一视觉风格前缀。',
-      '角色必须有可区分的颜色、轮廓或配件标记。',
-    ].join('\n'),
+    // 领域规范住 assetMasterPrompt.ts（全资产大师 V3.0，用户 2026-08-12 提供）：
+    // 场景七层递进 / 角色概念表 / 道具小资产卡，各带必填字段与自检清单。
+    prompt: ASSET_MASTER_PROMPT,
   },
   {
     // 名字要和「拆成镜头·落画布」区分开：这个模式只在文稿里写文字稿，不落画布、不生成。
