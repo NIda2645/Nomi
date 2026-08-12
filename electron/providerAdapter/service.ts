@@ -25,9 +25,12 @@ import type {
   ProviderAdapterRevision,
   ProviderAdapterRun,
 } from "./types";
+import { adapterModelMetadataForPromotion } from "./promotionMeta";
 import { adapterRevisionDigest } from "./validator";
 import { verifyAdapterMode, type AdapterVerificationResult } from "./verifier";
 import { redactAdapterSecrets } from "./redaction";
+
+export { adapterModelMetadataForPromotion } from "./promotionMeta";
 
 export type ProviderAdapterStartInput = {
   vendorName: string;
@@ -93,54 +96,6 @@ export type ProviderAdapterServiceDependencies = {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-export function adapterModelMetadataForPromotion(input: {
-  oldMeta: Record<string, unknown>;
-  candidate: AdapterModelDraft;
-  modeResults: AdapterModeResult[];
-  runId: string;
-  revisionId: string;
-  updatedAt: string;
-}): Record<string, unknown> {
-  const verifiedModes = input.modeResults.filter((mode) => mode.state === "verified");
-  const failedModes = input.modeResults.filter((mode) => mode.state === "failed");
-  const oldAdapter = asRecord(input.oldMeta.adapter);
-  const oldActiveRevision = typeof oldAdapter.activeRevision === "string" ? oldAdapter.activeRevision : undefined;
-  if (verifiedModes.length === 0) {
-    return {
-      ...input.oldMeta,
-      adapter: {
-        state: "failed",
-        runId: input.runId,
-        ...(oldActiveRevision ? { activeRevision: oldActiveRevision } : {}),
-        modes: input.modeResults,
-        updatedAt: input.updatedAt,
-      },
-    };
-  }
-
-  const oldImageOptions = asRecord(input.oldMeta.imageOptions);
-  const newlyVerifiedReference = verifiedModes.some((mode) => mode.taskKind === "image_edit");
-  return {
-    ...input.oldMeta,
-    ...(input.candidate.parameters ? { parameters: input.candidate.parameters } : {}),
-    ...(input.candidate.kind === "image"
-      ? {
-          imageOptions: {
-            ...oldImageOptions,
-            supportsReferenceImages: newlyVerifiedReference || oldImageOptions.supportsReferenceImages === true,
-          },
-        }
-      : {}),
-    adapter: {
-      state: failedModes.length > 0 ? "partial" : "verified",
-      runId: input.runId,
-      activeRevision: input.revisionId,
-      modes: input.modeResults,
-      updatedAt: input.updatedAt,
-    },
-  };
 }
 
 /**
@@ -678,6 +633,9 @@ export class ProviderAdapterService {
               attempts: attempt,
               stage: verified.stage,
               error: verified.error,
+              // 归类原样透传（抛出点已查表定好），别让渲染层再去猜。
+              ...(verified.errorCategory ? { errorCategory: verified.errorCategory } : {}),
+              ...(verified.httpStatus ? { httpStatus: verified.httpStatus } : {}),
             };
         results.push(modeResult);
         const persistedModeResult: AdapterModeResult = {
@@ -686,6 +644,8 @@ export class ProviderAdapterService {
           attempts: modeResult.attempts,
           ...(modeResult.stage ? { stage: modeResult.stage } : {}),
           ...(modeResult.error ? { error: modeResult.error } : {}),
+          ...(modeResult.errorCategory ? { errorCategory: modeResult.errorCategory } : {}),
+          ...(modeResult.httpStatus ? { httpStatus: modeResult.httpStatus } : {}),
           ...(modeResult.verifiedAt ? { verifiedAt: modeResult.verifiedAt } : {}),
         };
         this.store.updateRun(id, (run) => ({

@@ -6,6 +6,12 @@ export type DesktopAdapterModeResult = {
   attempts: number
   stage?: string
   error?: string
+  /**
+   * 失败归类，抛出点查表得来（vendorHttp：401/403→auth、402→balance、429→quota、400/422→input、5xx→server）。
+   * 渲染层据它说人话（adapterFailureAdvice）；**别在 UI 里用关键词猜 error 字符串**——同型 bug 已反复 5 轮。
+   */
+  errorCategory?: string
+  httpStatus?: number
   verifiedAt?: string
 }
 

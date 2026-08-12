@@ -83,6 +83,13 @@ export type AdapterModeResult = {
   attempts: number;
   stage?: "docs" | "compile" | "localize_reference" | "create" | "poll" | "verify_asset" | "promote";
   error?: string;
+  /**
+   * 失败归类，抛出点查表得来（vendorHttp：401/403→auth、402→balance、429→quota、400/422→input、5xx→server）。
+   * 渲染层据此说人话 + 给对应的下一步动作；**不要在 UI 里用关键词猜**（同型 bug 已反复出现 5 轮，
+   * 见 2026-08-12 `fix(errors): 文本侧错误也在源头留住 category`）。
+   */
+  errorCategory?: "auth" | "balance" | "quota" | "input" | "server" | "network" | "unknown";
+  httpStatus?: number;
   verifiedAt?: string;
 };
 
