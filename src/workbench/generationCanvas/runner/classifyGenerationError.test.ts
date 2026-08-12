@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { APICallError, RetryError } from 'ai'
 import { classifyGenerationError } from './generationRunController'
+import { parseVendorErrorFromMessage, stripVendorErrorMarker } from './vendorErrorIpc'
 import { desktopT } from '../../../../electron/i18n'
+import { describeAgentError } from '../../../../electron/ai/agentError'
+import { vendorStallError } from '../../../../electron/ai/aiSdkVendorError'
 
 describe('classifyGenerationError — 已知分类', () => {
   it('API Key 无效', () => {
@@ -476,5 +480,122 @@ describe('无 query op：诚实失败文案要完整送到错误卡标题', () =
     const report = classifyGenerationError(NO_QUERY + desktopT('tasks.upstreamSaid', { detail: 'insufficient balance' }))
     expect(report.reason).toBe('余额不足')
     expect(report.primary).toBe('open-model-access')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 文本侧（AI SDK）真实错误形态 —— 与图/视频侧同一条结构化契约
+// ---------------------------------------------------------------------------
+// 病根（2026-08-12）：图/视频侧的失败在抛出那一刻就带 category（vendorHttp 查表），穿 IPC 到这里
+// 被优先采信；文本侧走 AI SDK，失败被压成一句裸字符串，这里只能用 detectLegacyErrorKind 的关键词
+// 正则去猜。猜就按类漏——上面那串注释里已记着 5 次同型补丁，每次都是「撞到一种没被枚举的措辞 →
+// 落 unknown → 拿到『可能是服务商临时故障或额度问题，建议稍等重试』」。
+//
+// 这组测试**不手搓字符串**：直接喂 electron 侧 describeAgentError() 的真实产物，钉住整条契约
+// （AI SDK 错误 → VendorRequestError → base64 标记 → 这里的 structured 分支）任一环断了都红。
+describe('文本侧 AI SDK 错误：走 structured 分支，不靠关键词猜', () => {
+  const VENDOR = { vendorKey: 'apimart' }
+
+  const apiError = (opts: { statusCode?: number; responseBody?: string; message?: string }): APICallError =>
+    new APICallError({
+      message: opts.message ?? 'Bad Request',
+      url: 'https://api.apimart.ai/v1/chat/completions',
+      requestBodyValues: {},
+      ...(opts.statusCode != null ? { statusCode: opts.statusCode } : {}),
+      ...(opts.responseBody != null ? { responseBody: opts.responseBody } : {}),
+    })
+
+  /** maxRetries 打光后 SDK 抛的套壳形态——429/5xx/网络失败在真机上就长这样。 */
+  const retryWrapped = (last: APICallError): RetryError =>
+    new RetryError({
+      message: `Failed after 4 attempts. Last error: ${last.message}`,
+      reason: 'maxRetriesExceeded',
+      errors: [last, last, last, last],
+    })
+
+  it.each([
+    ['401 鉴权', 401, 'auth'],
+    ['402 欠费', 402, 'balance'],
+    ['429 限流', 429, 'quota'],
+    ['400 参数', 400, 'input'],
+    ['500 服务商故障', 500, 'server'],
+  ] as const)('%s → kind=%s，且 category 来自源头而不是正则', (_label, statusCode, kind) => {
+    const message = describeAgentError(apiError({ statusCode }), VENDOR)
+    // ① 结构化载荷确实穿过来了（这一条断了就说明 electron 侧没编码）
+    expect(parseVendorErrorFromMessage(message)?.category).toBe(kind)
+    // ② 分类结果就是它（这一条断了就说明 classifyError 没采信 structured）
+    expect(classifyGenerationError(message).kind).toBe(kind)
+  })
+
+  // 决定性证据：把标记剥掉再分类 = 模拟「没有结构化时」的老路。答案不同 ⇒ 上面走的确实是
+  // structured 分支，不是碰巧被关键词猜中。500/400 是关键词表**永远猜不到**的两类
+  // （报文里没有 'quota'/'balance'/'timeout' 这些词，只有一个状态码）。
+  it('500 关键词表猜不到——剥掉结构化就退回 unknown 的「稍等重试」误导', () => {
+    const message = describeAgentError(retryWrapped(apiError({ statusCode: 500, message: 'Internal Server Error' })), VENDOR)
+    expect(classifyGenerationError(message).kind).toBe('server')
+    // 老路（无结构化）在同一条报错上给的是 unknown
+    expect(classifyGenerationError(stripVendorErrorMarker(message)).kind).toBe('unknown')
+  })
+
+  it('400 同理——参数被拒不该落进「可能是额度问题」', () => {
+    const message = describeAgentError(apiError({ statusCode: 400, message: 'Bad Request' }), VENDOR)
+    expect(classifyGenerationError(message).kind).toBe('input')
+    expect(classifyGenerationError(stripVendorErrorMarker(message)).kind).toBe('unknown')
+  })
+
+  it('连不上服务商（断网/代理不通）：不甩锅给没被请求到的服务商', () => {
+    // provider-utils 在 `TypeError: fetch failed` 且带 cause 时造的正是这个形状（无 statusCode），
+    // 可重试 → 打光 3 次重试后套 RetryError 抛出。用户拆镜头时断网撞的就是这条。
+    const message = describeAgentError(
+      retryWrapped(
+        new APICallError({
+          message: 'Cannot connect to API: connect ECONNREFUSED 127.0.0.1:443',
+          url: 'https://api.apimart.ai/v1/chat/completions',
+          requestBodyValues: {},
+          isRetryable: true,
+        }),
+      ),
+      VENDOR,
+    )
+    const report = classifyGenerationError(message)
+    expect(parseVendorErrorFromMessage(message)?.category).toBe('network')
+    expect(report.kind).toBe('network')
+    expect(report.reason).toBe('连不上服务商')
+    // 这句才是当初的病：把用户自己的网络问题说成服务商的额度/故障，还劝他重试（必再撞）。
+    expect(report.hint).not.toMatch(/临时故障|额度问题/)
+  })
+
+  it('上游人话（中转只把真原因放在 responseBody）跟着一起到错误卡', () => {
+    const message = describeAgentError(
+      apiError({ statusCode: 400, responseBody: JSON.stringify({ error: { message: '官方算力限制，请等待一段时间后再进行使用' } }) }),
+      VENDOR,
+    )
+    expect(classifyGenerationError(message).providerMessage).toContain('官方算力限制')
+  })
+
+  it('文案信号仍压过状态码——火山「模型未开通」走 404，别被派生成 unknown', () => {
+    // detectModelNotOpen 一族在 structured 分支之前判，接上文本侧后这条链才真正通：
+    // 以前文本侧根本没有 upstreamMsg 可给它读。
+    const message = describeAgentError(
+      apiError({
+        statusCode: 404,
+        responseBody: JSON.stringify({
+          error: { message: 'Your account has not activated the model doubao-seedance. Please activate the model service in the Ark Console.' },
+        }),
+      }),
+      VENDOR,
+    )
+    expect(classifyGenerationError(message).kind).toBe('model-not-open')
+  })
+
+  it('流式超时（我们自己按下的 abort）归 network，而不是一句正则匹配不上的中文裸串', () => {
+    const message = describeAgentError(vendorStallError('模型 90s 内无响应（端点慢或挂起）', VENDOR), VENDOR)
+    expect(classifyGenerationError(message).kind).toBe('network')
+  })
+
+  it('不是厂商请求失败的照旧走 legacy——空响应截断仍是 output-truncated，没被结构化抢走', () => {
+    const message = describeAgentError(new Error('模型「Mimo v2.5」这一轮达到了输出长度上限，内容被截断，没能完整返回。'))
+    expect(parseVendorErrorFromMessage(message)).toBeNull()
+    expect(classifyGenerationError(message).kind).toBe('output-truncated')
   })
 })

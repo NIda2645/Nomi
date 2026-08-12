@@ -11,6 +11,8 @@
 
 import type { AgentChatV2Hooks } from "../runtime";
 import { describeAgentError } from "./agentError";
+import { vendorStallError } from "./aiSdkVendorError";
+import type { VendorRequestError } from "../vendor/vendorHttp";
 
 type StreamChunk = {
   type: string;
@@ -36,12 +38,22 @@ export async function consumeAgentStreamWithTimeout(
   result: { fullStream: AsyncIterable<StreamChunk> },
   abortController: AbortController,
   hooks: AgentChatV2Hooks,
-  opts: { firstChunkTimeoutMs: number; idleTimeoutMs: number; label: string },
+  opts: { firstChunkTimeoutMs: number; idleTimeoutMs: number; label: string; vendorKey?: string },
 ): Promise<AgentStreamResult> {
   let firstChunkSeen = false;
   // 在途工具调用计数:>0 表示正等用户确认(合法静默),idle 计时器暂停。
   let pendingToolCalls = 0;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const errorContext = { ...(opts.vendorKey ? { vendorKey: opts.vendorKey } : {}) };
+  // 我们自己 abort 掉的那次超时——在**触发那一刻**就造好结构化错误(network·可重试)，
+  // 与 vendorHttp 给自家超时的待遇一致。不这么做的话它只是一句中文裸串，legacy 正则一个词
+  // 都匹配不上('timeout' 是英文)，「端点挂起」会被说成「可能是额度问题」。
+  // 抛出的形态由 SDK 层决定(可能被换壳)，所以这里另存一份，catch 时优先用它，不靠反解字符串。
+  let stallError: VendorRequestError | null = null;
+  const abortStalled = (upstreamMsg: string): void => {
+    stallError = vendorStallError(upstreamMsg, errorContext);
+    abortController.abort(stallError);
+  };
 
   const clearIdle = (): void => {
     if (idleTimer) { clearTimeout(idleTimer); idleTimer = undefined; }
@@ -52,14 +64,14 @@ export async function consumeAgentStreamWithTimeout(
     if (pendingToolCalls > 0) return;
     idleTimer = setTimeout(() => {
       console.error(`[agentv2] 流中途 ${opts.idleTimeoutMs}ms 无新内容，abort（${opts.label}）`);
-      abortController.abort(new Error(`流式 ${opts.idleTimeoutMs / 1000}s 无新内容（端点中途挂起）`));
+      abortStalled(`流式 ${opts.idleTimeoutMs / 1000}s 无新内容（端点中途挂起）`);
     }, opts.idleTimeoutMs);
   };
 
   const timer = setTimeout(() => {
     if (!firstChunkSeen) {
       console.error(`[agentv2] 模型 ${opts.firstChunkTimeoutMs}ms 内无首字块，abort（${opts.label}）`);
-      abortController.abort(new Error(`模型 ${opts.firstChunkTimeoutMs / 1000}s 内无响应（端点慢或挂起）`));
+      abortStalled(`模型 ${opts.firstChunkTimeoutMs / 1000}s 内无响应（端点慢或挂起）`);
     }
   }, opts.firstChunkTimeoutMs);
 
@@ -119,15 +131,16 @@ export async function consumeAgentStreamWithTimeout(
       } else if (chunk.type === "error") {
         // 透传上游人话(根因1):APICallError 的 responseBody 里常有真原因(如"官方算力限制"),
         // 别只取 .message(=裸 HTTP 状态文本"Bad Request")。
-        const message = describeAgentError(chunk.error);
+        const message = describeAgentError(chunk.error, errorContext);
         console.error(`[agentv2] stream error chunk: ${message}`);
         hooks.emit({ type: "error", message });
       }
       // tool-call / tool-result 已在各工具 execute 里 emit，这里忽略 SDK 镜像事件避免重复。
     }
   } catch (streamError: unknown) {
-    // abort（首字块超时）或流式异常 → 收口成 error 事件，避免 UI 永远「处理中」。
-    const message = describeAgentError(streamError);
+    // abort（首字块/空闲超时）或流式异常 → 收口成 error 事件，避免 UI 永远「处理中」。
+    // 超时是我们自己按下的，用当时造好的结构化错误，不去反解 SDK 换过壳的抛出物。
+    const message = describeAgentError(stallError ?? streamError, errorContext);
     console.error(`[agentv2] 流式中断: ${message}`);
     hooks.emit({ type: "error", message });
     hooks.emit({ type: "finish", finishReason: "error", usage: finalUsage });

@@ -15,47 +15,27 @@
  *
  * Electron-free so it can be unit-tested offline (agentError.test.ts).
  */
-import { APICallError } from "ai";
-
-/** Pull a human-readable message out of a parsed response-body envelope. */
-function pickBodyMessage(parsed: unknown): string {
-  if (typeof parsed === "string") return parsed;
-  if (!parsed || typeof parsed !== "object") return "";
-  const obj = parsed as Record<string, unknown>;
-  if (typeof obj.error === "string") return obj.error;
-  if (obj.error && typeof obj.error === "object") {
-    const inner = (obj.error as Record<string, unknown>).message;
-    if (typeof inner === "string" && inner.trim()) return inner;
-  }
-  if (typeof obj.message === "string" && obj.message.trim()) return obj.message;
-  if (typeof obj.msg === "string" && obj.msg.trim()) return obj.msg;
-  return "";
-}
-
-/** JSON-or-raw: the human message inside an upstream response body, or a snippet. */
-function humanFromBody(body: string): string {
-  const trimmed = body.trim();
-  if (!trimmed) return "";
-  try {
-    const message = pickBodyMessage(JSON.parse(trimmed));
-    if (message) return message.trim();
-  } catch {
-    /* not JSON — fall through to raw snippet */
-  }
-  return trimmed.replace(/\s+/g, " ").slice(0, 300);
-}
+import { encodeVendorErrorMessage } from "../vendor/vendorHttp";
+import { vendorErrorFromAiSdkError, type AiSdkErrorContext } from "./aiSdkVendorError";
 
 /**
- * Turn any agent error into a message worth showing the user. For APICallError
- * this means surfacing the upstream response body (where relays put the real
- * reason) instead of the bare HTTP status text.
+ * Turn any agent error into a message worth showing the user.
+ *
+ * 这是文本侧**所有**错误的唯一漏斗（streamText onError / 流的 error 块 / 流抛出中断 /
+ * textStreamIpc catch 四条入口都过这里），所以结构化也收口在这一层：厂商请求失败先映射成
+ * VendorRequestError，带 `NOMI_VENDOR_ERR_B64::` 标记编码后穿 IPC —— 渲染层
+ * classifyGenerationError 于是走「源头保留的事实」分支，而不是拿关键词正则猜 category
+ * （治「又漏了一类」的按类复发，来龙去脉见 aiSdkVendorError.ts 文件头）。
+ *
+ * 映射不到的（工具报错 / 没配文本模型 / 空响应截断 / 用户点停止）返回裸字符串走 legacy 兜底——
+ * 那几类的判据是**我们自己的固定文案**，不是猜厂商的话，本来就不该结构化。
+ *
+ * 展示串一字未变：标记段在渲染层由 stripVendorErrorMarker 剥掉，用户看到的仍是
+ * 「（HTTP 400）官方算力限制，请等待一段时间后再进行使用」。
  */
-export function describeAgentError(error: unknown): string {
-  if (APICallError.isInstance(error)) {
-    const status = typeof error.statusCode === "number" ? `HTTP ${error.statusCode}` : "请求失败";
-    const human = (error.responseBody ? humanFromBody(error.responseBody) : "") || (error.message || "").trim();
-    return human ? `（${status}）${human}` : status;
-  }
+export function describeAgentError(error: unknown, ctx: AiSdkErrorContext = {}): string {
+  const vendorError = vendorErrorFromAiSdkError(error, ctx);
+  if (vendorError) return encodeVendorErrorMessage(vendorError);
   if (error instanceof Error) return error.message;
   return String(error);
 }

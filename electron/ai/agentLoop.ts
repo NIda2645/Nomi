@@ -26,6 +26,8 @@ export type AgentLoopRequest = {
   maxSteps?: number;
   skillKey?: string;
   abortSignal?: AbortSignal;
+  /** 目录里的 vendor key——落进错误的结构化载荷(describeAgentError → VendorRequestError)。 */
+  vendorKey?: string;
 };
 
 export type AgentLoopHooks = {
@@ -81,7 +83,10 @@ export function runAgentLoop(
     ...shared,
     toolCallStreaming: true,
     ...(hooks.onError
-      ? { onError: ({ error }: { error: unknown }) => hooks.onError?.(describeAgentError(error)) }
+      ? {
+          onError: ({ error }: { error: unknown }) =>
+            hooks.onError?.(describeAgentError(error, { ...(req.vendorKey ? { vendorKey: req.vendorKey } : {}) })),
+        }
       : {}),
   });
 }

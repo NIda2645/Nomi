@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { APICallError } from "ai";
 import { describeAgentError, describeEmptyAgentReply } from "./agentError";
+import { parseVendorErrorFromMessage, stripVendorErrorMarker } from "../../src/workbench/generationCanvas/runner/vendorErrorIpc";
 
 function apiError(opts: { statusCode?: number; responseBody?: string; message?: string }): APICallError {
   return new APICallError({
@@ -45,6 +46,20 @@ describe("describeAgentError", () => {
   it("handles plain Errors and non-errors", () => {
     expect(describeAgentError(new Error("boom"))).toBe("boom");
     expect(describeAgentError("just a string")).toBe("just a string");
+  });
+
+  // 2026-08-12：这个漏斗除了「说人话」还多担一件事——把厂商失败的 category 结构化带过 IPC，
+  // 让渲染层不必用关键词猜（来龙去脉见 aiSdkVendorError.ts 文件头）。两端契约在这里对账：
+  // 电子侧编码 ↔ 渲染层 vendorErrorIpc 解码，改一端不改另一端立刻红。
+  it("厂商失败带上结构化 category，且剥掉标记后展示串一字未变", () => {
+    const out = describeAgentError(apiError({ statusCode: 401, message: "Unauthorized" }), { vendorKey: "apimart" });
+    expect(parseVendorErrorFromMessage(out)).toMatchObject({ category: "auth", httpStatus: 401, vendorKey: "apimart" });
+    // 用户眼前看到的仍是老样子——标记只是搭了趟顺风车。
+    expect(stripVendorErrorMarker(out)).toBe("（HTTP 401）Unauthorized");
+  });
+
+  it("不是厂商失败的不加标记（没配模型/输出截断/用户点停止走 legacy 兜底）", () => {
+    expect(parseVendorErrorFromMessage(describeAgentError(new Error("No local text model is configured.")))).toBeNull();
   });
 });
 

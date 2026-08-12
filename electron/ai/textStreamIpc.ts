@@ -57,8 +57,10 @@ export function registerTextStreamIpc(): void {
         })
         .catch(async (error: unknown) => {
           // 同根因1：透出上游 responseBody 人话，而非裸状态文本。
+          // vendorKey 传下去 → 错误带结构化 category 穿到渲染层，文本节点的错误卡不再靠正则猜。
           const { describeAgentError } = await import("./agentError");
-          const message = describeAgentError(error);
+          const vendorKey = String((payload as { vendor?: unknown })?.vendor || "").trim();
+          const message = describeAgentError(error, { ...(vendorKey ? { vendorKey } : {}) });
           sendTextEvent(session, { type: "error", message });
         })
         .finally(() => {

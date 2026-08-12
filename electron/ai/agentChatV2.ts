@@ -550,12 +550,13 @@ export async function runAgentChatV2(
       ...(Number.isFinite(metaMaxOutputTokens) && metaMaxOutputTokens > 0 ? { maxTokens: Math.floor(metaMaxOutputTokens) } : {}),
       skillKey: resolvedSkillKey,
       abortSignal: abortController.signal,
+      vendorKey: vendor.key,
     },
     { onError: (message) => hooks.emit({ type: "error", message }) },
     { mode: "stream" },
   );
 
-  const { finalText, finalFinish, finalUsage, ok } = await consumeAgentStreamWithTimeout(result, abortController, hooks, { firstChunkTimeoutMs: 90_000, idleTimeoutMs: 120_000, label: `${vendor?.key}/${model?.modelKey}/${resolvedSkillKey}` });
+  const { finalText, finalFinish, finalUsage, ok } = await consumeAgentStreamWithTimeout(result, abortController, hooks, { firstChunkTimeoutMs: 90_000, idleTimeoutMs: 120_000, label: `${vendor?.key}/${model?.modelKey}/${resolvedSkillKey}`, vendorKey: vendor.key });
 
   // 空响应说人话（根因2）：finishReason=length + 空文本 = 典型「弱模型把内容塞进写工具 JSON
   // 被 max_tokens 截断」的失败签名（如 moonshot-v1 vision）。抛出带原因 + 换模型引导的错误，
