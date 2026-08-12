@@ -26,6 +26,11 @@ export type CustomCallTranscriptEntry = {
 export type CustomCallScriptResult = {
   /** 归一后的产物（URL 或 dataURL）。 */
   assets: string[];
+  /**
+   * 文本产出。文本模型的脚本 `return { text: '…' }` 走这里——它不是资产，不能塞进 assets
+   * （塞进去下游会把整段文字当 URL 去下载）。见 collectCustomCallText。
+   */
+  text?: string;
   transcript: CustomCallTranscriptEntry[];
 };
 
@@ -46,6 +51,21 @@ function preview(value: unknown, redact: (s: string) => string): string | undefi
     }
   }
   return redact(text).slice(0, PREVIEW_LIMIT);
+}
+
+/**
+ * 脚本返回值 → 文本产出。只认**显式**的文本形状（字符串 text/content/output_text 字段），
+ * 不把裸字符串当文本——裸字符串是资产 URL 的既有约定，两者抢同一个形状会让图片模型的
+ * URL 被当成正文。文本模型请 `return { text: '…' }`。
+ */
+export function collectCustomCallText(result: unknown): string | undefined {
+  if (!isJsonRecord(result)) return undefined;
+  const record = result as JsonRecord;
+  for (const key of ["text", "content", "output_text"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
 }
 
 /** 脚本返回值 → 产物列表。宽松归一（与 infinite-canvas 同精神），空产出=人话报错。 */
@@ -130,6 +150,12 @@ export async function runCustomCallScript(input: {
   params: JsonRecord;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /**
+   * 把脚本拿到的二进制落成本地资产，返回可用的 URL（注入避免 ↔ runtime 循环依赖，同 localizeTaskAsset）。
+   * 没有它，「上游只给字节流不给 URL」那类模型（Sora 的下载端点、Stability v2beta）只能转成
+   * data URL —— 图片尚可，几十 MB 的视频就离谱了。缺省不注入时脚本里没有 saveFile。
+   */
+  saveFile?: (bytes: Buffer, ext: string, contentType: string) => Promise<string>;
 }): Promise<CustomCallScriptResult> {
   const { vendor, apiKey } = input;
   const baseUrl = String(vendor.baseUrlHint || "").replace(/\/+$/, "");
@@ -255,6 +281,18 @@ export async function runCustomCallScript(input: {
     http,
     request: doRequest,
     poll,
+    // 二进制落地。没注入时给一个会说人话的桩，别让脚本撞上 "saveFile is not a function"
+    // 这种对用户毫无意义的报错（试跑面板走的就是这条路）。
+    saveFile: input.saveFile
+      ? async (bytes: unknown, ext: unknown, contentType?: unknown) =>
+          input.saveFile!(
+            Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes as ArrayBuffer),
+            typeof ext === "string" && ext.trim() ? ext.trim().replace(/^\./, "") : "bin",
+            typeof contentType === "string" && contentType.trim() ? contentType : "application/octet-stream",
+          )
+      : async () => {
+          throw new Error("saveFile 在这里不可用（试跑不落盘）——先 return 一个 URL 或 dataURL 验证脚本能跑通");
+        },
     sleep,
     signal: controller.signal,
   };
@@ -275,8 +313,12 @@ export async function runCustomCallScript(input: {
         controller.signal.addEventListener("abort", () => reject(abortError(controller)), { once: true }),
       ),
     ]);
+    // 文本先看：文本模型 return { text } 不产出资产，走 assets 那条会被当成 URL 去下载。
+    const text = collectCustomCallText(raw);
+    if (text) return { assets: [], text, transcript };
     const assets = collectCustomCallAssets(raw);
-    if (assets.length === 0) throw new Error("自定义调用脚本没有返回产物（需 return 结果 URL / dataURL，或它们的数组）");
+    if (assets.length === 0)
+      throw new Error("自定义调用脚本没有返回产物（资产请 return URL / dataURL / 它们的数组；文本模型请 return { text: '…' }）");
     return { assets, transcript };
   } catch (error) {
     const message = redact(error instanceof Error ? error.message : String(error));
