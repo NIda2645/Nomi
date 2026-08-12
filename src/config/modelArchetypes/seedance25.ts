@@ -61,6 +61,20 @@ export const SEEDANCE_2_5_ARCHETYPE: ModelArchetype = {
   family: "seedance",
   label: "Seedance 2.5",
   kind: "video",
+  sources: [
+    {
+      url: "https://docs.kie.ai/market/bytedance/seedance-2-5",
+      checkedAt: "2026-08-12",
+      vendorKey: "kie",
+      covers: "POST /api/v1/jobs/createTask；input.reference_image_urls/_video_/_audio_ 上限 30/10/10；aspect_ratio 默认 adaptive；首尾帧与多模态参考互斥",
+    },
+    {
+      url: "https://docs.apimart.ai/cn/api-reference/videos/doubao-seedance-2-5",
+      checkedAt: "2026-08-12",
+      vendorKey: "apimart",
+      covers: "POST /v1/videos/generations；image_urls/video_urls/audio_urls 上限 30/10/10；image_with_roles 表首尾帧；首尾帧与参考编辑类提示词下 size 必须 adaptive",
+    },
+  ],
   // 默认进文生视频，与 Seedance 2.0 / apimart / RunningHub 一致（P4 通用第一）。
   defaultModeId: "t2v",
   transportTaskKind: "image_to_video",

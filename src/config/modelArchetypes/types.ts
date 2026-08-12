@@ -133,11 +133,31 @@ export type ModelArchetypeVariant = {
   paramOverrides?: Record<string, (params: ModelParameterControl[]) => ModelParameterControl[]>;
 };
 
+/**
+ * 契约出处。**结构化字段，不是注释** —— 2026-08-12 的教训：Seedance 2.5 档案里 4 个契约数字
+ * （参考图/视频/音频上限、比例默认值）全是我们自己填的，而文件头注释白纸黑字写着
+ * 「契约逐项对账自 kie 官方文档」。注释是自由文本，写什么都行、没人能反证；落成字段才能被
+ * 门岗检查、被聚合成索引、让复核的人一眼知道去哪查。**改契约数字必须同步 checkedAt。**
+ * 门岗：`pnpm run check:archetype-sources`（棘轮，只减不增）。
+ */
+export type ArchetypeSource = {
+  /** 供应商**官方**文档 URL（不是第三方转述——转述会漏会错，栽过）。 */
+  url: string;
+  /** 最后一次逐项对账的日期，ISO `YYYY-MM-DD`。 */
+  checkedAt: string;
+  /** 该文档属于哪个供应商；模型级、跨供应商通用的可省略。 */
+  vendorKey?: string;
+  /** 一句话：这份文档覆盖了什么（如「参考通道字段名与上限」）。 */
+  covers?: string;
+};
+
 export type ModelArchetype = {
   id: string; // 'seedance-2'
   family: string; // 'seedance'
   label: string; // 'Seedance 2.0'
   kind: "video" | "image" | "audio" | "model3d";
+  /** 契约出处（见 ArchetypeSource）。**新增档案必填**；存量未补的在门岗白名单里，只减不增。 */
+  sources?: ArchetypeSource[];
   modes: ArchetypeMode[];
   defaultModeId: string;
   /**
