@@ -15,6 +15,8 @@ export type CustomCallTestRunResult = {
   ok: boolean;
   /** 成功时的产物（URL/dataURL；试跑不落项目资产，仅供面板预览）。 */
   assets: string[];
+  /** 文本模型 `return { text }` 的试跑结果；与资产结果分开，避免把正文当 URL。 */
+  text?: string;
   errorMessage?: string;
   transcript: CustomCallTranscriptEntry[];
   durationMs: number;
@@ -36,6 +38,15 @@ function cannedTestInput(kind: string): { prompt: string; params: Record<string,
     return { prompt: "a red apple rolling on a wooden table, soft daylight", params: { duration: 5, n: 1 } };
   }
   return { prompt: "a red apple on a wooden table, soft daylight, studio photo", params: { n: 1 } };
+}
+
+/** 试跑的 saveFile 只做小结果预览，不把数据写进项目，也不让视频变成巨型 data URL。 */
+const TEST_SAVE_FILE_MAX_BYTES = 4 * 1024 * 1024;
+async function previewSavedFile(bytes: Buffer, contentType: string): Promise<string> {
+  if (bytes.byteLength > TEST_SAVE_FILE_MAX_BYTES) {
+    throw new Error("试跑 saveFile 收到的文件太大，不能在面板里拼 data URL；请直接保存后在真实任务里验证");
+  }
+  return `data:${contentType};base64,${bytes.toString("base64")}`;
 }
 
 export function registerCustomCallIpc(registerSyncIpc: (channel: string, handler: (...args: never[]) => unknown) => void): void {
@@ -77,8 +88,9 @@ export function registerCustomCallIpc(registerSyncIpc: (channel: string, handler
         prompt: canned.prompt,
         params: canned.params,
         timeoutMs: model.kind === "video" ? 10 * 60 * 1000 : 3 * 60 * 1000,
+        saveFile: (bytes, _ext, contentType) => previewSavedFile(bytes, contentType),
       });
-      return { ok: true, assets: executed.assets, transcript: executed.transcript, durationMs: Date.now() - started };
+      return { ok: true, assets: executed.assets, ...(executed.text !== undefined ? { text: executed.text } : {}), transcript: executed.transcript, durationMs: Date.now() - started };
     } catch (error) {
       const transcript = error instanceof CustomCallScriptError ? error.transcript : [];
       return {

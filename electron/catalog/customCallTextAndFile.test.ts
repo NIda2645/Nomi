@@ -4,7 +4,7 @@
 // 等于「接不上的文本模型没有任何出路」，而用户最初踩的正是文本模型。
 // 这里锁两件事：① 文本产出必须显式、不能和资产 URL 抢形状；② saveFile 没注入时要报人话。
 import { describe, expect, it } from "vitest";
-import { collectCustomCallAssets, collectCustomCallText } from "./customCallRunner";
+import { collectCustomCallAssets, collectCustomCallText, runCustomCallScript } from "./customCallRunner";
 
 describe("collectCustomCallText", () => {
   it("accepts the shapes an AI would plausibly emit for text", () => {
@@ -34,5 +34,18 @@ describe("collectCustomCallText", () => {
   it("does not mistake an asset object for text", () => {
     expect(collectCustomCallText({ url: "https://cdn.example.com/a.mp4" })).toBeUndefined();
     expect(collectCustomCallText({ b64_json: "AAA" })).toBeUndefined();
+  });
+
+  it("lets a test run preview a small saveFile result without writing project assets", async () => {
+    const outcome = await runCustomCallScript({
+      vendor: { key: "custom", baseUrlHint: "https://example.com" } as never,
+      model: { modelKey: "m", kind: "video" } as never,
+      apiKey: "",
+      prompt: "p",
+      params: {},
+      script: "return await saveFile(new Uint8Array([1, 2, 3]), '.mp4', 'video/mp4')",
+      saveFile: async (bytes, _ext, contentType) => `data:${contentType};base64,${bytes.toString('base64')}`,
+    });
+    expect(outcome.assets).toEqual(["data:video/mp4;base64,AQID"]);
   });
 });

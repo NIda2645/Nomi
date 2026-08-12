@@ -54,7 +54,7 @@ import { useCanvasSelectionDrag } from './useCanvasSelectionDrag'
 import { CanvasSelectionToolbar } from './CanvasSelectionToolbar'
 import { CanvasBatchGenerateDock } from './CanvasBatchGenerateDock'
 import { useCanvasProductionActions } from './useCanvasProductionActions'
-import { shouldShowCanvasBatchGenerateDock } from './canvasProductionScope'
+import { useCanvasBatchDockVisibility } from './useCanvasBatchDockVisibility'
 import { useCanvasScreenshotCapture } from './useCanvasScreenshotCapture'
 import '../styles/generationCanvas.css'
 
@@ -85,7 +85,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
   const hasPendingStagingCapture = useGenerationCanvasStore((state) => hasPendingScene3DStagingCapture(state.nodes))
   const hasPendingCameraMoveCapture = useGenerationCanvasStore((state) => hasPendingScene3DCameraMoveCapture(state.nodes))
   const hasBatchPlanPreview = useBatchPlanPreviewStore((state) => Boolean(state.plan))
-  const activeCategoryId = useWorkbenchStore((state) => state.activeCategoryId)
+  const activeCategoryId = useWorkbenchStore((state) => state.activeCategoryId), timelineCollapsed = useWorkbenchStore((state) => state.timelinePanelCollapsed)
   const setActiveCategoryId = useWorkbenchStore((state) => state.setActiveCategoryId)
   // Phase E3: filter nodes by active sub-canvas. Nodes with no categoryId
   // fall back to the project default ("shots") so legacy projects keep
@@ -331,7 +331,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     handleBuildContactSheet,
   } = useCanvasGroupActions({ activeCategoryId, selectedGroupIds, selectedNodeIds })
   const production = useCanvasProductionActions({ activeCategoryId, selectedNodeIds })
-
+  const batchDock = useCanvasBatchDockVisibility({ readOnly, selectedCount: selectedNodeIds.length, eligibleIds: production.eligibleIds })
   // 拖拽连线跟踪（含 rAF 节流预览线）抽到 useDragToConnect（R9/B3）
   const { pendingCursorPos } = useDragToConnect({
     readOnly,
@@ -769,7 +769,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
             />
           ) : null}
         </div>
-        {shouldShowCanvasBatchGenerateDock({ readOnly, selectedCount, eligibleCount: production.eligibleIds.length }) ? <CanvasBatchGenerateDock {...production} /> : null}
+        {batchDock.visible ? <CanvasBatchGenerateDock {...production} timelineCollapsed={timelineCollapsed} onDismiss={batchDock.dismiss} /> : null}
         <CanvasNavigationStack
           readOnly={readOnly}
           nodes={nodes}

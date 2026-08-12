@@ -738,6 +738,7 @@ export const zhOnboardingProviders = {
     testRun: '试跑一次（花一次最小额度）',
     testRunning: '试跑中…（最长几分钟，别关窗口）',
     testOk: '试跑成功 · {{count}} 个产物 · {{seconds}} 秒',
+    testTextOk: '试跑成功 · 已收到文本 · {{seconds}} 秒',
     testFailed: '试跑失败',
     aiRepair: '让 AI 按报错修改',
     // 「复制题面」是内建 AI 改不动之后的下一步，不是与它并列的第二个入口——
@@ -1516,6 +1517,7 @@ export const enOnboardingProviders = {
     testRun: 'Test run once (spends one minimal credit)',
     testRunning: 'Testing… (may take minutes, keep this window open)',
     testOk: 'Test succeeded · {{count}} asset(s) · {{seconds}}s',
+    testTextOk: 'Test succeeded · text received · {{seconds}}s',
     testFailed: 'Test failed',
     aiRepair: 'Let AI fix it from the error',
     copyBriefLead: 'Still stuck?',
