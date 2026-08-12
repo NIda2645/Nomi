@@ -39,7 +39,7 @@ function makeTempDir(prefix: string): string {
   return dir;
 }
 
-function seedScriptedModel(script: string, kind: "image" | "video" = "image") {
+function seedScriptedModel(script: string, kind: "image" | "video" | "text" = "image") {
   upsertModelCatalogVendor({ key: "custom-cc", name: "CC", baseUrlHint: "https://cc.example/v1", authType: "bearer", enabled: true });
   upsertModelCatalogVendorApiKey("custom-cc", { apiKey: "sk-cc-1", enabled: true });
   upsertModelCatalogModel({ vendorKey: "custom-cc", modelKey: "cc-model", kind, enabled: true, customCall: { script } });
@@ -71,6 +71,22 @@ return 'data:image/png;base64,eA=='`,
     expect(result.status).toBe("succeeded");
     expect(result.assets[0]?.url).toContain("data:image/png");
     expect(result.provenance?.model?.modelKey ?? "cc-model").toBeTruthy();
+  });
+
+  it("文本脚本返回 { text }：不伪装成资产，raw 形状与文本主路径一致", async () => {
+    seedScriptedModel("return { text: 'prompt refined' }", "text");
+    const grantId = mintSpendGrant({ nodeIds: ["n1"] });
+    const result = await runTask({
+      vendor: "custom-cc",
+      request: {
+        kind: "prompt_refine",
+        prompt: "make this cinematic",
+        extras: { modelKey: "cc-model", nodeId: "n1", grantId },
+      },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.assets).toEqual([]);
+    expect(result.raw).toMatchObject({ choices: [{ message: { role: "assistant", content: "prompt refined" } }] });
   });
 
   it("付费闸同点位：无效 grant 拒发（脚本一行都不执行）", async () => {

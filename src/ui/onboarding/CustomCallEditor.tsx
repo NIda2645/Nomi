@@ -31,6 +31,7 @@ type TestRunState =
       phase: 'done'
       ok: boolean
       assets: string[]
+      text?: string
       errorMessage?: string
       transcript: Array<{
         method: string
@@ -447,12 +448,19 @@ export function CustomCallEditor({
                 >
                   {test.ok ? <IconCheck size={15} stroke={2} /> : <IconAlertTriangle size={15} stroke={1.8} />}
                   {test.ok
-                    ? t('onboardingProviders.customCall.testOk', {
-                        count: test.assets.length,
-                        seconds: (test.durationMs / 1000).toFixed(1),
-                      })
+                    ? test.text !== undefined
+                      ? t('onboardingProviders.customCall.testTextOk', { seconds: (test.durationMs / 1000).toFixed(1) })
+                      : t('onboardingProviders.customCall.testOk', {
+                          count: test.assets.length,
+                          seconds: (test.durationMs / 1000).toFixed(1),
+                        })
                     : t('onboardingProviders.customCall.testFailed')}
                 </div>
+                {test.ok && test.text !== undefined ? (
+                  <div className="select-text whitespace-pre-wrap break-words rounded-nomi-sm bg-nomi-ink-05 p-2 font-nomi-mono text-micro text-nomi-ink-80">
+                    {test.text}
+                  </div>
+                ) : null}
                 {!test.ok && test.errorMessage ? (
                   <div className="select-text break-words rounded-nomi-sm bg-nomi-ink-05 p-2 font-nomi-mono text-micro text-nomi-ink-80">
                     {test.errorMessage}

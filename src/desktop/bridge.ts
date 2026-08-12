@@ -634,6 +634,7 @@ export type DesktopBridge = DesktopMediaBridge & {
     customCallTestRun?: (payload: { vendorKey: string; modelKey: string; script: string }) => Promise<{
       ok: boolean
       assets: string[]
+      text?: string
       errorMessage?: string
       transcript: Array<{
         method: string
