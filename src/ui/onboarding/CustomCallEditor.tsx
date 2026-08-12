@@ -7,13 +7,14 @@
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconCheck, IconPlayerPlay, IconSparkles } from '@tabler/icons-react'
+import { IconAlertTriangle, IconCheck, IconCopy, IconPlayerPlay, IconPlus, IconSparkles, IconTrash } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 import { DesignModal, confirmDialog } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { getTextBrain } from '../../workbench/api/promptLibraryApi'
 import { runWorkbenchTextTaskStream } from '../../workbench/api/taskApi'
 import { stripCodeFences } from './customCallIntent'
+import { configRecordFromRows, configRowsFromRecord, hasCustomConfig, type CustomConfigRow } from './customCallConfig'
 
 export type CustomCallTarget = {
   vendorKey: string
@@ -43,6 +44,9 @@ type TestRunState =
       durationMs: number
     }
 
+/** listVendors() 是 unknown[]；这里只用到 key 与 meta.customConfig，就地窄化，别把 any 放进来。 */
+type VendorRow = { key?: string; meta?: Record<string, unknown> & { customConfig?: unknown } }
+
 const inputCls =
   'w-full rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2.5 py-2 text-body-sm text-nomi-ink placeholder:text-nomi-ink-40 outline-none focus:border-nomi-accent'
 
@@ -62,16 +66,23 @@ export function CustomCallEditor({
   const [aiError, setAiError] = React.useState('')
   const [test, setTest] = React.useState<TestRunState>({ phase: 'idle' })
   const [saveError, setSaveError] = React.useState('')
+  const [configRows, setConfigRows] = React.useState<CustomConfigRow[]>([])
+  const [briefCopied, setBriefCopied] = React.useState(false)
   const abortRef = React.useRef<AbortController | null>(null)
 
-  // 打开时装载既有脚本；关闭清态。
+  // 打开时装载既有脚本 + 该供应商已存的自定义配置；关闭清态。
   React.useEffect(() => {
     if (target) {
       setScript(target.script)
       setMaterial('')
       setAiError('')
       setSaveError('')
+      setBriefCopied(false)
       setTest({ phase: 'idle' })
+      // 配置存在 vendor 上（同一供应商下所有模型共用），所以从 vendor 读、不从 model 读。
+      const vendors = (getDesktopBridge()?.modelCatalog.listVendors?.() ?? []) as VendorRow[]
+      const vendor = vendors.find((v) => v.key === target.vendorKey)
+      setConfigRows(configRowsFromRecord(vendor?.meta?.customConfig))
     }
     return () => abortRef.current?.abort()
   }, [target])
@@ -161,6 +172,17 @@ export function CustomCallEditor({
     if (!target || !bridge) return
     setSaveError('')
     try {
+      // 自定义配置存 vendor（同供应商所有模型共用），脚本存 model —— 但用户只点一次「保存」，
+      // 就该把这个弹窗里做的一切都存下，不该逼他理解两者存在不同地方。
+      const vendors = (bridge.modelCatalog.listVendors?.() ?? []) as VendorRow[]
+      const vendor = vendors.find((v) => v.key === target.vendorKey)
+      if (vendor) {
+        const meta: Record<string, unknown> = { ...(vendor.meta ?? {}) }
+        const config = configRecordFromRows(configRows)
+        if (config) meta.customConfig = config
+        else delete meta.customConfig // 清空 = 删掉键，别留个 {} 占位
+        bridge.modelCatalog.upsertVendor({ ...vendor, meta })
+      }
       const trimmed = script.trim()
       bridge.modelCatalog.upsertModel({
         vendorKey: target.vendorKey,
@@ -174,7 +196,7 @@ export function CustomCallEditor({
         t('onboardingProviders.customCall.saveFailed', { message: e instanceof Error ? e.message : String(e) }),
       )
     }
-  }, [target, bridge, script, onSaved, onClose, t])
+  }, [target, bridge, script, configRows, onSaved, onClose, t])
 
   const removeScript = React.useCallback(async () => {
     if (!target || !bridge) return
@@ -195,6 +217,32 @@ export function CustomCallEditor({
       )
     }
   }, [target, bridge, onSaved, onClose, t])
+
+  /**
+   * 把「给 AI 的题面」复制到剪贴板，供用户粘给 Codex / Claude / ChatGPT。
+   * **复用 customCallAiInstruction**——内建 AI 用的就是这份指令，题面只有一个真相源；
+   * 另写一份迟早和注入变量表漂移（正是 customCallContract 头注释警告的那类事）。
+   */
+  const copyBrief = React.useCallback(async () => {
+    if (!target || !bridge) return
+    const lastError = test.phase === 'done' && !test.ok
+      ? [test.errorMessage, ...test.transcript.map((e) => e.errorMessage)].filter(Boolean).join('\n')
+      : ''
+    const instruction = bridge.modelCatalog.customCallAiInstruction?.({
+      vendorKey: target.vendorKey,
+      modelKey: target.modelKey,
+      material: material.trim(),
+      ...(script.trim() ? { currentScript: script } : {}),
+      ...(lastError ? { lastError } : {}),
+    })
+    if (!instruction) return
+    try {
+      await navigator.clipboard.writeText(String(instruction))
+      setBriefCopied(true)
+    } catch {
+      setSaveError(t('onboardingProviders.customCall.saveFailed', { message: 'clipboard' }))
+    }
+  }, [target, bridge, material, script, test, t])
 
   const insertTemplate = React.useCallback(
     (id: string) => {
@@ -259,7 +307,66 @@ export function CustomCallEditor({
             </div>
           </div>
 
-          {/* ② 脚本 */}
+          {/*
+            ② 自定义配置。默认**折叠**：绝大多数服务一个密钥就够，空表格摊开只是噪音；
+            已经填过的才展开（open 由 hasCustomConfig 决定）。折叠标题写用途不写功能名——
+            没打开的人也得看懂这里是干嘛的。
+          */}
+          <details open={hasCustomConfig(configRows)} className="flex flex-col gap-1.5">
+            <summary className="cursor-pointer select-none text-body-sm font-semibold text-nomi-ink">
+              {hasCustomConfig(configRows)
+                ? t('onboardingProviders.customCall.configLabelFilled', { count: configRows.filter((r) => r.name.trim()).length })
+                : t('onboardingProviders.customCall.configLabel')}
+            </summary>
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              <div className="text-caption leading-relaxed text-nomi-ink-60">
+                {t('onboardingProviders.customCall.configHint')}
+                <span className="ml-1 text-nomi-ink-40">{t('onboardingProviders.customCall.configScope')}</span>
+              </div>
+              {configRows.map((row, index) => (
+                <div key={index} className="flex items-center gap-1.5">
+                  <input
+                    className={cn(inputCls, 'flex-1 font-nomi-mono text-caption')}
+                    placeholder={t('onboardingProviders.customCall.configNamePlaceholder')}
+                    aria-label={t('onboardingProviders.customCall.configNameAria')}
+                    value={row.name}
+                    onChange={(e) => {
+                      const name = e.currentTarget.value
+                      setConfigRows((rows) => rows.map((r, i) => (i === index ? { ...r, name } : r)))
+                    }}
+                  />
+                  <input
+                    className={cn(inputCls, 'flex-[1.3] font-nomi-mono text-caption')}
+                    placeholder={t('onboardingProviders.customCall.configValuePlaceholder')}
+                    aria-label={t('onboardingProviders.customCall.configValueAria', { name: row.name })}
+                    value={row.value}
+                    onChange={(e) => {
+                      const value = e.currentTarget.value
+                      setConfigRows((rows) => rows.map((r, i) => (i === index ? { ...r, value } : r)))
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label={t('onboardingProviders.customCall.configRemoveAria', { name: row.name })}
+                    onClick={() => setConfigRows((rows) => rows.filter((_, i) => i !== index))}
+                    className="shrink-0 rounded-nomi-sm p-1.5 text-nomi-ink-30 hover:text-workbench-danger"
+                  >
+                    <IconTrash size={14} stroke={1.7} />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setConfigRows((rows) => [...rows, { name: '', value: '' }])}
+                className="self-start rounded-full border border-nomi-line px-2.5 py-[3px] text-micro text-nomi-ink-60 hover:border-nomi-ink-20 hover:text-nomi-ink"
+              >
+                <IconPlus size={12} stroke={1.8} className="mr-1 inline align-[-1px]" />
+                {t('onboardingProviders.customCall.configAdd')}
+              </button>
+            </div>
+          </details>
+
+          {/* ③ 脚本 */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               <span className="text-body-sm font-semibold text-nomi-ink">
@@ -409,20 +516,42 @@ export function CustomCallEditor({
                   ))
                 )}
                 {!test.ok ? (
-                  <button
-                    type="button"
-                    onClick={() => void runAi({ lastError: [test.errorMessage, ...test.transcript.map((e) => e.errorMessage)].filter(Boolean).join('\n') })}
-                    className="self-start inline-flex h-7 items-center gap-1.5 rounded-nomi-sm bg-nomi-ink px-2.5 text-caption font-semibold text-nomi-paper hover:bg-nomi-accent"
-                  >
-                    <IconSparkles size={13} stroke={1.7} />
-                    {t('onboardingProviders.customCall.aiRepair')}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void runAi({ lastError: [test.errorMessage, ...test.transcript.map((e) => e.errorMessage)].filter(Boolean).join('\n') })}
+                      className="inline-flex h-7 items-center gap-1.5 rounded-nomi-sm bg-nomi-ink px-2.5 text-caption font-semibold text-nomi-paper hover:bg-nomi-accent"
+                    >
+                      <IconSparkles size={13} stroke={1.7} />
+                      {t('onboardingProviders.customCall.aiRepair')}
+                    </button>
+                    {/*
+                      「复制题面」是内建 AI 改不动之后的下一步，不是与它并列的第二个入口
+                      （设计系统 §1.5 一功能一个家）。所以：只在失败块里出现、排在 aiRepair 之后、
+                      前面加一句引导词把先后关系说出来。
+                    */}
+                    <span className="text-micro text-nomi-ink-40">{t('onboardingProviders.customCall.copyBriefLead')}</span>
+                    <button
+                      type="button"
+                      onClick={() => void copyBrief()}
+                      className="inline-flex h-7 items-center gap-1.5 rounded-nomi-sm border border-nomi-line px-2.5 text-caption text-nomi-ink-60 hover:border-nomi-accent hover:text-nomi-accent"
+                    >
+                      <IconCopy size={13} stroke={1.7} />
+                      {briefCopied
+                        ? t('onboardingProviders.customCall.copyBriefDone')
+                        : t('onboardingProviders.customCall.copyBrief')}
+                    </button>
+                  </div>
                 ) : null}
               </div>
             ) : null}
           </div>
 
-          <div className="text-micro leading-relaxed text-nomi-ink-40">{t('onboardingProviders.customCall.honestNote')}</div>
+          <div className="text-micro leading-relaxed text-nomi-ink-40">
+            {t('onboardingProviders.customCall.honestNote')}
+            {/* 做不到的明着标（D4）：让人早点掉头，别照着试半天才发现此路不通。 */}
+            <span className="ml-1 text-[color:var(--nomi-warning)]">{t('onboardingProviders.customCall.limitNote')}</span>
+          </div>
           {saveError ? <div className="text-caption text-workbench-danger">{saveError}</div> : null}
 
           {/* footer */}
