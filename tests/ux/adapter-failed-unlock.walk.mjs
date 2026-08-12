@@ -126,6 +126,26 @@ if (await failedRow.count()) {
   console.log('  · 列表里没出现 deepseek-v4-pro')
 }
 
+// 打开「自定义调用」编辑器，确认新注入的 config 变量在可用变量里、且有中文说明（不是裸 key）。
+const codeBtn = win.locator('button[aria-label*="deepseek-v4-pro"]').filter({ hasNot: win.locator('[role="checkbox"]') }).first()
+const anyCode = win.locator('button[title="自定义调用"], button[title="Custom call"]').first()
+const target = (await anyCode.count()) ? anyCode : codeBtn
+if (await target.count()) {
+  await target.click({ timeout: 4000 }).catch(() => {})
+  await win.waitForTimeout(1500)
+  await snap(win, 'custom-call-editor')
+  const varsLine = win.locator('text=/可用变量|Available variables/').first()
+  if (await varsLine.count()) {
+    console.log('  · 可用变量行: ' + ((await varsLine.textContent()) || '').trim().slice(0, 200))
+    const hasConfig = (await win.locator('text=/自定义配置|custom config/').count()) > 0
+    console.log('  · config 说明是否渲染出来: ' + (hasConfig ? '✅ 是' : '❌ 否（可能缺 i18n key）'))
+  } else {
+    console.log('  · 没找到「可用变量」行')
+  }
+} else {
+  console.log('  · 没找到自定义调用入口按钮')
+}
+
 await app.close().catch(() => {})
 console.log(`\n截图在 ${shotsDir}`)
 // Electron 偶尔不肯干净退出（渲染进程还挂着），别让走查卡在这一步。
