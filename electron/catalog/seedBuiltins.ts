@@ -134,7 +134,14 @@ const KIE_CURATED_MAPPINGS: CuratedMapping[] = [
 /** apimart 的 curated 模型 + mapping，从单源 APIMART_IMAGE_MODELS / APIMART_VIDEO_MODELS 派生。 */
 const APIMART_CURATED_MODELS: CuratedModel[] = [
   // 文本大脑（创作助手 / 拆镜头主控）：无 archetype / 无 mapping，走 buildLanguageModelForVendor 直连 chat。
-  ...APIMART_TEXT_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: "text" as const })),
+  // meta 透传：能读图的（gemini-3.5-flash）靠 meta.supportsImageInput 被 chooseTextModel 选中，
+  // 不靠 VISION_MODEL_RE 猜名字（显式声明优先，见 ai/agentUserContent.ts:33）。
+  ...APIMART_TEXT_MODELS.map((m) => ({
+    modelKey: m.modelKey,
+    labelZh: m.labelZh,
+    kind: "text" as const,
+    ...(m.meta ? { meta: m.meta } : {}),
+  })),
   ...APIMART_IMAGE_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: "image" as const, archetypeId: m.archetypeId })),
   ...APIMART_VIDEO_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: "video" as const, archetypeId: m.archetypeId })),
   ...APIMART_AUDIO_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: m.kind, archetypeId: m.archetypeId })),
