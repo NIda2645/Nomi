@@ -49,7 +49,7 @@ export function WorkflowCanvasPreview({
 
   return (
     <section
-      className="flex flex-col gap-2 rounded-nomi border border-nomi-line bg-nomi-paper p-2.5"
+      className="flex shrink-0 flex-col gap-2 rounded-nomi border border-nomi-line bg-nomi-paper p-2.5"
       data-workflow-preview
       aria-label={t('comfyuiWorkflowPage.preview.title')}
     >

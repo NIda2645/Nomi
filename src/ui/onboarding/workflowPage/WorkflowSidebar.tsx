@@ -72,7 +72,11 @@ export function WorkflowSidebar({
 
   return (
     <>
-      <section className="flex flex-col gap-1.5 rounded-nomi border border-nomi-line bg-nomi-paper p-2.5" data-workflow-backends>
+      {/* 三段一律 shrink-0，滚动交给外层 aside。
+          ⚠️ 不加 shrink-0 的话，flex 会为了塞下兄弟节点把它们压扁——真机走查实锤：
+          一条工作流暴露 8 个画布字段后，预览段把上面的工作流列表**挤成 0 高**，
+          只剩一行「工作流 · 2」标题，用户从此换不了工作流（左栏本来就是拿来导航的）。 */}
+      <section className="flex shrink-0 flex-col gap-1.5 rounded-nomi border border-nomi-line bg-nomi-paper p-2.5" data-workflow-backends>
         <div className="text-micro font-semibold text-nomi-ink-40">{t('comfyuiWorkflowPage.backends.title')}</div>
         {backends.map((backend) => (
           <BackendItem
@@ -87,17 +91,19 @@ export function WorkflowSidebar({
         <AddComfyuiInstanceButton onAdded={onBackendsChanged} />
       </section>
 
-      <section className="flex min-h-0 flex-col gap-1.5 rounded-nomi border border-nomi-line bg-nomi-paper p-2.5" data-workflow-list>
+      <section className="flex shrink-0 flex-col gap-1.5 rounded-nomi border border-nomi-line bg-nomi-paper p-2.5" data-workflow-list>
         <div className="text-micro font-semibold text-nomi-ink-40">
           {t('comfyuiWorkflowPage.workflows.title')} · {workflows.length}
         </div>
+        {/* 列表自己封顶再内滚（max-h + overflow）：工作流多的时候不许它把下面的画布预览顶出视野。
+            封顶而不是任其变长，是因为左栏三段都要「一眼看得到」——这是导航栏，不是列表页。 */}
         {workflows.length === 0 ? (
           <div className="flex flex-col gap-1 pb-1">
             <p className="text-micro text-nomi-ink-40">{t('comfyuiWorkflowPage.workflows.empty')}</p>
             <p className="text-micro leading-relaxed text-nomi-ink-30">{t('comfyuiWorkflowPage.workflows.emptyHint')}</p>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+          <div className="flex max-h-[240px] flex-col gap-1 overflow-y-auto">
             {workflows.map((workflow) => (
               <WorkflowItem
                 key={workflow.modelKey}
