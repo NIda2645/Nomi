@@ -60,8 +60,24 @@
 
 ## 五、验收
 
-- [ ] `ModelArchetype.sources` 字段落地，seedance25 填上两家文档地址
-- [ ] 门岗脚本 + 棘轮基线 + 进 gates
-- [ ] 规则写进 `docs/engineering-rules.md`（R5 强化）
-- [ ] 文档地址索引 `docs/integrations/provider-api-docs.md`
-- [ ] 应用第一例：apimart Seedance 2.5 完整接入（字段名与 kie 不同 + adaptive 硬约束）
+- [x] `ModelArchetype.sources` 字段落地，seedance25 填上两家文档地址
+- [x] 门岗脚本 + 棘轮基线 + 进 gates（三种失败模式都验证过会红）
+- [x] 规则写进 `docs/engineering-rules.md`（R5 强化，G1/G2/G3）
+- [x] 文档地址索引 `docs/integrations/provider-api-docs.md`
+- [x] 应用第一例：apimart Seedance 2.5 完整接入（字段名与 kie 不同 + adaptive 硬约束）
+- [x] 真机走查：四模式齐、首尾帧无比例控件、参数面板与文档一致
+- [x] **真实生成 E2E（2026-08-12，用户提供的 apimart key，跑完即弃）**
+
+### 真实生成结果（用生产执行器 + 我们 seed 里的 mapping，不是手搓请求）
+
+| 用例 | 发出的关键字段 | 结果 |
+|---|---|---|
+| 文生视频 | `size:adaptive, resolution:480p, duration:4` | ✅ 120s 出片 |
+| 全能参考 + 参考视频（**白膜走的就是这条**）| `video_urls:[...]` | ✅ 133s 出片 |
+| 首尾帧 | `image_with_roles:[{url,role:first_frame}]`、**`size:"adaptive"`（盖住了节点上残留的 16:9）** | ✅ 出片 |
+
+第三条是这次最该验的：节点从别的模型切过来会残留 `size:"16:9"`，档案 `fixedParams` 必须盖住它，
+否则首尾帧会被 apimart 拒。**端到端确认发出去的确实是 `adaptive`。**
+
+白膜结论落地：Seedance 2.5 的 3D 白膜没有专用字段，就是当参考视频（或参考图）喂进 `video_urls`
+/ `image_urls`——真跑通了，不是推断。
