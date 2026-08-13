@@ -99,3 +99,18 @@
 - [ ] **Step 2:** 在空轴、添加素材、点击片段、裁切、导出菜单、点击空白收回六个状态截图走查；确认轴不遮挡画布底部时间轴。
 - [ ] **Step 3:** 运行 `pnpm run check:filesize && pnpm run check:tokens && pnpm run check:i18n && pnpm run lint:ci && pnpm run typecheck && pnpm run test && pnpm run build`。
 - [ ] **Step 4:** 提交并推送隔离分支，给出 PR 和新版本测试入口。
+
+### Task 5: 修复轴首入口、拖拽与本地视频导入
+
+**Files:**
+- Modify: `src/workbench/generationCanvas/nodes/ClipNodeTimeline.tsx`
+- Modify: `src/workbench/generationCanvas/nodes/ClipNode.tsx`
+- Create: `src/workbench/generationCanvas/nodes/clipNodeUpload.ts`
+- Modify: `electron/preload.ts`, `electron/assets/assetsIpc.ts`, `electron/assets/localFileImport.ts`
+- Test: `tests/ux/clip-node-editing.walk.mjs` and focused unit tests
+
+- [x] **Step 1:** 用真实指针拖动断言固定“片段可以在轴上拖动”，并确认失败/成功来自构建产物而非源码热更新。
+- [x] **Step 2:** 将 `+` 放到轴首，片段布局从加号右侧开始，保持同一几何宽度来源。
+- [x] **Step 3:** 本地视频优先通过 Electron `webUtils.getPathForFile` 进入主进程，避免整份大文件穿过 renderer IPC；JS 构造的 File 才回退字节通道。
+- [x] **Step 4:** 剪辑节点素材选择器显示上传中状态；失败保留原始 File，并在原地提供“重试导入”。
+- [x] **Step 5:** 重建 Electron 后跑真实任务：轴首加号 → 原生视频上传 → 片段拖动 → 分割/删除/导出入口。

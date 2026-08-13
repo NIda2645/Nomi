@@ -356,6 +356,8 @@ export const zhGenerationCommon = {
     exportHint: '拖入素材、调入出点，然后导出片段或成片。',
     exportComplete: '已导出：{{path}}',
     exportFailed: '导出失败，请重试。',
+    uploadFailed: '素材复制失败，请重试导入。',
+    retryUpload: '重试导入',
     seconds: '秒',
   },
   cropGrid: {
@@ -1557,6 +1559,8 @@ export const enGenerationCommon = {
     exportHint: 'Add media, set the in/out points, then export a clip or the cut.',
     exportComplete: 'Exported: {{path}}',
     exportFailed: 'Export failed. Try again.',
+    uploadFailed: 'The material could not be copied. Try importing it again.',
+    retryUpload: 'Retry import',
     seconds: 's',
   },
   cropGrid: {

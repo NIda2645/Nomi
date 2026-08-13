@@ -100,11 +100,38 @@ try {
     return rect.height <= 180 && element.getAttribute('data-clip-mode') === 'compact'
   })
   const normalPreviewHidden = (await win.getByTestId('clip-node-preview').count()) === 0
+  const addButton = clip.getByRole('button', { name: '添加素材', exact: true })
+  const firstClipBeforeDrag = clips.first()
+  const firstClipId = await firstClipBeforeDrag.getAttribute('data-clip-id')
+  const addBox = await addButton.boundingBox()
+  const firstClipBox = await firstClipBeforeDrag.boundingBox()
+  if (!addBox || !firstClipBox || !firstClipId) throw new Error('找不到剪辑轴首段和添加槽')
+  const addSlotIsFirst = addBox.x < firstClipBox.x
 
-  await clip.getByRole('button', { name: '添加素材', exact: true }).click()
+  await win.mouse.move(firstClipBox.x + firstClipBox.width / 2, firstClipBox.y + firstClipBox.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(firstClipBox.x + firstClipBox.width / 2 + 360, firstClipBox.y + firstClipBox.height / 2, { steps: 12 })
+  await win.mouse.up()
+  await win.waitForTimeout(400)
+  const firstClipAfterDrag = clip.locator(`[data-testid="clip-node-clip"][data-clip-id="${firstClipId}"]`)
+  const firstClipAfterBox = await firstClipAfterDrag.boundingBox()
+  const timelineDragWorks = Boolean(firstClipAfterBox && firstClipAfterBox.x > firstClipBox.x + 80)
+
+  await addButton.click()
+  await win.waitForTimeout(500)
+  if ((await win.getByTestId('asset-picker').count()) === 0) {
+    await win.screenshot({ path: path.join(os.tmpdir(), 'nomi-clip-picker-missing.png') })
+    throw new Error(`添加素材后 picker 未打开，body=${(await win.locator('body').innerText()).slice(-1000)}`)
+  }
   const addOpensPicker = await win.getByPlaceholder('搜索素材名…').isVisible().catch(() => false)
-  await win.keyboard.press('Escape').catch(() => {})
-  await win.waitForTimeout(150)
+  const uploadInput = win.locator('input[type="file"]').last()
+  try {
+    await uploadInput.setInputFiles(path.join(repoRoot, 'marketing/assets/video/hero-loop.mp4'))
+  } catch (error) {
+    throw new Error(`${error.message}\nassetPicker=${await win.getByTestId('asset-picker').count()} inputs=${await win.locator('input').count()} html=${(await win.getByTestId('asset-picker').first().innerHTML().catch(() => '')).slice(0, 2000)}`)
+  }
+  await win.waitForFunction(() => document.querySelectorAll('[data-testid="clip-node-clip"]').length === 3)
+  const nativeVideoUploadWorks = (await clips.count()) === 3 && (await win.getByRole('alert').count()) === 0
 
   await clips.first().click()
   const previewOpens = (await win.getByTestId('clip-node-preview').count()) === 1
@@ -118,13 +145,13 @@ try {
   if (!firstBox) throw new Error('找不到第一段片段的可交互区域')
   await win.mouse.click(firstBox.x + firstBox.width * 0.6, firstBox.y + firstBox.height / 2)
   await win.waitForTimeout(300)
-  const splitCreatedNewSegment = (await clips.count()) === 3
+  const splitCreatedNewSegment = (await clips.count()) === 4
 
   await clips.last().click()
   if (!(await remove.isEnabled())) throw new Error('分割后选中片段没有启用移除操作')
   await remove.click()
   await win.waitForTimeout(1000)
-  const removeCompactedTimeline = (await clips.count()) === 2
+  const removeCompactedTimeline = (await clips.count()) === 3
 
   await clips.first().click()
   const exportButton = win.getByRole('button', { name: '导出', exact: true })
@@ -142,7 +169,7 @@ try {
   const blankAxisCollapses = (await win.getByTestId('clip-node-preview').count()) === 0
   await win.screenshot({ path: path.join(os.tmpdir(), 'nomi-clip-node-editing.png') })
 
-  const result = { importedTwoMedia, countIsClear, compactAxis, normalPreviewHidden, addOpensPicker, previewOpens, selectionEnablesEditing, splitCreatedNewSegment, removeCompactedTimeline, outputActionVisible, blankAxisCollapses }
+  const result = { importedTwoMedia, countIsClear, compactAxis, normalPreviewHidden, addSlotIsFirst, timelineDragWorks, addOpensPicker, nativeVideoUploadWorks, previewOpens, selectionEnablesEditing, splitCreatedNewSegment, removeCompactedTimeline, outputActionVisible, blankAxisCollapses }
   console.log(JSON.stringify(result))
   await closeApp()
   process.exit(Object.values(result).every(Boolean) ? 0 : 1)

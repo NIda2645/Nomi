@@ -14,7 +14,13 @@ export function registerAssetsIpc(): void {
   });
   ipcMain.handle("nomi:assets:import-file", async (_event, payload) => {
     const { importLocalFile } = await import("./localFileImport");
-    return importLocalFile(payload);
+    const raw = (payload || {}) as Record<string, unknown>;
+    // 字节通道不接受 renderer 自报路径；原生路径只能经 webUtils 桥进入下面的专用通道。
+    return importLocalFile({ ...raw, sourcePath: undefined });
+  });
+  ipcMain.handle("nomi:assets:import-native-file", async (_event, payload) => {
+    const { importLocalFile } = await import("./localFileImport");
+    return importLocalFile(payload, { allowSourcePath: true });
   });
   ipcMain.handle("nomi:assets:ensure-playable", async (_event, payload) => {
     const { ensurePlayableAsset } = await import("./localFileImport");

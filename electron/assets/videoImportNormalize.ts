@@ -83,6 +83,7 @@ export function playableMp4FileName(fileName: string): string {
 export async function transcodeFileToPlayableMp4IfNeeded(
   inputPath: string,
   fileName: string,
+  outputDir = path.dirname(inputPath),
 ): Promise<{ outputPath: string; reason: string } | null> {
   let reason: string | null;
   try {
@@ -92,7 +93,7 @@ export async function transcodeFileToPlayableMp4IfNeeded(
   }
   if (!reason) return null;
   const outputPath = path.join(
-    path.dirname(inputPath),
+    outputDir,
     `${path.basename(inputPath, path.extname(inputPath))}-playable.mp4`,
   );
   await runFfmpeg(transcodeArgsForPlayableMp4(inputPath, outputPath));

@@ -6,6 +6,7 @@ import { cn } from '../../utils/cn'
 import { AssetThumb } from './AssetTile'
 import { useAssetPool } from './useAssetPool'
 import { filterAssets, type AssetKind, type AssetRef } from './assetTypes'
+import { droppedAssetFile } from './assetPickerUpload'
 
 // 统一选择器(P0.3,样张 v4 态④)。定位 = **快速取**(搜索 + 最近),不是全量浏览器。
 // 三来源一套:画布行 + 项目素材最近网格(可滚) + 上传;另说明拖入/连线两条画布捷径。
@@ -67,9 +68,7 @@ export default function AssetPicker({ projectId, accept, onPick, onUpload, onBro
       // 而不是填进当前节点的输入槽（提示语已写「或把文件拖进来」却无 onDrop = bug）。
       onDragOver={(event) => { event.preventDefault(); event.stopPropagation() }}
       onDrop={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        const file = event.dataTransfer.files?.[0]
+        const file = droppedAssetFile(event, Boolean(uploading))
         if (file) onUpload(file)
       }}
     >

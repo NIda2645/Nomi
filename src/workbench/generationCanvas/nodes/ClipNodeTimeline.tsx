@@ -233,7 +233,7 @@ export default function ClipNodeTimeline({
             <span key={`mark-${tick.frame}-${index}`} className="absolute top-0 h-2 border-l border-nomi-paper/20" style={{ left: `${tick.ratio * 100}%` }} />
           ))}
         </div>
-        <div className="absolute bottom-2 h-12" style={{ left: axisInset, right: addSlotWidth + axisInset }}>
+        <div className="absolute bottom-2 h-12" style={{ left: addSlotWidth + axisInset, right: axisInset }}>
           {clips.map((clip) => {
             const layout = resolveClipNodeTimelineLayout(timeline, contentWidth).find((item) => item.id === clip.id)
             if (!layout) return null
@@ -259,7 +259,7 @@ export default function ClipNodeTimeline({
           <WorkbenchIconButton
             label={t('generationCommon.clipNode.addMaterial')}
             icon={<IconPlus size={20} />}
-            className="absolute bottom-2 right-2 size-12 rounded-nomi-sm border border-nomi-line bg-nomi-paper text-nomi-ink hover:bg-nomi-accent hover:text-nomi-paper"
+            className="absolute bottom-2 left-2 size-12 rounded-nomi-sm border border-nomi-line bg-nomi-paper text-nomi-ink hover:bg-nomi-accent hover:text-nomi-paper"
             onClick={onAddMaterial}
           />
         )}

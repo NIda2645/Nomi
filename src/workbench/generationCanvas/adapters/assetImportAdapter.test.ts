@@ -90,4 +90,20 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     expect(node.result?.url).toBe('nomi-local://asset/project-1/clip.mp4')
     expect(node.meta?.videoDuration).toBe(12.5)
   })
+
+  it('keeps a failed video import retryable instead of losing the source file', async () => {
+    const uploadFile = vi.fn(async () => { throw new Error('copy failed') })
+    const result = await importLocalMediaFilesToGenerationCanvas([makeVideoFile()], {
+      basePosition: { x: 10, y: 20 },
+      uploadFile,
+      recoverFile: async () => null,
+      readVideoDuration: async () => null,
+    })
+
+    const node = useGenerationCanvasStore.getState().nodes[0]
+    expect(result.failedCount).toBe(1)
+    expect(node.status).toBe('error')
+    expect(node.error).toContain('重试导入')
+    expect(node.meta?.retryableImport).toBe(true)
+  })
 })

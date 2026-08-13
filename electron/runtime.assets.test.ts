@@ -123,6 +123,26 @@ describe("runtime workspace asset storage", () => {
     expect([...fs.readFileSync(asset.data.absolutePath)]).toEqual([1, 2, 3]);
   });
 
+  it("imports a native file path without copying the full file through renderer IPC", async () => {
+    const workspace = createWorkspace();
+    const sourceDir = makeTempDir("nomi-native-import-source-");
+    const sourcePath = path.join(sourceDir, "large-image.png");
+    fs.writeFileSync(sourcePath, Buffer.from([4, 5, 6, 7]));
+
+    const readFileSync = vi.spyOn(fs, "readFileSync");
+    const asset = (await importLocalFile({
+      projectId: workspace.id,
+      sourcePath,
+      contentType: "image/png",
+      fileName: "large-image.png",
+    }, { allowSourcePath: true })) as AssetRecord;
+
+    expect(asset.data.relativePath).toBe("assets/imported/2026-05-31/large-image.png");
+    expect([...fs.readFileSync(asset.data.absolutePath)]).toEqual([4, 5, 6, 7]);
+    expect(readFileSync).not.toHaveBeenCalledWith(sourcePath);
+    readFileSync.mockRestore();
+  });
+
   it("restores imported asset metadata when listing project assets", async () => {
     const workspace = createWorkspace();
 

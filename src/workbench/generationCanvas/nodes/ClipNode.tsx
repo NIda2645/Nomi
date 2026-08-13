@@ -9,14 +9,13 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useAllProjectAssets } from '../../assets/useAllProjectAssets'
 import AssetPicker from '../../assets/AssetPicker'
 import AssetPickerPopover from '../../assets/AssetPickerPopover'
+import type { AssetRef } from '../../assets/assetTypes'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
-import { importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
 import {
   appendClipNodeSource,
   clipNodeSourceFromAsset,
   readClipNodeMeta,
 } from './clipNodeModel'
-import type { AssetRef } from '../../assets/assetTypes'
 import { MagneticConnectionHandle } from './NodeConnectionHandles'
 import { completeNodeConnection } from './completeNodeConnection'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
@@ -27,6 +26,7 @@ import { toast } from '../../../ui/toast'
 import { buildWorkspaceFileUrl } from '../../explorer/workspaceFileDrag'
 import ClipNodePreview from './ClipNodePreview'
 import ClipNodeTimeline from './ClipNodeTimeline'
+import { createExclusiveClipNodeUpload, importClipNodeAsset } from './clipNodeUpload'
 import {
   clipNodeTimelineFromMeta,
   duplicateClipNode,
@@ -68,6 +68,10 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const [creatingVideoNode, setCreatingVideoNode] = React.useState(false)
   const [editingOpen, setEditingOpen] = React.useState(false)
   const [exportMenuOpen, setExportMenuOpen] = React.useState(false)
+  const [uploading, setUploading] = React.useState(false)
+  const [uploadError, setUploadError] = React.useState<string | null>(null)
+  const [retryUploadFile, setRetryUploadFile] = React.useState<File | null>(null)
+  const uploadExclusiveRef = React.useRef(createExclusiveClipNodeUpload())
   const articleRef = React.useRef<HTMLElement | null>(null)
   const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null)
   const visualSize = resolveNodeVisualSize(node)
@@ -156,24 +160,42 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     if (!source) return
     persist(appendClipNodeSource(meta, source))
     setPickerOpen(false)
+    setUploadError(null)
+    setRetryUploadFile(null)
     setEditingOpen(false)
   }, [meta, persist])
 
   const upload = React.useCallback(async (file: File) => {
-    const projectId = getActiveWorkbenchProjectId()
-    if (!projectId) return
-    const uploaded = await importWorkbenchLocalAssetFile(file, file.name, { projectId })
-    const asset: AssetRef = {
-      id: uploaded.id,
-      name: uploaded.name,
-      kind: file.type.startsWith('video/') ? 'video' : 'image',
-      renderUrl: String(uploaded.data.url || ''),
-      source: 'project',
-      origin: { source: 'project', projectId, relativePath: String(uploaded.data.relativePath || uploaded.name) },
-    }
-    addAsset(asset)
-    refresh()
-  }, [addAsset, refresh])
+    await uploadExclusiveRef.current(async () => {
+      const projectId = getActiveWorkbenchProjectId()
+      setRetryUploadFile(file)
+      setUploadError(null)
+      if (!projectId) {
+        setUploadError(t('generationCommon.clipNode.uploadFailed'))
+        return
+      }
+      setUploading(true)
+      try {
+        const result = await importClipNodeAsset(file, projectId)
+        if (result.error || !result.asset) {
+          setUploadError(t('generationCommon.clipNode.uploadFailed'))
+          return
+        }
+        addAsset(result.asset)
+        setRetryUploadFile(null)
+        refresh()
+      } finally {
+        setUploading(false)
+      }
+    })
+  }, [addAsset, refresh, t])
+
+  const closePicker = React.useCallback(() => {
+    if (uploading) return
+    setPickerOpen(false)
+    setUploadError(null)
+    setRetryUploadFile(null)
+  }, [uploading])
 
   const selectClip = React.useCallback((clipId: string) => {
     persist({ ...meta, selectedClipId: clipId.replace(/^clip-/, '') })
@@ -386,7 +408,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
             onMoveClip={handleMoveClip}
             onResizeClip={handleResizeClip}
             onSplitClip={handleSplitClip}
-            onAddMaterial={readOnly ? undefined : () => setPickerOpen(true)}
+            onAddMaterial={readOnly ? undefined : () => { setUploadError(null); setRetryUploadFile(null); setPickerOpen(true) }}
             onBlankAxis={closeEditing}
           />
         </div>
@@ -410,7 +432,33 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         </div>, document.body,
       ) : null}
 
-      {pickerOpen ? <AssetPickerPopover onClose={() => setPickerOpen(false)}><AssetPicker projectId={getActiveWorkbenchProjectId()} accept={['image', 'video']} onPick={addAsset} onUpload={(file) => void upload(file)} /></AssetPickerPopover> : null}
+      {pickerOpen ? (
+        <AssetPickerPopover onClose={closePicker}>
+          <div className="grid gap-1.5">
+            <AssetPicker
+              projectId={getActiveWorkbenchProjectId()}
+              accept={['image', 'video']}
+              onPick={addAsset}
+              onUpload={(file) => void upload(file)}
+              uploading={uploading}
+            />
+            {uploadError ? (
+              <div role="alert" className="flex items-center gap-2 rounded-nomi-sm border border-nomi-danger/40 bg-nomi-danger-soft px-2 py-1.5 text-micro text-nomi-danger">
+                <span className="min-w-0 flex-1">{uploadError}</span>
+                <WorkbenchButton
+                  variant="default"
+                  size="sm"
+                  className="shrink-0 border-nomi-danger/40 text-nomi-danger hover:bg-nomi-danger-soft"
+                  disabled={!retryUploadFile || uploading}
+                  onClick={() => { if (retryUploadFile) void upload(retryUploadFile) }}
+                >
+                  {t('generationCommon.clipNode.retryUpload')}
+                </WorkbenchButton>
+              </div>
+            ) : null}
+          </div>
+        </AssetPickerPopover>
+      ) : null}
     </article>
   )
 }
