@@ -10,6 +10,57 @@
 
 export type ModelIdentity = { vendorKey: string; modelKey: string };
 
+export type AssistantCatalogModelLike = {
+  vendorKey: string;
+  modelKey: string;
+  kind: string;
+  enabled: boolean;
+  meta?: unknown;
+};
+
+export type AssistantCatalogVendorLike = {
+  key: string;
+  enabled: boolean;
+  authType?: string | null;
+  hasApiKey?: boolean;
+};
+
+function isPromptRefineOnly(meta: unknown): boolean {
+  return Boolean(
+    meta &&
+      typeof meta === 'object' &&
+      (meta as { promptRefineOnly?: unknown }).promptRefineOnly === true,
+  )
+}
+
+/**
+ * 助手下拉的唯一数据门：只让真实 catalog 中「已启用 + 供应商当前可用」的文本模型进入 UI。
+ *
+ * `listModels({ kind: 'text', enabled: true })` 只保证模型行本身启用，不能保证供应商仍有
+ * key（用户拔 key 后 vendor.enabled 可能还保留）。这里和生成节点的可用性判据对齐，避免
+ * 下拉给出一个看似能选、点击后必然失败的假选择；身份字段不完整的行也直接丢弃。
+ */
+export function filterUsableAssistantTextModels<T extends AssistantCatalogModelLike>(
+  models: readonly T[],
+  vendors: readonly AssistantCatalogVendorLike[],
+): T[] {
+  const usableVendorKeys = new Set(
+    vendors
+      .filter((vendor) => vendor.enabled && (vendor.authType === 'none' || vendor.hasApiKey === true))
+      .map((vendor) => vendor.key.trim().toLowerCase())
+      .filter(Boolean),
+  )
+  return models.filter((model) => {
+    const vendorKey = model.vendorKey.trim().toLowerCase()
+    return model.kind === 'text'
+      && model.enabled
+      && !isPromptRefineOnly(model.meta)
+      && Boolean(vendorKey)
+      && Boolean(model.modelKey.trim())
+      && usableVendorKeys.has(vendorKey)
+  })
+}
+
 /** 两段身份 → DOM 安全且可逆的 option value。用 encodeURIComponent 是因为 vendorKey 是从
  *  baseUrl 派生的串，什么字符都可能有，随便挑个分隔符迟早撞上。 */
 export function encodeModelIdentity(identity: ModelIdentity): string {
