@@ -99,14 +99,21 @@ try {
     const rect = element.getBoundingClientRect()
     return rect.height <= 180 && element.getAttribute('data-clip-mode') === 'compact'
   })
+  const normalPreviewHidden = (await win.getByTestId('clip-node-preview').count()) === 0
+
+  await clip.getByRole('button', { name: '添加素材', exact: true }).click()
+  const addOpensPicker = await win.getByPlaceholder('搜索素材名…').isVisible().catch(() => false)
+  await win.keyboard.press('Escape').catch(() => {})
+  await win.waitForTimeout(150)
 
   await clips.first().click()
-  const duplicate = clip.getByRole('button', { name: '复制片段', exact: true })
-  const remove = clip.getByRole('button', { name: '移除片段', exact: true })
-  const trimHandleVisible = await clip.getByRole('button', { name: '调整片段出点', exact: true }).isVisible()
+  const previewOpens = (await win.getByTestId('clip-node-preview').count()) === 1
+  const duplicate = win.getByRole('button', { name: '复制片段', exact: true })
+  const remove = win.getByRole('button', { name: '移除片段', exact: true })
+  const trimHandleVisible = await win.getByRole('button', { name: '调整片段出点', exact: true }).isVisible()
   const selectionEnablesEditing = await duplicate.isEnabled() && await remove.isEnabled() && trimHandleVisible
 
-  await clip.getByRole('button', { name: '分割片段', exact: true }).click()
+  await win.getByRole('button', { name: '分割片段', exact: true }).click()
   const firstBox = await clips.first().boundingBox()
   if (!firstBox) throw new Error('找不到第一段片段的可交互区域')
   await win.mouse.click(firstBox.x + firstBox.width * 0.6, firstBox.y + firstBox.height / 2)
@@ -120,13 +127,22 @@ try {
   const removeCompactedTimeline = (await clips.count()) === 2
 
   await clips.first().click()
-  const exportButton = clip.getByRole('button', { name: '导出', exact: true })
+  const exportButton = win.getByRole('button', { name: '导出', exact: true })
   await exportButton.click()
+  const exportMenu = win.getByRole('menu')
   const createVideo = win.getByRole('button', { name: /^生成视频节点/ })
-  const outputActionVisible = (await createVideo.count()) > 0
+  const exportGroupsVisible = (await exportMenu.getByText('导出片段', { exact: true }).count()) > 0
+    && (await exportMenu.getByText('下载成片', { exact: true }).count()) > 0
+    && (await createVideo.count()) > 0
+  const outputActionVisible = exportGroupsVisible
+  const axisBox = await clip.getByRole('region', { name: '剪辑时间线' }).boundingBox()
+  if (!axisBox) throw new Error('找不到剪辑时间轴区域')
+  await win.mouse.click(axisBox.x + 12, axisBox.y + axisBox.height - 8)
+  await win.waitForTimeout(200)
+  const blankAxisCollapses = (await win.getByTestId('clip-node-preview').count()) === 0
   await win.screenshot({ path: path.join(os.tmpdir(), 'nomi-clip-node-editing.png') })
 
-  const result = { importedTwoMedia, countIsClear, compactAxis, selectionEnablesEditing, splitCreatedNewSegment, removeCompactedTimeline, outputActionVisible }
+  const result = { importedTwoMedia, countIsClear, compactAxis, normalPreviewHidden, addOpensPicker, previewOpens, selectionEnablesEditing, splitCreatedNewSegment, removeCompactedTimeline, outputActionVisible, blankAxisCollapses }
   console.log(JSON.stringify(result))
   await closeApp()
   process.exit(Object.values(result).every(Boolean) ? 0 : 1)

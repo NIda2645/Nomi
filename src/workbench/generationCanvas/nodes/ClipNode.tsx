@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconCopy, IconDownload, IconScissors, IconTrash } from '@tabler/icons-react'
 import { WorkbenchButton, WorkbenchIconButton } from '../../../design'
@@ -50,6 +51,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
   const moveNode = useGenerationCanvasStore((state) => state.moveNode)
   const moveSelectedNodes = useGenerationCanvasStore((state) => state.moveSelectedNodes)
+  const canvasZoom = useGenerationCanvasStore((state) => state.canvasZoom)
   const isMultiSelectActive = useGenerationCanvasStore((state) => selected && state.selectedNodeIds.length > 1)
   const startConnection = useGenerationCanvasStore((state) => state.startConnection)
   const pendingSourceId = useGenerationCanvasStore((state) => state.pendingConnectionSourceId)
@@ -66,6 +68,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const [creatingVideoNode, setCreatingVideoNode] = React.useState(false)
   const [editingOpen, setEditingOpen] = React.useState(false)
   const [exportMenuOpen, setExportMenuOpen] = React.useState(false)
+  const articleRef = React.useRef<HTMLElement | null>(null)
+  const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null)
   const visualSize = resolveNodeVisualSize(node)
   const sizeBounds = getNodeSizeBounds(node.kind)
   const { handlePointerDown, handlePointerMove, handlePointerUp } = useNodeDragResize({
@@ -90,6 +94,25 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const visualMode = resolveClipNodeVisualMode({ hasClips: timelineClips.length > 0, editingOpen, selectedClip: Boolean(activeClip) })
   const durationFrames = timelineClips.reduce((max, clip) => Math.max(max, clip.endFrame), 0)
   const upstreamMediaKey = upstreamMedia.map((source) => source.id).join('|')
+
+  React.useEffect(() => {
+    if (selected) return
+    setEditingOpen(false)
+    setExportMenuOpen(false)
+    setSplitMode(false)
+  }, [selected])
+
+  React.useLayoutEffect(() => {
+    if (!editingOpen || !articleRef.current) return
+    const updateAnchor = () => setAnchorRect(articleRef.current?.getBoundingClientRect() ?? null)
+    updateAnchor()
+    window.addEventListener('resize', updateAnchor)
+    window.addEventListener('scroll', updateAnchor, true)
+    return () => {
+      window.removeEventListener('resize', updateAnchor)
+      window.removeEventListener('scroll', updateAnchor, true)
+    }
+  }, [canvasZoom, editingOpen, exportMenuOpen, node.position.x, node.position.y, visualSize.width, visualSize.height])
 
   const persist = React.useCallback((next: ReturnType<typeof readClipNodeMeta>) => {
     updateNode(node.id, { meta: { ...(node.meta ?? {}), clip: next } })
@@ -262,8 +285,31 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     setSplitMode(false)
   }
 
+  const floatingLayerStyle = React.useMemo<React.CSSProperties | null>(() => {
+    if (!anchorRect || typeof window === 'undefined') return null
+    const width = 550
+    const height = 250
+    const left = Math.max(12, Math.min(window.innerWidth - width - 12, anchorRect.left + anchorRect.width / 2 - width / 2))
+    const top = anchorRect.top >= height + 20
+      ? anchorRect.top - height - 12
+      : Math.min(window.innerHeight - height - 12, anchorRect.bottom + 12)
+    return { position: 'fixed', left, top: Math.max(12, top), zIndex: 1000 }
+  }, [anchorRect])
+
+  const exportLayerStyle = React.useMemo<React.CSSProperties | null>(() => {
+    if (!anchorRect || typeof window === 'undefined') return null
+    const width = 320
+    const height = 220
+    const left = Math.max(12, Math.min(window.innerWidth - width - 12, anchorRect.right - width))
+    const top = anchorRect.bottom + height + 12 <= window.innerHeight
+      ? anchorRect.bottom + 12
+      : Math.max(12, anchorRect.top - height - 12)
+    return { position: 'fixed', left, top, zIndex: 1001 }
+  }, [anchorRect])
+
   return (
     <article
+      ref={articleRef}
       className={cn('generation-canvas-v2-node absolute block cursor-grab select-none touch-none overflow-visible', selected ? 'z-50' : '')}
       style={{ transform: `translate(${node.position.x}px, ${node.position.y}px)`, width: visualSize.width, height: visualSize.height }}
       data-node-id={node.id}
@@ -284,8 +330,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         <MagneticConnectionHandle side="right" active={pendingSourceId === node.id || pendingSourceSide === 'right'} pendingTarget={Boolean(pendingSourceId && pendingSourceId !== node.id)} onStart={handleConnectionStart} onComplete={(event) => { event.stopPropagation(); completeNodeConnection(node.id) }} />
       </> : null}
 
-      {visualMode === 'editing' && activeClip ? (
-        <div className="absolute bottom-full left-1/2 z-40 mb-3 flex -translate-x-1/2 items-end gap-2 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg" onPointerDown={(event) => event.stopPropagation()}>
+      {visualMode === 'editing' && activeClip && floatingLayerStyle ? createPortal(
+        <div style={floatingLayerStyle} className="flex items-end gap-2 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg" onPointerDown={(event) => event.stopPropagation()}>
           <ClipNodePreview clip={activeClip} playing={playing} onTogglePlaying={() => setPlaying((value) => !value)} className="w-80" />
           <div className="grid w-40 gap-1.5">
             <div className="px-1 text-micro font-medium text-nomi-ink/60">{t('generationCommon.clipNode.selectedScope')}</div>
@@ -314,7 +360,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
               </WorkbenchButton>
             ) : null}
           </div>
-        </div>
+        </div>, document.body,
       ) : null}
 
       <div
@@ -346,8 +392,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         </div>
       </div>
 
-      {exportMenuOpen && visualMode === 'editing' && !readOnly ? (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg" role="menu" onPointerDown={(event) => event.stopPropagation()}>
+      {exportMenuOpen && visualMode === 'editing' && !readOnly && exportLayerStyle ? createPortal(
+        <div style={exportLayerStyle} className="w-80 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg" role="menu" onPointerDown={(event) => event.stopPropagation()}>
           <div className="px-2 pb-1 text-micro font-medium text-nomi-ink/60">{t('generationCommon.clipNode.exportOptions')}</div>
           <WorkbenchButton variant="default" size="sm" className="h-auto w-full justify-start gap-2 py-2 text-left" disabled={!activeClip || Boolean(exporting) || !getActiveWorkbenchProjectId()} onClick={() => void handleExport('current')}>
             <IconDownload size={14} />
@@ -361,7 +407,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
             <IconScissors size={14} />
             <span className="grid text-left"><span>{creatingVideoNode ? t('generationCommon.clipNode.creatingVideoNode') : t('generationCommon.clipNode.createVideoNode')}</span><span className="text-micro font-normal text-nomi-paper/65">{t('generationCommon.clipNode.createVideoNodeHint')}</span></span>
           </WorkbenchButton>
-        </div>
+        </div>, document.body,
       ) : null}
 
       {pickerOpen ? <AssetPickerPopover onClose={() => setPickerOpen(false)}><AssetPicker projectId={getActiveWorkbenchProjectId()} accept={['image', 'video']} onPick={addAsset} onUpload={(file) => void upload(file)} /></AssetPickerPopover> : null}

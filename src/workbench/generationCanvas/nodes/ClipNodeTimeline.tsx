@@ -197,8 +197,9 @@ export default function ClipNodeTimeline({
     return () => window.removeEventListener('resize', update)
   }, [])
 
+  const axisInset = 8
   const addSlotWidth = 56
-  const contentWidth = Math.max(160, axisWidth - addSlotWidth)
+  const contentWidth = Math.max(1, axisWidth - addSlotWidth - axisInset * 2)
   const pxPerFrame = contentWidth / duration
   const ticks = resolveClipNodeAxisTicks(durationFrames, timeline.fps)
 
@@ -215,7 +216,14 @@ export default function ClipNodeTimeline({
       >
         <div className="pointer-events-none absolute inset-x-2 top-1.5 h-5" aria-hidden="true">
           {ticks.map((tick, index) => (
-            <span key={`${tick.frame}-${index}`} className="absolute top-0 -translate-x-1/2 text-micro text-nomi-ink/55" style={{ left: `${tick.ratio * 100}%` }}>
+            <span
+              key={`${tick.frame}-${index}`}
+              className={cn(
+                'absolute top-0 text-micro text-nomi-ink/55',
+                index === 0 ? 'translate-x-0' : index === ticks.length - 1 ? '-translate-x-full' : '-translate-x-1/2',
+              )}
+              style={{ left: `${tick.ratio * 100}%` }}
+            >
               {tick.label}
             </span>
           ))}
@@ -225,7 +233,7 @@ export default function ClipNodeTimeline({
             <span key={`mark-${tick.frame}-${index}`} className="absolute top-0 h-2 border-l border-nomi-paper/20" style={{ left: `${tick.ratio * 100}%` }} />
           ))}
         </div>
-        <div className="absolute inset-x-2 bottom-2 h-12" style={{ right: `${addSlotWidth}px` }}>
+        <div className="absolute bottom-2 h-12" style={{ left: axisInset, right: addSlotWidth + axisInset }}>
           {clips.map((clip) => {
             const layout = resolveClipNodeTimelineLayout(timeline, contentWidth).find((item) => item.id === clip.id)
             if (!layout) return null
