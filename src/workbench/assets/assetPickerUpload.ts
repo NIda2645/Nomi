@@ -4,6 +4,10 @@ type DropEventLike = {
   dataTransfer: { files?: ArrayLike<File> | null }
 }
 
+export function isAssetPickerInteractionLocked(uploading: boolean): boolean {
+  return uploading
+}
+
 export function droppedAssetFile(event: DropEventLike, uploading: boolean): File | null {
   event.preventDefault()
   event.stopPropagation()

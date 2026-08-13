@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { droppedAssetFile } from './assetPickerUpload'
+import { droppedAssetFile, isAssetPickerInteractionLocked } from './assetPickerUpload'
 
 describe('asset picker drop upload', () => {
   it('ignores another dropped file while an upload is active', () => {
@@ -10,5 +10,10 @@ describe('asset picker drop upload', () => {
     expect(droppedAssetFile({ preventDefault, stopPropagation, dataTransfer: { files: [file] } }, true)).toBeNull()
     expect(preventDefault).toHaveBeenCalledOnce()
     expect(stopPropagation).toHaveBeenCalledOnce()
+  })
+
+  it('locks existing material selection while an upload is active', () => {
+    expect(isAssetPickerInteractionLocked(true)).toBe(true)
+    expect(isAssetPickerInteractionLocked(false)).toBe(false)
   })
 })
