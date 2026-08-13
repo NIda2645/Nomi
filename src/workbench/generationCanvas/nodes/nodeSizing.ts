@@ -112,6 +112,14 @@ export function shouldAllowComposerAttachmentRecompute(input: {
 // 非媒体节点（含 text）自由缩放时的 min/max。媒体（图/视频）走比例锁定分支，
 // 仍用上面的 MIN/MAX_NODE_*，故此处只为「自由拉伸」路径按 kind 取边界。
 export function getNodeSizeBounds(kind: GenerationCanvasNode["kind"]): NodeSizeBounds {
+    if (kind === "clip") {
+        return {
+            minWidth: 240,
+            maxWidth: MAX_NODE_WIDTH,
+            minHeight: 120,
+            maxHeight: 180,
+        };
+    }
     if (kind === "text") {
         return {
             minWidth: TEXT_MIN_WIDTH,
@@ -364,6 +372,13 @@ export function resolveNodeVisualSize(
     node: Pick<GenerationCanvasNode, "kind" | "size" | "renderKind" | "categoryId" | "meta" | "result">,
 ): { width: number; height: number } {
     const size = node.size || DEFAULT_VISUAL_SIZE;
+    if (node.kind === "clip") {
+        const bounds = getNodeSizeBounds("clip");
+        return {
+            width: clampNumber(size.width, bounds.minWidth, bounds.maxWidth),
+            height: 132,
+        };
+    }
     const renderKind = resolveNodeRenderKind(node);
     const isCardKind = isCardRenderKind(renderKind);
     const bounds = getNodeSizeBounds(node.kind);

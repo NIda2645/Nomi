@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveNodeVisualSize } from "./nodeSizing";
+import { getNodeSizeBounds, resolveNodeVisualSize } from "./nodeSizing";
 import { CARD_FIXED_WIDTH } from "./nodeSizing";
 
 // 回归：连线「连不上」的根因是锚点用名义 node.size，而卡片类实际按固定宽渲染。
@@ -43,5 +43,10 @@ describe("resolveNodeVisualSize — 真实渲染尺寸（连线锚点单一真�
     );
     expect(v.height).toBe(236);
     expect(v.height).not.toBe(340);
+  });
+
+  it("剪辑节点保持轴的紧凑尺寸，让连接锚点与画布上实际外壳一致", () => {
+    expect(resolveNodeVisualSize(node({ kind: "clip", size: { width: 560, height: 360 } }))).toEqual({ width: 560, height: 132 });
+    expect(getNodeSizeBounds("clip")).toMatchObject({ minHeight: 120, maxHeight: 180 });
   });
 });

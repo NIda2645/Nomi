@@ -95,6 +95,10 @@ try {
   const importedTwoMedia = (await clips.count()) === 2
   const countLabel = await clip.innerText()
   const countIsClear = countLabel.includes('共 2 个片段')
+  const compactAxis = await clip.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return rect.height <= 180 && element.getAttribute('data-clip-mode') === 'compact'
+  })
 
   await clips.first().click()
   const duplicate = clip.getByRole('button', { name: '复制片段', exact: true })
@@ -115,11 +119,14 @@ try {
   await win.waitForTimeout(1000)
   const removeCompactedTimeline = (await clips.count()) === 2
 
-  const createVideo = clip.getByRole('button', { name: '生成视频节点', exact: true })
-  const outputActionVisible = await createVideo.isVisible()
+  await clips.first().click()
+  const exportButton = clip.getByRole('button', { name: '导出', exact: true })
+  await exportButton.click()
+  const createVideo = win.getByRole('button', { name: /^生成视频节点/ })
+  const outputActionVisible = (await createVideo.count()) > 0
   await win.screenshot({ path: path.join(os.tmpdir(), 'nomi-clip-node-editing.png') })
 
-  const result = { importedTwoMedia, countIsClear, selectionEnablesEditing, splitCreatedNewSegment, removeCompactedTimeline, outputActionVisible }
+  const result = { importedTwoMedia, countIsClear, compactAxis, selectionEnablesEditing, splitCreatedNewSegment, removeCompactedTimeline, outputActionVisible }
   console.log(JSON.stringify(result))
   await closeApp()
   process.exit(Object.values(result).every(Boolean) ? 0 : 1)

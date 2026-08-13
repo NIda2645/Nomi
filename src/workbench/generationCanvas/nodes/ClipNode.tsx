@@ -1,7 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconDownload, IconPlus, IconScissors } from '@tabler/icons-react'
-import { WorkbenchButton } from '../../../design'
+import { IconChevronDown, IconCopy, IconDownload, IconScissors, IconTrash } from '@tabler/icons-react'
+import { WorkbenchButton, WorkbenchIconButton } from '../../../design'
 import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
@@ -35,6 +35,7 @@ import {
   splitClipNode,
 } from './clipNodeSequence'
 import { buildClipNodeOutputPatch } from './clipNodeOutput'
+import { formatClipNodeDuration, resolveClipNodeVisualMode } from './clipNodeVisual'
 
 type Props = { node: unknown; selected: boolean; readOnly?: boolean }
 
@@ -63,6 +64,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const [playing, setPlaying] = React.useState(false)
   const [exporting, setExporting] = React.useState<'current' | 'all' | null>(null)
   const [creatingVideoNode, setCreatingVideoNode] = React.useState(false)
+  const [editingOpen, setEditingOpen] = React.useState(false)
+  const [exportMenuOpen, setExportMenuOpen] = React.useState(false)
   const visualSize = resolveNodeVisualSize(node)
   const sizeBounds = getNodeSizeBounds(node.kind)
   const { handlePointerDown, handlePointerMove, handlePointerUp } = useNodeDragResize({
@@ -82,8 +85,10 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const meta = React.useMemo(() => readClipNodeMeta(node.meta), [node.meta])
   const timeline = React.useMemo(() => clipNodeTimelineFromMeta(meta), [meta])
   const timelineClips = timeline.tracks[0]?.clips ?? []
-  const selectedClipId = meta.selectedClipId ? `clip-${meta.selectedClipId}` : timelineClips[0]?.id
+  const selectedClipId = meta.selectedClipId ? `clip-${meta.selectedClipId}` : undefined
   const activeClip = timelineClips.find((clip) => clip.id === selectedClipId)
+  const visualMode = resolveClipNodeVisualMode({ hasClips: timelineClips.length > 0, editingOpen, selectedClip: Boolean(activeClip) })
+  const durationFrames = timelineClips.reduce((max, clip) => Math.max(max, clip.endFrame), 0)
   const upstreamMediaKey = upstreamMedia.map((source) => source.id).join('|')
 
   const persist = React.useCallback((next: ReturnType<typeof readClipNodeMeta>) => {
@@ -128,6 +133,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     if (!source) return
     persist(appendClipNodeSource(meta, source))
     setPickerOpen(false)
+    setEditingOpen(false)
   }, [meta, persist])
 
   const upload = React.useCallback(async (file: File) => {
@@ -149,6 +155,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const selectClip = React.useCallback((clipId: string) => {
     persist({ ...meta, selectedClipId: clipId.replace(/^clip-/, '') })
     setPlaying(false)
+    setEditingOpen(true)
+    setExportMenuOpen(false)
   }, [meta, persist])
 
   const handleMoveClip = React.useCallback((clipId: string, startFrame: number) => {
@@ -170,6 +178,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     const next = removeClipNode(meta, clipId)
     persist(next)
     setPlaying(false)
+    setEditingOpen(false)
+    setExportMenuOpen(false)
   }, [meta, persist])
 
   const handleDuplicateClip = React.useCallback((clipId: string) => {
@@ -246,6 +256,12 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     }
   }
 
+  const closeEditing = (): void => {
+    setEditingOpen(false)
+    setExportMenuOpen(false)
+    setSplitMode(false)
+  }
+
   return (
     <article
       className={cn('generation-canvas-v2-node absolute block cursor-grab select-none touch-none overflow-visible', selected ? 'z-50' : '')}
@@ -254,7 +270,11 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
       data-kind={node.kind}
       data-selected={selected ? 'true' : 'false'}
       data-clip-node="true"
+      data-clip-mode={visualMode}
       onWheel={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) closeEditing()
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -263,47 +283,88 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         <MagneticConnectionHandle side="left" active={pendingSourceId === node.id || pendingSourceSide === 'left'} pendingTarget={Boolean(pendingSourceId && pendingSourceId !== node.id)} onStart={handleConnectionStart} onComplete={(event) => { event.stopPropagation(); completeNodeConnection(node.id) }} />
         <MagneticConnectionHandle side="right" active={pendingSourceId === node.id || pendingSourceSide === 'right'} pendingTarget={Boolean(pendingSourceId && pendingSourceId !== node.id)} onStart={handleConnectionStart} onComplete={(event) => { event.stopPropagation(); completeNodeConnection(node.id) }} />
       </> : null}
-      <div className={cn('generation-canvas-v2-node__preview flex h-full w-full flex-col overflow-hidden rounded-nomi border bg-nomi-paper shadow-nomi-md', selected ? 'ring-2 ring-nomi-accent' : 'ring-1 ring-inset ring-nomi-line')}>
-        <header className="flex shrink-0 items-center gap-2 border-b border-nomi-line px-3 py-2" onPointerDown={(event) => event.stopPropagation()}>
-          <IconScissors size={15} className="text-nomi-accent" />
-          <span className="flex-1 truncate text-body-sm font-semibold text-nomi-ink">{t('generationCommon.clipNode.timeline')}</span>
-          <span className="text-micro text-nomi-ink-50">{t('generationCommon.clipNode.count', { count: timelineClips.length })}</span>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
-          <div onPointerDown={(event) => event.stopPropagation()}>
-            <ClipNodePreview clip={activeClip} playing={playing} onTogglePlaying={() => setPlaying((value) => !value)} />
-          </div>
-          <div className="mt-3" onPointerDown={(event) => event.stopPropagation()}>
-            <ClipNodeTimeline
-              timeline={timeline}
-              selectedClipId={selectedClipId}
-              splitMode={splitMode}
-              onSelectClip={selectClip}
-              onMoveClip={handleMoveClip}
-              onResizeClip={handleResizeClip}
-              onSplitClip={handleSplitClip}
-              onRemoveClip={handleRemoveClip}
-              onDuplicateClip={handleDuplicateClip}
-              onToggleSplitMode={() => setSplitMode((value) => !value)}
-            />
-          </div>
-          {!readOnly ? <WorkbenchButton variant="default" size="sm" className="mt-3 w-full" onClick={() => setPickerOpen(true)}><IconPlus size={14} />{t('generationCommon.clipNode.add')}</WorkbenchButton> : null}
-          {!readOnly ? <div className="mt-3 grid grid-cols-2 gap-2">
-            <WorkbenchButton variant="default" size="sm" disabled={!activeClip || Boolean(exporting) || !getActiveWorkbenchProjectId()} onClick={() => void handleExport('current')}>
-              <IconDownload size={14} />{exporting === 'current' ? t('generationCommon.clipNode.exporting') : t('generationCommon.clipNode.exportCurrent')}
+
+      {visualMode === 'editing' && activeClip ? (
+        <div className="absolute bottom-full left-1/2 z-40 mb-3 flex -translate-x-1/2 items-end gap-2 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg" onPointerDown={(event) => event.stopPropagation()}>
+          <ClipNodePreview clip={activeClip} playing={playing} onTogglePlaying={() => setPlaying((value) => !value)} className="w-80" />
+          <div className="grid w-40 gap-1.5">
+            <div className="px-1 text-micro font-medium text-nomi-ink/60">{t('generationCommon.clipNode.selectedScope')}</div>
+            <WorkbenchButton
+              variant="default"
+              size="sm"
+              className={cn('w-full justify-start', splitMode ? 'border-nomi-accent text-nomi-accent' : '')}
+              aria-pressed={splitMode}
+              onClick={() => setSplitMode((value) => !value)}
+            >
+              <IconScissors size={14} />{t('generationCommon.clipNode.split')}
             </WorkbenchButton>
-            <WorkbenchButton variant="primary" size="sm" disabled={timelineClips.length === 0 || Boolean(exporting) || !getActiveWorkbenchProjectId()} onClick={() => void handleExport('all')}>
-              <IconDownload size={14} />{exporting === 'all' ? t('generationCommon.clipNode.exporting') : t('generationCommon.clipNode.exportAll')}
-            </WorkbenchButton>
-          </div> : null}
-          {!readOnly ? <WorkbenchButton variant="primary" size="sm" className="mt-2 w-full" disabled={timelineClips.length === 0 || Boolean(exporting) || creatingVideoNode || !getActiveWorkbenchProjectId()} onClick={() => void handleCreateVideoNode()}>
-            <IconScissors size={14} />{creatingVideoNode ? t('generationCommon.clipNode.creatingVideoNode') : t('generationCommon.clipNode.createVideoNode')}
-          </WorkbenchButton> : null}
-          {!readOnly ? <p className="mt-1 text-center text-micro text-nomi-ink-40">{t('generationCommon.clipNode.createVideoNodeHint')}</p> : null}
-          <p className="mt-2 text-center text-micro text-nomi-ink-40">{t('generationCommon.clipNode.exportHint')}</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <WorkbenchIconButton label={t('generationCommon.clipNode.duplicate')} icon={<IconCopy size={14} />} onClick={() => handleDuplicateClip(activeClip.id)} className="border border-nomi-line bg-nomi-bg text-nomi-ink hover:bg-nomi-accent-soft hover:text-nomi-accent" />
+              <WorkbenchIconButton label={t('generationCommon.clipNode.remove')} icon={<IconTrash size={14} />} onClick={() => handleRemoveClip(activeClip.id)} className="border border-nomi-line bg-nomi-bg text-nomi-ink hover:bg-nomi-danger-soft hover:text-nomi-danger" />
+            </div>
+            {!readOnly ? (
+              <WorkbenchButton
+                variant="default"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => setExportMenuOpen((value) => !value)}
+                aria-expanded={exportMenuOpen}
+              >
+                <IconDownload size={14} />{t('generationCommon.clipNode.export')}<IconChevronDown size={13} className="ml-auto" />
+              </WorkbenchButton>
+            ) : null}
+          </div>
         </div>
-        {pickerOpen ? <AssetPickerPopover onClose={() => setPickerOpen(false)}><AssetPicker projectId={getActiveWorkbenchProjectId()} accept={['image', 'video']} onPick={addAsset} onUpload={(file) => void upload(file)} /></AssetPickerPopover> : null}
+      ) : null}
+
+      <div
+        className={cn('generation-canvas-v2-node__preview flex h-full w-full flex-col overflow-hidden rounded-nomi border bg-nomi-paper shadow-nomi-md', selected ? 'ring-2 ring-nomi-accent' : 'ring-1 ring-inset ring-nomi-line')}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) closeEditing()
+        }}
+      >
+        <header className="flex h-8 shrink-0 items-center gap-2 px-3" onPointerDown={(event) => event.stopPropagation()}>
+          <IconScissors size={15} className="text-nomi-accent" />
+          <span className="truncate text-body-sm font-semibold text-nomi-ink">{t('generationCommon.clipNode.axis')}</span>
+          <span className="ml-auto text-micro text-nomi-ink/60">{t('generationCommon.clipNode.count', { count: timelineClips.length })}</span>
+          <span className="text-micro text-nomi-ink/45">·</span>
+          <span className="text-micro text-nomi-ink/60">{t('generationCommon.clipNode.totalDuration', { duration: formatClipNodeDuration(durationFrames, timeline.fps) })}</span>
+        </header>
+        <div className="min-h-0 flex-1 px-2 pb-2" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
+          <ClipNodeTimeline
+            timeline={timeline}
+            selectedClipId={visualMode === 'editing' ? selectedClipId : undefined}
+            splitMode={splitMode}
+            onSelectClip={selectClip}
+            onMoveClip={handleMoveClip}
+            onResizeClip={handleResizeClip}
+            onSplitClip={handleSplitClip}
+            onAddMaterial={readOnly ? undefined : () => setPickerOpen(true)}
+            onBlankAxis={closeEditing}
+          />
+        </div>
       </div>
+
+      {exportMenuOpen && visualMode === 'editing' && !readOnly ? (
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg" role="menu" onPointerDown={(event) => event.stopPropagation()}>
+          <div className="px-2 pb-1 text-micro font-medium text-nomi-ink/60">{t('generationCommon.clipNode.exportOptions')}</div>
+          <WorkbenchButton variant="default" size="sm" className="h-auto w-full justify-start gap-2 py-2 text-left" disabled={!activeClip || Boolean(exporting) || !getActiveWorkbenchProjectId()} onClick={() => void handleExport('current')}>
+            <IconDownload size={14} />
+            <span className="grid text-left"><span>{exporting === 'current' ? t('generationCommon.clipNode.exporting') : t('generationCommon.clipNode.exportCurrent')}</span><span className="text-micro font-normal text-nomi-ink-50">{t('generationCommon.clipNode.exportCurrentHint')}</span></span>
+          </WorkbenchButton>
+          <WorkbenchButton variant="default" size="sm" className="mt-1 h-auto w-full justify-start gap-2 py-2 text-left" disabled={timelineClips.length === 0 || Boolean(exporting) || !getActiveWorkbenchProjectId()} onClick={() => void handleExport('all')}>
+            <IconDownload size={14} />
+            <span className="grid text-left"><span>{exporting === 'all' ? t('generationCommon.clipNode.exporting') : t('generationCommon.clipNode.exportAll')}</span><span className="text-micro font-normal text-nomi-ink-50">{t('generationCommon.clipNode.exportAllHint')}</span></span>
+          </WorkbenchButton>
+          <WorkbenchButton variant="primary" size="sm" className="mt-1 h-auto w-full justify-start gap-2 py-2 text-left" disabled={timelineClips.length === 0 || Boolean(exporting) || creatingVideoNode || !getActiveWorkbenchProjectId()} onClick={() => void handleCreateVideoNode()}>
+            <IconScissors size={14} />
+            <span className="grid text-left"><span>{creatingVideoNode ? t('generationCommon.clipNode.creatingVideoNode') : t('generationCommon.clipNode.createVideoNode')}</span><span className="text-micro font-normal text-nomi-paper/65">{t('generationCommon.clipNode.createVideoNodeHint')}</span></span>
+          </WorkbenchButton>
+        </div>
+      ) : null}
+
+      {pickerOpen ? <AssetPickerPopover onClose={() => setPickerOpen(false)}><AssetPicker projectId={getActiveWorkbenchProjectId()} accept={['image', 'video']} onPick={addAsset} onUpload={(file) => void upload(file)} /></AssetPickerPopover> : null}
     </article>
   )
 }
