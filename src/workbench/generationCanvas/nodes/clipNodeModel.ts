@@ -4,6 +4,8 @@ import i18n from '../../../i18n'
 
 export type ClipNodeSource = {
   id: string
+  /** 原始素材/画布节点身份；split 后的片段实例共享此值。旧数据缺省时回退到 id。 */
+  sourceNodeId?: string
   type: 'image' | 'video'
   label: string
   url: string
@@ -11,12 +13,19 @@ export type ClipNodeSource = {
   durationSeconds: number
   trimStart: number
   trimEnd: number
+  /** 单轨剪辑位置和源素材 offset；未写入时由旧 trimStart/trimEnd 推导。 */
+  timelineStartFrame?: number
+  timelineEndFrame?: number
+  offsetStartFrame?: number
+  offsetEndFrame?: number
 }
 
 export type ClipNodeMeta = {
   nodeRole: 'clip'
   sourceNodeIds: string[]
   clips: ClipNodeSource[]
+  /** 用户在节点内明确移除的上游节点；避免连接同步 effect 下一帧把它重新灌回来。 */
+  excludedSourceNodeIds?: string[]
   selectedClipId?: string
 }
 
@@ -31,10 +40,14 @@ export function readClipNodeMeta(meta: Record<string, unknown> | undefined): Cli
   const clips = Array.isArray(record.clips)
     ? record.clips.filter((clip): clip is ClipNodeSource => Boolean(clip && typeof clip === 'object' && typeof (clip as ClipNodeSource).url === 'string'))
     : []
+  const excludedSourceNodeIds = Array.isArray(record.excludedSourceNodeIds)
+    ? record.excludedSourceNodeIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : []
   return {
     nodeRole: 'clip',
     sourceNodeIds: clips.map((clip) => clip.id),
     clips,
+    ...(excludedSourceNodeIds.length ? { excludedSourceNodeIds } : {}),
     ...(typeof record.selectedClipId === 'string' ? { selectedClipId: record.selectedClipId } : {}),
   }
 }
@@ -56,10 +69,12 @@ export function clipNodeSourceFromAsset(asset: AssetRef): ClipNodeSource | null 
 
 export function appendClipNodeSource(meta: ClipNodeMeta, source: ClipNodeSource): ClipNodeMeta {
   if (meta.clips.some((clip) => clip.id === source.id)) return meta
+  const excludedSourceNodeIds = (meta.excludedSourceNodeIds ?? []).filter((id) => id !== source.id && id !== source.sourceNodeId)
   return {
     ...meta,
     sourceNodeIds: [...meta.sourceNodeIds, source.id],
     clips: [...meta.clips, source],
+    ...(excludedSourceNodeIds.length ? { excludedSourceNodeIds } : { excludedSourceNodeIds: undefined }),
     selectedClipId: source.id,
   }
 }
@@ -73,26 +88,30 @@ export function clipNodeTimeline(meta: ClipNodeMeta, fps = 30): TimelineState {
   let cursor = 0
   const clips: TimelineClip[] = meta.clips.map((source) => {
     const frameCount = Math.max(1, Math.round(Math.max(0.1, source.durationSeconds) * safeFps))
-    const offsetStartFrame = Math.min(frameCount - 1, Math.max(0, Math.round(source.trimStart * safeFps)))
-    const requestedEndFrame = Math.round(Math.max(source.trimStart + 0.1, source.trimEnd) * safeFps)
-    const sourceEndFrame = Math.min(frameCount, Math.max(offsetStartFrame + 1, requestedEndFrame))
-    const visibleFrames = Math.max(1, sourceEndFrame - offsetStartFrame)
+    const legacyOffsetStartFrame = Math.min(frameCount - 1, Math.max(0, Math.round(source.trimStart * safeFps)))
+    const legacySourceEndFrame = Math.min(frameCount, Math.max(legacyOffsetStartFrame + 1, Math.round(Math.max(source.trimStart + 0.1, source.trimEnd) * safeFps)))
+    const offsetStartFrame = Math.min(frameCount - 1, Math.max(0, Math.round(source.offsetStartFrame ?? legacyOffsetStartFrame)))
+    const offsetEndFrame = Math.min(frameCount - offsetStartFrame - 1, Math.max(0, Math.round(source.offsetEndFrame ?? (frameCount - legacySourceEndFrame))))
+    const visibleFrames = Math.max(1, source.timelineEndFrame !== undefined && source.timelineStartFrame !== undefined
+      ? Math.round(source.timelineEndFrame - source.timelineStartFrame)
+      : frameCount - offsetStartFrame - offsetEndFrame)
+    const startFrame = source.timelineStartFrame !== undefined ? Math.max(0, Math.round(source.timelineStartFrame)) : cursor
     const clip: TimelineClip = {
       id: `clip-${source.id}`,
       type: source.type,
-      sourceNodeId: source.id,
+      sourceNodeId: source.sourceNodeId ?? source.id,
       label: source.label,
-      startFrame: cursor,
-      endFrame: cursor + visibleFrames,
+      startFrame,
+      endFrame: startFrame + visibleFrames,
       frameCount,
       offsetStartFrame,
-      offsetEndFrame: frameCount - sourceEndFrame,
+      offsetEndFrame,
       url: source.url,
       ...(source.thumbnailUrl ? { thumbnailUrl: source.thumbnailUrl } : {}),
     }
-    cursor += visibleFrames
+    cursor = Math.max(cursor, clip.endFrame)
     return clip
-  })
+  }).sort((left, right) => left.startFrame - right.startFrame)
   return {
     version: 1,
     fps: safeFps,
