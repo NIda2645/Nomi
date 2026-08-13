@@ -403,7 +403,8 @@ export function useCanvasViewportGestures({
 
   // 滚轮 / 触控板：缩放还是平移由用户设置决定（#832 二选一）；⌘/Ctrl+滚轮与捏合恒缩放。
   const handleWheel = React.useCallback((event: WheelEvent) => {
-    // 命中卡内可滚区（提示词编辑器等）→ 交原生滚动，画布不动（一处覆盖所有入口，P2）。
+    // 命中卡内可滚区（提示词编辑器等）→ 整个手势始终交给内部区域，画布不动（一处覆盖所有入口，P2）。
+    // 内部到顶/到底也继续归内部；若在边界把手势交回画布，节点会突然缩放/平移出视野。
     // 捏合/⌘+滚轮（ctrlKey/metaKey）不放行——浏览器此时本来就不滚内容，仍走缩放。
     // 主轴判定在 findScrollableAncestor 内做（横/纵都支持），不在此处折成单轴 delta。
     if (
