@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getPath: () => "/tmp", getAppPath: () => process.cwd() } }));
 
-import { bubblesToSeedTurns } from "./agentChatV2";
+import { bubblesToSeedTurns, selectTextModelCandidates } from "./agentChatV2";
+import type { CatalogState } from "../catalog/types";
 
 describe("bubblesToSeedTurns — 续聊重建规范化", () => {
   it("tool 气泡折成 assistant 旁注(让模型记起做过的操作),不再整条丢弃", () => {
@@ -33,5 +34,41 @@ describe("bubblesToSeedTurns — 续聊重建规范化", () => {
   it("空 / 无有效角色 → 空数组", () => {
     expect(bubblesToSeedTurns([])).toEqual([]);
     expect(bubblesToSeedTurns([{ role: "system", content: "x" }])).toEqual([]);
+  });
+});
+
+describe("selectTextModelCandidates — 助手模型完整身份路由", () => {
+  it("同名模型优先命中用户选中的供应商，而不是按目录顺序换家", () => {
+    const state = {
+      version: 8,
+      vendors: [
+        { key: "relay-a", name: "Relay A", enabled: true, authType: "bearer", createdAt: "", updatedAt: "" },
+        { key: "relay-b", name: "Relay B", enabled: true, authType: "bearer", createdAt: "", updatedAt: "" },
+      ],
+      models: [
+        { modelKey: "gpt-5.2", vendorKey: "relay-a", labelZh: "GPT 5.2 A", kind: "text", enabled: true, createdAt: "", updatedAt: "" },
+        { modelKey: "gpt-5.2", vendorKey: "relay-b", labelZh: "GPT 5.2 B", kind: "text", enabled: true, createdAt: "", updatedAt: "" },
+      ],
+      mappings: [],
+      apiKeysByVendor: {},
+    } satisfies CatalogState;
+
+    const candidates = selectTextModelCandidates(state, { vendorKey: "relay-b", modelKey: "gpt-5.2" });
+    expect(candidates[0]).toMatchObject({ vendor: { key: "relay-b" }, model: { vendorKey: "relay-b", modelKey: "gpt-5.2" } });
+  });
+
+  it("提示词增强专用文本模型不能进入通用 Agent 路由", () => {
+    const state = {
+      version: 8,
+      vendors: [{ key: "relay", name: "Relay", enabled: true, authType: "none", createdAt: "", updatedAt: "" }],
+      models: [
+        { modelKey: "prompt-refiner", vendorKey: "relay", labelZh: "Prompt Refiner", kind: "text", enabled: true, meta: { promptRefineOnly: true }, createdAt: "", updatedAt: "" },
+        { modelKey: "chat-model", vendorKey: "relay", labelZh: "Chat Model", kind: "text", enabled: true, createdAt: "", updatedAt: "" },
+      ],
+      mappings: [],
+      apiKeysByVendor: {},
+    } satisfies CatalogState;
+
+    expect(selectTextModelCandidates(state).map(({ model }) => model.modelKey)).toEqual(["chat-model"]);
   });
 });

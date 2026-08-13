@@ -35,7 +35,7 @@ import { readNestedRecord, trim, type JsonRecord } from "../jsonUtils";
 import { findSkillRecord } from "../skills/skillStore";
 import { decryptApiKeyRecord } from "../catalog/secrets";
 import { normalizeProviderKind, readCatalog } from "../catalog/catalogStore";
-import type { Model, Vendor } from "../catalog/types";
+import type { CatalogState, Model, Vendor } from "../catalog/types";
 import { readNomiLocalAsset } from "../assets/localAssetFile";
 import { extractTextFromLocalAsset } from "../files/extractText";
 import { buildAgentUserContent, modelSupportsImageInput, modelSupportsPdfInput, type AgentUserAttachment } from "./agentUserContent";
@@ -121,21 +121,59 @@ function isPromptRefineOnlyModel(model: Model): boolean {
   );
 }
 
-function chooseTextModel(prefModelKey?: string, preferImageInput = false): { vendor: Vendor; model: Model; apiKey: string } {
-  const state = readCatalog();
+export type TextModelPreference = {
+  modelKey?: string;
+  vendorKey?: string;
+};
+
+/**
+ * Rank catalog candidates before credentials are resolved. The exact
+ * (vendorKey, modelKey) identity always wins; a matching modelKey without a
+ * vendor is only a compatibility fallback for old callers. This keeps a
+ * same-named model from silently switching providers when the user selected
+ * a specific vendor in the picker.
+ */
+export function selectTextModelCandidates(
+  state: CatalogState,
+  preference?: TextModelPreference,
+  preferImageInput = false,
+): Array<{ vendor: Vendor; model: Model }> {
   const texts = state.models.filter(
     (item) => item.kind === "text" && item.enabled && !isPromptRefineOnlyModel(item),
   );
   // 有偏好：用户选的排第一（其余作回退）。
   // 无偏好且本轮带图：优先支持图片输入的 text 模型（gpt-4o/claude/gemini 既能看图又擅长 tool_use）。
   // 无偏好无图：不盲选第一个，按「是否像通用对话模型」稳定排序，vision/preview 降到末尾。
-  const ordered = prefModelKey
-    ? [...texts].sort((a, b) => (a.modelKey === prefModelKey ? -1 : 0) - (b.modelKey === prefModelKey ? -1 : 0))
+  const preferredModelKey = preference?.modelKey?.trim();
+  const preferredVendorKey = preference?.vendorKey?.trim();
+  const preferenceRank = (model: Model): number => {
+    if (!preferredModelKey || model.modelKey !== preferredModelKey) return 0;
+    if (preferredVendorKey) return model.vendorKey === preferredVendorKey ? 2 : 0;
+    return 1;
+  };
+  const ordered = preferredModelKey
+    ? [...texts].sort((a, b) => preferenceRank(b) - preferenceRank(a))
     : preferImageInput
       ? [...texts].sort((a, b) => imageInputRank(b) - imageInputRank(a))
       : [...texts].sort((a, b) => autoTextModelPenalty(a) - autoTextModelPenalty(b));
-  for (const model of ordered) {
+  return ordered.flatMap((model) => {
     const vendor = state.vendors.find((item) => item.key === model.vendorKey && item.enabled);
+    return vendor ? [{ vendor, model }] : [];
+  });
+}
+
+function chooseTextModel(
+  prefModelKey?: string,
+  preferImageInput = false,
+  prefVendorKey?: string,
+): { vendor: Vendor; model: Model; apiKey: string } {
+  const state = readCatalog();
+  const candidates = selectTextModelCandidates(
+    state,
+    prefModelKey ? { modelKey: prefModelKey, vendorKey: prefVendorKey } : undefined,
+    preferImageInput,
+  );
+  for (const { vendor, model } of candidates) {
     const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[model.vendorKey]);
     if (vendor && (vendor.authType === "none" || apiKey)) return { vendor, model, apiKey };
   }
@@ -492,7 +530,11 @@ export async function runAgentChatV2(
   const wantsRichInput = attachments.some(
     (item) => item.kind === "image" || item.contentType.toLowerCase().includes("pdf") || item.fileName.toLowerCase().endsWith(".pdf"),
   );
-  const { vendor, model, apiKey } = chooseTextModel(trim(payload.agentModelKey), wantsRichInput);
+  const { vendor, model, apiKey } = chooseTextModel(
+    trim(payload.agentModelKey),
+    wantsRichInput,
+    trim(payload.agentVendorKey),
+  );
   const systemPrompt = trim(payload.systemPrompt as unknown as JsonRecord["systemPrompt"]);
   const skillSystemPrompt = buildSkillSystemPrompt(payload as unknown as JsonRecord);
   // 收口 sanitize（P0-6）：送进 LLM 的 user/system 文本 ASCII 可移植化（防 Moonshot 等 tokenizer 异常）。
