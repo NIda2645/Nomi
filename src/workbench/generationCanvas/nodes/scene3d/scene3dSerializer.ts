@@ -19,15 +19,17 @@ import {
   type Scene3DVector3,
 } from './scene3dTypes'
 import { buildPoseTrack } from './scene3dPoseTrack'
-import { cameraAimBindingId } from './scene3dBindingIds'
+import { cameraAimBindingId, createScene3DCameraId, createScene3DObjectId } from './scene3dBindingIds'
+import { PROP_KINDS } from './scene3dPropSpecs'
 import { fitEditorCameraToScene } from './scene3dFitView'
 import { safeFrameCameraForSubjects } from './scene3dSafeFrame'
 import { cameraLookAtRotation } from './scene3dMath'
 import { DEFAULT_SCENE_TIMELINE_DURATION } from './scene3dTimeline'
 
 const GEOMETRIES = new Set<Scene3DGeometry>(['box', 'sphere', 'cylinder', 'plane'])
-// 道具 kind 白名单（与 scene3dProps 的 spec 表同域；这里手列避免 serializer 拖进 React/three 依赖）。
-const PROP_KIND_SET = new Set<Scene3DPropKind>(['car', 'building', 'tree', 'streetlamp', 'wall'])
+// 道具 kind 白名单从 spec 表 derive（propSpecs 是纯数据模块，零 React/three 依赖）。
+// 手列过一次：批次 1 扩到 16 种时旧 5 种清单没跟上，新道具存档重开被降级——不许再手抄。
+const PROP_KIND_SET = new Set<Scene3DPropKind>(PROP_KINDS)
 const LIGHT_TYPES = new Set<Scene3DLightType>(['point', 'directional', 'spot'])
 // 从比值表派生，不再手写第二份清单（新增画幅只改 SCENE3D_ASPECT_RATIOS 一处）。
 const ASPECT_RATIOS = new Set<Scene3DAspectRatio>(SCENE3D_ASPECT_OPTIONS)
@@ -102,34 +104,6 @@ function poseTrackValue(value: unknown): Scene3DPoseKeyframe[] | undefined {
   // 经 buildPoseTrack 归一（排序 + 塌合 + clone），坏/乱序持久数据也收敛成 canonical form。
   const track = buildPoseTrack(events)
   return track.length > 0 ? track : undefined
-}
-
-function createScene3DId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-}
-
-export function createScene3DObjectId(): string {
-  return createScene3DId('scene3d-object')
-}
-
-export function createScene3DCameraId(): string {
-  return createScene3DId('scene3d-camera')
-}
-
-export function createScene3DTrajectoryId(): string {
-  return createScene3DId('scene3d-trajectory')
-}
-
-export function createScene3DTrajectoryPointId(): string {
-  return createScene3DId('scene3d-trajectory-point')
-}
-
-export function createScene3DTrajectoryBindingId(): string {
-  return createScene3DId('scene3d-trajectory-binding')
-}
-
-export function createScene3DTrajectoryGroupId(): string {
-  return createScene3DId('scene3d-trajectory-group')
 }
 
 export function createDefaultScene3DState(): Scene3DState {

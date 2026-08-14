@@ -62,6 +62,7 @@ export function SceneContent({
   onWheelNavigation,
   onTransformInteractionStart,
   onTransformInteractionEnd,
+  onBoundDragEnd,
   onFocusConsumed,
   onKeyboardNavigationStart,
   onKeyboardNavigationStop,
@@ -114,6 +115,9 @@ export function SceneContent({
   onWheelNavigation: (cameraState: Scene3DState['editorCamera']) => void
   onTransformInteractionStart: () => void
   onTransformInteractionEnd: () => void
+  // 拖完一个对象/相机上抛其 id：宿主把它绑定的轨迹平移对齐到松手位置（「松手即对齐」，
+  // 未绑定时宿主侧是纯 no-op）。缺省 = 不对齐（只读等场景）。
+  onBoundDragEnd?: (id: string) => void
   onFocusConsumed: () => void
   onKeyboardNavigationStart: () => void
   onKeyboardNavigationStop: () => void
@@ -246,7 +250,10 @@ export function SceneContent({
           onSelect={() => onSelect({ type: 'object', id: object.id })}
           onFocus={() => onFocus(object.id)}
           onTransformStart={onTransformInteractionStart}
-          onTransformEnd={onTransformInteractionEnd}
+          onTransformEnd={() => {
+            onTransformInteractionEnd()
+            onBoundDragEnd?.(object.id)
+          }}
           onTransform={(patch) => onObjectPatch(object.id, patch)}
         />
       ))}
@@ -268,7 +275,10 @@ export function SceneContent({
           onSelect={() => onSelect({ type: 'camera', id: camera.id })}
           onFocus={() => onFocus(camera.id)}
           onTransformStart={onTransformInteractionStart}
-          onTransformEnd={onTransformInteractionEnd}
+          onTransformEnd={() => {
+            onTransformInteractionEnd()
+            onBoundDragEnd?.(camera.id)
+          }}
           onTransform={(patch) => onCameraPatch(camera.id, patch)}
         />
       )) : null}

@@ -16,6 +16,7 @@ import { CAMERA_MOVE_LABEL } from './cameraMoveVocab'
 import { frameMotionSource, poseKeyframeKey } from './scene3dPoseTrack'
 import { createDefaultScene3DState, normalizeScene3DState } from './scene3dSerializer'
 import { cameraWithPlaybackPosition, sceneObjectTrajectorySample } from './scene3dPlayback'
+import { objectVisualHalfHeight } from './scene3dCrowd'
 import { objectSubjectAabb, projectAabbScreenRect } from './scene3dSafeFrame'
 import { SCENE3D_ASPECT_RATIOS } from './scene3dTypes'
 
@@ -185,6 +186,29 @@ describe('buildRecordedTakeScene', () => {
     const { state, characterId } = baseSceneWithCharacter()
     const scene = buildRecordedTakeScene(state, take(characterId))
     expect(scene!.objects).toHaveLength(state.objects.length)
+  })
+
+  it('录哪儿回放就在哪儿：采样是中心 y，轨迹点换算成脚底，回放 +halfHeight 落回录制位置', () => {
+    const { state, characterId } = baseSceneWithCharacter()
+    const character = state.objects[0]
+    const centerY = character.position[1] // 附身直驱把 group 钉在视觉中心高度（groundYRef = position[1]）
+    expect(centerY).toBeGreaterThan(0) // 前提自检：默认假人中心不在地面（脚底≠中心，换算才有意义）
+    const scene = buildRecordedTakeScene(
+      state,
+      take(characterId, {
+        characterSamples: [
+          sample(0, [0, centerY, 0]),
+          sample(2000, [2, centerY, 1]),
+          sample(4000, [4, centerY, 0]),
+        ],
+      }),
+    )
+    // 轨迹点 = 脚底（中心 - halfHeight = 0，贴地）
+    const characterTrajectory = scene!.trajectories[0]
+    for (const point of characterTrajectory.points) expect(point.position[1]).toBeCloseTo(0, 6)
+    // 回放（导出与直驱同源的 +halfHeight）落回录制时的中心高度——不浮空不陷地
+    const sampleAt = sceneObjectTrajectorySample(scene!, characterId, 2)
+    expect(sampleAt!.position.y + objectVisualHalfHeight(character)).toBeCloseTo(centerY, 4)
   })
 
   it('returns null when the character never moved (nothing to play back)', () => {

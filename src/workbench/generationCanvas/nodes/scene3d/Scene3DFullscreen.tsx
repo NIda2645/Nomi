@@ -26,6 +26,7 @@ import {
   applyEditorCameraPose,
 } from './scene3dMath'
 import { useScene3DCameraFraming } from './useScene3DCameraFraming'
+import { useScene3DBoundDrag } from './useScene3DBoundDrag'
 import { SceneObjectList } from './scene3dInspector'
 import { TrajectoryListPanel } from './scene3dTrajectoryListPanel'
 import { SceneContent } from './scene3dSceneContent'
@@ -308,6 +309,15 @@ export default function Scene3DFullscreen({
       suppressCanvasMissedReleaseRef.current = null
     }, 160)
   }, [])
+
+  // 绑定对象拖拽仲裁（播放中抓取先暂停 + 松手即对齐）——逻辑体在 useScene3DBoundDrag.ts。
+  const { beginSceneTransformInteraction, handleBoundDragEnd } = useScene3DBoundDrag({
+    isPlaying: trajectory.isPlaying,
+    setIsPlaying: trajectory.setIsPlaying,
+    playheadRef: trajectory.playheadRef,
+    unlockViewForSceneEdit,
+    setState,
+  })
 
   const handleEditorCameraDraft = React.useCallback((editorCamera: Scene3DState['editorCamera']) => {
     latestEditorCameraRef.current = editorCamera
@@ -602,8 +612,9 @@ export default function Scene3DFullscreen({
               onEditorCameraDraft={handleEditorCameraDraft}
               onEditorCameraCommit={updateEditorCamera}
               onWheelNavigation={handleWheelNavigation}
-              onTransformInteractionStart={unlockViewForSceneEdit}
+              onTransformInteractionStart={beginSceneTransformInteraction}
               onTransformInteractionEnd={finishSceneTransformInteraction}
+              onBoundDragEnd={readOnly ? undefined : handleBoundDragEnd}
               onFocusConsumed={() => setFocusId('')}
               onKeyboardNavigationStart={startKeyboardNavigation}
               onKeyboardNavigationStop={stopKeyboardNavigation}

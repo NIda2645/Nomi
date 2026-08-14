@@ -60,6 +60,8 @@ tests/ux/_marketing/
 tests/system/runs/
 .scene3d-ux-lab/
 .scene3d-panorama-lab/
+.scene3d-stamp-lab/
+.viewfinder-marker-lab/
 .onboarding-demo-lab/
 .video-playback-heal-lab/
 .library-cover-walk-lab/

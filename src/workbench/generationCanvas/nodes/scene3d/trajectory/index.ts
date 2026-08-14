@@ -4,7 +4,6 @@ export { TrajectoryTimeline } from './TrajectoryTimeline'
 export { useTrajectoryAnimation } from './useTrajectoryAnimation'
 
 export {
-  clearScene3DObjectRefs,
   registerScene3DObjectRef,
   resetScene3DPlayhead,
   setScene3DObjectRuntimeRefsVisible,
@@ -14,6 +13,7 @@ export {
   useScene3DTrajectoryRuntimeStore,
 } from './trajectoryRuntimeStore'
 export type { Scene3DObjectRuntimeRef } from './trajectoryRuntimeStore'
+export { useScene3DObjectRefRegistration } from './useScene3DObjectRefRegistration'
 
 export {
   TRAJECTORY_CONTROL_POINT_RADIUS,

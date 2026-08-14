@@ -27,7 +27,7 @@ import {
   makeCrowdObject,
   makeCamera,
 } from './scene3dMath'
-import { nextAvailableObjectPosition } from './scene3dObjects'
+import { nextAvailableObjectPosition } from './scene3dCrowd'
 import { addObjectTrajectoryBinding } from './useScene3DTrajectoryEditing'
 import { removeTrajectoryBindingsForNode } from './scene3dTrajectoryState'
 import { useScene3DTrajectoryEditing } from './useScene3DTrajectoryEditing'
