@@ -1,7 +1,7 @@
 /**
  * Onboarding Wizard — 「从中转添加模型」（Issue #8：中转优先·一次拉全·按模型分类）。
  *
- * 用户填中转地址 + key → 拉取它开放的模型（GET /v1/models）→ 每个模型按 id 自动判类型
+ * 用户填中转地址 + 可选 key → 拉取它开放的模型（GET /v1/models）→ 每个模型按 id 自动判类型
  * （图片/视频/文本，主进程 guessKinds，可改）→ 勾选 → 一次批量接入并真测。AI 只编译受限的
  * 声明式 HTTP 适配器，真实生成通过后才发布；UI 不暴露 vendor/mapping 等内部术语
  * （Design.md「no decorative complexity」）。
@@ -12,7 +12,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Stack, Group, Text, PasswordInput, ActionIcon, Anchor, Select, Collapse, Loader } from '@mantine/core'
 import { IconPlus, IconTrash, IconCheck, IconX, IconChevronDown, IconChevronRight, IconAlertTriangle, IconListCheck, IconCloudDownload } from '@tabler/icons-react'
-import { DesignButton, DesignModal, DesignTextInput, DesignSegmentedControl } from '../../design'
+import { DesignButton, DesignModal, DesignTextInput, DesignSegmentedControl, DesignSwitch } from '../../design'
 import { ModelPickerScreen } from './ModelPickerScreen'
 import { AdapterVerificationScreen } from './AdapterVerificationScreen'
 import { getDesktopBridge } from '../../desktop/bridge'
@@ -22,6 +22,7 @@ import { resolvePrecheckGateAction } from './precheckGate'
 import { PROVIDER_PRESETS } from './providerPresets'
 import { cn } from '../../utils/cn'
 import { Field } from './onboardingWizardSupport'
+import { isOnboardingApiKeyReady, resolveOnboardingAuth } from './onboardingAuth'
 
 // 接口协议的人类标签——探测成功后告诉用户「用的是 X 协议」，专家覆盖时也用它。
 const PROVIDER_KIND_LABEL: Record<ProviderKind, string> = {
@@ -64,6 +65,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
   // 统一一条手填路径（图片/视频/文本都走它）；inputMode 保留单值 'manual'（旧 docs 分支已删，Issue #8）。
   const [inputMode] = React.useState<'manual'>('manual')
   const [userApiKey, setUserApiKey] = React.useState('')
+  const [noApiKey, setNoApiKey] = React.useState(false)
   // manual-form state
   const [vendorName, setVendorName] = React.useState('')
   // Selected provider preset ('' = none yet). Drives auto-fill + whether to show
@@ -96,7 +98,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
   const [fetchAttempted, setFetchAttempted] = React.useState(false)
   const [fetchingModels, setFetchingModels] = React.useState(false)
   const [fetchModelsMsg, setFetchModelsMsg] = React.useState('')
-  // 失焦自动拉取的去重签名：记录已自动拉过的 baseUrl\0apiKey\0协议，避免每次失焦重拉。
+  // 失焦自动拉取的去重签名：记录已自动拉过的 baseUrl\0鉴权\0apiKey\0协议，避免每次失焦重拉。
   const autoFetchSigRef = React.useRef('')
   // Custom request headers (key/value) for relay/proxy gateways. Empty by default
   // so the common case stays clean; the "添加请求头" button reveals a row on demand.
@@ -110,6 +112,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
   const [resultLabel, setResultLabel] = React.useState('')
   const [errorReason, setErrorReason] = React.useState('')
   const [errorHint, setErrorHint] = React.useState('')
+  const requestAuth = resolveOnboardingAuth(providerKind, userApiKey, noApiKey)
 
   const resetToInput = React.useCallback(() => {
     setPhase('input')
@@ -163,6 +166,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
     setKindForced(!preset.custom)
     setShowKindOverride(false)
     setShowAdvanced(false)
+    setNoApiKey(false)
     // Endpoint changed → previously fetched candidates / test result no longer apply.
     setCandidateModels([])
     setFetchAttempted(false)
@@ -209,15 +213,15 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
       const res = await bridge.onboarding.adapterStart({
         vendorName: vendorName.trim(),
         baseUrl: baseUrl.trim(),
-        apiKey: userApiKey.trim(),
-        authType: providerKind === 'anthropic' ? 'x-api-key' : 'bearer',
+        apiKey: requestAuth.apiKey,
+        authType: requestAuth.authType,
         providerKind,
         headers: buildHeadersObject(),
         models: cleanModels.map(model => ({ modelKey: model.id, labelZh: model.id, kind: model.kind })),
       })
       if (!res.ok || !res.run) {
         setErrorReason(t('modelSetup.saveFailed'))
-        setErrorHint(res.error || t('modelSetup.checkCredentials'))
+        setErrorHint(res.error || t(noApiKey ? 'modelSetup.checkConnection' : 'modelSetup.checkCredentials'))
         setPhase('error')
         return
       }
@@ -227,7 +231,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
     } finally {
       setSaving(false)
     }
-  }, [bridge, vendorName, baseUrl, userApiKey, providerKind, buildHeadersObject, t])
+  }, [bridge, vendorName, baseUrl, requestAuth.apiKey, requestAuth.authType, providerKind, buildHeadersObject, t, noApiKey])
 
   // 第二屏主按钮即启动整批接入+真实验证，不再回表单让用户多点一次「保存」。
   const handleConfirmPicked = React.useCallback((picked: Array<{ id: string; kind: string }>) => {
@@ -257,7 +261,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
     try {
       const res = await bridge.onboarding.listModels({
         baseUrl: baseUrl.trim(),
-        apiKey: userApiKey.trim(),
+        apiKey: requestAuth.apiKey,
         providerKind,
         headers: buildHeadersObject(),
       })
@@ -285,7 +289,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
       setFetchAttempted(true)
       setFetchingModels(false)
     }
-  }, [bridge, baseUrl, userApiKey, providerKind, buildHeadersObject, t])
+  }, [bridge, baseUrl, requestAuth.apiKey, providerKind, buildHeadersObject, t])
 
   const handleTestConnection = React.useCallback(async () => {
     if (!bridge?.onboarding?.testConnection) return
@@ -298,7 +302,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
     const reachabilityOnly = !firstTextModelId
     const res = await bridge.onboarding.testConnection({
       baseUrl: baseUrl.trim(),
-      apiKey: userApiKey.trim(),
+      apiKey: requestAuth.apiKey,
       modelId: firstTextModelId,
       ...(reachabilityOnly ? { probe: 'reachability' as const } : {}),
       // 专家锁定 → 强制走该协议；否则交主进程 auto-probe（chat↔responses，anthropic 按 hostname）。
@@ -310,7 +314,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
       if (res.detectedKind) setProviderKind(res.detectedKind)
       setTestState('ok')
       setTestMessage(res.reachabilityOnly
-        ? t('modelSetup.connectedReachabilityOnly')
+        ? t(noApiKey ? 'modelSetup.connectedReachabilityOnlyNoApiKey' : 'modelSetup.connectedReachabilityOnly')
         : res.detectedKind
           ? t('modelSetup.connectedProtocol', { protocol: PROVIDER_KIND_LABEL[res.detectedKind] })
           : t('modelSetup.connected'))
@@ -319,8 +323,8 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
       if (reachabilityOnly) {
         // 纯图片/视频上游：协议跟它无关，别把用户往「换个协议试试」上引（那是错误指路）。
         setTestMessage(res.error
-          ? t('modelSetup.connectionFailedCheckUrlKey', { error: res.error })
-          : t('modelSetup.connectionFailedCheckUrlKeyPlain'))
+          ? t(noApiKey ? 'modelSetup.connectionFailedCheckUrl' : 'modelSetup.connectionFailedCheckUrlKey', { error: res.error })
+          : t(noApiKey ? 'modelSetup.connectionFailedCheckUrlPlain' : 'modelSetup.connectionFailedCheckUrlKeyPlain'))
         return
       }
       // 失败指路（设计/真实用户评审）：把「可能是协议不对，手动指定」摆出来，展开高级区+覆盖区当逃生口。
@@ -328,9 +332,9 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
       setShowKindOverride(true)
       setTestMessage(res.error
         ? t('modelSetup.connectionFailedWithReason', { error: res.error })
-        : t('modelSetup.connectionFailed'))
+        : t(noApiKey ? 'modelSetup.connectionFailedNoApiKey' : 'modelSetup.connectionFailed'))
     }
-  }, [bridge, baseUrl, userApiKey, models, providerKind, kindForced, buildHeadersObject, t])
+  }, [bridge, baseUrl, requestAuth.apiKey, models, providerKind, kindForced, buildHeadersObject, t, noApiKey])
 
   const handleManualSave = React.useCallback(async () => {
     await startAdapterVerification(models)
@@ -339,7 +343,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
   // 输入或测试态一变 → 解除「仍要保存」二次确认（防 arm 后改了地址/Key 还沿用旧确认）。
   React.useEffect(() => {
     setForceSaveArmed(false)
-  }, [testState, baseUrl, userApiKey, models, providerKind])
+  }, [testState, baseUrl, userApiKey, noApiKey, models, providerKind])
 
   // handleStart / handleEvent / handleCopyLog / canStart（AI 读文档流）已随子系统删除（Issue #8）。
   // Anthropic has a hosted default, so a blank BaseURL is allowed there (we fill in
@@ -349,19 +353,19 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
     ? (baseUrlTrimmed === '' || /^https?:\/\//i.test(baseUrlTrimmed))
     : /^https?:\/\//i.test(baseUrlTrimmed)
   const canTest = baseUrlValid && (providerKind === 'anthropic' || baseUrlTrimmed.length > 0)
-  // 失焦自动拉取（effect-first）：填完地址+Key 即自动拉这个中转开放的全部模型，不必让用户
-  // 发现并点「拉取」。去重（同 baseUrl+key+协议只拉一次）+ 不覆盖已手填/已拉到的模型。
+  // 失焦自动拉取（effect-first）：填完地址和所需鉴权即自动拉这个中转开放的全部模型，不必让用户
+  // 发现并点「拉取」。去重（同 baseUrl+鉴权+key+协议只拉一次）+ 不覆盖已手填/已拉到的模型。
   const maybeAutoFetchModels = () => {
     if (!canTest || fetchingModels) return
-    if (userApiKey.trim().length === 0 || candidateModels.length > 0 || models.length > 0) return
-    const sig = `${baseUrlTrimmed}\0${userApiKey.trim()}\0${providerKind}`
+    if (!isOnboardingApiKeyReady(userApiKey, noApiKey) || candidateModels.length > 0 || models.length > 0) return
+    const sig = `${baseUrlTrimmed}\0${requestAuth.authType}\0${requestAuth.apiKey}\0${providerKind}`
     if (sig === autoFetchSigRef.current) return
     autoFetchSigRef.current = sig
     void handleFetchModels()
   }
   const hasModelId = models.some(m => m.id.trim().length > 0)
   // 非阻断门槛（R3 拍板）：字段齐即可保存；测试未通过走二次确认（arm→confirm），不死拦。
-  const manualFieldsReady = baseUrlValid && userApiKey.trim().length > 0 && hasModelId && !saving
+  const manualFieldsReady = baseUrlValid && isOnboardingApiKeyReady(userApiKey, noApiKey) && hasModelId && !saving
   const manualSaveAction = resolvePrecheckGateAction({
     actionable: manualFieldsReady,
     precheckPassed: testState === 'ok',
@@ -386,7 +390,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
       <Stack gap="md">
         {phase === 'input' && screen === 'form' && (
           <Stack gap={12}>
-            {/* 中转优先·一次拉全·按模型分类（Issue #8）：填中转地址 + key → 拉取它开放的模型 →
+            {/* 中转优先·一次拉全·按模型分类（Issue #8）：填中转地址 + 可选 key → 拉取它开放的模型 →
                 每个自动判好类型(图片/视频/文本，可改) → 一次加多类型。文本/图片/视频统一一条路。 */}
             <Text size="xs" c="var(--nomi-ink-60)">
               {t('modelSetup.intro')}
@@ -468,7 +472,19 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
                 </Anchor>
               </Text>
             )}
-            <Field label={t('modelSetup.apiKey')} hint={t('modelSetup.apiKeyHint')}>
+            {selectedPreset?.custom && (
+              <DesignSwitch
+                checked={noApiKey}
+                onChange={(event) => {
+                  setNoApiKey(event.currentTarget.checked)
+                  setTestState('idle')
+                  autoFetchSigRef.current = ''
+                }}
+                label={t('modelSetup.noApiKey')}
+                description={t('modelSetup.noApiKeyHint')}
+              />
+            )}
+            {!noApiKey && <Field label={t('modelSetup.apiKey')} hint={t('modelSetup.apiKeyHint')}>
               <PasswordInput
                 value={userApiKey}
                 onChange={e => { setUserApiKey(e.currentTarget.value); setTestState('idle') }}
@@ -481,7 +497,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
                   {t('modelSetup.getKey', { provider: selectedPreset.label })}
                 </Anchor>
               )}
-            </Field>
+            </Field>}
 
             <Stack gap={6}>
               <Group gap={6} align="center" wrap="nowrap">
@@ -547,7 +563,9 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
                 // 还没拉 → 提示 + 显式拉取（失焦也会自动拉）。
                 <div className="flex items-center gap-2.5 rounded-nomi border border-nomi-line px-3.5 py-3">
                   <IconCloudDownload size={18} stroke={1.6} style={{ color: 'var(--nomi-ink-40)', flexShrink: 0 }} />
-                  <Text size="sm" c="var(--nomi-ink-60)" style={{ flex: 1 }}>{t('modelSetup.fetchHint')}</Text>
+                  <Text size="sm" c="var(--nomi-ink-60)" style={{ flex: 1 }}>
+                    {t(noApiKey ? 'modelSetup.fetchHintNoApiKey' : 'modelSetup.fetchHint')}
+                  </Text>
                   <DesignButton variant="light" onClick={handleFetchModels} disabled={!canTest} loading={fetchingModels}>{t('modelSetup.fetchModels')}</DesignButton>
                 </div>
               )}
@@ -555,7 +573,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
 
             {selectedPreset?.custom && (
             <Stack gap={6}>
-              {/* 高级设置（接口协议 + 自定义请求头）：默认收起——主流程只剩 选→填地址+Key→拉模型→保存。
+              {/* 高级设置（接口协议 + 自定义请求头）：默认收起——主流程只剩 选→填地址/鉴权→拉模型→保存。
                   专家点开、或测试失败时自动展开当逃生口（见 handleTestConnection）。 */}
               <Anchor
                 component="button"

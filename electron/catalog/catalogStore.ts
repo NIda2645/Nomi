@@ -672,6 +672,7 @@ export function importModelCatalogPackage(payload: unknown): unknown {
 export type CatalogMutation = {
   upsertVendor: (payload: unknown) => Vendor;
   upsertApiKey: (vendorKey: string, payload: unknown) => void;
+  deleteApiKey: (vendorKey: string) => void;
   upsertModel: (payload: unknown) => Model;
   upsertMapping: (payload: unknown) => Mapping;
   deleteModelMappings: (vendorKey: string, modelKey: string) => void;
@@ -688,6 +689,9 @@ export function mutateCatalog<T>(fn: (tx: CatalogMutation) => T): T {
   const tx: CatalogMutation = {
     upsertVendor: (payload) => applyVendorUpsert(state, payload),
     upsertApiKey: (vendorKey, payload) => applyApiKeyUpsert(state, vendorKey, payload),
+    deleteApiKey: (vendorKey) => {
+      delete state.apiKeysByVendor[String(vendorKey || '').trim()];
+    },
     upsertModel: (payload) => applyModelUpsert(state, payload),
     upsertMapping: (payload) => applyMappingUpsert(state, payload),
     deleteModelMappings: (vendorKey, modelKey) => {

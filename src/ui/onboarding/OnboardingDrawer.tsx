@@ -275,7 +275,7 @@ export function OnboardingDrawer(): JSX.Element {
   // 分桶（derive，plan §4.4）：已连通 vendor 上「已接入」，未连通归「可接入」生成模型组。
   const connectedKnown = knownCards.filter((c) => c.meta.hasApiKey)
   const availableKnown = knownCards.filter((c) => !c.meta.hasApiKey)
-  // 其他模型：用户自定义接入（有 key 才存在）→ 视为已接入。排除有专属卡的内置家：
+  // 其他模型：用户自定义接入（有 key 或显式 authType:none）→ 视为已接入。排除有专属卡的内置家：
   // 5 个 KNOWN_VENDORS + 即梦 dreamina（走 DreaminaMemberCard，其 seeded 模型不是"自定义"，
   // 否则与即梦会员卡重复且被误标"已配置"——真机走查抓到，dreamina 种了 4 个模型）。
   // 排除有专属卡/派生状态的内置家：dreamina（会员卡）+ comfyui-local（本地后端启用卡）+
@@ -322,14 +322,14 @@ export function OnboardingDrawer(): JSX.Element {
     assistantConnected ||
     codexImageEnabled
 
-  // 能力覆盖：某 kind 有「已连通供应商（hasApiKey）+ 已启用」的模型 = 现在就能生成（诚实，未连通不算）。
+  // 能力覆盖：某 kind 有「已鉴权或显式无需鉴权 + 已启用」的模型 = 现在就能生成（诚实，未连通不算）。
   // 计数 = 该 kind 下已启用且可用的模型数（用户 2026-07-17：能力条要显示选中的不同类型模型数量）。
   const coveredKindCounts = React.useMemo(() => {
     const counts = new Map<string, number>()
     for (const m of models) {
       if (!m.enabled) continue
       const meta = vendorMeta.get(m.vendorKey)
-      if (!meta?.hasApiKey && !(m.vendorKey === CODEX_LOCAL_VENDOR_KEY && meta?.authType === 'none' && meta.enabled)) continue
+      if (!meta?.hasApiKey && !(meta?.authType === 'none' && meta.enabled)) continue
       const k = String(m.kind)
       counts.set(k, (counts.get(k) ?? 0) + 1)
     }

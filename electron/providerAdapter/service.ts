@@ -136,7 +136,8 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
           ...(Object.keys(cleanHeaders).length ? { extraHeaders: cleanHeaders } : {}),
         },
       });
-      tx.upsertApiKey(input.vendorKey, { apiKey: input.apiKey, enabled: true });
+      if (input.authType === "none") tx.deleteApiKey(input.vendorKey);
+      else tx.upsertApiKey(input.vendorKey, { apiKey: input.apiKey, enabled: true });
       const models = input.models.map((selected) => {
         const existing = before.models.find(
           (model) => model.vendorKey === input.vendorKey && model.modelKey === selected.modelKey,
@@ -206,9 +207,18 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
           }),
         });
         for (const mode of candidate.modes) {
-          if (!verified.has(`${candidate.modelKey}\0${mode.taskKind}`)) continue;
           // Text stays on the existing AI SDK path so streaming remains intact; providerKind is part of the staged vendor.
           if (candidate.kind === "text") continue;
+          const passed = verified.has(`${candidate.modelKey}\0${mode.taskKind}`);
+          const existingExact = before.mappings.find(
+            (mapping) =>
+              mapping.vendorKey === input.run.vendorKey &&
+              mapping.modelKey === candidate.modelKey &&
+              mapping.taskKind === mode.taskKind,
+          );
+          // A failed retry must not replace a last-known executable contract. Brand-new candidates are still
+          // published so the user's explicit configuration remains runnable even when our probe is wrong.
+          if (!passed && existingExact) continue;
           tx.upsertMapping({
             vendorKey: input.run.vendorKey,
             modelKey: candidate.modelKey,
