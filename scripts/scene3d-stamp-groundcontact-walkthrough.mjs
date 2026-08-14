@@ -3,13 +3,11 @@
 // → 「追加点」拉长路径 → 「选择节点创建绑定」绑假人 → 时间轴「播放」→ 截图。
 // 判定（人眼）：02/03 里假人沿轨迹走时**脚站在地面网格上**；修复前会陷进地里半身（视觉中心被钉在脚底高度）。
 // 用法：pnpm run build && node scripts/scene3d-stamp-groundcontact-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, rmSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.scene3d-stamp-lab')
 rmSync(outDir, { recursive: true, force: true })
@@ -19,14 +17,11 @@ let failures = 0
 const ok = (m) => console.log('  ✓ ' + m)
 const fail = (m) => { console.error('  ✗ ' + m); failures += 1 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-stamp-groundcontact',
+  settleMs: 0,
 })
 try {
-  const win = await app.firstWindow()
   const shot = async (n) => { await win.screenshot({ path: path.join(outDir, n) }); console.log('  📸 ' + n) }
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})

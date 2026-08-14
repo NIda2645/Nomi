@@ -8,26 +8,19 @@
 // 运动断言 = 画布区（裁掉底部时间轴条与右侧浮窗）连续截图像素差 >> 静止噪声底。
 // 零额度：纯本地 3D，无生成 API。
 // 用法：pnpm run build && node tests/ux/scene3d-viewfinder-playback-marker.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from './_launchApp.mjs'
 import path from 'node:path'
-import os from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { mkdtempSync, mkdirSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.viewfinder-marker-lab')
 mkdirSync(outDir, { recursive: true })
-const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-vf-marker-'))
-const projectsDir = path.join(tmp, 'projects')
-mkdirSync(projectsDir, { recursive: true })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-viewfinder-playback-marker',
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const errors = []
@@ -104,11 +97,8 @@ async function playAndMeasure(win, rect, tag) {
 }
 
 try {
-  const win = await app.firstWindow()
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   await win.keyboard.press('Escape').catch(() => {})
 
   const card = win.locator('[data-project-card]').first()
@@ -124,13 +114,10 @@ try {
   if ((await genTab.count()) > 0) await genTab.click()
   await win.waitForTimeout(1500)
 
-  // 左侧分类栏切到「3D 场景」（注意带空格），空态 CTA 建一个该分类的画面节点。
-  const rail3d = win.locator('button[title="3D 场景"]').first()
-  await rail3d.waitFor({ timeout: 8000 })
-  await rail3d.click()
-  await win.waitForTimeout(1200)
-  const createNode = win.getByRole('button', { name: /新建一个/ }).first()
-  if ((await createNode.count()) > 0) await createNode.click()
+  // 最新画布已收敛为左侧纯图标快速添加栏；用稳定的无障碍名称直接建 3D 节点。
+  const addScene3d = win.locator('button[aria-label="添加3D 场景节点"]').first()
+  await addScene3d.waitFor({ timeout: 8000 })
+  await addScene3d.click()
   await win.waitForTimeout(2000)
 
   const openEmpty = win.getByRole('button', { name: '打开 3D 编辑器', exact: false })
@@ -236,7 +223,7 @@ try {
   process.exit(ok ? 0 : 1)
 } catch (err) {
   log(`\nFAIL: ${err?.message || err}`)
-  try { const win = await app.firstWindow(); await win.screenshot({ path: path.join(outDir, 'vf-FAIL.png') }) } catch {}
+  try { await win.screenshot({ path: path.join(outDir, 'vf-FAIL.png') }) } catch {}
   await app.close().catch(() => undefined)
   process.exit(1)
 }
