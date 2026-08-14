@@ -368,6 +368,13 @@ export type DesktopBridge = DesktopMediaBridge & {
       bytes: ArrayBuffer
       kind?: string
     }) => Promise<DesktopAssetDto>
+    /** Electron 原生 File 直传 preload；路径只在隔离桥内解析，大文件不复制进 renderer 内存。 */
+    importNativeFile?: (file: File, payload: {
+      projectId: string
+      fileName: string
+      contentType?: string
+      kind?: string
+    }) => Promise<DesktopAssetDto | null>
     /** 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 转码出新 MP4 资产；不适用 → null。 */
     ensurePlayable?: (payload: { url: string }) => Promise<DesktopAssetDto | null>
     /**

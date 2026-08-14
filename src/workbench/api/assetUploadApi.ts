@@ -71,13 +71,20 @@ export async function importWorkbenchLocalAssetFile(
   meta?: UploadWorkbenchAssetMeta,
 ): Promise<WorkbenchAssetDto> {
   const desktop = requireDesktopRuntime('local asset import')
-  const arrayBuffer = await file.arrayBuffer()
-  return desktop.assets.importFile({
+  const request = {
     projectId: resolveProjectId(meta),
     fileName: name || file.name || 'asset',
     contentType: file.type || 'application/octet-stream',
+    kind: 'upload' as const,
+  }
+  if (desktop.assets.importNativeFile) {
+    const imported = await desktop.assets.importNativeFile(file, request)
+    if (imported) return imported as WorkbenchAssetDto
+  }
+  const arrayBuffer = await file.arrayBuffer()
+  return desktop.assets.importFile({
+    ...request,
     bytes: arrayBuffer,
-    kind: 'upload',
   }) as Promise<WorkbenchAssetDto>
 }
 

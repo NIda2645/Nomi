@@ -1,9 +1,10 @@
 // 本地文件 → 项目素材的导入（从 runtime.ts 抽出：它是素材 IO，不是任务执行，放这更内聚，
 // 也给 runtime 这个已知巨壳腾出空间）。writeAsset 仍在 runtime（单向依赖，无循环）。
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-import { writeAsset } from "../runtime";
+import { copyAssetFile, writeAsset } from "../runtime";
 import { extensionFromMime } from "./assetPaths";
 import { parseLocalAssetUrl } from "../protocol/localProtocol";
 import {
@@ -20,14 +21,54 @@ function bytesFromPayload(value: unknown): Buffer {
   throw new Error("bytes must be an ArrayBuffer");
 }
 
-export async function importLocalFile(payload: unknown): Promise<unknown> {
+type ImportLocalFileOptions = { allowSourcePath?: boolean };
+
+async function importNativeSourcePath(
+  raw: JsonRecord,
+  sourcePath: string,
+  projectId: string,
+  fileName: string,
+  contentType: string,
+): Promise<unknown> {
+  const stat = await fs.promises.stat(sourcePath);
+  if (!stat.isFile()) throw new Error("source file is unavailable");
+  const baseMeta = { kind: raw.kind || "upload", originalName: raw.fileName || null };
+  if (!contentType.startsWith("video/")) {
+    return copyAssetFile(projectId, sourcePath, fileName, contentType, baseMeta);
+  }
+
+  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "nomi-video-native-import-"));
+  try {
+    try {
+      const transcoded = await transcodeFileToPlayableMp4IfNeeded(sourcePath, fileName, tempDir);
+      if (transcoded) {
+        return await copyAssetFile(projectId, transcoded.outputPath, playableMp4FileName(fileName), "video/mp4", {
+          ...baseMeta,
+          playbackNormalizedFrom: transcoded.reason,
+        });
+      }
+    } catch (error) {
+      console.warn(
+        "[nomi-video-import] native playability normalize failed, importing original file:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+    return await copyAssetFile(projectId, sourcePath, fileName, contentType, baseMeta);
+  } finally {
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+export async function importLocalFile(payload: unknown, options: ImportLocalFileOptions = {}): Promise<unknown> {
   const raw = payload as JsonRecord;
   const projectId = String(raw.projectId || "").trim();
   if (!projectId) throw new Error("projectId is required");
-  const bytes = bytesFromPayload(raw.bytes);
   const contentType = String(raw.contentType || "application/octet-stream");
   const ext = extensionFromMime(contentType, "bin");
   const fileName = String(raw.fileName || `asset-${Date.now()}.${ext}`);
+  const sourcePath = options.allowSourcePath ? String(raw.sourcePath || "").trim() : "";
+  if (sourcePath) return importNativeSourcePath(raw, sourcePath, projectId, fileName, contentType);
+  const bytes = bytesFromPayload(raw.bytes);
   // 视频先过可播放归一化（HEVC/AVI 等 Chromium 解不了的转 H.264 MP4；失败回退原字节不挡导入）。
   const normalized = contentType.startsWith("video/")
     ? await ensurePlayableVideoBytes(bytes, fileName, contentType)

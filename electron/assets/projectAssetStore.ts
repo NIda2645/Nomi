@@ -57,6 +57,19 @@ function writeAssetSidecarMeta(absolutePath: string, meta: JsonRecord): void {
   }
 }
 
+async function writeAssetSidecarMetaAsync(absolutePath: string, meta: JsonRecord): Promise<void> {
+  const sidecar: JsonRecord = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (value !== undefined) sidecar[key] = value;
+  }
+  if (Object.keys(sidecar).length === 0) return;
+  try {
+    await fs.promises.writeFile(`${absolutePath}.meta`, JSON.stringify(sidecar));
+  } catch {
+    /* non-fatal */
+  }
+}
+
 function uniqueAssetPath(
   projectId: string,
   fileName: string,
@@ -109,6 +122,40 @@ export function writeAsset(
       absolutePath,
       contentType,
       size: bytes.byteLength,
+    },
+  };
+}
+
+/** Copy an existing native file into the project without materializing it as a main-process Buffer. */
+export async function copyAssetFile(
+  projectId: string,
+  sourcePath: string,
+  fileName: string,
+  contentType: string,
+  rawMeta: JsonRecord,
+): Promise<unknown> {
+  const meta = sanitizeAssetMetaForKind(rawMeta);
+  const { absolutePath, relativePath } = uniqueAssetPath(projectId, fileName, assetBucketFromMeta(meta));
+  await fs.promises.copyFile(sourcePath, absolutePath);
+  const stat = await fs.promises.stat(absolutePath);
+  await writeAssetSidecarMetaAsync(absolutePath, meta);
+  broadcastAssetsUpdated(projectId);
+  const url = localAssetUrl(projectId, relativePath);
+  const t = nowIso();
+  return {
+    id: `asset-${crypto.randomUUID()}`,
+    name: sanitizeName(fileName, "asset"),
+    userId: "local",
+    projectId,
+    createdAt: t,
+    updatedAt: t,
+    data: {
+      ...meta,
+      url,
+      relativePath,
+      absolutePath,
+      contentType,
+      size: stat.size,
     },
   };
 }
