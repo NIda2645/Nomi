@@ -3,10 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { IconPlus } from '@tabler/icons-react'
 import { WorkbenchIconButton } from '../../../design/workbenchActions'
 import { cn } from '../../../utils/cn'
-import { pixelToFrame } from '../../timeline/timelineEdit'
 import type { TimelineClip, TimelineState } from '../../timeline/timelineTypes'
-import { resolveClipNodeTimelineLayout } from './clipNodeTimelineLayout'
-import { resolveClipNodeAxisTicks } from './clipNodeVisual'
+import { resolveClipNodeTimelineLayout, resolveClipNodeTimelineViewport } from './clipNodeTimelineLayout'
+import { formatClipNodeDuration } from './clipNodeVisual'
 
 type ClipNodeTimelineProps = {
   timeline: TimelineState
@@ -16,6 +15,7 @@ type ClipNodeTimelineProps = {
   onMoveClip: (clipId: string, startFrame: number) => void
   onResizeClip: (clipId: string, edge: 'left' | 'right', deltaFrame: number) => void
   onSplitClip: (clipId: string, frame: number) => void
+  onScrubPlayhead?: (frame: number) => void
   onAddMaterial?: () => void
   onBlankAxis?: () => void
 }
@@ -80,10 +80,12 @@ function ClipItem({
   onMoveClip,
   onResizeClip,
   onSplitClip,
+  playheadFrame,
 }: Pick<ClipNodeTimelineProps, 'onSelectClip' | 'onMoveClip' | 'onResizeClip' | 'onSplitClip'> & {
   clip: TimelineClip
   selected: boolean
   splitMode: boolean
+  playheadFrame: number
   pxPerFrame: number
   left: number
   width: number
@@ -123,7 +125,7 @@ function ClipItem({
     event.stopPropagation()
     const rect = ref.current?.getBoundingClientRect()
     if (splitMode && rect) {
-      const frame = clip.startFrame + pixelToFrame(event.clientX - rect.left, Math.max(0.1, pxPerFrame))
+      const frame = playheadFrame
       onSplitClip(clip.id, Math.min(clip.endFrame - 1, Math.max(clip.startFrame + 1, frame)))
       return
     }
@@ -173,16 +175,16 @@ export default function ClipNodeTimeline({
   onMoveClip,
   onResizeClip,
   onSplitClip,
+  onScrubPlayhead,
   onAddMaterial,
   onBlankAxis,
 }: ClipNodeTimelineProps): JSX.Element {
   const { t } = useTranslation()
   const track = timeline.tracks[0]
   const clips = track?.clips ?? []
-  const durationFrames = clips.reduce((max, clip) => Math.max(max, clip.endFrame), 0)
-  const duration = Math.max(1, durationFrames)
   const [axisWidth, setAxisWidth] = React.useState(420)
   const axisRef = React.useRef<HTMLDivElement | null>(null)
+  const didScrubRef = React.useRef(false)
   React.useLayoutEffect(() => {
     const axis = axisRef.current
     if (!axis) return
@@ -197,72 +199,128 @@ export default function ClipNodeTimeline({
     return () => window.removeEventListener('resize', update)
   }, [])
 
-  const axisInset = 8
-  const addSlotWidth = 56
-  const contentWidth = Math.max(1, axisWidth - addSlotWidth - axisInset * 2)
-  const pxPerFrame = contentWidth / duration
-  const ticks = resolveClipNodeAxisTicks(durationFrames, timeline.fps)
+  const viewport = React.useMemo(
+    () => resolveClipNodeTimelineViewport({ viewportWidth: axisWidth, timeline }),
+    [axisWidth, timeline],
+  )
+  const layouts = React.useMemo(() => resolveClipNodeTimelineLayout(timeline, viewport), [timeline, viewport])
+  const ticks = React.useMemo(() => {
+    const fps = Math.max(1, timeline.fps || 30)
+    const tickCount = Math.floor(viewport.axisEndSeconds / 10)
+    return Array.from({ length: tickCount + 1 }, (_, index) => {
+      const seconds = index * 10
+      const frame = Math.round(seconds * fps)
+      return { frame, pixel: viewport.frameToPixel(frame), label: formatClipNodeDuration(frame, fps) }
+    })
+  }, [timeline.fps, viewport])
+
+  const scrubAtClientX = (clientX: number): void => {
+    const content = axisRef.current?.firstElementChild
+    if (!(content instanceof HTMLElement)) return
+    const rect = content.getBoundingClientRect()
+    const frame = Math.min(viewport.timelineEndFrame, viewport.pixelToFrame(clientX - rect.left))
+    onScrubPlayhead?.(frame)
+  }
+
+  const beginScrub = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const target = event.target as HTMLElement
+    if (!target.closest('[data-testid="clip-node-ruler"]') || target.closest('[data-testid="clip-node-clip"]') || target.closest('button')) return
+    event.preventDefault()
+    event.stopPropagation()
+    const pointerId = event.pointerId
+    const currentTarget = event.currentTarget
+    currentTarget.setPointerCapture(pointerId)
+    didScrubRef.current = true
+    scrubAtClientX(event.clientX)
+    const move = (moveEvent: PointerEvent) => scrubAtClientX(moveEvent.clientX)
+    const end = () => {
+      if (currentTarget.hasPointerCapture(pointerId)) currentTarget.releasePointerCapture(pointerId)
+      currentTarget.removeEventListener('pointermove', move)
+      currentTarget.removeEventListener('pointerup', end)
+      currentTarget.removeEventListener('pointercancel', end)
+    }
+    currentTarget.addEventListener('pointermove', move)
+    currentTarget.addEventListener('pointerup', end)
+    currentTarget.addEventListener('pointercancel', end)
+  }
 
   return (
     <section className="grid gap-1.5" aria-label={t('generationCommon.clipNode.timeline')} onWheel={(event) => event.stopPropagation()}>
       <div
         ref={axisRef}
-        className="relative h-20 overflow-hidden overscroll-contain rounded-nomi-sm border border-nomi-line bg-nomi-bg"
-        onPointerDown={(event) => event.stopPropagation()}
+        className="relative h-20 min-w-0 overflow-x-auto overflow-y-hidden overscroll-contain rounded-nomi-sm border border-nomi-line bg-nomi-bg"
         onClick={(event) => {
           const target = event.target as HTMLElement
+          if (didScrubRef.current) {
+            didScrubRef.current = false
+            return
+          }
           if (!target.closest('[data-testid="clip-node-clip"]') && !target.closest('button')) onBlankAxis?.()
         }}
       >
-        <div className="pointer-events-none absolute inset-x-2 top-1.5 h-5" aria-hidden="true">
-          {ticks.map((tick, index) => (
+        <div
+          className="relative h-full"
+          style={{ width: viewport.contentWidth, minWidth: '100%' }}
+          onPointerDown={beginScrub}
+          data-testid="clip-node-axis-content"
+        >
+          <div className="absolute top-1.5 h-5" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }} data-testid="clip-node-ruler" aria-label={t('generationCommon.clipNode.scrub')}>
+            {ticks.map((tick, index) => (
+              <span
+                key={`${tick.frame}-${index}`}
+                className={cn(
+                  'absolute top-0 text-micro text-nomi-ink/55',
+                  index === 0 ? 'translate-x-0' : '-translate-x-1/2',
+                )}
+                style={{ left: tick.pixel - viewport.leadingSlotWidth - viewport.axisInset }}
+              >
+                {tick.label}
+              </span>
+            ))}
+          </div>
+          <div className="pointer-events-none absolute top-6 h-1 border-t border-nomi-paper/15" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }} aria-hidden="true">
+            {ticks.map((tick) => (
+              <span key={`mark-${tick.frame}`} className="absolute top-0 h-2 border-l border-nomi-paper/20" style={{ left: tick.pixel - viewport.leadingSlotWidth - viewport.axisInset }} />
+            ))}
+          </div>
+          <div className="absolute bottom-2 h-12" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }}>
             <span
-              key={`${tick.frame}-${index}`}
-              className={cn(
-                'absolute top-0 text-micro text-nomi-ink/55',
-                index === 0 ? 'translate-x-0' : index === ticks.length - 1 ? '-translate-x-full' : '-translate-x-1/2',
-              )}
-              style={{ left: `${tick.ratio * 100}%` }}
-            >
-              {tick.label}
-            </span>
-          ))}
+              className="pointer-events-none absolute inset-y-0 z-20 w-px bg-nomi-accent"
+              style={{ left: Math.max(0, viewport.frameToPixel(timeline.playheadFrame) - viewport.leadingSlotWidth - viewport.axisInset) }}
+              data-testid="clip-node-playhead"
+              aria-hidden="true"
+            />
+            {clips.map((clip) => {
+              const layout = layouts.find((item) => item.id === clip.id)
+              if (!layout) return null
+              return (
+                <ClipItem
+                  key={clip.id}
+                  clip={clip}
+                  selected={clip.id === selectedClipId}
+                  splitMode={splitMode}
+                  pxPerFrame={viewport.pxPerFrame}
+                  left={layout.left}
+                  width={layout.width}
+                  onSelectClip={onSelectClip}
+                  onMoveClip={onMoveClip}
+                  onResizeClip={onResizeClip}
+                  onSplitClip={onSplitClip}
+                  playheadFrame={timeline.playheadFrame}
+                />
+              )
+            })}
+            {!clips.length ? <div className="absolute inset-0 grid place-items-center text-micro text-nomi-ink/55">{t('generationCommon.clipNode.empty')}</div> : null}
+          </div>
+          {onAddMaterial ? (
+            <WorkbenchIconButton
+              label={t('generationCommon.clipNode.addMaterial')}
+              icon={<IconPlus size={20} />}
+              className="absolute bottom-2 left-2 size-12 rounded-nomi-sm border border-nomi-line bg-nomi-paper text-nomi-ink hover:bg-nomi-accent hover:text-nomi-paper"
+              onClick={onAddMaterial}
+            />
+          ) : null}
         </div>
-        <div className="pointer-events-none absolute inset-x-2 top-6 h-1 border-t border-nomi-paper/15" aria-hidden="true">
-          {ticks.map((tick, index) => (
-            <span key={`mark-${tick.frame}-${index}`} className="absolute top-0 h-2 border-l border-nomi-paper/20" style={{ left: `${tick.ratio * 100}%` }} />
-          ))}
-        </div>
-        <div className="absolute bottom-2 h-12" style={{ left: addSlotWidth + axisInset, right: axisInset }}>
-          {clips.map((clip) => {
-            const layout = resolveClipNodeTimelineLayout(timeline, contentWidth).find((item) => item.id === clip.id)
-            if (!layout) return null
-            return (
-              <ClipItem
-                key={clip.id}
-                clip={clip}
-                selected={clip.id === selectedClipId}
-                splitMode={splitMode}
-                pxPerFrame={pxPerFrame}
-                left={layout.left}
-                width={layout.width}
-                onSelectClip={onSelectClip}
-                onMoveClip={onMoveClip}
-                onResizeClip={onResizeClip}
-                onSplitClip={onSplitClip}
-              />
-            )
-          })}
-          {!clips.length ? <div className="absolute inset-0 grid place-items-center text-micro text-nomi-ink/55">{t('generationCommon.clipNode.empty')}</div> : null}
-        </div>
-        {!onAddMaterial ? null : (
-          <WorkbenchIconButton
-            label={t('generationCommon.clipNode.addMaterial')}
-            icon={<IconPlus size={20} />}
-            className="absolute bottom-2 left-2 size-12 rounded-nomi-sm border border-nomi-line bg-nomi-paper text-nomi-ink hover:bg-nomi-accent hover:text-nomi-paper"
-            onClick={onAddMaterial}
-          />
-        )}
       </div>
     </section>
   )

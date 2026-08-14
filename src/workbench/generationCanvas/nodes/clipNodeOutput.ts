@@ -2,6 +2,7 @@ import type { GenerationCanvasNode, GenerationNodeResult } from '../model/genera
 
 export type ClipNodeOutputInput = {
   sourceClipNodeId: string
+  sourceClipId?: string
   outputUrl: string
   relativePath: string
   durationSeconds: number
@@ -21,6 +22,7 @@ export function buildClipNodeOutputPatch(input: ClipNodeOutputInput): Pick<Gener
     status: 'success',
     meta: {
       sourceClipNodeId: input.sourceClipNodeId,
+      ...(input.sourceClipId ? { sourceClipId: input.sourceClipId } : {}),
       outputRelativePath: input.relativePath,
       outputKind: 'clip-node-export',
     },
