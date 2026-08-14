@@ -59,6 +59,11 @@ const submitted = []
 
 const mock = http.createServer((req, res) => {
   const url = req.url || ''
+  if (url.startsWith('/features')) {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ supports_preview_metadata: true }))
+    return
+  }
   if (url.startsWith('/system_stats')) {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ system: { os: 'posix', python_version: '3.11.9', comfyui_version: '0.3.30' }, devices: [{ name: 'cuda:0', type: 'cuda', vram_total: 1 }] }))
@@ -126,6 +131,16 @@ try {
   await win.waitForTimeout(2200)
   await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(600)
+  const enhancedModeVisible = await win.getByText('增强模式', { exact: false }).count()
+  if (enhancedModeVisible === 0) throw new Error('探测到 /features 后连接卡没有显示增强模式')
+  await shot(win, '00-card-enhanced-mode.png') // 验：已连接 + 增强模式 + Python/显卡摘要，文本不重叠
+  await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 900, height: 720 })).catch(() => {})
+  await win.waitForTimeout(500)
+  const viewport = await win.evaluate(() => ({ width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth }))
+  if (viewport.scrollWidth > viewport.width + 1) throw new Error(`窄窗口出现水平滚动：${JSON.stringify(viewport)}`)
+  await shot(win, '00b-card-enhanced-mode-narrow.png')
+  await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1440, height: 1000 })).catch(() => {})
+  await win.waitForTimeout(500)
 
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)

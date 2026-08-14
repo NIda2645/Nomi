@@ -76,6 +76,24 @@ describe("importComfyWorkflowToCatalog（S3 落库）", () => {
     expect(model?.meta?.comfyWorkflowImport?.binding).toEqual(binding);
   });
 
+  it("界面格式原图保留到草稿和提交 extra_pnginfo，API 文本仍是执行图", async () => {
+    emptyCatalog();
+    const { analyzeComfyWorkflowText, importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
+    const { listModelCatalogModels, listModelCatalogMappings } = await import("./catalogStore");
+    const text = videoWorkflow("keep ui source");
+    const binding = (analyzeComfyWorkflowText(text) as { analysis: { suggested: unknown } }).analysis.suggested;
+    const uiWorkflowText = JSON.stringify({ nodes: [{ id: 5, type: "CreateVideo" }], links: [] });
+    const result = importComfyWorkflowToCatalog({ text, binding, labelZh: "UI source", uiWorkflowText }, "ui1");
+    const modelKey = (result as { modelKey: string }).modelKey;
+    const model = (listModelCatalogModels({ vendorKey: "comfyui-local" }) as Array<Record<string, unknown>>)
+      .find((item) => item.modelKey === modelKey) as { meta?: { comfyWorkflowImport?: { uiWorkflowText?: string } } };
+    const mapping = (listModelCatalogMappings({ vendorKey: "comfyui-local" }) as Array<Record<string, unknown>>)
+      .find((item) => item.modelKey === modelKey) as { create?: { body?: { extra_data?: unknown; prompt?: unknown } } };
+    expect(model.meta?.comfyWorkflowImport?.uiWorkflowText).toBe(uiWorkflowText);
+    expect(mapping.create?.body?.extra_data).toEqual({ extra_pnginfo: { workflow: JSON.parse(uiWorkflowText) } });
+    expect(mapping.create?.body?.prompt).toBeTruthy();
+  });
+
   it("同 vendor 同 taskKind 两条导入靠 modelKey 不互相覆盖，selectTaskMapping 各取各的", async () => {
     emptyCatalog();
     const { analyzeComfyWorkflowText, importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
@@ -202,5 +220,54 @@ describe("多实例：两台 ComfyUI 互不串台（方案 A · key 前缀身份
     expect(trustedLocalOutputOrigin({ key: "comfyui-local-ws", baseUrlHint: "http://192.168.1.9:8188" })).toBe("http://192.168.1.9:8188");
     // 别家 vendor 即便配了私网地址也不给信任
     expect(trustedLocalOutputOrigin({ key: "apimart", baseUrlHint: "http://192.168.1.9:8188" })).toBeNull();
+  });
+});
+
+describe("reconcileComfyWorkflowTexts（设置页批量缺件对账）", () => {
+  it("20 条 workflow 只读取一次 /object_info，并按 id 返回独立结果", async () => {
+    emptyCatalog();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      CLIPTextEncode: { input: { required: { text: ["STRING"] } } },
+      CheckpointLoaderSimple: { input: { required: { ckpt_name: [["m.safetensors"]] } } },
+      KSampler: { input: { required: { seed: ["INT"], steps: ["INT"] } } },
+      CreateVideo: { input: { required: {} } },
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    const { reconcileComfyWorkflowTexts } = await import("./comfyuiWorkflowImportStore");
+    const items = Array.from({ length: 20 }, (_, index) => ({ id: `workflow-${index}`, text: textToVideoWorkflow(`prompt ${index}`) }));
+
+    const result = await reconcileComfyWorkflowTexts(items);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.results).toHaveLength(20);
+    expect(result.results.map((item) => item.id)).toEqual(items.map((item) => item.id));
+    expect(result.results.every((item) => item.result.ok && item.result.serverReachable)).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8188/object_info", expect.any(Object));
+    vi.unstubAllGlobals();
+  });
+
+  it("坏 workflow 只让该条失败，其他条仍完成对账", async () => {
+    emptyCatalog();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      CLIPTextEncode: { input: { required: {} } },
+      CheckpointLoaderSimple: { input: { required: { ckpt_name: [["m.safetensors"]] } } },
+      KSampler: { input: { required: {} } },
+      CreateVideo: { input: { required: {} } },
+    }))));
+    const { reconcileComfyWorkflowTexts } = await import("./comfyuiWorkflowImportStore");
+    const result = await reconcileComfyWorkflowTexts([
+      { id: "bad", text: "{bad json" },
+      { id: "good", text: textToVideoWorkflow("ok") },
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      results: [
+        { id: "bad", result: { ok: false } },
+        { id: "good", result: { ok: true, serverReachable: true } },
+      ],
+    });
+    vi.unstubAllGlobals();
   });
 });

@@ -9,6 +9,8 @@
 export type RequestTransformContext = {
   /** vendor.baseUrlHint（变换按后端实况补参时用）。缺省空串。 */
   baseUrl: string;
+  /** ComfyUI 等协议可由调用层在 HTTP 前预生成任务 id；其他 transform 不使用。 */
+  promptId?: string;
 };
 
 export type RequestTransformFn = (body: unknown, context: RequestTransformContext) => Promise<unknown> | unknown;

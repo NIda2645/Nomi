@@ -22,6 +22,7 @@ import { COMFYUI_VENDOR_KEY, type HttpOperation } from "./types";
 import { registerResponseTransform, type ResponseTransformFn } from "../tasks/responseTransforms";
 import { registerRequestTransform } from "../tasks/requestTransforms";
 import { fetchComfyuiCheckpoints } from "../comfyuiObjectInfo";
+import { getComfyuiClientId, resolveComfyuiPromptId } from "../comfyui/clientSession";
 
 function isRec(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -324,12 +325,17 @@ export function fillEmptyCheckpoint(prompt: Record<string, unknown>, checkpoints
 
 // "comfyui-prompt" 请求变换：ckpt_name 留空时按本机实况补全（derive 不 hardcode）。
 // 只抛「面向用户的确定性错误」（连不上 / 没有任何 checkpoint —— 两者提交出去也必失败，fail fast 更省一轮）。
-registerRequestTransform("comfyui-prompt", async (body, { baseUrl }) => {
+registerRequestTransform("comfyui-prompt", async (body, { baseUrl, promptId }) => {
   if (!isRec(body) || !isRec(body.prompt)) return body;
+  const sessionBody = {
+    ...body,
+    client_id: getComfyuiClientId(),
+    prompt_id: resolveComfyuiPromptId(promptId),
+  };
   const needsFill = Object.values(body.prompt).some(
     (node) => isRec(node) && node.class_type === "CheckpointLoaderSimple" && isRec(node.inputs) && String(node.inputs.ckpt_name ?? "").trim() === "",
   );
-  if (!needsFill) return body;
+  if (!needsFill) return sessionBody;
   const checkpoints = await fetchComfyuiCheckpoints(baseUrl);
   if (checkpoints === null) {
     throw new Error(`没连上 ComfyUI（${baseUrl || "http://127.0.0.1:8188"}）——确认 ComfyUI 已启动，或在参数里手填 checkpoint 文件名`);
@@ -337,7 +343,7 @@ registerRequestTransform("comfyui-prompt", async (body, { baseUrl }) => {
   if (checkpoints.length === 0) {
     throw new Error("ComfyUI 的 models/checkpoints 目录里没有任何模型文件——先放一个 checkpoint（.safetensors）再生成");
   }
-  return { ...body, prompt: fillEmptyCheckpoint(body.prompt, checkpoints) };
+  return { ...sessionBody, prompt: fillEmptyCheckpoint(body.prompt, checkpoints) };
 });
 
 const TXT2IMG_QUERY_OP: HttpOperation = {

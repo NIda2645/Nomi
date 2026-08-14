@@ -23,6 +23,7 @@ type TemplateEntry = {
 }
 type Detail = {
   apiText: string
+  uiWorkflowText: string
   unknownNodeTypes: string[]
   missingEnumValues: Array<{ classType: string; inputKey: string; value: string }>
   enumOptions: Array<{ classType: string; inputKey: string; options: string[] }>
@@ -101,7 +102,7 @@ export function ComfyuiTemplateLibrary({ vendorKey, modelLabels, onImported }: P
       const analyzed = catalog.analyzeComfyWorkflow?.(d.apiText)
       if (!analyzed || !analyzed.ok) { toast(t('onboardingProviders.comfyTemplates.analyzeFailed'), 'error'); return }
       const binding = (analyzed.analysis as { suggested?: unknown }).suggested
-      const r = catalog.importComfyWorkflow({ text: d.apiText, binding, labelZh: entry.title, enumOptions: d.enumOptions, vendorKey })
+      const r = catalog.importComfyWorkflow({ text: d.apiText, binding, labelZh: entry.title, enumOptions: d.enumOptions, vendorKey, uiWorkflowText: d.uiWorkflowText })
       if (!r.ok) { toast(r.error, 'error'); return }
       toast(t('onboardingProviders.comfyTemplates.enabled', { name: entry.title }), 'success')
       onImported()

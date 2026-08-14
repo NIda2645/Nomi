@@ -393,13 +393,37 @@ export async function runCatalogGenerationTask(
 
   const runTask = options.runTask || runWorkbenchTaskByVendor
   report('requesting')
-  const initialResult = await runTask(vendor, request)
+  // ComfyUI 新协议允许客户端预生成 prompt UUID。先登记 WS、再 POST /prompt，极快任务的首事件也有归属；
+  // 旧服若忽略该 UUID 并返回另一个 id，下方会切换 watcher，history 轮询始终照常兜底。
+  const requestedComfyPromptId = isComfyuiVendorKey(vendor) ? crypto.randomUUID() : ''
+  if (requestedComfyPromptId) {
+    request.extras = { ...(request.extras ?? {}), comfyPromptId: requestedComfyPromptId }
+  }
+  let watchedPromptId = ''
+  if (requestedComfyPromptId) {
+    const registered = await watchComfyuiProgress({
+      promptId: requestedComfyPromptId,
+      nodeId: asTrimmedString(request.extras?.nodeId),
+      projectId: asTrimmedString(request.extras?.projectId),
+      taskKind: request.kind,
+      modelKey: asTrimmedString(request.extras?.modelKey) || null,
+      vendorKey: vendor,
+    })
+    if (registered) watchedPromptId = requestedComfyPromptId
+  }
+  let initialResult: TaskResultDto
+  try {
+    initialResult = await runTask(vendor, request)
+  } catch (error) {
+    if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
+    throw error
+  }
   report('waiting', initialResult.id)
-  // P 轨：本地 ComfyUI 提交成功即登记 ws 进度（prompt_id→节点）。桥不在/失败 = 没进度，轮询照常。
-  // 多实例：vendor 就是「跑这个任务的那台机器」的 key，带下去让主进程连对地址、查对 mapping。
+  // 旧 ComfyUI 可能不接受客户端 prompt id：按服务端真实回执切 watcher。
   const comfyWatching = isComfyuiVendorKey(vendor) && Boolean(initialResult.id)
-  if (comfyWatching) {
-    watchComfyuiProgress({
+  if (comfyWatching && initialResult.id !== watchedPromptId) {
+    if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
+    const registered = await watchComfyuiProgress({
       promptId: initialResult.id,
       nodeId: asTrimmedString(request.extras?.nodeId),
       projectId: asTrimmedString(request.extras?.projectId),
@@ -407,12 +431,13 @@ export async function runCatalogGenerationTask(
       modelKey: asTrimmedString(request.extras?.modelKey) || null,
       vendorKey: vendor,
     })
+    watchedPromptId = registered ? initialResult.id : ''
   }
   let finalResult: TaskResultDto
   try {
     finalResult = await waitForCatalogTaskResult(vendor, request, initialResult, options)
   } finally {
-    if (comfyWatching) unwatchComfyuiProgress(initialResult.id)
+    if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
   }
   report('finalizing', initialResult.id)
   const normalized = normalizeCatalogTaskResult(finalResult, executableNode)
