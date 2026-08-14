@@ -22,6 +22,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { ensureElectronSignature } from '../../scripts/ensure-electron-signature.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -101,7 +102,12 @@ export async function launchNomiApp(options = {}) {
   // 开发 electron 二进制要靠 `.` 指到仓库根去加载 dist-electron；**打包好的 .app 自带产物**，
   // 再塞个 `.` 反而会被当成「要打开的路径」参数。所以这两件事都跟着「是不是开发构建」走。
   const isDevElectron = executablePath === require('electron')
-  if (isDevElectron) assertBuilt()
+  if (isDevElectron) {
+    assertBuilt()
+    // Apple 会在首次启动时直接删除已吊销公证的 Electron.app。走查必须在 spawn 前复用
+    // dev 启动器的静态探测与重签，否则表现为 60s 超时且一张截图也产不出来。
+    ensureElectronSignature(executablePath)
+  }
 
   // isolate:false = 用用户**真实** profile 起（交互式 dev driver ui-driver.mjs 才这么用：
   // 它要能打开已有/示例项目，这是它注释里写明的既定设计，不是漏配）。此时不传 --user-data-dir、

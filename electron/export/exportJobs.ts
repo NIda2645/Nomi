@@ -439,7 +439,6 @@ export function showExportInFolder(payload: unknown): { ok: true } {
   const resolved = resolveProjectRelativePath(projectId, normalized);
   if (!fs.existsSync(resolved)) throw new Error("打开导出位置失败：导出文件不存在");
   // Lazy require keeps runtime.ts usable in tests that do not initialize Electron shell.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { shell } = require("electron") as typeof import("electron");
   shell.showItemInFolder(resolved);
   return { ok: true };
