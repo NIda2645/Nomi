@@ -43,6 +43,7 @@ type Props = { node: unknown; selected: boolean; readOnly?: boolean }
 export default function ClipNode({ node: rawNode, selected, readOnly = false }: Props): JSX.Element {
   const { t } = useTranslation()
   const node = rawNode as GenerationCanvasNode
+  const canvasNodes = useGenerationCanvasStore((state) => state.nodes)
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
   const addNode = useGenerationCanvasStore((state) => state.addNode)
   const connectNodes = useGenerationCanvasStore((state) => state.connectNodes)
@@ -63,6 +64,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const { refresh } = useAllProjectAssets()
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [splitMode, setSplitMode] = React.useState(false)
+  const [playheadFrame, setPlayheadFrame] = React.useState(0)
   const [playing, setPlaying] = React.useState(false)
   const [exporting, setExporting] = React.useState<'current' | 'all' | null>(null)
   const [creatingVideoNode, setCreatingVideoNode] = React.useState(false)
@@ -92,7 +94,11 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   })
   const meta = React.useMemo(() => readClipNodeMeta(node.meta), [node.meta])
   const timeline = React.useMemo(() => clipNodeTimelineFromMeta(meta), [meta])
-  const timelineClips = timeline.tracks[0]?.clips ?? []
+  const timelineForView = React.useMemo(
+    () => ({ ...timeline, playheadFrame: Math.min(playheadFrame, timeline.tracks[0]?.clips.at(-1)?.endFrame ?? 0) }),
+    [playheadFrame, timeline],
+  )
+  const timelineClips = React.useMemo(() => timeline.tracks[0]?.clips ?? [], [timeline])
   const selectedClipId = meta.selectedClipId ? `clip-${meta.selectedClipId}` : undefined
   const activeClip = timelineClips.find((clip) => clip.id === selectedClipId)
   const visualMode = resolveClipNodeVisualMode({ hasClips: timelineClips.length > 0, editingOpen, selectedClip: Boolean(activeClip) })
@@ -104,7 +110,13 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     setEditingOpen(false)
     setExportMenuOpen(false)
     setSplitMode(false)
+    setPlaying(false)
   }, [selected])
+
+  React.useEffect(() => {
+    const endFrame = timeline.tracks[0]?.clips.at(-1)?.endFrame ?? 0
+    setPlayheadFrame((current) => Math.min(current, endFrame))
+  }, [timeline])
 
   React.useLayoutEffect(() => {
     if (!editingOpen || !articleRef.current) return
@@ -198,11 +210,13 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   }, [uploading])
 
   const selectClip = React.useCallback((clipId: string) => {
+    const nextClip = timelineClips.find((clip) => clip.id === clipId)
     persist({ ...meta, selectedClipId: clipId.replace(/^clip-/, '') })
+    setPlayheadFrame(nextClip?.startFrame ?? 0)
     setPlaying(false)
     setEditingOpen(true)
     setExportMenuOpen(false)
-  }, [meta, persist])
+  }, [meta, persist, timelineClips])
 
   const handleMoveClip = React.useCallback((clipId: string, startFrame: number) => {
     persist(moveClipNode(meta, clipId, startFrame))
@@ -249,15 +263,72 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     if (!projectId || !exportTimeline || exportTimeline.tracks[0]?.clips.length === 0 || exporting) return
     setExporting(scope)
     try {
-      const result = await exportTimelineToMp4({
+      if (scope === 'current') {
+        const result = await exportTimelineToMp4({
+          timeline: exportTimeline,
+          aspectRatio: '16:9',
+          projectId,
+          resolution: '1080p',
+          quality: 'standard',
+          outputName: 'nomi-clip',
+        })
+        toast(t('generationCommon.clipNode.exportComplete', { path: result.relativePath }), 'success')
+        return
+      }
+
+      const merged = await exportTimelineToMp4({
         timeline: exportTimeline,
         aspectRatio: '16:9',
         projectId,
         resolution: '1080p',
         quality: 'standard',
-        outputName: scope === 'current' ? 'nomi-clip' : 'nomi-cut',
+        outputName: 'nomi-cut',
       })
-      toast(t('generationCommon.clipNode.exportComplete', { path: result.relativePath }), 'success')
+      const clips = exportTimeline.tracks[0]?.clips ?? []
+      for (const [index, clip] of clips.entries()) {
+        const visibleFrames = Math.max(1, clip.endFrame - clip.startFrame)
+        const clipTimeline = {
+          ...exportTimeline,
+          playheadFrame: 0,
+          tracks: [{
+            ...exportTimeline.tracks[0]!,
+            clips: [{ ...clip, startFrame: 0, endFrame: visibleFrames }],
+          }, ...exportTimeline.tracks.slice(1)],
+        }
+        const segment = await exportTimelineToMp4({
+          timeline: clipTimeline,
+          aspectRatio: '16:9',
+          projectId,
+          resolution: '1080p',
+          quality: 'standard',
+          outputName: `nomi-clip-${String(index + 1).padStart(2, '0')}`,
+        })
+        const existing = canvasNodes.find((candidate) => (
+          candidate.kind === 'video'
+          && candidate.meta?.sourceClipNodeId === node.id
+          && candidate.meta?.sourceClipId === clip.id
+        ))
+        const outputPatch = buildClipNodeOutputPatch({
+          sourceClipNodeId: node.id,
+          sourceClipId: clip.id,
+          outputUrl: buildWorkspaceFileUrl(projectId, segment.relativePath),
+          relativePath: segment.relativePath,
+          durationSeconds: visibleFrames / Math.max(1, exportTimeline.fps),
+        })
+        const outputNode = existing ?? addNode({
+          kind: 'video',
+          title: t('generationCommon.clipNode.outputClipTitle', { index: index + 1 }),
+          position: {
+            x: node.position.x + visualSize.width + 80,
+            y: node.position.y + index * 180,
+          },
+          categoryId: node.categoryId,
+          select: false,
+        })
+        updateNode(outputNode.id, outputPatch)
+        connectNodes(node.id, outputNode.id)
+      }
+      toast(t('generationCommon.clipNode.exportAllComplete', { count: clips.length, path: merged.relativePath }), 'success')
     } catch (error) {
       toast(error instanceof Error ? error.message : t('generationCommon.clipNode.exportFailed'), 'error')
     } finally {
@@ -401,13 +472,14 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         </header>
         <div className="min-h-0 flex-1 px-2 pb-2" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
           <ClipNodeTimeline
-            timeline={timeline}
+            timeline={timelineForView}
             selectedClipId={visualMode === 'editing' ? selectedClipId : undefined}
             splitMode={splitMode}
             onSelectClip={selectClip}
             onMoveClip={handleMoveClip}
             onResizeClip={handleResizeClip}
             onSplitClip={handleSplitClip}
+            onScrubPlayhead={setPlayheadFrame}
             onAddMaterial={readOnly ? undefined : () => { setUploadError(null); setRetryUploadFile(null); setPickerOpen(true) }}
             onBlankAxis={closeEditing}
           />
