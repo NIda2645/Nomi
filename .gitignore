@@ -98,6 +98,7 @@ docs/feedback/*
 # R13 走查截图产物（scripts/*-walkthrough.mjs 输出，纯本地证据，不进 git）
 # 通用模式覆盖所有 .{name}-walk/ 输出目录；不合模式的特例单列
 .*-walk/
+.comfyui-real-user-journey/
 .failure-walk-ok/
 .model-panel-shot/
 .custom-call-recon/

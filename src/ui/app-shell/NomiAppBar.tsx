@@ -247,14 +247,14 @@ export default function NomiAppBar({
                     'bg-transparent text-[var(--nomi-ink-80)] font-inherit text-body-sm',
                     'transition-[background,color] duration-[var(--nomi-transition-fast)]',
                     'hover:bg-[var(--nomi-ink-05)] hover:text-[var(--nomi-ink)]',
-                    'max-[1400px]:w-[30px] max-[1400px]:h-[30px] max-[1400px]:justify-center max-[1400px]:p-0',
+                    'max-[1600px]:w-[30px] max-[1600px]:h-[30px] max-[1600px]:justify-center max-[1600px]:p-0',
                   )}
                   aria-label={t('appBar.openBrowser')}
                   onClick={openBrowser}
                 >
                   {/* 顶栏操作按钮统一解剖：图标 15/1.8 + 文字，窄屏一起收成 30px 方块。 */}
                   <IconBrowser size={15} stroke={1.8} />
-                  <span className={cn('nomi-appbar__action-text', 'max-[1400px]:hidden')}>{t('appBar.browser')}</span>
+                  <span className={cn('nomi-appbar__action-text', 'max-[1600px]:hidden')}>{t('appBar.browser')}</span>
                 </WorkbenchButton>
               </AppBarActionTooltip>
             ) : null}
@@ -283,13 +283,13 @@ export default function NomiAppBar({
                     'bg-transparent text-[var(--nomi-ink-80)] font-inherit text-body-sm',
                     'transition-[background,color] duration-[var(--nomi-transition-fast)]',
                     'hover:bg-[var(--nomi-ink-05)] hover:text-[var(--nomi-ink)]',
-                    'max-[1400px]:w-[30px] max-[1400px]:h-[30px] max-[1400px]:justify-center max-[1400px]:p-0',
+                    'max-[1600px]:w-[30px] max-[1600px]:h-[30px] max-[1600px]:justify-center max-[1600px]:p-0',
                   )}
                   aria-label={t('settings.title')}
                   onClick={onOpenSettings}
                 >
                   <IconSettings size={15} stroke={1.8} />
-                  <span className={cn('nomi-appbar__action-text', 'max-[1400px]:hidden')}>{t('settings.title')}</span>
+                  <span className={cn('nomi-appbar__action-text', 'max-[1600px]:hidden')}>{t('settings.title')}</span>
                 </WorkbenchButton>
               </AppBarActionTooltip>
             ) : null}
@@ -303,13 +303,13 @@ export default function NomiAppBar({
                   'bg-transparent text-[var(--nomi-ink-80)] font-inherit text-body-sm',
                   'transition-[background,color] duration-[var(--nomi-transition-fast)]',
                   'hover:bg-[var(--nomi-ink-05)] hover:text-[var(--nomi-ink)]',
-                  'max-[1400px]:w-[30px] max-[1400px]:h-[30px] max-[1400px]:justify-center max-[1400px]:p-0',
+                  'max-[1600px]:w-[30px] max-[1600px]:h-[30px] max-[1600px]:justify-center max-[1600px]:p-0',
                 )}
                 aria-label={t('appBar.openModelAccess')}
                 onClick={handleOpenModelCatalog}
               >
                 <IconPlugConnected size={15} stroke={1.8} />
-                <span className={cn('nomi-appbar__action-text', 'max-[1400px]:hidden')}>{t('appBar.modelAccess')}</span>
+                <span className={cn('nomi-appbar__action-text', 'max-[1600px]:hidden')}>{t('appBar.modelAccess')}</span>
               </WorkbenchButton>
             </AppBarActionTooltip>
           </span>
@@ -335,13 +335,13 @@ export default function NomiAppBar({
                   'bg-[var(--nomi-ink)] text-[var(--nomi-paper)] font-inherit text-body-sm',
                   'transition-[background,color] duration-[var(--nomi-transition-fast)]',
                   'hover:bg-[var(--nomi-ink-80)]',
-                  'max-[1400px]:w-[30px] max-[1400px]:h-[30px] max-[1400px]:justify-center max-[1400px]:p-0',
+                  'max-[1600px]:w-[30px] max-[1600px]:h-[30px] max-[1600px]:justify-center max-[1600px]:p-0',
                 )}
                 aria-label={t('appBar.goToProduce')}
                 onClick={() => onWorkspaceModeChange('preview')}
               >
                 <IconArrowRight size={15} stroke={1.8} />
-                <span className={cn('nomi-appbar__action-text', 'max-[1400px]:hidden')}>{t('appBar.goToProduce')}</span>
+                <span className={cn('nomi-appbar__action-text', 'max-[1600px]:hidden')}>{t('appBar.goToProduce')}</span>
               </WorkbenchButton>
             </AppBarActionTooltip>
           ) : null}

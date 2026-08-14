@@ -108,7 +108,7 @@ try {
   // ── ③ 在工作站导入 → 只落工作站名下 ──
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(WAN_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(WAN_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(2500)
   await win.getByPlaceholder('给它起个名', { exact: false }).fill('工作站专属图')

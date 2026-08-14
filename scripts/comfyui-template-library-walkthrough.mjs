@@ -89,7 +89,7 @@ try {
   // ── ③ 贴界面格式 → 自动转换（此前会被直接拒）──
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(uiWorkflowText)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(uiWorkflowText)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(25000) // 借前端转换
   await shot(win, '03-ui-format-auto-converted.png')

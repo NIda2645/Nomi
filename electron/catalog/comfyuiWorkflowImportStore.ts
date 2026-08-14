@@ -42,7 +42,7 @@ export function analyzeComfyWorkflowText(text: unknown): AnalyzeWorkflowResult {
 /**
  * 分析 + **界面格式自动转换**（异步版，T1）。用户贴什么格式都吃：
  *   API 格式 → 直接分析（与同步版同结果）
- *   界面格式 → 借用户自己 ComfyUI 的前端转成 API 格式再分析（转不动就回落成原来那句「请 Export (API)」）
+ *   界面格式 → 借用户自己 ComfyUI 的前端转成 API 格式再分析（转不动就说明要启动当前 ComfyUI）
  * 转换成功时回 convertedText，UI 用它替换掉用户贴的原文，后续导入/编辑链一律走 API 格式（单一形态）。
  */
 export async function analyzeComfyWorkflowTextSmart(text: unknown, vendorKey?: unknown): Promise<AnalyzeWorkflowResult> {
@@ -54,7 +54,7 @@ export async function analyzeComfyWorkflowTextSmart(text: unknown, vendorKey?: u
   const vendor = readCatalog().vendors.find((v) => v.key === targetKey);
   const converted = await convertUiWorkflowToApi(String(vendor?.baseUrlHint || ""), raw);
   if (!converted.ok) {
-    // 转不动 → 保持原来的人话（教用户去 Export API），并把转换失败原因附后，便于排查。
+    // 转不动 → 保持解析层的恢复指引，并把转换失败原因附后，便于排查。
     return { ok: false, error: `${direct.ok ? "" : direct.error}（自动转换也没成：${converted.error}）` };
   }
   const convertedText = JSON.stringify(converted.api, null, 2);

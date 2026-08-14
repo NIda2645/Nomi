@@ -493,7 +493,7 @@ export const zhGenerationCommon = {
     lastFrame: '尾帧',
     referencesAria: '参考素材',
     generationMode: '生成方式',
-    comfyNoPrompt: '这条工作流不吃提示词——它只处理你连进来的素材',
+    comfyNoPrompt: '这条工作流无需提示词',
   },
   assetReference: {
     addNamed: '添加{{label}}',
@@ -1703,7 +1703,7 @@ export const enGenerationCommon = {
     lastFrame: 'Last frame',
     referencesAria: 'Reference assets',
     generationMode: 'Generation mode',
-    comfyNoPrompt: 'This workflow takes no prompt — it just processes what you connect',
+    comfyNoPrompt: 'This workflow takes no prompt',
   },
   assetReference: {
     addNamed: 'Add {{label}}',

@@ -1,7 +1,7 @@
 // 本地 ComfyUI「自定义 workflow 导入」后端（S3）。纯函数、零副作用、可单测。
 // plan: docs/plan/2026-07-15-comfyui-custom-workflow.md
 //
-// 用户在 ComfyUI 里跑通一条工作流 → 菜单 Workflow → Export (API) 导出 workflow_api.json → 粘进 Nomi。
+// 用户可粘贴 ComfyUI 保存的 workflow.json，或 Workflow → Export (API) 导出的 workflow_api.json。
 // 本模块：① 校验是 API 格式（非 UI 保存格式，最常见坑）；② 自动识别可绑定的节点输入（提示词/首帧/输出/数值）；
 // ③ 按用户确认的绑定，把对应 input 的 widget 值替成 {{request.prompt}} / {{request.params.X}} 注参占位；
 // ④ 产出用户自有的 model+mapping（走普通 upsert，不进 curated → 不被 seedBuiltins reconcile 覆盖）。
@@ -258,13 +258,13 @@ export function parseComfyApiWorkflow(text: string): ComfyGraph {
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error("不是合法 JSON —— 请粘贴 ComfyUI「Export (API)」导出的 workflow_api.json。");
+    throw new Error("不是合法 JSON —— 请粘贴完整的 ComfyUI workflow.json 或 workflow_api.json。");
   }
   if (!json || typeof json !== "object" || Array.isArray(json)) throw new Error("workflow 格式不对（应是节点对象）。");
   const obj = json as Record<string, unknown>;
   // UI 保存格式（nodes[]+links[]）≠ API 格式 → 明确提示（治「导错格式」最常见坑）。
   if (Array.isArray(obj.nodes) || Array.isArray(obj.links)) {
-    throw new Error("这是 ComfyUI 的「界面保存」格式，不是 API 格式。请在 ComfyUI 菜单 Workflow → Export (API) 导出后再粘贴。");
+    throw new Error("这是 ComfyUI 保存的界面工作流，需要连接当前 ComfyUI 才能自动转换；启动后重试，也可以改用 Workflow → Export (API) 导出。");
   }
   const entries = Object.entries(obj);
   if (entries.length === 0) throw new Error("workflow 是空的。");

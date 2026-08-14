@@ -121,7 +121,7 @@ try {
 
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(JSON.stringify(graph))
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(JSON.stringify(graph))
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(2500) // 真分析 + 真缺件对账（打真 /object_info）
   await shot(win, '02-analyzed-against-real-server.png') // 验：无缺件红警（这台真装了这些节点和模型）

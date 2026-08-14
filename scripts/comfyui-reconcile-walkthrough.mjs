@@ -88,7 +88,7 @@ try {
   // ── 场景①：缺节点 + 缺模型 → 两条红警示 ──
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(MISSING_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(MISSING_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(1500) // 等异步 reconcile 回来
   await win.getByText('本机 ComfyUI 缺', { exact: false }).first().scrollIntoViewIfNeeded()
@@ -98,7 +98,7 @@ try {
   await shot(win, '01b-missing-files-box.png') // 验：缺文件红框（CheckpointLoaderSimple.ckpt_name="wan-author-only…"）
 
   // ── 场景②：全齐 → 零警示 ──
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(CLEAN_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(CLEAN_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(1500)
   await shot(win, '02-clean-no-warnings.png') // 验：绑定区正常、无红框无「未连接」行
@@ -111,7 +111,7 @@ try {
   await win.getByRole('button', { name: '保存地址', exact: true }).click()
   await win.waitForTimeout(800)
   // 尾随空格：与场景②内容不同才会触发 onChange 重置分析态（同值 fill 不触发 React onChange）
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(CLEAN_GRAPH + ' ')
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(CLEAN_GRAPH + ' ')
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(1500)
   await win.getByText('已跳过缺节点', { exact: false }).first().scrollIntoViewIfNeeded()

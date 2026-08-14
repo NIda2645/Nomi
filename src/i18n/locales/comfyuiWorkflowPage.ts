@@ -31,7 +31,7 @@ export const zhComfyuiWorkflowPage = {
   workflows: {
     title: '工作流',
     empty: '这台还没有导入过工作流。',
-    emptyHint: '回设置里的 ComfyUI 卡，用「导入自定义工作流」贴一份 workflow_api.json。',
+    emptyHint: '回设置里的 ComfyUI 卡，用「导入自定义工作流」粘贴 ComfyUI 保存的工作流 JSON。',
     fieldCount: '{{count}} 个字段',
     complete: '齐全',
     missingNodes: '缺 {{count}} 个节点',
@@ -160,7 +160,7 @@ export const enComfyuiWorkflowPage = {
   workflows: {
     title: 'Workflows',
     empty: 'No workflows imported on this backend yet.',
-    emptyHint: 'Go back to the ComfyUI card in settings and paste a workflow_api.json under “Import custom workflow”.',
+    emptyHint: 'Go back to the ComfyUI card in settings and paste a workflow JSON under “Import custom workflow”.',
     fieldCount: '{{count}} fields',
     complete: 'All present',
     missingNodes: '{{count}} nodes missing',

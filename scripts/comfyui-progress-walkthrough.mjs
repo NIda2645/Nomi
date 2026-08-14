@@ -3,7 +3,7 @@
 // 服务器（零依赖）持续推 executing/progress 事件与二进制预览帧；/history 永不完成 →
 // 只有取消能结束任务。验：① 遮罩出现确定圆环+节点人话+取消钮+event 4 预览帧
 // ② 点取消 → 定向 jobs cancel 被打 + 节点回 idle（无红错误卡）。
-// 用法：pnpm build && node scripts/comfyui-progress-walkthrough.mjs
+// 用法：pnpm build && COMFY_PROGRESS_PORT=8190 node scripts/comfyui-progress-walkthrough.mjs
 import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import crypto from 'node:crypto'
@@ -14,6 +14,9 @@ import os from 'node:os'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.comfyui-progress-walk')
+const mockPort = Number(process.env.COMFY_PROGRESS_PORT || 8188)
+if (!Number.isInteger(mockPort) || mockPort < 1 || mockPort > 65535) throw new Error('COMFY_PROGRESS_PORT 必须是有效端口')
+const mockBaseUrl = `http://127.0.0.1:${mockPort}`
 mkdirSync(outDir, { recursive: true })
 const settingsDir = mkdtempSync(path.join(os.tmpdir(), 'comfyui-progress-walk-'))
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
@@ -22,7 +25,7 @@ const shot = async (win, name) => { await win.screenshot({ path: path.join(outDi
 writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
   version: 8,
   vendors: [
-    { key: 'comfyui-local', name: '本地 ComfyUI', enabled: true, baseUrlHint: 'http://127.0.0.1:8188', authType: 'none', authHeader: null, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
+    { key: 'comfyui-local', name: '本地 ComfyUI', enabled: true, baseUrlHint: mockBaseUrl, authType: 'none', authHeader: null, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
     // 其它免 key 本地后端显式停用（enabled 属用户数据、seed 尊重）→ ComfyUI 成为唯一可执行模型 = 默认模型。
     { key: 'dreamina', name: '即梦', enabled: false, authType: 'none', authHeader: null, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
     { key: 'codex-local', name: 'Codex', enabled: false, authType: 'none', authHeader: null, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
@@ -97,7 +100,7 @@ mock.on('upgrade', (req, socket) => {
   socket.on('error', () => wsClients.delete(socket))
   socket.on('data', () => {}) // client 帧（含 close）忽略
 })
-await new Promise((r) => mock.listen(8188, '127.0.0.1', r))
+await new Promise((r) => mock.listen(mockPort, '127.0.0.1', r))
 
 // 提交后持续推 ws 事件：4 节点图（内置文生图），走到第 3 个节点 KSampler 的一半（永不完成）。
 const NODES = ['4', '5', '6', '3'] // CheckpointLoader → EmptyLatent → CLIPTextEncode → KSampler

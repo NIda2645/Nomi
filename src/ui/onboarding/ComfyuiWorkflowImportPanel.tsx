@@ -1,7 +1,7 @@
 /**
  * 本地 ComfyUI「导入自定义工作流」面板（S4）。plan: docs/plan/2026-07-15-comfyui-custom-workflow.md
  *
- * 用户在 ComfyUI 里跑通一条工作流 → 菜单 Workflow → Export (API) → 把 workflow_api.json 贴进来。
+ * 用户可直接粘贴 ComfyUI 保存的 workflow.json，也可粘贴 Workflow → Export (API) 导出的 workflow_api.json。
  * 「分析」调后端 analyzeComfyWorkflow 自动识别可绑定节点（提示词/首帧/输出/数值），列出建议绑定供用户确认/微调，
  * 「导入」调 importComfyWorkflow 落成用户自有 model+mapping（之后在生成画布直接选用）。
  * 纯解析/识别/落库都在后端（electron/catalog/comfyuiWorkflowImport*，可测）；本组件只做「贴→看→改→导」的壳。
@@ -339,7 +339,7 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
         </button>
       </div>
       <div className="text-caption text-nomi-ink-60 leading-relaxed">
-        {t('onboardingProviders.comfyWorkflow.instructionsBefore')} <code className="font-mono text-nomi-ink">{t('onboardingProviders.comfyWorkflow.exportCommand')}</code> {t('onboardingProviders.comfyWorkflow.instructionsMiddle')} <code className="font-mono text-nomi-ink">{t('onboardingProviders.comfyWorkflow.fileName')}</code> {t('onboardingProviders.comfyWorkflow.instructionsAfter')}
+        {t('onboardingProviders.comfyWorkflow.instructions')}
       </div>
       <textarea
         value={text}
