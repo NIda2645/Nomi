@@ -66,6 +66,7 @@ export function ComfyuiWorkflowSettingsPage({
   const [analysis, setAnalysis] = React.useState<WorkflowAnalysis | null>(null)
   const [binding, setBinding] = React.useState<WorkflowBinding | null>(null)
   const [graphText, setGraphText] = React.useState('')
+  const [uiWorkflowText, setUiWorkflowText] = React.useState('')
   const [name, setName] = React.useState('')
   const [dirty, setDirty] = React.useState(false)
   const [error, setError] = React.useState('')
@@ -109,7 +110,7 @@ export function ComfyuiWorkflowSettingsPage({
   const draftOf = catalog.draftOf
   const labelOf = catalog.labelOf
   React.useEffect(() => {
-    if (!selectedModelKey) { setAnalysis(null); setBinding(null); setGraphText(''); setName(''); return }
+    if (!selectedModelKey) { setAnalysis(null); setBinding(null); setGraphText(''); setUiWorkflowText(''); setName(''); return }
     const draft = draftOf(selectedModelKey)
     setError('')
     setDirty(false)
@@ -117,6 +118,7 @@ export function ComfyuiWorkflowSettingsPage({
     setName(labelOf(selectedModelKey))
     if (!draft) { setAnalysis(null); setBinding(null); setGraphText(''); setError(t('comfyuiWorkflowPage.errors.noDraft')); return }
     setGraphText(draft.text)
+    setUiWorkflowText(draft.uiWorkflowText ?? '')
     const result = getDesktopBridge()?.modelCatalog?.analyzeComfyWorkflow?.(draft.text)
     if (!result) { setAnalysis(null); setBinding(null); setError(t('comfyuiWorkflowPage.errors.unsupported')); return }
     if (!result.ok) { setAnalysis(null); setBinding(null); setError(t('comfyuiWorkflowPage.errors.analyzeFailed', { error: result.error })); return }
@@ -198,6 +200,7 @@ export function ComfyuiWorkflowSettingsPage({
         // enumOptions 随保存烤回参数控件——combo 参数在画布才是真实文件下拉（与导入同口径）。
         ...(reconcile?.enumOptions?.length ? { enumOptions: reconcile.enumOptions } : {}),
         vendorKey,
+        ...(uiWorkflowText ? { uiWorkflowText } : {}),
       })
       if (!result.ok) { setError(t('comfyuiWorkflowPage.errors.saveFailed', { error: result.error })); return false }
       setDirty(false)
@@ -208,7 +211,7 @@ export function ComfyuiWorkflowSettingsPage({
     } finally {
       setBusy(false)
     }
-  }, [selectedModelKey, binding, name, graphText, reconcile?.enumOptions, vendorKey, labelOf, bumpAll, t])
+  }, [selectedModelKey, binding, name, graphText, reconcile?.enumOptions, vendorKey, uiWorkflowText, labelOf, bumpAll, t])
 
   const remove = React.useCallback(async () => {
     if (!selectedModelKey) return

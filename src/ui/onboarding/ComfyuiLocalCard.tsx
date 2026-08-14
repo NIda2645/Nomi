@@ -23,12 +23,13 @@ import { ComfyuiWorkflowImportPanel } from './ComfyuiWorkflowImportPanel'
 import { ComfyuiPresetSection } from './ComfyuiPresetSection'
 import { ComfyuiTemplateLibrary } from './ComfyuiTemplateLibrary'
 import { ComfyuiWorkflowSettingsPage } from './workflowPage/ComfyuiWorkflowSettingsPage'
+import { normalizeComfyuiAddressInput } from './comfyuiAddress'
 
 /** 与后端 comfyuiLocal.ts 的 vendor key 对齐（稳定契约）。 */
 export const COMFYUI_VENDOR_KEY = 'comfyui-local'
 const BUILTIN_COMFYUI_TXT2IMG_MODEL_KEY = 'comfyui-txt2img'
 
-type ComfyuiHealth = { ok: true; summary: string; version?: string } | { ok: false; error: string }
+type ComfyuiHealth = { ok: true; summary: string; version?: string; protocol?: 'enhanced' | 'compatibility' } | { ok: false; error: string }
 
 type ComfyuiLocalCardProps = {
   /** 多实例：这张卡是哪一台（第一台=comfyui-local，第 2+ 台=comfyui-local-*）。缺省第一台。 */
@@ -82,7 +83,7 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
     if (!catalog?.probeComfyui) return { ok: false, error: t('onboardingProviders.comfyLocal.unsupportedProbe') }
     setChecking(true)
     try {
-      const r = await catalog.probeComfyui(baseUrl || undefined)
+      const r = await catalog.probeComfyui(normalizeComfyuiAddressInput(baseUrl))
       setHealth(r)
       return r
     } catch (e) {
@@ -106,7 +107,7 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
     setBusy(true)
     try {
       const r = await probe()
-      catalog.upsertVendor({ key, enabled: true }) // 只翻 enabled，applyVendorUpsert 保留 authType/baseUrl
+      catalog.upsertVendor({ key, enabled: true, baseUrlHint: normalizeComfyuiAddressInput(baseUrl) })
       onChanged()
       toast(r.ok ? t('onboardingProviders.comfyLocal.enabled') : t('onboardingProviders.comfyLocal.enabledWithoutConnection'), r.ok ? 'success' : 'info')
     } catch (e) {
@@ -131,7 +132,7 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
   }
 
   const handleSaveAddr = async () => {
-    const next = addrDraft.trim()
+    const next = normalizeComfyuiAddressInput(addrDraft)
     if (!next) return
     catalog.upsertVendor({ key, baseUrlHint: next })
     setEditing(false)
@@ -255,6 +256,13 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
               <div className="min-w-0">
                 <div className="text-body-sm font-semibold text-nomi-ink">{t('onboardingProviders.comfyLocal.connected')}{health.version ? <span className="text-nomi-ink-60 font-normal">{t('onboardingProviders.comfyLocal.version', { version: health.version })}</span> : null}</div>
                 <div className="text-caption text-nomi-ink-60 mt-0.5">{health.summary}</div>
+                {health.protocol ? (
+                  <div className="text-micro text-nomi-ink-40 mt-0.5">
+                    {health.protocol === 'enhanced'
+                      ? t('onboardingProviders.comfyLocal.protocolEnhanced')
+                      : t('onboardingProviders.comfyLocal.protocolCompatibility')}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : (

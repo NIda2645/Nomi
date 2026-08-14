@@ -19,11 +19,14 @@ import { convertUiWorkflowToApi, looksLikeUiWorkflow } from "../comfyuiGraphConv
 import { COMFYUI_VENDOR_KEY, isComfyuiVendor } from "./types";
 
 export type AnalyzeWorkflowResult =
-  | { ok: true; analysis: WorkflowAnalysis; /** 界面格式自动转换后的 API 文本；UI 要拿它替换掉用户贴的原文再导入。 */ convertedText?: string }
+  | { ok: true; analysis: WorkflowAnalysis; /** 转换后的 API 文本 + 原 UI 图（执行/可复现各用一份）。 */ convertedText?: string; sourceWorkflowText?: string }
   | { ok: false; error: string };
 export type ImportWorkflowResult = { ok: true; modelKey: string; kind: string; taskKind: string } | { ok: false; error: string };
 export type ReconcileWorkflowResult =
   | { ok: true; serverReachable: boolean; unknownNodeTypes: string[]; missingEnumValues: MissingEnumValue[]; enumOptions: WorkflowEnumOption[] }
+  | { ok: false; error: string };
+export type ReconcileWorkflowBatchResult =
+  | { ok: true; results: Array<{ id: string; result: ReconcileWorkflowResult }> }
   | { ok: false; error: string };
 
 /** 校验 + 分析（供 UI 映射预览）。坏格式返回 { ok:false, error } 而非抛——IPC 好透传成人话提示。 */
@@ -57,7 +60,7 @@ export async function analyzeComfyWorkflowTextSmart(text: unknown, vendorKey?: u
   const convertedText = JSON.stringify(converted.api, null, 2);
   const after = analyzeComfyWorkflowText(convertedText);
   if (!after.ok) return after;
-  return { ...after, convertedText };
+  return { ...after, convertedText, sourceWorkflowText: raw };
 }
 
 /**
@@ -83,6 +86,64 @@ export async function reconcileComfyWorkflowText(text: unknown, vendorKey?: unkn
 }
 
 /**
+ * 设置页批量对账：一台实例只刷新并读取一次 /object_info，再用同一份能力事实核对全部 workflow。
+ * 单条坏 JSON 只让该条失败，不拖垮整批；id 由 renderer 提供并原样回传用于关联 modelKey。
+ */
+export async function reconcileComfyWorkflowTexts(
+  rawItems: unknown,
+  vendorKey?: unknown,
+): Promise<ReconcileWorkflowBatchResult> {
+  if (!Array.isArray(rawItems)) return { ok: false, error: "工作流批量对账参数必须是数组" };
+  if (rawItems.length > 200) return { ok: false, error: "一次最多核对 200 条工作流" };
+
+  type ParsedBatchItem =
+    | { id: string; graph: ReturnType<typeof parseComfyApiWorkflow> }
+    | { id: string; error: ReconcileWorkflowResult };
+  const parsed: ParsedBatchItem[] = rawItems.map((raw, index): ParsedBatchItem => {
+    const item = raw && typeof raw === "object" ? raw as { id?: unknown; text?: unknown } : {};
+    const id = String(item.id ?? index);
+    try {
+      return { id, graph: parseComfyApiWorkflow(String(item.text ?? "")) };
+    } catch (e) {
+      return {
+        id,
+        error: { ok: false, error: e instanceof Error ? e.message : String(e) } as ReconcileWorkflowResult,
+      };
+    }
+  });
+
+  const valid = parsed.filter((item): item is Extract<ParsedBatchItem, { graph: unknown }> => "graph" in item);
+  if (valid.length === 0) {
+    return { ok: true, results: parsed.map((item) => ({ id: item.id, result: "error" in item ? item.error : { ok: false, error: "工作流解析失败" } })) };
+  }
+
+  const targetKey = String(vendorKey || "").trim() || COMFYUI_VENDOR_KEY;
+  const vendor = readCatalog().vendors.find((v) => v.key === targetKey);
+  const baseUrl = String(vendor?.baseUrlHint || "");
+  bustComfyObjectInfoCache(baseUrl);
+  const index = await fetchComfyuiObjectInfoIndex(baseUrl);
+
+  return {
+    ok: true,
+    results: parsed.map((item) => {
+      if ("error" in item) return { id: item.id, result: item.error };
+      if (!index) {
+        return { id: item.id, result: { ok: true, serverReachable: false, unknownNodeTypes: [], missingEnumValues: [], enumOptions: [] } };
+      }
+      return {
+        id: item.id,
+        result: {
+          ok: true,
+          serverReachable: true,
+          ...reconcileComfyWorkflow(item.graph, index),
+          enumOptions: collectGraphEnumOptions(item.graph, index),
+        },
+      };
+    }),
+  };
+}
+
+/**
  * 多实例：payload 里的 vendorKey 消毒——**只接受真的 ComfyUI 实例 key**（isComfyuiVendor 判据），
  * 别让渲染层随手传个别家 vendorKey 就把 comfy 工作流落到人家名下。缺省/非法 → 第一台。
  */
@@ -105,15 +166,20 @@ function sanitizeEnumOptions(raw: unknown): WorkflowEnumOption[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+function sanitizeUiWorkflowText(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 20_000_000) return undefined;
+  return looksLikeUiWorkflow(raw) ? raw : undefined;
+}
+
 /** 按用户确认的绑定落库（用户自有 model+mapping，走普通 upsert → 不被 seedBuiltins reconcile 覆盖）。
  *  uniq 供 modelKey 去重（默认时间戳；测试传固定值求确定）。 */
 export function importComfyWorkflowToCatalog(payload: unknown, uniq: string = Date.now().toString(36)): ImportWorkflowResult {
   try {
-    const p = (payload && typeof payload === "object" ? payload : {}) as { text?: string; binding?: WorkflowBinding; labelZh?: string; enumOptions?: unknown; vendorKey?: unknown };
+    const p = (payload && typeof payload === "object" ? payload : {}) as { text?: string; binding?: WorkflowBinding; labelZh?: string; enumOptions?: unknown; vendorKey?: unknown; uiWorkflowText?: unknown };
     const labelZh = String(p.labelZh || "").trim() || "本地 ComfyUI 工作流";
     const modelKey = slugifyModelKey(labelZh, uniq);
     const r = importComfyWorkflow(
-      { text: String(p.text ?? ""), binding: p.binding ?? { numeric: [] }, labelZh, modelKey, enumOptions: sanitizeEnumOptions(p.enumOptions), vendorKey: comfyVendorKeyOf(p.vendorKey) },
+      { text: String(p.text ?? ""), binding: p.binding ?? { numeric: [] }, labelZh, modelKey, enumOptions: sanitizeEnumOptions(p.enumOptions), vendorKey: comfyVendorKeyOf(p.vendorKey), uiWorkflowText: sanitizeUiWorkflowText(p.uiWorkflowText) },
       upsertModelCatalogModel,
       upsertModelCatalogMapping,
     );
@@ -133,6 +199,7 @@ export function updateComfyWorkflowInCatalog(payload: unknown): ImportWorkflowRe
       labelZh?: string;
       enumOptions?: unknown;
       vendorKey?: unknown;
+      uiWorkflowText?: unknown;
     };
     const modelKey = String(p.modelKey || "").trim();
     if (!modelKey) throw new Error("缺少要编辑的工作流 modelKey。");
@@ -141,7 +208,7 @@ export function updateComfyWorkflowInCatalog(payload: unknown): ImportWorkflowRe
     return mutateCatalog((tx) => {
       tx.deleteModelMappings(vendorKey, modelKey); // 只删这一台名下的（别台同名工作流不受影响）
       const r = importComfyWorkflow(
-        { text: String(p.text ?? ""), binding: p.binding ?? { numeric: [] }, labelZh, modelKey, enumOptions: sanitizeEnumOptions(p.enumOptions), vendorKey },
+        { text: String(p.text ?? ""), binding: p.binding ?? { numeric: [] }, labelZh, modelKey, enumOptions: sanitizeEnumOptions(p.enumOptions), vendorKey, uiWorkflowText: sanitizeUiWorkflowText(p.uiWorkflowText) },
         tx.upsertModel,
         tx.upsertMapping,
       );

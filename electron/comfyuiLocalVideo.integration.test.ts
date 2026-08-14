@@ -46,6 +46,7 @@ const VIDEO_CREATE_OP: HttpOperation = {
   headers: { "Content-Type": "application/json" },
   body: { prompt: VIDEO_GRAPH, client_id: "nomi" },
   response_mapping: { task_id: "prompt_id" },
+  request_transform: "comfyui-prompt",
 };
 const VIDEO_QUERY_OP: HttpOperation = {
   method: "GET",
@@ -58,7 +59,8 @@ let server: http.Server;
 let baseUrl = "";
 let historyHits = 0;
 let viewHits = 0;
-let lastPromptBody: { prompt?: Record<string, { inputs?: Record<string, unknown> }>; client_id?: string } | null = null;
+const REQUEST_PROMPT_ID = "223e4567-e89b-42d3-a456-426614174000";
+let lastPromptBody: { prompt?: Record<string, { inputs?: Record<string, unknown> }>; client_id?: string; prompt_id?: string } | null = null;
 
 beforeAll(async () => {
   mockedUserDataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "comfyui-vid-e2e-"));
@@ -70,11 +72,11 @@ beforeAll(async () => {
       req.on("end", () => {
         lastPromptBody = JSON.parse(raw || "{}");
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ prompt_id: "vid-abc", number: 1 }));
+        res.end(JSON.stringify({ prompt_id: lastPromptBody?.prompt_id || "vid-abc", number: 1 }));
       });
       return;
     }
-    if (req.method === "GET" && url.pathname === "/history/vid-abc") {
+    if (req.method === "GET" && url.pathname === `/history/${REQUEST_PROMPT_ID}`) {
       historyHits += 1;
       res.writeHead(200, { "Content-Type": "application/json" });
       // 头一拍空（证会继续轮询）；后一拍出 gifs（VHS 输出，mp4 也落 gifs 键）。
@@ -82,7 +84,7 @@ beforeAll(async () => {
         historyHits < 2
           ? JSON.stringify({})
           : JSON.stringify({
-              "vid-abc": {
+              [REQUEST_PROMPT_ID]: {
                 status: { status_str: "success", completed: true },
                 outputs: { "4": { gifs: [{ filename: "Nomi_00001.mp4", subfolder: "", type: "output", format: "video/h264-mp4" }] } },
               },
@@ -121,7 +123,7 @@ describe("本地 ComfyUI 视频传输链（真 HTTP 端到端）", () => {
       modelKey: "my-wan-i2v", vendorKey: "comfyui-local", labelZh: "本地·WAN 视频",
       kind: "video" as const, enabled: true, createdAt: "", updatedAt: "",
     };
-    const request = { prompt: "a dragon flying over misty mountains", extras: {} } as never;
+    const request = { prompt: "a dragon flying over misty mountains", extras: { comfyPromptId: REQUEST_PROMPT_ID } } as never;
 
     // ── 1) 提交 ──
     const created = await executeProfileOperation({ vendor, model, apiKey: "", request, operation: VIDEO_CREATE_OP });
@@ -129,10 +131,11 @@ describe("本地 ComfyUI 视频传输链（真 HTTP 端到端）", () => {
       response: created.response, mapping: { create: VIDEO_CREATE_OP, query: VIDEO_QUERY_OP } as never,
       operation: VIDEO_CREATE_OP, request, taskIdFallback: "", wantedKind: "video", vendor, model,
     });
-    expect(createNorm.result.id).toBe("vid-abc");
+    expect(createNorm.result.id).toBe(REQUEST_PROMPT_ID);
     // 真收到 API 格式图 + 提示词注入到 CLIPTextEncode
     expect(lastPromptBody?.prompt?.["2"]?.inputs?.text).toBe("a dragon flying over misty mountains");
-    expect(lastPromptBody?.client_id).toBe("nomi");
+    expect(lastPromptBody?.client_id).toMatch(/^nomi-[0-9a-f-]{36}$/);
+    expect(lastPromptBody?.prompt_id).toBe(REQUEST_PROMPT_ID);
 
     // ── 2) 轮询直到成功 ──
     const taskId = createNorm.result.id;
@@ -143,7 +146,7 @@ describe("本地 ComfyUI 视频传输链（真 HTTP 端到端）", () => {
       const polled = await executeProfileOperation({ vendor, model, apiKey: "", request, operation: VIDEO_QUERY_OP, providerMeta });
       const norm = await buildProfileTaskResult({
         response: polled.response, mapping: { create: VIDEO_CREATE_OP, query: VIDEO_QUERY_OP } as never,
-        operation: VIDEO_QUERY_OP, request, taskIdFallback: "vid-abc", wantedKind: "video", projectId: project.id, vendor, model,
+        operation: VIDEO_QUERY_OP, request, taskIdFallback: REQUEST_PROMPT_ID, wantedKind: "video", projectId: project.id, vendor, model,
       });
       status = norm.result.status;
       assetUrl = norm.result.assets[0]?.url || "";

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ webContents: { fromId: () => null } }));
 
-import { computeOverallPercent, parsePreviewFrame } from "./comfyuiProgressSocket";
+import { cancelComfyuiPrompt, computeOverallPercent, parsePreviewFrame } from "./comfyuiProgressSocket";
 
 describe("parsePreviewFrame（ComfyUI ws 二进制帧 [>I event][>I format][bytes]）", () => {
   const frame = (event: number, format: number, payload: Buffer) => {
@@ -27,6 +27,64 @@ describe("parsePreviewFrame（ComfyUI ws 二进制帧 [>I event][>I format][byte
 
   it("超大帧（>1.5MB）拒收——IPC 别被灌爆", () => {
     expect(parsePreviewFrame(frame(1, 1, Buffer.alloc(2_000_000)))).toBeNull();
+  });
+
+  it("event=4 metadata 直接给出 prompt/node 归属，图片字节不含 metadata", () => {
+    const metadata = Buffer.from(JSON.stringify({
+      prompt_id: "123e4567-e89b-42d3-a456-426614174000",
+      node_id: "9",
+      image_type: "image/png",
+    }));
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(4, 0);
+    head.writeUInt32BE(metadata.length, 4);
+    const parsed = parsePreviewFrame(Buffer.concat([head, metadata, Buffer.from("pngbytes")]));
+    expect(parsed).toMatchObject({
+      mime: "image/png",
+      promptId: "123e4567-e89b-42d3-a456-426614174000",
+      nodeId: "9",
+    });
+    expect(parsed?.bytes.toString()).toBe("pngbytes");
+  });
+
+  it("event=4 坏 metadata/超长声明安全拒收", () => {
+    const broken = Buffer.alloc(12);
+    broken.writeUInt32BE(4, 0);
+    broken.writeUInt32BE(1000, 4);
+    expect(parsePreviewFrame(broken)).toBeNull();
+  });
+});
+
+describe("ComfyUI 安全取消", () => {
+  it("新服只发原子定向 jobs cancel，不再双发 queue/interrupt", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ cancelled: true })));
+    await expect(cancelComfyuiPrompt("http://127.0.0.1:8188", "p1", fetchMock as typeof fetch))
+      .resolves.toEqual({ ok: true, mode: "targeted" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://127.0.0.1:8188/api/jobs/p1/cancel");
+  });
+
+  it("旧服 jobs 404 时只删排队项，绝不请求全局 /interrupt", async () => {
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return urls.length === 1 ? new Response("missing", { status: 404 }) : new Response("{}");
+    });
+    await expect(cancelComfyuiPrompt("http://127.0.0.1:8188", "p2", fetchMock as typeof fetch))
+      .resolves.toEqual({ ok: true, mode: "queue-only" });
+    expect(urls).toEqual([
+      "http://127.0.0.1:8188/api/jobs/p2/cancel",
+      "http://127.0.0.1:8188/queue",
+    ]);
+    expect(urls.some((url) => url.endsWith("/interrupt"))).toBe(false);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ delete: ["p2"] });
+  });
+
+  it("鉴权/服务错误不伪装成旧服并发第二个请求", async () => {
+    const fetchMock = vi.fn(async () => new Response("denied", { status: 401 }));
+    await expect(cancelComfyuiPrompt("http://127.0.0.1:8188", "p3", fetchMock as typeof fetch))
+      .resolves.toEqual({ ok: false, mode: "failed" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

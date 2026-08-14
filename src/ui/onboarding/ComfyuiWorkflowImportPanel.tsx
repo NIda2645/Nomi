@@ -113,6 +113,7 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
   const [error, setError] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [reconcile, setReconcile] = React.useState<Reconcile | null>(null)
+  const [uiWorkflowText, setUiWorkflowText] = React.useState('')
   const reconcileSeq = React.useRef(0)
 
   // 缺件对账（异步，不阻塞绑定 UI）：分析成功后问本机 /object_info，缺节点/缺模型在导入前就说清。
@@ -128,7 +129,7 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
   }, [vendorKey])
 
   const reset = React.useCallback(() => {
-    setText(''); setAnalysis(null); setBinding(null); setLabelZh(''); setError(''); setReconcile(null)
+    setText(''); setAnalysis(null); setBinding(null); setLabelZh(''); setError(''); setReconcile(null); setUiWorkflowText('')
   }, [])
 
   /**
@@ -154,7 +155,12 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
       .then((r) => {
         if (!r.ok) { setError(r.error); setAnalysis(null); setBinding(null); setReconcile(null); return }
         const effectiveText = r.convertedText ?? text
-        if (r.convertedText) setText(r.convertedText)
+        if (r.convertedText) {
+          setText(r.convertedText)
+          setUiWorkflowText(r.sourceWorkflowText ?? text)
+        } else {
+          setUiWorkflowText('')
+        }
         const a = r.analysis as Analysis
         setAnalysis(a)
         setBinding(normalizeBinding(a.suggested))
@@ -179,7 +185,7 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
       const name = labelZh.trim() || t('onboardingProviders.comfyWorkflow.defaultName')
       // enumOptions（reconcile 带出）随导入烤进参数控件——combo 参数在画布变成真实文件下拉。
       const enumOptions = reconcile && reconcile.enumOptions?.length ? reconcile.enumOptions : undefined
-      const r = catalog.importComfyWorkflow({ text, binding, labelZh: name, enumOptions, vendorKey })
+      const r = catalog.importComfyWorkflow({ text, binding, labelZh: name, enumOptions, vendorKey, ...(uiWorkflowText ? { uiWorkflowText } : {}) })
       if (!r.ok) { setError(r.error); return }
       const kindLabel = r.kind === 'video' ? t('onboardingProviders.comfyWorkflow.video') : t('onboardingProviders.comfyWorkflow.image')
       toast(t('onboardingProviders.comfyWorkflow.imported', { name, kind: kindLabel }), 'success')
@@ -187,7 +193,7 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
       setOpen(false)
       onImported()
     } finally { setBusy(false) }
-  }, [binding, catalog, text, labelZh, reset, onImported, paramKeyError, reconcile, vendorKey, t])
+  }, [binding, catalog, text, labelZh, reset, onImported, paramKeyError, reconcile, vendorKey, uiWorkflowText, t])
 
   if (!open) {
     return (

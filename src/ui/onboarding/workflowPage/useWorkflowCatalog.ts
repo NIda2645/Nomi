@@ -3,7 +3,7 @@
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md
  *
  * 全部走既有 IPC，**后端零改动**：listVendors / listModels / listMappings / probeComfyui /
- * reconcileComfyWorkflow。抽成 hook 是为了让页面组件只管「摆」和「改」，不被取数撑爆
+ * reconcileComfyWorkflows。抽成 hook 是为了让页面组件只管「摆」和「改」，不被取数撑爆
  * （R9：写码前想清楚分层）。
  */
 import React from 'react'
@@ -17,7 +17,7 @@ import type { BackendRow, WorkflowRow } from './WorkflowSidebar'
 /** 内置文生图：没有原始 JSON 草稿，绑定改不了（列出来但标 builtin）。 */
 export const BUILTIN_COMFYUI_TXT2IMG_MODEL_KEY = 'comfyui-txt2img'
 
-export type WorkflowDraft = { text: string; binding?: WorkflowBinding }
+export type WorkflowDraft = { text: string; binding?: WorkflowBinding; uiWorkflowText?: string }
 export type WorkflowReconcile = {
   serverReachable: boolean
   unknownNodeTypes: string[]
@@ -34,8 +34,9 @@ function readWorkflowDraft(meta: unknown): WorkflowDraft | null {
   if (!draft || typeof draft !== 'object') return null
   const text = (draft as { text?: unknown }).text
   const binding = (draft as { binding?: unknown }).binding
+  const uiWorkflowText = (draft as { uiWorkflowText?: unknown }).uiWorkflowText
   if (typeof text !== 'string' || !binding || typeof binding !== 'object') return null
-  return { text, binding: binding as WorkflowBinding }
+  return { text, binding: binding as WorkflowBinding, ...(typeof uiWorkflowText === 'string' ? { uiWorkflowText } : {}) }
 }
 
 /** 老导入没存草稿时，从 mapping 里的模板图回填正文（绑定回落到重新自动识别）。 */
@@ -161,24 +162,40 @@ export function useWorkflowCatalog(vendorKey: string, refreshToken: number): Wor
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addresses])
 
-  // 缺件对账：这台的每条工作流各问一次本机 /object_info。
+  // 缺件对账：整台的草稿一次批量问询，共享一份 /object_info；旧 preload 回落单条接口。
   // seq 防串台——快速切后端时旧请求晚到不许覆盖新结果（同 ComfyuiWorkflowImportPanel 的做法）。
   const reconcileSeq = React.useRef(0)
   const draftSignature = models.map((m) => m.modelKey).join(',')
   React.useEffect(() => {
-    const call = getDesktopBridge()?.modelCatalog?.reconcileComfyWorkflow
-    if (!call) return
+    const catalog = getDesktopBridge()?.modelCatalog
+    const batchCall = catalog?.reconcileComfyWorkflows
+    const singleCall = catalog?.reconcileComfyWorkflow
+    if (!batchCall && !singleCall) return
     const seq = ++reconcileSeq.current
     setReconciles(new Map())
-    for (const model of models) {
+    const items = models.flatMap((model) => {
       const draft = draftOf(model.modelKey)
-      if (!draft) continue
-      void call(draft.text, vendorKey)
-        .then((result) => {
-          if (reconcileSeq.current !== seq || !result?.ok) return
-          setReconciles((current) => new Map(current).set(model.modelKey, result as WorkflowReconcile))
+      return draft ? [{ id: model.modelKey, text: draft.text }] : []
+    })
+    if (items.length === 0) return
+    if (batchCall) {
+      void batchCall(items, vendorKey)
+        .then((response) => {
+          if (reconcileSeq.current !== seq || !response?.ok) return
+          const next = new Map<string, WorkflowReconcile>()
+          for (const item of response.results) {
+            if (item.result.ok) next.set(item.id, item.result as WorkflowReconcile)
+          }
+          setReconciles(next)
         })
         .catch(() => undefined)
+      return
+    }
+    for (const item of items) {
+      void singleCall?.(item.text, vendorKey).then((result) => {
+        if (reconcileSeq.current !== seq || !result?.ok) return
+        setReconciles((current) => new Map(current).set(item.id, result as WorkflowReconcile))
+      }).catch(() => undefined)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftSignature, vendorKey, version, refreshToken])
