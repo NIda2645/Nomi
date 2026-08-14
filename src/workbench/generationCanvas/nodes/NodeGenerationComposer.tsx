@@ -43,6 +43,12 @@ import {
   type GenerationVariantCount,
 } from './generationVariantCount'
 import { useComposerViewportPlacement } from './useComposerViewportPlacement'
+import {
+  findModelOptionByIdentifier,
+  useGenerationModelOptionsState,
+} from '../adapters/modelOptionsAdapter'
+import { nodeSelectedModelAddress } from './controls/parameterControlModel'
+import { comfyWorkflowTakesPrompt } from '../runner/promptRequirement'
 
 // C5 P2：文本节点的三种生成模式（label 由 composer.append/rewrite/replace 在渲染处翻译）。
 const TEXT_GEN_MODES: { value: TextGenMode; labelKey: string }[] = [
@@ -249,6 +255,16 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
   const isGenerating = status === 'queued' || status === 'running'
   const hasResult = Boolean(node.result?.url)
   const nodeExecutionKind = getGenerationNodeExecutionKind(node.kind)
+  const modelOptions = useGenerationModelOptionsState(node.kind).options
+  const selectedModelAddress = nodeSelectedModelAddress(node.meta || {})
+  const selectedModelOption = findModelOptionByIdentifier(
+    modelOptions,
+    selectedModelAddress.modelKey,
+    selectedModelAddress.vendorKey,
+  )
+  // 导入工作流是否接收提示词由保存下来的 binding 决定。明确不接收时，整组移除无效输入和动作；
+  // null 表示非 ComfyUI 或目录尚未就绪，维持普通模型原有体验。
+  const acceptsPrompt = comfyWorkflowTakesPrompt(selectedModelOption?.meta) !== false
   // v0.7.2 perf: 用 boolean primitive 订阅 canGenerate
   const canGenerate = useGenerationCanvasStore((state) =>
     canRunGenerationNode(node, { nodes: state.nodes, edges: state.edges }),
@@ -278,7 +294,7 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
   }, [isAudioKind, node.meta])
   const audioIsTranscribe = audioMode?.transportTaskKind === 'transcribe'
   const textGenMode = getTextGenMode(node)
-  const hasPromptPickerButton = Boolean(nodeExecutionKind) && !audioIsTranscribe && !isTextKind
+  const hasPromptPickerButton = Boolean(nodeExecutionKind) && acceptsPrompt && !audioIsTranscribe && !isTextKind
   const hasReferenceControls =
     isImageLikeGenerationNodeKind(node.kind) || isVideoLikeGenerationNodeKind(node.kind) || isAudioKind
   // 持有 prompt 编辑器实例,供「点参考 tile → 在光标处插入 chip」(@ 内联引用主路径)。
@@ -503,7 +519,8 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
       <div
         className={cn(
           'generation-canvas-v2-node__composer-card',
-          'relative flex flex-col gap-2.5 p-3 min-h-[150px] min-w-[360px] max-w-[880px] w-max',
+          'relative flex flex-col gap-2.5 p-3 min-w-[360px] max-w-[880px] w-max',
+          acceptsPrompt ? 'min-h-[150px]' : 'min-h-0',
           // 宽度内容驱动（w-max）：按底栏一行(锁+参数+生成钮)的真实宽长开，参数少则窄、多则宽，不塌不爆、不换行。
           // max-w-[880px] 兜底：现有最宽是 apimart Seedance 7 控件(model+变体+比例+清晰度+时长+seed+生成音频)
           // ≈810px，880 留头不触发截断；纯防极端（防 omni 模式参考槽行等异常撑爆）。实测 2026-06-16 校准。
@@ -587,7 +604,7 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
       {/* 长 prompt 在编辑器内部滚动/换行；底栏永远贴底（卡宽确定，提示词在卡宽内自然换行，不撑爆）。 */}
       {/* 提示词至少 3 行高（min-h-[72px]）——参考区/底栏再多也不把它挤成 1 行（修③）；超长时本区滚动。 */}
       {/* 转写模式无台词输入（音频参考即输入）——隐藏 prompt，避免误导。 */}
-      {audioIsTranscribe || isTextKind ? null : (
+      {audioIsTranscribe || isTextKind || !acceptsPrompt ? null : (
         // w-0 min-w-full：填满卡宽但**贡献 0** 到 max-content（长 prompt 在卡宽内换行，不把卡撑爆 → 卡宽由底栏定）。
         // overflow-y-auto 直接挂在 flex-1 伸缩区上：该区高度被卡片 maxHeight 卡住后有界 → 超长 prompt 在本区内部
         // 滚动，底栏（shrink-0）永远贴底可见。min-h-[72px] 保底 3 行。
@@ -627,7 +644,7 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
         {isVideoLikeGenerationNodeKind(node.kind) && !node.locked ? (
           <NodeCameraMoveControl node={node} />
         ) : null}
-        {(nodeExecutionKind === 'image' || nodeExecutionKind === 'video') && !node.locked ? (
+        {acceptsPrompt && (nodeExecutionKind === 'image' || nodeExecutionKind === 'video') && !node.locked ? (
           <NodePromptOptimizer node={node} isVideo={nodeExecutionKind === 'video'} />
         ) : null}
         {(nodeExecutionKind === 'image' || nodeExecutionKind === 'video') && !node.locked ? (

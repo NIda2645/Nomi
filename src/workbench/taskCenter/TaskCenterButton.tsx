@@ -131,7 +131,7 @@ export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Elemen
               onClick={() => setOpened((value) => !value)}
             >
               <IconListDetails size={15} stroke={1.8} />
-              <span className="max-[1400px]:hidden">{t('taskCenter.title')}</span>
+              <span className="max-[1600px]:hidden">{t('taskCenter.title')}</span>
               {pending > 0 ? (
                 <span className="min-w-4 rounded-pill bg-nomi-paper px-1 text-center text-micro tabular-nums text-nomi-accent">
                   {pending}

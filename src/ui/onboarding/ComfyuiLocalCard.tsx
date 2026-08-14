@@ -195,6 +195,7 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
         <>
           <input
             value={addrDraft} onChange={(e) => setAddrDraft(e.target.value)} spellCheck={false}
+            aria-label={t('onboardingProviders.comfyLocal.addressLabelCloud')}
             className="flex-1 h-8 px-2 rounded-nomi-sm border border-nomi-line bg-nomi-paper text-caption font-mono text-nomi-ink focus:border-nomi-accent outline-none"
           />
           <button type="button" onClick={handleSaveAddr} className="h-8 w-8 grid place-items-center rounded-nomi-sm text-workbench-success hover:bg-nomi-ink-05" aria-label={t('onboardingProviders.comfyLocal.saveAddress')}><IconCheck size={15} stroke={1.8} /></button>
@@ -339,7 +340,7 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
           {/* 预置模板（S5）：内置 WAN2.2，离线也有一条能用的路（ComfyUI 没模板包时的兜底） */}
           <ComfyuiPresetSection modelLabels={models.map((m) => m.labelZh)} onImported={onChanged} />
 
-          {/* 自定义工作流导入（S4）：贴 workflow_api.json，属**接入**动作，留在卡里。
+          {/* 自定义工作流导入（S4）：贴普通或 API workflow JSON，属**接入**动作，留在卡里。
               导入之后的一切配置（改绑定/改字段/改名/删）都在「工作流设置」整页，不留第二套（P1）。 */}
           <ComfyuiWorkflowImportPanel vendorKey={key} onImported={onChanged} />
 

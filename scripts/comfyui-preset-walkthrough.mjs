@@ -148,7 +148,7 @@ try {
   await win.waitForTimeout(3500) // 等启用 toast 消退，别抢 getByText
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(COMBO_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(COMBO_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(1500) // 等 reconcile 带回 enumOptions
   await win.getByRole('button', { name: '添加参数', exact: true }).click() // 自动选中首个候选 = #1 ckpt_name
