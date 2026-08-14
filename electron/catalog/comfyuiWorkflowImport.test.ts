@@ -250,6 +250,23 @@ describe("buildComfyImportModelMapping", () => {
     expect(create.body.client_id).toBe("nomi");
     expect(create.defaultParams.comfy_seed).toBe(123);
   });
+
+  it("UI workflow 与 API prompt 分开保存：执行用 prompt，可复现元数据进 extra_pnginfo", () => {
+    const built = buildImportedWorkflow(SD_T2I, analyzeComfyWorkflow(SD_T2I).suggested);
+    const uiWorkflow = { nodes: [{ id: 9, type: "SaveImage" }], links: [] };
+    const { model, mapping } = buildComfyImportModelMapping(built, {
+      modelKey: "comfy-ui-source",
+      labelZh: "UI source",
+      draft: { text: JSON.stringify(SD_T2I), binding: analyzeComfyWorkflow(SD_T2I).suggested, uiWorkflowText: JSON.stringify(uiWorkflow) },
+    });
+    const body = (mapping.create as { body: Record<string, unknown> }).body;
+    expect(body.prompt).toEqual(built.templatedGraph);
+    expect(body.extra_data).toEqual({ extra_pnginfo: { workflow: uiWorkflow } });
+    expect(body.partial_execution_targets).toEqual([analyzeComfyWorkflow(SD_T2I).suggested.outputNodeId]);
+    expect((model.meta as { comfyWorkflowImport: { uiWorkflowText?: string } }).comfyWorkflowImport.uiWorkflowText)
+      .toBe(JSON.stringify(uiWorkflow));
+    expect((mapping.create as { request_transform?: string }).request_transform).toBe("comfyui-prompt");
+  });
 });
 
 describe("导入的图跑通真注参管线（证 {{}} 全被填、数字保持数字、连线不动）", () => {

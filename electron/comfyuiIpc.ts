@@ -8,6 +8,7 @@ import {
   analyzeComfyWorkflowTextSmart,
   importComfyWorkflowToCatalog,
   reconcileComfyWorkflowText,
+  reconcileComfyWorkflowTexts,
   updateComfyWorkflowInCatalog,
 } from "./catalog/comfyuiWorkflowImportStore";
 import { fetchComfyuiTemplateDetail, fetchComfyuiTemplates } from "./comfyuiTemplates";
@@ -28,6 +29,7 @@ export function registerComfyuiIpc(registerSyncIpc: RegisterSyncIpc): void {
   ipcMain.handle("nomi:model-catalog:comfyui:analyze-workflow-smart", (_e, text: unknown, vendorKey: unknown) =>
     analyzeComfyWorkflowTextSmart(text, vendorKey));
   ipcMain.handle("nomi:model-catalog:comfyui:reconcile-workflow", (_event, text: unknown, vendorKey: unknown) => reconcileComfyWorkflowText(text, vendorKey));
+  ipcMain.handle("nomi:model-catalog:comfyui:reconcile-workflows", (_event, items: unknown, vendorKey: unknown) => reconcileComfyWorkflowTexts(items, vendorKey));
   registerSyncIpc("nomi:model-catalog:comfyui:import-workflow", (payload: unknown) => importComfyWorkflowToCatalog(payload));
   registerSyncIpc("nomi:model-catalog:comfyui:update-workflow", (payload: unknown) => updateComfyWorkflowInCatalog(payload));
   // 预置模板（S5）：静态清单，启用前经 reconcile 缺件闸、启用走既有 import 链。
@@ -42,7 +44,7 @@ export function registerComfyuiIpc(registerSyncIpc: RegisterSyncIpc): void {
   ipcMain.handle("nomi:model-catalog:comfyui:template-detail", (_e, name: unknown, vendorKey: unknown) =>
     fetchComfyuiTemplateDetail(comfyBaseUrl(vendorKey), String(name || "")));
   // ws 进度桥（P 轨）：提交后 watch 登记 prompt_id→节点，进度/预览经 nomi:tasks:comfyui:progress 推回；
-  // interrupt = 遮罩取消按钮（/interrupt + /queue delete 双发 best-effort）。
+  // interrupt = 遮罩取消按钮（新服定向 jobs cancel；旧服只安全删除排队项）。
   ipcMain.handle("nomi:tasks:comfyui:watch", (event, payload: unknown) =>
     watchComfyuiTask((payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>, event.sender.id));
   ipcMain.handle("nomi:tasks:comfyui:unwatch", (_event, promptId: unknown) => unwatchComfyuiTask(promptId));

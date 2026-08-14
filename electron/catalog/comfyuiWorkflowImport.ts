@@ -58,7 +58,7 @@ export type WorkflowAnalysis = {
 
 export type ParamControl = { key: string; label: string; type: WorkflowParamType | "select"; default: number | string | boolean; options?: string[] };
 export type ImportedWorkflow = { templatedGraph: ComfyGraph; parameters: ParamControl[]; kind: "image" | "video" | "model3d"; taskKind: "text_to_image" | "image_edit" | "text_to_video" | "image_to_video" | "text_to_3d" | "image_to_3d" };
-export type ComfyWorkflowImportDraft = { text: string; binding: WorkflowBinding };
+export type ComfyWorkflowImportDraft = { text: string; binding: WorkflowBinding; uiWorkflowText?: string };
 /** (classType, inputKey) → 本机 combo 可选值（reconcile 顺手带出；导入/保存时烤进参数控件）。 */
 export type WorkflowEnumOption = { classType: string; inputKey: string; options: string[] };
 
@@ -616,12 +616,25 @@ export function buildComfyImportModelMapping(
   // 多实例：工作流归属**哪一台** ComfyUI（缺省第一台）。地址由该 vendor 的 baseUrlHint 决定，
   // 故同一张图导到两台机器互不干扰、各按各的缺件情况跑。
   const vendorKey = opts.vendorKey || COMFYUI_VENDOR_KEY;
+  let uiWorkflow: Record<string, unknown> | null = null;
+  if (opts.draft?.uiWorkflowText) {
+    try {
+      const parsed = JSON.parse(opts.draft.uiWorkflowText) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) uiWorkflow = parsed as Record<string, unknown>;
+    } catch { /* 已保存草稿可能来自旧版本手改，坏元数据不影响 API prompt 执行 */ }
+  }
   const create: HttpOperation = {
     method: "POST",
     path: "/prompt",
     headers: { "Content-Type": "application/json" },
-    body: { prompt: imported.templatedGraph, client_id: "nomi" },
+    body: {
+      prompt: imported.templatedGraph,
+      client_id: "nomi",
+      ...(opts.draft?.binding.outputNodeId ? { partial_execution_targets: [opts.draft.binding.outputNodeId] } : {}),
+      ...(uiWorkflow ? { extra_data: { extra_pnginfo: { workflow: uiWorkflow } } } : {}),
+    },
     response_mapping: { task_id: "prompt_id" },
+    request_transform: "comfyui-prompt",
     defaultParams: Object.fromEntries(imported.parameters.map((p) => [p.key, p.default])),
   };
   const query: HttpOperation = {
@@ -660,7 +673,7 @@ export function slugifyModelKey(labelZh: string, uniq: string): string {
 
 /** 编排：解析 → 建图 → 建 model+mapping → upsert（注入 store 写函数，可测、无副作用耦合）。 */
 export function importComfyWorkflow(
-  payload: { text: string; binding: WorkflowBinding; labelZh: string; modelKey: string; enumOptions?: WorkflowEnumOption[]; vendorKey?: string },
+  payload: { text: string; binding: WorkflowBinding; labelZh: string; modelKey: string; enumOptions?: WorkflowEnumOption[]; vendorKey?: string; uiWorkflowText?: string },
   upsertModel: (model: Record<string, unknown>) => void,
   upsertMapping: (mapping: Record<string, unknown>) => void,
 ): { modelKey: string; kind: "image" | "video" | "model3d"; taskKind: string } {
@@ -669,7 +682,7 @@ export function importComfyWorkflow(
   const { model, mapping } = buildComfyImportModelMapping(built, {
     modelKey: payload.modelKey,
     labelZh: payload.labelZh,
-    draft: { text: payload.text, binding: payload.binding },
+    draft: { text: payload.text, binding: payload.binding, ...(payload.uiWorkflowText ? { uiWorkflowText: payload.uiWorkflowText } : {}) },
     ...(payload.vendorKey ? { vendorKey: payload.vendorKey } : {}),
   });
   upsertModel(model);

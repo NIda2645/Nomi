@@ -515,7 +515,7 @@ export type DesktopBridge = DesktopMediaBridge & {
     /** ComfyUI ws 进度桥（P 轨）。旧 preload 可能没有 → 全部可选。 */
     comfyuiWatch?: (payload: { promptId: string; nodeId: string; projectId?: string; taskKind?: string; modelKey?: string | null; vendorKey?: string }) => Promise<{ ok: boolean }>
     comfyuiUnwatch?: (promptId: string) => Promise<void>
-    comfyuiInterrupt?: (promptId: string) => Promise<{ ok: boolean }>
+    comfyuiInterrupt?: (promptId: string) => Promise<{ ok: boolean; mode: 'targeted' | 'queue-only' | 'failed' }>
     onComfyuiProgress?: (callback: (event: unknown) => void) => () => void
   }
   agents: {
@@ -663,7 +663,7 @@ export type DesktopBridge = DesktopMediaBridge & {
     testMapping: (id: string, payload: unknown) => Promise<unknown>
     fetchDocs: (payload: unknown) => Promise<unknown>
     probeComfyui: (baseUrl?: string) => Promise<
-      { ok: true; summary: string; version?: string } | { ok: false; error: string }
+      { ok: true; summary: string; version?: string; protocol?: 'enhanced' | 'compatibility' } | { ok: false; error: string }
     >
     /** 校验 + 识别 workflow_api.json 可绑定节点（同步）。analysis 结构见 comfyuiWorkflowImport.WorkflowAnalysis。 */
     analyzeComfyWorkflow: (text: string) => { ok: true; analysis: unknown } | { ok: false; error: string }
@@ -678,9 +678,28 @@ export type DesktopBridge = DesktopMediaBridge & {
         }
       | { ok: false; error: string }
     >
+    /** 设置页批量缺件对账：整台实例共享一次 /object_info，结果按 id 回传。 */
+    reconcileComfyWorkflows?: (items: Array<{ id: string; text: string }>, vendorKey?: string) => Promise<
+      | {
+          ok: true
+          results: Array<{
+            id: string
+            result:
+              | {
+                  ok: true
+                  serverReachable: boolean
+                  unknownNodeTypes: string[]
+                  missingEnumValues: Array<{ nodeId: string; classType: string; title?: string; inputKey: string; value: string }>
+                  enumOptions?: Array<{ classType: string; inputKey: string; options: string[] }>
+                }
+              | { ok: false; error: string }
+          }>
+        }
+      | { ok: false; error: string }
+    >
     /** T1：贴什么格式都吃——界面格式借 ComfyUI 自己的前端转成 API 再分析。旧 preload 可能没有 → 可选。 */
     analyzeComfyWorkflowSmart?: (text: string, vendorKey?: string) => Promise<
-      | { ok: true; analysis: unknown; convertedText?: string }
+      | { ok: true; analysis: unknown; convertedText?: string; sourceWorkflowText?: string }
       | { ok: false; error: string }
     >
     /** T2：读用户自己 ComfyUI 里的官方模板库（几百个）。null = 没连上/这台没有模板包。 */
@@ -692,6 +711,7 @@ export type DesktopBridge = DesktopMediaBridge & {
     getComfyuiTemplateDetail?: (name: string, vendorKey?: string) => Promise<
       | {
           apiText: string
+          uiWorkflowText: string
           unknownNodeTypes: string[]
           missingEnumValues: Array<{ nodeId: string; classType: string; title?: string; inputKey: string; value: string }>
           enumOptions: Array<{ classType: string; inputKey: string; options: string[] }>
@@ -705,10 +725,10 @@ export type DesktopBridge = DesktopMediaBridge & {
       models: Array<{ file: string; dir: string; url: string }>
     }>
     /** 按绑定落库为用户自有 model+mapping（同步）。enumOptions 可选 = combo 参数烤成真实文件下拉。 */
-    importComfyWorkflow: (payload: { text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string }) =>
+    importComfyWorkflow: (payload: { text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
       { ok: true; modelKey: string; kind: string; taskKind: string } | { ok: false; error: string }
     /** 用同一 modelKey 更新已导入 workflow（同步）。 */
-    updateComfyWorkflow?: (payload: { modelKey: string; text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string }) =>
+    updateComfyWorkflow?: (payload: { modelKey: string; text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
       { ok: true; modelKey: string; kind: string; taskKind: string } | { ok: false; error: string }
   }
   skill: {

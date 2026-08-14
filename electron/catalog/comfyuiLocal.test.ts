@@ -10,6 +10,8 @@ import { applyBuiltinSeeds } from "./seedBuiltins";
 import { buildTemplateContext, renderTemplateValue } from "../ai/requestPipeline";
 import { taskTemplateParams, applyWireDefaults } from "./taskParams";
 import type { CatalogState } from "./types";
+import { applyRequestTransform } from "../tasks/requestTransforms";
+import { buildProfileHttpRequest } from "./profileHttpRequest";
 
 const ctx = { baseUrl: "http://127.0.0.1:8188" };
 
@@ -394,6 +396,33 @@ describe("fillEmptyCheckpoint（ckpt_name 留空 → 本机第一个 checkpoint�
     const input = { "1": { class_type: "MyCustomLoader", inputs: { ckpt_name: "" } } };
     const out = fillEmptyCheckpoint(input, ["a.safetensors"]) as typeof input;
     expect(out["1"].inputs.ckpt_name).toBe("");
+  });
+});
+
+describe("comfyui-prompt 会话封装", () => {
+  it("覆盖固定 client_id、采用预生成 prompt UUID，并保留 extra_pnginfo", async () => {
+    const promptId = "123e4567-e89b-42d3-a456-426614174000";
+    const workflow = { nodes: [{ id: 1, type: "SaveImage" }] };
+    const body = await applyRequestTransform("comfyui-prompt", {
+      prompt: { "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "m.safetensors" } } },
+      client_id: "nomi",
+      extra_data: { extra_pnginfo: { workflow } },
+    }, { baseUrl: "http://127.0.0.1:8188", promptId }) as Record<string, unknown>;
+    expect(body.client_id).toMatch(/^nomi-[0-9a-f-]{36}$/);
+    expect(body.client_id).not.toBe("nomi");
+    expect(body.prompt_id).toBe(promptId);
+    expect(body.extra_data).toEqual({ extra_pnginfo: { workflow } });
+  });
+
+  it("生产 profile 请求对裸 host 补 http 协议", () => {
+    const built = buildProfileHttpRequest({
+      vendor: { ...COMFYUI_VENDOR_SEED, baseUrlHint: "127.0.0.1:8188/" },
+      model: COMFYUI_CURATED_MODELS[0],
+      apiKey: "",
+      request: { kind: "text_to_image", prompt: "test", extras: {} } as never,
+      operation: COMFYUI_CURATED_MAPPINGS[0].create,
+    });
+    expect(built.url).toBe("http://127.0.0.1:8188/prompt");
   });
 });
 

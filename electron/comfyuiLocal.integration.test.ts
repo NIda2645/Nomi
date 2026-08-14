@@ -42,7 +42,8 @@ let baseUrl = "";
 let historyHits = 0;
 let viewHits = 0;
 let objectInfoHits = 0;
-let lastPromptBody: { prompt: Record<string, { inputs: Record<string, unknown> }>; client_id?: string } | null = null;
+const REQUEST_PROMPT_ID = "123e4567-e89b-42d3-a456-426614174000";
+let lastPromptBody: { prompt: Record<string, { inputs: Record<string, unknown> }>; client_id?: string; prompt_id?: string } | null = null;
 
 beforeAll(async () => {
   mockedUserDataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "comfyui-e2e-"));
@@ -54,11 +55,11 @@ beforeAll(async () => {
       req.on("end", () => {
         lastPromptBody = JSON.parse(raw || "{}");
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ prompt_id: "e2e-abc", number: 1 }));
+        res.end(JSON.stringify({ prompt_id: lastPromptBody?.prompt_id || "e2e-abc", number: 1 }));
       });
       return;
     }
-    if (req.method === "GET" && url.pathname === "/history/e2e-abc") {
+    if (req.method === "GET" && url.pathname === `/history/${REQUEST_PROMPT_ID}`) {
       historyHits += 1;
       res.writeHead(200, { "Content-Type": "application/json" });
       // 第一拍：还没跑完（空 {}）→ 证 runtime 会继续轮询；第二拍：出图。
@@ -66,7 +67,7 @@ beforeAll(async () => {
         historyHits < 2
           ? JSON.stringify({})
           : JSON.stringify({
-              "e2e-abc": {
+              [REQUEST_PROMPT_ID]: {
                 status: { status_str: "success", completed: true },
                 outputs: { "9": { images: [{ filename: "Nomi_00001_.png", subfolder: "", type: "output" }] } },
               },
@@ -118,7 +119,7 @@ describe("本地 ComfyUI 传输链（真 HTTP 端到端）", () => {
       createdAt: "", updatedAt: "",
     };
     const extras = applyWireDefaults({}, mapping.create.defaultParams) as Record<string, unknown>;
-    const request = { prompt: "a red cube on green grass", extras } as never;
+    const request = { prompt: "a red cube on green grass", extras: { ...extras, comfyPromptId: REQUEST_PROMPT_ID } } as never;
 
     // ── 1) 提交 POST /prompt ──
     const created = await executeProfileOperation({ vendor, model, apiKey: "", request, operation: mapping.create });
@@ -128,7 +129,7 @@ describe("本地 ComfyUI 传输链（真 HTTP 端到端）", () => {
     });
     // prompt_id → result.id（response_mapping.task_id="prompt_id"）。真轮询路从缓存键(=result.id)回填
     // providerMeta.task_id（taskResultQuery.ts:70-71），故 id 落在 result.id 而非 providerMeta。
-    expect(createNorm.result.id).toBe("e2e-abc");
+    expect(createNorm.result.id).toBe(REQUEST_PROMPT_ID);
     // ComfyUI 真收到的是 API 格式工作流图（不是 UI json），提示词注入 + 数字是真数字
     expect(lastPromptBody?.prompt?.["6"]?.inputs?.text).toBe("a red cube on green grass");
     // ckpt 默认留空 → "comfyui-prompt" 请求变换真跑了一趟 /object_info 并 derive 出本机第一个 checkpoint
@@ -136,7 +137,8 @@ describe("本地 ComfyUI 传输链（真 HTTP 端到端）", () => {
     expect(lastPromptBody?.prompt?.["4"]?.inputs?.ckpt_name).toBe("local-sd15.safetensors");
     expect(lastPromptBody?.prompt?.["3"]?.inputs?.seed).toBe(156680208700286);
     expect(typeof lastPromptBody?.prompt?.["5"]?.inputs?.width).toBe("number");
-    expect(lastPromptBody?.client_id).toBe("nomi");
+    expect(lastPromptBody?.client_id).toMatch(/^nomi-[0-9a-f-]{36}$/);
+    expect(lastPromptBody?.prompt_id).toBe(REQUEST_PROMPT_ID);
 
     // ── 2) 轮询 GET /history/{id} 直到成功 ──
     // 镜像真轮询路（taskResultQuery.ts）：providerMeta.task_id/query_id 从缓存键(=create result.id)回填。
@@ -149,7 +151,7 @@ describe("本地 ComfyUI 传输链（真 HTTP 端到端）", () => {
       const polled = await executeProfileOperation({ vendor, model, apiKey: "", request, operation: mapping.query, providerMeta });
       const norm = await buildProfileTaskResult({
         response: polled.response, mapping, operation: mapping.query, request,
-        taskIdFallback: "e2e-abc", wantedKind: "image", projectId: project.id, vendor, model,
+        taskIdFallback: REQUEST_PROMPT_ID, wantedKind: "image", projectId: project.id, vendor, model,
       });
       status = norm.result.status;
       assetUrl = norm.result.assets[0]?.url || "";

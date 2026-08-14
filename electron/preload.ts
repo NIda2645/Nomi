@@ -332,7 +332,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
         ipcRenderer.removeListener("nomi:tasks:text:event", listener as never);
       };
     },
-    // ComfyUI ws 进度桥（P 轨）：watch 登记 → 主进程推 progress/preview/queue/done；interrupt=取消。
+    // ComfyUI ws 进度桥（P 轨）：watch 登记 → 主进程推 progress/preview/queue/done；interrupt=安全定向取消。
     comfyuiWatch: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:comfyui:watch", payload),
     comfyuiUnwatch: (promptId: string) => ipcRenderer.invoke("nomi:tasks:comfyui:unwatch", promptId),
     comfyuiInterrupt: (promptId: string) => ipcRenderer.invoke("nomi:tasks:comfyui:interrupt", promptId),
@@ -517,6 +517,8 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     analyzeComfyWorkflow: (text: string) => invokeSync("nomi:model-catalog:comfyui:analyze-workflow", text),
     reconcileComfyWorkflow: (text: string, vendorKey?: string) =>
       ipcRenderer.invoke("nomi:model-catalog:comfyui:reconcile-workflow", text, vendorKey),
+    reconcileComfyWorkflows: (items: Array<{ id: string; text: string }>, vendorKey?: string) =>
+      ipcRenderer.invoke("nomi:model-catalog:comfyui:reconcile-workflows", items, vendorKey),
     // T1：贴什么格式都吃（界面格式借 ComfyUI 前端自动转 API）。
     analyzeComfyWorkflowSmart: (text: string, vendorKey?: string) =>
       ipcRenderer.invoke("nomi:model-catalog:comfyui:analyze-workflow-smart", text, vendorKey),
@@ -526,9 +528,9 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     getComfyuiTemplateDetail: (name: string, vendorKey?: string) =>
       ipcRenderer.invoke("nomi:model-catalog:comfyui:template-detail", name, vendorKey),
     listComfyuiPresets: () => invokeSync("nomi:model-catalog:comfyui:presets"),
-    importComfyWorkflow: (payload: { text: string; binding: unknown; labelZh: string; enumOptions?: unknown }) =>
+    importComfyWorkflow: (payload: { text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
       invokeSync("nomi:model-catalog:comfyui:import-workflow", payload),
-    updateComfyWorkflow: (payload: { modelKey: string; text: string; binding: unknown; labelZh: string; enumOptions?: unknown }) =>
+    updateComfyWorkflow: (payload: { modelKey: string; text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
       invokeSync("nomi:model-catalog:comfyui:update-workflow", payload),
   },
   skill: {

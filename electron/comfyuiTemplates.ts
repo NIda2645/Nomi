@@ -15,6 +15,7 @@
 import { fetchComfyuiObjectInfoIndex } from "./comfyuiObjectInfo";
 import { collectGraphEnumOptions, parseComfyApiWorkflow, reconcileComfyWorkflow, type MissingEnumValue } from "./catalog/comfyuiWorkflowImport";
 import { convertUiWorkflowToApi } from "./comfyuiGraphConvert";
+import { normalizeComfyuiBaseUrl } from "./comfyui/endpointResolver";
 
 export type ComfyTemplateEntry = {
   name: string;
@@ -35,7 +36,7 @@ function isRec(v: unknown): v is Record<string, unknown> {
 }
 
 function normalizeBase(baseUrl: string): string {
-  return (baseUrl || "http://127.0.0.1:8188").replace(/\/+$/, "");
+  return normalizeComfyuiBaseUrl(baseUrl);
 }
 
 /** 纯解析（可单测）：官方 index.json → 扁平模板清单。任何异形字段都跳过、不抛。 */
@@ -92,6 +93,8 @@ export async function fetchComfyuiTemplates(baseUrl: string): Promise<ComfyTempl
 export type TemplateDetail = {
   /** 转好的 API 格式文本（可直接喂既有导入链）。 */
   apiText: string;
+  /** 官方模板的 UI workflow，随提交写进 extra_pnginfo 以便在 ComfyUI 继续编辑。 */
+  uiWorkflowText: string;
   unknownNodeTypes: string[];
   missingEnumValues: MissingEnumValue[];
   enumOptions: ReturnType<typeof collectGraphEnumOptions>;
@@ -128,8 +131,8 @@ export async function fetchComfyuiTemplateDetail(baseUrl: string, name: string):
   }
   const index = await fetchComfyuiObjectInfoIndex(base);
   if (!index) {
-    return { apiText, unknownNodeTypes: [], missingEnumValues: [], enumOptions: [], serverReachable: false };
+    return { apiText, uiWorkflowText: uiText, unknownNodeTypes: [], missingEnumValues: [], enumOptions: [], serverReachable: false };
   }
   const rec = reconcileComfyWorkflow(graph, index);
-  return { apiText, ...rec, enumOptions: collectGraphEnumOptions(graph, index), serverReachable: true };
+  return { apiText, uiWorkflowText: uiText, ...rec, enumOptions: collectGraphEnumOptions(graph, index), serverReachable: true };
 }

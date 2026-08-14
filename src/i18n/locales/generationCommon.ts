@@ -9,6 +9,10 @@ export const zhGenerationCommon = {
     resizeAssistant: '拖动调整助手宽度',
     timelineActionPrefix: '生成时间轴-',
   },
+  comfyuiCancel: {
+    queueOnly: '这版 ComfyUI 只能安全移除排队任务；如果任务已经运行，它会在本地继续完成',
+    failed: '没能确认 ComfyUI 已取消任务；它可能仍在本地运行',
+  },
   provenance: {
     dialogAria: '生成记录',
     title: '生成记录 · {{name}}',
@@ -1213,6 +1217,10 @@ export const enGenerationCommon = {
     assistantSidebar: 'Generation AI sidebar',
     resizeAssistant: 'Drag to resize assistant',
     timelineActionPrefix: 'Generation timeline - ',
+  },
+  comfyuiCancel: {
+    queueOnly: 'This ComfyUI version can only remove queued jobs safely. A running job will continue locally.',
+    failed: 'Nomi could not confirm that ComfyUI cancelled the job. It may still be running locally.',
   },
   provenance: {
     dialogAria: 'Generation record',
