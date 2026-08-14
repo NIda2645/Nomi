@@ -118,7 +118,7 @@ export const zhCreationAi = {
     textModel: '文本对话模型',
     descriptionAfter: '当大脑。',
     enable: '启用 {{model}}',
-    settings: '去模型设置',
+    settings: '检查模型',
   },
   mode: {
     general: {

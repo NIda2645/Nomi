@@ -18,7 +18,7 @@ export async function runContentGrouping(items: GroupingInput[], signal?: AbortS
   const ids = items.map((i) => i.nodeId)
   if (items.length < 2) return { groups: [], ungroupedIds: ids }
   const brain = await getTextBrain()
-  if (!brain) throw new Error('请先在「模型接入」里启用一个文本模型')
+  if (!brain) throw new Error('请先在「设置 → 模型」里启用一个文本模型')
   const prompt = buildGroupingPrompt(items)
   let acc = ''
   await runWorkbenchTextTaskStream(

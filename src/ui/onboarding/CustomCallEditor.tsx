@@ -3,7 +3,7 @@
  * 一屏三步：贴材料 → AI 生成脚本（复用创作助手同文本脑，prompt_refine 通道）→ 试跑（真调、
  * 花一次最小额度、把实际请求/响应摊开——参考图闸对脚本失明的补偿）。保存即接管该模型调用；
  * 留空/删除=恢复默认。弹窗走 DesignModal（同 OnboardingWizard），content 挂 workbench-shell
- * 接回 --workbench-* token 域（Portal 脱域陷阱，见 OnboardingFloatingPanel 头注释）。
+ * 接回 --workbench-* token 域，避免 Portal 脱离工作区 token 作用域。
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'

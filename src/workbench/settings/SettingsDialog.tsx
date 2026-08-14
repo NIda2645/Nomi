@@ -23,7 +23,7 @@ import type { ProductionPolicyRequirement } from '../production/productionPolicy
 // （OnboardingWizard / 各家 VendorCard / ComfyUI 那套）是个 160KB+ 的独立 chunk。直接 import
 // 会把它整个拽进首屏主包——实测首帧慢到走查 60s 启动超时。走 chunkBoundary 保住边界，
 // 顺带 chunk 挂了只降级这一个 tab、不拖死设置页。
-const OnboardingDrawer = lazyWithChunkBoundary('模型接入', () =>
+const OnboardingDrawer = lazyWithChunkBoundary('模型', () =>
   import('../../ui/onboarding/OnboardingDrawer').then((module) => ({ default: module.OnboardingDrawer })),
 )
 
@@ -31,7 +31,7 @@ const OnboardingDrawer = lazyWithChunkBoundary('模型接入', () =>
 const LOCALE_LABEL_KEY: Record<AppLocale, string> = { 'zh-CN': 'common.chinese', en: 'common.english' }
 
 // 集中设置页（2026-08-01 用户拍板样张）：左 tab 右内容。首批「文件与保存」做实——自动另存开关+目录；
-// 其余 tab 占位。复用 OnboardingFloatingPanel 的外壳交互（Portal + Esc + 点遮罩关），布局是居中大 modal。
+// 其余 tab 占位。外壳交互为 Portal + Esc + 点遮罩关，布局是居中大 modal。
 // 2026-08-12 用户拍板：五 tab 变六 tab，「模型」独立成一档。
 // 为什么原拍板不再成立：定五 tab 那会儿「模型」= 几个 API key，塞进「AI 与模型」够用；
 // 现在多实例 ComfyUI + 自定义工作流已长成一个要整页的子系统。而那个 tab 里的东西
@@ -39,7 +39,7 @@ const LOCALE_LABEL_KEY: Record<AppLocale, string> = { 'zh-CN': 'common.chinese',
 // 不是「我的模型」——名不副实正是「改 api url 翻半天找不到」的根因，故一并改名「AI 策略」。
 // 手法按 §1.5.3 取代价最低的那档：**分组**（代价 0），不是把东西收进 ▾。
 // plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md
-type SettingsTab = 'file' | 'models' | 'ai' | 'automation' | 'general' | 'about'
+export type SettingsTab = 'file' | 'models' | 'ai' | 'automation' | 'general' | 'about'
 export type SettingsInitialSection = 'automation' | 'cursor-host' | 'ai-models' | 'production-policy' | null
 
 const TABS: { id: SettingsTab; icon: typeof IconFolder; labelKey: string }[] = [
@@ -57,14 +57,12 @@ export function SettingsDialog({
   onClose,
   onReplaySplash,
   productionPolicyRequirement = null,
-  onOpenModelCatalog,
 }: {
   initialTab?: SettingsTab
   initialSection?: SettingsInitialSection
   onClose: () => void
   onReplaySplash?: () => void
   productionPolicyRequirement?: ProductionPolicyRequirement | null
-  onOpenModelCatalog?: () => void
 }): JSX.Element {
   const { t } = useTranslation()
   const { isDark } = useNomiColorScheme()
@@ -248,9 +246,8 @@ export function SettingsDialog({
                 <ProjectLocationSection />
               </div>
             ) : tab === 'models' ? (
-              // 直接渲染既有 OnboardingDrawer——**同一个组件**，不为设置另写一份模型列表（P1）。
-              // 画布上的浮卡渲染的也是它：设置是家，浮卡是干活时不遮挡工作区的加速器
-              // （浮卡「无遮罩」是 2026-06 拍板，设置对话框有 bg-black/45，不能拿它顶替浮卡）。
+              // 模型管理的唯一宿主。顶部、缺模型和错误恢复入口都由设置控制器深链到这里；
+              // 不再并行挂一套浮卡，避免两套层级、焦点和关闭语义继续漂移。
               <div data-settings-section="models">
                 <h2 className="mb-4 text-title font-medium text-nomi-ink">{t('settings.tab.models')}</h2>
                 {/* 本地 Suspense：chunk 还在下载时只让这个 tab 显示占位，别把 suspend 抛给
@@ -271,7 +268,7 @@ export function SettingsDialog({
                   onChange={updateAutomationPolicy}
                   productionPolicyRequirement={productionPolicyRequirement}
                   focusEnabled={automationPolicyLoaded}
-                  onOpenModelCatalog={onOpenModelCatalog}
+                  onOpenModelCatalog={() => setTab('models')}
                 />
               </fieldset>
             ) : tab === 'automation' ? (

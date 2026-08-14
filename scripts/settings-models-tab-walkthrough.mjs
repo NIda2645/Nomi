@@ -33,10 +33,11 @@ try {
   // ── ① 齿轮进设置 ──
   await win.getByRole('button', { name: '设置', exact: true }).first().click()
   await win.waitForTimeout(900)
+  const settings = win.getByRole('dialog', { name: '设置' })
   await shot(win, '01-settings-six-tabs.png') // 验：左侧六个 tab，含「模型」与改名后的「AI 策略」
 
   // ── ② 模型 tab = 真正的接入面 ──
-  await win.getByRole('button', { name: '模型', exact: true }).first().click()
+  await settings.getByRole('button', { name: '模型', exact: true }).click()
   await win.waitForTimeout(900)
   await shot(win, '02-models-tab.png') // 验：能力概览 + 已接入/可接入分组 + 本地 ComfyUI 卡
 
@@ -50,7 +51,7 @@ try {
   console.log('  模型 tab 装的是完整接入面: ✓')
 
   // ── ③ AI 策略 tab：只剩护栏，重复的只读连接列表已删 ──
-  await win.getByRole('button', { name: 'AI 策略', exact: true }).first().click()
+  await settings.getByRole('button', { name: 'AI 策略', exact: true }).click()
   await win.waitForTimeout(700)
   await shot(win, '03-ai-policy-tab.png') // 验：数据上传 + 默认模型策略；无「模型连接」段
   const aiText = await win.evaluate(() => {
@@ -60,6 +61,15 @@ try {
   if (aiText.includes('模型连接')) throw new Error('AI 策略里仍有重复的「模型连接」只读列表')
   if (!aiText.includes('默认模型策略')) throw new Error('AI 策略里的 MCP 代跑护栏被误删')
   console.log('  AI 策略只剩护栏、重复列表已删: ✓')
+
+  // ── ④ 旧模型入口事件兼容：仍统一深链到设置 → 模型 ──
+  await win.keyboard.press('Escape')
+  await win.waitForTimeout(250)
+  await win.evaluate(() => window.dispatchEvent(new CustomEvent('nomi-open-model-catalog')))
+  await win.waitForSelector('[data-settings-section="models"]')
+  const settingsDialogCount = await win.getByRole('dialog', { name: '设置' }).count()
+  if (settingsDialogCount !== 1) throw new Error(`旧模型入口打开了 ${settingsDialogCount} 个设置对话框`)
+  console.log('  旧模型入口事件统一深链到设置 → 模型: ✓')
 
   console.log(errors.length ? ('  ⚠️ console/page errors:\n' + errors.slice(0, 8).join('\n')) : '  ✅ 无 console/page error')
 } catch (e) {

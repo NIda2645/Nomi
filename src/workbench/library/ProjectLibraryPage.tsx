@@ -163,7 +163,7 @@ export default function ProjectLibraryPage({
 
   // 弱入口 6 → 3（§1.5）：「看看 Nomi」（重放开屏动画）归位到设置「关于」——它和主卡
   // 「重看一遍引导」是两个不同功能却名字撞车（后者会建 demo 项目回放整条流水线），
-  // 搬走后主卡独占「引导」语义；语言/外观归位到设置「通用」。剩下=接入模型 · 浏览器 · 设置。
+  // 搬走后主卡独占「引导」语义；语言/外观归位到设置「通用」。剩下=模型 · 浏览器 · 设置。
   const libraryTopActions = (
     <div className="app-no-drag flex items-center gap-1">
       {showModelEntry ? (
@@ -174,10 +174,10 @@ export default function ProjectLibraryPage({
             'inline-flex items-center gap-1.5 h-7 px-2 rounded-pill border-0 bg-transparent cursor-pointer font-inherit',
             'text-caption text-nomi-ink-60 transition-colors hover:text-nomi-ink',
           )}
-          aria-label={t('library.connectModel')}
+          aria-label={t('library.models')}
         >
           <IconPlugConnected size={14} stroke={1.8} aria-hidden="true" />
-          {t('library.connectModel')}
+          {t('library.models')}
         </button>
       ) : null}
       <button

@@ -394,10 +394,6 @@ export function OnboardingDrawer(): JSX.Element {
 
   return (
     <div className="flex flex-col">
-      {/* 顶部能力概览：先告诉用户「你现在能生成什么」（effect-first），再谈配置。
-          大标题已上移到浮卡 header（OnboardingFloatingPanel），此处不再重复渲染
-          （2026-08-08 飞书反馈「两个模型设置重复」）。 */}
-
       {/* 顶部能力概览：先告诉用户「你现在能生成什么」（effect-first），再谈配置。 */}
       <div className="px-4 pt-3 pb-2">
         <div className="text-micro text-nomi-ink-40 mb-1.5">{t('onboardingProviders.drawer.capabilities')}</div>

@@ -312,6 +312,33 @@ describe("ProviderAdapterService", () => {
     expect(catalog.failed).toEqual([started.id]);
   });
 
+  it("falls back to the generic contract when a custom public relay has no discoverable docs", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.discover = async () => ({ sources: [], corpus: "" });
+    deps.compile = vi.fn(deps.compile);
+    deps.repair = vi.fn(deps.repair);
+    deps.verify = async ({ mode }) => ({
+      ok: false,
+      taskKind: mode.taskKind,
+      stage: "create",
+      error: "HTTP 404",
+    });
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(deps.compile).not.toHaveBeenCalled();
+    expect(deps.repair).not.toHaveBeenCalled();
+    expect(catalog.failed).toEqual([]);
+    expect(catalog.promoted[0]?.draft.models[0]?.modes.map((mode) => mode.taskKind)).toEqual([
+      "text_to_image",
+      "image_edit",
+    ]);
+    expect(service.getRun(started.id)?.stage).toBe("failed");
+  });
+
   it("keeps verified modes publishable when repairing a different failed model returns malformed output", async () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);

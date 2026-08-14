@@ -13,7 +13,7 @@ import type { AiSdkProviderKind, BillingModelKind, Model, ProfileKind, Vendor } 
 import { humanizeModelKey } from "../catalog/modelLabel";
 import { AdapterNeedsAiError, compileProviderAdapter, repairProviderAdapter } from "./compiler";
 import { discoverProviderDocs, type DiscoveredDocs } from "./docsDiscovery";
-import { builtinDraftForUndocumentedEndpoint } from "./builtinOpenAiCompatibleDraft";
+import { buildOpenAiCompatibleDraft, builtinDraftForUndocumentedEndpoint } from "./builtinOpenAiCompatibleDraft";
 import { connectionFingerprint, ProviderAdapterStore, recoverableAdapterRuns } from "./store";
 import type {
   AdapterAuthType,
@@ -476,20 +476,34 @@ export class ProviderAdapterService {
           baseUrl: String(connection.vendor.baseUrlHint || ""),
           modelKeys: mediaModels.map((model) => model.modelKey),
         });
-        if (docs.sources.length === 0 || !docs.corpus.trim()) throw new Error("No official API documentation could be discovered on the provider site");
-        this.store.updateRun(id, (run) => ({
-          ...run,
-          sourceUrls: docs.sources.map((source) => source.url),
-          updatedAt: this.dependencies.now(),
-        }));
-        this.setStage(id, "compiling");
-        compilation = await this.dependencies.compile({
-          languageModels,
-          providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
-          authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
-          selectedModels: mediaModels.map((model) => ({ modelKey: model.modelKey, label: model.labelZh, kind: model.kind })),
-          docs: docs.sources,
-        });
+        if (docs.sources.length === 0 || !docs.corpus.trim()) {
+          // 文档是增强接法准确率的证据，不是用户模型能否进入目录的准入证。
+          // 自定义公网中转也经常没有可抓取的文档站；此时用与局域网相同的通用兼容契约真测，
+          // 失败能力仍逐项标记并提供「我自己接」，不能因为 Nomi 没找到文档就把整批模型藏掉。
+          compilation = {
+            draft: buildOpenAiCompatibleDraft({
+              baseUrl: String(connection.vendor.baseUrlHint || ""),
+              authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+              ...(connection.vendor.providerKind ? { providerKind: connection.vendor.providerKind } : {}),
+              models: mediaModels.map((model) => ({ modelKey: model.modelKey, labelZh: model.labelZh, kind: model.kind })),
+            }),
+            failures: [],
+          };
+        } else {
+          this.store.updateRun(id, (run) => ({
+            ...run,
+            sourceUrls: docs.sources.map((source) => source.url),
+            updatedAt: this.dependencies.now(),
+          }));
+          this.setStage(id, "compiling");
+          compilation = await this.dependencies.compile({
+            languageModels,
+            providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
+            authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+            selectedModels: mediaModels.map((model) => ({ modelKey: model.modelKey, label: model.labelZh, kind: model.kind })),
+            docs: docs.sources,
+          });
+        }
       }
       // 文本条目不经 AI：接法固定、模式表也固定（chat）。合进草稿只为让验证与展示有位置。
       // 文本条目**以这里为单一真相**——编译器万一也吐了同名文本条目（误分类/被喂了不该喂的），
@@ -514,7 +528,9 @@ export class ProviderAdapterService {
       // 旧行为：白转 2 轮、界面还写着「正在根据真实错误自动修复…」（假的），用户干等 2 分钟拿同一个结果。
       // 只让「修得动的」失败（真正按草稿发请求的非文本模型）触发重修。(2026-08-12)
       const repairableKeys = new Set(
-        connection.models.filter((model) => model.kind !== "text").map((model) => model.modelKey),
+        docs.sources.length > 0
+          ? connection.models.filter((model) => model.kind !== "text").map((model) => model.modelKey)
+          : [],
       );
       for (let repairAttempt = 1; repairAttempt <= maxRepairs; repairAttempt += 1) {
         const compiledKeys = new Set(candidate.models.map((model) => model.modelKey));

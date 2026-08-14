@@ -90,7 +90,7 @@ async function runPromptExtraction(
 ): Promise<{ title: string; prompt: string }> {
   if (!modelImageUrl) throw new Error('没有可分析的参考图')
   const brain = await getTextBrain()
-  if (!brain) throw new Error('请先在「模型接入」里启用一个支持图片输入的文本模型')
+  if (!brain) throw new Error('请先在「设置 → 模型」里启用一个支持图片输入的文本模型')
   const result = await runWorkbenchTaskByVendor(brain.vendor, {
     kind: 'image_to_prompt',
     prompt: browserPromptExtractionPromptFromSettings(settings, mode),

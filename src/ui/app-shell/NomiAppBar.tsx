@@ -262,7 +262,7 @@ export default function NomiAppBar({
           <span className={cn('nomi-appbar__divider', 'w-px h-[18px] bg-workbench-border')} aria-hidden="true" />
         </span>
 
-        {/* 配置：系统设置与模型接入归在一起，不再让设置看起来像浏览器的附属按钮。 */}
+        {/* 配置：系统设置与模型快捷入口归在一起；二者最终落到同一张设置对话框。 */}
         <span
           data-actions={APP_BAR_ACTION_GROUPS.config.join(' ')}
           className={cn(

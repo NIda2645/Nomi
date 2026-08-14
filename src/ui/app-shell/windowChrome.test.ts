@@ -23,7 +23,6 @@ describe('workbench floating surface top offset', () => {
 
     for (const source of [
       read('../../NomiAppProviders.tsx'),
-      read('../onboarding/OnboardingFloatingPanel.tsx'),
       read('../../workbench/taskCenter/TaskCenterPanel.tsx'),
       read('../../workbench/onboarding/OnboardingChecklist.tsx'),
     ]) {
@@ -32,12 +31,11 @@ describe('workbench floating surface top offset', () => {
   })
 })
 
-// issue #58（Windows v0.19.0）：模型设置浮卡右上角的 × 点中心没反应，偏上下才灵。
+// issue #58（Windows v0.19.0）：Portal 浮卡右上角的 × 点中心没反应，偏上下才灵。
 // 根因是 Windows frame:false + 自绘窗口栏，拖拽区靠 -webkit-app-region 命中测试划出来，
 // 而命中测试**看几何、不看 DOM 层级**：Portal 到 body 的浮层不是窗口栏的后代，
 // 拿不到窗口栏内那条 `.app-drag button` 豁免，压在拖拽带上的按钮点击就被系统当成拖窗口吃掉。
 const PORTAL_FLOATING_SURFACES = [
-  ['模型设置浮卡', '../onboarding/OnboardingFloatingPanel.tsx'],
   ['任务中心浮卡', '../../workbench/taskCenter/TaskCenterPanel.tsx'],
 ] as const
 

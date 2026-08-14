@@ -5,7 +5,7 @@ export const zhRuntime = {
     confirm: '确认',
   },
   modelCatalog: {
-    desktopUnavailable: '本地模型目录不可用：请打开模型接入并检查桌面运行时。',
+    desktopUnavailable: '本地模型目录不可用：请打开「设置 → 模型」并检查桌面运行时。',
     loadFailed: '模型目录加载失败',
     loading: '正在读取模型目录...',
     loadFailedWithMessage: '模型目录加载失败：{{message}}',

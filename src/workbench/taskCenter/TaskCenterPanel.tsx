@@ -1,4 +1,4 @@
-// 任务中心面板（右上浮卡，照 OnboardingFloatingPanel 模式：不遮画布、不 dim、ESC/点外关）。
+// 任务中心面板（右上浮卡：不遮画布、不 dim、ESC/点外关）。
 // 方案：docs/plan/2026-08-02-task-center-queue.md，样张 2026-08-02 拍板。
 //
 // 只负责画；分组/排序/可取消性判定全在纯函数 taskCenterEntries.ts（可单测）。

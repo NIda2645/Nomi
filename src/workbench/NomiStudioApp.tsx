@@ -59,11 +59,6 @@ type ProjectPersistenceModule = typeof import('./project/projectPersistenceServi
 
 // 懒加载点位全部走容错域（审计 A5）：chunk 失败只降级该区域，不再拖死整个 app。
 const WorkbenchShell = lazyWithChunkBoundary('工作台', () => import('./WorkbenchShell'))
-const OnboardingFloatingPanel = lazyWithChunkBoundary('模型设置面板', () =>
-  import('../ui/onboarding/OnboardingFloatingPanel').then((module) => ({
-    default: module.OnboardingFloatingPanel,
-  })),
-)
 const HandbookPanel = lazyWithChunkBoundary('上手手册', () =>
   import('./onboarding/HandbookPanel').then((module) => ({
     default: module.HandbookPanel,
@@ -122,7 +117,6 @@ export default function NomiStudioApp(): JSX.Element {
   const { projects, refreshProjects } = useLocalProjects()
   const [activeProject, setActiveProject] = React.useState<LocalProjectSummary | null>(null)
   const generationAiCollapsed = useGenerationCanvasStore((state) => state.generationAiCollapsed)
-  const [modelCatalogOpened, setModelCatalogOpened] = React.useState(false)
   const settingsDialogController = useSettingsDialogController()
   const [handbookOpened, setHandbookOpened] = React.useState(false)
   const [browserOpened, setBrowserOpened] = React.useState(false)
@@ -132,10 +126,6 @@ export default function NomiStudioApp(): JSX.Element {
   const [splashDone, setSplashDone] = React.useState(() => hasSeenSplash())
   const [journeyTourControllerMounted, setJourneyTourControllerMounted] = React.useState(false)
   const { hasTextModel, refresh: refreshModelStatus } = useHasTextModel()
-  // 模型接入面板关闭后重查（用户可能刚接完模型 → 状态条/弱入口要立即翻面）
-  React.useEffect(() => {
-    if (!modelCatalogOpened) refreshModelStatus()
-  }, [modelCatalogOpened, refreshModelStatus])
   const hydratingProjectRef = React.useRef(false)
   const activeProjectIdRef = React.useRef<string | null>(null)
   const initialHydrationAttemptedRef = React.useRef(false)
@@ -184,12 +174,6 @@ export default function NomiStudioApp(): JSX.Element {
   // 素材面收敛一次性迁移（幂等）：旧素材盒 localStorage 提示词卡并入主提示词库。
   React.useEffect(() => {
     runAssetSurfaceMigrations()
-  }, [])
-
-  React.useEffect(() => {
-    const handleOpenModelCatalog = () => setModelCatalogOpened(true)
-    window.addEventListener('nomi-open-model-catalog', handleOpenModelCatalog)
-    return () => window.removeEventListener('nomi-open-model-catalog', handleOpenModelCatalog)
   }, [])
 
   React.useEffect(() => {
@@ -463,10 +447,6 @@ export default function NomiStudioApp(): JSX.Element {
     return () => window.removeEventListener('nomi-model-catalog-changed', handleCatalogChanged)
   }, [refreshModelStatus])
 
-  const closeModelCatalog = React.useCallback(() => {
-    setModelCatalogOpened(false)
-  }, [])
-
   const closeBrowser = React.useCallback(() => {
     setBrowserOpened(false)
   }, [])
@@ -660,10 +640,6 @@ export default function NomiStudioApp(): JSX.Element {
       initialTab={settingsDialogController.initialTab}
       initialSection={settingsDialogController.initialSection}
       productionPolicyRequirement={settingsDialogController.productionPolicyRequirement}
-      onOpenModelCatalog={() => {
-        settingsDialogController.closeSettings()
-        setModelCatalogOpened(true)
-      }}
       onClose={settingsDialogController.closeSettings}
       onReplaySplash={() => setSplashDone(false)}
     />
@@ -678,20 +654,12 @@ export default function NomiStudioApp(): JSX.Element {
           onNewProject={() => void newProject()}
           onOpenFolder={() => void openWorkspaceFolder()}
           onRevealProjectFolder={revealProjectFolder}
-          onOpenModelCatalog={() => setModelCatalogOpened(true)}
+          onOpenModelCatalog={settingsDialogController.openModelSettings}
           onOpenSettings={settingsDialogController.openDefaultSettings}
           onPlayJourneyTour={playJourneyTour}
           journeyTourSeen={hasSeenJourneyTour()}
           hasTextModel={hasTextModel}
         />
-        {/* 模型接入面板也要在首页可用：全新安装零模型时，「30 秒体验」会派发
-                    nomi-open-model-catalog 引导接入；之前此面板只挂在 studio 视图 →
-                    首页派发事件无人响应，用户卡死（冷启动 J3 P0）。 */}
-        {modelCatalogOpened ? (
-          <React.Suspense fallback={null}>
-            <OnboardingFloatingPanel opened={modelCatalogOpened} onClose={closeModelCatalog} />
-          </React.Suspense>
-        ) : null}
         {settingsDialog}
         <ConfirmDialogHost />
       </>
@@ -715,16 +683,11 @@ export default function NomiStudioApp(): JSX.Element {
           projectId={activeProject?.id ?? null}
           projectName={activeProject?.name}
           onBackToLibrary={backToLibrary}
-          onOpenModelCatalog={() => setModelCatalogOpened(true)}
+          onOpenModelCatalog={settingsDialogController.openModelSettings}
           onOpenSettings={settingsDialogController.openDefaultSettings}
           onRenameProject={handleRenameProject}
         />
 
-        {modelCatalogOpened ? (
-          <React.Suspense fallback={null}>
-            <OnboardingFloatingPanel opened={modelCatalogOpened} onClose={closeModelCatalog} />
-          </React.Suspense>
-        ) : null}
         {settingsDialog}
 
         {handbookOpened ? (

@@ -28,7 +28,7 @@ async function openGatewayWizard() {
   if ((await settings.count()) === 0) {
     await win.getByRole('button', { name: '设置', exact: true }).first().click()
   }
-  await win.getByRole('button', { name: '模型', exact: true }).first().click()
+  await settings.getByRole('button', { name: '模型', exact: true }).click()
   await win.waitForSelector('[data-settings-section="models"]')
 
   const generationGroup = win.getByRole('button', { name: /接入生成模型/ }).first()

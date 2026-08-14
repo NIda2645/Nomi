@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 const settingsSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/SettingsDialog.tsx'), 'utf8')
 const aiModelsSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/AiModelsSection.tsx'), 'utf8')
 const taskCenterSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/taskCenter/TaskCenterPanel.tsx'), 'utf8')
+const studioSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/NomiStudioApp.tsx'), 'utf8')
+const controllerSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/useSettingsDialogController.ts'), 'utf8')
 
 describe('settings dialog structure', () => {
   // 2026-08-12 由五 tab 扩到六 tab（用户拍板）。原五 tab 拍板为什么不再成立：
@@ -30,5 +32,13 @@ describe('settings dialog structure', () => {
     expect(taskCenterSource).not.toContain('PrefToggle')
     expect(taskCenterSource).not.toContain('writeTaskCenterPrefs')
     expect(settingsSource).toContain('automationPolicy')
+  })
+
+  it('keeps model management in one settings host', () => {
+    expect(studioSource).not.toContain('OnboardingFloatingPanel')
+    expect(studioSource).not.toContain('modelCatalogOpened')
+    expect(controllerSource).toContain("window.addEventListener('nomi-open-model-catalog'")
+    expect(controllerSource).toContain("openSettings({ tab: 'models' })")
+    expect(settingsSource).toContain("onOpenModelCatalog={() => setTab('models')}")
   })
 })

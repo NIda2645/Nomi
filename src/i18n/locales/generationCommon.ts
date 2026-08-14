@@ -182,7 +182,7 @@ export const zhGenerationCommon = {
   assistantError: {
     provider: '服务商：{{message}}',
     retry: '重试',
-    modelAccess: '去模型接入',
+    modelAccess: '检查模型',
     technicalDetails: '技术详情',
   },
   observability: {
@@ -190,7 +190,7 @@ export const zhGenerationCommon = {
     action: {
       retry: { main: '重试', alt: '仍要重试' },
       switchModel: { main: '换个模型', alt: '换个模型' },
-      modelAccess: { main: '去模型接入', alt: '去模型接入' },
+      modelAccess: { main: '检查模型', alt: '检查模型' },
       fixModelKind: { main: '改成{{kind}}并重试', alt: '改成{{kind}}' },
     },
     progress: {
@@ -211,14 +211,14 @@ export const zhGenerationCommon = {
       comfyQueuedAhead: '排队中 · 前面还有 {{count}} 个任务',
     },
     error: {
-      auth: { reason: 'API Key 无效', hint: '请在「模型接入」页检查这个模型的 API Key。' },
+      auth: { reason: 'API Key 无效', hint: '请在「设置 → 模型」检查这个模型的 API Key。' },
       balance: {
         reason: '余额不足',
-        hint: '服务商账户余额不足，请到服务商充值后重试，或在「模型接入」换一个模型。',
+        hint: '服务商账户余额不足，请到服务商充值后重试，或在「设置 → 模型」换一个模型。',
       },
       quota: {
         reason: '配额或限流',
-        hint: '服务商配额已用尽或触发限流，请稍后重试，或在「模型接入」换一个模型。',
+        hint: '服务商配额已用尽或触发限流，请稍后重试，或在「设置 → 模型」换一个模型。',
       },
       pollTimeout: {
         reason: '生成超时',
@@ -230,14 +230,14 @@ export const zhGenerationCommon = {
         reason: '连不上服务商',
         hint: '请求没发到服务商——多半是本机网络或代理没覆盖到它（海外接口尤其常见）。先检查网络和代理，再重试。',
       },
-      modelConfig: { reason: '模型未配置', hint: '这个模型没配好，请去「模型接入」页设置。' },
+      modelConfig: { reason: '模型未配置', hint: '这个模型没配好，请去「设置 → 模型」检查。' },
       modelKindMismatch: {
         reason: '模型类型登记错了',
         hint: '接入时是按模型名猜的类型，这个猜错了：「{{model}}」被登记成了{{registered}}模型，而这里要的是{{requested}}模型。改成{{requested}}就能用。',
       },
       modelNotOpen: {
         reason: '模型未开通',
-        hint: '这个模型你的服务商账户还没开通。请到服务商控制台开通它（火山方舟：在 Ark 控制台「开通管理」激活对应模型），或在「模型接入」换一个已开通的模型。',
+        hint: '这个模型你的服务商账户还没开通。请到服务商控制台开通它（火山方舟：在 Ark 控制台「开通管理」激活对应模型），或在「设置 → 模型」换一个已开通的模型。',
       },
       modelUnavailableUpstream: {
         reason: '这个模型服务商这边取不到',
@@ -249,7 +249,7 @@ export const zhGenerationCommon = {
       },
       accountGate: {
         reason: '账号权限不足',
-        hint: '这个模型需要更高的账号档位才能用——按下方「服务商原话」开通对应会员 / 换企业级 API Key / 先在服务商网页端完成授权；也可在「模型接入」换一个能用的模型。',
+        hint: '这个模型需要更高的账号档位才能用——按下方「服务商原话」开通对应会员 / 换企业级 API Key / 先在服务商网页端完成授权；也可在「设置 → 模型」换一个能用的模型。',
       },
       imageRouteDisabled: {
         reason: '中转分组未开通生图路由',
@@ -466,7 +466,7 @@ export const zhGenerationCommon = {
   parameters: {
     auto: '自动',
     configureModel: '去配置模型',
-    openModelCatalog: '点击打开模型接入页',
+    openModelCatalog: '点击打开模型设置',
     configure: '去配置 →',
     model: '模型',
     selectModel: '选择模型',
@@ -609,7 +609,7 @@ export const zhGenerationCommon = {
   decompose: {
     connectTitle: '拆解元素需要先接入 Replicate',
     connectMessage:
-      '元素拆解使用开源模型 qwen-image-layered（由 Replicate 托管，约 $0.05/张，按量付费）。\n前往「模型接入」填写 Replicate API Token 即可使用——登录 replicate.com → Account → API tokens 获取（以 r8_ 开头），凭证会在本地加密存储。',
+      '元素拆解使用开源模型 qwen-image-layered（由 Replicate 托管，约 $0.05/张，按量付费）。\n前往「设置 → 模型」填写 Replicate API Token 即可使用——登录 replicate.com → Account → API tokens 获取（以 r8_ 开头），凭证会在本地加密存储。',
     connect: '去接入',
     later: '以后再说',
     title: '拆解元素',
@@ -793,7 +793,7 @@ export const zhGenerationCommon = {
     outputRule: '保持原意，只输出优化后的提示词本身，不要解释、不要加引号、不要分点。',
     imageResult: '图',
     videoResult: '片',
-    configureTextModel: '请先在「模型接入」里启用一个文本模型',
+    configureTextModel: '请先在「设置 → 模型」里启用一个文本模型',
     emptyResult: '没拿到优化结果，请重试',
     failed: '优化失败',
     optimizedTitle: 'Nomi 优化版（高亮=改动）',
@@ -1387,14 +1387,14 @@ export const enGenerationCommon = {
   assistantError: {
     provider: 'Provider: {{message}}',
     retry: 'Retry',
-    modelAccess: 'Open model access',
+    modelAccess: 'Check models',
     technicalDetails: 'Technical details',
   },
   observability: {
     action: {
       retry: { main: 'Retry', alt: 'Retry anyway' },
       switchModel: { main: 'Switch model', alt: 'Switch model' },
-      modelAccess: { main: 'Open model access', alt: 'Open model access' },
+      modelAccess: { main: 'Check models', alt: 'Check models' },
       fixModelKind: { main: 'Set to {{kind}} and retry', alt: 'Set to {{kind}}' },
     },
     progress: {

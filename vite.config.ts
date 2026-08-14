@@ -129,7 +129,6 @@ const DEFERRED_MODULE_PRELOAD_PATTERNS: RegExp[] = [
   /^JourneyTourController-/,
   /^Model3DViewer-/,
   /^NodeGenerationComposer-/,
-  /^OnboardingFloatingPanel-/,
   /^PanoramaViewer-/,
   /^PromptLibraryPanel-/,
   /^Scene3DEditor-/,

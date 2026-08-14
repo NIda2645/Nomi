@@ -79,7 +79,7 @@ export const zhBrowserAssets = {
   viewCreateFailed: '浏览器视图创建失败',
   promptImageMissing: '没有找到可提取提示词的图片。',
   promptReferenceMissing: '没有可分析的参考图',
-  promptVisionModelMissing: '请先在「模型接入」里启用一个支持图片输入的文本模型',
+  promptVisionModelMissing: '请先在「设置 → 模型」里启用一个支持图片输入的文本模型',
   promptModelEmpty: '模型没有返回提示词',
   promptModelInvalid: '模型没有返回可用提示词',
   promptEntryFailed: '图片提示词提取入口失败',
