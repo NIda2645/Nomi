@@ -61,7 +61,7 @@ describe("importComfyWorkflowToCatalog（S3 落库）", () => {
     expect(mine?.modelKey).toBe("comfy-wan-i2v-a-aaa");
   });
 
-  it("导入时保存原始 workflow + binding 草稿，供 UI 重新编辑", async () => {
+  it("导入时保存原始 workflow + 规范化 binding 草稿，供 UI 重新编辑", async () => {
     emptyCatalog();
     const { analyzeComfyWorkflowText, importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
     const { listModelCatalogModels } = await import("./catalogStore");
@@ -73,7 +73,59 @@ describe("importComfyWorkflowToCatalog（S3 落库）", () => {
     const models = listModelCatalogModels({ vendorKey: "comfyui-local" }) as Array<{ modelKey: string; meta?: { comfyWorkflowImport?: { text?: string; binding?: unknown } } }>;
     const model = models.find((m) => m.modelKey === modelKey);
     expect(model?.meta?.comfyWorkflowImport?.text).toBe(text);
-    expect(model?.meta?.comfyWorkflowImport?.binding).toEqual(binding);
+    const savedBinding = model?.meta?.comfyWorkflowImport?.binding as { params?: unknown[]; numeric?: unknown };
+    expect(savedBinding.params).toEqual((binding as { params?: unknown[] }).params);
+    expect(savedBinding).not.toHaveProperty("numeric");
+  });
+
+  it("显式 params: [] 落库后保持为空，不会从 numeric 复活已删除参数", async () => {
+    emptyCatalog();
+    const { importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
+    const { listModelCatalogModels } = await import("./catalogStore");
+    const text = videoWorkflow("explicit empty");
+    const result = importComfyWorkflowToCatalog({
+      text,
+      binding: {
+        promptNodeId: "2", promptInputKey: "text",
+        firstFrameNodeId: "1", firstFrameInputKey: "image",
+        outputNodeId: "5", outputKind: "video",
+        numeric: [{ nodeId: "4", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", default: 1 }],
+        params: [],
+      },
+      labelZh: "Explicit empty",
+    }, "empty1");
+    const modelKey = (result as { modelKey: string }).modelKey;
+    const model = (listModelCatalogModels({ vendorKey: "comfyui-local" }) as Array<{
+      modelKey: string;
+      meta?: { parameters?: unknown[]; comfyWorkflowImport?: { binding?: { params?: unknown[]; numeric?: unknown } } };
+    }>).find((item) => item.modelKey === modelKey);
+    expect(model?.meta?.parameters).toEqual([]);
+    expect(model?.meta?.comfyWorkflowImport?.binding?.params).toEqual([]);
+    expect(model?.meta?.comfyWorkflowImport?.binding).not.toHaveProperty("numeric");
+  });
+
+  it("仅 params 缺失时把 legacy numeric 单向迁移成现代 params", async () => {
+    emptyCatalog();
+    const { importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
+    const { listModelCatalogModels } = await import("./catalogStore");
+    const text = videoWorkflow("legacy migration");
+    const result = importComfyWorkflowToCatalog({
+      text,
+      binding: {
+        outputNodeId: "5", outputKind: "video",
+        numeric: [{ nodeId: "4", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", default: 1 }],
+      },
+      labelZh: "Legacy migration",
+    }, "legacy1");
+    const modelKey = (result as { modelKey: string }).modelKey;
+    const model = (listModelCatalogModels({ vendorKey: "comfyui-local" }) as Array<{
+      modelKey: string;
+      meta?: { comfyWorkflowImport?: { binding?: { params?: unknown[]; numeric?: unknown } } };
+    }>).find((item) => item.modelKey === modelKey);
+    expect(model?.meta?.comfyWorkflowImport?.binding?.params).toEqual([
+      { nodeId: "4", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", type: "number", default: 1 },
+    ]);
+    expect(model?.meta?.comfyWorkflowImport?.binding).not.toHaveProperty("numeric");
   });
 
   it("界面格式原图保留到草稿和提交 extra_pnginfo，API 文本仍是执行图", async () => {
