@@ -92,7 +92,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
   updateNode: (nodeId, patch, options) => {
     if (!get().nodes.some((candidate) => candidate.id === nodeId)) return
     // 用户态内容编辑(prompt/meta/标题)按 burst 打撤销点;其余 patch(状态机等)不打。
-    if ('prompt' in patch || 'meta' in patch || 'title' in patch) pushEditBurstBarrier(nodeId, get())
+    if (options?.history !== false && ('prompt' in patch || 'meta' in patch || 'title' in patch)) pushEditBurstBarrier(nodeId, get())
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return

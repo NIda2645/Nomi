@@ -106,6 +106,7 @@ export function useCanvasShortcuts(opts: {
       return false
     }
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
       if (shouldIgnoreCanvasShortcut(event.target)) return
       const key = event.key.toLowerCase()
       const mod = event.metaKey || event.ctrlKey
