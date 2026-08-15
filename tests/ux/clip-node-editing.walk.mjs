@@ -1,5 +1,5 @@
-// 真实用户任务：在画布内把已有图片/视频做成可编辑片段，再生成回画布。
-// 零额度：使用隔离项目和本地图片/视频，不调用模型。
+// 真实用户任务：在画布剪辑节点内预览、剪辑、导入，并走完四条导出路径。
+// 零模型额度：使用隔离项目和本地媒体；导出走真实 Electron/ffmpeg 链路。
 // 用法：pnpm run build && node tests/ux/clip-node-editing.walk.mjs
 import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
@@ -14,6 +14,12 @@ const projectsDir = path.join(root, 'projects')
 const projectId = 'clip-node-editing-walk'
 const projectRoot = path.join(projectsDir, `clip-node-editing-${projectId}`)
 const generatedAssetsDir = path.join(projectRoot, 'assets', 'generated')
+const screenshots = {
+  compact: path.join(os.tmpdir(), 'nomi-clip-node-compact.png'),
+  preview: path.join(os.tmpdir(), 'nomi-clip-node-preview.png'),
+  exportMenu: path.join(os.tmpdir(), 'nomi-clip-node-export-menu.png'),
+  outputs: path.join(os.tmpdir(), 'nomi-clip-node-outputs.png'),
+}
 fs.mkdirSync(path.join(projectRoot, '.nomi'), { recursive: true })
 fs.mkdirSync(generatedAssetsDir, { recursive: true })
 fs.copyFileSync(path.join(repoRoot, 'tests/ux/fixtures/test-upload.png'), path.join(generatedAssetsDir, 'fixture.png'))
@@ -23,24 +29,30 @@ const imageUrl = `nomi-local://asset/${encodeURIComponent(projectId)}/assets/gen
 const videoUrl = `nomi-local://asset/${encodeURIComponent(projectId)}/assets/generated/fixture.mp4`
 const imageNode = {
   id: 'canvas-image-source', kind: 'image', categoryId: 'shots', title: '画布图片',
-  position: { x: 120, y: 160 }, exactPosition: true, size: { width: 320, height: 240 }, status: 'success',
+  position: { x: 80, y: 100 }, exactPosition: true, size: { width: 260, height: 200 }, status: 'success',
   result: { id: 'canvas-image-source-result', type: 'image', url: imageUrl, createdAt: 1 },
 }
 const videoNode = {
   id: 'canvas-video-source', kind: 'video', categoryId: 'shots', title: '画布视频',
-  position: { x: 120, y: 480 }, exactPosition: true, size: { width: 320, height: 240 }, status: 'success',
-  result: { id: 'canvas-video-source-result', type: 'video', url: videoUrl, durationSeconds: 12, createdAt: 1 },
+  position: { x: 80, y: 380 }, exactPosition: true, size: { width: 260, height: 200 }, status: 'success',
+  result: { id: 'canvas-video-source-result', type: 'video', url: videoUrl, durationSeconds: 2, createdAt: 1 },
 }
+const seedClips = [
+  { id: 'image-a', sourceNodeId: imageNode.id, type: 'image', label: '开场', url: imageUrl, durationSeconds: 2, trimStart: 0, trimEnd: 2 },
+  { id: 'video-b', sourceNodeId: videoNode.id, type: 'video', label: '推进', url: videoUrl, durationSeconds: 2, trimStart: 0, trimEnd: 2 },
+  { id: 'image-c', sourceNodeId: imageNode.id, type: 'image', label: '转场', url: imageUrl, durationSeconds: 2, trimStart: 0, trimEnd: 2 },
+  { id: 'video-d', sourceNodeId: videoNode.id, type: 'video', label: '收束', url: videoUrl, durationSeconds: 2, trimStart: 0, trimEnd: 2 },
+]
 const clipNode = {
   id: 'canvas-clip-editor', kind: 'clip', categoryId: 'shots', title: '画布剪辑',
-  position: { x: 620, y: 220 }, exactPosition: true, size: { width: 560, height: 520 }, status: 'idle',
-  meta: { clip: { nodeRole: 'clip', sourceNodeIds: [], clips: [] } },
+  position: { x: 450, y: 300 }, exactPosition: true, size: { width: 560, height: 140 }, status: 'idle',
+  meta: { clip: { nodeRole: 'clip', sourceNodeIds: seedClips.map((clip) => clip.id), clips: seedClips } },
 }
 const generationCanvas = {
   nodes: [imageNode, videoNode, clipNode],
   edges: [
-    { id: 'edge-image-clip', source: imageNode.id, target: clipNode.id },
-    { id: 'edge-video-clip', source: videoNode.id, target: clipNode.id },
+    { id: 'edge-image-clip', source: imageNode.id, target: clipNode.id, mode: 'reference', order: 0 },
+    { id: 'edge-video-clip', source: videoNode.id, target: clipNode.id, mode: 'reference', order: 1 },
   ],
   selectedNodeIds: [], groups: [], canvasZoom: 1, canvasPan: { x: 0, y: 0 },
 }
@@ -80,7 +92,16 @@ async function openCanvas() {
   await win.getByRole('button', { name: '生成', exact: true }).first().click().catch(() => {})
   const node = win.locator('[data-clip-node="true"]')
   await node.waitFor({ state: 'visible', timeout: 8000 })
+  await node.click({ position: { x: 20, y: 20 } })
   return node
+}
+
+async function runExport(scope, destination, expectedToast) {
+  const menu = win.getByTestId('clip-node-export-menu')
+  if (!(await menu.isVisible().catch(() => false))) await win.getByTestId('clip-node-export').click()
+  await menu.getByRole('radio', { name: scope }).click()
+  await menu.getByRole('button', { name: destination, exact: true }).click()
+  await win.getByText(expectedToast, { exact: false }).waitFor({ state: 'visible', timeout: 120_000 })
 }
 
 async function closeApp() {
@@ -91,95 +112,208 @@ async function closeApp() {
 try {
   const clip = await openCanvas()
   const clips = clip.getByTestId('clip-node-clip')
-  await win.waitForTimeout(900)
-  const importedTwoMedia = (await clips.count()) === 2
-  const countLabel = await clip.innerText()
-  const countIsClear = countLabel.includes('共 2 个片段')
-  const compactAxis = await clip.evaluate((element) => {
-    const rect = element.getBoundingClientRect()
-    return rect.height <= 180 && element.getAttribute('data-clip-mode') === 'compact'
-  })
-  const normalPreviewHidden = (await win.getByTestId('clip-node-preview').count()) === 0
-  const axis = clip.getByRole('region', { name: '剪辑时间线' })
-  const axisBeforePreview = await axis.boundingBox()
-  const initialRulerHas30s = await axis.getByTestId('clip-node-ruler').getByText('00:30', { exact: true }).count() === 1
-  const initialAxisCanScroll = await axis.evaluate((element) => element.scrollWidth >= element.clientWidth)
-  const addButton = clip.getByRole('button', { name: '添加素材', exact: true })
-  const firstClipBeforeDrag = clips.first()
-  const firstClipId = await firstClipBeforeDrag.getAttribute('data-clip-id')
-  const addBox = await addButton.boundingBox()
-  const firstClipBox = await firstClipBeforeDrag.boundingBox()
-  if (!addBox || !firstClipBox || !firstClipId) throw new Error('找不到剪辑轴首段和添加槽')
-  const addSlotIsFirst = addBox.x < firstClipBox.x
+  await win.waitForTimeout(700)
 
-  await win.mouse.move(firstClipBox.x + firstClipBox.width / 2, firstClipBox.y + firstClipBox.height / 2)
+  const compactDefault = await clip.evaluate((element) => element.getAttribute('data-clip-mode') === 'compact')
+    && (await clips.count()) === 4
+    && (await win.getByTestId('clip-node-preview').count()) === 0
+  await win.screenshot({ path: screenshots.compact })
+
+  const nodeBeforeDrag = await clip.boundingBox()
+  const dragHandleBox = await clip.getByTestId('clip-node-drag-handle').boundingBox()
+  if (!nodeBeforeDrag || !dragHandleBox) throw new Error('找不到剪辑节点拖动区域')
+  await win.mouse.move(dragHandleBox.x + dragHandleBox.width / 2, dragHandleBox.y + dragHandleBox.height / 2)
   await win.mouse.down()
-  await win.mouse.move(firstClipBox.x + firstClipBox.width / 2 + 360, firstClipBox.y + firstClipBox.height / 2, { steps: 12 })
+  await win.mouse.move(dragHandleBox.x + dragHandleBox.width / 2 + 100, dragHandleBox.y + dragHandleBox.height / 2 + 60, { steps: 10 })
   await win.mouse.up()
-  await win.waitForTimeout(400)
-  const firstClipAfterDrag = clip.locator(`[data-testid="clip-node-clip"][data-clip-id="${firstClipId}"]`)
-  const firstClipAfterBox = await firstClipAfterDrag.boundingBox()
-  const timelineDragWorks = Boolean(firstClipAfterBox && firstClipAfterBox.x > firstClipBox.x + 80)
+  await win.waitForTimeout(300)
+  const nodeAfterDrag = await clip.boundingBox()
+  const viewport = await win.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }))
+  const nodeDragWorks = Boolean(
+    nodeAfterDrag
+    && nodeAfterDrag.x > nodeBeforeDrag.x + 60
+    && nodeAfterDrag.y > nodeBeforeDrag.y + 30,
+  )
+  const nodeVisibleAfterDrag = Boolean(
+    nodeAfterDrag
+    && nodeAfterDrag.x < viewport.width
+    && nodeAfterDrag.y < viewport.height
+    && nodeAfterDrag.x + nodeAfterDrag.width > 0
+    && nodeAfterDrag.y + nodeAfterDrag.height > 0,
+  )
 
-  await addButton.click()
-  await win.waitForTimeout(500)
-  if ((await win.getByTestId('asset-picker').count()) === 0) {
-    await win.screenshot({ path: path.join(os.tmpdir(), 'nomi-clip-picker-missing.png') })
-    throw new Error(`添加素材后 picker 未打开，body=${(await win.locator('body').innerText()).slice(-1000)}`)
-  }
-  const addOpensPicker = await win.getByPlaceholder('搜索素材名…').isVisible().catch(() => false)
-  const uploadInput = win.locator('input[type="file"]').last()
-  try {
-    await uploadInput.setInputFiles(path.join(repoRoot, 'marketing/assets/video/hero-loop.mp4'))
-  } catch (error) {
-    throw new Error(`${error.message}\nassetPicker=${await win.getByTestId('asset-picker').count()} inputs=${await win.locator('input').count()} html=${(await win.getByTestId('asset-picker').first().innerHTML().catch(() => '')).slice(0, 2000)}`)
-  }
-  await win.waitForFunction(() => document.querySelectorAll('[data-testid="clip-node-clip"]').length === 3)
-  const nativeVideoUploadWorks = (await clips.count()) === 3 && (await win.getByRole('alert').count()) === 0
-
-  await clips.first().click()
-  const previewOpens = (await win.getByTestId('clip-node-preview').count()) === 1
-  const axisAfterPreview = await axis.boundingBox()
-  const previewFloatsAboveAxis = Boolean(axisBeforePreview && axisAfterPreview && Math.abs(axisBeforePreview.y - axisAfterPreview.y) < 1 && Math.abs(axisBeforePreview.height - axisAfterPreview.height) < 1)
-  const duplicate = win.getByRole('button', { name: '复制片段', exact: true })
-  const remove = win.getByRole('button', { name: '移除片段', exact: true })
-  const trimHandleVisible = await win.getByRole('button', { name: '调整片段出点', exact: true }).isVisible()
-  const selectionEnablesEditing = await duplicate.isEnabled() && await remove.isEnabled() && trimHandleVisible
-
-  await win.getByRole('button', { name: '分割片段', exact: true }).click()
-  const firstBox = await clips.first().boundingBox()
-  if (!firstBox) throw new Error('找不到第一段片段的可交互区域')
   const rulerBox = await clip.getByTestId('clip-node-ruler').boundingBox()
   if (!rulerBox) throw new Error('找不到剪辑轴标尺')
-  await win.mouse.click(firstBox.x + firstBox.width * 0.6, rulerBox.y + rulerBox.height / 2)
-  await win.mouse.click(firstBox.x + firstBox.width * 0.6, firstBox.y + firstBox.height / 2)
-  await win.waitForTimeout(300)
-  const splitCreatedNewSegment = (await clips.count()) === 4
+  await win.mouse.click(rulerBox.x + rulerBox.width * 0.38, rulerBox.y + rulerBox.height / 2)
+  const preview = win.getByTestId('clip-node-preview')
+  await preview.waitFor({ state: 'visible' })
+  const nodeAfterPreview = await clip.boundingBox()
+  const previewBox = await preview.boundingBox()
+  const timelineClickOpensPreview = Boolean(previewBox)
+  const nodeStaysPutWhenPreviewOpens = Boolean(
+    nodeAfterDrag
+    && nodeAfterPreview
+    && Math.abs(nodeAfterPreview.x - nodeAfterDrag.x) < 2
+    && Math.abs(nodeAfterPreview.y - nodeAfterDrag.y) < 2,
+  )
+  const previewDoesNotHideNode = Boolean(
+    nodeAfterPreview
+    && previewBox
+    && (
+      previewBox.y + previewBox.height <= nodeAfterPreview.y - 4
+      || previewBox.y >= nodeAfterPreview.y + nodeAfterPreview.height + 4
+    ),
+  )
+  const seek = preview.locator('input[type="range"]')
+  const clickPositionsGlobalPlayhead = Number(await seek.inputValue()) > 0
+  const noDuplicateEditingButtons = (await win.getByRole('button', { name: /分割片段|复制片段|移除片段/ }).count()) === 0
+  const first = clips.first()
+  const playbackStartBox = await first.boundingBox()
+  if (!playbackStartBox) throw new Error('找不到播放起点片段')
+  await first.click({ position: { x: playbackStartBox.width * 0.78, y: playbackStartBox.height / 2 } })
+  const beforeCutClipId = await preview.getAttribute('data-active-clip-id')
+  await preview.getByRole('button', { name: '播放预览' }).click()
+  await win.waitForFunction((clipId) => document.querySelector('[data-testid="clip-node-preview"]')?.getAttribute('data-active-clip-id') !== clipId, beforeCutClipId, { timeout: 3000 })
+  const afterCutClipId = await preview.getAttribute('data-active-clip-id')
+  const playbackCrossesCuts = Boolean(beforeCutClipId && afterCutClipId && beforeCutClipId !== afterCutClipId)
+  await preview.getByRole('button', { name: '暂停预览' }).click().catch(() => {})
+  await win.screenshot({ path: screenshots.preview })
 
-  await clips.last().click()
-  if (!(await remove.isEnabled())) throw new Error('分割后选中片段没有启用移除操作')
-  await remove.click()
-  await win.waitForTimeout(1000)
-  const removeCompactedTimeline = (await clips.count()) === 3
+  await win.getByTestId('clip-node-export').click()
+  const exportMenu = win.getByTestId('clip-node-export-menu')
+  await exportMenu.waitFor({ state: 'visible' })
+  const exportMenuBox = await exportMenu.boundingBox()
+  const previewBeforeExportBox = await preview.boundingBox()
+  const exportDoesNotOverlapPreview = Boolean(
+    exportMenuBox
+    && previewBeforeExportBox
+    && (
+      exportMenuBox.x + exportMenuBox.width <= previewBeforeExportBox.x
+      || exportMenuBox.x >= previewBeforeExportBox.x + previewBeforeExportBox.width
+      || exportMenuBox.y + exportMenuBox.height <= previewBeforeExportBox.y
+      || exportMenuBox.y >= previewBeforeExportBox.y + previewBeforeExportBox.height
+    ),
+  )
+  await win.screenshot({ path: screenshots.exportMenu })
 
-  await clips.first().click()
-  const exportButton = win.getByRole('button', { name: '导出', exact: true })
-  await exportButton.click()
-  const exportMenu = win.getByRole('menu')
-  const createVideo = win.getByRole('button', { name: /^生成视频节点/ })
-  const exportGroupsVisible = (await exportMenu.getByText('导出片段', { exact: true }).count()) > 0
-    && (await exportMenu.getByText('下载成片', { exact: true }).count()) > 0
-    && (await createVideo.count()) > 0
-  const outputActionVisible = exportGroupsVisible
-  const axisBox = await axis.boundingBox()
-  if (!axisBox) throw new Error('找不到剪辑时间轴区域')
-  await win.mouse.click(axisBox.x + 12, axisBox.y + axisBox.height - 8)
+  await runExport('完整成片', '到画布', '已向画布导出 1 个视频节点')
+  const fullCanvasExport = (await win.locator('[data-kind="video"]').count()) === 2
+  await runExport('完整成片', '下载', '已导出 1 个视频文件')
+  await runExport(/独立片段/, '到画布', '已向画布导出 4 个视频节点')
+  const segmentCanvasExport = (await win.locator('[data-kind="video"]').count()) === 6
+  await runExport(/独立片段/, '下载', '已导出 4 个视频文件')
+  const outputEdges = win.locator('.generation-canvas-v2__edge[data-edge-id^="edge-canvas-clip-editor::"]')
+  const fiveOutputEdges = (await outputEdges.count()) === 5
+  const restingEdgesHaveNoLabels = (await win.locator('.generation-canvas-v2__edge-control').count()) === 0
+  await preview.getByRole('button', { name: '关闭预览' }).click()
+  const edgePoint = await outputEdges.locator('.generation-canvas-v2__edge-hit').evaluateAll((paths) => {
+    for (const candidate of paths) {
+      const path = candidate
+      const length = path.getTotalLength()
+      const matrix = path.getScreenCTM()
+      if (!matrix) continue
+      for (let index = 2; index <= 8; index += 1) {
+        const local = path.getPointAtLength(length * index / 10)
+        const screen = new DOMPoint(local.x, local.y).matrixTransform(matrix)
+        if (screen.x < 16 || screen.x > window.innerWidth - 16 || screen.y < 80 || screen.y > window.innerHeight - 16) continue
+        if ((document.elementFromPoint(screen.x, screen.y))?.closest('.generation-canvas-v2__edge-hit') === path) {
+          return { x: screen.x, y: screen.y }
+        }
+      }
+    }
+    return null
+  })
+  if (!edgePoint) throw new Error('找不到可见的输出连线点击位置')
+  await win.mouse.click(edgePoint.x, edgePoint.y)
+  await win.waitForTimeout(250)
+  const clickingEdgeShowsNativeControl = (await win.locator('.generation-canvas-v2__edge-control[data-active="true"]').count()) === 1
+  await win.screenshot({ path: screenshots.outputs, fullPage: true })
+
+  const firstBox = await first.boundingBox()
+  if (!firstBox) throw new Error('找不到首个片段')
+  await first.click({ position: { x: firstBox.width * 0.5, y: firstBox.height / 2 } })
+  const beforeSplit = await clips.count()
+  await win.keyboard.press('s')
   await win.waitForTimeout(200)
-  const blankAxisCollapses = (await win.getByTestId('clip-node-preview').count()) === 0
-  await win.screenshot({ path: path.join(os.tmpdir(), 'nomi-clip-node-editing.png') })
+  const keyboardSplit = (await clips.count()) === beforeSplit + 1
+  await win.keyboard.press('Control+d')
+  await win.waitForTimeout(200)
+  const keyboardDuplicate = (await clips.count()) === beforeSplit + 2
+  await win.keyboard.press('Delete')
+  await win.waitForTimeout(200)
+  const keyboardDelete = (await clips.count()) === beforeSplit + 1
+  await win.keyboard.press('Control+z')
+  await win.waitForTimeout(250)
+  const keyboardUndo = (await clips.count()) === beforeSplit + 2
+  await win.keyboard.press('Control+Shift+z')
+  await win.waitForTimeout(250)
+  const keyboardRedo = (await clips.count()) === beforeSplit + 1
 
-  const result = { importedTwoMedia, countIsClear, compactAxis, normalPreviewHidden, initialRulerHas30s, initialAxisCanScroll, previewFloatsAboveAxis, addSlotIsFirst, timelineDragWorks, addOpensPicker, nativeVideoUploadWorks, previewOpens, selectionEnablesEditing, splitCreatedNewSegment, removeCompactedTimeline, outputActionVisible, blankAxisCollapses }
-  console.log(JSON.stringify(result))
+  const movable = clip.locator('[data-clip-id="clip-video-d"]')
+  await movable.scrollIntoViewIfNeeded()
+  const movableId = await movable.getAttribute('data-clip-id')
+  const movableBefore = await movable.boundingBox()
+  if (!movableId || !movableBefore) throw new Error('找不到可拖动片段')
+  await win.mouse.click(movableBefore.x + movableBefore.width / 2, movableBefore.y + movableBefore.height / 2)
+  await win.mouse.move(movableBefore.x + movableBefore.width / 2, movableBefore.y + movableBefore.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(movableBefore.x + movableBefore.width / 2 + 90, movableBefore.y + movableBefore.height / 2, { steps: 8 })
+  await win.mouse.up()
+  await win.waitForTimeout(250)
+  const moved = clip.locator(`[data-clip-id="${movableId}"]`)
+  const movedBox = await moved.boundingBox()
+  const timelineDrag = Boolean(movedBox && movedBox.x > movableBefore.x + 20)
+  const nudgeBefore = movedBox?.x ?? 0
+  for (let index = 0; index < 8; index += 1) await win.keyboard.press('Shift+Period')
+  await win.waitForTimeout(200)
+  const nudgedBox = await moved.boundingBox()
+  const keyboardNudge = Boolean(nudgedBox && nudgedBox.x > nudgeBefore + 2)
+  const trimHandle = win.getByRole('button', { name: '调整片段出点', exact: true })
+  const trimBefore = await moved.boundingBox()
+  const handleBox = await trimHandle.boundingBox()
+  if (!trimBefore || !handleBox) throw new Error('找不到片段裁剪把手')
+  await win.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(handleBox.x - 40, handleBox.y + handleBox.height / 2, { steps: 8 })
+  await win.mouse.up()
+  await win.waitForTimeout(200)
+  const trimAfter = await moved.boundingBox()
+  const trimWorks = Boolean(trimAfter && trimAfter.width < trimBefore.width - 4)
+
+  const beforeImport = await clips.count()
+  await clip.getByRole('button', { name: '添加素材', exact: true }).click()
+  await win.getByTestId('asset-picker').waitFor({ state: 'visible' })
+  await win.locator('input[type="file"]').last().setInputFiles(path.join(repoRoot, 'marketing/assets/video/hero-loop.mp4'))
+  await win.waitForFunction((count) => document.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 1, beforeImport, { timeout: 30_000 })
+  const realImport = (await clips.count()) === beforeImport + 1 && (await win.getByRole('alert').count()) === 0
+
+  const result = {
+    compactDefault,
+    nodeDragWorks,
+    nodeVisibleAfterDrag,
+    timelineClickOpensPreview,
+    nodeStaysPutWhenPreviewOpens,
+    previewDoesNotHideNode,
+    exportDoesNotOverlapPreview,
+    clickPositionsGlobalPlayhead,
+    noDuplicateEditingButtons,
+    playbackCrossesCuts,
+    fullCanvasExport,
+    segmentCanvasExport,
+    fiveOutputEdges,
+    restingEdgesHaveNoLabels,
+    clickingEdgeShowsNativeControl,
+    keyboardSplit,
+    keyboardDuplicate,
+    keyboardDelete,
+    keyboardUndo,
+    keyboardRedo,
+    timelineDrag,
+    keyboardNudge,
+    trimWorks,
+    realImport,
+  }
+  console.log(JSON.stringify({ result, screenshots }))
   await closeApp()
   process.exit(Object.values(result).every(Boolean) ? 0 : 1)
 } catch (error) {

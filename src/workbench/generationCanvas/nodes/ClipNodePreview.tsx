@@ -1,46 +1,130 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconPlayerPause, IconPlayerPlay } from '@tabler/icons-react'
+import { IconPlayerPause, IconPlayerPlay, IconX } from '@tabler/icons-react'
 import { WorkbenchIconButton } from '../../../design/workbenchActions'
+import { useVideoPlaybackHeal } from '../../../media/useVideoPlaybackHeal'
 import { cn } from '../../../utils/cn'
-import type { TimelineClip } from '../../timeline/timelineTypes'
+import { resolveActiveClipsAtFrame } from '../../timeline/timelineMath'
+import type { TimelineState } from '../../timeline/timelineTypes'
+import { usePreviewVideoPlayheadSync } from '../../preview/usePreviewVideoPlayheadSync'
+import { formatClipNodeDuration } from './clipNodeVisual'
 
 type ClipNodePreviewProps = {
-  clip?: TimelineClip
+  timeline: TimelineState
+  playheadFrame: number
   playing: boolean
-  onTogglePlaying: () => void
+  onPlayingChange: (playing: boolean) => void
+  onPlayheadChange: (frame: number) => void
+  onClose: () => void
   className?: string
 }
 
-export default function ClipNodePreview({ clip, playing, onTogglePlaying, className }: ClipNodePreviewProps): JSX.Element {
+export default function ClipNodePreview({
+  timeline,
+  playheadFrame,
+  playing,
+  onPlayingChange,
+  onPlayheadChange,
+  onClose,
+  className,
+}: ClipNodePreviewProps): JSX.Element {
   const { t } = useTranslation()
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
+  const fps = Math.max(1, timeline.fps || 30)
+  const durationFrame = timeline.tracks.flatMap((track) => track.clips).reduce((max, clip) => Math.max(max, clip.endFrame), 0)
+  const activeClip = resolveActiveClipsAtFrame(timeline, playheadFrame)[0] ?? null
+  const videoClip = activeClip?.type === 'video' ? activeClip : null
+  const rawVideoUrl = videoClip?.url ?? ''
+  const heal = useVideoPlaybackHeal({ rawUrl: rawVideoUrl })
+
+  usePreviewVideoPlayheadSync(videoRef, {
+    videoClip,
+    videoUrl: rawVideoUrl,
+    playheadFrame,
+    fps,
+    playing,
+  })
 
   React.useEffect(() => {
     const video = videoRef.current
-    if (!video || !clip || clip.type !== 'video') return
-    if (playing) void video.play().catch(() => undefined)
-    else video.pause()
-  }, [clip, playing])
+    if (!video || !videoClip) return
+    if (playing) {
+      void video.play().catch(() => onPlayingChange(false))
+      return
+    }
+    video.pause()
+  }, [heal.playbackUrl, onPlayingChange, playing, videoClip])
 
-  if (!clip) {
-    return <div className={cn('grid h-44 place-items-center rounded-nomi-sm border border-dashed border-nomi-line bg-nomi-bg text-micro text-nomi-ink-40', className)}>{t('generationCommon.clipNode.previewSelect')}</div>
+  const togglePlaying = (): void => {
+    if (durationFrame <= 0) return
+    if (!playing && playheadFrame >= durationFrame) onPlayheadChange(0)
+    onPlayingChange(!playing)
   }
 
   return (
-    <div className={cn('relative h-44 overflow-hidden rounded-nomi-sm border border-nomi-line bg-nomi-bg', className)} data-testid="clip-node-preview">
-      {clip.type === 'video' && clip.url ? (
-        <video ref={videoRef} src={clip.url} poster={clip.thumbnailUrl} muted playsInline preload="metadata" className="block size-full object-contain" onClick={onTogglePlaying} />
-      ) : clip.url ? (
-        <img src={clip.thumbnailUrl || clip.url} alt={clip.label} className="block size-full object-contain" />
-      ) : <div className="size-full" />}
-      <WorkbenchIconButton
-        label={playing ? t('generationCommon.clipNode.pausePreview') : t('generationCommon.clipNode.playPreview')}
-        icon={playing ? <IconPlayerPause size={15} /> : <IconPlayerPlay size={15} />}
-        className={cn('absolute bottom-1.5 left-1.5 bg-nomi-paper/85 text-nomi-ink hover:bg-nomi-paper hover:text-nomi-ink')}
-        onClick={onTogglePlaying}
-      />
-      <span className="absolute right-2 top-1.5 rounded-full bg-nomi-paper/85 px-1.5 py-0.5 text-micro text-nomi-ink">{clip.label}</span>
-    </div>
+    <section
+      className={cn('relative w-[430px] overflow-hidden rounded-nomi border border-nomi-line bg-nomi-paper text-nomi-ink shadow-nomi-lg', className)}
+      data-testid="clip-node-preview"
+      data-active-clip-id={activeClip?.id ?? ''}
+      aria-label={t('generationCommon.clipNode.programMonitor')}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="relative aspect-video bg-nomi-ink">
+        {videoClip && rawVideoUrl ? (
+          <video
+            key={videoClip.id}
+            ref={videoRef}
+            src={heal.playbackUrl}
+            poster={videoClip.thumbnailUrl}
+            muted
+            playsInline
+            preload="metadata"
+            className="block size-full object-contain"
+            onClick={togglePlaying}
+            onError={heal.onError}
+            onLoadedMetadata={heal.onLoadedMetadata}
+          />
+        ) : activeClip?.type === 'image' && activeClip.url ? (
+          <img src={activeClip.thumbnailUrl || activeClip.url} alt="" className="block size-full object-contain" onClick={togglePlaying} />
+        ) : (
+          <div className="size-full bg-nomi-ink" />
+        )}
+        {heal.healingText || heal.failureText ? (
+          <div className="absolute inset-x-3 bottom-3 rounded-nomi-sm bg-nomi-paper/90 px-2 py-1.5 text-caption text-nomi-ink">
+            {heal.healingText || heal.failureText}
+          </div>
+        ) : null}
+        <WorkbenchIconButton
+          label={t('generationCommon.clipNode.closePreview')}
+          icon={<IconX size={16} />}
+          className="absolute right-2 top-2 bg-nomi-paper/85 text-nomi-ink hover:bg-nomi-paper hover:text-nomi-ink"
+          onClick={onClose}
+        />
+      </div>
+      <div className="flex h-11 items-center gap-2 border-t border-nomi-line px-2.5">
+        <WorkbenchIconButton
+          label={playing ? t('generationCommon.clipNode.pausePreview') : t('generationCommon.clipNode.playPreview')}
+          icon={playing ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}
+          className="shrink-0 bg-nomi-bg text-nomi-ink hover:bg-nomi-accent-soft hover:text-nomi-accent"
+          onClick={togglePlaying}
+        />
+        <span className="w-[88px] shrink-0 text-center font-mono text-micro text-nomi-ink-60">
+          {formatClipNodeDuration(playheadFrame, fps)} / {formatClipNodeDuration(durationFrame, fps)}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={Math.max(1, durationFrame)}
+          step={1}
+          value={Math.min(playheadFrame, Math.max(1, durationFrame))}
+          className="h-5 min-w-0 flex-1 cursor-pointer accent-nomi-accent"
+          aria-label={t('generationCommon.clipNode.scrub')}
+          onChange={(event) => {
+            onPlayingChange(false)
+            onPlayheadChange(Number(event.currentTarget.value))
+          }}
+        />
+      </div>
+    </section>
   )
 }

@@ -1,8 +1,8 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { IconChevronDown, IconCopy, IconDownload, IconScissors, IconTrash } from '@tabler/icons-react'
-import { WorkbenchButton, WorkbenchIconButton } from '../../../design'
+import { IconDownload, IconExternalLink, IconScissors } from '@tabler/icons-react'
+import { NomiSegmented, WorkbenchButton, WorkbenchIconButton } from '../../../design'
 import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
@@ -22,6 +22,7 @@ import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { getNodeSizeBounds, resolveNodeVisualSize } from './nodeSizing'
 import { useNodeDragResize } from './useNodeDragResize'
 import { exportTimelineToMp4 } from '../../export/exportApi'
+import { getDesktopBridge } from '../../../desktop/bridge'
 import { toast } from '../../../ui/toast'
 import { buildWorkspaceFileUrl } from '../../explorer/workspaceFileDrag'
 import ClipNodePreview from './ClipNodePreview'
@@ -31,14 +32,20 @@ import {
   clipNodeTimelineFromMeta,
   duplicateClipNode,
   moveClipNode,
+  nudgeClipNode,
   removeClipNode,
   resizeClipNode,
   splitClipNode,
 } from './clipNodeSequence'
 import { buildClipNodeOutputPatch } from './clipNodeOutput'
 import { formatClipNodeDuration, resolveClipNodeVisualMode } from './clipNodeVisual'
+import { buildClipNodeExportTasks, type ClipNodeExportScope } from './clipNodeExport'
+import { dispatchTimelineShortcut } from '../../timeline/timelineShortcuts'
+import { useTimelinePlaybackClock } from '../../timeline/useTimelinePlaybackClock'
 
 type Props = { node: unknown; selected: boolean; readOnly?: boolean }
+type ClipNodeExportDestination = 'canvas' | 'download'
+type ClipNodeExportAction = `${ClipNodeExportScope}-${ClipNodeExportDestination}`
 
 export default function ClipNode({ node: rawNode, selected, readOnly = false }: Props): JSX.Element {
   const { t } = useTranslation()
@@ -63,11 +70,10 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     .filter((candidate): candidate is GenerationCanvasNode => Boolean(candidate?.result?.url && (candidate.result.type === 'image' || candidate.result.type === 'video'))))
   const { refresh } = useAllProjectAssets()
   const [pickerOpen, setPickerOpen] = React.useState(false)
-  const [splitMode, setSplitMode] = React.useState(false)
   const [playheadFrame, setPlayheadFrame] = React.useState(0)
   const [playing, setPlaying] = React.useState(false)
-  const [exporting, setExporting] = React.useState<'current' | 'all' | null>(null)
-  const [creatingVideoNode, setCreatingVideoNode] = React.useState(false)
+  const [exporting, setExporting] = React.useState<ClipNodeExportAction | null>(null)
+  const [exportScope, setExportScope] = React.useState<ClipNodeExportScope>('full')
   const [editingOpen, setEditingOpen] = React.useState(false)
   const [exportMenuOpen, setExportMenuOpen] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
@@ -109,7 +115,6 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     if (selected) return
     setEditingOpen(false)
     setExportMenuOpen(false)
-    setSplitMode(false)
     setPlaying(false)
   }, [selected])
 
@@ -117,6 +122,15 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     const endFrame = timeline.tracks[0]?.clips.at(-1)?.endFrame ?? 0
     setPlayheadFrame((current) => Math.min(current, endFrame))
   }, [timeline])
+
+  useTimelinePlaybackClock({
+    playing,
+    playheadFrame,
+    durationFrame: durationFrames,
+    fps: timeline.fps,
+    onPlayheadChange: setPlayheadFrame,
+    onPlayingChange: setPlaying,
+  })
 
   React.useLayoutEffect(() => {
     if (!editingOpen || !articleRef.current) return
@@ -130,8 +144,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     }
   }, [canvasZoom, editingOpen, exportMenuOpen, node.position.x, node.position.y, visualSize.width, visualSize.height])
 
-  const persist = React.useCallback((next: ReturnType<typeof readClipNodeMeta>) => {
-    updateNode(node.id, { meta: { ...(node.meta ?? {}), clip: next } })
+  const persist = React.useCallback((next: ReturnType<typeof readClipNodeMeta>, options?: { history?: boolean }) => {
+    updateNode(node.id, { meta: { ...(node.meta ?? {}), clip: next } }, options)
   }, [node.id, node.meta, updateNode])
 
   React.useEffect(() => {
@@ -209,14 +223,32 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     setRetryUploadFile(null)
   }, [uploading])
 
-  const selectClip = React.useCallback((clipId: string) => {
-    const nextClip = timelineClips.find((clip) => clip.id === clipId)
-    persist({ ...meta, selectedClipId: clipId.replace(/^clip-/, '') })
-    setPlayheadFrame(nextClip?.startFrame ?? 0)
+  const selectClip = React.useCallback((clipId: string, frame: number) => {
+    if (!selected) selectNode(node.id)
+    persist({ ...meta, selectedClipId: clipId.replace(/^clip-/, '') }, { history: false })
+    setPlayheadFrame(frame)
     setPlaying(false)
     setEditingOpen(true)
     setExportMenuOpen(false)
-  }, [meta, persist, timelineClips])
+  }, [meta, node.id, persist, selectNode, selected])
+
+  const selectFrame = React.useCallback((frame: number) => {
+    if (!timelineClips.length) return
+    const boundedFrame = Math.max(0, Math.min(frame, Math.max(0, durationFrames - 1)))
+    const containingClip = timelineClips.find((clip) => boundedFrame >= clip.startFrame && boundedFrame < clip.endFrame)
+    const closestClip = containingClip ?? timelineClips.reduce((closest, clip) => {
+      const closestDistance = Math.min(
+        Math.abs(boundedFrame - closest.startFrame),
+        Math.abs(boundedFrame - Math.max(closest.startFrame, closest.endFrame - 1)),
+      )
+      const clipDistance = Math.min(
+        Math.abs(boundedFrame - clip.startFrame),
+        Math.abs(boundedFrame - Math.max(clip.startFrame, clip.endFrame - 1)),
+      )
+      return clipDistance < closestDistance ? clip : closest
+    })
+    selectClip(closestClip.id, boundedFrame)
+  }, [durationFrames, selectClip, timelineClips])
 
   const handleMoveClip = React.useCallback((clipId: string, startFrame: number) => {
     persist(moveClipNode(meta, clipId, startFrame))
@@ -227,108 +259,101 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   }, [meta, persist])
 
   const handleSplitClip = React.useCallback((clipId: string, frame: number) => {
+    const existingIds = new Set(meta.clips.map((clip) => clip.id))
     const next = splitClipNode(meta, clipId, frame)
-    const splitSource = next.clips.find((clip) => clip.id.endsWith('-split'))
-    persist({ ...next, selectedClipId: splitSource?.id ?? meta.selectedClipId })
-    setSplitMode(false)
-  }, [meta, persist])
+    const splitSource = next.clips.find((clip) => !existingIds.has(clip.id))
+    if (next === meta) return
+    captureHistory()
+    persist({ ...next, selectedClipId: splitSource?.id ?? meta.selectedClipId }, { history: false })
+  }, [captureHistory, meta, persist])
 
   const handleRemoveClip = React.useCallback((clipId: string) => {
     const next = removeClipNode(meta, clipId)
-    persist(next)
+    if (next.clips.length === meta.clips.length) return
+    captureHistory()
+    persist(next, { history: false })
     setPlaying(false)
-    setEditingOpen(false)
-    setExportMenuOpen(false)
-  }, [meta, persist])
+    if (!next.clips.length) {
+      setEditingOpen(false)
+      setExportMenuOpen(false)
+    }
+  }, [captureHistory, meta, persist])
 
   const handleDuplicateClip = React.useCallback((clipId: string) => {
-    persist(duplicateClipNode(meta, clipId))
-  }, [meta, persist])
+    const next = duplicateClipNode(meta, clipId)
+    if (next.clips.length === meta.clips.length) return
+    captureHistory()
+    persist(next, { history: false })
+  }, [captureHistory, meta, persist])
 
-  const singleClipTimeline = React.useMemo(() => {
-    if (!activeClip) return null
-    const track = timeline.tracks[0]
-    if (!track) return null
-    const visibleFrames = Math.max(1, activeClip.endFrame - activeClip.startFrame)
-    return {
-      ...timeline,
-      playheadFrame: 0,
-      tracks: [{ ...track, clips: [{ ...activeClip, startFrame: 0, endFrame: visibleFrames }] }],
-    }
-  }, [activeClip, timeline])
+  const handleNudgeClip = React.useCallback((clipId: string, deltaFrame: number) => {
+    const next = nudgeClipNode(meta, clipId, deltaFrame)
+    if (next === meta) return
+    captureHistory()
+    persist(next, { history: false })
+  }, [captureHistory, meta, persist])
 
-  const handleExport = async (scope: 'current' | 'all'): Promise<void> => {
+  const handleExport = async (scope: ClipNodeExportScope, destination: ClipNodeExportDestination): Promise<void> => {
     const projectId = getActiveWorkbenchProjectId()
-    const exportTimeline = scope === 'current' ? singleClipTimeline : timeline
-    if (!projectId || !exportTimeline || exportTimeline.tracks[0]?.clips.length === 0 || exporting) return
-    setExporting(scope)
+    const tasks = buildClipNodeExportTasks(timeline, scope)
+    if (!projectId || tasks.length === 0 || exporting) return
+    const action: ClipNodeExportAction = `${scope}-${destination}`
+    setExporting(action)
     try {
-      if (scope === 'current') {
+      const completed: Array<{ task: (typeof tasks)[number]; relativePath: string }> = []
+      for (const task of tasks) {
         const result = await exportTimelineToMp4({
-          timeline: exportTimeline,
+          timeline: task.timeline,
           aspectRatio: '16:9',
           projectId,
           resolution: '1080p',
           quality: 'standard',
-          outputName: 'nomi-clip',
+          outputName: task.outputName,
         })
-        toast(t('generationCommon.clipNode.exportComplete', { path: result.relativePath }), 'success')
-        return
+        completed.push({ task, relativePath: result.relativePath })
       }
 
-      const merged = await exportTimelineToMp4({
-        timeline: exportTimeline,
-        aspectRatio: '16:9',
-        projectId,
-        resolution: '1080p',
-        quality: 'standard',
-        outputName: 'nomi-cut',
-      })
-      const clips = exportTimeline.tracks[0]?.clips ?? []
-      for (const [index, clip] of clips.entries()) {
-        const visibleFrames = Math.max(1, clip.endFrame - clip.startFrame)
-        const clipTimeline = {
-          ...exportTimeline,
-          playheadFrame: 0,
-          tracks: [{
-            ...exportTimeline.tracks[0]!,
-            clips: [{ ...clip, startFrame: 0, endFrame: visibleFrames }],
-          }, ...exportTimeline.tracks.slice(1)],
+      if (destination === 'download') {
+        const revealed = completed.at(-1)
+        if (revealed) {
+          await getDesktopBridge()?.exports.showInFolder({ projectId, relativePath: revealed.relativePath }).catch(() => undefined)
         }
-        const segment = await exportTimelineToMp4({
-          timeline: clipTimeline,
-          aspectRatio: '16:9',
-          projectId,
-          resolution: '1080p',
-          quality: 'standard',
-          outputName: `nomi-clip-${String(index + 1).padStart(2, '0')}`,
-        })
-        const existing = canvasNodes.find((candidate) => (
-          candidate.kind === 'video'
-          && candidate.meta?.sourceClipNodeId === node.id
-          && candidate.meta?.sourceClipId === clip.id
-        ))
-        const outputPatch = buildClipNodeOutputPatch({
-          sourceClipNodeId: node.id,
-          sourceClipId: clip.id,
-          outputUrl: buildWorkspaceFileUrl(projectId, segment.relativePath),
-          relativePath: segment.relativePath,
-          durationSeconds: visibleFrames / Math.max(1, exportTimeline.fps),
-        })
-        const outputNode = existing ?? addNode({
-          kind: 'video',
-          title: t('generationCommon.clipNode.outputClipTitle', { index: index + 1 }),
-          position: {
-            x: node.position.x + visualSize.width + 80,
-            y: node.position.y + index * 180,
-          },
-          categoryId: node.categoryId,
-          select: false,
-        })
-        updateNode(outputNode.id, outputPatch)
-        connectNodes(node.id, outputNode.id)
+      } else {
+        for (const { task, relativePath } of completed) {
+          const existing = canvasNodes.find((candidate) => (
+            candidate.kind === 'video'
+            && candidate.meta?.sourceClipNodeId === node.id
+            && (task.sourceClipId
+              ? candidate.meta?.sourceClipId === task.sourceClipId
+              : !candidate.meta?.sourceClipId)
+          ))
+          const outputNode = existing ?? addNode({
+            kind: 'video',
+            title: task.sourceClipId
+              ? t('generationCommon.clipNode.outputClipTitle', { index: task.index + 1 })
+              : t('generationCommon.clipNode.outputNodeTitle'),
+            position: {
+              x: node.position.x + visualSize.width + 80,
+              y: node.position.y + (task.sourceClipId ? task.index * 180 : -180),
+            },
+            categoryId: node.categoryId,
+            select: false,
+          })
+          updateNode(outputNode.id, buildClipNodeOutputPatch({
+            sourceClipNodeId: node.id,
+            ...(task.sourceClipId ? { sourceClipId: task.sourceClipId } : {}),
+            outputUrl: buildWorkspaceFileUrl(projectId, relativePath),
+            relativePath,
+            durationSeconds: task.durationFrames / Math.max(1, task.timeline.fps),
+          }))
+          // Default reference edges retain the canvas's light, label-free resting state.
+          connectNodes(node.id, outputNode.id)
+        }
       }
-      toast(t('generationCommon.clipNode.exportAllComplete', { count: clips.length, path: merged.relativePath }), 'success')
+      setExportMenuOpen(false)
+      toast(t(destination === 'canvas'
+        ? 'generationCommon.clipNode.exportCanvasComplete'
+        : 'generationCommon.clipNode.exportDownloadComplete', { count: completed.length }), 'success')
     } catch (error) {
       toast(error instanceof Error ? error.message : t('generationCommon.clipNode.exportFailed'), 'error')
     } finally {
@@ -336,52 +361,47 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     }
   }
 
-  const handleCreateVideoNode = async (): Promise<void> => {
-    const projectId = getActiveWorkbenchProjectId()
-    if (!projectId || timelineClips.length === 0 || creatingVideoNode) return
-    setCreatingVideoNode(true)
-    try {
-      const result = await exportTimelineToMp4({
-        timeline,
-        aspectRatio: '16:9',
-        projectId,
-        resolution: '1080p',
-        quality: 'standard',
-        outputName: 'nomi-clip-node',
-      })
-      const durationSeconds = Math.max(0.1, (timelineClips.at(-1)?.endFrame ?? 1) / (timeline.fps || 30))
-      const outputNode = addNode({
-        kind: 'video',
-        title: t('generationCommon.clipNode.outputNodeTitle'),
-        position: { x: node.position.x + visualSize.width + 80, y: node.position.y },
-        categoryId: node.categoryId,
-        select: true,
-      })
-      updateNode(outputNode.id, buildClipNodeOutputPatch({
-        sourceClipNodeId: node.id,
-        outputUrl: buildWorkspaceFileUrl(projectId, result.relativePath),
-        relativePath: result.relativePath,
-        durationSeconds,
-      }))
-      connectNodes(node.id, outputNode.id)
-      toast(t('generationCommon.clipNode.exportComplete', { path: result.relativePath }), 'success')
-    } catch (error) {
-      toast(error instanceof Error ? error.message : t('generationCommon.clipNode.exportFailed'), 'error')
-    } finally {
-      setCreatingVideoNode(false)
-    }
-  }
-
-  const closeEditing = (): void => {
+  const closeEditing = React.useCallback((): void => {
     setEditingOpen(false)
     setExportMenuOpen(false)
-    setSplitMode(false)
-  }
+    setPlaying(false)
+  }, [])
+
+  React.useEffect(() => {
+    if (!selected || !editingOpen || !activeClip || readOnly) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeEditing()
+        return
+      }
+      dispatchTimelineShortcut(event, {
+        hasSelection: true,
+        hasPrimaryClip: true,
+        hasSelectedTextClip: false,
+        splitMode: false,
+      }, (action) => {
+        switch (action.type) {
+          case 'undo': useGenerationCanvasStore.getState().undo(); break
+          case 'redo': useGenerationCanvasStore.getState().redo(); break
+          case 'nudge-playhead': setPlayheadFrame((frame) => Math.max(0, Math.min(durationFrames, frame + action.delta))); break
+          case 'remove-selection': handleRemoveClip(activeClip.id); break
+          case 'split-primary': handleSplitClip(activeClip.id, playheadFrame); break
+          case 'duplicate-primary': handleDuplicateClip(activeClip.id); break
+          case 'nudge-primary': handleNudgeClip(activeClip.id, action.delta); break
+          case 'exit-split-mode':
+          case 'remove-text-selection': break
+        }
+      })
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [activeClip, closeEditing, durationFrames, editingOpen, handleDuplicateClip, handleNudgeClip, handleRemoveClip, handleSplitClip, playheadFrame, readOnly, selected])
 
   const floatingLayerStyle = React.useMemo<React.CSSProperties | null>(() => {
     if (!anchorRect || typeof window === 'undefined') return null
-    const width = 550
-    const height = 250
+    const width = 430
+    const height = 286
     const left = Math.max(12, Math.min(window.innerWidth - width - 12, anchorRect.left + anchorRect.width / 2 - width / 2))
     const top = anchorRect.top >= height + 20
       ? anchorRect.top - height - 12
@@ -391,12 +411,19 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
 
   const exportLayerStyle = React.useMemo<React.CSSProperties | null>(() => {
     if (!anchorRect || typeof window === 'undefined') return null
-    const width = 320
-    const height = 220
-    const left = Math.max(12, Math.min(window.innerWidth - width - 12, anchorRect.right - width))
-    const top = anchorRect.bottom + height + 12 <= window.innerHeight
-      ? anchorRect.bottom + 12
-      : Math.max(12, anchorRect.top - height - 12)
+    const width = 248
+    const height = 92
+    const gap = 12
+    const fitsRight = anchorRect.right + gap + width <= window.innerWidth - gap
+    const fitsLeft = anchorRect.left - gap - width >= gap
+    const left = fitsRight
+      ? anchorRect.right + gap
+      : fitsLeft
+        ? anchorRect.left - gap - width
+        : Math.max(gap, Math.min(window.innerWidth - width - gap, anchorRect.right - width))
+    const top = fitsRight || fitsLeft
+      ? Math.max(gap, Math.min(window.innerHeight - height - gap, anchorRect.top))
+      : Math.max(gap, Math.min(window.innerHeight - height - gap, anchorRect.bottom + gap))
     return { position: 'fixed', left, top, zIndex: 1001 }
   }, [anchorRect])
 
@@ -424,35 +451,15 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
       </> : null}
 
       {visualMode === 'editing' && activeClip && floatingLayerStyle ? createPortal(
-        <div style={floatingLayerStyle} className="flex items-end gap-2 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg" onPointerDown={(event) => event.stopPropagation()}>
-          <ClipNodePreview clip={activeClip} playing={playing} onTogglePlaying={() => setPlaying((value) => !value)} className="w-80" />
-          <div className="grid w-40 gap-1.5">
-            <div className="px-1 text-micro font-medium text-nomi-ink/60">{t('generationCommon.clipNode.selectedScope')}</div>
-            <WorkbenchButton
-              variant="default"
-              size="sm"
-              className={cn('w-full justify-start', splitMode ? 'border-nomi-accent text-nomi-accent' : '')}
-              aria-pressed={splitMode}
-              onClick={() => setSplitMode((value) => !value)}
-            >
-              <IconScissors size={14} />{t('generationCommon.clipNode.split')}
-            </WorkbenchButton>
-            <div className="grid grid-cols-2 gap-1.5">
-              <WorkbenchIconButton label={t('generationCommon.clipNode.duplicate')} icon={<IconCopy size={14} />} onClick={() => handleDuplicateClip(activeClip.id)} className="border border-nomi-line bg-nomi-bg text-nomi-ink hover:bg-nomi-accent-soft hover:text-nomi-accent" />
-              <WorkbenchIconButton label={t('generationCommon.clipNode.remove')} icon={<IconTrash size={14} />} onClick={() => handleRemoveClip(activeClip.id)} className="border border-nomi-line bg-nomi-bg text-nomi-ink hover:bg-nomi-danger-soft hover:text-nomi-danger" />
-            </div>
-            {!readOnly ? (
-              <WorkbenchButton
-                variant="default"
-                size="sm"
-                className="w-full justify-start"
-                onClick={() => setExportMenuOpen((value) => !value)}
-                aria-expanded={exportMenuOpen}
-              >
-                <IconDownload size={14} />{t('generationCommon.clipNode.export')}<IconChevronDown size={13} className="ml-auto" />
-              </WorkbenchButton>
-            ) : null}
-          </div>
+        <div style={floatingLayerStyle} onPointerDown={(event) => event.stopPropagation()}>
+          <ClipNodePreview
+            timeline={timelineForView}
+            playheadFrame={playheadFrame}
+            playing={playing}
+            onPlayingChange={setPlaying}
+            onPlayheadChange={setPlayheadFrame}
+            onClose={closeEditing}
+          />
         </div>, document.body,
       ) : null}
 
@@ -463,44 +470,81 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
           if (event.target === event.currentTarget) closeEditing()
         }}
       >
-        <header className="flex h-8 shrink-0 items-center gap-2 px-3" onPointerDown={(event) => event.stopPropagation()}>
+        <header
+          className="flex h-8 shrink-0 cursor-grab items-center gap-2 px-3 active:cursor-grabbing"
+          data-testid="clip-node-drag-handle"
+          onPointerDown={handlePointerDown}
+        >
           <IconScissors size={15} className="text-nomi-accent" />
           <span className="truncate text-body-sm font-semibold text-nomi-ink">{t('generationCommon.clipNode.axis')}</span>
           <span className="ml-auto text-micro text-nomi-ink/60">{t('generationCommon.clipNode.count', { count: timelineClips.length })}</span>
           <span className="text-micro text-nomi-ink/45">·</span>
           <span className="text-micro text-nomi-ink/60">{t('generationCommon.clipNode.totalDuration', { duration: formatClipNodeDuration(durationFrames, timeline.fps) })}</span>
+          {!readOnly ? (
+            <WorkbenchIconButton
+              label={t('generationCommon.clipNode.export')}
+              icon={<IconDownload size={15} />}
+              className="ml-1 shrink-0 bg-transparent text-nomi-ink-60 hover:bg-nomi-accent-soft hover:text-nomi-accent"
+              disabled={!timelineClips.length || Boolean(exporting) || !getActiveWorkbenchProjectId()}
+              aria-expanded={exportMenuOpen}
+              data-testid="clip-node-export"
+              onClick={() => setExportMenuOpen((value) => !value)}
+            />
+          ) : null}
         </header>
         <div className="min-h-0 flex-1 px-2 pb-2" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
           <ClipNodeTimeline
             timeline={timelineForView}
             selectedClipId={visualMode === 'editing' ? selectedClipId : undefined}
-            splitMode={splitMode}
             onSelectClip={selectClip}
             onMoveClip={handleMoveClip}
             onResizeClip={handleResizeClip}
-            onSplitClip={handleSplitClip}
-            onScrubPlayhead={setPlayheadFrame}
+            onScrubPlayhead={selectFrame}
             onAddMaterial={readOnly ? undefined : () => { setUploadError(null); setRetryUploadFile(null); setPickerOpen(true) }}
-            onBlankAxis={closeEditing}
           />
         </div>
       </div>
 
-      {exportMenuOpen && visualMode === 'editing' && !readOnly && exportLayerStyle ? createPortal(
-        <div style={exportLayerStyle} className="w-80 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg" role="menu" onPointerDown={(event) => event.stopPropagation()}>
-          <div className="px-2 pb-1 text-micro font-medium text-nomi-ink/60">{t('generationCommon.clipNode.exportOptions')}</div>
-          <WorkbenchButton variant="default" size="sm" className="h-auto w-full justify-start gap-2 py-2 text-left" disabled={!activeClip || Boolean(exporting) || !getActiveWorkbenchProjectId()} onClick={() => void handleExport('current')}>
-            <IconDownload size={14} />
-            <span className="grid text-left"><span>{exporting === 'current' ? t('generationCommon.clipNode.exporting') : t('generationCommon.clipNode.exportCurrent')}</span><span className="text-micro font-normal text-nomi-ink-50">{t('generationCommon.clipNode.exportCurrentHint')}</span></span>
-          </WorkbenchButton>
-          <WorkbenchButton variant="default" size="sm" className="mt-1 h-auto w-full justify-start gap-2 py-2 text-left" disabled={timelineClips.length === 0 || Boolean(exporting) || !getActiveWorkbenchProjectId()} onClick={() => void handleExport('all')}>
-            <IconDownload size={14} />
-            <span className="grid text-left"><span>{exporting === 'all' ? t('generationCommon.clipNode.exporting') : t('generationCommon.clipNode.exportAll')}</span><span className="text-micro font-normal text-nomi-ink-50">{t('generationCommon.clipNode.exportAllHint')}</span></span>
-          </WorkbenchButton>
-          <WorkbenchButton variant="primary" size="sm" className="mt-1 h-auto w-full justify-start gap-2 py-2 text-left" disabled={timelineClips.length === 0 || Boolean(exporting) || creatingVideoNode || !getActiveWorkbenchProjectId()} onClick={() => void handleCreateVideoNode()}>
-            <IconScissors size={14} />
-            <span className="grid text-left"><span>{creatingVideoNode ? t('generationCommon.clipNode.creatingVideoNode') : t('generationCommon.clipNode.createVideoNode')}</span><span className="text-micro font-normal text-nomi-paper/65">{t('generationCommon.clipNode.createVideoNodeHint')}</span></span>
-          </WorkbenchButton>
+      {exportMenuOpen && !readOnly && exportLayerStyle ? createPortal(
+        <div
+          style={exportLayerStyle}
+          className="w-[248px] rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-nomi-ink shadow-nomi-lg"
+          role="dialog"
+          aria-label={t('generationCommon.clipNode.exportOptions')}
+          data-testid="clip-node-export-menu"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <NomiSegmented
+            value={exportScope}
+            options={[
+              { value: 'full', label: t('generationCommon.clipNode.exportFull') },
+              { value: 'segments', label: t('generationCommon.clipNode.exportSegments', { count: timelineClips.length }) },
+            ]}
+            onChange={(value) => setExportScope(value as ClipNodeExportScope)}
+            ariaLabel={t('generationCommon.clipNode.exportScope')}
+            className="rounded-nomi-sm p-0.5"
+            itemClassName="min-h-7 py-0.5"
+          />
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <WorkbenchButton
+              variant="default"
+              size="sm"
+              loading={exporting === `${exportScope}-canvas`}
+              disabled={Boolean(exporting)}
+              onClick={() => void handleExport(exportScope, 'canvas')}
+            >
+              <IconExternalLink />{t('generationCommon.clipNode.exportToCanvas')}
+            </WorkbenchButton>
+            <WorkbenchButton
+              variant="primary"
+              size="sm"
+              loading={exporting === `${exportScope}-download`}
+              disabled={Boolean(exporting)}
+              onClick={() => void handleExport(exportScope, 'download')}
+            >
+              <IconDownload />{t('generationCommon.clipNode.exportDownload')}
+            </WorkbenchButton>
+          </div>
         </div>, document.body,
       ) : null}
 

@@ -28,6 +28,7 @@ import { TimelineSecondaryAddRow } from './TimelineSecondaryAddRow'
 import { frameToPixel, pixelToFrame, TIMELINE_MIN_SCALE, TIMELINE_MAX_SCALE } from './timelineEdit'
 import { buildSnapPoints, resolveSnap, pixelThresholdToFrames } from './snapping'
 import { toast } from '../../ui/toast'
+import { dispatchTimelineShortcut } from './timelineShortcuts'
 
 const WHEEL_ZOOM_FACTOR = 1.24
 
@@ -152,59 +153,24 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
       // 预览(full)与生成(compact)两个 TimelinePanel 因 keep-alive 同时挂载，各注册一个 window keydown。
       // 不去重会双触发（⌘Z 撤销两步、方向键 playhead 走两帧、Delete 删两次）。本处理的每条分支都会
       // preventDefault，故第二个监听器见 defaultPrevented 即跳过 → 单一真相、零重复（不动 keep-alive 架构）。
-      if (event.defaultPrevented) return
-      const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, [contenteditable="true"]')) return
-      // 撤销时间轴编辑（⌘Z / Ctrl+Z）
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
-        event.preventDefault()
-        useWorkbenchStore.getState().undoTimeline()
-        return
-      }
-      // 重做（⇧⌘Z / ⇧Ctrl+Z）
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && event.shiftKey) {
-        event.preventDefault()
-        useWorkbenchStore.getState().redoTimeline()
-        return
-      }
-      // Esc 退出剪刀模式
-      if (event.key === 'Escape' && useWorkbenchStore.getState().timelineSplitMode) {
-        event.preventDefault()
-        useWorkbenchStore.getState().setTimelineSplitMode(false)
-        return
-      }
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        event.preventDefault()
-        setTimelinePlayhead(timeline.playheadFrame + (event.key === 'ArrowLeft' ? -1 : 1))
-        return
-      }
-      // 文字 clip 选中时的删除（与媒体 clip 选择互斥）
-      if (selectedTextClipId && (event.key === 'Backspace' || event.key === 'Delete')) {
-        event.preventDefault()
-        removeTimelineTextClip(selectedTextClipId)
-        return
-      }
-      if (!hasSelection) return
-      if (event.key === 'Backspace' || event.key === 'Delete') {
-        event.preventDefault()
-        removeSelectedTimelineClips() // 批量删除所有选中
-        return
-      }
-      if (!primaryClipId) return
-      if (event.key.toLowerCase() === 's') {
-        event.preventDefault()
-        splitTimelineClip(primaryClipId, timeline.playheadFrame)
-        return
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
-        event.preventDefault()
-        duplicateTimelineClip(primaryClipId)
-        return
-      }
-      if (event.shiftKey && (event.key === '<' || event.key === '>')) {
-        event.preventDefault()
-        nudgeTimelineClip(primaryClipId, event.key === '<' ? -1 : 1)
-      }
+      dispatchTimelineShortcut(event, {
+        hasSelection,
+        hasPrimaryClip: Boolean(primaryClipId),
+        hasSelectedTextClip: Boolean(selectedTextClipId),
+        splitMode,
+      }, (action) => {
+        switch (action.type) {
+          case 'undo': useWorkbenchStore.getState().undoTimeline(); break
+          case 'redo': useWorkbenchStore.getState().redoTimeline(); break
+          case 'exit-split-mode': setTimelineSplitMode(false); break
+          case 'nudge-playhead': setTimelinePlayhead(timeline.playheadFrame + action.delta); break
+          case 'remove-text-selection': if (selectedTextClipId) removeTimelineTextClip(selectedTextClipId); break
+          case 'remove-selection': removeSelectedTimelineClips(); break
+          case 'split-primary': if (primaryClipId) splitTimelineClip(primaryClipId, timeline.playheadFrame); break
+          case 'duplicate-primary': if (primaryClipId) duplicateTimelineClip(primaryClipId); break
+          case 'nudge-primary': if (primaryClipId) nudgeTimelineClip(primaryClipId, action.delta); break
+        }
+      })
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -216,7 +182,9 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
     removeSelectedTimelineClips,
     removeTimelineTextClip,
     selectedTextClipId,
+    setTimelineSplitMode,
     setTimelinePlayhead,
+    splitMode,
     splitTimelineClip,
     timeline.playheadFrame,
   ])
