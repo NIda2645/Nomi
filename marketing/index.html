@@ -101,14 +101,15 @@ section[id] { scroll-margin-top: calc(var(--nav-h) + 12px); }
 .hero-lede { max-width: 800px; margin: 28px auto 0; color: var(--ink-soft); font-size: 19px; line-height: 1.7; }
 .hero-actions { margin-top: 28px; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
 .truth-note { margin: 18px auto 0; color: var(--muted); font-size: 12px; }
-.hero-product { width: min(1480px, calc(100vw - 40px)); margin: 56px auto 0; position: relative; }
+.hero-product { width: var(--page); margin: 48px auto 0; position: relative; }
 .cost-ribbon { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--coral); border: 1px solid var(--ink); }
 .cost-ribbon span { padding: 12px 18px; border-right: 1px solid var(--ink); font-size: 13px; font-weight: 800; text-align: center; text-decoration: line-through 2px var(--ink); }
 .cost-ribbon span:last-child { border-right: 0; }
-.product-shot { margin-top: -1px; border: 1px solid var(--ink); border-radius: 0 0 6px 6px; overflow: hidden; box-shadow: var(--shadow); background: var(--white); }
-.product-shot img { width: 100%; aspect-ratio: 16 / 8.8; object-fit: cover; object-position: top center; }
+.product-shot, .cost-evidence, .workflow-image-frame, .agent-image { position: relative; overflow: hidden; }
+.product-shot img, .cost-evidence img, .workflow-image-frame img, .agent-image img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.product-shot { aspect-ratio: 21 / 9; margin-top: -1px; border: 1px solid var(--ink); border-radius: 0 0 6px 6px; box-shadow: var(--shadow); background: var(--white); }
 
-.cost-section { margin-top: 108px; padding: 112px 0; color: var(--white); background: var(--ink); }
+.cost-section { margin-top: 88px; padding: 104px 0; color: var(--white); background: var(--ink); }
 .cost-heading { display: grid; grid-template-columns: 1.1fr .7fr; align-items: end; gap: 64px; }
 .cost-heading h2, .workflow h2, .stack h2, .open-source h2, .start h2, .community h2, .closing h2 { margin: 0; font-size: 58px; line-height: 1.08; font-weight: 800; letter-spacing: 0; }
 .cost-heading > p { margin: 0; color: #b9b6ad; font-size: 17px; }
@@ -116,14 +117,13 @@ section[id] { scroll-margin-top: calc(var(--nav-h) + 12px); }
 .cost-tab { min-height: 70px; padding: 12px; border: 0; border-right: 1px solid #3d3c38; color: #aaa79f; background: transparent; font-weight: 700; cursor: pointer; }
 .cost-tab:last-child { border-right: 0; }
 .cost-tab[aria-selected="true"] { color: var(--white); background: var(--coral-dark); }
-.cost-panel { min-height: 630px; padding-top: 62px; display: grid; grid-template-columns: .7fr 1.3fr; gap: 64px; align-items: center; }
+.cost-panel { padding-top: 54px; display: grid; grid-template-columns: .76fr 1.24fr; gap: 56px; align-items: stretch; }
 .cost-panel-copy { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; }
 .cost-index { color: var(--coral); font-size: 15px; font-weight: 800; }
 .cost-panel h3 { margin: 28px 0 20px; font-size: 42px; line-height: 1.14; }
 .cost-panel p { margin: 0; color: #c7c4bb; font-size: 17px; }
 .cost-proof { padding-top: 28px; border-top: 1px solid #3d3c38; color: var(--white); font-weight: 700; }
-.cost-evidence { min-height: 480px; display: flex; align-items: center; }
-.cost-evidence img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top; border: 1px solid #4b4944; border-radius: 6px; }
+.cost-evidence { aspect-ratio: 16 / 9.4; max-height: 500px; border: 1px solid #4b4944; border-radius: 6px; background: #20201d; }
 
 .stack { padding: 124px 0; }
 .stack-head { max-width: 980px; }
@@ -136,25 +136,25 @@ section[id] { scroll-margin-top: calc(var(--nav-h) + 12px); }
 .stack-arrow { color: var(--coral-dark); font-size: 26px; font-weight: 800; text-align: center; }
 .stack-result { font-size: 20px; font-weight: 700; }
 
-.workflow { padding: 120px 0; background: var(--surface); border-block: 1px solid var(--rule); }
-.workflow-grid { margin-top: 64px; display: grid; grid-template-columns: 330px 1fr; gap: 48px; align-items: start; }
-.workflow-tabs { border-top: 1px solid var(--ink); }
-.workflow-tab { width: 100%; min-height: 84px; padding: 16px 8px; display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
+.workflow { padding: 104px 0; background: var(--surface); border-block: 1px solid var(--rule); }
+.workflow-grid { margin-top: 56px; display: grid; grid-template-columns: minmax(280px, 320px) minmax(0, 1fr); gap: 56px; align-items: stretch; }
+.workflow-tabs { display: grid; grid-template-rows: repeat(4, 1fr); border-top: 1px solid var(--ink); }
+.workflow-tab { width: 100%; min-height: 0; padding: 16px 8px; display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
 .workflow-tab[aria-selected="true"] { color: var(--ink); }
 .workflow-tab span:first-child { font-size: 12px; font-weight: 800; }
 .workflow-tab strong { font-size: 18px; }
-.workflow-visual { min-width: 0; }
-.workflow-visual img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top; border: 1px solid var(--ink); border-radius: 6px; background: var(--white); }
-.workflow-caption { min-height: 66px; margin: 18px 0 0; color: var(--ink-soft); font-size: 16px; }
+.workflow-visual { min-width: 0; display: flex; flex-direction: column; }
+.workflow-image-frame { width: 100%; max-height: 460px; aspect-ratio: 21 / 10; border: 1px solid var(--ink); border-radius: 6px; background: var(--white); }
+.workflow-caption { min-height: 66px; margin: 16px 0 0; color: var(--ink-soft); font-size: 16px; }
 
 .agent-band { color: var(--white); background: #242c29; }
-.agent-grid { width: var(--page); min-height: 680px; margin: 0 auto; padding: 88px 0; display: grid; grid-template-columns: .8fr 1.2fr; align-items: center; gap: 70px; }
+.agent-grid { width: var(--page); margin: 0 auto; padding: 96px 0; display: grid; grid-template-columns: .88fr 1.12fr; align-items: center; gap: 64px; }
 .agent-copy h2 { margin: 0; font-size: 56px; line-height: 1.08; }
 .agent-copy p { margin: 24px 0 0; color: #c2c8c4; font-size: 17px; }
 .agent-list { margin: 34px 0 0; padding: 0; list-style: none; }
 .agent-list li { padding: 13px 0; border-bottom: 1px solid #48514d; font-weight: 700; }
 .agent-list li::before { content: "✓"; margin-right: 12px; color: #58d598; }
-.agent-image img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top; border: 1px solid #5c6661; border-radius: 6px; }
+.agent-image { width: 100%; max-height: 480px; aspect-ratio: 16 / 10; border: 1px solid #5c6661; border-radius: 6px; background: #303a36; }
 
 .open-source { padding: 118px 0; background: var(--coral); }
 .open-grid { display: grid; grid-template-columns: 1fr .72fr; gap: 100px; align-items: end; }
@@ -232,8 +232,9 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
   .hero h1 { font-size: 66px; }
   .cost-heading h2, .workflow h2, .stack h2, .open-source h2, .start h2, .community h2 { font-size: 48px; }
   .nav-links { display: none; }
-  .workflow-grid { grid-template-columns: 260px 1fr; }
+  .workflow-grid { grid-template-columns: 260px minmax(0, 1fr); gap: 40px; }
   .agent-grid { grid-template-columns: 1fr; min-height: 0; }
+  .agent-image { justify-self: center; }
   .open-grid { gap: 48px; }
 }
 @media (max-width: 760px) {
@@ -250,7 +251,8 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
   .cost-ribbon span { border-bottom: 1px solid var(--ink); }
   .cost-ribbon span:nth-child(2) { border-right: 0; }
   .cost-ribbon span:nth-child(n+3) { border-bottom: 0; }
-  .product-shot img { aspect-ratio: 1.15 / 1; object-position: 52% top; }
+  .product-shot { aspect-ratio: 4 / 3; }
+  .product-shot img { object-position: 52% top; }
   .cost-section { margin-top: 72px; padding: 82px 0; }
   .cost-heading, .cost-panel, .open-grid { grid-template-columns: 1fr; }
   .cost-heading { gap: 24px; }
@@ -262,15 +264,17 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
   .cost-panel { min-height: 0; gap: 36px; }
   .cost-panel-copy { gap: 34px; }
   .cost-panel h3 { font-size: 32px; }
-  .cost-evidence { min-height: 0; }
+  .cost-evidence { width: 100%; max-height: none; aspect-ratio: 4 / 3; }
   .stack, .workflow, .open-source, .start, .community { padding: 82px 0; }
   .stack-row { padding: 24px 0; grid-template-columns: 1fr; gap: 12px; }
   .stack-arrow { width: 24px; text-align: left; transform: rotate(90deg); }
   .workflow-grid { grid-template-columns: 1fr; gap: 28px; }
-  .workflow-tabs { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workflow-tabs { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, 1fr); }
   .workflow-tab { min-width: 0; grid-template-columns: 30px minmax(0, 1fr); min-height: 72px; padding-right: 12px; }
+  .workflow-image-frame { max-height: none; aspect-ratio: 4 / 3; }
   .agent-grid { width: var(--page); padding: 82px 0; gap: 42px; }
   .agent-copy h2 { font-size: 40px; }
+  .agent-image { max-height: none; aspect-ratio: 4 / 3; }
   .open-grid { gap: 48px; }
   .start-row { padding: 24px 0; grid-template-columns: 44px 1fr; gap: 12px; }
   .start-row p { grid-column: 2; }
@@ -384,7 +388,7 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
     <div class="workflow-grid" data-reveal>
       <div class="workflow-tabs" role="tablist" aria-label="Nomi 工作流"><button id="workflow-tab-story" class="workflow-tab" type="button" role="tab" aria-selected="true" aria-controls="workflow-panel" tabindex="0" data-step="story"><span>01</span><strong>写与拆</strong></button><button id="workflow-tab-anchor" class="workflow-tab" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-step="anchor"><span>02</span><strong>锁参考</strong></button><button id="workflow-tab-generate" class="workflow-tab" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-step="generate"><span>03</span><strong>跑生成</strong></button><button id="workflow-tab-edit" class="workflow-tab" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-step="edit"><span>04</span><strong>剪与交付</strong></button></div>
       <div class="workflow-visual" id="workflow-panel" role="tabpanel" aria-labelledby="workflow-tab-story" aria-live="polite">
-        <img id="workflow-image" src="/assets/screen-script-2026-08-17.png" alt="Nomi 故事与分镜工作区" width="3200" height="1722" />
+        <div class="workflow-image-frame"><img id="workflow-image" src="/assets/screen-script-2026-08-17.png" alt="Nomi 故事与分镜工作区" width="3200" height="1722" /></div>
         <p class="workflow-caption" id="workflow-caption">故事、角色和镜头规划留在同一个项目里，后面的每一步都知道前面发生了什么。</p>
       </div>
     </div>
