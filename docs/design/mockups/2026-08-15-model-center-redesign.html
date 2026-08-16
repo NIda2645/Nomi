@@ -1,0 +1,2479 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nomi 模型与接入中心 · 交互原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f2ef;
+      --paper: #ffffff;
+      --paper-warm: #faf9f7;
+      --ink: #282722;
+      --ink-80: #45443e;
+      --ink-60: #74716a;
+      --ink-40: #a09d96;
+      --line: #e3e1dc;
+      --line-strong: #d4d1ca;
+      --hover: #f1f0ed;
+      --pressed: #eae8e3;
+      --accent: #486fae;
+      --accent-ink: #35598f;
+      --accent-soft: #edf3fb;
+      --success: #2d7b4f;
+      --success-soft: #edf7f1;
+      --warning: #9a6517;
+      --warning-soft: #fff7e8;
+      --danger: #b4473d;
+      --danger-soft: #fff0ee;
+      --shadow: 0 20px 60px rgba(34, 32, 27, 0.14), 0 2px 8px rgba(34, 32, 27, 0.08);
+      --radius: 8px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { margin: 0; min-height: 100%; }
+
+    body {
+      --settings-frame-height: 792px;
+      --settings-frame-width: 1280px;
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font);
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    body[data-active-settings-section="files"],
+    body[data-active-settings-section="about"] { --settings-frame-height: 320px; --settings-frame-width: 960px; }
+    body[data-active-settings-section="general"] { --settings-frame-height: 440px; --settings-frame-width: 1040px; }
+    body[data-active-settings-section="ai"] { --settings-frame-height: 500px; --settings-frame-width: 1120px; }
+    body[data-active-settings-section="automation"] { --settings-frame-height: 620px; --settings-frame-width: 1180px; }
+
+    button, input, textarea, select { font: inherit; letter-spacing: 0; }
+
+    button { color: inherit; }
+
+    button, [role="button"] { -webkit-tap-highlight-color: transparent; }
+
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--accent) 34%, transparent);
+      outline-offset: 2px;
+    }
+
+    .settings-shell {
+      width: min(var(--settings-frame-width), calc(100vw - 48px));
+      height: min(var(--settings-frame-height), calc(100svh - 48px));
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 184px minmax(0, 1fr);
+      align-self: start;
+      margin-top: max(24px, calc((100svh - 792px) / 2));
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      transition: width .18s ease, height .18s ease;
+    }
+
+    .settings-content {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 286px minmax(0, 1fr);
+    }
+
+    .settings-content:not([data-section="models"]) { grid-template-columns: minmax(0, 1fr); }
+    .settings-content:not([data-section="models"]) .connection-pane { display: none; }
+
+    .settings-nav {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 12px 14px;
+      background: #eceae5;
+      border-right: 1px solid var(--line-strong);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 8px 22px;
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .brand-copy { min-width: 0; flex: 1; white-space: nowrap; }
+
+    .nav-close {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--ink-60);
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    .nav-close:hover { background: rgba(255,255,255,.58); color: var(--ink); }
+
+    .icon-button.mobile-list-close { display: none; }
+
+    .brand-mark {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: Georgia, serif;
+      font-weight: 700;
+    }
+
+    .nav-label,
+    .eyebrow {
+      color: var(--ink-60);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .nav-label { padding: 0 10px 7px; }
+
+    .nav-list { display: grid; gap: 3px; }
+
+    .nav-item {
+      width: 100%;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 0;
+      border-radius: 7px;
+      padding: 0 10px;
+      background: transparent;
+      color: var(--ink-80);
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .nav-item:hover { background: rgba(255,255,255,.54); }
+    .nav-item[aria-current="page"] { background: var(--paper); color: var(--ink); font-weight: 600; }
+
+    .nav-symbol {
+      width: 18px;
+      color: var(--ink-60);
+      font-size: 15px;
+      text-align: center;
+    }
+
+    .nav-spacer { flex: 1; }
+
+    .version {
+      padding: 12px 10px 0;
+      border-top: 1px solid rgba(104,101,93,.16);
+      color: var(--ink-40);
+      font-size: 11px;
+    }
+
+    .connection-pane {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--paper-warm);
+      border-right: 1px solid var(--line);
+    }
+
+    .connection-head {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 18px 14px 12px 16px;
+    }
+
+    .connection-head h1 {
+      flex: 1;
+      margin: 0;
+      font-size: 16px;
+      font-weight: 650;
+    }
+
+    .mobile-settings-back { display: none; }
+
+    .icon-button,
+    .square-button {
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: var(--paper);
+      cursor: pointer;
+    }
+
+    .icon-button:hover,
+    .square-button:hover { background: var(--hover); }
+
+    .plus-button {
+      border-color: var(--ink);
+      background: var(--ink);
+      color: var(--paper);
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .plus-button:hover { background: var(--ink-80); }
+
+    .prototype-menu {
+      position: absolute;
+      z-index: 10;
+      top: 58px;
+      right: 14px;
+      width: 172px;
+      display: none;
+      padding: 5px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 12px 28px rgba(35,33,28,.14);
+    }
+
+    .prototype-menu.open { display: grid; }
+
+    .menu-action {
+      min-height: 38px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 10px;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .menu-action:hover { background: var(--hover); }
+
+    .search-wrap { padding: 0 16px 12px; }
+
+    .search-field {
+      width: 100%;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 0 11px;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    .search-field::placeholder { color: var(--ink-40); }
+
+    .connection-list {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 0 8px 12px;
+    }
+
+    .list-section-title {
+      padding: 12px 9px 6px;
+      color: var(--ink-60);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .connection-row {
+      width: 100%;
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border: 0;
+      border-radius: 7px;
+      padding: 8px 9px;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .connection-row:hover { background: var(--hover); }
+    .connection-row.selected { background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); }
+
+    .provider-icon {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--paper);
+      color: var(--accent-ink);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .provider-icon.all { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+    .provider-icon.local { color: #28756d; }
+
+    .row-title {
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 580;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .row-subtitle {
+      margin-top: 3px;
+      overflow: hidden;
+      color: var(--ink-60);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .connection-row .row-title,
+    .connection-row .row-subtitle,
+    .task-entry .row-title,
+    .task-entry .row-subtitle,
+    .choice-row .row-title,
+    .choice-row .choice-id,
+    .method-row .method-title,
+    .method-row .method-copy { display: block; }
+
+    .row-count { color: var(--ink-40); font-size: 12px; }
+
+    .task-entry {
+      margin: 0 10px 12px;
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px 10px;
+      background: var(--paper);
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .task-entry:hover { border-color: var(--line-strong); background: var(--hover); }
+    .task-entry .task-copy { flex: 1; min-width: 0; }
+
+    .task-indicator {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .detail-pane {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--paper);
+    }
+
+    .mobile-detail-bar { display: none; }
+
+    .mobile-bar-spacer { flex: 1; }
+
+    #detail-root {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      container-type: inline-size;
+    }
+
+    .detail-view {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .detail-header {
+      min-height: 78px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .detail-title-block { min-width: 0; flex: 1; }
+
+    .detail-title {
+      margin: 2px 0 0;
+      overflow-wrap: anywhere;
+      font-size: 20px;
+      font-weight: 650;
+      line-height: 1.25;
+    }
+
+    .detail-subtitle {
+      margin-top: 5px;
+      color: var(--ink-60);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .button {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      padding: 7px 12px;
+      background: var(--paper);
+      color: var(--ink);
+      font-weight: 560;
+      line-height: 1.2;
+      cursor: pointer;
+    }
+
+    .button:hover { background: var(--hover); }
+    .button:active { background: var(--pressed); }
+
+    .button.primary { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+    .button.primary:hover { background: var(--ink-80); }
+    .button.accent { border-color: var(--accent); background: var(--accent); color: var(--paper); }
+    .button.accent:hover { background: var(--accent-ink); }
+    .button.ghost { border-color: transparent; background: transparent; color: var(--ink-60); }
+    .button.ghost:hover { background: var(--hover); color: var(--ink); }
+    .button.danger-ghost { border-color: transparent; background: transparent; color: var(--danger); }
+    .button.small { min-height: 32px; padding: 6px 10px; font-size: 12px; }
+    .button:disabled { cursor: not-allowed; opacity: .42; }
+
+    .content-pad { padding: 20px 24px 28px; }
+
+    .overview-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stat {
+      min-width: 0;
+      padding: 15px 18px;
+      border-right: 1px solid var(--line);
+    }
+
+    .stat:last-child { border-right: 0; }
+    .stat-number { font-size: 19px; font-weight: 650; }
+    .stat-label { margin-top: 3px; color: var(--ink-60); font-size: 11px; }
+
+    .toolbar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .toolbar-row .search-field { max-width: 280px; }
+    .toolbar-spacer { flex: 1; }
+
+    .model-table {
+      border-top: 1px solid var(--line);
+    }
+
+    .model-table-head,
+    .model-row {
+      display: grid;
+      grid-template-columns: minmax(170px, 1.5fr) minmax(112px, .85fr) minmax(120px, 1fr) 58px 34px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .model-table-head {
+      min-height: 36px;
+      color: var(--ink-60);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .model-row {
+      min-height: 62px;
+      border-top: 1px solid var(--line);
+      cursor: pointer;
+    }
+
+    .model-row:hover { background: var(--paper-warm); }
+    .model-name { min-width: 0; }
+    .model-name-button { width: 100%; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+    .model-name strong { display: block; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+    .model-id { margin-top: 3px; overflow: hidden; color: var(--ink-60); font-family: var(--mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .cell-muted { min-width: 0; overflow: hidden; color: var(--ink-60); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
+    .state-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: var(--ink-60);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .state-label::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      flex: 0 0 7px;
+      border-radius: 50%;
+      background: var(--ink-40);
+    }
+
+    .state-label.success { color: var(--success); }
+    .state-label.success::before { background: var(--success); }
+    .state-label.warning { color: var(--warning); }
+    .state-label.warning::before { background: var(--warning); }
+    .state-label.running { color: var(--accent-ink); }
+    .state-label.running::before { background: var(--accent); }
+    .state-label.neutral::before { background: var(--ink-60); }
+
+    .switch {
+      position: relative;
+      width: 36px;
+      height: 22px;
+      display: inline-block;
+      cursor: pointer;
+    }
+
+    .switch input { position: absolute; opacity: 0; pointer-events: none; }
+    .switch-track { position: absolute; inset: 0; border-radius: 11px; background: var(--line-strong); transition: background .15s ease; }
+    .switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--paper); box-shadow: 0 1px 2px rgba(0,0,0,.18); transition: transform .15s ease; }
+    .switch input:checked + .switch-track { background: var(--accent); }
+    .switch input:checked + .switch-track::after { transform: translateX(14px); }
+    .switch input:focus-visible + .switch-track { outline: 3px solid color-mix(in srgb, var(--accent) 34%, transparent); outline-offset: 2px; }
+
+    .tabs {
+      min-height: 45px;
+      display: flex;
+      gap: 18px;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tab {
+      position: relative;
+      border: 0;
+      padding: 0 2px;
+      background: transparent;
+      color: var(--ink-60);
+      cursor: pointer;
+    }
+
+    .tab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+    .tab[aria-selected="true"]::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--ink); }
+
+    .section-head {
+      display: flex;
+      align-items: start;
+      gap: 12px;
+      margin: 0 0 12px;
+    }
+
+    .section-head h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 650; }
+    .section-description { margin: -5px 0 14px; color: var(--ink-60); font-size: 12px; line-height: 1.55; }
+
+    .info-list { border-top: 1px solid var(--line); }
+
+    .info-row {
+      min-height: 54px;
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .info-key { color: var(--ink-60); font-size: 12px; }
+    .info-value { min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
+
+    .settings-page-inner {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-content: start;
+      gap: 30px 32px;
+      padding: 24px 28px 40px;
+    }
+
+    body[data-active-settings-section="ai"] .settings-page-inner {
+      grid-template-columns: minmax(320px, 3fr) minmax(0, 5fr);
+    }
+
+    .settings-page-inner > .method-list { grid-column: 1 / -1; }
+
+    .settings-page-section { min-width: 0; margin: 0; }
+    .settings-page-section.wide { grid-column: 1 / -1; }
+    .settings-page-section h2 { margin: 0 0 5px; font-size: 15px; }
+    .settings-page-section > p { margin: 0 0 12px; color: var(--ink-60); font-size: 12px; line-height: 1.55; }
+
+    .setting-row {
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .setting-row:last-child { border-bottom: 1px solid var(--line); }
+    .setting-copy { min-width: 0; }
+    .setting-copy strong { display: block; font-size: 13px; }
+    .setting-copy span { display: block; margin-top: 3px; overflow-wrap: anywhere; color: var(--ink-60); font-size: 11px; line-height: 1.45; }
+    .setting-control { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+    .settings-path {
+      margin: 10px 0;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 10px 12px;
+      background: var(--paper-warm);
+      color: var(--ink-60);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .settings-option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+    .settings-option { min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 42px; border-bottom: 1px solid var(--line); color: var(--ink-80); font-size: 12px; }
+    .settings-option input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .settings-input { width: 132px; height: 34px; border: 1px solid var(--line-strong); border-radius: 7px; padding: 0 10px; color: var(--ink); background: var(--paper); }
+    .locked-pill { display: inline-flex; align-items: center; min-height: 25px; border-radius: 999px; padding: 0 9px; background: var(--paper-warm); color: var(--ink-60); font-size: 10px; }
+
+    .about-brand { display: flex; align-items: center; gap: 12px; min-height: 62px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .about-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 8px; background: var(--ink); color: var(--paper); font-weight: 700; }
+    .about-brand strong { display: block; font-size: 15px; }
+    .about-brand span { display: block; margin-top: 3px; color: var(--ink-60); font-size: 11px; }
+
+    @container (max-width: 900px) {
+      .settings-page-inner { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+      .settings-page-section.wide { grid-column: auto; }
+    }
+
+    .segmented {
+      display: inline-flex;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--paper-warm);
+    }
+
+    .segment {
+      min-height: 30px;
+      border: 0;
+      border-radius: 5px;
+      padding: 0 11px;
+      background: transparent;
+      color: var(--ink-60);
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .segment.active { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(30,28,24,.1); font-weight: 600; }
+    .mobile-only { display: none; }
+
+    .notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 16px;
+      border-left: 3px solid var(--accent);
+      padding: 10px 12px;
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .notice.warning { border-color: var(--warning); background: var(--warning-soft); color: #785016; }
+    .notice.success { border-color: var(--success); background: var(--success-soft); color: var(--success); }
+    .notice.danger { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+
+    .task-list { border-top: 1px solid var(--line); }
+
+    .verification-row {
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) minmax(145px, .9fr) auto;
+      align-items: center;
+      gap: 16px;
+      min-height: 74px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .verification-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+
+    .mode-list { border-top: 1px solid var(--line); }
+
+    .mode-row {
+      width: 100%;
+      min-height: 66px;
+      display: grid;
+      grid-template-columns: minmax(140px, .7fr) minmax(230px, 1.5fr) auto;
+      align-items: center;
+      gap: 16px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 0;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .mode-row:hover { background: var(--paper-warm); }
+    .mode-row.active { box-shadow: inset 3px 0 var(--accent); background: var(--accent-soft); padding-left: 12px; padding-right: 12px; }
+    .mode-name { font-weight: 600; }
+    .mode-contract-summary { color: var(--ink-60); font-size: 12px; line-height: 1.5; }
+
+    .subtle-link {
+      border: 0;
+      padding: 4px;
+      background: transparent;
+      color: var(--accent-ink);
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .mode-detail {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .mode-detail section { padding: 14px; border-right: 1px solid var(--line); }
+    .mode-detail section:last-child { border-right: 0; }
+    .mode-detail h3 { margin: 0 0 9px; color: var(--ink-60); font-size: 11px; font-weight: 650; }
+    .mode-detail p { margin: 0; color: var(--ink-80); font-size: 12px; line-height: 1.6; }
+
+    .breadcrumb {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: var(--ink-60);
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .breadcrumb:hover { color: var(--ink); }
+    .breadcrumb.mobile-only { display: none; }
+
+    .add-layout {
+      display: grid;
+      grid-template-columns: 156px minmax(0, 1fr);
+      flex: 1;
+      min-height: 0;
+    }
+
+    .add-view { height: 100%; min-height: 0; }
+
+    .add-steps {
+      padding: 20px 14px;
+      border-right: 1px solid var(--line);
+      background: var(--paper-warm);
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 8px;
+      padding: 7px 0 17px;
+      color: var(--ink-40);
+      font-size: 12px;
+    }
+
+    .step-number {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      background: var(--paper);
+      font-size: 11px;
+    }
+
+    .step.active { color: var(--ink); font-weight: 600; }
+    .step.active .step-number { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+    .step.done { color: var(--ink-60); }
+    .step.done .step-number { border-color: var(--success); color: var(--success); }
+
+    .add-main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .add-scroll { min-height: 0; overflow: auto; padding: 20px 24px 28px; }
+
+    .method-group { margin-top: 22px; }
+    .method-group:first-child { margin-top: 0; }
+    .method-group h2 { margin: 0 0 10px; font-size: 13px; font-weight: 650; }
+
+    .method-list { border-top: 1px solid var(--line); }
+
+    .method-row {
+      width: 100%;
+      min-height: 64px;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      padding: 9px 4px;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .method-row:hover { background: var(--paper-warm); }
+    .method-symbol { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; color: var(--accent-ink); font-weight: 700; }
+    .method-title { font-size: 13px; font-weight: 600; }
+    .method-copy { margin-top: 3px; color: var(--ink-60); font-size: 11px; line-height: 1.45; }
+
+    .connection-summary {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 11px 12px;
+      background: var(--paper-warm);
+    }
+
+    .choice-list { border-top: 1px solid var(--line); }
+
+    .choice-row {
+      min-height: 55px;
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+    }
+
+    .choice-row.disabled { cursor: default; color: var(--ink-40); }
+    .choice-row:not(.disabled):hover { background: var(--paper-warm); }
+    .choice-row input { width: 17px; height: 17px; accent-color: var(--accent); }
+    .choice-id { margin-top: 2px; color: var(--ink-60); font-family: var(--mono); font-size: 10px; }
+    .already-added { color: var(--ink-40); font-size: 11px; }
+
+    .manual-entry {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .field-label { display: block; margin-bottom: 7px; color: var(--ink-80); font-size: 12px; font-weight: 600; }
+
+    .field-row { display: flex; align-items: center; gap: 8px; }
+    .field-row .search-field { flex: 1; }
+
+    .add-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 24px;
+      border-top: 1px solid var(--line);
+      background: color-mix(in srgb, var(--paper) 94%, transparent);
+      backdrop-filter: blur(10px);
+    }
+
+    .empty-state {
+      min-height: 100%;
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      padding: 36px;
+      text-align: center;
+    }
+
+    .empty-symbol {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 16px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--paper-warm);
+      color: var(--accent-ink);
+      font-size: 22px;
+    }
+
+    .empty-state h2 { margin: 0; font-size: 18px; }
+    .empty-state p { max-width: 440px; margin: 8px 0 18px; color: var(--ink-60); font-size: 12px; line-height: 1.65; }
+    .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+
+    .script-view { height: 100%; min-height: 650px; }
+
+    .script-header {
+      min-height: 86px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 18px 14px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .script-header .detail-title { font-size: 17px; }
+
+    .mode-select {
+      height: 36px;
+      min-width: 134px;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      padding: 0 28px 0 10px;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    .script-workspace {
+      min-height: 0;
+      flex: 1;
+      display: grid;
+      grid-template-columns: 226px minmax(0, 1fr);
+    }
+
+    .contract-rail {
+      min-width: 0;
+      overflow: auto;
+      padding: 17px 15px 24px;
+      border-right: 1px solid var(--line);
+      background: var(--paper-warm);
+    }
+
+    .contract-section { margin-top: 20px; }
+    .contract-section:first-child { margin-top: 0; }
+    .contract-section h2 { margin: 0 0 8px; color: var(--ink-60); font-size: 11px; font-weight: 650; }
+    .contract-list { display: grid; gap: 7px; }
+
+    .contract-item {
+      padding-left: 11px;
+      border-left: 2px solid var(--line-strong);
+      color: var(--ink-80);
+      font-size: 11px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .contract-item.required { border-color: var(--accent); }
+    .contract-item code { font-family: var(--mono); font-size: 10px; color: var(--accent-ink); }
+    .contract-note { margin-top: 4px; color: var(--ink-60); font-size: 10px; }
+
+    .mobile-contract-summary { display: none; }
+
+    .editor-side {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(310px, 1fr) auto;
+      background: #242521;
+    }
+
+    .code-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
+    .code-toolbar {
+      min-height: 39px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      border-bottom: 1px solid #3b3d37;
+      color: #aaa9a3;
+      font-size: 11px;
+    }
+
+    .code-toolbar .toolbar-spacer { flex: 1; }
+
+    .code-editor {
+      width: 100%;
+      min-height: 300px;
+      flex: 1;
+      resize: none;
+      border: 0;
+      padding: 17px 18px;
+      outline: 0;
+      background: #242521;
+      color: #d9e2d4;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.65;
+      tab-size: 2;
+    }
+
+    .code-editor:focus { box-shadow: inset 0 0 0 2px #547dbd; }
+
+    .test-drawer {
+      min-height: 176px;
+      padding: 12px 14px 14px;
+      border-top: 1px solid #3b3d37;
+      background: #1d1e1b;
+      color: #d5d4ce;
+    }
+
+    .test-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 11px; }
+    .test-head strong { font-size: 12px; }
+    .test-head .toolbar-spacer { flex: 1; }
+
+    .test-grid {
+      display: grid;
+      grid-template-columns: .9fr 1.1fr;
+      gap: 10px;
+    }
+
+    .test-block { min-width: 0; }
+    .test-block h3 { margin: 0 0 6px; color: #97968f; font-size: 10px; font-weight: 600; }
+    .test-block pre {
+      min-height: 98px;
+      max-height: 128px;
+      margin: 0;
+      overflow: auto;
+      border: 1px solid #393b35;
+      border-radius: 6px;
+      padding: 9px 10px;
+      background: #171815;
+      color: #b9bbb3;
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    .test-success { color: #79c195; }
+    .test-running { color: #8fb1e5; }
+
+    .toast {
+      position: fixed;
+      z-index: 50;
+      right: 28px;
+      bottom: 28px;
+      max-width: min(380px, calc(100vw - 32px));
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      transform: translateY(18px);
+      opacity: 0;
+      pointer-events: none;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 11px 13px;
+      background: var(--ink);
+      color: var(--paper);
+      box-shadow: 0 14px 32px rgba(20,19,16,.24);
+      font-size: 12px;
+      line-height: 1.45;
+      transition: opacity .16s ease, transform .16s ease;
+    }
+
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    .workbench-return {
+      width: min(1280px, calc(100vw - 48px));
+      height: min(792px, calc(100svh - 48px));
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: #eceae5;
+      box-shadow: var(--shadow);
+    }
+
+    body[data-settings-open="false"] .settings-shell { display: none; }
+    body[data-settings-open="false"] .workbench-return { display: flex; }
+
+    .workbench-bar {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line-strong);
+      background: var(--paper);
+    }
+
+    .workbench-bar strong { flex: 1; }
+
+    .workbench-canvas {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      background: #f5f4f1;
+    }
+
+    .canvas-node {
+      position: absolute;
+      width: 190px;
+      min-height: 86px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--paper);
+      box-shadow: 0 5px 18px rgba(35,33,28,.08);
+    }
+
+    .canvas-node strong { display: block; margin-bottom: 6px; }
+    .canvas-node span { color: var(--ink-60); font-size: 11px; }
+    .canvas-node.one { top: 24%; left: 18%; }
+    .canvas-node.two { top: 45%; left: 47%; }
+    .canvas-node.three { top: 26%; right: 10%; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1080px) and (min-width: 761px) {
+      .settings-shell { grid-template-columns: 160px minmax(0, 1fr); }
+      .settings-content { grid-template-columns: 252px minmax(0, 1fr); }
+      .settings-page-inner { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-right: 24px; padding-left: 24px; }
+      .settings-nav { padding-left: 8px; padding-right: 8px; }
+      .detail-header, .content-pad { padding-left: 18px; padding-right: 18px; }
+      .tabs { padding-left: 18px; padding-right: 18px; }
+      .model-table-head, .model-row { grid-template-columns: minmax(145px, 1.4fr) minmax(90px, .7fr) minmax(112px, 1fr) 50px 30px; gap: 7px; }
+      .script-workspace { grid-template-columns: 202px minmax(0, 1fr); }
+    }
+
+    @media (max-width: 1172px) and (min-width: 761px) {
+      body[data-active-settings-section="files"],
+      body[data-active-settings-section="general"],
+      body[data-active-settings-section="ai"],
+      body[data-active-settings-section="about"] { --settings-frame-height: 620px; }
+    }
+
+    @media (max-width: 760px) {
+      body { display: block; overflow: hidden; background: var(--paper); }
+      .settings-shell { width: 100vw; height: 100svh; min-height: 0; display: block; margin-top: 0; border: 0; border-radius: 0; box-shadow: none; }
+      body:not([data-active-settings-section="models"]) .settings-shell { height: 100svh; min-height: 0; margin-top: 0; }
+      .settings-content { width: 100%; height: 100%; display: block; }
+      .settings-nav { display: none; }
+      .connection-pane, .detail-pane { width: 100%; height: 100%; border: 0; }
+      body[data-mobile-pane="list"] .connection-pane { display: flex; }
+      body[data-mobile-pane="list"] .detail-pane { display: none; }
+      body[data-mobile-pane="detail"] .connection-pane { display: none; }
+      body[data-mobile-pane="detail"] .detail-pane { display: flex; }
+      .settings-content:not([data-section="models"]) .detail-pane { display: flex; }
+      .settings-content:not([data-section="models"]) .mobile-detail-bar { display: none; }
+      .connection-head { min-height: 64px; padding-top: 12px; padding-bottom: 10px; }
+      .connection-head h1 { font-size: 18px; }
+      .mobile-settings-back { width: 32px; height: 36px; display: grid; place-items: center; border: 0; background: transparent; color: var(--accent-ink); cursor: pointer; font-size: 22px; }
+      .connection-list { padding-bottom: 76px; }
+      .mobile-detail-bar { min-height: 48px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid var(--line); }
+      .icon-button.mobile-list-close { display: inline-grid; }
+      .mobile-back { min-height: 36px; border: 0; padding: 0 8px; background: transparent; color: var(--accent-ink); cursor: pointer; }
+      .detail-header { min-height: 94px; align-items: flex-start; padding: 14px 16px; }
+      .detail-title { font-size: 18px; }
+      .header-actions { max-width: 47%; }
+      .content-pad { padding: 16px 16px 26px; }
+      .overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .toolbar-row { align-items: stretch; }
+      .toolbar-row .search-field { max-width: none; }
+      .model-table-head { display: none; }
+      .model-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name toggle" "provider more" "state state"; gap: 5px 10px; padding: 11px 0; }
+      .model-row .model-name { grid-area: name; }
+      .model-row .provider-cell { grid-area: provider; }
+      .model-row .state-cell { grid-area: state; }
+      .model-row .switch { grid-area: toggle; }
+      .model-row .row-more { grid-area: more; justify-self: end; }
+      .tabs { min-height: 47px; gap: 16px; padding: 0 16px; overflow-x: auto; }
+      .tab { white-space: nowrap; }
+      .info-row { grid-template-columns: 104px minmax(0, 1fr); padding: 10px 0; }
+      .info-row .button { grid-column: 2; justify-self: start; }
+      .verification-row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 13px 0; }
+      .verification-actions { justify-content: flex-start; }
+      .mode-row { grid-template-columns: minmax(0, 1fr) auto; gap: 7px 10px; }
+      .mode-contract-summary { grid-column: 1 / -1; }
+      .mode-detail { grid-template-columns: 1fr; }
+      .mode-detail section { border-right: 0; border-bottom: 1px solid var(--line); }
+      .mode-detail section:last-child { border-bottom: 0; }
+      .add-layout { grid-template-columns: 1fr; }
+      .add-steps { display: flex; gap: 12px; overflow-x: auto; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .step { min-width: max-content; padding: 3px 0; }
+      .add-scroll { padding: 16px 16px 24px; }
+      .add-footer { padding: 12px 16px; }
+      .script-view { min-height: 100%; height: auto; }
+      .script-header { align-items: flex-start; flex-wrap: wrap; padding: 12px 14px; }
+      .script-header .detail-title-block { min-width: calc(100% - 160px); }
+      .script-header .header-actions { width: 100%; max-width: none; justify-content: flex-start; }
+      .script-workspace { display: block; }
+      .contract-rail { overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
+      .contract-section { display: none; }
+      .mobile-contract-summary { display: grid; gap: 9px; color: var(--ink-80); font-size: 11px; line-height: 1.55; }
+      .mobile-contract-summary summary { min-height: 32px; cursor: pointer; color: var(--ink); font-size: 12px; font-weight: 650; }
+      .mobile-contract-summary code { color: var(--accent-ink); font-family: var(--mono); font-size: 10px; }
+      .editor-side { min-height: 0; display: block; }
+      .code-editor { min-height: 360px; height: 360px; flex: none; }
+      .test-grid { grid-template-columns: 1fr; }
+      .test-drawer { min-height: 300px; }
+      .field-row { align-items: stretch; flex-wrap: wrap; }
+      .field-row .search-field { flex: 1 1 100%; }
+      .task-entry { position: fixed; z-index: 5; right: 12px; bottom: 10px; left: 12px; margin: 0; box-shadow: 0 8px 24px rgba(33,31,27,.12); }
+      .prototype-menu { right: 12px; }
+      .toast { right: 16px; bottom: 16px; }
+      .settings-page-inner { width: 100%; grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 16px 16px 28px; }
+      .setting-row { gap: 10px; padding: 12px 0; }
+      .setting-control { flex-wrap: wrap; }
+      .settings-option-grid { grid-template-columns: minmax(0, 1fr); }
+      .mobile-only, .breadcrumb.mobile-only { display: inline-flex; }
+      .workbench-return { width: 100vw; height: 100svh; border: 0; border-radius: 0; box-shadow: none; }
+      .canvas-node.two, .canvas-node.three { display: none; }
+      .canvas-node.one { top: 28%; right: 16px; left: 16px; width: auto; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+    }
+  </style>
+</head>
+<body data-mobile-pane="list" data-settings-open="true" data-active-settings-section="models">
+  <aside style="position:fixed;z-index:1000;left:50%;top:12px;transform:translateX(-50%);max-width:calc(100vw - 32px);padding:8px 12px;border:1px solid #d4d1ca;border-radius:6px;background:#fffdf8;color:#74716a;box-shadow:0 4px 16px rgba(34,32,27,.12);font-size:12px">
+    历史探索稿，不是当前产品基线。最终方案见
+    <a href="2026-08-16-model-settings-home-information-architecture.html" style="color:#35598f">已批准的模型设置信息架构</a>。
+  </aside>
+  <main class="settings-shell" aria-label="Nomi 设置">
+    <aside class="settings-nav" aria-label="设置导航">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">N</span><span class="brand-copy">Nomi 设置</span><button class="nav-close" type="button" data-action="close-settings" aria-label="关闭设置" title="关闭设置">×</button></div>
+      <div class="nav-label">设置</div>
+      <nav class="nav-list">
+        <button class="nav-item" type="button" data-settings-section="files"><span class="nav-symbol" aria-hidden="true">□</span>文件与保存</button>
+        <button class="nav-item" type="button" data-settings-section="models" aria-current="page"><span class="nav-symbol" aria-hidden="true">▦</span>模型与接入</button>
+        <button class="nav-item" type="button" data-settings-section="ai"><span class="nav-symbol" aria-hidden="true">AI</span>AI 策略</button>
+        <button class="nav-item" type="button" data-settings-section="automation"><span class="nav-symbol" aria-hidden="true">◇</span>自动化与权限</button>
+        <button class="nav-item" type="button" data-settings-section="general"><span class="nav-symbol" aria-hidden="true">⌂</span>通用</button>
+      </nav>
+      <div class="nav-spacer"></div>
+      <nav class="nav-list">
+        <button class="nav-item" type="button" data-action="help"><span class="nav-symbol" aria-hidden="true">?</span>帮助与反馈</button>
+        <button class="nav-item" type="button" data-settings-section="about"><span class="nav-symbol" aria-hidden="true">i</span>关于</button>
+      </nav>
+      <div class="version">Nomi 0.11 · 本地优先</div>
+    </aside>
+
+    <div class="settings-content" data-section="models">
+    <section class="connection-pane" aria-label="连接列表">
+      <header class="connection-head">
+        <button class="mobile-settings-back" type="button" data-action="settings-home" aria-label="返回设置首页">‹</button>
+        <h1>模型与接入</h1>
+        <button class="icon-button" id="prototype-menu-button" type="button" aria-label="更多演示状态" aria-haspopup="menu" aria-expanded="false" title="更多演示状态">···</button>
+        <button class="icon-button plus-button" type="button" data-action="start-add" aria-label="添加模型" title="添加模型">+</button>
+        <button class="icon-button mobile-list-close" type="button" data-action="close-settings" aria-label="关闭设置" title="关闭设置">×</button>
+        <div class="prototype-menu" id="prototype-menu" role="menu">
+          <button class="menu-action" type="button" role="menuitem" data-action="show-empty">查看空账户状态</button>
+          <button class="menu-action" type="button" role="menuitem" data-action="restore-demo">恢复示例数据</button>
+        </div>
+      </header>
+      <div class="search-wrap"><label class="sr-only" for="provider-search">搜索连接</label><input class="search-field" id="provider-search" type="search" placeholder="搜索连接或模型" /></div>
+      <div class="connection-list" id="connection-list"></div>
+      <button class="task-entry" type="button" data-action="open-tasks">
+        <span class="task-indicator" aria-hidden="true"></span>
+        <span class="task-copy"><span class="row-title">后台接入任务</span><span class="row-subtitle" id="task-entry-copy">APIMart · 1 个模型检查中</span></span>
+        <span aria-hidden="true">›</span>
+      </button>
+    </section>
+
+    <section class="detail-pane" aria-label="模型详情工作区">
+      <div class="mobile-detail-bar"><button class="mobile-back" type="button" data-action="mobile-back">‹ 返回连接列表</button><span class="mobile-bar-spacer"></span><button class="nav-close" type="button" data-action="close-settings" aria-label="关闭设置" title="关闭设置">×</button></div>
+      <div id="detail-root" aria-live="polite"></div>
+    </section>
+    </div>
+  </main>
+
+  <section class="workbench-return" id="workbench-return" aria-label="Nomi 工作区">
+    <header class="workbench-bar"><span class="brand-mark" aria-hidden="true">N</span><strong>未命名项目 · 画布</strong><button class="button primary" type="button" data-action="reopen-settings">重新打开模型设置</button></header>
+    <div class="workbench-canvas" aria-label="创作画布"><div class="canvas-node one"><strong>提示词</strong><span>雨夜街头，镜头缓慢推进</span></div><div class="canvas-node two"><strong>图片生成</strong><span>等待连接模型</span></div><div class="canvas-node three"><strong>视频生成</strong><span>选择模式后开始</span></div></div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"><span aria-hidden="true">✓</span><span id="toast-copy"></span></div>
+
+  <script>
+    let providers = [
+      { id: 'apimart', name: 'APIMart', short: 'AP', state: '1 个需处理', kind: 'remote', baseUrl: 'https://api.apimart.ai/v1', credential: 'sk-live-••••••••7K2' },
+      { id: 'openai', name: 'OpenAI', short: 'OA', state: '连接正常', kind: 'remote', baseUrl: 'https://api.openai.com/v1', credential: 'sk-proj-••••••••1A8' },
+      { id: 'local', name: '本地工作流', short: '本', state: '本机可用', kind: 'local', baseUrl: 'http://127.0.0.1:8188', credential: '不需要' }
+    ];
+
+    let models = [
+      { id: 'seedance-2-pro', name: 'Seedance 2.0 Pro', provider: 'apimart', kind: '视频', modes: 3, status: 'verified', enabled: true },
+      { id: 'kling-v2-1', name: 'Kling v2.1', provider: 'apimart', kind: '视频', modes: 2, status: 'running', enabled: false },
+      { id: 'veo-3', name: 'Veo 3', provider: 'apimart', kind: '视频', modes: 1, status: 'attention', enabled: false },
+      { id: 'wan-2-2', name: 'Wan 2.2', provider: 'apimart', kind: '视频', modes: 2, status: 'unverified', enabled: false },
+      { id: 'gpt-image-1', name: 'GPT Image 1', provider: 'openai', kind: '图片', modes: 2, status: 'verified', enabled: true },
+      { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'openai', kind: '文本', modes: 1, status: 'verified', enabled: true },
+      { id: 'flux-local', name: 'FLUX.1 Dev', provider: 'local', kind: '图片', modes: 2, status: 'verified', enabled: true },
+      { id: 'comfy-video', name: 'AnimateDiff 工作流', provider: 'local', kind: '视频', modes: 1, status: 'unverified', enabled: false }
+    ];
+
+    const demoProviders = providers.map(provider => ({ ...provider }));
+    const demoModels = models.map(model => ({ ...model }));
+
+    const modeContracts = {
+      'video-text': {
+        kind: '视频',
+        name: '文生视频',
+        summary: '只需要提示词；不收集参考素材',
+        required: [ ['prompt', '文本提示词'] ],
+        optional: [ ['params.duration', '时长'], ['params.aspectRatio', '画幅'] ],
+        limit: '不传入 references。模型不支持的参数不会出现在节点里。',
+        result: '返回视频 URL，或返回 taskId 与查询函数。'
+      },
+      'video-frames': {
+        kind: '视频',
+        name: '首尾帧',
+        summary: '首帧必需，尾帧可选；与其他模式独立',
+        required: [ ['prompt', '文本提示词'], ['references.firstFrame', '首帧图片'] ],
+        optional: [ ['references.lastFrame', '尾帧图片'], ['params.duration', '时长'] ],
+        limit: '图片最多 2 张，位置语义固定为首帧和尾帧。',
+        result: '返回视频 URL，或返回 taskId 与查询函数。'
+      },
+      'video-omni': {
+        kind: '视频',
+        name: '全能参考',
+        summary: '1–4 张图片，可附加视频或音频参考',
+        required: [ ['prompt', '文本提示词'], ['references.images[]', '参考图片，1–4 张'] ],
+        optional: [ ['references.videos[]', '参考视频，最多 1 个'], ['references.audios[]', '参考音频，最多 1 个'], ['params.duration', '时长'] ],
+        limit: '素材按数组传入，不把第 1、2 张图片强行解释为首尾帧。',
+        result: '返回 video.url，或返回异步任务描述。Nomi 会验证产物确实可读取。'
+      },
+      'video-multi': {
+        kind: '视频',
+        name: '多参考图视频',
+        summary: '2–7 张图片，保持主体或风格一致',
+        required: [ ['prompt', '文本提示词'], ['references.images[]', '参考图片，2–7 张'] ],
+        optional: [ ['params.referenceStrength', '参考强度'], ['params.aspectRatio', '画幅'] ],
+        limit: '图片只有集合与顺序，不预设首帧、尾帧等角色。',
+        result: '返回 video.url，或返回 taskId 与查询函数。'
+      },
+      'image-text': {
+        kind: '图片',
+        name: '文生图',
+        summary: '提示词生成图片；不要求参考素材',
+        required: [ ['prompt', '文本提示词'] ],
+        optional: [ ['params.aspectRatio', '画幅'], ['params.count', '生成数量'] ],
+        limit: '不传入 references；只有模型支持的图片参数会显示在节点中。',
+        result: '返回 image.url / images[]，Nomi 会验证图片可读取和解码。'
+      },
+      'image-multi': {
+        kind: '图片',
+        name: '多图编辑',
+        summary: '1–8 张输入图片，可表达主体、风格或局部编辑',
+        required: [ ['prompt', '编辑要求'], ['references.images[]', '输入图片，1–8 张'] ],
+        optional: [ ['references.mask', '蒙版；仅支持该槽位的模式出现'], ['params.strength', '编辑强度'] ],
+        limit: '图片角色由当前模式契约声明；未声明 Mask 时界面不会要求用户提供。',
+        result: '返回 image.url / images[]，Nomi 会校验实际图片产物。'
+      },
+      chat: {
+        kind: '文本',
+        name: '文本对话',
+        summary: '消息与系统提示；不出现图片或视频模式',
+        required: [ ['prompt', '当前用户消息'] ],
+        optional: [ ['params.systemPrompt', '系统提示'], ['params.temperature', '随机度'], ['params.maxTokens', '最大输出长度'] ],
+        limit: 'references 默认为空；只有模型显式支持多模态时才增加素材槽。',
+        result: '返回 text，或返回可迭代的文本流。'
+      },
+      'audio-speech': {
+        kind: '音频',
+        name: '文本转语音',
+        summary: '文本与音色参数生成音频',
+        required: [ ['prompt', '要朗读的文本'] ],
+        optional: [ ['params.voice', '音色'], ['params.speed', '语速'] ],
+        limit: '不要求参考音频；克隆音色属于另一种模式。',
+        result: '返回 audio.url / audioBytes，Nomi 会验证音频可读取。'
+      },
+      'audio-clone': {
+        kind: '音频',
+        name: '参考音色',
+        summary: '文本加一段参考音频',
+        required: [ ['prompt', '要朗读的文本'], ['references.audios[]', '参考音频，1 个'] ],
+        optional: [ ['params.language', '语言'], ['params.speed', '语速'] ],
+        limit: '只收集一段音频参考，不把图片或视频素材传给脚本。',
+        result: '返回 audio.url / audioBytes，Nomi 会验证音频可读取。'
+      }
+    };
+
+    const modeIdsByKind = {
+      '视频': ['video-text', 'video-frames', 'video-omni', 'video-multi'],
+      '图片': ['image-text', 'image-multi'],
+      '文本': ['chat'],
+      '音频': ['audio-speech', 'audio-clone']
+    };
+
+    const state = {
+      settingsSection: 'models',
+      route: 'overview',
+      selectedProvider: 'all',
+      providerTab: 'models',
+      selectedModel: 'seedance-2-pro',
+      selectedMode: 'video-omni',
+      addStage: 'methods',
+      addProvider: null,
+      addMethod: null,
+      addContextual: false,
+      newProviderSerial: 0,
+      selectedNewModels: new Set(),
+      selectedModelKinds: {},
+      scenario: 'normal',
+      scriptTest: 'idle',
+      scriptSaved: false,
+      scriptDrafts: {},
+      passedScripts: {},
+      activeTest: null,
+      pendingRiskEnable: null,
+      search: '',
+      modelViewScroll: {}
+    };
+
+    const statusMeta = {
+      verified: ['已验证', 'success'],
+      running: ['正在试跑', 'running'],
+      attention: ['需要处理', 'warning'],
+      unverified: ['尚未验证', 'neutral'],
+      pending: ['调用待配置', 'neutral']
+    };
+
+    const root = document.getElementById('detail-root');
+    const listRoot = document.getElementById('connection-list');
+    const menu = document.getElementById('prototype-menu');
+    const menuButton = document.getElementById('prototype-menu-button');
+    const toast = document.getElementById('toast');
+    const toastCopy = document.getElementById('toast-copy');
+    let toastTimer = null;
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+    }
+
+    function providerById(id) { return providers.find(provider => provider.id === id); }
+    function modelById(id) { return models.find(model => model.id === id); }
+
+    function modeIdsForModel(model) {
+      return modeIdsByKind[model?.kind] || ['video-text'];
+    }
+
+    function defaultModeForModel(model) {
+      const ids = modeIdsForModel(model);
+      if (model?.kind === '视频' && ids.includes('video-omni')) return 'video-omni';
+      return ids[0];
+    }
+
+    function ensureSelectedMode(model) {
+      const ids = modeIdsForModel(model);
+      if (!ids.includes(state.selectedMode)) state.selectedMode = defaultModeForModel(model);
+      return ids;
+    }
+
+    function providerName(id) {
+      const provider = providerById(id);
+      return provider ? provider.name : '未命名连接';
+    }
+
+    function showToast(message) {
+      toastCopy.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
+    }
+
+    function statusLabel(status, extra = '') {
+      const [label, className] = statusMeta[status] || statusMeta.pending;
+      return `<span class="state-label ${className}">${escapeHtml(extra || label)}</span>`;
+    }
+
+    function modelStatusLabel(model) {
+      if (model.revalidating) return statusLabel('verified', '已验证 · 正在复检');
+      if (model.status === 'running') return statusLabel('running', '自动配置中 · 已发送试跑');
+      if (model.status === 'unverified' && model.enabled) return statusLabel('unverified', '已启用但未验证');
+      return statusLabel(model.status);
+    }
+
+    function isTaskRunning(model) { return model.status === 'running' || Boolean(model.revalidating); }
+
+    function countByStatus(status) { return models.filter(model => model.status === status).length; }
+
+    function renderConnectionList() {
+      const runningCount = models.filter(isTaskRunning).length;
+      document.getElementById('task-entry-copy').textContent = `APIMart · ${runningCount} 个模型检查中`;
+      if (state.scenario === 'empty') {
+        listRoot.innerHTML = `
+          <div class="list-section-title">模型</div>
+          <button class="connection-row selected" type="button" data-route="empty">
+            <span class="provider-icon all" aria-hidden="true">全</span>
+            <span><span class="row-title">全部模型</span><span class="row-subtitle">还没有连接</span></span>
+            <span class="row-count">0</span>
+          </button>
+          <div class="content-pad" style="padding:20px 9px;color:var(--ink-60);font-size:12px;line-height:1.6">连接建立后会一直保留在这里，可随时继续添加模型。</div>`;
+        document.querySelector('.task-entry').style.display = 'none';
+        return;
+      }
+
+      const query = state.search.trim().toLowerCase();
+      const filteredProviders = providers.filter(provider => {
+        if (!query) return true;
+        return provider.name.toLowerCase().includes(query) || models.some(model => model.provider === provider.id && (model.name.toLowerCase().includes(query) || model.id.toLowerCase().includes(query)));
+      });
+
+      listRoot.innerHTML = `
+        <div class="list-section-title">模型</div>
+        <button class="connection-row ${state.selectedProvider === 'all' ? 'selected' : ''}" type="button" data-route="overview">
+          <span class="provider-icon all" aria-hidden="true">全</span>
+          <span><span class="row-title">全部模型</span><span class="row-subtitle">跨连接查看与启停</span></span>
+          <span class="row-count">${models.length}</span>
+        </button>
+        <div class="list-section-title">已保存的连接</div>
+        ${filteredProviders.map(provider => `
+          <button class="connection-row ${state.selectedProvider === provider.id ? 'selected' : ''}" type="button" data-provider="${provider.id}">
+            <span class="provider-icon ${provider.kind === 'local' ? 'local' : ''}" aria-hidden="true">${provider.short}</span>
+            <span><span class="row-title">${provider.name}</span><span class="row-subtitle">${provider.state}</span></span>
+            <span class="row-count">${models.filter(model => model.provider === provider.id).length}</span>
+          </button>`).join('')}
+        ${filteredProviders.length ? '' : '<div class="content-pad" style="padding:18px 10px;color:var(--ink-60);font-size:12px">没有匹配的连接或模型</div>'}`;
+      document.querySelector('.task-entry').style.display = '';
+    }
+
+    function renderModelRows(modelList, showProvider = true) {
+      return `
+        <div class="model-table">
+          <div class="model-table-head">
+            <span>模型</span><span>${showProvider ? '连接' : '类型与模式'}</span><span>可用状态</span><span>启用</span><span></span>
+          </div>
+          ${modelList.map(model => `
+            <div class="model-row" data-model-row="${model.id}">
+              <button class="model-name model-name-button" type="button" data-model="${model.id}" aria-label="查看 ${escapeHtml(model.name)}"><strong>${escapeHtml(model.name)}</strong><span class="model-id" style="display:block">${escapeHtml(model.id)}</span></button>
+              <div class="cell-muted provider-cell">${showProvider ? escapeHtml(providerName(model.provider)) : `${model.kind} · ${model.modes} 个模式`}</div>
+              <div class="state-cell">${modelStatusLabel(model)}</div>
+              <label class="switch" title="${model.enabled ? '停用模型' : '启用模型'}" onclick="event.stopPropagation()">
+                <span class="sr-only">${model.enabled ? '停用' : '启用'} ${escapeHtml(model.name)}</span>
+                <input type="checkbox" data-toggle-model="${model.id}" ${model.enabled ? 'checked' : ''} />
+                <span class="switch-track"></span>
+              </label>
+              <button class="button ghost small row-more" type="button" data-model="${model.id}" aria-label="查看模型详情" title="查看模型详情">›</button>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    function renderOverview() {
+      const query = state.search.trim().toLowerCase();
+      const visibleModels = models.filter(model => !query || model.name.toLowerCase().includes(query) || model.id.toLowerCase().includes(query) || providerName(model.provider).toLowerCase().includes(query));
+      root.innerHTML = `
+        <div class="detail-view">
+          <header class="detail-header">
+            <div class="detail-title-block"><div class="eyebrow">模型目录</div><h2 class="detail-title">全部模型</h2><div class="detail-subtitle">连接、调用配置和真实试跑分别记录，不再用一个“接入成功”概括全部状态。</div></div>
+            <div class="header-actions"><button class="button primary" type="button" data-action="start-add"><span aria-hidden="true">＋</span>添加模型</button></div>
+          </header>
+          <div class="overview-stats" aria-label="模型状态汇总">
+            <div class="stat"><div class="stat-number">${models.length}</div><div class="stat-label">已添加模型</div></div>
+            <div class="stat"><div class="stat-number">${countByStatus('verified')}</div><div class="stat-label">已真实验证</div></div>
+            <div class="stat"><div class="stat-number">${models.filter(isTaskRunning).length}</div><div class="stat-label">后台处理中</div></div>
+            <div class="stat"><div class="stat-number">${countByStatus('attention')}</div><div class="stat-label">需要处理</div></div>
+          </div>
+          <div class="content-pad">
+            <div class="toolbar-row"><input class="search-field" type="search" data-model-search placeholder="搜索模型 ID、名称或连接" value="${escapeHtml(state.search)}" /><span class="toolbar-spacer"></span><span class="state-label neutral">绿色只代表真实试跑通过</span></div>
+            ${visibleModels.length ? renderModelRows(visibleModels, true) : '<div class="empty-state" style="min-height:360px"><div class="empty-symbol">⌕</div><h2>没有匹配的模型</h2><p>换一个关键词，或添加新的模型。</p></div>'}
+          </div>
+        </div>`;
+    }
+
+    function verificationSubtitle(model) {
+      if (model.revalidating) return '正在试跑新候选 · 当前已验证调用继续可用';
+      if (model.lastEvent === 'stopped') return '任务已停止 · 连接、脚本草稿和诊断现场均已保留';
+      if (model.status === 'running') return model.id === 'kling-v2-1' ? '请求已发送 · 等待上游任务结果' : '正在使用独立任务尝试候选调用';
+      if (model.status === 'verified') return model.id === 'seedance-2-pro' ? '产物可读取 · 1280 × 720 · 6.8 秒' : '真实产物已读取并校验';
+      if (model.status === 'attention') return model.id === 'veo-3' ? '上游返回 422 · 缺少必填字段 image' : '自动配置未完成 · 已保留模型与现场';
+      if (model.status === 'unverified') return '模型已保存 · 尚未做真实试跑';
+      return '模型已保存 · 尚未修改任何已有模型';
+    }
+
+    function verificationActions(model) {
+      if (model.revalidating) return `<button class="button ghost small" type="button" data-action="stop-task" data-model="${model.id}">停止复检</button>`;
+      if (model.status === 'running') return `<button class="button small" type="button" data-action="open-script" data-model="${model.id}">换一种接法</button><button class="button ghost small" type="button" data-action="stop-task" data-model="${model.id}">停止</button>`;
+      if (model.status === 'verified') return `<button class="button ghost small" type="button" data-model="${model.id}">查看证据</button><button class="button ghost small" type="button" data-action="revalidate" data-model="${model.id}">重新验证</button>`;
+      if (model.status === 'attention') return `<button class="button small" type="button" data-action="open-script" data-model="${model.id}">修改调用</button>`;
+      return `<button class="button small" type="button" data-action="open-script" data-model="${model.id}">配置调用</button><button class="button ghost small" type="button" data-action="revalidate" data-model="${model.id}">尝试自动配置</button>`;
+    }
+
+    function renderVerificationRows(providerModels) {
+      const statusPriority = model => model.revalidating || model.status === 'running' ? 0 : model.status === 'pending' ? 1 : model.status === 'attention' ? 2 : model.status === 'unverified' ? 3 : 4;
+      return [...providerModels]
+        .sort((left, right) => statusPriority(left) - statusPriority(right))
+        .map(model => `<div class="verification-row"><div><div class="row-title">${escapeHtml(model.name)}</div><div class="row-subtitle">${verificationSubtitle(model)}</div></div><div>${modelStatusLabel(model)}</div><div class="verification-actions">${verificationActions(model)}</div></div>`)
+        .join('');
+    }
+
+    function renderProvider() {
+      const provider = providerById(state.selectedProvider) || providers[0];
+      const providerModels = models.filter(model => model.provider === provider.id);
+      const tabs = [ ['models', '模型'], ['connection', '连接'], ['verification', '验证'] ];
+      let content = '';
+
+      if (state.providerTab === 'models') {
+        content = `
+          <div class="content-pad">
+            <div class="section-head"><h2>${providerModels.length} 个模型</h2><button class="button small" type="button" data-action="add-to-provider" data-provider="${provider.id}"><span aria-hidden="true">＋</span>添加模型</button></div>
+            <p class="section-description">继续添加会复用当前地址和凭证，只处理新选中的模型，不修改已有脚本、启用状态和路由。</p>
+            ${renderModelRows(providerModels, false)}
+          </div>`;
+      } else if (state.providerTab === 'connection') {
+        content = `
+          <div class="content-pad">
+            <div class="notice success"><span aria-hidden="true">✓</span><span><strong>连接已保存</strong><br />这只说明地址和凭证可用；每个模型的调用配置和试跑结果仍单独记录。</span></div>
+            <div class="section-head"><h2>连接信息</h2><button class="button small" type="button" data-action="edit-connection">编辑</button></div>
+            <div class="info-list">
+              <div class="info-row"><span class="info-key">API 地址</span><span class="info-value">${escapeHtml(provider.baseUrl || '尚未填写')}</span><button class="button ghost small" type="button" data-action="copy-url">复制</button></div>
+              <div class="info-row"><span class="info-key">凭证</span><span class="info-value">${escapeHtml(provider.credential || '已安全保存')}</span><button class="button ghost small" type="button" data-action="edit-connection">更换</button></div>
+              <div class="info-row"><span class="info-key">鉴权方式</span><span class="info-value">${provider.kind === 'local' ? '本地桥接' : 'Authorization: Bearer'}</span><span></span></div>
+              <div class="info-row"><span class="info-key">最近检查</span><span class="info-value" style="font-family:var(--font)">刚刚 · 模型列表可读取</span><button class="button small" type="button" data-action="recheck">重新检查</button></div>
+            </div>
+            <div style="margin-top:24px"><button class="button danger-ghost" type="button" data-action="disconnect">断开连接</button></div>
+          </div>`;
+      } else {
+        content = `
+          <div class="content-pad">
+            <div class="notice"><span aria-hidden="true">↻</span><span><strong>任务在后台继续，但这里始终可以重新打开。</strong><br />每个模型独立结束；一个模型等待过久不会挡住其他模型。</span></div>
+            <div class="section-head"><h2>当前与最近任务</h2><span class="state-label running">${providerModels.filter(isTaskRunning).length} 个检查中</span></div>
+            <div class="task-list">
+              ${renderVerificationRows(providerModels)}
+            </div>
+          </div>`;
+      }
+
+      root.innerHTML = `
+        <div class="detail-view">
+          <header class="detail-header">
+            <div class="detail-title-block"><div class="eyebrow">已保存的连接</div><h2 class="detail-title">${provider.name}</h2><div class="detail-subtitle">连接已保存 · ${providerModels.filter(model => model.enabled).length} 个模型已启用</div></div>
+            <div class="header-actions"><button class="button primary" type="button" data-action="add-to-provider" data-provider="${provider.id}"><span aria-hidden="true">＋</span>添加模型</button></div>
+          </header>
+          <div class="tabs" role="tablist" aria-label="${provider.name} 设置">
+            ${tabs.map(([id, label]) => `<button class="tab" type="button" role="tab" data-provider-tab="${id}" aria-selected="${state.providerTab === id}">${label}</button>`).join('')}
+          </div>
+          ${content}
+        </div>`;
+    }
+
+    function renderModelDetail() {
+      const model = modelById(state.selectedModel) || models[0];
+      const modes = ensureSelectedMode(model);
+      const contract = modeContracts[state.selectedMode];
+      const riskNotice = state.pendingRiskEnable === model.id
+        ? `<div class="notice warning"><span aria-hidden="true">!</span><span style="flex:1"><strong>这个调用还没有真实试跑通过。</strong><br />推荐先验证；如果你明确接受生成时失败的风险，也可以保留“未验证”标记后启用。</span><button class="button small" type="button" data-action="force-enable" data-model="${model.id}">仍然启用</button></div>`
+        : '';
+      root.innerHTML = `
+        <div class="detail-view">
+          <header class="detail-header">
+            <div class="detail-title-block">
+              <button class="breadcrumb" type="button" data-provider="${model.provider}">‹ ${escapeHtml(providerName(model.provider))}</button>
+              <h2 class="detail-title">${escapeHtml(model.name)}</h2>
+              <div class="detail-subtitle">${escapeHtml(model.id)} · ${model.kind} · ${modelStatusLabel(model)}</div>
+            </div>
+            <div class="header-actions"><button class="button" type="button" data-action="revalidate" data-model="${model.id}">重新验证</button><button class="button primary" type="button" data-action="open-script" data-model="${model.id}">编辑调用</button></div>
+          </header>
+          <div class="content-pad">
+            ${riskNotice}
+            <div class="section-head"><h2>能力模式</h2><span class="state-label neutral">节点只显示所选模式需要的输入</span></div>
+            <p class="section-description">模式负责描述 Nomi 要收集什么；调用脚本负责把这些输入翻译成该平台真正需要的请求。</p>
+            <div class="mode-list">
+              ${modes.map(id => {
+                const mode = modeContracts[id];
+                return `<button class="mode-row ${state.selectedMode === id ? 'active' : ''}" type="button" data-mode="${id}"><span class="mode-name">${mode.name}</span><span class="mode-contract-summary">${mode.summary}</span><span class="subtle-link">查看契约 ›</span></button>`;
+              }).join('')}
+            </div>
+            <div class="mode-detail">
+              <section><h3>必须提供</h3><p>${contract.required.map(item => `<code>${item[0]}</code><br />`).join('')}</p></section>
+              <section><h3>可选输入</h3><p>${contract.optional.map(item => `<code>${item[0]}</code><br />`).join('') || '无'}</p></section>
+              <section><h3>约束</h3><p>${contract.limit}</p></section>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="button" type="button" data-action="open-script" data-model="${model.id}">编辑“${contract.name}”的调用方式</button></div>
+          </div>
+        </div>`;
+    }
+
+    function stepClass(step) {
+      const order = ['methods', 'connection', 'select', 'workspace'];
+      const current = order.indexOf(state.addStage);
+      const target = order.indexOf(step);
+      if (current === target) return 'active';
+      if (target < current) return 'done';
+      return '';
+    }
+
+    function renderAddSteps() {
+      return `<aside class="add-steps" aria-label="添加模型步骤">
+        <div class="step ${stepClass('methods')}"><span class="step-number">${stepClass('methods') === 'done' ? '✓' : '1'}</span><span>选择接入方式</span></div>
+        <div class="step ${stepClass('connection')}"><span class="step-number">${stepClass('connection') === 'done' ? '✓' : '2'}</span><span>建立或复用连接</span></div>
+        <div class="step ${stepClass('select')}"><span class="step-number">${stepClass('select') === 'done' ? '✓' : '3'}</span><span>选择模型</span></div>
+      </aside>`;
+    }
+
+    function renderAddMethods() {
+      return `
+        <div class="add-scroll">
+        <div class="method-group"><h2>复用已保存的连接</h2><div class="method-list">
+          ${providers.map(provider => `<button class="method-row" type="button" data-reuse-provider="${provider.id}"><span class="provider-icon ${provider.kind === 'local' ? 'local' : ''}">${provider.short}</span><span><span class="method-title">${provider.name}</span><span class="method-copy">凭证已保存 · 已有 ${models.filter(model => model.provider === provider.id).length} 个模型</span></span><span aria-hidden="true">›</span></button>`).join('')}
+        </div></div>
+        <div class="method-group"><h2>建立新的接入</h2><div class="method-list">
+          <button class="method-row" type="button" data-add-method="api"><span class="method-symbol">↗</span><span><span class="method-title">API 地址与 Key</span><span class="method-copy">兼容常见 HTTP API；无法识别文档时仍可继续手填模型 ID</span></span><span aria-hidden="true">›</span></button>
+          <button class="method-row" type="button" data-add-method="curl"><span class="method-symbol">{ }</span><span><span class="method-title">cURL / OpenAPI / 请求样例</span><span class="method-copy">从真实请求提取鉴权、参数和结果位置</span></span><span aria-hidden="true">›</span></button>
+          <button class="method-row" type="button" data-add-method="script"><span class="method-symbol">&lt;/&gt;</span><span><span class="method-title">我已有调用脚本</span><span class="method-copy">填写模型 ID 后直接进入脚本工作区，不必先等自动识别失败</span></span><span aria-hidden="true">›</span></button>
+          <button class="method-row" type="button" data-add-method="bridge"><span class="method-symbol">⌘</span><span><span class="method-title">本地工作流 / SDK 桥接</span><span class="method-copy">用于 ComfyUI、登录态 SDK、WebSocket 或常驻任务</span></span><span aria-hidden="true">›</span></button>
+        </div></div></div>`;
+    }
+
+    function renderConnectionForm() {
+      const isScript = state.addMethod === 'script';
+      const isBridge = state.addMethod === 'bridge';
+      const isCurl = state.addMethod === 'curl';
+      const defaultName = isScript ? '我的脚本 API' : isBridge ? '本地模型桥接' : isCurl ? 'Example API' : '新的 API 连接';
+      return `
+        <div class="add-scroll">
+        <div class="section-head"><h2>${isScript ? '先标记这个模型' : isBridge ? '连接本地桥接' : isCurl ? '粘贴一份真实调用' : '保存 API 连接'}</h2></div>
+        <p class="section-description">${isScript ? '不要求先有文档。模型 ID 和类型足够让你进入脚本工作区。' : isBridge ? '桥接进程负责 SDK、登录态、WebSocket 和常驻任务；Nomi 只与本地稳定协议通信。' : isCurl ? '敏感值会在预览中脱敏。解析失败也不会阻塞手动配置。' : '地址和凭证先独立保存；读取不到文档或模型列表时仍可继续。'}</p>
+        <label class="field-label" for="connection-name">连接名称</label>
+        <input class="search-field" id="connection-name" value="${defaultName}" />
+        <div style="height:14px"></div>
+        ${isCurl ? `
+          <label class="field-label" for="curl-material">cURL / OpenAPI 片段</label>
+          <textarea class="search-field" id="curl-material" style="height:180px;padding:10px;resize:vertical" spellcheck="false">curl -X POST https://api.example.com/v1/videos \\
+  -H 'Authorization: Bearer $API_KEY' \\
+  -d '{"model":"new-video-v1","prompt":"..."}'</textarea>
+        ` : isBridge ? `
+          <label class="field-label" for="bridge-url">本地桥接地址</label>
+          <input class="search-field" id="bridge-url" value="http://127.0.0.1:47821" />
+          <div class="notice" style="margin-top:14px"><span>i</span><span>桥接未运行时仍可保存草稿；启动后再检查，不会丢失已填内容。</span></div>
+        ` : `
+          <label class="field-label" for="api-url">${isScript ? 'API 根地址（可稍后补）' : 'API 根地址'}</label>
+          <input class="search-field" id="api-url" value="${isScript ? '' : 'https://api.example.com/v1'}" placeholder="https://api.example.com/v1" />
+          <div style="height:14px"></div>
+          <label class="field-label" for="api-key">API Key</label>
+          <input class="search-field" id="api-key" type="password" value="example-secret-key" />
+          ${isScript ? `<div style="height:14px"></div><label class="field-label" for="script-model-id">模型 ID</label><input class="search-field" id="script-model-id" value="new-video-v1" /><div style="height:14px"></div><label class="field-label" for="script-model-kind">模型类型</label><select class="mode-select" id="script-model-kind" style="width:100%"><option>视频</option><option>图片</option><option>文本</option><option>音频</option></select>` : ''}
+        `}</div>
+        <div class="add-footer"><button class="button ghost" type="button" data-action="back-add-methods">返回</button><span class="toolbar-spacer"></span><button class="button primary" type="button" data-action="continue-connection">${isScript ? '进入脚本工作区' : isBridge ? '保存并检查桥接' : isCurl ? '解析并继续' : '保存连接并继续'}</button></div>`;
+    }
+
+    function renderModelSelection() {
+      const provider = providerById(state.addProvider) || providers[0];
+      const existingCandidates = models.filter(model => model.provider === provider.id).map(model => ({ id: model.id, name: model.name, existing: true, kind: model.kind }));
+      const suggestedByProvider = provider.id === 'apimart'
+        ? [ { id: 'seedance-2-1-fast', name: 'Seedance 2.1 Fast', kind: '视频' }, { id: 'kling-v3', name: 'Kling v3', kind: '视频' }, { id: 'image-gen-4', name: 'Image Gen 4', kind: '图片' } ]
+        : provider.id === 'openai'
+          ? [ { id: 'sora-2', name: 'Sora 2', kind: '视频' }, { id: 'gpt-audio-mini', name: 'GPT Audio mini', kind: '音频' } ]
+          : provider.kind === 'local'
+            ? [ { id: 'workflow-new', name: '新工作流', kind: '视频' }, { id: 'local-image-pipeline', name: '本地图像流程', kind: '图片' } ]
+            : [ { id: 'new-video-v1', name: 'New Video v1', kind: '视频' }, { id: 'new-image-v1', name: 'New Image v1', kind: '图片' } ];
+      const existingIds = new Set(existingCandidates.map(candidate => candidate.id));
+      const candidates = [...existingCandidates, ...suggestedByProvider.filter(candidate => !existingIds.has(candidate.id)).map(candidate => ({ ...candidate, existing: false }))];
+      const selectedCount = state.selectedNewModels.size;
+      return `
+        <div class="add-scroll">
+        <div class="connection-summary"><span class="provider-icon">${provider.short}</span><span><span class="row-title">${provider.name}</span><span class="row-subtitle">连接已保存 · 复用现有地址与凭证</span></span><button class="button ghost small" type="button" data-action="back-add-methods">更换</button></div>
+        <div class="notice"><span aria-hidden="true">i</span><span>已有模型不会被重新处理。只会为本次新选中的模型建立独立任务。</span></div>
+        <div class="section-head"><h2>选择要添加的模型</h2><span class="state-label neutral">已找到 ${candidates.length} 个</span></div>
+        <div class="choice-list">
+          ${candidates.map(candidate => `<label class="choice-row ${candidate.existing ? 'disabled' : ''}">
+            <input type="checkbox" data-new-model="${candidate.id}" data-model-kind="${candidate.kind}" ${candidate.existing ? 'checked disabled' : ''} ${state.selectedNewModels.has(candidate.id) ? 'checked' : ''} />
+            <span><span class="row-title">${candidate.name}</span><span class="choice-id">${candidate.id} · ${candidate.kind}</span></span>
+            <span class="already-added">${candidate.existing ? '已添加' : ''}</span>
+          </label>`).join('')}
+        </div>
+        <div class="manual-entry">
+          <label class="field-label" for="manual-model-id">列表里没有？直接填写 Model ID</label>
+          <div class="field-row"><input class="search-field" id="manual-model-id" placeholder="例如 new-video-model-v1" /><select class="mode-select" id="manual-model-kind" aria-label="模型类型"><option>视频</option><option>图片</option><option>文本</option><option>音频</option></select><button class="button" type="button" data-action="add-manual-id">加入列表</button></div>
+          <div class="detail-subtitle">即使没有文档，仍可先保存模型，再用 cURL 或调用脚本完成配置。</div>
+        </div></div>
+        <div class="add-footer"><button class="button ghost" type="button" data-action="${state.addContextual ? 'cancel-add' : 'back-add-methods'}">${state.addContextual ? `返回 ${escapeHtml(provider.name)}` : '返回'}</button><span class="toolbar-spacer"></span><button class="button primary" type="button" data-action="confirm-add" ${selectedCount ? '' : 'disabled'}>添加 ${selectedCount || ''} 个新模型</button></div>`;
+    }
+
+    function renderAdd() {
+      let inner = '';
+      if (state.addStage === 'methods') inner = renderAddMethods();
+      else if (state.addStage === 'connection') inner = renderConnectionForm();
+      else inner = renderModelSelection();
+
+      const title = state.addStage === 'methods' ? '添加模型' : state.addStage === 'select' ? '选择模型' : '建立连接';
+      const subtitle = state.addStage === 'methods' ? '从你手里已有的材料开始；自动识别是帮助，不是门槛。' : state.addStage === 'select' ? '已添加模型保持不变，新模型分别进入接入工作区。' : '任何一步失败都可以保存草稿或换一种接法。';
+      root.innerHTML = `
+        <div class="detail-view add-view">
+          <header class="detail-header"><div class="detail-title-block"><button class="breadcrumb" type="button" data-action="cancel-add">‹ 模型与接入</button><h2 class="detail-title">${title}</h2><div class="detail-subtitle">${subtitle}</div></div></header>
+          <div class="add-layout">${renderAddSteps()}<div class="add-main">${inner}</div></div>
+        </div>`;
+    }
+
+    function contractItems(items, required = false) {
+      return items.map(([name, note]) => `<div class="contract-item ${required ? 'required' : ''}"><code>${escapeHtml(name)}</code><div class="contract-note">${escapeHtml(note)}</div></div>`).join('');
+    }
+
+    function scriptKey(model, mode) { return `${model.provider}::${model.id}::${mode}`; }
+
+    function scriptForMode(model, mode) {
+      if (model.kind === '文本') return `const response = await http.post('/chat/completions', {
+  model: config.modelId,
+  messages: [
+    { role: 'system', content: params.systemPrompt },
+    { role: 'user', content: prompt },
+  ],
+  temperature: params.temperature,
+})
+
+return { text: response.choices[0].message.content }`;
+
+      if (model.kind === '图片') {
+        const referencesLine = mode === 'image-multi' ? `images: references.images.map(asset => asset.url),\n  mask: references.mask?.url,` : '';
+        return `const result = await http.post('/images/generations', {
+  model: config.modelId,
+  prompt,
+  ${referencesLine}
+  aspect_ratio: params.aspectRatio,
+})
+
+return { image: { url: result.data?.[0]?.url ?? result.url } }`;
+      }
+
+      if (model.kind === '音频') {
+        const referenceLine = mode === 'audio-clone' ? `reference_audio: references.audios[0].url,` : '';
+        return `const result = await http.post('/audio/speech', {
+  model: config.modelId,
+  input: prompt,
+  voice: params.voice,
+  ${referenceLine}
+})
+
+return { audio: { url: result.audio_url } }`;
+      }
+
+      const referencesLine = mode === 'video-frames'
+        ? `first_frame: references.firstFrame?.url,\n  last_frame: references.lastFrame?.url,`
+        : mode === 'video-text'
+          ? ''
+          : `images: references.images.map(asset => asset.url),\n  video: references.videos?.[0]?.url,\n  audio: references.audios?.[0]?.url,`;
+      return `const created = await http.post('/video/generations', {
+  model: config.modelId,
+  prompt,
+  ${referencesLine}
+  duration: params.duration,
+  aspect_ratio: params.aspectRatio,
+})
+
+return {
+  taskId: created.id,
+  async query() {
+    const task = await http.get('/video/generations/' + created.id)
+    if (task.status === 'succeeded') return { video: { url: task.video_url } }
+    if (task.status === 'failed') throw new Error(task.error)
+    return null
+  },
+}`;
+    }
+
+    function renderScript() {
+      const model = modelById(state.selectedModel) || models[0];
+      const availableModes = ensureSelectedMode(model);
+      const contract = modeContracts[state.selectedMode];
+      const key = scriptKey(model, state.selectedMode);
+      const draft = state.scriptDrafts[key] ?? scriptForMode(model, state.selectedMode);
+      const assetLabel = model.kind === '文本' ? '文本' : model.kind;
+      const endpoint = model.kind === '文本' ? '/chat/completions' : model.kind === '图片' ? '/images/generations' : model.kind === '音频' ? '/audio/speech' : '/video/generations';
+      const testStatus = state.scriptTest === 'running'
+        ? '<span class="test-running">正在发送真实试跑…</span>'
+        : state.scriptTest === 'success'
+          ? `<span class="test-success">✓ 试跑通过 · ${assetLabel}${model.kind === '文本' ? '已返回' : '可读取'} · 6.8 秒</span>`
+          : '<span style="color:#97968f">尚未试跑</span>';
+      const transcript = state.scriptTest === 'idle'
+        ? '点击“试跑”后，这里会显示脱敏请求、响应、轮询与产物校验。'
+        : state.scriptTest === 'running'
+          ? `POST ${endpoint}  →  request accepted\nrun: run_9f8c2\nstatus: processing`
+          : model.kind === '文本'
+            ? `POST ${endpoint}  →  200 OK\n✓ 返回结构校验通过\ntext: “这是本次真实试跑的文本结果…”`
+            : `POST ${endpoint}  →  accepted\nrun: run_9f8c2\nstatus: succeeded\nGET https://cdn.example/result  →  200\n✓ ${assetLabel}产物读取与解码通过`;
+      const passedCurrentDraft = state.scriptTest === 'success' && state.passedScripts[key] === draft;
+      const saveDisabled = passedCurrentDraft ? '' : 'disabled';
+
+      root.innerHTML = `
+        <div class="detail-view script-view">
+          <header class="script-header">
+            <div class="detail-title-block"><button class="breadcrumb" type="button" data-model="${model.id}">‹ ${escapeHtml(model.name)}</button><h2 class="detail-title">编辑调用</h2><div class="detail-subtitle">当前模式的输入契约会随模式切换，不写死成首尾帧。</div></div>
+            <label><span class="sr-only">选择能力模式</span><select class="mode-select" id="script-mode-select">${availableModes.map(id => `<option value="${id}" ${state.selectedMode === id ? 'selected' : ''}>${modeContracts[id].name}</option>`).join('')}</select></label>
+            <div class="header-actions"><button class="button" type="button" data-action="run-test">▶ 试跑</button><span title="${saveDisabled ? '请先完成一次真实试跑；也可以保存为未验证草稿' : '保存并让此调用投入生产'}"><button class="button primary" type="button" data-action="save-script" ${saveDisabled}>保存并启用</button></span></div>
+          </header>
+          <div class="script-workspace">
+            <aside class="contract-rail" aria-label="当前模式契约">
+              <details class="mobile-contract-summary"><summary>${contract.name} · 输入与返回契约</summary><div><strong>必须：</strong>${contract.required.map(item => `<code>${item[0]}</code>`).join(' · ')}</div><div><strong>可选：</strong>${contract.optional.map(item => `<code>${item[0]}</code>`).join(' · ') || '无'}</div><div><strong>返回：</strong>${contract.result}</div></details>
+              <div class="contract-section"><h2>当前模式</h2><div class="contract-item required"><strong>${contract.name}</strong><div class="contract-note">${contract.summary}</div></div></div>
+              <div class="contract-section"><h2>必须提供</h2><div class="contract-list">${contractItems(contract.required, true)}</div></div>
+              <div class="contract-section"><h2>可选输入</h2><div class="contract-list">${contractItems(contract.optional)}</div></div>
+              <div class="contract-section"><h2>稳定可用变量</h2><div class="contract-list">${contractItems([['prompt', '提示词'], ['params', '当前模式参数'], ['references', '按契约收集的素材'], ['config', '模型与连接信息']])}</div></div>
+              <div class="contract-section"><h2>素材约束</h2><div class="contract-item">${contract.limit}</div></div>
+              <div class="contract-section"><h2>必须返回</h2><div class="contract-item required">${contract.result}</div></div>
+            </aside>
+            <section class="editor-side" aria-label="调用脚本编辑器">
+              <div class="code-panel"><div class="code-toolbar"><span>JavaScript</span><span>·</span><span>${escapeHtml(model.id)}</span><span class="toolbar-spacer"></span><button class="button ghost small" style="color:#bbb;background:transparent" type="button" data-action="save-draft">保存为未验证草稿</button></div><textarea class="code-editor" id="code-editor" spellcheck="false" aria-label="调用脚本" data-script-key="${escapeHtml(key)}">${escapeHtml(draft)}</textarea></div>
+              <div class="test-drawer">
+                <div class="test-head"><strong>真实试跑</strong>${testStatus}<span class="toolbar-spacer"></span><span style="color:#777970">敏感值已脱敏</span></div>
+                <div class="test-grid">
+                  <div class="test-block"><h3>本次输入</h3><pre>prompt: “${model.kind === '文本' ? '把这段内容整理成三点' : model.kind === '音频' ? '欢迎使用 Nomi' : '雨夜街头，镜头缓慢推进'}”\nmode: ${contract.name}\n${contract.required.filter(item => item[0].startsWith('references')).map(item => item[0] + ': 已提供').join('\n') || 'references: 不需要'}\nparams: 使用本模式测试值</pre></div>
+                  <div class="test-block"><h3>请求、响应与产物校验</h3><pre>${escapeHtml(transcript)}</pre></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>`;
+    }
+
+    function renderEmpty() {
+      root.innerHTML = `
+        <div class="detail-view">
+          <div class="empty-state">
+            <div class="empty-symbol" aria-hidden="true">＋</div>
+            <h2>添加第一个模型</h2>
+            <p>右侧工作区从一开始就存在。现在没有连接，所以它直接承载首次接入；保存后它会变成连接、模型、验证和脚本详情。</p>
+            <div class="empty-actions"><button class="button primary" type="button" data-action="start-add-api">API 地址与 Key</button><button class="button" type="button" data-action="start-add-script">我已有调用脚本</button></div>
+          </div>
+        </div>`;
+    }
+
+    function simpleHeader(title, subtitle, isHome = false) {
+      return `<header class="detail-header"><div class="detail-title-block">${isHome ? '' : '<button class="breadcrumb mobile-only" type="button" data-action="settings-home">‹ 设置首页</button>'}<h2 class="detail-title">${title}</h2><div class="detail-subtitle">${subtitle}</div></div><div class="header-actions mobile-only"><button class="nav-close" type="button" data-action="close-settings" aria-label="关闭设置">×</button></div></header>`;
+    }
+
+    function renderSettingsHome() {
+      const sections = [
+        ['files', '文件与保存', '生成物自动另存与新项目位置', '□'],
+        ['models', '模型与接入', '连接、模型、验证与调用脚本', '▦'],
+        ['ai', 'AI 策略', '上传边界、预算与生产模型范围', 'AI'],
+        ['automation', '自动化与权限', '执行模式、风险确认与可信宿主', '◇'],
+        ['general', '通用', '截图热键、画布手势、语言与外观', '⌂'],
+        ['about', '关于', '版本、使用手册与开屏动画', 'i']
+      ];
+      root.innerHTML = `<div class="detail-view">${simpleHeader('设置', '选择要管理的设置类别。', true)}<div class="settings-page-inner"><div class="method-list">${sections.map(([id, title, copy, symbol]) => `<button class="method-row" type="button" data-settings-section="${id}"><span class="method-symbol">${symbol}</span><span><span class="method-title">${title}</span><span class="method-copy">${copy}</span></span><span aria-hidden="true">›</span></button>`).join('')}</div></div></div>`;
+    }
+
+    function renderSimpleSettings(section) {
+      if (section === 'general') {
+        root.innerHTML = `<div class="detail-view">${simpleHeader('通用', '截图、画布手势、语言和外观。')}<div class="settings-page-inner">
+          <section class="settings-page-section"><h2>界面与画布</h2><p>修改后立即生效，并保存在本机。</p>
+            <div class="setting-row"><div class="setting-copy"><strong>界面语言</strong><span>名称始终使用对应语言显示。</span></div><div class="setting-control"><div class="segmented" role="group" aria-label="界面语言"><button class="segment active" type="button" data-setting-segment>简体中文</button><button class="segment" type="button" data-setting-segment>English</button></div></div></div>
+            <div class="setting-row"><div class="setting-copy"><strong>外观</strong><span>切换浅色或深色界面。</span></div><div class="setting-control"><div class="segmented" role="group" aria-label="外观"><button class="segment active" type="button" data-setting-segment>浅色</button><button class="segment" type="button" data-setting-segment>深色</button></div></div></div>
+            <div class="setting-row"><div class="setting-copy"><strong>画布滚轮</strong><span>触控板用户可选择滚轮平移。</span></div><div class="setting-control"><div class="segmented" role="radiogroup" aria-label="画布滚轮"><button class="segment active" type="button" data-setting-segment>滚轮缩放</button><button class="segment" type="button" data-setting-segment>滚轮平移</button></div></div></div>
+          </section>
+          <section class="settings-page-section"><h2>全局截图</h2><p>默认关闭，避免占用其他应用的快捷键。</p>
+            <div class="setting-row"><div class="setting-copy"><strong>启用截图热键</strong><span>在任意应用中截取区域并送入 Nomi。</span></div><div class="setting-control"><label class="switch"><span class="sr-only">启用截图热键</span><input type="checkbox" /><span class="switch-track"></span></label></div></div>
+            <div class="setting-row"><div class="setting-copy"><strong>快捷键</strong><span>如果被其他应用占用，Nomi 会明确提示。</span></div><div class="setting-control"><select class="mode-select" aria-label="截图快捷键"><option>⌥⇧Q</option><option>⌥⇧S</option><option>⌥⇧A</option><option>⌘⌥Q</option></select></div></div>
+            <div class="setting-row"><div class="setting-copy"><strong>屏幕录制权限</strong><span>macOS 需要授权后才能读取屏幕。</span></div><div class="setting-control"><span class="state-label neutral">尚未请求</span><button class="button small" type="button" data-action="demo-setting">系统设置</button></div></div>
+          </section>
+        </div></div>`;
+        return;
+      }
+
+      if (section === 'files') {
+        root.innerHTML = `<div class="detail-view">${simpleHeader('文件与保存', '生成物副本和新项目位置。')}<div class="settings-page-inner">
+          <section class="settings-page-section"><h2>生成物自动另存</h2><p>每次新生成图片或视频时，额外保存一份副本。</p>
+            <div class="setting-row"><div class="setting-copy"><strong>自动另存生成物</strong><span>不改变项目内的素材和引用关系。</span></div><div class="setting-control"><label class="switch"><span class="sr-only">自动另存生成物</span><input type="checkbox" checked /><span class="switch-track"></span></label></div></div>
+            <div class="settings-path">/Users/aoqimin/Movies/Nomi Exports</div>
+            <div class="settings-actions"><button class="button" type="button" data-action="demo-setting">选择文件夹</button><button class="button ghost" type="button" data-action="demo-setting">打开文件夹</button></div>
+          </section>
+          <section class="settings-page-section"><h2>新项目默认位置</h2><p>新建项目时使用这里；现有项目不会被移动。</p>
+            <div class="settings-path">/Users/aoqimin/Movies/Nomi Projects</div>
+            <div class="settings-actions"><button class="button" type="button" data-action="demo-setting">更改位置</button><button class="button ghost" type="button" data-action="demo-setting">打开文件夹</button><button class="button ghost" type="button" data-action="demo-setting">恢复默认</button></div>
+            <div class="notice" style="margin-top:16px;margin-bottom:0"><span aria-hidden="true">i</span><span>这里只影响之后创建的项目。由环境变量管理时，位置会变成只读并说明来源。</span></div>
+          </section>
+        </div></div>`;
+        return;
+      }
+
+      if (section === 'ai') {
+        root.innerHTML = `<div class="detail-view">${simpleHeader('AI 策略', '控制上传边界、生产预算和可用模型范围。')}<div class="settings-page-inner">
+          <section class="settings-page-section"><h2>上传边界</h2><p>只把任务真正需要的素材发给远程模型。</p>
+            <div class="setting-row"><div class="setting-copy"><strong>最小化上传</strong><span>忽略没有被当前节点和模式引用的素材。</span></div><div class="setting-control"><label class="switch"><span class="sr-only">最小化上传</span><input type="checkbox" checked /><span class="switch-track"></span></label></div></div>
+            <div class="notice" style="margin-top:14px;margin-bottom:0"><span aria-hidden="true">i</span><span>文本、图片、视频和音频仍按模型当前模式的输入契约分别收集。</span></div>
+          </section>
+          <section class="settings-page-section"><h2>生产预算</h2><p>自动执行不能突破这里的硬上限。</p>
+            <div class="setting-row"><div class="setting-copy"><strong>单次任务预算上限</strong><span>留空表示必须逐次确认费用。</span></div><div class="setting-control"><input class="settings-input" type="number" min="0" step="0.01" value="20" aria-label="单次任务预算上限" /><span>USD</span></div></div>
+            <div class="setting-row"><div class="setting-copy"><strong>当前连接</strong><span>3 个可用连接，1 个需要处理。</span></div><div class="setting-control"><button class="button small" type="button" data-settings-section="models">管理模型</button></div></div>
+          </section>
+          <section class="settings-page-section"><h2>允许的服务商</h2><p>自动任务只会从勾选的连接中选择。</p><div class="settings-option-grid"><label class="settings-option"><input type="checkbox" checked /> APIMart</label><label class="settings-option"><input type="checkbox" checked /> OpenAI</label><label class="settings-option"><input type="checkbox" checked /> 本地工作流</label><label class="settings-option"><input type="checkbox" /> 未验证连接</label></div></section>
+          <section class="settings-page-section"><h2>允许的模型</h2><p>模型接入和生产使用范围彼此独立。</p><div class="settings-option-grid"><label class="settings-option"><input type="checkbox" checked /> GPT-4o mini</label><label class="settings-option"><input type="checkbox" checked /> GPT Image 1</label><label class="settings-option"><input type="checkbox" checked /> Seedance 2.0 Pro</label><label class="settings-option"><input type="checkbox" /> Wan 2.2</label></div></section>
+        </div></div>`;
+        return;
+      }
+
+      if (section === 'automation') {
+        root.innerHTML = `<div class="detail-view">${simpleHeader('自动化与权限', '决定自动执行程度、风险确认和可信宿主。')}<div class="settings-page-inner">
+          <section class="settings-page-section"><h2>自动化模式</h2><p>模式越自动，越依赖预算和权限边界。</p><div class="segmented" role="radiogroup" aria-label="自动化模式"><button class="segment" type="button" data-setting-segment>每步询问</button><button class="segment active" type="button" data-setting-segment>平衡</button><button class="segment" type="button" data-setting-segment>按策略自动</button></div><div class="detail-subtitle" style="margin-top:10px">低风险步骤可继续；付费、不可逆和边界外操作仍会停下来确认。</div></section>
+          <section class="settings-page-section"><h2>风险确认</h2><p>高风险动作不能被自动化模式关闭。</p><div class="setting-row"><div class="setting-copy"><strong>首次付费调用</strong><span>显示模型、账号和已知价格上限。</span></div><div class="setting-control"><span class="locked-pill">始终确认</span></div></div><div class="setting-row"><div class="setting-copy"><strong>预算内连续执行</strong><span>允许同一任务在预算内继续。</span></div><div class="setting-control"><label class="switch"><span class="sr-only">预算内连续执行</span><input type="checkbox" checked /><span class="switch-track"></span></label></div></div><div class="setting-row"><div class="setting-copy"><strong>不可逆操作</strong><span>删除、覆盖和外部发布前询问。</span></div><div class="setting-control"><span class="locked-pill">始终确认</span></div></div></section>
+          <section class="settings-page-section"><h2>可信宿主</h2><p>允许这些入口请求 Nomi 执行受控任务。</p><div class="setting-row"><div class="setting-copy"><strong>Nomi</strong><span>本机工作区。</span></div><div class="setting-control"><span class="state-label success">本机</span></div></div><div class="setting-row"><div class="setting-copy"><strong>Claude</strong><span>通过已授权的 MCP 连接。</span></div><div class="setting-control"><label class="switch"><span class="sr-only">允许 Claude</span><input type="checkbox" checked /><span class="switch-track"></span></label></div></div><div class="setting-row"><div class="setting-copy"><strong>Codex / Cursor</strong><span>分别保存授权状态。</span></div><div class="setting-control"><label class="switch"><span class="sr-only">允许 Codex 和 Cursor</span><input type="checkbox" /><span class="switch-track"></span></label></div></div></section>
+          <section class="settings-page-section"><h2>通知</h2><p>自动任务结束或需要人工处理时提醒。</p><div class="setting-row"><div class="setting-copy"><strong>系统通知</strong><span>Nomi 位于后台时显示。</span></div><div class="setting-control"><label class="switch"><span class="sr-only">系统通知</span><input type="checkbox" checked /><span class="switch-track"></span></label></div></div><div class="setting-row"><div class="setting-copy"><strong>提示音</strong><span>任务完成时播放一次。</span></div><div class="setting-control"><label class="switch"><span class="sr-only">提示音</span><input type="checkbox" /><span class="switch-track"></span></label></div></div></section>
+        </div></div>`;
+        return;
+      }
+
+      root.innerHTML = `<div class="detail-view">${simpleHeader('关于 Nomi', '版本、使用手册与开屏动画。')}<div class="settings-page-inner">
+        <section class="settings-page-section"><h2>版本与更新</h2><p>更新检查不会读取或上传项目内容。</p><div class="about-brand"><span class="about-mark" aria-hidden="true">N</span><span><strong>Nomi 0.11.0</strong><span>macOS · arm64 · 本地优先工作台</span></span></div><div class="setting-row"><div class="setting-copy"><strong>软件更新</strong><span>尚未检查是否有新版本。</span></div><div class="setting-control"><button class="button primary small" type="button" data-action="demo-setting">检查更新</button></div></div></section>
+        <section class="settings-page-section"><h2>帮助与品牌</h2><p>这些动作会离开设置，前往对应页面或开场。</p><div class="method-list"><button class="method-row" type="button" data-action="demo-setting"><span class="method-symbol">?</span><span><span class="method-title">使用手册</span><span class="method-copy">查看工作区、画布和模型接入说明</span></span><span aria-hidden="true">›</span></button><button class="method-row" type="button" data-action="demo-setting"><span class="method-symbol">▶</span><span><span class="method-title">重看开屏动画</span><span class="method-copy">只播放品牌开场，不创建示例项目</span></span><span aria-hidden="true">›</span></button></div></section>
+      </div></div>`;
+    }
+
+    function render() {
+      const settingsContent = document.querySelector('.settings-content');
+      settingsContent.dataset.section = state.settingsSection;
+      document.body.dataset.activeSettingsSection = state.settingsSection;
+      document.querySelectorAll('[data-settings-section]').forEach(item => {
+        if (item.dataset.settingsSection === state.settingsSection) item.setAttribute('aria-current', 'page');
+        else item.removeAttribute('aria-current');
+      });
+      const mobileBack = document.querySelector('.mobile-back');
+      if (mobileBack) {
+        mobileBack.textContent = state.route === 'script' ? '‹ 返回模型' : state.route === 'model' ? '‹ 返回服务商' : state.route === 'add' ? '‹ 返回上一步' : '‹ 返回连接列表';
+      }
+      if (state.settingsSection === 'home') { renderSettingsHome(); return; }
+      if (state.settingsSection !== 'models') { renderSimpleSettings(state.settingsSection); return; }
+      renderConnectionList();
+      if (state.scenario === 'empty' && state.route !== 'add') renderEmpty();
+      else if (state.route === 'overview') renderOverview();
+      else if (state.route === 'provider') renderProvider();
+      else if (state.route === 'model') renderModelDetail();
+      else if (state.route === 'add') renderAdd();
+      else if (state.route === 'script') renderScript();
+    }
+
+    function modelViewKey() {
+      return [state.route, state.selectedProvider, state.providerTab, state.selectedModel, state.selectedMode].join('::');
+    }
+
+    function rememberModelView() {
+      if (state.settingsSection !== 'models') return;
+      state.modelViewScroll[modelViewKey()] = {
+        root: root.scrollTop,
+        contract: root.querySelector('.contract-rail')?.scrollTop || 0,
+        editor: root.querySelector('#code-editor')?.scrollTop || 0,
+        add: root.querySelector('.add-scroll')?.scrollTop || 0
+      };
+    }
+
+    function restoreModelView() {
+      const snapshot = state.modelViewScroll[modelViewKey()];
+      if (!snapshot) return;
+      requestAnimationFrame(() => {
+        root.scrollTop = snapshot.root;
+        const contract = root.querySelector('.contract-rail');
+        const editor = root.querySelector('#code-editor');
+        const add = root.querySelector('.add-scroll');
+        if (contract) contract.scrollTop = snapshot.contract;
+        if (editor) editor.scrollTop = snapshot.editor;
+        if (add) add.scrollTop = snapshot.add;
+      });
+    }
+
+    function focusDetailSurface() {
+      requestAnimationFrame(() => {
+        const isMobile = window.matchMedia('(max-width: 760px)').matches;
+        let target = root.querySelector('.detail-title');
+        if (isMobile && state.settingsSection === 'models') {
+          target = document.body.dataset.mobilePane === 'list'
+            ? document.querySelector('.connection-head h1')
+            : document.querySelector('.mobile-back');
+        } else if (isMobile) {
+          target = root.querySelector('.breadcrumb, .detail-title');
+        }
+        if (!target) return;
+        if (!target.matches('button, input, select, textarea, [tabindex]')) target.setAttribute('tabindex', '-1');
+        target.focus({ preventScroll: true });
+      });
+    }
+
+    function closeSettings() {
+      document.body.dataset.settingsOpen = 'false';
+      requestAnimationFrame(() => document.querySelector('[data-action="reopen-settings"]')?.focus());
+    }
+
+    function reopenSettings() {
+      document.body.dataset.settingsOpen = 'true';
+      requestAnimationFrame(() => document.querySelector('[data-action="close-settings"]')?.focus());
+    }
+
+    function showSettingsSection(section) {
+      rememberModelView();
+      state.settingsSection = section;
+      if (window.matchMedia('(max-width: 760px)').matches) document.body.dataset.mobilePane = section === 'models' ? 'list' : 'detail';
+      render();
+      if (section === 'models') restoreModelView();
+      focusDetailSurface();
+    }
+
+    function navigateBack() {
+      if (!window.matchMedia('(max-width: 760px)').matches) { closeSettings(); return; }
+      if (state.settingsSection === 'home') { closeSettings(); return; }
+      if (state.settingsSection !== 'models') { showSettingsSection('home'); return; }
+      if (document.body.dataset.mobilePane === 'list') { showSettingsSection('home'); return; }
+      if (state.route === 'script') { state.route = 'model'; render(); focusDetailSurface(); return; }
+      if (state.route === 'model') { openProvider(state.selectedProvider, 'models'); return; }
+      if (state.route === 'add') {
+        if (state.addStage === 'select' && state.addContextual) { openProvider(state.selectedProvider, 'models'); return; }
+        if (state.addStage !== 'methods') { state.addStage = 'methods'; state.addProvider = null; state.addMethod = null; render(); focusDetailSurface(); return; }
+      }
+      document.body.dataset.mobilePane = 'list';
+      requestAnimationFrame(() => {
+        const target = state.selectedProvider === 'all' ? document.querySelector('[data-route="overview"]') : document.querySelector(`[data-provider="${state.selectedProvider}"]`);
+        target?.focus({ preventScroll: true });
+      });
+    }
+
+    function createProviderFromForm() {
+      const method = state.addMethod || 'api';
+      const startedFromEmpty = state.scenario === 'empty';
+      const fallbackName = method === 'script' ? '我的脚本 API' : method === 'bridge' ? '本地模型桥接' : method === 'curl' ? 'Example API' : '新的 API 连接';
+      const name = document.getElementById('connection-name')?.value.trim() || fallbackName;
+      const curlText = document.getElementById('curl-material')?.value || '';
+      const curlUrl = curlText.match(/https?:\/\/[^\s'"\\]+/)?.[0];
+      const baseUrl = method === 'bridge'
+        ? document.getElementById('bridge-url')?.value.trim()
+        : method === 'curl'
+          ? curlUrl
+          : document.getElementById('api-url')?.value.trim();
+      state.newProviderSerial += 1;
+      const id = `custom-${method}-${state.newProviderSerial}`;
+      const provider = {
+        id,
+        name,
+        short: name.replace(/\s+/g, '').slice(0, 2).toUpperCase() || '新',
+        state: method === 'bridge' ? '桥接已保存' : '连接已保存',
+        kind: method === 'bridge' ? 'local' : 'remote',
+        baseUrl: baseUrl || '尚未填写',
+        credential: method === 'bridge' ? '不需要' : '••••••••已保存'
+      };
+      if (startedFromEmpty) { providers = []; models = []; }
+      providers.push(provider);
+      state.scenario = 'normal';
+      state.addProvider = id;
+      state.selectedProvider = id;
+      return provider;
+    }
+
+    function goDetail() {
+      if (window.matchMedia('(max-width: 760px)').matches) document.body.dataset.mobilePane = 'detail';
+    }
+
+    function openProvider(providerId, tab = 'models') {
+      state.selectedProvider = providerId;
+      state.providerTab = tab;
+      state.route = 'provider';
+      render();
+      goDetail();
+      focusDetailSurface();
+    }
+
+    function openModel(modelId) {
+      const model = modelById(modelId);
+      if (!model) return;
+      state.selectedModel = modelId;
+      state.selectedProvider = model.provider;
+      state.route = 'model';
+      state.selectedMode = defaultModeForModel(model);
+      render();
+      goDetail();
+      focusDetailSurface();
+    }
+
+    function startAdd(providerId = null, method = null) {
+      state.route = 'add';
+      state.selectedNewModels = new Set();
+      state.selectedModelKinds = {};
+      state.addProvider = providerId;
+      state.addMethod = method;
+      state.addContextual = Boolean(providerId);
+      state.addStage = providerId ? 'select' : method ? 'connection' : 'methods';
+      render();
+      goDetail();
+      focusDetailSurface();
+    }
+
+    document.addEventListener('click', event => {
+      const menuToggle = event.target.closest('#prototype-menu-button');
+      if (menuToggle) {
+        const open = !menu.classList.contains('open');
+        menu.classList.toggle('open', open);
+        menuButton.setAttribute('aria-expanded', String(open));
+        return;
+      }
+      if (!event.target.closest('#prototype-menu')) {
+        menu.classList.remove('open');
+        menuButton.setAttribute('aria-expanded', 'false');
+      }
+
+      const providerTarget = event.target.closest('[data-provider]');
+      if (providerTarget && !providerTarget.matches('[data-action]')) {
+        openProvider(providerTarget.dataset.provider);
+        return;
+      }
+
+      const modelTarget = event.target.closest('[data-model]');
+      if (modelTarget && !modelTarget.matches('[data-action]')) {
+        openModel(modelTarget.dataset.model);
+        return;
+      }
+
+      const routeTarget = event.target.closest('[data-route]');
+      if (routeTarget) {
+        if (routeTarget.dataset.route === 'overview') {
+          state.route = 'overview'; state.selectedProvider = 'all'; render(); goDetail();
+        }
+        return;
+      }
+
+      const actionTarget = event.target.closest('[data-action]');
+      if (!actionTarget) return;
+      const action = actionTarget.dataset.action;
+
+      if (action === 'start-add') startAdd();
+      else if (action === 'start-add-api') startAdd(null, 'api');
+      else if (action === 'start-add-script') startAdd(null, 'script');
+      else if (action === 'add-to-provider') startAdd(actionTarget.dataset.provider);
+      else if (action === 'cancel-add') {
+        if (state.selectedProvider === 'all') { state.route = 'overview'; render(); focusDetailSurface(); }
+        else openProvider(state.selectedProvider, 'models');
+      }
+      else if (action === 'back-add-methods') { state.addStage = 'methods'; state.addProvider = null; state.addMethod = null; state.addContextual = false; render(); focusDetailSurface(); }
+      else if (action === 'open-tasks') openProvider('apimart', 'verification');
+      else if (action === 'mobile-back') navigateBack();
+      else if (action === 'settings-home') showSettingsSection('home');
+      else if (action === 'close-settings') closeSettings();
+      else if (action === 'reopen-settings') reopenSettings();
+      else if (action === 'demo-setting') showToast('原型：该设置已响应，正式实现会调用对应的本地系统能力。');
+      else if (action === 'help') showToast('帮助与反馈会打开独立帮助窗口，不占用设置内容页。');
+      else if (action === 'show-empty') {
+        menu.classList.remove('open'); menuButton.setAttribute('aria-expanded', 'false');
+        state.scenario = 'empty'; state.route = 'empty'; state.selectedProvider = 'all'; render(); goDetail();
+      }
+      else if (action === 'restore-demo') {
+        menu.classList.remove('open'); menuButton.setAttribute('aria-expanded', 'false');
+        providers = demoProviders.map(provider => ({ ...provider }));
+        models = demoModels.map(model => ({ ...model }));
+        state.scenario = 'normal'; state.route = 'overview'; state.selectedProvider = 'all'; render(); goDetail();
+      }
+      else if (action === 'open-script') {
+        const model = modelById(actionTarget.dataset.model || state.selectedModel);
+        if (!model) return;
+        state.selectedModel = model.id;
+        state.selectedProvider = model.provider;
+        ensureSelectedMode(model);
+        state.route = 'script'; state.scriptTest = 'idle'; state.activeTest = null; render(); goDetail(); focusDetailSurface();
+      }
+      else if (action === 'revalidate') {
+        const model = modelById(actionTarget.dataset.model);
+        if (model) {
+          model.lastEvent = null;
+          if (model.status === 'verified') model.revalidating = true;
+          else { model.status = 'running'; model.enabled = false; }
+        }
+        showToast('已开始重新验证；原调用继续保留，任务可在“验证”中重新打开。');
+        render();
+      }
+      else if (action === 'stop-task') {
+        const model = modelById(actionTarget.dataset.model || 'kling-v2-1');
+        if (model) {
+          if (model.revalidating) model.revalidating = false;
+          else { model.status = 'attention'; model.enabled = false; }
+          model.lastEvent = 'stopped';
+        }
+        showToast('已停止当前试跑。连接和已填写配置都已保留。');
+        render();
+      }
+      else if (action === 'run-test') {
+        const model = modelById(state.selectedModel);
+        const key = scriptKey(model, state.selectedMode);
+        const draft = document.getElementById('code-editor')?.value ?? state.scriptDrafts[key] ?? scriptForMode(model, state.selectedMode);
+        state.scriptDrafts[key] = draft;
+        const runId = `${Date.now()}-${Math.random()}`;
+        state.activeTest = { runId, key, draft };
+        state.scriptTest = 'running'; render();
+        setTimeout(() => {
+          if (state.activeTest?.runId !== runId) return;
+          state.passedScripts[key] = draft;
+          state.scriptTest = 'success';
+          render();
+          showToast('真实试跑通过，已验证当前这份脚本的产物。');
+        }, 1050);
+      }
+      else if (action === 'save-script') {
+        const model = modelById(state.selectedModel);
+        const key = scriptKey(model, state.selectedMode);
+        const draft = state.scriptDrafts[key] ?? scriptForMode(model, state.selectedMode);
+        if (state.scriptTest !== 'success' || state.passedScripts[key] !== draft) return;
+        if (model) { model.status = 'verified'; model.revalidating = false; model.enabled = true; model.lastEvent = null; }
+        state.scriptSaved = true; state.route = 'model'; render(); showToast('调用脚本已保存并启用。');
+      }
+      else if (action === 'save-draft') showToast('已保存为未验证草稿；可以稍后继续，不会阻塞退出。');
+      else if (action === 'force-enable') {
+        const model = modelById(actionTarget.dataset.model);
+        if (model) { model.enabled = true; state.pendingRiskEnable = null; }
+        render(); showToast('模型已启用，并持续标记为“已启用但未验证”。');
+      }
+      else if (action === 'add-manual-id') {
+        const input = document.getElementById('manual-model-id');
+        const id = input && input.value.trim();
+        if (!id) { showToast('请先填写 Model ID。'); return; }
+        state.selectedNewModels.add(id);
+        state.selectedModelKinds[id] = document.getElementById('manual-model-kind')?.value || '视频';
+        render(); showToast(`已把 ${id} 加入本次选择。`);
+      }
+      else if (action === 'confirm-add') {
+        const providerId = state.addProvider;
+        if (!providerId || !providerById(providerId)) { showToast('请先建立或选择一个连接。'); return; }
+        state.selectedNewModels.forEach(id => {
+          const kind = state.selectedModelKinds[id] || (id.includes('image') ? '图片' : '视频');
+          if (!modelById(id)) models.push({ id, name: id.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' '), provider: providerId, kind, modes: modeIdsByKind[kind]?.length || 1, status: 'pending', enabled: false });
+        });
+        state.selectedProvider = providerId; state.providerTab = 'verification'; state.route = 'provider';
+        render(); showToast('新模型已保存；它们会分别配置，不影响已有模型。');
+      }
+      else if (action === 'continue-connection') {
+        const provider = createProviderFromForm();
+        if (state.addMethod === 'script') {
+          const id = (document.getElementById('script-model-id')?.value || 'new-video-v1').trim();
+          const kind = document.getElementById('script-model-kind')?.value || '视频';
+          if (!modelById(id)) models.push({ id, name: id, provider: provider.id, kind, modes: modeIdsByKind[kind]?.length || 1, status: 'pending', enabled: false });
+          state.selectedModel = id; state.selectedProvider = provider.id; state.selectedMode = defaultModeForModel(modelById(id)); state.route = 'script'; state.scriptTest = 'idle'; render(); focusDetailSurface();
+        } else {
+          state.addProvider = provider.id; state.addStage = 'select'; render(); showToast(`${provider.name} 已保存。现在可以选择模型；自动识别失败也可手填。`);
+        }
+      }
+      else if (action === 'copy-url') showToast('API 地址已复制。');
+      else if (action === 'recheck') showToast('连接检查通过；这不等于所有模型都已验证。');
+      else if (action === 'edit-connection') showToast('原型：这里会在当前工作区展开连接编辑，不再弹出第二层窗口。');
+      else if (action === 'disconnect') showToast('原型未执行断开；正式界面会先显示受影响的模型。');
+    });
+
+    document.addEventListener('change', event => {
+      const toggle = event.target.closest('[data-toggle-model]');
+      if (toggle) {
+        const model = modelById(toggle.dataset.toggleModel);
+        if (model && toggle.checked && model.status !== 'verified') {
+          toggle.checked = false;
+          state.pendingRiskEnable = model.id;
+          openModel(model.id);
+          showToast('这个模型尚未验证。请先试跑，或在模型详情明确选择“仍然启用”。');
+        } else if (model) {
+          model.enabled = toggle.checked;
+          showToast(`${model.name} 已${model.enabled ? '启用' : '停用'}。`);
+        }
+      }
+
+      const newModel = event.target.closest('[data-new-model]');
+      if (newModel && !newModel.disabled) {
+        if (newModel.checked) {
+          state.selectedNewModels.add(newModel.dataset.newModel);
+          state.selectedModelKinds[newModel.dataset.newModel] = newModel.dataset.modelKind || '视频';
+        } else {
+          state.selectedNewModels.delete(newModel.dataset.newModel);
+          delete state.selectedModelKinds[newModel.dataset.newModel];
+        }
+        render();
+      }
+
+      if (event.target.id === 'script-mode-select') {
+        state.selectedMode = event.target.value; state.scriptTest = 'idle'; state.activeTest = null; render();
+      }
+    });
+
+    document.addEventListener('input', event => {
+      if (event.target.id === 'provider-search' || event.target.matches('[data-model-search]')) {
+        state.search = event.target.value;
+        if (event.target.id === 'provider-search') renderConnectionList();
+        else renderOverview();
+      }
+      if (event.target.id === 'code-editor') {
+        state.scriptDrafts[event.target.dataset.scriptKey] = event.target.value;
+        state.scriptTest = 'idle';
+        state.activeTest = null;
+        const saveButton = document.querySelector('[data-action="save-script"]');
+        if (saveButton) saveButton.disabled = true;
+        const testMarker = document.querySelector('.test-success, .test-running');
+        if (testMarker) { testMarker.className = ''; testMarker.style.color = '#97968f'; testMarker.textContent = '脚本已修改 · 需要重新试跑'; }
+      }
+    });
+
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      if (menu.classList.contains('open')) {
+        menu.classList.remove('open'); menuButton.setAttribute('aria-expanded', 'false'); menuButton.focus();
+      } else if (document.body.dataset.settingsOpen !== 'false') navigateBack();
+    });
+
+    document.addEventListener('click', event => {
+      const settingsSection = event.target.closest('[data-settings-section]');
+      if (settingsSection) { showSettingsSection(settingsSection.dataset.settingsSection); return; }
+      const segment = event.target.closest('[data-setting-segment]');
+      if (segment) {
+        segment.closest('.segmented')?.querySelectorAll('.segment').forEach(item => item.classList.toggle('active', item === segment));
+        showToast(`${segment.textContent.trim()} 已选择。`);
+      }
+      const tab = event.target.closest('[data-provider-tab]');
+      if (tab) {
+        const tabId = tab.dataset.providerTab;
+        state.providerTab = tabId; render();
+        requestAnimationFrame(() => document.querySelector(`[data-provider-tab="${tabId}"]`)?.focus());
+      }
+      const mode = event.target.closest('[data-mode]');
+      if (mode) { state.selectedMode = mode.dataset.mode; render(); }
+      const reuse = event.target.closest('[data-reuse-provider]');
+      if (reuse) { state.addProvider = reuse.dataset.reuseProvider; state.selectedProvider = reuse.dataset.reuseProvider; state.addStage = 'select'; state.addContextual = false; render(); }
+      const method = event.target.closest('[data-add-method]');
+      if (method) { state.addMethod = method.dataset.addMethod; state.addStage = 'connection'; render(); }
+    });
+
+    render();
+  </script>
+</body>
+</html>
