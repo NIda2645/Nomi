@@ -13,7 +13,7 @@ export function selectDownload({ platform = '', userAgent = '', architecture = '
   if (/\b(?:win32|win64|windows)\b/.test(platformText) && !/arm/.test(architectureText)) return downloadUrls.windowsX64
   if (!/mac|darwin|iphone|ipad/.test(platformText)) return null
   if (/arm|aarch64/.test(architectureText) || /arm64/.test(platformText)) return downloadUrls.macArm64
-  if (/x86|x64|intel/.test(architectureText) || /intel mac/.test(platformText)) return downloadUrls.macX64
+  if (/x86|x64|intel/.test(architectureText)) return downloadUrls.macX64
   return null
 }
 
