@@ -2,6 +2,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlus } from '@tabler/icons-react'
 import { WorkbenchIconButton } from '../../../design/workbenchActions'
+import { useFilmstrip } from '../../../media/useFilmstrip'
 import { cn } from '../../../utils/cn'
 import type { TimelineClip, TimelineState } from '../../timeline/timelineTypes'
 import { resolveClipNodeTimelineLayout, resolveClipNodeTimelineViewport } from './clipNodeTimelineLayout'
@@ -18,11 +19,26 @@ type ClipNodeTimelineProps = {
 }
 
 function ClipThumb({ clip }: { clip: TimelineClip }): JSX.Element {
+  const filmstrip = useFilmstrip(clip.type === 'video' && !clip.thumbnailUrl ? clip.url : '')
   if (clip.type === 'image' && (clip.thumbnailUrl || clip.url)) {
     return <img src={clip.thumbnailUrl || clip.url} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
   }
-  if (clip.type === 'video' && (clip.thumbnailUrl || clip.url)) {
-    return <video src={clip.url} poster={clip.thumbnailUrl} muted playsInline preload="metadata" className="absolute inset-0 size-full object-cover" />
+  if (clip.type === 'video' && clip.thumbnailUrl) {
+    return <img src={clip.thumbnailUrl} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
+  }
+  if (clip.type === 'video' && filmstrip?.status === 'ready') {
+    return (
+      <span
+        className="absolute inset-0 bg-nomi-ink-05"
+        style={{
+          backgroundImage: `url(${JSON.stringify(filmstrip.url)})`,
+          backgroundSize: `${filmstrip.tiles * 100}% 100%`,
+          backgroundPosition: 'left center',
+          backgroundRepeat: 'no-repeat',
+        }}
+        aria-hidden="true"
+      />
+    )
   }
   return <span className="absolute inset-0 bg-nomi-ink-10" aria-hidden="true" />
 }
@@ -254,12 +270,12 @@ export default function ClipNodeTimeline({
               </span>
             ))}
           </div>
-          <div className="pointer-events-none absolute top-6 h-1 border-t border-nomi-paper/15" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }} aria-hidden="true">
+          <div className="pointer-events-none absolute top-7 h-1 border-t border-nomi-paper/15" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }} aria-hidden="true">
             {ticks.map((tick) => (
               <span key={`mark-${tick.frame}`} className="absolute top-0 h-2 border-l border-nomi-paper/20" style={{ left: tick.pixel - viewport.leadingSlotWidth - viewport.axisInset }} />
             ))}
           </div>
-          <div className="absolute bottom-2 h-12" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }}>
+          <div className="absolute bottom-2 h-10" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }} data-testid="clip-node-media-lane">
             <span
               className="pointer-events-none absolute inset-y-0 z-20 w-px bg-nomi-accent"
               style={{ left: Math.max(0, viewport.frameToPixel(timeline.playheadFrame) - viewport.leadingSlotWidth - viewport.axisInset) }}

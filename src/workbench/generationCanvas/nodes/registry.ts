@@ -166,7 +166,7 @@ export const GENERATION_NODE_PLUGINS = defineGenerationNodePlugins([
     component: () => import('./ClipNode'),
     icon: 'clip',
     defaultTitle: '剪辑',
-    defaultSize: { width: 640, height: 132 },
+    defaultSize: { width: 760, height: 132 },
     catalogKind: 'video',
     quickAdd: true,
     agentCreatable: false,

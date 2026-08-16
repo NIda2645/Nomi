@@ -1,7 +1,7 @@
 import React from 'react'
 import { NomiImage, type NomiImageProps } from '../../../design/media'
 import { cn } from '../../../utils/cn'
-import { useDeferredNodeMediaSrc } from './deferredNodeMediaQueue'
+import { isDeferredVideoFrameReady, useDeferredNodeMediaSrc } from './deferredNodeMediaQueue'
 
 export const DeferredNodeMediaPlaceholder = React.forwardRef<HTMLDivElement, { className?: string }>(
   function DeferredNodeMediaPlaceholder({ className }, ref): JSX.Element {
@@ -76,6 +76,7 @@ export function DeferredNodeVideo({
   placeholderClassName,
   className,
   onLoadedMetadata,
+  onLoadedData,
   onError,
   ...props
 }: DeferredNodeVideoProps): JSX.Element {
@@ -102,8 +103,11 @@ export function DeferredNodeVideo({
           src={media.deferredSrc}
           className={cn(className, media.loading && 'opacity-0')}
           onLoadedMetadata={(event) => {
-            media.markLoaded()
             onLoadedMetadata?.(event)
+          }}
+          onLoadedData={(event) => {
+            if (isDeferredVideoFrameReady(event.currentTarget.readyState)) media.markLoaded()
+            onLoadedData?.(event)
           }}
           onError={(event) => {
             media.markFailed()

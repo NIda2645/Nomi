@@ -31,6 +31,8 @@ export const TEXT_MIN_WIDTH = 280;
 export const TEXT_MAX_WIDTH = 680;
 export const TEXT_MIN_HEIGHT = 200;
 export const TEXT_MAX_HEIGHT = 800;
+export const CLIP_NODE_MIN_WIDTH = 560;
+export const CLIP_NODE_MAX_WIDTH = 960;
 export type NodeSizeBounds = {
     minWidth: number;
     maxWidth: number;
@@ -114,8 +116,8 @@ export function shouldAllowComposerAttachmentRecompute(input: {
 export function getNodeSizeBounds(kind: GenerationCanvasNode["kind"]): NodeSizeBounds {
     if (kind === "clip") {
         return {
-            minWidth: 240,
-            maxWidth: MAX_NODE_WIDTH,
+            minWidth: CLIP_NODE_MIN_WIDTH,
+            maxWidth: CLIP_NODE_MAX_WIDTH,
             minHeight: 120,
             maxHeight: 180,
         };

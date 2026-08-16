@@ -42,6 +42,7 @@ import { formatClipNodeDuration, resolveClipNodeVisualMode } from './clipNodeVis
 import { buildClipNodeExportTasks, type ClipNodeExportScope } from './clipNodeExport'
 import { dispatchTimelineShortcut } from '../../timeline/timelineShortcuts'
 import { useTimelinePlaybackClock } from '../../timeline/useTimelinePlaybackClock'
+import { readVideoDurationSeconds } from '../../../media/videoDurationProbe'
 
 type Props = { node: unknown; selected: boolean; readOnly?: boolean }
 type ClipNodeExportDestination = 'canvas' | 'download'
@@ -181,15 +182,24 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     startConnection(node.id, side)
   }
 
-  const addAsset = React.useCallback((asset: AssetRef) => {
-    const source = clipNodeSourceFromAsset(asset)
+  const addAsset = React.useCallback(async (asset: AssetRef) => {
+    const durationSeconds = asset.kind === 'video' ? await readVideoDurationSeconds(asset.renderUrl) : null
+    const source = clipNodeSourceFromAsset(asset, durationSeconds)
     if (!source) return
-    persist(appendClipNodeSource(meta, source))
+    const currentNode = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === node.id)
+    if (!currentNode) return
+    const currentMeta = readClipNodeMeta(currentNode.meta)
+    updateNode(node.id, {
+      meta: {
+        ...(currentNode.meta ?? {}),
+        clip: appendClipNodeSource(currentMeta, source),
+      },
+    })
     setPickerOpen(false)
     setUploadError(null)
     setRetryUploadFile(null)
     setEditingOpen(false)
-  }, [meta, persist])
+  }, [node.id, updateNode])
 
   const upload = React.useCallback(async (file: File) => {
     await uploadExclusiveRef.current(async () => {
@@ -207,7 +217,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
           setUploadError(t('generationCommon.clipNode.uploadFailed'))
           return
         }
-        addAsset(result.asset)
+        await addAsset(result.asset)
         setRetryUploadFile(null)
         refresh()
       } finally {
@@ -554,7 +564,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
             <AssetPicker
               projectId={getActiveWorkbenchProjectId()}
               accept={['image', 'video']}
-              onPick={addAsset}
+              onPick={(asset) => void addAsset(asset)}
               onUpload={(file) => void upload(file)}
               uploading={uploading}
             />

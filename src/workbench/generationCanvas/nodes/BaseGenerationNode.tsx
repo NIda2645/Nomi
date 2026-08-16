@@ -575,9 +575,8 @@ function BaseGenerationNodeImpl({
               priority={mediaPreviewPriority}
               crossOrigin="use-credentials"
               controls
-              muted
               playsInline
-              preload="metadata"
+              preload="auto"
               draggable={false}
               onLoadedMetadata={(event) => {
                 updateMediaDimensions(

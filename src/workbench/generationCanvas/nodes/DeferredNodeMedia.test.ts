@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   __resetDeferredNodeMediaQueueForTests,
   __setDeferredNodeMediaLimitForTests,
+  isDeferredVideoFrameReady,
   observeDeferredNodeMediaVisibility,
   requestDeferredNodeMediaSlot,
 } from './deferredNodeMediaQueue'
@@ -10,6 +11,12 @@ describe('deferred node media queue', () => {
   afterEach(() => {
     __resetDeferredNodeMediaQueueForTests()
     vi.unstubAllGlobals()
+  })
+
+  it('reveals video only after the browser has decoded current-frame data', () => {
+    expect(isDeferredVideoFrameReady(1)).toBe(false)
+    expect(isDeferredVideoFrameReady(2)).toBe(true)
+    expect(isDeferredVideoFrameReady(4)).toBe(true)
   })
 
   it('limits image activation until an active slot is released', () => {

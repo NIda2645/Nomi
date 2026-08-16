@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { TimelineState } from '../../timeline/timelineTypes'
-import { resolveClipNodeTimelineLayout } from './clipNodeTimelineLayout'
+import {
+  CLIP_NODE_TRAILING_INSET,
+  resolveClipNodeTimelineLayout,
+  resolveClipNodeTimelineViewport,
+} from './clipNodeTimelineLayout'
 
 const timeline: TimelineState = {
   version: 1,
@@ -25,5 +29,28 @@ describe('ClipNodeTimeline layout', () => {
       { id: 'clip-image', left: 0, width: 100 },
       { id: 'clip-video', left: 100, width: 200 },
     ])
+  })
+
+  it('keeps the 30-second tick inside the viewport with trailing interaction space', () => {
+    const viewport = resolveClipNodeTimelineViewport({ viewportWidth: 760, timeline })
+    const thirtySecondPixel = viewport.frameToPixel(30 * timeline.fps)
+
+    expect(thirtySecondPixel).toBeCloseTo(viewport.viewportWidth - CLIP_NODE_TRAILING_INSET)
+    expect(viewport.contentWidth).toBe(viewport.viewportWidth)
+  })
+
+  it('preserves the initial scale when content extends beyond 30 seconds', () => {
+    const longTimeline: TimelineState = {
+      ...timeline,
+      tracks: [{
+        ...timeline.tracks[0],
+        clips: [{ ...timeline.tracks[0].clips[0], endFrame: 40 * timeline.fps, frameCount: 40 * timeline.fps }],
+      }],
+    }
+    const initial = resolveClipNodeTimelineViewport({ viewportWidth: 760, timeline })
+    const extended = resolveClipNodeTimelineViewport({ viewportWidth: 760, timeline: longTimeline })
+
+    expect(extended.pxPerFrame).toBe(initial.pxPerFrame)
+    expect(extended.contentWidth).toBeGreaterThan(initial.contentWidth)
   })
 })

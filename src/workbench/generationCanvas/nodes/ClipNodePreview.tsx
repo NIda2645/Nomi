@@ -1,6 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconPlayerPause, IconPlayerPlay, IconX } from '@tabler/icons-react'
+import { IconPlayerPause, IconPlayerPlay, IconVolume, IconVolumeOff, IconX } from '@tabler/icons-react'
 import { WorkbenchIconButton } from '../../../design/workbenchActions'
 import { useVideoPlaybackHeal } from '../../../media/useVideoPlaybackHeal'
 import { cn } from '../../../utils/cn'
@@ -30,6 +30,7 @@ export default function ClipNodePreview({
 }: ClipNodePreviewProps): JSX.Element {
   const { t } = useTranslation()
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
+  const [muted, setMuted] = React.useState(true)
   const fps = Math.max(1, timeline.fps || 30)
   const durationFrame = timeline.tracks.flatMap((track) => track.clips).reduce((max, clip) => Math.max(max, clip.endFrame), 0)
   const activeClip = resolveActiveClipsAtFrame(timeline, playheadFrame)[0] ?? null
@@ -66,6 +67,7 @@ export default function ClipNodePreview({
       className={cn('relative w-[430px] overflow-hidden rounded-nomi border border-nomi-line bg-nomi-paper text-nomi-ink shadow-nomi-lg', className)}
       data-testid="clip-node-preview"
       data-active-clip-id={activeClip?.id ?? ''}
+      data-muted={muted ? 'true' : 'false'}
       aria-label={t('generationCommon.clipNode.programMonitor')}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -76,9 +78,9 @@ export default function ClipNodePreview({
             ref={videoRef}
             src={heal.playbackUrl}
             poster={videoClip.thumbnailUrl}
-            muted
+            muted={muted}
             playsInline
-            preload="metadata"
+            preload="auto"
             className="block size-full object-contain"
             onClick={togglePlaying}
             onError={heal.onError}
@@ -107,6 +109,12 @@ export default function ClipNodePreview({
           icon={playing ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}
           className="shrink-0 bg-nomi-bg text-nomi-ink hover:bg-nomi-accent-soft hover:text-nomi-accent"
           onClick={togglePlaying}
+        />
+        <WorkbenchIconButton
+          label={muted ? t('timelinePreview.unmute') : t('timelinePreview.mute')}
+          icon={muted ? <IconVolumeOff size={16} /> : <IconVolume size={16} />}
+          className="shrink-0 bg-nomi-bg text-nomi-ink hover:bg-nomi-accent-soft hover:text-nomi-accent"
+          onClick={() => setMuted((value) => !value)}
         />
         <span className="w-[88px] shrink-0 text-center font-mono text-micro text-nomi-ink-60">
           {formatClipNodeDuration(playheadFrame, fps)} / {formatClipNodeDuration(durationFrame, fps)}

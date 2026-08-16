@@ -6,6 +6,7 @@ export type ClipNodeTimelineLayout = { id: string; left: number; width: number }
 export const CLIP_NODE_INITIAL_VIEW_SECONDS = 30
 export const CLIP_NODE_TRAILING_SECONDS = 4
 export const CLIP_NODE_AXIS_INSET = 8
+export const CLIP_NODE_TRAILING_INSET = 48
 export const CLIP_NODE_LEADING_SLOT_WIDTH = 56
 
 export type ClipNodeTimelineViewport = {
@@ -42,11 +43,12 @@ export function resolveClipNodeTimelineViewport(input: {
   const axisEndSeconds = Math.max(CLIP_NODE_INITIAL_VIEW_SECONDS, timelineEndSeconds + CLIP_NODE_TRAILING_SECONDS)
   const leadingSlotWidth = CLIP_NODE_LEADING_SLOT_WIDTH
   const axisInset = CLIP_NODE_AXIS_INSET
-  const usableViewportWidth = Math.max(1, viewportWidth - leadingSlotWidth - axisInset * 2)
+  const trailingInset = CLIP_NODE_TRAILING_INSET
+  const usableViewportWidth = Math.max(1, viewportWidth - leadingSlotWidth - axisInset - trailingInset)
   const pxPerSecond = usableViewportWidth / CLIP_NODE_INITIAL_VIEW_SECONDS
   const pxPerFrame = pxPerSecond / fps
   const timelineWidth = Math.max(1, Math.round(axisEndSeconds * pxPerSecond))
-  const contentWidth = Math.max(viewportWidth, leadingSlotWidth + axisInset * 2 + timelineWidth)
+  const contentWidth = Math.max(viewportWidth, leadingSlotWidth + axisInset + timelineWidth + trailingInset)
   const timelineStart = leadingSlotWidth + axisInset
 
   return {

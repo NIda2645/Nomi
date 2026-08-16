@@ -2,12 +2,17 @@
 // 零模型额度：使用隔离项目和本地媒体；导出走真实 Electron/ffmpeg 链路。
 // 用法：pnpm run build && node tests/ux/clip-node-editing.walk.mjs
 import { launchNomiApp } from './_launchApp.mjs'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const require = createRequire(import.meta.url)
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+const ffprobePath = require('@ffprobe-installer/ffprobe').path
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-clip-node-walk-'))
 const settingsDir = path.join(root, 'settings')
 const projectsDir = path.join(root, 'projects')
@@ -19,11 +24,22 @@ const screenshots = {
   preview: path.join(os.tmpdir(), 'nomi-clip-node-preview.png'),
   exportMenu: path.join(os.tmpdir(), 'nomi-clip-node-export-menu.png'),
   outputs: path.join(os.tmpdir(), 'nomi-clip-node-outputs.png'),
+  imported: path.join(os.tmpdir(), 'nomi-clip-node-imported-video.png'),
 }
 fs.mkdirSync(path.join(projectRoot, '.nomi'), { recursive: true })
 fs.mkdirSync(generatedAssetsDir, { recursive: true })
 fs.copyFileSync(path.join(repoRoot, 'tests/ux/fixtures/test-upload.png'), path.join(generatedAssetsDir, 'fixture.png'))
-fs.copyFileSync(path.join(repoRoot, 'marketing/assets/video/hero-loop.mp4'), path.join(generatedAssetsDir, 'fixture.mp4'))
+const fixtureVideoPath = path.join(generatedAssetsDir, 'fixture.mp4')
+const importedVideoPath = path.join(root, 'twelve-seconds-with-audio.mp4')
+const encodeFixture = (output, duration) => execFileSync(ffmpegPath, [
+  '-v', 'error', '-y',
+  '-f', 'lavfi', '-i', `testsrc2=size=640x360:rate=24:duration=${duration}`,
+  '-f', 'lavfi', '-i', `sine=frequency=440:sample_rate=48000:duration=${duration}`,
+  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-movflags', '+faststart',
+  output,
+])
+encodeFixture(fixtureVideoPath, 2)
+encodeFixture(importedVideoPath, 12)
 
 const imageUrl = `nomi-local://asset/${encodeURIComponent(projectId)}/assets/generated/fixture.png`
 const videoUrl = `nomi-local://asset/${encodeURIComponent(projectId)}/assets/generated/fixture.mp4`
@@ -45,7 +61,7 @@ const seedClips = [
 ]
 const clipNode = {
   id: 'canvas-clip-editor', kind: 'clip', categoryId: 'shots', title: '画布剪辑',
-  position: { x: 450, y: 300 }, exactPosition: true, size: { width: 560, height: 140 }, status: 'idle',
+  position: { x: 450, y: 300 }, exactPosition: true, size: { width: 760, height: 140 }, status: 'idle',
   meta: { clip: { nodeRole: 'clip', sourceNodeIds: seedClips.map((clip) => clip.id), clips: seedClips } },
 }
 const generationCanvas = {
@@ -112,11 +128,38 @@ async function closeApp() {
 try {
   const clip = await openCanvas()
   const clips = clip.getByTestId('clip-node-clip')
-  await win.waitForTimeout(700)
+  await win.waitForFunction(() => {
+    const video = document.querySelector('[data-node-preview-video="true"]')
+    return video instanceof HTMLVideoElement && video.readyState >= 2 && getComputedStyle(video).opacity !== '0'
+  }, { timeout: 15_000 })
+  await win.waitForTimeout(1200)
 
   const compactDefault = await clip.evaluate((element) => element.getAttribute('data-clip-mode') === 'compact')
     && (await clips.count()) === 4
     && (await win.getByTestId('clip-node-preview').count()) === 0
+  const canvasVideoFrameReady = await win.locator('[data-node-preview-video="true"]').evaluate((video) => (
+    video instanceof HTMLVideoElement && video.readyState >= 2 && getComputedStyle(video).opacity !== '0'
+  ))
+  const canvasVideoAudioEnabled = await win.locator('[data-node-preview-video="true"]').evaluate((video) => (
+    video instanceof HTMLVideoElement && video.muted === false
+  ))
+  const clipNodeIsWideEnough = (await clip.boundingBox())?.width >= 750
+  const rulerBoxBeforeDrag = await clip.getByTestId('clip-node-ruler').boundingBox()
+  const mediaLaneBox = await clip.getByTestId('clip-node-media-lane').boundingBox()
+  const thirtySecondLabelBox = await clip.getByText('00:30', { exact: true }).boundingBox()
+  const axisViewportBox = await clip.getByTestId('clip-node-axis-content').locator('..').boundingBox()
+  const rulerDoesNotOverlapMedia = Boolean(rulerBoxBeforeDrag && mediaLaneBox && rulerBoxBeforeDrag.y + rulerBoxBeforeDrag.height <= mediaLaneBox.y)
+  const thirtySecondHasTrailingSpace = Boolean(
+    thirtySecondLabelBox
+    && axisViewportBox
+    && axisViewportBox.x + axisViewportBox.width - (thirtySecondLabelBox.x + thirtySecondLabelBox.width) >= 20,
+  )
+  const clipVideoThumbnailReady = await clip.locator('[data-clip-id="clip-video-b"]').evaluate((element) => (
+    Array.from(element.children).some((child) => {
+      if (child instanceof HTMLImageElement) return child.complete && child.naturalWidth > 0
+      return child instanceof HTMLElement && getComputedStyle(child).backgroundImage !== 'none'
+    })
+  ))
   await win.screenshot({ path: screenshots.compact })
 
   const nodeBeforeDrag = await clip.boundingBox()
@@ -167,6 +210,13 @@ try {
   const seek = preview.locator('input[type="range"]')
   const clickPositionsGlobalPlayhead = Number(await seek.inputValue()) > 0
   const noDuplicateEditingButtons = (await win.getByRole('button', { name: /分割片段|复制片段|移除片段/ }).count()) === 0
+  const previewStartsMuted = await preview.evaluate((element) => (
+    element.getAttribute('data-muted') === 'true' && element.querySelector('video')?.muted === true
+  ))
+  await preview.getByRole('button', { name: '取消静音' }).click()
+  const previewCanUnmute = await preview.evaluate((element) => (
+    element.getAttribute('data-muted') === 'false' && element.querySelector('video')?.muted === false
+  ))
   const first = clips.first()
   const playbackStartBox = await first.boundingBox()
   if (!playbackStartBox) throw new Error('找不到播放起点片段')
@@ -199,6 +249,12 @@ try {
   await runExport('完整成片', '到画布', '已向画布导出 1 个视频节点')
   const fullCanvasExport = (await win.locator('[data-kind="video"]').count()) === 2
   await runExport('完整成片', '下载', '已导出 1 个视频文件')
+  const fullExportPath = fs.readdirSync(path.join(projectRoot, 'exports'))
+    .map((name) => path.join(projectRoot, 'exports', name))
+    .find((candidate) => candidate.endsWith('.mp4'))
+  const exportKeepsAudio = Boolean(fullExportPath && execFileSync(ffprobePath, [
+    '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', fullExportPath,
+  ]).toString().trim())
   await runExport(/独立片段/, '到画布', '已向画布导出 4 个视频节点')
   const segmentCanvasExport = (await win.locator('[data-kind="video"]').count()) === 6
   await runExport(/独立片段/, '下载', '已导出 4 个视频文件')
@@ -283,12 +339,23 @@ try {
   const beforeImport = await clips.count()
   await clip.getByRole('button', { name: '添加素材', exact: true }).click()
   await win.getByTestId('asset-picker').waitFor({ state: 'visible' })
-  await win.locator('input[type="file"]').last().setInputFiles(path.join(repoRoot, 'marketing/assets/video/hero-loop.mp4'))
+  await win.locator('input[type="file"]').last().setInputFiles(importedVideoPath)
   await win.waitForFunction((count) => document.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 1, beforeImport, { timeout: 30_000 })
   const realImport = (await clips.count()) === beforeImport + 1 && (await win.getByRole('alert').count()) === 0
+  const importedClip = clips.last()
+  await importedClip.scrollIntoViewIfNeeded()
+  const importedClipBox = await importedClip.boundingBox()
+  const importUsesRealDuration = Boolean(importedClipBox && importedClipBox.width >= 220)
+  await win.screenshot({ path: screenshots.imported })
 
   const result = {
     compactDefault,
+    canvasVideoFrameReady,
+    canvasVideoAudioEnabled,
+    clipNodeIsWideEnough,
+    rulerDoesNotOverlapMedia,
+    thirtySecondHasTrailingSpace,
+    clipVideoThumbnailReady,
     nodeDragWorks,
     nodeVisibleAfterDrag,
     timelineClickOpensPreview,
@@ -297,8 +364,11 @@ try {
     exportDoesNotOverlapPreview,
     clickPositionsGlobalPlayhead,
     noDuplicateEditingButtons,
+    previewStartsMuted,
+    previewCanUnmute,
     playbackCrossesCuts,
     fullCanvasExport,
+    exportKeepsAudio,
     segmentCanvasExport,
     fiveOutputEdges,
     restingEdgesHaveNoLabels,
@@ -312,6 +382,7 @@ try {
     keyboardNudge,
     trimWorks,
     realImport,
+    importUsesRealDuration,
   }
   console.log(JSON.stringify({ result, screenshots }))
   await closeApp()
