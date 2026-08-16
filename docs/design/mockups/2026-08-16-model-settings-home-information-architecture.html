@@ -1,0 +1,1226 @@
+<!doctype html>
+<html lang="zh-CN" data-mantine-color-scheme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Nomi 模型设置首页 · 信息架构样张</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --nomi-bg: oklch(0.985 0.003 90);
+      --nomi-paper: oklch(1 0 0);
+      --nomi-ink: oklch(0.22 0.01 80);
+      --nomi-ink-80: oklch(0.32 0.01 80);
+      --nomi-ink-60: oklch(0.50 0.01 80);
+      --nomi-ink-40: oklch(0.68 0.01 80);
+      --nomi-ink-30: oklch(0.78 0.01 80);
+      --nomi-ink-20: oklch(0.88 0.005 80);
+      --nomi-ink-10: oklch(0.94 0.003 80);
+      --nomi-ink-05: oklch(0.97 0.003 80);
+      --nomi-line: oklch(0.91 0.004 80);
+      --nomi-line-soft: oklch(0.95 0.003 80);
+      --nomi-accent: oklch(0.55 0.13 250);
+      --nomi-accent-soft: color-mix(in srgb, var(--nomi-accent) 12%, var(--nomi-paper));
+      --nomi-danger: oklch(0.55 0.20 27);
+      --nomi-warning: oklch(0.62 0.14 75);
+      --nomi-success: oklch(0.56 0.13 145);
+      --nomi-focus: color-mix(in srgb, var(--nomi-accent) 42%, transparent);
+      --nomi-logo-ground: oklch(0.22 0.01 80);
+      --nomi-shadow-md: 0 2px 4px oklch(0 0 0 / 0.04), 0 8px 24px oklch(0 0 0 / 0.06);
+      --nomi-shadow-lg: 0 4px 8px oklch(0 0 0 / 0.05), 0 20px 50px oklch(0 0 0 / 0.08);
+      --nomi-radius-sm: 6px;
+      --nomi-radius: 10px;
+      --nomi-radius-lg: 14px;
+      --nomi-transition-fast: 140ms cubic-bezier(.2, .7, .3, 1);
+      --nomi-font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+      --nomi-font-display: "Fraunces Variable", Fraunces, Georgia, serif;
+      --backdrop: oklch(0.12 0.005 80 / 0.56);
+    }
+
+    :root[data-mantine-color-scheme="dark"] {
+      color-scheme: dark;
+      --nomi-bg: oklch(0.18 0.006 80);
+      --nomi-paper: oklch(0.235 0.007 80);
+      --nomi-ink: oklch(0.93 0.006 85);
+      --nomi-ink-80: oklch(0.84 0.006 85);
+      --nomi-ink-60: oklch(0.70 0.006 85);
+      --nomi-ink-40: oklch(0.62 0.006 85);
+      --nomi-ink-30: oklch(0.50 0.006 85);
+      --nomi-ink-20: oklch(0.42 0.006 85);
+      --nomi-ink-10: oklch(0.34 0.006 85);
+      --nomi-ink-05: oklch(0.30 0.006 85);
+      --nomi-line: oklch(0.36 0.007 80);
+      --nomi-line-soft: oklch(0.31 0.007 80);
+      --nomi-accent: oklch(0.70 0.13 250);
+      --nomi-accent-soft: color-mix(in srgb, var(--nomi-accent) 26%, var(--nomi-paper));
+      --nomi-danger: oklch(0.72 0.16 25);
+      --nomi-warning: oklch(0.78 0.13 75);
+      --nomi-success: oklch(0.72 0.12 145);
+      --nomi-focus: color-mix(in srgb, var(--nomi-accent) 50%, transparent);
+      --nomi-shadow-md: 0 2px 5px oklch(0 0 0 / 0.30), 0 14px 34px oklch(0 0 0 / 0.32);
+      --nomi-shadow-lg: 0 4px 10px oklch(0 0 0 / 0.30), 0 24px 64px oklch(0 0 0 / 0.40);
+      --backdrop: oklch(0.06 0.003 80 / 0.72);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      min-height: 100svh;
+      overflow-x: hidden;
+      background: var(--nomi-bg);
+      color: var(--nomi-ink);
+      font-family: var(--nomi-font-sans);
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+    button, input { font: inherit; letter-spacing: 0; }
+    button { color: inherit; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    button, [role="button"] { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--nomi-focus);
+      outline-offset: 2px;
+    }
+    [hidden] { display: none !important; }
+
+    .icon {
+      width: 16px;
+      height: 16px;
+      flex: none;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .icon.small { width: 14px; height: 14px; stroke-width: 1.6; }
+
+    .app-scene {
+      position: fixed;
+      inset: 0;
+      padding: 72px 64px;
+      overflow: hidden;
+      color: var(--nomi-ink-60);
+      pointer-events: none;
+    }
+    .scene-brand { display: flex; align-items: center; gap: 12px; font-family: var(--nomi-font-display); font-size: 30px; }
+    .scene-mark { width: 28px; height: 28px; flex: none; }
+    .scene-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; max-width: 980px; margin-top: 40px; }
+    .scene-card { height: 126px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius); background: var(--nomi-paper); opacity: .72; }
+    .scene-card:first-child { background: var(--nomi-ink-05); }
+    .scene-line { width: 60%; height: 10px; margin: 28px 24px 0; border-radius: 999px; background: var(--nomi-ink-10); }
+    .scene-line.short { width: 36%; margin-top: 12px; background: var(--nomi-ink-05); }
+
+    .prototype-bar {
+      position: fixed;
+      z-index: 5;
+      top: 16px;
+      left: 50%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: max-content;
+      max-width: calc(100vw - 24px);
+      padding: 6px;
+      overflow-x: auto;
+      border: 1px solid var(--nomi-line);
+      border-radius: var(--nomi-radius);
+      background: color-mix(in srgb, var(--nomi-paper) 92%, transparent);
+      box-shadow: var(--nomi-shadow-md);
+      backdrop-filter: blur(14px);
+      transform: translateX(-50%);
+    }
+    .prototype-label { padding: 0 8px; color: var(--nomi-ink-40); font-size: 11px; white-space: nowrap; }
+    .segment { display: inline-flex; align-items: center; padding: 3px; border-radius: var(--nomi-radius-sm); background: var(--nomi-ink-05); }
+    .segment button {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--nomi-ink-60);
+      cursor: pointer;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .segment button[aria-pressed="true"] { background: var(--nomi-paper); color: var(--nomi-ink); box-shadow: var(--nomi-shadow-md); }
+    .prototype-reopen { min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--nomi-radius-sm); background: var(--nomi-ink); color: var(--nomi-paper); cursor: pointer; font-size: 12px; font-weight: 600; }
+
+    .demo {
+      position: relative;
+      z-index: 2;
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      padding: 72px 16px 24px;
+      background: var(--backdrop);
+    }
+    .settings-shell {
+      position: relative;
+      width: min(760px, calc(100vw - 32px));
+      height: min(560px, calc(100svh - 104px));
+      min-height: 480px;
+      display: grid;
+      grid-template-columns: 196px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid var(--nomi-line);
+      border-radius: var(--nomi-radius-lg);
+      background: var(--nomi-paper);
+      box-shadow: var(--nomi-shadow-lg);
+      transition: width var(--nomi-transition-fast), height var(--nomi-transition-fast);
+    }
+    .demo[data-preview="narrow"] .settings-shell {
+      width: 390px;
+      height: min(720px, calc(100svh - 96px));
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .settings-nav {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 14px;
+      overflow: hidden;
+      border-right: 1px solid var(--nomi-line);
+      background: var(--nomi-ink-05);
+    }
+    .settings-title { padding: 4px 12px 12px; font-size: 13px; font-weight: 600; }
+    .nav-button {
+      width: 100%;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: var(--nomi-radius-sm);
+      background: transparent;
+      color: var(--nomi-ink-60);
+      cursor: pointer;
+      text-align: left;
+      font-size: 13px;
+    }
+    .nav-button:hover { background: var(--nomi-ink-10); color: var(--nomi-ink); }
+    .nav-button[aria-current="page"] { background: var(--nomi-ink); color: var(--nomi-paper); }
+
+    .settings-main { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .close-button, .back-button {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: var(--nomi-radius-sm);
+      background: transparent;
+      color: var(--nomi-ink-40);
+      cursor: pointer;
+    }
+    .close-button:hover, .back-button:hover { background: var(--nomi-ink-05); color: var(--nomi-ink); }
+    .close-button { position: absolute; z-index: 3; top: 12px; right: 12px; }
+
+    .model-page, .generic-page { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+    .page-header {
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 48px 8px 20px;
+      border-bottom: 1px solid var(--nomi-line);
+    }
+    .page-header.with-back { padding-left: 12px; }
+    .page-heading { min-width: 0; flex: 1; }
+    .page-heading h1 { margin: 0; font-size: 13px; line-height: 1.4; font-weight: 600; }
+    .page-heading p { margin: 2px 0 0; color: var(--nomi-ink-40); font-size: 11px; line-height: 1.35; }
+    .page-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 16px 20px 20px; }
+
+    .section + .section { margin-top: 20px; }
+    .section.advanced-section { padding-top: 16px; border-top: 1px solid var(--nomi-line); }
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .section-head h2 { margin: 0; font-size: 12px; line-height: 1.4; font-weight: 600; color: var(--nomi-ink-60); }
+    .section-head span { color: var(--nomi-ink-40); font-size: 11px; }
+
+    .primary-lane {
+      min-height: 72px;
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid color-mix(in srgb, var(--nomi-accent) 30%, var(--nomi-line));
+      border-radius: var(--nomi-radius);
+      background: var(--nomi-accent-soft);
+    }
+    .lane-icon, .row-icon {
+      display: grid;
+      place-items: center;
+      flex: none;
+      border-radius: var(--nomi-radius-sm);
+      background: var(--nomi-paper);
+      color: var(--nomi-ink-60);
+    }
+    .lane-icon { width: 36px; height: 36px; color: var(--nomi-accent); }
+    .row-icon { width: 32px; height: 32px; background: var(--nomi-ink-05); }
+    .row-icon.vendor-logo { overflow: hidden; padding: 4px; background: var(--nomi-paper); border: 1px solid var(--nomi-line-soft); }
+    .row-icon.vendor-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .row-copy { min-width: 0; }
+    .row-title { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.35; font-weight: 600; }
+    .row-hint { margin-top: 4px; color: var(--nomi-ink-60); font-size: 12px; line-height: 1.45; }
+    .badge { display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: 999px; background: var(--nomi-ink-10); color: var(--nomi-ink-60); font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .badge.warning { background: color-mix(in srgb, var(--nomi-warning) 16%, var(--nomi-paper)); color: var(--nomi-warning); }
+    .badge.success { background: color-mix(in srgb, var(--nomi-success) 15%, var(--nomi-paper)); color: var(--nomi-success); }
+
+    .primary-button, .light-button {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 12px;
+      border-radius: var(--nomi-radius-sm);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .primary-button { border: 1px solid var(--nomi-ink); background: var(--nomi-ink); color: var(--nomi-paper); }
+    .primary-button:hover { border-color: var(--nomi-accent); background: var(--nomi-accent); color: var(--nomi-paper); }
+    .light-button { border: 1px solid var(--nomi-line); background: var(--nomi-paper); color: var(--nomi-ink-80); }
+    .light-button:hover { background: var(--nomi-ink-05); }
+
+    .list-group { overflow: hidden; border-radius: var(--nomi-radius); background: var(--nomi-ink-05); }
+    .list-row, .disclosure-button {
+      width: 100%;
+      min-height: 52px;
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    .list-row + .list-row, .disclosure-content .list-row:first-child { border-top: 1px solid var(--nomi-line-soft); }
+    .list-row:hover, .disclosure-button:hover { background: var(--nomi-ink-10); }
+    .row-end { display: flex; align-items: center; gap: 8px; color: var(--nomi-ink-40); font-size: 11px; white-space: nowrap; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--nomi-ink-20); }
+    .status-dot.success { background: var(--nomi-success); }
+    .status-dot.warning { background: var(--nomi-warning); }
+    .status-dot.working { background: var(--nomi-accent); }
+    .add-row { color: var(--nomi-accent); }
+    .add-row .row-icon { color: var(--nomi-accent); background: var(--nomi-accent-soft); }
+    .add-row .row-hint { color: var(--nomi-ink-60); }
+
+    .notice {
+      min-height: 72px;
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: var(--nomi-radius);
+      background: color-mix(in srgb, var(--nomi-warning) 12%, var(--nomi-paper));
+    }
+    .notice .row-icon { color: var(--nomi-warning); background: color-mix(in srgb, var(--nomi-warning) 12%, var(--nomi-paper)); }
+    .notice[data-status="success"] { background: color-mix(in srgb, var(--nomi-success) 12%, var(--nomi-paper)); }
+    .notice[data-status="success"] .row-icon { color: var(--nomi-success); background: var(--nomi-paper); }
+    .task-strip { margin-top: 8px; background: var(--nomi-ink-05); border-radius: var(--nomi-radius); }
+
+    .search-wrap { position: relative; margin-bottom: 12px; }
+    .search-wrap .icon { position: absolute; top: 10px; left: 12px; color: var(--nomi-ink-40); pointer-events: none; }
+    .search-input, .field-input {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--nomi-line);
+      border-radius: var(--nomi-radius-sm);
+      background: var(--nomi-paper);
+      color: var(--nomi-ink);
+      font-size: 12px;
+    }
+    .search-input { padding: 0 12px 0 36px; }
+    .field-input { padding: 0 10px; }
+    .search-input::placeholder, .field-input::placeholder { color: var(--nomi-ink-40); }
+    .field-input[aria-invalid="true"] { border-color: var(--nomi-danger); outline-color: color-mix(in srgb, var(--nomi-danger) 35%, transparent); }
+
+    .disclosure-button { grid-template-columns: 32px minmax(0, 1fr) auto; }
+    .disclosure-button .chevron { transition: transform var(--nomi-transition-fast); }
+    .disclosure-button[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+    .disclosure-content { display: none; }
+    .disclosure-content[data-open="true"] { display: block; }
+
+    .field { display: grid; gap: 8px; }
+    .field + .field { margin-top: 12px; }
+    .field label { color: var(--nomi-ink-60); font-size: 12px; font-weight: 600; }
+    .field-error { color: var(--nomi-danger); font-size: 11px; line-height: 1.4; }
+    .form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .saved-followup { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--nomi-line); }
+    .save-result { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px; border-radius: var(--nomi-radius); background: color-mix(in srgb, var(--nomi-success) 12%, var(--nomi-paper)); }
+    .save-result .row-icon { color: var(--nomi-success); background: var(--nomi-paper); }
+    .model-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .manual-model-panel { margin-top: 12px; padding: 12px; border-radius: var(--nomi-radius); background: var(--nomi-ink-05); }
+    .manual-model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+    .manual-result { display: none; margin-top: 8px; color: var(--nomi-success); font-size: 11px; }
+    .manual-result[data-visible="true"] { display: block; }
+    .diagnostic { margin-top: 16px; }
+    .diagnostic summary { min-height: 40px; display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--nomi-ink-60); font-size: 12px; }
+    .diagnostic p { margin: 0; padding: 0 0 8px 24px; color: var(--nomi-ink-40); font-size: 11px; line-height: 1.5; }
+    .probe-result { display: none; margin-top: 12px; padding: 10px 12px; border-radius: var(--nomi-radius-sm); background: color-mix(in srgb, var(--nomi-success) 12%, var(--nomi-paper)); color: var(--nomi-success); font-size: 12px; }
+    .probe-result[data-visible="true"] { display: flex; align-items: center; gap: 8px; }
+    .prototype-toast { position: fixed; z-index: 8; left: 50%; bottom: 20px; max-width: min(420px, calc(100vw - 32px)); padding: 10px 12px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius); background: var(--nomi-paper); box-shadow: var(--nomi-shadow-lg); color: var(--nomi-ink-80); font-size: 12px; transform: translateX(-50%); }
+    .model-picker-list { margin-top: 12px; }
+    .model-check-row { min-height: 52px; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 12px; }
+    .model-check-row + .model-check-row { border-top: 1px solid var(--nomi-line-soft); }
+    .model-check-row input { width: 16px; height: 16px; accent-color: var(--nomi-accent); }
+    .model-id { min-width: 0; overflow: hidden; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .page-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .connection-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px; border-radius: var(--nomi-radius); background: var(--nomi-ink-05); }
+    .platform-overview { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px; border-radius: var(--nomi-radius); background: var(--nomi-ink-05); }
+    .platform-overview .row-icon { width: 36px; height: 36px; }
+    .recovery-actions { display: grid; gap: 8px; margin-top: 12px; }
+    .recovery-action { width: 100%; min-height: 52px; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius); background: var(--nomi-paper); color: inherit; cursor: pointer; text-align: left; }
+    .recovery-action:hover { background: var(--nomi-ink-05); }
+    .recovery-action.primary-recovery { border-color: color-mix(in srgb, var(--nomi-accent) 30%, var(--nomi-line)); background: var(--nomi-accent-soft); }
+
+    .generic-page { padding: 24px 36px; overflow-y: auto; }
+    .generic-page h1 { margin: 0 0 24px; font-size: 16px; font-weight: 600; }
+    .generic-section + .generic-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--nomi-line); }
+    .generic-section-title { margin-bottom: 12px; color: var(--nomi-ink-60); font-size: 12px; font-weight: 600; }
+    .generic-label { font-size: 13px; line-height: 1.4; }
+    .generic-copy { max-width: 560px; margin-top: 4px; color: var(--nomi-ink-40); font-size: 12px; line-height: 1.55; }
+    .generic-line { min-height: 40px; display: flex; align-items: flex-start; gap: 16px; }
+    .generic-line + .generic-line { margin-top: 16px; }
+    .generic-line > :first-child { min-width: 0; flex: 1; }
+    .generic-value { flex: none; align-self: center; color: var(--nomi-ink-60); font-size: 12px; }
+    .fake-switch { width: 48px; height: 28px; margin-left: auto; flex: none; border-radius: 999px; background: var(--nomi-ink-20); position: relative; }
+    .fake-switch::after { content: ""; position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--nomi-paper); box-shadow: var(--nomi-shadow-md); }
+    .fake-switch.on { background: var(--nomi-accent); }
+    .fake-switch.on::after { left: 24px; }
+    .path-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 12px; }
+    .path-field { min-width: 0; overflow: hidden; padding: 9px 10px; border-radius: var(--nomi-radius-sm); background: var(--nomi-ink-05); color: var(--nomi-ink-40); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .text-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+    .text-action { min-height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: var(--nomi-ink-60); cursor: pointer; font-size: 12px; }
+    .text-action:hover { color: var(--nomi-ink); }
+    .outline-button { min-height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius-sm); background: var(--nomi-paper); color: var(--nomi-ink-60); font-size: 12px; }
+    .static-segment { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: var(--nomi-radius); background: var(--nomi-ink-10); }
+    .static-segment span { min-height: 40px; display: grid; place-items: center; border-radius: var(--nomi-radius-sm); color: var(--nomi-ink-60); font-size: 12px; }
+    .static-segment span.active { background: var(--nomi-paper); color: var(--nomi-ink); box-shadow: var(--nomi-shadow-md); font-weight: 600; }
+    .choice-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .choice-chip { min-height: 36px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius-sm); color: var(--nomi-ink-60); font-size: 12px; }
+    .choice-chip.active { border-color: var(--nomi-accent); background: var(--nomi-accent-soft); color: var(--nomi-accent); }
+    .hotkey-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .hotkey { min-width: 56px; min-height: 36px; display: grid; place-items: center; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius-sm); color: var(--nomi-ink-60); font-size: 11px; }
+    .hotkey.active { border-color: var(--nomi-accent); background: var(--nomi-accent-soft); color: var(--nomi-accent); }
+    .policy-panel { padding: 12px; border-radius: var(--nomi-radius); background: var(--nomi-ink-05); }
+    .policy-row { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .policy-row + .policy-row { border-top: 1px solid var(--nomi-line-soft); }
+    .lock-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--nomi-ink-40); font-size: 11px; }
+    .about-brand { display: flex; align-items: center; gap: 12px; }
+    .about-mark { width: 44px; height: 44px; flex: none; }
+    .about-word { font-family: var(--nomi-font-display); font-size: 18px; }
+    .about-actions { margin-top: 20px; overflow: hidden; border-radius: var(--nomi-radius); background: var(--nomi-ink-05); }
+    .about-action { width: 100%; min-height: 58px; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 12px; border: 0; background: transparent; color: inherit; text-align: left; }
+    .about-action + .about-action { border-top: 1px solid var(--nomi-line-soft); }
+    .update-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+
+    .demo[data-preview="narrow"] .settings-nav {
+      flex-direction: row;
+      gap: 2px;
+      padding: 8px;
+      overflow-x: auto;
+      border-right: 0;
+      border-bottom: 1px solid var(--nomi-line);
+    }
+    .demo[data-preview="narrow"] .settings-title { display: none; }
+    .demo[data-preview="narrow"] .nav-button { width: auto; min-width: 44px; min-height: 44px; justify-content: center; padding: 0 12px; }
+    .demo[data-preview="narrow"] .nav-button span { display: none; }
+    .demo[data-preview="narrow"] .nav-button[aria-current="page"] span { display: inline; }
+    .demo[data-preview="narrow"] .page-scroll { padding: 16px; }
+    .demo[data-preview="narrow"] .primary-lane, .demo[data-preview="narrow"] .notice { grid-template-columns: 36px minmax(0, 1fr); }
+    .demo[data-preview="narrow"] .primary-lane .primary-button, .demo[data-preview="narrow"] .notice .primary-button { grid-column: 1 / -1; min-height: 44px; }
+    .demo[data-preview="narrow"] .generic-page { padding: 20px 16px; }
+    .demo[data-preview="narrow"] .field-input, .demo[data-preview="narrow"] .light-button, .demo[data-preview="narrow"] .primary-button, .demo[data-preview="narrow"] .outline-button { min-height: 44px; }
+    .demo[data-preview="narrow"] .model-actions, .demo[data-preview="narrow"] .form-actions { align-items: stretch; flex-direction: column-reverse; }
+    .demo[data-preview="narrow"] .model-actions > *, .demo[data-preview="narrow"] .form-actions > * { width: 100%; }
+
+    @media (max-width: 620px) {
+      .prototype-bar { left: 12px; right: 12px; transform: none; width: auto; }
+      .prototype-label { display: none; }
+      [data-preview-controls] { display: none; }
+      .prototype-bar { gap: 4px; }
+      .segment button { padding: 0 8px; }
+      .demo { padding: 64px 8px 8px; }
+      .settings-shell {
+        width: 100%;
+        height: calc(100svh - 72px);
+        min-height: 0;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+      .settings-nav {
+        flex-direction: row;
+        gap: 2px;
+        padding: 8px;
+        overflow-x: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--nomi-line);
+      }
+      .settings-title { display: none; }
+      .nav-button { width: auto; min-width: 44px; min-height: 44px; justify-content: center; padding: 0 12px; }
+      .nav-button span { display: none; }
+      .nav-button[aria-current="page"] span { display: inline; }
+      .page-scroll { padding: 16px; }
+      .primary-lane, .notice { grid-template-columns: 36px minmax(0, 1fr); }
+      .primary-lane .primary-button, .notice .primary-button { grid-column: 1 / -1; min-height: 44px; }
+      .generic-page { padding: 20px 16px; }
+      .field-input, .light-button, .primary-button, .outline-button { min-height: 44px; }
+      .model-actions, .form-actions { align-items: stretch; flex-direction: column-reverse; }
+      .model-actions > *, .form-actions > * { width: 100%; }
+      .close-button, .back-button { width: 44px; height: 44px; }
+      .close-button { top: 6px; right: 6px; }
+      .manual-model-row, .path-row { grid-template-columns: minmax(0, 1fr); }
+      .app-scene { padding: 72px 24px; }
+      .scene-grid { grid-template-columns: 1fr; }
+      .scene-card:nth-child(n+2) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M7 12l5 5l-1.5 1.5a3.536 3.536 0 1 1 -5 -5l1.5 -1.5"/><path d="M17 12l-5 -5l1.5 -1.5a3.536 3.536 0 1 1 5 5l-1.5 1.5"/><path d="M3 21l2.5 -2.5M18.5 5.5l2.5 -2.5M10 11l-2 2M13 14l-2 2"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M15.5 13a3.5 3.5 0 0 0 -3.5 3.5v1a3.5 3.5 0 0 0 7 0v-1.8"/><path d="M8.5 13a3.5 3.5 0 0 1 3.5 3.5v1a3.5 3.5 0 0 1 -7 0v-1.8"/><path d="M17.5 16a3.5 3.5 0 0 0 0 -7h-.5M19 9.3v-2.8a3.5 3.5 0 0 0 -7 0M6.5 16a3.5 3.5 0 0 1 0 -7h.5M5 9.3v-2.8a3.5 3.5 0 0 1 7 0v10"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0M8 11v-4a4 4 0 1 1 8 0v4"/></symbol>
+    <symbol id="i-adjust" viewBox="0 0 24 24"><path d="M12 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M4 6h8M16 6h4M6 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M4 12h2M10 12h10M15 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M4 18h11M19 18h1"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0M12 9h.01M11 12h1v4h1"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6l-12 12M6 6l12 12"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><path d="M3 7a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3M3 15a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-2M7 8h.01M7 16h.01"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M6.657 18c-2.572 0 -4.657 -2.007 -4.657 -4.483c0 -2.475 2.085 -4.482 4.657 -4.482c.393 -1.762 1.794 -3.2 3.675 -3.773c1.88 -.572 3.956 -.193 5.444 1c1.488 1.19 2.162 3.007 1.77 4.769h.99c1.913 0 3.464 1.56 3.464 3.486c0 1.927 -1.551 3.487 -3.465 3.487h-11.878"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M7 8l-4 4l4 4M17 8l4 4l-4 4M14 4l-4 16"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 6l6 6l-6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6l6 -6"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="M5 12h14M5 12l6 6M5 12l6 -6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M21 21l-6 -6"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 9v4M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0M12 16h.01"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 0 12 0a6 6 0 0 0 -12 0M12 3c1.333 .333 2 2.333 2 6s-.667 5.667 -2 6M12 3c-1.333 .333 -2 2.333 -2 6s.667 5.667 2 6M6 9h12M3 20h7M14 20h7M10 20a2 2 0 1 0 4 0a2 2 0 0 0 -4 0M12 15v3"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3v7h6l-8 11v-7h-6l8 -11"/></symbol>
+    <symbol id="i-robot" viewBox="0 0 24 24"><path d="M6 6a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-4M12 2v2M9 12v9M15 12v9M5 16l4 -2M15 14l4 2M9 18h6M10 8h.01M14 8h.01"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5l10 -10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13 -8z"/></symbol>
+  </svg>
+
+  <div class="app-scene" aria-hidden="true">
+    <div class="scene-brand">
+      <svg class="scene-mark" viewBox="0 0 28 28" fill="none">
+        <rect width="28" height="28" rx="7" fill="var(--nomi-logo-ground)" />
+        <rect x="5.5" y="5.5" width="4" height="17" rx="1.2" fill="white" />
+        <rect x="18.5" y="5.5" width="4" height="17" rx="1.2" fill="white" />
+        <polygon points="9.5,5.5 13.5,5.5 18.5,22.5 14.5,22.5" fill="white" />
+      </svg>
+      <span>No<span style="color:var(--nomi-accent)">m</span>i 项目库</span>
+    </div>
+    <div class="scene-grid">
+      <div class="scene-card"><div class="scene-line"></div><div class="scene-line short"></div></div>
+      <div class="scene-card"><div class="scene-line"></div><div class="scene-line short"></div></div>
+      <div class="scene-card"><div class="scene-line"></div><div class="scene-line short"></div></div>
+    </div>
+  </div>
+
+  <div class="prototype-bar" aria-label="样张控制">
+    <span class="prototype-label">样张状态</span>
+    <div class="segment" data-scenario-controls>
+      <button type="button" data-scenario="first" aria-pressed="true">首次接入</button>
+      <button type="button" data-scenario="existing" aria-pressed="false">已有连接</button>
+      <button type="button" data-scenario="attention" aria-pressed="false">需要处理</button>
+    </div>
+    <div class="segment" data-theme-controls>
+      <button type="button" data-theme="light" aria-pressed="true">亮色</button>
+      <button type="button" data-theme="dark" aria-pressed="false">暗色</button>
+    </div>
+    <div class="segment" data-preview-controls>
+      <button type="button" data-preview="desktop" aria-pressed="true">桌面</button>
+      <button type="button" data-preview="narrow" aria-pressed="false">窄屏</button>
+    </div>
+    <button class="prototype-reopen" type="button" data-reopen hidden>重新打开设置</button>
+  </div>
+
+  <main class="demo" data-preview="desktop">
+    <section class="settings-shell" role="dialog" aria-modal="true" aria-label="设置" data-settings-shell>
+      <aside class="settings-nav" aria-label="设置分类">
+        <div class="settings-title">设置</div>
+        <button class="nav-button" type="button" data-tab="file" aria-label="文件与保存"><svg class="icon"><use href="#i-folder"/></svg><span>文件与保存</span></button>
+        <button class="nav-button" type="button" data-tab="models" aria-label="模型" aria-current="page"><svg class="icon"><use href="#i-plug"/></svg><span>模型</span></button>
+        <button class="nav-button" type="button" data-tab="ai" aria-label="AI 策略"><svg class="icon"><use href="#i-brain"/></svg><span>AI 策略</span></button>
+        <button class="nav-button" type="button" data-tab="automation" aria-label="自动化与权限"><svg class="icon"><use href="#i-lock"/></svg><span>自动化与权限</span></button>
+        <button class="nav-button" type="button" data-tab="general" aria-label="通用"><svg class="icon"><use href="#i-adjust"/></svg><span>通用</span></button>
+        <button class="nav-button" type="button" data-tab="about" aria-label="关于"><svg class="icon"><use href="#i-info"/></svg><span>关于</span></button>
+      </aside>
+
+      <div class="settings-main">
+        <button class="close-button" type="button" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+
+        <div class="model-page" data-page="model-home">
+          <div class="page-header">
+            <div class="page-heading">
+              <h1>模型</h1>
+              <p data-page-subtitle>还没有接入生成模型</p>
+            </div>
+          </div>
+
+          <div class="page-scroll" data-scenario-panel="first">
+            <section class="section">
+              <div class="section-head"><h2>已适配平台</h2><span>前两项只需 Key</span></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-open-platform="apimart">
+                  <span class="row-icon vendor-logo"><img src="../../../src/assets/vendor-logos/apimart.png" alt="" /></span>
+                  <span class="row-copy"><span class="row-title">APIMart <span class="badge success">推荐</span></span><span class="row-hint">一个 Key，接入预置文本、图片、视频与音频模型</span></span>
+                  <span class="row-end">填写 Key<svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+                <button class="list-row" type="button" data-open-platform="kie">
+                  <span class="row-icon vendor-logo"><img src="../../../src/assets/vendor-logos/kie.png" alt="" /></span>
+                  <span class="row-copy"><span class="row-title">Kie.ai</span><span class="row-hint">一个 Key，接入预置图片与视频模型</span></span>
+                  <span class="row-end">填写 Key<svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+                <button class="list-row" type="button" data-demo-message="这里会打开 Agnes AI、魔搭、火山方舟等已适配平台。">
+                  <span class="row-icon"><svg class="icon"><use href="#i-cloud"/></svg></span>
+                  <span class="row-copy"><span class="row-title">更多已适配平台</span><span class="row-hint">Agnes AI、魔搭、火山方舟等</span></span>
+                  <span class="row-end">查看全部<svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+              </div>
+            </section>
+
+            <section class="section">
+              <div class="section-head"><h2>其他接入方式</h2></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-open-api>
+                  <span class="row-icon"><svg class="icon"><use href="#i-plug"/></svg></span>
+                  <span class="row-copy"><span class="row-title">自定义 API / 中转站</span><span class="row-hint">填写地址与 Key，再选择或手动输入模型</span></span>
+                  <span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+                <button class="list-row" type="button" data-demo-message="这里会进入 ComfyUI 地址与工作流配置，不经过模型文档识别。">
+                  <span class="row-icon"><svg class="icon"><use href="#i-server"/></svg></span>
+                  <span class="row-copy"><span class="row-title">连接本地 ComfyUI</span><span class="row-hint">使用本机或局域网中的工作流</span></span>
+                  <span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+                <button class="list-row" type="button" data-demo-message="这里会进入即梦本机组件安装与扫码登录；生成需即梦高级会员。">
+                  <span class="row-icon"><svg class="icon"><use href="#i-bolt"/></svg></span>
+                  <span class="row-copy"><span class="row-title">即梦会员</span><span class="row-hint">用即梦高级会员积分生成 Seedance 2.0 视频</span></span>
+                  <span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+              </div>
+            </section>
+
+            <section class="section advanced-section">
+              <div class="section-head"><h2>高级与连接设置</h2></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-demo-message="调用脚本只接管普通 HTTP 请求；模型输入项仍需单独设置。">
+                  <span class="row-icon"><svg class="icon"><use href="#i-code"/></svg></span>
+                  <span class="row-copy"><span class="row-title">我已有调用脚本 <span class="badge">高级</span></span><span class="row-hint">自定义普通 HTTP 请求，输入项仍需设置</span></span>
+                  <span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+                <button class="list-row" type="button" data-demo-message="这里会打开代理设置和连接诊断。">
+                  <span class="row-icon"><svg class="icon"><use href="#i-network"/></svg></span>
+                  <span class="row-copy"><span class="row-title">网络设置</span><span class="row-hint">代理和连接诊断</span></span>
+                  <span class="row-end">跟随系统<svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div class="page-scroll" data-scenario-panel="existing" hidden>
+            <section class="section">
+              <div class="section-head"><h2>已接入</h2><span>7 个模型可使用</span></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-open-connection>
+                  <span class="row-icon" style="font-size:11px;font-weight:600">A</span>
+                  <span class="row-copy"><span class="row-title">APIMart</span><span class="row-hint">5 个模型 · 查看并增删模型</span></span>
+                  <span class="row-end"><span class="status-dot success"></span>可使用<svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+                <button class="list-row" type="button" data-demo-message="这里会打开 ComfyUI 连接和工作流管理。">
+                  <span class="row-icon"><svg class="icon"><use href="#i-server"/></svg></span>
+                  <span class="row-copy"><span class="row-title">本机 ComfyUI</span><span class="row-hint">2 个工作流 · 本地运行时</span></span>
+                  <span class="row-end"><span class="status-dot success"></span>已连接<svg class="icon small"><use href="#i-right"/></svg></span>
+                </button>
+              </div>
+            </section>
+
+            <section class="section">
+              <div class="section-head"><h2>添加模型服务</h2><span>优先使用已适配平台</span></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-open-platform="kie"><span class="row-icon vendor-logo"><img src="../../../src/assets/vendor-logos/kie.png" alt="" /></span><span class="row-copy"><span class="row-title">接入 Kie.ai</span><span class="row-hint">只需 Key，自动使用预置模型与请求适配</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="list-row" type="button" data-demo-message="这里会打开尚未接入的已适配平台。"><span class="row-icon"><svg class="icon"><use href="#i-cloud"/></svg></span><span class="row-copy"><span class="row-title">更多已适配平台</span><span class="row-hint">Agnes AI、魔搭、火山方舟等</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="list-row" type="button" data-open-api><span class="row-icon"><svg class="icon"><use href="#i-plug"/></svg></span><span class="row-copy"><span class="row-title">自定义 API / 中转站</span><span class="row-hint">填写地址与 Key，自行选择模型</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+              </div>
+            </section>
+
+            <section class="section">
+              <div class="section-head"><h2>其他方式</h2></div>
+              <div class="list-group" data-disclosure-group>
+                <button class="disclosure-button" type="button" aria-expanded="false" data-more-toggle>
+                  <span class="row-icon"><svg class="icon"><use href="#i-plus"/></svg></span>
+                  <span class="row-copy"><span class="row-title">本地运行时与即梦会员</span><span class="row-hint">不使用平台 API Key 的接入方式</span></span>
+                  <span class="row-end">2 类<svg class="icon small chevron"><use href="#i-down"/></svg></span>
+                </button>
+                <div class="disclosure-content" data-more-content data-open="false">
+                  <button class="list-row" type="button" data-demo-message="这里会添加另一台本地或局域网 ComfyUI。"><span class="row-icon"><svg class="icon"><use href="#i-server"/></svg></span><span class="row-copy"><span class="row-title">添加本地 ComfyUI</span><span class="row-hint">使用本机或局域网工作流</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                  <button class="list-row" type="button" data-demo-message="这里会进入即梦本机组件安装与扫码登录；生成需即梦高级会员。"><span class="row-icon"><svg class="icon"><use href="#i-bolt"/></svg></span><span class="row-copy"><span class="row-title">即梦会员</span><span class="row-hint">用高级会员积分生成 Seedance 2.0 视频</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                </div>
+              </div>
+            </section>
+
+            <section class="section advanced-section">
+              <div class="section-head"><h2>高级与连接设置</h2></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-demo-message="调用脚本只接管普通 HTTP 请求；模型输入项仍需单独设置。"><span class="row-icon"><svg class="icon"><use href="#i-code"/></svg></span><span class="row-copy"><span class="row-title">调用脚本 <span class="badge">高级</span></span><span class="row-hint">自定义 HTTP 请求，输入项仍需设置</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="list-row" type="button" data-demo-message="这里会打开代理设置和连接诊断。"><span class="row-icon"><svg class="icon"><use href="#i-network"/></svg></span><span class="row-copy"><span class="row-title">网络设置</span><span class="row-hint">代理和连接诊断</span></span><span class="row-end">跟随系统<svg class="icon small"><use href="#i-right"/></svg></span></button>
+              </div>
+            </section>
+          </div>
+
+          <div class="page-scroll" data-scenario-panel="attention" hidden>
+            <section class="section">
+              <div class="notice">
+                <span class="row-icon"><svg class="icon"><use href="#i-warning"/></svg></span>
+                <div class="row-copy"><div class="row-title">2 个模型需要继续设置</div><div class="row-hint">可立即手动设置，不必等待后台识别</div></div>
+                <button class="primary-button" type="button" data-open-recovery>继续设置</button>
+              </div>
+              <div class="task-strip list-group">
+                <button class="list-row" type="button" data-open-recovery><span class="row-icon"><span class="status-dot working"></span></span><span class="row-copy"><span class="row-title">正在后台识别 · 1/2</span><span class="row-hint">video-gen-v3 · 已用 42 秒 · 最长等待 2 分钟</span></span><span class="row-end">查看<svg class="icon small"><use href="#i-right"/></svg></span></button>
+              </div>
+            </section>
+            <section class="section">
+              <div class="section-head"><h2>已接入</h2><span>5 个可使用 · 2 个待设置</span></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-open-connection><span class="row-icon" style="font-size:11px;font-weight:600">A</span><span class="row-copy"><span class="row-title">APIMart</span><span class="row-hint">7 个模型 · 查看并增删模型</span></span><span class="row-end"><span class="status-dot warning"></span>2 个待设置<svg class="icon small"><use href="#i-right"/></svg></span></button>
+              </div>
+            </section>
+            <section class="section">
+              <div class="section-head"><h2>添加模型服务</h2></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-open-platform="kie"><span class="row-icon vendor-logo"><img src="../../../src/assets/vendor-logos/kie.png" alt="" /></span><span class="row-copy"><span class="row-title">接入 Kie.ai</span><span class="row-hint">只需 Key，不影响当前待处理任务</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="list-row" type="button" data-open-api><span class="row-icon"><svg class="icon"><use href="#i-plug"/></svg></span><span class="row-copy"><span class="row-title">自定义 API / 中转站</span><span class="row-hint">继续接入另一个地址与 Key</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+              </div>
+            </section>
+            <section class="section">
+              <div class="section-head"><h2>其他方式</h2></div>
+              <div class="list-group" data-disclosure-group>
+                <button class="disclosure-button" type="button" aria-expanded="false" data-more-toggle>
+                  <span class="row-icon"><svg class="icon"><use href="#i-plus"/></svg></span>
+                  <span class="row-copy"><span class="row-title">本地运行时与即梦会员</span><span class="row-hint">处理任务时仍可继续添加其他服务</span></span>
+                  <span class="row-end">2 类<svg class="icon small chevron"><use href="#i-down"/></svg></span>
+                </button>
+                <div class="disclosure-content" data-more-content data-open="false">
+                  <button class="list-row" type="button" data-demo-message="这里会添加另一台本地或局域网 ComfyUI。"><span class="row-icon"><svg class="icon"><use href="#i-server"/></svg></span><span class="row-copy"><span class="row-title">添加本地 ComfyUI</span><span class="row-hint">使用本机或局域网工作流</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                  <button class="list-row" type="button" data-demo-message="这里会进入即梦本机组件安装与扫码登录；生成需即梦高级会员。"><span class="row-icon"><svg class="icon"><use href="#i-bolt"/></svg></span><span class="row-copy"><span class="row-title">即梦会员</span><span class="row-hint">用高级会员积分生成 Seedance 2.0 视频</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                </div>
+              </div>
+            </section>
+            <section class="section advanced-section">
+              <div class="section-head"><h2>高级与连接设置</h2></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-demo-message="调用脚本只接管普通 HTTP 请求；模型输入项仍需单独设置。"><span class="row-icon"><svg class="icon"><use href="#i-code"/></svg></span><span class="row-copy"><span class="row-title">调用脚本 <span class="badge">高级</span></span><span class="row-hint">自定义 HTTP 请求，输入项仍需设置</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="list-row" type="button" data-demo-message="这里会打开代理设置和连接诊断。"><span class="row-icon"><svg class="icon"><use href="#i-network"/></svg></span><span class="row-copy"><span class="row-title">网络设置</span><span class="row-hint">代理和连接诊断</span></span><span class="row-end">跟随系统<svg class="icon small"><use href="#i-right"/></svg></span></button>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="model-page" data-page="platform-connect" hidden>
+          <div class="page-header with-back">
+            <button class="back-button" type="button" aria-label="返回" data-back-home><svg class="icon"><use href="#i-left"/></svg></button>
+            <div class="page-heading"><h1 data-platform-title>接入 APIMart</h1><p>已适配平台 · 只需填写 API Key</p></div>
+          </div>
+          <div class="page-scroll">
+            <div class="platform-overview">
+              <span class="row-icon vendor-logo"><img data-platform-logo src="../../../src/assets/vendor-logos/apimart.png" alt="" /></span>
+              <div class="row-copy"><div class="row-title" data-platform-name>APIMart</div><div class="row-hint" data-platform-capabilities>预置文本、图片、视频与音频模型</div></div>
+            </div>
+            <div class="field" style="margin-top:16px">
+              <label for="platform-api-key" data-platform-key-label>APIMart API Key</label>
+              <input id="platform-api-key" class="field-input" type="password" placeholder="粘贴平台 API Key" aria-describedby="platform-key-error" />
+              <div class="field-error" id="platform-key-error" data-platform-key-error hidden>请先填写 API Key</div>
+            </div>
+            <div class="generic-copy">平台地址、模型目录和请求方式由 Nomi 维护，不需要填写 URL、模型 ID 或接口文档。</div>
+            <div class="form-actions" data-platform-form-actions>
+              <button class="light-button" type="button" data-back-home>返回</button>
+              <button class="primary-button" type="button" data-save-platform>保存并接入预置模型</button>
+            </div>
+            <div class="saved-followup" data-platform-success hidden>
+              <div class="save-result" role="status"><span class="row-icon"><svg class="icon"><use href="#i-check"/></svg></span><div class="row-copy"><div class="row-title" data-platform-success-title>APIMart 已接入</div><div class="row-hint">可用的预置模型已加入模型列表，以后仍可从连接详情增删。</div></div></div>
+              <div class="page-actions"><button class="primary-button" type="button" data-platform-finish>完成</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="model-page" data-page="api-add" hidden>
+          <div class="page-header with-back">
+            <button class="back-button" type="button" aria-label="返回" data-back-home><svg class="icon"><use href="#i-left"/></svg></button>
+            <div class="page-heading"><h1>接入 API / 中转站</h1><p>先保存连接，再选择要使用的模型</p></div>
+          </div>
+          <div class="page-scroll">
+            <div class="field"><label for="connection-name">连接名称</label><input id="connection-name" class="field-input" placeholder="例如：我的中转站" /></div>
+            <div class="field"><label for="base-url">API 地址</label><input id="base-url" class="field-input" placeholder="https://api.example.com/v1" /></div>
+            <div class="field"><label for="api-key">API Key</label><input id="api-key" class="field-input" type="password" placeholder="sk-..." /></div>
+            <div class="form-actions">
+              <button class="light-button" type="button" data-back-home>返回</button>
+              <button class="primary-button" type="button" data-save-connection>保存连接</button>
+            </div>
+            <div class="saved-followup" data-saved-followup hidden>
+              <div class="save-result" role="status">
+                <span class="row-icon"><svg class="icon"><use href="#i-check"/></svg></span>
+                <div class="row-copy"><div class="row-title">连接已保存</div><div class="row-hint">获取模型失败也不会丢失，可以稍后继续</div></div>
+              </div>
+              <div class="model-actions">
+                <button class="light-button" type="button" data-manual-model>手动输入模型 ID</button>
+                <button class="primary-button" type="button" data-probe-models>获取模型列表</button>
+              </div>
+              <div class="manual-model-panel" data-manual-panel hidden>
+                <div class="field"><label for="manual-model-id">模型 ID</label><div class="manual-model-row"><input id="manual-model-id" class="field-input" placeholder="例如：video-gen-v3" /><button class="light-button" type="button" data-add-manual-model>添加模型</button></div></div>
+                <div class="manual-result" data-manual-result aria-live="polite"></div>
+              </div>
+              <div class="probe-result" data-probe-result aria-live="polite"><svg class="icon small"><use href="#i-check"/></svg><span>已获取 12 个模型，正在打开模型选择</span></div>
+            </div>
+            <details class="diagnostic">
+              <summary><svg class="icon small"><use href="#i-network"/></svg>连接诊断（可选）</summary>
+              <p>只有遇到请求失败时才需要运行诊断；保存连接不以诊断结果为门槛。</p>
+              <button class="light-button" type="button" data-run-diagnostic>运行诊断</button>
+              <div class="manual-result" data-diagnostic-result aria-live="polite"></div>
+            </details>
+          </div>
+        </div>
+
+        <div class="model-page" data-page="model-picker" hidden>
+          <div class="page-header with-back">
+            <button class="back-button" type="button" aria-label="返回" data-picker-back><svg class="icon"><use href="#i-left"/></svg></button>
+            <div class="page-heading"><h1>选择模型</h1><p data-picker-subtitle>APIMart · 已获取 12 个模型</p></div>
+          </div>
+          <div class="page-scroll">
+            <section class="section">
+              <div class="section-head"><h2>可用模型</h2><span>已选择 3 个</span></div>
+              <div class="list-group model-picker-list">
+                <label class="model-check-row"><input type="checkbox" checked /><span><span class="row-title">图片生成 Pro</span><span class="row-hint model-id">image-gen-pro</span></span><span class="badge success">图片</span></label>
+                <label class="model-check-row"><input type="checkbox" checked /><span><span class="row-title">视频生成 V3</span><span class="row-hint model-id">video-gen-v3</span></span><span class="badge success">视频</span></label>
+                <label class="model-check-row"><input type="checkbox" checked /><span><span class="row-title">音效生成</span><span class="row-hint model-id">audio-fx-1</span></span><span class="badge">音频</span></label>
+                <label class="model-check-row"><input type="checkbox" /><span><span class="row-title">图片编辑 V2</span><span class="row-hint model-id">image-edit-v2</span></span><span class="badge">图片</span></label>
+              </div>
+            </section>
+            <div class="page-actions"><button class="light-button" type="button" data-picker-back>取消</button><button class="primary-button" type="button" data-save-models>保存选择</button></div>
+          </div>
+        </div>
+
+        <div class="model-page" data-page="connection-detail" hidden>
+          <div class="page-header with-back">
+            <button class="back-button" type="button" aria-label="返回" data-back-home><svg class="icon"><use href="#i-left"/></svg></button>
+            <div class="page-heading"><h1>APIMart</h1><p>API 连接 · 5 个模型可使用</p></div>
+          </div>
+          <div class="page-scroll">
+            <div class="connection-summary"><div class="row-copy"><div class="row-title">https://api.apimart.example/v1</div><div class="row-hint">Key 已保存 · 最近检查正常</div></div><span class="badge success">可使用</span></div>
+            <section class="section" style="margin-top:20px">
+              <div class="section-head"><h2>已启用模型</h2><span>5 个</span></div>
+              <div class="list-group">
+                <button class="list-row" type="button" data-demo-message="这里会打开 image-gen-pro 的输入模式与参数设置。"><span class="row-icon"><span class="status-dot success"></span></span><span class="row-copy"><span class="row-title">image-gen-pro</span><span class="row-hint">图片 · 全能参考、多参考图</span></span><span class="row-end">设置<svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="list-row" type="button" data-demo-message="这里会打开 video-gen-v3 的输入模式与参数设置。"><span class="row-icon"><span class="status-dot success"></span></span><span class="row-copy"><span class="row-title">video-gen-v3</span><span class="row-hint">视频 · 首尾帧、参考视频</span></span><span class="row-end">设置<svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="list-row add-row" type="button" data-add-existing-model><span class="row-icon"><svg class="icon"><use href="#i-plus"/></svg></span><span class="row-copy"><span class="row-title">添加模型</span><span class="row-hint">重新获取列表或手动输入模型 ID</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="model-page" data-page="task-recovery" hidden>
+          <div class="page-header with-back">
+            <button class="back-button" type="button" aria-label="返回" data-back-home><svg class="icon"><use href="#i-left"/></svg></button>
+            <div class="page-heading"><h1>继续设置模型</h1><p>APIMart · 2 个模型需要处理</p></div>
+          </div>
+          <div class="page-scroll">
+            <div class="notice">
+              <span class="row-icon"><svg class="icon"><use href="#i-warning"/></svg></span>
+              <div class="row-copy"><div class="row-title" data-recovery-title>后台正在识别 · 1/2</div><div class="row-hint" data-recovery-copy>video-gen-v3 · 已用 42 秒 · 最长等待 2 分钟</div></div>
+              <span class="badge warning" data-recovery-badge>进行中</span>
+            </div>
+            <section class="section" style="margin-top:20px">
+              <div class="section-head"><h2>选择怎么继续</h2></div>
+              <div class="recovery-actions">
+                <button class="recovery-action primary-recovery" type="button" data-recovery-action="manual"><span class="row-icon"><svg class="icon"><use href="#i-adjust"/></svg></span><span class="row-copy"><span class="row-title">立即手动设置</span><span class="row-hint">停止等待，直接配置输入模式和请求字段</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="recovery-action" type="button" data-recovery-action="stop"><span class="row-icon"><svg class="icon"><use href="#i-x"/></svg></span><span class="row-copy"><span class="row-title">停止自动识别</span><span class="row-hint">保留连接与已成功模型，稍后再处理</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+                <button class="recovery-action" type="button" data-recovery-action="retry"><span class="row-icon"><svg class="icon"><use href="#i-network"/></svg></span><span class="row-copy"><span class="row-title">重试当前模型</span><span class="row-hint">只重试 video-gen-v3，不影响其他模型</span></span><span class="row-end"><svg class="icon small"><use href="#i-right"/></svg></span></button>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="generic-page" data-page="generic" hidden>
+          <h1 data-generic-title>文件与保存</h1>
+          <div data-generic-content></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <template data-generic-template="file">
+    <section class="generic-section">
+      <div class="generic-line"><div><div class="generic-label">自动另存生成物</div><div class="generic-copy">默认关闭。开启后每张生成的图或视频完成时自动复制一份到指定目录。</div></div><span class="fake-switch" aria-hidden="true"></span></div>
+      <div class="generic-copy" style="margin-top:16px">另存到</div>
+      <div class="path-row"><div class="path-field">未设置 · 点「选择」挑一个目录</div><button class="outline-button" type="button" data-demo-message="这里沿用原来的目录选择器。"><svg class="icon small"><use href="#i-folder"/></svg>选择</button></div>
+    </section>
+    <section class="generic-section">
+      <div class="generic-label">新项目默认位置</div>
+      <div class="path-field" style="margin-top:10px">~/Documents/Nomi Projects</div>
+      <div class="text-actions"><button class="text-action" type="button" data-demo-message="这里沿用原来的默认项目位置设置。"><svg class="icon small"><use href="#i-adjust"/></svg>更改…</button><button class="text-action" type="button" data-demo-message="这里会在系统文件管理器中打开目录。"><svg class="icon small"><use href="#i-folder"/></svg>打开文件夹</button></div>
+      <div class="generic-copy">当前由启动环境指定，不能在应用内更改。</div>
+    </section>
+  </template>
+
+  <template data-generic-template="ai">
+    <section class="generic-section">
+      <div class="generic-section-title">数据上传</div>
+      <div class="generic-line"><div><div class="generic-label">仅发送当前任务需要的素材</div><div class="generic-copy">项目文件、历史记录和未采用素材默认不上传；外部模型仍会收到完成任务所必需的数据。</div></div><span class="fake-switch on" aria-hidden="true"></span></div>
+    </section>
+    <section class="generic-section">
+      <div class="generic-section-title">默认模型策略</div>
+      <div class="generic-line"><div><div class="generic-label">脚本与分镜</div><div class="generic-copy">从已启用的文本模型中选择；实际模型会在制作摘要中明确显示。</div></div><span class="generic-value">自动选择</span></div>
+      <div class="generic-line"><div><div class="generic-label">图像、视频与音频</div><div class="generic-copy">按节点能力和可用性选择，不会跨供应商静默降级。</div></div><span class="generic-value">按能力匹配</span></div>
+      <div class="policy-panel" style="margin-top:16px"><div class="generic-label">制作硬预算上限（CNY）</div><div class="generic-copy">合同批准和付费生成必须有明确上限；留空会阻止付费制作。</div><div class="path-field" style="width:180px;margin-top:10px">未设置</div></div>
+    </section>
+  </template>
+
+  <template data-generic-template="automation">
+    <section class="generic-section">
+      <div class="generic-section-title">默认制作模式</div>
+      <div class="static-segment"><span>引导</span><span class="active">平衡</span><span>策略自动</span></div>
+      <div class="generic-copy">确认一次制作摘要后在预算内继续；换模型、超预算或结果不明时暂停。</div>
+    </section>
+    <section class="generic-section">
+      <div class="generic-section-title">支出与风险边界</div>
+      <div class="policy-row"><div><div class="generic-label">首次付费前确认制作摘要</div><div class="generic-copy">确认镜头、模型、自动重试和支出上限。</div></div><span class="lock-badge"><svg class="icon small"><use href="#i-lock"/></svg>始终确认</span></div>
+      <div class="policy-row"><div><div class="generic-label">预算内自动继续后续镜头</div><div class="generic-copy">换供应商、超预算或提交结果不明时仍会暂停。</div></div><span class="fake-switch on" aria-hidden="true"></span></div>
+      <div class="policy-row"><div><div class="generic-label">发布、删除与覆盖文件</div><div class="generic-copy">这些操作不可逆，始终要求当次确认。</div></div><span class="lock-badge"><svg class="icon small"><use href="#i-lock"/></svg>始终确认</span></div>
+    </section>
+    <section class="generic-section">
+      <div class="generic-section-title">AI 助手连接（MCP）</div>
+      <div class="list-group">
+        <button class="list-row" type="button" data-demo-message="这里会进入 MCP 连接页，安装、验证、重连或移除 Claude Code、Codex 与 Cursor。"><span class="row-icon"><svg class="icon"><use href="#i-robot"/></svg></span><span class="row-copy"><span class="row-title">Claude Code、Codex 与 Cursor</span><span class="row-hint">让外部 AI 助手调用 Nomi 的工具与工作流</span></span><span class="row-end">管理连接<svg class="icon small"><use href="#i-right"/></svg></span></button>
+      </div>
+      <div class="generic-copy">连接负责“能不能连上”，下面的可信发起方负责“连上后允许做什么”，两种状态分开管理。</div>
+    </section>
+    <section class="generic-section">
+      <div class="generic-section-title">可信发起方</div>
+      <div class="policy-row"><div><div class="generic-label">Nomi</div><div class="generic-copy">本机工作台，负责编辑、批准、采用与导出。</div></div><span class="generic-value">本机</span></div>
+      <div class="policy-row"><div><div class="generic-label">Claude Code</div><div class="generic-copy">只可发起草稿、查看状态和打开安全深链。</div></div><span class="fake-switch on" aria-hidden="true"></span></div>
+      <div class="policy-row"><div><div class="generic-label">Codex</div><div class="generic-copy">连接后可按同一审批策略发起任务。</div></div><span class="fake-switch" aria-hidden="true"></span></div>
+      <div class="policy-row"><div><div class="generic-label">Cursor</div><div class="generic-copy">连接后可按同一审批策略发起任务。</div></div><span class="fake-switch" aria-hidden="true"></span></div>
+    </section>
+  </template>
+
+  <template data-generic-template="general">
+    <section class="generic-section">
+      <div class="generic-line"><div><div class="generic-label">全局截图热键</div><div class="generic-copy">默认关闭。开启后按一下热键就能把屏幕抓进画布；macOS 需要“屏幕录制”权限。</div></div><span class="fake-switch" aria-hidden="true"></span></div>
+      <div class="generic-copy" style="margin-top:12px">热键</div><div class="hotkey-row"><span class="hotkey active">⌥⇧Q</span><span class="hotkey">⌥⇧S</span><span class="hotkey">⌥⇧A</span><span class="hotkey">⌘⇧Q</span></div>
+    </section>
+    <section class="generic-section">
+      <div class="generic-label">画布滚轮</div><div class="generic-copy">选择滚轮直接缩放，或用滚轮平移画布。</div><div class="choice-row"><span class="choice-chip active">缩放</span><span class="choice-chip">平移</span></div>
+    </section>
+    <section class="generic-section">
+      <div class="generic-label">语言</div><div class="choice-row"><span class="choice-chip active">简体中文</span><span class="choice-chip">English</span></div>
+      <div class="generic-line" style="margin-top:16px"><div><div class="generic-label">外观</div><div class="generic-copy">跟随样张顶部的亮色 / 暗色选择。</div></div><span class="generic-value">当前主题</span></div>
+    </section>
+  </template>
+
+  <template data-generic-template="about">
+    <section class="generic-section">
+      <div class="about-brand">
+        <svg class="about-mark" viewBox="0 0 28 28" fill="none" aria-hidden="true"><rect width="28" height="28" rx="7" fill="var(--nomi-logo-ground)"/><rect x="5.5" y="5.5" width="4" height="17" rx="1.2" fill="white"/><rect x="18.5" y="5.5" width="4" height="17" rx="1.2" fill="white"/><polygon points="9.5,5.5 13.5,5.5 18.5,22.5 14.5,22.5" fill="white"/></svg>
+        <div><div class="about-word">No<span style="color:var(--nomi-accent)">m</span>i</div><div class="generic-copy">当前版本 0.19.0 · macOS · arm64</div></div>
+      </div>
+      <div class="about-actions">
+        <button class="about-action" type="button" data-demo-message="这里沿用原来的上手手册入口。"><span class="row-icon"><svg class="icon"><use href="#i-info"/></svg></span><span><span class="row-title">上手手册</span><span class="row-hint">流水线 · 90 秒首胜 · 能力对照 · 自查</span></span><svg class="icon small"><use href="#i-right"/></svg></button>
+        <button class="about-action" type="button" data-demo-message="这里沿用原来的开屏动画入口。"><span class="row-icon"><svg class="icon"><use href="#i-play"/></svg></span><span><span class="row-title">重看开屏动画</span><span class="row-hint">Nomi 启动时那段品牌开场，再放一遍</span></span><svg class="icon small"><use href="#i-right"/></svg></button>
+      </div>
+    </section>
+    <section class="generic-section"><div class="update-row"><div class="generic-label">检查是否有新版本可用</div><button class="primary-button" type="button" data-demo-message="这里沿用原来的更新检查。">检查更新</button></div></section>
+  </template>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+
+  <script>
+    const root = document.documentElement;
+    const demo = document.querySelector('.demo');
+    const shell = document.querySelector('[data-settings-shell]');
+    const reopenButton = document.querySelector('[data-reopen]');
+    const modelPages = Array.from(document.querySelectorAll('.model-page'));
+    const generic = document.querySelector('[data-page="generic"]');
+    const subtitle = document.querySelector('[data-page-subtitle]');
+    const toast = document.querySelector('[data-toast]');
+    let scenario = 'first';
+    let currentTab = 'models';
+    let currentModelPage = 'model-home';
+    let pickerReturnPage = 'api-add';
+    let currentPlatform = 'apimart';
+    let toastTimer;
+
+    const platforms = {
+      apimart: {
+        name: 'APIMart',
+        capabilities: '预置文本、图片、视频与音频模型',
+        logo: '../../../src/assets/vendor-logos/apimart.png'
+      },
+      kie: {
+        name: 'Kie.ai',
+        capabilities: '预置图片与视频模型',
+        logo: '../../../src/assets/vendor-logos/kie.png'
+      }
+    };
+
+    const subtitles = {
+      first: '还没有接入生成模型',
+      existing: '2 个连接 · 7 个模型',
+      attention: '1 个连接 · 7 个模型 · 2 个待设置'
+    };
+
+    const genericTitles = { file: '文件与保存', ai: 'AI 策略', automation: '自动化与权限', general: '通用', about: '关于' };
+
+    function showToast(message) {
+      window.clearTimeout(toastTimer);
+      toast.textContent = message;
+      toast.hidden = false;
+      toastTimer = window.setTimeout(() => { toast.hidden = true; }, 2600);
+    }
+
+    function setScenario(next) {
+      scenario = next;
+      currentTab = 'models';
+      document.querySelectorAll('[data-scenario-controls] button').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.scenario === next)));
+      document.querySelectorAll('[data-scenario-panel]').forEach((panel) => { panel.hidden = panel.dataset.scenarioPanel !== next; });
+      subtitle.textContent = subtitles[next];
+      showPage('model-home');
+    }
+
+    function setTheme(theme) {
+      root.setAttribute('data-mantine-color-scheme', theme);
+      document.querySelectorAll('[data-theme-controls] button').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.theme === theme)));
+    }
+
+    function setPreview(preview) {
+      demo.dataset.preview = preview;
+      document.querySelectorAll('[data-preview-controls] button').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.preview === preview)));
+    }
+
+    function openPlatform(platformKey) {
+      const platform = platforms[platformKey];
+      if (!platform) return;
+      currentPlatform = platformKey;
+      document.querySelector('[data-platform-title]').textContent = `接入 ${platform.name}`;
+      document.querySelector('[data-platform-name]').textContent = platform.name;
+      document.querySelector('[data-platform-capabilities]').textContent = platform.capabilities;
+      document.querySelector('[data-platform-key-label]').textContent = `${platform.name} API Key`;
+      document.querySelector('[data-platform-logo]').src = platform.logo;
+      document.querySelector('[data-platform-success-title]').textContent = `${platform.name} 已接入`;
+      const keyInput = document.querySelector('#platform-api-key');
+      const saveButton = document.querySelector('[data-save-platform]');
+      keyInput.value = '';
+      keyInput.disabled = false;
+      keyInput.removeAttribute('aria-invalid');
+      document.querySelector('[data-platform-key-error]').hidden = true;
+      document.querySelector('[data-platform-success]').hidden = true;
+      document.querySelector('[data-platform-form-actions]').hidden = false;
+      saveButton.disabled = false;
+      saveButton.textContent = '保存并接入预置模型';
+      showPage('platform-connect');
+      keyInput.focus();
+    }
+
+    function showPage(page) {
+      currentModelPage = page;
+      modelPages.forEach((modelPage) => { modelPage.hidden = currentTab !== 'models' || modelPage.dataset.page !== page; });
+      generic.hidden = currentTab === 'models';
+      document.querySelectorAll('[data-tab]').forEach((button) => {
+        if (button.dataset.tab === currentTab) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+      });
+    }
+
+    function setTab(tab) {
+      currentTab = tab;
+      if (tab === 'models') {
+        showPage(currentModelPage || 'model-home');
+        return;
+      }
+      generic.querySelector('[data-generic-title]').textContent = genericTitles[tab];
+      const template = document.querySelector(`[data-generic-template="${tab}"]`);
+      generic.querySelector('[data-generic-content]').replaceChildren(template.content.cloneNode(true));
+      showPage(currentModelPage);
+    }
+
+    document.querySelectorAll('[data-scenario-controls] button').forEach((button) => button.addEventListener('click', () => setScenario(button.dataset.scenario)));
+    document.querySelectorAll('[data-theme-controls] button').forEach((button) => button.addEventListener('click', () => setTheme(button.dataset.theme)));
+    document.querySelectorAll('[data-preview-controls] button').forEach((button) => button.addEventListener('click', () => setPreview(button.dataset.preview)));
+    document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => setTab(button.dataset.tab)));
+    document.querySelectorAll('[data-open-platform]').forEach((button) => button.addEventListener('click', () => openPlatform(button.dataset.openPlatform)));
+    document.querySelectorAll('[data-open-api]').forEach((button) => button.addEventListener('click', () => showPage('api-add')));
+    document.querySelectorAll('[data-back-home]').forEach((button) => button.addEventListener('click', () => showPage('model-home')));
+    document.querySelectorAll('[data-open-connection]').forEach((button) => button.addEventListener('click', () => showPage('connection-detail')));
+    document.querySelectorAll('[data-open-recovery]').forEach((button) => button.addEventListener('click', () => showPage('task-recovery')));
+
+    document.querySelector('.close-button').addEventListener('click', () => {
+      shell.hidden = true;
+      reopenButton.hidden = false;
+    });
+    reopenButton.addEventListener('click', () => {
+      shell.hidden = false;
+      reopenButton.hidden = true;
+      shell.querySelector('[aria-current="page"]')?.focus();
+    });
+
+    document.querySelectorAll('[data-more-toggle]').forEach((button) => button.addEventListener('click', (event) => {
+      const toggle = event.currentTarget;
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.closest('[data-disclosure-group]').querySelector('[data-more-content]').dataset.open = String(open);
+    }));
+
+    document.querySelector('[data-save-platform]').addEventListener('click', (event) => {
+      const keyInput = document.querySelector('#platform-api-key');
+      const error = document.querySelector('[data-platform-key-error]');
+      const saveButton = event.currentTarget;
+      if (!keyInput.value.trim()) {
+        keyInput.setAttribute('aria-invalid', 'true');
+        error.hidden = false;
+        keyInput.focus();
+        return;
+      }
+      keyInput.removeAttribute('aria-invalid');
+      error.hidden = true;
+      keyInput.disabled = true;
+      saveButton.disabled = true;
+      saveButton.textContent = '正在验证 Key…';
+      window.setTimeout(() => {
+        saveButton.textContent = '已接入';
+        document.querySelector('[data-platform-form-actions]').hidden = true;
+        document.querySelector('[data-platform-success]').hidden = false;
+        document.querySelector('[data-platform-success]').scrollIntoView({ block: 'nearest' });
+      }, 450);
+    });
+
+    document.querySelector('[data-platform-finish]').addEventListener('click', () => {
+      const platform = platforms[currentPlatform];
+      showToast(`${platform.name} 已接入；以后可从连接详情继续增删模型。`);
+      setScenario('existing');
+    });
+
+    document.querySelector('[data-save-connection]').addEventListener('click', (event) => {
+      const urlInput = document.querySelector('#base-url');
+      const keyInput = document.querySelector('#api-key');
+      if (!urlInput.value.trim() || !keyInput.value.trim()) {
+        const target = !urlInput.value.trim() ? urlInput : keyInput;
+        target.setAttribute('aria-invalid', 'true');
+        target.focus();
+        showToast('先填写 API 地址和 Key；这一步只保存，不运行自动识别。');
+        return;
+      }
+      urlInput.removeAttribute('aria-invalid');
+      keyInput.removeAttribute('aria-invalid');
+      document.querySelector('[data-saved-followup]').hidden = false;
+      event.currentTarget.disabled = true;
+      event.currentTarget.textContent = '已保存';
+      showToast('连接已保存。现在可以获取模型列表，也可以手动输入模型 ID。');
+    });
+
+    document.querySelector('[data-probe-models]').addEventListener('click', (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = '正在请求 /models…';
+      window.setTimeout(() => {
+        document.querySelector('[data-probe-result]').dataset.visible = 'true';
+        button.textContent = '已获取 12 个模型';
+        pickerReturnPage = 'api-add';
+        document.querySelector('[data-picker-subtitle]').textContent = 'APIMart · 已获取 12 个模型';
+        window.setTimeout(() => showPage('model-picker'), 550);
+      }, 700);
+    });
+
+    document.querySelector('[data-manual-model]').addEventListener('click', () => {
+      const panel = document.querySelector('[data-manual-panel]');
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) panel.querySelector('input').focus();
+    });
+
+    document.querySelector('[data-add-manual-model]').addEventListener('click', () => {
+      const input = document.querySelector('#manual-model-id');
+      const result = document.querySelector('[data-manual-result]');
+      if (!input.value.trim()) {
+        input.focus();
+        showToast('输入模型 ID 后即可继续，不需要等待模型列表。');
+        return;
+      }
+      result.textContent = `已添加 ${input.value.trim()}。连接仍然可用，下一步可单独设置它的输入模式。`;
+      result.dataset.visible = 'true';
+    });
+
+    document.querySelector('[data-run-diagnostic]').addEventListener('click', () => {
+      const result = document.querySelector('[data-diagnostic-result]');
+      result.textContent = '诊断示例：地址可达；即使 /models 不可用，已保存连接和手动接入入口仍会保留。';
+      result.dataset.visible = 'true';
+    });
+
+    document.querySelector('[data-add-existing-model]').addEventListener('click', () => {
+      pickerReturnPage = 'connection-detail';
+      document.querySelector('[data-picker-subtitle]').textContent = 'APIMart · 可重新获取或手动补充模型';
+      showPage('model-picker');
+    });
+
+    document.querySelectorAll('[data-picker-back]').forEach((button) => button.addEventListener('click', () => showPage(pickerReturnPage)));
+    document.querySelector('[data-save-models]').addEventListener('click', () => {
+      showToast('模型选择已保存；以后仍可从连接详情继续增删。');
+      if (pickerReturnPage === 'api-add') setScenario('existing');
+      else showPage('connection-detail');
+    });
+
+    document.querySelectorAll('[data-recovery-action]').forEach((button) => button.addEventListener('click', () => {
+      const action = button.dataset.recoveryAction;
+      const title = document.querySelector('[data-recovery-title]');
+      const copy = document.querySelector('[data-recovery-copy]');
+      const badge = document.querySelector('[data-recovery-badge]');
+      if (action === 'manual') {
+        title.textContent = '已转为手动设置';
+        copy.textContent = '后台任务已停止；连接和已成功模型全部保留。';
+        badge.textContent = '可继续';
+        badge.className = 'badge success';
+        title.closest('.notice').dataset.status = 'success';
+        showToast('已停止等待并进入手动设置，不会再被后台任务阻塞。');
+      } else if (action === 'stop') {
+        title.textContent = '自动识别已停止';
+        copy.textContent = '可稍后回来继续；已成功的 5 个模型仍然可用。';
+        badge.textContent = '已停止';
+        badge.className = 'badge';
+        delete title.closest('.notice').dataset.status;
+      } else {
+        title.textContent = '已重新开始 · 0/1';
+        copy.textContent = '只重试 video-gen-v3；本次最长等待 2 分钟。';
+        badge.textContent = '重试中';
+        badge.className = 'badge warning';
+        delete title.closest('.notice').dataset.status;
+      }
+    }));
+
+    document.addEventListener('click', (event) => {
+      const target = event.target.closest('[data-demo-message]');
+      if (target) showToast(target.dataset.demoMessage);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !shell.hidden) {
+        shell.hidden = true;
+        reopenButton.hidden = false;
+      }
+    });
+
+    const hour = new Date().getHours();
+    setTheme(hour >= 18 || hour < 7 ? 'dark' : 'light');
+    setScenario('first');
+  </script>
+</body>
+</html>

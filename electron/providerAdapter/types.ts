@@ -7,6 +7,40 @@ import type {
 
 export type AdapterAuthType = "none" | "bearer" | "x-api-key" | "query";
 
+export type ProviderAdapterModelSelection = {
+  modelKey: string;
+  labelZh?: string;
+  kind: BillingModelKind;
+};
+
+export type ProviderAdapterConnectionInput = {
+  /** Electron-main-only identity override for a previously saved connection. */
+  catalogVendorKey?: string;
+  vendorName: string;
+  baseUrl: string;
+  apiKey: string;
+  authType: AdapterAuthType;
+  providerKind?: AiSdkProviderKind;
+  authHeader?: string;
+  authQueryParam?: string;
+  headers?: Record<string, string>;
+  models: ProviderAdapterModelSelection[];
+};
+
+export type ProviderAdapterRegisterInput = ProviderAdapterConnectionInput & {
+  /** Main-process-only: retain the saved encrypted credential instead of replacing it. */
+  preserveExistingCredential?: boolean;
+};
+
+export type ProviderAdapterRegistration = {
+  vendorKey: string;
+  vendorName: string;
+  state: "configured";
+  selectedModelKeys: string[];
+  models: Array<ProviderAdapterModelSelection & { state: "unverified" }>;
+  savedAt: string;
+};
+
 export type AdapterSourceEvidence = {
   url: string;
   title?: string;
@@ -73,6 +107,8 @@ export type AdapterRunStage =
   | "partial"
   | "failed"
   | "needs_ai"
+  | "cancelled"
+  | "timed_out"
   | "stale";
 
 export type AdapterModeState = "queued" | "testing" | "repairing" | "verified" | "failed";
@@ -108,6 +144,11 @@ export type ProviderAdapterRun = {
   selectedModelKeys: string[];
   stage: AdapterRunStage;
   currentModelKey?: string;
+  completedCount?: number;
+  totalCount?: number;
+  lastProgressAt?: string;
+  stageStartedAt?: string;
+  deadlineAt?: string;
   repairAttempt: number;
   models: AdapterModelResult[];
   sourceUrls: string[];
@@ -133,8 +174,8 @@ export type ProviderAdapterStoreState = {
 };
 
 export type AdapterModelMeta = {
-  state: "testing" | "verified" | "partial" | "failed";
-  runId: string;
+  state: "unverified" | "testing" | "verified" | "partial" | "failed";
+  runId?: string;
   activeRevision?: string;
   modes: AdapterModeResult[];
   updatedAt: string;

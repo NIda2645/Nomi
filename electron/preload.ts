@@ -434,12 +434,28 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     },
   },
   onboarding: {
+    adapterRegister: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:register", payload),
     adapterStart: (payload: unknown) =>
       ipcRenderer.invoke("nomi:provider-adapter:start", payload),
     adapterGet: (payload: unknown) =>
       ipcRenderer.invoke("nomi:provider-adapter:get", payload),
     adapterLatest: (payload: unknown) =>
       ipcRenderer.invoke("nomi:provider-adapter:latest", payload),
+    adapterCancel: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:cancel", payload),
+    adapterList: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:list", payload),
+    existingConnectionListModels: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:existing:list-models", payload),
+    adapterRegisterExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:existing:register", payload),
+    adapterStartExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:existing:start", payload),
+    adapterAdaptExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:existing:adapt", payload),
+    adapterRetry: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:retry", payload),
     manualCommit: (payload: unknown) =>
       ipcRenderer.invoke("nomi:onboarding:manual-commit", payload) as Promise<{
         ok: boolean;
@@ -503,6 +519,11 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     customCallContract: () => invokeSync("nomi:model-catalog:custom-call:contract"),
     customCallAiInstruction: (payload: unknown) => invokeSync("nomi:model-catalog:custom-call:ai-instruction", payload),
     customCallTestRun: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-run", payload),
+    customCallTestGet: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-get", payload),
+    customCallTestLatest: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-latest", payload),
+    customCallTestCancel: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-cancel", payload),
+    customCallDraftCreate: (payload: unknown) => invokeSync("nomi:model-catalog:custom-call:draft-create", payload),
+    customCallDraftFinalize: (payload: unknown) => invokeSync("nomi:model-catalog:custom-call:draft-finalize", payload),
     deleteModel: (vendorKey: string, modelKey: string) =>
       invokeSync("nomi:model-catalog:model:delete", vendorKey, modelKey),
     deleteModels: (targets: { vendorKey: string; modelKey: string }[]) =>

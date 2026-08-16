@@ -23,9 +23,11 @@ type DreaminaMemberCardProps = {
   status: DreaminaStatus | null
   /** 安装/登录/退出后冒泡，父组件重查 + 重新分桶。 */
   onChanged: () => void
+  onOpenDetails?: () => void
+  detailMode?: boolean
 }
 
-export function DreaminaMemberCard({ status, onChanged }: DreaminaMemberCardProps): JSX.Element | null {
+export function DreaminaMemberCard({ status, onChanged, onOpenDetails, detailMode = false }: DreaminaMemberCardProps): JSX.Element | null {
   const { t } = useTranslation()
   const dreamina = getDesktopBridge()?.dreamina
   const [busy, setBusy] = React.useState(false)
@@ -113,6 +115,8 @@ export function DreaminaMemberCard({ status, onChanged }: DreaminaMemberCardProp
       status={cardStatus}
       statusLabel={statusLabel}
       defaultExpanded={false}
+      onOpenDetails={onOpenDetails}
+      detailMode={detailMode}
     >
       {/* 未安装 CLI */}
       {!status.installed ? (

@@ -54,13 +54,23 @@ const REASON_I18N: Partial<Record<McpVerifyReason, string>> = {
 export type { McpInfo }
 
 type ConnectAssistantCardProps = {
-  /** MCP 接入状态由父组件统一 fetch 后下传（单一来源，见 plan §4.1）；null = 不显（加载中/老 preload）。 */
+  /** MCP 接入状态由设置宿主统一读取后下传；null = 不显（加载中/老 preload）。 */
   info: McpInfo | null
-  /** 接入/撤销后冒泡，父组件重查 + 重新分桶。 */
+  /** 接入/撤销后冒泡，由设置宿主重读连接快照。 */
   onChanged: () => void
+  onOpenDetails?: () => void
+  /** 设置内二级页可接管跳转，返回同页的可信发起方；其他宿主沿用全局设置事件。 */
+  onOpenAutomationPermissions?: () => void
+  detailMode?: boolean
 }
 
-export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardProps): JSX.Element | null {
+export function ConnectAssistantCard({
+  info,
+  onChanged,
+  onOpenDetails,
+  onOpenAutomationPermissions,
+  detailMode = false,
+}: ConnectAssistantCardProps): JSX.Element | null {
   const { t } = useTranslation()
   const [target, setTarget] = React.useState<ClientKey>('claude')
   const pickedDefault = React.useRef(false)
@@ -166,6 +176,10 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
 
   const openAutomationPermissions = () => {
     useToastStore.getState().remove(CURSOR_CONNECTED_TOAST_ID)
+    if (onOpenAutomationPermissions) {
+      onOpenAutomationPermissions()
+      return
+    }
     window.dispatchEvent(new CustomEvent('nomi-open-settings', { detail: { tab: 'automation', section: 'cursor-host' } }))
   }
 
@@ -206,6 +220,8 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
       status={activation.headerStatus}
       statusLabel={statusLabel}
       defaultExpanded={false}
+      onOpenDetails={onOpenDetails}
+      detailMode={detailMode}
     >
       {!info.tokenReady ? (
         <div className="text-caption text-nomi-ink-60 leading-relaxed">

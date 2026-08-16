@@ -1,6 +1,11 @@
 export const zhSettings = {
   title: '设置',
   close: '关闭',
+  unsaved: {
+    title: '放弃未保存的修改',
+    message: '设置里还有未保存的修改，关闭后会丢失。',
+    discard: '放弃并关闭',
+  },
   tab: { file: '文件与保存', models: '模型', ai: 'AI 策略', automation: '自动化与权限', general: '通用', about: '关于' },
   ai: {
     title: 'AI 策略',
@@ -50,6 +55,16 @@ export const zhSettings = {
       continueHint: '换供应商、超预算或提交结果不明时仍会暂停。',
       irreversible: '发布、删除与覆盖文件',
       irreversibleHint: '这些操作不可逆，始终要求当次确认。',
+    },
+    mcp: {
+      title: 'AI 助手连接（MCP）',
+      clients: 'Claude Code、Codex 与 Cursor',
+      hint: '让外部 AI 助手调用 Nomi 的工具与工作流',
+      manage: '管理连接',
+      separationHint: '连接负责“能不能连上”，下面的可信发起方负责“连上后允许做什么”，两种状态分开管理。',
+      back: '返回自动化与权限',
+      loading: '正在读取 MCP 连接…',
+      unavailable: '当前版本无法读取 MCP 连接状态。请重启 Nomi 后再试。',
     },
     hosts: {
       title: '可信发起方',
@@ -110,6 +125,11 @@ export const zhSettings = {
 export const enSettings = {
   title: 'Settings',
   close: 'Close',
+  unsaved: {
+    title: 'Discard unsaved changes',
+    message: 'Some settings changes have not been saved and will be lost when you close this window.',
+    discard: 'Discard and close',
+  },
   tab: { file: 'File & saving', models: 'Models', ai: 'AI policy', automation: 'Automation & permissions', general: 'General', about: 'About' },
   ai: {
     title: 'AI policy',
@@ -159,6 +179,16 @@ export const enSettings = {
       continueHint: 'Nomi still pauses for a provider change, overspend, or an unknown submission result.',
       irreversible: 'Publish, delete, and overwrite files',
       irreversibleHint: 'These actions are irreversible and always require contextual approval.',
+    },
+    mcp: {
+      title: 'AI agent connections (MCP)',
+      clients: 'Claude Code, Codex, and Cursor',
+      hint: 'Let external AI agents use Nomi tools and workflows',
+      manage: 'Manage connections',
+      separationHint: 'Connections control whether an agent can reach Nomi. Trusted initiators below control what it may do after connecting.',
+      back: 'Back to automation and permissions',
+      loading: 'Loading MCP connections…',
+      unavailable: 'This version cannot read MCP connection status. Restart Nomi and try again.',
     },
     hosts: {
       title: 'Trusted initiators',

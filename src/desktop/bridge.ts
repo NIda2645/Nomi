@@ -6,8 +6,13 @@ import type { McpInfo, McpVerifyResult } from './mcpBridgeTypes'
 import type { DesktopSettingsBridge } from './settingsBridge'
 import type { DesktopOnboardingBridge } from './onboardingBridgeTypes'
 import type { DesktopProductionRunBridge } from './productionRunBridgeTypes'
+import type { CustomCallBridge } from './modelCatalogBridgeTypes'
 export type { ProviderKind }
-export type { DesktopAdapterModeResult, DesktopProviderAdapterRun } from './onboardingBridgeTypes'
+export type {
+  DesktopAdapterModeResult,
+  DesktopProviderAdapterRun,
+  DesktopProviderRegistration,
+} from './onboardingBridgeTypes'
 export type { ScreenshotHotkeyStatus } from './bridgeMedia'
 
 /** 落盘的对话消息(conversation 域;draft/附件是 session 域不落盘)。 */
@@ -608,7 +613,7 @@ export type DesktopBridge = DesktopMediaBridge & {
     set: (payload: { mode: DesktopProxyMode; customUrl: string }) => Promise<{ ok: boolean; status: DesktopProxyStatus }>
     test: () => Promise<{ ok: boolean; result: DesktopProxyProbe; status: DesktopProxyStatus }>
   }
-  modelCatalog: {
+  modelCatalog: CustomCallBridge & {
     listVendors: () => unknown[]
     listModels: (params?: unknown) => unknown[]
     listMappings: (params?: unknown) => unknown[]
@@ -624,36 +629,6 @@ export type DesktopBridge = DesktopMediaBridge & {
      * 可选（`?`）：旧 preload 没有这个方法，调用方须自己兜住 undefined。
      */
     retypeModel?: (payload: { vendorKey: string; modelKey: string; kind: string }) => unknown
-    /** 自定义调用（2026-08-04）：契约（编辑器变量表/模板）。旧 preload 可能没有 → 可选。 */
-    customCallContract?: () => {
-      variables: Array<{ name: string; type: string }>
-      templates: Array<{ id: string; script: string }>
-    }
-    /** AI 帮写指令（主进程契约单源拼好，渲染层喂给文本脑）。 */
-    customCallAiInstruction?: (payload: {
-      vendorKey: string
-      modelKey: string
-      material: string
-      currentScript?: string
-      lastError?: string
-    }) => string
-    /** 试跑：真调一次最小请求，返回产物 + 请求/响应 transcript（Authorization 已脱敏）。 */
-    customCallTestRun?: (payload: { vendorKey: string; modelKey: string; script: string }) => Promise<{
-      ok: boolean
-      assets: string[]
-      text?: string
-      errorMessage?: string
-      transcript: Array<{
-        method: string
-        url: string
-        status: 'ok' | 'error'
-        durationMs: number
-        requestPreview?: string
-        responsePreview?: string
-        errorMessage?: string
-      }>
-      durationMs: number
-    }>
     deleteModel: (vendorKey: string, modelKey: string) => void
     deleteModels: (targets: { vendorKey: string; modelKey: string }[]) => void
     upsertMapping: (payload: unknown) => unknown

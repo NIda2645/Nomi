@@ -196,6 +196,7 @@ async function generateModelContract(input: {
   languageModels: readonly LanguageModelV1[];
   prompt: string;
   generate: StructuredGenerator;
+  signal?: AbortSignal;
   validate?: (contract: ReturnType<typeof adapterModelContractSchema.parse>) => void;
 }): Promise<ReturnType<typeof adapterModelContractSchema.parse>> {
   let lastError: unknown = new Error("Model contract generation failed");
@@ -203,13 +204,21 @@ async function generateModelContract(input: {
     ? [input.languageModels[0], input.languageModels[0]]
     : input.languageModels.slice(0, 4);
   for (const languageModel of attempts) {
+    if (input.signal?.aborted) {
+      throw input.signal.reason instanceof Error ? input.signal.reason : new Error("Adapter compilation cancelled");
+    }
+    const attemptController = new AbortController();
+    const relayAbort = () => attemptController.abort(input.signal?.reason);
+    if (input.signal?.aborted) relayAbort();
+    else input.signal?.addEventListener("abort", relayAbort, { once: true });
+    const timer = setTimeout(() => attemptController.abort(new Error("Adapter compiler model timed out")), 75_000);
     try {
       const result = await input.generate({
         model: languageModel,
         schema: adapterModelContractSchema,
         system: SYSTEM_PROMPT,
         prompt: input.prompt,
-        abortSignal: AbortSignal.timeout(75_000),
+        abortSignal: attemptController.signal,
         maxRetries: 0,
         maxTokens: 6_000,
       });
@@ -217,7 +226,13 @@ async function generateModelContract(input: {
       input.validate?.(contract);
       return contract;
     } catch (error) {
+      if (input.signal?.aborted) {
+        throw input.signal.reason instanceof Error ? input.signal.reason : new Error("Adapter compilation cancelled");
+      }
       lastError = error;
+    } finally {
+      clearTimeout(timer);
+      input.signal?.removeEventListener("abort", relayAbort);
     }
   }
   throw lastError;
@@ -231,6 +246,7 @@ export async function compileProviderAdapter(
     authType: AdapterAuthType;
     selectedModels: readonly SelectedModel[];
     docs: readonly DocPage[];
+    signal?: AbortSignal;
   },
   dependencies: { generate?: StructuredGenerator } = {},
 ): Promise<ProviderAdapterCompilation> {
@@ -265,6 +281,7 @@ ${docsBlock(relevantDocs)}`;
       const contract = await generateModelContract({
         languageModels,
         prompt,
+        signal: input.signal,
         generate: dependencies.generate || defaultGenerate,
         validate: (generated) => {
           validateProviderAdapterDraft({
@@ -288,6 +305,9 @@ ${docsBlock(relevantDocs)}`;
       });
       models.push(validated.models[0]);
     } catch (error) {
+      if (input.signal?.aborted) {
+        throw input.signal.reason instanceof Error ? input.signal.reason : new Error("Adapter compilation cancelled");
+      }
       failures.push({
         modelKey: selectedModel.modelKey,
         error: redactAdapterSecrets(error instanceof Error ? error.message : String(error)),
@@ -323,6 +343,7 @@ export async function repairProviderAdapter(
       requestSummary?: unknown;
     };
     docs: readonly DocPage[];
+    signal?: AbortSignal;
   },
   dependencies: { generate?: StructuredGenerator } = {},
 ): Promise<ProviderAdapterDraft> {
@@ -361,6 +382,7 @@ ${docsBlock(relevantDocs)}`;
   const contract = await generateModelContract({
     languageModels,
     prompt,
+    signal: input.signal,
     generate: dependencies.generate || defaultGenerate,
     validate: (generated) => {
       const candidateModels = [...input.previousDraft.models];

@@ -323,6 +323,35 @@ describe("compileProviderAdapter", () => {
     expect(result.failures[0]?.error).toContain("[REDACTED]");
     expect(result.failures[0]?.error).not.toContain("sk-live-compiler-secret");
   });
+
+  it("propagates caller cancellation into the active generator without rotating compilers", async () => {
+    const controller = new AbortController();
+    const signals: AbortSignal[] = [];
+    const generate: StructuredGenerator = (input) => {
+      signals.push(input.abortSignal);
+      return new Promise((resolve, reject) => {
+        input.abortSignal.addEventListener("abort", () => reject(input.abortSignal.reason), { once: true });
+        setTimeout(() => resolve({ object: modelContract("paint-v2") }), 20);
+      });
+    };
+    const pending = compileProviderAdapter(
+      {
+        languageModel: {} as LanguageModelV1,
+        providerBaseUrl: "https://api.example.com/v1",
+        authType: "bearer",
+        selectedModels: [{ modelKey: "paint-v2", label: "Paint V2", kind: "image" }],
+        docs: [{ url: "https://docs.example.com/api", text: "Paint V2 image API" }],
+        signal: controller.signal,
+      },
+      { generate },
+    );
+
+    controller.abort(new Error("cancel compile"));
+
+    await expect(pending).rejects.toThrow("cancel compile");
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+  });
 });
 
 describe("repairProviderAdapter", () => {
@@ -351,5 +380,35 @@ describe("repairProviderAdapter", () => {
 
     expect(prompts[0]).not.toContain("sk-live-super-secret");
     expect(prompts[0]).toContain("[REDACTED]");
+  });
+
+  it("propagates caller cancellation into the active repair without rotating compilers", async () => {
+    const controller = new AbortController();
+    const signals: AbortSignal[] = [];
+    const generate: StructuredGenerator = (input) => {
+      signals.push(input.abortSignal);
+      return new Promise((resolve, reject) => {
+        input.abortSignal.addEventListener("abort", () => reject(input.abortSignal.reason), { once: true });
+        setTimeout(() => resolve({ object: modelContract("paint-v2") }), 20);
+      });
+    };
+    const pending = repairProviderAdapter(
+      {
+        languageModel: {} as LanguageModelV1,
+        providerBaseUrl: "https://api.example.com/v1",
+        selectedModelKeys: ["paint-v2"],
+        previousDraft: draft(),
+        failure: { stage: "create", modelKey: "paint-v2", message: "HTTP 422" },
+        docs: [{ url: "https://docs.example.com/api", text: "POST /v1/images/generations" }],
+        signal: controller.signal,
+      },
+      { generate },
+    );
+
+    controller.abort(new Error("cancel repair"));
+
+    await expect(pending).rejects.toThrow("cancel repair");
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
   });
 });

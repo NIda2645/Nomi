@@ -30,11 +30,13 @@ type ModelEnableEditorProps = {
    * 把它摆在行上，「这条被登记成什么」和「原来能改」才同时可见（这正是此前唯一缺失的信息）。
    */
   onRetype?: (row: ChipModel, kind: string) => void
+  /** 连接详情页使用：点击模型名进入同一右侧区域的模型详情。 */
+  onOpenModel?: (row: ChipModel) => void
 }
 
 const PILL = 'h-6 px-2.5 rounded-full border text-micro inline-flex items-center gap-1'
 
-export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall, onRetype }: ModelEnableEditorProps): JSX.Element {
+export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall, onRetype, onOpenModel }: ModelEnableEditorProps): JSX.Element {
   const { t } = useTranslation()
   const [query, setQuery] = React.useState('')
   const [selectMode, setSelectMode] = React.useState(false)
@@ -221,15 +223,23 @@ export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall, on
                     </button>
                     <button
                       type="button"
-                      disabled={adapterLocked}
-                      onClick={() => onToggle([m], !m.enabled)}
+                      disabled={!onOpenModel && adapterLocked}
+                      onClick={() => {
+                        if (onOpenModel) onOpenModel(m)
+                        else onToggle([m], !m.enabled)
+                      }}
                       className={cn(
                         'flex-1 min-w-0 text-left text-body-sm truncate',
-                        adapterLocked ? 'cursor-not-allowed text-nomi-ink-40' : m.enabled ? 'text-nomi-ink' : 'text-nomi-ink-60',
+                        !onOpenModel && adapterLocked ? 'cursor-not-allowed text-nomi-ink-40' : m.enabled ? 'text-nomi-ink' : 'text-nomi-ink-60',
                       )}
                     >
                       {m.labelZh}
                     </button>
+                    {m.customCallDraft ? (
+                      <span className="shrink-0 rounded-nomi-sm bg-nomi-accent-soft px-1.5 py-0.5 text-micro text-nomi-accent">
+                        {t('onboardingProviders.customCall.directDraft.badge')}
+                      </span>
+                    ) : null}
                     {onRetype && m.canRetype ? (
                       <NomiSelect
                         value={m.kind}
@@ -248,12 +258,18 @@ export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall, on
                       <button
                         type="button"
                         aria-label={t(
-                          m.hasCustomCall
+                          m.customCallDraft
+                            ? 'onboardingProviders.customCall.directDraft.rowAria'
+                            : m.hasCustomCall
                             ? 'onboardingProviders.customCall.rowSetAria'
                             : 'onboardingProviders.customCall.rowAria',
                           { name: m.labelZh },
                         )}
-                        title={t(m.hasCustomCall ? 'onboardingProviders.customCall.rowSetTitle' : 'onboardingProviders.customCall.rowTitle')}
+                        title={t(m.customCallDraft
+                          ? 'onboardingProviders.customCall.directDraft.rowTitle'
+                          : m.hasCustomCall
+                            ? 'onboardingProviders.customCall.rowSetTitle'
+                            : 'onboardingProviders.customCall.rowTitle')}
                         onClick={() => onCustomCall(m)}
                         className={cn(
                           'relative shrink-0 p-1',

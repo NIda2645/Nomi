@@ -18,7 +18,10 @@ import {
   isVideoLikeGenerationNodeKind,
 } from '../model/generationNodeKinds'
 import type { ResolvedGenerationReferences } from './generationReferenceResolver'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import {
+  replaceCustomCapabilityContractMeta,
+  resolveArchetypeForModel,
+} from '../../../config/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 import { loadUsableVendorKeys, remapArchetypeMode, resolveUsableModelForNode } from './usableVendorModel'
 
@@ -165,11 +168,12 @@ export async function resolveExecutableNodeFromCatalog(
   const remappedArchetype = targetArchetype
     ? remapArchetypeMode(sourceArchetype, asTrimmedString((meta.archetype as { modeId?: unknown } | undefined)?.modeId) || undefined, targetArchetype)
     : null
+  const migratedMeta = replaceCustomCapabilityContractMeta(meta, match.meta)
 
   return {
     ...node,
     meta: {
-      ...meta,
+      ...migratedMeta,
       modelKey: asTrimmedString(match.modelKey) || modelKey,
       modelAlias: asTrimmedString(match.modelAlias) || modelKey,
       modelVendor: resolvedVendor,

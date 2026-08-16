@@ -1,20 +1,36 @@
-/**
- * 自定义调用编辑器（样张 docs/design/mockups/2026-08-04-custom-call-editor.html §2）。
- * 一屏三步：贴材料 → AI 生成脚本（复用创作助手同文本脑，prompt_refine 通道）→ 试跑（真调、
- * 花一次最小额度、把实际请求/响应摊开——参考图闸对脚本失明的补偿）。保存即接管该模型调用；
- * 留空/删除=恢复默认。弹窗走 DesignModal（同 OnboardingWizard），content 挂 workbench-shell
- * 接回 --workbench-* token 域，避免 Portal 脱离工作区 token 作用域。
- */
+/** 自定义调用编辑器：材料辅助生成，脚本与供应商配置才是持久化内容。 */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconCheck, IconCopy, IconPlayerPlay, IconPlus, IconSparkles, IconTrash } from '@tabler/icons-react'
+import { IconAlertTriangle, IconCheck, IconCopy, IconPlayerPlay, IconPlayerStop, IconPlus, IconSparkles, IconTrash } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
-import { DesignModal, confirmDialog } from '../../design'
+import {
+  DesignButton,
+  DesignModal,
+  DesignTextarea,
+  DesignTextInput,
+  IconActionButton,
+  NomiSelect,
+  confirmDialog,
+} from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
+import { resolveArchetypeForModel } from '../../config/modelArchetypes'
 import { getTextBrain } from '../../workbench/api/promptLibraryApi'
 import { runWorkbenchTextTaskStream } from '../../workbench/api/taskApi'
 import { stripCodeFences } from './customCallIntent'
 import { configRecordFromRows, configRowsFromRecord, hasCustomConfig, type CustomConfigRow } from './customCallConfig'
+import {
+  customCallScriptPatch,
+  readCustomCallScriptDrafts,
+  resolveCustomCallScriptModes,
+  updateCustomCallScriptDraft,
+  type CustomCallCatalogModel,
+  type CustomCallScriptDrafts,
+} from './customCallScriptModes'
+import { CustomCallScopeSelector } from './CustomCallScopeSelector'
+import { customCallPersistedStateSignature } from './customCallEditorDirty'
+import { CustomCallContractSidebar } from './CustomCallContractSidebar'
+import { ModelSettingsPageSurface } from './ModelSettingsPageSurface'
+import { useCustomCallTestRun } from './useCustomCallTestRun'
 
 export type CustomCallTarget = {
   vendorKey: string
@@ -22,28 +38,9 @@ export type CustomCallTarget = {
   label: string
   /** 已存的脚本（无则空串）。 */
   script: string
+  /** 直达脚本入口建立的禁用草稿；保存脚本后由 main 启用。 */
+  draft?: boolean
 }
-
-type TestRunState =
-  | { phase: 'idle' }
-  | { phase: 'running' }
-  | {
-      phase: 'done'
-      ok: boolean
-      assets: string[]
-      text?: string
-      errorMessage?: string
-      transcript: Array<{
-        method: string
-        url: string
-        status: 'ok' | 'error'
-        durationMs: number
-        requestPreview?: string
-        responsePreview?: string
-        errorMessage?: string
-      }>
-      durationMs: number
-    }
 
 /** listVendors() 是 unknown[]；这里只用到 key 与 meta.customConfig，就地窄化，别把 any 放进来。 */
 type VendorRow = { key?: string; meta?: Record<string, unknown> & { customConfig?: unknown } }
@@ -55,40 +52,115 @@ export function CustomCallEditor({
   target,
   onClose,
   onSaved,
+  onContinueCapability,
+  presentation = 'modal',
 }: {
   target: CustomCallTarget | null
   onClose: () => void
   onSaved: () => void
+  onContinueCapability?: () => void
+  presentation?: 'modal' | 'page'
 }): JSX.Element {
   const { t } = useTranslation()
   const [material, setMaterial] = React.useState('')
-  const [script, setScript] = React.useState('')
+  const [scriptDrafts, setScriptDrafts] = React.useState<CustomCallScriptDrafts>({ fallback: '', modes: {} })
+  const [selectedModeId, setSelectedModeId] = React.useState<string | null>(null)
   const [aiRunning, setAiRunning] = React.useState(false)
   const [aiError, setAiError] = React.useState('')
-  const [test, setTest] = React.useState<TestRunState>({ phase: 'idle' })
   const [saveError, setSaveError] = React.useState('')
   const [configRows, setConfigRows] = React.useState<CustomConfigRow[]>([])
+  const [configOpen, setConfigOpen] = React.useState(false)
+  const [initialPersistedState, setInitialPersistedState] = React.useState({ targetKey: '', signature: '' })
   const [briefCopied, setBriefCopied] = React.useState(false)
   const abortRef = React.useRef<AbortController | null>(null)
+  const testResultRef = React.useRef<HTMLDivElement>(null)
+
+  const bridge = getDesktopBridge()
+  const targetKey = target ? `${target.vendorKey}\0${target.modelKey}` : ''
+  const catalogModel = React.useMemo(() => {
+    if (!target || !bridge) return null
+    try {
+      const models = bridge.modelCatalog.listModels({ vendorKey: target.vendorKey }) as CustomCallCatalogModel[]
+      return models.find((model) => model.vendorKey === target.vendorKey && model.modelKey === target.modelKey) ?? null
+    } catch {
+      return null
+    }
+  // Primitive identity is intentional: a parent refresh must not wipe in-progress editor drafts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bridge, targetKey])
+  const scriptModes = React.useMemo(
+    () => resolveCustomCallScriptModes(catalogModel, !target?.draft),
+    [catalogModel, target?.draft],
+  )
+  const selectedMode = selectedModeId
+    ? scriptModes.find((mode) => mode.id === selectedModeId) ?? null
+    : null
+  const script = selectedModeId ? scriptDrafts.modes[selectedModeId] ?? '' : scriptDrafts.fallback
+  const { test, runTest, cancelTest } = useCustomCallTestRun({ target, script, selectedMode })
+  const selectedScopeLabel = selectedMode?.label ?? t('onboardingProviders.customCall.scopeFallback')
+  const savedScripts = React.useMemo(
+    () => readCustomCallScriptDrafts(catalogModel, target?.script ?? ''),
+    [catalogModel, target?.script],
+  )
+  const hasSavedScript = Boolean(
+    (selectedModeId ? savedScripts.modes[selectedModeId] : savedScripts.fallback)?.trim(),
+  )
+  const savedScriptForSelectedScope = selectedModeId
+    ? savedScripts.modes[selectedModeId] ?? ''
+    : savedScripts.fallback
+  const testPassed = test.phase === 'done' && test.ok
+  const testOutcome = test.phase === 'done' ? test.ok : null
+  const requiresCapabilitySetup = Boolean(
+    catalogModel &&
+    catalogModel.kind !== 'text' &&
+    !resolveArchetypeForModel(catalogModel),
+  )
+
+  const setScriptForMode = React.useCallback((modeId: string | null, value: string) => {
+    setScriptDrafts((drafts) => updateCustomCallScriptDraft(drafts, modeId, value))
+  }, [])
+
+  const selectMode = React.useCallback(async (modeId: string | null) => {
+    if (modeId === selectedModeId) return
+    if (script !== savedScriptForSelectedScope) {
+      const discard = await confirmDialog({
+        title: t('onboardingProviders.customCall.scopeDiscardTitle'),
+        message: t('onboardingProviders.customCall.scopeDiscardMessage', { scope: selectedScopeLabel }),
+        confirmLabel: t('onboardingProviders.customCall.scopeDiscardConfirm'),
+        danger: true,
+      })
+      if (!discard) return
+      setScriptForMode(selectedModeId, savedScriptForSelectedScope)
+    }
+    abortRef.current?.abort()
+    setSelectedModeId(modeId)
+    setAiError('')
+    setSaveError('')
+    setBriefCopied(false)
+  }, [savedScriptForSelectedScope, script, selectedModeId, selectedScopeLabel, setScriptForMode, t])
 
   // 打开时装载既有脚本 + 该供应商已存的自定义配置；关闭清态。
   React.useEffect(() => {
     if (target) {
-      setScript(target.script)
+      const nextScripts = readCustomCallScriptDrafts(catalogModel, target.script)
+      const vendors = (getDesktopBridge()?.modelCatalog.listVendors?.() ?? []) as VendorRow[]
+      const vendor = vendors.find((v) => v.key === target.vendorKey)
+      const nextConfigRows = configRowsFromRecord(vendor?.meta?.customConfig)
+      setScriptDrafts(nextScripts)
+      setConfigRows(nextConfigRows)
+      setConfigOpen(hasCustomConfig(nextConfigRows))
+      setInitialPersistedState({ targetKey, signature: customCallPersistedStateSignature(nextScripts, nextConfigRows) })
+      setSelectedModeId(null)
       setMaterial('')
       setAiError('')
       setSaveError('')
       setBriefCopied(false)
-      setTest({ phase: 'idle' })
-      // 配置存在 vendor 上（同一供应商下所有模型共用），所以从 vendor 读、不从 model 读。
-      const vendors = (getDesktopBridge()?.modelCatalog.listVendors?.() ?? []) as VendorRow[]
-      const vendor = vendors.find((v) => v.key === target.vendorKey)
-      setConfigRows(configRowsFromRecord(vendor?.meta?.customConfig))
     }
     return () => abortRef.current?.abort()
-  }, [target])
+  // targetKey avoids resetting typed drafts when the page parent refreshes the same target object.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKey])
 
-  const bridge = getDesktopBridge()
   const contract = React.useMemo(() => {
     try {
       return bridge?.modelCatalog.customCallContract?.() ?? null
@@ -107,6 +179,7 @@ export function CustomCallEditor({
       setAiError('')
       setAiRunning(true)
       const ctrl = new AbortController()
+      const editingModeId = selectedModeId
       abortRef.current = ctrl
       try {
         const brain = await getTextBrain()
@@ -119,6 +192,7 @@ export function CustomCallEditor({
           modelKey: target.modelKey,
           material: material.trim(),
           ...(repair ? { currentScript: script, lastError: repair.lastError } : {}),
+          ...(selectedMode ? { taskKind: selectedMode.taskKind, modeId: selectedMode.id } : {}),
         })
         if (!instruction) return
         let acc = ''
@@ -129,87 +203,109 @@ export function CustomCallEditor({
             signal: ctrl.signal,
             onDelta: (delta) => {
               acc += delta
-              setScript(stripCodeFences(acc))
+              setScriptForMode(editingModeId, stripCodeFences(acc))
             },
           },
         )
         const final = stripCodeFences(acc)
-        if (final) setScript(final)
+        if (final) setScriptForMode(editingModeId, final)
         else setAiError(t('onboardingProviders.customCall.aiEmpty'))
       } catch (e) {
-        if (e instanceof DOMException && e.name === 'AbortError') return
+        if (ctrl.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
         setAiError(e instanceof Error ? e.message : String(e))
       } finally {
         setAiRunning(false)
         abortRef.current = null
       }
     },
-    [target, bridge, aiRunning, material, script, t],
+    [target, bridge, aiRunning, material, script, selectedMode, selectedModeId, setScriptForMode, t],
   )
 
-  const runTest = React.useCallback(async () => {
-    if (!target || !bridge?.modelCatalog.customCallTestRun || test.phase === 'running') return
-    setTest({ phase: 'running' })
-    try {
-      const result = await bridge.modelCatalog.customCallTestRun({
-        vendorKey: target.vendorKey,
-        modelKey: target.modelKey,
-        script,
-      })
-      setTest({ phase: 'done', ...result })
-    } catch (e) {
-      setTest({
-        phase: 'done',
-        ok: false,
-        assets: [],
-        errorMessage: e instanceof Error ? e.message : String(e),
-        transcript: [],
-        durationMs: 0,
-      })
-    }
-  }, [target, bridge, script, test.phase])
-
-  const save = React.useCallback(() => {
+  const persistVendorConfig = React.useCallback(() => {
     if (!target || !bridge) return
+    const vendors = (bridge.modelCatalog.listVendors?.() ?? []) as VendorRow[]
+    const vendor = vendors.find((value) => value.key === target.vendorKey)
+    if (!vendor) return
+    const meta: Record<string, unknown> = { ...(vendor.meta ?? {}) }
+    const config = configRecordFromRows(configRows)
+    if (config) meta.customConfig = config
+    else delete meta.customConfig
+    bridge.modelCatalog.upsertVendor({ ...vendor, meta })
+  }, [target, bridge, configRows])
+
+  const saveTestedScript = React.useCallback(() => {
+    if (!target || !bridge || !testPassed) return
     setSaveError('')
     try {
-      // 自定义配置存 vendor（同供应商所有模型共用），脚本存 model —— 但用户只点一次「保存」，
-      // 就该把这个弹窗里做的一切都存下，不该逼他理解两者存在不同地方。
-      const vendors = (bridge.modelCatalog.listVendors?.() ?? []) as VendorRow[]
-      const vendor = vendors.find((v) => v.key === target.vendorKey)
-      if (vendor) {
-        const meta: Record<string, unknown> = { ...(vendor.meta ?? {}) }
-        const config = configRecordFromRows(configRows)
-        if (config) meta.customConfig = config
-        else delete meta.customConfig // 清空 = 删掉键，别留个 {} 占位
-        bridge.modelCatalog.upsertVendor({ ...vendor, meta })
-      }
       const trimmed = script.trim()
-      bridge.modelCatalog.upsertModel({
-        vendorKey: target.vendorKey,
-        modelKey: target.modelKey,
-        customCall: trimmed ? { script: trimmed } : null,
-      })
+      if (!trimmed) throw new Error(t('onboardingProviders.customCall.directDraft.scriptRequired'))
+      persistVendorConfig()
+      if (target.draft) {
+        const result = bridge.modelCatalog.customCallDraftFinalize?.({
+          vendorKey: target.vendorKey,
+          modelKey: target.modelKey,
+          script: trimmed,
+        })
+        if (!result) throw new Error(t('onboardingProviders.customCall.directDraft.unavailable'))
+        if (!result.ok) throw new Error(result.error)
+      } else {
+        bridge.modelCatalog.upsertModel({
+          vendorKey: target.vendorKey,
+          modelKey: target.modelKey,
+          ...(requiresCapabilitySetup ? { enabled: false } : {}),
+          customCall: customCallScriptPatch(selectedModeId, trimmed),
+        })
+      }
       onSaved()
-      onClose()
+      if (requiresCapabilitySetup && onContinueCapability) onContinueCapability()
+      else onClose()
     } catch (e) {
       setSaveError(
         t('onboardingProviders.customCall.saveFailed', { message: e instanceof Error ? e.message : String(e) }),
       )
     }
-  }, [target, bridge, script, configRows, onSaved, onClose, t])
+  }, [target, bridge, testPassed, script, persistVendorConfig, requiresCapabilitySetup, selectedModeId, onSaved, onContinueCapability, onClose, t])
+
+  const saveDraft = React.useCallback(() => {
+    if (!target?.draft || !bridge) return
+    setSaveError('')
+    try {
+      const trimmed = script.trim()
+      if (!trimmed) throw new Error(t('onboardingProviders.customCall.directDraft.scriptRequired'))
+      persistVendorConfig()
+      bridge.modelCatalog.upsertModel({
+        vendorKey: target.vendorKey,
+        modelKey: target.modelKey,
+        enabled: false,
+        customCall: customCallScriptPatch(selectedModeId, trimmed),
+      })
+      onSaved()
+      onClose()
+    } catch (e) {
+      setSaveError(t('onboardingProviders.customCall.saveFailed', {
+        message: e instanceof Error ? e.message : String(e),
+      }))
+    }
+  }, [target, bridge, script, persistVendorConfig, selectedModeId, onSaved, onClose, t])
 
   const removeScript = React.useCallback(async () => {
     if (!target || !bridge) return
     const ok = await confirmDialog({
       title: t('onboardingProviders.customCall.removeConfirmTitle'),
-      message: t('onboardingProviders.customCall.removeConfirmMessage', { name: target.label }),
-      confirmLabel: t('onboardingProviders.customCall.removeScript'),
+      message: t('onboardingProviders.customCall.removeScopeConfirmMessage', {
+        name: target.label,
+        scope: selectedScopeLabel,
+      }),
+      confirmLabel: t('onboardingProviders.customCall.removeScope', { scope: selectedScopeLabel }),
       danger: true,
     })
     if (!ok) return
     try {
-      bridge.modelCatalog.upsertModel({ vendorKey: target.vendorKey, modelKey: target.modelKey, customCall: null })
+      bridge.modelCatalog.upsertModel({
+        vendorKey: target.vendorKey,
+        modelKey: target.modelKey,
+        customCall: customCallScriptPatch(selectedModeId, ''),
+      })
       onSaved()
       onClose()
     } catch (e) {
@@ -217,13 +313,9 @@ export function CustomCallEditor({
         t('onboardingProviders.customCall.saveFailed', { message: e instanceof Error ? e.message : String(e) }),
       )
     }
-  }, [target, bridge, onSaved, onClose, t])
+  }, [target, bridge, selectedModeId, selectedScopeLabel, onSaved, onClose, t])
 
-  /**
-   * 把「给 AI 的题面」复制到剪贴板，供用户粘给 Codex / Claude / ChatGPT。
-   * **复用 customCallAiInstruction**——内建 AI 用的就是这份指令，题面只有一个真相源；
-   * 另写一份迟早和注入变量表漂移（正是 customCallContract 头注释警告的那类事）。
-   */
+  // 内建 AI 与复制给外部助手共用同一份题面，避免变量契约漂移。
   const copyBrief = React.useCallback(async () => {
     if (!target || !bridge) return
     const lastError = test.phase === 'done' && !test.ok
@@ -235,6 +327,7 @@ export function CustomCallEditor({
       material: material.trim(),
       ...(script.trim() ? { currentScript: script } : {}),
       ...(lastError ? { lastError } : {}),
+      ...(selectedMode ? { taskKind: selectedMode.taskKind, modeId: selectedMode.id } : {}),
     })
     if (!instruction) return
     try {
@@ -243,196 +336,195 @@ export function CustomCallEditor({
     } catch {
       setSaveError(t('onboardingProviders.customCall.saveFailed', { message: 'clipboard' }))
     }
-  }, [target, bridge, material, script, test, t])
+  }, [target, bridge, material, script, selectedMode, test, t])
 
   const insertTemplate = React.useCallback(
     (id: string) => {
       const tpl = contract?.templates.find((item) => item.id === id)
-      if (tpl) setScript(tpl.script)
+      if (tpl) setScriptForMode(selectedModeId, tpl.script)
     },
-    [contract],
+    [contract, selectedModeId, setScriptForMode],
   )
 
-  const varNames = contract?.variables.map((v) => v.name) ?? []
+  const variables = contract?.variables ?? []
+  const varNames = variables.map((variable) => variable.name)
+  const returnContract = t('onboardingProviders.customCall.returnContract', {
+    defaultValue: contract?.returnContract ?? '',
+  })
+  const testBusy = test.phase === 'running' || test.phase === 'cancelling'
+  const dirty = Boolean(target && initialPersistedState.targetKey === targetKey && customCallPersistedStateSignature(scriptDrafts, configRows) !== initialPersistedState.signature)
+  React.useEffect(() => {
+    if (test.phase !== 'done') return
+    window.requestAnimationFrame(() => testResultRef.current?.scrollIntoView({ block: 'nearest' }))
+  }, [test.phase, testOutcome])
 
-  return (
-    <DesignModal
-      opened={target !== null}
-      onClose={onClose}
-      centered
-      size={640}
-      title={
-        <span className="flex items-baseline gap-2">
-          <span className="text-body font-semibold text-nomi-ink">{t('onboardingProviders.customCall.title')}</span>
-          <span className="text-caption text-nomi-ink-60">{target?.label}</span>
+  const requestClose = React.useCallback(async (): Promise<void> => {
+    if (!dirty) {
+      onClose()
+      return
+    }
+    const discard = await confirmDialog({
+      title: t('settings.unsaved.title'),
+      message: t('settings.unsaved.message'),
+      confirmLabel: t('settings.unsaved.discard'),
+      danger: true,
+    })
+    if (discard) onClose()
+  }, [dirty, onClose, t])
+  const title = (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className="shrink-0 whitespace-nowrap text-body font-semibold text-nomi-ink">{t('onboardingProviders.customCall.title')}</span>
+      <span className="min-w-0 truncate text-caption text-nomi-ink-60">{target?.label}</span>
+    </span>
+  )
+
+  const actionBar = target ? (
+    <div className="flex min-h-9 flex-wrap items-center gap-2">
+      {!target.draft && hasSavedScript ? (
+        <DesignButton
+          variant="subtle"
+          className="text-workbench-danger"
+          onClick={() => void removeScript()}
+          leftSection={<IconTrash size={14} stroke={1.8} aria-hidden="true" />}
+        >
+          {t('onboardingProviders.customCall.removeScope', { scope: selectedScopeLabel })}
+        </DesignButton>
+      ) : null}
+      {target.draft && !testPassed && !testBusy ? (
+        <DesignButton variant="light" onClick={saveDraft}>
+          {t('onboardingProviders.customCall.saveDraft')}
+        </DesignButton>
+      ) : null}
+      <DesignButton variant="subtle" onClick={() => { void requestClose() }}>
+        {t('common.cancel')}
+      </DesignButton>
+      <span className="min-w-0 flex-1" />
+      {saveError ? <span className="basis-full text-caption text-workbench-danger sm:basis-auto">{saveError}</span> : null}
+      {test.phase === 'done' ? (
+        <span
+          role="status"
+          className={cn('text-caption font-medium', test.ok ? 'text-workbench-success' : 'text-workbench-danger')}
+        >
+          {t(test.ok
+            ? 'onboardingProviders.customCall.footerTestSuccess'
+            : 'onboardingProviders.customCall.footerTestFailed')}
         </span>
-      }
-      classNames={{ content: 'workbench-shell' }}
-      closeButtonProps={{ 'aria-label': t('onboardingProviders.customCall.closeAria') }}
-    >
-      {target ? (
-        <div className="flex flex-col gap-3">
-          <div className="text-caption text-nomi-ink-60 -mt-1">{t('onboardingProviders.customCall.subtitle')}</div>
+      ) : null}
+      {testPassed ? (
+        <DesignButton
+          variant="filled"
+          onClick={saveTestedScript}
+          leftSection={<IconCheck size={14} stroke={2} aria-hidden="true" />}
+          className="h-9"
+        >
+          {requiresCapabilitySetup
+            ? t('onboardingProviders.customCall.saveAndContinueCapability')
+            : target.draft
+              ? t('onboardingProviders.customCall.saveAndEnable')
+              : t('onboardingProviders.customCall.saveScope', { scope: selectedScopeLabel })}
+        </DesignButton>
+      ) : (
+        <span title={!script.trim() ? t('onboardingProviders.customCall.testNeedsScript') : undefined}>
+          <DesignButton
+            variant="filled"
+            disabled={test.phase === 'cancelling' || (!testBusy && !script.trim())}
+            onClick={() => { void (testBusy ? cancelTest() : runTest()) }}
+            leftSection={testBusy
+              ? <IconPlayerStop size={14} stroke={1.8} aria-hidden="true" />
+              : <IconPlayerPlay size={14} stroke={1.8} aria-hidden="true" />}
+            className={cn('h-9', testBusy && 'bg-workbench-danger hover:bg-workbench-danger')}
+          >
+            {test.phase === 'cancelling'
+              ? t('onboardingProviders.customCall.testStopping')
+              : test.phase === 'running'
+                ? t('onboardingProviders.customCall.testStop')
+                : t('onboardingProviders.customCall.testRun')}
+          </DesignButton>
+        </span>
+      )}
+    </div>
+  ) : null
 
-          {/* ① 贴材料 + AI 生成 */}
-          <div className="flex flex-col gap-1.5">
-            <div className="text-body-sm font-semibold text-nomi-ink">
-              {t('onboardingProviders.customCall.materialLabel')}
-              <span className="ml-1.5 font-normal text-caption text-nomi-ink-40">
-                {t('onboardingProviders.customCall.materialHint')}
-              </span>
-            </div>
-            <textarea
-              rows={3}
-              className={cn(inputCls, 'resize-y font-nomi-mono text-caption leading-relaxed')}
-              placeholder={t('onboardingProviders.customCall.materialPlaceholder')}
-              aria-label={t('onboardingProviders.customCall.materialLabel')}
-              value={material}
-              onChange={(e) => setMaterial(e.currentTarget.value)}
-            />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void runAi()}
-                className={cn(
-                  'inline-flex h-8 items-center gap-1.5 rounded-nomi-sm px-3 text-body-sm font-semibold',
-                  aiRunning
-                    ? 'bg-nomi-ink-05 text-nomi-ink-60'
-                    : 'bg-nomi-ink text-nomi-paper hover:bg-nomi-accent',
-                )}
-              >
-                <IconSparkles size={14} stroke={1.7} />
-                {aiRunning ? t('onboardingProviders.customCall.aiStop') : t('onboardingProviders.customCall.aiGenerate')}
-              </button>
-              {aiError ? <span className="min-w-0 flex-1 text-caption text-workbench-danger">{aiError}</span> : null}
-            </div>
+  const content = target ? (
+        <div data-settings-unsaved={dirty ? 'true' : undefined} className={cn('flex w-full flex-col gap-3', presentation === 'page' && 'min-h-0 flex-1')}>
+          <div className="text-caption text-nomi-ink-60 -mt-1">
+            {t(target.draft ? 'onboardingProviders.customCall.draftSubtitle' : 'onboardingProviders.customCall.subtitle')}
           </div>
 
-          {/*
-            ② 自定义配置。默认**折叠**：绝大多数服务一个密钥就够，空表格摊开只是噪音；
-            已经填过的才展开（open 由 hasCustomConfig 决定）。折叠标题写用途不写功能名——
-            没打开的人也得看懂这里是干嘛的。
-          */}
-          <details open={hasCustomConfig(configRows)} className="flex flex-col gap-1.5">
-            <summary className="cursor-pointer select-none text-body-sm font-semibold text-nomi-ink">
-              {hasCustomConfig(configRows)
-                ? t('onboardingProviders.customCall.configLabelFilled', { count: configRows.filter((r) => r.name.trim()).length })
-                : t('onboardingProviders.customCall.configLabel')}
-            </summary>
-            <div className="mt-1.5 flex flex-col gap-1.5">
-              <div className="text-caption leading-relaxed text-nomi-ink-60">
-                {t('onboardingProviders.customCall.configHint')}
-                <span className="ml-1 text-nomi-ink-40">{t('onboardingProviders.customCall.configScope')}</span>
-              </div>
-              {configRows.map((row, index) => (
-                <div key={index} className="flex items-center gap-1.5">
-                  <input
-                    className={cn(inputCls, 'flex-1 font-nomi-mono text-caption')}
-                    placeholder={t('onboardingProviders.customCall.configNamePlaceholder')}
-                    aria-label={t('onboardingProviders.customCall.configNameAria')}
-                    value={row.name}
-                    onChange={(e) => {
-                      const name = e.currentTarget.value
-                      setConfigRows((rows) => rows.map((r, i) => (i === index ? { ...r, name } : r)))
-                    }}
-                  />
-                  <input
-                    className={cn(inputCls, 'flex-[1.3] font-nomi-mono text-caption')}
-                    placeholder={t('onboardingProviders.customCall.configValuePlaceholder')}
-                    aria-label={t('onboardingProviders.customCall.configValueAria', { name: row.name })}
-                    value={row.value}
-                    onChange={(e) => {
-                      const value = e.currentTarget.value
-                      setConfigRows((rows) => rows.map((r, i) => (i === index ? { ...r, value } : r)))
-                    }}
-                  />
-                  <button
-                    type="button"
-                    aria-label={t('onboardingProviders.customCall.configRemoveAria', { name: row.name })}
-                    onClick={() => setConfigRows((rows) => rows.filter((_, i) => i !== index))}
-                    className="shrink-0 rounded-nomi-sm p-1.5 text-nomi-ink-30 hover:text-workbench-danger"
-                  >
-                    <IconTrash size={14} stroke={1.7} />
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => setConfigRows((rows) => [...rows, { name: '', value: '' }])}
-                className="self-start rounded-full border border-nomi-line px-2.5 py-[3px] text-micro text-nomi-ink-60 hover:border-nomi-ink-20 hover:text-nomi-ink"
-              >
-                <IconPlus size={12} stroke={1.8} className="mr-1 inline align-[-1px]" />
-                {t('onboardingProviders.customCall.configAdd')}
-              </button>
-            </div>
-          </details>
+          <CustomCallScopeSelector
+            modes={scriptModes}
+            selectedModeId={selectedModeId}
+            savedScripts={savedScripts}
+            onSelect={(modeId) => { void selectMode(modeId) }}
+          />
 
-          {/* ③ 脚本 */}
           <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-body-sm font-semibold text-nomi-ink">
                 {t('onboardingProviders.customCall.scriptLabel')}
               </span>
+              {scriptModes.length > 0 ? (
+                <span className="text-micro text-nomi-ink-40">
+                  {t('onboardingProviders.customCall.currentScope', { scope: selectedScopeLabel })}
+                </span>
+              ) : null}
               <span className="min-w-0 flex-1" />
-              <span className="text-micro text-nomi-ink-40">{t('onboardingProviders.customCall.templatesLabel')}</span>
-              {(contract?.templates ?? []).map((tpl) => (
-                <button
-                  key={tpl.id}
-                  type="button"
-                  onClick={() => insertTemplate(tpl.id)}
-                  className="rounded-full border border-nomi-line px-2 py-[2px] text-micro text-nomi-ink-60 hover:border-nomi-ink-20 hover:text-nomi-ink"
-                >
-                  {t(`onboardingProviders.customCall.template.${tpl.id}` as 'onboardingProviders.customCall.template.openaiImage')}
-                </button>
-              ))}
+              <NomiSelect
+                value=""
+                options={(contract?.templates ?? []).map((tpl) => ({
+                  value: tpl.id,
+                  label: t(`onboardingProviders.customCall.template.${tpl.id}` as 'onboardingProviders.customCall.template.openaiImage'),
+                }))}
+                onChange={insertTemplate}
+                ariaLabel={t('onboardingProviders.customCall.templatesMenu')}
+                placeholder={t('onboardingProviders.customCall.templatesMenu')}
+                size="xs"
+              />
             </div>
             <textarea
-              rows={10}
+              rows={presentation === 'page' ? 12 : 10}
               spellCheck={false}
-              className={cn(inputCls, 'resize-y font-nomi-mono text-caption leading-relaxed')}
+              className={cn(
+                inputCls,
+                'resize-y font-nomi-mono text-caption leading-relaxed',
+                presentation === 'page' ? 'min-h-[240px] w-full sm:min-h-[300px] sm:flex-1' : '',
+              )}
               placeholder={t('onboardingProviders.customCall.scriptPlaceholder')}
-              aria-label={t('onboardingProviders.customCall.scriptAria', { name: target.label })}
+              aria-label={t('onboardingProviders.customCall.scriptAriaScope', {
+                name: target.label,
+                scope: selectedScopeLabel,
+              })}
               value={script}
-              onChange={(e) => setScript(e.currentTarget.value)}
+              onChange={(e) => setScriptForMode(selectedModeId, e.currentTarget.value)}
             />
-            <details className="text-caption text-nomi-ink-60">
-              <summary className="cursor-pointer select-none text-micro text-nomi-ink-40">
-                {t('onboardingProviders.customCall.varsLabel')}：{varNames.join(' · ')}
-              </summary>
-              <ul className="mt-1.5 flex flex-col gap-1 pl-1">
-                {varNames.map((name) => (
-                  <li key={name} className="leading-snug">
-                    <code className="rounded-nomi-sm bg-nomi-ink-05 px-1 py-[1px] font-nomi-mono text-micro text-nomi-ink-80">
-                      {name}
-                    </code>{' '}
-                    {t(`onboardingProviders.customCall.vars.${name}` as 'onboardingProviders.customCall.vars.prompt')}
-                  </li>
-                ))}
-              </ul>
-            </details>
+            {presentation !== 'page' ? (
+              <details className="text-caption text-nomi-ink-60">
+                <summary className="cursor-pointer select-none text-micro text-nomi-ink-40">
+                  {t('onboardingProviders.customCall.varsLabel')}：{varNames.join(' · ')}
+                </summary>
+                <ul className="mt-1.5 flex flex-col gap-1 pl-1">
+                  {varNames.map((name) => (
+                    <li key={name} className="leading-snug">
+                      <code className="rounded-nomi-sm bg-nomi-ink-05 px-1 py-[1px] font-nomi-mono text-micro text-nomi-ink-80">
+                        {name}
+                      </code>{' '}
+                      {t(`onboardingProviders.customCall.vars.${name}` as 'onboardingProviders.customCall.vars.prompt')}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
           </div>
 
-          {/* ③ 试跑 */}
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={test.phase === 'running' || !script.trim()}
-                onClick={() => void runTest()}
-                className={cn(
-                  'inline-flex h-8 items-center gap-1.5 rounded-nomi-sm border border-nomi-line px-3 text-body-sm font-semibold text-nomi-ink',
-                  'hover:border-nomi-accent hover:text-nomi-accent disabled:cursor-not-allowed disabled:opacity-50',
-                )}
-              >
-                <IconPlayerPlay size={14} stroke={1.7} />
-                {test.phase === 'running'
-                  ? t('onboardingProviders.customCall.testRunning')
-                  : t('onboardingProviders.customCall.testRun')}
-              </button>
-            </div>
-
+            {testBusy ? (
+              <span role="status" className="text-micro leading-relaxed text-nomi-ink-40">
+                {t('onboardingProviders.customCall.testRunningHint')}
+              </span>
+            ) : null}
             {test.phase === 'done' ? (
               <div
+                ref={testResultRef}
                 className={cn(
                   'flex flex-col gap-2 rounded-nomi-sm border p-2.5',
                   test.ok
@@ -446,7 +538,7 @@ export function CustomCallEditor({
                     test.ok ? 'text-workbench-success' : 'text-workbench-danger',
                   )}
                 >
-                  {test.ok ? <IconCheck size={15} stroke={2} /> : <IconAlertTriangle size={15} stroke={1.8} />}
+                  {test.ok ? <IconCheck size={16} stroke={2} /> : <IconAlertTriangle size={16} stroke={1.8} />}
                   {test.ok
                     ? test.text !== undefined
                       ? t('onboardingProviders.customCall.testTextOk', { seconds: (test.durationMs / 1000).toFixed(1) })
@@ -525,70 +617,166 @@ export function CustomCallEditor({
                 )}
                 {!test.ok ? (
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
+                    <DesignButton
+                      variant="filled"
                       onClick={() => void runAi({ lastError: [test.errorMessage, ...test.transcript.map((e) => e.errorMessage)].filter(Boolean).join('\n') })}
-                      className="inline-flex h-7 items-center gap-1.5 rounded-nomi-sm bg-nomi-ink px-2.5 text-caption font-semibold text-nomi-paper hover:bg-nomi-accent"
+                      leftSection={<IconSparkles size={14} stroke={1.8} aria-hidden="true" />}
                     >
-                      <IconSparkles size={13} stroke={1.7} />
                       {t('onboardingProviders.customCall.aiRepair')}
-                    </button>
+                    </DesignButton>
                     {/*
                       「复制题面」是内建 AI 改不动之后的下一步，不是与它并列的第二个入口
                       （设计系统 §1.5 一功能一个家）。所以：只在失败块里出现、排在 aiRepair 之后、
                       前面加一句引导词把先后关系说出来。
                     */}
                     <span className="text-micro text-nomi-ink-40">{t('onboardingProviders.customCall.copyBriefLead')}</span>
-                    <button
-                      type="button"
+                    <DesignButton
+                      variant="light"
                       onClick={() => void copyBrief()}
-                      className="inline-flex h-7 items-center gap-1.5 rounded-nomi-sm border border-nomi-line px-2.5 text-caption text-nomi-ink-60 hover:border-nomi-accent hover:text-nomi-accent"
+                      leftSection={<IconCopy size={14} stroke={1.8} aria-hidden="true" />}
                     >
-                      <IconCopy size={13} stroke={1.7} />
                       {briefCopied
                         ? t('onboardingProviders.customCall.copyBriefDone')
                         : t('onboardingProviders.customCall.copyBrief')}
-                    </button>
+                    </DesignButton>
                   </div>
                 ) : null}
               </div>
             ) : null}
           </div>
 
-          <div className="text-micro leading-relaxed text-nomi-ink-40">
-            {t('onboardingProviders.customCall.honestNote')}
-            {/* 做不到的明着标（D4）：让人早点掉头，别照着试半天才发现此路不通。 */}
-            <span className="ml-1 text-[color:var(--nomi-warning)]">{t('onboardingProviders.customCall.limitNote')}</span>
-          </div>
-          {saveError ? <div className="text-caption text-workbench-danger">{saveError}</div> : null}
+          <details className="border-t border-nomi-line-soft pt-3">
+            <summary className="cursor-pointer select-none text-caption font-semibold text-nomi-ink-60 hover:text-nomi-ink">
+              {t('onboardingProviders.customCall.aiHelpTitle')}
+              <span className="ml-1.5 font-normal text-nomi-ink-40">{t('onboardingProviders.customCall.aiHelpHint')}</span>
+            </summary>
+            <div className="mt-2 flex flex-col gap-1.5">
+              <DesignTextarea
+                rows={3}
+                autosize={false}
+                className="font-nomi-mono text-caption leading-relaxed"
+                placeholder={t('onboardingProviders.customCall.materialPlaceholder')}
+                aria-label={t('onboardingProviders.customCall.materialLabel')}
+                value={material}
+                onChange={(e) => setMaterial(e.currentTarget.value)}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <DesignButton
+                  variant={aiRunning ? 'light' : 'filled'}
+                  onClick={() => void runAi()}
+                  leftSection={<IconSparkles size={14} stroke={1.8} aria-hidden="true" />}
+                >
+                  {aiRunning ? t('onboardingProviders.customCall.aiStop') : t('onboardingProviders.customCall.aiGenerate')}
+                </DesignButton>
+                {aiError ? <span className="min-w-0 flex-1 text-caption text-workbench-danger">{aiError}</span> : null}
+              </div>
+            </div>
+          </details>
 
-          {/* footer */}
-          <div className="flex items-center gap-3 border-t border-nomi-line-soft pt-3">
-            <button
-              type="button"
-              onClick={save}
-              className="inline-flex h-8 items-center rounded-nomi-sm bg-nomi-ink px-4 text-body-sm font-semibold text-nomi-paper hover:bg-nomi-accent"
-            >
-              {t('onboardingProviders.customCall.save')}
-            </button>
-            <button type="button" onClick={onClose} className="text-caption text-nomi-ink-40 hover:text-nomi-ink-60">
-              {t('common.cancel')}
-            </button>
-            <span className="min-w-0 flex-1" />
-            {target.script ? (
-              <button
-                type="button"
-                onClick={() => void removeScript()}
-                className="text-caption text-workbench-danger hover:underline"
+          {/* 自定义配置仅在已有内容时默认展开。 */}
+          <details
+            open={configOpen}
+            onToggle={(event) => setConfigOpen(event.currentTarget.open)}
+            className="flex flex-col gap-1.5"
+          >
+            <summary className="cursor-pointer select-none text-body-sm font-semibold text-nomi-ink">
+              {hasCustomConfig(configRows)
+                ? t('onboardingProviders.customCall.configLabelFilled', { count: configRows.filter((r) => r.name.trim()).length })
+                : t('onboardingProviders.customCall.configLabel')}
+            </summary>
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              <div className="text-caption leading-relaxed text-nomi-ink-60">
+                {t('onboardingProviders.customCall.configHint')}
+                <span className="ml-1 text-nomi-ink-40">{t('onboardingProviders.customCall.configScope')}</span>
+              </div>
+              {configRows.map((row, index) => (
+                <div key={index} className="flex items-center gap-1.5">
+                  <DesignTextInput
+                    className="min-w-0 flex-1"
+                    classNames={{ input: 'font-nomi-mono text-caption' }}
+                    placeholder={t('onboardingProviders.customCall.configNamePlaceholder')}
+                    aria-label={t('onboardingProviders.customCall.configNameAria')}
+                    value={row.name}
+                    onChange={(e) => {
+                      const name = e.currentTarget.value
+                      setConfigRows((rows) => rows.map((r, i) => (i === index ? { ...r, name } : r)))
+                    }}
+                  />
+                  <DesignTextInput
+                    className="min-w-0 flex-[1.3]"
+                    classNames={{ input: 'font-nomi-mono text-caption' }}
+                    placeholder={t('onboardingProviders.customCall.configValuePlaceholder')}
+                    aria-label={t('onboardingProviders.customCall.configValueAria', { name: row.name })}
+                    value={row.value}
+                    onChange={(e) => {
+                      const value = e.currentTarget.value
+                      setConfigRows((rows) => rows.map((r, i) => (i === index ? { ...r, value } : r)))
+                    }}
+                  />
+                  <IconActionButton
+                    aria-label={t('onboardingProviders.customCall.configRemoveAria', { name: row.name })}
+                    title={t('onboardingProviders.customCall.configRemoveAria', { name: row.name })}
+                    onClick={() => setConfigRows((rows) => rows.filter((_, i) => i !== index))}
+                    className="size-11 shrink-0 text-nomi-ink-30 hover:text-workbench-danger sm:size-8"
+                    icon={<IconTrash size={14} stroke={1.8} aria-hidden="true" />}
+                  />
+                </div>
+              ))}
+              <DesignButton
+                variant="light"
+                onClick={() => setConfigRows((rows) => [...rows, { name: '', value: '' }])}
+                leftSection={<IconPlus size={12} stroke={1.8} aria-hidden="true" />}
+                className="self-start"
               >
-                {t('onboardingProviders.customCall.removeScript')}
-              </button>
-            ) : null}
+                {t('onboardingProviders.customCall.configAdd')}
+              </DesignButton>
+            </div>
+          </details>
+
+          <details className="text-micro leading-relaxed text-nomi-ink-40">
+            <summary className="cursor-pointer select-none">{t('onboardingProviders.customCall.safetyTitle')}</summary>
+            <p className="mt-1.5">
+              {t('onboardingProviders.customCall.honestNote')}
+              <span className="ml-1 text-[color:var(--nomi-warning)]">{t('onboardingProviders.customCall.limitNote')}</span>
+            </p>
+          </details>
+          {presentation !== 'page' ? <div className="border-t border-nomi-line pt-3">{actionBar}</div> : null}
+        </div>
+  ) : (
+    <span />
+  )
+
+  if (presentation === 'page') {
+    return (
+      <ModelSettingsPageSurface
+        page="script"
+        title={title}
+        backLabel={t('common.back')}
+        onBack={() => { void requestClose() }}
+        contentClassName="workbench-shell"
+        footer={actionBar}
+      >
+        <div className="grid min-h-0 w-full grid-cols-1 gap-3 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-4">
+          <CustomCallContractSidebar returnContract={returnContract} variables={variables} />
+          <div data-custom-call-editor-main className="flex min-h-0 min-w-0 flex-col">
+            {content}
           </div>
         </div>
-      ) : (
-        <span />
-      )}
+      </ModelSettingsPageSurface>
+    )
+  }
+
+  return (
+    <DesignModal
+      opened={target !== null}
+      onClose={() => { void requestClose() }}
+      centered
+      size={640}
+      title={title}
+      classNames={{ content: 'workbench-shell' }}
+      closeButtonProps={{ 'aria-label': t('onboardingProviders.customCall.closeAria') }}
+    >
+      {content}
     </DesignModal>
   )
 }

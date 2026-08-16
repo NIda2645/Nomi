@@ -14,9 +14,9 @@ const vendor: Vendor = {
   updatedAt: now,
 };
 const models: Model[] = [
-  { vendorKey: vendor.key, modelKey: "image-v1", labelZh: "Image V1", kind: "image", enabled: false, createdAt: now, updatedAt: now },
-  { vendorKey: vendor.key, modelKey: "video-v1", labelZh: "Video V1", kind: "video", enabled: false, createdAt: now, updatedAt: now },
-  { vendorKey: vendor.key, modelKey: "text-v1", labelZh: "Text V1", kind: "text", enabled: false, createdAt: now, updatedAt: now },
+  { vendorKey: vendor.key, modelKey: "image-v1", labelZh: "Image V1", kind: "image", enabled: false, meta: { adapter: { state: "testing", runId: "run-mapping", modes: [], updatedAt: now } }, createdAt: now, updatedAt: now },
+  { vendorKey: vendor.key, modelKey: "video-v1", labelZh: "Video V1", kind: "video", enabled: false, meta: { adapter: { state: "testing", runId: "run-mapping", modes: [], updatedAt: now } }, createdAt: now, updatedAt: now },
+  { vendorKey: vendor.key, modelKey: "text-v1", labelZh: "Text V1", kind: "text", enabled: false, meta: { adapter: { state: "testing", runId: "run-mapping", modes: [], updatedAt: now } }, createdAt: now, updatedAt: now },
 ];
 
 let catalogMappings: Mapping[] = [];

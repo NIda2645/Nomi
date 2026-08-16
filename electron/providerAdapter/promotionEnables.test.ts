@@ -27,6 +27,7 @@ const model: Model = {
   labelZh: "deepseek-v3.1-250821",
   kind: "text",
   enabled: false,
+  meta: { adapter: { state: "testing", runId: "run-1", modes: [], updatedAt: now } },
   createdAt: now,
   updatedAt: now,
 };

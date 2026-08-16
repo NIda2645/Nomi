@@ -4,6 +4,10 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ModelOption } from '../../../config/models'
+import {
+  parseCustomCapabilityContract,
+  replaceCustomCapabilityContractMeta,
+} from '../../../config/modelArchetypes'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { buildModelControls, defaultPatchForControls, readMeta } from './controls/parameterControlModel'
 import {
@@ -50,9 +54,10 @@ export function useNodeModelAutoSelect({
     const firstOption = chooseDefaultModelOption(modelOptions, isImageLike, isVideoLike)
     if (!firstOption?.value) return
     const defaultPatch = defaultPatchForControls(buildModelControls(firstOption.meta, isImageLike, isVideoLike))
+    const modelMeta = replaceCustomCapabilityContractMeta(node.meta || {}, firstOption.meta)
     updateNode(node.id, {
       meta: {
-        ...(node.meta || {}),
+        ...modelMeta,
         modelKey: firstOption.modelKey || firstOption.value,
         modelAlias: firstOption.modelAlias || firstOption.value,
         modelVendor: firstOption.vendor || null,
@@ -73,10 +78,14 @@ export function useNodeModelAutoSelect({
       readMeta(meta, 'modelVendor') ||
       readMeta(meta, 'vendor') ||
       readMeta(meta, isVideoLike ? 'videoModelVendor' : 'imageModelVendor')
-    if (!optionVendor || currentVendor === optionVendor) return
+    if (!optionVendor) return
+    const contractChanged = JSON.stringify(parseCustomCapabilityContract(node.meta))
+      !== JSON.stringify(parseCustomCapabilityContract(selectedModelOption.meta))
+    if (currentVendor === optionVendor && !contractChanged) return
+    const modelMeta = replaceCustomCapabilityContractMeta(node.meta || {}, selectedModelOption.meta)
     updateNode(node.id, {
       meta: {
-        ...(node.meta || {}),
+        ...modelMeta,
         modelKey: selectedModelOption.modelKey || selectedModelOption.value,
         modelAlias: selectedModelOption.modelAlias || selectedModelOption.value,
         modelVendor: optionVendor,
@@ -143,7 +152,7 @@ export function useNodeModelAutoSelect({
       : null
     updateNode(node.id, {
       meta: {
-        ...(node.meta || {}),
+        ...replaceCustomCapabilityContractMeta(node.meta || {}, target.meta),
         modelKey: target.modelKey || target.value,
         modelAlias: target.modelAlias || target.value,
         modelVendor: optionVendor,

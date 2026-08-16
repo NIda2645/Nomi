@@ -210,4 +210,26 @@ describe("verifyAdapterMode", () => {
     expect(verification).toMatchObject({ ok: false, stage: "verify_asset" });
     expect(verification.error).toMatch(/content type/i);
   });
+
+  it("passes caller cancellation to the active provider request", async () => {
+    const controller = new AbortController();
+    let executeSignal: AbortSignal | undefined;
+    const pending = verifyAdapterMode(
+      { vendor, model, apiKey: "sk-test", mode: mode(), signal: controller.signal },
+      {
+        execute: (input) => {
+          executeSignal = input.signal;
+          return new Promise((resolve, reject) => {
+            input.signal?.addEventListener("abort", () => reject(input.signal?.reason), { once: true });
+            setTimeout(() => resolve({ response: {}, request: {} }), 20);
+          });
+        },
+      },
+    );
+
+    controller.abort(new Error("cancel verify"));
+
+    await expect(pending).resolves.toMatchObject({ ok: false, error: "cancel verify" });
+    expect(executeSignal?.aborted).toBe(true);
+  });
 });

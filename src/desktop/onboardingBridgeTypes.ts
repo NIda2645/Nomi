@@ -20,8 +20,13 @@ export type DesktopProviderAdapterRun = {
   vendorKey: string
   vendorName: string
   selectedModelKeys: string[]
-  stage: 'queued' | 'discovering_docs' | 'compiling' | 'testing' | 'repairing' | 'completed' | 'partial' | 'failed' | 'needs_ai' | 'stale'
+  stage: 'queued' | 'discovering_docs' | 'compiling' | 'testing' | 'repairing' | 'completed' | 'partial' | 'failed' | 'needs_ai' | 'cancelled' | 'timed_out' | 'stale'
   currentModelKey?: string
+  completedCount?: number
+  totalCount?: number
+  lastProgressAt?: string
+  stageStartedAt?: string
+  deadlineAt?: string
   repairAttempt: number
   models: Array<{ modelKey: string; labelZh: string; kind: string; modes: DesktopAdapterModeResult[] }>
   sourceUrls: string[]
@@ -31,9 +36,69 @@ export type DesktopProviderAdapterRun = {
   updatedAt: string
 }
 
+export type DesktopProviderRegistration = {
+  vendorKey: string
+  vendorName: string
+  state: 'configured'
+  selectedModelKeys: string[]
+  models: Array<{
+    modelKey: string
+    labelZh?: string
+    kind: 'text' | 'image' | 'video' | 'audio' | 'model3d'
+    state: 'unverified'
+  }>
+  savedAt: string
+}
+
 type AdapterResponse = Promise<{ ok: boolean; run?: DesktopProviderAdapterRun; error?: string }>
+type AdapterListResponse = Promise<{ ok: boolean; runs?: DesktopProviderAdapterRun[]; error?: string }>
+type AdapterRegistrationResponse = Promise<{
+  ok: boolean
+  registration?: DesktopProviderRegistration
+  error?: string
+}>
+
+export type DesktopExistingConnectionSummary = {
+  vendorKey: string
+  vendorName: string
+  baseUrl: string
+  existingModels: Array<{
+    modelKey: string
+    labelZh: string
+    kind: 'text' | 'image' | 'video' | 'audio' | 'model3d'
+  }>
+}
+
+type ExistingConnectionErrorCode =
+  | 'CONNECTION_NOT_FOUND'
+  | 'BASE_URL_MISSING'
+  | 'CREDENTIAL_MISSING'
+  | 'MODEL_LIST_UNAVAILABLE'
+  | 'NO_NEW_MODELS'
+  | 'NO_MODELS_SELECTED'
+  | 'RUN_NOT_FOUND'
+  | 'RUN_ACTIVE'
+  | 'RUN_MODELS_MISSING'
+  | 'START_FAILED'
+  | 'REGISTER_FAILED'
+
+type ExistingConnectionFailure = {
+  ok: false
+  code: ExistingConnectionErrorCode
+  error: string
+  connection?: DesktopExistingConnectionSummary
+}
 
 export type DesktopOnboardingBridge = {
+  adapterRegister: (payload: {
+    vendorName: string
+    baseUrl: string
+    apiKey: string
+    authType?: 'none' | 'bearer' | 'x-api-key' | 'query'
+    providerKind?: ProviderKind
+    headers?: Record<string, string>
+    models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
+  }) => AdapterRegistrationResponse
   adapterStart: (payload: {
     vendorName: string
     baseUrl: string
@@ -45,6 +110,27 @@ export type DesktopOnboardingBridge = {
   }) => AdapterResponse
   adapterGet: (payload: { runId: string }) => AdapterResponse
   adapterLatest: (payload: { vendorKey: string }) => AdapterResponse
+  adapterCancel: (payload: { runId: string }) => AdapterResponse
+  adapterList: (payload?: { vendorKey?: string; activeOnly?: boolean; limit?: number }) => AdapterListResponse
+  existingConnectionListModels: (payload: { vendorKey: string }) => Promise<
+    | { ok: true; connection: DesktopExistingConnectionSummary; models: string[] }
+    | ExistingConnectionFailure
+  >
+  adapterRegisterExisting: (payload: {
+    vendorKey: string
+    models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
+  }) => Promise<{ ok: true; registration: DesktopProviderRegistration } | ExistingConnectionFailure>
+  adapterStartExisting: (payload: {
+    vendorKey: string
+    models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
+  }) => Promise<{ ok: true; run: DesktopProviderAdapterRun } | ExistingConnectionFailure>
+  adapterAdaptExisting: (payload: {
+    vendorKey: string
+    models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
+  }) => Promise<{ ok: true; run: DesktopProviderAdapterRun } | ExistingConnectionFailure>
+  adapterRetry: (payload: { runId: string; modelKey?: string }) => Promise<
+    { ok: true; run: DesktopProviderAdapterRun } | ExistingConnectionFailure
+  >
   manualCommit: (payload: {
     vendorName: string
     baseUrl: string
