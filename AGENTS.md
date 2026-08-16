@@ -14,7 +14,7 @@ Nomi：本地优先 AI 视频创作工作台。
 **技术栈**：Electron + React 18 + Tailwind 3 + Zustand + Vercel AI SDK。
 **主要模块**：项目库 → 创作（文本）→ 生成画布（节点系统）→ 时间轴预览 → 导出 MP4。
 **设计系统**：`Design.md` + `src/design/`，token-only，光/暗双模式（默认按本地时间「天黑自动暗」·手动切一次后记住·token 翻转），密度优先。
-**工作树**：`/Users/aoqimin/Desktop/Nomi/`，分支 `main`，直接在 main 上 commit + push。
+**主仓库**：`/Users/aoqimin/Desktop/Nomi/`。所有改动从最新 `origin/main` 创建独立任务分支/worktree，通过 PR 交付；禁止直接 push `main`。
 
 ## 常用命令
 
@@ -110,8 +110,8 @@ Nomi：本地优先 AI 视频创作工作台。
 
 ## 工作目录
 
-主工作树：`/Users/aoqimin/Desktop/Nomi/`，分支 `main`。操作文件用绝对路径；新建 worktree 放仓库目录**同级**（非嵌套）。
+主仓库：`/Users/aoqimin/Desktop/Nomi/`。操作文件用绝对路径；新建 worktree 放仓库目录**同级**（非嵌套），分支从最新 `origin/main` 创建。
 
-**并行纪律（这台机器常 20+ worktree 同时改 main：当前分支会被从底下切走、文件会被并行整份 clobber、commit 会被 force-push 顶掉）**：① 动任何 git **第一步 `git branch --show-current`**——别假设自己在 main（栽过：以为 main 实为并行切过去的 pr-27，commit 落错分支）；② 要把自己的活落 main，**别在被狂改的共享树上 commit/切分支/reset**——开一条独立 sibling worktree 钉 `origin/main`（`git worktree add --detach ../Nomi-x origin/main` → cherry-pick 自己的改动 → `ln -s` 复用主仓 node_modules 跑 `pnpm run gates` → `git push origin HEAD:main` → `git worktree remove`），五门只评自己的干净基线、不被别人的巨壳/半成品连坐；③ e2e/测试用的 window 桥等 hook 放**低争用子系统文件**，别放 store 根/热门入口（会被并行覆盖）。详见记忆 `parallel-session-on-main-hazard`。
+**并行纪律（这台机器常有 20+ worktree）**：① 动任何 git 第一步 `git branch --show-current`；② 不在共享主仓里切分支、commit 或解决任务冲突，使用独立 sibling worktree；③ push 前 fetch 最新 `origin/main` 并在任务分支上整合，完整门禁通过后只 push 任务分支并创建 PR；④ 不 force-push `main`，不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
 
 ---

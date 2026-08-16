@@ -84,6 +84,8 @@ for (const html of [zh, en]) {
   expect(html.includes('autoplay') && html.includes('muted') && html.includes('playsinline'), 'silent hero attributes')
   expect(html.includes('<dialog') && html.includes('<track kind="captions"'), 'film dialog and captions')
   expect(html.includes('business_inquiry.yml'), 'business CTA destination')
+  expect(html.includes("params.get('download') === '1'"), 'one-shot website download intent is embedded')
+  expect(html.includes("for (const key of ['download', 'source', 'platform', 'arch'])"), 'one-shot download parameters are cleared')
 }
 for (const rel of files) expect(fs.existsSync(path.join(root, rel)), `${rel} exists`)
 expect(

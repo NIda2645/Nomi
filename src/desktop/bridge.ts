@@ -118,7 +118,13 @@ export type DesktopExportTempInputWriteResult = {
 export type { ExportJobEvent, ExportJobSnapshot }
 
 /** 应用信息（功能需求1 查看版本号）。canAutoInstall：未签名 mac 无法就地装，走手动下载兜底（真相源在主进程）。 */
-export type DesktopAppInfo = { version: string; platform: string; arch: string; canAutoInstall: boolean }
+export type DesktopAppInfo = {
+  version: string
+  platform: string
+  arch: string
+  canAutoInstall: boolean
+  canCheckUpdates: boolean
+}
 
 export type DesktopBrowserViewBounds = {
   x: number
@@ -600,8 +606,8 @@ export type DesktopBridge = DesktopMediaBridge & {
     check: () => Promise<{ ok: boolean; reason?: string }>
     download: () => Promise<{ ok: boolean }>
     install: () => Promise<{ ok: boolean }>
-    /** 手动更新兜底：开浏览器到 GitHub 最新 release（未签名 mac 无法就地装时用）。 */
-    openRelease: () => Promise<{ ok: boolean }>
+    /** 手动更新兜底：开官网并按主进程提供的平台/架构直接下载安装包。 */
+    openDownload: () => Promise<{ ok: boolean }>
     onEvent: (callback: (event: DesktopUpdateEvent) => void) => () => void
   }
   /**

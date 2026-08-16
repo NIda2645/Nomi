@@ -1,105 +1,73 @@
 name: Desktop Release
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
   workflow_dispatch:
     inputs:
+      rc_run_id:
+        description: Successful Desktop Release Candidate workflow run ID
+        required: true
       tag:
-        description: 'Version tag (e.g. v1.0.0)'
+        description: Stable tag, for example v0.20.0
         required: true
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
-  build-mac-arm64:
-    name: Build macOS (Apple Silicon)
-    runs-on: macos-14
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.8.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm run build
-      - name: Package (macOS arm64)
-        run: pnpm exec electron-builder --mac --arm64
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # NOTE: Mac Intel (x64) is intentionally NOT a separate job.
-  # `mac.target` in package.json lists both arm64 and x64, and the arm64 runner
-  # cross-builds the x64 DMG in the same `electron-builder --mac --arm64` step.
-  # On v0.1.3 the dedicated macos-13 Intel job stalled in the runner queue for
-  # 30+ min while the arm64 job had already published both arches. Keeping a
-  # standalone Intel job just blocks publish-aliases for no benefit.
-  # If pure-x64 builds are ever needed (e.g. signing differences), reintroduce
-  # the job and split mac.target between the two configs.
-
-  build-win:
-    name: Build Windows
-    runs-on: windows-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.8.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm run build
-      - name: Package (Windows)
-        run: pnpm exec electron-builder --win --x64
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-aliases:
-    name: Publish stable-name aliases
-    needs: [build-mac-arm64, build-win]
+  promote:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    environment: production-release
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Determine tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-      - name: Download and re-upload with stable names
+      - name: Require a successful RC workflow run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.tag.outputs.tag }}
+        shell: bash
         run: |
-          gh release download "$TAG" --pattern "*.dmg" --pattern "*.exe" --dir ./artifacts
-          ls artifacts/
-          # Rename to stable names
-          for f in artifacts/*arm64*.dmg; do cp "$f" artifacts/Nomi-mac-arm64.dmg 2>/dev/null || true; done
-          for f in artifacts/*x64*.dmg; do cp "$f" artifacts/Nomi-mac-intel.dmg 2>/dev/null || true; done
-          for f in artifacts/*.exe; do cp "$f" artifacts/Nomi-windows-setup.exe 2>/dev/null || true; done
-          # Upload stable-name aliases
-          gh release upload "$TAG" artifacts/Nomi-mac-arm64.dmg --clobber 2>/dev/null || true
-          gh release upload "$TAG" artifacts/Nomi-mac-intel.dmg --clobber 2>/dev/null || true
-          gh release upload "$TAG" artifacts/Nomi-windows-setup.exe --clobber 2>/dev/null || true
+          test "$(gh run view "${{ inputs.rc_run_id }}" --repo "${{ github.repository }}" --json conclusion --jq .conclusion)" = "success"
+          test "$(gh run view "${{ inputs.rc_run_id }}" --repo "${{ github.repository }}" --json workflowName --jq .workflowName)" = "Desktop Release Candidate"
+      - name: Download the approved RC artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh run download "${{ inputs.rc_run_id }}" --repo "${{ github.repository }}" --dir artifacts
+      - name: Validate RC manifest
+        id: manifest
+        shell: bash
+        run: |
+          sha=$(node scripts/release-contract.mjs validate-manifest --manifest artifacts/rc-metadata/release-manifest.json --repository "${{ github.repository }}" --tag "${{ inputs.tag }}" --run-id "${{ inputs.rc_run_id }}")
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require the RC commit on main
+        shell: bash
+        run: |
+          git fetch origin main --tags
+          git merge-base --is-ancestor "${{ steps.manifest.outputs.sha }}" origin/main
+      - name: Verify source version
+        run: |
+          git checkout --detach "${{ steps.manifest.outputs.sha }}"
+          node scripts/release-contract.mjs validate-version --root . --version "${{ inputs.tag }}"
+      - name: Prepare and checksum public assets
+        run: node scripts/release-contract.mjs prepare-assets --input artifacts --output publish
+      - name: Create immutable tag
+        shell: bash
+        run: |
+          if git rev-parse "refs/tags/${{ inputs.tag }}" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "${{ inputs.tag }}")" = "${{ steps.manifest.outputs.sha }}"
+          else
+            git tag -a "${{ inputs.tag }}" "${{ steps.manifest.outputs.sha }}" -m "Nomi ${{ inputs.tag }}"
+            git push origin "${{ inputs.tag }}"
+          fi
+      - name: Publish the exact RC artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          gh release create "${{ inputs.tag }}" publish/*
+          --repo "${{ github.repository }}"
+          --verify-tag
+          --title "Nomi ${{ inputs.tag }}"
+          --generate-notes

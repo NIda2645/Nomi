@@ -4,10 +4,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
-  app: { getPath: () => os.tmpdir(), getAppPath: () => process.cwd() },
+  app: { getPath: () => os.tmpdir(), getAppPath: () => process.cwd(), getName: () => "Nomi" },
 }));
 
-import { getProjectLocationState, getProjectsRoot, readJson, readText } from "./runtimePaths";
+import { defaultProjectsFolderName, getProjectLocationState, getProjectsRoot, readJson, readText } from "./runtimePaths";
 import { writeProjectsRoot } from "./settings/projectLocationSettings";
 
 const tempRoots: string[] = [];
@@ -72,5 +72,13 @@ describe("getProjectsRoot", () => {
     const defaultRoot = path.join(os.tmpdir(), "Nomi Projects");
     expect(getProjectLocationState()).toEqual({ path: defaultRoot, source: "default" });
     expect(getProjectsRoot()).toBe(defaultRoot);
+  });
+});
+
+describe("defaultProjectsFolderName", () => {
+  it("keeps the stable folder and isolates side-by-side preview builds", () => {
+    expect(defaultProjectsFolderName("Nomi")).toBe("Nomi Projects");
+    expect(defaultProjectsFolderName("nomi")).toBe("Nomi Projects");
+    expect(defaultProjectsFolderName("Nomi Preview")).toBe("Nomi Preview Projects");
   });
 });
