@@ -21,10 +21,14 @@ const projectRoot = path.join(projectsDir, `clip-node-editing-${projectId}`)
 const generatedAssetsDir = path.join(projectRoot, 'assets', 'generated')
 const screenshots = {
   compact: path.join(os.tmpdir(), 'nomi-clip-node-compact.png'),
+  isolatedDrag: path.join(os.tmpdir(), 'nomi-clip-node-isolated-drag.png'),
+  isolatedSnap: path.join(os.tmpdir(), 'nomi-clip-node-isolated-snap.png'),
   preview: path.join(os.tmpdir(), 'nomi-clip-node-preview.png'),
   exportMenu: path.join(os.tmpdir(), 'nomi-clip-node-export-menu.png'),
   outputs: path.join(os.tmpdir(), 'nomi-clip-node-outputs.png'),
   imported: path.join(os.tmpdir(), 'nomi-clip-node-imported-video.png'),
+  videoResize: path.join(os.tmpdir(), 'nomi-clip-node-imported-video-resize.png'),
+  imageResize: path.join(os.tmpdir(), 'nomi-clip-node-imported-image-resize.png'),
 }
 fs.mkdirSync(path.join(projectRoot, '.nomi'), { recursive: true })
 fs.mkdirSync(generatedAssetsDir, { recursive: true })
@@ -64,11 +68,23 @@ const clipNode = {
   position: { x: 450, y: 300 }, exactPosition: true, size: { width: 760, height: 140 }, status: 'idle',
   meta: { clip: { nodeRole: 'clip', sourceNodeIds: seedClips.map((clip) => clip.id), clips: seedClips } },
 }
+const isolatedClip = {
+  id: 'canvas-isolated-clip', kind: 'clip', categoryId: 'shots', title: '单素材剪辑',
+  position: { x: 450, y: 520 }, exactPosition: true, size: { width: 760, height: 140 }, status: 'idle',
+  meta: {
+    clip: {
+      nodeRole: 'clip',
+      sourceNodeIds: ['isolated-image'],
+      clips: [{ ...seedClips[0], id: 'isolated-image', label: '单素材' }],
+    },
+  },
+}
 const generationCanvas = {
-  nodes: [imageNode, videoNode, clipNode],
+  nodes: [imageNode, videoNode, clipNode, isolatedClip],
   edges: [
     { id: 'edge-image-clip', source: imageNode.id, target: clipNode.id, mode: 'reference', order: 0 },
     { id: 'edge-video-clip', source: videoNode.id, target: clipNode.id, mode: 'reference', order: 1 },
+    { id: 'edge-image-isolated-clip', source: imageNode.id, target: isolatedClip.id, mode: 'reference', order: 0 },
   ],
   selectedNodeIds: [], groups: [], canvasZoom: 1, canvasPan: { x: 0, y: 0 },
 }
@@ -106,7 +122,7 @@ async function openCanvas() {
     else await projectCard.dblclick()
   }
   await win.getByRole('button', { name: '生成', exact: true }).first().click().catch(() => {})
-  const node = win.locator('[data-clip-node="true"]')
+  const node = win.locator('[data-clip-node="true"][data-node-id="canvas-clip-editor"]')
   await node.waitFor({ state: 'visible', timeout: 8000 })
   await node.click({ position: { x: 20, y: 20 } })
   return node
@@ -114,7 +130,8 @@ async function openCanvas() {
 
 async function runExport(scope, destination, expectedToast) {
   const menu = win.getByTestId('clip-node-export-menu')
-  if (!(await menu.isVisible().catch(() => false))) await win.getByTestId('clip-node-export').click()
+  const mainClipNode = win.locator('[data-clip-node="true"][data-node-id="canvas-clip-editor"]')
+  if (!(await menu.isVisible().catch(() => false))) await mainClipNode.getByTestId('clip-node-export').click()
   await menu.getByRole('radio', { name: scope }).click()
   await menu.getByRole('button', { name: destination, exact: true }).click()
   await win.getByText(expectedToast, { exact: false }).waitFor({ state: 'visible', timeout: 120_000 })
@@ -125,8 +142,144 @@ async function closeApp() {
   fs.rmSync(root, { recursive: true, force: true })
 }
 
+function persistedClipStart(clipId) {
+  for (const projectFile of [path.join(projectRoot, '.nomi', 'project.json'), path.join(projectRoot, 'project.json')]) {
+    const persisted = JSON.parse(fs.readFileSync(projectFile, 'utf8'))
+    const canvas = persisted.payload?.generationCanvas ?? persisted.generationCanvas
+    const node = canvas?.nodes?.find((candidate) => candidate.id === isolatedClip.id)
+    const source = node?.meta?.clip?.clips?.find((candidate) => candidate.id === clipId)
+    if (source) return source.timelineStartFrame ?? 0
+  }
+  return null
+}
+
+async function waitForPersistedClipStart(clipId, expected) {
+  const deadline = Date.now() + 8000
+  while (Date.now() < deadline) {
+    const startFrame = persistedClipStart(clipId)
+    if (startFrame === expected) return startFrame
+    await win.waitForTimeout(200)
+  }
+  return persistedClipStart(clipId)
+}
+
+async function dragClipEnd(material, deltaX, screenshotPath) {
+  const before = await material.boundingBox()
+  const beforeEndFrame = Number(await material.getAttribute('data-persisted-end-frame'))
+  const handle = material.getByRole('button', { name: '调整片段出点', exact: true })
+  const clipId = await material.getAttribute('data-clip-id')
+  if (!before || !clipId) throw new Error('找不到片段出点把手')
+  let started = false
+  for (let attempt = 0; attempt < 3 && !started; attempt += 1) {
+    if (await material.getAttribute('data-selected') !== 'true') {
+      await material.click({ position: { x: before.width / 2, y: before.height / 2 } })
+    }
+    await handle.scrollIntoViewIfNeeded()
+    await handle.hover()
+    const handleBox = await handle.boundingBox()
+    if (!handleBox) throw new Error('找不到片段出点把手')
+    const startX = handleBox.x + handleBox.width / 2
+    const startY = handleBox.y + handleBox.height / 2
+    await win.mouse.down()
+    await win.mouse.move(startX + deltaX, startY, { steps: 12 })
+    started = await win.waitForFunction((id) => document.querySelector(`[data-clip-id="${id}"]`)?.getAttribute('data-resizing') === 'right', clipId, { timeout: 2500 })
+      .then(() => true)
+      .catch(() => false)
+    if (!started) {
+      await win.mouse.up()
+      await win.waitForTimeout(100)
+    }
+  }
+  if (!started) throw new Error(`片段出点拖动未启动：${clipId}`)
+  const preview = await material.boundingBox()
+  if (screenshotPath) await win.screenshot({ path: screenshotPath })
+  const limited = await material.getAttribute('data-resize-limited') === 'true'
+  await win.mouse.up()
+  await win.waitForTimeout(300)
+  return {
+    before,
+    preview,
+    after: await material.boundingBox(),
+    beforeEndFrame,
+    afterEndFrame: Number(await material.getAttribute('data-persisted-end-frame')),
+    limited,
+  }
+}
+
 try {
   const clip = await openCanvas()
+  const isolatedNode = win.locator('[data-clip-node="true"][data-node-id="canvas-isolated-clip"]')
+  await isolatedNode.waitFor({ state: 'visible', timeout: 8000 })
+  await isolatedNode.click({ position: { x: 20, y: 20 } })
+  const isolatedMaterial = isolatedNode.locator('[data-clip-id="clip-isolated-image"]')
+  const isolatedLane = isolatedNode.getByTestId('clip-node-media-lane')
+  const isolatedBefore = await isolatedMaterial.boundingBox()
+  const isolatedPlayheadBefore = await isolatedNode.getByTestId('clip-node-playhead').boundingBox()
+  if (!isolatedBefore) throw new Error('找不到单素材剪辑片段')
+  await win.mouse.move(isolatedBefore.x + isolatedBefore.width / 2, isolatedBefore.y + isolatedBefore.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(isolatedBefore.x + isolatedBefore.width / 2 + 120, isolatedBefore.y + isolatedBefore.height / 2, { steps: 10 })
+  await win.waitForFunction(() => document.querySelector('[data-clip-id="clip-isolated-image"]')?.getAttribute('data-dragging') === 'true')
+  await win.screenshot({ path: screenshots.isolatedDrag })
+  await win.mouse.up()
+  await win.waitForTimeout(300)
+  const isolatedAfter = await isolatedMaterial.boundingBox()
+  const isolatedStartAfterDrag = Number(await isolatedMaterial.getAttribute('data-persisted-start-frame'))
+  const isolatedPlayheadAfter = await isolatedNode.getByTestId('clip-node-playhead').boundingBox()
+  const isolatedClipDrag = Boolean(isolatedAfter && isolatedAfter.x > isolatedBefore.x + 80 && isolatedStartAfterDrag > 0)
+  const isolatedClipSelected = await isolatedMaterial.getAttribute('data-selected') === 'true'
+  const isolatedClipActionsEnabled = await isolatedNode.getByTestId('clip-node-duplicate').isEnabled()
+    && await isolatedNode.getByTestId('clip-node-remove').isEnabled()
+  const dragDoesNotMovePlayhead = Boolean(
+    isolatedPlayheadBefore
+    && isolatedPlayheadAfter
+    && Math.abs(isolatedPlayheadAfter.x - isolatedPlayheadBefore.x) < 1,
+  )
+
+  const persistedStartOnDisk = await waitForPersistedClipStart('isolated-image', isolatedStartAfterDrag)
+  const isolatedDragPersists = persistedStartOnDisk === isolatedStartAfterDrag && persistedStartOnDisk > 0
+
+  const beforeSnap = await isolatedMaterial.boundingBox()
+  const laneBox = await isolatedLane.boundingBox()
+  if (!beforeSnap || !laneBox) throw new Error('找不到单素材吸附测试区域')
+  await win.mouse.move(beforeSnap.x + beforeSnap.width / 2, beforeSnap.y + beforeSnap.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(laneBox.x + beforeSnap.width / 2 + 3, beforeSnap.y + beforeSnap.height / 2, { steps: 10 })
+  const snapGuide = win.getByTestId('clip-node-snap-guide')
+  await snapGuide.waitFor({ state: 'attached' })
+  const originSnapGuideVisible = await snapGuide.locator('span').last().evaluate((label) => {
+    const rect = label.getBoundingClientRect()
+    return rect.width > 0 && rect.height > 0 && getComputedStyle(label).visibility !== 'hidden'
+  })
+  await win.screenshot({ path: screenshots.isolatedSnap })
+  await win.mouse.up()
+  await win.waitForTimeout(250)
+  const isolatedSnapsToOrigin = Number(await isolatedMaterial.getAttribute('data-persisted-start-frame')) === 0
+
+  const beforeCancel = await isolatedMaterial.boundingBox()
+  if (!beforeCancel) throw new Error('找不到单素材取消测试片段')
+  await win.mouse.move(beforeCancel.x + beforeCancel.width / 2, beforeCancel.y + beforeCancel.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(beforeCancel.x + beforeCancel.width / 2 + 90, beforeCancel.y + beforeCancel.height / 2, { steps: 8 })
+  await win.keyboard.press('Escape')
+  await win.mouse.up()
+  await win.waitForTimeout(200)
+  const cancelLeavesNoMutation = Number(await isolatedMaterial.getAttribute('data-persisted-start-frame')) === 0
+
+  const undoOrigin = await isolatedMaterial.boundingBox()
+  if (!undoOrigin) throw new Error('找不到单素材撤销测试片段')
+  await win.mouse.move(undoOrigin.x + undoOrigin.width / 2, undoOrigin.y + undoOrigin.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(undoOrigin.x + undoOrigin.width / 2 + 90, undoOrigin.y + undoOrigin.height / 2, { steps: 8 })
+  await win.mouse.up()
+  await win.waitForTimeout(200)
+  const undoMovedStart = Number(await isolatedMaterial.getAttribute('data-persisted-start-frame'))
+  await win.keyboard.press('Control+z')
+  await win.waitForTimeout(250)
+  const oneDragOneUndo = undoMovedStart > 0
+    && Number(await isolatedMaterial.getAttribute('data-persisted-start-frame')) === 0
+
+  await clip.click({ position: { x: 20, y: 20 } })
   const clips = clip.getByTestId('clip-node-clip')
   await win.waitForFunction(() => {
     const video = document.querySelector('[data-node-preview-video="true"]')
@@ -223,7 +376,11 @@ try {
   )
   const seek = preview.locator('input[type="range"]')
   const clickPositionsGlobalPlayhead = Number(await seek.inputValue()) > 0
-  const noDuplicateEditingButtons = (await win.getByRole('button', { name: /分割片段|复制片段|移除片段/ }).count()) === 0
+  const clipActions = clip.getByTestId('clip-node-actions')
+  const clipActionsDiscoverable = (await clipActions.getByRole('button').count()) === 3
+    && await clip.getByTestId('clip-node-split').isEnabled()
+    && await clip.getByTestId('clip-node-duplicate').isEnabled()
+    && await clip.getByTestId('clip-node-remove').isEnabled()
   const previewStartsMuted = await preview.evaluate((element) => (
     element.getAttribute('data-muted') === 'true' && element.querySelector('video')?.muted === true
   ))
@@ -243,7 +400,7 @@ try {
   await preview.getByRole('button', { name: '暂停预览' }).click().catch(() => {})
   await win.screenshot({ path: screenshots.preview })
 
-  await win.getByTestId('clip-node-export').click()
+  await clip.getByTestId('clip-node-export').click()
   const exportMenu = win.getByTestId('clip-node-export-menu')
   await exportMenu.waitFor({ state: 'visible' })
   const exportMenuBox = await exportMenu.boundingBox()
@@ -319,6 +476,18 @@ try {
   await win.waitForTimeout(250)
   const keyboardRedo = (await clips.count()) === beforeSplit + 1
 
+  const toolbarTarget = clip.locator('[data-clip-id="clip-video-b"]')
+  const toolbarTargetBox = await toolbarTarget.boundingBox()
+  if (!toolbarTargetBox) throw new Error('找不到图标操作目标片段')
+  await toolbarTarget.click({ position: { x: toolbarTargetBox.width * 0.5, y: toolbarTargetBox.height / 2 } })
+  const beforeToolbarActions = await clips.count()
+  await clip.getByTestId('clip-node-split').click()
+  const toolbarSplit = (await clips.count()) === beforeToolbarActions + 1
+  await clip.getByTestId('clip-node-duplicate').click()
+  const toolbarDuplicate = (await clips.count()) === beforeToolbarActions + 2
+  await clip.getByTestId('clip-node-remove').click()
+  const toolbarRemove = (await clips.count()) === beforeToolbarActions + 1
+
   const movable = clip.locator('[data-clip-id="clip-video-d"]')
   await movable.scrollIntoViewIfNeeded()
   const movableId = await movable.getAttribute('data-clip-id')
@@ -338,7 +507,7 @@ try {
   await win.waitForTimeout(200)
   const nudgedBox = await moved.boundingBox()
   const keyboardNudge = Boolean(nudgedBox && nudgedBox.x > nudgeBefore + 2)
-  const trimHandle = win.getByRole('button', { name: '调整片段出点', exact: true })
+  const trimHandle = moved.getByRole('button', { name: '调整片段出点', exact: true })
   const trimBefore = await moved.boundingBox()
   const handleBox = await trimHandle.boundingBox()
   if (!trimBefore || !handleBox) throw new Error('找不到片段裁剪把手')
@@ -354,15 +523,103 @@ try {
   await clip.getByRole('button', { name: '添加素材', exact: true }).click()
   await win.getByTestId('asset-picker').waitFor({ state: 'visible' })
   await win.locator('input[type="file"]').last().setInputFiles(importedVideoPath)
-  await win.waitForFunction((count) => document.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 1, beforeImport, { timeout: 30_000 })
-  const realImport = (await clips.count()) === beforeImport + 1 && (await win.getByRole('alert').count()) === 0
+  await win.waitForFunction((count) => (
+    document.querySelector('[data-clip-node="true"][data-node-id="canvas-clip-editor"]')
+      ?.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 1
+  ), beforeImport, { timeout: 30_000 })
+  const realImport = (await clips.count()) === beforeImport + 1 && (await win.locator('[role="alert"]:visible').count()) === 0
   const importedClip = clips.last()
   await importedClip.scrollIntoViewIfNeeded()
   const importedClipBox = await importedClip.boundingBox()
   const importUsesRealDuration = Boolean(importedClipBox && importedClipBox.width >= 220)
   await win.screenshot({ path: screenshots.imported })
 
+  const canvasZoom = win.getByRole('slider', { name: '缩放比例' }).first()
+  await canvasZoom.evaluate((element) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    setter?.call(element, '50')
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await win.waitForTimeout(500)
+  const resizeAtHalfZoom = Number(await canvasZoom.inputValue()) === 50
+
+  await importedClip.scrollIntoViewIfNeeded()
+  const videoShrink = await dragClipEnd(importedClip, -60, screenshots.videoResize)
+  const videoResizeFollowsPointer = Boolean(
+    videoShrink.preview
+    && videoShrink.before.width - videoShrink.preview.width >= 48,
+  )
+  const videoShrinkPersists = Boolean(
+    videoShrink.after
+    && videoShrink.beforeEndFrame > videoShrink.afterEndFrame
+    && videoShrink.before.width - videoShrink.after.width >= 48,
+  )
+  const videoRestore = await dragClipEnd(importedClip, 90)
+  const videoExtendsBackToSource = Boolean(
+    videoRestore.after
+    && videoRestore.afterEndFrame === videoShrink.beforeEndFrame
+    && Math.abs(videoRestore.after.width - videoShrink.before.width) <= 3,
+  )
+  const videoSourceLimitFeedback = videoRestore.limited
+
+  const beforeImageImport = await clips.count()
+  await clip.getByRole('button', { name: '添加素材', exact: true }).click()
+  await win.getByTestId('asset-picker').waitFor({ state: 'visible' })
+  await win.locator('input[type="file"]').last().setInputFiles(path.join(repoRoot, 'tests/ux/fixtures/test-upload.png'))
+  await win.waitForFunction((count) => (
+    document.querySelector('[data-clip-node="true"][data-node-id="canvas-clip-editor"]')
+      ?.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 1
+  ), beforeImageImport, { timeout: 30_000 })
+  const importedImage = clips.last()
+  await importedImage.scrollIntoViewIfNeeded()
+  const realImageImport = (await clips.count()) === beforeImageImport + 1
+    && (await win.locator('[role="alert"]:visible').count()) === 0
+  const imageExtend = await dragClipEnd(importedImage, 30, screenshots.imageResize)
+  const imageExtensionFollowsPointer = Boolean(
+    imageExtend.preview
+    && imageExtend.preview.width - imageExtend.before.width >= 22,
+  )
+  const imageExtensionPersists = Boolean(
+    imageExtend.after
+    && imageExtend.afterEndFrame > imageExtend.beforeEndFrame
+    && imageExtend.after.width - imageExtend.before.width >= 22,
+  )
+  const imageShrink = await dragClipEnd(importedImage, -20)
+  const imageCanShrink = Boolean(
+    imageShrink.after
+    && imageShrink.afterEndFrame < imageShrink.beforeEndFrame
+    && imageShrink.before.width - imageShrink.after.width >= 13,
+  )
+  await win.keyboard.press('Control+z')
+  await win.waitForTimeout(250)
+  const resizeOneUndo = Number(await importedImage.getAttribute('data-persisted-end-frame')) === imageShrink.beforeEndFrame
+  await win.keyboard.press('Control+Shift+z')
+  await win.waitForTimeout(250)
+
+  const resizeCancelBefore = Number(await importedImage.getAttribute('data-persisted-end-frame'))
+  const cancelHandle = importedImage.getByRole('button', { name: '调整片段出点', exact: true })
+  const cancelHandleBox = await cancelHandle.boundingBox()
+  if (!cancelHandleBox) throw new Error('找不到取消伸缩测试的出点把手')
+  await win.mouse.move(cancelHandleBox.x + cancelHandleBox.width / 2, cancelHandleBox.y + cancelHandleBox.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(cancelHandleBox.x + cancelHandleBox.width / 2 + 24, cancelHandleBox.y + cancelHandleBox.height / 2, { steps: 8 })
+  await win.waitForFunction((clipId) => document.querySelector(`[data-clip-id="${clipId}"]`)?.getAttribute('data-resizing') === 'right', await importedImage.getAttribute('data-clip-id'))
+  await win.keyboard.press('Escape')
+  await win.mouse.up()
+  await win.waitForTimeout(200)
+  const resizeEscapeCancels = Number(await importedImage.getAttribute('data-persisted-end-frame')) === resizeCancelBefore
+
   const result = {
+    isolatedClipDrag,
+    isolatedClipSelected,
+    isolatedClipActionsEnabled,
+    dragDoesNotMovePlayhead,
+    isolatedDragPersists,
+    originSnapGuideVisible,
+    isolatedSnapsToOrigin,
+    cancelLeavesNoMutation,
+    oneDragOneUndo,
     compactDefault,
     canvasVideoFrameReady,
     canvasVideoAudioEnabled,
@@ -378,7 +635,7 @@ try {
     previewDoesNotHideNode,
     exportDoesNotOverlapPreview,
     clickPositionsGlobalPlayhead,
-    noDuplicateEditingButtons,
+    clipActionsDiscoverable,
     previewStartsMuted,
     previewCanUnmute,
     playbackCrossesCuts,
@@ -393,11 +650,25 @@ try {
     keyboardDelete,
     keyboardUndo,
     keyboardRedo,
+    toolbarSplit,
+    toolbarDuplicate,
+    toolbarRemove,
     timelineDrag,
     keyboardNudge,
     trimWorks,
     realImport,
     importUsesRealDuration,
+    resizeAtHalfZoom,
+    videoResizeFollowsPointer,
+    videoShrinkPersists,
+    videoExtendsBackToSource,
+    videoSourceLimitFeedback,
+    realImageImport,
+    imageExtensionFollowsPointer,
+    imageExtensionPersists,
+    imageCanShrink,
+    resizeOneUndo,
+    resizeEscapeCancels,
   }
   console.log(JSON.stringify({ result, screenshots }))
   await closeApp()
