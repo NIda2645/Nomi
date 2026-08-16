@@ -130,6 +130,12 @@ export function ProductionRunTaskCard({
   const routedGate = Boolean(view.gateKind && view.decisionHome === 'origin')
   const hostLabel = t(`generationCommon.production.origin.${view.originHost}`)
   const previewFocused = Boolean(focusedArtifactId && preview?.artifactId === focusedArtifactId)
+  const gateCopyParams = view.gateJob ? {
+    index: view.gateJob.index,
+    node: view.gateJob.nodeId,
+    provider: view.gateJob.provider,
+    model: view.gateJob.model,
+  } : {}
 
   return (
     <section
@@ -158,10 +164,10 @@ export function ProductionRunTaskCard({
 
       <div className={cn('grid gap-1')}>
         <h3 data-production-status-title className={cn('text-caption font-semibold leading-snug text-nomi-ink')}>
-          {t(`generationCommon.${view.titleKey}`)}
+          {t(`generationCommon.${view.titleKey}`, gateCopyParams)}
         </h3>
         <p className={cn('text-micro leading-relaxed text-nomi-ink-60')}>
-          {t(`generationCommon.${view.descriptionKey}`)}
+          {t(`generationCommon.${view.descriptionKey}`, gateCopyParams)}
         </p>
       </div>
 

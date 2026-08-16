@@ -1,6 +1,8 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createMcpProtocol, type McpTransport } from './mcpProtocol'
+import { createMcpProtocol, MCP_TOOL_NAMES, type McpTransport } from './mcpProtocol'
 
 type RpcMessage = {
   jsonrpc?: string
@@ -79,7 +81,7 @@ class ProductionHarness {
 }
 
 describe('production run MCP tools', () => {
-  it('exposes draft start plus three read-only observation tools, and no control tools', async () => {
+  it('exposes the exact 15-tool contract with truthful read-only annotations', async () => {
     const harness = new ProductionHarness()
     const response = await harness.call(1, 'tools/list')
     const tools = (response.result as {
@@ -90,15 +92,8 @@ describe('production run MCP tools', () => {
       }>
     }).tools
     const names = tools.map((tool) => tool.name)
-    expect(names).toEqual(expect.arrayContaining([
-      'nomi_start_playbook',
-      'nomi_get_run',
-      'nomi_subscribe_run',
-      'nomi_get_artifact',
-    ]))
-    expect(names).not.toEqual(expect.arrayContaining([
-      'nomi_review_gate', 'nomi_approve_run', 'nomi_publish', 'nomi_cancel_run', 'nomi_export_run',
-    ]))
+    expect(names).toEqual([...MCP_TOOL_NAMES])
+    expect(names).toHaveLength(15)
     expect(tools.find((tool) => tool.name === 'nomi_start_playbook')?.annotations?.readOnlyHint).toBeUndefined()
     for (const name of ['nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
       expect(tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(true)
@@ -106,6 +101,14 @@ describe('production run MCP tools', () => {
     const subscribe = tools.find((tool) => tool.name === 'nomi_subscribe_run')
     expect(subscribe?.inputSchema.properties?.waitMs?.maximum).toBe(25_000)
     expect(subscribe?.inputSchema.required).toEqual(['projectId', 'runId'])
+  })
+
+  it('keeps the current README count and guide table aligned with the exported catalog', () => {
+    const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8')
+    const guide = fs.readFileSync(path.join(process.cwd(), 'docs/guide/capability-core-cli-mcp.md'), 'utf8')
+    expect(readme).toContain('Fifteen MCP tools')
+    expect(guide).toContain('15 个工具')
+    for (const name of MCP_TOOL_NAMES) expect(guide).toContain(`\`${name}\``)
   })
 
   it('keeps initialize clientInfo as an audit label and starts only a draft', async () => {

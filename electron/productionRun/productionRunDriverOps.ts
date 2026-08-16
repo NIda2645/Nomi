@@ -87,6 +87,18 @@ function sampleGateId(planVersion: number): string {
   return `gate-sample-v${planVersion}`
 }
 
+/** One durable, URL-safe gate per plan/job. The hash keeps ids stable even when node ids collide
+ * after sanitization, while jobIds[0] remains the authoritative job identity. */
+export function shotGateId(planVersion: number, jobId: string, round = 1): string {
+  const slug = jobId.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(-48) || 'shot'
+  const suffix = crypto.createHash('sha256').update(jobId).digest('hex').slice(0, 10)
+  return `gate-shot-v${planVersion}-${slug}-${suffix}${round > 1 ? `-r${round}` : ''}`
+}
+
+export function isShotGate(gate: Pick<ProductionRun['gates'][number], 'gateId' | 'scope'>): boolean {
+  return gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-')
+}
+
 /** B2：样片门是否在等（waiting）。等 → driver 不再提交新镜头（窗口化的花钱边界）。 */
 function hasWaitingSampleGate(run: ProductionRun): boolean {
   return run.gates.some((gate) => gate.gateId === sampleGateId(run.planVersion) && gate.status === 'waiting')
@@ -113,6 +125,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     localAssetPath, projectRelativePath, stageValue, reconcileProviderTask, inFlight, reconciliationInFlight,
     directionsInFlight,
   } = deps
+  const generationRerunRequested = new Set<string>()
 
   async function proposeDirections(run: ProductionRun): Promise<void> {
     // B1：run 停在 awaiting_direction、方向门 waiting 且还没候选 → 让 renderer 的 LLM 拟 2-3 个方向。
@@ -204,7 +217,12 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
   }
 
   async function driveGeneration(run: ProductionRun): Promise<void> {
-    if (inFlight.has(run.runId)) return
+    if (inFlight.has(run.runId)) {
+      // A gate decision or resume can arrive after the gate is durable but before the current
+      // driver's finally releases its lock. Remember one rerun instead of losing that wake-up.
+      generationRerunRequested.add(run.runId)
+      return
+    }
     inFlight.add(run.runId)
     try {
       let current = requireRun(run.projectId, run.runId)
@@ -216,10 +234,27 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
         current = requireRun(run.projectId, run.runId)
         if (current.status !== 'running') break // 花钱边界：暂停/取消后不再提交（已提交的收不回，只能跑完收尾）
         if (hasWaitingSampleGate(current)) break // B2 样片门：等过目期间不提交剩余镜头（喊停最多亏样片这一镜）
-        // B3 confirm_all（每镜提交前都停）本期不实现每镜门——范围控制（见 plan「不动项」）。
-        // 未来落每镜门的唯一钩子点就在此：trustLevelOf(current.policy)==='confirm_all' 时，
-        // 提交前建一道 scope 'stage' 的 per-shot gate 并 break（复用下方样片门的注入写法）。
-        // 现档位语义靠类型与转述兜住：confirm_all 的合同/状态转述已明说「每镜提交前都停」。
+        const shotGates = current.gates.filter((gate) => isShotGate(gate)
+          && gate.gateId.startsWith(`gate-shot-v${current.planVersion}-`)
+          && gate.jobIds.includes(job.jobId))
+        if (shotGates.some((gate) => gate.status === 'waiting')) return
+        const approvedShotGate = shotGates.some((gate) => gate.status === 'approved')
+        if (trustLevelOf(current.policy) === 'confirm_all' && !approvedShotGate) {
+          const gateId = shotGateId(current.planVersion, job.jobId, shotGates.length + 1)
+          const shotGate = {
+            gateId,
+            scope: 'job_set' as const,
+            status: 'waiting' as const,
+            planHash: crypto.createHash('sha256').update(`${current.planVersion}:${job.jobId}:${job.provider}:${job.model}`).digest('hex'),
+            jobIds: [job.jobId],
+            title: 'Approve shot before provider submission',
+            summary: `${job.nodeId || job.jobId} will be submitted to ${job.provider} using ${job.model}. No provider call occurs before approval.`,
+            createdAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          }
+          executeInternal(run.projectId, run.runId, current, 'gate.add', { gate: shotGate }, `driver-${gateId}`)
+          return
+        }
         if (job.status === 'authorized') current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submit_intent_persisted' }, `driver-${job.jobId}-intent`).run
         current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submitting' }, `driver-${job.jobId}-submit`).run
         try {
@@ -305,6 +340,10 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       console.error('[nomi:production] generation/assembly driver failed:', error instanceof Error ? error.message : String(error))
     } finally {
       inFlight.delete(run.runId)
+      if (generationRerunRequested.delete(run.runId)) {
+        const latest = repository.read(run.projectId, run.runId)
+        if (latest) void driveGeneration(latest)
+      }
     }
   }
 

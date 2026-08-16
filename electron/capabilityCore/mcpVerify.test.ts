@@ -19,6 +19,7 @@ vi.mock('node:os', async (importOriginal) => {
 })
 
 import { verifyMcp } from './mcpVerify'
+import { MCP_CONFIG_VERSION, MCP_CONFIG_VERSION_ENV } from './mcpConfig'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
@@ -38,6 +39,7 @@ function tempHome(): string {
 function signedEnv(client: AuthenticatedMcpClient): Record<string, string> {
   return {
     NOMI_MCP_STDIO: '1',
+    [MCP_CONFIG_VERSION_ENV]: MCP_CONFIG_VERSION,
     [MCP_CLIENT_ENV]: client,
     [MCP_CLIENT_PROOF_ENV]: signMcpClient(client)!,
   }
@@ -89,6 +91,12 @@ describe('capabilityCore/mcpVerify', () => {
     expect(res.stale).toBe(true)
   })
 
+  it('真实历史格式 node + 已删除 args 脚本 → argument-missing，先于旧签名诊断', async () => {
+    writeClaudeEntry('node', [path.join(homeDir, 'Nomi', 'scripts', 'nomi-mcp.mjs')], {})
+    const res = await verifyMcp('claude')
+    expect(res).toMatchObject({ ok: false, reason: 'argument-missing', stale: true })
+  })
+
   it('命令在但握不上手 → handshake-failed（不许因为文件存在就报「已接入」）', async () => {
     const dud = path.join(homeDir, 'dud.mjs')
     fs.writeFileSync(dud, 'process.exit(3)')
@@ -135,7 +143,7 @@ describe('capabilityCore/mcpVerify', () => {
     fs.mkdirSync(path.join(homeDir, '.codex'), { recursive: true })
     fs.writeFileSync(
       path.join(homeDir, '.codex', 'config.toml'),
-      `[mcp_servers.other]\ncommand = "x"\n\n[mcp_servers.nomi]\ncommand = "${process.execPath}"\nargs = ["${script}"]\nstartup_timeout_sec = 60\ntool_timeout_sec = 600\ndefault_tools_approval_mode = "writes"\nenv = { NOMI_MCP_STDIO = "1", ${MCP_CLIENT_ENV} = "codex", ${MCP_CLIENT_PROOF_ENV} = "${signMcpClient('codex')}" }\n`,
+      `[mcp_servers.other]\ncommand = "x"\n\n[mcp_servers.nomi]\ncommand = "${process.execPath}"\nargs = ["${script}"]\nstartup_timeout_sec = 60\ntool_timeout_sec = 600\ndefault_tools_approval_mode = "writes"\nenv = { NOMI_MCP_STDIO = "1", ${MCP_CONFIG_VERSION_ENV} = "${MCP_CONFIG_VERSION}", ${MCP_CLIENT_ENV} = "codex", ${MCP_CLIENT_PROOF_ENV} = "${signMcpClient('codex')}" }\n`,
     )
     const res = await verifyMcp('codex')
     expect(res.ok).toBe(true)

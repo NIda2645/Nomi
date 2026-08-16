@@ -13,6 +13,7 @@ export type SpendConfirmRequest = {
   title: string
   message: string
   confirmLabel?: string
+  cancelLabel?: string
   /** 轻确认（用户直发）：允许「本次会话不再提示」。agent 受理不传 = 每次必确认。 */
   light?: boolean
   /** 来源：'agent' = 外部 AI 助手（MCP）驱动，换机器人图标 + 副标。缺省按用户直发（金币图标）。 */

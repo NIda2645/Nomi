@@ -124,20 +124,37 @@ node scripts/nomi.mjs generate workspace-xxxx modelscope "Tongyi-MAI/Z-Image-Tur
 
 需要手工接入时，先在卡片里选择目标客户端，再点「复制配置」，把 **Nomi 当机生成的完整片段** 合并到对应客户端。不要使用旧版 `scripts/nomi-mcp.mjs`，也不要从另一个客户端复制 proof。Codex 的生成片段已经包含 Electron 冷启动、长视频任务和写操作审批所需的超时与审批配置。
 
-从旧版升级后，即使卡片显示已有配置，也应点一次「重新接入」来补齐签名。
+从旧版升级后，Nomi 会先备份并自动升级能明确识别的旧 `nomi` 配置；自定义启动命令不会被静默覆盖，卡片会明确要求你手动修复。
+
+当前配置版本是 v3。客户端启动的是 Nomi 包内的 `Nomi Helper` Node runtime 和 `mcpNodeLauncher.js`，不是第二个 Electron GUI。Helper 先读取本机实例广告；Nomi 已打开时直接走 loopback RPC，未打开时只启动一个正常 Nomi 并等待 RPC 就绪。Claude Code、Codex 和 Cursor 同时冷启动时也会汇合到同一个 Nomi 实例，不会各自注册一份 macOS 应用。
 
 **② 完成两侧权限并重启对应客户端**：
 
-- Claude Code / Codex：卡片真实握手成功后，确认 `nomi` 的 13 个工具出现。
+- Claude Code / Codex：卡片真实握手成功后，确认 `nomi` 的 15 个工具出现。
 - Cursor：先在 Nomi「设置 → 自动化与权限」允许 Cursor 发起草稿；首次在 Cursor 调用 Nomi 时，Cursor 自己仍可能要求你批准本地 MCP。Nomi 不会代替你静默批准 Cursor。
 
-13 个工具包括 `nomi_list_models`、`nomi_create_project`、`nomi_generate` 和 `nomi_start_playbook`。
+15 个工具包括 `nomi_list_models`、`nomi_create_project`、`nomi_generate`、`nomi_start_playbook`、`nomi_control_run` 和 `nomi_decide_gate`。
 
 **③ 直接说人话**，它自己挑工具完成：
 
 > 「在 Nomi 里新建一个项目叫『咖啡广告』，先列一下我有哪些图模型；然后拆 3 个咖啡主题的镜头加到画布，每个写好提示词；最后用其中的图模型把第一个镜头生成出来。」
 
 Claude Code 会依次调 `nomi_create_project` → `nomi_list_models` → `nomi_add_nodes` → `nomi_generate`，把结果回给你。
+
+### 典型体验 1：快速初稿
+
+1. 用户只描述目标、镜头数量和首个要生成的素材。
+2. 助手先列出 Nomi 当前真正可用的模型，再创建项目、添加三个可编辑节点并连好参考关系。
+3. 到第一次付费生成时，Nomi 展示模型、目标节点和支出后果；用户明确确认后才提交。
+4. 结果回填原节点。用户打开 Nomi 时看到的仍是三节点、一条参考连线和首镜素材，不需要从对话里手工搬运。
+
+### 典型体验 2：可恢复的完整制作
+
+1. 用户给 brief，并选择 `key_confirm`、`budget_only` 或 `confirm_all`。创建 Run 本身不花费。
+2. 方向和样片属于可逆创意门：支持 elicitation 的发起客户端会显示 Nomi 服务端发出的真人确认；也可以回 Nomi 决定。
+3. 分镜确认后，预算合同必须在 Nomi 批准。`confirm_all` 会在每个镜头提交供应商前再停一次，卡片明确显示镜头、供应商和模型。
+4. 拒绝某镜会暂停且不会提交；恢复制作时会生成新一轮逐镜确认，不会悄悄提交，也不会永久卡死。
+5. Nomi 重启后从持久事件和 gate 恢复。粗剪采用与 MP4 导出仍在 Nomi 单独批准，最终产物可在任务中心预览。
 
 ---
 
@@ -147,9 +164,9 @@ Claude Code 会依次调 `nomi_create_project` → `nomi_list_models` → `nomi_
 |---|---|---|
 | 目标项目正在前台打开 | 通过渲染层应用改动 | 画布立即刷新，确认卡在当前界面出现 |
 | Nomi 开着，但目标项目不在前台 | 对该项目安全落盘，确认仍由 Nomi 全局展示 | 不会把后台项目灌进当前画布，也不会漏掉人工门 |
-| Nomi 关着 | 无窗口进程直接操作项目文件 | 结果落进项目，下次打开即可看到 |
+| Nomi 关着 | 包内 Helper 启动正常 Nomi，等待唯一 GUI 的 RPC 就绪后转发 | Nomi 自动出现；需要真人决定时在 Nomi 展示，不会另起一个无界面应用身份 |
 
-你不需要为了让 MCP 工作而关闭项目。Nomi 会按项目是否在前台和渲染层是否可用选择路径，避免外部写盘与内存状态互相覆盖。
+你不需要为了让 MCP 工作而关闭项目。三个客户端共用同一份实例广告和本地 RPC；Helper 自身不创建 `NSApplication`，避免 GUI 已开时第二实例在 AppKit 注册阶段退出。
 
 ---
 
@@ -183,6 +200,8 @@ Claude Code 会依次调 `nomi_create_project` → `nomi_list_models` → `nomi_
 | `nomi_start_playbook` | 创建不花钱、可恢复的制作草稿；当前完整流程为 `brand.promo` |
 | `nomi_get_run` / `nomi_subscribe_run` | 读取制作状态 / 按游标等待持久事件 |
 | `nomi_get_artifact` | 取得指定 Run 产物的安全投影、精确 Nomi 深链和限时预览 |
+| `nomi_control_run` | 暂停、继续、取消 Run，或切换信任档位；预算门仍不会被跳过 |
+| `nomi_decide_gate` | 决定方向/样片等可逆创意门；服务端会再次向真人确认，不能决定预算、逐镜头付费、导出或发布 |
 
 ---
 
@@ -197,6 +216,7 @@ Claude Code 会依次调 `nomi_create_project` → `nomi_list_models` → `nomi_
 | `vendor and request are required` | 命令参数不全 | 对照 §5 补齐 vendor / modelKey / intent / 提示词 |
 | `旧配置缺少客户端身份凭据` | 升级前配置只有 stdio 开关，没有本机客户端签名 | 在 Nomi 接入卡对该客户端点「重新接入」 |
 | `untrusted-host` | 当前客户端没有有效签名，或尚未在 Nomi 设置中获准发起草稿 | 重新接入对应客户端，再到「自动化与权限」开启该客户端 |
+| `找不到 Nomi 的钥匙串` | 当前启动的是另一份应用身份、隔离测试配置或搬动后的 app，系统钥匙串不会把原凭据交给它 | 关闭该实例并从 `/Applications/Nomi.app` 打开平时使用的 Nomi；除非你明确要新建独立配置，否则不要重新录入或删除原钥匙 |
 
 ---
 
@@ -204,7 +224,7 @@ Claude Code 会依次调 `nomi_create_project` → `nomi_list_models` → `nomi_
 
 - 本地服务**只监听 `127.0.0.1`**（外网 / 局域网够不着）+ **token 校验**。
 - Nomi 生成的 MCP 客户端证明按 Claude Code / Codex / Cursor 隔离；自报客户端名、伪造证明和跨客户端复用都只获得 `external` 权限。
-- **付费生成不能只凭 token 启动**——方向和制作合同必须在 Nomi 里由真人批准，支出上限、模型和任务集合会绑定到本次授权；外部 MCP 客户端不能伪造批准。
+- **付费生成不能只凭 token 启动**——方向/样片可由 Nomi 服务端向支持 elicitation 的客户端再次询问真人；预算、逐镜头提交、粗剪采用和导出仍在 Nomi。支出上限、模型和任务集合绑定本次授权，外部 MCP 客户端不能伪造批准。
 - 外部调用只能做 Nomi 的领域操作（建工程 / 改画布 / 生成），**不是**任意文件读写。
 - 项目、素材、提示词、密钥和编排状态保存在本机。使用外部模型 API 时，完成任务所需的输入仍会发送给你配置的供应商；“本地优先”不等于“所有推理都离线”。
 
@@ -212,7 +232,7 @@ Claude Code 会依次调 `nomi_create_project` → `nomi_list_models` → `nomi_
 
 ## 8. 已知边界（诚实标注）
 
-- **完整制作从 Nomi 收口**：MCP 可以创建和观察 Production Run，但方向、预算、粗剪、导出、发布、删除和覆盖文件不能在外部客户端自动批准。
+- **完整制作的人为边界**：MCP 可以创建、观察和控制 Production Run；方向/样片等可逆创意门可在发起客户端经 Nomi 服务端强制确认后决定。预算、逐镜头付费提交、粗剪采用、导出、发布、删除和覆盖文件仍必须回到 Nomi。
 - **当前公开 playbook**：Production Run 的完整驱动先覆盖 `brand.promo`；没有公开“批量生成所有片段”的工具。
 - **供应商差异**：只有供应商返回真实进度时 Nomi 才显示百分比；超时或提交结果不明会安全暂停，不会自动重下单。
 - **媒体查看**：外部宿主拿到的是去路径、去 prompt、去供应商内部字段的安全投影；真文件通过 project / Run / artifact 绑定的限时 loopback 预览访问。

@@ -11,7 +11,7 @@ import { buildToolOutcome } from '../capabilityCore/mcpToolResults'
 
 // B3 信任档位（plan 2026-08-11-mcp-conversation-native-phase-b）：
 // key_confirm（默认）= 五门全开；budget_only（「别问了直接出」）= 自动批准创意/样片门、只留预算门（永不跳）；
-// confirm_all = 本期仅类型/转述兜住（不实现每镜门，见 plan 范围）。降档留痕（事件 commandId 自证）。
+// confirm_all = 每镜提交前在 Nomi 停门。降档留痕（事件 commandId 自证）。
 
 async function waitFor(check: () => boolean, timeoutMs = 4000): Promise<void> {
   const deadline = Date.now() + timeoutMs

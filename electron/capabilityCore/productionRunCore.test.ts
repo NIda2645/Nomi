@@ -8,6 +8,8 @@ function context() {
     readProjection: vi.fn(async () => ({ runId: 'run-1', status: 'draft' })),
     readEvents: vi.fn(async () => ({ events: [], nextCursor: 4 })),
     readArtifactProjection: vi.fn(async () => ({ artifactId: 'artifact-1', kind: 'storyboard' })),
+    readFull: vi.fn(() => null),
+    command: vi.fn(async () => ({ run: {}, events: [] })),
   }
   return {
     productionRuns,
@@ -108,6 +110,49 @@ describe('production run capability methods', () => {
     await expect(dispatch('production.get', {
       projectId: 'project-1', runId: 'run-missing',
     }, ctx as never)).rejects.toThrow(/run-missing/)
+  })
+
+  it.each([
+    ['gate-contract-v1', 'budget_envelope'],
+    ['gate-shot-v1-job', 'job_set'],
+    ['gate-export-v1', 'export'],
+    ['gate-publish-v1', 'publish'],
+  ] as const)('keeps %s decisions inside Nomi', async (gateId, scope) => {
+    const { ctx, productionRuns } = context()
+    productionRuns.readFull.mockReturnValueOnce({
+      revision: 3,
+      gates: [{ gateId, scope, status: 'waiting' }],
+    })
+    await expect(dispatch('production.decide-gate', {
+      projectId: 'project-1', runId: 'run-1', gateId, decision: 'approved',
+    }, ctx as never)).rejects.toMatchObject({ httpStatus: 403 })
+    expect(productionRuns.command).not.toHaveBeenCalled()
+  })
+
+  it('allows a reversible sample decision through the guarded dispatcher path', async () => {
+    const { ctx, productionRuns } = context()
+    productionRuns.readFull.mockReturnValueOnce({
+      revision: 3,
+      gates: [{ gateId: 'gate-sample-v1', scope: 'stage', status: 'waiting' }],
+    })
+    await dispatch('production.decide-gate', {
+      projectId: 'project-1', runId: 'run-1', gateId: 'gate-sample-v1', decision: 'approved',
+    }, ctx as never)
+    expect(productionRuns.command).toHaveBeenCalledWith('project-1', 'run-1', expect.objectContaining({
+      type: 'gate.decide', payload: { gateId: 'gate-sample-v1', status: 'approved' },
+    }))
+  })
+
+  it('does not let MCP change trust to bypass a waiting per-shot gate', async () => {
+    const { ctx, productionRuns } = context()
+    productionRuns.readFull.mockReturnValueOnce({
+      revision: 4,
+      gates: [{ gateId: 'gate-shot-v1-job', scope: 'job_set', status: 'waiting' }],
+    })
+    await expect(dispatch('production.control', {
+      projectId: 'project-1', runId: 'run-1', action: 'set_trust', trustLevel: 'budget_only',
+    }, ctx as never)).rejects.toMatchObject({ httpStatus: 403 })
+    expect(productionRuns.command).not.toHaveBeenCalled()
   })
 
   it.each([

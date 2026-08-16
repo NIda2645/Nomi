@@ -88,14 +88,24 @@ export function createProductionRunE2eRenderer(options: FixtureOptions) {
         plan: {
           title: 'Truthful Nomi production fixture',
           anchors: [],
-          shots: [{
-            index: 1,
-            shotKind: 'video',
-            durationSec: 2,
-            anchorIds: [],
-            prompt: 'A local Nomi workspace moves from brief to a finished video.',
-            modelKey: PRODUCTION_E2E_FIXTURE_MODEL,
-          }],
+          shots: [
+            {
+              index: 1,
+              shotKind: 'video',
+              durationSec: 2,
+              anchorIds: [],
+              prompt: 'A local Nomi workspace moves from brief to an editable storyboard.',
+              modelKey: PRODUCTION_E2E_FIXTURE_MODEL,
+            },
+            {
+              index: 2,
+              shotKind: 'video',
+              durationSec: 2,
+              anchorIds: [],
+              prompt: 'The approved storyboard becomes a finished video on the timeline.',
+              modelKey: PRODUCTION_E2E_FIXTURE_MODEL,
+            },
+          ],
         },
       }
     }
@@ -133,7 +143,15 @@ export function createProductionRunE2eRenderer(options: FixtureOptions) {
     }
 
     if (operation === 'production.arrange') {
-      return { arranged: 1, total: 1, placed: [{ nodeId: 'shot-1', role: 'video', startFrame: 0 }], skipped: [] }
+      return {
+        arranged: 2,
+        total: 2,
+        placed: [
+          { nodeId: 'shot-1', role: 'video', startFrame: 0 },
+          { nodeId: 'shot-2', role: 'video', startFrame: 48 },
+        ],
+        skipped: [],
+      }
     }
 
     if (operation === 'production.export') {

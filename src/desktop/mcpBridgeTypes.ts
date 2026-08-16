@@ -3,8 +3,26 @@
 // 主进程侧的实现见 electron/capabilityCore/mcpConfig.ts 与 mcpVerify.ts。
 
 export type McpClientKey = 'claude' | 'codex' | 'cursor'
+export type McpLauncherKind = 'packaged' | 'development'
+export type McpConfigState =
+  | 'absent'
+  | 'current'
+  | 'development'
+  | 'legacy-launcher'
+  | 'stale-development'
+  | 'auth-stale'
+  | 'launcher-stale'
+  | 'custom'
 
-export type McpClientInfo = { installed: boolean; configPath: string; snippet: string }
+export type McpClientInfo = {
+  installed: boolean
+  configPath: string
+  snippet: string
+  configState: McpConfigState
+  launcherKind: McpLauncherKind
+  migration: 'none' | 'upgraded'
+  backupPath: string | null
+}
 
 export type McpInfo = {
   tokenReady: boolean
@@ -19,6 +37,7 @@ export type McpVerifyReason =
   | 'ok'
   | 'not-installed'
   | 'command-missing'
+  | 'argument-missing'
   | 'spawn-failed'
   | 'timeout'
   | 'handshake-failed'

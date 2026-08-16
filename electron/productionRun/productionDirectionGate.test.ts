@@ -93,6 +93,10 @@ describe('direction gate with candidates (B1 全链)', () => {
     const decided = service.readFull('project-1', runId)!.gates.find((item) => item.gateId === 'gate-direction-v1')!
     expect(decided.status).toBe('approved')
     expect(decided.decidedChoiceKey).toBe('studio')
+    expect(service.readFull('project-1', runId)!.stages.find((stage) => stage.stageId === 'direction')).toMatchObject({
+      status: 'completed',
+      completedAt: expect.any(String),
+    })
 
     // 方向批准后 driver 真提分镜案（run 走到分镜审阅）。
     await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_storyboard_review')

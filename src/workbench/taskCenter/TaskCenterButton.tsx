@@ -16,7 +16,7 @@ import { useProductionRunStore } from '../production/productionRunStore'
 import { useWorkbenchStore } from '../workbenchStore'
 import { TaskCenterPanel } from './TaskCenterPanel'
 import { buildTaskCenterView, resolveTaskButtonTone } from './taskCenterEntries'
-import { buildProductionRunTaskRows } from './productionRunTaskCenter'
+import { buildProductionRunTaskRows, mergeProductionRunSummaries } from './productionRunTaskCenter'
 import { useBatchFinishNotifier } from './useBatchFinishNotifier'
 
 type Props = {
@@ -32,6 +32,13 @@ export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Elemen
   const batches = useGenerationQueueStore((state) => state.batches)
   const nodes = useGenerationCanvasStore((state) => state.nodes)
   const [productionRuns, setProductionRuns] = React.useState<ProductionRunSummary[]>([])
+  const detailedProductionRun = useProductionRunStore((state) => (
+    state.projectId === projectId ? state.run : null
+  ))
+  const resolvedProductionRuns = React.useMemo(
+    () => mergeProductionRunSummaries(productionRuns, detailedProductionRun),
+    [detailedProductionRun, productionRuns],
+  )
 
   const refreshProductionRuns = React.useCallback(async (): Promise<void> => {
     if (!projectId) {
@@ -79,7 +86,7 @@ export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Elemen
 
   const summary = React.useMemo(() => {
     const generation = buildTaskCenterView({ entries, batches, nodes, fallbackTitle: '', now: Date.now() }).summary
-    const production = buildProductionRunTaskRows(productionRuns, {
+    const production = buildProductionRunTaskRows(resolvedProductionRuns, {
       title: t('taskCenter.productionRun.title'),
       statuses: {
         draft: t('taskCenter.productionRun.statuses.draft'),
@@ -103,7 +110,7 @@ export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Elemen
       running: generation.running + production.filter((row) => row.group === 'running').length,
       queued: generation.queued + production.filter((row) => row.group === 'queued').length,
     }
-  }, [entries, batches, nodes, productionRuns, t])
+  }, [entries, batches, nodes, resolvedProductionRuns, t])
   const tone = resolveTaskButtonTone(summary)
   const pending = summary.running + summary.queued
 
@@ -145,7 +152,7 @@ export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Elemen
       <TaskCenterPanel
         opened={opened}
         onClose={() => setOpened(false)}
-        productionRuns={productionRuns}
+        productionRuns={resolvedProductionRuns}
         onRevealProductionRun={(targetProjectId, runId) => {
           useWorkbenchStore.getState().setWorkspaceMode('generation')
           useGenerationCanvasStore.getState().setGenerationAiCollapsed(false)

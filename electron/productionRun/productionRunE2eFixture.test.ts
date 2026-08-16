@@ -27,7 +27,7 @@ describe('production Run E2E fixture', () => {
     const plan = await renderer('production.plan-storyboard', {
       projectId: 'project-fixture', runId: 'run-fixture', brief: { goal: 'Truthful Nomi promo' },
     }, 1_000) as { plan?: { shots?: unknown[] } }
-    expect(plan.plan?.shots).toHaveLength(1)
+    expect(plan.plan?.shots).toHaveLength(2)
 
     const generated = await renderer('production.generate-node', {
       projectId: 'project-fixture', runId: 'run-fixture', jobId: 'job:run-fixture:shot-1',

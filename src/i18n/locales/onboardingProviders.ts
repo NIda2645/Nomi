@@ -562,6 +562,8 @@ export const zhOnboardingProviders = {
     // 实连验证：「配置里有 nomi 这行字」≠「还连得上」。下面几条是失效时给用户的人话原因 + 出路。
     verified: '已连通 {{client}}',
     verifiedBody: '刚刚实测握手成功，{{count}} 个工具可用。',
+    upgradedTitle: '{{client}} 接入已升级',
+    upgradedBody: '旧配置已备份并升级，刚刚实测 {{count}} 个工具可用。',
     cursorConfigured: 'Cursor 配置已写入',
     cursorConnection: '本机连接',
     cursorConnectionVerified: '已验证 · {{count}} 个工具',
@@ -575,8 +577,12 @@ export const zhOnboardingProviders = {
     openCursorPermissions: '打开 Cursor 权限设置',
     brokenTitle: '接入配置需要更新',
     reconnect: '重新接入 {{client}}',
+    upgrade: '升级接入 {{client}}',
+    repair: '修复接入 {{client}}',
+    developmentConnection: '这是当前开发目录的临时接入；目录删除或依赖重装后会失效。安装正式版后再升级为稳定接入。',
     reason: {
       commandMissing: '{{client}} 里连的还是 Nomi 旧版本的启动方式，那个程序已经不在了。点下面重新接入就好。',
+      argumentMissing: '{{client}} 仍指向已经删除的 Nomi 旧脚本或开发目录。升级接入会换成稳定启动方式。',
       spawnFailed: '{{client}} 里那条启动命令跑不起来。点下面重新接入，换成当前版本的启动方式。',
       timeout: '启动超时——{{client}} 连的可能是已经失效的旧配置。点下面重新接入试试。',
       handshakeFailed: '能启动但连不上，多半是旧版本的接入方式。点下面重新接入就好。',
@@ -1732,6 +1738,8 @@ export const enOnboardingProviders = {
     },
     verified: 'Connected to {{client}}',
     verifiedBody: 'Handshake just verified — {{count}} tools available.',
+    upgradedTitle: '{{client}} connection upgraded',
+    upgradedBody: 'The previous configuration was backed up and upgraded. A live handshake just verified {{count}} tools.',
     cursorConfigured: 'Cursor configuration written',
     cursorConnection: 'Local connection',
     cursorConnectionVerified: 'Verified · {{count}} tools',
@@ -1745,9 +1753,15 @@ export const enOnboardingProviders = {
     openCursorPermissions: 'Open Cursor permission settings',
     brokenTitle: 'Connection configuration needs an update',
     reconnect: 'Reconnect {{client}}',
+    upgrade: 'Upgrade {{client}} connection',
+    repair: 'Repair {{client}} connection',
+    developmentConnection:
+      'This is a temporary connection to the current development folder. Removing the folder or reinstalling dependencies will break it. Install Nomi to upgrade to a stable connection.',
     reason: {
       commandMissing:
         '{{client}} still points at an older Nomi launch method, and that program no longer exists. Reconnect below to fix it.',
+      argumentMissing:
+        '{{client}} still points at a deleted Nomi script or development folder. Upgrade the connection to use the stable launcher.',
       spawnFailed: 'The launch command in {{client}} cannot start. Reconnect below to switch to the current method.',
       timeout: 'Startup timed out — {{client}} may be using a stale configuration. Reconnect below to try again.',
       handshakeFailed: 'It starts but cannot connect, most likely an older setup. Reconnect below to fix it.',

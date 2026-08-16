@@ -27,14 +27,14 @@ const run: ProductionRun = {
 const event = (cursor: number, type: string): RunEvent => ({ schemaVersion: 1, eventId: `event-${cursor}`, cursor, runId: 'run-1', runRevision: cursor, commandId: `cmd-${cursor}`, type, message: type, emittedAt: '2026-08-08T10:00:00.000Z', payload: { secret: 'must not cross boundary' } })
 
 describe('production run service projection boundary', () => {
-  it('redacts policy, prompt/paths, vendor credentials and nested contract paths', () => {
+  it('keeps actionable submission identity while redacting policy, credentials and paths', () => {
     const repository = { read: vi.fn(() => run), readEvents: vi.fn(() => []) }
     const projection = createProductionRunService({ repository: repository as never, projectRootResolver: () => null }).readProjection('project-1', 'run-1')
     expect(projection).not.toHaveProperty('policy')
     expect(projection).not.toHaveProperty('brief')
-    expect(projection.jobs[0]).not.toHaveProperty('provider')
-    expect(projection.jobs[0]).not.toHaveProperty('model')
+    expect(projection.jobs[0]).toMatchObject({ provider: 'secret-provider', model: 'secret-model', nodeId: 'secret-node' })
     expect(projection.jobs[0]).not.toHaveProperty('providerTaskId')
+    expect(projection.jobs[0]).not.toHaveProperty('idempotencyKey')
     expect(projection.jobs[0]).not.toHaveProperty('errorMessage')
     expect(projection.gates[0]).not.toHaveProperty('planHash')
     expect(projection.gates[0].contract?.evidence[0]).not.toHaveProperty('projectRelativePath')

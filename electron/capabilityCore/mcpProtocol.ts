@@ -47,7 +47,7 @@ export interface McpTransport {
 const PROTOCOL_VERSION = '2025-11-25'
 
 // 工具定义：name → { description, inputSchema(JSON Schema), method(能力核方法), build(args→params) }。
-const TOOLS = [
+export const MCP_TOOL_CATALOG = [
   {
     name: 'nomi_list_projects',
     description: '列出本机 Nomi 的所有项目（id / 名称 / 更新时间）。',
@@ -252,9 +252,8 @@ const TOOLS = [
   {
     name: 'nomi_decide_gate',
     description:
-      '对制作 Run 的一道确认门表态：approved 批准 / rejected 否决。方向门（gate-direction-*）可带 choiceKey 指定选中的候选。'
-      + '用法纪律：**先用 elicitation 枚举（把候选 + 「都不要，我来描述」列给真人）问过用户、拿到 accept 才准调本工具**，别替用户拍板；'
-      + '预算门请继续走既有付费确认，不要用本工具跳过。',
+      '对制作 Run 的可逆创意门表态：approved 批准 / rejected 否决。方向门（gate-direction-*）可带 choiceKey 指定候选。'
+      + 'Nomi 会在服务端再次向真人发起确认；预算、逐镜头付费、导出和发布必须回 Nomi 决定，不能用本工具跳过。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -291,8 +290,10 @@ const TOOLS = [
   },
 ] as const
 
-type ToolDef = (typeof TOOLS)[number]
-const TOOL_BY_NAME = new Map<string, ToolDef>(TOOLS.map((tool) => [tool.name, tool]))
+export const MCP_TOOL_NAMES = MCP_TOOL_CATALOG.map((tool) => tool.name)
+
+type ToolDef = (typeof MCP_TOOL_CATALOG)[number]
+const TOOL_BY_NAME = new Map<string, ToolDef>(MCP_TOOL_CATALOG.map((tool) => [tool.name, tool]))
 
 /**
  * 只读工具（annotations.readOnlyHint）——**只查不改不花钱**的那几个。
@@ -406,26 +407,82 @@ export function createMcpProtocol(transport: McpTransport) {
    * 让客户端（Claude Code）向真人弹一个「确认花费」对话框（boolean）。
    * 不支持 elicitation 的客户端返回 { supported:false }；支持则返回 { supported:true, confirmed:bool }。
    */
-  async function elicitSpendConfirm(text: string): Promise<{ supported: boolean; confirmed?: boolean }> {
+  async function elicitBooleanConfirm(input: {
+    message: string
+    title: string
+    description: string
+  }): Promise<{ supported: boolean; confirmed?: boolean }> {
     if (!clientSupportsElicitation) return { supported: false }
     try {
       const res = (await sendServerRequest('elicitation/create', {
-        message: text,
+        message: input.message,
         requestedSchema: {
           type: 'object',
           properties: {
-            confirm: { type: 'boolean', title: '确认生成', description: '确认后将消耗模型额度生成；取消则不生成、不花费。' },
+            confirm: { type: 'boolean', title: input.title, description: input.description },
           },
           required: ['confirm'],
         },
       })) as { action?: string; content?: { confirm?: boolean } } | null
-      // 三态：accept(带 content) / decline / cancel。只在明确 accept 且未显式 confirm=false 时放行。
-      const confirmed = res?.action === 'accept' && res?.content?.confirm !== false
+      // 三态：accept / decline / cancel。只有明确 accept + confirm=true 才能跨过服务端边界。
+      const confirmed = res?.action === 'accept' && res?.content?.confirm === true
       return { supported: true, confirmed }
     } catch {
       // 超时/异常 → 当作未确认（不死等、不偷偷花钱）。
       return { supported: true, confirmed: false }
     }
+  }
+
+  async function elicitSpendConfirm(text: string): Promise<{ supported: boolean; confirmed?: boolean }> {
+    return elicitBooleanConfirm({
+      message: text,
+      title: '确认生成',
+      description: '确认后将消耗模型额度生成；取消则不生成、不花费。',
+    })
+  }
+
+  async function elicitCreativeGateDecision(
+    args: Record<string, unknown>,
+  ): Promise<{ supported: boolean; confirmed?: boolean }> {
+    if (!clientSupportsElicitation) return { supported: false }
+    if (args.decision !== 'approved' && args.decision !== 'rejected') throw new Error('Invalid production gate decision')
+    const projectId = typeof args.projectId === 'string' ? args.projectId : ''
+    const runId = typeof args.runId === 'string' ? args.runId : ''
+    const gateId = typeof args.gateId === 'string' ? args.gateId : ''
+    const projection = await transport.invoke('production.get', { projectId, runId }) as Record<string, unknown>
+    const gates = Array.isArray(projection.gates) ? projection.gates as Array<Record<string, unknown>> : []
+    const gate = gates.find((candidate) => candidate.gateId === gateId && candidate.status === 'waiting')
+    if (!gate) throw new Error(`Production gate is not waiting: ${gateId}`)
+    const creative = gate.scope === 'stage'
+      && (gateId.startsWith('gate-direction-') || gateId.startsWith('gate-sample-'))
+    if (!creative) throw new Error('This decision must be completed in Nomi')
+
+    const approved = args.decision === 'approved'
+    const choiceKey = typeof args.choiceKey === 'string' ? args.choiceKey : ''
+    const candidates = Array.isArray(gate.directionCandidates)
+      ? gate.directionCandidates as Array<Record<string, unknown>>
+      : []
+    const choice = candidates.find((candidate) => candidate.key === choiceKey)
+    if (approved && gateId.startsWith('gate-direction-') && candidates.length > 0 && !choice) {
+      throw new Error('Choose one of the current direction candidates before approval')
+    }
+    const title = typeof gate.title === 'string' && gate.title.trim() ? gate.title.trim() : gateId
+    const summary = typeof gate.summary === 'string' ? gate.summary.trim() : ''
+    const choiceText = typeof choice?.title === 'string' ? choice.title.trim() : choiceKey
+    const isEnglish = locale() === 'en'
+    const decisionText = approved
+      ? (isEnglish ? 'Approve and continue' : '批准并继续')
+      : (isEnglish ? 'Reject and stop here' : '否决并停在这里')
+    const details = [title, choiceText ? `${isEnglish ? 'Choice' : '选择'}: ${choiceText}` : '', summary]
+      .filter(Boolean)
+      .join('\n')
+    return elicitBooleanConfirm({
+      message: `${decisionText}?\n${details}`,
+      title: isEnglish ? 'Confirm this creative decision' : '确认这次创意决定',
+      description: isEnglish
+        ? 'Only this reversible creative gate will be decided. Spending and export approvals remain in Nomi.'
+        : '只会决定这道可逆创意门；支出与导出仍必须在 Nomi 中确认。',
+    })
   }
 
   async function handle(message: RpcMessage): Promise<void> {
@@ -459,7 +516,7 @@ export function createMcpProtocol(transport: McpTransport) {
     }
     if (method === 'tools/list') {
       reply(id, {
-        tools: TOOLS.map(({ name, description, inputSchema }) => {
+        tools: MCP_TOOL_CATALOG.map(({ name, description, inputSchema }) => {
           // 挂活 widget 的工具：预声明 _meta.ui.resourceUri（MCP Apps 标准）+ openai/outputTemplate（ChatGPT 别名）
           // + 调用状态文案。always 广告（宿主不支持则忽略 _meta，spec 设计）→ 跨 Claude/ChatGPT 通用（P4）。
           const uiUri = TOOL_UI_RESOURCE[name]
@@ -507,6 +564,36 @@ export function createMcpProtocol(transport: McpTransport) {
           // initialize.clientInfo is self-declared, so it remains an audit label only. The stdio/RPC
           // transport supplies authority from Nomi's signed per-client configuration capability.
           built.actorId = clientHost
+        }
+        if (tool.name === 'nomi_decide_gate') {
+          const confirm = await elicitCreativeGateDecision(args)
+          if (!confirm.supported) {
+            reply(id, {
+              content: [{
+                type: 'text',
+                text: locale() === 'en'
+                  ? 'Not applied: this client cannot show Nomi\'s required human confirmation. Decide the creative gate in Nomi instead.'
+                  : '未生效：当前客户端无法显示 Nomi 强制的人为确认，请改在 Nomi 中决定这道创意门。',
+              }],
+              isError: true,
+            })
+            return
+          }
+          if (!confirm.confirmed) {
+            reply(id, {
+              content: [{
+                type: 'text',
+                text: locale() === 'en'
+                  ? 'Not applied: you did not confirm this creative decision.'
+                  : '未生效：你没有确认这次创意决定。',
+              }],
+              isError: true,
+            })
+            return
+          }
+          const result = await transport.invoke(tool.method, built)
+          reply(id, buildToolResultPayload(tool.name, args, result))
+          return
         }
         // 付费生成 + Nomi 没开（无应用内确认卡可弹）→ 在 Claude 这一侧弹 elicitation 让真人确认。
         // 真人确认才以 spendConfirmed 授权本次生成；enforcement 仍在主进程硬闸。

@@ -203,6 +203,7 @@ try {
   mcp = spawnMcp()
   await initializeMcp(mcp.rpc)
   const tools = (await mcp.rpc('tools/list')).result?.tools || []
+  check(tools.length === 15, 'real MCP stdio exposes the exact 15-tool catalog')
   for (const name of ['nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
     check(tools.some((tool) => tool.name === name), `${name} is registered over real stdio`)
   }
@@ -216,6 +217,7 @@ try {
   const started = await callTool(mcp.rpc, 'nomi_start_playbook', {
     projectId,
     playbook: 'brand.promo',
+    trustLevel: 'confirm_all',
     brief: {
       goal: 'Create a truthful local-first Nomi product promo fixture.',
       audience: 'AI creators',
@@ -268,34 +270,52 @@ try {
       type: 'plan.attach',
       payload: {
         artifactId: storyboard.artifactId,
-        bindings: [{ nodeId: 'shot-1', provider: 'nomi-e2e-fixture', model: 'nomi-e2e-fixture-video', stageId: 'generate' }],
+        bindings: [
+          { nodeId: 'shot-1', provider: 'nomi-e2e-fixture', model: 'nomi-e2e-fixture-video', stageId: 'generate' },
+          { nodeId: 'shot-2', provider: 'nomi-e2e-fixture', model: 'nomi-e2e-fixture-video', stageId: 'generate' },
+        ],
       },
       issuedAt: new Date().toISOString(),
     })
   }, { projectId, runId })
-  check(attached.run.jobs.length === 1 && attached.run.status === 'awaiting_contract', 'storyboard binding crosses the real renderer IPC with one planned job')
-  await window.screenshot({ path: path.join(shotsDir, '02-contract-before-restart.png') })
+  check(attached.run.jobs.length === 2 && attached.run.status === 'awaiting_contract', 'storyboard binding crosses the real renderer IPC with two planned jobs')
+  await window.screenshot({ path: path.join(shotsDir, '02-contract.png') })
 
+  // 钱门必须在 Nomi 批准；confirm_all 随后在第一次供应商提交前创建逐镜头门。
+  await approveCurrentProductionGate(window)
+  await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-shot-', 30_000)
+  let atShot = await getRunData(mcp.rpc, projectId, runId)
+  check(atShot.jobs.every((job) => job.status === 'authorized'), 'first shot gate stops before every provider submission')
+  await openRunFromTaskCenter(window, '02a-shot-1-gate.png')
+
+  // 在逐镜头门等待时重启真实 Nomi；门与零提交状态必须从磁盘恢复。
   await gui.app.close()
   gui = await launchGui()
   await gui.window.locator('[data-project-card="true"]').first().click()
   await gui.window.waitForFunction(() => window.location.hash.includes('projectId='), undefined, { timeout: 10_000 })
   await openRunFromTaskCenter(gui.window)
-  run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_contract')
-  check(run.jobs.length === 1 && run.budget.authorized === 0, 'restart recovers the waiting contract without submitting or spending')
-
+  atShot = await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-shot-')
+  check(atShot.jobs.every((job) => job.status === 'authorized'), 'restart recovers the waiting shot gate without submitting or spending')
   await approveCurrentProductionGate(gui.window)
 
-  // B2 样片门：合同批准后先出首镜样片、停门等过目；批准后才批量剩余 + 编排。
+  // 首镜获批并生成后停样片门；看过样片后，第二镜仍要单独确认。
   await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-sample-', 30_000)
   const atSample = await getRunData(mcp.rpc, projectId, runId)
-  check(atSample.status === 'running' && atSample.gates.some((gate) => gate.gateId.startsWith('gate-sample-') && gate.status === 'waiting'), 'first shot raises a sample gate while the run stays running')
+  check(atSample.status === 'running' && atSample.jobs.filter((job) => job.status === 'adopted').length === 1, 'one approved shot submits exactly once before the sample gate')
   // 截图要拍到卡本身（拍在开面板之前只会拍到空画布，等于没证据）。
   await openRunFromTaskCenter(gui.window, '03a-sample-gate.png')
   await approveCurrentProductionGate(gui.window)
 
+  await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-shot-', 30_000)
+  const beforeShotTwo = await getRunData(mcp.rpc, projectId, runId)
+  const waitingShotGates = beforeShotTwo.gates.filter((gate) => gate.gateId.startsWith('gate-shot-') && gate.status === 'waiting')
+  check(waitingShotGates.length === 1 && waitingShotGates[0].jobIds.length === 1, 'second shot receives its own durable one-job gate')
+  check(beforeShotTwo.jobs.filter((job) => job.status === 'adopted').length === 1, 'second shot is still unsubmitted before approval')
+  await openRunFromTaskCenter(gui.window, '03b-shot-2-gate.png')
+  await approveCurrentProductionGate(gui.window)
+
   run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_rough_cut_review', 30_000)
-  check(run.jobs[0]?.status === 'adopted', 'approved fixture generation reaches adopted exactly once')
+  check(run.jobs.length === 2 && run.jobs.every((job) => job.status === 'adopted'), 'each approved fixture shot reaches adopted exactly once')
   check(run.artifacts.some((artifact) => artifact.kind === 'video') && run.artifacts.some((artifact) => artifact.kind === 'timeline'), 'generation and assembly produce local video and timeline artifacts')
   await openRunFromTaskCenter(gui.window)
   // 获批样张：视频先出封面 + 播放键（原生 controls chrome 在窄卡里又挤又脏），点了才进播放态。
@@ -315,6 +335,7 @@ try {
   await approveCurrentProductionGate(gui.window)
   run = await waitForRunStatus(mcp.rpc, projectId, runId, 'completed', 30_000)
   check(run.budget.actual === 0 && run.budget.unsettled === 0, 'fixture completes with truthful zero actual and unsettled spend')
+  check(run.stages.length === 9 && run.stages.every((stage) => stage.status === 'completed'), 'completed Run reports all 9 production stages complete')
   const exportArtifact = run.artifacts.find((artifact) => artifact.kind === 'export')
   check(Boolean(exportArtifact?.artifactId), 'completed Run exposes a scoped export artifact identity')
 
@@ -338,7 +359,12 @@ try {
 
   // 窄窗（900×700）下的完成态：卡必须仍然装得下（380px 浮层 + 产物预览不挤爆）。
   await gui.window.setViewportSize({ width: 900, height: 700 })
-  await openRunFromTaskCenter(gui.window, '04-completed-900x700.png')
+  await openRunFromTaskCenter(gui.window)
+  await gui.window.locator('[data-production-tone="success"]').waitFor({ timeout: 10_000 })
+  await gui.window.waitForFunction(() => document.querySelector('[data-production-task-card]')?.textContent?.includes('9 / 9'), undefined, { timeout: 10_000 })
+  check(await gui.window.getByText(/进行中 1|1 进行中/).count() === 0, 'completed task center does not retain a running summary')
+  await gui.window.screenshot({ path: path.join(shotsDir, '04-completed-900x700.png') })
+  check((await gui.window.locator('[data-production-task-card]').textContent())?.includes('9 / 9'), 'completed task card shows 9 / 9 stages')
   console.log(`\nPRODUCTION MCP JOURNEY PASS: ${passed} assertions`)
   console.log(`  Run: ${runId}`)
   console.log(`  MP4: ${exportPath}`)

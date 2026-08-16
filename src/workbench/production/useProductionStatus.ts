@@ -14,8 +14,9 @@ import { buildProductionRunView, type ProductionRunPrimaryAction } from './produ
 import { useActiveProductionRun } from './useActiveProductionRun'
 
 function localizedGateCopy(
+  run: NonNullable<ReturnType<typeof useActiveProductionRun>['run']>,
   gate: NonNullable<ReturnType<typeof useActiveProductionRun>['run']>['gates'][number],
-  translate: (key: string) => string,
+  translate: (key: string, params?: Record<string, unknown>) => string,
 ): { title: string; message: string } {
   if (gate.scope === 'export') {
     return {
@@ -42,6 +43,20 @@ function localizedGateCopy(
     return {
       title: translate('generationCommon.production.gate.sampleTitle'),
       message: translate('generationCommon.production.gate.sampleSummary'),
+    }
+  }
+  if (gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-')) {
+    const job = run.jobs.find((candidate) => candidate.jobId === gate.jobIds[0])
+    const index = job ? run.jobs.findIndex((candidate) => candidate.jobId === job.jobId) + 1 : 0
+    const params = {
+      index,
+      node: job?.nodeId || job?.jobId || gate.jobIds[0] || '-',
+      provider: job?.provider || '-',
+      model: job?.model || '-',
+    }
+    return {
+      title: translate('generationCommon.production.gate.shotTitle', params),
+      message: translate('generationCommon.production.gate.shotSummary', params),
     }
   }
   return { title: gate.title, message: gate.summary }
@@ -197,11 +212,16 @@ export function useProductionStatus(options: { enabled?: boolean } = {}) {
             return
           }
         }
-        const gateCopy = localizedGateCopy(gate, (key) => t(key))
-        const contract = gate.scope === 'stage' ? undefined : buildProductionContractView(activeRun, gate)
+        const gateCopy = localizedGateCopy(activeRun, gate, (key, params) => t(key, params))
+        const contract = ['budget_envelope', 'export', 'publish'].includes(gate.scope)
+          ? buildProductionContractView(activeRun, gate)
+          : undefined
         // B1：方向门候选（driver 拟好后挂在 gate 上）。有候选 → 弹单选，捕获选中 key 带进决议留痕。
         const isDirectionGate = gate.scope === 'stage' && gate.gateId.startsWith('gate-direction-')
         const isSampleGateApproval = gate.scope === 'stage' && gate.gateId.startsWith('gate-sample-')
+        const isShotGate = gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-')
+        const shotJob = isShotGate ? activeRun.jobs.find((candidate) => candidate.jobId === gate?.jobIds[0]) : undefined
+        const shotIndex = shotJob ? activeRun.jobs.findIndex((candidate) => candidate.jobId === shotJob.jobId) + 1 : 0
         const directionCandidates = isDirectionGate ? (gate.directionCandidates ?? []) : []
         let directionChoiceKey: string | null = directionCandidates[0]?.key ?? null
         let openingPolicySettings = false
@@ -209,10 +229,23 @@ export function useProductionStatus(options: { enabled?: boolean } = {}) {
           title: gateCopy.title,
           message: gateCopy.message,
           // B2：样片门批准=「满意，批量生成」；其余门=「批准并继续」。
-          confirmLabel: t(isSampleGateApproval ? 'generationCommon.production.gate.sampleApprove' : 'generationCommon.production.gate.approve'),
+          confirmLabel: t(isSampleGateApproval
+            ? 'generationCommon.production.gate.sampleApprove'
+            : isShotGate
+              ? 'generationCommon.production.gate.shotApprove'
+              : 'generationCommon.production.gate.approve'),
+          ...(isSampleGateApproval || isShotGate ? {
+            cancelLabel: t(isShotGate ? 'generationCommon.production.gate.shotReject' : 'generationCommon.production.gate.sampleReject'),
+          } : {}),
           source: activeRun.origin.host === 'nomi' ? 'user' : 'agent',
-          kind: gate.scope === 'stage' ? 'plan' : 'contract',
+          kind: gate.scope === 'stage' ? 'plan' : isShotGate ? 'generation' : 'contract',
           ...(contract ? { contract } : {}),
+          ...(isShotGate && shotJob ? {
+            details: [
+              { label: t('generationCommon.production.gate.shotLabel'), value: `${shotIndex} · ${shotJob.nodeId || shotJob.jobId}` },
+              { label: t('generationCommon.production.gate.providerModelLabel'), value: `${shotJob.provider} · ${shotJob.model}` },
+            ],
+          } : {}),
           ...(directionCandidates.length ? {
             directionCandidates: directionCandidates.map((candidate) => ({ key: candidate.key, title: candidate.title, oneLiner: candidate.oneLiner })),
             onDirectionDecision: (key: string | null) => { directionChoiceKey = key },
@@ -230,7 +263,7 @@ export function useProductionStatus(options: { enabled?: boolean } = {}) {
         if (!approved) {
           if (openingPolicySettings) return
           // 预算门否决=撤销制作；样片门否决=换风格重来（service 会把它变成暂停）。其余门（方向/plan）取消=不表态。
-          if (gate.scope !== 'budget_envelope' && !isSampleGate) return
+          if (gate.scope !== 'budget_envelope' && !isSampleGate && !isShotGate) return
           try {
             await executeCommand(activeRun.projectId, activeRun.runId, {
               commandId: globalThis.crypto.randomUUID(),
