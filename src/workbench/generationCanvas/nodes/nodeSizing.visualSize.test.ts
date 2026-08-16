@@ -47,6 +47,6 @@ describe("resolveNodeVisualSize — 真实渲染尺寸（连线锚点单一真�
 
   it("剪辑节点保持轴的紧凑尺寸，让连接锚点与画布上实际外壳一致", () => {
     expect(resolveNodeVisualSize(node({ kind: "clip", size: { width: 560, height: 360 } }))).toEqual({ width: 560, height: 132 });
-    expect(getNodeSizeBounds("clip")).toMatchObject({ minHeight: 120, maxHeight: 180 });
+    expect(getNodeSizeBounds("clip")).toMatchObject({ minWidth: 560, maxWidth: 960, minHeight: 120, maxHeight: 180 });
   });
 });

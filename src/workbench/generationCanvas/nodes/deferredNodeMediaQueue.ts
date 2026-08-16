@@ -10,6 +10,11 @@ import React from 'react'
 
 export type DeferredNodeMediaKind = 'image' | 'video'
 
+/** Metadata alone has no decoded frame; HAVE_CURRENT_DATA (2) is the first visually safe state. */
+export function isDeferredVideoFrameReady(readyState: number): boolean {
+  return Number.isFinite(readyState) && readyState >= 2
+}
+
 const DEFAULT_MEDIA_LIMITS: Record<DeferredNodeMediaKind, number> = {
   image: 4,
   video: 1,

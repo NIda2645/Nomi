@@ -28,6 +28,17 @@ describe('clip node model', () => {
     expect(clipNodeSourceFromAsset(asset('image', 'image.png'))).toBeTruthy()
   })
 
+  it('uses a probed video duration and falls back only when the probe is invalid', () => {
+    expect(clipNodeSourceFromAsset(asset('video', 'long.mp4'), 42.5)).toMatchObject({
+      durationSeconds: 42.5,
+      trimEnd: 42.5,
+    })
+    expect(clipNodeSourceFromAsset(asset('video', 'unknown.mp4'), null)).toMatchObject({
+      durationSeconds: 6,
+      trimEnd: 6,
+    })
+  })
+
   it('turns the ordered sources into one sequential export timeline and preserves trim offsets', () => {
     const image = clipNodeSourceFromAsset(asset('image', 'a.png'))!
     const video = clipNodeSourceFromAsset(asset('video', 'b.mp4'))!

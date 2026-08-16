@@ -1,11 +1,17 @@
 import { clipVisibleFrames } from '../../timeline/timelineEdit'
-import type { TimelineState } from '../../timeline/timelineTypes'
+import type { TimelineClip, TimelineState } from '../../timeline/timelineTypes'
 
 export type ClipNodeTimelineLayout = { id: string; left: number; width: number }
+
+export type ClipNodeFilmstripStyle = {
+  backgroundSize: string
+  backgroundPosition: string
+}
 
 export const CLIP_NODE_INITIAL_VIEW_SECONDS = 30
 export const CLIP_NODE_TRAILING_SECONDS = 4
 export const CLIP_NODE_AXIS_INSET = 8
+export const CLIP_NODE_TRAILING_INSET = 48
 export const CLIP_NODE_LEADING_SLOT_WIDTH = 56
 
 export type ClipNodeTimelineViewport = {
@@ -25,6 +31,19 @@ function safeFps(fps: number): number {
   return Number.isFinite(fps) && fps > 0 ? fps : 30
 }
 
+export function resolveClipNodeFilmstripStyle(
+  clip: Pick<TimelineClip, 'frameCount' | 'offsetStartFrame'>,
+  pxPerFrame: number,
+): ClipNodeFilmstripStyle {
+  const safePxPerFrame = Number.isFinite(pxPerFrame) && pxPerFrame > 0 ? pxPerFrame : 1
+  const sourceWidth = Math.max(1, clip.frameCount * safePxPerFrame)
+  const offset = Math.max(0, clip.offsetStartFrame) * safePxPerFrame
+  return {
+    backgroundSize: `${sourceWidth}px 100%`,
+    backgroundPosition: `${offset > 0 ? `-${offset}px` : '0px'} 0`,
+  }
+}
+
 /**
  * The axis is a fixed viewport over a content layer.  The first 30 seconds
  * establish the density; once content passes that window, only the content
@@ -42,11 +61,12 @@ export function resolveClipNodeTimelineViewport(input: {
   const axisEndSeconds = Math.max(CLIP_NODE_INITIAL_VIEW_SECONDS, timelineEndSeconds + CLIP_NODE_TRAILING_SECONDS)
   const leadingSlotWidth = CLIP_NODE_LEADING_SLOT_WIDTH
   const axisInset = CLIP_NODE_AXIS_INSET
-  const usableViewportWidth = Math.max(1, viewportWidth - leadingSlotWidth - axisInset * 2)
+  const trailingInset = CLIP_NODE_TRAILING_INSET
+  const usableViewportWidth = Math.max(1, viewportWidth - leadingSlotWidth - axisInset - trailingInset)
   const pxPerSecond = usableViewportWidth / CLIP_NODE_INITIAL_VIEW_SECONDS
   const pxPerFrame = pxPerSecond / fps
   const timelineWidth = Math.max(1, Math.round(axisEndSeconds * pxPerSecond))
-  const contentWidth = Math.max(viewportWidth, leadingSlotWidth + axisInset * 2 + timelineWidth)
+  const contentWidth = Math.max(viewportWidth, leadingSlotWidth + axisInset + timelineWidth + trailingInset)
   const timelineStart = leadingSlotWidth + axisInset
 
   return {

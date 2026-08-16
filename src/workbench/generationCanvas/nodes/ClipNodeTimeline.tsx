@@ -2,9 +2,14 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlus } from '@tabler/icons-react'
 import { WorkbenchIconButton } from '../../../design/workbenchActions'
+import { useFilmstrip } from '../../../media/useFilmstrip'
 import { cn } from '../../../utils/cn'
 import type { TimelineClip, TimelineState } from '../../timeline/timelineTypes'
-import { resolveClipNodeTimelineLayout, resolveClipNodeTimelineViewport } from './clipNodeTimelineLayout'
+import {
+  resolveClipNodeFilmstripStyle,
+  resolveClipNodeTimelineLayout,
+  resolveClipNodeTimelineViewport,
+} from './clipNodeTimelineLayout'
 import { formatClipNodeDuration } from './clipNodeVisual'
 
 type ClipNodeTimelineProps = {
@@ -17,12 +22,28 @@ type ClipNodeTimelineProps = {
   onAddMaterial?: () => void
 }
 
-function ClipThumb({ clip }: { clip: TimelineClip }): JSX.Element {
+function ClipThumb({ clip, pxPerFrame }: { clip: TimelineClip; pxPerFrame: number }): JSX.Element {
+  const filmstrip = useFilmstrip(clip.type === 'video' && !clip.thumbnailUrl ? clip.url : '')
   if (clip.type === 'image' && (clip.thumbnailUrl || clip.url)) {
     return <img src={clip.thumbnailUrl || clip.url} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
   }
-  if (clip.type === 'video' && (clip.thumbnailUrl || clip.url)) {
-    return <video src={clip.url} poster={clip.thumbnailUrl} muted playsInline preload="metadata" className="absolute inset-0 size-full object-cover" />
+  if (clip.type === 'video' && clip.thumbnailUrl) {
+    return <img src={clip.thumbnailUrl} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
+  }
+  if (clip.type === 'video' && filmstrip?.status === 'ready') {
+    const filmstripStyle = resolveClipNodeFilmstripStyle(clip, pxPerFrame)
+    return (
+      <span
+        className="absolute inset-0 bg-nomi-ink-05"
+        style={{
+          backgroundImage: `url(${JSON.stringify(filmstrip.url)})`,
+          ...filmstripStyle,
+          backgroundRepeat: 'no-repeat',
+        }}
+        data-clip-filmstrip="true"
+        aria-hidden="true"
+      />
+    )
   }
   return <span className="absolute inset-0 bg-nomi-ink-10" aria-hidden="true" />
 }
@@ -146,7 +167,7 @@ function ClipItem({
         }
       }}
     >
-      <ClipThumb clip={clip} />
+      <ClipThumb clip={clip} pxPerFrame={pxPerFrame} />
       <span className="absolute inset-x-0 bottom-0 truncate bg-nomi-paper/80 px-1.5 py-1 text-micro font-medium text-nomi-ink">{clip.label || t('generationCommon.clipNode.timeline')}</span>
       {selected ? <>
         <span data-clip-handle="true"><ClipHandle edge="left" clip={clip} pxPerFrame={pxPerFrame} onResize={onResizeClip} /></span>
@@ -254,12 +275,12 @@ export default function ClipNodeTimeline({
               </span>
             ))}
           </div>
-          <div className="pointer-events-none absolute top-6 h-1 border-t border-nomi-paper/15" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }} aria-hidden="true">
+          <div className="pointer-events-none absolute top-7 h-1 border-t border-nomi-paper/15" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }} aria-hidden="true">
             {ticks.map((tick) => (
               <span key={`mark-${tick.frame}`} className="absolute top-0 h-2 border-l border-nomi-paper/20" style={{ left: tick.pixel - viewport.leadingSlotWidth - viewport.axisInset }} />
             ))}
           </div>
-          <div className="absolute bottom-2 h-12" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }}>
+          <div className="absolute bottom-2 h-10" style={{ left: viewport.leadingSlotWidth + viewport.axisInset, width: viewport.timelineWidth }} data-testid="clip-node-media-lane">
             <span
               className="pointer-events-none absolute inset-y-0 z-20 w-px bg-nomi-accent"
               style={{ left: Math.max(0, viewport.frameToPixel(timeline.playheadFrame) - viewport.leadingSlotWidth - viewport.axisInset) }}

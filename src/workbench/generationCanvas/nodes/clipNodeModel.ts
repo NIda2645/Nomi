@@ -52,9 +52,13 @@ export function readClipNodeMeta(meta: Record<string, unknown> | undefined): Cli
   }
 }
 
-export function clipNodeSourceFromAsset(asset: AssetRef): ClipNodeSource | null {
+export function clipNodeSourceFromAsset(asset: AssetRef, resolvedDurationSeconds?: number | null): ClipNodeSource | null {
   if (asset.kind !== 'image' && asset.kind !== 'video') return null
-  const durationSeconds = asset.kind === 'image' ? 4 : 6
+  const durationSeconds = asset.kind === 'image'
+    ? 4
+    : Number.isFinite(resolvedDurationSeconds) && Number(resolvedDurationSeconds) > 0
+      ? Number(resolvedDurationSeconds)
+      : 6
   return {
     id: asset.id,
     type: asset.kind,
