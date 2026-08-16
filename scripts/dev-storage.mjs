@@ -1,0 +1,14 @@
+import path from "node:path";
+
+function configuredPath(value) {
+  const candidate = String(value || "").trim();
+  return candidate || null;
+}
+
+export function resolveDevStoragePaths({ repoRoot, rendererPort, env = process.env }) {
+  const defaultUserDataDir = path.join(repoRoot, ".tmp", "electron-user-data", `dev-${rendererPort}`);
+  const userDataDir = configuredPath(env.NOMI_ELECTRON_USER_DATA_DIR) || defaultUserDataDir;
+  const projectsDir = configuredPath(env.NOMI_PROJECTS_DIR) || path.join(userDataDir, "projects");
+
+  return { userDataDir, projectsDir };
+}

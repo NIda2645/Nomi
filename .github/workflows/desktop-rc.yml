@@ -1,0 +1,124 @@
+name: Desktop Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Release branch or commit to validate and package
+        required: true
+        default: main
+      version:
+        description: Version without the v prefix, for example 0.20.0
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-rc-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - id: source
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Validate version
+        run: node scripts/release-contract.mjs validate-version --root . --version "${{ inputs.version }}"
+      - run: pnpm install --frozen-lockfile
+      - name: Repository gates
+        run: pnpm run gates
+      - name: Electron smoke journeys
+        run: xvfb-run -a pnpm run test:e2e
+      - name: Real user journey suite
+        run: xvfb-run -a pnpm run test:journeys
+      - name: Write immutable RC manifest
+        run: >-
+          node scripts/release-contract.mjs write-manifest
+          --output release-rc/release-manifest.json
+          --repository "${{ github.repository }}"
+          --sha "${{ steps.source.outputs.sha }}"
+          --version "${{ inputs.version }}"
+          --run-id "${{ github.run_id }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rc-metadata
+          path: release-rc/release-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  macos:
+    needs: validate
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Package both macOS architectures without publishing
+        run: pnpm exec electron-builder --mac --publish never
+      - name: Verify packaged media targets
+        run: |
+          node scripts/packaging/audit-packaged-media.cjs release/mac-arm64/Nomi.app darwin arm64
+          node scripts/packaging/audit-packaged-media.cjs release/mac/Nomi.app darwin x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rc-macos
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 30
+
+  windows:
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Package Windows without publishing
+        run: pnpm exec electron-builder --win nsis --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rc-windows
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+          if-no-files-found: error
+          retention-days: 30

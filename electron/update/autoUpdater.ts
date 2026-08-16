@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { desktopT } from "../i18n";
+import { buildDownloadPageUrl } from "./downloadPage";
 
 // 版本号 + 检查更新 + 一键更新（功能需求 1/2/3）。
 // GitHub Releases provider 由 package.json build.publish 自动派生，无需额外服务器。
@@ -14,15 +15,14 @@ type AppInfo = {
   // 故 darwin 下走「检测到新版→开浏览器手动下载」兜底；Windows NSIS 未签名也能就地装。
   // 真相源在主进程，UI 纯 derive，别在渲染层 hardcode 平台分支。
   canAutoInstall: boolean;
+  canCheckUpdates: boolean;
 };
 
 const EVENT_CHANNEL = "nomi:update:event";
 
-// 手动更新兜底落地页：GitHub 最新 release。
-const RELEASE_PAGE_URL = "https://github.com/aqm857886159/Nomi/releases/latest";
-
 // 未签名 mac 无法就地自动安装；其余平台（Windows NSIS）可以。
 const CAN_AUTO_INSTALL = process.platform !== "darwin";
+const CAN_CHECK_UPDATES = app.getName().trim().toLowerCase() === "nomi";
 
 function broadcast(payload: Record<string, unknown>): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -85,12 +85,13 @@ export function registerUpdaterIpc(): void {
     platform: process.platform,
     arch: process.arch,
     canAutoInstall: CAN_AUTO_INSTALL,
+    canCheckUpdates: CAN_CHECK_UPDATES,
   }));
 
-  // 手动更新兜底：在浏览器打开 GitHub 最新 release，用户自行下载安装包重装。
-  ipcMain.handle("nomi:update:open-release", async () => {
+  // 手动更新兜底：把主进程已知的真实平台/架构交给官网，由官网直接启动对应安装包下载。
+  ipcMain.handle("nomi:update:open-download", async () => {
     try {
-      await shell.openExternal(RELEASE_PAGE_URL);
+      await shell.openExternal(buildDownloadPageUrl(process.platform, process.arch));
       return { ok: true };
     } catch (error) {
       broadcast({ type: "error", message: describeError(error) });
@@ -104,6 +105,7 @@ export function registerUpdaterIpc(): void {
       broadcast({ type: "error", message: desktopT("updater.devUnavailable") });
       return { ok: false, reason: "not-packaged" };
     }
+    if (!CAN_CHECK_UPDATES) return { ok: false, reason: "non-stable-build" };
     try {
       const autoUpdater = await loadAutoUpdater();
       await autoUpdater.checkForUpdates();

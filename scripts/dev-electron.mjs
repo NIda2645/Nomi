@@ -5,6 +5,7 @@ import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { installChildProcessLifecycle } from "./child-process-lifecycle.mjs";
+import { resolveDevStoragePaths } from "./dev-storage.mjs";
 import { ensureElectronSignature } from "./ensure-electron-signature.mjs";
 
 const require = createRequire(import.meta.url);
@@ -451,6 +452,7 @@ function startRendererServer(port) {
 
 const rendererPort = await findRendererPort(readPositiveIntegerEnv("NOMI_RENDERER_PORT", 5273));
 const rendererUrl = `http://127.0.0.1:${rendererPort}`;
+const devStorage = resolveDevStoragePaths({ repoRoot, rendererPort });
 const electronRendererUrl =
   process.env.NOMI_RENDERER_URL || `${rendererUrl}/index.html#/studio`;
 compileTailwindStyles();
@@ -469,7 +471,8 @@ const app = startElectron({
   env: electronEnv({
     NOMI_DESKTOP_DEV: "1",
     ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-    NOMI_ELECTRON_USER_DATA_DIR: path.join(repoRoot, ".tmp", "electron-user-data", `dev-${rendererPort}`),
+    NOMI_ELECTRON_USER_DATA_DIR: devStorage.userDataDir,
+    NOMI_PROJECTS_DIR: devStorage.projectsDir,
     VITE_DEV_SERVER_URL: electronRendererUrl,
     NOMI_RENDERER_URL: electronRendererUrl,
     ...loadOnboardingAgentEnv(),
