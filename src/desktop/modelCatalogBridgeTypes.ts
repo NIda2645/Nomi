@@ -53,6 +53,11 @@ export type CustomCallTestRunSnapshot = {
 }
 
 export type CustomCallBridge = CustomCallDraftBridge & {
+  customCallConfigGet?: (vendorKey: string) => Array<{ name: string; hasValue: true }>
+  customCallConfigSave?: (
+    vendorKey: string,
+    payload: { entries: Array<{ name: string; value?: string; keepFrom?: string }> },
+  ) => Array<{ name: string; hasValue: true }>
   customCallContract?: () => {
     variables: Array<{ name: string; type: string }>
     returnContract?: string

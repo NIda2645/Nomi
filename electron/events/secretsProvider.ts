@@ -3,7 +3,7 @@
 // (redact.ts 的形态兜底盖不住任意格式的 key,精确匹配才是地基)。
 // 30s TTL 缓存:append 每批调一次 provider,不能每次都解密全部 Keychain 记录。
 import { readCatalog } from "../catalog/catalogStore";
-import { decryptApiKeyRecord } from "../catalog/secrets";
+import { decryptApiKeyRecord, decryptCustomConfigWithLegacy } from "../catalog/secrets";
 
 const TTL_MS = 30_000;
 let cache: { at: number; secrets: string[] } | null = null;
@@ -11,10 +11,13 @@ let cache: { at: number; secrets: string[] } | null = null;
 export function catalogSecretsProvider(): readonly string[] {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.secrets;
   try {
-    const catalog = readCatalog() as { apiKeysByVendor?: Record<string, Parameters<typeof decryptApiKeyRecord>[0]> };
-    const secrets = Object.values(catalog.apiKeysByVendor || {})
-      .map((record) => decryptApiKeyRecord(record))
-      .filter((secret) => secret.length >= 8);
+    const catalog = readCatalog();
+    const secrets = catalog.vendors.flatMap((vendor) => {
+      const record = catalog.apiKeysByVendor?.[vendor.key];
+      const apiKey = decryptApiKeyRecord(record);
+      return [apiKey.length >= 8 ? apiKey : "", ...Object.values(decryptCustomConfigWithLegacy(record, vendor.meta))];
+    })
+      .filter((secret) => secret.length > 0);
     cache = { at: Date.now(), secrets };
     return secrets;
   } catch {

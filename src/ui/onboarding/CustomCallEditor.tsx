@@ -17,7 +17,7 @@ import { resolveArchetypeForModel } from '../../config/modelArchetypes'
 import { getTextBrain } from '../../workbench/api/promptLibraryApi'
 import { runWorkbenchTextTaskStream } from '../../workbench/api/taskApi'
 import { stripCodeFences } from './customCallIntent'
-import { configRecordFromRows, configRowsFromRecord, hasCustomConfig, type CustomConfigRow } from './customCallConfig'
+import { configPatchFromRows, configRowsFromMaskedEntries, hasCustomConfig, type CustomConfigRow } from './customCallConfig'
 import {
   customCallScriptPatch,
   readCustomCallScriptDrafts,
@@ -41,9 +41,6 @@ export type CustomCallTarget = {
   /** 直达脚本入口建立的禁用草稿；保存脚本后由 main 启用。 */
   draft?: boolean
 }
-
-/** listVendors() 是 unknown[]；这里只用到 key 与 meta.customConfig，就地窄化，别把 any 放进来。 */
-type VendorRow = { key?: string; meta?: Record<string, unknown> & { customConfig?: unknown } }
 
 const inputCls =
   'w-full rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2.5 py-2 text-body-sm text-nomi-ink placeholder:text-nomi-ink-40 outline-none focus:border-nomi-accent'
@@ -143,9 +140,8 @@ export function CustomCallEditor({
   React.useEffect(() => {
     if (target) {
       const nextScripts = readCustomCallScriptDrafts(catalogModel, target.script)
-      const vendors = (getDesktopBridge()?.modelCatalog.listVendors?.() ?? []) as VendorRow[]
-      const vendor = vendors.find((v) => v.key === target.vendorKey)
-      const nextConfigRows = configRowsFromRecord(vendor?.meta?.customConfig)
+      const maskedConfig = getDesktopBridge()?.modelCatalog.customCallConfigGet?.(target.vendorKey) ?? []
+      const nextConfigRows = configRowsFromMaskedEntries(maskedConfig)
       setScriptDrafts(nextScripts)
       setConfigRows(nextConfigRows)
       setConfigOpen(hasCustomConfig(nextConfigRows))
@@ -222,16 +218,14 @@ export function CustomCallEditor({
   )
 
   const persistVendorConfig = React.useCallback(() => {
-    if (!target || !bridge) return
-    const vendors = (bridge.modelCatalog.listVendors?.() ?? []) as VendorRow[]
-    const vendor = vendors.find((value) => value.key === target.vendorKey)
-    if (!vendor) return
-    const meta: Record<string, unknown> = { ...(vendor.meta ?? {}) }
-    const config = configRecordFromRows(configRows)
-    if (config) meta.customConfig = config
-    else delete meta.customConfig
-    bridge.modelCatalog.upsertVendor({ ...vendor, meta })
-  }, [target, bridge, configRows])
+    if (!target || !bridge?.modelCatalog.customCallConfigSave) {
+      throw new Error(t('onboardingProviders.customCall.directDraft.unavailable'))
+    }
+    const masked = bridge.modelCatalog.customCallConfigSave(target.vendorKey, {
+      entries: configPatchFromRows(configRows),
+    })
+    setConfigRows(configRowsFromMaskedEntries(masked))
+  }, [target, bridge, configRows, t])
 
   const saveTestedScript = React.useCallback(() => {
     if (!target || !bridge || !testPassed) return
@@ -353,6 +347,20 @@ export function CustomCallEditor({
   })
   const testBusy = test.phase === 'running' || test.phase === 'cancelling'
   const dirty = Boolean(target && initialPersistedState.targetKey === targetKey && customCallPersistedStateSignature(scriptDrafts, configRows) !== initialPersistedState.signature)
+  const runOrCancelTest = React.useCallback(async () => {
+    if (testBusy) {
+      await cancelTest()
+      return
+    }
+    try {
+      persistVendorConfig()
+      await runTest()
+    } catch (error) {
+      setSaveError(t('onboardingProviders.customCall.saveFailed', {
+        message: error instanceof Error ? error.message : String(error),
+      }))
+    }
+  }, [testBusy, cancelTest, persistVendorConfig, runTest, t])
   React.useEffect(() => {
     if (test.phase !== 'done') return
     window.requestAnimationFrame(() => testResultRef.current?.scrollIntoView({ block: 'nearest' }))
@@ -428,7 +436,7 @@ export function CustomCallEditor({
           <DesignButton
             variant="filled"
             disabled={test.phase === 'cancelling' || (!testBusy && !script.trim())}
-            onClick={() => { void (testBusy ? cancelTest() : runTest()) }}
+            onClick={() => { void runOrCancelTest() }}
             leftSection={testBusy
               ? <IconPlayerStop size={14} stroke={1.8} aria-hidden="true" />
               : <IconPlayerPlay size={14} stroke={1.8} aria-hidden="true" />}
@@ -703,14 +711,15 @@ export function CustomCallEditor({
                     }}
                   />
                   <DesignTextInput
+                    type="password"
                     className="min-w-0 flex-[1.3]"
                     classNames={{ input: 'font-nomi-mono text-caption' }}
-                    placeholder={t('onboardingProviders.customCall.configValuePlaceholder')}
+                    placeholder={row.storedName && !row.valueChanged ? '••••••' : t('onboardingProviders.customCall.configValuePlaceholder')}
                     aria-label={t('onboardingProviders.customCall.configValueAria', { name: row.name })}
                     value={row.value}
                     onChange={(e) => {
                       const value = e.currentTarget.value
-                      setConfigRows((rows) => rows.map((r, i) => (i === index ? { ...r, value } : r)))
+                      setConfigRows((rows) => rows.map((r, i) => (i === index ? { ...r, value, valueChanged: true } : r)))
                     }}
                   />
                   <IconActionButton
@@ -724,7 +733,7 @@ export function CustomCallEditor({
               ))}
               <DesignButton
                 variant="light"
-                onClick={() => setConfigRows((rows) => [...rows, { name: '', value: '' }])}
+                onClick={() => setConfigRows((rows) => [...rows, { name: '', value: '', valueChanged: true }])}
                 leftSection={<IconPlus size={12} stroke={1.8} aria-hidden="true" />}
                 className="self-start"
               >

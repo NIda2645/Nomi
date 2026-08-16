@@ -212,7 +212,7 @@ export const stagingReferenceParamsSchema = z.object({
 
 // ── 运镜参考 schema（create_camera_move 的参数；镜像渲染层 cameraMoveBuilder 的 CameraMoveSpec，
 // 进程隔离故两处各一份，与 staging 同例。move/speed/shot 枚举=S1 cameraMoveVocab 词表）。──
-export const cameraMoveParamsSchema = z.object({
+const cameraMoveParamsObjectSchema = z.object({
   shotClientId: z
     .string()
     .describe(
@@ -233,6 +233,8 @@ export const cameraMoveParamsSchema = z.object({
   // 不要硬塞最近的词——填自由文本，执行器不渲小片、把它当运镜指令追加进目标视频 prompt。
   customMove: z
     .string()
+    .trim()
+    .min(1)
     .optional()
     .describe(
       "Natural-language camera-move description for moves OUTSIDE the enum (whip pan, handheld follow, a compound/sequenced move like 'push in then whip to the window', or 'match this reference video's camerawork'). The tool will NOT 3D-render this — it injects it as a cinematography directive into the shot's video prompt (less precise than the rendered reference; the honest fallback). Use proper film terms. Set move OR customMove, never both for the same intent.",
@@ -270,6 +272,54 @@ export const cameraMoveParamsSchema = z.object({
     .optional()
     .describe("Optional individual gray-model props placed in the move's scene (a car beside the subject, a tree behind). Prefer sceneTemplate for a full backdrop."),
 });
+
+type CameraMoveParams = z.infer<typeof cameraMoveParamsObjectSchema>;
+type CameraMovePreset = NonNullable<CameraMoveParams["move"]>;
+
+const CUSTOM_ONLY_CAMERA_MOVE =
+  /甩镜|手持|无人机|穿越|照搬|参考视频|复合|连续运镜|whip[ -]?pan|handheld|drone|match (?:this|the) reference|compound|sequenced/i;
+const EMPTY_CUSTOM_CAMERA_MOVE = /^(?:none|null|n\/?a|not applicable|无|没有|不适用)$/i;
+
+const CAMERA_MOVE_PRESET_PATTERNS: ReadonlyArray<readonly [CameraMovePreset, RegExp]> = [
+  ["dolly_zoom", /希区柯克|眩晕变焦|dolly[ -]?zoom|vertigo/i],
+  ["orbit_left", /左环绕|逆时针环绕|orbit(?:ing)? left|counter[ -]?clockwise orbit/i],
+  ["orbit_right", /右环绕|顺时针环绕|orbit(?:ing)? right|clockwise orbit/i],
+  ["push_in", /推近|推进|向前推镜|镜头前移|dolly[ -]?in|push[ -]?in/i],
+  ["pull_out", /拉远|向后拉镜|dolly[ -]?out|pull[ -]?out/i],
+  ["crane_up", /升镜|升高镜头|crane up|boom up/i],
+  ["crane_down", /降镜|降低镜头|crane down|boom down/i],
+  ["track_left", /左横移|向左跟拍|track(?:ing)? left/i],
+  ["track_right", /右横移|向右跟拍|track(?:ing)? right/i],
+  ["arc_left", /左弧线|向左弧移|arc left/i],
+  ["arc_right", /右弧线|向右弧移|arc right/i],
+  ["zoom_in", /变焦推|镜头变焦放大|zoom in/i],
+  ["zoom_out", /变焦拉|镜头变焦缩小|zoom out/i],
+];
+
+function inferSingleCameraMovePreset(description: string): CameraMovePreset | undefined {
+  if (CUSTOM_ONLY_CAMERA_MOVE.test(description)) return undefined;
+  const matches = CAMERA_MOVE_PRESET_PATTERNS.filter(([, pattern]) => pattern.test(description)).map(([move]) => move);
+  const unique = [...new Set(matches)];
+  return unique.length === 1 ? unique[0] : undefined;
+}
+
+/**
+ * Tool models occasionally put an exact preset in customMove or retain the prior enum while
+ * describing a new custom move. Normalize before confirmation/event logging: one recognizable
+ * preset takes the deterministic 3D path; genuinely custom/compound intent takes the prompt path.
+ */
+export function normalizeCameraMoveParams(params: CameraMoveParams): CameraMoveParams {
+  if (!params.customMove) return params;
+  if (EMPTY_CUSTOM_CAMERA_MOVE.test(params.customMove)) {
+    const { customMove: _emptyCustomMove, ...presetParams } = params;
+    return presetParams;
+  }
+  const inferredPreset = inferSingleCameraMovePreset(params.customMove);
+  const { move: _staleMove, customMove, ...shared } = params;
+  return inferredPreset ? { ...shared, move: inferredPreset } : { ...shared, customMove };
+}
+
+export const cameraMoveParamsSchema = cameraMoveParamsObjectSchema.transform(normalizeCameraMoveParams);
 
 export const canvasToolNames = [
   "read_canvas_state",

@@ -56,6 +56,8 @@ import { CanvasBatchGenerateDock } from './CanvasBatchGenerateDock'
 import { useCanvasProductionActions } from './useCanvasProductionActions'
 import { useCanvasBatchDockVisibility } from './useCanvasBatchDockVisibility'
 import { useCanvasScreenshotCapture } from './useCanvasScreenshotCapture'
+import { useComposerVisibilityPan } from './useComposerVisibilityPan'
+import { useCanvasFitSignal } from './useCanvasFitSignal'
 import '../styles/generationCanvas.css'
 
 const FOCUS_GENERATION_NODE_EVENT = 'nomi-focus-generation-node'
@@ -221,6 +223,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     selectNodesInRect,
   })
   const { setViewportTransform, animateViewportTo, zoomAtStagePoint } = pointer
+  useComposerVisibilityPan({ animateViewportTo, offsetRef, zoomRef })
   const { handleGroupFramePointerDown, handleSelectionBoundsPointerDown } = useCanvasSelectionDrag({
     readOnly,
     selectedNodeCount: selectedNodeIds.length,
@@ -562,19 +565,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
   // 防止图都在视口外、用户误以为「图消失」）。逻辑抽到 useAutoFitOnLoad（防巨壳）。
   useAutoFitOnLoad({ nodes, selectedNodeIds, activeCategoryId, categoryViewports, fitView, stageRef, zoomRef, offsetRef })
 
-  // 一次性「请适应视图」信号（落画布等批量加节点场景，见 store.requestCanvasFit）。
-  // useAutoFitOnLoad 只在首次加载/切分类触发，加新节点不重跑——这里补「显式动作后揭示新内容」。
-  // 用 ref 取最新 fitView，确保 360ms 后 DOM 渲染完、节点就绪时 fit 到的是最新节点集。
-  const canvasFitNonce = useWorkbenchStore((state) => state.canvasFitNonce)
-  const fitViewRef = React.useRef(fitView)
-  fitViewRef.current = fitView
-  const lastFitNonceRef = React.useRef(0)
-  React.useEffect(() => {
-    if (canvasFitNonce === 0 || canvasFitNonce === lastFitNonceRef.current) return
-    lastFitNonceRef.current = canvasFitNonce
-    const tid = setTimeout(() => fitViewRef.current(true), 360) // 等模式切换 + 节点 DOM 渲染一帧
-    return () => clearTimeout(tid)
-  }, [canvasFitNonce])
+  useCanvasFitSignal(fitView)
 
   const zoomPercent = Math.round(zoom * 100)
   const selectedCount = selectedNodeIds.length

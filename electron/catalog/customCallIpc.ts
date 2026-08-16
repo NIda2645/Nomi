@@ -10,8 +10,12 @@ import {
   CUSTOM_CALL_VARIABLES,
 } from "./customCallContract";
 import { CustomCallScriptError, runCustomCallScript } from "./customCallRunner";
-import { readCatalog } from "./catalogStore";
-import { decryptApiKeyRecord } from "./secrets";
+import {
+  listModelCatalogCustomCallConfig,
+  readCatalog,
+  upsertModelCatalogCustomCallConfig,
+} from "./catalogStore";
+import { decryptApiKeyRecord, decryptCustomConfigWithLegacy } from "./secrets";
 import { registerCustomCallDraftIpc } from "./customCallDraftIpc";
 import type { ProfileKind } from "./types";
 import { createCustomCallTestRunRegistry, type CustomCallTestRunInput, type CustomCallTestRunResult } from "./customCallTestRuns";
@@ -23,7 +27,8 @@ function resolveTarget(vendorKey: string, modelKey: string) {
   const model = state.models.find((m) => m.vendorKey === vendorKey && m.modelKey === modelKey);
   if (!model) throw new Error(`模型不存在：${vendorKey}/${modelKey}`);
   const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendorKey]) || "";
-  return { vendor, model, apiKey };
+  const customConfig = decryptCustomConfigWithLegacy(state.apiKeysByVendor[vendorKey], vendor.meta);
+  return { vendor, model, apiKey, customConfig };
 }
 
 /** 试跑用的最小 canned 请求：够上游成一次最便宜的活，不带参考素材。 */
@@ -63,7 +68,7 @@ async function executeCustomCallTest(
 ): Promise<CustomCallTestRunResult> {
   const started = Date.now();
   try {
-    const { vendor, model, apiKey } = resolveTarget(input.vendorKey, input.modelKey);
+    const { vendor, model, apiKey, customConfig } = resolveTarget(input.vendorKey, input.modelKey);
     if (!input.script.trim()) throw new Error("脚本为空——先写点内容或让 AI 生成");
     const canned = cannedTestInput(model.kind);
     const taskKind = input.taskKind || cannedTaskKind(model.kind);
@@ -71,6 +76,7 @@ async function executeCustomCallTest(
       vendor,
       model,
       apiKey,
+      customConfig,
       script: input.script,
       prompt: input.prompt?.trim() || canned.prompt,
       params: input.params || canned.params,
@@ -103,6 +109,12 @@ const customCallTestRuns = createCustomCallTestRunRegistry({ execute: executeCus
 
 export function registerCustomCallIpc(registerSyncIpc: (channel: string, handler: (...args: never[]) => unknown) => void): void {
   registerCustomCallDraftIpc(registerSyncIpc);
+  registerSyncIpc("nomi:model-catalog:custom-call:config:get", ((vendorKey: string) =>
+    listModelCatalogCustomCallConfig(trim(vendorKey))) as (...args: never[]) => unknown);
+  registerSyncIpc("nomi:model-catalog:custom-call:config:save", ((vendorKey: string, payload: unknown) => {
+    const entries = isJsonRecord(payload) && Array.isArray(payload.entries) ? payload.entries : [];
+    return upsertModelCatalogCustomCallConfig(trim(vendorKey), entries);
+  }) as (...args: never[]) => unknown);
   registerSyncIpc("nomi:model-catalog:custom-call:contract", () => ({
     variables: CUSTOM_CALL_VARIABLES.map((v) => ({ name: v.name, type: v.type })),
     returnContract: CUSTOM_CALL_RETURN_CONTRACT,

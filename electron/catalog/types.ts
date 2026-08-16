@@ -455,8 +455,10 @@ export function billingKindForTaskKind(kind: ProfileKind): BillingModelKind {
 /*  v8 给存量中转 video 条目补「图生视频」通道(image_to_video mapping)。接入路径此前只建 text_to_video，
  *  视频节点一连参考图/首帧就报「没有配置图生视频通道·请删除后重新接入」，而重接也不会建（根因在接入
  *  路径，已同 commit 修）。只碰非内置 vendor + /video/generations 形状。 */
-export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-export const CURRENT_CATALOG_VERSION: CatalogVersion = 8;
+/*  v9 moves custom-call named configuration out of vendor.meta and into the
+ *  existing safeStorage-backed vendor credential record. */
+export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export const CURRENT_CATALOG_VERSION: CatalogVersion = 9;
 
 export type CatalogState = {
   version: CatalogVersion;

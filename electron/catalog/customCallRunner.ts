@@ -8,7 +8,7 @@
 // transcript：http/request 每次调用记一条（Authorization/apiKey 脱敏），试跑面板摊开
 // 「实际发了什么」——参考图第三闸对脚本失明的补偿（plan §10）。
 import { isJsonRecord, type JsonRecord } from "../jsonUtils";
-import { requestJson, requestMultipart } from "../vendor/vendorHttp";
+import { requestJson, requestMultipart, VendorRequestError } from "../vendor/vendorHttp";
 import { CustomCallSandboxError, runCustomCallSandbox } from "./customCallSandbox";
 import type { Model, ProfileKind, Vendor } from "./types";
 
@@ -96,25 +96,6 @@ export function collectCustomCallAssets(result: unknown): string[] {
   return out;
 }
 
-/**
- * 供应商「自定义配置」→ 注入给脚本的 config。住 vendor.meta.customConfig，只收字符串值
- * （用户手填的东西，别让脏类型漏进脚本）。空表也给 {}，脚本里 config.x 取不到就是 undefined，
- * 不用先判空。
- */
-export function customConfigOf(vendor: Vendor): Record<string, string> {
-  const meta = vendor.meta && typeof vendor.meta === "object" ? (vendor.meta as JsonRecord) : {};
-  const raw = meta.customConfig;
-  if (!isJsonRecord(raw)) return {};
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    const name = key.trim();
-    if (!name) continue;
-    if (typeof value === "string") out[name] = value;
-    else if (typeof value === "number" || typeof value === "boolean") out[name] = String(value);
-  }
-  return out;
-}
-
 /** params 里的标准参考键 → 便捷视图（键名与 archetypeInput 标准键一一对应，单源在那边）。 */
 export function referencesViewFromParams(params: JsonRecord): {
   firstFrame?: string;
@@ -165,6 +146,8 @@ export async function runCustomCallScript(input: {
   vendor: Vendor;
   model: Model;
   apiKey: string;
+  /** Plaintext exists only in main-process memory and never crosses IPC. */
+  customConfig?: Record<string, string>;
   script: string;
   prompt: string;
   params: JsonRecord;
@@ -182,6 +165,7 @@ export async function runCustomCallScript(input: {
   saveFile?: (bytes: Buffer, ext: string, contentType: string) => Promise<string>;
 }): Promise<CustomCallScriptResult> {
   const { vendor, apiKey } = input;
+  const customConfig = input.customConfig || {};
   const baseUrl = String(vendor.baseUrlHint || "").replace(/\/+$/, "");
   const transcript: CustomCallTranscriptEntry[] = [];
   const controller = new AbortController();
@@ -193,10 +177,19 @@ export async function runCustomCallScript(input: {
     if (input.signal.aborted) relayAbort();
     else input.signal.addEventListener("abort", relayAbort, { once: true });
   }
-  const redact = (text: string): string => {
-    if (!apiKey) return text;
-    return text.split(apiKey).join("•••");
-  };
+  const secretVariants = [...new Set([apiKey, ...Object.values(customConfig)]
+    .filter((value) => value.length > 0)
+    .flatMap((value) => [
+      value,
+      encodeURIComponent(value),
+      new URLSearchParams({ value }).toString().slice("value=".length),
+      JSON.stringify(value).slice(1, -1),
+    ]))]
+    .sort((left, right) => right.length - left.length);
+  const redact = (text: string): string => secretVariants.reduce(
+    (safe, secret) => safe.split(secret).join("•••"),
+    text,
+  );
 
   const record = async <T>(method: string, url: string, body: unknown, run: () => Promise<T>): Promise<T> => {
     if (controller.signal.aborted) throw controller.signal.reason instanceof Error ? controller.signal.reason : new Error("aborted");
@@ -256,7 +249,7 @@ export async function runCustomCallScript(input: {
     apiKey,
     // 用户在「自定义配置」里填的任意键值。Nomi 只准备了一个密钥槽，而腾讯要 SecretId+SecretKey、
     // Kling 要 AK+SK 每 30 分钟重签——与其我们一个个猜着加字段（永远追不上），不如给一张空白表。
-    config: customConfigOf(input.vendor),
+    config: customConfig,
   };
   try {
     const raw = await runCustomCallSandbox({
@@ -285,9 +278,18 @@ export async function runCustomCallScript(input: {
     const message = error instanceof CustomCallSandboxError && error.kind === "syntax"
       ? `自定义调用脚本语法错误：${rawMessage}`
       : rawMessage;
-    const causeError = error instanceof CustomCallSandboxError && error.causeError !== undefined
+    const rawCauseError = error instanceof CustomCallSandboxError && error.causeError !== undefined
       ? error.causeError
       : error;
+    const causeError = rawCauseError instanceof VendorRequestError
+      ? new VendorRequestError(redact(rawCauseError.message), {
+          ...rawCauseError.structured,
+          url: redact(rawCauseError.structured.url),
+          upstreamMsg: redact(rawCauseError.structured.upstreamMsg),
+        })
+      : rawCauseError instanceof Error
+        ? Object.assign(new Error(redact(rawCauseError.message)), { name: rawCauseError.name })
+        : rawCauseError;
     throw new CustomCallScriptError(message, transcript, causeError);
   } finally {
     clearTimeout(timer);

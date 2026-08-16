@@ -18,56 +18,99 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     environment: production-release
+    env:
+      RC_RUN_ID: ${{ inputs.rc_run_id }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      REPOSITORY: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate promotion inputs
+        run: node scripts/release-contract.mjs validate-promotion-inputs --root . --tag "$RELEASE_TAG" --run-id "$RC_RUN_ID"
       - name: Require a successful RC workflow run
+        id: rc-run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          test "$(gh run view "${{ inputs.rc_run_id }}" --repo "${{ github.repository }}" --json conclusion --jq .conclusion)" = "success"
-          test "$(gh run view "${{ inputs.rc_run_id }}" --repo "${{ github.repository }}" --json workflowName --jq .workflowName)" = "Desktop Release Candidate"
+          gh api "repos/$REPOSITORY/actions/runs/$RC_RUN_ID" > rc-run.json
+          workflow_id=$(gh api "repos/$REPOSITORY/actions/workflows/desktop-rc.yml" --jq .id)
+          test "$(jq -r .conclusion rc-run.json)" = "success"
+          test "$(jq -r .event rc-run.json)" = "workflow_dispatch"
+          test "$(jq -r '.path | split("@", 2)[0]' rc-run.json)" = ".github/workflows/desktop-rc.yml"
+          test "$(jq -r .workflow_id rc-run.json)" = "$workflow_id"
+          test "$(jq -r .head_repository.full_name rc-run.json)" = "$REPOSITORY"
+          echo "sha=$(jq -r .head_sha rc-run.json)" >> "$GITHUB_OUTPUT"
+          echo "run-attempt=$(jq -r .run_attempt rc-run.json)" >> "$GITHUB_OUTPUT"
       - name: Download the approved RC artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh run download "${{ inputs.rc_run_id }}" --repo "${{ github.repository }}" --dir artifacts
+        run: gh run download "$RC_RUN_ID" --repo "$REPOSITORY" --dir artifacts
       - name: Validate RC manifest
         id: manifest
+        env:
+          RC_HEAD_SHA: ${{ steps.rc-run.outputs.sha }}
+          RC_RUN_ATTEMPT: ${{ steps.rc-run.outputs.run-attempt }}
         shell: bash
         run: |
-          sha=$(node scripts/release-contract.mjs validate-manifest --manifest artifacts/rc-metadata/release-manifest.json --repository "${{ github.repository }}" --tag "${{ inputs.tag }}" --run-id "${{ inputs.rc_run_id }}")
+          sha=$(node scripts/release-contract.mjs validate-manifest --manifest artifacts/rc-metadata/release-manifest.json --repository "$REPOSITORY" --tag "$RELEASE_TAG" --run-id "$RC_RUN_ID" --run-attempt "$RC_RUN_ATTEMPT" --sha "$RC_HEAD_SHA" --artifacts artifacts)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Require the RC commit on main
+        env:
+          RC_SHA: ${{ steps.manifest.outputs.sha }}
         shell: bash
         run: |
           git fetch origin main --tags
-          git merge-base --is-ancestor "${{ steps.manifest.outputs.sha }}" origin/main
+          git merge-base --is-ancestor "$RC_SHA" origin/main
       - name: Verify source version
+        env:
+          RC_SHA: ${{ steps.manifest.outputs.sha }}
         run: |
-          git checkout --detach "${{ steps.manifest.outputs.sha }}"
-          node scripts/release-contract.mjs validate-version --root . --version "${{ inputs.tag }}"
+          git checkout --detach "$RC_SHA"
+          node scripts/release-contract.mjs validate-version --root . --version "${RELEASE_TAG#v}"
       - name: Prepare and checksum public assets
-        run: node scripts/release-contract.mjs prepare-assets --input artifacts --output publish
+        run: node scripts/release-contract.mjs prepare-assets --input artifacts --output publish --version "${RELEASE_TAG#v}"
       - name: Create immutable tag
+        env:
+          RC_SHA: ${{ steps.manifest.outputs.sha }}
         shell: bash
         run: |
-          if git rev-parse "refs/tags/${{ inputs.tag }}" >/dev/null 2>&1; then
-            test "$(git rev-list -n 1 "${{ inputs.tag }}")" = "${{ steps.manifest.outputs.sha }}"
+          if git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$RC_SHA"
           else
-            git tag -a "${{ inputs.tag }}" "${{ steps.manifest.outputs.sha }}" -m "Nomi ${{ inputs.tag }}"
-            git push origin "${{ inputs.tag }}"
+            git tag -a "$RELEASE_TAG" "$RC_SHA" -m "Nomi $RELEASE_TAG"
+            git push origin "$RELEASE_TAG"
           fi
-      - name: Publish the exact RC artifacts
+      - name: Create or reuse a private release draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          gh release create "${{ inputs.tag }}" publish/*
-          --repo "${{ github.repository }}"
-          --verify-tag
-          --title "Nomi ${{ inputs.tag }}"
-          --generate-notes
+        shell: bash
+        run: |
+          notes="docs/release-notes/$RELEASE_TAG.md"
+          if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json isDraft > release-state.json 2>/dev/null; then
+            test "$(jq -r .isDraft release-state.json)" = "true"
+            gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" --title "Nomi $RELEASE_TAG" --notes-file "$notes"
+          else
+            gh release create "$RELEASE_TAG" --repo "$REPOSITORY" --verify-tag --draft --title "Nomi $RELEASE_TAG" --notes-file "$notes"
+          fi
+      - name: Upload and verify the exact RC artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload "$RELEASE_TAG" publish/* --repo "$REPOSITORY" --clobber
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json assets > release-assets.json
+          node scripts/release-contract.mjs verify-release-assets --input publish --release-json release-assets.json
+      - name: Publish the verified release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" --draft=false --latest

@@ -1,4 +1,4 @@
-import { configRecordFromRows, type CustomConfigRow } from './customCallConfig'
+import { configPatchFromRows, type CustomConfigRow } from './customCallConfig'
 import type { CustomCallScriptDrafts } from './customCallScriptModes'
 
 function meaningfulScript(script: string): string {
@@ -19,7 +19,7 @@ export function customCallPersistedStateSignature(
       .map(([modeId, script]) => [modeId, meaningfulScript(script)] as const)
       .filter(([, script]) => Boolean(script)),
   )
-  const config = Object.fromEntries(sortedEntries(configRecordFromRows(configRows) ?? {}))
+  const config = configPatchFromRows(configRows)
   return JSON.stringify({
     scripts: { fallback: meaningfulScript(scripts.fallback), modes },
     config,

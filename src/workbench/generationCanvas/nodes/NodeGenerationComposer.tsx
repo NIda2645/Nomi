@@ -472,10 +472,11 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
     else await confirmAndRunNode(node.id)
   }
 
-  const { anchorRef, canvasZoom, flipUp, aboveClearance, shiftX } = useComposerViewportPlacement({
+  const { anchorRef, canvasZoom, flipUp, aboveClearance, shiftX, maxHeight } = useComposerViewportPlacement({
     node,
     visualSize,
     gap: composerLayout.gap,
+    preferredMaxHeight: composerLayout.maxHeight,
   })
 
   // 卡宽 = **内容驱动**（用户拍板 2026-06-16，推翻 06-13 的「按最宽模型恒定宽」）：
@@ -528,7 +529,13 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
           'transition-[outline-color] duration-150',
           isDragOver && 'outline-2 outline-dashed outline-nomi-accent outline-offset-[-2px]',
         )}
-        style={{ maxHeight: composerLayout.maxHeight, cursor: 'default', userSelect: 'auto', touchAction: 'auto' }}
+        style={{
+          maxHeight,
+          minHeight: acceptsPrompt ? Math.min(150, maxHeight) : 0,
+          cursor: 'default',
+          userSelect: 'auto',
+          touchAction: 'auto',
+        }}
       >
       {hasReferenceControls || hasPromptPickerButton ? (
         <div className={cn('flex w-0 min-w-full items-start gap-3')}>
@@ -602,17 +609,18 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
         </div>
       ) : null}
       {/* 长 prompt 在编辑器内部滚动/换行；底栏永远贴底（卡宽确定，提示词在卡宽内自然换行，不撑爆）。 */}
-      {/* 提示词至少 3 行高（min-h-[72px]）——参考区/底栏再多也不把它挤成 1 行（修③）；超长时本区滚动。 */}
+      {/* 空间充足时 PromptEditor 保持 3 行；视口收紧时外层允许缩到 0 并内部滚动，底栏始终可见。 */}
       {/* 转写模式无台词输入（音频参考即输入）——隐藏 prompt，避免误导。 */}
       {audioIsTranscribe || isTextKind || !acceptsPrompt ? null : (
         // w-0 min-w-full：填满卡宽但**贡献 0** 到 max-content（长 prompt 在卡宽内换行，不把卡撑爆 → 卡宽由底栏定）。
         // overflow-y-auto 直接挂在 flex-1 伸缩区上：该区高度被卡片 maxHeight 卡住后有界 → 超长 prompt 在本区内部
-        // 滚动，底栏（shrink-0）永远贴底可见。min-h-[72px] 保底 3 行。
+        // 滚动，底栏（shrink-0）永远贴底可见。外层必须 min-h-0，才能在视口高度不足时让出空间；
+        // 内层 PromptEditor 的 min-h-[72px] 仍提供正常状态的 3 行高度，并成为本区的滚动内容。
         // ⚠️ 别再往里套「无高度约束的内层块 + overflow-y-auto」：那样内层块按内容长到全高、滚动永不触发，
         // 整片 prompt 下溢盖住底栏（= 截图里「文字太长盖住 选择模型/优化」的根因）。滚动容器必须自己有界。
         // 用 overflow-y-auto 而非 overflow-auto：卡宽已被 w-0 min-w-full 锁死、prompt 在卡宽内换行，横向永不溢出，明确关掉横向滚动条。
         <div
-          className={cn('relative flex-1 min-h-[72px] w-0 min-w-full overflow-y-auto overscroll-contain')}
+          className={cn('relative flex-1 min-h-0 w-0 min-w-full overflow-y-auto overscroll-contain')}
           style={{ cursor: node.locked ? 'default' : 'text', userSelect: node.locked ? 'auto' : 'text' }}
         >
           <PromptEditor
