@@ -20,6 +20,7 @@ import { ModelChipGroups, type ChipModel } from './ModelChipGroups'
 import { useVendorHealth } from './useVendorHealth'
 import { vendorConnectionPill } from './vendorConnectionView'
 import { VendorConnectionNotice } from './VendorConnectionNotice'
+import type { ModelSettingsConnectionFocus } from './modelSettingsNavigation'
 
 type VendorOnboardCardProps = {
   directory: KnownVendor
@@ -35,6 +36,10 @@ type VendorOnboardCardProps = {
   onToggleModel?: (model: ChipModel, enabled: boolean) => void
   /** key 绑定/清除后刷新外层。 */
   onChanged: () => void
+  onOpenDetails?: () => void
+  detailMode?: boolean
+  onOpenModel?: (model: ChipModel) => void
+  focus?: ModelSettingsConnectionFocus
 }
 
 export function VendorOnboardCard({
@@ -45,6 +50,10 @@ export function VendorOnboardCard({
   models,
   onToggleModel,
   onChanged,
+  onOpenDetails,
+  detailMode = false,
+  onOpenModel,
+  focus,
 }: VendorOnboardCardProps): JSX.Element {
   const { t } = useTranslation()
   // 已连通默认折叠 key 输入（显「已保存」）；点「更换」展开输入。
@@ -55,6 +64,9 @@ export function VendorOnboardCard({
   const [error, setError] = React.useState('')
   const [urlEditing, setUrlEditing] = React.useState(false)
   const [urlDraft, setUrlDraft] = React.useState('')
+  const credentialInputRef = React.useRef<HTMLInputElement>(null)
+  const urlInputRef = React.useRef<HTMLInputElement>(null)
+  const handledFocusRequestRef = React.useRef<number | null>(null)
   // 连接状态的唯一来源（主进程自取凭证探测）。地址一改 fingerprint 就变，effect 自动重探；
   // 换 key 不改地址，所以解锁后要显式 recheck()。
   const { connection, recheck } = useVendorHealth(directory.vendorKey, { hasApiKey, baseUrl })
@@ -62,6 +74,23 @@ export function VendorOnboardCard({
   React.useEffect(() => {
     setEditing(!hasApiKey)
   }, [hasApiKey])
+
+  React.useEffect(() => {
+    if (!focus || handledFocusRequestRef.current === focus.requestId) return
+    handledFocusRequestRef.current = focus.requestId
+    if (focus.target === 'apiKey') setEditing(true)
+    else {
+      setUrlDraft(baseUrl)
+      setUrlEditing(true)
+    }
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const input = focus.target === 'apiKey' ? credentialInputRef.current : urlInputRef.current
+        input?.focus({ preventScroll: false })
+        input?.scrollIntoView({ block: 'center' })
+      })
+    })
+  }, [baseUrl, focus])
 
   const total = models.length
 
@@ -187,6 +216,8 @@ export function VendorOnboardCard({
         ) : undefined
       }
       defaultExpanded={false}
+      onOpenDetails={onOpenDetails}
+      detailMode={detailMode}
     >
       {/* key 区 */}
       {editing ? (
@@ -203,6 +234,8 @@ export function VendorOnboardCard({
                     {field.label}
                   </label>
                   <input
+                    ref={field === fields[0] ? credentialInputRef : undefined}
+                    data-model-connection-field="apiKey"
                     id={`${directory.vendorKey}-${field.key}`}
                     type={field.secret ? 'password' : 'text'}
                     aria-label={`${vendorName} ${field.label}`}
@@ -253,6 +286,8 @@ export function VendorOnboardCard({
             <>
               <div className="flex gap-2">
                 <input
+                  ref={credentialInputRef}
+                  data-model-connection-field="apiKey"
                   type={fields[0].secret ? 'password' : 'text'}
                   aria-label={t('onboardingProviders.vendorCard.apiKeyAria', { name: vendorName })}
                   placeholder={fields[0].placeholder}
@@ -305,6 +340,7 @@ export function VendorOnboardCard({
             <button
               type="button"
               onClick={() => setEditing(true)}
+              data-model-connection-edit="apiKey"
               disabled={busy}
               className="text-caption text-nomi-ink-60 border border-nomi-line rounded-full px-2.5 py-[3px] hover:border-nomi-ink-20"
             >
@@ -330,6 +366,8 @@ export function VendorOnboardCard({
       {urlEditing ? (
         <div className="flex gap-2">
           <input
+            ref={urlInputRef}
+            data-model-connection-field="baseUrl"
             type="text"
             aria-label={t('onboardingProviders.vendorCard.addressAria', { name: vendorName })}
             placeholder={t('onboardingProviders.vendorCard.addressPlaceholder')}
@@ -368,6 +406,7 @@ export function VendorOnboardCard({
               setUrlEditing(false)
               setError('')
             }}
+            data-model-connection-edit="baseUrl"
             disabled={busy}
             className="shrink-0 text-caption text-nomi-ink-40 hover:text-nomi-ink-60"
           >
@@ -394,7 +433,12 @@ export function VendorOnboardCard({
         </div>
       ) : null}
 
-      <ModelChipGroups models={models} connected={hasApiKey} onToggle={hasApiKey ? onToggleModel : undefined} />
+      <ModelChipGroups
+        models={models}
+        connected={hasApiKey}
+        onToggle={hasApiKey ? onToggleModel : undefined}
+        onOpenModel={onOpenModel}
+      />
 
       {/* 推广位：移到 body 末尾，折叠态不显（减噪）；软话术、不营销 */}
       {directory.promo ? (

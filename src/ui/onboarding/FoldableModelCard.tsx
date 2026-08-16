@@ -7,7 +7,7 @@
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconChevronDown } from '@tabler/icons-react'
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 
 type FoldableModelCardProps = {
@@ -27,6 +27,10 @@ type FoldableModelCardProps = {
    *  避免 button 套 button（HTML/无障碍非法）；不传则不显，不影响其它卡。 */
   headerAction?: React.ReactNode
   defaultExpanded?: boolean
+  /** 模型设置页使用：摘要行进入右侧连接页，不在当前列表原地展开。 */
+  onOpenDetails?: () => void
+  /** 连接详情页使用：复用同一张卡的真实控制区，但固定展开且不再显示折叠按钮。 */
+  detailMode?: boolean
   children: React.ReactNode
 }
 
@@ -40,24 +44,33 @@ export function FoldableModelCard({
   badge,
   headerAction,
   defaultExpanded = false,
+  onOpenDetails,
+  detailMode = false,
   children,
 }: FoldableModelCardProps): JSX.Element {
   const { t } = useTranslation()
   const [expanded, setExpanded] = React.useState(defaultExpanded)
+  const visible = detailMode || expanded
   const bodyId = React.useId()
 
   return (
     <div className="border border-nomi-line rounded-nomi bg-nomi-paper overflow-hidden">
       {/* header 行：展开 toggle（flex-1 button）+ 可选动作槽（兄弟节点，非嵌套）。 */}
-      <div className={cn('flex items-center', expanded && 'bg-nomi-ink-05')}>
+      <div className={cn('flex items-center', visible && 'bg-nomi-ink-05')}>
       <button
         type="button"
-        aria-expanded={expanded}
-        aria-controls={bodyId}
-        onClick={() => setExpanded((v) => !v)}
+        disabled={detailMode}
+        tabIndex={detailMode ? -1 : undefined}
+        aria-expanded={onOpenDetails || detailMode ? undefined : visible}
+        aria-controls={onOpenDetails || detailMode ? undefined : bodyId}
+        onClick={() => {
+          if (onOpenDetails) onOpenDetails()
+          else setExpanded((v) => !v)
+        }}
         className={cn(
           'flex items-center gap-3 p-3 flex-1 min-w-0 text-left',
-          'hover:bg-nomi-ink-05',
+          !detailMode && 'hover:bg-nomi-ink-05',
+          detailMode && 'cursor-default',
         )}
       >
         <span
@@ -92,15 +105,19 @@ export function FoldableModelCard({
           />
           {statusLabel ?? (status === 'ok' ? t('onboardingProviders.modelControls.connected') : t('onboardingProviders.modelControls.pending'))}
         </span>
-        <IconChevronDown
-          size={16}
-          stroke={1.8}
-          className={cn('shrink-0 text-nomi-ink-40 transition-transform duration-150', expanded && 'rotate-180')}
-        />
+        {onOpenDetails ? (
+          <IconChevronRight size={16} stroke={1.8} className="shrink-0 text-nomi-ink-40" />
+        ) : detailMode ? null : (
+          <IconChevronDown
+            size={16}
+            stroke={1.8}
+            className={cn('shrink-0 text-nomi-ink-40 transition-transform duration-150', visible && 'rotate-180')}
+          />
+        )}
       </button>
       {headerAction ? <div className="flex items-center shrink-0 pl-0.5 pr-2">{headerAction}</div> : null}
       </div>
-      {expanded ? (
+      {visible ? (
         <div id={bodyId} className="border-t border-nomi-line-soft p-3 flex flex-col gap-3">
           {children}
         </div>

@@ -46,6 +46,7 @@ import { registerProxyIpc } from "./proxyIpc";
 import { catalogSecretsProvider } from "./events/secretsProvider";
 import { registerOnboardingIpc } from "./ai/onboarding/onboardingIpc";
 import { registerProviderAdapterIpc } from "./providerAdapter/ipc";
+import { registerExistingConnectionIpc } from "./providerAdapter/existingConnectionIpc";
 import { registerUpdaterIpc } from "./update/autoUpdater";
 import { setRendererTarget } from "./capabilityCore/rendererBridge";
 import { readMcpInfo, installMcp, uninstallMcp } from "./capabilityCore/mcpConfig";
@@ -647,6 +648,7 @@ function registerIpc(): void {
   registerBrowserViewIpc(getRendererUrl);
   registerOnboardingIpc();
   registerProviderAdapterIpc();
+  registerExistingConnectionIpc();
   registerProductionRunIpc();
   registerUpdaterIpc();
   // M0 独立捕捞窗已退役（方案A 2026-07-12）：捕捞面收敛到应用内浏览器（registerBrowserViewIpc）。

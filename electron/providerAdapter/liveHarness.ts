@@ -17,7 +17,19 @@ type LiveConfig = {
   quit?: boolean;
 };
 
-const TERMINAL = new Set(["completed", "partial", "failed", "needs_ai", "stale"]);
+const TERMINAL: ReadonlySet<ProviderAdapterRun["stage"]> = new Set([
+  "completed",
+  "partial",
+  "failed",
+  "needs_ai",
+  "cancelled",
+  "timed_out",
+  "stale",
+]);
+
+export function isLiveAdapterTerminalStage(stage: ProviderAdapterRun["stage"]): boolean {
+  return TERMINAL.has(stage);
+}
 
 export function liveHarnessEnabled(env: Record<string, string | undefined>): boolean {
   return env.NOMI_E2E === "1"
@@ -72,11 +84,11 @@ export async function runLiveProviderAdapterHarnessFromEnv(service: ProviderAdap
     });
     const deadline = Date.now() + (config.maxMs ?? 15 * 60_000);
     let current = run;
-    while (!TERMINAL.has(current.stage) && Date.now() < deadline) {
+    while (!isLiveAdapterTerminalStage(current.stage) && Date.now() < deadline) {
       await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
       current = service.getRun(run.id) || current;
     }
-    if (!TERMINAL.has(current.stage)) throw new Error("Live provider-adapter verification timed out");
+    if (!isLiveAdapterTerminalStage(current.stage)) throw new Error("Live provider-adapter verification timed out");
     writeJsonFileAtomic(outputPath, { ok: true, run: liveAdapterSummary(current) });
   } catch (error) {
     writeJsonFileAtomic(outputPath, {

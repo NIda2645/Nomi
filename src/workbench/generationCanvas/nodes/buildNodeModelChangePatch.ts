@@ -3,6 +3,7 @@ import { findModelOptionByIdentifier } from '../adapters/modelOptionsAdapter'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { isImageLikeGenerationNodeKind, isVideoLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import { resolveModeForConnectedReferences } from '../agent/referenceEdgeCapability'
+import { replaceCustomCapabilityContractMeta } from '../../../config/modelArchetypes'
 import {
   buildModelControls,
   defaultPatchForControls,
@@ -50,8 +51,12 @@ export function buildNodeModelChangePatch({
     ? videoAspectDefaultPatch(controls, preferredVideoAspect(collectInputAspectRatios(node.id, edges, nodes)))
     : {}
 
+  const baseMeta = replaceCustomCapabilityContractMeta(
+    removePreviousControlParams(currentMeta, previousControls),
+    nextOption?.meta,
+  )
   let nextMeta: Record<string, unknown> = {
-    ...removePreviousControlParams(currentMeta, previousControls),
+    ...baseMeta,
     modelKey: nextOption?.modelKey || nextOption?.value || value || null,
     modelAlias: nextOption?.modelAlias || nextOption?.value || value || null,
     modelVendor: nextOption?.vendor || null,

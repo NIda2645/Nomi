@@ -16,6 +16,7 @@ import { confirmDialog } from '../../design'
 import { confirmAndDeleteVendor } from './vendorDeleteAction'
 import { VendorConnectionNotice } from './VendorConnectionNotice'
 import type { VendorConnection } from './useVendorHealth'
+import type { ModelSettingsConnectionFocus } from './modelSettingsNavigation'
 
 type CustomVendorManageProps = {
   vendorKey: string
@@ -28,6 +29,7 @@ type CustomVendorManageProps = {
   onRecheck: () => void
   /** 变更后刷新外层目录。 */
   onChanged: () => void
+  focus?: ModelSettingsConnectionFocus
 }
 
 export function CustomVendorManage({
@@ -39,6 +41,7 @@ export function CustomVendorManage({
   connection,
   onRecheck,
   onChanged,
+  focus,
 }: CustomVendorManageProps): JSX.Element {
   const { t } = useTranslation()
   const [keyEditing, setKeyEditing] = React.useState(!hasApiKey)
@@ -47,10 +50,30 @@ export function CustomVendorManage({
   const [urlDraft, setUrlDraft] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
+  const keyInputRef = React.useRef<HTMLInputElement>(null)
+  const urlInputRef = React.useRef<HTMLInputElement>(null)
+  const handledFocusRequestRef = React.useRef<number | null>(null)
 
   React.useEffect(() => {
     setKeyEditing(!hasApiKey)
   }, [hasApiKey])
+
+  React.useEffect(() => {
+    if (!focus || handledFocusRequestRef.current === focus.requestId) return
+    handledFocusRequestRef.current = focus.requestId
+    if (focus.target === 'apiKey') setKeyEditing(true)
+    else {
+      setUrlDraft(baseUrl)
+      setUrlEditing(true)
+    }
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const input = focus.target === 'apiKey' ? keyInputRef.current : urlInputRef.current
+        input?.focus({ preventScroll: false })
+        input?.scrollIntoView({ block: 'center' })
+      })
+    })
+  }, [baseUrl, focus])
 
   const handleSaveKey = React.useCallback(() => {
     const apiKey = keyDraft.trim()
@@ -136,6 +159,8 @@ export function CustomVendorManage({
         <div className="flex flex-col gap-2">
           <div className="flex gap-2">
             <input
+              ref={keyInputRef}
+              data-model-connection-field="apiKey"
               type="password"
               aria-label={t('onboardingProviders.vendorCard.apiKeyAria', { name: vendorName })}
               placeholder={t('onboardingProviders.customVendor.newKeyPlaceholder')}
@@ -181,6 +206,7 @@ export function CustomVendorManage({
             <button
               type="button"
               onClick={() => setKeyEditing(true)}
+              data-model-connection-edit="apiKey"
               disabled={busy}
               className="text-caption text-nomi-ink-60 border border-nomi-line rounded-full px-2.5 py-[3px] hover:border-nomi-ink-20"
             >
@@ -205,6 +231,8 @@ export function CustomVendorManage({
       {urlEditing ? (
         <div className="flex gap-2">
           <input
+            ref={urlInputRef}
+            data-model-connection-field="baseUrl"
             type="text"
             aria-label={t('onboardingProviders.vendorCard.addressAria', { name: vendorName })}
             placeholder={t('onboardingProviders.vendorCard.addressPlaceholder')}
@@ -238,6 +266,7 @@ export function CustomVendorManage({
               setUrlEditing(false)
               setError('')
             }}
+            data-model-connection-edit="baseUrl"
             disabled={busy}
             className="shrink-0 text-caption text-nomi-ink-40 hover:text-nomi-ink-60"
           >

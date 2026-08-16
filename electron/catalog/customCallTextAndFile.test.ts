@@ -43,6 +43,7 @@ describe("collectCustomCallText", () => {
       apiKey: "",
       prompt: "p",
       params: {},
+      taskKind: "text_to_video",
       script: "return await saveFile(new Uint8Array([1, 2, 3]), '.mp4', 'video/mp4')",
       saveFile: async (bytes, _ext, contentType) => `data:${contentType};base64,${bytes.toString('base64')}`,
     });

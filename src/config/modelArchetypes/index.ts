@@ -44,8 +44,17 @@ import { AGNES_IMAGE_ARCHETYPE } from "./agnesImage";
 import { AGNES_VIDEO_ARCHETYPE } from "./agnesVideo";
 import { CODEX_IMAGEGEN_ARCHETYPE } from "./codexImagegen";
 import type { ModelArchetype } from "./types";
+import { customCapabilityArchetypeForModel } from "./customCapabilityContract";
 
-export type { ModelArchetype, ArchetypeMode, ArchetypeReferenceSlot, ArchetypeReferenceSlotKind, ArchetypeIntent, ModelArchetypeVariant } from "./types";
+export type { ModelArchetype, ArchetypeMode, ArchetypeReferenceSlot, ArchetypeReferenceSlotKind, ArchetypeIntent, ArchetypeTransportTaskKind, ModelArchetypeVariant } from "./types";
+export {
+  CUSTOM_CAPABILITY_CONTRACT_META_KEY,
+  CUSTOM_CAPABILITY_CONTRACT_VERSION,
+  normalizeCustomCapabilityContract,
+  parseCustomCapabilityContract,
+  replaceCustomCapabilityContractMeta,
+} from "./customCapabilityContract";
+export type { CustomCapabilityContractV1, CustomCapabilityModeV1 } from "./customCapabilityContract";
 
 /** 内置档案注册表。新模型族在这里登记一条。 */
 export const MODEL_ARCHETYPES: readonly ModelArchetype[] = [SEEDANCE_2_ARCHETYPE, SEEDANCE_2_5_ARCHETYPE, MINIMAX_H3_ARCHETYPE, HAPPYHORSE_ARCHETYPE, GPT_IMAGE_2_ARCHETYPE, SEEDREAM_ARCHETYPE, NANO_BANANA_ARCHETYPE, KLING_3_ARCHETYPE, QWEN_IMAGE_ARCHETYPE, IMAGEN_4_ARCHETYPE, Z_IMAGE_ARCHETYPE, SORA_2_ARCHETYPE, VEO_3_1_ARCHETYPE, WAN_2_7_ARCHETYPE, HAILUO_2_3_ARCHETYPE, GROK_IMAGINE_1_5_VIDEO_ARCHETYPE, SEEDANCE_2_APIMART_ARCHETYPE, SEEDANCE_2_5_APIMART_ARCHETYPE, MINIMAX_H3_APIMART_ARCHETYPE, MINIMAX_H3_REGENERATION_ARCHETYPE, VIDU_Q3_ARCHETYPE, KLING_3_TURBO_ARCHETYPE, HAPPYHORSE_1_1_ARCHETYPE, SEEDREAM_5_PRO_ARCHETYPE, OMNI_FLASH_EXT_ARCHETYPE, AUDIO_ARCHETYPE, DOUBAO_TTS_ARCHETYPE, SEED_TTS_ARCHETYPE, MODELSCOPE_IMAGE_ARCHETYPE, MODELSCOPE_IMAGE_EDIT_ARCHETYPE, SEEDREAM_VOLCENGINE_ARCHETYPE, SEEDANCE_VOLCENGINE_ARCHETYPE, DREAMINA_SEEDANCE_ARCHETYPE, DREAMINA_IMAGE_ARCHETYPE, DREAMINA_UPSCALE_ARCHETYPE, DREAMINA_MULTIFRAME_ARCHETYPE, CODEX_IMAGEGEN_ARCHETYPE, HUNYUAN3D_ARCHETYPE, HITEM3D_ARCHETYPE, MESHY6_ARCHETYPE, RUNNINGHUB_SEEDANCE_ARCHETYPE, ...RUNNINGHUB_VIDEO_ARCHETYPES, ...RUNNINGHUB_IMAGE_ARCHETYPES, AGNES_IMAGE_ARCHETYPE, AGNES_VIDEO_ARCHETYPE];
@@ -149,6 +158,11 @@ export function resolveArchetypeForModel(model: ArchetypeModelLike | null | unde
 
 /** 解析「基础」档案（供应商无关，未特化）：显式 archetypeId 优先，否则按身份匹配 pattern。 */
 function resolveBaseArchetype(model: ArchetypeModelLike): ModelArchetype | null {
+  // A valid user-authored capability contract is the most explicit source of truth. It is
+  // deliberately parsed before curated identity matching; invalid/unknown versions are inert
+  // and fall through to the existing curated resolution path.
+  const custom = customCapabilityArchetypeForModel(model);
+  if (custom) return custom;
   const explicit = getArchetypeById(readArchetypeIdFromMeta(model.meta));
   if (explicit) return explicit;
   const identifiers = [model.modelKey, model.modelAlias].filter((v): v is string => typeof v === "string" && v.trim().length > 0);

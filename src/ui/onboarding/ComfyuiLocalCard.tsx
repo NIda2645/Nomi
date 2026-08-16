@@ -46,6 +46,8 @@ type ComfyuiLocalCardProps = {
   mappings?: Array<{ vendorKey?: string; modelKey?: string; create?: unknown }>
   /** 启用/停用/改地址后冒泡，父组件重查 + 重新分桶。 */
   onChanged: () => void
+  onOpenDetails?: () => void
+  detailMode?: boolean
 }
 
 /**
@@ -63,7 +65,7 @@ function hasWorkflowGraph(meta: unknown, mappings: ComfyuiLocalCardProps['mappin
   return Boolean(prompt && typeof prompt === 'object' && !Array.isArray(prompt))
 }
 
-export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, models, mappings, onChanged }: ComfyuiLocalCardProps): JSX.Element | null {
+export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, models, mappings, onChanged, onOpenDetails, detailMode = false }: ComfyuiLocalCardProps): JSX.Element | null {
   const { t } = useTranslation()
   // 多实例：所有写操作都打到**这一台**（缺省第一台，存量调用零改动）。
   const key = vendorKey || COMFYUI_VENDOR_KEY
@@ -140,6 +142,11 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
     toast(t('onboardingProviders.comfyLocal.addressUpdated'), 'success')
   }
 
+  const cancelAddressEditing = (): void => {
+    setEditing(false)
+    setAddrDraft(shownAddr)
+  }
+
   /** 整台移除（仅自己加的第 2+ 台）：连同它名下的工作流一起删——那些工作流指向的是这台的地址，留着是死的。 */
   const handleRemoveInstance = async () => {
     const ok = await confirmDialog({
@@ -192,15 +199,25 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
     <div className="flex items-center gap-2">
       <span className="text-caption text-nomi-ink-60 whitespace-nowrap">{t('onboardingProviders.comfyLocal.addressLabelCloud')}</span>
       {editing ? (
-        <>
+        <div
+          data-nomi-escape-owner="true"
+          className="flex min-w-0 flex-1 items-center gap-2"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
+            event.preventDefault()
+            event.stopPropagation()
+            cancelAddressEditing()
+          }}
+        >
           <input
             value={addrDraft} onChange={(e) => setAddrDraft(e.target.value)} spellCheck={false}
             aria-label={t('onboardingProviders.comfyLocal.addressLabelCloud')}
+            autoFocus
             className="flex-1 h-8 px-2 rounded-nomi-sm border border-nomi-line bg-nomi-paper text-caption font-mono text-nomi-ink focus:border-nomi-accent outline-none"
           />
           <button type="button" onClick={handleSaveAddr} className="h-8 w-8 grid place-items-center rounded-nomi-sm text-workbench-success hover:bg-nomi-ink-05" aria-label={t('onboardingProviders.comfyLocal.saveAddress')}><IconCheck size={15} stroke={1.8} /></button>
-          <button type="button" onClick={() => { setEditing(false); setAddrDraft(shownAddr) }} className="h-8 w-8 grid place-items-center rounded-nomi-sm text-nomi-ink-40 hover:bg-nomi-ink-05" aria-label={t('common.cancel')}><IconX size={15} stroke={1.8} /></button>
-        </>
+          <button type="button" onClick={cancelAddressEditing} className="h-8 w-8 grid place-items-center rounded-nomi-sm text-nomi-ink-40 hover:bg-nomi-ink-05" aria-label={t('common.cancel')}><IconX size={15} stroke={1.8} /></button>
+        </div>
       ) : (
         <>
           <code className="flex-1 text-caption font-mono text-nomi-ink bg-nomi-ink-05 rounded-nomi-sm px-2 py-1.5 truncate">{shownAddr}</code>
@@ -231,6 +248,8 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
       status={cardStatus}
       statusLabel={statusLabel}
       defaultExpanded={false}
+      onOpenDetails={onOpenDetails}
+      detailMode={detailMode}
     >
       {!enabled ? (
         <>

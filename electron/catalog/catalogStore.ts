@@ -12,6 +12,7 @@ import { migrateRelayVideoImageToVideo } from "./relayVideoI2vMigration";
 import { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayLegacyMigrations";
 import type { AiSdkProviderKind, BillingModelKind, CatalogState, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./types";
 import { CURRENT_CATALOG_VERSION } from "./types";
+import { normalizeCustomCall } from "./customCallMode";
 
 // 各版 relay 迁移各住独立模块（R9 分层：迁移与读写盘/事务无关）。这里只做接线 + 再导出，
 // 测试与既有调用方按原路径 import 不变。
@@ -488,18 +489,6 @@ export function clearModelCatalogVendorApiKey(vendorKey: string): unknown {
 }
 
 /** 纯函数:把一次 model upsert 应用到内存 state(原地改 state.models)。见 applyVendorUpsert 同理。 */
-/** customCall 三态归一：undefined=保留既有；null=删除；{script} 非空=覆写（空串脚本视同删除）。 */
-function normalizeCustomCall(
-  raw: unknown,
-  existing: Model["customCall"] | undefined,
-): Model["customCall"] | undefined {
-  if (raw === null) return undefined;
-  if (raw === undefined) return existing;
-  const script = isJsonRecord(raw) && typeof raw.script === "string" ? raw.script.trim() : "";
-  if (!script) return undefined;
-  return { script, updatedAt: nowIso() };
-}
-
 function applyModelUpsert(state: CatalogState, payload: unknown): Model {
   const raw = payload as JsonRecord;
   const modelKey = String(raw.modelKey || "").trim();

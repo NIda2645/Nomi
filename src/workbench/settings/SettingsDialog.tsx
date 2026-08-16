@@ -3,7 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { Portal } from '@mantine/core'
 import { IconAdjustmentsHorizontal, IconBrain, IconFolder, IconInfoCircle, IconLock, IconPlugConnected, IconX } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
-import { DesignSwitch, hasOpenDialogAbove, NOMI_OVERLAY_Z_INDEX } from '../../design'
+import { confirmDialog, DesignSwitch, NOMI_OVERLAY_Z_INDEX } from '../../design'
+import {
+  getSettingsEscapeOwnership,
+  settingsEscapeTargetWasRemoved,
+  shouldYieldSettingsEscape,
+} from '../../design/overlayLayers'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { useNomiColorScheme } from '../../theme/colorScheme'
 import { getAppLocale, setAppLocale, SUPPORTED_LOCALES, type AppLocale } from '../../i18n'
@@ -18,6 +23,7 @@ import { AutomationPermissionsSection } from './AutomationPermissionsSection'
 import { defaultAutomationPolicySettings } from './settingsAutomationView'
 import type { AutomationPolicySettings } from '../../../electron/settings/automationPolicyContract'
 import type { ProductionPolicyRequirement } from '../production/productionPolicyRecovery'
+import { hasSettingsUnsavedChanges } from './settingsUnsavedChanges'
 
 // ⚠️ 必须懒加载：SettingsDialog 本身是 NomiStudioApp 里**同步 import** 的，而接入面整棵树
 // （OnboardingWizard / 各家 VendorCard / ComfyUI 那套）是个 160KB+ 的独立 chunk。直接 import
@@ -67,6 +73,7 @@ export function SettingsDialog({
   const { t } = useTranslation()
   const { isDark } = useNomiColorScheme()
   const [tab, setTab] = React.useState<SettingsTab>(initialTab)
+  const [modelsMounted, setModelsMounted] = React.useState(initialTab === 'models')
   // t 随语言变化重渲，渲染时读 getAppLocale() 即拿最新值（沿用 LanguageMenuButton 的做法）。
   const locale = getAppLocale()
   const [enabled, setEnabled] = React.useState(false)
@@ -75,8 +82,34 @@ export function SettingsDialog({
   const [automationPolicyLoaded, setAutomationPolicyLoaded] = React.useState(false)
   const dialogRef = React.useRef<HTMLDivElement>(null)
   const contentRef = React.useRef<HTMLElement>(null)
+  const closePromptOpenRef = React.useRef(false)
 
-  React.useEffect(() => setTab(initialTab), [initialTab])
+  const requestClose = React.useCallback(async (): Promise<void> => {
+    if (!hasSettingsUnsavedChanges(dialogRef.current)) {
+      onClose()
+      return
+    }
+    if (closePromptOpenRef.current) return
+    closePromptOpenRef.current = true
+    try {
+      const discard = await confirmDialog({
+        title: t('settings.unsaved.title'),
+        message: t('settings.unsaved.message'),
+        confirmLabel: t('settings.unsaved.discard'),
+        danger: true,
+      })
+      if (discard) onClose()
+    } finally {
+      closePromptOpenRef.current = false
+    }
+  }, [onClose, t])
+
+  const selectTab = React.useCallback((nextTab: SettingsTab): void => {
+    if (nextTab === 'models') setModelsMounted(true)
+    setTab(nextTab)
+  }, [])
+
+  React.useEffect(() => selectTab(initialTab), [initialTab, selectTab])
 
   React.useEffect(() => {
     if (!initialSection) return
@@ -123,18 +156,60 @@ export function SettingsDialog({
     }
   }, [])
 
-  // capture 阶段拦 Esc：先于画布/素材库的 window keydown 关自己（不误触删节点等）。
+  // 目标控件先处理 Esc；document 冒泡仍早于画布的 window 快捷键，所以不会误触画布。
   React.useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        if (dialogRef.current && hasOpenDialogAbove(dialogRef.current)) return
-        event.stopPropagation()
-        onClose()
+    const delegatedEscapes = new WeakSet<KeyboardEvent>()
+    const externalEscapes = new WeakSet<KeyboardEvent>()
+
+    const markDelegatedEscape = (event: KeyboardEvent): void => {
+      const dialog = dialogRef.current
+      if (event.key !== 'Escape' || !dialog) return
+      if (event.isComposing) {
+        delegatedEscapes.add(event)
+        return
       }
+      const ownership = getSettingsEscapeOwnership(dialog, event.target)
+      // A later dialog owns the complete event path, including its own document/window handler.
+      if (ownership.dialogAbove) {
+        externalEscapes.add(event)
+        return
+      }
+      if (shouldYieldSettingsEscape(ownership)) delegatedEscapes.add(event)
     }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+
+    const onKeyBubble = (event: KeyboardEvent): void => {
+      const dialog = dialogRef.current
+      if (event.key !== 'Escape' || !dialog) return
+      if (externalEscapes.has(event)) return
+      if (getSettingsEscapeOwnership(dialog, event.target).dialogAbove) return
+
+      const ownership = {
+        dialogAbove: false,
+        openPopup: delegatedEscapes.has(event),
+        targetOwnsEscape: event.defaultPrevented,
+        targetWasRemoved: settingsEscapeTargetWasRemoved(event.target),
+      }
+      if (shouldYieldSettingsEscape(ownership)) {
+        event.stopPropagation()
+        return
+      }
+
+      event.stopPropagation()
+      if (tab === 'models' && dialog.querySelector('[data-model-settings-page]')) {
+        event.preventDefault()
+        window.dispatchEvent(new CustomEvent('nomi-model-settings-back'))
+        return
+      }
+      void requestClose()
+    }
+
+    window.addEventListener('keydown', markDelegatedEscape, true)
+    document.addEventListener('keydown', onKeyBubble)
+    return () => {
+      window.removeEventListener('keydown', markDelegatedEscape, true)
+      document.removeEventListener('keydown', onKeyBubble)
+    }
+  }, [requestClose, tab])
 
   const persist = React.useCallback((nextEnabled: boolean, nextDir: string): void => {
     void getDesktopBridge()?.assets?.setAutoSavePrefs?.({ enabled: nextEnabled, dir: nextDir }).catch(() => undefined)
@@ -173,19 +248,26 @@ export function SettingsDialog({
     <Portal>
       <div
         ref={dialogRef}
+        data-settings-overlay
         className="fixed inset-0 flex items-center justify-center bg-black/45 p-2 sm:p-6"
         style={{ zIndex: NOMI_OVERLAY_Z_INDEX.applicationModal }}
         role="dialog"
         aria-modal="true"
         aria-label={t('settings.title')}
         onPointerDown={(event) => {
-          if (event.target === event.currentTarget) onClose()
+          if (event.target === event.currentTarget) void requestClose()
         }}
       >
         <div
-          className="flex h-[calc(100svh-16px)] w-full max-w-[760px] flex-col overflow-hidden rounded-nomi-lg border border-nomi-line bg-nomi-paper shadow-nomi-lg sm:h-[min(560px,calc(100svh-48px))] sm:flex-row"
+          data-settings-dialog
+          data-settings-tab={tab}
+          data-settings-frame="fixed"
+          className="relative flex h-[calc(100svh-16px)] w-full max-w-[760px] flex-col overflow-hidden rounded-nomi-lg border border-nomi-line bg-nomi-paper shadow-nomi-lg sm:h-[min(560px,calc(100svh-48px))] sm:flex-row"
         >
-          <aside className="flex w-full flex-none flex-row gap-0.5 overflow-x-auto border-b border-nomi-line bg-nomi-ink-05 p-2 sm:w-[196px] sm:flex-col sm:overflow-x-visible sm:border-b-0 sm:border-r sm:p-3.5">
+          <aside
+            data-settings-nav
+            className="flex w-full flex-none flex-row gap-0.5 overflow-x-auto border-b border-nomi-line bg-nomi-ink-05 p-2 sm:w-[196px] sm:flex-col sm:overflow-x-visible sm:border-b-0 sm:border-r sm:p-3.5"
+          >
             <div className="hidden px-3 pb-3 pt-1 text-body-sm font-medium text-nomi-ink sm:block">{t('settings.title')}</div>
             {TABS.map(({ id, icon: Icon, labelKey }) => (
               <button
@@ -195,22 +277,47 @@ export function SettingsDialog({
                   'flex w-auto shrink-0 items-center gap-2.5 rounded-nomi-sm border-0 px-3 py-2 text-left text-body-sm cursor-pointer sm:w-full',
                   tab === id ? 'bg-nomi-ink text-nomi-paper' : 'bg-transparent text-nomi-ink-60 hover:bg-nomi-ink-05 hover:text-nomi-ink',
                 )}
-                onClick={() => setTab(id)}
+                onClick={() => selectTab(id)}
               >
                 <Icon size={16} stroke={1.7} aria-hidden="true" /> {t(labelKey)}
               </button>
             ))}
           </aside>
 
-          <section ref={contentRef} className="relative min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <section
+            ref={contentRef}
+            data-settings-content
+            className={cn(
+              'relative min-h-0 min-w-0 flex-1',
+              tab === 'models' ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 sm:p-6',
+            )}
+          >
             <button
               type="button"
-              className="absolute right-3 top-3 grid size-8 place-items-center rounded-nomi-sm border-0 bg-transparent cursor-pointer text-nomi-ink-40 hover:bg-nomi-ink-05 hover:text-nomi-ink"
+              data-settings-close
+              className="absolute right-3 top-3 z-30 grid size-8 place-items-center rounded-nomi-sm border-0 bg-transparent cursor-pointer text-nomi-ink-40 hover:bg-nomi-ink-05 hover:text-nomi-ink"
               aria-label={t('settings.close')}
-              onClick={onClose}
+              onClick={() => { void requestClose() }}
             >
               <IconX size={16} stroke={1.8} aria-hidden="true" />
             </button>
+
+            {modelsMounted ? (
+              // 模型管理是独立工作区，首次访问后保持挂载。切走再回来时，向导步骤和脚本草稿不会重置。
+              <div
+                hidden={tab !== 'models'}
+                style={{ display: tab !== 'models' ? 'none' : undefined }}
+                data-settings-page="models"
+                data-settings-model-workspace
+                data-settings-section="models"
+                className="flex h-full min-h-0 flex-col overflow-hidden [&_[data-model-settings-page]>header]:pr-14 [&>div:not([data-model-settings-page])>:first-child]:pr-14"
+              >
+                {/* 本地 Suspense 保住懒加载边界；没有访问模型页时仍不会下载接入模块。 */}
+                <React.Suspense fallback={<div className="px-4 py-3 pr-14 text-caption text-nomi-ink-40 sm:px-5 sm:pr-14">{t('settings.automation.loading')}</div>}>
+                  <OnboardingDrawer />
+                </React.Suspense>
+              </div>
+            ) : null}
 
             {tab === 'file' ? (
               <div>
@@ -245,17 +352,6 @@ export function SettingsDialog({
 
                 <ProjectLocationSection />
               </div>
-            ) : tab === 'models' ? (
-              // 模型管理的唯一宿主。顶部、缺模型和错误恢复入口都由设置控制器深链到这里；
-              // 不再并行挂一套浮卡，避免两套层级、焦点和关闭语义继续漂移。
-              <div data-settings-section="models">
-                <h2 className="mb-4 text-title font-medium text-nomi-ink">{t('settings.tab.models')}</h2>
-                {/* 本地 Suspense：chunk 还在下载时只让这个 tab 显示占位，别把 suspend 抛给
-                    上层边界（那会连整张设置浮层一起卸掉重挂）。 */}
-                <React.Suspense fallback={<div className="text-caption text-nomi-ink-40">{t('settings.automation.loading')}</div>}>
-                  <OnboardingDrawer />
-                </React.Suspense>
-              </div>
             ) : tab === 'ai' ? (
               <fieldset
                 disabled={!automationPolicyLoaded}
@@ -268,7 +364,7 @@ export function SettingsDialog({
                   onChange={updateAutomationPolicy}
                   productionPolicyRequirement={productionPolicyRequirement}
                   focusEnabled={automationPolicyLoaded}
-                  onOpenModelCatalog={() => setTab('models')}
+                  onOpenModelCatalog={() => selectTab('models')}
                 />
               </fieldset>
             ) : tab === 'automation' ? (
@@ -324,9 +420,9 @@ export function SettingsDialog({
                   </div>
                 </div>
               </div>
-            ) : (
-              <AboutSection onClose={onClose} onReplaySplash={onReplaySplash} />
-            )}
+            ) : tab === 'about' ? (
+              <AboutSection onClose={() => { void requestClose() }} onReplaySplash={onReplaySplash} />
+            ) : null}
           </section>
         </div>
       </div>
