@@ -52,13 +52,19 @@ afterEach(() => {
 describe('capabilityCore/mcpConfig', () => {
   it('does not treat an older installed app without the v3 Helper script as reusable', () => {
     const appRoot = path.join(homeDir, 'Old Nomi.app')
-    const appCommand = path.join(appRoot, 'Contents', 'MacOS', 'Nomi')
-    const helper = path.join(appRoot, 'Contents', 'Frameworks', 'Nomi Helper.app', 'Contents', 'MacOS', 'Nomi Helper')
-    const launcher = path.join(appRoot, 'Contents', 'Resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+    const appCommand = process.platform === 'darwin'
+      ? path.join(appRoot, 'Contents', 'MacOS', 'Nomi')
+      : path.join(appRoot, process.platform === 'win32' ? 'Nomi.exe' : 'Nomi')
+    const runtime = process.platform === 'darwin'
+      ? path.join(appRoot, 'Contents', 'Frameworks', 'Nomi Helper.app', 'Contents', 'MacOS', 'Nomi Helper')
+      : appCommand
+    const launcher = process.platform === 'darwin'
+      ? path.join(appRoot, 'Contents', 'Resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+      : path.join(appRoot, 'resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
     fs.mkdirSync(path.dirname(appCommand), { recursive: true })
-    fs.mkdirSync(path.dirname(helper), { recursive: true })
+    fs.mkdirSync(path.dirname(runtime), { recursive: true })
     fs.writeFileSync(appCommand, '')
-    fs.writeFileSync(helper, '')
+    if (runtime !== appCommand) fs.writeFileSync(runtime, '')
 
     expect(packagedMcpLauncherAvailable(appCommand)).toBe(false)
     fs.mkdirSync(path.dirname(launcher), { recursive: true })

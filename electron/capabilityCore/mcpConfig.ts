@@ -449,7 +449,10 @@ export function classifyMcpEntry(
   expected = mcpServerEntry(client),
 ): McpConfigState {
   if (!entry) return 'absent'
-  if (!looksLikeNomiLauncher(entry)) return 'custom'
+  // Exact equality with Nomi's current launcher is authoritative even in test/dev runtimes whose
+  // executable basename is `node` rather than Nomi/Electron. Historical shapes still use the
+  // narrower recognizers below so an unrelated custom proxy is never claimed or migrated.
+  if (!sameLauncher(entry, expected) && !looksLikeNomiLauncher(entry)) return 'custom'
   if (isLegacyScriptEntry(entry)) return 'legacy-launcher'
   if (missingDevelopmentPath(entry)) return 'stale-development'
   if (verifyMcpClient(entry.env?.[MCP_CLIENT_ENV], entry.env?.[MCP_CLIENT_PROOF_ENV]) !== client
