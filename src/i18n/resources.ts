@@ -38,6 +38,7 @@ export const zhCN = {
     noImage: '无图片',
     imageLoadFailed: '图片加载失败',
     loadFailed: '加载失败',
+    loadTimedOut: '加载超时，请重试',
   },
   brand: {
     name: 'Nomi',
@@ -393,6 +394,7 @@ export const en = {
     noImage: 'No image',
     imageLoadFailed: 'Image failed to load',
     loadFailed: 'Load failed',
+    loadTimedOut: 'Loading timed out. Try again.',
   },
   brand: {
     name: 'Nomi',
