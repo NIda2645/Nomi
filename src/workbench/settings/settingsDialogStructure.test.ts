@@ -15,7 +15,7 @@ const MAIN_NON_MODEL_SECTION_SHA256 = {
   'AiModelsSection.tsx': '0d0e65d5000222a5f02a8408ba12a1fc6c652ccb880d4c5ae68ca5172518e957',
   'AutomationPermissionsSection.tsx': 'a0ea704afb1a31c33ffa3e00821658d8696cc15d5069e6361032b194e638b352',
   'CanvasGestureSection.tsx': '51c9806c303e5a02a09c9184a38835b4d2d8cad3cd6bb3f56a2408c96264c571',
-  'AboutSection.tsx': '11cef90c261d43a70653a25c91e0401df8c09c27cd0555b8ab561cbeeb44419e',
+  'AboutSection.tsx': '7fb3e4bee88cf77f6df1217424a4b6130e27581b97de3c58f3c2e7b5bf4a545b',
 } as const
 
 describe('settings dialog structure', () => {
