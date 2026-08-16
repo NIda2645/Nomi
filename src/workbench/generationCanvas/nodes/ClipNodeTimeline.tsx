@@ -10,14 +10,11 @@ import { formatClipNodeDuration } from './clipNodeVisual'
 type ClipNodeTimelineProps = {
   timeline: TimelineState
   selectedClipId?: string
-  splitMode: boolean
-  onSelectClip: (clipId: string) => void
+  onSelectClip: (clipId: string, frame: number) => void
   onMoveClip: (clipId: string, startFrame: number) => void
   onResizeClip: (clipId: string, edge: 'left' | 'right', deltaFrame: number) => void
-  onSplitClip: (clipId: string, frame: number) => void
   onScrubPlayhead?: (frame: number) => void
   onAddMaterial?: () => void
-  onBlankAxis?: () => void
 }
 
 function ClipThumb({ clip }: { clip: TimelineClip }): JSX.Element {
@@ -72,20 +69,15 @@ function ClipHandle({ edge, clip, pxPerFrame, onResize }: { edge: 'left' | 'righ
 function ClipItem({
   clip,
   selected,
-  splitMode,
   pxPerFrame,
   left,
   width,
   onSelectClip,
   onMoveClip,
   onResizeClip,
-  onSplitClip,
-  playheadFrame,
-}: Pick<ClipNodeTimelineProps, 'onSelectClip' | 'onMoveClip' | 'onResizeClip' | 'onSplitClip'> & {
+}: Pick<ClipNodeTimelineProps, 'onSelectClip' | 'onMoveClip' | 'onResizeClip'> & {
   clip: TimelineClip
   selected: boolean
-  splitMode: boolean
-  playheadFrame: number
   pxPerFrame: number
   left: number
   width: number
@@ -95,7 +87,7 @@ function ClipItem({
   const { t } = useTranslation()
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (splitMode || event.shiftKey || (event.target as HTMLElement).closest('[data-clip-handle]')) return
+    if (event.shiftKey || (event.target as HTMLElement).closest('[data-clip-handle]')) return
     event.preventDefault()
     event.stopPropagation()
     const target = event.currentTarget
@@ -124,12 +116,9 @@ function ClipItem({
   const handleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
     event.stopPropagation()
     const rect = ref.current?.getBoundingClientRect()
-    if (splitMode && rect) {
-      const frame = playheadFrame
-      onSplitClip(clip.id, Math.min(clip.endFrame - 1, Math.max(clip.startFrame + 1, frame)))
-      return
-    }
-    onSelectClip(clip.id)
+    const ratio = rect?.width ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0
+    const visibleFrames = Math.max(1, clip.endFrame - clip.startFrame)
+    onSelectClip(clip.id, Math.min(clip.endFrame - 1, clip.startFrame + Math.floor(ratio * visibleFrames)))
   }
 
   return (
@@ -153,7 +142,7 @@ function ClipItem({
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
-          onSelectClip(clip.id)
+          onSelectClip(clip.id, clip.startFrame)
         }
       }}
     >
@@ -170,21 +159,17 @@ function ClipItem({
 export default function ClipNodeTimeline({
   timeline,
   selectedClipId,
-  splitMode,
   onSelectClip,
   onMoveClip,
   onResizeClip,
-  onSplitClip,
   onScrubPlayhead,
   onAddMaterial,
-  onBlankAxis,
 }: ClipNodeTimelineProps): JSX.Element {
   const { t } = useTranslation()
   const track = timeline.tracks[0]
   const clips = track?.clips ?? []
   const [axisWidth, setAxisWidth] = React.useState(420)
   const axisRef = React.useRef<HTMLDivElement | null>(null)
-  const didScrubRef = React.useRef(false)
   React.useLayoutEffect(() => {
     const axis = axisRef.current
     if (!axis) return
@@ -224,13 +209,12 @@ export default function ClipNodeTimeline({
 
   const beginScrub = (event: React.PointerEvent<HTMLDivElement>): void => {
     const target = event.target as HTMLElement
-    if (!target.closest('[data-testid="clip-node-ruler"]') || target.closest('[data-testid="clip-node-clip"]') || target.closest('button')) return
+    if (target.closest('[data-testid="clip-node-clip"]') || target.closest('button')) return
     event.preventDefault()
     event.stopPropagation()
     const pointerId = event.pointerId
     const currentTarget = event.currentTarget
     currentTarget.setPointerCapture(pointerId)
-    didScrubRef.current = true
     scrubAtClientX(event.clientX)
     const move = (moveEvent: PointerEvent) => scrubAtClientX(moveEvent.clientX)
     const end = () => {
@@ -249,14 +233,6 @@ export default function ClipNodeTimeline({
       <div
         ref={axisRef}
         className="relative h-20 min-w-0 overflow-x-auto overflow-y-hidden overscroll-contain rounded-nomi-sm border border-nomi-line bg-nomi-bg"
-        onClick={(event) => {
-          const target = event.target as HTMLElement
-          if (didScrubRef.current) {
-            didScrubRef.current = false
-            return
-          }
-          if (!target.closest('[data-testid="clip-node-clip"]') && !target.closest('button')) onBlankAxis?.()
-        }}
       >
         <div
           className="relative h-full"
@@ -298,15 +274,12 @@ export default function ClipNodeTimeline({
                   key={clip.id}
                   clip={clip}
                   selected={clip.id === selectedClipId}
-                  splitMode={splitMode}
                   pxPerFrame={viewport.pxPerFrame}
                   left={layout.left}
                   width={layout.width}
                   onSelectClip={onSelectClip}
                   onMoveClip={onMoveClip}
                   onResizeClip={onResizeClip}
-                  onSplitClip={onSplitClip}
-                  playheadFrame={timeline.playheadFrame}
                 />
               )
             })}

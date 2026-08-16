@@ -30,6 +30,29 @@ const BAD_ADDRESS = '127.0.0.1:8199'
 const GOOD_ADDRESS = COMFY_BASE.replace(/^https?:\/\//, '')
 const WORKFLOW_NAME = '真实反色处理'
 const OUTPUT_PREFIX = 'nomi-real-user-journey'
+const PARAM_FREE_WORKFLOW_NAME = '原样默认值'
+const PARAM_FREE_OUTPUT_PREFIX = 'nomi-param-free-journey'
+
+const PARAM_FREE_API_WORKFLOW = {
+  '1': {
+    class_type: 'EmptyImage',
+    inputs: { width: 80, height: 72, batch_size: 1, color: 16711808 },
+    _meta: { title: '保留工作流默认值' },
+  },
+  '2': {
+    class_type: 'SaveImage',
+    inputs: { filename_prefix: PARAM_FREE_OUTPUT_PREFIX, images: ['1', 0] },
+    _meta: { title: '保存结果' },
+  },
+}
+
+const MISSING_NODE_API_WORKFLOW = {
+  '1': { class_type: 'NomiJourneyMissingCommunityNode', inputs: { value: 1 } },
+  '2': {
+    class_type: 'SaveImage',
+    inputs: { filename_prefix: 'nomi-missing-node-journey', images: ['1', 0] },
+  },
+}
 
 // A normal ComfyUI UI workflow, not an API export. It has no model dependency and therefore
 // runs on a clean official ComfyUI installation.
@@ -148,20 +171,20 @@ async function poll(label, fn, timeoutMs = 60_000, intervalMs = 500) {
   throw new Error(`${label} timed out after ${timeoutMs}ms${lastError ? `: ${String(lastError)}` : ''}`)
 }
 
-function workflowRuns(history, baselineIds) {
+function workflowRuns(history, baselineIds, outputPrefix = OUTPUT_PREFIX) {
   return Object.entries(history)
     .filter(([id, item]) => {
       if (baselineIds.has(id)) return false
       const graph = item?.prompt?.[2] ?? {}
-      return graph?.['3']?.inputs?.filename_prefix === OUTPUT_PREFIX
+      return Object.values(graph).some((node) => node?.inputs?.filename_prefix === outputPrefix)
     })
     .map(([id, item]) => ({ id, item }))
 }
 
-async function waitForSuccessfulRun(baselineIds, timeoutMs = 60_000) {
+async function waitForSuccessfulRun(baselineIds, timeoutMs = 60_000, outputPrefix = OUTPUT_PREFIX) {
   return poll('ComfyUI successful history entry', async () => {
     const history = await json(`${COMFY_BASE}/history`)
-    return workflowRuns(history, baselineIds).find(({ item }) => item?.status?.status_str === 'success') ?? null
+    return workflowRuns(history, baselineIds, outputPrefix).find(({ item }) => item?.status?.status_str === 'success') ?? null
   }, timeoutMs, 600)
 }
 
@@ -372,7 +395,103 @@ async function runFirstSession() {
     await win.locator('[data-workflow-test-run]').click()
     await win.getByText('运行测试', { exact: true }).waitFor({ timeout: 60_000 })
     const settingsRun = await waitForSuccessfulRun(idsBeforeTestRun)
-    step('T2', '从设置页真实运行成功', testRunStarted, { promptId: settingsRun.id })
+    const settingsPrompt = settingsRun.item?.prompt ?? []
+    const settingsGraph = settingsPrompt[2] ?? {}
+    const settingsClientId = settingsPrompt[3]?.client_id
+    assert(settingsGraph?.['1']?.inputs?.width === 96 && settingsGraph?.['1']?.inputs?.height === 96,
+      '设置页填的 96×96 没有真正进入 ComfyUI 工作流')
+    assert(/^nomi-[0-9a-f-]{36}$/.test(settingsClientId ?? ''), '真实请求没有使用会话唯一 client_id')
+    step('T2', '从设置页真实运行成功', testRunStarted, {
+      promptId: settingsRun.id,
+      clientId: settingsClientId,
+      submittedSize: [settingsGraph['1'].inputs.width, settingsGraph['1'].inputs.height],
+    })
+
+    console.log('\nT2B: recover bad imports, warn about missing nodes, and preserve an explicit empty parameter list')
+    await win.getByRole('button', { name: '关闭工作流设置' }).click()
+    await ensureComfyCardExpanded(win)
+    await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
+    const recoveryInput = win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' })
+    const recoveryPanel = recoveryInput.locator('xpath=..')
+
+    const badJsonStarted = Date.now()
+    await recoveryInput.fill('{broken')
+    await recoveryPanel.getByRole('button', { name: '分析工作流', exact: true }).click()
+    await recoveryPanel.getByText('不是合法 JSON', { exact: false }).waitFor({ timeout: 10_000 })
+    step('T2B', '粘贴错误 JSON 后给出明确修复提示', badJsonStarted)
+
+    const missingNodeStarted = Date.now()
+    await recoveryInput.fill(JSON.stringify(MISSING_NODE_API_WORKFLOW))
+    await recoveryPanel.getByRole('button', { name: '分析工作流', exact: true }).click()
+    const missingNodeWarning = recoveryPanel.getByText('本机 ComfyUI 缺', { exact: false })
+    await missingNodeWarning.waitFor({ timeout: 15_000 })
+    const missingNodeText = await missingNodeWarning.innerText()
+    assert(missingNodeText.includes('NomiJourneyMissingCommunityNode'), '缺少社区节点的预警没有点名具体节点')
+    await screenshot(win, '05-missing-node-preflight.png')
+    step('T2B', '缺少社区节点在导入前可见', missingNodeStarted, {
+      missingNode: 'NomiJourneyMissingCommunityNode',
+    })
+
+    await recoveryPanel.getByRole('button', { name: '收起', exact: true }).click()
+    await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
+    const cleanInput = win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' })
+    const cleanPanel = cleanInput.locator('xpath=..')
+    await cleanInput.fill(JSON.stringify(PARAM_FREE_API_WORKFLOW))
+    await cleanPanel.getByRole('button', { name: '分析工作流', exact: true }).click()
+    await cleanPanel.getByText('已识别为', { exact: false }).waitFor({ timeout: 15_000 })
+    await win.waitForTimeout(700)
+    while (await cleanPanel.getByRole('button', { name: '删除参数' }).count()) {
+      await cleanPanel.getByRole('button', { name: '删除参数' }).first().click()
+    }
+    await cleanPanel.getByText('还没有手动参数', { exact: false }).waitFor()
+    await cleanPanel.getByPlaceholder('给它起个名', { exact: false }).fill(PARAM_FREE_WORKFLOW_NAME)
+    await cleanPanel.getByRole('button', { name: '导入', exact: true }).click()
+    await ensureComfyCardExpanded(win)
+    await win.getByText(PARAM_FREE_WORKFLOW_NAME, { exact: true }).first().waitFor({ timeout: 12_000 })
+
+    const multiCatalog = readCatalog()
+    const originalModel = findImportedModel(multiCatalog)
+    const paramFreeModel = (multiCatalog.models || []).find((model) => model.labelZh === PARAM_FREE_WORKFLOW_NAME)
+    const originalParams = originalModel?.meta?.comfyWorkflowImport?.binding?.params ?? []
+    const emptyBinding = paramFreeModel?.meta?.comfyWorkflowImport?.binding
+    assert(originalParams.length >= 2 && originalParams.every((param) => param.paramKey.startsWith('comfy_')),
+      '导入第二条工作流后，第一条的参数配置被串改')
+    assert(Array.isArray(emptyBinding?.params) && emptyBinding.params.length === 0, '用户明确删空的参数没有持久化为 params: []')
+    assert(!Object.hasOwn(emptyBinding ?? {}, 'numeric'), '新导入仍存了会复活旧参数的 numeric 字段')
+
+    const emptySettingsStarted = Date.now()
+    await win.getByRole('button', { name: `打开「${PARAM_FREE_WORKFLOW_NAME}」的工作流设置` }).click()
+    await win.locator('[data-comfyui-workflow-page]').waitFor({ timeout: 10_000 })
+    let emptyPreview = win.locator('[data-workflow-preview]')
+    await emptyPreview.getByText('画布上只会有一个「生成」钮', { exact: false }).waitFor()
+    assert(await emptyPreview.locator('input, textarea, [role="combobox"]').count() === 0, '显式空参数却仍在预览中出现控件')
+    await screenshot(win, '06-explicit-empty-params.png')
+
+    const workflowPage = win.locator('[data-comfyui-workflow-page]')
+    await workflowPage.getByText(WORKFLOW_NAME, { exact: true }).locator('xpath=ancestor::button[1]').click()
+    await win.locator('[data-workflow-preview]').getByRole('textbox', { name: '宽度' }).waitFor()
+    await workflowPage.getByText(PARAM_FREE_WORKFLOW_NAME, { exact: true }).locator('xpath=ancestor::button[1]').click()
+    emptyPreview = win.locator('[data-workflow-preview]')
+    await emptyPreview.getByText('画布上只会有一个「生成」钮', { exact: false }).waitFor()
+
+    const idsBeforeDefaultRun = new Set(Object.keys(await json(`${COMFY_BASE}/history`)))
+    await win.locator('[data-workflow-test-run]').click()
+    await win.getByText('运行测试', { exact: true }).waitFor({ timeout: 60_000 })
+    const defaultRun = await waitForSuccessfulRun(idsBeforeDefaultRun, 60_000, PARAM_FREE_OUTPUT_PREFIX)
+    const defaultPrompt = defaultRun.item?.prompt ?? []
+    const defaultGraph = defaultPrompt[2] ?? {}
+    const defaultClientId = defaultPrompt[3]?.client_id
+    assert(defaultGraph?.['1']?.inputs?.width === 80 && defaultGraph?.['1']?.inputs?.height === 72,
+      '删空参数后应该使用工作流原样默认值 80×72')
+    assert(defaultRun.id !== settingsRun.id, '连续运行不同工作流时 prompt_id 必须每个任务唯一')
+    assert(defaultClientId === settingsClientId && /^nomi-[0-9a-f-]{36}$/.test(defaultClientId ?? ''),
+      '同一 Nomi 主进程会话内 client_id 应保持稳定')
+    step('T2B', '空参数保存、切换、重开与真跑均保持原样', emptySettingsStarted, {
+      promptId: defaultRun.id,
+      sharedSessionClientId: defaultClientId,
+      submittedSize: [defaultGraph['1'].inputs.width, defaultGraph['1'].inputs.height],
+      isolatedFrom: settingsRun.id,
+    })
 
     console.log('\nT3: generate in a real project and recover after restart')
     await win.getByRole('button', { name: '关闭工作流设置' }).click()
@@ -549,8 +668,11 @@ async function main() {
   await runRestartSession()
 
   const finalHistory = await json(`${COMFY_BASE}/history`)
-  const runs = workflowRuns(finalHistory, baselineIds)
-  assert(runs.length >= 2, `expected at least two real workflow runs, got ${runs.length}`)
+  const runs = [
+    ...workflowRuns(finalHistory, baselineIds),
+    ...workflowRuns(finalHistory, baselineIds, PARAM_FREE_OUTPUT_PREFIX),
+  ]
+  assert(runs.length >= 3, `expected at least three real workflow runs, got ${runs.length}`)
   assert(runs.every(({ item }) => item?.status?.status_str === 'success'), 'one of the real workflow runs did not finish successfully')
   report.realRuns = runs.map(({ id, item }) => ({ id, status: item.status.status_str }))
   report.completedAt = new Date().toISOString()

@@ -6,6 +6,7 @@ import {
   buildComfyImportModelMapping,
   collectGraphEnumOptions,
   importComfyWorkflow,
+  normalizeWorkflowBinding,
   reconcileComfyWorkflow,
   slugifyModelKey,
   type ComfyGraph,
@@ -150,6 +151,101 @@ describe("analyzeComfyWorkflow", () => {
   });
 });
 
+describe("normalizeWorkflowBinding", () => {
+  const graph: ComfyGraph = {
+    "1": { class_type: "Sampler", inputs: { seed: 7, steps: 20, enabled: true, model: ["9", 0] } },
+    "2": { class_type: "TextInput", inputs: { text: "author prompt" } },
+  };
+
+  it("只保留真实标量目标，并拒绝重复目标、连线、缺失目标和角色冲突", () => {
+    const normalized = normalizeWorkflowBinding({
+      promptNodeId: "2",
+      promptInputKey: "text",
+      params: [
+        { nodeId: "1", inputKey: "seed", paramKey: "123 bad key", label: "", type: "number" },
+        { nodeId: "1", inputKey: "seed", paramKey: "duplicate-target", label: "重复", type: "number", default: 99 },
+        { nodeId: "1", inputKey: "steps", paramKey: "123 bad key", label: "Steps", type: "number" },
+        { nodeId: "1", inputKey: "enabled", paramKey: "enabled", label: "Enabled", type: "wrong" },
+        { nodeId: "1", inputKey: "model", paramKey: "model", label: "连线", type: "text", default: "bad" },
+        { nodeId: "missing", inputKey: "seed", paramKey: "missing", label: "缺节点", type: "number", default: 1 },
+        { nodeId: "2", inputKey: "text", paramKey: "prompt", label: "角色冲突", type: "text", default: "bad" },
+        null,
+      ],
+    }, graph);
+
+    expect(normalized.params).toEqual([
+      { nodeId: "1", inputKey: "seed", paramKey: "comfy__123_bad_key", label: "seed", type: "number", default: 7 },
+      { nodeId: "1", inputKey: "steps", paramKey: "comfy__123_bad_key_2", label: "Steps", type: "number", default: 20 },
+      { nodeId: "1", inputKey: "enabled", paramKey: "comfy_enabled", label: "Enabled", type: "boolean", default: true },
+    ]);
+    expect(normalized.params?.every((param) => /^comfy_[A-Za-z0-9_]+$/.test(param.paramKey))).toBe(true);
+  });
+
+  it("params 字段只要存在就不复活 numeric；显式空数组和坏形状都归一为空", () => {
+    const numeric = [{ nodeId: "1", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", default: 7 }];
+    expect(normalizeWorkflowBinding({ params: [], numeric }, graph).params).toEqual([]);
+    expect(normalizeWorkflowBinding({ params: null, numeric }, graph).params).toEqual([]);
+  });
+
+  it("同一个 widget 不能同时承担多个角色，按提示词、首帧、尾帧、源视频顺序保留第一个", () => {
+    const mediaGraph: ComfyGraph = {
+      "1": { class_type: "LoadImage", inputs: { image: "author.png" } },
+      "2": { class_type: "SaveImage", inputs: { images: ["1", 0] } },
+    };
+    const normalized = normalizeWorkflowBinding({
+      firstFrameNodeId: "1", firstFrameInputKey: "image",
+      lastFrameNodeId: "1", lastFrameInputKey: "image",
+      sourceVideoNodeId: "missing", sourceVideoInputKey: "file",
+      outputNodeId: "2", outputKind: "image", params: [],
+    }, mediaGraph);
+    expect(normalized).toMatchObject({ firstFrameNodeId: "1", firstFrameInputKey: "image" });
+    expect(normalized.lastFrameNodeId).toBeUndefined();
+    expect(normalized.lastFrameInputKey).toBeUndefined();
+    expect(normalized.sourceVideoNodeId).toBeUndefined();
+    expect(normalized.sourceVideoInputKey).toBeUndefined();
+
+    const built = buildImportedWorkflow(mediaGraph, normalized);
+    expect(built.templatedGraph["1"].inputs?.image).toBe("{{request.params.first_frame_url}}");
+  });
+
+  it("params 缺失时迁移 legacy numeric，缺省值可从原图安全补齐且不再保留 numeric", () => {
+    const normalized = normalizeWorkflowBinding({
+      outputNodeId: "9",
+      outputKind: "image",
+      numeric: [{ nodeId: "1", inputKey: "seed", paramKey: "comfy_seed", label: "Seed" }],
+    }, graph);
+    expect(normalized).toEqual({
+      outputNodeId: "9",
+      outputKind: "image",
+      params: [{ nodeId: "1", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", type: "number", default: 7 }],
+    });
+    expect(normalized).not.toHaveProperty("numeric");
+  });
+
+  it("合法的标准请求键也强制进入 comfy_ 命名空间，模板渲染时不会被 request.width 覆盖", () => {
+    const widthGraph: ComfyGraph = {
+      "1": { class_type: "EmptyImage", inputs: { width: 512, height: 512, batch_size: 1 } },
+      "2": { class_type: "SaveImage", inputs: { images: ["1", 0] } },
+    };
+    const binding = normalizeWorkflowBinding({
+      outputNodeId: "2",
+      outputKind: "image",
+      params: [{ nodeId: "1", inputKey: "width", paramKey: "width", label: "Width", type: "number", default: 1024 }],
+    }, widthGraph);
+    expect(binding.params?.[0]?.paramKey).toBe("comfy_width");
+
+    const built = buildImportedWorkflow(widthGraph, binding);
+    const extras = applyWireDefaults({}, Object.fromEntries(built.parameters.map((param) => [param.key, param.default])));
+    const params = taskTemplateParams({ extras });
+    const context = buildTemplateContext({ request: { prompt: "", extras }, params, model: {}, modelKey: "generic", apiKey: "" });
+    const rendered = renderTemplateValue({ prompt: built.templatedGraph }, context) as {
+      prompt: Record<string, { inputs: Record<string, unknown> }>;
+    };
+    expect(params.comfy_width).toBe(1024);
+    expect(rendered.prompt["1"].inputs.width).toBe(1024);
+  });
+});
+
 describe("buildImportedWorkflow", () => {
   it("WAN i2v：提示词/首帧/数值 → {{}} 占位；连线不动；kind/taskKind 正确", () => {
     const a = analyzeComfyWorkflow(WAN_I2V);
@@ -189,6 +285,8 @@ describe("buildImportedWorkflow", () => {
     const built = buildImportedWorkflow(WAN_FIRST_LAST_FRAME, a.suggested);
     expect(built.templatedGraph["80"].inputs!.image).toBe("{{request.params.first_frame_url}}");
     expect(built.templatedGraph["89"].inputs!.image).toBe("{{request.params.last_frame_url}}");
+    expect(built.templatedGraph["80"]._meta?.nomi_bound_media_input).toBe("image");
+    expect(built.templatedGraph["89"]._meta?.nomi_bound_media_input).toBe("image");
     expect(built.templatedGraph["90"].inputs!.text).toBe("{{request.prompt}}");
     expect(built.kind).toBe("video");
     expect(built.taskKind).toBe("image_to_video");
@@ -232,6 +330,22 @@ describe("buildImportedWorkflow", () => {
     expect(built.templatedGraph["291"].inputs!.value).toBe("{{request.params.comfy_seconds}}");
     expect(built.templatedGraph["285"].inputs!.value).toBe("{{request.params.comfy_fps}}");
     expect(built.parameters.map((p) => p.key)).toEqual(["comfy_width", "comfy_height", "comfy_seconds", "comfy_fps"]);
+  });
+
+  it("媒体所有权标记保留作者已有的 _meta", () => {
+    const graph: ComfyGraph = {
+      "1": { class_type: "LoadImage", inputs: { image: "author.png" }, _meta: { title: "Reference image" } },
+      "2": { class_type: "SaveImage", inputs: { images: ["1", 0] } },
+    };
+    const built = buildImportedWorkflow(graph, {
+      firstFrameNodeId: "1",
+      firstFrameInputKey: "image",
+      outputNodeId: "2",
+      outputKind: "image",
+      params: [],
+    });
+    expect(built.templatedGraph["1"]._meta).toEqual({ title: "Reference image", nomi_bound_media_input: "image" });
+    expect(graph["1"]._meta).toEqual({ title: "Reference image" });
   });
 });
 
@@ -694,6 +808,7 @@ describe("视频输入通道（补帧/视频超分/视频去背景 —— 语料
   it("建图时注入 source_video_url 占位（上传后是 ComfyUI 自己的文件名）", () => {
     const built = buildImportedWorkflow(FRAME_INTERP, analyzeComfyWorkflow(FRAME_INTERP).suggested);
     expect(built.templatedGraph["1"]?.inputs?.file).toBe("{{request.params.source_video_url}}");
+    expect(built.templatedGraph["1"]?._meta?.nomi_bound_media_input).toBe("file");
     expect(built.kind).toBe("video");
     // 无图输入 → text_to_video，与画布 resolveTaskKind 算出来的一致（对不上就选不到 mapping）
     expect(built.taskKind).toBe("text_to_video");

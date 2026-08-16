@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   comfyuiHistoryTransform,
   fillEmptyCheckpoint,
+  pruneEmptyMediaLoaders,
   COMFYUI_VENDOR_SEED,
   COMFYUI_CURATED_MODELS,
   COMFYUI_CURATED_MAPPINGS,
@@ -396,6 +397,55 @@ describe("fillEmptyCheckpoint（ckpt_name 留空 → 本机第一个 checkpoint�
     const input = { "1": { class_type: "MyCustomLoader", inputs: { ckpt_name: "" } } };
     const out = fillEmptyCheckpoint(input, ["a.safetensors"]) as typeof input;
     expect(out["1"].inputs.ckpt_name).toBe("");
+  });
+});
+
+describe("pruneEmptyMediaLoaders（缺失可选媒体不阻塞整张工作流）", () => {
+  it.each([
+    ["LoadImage", "image"],
+    ["LoadVideo", "file"],
+    ["VHS_LoadVideo", "video"],
+    ["LoadAudio", "audio"],
+    ["VHS_LoadAudio", "file"],
+  ])("清理空的标准 %s loader 及直接下游连线", (classType, inputKey) => {
+    const input = {
+      "10": { class_type: classType, inputs: { [inputKey]: "  " } },
+      "20": { class_type: "Consumer", inputs: { optional_media: ["10", 0], keep: ["30", 0] } },
+      "30": { class_type: "Other", inputs: { value: 1 } },
+    };
+    const out = pruneEmptyMediaLoaders(input) as typeof input;
+    expect(out["10"]).toBeUndefined();
+    expect(out["20"].inputs.optional_media).toBeUndefined();
+    expect(out["20"].inputs.keep).toEqual(["30", 0]);
+    expect(input["10"]).toBeDefined();
+    expect(input["20"].inputs.optional_media).toEqual(["10", 0]);
+  });
+
+  it("清理 Nomi 标记的未知社区 loader，且兼容数字来源节点 ID", () => {
+    const out = pruneEmptyMediaLoaders({
+      "10": {
+        class_type: "CommunityMediaLoader",
+        inputs: { custom_path: null, unrelated: "keep" },
+        _meta: { nomi_bound_media_input: "custom_path" },
+      },
+      "20": { class_type: "Consumer", inputs: { media: [10, 0], strength: 0.8 } },
+    }) as Record<string, { inputs?: Record<string, unknown> }>;
+    expect(out["10"]).toBeUndefined();
+    expect(out["20"].inputs).toEqual({ strength: 0.8 });
+  });
+
+  it("保留有值 loader、非空作者示例和未标记的未知社区 loader", () => {
+    const input = {
+      "1": { class_type: "LoadImage", inputs: { image: "uploaded.png" } },
+      "2": { class_type: "LoadVideo", inputs: { file: "author-example.mp4" } },
+      "3": { class_type: "CommunityMediaLoader", inputs: { custom_path: "" } },
+      "4": {
+        class_type: "CommunityMediaLoader",
+        inputs: { custom_path: "bound.mov" },
+        _meta: { nomi_bound_media_input: "custom_path" },
+      },
+    };
+    expect(pruneEmptyMediaLoaders(input)).toBe(input);
   });
 });
 

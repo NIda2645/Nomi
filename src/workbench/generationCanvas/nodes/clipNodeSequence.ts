@@ -1,6 +1,8 @@
 import type { TimelineClip, TimelineState } from '../../timeline/timelineTypes'
 import {
+  duplicateClipById,
   moveClipToLegalFrame,
+  nudgeClipById,
   removeClipById,
   resizeClipEdge,
   splitClipAtFrame,
@@ -64,6 +66,33 @@ function editClipNode(meta: ClipNodeMeta, edit: (timeline: TimelineState) => Tim
   return clipNodeMetaFromTimeline(meta, timeline, fps)
 }
 
+function editMixedVisualTrack(
+  timeline: TimelineState,
+  clipId: string,
+  edit: (compatibleTimeline: TimelineState) => TimelineState,
+): TimelineState {
+  const selected = timeline.tracks.flatMap((track) => track.clips).find((clip) => clip.id === clipId)
+  if (!selected) return timeline
+  const originalTypes = new Map(timeline.tracks.flatMap((track) => track.clips.map((clip) => [clip.id, clip.type])))
+  const compatibleTimeline = {
+    ...timeline,
+    tracks: timeline.tracks.map((track) => ({
+      ...track,
+      type: selected.type,
+      clips: track.clips.map((clip) => ({ ...clip, type: selected.type })),
+    })),
+  }
+  const edited = edit(compatibleTimeline)
+  return {
+    ...edited,
+    tracks: edited.tracks.map((track, trackIndex) => ({
+      ...track,
+      type: timeline.tracks[trackIndex]?.type ?? track.type,
+      clips: track.clips.map((clip) => ({ ...clip, type: originalTypes.get(clip.id) ?? selected.type })),
+    })),
+  }
+}
+
 export function moveClipNode(meta: ClipNodeMeta, clipId: string, startFrame: number, fps = DEFAULT_FPS): ClipNodeMeta {
   return editClipNode(meta, (timeline) => moveClipToLegalFrame(timeline, clipId, startFrame), fps)
 }
@@ -107,22 +136,20 @@ export function removeClipNode(meta: ClipNodeMeta, clipId: string, fps = DEFAULT
 }
 
 export function duplicateClipNode(meta: ClipNodeMeta, clipId: string, fps = DEFAULT_FPS): ClipNodeMeta {
-  const next = editClipNode(meta, (timeline) => {
-    const track = timeline.tracks[0]
-    if (!track) return timeline
-    const current = track.clips.find((clip) => clip.id === clipId)
-    if (!current) return timeline
-    const ids = new Set(track.clips.map((clip) => clip.id))
-    const baseId = `${current.id}-copy`
-    let nextId = baseId
-    for (let index = 2; ids.has(nextId); index += 1) nextId = `${baseId}-${index}`
-    const visibleFrames = Math.max(1, current.endFrame - current.startFrame)
-    const occupied = (start: number) => track.clips.some((clip) => clip.id !== current.id && start < clip.endFrame && clip.startFrame < start + visibleFrames)
-    let startFrame = current.endFrame
-    if (occupied(startFrame)) startFrame = Math.max(0, ...track.clips.map((clip) => clip.endFrame))
-    const copy = { ...current, id: nextId, startFrame, endFrame: startFrame + visibleFrames }
-    return { ...timeline, tracks: [{ ...track, clips: [...track.clips, copy].sort((left, right) => left.startFrame - right.startFrame) }, ...timeline.tracks.slice(1)] }
-  }, fps)
-  const duplicate = next.clips.find((source) => source.id.endsWith('-copy'))
-  return duplicate ? { ...next, selectedClipId: duplicate.id } : next
+  const timeline = clipNodeTimelineFromMeta(meta, fps)
+  const existingIds = new Set(timeline.tracks.flatMap((track) => track.clips.map((clip) => clip.id)))
+  // The compact node intentionally displays images and videos on one visual track.
+  // Adapt that track to the shared editor's type invariant, then restore the real media types.
+  const edited = editMixedVisualTrack(timeline, clipId, (compatible) => duplicateClipById(compatible, clipId))
+  const duplicate = edited.tracks.flatMap((track) => track.clips).find((clip) => !existingIds.has(clip.id))
+  const next = clipNodeMetaFromTimeline(meta, edited, fps)
+  return duplicate ? { ...next, selectedClipId: clipInstanceId(duplicate.id) } : next
+}
+
+export function nudgeClipNode(meta: ClipNodeMeta, clipId: string, deltaFrame: number, fps = DEFAULT_FPS): ClipNodeMeta {
+  return editClipNode(meta, (timeline) => editMixedVisualTrack(
+    timeline,
+    clipId,
+    (compatible) => nudgeClipById(compatible, clipId, deltaFrame),
+  ), fps)
 }

@@ -25,6 +25,7 @@ const { parseObjectInfoIndex, fetchComfyuiCheckpoints, fetchComfyuiObjectInfoInd
 const { reconcileComfyWorkflow } = await import('../electron/catalog/comfyuiWorkflowImport.ts')
 const { pickUpstreamMessage } = await import('../electron/jsonUtils.ts')
 const { comfyuiHistoryTransform } = await import('../electron/catalog/comfyuiLocal.ts')
+const { applyRequestTransform } = await import('../electron/tasks/requestTransforms.ts')
 const { cancelComfyuiPrompt, parsePreviewFrame, computeOverallPercent } = await import('../electron/comfyuiProgressSocket.ts')
 const { getComfyuiCapabilities } = await import('../electron/comfyui/capabilityStore.ts')
 const { COMFYUI_CLIENT_FEATURE_FLAGS, getComfyuiClientId } = await import('../electron/comfyui/clientSession.ts')
@@ -83,6 +84,54 @@ const human = pickUpstreamMessage(badBody)
 console.log(`     真人话 → 「${human}」`)
 check('人话点到具体节点类与非法值', human.includes('CheckpointLoaderSimple') && human.includes('nope.safetensors'), human.slice(0, 100))
 check('不是笼统的 validation 兜底', human !== 'Prompt outputs failed validation')
+
+console.log('\n⑤B Nomi 请求变换 → 清理缺失可选媒体 → 真服务器执行')
+const OPTIONAL_MEDIA_GRAPH = {
+  '1': { class_type: 'EmptyImage', inputs: { width: 64, height: 64, batch_size: 1, color: 255 } },
+  '2': { class_type: 'EmptyImage', inputs: { width: 32, height: 32, batch_size: 1, color: 65280 } },
+  '3': {
+    class_type: 'LoadImage',
+    inputs: { image: undefined },
+    _meta: { title: 'Optional mask', nomi_bound_media_input: 'image' },
+  },
+  '4': {
+    class_type: 'ImageCompositeMasked',
+    inputs: { destination: ['1', 0], source: ['2', 0], x: 0, y: 0, resize_source: false, mask: ['3', 1] },
+  },
+  '5': { class_type: 'SaveImage', inputs: { filename_prefix: 'NomiOptionalMedia', images: ['4', 0] } },
+}
+const optionalUiWorkflow = { version: 1, nodes: [{ id: 1, type: 'EmptyImage' }, { id: 5, type: 'SaveImage' }] }
+const optionalPromptId = randomUUID()
+const preparedOptionalBody = await applyRequestTransform('comfyui-prompt', {
+  prompt: OPTIONAL_MEDIA_GRAPH,
+  client_id: 'nomi',
+  extra_data: { extra_pnginfo: { workflow: optionalUiWorkflow } },
+  trace_context: { source: 'real-server-verify' },
+}, { baseUrl: BASE, promptId: optionalPromptId })
+check('缺失媒体 loader 已在提交前删除', !preparedOptionalBody.prompt?.['3'])
+check('引用被删 loader 的可选连线同时断开', !Object.hasOwn(preparedOptionalBody.prompt?.['4']?.inputs ?? {}, 'mask'))
+check('必需输入保持不变', preparedOptionalBody.prompt?.['4']?.inputs?.destination?.[0] === '1')
+check('client_id 变为 Nomi 会话唯一值', /^nomi-[0-9a-f-]{36}$/.test(preparedOptionalBody.client_id ?? ''))
+check('预生成 prompt_id 保持不变', preparedOptionalBody.prompt_id === optionalPromptId)
+check('extra_pnginfo.workflow 和其他顶层字段保持不变',
+  JSON.stringify(preparedOptionalBody.extra_data?.extra_pnginfo?.workflow) === JSON.stringify(optionalUiWorkflow)
+    && preparedOptionalBody.trace_context?.source === 'real-server-verify')
+
+const optionalSubmitRes = await fetch(`${BASE}/prompt`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(preparedOptionalBody),
+})
+const optionalSubmitBody = await optionalSubmitRes.json()
+check('真 ComfyUI 接受清理后的工作流', optionalSubmitRes.ok, `HTTP ${optionalSubmitRes.status}`)
+check('真 ComfyUI 回显 Nomi 预生成的 prompt UUID', optionalSubmitBody.prompt_id === optionalPromptId, optionalSubmitBody.prompt_id)
+let optionalHistory = null
+for (let i = 0; i < 40; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  const historyResponse = await (await fetch(`${BASE}/history/${optionalPromptId}`)).json()
+  if (historyResponse?.[optionalPromptId]) { optionalHistory = historyResponse; break }
+}
+check('清理后的工作流在真 ComfyUI 执行成功', optionalHistory?.[optionalPromptId]?.status?.status_str === 'success')
+check('真 history 保留工作流复现元数据',
+  JSON.stringify(optionalHistory?.[optionalPromptId]?.prompt?.[3]?.extra_pnginfo?.workflow) === JSON.stringify(optionalUiWorkflow))
 
 console.log('\n⑥ 零模型真跑：EmptyImage → SaveImage（新协议 + ws + /history + /view）')
 // color 每次不同 → 保证第一轮不命中 ComfyUI 缓存（缓存命中不发 executing，见第⑥节）。
