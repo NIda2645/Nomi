@@ -34,6 +34,8 @@ describe('settings dialog structure', () => {
     expect(settingsSource).toContain('<AutomationPermissionsSection')
     expect(settingsSource).toContain('sm:flex-row')
     expect(settingsSource).toContain('overflow-x-auto')
+    expect(settingsSource).toContain('data-settings-tab-id={id}')
+    expect(settingsSource).toContain('active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2')
     expect(settingsSource).toContain("'production-policy'")
     expect(aiModelsSource).toContain('data-settings-field="hard-budget"')
   })

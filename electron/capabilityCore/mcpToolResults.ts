@@ -104,6 +104,32 @@ function waitingSampleGateId(value: Record<string, unknown>): string | null {
   return gate ? str(gate.gateId) : null
 }
 
+function waitingShotGate(value: Record<string, unknown>): {
+  gateId: string
+  jobId: string
+  index: number
+  nodeId: string
+  provider: string
+  model: string
+} | null {
+  const gates = Array.isArray(value.gates) ? value.gates as Array<Record<string, unknown>> : []
+  const jobs = Array.isArray(value.jobs) ? value.jobs as Array<Record<string, unknown>> : []
+  const gate = gates.find((item) => str(item.gateId).startsWith('gate-shot-')
+    && str(item.scope) === 'job_set' && str(item.status) === 'waiting')
+  const jobId = gate && Array.isArray(gate.jobIds) ? str(gate.jobIds[0]) : ''
+  const index = jobs.findIndex((job) => str(job.jobId) === jobId)
+  const job = index >= 0 ? jobs[index] : null
+  if (!gate || !jobId || !job) return null
+  return {
+    gateId: str(gate.gateId),
+    jobId,
+    index: index + 1,
+    nodeId: str(job.nodeId) || jobId,
+    provider: str(job.provider),
+    model: str(job.model),
+  }
+}
+
 /** B3：信任档位人话标签（合同/状态/改档转述都用这一处）。 */
 const TRUST_LABEL: Record<string, { zh: string; en: string }> = {
   key_confirm: { zh: '关键确认（默认，五门全开）', en: 'key confirmations (default; all gates on)' },
@@ -186,6 +212,16 @@ export function buildToolOutcome(
       L(ctx, '样片就绪：首镜已生成，先过目再批量剩余镜头。', 'Sample ready: the first shot is generated — review it before the full batch.'),
       L(ctx, '  满意就批准继续；想改风格就否决（会暂停，改提示词后可继续）。', '  Approve to continue, or reject to pause and adjust the prompt.'),
     ] : []
+    const shotGate = waitingShotGate(value)
+    const shotTarget = shotGate ? [shotGate.provider, shotGate.model].filter(Boolean).join(' · ') : ''
+    const shotLines = shotGate ? [
+      L(ctx,
+        `第 ${shotGate.index} 镜（${shotGate.nodeId}）提交前正在等你确认。`,
+        `Shot ${shotGate.index} (${shotGate.nodeId}) is waiting for approval before provider submission.`),
+      L(ctx,
+        `  ${shotTarget ? `${shotTarget}；` : ''}批准前不会调用供应商，也不会产生这镜的费用。请回 Nomi 决定。`,
+        `  ${shotTarget ? `${shotTarget}; ` : ''}no provider call or charge occurs before approval. Decide in Nomi.`),
+    ] : []
     // B3：状态转述带当前信任档位（非默认时才占一行，避免默认档噪音）。
     const trustLevel = str(value.trustLevel) || 'key_confirm'
     const text = [
@@ -195,6 +231,7 @@ export function buildToolOutcome(
       preview.url ? `${L(ctx, '最新预览', 'Latest preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
       ...candidateLines,
       ...sampleLines,
+      ...shotLines,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
@@ -205,7 +242,16 @@ export function buildToolOutcome(
         latestPreviewUrl: str(preview.url) || null,
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
         ...(sampleGateId ? { sampleGateId } : {}),
-        nextActions: direction && direction.candidates.length ? ['decide_direction'] : sampleGateId ? ['review_sample'] : hint ? [hint.action] : [],
+        ...(shotGate ? { shotGateId: shotGate.gateId, shotJobId: shotGate.jobId } : {}),
+        nextActions: direction && direction.candidates.length
+          ? ['decide_direction']
+          : sampleGateId
+            ? ['review_sample']
+            : shotGate
+              ? ['review_shot_in_nomi']
+              : hint
+                ? [hint.action]
+                : [],
         openInNomi: openInNomi || null,
       },
     }

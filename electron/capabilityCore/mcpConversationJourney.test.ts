@@ -46,8 +46,18 @@ function makeJourney() {
     },
   })
   const frames: RpcFrame[] = []
+  const protocolRef: { current: ReturnType<typeof createMcpProtocol> | null } = { current: null }
   const transport: McpTransport = {
-    send: (message) => { frames.push(message as RpcFrame) },
+    send: (message) => {
+      const frame = message as RpcFrame
+      frames.push(frame)
+      if (frame.method === 'elicitation/create' && frame.id != null) {
+        queueMicrotask(() => protocolRef.current?.handleIncoming({
+          jsonrpc: '2.0', id: frame.id,
+          result: { action: 'accept', content: { confirm: true } },
+        }))
+      }
+    },
     isAppOpen: () => true,
     invoke: async (method, params) => {
       if (method === 'production.start') {
@@ -91,6 +101,7 @@ function makeJourney() {
     },
   }
   const protocol = createMcpProtocol(transport)
+  protocolRef.current = protocol
   async function call(id: number, name: string, args: Record<string, unknown>, progressToken?: string): Promise<RpcFrame> {
     protocol.handleIncoming({
       jsonrpc: '2.0', id, method: 'tools/call',
@@ -147,9 +158,9 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     const optionKeys = (outcome(withOptions).directionCandidates as Array<{ key: string }>).map((candidate) => candidate.key)
     expect(optionKeys).toEqual(['street', 'studio', 'montage'])
 
-    // 模型已用 elicitation 问过真人拿到 accept（此处用 send 断言协议层可发 elicitation/create 帧的能力在 spend 路径已验，
-    // 方向门本身不弹 elicitation——由 agent 侧发；这里直接走 agent 已获批后的 nomi_decide_gate）。
+    // nomi_decide_gate 自己发服务端 elicitation；测试客户端明确 accept 后，协议层才调用 dispatcher。
     const decided = await call(4, 'nomi_decide_gate', { projectId: 'project-1', runId, gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio' })
+    expect(frames.some((frame) => frame.method === 'elicitation/create')).toBe(true)
     expect(text(decided)).toContain('✓ 方向已定')
     expect(text(decided)).toContain('极简产品美学')
     expect(outcome(decided).kind).toBe('gate_decision')

@@ -17,7 +17,7 @@ import {
 } from './artifactProjection'
 import { buildProductionDeepLink } from './productionDeepLink'
 import { applyRunControl } from './productionRunControl'
-import { createDriverOps } from './productionRunDriverOps'
+import { createDriverOps, isShotGate } from './productionRunDriverOps'
 import { withEventTap } from './productionRunEventTap'
 import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
@@ -32,10 +32,10 @@ import type {
   RunCommand,
 } from './productionRunTypes'
 
-type SafeProductionGate = Omit<ProductionRun['gates'][number], 'planHash' | 'jobIds' | 'contract'> & {
+type SafeProductionGate = Omit<ProductionRun['gates'][number], 'planHash' | 'contract'> & {
   contract?: ReturnType<typeof safeProductionContract>
 }
-type SafeProductionJob = Pick<ProductionRun['jobs'][number], 'jobId' | 'stageId' | 'status' | 'attempt' | 'progressPercent' | 'lastPollAt' | 'lastVendorStateChangeAt' | 'createdAt' | 'updatedAt' | 'errorCode'>
+type SafeProductionJob = Pick<ProductionRun['jobs'][number], 'jobId' | 'stageId' | 'status' | 'attempt' | 'provider' | 'model' | 'nodeId' | 'progressPercent' | 'lastPollAt' | 'lastVendorStateChangeAt' | 'createdAt' | 'updatedAt' | 'errorCode'>
 export type ProductionRunProjection = {
   schemaVersion: number
   runId: string
@@ -144,6 +144,7 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
     })),
     gates: run.gates.map((gate) => ({
       gateId: gate.gateId, scope: gate.scope, status: gate.status, title: safeExternalText(gate.title), summary: safeExternalText(gate.summary),
+      jobIds: [...gate.jobIds],
       createdAt: gate.createdAt, expiresAt: gate.expiresAt, ...(gate.decidedAt ? { decidedAt: gate.decidedAt } : {}),
       ...(gate.contract ? { contract: safeProductionContract(gate.contract) } : {}),
       // B1：方向候选透出（文本经 sanitizer）；决议后回填的 choiceKey 供转述/审计。
@@ -152,6 +153,7 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
     })),
     jobs: run.jobs.map((job) => ({
       jobId: job.jobId, stageId: job.stageId, status: job.status, attempt: job.attempt,
+      provider: job.provider, model: job.model, ...(job.nodeId ? { nodeId: job.nodeId } : {}),
       ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
       ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
       ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
@@ -395,7 +397,10 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         payload: { policy: { ...current.policy, trustLevel } },
       })
       if (trustLevel === 'budget_only') {
-        const waitingCreativeGate = result.run.gates.find((gate) => gate.status === 'waiting' && gate.scope === 'stage' && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-')))
+        const waitingCreativeGate = result.run.gates.find((gate) => gate.status === 'waiting' && (
+          gate.scope === 'stage' && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-'))
+          || isShotGate(gate)
+        ))
         if (waitingCreativeGate) void autoApproveGate(safeProjectId, safeRunId, waitingCreativeGate.gateId)
       }
       return result
@@ -510,6 +515,26 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         }
       }
     }
+    const decidedGate = runCommand.type === 'gate.decide'
+      ? result.run.gates.find((gate) => gate.gateId === runCommand.payload.gateId)
+      : undefined
+    if (runCommand.type === 'gate.decide' && decidedGate && isShotGate(decidedGate)) {
+      if (runCommand.payload.status === 'approved') {
+        void driveGeneration(result.run)
+      } else if (runCommand.payload.status === 'rejected' && result.run.status === 'running') {
+        try {
+          applyRunControl(repository, safeProjectId, safeRunId, result.run, {
+            commandId: `${runCommand.commandId}:shot-reject-pause`,
+            expectedRevision: result.run.revision,
+            type: 'run.control',
+            payload: { action: 'pause' },
+            issuedAt: new Date().toISOString(),
+          })
+        } catch (error) {
+          console.error('[nomi:production] shot gate reject pause failed:', error instanceof Error ? error.message : String(error))
+        }
+      }
+    }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === `gate-export-v${result.run.planVersion}`) {
       void driveExport(result.run)
     }
@@ -574,7 +599,10 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           else void proposeDirections(current)
         }
         if (current.status === 'running' && current.stageId === 'direction') void proposeStoryboard(current)
-        if (current.status === 'ready') void driveGeneration(current)
+        if (current.status === 'ready'
+          || current.status === 'running' && current.jobs.some((job) => ['authorized', 'submit_intent_persisted'].includes(job.status))) {
+          void driveGeneration(current)
+        }
       }
     } catch (error) {
       console.error('[nomi:production] recovery scan failed:', error instanceof Error ? error.message : String(error))

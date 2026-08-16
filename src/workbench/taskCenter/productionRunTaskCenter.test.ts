@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ProductionRunSummary } from '../../../electron/productionRun/productionRunTypes'
-import { buildProductionRunTaskRows } from './productionRunTaskCenter'
+import { buildProductionRunTaskRows, mergeProductionRunSummaries } from './productionRunTaskCenter'
 
 function summary(patch: Partial<ProductionRunSummary> = {}): ProductionRunSummary {
   return {
@@ -39,6 +39,16 @@ const labels = {
 }
 
 describe('production run task-center projection', () => {
+  it('uses the newest full Run revision so one card cannot be completed under a running summary', () => {
+    const listed = summary({ revision: 8, status: 'running' })
+    const completed = summary({ revision: 9, status: 'completed' })
+
+    const [resolved] = mergeProductionRunSummaries([listed], completed)
+    expect(resolved).toMatchObject({ revision: 9, status: 'completed' })
+    expect(buildProductionRunTaskRows([resolved], labels)[0].group).toBe('done')
+    expect(mergeProductionRunSummaries([completed], listed)[0]).toBe(completed)
+  })
+
   it('keeps an active Run visible without inventing progress or cancellation', () => {
     const [row] = buildProductionRunTaskRows([summary()], labels)
 

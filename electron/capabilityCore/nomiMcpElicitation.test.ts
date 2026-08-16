@@ -10,14 +10,18 @@ type RpcMessage = { jsonrpc?: string; id?: unknown; method?: string; params?: Re
 
 /** 充当 MCP 客户端：收集服务端发来的帧，把客户端的帧喂回协议层。 */
 class ProtocolHarness {
-  readonly invoke = vi.fn(async () => {
-    throw new Error('invoke 不该在 decline / 不支持 路径被调用')
-  })
+  readonly invoke: ReturnType<typeof vi.fn>
   private protocol: ReturnType<typeof createMcpProtocol>
   private queue: RpcMessage[] = []
   private waiters: Array<(msg: RpcMessage) => void> = []
 
-  constructor(appOpen = false) {
+  constructor(
+    appOpen = false,
+    invokeImpl: (method: string, params: Record<string, unknown>) => Promise<unknown> = async () => {
+      throw new Error('invoke 不该在 decline / 不支持 路径被调用')
+    },
+  ) {
+    this.invoke = vi.fn(invokeImpl)
     const transport: McpTransport = {
       send: (message) => {
         const msg = message as RpcMessage
@@ -116,5 +120,94 @@ describe('nomi-mcp · 付费 elicitation 握手（B 模式）', () => {
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('Nomi 未打开')
     expect(harness.invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('nomi-mcp · 创意门由服务端强制 elicitation', () => {
+  const directionProjection = {
+    runId: 'run-1', projectId: 'project-1', status: 'awaiting_direction',
+    gates: [{
+      gateId: 'gate-direction-v1', scope: 'stage', status: 'waiting',
+      title: 'Choose a direction', summary: 'Pick one before storyboard planning.',
+      directionCandidates: [{ key: 'studio', title: 'Studio', oneLiner: 'Minimal product film' }],
+    }],
+  }
+
+  it('客户端不支持 elicitation：不读取也不应用决定', async () => {
+    harness = new ProtocolHarness(true)
+    await harness.initialize(false)
+    harness.send({
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'nomi_decide_gate', arguments: { projectId: 'project-1', runId: 'run-1', gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio' } },
+    })
+    const response = await harness.next()
+    expect(response.id).toBe(2)
+    expect(response.result).toMatchObject({ isError: true })
+    expect(harness.invoke).not.toHaveBeenCalled()
+  })
+
+  it('真人拒绝：只读当前门，不应用决定', async () => {
+    harness = new ProtocolHarness(true, async (method) => {
+      if (method === 'production.get') return directionProjection
+      throw new Error(`unexpected invoke: ${method}`)
+    })
+    await harness.initialize(true)
+    harness.send({
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'nomi_decide_gate', arguments: { projectId: 'project-1', runId: 'run-1', gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio' } },
+    })
+    const elicit = await harness.next()
+    expect(elicit.method).toBe('elicitation/create')
+    expect((elicit.params as { message?: string }).message).toContain('Studio')
+    harness.send({ jsonrpc: '2.0', id: elicit.id, result: { action: 'decline' } })
+    const response = await harness.next()
+    expect(response.result).toMatchObject({ isError: true })
+    expect(harness.invoke).toHaveBeenCalledTimes(1)
+    expect(harness.invoke).not.toHaveBeenCalledWith('production.decide-gate', expect.anything())
+  })
+
+  it('真人明确接受：确认后才应用同一个创意决定', async () => {
+    harness = new ProtocolHarness(true, async (method) => {
+      if (method === 'production.get') return directionProjection
+      if (method === 'production.decide-gate') return {
+        ...directionProjection,
+        gates: [{ ...directionProjection.gates[0], status: 'approved', decidedChoiceKey: 'studio' }],
+      }
+      throw new Error(`unexpected invoke: ${method}`)
+    })
+    await harness.initialize(true)
+    harness.send({
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'nomi_decide_gate', arguments: { projectId: 'project-1', runId: 'run-1', gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio' } },
+    })
+    const elicit = await harness.next()
+    harness.send({ jsonrpc: '2.0', id: elicit.id, result: { action: 'accept', content: { confirm: true } } })
+    const response = await harness.next()
+    expect(response.id).toBe(2)
+    expect(response.result).not.toMatchObject({ isError: true })
+    expect(harness.invoke).toHaveBeenNthCalledWith(1, 'production.get', { projectId: 'project-1', runId: 'run-1' })
+    expect(harness.invoke).toHaveBeenNthCalledWith(2, 'production.decide-gate', {
+      projectId: 'project-1', runId: 'run-1', gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio',
+    })
+  })
+
+  it('预算门在协议层直接拒绝，不向客户端伪装成可批准创意门', async () => {
+    harness = new ProtocolHarness(true, async (method) => {
+      if (method === 'production.get') return {
+        ...directionProjection,
+        gates: [{ gateId: 'gate-contract-v1', scope: 'budget_envelope', status: 'waiting', title: 'Budget', summary: 'Spend' }],
+      }
+      throw new Error(`unexpected invoke: ${method}`)
+    })
+    await harness.initialize(true)
+    harness.send({
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'nomi_decide_gate', arguments: { projectId: 'project-1', runId: 'run-1', gateId: 'gate-contract-v1', decision: 'approved' } },
+    })
+    const response = await harness.next()
+    expect(response.id).toBe(2)
+    expect(response.result).toMatchObject({ isError: true })
+    expect(JSON.stringify(response.result)).toContain('Nomi')
+    expect(harness.invoke).toHaveBeenCalledTimes(1)
   })
 })

@@ -195,7 +195,7 @@ export function SpendConfirmDialog() {
 
         <div className={cn('flex items-center justify-end gap-2')}>
           <WorkbenchButton className={cn('h-8 px-4 cursor-pointer')} onClick={() => resolvePending(false)}>
-            {isAgent ? t('generationCommon.spend.ignore') : t('generationCommon.spend.cancel')}
+            {pending.cancelLabel || (isAgent ? t('generationCommon.spend.ignore') : t('generationCommon.spend.cancel'))}
           </WorkbenchButton>
           {incompletePolicy ? (
             <WorkbenchButton

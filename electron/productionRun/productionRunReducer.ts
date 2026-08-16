@@ -172,13 +172,26 @@ export function applyProductionCommand(
           ? transitionJob(job, "authorized", now)
           : job)
         : current.jobs;
+      const approvesDirection = status === "approved" && current.status === "awaiting_direction"
+        && currentGate.scope === "stage" && gateId.startsWith("gate-direction-");
+      const approvesBuild = status === "approved" && current.status === "awaiting_contract"
+        && currentGate.scope === "budget_envelope";
+      const stages = current.stages.map((stage) => {
+        if (approvesDirection && stage.stageId === "direction") {
+          return { ...stage, status: "completed" as const, completedAt: now };
+        }
+        if (approvesBuild && stage.stageId === "build") {
+          return { ...stage, status: "completed" as const, completedAt: now };
+        }
+        return stage;
+      });
       const run = status === "approved" && current.status === "awaiting_contract"
-        ? transitionRun({ ...current, gates, jobs }, "ready", now)
+        ? transitionRun({ ...current, gates, jobs, stages }, "ready", now)
         : status === "approved" && current.status === "awaiting_direction"
-          ? transitionRun({ ...current, gates, jobs }, "running", now)
+          ? transitionRun({ ...current, gates, jobs, stages }, "running", now)
         : status === "approved" && current.status === "awaiting_rough_cut_review"
-          ? transitionRun({ ...current, gates, jobs }, "awaiting_export", now)
-        : { ...current, gates, jobs, updatedAt: now };
+          ? transitionRun({ ...current, gates, jobs, stages }, "awaiting_export", now)
+        : { ...current, gates, jobs, stages, updatedAt: now };
       return { run, eventType: "gate.decided", message: gateId };
     }
     case "plan.proposed": {

@@ -6,7 +6,7 @@ export type AutomationMode = "guided" | "balanced" | "policy-auto";
  * B3 信任档位（run 级，写进 policy 可查证）——决定「创意门 / 样片门」打不打扰，钱门永不受影响：
  * - key_confirm（默认）：五门全开——方向门 + 样片门都停，用户逐项拍板。
  * - budget_only：跳过创意门与样片门（自动批准、事件留痕），只留预算门与不可逆动作。「别问了直接出」= 降到这档。
- * - confirm_all：控制欲最强——每镜提交前都停（本期仅埋事件钩子，不实现每镜门，见 plan 范围）。
+ * - confirm_all：控制欲最强——每镜提交给供应商前都在 Nomi 停下确认。
  * 预算门（budget_envelope）任何档位都不跳。
  */
 export type TrustLevel = "key_confirm" | "budget_only" | "confirm_all";

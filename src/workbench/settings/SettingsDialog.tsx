@@ -82,6 +82,7 @@ export function SettingsDialog({
   const [automationPolicyLoaded, setAutomationPolicyLoaded] = React.useState(false)
   const dialogRef = React.useRef<HTMLDivElement>(null)
   const contentRef = React.useRef<HTMLElement>(null)
+  const navRef = React.useRef<HTMLElement>(null)
   const closePromptOpenRef = React.useRef(false)
 
   const requestClose = React.useCallback(async (): Promise<void> => {
@@ -110,6 +111,19 @@ export function SettingsDialog({
   }, [])
 
   React.useEffect(() => selectTab(initialTab), [initialTab, selectTab])
+
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const nav = navRef.current
+      const active = nav?.querySelector<HTMLElement>(`[data-settings-tab-id="${tab}"]`)
+      if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return
+      nav.scrollTo({
+        left: active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2,
+        behavior: 'auto',
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [tab])
 
   React.useEffect(() => {
     if (!initialSection) return
@@ -265,6 +279,7 @@ export function SettingsDialog({
           className="relative flex h-[calc(100svh-16px)] w-full max-w-[760px] flex-col overflow-hidden rounded-nomi-lg border border-nomi-line bg-nomi-paper shadow-nomi-lg sm:h-[min(560px,calc(100svh-48px))] sm:flex-row"
         >
           <aside
+            ref={navRef}
             data-settings-nav
             className="flex w-full flex-none flex-row gap-0.5 overflow-x-auto border-b border-nomi-line bg-nomi-ink-05 p-2 sm:w-[196px] sm:flex-col sm:overflow-x-visible sm:border-b-0 sm:border-r sm:p-3.5"
           >
@@ -273,6 +288,7 @@ export function SettingsDialog({
               <button
                 key={id}
                 type="button"
+                data-settings-tab-id={id}
                 className={cn(
                   'flex w-auto shrink-0 items-center gap-2.5 rounded-nomi-sm border-0 px-3 py-2 text-left text-body-sm cursor-pointer sm:w-full',
                   tab === id ? 'bg-nomi-ink text-nomi-paper' : 'bg-transparent text-nomi-ink-60 hover:bg-nomi-ink-05 hover:text-nomi-ink',

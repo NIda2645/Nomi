@@ -6,11 +6,18 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
+import { launchNomiApp } from './_launchApp.mjs'
 
 const bundlePath = path.resolve(process.argv[2] || '')
 const executablePath = process.platform === 'darwin'
   ? path.join(bundlePath, 'Contents', 'MacOS', 'Nomi')
   : bundlePath
+const launcherPath = process.platform === 'darwin'
+  ? path.join(bundlePath, 'Contents', 'Frameworks', 'Nomi Helper.app', 'Contents', 'MacOS', 'Nomi Helper')
+  : executablePath
+const launcherScript = process.platform === 'darwin'
+  ? path.join(bundlePath, 'Contents', 'Resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+  : path.join(bundlePath, 'resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-packaged-mcp-smoke-'))
 const capabilityDir = path.join(tempRoot, 'capability')
 const token = crypto.randomBytes(24).toString('hex')
@@ -18,8 +25,8 @@ fs.mkdirSync(capabilityDir, { recursive: true })
 fs.writeFileSync(path.join(capabilityDir, 'token'), token, { mode: 0o600 })
 const clients = ['claude', 'codex', 'cursor']
 
-if (!fs.existsSync(executablePath)) {
-  throw new Error(`Packaged Nomi executable not found: ${executablePath}`)
+if (!fs.existsSync(executablePath) || !fs.existsSync(launcherPath)) {
+  throw new Error(`Packaged Nomi executable/helper not found: ${executablePath} / ${launcherPath}`)
 }
 
 function assert(condition, message) {
@@ -34,11 +41,14 @@ function proofFor(client) {
 }
 
 async function smokeClient(client) {
-  const child = spawn(executablePath, [], {
+  const child = spawn(launcherPath, [launcherScript], {
     cwd: tempRoot,
     env: {
       ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
       NOMI_MCP_STDIO: '1',
+      NOMI_MCP_APP_COMMAND: executablePath,
+      NOMI_MCP_APP_ARGS: '[]',
       NOMI_SETTINGS_DIR: tempRoot,
       NOMI_ELECTRON_USER_DATA_DIR: tempRoot,
       NOMI_CAPABILITY_DIR: capabilityDir,
@@ -143,7 +153,16 @@ async function smokeClient(client) {
 }
 
 let exitCode = 0
+let gui = null
 try {
+  gui = await launchNomiApp({
+    name: 'packaged-mcp-smoke',
+    executablePath,
+    userDataDir: tempRoot,
+    settingsDir: tempRoot,
+    projectsDir: path.join(tempRoot, 'projects'),
+    env: { NOMI_CAPABILITY_DIR: capabilityDir },
+  })
   const evidence = []
   for (const client of clients) evidence.push(await smokeClient(client))
   const first = evidence[0]
@@ -152,6 +171,7 @@ try {
   exitCode = 1
   console.error(error instanceof Error ? error.message : String(error))
 } finally {
+  await gui?.close().catch(() => undefined)
   fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
 }
 

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Nomi MCP journeys contract</title>
+  <style>
+    :root { color-scheme: light; --bg:#f7f7f5; --paper:#fff; --ink:#282722; --muted:#77746d; --line:#e5e4df; --soft:#f2f2ef; --accent:#4777b8; --success:#248a3d; --warning:#9a6715; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 Inter,system-ui,sans-serif; }
+    button { font:inherit; }
+    .shell { min-height:100vh; display:grid; grid-template-columns:220px 1fr; }
+    nav { padding:24px 18px; border-right:1px solid var(--line); background:var(--paper); }
+    .brand { font:600 22px Georgia,serif; margin-bottom:28px; }.brand span{color:var(--accent)}
+    nav button { width:100%; border:0; background:transparent; text-align:left; padding:10px 12px; border-radius:6px; color:var(--muted); cursor:pointer; }
+    nav button[aria-selected="true"] { background:var(--soft); color:var(--ink); font-weight:600; }
+    main { padding:34px; max-width:1020px; width:100%; margin:auto; }
+    h1 { font-size:22px; margin:0 0 6px; } .lead{color:var(--muted);margin:0 0 24px}
+    .stage { display:none; }.stage.active{display:block}
+    .grid { display:grid; grid-template-columns:minmax(300px,420px) 1fr; gap:24px; align-items:start; }
+    .panel { background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:16px; }
+    .row { display:flex; align-items:center; gap:10px; }.between{justify-content:space-between}.grow{flex:1;min-width:0}
+    .label { font-weight:650; }.sub { color:var(--muted); font-size:12px; }
+    .seg { display:grid; grid-template-columns:repeat(3,1fr); background:var(--soft); padding:3px; border-radius:6px; margin:16px 0; }
+    .seg button { border:0; background:transparent; min-height:34px; border-radius:4px; cursor:pointer; }.seg .on{background:var(--paper);box-shadow:0 1px 4px #0001}
+    .status { padding:12px; border-radius:6px; background:var(--soft); margin:12px 0; }.status strong{display:block;margin-bottom:2px}
+    .status.good{background:#eef8f0;color:#225f31}.status.warn{background:#fff7e8;color:#76511a}
+    .primary { width:100%; min-height:42px; border:0; border-radius:6px; background:var(--ink); color:white; font-weight:650; cursor:pointer; }
+    .primary:hover { background:var(--accent); }.secondary{border:1px solid var(--line);background:var(--paper);border-radius:6px;min-height:38px;padding:0 12px;cursor:pointer}
+    .journey { display:grid; gap:8px; }.step{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.step:last-child{border:0}
+    .num{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--soft);font-size:12px}.done .num{background:#e4f4e7;color:var(--success)}.current .num{background:#e7eef8;color:var(--accent)}
+    .gate { border-left:3px solid var(--warning); padding:12px 12px 12px 14px; background:#fffaf1; margin-top:14px; }.gate h3{font-size:14px;margin:0 0 4px}.gate p{color:var(--muted);margin:0 0 12px}
+    .actions { display:flex;gap:8px}.actions .primary{width:auto;padding:0 16px}.toolcount{font-variant-numeric:tabular-nums;font-weight:700;color:var(--success)}
+    .hint { margin-top:12px;color:var(--muted);font-size:12px }
+    @media(max-width:760px){.shell{grid-template-columns:1fr}nav{display:flex;gap:6px;padding:10px;border-right:0;border-bottom:1px solid var(--line)}.brand{margin:6px auto 6px 4px;font-size:18px}nav button{width:auto}main{padding:18px}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <nav aria-label="样张场景">
+    <div class="brand">No<span>m</span>i</div>
+    <button data-tab="connect" aria-selected="true">接入升级</button>
+    <button data-tab="quick" aria-selected="false">快速制作</button>
+    <button data-tab="run" aria-selected="false">完整制作</button>
+  </nav>
+  <main>
+    <section class="stage active" data-stage="connect">
+      <h1>接入 AI 编程助手</h1><p class="lead">只用真实握手结果证明连接，不让旧配置假装在线。</p>
+      <div class="grid">
+        <div class="panel">
+          <div class="row between"><div><div class="label">Nomi MCP</div><div class="sub">Claude Code · Codex · Cursor</div></div><span class="sub">需要升级</span></div>
+          <div class="seg"><button class="on">Claude Code</button><button>Codex</button><button>Cursor</button></div>
+          <div class="status warn"><strong>发现旧版 Nomi 接入</strong>旧启动脚本已经失效。升级只替换 Nomi 条目，并先保存备份。</div>
+          <button class="primary" id="upgrade">升级接入</button>
+          <div class="hint">其他 MCP 服务和 Nomi 模型设置不会改变。</div>
+        </div>
+        <div class="panel journey">
+          <div class="step done"><span class="num">1</span><div><div class="label">识别 Nomi 旧条目</div><div class="sub">未知自定义配置不会被静默覆盖</div></div></div>
+          <div class="step current"><span class="num">2</span><div><div class="label">备份并迁移</div><div class="sub">写入稳定启动器、客户端身份和配置版本</div></div></div>
+          <div class="step"><span class="num">3</span><div><div class="label">真实握手</div><div class="sub">initialize → tools/list → 显示实际工具数</div></div></div>
+        </div>
+      </div>
+    </section>
+    <section class="stage" data-stage="quick">
+      <h1>快速制作</h1><p class="lead">一句目标，Agent 把项目、镜头、参考和首个结果落进 Nomi。</p>
+      <div class="grid"><div class="panel journey">
+        <div class="step done"><span class="num">1</span><div><div class="label">创建「咖啡广告」</div><div class="sub">nomi_create_project</div></div></div>
+        <div class="step done"><span class="num">2</span><div><div class="label">选择可用图片模型</div><div class="sub">nomi_list_models</div></div></div>
+        <div class="step done"><span class="num">3</span><div><div class="label">加入 3 个镜头并连接人物参考</div><div class="sub">nomi_add_nodes → nomi_connect_nodes</div></div></div>
+        <div class="step current"><span class="num">4</span><div><div class="label">生成第一镜</div><div class="sub">确认付费后，结果回填原节点</div></div></div>
+      </div><div class="panel"><div class="status good"><strong>画布已更新</strong><span class="toolcount">15 个工具可用</span> · 3 个镜头 · 1 个结果</div><p class="sub">Nomi 在前台时节点实时出现；关闭时安全落盘，下次打开仍然在。</p></div></div>
+    </section>
+    <section class="stage" data-stage="run">
+      <h1>完整 Production Run</h1><p class="lead">制作状态持久化；Agent 负责推进，Nomi 负责不可逆决定。</p>
+      <div class="grid"><div class="panel journey">
+        <div class="step done"><span class="num">1</span><div><div class="label">Brief 与创意方向</div><div class="sub">方向三选一，确认后才拟分镜</div></div></div>
+        <div class="step done"><span class="num">2</span><div><div class="label">分镜与预算合同</div><div class="sub">预算必须在 Nomi 内批准</div></div></div>
+        <div class="step current"><span class="num">3</span><div><div class="label">逐镜提交</div><div class="sub">confirm_all：每一镜提交供应商前都停</div></div></div>
+        <div class="step"><span class="num">4</span><div><div class="label">粗剪与导出</div><div class="sub">审看粗剪，单独批准导出</div></div></div>
+      </div><div class="panel"><div class="label">Nomi 制作 · 镜头确认</div><div class="gate"><h3>镜头 2 准备提交</h3><p>尚未发送给供应商，也没有产生这笔费用。批准后只提交这一镜，下一镜仍会停下。</p><div class="actions"><button class="primary">批准这一镜</button><button class="secondary">暂停制作</button></div></div><div class="hint">预算、导出和发布不能由外部 MCP 工具代为批准。</div></div></div>
+    </section>
+  </main>
+</div>
+<script>
+  const tabs=[...document.querySelectorAll('[data-tab]')];
+  tabs.forEach(tab=>tab.addEventListener('click',()=>{tabs.forEach(x=>x.setAttribute('aria-selected',String(x===tab)));document.querySelectorAll('[data-stage]').forEach(s=>s.classList.toggle('active',s.dataset.stage===tab.dataset.tab));}));
+  document.querySelectorAll('.seg button').forEach(button=>button.addEventListener('click',()=>{button.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===button));}));
+  document.getElementById('upgrade').addEventListener('click',event=>{event.currentTarget.textContent='已升级并验证';event.currentTarget.disabled=true;const box=document.querySelector('[data-stage="connect"] .status');box.className='status good';box.innerHTML='<strong>Claude Code 已接入</strong><span class="toolcount">15 个工具</span> 已通过真实握手；旧配置备份已保留。';});
+</script>
+</body>
+</html>

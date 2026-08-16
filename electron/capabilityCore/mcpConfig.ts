@@ -2,9 +2,9 @@
 // + docs/plan/2026-06-24-packaged-mcp-stdio-server.md）。
 //
 // 「一键接入」就靠这一层：算出 nomi MCP server 启动条目 → 把 nomi 条目合并进各客户端的配置文件。
-// 启动条目 = **app 自身二进制 + env NOMI_MCP_STDIO=1**（main.ts 据此跑进程内 stdio MCP server，
-// 见 mcpStdioServer.ts）。打包版二进制永远存在、不依赖用户装 node——根治旧版指向 asar 里不存在的
-// node 脚本导致的「Connection closed」握手失败。
+// 启动条目 = **包内 Helper 的 Node 模式 + mcpNodeLauncher.js**。Helper 本身就是 Nomi 随包携带的
+// Node runtime，不依赖用户装 node；它不注册第二个 NSApplication，而是连接已开的 Nomi RPC，必要时
+// 先启动唯一的 Nomi GUI。这样 GUI 已开时 Claude/Codex/Cursor 不会在 AppKit 注册阶段直接 SIGABRT。
 // 支持 Claude Code / Codex / Cursor 三个一键，其余助手走 UI 的「复制配置」。
 // 安全口径（三客户端一致）：**只写各自固定文件**（非任意路径写）；写前自动备份；**合并而非覆盖**
 // （保留用户已有的其它 MCP server）；原子写（tmp→rename）。
@@ -19,11 +19,26 @@ import {
   MCP_CLIENT_PROOF_ENV,
   readToken,
   signMcpClient,
+  verifyMcpClient,
   type AuthenticatedMcpClient,
 } from './security'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 
 const SERVER_NAME = 'nomi'
+export const MCP_CONFIG_VERSION_ENV = 'NOMI_MCP_CONFIG_VERSION'
+export const MCP_CONFIG_KIND_ENV = 'NOMI_MCP_CONFIG_KIND'
+export const MCP_CONFIG_VERSION = '3'
+
+export type McpLauncherKind = 'packaged' | 'development'
+export type McpConfigState =
+  | 'absent'
+  | 'current'
+  | 'development'
+  | 'legacy-launcher'
+  | 'stale-development'
+  | 'auth-stale'
+  | 'launcher-stale'
+  | 'custom'
 
 export type McpClientKey = AuthenticatedMcpClient
 
@@ -47,21 +62,84 @@ function resolveClient(client?: string): McpClientKey {
 /** MCP server 启动条目（command/args/env），三客户端共用。 */
 export type McpServerEntry = { command: string; args: string[]; env?: Record<string, string> }
 
+type LauncherEntry = {
+  command: string
+  args: string[]
+  kind: McpLauncherKind
+  env: Record<string, string>
+}
+
+function packagedNodeLauncherPaths(appCommand: string): Pick<LauncherEntry, 'command' | 'args'> {
+  if (process.platform === 'darwin') {
+    const contentsDir = path.resolve(path.dirname(appCommand), '..')
+    return {
+      command: path.join(contentsDir, 'Frameworks', 'Nomi Helper.app', 'Contents', 'MacOS', 'Nomi Helper'),
+      args: [path.join(contentsDir, 'Resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')],
+    }
+  }
+  return {
+    command: appCommand,
+    args: [path.join(path.dirname(appCommand), 'resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')],
+  }
+}
+
+/** A previous installed Nomi is reusable only if it already contains the v3 Helper bridge. */
+export function packagedMcpLauncherAvailable(appCommand: string): boolean {
+  const launcher = packagedNodeLauncherPaths(appCommand)
+  return fs.existsSync(appCommand) && fs.existsSync(launcher.command) && launcher.args.every((arg) => fs.existsSync(arg))
+}
+
+function installedMacLauncher(): string | null {
+  if (process.platform !== 'darwin' || process.env.NODE_ENV === 'test' || process.env.NOMI_MCP_FORCE_DEV_LAUNCHER === '1') return null
+  const candidate = '/Applications/Nomi.app/Contents/MacOS/Nomi'
+  return packagedMcpLauncherAvailable(candidate) ? candidate : null
+}
+
+function nodeLauncherEntry(appCommand: string, appArgs: string[], kind: McpLauncherKind): LauncherEntry {
+  const packaged = kind === 'packaged'
+  const packagedLauncher = packaged ? packagedNodeLauncherPaths(appCommand) : null
+  const command = packagedLauncher?.command ?? appCommand
+  const launcherScript = packagedLauncher?.args[0]
+    ?? path.join(app.getAppPath(), 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+  return {
+    command,
+    args: [launcherScript],
+    kind,
+    env: {
+      ELECTRON_RUN_AS_NODE: '1',
+      NOMI_MCP_APP_COMMAND: appCommand,
+      NOMI_MCP_APP_ARGS: JSON.stringify(appArgs),
+    },
+  }
+}
+
+function launcherEntry(): LauncherEntry {
+  if (app.isPackaged) return nodeLauncherEntry(process.execPath, [], 'packaged')
+  const installed = installedMacLauncher()
+  if (installed) return nodeLauncherEntry(installed, [], 'packaged')
+  return nodeLauncherEntry(process.execPath, [app.getAppPath()], 'development')
+}
+
 /**
- * nomi MCP server 条目：让 Nomi 用**自身可执行文件**以 NOMI_MCP_STDIO 模式启动 = 进程内 stdio MCP server。
- * 打包版 process.execPath = `/Applications/Nomi.app/Contents/MacOS/Nomi`（包内永远存在、无 node 依赖）。
- * dev 下 execPath = node_modules 的 electron，需 args 指明 app 路径（repo 根）让它找到 main。三客户端共用。
+ * nomi MCP server 条目：用包内 Node helper 跑 stdio 桥；桥只在需要时启动 GUI 主进程。
+ * 三个客户端拿到同一个启动器，但各自有独立签名 proof，GUI RPC 仍负责最终鉴权和付费硬闸。
  */
 export function mcpServerEntry(client?: McpClientKey): McpServerEntry {
-  const env: Record<string, string> = { NOMI_MCP_STDIO: '1' }
+  const launcher = launcherEntry()
+  const env: Record<string, string> = {
+    ...launcher.env,
+    NOMI_MCP_STDIO: '1',
+    [MCP_CONFIG_VERSION_ENV]: MCP_CONFIG_VERSION,
+    [MCP_CONFIG_KIND_ENV]: launcher.kind,
+  }
   const proof = client ? signMcpClient(client) : null
   if (client && proof) {
     env[MCP_CLIENT_ENV] = client
     env[MCP_CLIENT_PROOF_ENV] = proof
   }
   return {
-    command: process.execPath,
-    args: app.isPackaged ? [] : [app.getAppPath()],
+    command: launcher.command,
+    args: launcher.args,
     env,
   }
 }
@@ -215,7 +293,15 @@ function codexUninstall(target: string): void {
 
 // ── 对外 API ───────────────────────────────────────────────────────────
 
-export type McpClientInfo = { installed: boolean; configPath: string; snippet: string }
+export type McpClientInfo = {
+  installed: boolean
+  configPath: string
+  snippet: string
+  configState: McpConfigState
+  launcherKind: McpLauncherKind
+  migration: 'none' | 'upgraded'
+  backupPath: string | null
+}
 
 export type McpInfo = {
   tokenReady: boolean
@@ -230,9 +316,25 @@ function clientInfo(client: McpClientKey): McpClientInfo {
   const spec = CLIENTS[client]
   const target = spec.configPath()
   const server = mcpServerEntry(client)
-  const installed = spec.format === 'toml' ? codexInstalled(target) : jsonInstalled(target)
+  const launcherKind = server.env?.[MCP_CONFIG_KIND_ENV] === 'development' ? 'development' : 'packaged'
+  let configured = configuredMcpEntry(client)
+  let configState = classifyMcpEntry(client, configured, server)
+  let migration: McpClientInfo['migration'] = 'none'
+  let backupPath: string | null = null
+
+  // Only deterministic Nomi-owned historical shapes migrate without a click. Unknown/custom
+  // entries stay untouched. A dev launcher is not a durable migration target, so wait until a
+  // packaged launcher exists or the user explicitly chooses the development connection.
+  if (launcherKind === 'packaged' && shouldAutoMigrate(configState)) {
+    backupPath = spec.format === 'toml' ? codexInstall(target, client) : jsonInstall(target, client)
+    configured = configuredMcpEntry(client)
+    configState = classifyMcpEntry(client, configured, server)
+    migration = 'upgraded'
+  }
+
+  const installed = configured !== null || (spec.format === 'toml' ? codexInstalled(target) : jsonInstalled(target))
   const snippet = spec.format === 'toml' ? codexBlock(server) : jsonSnippet(server)
-  return { installed, configPath: target, snippet }
+  return { installed, configPath: target, snippet, configState, launcherKind, migration, backupPath }
 }
 
 /** 读接入状态 + 各客户端配置片段。rpcPort 由调用方（appIntegration）传入。 */
@@ -303,6 +405,64 @@ export function configuredMcpEntry(client?: string): McpServerEntry | null {
     for (const [k, v] of Object.entries(record.env as Record<string, unknown>)) if (typeof v === 'string') env[k] = v
   }
   return { command, args, env }
+}
+
+function sameLauncher(left: McpServerEntry, right: McpServerEntry): boolean {
+  return left.command === right.command && left.args.length === right.args.length
+    && left.args.every((arg, index) => arg === right.args[index])
+}
+
+function isLegacyScriptEntry(entry: McpServerEntry): boolean {
+  return entry.args.some((arg) => /(?:^|[\\/])scripts[\\/]nomi-mcp\.mjs$/i.test(arg))
+}
+
+function isNomiRuntimeCommand(command: string): boolean {
+  const normalized = command.replaceAll('\\', '/')
+  return /(?:^|\/)(?:Nomi Helper|Nomi|Electron)(?:\.exe)?$/i.test(normalized)
+}
+
+function isDirectNomiAppEntry(entry: McpServerEntry): boolean {
+  return /(?:^|[\\/])Nomi(?:\.app[\\/]Contents[\\/]MacOS[\\/]Nomi|\.exe)?$/i.test(entry.command)
+}
+
+function isNodeLauncherEntry(entry: McpServerEntry): boolean {
+  return entry.env?.NOMI_MCP_STDIO === '1'
+    && entry.env?.ELECTRON_RUN_AS_NODE === '1'
+    && typeof entry.env?.NOMI_MCP_APP_COMMAND === 'string'
+    && isNomiRuntimeCommand(entry.command)
+    && entry.args.some((arg) => /(?:^|[\\/])dist-electron[\\/]capabilityCore[\\/]mcpNodeLauncher\.js$/i.test(arg))
+}
+
+function looksLikeNomiLauncher(entry: McpServerEntry): boolean {
+  if (isLegacyScriptEntry(entry)) return true
+  return isDirectNomiAppEntry(entry) || isNodeLauncherEntry(entry)
+}
+
+function missingDevelopmentPath(entry: McpServerEntry): boolean {
+  if (entry.env?.[MCP_CONFIG_KIND_ENV] !== 'development' && !/(?:^|[\\/])Electron(?:\.app[\\/].*)?$/i.test(entry.command)) return false
+  return entry.args.some((arg) => (path.isAbsolute(arg) || arg.startsWith('.')) && !fs.existsSync(arg))
+}
+
+export function classifyMcpEntry(
+  client: McpClientKey,
+  entry: McpServerEntry | null,
+  expected = mcpServerEntry(client),
+): McpConfigState {
+  if (!entry) return 'absent'
+  if (!looksLikeNomiLauncher(entry)) return 'custom'
+  if (isLegacyScriptEntry(entry)) return 'legacy-launcher'
+  if (missingDevelopmentPath(entry)) return 'stale-development'
+  if (verifyMcpClient(entry.env?.[MCP_CLIENT_ENV], entry.env?.[MCP_CLIENT_PROOF_ENV]) !== client
+      || entry.env?.[MCP_CONFIG_VERSION_ENV] !== MCP_CONFIG_VERSION) return 'auth-stale'
+  if (!sameLauncher(entry, expected)) return 'launcher-stale'
+  return entry.env?.[MCP_CONFIG_KIND_ENV] === 'development' ? 'development' : 'current'
+}
+
+function shouldAutoMigrate(state: McpConfigState): boolean {
+  return state === 'legacy-launcher'
+    || state === 'stale-development'
+    || state === 'auth-stale'
+    || state === 'launcher-stale'
 }
 
 /** 一键写入指定客户端：备份 → 合并 nomi 条目（保留其它）→ 原子写回。默认 Claude Code。 */

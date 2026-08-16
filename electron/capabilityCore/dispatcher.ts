@@ -178,6 +178,10 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       if (action === 'set_trust') {
         const trustLevel = String(params.trustLevel || '')
         if (!['key_confirm', 'budget_only', 'confirm_all'].includes(trustLevel)) throw new RpcError('Invalid trust level', 400)
+        if (trustLevel !== 'confirm_all' && full.gates.some((gate) => gate.status === 'waiting'
+          && gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-'))) {
+          throw new RpcError('Decide the waiting shot in Nomi before changing its trust level', 403)
+        }
         await ctx.productionRuns.command(projectId, runId, {
           commandId: `mcp-control-set_trust-${trustLevel}-${full.revision}`,
           expectedRevision: full.revision,
@@ -210,6 +214,9 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       if (!full) throw new RpcError(`Production run not found: ${runId}`, 404)
       const gate = full.gates.find((item) => item.gateId === gateId)
       if (!gate) throw new RpcError(`Production gate not found: ${gateId}`, 404)
+      const creativeGate = gate.scope === 'stage'
+        && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-'))
+      if (!creativeGate) throw new RpcError('This production gate must be decided in Nomi', 403)
       await ctx.productionRuns.command(projectId, runId, {
         commandId: `mcp-decide-${gateId}-${decision}-${full.revision}`,
         expectedRevision: full.revision,
