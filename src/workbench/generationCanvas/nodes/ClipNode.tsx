@@ -114,7 +114,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const upstreamMediaKey = upstreamMedia.map((source) => source.id).join('|')
   const clipActionDisabledReason = exporting
     ? t('generationCommon.clipNode.exporting')
-    : visualMode !== 'editing' || !activeClip
+    : !activeClip
       ? t('generationCommon.clipNode.selectToEdit')
       : undefined
   const canEditActiveClip = !clipActionDisabledReason
@@ -277,8 +277,15 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   }, [durationFrames, selectClip, timelineClips])
 
   const handleMoveClip = React.useCallback((clipId: string, startFrame: number) => {
-    persist(moveClipNode(meta, clipId, startFrame))
-  }, [meta, persist])
+    const current = timelineClips.find((clip) => clip.id === clipId)
+    if (!current) return
+    const next = moveClipNode(meta, clipId, startFrame)
+    const moved = clipNodeTimelineFromMeta(next).tracks[0]?.clips.find((clip) => clip.id === clipId)
+    if (!moved || moved.startFrame === current.startFrame) return
+    captureHistory()
+    persist({ ...next, selectedClipId: clipId.replace(/^clip-/, '') }, { history: false })
+    setPlaying(false)
+  }, [captureHistory, meta, persist, timelineClips])
 
   const handleResizeClip = React.useCallback((clipId: string, edge: 'left' | 'right', deltaFrame: number) => {
     persist(resizeClipNode(meta, clipId, edge, deltaFrame))
@@ -533,7 +540,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         <div className="min-h-0 flex-1 px-2 pb-2" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
           <ClipNodeTimeline
             timeline={timelineForView}
-            selectedClipId={visualMode === 'editing' ? selectedClipId : undefined}
+            selectedClipId={selectedClipId}
             onSelectClip={selectClip}
             onMoveClip={handleMoveClip}
             onResizeClip={handleResizeClip}

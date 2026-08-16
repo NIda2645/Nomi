@@ -4,12 +4,15 @@ import { IconPlus } from '@tabler/icons-react'
 import { WorkbenchIconButton } from '../../../design/workbenchActions'
 import { useFilmstrip } from '../../../media/useFilmstrip'
 import { cn } from '../../../utils/cn'
+import { canvasDragExceededThreshold } from '../components/canvasPointerGestureModel'
 import type { TimelineClip, TimelineState } from '../../timeline/timelineTypes'
+import type { SnapResult } from '../../timeline/snapping'
 import {
   resolveClipNodeFilmstripStyle,
   resolveClipNodeTimelineLayout,
   resolveClipNodeTimelineViewport,
 } from './clipNodeTimelineLayout'
+import { resolveClipNodeDragTarget } from './clipNodeDragModel'
 import { formatClipNodeDuration } from './clipNodeVisual'
 
 type ClipNodeTimelineProps = {
@@ -20,6 +23,12 @@ type ClipNodeTimelineProps = {
   onResizeClip: (clipId: string, edge: 'left' | 'right', deltaFrame: number) => void
   onScrubPlayhead?: (frame: number) => void
   onAddMaterial?: () => void
+}
+
+type ClipDragPreview = {
+  clipId: string
+  startFrame: number
+  snap: SnapResult | null
 }
 
 function ClipThumb({ clip, pxPerFrame }: { clip: TimelineClip; pxPerFrame: number }): JSX.Element {
@@ -90,52 +99,140 @@ function ClipHandle({ edge, clip, pxPerFrame, onResize }: { edge: 'left' | 'righ
 function ClipItem({
   clip,
   selected,
+  timeline,
   pxPerFrame,
   left,
   width,
+  previewStartFrame,
   onSelectClip,
   onMoveClip,
   onResizeClip,
+  onDragPreview,
 }: Pick<ClipNodeTimelineProps, 'onSelectClip' | 'onMoveClip' | 'onResizeClip'> & {
   clip: TimelineClip
   selected: boolean
+  timeline: TimelineState
   pxPerFrame: number
   left: number
   width: number
+  previewStartFrame?: number
+  onDragPreview: (preview: ClipDragPreview | null) => void
 }): JSX.Element {
   const ref = React.useRef<HTMLDivElement | null>(null)
   const [dragging, setDragging] = React.useState(false)
+  const didDragRef = React.useRef(false)
+  const lastSnapKeyRef = React.useRef<string | null>(null)
   const { t } = useTranslation()
 
+  const pulseSnap = React.useCallback(() => {
+    const node = ref.current
+    if (!node || typeof node.animate !== 'function') return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    node.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.015)' }, { transform: 'scale(1)' }], {
+      duration: 130,
+      easing: 'cubic-bezier(.2,.7,.3,1)',
+    })
+  }, [])
+
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (event.shiftKey || (event.target as HTMLElement).closest('[data-clip-handle]')) return
+    if ((event.target as HTMLElement).closest('[data-clip-handle]')) return
     event.preventDefault()
     event.stopPropagation()
     const target = event.currentTarget
     const pointerId = event.pointerId
     const originX = event.clientX
+    const originY = event.clientY
     const originStart = clip.startFrame
-    let lastStart = originStart
+    let lastTarget = { startFrame: originStart, snap: null as SnapResult | null }
+    let didDrag = false
+    let finished = false
+    didDragRef.current = false
+    lastSnapKeyRef.current = null
     target.setPointerCapture(pointerId)
-    setDragging(true)
-    const handleMove = (moveEvent: PointerEvent) => {
-      const nextStart = Math.max(0, originStart + Math.round((moveEvent.clientX - originX) / Math.max(0.1, pxPerFrame)))
-      if (nextStart === lastStart) return
-      lastStart = nextStart
-      onMoveClip(clip.id, nextStart)
-    }
-    const handleUp = () => {
-      target.releasePointerCapture(pointerId)
+
+    const cleanup = () => {
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
-      setDragging(false)
+      window.removeEventListener('pointercancel', handleCancel)
+      window.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('blur', handleCancel)
+      target.removeEventListener('lostpointercapture', handleLostPointerCapture)
     }
+
+    const finish = (commit: boolean) => {
+      if (finished) return
+      finished = true
+      cleanup()
+      if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId)
+      setDragging(false)
+      onDragPreview(null)
+      lastSnapKeyRef.current = null
+      if (didDrag) window.setTimeout(() => { didDragRef.current = false }, 0)
+      if (commit && didDrag && lastTarget.startFrame !== originStart) {
+        onMoveClip(clip.id, lastTarget.startFrame)
+      }
+    }
+
+    function handleMove(moveEvent: PointerEvent) {
+      if (moveEvent.pointerId !== pointerId) return
+      if (!didDrag && !canvasDragExceededThreshold(originX, originY, moveEvent.clientX, moveEvent.clientY)) return
+      moveEvent.preventDefault()
+      if (!didDrag) {
+        didDrag = true
+        didDragRef.current = true
+        setDragging(true)
+      }
+      const desiredStartFrame = originStart + Math.round((moveEvent.clientX - originX) / Math.max(0.1, pxPerFrame))
+      const resolved = resolveClipNodeDragTarget({
+        timeline,
+        clipId: clip.id,
+        desiredStartFrame,
+        pxPerFrame,
+        snapping: !moveEvent.shiftKey,
+      })
+      if (!resolved) return
+      lastTarget = resolved
+      const snapKey = resolved.snap ? `${resolved.snap.frame}:${resolved.snap.point.type}` : null
+      if (snapKey && snapKey !== lastSnapKeyRef.current) pulseSnap()
+      lastSnapKeyRef.current = snapKey
+      onDragPreview({ clipId: clip.id, ...resolved })
+    }
+
+    function handleUp(upEvent: PointerEvent) {
+      if (upEvent.pointerId !== pointerId) return
+      finish(true)
+    }
+
+    function handleCancel(cancelEvent: Event) {
+      if (cancelEvent instanceof PointerEvent && cancelEvent.pointerId !== pointerId) return
+      finish(false)
+    }
+
+    function handleKeyDown(keyEvent: KeyboardEvent) {
+      if (keyEvent.key !== 'Escape') return
+      keyEvent.preventDefault()
+      finish(false)
+    }
+
+    function handleLostPointerCapture(captureEvent: PointerEvent) {
+      if (captureEvent.pointerId !== pointerId) return
+      finish(false)
+    }
+
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
+    window.addEventListener('pointercancel', handleCancel)
+    window.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('blur', handleCancel)
+    target.addEventListener('lostpointercapture', handleLostPointerCapture)
   }
 
   const handleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
     event.stopPropagation()
+    if (didDragRef.current) {
+      didDragRef.current = false
+      return
+    }
     const rect = ref.current?.getBoundingClientRect()
     const ratio = rect?.width ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0
     const visibleFrames = Math.max(1, clip.endFrame - clip.startFrame)
@@ -149,7 +246,10 @@ function ClipItem({
       tabIndex={0}
       data-testid="clip-node-clip"
       data-clip-id={clip.id}
+      data-start-frame={previewStartFrame ?? clip.startFrame}
+      data-persisted-start-frame={clip.startFrame}
       data-selected={selected ? 'true' : 'false'}
+      data-dragging={dragging ? 'true' : 'false'}
       className={cn(
         'absolute inset-y-1 overflow-hidden rounded-nomi-sm border text-left shadow-nomi-sm',
         'cursor-grab select-none touch-none active:cursor-grabbing',
@@ -168,6 +268,11 @@ function ClipItem({
       }}
     >
       <ClipThumb clip={clip} pxPerFrame={pxPerFrame} />
+      {dragging ? (
+        <span className="pointer-events-none absolute right-1 top-1 z-20 rounded-nomi-sm bg-[var(--nomi-snap-tag)] px-1 py-px font-mono text-micro tabular-nums text-[var(--nomi-paper)]">
+          {formatClipNodeDuration(previewStartFrame ?? clip.startFrame, timeline.fps || 30)}
+        </span>
+      ) : null}
       <span className="absolute inset-x-0 bottom-0 truncate bg-nomi-paper/80 px-1.5 py-1 text-micro font-medium text-nomi-ink">{clip.label || t('generationCommon.clipNode.timeline')}</span>
       {selected ? <>
         <span data-clip-handle="true"><ClipHandle edge="left" clip={clip} pxPerFrame={pxPerFrame} onResize={onResizeClip} /></span>
@@ -190,6 +295,7 @@ export default function ClipNodeTimeline({
   const track = timeline.tracks[0]
   const clips = track?.clips ?? []
   const [axisWidth, setAxisWidth] = React.useState(420)
+  const [dragPreview, setDragPreview] = React.useState<ClipDragPreview | null>(null)
   const axisRef = React.useRef<HTMLDivElement | null>(null)
   React.useLayoutEffect(() => {
     const axis = axisRef.current
@@ -290,22 +396,39 @@ export default function ClipNodeTimeline({
             {clips.map((clip) => {
               const layout = layouts.find((item) => item.id === clip.id)
               if (!layout) return null
+              const previewStartFrame = dragPreview?.clipId === clip.id ? dragPreview.startFrame : undefined
               return (
                 <ClipItem
                   key={clip.id}
                   clip={clip}
                   selected={clip.id === selectedClipId}
+                  timeline={timeline}
                   pxPerFrame={viewport.pxPerFrame}
-                  left={layout.left}
+                  left={previewStartFrame == null ? layout.left : Math.round(previewStartFrame * viewport.pxPerFrame)}
                   width={layout.width}
+                  previewStartFrame={previewStartFrame}
                   onSelectClip={onSelectClip}
                   onMoveClip={onMoveClip}
                   onResizeClip={onResizeClip}
+                  onDragPreview={setDragPreview}
                 />
               )
             })}
             {!clips.length ? <div className="absolute inset-0 grid place-items-center text-micro text-nomi-ink/55">{t('generationCommon.clipNode.empty')}</div> : null}
           </div>
+          {dragPreview?.snap ? (
+            <div
+              className="pointer-events-none absolute inset-y-0 z-50 w-0"
+              style={{ left: viewport.frameToPixel(dragPreview.snap.frame) }}
+              data-testid="clip-node-snap-guide"
+              aria-hidden="true"
+            >
+              <span className="absolute inset-y-0 left-0 w-px -translate-x-1/2 bg-[repeating-linear-gradient(var(--nomi-snap)_0_4px,transparent_4px_8px)]" />
+              <span className="absolute left-1 top-0.5 whitespace-nowrap rounded-nomi-sm bg-[var(--nomi-snap-tag)] px-1 font-mono text-micro leading-[14px] text-[var(--nomi-paper)]">
+                {dragPreview.snap.point.label}
+              </span>
+            </div>
+          ) : null}
           {onAddMaterial ? (
             <WorkbenchIconButton
               label={t('generationCommon.clipNode.addMaterial')}
