@@ -27,6 +27,8 @@ const screenshots = {
   exportMenu: path.join(os.tmpdir(), 'nomi-clip-node-export-menu.png'),
   outputs: path.join(os.tmpdir(), 'nomi-clip-node-outputs.png'),
   imported: path.join(os.tmpdir(), 'nomi-clip-node-imported-video.png'),
+  videoResize: path.join(os.tmpdir(), 'nomi-clip-node-imported-video-resize.png'),
+  imageResize: path.join(os.tmpdir(), 'nomi-clip-node-imported-image-resize.png'),
 }
 fs.mkdirSync(path.join(projectRoot, '.nomi'), { recursive: true })
 fs.mkdirSync(generatedAssetsDir, { recursive: true })
@@ -159,6 +161,49 @@ async function waitForPersistedClipStart(clipId, expected) {
     await win.waitForTimeout(200)
   }
   return persistedClipStart(clipId)
+}
+
+async function dragClipEnd(material, deltaX, screenshotPath) {
+  const before = await material.boundingBox()
+  const beforeEndFrame = Number(await material.getAttribute('data-persisted-end-frame'))
+  const handle = material.getByRole('button', { name: '调整片段出点', exact: true })
+  const clipId = await material.getAttribute('data-clip-id')
+  if (!before || !clipId) throw new Error('找不到片段出点把手')
+  let started = false
+  for (let attempt = 0; attempt < 3 && !started; attempt += 1) {
+    if (await material.getAttribute('data-selected') !== 'true') {
+      await material.click({ position: { x: before.width / 2, y: before.height / 2 } })
+    }
+    await handle.scrollIntoViewIfNeeded()
+    await handle.hover()
+    const handleBox = await handle.boundingBox()
+    if (!handleBox) throw new Error('找不到片段出点把手')
+    const startX = handleBox.x + handleBox.width / 2
+    const startY = handleBox.y + handleBox.height / 2
+    await win.mouse.down()
+    await win.mouse.move(startX + deltaX, startY, { steps: 12 })
+    started = await win.waitForFunction((id) => document.querySelector(`[data-clip-id="${id}"]`)?.getAttribute('data-resizing') === 'right', clipId, { timeout: 2500 })
+      .then(() => true)
+      .catch(() => false)
+    if (!started) {
+      await win.mouse.up()
+      await win.waitForTimeout(100)
+    }
+  }
+  if (!started) throw new Error(`片段出点拖动未启动：${clipId}`)
+  const preview = await material.boundingBox()
+  if (screenshotPath) await win.screenshot({ path: screenshotPath })
+  const limited = await material.getAttribute('data-resize-limited') === 'true'
+  await win.mouse.up()
+  await win.waitForTimeout(300)
+  return {
+    before,
+    preview,
+    after: await material.boundingBox(),
+    beforeEndFrame,
+    afterEndFrame: Number(await material.getAttribute('data-persisted-end-frame')),
+    limited,
+  }
 }
 
 try {
@@ -489,6 +534,82 @@ try {
   const importUsesRealDuration = Boolean(importedClipBox && importedClipBox.width >= 220)
   await win.screenshot({ path: screenshots.imported })
 
+  const canvasZoom = win.getByRole('slider', { name: '缩放比例' }).first()
+  await canvasZoom.evaluate((element) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    setter?.call(element, '50')
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await win.waitForTimeout(500)
+  const resizeAtHalfZoom = Number(await canvasZoom.inputValue()) === 50
+
+  await importedClip.scrollIntoViewIfNeeded()
+  const videoShrink = await dragClipEnd(importedClip, -60, screenshots.videoResize)
+  const videoResizeFollowsPointer = Boolean(
+    videoShrink.preview
+    && videoShrink.before.width - videoShrink.preview.width >= 48,
+  )
+  const videoShrinkPersists = Boolean(
+    videoShrink.after
+    && videoShrink.beforeEndFrame > videoShrink.afterEndFrame
+    && videoShrink.before.width - videoShrink.after.width >= 48,
+  )
+  const videoRestore = await dragClipEnd(importedClip, 90)
+  const videoExtendsBackToSource = Boolean(
+    videoRestore.after
+    && videoRestore.afterEndFrame === videoShrink.beforeEndFrame
+    && Math.abs(videoRestore.after.width - videoShrink.before.width) <= 3,
+  )
+  const videoSourceLimitFeedback = videoRestore.limited
+
+  const beforeImageImport = await clips.count()
+  await clip.getByRole('button', { name: '添加素材', exact: true }).click()
+  await win.getByTestId('asset-picker').waitFor({ state: 'visible' })
+  await win.locator('input[type="file"]').last().setInputFiles(path.join(repoRoot, 'tests/ux/fixtures/test-upload.png'))
+  await win.waitForFunction((count) => (
+    document.querySelector('[data-clip-node="true"][data-node-id="canvas-clip-editor"]')
+      ?.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 1
+  ), beforeImageImport, { timeout: 30_000 })
+  const importedImage = clips.last()
+  await importedImage.scrollIntoViewIfNeeded()
+  const realImageImport = (await clips.count()) === beforeImageImport + 1
+    && (await win.locator('[role="alert"]:visible').count()) === 0
+  const imageExtend = await dragClipEnd(importedImage, 30, screenshots.imageResize)
+  const imageExtensionFollowsPointer = Boolean(
+    imageExtend.preview
+    && imageExtend.preview.width - imageExtend.before.width >= 22,
+  )
+  const imageExtensionPersists = Boolean(
+    imageExtend.after
+    && imageExtend.afterEndFrame > imageExtend.beforeEndFrame
+    && imageExtend.after.width - imageExtend.before.width >= 22,
+  )
+  const imageShrink = await dragClipEnd(importedImage, -20)
+  const imageCanShrink = Boolean(
+    imageShrink.after
+    && imageShrink.afterEndFrame < imageShrink.beforeEndFrame
+    && imageShrink.before.width - imageShrink.after.width >= 13,
+  )
+  await win.keyboard.press('Control+z')
+  await win.waitForTimeout(250)
+  const resizeOneUndo = Number(await importedImage.getAttribute('data-persisted-end-frame')) === imageShrink.beforeEndFrame
+  await win.keyboard.press('Control+Shift+z')
+  await win.waitForTimeout(250)
+
+  const resizeCancelBefore = Number(await importedImage.getAttribute('data-persisted-end-frame'))
+  const cancelHandle = importedImage.getByRole('button', { name: '调整片段出点', exact: true })
+  const cancelHandleBox = await cancelHandle.boundingBox()
+  if (!cancelHandleBox) throw new Error('找不到取消伸缩测试的出点把手')
+  await win.mouse.move(cancelHandleBox.x + cancelHandleBox.width / 2, cancelHandleBox.y + cancelHandleBox.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(cancelHandleBox.x + cancelHandleBox.width / 2 + 24, cancelHandleBox.y + cancelHandleBox.height / 2, { steps: 8 })
+  await win.waitForFunction((clipId) => document.querySelector(`[data-clip-id="${clipId}"]`)?.getAttribute('data-resizing') === 'right', await importedImage.getAttribute('data-clip-id'))
+  await win.keyboard.press('Escape')
+  await win.mouse.up()
+  await win.waitForTimeout(200)
+  const resizeEscapeCancels = Number(await importedImage.getAttribute('data-persisted-end-frame')) === resizeCancelBefore
+
   const result = {
     isolatedClipDrag,
     isolatedClipSelected,
@@ -537,6 +658,17 @@ try {
     trimWorks,
     realImport,
     importUsesRealDuration,
+    resizeAtHalfZoom,
+    videoResizeFollowsPointer,
+    videoShrinkPersists,
+    videoExtendsBackToSource,
+    videoSourceLimitFeedback,
+    realImageImport,
+    imageExtensionFollowsPointer,
+    imageExtensionPersists,
+    imageCanShrink,
+    resizeOneUndo,
+    resizeEscapeCancels,
   }
   console.log(JSON.stringify({ result, screenshots }))
   await closeApp()

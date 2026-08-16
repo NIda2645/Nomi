@@ -288,8 +288,15 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   }, [captureHistory, meta, persist, timelineClips])
 
   const handleResizeClip = React.useCallback((clipId: string, edge: 'left' | 'right', deltaFrame: number) => {
-    persist(resizeClipNode(meta, clipId, edge, deltaFrame))
-  }, [meta, persist])
+    const current = timelineClips.find((clip) => clip.id === clipId)
+    if (!current || deltaFrame === 0) return
+    const next = resizeClipNode(meta, clipId, edge, deltaFrame)
+    const resized = clipNodeTimelineFromMeta(next).tracks[0]?.clips.find((clip) => clip.id === clipId)
+    if (!resized || (resized.startFrame === current.startFrame && resized.endFrame === current.endFrame)) return
+    captureHistory()
+    persist({ ...next, selectedClipId: clipId.replace(/^clip-/, '') }, { history: false })
+    setPlaying(false)
+  }, [captureHistory, meta, persist, timelineClips])
 
   const handleSplitClip = React.useCallback((clipId: string, frame: number) => {
     const existingIds = new Set(meta.clips.map((clip) => clip.id))
@@ -540,6 +547,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         <div className="min-h-0 flex-1 px-2 pb-2" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
           <ClipNodeTimeline
             timeline={timelineForView}
+            canvasZoom={canvasZoom}
             selectedClipId={selectedClipId}
             onSelectClip={selectClip}
             onMoveClip={handleMoveClip}
