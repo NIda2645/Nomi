@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nomi 模型接入改动决策图</title>
+  <style>
+    :root {
+      --ink: #172126;
+      --muted: #637078;
+      --paper: #f5f3ee;
+      --panel: #fffdf8;
+      --line: #d8d3c8;
+      --orange: #d95f2b;
+      --orange-soft: #fae2d5;
+      --teal: #126d70;
+      --teal-soft: #d9efec;
+      --green: #31744c;
+      --green-soft: #e0f0e4;
+      --red: #a43d36;
+      --red-soft: #f7dfdc;
+      --blue: #315d83;
+      --blue-soft: #e2ebf3;
+      --shadow: 0 18px 42px rgba(30, 35, 32, .10);
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: auto; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      line-height: 1.65;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .25;
+      background-image: radial-gradient(#bdb6a9 .65px, transparent .65px);
+      background-size: 7px 7px;
+      mix-blend-mode: multiply;
+    }
+    a { color: inherit; }
+    .shell { width: min(1180px, calc(100% - 36px)); margin: 0 auto; position: relative; }
+    .hero { padding: 70px 0 44px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 42px; align-items: end; }
+    .eyebrow { color: var(--orange); font-size: 12px; letter-spacing: 0; text-transform: uppercase; font-weight: 800; }
+    h1, h2, h3 { margin: 0; line-height: 1.12; letter-spacing: 0; }
+    h1 { font-family: Georgia, "Songti SC", serif; font-size: 68px; max-width: 760px; font-weight: 700; }
+    h2 { font-size: 34px; margin-bottom: 14px; }
+    h3 { font-size: 20px; }
+    .lede { color: var(--muted); font-size: 18px; max-width: 730px; margin: 22px 0 0; }
+    .stamp { border: 1px solid var(--line); background: rgba(255,253,248,.76); padding: 18px; border-radius: var(--radius); box-shadow: var(--shadow); }
+    .stamp strong { display: block; font-size: 19px; margin-bottom: 6px; }
+    .stamp code, code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .88em; background: #eeeae0; padding: 2px 5px; border-radius: 4px; }
+    .nav { position: sticky; top: 0; z-index: 20; padding: 10px 0; background: rgba(245,243,238,.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+    .nav-inner { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; }
+    .nav button, .filter button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 8px 13px; cursor: pointer; white-space: nowrap; font: inherit; font-size: 13px; }
+    .nav button:hover, .nav button.active, .filter button.active { background: var(--ink); color: white; border-color: var(--ink); }
+    .nav button:focus-visible, summary:focus-visible { outline: 3px solid #f7a264; outline-offset: 2px; }
+    section { padding: 66px 0 12px; scroll-margin-top: 60px; }
+    .section-head { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 24px; }
+    .section-note { color: var(--muted); max-width: 560px; margin: 0; }
+    .verdict { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .verdict-card, .card { background: rgba(255,253,248,.9); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 9px 22px rgba(30,35,32,.06); }
+    .verdict-card { padding: 22px; min-height: 180px; border-top: 5px solid var(--teal); }
+    .verdict-card.warn { border-top-color: var(--orange); }
+    .verdict-card.stop { border-top-color: var(--red); }
+    .kicker { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+    .verdict-card p { color: var(--muted); margin: 10px 0 0; }
+    .flow-wrap { border: 1px solid var(--line); border-radius: var(--radius); background: #1b292c; color: #eef6f1; padding: 26px; overflow-x: auto; box-shadow: var(--shadow); }
+    .flow { min-width: 880px; display: grid; grid-template-columns: 1fr 38px 1.2fr 38px 1.2fr 38px 1fr; align-items: center; gap: 10px; }
+    .flow-box { min-height: 132px; padding: 16px; border: 1px solid rgba(255,255,255,.22); background: #24383a; border-radius: 8px; }
+    .flow-box b { display: block; font-size: 18px; margin-bottom: 8px; color: #ffd9a8; }
+    .flow-box small { color: #c9dbd4; display: block; }
+    .arrow { color: #f7a264; font-size: 25px; text-align: center; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .rule-board { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .rule-board > h3 { font-size: 22px; margin-bottom: 12px; }
+    .rule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .rule-card { padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .rule-card.locked { border-left: 5px solid var(--red); }
+    .rule-card.balanced { border-left: 5px solid var(--orange); }
+    .rule-card p { color: var(--muted); margin: 9px 0 0; }
+    .rule-test { margin-top: 13px; padding: 10px 12px; background: #f0ede5; font-size: 14px; }
+    .rule-summary { color: var(--muted); margin: 12px 0 0; }
+    .adapter-title { margin: 28px 0 14px; font-size: 23px; }
+    .adapter-anatomy { display: grid; grid-template-columns: 1fr 42px 1.2fr 42px 1fr; gap: 10px; align-items: stretch; }
+    .anatomy-column { padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .anatomy-column.core { border-top: 5px solid var(--teal); }
+    .anatomy-column b { display: block; font-size: 18px; margin-bottom: 8px; }
+    .anatomy-column ul { margin: 0; padding-left: 18px; color: var(--muted); }
+    .anatomy-column li + li { margin-top: 6px; }
+    .anatomy-arrow { display: grid; place-items: center; color: var(--orange); font-size: 26px; font-weight: 800; }
+    .adapter-boundary { margin: 12px 0 0; padding: 12px 14px; border-left: 4px solid var(--orange); background: var(--orange-soft); }
+    .pill { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 700; }
+    .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .pill.must { color: var(--red); background: var(--red-soft); }
+    .pill.choice { color: #915015; background: #faead3; }
+    .pill.keep { color: var(--green); background: var(--green-soft); }
+    .pill.base { color: var(--blue); background: var(--blue-soft); }
+    .decision-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .card { padding: 22px; }
+    .card.must { border-left: 5px solid var(--red); }
+    .card.choice { border-left: 5px solid var(--orange); }
+    .card.keep { border-left: 5px solid var(--green); }
+    .card p { margin: 10px 0 0; color: var(--muted); }
+    .why { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
+    .why b { color: var(--ink); }
+    .term-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+    .term-group-title { margin: 26px 0 12px; font-size: 21px; }
+    .term-group-title:first-of-type { margin-top: 0; }
+    .term { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+    .term h3 { font-size: 17px; color: var(--teal); }
+    .term p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .term .analogy { color: var(--ink); font-size: 13px; margin-top: 12px; padding: 9px 10px; border-left: 3px solid var(--orange); background: #fff4e8; }
+    .matrix { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+    table { border-collapse: collapse; width: 100%; min-width: 820px; font-size: 14px; }
+    th, td { text-align: left; vertical-align: top; padding: 14px 15px; border-bottom: 1px solid var(--line); }
+    th { background: #ebe7dd; font-size: 12px; letter-spacing: 0; text-transform: uppercase; color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+    .status { font-weight: 800; white-space: nowrap; }
+    .status.ok { color: var(--green); }
+    .status.bad { color: var(--red); }
+    .status.mix { color: #9a5b1a; }
+    .accordion { display: grid; gap: 10px; }
+    details { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 16px; }
+    summary { cursor: pointer; list-style: none; padding: 15px 0; font-weight: 800; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "+"; float: right; color: var(--orange); font-size: 20px; line-height: 1; }
+    details[open] summary::after { content: "−"; }
+    details .detail { border-top: 1px solid var(--line); padding: 14px 0 17px; color: var(--muted); }
+    .mini-flow { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 14px 0 0; }
+    .mini-flow span { padding: 7px 9px; border-radius: 7px; background: var(--teal-soft); color: var(--teal); font-size: 13px; font-weight: 700; }
+    .mini-flow i { color: var(--orange); font-style: normal; font-weight: 800; }
+    .checks { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+    .check { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .check b { display: block; margin-bottom: 6px; }
+    .check p { margin: 0; color: var(--muted); font-size: 14px; }
+    footer { padding: 70px 0 80px; color: var(--muted); font-size: 13px; }
+    .source { border-top: 1px solid var(--line); padding-top: 18px; }
+    .hide { display: none !important; }
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; padding-top: 45px; gap: 24px; }
+      h1 { font-size: 42px; }
+      h2 { font-size: 28px; }
+      .verdict, .decision-grid, .term-grid, .checks, .rule-grid { grid-template-columns: 1fr; }
+      .section-head { display: block; }
+      .section-note { margin-top: 10px; }
+      .shell { width: min(100% - 24px, 720px); }
+      .flow-wrap { padding: 18px; }
+      .flow { min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+      .flow-box { min-height: 0; }
+      .arrow { transform: rotate(90deg); line-height: 1; }
+      .adapter-anatomy { grid-template-columns: 1fr; }
+      .anatomy-arrow { transform: rotate(90deg); min-height: 30px; }
+      footer code { overflow-wrap: anywhere; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .hero > * { animation: rise .6s ease both; }
+      .hero > :nth-child(2) { animation-delay: .12s; }
+      @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+    }
+  </style>
+</head>
+<body>
+  <aside style="position:relative;z-index:30;margin:12px auto 0;width:min(1180px,calc(100% - 36px));padding:10px 14px;border:1px solid #d8d3c8;border-radius:6px;background:#fffdf8;color:#637078;font-size:13px">
+    历史决策材料。最终实现基线见
+    <a href="../design/mockups/2026-08-16-model-settings-home-information-architecture.html" style="color:#315d83">批准样张</a>
+    和 <a href="../plan/2026-08-16-model-settings-approved-implementation.md" style="color:#315d83">实施方案</a>。
+  </aside>
+  <header class="shell hero">
+    <div>
+      <div class="eyebrow">Nomi / model access audit / decision guide</div>
+      <h1>先把“能不能合”<br>讲成人话。</h1>
+      <p class="lede">这不是一份提交记录，而是一张判断地图：哪些一定要修，哪些值得移植但必须重做，哪些看似完成其实会把旧问题带回来。</p>
+    </div>
+    <aside class="stamp">
+      <strong>当前基线已同步</strong>
+      <div>远端：<code>origin/main</code></div>
+      <div>提交：<code>452df94d</code></div>
+      <div>本地 <code>main</code> 已快进到同一提交</div>
+      <div style="margin-top:8px;color:var(--muted)">当前工作分支仍有大量未提交改动，本页面只做审查说明。</div>
+    </aside>
+  </header>
+
+  <nav class="nav">
+    <div class="shell nav-inner">
+      <button data-target="verdict">结论</button>
+      <button data-target="flow">整条链路</button>
+      <button data-target="must">必须修</button>
+      <button data-target="choice">取舍</button>
+      <button data-target="terms">术语词典</button>
+      <button data-target="matrix">状态对照</button>
+      <button data-target="verify">怎么验收</button>
+    </div>
+  </nav>
+
+  <main class="shell">
+    <section id="verdict">
+      <div class="section-head">
+        <div><div class="eyebrow">01 / Verdict</div><h2>一句话结论</h2></div>
+        <p class="section-note">归档不是“最新完整修复版”。它有值得移植的 ComfyUI 能力，但模型接入和设置页面部分会回退当前 main 已经完成的修复。</p>
+      </div>
+      <div class="verdict">
+        <article class="verdict-card stop"><div class="kicker">不要整包合入</div><h3>会带回旧问题</h3><p>归档仍强制 Key、抓不到文档就失败、只保留验证通过 mapping，并保留独立浮卡入口。</p></article>
+        <article class="verdict-card warn"><div class="kicker">可以移植但要重做</div><h3>ComfyUI 专用能力</h3><p>H3、Qwen、空 loader 清理和参数持久化思路正确，但固定节点编号和公共 transformer 绕行需要加固。</p></article>
+        <article class="verdict-card"><div class="kicker">当前 main 仍要补</div><h3>无 Key 正式运行</h3><p>UI 可以保存免鉴权端点，但文本运行时仍要求非空 apiKey，验证和 Agent 调用会在最后一步失败。</p></article>
+      </div>
+      <div class="rule-board">
+        <h3>先讲清楚：什么叫“必须修”，什么叫“取舍”</h3>
+        <div class="rule-grid">
+          <article class="rule-card locked">
+            <span class="pill must">不可破坏的底线</span>
+            <h3>结果只有对或错</h3>
+            <p>页面说“保存成功”，正式调用就必须真的能用；密钥不能出现在普通文件和日志里；验证任务必须结束；轮询频率必须有上限。这些都能写成自动测试，不依赖个人审美。</p>
+            <div class="rule-test"><b>判断方法：</b>只要能构造一个正常用户输入，让系统稳定地失败、泄密、永远不结束或无限请求，它就是确定的缺陷。</div>
+          </article>
+          <article class="rule-card balanced">
+            <span class="pill choice">需要权衡的工程选择</span>
+            <h3>两条路都可能正确</h3>
+            <p>例如按节点类型查找更耐工作流变化，固定节点编号却更容易兼容旧模板；保留贡献者的领域逻辑能省时间，直接覆盖当前 main 又会带回旧问题。</p>
+            <div class="rule-test"><b>判断方法：</b>先守住“能用、安全、可结束”三条底线，再比较兼容性、维护成本、实现速度和未来扩展。</div>
+          </article>
+        </div>
+        <p class="rule-summary"><b>最重要的区别：</b>“必须修”说的是结果不能错；“取舍”说的是达到正确结果可以走不同路线。具体修法可以讨论，但正确性、安全性和任务终态不能拿来交换。</p>
+      </div>
+    </section>
+
+    <section id="flow">
+      <div class="section-head">
+        <div><div class="eyebrow">02 / The system</div><h2>“接入模型”到底经过什么</h2></div>
+        <p class="section-note">把 Nomi 想成一个翻译和调度系统：用户说“我要用这个模型”，程序要把它翻译成正确的网址、认证方式、请求格式和可执行能力。</p>
+      </div>
+      <div class="flow-wrap">
+        <div class="flow">
+          <div class="flow-box"><b>用户</b><small>填 Base URL、Key、模型名。<br>也可能是局域网 HTTP、没有 Key。</small></div>
+          <div class="arrow">→</div>
+          <div class="flow-box"><b>设置 / 向导</b><small>收集输入，拉取模型列表，展示验证进度。<br>这里决定“能不能继续操作”。</small></div>
+          <div class="arrow">→</div>
+          <div class="flow-box"><b>Provider Adapter</b><small>把一家供应商翻译成 Nomi 能理解的统一模型、能力和调用方式。</small></div>
+          <div class="arrow">→</div>
+          <div class="flow-box"><b>真实请求</b><small>验证或正式生成。<br>最终必须发到正确的 /models、/chat/completions、/prompt 等路径。</small></div>
+        </div>
+        <div class="legend"><span class="pill must">任何一环失败都要可解释、可取消</span><span class="pill keep">文档是帮助，不应是准入门槛</span><span class="pill choice">验证失败也要保留用户控制权</span></div>
+      </div>
+      <h3 class="adapter-title">把 Provider Adapter 拆开看：它不是模型，而是“兼容翻译层”</h3>
+      <div class="adapter-anatomy">
+        <article class="anatomy-column">
+          <b>输入：用户和供应商给了什么</b>
+          <ul>
+            <li>基础地址、是否需要密码、额外请求头</li>
+            <li>供应商返回的模型名单与模型类型</li>
+            <li>可选的接口文档；没有文档也必须继续</li>
+          </ul>
+        </article>
+        <div class="anatomy-arrow">→</div>
+        <article class="anatomy-column core">
+          <b>Adapter：Nomi 在中间翻译什么</b>
+          <ul>
+            <li>判断这家接口使用哪一种请求规则</li>
+            <li>把“聊天、图片、视频”翻成真实调用路径</li>
+            <li>生成可执行 mapping，并逐项真实验证</li>
+            <li>把成功、失败、未验证原因写回模型目录</li>
+          </ul>
+        </article>
+        <div class="anatomy-arrow">→</div>
+        <article class="anatomy-column">
+          <b>输出：运行时以后拿什么工作</b>
+          <ul>
+            <li>一条明确的供应商与模型身份</li>
+            <li>每种能力对应的真实请求路线</li>
+            <li>可以展示和恢复的验证状态</li>
+          </ul>
+        </article>
+      </div>
+      <p class="adapter-boundary"><b>它的边界：</b>设置页面只负责收集和展示，Adapter 负责翻译，运行时负责真正发请求。三层必须共享同一套地址、认证和模型身份，否则就会出现“页面保存成功，正式聊天失败”。</p>
+    </section>
+
+    <section id="must">
+      <div class="section-head">
+        <div><div class="eyebrow">03 / Non-negotiable</div><h2>肯定要修的事</h2></div>
+        <p class="section-note">这里的判断标准是：不修就会让用户无法完成基本任务、造成数据/凭据风险，或者再次出现“永远转圈”。</p>
+      </div>
+      <div class="decision-grid">
+        <article class="card must"><span class="pill must">P0 / 正式功能错误</span><h3>无 Key 不能只修 UI</h3><p>“免鉴权”表示服务根本不需要密码，例如局域网网关或 LM Studio。现在 UI 能保存 <code>authType:none</code>，但文本模型构造仍检查 <code>apiKey</code> 非空。</p><div class="why"><b>为什么是必须修：</b>用户会看到模型已经保存，却在验证或聊天时失败。这是“保存成功、使用失败”的断裂。</div><div class="mini-flow"><span>无 Key 设置</span><i>→</i><span>不发空 Bearer</span><i>→</i><span>验证</span><i>→</i><span>正式 Agent</span></div></article>
+        <article class="card must"><span class="pill must">P0 / 凭据安全</span><h3>第二密钥不能放普通配置</h3><p>额外 Header、SecretKey、AK/SK 都属于凭据。当前实现把它们放在供应商 metadata 里，脚本试跑的 transcript 也可能记录它们。</p><div class="why"><b>为什么是必须修：</b>这不是“以后优化一下 UI”，而是明文凭据会被日志、备份或错误报告带走。</div><div class="mini-flow"><span>安全存储</span><i>→</i><span>运行时临时注入</span><i>→</i><span>统一脱敏</span></div></article>
+        <article class="card must"><span class="pill must">P1 / 可靠性</span><h3>验证必须有终点</h3><p>网络请求、AI 编译、媒体轮询任何一步都可能不返回。必须有批次截止时间、单步超时、取消按钮和明确的 <code>failed</code> / <code>timed_out</code> / <code>cancelled</code> 状态。</p><div class="why"><b>为什么是必须修：</b>“一直验证中”不是文案问题，而是任务生命周期没有终态。</div></article>
+        <article class="card must"><span class="pill must">P1 / 可用性</span><h3>修正前端轮询节奏</h3><p>轮询 Effect 依赖整个 <code>adapterRun</code>。每次收到新快照都会重建定时器并立即再请求，实际变成“响应多快就请求多快”。</p><div class="why"><b>为什么是必须修：</b>它会放大 IPC 和磁盘读写，网络慢时还可能产生重叠请求；稳定的 900ms 应该由稳定的计时器控制。</div></article>
+      </div>
+      <div class="accordion" style="margin-top:14px">
+        <details>
+          <summary>这些判断在最新 main 里的代码证据</summary>
+          <div class="detail">
+            <b>无 Key 正式调用：</b><code>electron/ai/buildAiSdkModel.ts:99</code> 仍在 Key 为空时直接抛错；设置页允许免鉴权并不能绕过这里。<br>
+            <b>额外密钥存储：</b><code>electron/providerAdapter/service.ts:121</code> 把额外 Header 写入供应商 metadata；主 Key 有安全存储，额外秘密却没有同等级保护。<br>
+            <b>验证生命周期：</b><code>src/ui/onboarding/OnboardingWizard.tsx:242</code> 的 main 版本没有把 <code>cancelled</code> 和 <code>timed_out</code> 当作完整终态；当前未提交工作区已经补了后台截止时间和取消链路，但尚未进入 main。<br>
+            <b>轮询节奏：</b>同一 Effect 的依赖包含整个 <code>adapterRun</code>，而每次轮询都会替换它，因此计时器会不断销毁并立即重建。
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section id="choice">
+      <div class="section-head">
+        <div><div class="eyebrow">04 / Trade-offs</div><h2>值得做，但要有边界</h2></div>
+        <p class="section-note">“取舍”不是不要做，而是先承认它的收益和风险，选择不会破坏当前 main 的移植方式。</p>
+      </div>
+      <div class="decision-grid">
+        <article class="card choice"><span class="pill keep">建议移植</span><h3>H3 Director 专用适配器</h3><p>它负责把“比例、时长、首尾帧、参考视频”翻译成 H3 的时间线和节点输入。收益是重新构建后能力仍在源码里。</p><div class="why"><b>取舍理由：</b>领域逻辑很值钱，但不能只依赖固定节点编号；应先按节点类型和连接关系查找，旧编号只做兼容。</div></article>
+        <article class="card choice"><span class="pill keep">建议移植</span><h3>Qwen 0–3 图模式</h3><p>它防止作者示例图混进用户请求，并保证第 1、2、3 张图片进入不同的 ComfyUI 输入槽。</p><div class="why"><b>取舍理由：</b>行为正确、测试充分；但固定节点 ID 像写死门牌号，工作流重新导出后可能失效。</div></article>
+        <article class="card choice"><span class="pill keep">建议移植</span><h3>默认生成模型设置</h3><p>用户可以分别为文生图、图片编辑、文生视频、图生视频指定默认模型，并精确保存供应商和模型的组合。</p><div class="why"><b>取舍理由：</b>数据模型可靠；页面要接入当前唯一设置入口，不能把旧浮卡一起带回来。</div></article>
+        <article class="card choice"><span class="pill keep">建议移植后加固</span><h3>空媒体 loader 清理</h3><p>没有尾帧时删除空 loader 和下游连线，避免 ComfyUI 把空值当成 input 目录。</p><div class="why"><b>取舍理由：</b>根因判断正确，但要补音频、数字节点 ID，并让公共清理先于所有专用 transformer 执行。</div></article>
+      </div>
+      <div style="height:16px"></div>
+      <div class="card stop"><span class="pill must">暂不采纳整套代码</span><h3>归档里的 Provider Adapter、旧设置浮卡、构建产物</h3><p>归档的接入代码比当前 main 旧：没有文档就失败、只给验证通过的媒体 mapping、仍保留双入口。`dist-electron` 是构建结果，不是长期源码。</p><div class="why"><b>为什么取舍：</b>直接覆盖会把已经解决的问题重新引入。只提取可验证的领域逻辑，重新接到当前 main 的生命周期和设置页面。</div></div>
+    </section>
+
+    <section id="terms">
+      <div class="section-head">
+        <div><div class="eyebrow">05 / Plain-language dictionary</div><h2>技术名词翻译</h2></div>
+        <p class="section-note">下面每个词都回答三个问题：它是什么、它在 Nomi 里做什么、为什么会影响用户。</p>
+      </div>
+      <h3 class="term-group-title">先读：模型接入的核心结构</h3>
+      <div class="term-grid">
+        <article class="term"><h3>Provider</h3><p>供应商，也就是提供模型接口的一方，可以是 DeepSeek、一个公网中转站、局域网网关或本机服务。</p><div class="analogy">像“快递公司”：不同公司地址、单号格式、取件规则不同。</div></article>
+        <article class="term"><h3>Provider Adapter</h3><p>供应商适配器。它把不同供应商的地址、认证、模型能力和请求格式翻译成 Nomi 的统一格式。</p><div class="analogy">像“转换插头”：墙上插座各不相同，设备仍想用同一种插头。</div></article>
+        <article class="term"><h3>Base URL</h3><p>接口的基础地址，例如 <code>http://192.168.x.x:8078/v1</code>。后面的 <code>/models</code>、<code>/chat/completions</code> 会从它拼出来。</p><div class="analogy">像商场地址，具体店铺是后面的路径。</div></article>
+        <article class="term"><h3>authType:none</h3><p>明确告诉程序“这家服务不需要 Key”。正确实现必须连空的 <code>Authorization: Bearer </code> 也不发送。</p><div class="analogy">像小区门口没有门禁，不应该伪造一张空门卡。</div></article>
+        <article class="term"><h3>Protocol / 协议</h3><p>请求和响应的约定，例如 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages。</p><div class="analogy">像不同国家的语言和表格格式，地址对了，语言说错也无法办理业务。</div></article>
+        <article class="term"><h3>Mapping</h3><p>模型能力到真实 HTTP 调用的路线。例如“这个模型的文生图要 POST 到哪里、结果在哪个字段”。</p><div class="analogy">像导航路线；模型名字存在，不代表已经有可走的路线。</div></article>
+        <article class="term"><h3>Verification / 验证</h3><p>Nomi 用一次真实请求检查地址、认证、模型和能力是否真的可用。</p><div class="analogy">像试拨电话，不是只检查通讯录里有没有这个号码。</div></article>
+        <article class="term"><h3>Document Discovery</h3><p>尝试读取供应商的 API 文档，让系统知道图片、视频等非标准能力的调用方式。</p><div class="analogy">像先看说明书；没有说明书不等于机器一定坏。</div></article>
+        <article class="term"><h3>Transformer</h3><p>请求变换器。发送前把 Nomi 的统一参数改写成某个工作流实际需要的节点输入。</p><div class="analogy">像机场转运行李标签，把同一件行李贴成下一段航班认识的格式。</div></article>
+        <article class="term"><h3>ComfyUI Workflow</h3><p>由节点组成的生成流程。节点可能负责加载图片、采样、编码和保存文件。</p><div class="analogy">像流水线，每个节点是一台机器，连线是传送带。</div></article>
+        <article class="term"><h3>Loader</h3><p>ComfyUI 中负责读取图片、视频、音频或模型文件的节点。空 loader 可能把目录误当文件。</p><div class="analogy">像文件柜抽屉；抽屉没有文件时，不能把整间档案室当成一张照片。</div></article>
+        <article class="term"><h3>Vendor + Model Identity</h3><p>模型的精确身份由供应商和模型名一起组成，而不是只看模型名。</p><div class="analogy">“同名的人”要用公司 + 姓名区分，不能只看姓名。</div></article>
+        <article class="term"><h3>Timeout / Cancel</h3><p>Timeout 是系统等太久后自动结束；Cancel 是用户主动停止。两者都必须产生明确终态。</p><div class="analogy">计时器和刹车，不是把页面关掉就算任务结束。</div></article>
+        <article class="term"><h3>Unverified</h3><p>用户选择了模型，但 Nomi 这次探测没有成功。它不等于模型不存在，也不等于已经验证通过。</p><div class="analogy">像“地址已登记，但还没打通电话”，应该允许用户继续配置并看见风险。</div></article>
+        <article class="term"><h3>Safe Storage</h3><p>操作系统提供的安全凭据存储。普通 catalog 只保存引用或状态，不保存可直接使用的密钥。</p><div class="analogy">把钥匙放保险柜，系统只拿临时钥匙开门。</div></article>
+      </div>
+
+      <h3 class="term-group-title">地址、接口和认证</h3>
+      <div class="term-grid">
+        <article class="term"><h3>API / 接口</h3><p>两个程序按固定规则交换数据的入口。Nomi 不需要打开供应商网页，而是通过接口把文字、图片和参数发过去，再接回结果。</p><div class="analogy">像餐厅后厨的点单窗口：顾客不进厨房，只按菜单格式下单。</div></article>
+        <article class="term"><h3>HTTP 与 HTTPS</h3><p>两者都是网络传输方式。HTTPS 会加密传输，HTTP 不加密。局域网 HTTP 可以正常接入；真正需要判断的是地址是否可达、接口规则和认证是否匹配。</p><div class="analogy">都是送信，HTTPS 像上锁的信箱。不上锁不等于地址不存在。</div></article>
+        <article class="term"><h3>局域网网关 / 公网中转</h3><p>局域网网关只在家里或公司网络内可访问；公网中转可以从互联网访问，并把请求转给真正的模型服务。两者都可能兼容 OpenAI 接口，也都可能没有公开文档。</p><div class="analogy">前者像公司内线，后者像外部总机。</div></article>
+        <article class="term"><h3>URL、Path、Endpoint</h3><p>URL 是完整网络地址；Path 是地址后面的具体路径；Endpoint 是真正处理某类请求的接口终点。例如基础地址加 <code>/models</code> 得到模型列表终点。</p><div class="analogy">URL 是完整收件地址，Path 是楼层房间，Endpoint 是实际办事窗口。</div></article>
+        <article class="term"><h3>Model / 模型与能力</h3><p>模型是执行生成任务的程序。能力是它能做的事情，例如聊天、文生图、图生视频。同一个模型名存在，不代表 Nomi 已经知道每一种能力该怎么调用。</p><div class="analogy">员工在名单里，不等于已经知道他的岗位和工作流程。</div></article>
+        <article class="term"><h3>API Key / apiKey</h3><p>供应商发给用户的一段访问凭据，用来证明“这次请求是谁发的”。有些公网服务必须提供，有些本机或局域网服务明确不需要。</p><div class="analogy">像门禁卡；没有门禁的小区不应该强迫每个人填卡号。</div></article>
+        <article class="term"><h3>Header、Authorization、Bearer</h3><p>Header 是随请求附带的小字段；Authorization 是常见的认证字段名；Bearer 表示“后面这段 Key 就是持有人凭据”。三者不是同一个东西，而是容器、字段名和认证格式的关系。</p><div class="analogy">Header 是信封备注区，Authorization 是“身份证明”一栏，Bearer 是这一栏的填写格式。</div></article>
+        <article class="term"><h3>Extra Header、SecretKey、AK/SK</h3><p>有些供应商不只要一个 Key，还要求额外请求头或一对 Access Key / Secret Key。它们仍然是密码，不能因为放在“额外配置”里就按普通文字保存。</p><div class="analogy">主门钥匙和保险箱钥匙都属于钥匙，不能把第二把贴在门外。</div></article>
+        <article class="term"><h3>GET、POST 与 JSON</h3><p>GET 通常用来读取数据，POST 通常用来提交任务。JSON 是请求和结果常用的结构化文本格式。路径正确但方法或字段格式错误，请求仍会失败。</p><div class="analogy">到了正确窗口，还要分清“查询表”和“申请表”。</div></article>
+        <article class="term"><h3>兼容契约与兜底</h3><p>兼容契约是一套已知的通用调用规则，例如 OpenAI 风格的模型列表和聊天接口。兜底表示找不到供应商文档时，先按这套常见规则真实试用，而不是立刻拒绝整个接入。</p><div class="analogy">没有专用说明书时先用行业通用插头试接，但仍要检查是否真的通电。</div></article>
+        <article class="term"><h3>三种常见文本协议</h3><p>OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 是三套不同的文字模型请求格式。它们都能聊天，但路径、字段和返回形状不同，不能只改供应商名字。</p><div class="analogy">都是寄包裹，不同快递公司的面单格式不同。</div></article>
+        <article class="term"><h3>模型列表 / <code>/models</code></h3><p>供应商返回的可用模型名称清单。拉到名单只能证明地址和这一步认证大致可用，不能证明聊天、图片或视频生成已经能执行。</p><div class="analogy">看到菜单不等于后厨已经能做出每一道菜。</div></article>
+      </div>
+
+      <h3 class="term-group-title">Nomi 内部、验证和安全</h3>
+      <div class="term-grid">
+        <article class="term"><h3>UI、前端、设置向导</h3><p>UI 是用户看到并点击的页面；前端是负责这些页面的代码；设置向导是分步骤收集地址、认证和模型的界面。它们负责交互，不负责替代真实调用。</p><div class="analogy">像银行柜台：柜台收材料和展示结果，真正记账在后台完成。</div></article>
+        <article class="term"><h3>Runtime / 运行时</h3><p>用户真正聊天或生成图片时执行请求的后台代码。接入验证通过而运行时失败，说明“试车路线”和“正式路线”没有使用同一套规则。</p><div class="analogy">验车场能开不够，上路时也必须使用同一套发动机和油路。</div></article>
+        <article class="term"><h3>Agent / 智能助手</h3><p>Nomi 中会调用文字模型来理解任务、规划步骤或回答用户的助手。它最终仍要通过运行时访问已配置的模型，并不是一个绕过认证的独立模型。</p><div class="analogy">像项目经理，会组织工作，但打电话仍需要能用的通信线路。</div></article>
+        <article class="term"><h3>AI SDK</h3><p>一套现成的程序库，把多家文字模型包装成较统一的调用方式。Nomi 的文本验证和正式 Agent 会经过它；如果这里强制 Key，前面的免鉴权设置就会失效。</p><div class="analogy">像统一电话机；电话线接好了，电话机仍可能因为错误规则拒绝拨号。</div></article>
+        <article class="term"><h3>Catalog / 模型目录</h3><p>Nomi 保存供应商、模型、能力路线和启用状态的结构化清单。它回答“有什么模型、属于谁、能做什么”，不应该直接保存额外明文密码。</p><div class="analogy">像员工花名册，应该记录岗位，不应该把银行卡密码写进去。</div></article>
+        <article class="term"><h3>Metadata / 附加信息</h3><p>挂在供应商或模型旁边的补充字段，用来记录状态、标签等非核心信息。普通 metadata 往往会进入文件、备份或调试输出，所以不适合放密钥。</p><div class="analogy">像档案袋外面的备注贴，适合写分类，不适合写保险箱密码。</div></article>
+        <article class="term"><h3>Log、Transcript、Redaction</h3><p>Log 是程序运行记录；Transcript 是一次脚本或验证过程的详细记录；Redaction 是在写记录前把密钥替换成不可用占位符。仅在页面上隐藏密钥远远不够。</p><div class="analogy">监控录像要留，但密码键盘区域必须打码。</div></article>
+        <article class="term"><h3>Task、Lifecycle、Terminal State</h3><p>Task 是后台执行的一项工作；Lifecycle 是它从排队、运行到结束的全过程；Terminal State 是不会再继续变化的最终状态，例如成功、失败、超时或已取消。</p><div class="analogy">快递必须最终变成已签收、退回或丢失处理，不能永久显示运输中。</div></article>
+        <article class="term"><h3>verified / failed / partial</h3><p><code>verified</code> 表示真实试用通过；<code>failed</code> 表示失败并有原因；<code>partial</code> 表示同一批里有成功也有失败。这些标签必须反映证据，不能为了让按钮变绿而伪装。</p><div class="analogy">体检是“通过、未通过、部分项目待复查”，不能把未检查写成通过。</div></article>
+        <article class="term"><h3>Polling / 轮询</h3><p>页面每隔一段时间向后台询问“任务进度到哪了”。轮询本身正常，但间隔必须稳定，请求未完成时不应再叠加同类请求。</p><div class="analogy">每隔一分钟问一次可以；对方每回答一个字就再打一次电话会堵塞线路。</div></article>
+        <article class="term"><h3>Effect / 页面副作用</h3><p>页面框架在某些数据变化后自动执行的一段逻辑，例如启动轮询。若它依赖整个进度对象，每次进度更新都会重启计时器，轮询就可能失去原本的 900 毫秒节奏。</p><div class="analogy">时钟每走一格就被重新上弦，反而无法按正常周期报时。</div></article>
+        <article class="term"><h3>IPC</h3><p>桌面应用页面与后台主进程之间的消息通道。页面通过它启动验证、读取进度和取消任务。高频重复轮询会让这个通道和后台读写承受无意义负担。</p><div class="analogy">像前台和仓库之间的对讲机，持续抢话会让真正指令进不来。</div></article>
+        <article class="term"><h3>P0 / P1</h3><p>问题优先级。P0 通常表示核心功能完全不可用或有严重安全风险；P1 表示重要流程明显不可靠或用户很容易卡住。它不是“修复质量等级”。</p><div class="analogy">P0 像刹车失灵，P1 像车门经常打不开，都应修，但紧急程度不同。</div></article>
+        <article class="term"><h3>AI 编译 / Repair</h3><p>系统根据接口文档生成调用草稿，验证失败后再尝试修正草稿。它适合处理非标准图片和视频接口，但不应该成为已有通用规则的文本模型的必经门槛。</p><div class="analogy">特殊机器需要看图纸定制转接件；标准插座不必每次重新设计。</div></article>
+        <article class="term"><h3>唯一入口 / 浮卡</h3><p>唯一入口表示不同按钮最终都打开同一份模型设置页面；浮卡是叠在页面上的独立小面板。两套入口并存会产生两份状态、两套保存逻辑和位置错乱。</p><div class="analogy">同一账户有两个互不通账的柜台，用户无法知道哪边才是真记录。</div></article>
+      </div>
+
+      <h3 class="term-group-title">ComfyUI 与贡献者改动</h3>
+      <div class="term-grid">
+        <article class="term"><h3>H3 Director</h3><p>一类视频工作流的专用调度逻辑，把画面比例、时长、首尾帧和参考视频放到正确节点。值得保留的是这些业务规则，不是旧版接入页面。</p><div class="analogy">像熟悉某条生产线的工艺师，他的工艺知识有价值，但不能把旧厂房一起搬回来。</div></article>
+        <article class="term"><h3>Qwen 0–3 图模式</h3><p>让同一工作流能接收零到三张用户图片，并把每张图片送到正确输入槽。还要删除模板自带的示例图，避免把作者素材混进用户任务。</p><div class="analogy">有几个包裹就开几个真实货位，空货位不能塞着演示样品。</div></article>
+        <article class="term"><h3>Node、Connection、Input</h3><p>Node 是工作流中的处理步骤；Connection 是节点间的数据连线；Input 是节点接收的参数或文件。删除空节点时也要删除相关连线，否则流程仍可能引用不存在的数据。</p><div class="analogy">机器、传送带和进料口必须一起调整。</div></article>
+        <article class="term"><h3>Node ID / 节点编号</h3><p>每个节点在工作流文件中的编号。直接写死编号实现很快，但工作流重新导出后编号可能变化；按节点类型和连线关系查找更稳，旧编号可保留作兼容。</p><div class="analogy">找人用“质检员岗位”比只记“17 号座位”更可靠。</div></article>
+        <article class="term"><h3>Parameter Persistence / 参数持久化</h3><p>用户调整比例、步数或强度后，保存并再次打开项目仍能恢复这些值。测试必须覆盖保存、重开和最终请求，不能只看输入框当时显示。</p><div class="analogy">调好的座椅位置熄火后仍应记住，而不是下次全部归零。</div></article>
+        <article class="term"><h3>Source 与 dist-electron</h3><p>Source 是开发者维护的原始代码；<code>dist-electron</code> 是工具根据源码生成的可运行文件。构建产物可以用于试跑，但不应覆盖源码或作为长期合并依据。</p><div class="analogy">源码像菜谱，构建产物像做好的菜；不能靠拆菜恢复可靠菜谱。</div></article>
+      </div>
+
+      <h3 class="term-group-title">Git、分支和交付状态</h3>
+      <div class="term-grid">
+        <article class="term"><h3>main 与 origin/main</h3><p><code>main</code> 是电脑上的主分支；<code>origin/main</code> 是远端仓库主分支的本地记录。同步后两者应指向同一个提交。本次都已到 <code>452df94d</code>。</p><div class="analogy">一个是本地账本，一个是远端总账的最新副本。</div></article>
+        <article class="term"><h3>Branch / 分支</h3><p>从某个提交分出去的一条独立开发线。分支里修好了不等于产品已经修好；只有经过测试并合入 main，后续版本才会自然包含它。</p><div class="analogy">支路上修好了一段路，不代表主干道已经铺好。</div></article>
+        <article class="term"><h3>Worktree / 工作区</h3><p>当前电脑上实际打开的代码和未提交修改。它可以比 main 新，也可能混有尚未验证的半成品，所以报告必须把“main 已有”和“工作区正在改”分开写。</p><div class="analogy">账本里的正式记录和桌面上还没入账的票据不是一回事。</div></article>
+        <article class="term"><h3>Commit / 提交与哈希</h3><p>提交是一份有说明、可追踪的代码快照；哈希是它的唯一编号，例如 <code>452df94d</code>。只有压缩包而没有 Git 历史，就无法证明某个提交编号真的对应包内全部文件。</p><div class="analogy">像带编号和日期的存档页，散装复印件不能证明来自哪一页。</div></article>
+        <article class="term"><h3>Archive 与 SHA-256</h3><p>Archive 是压缩包；SHA-256 是根据文件内容算出的长指纹。指纹能证明“现在看的仍是同一个压缩包”，但不能证明里面的代码已经合入 main。</p><div class="analogy">封条编号能证明箱子没换，不能证明箱内货物已上架。</div></article>
+        <article class="term"><h3>Test / 测试与验收</h3><p>自动测试检查可重复的代码规则；人工验收检查真实用户流程。两者都通过才有较强证据：测试绿不代表页面好用，页面能点也不代表密码安全或后台会结束。</p><div class="analogy">零件检测和整车路试缺一不可。</div></article>
+        <article class="term"><h3>PR、Merge、已合入</h3><p>PR 是请求把一个分支的改动审查后加入主分支；Merge 是实际合并动作；“已合入”表示 main 已经包含这些提交。只创建分支、写完代码或通过测试，都不能称为已合入。</p><div class="analogy">申请入库、执行入库、货物已在正式货架上是三个阶段。</div></article>
+      </div>
+    </section>
+
+    <section id="matrix">
+      <div class="section-head">
+        <div><div class="eyebrow">06 / Snapshot matrix</div><h2>三份代码的真实状态</h2></div>
+        <p class="section-note">“归档”指贡献者压缩包；“main”指刚同步的 <code>origin/main@452df94d</code>；“工作区”指当前未提交改动。</p>
+      </div>
+      <div class="matrix">
+        <table>
+          <thead><tr><th>能力 / 问题</th><th>归档</th><th>最新 main</th><th>当前工作区</th><th>判断</th></tr></thead>
+          <tbody>
+            <tr><td>HTTP 局域网地址</td><td class="status ok">允许</td><td class="status ok">允许</td><td class="status ok">允许</td><td>HTTP 不是根因。</td></tr>
+            <tr><td>无 Key 模型列表</td><td class="status bad">UI 强制 Key</td><td class="status ok">已支持</td><td class="status ok">已支持</td><td>不能只测列表。</td></tr>
+            <tr><td>无 Key 文本正式调用</td><td class="status bad">失败</td><td class="status bad">仍失败</td><td class="status bad">仍失败</td><td>必须修。</td></tr>
+            <tr><td>公网中转无文档</td><td class="status bad">直接失败</td><td class="status ok">通用契约兜底</td><td class="status ok">已保留</td><td>归档接入代码不能覆盖 main。</td></tr>
+            <tr><td>验证失败后仍可见</td><td class="status bad">媒体 mapping 不写入</td><td class="status mix">保留未验证通道</td><td class="status mix">保留未验证通道</td><td>要标风险，不能伪装成功。</td></tr>
+            <tr><td>验证超时 / 取消</td><td class="status bad">没有完整生命周期</td><td class="status mix">基础链路仍缺</td><td class="status mix">已有，但轮询需修</td><td>必须补测试和终态。</td></tr>
+            <tr><td>模型设置唯一入口</td><td class="status bad">仍有浮卡</td><td class="status ok">已统一</td><td class="status ok">正在增强</td><td>不要移植旧浮卡。</td></tr>
+            <tr><td>H3 / Qwen 源码</td><td class="status ok">有</td><td class="status bad">没有</td><td class="status bad">没有</td><td>值得单独移植。</td></tr>
+            <tr><td>默认生成模型</td><td class="status ok">有</td><td class="status bad">没有</td><td class="status bad">没有</td><td>值得单独移植。</td></tr>
+            <tr><td>额外 Header / 第二密钥安全</td><td class="status bad">明文 metadata</td><td class="status bad">仍需处理</td><td class="status bad">仍需处理</td><td>安全优先。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="verify">
+      <div class="section-head">
+        <div><div class="eyebrow">07 / Acceptance</div><h2>怎么证明真的修好</h2></div>
+        <p class="section-note">每一项都要从用户输入一路验证到真实请求，不只看页面上的绿色标签。</p>
+      </div>
+      <div class="checks">
+        <article class="check"><b>免鉴权 HTTP 网关</b><p>填 <code>http://局域网地址</code>，Key 留空；检查模型列表、验证、文本 Agent 三处都没有 Authorization 头。</p></article>
+        <article class="check"><b>没有公开文档的公网中转</b><p>让文档探测返回空；验证仍进入通用 OpenAI 兼容契约，模型不会从列表消失。</p></article>
+        <article class="check"><b>故意制造挂起</b><p>让上游请求不返回；到达截止时间后必须显示 timed_out，取消后必须显示 cancelled，不能继续转圈。</p></article>
+        <article class="check"><b>故意让一个模式失败</b><p>文本通过、图片失败时，文本仍可用；图片显示未验证和修复入口，不能被误标为 verified。</p></article>
+        <article class="check"><b>凭据泄漏测试</b><p>在额外 Header 和第二密钥中放测试字符串，检查 catalog、日志、transcript、错误弹窗都没有明文。</p></article>
+        <article class="check"><b>ComfyUI 0–3 图</b><p>分别测试 0、1、2、3 张图，以及缺少可选尾帧/音频；检查最终 <code>/prompt</code> 中节点和连线真实正确。</p></article>
+        <article class="check"><b>设置入口</b><p>从顶部、模型卡、画布错误提示进入，最终都落到同一个设置模型页；页面下方不出现第二个浮卡。</p></article>
+        <article class="check"><b>默认模型</b><p>设置供应商 A 的默认模型，再新增图片和视频卡；禁用 A 后必须回退到健康模型，不能串到同名供应商 B。</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell">
+    <div class="source">
+      <strong>审查来源</strong><br>
+      贡献者归档：<code>nomi-private.7z</code>，SHA-256 <code>9ff3d0d7b6274db0cc5e4951d3a1a02355a7c9a65c780f0decfdb37b3b8ae6b5</code><br>
+      当前基线：<code>origin/main@452df94d</code>。归档不含 Git 历史，无法单独证明报告里的 <code>585cddc0</code> 是否包含所有声称的改动。<br>
+      本页面是审查说明，不代表已合并任何源码改动。
+    </div>
+  </footer>
+  <script>
+    const buttons = [...document.querySelectorAll('[data-target]')]
+    const sections = buttons.map(button => document.getElementById(button.dataset.target)).filter(Boolean)
+    buttons.forEach(button => button.addEventListener('click', () => {
+      const target = document.getElementById(button.dataset.target)
+      if (!target) return
+      const navHeight = document.querySelector('.nav')?.getBoundingClientRect().height ?? 0
+      window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - navHeight, behavior: 'auto' })
+    }))
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+      if (!visible) return
+      buttons.forEach(button => button.classList.toggle('active', button.dataset.target === visible.target.id))
+    }, { rootMargin: '-18% 0px -65% 0px', threshold: [0, .2, .5] })
+    sections.forEach(section => observer.observe(section))
+  </script>
+</body>
+</html>

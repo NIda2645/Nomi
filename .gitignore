@@ -102,6 +102,8 @@ docs/feedback/*
 .failure-walk-ok/
 .model-panel-shot/
 .custom-call-recon/
+.model-home-mockup-review/
+.settings-original-main-baseline/
 
 # Python 运行副产物（decrypt_wechat.py 等被 import/执行时生成，绝不入库）
 __pycache__/
