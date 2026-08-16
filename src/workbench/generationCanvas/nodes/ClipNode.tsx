@@ -27,6 +27,7 @@ import { toast } from '../../../ui/toast'
 import { buildWorkspaceFileUrl } from '../../explorer/workspaceFileDrag'
 import ClipNodePreview from './ClipNodePreview'
 import ClipNodeTimeline from './ClipNodeTimeline'
+import ClipNodeActionToolbar from './ClipNodeActionToolbar'
 import { createExclusiveClipNodeUpload, importClipNodeAsset } from './clipNodeUpload'
 import {
   clipNodeTimelineFromMeta,
@@ -111,6 +112,21 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const visualMode = resolveClipNodeVisualMode({ hasClips: timelineClips.length > 0, editingOpen, selectedClip: Boolean(activeClip) })
   const durationFrames = timelineClips.reduce((max, clip) => Math.max(max, clip.endFrame), 0)
   const upstreamMediaKey = upstreamMedia.map((source) => source.id).join('|')
+  const clipActionDisabledReason = exporting
+    ? t('generationCommon.clipNode.exporting')
+    : visualMode !== 'editing' || !activeClip
+      ? t('generationCommon.clipNode.selectToEdit')
+      : undefined
+  const canEditActiveClip = !clipActionDisabledReason
+  const canSplitActiveClip = Boolean(
+    canEditActiveClip
+    && activeClip
+    && playheadFrame > activeClip.startFrame
+    && playheadFrame < activeClip.endFrame,
+  )
+  const splitDisabledReason = canSplitActiveClip
+    ? undefined
+    : clipActionDisabledReason ?? t('generationCommon.clipNode.splitUnavailable')
 
   React.useEffect(() => {
     if (selected) return
@@ -491,15 +507,27 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
           <span className="text-micro text-nomi-ink/45">·</span>
           <span className="text-micro text-nomi-ink/60">{t('generationCommon.clipNode.totalDuration', { duration: formatClipNodeDuration(durationFrames, timeline.fps) })}</span>
           {!readOnly ? (
-            <WorkbenchIconButton
-              label={t('generationCommon.clipNode.export')}
-              icon={<IconDownload size={15} />}
-              className="ml-1 shrink-0 bg-transparent text-nomi-ink-60 hover:bg-nomi-accent-soft hover:text-nomi-accent"
-              disabled={!timelineClips.length || Boolean(exporting) || !getActiveWorkbenchProjectId()}
-              aria-expanded={exportMenuOpen}
-              data-testid="clip-node-export"
-              onClick={() => setExportMenuOpen((value) => !value)}
-            />
+            <>
+              <ClipNodeActionToolbar
+                canEdit={canEditActiveClip}
+                canSplit={canSplitActiveClip}
+                editDisabledReason={clipActionDisabledReason}
+                splitDisabledReason={splitDisabledReason}
+                onSplit={() => { if (activeClip) handleSplitClip(activeClip.id, playheadFrame) }}
+                onDuplicate={() => { if (activeClip) handleDuplicateClip(activeClip.id) }}
+                onRemove={() => { if (activeClip) handleRemoveClip(activeClip.id) }}
+              />
+              <span className="h-4 w-px shrink-0 bg-nomi-line-soft" aria-hidden="true" />
+              <WorkbenchIconButton
+                label={t('generationCommon.clipNode.export')}
+                icon={<IconDownload size={15} />}
+                className="shrink-0 bg-transparent text-nomi-ink-60 hover:bg-nomi-accent-soft hover:text-nomi-accent"
+                disabled={!timelineClips.length || Boolean(exporting) || !getActiveWorkbenchProjectId()}
+                aria-expanded={exportMenuOpen}
+                data-testid="clip-node-export"
+                onClick={() => setExportMenuOpen((value) => !value)}
+              />
+            </>
           ) : null}
         </header>
         <div className="min-h-0 flex-1 px-2 pb-2" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>

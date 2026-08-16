@@ -223,7 +223,11 @@ try {
   )
   const seek = preview.locator('input[type="range"]')
   const clickPositionsGlobalPlayhead = Number(await seek.inputValue()) > 0
-  const noDuplicateEditingButtons = (await win.getByRole('button', { name: /分割片段|复制片段|移除片段/ }).count()) === 0
+  const clipActions = win.getByTestId('clip-node-actions')
+  const clipActionsDiscoverable = (await clipActions.getByRole('button').count()) === 3
+    && await win.getByTestId('clip-node-split').isEnabled()
+    && await win.getByTestId('clip-node-duplicate').isEnabled()
+    && await win.getByTestId('clip-node-remove').isEnabled()
   const previewStartsMuted = await preview.evaluate((element) => (
     element.getAttribute('data-muted') === 'true' && element.querySelector('video')?.muted === true
   ))
@@ -319,6 +323,18 @@ try {
   await win.waitForTimeout(250)
   const keyboardRedo = (await clips.count()) === beforeSplit + 1
 
+  const toolbarTarget = clip.locator('[data-clip-id="clip-video-b"]')
+  const toolbarTargetBox = await toolbarTarget.boundingBox()
+  if (!toolbarTargetBox) throw new Error('找不到图标操作目标片段')
+  await toolbarTarget.click({ position: { x: toolbarTargetBox.width * 0.5, y: toolbarTargetBox.height / 2 } })
+  const beforeToolbarActions = await clips.count()
+  await win.getByTestId('clip-node-split').click()
+  const toolbarSplit = (await clips.count()) === beforeToolbarActions + 1
+  await win.getByTestId('clip-node-duplicate').click()
+  const toolbarDuplicate = (await clips.count()) === beforeToolbarActions + 2
+  await win.getByTestId('clip-node-remove').click()
+  const toolbarRemove = (await clips.count()) === beforeToolbarActions + 1
+
   const movable = clip.locator('[data-clip-id="clip-video-d"]')
   await movable.scrollIntoViewIfNeeded()
   const movableId = await movable.getAttribute('data-clip-id')
@@ -378,7 +394,7 @@ try {
     previewDoesNotHideNode,
     exportDoesNotOverlapPreview,
     clickPositionsGlobalPlayhead,
-    noDuplicateEditingButtons,
+    clipActionsDiscoverable,
     previewStartsMuted,
     previewCanUnmute,
     playbackCrossesCuts,
@@ -393,6 +409,9 @@ try {
     keyboardDelete,
     keyboardUndo,
     keyboardRedo,
+    toolbarSplit,
+    toolbarDuplicate,
+    toolbarRemove,
     timelineDrag,
     keyboardNudge,
     trimWorks,
