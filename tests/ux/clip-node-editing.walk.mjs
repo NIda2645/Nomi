@@ -143,6 +143,14 @@ try {
   const canvasVideoAudioEnabled = await win.locator('[data-node-preview-video="true"]').evaluate((video) => (
     video instanceof HTMLVideoElement && video.muted === false
   ))
+  const canvasVideoNode = win.locator('[data-node-preview-video="true"]').locator('xpath=ancestor::*[@data-node-id][1]')
+  await canvasVideoNode.hover()
+  await win.waitForFunction(() => document.querySelector('[data-node-preview-video="true"]')?.muted === true)
+  await clip.hover({ position: { x: 20, y: 20 } })
+  await win.waitForFunction(() => document.querySelector('[data-node-preview-video="true"]')?.muted === false)
+  const canvasVideoAudioRestoredAfterHover = await win.locator('[data-node-preview-video="true"]').evaluate((video) => (
+    video instanceof HTMLVideoElement && video.muted === false
+  ))
   const clipNodeIsWideEnough = (await clip.boundingBox())?.width >= 750
   const rulerBoxBeforeDrag = await clip.getByTestId('clip-node-ruler').boundingBox()
   const mediaLaneBox = await clip.getByTestId('clip-node-media-lane').boundingBox()
@@ -157,7 +165,13 @@ try {
   const clipVideoThumbnailReady = await clip.locator('[data-clip-id="clip-video-b"]').evaluate((element) => (
     Array.from(element.children).some((child) => {
       if (child instanceof HTMLImageElement) return child.complete && child.naturalWidth > 0
-      return child instanceof HTMLElement && getComputedStyle(child).backgroundImage !== 'none'
+      if (!(child instanceof HTMLElement) || child.dataset.clipFilmstrip !== 'true') return false
+      const style = getComputedStyle(child)
+      const sourceWidth = Number.parseFloat(style.backgroundSize)
+      return style.backgroundImage !== 'none'
+        && style.backgroundSize.endsWith('px 100%')
+        && Number.isFinite(sourceWidth)
+        && sourceWidth >= element.getBoundingClientRect().width - 1
     })
   ))
   await win.screenshot({ path: screenshots.compact })
@@ -352,6 +366,7 @@ try {
     compactDefault,
     canvasVideoFrameReady,
     canvasVideoAudioEnabled,
+    canvasVideoAudioRestoredAfterHover,
     clipNodeIsWideEnough,
     rulerDoesNotOverlapMedia,
     thirtySecondHasTrailingSpace,

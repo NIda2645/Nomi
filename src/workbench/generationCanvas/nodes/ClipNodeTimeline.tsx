@@ -5,7 +5,11 @@ import { WorkbenchIconButton } from '../../../design/workbenchActions'
 import { useFilmstrip } from '../../../media/useFilmstrip'
 import { cn } from '../../../utils/cn'
 import type { TimelineClip, TimelineState } from '../../timeline/timelineTypes'
-import { resolveClipNodeTimelineLayout, resolveClipNodeTimelineViewport } from './clipNodeTimelineLayout'
+import {
+  resolveClipNodeFilmstripStyle,
+  resolveClipNodeTimelineLayout,
+  resolveClipNodeTimelineViewport,
+} from './clipNodeTimelineLayout'
 import { formatClipNodeDuration } from './clipNodeVisual'
 
 type ClipNodeTimelineProps = {
@@ -18,7 +22,7 @@ type ClipNodeTimelineProps = {
   onAddMaterial?: () => void
 }
 
-function ClipThumb({ clip }: { clip: TimelineClip }): JSX.Element {
+function ClipThumb({ clip, pxPerFrame }: { clip: TimelineClip; pxPerFrame: number }): JSX.Element {
   const filmstrip = useFilmstrip(clip.type === 'video' && !clip.thumbnailUrl ? clip.url : '')
   if (clip.type === 'image' && (clip.thumbnailUrl || clip.url)) {
     return <img src={clip.thumbnailUrl || clip.url} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
@@ -27,15 +31,16 @@ function ClipThumb({ clip }: { clip: TimelineClip }): JSX.Element {
     return <img src={clip.thumbnailUrl} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
   }
   if (clip.type === 'video' && filmstrip?.status === 'ready') {
+    const filmstripStyle = resolveClipNodeFilmstripStyle(clip, pxPerFrame)
     return (
       <span
         className="absolute inset-0 bg-nomi-ink-05"
         style={{
           backgroundImage: `url(${JSON.stringify(filmstrip.url)})`,
-          backgroundSize: `${filmstrip.tiles * 100}% 100%`,
-          backgroundPosition: 'left center',
+          ...filmstripStyle,
           backgroundRepeat: 'no-repeat',
         }}
+        data-clip-filmstrip="true"
         aria-hidden="true"
       />
     )
@@ -162,7 +167,7 @@ function ClipItem({
         }
       }}
     >
-      <ClipThumb clip={clip} />
+      <ClipThumb clip={clip} pxPerFrame={pxPerFrame} />
       <span className="absolute inset-x-0 bottom-0 truncate bg-nomi-paper/80 px-1.5 py-1 text-micro font-medium text-nomi-ink">{clip.label || t('generationCommon.clipNode.timeline')}</span>
       {selected ? <>
         <span data-clip-handle="true"><ClipHandle edge="left" clip={clip} pxPerFrame={pxPerFrame} onResize={onResizeClip} /></span>

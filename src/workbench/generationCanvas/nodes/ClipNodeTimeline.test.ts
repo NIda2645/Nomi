@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { TimelineState } from '../../timeline/timelineTypes'
 import {
   CLIP_NODE_TRAILING_INSET,
+  resolveClipNodeFilmstripStyle,
   resolveClipNodeTimelineLayout,
   resolveClipNodeTimelineViewport,
 } from './clipNodeTimelineLayout'
@@ -52,5 +53,12 @@ describe('ClipNodeTimeline layout', () => {
 
     expect(extended.pxPerFrame).toBe(initial.pxPerFrame)
     expect(extended.contentWidth).toBeGreaterThan(initial.contentWidth)
+  })
+
+  it('maps the complete source filmstrip and crop offset onto the visible clip', () => {
+    expect(resolveClipNodeFilmstripStyle({ frameCount: 300, offsetStartFrame: 60 }, 0.5)).toEqual({
+      backgroundSize: '150px 100%',
+      backgroundPosition: '-30px 0',
+    })
   })
 })

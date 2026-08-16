@@ -1,7 +1,12 @@
 import { clipVisibleFrames } from '../../timeline/timelineEdit'
-import type { TimelineState } from '../../timeline/timelineTypes'
+import type { TimelineClip, TimelineState } from '../../timeline/timelineTypes'
 
 export type ClipNodeTimelineLayout = { id: string; left: number; width: number }
+
+export type ClipNodeFilmstripStyle = {
+  backgroundSize: string
+  backgroundPosition: string
+}
 
 export const CLIP_NODE_INITIAL_VIEW_SECONDS = 30
 export const CLIP_NODE_TRAILING_SECONDS = 4
@@ -24,6 +29,19 @@ export type ClipNodeTimelineViewport = {
 
 function safeFps(fps: number): number {
   return Number.isFinite(fps) && fps > 0 ? fps : 30
+}
+
+export function resolveClipNodeFilmstripStyle(
+  clip: Pick<TimelineClip, 'frameCount' | 'offsetStartFrame'>,
+  pxPerFrame: number,
+): ClipNodeFilmstripStyle {
+  const safePxPerFrame = Number.isFinite(pxPerFrame) && pxPerFrame > 0 ? pxPerFrame : 1
+  const sourceWidth = Math.max(1, clip.frameCount * safePxPerFrame)
+  const offset = Math.max(0, clip.offsetStartFrame) * safePxPerFrame
+  return {
+    backgroundSize: `${sourceWidth}px 100%`,
+    backgroundPosition: `${offset > 0 ? `-${offset}px` : '0px'} 0`,
+  }
 }
 
 /**

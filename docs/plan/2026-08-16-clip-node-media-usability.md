@@ -70,12 +70,14 @@ The change is isolated to clip-node layout/media rendering and focused tests. Re
 - Video asset insertion now probes real duration and keeps six seconds only as the failure fallback.
 - Clip thumbnails reuse the shared filmstrip cache; queued canvas videos remain hidden until `HAVE_CURRENT_DATA` and preload the first frame.
 - Canvas video no longer forces `muted`; the clip program monitor has an explicit mute/unmute button and starts muted until the user opts into sound.
+- Hover autoplay now restores the canvas video's previous mute state when the pointer leaves, so previewing does not silently disable later user playback.
+- Clip-node video thumbnails map the complete filmstrip width and trim offset instead of enlarging the sprite's first frame.
 - Expanded `tests/ux/clip-node-editing.walk.mjs` with a generated 12-second H.264/AAC fixture and repeatable assertions for geometry, decoded frames, audio state, real duration, and exported audio.
-- Focused tests: 19 passed.
+- Focused tests: 22 passed.
 - Real Electron task: all assertions passed, including default canvas audio; `ffprobe` confirmed an exported audio stream.
 - Screenshots inspected:
   - `/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-clip-node-compact.png`
   - `/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-clip-node-preview.png`
   - `/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-clip-node-imported-video.png`
-- Full gates passed: 541 test files passed, 1 skipped; 4716 tests passed, 1 skipped; production renderer and Electron builds passed.
+- Full gates passed: 585 test files passed, 1 skipped; 5054 tests passed, 1 skipped; production renderer and Electron builds passed.
 - Model connection-state investigation confirmed no updater migration issue: the stable packaged profile has 10 credential records, while the isolated development worktree profiles have none.
