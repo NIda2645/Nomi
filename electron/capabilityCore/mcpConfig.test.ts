@@ -267,7 +267,8 @@ describe('capabilityCore/mcpConfig', () => {
     const info = readMcpInfo(0)
     expect(info.clients.claude).toMatchObject({ configState: 'current', migration: 'upgraded' })
     const after = JSON.parse(fs.readFileSync(claudeJson(), 'utf8')).mcpServers.nomi
-    expect(after.command).toContain('Nomi Helper.app')
+    expect(after.command).toBe(info.server.command)
+    expect(after.args).toEqual(info.server.args)
     expect(after.args[0]).toContain('mcpNodeLauncher.js')
   })
 
