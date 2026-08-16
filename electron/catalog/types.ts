@@ -183,7 +183,13 @@ export type Model = {
    * （runtime.runTask 单一派发点，先于 mapping）。与 enabled 同级的用户配置——拉取/重接入的
    * upsert 不得清掉它（applyModelUpsert：undefined=保留，null=显式删除）。
    */
-  customCall?: { script: string; updatedAt: string };
+  customCall?: {
+    /** 模型级兼容脚本：没有当前模式专用脚本时回退到这里。 */
+    script?: string;
+    /** 模式级覆盖：key 必须是该模型显式能力契约 / ModelArchetype 中的 mode id。 */
+    modes?: Record<string, { script: string; updatedAt: string }>;
+    updatedAt: string;
+  };
   pricing?: {
     cost: number;
     enabled: boolean;

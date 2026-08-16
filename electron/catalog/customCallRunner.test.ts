@@ -29,7 +29,17 @@ const vendor = { key: "custom-x", name: "X", baseUrlHint: "https://relay.example
 const model = { vendorKey: "custom-x", modelKey: "m1", labelZh: "m1", kind: "image", enabled: true, createdAt: "", updatedAt: "" } as unknown as Model;
 
 function run(script: string, params: Record<string, unknown> = {}, timeoutMs?: number) {
-  return runCustomCallScript({ vendor, model, apiKey: "sk-secret-123", script, prompt: "p", params, timeoutMs });
+  return runCustomCallScript({
+    vendor,
+    model,
+    apiKey: "sk-secret-123",
+    script,
+    prompt: "p",
+    params,
+    taskKind: "image_to_video",
+    modeId: "firstlast",
+    timeoutMs,
+  });
 }
 
 describe("customCall contract alignment", () => {
@@ -49,6 +59,22 @@ if (model !== 'm1') throw new Error('model')
 if (apiKey !== 'sk-secret-123') throw new Error('key')
 return 'https://relay.example/out.png'`);
     expect(outcome.assets[0]).toContain("out.png");
+  });
+
+  it("taskKind/modeId 注入的是只读任务上下文，而不是供应商猜测", async () => {
+    const outcome = await run(`if (taskKind !== 'image_to_video') throw new Error('task kind: ' + taskKind)
+if (modeId !== 'firstlast') throw new Error('mode: ' + modeId)
+return 'https://relay.example/out.mp4'`);
+    expect(outcome.assets).toEqual(["https://relay.example/out.mp4"]);
+  });
+
+  it("脚本只能看到契约能力，看不到 Node、Electron 或浏览器网络全局", async () => {
+    const outcome = await run(`return { text: [typeof process, typeof require, typeof fetch, typeof window].join(',') }`);
+    expect(outcome.text).toBe("undefined,undefined,undefined,undefined");
+  });
+
+  it("不能通过动态 import 绕过能力边界", async () => {
+    await expect(run(`await import('node:fs')\nreturn 'https://relay.example/escaped.png'`)).rejects.toThrow();
   });
 });
 

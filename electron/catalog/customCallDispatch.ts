@@ -23,6 +23,8 @@ export type CustomCallDispatchInput = {
   model: Model;
   apiKey: string;
   script: string;
+  taskKind: TaskRequest["kind"];
+  modeId?: string;
   request: TaskRequest;
   kind: TaskRequest["kind"];
   /** image / video / model3d / text —— 文本 2026-08-12 解禁（此前被 runtime 挡在门外）。 */
@@ -44,7 +46,7 @@ export type CustomCallDispatchInput = {
 };
 
 export async function runCustomCallTask(input: CustomCallDispatchInput): Promise<TaskResult> {
-  const { vendor, model, apiKey, script, request, kind, wantedKind, projectId, nodeId, grantId, taskId } = input;
+  const { vendor, model, apiKey, script, taskKind, modeId, request, kind, wantedKind, projectId, nodeId, grantId, taskId } = input;
   // S8 指纹缓存同语义：脚本内容进 recipe（改脚本=新配方），mappingId 槽复用为脚本指纹。
   const scriptHash = crypto.createHash("sha1").update(script).digest("hex").slice(0, 16);
   const recipe = buildNormalizedRecipe({ vendor, model, mappingId: `custom-call:${scriptHash}`, request });
@@ -79,6 +81,8 @@ export async function runCustomCallTask(input: CustomCallDispatchInput): Promise
       script,
       prompt: trim(effectiveRequest.prompt),
       params: taskTemplateParams(effectiveRequest),
+      taskKind,
+      modeId,
       timeoutMs: wantedKind === "video" ? 15 * 60 * 1000 : 5 * 60 * 1000,
       // 上游只给字节流时的落地口。写进本项目资产库，脚本拿回一个能用的本地 URL——
       // 比拼 data URL 靠谱（几十 MB 的视频拼成 base64 会把整条链路撑爆）。
@@ -118,8 +122,14 @@ export async function runCustomCallTask(input: CustomCallDispatchInput): Promise
     return textResult;
   }
 
-  const type: "image" | "video" | "model3d" =
-    wantedKind === "video" ? "video" : wantedKind === "model3d" ? "model3d" : "image";
+  const type: "image" | "video" | "audio" | "model3d" =
+    wantedKind === "video"
+      ? "video"
+      : wantedKind === "audio"
+        ? "audio"
+        : wantedKind === "model3d"
+          ? "model3d"
+          : "image";
   const assets = await Promise.all(
     executed.assets.map((url) =>
       projectId ? input.localizeTaskAsset(projectId, url, type, nodeId, vendor) : unlocalizedTaskAsset(type, url),

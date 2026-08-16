@@ -65,7 +65,9 @@ try {
   await win.getByRole('button', { name: '添加模型 / 中转站', exact: true }).click()
   await win.getByRole('button', { name: 'new-api 中转', exact: true }).click()
 
-  const wizard = win.locator('.mantine-Modal-content[role="dialog"]').filter({ hasText: '添加一个 AI 模型' })
+  const wizard = win.locator('[data-model-settings-page="add"]')
+  await wizard.waitFor({ state: 'visible' })
+  if (await win.locator('[role="dialog"]').count() !== 1) throw new Error('Adding a model opened a nested dialog')
   const noKeyLabel = wizard.getByText('无需 API Key', { exact: true })
   const noKey = wizard.locator('input[type="checkbox"]').first()
   const keyInput = wizard.getByPlaceholder('sk-...', { exact: true })

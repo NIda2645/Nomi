@@ -18,6 +18,8 @@ import { adapterProviderState } from './adapterVerificationViewModel'
 import { useVendorHealth } from './useVendorHealth'
 import { vendorConnectionPill } from './vendorConnectionView'
 import { type ChipModel } from './ModelChipGroups'
+import { shouldSkipImplicitVendorHealth } from './vendorHealthProbePolicy'
+import type { ModelSettingsConnectionFocus } from './modelSettingsNavigation'
 
 type ModelEditorProps = React.ComponentProps<typeof ModelEnableEditor>
 
@@ -28,6 +30,8 @@ type CustomVendorCardProps = {
   models: ChipModel[]
   baseUrl: string
   hasApiKey: boolean
+  /** Direct-script providers use their explicit test run; generic GET /models is not meaningful. */
+  skipHealthProbe?: boolean
   onToggle: ModelEditorProps['onToggle']
   onDelete: ModelEditorProps['onDelete']
   onCustomCall: ModelEditorProps['onCustomCall']
@@ -35,6 +39,10 @@ type CustomVendorCardProps = {
   onRetype: ModelEditorProps['onRetype']
   onDeleteVendor: () => void
   onChanged: () => void
+  onOpenDetails?: () => void
+  detailMode?: boolean
+  onOpenModel?: (model: ChipModel) => void
+  focus?: ModelSettingsConnectionFocus
 }
 
 export function CustomVendorCard({
@@ -43,15 +51,26 @@ export function CustomVendorCard({
   models,
   baseUrl,
   hasApiKey,
+  skipHealthProbe = false,
   onToggle,
   onDelete,
   onCustomCall,
   onRetype,
   onDeleteVendor,
   onChanged,
+  onOpenDetails,
+  detailMode = false,
+  onOpenModel,
+  focus,
 }: CustomVendorCardProps): JSX.Element {
   const { t } = useTranslation()
-  const { connection, recheck } = useVendorHealth(vendorKey, { hasApiKey, baseUrl })
+  const skipImplicitHealth = shouldSkipImplicitVendorHealth({ models })
+  const { connection, recheck } = useVendorHealth(vendorKey, {
+    hasApiKey,
+    baseUrl,
+    disableProbe: skipHealthProbe,
+    skipImplicitProbe: skipImplicitHealth,
+  })
   const enabledN = models.filter((m) => m.enabled).length
   const adapterCard = adapterProviderState(models)
   const adapterLabel =
@@ -72,6 +91,8 @@ export function CustomVendorCard({
       }
       statusLabel={unreachable && health ? t(health.labelKey) : adapterLabel}
       defaultExpanded={false}
+      onOpenDetails={onOpenDetails}
+      detailMode={detailMode}
       headerAction={
         <button
           type="button"
@@ -87,7 +108,14 @@ export function CustomVendorCard({
         </button>
       }
     >
-      <ModelEnableEditor models={models} onToggle={onToggle} onDelete={onDelete} onCustomCall={onCustomCall} onRetype={onRetype} />
+      <ModelEnableEditor
+        models={models}
+        onToggle={onToggle}
+        onDelete={onDelete}
+        onCustomCall={onCustomCall}
+        onRetype={onRetype}
+        onOpenModel={onOpenModel}
+      />
       <CustomVendorManage
         vendorKey={vendorKey}
         vendorName={name}
@@ -97,6 +125,7 @@ export function CustomVendorCard({
         connection={connection}
         onRecheck={recheck}
         onChanged={onChanged}
+        focus={focus}
       />
     </FoldableModelCard>
   )

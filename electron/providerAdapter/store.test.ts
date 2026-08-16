@@ -74,9 +74,22 @@ describe("ProviderAdapterStore", () => {
       run({ id: "done", stage: "completed" }),
       run({ id: "partial", stage: "partial" }),
       run({ id: "failed", stage: "failed" }),
+      run({ id: "cancelled", stage: "cancelled" }),
+      run({ id: "timed-out", stage: "timed_out" }),
     ];
 
     expect(recoverableAdapterRuns(runs).map((item) => item.id)).toEqual(["queued", "testing"]);
+  });
+
+  it("lists recent runs with vendor and active filters", () => {
+    const { store } = createStore();
+    store.upsertRun(run({ id: "older", updatedAt: "2026-08-07T00:00:00.000Z" }));
+    store.upsertRun(run({ id: "other", vendorKey: "other-com", updatedAt: "2026-08-07T02:00:00.000Z" }));
+    store.upsertRun(run({ id: "newer", stage: "completed", updatedAt: "2026-08-07T03:00:00.000Z" }));
+
+    expect(store.listRuns({ limit: 2 }).map((item) => item.id)).toEqual(["newer", "other"]);
+    expect(store.listRuns({ vendorKey: "example-com" }).map((item) => item.id)).toEqual(["newer", "older"]);
+    expect(store.listRuns({ activeOnly: true }).map((item) => item.id)).toEqual(["other", "older"]);
   });
 
   it("marks recoverable work stale when the connection fingerprint changed", () => {

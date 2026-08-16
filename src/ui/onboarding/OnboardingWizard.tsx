@@ -1,87 +1,87 @@
-/**
- * Onboarding Wizard — 「从中转添加模型」（Issue #8：中转优先·一次拉全·按模型分类）。
- *
- * 用户填中转地址 + 可选 key → 拉取它开放的模型（GET /v1/models）→ 每个模型按 id 自动判类型
- * （图片/视频/文本，主进程 guessKinds，可改）→ 勾选 → 一次批量接入并真测。AI 只编译受限的
- * 声明式 HTTP 适配器，真实生成通过后才发布；UI 不暴露 vendor/mapping 等内部术语
- * （Design.md「no decorative complexity」）。
- *
- * Backed by: nomiDesktop.onboarding.{listModels, guessKinds, testConnection, adapterStart, adapterGet}。
- */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Stack, Group, Text, PasswordInput, ActionIcon, Anchor, Select, Collapse, Loader } from '@mantine/core'
-import { IconPlus, IconTrash, IconCheck, IconX, IconChevronDown, IconChevronRight, IconAlertTriangle, IconListCheck, IconCloudDownload } from '@tabler/icons-react'
-import { DesignButton, DesignModal, DesignTextInput, DesignSegmentedControl, DesignSwitch } from '../../design'
+import { Stack, Group, Text, PasswordInput, Anchor } from '@mantine/core'
+import {
+  IconCheck,
+  IconX,
+  IconChevronDown,
+} from '@tabler/icons-react'
+import { DesignButton, DesignModal, DesignTextInput, DesignSwitch } from '../../design'
 import { ModelPickerScreen } from './ModelPickerScreen'
-import { AdapterVerificationScreen } from './AdapterVerificationScreen'
 import { getDesktopBridge } from '../../desktop/bridge'
-import type { DesktopProviderAdapterRun } from '../../desktop/bridge'
+import type { CustomCallDraftIdentity } from '../../desktop/modelCatalogBridgeTypes'
+import type { DesktopExistingConnectionSummary, DesktopProviderRegistration } from '../../desktop/onboardingBridgeTypes'
 import type { ProviderKind } from '../../desktop/providerKind'
-import { resolvePrecheckGateAction } from './precheckGate'
 import { PROVIDER_PRESETS } from './providerPresets'
-import { cn } from '../../utils/cn'
 import { Field } from './onboardingWizardSupport'
 import { isOnboardingApiKeyReady, resolveOnboardingAuth } from './onboardingAuth'
-
-// 接口协议的人类标签——探测成功后告诉用户「用的是 X 协议」，专家覆盖时也用它。
-const PROVIDER_KIND_LABEL: Record<ProviderKind, string> = {
-  'openai-compatible': 'Chat Completions',
-  'openai-responses': 'Responses',
-  anthropic: 'Anthropic',
-}
+import { ModelSettingsPageSurface } from './ModelSettingsPageSurface'
+import { ExistingConnectionModelPicker } from './ExistingConnectionModelPicker'
+import { OnboardingWizardResult } from './OnboardingWizardResult'
+import { DirectScriptDraftForm } from './DirectScriptDraftForm'
+import {
+  OnboardingWizardAdvancedFields,
+  ProviderPresetGroups,
+} from './OnboardingWizardAdvancedFields'
+import { PROVIDER_KIND_LABEL } from './onboardingProviderKindLabels'
 
 type Phase = 'input' | 'running' | 'success' | 'error'
 // model3d 必须在这个联合里。少了它的后果不是「3D 没做」，而是 hunyuan3d 这类**必定**被下面的
 // 收敛硬掰成 text——既污染文本下拉，被选中还会当聊天模型塞进 /chat/completions。目录层本来就支持
 // model3d（BillingModelKind / primaryTaskKind text_to_3d），断点只在这条 UI 类型上。
 type ModelKind = 'text' | 'image' | 'video' | 'audio' | 'model3d'
-const KIND_ORDER: ModelKind[] = ['image', 'video', 'audio', 'model3d', 'text']
 const MODEL_KINDS: ModelKind[] = ['text', 'image', 'video', 'audio', 'model3d']
 
 function asModelKind(value: unknown): ModelKind {
   return (MODEL_KINDS as string[]).includes(String(value)) ? (value as ModelKind) : 'text'
 }
 
-export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, onSelfConnect }: {
+export function OnboardingWizard({
+  opened,
+  onClose,
+  onCommitted,
+  onConnectionSaved,
+  initialPreset,
+  existingVendorKey,
+  existingConnection,
+  onDirectScriptDraftCreated,
+  initialScreen,
+  presentation = 'modal',
+}: {
   opened: boolean
   onClose: () => void
   /** Called once a model is committed to the catalog. */
-  onCommitted?: (model: unknown) => void
+  onCommitted?: (registration: DesktopProviderRegistration) => void
+  /** Connection-only save completed; parent refreshes the catalog without navigating away. */
+  onConnectionSaved?: (registration: DesktopProviderRegistration) => void
   /** 打开时预选的预设（如面板「接入你的中转站」卡传 'newapi'，直接进中转拉取流，Issue #8）。 */
   initialPreset?: string
-  /** 验证失败时打开该模型的自定义调用编辑器（宿主抽屉的 openCustomCall）。 */
-  onSelfConnect?: (vendorKey: string, modelKey: string) => void
+  /** 已有连接追加模型：主进程自取加密凭据，renderer 不再收集或读取 Key。 */
+  existingVendorKey?: string
+  /** 本地目录快照；已有连接页面先展示它，用户明确点击后才联网刷新。 */
+  existingConnection?: DesktopExistingConnectionSummary
+  onDirectScriptDraftCreated?: (identity: CustomCallDraftIdentity) => void
+  initialScreen?: 'form' | 'scriptDraft'
+  presentation?: 'modal' | 'page'
 }): JSX.Element {
   const { t } = useTranslation()
-  const kindOptions = React.useMemo(
-    () => KIND_ORDER.map((value) => ({ value, label: t(`modelSetup.kinds.${value}`) })),
-    [t],
-  )
   const bridge = getDesktopBridge()
   const [phase, setPhase] = React.useState<Phase>('input')
-  // input has two branches: 'manual' is the primary path (BaseURL + key + models,
-  // breaks the bootstrap deadlock, works for local/text models); 'docs' is the
-  // 统一一条手填路径（图片/视频/文本都走它）；inputMode 保留单值 'manual'（旧 docs 分支已删，Issue #8）。
   const [inputMode] = React.useState<'manual'>('manual')
   const [userApiKey, setUserApiKey] = React.useState('')
   const [noApiKey, setNoApiKey] = React.useState(false)
-  // manual-form state
   const [vendorName, setVendorName] = React.useState('')
-  // Selected provider preset ('' = none yet). Drives auto-fill + whether to show
-  // the 接口类型 toggle (only for custom/none — named presets imply their type).
   const [presetId, setPresetId] = React.useState('')
   // When a named preset auto-fills BaseURL, we hide that field (correct value,
   // jargon-y for non-coders). This flag reveals it for the rare custom-gateway case.
   const [editBaseUrl, setEditBaseUrl] = React.useState(false)
-  // 接口协议（wire protocol）。默认让主进程 auto-probe 替用户判断（P4）：用户不必懂
-  // chat/responses/anthropic 的区别。这个 state 存「当前解析出的协议」——预设内置值 /
-  // hostname 猜测 / 探测结果 / 专家手选，任一来源。
+  // 接口协议（wire protocol）。保存默认值是本地选择，不发请求；只有用户显式点
+  // 「测试连接」时才让主进程探测 chat / responses / anthropic。
   const [providerKind, setProviderKind] = React.useState<ProviderKind>('openai-compatible')
   // 专家是否手动锁定了协议。true → 测试时按它强制走（autoProbe 关），且 BaseURL 输入不再
   // 用 hostname 自动覆盖（解决「自动探测 vs 手选打架」）。
   const [kindForced, setKindForced] = React.useState(false)
-  // 「接口协议」覆盖区是否展开。默认收起（auto-probe 兜底）；专家点开、或测试失败时自动展开（逃生口）。
+  // 「接口协议」覆盖区是否展开。默认收起；专家点开、或显式测试失败时自动展开。
   const [showKindOverride, setShowKindOverride] = React.useState(false)
   // 「高级设置」整段（接口协议 + 自定义请求头）是否展开。默认收起；测试失败自动展开当逃生口。
   const [showAdvanced, setShowAdvanced] = React.useState(false)
@@ -91,55 +91,51 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
   const [models, setModels] = React.useState<Array<{ id: string; kind: ModelKind }>>([])
   // 拉到的「候选池」（GET /models 的全部，带预判类型）——喂第二屏供勾选，不直接落库。
   const [candidateModels, setCandidateModels] = React.useState<Array<{ id: string; kind: ModelKind }>>([])
-  // 当前在表单还是模型勾选第二屏（换屏，非新弹窗）。success/error 阶段不看它。
-  const [screen, setScreen] = React.useState<'form' | 'select' | 'verify'>('form')
-  const [adapterRun, setAdapterRun] = React.useState<DesktopProviderAdapterRun | null>(null)
+  const [screen, setScreen] = React.useState<'form' | 'select' | 'scriptDraft'>(
+    existingVendorKey ? 'select' : initialScreen ?? 'form',
+  )
   // 是否已尝试过拉取（区分「还没填地址」与「拉了但端点没列出」两种空态）。
   const [fetchAttempted, setFetchAttempted] = React.useState(false)
   const [fetchingModels, setFetchingModels] = React.useState(false)
   const [fetchModelsMsg, setFetchModelsMsg] = React.useState('')
-  // 失焦自动拉取的去重签名：记录已自动拉过的 baseUrl\0鉴权\0apiKey\0协议，避免每次失焦重拉。
-  const autoFetchSigRef = React.useRef('')
   // Custom request headers (key/value) for relay/proxy gateways. Empty by default
   // so the common case stays clean; the "添加请求头" button reveals a row on demand.
   const [headerRows, setHeaderRows] = React.useState<Array<{ key: string; value: string }>>([])
   const [saving, setSaving] = React.useState(false)
+  const [savedConnection, setSavedConnection] = React.useState<DesktopProviderRegistration | null>(null)
+  const [connectionSaveError, setConnectionSaveError] = React.useState('')
   const [testState, setTestState] = React.useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [testMessage, setTestMessage] = React.useState('')
-  // 「仍要保存」二次确认态（非阻断门槛，R3 用户拍板）：未测/测试失败时首次点保存先 arm，
-  // 再次点才强行提交。任何输入或测试态变化都自动解除 arm（下方 effect），避免残留误触。
-  const [forceSaveArmed, setForceSaveArmed] = React.useState(false)
   const [resultLabel, setResultLabel] = React.useState('')
   const [errorReason, setErrorReason] = React.useState('')
   const [errorHint, setErrorHint] = React.useState('')
   const requestAuth = resolveOnboardingAuth(providerKind, userApiKey, noApiKey)
+  const effectiveBaseUrl =
+    providerKind === 'anthropic' && !baseUrl.trim() ? 'https://api.anthropic.com' : baseUrl.trim()
 
   const resetToInput = React.useCallback(() => {
     setPhase('input')
     setResultLabel('')
     setErrorReason('')
     setErrorHint('')
-    // Keep credentials (vendorName/baseUrl/userApiKey) so "再添加一个" under the
-    // same endpoint is one step; only clear the per-add model picks + test result.
-    setModels([])
-    setCandidateModels([])
-    setScreen('form')
-    setAdapterRun(null)
-    setFetchAttempted(false)
-    setFetchModelsMsg('')
+    // Existing-connection retry returns to the same candidate pool. Its stored
+    // credential never enters this component, and a failed local registration
+    // should not throw away the user's picks.
+    if (existingVendorKey) setScreen('select')
+    else setScreen('form')
     setTestState('idle')
     setTestMessage('')
-  }, [])
+  }, [existingVendorKey])
 
   const updateHeader = React.useCallback((index: number, patch: Partial<{ key: string; value: string }>) => {
-    setHeaderRows(prev => prev.map((h, i) => (i === index ? { ...h, ...patch } : h)))
+    setHeaderRows((prev) => prev.map((h, i) => (i === index ? { ...h, ...patch } : h)))
     setTestState('idle')
   }, [])
   const addHeaderRow = React.useCallback(() => {
-    setHeaderRows(prev => [...prev, { key: '', value: '' }])
+    setHeaderRows((prev) => [...prev, { key: '', value: '' }])
   }, [])
   const removeHeaderRow = React.useCallback((index: number) => {
-    setHeaderRows(prev => prev.filter((_, i) => i !== index))
+    setHeaderRows((prev) => prev.filter((_, i) => i !== index))
     setTestState('idle')
   }, [])
   // Collapse the header rows into a clean {key: value} map (dropping blanks).
@@ -154,15 +150,15 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
   }, [headerRows])
 
   const handlePickPreset = React.useCallback((id: string) => {
-    const preset = PROVIDER_PRESETS.find(p => p.id === id)
+    const preset = PROVIDER_PRESETS.find((p) => p.id === id)
     if (!preset) return
     setPresetId(id)
     setProviderKind(preset.providerKind)
     setBaseUrl(preset.baseUrl)
     setVendorName(preset.custom ? '' : preset.label)
     setEditBaseUrl(false)
-    // 切预设 = 重置协议判断：具名预设内置了正确协议（视为已锁定，不再 auto-probe 覆盖）；
-    // 自定义/中转站则交回 auto-probe（kindForced=false），覆盖区收起。
+    // 切预设 = 重置协议判断：具名预设内置协议；自定义中转使用本地默认值，
+    // 只有之后显式测试连接才可能更新它。
     setKindForced(!preset.custom)
     setShowKindOverride(false)
     setShowAdvanced(false)
@@ -173,7 +169,6 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
     setScreen('form')
     setFetchModelsMsg('')
     setTestState('idle')
-    autoFetchSigRef.current = ''
   }, [])
 
   // 打开时按 initialPreset 预选（面板「接入你的中转站」卡 → 'newapi'，直接进中转拉取流）。
@@ -183,96 +178,153 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, initialPreset])
 
-  const setModelKind = React.useCallback((id: string, kind: ModelKind) => {
-    setModels(prev => prev.map(m => (m.id === id ? { ...m, kind } : m)))
-  }, [])
-
-  const removeModel = React.useCallback((id: string) => {
-    setModels(prev => prev.filter(m => m.id !== id))
-    setTestState('idle')
-  }, [])
-
   // 第二屏手填未列出的 id 时，问主进程它是哪类（同一启发式 guessModelKind）。
-  const resolveKind = React.useCallback(async (id: string): Promise<string> => {
-    if (!bridge?.onboarding?.guessKinds) return 'text'
-    try { return (await bridge.onboarding.guessKinds({ ids: [id] })).kinds?.[id] ?? 'text' } catch { return 'text' }
-  }, [bridge])
+  const resolveKind = React.useCallback(
+    async (id: string): Promise<string> => {
+      if (!bridge?.onboarding?.guessKinds) return 'text'
+      try {
+        return (await bridge.onboarding.guessKinds({ ids: [id] })).kinds?.[id] ?? 'text'
+      } catch {
+        return 'text'
+      }
+    },
+    [bridge],
+  )
 
-  const startAdapterVerification = React.useCallback(async (picked: Array<{ id: string; kind: string }>) => {
-    if (!bridge?.onboarding?.adapterStart) {
-      setErrorReason(t('modelSetup.desktopUnavailable'))
-      setPhase('error')
+  const registerModels = React.useCallback(
+    async (picked: Array<{ id: string; kind: string }>) => {
+      const savedVendorKey = savedConnection?.vendorKey
+      const targetVendorKey = existingVendorKey ?? savedVendorKey
+      if (!bridge?.onboarding?.adapterRegister || (targetVendorKey && !bridge.onboarding.adapterRegisterExisting)) {
+        setErrorReason(t('modelSetup.desktopUnavailable'))
+        setPhase('error')
+        return
+      }
+      // 只对**真正认不出**的值兜底成 text（脏数据/将来新增的第六类），不再把 model3d 一并掰进去。
+      const cleanModels = picked.map((m) => ({ id: m.id, kind: asModelKind(m.kind) })).filter((m) => m.id.trim())
+      if (cleanModels.length === 0) return
+      setModels(cleanModels)
+      setSaving(true)
+      try {
+        const selected = cleanModels.map((model) => ({ modelKey: model.id, labelZh: model.id, kind: model.kind }))
+        const res = targetVendorKey
+          ? await bridge.onboarding.adapterRegisterExisting({ vendorKey: targetVendorKey, models: selected })
+          : await bridge.onboarding.adapterRegister({
+              vendorName: vendorName.trim(),
+              baseUrl: effectiveBaseUrl,
+              apiKey: requestAuth.apiKey,
+              authType: requestAuth.authType,
+              providerKind,
+              headers: buildHeadersObject(),
+              models: selected,
+            })
+        if (!res.ok || !res.registration) {
+          setErrorReason(t('modelSetup.saveFailed'))
+          const rawError = 'error' in res && typeof res.error === 'string' ? res.error : ''
+          setErrorHint(rawError || t('modelSetup.saveFailedHint'))
+          setPhase('error')
+          return
+        }
+        if (onCommitted) onCommitted(res.registration)
+        else onClose()
+      } catch (error) {
+        setErrorReason(t('modelSetup.saveFailed'))
+        setErrorHint(error instanceof Error ? error.message : t('modelSetup.saveFailedHint'))
+        setPhase('error')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [
+      bridge,
+      existingVendorKey,
+      savedConnection,
+      vendorName,
+      effectiveBaseUrl,
+      requestAuth.apiKey,
+      requestAuth.authType,
+      providerKind,
+      buildHeadersObject,
+      t,
+      onCommitted,
+      onClose,
+    ],
+  )
+
+  const saveConnection = React.useCallback(async () => {
+    if (!bridge?.onboarding?.adapterRegister) {
+      setConnectionSaveError(t('modelSetup.desktopUnavailable'))
       return
     }
-    // 只对**真正认不出**的值兜底成 text（脏数据/将来新增的第六类），不再把 model3d 一并掰进去。
-    const cleanModels = picked.map(m => ({ id: m.id, kind: asModelKind(m.kind) })).filter(m => m.id.trim())
-    if (cleanModels.length === 0) return
-    setModels(cleanModels)
     setSaving(true)
+    setConnectionSaveError('')
     try {
-      const res = await bridge.onboarding.adapterStart({
+      const res = await bridge.onboarding.adapterRegister({
         vendorName: vendorName.trim(),
-        baseUrl: baseUrl.trim(),
+        baseUrl: effectiveBaseUrl,
         apiKey: requestAuth.apiKey,
         authType: requestAuth.authType,
         providerKind,
         headers: buildHeadersObject(),
-        models: cleanModels.map(model => ({ modelKey: model.id, labelZh: model.id, kind: model.kind })),
+        models: [],
       })
-      if (!res.ok || !res.run) {
-        setErrorReason(t('modelSetup.saveFailed'))
-        setErrorHint(res.error || t(noApiKey ? 'modelSetup.checkConnection' : 'modelSetup.checkCredentials'))
-        setPhase('error')
+      if (!res.ok || !res.registration) {
+        setConnectionSaveError(res.error || t('modelSetup.saveFailedHint'))
         return
       }
-      setAdapterRun(res.run)
-      setScreen('verify')
-      setTestState('idle')
+      setSavedConnection(res.registration)
+      onConnectionSaved?.(res.registration)
+    } catch (error) {
+      setConnectionSaveError(error instanceof Error ? error.message : t('modelSetup.saveFailedHint'))
     } finally {
       setSaving(false)
     }
-  }, [bridge, vendorName, baseUrl, requestAuth.apiKey, requestAuth.authType, providerKind, buildHeadersObject, t, noApiKey])
+  }, [
+    bridge,
+    vendorName,
+    effectiveBaseUrl,
+    requestAuth.apiKey,
+    requestAuth.authType,
+    providerKind,
+    buildHeadersObject,
+    onConnectionSaved,
+    t,
+  ])
 
-  // 第二屏主按钮即启动整批接入+真实验证，不再回表单让用户多点一次「保存」。
-  const handleConfirmPicked = React.useCallback((picked: Array<{ id: string; kind: string }>) => {
-    void startAdapterVerification(picked)
-  }, [startAdapterVerification])
-
-  // 主进程任务独立于弹窗生命周期；弹窗开着时只轮询真实快照，关闭后任务继续。
-  React.useEffect(() => {
-    if (!opened || screen !== 'verify' || !adapterRun || !bridge?.onboarding?.adapterGet) return
-    if (['completed', 'partial', 'failed', 'needs_ai', 'stale'].includes(adapterRun.stage)) return
-    let alive = true
-    const poll = async () => {
-      const res = await bridge.onboarding.adapterGet({ runId: adapterRun.id }).catch(() => null)
-      if (alive && res?.ok && res.run) setAdapterRun(res.run)
-    }
-    const timer = window.setInterval(() => { void poll() }, 900)
-    void poll()
-    return () => { alive = false; window.clearInterval(timer) }
-  }, [opened, screen, adapterRun, bridge])
+  // 第二屏只保存连接和模型。文档发现、AI 编译和真实请求是模型详情里的独立、显式动作。
+  const handleConfirmPicked = React.useCallback(
+    (picked: Array<{ id: string; kind: string }>) => {
+      void registerModels(picked)
+    },
+    [registerModels],
+  )
 
   // 拉取这个上游开放的全部模型 → 预判类型 → 存进候选池（不直接落库）。用户在第二屏勾选确认
-  // 真正要哪些（opt-in，2026-06-29 反转旧「全量灌库再删」）。失焦自动拉取也走这里，只静默填池。
+  // 真正要哪些（opt-in，2026-06-29 反转旧「全量灌库再删」）。只有用户点「获取模型列表」才走这里。
   const handleFetchModels = React.useCallback(async () => {
     if (!bridge?.onboarding?.listModels) return
     setFetchingModels(true)
     setFetchModelsMsg('')
     try {
       const res = await bridge.onboarding.listModels({
-        baseUrl: baseUrl.trim(),
+        baseUrl: effectiveBaseUrl,
         apiKey: requestAuth.apiKey,
         providerKind,
         headers: buildHeadersObject(),
       })
       if (res.ok && res.models && res.models.length > 0) {
-        const ids = Array.from(new Set(res.models.map(s => s.trim()).filter(Boolean)))
+        const ids = Array.from(new Set(res.models.map((s) => s.trim()).filter(Boolean)))
         let guessed: Record<string, ModelKind> = {}
         if (bridge?.onboarding?.guessKinds) {
-          try { guessed = (await bridge.onboarding.guessKinds({ ids })).kinds || {} } catch { /* 退回 text */ }
+          try {
+            guessed = (await bridge.onboarding.guessKinds({ ids })).kinds || {}
+          } catch {
+            /* 退回 text */
+          }
         }
-        setCandidateModels(ids.map(id => ({ id, kind: guessed[id] ?? 'text' })))
+        setCandidateModels(ids.map((id) => ({ id, kind: guessed[id] ?? 'text' })))
         setFetchModelsMsg('')
+        setScreen('select')
       } else if (res.ok) {
         setCandidateModels([])
         setFetchModelsMsg(t('modelSetup.noModelsListedHint'))
@@ -281,15 +333,22 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
         // 把上游真原因说出来（401 Invalid token / 超时 / 代理…）。旧版一律吞掉只报「没拉到」，
         // 用户面对零线索无从下手——错在哪就说哪（对齐「测试连接」的失败透传）。
         const reason = (res.error || '').trim()
-        setFetchModelsMsg(reason
-          ? t('modelSetup.noModelsFetchedWithReason', { error: reason })
-          : t('modelSetup.noModelsFetchedHint'))
+        setFetchModelsMsg(
+          reason ? t('modelSetup.noModelsFetchedWithReason', { error: reason }) : t('modelSetup.noModelsFetchedHint'),
+        )
       }
+    } catch (error) {
+      setCandidateModels([])
+      setFetchModelsMsg(
+        t('modelSetup.noModelsFetchedWithReason', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
     } finally {
       setFetchAttempted(true)
       setFetchingModels(false)
     }
-  }, [bridge, baseUrl, requestAuth.apiKey, providerKind, buildHeadersObject, t])
+  }, [bridge, effectiveBaseUrl, requestAuth.apiKey, providerKind, buildHeadersObject, t])
 
   const handleTestConnection = React.useCallback(async () => {
     if (!bridge?.onboarding?.testConnection) return
@@ -298,84 +357,385 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
     // 协议探测发的是**文字聊天**请求，所以只能拿文本模型去探。上游只接了图片/视频模型时
     // （中转接 Seedance/可灵 很常见），拿视频模型 id 发 chat/completions 必被上游拒 → 旧实现
     // 一律报「连不上」，把「我们探错了」说成「你接不通」。此时改探「地址+Key 通不通」。
-    const firstTextModelId = models.filter(m => m.kind === 'text').map(m => m.id.trim()).find(Boolean)
+    const firstTextModelId = models
+      .filter((m) => m.kind === 'text')
+      .map((m) => m.id.trim())
+      .find(Boolean)
     const reachabilityOnly = !firstTextModelId
-    const res = await bridge.onboarding.testConnection({
-      baseUrl: baseUrl.trim(),
-      apiKey: requestAuth.apiKey,
-      modelId: firstTextModelId,
-      ...(reachabilityOnly ? { probe: 'reachability' as const } : {}),
-      // 专家锁定 → 强制走该协议；否则交主进程 auto-probe（chat↔responses，anthropic 按 hostname）。
-      ...(kindForced ? { providerKind } : { autoProbe: true }),
-      headers: buildHeadersObject(),
-    })
-    if (res.ok) {
-      // 探测出的协议存回 state → 保存时就用它；并显式告诉用户「替你选对了哪个」。
-      if (res.detectedKind) setProviderKind(res.detectedKind)
-      setTestState('ok')
-      setTestMessage(res.reachabilityOnly
-        ? t(noApiKey ? 'modelSetup.connectedReachabilityOnlyNoApiKey' : 'modelSetup.connectedReachabilityOnly')
-        : res.detectedKind
-          ? t('modelSetup.connectedProtocol', { protocol: PROVIDER_KIND_LABEL[res.detectedKind] })
-          : t('modelSetup.connected'))
-    } else {
-      setTestState('fail')
-      if (reachabilityOnly) {
-        // 纯图片/视频上游：协议跟它无关，别把用户往「换个协议试试」上引（那是错误指路）。
-        setTestMessage(res.error
-          ? t(noApiKey ? 'modelSetup.connectionFailedCheckUrl' : 'modelSetup.connectionFailedCheckUrlKey', { error: res.error })
-          : t(noApiKey ? 'modelSetup.connectionFailedCheckUrlPlain' : 'modelSetup.connectionFailedCheckUrlKeyPlain'))
-        return
+    try {
+      const res = await bridge.onboarding.testConnection({
+        baseUrl: effectiveBaseUrl,
+        apiKey: requestAuth.apiKey,
+        modelId: firstTextModelId,
+        ...(reachabilityOnly ? { probe: 'reachability' as const } : {}),
+        // 专家锁定 → 强制走该协议；否则在这次显式测试里自动探测。
+        ...(kindForced ? { providerKind } : { autoProbe: true }),
+        headers: buildHeadersObject(),
+      })
+      if (res.ok) {
+        // 探测出的协议存回 state → 保存时就用它；并显式告诉用户「替你选对了哪个」。
+        if (res.detectedKind) setProviderKind(res.detectedKind)
+        setTestState('ok')
+        setTestMessage(
+          res.reachabilityOnly
+            ? t(noApiKey ? 'modelSetup.connectedReachabilityOnlyNoApiKey' : 'modelSetup.connectedReachabilityOnly')
+            : res.detectedKind
+              ? t('modelSetup.connectedProtocol', { protocol: PROVIDER_KIND_LABEL[res.detectedKind] })
+              : t('modelSetup.connected'),
+        )
+      } else {
+        setTestState('fail')
+        if (reachabilityOnly) {
+          // 纯图片/视频上游：协议跟它无关，别把用户往「换个协议试试」上引（那是错误指路）。
+          setTestMessage(
+            res.error
+              ? t(noApiKey ? 'modelSetup.connectionFailedCheckUrl' : 'modelSetup.connectionFailedCheckUrlKey', {
+                  error: res.error,
+                })
+              : t(
+                  noApiKey ? 'modelSetup.connectionFailedCheckUrlPlain' : 'modelSetup.connectionFailedCheckUrlKeyPlain',
+                ),
+          )
+          return
+        }
+        // 失败指路（设计/真实用户评审）：把「可能是协议不对，手动指定」摆出来，展开高级区+覆盖区当逃生口。
+        setShowAdvanced(true)
+        setShowKindOverride(true)
+        setTestMessage(
+          res.error
+            ? t('modelSetup.connectionFailedWithReason', { error: res.error })
+            : t(noApiKey ? 'modelSetup.connectionFailedNoApiKey' : 'modelSetup.connectionFailed'),
+        )
       }
-      // 失败指路（设计/真实用户评审）：把「可能是协议不对，手动指定」摆出来，展开高级区+覆盖区当逃生口。
-      setShowAdvanced(true)
-      setShowKindOverride(true)
-      setTestMessage(res.error
-        ? t('modelSetup.connectionFailedWithReason', { error: res.error })
-        : t(noApiKey ? 'modelSetup.connectionFailedNoApiKey' : 'modelSetup.connectionFailed'))
+    } catch (error) {
+      setTestState('fail')
+      setTestMessage(
+        t(noApiKey ? 'modelSetup.connectionFailedCheckUrl' : 'modelSetup.connectionFailedCheckUrlKey', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
     }
-  }, [bridge, baseUrl, requestAuth.apiKey, models, providerKind, kindForced, buildHeadersObject, t, noApiKey])
-
-  const handleManualSave = React.useCallback(async () => {
-    await startAdapterVerification(models)
-  }, [models, startAdapterVerification])
-
-  // 输入或测试态一变 → 解除「仍要保存」二次确认（防 arm 后改了地址/Key 还沿用旧确认）。
-  React.useEffect(() => {
-    setForceSaveArmed(false)
-  }, [testState, baseUrl, userApiKey, noApiKey, models, providerKind])
+  }, [bridge, effectiveBaseUrl, requestAuth.apiKey, models, providerKind, kindForced, buildHeadersObject, t, noApiKey])
 
   // handleStart / handleEvent / handleCopyLog / canStart（AI 读文档流）已随子系统删除（Issue #8）。
   // Anthropic has a hosted default, so a blank BaseURL is allowed there (we fill in
   // the official host); an OpenAI-compatible endpoint must be supplied.
-  const baseUrlTrimmed = baseUrl.trim()
-  const baseUrlValid = providerKind === 'anthropic'
-    ? (baseUrlTrimmed === '' || /^https?:\/\//i.test(baseUrlTrimmed))
-    : /^https?:\/\//i.test(baseUrlTrimmed)
+  const baseUrlTrimmed = effectiveBaseUrl
+  const baseUrlValid =
+    providerKind === 'anthropic'
+      ? baseUrlTrimmed === '' || /^https?:\/\//i.test(baseUrlTrimmed)
+      : /^https?:\/\//i.test(baseUrlTrimmed)
   const canTest = baseUrlValid && (providerKind === 'anthropic' || baseUrlTrimmed.length > 0)
-  // 失焦自动拉取（effect-first）：填完地址和所需鉴权即自动拉这个中转开放的全部模型，不必让用户
-  // 发现并点「拉取」。去重（同 baseUrl+鉴权+key+协议只拉一次）+ 不覆盖已手填/已拉到的模型。
-  const maybeAutoFetchModels = () => {
-    if (!canTest || fetchingModels) return
-    if (!isOnboardingApiKeyReady(userApiKey, noApiKey) || candidateModels.length > 0 || models.length > 0) return
-    const sig = `${baseUrlTrimmed}\0${requestAuth.authType}\0${requestAuth.apiKey}\0${providerKind}`
-    if (sig === autoFetchSigRef.current) return
-    autoFetchSigRef.current = sig
-    void handleFetchModels()
-  }
-  const hasModelId = models.some(m => m.id.trim().length > 0)
-  // 非阻断门槛（R3 拍板）：字段齐即可保存；测试未通过走二次确认（arm→confirm），不死拦。
-  const manualFieldsReady = baseUrlValid && isOnboardingApiKeyReady(userApiKey, noApiKey) && hasModelId && !saving
-  const manualSaveAction = resolvePrecheckGateAction({
-    actionable: manualFieldsReady,
-    precheckPassed: testState === 'ok',
-    forceArmed: forceSaveArmed,
-  })
-  const selectedPreset = PROVIDER_PRESETS.find(p => p.id === presetId)
+  const connectionFieldsReady = canTest && isOnboardingApiKeyReady(userApiKey, noApiKey)
+  const selectedPreset = PROVIDER_PRESETS.find((p) => p.id === presetId)
   const isNamedPreset = Boolean(selectedPreset && !selectedPreset.custom)
+  const isCustomGatewayEntry = initialPreset === 'newapi' || initialPreset === 'custom'
   // Named preset already filled a correct BaseURL → hide the jargon-y field unless
   // the user explicitly wants to point at a custom gateway.
   const showBaseUrlField = !isNamedPreset || editBaseUrl
+
+  const content = (
+    <Stack gap="md">
+      {phase === 'input' && screen === 'form' && !existingVendorKey && (
+        <Stack gap={12}>
+          {/* 中转优先·一次拉全·按模型分类（Issue #8）：填中转地址 + 可选 key → 拉取它开放的模型 →
+                每个自动判好类型(图片/视频/文本，可改) → 一次加多类型。文本/图片/视频统一一条路。 */}
+          {!isCustomGatewayEntry ? (
+            <Text size="xs" c="var(--nomi-ink-60)">
+              {t('modelSetup.intro')}
+            </Text>
+          ) : null}
+
+
+          {inputMode === 'manual' && (
+            <>
+              {savedConnection ? (
+                <div data-model-connection-saved className="flex flex-col gap-4">
+                  <div className="flex items-start gap-3 rounded-nomi-sm bg-nomi-ink-05 p-3" role="status">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-nomi-sm bg-nomi-accent-soft text-nomi-accent">
+                      <IconCheck size={15} stroke={2} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-body-sm font-semibold text-nomi-ink">{t('modelSetup.connectionSaved')}</div>
+                      <p className="mt-1 text-caption leading-relaxed text-nomi-ink-60">
+                        {t('modelSetup.connectionSavedHint')}
+                      </p>
+                    </div>
+                  </div>
+                  {fetchModelsMsg ? (
+                    <div className="border-l-2 border-nomi-warning bg-nomi-ink-05 px-3 py-2 text-caption leading-relaxed text-nomi-ink-60">
+                      {fetchModelsMsg}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <DesignButton variant="light" onClick={() => setScreen('select')}>
+                      {t('modelSetup.manualEnter')}
+                    </DesignButton>
+                    <DesignButton variant="filled" onClick={handleFetchModels} loading={fetchingModels}>
+                      {t('modelSetup.fetchModels')}
+                    </DesignButton>
+                  </div>
+                </div>
+              ) : (
+                <>
+              {/* Issue #8 可发现性：中转站（含图片/视频）拎到最上、点名 new-api；官方厂商（文本）弱化为次组。 */}
+              {!isCustomGatewayEntry ? (
+                <ProviderPresetGroups presetId={presetId} onPickPreset={handlePickPreset} />
+              ) : null}
+              <Field label={t('modelSetup.vendorName')} hint={t('modelSetup.vendorNameHint')}>
+                <DesignTextInput
+                  value={vendorName}
+                  onChange={(e) => setVendorName(e.currentTarget.value)}
+                  placeholder={t('modelSetup.vendorNamePlaceholder')}
+                />
+              </Field>
+              {showBaseUrlField ? (
+                <Field
+                  label={t('modelSetup.baseUrl')}
+                  hint={
+                    providerKind === 'anthropic' ? t('modelSetup.baseUrlAnthropicHint') : t('modelSetup.baseUrlHint')
+                  }
+                >
+                  <DesignTextInput
+                    value={baseUrl}
+                    onChange={(e) => {
+                      const v = e.currentTarget.value
+                      setBaseUrl(v)
+                      setTestState('idle')
+                      // hostname 仅作「初始猜测」：anthropic-native 网关 host 带 anthropic。
+                      // 一旦专家手选过协议（kindForced），就不再覆盖——否则手选会被下次输入吞掉。
+                      // chat vs responses 无法靠 hostname 区分；用户可显式测试或在高级设置手选。
+                      if (selectedPreset?.custom && !kindForced) {
+                        try {
+                          setProviderKind(/anthropic/i.test(new URL(v).hostname) ? 'anthropic' : 'openai-compatible')
+                        } catch {
+                          /* partial url while typing */
+                        }
+                      }
+                    }}
+                    placeholder={
+                      providerKind === 'anthropic'
+                        ? t('modelSetup.anthropicUrlPlaceholder')
+                        : t('modelSetup.openAiUrlPlaceholder')
+                    }
+                    error={baseUrlTrimmed.length > 0 && !baseUrlValid ? t('modelSetup.invalidUrl') : undefined}
+                  />
+                </Field>
+              ) : (
+                <Text size="xs" c="var(--nomi-ink-60)">
+                  {t('modelSetup.autoFilledUrl')}{' '}
+                  <Anchor
+                    component="button"
+                    type="button"
+                    onClick={() => setEditBaseUrl(true)}
+                    c="var(--nomi-accent)"
+                    inherit
+                  >
+                    {t('modelSetup.customize')}
+                  </Anchor>
+                </Text>
+              )}
+              {selectedPreset?.custom && (
+                <DesignSwitch
+                  checked={noApiKey}
+                  onChange={(event) => {
+                    setNoApiKey(event.currentTarget.checked)
+                    setTestState('idle')
+                  }}
+                  label={t('modelSetup.noApiKey')}
+                  description={t('modelSetup.noApiKeyHint')}
+                />
+              )}
+              {!noApiKey && (
+                <Field label={t('modelSetup.apiKey')} hint={t('modelSetup.apiKeyHint')}>
+                  <PasswordInput
+                    value={userApiKey}
+                    onChange={(e) => {
+                      setUserApiKey(e.currentTarget.value)
+                      setTestState('idle')
+                    }}
+                    placeholder={t('modelSetup.apiKeyPlaceholder')}
+                    autoFocus
+                  />
+                  {selectedPreset?.keyUrl && (
+                    <Anchor
+                      href={selectedPreset.keyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      c="var(--nomi-accent)"
+                      size="xs"
+                    >
+                      {t('modelSetup.getKey', { provider: selectedPreset.label })}
+                    </Anchor>
+                  )}
+                </Field>
+              )}
+
+              {selectedPreset?.custom && (
+                <OnboardingWizardAdvancedFields
+                  providerKind={providerKind}
+                  kindForced={kindForced}
+                  showAdvanced={showAdvanced}
+                  showKindOverride={showKindOverride}
+                  headerRows={headerRows}
+                  onToggleAdvanced={() => setShowAdvanced((value) => !value)}
+                  onShowKindOverride={() => setShowKindOverride(true)}
+                  onProviderKindChange={(value) => {
+                    setProviderKind(value)
+                    setKindForced(true)
+                    setTestState('idle')
+                  }}
+                  onRestoreAutoDetect={() => {
+                    setKindForced(false)
+                    setShowKindOverride(false)
+                    setTestState('idle')
+                  }}
+                  onUpdateHeader={updateHeader}
+                  onRemoveHeaderRow={removeHeaderRow}
+                  onAddHeaderRow={addHeaderRow}
+                />
+              )}
+
+              <details className="group border-t border-nomi-line pt-1" data-model-connection-diagnostics>
+                <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 text-caption font-semibold text-nomi-ink-60 hover:text-nomi-ink [&::-webkit-details-marker]:hidden">
+                  {t('modelSetup.diagnostics')}
+                  <IconChevronDown
+                    size={15}
+                    stroke={1.8}
+                    className="transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <div className="flex flex-col gap-2 border-t border-nomi-line-soft pt-3">
+                  <Text size="xs" c="var(--nomi-ink-40)" className="leading-relaxed">
+                    {t('modelSetup.testAndSaveHint')}
+                  </Text>
+                  <div className="flex flex-wrap items-center gap-2">
+                  <DesignButton
+                    variant="light"
+                    onClick={handleTestConnection}
+                    disabled={!connectionFieldsReady || testState === 'testing'}
+                    loading={testState === 'testing'}
+                  >
+                    {t('modelSetup.testConnection')}
+                  </DesignButton>
+                  {testState === 'ok' && (
+                    <Group gap={4} align="center" wrap="nowrap" c="var(--workbench-success)">
+                      <Text size="xs" c="var(--workbench-success)">
+                        {testMessage}
+                      </Text>
+                      <IconCheck size={14} stroke={1.5} />
+                    </Group>
+                  )}
+                  {testState === 'fail' && (
+                    <Group gap={4} align="center" wrap="nowrap" c="var(--workbench-danger)">
+                      <Text size="xs" c="var(--workbench-danger)" lineClamp={1}>
+                        {testMessage}
+                      </Text>
+                      <IconX size={14} stroke={1.5} />
+                    </Group>
+                  )}
+                  </div>
+                </div>
+              </details>
+              {connectionSaveError ? (
+                <div className="text-caption leading-relaxed text-workbench-danger" role="alert">
+                  {connectionSaveError}
+                </div>
+              ) : null}
+              <div className="flex justify-end">
+                <DesignButton
+                  variant="filled"
+                  onClick={() => void saveConnection()}
+                  disabled={!connectionFieldsReady || !vendorName.trim() || saving}
+                  loading={saving}
+                >
+                  {t('modelSetup.saveConnection')}
+                </DesignButton>
+              </div>
+                </>
+              )}
+            </>
+          )}
+        </Stack>
+      )}
+
+      {phase === 'input' &&
+        screen === 'select' &&
+        (existingVendorKey ? (
+          <ExistingConnectionModelPicker
+            opened={opened}
+            vendorKey={existingVendorKey}
+            initialConnection={existingConnection ?? {
+              vendorKey: existingVendorKey,
+              vendorName: existingVendorKey,
+              baseUrl: '',
+              existingModels: [],
+            }}
+            confirming={saving}
+            onBack={onClose}
+            onConfirm={handleConfirmPicked}
+          />
+        ) : (
+          <ModelPickerScreen
+            candidates={candidateModels}
+            initialSelected={models}
+            sourceName={vendorName.trim()}
+            host={(() => {
+              try {
+                return new URL(effectiveBaseUrl).hostname
+              } catch {
+                return effectiveBaseUrl
+              }
+            })()}
+            total={candidateModels.length}
+            fetching={fetchingModels}
+            hasFetched={fetchAttempted}
+            statusHint={fetchModelsMsg || undefined}
+            onRefetch={handleFetchModels}
+            onBack={() => setScreen('form')}
+            onConfirm={handleConfirmPicked}
+            onResolveKind={resolveKind}
+            confirming={saving}
+            blocked={!connectionFieldsReady}
+          />
+        ))}
+
+      {phase === 'input' && screen === 'scriptDraft' && onDirectScriptDraftCreated ? (
+        <DirectScriptDraftForm onBack={() => setScreen('form')} onCreated={onDirectScriptDraftCreated} />
+      ) : null}
+
+      <OnboardingWizardResult
+        phase={phase}
+        resultLabel={resultLabel}
+        errorReason={errorReason}
+        errorHint={errorHint}
+        onReset={resetToInput}
+        onClose={onClose}
+      />
+    </Stack>
+  )
+
+  if (presentation === 'page') {
+    if (!opened) return <></>
+    return (
+      <ModelSettingsPageSurface
+        page="add"
+        title={isCustomGatewayEntry ? (
+          <div className="min-w-0">
+            <h2 className="truncate text-body font-semibold text-nomi-ink">{t('modelSetup.customApiTitle')}</h2>
+            <p className="mt-0.5 truncate text-micro text-nomi-ink-40">{t('modelSetup.customApiSubtitle')}</p>
+          </div>
+        ) : (
+          <h2 className="text-body font-semibold text-nomi-ink">{t('modelSetup.addModel')}</h2>
+        )}
+        backLabel={t('common.back')}
+        onBack={onClose}
+      >
+        {content}
+      </ModelSettingsPageSurface>
+    )
+  }
 
   return (
     <DesignModal
@@ -387,389 +747,7 @@ export function OnboardingWizard({ opened, onClose, onCommitted, initialPreset, 
       closeOnClickOutside={phase !== 'running'}
       closeOnEscape={phase !== 'running'}
     >
-      <Stack gap="md">
-        {phase === 'input' && screen === 'form' && (
-          <Stack gap={12}>
-            {/* 中转优先·一次拉全·按模型分类（Issue #8）：填中转地址 + 可选 key → 拉取它开放的模型 →
-                每个自动判好类型(图片/视频/文本，可改) → 一次加多类型。文本/图片/视频统一一条路。 */}
-            <Text size="xs" c="var(--nomi-ink-60)">
-              {t('modelSetup.intro')}
-            </Text>
-
-            {inputMode === 'manual' && (
-              <>
-            {/* Issue #8 可发现性：中转站（含图片/视频）拎到最上、点名 new-api；官方厂商（文本）弱化为次组。 */}
-            {([
-              { key: 'relay', label: t('modelSetup.relayGroup') },
-              { key: 'official', label: t('modelSetup.officialGroup') },
-            ] as const).map(grp => {
-              const items = PROVIDER_PRESETS.filter(p => (p.group ?? 'official') === grp.key)
-              if (items.length === 0) return null
-              return (
-                <Field key={grp.key} label={grp.label} hint={grp.key === 'relay' ? t('modelSetup.relayHint') : undefined}>
-                  <div className="flex flex-wrap gap-1.5">
-                    {items.map(p => {
-                      const active = presetId === p.id
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => handlePickPreset(p.id)}
-                          className={cn(
-                            'inline-flex items-center gap-1 px-3 py-1 rounded-full text-body-sm border',
-                            'transition-[background,color,border-color] duration-150',
-                            active
-                              ? 'bg-nomi-accent-soft text-nomi-accent border-nomi-accent'
-                              : 'bg-nomi-paper text-nomi-ink-80 border-nomi-line hover:bg-nomi-ink-05',
-                          )}
-                        >
-                          {p.label}
-                          {active && <IconCheck size={13} stroke={2} />}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </Field>
-              )
-            })}
-            <Field label={t('modelSetup.vendorName')} hint={t('modelSetup.vendorNameHint')}>
-              <DesignTextInput
-                value={vendorName}
-                onChange={e => setVendorName(e.currentTarget.value)}
-                placeholder={t('modelSetup.vendorNamePlaceholder')}
-              />
-            </Field>
-            {showBaseUrlField ? (
-              <Field
-                label={t('modelSetup.baseUrl')}
-                hint={providerKind === 'anthropic' ? t('modelSetup.baseUrlAnthropicHint') : t('modelSetup.baseUrlHint')}
-              >
-                <DesignTextInput
-                  value={baseUrl}
-                  onChange={e => {
-                    const v = e.currentTarget.value
-                    setBaseUrl(v)
-                    setTestState('idle')
-                    // hostname 仅作「初始猜测」：anthropic-native 网关 host 带 anthropic。
-                    // 一旦专家手选过协议（kindForced），就不再覆盖——否则手选会被下次输入吞掉。
-                    // chat vs responses 无法靠 hostname 区分，交由保存前的 auto-probe 定夺。
-                    if (selectedPreset?.custom && !kindForced) {
-                      try {
-                        setProviderKind(/anthropic/i.test(new URL(v).hostname) ? 'anthropic' : 'openai-compatible')
-                      } catch { /* partial url while typing */ }
-                    }
-                  }}
-                  placeholder={providerKind === 'anthropic' ? t('modelSetup.anthropicUrlPlaceholder') : t('modelSetup.openAiUrlPlaceholder')}
-                  error={baseUrlTrimmed.length > 0 && !baseUrlValid ? t('modelSetup.invalidUrl') : undefined}
-                  onBlur={maybeAutoFetchModels}
-                />
-              </Field>
-            ) : (
-              <Text size="xs" c="var(--nomi-ink-60)">
-                {t('modelSetup.autoFilledUrl')}{' '}
-                <Anchor component="button" type="button" onClick={() => setEditBaseUrl(true)} c="var(--nomi-accent)" inherit>
-                  {t('modelSetup.customize')}
-                </Anchor>
-              </Text>
-            )}
-            {selectedPreset?.custom && (
-              <DesignSwitch
-                checked={noApiKey}
-                onChange={(event) => {
-                  setNoApiKey(event.currentTarget.checked)
-                  setTestState('idle')
-                  autoFetchSigRef.current = ''
-                }}
-                label={t('modelSetup.noApiKey')}
-                description={t('modelSetup.noApiKeyHint')}
-              />
-            )}
-            {!noApiKey && <Field label={t('modelSetup.apiKey')} hint={t('modelSetup.apiKeyHint')}>
-              <PasswordInput
-                value={userApiKey}
-                onChange={e => { setUserApiKey(e.currentTarget.value); setTestState('idle') }}
-                onBlur={maybeAutoFetchModels}
-                placeholder={t('modelSetup.apiKeyPlaceholder')}
-                autoFocus
-              />
-              {selectedPreset?.keyUrl && (
-                <Anchor href={selectedPreset.keyUrl} target="_blank" rel="noreferrer" c="var(--nomi-accent)" size="xs">
-                  {t('modelSetup.getKey', { provider: selectedPreset.label })}
-                </Anchor>
-              )}
-            </Field>}
-
-            <Stack gap={6}>
-              <Group gap={6} align="center" wrap="nowrap">
-                <Text size="sm" c="var(--nomi-ink)">{t('modelSetup.models')}</Text>
-                {models.length > 0 && (
-                  <Group gap={3} align="center" wrap="nowrap">
-                    <IconCheck size={13} stroke={1.5} style={{ color: 'var(--nomi-accent)' }} />
-                    <Text size="xs" c="var(--nomi-accent)">{t('modelSetup.selectedCount', { count: models.length })}</Text>
-                  </Group>
-                )}
-              </Group>
-
-              {fetchingModels && candidateModels.length === 0 ? (
-                // 加载态（失焦自动拉取替用户干活）：明确告诉他「我没点但它在转」是正常的。
-                <div className="flex items-center gap-2.5 rounded-nomi border border-nomi-line px-3.5 py-3">
-                  <Loader size="xs" />
-                  <Text size="sm" c="var(--nomi-ink-60)">{t('modelSetup.fetchingModels')}</Text>
-                </div>
-              ) : models.length > 0 ? (
-                // 已选摘要：每行 id + 类型（可改）+ 删除；「修改所选」回第二屏增删。
-                <>
-                  <Stack gap={6}>
-                    {models.map(m => (
-                      <Group key={m.id} gap={8} wrap="nowrap" align="center" justify="space-between">
-                        <Text size="sm" c="var(--nomi-ink)" style={{ fontFamily: 'var(--nomi-font-mono, monospace)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {m.id}
-                        </Text>
-                        <Group gap={4} wrap="nowrap" align="center" style={{ flexShrink: 0 }}>
-                          <Select
-                            value={m.kind}
-                            onChange={v => { if (v) setModelKind(m.id, v as ModelKind) }}
-                            data={kindOptions}
-                            size="xs"
-                            allowDeselect={false}
-                            style={{ width: 88 }}
-                          />
-                          <ActionIcon variant="subtle" color="gray" onClick={() => removeModel(m.id)} aria-label={t('modelSetup.removeModel', { id: m.id })}>
-                            <IconX size={14} />
-                          </ActionIcon>
-                        </Group>
-                      </Group>
-                    ))}
-                  </Stack>
-                  <Anchor component="button" type="button" size="xs" c="var(--nomi-accent)" onClick={() => setScreen('select')} style={{ alignSelf: 'flex-start' }}>
-                    {t('modelSetup.modifySelection')}
-                  </Anchor>
-                </>
-              ) : candidateModels.length > 0 ? (
-                // 拉到候选池但还没选 → 进第二屏挑（opt-in 主路径）。
-                <div className="flex items-center gap-2.5 rounded-nomi border border-nomi-line px-3.5 py-3">
-                  <IconListCheck size={18} stroke={1.6} style={{ color: 'var(--nomi-ink-40)', flexShrink: 0 }} />
-                  <Text size="sm" c="var(--nomi-ink-60)" style={{ flex: 1 }}>{t('modelSetup.fetchedNotSelected', { count: candidateModels.length })}</Text>
-                  <DesignButton variant="light" onClick={() => setScreen('select')}>{t('modelSetup.chooseModels')}</DesignButton>
-                </div>
-              ) : fetchAttempted ? (
-                // 拉了但端点没列出 → 去第二屏手填 id（保留逃生口）。
-                <div className="flex items-center gap-2.5 rounded-nomi border border-nomi-line px-3.5 py-3">
-                  <IconAlertTriangle size={16} stroke={1.5} style={{ color: 'var(--nomi-ink-60)', flexShrink: 0 }} />
-                  <Text size="xs" c="var(--nomi-ink-60)" style={{ flex: 1 }}>{fetchModelsMsg || t('modelSetup.noModelsListed')}</Text>
-                  <DesignButton variant="light" onClick={() => setScreen('select')}>{t('modelSetup.manualSelect')}</DesignButton>
-                </div>
-              ) : (
-                // 还没拉 → 提示 + 显式拉取（失焦也会自动拉）。
-                <div className="flex items-center gap-2.5 rounded-nomi border border-nomi-line px-3.5 py-3">
-                  <IconCloudDownload size={18} stroke={1.6} style={{ color: 'var(--nomi-ink-40)', flexShrink: 0 }} />
-                  <Text size="sm" c="var(--nomi-ink-60)" style={{ flex: 1 }}>
-                    {t(noApiKey ? 'modelSetup.fetchHintNoApiKey' : 'modelSetup.fetchHint')}
-                  </Text>
-                  <DesignButton variant="light" onClick={handleFetchModels} disabled={!canTest} loading={fetchingModels}>{t('modelSetup.fetchModels')}</DesignButton>
-                </div>
-              )}
-            </Stack>
-
-            {selectedPreset?.custom && (
-            <Stack gap={6}>
-              {/* 高级设置（接口协议 + 自定义请求头）：默认收起——主流程只剩 选→填地址/鉴权→拉模型→保存。
-                  专家点开、或测试失败时自动展开当逃生口（见 handleTestConnection）。 */}
-              <Anchor
-                component="button"
-                type="button"
-                size="xs"
-                c="var(--nomi-ink-60)"
-                onClick={() => setShowAdvanced((v) => !v)}
-                style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-              >
-                {showAdvanced ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
-                {t('modelSetup.advanced')}
-              </Anchor>
-
-              <Collapse in={showAdvanced}>
-                <Stack gap={12}>
-                  {/* 接口协议：保存时 auto-probe 替用户判断；专家可强制指定。 */}
-                  {!showKindOverride ? (
-                    <Text size="xs" c="var(--nomi-ink-60)">
-                      {t('modelSetup.protocolSummary', { protocol: kindForced ? PROVIDER_KIND_LABEL[providerKind] : t('modelSetup.autoDetectOnSave') })}{' '}
-                      <Anchor component="button" type="button" onClick={() => setShowKindOverride(true)} c="var(--nomi-accent)" inherit>
-                        {t('modelSetup.manualProtocol')}
-                      </Anchor>
-                    </Text>
-                  ) : (
-                    <Field label={t('modelSetup.protocol')} hint={t('modelSetup.protocolHint')}>
-                      <DesignSegmentedControl
-                        value={providerKind}
-                        onChange={(v: string) => { setProviderKind(v as ProviderKind); setKindForced(true); setTestState('idle') }}
-                        data={[
-                          { label: 'Chat Completions', value: 'openai-compatible' },
-                          { label: 'Responses', value: 'openai-responses' },
-                          { label: 'Anthropic', value: 'anthropic' },
-                        ]}
-                        fullWidth
-                      />
-                      {kindForced && (
-                        <Anchor component="button" type="button" size="xs" c="var(--nomi-ink-60)"
-                          onClick={() => { setKindForced(false); setShowKindOverride(false); setTestState('idle') }}>
-                          {t('modelSetup.restoreAutoDetect')}
-                        </Anchor>
-                      )}
-                    </Field>
-                  )}
-
-                  {/* 自定义请求头 */}
-                  <Stack gap={4}>
-                    {headerRows.length > 0 && <Text size="sm" c="var(--nomi-ink)">{t('modelSetup.customHeaders')}</Text>}
-                    {headerRows.length > 0 && (
-                      <Stack gap={6}>
-                        {headerRows.map((h, i) => (
-                          <Group key={i} gap={6} wrap="nowrap" align="flex-start">
-                            <DesignTextInput
-                              value={h.key}
-                              onChange={e => updateHeader(i, { key: e.currentTarget.value })}
-                              placeholder={t('modelSetup.headerNamePlaceholder')}
-                              style={{ flex: 1 }}
-                            />
-                            <DesignTextInput
-                              value={h.value}
-                              onChange={e => updateHeader(i, { value: e.currentTarget.value })}
-                              placeholder={t('modelSetup.headerValuePlaceholder')}
-                              style={{ flex: 1 }}
-                            />
-                            <ActionIcon
-                              variant="subtle"
-                              color="gray"
-                              onClick={() => removeHeaderRow(i)}
-                              aria-label={t('modelSetup.deleteHeader')}
-                            >
-                              <IconTrash size={14} />
-                            </ActionIcon>
-                          </Group>
-                        ))}
-                      </Stack>
-                    )}
-                    <Group justify="flex-start">
-                      <DesignButton variant="subtle" leftSection={<IconPlus size={14} />} onClick={addHeaderRow}>
-                        {t('modelSetup.addHeader')}
-                      </DesignButton>
-                    </Group>
-                  </Stack>
-                </Stack>
-              </Collapse>
-            </Stack>
-            )}
-
-            <Group justify="space-between" align="center">
-              <Group gap={8} align="center">
-                <DesignButton
-                  variant="subtle"
-                  onClick={handleTestConnection}
-                  disabled={!canTest || testState === 'testing'}
-                  loading={testState === 'testing'}
-                >
-                  {t('modelSetup.testConnection')}
-                </DesignButton>
-                {testState === 'ok' && (
-                  <Group gap={4} align="center" wrap="nowrap" c="var(--workbench-success)">
-                    <Text size="xs" c="var(--workbench-success)">{testMessage}</Text>
-                    <IconCheck size={14} stroke={1.5} />
-                  </Group>
-                )}
-                {testState === 'fail' && (
-                  <Group gap={4} align="center" wrap="nowrap" c="var(--workbench-danger)">
-                    <Text size="xs" c="var(--workbench-danger)" lineClamp={1}>{testMessage}</Text>
-                    <IconX size={14} stroke={1.5} />
-                  </Group>
-                )}
-              </Group>
-              <DesignButton
-                variant="filled"
-                onClick={() => {
-                  // arm = 首次点击（未测/失败）→ 进二次确认，不提交；其余 → 直接保存。
-                  if (manualSaveAction === 'arm') setForceSaveArmed(true)
-                  else void handleManualSave()
-                }}
-                disabled={manualSaveAction === 'disabled'}
-                loading={saving}
-                title={
-                  manualSaveAction === 'arm'
-                    ? t('modelSetup.saveFirstWarning')
-                    : manualSaveAction === 'confirm'
-                      ? t('modelSetup.saveSecondWarning')
-                      : undefined
-                }
-              >
-                {manualSaveAction === 'arm'
-                  ? t('modelSetup.saveAnyway')
-                  : manualSaveAction === 'confirm'
-                    ? t('modelSetup.confirmUnverified')
-                    : t('modelSetup.save')}
-              </DesignButton>
-            </Group>
-              </>
-            )}
-          </Stack>
-        )}
-
-        {phase === 'input' && screen === 'select' && (
-          <ModelPickerScreen
-            candidates={candidateModels}
-            initialSelected={models}
-            sourceName={vendorName.trim()}
-            host={(() => { try { return new URL(baseUrl.trim()).hostname } catch { return baseUrl.trim() } })()}
-            total={candidateModels.length}
-            fetching={fetchingModels}
-            onRefetch={handleFetchModels}
-            onBack={() => setScreen('form')}
-            onConfirm={handleConfirmPicked}
-            onResolveKind={resolveKind}
-          />
-        )}
-
-        {phase === 'input' && screen === 'verify' && adapterRun && (
-          <AdapterVerificationScreen
-            run={adapterRun}
-            onClose={() => {
-              if (adapterRun.stage === 'completed' || adapterRun.stage === 'partial') onCommitted?.(adapterRun.models)
-              onClose()
-            }}
-            onBack={() => { setScreen('form'); setAdapterRun(null) }}
-            {...(onSelfConnect
-              ? { onSelfConnect: (modelKey: string) => onSelfConnect(adapterRun.vendorKey, modelKey) }
-              : {})}
-            onRetry={() => void startAdapterVerification(models.map((m) => ({ id: m.id, kind: m.kind })))}
-          />
-        )}
-
-        {phase === 'success' && (
-          <Stack gap={12} align="center" py={8}>
-            <div className="flex items-center justify-center size-12 rounded-full bg-workbench-success-soft text-workbench-success">
-              <IconCheck size={26} stroke={1.8} />
-            </div>
-            <Stack gap={2} align="center">
-              <Text size="md" fw={600} c="var(--nomi-ink)">{t('modelSetup.added', { name: resultLabel })}</Text>
-              <Text size="sm" c="var(--nomi-ink-60)">{t('modelSetup.addedHint')}</Text>
-            </Stack>
-            <Group justify="center" gap={8} w="100%" mt={4}>
-              <DesignButton variant="subtle" onClick={() => { resetToInput() }}>{t('modelSetup.addAnother')}</DesignButton>
-              <DesignButton variant="filled" onClick={onClose}>{t('modelSetup.done')}</DesignButton>
-            </Group>
-          </Stack>
-        )}
-
-        {phase === 'error' && (
-          <Stack gap="sm">
-            <Text size="md" c="var(--nomi-ink)">{t('modelSetup.addFailed')}</Text>
-            <Text size="sm" c="var(--nomi-ink)">{errorReason}</Text>
-            {errorHint && <Text size="sm" c="var(--nomi-ink-60)">{errorHint}</Text>}
-            <Group justify="flex-end">
-              <DesignButton variant="subtle" onClick={resetToInput}>{t('modelSetup.retryEdit')}</DesignButton>
-              <DesignButton onClick={onClose}>{t('modelSetup.close')}</DesignButton>
-            </Group>
-          </Stack>
-        )}
-      </Stack>
+      {content}
     </DesignModal>
   )
 }

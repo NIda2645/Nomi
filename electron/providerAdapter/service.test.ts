@@ -84,11 +84,28 @@ function fakeCatalog(): ProviderAdapterCatalogPort & {
   const models: Model[] = [
     { vendorKey: vendor.key, modelKey: "text-v1", labelZh: "Text V1", kind: "text", enabled: false, createdAt: now, updatedAt: now },
     { vendorKey: vendor.key, modelKey: "paint-v2", labelZh: "Paint V2", kind: "image", enabled: false, createdAt: now, updatedAt: now },
+    { vendorKey: vendor.key, modelKey: "paint-v3", labelZh: "Paint V3", kind: "image", enabled: false, createdAt: now, updatedAt: now },
+    { vendorKey: vendor.key, modelKey: "mesh-v1", labelZh: "Mesh V1", kind: "model3d", enabled: false, createdAt: now, updatedAt: now },
   ];
   return {
     promoted: [],
     failed: [],
     staged: [],
+    register(input) {
+      return {
+        vendor: { ...vendor, key: input.vendorKey, enabled: true },
+        models: input.models.map((selected) => ({
+          vendorKey: input.vendorKey,
+          modelKey: selected.modelKey,
+          labelZh: selected.labelZh || selected.modelKey,
+          kind: selected.kind,
+          enabled: true,
+          meta: { adapter: { state: "unverified", modes: [], updatedAt: input.savedAt } },
+          createdAt: input.savedAt,
+          updatedAt: input.savedAt,
+        })),
+      };
+    },
     stage(input) {
       this.staged.push(input.models.map((model) => model.modelKey));
       return { vendor, models };
@@ -127,6 +144,16 @@ function dependencies(catalog: ReturnType<typeof fakeCatalog>): ProviderAdapterS
   };
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void } {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 const startInput = {
   vendorName: "Example",
   baseUrl: "https://api.example.com/v1",
@@ -141,6 +168,32 @@ const startInput = {
 };
 
 describe("ProviderAdapterService", () => {
+  it("keeps the catalog identity when adding models to an existing connection", () => {
+    const catalog = fakeCatalog();
+    const originalStage = catalog.stage.bind(catalog);
+    const stage = vi.spyOn(catalog, "stage").mockImplementation((input) => {
+      const staged = originalStage(input);
+      return { ...staged, vendor: { ...staged.vendor, key: input.vendorKey } };
+    });
+    const service = new ProviderAdapterService(store(), dependencies(catalog));
+
+    const run = service.start({
+      ...startInput,
+      catalogVendorKey: "my-user-assigned-provider-id",
+      models: [startInput.models[1]],
+    });
+
+    expect(stage).toHaveBeenCalledWith(expect.objectContaining({
+      vendorKey: "my-user-assigned-provider-id",
+      apiKey: "sk-test",
+      models: [expect.objectContaining({ modelKey: "paint-v2" })],
+    }));
+    expect(run).toMatchObject({
+      vendorKey: "my-user-assigned-provider-id",
+      selectedModelKeys: ["paint-v2"],
+    });
+  });
+
   it("preserves the last-known-good model metadata when a new candidate has no verified mode", () => {
     const oldMeta = {
       parameters: [{ key: "quality", default: "stable" }],
@@ -297,19 +350,43 @@ describe("ProviderAdapterService", () => {
     expect(service.getRun(started.id)?.stage).toBe("failed");
   });
 
-  it("finalizes the provider card as failed when discovery or compilation aborts before a draft exists", async () => {
+  it("does not report completion when publishing the catalog result fails", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    catalog.promote = () => {
+      throw new Error("catalog write failed");
+    };
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "failed",
+      error: "catalog write failed",
+    });
+    expect(catalog.failed).toEqual([started.id]);
+  });
+
+  it("treats documentation discovery errors as missing optional evidence and verifies the generic contract", async () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
     deps.discover = async () => {
       throw new Error("No official API documentation could be discovered");
     };
+    deps.compile = vi.fn(deps.compile);
     const service = new ProviderAdapterService(store(), deps);
-    const started = service.start(startInput);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
 
     await service.executeRun(started.id);
 
-    expect(service.getRun(started.id)).toMatchObject({ stage: "failed" });
-    expect(catalog.failed).toEqual([started.id]);
+    expect(deps.compile).not.toHaveBeenCalled();
+    expect(service.getRun(started.id)).toMatchObject({ stage: "completed" });
+    expect(catalog.failed).toEqual([]);
+    expect(catalog.promoted[0]?.draft.models[0]?.modes.map((mode) => mode.taskKind)).toEqual([
+      "text_to_image",
+      "image_edit",
+    ]);
   });
 
   it("falls back to the generic contract when a custom public relay has no discoverable docs", async () => {
@@ -361,7 +438,7 @@ describe("ProviderAdapterService", () => {
     });
   });
 
-  it("continues verification and partial publication when one selected model cannot be compiled", async () => {
+  it("falls an uncompiled model back to the generic contract without blocking deterministic text", async () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
     // 编译不出来的只可能是媒体模型——文本压根不进编译器（分级，2026-08-12）。
@@ -374,13 +451,17 @@ describe("ProviderAdapterService", () => {
 
     await service.executeRun(started.id);
 
-    expect(catalog.promoted[0]?.verified).toEqual(["text-v1/chat"]);
+    expect(catalog.promoted[0]?.verified).toEqual(expect.arrayContaining([
+      "text-v1/chat",
+      "paint-v2/text_to_image",
+      "paint-v2/image_edit",
+    ]));
     expect(service.getRun(started.id)).toMatchObject({
-      stage: "partial",
+      stage: "completed",
       models: expect.arrayContaining([
         expect.objectContaining({
           modelKey: "paint-v2",
-          modes: [expect.objectContaining({ state: "failed", stage: "compile" })],
+          modes: expect.arrayContaining([expect.objectContaining({ state: "verified" })]),
         }),
       ]),
     });
@@ -408,7 +489,7 @@ describe("ProviderAdapterService", () => {
     expect(service.getRun(started.id)?.stage).toBe("completed");
   });
 
-  it("schedules interrupted non-terminal runs for resume", () => {
+  it("requires an explicit retry after restart instead of replaying non-idempotent provider calls", () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
     const schedule = vi.fn();
@@ -420,8 +501,360 @@ describe("ProviderAdapterService", () => {
     const restarted = new ProviderAdapterService(adapterStore, deps);
     restarted.resumeInterrupted();
 
-    expect(schedule).toHaveBeenCalledTimes(1);
-    expect(schedule.mock.calls[0]?.[0]).toBe(started.id);
+    expect(schedule).not.toHaveBeenCalled();
+    expect(restarted.getRun(started.id)).toMatchObject({
+      stage: "failed",
+      error: expect.stringContaining("restart"),
+    });
+    expect(catalog.failed).toEqual([started.id]);
+  });
+
+  it("persists bounded lifecycle progress when a run starts", () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.batchTimeoutMs = 10_000;
+    const service = new ProviderAdapterService(store(), deps);
+
+    const started = service.start(startInput);
+
+    expect(started).toMatchObject({
+      totalCount: 2,
+      completedCount: 0,
+      lastProgressAt: now,
+      stageStartedAt: now,
+      deadlineAt: "2026-08-07T00:00:10.000Z",
+    });
+  });
+
+  it("falls back to the generic contract when optional documentation discovery times out", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.discover = () => new Promise(() => {});
+    deps.discoverTimeoutMs = 5;
+    deps.batchTimeoutMs = 100;
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "completed",
+      currentModelKey: undefined,
+    });
+    expect(catalog.failed).toEqual([]);
+    expect(catalog.promoted[0]?.draft.models[0]?.modes).toHaveLength(2);
+  });
+
+  it("uses the batch deadline even when the current step allows more time", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.discover = () => new Promise(() => {});
+    deps.discoverTimeoutMs = 1_000;
+    deps.batchTimeoutMs = 5;
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "timed_out",
+      error: expect.stringContaining("deadline"),
+    });
+  });
+
+  it("records a verification deadline as timed_out when no mode finished", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.batchTimeoutMs = 5;
+    deps.verifyTimeoutMs = 1_000;
+    deps.maxRepairs = 0;
+    deps.compile = async () => ({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    deps.verify = () => new Promise(() => {});
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "timed_out",
+      currentModelKey: undefined,
+      error: expect.stringContaining("deadline"),
+      models: [expect.objectContaining({
+        modes: expect.arrayContaining([
+          expect.objectContaining({ state: "failed", error: expect.stringContaining("deadline") }),
+        ]),
+      })],
+    });
+    // Keep the candidate durable so timeout still leads to retry/manual takeover,
+    // rather than throwing away everything the user already configured.
+    expect(catalog.promoted).toHaveLength(1);
+    expect(catalog.promoted[0]?.verified).toEqual([]);
+  });
+
+  it("times out one model compilation, falls it back, and continues compiling later models", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    const compile = deferred<Awaited<ReturnType<ProviderAdapterServiceDependencies["compile"]>>>();
+    deps.compile = vi.fn((input) => {
+      const selected = input.selectedModels[0];
+      if (selected?.modelKey === "paint-v2") return compile.promise;
+      return Promise.resolve({
+        draft: {
+          provider: { baseUrl: input.providerBaseUrl, authType: input.authType },
+          sources: [],
+          models: [{
+            modelKey: "paint-v3",
+            labelZh: "Paint V3",
+            kind: "image" as const,
+            modes: [{
+              taskKind: "text_to_image" as const,
+              create: { method: "POST" as const, path: "/paint-v3" },
+              sourceUrls: ["https://docs.example.com/api"],
+            }],
+          }],
+        },
+        failures: [],
+      });
+    });
+    deps.compileTimeoutMs = 5;
+    deps.batchTimeoutMs = 200;
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({
+      ...startInput,
+      models: [
+        startInput.models[1],
+        { modelKey: "paint-v3", labelZh: "Paint V3", kind: "image" as const },
+      ],
+    });
+
+    await service.executeRun(started.id);
+    compile.resolve({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    await Promise.resolve();
+
+    expect(deps.compile).toHaveBeenCalledTimes(2);
+    expect(service.getRun(started.id)?.stage).toBe("completed");
+    expect(catalog.promoted[0]?.draft.models.map((model) => model.modelKey)).toEqual(["paint-v2", "paint-v3"]);
+    expect(catalog.promoted[0]?.draft.models.find((model) => model.modelKey === "paint-v3")?.modes[0]?.create.path).toBe("/paint-v3");
+  });
+
+  it("keeps verified modes publishable when automatic repair times out", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.compile = async () => ({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    deps.verify = async ({ mode }) => mode.taskKind === "image_edit"
+      ? { ok: true, taskKind: mode.taskKind }
+      : { ok: false, taskKind: mode.taskKind, stage: "create", error: "wrong request" };
+    deps.repair = () => new Promise(() => {});
+    deps.repairTimeoutMs = 5;
+    deps.batchTimeoutMs = 100;
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "partial",
+      currentModelKey: undefined,
+      error: expect.stringContaining("Adapter repair timed out"),
+    });
+    expect(catalog.failed).toEqual([]);
+    expect(catalog.promoted[0]?.verified).toEqual(["paint-v2/image_edit"]);
+  });
+
+  it("records a batch deadline reached during repair as timed_out when nothing passed", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.compile = async () => ({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    deps.verify = async ({ mode }) => ({
+      ok: false,
+      taskKind: mode.taskKind,
+      stage: "create",
+      error: "wrong request",
+    });
+    deps.repair = () => new Promise(() => {});
+    deps.repairTimeoutMs = 1_000;
+    deps.batchTimeoutMs = 5;
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "timed_out",
+      error: expect.stringContaining("deadline"),
+    });
+    expect(catalog.promoted[0]?.verified).toEqual([]);
+  });
+
+  it("uses the generic contract when documentation exists but no compiler AI is configured", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.resolveLanguageModels = () => [];
+    deps.compile = vi.fn(deps.compile);
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start(startInput);
+
+    await service.executeRun(started.id);
+
+    expect(deps.compile).not.toHaveBeenCalled();
+    expect(service.getRun(started.id)?.stage).toBe("completed");
+    expect(catalog.promoted[0]?.verified).toEqual(expect.arrayContaining([
+      "text-v1/chat",
+      "paint-v2/text_to_image",
+      "paint-v2/image_edit",
+    ]));
+  });
+
+  it("publishes verified work when the batch deadline is reached during a later mode", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    let clock = now;
+    deps.now = () => clock;
+    deps.batchTimeoutMs = 1_000;
+    deps.maxRepairs = 0;
+    deps.compile = async () => ({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    deps.verify = vi.fn(async ({ mode }) => {
+      if (mode.taskKind === "text_to_image") {
+        clock = "2026-08-07T00:00:02.000Z";
+        return { ok: true, taskKind: mode.taskKind };
+      }
+      return { ok: true, taskKind: mode.taskKind };
+    });
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(deps.verify).toHaveBeenCalledTimes(1);
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "partial",
+      error: expect.stringContaining("deadline"),
+      models: [expect.objectContaining({
+        modes: expect.arrayContaining([
+          expect.objectContaining({ taskKind: "text_to_image", state: "verified" }),
+          expect.objectContaining({ taskKind: "image_edit", state: "failed" }),
+        ]),
+      })],
+    });
+    expect(catalog.promoted[0]?.verified).toEqual(["paint-v2/text_to_image"]);
+  });
+
+  it("marks a model with no generic contract as needing a manual script", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.discover = async () => ({ sources: [], corpus: "" });
+    deps.resolveLanguageModels = () => [];
+    deps.compile = vi.fn(deps.compile);
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({
+      ...startInput,
+      models: [{ modelKey: "mesh-v1", labelZh: "Mesh V1", kind: "model3d" as const }],
+    });
+
+    await service.executeRun(started.id);
+
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "failed",
+      models: [{
+        modelKey: "mesh-v1",
+        modes: [expect.objectContaining({
+          taskKind: "text_to_3d",
+          state: "failed",
+          stage: "compile",
+          error: expect.stringContaining("manual"),
+        })],
+      }],
+    });
+    expect(catalog.promoted).toHaveLength(1);
+    expect(deps.compile).not.toHaveBeenCalled();
+  });
+
+  it("marks one verification timeout failed and continues with the remaining mode", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.compile = async () => ({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    deps.maxRepairs = 0;
+    deps.verifyTimeoutMs = 5;
+    deps.batchTimeoutMs = 100;
+    deps.verify = vi.fn(async ({ mode }) => {
+      if (mode.taskKind === "text_to_image") return new Promise(() => {});
+      return { ok: true, taskKind: mode.taskKind };
+    });
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+
+    await service.executeRun(started.id);
+
+    expect(deps.verify).toHaveBeenCalledTimes(2);
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "partial",
+      completedCount: 1,
+      totalCount: 1,
+      models: [expect.objectContaining({
+        modes: expect.arrayContaining([
+          expect.objectContaining({ taskKind: "text_to_image", state: "failed", error: expect.stringContaining("timed out") }),
+          expect.objectContaining({ taskKind: "image_edit", state: "verified" }),
+        ]),
+      })],
+    });
+  });
+
+  it("cancels active work and ignores its eventual result", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    const compile = deferred<Awaited<ReturnType<ProviderAdapterServiceDependencies["compile"]>>>();
+    let compileSignal: AbortSignal | undefined;
+    deps.compile = (input) => {
+      compileSignal = input.signal;
+      return compile.promise;
+    };
+    const service = new ProviderAdapterService(store(), deps);
+    const started = service.start({ ...startInput, models: [startInput.models[1]] });
+    const running = service.executeRun(started.id);
+    await vi.waitFor(() => expect(service.getRun(started.id)?.stage).toBe("compiling"));
+
+    const cancelled = service.cancel(started.id);
+    compile.resolve({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    await running;
+
+    expect(cancelled?.stage).toBe("cancelled");
+    expect(compileSignal?.aborted).toBe(true);
+    expect(service.getRun(started.id)?.stage).toBe("cancelled");
+    expect(catalog.promoted).toEqual([]);
+  });
+
+  it("does not resume cancelled, timed-out, or already-expired work", () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    const schedule = vi.fn();
+    deps.schedule = schedule;
+    deps.batchTimeoutMs = 60_000;
+    const adapterStore = store();
+    adapterStore.upsertRun({
+      id: "expired",
+      vendorKey: "api-example-com",
+      vendorName: "Example",
+      connectionFingerprint: "fingerprint",
+      selectedModelKeys: ["paint-v2"],
+      stage: "compiling",
+      repairAttempt: 0,
+      models: [],
+      sourceUrls: [],
+      deadlineAt: "2026-08-06T23:59:59.000Z",
+      createdAt: "2026-08-06T23:00:00.000Z",
+      updatedAt: "2026-08-06T23:00:00.000Z",
+    });
+    adapterStore.upsertRun({ ...adapterStore.getRun("expired")!, id: "cancelled", stage: "cancelled" });
+    adapterStore.upsertRun({ ...adapterStore.getRun("expired")!, id: "timed-out", stage: "timed_out" });
+    const restarted = new ProviderAdapterService(adapterStore, deps);
+
+    restarted.resumeInterrupted();
+
+    expect(schedule).not.toHaveBeenCalled();
+    expect(restarted.getRun("expired")?.stage).toBe("timed_out");
+    expect(restarted.getRun("cancelled")?.stage).toBe("cancelled");
+    expect(restarted.getRun("timed-out")?.stage).toBe("timed_out");
+    expect(catalog.failed).toEqual(["expired"]);
   });
 
   it("marks an older run stale and never lets it overwrite a newer run for the same provider", async () => {

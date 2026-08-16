@@ -25,9 +25,11 @@ type CodexLocalImageCardProps = {
   enabled: boolean
   /** 开/关后冒泡，父组件重查 + 重新分桶。 */
   onChanged: () => void
+  onOpenDetails?: () => void
+  detailMode?: boolean
 }
 
-export function CodexLocalImageCard({ enabled, onChanged }: CodexLocalImageCardProps): JSX.Element | null {
+export function CodexLocalImageCard({ enabled, onChanged, onOpenDetails, detailMode = false }: CodexLocalImageCardProps): JSX.Element | null {
   const { t } = useTranslation()
   const catalog = getDesktopBridge()?.modelCatalog
   const [busy, setBusy] = React.useState(false)
@@ -56,6 +58,8 @@ export function CodexLocalImageCard({ enabled, onChanged }: CodexLocalImageCardP
       status={enabled ? 'ok' : 'todo'}
       statusLabel={t(enabled ? 'onboardingProviders.codexImage.status.on' : 'onboardingProviders.codexImage.status.off')}
       defaultExpanded={false}
+      onOpenDetails={onOpenDetails}
+      detailMode={detailMode}
     >
       {enabled ? (
         <div className="flex items-start gap-2 rounded-nomi-sm bg-nomi-accent-soft px-3 py-2.5">

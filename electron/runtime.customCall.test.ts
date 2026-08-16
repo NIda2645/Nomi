@@ -39,7 +39,7 @@ function makeTempDir(prefix: string): string {
   return dir;
 }
 
-function seedScriptedModel(script: string, kind: "image" | "video" | "text" = "image") {
+function seedScriptedModel(script: string, kind: "image" | "video" | "text" | "audio" = "image") {
   upsertModelCatalogVendor({ key: "custom-cc", name: "CC", baseUrlHint: "https://cc.example/v1", authType: "bearer", enabled: true });
   upsertModelCatalogVendorApiKey("custom-cc", { apiKey: "sk-cc-1", enabled: true });
   upsertModelCatalogModel({ vendorKey: "custom-cc", modelKey: "cc-model", kind, enabled: true, customCall: { script } });
@@ -143,5 +143,22 @@ return 'data:image/png;base64,eA=='`);
     });
 
     expect(result.status).toBe("succeeded");
+  });
+
+  it("audio 也先走 customCall，不会被独立 audio runner 绕过", async () => {
+    seedScriptedModel(`if (taskKind !== 'text_to_audio') throw new Error('wrong task kind')
+return 'data:audio/mpeg;base64,eA=='`, "audio");
+    const grantId = mintSpendGrant({ nodeIds: ["audio-node"] });
+    const result = await runTask({
+      vendor: "custom-cc",
+      request: {
+        kind: "text_to_audio",
+        prompt: "hello audio",
+        extras: { modelKey: "cc-model", nodeId: "audio-node", grantId },
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.assets[0]).toMatchObject({ type: "audio", url: expect.stringContaining("data:audio") });
   });
 });

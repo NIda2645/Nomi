@@ -21,8 +21,14 @@ export type ChipModel = {
   enabled: boolean
   /** 后端模型扩展信息；通用 chip 不消费，专用卡可透传读取。 */
   meta?: unknown
+  /** 经过目录投影层校验的自动适配状态；详情页不直接信任任意 meta。 */
+  adapterState?: 'unverified' | 'testing' | 'verified' | 'partial' | 'failed'
+  /** 当前适配任务的稳定身份；无效或缺失时不暴露给导航。 */
+  adapterRunId?: string
   /** 该模型是否已设自定义调用脚本（模型行图标点亮 + 角标；chip 不消费）。 */
   hasCustomCall?: boolean
+  /** 直达脚本入口建立的禁用草稿；脚本保存前不可进入生成下拉。 */
+  customCallDraft?: boolean
   /**
    * 这一条的类型能不能由用户改（= 接入来源为手动/中转拉取，其调用通道可按新 kind 安全重建）。
    * 内置种子与 agent 路的模型为 false：它们的 mapping 是手写/按文档推导出来的，套通用模板会破坏。
@@ -39,9 +45,11 @@ type ModelChipGroupsProps = {
   onToggle?: (model: ChipModel, enabled: boolean) => void
   /** 传入则每个 chip 末尾出现 × 删除（用于自定义模型）。 */
   onDelete?: (model: ChipModel) => void
+  /** 连接详情页使用：点击 chip 进入模型详情，启停改到详情页完成。 */
+  onOpenModel?: (model: ChipModel) => void
 }
 
-export function ModelChipGroups({ models, connected, onToggle, onDelete }: ModelChipGroupsProps): JSX.Element | null {
+export function ModelChipGroups({ models, connected, onToggle, onDelete, onOpenModel }: ModelChipGroupsProps): JSX.Element | null {
   const { t } = useTranslation()
   if (models.length === 0) return null
 
@@ -95,7 +103,7 @@ export function ModelChipGroups({ models, connected, onToggle, onDelete }: Model
                     ) : null}
                   </>
                 )
-                if (!onToggle) {
+                if (!onToggle && !onOpenModel) {
                   return (
                     <span
                       key={`${m.vendorKey}-${m.modelKey}`}
@@ -109,9 +117,12 @@ export function ModelChipGroups({ models, connected, onToggle, onDelete }: Model
                   <button
                     key={`${m.vendorKey}-${m.modelKey}`}
                     type="button"
-                    aria-pressed={m.enabled}
+                    aria-pressed={onOpenModel ? undefined : m.enabled}
                     title={m.enabled ? t('onboardingProviders.modelControls.enabledTitle') : t('onboardingProviders.modelControls.hiddenTitle')}
-                    onClick={() => onToggle(m, !m.enabled)}
+                    onClick={() => {
+                      if (onOpenModel) onOpenModel(m)
+                      else onToggle?.(m, !m.enabled)
+                    }}
                     className={cn(
                       'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-caption cursor-pointer',
                       'transition-colors duration-[var(--nomi-transition-fast)]',

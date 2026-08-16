@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProviderAdapterRun } from './types'
-import { liveAdapterSummary, liveHarnessEnabled } from './liveHarness'
+import { isLiveAdapterTerminalStage, liveAdapterSummary, liveHarnessEnabled } from './liveHarness'
 
 describe('liveAdapterSummary', () => {
   it('only permits the quota-spending live harness in explicit E2E runs', () => {
@@ -33,5 +33,27 @@ describe('liveAdapterSummary', () => {
 
     expect(summary).toMatchObject({ vendorKey: 'custom-provider', stage: 'completed', activeRevision: 'rev-1' })
     expect(summary).not.toHaveProperty('connectionFingerprint')
+  })
+
+  it.each([
+    'completed',
+    'partial',
+    'failed',
+    'needs_ai',
+    'cancelled',
+    'timed_out',
+    'stale',
+  ] satisfies ProviderAdapterRun['stage'][])('stops polling when a run reaches %s', (stage) => {
+    expect(isLiveAdapterTerminalStage(stage)).toBe(true)
+  })
+
+  it.each([
+    'queued',
+    'discovering_docs',
+    'compiling',
+    'testing',
+    'repairing',
+  ] satisfies ProviderAdapterRun['stage'][])('keeps polling while a run remains %s', (stage) => {
+    expect(isLiveAdapterTerminalStage(stage)).toBe(false)
   })
 })

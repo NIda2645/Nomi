@@ -16,6 +16,16 @@ export type CustomCallVariableDoc = {
 export const CUSTOM_CALL_VARIABLES: CustomCallVariableDoc[] = [
   { name: "prompt", type: "string", desc: "the user's prompt text" },
   {
+    name: "taskKind",
+    type: "string",
+    desc: "read-only transport task kind selected by Nomi (for example image_to_video or text_to_audio); never infer it from the provider name",
+  },
+  {
+    name: "modeId",
+    type: "string | undefined",
+    desc: "read-only mode id validated against the model capability contract; undefined when this model has no explicit/compatible mode",
+  },
+  {
     name: "params",
     type: "Record<string, unknown>",
     desc: "all generation params the UI collected (same table wire templates read): size, duration, n, seed, plus reference keys like first_frame_url / reference_image_urls",
@@ -130,13 +140,15 @@ export function buildCustomCallAiInstruction(input: {
   material: string;
   currentScript?: string;
   lastError?: string;
+  taskKind?: string;
+  modeId?: string;
 }): string {
   const vars = CUSTOM_CALL_VARIABLES.map((v) => `- ${v.name}: ${v.type} — ${v.desc}`).join("\n");
   const repair = input.currentScript
     ? `\n\nCurrent script (it failed — fix it, keep working parts):\n${input.currentScript}\n\nError / transcript from the failed test run:\n${input.lastError || "(none)"}`
     : "";
   return [
-    `You are writing the body of an async JavaScript function that calls a generation API for the model "${input.modelKey}" (capability: ${input.kind}; base URL: ${input.baseUrl}).`,
+    `You are writing the body of an async JavaScript function that calls a generation API for the model "${input.modelKey}" (capability: ${input.kind}; task kind: ${input.taskKind || "selected at runtime"}; mode: ${input.modeId || "selected at runtime or undefined"}; base URL: ${input.baseUrl}).`,
     `Available variables (already in scope — do NOT redeclare them):\n${vars}`,
     CUSTOM_CALL_RETURN_CONTRACT,
     `Rules: output ONLY the raw function body statements — no markdown fences, no function wrapper, no explanations. Use await directly. Prefer \`http\` for Bearer-auth JSON APIs; use \`request\` when auth or content type is non-standard. Never invent endpoints not present in the material; if the material is insufficient, still produce the best guess and put open questions in a leading // comment.`,

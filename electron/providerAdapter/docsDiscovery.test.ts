@@ -91,4 +91,25 @@ describe("discoverProviderDocs", () => {
     expect(Buffer.byteLength(result.corpus)).toBeLessThanOrEqual(1_200);
     expect(result.sources.reduce((total, source) => total + Buffer.byteLength(source.text), 0)).toBeLessThanOrEqual(1_200);
   });
+
+  it("stops discovery immediately when the caller aborts", async () => {
+    const controller = new AbortController();
+    let fetchSignal: AbortSignal | undefined;
+    const pending = discoverProviderDocs({
+      baseUrl: "https://api.example.com/v1",
+      modelKeys: ["paint-v2"],
+      signal: controller.signal,
+      fetchText: (_url, options) => {
+        fetchSignal = options.signal;
+        return new Promise((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+        });
+      },
+    });
+
+    controller.abort(new Error("cancel docs"));
+
+    await expect(pending).rejects.toThrow("cancel docs");
+    expect(fetchSignal?.aborted).toBe(true);
+  });
 });

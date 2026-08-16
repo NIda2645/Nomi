@@ -1,4 +1,4 @@
-// R13: every surface opened from Settings must sit above Settings and own Escape first.
+// Settings model routes must replace the right-hand surface instead of opening nested dialogs.
 // Usage: pnpm build && node scripts/settings-nested-overlay-walkthrough.mjs
 import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
@@ -16,97 +16,97 @@ const shot = async (win, name) => {
 }
 
 const { app, win } = await launchNomiApp({
-  name: 'settings-nested-overlay',
-  settingsDir: mkdtempSync(path.join(os.tmpdir(), 'settings-nested-overlay-set-')),
-  projectsDir: mkdtempSync(path.join(os.tmpdir(), 'settings-nested-overlay-proj-')),
+  name: 'settings-right-pane-stack',
+  settingsDir: mkdtempSync(path.join(os.tmpdir(), 'settings-right-pane-set-')),
+  projectsDir: mkdtempSync(path.join(os.tmpdir(), 'settings-right-pane-proj-')),
   env: { NOMI_RENDERER_URL: `file://${path.join(repoRoot, 'dist', 'index.html')}` },
   settleMs: 1800,
 })
 
-async function openGatewayWizard() {
+async function openGatewayPage() {
   const settings = win.getByRole('dialog', { name: '设置' })
-  if ((await settings.count()) === 0) {
-    await win.getByRole('button', { name: '设置', exact: true }).first().click()
-  }
+  if ((await settings.count()) === 0) await win.getByRole('button', { name: '设置', exact: true }).first().click()
   await settings.getByRole('button', { name: '模型', exact: true }).click()
   await win.waitForSelector('[data-settings-section="models"]')
-
   const generationGroup = win.getByRole('button', { name: /接入生成模型/ }).first()
   if ((await generationGroup.getAttribute('aria-expanded')) !== 'true') await generationGroup.click()
   await win.getByRole('button', { name: '添加模型 / 中转站', exact: true }).click()
-  await win.waitForTimeout(350)
+  await win.waitForSelector('[data-model-settings-page="add"]')
+  await win.waitForTimeout(250)
 }
 
-async function readLayerState() {
+async function readPageState() {
   return win.evaluate(() => {
     const settings = document.querySelector('[role="dialog"][aria-label="设置"]')
-    const wizard = [...document.querySelectorAll('[role="dialog"]')].find((element) => element !== settings)
-    if (!(settings instanceof HTMLElement) || !(wizard instanceof HTMLElement)) return null
-
-    const layerZ = (element) => {
-      let current = element
-      let highest = 0
-      while (current instanceof HTMLElement) {
-        const value = Number.parseInt(getComputedStyle(current).zIndex || '0', 10)
-        if (Number.isFinite(value)) highest = Math.max(highest, value)
-        current = current.parentElement
-      }
-      return highest
-    }
-    const rect = wizard.getBoundingClientRect()
-    const centerX = Math.round(rect.left + rect.width / 2)
-    const centerY = Math.round(rect.top + rect.height / 2)
-    const hit = document.elementFromPoint(centerX, centerY)
+    const page = document.querySelector('[data-model-settings-page="add"]')
+    const back = page?.querySelector('[data-model-settings-back]')
+    const scrollSurface = page?.closest('[data-settings-content]')
+    if (!(settings instanceof HTMLElement) || !(page instanceof HTMLElement)) return null
+    const rect = page.getBoundingClientRect()
+    const backRect = back instanceof HTMLElement ? back.getBoundingClientRect() : null
+    const nestedDialogs = [...document.querySelectorAll('[role="dialog"]')].filter((item) => item !== settings).length
     return {
-      settingsZ: layerZ(settings),
-      wizardZ: layerZ(wizard),
-      wizardOwnsCenter: Boolean(hit && wizard.contains(hit)),
-      activeInsideWizard: Boolean(document.activeElement && wizard.contains(document.activeElement)),
-      inViewport: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+      nestedDialogs,
+      pageInsideSettings: settings.contains(page),
+      activeOnBack: document.activeElement?.hasAttribute('data-model-settings-back') ?? false,
+      pageIntersectsViewport: rect.left >= 0 && rect.top < innerHeight && rect.right <= innerWidth && rect.bottom > 0,
+      backInViewport: Boolean(
+        backRect &&
+        backRect.left >= 0 &&
+        backRect.top >= 0 &&
+        backRect.right <= innerWidth &&
+        backRect.bottom <= innerHeight
+      ),
+      usesSettingsScrollSurface: Boolean(
+        scrollSurface instanceof HTMLElement &&
+        scrollSurface.contains(page) &&
+        ['auto', 'scroll'].includes(getComputedStyle(scrollSurface).overflowY)
+      ),
+      horizontalOverflow: page.scrollWidth > page.clientWidth + 1,
     }
   })
+}
+
+async function verifyPage(label) {
+  const state = await readPageState()
+  if (!state) throw new Error(`${label}: could not inspect Settings add-model page`)
+  if (
+    state.nestedDialogs !== 0 ||
+    !state.pageInsideSettings ||
+    !state.activeOnBack ||
+    !state.pageIntersectsViewport ||
+    !state.backInViewport ||
+    !state.usesSettingsScrollSurface ||
+    state.horizontalOverflow
+  ) {
+    throw new Error(`${label}: right-pane page is not operable: ${JSON.stringify(state)}`)
+  }
 }
 
 try {
   const browserWindow = await app.browserWindow(win)
   await browserWindow.evaluate((window) => window.setBounds({ x: 0, y: 0, width: 1440, height: 1000 })).catch(() => {})
 
-  await openGatewayWizard()
-  await win.waitForTimeout(350)
-  const desktop = await readLayerState()
-  if (!desktop) throw new Error('could not inspect Settings and gateway wizard')
-  if (!(desktop.wizardZ > desktop.settingsZ)) {
-    throw new Error(`gateway wizard layer ${desktop.wizardZ} is not above Settings ${desktop.settingsZ}`)
-  }
-  if (!desktop.wizardOwnsCenter || !desktop.activeInsideWizard || !desktop.inViewport) {
-    throw new Error(`desktop gateway wizard is not operable: ${JSON.stringify(desktop)}`)
-  }
-  await shot(win, '01-desktop-gateway-wizard.png')
+  await openGatewayPage()
+  await verifyPage('desktop')
+  await shot(win, '01-desktop-right-pane-add.png')
 
   await win.keyboard.press('Escape')
   await win.waitForTimeout(250)
-  if (await win.locator('.mantine-Modal-content[role="dialog"]').filter({ hasText: '添加一个 AI 模型' }).count()) {
-    throw new Error('Escape did not close the gateway wizard')
-  }
-  if (!(await win.getByRole('dialog', { name: '设置' }).count()))
-    throw new Error('Escape closed Settings together with its child dialog')
+  if (await win.locator('[data-model-settings-page="add"]').count()) throw new Error('Escape did not return from the add-model page')
+  if (!(await win.getByRole('dialog', { name: '设置' }).count())) throw new Error('Escape closed Settings instead of returning one page')
 
-  await browserWindow.evaluate((window) => window.setBounds({ x: 0, y: 0, width: 720, height: 900 })).catch(() => {})
-  await openGatewayWizard()
-  await win.waitForTimeout(350)
-  const narrow = await readLayerState()
-  if (!narrow?.wizardOwnsCenter || !narrow.activeInsideWizard || !narrow.inViewport) {
-    throw new Error(`narrow gateway wizard is not operable: ${JSON.stringify(narrow)}`)
-  }
-  await shot(win, '02-narrow-gateway-wizard.png')
-  console.log('  nested overlay order, hit testing, focus, viewport, and Escape: ok')
+  await browserWindow.evaluate((window) => {
+    window.setMinimumSize(320, 500)
+    window.setBounds({ x: 0, y: 0, width: 390, height: 844 })
+  }).catch(() => {})
+  await openGatewayPage()
+  await verifyPage('narrow')
+  await shot(win, '02-narrow-right-pane-add.png')
+  console.log('  right-pane replacement, focus, viewport, overflow, and Escape history: ok')
 } catch (error) {
   console.error('  walkthrough failed:', error)
-  try {
-    await shot(win, 'ERROR.png')
-  } catch {
-    /* noop */
-  }
+  try { await shot(win, 'ERROR.png') } catch { /* noop */ }
   process.exitCode = 1
 } finally {
   await app.close()
