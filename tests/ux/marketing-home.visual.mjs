@@ -125,6 +125,27 @@ async function auditStandardCase(browser, testCase) {
     currentScreenshots: Array.from(document.querySelectorAll('img'))
       .filter((image) => /screen-/.test(image.src))
       .every((image) => /-2026-08-17\.png$/.test(image.src)),
+    mediaFrames: ['.product-shot', '.cost-evidence', '.workflow-image-frame', '.agent-image'].map((selector) => {
+      const frame = document.querySelector(selector)
+      const image = frame?.querySelector('img')
+      const frameRect = frame?.getBoundingClientRect()
+      const imageRect = image?.getBoundingClientRect()
+      return {
+        selector,
+        width: frameRect?.width || 0,
+        height: frameRect?.height || 0,
+        imageWidth: imageRect?.width || 0,
+        imageHeight: imageRect?.height || 0,
+      }
+    }),
+    costBalance: Math.abs(
+      (document.querySelector('.cost-panel-copy')?.getBoundingClientRect().height || 0) -
+        (document.querySelector('.cost-evidence')?.getBoundingClientRect().height || 0),
+    ),
+    workflowBalance: Math.abs(
+      (document.querySelector('.workflow-tabs')?.getBoundingClientRect().height || 0) -
+        (document.querySelector('.workflow-visual')?.getBoundingClientRect().height || 0),
+    ),
   }))
   assert(facts.overflow <= 1, `${testCase.name}: no horizontal overflow`)
   assert(
@@ -157,6 +178,26 @@ async function auditStandardCase(browser, testCase) {
     facts.logoLoaded && facts.productImagesLoaded && facts.currentScreenshots,
     `${testCase.name}: current product evidence renders`,
   )
+  assert(
+    facts.mediaFrames.every(
+      (frame) =>
+        frame.width > frame.height &&
+        Math.abs(frame.width - frame.imageWidth) <= 2.1 &&
+        Math.abs(frame.height - frame.imageHeight) <= 2.1,
+    ),
+    `${testCase.name}: every product screenshot fills a bounded landscape frame`,
+  )
+  const maxMediaHeight = Math.max(...facts.mediaFrames.map((frame) => frame.height))
+  assert(
+    maxMediaHeight <= (testCase.viewport.width <= 760 ? 360 : 620),
+    `${testCase.name}: product screenshots do not dominate the page vertically`,
+  )
+  if (testCase.viewport.width > 760) {
+    assert(
+      facts.costBalance <= 2 && facts.workflowBalance <= 2,
+      `${testCase.name}: screenshot columns share a height baseline with their copy`,
+    )
+  }
   assert(browserErrors.length === 0, `${testCase.name}: no page errors`)
   await page.screenshot({ path: path.join(shotsDir, `home-${testCase.name}.png`), fullPage: true })
 

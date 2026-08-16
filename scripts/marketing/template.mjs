@@ -136,7 +136,7 @@ function renderWorkflow(content) {
     <div class="workflow-grid" data-reveal>
       <div class="workflow-tabs" role="tablist" aria-label="${escapeAttr(content.workflow.tabsLabel)}">${tabs}</div>
       <div class="workflow-visual" id="workflow-panel" role="tabpanel" aria-labelledby="workflow-tab-${escapeAttr(initial.id)}" aria-live="polite">
-        <img id="workflow-image" src="${escapeAttr(initial.image)}" alt="${escapeAttr(initial.imageAlt)}" width="3200" height="1722" />
+        <div class="workflow-image-frame"><img id="workflow-image" src="${escapeAttr(initial.image)}" alt="${escapeAttr(initial.imageAlt)}" width="3200" height="1722" /></div>
         <p class="workflow-caption" id="workflow-caption">${escapeText(initial.caption)}</p>
       </div>
     </div>

@@ -79,6 +79,10 @@ for (const html of [zh, en]) {
   expect(html.includes('<dialog id="author-dialog"'), 'maintainer contact dialog exists')
   expect(html.includes('<dialog id="download-dialog"'), 'ambiguous platforms get an in-page download chooser')
   expect(
+    html.includes('<div class="workflow-image-frame"><img id="workflow-image"'),
+    'workflow screenshot uses a bounded media frame',
+  )
+  expect(
     (html.match(/data-download-nomi href="#download-options"/g) || []).length === 3,
     'all primary download buttons use the in-page fallback',
   )
