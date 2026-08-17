@@ -47,10 +47,38 @@ export function applyWireDefaults(
   return { ...defaultParams, ...(extras || {}) };
 }
 
+// 一个比例值（"16:9" / "1 : 1"）。用来判某个 `size` 默认到底是「比例语义」还是「像素语义」。
+const RATIO_VALUE_RE = /^\d+\s*:\s*\d+$/;
+
+/**
+ * 调用方比例（nomi_generate 的 aspect_ratio）该不该写进**这条模式**的 `size` 键。
+ *
+ * 背景：`size` 键名有歧义——apimart-seedream 等把它当**比例**读（wire 默认 "1:1"），而 volcengine-seedream /
+ * modelscope / agnes / rh-qwen / rh-sora 把它当**像素**读（默认 "2048x2048" / "1024x1024" / "720x1280"）。
+ * buildGenerateParams 无差别把调用方比例铺进 size 别名，caller-wins 于是会把像素档案的 size 覆写成 "16:9"，
+ * 渲染进 wire body 就是废请求（火山 seedream 直接坏）。故在**看得见所选模式真实默认**的这道缝（extras 与
+ * mapping/档案默认在此汇合）加闸：只有当该模式给 `size` 的默认本身是比例形（/^\d+:\d+$/）时，才准调用方比例落到
+ * size；默认是像素形或压根没有 size 默认 → 不落（size 那半留给档案像素默认，调用方比例对这个只会说像素的目标不适用）。
+ * 语义无歧义的 aspect_ratio / aspectRatio 别名不受此限，照常保留（模板没引用就自然被丢弃）。**纯 derive，无 vendor 名单。**
+ */
+function sizeDefaultIsRatioSemantic(
+  archetypeDefaults: Record<string, unknown> | undefined,
+  mappingDefaults: Record<string, unknown> | undefined,
+): boolean {
+  // 有效默认 = 合并后真正生效的那个（mappingDefaults 是更贴近的兜底、后铺，故它有 size 时以它为准）。
+  const effective = mappingDefaults && "size" in mappingDefaults
+    ? mappingDefaults.size
+    : archetypeDefaults?.size;
+  return typeof effective === "string" && RATIO_VALUE_RE.test(effective.trim());
+}
+
 /**
  * headless/MCP 两道缺参兜底（既有值优先）：① 档案参数默认值（单一真相源，按 archetypeId+taskKind 桥接自
  * src/config，vendorParams 覆盖优先、回退通用 "*"；补 model 变体/duration(int)/比例/清晰度/voice/size）；
  * ② mapping 级 defaultParams（仅非档案派生的兜底）。逻辑收口在此 → runtime 一行调用，不喂巨壳。
+ *
+ * 附一道 `size` 别名闸（见 sizeDefaultIsRatioSemantic）：调用方比例铺进的 `size` 仅当该模式 size 默认是比例形时
+ * 才保留，否则剥掉，免得把只说像素的目标（火山 seedream 等）的 size 覆写成 "16:9" 发出废请求。
  */
 export function applyHeadlessParamDefaults(
   extras: Record<string, unknown> | undefined,
@@ -61,7 +89,13 @@ export function applyHeadlessParamDefaults(
 ): Record<string, unknown> | undefined {
   const perKind = archetypeId ? ARCHETYPE_WIRE_DEFAULTS[archetypeId]?.[taskKind] : undefined;
   const archetypeDefaults = perKind ? (perKind[vendorKey] ?? perKind["*"]) : undefined;
-  return applyWireDefaults(applyWireDefaults(extras, archetypeDefaults), mappingDefaults);
+  // extras.size 是比例形（调用方 aspect_ratio 铺来的）、但本模式的 size 是像素语义 → 剥掉，让档案像素默认接管。
+  // 只针对「比例形的 caller size」，UI 路自己填的真实像素 size 不受影响（它不匹配 RATIO_VALUE_RE）。
+  const guarded = extras && typeof extras.size === "string" && RATIO_VALUE_RE.test(extras.size.trim())
+    && !sizeDefaultIsRatioSemantic(archetypeDefaults, mappingDefaults)
+    ? (() => { const { size: _dropped, ...rest } = extras; return rest; })()
+    : extras;
+  return applyWireDefaults(applyWireDefaults(guarded, archetypeDefaults), mappingDefaults);
 }
 
 export function taskTemplateParams(request: TaskParamsInput): JsonRecord {

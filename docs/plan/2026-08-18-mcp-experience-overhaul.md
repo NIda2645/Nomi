@@ -88,6 +88,7 @@
 - **回滚**：elicitation-first 挂 `NOMI_MCP_ELICIT_FIRST` 环境开关首发（默认开，出问题一键回 App 弹窗）；共享工厂替换分两 commit（先抽层后切换），单独可 revert。
 - **验收门**：五门全绿 + J-MCP1 harness 全过 + 指标对照表进 `docs/audit`；实现顺序 P0-A/B → P1-C/D → P2-E → P3-F，每档独立 PR。
 - **关键事实（dispatch 收口，防未来审计误判）**：能力核有**三个** dispatch 调用点——`rpcServer.ts`（GUI 进程 RPC 传输）、`mcpStdioServer.ts`（stdio 传输的 in-process 分支），二者都必须过结果富化（T2 的缩略图/签名链/locale 收口），故 T4 把 `enrichResultForMethod` 折进 `dispatchAndEnrich(...)` 包装器、两处传输一律走它，任何传输调用点想「忘记富化」在结构上就不可能。第三个调用点 `electron/capabilityCore/host.ts`（headless `electron host.js --cmd` 一次性 worker）是**有意保留的死代码**：当前没有任何 spawner 会拉起它（stdio 模式已取代旧 CLI 路径，见 `mcpStdioServer.ts` 头注），故**刻意不给它接富化包装器**——它不参与真实 MCP 结果通道，接了反而制造「像在用其实没人调」的假象。未来若复活 host.ts 当真实传输，需同步改走 `dispatchAndEnrich`。
+- **关键事实（文案 locale 按传输诚实分账，2026-08-18 补）**：MCP 协议层文案 locale 来自 `transport.getLocale()`。承载真实客户端的**两条传输**现在都跟 OS 语言走：① `mcpStdioServer.ts`（in-Electron 入口）用 `app.getLocale()`（`:139`）；② **生产入口** `mcpNodeLauncher.ts`（bare-Node，`ELECTRON_RUN_AS_NODE=1`，无 `app.getLocale()`）用 `Intl.DateTimeFormat().resolvedOptions().locale`——即 `app.getLocale()` 底下同一个系统区域信号，经 `normalizeDesktopLocale` 归成 en/zh-CN、取不到缺省 zh-CN（`resolveLauncherLocale`，provider 可注入以便单测）。此前 T4 只接了 stdio 一侧，真实客户端多数经 launcher 进来 → 永远收到 zh-CN，本轮补齐。两条传输一律不再硬编码中文。
 
 ## 五、执行拆解（2026-08-18 定稿，subagent-driven，实现交 opus）
 

@@ -7,6 +7,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 
 import { createMcpProtocol, type McpInvokeOptions } from './mcpProtocol'
+import { normalizeDesktopLocale, type DesktopLocale } from '../i18n'
 
 type LiveInstance = {
   pid: number
@@ -91,6 +92,17 @@ function startNomi(): void {
   })
 }
 
+// 结果/进度文案 locale：bare-Node launcher 没有 Electron 的 app.getLocale()，改读**同一份 OS locale**——
+// Intl.DateTimeFormat().resolvedOptions().locale 就是 Electron app.getLocale() 底下那个系统区域信号（同源、非
+// 凭空发明的通道），经 normalizeDesktopLocale 归成 en / zh-CN，取不到/异常时缺省 zh-CN。provider 可注入（单测）。
+export function resolveLauncherLocale(readSystemLocale: () => string = () => Intl.DateTimeFormat().resolvedOptions().locale): DesktopLocale {
+  try {
+    return normalizeDesktopLocale(readSystemLocale())
+  } catch {
+    return 'zh-CN'
+  }
+}
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function ensureLiveInstance(): Promise<LiveInstance> {
@@ -144,10 +156,14 @@ async function callViaRpc(
   return body.result
 }
 
+// OS locale 解析一次（进程生命周期内 UI 语言不变，同 mcpStdioServer 的 setDesktopLocale(app.getLocale())）。
+const launcherLocale = resolveLauncherLocale()
+
 const protocol = createMcpProtocol({
   send: (message) => process.stdout.write(`${JSON.stringify(message)}\n`),
   invoke: async (method, params, options) => callViaRpc(await ensureLiveInstance(), method, params, options),
   isAppOpen: () => Boolean(readLiveInstance()),
+  getLocale: () => launcherLocale,
 })
 
 const input = readline.createInterface({ input: process.stdin })
