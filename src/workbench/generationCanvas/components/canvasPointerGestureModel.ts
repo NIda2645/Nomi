@@ -14,6 +14,15 @@ export function isCanvasInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof Element ? Boolean(target.closest(CANVAS_INTERACTIVE_TARGET_SELECTOR)) : false
 }
 
+// 「浮层菜单」的单一判据。菜单（节点右键菜单、边菜单）都渲染在 stage 里，而收起菜单发生在
+// capture 阶段——子项的 stopPropagation 来不及拦。谁都必须先问过这张表再收菜单，否则
+// pointerdown 先卸载菜单、后续 click 无目标，表现为「点了没反应」。
+export const CANVAS_MENU_TARGET_SELECTOR = '[role="menu"], [role="menuitem"], [role="menuitemradio"]'
+
+export function isCanvasMenuTarget(target: EventTarget | null): boolean {
+  return target instanceof Element ? Boolean(target.closest(CANVAS_MENU_TARGET_SELECTOR)) : false
+}
+
 export type CanvasPointerDownAction = 'pan' | 'marquee' | 'ignore'
 
 type CanvasPointerDownInput = {

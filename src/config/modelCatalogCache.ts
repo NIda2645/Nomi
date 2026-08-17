@@ -118,7 +118,8 @@ async function getCatalogModelOptions(kind?: NodeKind): Promise<ModelOption[]> {
       const filteredRows = (Array.isArray(rows) ? rows : []).filter((row) => {
         const vendorKey = String(row?.vendorKey || '').trim().toLowerCase()
         if (!vendorKey) return false
-        if (!enabledVendorKeys.size) return true
+        // 空集 = 「一家可用供应商都没有」，不是「随便放行」。此前在这里 return true，
+        // 于是供应商还没加载完 / 用户一家都没配时，整个 catalog 会被全量曝给选择器。
         return enabledVendorKeys.has(vendorKey)
       })
       const normalized = toCatalogModelOptions(filteredRows)
