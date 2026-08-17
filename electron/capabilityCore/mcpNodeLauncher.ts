@@ -1,5 +1,10 @@
 // MCP stdio entry that runs under Electron's bundled Node runtime. It never creates an
 // NSApplication: an existing Nomi is reached over loopback RPC, and a missing Nomi is started once.
+//
+// **库指纹握手**（2026-08-18 §P3-F）：发现实例后不再「谁写了就连谁」。读广告（instanceAdvert 校验）后按 verdict
+// 分诊：库匹配 + 活 + 心跳新鲜 → 连（happy path）；库不匹配/心跳陈旧/旧版 v1 → **快速失败**（≤10s，给人话，绝不
+// 静默串到别人的库）；进程死/没广告 → 冷启（唯一还走满 60s 的路）。这台机器上真有并发会话依赖 ~/.nomi 里的活
+// 广告，本模块的隔离与快速失败就是为了杜绝 2026-08-17 那次「我的项目连进走查库」。
 import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -8,21 +13,25 @@ import readline from 'node:readline'
 
 import { createMcpProtocol, type McpInvokeOptions } from './mcpProtocol'
 import { normalizeDesktopLocale, type DesktopLocale } from '../i18n'
-
-type LiveInstance = {
-  pid: number
-  port: number
-  token: string
-  startedAt: number
-  version: string
-}
+import {
+  instanceAdvertFileName,
+  parseAdvert,
+  validateAdvert,
+  type AdvertVerdict,
+  type InstanceAdvertisement,
+} from './instanceAdvert'
 
 const CAPABILITY_DIR_ENV = 'NOMI_CAPABILITY_DIR'
+const PROJECTS_DIR_ENV = 'NOMI_PROJECTS_DIR'
+const SETTINGS_DIR_ENV = 'NOMI_SETTINGS_DIR'
 const CLIENT_ENV = 'NOMI_MCP_CLIENT'
 const CLIENT_PROOF_ENV = 'NOMI_MCP_CLIENT_PROOF'
 const APP_COMMAND_ENV = 'NOMI_MCP_APP_COMMAND'
 const APP_ARGS_ENV = 'NOMI_MCP_APP_ARGS'
 const BOOT_TIMEOUT_MS = 60_000
+// 快速失败预算（§P3-F 承诺）：库不匹配/陈旧/旧版这类「已知连不上」必须在此预算内报人话，绝不拖到 60s 盲等。
+// 实现上在**冷启前**同步命中即抛（毫秒级 ≪ 预算），远快于它；此常量既是文档也是并发用例断言的上界。
+export const FAST_FAIL_BUDGET_MS = 10_000
 
 function rpcTimeoutMs(): number {
   const configured = Number(process.env.NOMI_RPC_TIMEOUT_MS)
@@ -34,24 +43,83 @@ function capabilityDir(): string {
     || path.join(os.homedir(), '.nomi', 'capability-core')
 }
 
-function processAlive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM'
+/**
+ * 这个 launcher 期望连的项目库根，尽 bare-Node 所能与 runtimePaths.getProjectLocationState 同序推导：
+ *   · NOMI_PROJECTS_DIR（环境覆盖）→ 确切期望库，返回 { root, isDefault:false }，读命名空间文件、做库全等校验；
+ *   · 否则 NOMI_SETTINGS_DIR 下 project-location.json 的自定义根（若该 env 在）→ 同上；
+ *   · 都没有 → 默认库：bare-Node 算不出 documents 下的默认绝对路径，返回 { root:null, isDefault:true }，读默认
+ *     instance.json，靠命名空间隔离（只有 default-source app 会写它）兜底，跳过库全等。
+ * 返回 root=null 表示「默认库、无法算出确切绝对路径」（交给 validateAdvert 的 null 语义）。
+ */
+function expectedLibrary(): { root: string | null; isDefault: boolean } {
+  const envRoot = String(process.env[PROJECTS_DIR_ENV] || '').trim()
+  if (envRoot) return { root: envRoot, isDefault: false }
+  const settingsDir = String(process.env[SETTINGS_DIR_ENV] || '').trim()
+  if (settingsDir) {
+    try {
+      const stored = JSON.parse(fs.readFileSync(path.join(settingsDir, 'project-location.json'), 'utf8')) as {
+        projectsRoot?: unknown
+      }
+      const custom = typeof stored.projectsRoot === 'string' ? stored.projectsRoot.trim() : ''
+      if (custom) return { root: custom, isDefault: false }
+    } catch {
+      /* 无自定义根设置 → 落默认 */
+    }
   }
+  return { root: null, isDefault: true }
 }
 
-function readLiveInstance(): LiveInstance | null {
-  const file = path.join(capabilityDir(), 'instance.json')
+/** 期望库对应的广告文件绝对路径（默认库 → instance.json；自定义库 → instance-<hash>.json）。 */
+function advertPath(library: { root: string | null; isDefault: boolean }): string {
+  return path.join(capabilityDir(), instanceAdvertFileName(library.root ?? '', library.isDefault))
+}
+
+/** 读并校验广告 → verdict（happy path=match）。文件缺失/坏 → malformed。 */
+function readAdvertVerdict(library: { root: string | null; isDefault: boolean }): AdvertVerdict {
+  let raw: string
   try {
-    const value = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<LiveInstance>
-    if (!processAlive(Number(value.pid)) || !Number.isInteger(value.port) || !value.token) return null
-    return value as LiveInstance
+    raw = fs.readFileSync(advertPath(library), 'utf8')
   } catch {
-    return null
+    return { kind: 'malformed' }
+  }
+  let parsed: Partial<InstanceAdvertisement> | null
+  try {
+    parsed = parseAdvert(JSON.parse(raw))
+  } catch {
+    return { kind: 'malformed' }
+  }
+  return validateAdvert(parsed, library.root)
+}
+
+/** happy-path 探测：仅当 verdict=match 时返回可连实例，否则 null（分诊/快速失败交给 ensureLiveInstance）。 */
+function readLiveInstance(): InstanceAdvertisement | null {
+  const verdict = readAdvertVerdict(expectedLibrary())
+  return verdict.kind === 'match' ? verdict.instance : null
+}
+
+/**
+ * 把「连不上」的 verdict 翻成给人看的中文错误（bare-Node，无 Electron app.getLocale()；launcher 现有错误就是纯
+ * 中文串，保持一致——locale plumbing 见 resolveLauncherLocale，此处快速失败文案缺省 zh-CN）。mismatch 同时点名
+ * 两个库（连到的 vs 你要的）+ 两条出路。返回 null = 该 verdict 不是「连不上」（match/dead/malformed 不在此列）。
+ */
+function fastFailMessage(verdict: AdvertVerdict, expectedRoot: string | null): string | null {
+  switch (verdict.kind) {
+    case 'mismatch':
+      return [
+        'Nomi 连到的不是你的项目库。',
+        `这个 Nomi 实例服务的库：${verdict.instance.projectsRoot}`,
+        `你这个客户端要用的库：${expectedRoot ?? '（默认库）'}`,
+        '两条出路：① 重启 Nomi（让它挂回你的库）；② 关掉正占用它的另一个会话/走查窗口，再重试。',
+      ].join('\n')
+    case 'stale':
+      return [
+        'Nomi 实例失联了（进程还在但已停止心跳，可能卡死或挂起）。',
+        '请重启 Nomi 后重试。',
+      ].join('\n')
+    case 'legacy':
+      return 'Nomi 实例信息是旧版格式，重启 Nomi 后重试。'
+    default:
+      return null
   }
 }
 
@@ -105,22 +173,39 @@ export function resolveLauncherLocale(readSystemLocale: () => string = () => Int
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function ensureLiveInstance(): Promise<LiveInstance> {
-  const current = readLiveInstance()
-  if (current) return current
+/**
+ * 找到可连实例，或按 verdict 快速失败/冷启：
+ *   · match → 直接连。
+ *   · mismatch / stale / legacy → 立刻抛人话（同步命中，远快于 FAST_FAIL_MS），绝不盲等、绝不串库。
+ *   · dead / malformed → 没有活实例，走冷启（spawn + 满 BOOT_TIMEOUT_MS 轮询）；轮询期间若冒出 mismatch/stale/
+ *     legacy（并发会话抢注）也即时快速失败。
+ */
+async function ensureLiveInstance(): Promise<InstanceAdvertisement> {
+  const library = expectedLibrary()
+  const initial = readAdvertVerdict(library)
+  if (initial.kind === 'match') return initial.instance
+  const initialFastFail = fastFailMessage(initial, library.root)
+  if (initialFastFail) throw new Error(initialFastFail)
+
+  // 到这里只剩 dead/malformed = 确实没活实例 → 冷启。这是唯一还会走满 60s 的路（真正的冷启动）。
   startNomi()
   const deadline = Date.now() + BOOT_TIMEOUT_MS
   while (Date.now() < deadline) {
-    const instance = readLiveInstance()
-    if (instance) return instance
+    const verdict = readAdvertVerdict(library)
+    if (verdict.kind === 'match') return verdict.instance
+    const fastFail = fastFailMessage(verdict, library.root)
+    if (fastFail) throw new Error(fastFail) // 并发会话在冷启途中抢注了别的库/陈旧广告 → 立即人话失败
     if (bootFailure) throw new Error(bootFailure)
     await delay(200)
   }
-  throw new Error(`Nomi did not become ready within 60 seconds. Open Nomi once, then retry the MCP action.${bootExitDetail ? ` ${bootExitDetail}` : ''}`)
+  // 冷启超时：区分「兄弟进程输掉单实例竞争正常退出」（code=0，honest 保留）与纯冷启超时。
+  throw new Error(
+    `Nomi 冷启动 60 秒内未就绪。请先手动打开一次 Nomi，再重试该 MCP 操作。${bootExitDetail ? ` ${bootExitDetail}` : ''}`,
+  )
 }
 
 async function callViaRpc(
-  instance: LiveInstance,
+  instance: InstanceAdvertisement,
   method: string,
   params: Record<string, unknown>,
   options?: McpInvokeOptions,

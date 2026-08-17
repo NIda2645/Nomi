@@ -18,7 +18,7 @@ import { applySystemProxy } from '../systemProxy'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
 import { startArtifactPreviewHttpServer, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
 import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
-import { getWorkspaceRepositoryDeps } from '../runtimePaths'
+import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import {
   MCP_CLIENT_ENV,
@@ -28,6 +28,16 @@ import {
 } from './security'
 
 const productionRuns = getProductionRunService()
+
+/**
+ * 本进程（in-Electron stdio）服务的库 → 传给 readLiveInstance 读**对应命名空间**的广告文件。与 appIntegration
+ * 写者同源（getProjectLocationState），故同库的 GUI 与本 stdio 进程读写同一份广告：GUI 开着时 stdio 仍能重连到
+ * 它的 RPC（实时反映 + 应用内确认卡），不因命名空间化而误退回进程内 dispatch（§P3-F 引入命名空间后的收口）。
+ */
+function currentLibrary(): { projectsRoot: string; isDefault: boolean } {
+  const location = getProjectLocationState()
+  return { projectsRoot: location.path, isDefault: location.source === 'default' }
+}
 
 // 传输兜底超时：须 ≥ 服务端最长合法耗时（core.ts 视频轮询 300s）才不误杀真生成；默认 360s，可经 env 调。
 function transportTimeoutMs(): number {
@@ -93,7 +103,7 @@ async function callViaRpc(
 /** 进程内调能力核：GUI 开着→转发 RPC（实时 + 应用内确认卡）；关着→进程内 dispatch（磁盘网关）。 */
 async function invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown> {
   const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
-  const instance = readLiveInstance()
+  const instance = readLiveInstance(currentLibrary())
   // GUI 开着 → RPC 转发，rpcServer 侧已做生成结果富化（缩略图/签名链），此处不再重复富化。
   if (instance) return callViaRpc(instance, method, params, origin, options)
   const makeGateway = options?.spendConfirmed ? makeConfirmedGateway : createDiskGateway
@@ -144,7 +154,7 @@ export async function startMcpStdioServer(): Promise<void> {
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
     invoke,
-    isAppOpen: () => Boolean(readLiveInstance()),
+    isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
     getLocale: () => getDesktopLocale(),
   })
 

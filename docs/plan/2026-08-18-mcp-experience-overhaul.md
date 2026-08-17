@@ -63,8 +63,12 @@
 
 ### P3-F 串库 + 60s 盲等（本次最重故障）
 - **根因**：`mcpNodeLauncher.ts:96-108` 靠 `~/.nomi/capability-core/instance.json` 发现实例，**advert 不含"哪个库"也无归属校验**，谁后写谁赢；并发会话用 `NOMI_PROJECTS_DIR` 起的走查宿主抢注 advert → 我的调用连进 fixture 库（`creation-flow-fixes` 等 id 在主代码库搜不到，证实是外部注入）。advert 失效后每次调用**盲等满 60s**（`BOOT_TIMEOUT_MS`，`mcpNodeLauncher.ts:24`）才报错；`code=0` 是输掉 Nomi 单实例竞争的兄弟进程正常退出（`:87-91` 注释自认）。库指针不持久化，重启 App 即恢复真实库。
-- **修法**：instance.json 增加 `projectsRoot` 指纹 + 心跳时间戳；launcher 握手校验：库不匹配即报「连到的是走查库 X，你的项目在库 Y——重启 Nomi 或关闭占用会话」而不是默默用错库；pid 活着但 advert 陈旧时**快速失败**（~10s）并给出同样人话；走查/测试宿主一律带隔离命名空间，不许抢生产 advert。
-- **结构保证**：并发 e2e——两个 launcher 一真一 fixture 同时跑，断言真库调用**要么成功要么秒级人话报错**，永不静默串库。
+- **修法（T6 已交付，2026-08-18）**：advert 升 **v2**——`{ version:2, pid, port, token, startedAt, projectsRoot, heartbeatAt, appVersion }`；新增字段是同文件超集，老读者忽略未知字段（升级中途不破）。派生/校验/路径全收在**一处共享纯函数模块** `electron/capabilityCore/instanceAdvert.ts`（写者 lockfile/appIntegration 与读者 mcpNodeLauncher 同吃，P1 无重复派生）：
+  - **库指纹**：`projectsRoot` 取自 `getProjectLocationState()`（与 runtimePaths 同源，不另派生）；`heartbeatAt` 由 app 侧每 **15s** 心跳刷新（`HEARTBEAT_INTERVAL_MS`，`appIntegration` 里 `setInterval`+`unref`），退出时清广告。
+  - **命名空间文件名**：默认库仍 `instance.json`（back-compat）；非默认库落 `instance-<hash>.json`（hash = 归一绝对路径的 sha256 前 12 hex）。→ 走查/fixture 宿主（自带 `NOMI_PROJECTS_DIR`）**结构上不可能**写到生产 advert 的文件名；两个同自定义库会话仍同 hash 互相发现。
+  - **launcher 握手快速失败**（`ensureLiveInstance` 按 verdict 分诊，`validateAdvert`）：库匹配+活+心跳新鲜(**≤45s**,`HEARTBEAT_STALE_MS`)→连；库不匹配→报「Nomi 连到的库 X vs 你要的库 Y + 两条出路(重启 Nomi/关掉占用会话)」；心跳陈旧(>45s,wedged)→「实例失联，重启 Nomi」；旧版 v1(无 projectsRoot)+活→「实例信息是旧版格式，重启 Nomi 后重试」；进程死/无广告→冷启（**唯一**还走满 60s 的路）。以上「已知连不上」在冷启前同步命中即抛（毫秒级 ≪ **10s** `FAST_FAIL_BUDGET_MS`），不再盲等 60s。冷启超时文案也与 mismatch/stale/legacy 区分开。
+  - **in-Electron stdio 收口**：`mcpStdioServer` 的 `readLiveInstance` 同样按当前库读命名空间文件，故同库 GUI 开着时 stdio 仍能重连到它的 RPC（实时反映+应用内确认卡），不因命名空间化误退回进程内 dispatch。
+- **结构保证（已落地）**：`instanceAdvert.test.ts` 纯函数矩阵（路径派生 default/custom/hash 稳定/归一；校验 v2 新鲜匹配/不匹配/陈旧/死 pid/旧版 v1/坏 JSON，每支报文松散钉住）；`mcpNodeLauncher.test.ts` 两条真进程用例——**劫持模拟**（往期望库的命名空间文件写活 pid+错 projectsRoot 的广告，真 launcher 指向期望库 → 断言 ≤10s 带两库名报错、**从不**返回另一库项目）+ **命名空间隔离**（自定义库写者写 `instance-<hash>.json`，默认库读者只认 `instance.json`、彻底无视它）。
 
 ## 三、测试系统（R16：真实任务 + 指标记录，交付的一部分）
 
@@ -99,7 +103,7 @@
 | T3 | P1-C/D 共享节点工厂替换平行版 + 批量布局 | canvasGraph.ts ⇄ canvasNodeActions.ts → 共享层 | 删旧平行实现（P1），两侧产出逐字段同构 |
 | T4 | P2-E 目录真话 keyStatus + generate 画幅/时长参数 + 拒发建议 + 文案 locale | core.ts / secrets.ts / executableModel.ts / taskParams.ts / mcpProtocol.ts | 只 derive 不 hardcode |
 | T5 | R16 harness：J-MCP1 真进程走查 + JSONL 指标 + 断言 | tests/ + 既有 journey 测试扩展 | **一律隔离 NOMI_CAPABILITY_DIR / NOMI_PROJECTS_DIR，禁碰真实库与 advert** |
-| T6 | P3-F advert 库指纹 + 心跳 + 快速失败 + 并发用例 | mcpNodeLauncher.ts / host 侧 advert 写点 | 走查/测试宿主结构上不可能再抢生产 advert |
+| T6 ✅ | P3-F advert v2 库指纹 + 心跳 + 快速失败 + 命名空间 + 真进程用例 | **新** `instanceAdvert.ts`（形状+路径+校验纯函数，写读同吃）· `lockfile.ts`/`appIntegration.ts`（写 v2+心跳+命名空间清理）· `mcpNodeLauncher.ts`（握手快速失败）· `mcpStdioServer.ts`（同库读命名空间收口） | 走查/测试宿主结构上不可能再抢生产 advert；库不匹配/陈旧/旧版秒级人话失败，仅真冷启走 60s |
 | T7 | 终审：整体 code review → 五门 → 合 origin/main → push + PR | — | 单分支分层 commit，一个 PR 交付 |
 
 每任务三段式：实现（含测试、commit）→ 规格合规审 → 代码质量审，全过才进下一任务；实现类子代理一律 opus。
@@ -107,4 +111,4 @@
 ## 五·旧、本次已当场处理
 
 - 用户看图：两张过审参考图已直接用 Preview 打开；全部产物路径见项目 `assets/generated/2026-08-17/`。
-- 串库机制已写入记忆（`nomi-mcp-multi-instance-library-swap.md`），当前解法：重启 Nomi（或关另一个走查会话）即回真实库。
+- 串库机制已写入记忆（`nomi-mcp-multi-instance-library-swap.md`）。**T6 后行为已变**：走查/fixture 宿主（自带 `NOMI_PROJECTS_DIR`）落命名空间 advert，结构上抢不到生产 `instance.json`；万一库不匹配，launcher **秒级**报「连到库 X vs 你要库 Y + 重启 Nomi / 关掉占用会话」而非盲等 60s 后含糊报错——用户读到人话即知怎么办，不必再手动数进程。用户侧兜底解法（重启 Nomi / 关另一会话）不变。
