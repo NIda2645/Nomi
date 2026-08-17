@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cameraMoveParamsSchema,
   canvasNodeKindSchema,
   canvasToolNames,
   canvasTools,
@@ -18,6 +19,58 @@ const makeValidNode = (overrides: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("canvasTools schemas", () => {
+  describe("cameraMoveParamsSchema", () => {
+    it("treats model placeholder strings as an empty customMove", () => {
+      const parsed = cameraMoveParamsSchema.parse({
+        shotClientId: "video-1",
+        move: "push_in",
+        customMove: "none",
+        speed: "slow",
+      });
+
+      expect(parsed).toMatchObject({ shotClientId: "video-1", move: "push_in", speed: "slow" });
+      expect(parsed).not.toHaveProperty("customMove");
+    });
+
+    it("promotes a custom description that exactly matches one preset", () => {
+      const parsed = cameraMoveParamsSchema.parse({
+        shotClientId: "video-1",
+        customMove: "缓慢稳定地向女孩面部推进，从肩侧近景收至眼神特写；运动柔和",
+        speed: "slow",
+      });
+
+      expect(parsed).toMatchObject({ shotClientId: "video-1", move: "push_in", speed: "slow" });
+      expect(parsed).not.toHaveProperty("customMove");
+    });
+
+    it("normalizes a stale enum away when customMove carries the latest intent", () => {
+      const parsed = cameraMoveParamsSchema.parse({
+        shotClientId: "video-1",
+        move: "push_in",
+        customMove: "快速甩镜到窗外街景",
+      });
+
+      expect(parsed).toMatchObject({
+        shotClientId: "video-1",
+        customMove: "快速甩镜到窗外街景",
+      });
+      expect(parsed).not.toHaveProperty("move");
+    });
+
+    it("keeps compound preset descriptions on the custom path", () => {
+      const parsed = cameraMoveParamsSchema.parse({
+        shotClientId: "video-1",
+        customMove: "先推近女孩，再向右弧移到窗外",
+      });
+
+      expect(parsed).toMatchObject({
+        shotClientId: "video-1",
+        customMove: "先推近女孩，再向右弧移到窗外",
+      });
+      expect(parsed).not.toHaveProperty("move");
+    });
+  });
+
   describe("canvasNodeKindSchema", () => {
     it("accepts the 9 supported kinds", () => {
       for (const kind of [

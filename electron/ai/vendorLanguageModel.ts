@@ -19,6 +19,7 @@ export function buildLanguageModelForVendor(vendor: Vendor, model: Model, apiKey
     kind: providerKind,
     baseURL,
     apiKey,
+    authType: vendor.authType,
     modelId: model.modelAlias || model.modelKey,
     ...(headers ? { headers } : {}),
   });

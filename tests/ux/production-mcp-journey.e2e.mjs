@@ -8,7 +8,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { launchNomiApp } from './_launchApp.mjs'
+import { launchNomiApp, withLinuxNoSandbox } from './_launchApp.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -70,7 +70,7 @@ async function launchGui() {
 }
 
 function spawnMcp() {
-  const child = spawn(require('electron'), [repoRoot, '--disable-gpu'], {
+  const child = spawn(require('electron'), withLinuxNoSandbox([repoRoot, '--disable-gpu']), {
     cwd: repoRoot,
     env: { ...sharedEnv, NOMI_MCP_STDIO: '1' },
     stdio: ['pipe', 'pipe', 'inherit'],

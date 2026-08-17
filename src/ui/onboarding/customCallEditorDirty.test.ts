@@ -11,8 +11,8 @@ const initialScripts = {
 
 describe('custom-call editor persisted dirty state', () => {
   const initial = customCallPersistedStateSignature(initialScripts, [
-    { name: 'region', value: 'cn' },
-    { name: 'token', value: 'saved' },
+    { name: 'region', value: '', storedName: 'region', valueChanged: false },
+    { name: 'token', value: '', storedName: 'token', valueChanged: false },
   ])
 
   it('stays clean when scripts and effective config still match the saved values', () => {
@@ -20,9 +20,9 @@ describe('custom-call editor persisted dirty state', () => {
       fallback: initialScripts.fallback,
       modes: { frames: initialScripts.modes.frames, references: initialScripts.modes.references, empty: '   ' },
     }, [
-      { name: 'token', value: 'saved' },
-      { name: '', value: 'ignored draft row' },
-      { name: 'region', value: 'cn' },
+      { name: 'token', value: '', storedName: 'token', valueChanged: false },
+      { name: '', value: 'ignored draft row', valueChanged: true },
+      { name: 'region', value: '', storedName: 'region', valueChanged: false },
     ])).toBe(initial)
   })
 
@@ -38,22 +38,22 @@ describe('custom-call editor persisted dirty state', () => {
     }],
   ])('detects a change in %s', (_label, scripts) => {
     expect(customCallPersistedStateSignature(scripts, [
-      { name: 'region', value: 'cn' },
-      { name: 'token', value: 'saved' },
+      { name: 'region', value: '', storedName: 'region', valueChanged: false },
+      { name: 'token', value: '', storedName: 'token', valueChanged: false },
     ])).not.toBe(initial)
   })
 
   it('detects effective config changes but ignores editor-only material and test state', () => {
     const changed = customCallPersistedStateSignature(initialScripts, [
-      { name: 'region', value: 'us' },
-      { name: 'token', value: 'saved' },
+      { name: 'region', value: 'us', storedName: 'region', valueChanged: true },
+      { name: 'token', value: '', storedName: 'token', valueChanged: false },
     ])
 
     expect(changed).not.toBe(initial)
     // Material and test results are intentionally absent from the helper contract.
     expect(customCallPersistedStateSignature(initialScripts, [
-      { name: 'region', value: 'cn' },
-      { name: 'token', value: 'saved' },
+      { name: 'region', value: '', storedName: 'region', valueChanged: false },
+      { name: 'token', value: '', storedName: 'token', valueChanged: false },
     ])).toBe(initial)
   })
 })

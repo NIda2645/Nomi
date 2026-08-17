@@ -18,13 +18,15 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import type { LanguageModelV1 } from "ai";
 import { applyProfileToRequestBody, getModelProfile } from "./modelProfiles";
 // 单一真相源：provider-kind 联合定义在 catalog/types，这里只 re-export，避免并行定义漂移（规则 1）。
-import type { AiSdkProviderKind } from "../catalog/types";
+import type { AiSdkProviderKind, Vendor } from "../catalog/types";
 export type { AiSdkProviderKind };
 
 export interface BuildAiSdkModelInput {
   kind: AiSdkProviderKind;
   baseURL: string;
   apiKey: string;
+  /** `none` is supported by OpenAI-compatible gateways and omits Authorization entirely. */
+  authType?: Vendor["authType"];
   modelId: string;
   /**
    * Extra HTTP headers sent on every request to the provider. Lets users add
@@ -98,7 +100,8 @@ function sanitizeHeaders(
 
 export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   const apiKey = (input.apiKey || "").trim();
-  if (!apiKey) {
+  const unauthenticated = input.authType === "none";
+  if (!apiKey && !unauthenticated) {
     throw new Error("buildAiSdkModel: apiKey is required");
   }
   const modelId = (input.modelId || "").trim();
@@ -109,6 +112,7 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   const headers = sanitizeHeaders(input.headers);
 
   if (input.kind === "anthropic") {
+    if (unauthenticated) throw new Error("buildAiSdkModel: authType none requires an openai-compatible provider");
     const provider = createAnthropic({
       apiKey,
       ...(baseURL ? { baseURL } : {}),
@@ -120,6 +124,7 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   // OpenAI Responses API（/responses）：中转如 foxcode codex 渠道 wire_api=responses，只认 /responses，
   // 走 chat/completions 会 502（2026-06-06 实测根因）。用官方 @ai-sdk/openai 的 .responses()。
   if (input.kind === "openai-responses") {
+    if (unauthenticated) throw new Error("buildAiSdkModel: authType none requires an openai-compatible provider");
     if (!baseURL) throw new Error("buildAiSdkModel: baseURL is required for openai-responses");
     const provider = createOpenAI({
       apiKey,
@@ -136,7 +141,7 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   const provider = createOpenAICompatible({
     name: "nomi",
     baseURL,
-    apiKey,
+    ...(apiKey ? { apiKey } : {}),
     ...(headers ? { headers } : {}),
     fetch: buildProfiledFetch(modelId),
   });

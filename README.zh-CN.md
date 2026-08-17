@@ -48,7 +48,7 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 - **一个项目，不是十一个标签页**：故事、镜头、参考、生成结果和时间线在你自己盘上的同一个文件里，不用在多个工具之间反复搬运。
 - **第 4 个镜头和第 9 个镜头得是同一个人**：人物、场景、道具、机位和风格先锁一次，后面的镜头继承它，而不是重新赌一次提示词。
 - **自带全套**：内置约 10 家可直接用的供应商；任何 OpenAI 兼容 / Anthropic / Responses / 中转接口，粘贴地址和密钥就能加，不用重新编译。本机 ComfyUI 和云端模型一样是一个供应商：Nomi 会转换 ComfyUI 常规「保存」格式的工作流，你从网上下载的工作流能直接导入；并且会拿工作流和 `/object_info` 对账，在你按下运行之前就告诉你缺哪些自定义节点和模型文件。
-- **你的 AI 助手能真的操作它**：13 个 MCP 工具，让 Claude Code / Codex / Cursor 建项目、排镜头、连参考、跑生成并发起可恢复的完整制作。创作方向、付费生成、粗剪采用和导出都必须回到 Nomi 明确批准；审批由主进程强制执行，助手无法越权。
+- **你的 AI 助手能真的操作它**：15 个 MCP 工具，让 Claude Code / Codex / Cursor 建项目、排镜头、连参考、跑生成并发起可恢复的完整制作。创作方向、付费生成、粗剪采用和导出都必须回到 Nomi 明确批准；审批由主进程强制执行，助手无法越权。
 
 ## 下载
 
@@ -56,9 +56,11 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 |---|---|---|
 | macOS | Apple Silicon（M 系列） | [Nomi-mac-arm64.dmg](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg) |
 | macOS | Intel 芯片 | [Nomi-mac-intel.dmg](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg) |
-| Windows | Windows 10 / 11 | [Nomi-windows-setup.exe](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe) |
+| Windows | Windows 10 / 11 x64 | [Nomi-windows-setup.exe](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe) |
 
 🇨🇳 GitHub 打不开或下载慢：[夸克网盘镜像](https://pan.quark.cn/s/d3322c17e7b6)。最新版本以 [GitHub Releases](https://github.com/aqm857886159/Nomi/releases/latest) 和 [官网](https://nomiaqm.com/)为准。
+
+当前仅提供 macOS arm64/x64 与 Windows x64 安装包。macOS 包未签名、未公证，升级时需下载对应 DMG 后手动替换 `/Applications/Nomi.app`；Windows 包未使用 Authenticode 签名，首次运行可能出现 SmartScreen 提示。
 
 <details>
 <summary>第一次打开提示“未知开发者 / 已损坏”</summary>

@@ -35,6 +35,8 @@ fs.mkdirSync(generatedAssetsDir, { recursive: true })
 fs.copyFileSync(path.join(repoRoot, 'tests/ux/fixtures/test-upload.png'), path.join(generatedAssetsDir, 'fixture.png'))
 const fixtureVideoPath = path.join(generatedAssetsDir, 'fixture.mp4')
 const importedVideoPath = path.join(root, 'twelve-seconds-with-audio.mp4')
+// Two-core Linux runners can need more than two minutes for the real 1080p x264-medium export.
+const exportTimeoutMs = 300_000
 const encodeFixture = (output, duration) => execFileSync(ffmpegPath, [
   '-v', 'error', '-y',
   '-f', 'lavfi', '-i', `testsrc2=size=640x360:rate=24:duration=${duration}`,
@@ -128,13 +130,94 @@ async function openCanvas() {
   return node
 }
 
+async function resetExportTrace() {
+  await win.evaluate(() => {
+    const previous = globalThis.__nomiClipExportTrace
+    previous?.unsubscribe?.()
+    previous?.observer?.disconnect?.()
+
+    const events = []
+    const notifications = []
+    const notificationSelector = '[role="alert"], .mantine-Notification-root'
+    const baseline = new Set(Array.from(document.querySelectorAll(notificationSelector)).map((element) => element.textContent?.trim()).filter(Boolean))
+    const captureNotifications = () => {
+      for (const element of document.querySelectorAll(notificationSelector)) {
+        const message = element.textContent?.trim()
+        if (message && !baseline.has(message) && !notifications.includes(message)) notifications.push(message)
+      }
+    }
+    const observer = new MutationObserver(captureNotifications)
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    const unsubscribe = globalThis.nomiDesktop?.exports?.onEvent?.((event) => {
+      events.push(event)
+      if (events.length > 50) events.shift()
+    })
+    globalThis.__nomiClipExportTrace = { events, notifications, observer, unsubscribe }
+  })
+}
+
+async function collectExportDiagnostics() {
+  const renderer = await win.evaluate(async () => {
+    const trace = globalThis.__nomiClipExportTrace
+    const compactSnapshot = (snapshot) => snapshot ? ({
+      id: snapshot.id,
+      status: snapshot.status,
+      progress: snapshot.progress,
+      error: snapshot.error,
+      result: snapshot.result,
+      updatedAt: snapshot.updatedAt,
+    }) : null
+    const events = (trace?.events ?? []).slice(-12).map((event) => ({
+      type: event.type,
+      jobId: event.jobId,
+      snapshot: compactSnapshot(event.snapshot),
+    }))
+    const jobId = events.at(-1)?.jobId ?? null
+    let status = null
+    if (jobId) {
+      try {
+        status = compactSnapshot(await globalThis.nomiDesktop?.exports?.status?.(jobId))
+      } catch (error) {
+        status = { error: error instanceof Error ? error.message : String(error) }
+      }
+    }
+    return { jobId, status, events, notifications: trace?.notifications ?? [] }
+  })
+
+  const files = {}
+  if (renderer.jobId) {
+    const jobDir = path.join(projectRoot, '.nomi', 'jobs', renderer.jobId)
+    for (const name of ['ffmpeg.log', 'export.log', 'error.json', 'job.json']) {
+      const filePath = path.join(jobDir, name)
+      if (!fs.existsSync(filePath)) continue
+      const content = fs.readFileSync(filePath, 'utf8')
+      files[name] = content.slice(-12_000)
+    }
+  }
+  return { ...renderer, files }
+}
+
 async function runExport(scope, destination, expectedToast) {
+  await resetExportTrace()
   const menu = win.getByTestId('clip-node-export-menu')
   const mainClipNode = win.locator('[data-clip-node="true"][data-node-id="canvas-clip-editor"]')
   if (!(await menu.isVisible().catch(() => false))) await mainClipNode.getByTestId('clip-node-export').click()
   await menu.getByRole('radio', { name: scope }).click()
   await menu.getByRole('button', { name: destination, exact: true }).click()
-  await win.getByText(expectedToast, { exact: false }).waitFor({ state: 'visible', timeout: 120_000 })
+  try {
+    const outcome = await Promise.race([
+      win.getByText(expectedToast, { exact: false }).waitFor({ state: 'visible', timeout: exportTimeoutMs }).then(() => 'success'),
+      win.waitForFunction((expected) => {
+        const trace = globalThis.__nomiClipExportTrace
+        return trace?.events?.some((event) => ['failed', 'cancelled'].includes(event?.snapshot?.status))
+          || trace?.notifications?.some((message) => !message.includes(expected))
+      }, expectedToast, { timeout: exportTimeoutMs }).then(() => 'failed'),
+    ])
+    if (outcome === 'failed') throw new Error('export reported a failure before the success notification')
+  } catch (error) {
+    const diagnostics = await collectExportDiagnostics()
+    throw new Error(`Export did not complete: ${JSON.stringify(diagnostics)}`, { cause: error })
+  }
 }
 
 async function closeApp() {

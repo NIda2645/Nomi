@@ -140,6 +140,7 @@ export function getNodeSizeBounds(kind: GenerationCanvasNode["kind"]): NodeSizeB
 export const TIMELINE_TRACK_CLIPS_SELECTOR = ".workbench-timeline-track__clips";
 
 export const FOCUS_GENERATION_NODE_EVENT = "nomi-focus-generation-node";
+export const ENSURE_COMPOSER_VISIBLE_EVENT = "nomi-ensure-composer-visible";
 
 export function clampNumber(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));

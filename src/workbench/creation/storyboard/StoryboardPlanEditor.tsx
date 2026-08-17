@@ -41,7 +41,6 @@ export default function StoryboardPlanEditor(): JSX.Element | null {
   const commitStoryboardPlan = useWorkbenchStore((s) => s.commitStoryboardPlan)
   const discardStoryboardPlan = useWorkbenchStore((s) => s.discardStoryboardPlan)
   const setWorkspaceMode = useWorkbenchStore((s) => s.setWorkspaceMode)
-  const requestCanvasFit = useWorkbenchStore((s) => s.requestCanvasFit)
   const [dragIndex, setDragIndex] = React.useState<number | null>(null)
   const [overIndex, setOverIndex] = React.useState<number | null>(null)
   const [landing, setLanding] = React.useState(false)
@@ -122,9 +121,6 @@ export default function StoryboardPlanEditor(): JSX.Element | null {
       // 不再即焚:方案保留、转「已落画布」、收起编辑器 → 卡片留在对话流可回看/再编辑。
       commitStoryboardPlan()
       setWorkspaceMode('generation')
-      // 揭示新落的镜头：请画布平滑 fit 一次。否则新节点落在已加载画布的视口外，
-      // 用户点完「确认落画布」看着像「没反应」（useAutoFitOnLoad 只在首次加载/切分类触发）。
-      requestCanvasFit()
       // 落画布即自动全选这批新节点（样张拍板 2026-07-29）→ 既有多选浮条「生成 N 个」直接浮现，
       // 批量入口不再靠用户自己发现框选；点浮条整批确认生成，依赖波次照旧（定妆/首帧先、镜头后）。
       // clientId 经注册表换真实节点 id；≤1 个不选（浮条本就只在多选时出现，单节点一键生成足矣）。

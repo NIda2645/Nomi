@@ -57,13 +57,15 @@ International community: [GitHub Discussions](https://github.com/aqm857886159/No
 |---|---|---|
 | macOS | Apple Silicon | [Nomi-mac-arm64.dmg](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg) |
 | macOS | Intel | [Nomi-mac-intel.dmg](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg) |
-| Windows | Windows 10 / 11 | [Nomi-windows-setup.exe](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe) |
+| Windows | Windows 10 / 11 x64 | [Nomi-windows-setup.exe](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe) |
+
+Supported release targets are macOS arm64/x64 and Windows x64. Linux, Windows arm64, and macOS universal installers are not currently published.
 
 <details>
 <summary>First launch warning on macOS or Windows</summary>
 
-- **macOS:** Move `Nomi.app` to Applications, run `xattr -cr /Applications/Nomi.app` in Terminal, then open it again.
-- **Windows:** In the SmartScreen prompt, choose **More info** → **Run anyway**.
+- **macOS:** The app is unsigned and not notarized. Move `Nomi.app` to Applications, run `xattr -cr /Applications/Nomi.app` in Terminal, then open it again. Updates require downloading the matching DMG and replacing the app manually.
+- **Windows:** The installer has no Authenticode signature. In the SmartScreen prompt, choose **More info** → **Run anyway**.
 
 </details>
 

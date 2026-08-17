@@ -28,11 +28,17 @@ import type { Model, Vendor } from "./types";
 const vendor = { key: "custom-x", name: "X", baseUrlHint: "https://relay.example/v1", enabled: true, authType: "bearer" } as unknown as Vendor;
 const model = { vendorKey: "custom-x", modelKey: "m1", labelZh: "m1", kind: "image", enabled: true, createdAt: "", updatedAt: "" } as unknown as Model;
 
-function run(script: string, params: Record<string, unknown> = {}, timeoutMs?: number) {
+function run(
+  script: string,
+  params: Record<string, unknown> = {},
+  timeoutMs?: number,
+  customConfig: Record<string, string> = {},
+) {
   return runCustomCallScript({
     vendor,
     model,
     apiKey: "sk-secret-123",
+    customConfig,
     script,
     prompt: "p",
     params,
@@ -127,6 +133,19 @@ describe("失败姿态", () => {
     expect(err).toBeInstanceOf(CustomCallScriptError);
     expect(String(err.message)).not.toContain("sk-secret-123");
     expect(String(err.message)).toContain("•••");
+  });
+  it("脚本能读取主进程解密的 custom config，错误与 cause 都不泄漏", async () => {
+    const secret = 'secondary secret: a"b c';
+    const err = await run(
+      "if (config.signingKey !== 'secondary secret: a\\\"b c') throw new Error('missing config')\n" +
+        "throw new Error('rejected ' + JSON.stringify(config.signingKey))",
+      {},
+      undefined,
+      { signingKey: secret },
+    ).catch((error) => error);
+    expect(err).toBeInstanceOf(CustomCallScriptError);
+    expect(JSON.stringify({ message: err.message, cause: err.causeError?.message })).not.toContain(secret);
+    expect(JSON.stringify({ message: err.message, cause: err.causeError?.message })).not.toContain('a\\\\"b c');
   });
   it("超时中断 sleep 中的脚本", async () => {
     const err = await run("await sleep(60000)\nreturn 'x'", {}, 120).catch((e) => e);

@@ -1,4 +1,8 @@
-import type { BuiltinCanvasCategoryId, GenerationCanvasEdgeMode, GenerationNodeKind } from '../model/generationCanvasTypes'
+import type {
+  BuiltinCanvasCategoryId,
+  GenerationCanvasEdgeMode,
+  GenerationNodeKind,
+} from '../model/generationCanvasTypes'
 import { CATEGORY_IDS } from '../model/generationCanvasTypes'
 import { getDefaultCategoryForNodeKind, getGenerationNodeDefaultTitle } from '../model/generationNodeKinds'
 import { generationCanvasTools, type CreateGenerationNodeToolInput } from './generationCanvasTools'
@@ -57,7 +61,9 @@ function normalizeEdgeMode(raw: unknown): GenerationCanvasEdgeMode | undefined {
 }
 
 /** create 携带边 / connect_canvas_edges 共用的边参数归一（clientId→真实 id + mode 白名单）。 */
-function normalizePlannedEdges(rawEdges: unknown[]): Array<{ source: string; target: string; mode?: GenerationCanvasEdgeMode }> {
+function normalizePlannedEdges(
+  rawEdges: unknown[],
+): Array<{ source: string; target: string; mode?: GenerationCanvasEdgeMode }> {
   return rawEdges
     .map((raw) => (raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}))
     .map((edge) => ({
@@ -102,7 +108,8 @@ function appendDirectiveToNodePrompt(
   return { found: true, applied: true, alreadyApplied: false }
 }
 
-const strValue = (value: unknown): string | undefined => (typeof value === 'string' && value.trim() ? value.trim() : undefined)
+const strValue = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined
 
 /** 灰模布景字段（sceneTemplate + props）容错提取——站位/运镜两工具共用（P4）。 */
 function parseSceneBackdrop(record: Record<string, unknown>): {
@@ -115,16 +122,21 @@ function parseSceneBackdrop(record: Record<string, unknown>): {
     .flatMap((p) => {
       const kind = strValue(p.kind)
       if (!kind) return []
-      const pos = Array.isArray(p.position) && p.position.length >= 2
-        && typeof p.position[0] === 'number' && typeof p.position[1] === 'number'
-        ? [p.position[0], p.position[1]] as [number, number]
-        : undefined
-      return [{
-        kind: kind as ScenePropPlacement['kind'],
-        position: pos,
-        rotationY: typeof p.rotationY === 'number' ? p.rotationY : undefined,
-        scale: typeof p.scale === 'number' ? p.scale : undefined,
-      }]
+      const pos =
+        Array.isArray(p.position) &&
+        p.position.length >= 2 &&
+        typeof p.position[0] === 'number' &&
+        typeof p.position[1] === 'number'
+          ? ([p.position[0], p.position[1]] as [number, number])
+          : undefined
+      return [
+        {
+          kind: kind as ScenePropPlacement['kind'],
+          position: pos,
+          rotationY: typeof p.rotationY === 'number' ? p.rotationY : undefined,
+          scale: typeof p.scale === 'number' ? p.scale : undefined,
+        },
+      ]
     })
   return {
     sceneTemplate: strValue(record.sceneTemplate) as Scene3DSceneTemplate | undefined,
@@ -144,7 +156,8 @@ export function parseStagingSpec(record: Record<string, unknown>): StagingSpec {
       facing: str(c.facing) as StagingCharacterSpec['facing'],
     }))
   if (characters.length === 0) characters.push({})
-  const cameraRaw = record.camera && typeof record.camera === 'object' ? (record.camera as Record<string, unknown>) : null
+  const cameraRaw =
+    record.camera && typeof record.camera === 'object' ? (record.camera as Record<string, unknown>) : null
   const crowdRaw = record.crowd && typeof record.crowd === 'object' ? (record.crowd as Record<string, unknown>) : null
   const backdrop = parseSceneBackdrop(record)
   return {
@@ -181,23 +194,30 @@ export function parseCameraMoveSpec(record: Record<string, unknown>): {
 } {
   const str = strValue
   const backdrop = parseSceneBackdrop(record)
+  const customMove = str(record.customMove)
   return {
-    move: str(record.move) as CameraMoveSpec['move'] | undefined,
+    // customMove is the explicit escape hatch for an out-of-vocab intent. Some models retain
+    // a stale enum from the previous turn; never let that stale value override the new intent.
+    move: customMove ? undefined : (str(record.move) as CameraMoveSpec['move'] | undefined),
     speed: str(record.speed) as CameraMoveSpec['speed'],
     shot: str(record.shot) as CameraMoveSpec['shot'],
     subjectPose: str(record.subjectPose),
-    customMove: str(record.customMove),
+    customMove,
     sceneTemplate: backdrop.sceneTemplate,
     props: backdrop.props,
   }
 }
 
-export async function applyCanvasToolCall(toolName: string, args: unknown, gesture?: CanvasGestureContext): Promise<unknown> {
+export async function applyCanvasToolCall(
+  toolName: string,
+  args: unknown,
+  gesture?: CanvasGestureContext,
+): Promise<unknown> {
   const record = args && typeof args === 'object' ? (args as Record<string, unknown>) : {}
   // S6-2:提议事务把手势上下文传进来,store 变更段(纯同步)包在上下文里——途经 action
   // 发出的画布事件统一携带 source:'agent'+txnId/proposalId。只包同步段,await 间隙不持有
   // (异步持有会让并行的用户手势串台,见 canvasGestureContext 纪律)。
-  const inCtx = <T,>(fn: () => T): T => (gesture ? withCanvasGestureContext(gesture, fn) : fn())
+  const inCtx = <T>(fn: () => T): T => (gesture ? withCanvasGestureContext(gesture, fn) : fn())
 
   if (toolName === 'read_canvas_state') {
     // T1 token 优化:回包用紧凑行格式(与 system prompt 的画布段同源),
@@ -331,6 +351,26 @@ export async function applyCanvasToolCall(toolName: string, args: unknown, gestu
         }
       }
     }
+    // 批量落节点后统一请求适应视图。AI 直接建卡、方案确认和示例引导都走这里，
+    // 避免调用方漏触发后只看到被视口裁断的一部分新节点。单节点保留用户当前视口。
+    if (created.length > 1) {
+      const workbench = useWorkbenchStore.getState()
+      const categoryCounts = new Map<string, { count: number; firstIndex: number }>()
+      created.forEach((node, index) => {
+        const categoryId = node.categoryId || 'shots'
+        const current = categoryCounts.get(categoryId)
+        categoryCounts.set(categoryId, { count: (current?.count ?? 0) + 1, firstIndex: current?.firstIndex ?? index })
+      })
+      const fitCategoryId = categoryCounts.has(workbench.activeCategoryId)
+        ? workbench.activeCategoryId
+        : [...categoryCounts.entries()].sort(
+            ([leftId, left], [rightId, right]) =>
+              right.count - left.count ||
+              Number(rightId === 'shots') - Number(leftId === 'shots') ||
+              left.firstIndex - right.firstIndex,
+          )[0]?.[0]
+      workbench.requestCanvasFit(fitCategoryId)
+    }
     return {
       createdNodeIds: created.map((node) => node.id),
       clientIdToNodeId,
@@ -404,17 +444,19 @@ export async function applyCanvasToolCall(toolName: string, args: unknown, gestu
     if (!parsed.move && !parsed.customMove) {
       throw new Error('create_camera_move 需要 move（词表内精确运镜）或 customMove（词表外自由描述）二选一')
     }
-    if (parsed.move && parsed.customMove) {
-      throw new Error('create_camera_move 的 move 与 customMove 互斥：词表内用 move，词表外只用 customMove')
-    }
-
     // 词表外逃生口：只有 customMove → 不渲运镜小片，把运镜意图当电影术语指令追加进
     // 目标「视频节点」prompt（i2v 文字通道，模型自己解；精度略低但不硬塞错的 enum）。
     if (!parsed.move && parsed.customMove) {
       if (!targetNodeId) {
         throw new Error('customMove 需要 shotClientId 指向该镜头的视频节点才能注入运镜指令')
       }
-      const outcome = appendDirectiveToNodePrompt(targetNodeId, '镜头运动', parsed.customMove, 'cameraMovePromptApplied', inCtx)
+      const outcome = appendDirectiveToNodePrompt(
+        targetNodeId,
+        '镜头运动',
+        parsed.customMove,
+        'cameraMovePromptApplied',
+        inCtx,
+      )
       if (!outcome.found) throw new Error('node_not_found:customMove 的目标节点不存在')
       return {
         cameraMoveNodeId: null,

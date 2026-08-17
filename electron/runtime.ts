@@ -373,7 +373,7 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const kind = request.kind;
   const wantedKind = billingKindForTaskKind(kind);
   const modelKey = firstString(request.extras?.modelKey, request.extras?.modelAlias);
-  const { vendor, model, apiKey } = findExecutableModel(vendorKey, modelKey, wantedKind);
+  const { vendor, model, apiKey, customConfig } = findExecutableModel(vendorKey, modelKey, wantedKind);
   const projectId = trim(request.extras?.projectId) || activeTaskProjectFallback();
   const nodeId = trim(request.extras?.nodeId);
   const grantId = trim(request.extras?.grantId);
@@ -387,7 +387,7 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const guardError = imageEditGuardError(kind, request, Boolean(mapping) || Boolean(customCallScript), model.labelZh || model.modelKey, customCallScript ? undefined : mapping?.create?.body);
   if (guardError) throw new Error(guardError);
   if (customCallScript) // 先于 mapping/fallback；注入避免循环依赖。文本也走这里（去掉 wantedKind!=="text" 排除：那等于「接不上的文本模型毫无出路」，而用户最初踩的正是文本模型）；文本脚本 return { text }
-    return runCustomCallTask({ vendor, model, apiKey, script: customCallScript, taskKind: customCall!.taskKind, modeId: customCall!.modeId, request, kind, wantedKind, projectId, nodeId, grantId, taskId, localizeTaskAsset, writeAsset });
+    return runCustomCallTask({ vendor, model, apiKey, customConfig, script: customCallScript, taskKind: customCall!.taskKind, modeId: customCall!.modeId, request, kind, wantedKind, projectId, nodeId, grantId, taskId, localizeTaskAsset, writeAsset });
   // 第四路 audio：没有脚本接管时才走 TTS/Whisper 同步收口（二进制/multipart）。
   if (wantedKind === "audio") {
     assertAndConsumeSpendGrant(grantId, nodeId);

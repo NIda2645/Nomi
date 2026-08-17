@@ -124,6 +124,31 @@ describe("compileFfmpegFiltergraph", () => {
     expect(plan.filterComplex).toContain("[vstack0][clip_clip_top_fitted]overlay");
   });
 
+  it("splits repeated visual inputs before branching the filtergraph", () => {
+    const plan = compileFfmpegFiltergraph({
+      manifest: manifest({
+        assets: { video1: { id: "video1", kind: "video", absolutePath: "/media/source.mp4" } },
+        timeline: {
+          fps: 30,
+          durationFrames: 120,
+          range: { startFrame: 0, endFrame: 120 },
+          tracks: [{
+            id: "visual-1",
+            kind: "visual",
+            clips: [
+              { id: "clip-first", assetId: "video1", startFrame: 0, endFrame: 60 },
+              { id: "clip-second", assetId: "video1", startFrame: 60, endFrame: 120 },
+            ],
+          }],
+        },
+      }),
+    });
+
+    expect(plan.filterComplex).toContain("[0:v]split=2[clip_clip_first_video_source][clip_clip_second_video_source]");
+    expect(plan.filterComplex).toContain("[clip_clip_first_video_source]trim=start=0:end=2");
+    expect(plan.filterComplex).toContain("[clip_clip_second_video_source]trim=start=0:end=2");
+  });
+
   it("emits white background and shifts non-zero-start visual clips into timeline PTS", () => {
     const plan = compileFfmpegFiltergraph({
       manifest: manifest({
@@ -206,7 +231,7 @@ describe("compileFfmpegFiltergraph", () => {
     expect(plan.filterComplex).not.toContain("amix");
   });
 
-  it("多个音频源 → amix（normalize=0 防 1/N 衰减）", () => {
+  it("多个音频源 → 等长 amix 后恢复未归一化音量", () => {
     const plan = compileFfmpegFiltergraph({
       manifest: manifest({
         profile: { ...profile, audioCodec: "aac", audioMode: "mixdown" },
@@ -224,7 +249,10 @@ describe("compileFfmpegFiltergraph", () => {
       }),
     });
     expect(plan.audioOutputLabel).toBe("[aout]");
-    expect(plan.filterComplex).toContain("amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]");
+    expect(plan.filterComplex).toContain("adelay=0|0,apad,atrim=end=10[clip_a_clip_1_audio0]");
+    expect(plan.filterComplex).toContain("adelay=1000|1000,apad,atrim=end=10[clip_a_clip_2_audio1]");
+    expect(plan.filterComplex).toContain("amix=inputs=2:duration=longest:dropout_transition=0,volume=2[aout]");
+    expect(plan.filterComplex).not.toContain("normalize=");
   });
 
   it("从自带音轨的 video clip 提取源音轨（hasAudio）", () => {
@@ -245,6 +273,32 @@ describe("compileFfmpegFiltergraph", () => {
     // 同一输入的音轨被提取到 [aout]
     expect(plan.audioOutputLabel).toBe("[aout]");
     expect(plan.filterComplex).toContain("[0:a]atrim=start=1:end=3,asetpts=PTS-STARTPTS,adelay=0|0[aout]");
+  });
+
+  it("asplits repeated video audio inputs before mixing", () => {
+    const plan = compileFfmpegFiltergraph({
+      manifest: manifest({
+        profile: { ...profile, audioCodec: "aac", audioMode: "mixdown" },
+        assets: { video1: { id: "video1", kind: "video", absolutePath: "/media/clip.mp4", hasAudio: true } },
+        timeline: {
+          fps: 30,
+          durationFrames: 120,
+          range: { startFrame: 0, endFrame: 120 },
+          tracks: [{
+            id: "visual-1",
+            kind: "visual",
+            clips: [
+              { id: "clip-first", assetId: "video1", startFrame: 0, endFrame: 60 },
+              { id: "clip-second", assetId: "video1", startFrame: 60, endFrame: 120 },
+            ],
+          }],
+        },
+      }),
+    });
+
+    expect(plan.filterComplex).toContain("[0:a]asplit=2[clip_clip_first_audio_source][clip_clip_second_audio_source]");
+    expect(plan.filterComplex).toContain("[clip_clip_first_audio_source]atrim=start=0:end=2");
+    expect(plan.filterComplex).toContain("[clip_clip_second_audio_source]atrim=start=0:end=2");
   });
 
   it("video clip 无音轨（hasAudio 未设）→ 不产出音频", () => {

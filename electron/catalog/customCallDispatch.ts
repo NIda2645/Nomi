@@ -22,6 +22,7 @@ export type CustomCallDispatchInput = {
   vendor: Vendor;
   model: Model;
   apiKey: string;
+  customConfig: Record<string, string>;
   script: string;
   taskKind: TaskRequest["kind"];
   modeId?: string;
@@ -46,7 +47,7 @@ export type CustomCallDispatchInput = {
 };
 
 export async function runCustomCallTask(input: CustomCallDispatchInput): Promise<TaskResult> {
-  const { vendor, model, apiKey, script, taskKind, modeId, request, kind, wantedKind, projectId, nodeId, grantId, taskId } = input;
+  const { vendor, model, apiKey, customConfig, script, taskKind, modeId, request, kind, wantedKind, projectId, nodeId, grantId, taskId } = input;
   // S8 指纹缓存同语义：脚本内容进 recipe（改脚本=新配方），mappingId 槽复用为脚本指纹。
   const scriptHash = crypto.createHash("sha1").update(script).digest("hex").slice(0, 16);
   const recipe = buildNormalizedRecipe({ vendor, model, mappingId: `custom-call:${scriptHash}`, request });
@@ -78,6 +79,7 @@ export async function runCustomCallTask(input: CustomCallDispatchInput): Promise
       vendor,
       model,
       apiKey,
+      customConfig,
       script,
       prompt: trim(effectiveRequest.prompt),
       params: taskTemplateParams(effectiveRequest),

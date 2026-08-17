@@ -517,6 +517,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     retypeModel: (payload: { vendorKey: string; modelKey: string; kind: string }) =>
       invokeSync("nomi:model-catalog:model:retype", payload),
     customCallContract: () => invokeSync("nomi:model-catalog:custom-call:contract"),
+    customCallConfigGet: (vendorKey: string) =>
+      invokeSync("nomi:model-catalog:custom-call:config:get", vendorKey),
+    customCallConfigSave: (vendorKey: string, payload: unknown) =>
+      invokeSync("nomi:model-catalog:custom-call:config:save", vendorKey, payload),
     customCallAiInstruction: (payload: unknown) => invokeSync("nomi:model-catalog:custom-call:ai-instruction", payload),
     customCallTestRun: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-run", payload),
     customCallTestGet: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-get", payload),

@@ -3,6 +3,7 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import {
   didComposerAvailableSpaceChange,
+  ENSURE_COMPOSER_VISIBLE_EVENT,
   getUnobstructedComposerSpaceBelow,
   shouldAllowComposerAttachmentRecompute,
   shouldPreserveComposerAttachmentOnRatioChange,
@@ -10,6 +11,7 @@ import {
 
 const FLIP_HYSTERESIS = 48
 const TOOLBAR_CLEARANCE_GAP = 18
+const VIEWPORT_MARGIN = 12
 
 export const NODE_FLOATING_TOOLBAR_SELECTOR = '[data-node-floating-toolbar="true"]'
 
@@ -23,6 +25,81 @@ type Placement = {
   flipUp: boolean
   aboveClearance: number
   shiftX: number
+  maxHeight: number
+}
+
+export function resolveComposerViewportGeometry(input: {
+  previousFlipUp: boolean
+  spaceAbove: number
+  spaceBelow: number
+  toolbarScreenHeight: number
+  canvasZoom: number
+  gap: number
+  contentHeight: number
+  preferredMaxHeight: number
+}): {
+  flipUp: boolean
+  maxHeight: number
+  availableAbove: number
+  availableBelow: number
+  aboveClearance: number
+} {
+  const zoom = input.canvasZoom || 1
+  const aboveClearance = toolbarClearanceInCanvasUnits(
+    input.toolbarScreenHeight,
+    zoom,
+    TOOLBAR_CLEARANCE_GAP,
+  )
+  const availableAbove = Math.max(
+    0,
+    input.spaceAbove - VIEWPORT_MARGIN - (input.gap + aboveClearance) * zoom,
+  )
+  const availableBelow = Math.max(
+    0,
+    input.spaceBelow - VIEWPORT_MARGIN - input.gap * zoom,
+  )
+  const neededHeight = Math.min(
+    input.preferredMaxHeight,
+    input.contentHeight > 0 ? input.contentHeight : input.preferredMaxHeight,
+  )
+  const aboveFits = availableAbove >= neededHeight
+  const belowFits = availableBelow >= neededHeight
+
+  let flipUp = input.previousFlipUp
+  if (aboveFits !== belowFits) {
+    flipUp = aboveFits
+  } else if (!aboveFits && !belowFits) {
+    // When neither side can fit the full card, stale attachment hysteresis must not
+    // pin it to the smaller side. Use the roomier side and scroll inside the card.
+    if (availableAbove !== availableBelow) flipUp = availableAbove > availableBelow
+  } else if (input.previousFlipUp && availableBelow >= neededHeight + FLIP_HYSTERESIS) {
+    flipUp = false
+  }
+
+  const selectedSpace = flipUp ? availableAbove : availableBelow
+  return {
+    flipUp,
+    maxHeight: Math.max(0, Math.floor(Math.min(input.preferredMaxHeight, selectedSpace))),
+    availableAbove,
+    availableBelow,
+    aboveClearance,
+  }
+}
+
+export function resolveComposerViewportPanDelta(input: {
+  availableAbove: number
+  availableBelow: number
+  neededHeight: number
+}): number {
+  if (input.availableAbove >= input.neededHeight || input.availableBelow >= input.neededHeight) return 0
+
+  const moveUp = input.neededHeight - input.availableBelow
+  const moveDown = input.neededHeight - input.availableAbove
+  const canMoveUp = moveUp <= input.availableAbove
+  const canMoveDown = moveDown <= input.availableBelow
+  if (!canMoveUp && !canMoveDown) return 0
+  if (canMoveUp && (!canMoveDown || moveUp <= moveDown)) return -moveUp
+  return moveDown
 }
 
 /**
@@ -33,16 +110,19 @@ export function useComposerViewportPlacement(input: {
   node: GenerationCanvasNode
   visualSize: { width: number; height: number }
   gap: number
+  preferredMaxHeight: number
 }): Placement {
-  const { node, visualSize, gap } = input
+  const { node, visualSize, gap, preferredMaxHeight } = input
   const canvasZoom = useGenerationCanvasStore((state) => state.canvasZoom)
   const canvasOffset = useGenerationCanvasStore((state) => state.canvasOffset)
   const anchorRef = React.useRef<HTMLDivElement>(null)
   const [flipUp, setFlipUp] = React.useState(false)
   const [aboveClearance, setAboveClearance] = React.useState(0)
   const [shiftX, setShiftX] = React.useState(0)
+  const [maxHeight, setMaxHeight] = React.useState(preferredMaxHeight)
   const aspectRatioKey = typeof node.meta?.aspect_ratio === 'string' ? node.meta.aspect_ratio : ''
   const previousAspectRatioRef = React.useRef<string | null>(null)
+  const panRequestPendingRef = React.useRef(false)
 
   React.useLayoutEffect(() => {
     const anchor = anchorRef.current
@@ -64,7 +144,7 @@ export function useComposerViewportPlacement(input: {
     const recompute = (changes: { availableSpaceChanged?: boolean; obstacleChanged?: boolean } = {}) => {
       const stageRect = stage.getBoundingClientRect()
       const nodeRect = nodeEl.getBoundingClientRect()
-      const margin = 12
+      const margin = VIEWPORT_MARGIN
       const cardScreenWidth = anchor.offsetWidth
       const centerX = nodeRect.left + nodeRect.width / 2
       const wouldLeft = centerX - cardScreenWidth / 2
@@ -76,7 +156,6 @@ export function useComposerViewportPlacement(input: {
       if (wouldLeft + nextShiftX < minLeft) nextShiftX = minLeft - wouldLeft
       setShiftX(Math.round(nextShiftX))
 
-      const neededScreenHeight = (anchor.offsetHeight || 280) + gap * canvasZoom
       const timelineHandle = workspaceCanvas?.querySelector<HTMLElement>('.workbench-generation__timeline-handle')
       const spaceBelow = getUnobstructedComposerSpaceBelow({
         stage: stageRect,
@@ -85,27 +164,55 @@ export function useComposerViewportPlacement(input: {
         obstacles: timelineHandle ? [timelineHandle.getBoundingClientRect()] : [],
       })
       const spaceAbove = nodeRect.top - stageRect.top
-      const attachmentObstructed = flipUp
-        ? spaceAbove < neededScreenHeight + aboveClearance * canvasZoom
-        : spaceBelow < neededScreenHeight
+      const toolbar = nodeEl.querySelector<HTMLElement>(NODE_FLOATING_TOOLBAR_SELECTOR)
+      const toolbarScreenHeight = toolbar ? toolbar.getBoundingClientRect().height : 0
+      const card = anchor.querySelector<HTMLElement>('.generation-canvas-v2-node__composer-card')
+      const geometry = resolveComposerViewportGeometry({
+        previousFlipUp: flipUp,
+        spaceAbove,
+        spaceBelow,
+        toolbarScreenHeight,
+        canvasZoom,
+        gap,
+        contentHeight: card?.scrollHeight || anchor.offsetHeight || preferredMaxHeight,
+        preferredMaxHeight,
+      })
+      const selectedAvailableSpace = flipUp ? geometry.availableAbove : geometry.availableBelow
+      const neededScreenHeight = Math.min(
+        preferredMaxHeight,
+        card?.scrollHeight || anchor.offsetHeight || preferredMaxHeight,
+      )
+      const panDeltaY = resolveComposerViewportPanDelta({
+        availableAbove: geometry.availableAbove,
+        availableBelow: geometry.availableBelow,
+        neededHeight: neededScreenHeight,
+      })
+      if (panDeltaY === 0) {
+        panRequestPendingRef.current = false
+      } else if (!panRequestPendingRef.current) {
+        panRequestPendingRef.current = true
+        window.dispatchEvent(new CustomEvent(ENSURE_COMPOSER_VISIBLE_EVENT, {
+          detail: { deltaY: panDeltaY },
+        }))
+      }
+      const attachmentObstructed = selectedAvailableSpace < neededScreenHeight
       const allowFlip = shouldAllowComposerAttachmentRecompute({
         preserveForRatioChange: preserveAttachment,
         availableSpaceChanged: changes.availableSpaceChanged ?? false,
         obstacleChanged: changes.obstacleChanged ?? false,
         attachmentObstructed,
       })
-      if (allowFlip) {
-        setFlipUp((previous) => (
-          previous
-            ? !(spaceBelow > neededScreenHeight + FLIP_HYSTERESIS)
-            : spaceBelow < neededScreenHeight && spaceAbove > spaceBelow
-        ))
-      }
-
-      const toolbar = nodeEl.querySelector<HTMLElement>(NODE_FLOATING_TOOLBAR_SELECTOR)
-      const toolbarScreenHeight = toolbar ? toolbar.getBoundingClientRect().height : 0
-      setAboveClearance(
-        toolbarClearanceInCanvasUnits(toolbarScreenHeight, canvasZoom, TOOLBAR_CLEARANCE_GAP),
+      const nextFlipUp = allowFlip ? geometry.flipUp : flipUp
+      setFlipUp(nextFlipUp)
+      setAboveClearance(geometry.aboveClearance)
+      setMaxHeight(
+        Math.max(
+          0,
+          Math.floor(Math.min(
+            preferredMaxHeight,
+            nextFlipUp ? geometry.availableAbove : geometry.availableBelow,
+          )),
+        ),
       )
     }
 
@@ -168,9 +275,10 @@ export function useComposerViewportPlacement(input: {
     node.position?.x,
     node.position?.y,
     node.result?.url,
+    preferredMaxHeight,
     visualSize.height,
     visualSize.width,
   ])
 
-  return { anchorRef, canvasZoom, flipUp, aboveClearance, shiftX }
+  return { anchorRef, canvasZoom, flipUp, aboveClearance, shiftX, maxHeight }
 }

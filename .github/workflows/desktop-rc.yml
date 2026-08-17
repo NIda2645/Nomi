@@ -21,6 +21,8 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
     outputs:
       sha: ${{ steps.source.outputs.sha }}
     steps:
@@ -38,29 +40,20 @@ jobs:
       - id: source
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Validate version
-        run: node scripts/release-contract.mjs validate-version --root . --version "${{ inputs.version }}"
       - run: pnpm install --frozen-lockfile
+      - name: Validate version
+        run: node scripts/release-contract.mjs validate-version --root . --version "$RELEASE_VERSION"
       - name: Repository gates
         run: pnpm run gates
       - name: Electron smoke journeys
         run: xvfb-run -a pnpm run test:e2e
       - name: Real user journey suite
         run: xvfb-run -a pnpm run test:journeys
-      - name: Write immutable RC manifest
-        run: >-
-          node scripts/release-contract.mjs write-manifest
-          --output release-rc/release-manifest.json
-          --repository "${{ github.repository }}"
-          --sha "${{ steps.source.outputs.sha }}"
-          --version "${{ inputs.version }}"
-          --run-id "${{ github.run_id }}"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rc-metadata
-          path: release-rc/release-manifest.json
-          if-no-files-found: error
-          retention-days: 30
+      - name: Release-critical feature journeys
+        run: |
+          xvfb-run -a node tests/ux/clip-node-editing.walk.mjs
+          xvfb-run -a node tests/ux/production-mcp-journey.e2e.mjs
+          xvfb-run -a node tests/ux/canvas-performance-benchmark.e2e.mjs rc --scale S --runs 1 --warmup 0 --scenario media-reveal,media-error,video-hover,reload-heavy
 
   macos:
     needs: validate
@@ -76,7 +69,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --force
       - run: pnpm run build
       - name: Package both macOS architectures without publishing
         run: pnpm exec electron-builder --mac --publish never
@@ -84,6 +77,8 @@ jobs:
         run: |
           node scripts/packaging/audit-packaged-media.cjs release/mac-arm64/Nomi.app darwin arm64
           node scripts/packaging/audit-packaged-media.cjs release/mac/Nomi.app darwin x64
+      - name: Verify packaged MCP on Apple Silicon
+        run: node tests/ux/packaged-mcp-smoke.e2e.mjs release/mac-arm64/Nomi.app
       - uses: actions/upload-artifact@v4
         with:
           name: rc-macos
@@ -113,6 +108,10 @@ jobs:
       - run: pnpm run build
       - name: Package Windows without publishing
         run: pnpm exec electron-builder --win nsis --x64 --publish never
+      - name: Verify packaged media target
+        run: node scripts/packaging/audit-packaged-media.cjs release/win-unpacked win32 x64
+      - name: Verify packaged MCP on Windows
+        run: node tests/ux/packaged-mcp-smoke.e2e.mjs release/win-unpacked/Nomi.exe
       - uses: actions/upload-artifact@v4
         with:
           name: rc-windows
@@ -120,5 +119,57 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest.yml
+          if-no-files-found: error
+          retention-days: 30
+
+  finalize:
+    needs: [validate, macos, windows]
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      REPOSITORY: ${{ github.repository }}
+      RC_SHA: ${{ needs.validate.outputs.sha }}
+      RC_RUN_ID: ${{ github.run_id }}
+      RC_RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: rc-macos
+          path: release-rc/artifacts/macos
+      - uses: actions/download-artifact@v4
+        with:
+          name: rc-windows
+          path: release-rc/artifacts/windows
+      - name: Validate the complete platform asset set
+        run: >-
+          node scripts/release-contract.mjs prepare-assets
+          --input release-rc/artifacts
+          --output release-rc/preflight
+          --version "$RELEASE_VERSION"
+      - name: Write immutable RC manifest after packaging
+        run: >-
+          node scripts/release-contract.mjs write-manifest
+          --output release-rc/release-manifest.json
+          --repository "$REPOSITORY"
+          --sha "$RC_SHA"
+          --version "$RELEASE_VERSION"
+          --run-id "$RC_RUN_ID"
+          --run-attempt "$RC_RUN_ATTEMPT"
+          --artifacts release-rc/artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rc-metadata
+          path: release-rc/release-manifest.json
           if-no-files-found: error
           retention-days: 30

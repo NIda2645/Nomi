@@ -28,7 +28,11 @@ describe('CustomCallEditor mode scripts', () => {
   })
 
   it('lets the user stop a trial and cancels stale trials when script context changes', () => {
-    expect(editor).toContain('testBusy ? cancelTest() : runTest()')
+    expect(editor).toContain('const runOrCancelTest = React.useCallback')
+    expect(editor).toContain('await cancelTest()')
+    expect(editor).toContain('persistVendorConfig()')
+    expect(editor).toContain('await runTest()')
+    expect(editor).toContain('void runOrCancelTest()')
     expect(testRunHook).toContain('customCallTestCancel?.({ runId: activeRunId })')
     expect(testRunHook).toContain('customCallTestCancel({ runId: testRunId })')
   })

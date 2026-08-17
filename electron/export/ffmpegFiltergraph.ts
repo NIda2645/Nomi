@@ -124,6 +124,10 @@ function labelForClip(clipId: string, suffix: string): string {
   return `clip_${safeId}_${suffix}`;
 }
 
+function sourceLabelForClip(clip: Pick<ResolvedClip, "clip">, stream: "video" | "audio"): string {
+  return labelForClip(clip.clip.id, `${stream}_source`);
+}
+
 function isAudioTrack(track: NomiRenderTrack): boolean {
   return track.kind === "audio" || track.type === "audio";
 }
@@ -182,13 +186,14 @@ function buildInputs(resolvedClips: ResolvedClip[], fps: number): FfmpegFiltergr
 /**
  * 构建音频滤镜。音频源 = 独立音频轨 clip + 自带音轨的 video clip（asset.hasAudio）。
  * 每个源：按源内区间 atrim → asetpts 归零 → adelay 平移到时间轴位置。
- * 多源用 amix 合并；normalize=0 避免默认按输入数 1/N 衰减（顺序不重叠的 clip 应保持原音量）。
+ * 多源先补齐到时间轴全长，再用旧版 FFmpeg 兼容的 amix + volume 恢复未归一化音量。
  * 返回滤镜行数组（空 = 无音频，输出无 [aout]）。
  */
 function buildAudioGraph(
   resolvedClips: ResolvedClip[],
   profileAudioCodec: NomiRenderManifestV1["profile"]["audioCodec"],
   fps: number,
+  timelineDurationSeconds: number,
 ): string[] {
   if (profileAudioCodec === "none") return [];
 
@@ -199,23 +204,49 @@ function buildAudioGraph(
   if (audioSources.length === 0) return [];
 
   const filters: string[] = [];
+  const sourceUseCount = new Map<number, number>();
+  audioSources.forEach(({ inputIndex }) => {
+    sourceUseCount.set(inputIndex, (sourceUseCount.get(inputIndex) ?? 0) + 1);
+  });
+  const sourceUseIndex = new Map<number, number>();
+  audioSources.forEach((source) => {
+    const count = sourceUseCount.get(source.inputIndex) ?? 1;
+    if (count <= 1) return;
+    const index = sourceUseIndex.get(source.inputIndex) ?? 0;
+    if (index === 0) {
+      const labels = audioSources
+        .filter(({ inputIndex }) => inputIndex === source.inputIndex)
+        .map((candidate) => `[${sourceLabelForClip(candidate, "audio")}]`)
+        .join("");
+      filters.push(`[${source.inputIndex}:a]asplit=${count}${labels}`);
+    }
+    sourceUseIndex.set(source.inputIndex, index + 1);
+  });
   const sourceLabels: string[] = [];
   audioSources.forEach(({ clip, inputIndex }, index) => {
     const outLabel = audioSources.length === 1 ? "aout" : labelForClip(clip.id, `audio${index}`);
+    const sourceCount = sourceUseCount.get(inputIndex) ?? 1;
+    const sourceLabel = sourceCount > 1
+      ? `[${sourceLabelForClip({ clip }, "audio")}]`
+      : `[${inputIndex}:a]`;
     const startMs = Math.round(secondsFromFrames(clip.startFrame, fps) * 1000);
     const clipDurationFrames = clip.endFrame - clip.startFrame;
     const sourceStart = secondsFromFrames(clip.sourceStartFrame ?? 0, fps);
     const sourceEnd = secondsFromFrames(clip.sourceEndFrame ?? (clip.sourceStartFrame ?? 0) + clipDurationFrames, fps);
+    const equalizeDuration = audioSources.length > 1
+      ? `,apad,atrim=end=${formatSeconds(timelineDurationSeconds)}`
+      : "";
     filters.push(
-      `[${inputIndex}:a]atrim=start=${formatSeconds(sourceStart)}:end=${formatSeconds(sourceEnd)},` +
-        `asetpts=PTS-STARTPTS,adelay=${startMs}|${startMs}[${outLabel}]`,
+      `${sourceLabel}atrim=start=${formatSeconds(sourceStart)}:end=${formatSeconds(sourceEnd)},` +
+        `asetpts=PTS-STARTPTS,adelay=${startMs}|${startMs}${equalizeDuration}[${outLabel}]`,
     );
     sourceLabels.push(`[${outLabel}]`);
   });
 
   if (sourceLabels.length > 1) {
     filters.push(
-      `${sourceLabels.join("")}amix=inputs=${sourceLabels.length}:duration=longest:dropout_transition=0:normalize=0[aout]`,
+      `${sourceLabels.join("")}amix=inputs=${sourceLabels.length}:duration=longest:dropout_transition=0,` +
+        `volume=${sourceLabels.length}[aout]`,
     );
   }
 
@@ -240,22 +271,41 @@ function buildVisualGraph(manifest: NomiRenderManifestV1, visualClips: ResolvedC
     );
   });
 
+  // A single FFmpeg input pad cannot safely feed multiple filter branches on
+  // older Linux builds. Split repeated visual sources explicitly so a clip
+  // reused later in the timeline cannot stall the export graph.
+  const visualSourceGroups = new Map<number, ResolvedClip[]>();
+  orderedVisualClips.forEach((resolvedClip) => {
+    const group = visualSourceGroups.get(resolvedClip.inputIndex) ?? [];
+    group.push(resolvedClip);
+    visualSourceGroups.set(resolvedClip.inputIndex, group);
+  });
+  visualSourceGroups.forEach((group, inputIndex) => {
+    if (group.length <= 1) return;
+    const labels = group.map((resolvedClip) => `[${sourceLabelForClip(resolvedClip, "video")}]`).join("");
+    filters.push(`[${inputIndex}:v]split=${group.length}${labels}`);
+  });
+
   orderedVisualClips.forEach(({ clip, asset, inputIndex }) => {
     const segmentLabel = labelForClip(clip.id, "segment");
     const fittedLabel = labelForClip(clip.id, "fitted");
+    const sourceCount = visualSourceGroups.get(inputIndex)?.length ?? 1;
+    const sourceLabel = sourceCount > 1
+      ? `[${sourceLabelForClip({ clip }, "video")}]`
+      : `[${inputIndex}:v]`;
     const start = secondsFromFrames(clip.startFrame, fps);
     const duration = secondsFromFrames(clip.endFrame - clip.startFrame, fps);
     const timelineSetpts = `PTS-STARTPTS+${formatSeconds(start)}/TB`;
 
     if (asset.kind === "image") {
       filters.push(
-        `[${inputIndex}:v]trim=duration=${formatSeconds(duration)},setpts=${timelineSetpts}[${segmentLabel}]`,
+        `${sourceLabel}trim=duration=${formatSeconds(duration)},setpts=${timelineSetpts}[${segmentLabel}]`,
       );
     } else if (asset.kind === "video") {
       const sourceStart = secondsFromFrames(clip.sourceStartFrame ?? 0, fps);
       const sourceEnd = secondsFromFrames(clip.sourceEndFrame ?? (clip.sourceStartFrame ?? 0) + (clip.endFrame - clip.startFrame), fps);
       filters.push(
-        `[${inputIndex}:v]trim=start=${formatSeconds(sourceStart)}:end=${formatSeconds(sourceEnd)},setpts=${timelineSetpts}[${segmentLabel}]`,
+        `${sourceLabel}trim=start=${formatSeconds(sourceStart)}:end=${formatSeconds(sourceEnd)},setpts=${timelineSetpts}[${segmentLabel}]`,
       );
     } else {
       throw new FfmpegFiltergraphError("unsupported_clip", `Asset ${asset.id} is not visual`);
@@ -328,8 +378,9 @@ export function compileFfmpegFiltergraph(input: FfmpegFiltergraphInput): FfmpegF
 
   const resolvedClips = collectReferencedClips(manifest);
   const visualClips = resolvedClips.filter(({ track, asset }) => isVisualTrack(track) || asset.kind === "image" || asset.kind === "video");
+  const durationSeconds = secondsFromFrames(manifest.timeline.durationFrames, fps);
 
-  const audioFilters = buildAudioGraph(resolvedClips, manifest.profile.audioCodec, fps);
+  const audioFilters = buildAudioGraph(resolvedClips, manifest.profile.audioCodec, fps, durationSeconds);
   const visual = buildVisualGraph(manifest, visualClips);
   const filters = visual.filters;
 
@@ -337,7 +388,6 @@ export function compileFfmpegFiltergraph(input: FfmpegFiltergraphInput): FfmpegF
   let videoOutputLabel = "[vout]";
   if (textOverlays.length > 0) {
     // 文字层接在视觉链尾（最上层），末条 overlay 收口 format=pixelFormat → [voutfinal]。
-    const durationSeconds = secondsFromFrames(manifest.timeline.durationFrames, fps);
     const overlayGraph = buildTextOverlayGraph(
       textOverlays,
       inputs.length,

@@ -7,6 +7,7 @@ import { useWorkbenchStore } from './workbenchStore'
 describe('requestCanvasFit（落画布揭示新镜头信号）', () => {
   it('初始 canvasFitNonce 为 0', () => {
     expect(useWorkbenchStore.getState().canvasFitNonce).toBe(0)
+    expect(useWorkbenchStore.getState().canvasFitCategoryId).toBeNull()
   })
 
   it('每次 requestCanvasFit 单调递增 nonce（一次性信号，消费端按变化触发）', () => {
@@ -22,5 +23,12 @@ describe('requestCanvasFit（落画布揭示新镜头信号）', () => {
     const rev = useWorkbenchStore.getState().persistRevision
     useWorkbenchStore.getState().requestCanvasFit()
     expect(useWorkbenchStore.getState().persistRevision).toBe(rev)
+  })
+
+  it('显式目标分类与 nonce 原子更新并立即切换', () => {
+    useWorkbenchStore.getState().setActiveCategoryId('audio')
+    useWorkbenchStore.getState().requestCanvasFit('shots')
+    expect(useWorkbenchStore.getState().activeCategoryId).toBe('shots')
+    expect(useWorkbenchStore.getState().canvasFitCategoryId).toBe('shots')
   })
 })
