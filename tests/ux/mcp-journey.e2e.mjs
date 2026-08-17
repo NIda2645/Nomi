@@ -37,22 +37,19 @@ import {
   spawnMcpStdioClient,
   parseToolResult,
   makeIsolatedDirs,
+  NODE_KIND_DEFAULT_SIZE,
+  NODE_KIND_FALLBACK_SIZE,
 } from './_mcpJourney.mjs'
 
 const OVERHEAD_BUDGET_MS = 2_000 // non-model per-step overhead ceiling (generate steps excluded, mock latency)
 const JOURNEY_BUDGET_MS = 180_000 // full journey bound (matches production-mcp-journey's 40s×steps envelope)
 
-// Per-kind default node sizes (mirrors electron/capabilityCore/nodeKindDomain.ts NODE_KIND_DEFAULT_SIZE).
-// readCanvas returns only position, so the AABB-overlap check derives each box's size from its kind. The
-// layout stacks/columns by FOOTPRINT (size + render safety, strictly larger), so raw-size boxes are a
-// conservative test: if these don't overlap, the real (larger-spaced) footprints certainly don't.
-// Declared at module top (before the journey runs) to avoid a temporal-dead-zone on step i.
-const NODE_KIND_SIZE = {
-  text: { width: 280, height: 200 }, character: { width: 300, height: 190 }, scene: { width: 300, height: 190 },
-  image: { width: 340, height: 280 }, keyframe: { width: 320, height: 220 }, video: { width: 420, height: 340 },
-  audio: { width: 420, height: 80 }, shot: { width: 340, height: 230 }, model3d: { width: 320, height: 300 },
-}
-const FALLBACK_NODE_SIZE = { width: 340, height: 280 }
+// Per-kind default node sizes come from the BUILT production table (NODE_KIND_DEFAULT_SIZE, imported via
+// _mcpJourney.mjs) — never hand-copied, so this can't silently drift from nodeKindDomain.ts and the check
+// covers whatever kinds production defines. readCanvas returns only position, so the AABB-overlap check
+// derives each box's size from its kind. The layout stacks/columns by FOOTPRINT (size + render safety,
+// strictly larger), so raw-size boxes are a conservative test: if these don't overlap, the real
+// (larger-spaced) footprints certainly don't.
 
 const metricsDir = path.join(repoRoot, 'test-results')
 fs.mkdirSync(metricsDir, { recursive: true })
@@ -372,10 +369,10 @@ function findProjectDirName(projectsDir, projectId) {
   return ''
 }
 
-/** Count overlapping axis-aligned bounding boxes among canvas nodes (size derived from kind; table at top). */
+/** Count overlapping axis-aligned bounding boxes among canvas nodes (size from the built per-kind table). */
 function countAabbOverlaps(nodes) {
   const boxes = nodes.map((n) => {
-    const size = NODE_KIND_SIZE[n.kind] || FALLBACK_NODE_SIZE
+    const size = NODE_KIND_DEFAULT_SIZE[n.kind] || NODE_KIND_FALLBACK_SIZE
     return { x: n.position?.x ?? 0, y: n.position?.y ?? 0, w: size.width, h: size.height }
   })
   let count = 0

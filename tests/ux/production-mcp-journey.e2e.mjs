@@ -1,17 +1,20 @@
 // Real built Electron + real MCP stdio Production Run journey. No provider calls: the fixture is
 // double-gated and disabled in packaged builds. This test owns all four GUI approvals and proves
 // durable restart recovery, safe MCP projections, preview authorization, and a valid final MP4.
-import { execFileSync, spawn } from 'node:child_process'
+//
+// Transport framing (spawn / initialize / rpc / callTool / terminate) lives in the ONE shared module
+// _mcpJourney.mjs — this sibling and J-MCP1 (mcp-journey.e2e.mjs) both drive it, so there is a single
+// spawn/JSON-RPC implementation (P1: no copy-paste). Differences from J-MCP1 are passed as options:
+// the io.modelcontextprotocol/ui client capability + Codex clientInfo, and the production fixture env.
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import readline from 'node:readline'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
-import { launchNomiApp, withLinuxNoSandbox } from './_launchApp.mjs'
+import { launchNomiApp } from './_launchApp.mjs'
+import { repoRoot, spawnMcpStdioClient } from './_mcpJourney.mjs'
 
 const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-production-mcp-e2e-'))
 const userDataDir = path.join(tempRoot, 'user-data')
 const projectsDir = path.join(tempRoot, 'projects')
@@ -20,16 +23,12 @@ const shotsDir = path.join(repoRoot, 'tests/ux/shots/production-mcp')
 fs.mkdirSync(projectsDir, { recursive: true })
 fs.mkdirSync(shotsDir, { recursive: true })
 
-const sharedEnv = {
-  ...process.env,
-  NOMI_E2E: '1',
-  NOMI_E2E_PRODUCTION_FIXTURE: '1',
-  NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-  NOMI_ELECTRON_USER_DATA_DIR: userDataDir,
-  NOMI_SETTINGS_DIR: userDataDir,
-  NOMI_PROJECTS_DIR: projectsDir,
-  NOMI_CAPABILITY_DIR: capabilityDir,
-}
+// Isolation env + client identity the shared spawner needs to reproduce this sibling's transport exactly:
+// the production fixture flag (double-gated, never calls a provider) and Codex's UI-extension capability.
+const mcpDirs = { settingsDir: userDataDir, userDataDir, projectsDir, capabilityDir }
+const mcpEnv = { NOMI_E2E_PRODUCTION_FIXTURE: '1' }
+const mcpClientInfo = { name: 'OpenAI Codex', version: 'e2e' }
+const mcpCapabilities = { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } }
 
 const launchGuiOptions = {
   name: 'production-mcp-journey',
@@ -51,98 +50,44 @@ function check(condition, label) {
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function terminateOwnedChild(child, graceMs = 2_000) {
-  if (!child || child.exitCode !== null) return
-  try { child.kill('SIGTERM') } catch {}
-  await Promise.race([
-    new Promise((resolve) => child.once('exit', resolve)),
-    delay(graceMs),
-  ])
-  if (child.exitCode === null) {
-    try { child.kill('SIGKILL') } catch {}
-  }
-}
-
 async function launchGui() {
   const { app, win: window } = await launchNomiApp(launchGuiOptions)
   await window.setViewportSize({ width: 1440, height: 900 })
   return { app, window }
 }
 
-function spawnMcp() {
-  const child = spawn(require('electron'), withLinuxNoSandbox([repoRoot, '--disable-gpu']), {
-    cwd: repoRoot,
-    env: { ...sharedEnv, NOMI_MCP_STDIO: '1' },
-    stdio: ['pipe', 'pipe', 'inherit'],
-  })
-  const pending = new Map()
-  let sequence = 0
-  readline.createInterface({ input: child.stdout }).on('line', (line) => {
-    const text = line.trim()
-    if (!text.startsWith('{')) return
-    let message
-    try { message = JSON.parse(text) } catch { return }
-    const entry = pending.get(message.id)
-    if (!entry) return
-    clearTimeout(entry.timer)
-    pending.delete(message.id)
-    entry.resolve(message)
-  })
-  const rpc = (method, params = {}, timeoutMs = 20_000) => new Promise((resolve, reject) => {
-    const id = ++sequence
-    const timer = setTimeout(() => {
-      pending.delete(id)
-      reject(new Error(`MCP RPC timeout: ${method}`))
-    }, timeoutMs)
-    pending.set(id, { resolve, reject, timer })
-    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`)
-  })
-  return { child, rpc }
-}
-
-async function initializeMcp(rpc) {
+async function initializeMcp() {
   let response = null
   for (let attempt = 0; attempt < 20 && !response; attempt += 1) {
-    try {
-      response = await rpc('initialize', {
-        protocolVersion: '2025-11-25',
-        capabilities: { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } },
-        clientInfo: { name: 'OpenAI Codex', version: 'e2e' },
-      }, 4_000)
-    } catch {
-      await delay(500)
-    }
+    try { response = await mcp.initialize(4_000) } catch { await delay(500) }
   }
   check(Boolean(response?.result), 'real MCP stdio initialize handshake succeeds')
 }
 
-async function callTool(rpc, name, args) {
-  const response = await rpc('tools/call', { name, arguments: args }, 40_000)
-  if (response.error) throw new Error(response.error.message || `MCP ${name} failed`)
-  if (response.result?.isError) throw new Error(response.result.content?.[0]?.text || `MCP ${name} failed`)
-  return response.result
-}
+// Tool calls in this journey use the strict shape (throw on JSON-RPC OR tool-level isError) with the
+// sibling's original 40s ceiling, so any failure aborts rather than flowing a bad result forward.
+const callTool = (name, args) => mcp.callToolOrThrow(name, args, { timeoutMs: 40_000 })
 
-async function getRunData(rpc, projectId, runId) {
-  const result = await callTool(rpc, 'nomi_get_run', { projectId, runId })
+async function getRunData(projectId, runId) {
+  const result = await callTool('nomi_get_run', { projectId, runId })
   return result.structuredContent?.nomiRunData
 }
 
-async function waitForRunStatus(rpc, projectId, runId, expected, timeoutMs = 20_000) {
+async function waitForRunStatus(projectId, runId, expected, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs
   let run = null
   while (Date.now() < deadline) {
-    run = await getRunData(rpc, projectId, runId)
+    run = await getRunData(projectId, runId)
     if (run?.status === expected) return run
     await delay(250)
   }
   throw new Error(`Run ${runId} did not reach ${expected}; last=${run?.status || 'missing'}`)
 }
 
-async function waitForWaitingGate(rpc, projectId, runId, gateIdPrefix, timeoutMs = 20_000) {
+async function waitForWaitingGate(projectId, runId, gateIdPrefix, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const run = await getRunData(rpc, projectId, runId)
+    const run = await getRunData(projectId, runId)
     if (run?.gates?.some((gate) => gate.gateId.startsWith(gateIdPrefix) && gate.status === 'waiting')) return run
     await delay(250)
   }
@@ -200,21 +145,21 @@ try {
   const projectId = await window.evaluate(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('projectId'))
   check(Boolean(projectId), 'isolated local project opens in built Nomi')
 
-  mcp = spawnMcp()
-  await initializeMcp(mcp.rpc)
-  const tools = (await mcp.rpc('tools/list')).result?.tools || []
+  mcp = spawnMcpStdioClient({ ...mcpDirs, clientInfo: mcpClientInfo, capabilities: mcpCapabilities, env: mcpEnv })
+  await initializeMcp()
+  const tools = (await mcp.rpc('tools/list', {}, 20_000)).result?.tools || []
   check(tools.length === 15, 'real MCP stdio exposes the exact 15-tool catalog')
   for (const name of ['nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
     check(tools.some((tool) => tool.name === name), `${name} is registered over real stdio`)
   }
 
-  const resources = (await mcp.rpc('resources/list')).result?.resources || []
+  const resources = (await mcp.rpc('resources/list', {}, 20_000)).result?.resources || []
   const directorResource = resources.find((resource) => resource.uri === 'nomi-skill://director-cinematography')
   check(Boolean(directorResource), 'director cinematography skill is discoverable through MCP resources')
-  const director = (await mcp.rpc('resources/read', { uri: directorResource.uri })).result?.contents?.[0]?.text || ''
+  const director = (await mcp.rpc('resources/read', { uri: directorResource.uri }, 20_000)).result?.contents?.[0]?.text || ''
   check(director.includes('镜头语言') && director.length > 1_000, 'director skill body can be loaded progressively over MCP')
 
-  const started = await callTool(mcp.rpc, 'nomi_start_playbook', {
+  const started = await callTool('nomi_start_playbook', {
     projectId,
     playbook: 'brand.promo',
     trustLevel: 'confirm_all',
@@ -237,7 +182,7 @@ try {
   await window.screenshot({ path: path.join(shotsDir, '01-direction-gate.png') })
 
   // B1/B5 方向门三选一（获批样张贰幕）：MCP 投影带候选 → GUI 渲染可点 → 选中留痕。
-  const atDirection = (await callTool(mcp.rpc, 'nomi_get_run', { projectId, runId })).structuredContent.nomiRunData
+  const atDirection = (await callTool('nomi_get_run', { projectId, runId })).structuredContent.nomiRunData
   const directionGate = atDirection.gates.find((gate) => gate.gateId === 'gate-direction-v1')
   check(directionGate?.directionCandidates?.length === 3, 'direction gate projects three LLM-planned candidates over MCP')
   check(directionGate.directionCandidates.some((candidate) => candidate.key === 'kinetic'), 'candidate keys survive the safe projection')
@@ -253,11 +198,11 @@ try {
   await window.screenshot({ path: path.join(shotsDir, '01a-direction-candidates.png') })
   const directionOverlay = window.locator('.fixed.inset-0').filter({ has: window.locator('button') }).last()
   await directionOverlay.locator('button').last().click()
-  let run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_storyboard_review')
+  let run = await waitForRunStatus(projectId, runId, 'awaiting_storyboard_review')
   const decidedDirection = run.gates.find((gate) => gate.gateId === 'gate-direction-v1')
   check(decidedDirection?.decidedChoiceKey === 'kinetic', 'approval records the chosen direction as decidedChoiceKey')
   check(run.artifacts.some((artifact) => artifact.kind === 'script') && run.artifacts.some((artifact) => artifact.kind === 'storyboard'), 'direction approval produces durable script and storyboard artifacts')
-  const events = await callTool(mcp.rpc, 'nomi_subscribe_run', { projectId, runId, afterCursor: 0, waitMs: 0 })
+  const events = await callTool('nomi_subscribe_run', { projectId, runId, afterCursor: 0, waitMs: 0 })
   check(events.structuredContent?.nomiRunData?.events?.some((event) => event.type === 'skill.loaded'), 'MCP event stream exposes durable skill evidence')
 
   const attached = await window.evaluate(async ({ projectId: pid, runId: rid }) => {
@@ -283,8 +228,8 @@ try {
 
   // 钱门必须在 Nomi 批准；confirm_all 随后在第一次供应商提交前创建逐镜头门。
   await approveCurrentProductionGate(window)
-  await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-shot-', 30_000)
-  let atShot = await getRunData(mcp.rpc, projectId, runId)
+  await waitForWaitingGate(projectId, runId, 'gate-shot-', 30_000)
+  let atShot = await getRunData(projectId, runId)
   check(atShot.jobs.every((job) => job.status === 'authorized'), 'first shot gate stops before every provider submission')
   await openRunFromTaskCenter(window, '02a-shot-1-gate.png')
 
@@ -294,27 +239,27 @@ try {
   await gui.window.locator('[data-project-card="true"]').first().click()
   await gui.window.waitForFunction(() => window.location.hash.includes('projectId='), undefined, { timeout: 10_000 })
   await openRunFromTaskCenter(gui.window)
-  atShot = await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-shot-')
+  atShot = await waitForWaitingGate(projectId, runId, 'gate-shot-')
   check(atShot.jobs.every((job) => job.status === 'authorized'), 'restart recovers the waiting shot gate without submitting or spending')
   await approveCurrentProductionGate(gui.window)
 
   // 首镜获批并生成后停样片门；看过样片后，第二镜仍要单独确认。
-  await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-sample-', 30_000)
-  const atSample = await getRunData(mcp.rpc, projectId, runId)
+  await waitForWaitingGate(projectId, runId, 'gate-sample-', 30_000)
+  const atSample = await getRunData(projectId, runId)
   check(atSample.status === 'running' && atSample.jobs.filter((job) => job.status === 'adopted').length === 1, 'one approved shot submits exactly once before the sample gate')
   // 截图要拍到卡本身（拍在开面板之前只会拍到空画布，等于没证据）。
   await openRunFromTaskCenter(gui.window, '03a-sample-gate.png')
   await approveCurrentProductionGate(gui.window)
 
-  await waitForWaitingGate(mcp.rpc, projectId, runId, 'gate-shot-', 30_000)
-  const beforeShotTwo = await getRunData(mcp.rpc, projectId, runId)
+  await waitForWaitingGate(projectId, runId, 'gate-shot-', 30_000)
+  const beforeShotTwo = await getRunData(projectId, runId)
   const waitingShotGates = beforeShotTwo.gates.filter((gate) => gate.gateId.startsWith('gate-shot-') && gate.status === 'waiting')
   check(waitingShotGates.length === 1 && waitingShotGates[0].jobIds.length === 1, 'second shot receives its own durable one-job gate')
   check(beforeShotTwo.jobs.filter((job) => job.status === 'adopted').length === 1, 'second shot is still unsubmitted before approval')
   await openRunFromTaskCenter(gui.window, '03b-shot-2-gate.png')
   await approveCurrentProductionGate(gui.window)
 
-  run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_rough_cut_review', 30_000)
+  run = await waitForRunStatus(projectId, runId, 'awaiting_rough_cut_review', 30_000)
   check(run.jobs.length === 2 && run.jobs.every((job) => job.status === 'adopted'), 'each approved fixture shot reaches adopted exactly once')
   check(run.artifacts.some((artifact) => artifact.kind === 'video') && run.artifacts.some((artifact) => artifact.kind === 'timeline'), 'generation and assembly produce local video and timeline artifacts')
   await openRunFromTaskCenter(gui.window)
@@ -330,16 +275,16 @@ try {
   const roughCutConfirm = gui.window.locator('[data-confirm-dialog-confirm="true"]:visible')
   await roughCutConfirm.waitFor({ timeout: 5_000 })
   await roughCutConfirm.click()
-  await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_export')
+  await waitForRunStatus(projectId, runId, 'awaiting_export')
   await openRunFromTaskCenter(gui.window)
   await approveCurrentProductionGate(gui.window)
-  run = await waitForRunStatus(mcp.rpc, projectId, runId, 'completed', 30_000)
+  run = await waitForRunStatus(projectId, runId, 'completed', 30_000)
   check(run.budget.actual === 0 && run.budget.unsettled === 0, 'fixture completes with truthful zero actual and unsettled spend')
   check(run.stages.length === 9 && run.stages.every((stage) => stage.status === 'completed'), 'completed Run reports all 9 production stages complete')
   const exportArtifact = run.artifacts.find((artifact) => artifact.kind === 'export')
   check(Boolean(exportArtifact?.artifactId), 'completed Run exposes a scoped export artifact identity')
 
-  const artifactResult = await callTool(mcp.rpc, 'nomi_get_artifact', { projectId, runId, artifactId: exportArtifact.artifactId })
+  const artifactResult = await callTool('nomi_get_artifact', { projectId, runId, artifactId: exportArtifact.artifactId })
   const serializedArtifact = JSON.stringify(artifactResult)
   const artifactData = artifactResult.structuredContent?.nomiRunData
   check(artifactData.nomiUri === `nomi://project/${projectId}/run/${runId}/artifact/${exportArtifact.artifactId}`, 'MCP returns a scoped nomiUri for the final export')
@@ -374,9 +319,14 @@ try {
   exitCode = 1
 } finally {
   const guiChild = gui?.app?.process?.()
-  try { mcp?.child?.stdin?.end() } catch {}
-  await terminateOwnedChild(mcp?.child)
+  // mcp.terminate() ends stdin then SIGTERM→SIGKILL the stdio server (shared module). The Playwright GUI
+  // app process is NOT owned by that module, so it gets its own SIGTERM→SIGKILL sweep here.
+  await mcp?.terminate().catch(() => undefined)
   if (gui?.app) await Promise.race([gui.app.close().catch(() => undefined), delay(3_000)])
-  await terminateOwnedChild(guiChild)
+  if (guiChild && guiChild.exitCode === null) {
+    try { guiChild.kill('SIGTERM') } catch {}
+    await Promise.race([new Promise((resolve) => guiChild.once('exit', resolve)), delay(2_000)])
+    if (guiChild.exitCode === null) { try { guiChild.kill('SIGKILL') } catch {} }
+  }
   process.exitCode = exitCode
 }

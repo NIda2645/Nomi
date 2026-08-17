@@ -1,6 +1,14 @@
-// Shared infra for real-process MCP journeys (extends the pattern proven in
-// production-mcp-journey.e2e.mjs). Kept as a helper so J-MCP1 (mcp-journey.e2e.mjs) and any future
-// real-transport MCP test reuse ONE spawn/framing/teardown/mock-vendor implementation (P1: no copy-paste).
+// Shared infra for real-process MCP journeys — the ONE spawn/framing/teardown/mock-vendor implementation
+// (P1: no copy-paste) driven by BOTH J-MCP1 (mcp-journey.e2e.mjs) and production-mcp-journey.e2e.mjs, plus
+// any future real-transport MCP test. Client-specific differences (initialize capabilities, clientInfo,
+// extra env) are options on spawnMcpStdioClient; error semantics come in two shapes — callTool (returns
+// raw, isError inspectable) and callToolOrThrow (throws on isError) — so both call sites stay clean.
+//
+// NOT reused by packaged-mcp-smoke.e2e.mjs, on purpose: that test boots the PACKAGED node launcher
+// (`Nomi Helper` + mcpNodeLauncher.js under ELECTRON_RUN_AS_NODE, with per-client HMAC origin proofs) to
+// prove the release launcher's signing path — a materially different spawn than this module's
+// `electron <repoRoot>` stdio server, and its whole point. Folding it in would add a launcher-vs-electron
+// mode switch here for no dedup benefit, so it keeps its own small framing.
 //
 // Transport under test = the REAL in-Electron MCP stdio server: `electron <repoRoot>` with
 // NOMI_MCP_STDIO=1. That process is genuinely headless (no window, app.dock.hide, disk gateway) and
@@ -21,6 +29,16 @@ import { withLinuxNoSandbox } from './_launchApp.mjs'
 
 const require = createRequire(import.meta.url)
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+
+// Per-kind default node sizes, imported from the BUILT production table (compiled CommonJS) rather than
+// hand-copied — so the AABB-overlap check in mcp-journey automatically covers whatever kinds production
+// defines, and can never silently drift from electron/capabilityCore/nodeKindDomain.ts. The harness
+// already requires a fresh dist-electron (assertBuilt), so this compiled module is guaranteed present.
+export const NODE_KIND_DEFAULT_SIZE =
+  require(path.join(repoRoot, 'dist-electron/capabilityCore/nodeKindDomain.js')).NODE_KIND_DEFAULT_SIZE
+// Extreme fallback size (theoretically unreachable; only guards an illegal kind slipping in). Mirrors the
+// FALLBACK_SIZE the built module falls back to for unknown kinds.
+export const NODE_KIND_FALLBACK_SIZE = { width: 340, height: 280 }
 
 /** Assert dist-electron is built (the stdio server runs compiled JS, mirroring _launchApp.assertBuilt). */
 export function assertBuilt() {
@@ -166,16 +184,20 @@ export function writeIsolatedCatalog(settingsDir, mockOrigin) {
 /**
  * Spawn the real in-Electron MCP stdio server (headless) and return a JSON-RPC client.
  * The client:
- *   · declares elicitation capability at initialize (so plan/spend confirmations route to chat), and
+ *   · declares the given `capabilities` at initialize (default: elicitation, so plan/spend confirmations
+ *     route to chat; the Production-Run sibling passes the io.modelcontextprotocol/ui extension instead), and
  *   · attaches _meta.progressToken on long calls (so notifications/progress frames are emitted),
  *   · auto-accepts every server→client elicitation/create (records elicitationUsed), and
  *   · buffers notifications/progress per progressToken (records progressNotifs).
  *
- * env is fully isolated: caller passes settingsDir / userDataDir / projectsDir / capabilityDir.
+ * env is fully isolated: caller passes settingsDir / userDataDir / projectsDir / capabilityDir, plus an
+ * optional `env` bag merged over the base isolation env (the sibling adds NOMI_E2E_PRODUCTION_FIXTURE).
  * NOMI_LOOP_SPEND_OK is intentionally NOT set — spend must flow through elicitation → makeConfirmedGateway,
  * proving the headless zero-dialog spend path (mcpStdioServer.ts:99), not an env escape hatch.
  */
-export function spawnMcpStdioClient({ settingsDir, userDataDir, projectsDir, capabilityDir, clientInfo }) {
+export function spawnMcpStdioClient({
+  settingsDir, userDataDir, projectsDir, capabilityDir, clientInfo, capabilities, env,
+}) {
   const child = spawn(require('electron'), withLinuxNoSandbox([repoRoot, '--disable-gpu']), {
     cwd: repoRoot,
     env: {
@@ -187,6 +209,7 @@ export function spawnMcpStdioClient({ settingsDir, userDataDir, projectsDir, cap
       NOMI_ELECTRON_USER_DATA_DIR: userDataDir,
       NOMI_PROJECTS_DIR: projectsDir,
       NOMI_CAPABILITY_DIR: capabilityDir,
+      ...(env || {}),
     },
     stdio: ['pipe', 'pipe', 'inherit'],
   })
@@ -198,7 +221,20 @@ export function spawnMcpStdioClient({ settingsDir, userDataDir, projectsDir, cap
   let elicitationCount = 0
   let childExit = null
 
-  child.on('exit', (code, signal) => { childExit = { code, signal } })
+  // Transport died (spawn error or the child exited) → reject every in-flight RPC instead of leaving it to
+  // time out. This is why pending stores `reject` alongside `resolve`/`timer`.
+  function failPending(error) {
+    for (const [id, entry] of pending) {
+      clearTimeout(entry.timer)
+      pending.delete(id)
+      entry.reject(error)
+    }
+  }
+  child.on('error', (error) => { failPending(error instanceof Error ? error : new Error(String(error))) })
+  child.on('exit', (code, signal) => {
+    childExit = { code, signal }
+    failPending(new Error(`MCP stdio server exited: code=${code} signal=${signal}`))
+  })
 
   readline.createInterface({ input: child.stdout }).on('line', (line) => {
     const text = line.trim()
@@ -229,16 +265,17 @@ export function spawnMcpStdioClient({ settingsDir, userDataDir, projectsDir, cap
     const id = (seq += 1)
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { pending.delete(id); reject(new Error(`RPC timeout: ${method}`)) }, timeoutMs)
-      pending.set(id, { resolve, timer })
-      const message = { jsonrpc: '2.0', id, method, params }
-      if (meta) message.params = { ...params, _meta: meta }
-      child.stdin.write(JSON.stringify(message) + '\n')
+      pending.set(id, { resolve, reject, timer })
+      const outParams = meta ? { ...params, _meta: meta } : params
+      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params: outParams }) + '\n')
     })
   }
 
   /**
    * Call a tool. If progressToken given, attach it under _meta so the server emits notifications/progress.
-   * Returns the raw CallToolResult (content[] + structuredContent + isError). Throws on protocol error.
+   * Returns the raw CallToolResult (content[] + structuredContent + isError). Throws on the JSON-RPC
+   * protocol error only — an application-level isError result is returned as-is so callers can inspect it
+   * (parseToolResult reads .isError). Use callToolOrThrow when a tool-level isError should also throw.
    */
   async function callTool(name, args, { timeoutMs = 60_000, progressToken } = {}) {
     const meta = progressToken != null ? { progressToken } : undefined
@@ -251,10 +288,26 @@ export function spawnMcpStdioClient({ settingsDir, userDataDir, projectsDir, cap
     return response.result
   }
 
+  /**
+   * Call a tool and throw on EITHER a JSON-RPC protocol error OR a tool-level isError result (unwrapping
+   * the first text block as the message). This is the strict shape the Production-Run sibling needs: any
+   * failure aborts the journey rather than flowing a bad result forward.
+   */
+  async function callToolOrThrow(name, args, options) {
+    const result = await callTool(name, args, options)
+    if (result?.isError) {
+      const text = Array.isArray(result.content)
+        ? result.content.find((block) => block?.type === 'text')?.text
+        : undefined
+      throw new Error(text || `MCP ${name} failed`)
+    }
+    return result
+  }
+
   async function initialize(timeoutMs = 4_000) {
     return rpc('initialize', {
       protocolVersion: '2025-11-25',
-      capabilities: { elicitation: {} },
+      capabilities: capabilities || { elicitation: {} },
       clientInfo: clientInfo || { name: 'Claude Code', version: 'jmcp1-e2e' },
     }, timeoutMs)
   }
@@ -277,6 +330,7 @@ export function spawnMcpStdioClient({ settingsDir, userDataDir, projectsDir, cap
     initialize,
     rpc,
     callTool,
+    callToolOrThrow,
     terminate,
     progressForToken: (token) => progressByToken.get(String(token)) || 0,
     elicitationCount: () => elicitationCount,
@@ -292,6 +346,8 @@ export function parseToolResult(result) {
   let json = null
   if (textBlock && typeof textBlock.text === 'string') {
     // Generate/read results embed JSON in the text; try direct parse, else the first {...} slice.
+    // Assumes the embedded object is the outermost/only brace pair (prose may wrap it, but not a second
+    // sibling JSON object) — true for every tool result these journeys read.
     try { json = JSON.parse(textBlock.text) } catch {
       const start = textBlock.text.indexOf('{')
       const end = textBlock.text.lastIndexOf('}')
