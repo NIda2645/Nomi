@@ -2,7 +2,15 @@ export const zhStoryboardEditor = {
   shotParams: {
     parameters: '参数',
     mode: '模式',
-    applyAll: '套用到全部镜头',
+    applyAll: '把这一镜的参数套用到全部',
+  },
+  bulk: {
+    scope: '全部镜头',
+    mixed: '混合',
+    typeAria: '全部镜头的类型',
+    modelAria: '全部镜头的模型',
+    durationAria: '全部镜头的时长',
+    hint: '改这里 = {{count}} 个镜头一起改',
   },
   issue: {
     noShots: '还没有镜头',
@@ -123,7 +131,15 @@ export const enStoryboardEditor = {
   shotParams: {
     parameters: 'Parameters',
     mode: 'Mode',
-    applyAll: 'Apply to all shots',
+    applyAll: "Apply this shot's parameters to all",
+  },
+  bulk: {
+    scope: 'All shots',
+    mixed: 'Mixed',
+    typeAria: 'Type for all shots',
+    modelAria: 'Model for all shots',
+    durationAria: 'Duration for all shots',
+    hint: 'Changes here apply to all {{count}} shots',
   },
   issue: {
     noShots: 'There are no shots yet',
