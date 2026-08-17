@@ -1,6 +1,12 @@
 import type { WorkbenchDocument } from '../workbenchTypes'
 import { ASSET_MASTER_PROMPT } from './assetMasterPrompt'
-import { getSystemPromptOverrides, resolveEffectivePrompt } from './systemPromptOverrides'
+import {
+  getCustomSystemPrompts,
+  getSystemPromptOverrides,
+  readOverride,
+  resolveEffectivePrompt,
+} from './systemPromptOverrides'
+import type { CustomSystemPrompt } from '../../../electron/settings/systemPromptsContract'
 
 export type CreationAiModeId =
   | 'general'
@@ -12,7 +18,12 @@ export type CreationAiModeId =
   | 'review'
 
 export type CreationAiMode = {
-  id: CreationAiModeId
+  /**
+   * 内置的是 CreationAiModeId 那 7 个字面量；自定义的是运行时生成的 `custom:<uuid>`。
+   * 所以这里是 string 而不是联合类型——自定义 id 是**数据**，不该进类型联合。
+   * 「内置清单和设置契约的 id 不许漂移」由 creationAiModes.test.ts 的对拍测试保证。
+   */
+  id: string
   label: string
   shortLabel: string
   title: string
@@ -31,6 +42,8 @@ export type CreationAiMode = {
    * 确实是个真实的跨面板跳转意图。
    */
   dedicatedJob?: boolean
+  /** 用户自建的（不是内置 7 个之一）：没有「恢复默认」，改的是改名/删除。 */
+  custom?: boolean
 }
 
 export const CREATION_AI_MODES: CreationAiMode[] = [
@@ -137,9 +150,52 @@ export function defaultCreationAiPrompt(modeId: unknown): string | undefined {
  * 等于「一处生效、处处生效」，不会漏掉某个调用点拿到旧默认值（P2 修根因）。
  * 覆盖值来自模块级同步快照（systemPromptOverrides.ts），所以本函数仍是同步的。
  */
+/**
+ * 用户自建的提示词长成一个 CreationAiMode，和内置的平起平坐（用户 2026-08-18 拍板）。
+ *
+ * 两条能力声明是**定死的**，不给用户多一个开关（他要的是「存一段提示词」，不是配权限）：
+ *  · chatOnly 不设 → 能写文稿，仍走既有待批卡确认；
+ *  · dedicatedJob: true → 他明确选了这条路，不被拆分镜意图路由劫走（承接 08-17 D 项）。
+ */
+function customToMode(custom: CustomSystemPrompt): CreationAiMode {
+  return {
+    id: custom.id,
+    label: custom.name,
+    shortLabel: custom.name,
+    title: custom.name,
+    description: '',
+    prompt: custom.prompt,
+    dedicatedJob: true,
+    custom: true,
+  }
+}
+
+/**
+ * 「本轮能选哪些提示词」的**唯一真相源**：内置 7 个（已盖上用户覆盖）+ 用户自建 N 个。
+ *
+ * 根因备忘（2026-08-18）：选择器过去手写条目、还把模式名硬编码成 `onModeChange('assets')`，
+ * 于是 7 个内置模式里有 5 个在 UI 上根本不存在——提示词写了、设置里能编辑、就是调不起来。
+ * 改成所有选择面都从这里 derive 之后，新增模式自动出现在列表里，不会再有「搁浅的模式」。
+ * 结构测试钉死这条（见 creationAiModes.test.ts）。
+ */
+export function listCreationAiModes(): CreationAiMode[] {
+  const overrides = getSystemPromptOverrides()
+  const builtin = CREATION_AI_MODES.map((mode) => {
+    const prompt = resolveEffectivePrompt(mode.prompt, readOverride(overrides, mode.id))
+    return prompt === mode.prompt ? mode : { ...mode, prompt }
+  })
+  return [...builtin, ...getCustomSystemPrompts().map(customToMode)]
+}
+
+/**
+ * 取模式定义，并把用户在设置里改过的系统提示词盖在 prompt 上。自定义 id 也认。
+ * 认不出的 id（比如选中的自定义提示词刚被删掉）→ 回退第一个内置模式，绝不返回空提示词。
+ */
 export function getCreationAiMode(modeId: unknown): CreationAiMode {
+  const custom = getCustomSystemPrompts().find((item) => item.id === modeId)
+  if (custom) return customToMode(custom)
   const mode = CREATION_AI_MODES.find((item) => item.id === modeId) || CREATION_AI_MODES[0]
-  const override = getSystemPromptOverrides()[mode.id]
+  const override = readOverride(getSystemPromptOverrides(), mode.id)
   const prompt = resolveEffectivePrompt(mode.prompt, override)
   return prompt === mode.prompt ? mode : { ...mode, prompt }
 }

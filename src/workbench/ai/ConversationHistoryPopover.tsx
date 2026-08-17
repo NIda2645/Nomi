@@ -10,10 +10,17 @@ const GAP = 4
 export function ConversationHistoryPopover({
   anchorRef,
   onClose,
+  align = 'right',
   children,
 }: {
   anchorRef: React.RefObject<HTMLElement>
   onClose: () => void
+  /**
+   * 'right'（默认）= 右缘锚到面板头部右缘：窄面板里靠右的头部按钮就该这么落。
+   * 'left' = 左缘锚到按钮左缘：给 composer 左簇的按钮用——那里按钮在左边，
+   * 右对齐会让弹层整体往左甩出面板（下面的 clamp 只能救回视口、救不回「看起来没对齐」）。
+   */
+  align?: 'left' | 'right'
   children: React.ReactNode
 }): JSX.Element {
   const popRef = React.useRef<HTMLDivElement>(null)
@@ -24,17 +31,22 @@ export function ConversationHistoryPopover({
     const pop = popRef.current
     if (!anchor) return
     const a = anchor.getBoundingClientRect()
-    // 右缘锚到面板头部右缘(窄面板下拉的正确对齐);无 header 兜底用按钮右缘。
-    const header = anchor.closest('header')
-    const rightEdge = header ? header.getBoundingClientRect().right : a.right
     const w = pop ? pop.offsetWidth : 256
     const h = pop ? pop.offsetHeight : 320
-    let left = rightEdge - w
+    // 右对齐:右缘锚到面板头部右缘(窄面板下拉的正确对齐);无 header 兜底用按钮右缘。
+    // 左对齐:左缘锚到按钮左缘(composer 左簇的按钮)。
+    let left: number
+    if (align === 'left') {
+      left = a.left
+    } else {
+      const header = anchor.closest('header')
+      left = (header ? header.getBoundingClientRect().right : a.right) - w
+    }
     left = Math.max(MARGIN, Math.min(left, window.innerWidth - MARGIN - w))
     let top = a.bottom + GAP
     if (top + h > window.innerHeight - MARGIN) top = Math.max(MARGIN, a.top - GAP - h)
     setPos({ top, left })
-  }, [anchorRef])
+  }, [anchorRef, align])
 
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

@@ -78,17 +78,17 @@ describe('getCreationAiMode — 覆盖层接到模式清单上', () => {
   })
 
   it('有覆盖时返回覆盖后的提示词', () => {
-    resetSystemPromptOverridesForTest({ story: '我自己的故事提示词' })
+    resetSystemPromptOverridesForTest({ overrides: { story: '我自己的故事提示词' } })
     expect(getCreationAiMode('story').prompt).toBe('我自己的故事提示词')
   })
 
   it('覆盖只影响被覆盖的那个模式', () => {
-    resetSystemPromptOverridesForTest({ story: '只改故事' })
+    resetSystemPromptOverridesForTest({ overrides: { story: '只改故事' } })
     expect(getCreationAiMode('script').prompt).toBe(defaultCreationAiPrompt('script'))
   })
 
   it('清掉覆盖后逐字节回到默认值', () => {
-    resetSystemPromptOverridesForTest({ story: '临时改一下' })
+    resetSystemPromptOverridesForTest({ overrides: { story: '临时改一下' } })
     expect(getCreationAiMode('story').prompt).toBe('临时改一下')
     resetSystemPromptOverridesForTest({})
     expect(getCreationAiMode('story').prompt).toBe(DEFAULT_STORY_PROMPT)
@@ -96,14 +96,14 @@ describe('getCreationAiMode — 覆盖层接到模式清单上', () => {
 
   it('覆盖不会污染 CREATION_AI_MODES 这份真相源', () => {
     const before = CREATION_AI_MODES.find((mode) => mode.id === 'story')?.prompt
-    resetSystemPromptOverridesForTest({ story: '改一个覆盖' })
+    resetSystemPromptOverridesForTest({ overrides: { story: '改一个覆盖' } })
     getCreationAiMode('story')
     expect(CREATION_AI_MODES.find((mode) => mode.id === 'story')?.prompt).toBe(before)
     resetSystemPromptOverridesForTest({})
   })
 
   it('覆盖保留模式的其余能力声明（chatOnly / dedicatedJob 不被覆盖弄丢）', () => {
-    resetSystemPromptOverridesForTest({ general: '自定义通用提示词', assets: '自定义素材提示词' })
+    resetSystemPromptOverridesForTest({ overrides: { general: '自定义通用提示词', assets: '自定义素材提示词' } })
     expect(getCreationAiMode('general').chatOnly).toBe(true)
     expect(getCreationAiMode('assets').dedicatedJob).toBe(true)
     resetSystemPromptOverridesForTest({})

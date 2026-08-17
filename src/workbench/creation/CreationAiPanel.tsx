@@ -18,7 +18,7 @@ import { handleAiComposerKeyDown } from '../ai/aiComposerKeyboard'
 import { extractStoryFromRequest, routeCreationIntent } from './creationIntentRouting'
 import type { WorkbenchAiMessage } from '../ai/workbenchAiTypes'
 import { WorkbenchAiHeaderActions } from '../ai/WorkbenchAiHeaderActions'
-import ActiveSkillChip from '../ai/ActiveSkillChip'
+import CreationPromptPicker from '../ai/CreationPromptPicker'
 import { importWorkbenchSkill, getAvailableSkillProviders, skillCapabilityFor, type SkillProviderKind } from '../api/skillApi'
 import { MemoryFold } from '../generationCanvas/components/MemoryFold'
 import { useWorkbenchStore } from '../workbenchStore'
@@ -495,16 +495,9 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
           {/* 审计 A14：与入口词「创作」一致，不再裸叫「助手」 */}
           <span className={cn('text-body-sm font-semibold text-nomi-ink')}>{t('creationAi.title')}</span>
         </div>
+        {/* 提示词选择器已挪到 composer 发送键左边（用户 2026-08-18 拍板）——那里才是「马上要发这一句」
+            的决策位，和模型选择器并排。头部这颗不再保留：同一功能两个家 = P1/§1.5 一功能一个家。 */}
         <div className={cn('inline-flex items-center gap-2 ml-auto min-w-0')}>
-          <ActiveSkillChip
-            activeSkill={activeSkill}
-            autoLabel={t(`creationAi.mode.${activeMode.id}.title` as 'creationAi.mode.general.title')}
-            autoDescription={t(`creationAi.mode.${activeMode.id}.description` as 'creationAi.mode.general.description')}
-            autoPrompt={activeMode.prompt}
-            autoModeId={activeMode.id}
-            onModeChange={setModeId}
-            onSelect={setActiveSkill}
-          />
           <WorkbenchAiHeaderActions
             area="creation"
             className={cn('inline-flex items-center flex-nowrap gap-1')}
@@ -738,6 +731,13 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
               aria-label={t('creationAi.addAttachmentAria')}
               onClick={openFilePicker}
               icon={<IconPaperclip size={16} />}
+            />
+            {/* 「用哪段提示词」和「用哪个模型」是同一层决策（都作用于马上要发的这一句），并排放。 */}
+            <CreationPromptPicker
+              activeSkill={activeSkill}
+              modeId={modeId}
+              onModeChange={setModeId}
+              onSelect={setActiveSkill}
             />
             <AssistantModelPicker />
           </div>

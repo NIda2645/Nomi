@@ -35,16 +35,47 @@ export type SystemPromptModeId = (typeof SYSTEM_PROMPT_MODE_IDS)[number];
  */
 export const SYSTEM_PROMPT_MAX_LENGTH = 32768;
 
+/** 自定义提示词名字上限：够写清「口播带货体 · 客户A 调性」这类，又不至于把下拉撑爆。 */
+export const CUSTOM_PROMPT_NAME_MAX_LENGTH = 40;
+
+/**
+ * 自定义提示词条数上限。不是产品限制，是**防写坏**：这份设置文件每次启动都要读进内存，
+ * 没有上限时一个循环写入的 bug 就能把它撑到几百兆。50 条远超任何真实用法。
+ */
+export const CUSTOM_PROMPT_MAX_COUNT = 50;
+
+/**
+ * 用户自建的提示词（用户 2026-08-18 拍板：只要「名字 + 正文」两个框，不要 manifest）。
+ *
+ * `id` 生成一次即固定、**不随改名变**：用户的选择记在 `creationAiModeId` 里，
+ * 用名字当 id 会让改一次名就把当前选择打飞。
+ */
+export type CustomSystemPrompt = {
+  id: string;
+  name: string;
+  prompt: string;
+};
+
 export type SystemPromptOverrides = {
-  schemaVersion: 1;
-  /** 只放用户覆盖过的模式；缺席 = 用内置默认值。 */
+  schemaVersion: 2;
+  /** 只放用户覆盖过的**内置**模式；缺席 = 用内置默认值。 */
   prompts: Partial<Record<SystemPromptModeId, string>>;
+  /** 用户自建的提示词。空数组 = 一个都没建。 */
+  custom: CustomSystemPrompt[];
 };
 
 export const DEFAULT_SYSTEM_PROMPT_OVERRIDES: SystemPromptOverrides = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   prompts: {},
+  custom: [],
 };
+
+/** 自定义 id 的前缀：让它和内置模式 id 在任何地方都不可能撞（也便于一眼看出是自建的）。 */
+export const CUSTOM_PROMPT_ID_PREFIX = "custom:";
+
+export function isCustomPromptId(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith(CUSTOM_PROMPT_ID_PREFIX) && value.length > CUSTOM_PROMPT_ID_PREFIX.length;
+}
 
 const MODE_ID_SET = new Set<string>(SYSTEM_PROMPT_MODE_IDS);
 
@@ -56,10 +87,53 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function clampPrompt(prompt: string): string {
+  return prompt.length > SYSTEM_PROMPT_MAX_LENGTH ? prompt.slice(0, SYSTEM_PROMPT_MAX_LENGTH) : prompt;
+}
+
+/**
+ * 清洗自定义提示词列表。丢弃：形状不对、id 不合法（必须带 custom: 前缀，才不可能和内置模式撞）、
+ * **名字**去空白后为空、id 重复的后来者。截断：超长名字/正文。整体截到 CUSTOM_PROMPT_MAX_COUNT。
+ *
+ * 名字**允许重名**（用户可能真想要两个「客户A」），靠 id 区分；重名只是显示上的事，不该拦着他存。
+ *
+ * **正文允许为空**（2026-08-18 修）：新建一条提示词的那一刻正文本来就是空的——用户先起名字、
+ * 再慢慢写正文，中途可能关掉设置页/退出应用。要是把「正文为空」当垃圾丢掉，这条新建项
+ * 一落盘就消失：用户看到 chip 出现、下次启动却没了，且**毫无提示**（无声数据丢失）。
+ * 身份靠 `name` 立得住，空正文只是「还没写」，不是坏数据。
+ * 空正文的条目被选中时，创作侧照旧只是没有专长层可注入，不会出错。
+ */
+function normalizeCustomPrompts(value: unknown): CustomSystemPrompt[] {
+  if (!Array.isArray(value)) return [];
+  const out: CustomSystemPrompt[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (out.length >= CUSTOM_PROMPT_MAX_COUNT) break;
+    const entry = record(item);
+    const { id, name, prompt } = entry;
+    if (!isCustomPromptId(id)) continue;
+    if (seen.has(id)) continue;
+    if (typeof name !== "string" || typeof prompt !== "string") continue;
+    const trimmedName = name.trim();
+    if (!trimmedName) continue;
+    seen.add(id);
+    out.push({
+      id,
+      name: trimmedName.length > CUSTOM_PROMPT_NAME_MAX_LENGTH ? trimmedName.slice(0, CUSTOM_PROMPT_NAME_MAX_LENGTH) : trimmedName,
+      prompt: clampPrompt(prompt),
+    });
+  }
+  return out;
+}
+
 /**
  * 清洗一份可能来自旧版本 / 被手改过 / 被降级写坏的设置文件。
  * 丢弃：未知模式 id、非字符串值、去空白后为空的值（空 = 没覆盖，不是「覆盖成空提示词」）。
  * 截断：超过 SYSTEM_PROMPT_MAX_LENGTH 的值。
+ *
+ * v1 → v2 迁移：v1 没有 `custom` 字段，读进来就是空数组——形状天然向后兼容，
+ * 不需要单独的迁移分支，也**绝不能**因为版本号不是 2 就整份丢掉
+ * （那会把用户已经改过的内置提示词抹掉）。
  */
 export function normalizeSystemPromptOverrides(value: unknown): SystemPromptOverrides {
   const raw = record(value);
@@ -71,7 +145,7 @@ export function normalizeSystemPromptOverrides(value: unknown): SystemPromptOver
     // 空白串不是有效覆盖：用户清空输入框的语义是「回默认」，由 UI 的「恢复默认」表达，
     // 存一条空提示词只会让助手拿到空的专长层。
     if (!prompt.trim()) continue;
-    prompts[modeId] = prompt.length > SYSTEM_PROMPT_MAX_LENGTH ? prompt.slice(0, SYSTEM_PROMPT_MAX_LENGTH) : prompt;
+    prompts[modeId] = clampPrompt(prompt);
   }
-  return { schemaVersion: 1, prompts };
+  return { schemaVersion: 2, prompts, custom: normalizeCustomPrompts(raw.custom) };
 }

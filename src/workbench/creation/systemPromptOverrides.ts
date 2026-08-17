@@ -12,9 +12,36 @@
 // 不会出现空提示词，也不会阻塞渲染。IPC 回来后触发订阅者重渲，UI 自动换成覆盖值。
 
 import { getDesktopBridge } from '../../desktop/bridge'
-import type { SystemPromptModeId, SystemPromptOverrides } from '../../../electron/settings/systemPromptsContract'
+import {
+  CUSTOM_PROMPT_ID_PREFIX,
+  type CustomSystemPrompt,
+  type SystemPromptModeId,
+  type SystemPromptOverrides,
+} from '../../../electron/settings/systemPromptsContract'
 
 export type SystemPromptOverrideMap = Partial<Record<SystemPromptModeId, string>>
+
+/**
+ * 按**运行时字符串** id 读/删覆盖值的收口。
+ *
+ * 模式 id 在类型上是 string（自定义 id 是运行时数据，不进类型联合），而这张 map 的键是内置
+ * 7 个字面量——直接下标索引 TS 会报 implicit any。收成两个口子，别在每个调用点各写一次断言，
+ * 更别写 `as never` 那种「能过编译但读不出意图」的糊法。
+ * 自定义 id 天然查不到（它们的正文存在 custom 条目上），返回 undefined 即是正确答案。
+ */
+export function readOverride(overrides: SystemPromptOverrideMap, modeId: string): string | undefined {
+  return overrides[modeId as SystemPromptModeId]
+}
+
+/** 删掉一条覆盖，返回新 map（「恢复默认」= 删这一条，而不是把默认文本写回去）。 */
+export function withoutOverride(
+  overrides: SystemPromptOverrideMap,
+  modeId: string,
+): SystemPromptOverrideMap {
+  const next = { ...overrides }
+  delete next[modeId as SystemPromptModeId]
+  return next
+}
 
 /**
  * 纯合并规则（单一判定源，被 UI / 发送路径 / 单测共用）：
@@ -61,8 +88,16 @@ export function pruneRedundantOverrides(
   return next
 }
 
-let overrides: SystemPromptOverrideMap = {}
-let loadPromise: Promise<SystemPromptOverrideMap> | null = null
+/** 进程内快照：内置覆盖 + 自定义提示词。两者同源同步，别拆成两份缓存（会不同步）。 */
+export type SystemPromptSnapshot = {
+  overrides: SystemPromptOverrideMap
+  custom: CustomSystemPrompt[]
+}
+
+const EMPTY_SNAPSHOT: SystemPromptSnapshot = { overrides: {}, custom: [] }
+
+let snapshot: SystemPromptSnapshot = EMPTY_SNAPSHOT
+let loadPromise: Promise<SystemPromptSnapshot> | null = null
 let loaded = false
 const listeners = new Set<() => void>()
 
@@ -70,9 +105,24 @@ function emit(): void {
   for (const listener of [...listeners]) listener()
 }
 
-/** 同步读当前快照。IPC 还没回来时是空 map = 全部走默认值。 */
+/** 同步读当前快照。IPC 还没回来时是空的 = 全部走内置默认值、没有自定义条目。 */
+export function getSystemPromptSnapshot(): SystemPromptSnapshot {
+  return snapshot
+}
+
+/** 同步读内置覆盖。IPC 还没回来时是空 map = 全部走默认值。 */
 export function getSystemPromptOverrides(): SystemPromptOverrideMap {
-  return overrides
+  return snapshot.overrides
+}
+
+/** 同步读用户自建的提示词清单（顺序即用户在设置里看到的顺序）。 */
+export function getCustomSystemPrompts(): CustomSystemPrompt[] {
+  return snapshot.custom
+}
+
+/** 新建一条自定义提示词的稳定 id。改名不动它——用户的选择记的是 id。 */
+export function newCustomPromptId(): string {
+  return `${CUSTOM_PROMPT_ID_PREFIX}${globalThis.crypto.randomUUID()}`
 }
 
 export function systemPromptOverridesLoaded(): boolean {
@@ -86,28 +136,32 @@ export function subscribeSystemPromptOverrides(listener: () => void): () => void
   }
 }
 
-function applySnapshot(next: SystemPromptOverrideMap): SystemPromptOverrideMap {
-  overrides = next
+function applySnapshot(next: SystemPromptSnapshot): SystemPromptSnapshot {
+  snapshot = next
   loaded = true
   emit()
-  return overrides
+  return snapshot
 }
 
 /**
  * load-once：多次调用共用同一个 in-flight promise，不会打多次 IPC。
  * 非 Electron 环境（浏览器测试/预览）没有 bridge → 直接落到空 map，全部用默认值。
  */
-export function loadSystemPromptOverrides(): Promise<SystemPromptOverrideMap> {
-  if (loaded) return Promise.resolve(overrides)
+function toSnapshot(value: SystemPromptOverrides | undefined): SystemPromptSnapshot {
+  return { overrides: { ...(value?.prompts ?? {}) }, custom: [...(value?.custom ?? [])] }
+}
+
+export function loadSystemPromptOverrides(): Promise<SystemPromptSnapshot> {
+  if (loaded) return Promise.resolve(snapshot)
   if (loadPromise) return loadPromise
   const bridge = getDesktopBridge()?.settings?.systemPrompts
   if (!bridge?.get) {
-    return Promise.resolve(applySnapshot({}))
+    return Promise.resolve(applySnapshot(EMPTY_SNAPSHOT))
   }
   loadPromise = bridge
     .get()
-    .then((value: SystemPromptOverrides | undefined) => applySnapshot({ ...(value?.prompts ?? {}) }))
-    .catch(() => applySnapshot({}))
+    .then((value: SystemPromptOverrides | undefined) => applySnapshot(toSnapshot(value)))
+    .catch(() => applySnapshot(EMPTY_SNAPSHOT))
     .finally(() => {
       loadPromise = null
     })
@@ -115,23 +169,32 @@ export function loadSystemPromptOverrides(): Promise<SystemPromptOverrideMap> {
 }
 
 /** 写盘 + 立即更新本地快照（乐观），让同步 getter 马上看到新值、不用等 IPC 回来。 */
-export async function saveSystemPromptOverrides(
-  next: SystemPromptOverrideMap,
-): Promise<SystemPromptOverrideMap> {
-  applySnapshot({ ...next })
+export async function saveSystemPromptSnapshot(
+  next: SystemPromptSnapshot,
+): Promise<SystemPromptSnapshot> {
+  applySnapshot({ overrides: { ...next.overrides }, custom: [...next.custom] })
   const bridge = getDesktopBridge()?.settings?.systemPrompts
-  if (!bridge?.set) return overrides
+  if (!bridge?.set) return snapshot
   try {
-    const stored = await bridge.set({ schemaVersion: 1, prompts: next })
-    return applySnapshot({ ...(stored?.prompts ?? {}) })
+    const stored = await bridge.set({ schemaVersion: 2, prompts: next.overrides, custom: next.custom })
+    return applySnapshot(toSnapshot(stored))
   } catch {
-    return overrides
+    return snapshot
   }
 }
 
-/** 仅供单测复位模块级状态。 */
-export function resetSystemPromptOverridesForTest(next: SystemPromptOverrideMap = {}): void {
-  overrides = next
+/**
+ * 仅供单测复位模块级状态。
+ *
+ * 签名刻意**不用** `Partial<SystemPromptSnapshot>`：那样写的话，形状扩成
+ * `{ overrides, custom }` 之前的旧调用（`reset({ story: '…' })`）仍能通过类型检查，
+ * 却因为没有 `overrides` 键而静默变成「复位成空」——测试照跑，断言全绿，实际什么都没设进去。
+ * 这里要求显式给出两个键中的至少一个字段名，写错的旧形状会当场编译报错而不是无声失效。
+ */
+export function resetSystemPromptOverridesForTest(
+  next: { overrides?: SystemPromptOverrideMap; custom?: CustomSystemPrompt[] } = {},
+): void {
+  snapshot = { overrides: next.overrides ?? {}, custom: next.custom ?? [] }
   loaded = false
   loadPromise = null
   listeners.clear()
