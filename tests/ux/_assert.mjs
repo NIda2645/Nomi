@@ -33,6 +33,33 @@ export async function expectText(locator, pattern, message, timeout = DEFAULT_TI
   await expect(locator, message).toHaveText(pattern, { timeout })
 }
 
+/**
+ * 点一个东西，点不到就**报红**。走查里所有点击都该走它。
+ *
+ * 为什么单独立一个 API：全仓的点击写法是
+ *   `if (await el.count()) { await el.click().catch(() => {}) }`
+ * 这行有两个吞：`count() > 0` 只证「DOM 里有」不证「点得着」（一次性取样，还有竞态），
+ * 而 `.catch(() => {})` 把真实点击失败原地咽掉。于是**定位器过期 = 静默跳过这一步**，
+ * 脚本照常往下走、照常截图、照常报绿——`dark-journey` 前三张截图字节完全相同就是这么来的
+ * （两个候选定位器都是 0，「打开示例项目」整步没发生，而 stdout 只淡淡印了一行 false）。
+ *
+ * 这里用 toBeVisible 而不是 count>0：可见才点得着，且它是自动重试的，
+ * 顺带把「元素还没渲染出来」和「元素根本不存在」区分开——前者等得到，后者等不到。
+ */
+export async function clickOrFail(locator, label, { timeout = DEFAULT_TIMEOUT_MS, ...clickOptions } = {}) {
+  if (!label || typeof label !== 'string') {
+    throw new Error('clickOrFail(locator, label)：label 必填，失败信息要说人话，别让人对着 selector 猜')
+  }
+  const target = locator.first()
+  await expect(
+    target,
+    `点不到「${label}」：等满 ${timeout}ms 它都没可见。\n`
+      + '要么这一屏根本没走到（上一步其实失败了），要么定位器已经过期——\n'
+      + '两种都必须报红：静默跳过一步再继续截图，就是假绿。',
+  ).toBeVisible({ timeout })
+  await target.click({ timeout, ...clickOptions })
+}
+
 const PROOF = Symbol('nomi.walkthrough.probe-proof')
 
 /**
