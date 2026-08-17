@@ -186,13 +186,14 @@ function buildInputs(resolvedClips: ResolvedClip[], fps: number): FfmpegFiltergr
 /**
  * 构建音频滤镜。音频源 = 独立音频轨 clip + 自带音轨的 video clip（asset.hasAudio）。
  * 每个源：按源内区间 atrim → asetpts 归零 → adelay 平移到时间轴位置。
- * 多源用 amix 合并；normalize=0 避免默认按输入数 1/N 衰减（顺序不重叠的 clip 应保持原音量）。
+ * 多源先补齐到时间轴全长，再用旧版 FFmpeg 兼容的 amix + volume 恢复未归一化音量。
  * 返回滤镜行数组（空 = 无音频，输出无 [aout]）。
  */
 function buildAudioGraph(
   resolvedClips: ResolvedClip[],
   profileAudioCodec: NomiRenderManifestV1["profile"]["audioCodec"],
   fps: number,
+  timelineDurationSeconds: number,
 ): string[] {
   if (profileAudioCodec === "none") return [];
 
@@ -232,16 +233,20 @@ function buildAudioGraph(
     const clipDurationFrames = clip.endFrame - clip.startFrame;
     const sourceStart = secondsFromFrames(clip.sourceStartFrame ?? 0, fps);
     const sourceEnd = secondsFromFrames(clip.sourceEndFrame ?? (clip.sourceStartFrame ?? 0) + clipDurationFrames, fps);
+    const equalizeDuration = audioSources.length > 1
+      ? `,apad,atrim=end=${formatSeconds(timelineDurationSeconds)}`
+      : "";
     filters.push(
       `${sourceLabel}atrim=start=${formatSeconds(sourceStart)}:end=${formatSeconds(sourceEnd)},` +
-        `asetpts=PTS-STARTPTS,adelay=${startMs}|${startMs}[${outLabel}]`,
+        `asetpts=PTS-STARTPTS,adelay=${startMs}|${startMs}${equalizeDuration}[${outLabel}]`,
     );
     sourceLabels.push(`[${outLabel}]`);
   });
 
   if (sourceLabels.length > 1) {
     filters.push(
-      `${sourceLabels.join("")}amix=inputs=${sourceLabels.length}:duration=longest:dropout_transition=0:normalize=0[aout]`,
+      `${sourceLabels.join("")}amix=inputs=${sourceLabels.length}:duration=longest:dropout_transition=0,` +
+        `volume=${sourceLabels.length}[aout]`,
     );
   }
 
@@ -373,8 +378,9 @@ export function compileFfmpegFiltergraph(input: FfmpegFiltergraphInput): FfmpegF
 
   const resolvedClips = collectReferencedClips(manifest);
   const visualClips = resolvedClips.filter(({ track, asset }) => isVisualTrack(track) || asset.kind === "image" || asset.kind === "video");
+  const durationSeconds = secondsFromFrames(manifest.timeline.durationFrames, fps);
 
-  const audioFilters = buildAudioGraph(resolvedClips, manifest.profile.audioCodec, fps);
+  const audioFilters = buildAudioGraph(resolvedClips, manifest.profile.audioCodec, fps, durationSeconds);
   const visual = buildVisualGraph(manifest, visualClips);
   const filters = visual.filters;
 
@@ -382,7 +388,6 @@ export function compileFfmpegFiltergraph(input: FfmpegFiltergraphInput): FfmpegF
   let videoOutputLabel = "[vout]";
   if (textOverlays.length > 0) {
     // 文字层接在视觉链尾（最上层），末条 overlay 收口 format=pixelFormat → [voutfinal]。
-    const durationSeconds = secondsFromFrames(manifest.timeline.durationFrames, fps);
     const overlayGraph = buildTextOverlayGraph(
       textOverlays,
       inputs.length,
