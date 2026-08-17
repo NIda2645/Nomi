@@ -48,6 +48,7 @@ async function callViaRpc(
   method: string,
   params: Record<string, unknown>,
   origin: CapabilityOriginHost,
+  options?: McpInvokeOptions,
 ): Promise<unknown> {
   const timeoutMs = transportTimeoutMs()
   const controller = new AbortController()
@@ -66,7 +67,8 @@ async function callViaRpc(
             }
           : {}),
       },
-      body: JSON.stringify({ method, params }),
+      // planConfirmed 跨 RPC 到渲染层网关：方案已在聊天里批准 → App 不再弹方案卡（免双问）。付费不透传（钱路留 App）。
+      body: JSON.stringify({ method, params, ...(options?.planConfirmed ? { planConfirmed: true } : {}) }),
       signal: controller.signal,
     })
   } catch (error) {
@@ -89,9 +91,16 @@ async function callViaRpc(
 async function invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown> {
   const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
   const instance = readLiveInstance()
-  if (instance) return callViaRpc(instance, method, params, origin)
+  if (instance) return callViaRpc(instance, method, params, origin, options)
   const makeGateway = options?.spendConfirmed ? makeConfirmedGateway : createDiskGateway
-  return dispatch(method, params, { runTask, fetchTaskResult, makeGateway, productionRuns, origin: { host: origin } })
+  return dispatch(method, params, {
+    runTask,
+    fetchTaskResult,
+    makeGateway,
+    productionRuns,
+    origin: { host: origin },
+    ...(options?.planConfirmed ? { planConfirmed: true } : {}),
+  })
 }
 
 /** 启动 stdio JSON-RPC server。main.ts 在 NOMI_MCP_STDIO 模式的 app.whenReady 后调；不开窗、不抢单实例锁。 */

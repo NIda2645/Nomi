@@ -111,7 +111,7 @@ async function callViaRpc(
   instance: LiveInstance,
   method: string,
   params: Record<string, unknown>,
-  _options?: McpInvokeOptions,
+  options?: McpInvokeOptions,
 ): Promise<unknown> {
   const client = String(process.env[CLIENT_ENV] || '').trim()
   const proof = String(process.env[CLIENT_PROOF_ENV] || '').trim()
@@ -127,7 +127,8 @@ async function callViaRpc(
         authorization: `Bearer ${instance.token}`,
         ...(client && proof ? { 'x-nomi-mcp-client': client, 'x-nomi-mcp-client-proof': proof } : {}),
       },
-      body: JSON.stringify({ method, params }),
+      // planConfirmed crosses to the renderer gateway so an in-chat plan approval skips the App dialog (no double-ask).
+      body: JSON.stringify({ method, params, ...(options?.planConfirmed ? { planConfirmed: true } : {}) }),
       signal: controller.signal,
     })
   } catch (error) {

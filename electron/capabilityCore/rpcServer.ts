@@ -88,7 +88,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         if (req.method !== 'POST' || req.url !== '/rpc') throw new RpcError('仅支持 POST /rpc', 404)
         if (!verifyToken(bearerToken(req))) throw new RpcError('鉴权失败：token 无效', 401)
         const raw = await readBody(req)
-        let parsed: { method?: unknown; params?: unknown }
+        let parsed: { method?: unknown; params?: unknown; planConfirmed?: unknown }
         try {
           parsed = JSON.parse(raw || '{}')
         } catch {
@@ -106,6 +106,8 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           makeGateway,
           productionRuns,
           origin: { host: origin },
+          // 画布方案已在聊天里确认（协议层 elicitation-first）→ addNodes 预批准方案门、渲染层不再弹卡（免双问）。
+          ...(parsed.planConfirmed === true ? { planConfirmed: true } : {}),
         })
         send(200, { ok: true, result })
       } catch (error) {

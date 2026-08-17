@@ -21,8 +21,12 @@ import {
 } from './mcpAppWidget'
 import { buildToolOutcome, buildToolErrorOutcome, buildProgressStartMessage, type ResultLocale } from './mcpToolResults'
 import { createProgressReporter } from './mcpProgress'
+import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 
-export type McpInvokeOptions = { spendConfirmed?: boolean }
+// spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
+// （elicitation-first 画布确认，见 mcpPlanTrust.ts）——透传给传输层，让最终跑 confirmPlan 的网关预批准、
+// 不再弹 App 卡（免双问）。因方案 elicitation 发生在 App 开着时，planConfirmed 需跨 RPC 边界到达渲染层网关。
+export type McpInvokeOptions = { spendConfirmed?: boolean; planConfirmed?: boolean }
 
 // 哪些工具挂活 widget（tool.name → ui:// 资源）：单次生成与 production Run 共用一张活面板。
 const TOOL_UI_RESOURCE: Record<string, string> = {
@@ -335,6 +339,9 @@ export function createMcpProtocol(transport: McpTransport) {
   // 客户端能力（initialize 时捕获）。elicitation = 客户端能代我们向真人弹确认对话框（MCP 规范 2025-06-18）。
   let clientSupportsElicitation = false
   let clientHost = 'external'
+  // 画布方案确认的会话级信任：某项目首次批量方案在聊天里批准过 → 本会话该项目后续批量直接放行。
+  // 挂闭包 = 随这条 MCP 连接/会话存活，连接断即亡，不持久化（见 mcpPlanTrust.ts）。
+  const planTrust = createPlanTrustStore()
   // 服务端→客户端请求自管 id 与 pending，等客户端回响应。
   let serverReqSeq = 0
   const pendingServerReqs = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -439,6 +446,14 @@ export function createMcpProtocol(transport: McpTransport) {
       title: '确认生成',
       description: '确认后将消耗模型额度生成；取消则不生成、不花费。',
     })
+  }
+
+  /**
+   * 画布方案确认（免费、可撤）：把「要不要往画布加这 N 个节点」递进聊天问一次。
+   * 与 spend/creative-gate 同一条 seam——协议层拦在 transport.invoke 之前，accept 才放行。
+   */
+  async function elicitPlanConfirm(nodeCount: number): Promise<{ supported: boolean; confirmed?: boolean }> {
+    return elicitBooleanConfirm(planConfirmElicit(nodeCount))
   }
 
   async function elicitCreativeGateDecision(
@@ -592,6 +607,33 @@ export function createMcpProtocol(transport: McpTransport) {
             return
           }
           const result = await transport.invoke(tool.method, built)
+          reply(id, buildToolResultPayload(tool.name, args, result))
+          return
+        }
+        // 画布方案确认 elicitation-first（免费可撤，见 mcpPlanTrust.ts）：批量加节点（≥2）当声明 elicitation
+        // 且 App 开着时，把确认递进聊天问一次而非让人跑去 App 点弹窗；批准记会话级信任、同项目后续不再问。
+        // 不满足（单节点 / 不声明 elicitation / headless）→ 落到下面原样 invoke，走既有 gateway.confirmPlan
+        //（App 弹窗 / headless 自动放行），逐字节不变。headless 即便声明 elicitation 也不问——它本就是无人值守自动放行。
+        if (
+          tool.name === 'nomi_add_nodes'
+          && clientSupportsElicitation
+          && transport.isAppOpen()
+          && Array.isArray(built.nodes)
+          && built.nodes.length >= 2 // 单节点不算「方案」→ 落到下面原样 invoke（与 core.ts 的 ≥2 门对齐）
+        ) {
+          const projectId = typeof built.projectId === 'string' ? built.projectId : ''
+          const nodeCount = built.nodes.length
+          if (!planTrust.isTrusted(projectId)) {
+            const confirm = await elicitPlanConfirm(nodeCount)
+            if (!confirm.confirmed) {
+              // decline / 超时 → 与既有取消同形（{ids:[],cancelled:true}），不落节点；文案走同一 outcome 漏斗。
+              reply(id, buildToolResultPayload(tool.name, args, { ids: [], cancelled: true }))
+              return
+            }
+            planTrust.trust(projectId)
+          }
+          // 已信任或刚批准 → 带 planConfirmed 放行：下游 confirmPlan 预批准、渲染层弹窗不再出现（免双问）。
+          const result = await transport.invoke(tool.method, built, { planConfirmed: true })
           reply(id, buildToolResultPayload(tool.name, args, result))
           return
         }

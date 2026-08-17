@@ -17,7 +17,7 @@ import {
 import { listSkillSummaries, readSkillContent } from '../skills/skillStore'
 import type { ProductionRunService } from '../productionRun/productionRunService'
 import type { ProductionBrief } from '../productionRun/productionRunTypes'
-import type { ProjectGateway } from './gateway'
+import { withPreApprovedPlan, type ProjectGateway } from './gateway'
 import type { CapabilityOriginHost } from './security'
 
 export class RpcError extends Error {
@@ -41,6 +41,11 @@ export type DispatchContext = {
   productionRuns: Pick<ProductionRunService, 'createDraft' | 'readProjection' | 'readEvents' | 'readArtifactProjection' | 'readFull' | 'command'>
   /** Transport-owned authority. Request bodies may provide only an audit label, never trust. */
   origin?: { host: CapabilityOriginHost; actorId?: string }
+  /**
+   * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ canvas.addNodes 预批准
+   * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
+   */
+  planConfirmed?: boolean
 }
 
 const PRODUCTION_START_FIELDS = new Set([
@@ -228,8 +233,12 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
     }
     case 'canvas.read':
       return readProjectCanvas(ctx.makeGateway(projectIdOf(params)))
-    case 'canvas.addNodes':
-      return addProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodes) ? (params.nodes as never[]) : [], projectIdOf(params))
+    case 'canvas.addNodes': {
+      // 方案已被协议层 elicitation-first 批准 → 预批准方案门（不再弹渲染层卡，免双问）；否则原网关照常确认。
+      const base = ctx.makeGateway(projectIdOf(params))
+      const gateway = ctx.planConfirmed ? withPreApprovedPlan(base) : base
+      return addProjectNodes(gateway, Array.isArray(params.nodes) ? (params.nodes as never[]) : [], projectIdOf(params))
+    }
     case 'canvas.connect':
       return connectProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.connections) ? (params.connections as never[]) : [])
     case 'canvas.setPrompt':
