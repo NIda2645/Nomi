@@ -48,6 +48,22 @@ export interface ProjectGateway {
   confirmPlan(info: PlanConfirmInfo): Promise<boolean>
 }
 
+/**
+ * 方案已在别处确认（协议层 elicitation-first 拿到真人 accept）→ 包一层让 confirmPlan 直接放行，
+ * 其余读写/付费确认原样透传。用于 A 模式（App 开着）：真人已在聊天里批准这批节点，就不该再弹渲染层方案卡
+ * （免双问）。付费门不受影响——confirmSpend 仍走原网关（钱路最终决定权留在 App，与 spendConfirmed 对称）。
+ * 「为什么信客户端传的 planConfirmed、且禁止把本模式复制到 spend/export 硬边界」的完整信任边界论据见
+ * rpcServer.ts 读 body.planConfirmed 处（该 flag 的 RPC 入口）。
+ */
+export function withPreApprovedPlan(gateway: ProjectGateway): ProjectGateway {
+  return {
+    readDoc: gateway.readDoc,
+    apply: gateway.apply,
+    confirmSpend: gateway.confirmSpend,
+    confirmPlan: async () => true,
+  }
+}
+
 function readDiskSnapshot(projectId: string): CanvasSnapshot {
   const record = readProject(projectId)
   if (!record) throw new Error(`项目不存在: ${projectId}`)

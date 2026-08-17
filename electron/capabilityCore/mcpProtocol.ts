@@ -19,10 +19,16 @@ import {
   buildNomiDraftFromGenerate,
   buildNomiRunFromProjection,
 } from './mcpAppWidget'
-import { buildToolOutcome, buildToolErrorOutcome, buildProgressStartMessage, type ResultLocale } from './mcpToolResults'
+import { buildToolErrorOutcome, buildProgressStartMessage, type ResultLocale } from './mcpToolResults'
+import { assembleToolResultContent } from './mcpResultPayload'
+import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
+import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 
-export type McpInvokeOptions = { spendConfirmed?: boolean }
+// spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
+// （elicitation-first 画布确认，见 mcpPlanTrust.ts）——透传给传输层，让最终跑 confirmPlan 的网关预批准、
+// 不再弹 App 卡（免双问）。因方案 elicitation 发生在 App 开着时，planConfirmed 需跨 RPC 边界到达渲染层网关。
+export type McpInvokeOptions = { spendConfirmed?: boolean; planConfirmed?: boolean }
 
 // 哪些工具挂活 widget（tool.name → ui:// 资源）：单次生成与 production Run 共用一张活面板。
 const TOOL_UI_RESOURCE: Record<string, string> = {
@@ -46,249 +52,8 @@ export interface McpTransport {
 
 const PROTOCOL_VERSION = '2025-11-25'
 
-// 工具定义：name → { description, inputSchema(JSON Schema), method(能力核方法), build(args→params) }。
-export const MCP_TOOL_CATALOG = [
-  {
-    name: 'nomi_list_projects',
-    description: '列出本机 Nomi 的所有项目（id / 名称 / 更新时间）。',
-    inputSchema: { type: 'object', properties: {} },
-    method: 'project.list',
-    build: () => ({}),
-  },
-  {
-    name: 'nomi_create_project',
-    description: '新建一个空白 Nomi 项目，返回项目 id。',
-    inputSchema: { type: 'object', properties: { name: { type: 'string', description: '项目名（可选）' } } },
-    method: 'project.create',
-    build: (a: Record<string, unknown>) => (a.name ? { name: a.name } : {}),
-  },
-  {
-    name: 'nomi_list_models',
-    description: '列出 Nomi 已接入且可用的生成模型（vendor / modelKey / 能力 kind / 名称），用于选型。',
-    inputSchema: { type: 'object', properties: {} },
-    method: 'models.list',
-    build: () => ({}),
-  },
-  {
-    name: 'nomi_read_canvas',
-    description: '读取某项目画布的节点与连线（精简视图，用于据此决策）。',
-    inputSchema: { type: 'object', properties: { projectId: { type: 'string' } }, required: ['projectId'] },
-    method: 'canvas.read',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId }),
-  },
-  {
-    name: 'nomi_add_nodes',
-    description: '往项目画布批量加节点（镜头/文本/图片/视频等）。返回新建节点 id。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string' },
-        nodes: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              kind: { type: 'string', description: 'text / image / video / shot / character / scene / audio 等' },
-              title: { type: 'string' },
-              prompt: { type: 'string' },
-            },
-          },
-        },
-      },
-      required: ['projectId', 'nodes'],
-    },
-    method: 'canvas.addNodes',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodes: a.nodes || [] }),
-  },
-  {
-    name: 'nomi_connect_nodes',
-    description: '连线（参考关系）。connections=[{source,target,mode?}]，mode 缺省 reference。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string' },
-        connections: {
-          type: 'array',
-          items: { type: 'object', properties: { source: { type: 'string' }, target: { type: 'string' }, mode: { type: 'string' } }, required: ['source', 'target'] },
-        },
-      },
-      required: ['projectId', 'connections'],
-    },
-    method: 'canvas.connect',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, connections: a.connections || [] }),
-  },
-  {
-    name: 'nomi_set_node_prompt',
-    description: '改某节点的提示词（可选改标题）。',
-    inputSchema: {
-      type: 'object',
-      properties: { projectId: { type: 'string' }, nodeId: { type: 'string' }, prompt: { type: 'string' }, title: { type: 'string' } },
-      required: ['projectId', 'nodeId', 'prompt'],
-    },
-    method: 'canvas.setPrompt',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeId: a.nodeId, prompt: a.prompt, title: a.title }),
-  },
-  {
-    name: 'nomi_delete_nodes',
-    description: '删除节点及其关联连线。',
-    inputSchema: { type: 'object', properties: { projectId: { type: 'string' }, nodeIds: { type: 'array', items: { type: 'string' } } }, required: ['projectId', 'nodeIds'] },
-    method: 'canvas.deleteNodes',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeIds: a.nodeIds || [] }),
-  },
-  {
-    name: 'nomi_start_playbook',
-    description: '在本地 Nomi 项目中创建一个可审阅的制作草稿。只记录 brief 与 playbook，不批准预算、不调用付费模型。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string', description: '目标 Nomi 项目 id' },
-        playbook: { type: 'string', description: '制作 playbook，例如 brand.promo' },
-        playbookVersion: { type: 'string', description: '可选版本；默认 1.0.0' },
-        brief: {
-          type: 'object',
-          properties: {
-            goal: { type: 'string', description: '要完成什么' },
-            audience: { type: 'string' },
-            channel: { type: 'string' },
-            tone: { type: 'string' },
-            durationSeconds: { type: 'number', minimum: 1, maximum: 3600 },
-            sellingPoints: { type: 'array', maxItems: 20, items: { type: 'string' } },
-            referenceArtifactIds: { type: 'array', maxItems: 20, items: { type: 'string' } },
-          },
-          required: ['goal'],
-          additionalProperties: false,
-        },
-        trustLevel: {
-          type: 'string',
-          enum: ['key_confirm', 'budget_only', 'confirm_all'],
-          description: '可选信任档位：key_confirm 默认（方向/样片门都停）/ budget_only 只管钱（跳过创意与样片门）/ confirm_all 每镜确认。用户一上来就说「别问了直接出」时设 budget_only。',
-        },
-      },
-      required: ['projectId', 'playbook', 'brief'],
-      additionalProperties: false,
-    },
-    method: 'production.start',
-    build: (a: Record<string, unknown>) => ({
-      projectId: a.projectId,
-      playbook: a.playbook,
-      playbookVersion: a.playbookVersion,
-      brief: a.brief,
-      ...(a.trustLevel ? { trustLevel: a.trustLevel } : {}),
-    }),
-  },
-  {
-    name: 'nomi_get_run',
-    description: '读取一个持久化制作 Run 的安全状态投影：阶段、任务、待确认项、预算与最新产物。',
-    inputSchema: {
-      type: 'object',
-      properties: { projectId: { type: 'string' }, runId: { type: 'string' } },
-      required: ['projectId', 'runId'],
-      additionalProperties: false,
-    },
-    method: 'production.get',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId }),
-  },
-  {
-    name: 'nomi_subscribe_run',
-    description: '从 durable cursor 开始长轮询制作 Run 的重要事件；最多等待 25 秒，不返回轮询噪声。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string' },
-        runId: { type: 'string' },
-        afterCursor: { type: 'integer', minimum: 0, default: 0 },
-        waitMs: { type: 'integer', minimum: 0, maximum: 25_000, default: 0 },
-      },
-      required: ['projectId', 'runId'],
-      additionalProperties: false,
-    },
-    method: 'production.events',
-    build: (a: Record<string, unknown>) => ({
-      projectId: a.projectId,
-      runId: a.runId,
-      afterCursor: a.afterCursor ?? 0,
-      waitMs: a.waitMs ?? 0,
-    }),
-  },
-  {
-    name: 'nomi_get_artifact',
-    description: '读取 Run 内一个产物的安全元数据、受控预览能力与 Nomi 深链；不返回绝对路径或供应商地址。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string' },
-        runId: { type: 'string' },
-        artifactId: { type: 'string' },
-      },
-      required: ['projectId', 'runId', 'artifactId'],
-      additionalProperties: false,
-    },
-    method: 'production.artifact',
-    build: (a: Record<string, unknown>) => ({
-      projectId: a.projectId,
-      runId: a.runId,
-      artifactId: a.artifactId,
-    }),
-  },
-  {
-    name: 'nomi_control_run',
-    description:
-      '控制制作 Run：pause 暂停（保住已花预算与已完成镜头）/ resume 从断点继续（不重做不重付）/ cancel 取消（未提交任务不计费）'
-      + ' / set_trust 改信任档位（配 trustLevel）。用户说「停一下 / 继续 / 别做了」用前三个；说「别问了直接出」= set_trust 到 budget_only（跳过创意与样片门，只留预算门）。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string' },
-        runId: { type: 'string' },
-        action: { type: 'string', enum: ['pause', 'resume', 'cancel', 'set_trust'] },
-        trustLevel: { type: 'string', enum: ['key_confirm', 'budget_only', 'confirm_all'], description: 'action=set_trust 时必填：key_confirm 五门全开 / budget_only 只管钱 / confirm_all 每镜确认' },
-      },
-      required: ['projectId', 'runId', 'action'],
-      additionalProperties: false,
-    },
-    method: 'production.control',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, action: a.action, ...(a.trustLevel ? { trustLevel: a.trustLevel } : {}) }),
-  },
-  {
-    name: 'nomi_decide_gate',
-    description:
-      '对制作 Run 的可逆创意门表态：approved 批准 / rejected 否决。方向门（gate-direction-*）可带 choiceKey 指定候选。'
-      + 'Nomi 会在服务端再次向真人发起确认；预算、逐镜头付费、导出和发布必须回 Nomi 决定，不能用本工具跳过。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string' },
-        runId: { type: 'string' },
-        gateId: { type: 'string', description: '门 id，例如 gate-direction-v1' },
-        decision: { type: 'string', enum: ['approved', 'rejected'] },
-        choiceKey: { type: 'string', description: '方向门专用：用户选中的候选 key（来自 gate.waiting 的 directionCandidates）' },
-      },
-      required: ['projectId', 'runId', 'gateId', 'decision'],
-      additionalProperties: false,
-    },
-    method: 'production.decide-gate',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, gateId: a.gateId, decision: a.decision, choiceKey: a.choiceKey }),
-  },
-  {
-    name: 'nomi_generate',
-    description: '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string' },
-        vendor: { type: 'string' },
-        modelKey: { type: 'string' },
-        intent: { type: 'string', enum: ['image', 'video', 'text', 'audio'] },
-        prompt: { type: 'string' },
-        nodeId: { type: 'string', description: '在既有节点上生成（可选）' },
-        references: { type: 'array', items: { type: 'string' }, description: '参考图 URL（可选）' },
-      },
-      required: ['projectId', 'vendor', 'modelKey', 'intent', 'prompt'],
-    },
-    method: 'generate',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId, references: a.references }),
-  },
-] as const
+// MCP 工具契约目录抽出到 mcpToolCatalog.ts（壳到 800/800 的 headroom 提取）；此处只 import 这份数据契约。
+import { MCP_TOOL_CATALOG } from './mcpToolCatalog'
 
 export const MCP_TOOL_NAMES = MCP_TOOL_CATALOG.map((tool) => tool.name)
 
@@ -335,6 +100,9 @@ export function createMcpProtocol(transport: McpTransport) {
   // 客户端能力（initialize 时捕获）。elicitation = 客户端能代我们向真人弹确认对话框（MCP 规范 2025-06-18）。
   let clientSupportsElicitation = false
   let clientHost = 'external'
+  // 画布方案确认的会话级信任：某项目首次批量方案在聊天里批准过 → 本会话该项目后续批量直接放行。
+  // 挂闭包 = 随这条 MCP 连接/会话存活，连接断即亡，不持久化（见 mcpPlanTrust.ts）。
+  const planTrust = createPlanTrustStore()
   // 服务端→客户端请求自管 id 与 pending，等客户端回响应。
   let serverReqSeq = 0
   const pendingServerReqs = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -358,10 +126,9 @@ export function createMcpProtocol(transport: McpTransport) {
   // openai/outputTemplate（ChatGPT 别名）。always 附——宿主不支持则忽略这些附加字段（spec 设计），
   // 跨 Claude/ChatGPT/参考宿主通用（P4）；不 gate on 客户端声明，否则 ChatGPT 不声明该扩展就拿不到 widget。
   function buildToolResultPayload(toolName: string, args: Record<string, unknown>, result: unknown): Record<string, unknown> {
-    const { text, outcome } = buildToolOutcome(toolName, args, result, locale())
-    const payload: Record<string, unknown> = {
-      content: [{ type: 'text', text: text ?? JSON.stringify(result, null, 2) }],
-    }
+    // content 块装配（text + 可选缩略图 image）抽到 mcpResultPayload（0c：壳文件不破 800 行）。
+    const { content, outcome } = assembleToolResultContent(toolName, args, result, locale())
+    const payload: Record<string, unknown> = { content }
     const structured: Record<string, unknown> = {}
     if (outcome) structured.nomiOutcome = outcome
     const uiUri = TOOL_UI_RESOURCE[toolName]
@@ -373,8 +140,10 @@ export function createMcpProtocol(transport: McpTransport) {
       })
       // The widget needs a compact presentation frame; the AI client needs the complete safe
       // projection to reason about gates, cursors, jobs and artifact identities. The service
-      // owns redaction before this protocol boundary.
-      structured.nomiRunData = result
+      // owns redaction before this protocol boundary. App 侧富化的内部字段（_nomiThumbnail 缩略图
+      // base64 / _nomiPreviewUrl 签名链）各有去处（image block / widget），这里剥掉——否则 base64
+      // 会在 nomiRunData 里重复一份大 payload（nomi_get_artifact 补图后尤甚）。
+      structured.nomiRunData = stripInternalEnrichFields(result)
       payload._meta = { ui: { resourceUri: uiUri }, 'openai/outputTemplate': uiUri }
     } else if (toolName === 'nomi_generate' && uiUri) {
       structured.nomiDraft = buildNomiDraftFromGenerate({
@@ -439,6 +208,14 @@ export function createMcpProtocol(transport: McpTransport) {
       title: '确认生成',
       description: '确认后将消耗模型额度生成；取消则不生成、不花费。',
     })
+  }
+
+  /**
+   * 画布方案确认（免费、可撤）：把「要不要往画布加这 N 个节点」递进聊天问一次。
+   * 与 spend/creative-gate 同一条 seam——协议层拦在 transport.invoke 之前，accept 才放行。
+   */
+  async function elicitPlanConfirm(nodeCount: number): Promise<{ supported: boolean; confirmed?: boolean }> {
+    return elicitBooleanConfirm(planConfirmElicit(nodeCount))
   }
 
   async function elicitCreativeGateDecision(
@@ -592,6 +369,33 @@ export function createMcpProtocol(transport: McpTransport) {
             return
           }
           const result = await transport.invoke(tool.method, built)
+          reply(id, buildToolResultPayload(tool.name, args, result))
+          return
+        }
+        // 画布方案确认 elicitation-first（免费可撤，见 mcpPlanTrust.ts）：批量加节点（≥2）当声明 elicitation
+        // 且 App 开着时，把确认递进聊天问一次而非让人跑去 App 点弹窗；批准记会话级信任、同项目后续不再问。
+        // 不满足（单节点 / 不声明 elicitation / headless）→ 落到下面原样 invoke，走既有 gateway.confirmPlan
+        //（App 弹窗 / headless 自动放行），逐字节不变。headless 即便声明 elicitation 也不问——它本就是无人值守自动放行。
+        if (
+          tool.name === 'nomi_add_nodes'
+          && clientSupportsElicitation
+          && transport.isAppOpen()
+          && Array.isArray(built.nodes)
+          && built.nodes.length >= 2 // 单节点不算「方案」→ 落到下面原样 invoke（与 core.ts 的 ≥2 门对齐）
+        ) {
+          const projectId = typeof built.projectId === 'string' ? built.projectId : ''
+          const nodeCount = built.nodes.length
+          if (!planTrust.isTrusted(projectId)) {
+            const confirm = await elicitPlanConfirm(nodeCount)
+            if (!confirm.confirmed) {
+              // decline / 超时 → 与既有取消同形（{ids:[],cancelled:true}），不落节点；文案走同一 outcome 漏斗。
+              reply(id, buildToolResultPayload(tool.name, args, { ids: [], cancelled: true }))
+              return
+            }
+            planTrust.trust(projectId)
+          }
+          // 已信任或刚批准 → 带 planConfirmed 放行：下游 confirmPlan 预批准、渲染层弹窗不再出现（免双问）。
+          const result = await transport.invoke(tool.method, built, { planConfirmed: true })
           reply(id, buildToolResultPayload(tool.name, args, result))
           return
         }

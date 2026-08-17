@@ -2,9 +2,11 @@
 // 夹具一律用**真实 body**（NEWAPI_VIDEO_CREATE_OP / apimart / 火山），不自造——本轮栽过「编错 fixture
 // 把自己骗过去」（ComfyUI 视频通道整条不存在却测试全绿）。
 import { describe, expect, it } from "vitest";
-import { modeSlotReach, modeIsUsable, DEFAULT_SLOT_INPUT_KEY, type ReachSlot } from "./referenceReachability";
+import { modeSlotReach, modeIsUsable, bodyReferenceSupport, DEFAULT_SLOT_INPUT_KEY, type ReachSlot } from "./referenceReachability";
 import { NEWAPI_VIDEO_CREATE_OP } from "./newapiTransport";
 import { VOLCENGINE_VIDEO_MODELS } from "./volcengineVideos";
+import { APIMART_VIDEO_MODELS } from "./apimartVideos";
+import { APIMART_IMAGE_MODELS } from "./apimartImages";
 
 const RELAY = NEWAPI_VIDEO_CREATE_OP.body;
 /** apimart 全能参考 body 的口径：整组数组键都在。 */
@@ -89,6 +91,45 @@ describe("缺省 inputKey 表 = 单一真相源", () => {
     expect(Object.keys(DEFAULT_SLOT_INPUT_KEY).sort()).toEqual(
       ["audio_ref", "first_frame", "image_ref", "last_frame", "source_video", "video_ref"].sort(),
     );
+  });
+});
+
+describe("bodyReferenceSupport · list_models 逐 mapping 汇报参考能力（真实 body，与 modeSlotReach 同源判据）", () => {
+  const seedance25 = APIMART_VIDEO_MODELS.find((m) => m.modelKey === "doubao-seedance-2.5")!;
+  const seedream45 = APIMART_IMAGE_MODELS.find((m) => m.modelKey === "doubao-seedream-4.5")!;
+
+  it("seedance 2.5 t2v body（纯文生）→ 无任何参考能力", () => {
+    const t2v = seedance25.mappings.find((m) => m.taskKind === "text_to_video")!.create.body;
+    expect(bodyReferenceSupport(t2v)).toEqual({ image: false, video: false, audio: false, multiImage: false });
+  });
+
+  it("seedance 2.5 i2v body（image_urls 数组 + video_urls + audio_urls）→ 图/视频/音频全能，且图可多张", () => {
+    const i2v = seedance25.mappings.find((m) => m.taskKind === "image_to_video")!.create.body;
+    expect(bodyReferenceSupport(i2v)).toEqual({ image: true, video: true, audio: true, multiImage: true });
+  });
+
+  it("seedream 4.5 文生图 body → 无参考；改图 body（image_urls 数组）→ 图 + 多张", () => {
+    const t2i = seedream45.mappings.find((m) => m.taskKind === "text_to_image")!.create.body;
+    const edit = seedream45.mappings.find((m) => m.taskKind === "image_edit")!.create.body;
+    expect(bodyReferenceSupport(t2i)).toEqual({ image: false, video: false, audio: false, multiImage: false });
+    expect(bodyReferenceSupport(edit)).toMatchObject({ image: true, multiImage: true });
+    expect(bodyReferenceSupport(edit).video).toBe(false);
+  });
+
+  it("通用中转最小模板（单图聚合位 image）→ 图能发但**非多张**（multiImage=false）", () => {
+    const support = bodyReferenceSupport(RELAY);
+    expect(support.image).toBe(true);
+    expect(support.multiImage).toBe(false);
+  });
+
+  it("纯静态 body（不引用任何参数）→ 全 false（判不出就不谎称有能力，与不误伤对称）", () => {
+    expect(bodyReferenceSupport({ model: "x", prompt: "{{request.prompt}}" })).toEqual({ image: false, video: false, audio: false, multiImage: false });
+  });
+
+  it("火山原生 i2v（volcengine_*_content 键）→ 图/视频能发（原生嵌套键也被识别）", () => {
+    const support = bodyReferenceSupport(VOLC_I2V);
+    expect(support.image).toBe(true);
+    expect(support.video).toBe(true);
   });
 });
 

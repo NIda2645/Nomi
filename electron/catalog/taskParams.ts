@@ -6,8 +6,9 @@
 // params 的坑，都只在"真实参数构建"里暴露，埋在 2500 行 runtime 里既测不到也容易回归。
 import { firstString, type JsonRecord } from "../jsonUtils";
 import { referenceInputParams } from "./archetypeInput";
-import { ARCHETYPE_WIRE_DEFAULTS } from "./archetypeWireDefaults.generated";
+import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archetypeWireDefaults.generated";
 import { bodyReferencedParamKeys } from "./paramTranslate";
+import { bodyReferenceSupport, classifyReferenceKey, type ReferenceFamily } from "./referenceReachability";
 
 /** taskTemplateParams 实际用到的 TaskRequest 子集（结构化，避免与 runtime 的 TaskRequest 循环依赖）。 */
 export type TaskParamsInput = {
@@ -46,10 +47,50 @@ export function applyWireDefaults(
   return { ...defaultParams, ...(extras || {}) };
 }
 
+// 一个比例值（"16:9" / "1 : 1"）。用来判某个 `size` 默认到底是「比例语义」还是「像素语义」。
+const RATIO_VALUE_RE = /^\d+\s*:\s*\d+$/;
+
+/**
+ * 调用方比例（nomi_generate 的 aspect_ratio）该不该写进**这条模式**的 `size` 键。
+ *
+ * 背景：`size` 键名有歧义——apimart-seedream 等把它当**比例**读（wire 默认 "1:1"），而 volcengine-seedream /
+ * modelscope / agnes / rh-qwen / rh-sora 把它当**像素**读（默认 "2048x2048" / "1024x1024" / "720x1280"）。
+ * buildGenerateParams 无差别把调用方比例铺进 size 别名，caller-wins 于是会把像素档案的 size 覆写成 "16:9"，
+ * 渲染进 wire body 就是废请求（火山 seedream 直接坏）。故在**看得见所选模式真实默认**的这道缝（extras 与
+ * mapping/档案默认在此汇合）加闸：size 键是比例语义时才准调用方比例落到 size；是像素语义或压根没有 size →
+ * 不落（size 那半留给档案像素默认，调用方比例对这个只会说像素的目标不适用）。
+ *
+ * **判据从档案 size 控件的选项集 DERIVE**（生成期算好、桥进 ARCHETYPE_SIZE_RATIO_SEMANTIC）：选项集里有真比例档
+ * （16:9…）→ 这个 size 键是比例语义，哪怕它的默认值是 "adaptive" 这种比例族自动档（seedance-2.5-apimart t2v
+ * 正是此例：size 默认 "adaptive"、body 只读 size，旧的「按默认值字面 /^\d+:\d+$/ 猜」会误判成像素语义、把调用方
+ * 16:9 剥掉 → 画幅被吞）。只有档案里查不到该 (archetypeId, taskKind)（如自定义/未桥接的档案）才回退到旧的
+ * **默认值字面形状**正则兜底。语义无歧义的 aspect_ratio / aspectRatio 别名不受此限，照常保留（模板没引用就自然被丢弃）。
+ * **纯 derive，无 vendor 名单。**
+ */
+function sizeDefaultIsRatioSemantic(
+  archetypeId: string | undefined,
+  taskKind: string,
+  archetypeDefaults: Record<string, unknown> | undefined,
+  mappingDefaults: Record<string, unknown> | undefined,
+): boolean {
+  // ① 首选：档案 size 控件选项集 derive 出的比例语义标记（覆盖 "adaptive" 这类默认值猜不出的比例族档）。
+  const emitted = archetypeId ? ARCHETYPE_SIZE_RATIO_SEMANTIC[archetypeId]?.[taskKind] : undefined;
+  if (typeof emitted === "boolean") return emitted;
+  // ② 回退（未桥接的档案）：按合并后真正生效的 size 默认值字面形状猜。
+  // 有效默认 = 合并后真正生效的那个（mappingDefaults 是更贴近的兜底、后铺，故它有 size 时以它为准）。
+  const effective = mappingDefaults && "size" in mappingDefaults
+    ? mappingDefaults.size
+    : archetypeDefaults?.size;
+  return typeof effective === "string" && RATIO_VALUE_RE.test(effective.trim());
+}
+
 /**
  * headless/MCP 两道缺参兜底（既有值优先）：① 档案参数默认值（单一真相源，按 archetypeId+taskKind 桥接自
  * src/config，vendorParams 覆盖优先、回退通用 "*"；补 model 变体/duration(int)/比例/清晰度/voice/size）；
  * ② mapping 级 defaultParams（仅非档案派生的兜底）。逻辑收口在此 → runtime 一行调用，不喂巨壳。
+ *
+ * 附一道 `size` 别名闸（见 sizeDefaultIsRatioSemantic）：调用方比例铺进的 `size` 仅当该模式 size 默认是比例形时
+ * 才保留，否则剥掉，免得把只说像素的目标（火山 seedream 等）的 size 覆写成 "16:9" 发出废请求。
  */
 export function applyHeadlessParamDefaults(
   extras: Record<string, unknown> | undefined,
@@ -60,7 +101,13 @@ export function applyHeadlessParamDefaults(
 ): Record<string, unknown> | undefined {
   const perKind = archetypeId ? ARCHETYPE_WIRE_DEFAULTS[archetypeId]?.[taskKind] : undefined;
   const archetypeDefaults = perKind ? (perKind[vendorKey] ?? perKind["*"]) : undefined;
-  return applyWireDefaults(applyWireDefaults(extras, archetypeDefaults), mappingDefaults);
+  // extras.size 是比例形（调用方 aspect_ratio 铺来的）、但本模式的 size 是像素语义 → 剥掉，让档案像素默认接管。
+  // 只针对「比例形的 caller size」，UI 路自己填的真实像素 size 不受影响（它不匹配 RATIO_VALUE_RE）。
+  const guarded = extras && typeof extras.size === "string" && RATIO_VALUE_RE.test(extras.size.trim())
+    && !sizeDefaultIsRatioSemantic(archetypeId, taskKind, archetypeDefaults, mappingDefaults)
+    ? (() => { const { size: _dropped, ...rest } = extras; return rest; })()
+    : extras;
+  return applyWireDefaults(applyWireDefaults(guarded, archetypeDefaults), mappingDefaults);
 }
 
 export function taskTemplateParams(request: TaskParamsInput): JsonRecord {
@@ -222,11 +269,85 @@ export function unreachableReferenceLabels(request: TaskParamsInput, createBody:
   return [...missing];
 }
 
+/** 一个模式（taskKind）的 create body——供拒发建议判「哪个模式带得动我携带的参考」。 */
+export type ModelModeBody = { taskKind: string; body: unknown };
+
+const FAMILY_LABEL: Record<ReferenceFamily, string> = { image: "参考图", video: "参考视频", audio: "参考音频" };
+// taskKind → 人话模式名（拒发建议里点名"用哪个模式"）。未登记的原样用 taskKind。
+const TASK_KIND_LABEL: Record<string, string> = {
+  image_edit: "图生图（改图）",
+  image_to_video: "图生视频（i2v）",
+  text_to_video: "文生视频",
+  text_to_image: "文生图",
+};
+
+/** 本次请求携带的参考族（从 referenceInputParams 的键 derive，与 body 承载力同一套 classifyReferenceKey）。 */
+function carriedReferenceFamilies(extras: JsonRecord): Set<ReferenceFamily> {
+  const families = new Set<ReferenceFamily>();
+  const walk = (key: string, value: unknown): void => {
+    if (typeof value === "string") {
+      if (REF_URL_RE.test(value.trim())) {
+        const family = classifyReferenceKey(key);
+        if (family) families.add(family);
+      }
+      return;
+    }
+    if (Array.isArray(value)) for (const item of value) walk(key, item);
+    else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(k, v);
+  };
+  for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  return families;
+}
+
+/**
+ * 拒发后附一句**可走的路**（交付4）：从**同一套 mapping 数据**（各模式 create body）derive——
+ * 找出这个模型哪些模式的 body 真读得到我携带的参考族，点名它（"该模型 i2v 模式的 image_urls 支持多张参考图"）；
+ * 一个模式都带不动 → 老实说没有，并指路 list_models 找别的。**不 hardcode 任何 vendor 串**：模式名来自 taskKind，
+ * 多图与否来自 bodyReferenceSupport.multiImage。给不出 modeBodies（未注入）→ 返回空串（保持既有拒发语义不变）。
+ *
+ * 排除的是**刚被判发不出的那条 body 本身**（failedBody，按序列化相等判定），不是按 taskKind 排除——因为同一
+ * taskKind 可能有多条 mapping（当前走的通用中转 body 发不出，但该模型自己的原生 i2v body 读得到），按 taskKind
+ * 排除会把唯一可行的那条也误删（seedance 唯一的 i2v 原生 body 就这么被漏掉过）。同一 taskKind 去重：多条能行的
+ * 只报一次模式名。
+ */
+export function reachableModeSuggestion(
+  request: TaskParamsInput,
+  failedBody: unknown,
+  modeBodies: ModelModeBody[] | undefined,
+): string {
+  if (!modeBodies || modeBodies.length === 0) return "";
+  const carried = carriedReferenceFamilies(request.extras || {});
+  if (carried.size === 0) return "";
+  const failedKey = typeof failedBody === "undefined" ? undefined : JSON.stringify(failedBody);
+  // 找出 body 覆盖了全部携带族的模式（排除刚失败的那条 body 本身）；同 taskKind 去重、记住是否多图。
+  const byTaskKind = new Map<string, boolean>();
+  for (const mode of modeBodies) {
+    if (failedKey !== undefined && JSON.stringify(mode.body) === failedKey) continue; // 刚被判发不出的那条，不推荐它自己。
+    const support = bodyReferenceSupport(mode.body);
+    const covers = [...carried].every((family) => support[family]);
+    if (covers) byTaskKind.set(mode.taskKind, (byTaskKind.get(mode.taskKind) ?? false) || support.multiImage);
+  }
+  const carriedText = [...carried].map((f) => FAMILY_LABEL[f]).join(" + ");
+  if (byTaskKind.size === 0) {
+    // 一个模式都带不动——老实说，指路换模型。
+    return `该模型没有任何模式能携带你连上的${carriedText}；请断开它们，或用 nomi_list_models 找一个 references 覆盖${carriedText}的模型。`;
+  }
+  const parts = [...byTaskKind.entries()].map(([taskKind, multiImage]) => {
+    const modeName = TASK_KIND_LABEL[taskKind] || taskKind;
+    const multi = multiImage && carried.has("image") ? "（支持多张参考图）" : "";
+    return `${modeName}${multi}`;
+  });
+  return `可改用该模型的：${parts.join(" / ")}——它读得到你携带的${carriedText}。`;
+}
+
 /**
  * L3 诚实护栏（runTask 前置闸，纯函数）：图生图/图生视频「参考图缺失」或「无传输 mapping」→ 返回
  * 人话错误（调用方在付费守卫/vendor 调用之前拒发，零扣费）；其余情况 null。此前会静默退化成纯文生
  * ——模板引擎丢空键 / fallback body 根本没有图片位——生成成功、扣费成功、和原图毫无关系，
  * 正是「图生图不按原图」的用户体感（docs/plan/2026-07-06-i2i-reference-reliability.md）。
+ *
+ * modeBodies（可选）：这个模型**所有模式**的 create body。给了则第三闸拒发时多附一句"可走的路"（交付4，
+ * reachableModeSuggestion），点名哪个模式带得动携带的参考；不给则维持原拒发文案（语义/零扣费保证不变）。
  */
 export function imageEditGuardError(
   kind: string,
@@ -235,12 +356,15 @@ export function imageEditGuardError(
   modelLabel: string,
   /** 这条 mapping 的 create body。给了就多过一道闸：body 读不到的参考素材直接拒发（见上）。 */
   createBody?: unknown,
+  modeBodies?: ModelModeBody[],
 ): string | null {
   // 第三闸对**所有 kind** 生效（运镜的参考视频可能挂在 t2v/omni 上），且只在真带了参考时才可能触发。
   if (typeof createBody !== "undefined") {
     const unreachable = unreachableReferenceLabels(request, createBody);
     if (unreachable.length > 0) {
-      return `模型「${modelLabel}」在这个接入方式下发不出：${unreachable.join(" / ")}。连上的这些素材不会进入请求——为免白扣费这次不发。请断开它们，或换一个支持这些参考的渠道/模型。`;
+      const base = `模型「${modelLabel}」在这个接入方式下发不出：${unreachable.join(" / ")}。连上的这些素材不会进入请求——为免白扣费这次不发。请断开它们，或换一个支持这些参考的渠道/模型。`;
+      const suggestion = reachableModeSuggestion(request, createBody, modeBodies);
+      return suggestion ? `${base}\n${suggestion}` : base;
     }
   }
   if (kind !== "image_edit" && kind !== "image_to_video") return null;

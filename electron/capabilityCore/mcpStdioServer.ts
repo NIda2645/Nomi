@@ -9,14 +9,17 @@
 import readline from 'node:readline'
 import { app, session } from 'electron'
 import { createMcpProtocol, type McpInvokeOptions } from './mcpProtocol'
-import { dispatch } from './dispatcher'
+import { getDesktopLocale, setDesktopLocale } from '../i18n'
 import { createDiskGateway, type ProjectGateway, type SpendConfirmInfo } from './gateway'
 import { readLiveInstance, type InstanceAdvertisement } from './lockfile'
 import { runTask, fetchTaskResult } from '../runtime'
 import { mintSpendGrant } from '../spendGrant'
 import { applySystemProxy } from '../systemProxy'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
-import { startArtifactPreviewHttpServer } from '../productionRun/artifactPreviewHttpServer'
+import { startArtifactPreviewHttpServer, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
+import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
+import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
+import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
@@ -25,6 +28,16 @@ import {
 } from './security'
 
 const productionRuns = getProductionRunService()
+
+/**
+ * 本进程（in-Electron stdio）服务的库 → 传给 readLiveInstance 读**对应命名空间**的广告文件。与 appIntegration
+ * 写者同源（getProjectLocationState），故同库的 GUI 与本 stdio 进程读写同一份广告：GUI 开着时 stdio 仍能重连到
+ * 它的 RPC（实时反映 + 应用内确认卡），不因命名空间化而误退回进程内 dispatch（§P3-F 引入命名空间后的收口）。
+ */
+function currentLibrary(): { projectsRoot: string; isDefault: boolean } {
+  const location = getProjectLocationState()
+  return { projectsRoot: location.path, isDefault: location.source === 'default' }
+}
 
 // 传输兜底超时：须 ≥ 服务端最长合法耗时（core.ts 视频轮询 300s）才不误杀真生成；默认 360s，可经 env 调。
 function transportTimeoutMs(): number {
@@ -48,6 +61,7 @@ async function callViaRpc(
   method: string,
   params: Record<string, unknown>,
   origin: CapabilityOriginHost,
+  options?: McpInvokeOptions,
 ): Promise<unknown> {
   const timeoutMs = transportTimeoutMs()
   const controller = new AbortController()
@@ -66,7 +80,8 @@ async function callViaRpc(
             }
           : {}),
       },
-      body: JSON.stringify({ method, params }),
+      // planConfirmed 跨 RPC 到渲染层网关：方案已在聊天里批准 → App 不再弹方案卡（免双问）。付费不透传（钱路留 App）。
+      body: JSON.stringify({ method, params, ...(options?.planConfirmed ? { planConfirmed: true } : {}) }),
       signal: controller.signal,
     })
   } catch (error) {
@@ -88,17 +103,29 @@ async function callViaRpc(
 /** 进程内调能力核：GUI 开着→转发 RPC（实时 + 应用内确认卡）；关着→进程内 dispatch（磁盘网关）。 */
 async function invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown> {
   const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
-  const instance = readLiveInstance()
-  if (instance) return callViaRpc(instance, method, params, origin)
+  const instance = readLiveInstance(currentLibrary())
+  // GUI 开着 → RPC 转发，rpcServer 侧已做生成结果富化（缩略图/签名链），此处不再重复富化。
+  if (instance) return callViaRpc(instance, method, params, origin, options)
   const makeGateway = options?.spendConfirmed ? makeConfirmedGateway : createDiskGateway
-  return dispatch(method, params, { runTask, fetchTaskResult, makeGateway, productionRuns, origin: { host: origin } })
+  // 交付②④：GUI 没开的进程内路——本进程就是 Electron（NOMI_MCP_STDIO 模式），有 nativeImage → dispatchAndEnrich
+  // 里就地富化生成结果（缩略图/签名链）。收口在包装器（0a），此路与 GUI-开着的 RPC 路一样忘不了富化。
+  return dispatchAndEnrich(method, params, {
+    runTask,
+    fetchTaskResult,
+    makeGateway,
+    productionRuns,
+    origin: { host: origin },
+    ...(options?.planConfirmed ? { planConfirmed: true } : {}),
+  })
 }
 
 /** 启动 stdio JSON-RPC server。main.ts 在 NOMI_MCP_STDIO 模式的 app.whenReady 后调；不开窗、不抢单实例锁。 */
 export async function startMcpStdioServer(): Promise<void> {
   // 无窗口进程：mac 别在 dock 弹图标。
   app.dock?.hide?.()
-  const previewServer = await startArtifactPreviewHttpServer(productionRuns)
+  const previewServer = await startArtifactPreviewHttpServer(
+    withAssetPreview(productionRuns, (projectId) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps())),
+  )
   // 关键：stdout 是 JSON-RPC 通道，任何杂质都会毁帧。把我们自己的非错误 console.* 改写到 stderr
   //（Chromium 自身日志本就走 stderr），stdout 只出 JSON-RPC。
   const toErr = (...parts: unknown[]) => process.stderr.write(parts.map((p) => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ') + '\n')
@@ -114,10 +141,21 @@ export async function startMcpStdioServer(): Promise<void> {
     /* 代理设失败 → 直连兜底 */
   }
 
+  // 交付5：结果/进度文案 locale 跟随系统/App 语言。stdio 进程走的是 main.ts 的 isMcpStdio 分支，**不经** GUI
+  // whenReady 里那句 setDesktopLocale(app.getLocale())，故在此对齐一次——app.getLocale() 是 Electron 的 UI locale
+  //（受 --lang/系统语言设定），与主 App 同一信号源。这是传输链里真实存在的语言信号，非凭空发明（transport 的
+  // getLocale 由此拿到 en/zh-CN），据它把 mcpToolResults 的 L(ctx,zh,en) 转成对的语言，不再硬编码 zh-CN。
+  try {
+    setDesktopLocale(app.getLocale())
+  } catch {
+    /* 取不到系统 locale → 保持 zh-CN 缺省 */
+  }
+
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
     invoke,
-    isAppOpen: () => Boolean(readLiveInstance()),
+    isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
+    getLocale: () => getDesktopLocale(),
   })
 
   const rl = readline.createInterface({ input: process.stdin })

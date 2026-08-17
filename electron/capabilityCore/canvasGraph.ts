@@ -6,9 +6,20 @@
 // 输出新的 snapshot + 受影响的 id。零 electron、零 store、零副作用，故可在纯 Node 单测。
 //
 // 真相源铁律（P1）：节点/边的形状以 renderer 的 generationCanvasTypes 为准；这里**不复制
-// 任何业务逻辑**，只按那份形状增删改 JSON。建出的节点是「最小合法节点」——renderer 载入时
-// 走既有 normalize（categoryMigration / getNodeSize 等）补全，不在这里抢着算。
+// 任何业务逻辑**——建节点经**共用工厂** `canvasNodeFactory`（与渲染层 store.addNode 同一份纯函数），
+// 落点经**共用布局** `canvasNodeLayout`（与渲染层 resolveInsertionPosition / trajectoryLayout 同一份数学），
+// per-kind 几何/语义注入自 `nodeKindDomain`（由等价测试钉死 === src registry）。故 MCP 建的节点与
+// UI 建的节点**字段级等价**（meta/categoryId/shotIndex/size 全齐），不再是缺字段的「二等公民」。
 import { randomUUID } from 'node:crypto'
+import { buildCanvasNodes, type CanvasNodeFactorySpec, type NodeFactoryDeps } from './canvasNodeFactory'
+import { layoutBatchWith, type NodeBox } from './canvasNodeLayout'
+import {
+  nodeKindDefaultCategory,
+  nodeKindDefaultSize,
+  nodeKindFootprint,
+  nodeKindIsShotNumbered,
+  nodeKindNextShotIndex,
+} from './nodeKindDomain'
 
 /** 画布快照（project.json payload.generationCanvas 的纯 JSON 形状）。 */
 export type CanvasSnapshot = {
@@ -40,7 +51,7 @@ export type CanvasEdge = {
   order?: number
 }
 
-/** 建节点入参——只收语义字段，几何缺省由这里补最小值（renderer 会再归一）。 */
+/** 建节点入参——语义字段 + 可选模型身份；几何/分类/镜号由共用工厂补齐（与 UI 同）。 */
 export type NodeSpec = {
   kind?: string
   title?: string
@@ -48,6 +59,9 @@ export type NodeSpec = {
   x?: number
   y?: number
   references?: string[]
+  /** 外部调用方（MCP）给的模型身份——工厂绑进 meta 的解析器可见四件（同 UI 身份部分）。非法值原样存。 */
+  vendor?: string
+  modelKey?: string
 }
 
 export type ConnectionSpec = {
@@ -55,11 +69,6 @@ export type ConnectionSpec = {
   target: string
   mode?: string
 }
-
-// 最小默认尺寸：仅供 headless 建节点占位，renderer 的 registry.defaultSize 是权威，
-// 节点带 size 时各几何子系统用 node.size（getNodeSize 单一真相源），缺省才回退。
-// 这里给一个保守通用值，不按 kind 细分——避免在主进程复制 registry（那才是并行版）。
-const DEFAULT_NODE_SIZE = { width: 340, height: 280 }
 
 const VALID_EDGE_MODES = new Set([
   'reference',
@@ -134,37 +143,61 @@ export function readCanvas(snapshot: CanvasSnapshot): {
   }
 }
 
+// 能力核侧的工厂依赖注入：几何/分类/镜号全走 nodeKindDomain 纯表，与渲染层注入 src 真函数同一份工厂逻辑。
+// resolveDefaultTitle **故意回空串**（不注英文标题）：main 进程无 i18n，若这里烘死 'Text'/'Image' 英文标题
+// 会原样落进 project.json → zh-CN 用户看到英文卡名（MCP 省略 title 时）。空标题的本地化归**渲染时兜底**所有：
+// 卡片渲染点已一律 `node.title || t(...)`（BaseGenerationNode NodeInlineImageTitle / AudioStripNode getDisplayTitle /
+// Character·Scene·PropCardNode 的 EditableNodeTitle placeholder），故省略 title 存空 → UI 用当前 locale 补默认名。
+// 渲染层注入 src i18n 真函数不受影响（它有 locale，直接给本地化默认名）。故两路仍字段级等价——除 id/落点与
+// 「默认标题」这一 headless-i18n 策略差（一个存空待渲染补、一个即时本地化，落到用户眼里同为本地化默认名）。
+const ELECTRON_NODE_FACTORY_DEPS: NodeFactoryDeps = {
+  createId: () => genId('node'),
+  resolveSize: nodeKindDefaultSize,
+  resolveDefaultTitle: () => '',
+  resolveCategory: nodeKindDefaultCategory,
+  isShotNumbered: nodeKindIsShotNumbered,
+  nextShotIndex: nodeKindNextShotIndex,
+}
+
 /**
- * 批量建节点。缺省纵向自动排布（避免外部调用方不给坐标时全堆原点重叠——那是
- * 「布局无避让」类问题的入口）。返回新快照 + 新建 id（按入参顺序，供后续连线引用）。
+ * 批量建节点（经**共用工厂 + 共用布局**，与渲染层 store.addNode 同一份逻辑）。
+ * - 落点：≥2 节点走分层布局（层由 kind 推：参考/关键帧/视频三列，凑不齐退网格）；单节点走碰撞避让。
+ *   显式 x/y 永远优先（工厂在 spec 层尊重）。都从已有节点包围盒下方起、不压旧内容。
+ * - 字段：meta/categoryId/shotIndex/size 全由工厂补齐 → MCP 节点不再是缺字段的「二等公民」。
+ * 返回新快照 + 新建 id（按入参顺序，供后续连线引用）。
  */
 export function addNodes(
   snapshot: CanvasSnapshot,
   specs: NodeSpec[],
 ): { snapshot: CanvasSnapshot; ids: string[] } {
   const next = cloneSnapshot(snapshot)
-  const ids: string[] = []
-  // 起始落点：现有节点最大 y 之下，避免叠在已有内容上。
-  const baseY = next.nodes.reduce((max, node) => Math.max(max, (node.position?.y ?? 0) + (node.size?.height ?? DEFAULT_NODE_SIZE.height)), 0)
-  specs.forEach((spec, index) => {
-    const id = genId('node')
-    ids.push(id)
-    const kind = (spec.kind && spec.kind.trim()) || 'text'
-    next.nodes.push({
-      id,
-      kind,
-      title: (spec.title && spec.title.trim()) || '',
-      position: {
-        x: typeof spec.x === 'number' ? spec.x : 0,
-        y: typeof spec.y === 'number' ? spec.y : baseY + 40 + index * (DEFAULT_NODE_SIZE.height + 40),
-      },
-      size: { ...DEFAULT_NODE_SIZE },
-      ...(spec.prompt ? { prompt: spec.prompt } : {}),
-      ...(spec.references && spec.references.length ? { references: [...spec.references] } : {}),
-      status: 'idle',
-    })
-  })
-  return { snapshot: next, ids }
+  if (!specs.length) return { snapshot: next, ids: [] }
+
+  const factorySpecs: CanvasNodeFactorySpec[] = specs.map((spec) => ({
+    kind: (spec.kind && spec.kind.trim()) || 'text',
+    title: spec.title,
+    prompt: spec.prompt,
+    references: spec.references,
+    vendor: spec.vendor,
+    modelKey: spec.modelKey,
+    ...(typeof spec.x === 'number' ? { x: spec.x } : {}),
+    ...(typeof spec.y === 'number' ? { y: spec.y } : {}),
+  }))
+  // 缺省落点：已有节点做避让锚（同 UI「新内容落在已有下方、不遮挡」）。显式坐标由工厂优先，布局只补缺省。
+  const existingBoxes: NodeBox[] = next.nodes.map((node) => ({
+    kind: node.kind,
+    position: node.position || { x: 0, y: 0 },
+    size: node.size,
+  }))
+  const positions = layoutBatchWith(nodeKindFootprint, factorySpecs.map((spec) => spec.kind), existingBoxes)
+
+  // 镜号只需既有节点的 shotIndex（工厂纯函数，不吃整节点）；显式投影避开 CanvasNode 的 index signature。
+  const existingShotIndexes = next.nodes.map((node) => ({
+    shotIndex: typeof node.shotIndex === 'number' ? node.shotIndex : undefined,
+  }))
+  const built = buildCanvasNodes(factorySpecs, positions, existingShotIndexes, ELECTRON_NODE_FACTORY_DEPS)
+  for (const node of built) next.nodes.push(node as unknown as CanvasNode)
+  return { snapshot: next, ids: built.map((node) => node.id) }
 }
 
 /**

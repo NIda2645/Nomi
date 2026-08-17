@@ -1,0 +1,284 @@
+// 能力核 · MCP 工具契约目录（单一职责：把 Nomi 能力核暴露成哪些 MCP 工具、各自的 name/description/
+// inputSchema(JSON Schema)/method(能力核方法)/build(args→params)）。从 mcpProtocol.ts 抽出（壳到 800/800，
+// 交付前预批的 headroom 提取）——协议握手/派发/确认逻辑留在 mcpProtocol.ts，工具"长什么样"这份数据契约独立成文件。
+// 消费方（mcpProtocol：tools/list 广播、按 name 派发、只读标注）从本模块 import；测试直接测这份契约。
+//
+// build 里 nomi_generate 的画幅/时长参数归一走 buildGenerateParams（不 hardcode vendor，比例同时铺
+// aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键）。
+import { buildGenerateParams } from './mcpGenerateParams'
+
+// 工具定义：name → { description, inputSchema(JSON Schema), method(能力核方法), build(args→params) }。
+export const MCP_TOOL_CATALOG = [
+  {
+    name: 'nomi_list_projects',
+    description: '列出本机 Nomi 的所有项目（id / 名称 / 更新时间）。',
+    inputSchema: { type: 'object', properties: {} },
+    method: 'project.list',
+    build: () => ({}),
+  },
+  {
+    name: 'nomi_create_project',
+    description: '新建一个空白 Nomi 项目，返回项目 id。',
+    inputSchema: { type: 'object', properties: { name: { type: 'string', description: '项目名（可选）' } } },
+    method: 'project.create',
+    build: (a: Record<string, unknown>) => (a.name ? { name: a.name } : {}),
+  },
+  {
+    name: 'nomi_list_models',
+    description:
+      '列出 Nomi 已启用的生成模型（vendor / modelKey / 能力 kind / 名称），用于选型。每条带真话字段，不只列名：'
+      + 'keyStatus=ok/missing/locked——**只有 keyStatus=ok 才真能用**；missing=没配 API Key（调用它只会浪费一趟往返报缺 key），'
+      + 'locked=Key 在但当前宿主身份解不开（让用户去 Nomi 应用重存该 Key）；statusReason 给一句人话缺口。'
+      + 'references 说这个模型带不带得动参考：{image,video,audio,multiImage,referenceModes}——带参考图/视频前先看它，'
+      + 'referenceModes 指出用哪个模式（如 image_to_video）才发得出，multiImage=能否多张参考图。选型只挑 keyStatus=ok 的。',
+    inputSchema: { type: 'object', properties: {} },
+    method: 'models.list',
+    build: () => ({}),
+  },
+  {
+    name: 'nomi_read_canvas',
+    description: '读取某项目画布的节点与连线（精简视图，用于据此决策）。',
+    inputSchema: { type: 'object', properties: { projectId: { type: 'string' } }, required: ['projectId'] },
+    method: 'canvas.read',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId }),
+  },
+  {
+    name: 'nomi_add_nodes',
+    description:
+      '往项目画布批量加节点，返回新建节点 id。节点自动分层排布（不再堆成一列），与在 App 里手动建的节点完全同款（可选模型、可生成）。' +
+      'kind 语义要分清：shot=分镜描述节点（纯文本，只记镜头设计/调度/对白，本身不生成）；video/image/text/audio=可生成节点（要出片就用这些，不要用 shot）；character/scene=参考锚节点（角色/场景定妆，供镜头连线引用）。' +
+      '想让某镜头能生成视频就建 video 而不是 shot。可选给 vendor+modelKey 指定模型（不给则打开该节点时自动选默认模型）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        nodes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              kind: {
+                type: 'string',
+                description:
+                  '节点类型：video/image/text/audio=可生成；shot=分镜描述(纯文本不生成)；character/scene=参考锚。缺省 text。',
+              },
+              title: { type: 'string' },
+              prompt: { type: 'string' },
+              vendor: { type: 'string', description: '可选：模型供应商（如 apimart）。与 modelKey 一起绑定该节点默认模型。' },
+              modelKey: { type: 'string', description: '可选：模型标识。与 vendor 一起给；不给则打开节点时自动选默认模型。' },
+              x: { type: 'number', description: '可选：显式落点 x（给了则优先于自动布局）。' },
+              y: { type: 'number', description: '可选：显式落点 y（给了则优先于自动布局）。' },
+            },
+          },
+        },
+      },
+      required: ['projectId', 'nodes'],
+    },
+    method: 'canvas.addNodes',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodes: a.nodes || [] }),
+  },
+  {
+    name: 'nomi_connect_nodes',
+    description: '连线（参考关系）。connections=[{source,target,mode?}]，mode 缺省 reference。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        connections: {
+          type: 'array',
+          items: { type: 'object', properties: { source: { type: 'string' }, target: { type: 'string' }, mode: { type: 'string' } }, required: ['source', 'target'] },
+        },
+      },
+      required: ['projectId', 'connections'],
+    },
+    method: 'canvas.connect',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, connections: a.connections || [] }),
+  },
+  {
+    name: 'nomi_set_node_prompt',
+    description: '改某节点的提示词（可选改标题）。',
+    inputSchema: {
+      type: 'object',
+      properties: { projectId: { type: 'string' }, nodeId: { type: 'string' }, prompt: { type: 'string' }, title: { type: 'string' } },
+      required: ['projectId', 'nodeId', 'prompt'],
+    },
+    method: 'canvas.setPrompt',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeId: a.nodeId, prompt: a.prompt, title: a.title }),
+  },
+  {
+    name: 'nomi_delete_nodes',
+    description: '删除节点及其关联连线。',
+    inputSchema: { type: 'object', properties: { projectId: { type: 'string' }, nodeIds: { type: 'array', items: { type: 'string' } } }, required: ['projectId', 'nodeIds'] },
+    method: 'canvas.deleteNodes',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeIds: a.nodeIds || [] }),
+  },
+  {
+    name: 'nomi_start_playbook',
+    description: '在本地 Nomi 项目中创建一个可审阅的制作草稿。只记录 brief 与 playbook，不批准预算、不调用付费模型。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: '目标 Nomi 项目 id' },
+        playbook: { type: 'string', description: '制作 playbook，例如 brand.promo' },
+        playbookVersion: { type: 'string', description: '可选版本；默认 1.0.0' },
+        brief: {
+          type: 'object',
+          properties: {
+            goal: { type: 'string', description: '要完成什么' },
+            audience: { type: 'string' },
+            channel: { type: 'string' },
+            tone: { type: 'string' },
+            durationSeconds: { type: 'number', minimum: 1, maximum: 3600 },
+            sellingPoints: { type: 'array', maxItems: 20, items: { type: 'string' } },
+            referenceArtifactIds: { type: 'array', maxItems: 20, items: { type: 'string' } },
+          },
+          required: ['goal'],
+          additionalProperties: false,
+        },
+        trustLevel: {
+          type: 'string',
+          enum: ['key_confirm', 'budget_only', 'confirm_all'],
+          description: '可选信任档位：key_confirm 默认（方向/样片门都停）/ budget_only 只管钱（跳过创意与样片门）/ confirm_all 每镜确认。用户一上来就说「别问了直接出」时设 budget_only。',
+        },
+      },
+      required: ['projectId', 'playbook', 'brief'],
+      additionalProperties: false,
+    },
+    method: 'production.start',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId,
+      playbook: a.playbook,
+      playbookVersion: a.playbookVersion,
+      brief: a.brief,
+      ...(a.trustLevel ? { trustLevel: a.trustLevel } : {}),
+    }),
+  },
+  {
+    name: 'nomi_get_run',
+    description: '读取一个持久化制作 Run 的安全状态投影：阶段、任务、待确认项、预算与最新产物。',
+    inputSchema: {
+      type: 'object',
+      properties: { projectId: { type: 'string' }, runId: { type: 'string' } },
+      required: ['projectId', 'runId'],
+      additionalProperties: false,
+    },
+    method: 'production.get',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId }),
+  },
+  {
+    name: 'nomi_subscribe_run',
+    description: '从 durable cursor 开始长轮询制作 Run 的重要事件；最多等待 25 秒，不返回轮询噪声。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        runId: { type: 'string' },
+        afterCursor: { type: 'integer', minimum: 0, default: 0 },
+        waitMs: { type: 'integer', minimum: 0, maximum: 25_000, default: 0 },
+      },
+      required: ['projectId', 'runId'],
+      additionalProperties: false,
+    },
+    method: 'production.events',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId,
+      runId: a.runId,
+      afterCursor: a.afterCursor ?? 0,
+      waitMs: a.waitMs ?? 0,
+    }),
+  },
+  {
+    name: 'nomi_get_artifact',
+    description: '读取 Run 内一个产物的安全元数据、受控预览能力与 Nomi 深链；不返回绝对路径或供应商地址。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        runId: { type: 'string' },
+        artifactId: { type: 'string' },
+      },
+      required: ['projectId', 'runId', 'artifactId'],
+      additionalProperties: false,
+    },
+    method: 'production.artifact',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId,
+      runId: a.runId,
+      artifactId: a.artifactId,
+    }),
+  },
+  {
+    name: 'nomi_control_run',
+    description:
+      '控制制作 Run：pause 暂停（保住已花预算与已完成镜头）/ resume 从断点继续（不重做不重付）/ cancel 取消（未提交任务不计费）'
+      + ' / set_trust 改信任档位（配 trustLevel）。用户说「停一下 / 继续 / 别做了」用前三个；说「别问了直接出」= set_trust 到 budget_only（跳过创意与样片门，只留预算门）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        runId: { type: 'string' },
+        action: { type: 'string', enum: ['pause', 'resume', 'cancel', 'set_trust'] },
+        trustLevel: { type: 'string', enum: ['key_confirm', 'budget_only', 'confirm_all'], description: 'action=set_trust 时必填：key_confirm 五门全开 / budget_only 只管钱 / confirm_all 每镜确认' },
+      },
+      required: ['projectId', 'runId', 'action'],
+      additionalProperties: false,
+    },
+    method: 'production.control',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, action: a.action, ...(a.trustLevel ? { trustLevel: a.trustLevel } : {}) }),
+  },
+  {
+    name: 'nomi_decide_gate',
+    description:
+      '对制作 Run 的可逆创意门表态：approved 批准 / rejected 否决。方向门（gate-direction-*）可带 choiceKey 指定候选。'
+      + 'Nomi 会在服务端再次向真人发起确认；预算、逐镜头付费、导出和发布必须回 Nomi 决定，不能用本工具跳过。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        runId: { type: 'string' },
+        gateId: { type: 'string', description: '门 id，例如 gate-direction-v1' },
+        decision: { type: 'string', enum: ['approved', 'rejected'] },
+        choiceKey: { type: 'string', description: '方向门专用：用户选中的候选 key（来自 gate.waiting 的 directionCandidates）' },
+      },
+      required: ['projectId', 'runId', 'gateId', 'decision'],
+      additionalProperties: false,
+    },
+    method: 'production.decide-gate',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, gateId: a.gateId, decision: a.decision, choiceKey: a.choiceKey }),
+  },
+  {
+    name: 'nomi_generate',
+    description:
+      '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。'
+      + '画幅/时长要显式传 aspect_ratio/resolution/duration——**写进 prompt 里模型收不到**（真机实测：写"16:9"进提示词仍出方图，'
+      + '因为渠道有默认 1:1 会盖过）。这三个参数会以调用方优先合并进真实请求（caller-wins），不传则用该模型默认。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        vendor: { type: 'string' },
+        modelKey: { type: 'string' },
+        intent: { type: 'string', enum: ['image', 'video', 'text', 'audio'] },
+        prompt: { type: 'string' },
+        nodeId: { type: 'string', description: '在既有节点上生成（可选）' },
+        references: { type: 'array', items: { type: 'string' }, description: '参考图 URL（可选）' },
+        // 画幅/时长（可选，caller-wins 合并进真实请求体）——修「写进 prompt 无效、静默出方图」的根因。
+        aspect_ratio: { type: 'string', description: '画面比例，如 "16:9" / "9:16" / "1:1"（可选；覆盖模型默认）。' },
+        resolution: { type: 'string', description: '清晰度，如 "1080p" / "2K" / "720p"（可选；取值随模型而定）。' },
+        duration: { type: 'number', description: '视频时长（秒，可选；仅视频类有效）。' },
+      },
+      required: ['projectId', 'vendor', 'modelKey', 'intent', 'prompt'],
+    },
+    method: 'generate',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId, references: a.references,
+      // 画幅/时长经既有 extras/params 通道下沉到 applyHeadlessParamDefaults（caller-wins）。装配为规范化的
+      // params 交给 core.generateOnProject（它把 params 铺进 extras）——键名归一在 buildGenerateParams，
+      // 不 hardcode 任何 vendor：比例同时铺 aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键。
+      ...(() => {
+        const params = buildGenerateParams(a)
+        return Object.keys(params).length ? { params } : {}
+      })(),
+    }),
+  },
+] as const

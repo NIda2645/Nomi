@@ -135,3 +135,27 @@ export function decryptApiKeyRecord(rec: ApiKeyRecord | undefined): string {
   // enc === "plain" or absent (legacy v1)
   return rec.apiKey;
 }
+
+/**
+ * 一条 vendor 凭据记录的三态健康度——**"key 到底能不能用" 的单一真相源**（供 executableModel 报诚实错误、
+ * list_models 标 keyStatus 共用，P1 不各写一份）：
+ *   · `missing`：根本没有记录，或记录里没有任何 key 材料 → 没配过。
+ *   · `locked` ：记录**在**，且是 safeStorage 密文，但当前宿主身份解不开（decrypt 抛错或吐空串）——
+ *               典型是 capability 宿主身份与主 App 加密时的身份不符（host.ts 头注点名的坑）。
+ *               这与 `missing` 天差地别：文件里明明有 key，只是这个进程读不动它。
+ *   · `ok`     ：解出非空明文（或本就是非空明文的 legacy/plain 记录）→ 真能用。
+ *
+ * 注意「密文非空 vs 明文非空」的分野：只有 safeStorage 记录才会落进 `locked`；plain/legacy 记录解不出非空
+ * 就是从未真正配好，算 `missing`（它没有"被锁住的"东西——所见即所得）。
+ */
+export type ApiKeyDecryptStatus = "ok" | "missing" | "locked";
+
+export function apiKeyDecryptStatus(rec: ApiKeyRecord | undefined): ApiKeyDecryptStatus {
+  if (!rec || !rec.apiKey) return "missing";
+  if (rec.enc === "safeStorage") {
+    // 密文在手：解得开非空 = ok；解不开 / 解出空串 = locked（身份不匹配等，key 确实存在只是读不动）。
+    return decryptApiKeyRecord(rec) ? "ok" : "locked";
+  }
+  // plain / legacy：非空明文 = ok；空 = 从未配好，算 missing（没有"被锁"的东西）。
+  return rec.apiKey ? "ok" : "missing";
+}
