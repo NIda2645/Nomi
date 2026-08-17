@@ -7,6 +7,7 @@
 // 凭据：从用户真实 userData 复制 model-catalog.json 到隔离目录 —— 用真 key，
 // 但绝不往用户正式配置里写我的测试提示词。
 import { launchNomiApp } from './_launchApp.mjs'
+import { expectVisible, expectCount, waitForTurnIdle, scopedText } from './_assert.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -78,11 +79,12 @@ const composer = () => win.locator('footer textarea').first()
 /**
  * 发一句话并等模型把话说完。
  *
- * 完成信号必须用「停止键变回发送键」（由 turn 控制器的 sending 驱动），**不能**用「气泡文本不再变」——
- * 首跑就栽在这：pending 态气泡的文本恒为作者名「Nomi」，所谓「连续几次不变」在模型还没吐第一个字时
- * 就满足了，于是拿着 4 个字的作者名当产出去做判定，四条断言全红，看起来像功能坏了，其实是等待写错了。
+ * 完成信号走共享的 waitForTurnIdle（停止键出现→消失，由 turn 控制器的 sending 驱动），
+ * **不能**用「气泡文本不再变」——首跑就栽在这：pending 态气泡的文本恒为作者名「Nomi」，
+ * 所谓「连续几次不变」在模型还没吐第一个字时就满足了，于是拿着 4 个字的作者名当产出去做判定，
+ * 四条断言全红，看起来像功能坏了，其实是等待写错了。判定源只此一处，全仓复用。
  */
-const stopButton = () => win.getByRole('button', { name: '停止生成' })
+const messages = () => win.locator('.workbench-creation-ai__messages')
 
 async function ask(text, tag) {
   await composer().fill(text)
@@ -92,17 +94,13 @@ async function ask(text, tag) {
   if ((await composer().inputValue()).trim()) {
     await win.keyboard.press('Enter').catch(() => {})
   }
-  // 先确认这一轮真的起飞了（停止键出现），再等它落地（停止键消失）。
-  await stopButton().waitFor({ state: 'visible', timeout: 20000 })
-  await stopButton().waitFor({ state: 'detached', timeout: 240000 })
+  await waitForTurnIdle(win)
   await win.waitForTimeout(800)
   await snap(tag)
-  // 取最后一条 assistant 气泡的正文（剥掉作者名前缀，别把「Nomi」算进产出）。
-  return await win.evaluate(() => {
-    const nodes = [...document.querySelectorAll('.workbench-creation-ai__messages > *')]
-    const last = nodes.length ? (nodes[nodes.length - 1].textContent || '').trim() : ''
-    return last.replace(/^Nomi\s*/, '').trim()
-  })
+  // 只读最后一条气泡这一个容器，不读整页（整页会把我 seed 的文稿/用户消息一起算进「产出」）。
+  // 剥掉作者名前缀，别把「Nomi」算进产出。
+  const last = messages().locator('> *').last()
+  return (await scopedText(last)).replace(/^Nomi\s*/, '').trim()
 }
 
 try {
@@ -114,18 +112,20 @@ try {
   for (let i = 0; i < 5; i += 1) {
     await win.keyboard.press('Escape').catch(() => {})
     const s = win.locator('button,[role="button"],a', { hasText: /跳过|完成|知道了|开始创作/ }).first()
-    if ((await s.count()) > 0) await s.click({ timeout: 1000 }).catch(() => {})
+    if (await s.isVisible().catch(() => false)) await s.click({ timeout: 1000 }).catch(() => {})
   }
   const card = win.locator('[data-project-card]', { hasText: project.name }).first()
-  await card.waitFor({ state: 'visible', timeout: 10000 })
+  await expectVisible(card, `项目库里找不到项目卡「${project.name}」`)
   await card.hover()
   const cont = card.getByText('继续创作', { exact: false }).first()
-  if ((await cont.count()) > 0) await cont.click(); else await card.dblclick()
-  await win.waitForTimeout(2000)
+  if (await cont.isVisible().catch(() => false)) await cont.click(); else await card.dblclick()
+  // 「项目开好了」的真信号 = 顶部「创作」导航出现，不是等够 2 秒。
   const creation = win.getByRole('button', { name: '创作', exact: true })
-  if (await creation.isVisible().catch(() => false)) await creation.click()
-  await win.getByLabel('创作区', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
-  await win.waitForTimeout(1200)
+  await expectVisible(creation, '打开项目后没等到顶部「创作」导航')
+  await creation.click()
+  await expectVisible(win.getByLabel('创作区', { exact: true }), '点了「创作」但创作区没出现')
+  // 输入框挂好了才发得出第一句话——等它本身，别拿 sleep 赌（赌短了 fill 打空，整轮白跑真额度）。
+  await expectVisible(composer(), 'composer 输入框没挂出来')
 
   // ── 对照组：默认「通用」提示词下问同一句 ──
   console.log('\n【对照组】通用提示词下跑一次…')
@@ -135,12 +135,17 @@ try {
 
   // ── 新建自定义提示词 ──
   await win.evaluate(() => window.dispatchEvent(new CustomEvent('nomi-open-settings', { detail: { tab: 'ai' } })))
-  await win.waitForTimeout(1600)
-  await win.getByText('系统提示词', { exact: true }).first().scrollIntoViewIfNeeded().catch(() => {})
-  await win.waitForTimeout(500)
-  await win.getByRole('button', { name: /新建/ }).first().click()
-  await win.waitForTimeout(900)
-  await win.locator('[data-settings-field="system-prompt-name"]').first().fill('口播带货体')
+  const heading = win.getByText('系统提示词', { exact: true }).first()
+  // 设置面板异步挂载：等标题出现，别拿 sleep 赌（赌短了后面 click「新建」直接抛，整轮真额度白花）。
+  await expectVisible(heading, '设置 → AI 里找不到「系统提示词」区')
+  await heading.scrollIntoViewIfNeeded().catch(() => {})
+  const newChip = win.getByRole('button', { name: /新建/ }).first()
+  await expectVisible(newChip, '设置页里找不到「新建」自定义提示词的入口')
+  await newChip.click()
+  const nameInput = win.locator('[data-settings-field="system-prompt-name"]').first()
+  // 名字输入框出现 = 真的进了「新建一条」的状态，可以往里填了。
+  await expectVisible(nameInput, '点了「新建」但名字输入框没出现')
+  await nameInput.fill('口播带货体')
   await win.locator('[data-settings-field="system-prompt"]').first().fill(CUSTOM_PROMPT)
   await win.waitForTimeout(1600)
   await snap('02-custom-created')
@@ -149,11 +154,14 @@ try {
 
   // ── 选中它 ──
   await picker().first().click()
-  await win.waitForTimeout(700)
-  await win.locator('[data-prompt-option]', { hasText: '口播带货体' }).first().click()
-  await win.waitForTimeout(800)
-  const chip = (await picker().first().innerText()).trim()
-  record('自定义提示词已选中', chip.includes('口播带货体'), `chip 显示「${chip}」`)
+  const customOption = win.locator('[data-prompt-option]').filter({ hasText: '口播带货体' })
+  await expectCount(customOption, 1, '刚建的「口播带货体」应当出现在选择器里')
+  await customOption.first().click()
+  // chip 换成它 = 真的选中了。这一步必须硬等：没选中就跑实验组，等于拿通用档的产出去验自定义提示词。
+  const picked = await expectVisible(picker().filter({ hasText: '口播带货体' }),
+    '点了「口播带货体」但 chip 没显示它（模式其实没切过去）').then(() => true).catch(() => false)
+  const chip = await scopedText(picker().first())
+  record('自定义提示词已选中', picked, `chip 显示「${chip}」`)
 
   // ── 实验组：同一句话再跑一次 ──
   console.log('\n【实验组】自定义提示词下跑同一句…')

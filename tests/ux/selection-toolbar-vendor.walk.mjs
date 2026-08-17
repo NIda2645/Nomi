@@ -1,6 +1,7 @@
 // 看清「框选多选浮条」的真实样子：用户报「框选没办法选择不同供应商的模型，导致一直生成失败」。
 // 这份只做取证——不断言对错，就是把浮条真实渲染出来给人眼看：模型下拉有、供应商下拉有没有。
 import { launchNomiApp } from './_launchApp.mjs'
+import { expectVisible, expectAbsent, proveProbe } from './_assert.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -108,28 +109,35 @@ try {
   for (let i = 0; i < 5; i += 1) {
     await win.keyboard.press('Escape').catch(() => {})
     const skip = win.locator('button,[role="button"],a', { hasText: /跳过|完成|知道了|开始创作/ }).first()
-    if ((await skip.count()) > 0) await skip.click({ timeout: 1000 }).catch(() => {})
+    if (await skip.isVisible().catch(() => false)) await skip.click({ timeout: 1000 }).catch(() => {})
   }
 
   const card = win.locator('[data-project-card]', { hasText: project.name }).first()
-  await card.waitFor({ state: 'visible', timeout: 8000 })
+  await expectVisible(card, `项目库里找不到项目卡「${project.name}」`)
   await card.hover()
   const cont = card.getByText('继续创作', { exact: false }).first()
-  if ((await cont.count()) > 0) await cont.click()
+  if (await cont.isVisible().catch(() => false)) await cont.click()
   else await card.dblclick()
-  await win.waitForTimeout(1800)
 
+  // 「项目开好了」的真信号 = 顶部「生成」导航出现，不是等够 1.8 秒。
   const gen = win.getByRole('button', { name: '生成', exact: true })
-  if (await gen.isVisible().catch(() => false)) await gen.click()
-  await win.waitForTimeout(1800)
+  await expectVisible(gen, '打开项目后没等到顶部「生成」导航')
+  await gen.click()
+
+  // 画布挂载完的真信号 = 我种的那 5 个节点渲染出来了。等够时间才截图，否则拍到空画布。
+  const nodeCards = win.locator('[data-node-id]')
+  await expectVisible(nodeCards.first(), '切到生成区后画布上没渲染出节点')
   await snap('01-canvas')
 
   // 全选（比模拟拖框稳），等价于框选出来的多选态。
   await win.keyboard.press('ControlOrMeta+a')
-  await win.waitForTimeout(1200)
-  await snap('02-selection-toolbar')
 
   const bar = win.locator('.generation-canvas-v2__selection-toolbar').first()
+  // 多选浮条出现 = 全选真的生效了。旧写法靠 sleep 赌，赌短了浮条还没挂，
+  // 后面「浮条里有几行」全部读到 0——而 0 恰好让「没有 N 家折叠行」这条通过（空洞的绿）。
+  await expectVisible(bar, '全选后没出现多选浮条')
+  await snap('02-selection-toolbar')
+
   const box = await bar.boundingBox().catch(() => null)
   if (box) {
     await win.screenshot({
@@ -151,25 +159,31 @@ try {
   // 修好的判据：同一个模型若有多家，就该出现**多行同名、trailing 是不同厂商**；
   // 而不是一行「N 家」（那种形态下用户根本没有入口指定走哪家 —— 就是这次的 bug）。
   await bar.locator('[aria-label^="图片"]').first().click({ timeout: 5000 })
-  await win.waitForTimeout(700)
-  await snap('04-bulk-dropdown-open')
 
   // 页面上同时存在多个 listbox（并发那个也是）——按内容挑出模型那个，别拿第一个就用。
-  const dump = await win.evaluate(() => {
-    const boxes = [...document.querySelectorAll('[role="listbox"]')]
-    const box = boxes.find((b) => /Nano|GPT|Seedream|即梦/.test(b.textContent || '')) || boxes[0]
-    if (!box) return []
-    return [...box.querySelectorAll('[role="option"]')].map((n) => ({
-      text: n.textContent?.replace(/\s+/g, ' ').trim() || '',
-      value: n.getAttribute('data-value') || n.getAttribute('value') || '',
-    }))
-  })
+  // 用 locator.filter 而不是一次性 querySelectorAll：下拉是点开后异步挂的，
+  // 一次取样会在挂载前读到空数组，而空数组恰好让下面「没有 N 家折叠行」通过（空洞的绿）。
+  const modelListbox = win.locator('[role="listbox"]').filter({ hasText: /Nano|GPT|Seedream|即梦/ }).first()
+  await expectVisible(modelListbox, '点开「图片 ×N」批量下拉后没找到模型 listbox')
+  const options = modelListbox.locator('[role="option"]')
+
+  // 基线：探针得先真的找得到「行」。这是这条走查里唯一诚实的基线形式——
+  // 「没有 N 家折叠行」若在一个**一行都没读到**的现场成立，那它和「下拉根本没打开」完全无法区分
+  // （我上一版正是栽在这：本机目录全是即梦单家，压根不可能有折叠行，报绿但什么都没验）。
+  const rowsProof = await proveProbe(options, '批量下拉里确实读得到模型行')
+  await snap('04-bulk-dropdown-open')
+
+  const dump = await options.evaluateAll((nodes) => nodes.map((n) => ({
+    text: n.textContent?.replace(/\s+/g, ' ').trim() || '',
+    value: n.getAttribute('data-value') || n.getAttribute('value') || '',
+  })))
   const rows = dump.map((d) => d.text)
   console.log(`  · 下拉共 ${rows.length} 行：`)
   for (const d of dump) console.log(`      ${d.text}   ⟵ ${d.value}`)
 
   // 断言写成**目录无关的不变量**——别钉死行数。本机自带目录里已经有 Nano Banana/GPT Image 2，
   // 和我种的两家会叠加，第一版按「期望 2 行」断言直接误报（数错了不代表功能坏）。
+  const collapsedRows = options.filter({ hasText: /\d+\s*家/ })
   const collapsed = rows.filter((r) => /\d+\s*家/.test(r))
   const nano = rows.filter((r) => r.includes('Nano Banana'))
   const nanoVendors = new Set(['APIMart', 'Kie'].filter((v) => nano.some((r) => r.includes(v))))
@@ -177,11 +191,22 @@ try {
   const dupes = Object.entries(rows.reduce((m, r) => { m[r] = (m[r] || 0) + 1; return m }, {}))
     .filter(([, c]) => c > 1)
 
+  let noCollapsed = true
+  let collapsedDetail = `折叠行 ${collapsed.length} 个（期望 0——那种形态下用户没有入口指定走哪家）`
+  try {
+    await expectAbsent(collapsedRows, {
+      provenBy: rowsProof,
+      message: '下拉里不该出现「N 家」折叠行（那种形态下用户没有入口指定走哪家）',
+    })
+  } catch (error) {
+    noCollapsed = false
+    collapsedDetail = `${collapsedDetail}：${String(error).split('\n')[0]}`
+  }
+
   const checks = [
     ['多家模型按供应商摊开', nanoVendors.size >= 2,
       `Nano Banana 出现在 ${nanoVendors.size} 家名下：${[...nanoVendors].join('、')}（种了 APIMart + Kie，期望两家都能单独选到）`],
-    ['没有「N 家」折叠行', collapsed.length === 0,
-      `折叠行 ${collapsed.length} 个（期望 0——那种形态下用户没有入口指定走哪家）`],
+    ['没有「N 家」折叠行', noCollapsed, collapsedDetail],
     ['没有两行完全相同的选项', dupes.length === 0,
       dupes.length === 0 ? '每一行的「模型 + 厂商」组合都唯一，用户区分得开'
         : `重复行：${JSON.stringify(dupes)} —— 用户看到两个一模一样的选项，只能瞎猜`],
