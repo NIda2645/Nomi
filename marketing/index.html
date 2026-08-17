@@ -100,6 +100,8 @@ section[id] { scroll-margin-top: calc(var(--nav-h) + 12px); }
 .hero h1 .hit::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 7px; background: var(--coral); transform: rotate(-1.5deg); z-index: -1; }
 .hero-lede { max-width: 800px; margin: 28px auto 0; color: var(--ink-soft); font-size: 19px; line-height: 1.7; }
 .hero-actions { margin-top: 28px; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+.mac-download-note { max-width: 720px; margin: 14px auto 0; color: var(--ink-soft); font-size: 13px; }
+.mac-download-note a { color: var(--coral-dark); font-weight: 800; text-underline-offset: 3px; }
 .truth-note { margin: 18px auto 0; color: var(--muted); font-size: 12px; }
 .hero-product { width: var(--page); margin: 48px auto 0; position: relative; }
 .cost-ribbon { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--coral); border: 1px solid var(--ink); }
@@ -214,10 +216,18 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
 .download-option strong { font-size: 16px; }
 .download-option small { margin-top: 3px; color: var(--muted); font-size: 12px; }
 .download-option > span:last-child { flex: none; color: var(--coral-dark); font-size: 12px; font-weight: 800; }
+.mac-install-guide { margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--ink); }
+.mac-install-guide-title { display: block; font-size: 16px; }
+.mac-install-guide p { margin: 10px 0 0; color: var(--ink-soft); }
+.mac-install-guide ol { margin: 14px 0 0; padding-left: 22px; }
+.mac-install-guide li + li { margin-top: 8px; }
+.mac-install-command { margin-top: 12px; padding: 12px 14px; display: block; max-width: 100%; overflow-wrap: anywhere; border: 1px solid var(--ink); background: var(--ink); color: var(--white); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.mac-install-guide .mac-install-safety { color: var(--muted); font-size: 12px; }
 .download-fallback { padding: 82px 0; background: var(--surface); border-top: 1px solid var(--rule); }
 .download-fallback h2 { margin: 0; font-size: 42px; line-height: 1.1; }
 .download-fallback p { max-width: 680px; color: var(--ink-soft); }
 .download-fallback .download-options { max-width: 760px; margin-top: 28px; }
+.download-fallback .mac-install-guide { max-width: 760px; }
 
 [data-reveal] { animation: reveal 520ms ease both; }
 @keyframes hero-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
@@ -333,6 +343,7 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
       <a class="button primary" data-download-nomi href="#download-options">下载 Nomi</a>
       <a class="button" href="/assets/demo.mp4" data-open-dialog="launch-film">观看 60 秒工作流</a>
     </div>
+    <p class="mac-download-note">macOS 安装包暂未签名或公证，首次打开可能被系统拦截。 <a href="#download-options" data-open-dialog="download-dialog">查看安全打开方法</a></p>
     <p class="truth-note">生成仍会消耗你所选服务的额度；Nomi 减少平台溢价、重复订阅、无效生成和重复劳动。</p>
   </div>
   <figure class="hero-product">
@@ -482,9 +493,23 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
 </dialog>
 <dialog id="download-dialog" aria-labelledby="download-title">
   <div class="dialog-head"><strong id="download-title">选择适合这台电脑的版本</strong><button class="dialog-close" type="button" aria-label="关闭">×</button></div>
-  <div class="dialog-body download-dialog-body"><p>能识别系统时会直接下载；无法可靠判断 Mac 芯片时，请选择对应安装包。</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe 安装包</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac Apple 芯片</strong><small>M1 / M2 / M3 / M4 · .dmg 安装包</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac Intel 芯片</strong><small>Intel 处理器 · .dmg 安装包</small></span><span aria-hidden="true">X64 ↓</span></a></div></div>
+  <div class="dialog-body download-dialog-body"><p>能识别系统时会直接下载；无法可靠判断 Mac 芯片时，请选择对应安装包。</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe 安装包</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac Apple 芯片</strong><small>M1 / M2 / M3 / M4 · .dmg 安装包</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac Intel 芯片</strong><small>Intel 处理器 · .dmg 安装包</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">macOS 第一次打开</strong>
+  <p>当前 macOS 安装包未使用 Apple Developer ID 签名，也未经过 Apple 公证。请只使用本页或 Nomi GitHub 官方仓库的下载链接。</p>
+  <ol><li>下载对应的 DMG，把 Nomi 拖到“应用程序”。</li><li>在 Finder 的“应用程序”中右键 Nomi，选择“打开”，再确认“打开”。</li><li>如果仍被拦截，打开“系统设置” → “隐私与安全”，找到 Nomi 后点击“仍要打开”。</li></ol>
+  <p>仅当 macOS 提示 Nomi“已损坏”时：先确认安装包来自上述官方链接，再打开“终端”运行：</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">不需要、也不要全局关闭 Gatekeeper。</p>
+</section></div>
 </dialog>
-<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>选择适合这台电脑的版本</h2><p>能识别系统时会直接下载；无法可靠判断 Mac 芯片时，请选择对应安装包。</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe 安装包</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac Apple 芯片</strong><small>M1 / M2 / M3 / M4 · .dmg 安装包</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac Intel 芯片</strong><small>Intel 处理器 · .dmg 安装包</small></span><span aria-hidden="true">X64 ↓</span></a></div></div></section></noscript>
+<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>选择适合这台电脑的版本</h2><p>能识别系统时会直接下载；无法可靠判断 Mac 芯片时，请选择对应安装包。</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe 安装包</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac Apple 芯片</strong><small>M1 / M2 / M3 / M4 · .dmg 安装包</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac Intel 芯片</strong><small>Intel 处理器 · .dmg 安装包</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">macOS 第一次打开</strong>
+  <p>当前 macOS 安装包未使用 Apple Developer ID 签名，也未经过 Apple 公证。请只使用本页或 Nomi GitHub 官方仓库的下载链接。</p>
+  <ol><li>下载对应的 DMG，把 Nomi 拖到“应用程序”。</li><li>在 Finder 的“应用程序”中右键 Nomi，选择“打开”，再确认“打开”。</li><li>如果仍被拦截，打开“系统设置” → “隐私与安全”，找到 Nomi 后点击“仍要打开”。</li></ol>
+  <p>仅当 macOS 提示 Nomi“已损坏”时：先确认安装包来自上述官方链接，再打开“终端”运行：</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">不需要、也不要全局关闭 Gatekeeper。</p>
+</section></div></section></noscript>
 <script>(() => {
   const downloadUrls = {"windowsX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe","macArm64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg","macX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"}
   const interactionData = {"cost":[{"id":"generation","label":"生成成本","index":"01 / GENERATION","title":"已有的能力，不用再买一遍。","description":"即梦高级会员、你熟悉的云端 API、本机 ComfyUI，都可以继续使用。哪个模型更合适，就把这一镜交给哪个模型。","proof":"结果：不再为了换工作台，重新购买同一类生成能力。","image":"/assets/screen-canvas-2026-08-17.png","imageAlt":"Nomi 生成画布和模型接入工作流"},{"id":"trial","label":"试错成本","index":"02 / ITERATION","title":"少抽几次，就是少烧一次钱。","description":"角色、场景、道具、构图和风格作为视觉锚点留在项目里。后面的镜头继承同一组证据，而不是每次重新赌提示词。","proof":"结果：减少身份漂移、空间漂移和没有参考的无效生成。","image":"/assets/screen-3d-2026-08-17.png","imageAlt":"Nomi 3D 导演台中的人物与镜头参考"},{"id":"labor","label":"人力成本","index":"03 / LABOR","title":"让 AI 助手做重复工作。","description":"Codex、Claude Code、Cursor 通过 MCP 与 Skills 建项目、拆分镜、连参考、调用模型并推进初稿，你只在方向、预算和采用节点做决定。","proof":"结果：把时间留给判断与创作，而不是机械操作和素材搬运。","image":"/assets/screen-agentic-2026-08-17.png","imageAlt":"Nomi 自动化与权限设置中的 AI 助手接入入口"},{"id":"lockin","label":"迁移成本","index":"04 / OWNERSHIP","title":"换模型，不用换家。","description":"项目、素材、提示词和密钥保存在自己的电脑上。供应商价格或效果变化时，替换生成能力，不需要抛弃整个项目。","proof":"结果：工作流留在手里，平台变化不再等于从零开始。","image":"/assets/screen-timeline-2026-08-17.png","imageAlt":"保存在本地的 Nomi 项目与时间线"}],"workflow":[{"id":"story","number":"01","label":"写与拆","image":"/assets/screen-script-2026-08-17.png","imageAlt":"Nomi 故事与分镜工作区","caption":"故事、角色和镜头规划留在同一个项目里，后面的每一步都知道前面发生了什么。"},{"id":"anchor","number":"02","label":"锁参考","image":"/assets/screen-3d-2026-08-17.png","imageAlt":"Nomi 3D 导演台与视觉参考","caption":"先锁定人物、场景、道具、机位和风格，再让后续镜头继承同一组视觉证据。"},{"id":"generate","number":"03","label":"跑生成","image":"/assets/screen-canvas-2026-08-17.png","imageAlt":"Nomi 生成画布","caption":"把提示词、参考、生成结果和下一镜头放在同一张画布上，按任务选择不同模型。"},{"id":"edit","number":"04","label":"剪与交付","image":"/assets/screen-timeline-2026-08-17.png","imageAlt":"Nomi 视频时间线","caption":"把满意结果放进真实时间线继续剪辑、预览和导出 MP4，而不是停在一堆散落素材。"}]}

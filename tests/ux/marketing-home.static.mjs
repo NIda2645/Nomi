@@ -80,6 +80,15 @@ for (const html of [zh, en]) {
   expect(html.includes('<dialog id="author-dialog"'), 'maintainer contact dialog exists')
   expect(html.includes('<dialog id="download-dialog"'), 'ambiguous platforms get an in-page download chooser')
   expect(
+    (html.match(/data-mac-install-guide/g) || []).length === 2,
+    'dialog and no-JS fallback explain macOS first launch',
+  )
+  expect(
+    html.includes('xattr -dr com.apple.quarantine "/Applications/Nomi.app"'),
+    'macOS damaged-app recovery uses the scoped quarantine command',
+  )
+  expect(!html.includes('spctl --master-disable'), 'macOS guidance never disables Gatekeeper globally')
+  expect(
     html.includes('<div class="workflow-image-frame"><img id="workflow-image"'),
     'workflow screenshot uses a bounded media frame',
   )
@@ -210,9 +219,20 @@ expect(
 )
 expect(readmeEn.includes('github.com/aqm857886159/Nomi/discussions'), 'English README keeps Discussions')
 expect(readmeEn.includes('business_inquiry.yml'), 'English README keeps business inquiry')
+expect(readmeEn.includes('[Download](#download)'), 'English README download shortcut leads to direct installers')
+expect(readmeZh.includes('[下载](#下载)'), 'Chinese README download shortcut leads to direct installers')
 expect(readmeEn.includes('Windows 10 / 11 x64'), 'English README labels the Windows architecture')
-expect(readmeEn.includes('unsigned and not notarized'), 'English README discloses macOS signing status')
+expect(readmeEn.includes('not Apple Developer ID signed or notarized'), 'English README discloses macOS signing status')
 expect(readmeEn.includes('no Authenticode signature'), 'English README discloses Windows signing status')
+expect(readmeEn.includes('System Settings → Privacy & Security'), 'English README prefers the supported macOS opening flow')
+expect(readmeZh.includes('“系统设置”→“隐私与安全”'), 'Chinese README prefers the supported macOS opening flow')
+for (const readme of [readmeEn, readmeZh]) {
+  expect(
+    readme.includes('xattr -dr com.apple.quarantine "/Applications/Nomi.app"'),
+    'README damaged-app recovery uses the scoped quarantine command',
+  )
+  expect(!readme.includes('spctl --master-disable'), 'README never disables Gatekeeper globally')
+}
 expect(
   readmeEn.includes('Linux, Windows arm64, and macOS universal installers are not currently published'),
   'English README scopes supported release targets',

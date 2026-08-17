@@ -110,6 +110,10 @@ async function auditStandardCase(browser, testCase) {
     workflowTabs: document.querySelectorAll('[data-step]').length,
     downloadTriggers: document.querySelectorAll('[data-download-nomi]').length,
     directDownloadOptions: document.querySelectorAll('[data-direct-download]').length,
+    macNoticeVisible: (() => {
+      const notice = document.querySelector('.mac-download-note')
+      return Boolean(notice && getComputedStyle(notice).display !== 'none' && notice.getBoundingClientRect().height > 0)
+    })(),
     releasesListingLinks: Array.from(document.querySelectorAll('a')).filter(
       (link) => link.href === 'https://github.com/aqm857886159/Nomi/releases/latest',
     ).length,
@@ -174,6 +178,7 @@ async function auditStandardCase(browser, testCase) {
       facts.localeLinkVisible,
     `${testCase.name}: direct download path and visible locale switch exist`,
   )
+  assert(facts.macNoticeVisible, `${testCase.name}: macOS signing warning is visible before download`)
   assert(
     facts.logoLoaded && facts.productImagesLoaded && facts.currentScreenshots,
     `${testCase.name}: current product evidence renders`,
@@ -257,6 +262,30 @@ async function auditStandardCase(browser, testCase) {
     assert((await menu.getAttribute('aria-expanded')) === 'false', 'mobile menu closes after navigation')
     await page.locator('#community-qr').scrollIntoViewIfNeeded()
     await page.screenshot({ path: path.join(shotsDir, 'home-zh-mobile-community.png') })
+
+    await page.locator('.mac-download-note [data-open-dialog="download-dialog"]').click()
+    await page.locator('#download-dialog').waitFor({ state: 'visible' })
+    const guideFacts = await page.locator('#download-dialog').evaluate((dialog) => ({
+      width: dialog.getBoundingClientRect().width,
+      viewportWidth: document.documentElement.clientWidth,
+      command: dialog.querySelector('.mac-install-command')?.textContent || '',
+      commandFits: (() => {
+        const command = dialog.querySelector('.mac-install-command')
+        return Boolean(command && command.scrollWidth <= command.clientWidth + 1)
+      })(),
+      guide: dialog.querySelector('[data-mac-install-guide]')?.textContent || '',
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    }))
+    assert(
+      guideFacts.width <= guideFacts.viewportWidth && guideFacts.overflow <= 1 && guideFacts.commandFits,
+      'mobile macOS install dialog stays within the viewport',
+    )
+    assert(
+      guideFacts.command.includes('xattr -dr com.apple.quarantine') && guideFacts.guide.includes('官方链接'),
+      'mobile macOS install dialog shows the scoped command and official-source qualifier',
+    )
+    await page.screenshot({ path: path.join(shotsDir, 'home-zh-mobile-mac-install.png') })
+    await page.locator('#download-dialog .dialog-close').click()
   }
 
   await context.close()
@@ -273,12 +302,17 @@ async function auditNoJavaScript(browser, pathName, locale, claim) {
   const watchHref = await page.locator('[data-open-dialog="launch-film"]').getAttribute('href')
   const qr = await page.locator('#community-qr img').getAttribute('src')
   const business = await page.locator('a[href*="business_inquiry.yml"]').count()
+  const installGuide = (await page.locator('.download-fallback [data-mac-install-guide]').textContent()) || ''
   assert(h1.includes(claim), `${locale}: no-JS H1 remains`)
   assert(
     downloadTriggers === 3 && directDownloads >= 3 && releasesListing === 0 && Boolean(watchHref?.endsWith('.mp4')),
     `${locale}: no-JS direct downloads and film link remain without a Releases detour`,
   )
   assert(qr === '/assets/group-wechat-2026-08-17.jpg' && business > 0, `${locale}: no-JS QR and project paths remain`)
+  assert(
+    installGuide.includes('xattr -dr com.apple.quarantine') && /official|官方/.test(installGuide),
+    `${locale}: no-JS macOS recovery stays available and source-qualified`,
+  )
   await context.close()
 }
 
@@ -392,6 +426,11 @@ async function auditDirectDownloads(browser) {
   assert(
     (await ambiguousPage.locator('#download-dialog [data-direct-download]').count()) === 3,
     'unknown Mac architecture shows three direct installer choices in-page',
+  )
+  const macGuide = (await ambiguousPage.locator('#download-dialog [data-mac-install-guide]').textContent()) || ''
+  assert(
+    macGuide.includes('xattr -dr com.apple.quarantine') && macGuide.includes('官方链接'),
+    'download chooser includes safe macOS first-launch recovery',
   )
   await ambiguousPage.screenshot({ path: path.join(shotsDir, 'home-download-chooser.png') })
   await ambiguousContext.close()

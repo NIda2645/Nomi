@@ -10,7 +10,7 @@ Nomi is an open-source desktop workbench for AI video. Connect any OpenAI-compat
 
 Your projects, prompts, and API keys stay on your machine. No account. No telemetry.
 
-[简体中文](README.zh-CN.md) · [Website](https://nomiaqm.com/en/) · [Download](https://github.com/aqm857886159/Nomi/releases/latest) · [Community](https://github.com/aqm857886159/Nomi/discussions) · [For Teams](https://nomiaqm.com/en/#teams) · [Watch the 60s film](https://nomiaqm.com/assets/video/launch-film-en.mp4) · [Documentation](docs/user-guide.md)
+[简体中文](README.zh-CN.md) · [Website](https://nomiaqm.com/en/) · [Download](#download) · [Community](https://github.com/aqm857886159/Nomi/discussions) · [For Teams](https://nomiaqm.com/en/#teams) · [Watch the 60s film](https://nomiaqm.com/assets/video/launch-film-en.mp4) · [Documentation](docs/user-guide.md)
 
 ## WeChat / 微信联系
 
@@ -61,13 +61,25 @@ International community: [GitHub Discussions](https://github.com/aqm857886159/No
 
 Supported release targets are macOS arm64/x64 and Windows x64. Linux, Windows arm64, and macOS universal installers are not currently published.
 
-<details>
-<summary>First launch warning on macOS or Windows</summary>
+### First launch on macOS
 
-- **macOS:** The app is unsigned and not notarized. Move `Nomi.app` to Applications, run `xattr -cr /Applications/Nomi.app` in Terminal, then open it again. Updates require downloading the matching DMG and replacing the app manually.
-- **Windows:** The installer has no Authenticode signature. In the SmartScreen prompt, choose **More info** → **Run anyway**.
+The current macOS build is **not Apple Developer ID signed or notarized**, so macOS may block it on first launch. Only use the direct downloads in the table above or links from the official Nomi website and GitHub repository.
 
-</details>
+1. Download the matching DMG and drag `Nomi.app` to Applications.
+2. In Finder, right-click `Nomi.app` in Applications, choose **Open**, then confirm **Open**.
+3. If it is still blocked, open **System Settings → Privacy & Security**, find the Nomi message, and click **Open Anyway**.
+
+Only if macOS says Nomi is “damaged”, first confirm the installer came from an official Nomi link, then run:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Nomi.app"
+```
+
+Do not disable Gatekeeper globally. Updates require downloading the matching DMG and replacing the app manually.
+
+### First launch on Windows
+
+The installer has no Authenticode signature. In the SmartScreen prompt, choose **More info** → **Run anyway**.
 
 ## Quick start
 

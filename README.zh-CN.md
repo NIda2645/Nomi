@@ -10,7 +10,7 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 
 项目、提示词和密钥都在你自己电脑上。不用注册，没有埋点。
 
-[English](README.md) · [官网](https://nomiaqm.com/) · [下载](https://github.com/aqm857886159/Nomi/releases/latest) · [夸克网盘镜像](https://pan.quark.cn/s/d3322c17e7b6) · [加入用户群](#用户群) · [团队合作](#团队服务) · [看 60 秒宣传片](https://nomiaqm.com/assets/demo.mp4)
+[English](README.md) · [官网](https://nomiaqm.com/) · [下载](#下载) · [夸克网盘镜像](https://pan.quark.cn/s/d3322c17e7b6) · [加入用户群](#用户群) · [团队合作](#团队服务) · [看 60 秒宣传片](https://nomiaqm.com/assets/demo.mp4)
 
 ## 微信联系
 
@@ -60,15 +60,27 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 
 🇨🇳 GitHub 打不开或下载慢：[夸克网盘镜像](https://pan.quark.cn/s/d3322c17e7b6)。最新版本以 [GitHub Releases](https://github.com/aqm857886159/Nomi/releases/latest) 和 [官网](https://nomiaqm.com/)为准。
 
-当前仅提供 macOS arm64/x64 与 Windows x64 安装包。macOS 包未签名、未公证，升级时需下载对应 DMG 后手动替换 `/Applications/Nomi.app`；Windows 包未使用 Authenticode 签名，首次运行可能出现 SmartScreen 提示。
+当前仅提供 macOS arm64/x64 与 Windows x64 安装包。
 
-<details>
-<summary>第一次打开提示“未知开发者 / 已损坏”</summary>
+### 在 macOS 上第一次打开
 
-- **macOS**：把 `Nomi.app` 拖进“应用程序”，在终端运行 `xattr -cr /Applications/Nomi.app`，然后重新打开。
-- **Windows**：SmartScreen 弹窗选择“更多信息”→“仍要运行”。
+当前 macOS 安装包**未使用 Apple Developer ID 签名，也未经过 Apple 公证**，所以第一次打开时可能被系统拦截。请只使用上表直链、Nomi 官网或 Nomi GitHub 官方仓库提供的下载链接。
 
-</details>
+1. 下载对应的 DMG，把 `Nomi.app` 拖进“应用程序”。
+2. 在 Finder 的“应用程序”中右键 `Nomi.app`，选择“打开”，再确认“打开”。
+3. 如果仍被拦截，打开“系统设置”→“隐私与安全”，找到 Nomi 的提示后点击“仍要打开”。
+
+仅当 macOS 提示 Nomi“已损坏”时，先确认安装包来自 Nomi 官方链接，再打开“终端”运行：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Nomi.app"
+```
+
+不需要、也不要全局关闭 Gatekeeper。升级时需下载对应 DMG 后手动替换 `/Applications/Nomi.app`。
+
+### 在 Windows 上第一次打开
+
+Windows 安装包未使用 Authenticode 签名。SmartScreen 弹窗选择“更多信息”→“仍要运行”。
 
 ## 三步开始
 
