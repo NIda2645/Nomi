@@ -31,6 +31,15 @@ export const zhSettings = {
       models: '允许的模型',
       modelsHint: '只允许在这里勾选的模型提交生成任务。',
     },
+    systemPrompt: {
+      title: '系统提示词',
+      hint: '创作助手在每个工作模式下遵循的指令。改动只保存在这台机器上，随时可以恢复默认。',
+      modeGroup: '选择工作模式',
+      editorLabel: '当前模式的系统提示词',
+      customized: '已自定义',
+      reset: '恢复默认',
+      resetDisabledReason: '这个模式还在用内置默认提示词，没有可恢复的改动。',
+    },
   },
   automation: {
     title: '自动化与权限',
@@ -154,6 +163,15 @@ export const enSettings = {
       providersHint: 'Only checked providers may submit generation jobs.',
       models: 'Allowed models',
       modelsHint: 'Only checked models may submit generation jobs.',
+    },
+    systemPrompt: {
+      title: 'System prompt',
+      hint: 'The instruction the creation assistant follows in each working mode. Changes stay on this machine and can be reset at any time.',
+      modeGroup: 'Choose a working mode',
+      editorLabel: 'System prompt for the selected mode',
+      customized: 'Customized',
+      reset: 'Restore default',
+      resetDisabledReason: 'This mode still uses the built-in default prompt, so there is nothing to restore.',
     },
   },
   automation: {

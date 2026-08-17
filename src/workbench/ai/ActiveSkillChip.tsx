@@ -3,7 +3,7 @@
 // token-only：颜色/圆角/字号全走设计系统 token（孤儿 CSS 的旧类名挂不上，复制其 token 值）。
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconCheck, IconChevronDown, IconMovie, IconSparkles, IconWand } from '@tabler/icons-react'
+import { IconAlertTriangle, IconCheck, IconChevronDown, IconFileText, IconMovie, IconSparkles, IconWand } from '@tabler/icons-react'
 import { ConversationHistoryPopover } from './ConversationHistoryPopover'
 import {
   getAvailableSkillProviders,
@@ -21,6 +21,12 @@ const SKILL_AUTHOR_KEY = 'workbench.creation.skill-author'
 
 function openModelCatalog(): void {
   window.dispatchEvent(new Event('nomi-open-model-catalog'))
+}
+
+// 系统提示词住设置 → AI。沿用既有的 `nomi-open-settings` 事件（useSettingsDialogController 已在听，
+// 且它本来就吃 detail.tab），不另造新事件——一个入口一套机制。
+function openSystemPromptSettings(): void {
+  window.dispatchEvent(new CustomEvent('nomi-open-settings', { detail: { tab: 'ai' } }))
 }
 
 export default function ActiveSkillChip({
@@ -142,13 +148,24 @@ export default function ActiveSkillChip({
               </button>
             ) : null}
 
+            {/* 2026-08-17 用户拍板：这里原本是个 284px 宽 / 64px 高 / 截断 360 字的只读小框
+                （用户原话「能看到但局限在一个非常小的框里」）。提示词的家已搬到设置 → AI，
+                可读全文、可编辑、可恢复默认；这里只留一行入口（P1 加新必删旧，不留两份）。 */}
             {!activeSkill && autoPrompt ? (
-              <div className="mx-1 mt-1 rounded-nomi-sm border border-nomi-line-soft bg-nomi-ink-05 px-2.5 py-2">
-                <div className="mb-1 text-micro font-medium text-nomi-ink-70">{t('libraries.skill.systemPrompt')}</div>
-                <div className="max-h-16 overflow-y-auto whitespace-pre-wrap text-micro leading-relaxed text-nomi-ink-60">
-                  {autoPrompt.slice(0, 360)}{autoPrompt.length > 360 ? '…' : ''}
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  openSystemPromptSettings()
+                  setOpen(false)
+                }}
+                className="mx-1 mt-1 flex w-[calc(100%-8px)] items-center gap-2 rounded-nomi-sm px-2.5 py-2 text-left hover:bg-nomi-ink-05 transition-colors duration-[var(--nomi-transition-fast)]"
+              >
+                <IconFileText size={16} stroke={1.5} className="shrink-0 text-nomi-ink-60" />
+                <span className="flex-1 min-w-0 truncate text-micro font-medium text-nomi-ink-70">
+                  {t('libraries.skill.systemPrompt')}
+                </span>
+                <span className="shrink-0 text-micro text-nomi-accent">{t('libraries.skill.systemPromptOpenSettings')}</span>
+              </button>
             ) : null}
 
             {skills.length > 0 && <div className="my-1 border-t border-nomi-line-soft" />}

@@ -18,6 +18,7 @@ import { CanvasGestureSection } from './CanvasGestureSection'
 import { AboutSection } from './AboutSection'
 import { ProjectLocationSection } from './ProjectLocationSection'
 import { AiModelsSection } from './AiModelsSection'
+import { SystemPromptSection } from './SystemPromptSection'
 import { lazyWithChunkBoundary } from '../../ui/chunkBoundary'
 import { AutomationPermissionsSection } from './AutomationPermissionsSection'
 import { defaultAutomationPolicySettings } from './settingsAutomationView'
@@ -382,6 +383,9 @@ export function SettingsDialog({
                   focusEnabled={automationPolicyLoaded}
                   onOpenModelCatalog={() => selectTab('models')}
                 />
+                {/* 系统提示词的家（用户 2026-08-17 拍板）：过去只能在创作面板 popover 的 64px 只读小框里看。
+                    它是「AI 怎么干活」的设置，和本 tab 的模型策略同源，故归位到这里而不是新开 tab（§1.5 归位）。 */}
+                <SystemPromptSection />
               </fieldset>
             ) : tab === 'automation' ? (
               <fieldset
