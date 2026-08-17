@@ -83,7 +83,10 @@ export const MCP_TOOL_CATALOG = [
   },
   {
     name: 'nomi_add_nodes',
-    description: '往项目画布批量加节点（镜头/文本/图片/视频等）。返回新建节点 id。',
+    description:
+      '往项目画布批量加节点，返回新建节点 id。节点自动分层排布（不再堆成一列），与在 App 里手动建的节点完全同款（可选模型、可生成）。' +
+      'kind 语义要分清：shot=分镜描述节点（纯文本，只记镜头设计/调度/对白，本身不生成）；video/image/text/audio=可生成节点（要出片就用这些，不要用 shot）；character/scene=参考锚节点（角色/场景定妆，供镜头连线引用）。' +
+      '想让某镜头能生成视频就建 video 而不是 shot。可选给 vendor+modelKey 指定模型（不给则打开该节点时自动选默认模型）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -93,9 +96,17 @@ export const MCP_TOOL_CATALOG = [
           items: {
             type: 'object',
             properties: {
-              kind: { type: 'string', description: 'text / image / video / shot / character / scene / audio 等' },
+              kind: {
+                type: 'string',
+                description:
+                  '节点类型：video/image/text/audio=可生成；shot=分镜描述(纯文本不生成)；character/scene=参考锚。缺省 text。',
+              },
               title: { type: 'string' },
               prompt: { type: 'string' },
+              vendor: { type: 'string', description: '可选：模型供应商（如 apimart）。与 modelKey 一起绑定该节点默认模型。' },
+              modelKey: { type: 'string', description: '可选：模型标识。与 vendor 一起给；不给则打开节点时自动选默认模型。' },
+              x: { type: 'number', description: '可选：显式落点 x（给了则优先于自动布局）。' },
+              y: { type: 'number', description: '可选：显式落点 y（给了则优先于自动布局）。' },
             },
           },
         },

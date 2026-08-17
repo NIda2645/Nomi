@@ -4,6 +4,8 @@ import { tidyCanvasLayout } from './tidyCanvasLayout'
 import { getDefaultCategoryForNodeKind, type GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { getNodeSize } from '../model/generationNodeKinds'
 import { isShotNumberedNode, nextShotIndex } from '../model/shotNumbering'
+import { buildCanvasNode } from '../../../../electron/capabilityCore/canvasNodeFactory'
+import { RENDERER_NODE_FACTORY_DEPS } from './rendererNodeFactoryDeps'
 import { CLIPBOARD_OFFSET, createClipboardNodeId, createNodeId } from './canvasIds'
 import { bumpPersistRevision, isCategoryId, shouldEmitCanvasMutation, shouldPersistCanvasMutation } from './canvasGuards'
 import { getHistoryFlags, pushUndoSnapshot } from '../events/canvasUndoJournal'
@@ -53,24 +55,24 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     const position = input.exactPosition && input.position
       ? input.position
       : resolveInsertionPosition(input.kind, input.position ?? { x: 120, y: 360 }, siblings)
-    const baseNode = createGenerationNode({
-      id: createNodeId(input.kind),
-      kind: input.kind,
-      title: input.title,
-      prompt: input.prompt,
-      x: position.x,
-      y: position.y,
-    })
-    // 镜头编号是出生即分配的存储身份（max+1），之后移动/加无关节点不再改号（审计 A2）。
-    const nextNode = {
-      ...baseNode,
-      ...(input.meta ? { meta: { ...input.meta } } : {}),
-      ...(input.size ? { size: { ...input.size } } : {}),
-      categoryId,
-      ...(isShotNumberedNode({ kind: input.kind, categoryId, meta: input.meta })
-        ? { shotIndex: nextShotIndex(currentState.nodes) }
-        : {}),
-    }
+    // 节点构造经**共用工厂**（与 electron 能力核/MCP 同一份纯函数）：title/size/prompt/references/history/
+    // status/meta/categoryId/shotIndex 全由工厂按 UI 同款规则补齐。store 只留 store 关注点
+    // （落点避让、撤销点、set、事件）。镜号 = 出生即分配的存储身份（max+1，审计 A2）——工厂据传入的
+    // currentState.nodes 算 max+1；categoryId 已在上面定好，显式传入让工厂与 store 一致。
+    const nextNode = buildCanvasNode(
+      {
+        kind: input.kind,
+        title: input.title,
+        prompt: input.prompt,
+        x: position.x,
+        y: position.y,
+        categoryId,
+        ...(input.meta ? { meta: input.meta } : {}),
+        ...(input.size ? { size: input.size } : {}),
+      },
+      currentState.nodes,
+      RENDERER_NODE_FACTORY_DEPS,
+    ) as GenerationCanvasNode
     pushUndoSnapshot(currentState)
     set((state) => {
       state.nodes = upsertNode(state.nodes, nextNode)
