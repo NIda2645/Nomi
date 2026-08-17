@@ -107,6 +107,13 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           productionRuns,
           origin: { host: origin },
           // 画布方案已在聊天里确认（协议层 elicitation-first）→ addNodes 预批准方案门、渲染层不再弹卡（免双问）。
+          //
+          // 为什么这里敢信客户端传的 planConfirmed（对比 origin「never trust」的硬边界）：方案门守的是
+          // 「模型的决定要过真人」这道软闸，不是抗伪造令牌的红线——加节点免费、可撤销，且持有本 RPC token
+          // 的进程在 headless 下 confirmPlan 本就恒 true，客户端「预批」拿不到它本来拿不到的权限。协议层也只
+          // 在真人 accept 之后才置这个位。**它只能预批 confirmPlan，永远不预批 confirmSpend**——花钱那条硬边界
+          // 刻意不过线（spendConfirmed 不跨 RPC，令牌只在主进程真人点卡后铸）。⚠️ 禁止把本模式复制到
+          // spend/export 等硬边界：那些是「抗伪造」红线，客户端一个 flag 不足以过。
           ...(parsed.planConfirmed === true ? { planConfirmed: true } : {}),
         })
         send(200, { ok: true, result })
