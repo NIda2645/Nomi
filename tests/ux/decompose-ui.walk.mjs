@@ -116,7 +116,7 @@ try {
   await snap('node-injected')
   const hasToolbar = (await getWin().locator('[aria-label="AI 编辑"]').count()) > 0
   if (!hasToolbar) { // 节点可能未选中，点一下卡片图
-    await getWin().locator('.react-flow__node img').first().click({ timeout: 2000 }).catch(() => {})
+    await getWin().locator('[data-node-id] img').first().click({ timeout: 2000 }).catch(() => {})
     await getWin().waitForTimeout(500)
   }
   check('出现 AI 编辑工具条', (await getWin().locator('[aria-label="AI 编辑"]').count()) > 0)
@@ -143,7 +143,7 @@ try {
     await getWin().evaluate((key) => window.nomiDesktop.modelCatalog.upsertVendorApiKey('replicate', { apiKey: key, enabled: true }), TOKEN)
     await getWin().waitForTimeout(500)
     // 重新选中节点
-    await getWin().locator('.react-flow__node img').first().click({ timeout: 3000 }).catch(() => {})
+    await getWin().locator('[data-node-id] img').first().click({ timeout: 3000 }).catch(() => {})
     await getWin().waitForTimeout(400)
     await clickDecompose()
     const spendConfirm = getWin().locator('button', { hasText: /^拆解$/ }).first()

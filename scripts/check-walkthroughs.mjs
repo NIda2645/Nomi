@@ -42,6 +42,27 @@ function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }
 
+/**
+ * 整个 src/ 的文本，用来判「这个类名到底存不存在」。
+ *
+ * 起因（2026-08-18）：3 个走查在等 `.react-flow__node`，而本仓**零图库依赖**、画布是自研的
+ * `generation-canvas-v2`，节点真实锚点是 `[data-node-id]`。那个类名在 src/ 里零命中 →
+ * 选择器永不匹配 → 配上 `.catch(() => {})` 就是「点了个寂寞还报绿」。
+ */
+const SRC_TEXT = (() => {
+  const chunks = []
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules') continue
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (/\.(tsx?|css)$/.test(entry.name)) chunks.push(fs.readFileSync(full, 'utf8'))
+    }
+  }
+  walk(path.join(repoRoot, 'src'))
+  return chunks.join('\n')
+})()
+
 const RULES = [
   {
     id: 'absence-without-baseline',
@@ -97,6 +118,33 @@ const RULES = [
           hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
         }
       })
+      return hits
+    },
+  },
+  {
+    id: 'dead-selector',
+    label: '走查在等一个源码里根本不存在的类名（选择器永不匹配 → 那一步静默失效）',
+    appliesTo: (file) => file.includes(`${path.sep}tests${path.sep}ux${path.sep}`),
+    scan(code, file) {
+      const hits = []
+      // 只查**本仓自己的** BEM 风类名（含 `__`），第三方运行时类名（ProseMirror/mantine…）不在此列，
+      // 否则误报会把这条规则变成噪音、没人再看。
+      const re = /['"`.]([a-z][a-z0-9-]*__[a-z0-9_-]+)/g
+      const seen = new Set()
+      let m
+      while ((m = re.exec(code)) !== null) {
+        const cls = m[1]
+        if (seen.has(cls)) continue
+        seen.add(cls)
+        if (SRC_TEXT.includes(cls)) continue
+        // BEM 修饰符常由模板拼出来（`...__resize-zone--${direction}`），整串在源码里当然搜不到。
+        // 去掉尾部 `--xxx` 再查基名：基名在 = 这个类是真实存在的动态修饰符，不算死选择器。
+        // （首跑就把 `--se` 误报成死选择器，而它有硬断言、一直工作正常。）
+        const base = cls.replace(/--[a-z0-9_-]+$/, '')
+        if (base !== cls && SRC_TEXT.includes(base)) continue
+        const line = code.slice(0, m.index).split('\n').length
+        hits.push({ line, text: `.${cls} —— src/ 里零命中`, file })
+      }
       return hits
     },
   },

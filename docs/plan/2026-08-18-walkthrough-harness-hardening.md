@@ -132,3 +132,36 @@ A/E 两批修复各自独立 commit，可单独 revert。
 但 3 个走查在等它：`composer-long-prompt.walk.mjs:133`（计数恒 0）、
 `decompose-ui.walk.mjs:119,146`（点击永远落空且被 catch 吞掉）、
 `dark-journey.walk.mjs:24,73`（在候选列表里并列，属良性降级）。
+
+## 补做：死选择器（2026-08-18 追加）
+
+用户要求把 `react-flow__node` 那张单子一并做掉。做的过程中把它升级成了门岗的第 5 条规则。
+
+**先证伪再动手**：`.react-flow__node` 是 xyflow 运行时类名，不出现在源码里也可能正常。
+实查：`package.json` 零图库依赖、`node_modules` 里没装、画布是自研的 `generation-canvas-v2`
+（`comfyuiGraphGeometry.ts:5` 还专门写着「实查无 xyflow/React Flow」）。确认是真死的才改。
+
+真实锚点是 `[data-node-id]`（`BaseGenerationNode.tsx:283` / `ClipNode.tsx:475` /
+`LightweightGenerationNode.tsx:41`）。修了 3 个文件；`composer-long-prompt` 那处原来
+只把恒为 0 的计数 `console.log` 掉、从没断言过，顺手补上断言。
+
+### 新增规则 `dead-selector` 当场又抓到 2 处
+
+| 命中 | 判定 |
+|---|---|
+| `canvas-performance-benchmark.e2e.mjs` 的 `...__resize-zone--se` | **误报**——源码里是模板拼的 `` `...resize-zone--${direction}` ``，运行时真实存在。规则已加「去掉尾部 `--xxx` 再查基名」 |
+| `archetype-modebar.e2e.mjs` 的 `...__settings-pop` | **真死**，且连它点的 `aria-label="生成设置"` 按钮也零命中 |
+
+第二处是个教科书级案例：**同一个死选择器让一条断言硬红、另一条空洞通过**——
+
+```js
+const pop = document.querySelector('.generation-canvas-v2-node__settings-pop')  // 恒 null
+assert(hasLabeledRes, …)   // Boolean(null) → false → 报红
+assert(!i2vHasRatio, …)    // !false → true   → 空洞通过 ✅
+```
+
+根因是那片 UI 已经重做过：旧「生成设置按钮 → settings-pop 弹层」→ 新「摘要 pill → 统一参数面板」
+（`InlineParameterBar.tsx:41-44`），而测试没跟着走。按新面板的稳定无障碍锚点修好：
+触发钮 `aria-label="生成参数"`、面板 `[role="group"][aria-label="生成参数面板"]`。
+
+`dead-selector` 基线固化在 **0** —— 以后任何一个死选择器进来都会当场报红。

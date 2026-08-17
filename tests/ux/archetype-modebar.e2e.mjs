@@ -153,10 +153,10 @@ try {
   assert(/纯文本生成/.test(happyText), "HappyHorse：提示行显示当前模式说明");
 
   // 设置弹层带标签（核心修复）：打开 → 断言出现「清晰度」标签字段
-  await win.locator('.generation-canvas-v2-node__composer button[aria-label="生成设置"]').first().click();
+  await win.locator('.generation-canvas-v2-node__composer button[aria-label="生成参数"]').first().click();
   await win.waitForTimeout(500);
   const hasLabeledRes = await win.evaluate(() => {
-    const pop = document.querySelector(".generation-canvas-v2-node__settings-pop");
+    const pop = document.querySelector('[role="group"][aria-label="生成参数面板"]');
     return Boolean(pop) && /清晰度/.test(pop.innerText || "");
   });
   assert(hasLabeledRes, "设置弹层：标量参数带标签（清晰度…，修复『裸值无标签』）");
@@ -165,7 +165,7 @@ try {
   await win.waitForTimeout(700);
   await shot("07-happyhorse-i2v");
   const i2vHasRatio = await win.evaluate(() => {
-    const pop = document.querySelector(".generation-canvas-v2-node__settings-pop");
+    const pop = document.querySelector('[role="group"][aria-label="生成参数面板"]');
     return Boolean(pop) && Array.from(pop.querySelectorAll('select[aria-label="比例"]')).length > 0;
   });
   assert(!i2vHasRatio, "HappyHorse i2v：设置弹层无「比例」控件（U3）");
