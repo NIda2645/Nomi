@@ -2,8 +2,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
+const require = createRequire(import.meta.url)
+const bundledFfmpegPath = require('@ffmpeg-installer/ffmpeg').path
 const fixtureDir = path.dirname(fileURLToPath(import.meta.url))
 const snapshotPath = path.join(fixtureDir, 'perf-heavy.project.json')
 const DEFAULT_ASSET_CACHE = path.join(os.tmpdir(), 'nomi-canvas-performance-assets-v2')
@@ -30,7 +33,7 @@ function clone(value) {
 }
 
 function runFfmpeg(args) {
-  const result = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], {
+  const result = spawnSync(process.env.FFMPEG_BIN || bundledFfmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', ...args], {
     stdio: 'inherit',
   })
   if (result.error) {
