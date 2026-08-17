@@ -117,4 +117,21 @@ describe('序列化 ↔ 迁灌 往返', () => {
     expect(messages).toEqual([])
     expect(listThreads(PID, 'generation', 100)).toHaveLength(1)
   })
+
+  // 分镜方案卡锚在「产出它的那条消息」上（2026-08-17：治卡片跟着对话跑）。方案本身随项目持久化，
+  // 所以这个锚点也必须活过重开项目——否则卡片会漂回线程顶部，等于修了一半。
+  it('storyboardPlan 锚点活过 serialize → hydrate 往返', () => {
+    syncActiveMessages(PID, 'creation', [
+      msg('u1', 'user', '把这个故事拆成镜头'),
+      { ...msg('a1', 'assistant', '已拆成 12 个镜头'), storyboardPlan: true },
+    ], 100)
+    const persisted = serializeArea(PID, 'creation', 100)
+    expect(persisted.threads[0].messages[1].storyboardPlan).toBe(true)
+
+    __resetConversationThreadsForTests()
+    const restored = hydrateArea('proj-3', 'creation', persisted, 999)
+    expect(restored[1].storyboardPlan).toBe(true)
+    // 没打标的消息不该凭空长出这个字段（否则「最后一条带标的」会选错锚）。
+    expect(restored[0].storyboardPlan).toBeUndefined()
+  })
 })

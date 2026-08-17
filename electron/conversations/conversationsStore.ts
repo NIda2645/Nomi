@@ -1,6 +1,13 @@
 // conversations.json 的纯数据层(净化 + v1→v2 迁移)。无 electron 依赖,可单测。
 // IPC 注册在 conversationsIpc.ts(fs/ipcMain 那层)。
-export type PersistedMessage = { id: string; role: string; content: string }
+export type PersistedMessage = {
+  id: string
+  role: string
+  content: string
+  /** 这条消息产出了分镜方案 → 方案卡锚在它下面。方案本身是项目级的、随项目持久化，
+   *  所以它的「家」也得一起落盘，否则重开项目卡片会漂回线程顶部（2026-08-17）。 */
+  storyboardPlan?: true
+}
 export type PersistedThread = {
   id: string
   title: string
@@ -34,7 +41,13 @@ export function sanitizeMessages(value: unknown): PersistedMessage[] {
     if (!item || typeof item !== 'object') continue
     const rec = item as Record<string, unknown>
     if (typeof rec.id !== 'string' || typeof rec.role !== 'string' || typeof rec.content !== 'string') continue
-    out.push({ id: rec.id, role: rec.role, content: rec.content })
+    // 只认字面 true,别的一律丢——净化层的既有口径是「形状不对就不要」,不做强转。
+    out.push({
+      id: rec.id,
+      role: rec.role,
+      content: rec.content,
+      ...(rec.storyboardPlan === true ? { storyboardPlan: true as const } : {}),
+    })
   }
   return out
 }

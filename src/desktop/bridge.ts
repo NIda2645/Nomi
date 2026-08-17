@@ -16,7 +16,13 @@ export type {
 export type { ScreenshotHotkeyStatus } from './bridgeMedia'
 
 /** 落盘的对话消息(conversation 域;draft/附件是 session 域不落盘)。 */
-export type PersistedAiMessage = { id: string; role: string; content: string }
+export type PersistedAiMessage = {
+  id: string
+  role: string
+  content: string
+  /** 分镜方案卡锚在这条消息上(方案随项目持久化,它的「家」也要一起落盘)。 */
+  storyboardPlan?: true
+}
 
 /** 一条会话线程(v2 会话历史)。messages=该线程气泡;title=一句话摘要(首句兜底)。 */
 export type PersistedThread = {
