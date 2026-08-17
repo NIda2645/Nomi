@@ -5,7 +5,12 @@ import { cn } from '../../../utils/cn'
 import { NomiSelect } from '../../../design'
 import { AutoGrowTextarea } from '../../ai/composer/AutoGrowTextarea'
 import type { PlanAnchor, PlanShot } from '../../generationCanvas/agent/storyboardPlan'
-import { DURATION_OPTIONS_SEC } from '../../generationCanvas/agent/storyboardPlanEdits'
+import {
+  DURATION_OPTIONS_SEC,
+  shotKindPatch,
+  shotTypeOf,
+  type ShotTypeValue,
+} from '../../generationCanvas/agent/storyboardPlanEdits'
 import type { ModelOption } from '../../../config/models'
 import { useDedupedModelSelect } from '../../common/useDedupedModelSelect'
 import { ShotParamsInline, ShotParamsDrawer } from './ShotParamControls'
@@ -49,27 +54,13 @@ export default function StoryboardShotCard(props: Props): JSX.Element {
   const unselected = anchors.filter((anchor) => !shot.anchorIds.includes(anchor.id))
 
   // 镜头种类：image=静态画面；video=直出视频；image-video=先出首帧图再用 first_frame 生视频。
-  // 底层仍保持 shotKind 二值，image-video 用 shotKind=video + keyframe.enabled 表达，避免历史方案变形。
-  // 切种类清掉模型/模式/参数——两种类的模型目录不通用，留着会张冠李戴（落画布按种类取默认兜底）；
-  // 切回 video 时时长兜底 5s（图片镜头的 durationSec 是 0）。
-  const shotKind = shot.shotKind ?? 'video'
-  const isImageShot = shotKind === 'image'
-  const shotTypeValue = isImageShot ? 'image' : shot.keyframe?.enabled === true ? 'image-video' : 'video'
+  // 档位换算 + 改档补丁全在 storyboardPlanEdits（shotTypeOf / shotKindPatch）——「全部镜头」批量条
+  // 走同一对纯函数，逐镜改与整片改永远同构（P1 无并行版）。
+  const shotTypeValue = shotTypeOf(shot)
+  const isImageShot = shotTypeValue === 'image'
   const onKindChange = (value: string): void => {
     if (value === shotTypeValue) return
-    if (value === 'image') onUpdate({ shotKind: 'image', keyframe: undefined, modelKey: undefined, modeId: undefined, params: undefined })
-    else if (value === 'image-video') {
-      onUpdate({
-        shotKind: 'video',
-        durationSec: shot.durationSec > 0 ? shot.durationSec : 5,
-        keyframe: { ...(shot.keyframe || {}), enabled: true, prompt: shot.keyframe?.prompt || '' },
-        modelKey: undefined,
-        modeId: undefined,
-        params: undefined,
-      })
-    } else {
-      onUpdate({ shotKind: 'video', keyframe: undefined, durationSec: shot.durationSec > 0 ? shot.durationSec : 5, modelKey: undefined, modeId: undefined, params: undefined })
-    }
+    onUpdate(shotKindPatch(shot, value as ShotTypeValue))
   }
 
   const durationOptions = [...new Set([...DURATION_OPTIONS_SEC, shot.durationSec])]

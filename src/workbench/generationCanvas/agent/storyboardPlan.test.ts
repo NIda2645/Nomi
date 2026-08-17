@@ -57,6 +57,27 @@ describe('storyboardPlanToCreateNodesArgs', () => {
     expect(storyboardPlanToCreateNodesArgs(PLAN).groupCategoryId).toBe('shots')
   })
 
+  // ⚠️ 现状固化，不是「期望行为」：2026-08-18 修「批量选不了供应商」时实查到的缺口。
+  // 画布框选那条链已经能把 vendor 一路写进节点；分镜这条**不能**——PlanShot 只有 modelKey，
+  // 没有 vendor 字段，storyboardPlanToCreateNodesArgs 自然也传不出去。落地时 buildPlannedNodeMeta
+  // 用 entryByKey.get(modelKey) 反查厂商，而 buildAgentModelEntries 按 modelKey 首次出现去重
+  // （见 availableModels.ts 的 seen 集合）→ 同一 modelKey 多家可用时**首家胜出**，与用户所选无关。
+  // 这条测试就是那个缺口的记录：等 PlanShot/PlanCreatedNode 补上 vendor 字段时，改这条即可。
+  it('厂商在 plan→canvas 落地路径上被丢弃：PlanShot 存不下 vendor，节点参数里也没有', () => {
+    const plan: StoryboardPlan = {
+      ...PLAN,
+      shots: [{ index: 1, durationSec: 5, anchorIds: [], prompt: '镜一', modelKey: 'nano-banana' }],
+    }
+    const { nodes } = storyboardPlanToCreateNodesArgs(plan)
+    const shot = nodes.find((n) => n.prompt === '镜一')
+
+    // 用户选的模型确实传下去了……
+    expect(shot?.modelKey).toBe('nano-banana')
+    // ……但「哪一家」没有：PlanCreatedNode 上根本不存在 vendor 槽（多家可用时落地取目录首家）。
+    expect(shot).not.toHaveProperty('vendor')
+    expect(Object.keys(shot ?? {})).not.toContain('modelVendor')
+  })
+
   it('anchorCount = 视觉锚数（落画布布局据此分「参考行 / 镜头网格」）', () => {
     const { nodes, anchorCount } = storyboardPlanToCreateNodesArgs(PLAN)
     // PLAN：3 视觉锚（角色/场景/道具）+ 2 镜头；文本锚（风格）不建节点
