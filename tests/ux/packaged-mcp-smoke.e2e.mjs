@@ -17,7 +17,7 @@ const launcherPath = process.platform === 'darwin'
   : executablePath
 const launcherScript = process.platform === 'darwin'
   ? path.join(bundlePath, 'Contents', 'Resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
-  : path.join(bundlePath, 'resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+  : path.join(path.dirname(bundlePath), 'resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-packaged-mcp-smoke-'))
 const capabilityDir = path.join(tempRoot, 'capability')
 const token = crypto.randomBytes(24).toString('hex')
