@@ -77,6 +77,7 @@ function renderHero(content, shared) {
       <a class="button primary" data-download-nomi href="#download-options">${escapeText(content.hero.download)}</a>
       <a class="button" href="${content.htmlLang === 'en' ? '/assets/video/launch-film-en.mp4' : '/assets/demo.mp4'}" data-open-dialog="launch-film">${escapeText(content.hero.watch)}</a>
     </div>
+    <p class="mac-download-note">${escapeText(content.hero.macNotice)} <a href="#download-options" data-open-dialog="download-dialog">${escapeText(content.hero.macInstallHelp)}</a></p>
     <p class="truth-note">${escapeText(content.hero.truth)}</p>
   </div>
   <figure class="hero-product">
@@ -251,6 +252,18 @@ function renderDownloadOptions(content) {
   return options.map((option) => `<a class="download-option" data-direct-download href="${escapeAttr(option.href)}"><span><strong>${escapeText(option.label)}</strong><small>${escapeText(option.hint)}</small></span><span aria-hidden="true">${option.code} ↓</span></a>`).join('')
 }
 
+function renderMacInstallGuide(content) {
+  const steps = content.download.macSteps.map((step) => `<li>${escapeText(step)}</li>`).join('')
+  return `<section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">${escapeText(content.download.macGuideTitle)}</strong>
+  <p>${escapeText(content.download.macGuideSummary)}</p>
+  <ol>${steps}</ol>
+  <p>${escapeText(content.download.macDamaged)}</p>
+  <code class="mac-install-command">${escapeText(content.download.macCommand)}</code>
+  <p class="mac-install-safety">${escapeText(content.download.macSafety)}</p>
+</section>`
+}
+
 function renderDialogs(content, shared) {
   const isEnglish = content.htmlLang === 'en'
   const filmSource = isEnglish ? '/assets/video/launch-film-en.mp4' : '/assets/demo.mp4'
@@ -267,12 +280,12 @@ function renderDialogs(content, shared) {
 </dialog>
 <dialog id="download-dialog" aria-labelledby="download-title">
   <div class="dialog-head"><strong id="download-title">${escapeText(content.download.title)}</strong><button class="dialog-close" type="button" aria-label="${escapeAttr(content.a11y.close)}">×</button></div>
-  <div class="dialog-body download-dialog-body"><p>${escapeText(content.download.description)}</p><div class="download-options">${renderDownloadOptions(content)}</div></div>
+  <div class="dialog-body download-dialog-body"><p>${escapeText(content.download.description)}</p><div class="download-options">${renderDownloadOptions(content)}</div>${renderMacInstallGuide(content)}</div>
 </dialog>`
 }
 
 function renderNoScriptDownload(content) {
-  return `<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>${escapeText(content.download.title)}</h2><p>${escapeText(content.download.description)}</p><div class="download-options">${renderDownloadOptions(content)}</div></div></section></noscript>`
+  return `<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>${escapeText(content.download.title)}</h2><p>${escapeText(content.download.description)}</p><div class="download-options">${renderDownloadOptions(content)}</div>${renderMacInstallGuide(content)}</div></section></noscript>`
 }
 
 export function renderHomepage(locale, runtimeFacts) {

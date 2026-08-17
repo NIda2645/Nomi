@@ -58,6 +58,8 @@ section[id] { scroll-margin-top: calc(var(--nav-h) + 12px); }
 .hero h1 .hit::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 7px; background: var(--coral); transform: rotate(-1.5deg); z-index: -1; }
 .hero-lede { max-width: 800px; margin: 28px auto 0; color: var(--ink-soft); font-size: 19px; line-height: 1.7; }
 .hero-actions { margin-top: 28px; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+.mac-download-note { max-width: 720px; margin: 14px auto 0; color: var(--ink-soft); font-size: 13px; }
+.mac-download-note a { color: var(--coral-dark); font-weight: 800; text-underline-offset: 3px; }
 .truth-note { margin: 18px auto 0; color: var(--muted); font-size: 12px; }
 .hero-product { width: var(--page); margin: 48px auto 0; position: relative; }
 .cost-ribbon { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--coral); border: 1px solid var(--ink); }
@@ -172,10 +174,18 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
 .download-option strong { font-size: 16px; }
 .download-option small { margin-top: 3px; color: var(--muted); font-size: 12px; }
 .download-option > span:last-child { flex: none; color: var(--coral-dark); font-size: 12px; font-weight: 800; }
+.mac-install-guide { margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--ink); }
+.mac-install-guide-title { display: block; font-size: 16px; }
+.mac-install-guide p { margin: 10px 0 0; color: var(--ink-soft); }
+.mac-install-guide ol { margin: 14px 0 0; padding-left: 22px; }
+.mac-install-guide li + li { margin-top: 8px; }
+.mac-install-command { margin-top: 12px; padding: 12px 14px; display: block; max-width: 100%; overflow-wrap: anywhere; border: 1px solid var(--ink); background: var(--ink); color: var(--white); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.mac-install-guide .mac-install-safety { color: var(--muted); font-size: 12px; }
 .download-fallback { padding: 82px 0; background: var(--surface); border-top: 1px solid var(--rule); }
 .download-fallback h2 { margin: 0; font-size: 42px; line-height: 1.1; }
 .download-fallback p { max-width: 680px; color: var(--ink-soft); }
 .download-fallback .download-options { max-width: 760px; margin-top: 28px; }
+.download-fallback .mac-install-guide { max-width: 760px; }
 
 [data-reveal] { animation: reveal 520ms ease both; }
 @keyframes hero-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
