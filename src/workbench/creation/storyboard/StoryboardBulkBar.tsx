@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { IconStack2 } from '@tabler/icons-react'
 import { NomiSelect } from '../../../design'
 import type { ModelOption } from '../../../config/models'
-import { useDedupedModelSelect } from '../../common/useDedupedModelSelect'
+import BulkModelPicker from '../../common/BulkModelPicker'
 import type { StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
 import {
   DURATION_OPTIONS_SEC,
@@ -50,12 +50,18 @@ export default function StoryboardBulkBar({ plan, imageModelOptions, videoModelO
   const isImageKind = effectiveKind === 'image'
   const modelOptions = isImageKind ? imageModelOptions : videoModelOptions
 
-  const onBulkModelChange = React.useCallback(
+  // 批量选模型：走 BulkModelPicker（与画布框选工具条同一份实现，P1 无并行版），选项厂商明确。
+  //
+  // ⚠️ 已知缺口（2026-08-18 实查，不假装修好）：PlanShot 没有 vendor 字段，applyModelToAll 也只写
+  // modelKey。所以这里选的「哪一家」在落画布时**不被保留**——storyboardPlanToCreateNodesArgs 只把
+  // modelKey 透传给 PlanCreatedNode，buildPlannedNodeMeta 再用 entryByKey.get(modelKey) 反查厂商，
+  // 而 buildAgentModelEntries 按 modelKey 首次出现去重（首家胜出）。落地厂商 = 目录里第一家，
+  // 与用户所选无关。要真正贯通须给 PlanShot/PlanCreatedNode 加 vendor 字段（见 storyboardPlan.test.ts
+  // 的「厂商在 plan→canvas 落地路径上被丢弃」用例，那条测试就是这个缺口的固化记录）。
+  const onBulkModelPick = React.useCallback(
     (value: string) => onChange(applyModelToAll(plan, value)),
     [plan, onChange],
   )
-  // 去重选择 view-model（与镜卡/画布节点共用同一逻辑，P1）。混合时传空值 → 下面单独显「混合」。
-  const modelSelect = useDedupedModelSelect(modelOptions, bulkModelKey ?? '', onBulkModelChange)
 
   if (plan.shots.length === 0) return null
 
@@ -68,13 +74,11 @@ export default function StoryboardBulkBar({ plan, imageModelOptions, videoModelO
     { value: 'image-video', label: t('storyboardEditor.imageVideo') },
   ]
 
-  const modelSelectOptions = modelOptions.length > 0
-    ? [
-        ...(bulkModelKey === null ? [mixedOption] : []),
-        { value: '', label: t('storyboardEditor.defaultModel') },
-        ...modelSelect.modelOptions,
-      ]
-    : null
+  // 固定项（「混合」= 当前不一致的显示态；「默认模型」= 清空该镜模型）排在摊平的厂商行之前。
+  const modelLeadingOptions = [
+    ...(bulkModelKey === null ? [mixedOption] : []),
+    { value: '', label: t('storyboardEditor.defaultModel') },
+  ]
 
   const durationOptions = [
     ...(bulkDuration === null ? [mixedOption] : []),
@@ -105,17 +109,20 @@ export default function StoryboardBulkBar({ plan, imageModelOptions, videoModelO
         options={kindOptions}
         onChange={(value) => applyIfReal(value, (v) => onChange(applyShotKindToAll(plan, v as ShotTypeValue)))}
       />
-      {modelSelectOptions ? (
-        <NomiSelect
-          ariaLabel={t('storyboardEditor.bulk.modelAria')}
-          leadingLabel={t('storyboardEditor.model')}
-          size="xs"
-          triggerMaxWidth={150}
-          value={bulkModelKey === null ? MIXED_VALUE : bulkModelKey ? modelSelect.modelValue : ''}
-          options={modelSelectOptions}
-          onChange={(value) => applyIfReal(value, (v) => (v ? modelSelect.onModelPick(v) : onBulkModelChange('')))}
-        />
-      ) : null}
+      <BulkModelPicker
+        modelOptions={modelOptions}
+        ariaLabel={t('storyboardEditor.bulk.modelAria')}
+        leadingLabel={t('storyboardEditor.model')}
+        placeholder={t('generationCommon.production.unifyModel')}
+        size="xs"
+        triggerMaxWidth={150}
+        leadingOptions={modelLeadingOptions}
+        // 触发上只显得出固定项（「混合」/「默认模型」）——摊平项的 value 是厂商寻址串，
+        // 而 plan 只存 modelKey，对不上；选过具体模型后回落占位「统一模型」（它本就是一次性命令）。
+        value={bulkModelKey === null ? MIXED_VALUE : ''}
+        onPick={(value) => onBulkModelPick(value)}
+        onPickLeadingOption={(value) => applyIfReal(value, () => onBulkModelPick(''))}
+      />
       {!isImageKind ? (
         <NomiSelect
           ariaLabel={t('storyboardEditor.bulk.durationAria')}
