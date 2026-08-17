@@ -155,6 +155,8 @@ describe('release contract', () => {
       '--draft',
       'verify-release-assets',
       '--draft=false',
+      'git config user.name "github-actions[bot]"',
+      'git config user.email "41898282+github-actions[bot]@users.noreply.github.com"',
     ]) {
       expect(release, token).toContain(token)
     }

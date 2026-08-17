@@ -84,6 +84,8 @@ jobs:
           RC_SHA: ${{ steps.manifest.outputs.sha }}
         shell: bash
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
             test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$RC_SHA"
           else
