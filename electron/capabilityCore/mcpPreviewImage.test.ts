@@ -134,7 +134,7 @@ describe('buildResultThumbnail（交付② · Electron 侧 nativeImage 缩略）
     expect(buildResultThumbnail({}, { toolkit, readLocalFile: () => '/x', readFileBytes: () => Buffer.alloc(1) })).toBeNull()
   })
 
-  it('artifact 形状（preview.url 是图片本地链）：也能出块', () => {
+  it('artifact 形状（preview.url 是图片本地链，无 nomiUrl 时）：也能出块', () => {
     const { toolkit } = fakeToolkit({ jpegBytes: 2_000 })
     const out = buildResultThumbnail(
       { kind: 'image', status: 'ready', preview: { url: 'nomi-local://production-preview/p/r/a/thumb.jpg?preview=tok' } },
@@ -145,6 +145,39 @@ describe('buildResultThumbnail（交付② · Electron 侧 nativeImage 缩略）
       },
     )
     expect(out).not.toBeNull()
+  })
+
+  it('artifact 真实形状（preview.url=签名 HTTP 链、preview.nomiUrl=本地链）：走 nomiUrl 出块，不误用 HTTP url', () => {
+    const { toolkit } = fakeToolkit({ jpegBytes: 2_000 })
+    const seen: string[] = []
+    const out = buildResultThumbnail(
+      {
+        kind: 'image', status: 'ready',
+        preview: {
+          url: 'http://127.0.0.1:5/production-preview?preview=tok', // App 里真实是签名 HTTP 链（解不了本地文件）
+          nomiUrl: 'nomi-local://production-preview/p/r/a/thumb.jpg?preview=tok',
+        },
+      },
+      {
+        toolkit,
+        // 模拟真实 parseLocalAssetUrl：只有 nomi-local:// 能解析到磁盘，HTTP url 返回 null。
+        readLocalFile: (u: string) => { seen.push(u); return u.startsWith('nomi-local://') ? '/tmp/p/thumb.jpg' : null },
+        readFileBytes: () => Buffer.alloc(10),
+      },
+    )
+    expect(out).not.toBeNull()
+    // 关键：传给解析的是 nomiUrl（可解析），不是 HTTP 的 preview.url。
+    expect(seen).toContain('nomi-local://production-preview/p/r/a/thumb.jpg?preview=tok')
+    expect(seen).not.toContain('http://127.0.0.1:5/production-preview?preview=tok')
+  })
+
+  it('artifact 视频产物（preview 指向 mp4）：不出块（不抽帧）', () => {
+    const { toolkit } = fakeToolkit({ jpegBytes: 2_000 })
+    const out = buildResultThumbnail(
+      { kind: 'video', status: 'ready', preview: { url: 'http://127.0.0.1:5/x', nomiUrl: 'nomi-local://production-preview/p/r/a/clip.mp4?preview=tok' } },
+      { toolkit, readLocalFile: () => '/tmp/p/clip.mp4', readFileBytes: () => Buffer.alloc(10) },
+    )
+    expect(out).toBeNull()
   })
 
   it('readFileBytes 抛（文件消失）：优雅 null', () => {

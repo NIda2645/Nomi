@@ -7,6 +7,7 @@
 // 纯逻辑、不碰 electron —— 与 mcpProtocol 同边界，可裸 node 单测。
 
 import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
+import { stripInternalEnrichFields } from './mcpResultEnrich'
 
 export type ResultLocale = 'zh-CN' | 'en'
 
@@ -410,16 +411,7 @@ export function buildToolOutcome(
     const deepLink = openInNomi || (projectId ? `nomi://project/${projectId}` : '')
     // 结果里可能夹带 App 侧富化的内部字段（_nomiThumbnail=缩略图 base64，已单独成 image block；
     // _nomiPreviewUrl=签名预览链，已进 widget）——都不该原样 JSON dump 进文本（base64 会灌爆终端）。dump 前剥掉。
-    const dump = (() => {
-      const obj = result && typeof result === 'object' && !Array.isArray(result) ? (result as Record<string, unknown>) : null
-      if (obj && ('_nomiThumbnail' in obj || '_nomiPreviewUrl' in obj)) {
-        const clone = { ...obj }
-        delete clone._nomiThumbnail
-        delete clone._nomiPreviewUrl
-        return clone
-      }
-      return result
-    })()
+    const dump = stripInternalEnrichFields(result)
     const text = [
       `✓ ${L(ctx, '已生成', 'Generated')}${label ? L(ctx, label.zh, label.en) : L(ctx, '一个素材', 'an asset')}`,
       echo ? `  ${echo}` : null,

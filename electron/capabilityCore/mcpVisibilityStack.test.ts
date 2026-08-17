@@ -10,11 +10,12 @@ import { createMcpProtocol, type McpTransport } from './mcpProtocol'
 
 type RpcMessage = { jsonrpc?: string; id?: unknown; method?: string; params?: Record<string, unknown>; result?: unknown; error?: { code?: number; message?: string } }
 
-/** 假 MCP 客户端：收集服务端所有帧；invoke 返回可控 generate 结果。 */
-function makeHarness(generateResult: unknown) {
+/** 假 MCP 客户端：收集服务端所有帧；invoke 按 method 返回可控结果（generate / production.artifact）。 */
+function makeHarness(generateResult: unknown, artifactResult?: unknown) {
   const frames: RpcMessage[] = []
   const invoke = vi.fn(async (method: string) => {
     if (method === 'generate') return generateResult
+    if (method === 'production.artifact') return artifactResult
     throw new Error(`unexpected invoke: ${method}`)
   })
   const transport: McpTransport = {
@@ -35,6 +36,18 @@ function callGenerate(protocol: ReturnType<typeof createMcpProtocol>, extraParam
       name: 'nomi_generate',
       arguments: { projectId: 'p1', vendor: 'kling', modelKey: 'v2', intent: 'image', prompt: '一只橘猫' },
       ...extraParams,
+    },
+  })
+}
+
+function callArtifact(protocol: ReturnType<typeof createMcpProtocol>) {
+  protocol.handleIncoming({
+    jsonrpc: '2.0',
+    id: 43,
+    method: 'tools/call',
+    params: {
+      name: 'nomi_get_artifact',
+      arguments: { projectId: 'p1', runId: 'r9', artifactId: 'a1' },
     },
   })
 }
@@ -120,6 +133,59 @@ describe('交付② 图片内容块（native MCP ImageContent）', () => {
     const content = (reply?.result as { content?: Array<Record<string, unknown>> })?.content || []
     expect(content.filter((c) => c.type === 'image').length).toBe(0)
     expect(content.some((c) => c.type === 'text')).toBe(true)
+  })
+})
+
+describe('交付② 图片内容块 · nomi_get_artifact（P0-B 缺口 · 有图预览的产物同样补一个图块）', () => {
+  // 真实 artifact 投影形状：kind + status + preview(url=签名 HTTP, nomiUrl=本地链)；
+  // App 侧富化把 _nomiThumbnail 夹带进来（enrichArtifactResult 已单测；此处只验协议如何把它拼成图块）。
+  const artifactProjection = (extra: Record<string, unknown> = {}) => ({
+    artifactId: 'a1', runId: 'r9', projectId: 'p1', kind: 'image', status: 'ready',
+    nomiUri: 'nomi://project/p1/run/r9/artifact/a1',
+    openInNomi: 'nomi://project/p1/run/r9?artifact=a1',
+    preview: { url: 'http://127.0.0.1:5/production-preview?preview=TOK', nomiUrl: 'nomi-local://production-preview/p1/r9/a1/thumb.jpg?preview=TOK', token: 'TOK', expiresAt: 'later' },
+    ...extra,
+  })
+
+  it('带 _nomiThumbnail → content 恰含一个 image 块（base64 + image/jpeg），文本兜底仍在', async () => {
+    const { protocol, frames } = makeHarness(undefined, artifactProjection({ _nomiThumbnail: { data: 'QUJD', mimeType: 'image/jpeg' } }))
+    callArtifact(protocol)
+    await flush()
+    const reply = frames.find((f) => f.id === 43)
+    const content = (reply?.result as { content?: Array<Record<string, unknown>> })?.content || []
+    const images = content.filter((c) => c.type === 'image')
+    expect(images.length).toBe(1)
+    expect(images[0]).toMatchObject({ type: 'image', data: 'QUJD', mimeType: 'image/jpeg' })
+    expect(content.some((c) => c.type === 'text')).toBe(true)
+  })
+
+  it('内部字段不外泄：text 与 structuredContent.nomiRunData 均不含 _nomiThumbnail（base64 不重复）', async () => {
+    const { protocol, frames } = makeHarness(undefined, artifactProjection({ _nomiThumbnail: { data: 'QUJD', mimeType: 'image/jpeg' } }))
+    callArtifact(protocol)
+    await flush()
+    const reply = frames.find((f) => f.id === 43)
+    const result = reply?.result as { content?: Array<{ type?: string; text?: string }>; structuredContent?: { nomiRunData?: Record<string, unknown> } }
+    const textBlock = result.content?.find((c) => c.type === 'text')
+    expect(String(textBlock?.text)).not.toContain('_nomiThumbnail')
+    expect(String(textBlock?.text)).not.toContain('QUJD')
+    // nomiRunData 是投影原文，但内部富化字段被剥（否则 base64 重复一份大 payload）。
+    const runData = result.structuredContent?.nomiRunData || {}
+    expect('_nomiThumbnail' in runData).toBe(false)
+    expect('_nomiPreviewUrl' in runData).toBe(false)
+    // 投影真身字段仍在（剥离只去内部字段）。
+    expect(runData.artifactId).toBe('a1')
+    expect((runData.preview as Record<string, unknown>).url).toBe('http://127.0.0.1:5/production-preview?preview=TOK')
+  })
+
+  it('视频/非图产物无 _nomiThumbnail → 零 image 块（不抽帧），文本 + 深链仍在', async () => {
+    const { protocol, frames } = makeHarness(undefined, artifactProjection({ kind: 'video', preview: { url: 'http://127.0.0.1:5/x', nomiUrl: 'nomi-local://production-preview/p1/r9/a1/clip.mp4?preview=T', token: 'T', expiresAt: 'later' } }))
+    callArtifact(protocol)
+    await flush()
+    const reply = frames.find((f) => f.id === 43)
+    const result = reply?.result as { content?: Array<{ type?: string; text?: string }>; structuredContent?: { nomiOutcome?: { openInNomi?: string } } }
+    expect((result.content || []).filter((c) => c.type === 'image').length).toBe(0)
+    expect(result.content?.some((c) => c.type === 'text')).toBe(true)
+    expect(result.structuredContent?.nomiOutcome?.openInNomi).toBe('nomi://project/p1/run/r9?artifact=a1')
   })
 })
 

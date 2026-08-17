@@ -20,6 +20,7 @@ import {
   buildNomiRunFromProjection,
 } from './mcpAppWidget'
 import { buildToolOutcome, buildToolErrorOutcome, buildProgressStartMessage, type ResultLocale } from './mcpToolResults'
+import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 
@@ -388,8 +389,10 @@ export function createMcpProtocol(transport: McpTransport) {
       })
       // The widget needs a compact presentation frame; the AI client needs the complete safe
       // projection to reason about gates, cursors, jobs and artifact identities. The service
-      // owns redaction before this protocol boundary.
-      structured.nomiRunData = result
+      // owns redaction before this protocol boundary. App 侧富化的内部字段（_nomiThumbnail 缩略图
+      // base64 / _nomiPreviewUrl 签名链）各有去处（image block / widget），这里剥掉——否则 base64
+      // 会在 nomiRunData 里重复一份大 payload（nomi_get_artifact 补图后尤甚）。
+      structured.nomiRunData = stripInternalEnrichFields(result)
       payload._meta = { ui: { resourceUri: uiUri }, 'openai/outputTemplate': uiUri }
     } else if (toolName === 'nomi_generate' && uiUri) {
       structured.nomiDraft = buildNomiDraftFromGenerate({

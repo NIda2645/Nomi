@@ -5,7 +5,7 @@ import { nativeImage } from 'electron'
 
 import { parseLocalAssetUrl } from '../protocol/localProtocol'
 import { getArtifactPreviewSecret, mintAssetPreviewUrl } from '../productionRun/artifactProjection'
-import { enrichGenerateResult } from './mcpResultEnrich'
+import { enrichArtifactResult, enrichGenerateResult } from './mcpResultEnrich'
 import type { ThumbnailImageToolkit } from './mcpPreviewImage'
 
 // nativeImage 缺失即优雅跳过缩略图（不崩）：部分单测只 partial-mock electron 的 app、不给 nativeImage，
@@ -21,17 +21,37 @@ function nativeImageToolkit(): ThumbnailImageToolkit | null {
   }
 }
 
-/** 只在 method==='generate' 且有 result 时富化；其余原样返回。projectId 从请求 params 取（权威来源）。 */
+// nativeImage 缺失 → 传一个恒抛的桩，buildResultThumbnail 的 try/catch 把它降级成「无缩略图」。
+function safeToolkit(): ThumbnailImageToolkit {
+  return nativeImageToolkit() ?? { createFromPath: () => { throw new Error('no nativeImage') }, createFromBuffer: () => { throw new Error('no nativeImage') } }
+}
+// nomi-local URL → 磁盘绝对路径（generate 与 artifact 两路共用同一映射与越界/符号链接守卫）。
+const resolveLocalFile = (url: string): string | null => parseLocalAssetUrl(url)?.filePath ?? null
+
+/**
+ * 只在 method==='generate' / 'production.artifact' 且有 result 时富化，各自补一个 ≤64KB 缩略图 base64
+ *（协议层拼成同一种 MCP image content block）；其余方法原样返回。projectId 从请求 params 取（权威来源）。
+ * 两路复用同一 nativeImage / fs / URL→路径 接线，无并行实现（P1）。
+ */
 export function enrichResultForMethod(method: string, params: Record<string, unknown>, result: unknown): unknown {
-  if (method !== 'generate') return result
-  const toolkit = nativeImageToolkit()
-  const projectId = typeof params.projectId === 'string' ? params.projectId : ''
-  return enrichGenerateResult(result, {
-    projectId,
-    // nativeImage 缺失 → 传一个恒抛的桩，buildResultThumbnail 的 try/catch 把它降级成「无缩略图」。
-    toolkit: toolkit ?? { createFromPath: () => { throw new Error('no nativeImage') }, createFromBuffer: () => { throw new Error('no nativeImage') } },
-    readFileBytes: (p) => fs.readFileSync(p),
-    resolveLocalFile: (url) => parseLocalAssetUrl(url)?.filePath ?? null,
-    mintPreview: ({ projectId: pid, relativePath }) => mintAssetPreviewUrl({ projectId: pid, relativePath, secret: getArtifactPreviewSecret() }),
-  })
+  if (method === 'generate') {
+    const projectId = typeof params.projectId === 'string' ? params.projectId : ''
+    return enrichGenerateResult(result, {
+      projectId,
+      toolkit: safeToolkit(),
+      readFileBytes: (p) => fs.readFileSync(p),
+      resolveLocalFile,
+      mintPreview: ({ projectId: pid, relativePath }) => mintAssetPreviewUrl({ projectId: pid, relativePath, secret: getArtifactPreviewSecret() }),
+    })
+  }
+  // nomi_get_artifact：artifact 投影带 image preview 时补同款缩略图块（视频/非图产物优雅省略）。
+  // 无需 projectId/mint——投影本身已带 preview.url 供 widget 用，这里只补 image content block。
+  if (method === 'production.artifact') {
+    return enrichArtifactResult(result, {
+      toolkit: safeToolkit(),
+      readFileBytes: (p) => fs.readFileSync(p),
+      resolveLocalFile,
+    })
+  }
+  return result
 }
