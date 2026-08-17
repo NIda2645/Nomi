@@ -1,5 +1,6 @@
 import type { WorkbenchDocument } from '../workbenchTypes'
 import { ASSET_MASTER_PROMPT } from './assetMasterPrompt'
+import { getSystemPromptOverrides, resolveEffectivePrompt } from './systemPromptOverrides'
 
 export type CreationAiModeId =
   | 'general'
@@ -24,6 +25,12 @@ export type CreationAiMode = {
   prompt: string
   /** 纯问答模式：不套创作任务框定、不注入 documentTools 写文档协议。 */
   chatOnly?: boolean
+  /**
+   * 专职模式：用户已经明确选了这条路（素材规划/文字稿/提示词/审校），本轮**不许**被
+   * 跨面板意图路由劫走。自由写作的模式（通用/故事/剧本）才留着路由，因为那里「拆镜头」
+   * 确实是个真实的跨面板跳转意图。
+   */
+  dedicatedJob?: boolean
 }
 
 export const CREATION_AI_MODES: CreationAiMode[] = [
@@ -69,6 +76,7 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
     // 领域规范住 assetMasterPrompt.ts（全资产大师 V3.0，用户 2026-08-12 提供）：
     // 场景七层递进 / 角色概念表 / 道具小资产卡，各带必填字段与自检清单。
     prompt: ASSET_MASTER_PROMPT,
+    dedicatedJob: true,
   },
   {
     // 名字要和「拆成镜头·落画布」区分开：这个模式只在文稿里写文字稿，不落画布、不生成。
@@ -84,6 +92,7 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
       '15秒分镜按 0-3秒、3-6秒、6-9秒、9-12秒、12-15秒 拆分。',
       '每段写清楚主体、动作、镜头运动、情绪、光线、转场和声音。',
     ].join('\n'),
+    dedicatedJob: true,
   },
   {
     id: 'seedance',
@@ -98,6 +107,7 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
       '如果是续集，保留“将@视频1延长15s”的开头，并说明 @图片/@视频 引用用途。',
       '避免过长堆砌，优先清晰可执行。',
     ].join('\n'),
+    dedicatedJob: true,
   },
   {
     id: 'review',
@@ -110,11 +120,28 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
       '重点检查：资产引用是否对应、15秒时间轴是否完整、剧集尾帧和下一集开场是否连续、镜头语言是否具体、情绪弧是否成立、提示词是否过长或可能触发敏感风险。',
       '先列问题，再给修订版。不要输出泛泛建议。',
     ].join('\n'),
+    dedicatedJob: true,
   },
 ]
 
+/** 内置默认提示词（不含用户覆盖）——「恢复默认」和「是否已自定义」的比对基准。 */
+export function defaultCreationAiPrompt(modeId: unknown): string | undefined {
+  return CREATION_AI_MODES.find((mode) => mode.id === modeId)?.prompt
+}
+
+/**
+ * 取模式定义，并把用户在设置里改过的系统提示词**盖在 prompt 上**。
+ *
+ * 为什么覆盖发生在这里而不是各调用点：这是全仓拿模式的唯一入口（渲染期的 activeMode、
+ * 发送路径的 buildCreationAiPrompt、popover 的 autoPrompt 全都经过它），盖在这一层
+ * 等于「一处生效、处处生效」，不会漏掉某个调用点拿到旧默认值（P2 修根因）。
+ * 覆盖值来自模块级同步快照（systemPromptOverrides.ts），所以本函数仍是同步的。
+ */
 export function getCreationAiMode(modeId: unknown): CreationAiMode {
-  return CREATION_AI_MODES.find((mode) => mode.id === modeId) || CREATION_AI_MODES[0]
+  const mode = CREATION_AI_MODES.find((item) => item.id === modeId) || CREATION_AI_MODES[0]
+  const override = getSystemPromptOverrides()[mode.id]
+  const prompt = resolveEffectivePrompt(mode.prompt, override)
+  return prompt === mode.prompt ? mode : { ...mode, prompt }
 }
 
 /**
@@ -124,6 +151,18 @@ export function getCreationAiMode(modeId: unknown): CreationAiMode {
  */
 export function modeAllowsWriteTools(mode: CreationAiMode): boolean {
   return !mode.chatOnly
+}
+
+/**
+ * 「本轮能不能被跨面板意图路由劫走」的单一判定源（同 modeAllowsWriteTools 的能力声明范式）。
+ *
+ * 根因备忘（2026-08-17）：旧写法把模式名硬编码成 `activeMode.id === 'storyboard'`，
+ * 于是「素材规划」这种同样是用户明确选择的专职模式漏在守卫外——用户选了素材规划、
+ * 说一句带「画面/镜头/场景」的话，就被 routeCreationIntent 劫持去拆分镜。
+ * 改成读模式自己的能力声明后，新增专职模式只要打 dedicatedJob 就自动受保护，不会再漏。
+ */
+export function modeAllowsIntentRouting(mode: CreationAiMode): boolean {
+  return !mode.dedicatedJob
 }
 
 export function extractWorkbenchDocumentText(document: WorkbenchDocument | null | undefined): string {
