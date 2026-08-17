@@ -9,6 +9,7 @@ import {
   readCanvas,
   setNodePrompt,
 } from './canvasGraph'
+import { nodeKindDefaultSize } from './nodeKindDomain'
 
 describe('capabilityCore/canvasGraph', () => {
   it('addNodes 给每个节点稳定唯一 id，且经共用布局不堆成单列（不再全堆原点）', () => {
@@ -59,6 +60,31 @@ describe('capabilityCore/canvasGraph', () => {
   it('addNodes 显式 x/y 优先于自动布局', () => {
     const { snapshot } = addNodes(emptyCanvasSnapshot(), [{ kind: 'image', x: 4321, y: 8765 }])
     expect(snapshot.nodes[0].position).toEqual({ x: 4321, y: 8765 })
+  })
+
+  // 生产 addNodes 路径的注入接线守恒：resolveSize 必须真的走 nodeKindDefaultSize(kind)，不是烘死常量。
+  // 钉多个「尺寸不同」的 kind——若接线漂成常量，至少一个会对不上（防 review 说的「miswired 也不红」）。
+  it('addNodes 省略 size → 生产接线给到 nodeKindDefaultSize(kind)（逐 kind 真尺寸，非常量）', () => {
+    const { snapshot } = addNodes(emptyCanvasSnapshot(), [
+      { kind: 'text' }, // 280×200
+      { kind: 'video' }, // 420×340（与 text 不同 → 常量接线接不住）
+      { kind: 'audio' }, // 420×80（高度又与 video 不同）
+    ])
+    expect(snapshot.nodes[0].size).toEqual(nodeKindDefaultSize('text'))
+    expect(snapshot.nodes[1].size).toEqual(nodeKindDefaultSize('video'))
+    expect(snapshot.nodes[2].size).toEqual(nodeKindDefaultSize('audio'))
+    // 三者互不相同：证明尺寸是按 kind 派生的，不是同一个烘死值。
+    expect(snapshot.nodes[0].size).not.toEqual(snapshot.nodes[1].size)
+    expect(snapshot.nodes[1].size).not.toEqual(snapshot.nodes[2].size)
+  })
+
+  // Fix 2：MCP 省略 title → 存空串（不烘英文标题）。空标题的本地化归**渲染时** `node.title || t(...)`
+  // 兜底（BaseGenerationNode NodeInlineImageTitle / AudioStripNode getDisplayTitle / Character·Scene·Prop
+  // 卡的 EditableNodeTitle placeholder），故 zh-CN 用户不会看到英文卡名。给了 title 则原样存。
+  it('addNodes 省略 title → 存空串（本地化由渲染时兜底，不烘英文标题）', () => {
+    const { snapshot } = addNodes(emptyCanvasSnapshot(), [{ kind: 'text' }, { kind: 'image', title: '镜头 A' }])
+    expect(snapshot.nodes[0].title).toBe('')
+    expect(snapshot.nodes[1].title).toBe('镜头 A')
   })
 
   it('addNodes character/scene 落对分类、不占镜号（同 UI）', () => {

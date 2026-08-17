@@ -37,7 +37,11 @@ export type NodeFactoryDeps = {
   createId: (kind: string) => string
   /** per-kind 默认尺寸（registry.defaultSize 单一真相源）。 */
   resolveSize: (kind: string) => { width: number; height: number }
-  /** per-kind 默认标题（locale 相关，渲染层走 i18n；electron 走英文回退）。 */
+  /**
+   * per-kind 默认标题（locale 相关）。渲染层注入 src i18n 真函数给本地化默认名；
+   * electron（headless 无 i18n）**注入回空串**——省略 title 时存空、由渲染时 `node.title || t(...)` 兜底补
+   * 当前 locale 默认名，避免把英文标题烘进 project.json 让 zh-CN 用户看到英文卡名（见 canvasGraph.ts 注入点注释）。
+   */
   resolveDefaultTitle: (kind: string) => string
   /** kind→默认分类（getDefaultCategoryForNodeKind 单一真相源）。 */
   resolveCategory: (kind: string) => string

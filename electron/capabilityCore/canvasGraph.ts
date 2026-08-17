@@ -15,7 +15,6 @@ import { buildCanvasNodes, type CanvasNodeFactorySpec, type NodeFactoryDeps } fr
 import { layoutBatchWith, type NodeBox } from './canvasNodeLayout'
 import {
   nodeKindDefaultCategory,
-  nodeKindDefaultTitle,
   nodeKindDefaultSize,
   nodeKindFootprint,
   nodeKindIsShotNumbered,
@@ -144,12 +143,17 @@ export function readCanvas(snapshot: CanvasSnapshot): {
   }
 }
 
-// 能力核侧的工厂依赖注入：几何/标题/分类/镜号全走 nodeKindDomain 纯表（headless 无 i18n → 英文标题）。
-// 与渲染层注入 src 真函数是同一份工厂逻辑，产出字段级等价（除 id/落点）。
+// 能力核侧的工厂依赖注入：几何/分类/镜号全走 nodeKindDomain 纯表，与渲染层注入 src 真函数同一份工厂逻辑。
+// resolveDefaultTitle **故意回空串**（不注英文标题）：main 进程无 i18n，若这里烘死 'Text'/'Image' 英文标题
+// 会原样落进 project.json → zh-CN 用户看到英文卡名（MCP 省略 title 时）。空标题的本地化归**渲染时兜底**所有：
+// 卡片渲染点已一律 `node.title || t(...)`（BaseGenerationNode NodeInlineImageTitle / AudioStripNode getDisplayTitle /
+// Character·Scene·PropCardNode 的 EditableNodeTitle placeholder），故省略 title 存空 → UI 用当前 locale 补默认名。
+// 渲染层注入 src i18n 真函数不受影响（它有 locale，直接给本地化默认名）。故两路仍字段级等价——除 id/落点与
+// 「默认标题」这一 headless-i18n 策略差（一个存空待渲染补、一个即时本地化，落到用户眼里同为本地化默认名）。
 const ELECTRON_NODE_FACTORY_DEPS: NodeFactoryDeps = {
   createId: () => genId('node'),
   resolveSize: nodeKindDefaultSize,
-  resolveDefaultTitle: nodeKindDefaultTitle,
+  resolveDefaultTitle: () => '',
   resolveCategory: nodeKindDefaultCategory,
   isShotNumbered: nodeKindIsShotNumbered,
   nextShotIndex: nodeKindNextShotIndex,
