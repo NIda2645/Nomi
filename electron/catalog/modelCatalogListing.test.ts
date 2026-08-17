@@ -16,6 +16,7 @@ vi.mock("electron", () => ({
 }));
 
 import { deriveModelListing } from "./modelCatalogListing";
+import { apiKeyDecryptStatus } from "./secrets";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 const vendor = (over: Partial<Vendor>): Vendor => ({ key: "v", name: "V", enabled: true, authType: "bearer", createdAt: "t", updatedAt: "t", ...over });
@@ -94,6 +95,79 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
       apiKeysByVendor: { apimart: { vendorKey: "apimart", apiKey: b64("k"), enc: "safeStorage", enabled: true, createdAt: "t", updatedAt: "t" } },
     });
     expect(deriveModelListing(withDisabled).map((e) => e.modelKey)).toEqual(["on"]);
+  });
+});
+
+describe("deriveModelListing — 解密探测按 vendor 记忆化（单 vendor 多模型只探一次）", () => {
+  const singleVendorManyModels = state({
+    vendors: [vendor({ key: "apimart", name: "APImart" })],
+    models: [
+      model({ modelKey: "seedream", vendorKey: "apimart", labelZh: "Seedream" }),
+      model({ modelKey: "seedance", vendorKey: "apimart", kind: "video", labelZh: "Seedance" }),
+      model({ modelKey: "wan", vendorKey: "apimart", kind: "video", labelZh: "Wan" }),
+    ],
+    apiKeysByVendor: {
+      apimart: { vendorKey: "apimart", apiKey: b64("sk-good"), enc: "safeStorage", enabled: true, createdAt: "t", updatedAt: "t" },
+    },
+  });
+
+  it("单 vendor 3 个模型 → 解密探测只跑 1 次（记忆化命中，不再逐模型探）", () => {
+    const probe = vi.fn(apiKeyDecryptStatus);
+    const listing = deriveModelListing(singleVendorManyModels, { keyStatusProbe: probe });
+    expect(listing).toHaveLength(3);
+    expect(listing.every((e) => e.keyStatus === "ok")).toBe(true); // 命中的都是同一份 ok
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(probe).toHaveBeenCalledWith(singleVendorManyModels.apiKeysByVendor.apimart);
+  });
+
+  it("locked vendor 多模型：解密只探一次 → 只吐一行 console.error（不再 N 行重复日志）", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    errorSpy.mockClear();
+    const lockedManyModels = state({
+      vendors: [vendor({ key: "volcengine", name: "火山" })],
+      models: [
+        model({ modelKey: "a", vendorKey: "volcengine" }),
+        model({ modelKey: "b", vendorKey: "volcengine" }),
+        model({ modelKey: "c", vendorKey: "volcengine" }),
+      ],
+      apiKeysByVendor: {
+        volcengine: { vendorKey: "volcengine", apiKey: b64("FAIL"), enc: "safeStorage", enabled: true, createdAt: "t", updatedAt: "t" },
+      },
+    });
+    // 用真 apiKeyDecryptStatus（会触发 decryptString→抛错→console.error）；记忆化后只应有 1 行。
+    const listing = deriveModelListing(lockedManyModels);
+    expect(listing.every((e) => e.keyStatus === "locked")).toBe(true);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("多 vendor：每个 vendor 各探一次（记忆化不跨 vendor 串台）", () => {
+    const probe = vi.fn(apiKeyDecryptStatus);
+    const twoVendors = state({
+      vendors: [vendor({ key: "apimart", name: "APImart" }), vendor({ key: "kie", name: "Kie" })],
+      models: [
+        model({ modelKey: "m1", vendorKey: "apimart" }),
+        model({ modelKey: "m2", vendorKey: "apimart" }),
+        model({ modelKey: "m3", vendorKey: "kie" }),
+      ],
+      apiKeysByVendor: {
+        apimart: { vendorKey: "apimart", apiKey: b64("k"), enc: "safeStorage", enabled: true, createdAt: "t", updatedAt: "t" },
+        // kie 无记录 → probe 收到 undefined，仍算一次探测。
+      },
+    });
+    deriveModelListing(twoVendors, { keyStatusProbe: probe });
+    expect(probe).toHaveBeenCalledTimes(2); // apimart 一次 + kie 一次，非 3 次
+  });
+
+  it("authType='none' 的 vendor 恒 ok，压根不调探测（记忆化 + 短路都不触发解密）", () => {
+    const probe = vi.fn(apiKeyDecryptStatus);
+    const localVendor = state({
+      vendors: [vendor({ key: "comfy", name: "ComfyUI", authType: "none" })],
+      models: [model({ modelKey: "flux", vendorKey: "comfy" }), model({ modelKey: "sdxl", vendorKey: "comfy" })],
+      apiKeysByVendor: {},
+    });
+    const listing = deriveModelListing(localVendor, { keyStatusProbe: probe });
+    expect(listing.every((e) => e.keyStatus === "ok")).toBe(true);
+    expect(probe).not.toHaveBeenCalled();
   });
 });
 

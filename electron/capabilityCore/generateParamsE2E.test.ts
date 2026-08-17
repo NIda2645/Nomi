@@ -5,18 +5,17 @@ import { describe, it, expect } from "vitest";
 //   caller args → buildGenerateParams → 铺进 request.extras → applyHeadlessParamDefaults(caller-wins) →
 //   taskTemplateParams → buildHttpRequest(真 apimart seedream create op) → body.size。
 // 全程纯逻辑、零 electron、零额度。
-import { buildGenerateParams } from "./mcpProtocol";
+import { buildGenerateParams } from "./mcpGenerateParams";
 import { applyHeadlessParamDefaults, taskTemplateParams } from "../catalog/taskParams";
 import { buildHttpRequest, buildTemplateContext } from "../ai/requestPipeline";
 import { applyParamMap } from "../catalog/paramTranslate";
 import { APIMART_IMAGE_MODELS } from "../catalog/apimartImages";
+import { APIMART_VIDEO_MODELS } from "../catalog/apimartVideos";
 import { VOLCENGINE_IMAGE_MODELS } from "../catalog/volcengineImages";
 import { MODELSCOPE_IMAGE_MODELS } from "../catalog/modelscopeImages";
 import type { HttpOperation } from "../catalog/types";
 
 const SEEDREAM = APIMART_IMAGE_MODELS.find((m) => m.modelKey === "doubao-seedream-4.5")!;
-const SEEDREAM_T2I = SEEDREAM.mappings.find((m) => m.taskKind === "text_to_image")!.create;
-const ARCHETYPE_ID = SEEDREAM.archetypeId; // "seedream"
 
 /** 一个模型的 text_to_image create op + 归一化身份（渲染 body 只需这几样）。 */
 type ImageT2IProfile = { modelKey: string; archetypeId: string; vendorKey: string; baseUrl: string; op: HttpOperation };
@@ -38,10 +37,13 @@ function extrasFromCaller(callerArgs: Record<string, unknown>, modelKey = SEEDRE
   return { ...params, modelKey };
 }
 
+/** 一个模型某个 taskKind 的 create op + 归一化身份（视频档案复用同一渲染路径）。 */
+type ModeProfile = { modelKey: string; archetypeId: string; vendorKey: string; baseUrl: string; taskKind: string; op: HttpOperation };
+
 /** 复刻 runtime：applyHeadlessParamDefaults（补档案默认，caller-wins + size 别名闸）→ 渲染出真实 wire body。 */
-function renderT2IBody(profile: ImageT2IProfile, extras: Record<string, unknown>): Record<string, unknown> {
-  const merged = applyHeadlessParamDefaults(extras, profile.archetypeId, "text_to_image", profile.vendorKey, profile.op.defaultParams);
-  const request = { kind: "text_to_image", prompt: "深夜面馆的橘猫", extras: merged } as never;
+function renderBody(profile: ModeProfile, extras: Record<string, unknown>): Record<string, unknown> {
+  const merged = applyHeadlessParamDefaults(extras, profile.archetypeId, profile.taskKind, profile.vendorKey, profile.op.defaultParams);
+  const request = { kind: profile.taskKind, prompt: "深夜面馆的橘猫", extras: merged } as never;
   const context = buildTemplateContext({
     request: request as unknown as Record<string, unknown>,
     params: applyParamMap(profile.op.paramMap, taskTemplateParams(request)),
@@ -53,10 +55,28 @@ function renderT2IBody(profile: ImageT2IProfile, extras: Record<string, unknown>
   return built.body as Record<string, unknown>;
 }
 
+/** text_to_image 渲染入口（既有测试沿用，保持调用点不变）。 */
+function renderT2IBody(profile: ImageT2IProfile, extras: Record<string, unknown>): Record<string, unknown> {
+  return renderBody({ ...profile, taskKind: "text_to_image" }, extras);
+}
+
 /** 既有测试沿用的 apimart seedream 渲染入口（保持调用点不变）。 */
 function renderSeedreamBody(extras: Record<string, unknown>): Record<string, unknown> {
   return renderT2IBody(APIMART_SEEDREAM, extras);
 }
+
+// Seedance 2.5 · apimart 文生视频：body 只读 `size`（SEEDANCE_T2V_BODY），size 控件默认 "adaptive"。
+// 档案 size 选项集里有 16:9 等真比例档 → size 是**比例语义**（由 ARCHETYPE_SIZE_RATIO_SEMANTIC derive），
+// 故调用方 aspect_ratio 该落进 size；不传时保持默认 "adaptive"。
+const SEEDANCE_25 = APIMART_VIDEO_MODELS.find((m) => m.archetypeId === "seedance-2.5-apimart")!;
+const SEEDANCE_25_T2V: ModeProfile = {
+  modelKey: SEEDANCE_25.modelKey,
+  archetypeId: SEEDANCE_25.archetypeId,
+  vendorKey: "apimart",
+  baseUrl: "https://api.apimart.ai",
+  taskKind: "text_to_video",
+  op: SEEDANCE_25.mappings.find((m) => m.taskKind === "text_to_video")!.create,
+};
 
 describe("交付3 · aspect_ratio 端到端覆盖 apimart seedream 的 1:1 默认", () => {
   it("默认（不传画幅）：body.size = 档案默认 1:1（回归基线）", () => {
@@ -111,6 +131,25 @@ describe("Fix A · 像素语义 size 档案：调用方比例不许污染 body.s
     // extras.size 是像素形（非 /^\d+:\d+$/），闸不该动它——UI 路填的具体像素照常发出。
     const body = renderT2IBody(VOLCENGINE_SEEDREAM, { modelKey: VOLCENGINE_SEEDREAM.modelKey, size: "2304x1728" });
     expect(body.size).toBe("2304x1728");
+  });
+});
+
+describe("Fix 1 · 比例族默认（adaptive）的 size 键仍是比例语义：调用方比例该落进 size", () => {
+  it("seedance-2.5-apimart t2v + caller aspect_ratio=16:9 → body.size = 16:9（不被 adaptive 默认吞）", () => {
+    const body = renderBody(SEEDANCE_25_T2V, extrasFromCaller({ aspect_ratio: "16:9" }, SEEDANCE_25.modelKey));
+    expect(body.size).toBe("16:9");
+  });
+
+  it("seedance-2.5-apimart t2v 不传画幅 → body.size 保持档案默认 adaptive", () => {
+    const body = renderBody(SEEDANCE_25_T2V, extrasFromCaller({}, SEEDANCE_25.modelKey));
+    expect(body.size).toBe("adaptive");
+  });
+
+  it("seedance-2.5-apimart t2v 不传画幅：body 与旧默认逐字节相同（derive 不改变缺省行为）", () => {
+    const legacy = renderBody(SEEDANCE_25_T2V, { modelKey: SEEDANCE_25.modelKey });
+    const withEmptyParams = renderBody(SEEDANCE_25_T2V, extrasFromCaller({}, SEEDANCE_25.modelKey));
+    expect(JSON.stringify(withEmptyParams)).toBe(JSON.stringify(legacy));
+    expect(legacy).toMatchObject({ size: "adaptive" });
   });
 });
 

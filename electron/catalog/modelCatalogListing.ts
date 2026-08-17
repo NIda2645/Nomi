@@ -6,7 +6,7 @@
 //   ② references：这个模型的 mapping body 到底带得动什么参考（复用 referenceReachability.bodyReferenceSupport，
 //      与第三闸/UI 收窄同源判据，P1 不另写一份），跨该模型所有 mapping 汇总，并记下「哪个 taskKind 模式能带」。
 // 不静默丢任何模型——发不出/没 key 的照列，带上状态与一句人话，让 agent 能对用户说「kie 没配 key」而非瞎猜。
-import { apiKeyDecryptStatus, type ApiKeyDecryptStatus } from "./secrets";
+import { apiKeyDecryptStatus, type ApiKeyDecryptStatus, type ApiKeyRecord } from "./secrets";
 import { bodyReferenceSupport, type BodyReferenceSupport } from "./referenceReachability";
 import type { ModelModeBody } from "./taskParams";
 import type { CatalogState, Mapping, ProfileKind } from "./types";
@@ -31,10 +31,18 @@ export type ModelListingEntry = {
   references: ModelReferenceSupport;
 };
 
+/** 解密探测缝（house DI）：默认用真 apiKeyDecryptStatus（走 safeStorage 钥匙串）；测试可注入 spy 数解密次数。 */
+export type KeyStatusProbe = (record: ApiKeyRecord | undefined) => ApiKeyDecryptStatus;
+
 /** authType==='none' 的 vendor 不需要 key（如本地 ComfyUI）——恒 ok，不参与 key 探测。 */
-function keyStatusForModel(state: CatalogState, vendorKey: string, authType: string | undefined): ApiKeyDecryptStatus {
+function keyStatusForModel(
+  state: CatalogState,
+  vendorKey: string,
+  authType: string | undefined,
+  probe: KeyStatusProbe,
+): ApiKeyDecryptStatus {
   if (authType === "none") return "ok";
-  return apiKeyDecryptStatus(state.apiKeysByVendor[vendorKey]);
+  return probe(state.apiKeysByVendor[vendorKey]);
 }
 
 /** 一句人话状态（vendor 名插值，不 hardcode 任何 vendor）。 */
@@ -89,15 +97,32 @@ function referenceSupportForModel(modelMappings: Mapping[]): ModelReferenceSuppo
 /**
  * 逐模型清单（只列 enabled 模型，与旧行为一致；但每条都带 keyStatus + references 真话）。
  * 纯函数：输入完整 CatalogState，不读盘不解密以外的副作用（解密由 secrets 注入的 safeStorage 完成）。
+ *
+ * **解密探测按 vendorKey 记忆化（本次调用内）**：keyStatus 只取决于 vendorKey（同 vendor 的所有模型共享同一条
+ * key 记录与 authType），旧实现却**逐模型**调 apiKeyDecryptStatus——单 vendor N 个模型就是 N 次 safeStorage
+ * 钥匙串 IPC，且 locked vendor 每个模型都吐一行重复 console.error（N 行同样的解密失败日志）。改为每 vendor 探一次
+ * 存进小 Map，同 vendor 后续模型直接命中，钥匙串往返与错误日志都降到「每 vendor 一次」。
+ *
+ * @param deps.keyStatusProbe 解密探测缝（house DI，默认真 apiKeyDecryptStatus）；测试注入 spy 断言「每 vendor 只探一次」。
  */
-export function deriveModelListing(state: CatalogState): ModelListingEntry[] {
+export function deriveModelListing(
+  state: CatalogState,
+  deps: { keyStatusProbe?: KeyStatusProbe } = {},
+): ModelListingEntry[] {
+  const probe = deps.keyStatusProbe ?? apiKeyDecryptStatus;
   const vendorByKey = new Map(state.vendors.map((v) => [v.key, v] as const));
+  // 本次调用内的 vendorKey → keyStatus 记忆（同 vendor 只探一次解密）。
+  const keyStatusByVendor = new Map<string, ApiKeyDecryptStatus>();
   return state.models
     .filter((model) => model.enabled)
     .map((model) => {
       const vendor = vendorByKey.get(model.vendorKey);
       const vendorName = vendor?.name || model.vendorKey;
-      const keyStatus = keyStatusForModel(state, model.vendorKey, vendor?.authType);
+      let keyStatus = keyStatusByVendor.get(model.vendorKey);
+      if (keyStatus === undefined) {
+        keyStatus = keyStatusForModel(state, model.vendorKey, vendor?.authType, probe);
+        keyStatusByVendor.set(model.vendorKey, keyStatus);
+      }
       const modelMappings = mappingsForModel(state.mappings, model.vendorKey, model.modelKey, model.modelAlias);
       return {
         vendor: model.vendorKey,
