@@ -39,7 +39,7 @@
 
 ### P1-C MCP 建的节点是残废（用户痛点 ③，P1 平行版之罪）
 - **根因**：`electron/capabilityCore/canvasGraph.ts:141-168` 是一套**平行简化工厂**——只写 id/kind/title/position/size/prompt，**缺 `meta`（模型绑定容器）、`categoryId`、`renderKind`**。UI 路径（`src/workbench/generationCanvas/store/canvasNodeActions.ts:39-86`）经 `createGenerationNode()` + `getDefaultCategoryForNodeKind()` 全量初始化。且 kind `shot` 在 `nodes/registry.ts:176-186` 映射为纯文本描述节点（无 `executionKind`）→ `isGenerationNode=false` → `NodeParameterControls` 的模型选择器**整个不渲染**、`useNodeModelAutoSelect` 也不跑——所以用户看到"只有提示词，什么都选不了"。
-- **修法**：删平行版（P1）：节点构造收敛到**共享领域工厂**（放 `src/domain` 层，渲染进程 store 与 capabilityCore 同吃），MCP 建的节点与 UI 建的完全同构（meta/categoryId/renderKind/自动选模全走同一条路）；`nomi_add_nodes` schema 增加可选 `vendor`/`modelKey`；MCP kind 语义表写进工具描述（`shot`=分镜描述节点、要可生成的视频节点用 `video`），避免调用方误建。
+- **修法**：删平行版（P1）：节点构造收敛到**共享领域工厂**（实际落位 `electron/capabilityCore/`——electron 生产码 rootDir 限制 import 不了 `src/`，而渲染层本就 import 得到 electron，故纯领域表以 electron 侧为准、`src` 注册表用 `nodeKindDomain.equivalence.test.ts` 钉死同构，先例见 `referenceReachability.ts` 头注），MCP 建的节点与 UI 建的完全同构（meta/categoryId/renderKind/自动选模全走同一条路）；`nomi_add_nodes` schema 增加可选 `vendor`/`modelKey`；MCP kind 语义表写进工具描述（`shot`=分镜描述节点、要可生成的视频节点用 `video`），避免调用方误建。
 - **结构保证**：单测断言「MCP 工厂产出 ≡ UI 工厂产出（同 kind 同输入逐字段相等）」——平行版从结构上不可能再分叉。
 
 ### P1-D 一竖排布局（用户痛点 ④ 前半）
@@ -68,6 +68,7 @@
   - **命名空间文件名**：默认库仍 `instance.json`（back-compat）；非默认库落 `instance-<hash>.json`（hash = 归一绝对路径的 sha256 前 12 hex）。→ 走查/fixture 宿主（自带 `NOMI_PROJECTS_DIR`）**结构上不可能**写到生产 advert 的文件名；两个同自定义库会话仍同 hash 互相发现。
   - **launcher 握手快速失败**（`ensureLiveInstance` 按 verdict 分诊，`validateAdvert`）：库匹配+活+心跳新鲜(**≤45s**,`HEARTBEAT_STALE_MS`)→连；库不匹配→报「Nomi 连到的库 X vs 你要的库 Y + 两条出路(重启 Nomi/关掉占用会话)」；心跳陈旧(>45s,wedged)→「实例失联，重启 Nomi」；旧版 v1(无 projectsRoot)+活→「实例信息是旧版格式，重启 Nomi 后重试」；进程死/无广告→冷启（**唯一**还走满 60s 的路）。以上「已知连不上」在冷启前同步命中即抛（毫秒级 ≪ **10s** `FAST_FAIL_BUDGET_MS`），不再盲等 60s。冷启超时文案也与 mismatch/stale/legacy 区分开。
   - **in-Electron stdio 收口**：`mcpStdioServer` 的 `readLiveInstance` 同样按当前库读命名空间文件，故同库 GUI 开着时 stdio 仍能重连到它的 RPC（实时反映+应用内确认卡），不因命名空间化误退回进程内 dispatch。
+  - **升级窗口敞口（已知、fail-safe）**：反向组合「旧 launcher + 新 app 服务**自定义库**」在升级重叠期互相找不到（旧读者只认 `instance.json`，新写者落 `instance-<hash>.json`）→ 旧 launcher 走冷启到 60s 超时。**安全失败**（绝不串库），launcher 一并升级即消失；默认库升级路径双向兼容不受影响。
 - **结构保证（已落地）**：`instanceAdvert.test.ts` 纯函数矩阵（路径派生 default/custom/hash 稳定/归一；校验 v2 新鲜匹配/不匹配/陈旧/死 pid/旧版 v1/坏 JSON，每支报文松散钉住）；`mcpNodeLauncher.test.ts` 两条真进程用例——**劫持模拟**（往期望库的命名空间文件写活 pid+错 projectsRoot 的广告，真 launcher 指向期望库 → 断言 ≤10s 带两库名报错、**从不**返回另一库项目）+ **命名空间隔离**（自定义库写者写 `instance-<hash>.json`，默认库读者只认 `instance.json`、彻底无视它）。
 
 ## 三、测试系统（R16：真实任务 + 指标记录，交付的一部分）
@@ -87,7 +88,7 @@
 
 ## 四、范围 / 不动项 / 回滚 / 验收门
 
-- **范围**：`electron/capabilityCore/*`（协议、gateway、canvasGraph、core、mcpNodeLauncher）、共享节点工厂与布局工具抽层（`src/domain` + 两处调用点替换）、`electron/catalog`（list_models 真话、错误建议）、新 e2e harness。
+- **范围**：`electron/capabilityCore/*`（协议、gateway、canvasGraph、core、mcpNodeLauncher）、共享节点工厂与布局工具抽层（落位 `electron/capabilityCore/`，两处调用点替换）、`electron/catalog`（list_models 真话、错误建议）、新 e2e harness。
 - **不动项**：花钱/导出/发布的**最终决定权仍在真人**（elicitation 只是把确认搬到聊天里，不是跳过）；L3 诚实护栏语义不变（只加建议文案）；生产 Run 状态机不动；App 内既有 UI 不动。
 - **回滚**：elicitation-first 挂 `NOMI_MCP_ELICIT_FIRST` 环境开关首发（默认开，出问题一键回 App 弹窗）；共享工厂替换分两 commit（先抽层后切换），单独可 revert。
 - **验收门**：五门全绿 + J-MCP1 harness 全过 + 指标对照表进 `docs/audit`；实现顺序 P0-A/B → P1-C/D → P2-E → P3-F，每档独立 PR。
