@@ -40,9 +40,9 @@ jobs:
       - id: source
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - run: pnpm install --frozen-lockfile
       - name: Validate version
         run: node scripts/release-contract.mjs validate-version --root . --version "$RELEASE_VERSION"
-      - run: pnpm install --frozen-lockfile
       - name: Repository gates
         run: pnpm run gates
       - name: Electron smoke journeys

@@ -158,6 +158,7 @@ describe('release contract', () => {
     ]) {
       expect(release, token).toContain(token)
     }
+    expect(rc.indexOf('pnpm install --frozen-lockfile')).toBeLessThan(rc.indexOf('- name: Validate version'))
     expect(release).not.toContain('--generate-notes')
   })
 
