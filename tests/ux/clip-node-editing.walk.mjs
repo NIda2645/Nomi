@@ -35,6 +35,8 @@ fs.mkdirSync(generatedAssetsDir, { recursive: true })
 fs.copyFileSync(path.join(repoRoot, 'tests/ux/fixtures/test-upload.png'), path.join(generatedAssetsDir, 'fixture.png'))
 const fixtureVideoPath = path.join(generatedAssetsDir, 'fixture.mp4')
 const importedVideoPath = path.join(root, 'twelve-seconds-with-audio.mp4')
+// Two-core Linux runners can need more than two minutes for the real 1080p x264-medium export.
+const exportTimeoutMs = 300_000
 const encodeFixture = (output, duration) => execFileSync(ffmpegPath, [
   '-v', 'error', '-y',
   '-f', 'lavfi', '-i', `testsrc2=size=640x360:rate=24:duration=${duration}`,
@@ -134,7 +136,7 @@ async function runExport(scope, destination, expectedToast) {
   if (!(await menu.isVisible().catch(() => false))) await mainClipNode.getByTestId('clip-node-export').click()
   await menu.getByRole('radio', { name: scope }).click()
   await menu.getByRole('button', { name: destination, exact: true }).click()
-  await win.getByText(expectedToast, { exact: false }).waitFor({ state: 'visible', timeout: 120_000 })
+  await win.getByText(expectedToast, { exact: false }).waitFor({ state: 'visible', timeout: exportTimeoutMs })
 }
 
 async function closeApp() {
