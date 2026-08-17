@@ -24,6 +24,7 @@ import {
   type PlanIssue,
 } from '../../generationCanvas/agent/storyboardPlanEdits'
 import StoryboardAnchorCard from './StoryboardAnchorCard'
+import StoryboardBulkBar from './StoryboardBulkBar'
 import StoryboardShotCard from './StoryboardShotCard'
 import { productionRunApi } from '../../production/productionRunApi'
 import { useProductionRunStore } from '../../production/productionRunStore'
@@ -137,7 +138,7 @@ export default function StoryboardPlanEditor(): JSX.Element | null {
   }
 
   return (
-    <section className="relative w-full h-full min-h-0 grid grid-rows-[auto_auto_minmax(0,1fr)_auto] border border-workbench-border rounded-workbench bg-workbench-surface-solid shadow-workbench-md overflow-hidden">
+    <section className="relative w-full h-full min-h-0 grid grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border border-workbench-border rounded-workbench bg-workbench-surface-solid shadow-workbench-md overflow-hidden">
       <header className="flex items-center justify-between gap-3 h-12 px-4 border-b border-nomi-line">
         <div className="flex items-center gap-2 min-w-0">
           <IconMovie size={16} stroke={1.5} className="text-nomi-ink-60 shrink-0" />
@@ -165,6 +166,15 @@ export default function StoryboardPlanEditor(): JSX.Element | null {
         <IconLockOpen size={14} stroke={1.6} className="shrink-0" />
         <span className="truncate"><span className="text-nomi-ink-60">{t('storyboardEditor.draftEditable')}</span> · {t('storyboardEditor.freeBeforeConfirm')}</span>
       </div>
+
+      {/* 「全部镜头」批量条（样张 A）：整片作用域的类型/模型/时长常驻这里，
+          底下镜卡那排同款选择器作用域是「这一镜」——两者靠组名 + 底色分开（§1.5 C3）。 */}
+      <StoryboardBulkBar
+        plan={plan}
+        imageModelOptions={imageModelOptions}
+        videoModelOptions={videoModelOptions}
+        onChange={setStoryboardPlan}
+      />
 
       <div className="overflow-y-auto px-4 py-4 flex flex-col gap-4">
         <section>
@@ -227,9 +237,11 @@ export default function StoryboardPlanEditor(): JSX.Element | null {
                 onUpdate={(patch) => setStoryboardPlan(updateShotAt(plan, pos, patch))}
                 onToggleAnchor={(anchorId) => setStoryboardPlan(toggleShotAnchor(plan, pos, anchorId))}
                 onRemove={() => setStoryboardPlan(removeShotAt(plan, pos))}
+                // 只套 params：模型/模式归「全部镜头」批量条管（一功能一个家，§1.5.2）——
+                // 这里再复制 modelKey/modeId 就是第二个改整片模型的入口。
                 onApplyParamsToAll={() => setStoryboardPlan({
                   ...plan,
-                  shots: plan.shots.map((s) => ({ ...s, modelKey: shot.modelKey, modeId: shot.modeId, params: shot.params })),
+                  shots: plan.shots.map((s) => ({ ...s, params: shot.params })),
                 })}
               />
             ))}

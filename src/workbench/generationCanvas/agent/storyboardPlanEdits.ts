@@ -152,3 +152,96 @@ export function danglingAnchorIdsForShot(plan: StoryboardPlan, shot: PlanShot): 
   const anchorIds = new Set(plan.anchors.map((anchor) => anchor.id))
   return shot.anchorIds.filter((id) => !anchorIds.has(id))
 }
+
+// ── 镜头类型 + 批量作用域（「全部镜头」批量条与单镜卡共用的唯一真相源）──
+//
+// 底层 shotKind 仍是二值（image/video），UI 上的三档「图片 / 视频 / 图片+视频」由
+// shotKind + keyframe.enabled 组合表达（见 PlanShot.keyframe 注释，避免历史方案变形）。
+// 这里把「UI 档 ↔ 镜头字段」的换算收成纯函数：镜卡逐镜改、批量条整片改，走同一套（P1 无并行版）。
+
+/** UI 上的镜头类型三档。 */
+export type ShotTypeValue = 'image' | 'video' | 'image-video'
+
+/** 多镜取值不一致时的哨兵值（批量条把它当成一个「混合」临时选项显示，选真值才应用）。 */
+export const MIXED_VALUE = '__mixed__'
+
+/** 切到视频档时的兜底时长（图片镜头的 durationSec 是 0，切回来要有个能用的值）。 */
+const DEFAULT_VIDEO_DURATION_SEC = 5
+
+/** 某镜当前落在哪一档（shotKind 缺省按 video 兜底，与 PlanShot 注释一致）。 */
+export function shotTypeOf(shot: PlanShot): ShotTypeValue {
+  const kind = shot.shotKind ?? 'video'
+  if (kind === 'image') return 'image'
+  return shot.keyframe?.enabled === true ? 'image-video' : 'video'
+}
+
+/**
+ * 改镜头类型要写的字段补丁（镜卡 onKindChange 与批量条 applyShotKindToAll 共用）。
+ *
+ * 切类型清掉模型/模式/参数——两种类的模型目录不通用，留着会张冠李戴（落画布按种类取默认兜底）；
+ * 切到视频档时时长兜底 5s；image-video 档置 keyframe.enabled 并保留已写的首帧提示词。
+ */
+export function shotKindPatch(shot: PlanShot, next: ShotTypeValue): Partial<PlanShot> {
+  const cleared = { modelKey: undefined, modeId: undefined, params: undefined } as const
+  if (next === 'image') return { shotKind: 'image', keyframe: undefined, ...cleared }
+  const durationSec = shot.durationSec > 0 ? shot.durationSec : DEFAULT_VIDEO_DURATION_SEC
+  if (next === 'image-video') {
+    return {
+      shotKind: 'video',
+      durationSec,
+      keyframe: { ...(shot.keyframe || {}), enabled: true, prompt: shot.keyframe?.prompt || '' },
+      ...cleared,
+    }
+  }
+  return { shotKind: 'video', keyframe: undefined, durationSec, ...cleared }
+}
+
+/** 整片改镜头类型（每镜走 shotKindPatch，与逐镜改完全同构）。已是该档的镜头原样返回。 */
+export function applyShotKindToAll(plan: StoryboardPlan, next: ShotTypeValue): StoryboardPlan {
+  return {
+    ...plan,
+    shots: plan.shots.map((shot) => (shotTypeOf(shot) === next ? shot : { ...shot, ...shotKindPatch(shot, next) })),
+  }
+}
+
+/**
+ * 整片改模型。清 modeId/params——模式/参数属于具体模型，换模型后由 buildPlannedNodeMeta
+ * 按新模型取默认模式（与镜卡 onShotModelChange 同口径）。空串 = 回「默认模型」。
+ */
+export function applyModelToAll(plan: StoryboardPlan, modelKey: string): StoryboardPlan {
+  return {
+    ...plan,
+    shots: plan.shots.map((shot) => ({ ...shot, modelKey: modelKey || undefined, modeId: undefined, params: undefined })),
+  }
+}
+
+/** 整片改时长（只影响视频档；图片镜头无时长，不动它）。 */
+export function applyDurationToAll(plan: StoryboardPlan, sec: number): StoryboardPlan {
+  if (!Number.isFinite(sec) || sec <= 0) return plan
+  return {
+    ...plan,
+    shots: plan.shots.map((shot) => (shotTypeOf(shot) === 'image' ? shot : { ...shot, durationSec: sec })),
+  }
+}
+
+/** 全镜共同值，否则 null（无镜头也是 null）。批量条据此显「混合」。 */
+function commonValue<T>(values: readonly T[]): T | null {
+  if (values.length === 0) return null
+  const [first] = values
+  return values.every((v) => v === first) ? first : null
+}
+
+/** 全镜共同的类型；不一致 → null（批量条显「混合」）。 */
+export function deriveBulkShotKind(plan: StoryboardPlan): ShotTypeValue | null {
+  return commonValue(plan.shots.map(shotTypeOf))
+}
+
+/** 全镜共同的模型 key（都没选 → 空串=默认模型）；不一致 → null。 */
+export function deriveBulkModelKey(plan: StoryboardPlan): string | null {
+  return commonValue(plan.shots.map((shot) => shot.modelKey ?? ''))
+}
+
+/** 全视频镜共同的时长；不一致 → null。全是图片镜（无时长可言）也是 null。 */
+export function deriveBulkDuration(plan: StoryboardPlan): number | null {
+  return commonValue(plan.shots.filter((shot) => shotTypeOf(shot) !== 'image').map((shot) => shot.durationSec))
+}

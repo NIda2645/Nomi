@@ -3,7 +3,7 @@ import {
   canManageAssetFolders,
   resolveAssetLibraryItemAction,
   shouldRunAssetItemAction,
-  sourceFiltersForUsage,
+  sourceOptionsForUsage,
 } from './assetLibraryUsage'
 
 describe('asset library usage context', () => {
@@ -19,9 +19,9 @@ describe('asset library usage context', () => {
     expect(canManageAssetFolders('timeline')).toBe(false)
   })
 
-  it('does not expose the canvas-only smart grouping manager in Preview', () => {
-    expect(sourceFiltersForUsage('canvas')).toEqual(['all', 'project', 'smart'])
-    expect(sourceFiltersForUsage('timeline')).toEqual(['all', 'project'])
+  it('offers the same asset source tabs in canvas and Preview', () => {
+    expect(sourceOptionsForUsage('canvas').map((option) => option.value)).toEqual(['all', 'project'])
+    expect(sourceOptionsForUsage('timeline').map((option) => option.value)).toEqual(['all', 'project'])
   })
 
   it('ignores the second click emitted by a timeline double-click', () => {

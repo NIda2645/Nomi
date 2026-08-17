@@ -21,7 +21,7 @@ async function snap(win, name) {
     return {
       theme: document.documentElement.dataset.theme,
       headings: Array.from(document.querySelectorAll('h1,h2,h3')).map((e) => e.textContent.trim()).filter(Boolean).slice(0, 6),
-      canvasNodes: q('.react-flow__node, [data-node-id], [data-canvas-node], [data-nodeid]'),
+      canvasNodes: q('[data-node-id], [data-canvas-node], [data-nodeid]'),
       tiptap: (document.querySelector('.ProseMirror, .tiptap')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
       clips: q('[data-clip-id], [data-clip], .timeline-clip, [class*="clip"]'),
       dialogs: Array.from(document.querySelectorAll('[role="dialog"]')).map((e) => (e.getAttribute('aria-label') || '').trim()).filter(Boolean),
@@ -70,7 +70,7 @@ await snap(win, 'J2-creation')
 await clickText(win, 'button, [role="button"], [role="tab"]', '生成', 1800)
 await dismissTour(win)
 await snap(win, 'J3-generation-canvas')
-const node = win.locator('.react-flow__node, [data-node-id], [data-canvas-node]').first()
+const node = win.locator('[data-node-id], [data-canvas-node]').first()
 if (await node.count()) { await node.click({ timeout: 3000 }).catch(() => {}); await win.waitForTimeout(900); await snap(win, 'J3b-node-inspector') }
 
 await clickText(win, 'button, [role="button"], [role="tab"]', '预览', 1800)
