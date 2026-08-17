@@ -16,8 +16,11 @@ import { createDiskGateway, createHybridGateway, createRendererGateway, type Pro
 import { isRendererAvailable } from './rendererBridge'
 import { resolveMcpOrigin, verifyToken } from './security'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
-import { handleArtifactPreviewHttpRequest } from '../productionRun/artifactPreviewHttpServer'
+import { handleArtifactPreviewHttpRequest, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
 import { setArtifactPreviewHttpOrigin } from '../productionRun/artifactProjection'
+import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
+import { getWorkspaceRepositoryDeps } from '../runtimePaths'
+import { enrichResultForMethod } from './mcpResultEnrichLive'
 
 export type RpcServerOptions = {
   /** 真实生成入口（runtime.runTask）。注入式：headless host 与 app 各自传同一份。 */
@@ -75,6 +78,8 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
     if (!projectId || !isRendererAvailable()) return createDiskGateway(projectId)
     return isProjectOpen(projectId) ? createRendererGateway(projectId) : createHybridGateway(projectId)
   }
+  // 交付④：同一预览 server 兼解 canvas-asset token（生成结果缩略图给非 Electron 宿主）。
+  const previewService = withAssetPreview(productionRuns, (projectId) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()))
 
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -84,7 +89,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         res.end(body)
       }
       try {
-        if (await handleArtifactPreviewHttpRequest(req, res, productionRuns)) return
+        if (await handleArtifactPreviewHttpRequest(req, res, previewService)) return
         if (req.method !== 'POST' || req.url !== '/rpc') throw new RpcError('仅支持 POST /rpc', 404)
         if (!verifyToken(bearerToken(req))) throw new RpcError('鉴权失败：token 无效', 401)
         const raw = await readBody(req)
@@ -116,7 +121,9 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           // spend/export 等硬边界：那些是「抗伪造」红线，客户端一个 flag 不足以过。
           ...(parsed.planConfirmed === true ? { planConfirmed: true } : {}),
         })
-        send(200, { ok: true, result })
+        // 交付②④：生成结果在 Electron 侧（此进程有 nativeImage）补缩略图 base64 + 签名预览链，随 RPC 过河到
+        // 纯逻辑协议层（launcher 是 bare node，做不了这步）。非 generate 或富化失败均原样返回。
+        send(200, { ok: true, result: enrichResultForMethod(method, params, result) })
       } catch (error) {
         const status = error instanceof RpcError ? error.httpStatus : 500
         send(status, { ok: false, error: error instanceof Error ? error.message : String(error) })

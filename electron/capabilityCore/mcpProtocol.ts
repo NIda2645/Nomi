@@ -366,9 +366,17 @@ export function createMcpProtocol(transport: McpTransport) {
   // 跨 Claude/ChatGPT/参考宿主通用（P4）；不 gate on 客户端声明，否则 ChatGPT 不声明该扩展就拿不到 widget。
   function buildToolResultPayload(toolName: string, args: Record<string, unknown>, result: unknown): Record<string, unknown> {
     const { text, outcome } = buildToolOutcome(toolName, args, result, locale())
-    const payload: Record<string, unknown> = {
-      content: [{ type: 'text', text: text ?? JSON.stringify(result, null, 2) }],
+    const content: Array<Record<string, unknown>> = [{ type: 'text', text: text ?? JSON.stringify(result, null, 2) }]
+    // 交付②：结果若夹带 App 侧富化的缩略图（_nomiThumbnail={data,mimeType}）→ 附一个标准 MCP image content block
+    // （spec 2025-11-25：CallToolResult.content 的 ImageContent = {type:'image',data:base64,mimeType}）。
+    // 纯文本宿主忽略非 text 块、支持图的宿主（含 Claude Code）直接把缩略图画在结果里。App 侧已保证 ≤64KB、一张。
+    const thumb = (result && typeof result === 'object' && !Array.isArray(result))
+      ? (result as Record<string, unknown>)._nomiThumbnail as { data?: unknown; mimeType?: unknown } | undefined
+      : undefined
+    if (thumb && typeof thumb.data === 'string' && thumb.data && typeof thumb.mimeType === 'string') {
+      content.push({ type: 'image', data: thumb.data, mimeType: thumb.mimeType })
     }
+    const payload: Record<string, unknown> = { content }
     const structured: Record<string, unknown> = {}
     if (outcome) structured.nomiOutcome = outcome
     const uiUri = TOOL_UI_RESOURCE[toolName]

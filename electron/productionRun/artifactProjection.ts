@@ -70,8 +70,12 @@ export function setArtifactPreviewHttpOrigin(origin: string | null): void {
   previewHttpOrigin = parsed.origin
 }
 
+// k = token 类型判别位：'ra'（缺省）= production run-artifact（带 r/a），'asset' = 画布素材（只 p+path，无 run/artifact）。
+// 两类共用同一 HMAC 签名 / 同一 /production-preview 端点，但校验分道——asset token 永远进不了 run 产物解析路，反之亦然。
+type PreviewTokenKind = 'ra' | 'asset'
 type PreviewClaims = {
   v: number
+  k?: PreviewTokenKind
   p: string
   r: string
   a: string
@@ -164,10 +168,15 @@ function parseToken(token: string, secret: string): PreviewClaims {
   if (claims.v !== TOKEN_VERSION || !Number.isInteger(claims.exp) || typeof claims.path !== 'string') {
     throw new Error('Invalid preview token claims')
   }
+  const kind: PreviewTokenKind = claims.k === 'asset' ? 'asset' : 'ra'
+  claims.k = kind
   claims.path = normalizeRelativePath(claims.path)
   claims.p = identifier(claims.p, 'project')
-  claims.r = identifier(claims.r, 'run')
-  claims.a = identifier(claims.a, 'artifact')
+  // asset token 无 run/artifact 身份——不校验 r/a（校验会因空串抛）；run-artifact token 照旧强校验。
+  if (kind === 'ra') {
+    claims.r = identifier(claims.r, 'run')
+    claims.a = identifier(claims.a, 'artifact')
+  }
   return claims
 }
 
@@ -226,6 +235,8 @@ export function verifyArtifactPreviewHandle(args: {
   expected?: { projectId?: string; runId?: string; artifactId?: string; relativePath?: string }
 }): { projectId: string; runId: string; artifactId: string; relativePath: string; expiresAt: string } {
   const claims = parseToken(args.token, args.secret)
+  // 硬隔离：production run-artifact 校验器只认 'ra' token——asset token 打进来直接拒，绝不穿到 run 产物解析。
+  if (claims.k === 'asset') throw new Error('Preview token kind mismatch')
   const nowMs = Number.isFinite(args.nowMs) ? Number(args.nowMs) : Date.now()
   if (claims.exp <= nowMs) throw new Error('Artifact preview token expired')
   const expected = args.expected || {}
@@ -234,4 +245,61 @@ export function verifyArtifactPreviewHandle(args: {
   }
   if (expected.relativePath && claims.path !== normalizeRelativePath(expected.relativePath)) throw new Error('Artifact preview token path mismatch')
   return { projectId: claims.p, runId: claims.r, artifactId: claims.a, relativePath: claims.path, expiresAt: new Date(claims.exp).toISOString() }
+}
+
+// ── 交付④ · canvas-asset 签名预览（生成结果缩略图给非 Electron 宿主用；复用同一 secret / server / HMAC）────
+
+/**
+ * 为一张画布素材（项目相对路径，无 run/artifact）铸一个短 TTL 签名 URL，指向已在跑的 /production-preview 端点。
+ * HTTP server 未起（无 origin）→ 返回 null，调用方回退 nomi-local://。路径越界/供应商 URL 在此即拒（不放宽）。
+ */
+export function mintAssetPreviewUrl(args: {
+  projectId: string
+  relativePath: string
+  secret: string
+  nowMs?: number
+  ttlMs?: number
+}): { url: string; token: string; expiresAt: string } | null {
+  if (!previewHttpOrigin) return null
+  const projectId = identifier(args.projectId, 'project')
+  const safePath = normalizeRelativePath(args.relativePath) // 越界/供应商 URL 在此抛
+  const nowMs = Number.isFinite(args.nowMs) ? Number(args.nowMs) : Date.now()
+  const ttlMs = Math.min(MAX_TTL_MS, Math.max(1_000, Math.floor(args.ttlMs ?? DEFAULT_TTL_MS)))
+  const exp = nowMs + ttlMs
+  // asset token：k='asset'，r/a 置空（parseToken 对 asset kind 不校验它们）。
+  const token = tokenFor({ v: TOKEN_VERSION, k: 'asset', p: projectId, r: '', a: '', path: safePath, exp }, args.secret)
+  return {
+    token,
+    expiresAt: new Date(exp).toISOString(),
+    url: `${previewHttpOrigin}/production-preview?preview=${encodeURIComponent(token)}`,
+  }
+}
+
+/** 校验 canvas-asset 预览 token（只认 'asset' kind——run-artifact token 打进来拒）。回项目 id + 相对路径。 */
+export function verifyAssetPreviewToken(args: {
+  token: string
+  secret: string
+  nowMs?: number
+}): { projectId: string; relativePath: string; expiresAt: string } {
+  const claims = parseToken(args.token, args.secret)
+  if (claims.k !== 'asset') throw new Error('Preview token kind mismatch')
+  const nowMs = Number.isFinite(args.nowMs) ? Number(args.nowMs) : Date.now()
+  if (claims.exp <= nowMs) throw new Error('Asset preview token expired')
+  return { projectId: claims.p, relativePath: claims.path, expiresAt: new Date(claims.exp).toISOString() }
+}
+
+/**
+ * 校验 asset token 并落到磁盘绝对路径（HTTP server 用）。projectRoot 由注入的 resolver 给（真实是
+ * resolveProjectRelativePath 背后的项目目录）。仍走 resolveOwnedArtifactFile 拒越界/符号链接（与 production 同严）。
+ */
+export function resolveAssetPreviewFile(args: {
+  token: string
+  secret: string
+  projectRootFor: (projectId: string) => string | null
+  nowMs?: number
+}): { filePath: string; expiresAt: string } {
+  const claims = verifyAssetPreviewToken({ token: args.token, secret: args.secret, nowMs: args.nowMs })
+  const root = args.projectRootFor(claims.projectId)
+  if (!root) throw new Error('Asset preview project root unavailable')
+  return { filePath: resolveOwnedArtifactFile(root, claims.relativePath), expiresAt: claims.expiresAt }
 }

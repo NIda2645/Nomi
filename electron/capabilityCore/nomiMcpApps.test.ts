@@ -192,6 +192,45 @@ describe('buildNomiDraftFromGenerate（纯函数）', () => {
     expect(draft.shots?.[0]?.status).toBe('running')
     expect(draft.shots?.[0]?.thumbnailUrl).toBeUndefined()
   })
+  it('交付③：有 projectId → 工程级深链 nomi://project/{id}（widget 可打开）', () => {
+    const draft = buildNomiDraftFromGenerate({ intent: 'image', prompt: 'x', projectId: 'p1', result: { status: 'succeeded', assets: [{ url: 'nomi-local://asset/p1/a.png', type: 'image' }] } })
+    expect(draft.deepLink).toBe('nomi://project/p1')
+    expect(draft.projectId).toBe('p1')
+  })
+  it('交付④：结果带签名预览 _nomiPreviewUrl → 缩略图优先用它（非 Electron 宿主可加载）', () => {
+    const draft = buildNomiDraftFromGenerate({
+      intent: 'image', prompt: 'x', projectId: 'p1',
+      result: {
+        status: 'succeeded',
+        assets: [{ url: 'nomi-local://asset/p1/a.png', type: 'image' }],
+        _nomiPreviewUrl: 'http://127.0.0.1:9/production-preview?preview=tok',
+      },
+    })
+    expect(draft.shots?.[0]?.thumbnailUrl).toBe('http://127.0.0.1:9/production-preview?preview=tok')
+  })
+  it('交付④：无签名预览时回退原始本地链', () => {
+    const draft = buildNomiDraftFromGenerate({ intent: 'image', prompt: 'x', projectId: 'p1', result: { status: 'succeeded', assets: [{ url: 'nomi-local://asset/p1/a.png', type: 'image' }] } })
+    expect(draft.shots?.[0]?.thumbnailUrl).toBe('nomi-local://asset/p1/a.png')
+  })
+  it('无 projectId → 无深链（不编）', () => {
+    const draft = buildNomiDraftFromGenerate({ intent: 'image', prompt: 'x', result: { status: 'succeeded', assets: [{ url: 'nomi-local://asset/p1/a.png', type: 'image' }] } })
+    expect(draft.deepLink).toBeUndefined()
+  })
+})
+
+// 交付④：签名 asset 预览 URL 必须能过 widget 现有的 safePreviewUrl 校验（run 路复用的那把，形状相同）。
+describe('safePreviewUrl 接受签名 asset 预览（交付④ · 形状与 production 相同，不改校验器）', () => {
+  it('run 投影里若 preview.url 是签名 asset 链（同 /production-preview?preview= 形状）→ 放行入 widget', () => {
+    const run = buildNomiRunFromProjection({
+      projectId: 'p1',
+      runId: 'r1',
+      result: {
+        projectId: 'p1', runId: 'r1', status: 'running', playbook: { name: 'x' },
+        artifacts: [{ artifactId: 'a1', kind: 'image', status: 'ready', preview: { url: 'http://127.0.0.1:65535/production-preview?preview=SIGNED', expiresAt: '2026-08-08T10:01:00.000Z' } }],
+      },
+    })
+    expect(run.shots?.[0]?.thumbnailUrl).toBe('http://127.0.0.1:65535/production-preview?preview=SIGNED')
+  })
 })
 
 describe('buildNomiRunFromProjection（纯函数）', () => {

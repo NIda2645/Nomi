@@ -41,7 +41,7 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     expect(some.outcome).toMatchObject({ eventCount: 1, nextCursor: 6 })
   })
 
-  it('generate：参数回显（模型/意图/参考数/截断提示词）+ 结构化 params', () => {
+  it('generate：参数回显（模型/意图/参考数/截断提示词）+ 结构化 params + 工程级深链（数据+文本）', () => {
     const { text, outcome } = buildToolOutcome(
       'nomi_generate',
       { projectId: 'p1', vendor: 'kling', modelKey: 'v2', intent: 'video', prompt: 'x'.repeat(60), references: ['a', 'b'] },
@@ -51,7 +51,29 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     expect(text).toContain('kling · v2')
     expect(text).toContain('参考 2')
     expect(text).toContain('…') // 提示词截断
+    // 交付③：工程级深链既进结构化字段、也现于文本（纯文本宿主可点）。
     expect(outcome).toMatchObject({ kind: 'generation', params: { vendor: 'kling', modelKey: 'v2', intent: 'video', references: 2 } })
+    expect(outcome!.openInNomi).toBe('nomi://project/p1')
+    expect(text).toContain('nomi://project/p1')
+  })
+
+  it('generate：openInNomi 优先用 result 里已有的深链（若上游给了 run 级链）', () => {
+    const { outcome } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      { assetId: 'a1', openInNomi: 'nomi://project/p1/run/r9?artifact=a1' },
+    )
+    expect(outcome!.openInNomi).toBe('nomi://project/p1/run/r9?artifact=a1')
+  })
+
+  it('generate：无 projectId 时不编深链（openInNomi=null，文本不含链接行）', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_generate',
+      { vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      { assetId: 'a1' },
+    )
+    expect(outcome!.openInNomi).toBeNull()
+    expect(text).not.toContain('nomi://')
   })
 
   it('画布低层工具维持 JSON 直出（text=null 不接管）', () => {

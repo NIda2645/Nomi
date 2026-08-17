@@ -405,10 +405,26 @@ export function buildToolOutcome(
       refs ? `${L(ctx, '参考', 'refs')} ${refs}` : null,
       str(args.prompt) ? `「${truncate(str(args.prompt), 30)}」` : null,
     ])
+    // 交付③：深链数据化——优先用上游已给的（如 artifact 级 run 链），否则据 projectId 兜工程级
+    // nomi://project/{id}。既进结构化字段（openInNomi）、也现于文本（纯文本宿主可点）。无 projectId 不编。
+    const deepLink = openInNomi || (projectId ? `nomi://project/${projectId}` : '')
+    // 结果里可能夹带 App 侧富化的内部字段（_nomiThumbnail=缩略图 base64，已单独成 image block；
+    // _nomiPreviewUrl=签名预览链，已进 widget）——都不该原样 JSON dump 进文本（base64 会灌爆终端）。dump 前剥掉。
+    const dump = (() => {
+      const obj = result && typeof result === 'object' && !Array.isArray(result) ? (result as Record<string, unknown>) : null
+      if (obj && ('_nomiThumbnail' in obj || '_nomiPreviewUrl' in obj)) {
+        const clone = { ...obj }
+        delete clone._nomiThumbnail
+        delete clone._nomiPreviewUrl
+        return clone
+      }
+      return result
+    })()
     const text = [
       `✓ ${L(ctx, '已生成', 'Generated')}${label ? L(ctx, label.zh, label.en) : L(ctx, '一个素材', 'an asset')}`,
       echo ? `  ${echo}` : null,
-      JSON.stringify(result, null, 2),
+      JSON.stringify(dump, null, 2),
+      deepLink ? `${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${deepLink}` : null,
     ].filter(Boolean).join('\n')
     return {
       text,
@@ -416,6 +432,7 @@ export function buildToolOutcome(
         kind: 'generation', projectId,
         params: { vendor: str(args.vendor), modelKey: str(args.modelKey), intent, references: refs },
         nextActions: ['open_in_nomi'],
+        openInNomi: deepLink || null,
       },
     }
   }

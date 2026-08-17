@@ -190,9 +190,17 @@ export function buildNomiDraftFromGenerate(args: {
   const rawStatus = String(r.status || '')
   const status: NomiDraftState['status'] = rawStatus === 'succeeded' ? 'succeeded' : rawStatus === 'failed' ? 'failed' : 'running'
   const assets = Array.isArray(r.assets) ? (r.assets as Array<Record<string, unknown>>) : []
-  const firstUrl = (assets[0]?.url as string) || (r.url as string) || ((r.result as Record<string, unknown>)?.url as string) || undefined
+  const rawUrl = (assets[0]?.url as string) || (r.url as string) || ((r.result as Record<string, unknown>)?.url as string) || undefined
+  // 交付④：优先用 App 侧铸好的签名 HTTP 预览（_nomiPreviewUrl，非 Electron 宿主能加载）；缺则回退原始本地链
+  //（nomi-local://，Electron 内可解、外部宿主 onerror 优雅降级为占位）。签名链走 /production-preview?preview=
+  // 同一形状，宿主 CSP 放行 127.0.0.1 即显。
+  const signedPreview = typeof r._nomiPreviewUrl === 'string' && r._nomiPreviewUrl ? r._nomiPreviewUrl : undefined
+  const thumbnailUrl = signedPreview || rawUrl
   const isVideo = String(args.intent || assets[0]?.type || '') === 'video'
   const title = (args.prompt || '').trim().slice(0, 40) || (isVideo ? '一段视频' : '一张画面')
+  // 交付③：工程级深链（无 runId）——widget 的「在 Nomi 打开」据此可跳。上游给了更具体的链则用它。
+  const candidateDeep = typeof r.openInNomi === 'string' ? r.openInNomi : ''
+  const deepLink = candidateDeep || (args.projectId ? `nomi://project/${encodeURIComponent(args.projectId)}` : undefined)
   return {
     kind: 'generation',
     title: `Nomi · ${title}`,
@@ -204,10 +212,11 @@ export function buildNomiDraftFromGenerate(args: {
         title,
         status: status === 'succeeded' ? 'success' : status === 'failed' ? 'error' : 'running',
         kind: isVideo ? 'video' : 'image',
-        ...(firstUrl ? { thumbnailUrl: firstUrl } : {}),
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
       },
     ],
     ...(args.projectId ? { projectId: args.projectId } : {}),
+    ...(deepLink ? { deepLink } : {}),
   }
 }
 

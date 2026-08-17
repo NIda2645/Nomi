@@ -16,7 +16,10 @@ import { runTask, fetchTaskResult } from '../runtime'
 import { mintSpendGrant } from '../spendGrant'
 import { applySystemProxy } from '../systemProxy'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
-import { startArtifactPreviewHttpServer } from '../productionRun/artifactPreviewHttpServer'
+import { startArtifactPreviewHttpServer, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
+import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
+import { getWorkspaceRepositoryDeps } from '../runtimePaths'
+import { enrichResultForMethod } from './mcpResultEnrichLive'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
@@ -91,9 +94,10 @@ async function callViaRpc(
 async function invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown> {
   const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
   const instance = readLiveInstance()
+  // GUI 开着 → RPC 转发，rpcServer 侧已做生成结果富化（缩略图/签名链），此处不再重复富化。
   if (instance) return callViaRpc(instance, method, params, origin, options)
   const makeGateway = options?.spendConfirmed ? makeConfirmedGateway : createDiskGateway
-  return dispatch(method, params, {
+  const result = await dispatch(method, params, {
     runTask,
     fetchTaskResult,
     makeGateway,
@@ -101,13 +105,17 @@ async function invoke(method: string, params: Record<string, unknown>, options?:
     origin: { host: origin },
     ...(options?.planConfirmed ? { planConfirmed: true } : {}),
   })
+  // 交付②④：GUI 没开的进程内路——本进程就是 Electron（NOMI_MCP_STDIO 模式），有 nativeImage → 就地富化生成结果。
+  return enrichResultForMethod(method, params, result)
 }
 
 /** 启动 stdio JSON-RPC server。main.ts 在 NOMI_MCP_STDIO 模式的 app.whenReady 后调；不开窗、不抢单实例锁。 */
 export async function startMcpStdioServer(): Promise<void> {
   // 无窗口进程：mac 别在 dock 弹图标。
   app.dock?.hide?.()
-  const previewServer = await startArtifactPreviewHttpServer(productionRuns)
+  const previewServer = await startArtifactPreviewHttpServer(
+    withAssetPreview(productionRuns, (projectId) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps())),
+  )
   // 关键：stdout 是 JSON-RPC 通道，任何杂质都会毁帧。把我们自己的非错误 console.* 改写到 stderr
   //（Chromium 自身日志本就走 stderr），stdout 只出 JSON-RPC。
   const toErr = (...parts: unknown[]) => process.stderr.write(parts.map((p) => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ') + '\n')
