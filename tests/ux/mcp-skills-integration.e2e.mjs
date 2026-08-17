@@ -9,6 +9,7 @@ import readline from "node:readline";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { withLinuxNoSandbox } from "./_launchApp.mjs";
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -24,7 +25,7 @@ function assert(cond, label) {
 }
 
 // 起真 MCP stdio 服务（dev：electron 二进制 + args=[repoRoot] + NOMI_MCP_STDIO=1，见 mcpConfig.ts）。
-const child = spawn(require("electron"), [repoRoot, "--disable-gpu"], {
+const child = spawn(require("electron"), withLinuxNoSandbox([repoRoot, "--disable-gpu"]), {
   cwd: repoRoot,
   // NOMI_CAPABILITY_DIR 隔离能力核 lockfile（否则探到用户运行中的真 app → 把 skills.list 转发给旧构建报错）。
   env: { ...process.env, NOMI_MCP_STDIO: "1", NOMI_SETTINGS_DIR: tempSettings, NOMI_ELECTRON_USER_DATA_DIR: tempSettings, NOMI_CAPABILITY_DIR: path.join(tempSettings, "capability-core") },

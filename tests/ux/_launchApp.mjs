@@ -58,6 +58,13 @@ export function buildNomiLaunchEnv({ extraEnv = {}, userDataDir, settingsDir, pr
   return env
 }
 
+/** Linux CI 没有可用的 setuid chrome-sandbox；所有测试进程统一显式关闭 Chromium sandbox。 */
+export function withLinuxNoSandbox(args, platform = process.platform) {
+  const normalized = [...args]
+  if (platform === 'linux' && !normalized.includes('--no-sandbox')) normalized.push('--no-sandbox')
+  return normalized
+}
+
 /** 起飞前先确认构建产物在不在——没 build 就直接说，别让人等满超时才发现。 */
 function assertBuilt() {
   // 入口从 package.json 的 main 派生，不 hardcode 路径（改打包布局时这里自动跟着走）。
@@ -125,7 +132,11 @@ export async function launchNomiApp(options = {}) {
 
   const launchOptions = {
     executablePath,
-    args: [...(isDevElectron ? ['.'] : []), ...(userDataDir ? [`--user-data-dir=${userDataDir}`] : []), ...extraArgs],
+    args: withLinuxNoSandbox([
+      ...(isDevElectron ? ['.'] : []),
+      ...(userDataDir ? [`--user-data-dir=${userDataDir}`] : []),
+      ...extraArgs,
+    ]),
     cwd: repoRoot,
     env: buildNomiLaunchEnv({ extraEnv, userDataDir, settingsDir, projectsDir }),
     timeout,

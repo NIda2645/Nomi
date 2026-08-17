@@ -4,7 +4,7 @@
 // GUI，经 RPC 转发）：stdio 发 nomi_add_nodes(3 节点) → 主进程经 hybrid 网关 requestRenderer('plan.confirm')
 // → GUI 弹方案卡 → 截图人眼看 → 点「落到画布」→ stdio 拿到 ids。全程**不花额度**（只建节点，不生成）。
 // 用法：pnpm run build && node tests/ux/plan-gate.walk.mjs
-import { launchNomiApp, repoRoot } from './_launchApp.mjs'
+import { launchNomiApp, repoRoot, withLinuxNoSandbox } from './_launchApp.mjs'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -79,7 +79,7 @@ try {
   for (let i = 0; i < 5; i++) { const s = win.locator('button,[role="button"],a', { hasText: /跳过|开始创作|进入|完成/ }).first(); if (await s.count()) await s.click({ timeout: 1000 }).catch(() => {}); await win.keyboard.press('Escape').catch(() => {}); await sleep(300) }
   await win.screenshot({ path: path.join(shotsDir, '01-app-ready.png') })
 
-  child = spawn(require('electron'), [repoRoot, '--disable-gpu'], { cwd: repoRoot, env: { ...process.env, ...sharedEnv, NOMI_MCP_STDIO: '1' }, stdio: ['pipe', 'pipe', 'inherit'] })
+  child = spawn(require('electron'), withLinuxNoSandbox([repoRoot, '--disable-gpu']), { cwd: repoRoot, env: { ...process.env, ...sharedEnv, NOMI_MCP_STDIO: '1' }, stdio: ['pipe', 'pipe', 'inherit'] })
   const rl = readline.createInterface({ input: child.stdout })
   rl.on('line', (line) => {
     const t = line.trim(); if (!t.startsWith('{')) return
