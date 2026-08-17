@@ -79,8 +79,18 @@ type DesktopTranslationKey = keyof (typeof translations)["zh-CN"];
 
 let currentLocale: DesktopLocale = "zh-CN";
 
+/** 归一任意 locale 值 → 桌面双语枚举（en / zh-CN）。单一真相源：setDesktopLocale 与 MCP 传输取语言都用它。 */
+export function normalizeDesktopLocale(value: unknown): DesktopLocale {
+  return value === "en" || (typeof value === "string" && value.toLowerCase().startsWith("en")) ? "en" : "zh-CN";
+}
+
 export function setDesktopLocale(value: unknown): void {
-  currentLocale = value === "en" || (typeof value === "string" && value.toLowerCase().startsWith("en")) ? "en" : "zh-CN";
+  currentLocale = normalizeDesktopLocale(value);
+}
+
+/** 当前桌面 locale（供 MCP 结果文案跟随 App/系统语言；GUI 路已被 setDesktopLocale 从渲染层语言开关同步）。 */
+export function getDesktopLocale(): DesktopLocale {
+  return currentLocale;
 }
 
 export function desktopT(key: DesktopTranslationKey, values: Record<string, string | number> = {}): string {

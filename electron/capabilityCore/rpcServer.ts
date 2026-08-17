@@ -11,7 +11,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 import type { FetchTaskResultFn, RunTaskFn } from './core'
-import { dispatch, RpcError } from './dispatcher'
+import { RpcError } from './dispatcher'
 import { createDiskGateway, createHybridGateway, createRendererGateway, type ProjectGateway } from './gateway'
 import { isRendererAvailable } from './rendererBridge'
 import { resolveMcpOrigin, verifyToken } from './security'
@@ -20,7 +20,7 @@ import { handleArtifactPreviewHttpRequest, withAssetPreview } from '../productio
 import { setArtifactPreviewHttpOrigin } from '../productionRun/artifactProjection'
 import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { getWorkspaceRepositoryDeps } from '../runtimePaths'
-import { enrichResultForMethod } from './mcpResultEnrichLive'
+import { dispatchAndEnrich } from './mcpResultEnrichLive'
 
 export type RpcServerOptions = {
   /** 真实生成入口（runtime.runTask）。注入式：headless host 与 app 各自传同一份。 */
@@ -105,7 +105,9 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           firstHeader(req.headers['x-nomi-mcp-client']),
           firstHeader(req.headers['x-nomi-mcp-client-proof']),
         )
-        const result = await dispatch(method, params, {
+        // 交付②④：dispatch + 生成结果富化收口在 dispatchAndEnrich（0a）——传输里没有 bare dispatch 可调，
+        // 缩略图 base64 / 签名预览链的富化在结构上不可能被忘（此进程有 nativeImage，launcher bare node 做不了）。
+        const result = await dispatchAndEnrich(method, params, {
           runTask: options.runTask,
           fetchTaskResult: options.fetchTaskResult,
           makeGateway,
@@ -121,9 +123,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           // spend/export 等硬边界：那些是「抗伪造」红线，客户端一个 flag 不足以过。
           ...(parsed.planConfirmed === true ? { planConfirmed: true } : {}),
         })
-        // 交付②④：生成结果在 Electron 侧（此进程有 nativeImage）补缩略图 base64 + 签名预览链，随 RPC 过河到
-        // 纯逻辑协议层（launcher 是 bare node，做不了这步）。非 generate 或富化失败均原样返回。
-        send(200, { ok: true, result: enrichResultForMethod(method, params, result) })
+        send(200, { ok: true, result })
       } catch (error) {
         const status = error instanceof RpcError ? error.httpStatus : 500
         send(status, { ok: false, error: error instanceof Error ? error.message : String(error) })

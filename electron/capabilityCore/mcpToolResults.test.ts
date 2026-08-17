@@ -83,6 +83,61 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
   })
 })
 
+describe('nomi_list_models 转述（交付1：只有 keyStatus=ok 说可用 + 参考能力 + locale）', () => {
+  const modelsResult = {
+    models: [
+      { vendor: 'apimart', modelKey: 'seedream', label: 'Seedream', kind: 'image', keyStatus: 'ok', statusReason: '已接入且可用', references: { image: true, video: false, audio: false, multiImage: true, referenceModes: ['image_edit'] } },
+      { vendor: 'kie', modelKey: 'kie-x', label: 'Kie X', kind: 'video', keyStatus: 'missing', statusReason: '未配置 Kie 的 API Key；请先在 Nomi 应用的模型接入里填入', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } },
+      { vendor: 'volcengine', modelKey: 'volc-y', label: '火山 Y', kind: 'image', keyStatus: 'locked', statusReason: '火山 的 API Key 已保存但当前宿主身份解不开；请在 Nomi 应用里重新保存该 Key', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } },
+    ],
+  }
+
+  it('分组：可用（ok）与「已列出但不可用」（missing/locked）分开；只 ok 打 ✓', () => {
+    const { text, outcome } = buildToolOutcome('nomi_list_models', {}, modelsResult)
+    expect(text).toContain('可用模型 1 个')
+    expect(text).toContain('apimart · seedream')
+    expect(text).toContain('✓ 可用')
+    // 不可用的照列，带缺口，不静默丢。
+    expect(text).toContain('另有 2 个已列出但暂不可用')
+    expect(text).toContain('kie · kie-x')
+    expect(text).toContain('未配置 Kie')
+    expect(text).toContain('volcengine · volc-y')
+    expect(text).toContain('重新保存')
+    // 参考能力点出来：seedream 多图 @image_edit。
+    expect(text).toContain('参考:多图@image_edit')
+    expect(outcome).toMatchObject({ kind: 'model_list', total: 3, usable: 1, nextActions: ['pick_model'] })
+    // 结构化逐模型真话透传。
+    const outModels = (outcome!.models as Array<Record<string, unknown>>)
+    expect(outModels.find((m) => m.vendor === 'kie')!.keyStatus).toBe('missing')
+  })
+
+  it('en locale：分组标题与状态标签全英文（走 L(ctx,zh,en) 机制）', () => {
+    const { text } = buildToolOutcome('nomi_list_models', {}, modelsResult, 'en')
+    expect(text).toContain('1 usable model(s)')
+    expect(text).toContain('usable')
+    expect(text).toContain('listed but not usable')
+    expect(text).toContain('no API key')
+    expect(text).toContain('key locked')
+    expect(text).toContain('refs:multi-image@image_edit')
+    // 中文分组词不该出现在英文转述里。
+    expect(text).not.toContain('可用模型')
+  })
+
+  it('全部无 key：明说去配 + nextActions=configure_api_key', () => {
+    const { text, outcome } = buildToolOutcome('nomi_list_models', {}, {
+      models: [{ vendor: 'kie', modelKey: 'x', label: 'X', kind: 'image', keyStatus: 'missing', statusReason: '未配置', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } }],
+    })
+    expect(text).toContain('无——请先配置 API Key')
+    expect(outcome).toMatchObject({ usable: 0, nextActions: ['configure_api_key'] })
+  })
+
+  it('空清单：明说没有已启用模型', () => {
+    const { text, outcome } = buildToolOutcome('nomi_list_models', {}, { models: [] })
+    expect(text).toContain('没有已启用的模型')
+    expect(outcome).toMatchObject({ kind: 'model_list', total: 0, usable: 0 })
+  })
+})
+
 describe('nomi_control_run 诚实敞口（中转已提交≈收不回）', () => {
   it('pausing 且有在途任务：⚠ 报数量 + 会跑完并计费 + 自动落停；outcome 带 inFlightJobs', () => {
     const { text, outcome } = buildToolOutcome(

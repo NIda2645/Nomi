@@ -5,6 +5,7 @@ import { nativeImage } from 'electron'
 
 import { parseLocalAssetUrl } from '../protocol/localProtocol'
 import { getArtifactPreviewSecret, mintAssetPreviewUrl } from '../productionRun/artifactProjection'
+import { dispatch, type DispatchContext } from './dispatcher'
 import { enrichArtifactResult, enrichGenerateResult } from './mcpResultEnrich'
 import type { ThumbnailImageToolkit } from './mcpPreviewImage'
 
@@ -54,4 +55,26 @@ export function enrichResultForMethod(method: string, params: Record<string, unk
     })
   }
   return result
+}
+
+/**
+ * 结构上「dispatch 后**恰好一次**富化」的唯一收口（0a）：任何真实 MCP 传输调用点都只调这个包装器，
+ * 绝不再各自「先 dispatch 再手动 enrich」——那样每加一个传输就多一处「可能忘记富化」的风险。折进包装器后，
+ * 传输代码里根本没有 bare `dispatch` 可调（rpcServer / mcpStdioServer 均已切到这里），忘不了。
+ *
+ * `dispatchFn` 注入式（缺省真 dispatch）：让本包装器可脱开整条 runtime 依赖图做轻量单测——只验「dispatch
+ * 的结果一定过了 enrichResultForMethod」这条结构不变量，不真打 vendor。
+ *
+ * 注：能力核第三个 dispatch 调用点 `host.ts`（headless `electron host.js` 一次性 worker）是**有意的死代码**
+ *（当前无任何 spawner 拉起它，stdio 模式已取代旧 CLI 路径）——**刻意不接本包装器**，避免制造「像在用其实没人调」
+ * 的假象。详见 docs/plan/2026-08-18-mcp-experience-overhaul.md 第四节「关键事实」。
+ */
+export async function dispatchAndEnrich(
+  method: string,
+  params: Record<string, unknown>,
+  ctx: DispatchContext,
+  dispatchFn: (method: string, params: Record<string, unknown>, ctx: DispatchContext) => Promise<unknown> = dispatch,
+): Promise<unknown> {
+  const result = await dispatchFn(method, params, ctx)
+  return enrichResultForMethod(method, params, result)
 }

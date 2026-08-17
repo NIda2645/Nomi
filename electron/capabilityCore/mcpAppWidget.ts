@@ -12,6 +12,38 @@
 // 标题 + 逐镜缩略图（带状态徽标）+「在 Nomi 中打开」。宿主不支持该扩展时 tool 仍回文本兜底（不裸奔）。
 // 纯字符串（无 electron/DOM 依赖）→ 可裸 node 单测 serving，也可独立浏览器渲染截图验。
 
+/**
+ * widget `<img src>` 用的安全图 URL 校验器——**run 路与生成路共用的唯一一把**（0b 关闭校验不对称）。
+ *
+ * 收的三类：① `nomi-local://`（Electron 内可解，外部宿主 onerror 优雅降级为占位）；② 签名短 TTL 预览链
+ *（`http://127.0.0.1/production-preview?preview=…`，run 路 artifact 预览与生成路 _nomiPreviewUrl 同形）；
+ * ③ 一般良构 `https?://` 图链（供应商 CDN 直链——生成结果的 assets[0].url 常是它）。
+ * 拒的：`javascript:` / `file:` / `blob:` / `data:` 等危险或会灌爆终端的 scheme、以及畸形串。
+ * 为什么 run 路一起用它却不被放松：artifact 预览在服务侧只会产出①②两形，一般 https 根本不出现在那条路，
+ * 故对 run 路是惰性放行（不削弱它「只认签名/本地」的安全姿态），却让生成路的直链也走同一把尺子。
+ */
+export function safeWidgetImageUrl(candidate: unknown): string | undefined {
+  if (typeof candidate !== 'string') return undefined
+  const url = candidate.trim()
+  if (!url) return undefined
+  if (url.startsWith('nomi-local://')) return url
+  try {
+    const parsed = new URL(url)
+    // 签名预览位（127.0.0.1/production-preview?preview=）——run 路 artifact 与生成路 _nomiPreviewUrl 同形。
+    if (parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.pathname === '/production-preview' && parsed.searchParams.has('preview')) return url
+    // 一般良构图链（供应商 CDN 直链）；只放 http/https，挡掉 javascript:/file:/blob:/data: 等。
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return url
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 工程级深链严格形（`nomi://project/{id}`，段字符受限）——与 run 路 run 级深链正则同族的等价严格校验（0b）。 */
+const PROJECT_DEEP_LINK_RE = /^nomi:\/\/project\/[A-Za-z0-9._-]+$/
+/** run 级深链严格形（`nomi://project/{id}/run/{id}[?artifact={id}]`）——run 路与生成路采信上游 openInNomi 时共用。 */
+const RUN_DEEP_LINK_RE = /^nomi:\/\/project\/[A-Za-z0-9._-]+\/run\/[A-Za-z0-9._-]+(?:\?artifact=[A-Za-z0-9._-]+)?$/
+
 /** widget 资源的 ui:// uri（预声明；tool 的 _meta.ui.resourceUri 指向它）。 */
 export const NOMI_LIVE_DRAFT_UI_URI = 'ui://nomi/live-draft.html'
 /** MCP Apps 规范锁定的 widget mimeType（唯一合法值，2026-01-26）。 */
@@ -84,18 +116,9 @@ export function buildNomiRunFromProjection(args: {
   const runId = typeof value.runId === 'string' ? value.runId : args.runId
   const playbook = value.playbook && typeof value.playbook === 'object' ? value.playbook as Record<string, unknown> : {}
   const artifacts = Array.isArray(value.artifacts) ? value.artifacts as Array<Record<string, unknown>> : []
-  const safePreviewUrl = (candidate: unknown): string | undefined => {
-    if (typeof candidate !== 'string') return undefined
-    if (candidate.startsWith('nomi-local://')) return candidate
-    try {
-      const parsed = new URL(candidate)
-      return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.pathname === '/production-preview' && parsed.searchParams.has('preview')
-        ? candidate
-        : undefined
-    } catch {
-      return undefined
-    }
-  }
+  // run 路预览 URL 走共用校验器（0b）：artifact 预览在服务侧只出①nomi-local②签名 127.0.0.1 两形，行为与旧
+  // 内联版一致（一般 https 不会出现在这条路），但改用同一把尺子后生成路也能复用、两路不再各写一份。
+  const safePreviewUrl = safeWidgetImageUrl
   const previewArtifacts = artifacts
     .filter((artifact) => {
       const preview = artifact.preview && typeof artifact.preview === 'object' ? artifact.preview as Record<string, unknown> : {}
@@ -151,7 +174,7 @@ export function buildNomiRunFromProjection(args: {
   }
   const latestEvent = Array.isArray(value.events) ? (value.events as Array<Record<string, unknown>>).at(-1) : undefined
   const candidateDeepLink = typeof value.openInNomi === 'string' ? value.openInNomi : ''
-  const deepLink = /^nomi:\/\/project\/[A-Za-z0-9._-]+\/run\/[A-Za-z0-9._-]+(?:\?artifact=[A-Za-z0-9._-]+)?$/.test(candidateDeepLink)
+  const deepLink = RUN_DEEP_LINK_RE.test(candidateDeepLink)
     ? candidateDeepLink
     : (projectId && runId ? `nomi://project/${encodeURIComponent(projectId)}/run/${encodeURIComponent(runId)}` : undefined)
   const fallbackMessage = status === 'unknown'
@@ -191,16 +214,20 @@ export function buildNomiDraftFromGenerate(args: {
   const status: NomiDraftState['status'] = rawStatus === 'succeeded' ? 'succeeded' : rawStatus === 'failed' ? 'failed' : 'running'
   const assets = Array.isArray(r.assets) ? (r.assets as Array<Record<string, unknown>>) : []
   const rawUrl = (assets[0]?.url as string) || (r.url as string) || ((r.result as Record<string, unknown>)?.url as string) || undefined
-  // 交付④：优先用 App 侧铸好的签名 HTTP 预览（_nomiPreviewUrl，非 Electron 宿主能加载）；缺则回退原始本地链
-  //（nomi-local://，Electron 内可解、外部宿主 onerror 优雅降级为占位）。签名链走 /production-preview?preview=
-  // 同一形状，宿主 CSP 放行 127.0.0.1 即显。
-  const signedPreview = typeof r._nomiPreviewUrl === 'string' && r._nomiPreviewUrl ? r._nomiPreviewUrl : undefined
-  const thumbnailUrl = signedPreview || rawUrl
+  // 交付④：优先用 App 侧铸好的签名 HTTP 预览（_nomiPreviewUrl，非 Electron 宿主能加载）；缺则回退原始本地/直链。
+  // 0b：两者都过共用的 safeWidgetImageUrl（与 run 路同一把尺子）——危险 scheme/畸形串一律不进 <img src>，
+  // 签名位不合法则自然回退到合法的原始资产链（免检漏洞在此堵死）。
+  const signedPreview = safeWidgetImageUrl(r._nomiPreviewUrl)
+  const thumbnailUrl = signedPreview || safeWidgetImageUrl(rawUrl)
   const isVideo = String(args.intent || assets[0]?.type || '') === 'video'
   const title = (args.prompt || '').trim().slice(0, 40) || (isVideo ? '一段视频' : '一张画面')
-  // 交付③：工程级深链（无 runId）——widget 的「在 Nomi 打开」据此可跳。上游给了更具体的链则用它。
+  // 交付③：工程级深链（无 runId）——widget 的「在 Nomi 打开」据此可跳。上游给了更具体的链且**形状合法**才采信
+  //（run 级严格正则，与 run 路同族）；否则回退工程级严格链（0b：项目级深链也走等价严格校验，不再松放）。
   const candidateDeep = typeof r.openInNomi === 'string' ? r.openInNomi : ''
-  const deepLink = candidateDeep || (args.projectId ? `nomi://project/${encodeURIComponent(args.projectId)}` : undefined)
+  const projectDeep = args.projectId ? `nomi://project/${encodeURIComponent(args.projectId)}` : undefined
+  const deepLink = RUN_DEEP_LINK_RE.test(candidateDeep) || PROJECT_DEEP_LINK_RE.test(candidateDeep)
+    ? candidateDeep
+    : (projectDeep && PROJECT_DEEP_LINK_RE.test(projectDeep) ? projectDeep : undefined)
   return {
     kind: 'generation',
     title: `Nomi · ${title}`,

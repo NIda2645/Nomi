@@ -14,6 +14,7 @@
 import crypto from 'node:crypto'
 import { listProjects, createProject, readProject } from '../projects/repository'
 import { readCatalog } from '../catalog/catalogStore'
+import { deriveModelListing, type ModelListingEntry } from '../catalog/modelCatalogListing'
 import { desktopT } from '../i18n'
 import {
   addNodes,
@@ -176,19 +177,14 @@ export function createNamedProject(name?: string): { id: string; name: string } 
   return { id: record.id, name: record.name }
 }
 
-/** 列出 catalog 里可执行的模型（enabled），供外部 agent 选型。 */
-export function listAvailableModels(): Array<{ vendor: string; vendorName: string; modelKey: string; kind: string; label: string }> {
-  const state = readCatalog()
-  const vendorName = new Map(state.vendors.map((vendor) => [vendor.key, vendor.name] as const))
-  return state.models
-    .filter((model) => model.enabled)
-    .map((model) => ({
-      vendor: model.vendorKey,
-      vendorName: vendorName.get(model.vendorKey) || model.vendorKey,
-      modelKey: model.modelKey,
-      kind: model.kind,
-      label: model.labelZh || model.modelKey,
-    }))
+/**
+ * 列出 catalog 里 enabled 的模型（供外部 agent 选型）——**带真话**：每条附 keyStatus（ok/missing/locked）
+ * + 一句人话状态 + 参考承载力（能不能带图/视频/音频、能否多图、哪些模式带）。派生逻辑收口在
+ * catalog/modelCatalogListing（复用 secrets 三态健康度 + referenceReachability 承载力判据，P1 不另写一份）。
+ * 不静默丢没 key/发不出的模型——照列并标状态，让 agent 能对用户说清"kie 没配 key"而非瞎猜可用。
+ */
+export function listAvailableModels(): ModelListingEntry[] {
+  return deriveModelListing(readCatalog())
 }
 
 // ── 画布级（经 ProjectGateway：A 模式转发渲染层 / B 模式直写盘，统一逻辑）──────

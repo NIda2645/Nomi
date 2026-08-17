@@ -19,8 +19,13 @@ import {
   buildNomiDraftFromGenerate,
   buildNomiRunFromProjection,
 } from './mcpAppWidget'
-import { buildToolOutcome, buildToolErrorOutcome, buildProgressStartMessage, type ResultLocale } from './mcpToolResults'
+import { buildToolErrorOutcome, buildProgressStartMessage, type ResultLocale } from './mcpToolResults'
+import { assembleToolResultContent } from './mcpResultPayload'
+import { buildGenerateParams } from './mcpGenerateParams'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
+
+// nomi_generate 画幅/时长参数归一住 mcpGenerateParams（壳不破 800）；re-export 保住既有从 ./mcpProtocol 的 import 面。
+export { buildGenerateParams }
 import { createProgressReporter } from './mcpProgress'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 
@@ -69,7 +74,12 @@ export const MCP_TOOL_CATALOG = [
   },
   {
     name: 'nomi_list_models',
-    description: '列出 Nomi 已接入且可用的生成模型（vendor / modelKey / 能力 kind / 名称），用于选型。',
+    description:
+      '列出 Nomi 已启用的生成模型（vendor / modelKey / 能力 kind / 名称），用于选型。每条带真话字段，不只列名：'
+      + 'keyStatus=ok/missing/locked——**只有 keyStatus=ok 才真能用**；missing=没配 API Key（调用它只会浪费一趟往返报缺 key），'
+      + 'locked=Key 在但当前宿主身份解不开（让用户去 Nomi 应用重存该 Key）；statusReason 给一句人话缺口。'
+      + 'references 说这个模型带不带得动参考：{image,video,audio,multiImage,referenceModes}——带参考图/视频前先看它，'
+      + 'referenceModes 指出用哪个模式（如 image_to_video）才发得出，multiImage=能否多张参考图。选型只挑 keyStatus=ok 的。',
     inputSchema: { type: 'object', properties: {} },
     method: 'models.list',
     build: () => ({}),
@@ -287,7 +297,10 @@ export const MCP_TOOL_CATALOG = [
   },
   {
     name: 'nomi_generate',
-    description: '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。',
+    description:
+      '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。'
+      + '画幅/时长要显式传 aspect_ratio/resolution/duration——**写进 prompt 里模型收不到**（真机实测：写"16:9"进提示词仍出方图，'
+      + '因为渠道有默认 1:1 会盖过）。这三个参数会以调用方优先合并进真实请求（caller-wins），不传则用该模型默认。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -298,11 +311,24 @@ export const MCP_TOOL_CATALOG = [
         prompt: { type: 'string' },
         nodeId: { type: 'string', description: '在既有节点上生成（可选）' },
         references: { type: 'array', items: { type: 'string' }, description: '参考图 URL（可选）' },
+        // 画幅/时长（可选，caller-wins 合并进真实请求体）——修「写进 prompt 无效、静默出方图」的根因。
+        aspect_ratio: { type: 'string', description: '画面比例，如 "16:9" / "9:16" / "1:1"（可选；覆盖模型默认）。' },
+        resolution: { type: 'string', description: '清晰度，如 "1080p" / "2K" / "720p"（可选；取值随模型而定）。' },
+        duration: { type: 'number', description: '视频时长（秒，可选；仅视频类有效）。' },
       },
       required: ['projectId', 'vendor', 'modelKey', 'intent', 'prompt'],
     },
     method: 'generate',
-    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId, references: a.references }),
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId, references: a.references,
+      // 画幅/时长经既有 extras/params 通道下沉到 applyHeadlessParamDefaults（caller-wins）。装配为规范化的
+      // params 交给 core.generateOnProject（它把 params 铺进 extras）——键名归一在 buildGenerateParams，
+      // 不 hardcode 任何 vendor：比例同时铺 aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键。
+      ...(() => {
+        const params = buildGenerateParams(a)
+        return Object.keys(params).length ? { params } : {}
+      })(),
+    }),
   },
 ] as const
 
@@ -377,17 +403,8 @@ export function createMcpProtocol(transport: McpTransport) {
   // openai/outputTemplate（ChatGPT 别名）。always 附——宿主不支持则忽略这些附加字段（spec 设计），
   // 跨 Claude/ChatGPT/参考宿主通用（P4）；不 gate on 客户端声明，否则 ChatGPT 不声明该扩展就拿不到 widget。
   function buildToolResultPayload(toolName: string, args: Record<string, unknown>, result: unknown): Record<string, unknown> {
-    const { text, outcome } = buildToolOutcome(toolName, args, result, locale())
-    const content: Array<Record<string, unknown>> = [{ type: 'text', text: text ?? JSON.stringify(result, null, 2) }]
-    // 交付②：结果若夹带 App 侧富化的缩略图（_nomiThumbnail={data,mimeType}）→ 附一个标准 MCP image content block
-    // （spec 2025-11-25：CallToolResult.content 的 ImageContent = {type:'image',data:base64,mimeType}）。
-    // 纯文本宿主忽略非 text 块、支持图的宿主（含 Claude Code）直接把缩略图画在结果里。App 侧已保证 ≤64KB、一张。
-    const thumb = (result && typeof result === 'object' && !Array.isArray(result))
-      ? (result as Record<string, unknown>)._nomiThumbnail as { data?: unknown; mimeType?: unknown } | undefined
-      : undefined
-    if (thumb && typeof thumb.data === 'string' && thumb.data && typeof thumb.mimeType === 'string') {
-      content.push({ type: 'image', data: thumb.data, mimeType: thumb.mimeType })
-    }
+    // content 块装配（text + 可选缩略图 image）抽到 mcpResultPayload（0c：壳文件不破 800 行）。
+    const { content, outcome } = assembleToolResultContent(toolName, args, result, locale())
     const payload: Record<string, unknown> = { content }
     const structured: Record<string, unknown> = {}
     if (outcome) structured.nomiOutcome = outcome

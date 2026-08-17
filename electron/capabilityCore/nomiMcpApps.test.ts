@@ -216,6 +216,37 @@ describe('buildNomiDraftFromGenerate（纯函数）', () => {
     const draft = buildNomiDraftFromGenerate({ intent: 'image', prompt: 'x', result: { status: 'succeeded', assets: [{ url: 'nomi-local://asset/p1/a.png', type: 'image' }] } })
     expect(draft.deepLink).toBeUndefined()
   })
+
+  // 0b · 关闭校验不对称：生成路的 thumbnailUrl / deepLink 与 run 路走**同一套 shape 校验器**，
+  // 危险 scheme / 畸形串一律不进 widget（此前生成路对 thumbnailUrl 不做任何校验、deepLink 用松正则）。
+  it('危险 scheme 的资产 URL（javascript:/file:/blob:/data:）→ 缩略图被拒（回退占位），不注入 widget', () => {
+    for (const bad of ['javascript:alert(1)', 'file:///etc/passwd', 'blob:xxx', 'data:image/png;base64,AAAA', 'not a url']) {
+      const draft = buildNomiDraftFromGenerate({ intent: 'image', prompt: 'x', projectId: 'p1', result: { status: 'succeeded', assets: [{ url: bad, type: 'image' }] } })
+      expect(draft.shots?.[0]?.thumbnailUrl).toBeUndefined()
+    }
+  })
+  it('签名预览若是危险/畸形串 → 同样被拒（不因为它坐在 _nomiPreviewUrl 就免检）', () => {
+    const draft = buildNomiDraftFromGenerate({
+      intent: 'image', prompt: 'x', projectId: 'p1',
+      result: { status: 'succeeded', assets: [{ url: 'nomi-local://asset/p1/a.png', type: 'image' }], _nomiPreviewUrl: 'javascript:steal()' },
+    })
+    // 签名位被拒 → 回退到合法的原始本地链，而不是把危险串塞进 <img src>。
+    expect(draft.shots?.[0]?.thumbnailUrl).toBe('nomi-local://asset/p1/a.png')
+  })
+  it('上游给的 openInNomi 深链形状不合法 → 不采信，回退工程级严格链', () => {
+    const draft = buildNomiDraftFromGenerate({
+      intent: 'image', prompt: 'x', projectId: 'p1',
+      result: { status: 'succeeded', assets: [{ url: 'nomi-local://asset/p1/a.png', type: 'image' }], openInNomi: 'javascript:alert(1)' },
+    })
+    expect(draft.deepLink).toBe('nomi://project/p1')
+  })
+  it('上游 openInNomi 是合法 run 级深链 → 采信原样', () => {
+    const draft = buildNomiDraftFromGenerate({
+      intent: 'image', prompt: 'x', projectId: 'p1',
+      result: { status: 'succeeded', assets: [{ url: 'nomi-local://asset/p1/a.png', type: 'image' }], openInNomi: 'nomi://project/p1/run/r1?artifact=a1' },
+    })
+    expect(draft.deepLink).toBe('nomi://project/p1/run/r1?artifact=a1')
+  })
 })
 
 // 交付④：签名 asset 预览 URL 必须能过 widget 现有的 safePreviewUrl 校验（run 路复用的那把，形状相同）。

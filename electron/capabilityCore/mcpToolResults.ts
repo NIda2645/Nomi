@@ -149,6 +149,67 @@ export type ToolOutcome = {
   outcome: Record<string, unknown> | null
 }
 
+const KEY_STATUS_LABEL: Record<string, { zh: string; en: string }> = {
+  ok: { zh: '可用', en: 'usable' },
+  missing: { zh: '未配 Key', en: 'no API key' },
+  locked: { zh: 'Key 解不开', en: 'key locked' },
+}
+
+/** 一个模型的参考能力压成一句短标签（只在真能带参考时出，纯文生模型不占字）。 */
+function referenceTag(ctx: Ctx, references: Record<string, unknown>): string {
+  const kinds: string[] = []
+  if (references.image) kinds.push(L(ctx, references.multiImage ? '多图' : '图', references.multiImage ? 'multi-image' : 'image'))
+  if (references.video) kinds.push(L(ctx, '视频', 'video'))
+  if (references.audio) kinds.push(L(ctx, '音频', 'audio'))
+  if (kinds.length === 0) return ''
+  const modes = Array.isArray(references.referenceModes) ? (references.referenceModes as string[]) : []
+  const modeHint = modes.length ? `@${modes.join('/')}` : ''
+  return `${L(ctx, '参考', 'refs')}:${kinds.join('+')}${modeHint}`
+}
+
+/** 交付1 · 模型清单 → 双语转述（按 keyStatus 分组，只有 ok 说可用）+ 结构化透传（模型精确读）。 */
+function buildListModelsOutcome(ctx: Ctx, value: Record<string, unknown>): ToolOutcome {
+  const models = Array.isArray(value.models) ? (value.models as Array<Record<string, unknown>>) : []
+  if (models.length === 0) {
+    return {
+      text: L(ctx, '没有已启用的模型。请先在 Nomi 应用的模型接入里添加并配置 API Key。', 'No enabled models. Add and configure one in Nomi settings first.'),
+      outcome: { kind: 'model_list', total: 0, usable: 0, models: [] },
+    }
+  }
+  const line = (m: Record<string, unknown>): string => {
+    const status = str(m.keyStatus) || 'missing'
+    const label = KEY_STATUS_LABEL[status] || KEY_STATUS_LABEL.missing
+    const refTag = referenceTag(ctx, rec(m.references))
+    const head = `${str(m.vendor)} · ${str(m.modelKey)}（${str(m.label)}, ${str(m.kind)}）`
+    const tail = status === 'ok'
+      ? `✓ ${L(ctx, label.zh, label.en)}${refTag ? ' · ' + refTag : ''}`
+      : `✗ ${L(ctx, label.zh, label.en)}——${str(m.statusReason)}`
+    return `  ${head} ${tail}`
+  }
+  const usable = models.filter((m) => str(m.keyStatus) === 'ok')
+  const blocked = models.filter((m) => str(m.keyStatus) !== 'ok')
+  const text = [
+    L(ctx, `可用模型 ${usable.length} 个（keyStatus=ok，选型只挑这些）：`, `${usable.length} usable model(s) (keyStatus=ok — pick from these):`),
+    ...(usable.length ? usable.map(line) : [L(ctx, '  （无——请先配置 API Key）', '  (none — configure an API key first)')]),
+    ...(blocked.length ? [L(ctx, `另有 ${blocked.length} 个已列出但暂不可用（缺 Key / Key 解不开）：`, `${blocked.length} listed but not usable (missing / locked key):`), ...blocked.map(line)] : []),
+  ].join('\n')
+  return {
+    text,
+    outcome: {
+      kind: 'model_list',
+      total: models.length,
+      usable: usable.length,
+      // 结构化原样透传逐模型真话字段（模型精确读，不必从文本抠）。
+      models: models.map((m) => ({
+        vendor: str(m.vendor), modelKey: str(m.modelKey), kind: str(m.kind), label: str(m.label),
+        keyStatus: str(m.keyStatus) || 'missing', statusReason: str(m.statusReason),
+        references: rec(m.references),
+      })),
+      nextActions: usable.length ? ['pick_model'] : ['configure_api_key'],
+    },
+  }
+}
+
 /** A2 · 生产类工具结果 → 文本 + 稳定结构化字段。 */
 export function buildToolOutcome(
   toolName: string,
@@ -162,6 +223,12 @@ export function buildToolOutcome(
   const runId = str(value.runId) || str(args.runId)
   const projectId = str(value.projectId) || str(args.projectId)
   const openLine = openInNomi ? `\n${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${openInNomi}` : ''
+
+  if (toolName === 'nomi_list_models') {
+    // 交付1：模型清单转述——**只把 keyStatus=ok 的说成"可用"**，missing/locked 各带缺口一句话（R15 双语）。
+    // 参考能力也点出来（能带图/视频/音频/多图 + 哪个模式），让选型不必再猜。结构化字段原样透传给模型精确读。
+    return buildListModelsOutcome(ctx, value)
+  }
 
   if (toolName === 'nomi_start_playbook') {
     const brief = rec(args.brief)

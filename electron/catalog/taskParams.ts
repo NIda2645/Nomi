@@ -8,6 +8,7 @@ import { firstString, type JsonRecord } from "../jsonUtils";
 import { referenceInputParams } from "./archetypeInput";
 import { ARCHETYPE_WIRE_DEFAULTS } from "./archetypeWireDefaults.generated";
 import { bodyReferencedParamKeys } from "./paramTranslate";
+import { bodyReferenceSupport, classifyReferenceKey, type ReferenceFamily } from "./referenceReachability";
 
 /** taskTemplateParams 实际用到的 TaskRequest 子集（结构化，避免与 runtime 的 TaskRequest 循环依赖）。 */
 export type TaskParamsInput = {
@@ -222,11 +223,85 @@ export function unreachableReferenceLabels(request: TaskParamsInput, createBody:
   return [...missing];
 }
 
+/** 一个模式（taskKind）的 create body——供拒发建议判「哪个模式带得动我携带的参考」。 */
+export type ModelModeBody = { taskKind: string; body: unknown };
+
+const FAMILY_LABEL: Record<ReferenceFamily, string> = { image: "参考图", video: "参考视频", audio: "参考音频" };
+// taskKind → 人话模式名（拒发建议里点名"用哪个模式"）。未登记的原样用 taskKind。
+const TASK_KIND_LABEL: Record<string, string> = {
+  image_edit: "图生图（改图）",
+  image_to_video: "图生视频（i2v）",
+  text_to_video: "文生视频",
+  text_to_image: "文生图",
+};
+
+/** 本次请求携带的参考族（从 referenceInputParams 的键 derive，与 body 承载力同一套 classifyReferenceKey）。 */
+function carriedReferenceFamilies(extras: JsonRecord): Set<ReferenceFamily> {
+  const families = new Set<ReferenceFamily>();
+  const walk = (key: string, value: unknown): void => {
+    if (typeof value === "string") {
+      if (REF_URL_RE.test(value.trim())) {
+        const family = classifyReferenceKey(key);
+        if (family) families.add(family);
+      }
+      return;
+    }
+    if (Array.isArray(value)) for (const item of value) walk(key, item);
+    else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(k, v);
+  };
+  for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  return families;
+}
+
+/**
+ * 拒发后附一句**可走的路**（交付4）：从**同一套 mapping 数据**（各模式 create body）derive——
+ * 找出这个模型哪些模式的 body 真读得到我携带的参考族，点名它（"该模型 i2v 模式的 image_urls 支持多张参考图"）；
+ * 一个模式都带不动 → 老实说没有，并指路 list_models 找别的。**不 hardcode 任何 vendor 串**：模式名来自 taskKind，
+ * 多图与否来自 bodyReferenceSupport.multiImage。给不出 modeBodies（未注入）→ 返回空串（保持既有拒发语义不变）。
+ *
+ * 排除的是**刚被判发不出的那条 body 本身**（failedBody，按序列化相等判定），不是按 taskKind 排除——因为同一
+ * taskKind 可能有多条 mapping（当前走的通用中转 body 发不出，但该模型自己的原生 i2v body 读得到），按 taskKind
+ * 排除会把唯一可行的那条也误删（seedance 唯一的 i2v 原生 body 就这么被漏掉过）。同一 taskKind 去重：多条能行的
+ * 只报一次模式名。
+ */
+export function reachableModeSuggestion(
+  request: TaskParamsInput,
+  failedBody: unknown,
+  modeBodies: ModelModeBody[] | undefined,
+): string {
+  if (!modeBodies || modeBodies.length === 0) return "";
+  const carried = carriedReferenceFamilies(request.extras || {});
+  if (carried.size === 0) return "";
+  const failedKey = typeof failedBody === "undefined" ? undefined : JSON.stringify(failedBody);
+  // 找出 body 覆盖了全部携带族的模式（排除刚失败的那条 body 本身）；同 taskKind 去重、记住是否多图。
+  const byTaskKind = new Map<string, boolean>();
+  for (const mode of modeBodies) {
+    if (failedKey !== undefined && JSON.stringify(mode.body) === failedKey) continue; // 刚被判发不出的那条，不推荐它自己。
+    const support = bodyReferenceSupport(mode.body);
+    const covers = [...carried].every((family) => support[family]);
+    if (covers) byTaskKind.set(mode.taskKind, (byTaskKind.get(mode.taskKind) ?? false) || support.multiImage);
+  }
+  const carriedText = [...carried].map((f) => FAMILY_LABEL[f]).join(" + ");
+  if (byTaskKind.size === 0) {
+    // 一个模式都带不动——老实说，指路换模型。
+    return `该模型没有任何模式能携带你连上的${carriedText}；请断开它们，或用 nomi_list_models 找一个 references 覆盖${carriedText}的模型。`;
+  }
+  const parts = [...byTaskKind.entries()].map(([taskKind, multiImage]) => {
+    const modeName = TASK_KIND_LABEL[taskKind] || taskKind;
+    const multi = multiImage && carried.has("image") ? "（支持多张参考图）" : "";
+    return `${modeName}${multi}`;
+  });
+  return `可改用该模型的：${parts.join(" / ")}——它读得到你携带的${carriedText}。`;
+}
+
 /**
  * L3 诚实护栏（runTask 前置闸，纯函数）：图生图/图生视频「参考图缺失」或「无传输 mapping」→ 返回
  * 人话错误（调用方在付费守卫/vendor 调用之前拒发，零扣费）；其余情况 null。此前会静默退化成纯文生
  * ——模板引擎丢空键 / fallback body 根本没有图片位——生成成功、扣费成功、和原图毫无关系，
  * 正是「图生图不按原图」的用户体感（docs/plan/2026-07-06-i2i-reference-reliability.md）。
+ *
+ * modeBodies（可选）：这个模型**所有模式**的 create body。给了则第三闸拒发时多附一句"可走的路"（交付4，
+ * reachableModeSuggestion），点名哪个模式带得动携带的参考；不给则维持原拒发文案（语义/零扣费保证不变）。
  */
 export function imageEditGuardError(
   kind: string,
@@ -235,12 +310,15 @@ export function imageEditGuardError(
   modelLabel: string,
   /** 这条 mapping 的 create body。给了就多过一道闸：body 读不到的参考素材直接拒发（见上）。 */
   createBody?: unknown,
+  modeBodies?: ModelModeBody[],
 ): string | null {
   // 第三闸对**所有 kind** 生效（运镜的参考视频可能挂在 t2v/omni 上），且只在真带了参考时才可能触发。
   if (typeof createBody !== "undefined") {
     const unreachable = unreachableReferenceLabels(request, createBody);
     if (unreachable.length > 0) {
-      return `模型「${modelLabel}」在这个接入方式下发不出：${unreachable.join(" / ")}。连上的这些素材不会进入请求——为免白扣费这次不发。请断开它们，或换一个支持这些参考的渠道/模型。`;
+      const base = `模型「${modelLabel}」在这个接入方式下发不出：${unreachable.join(" / ")}。连上的这些素材不会进入请求——为免白扣费这次不发。请断开它们，或换一个支持这些参考的渠道/模型。`;
+      const suggestion = reachableModeSuggestion(request, createBody, modeBodies);
+      return suggestion ? `${base}\n${suggestion}` : base;
     }
   }
   if (kind !== "image_edit" && kind !== "image_to_video") return null;
