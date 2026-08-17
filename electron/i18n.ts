@@ -1,6 +1,10 @@
 import { app, ipcMain } from "electron";
 
-export type DesktopLocale = "zh-CN" | "en";
+// locale 归一是纯逻辑，住在 electron-free 的 desktopLocale.ts（打包裸 Node launcher 也要 require 它，
+// 不能碰 electron）。本地引来给 setDesktopLocale 用，再原样导出——保持 i18n 对既有消费者的公开面不变
+//（P1：函数只此一处定义，i18n 只是转口）。
+import { normalizeDesktopLocale, type DesktopLocale } from "./desktopLocale";
+export { normalizeDesktopLocale, type DesktopLocale };
 
 const translations = {
   "zh-CN": {
@@ -78,11 +82,6 @@ const translations = {
 type DesktopTranslationKey = keyof (typeof translations)["zh-CN"];
 
 let currentLocale: DesktopLocale = "zh-CN";
-
-/** 归一任意 locale 值 → 桌面双语枚举（en / zh-CN）。单一真相源：setDesktopLocale 与 MCP 传输取语言都用它。 */
-export function normalizeDesktopLocale(value: unknown): DesktopLocale {
-  return value === "en" || (typeof value === "string" && value.toLowerCase().startsWith("en")) ? "en" : "zh-CN";
-}
 
 export function setDesktopLocale(value: unknown): void {
   currentLocale = normalizeDesktopLocale(value);
