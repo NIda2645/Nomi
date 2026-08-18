@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BrowserViewRecord } from "../core/browserViewTypes";
 import {
@@ -119,7 +121,7 @@ describe("browser media session download", () => {
   });
 
   it("stops an unknown-length response while streaming instead of buffering past the limit", async () => {
-    const tempDir = fs.mkdtempSync("/tmp/nomi-browser-stream-test-");
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-browser-stream-test-"));
     cleanupDirs.push(tempDir);
     const savePath = `${tempDir}/download.part`;
     const response = new Response(new ReadableStream({

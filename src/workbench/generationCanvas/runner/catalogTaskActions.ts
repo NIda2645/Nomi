@@ -59,13 +59,16 @@ const TEXT_STREAM_KINDS = new Set<TaskKind>(['chat', 'prompt_refine', 'image_to_
 // 都跑在用户机器上,时延本质是「秒级到分钟级」且方差大,不能和「秒级返回的云图像 API」共用 2min 硬超时:
 // 否则本地图还在生成就被判超时落「可找回」,用户体验成「Codex 生图拉取步骤超时」(群反馈 2026-07-30 的根因)。
 // 判据用 vendor key(稳定:codex-local/comfyui-local 都是 local:// 或本机 127.0.0.1 后端)。
-const SLOW_LOCAL_BACKENDS = new Set(['codex-local', 'comfyui-local'])
+// ComfyUI 单列走前缀判据:第 2+ 台实例的 key 是 `comfyui-local-{slug}`,放进定值集合只覆盖得了第一台,
+// 用户加第二台机器就会被云 API 的 2min 硬超时腰斩。
+const SLOW_LOCAL_BACKENDS = new Set(['codex-local'])
 
 // 轮询按「后端时延」而非「视频 vs 图像」分档:慢道 = 视频 ∪ 本地进程后端。这样本地生图(codex/comfyui)
 // 不再被云 API 的 2min 硬超时腰斩,而 codex 进程真跑完(成功/失败)时 query 立即返回终态、循环自然结束,
 // 故放宽硬超时纯为「等它跑完」、不会平白多等(查结果免费、不重发、不二次扣费)。
 export function isSlowLaneBackend(kind: TaskKind, vendor: string): boolean {
-  return kind === 'text_to_video' || kind === 'image_to_video' || SLOW_LOCAL_BACKENDS.has(vendor)
+  return kind === 'text_to_video' || kind === 'image_to_video'
+    || SLOW_LOCAL_BACKENDS.has(vendor) || isComfyuiVendorKey(vendor)
 }
 
 /** 轮询预算(ms):慢道(视频/本地进程后端)5min 软 / 20min 硬;快道云 API 2min 软=硬。 */

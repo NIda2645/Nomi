@@ -9,6 +9,17 @@ export const zhSettings = {
   tab: { file: '文件与保存', models: '模型', ai: 'AI 策略', automation: '自动化与权限', general: '通用', about: '关于' },
   ai: {
     title: 'AI 策略',
+    defaultModels: {
+      title: '新建卡片默认模型',
+      hint: '新建一张卡片时自动选它。卡片内换模型只影响那一张，已选好模型的卡片不会被改写。',
+      auto: '自动选择',
+      textToImage: '文生图',
+      imageEdit: '图片编辑',
+      textToVideo: '文生视频',
+      imageToVideo: '图生视频',
+      pickerLabel: '{{task}} 默认模型',
+      unavailable: '该模型已不可用，将自动选择',
+    },
     upload: {
       title: '数据上传',
       minimize: '仅发送当前任务需要的素材',
@@ -153,6 +164,17 @@ export const enSettings = {
   tab: { file: 'File & saving', models: 'Models', ai: 'AI policy', automation: 'Automation & permissions', general: 'General', about: 'About' },
   ai: {
     title: 'AI policy',
+    defaultModels: {
+      title: 'Default model for new cards',
+      hint: 'Picked automatically when you add a card. Changing a model inside a card affects only that card; cards that already have one are left alone.',
+      auto: 'Auto select',
+      textToImage: 'Text to image',
+      imageEdit: 'Image edit',
+      textToVideo: 'Text to video',
+      imageToVideo: 'Image to video',
+      pickerLabel: 'Default model for {{task}}',
+      unavailable: 'No longer available — will auto select',
+    },
     upload: {
       title: 'Data upload',
       minimize: 'Send only assets needed for the current task',

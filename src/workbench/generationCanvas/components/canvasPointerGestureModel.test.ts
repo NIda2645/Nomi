@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CANVAS_MENU_TARGET_SELECTOR,
   canvasDragExceededThreshold,
   isCanvasCapturePanPointer,
   isCanvasPanButtonHeld,
@@ -142,6 +143,15 @@ describe('generation canvas pointer arbitration', () => {
     expect(shouldPreventDefaultForCanvasPanStart(0)).toBe(true)
     expect(shouldPreventDefaultForCanvasPanStart(1)).toBe(true)
     expect(shouldPreventDefaultForCanvasPanStart(2)).toBe(false)
+  })
+
+  it('covers every menu role in the dismissal exemption selector', () => {
+    // 菜单渲染在 stage 里，而收菜单发生在 capture 阶段——子项的 stopPropagation 来不及拦。
+    // 少覆盖一个 role，那类菜单项就会「点了没反应」（曾漏掉节点右键菜单整条路）。
+    // 这里只钉选择器覆盖面（本仓单测跑在 node 环境、无 DOM）；真实点击由走查验。
+    for (const role of ['menu', 'menuitem', 'menuitemradio']) {
+      expect(CANVAS_MENU_TARGET_SELECTOR).toContain(`[role="${role}"]`)
+    }
   })
 
   it('treats macOS Ctrl + primary as the native secondary-click equivalent', () => {

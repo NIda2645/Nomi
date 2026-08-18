@@ -10,9 +10,12 @@ const studioSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/Nom
 const controllerSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/useSettingsDialogController.ts'), 'utf8')
 const settingsDirectory = path.join(process.cwd(), 'src/workbench/settings')
 
+// 这张表锁的是「别无意间改动了这几块」。**有意的、已拍板的改动就该更新基线**，
+// 并在下面补一条正向断言说明改了什么——只挪哈希不加断言，等于把锁降级成橡皮图章。
+// 2026-08-18：AiModelsSection 挂上「新建卡片默认模型」区（用户看样张后拍板），故更新其哈希。
 const MAIN_NON_MODEL_SECTION_SHA256 = {
   'ProjectLocationSection.tsx': 'ad37c2f07c403b60cf42385f4d93fce8e2ff494c934467c670a7ae4b8c8d5523',
-  'AiModelsSection.tsx': '0d0e65d5000222a5f02a8408ba12a1fc6c652ccb880d4c5ae68ca5172518e957',
+  'AiModelsSection.tsx': 'f221739ae0063c8c35687a03017586f8facbb6fba86455f10283d2276cf65c06',
   'AutomationPermissionsSection.tsx': 'a0ea704afb1a31c33ffa3e00821658d8696cc15d5069e6361032b194e638b352',
   'CanvasGestureSection.tsx': '51c9806c303e5a02a09c9184a38835b4d2d8cad3cd6bb3f56a2408c96264c571',
   'AboutSection.tsx': '7fb3e4bee88cf77f6df1217424a4b6130e27581b97de3c58f3c2e7b5bf4a545b',
@@ -75,6 +78,14 @@ describe('settings dialog structure', () => {
     expect(settingsSource).not.toContain('SETTINGS_TWO_COLUMN_GRID_CLASS')
     expect(settingsSource).not.toContain('min-[972px]')
     expect(fs.existsSync(path.join(settingsDirectory, 'settingsLayout.tsx'))).toBe(false)
+  })
+
+  // 「新建卡片默认模型」必须挂在 AI 策略页顶部，且与下方的「默认模型策略」（权限）分得开——
+  // 同屏两个「默认模型」是用户拍板时明确点出的混淆点。
+  it('mounts the new-card default model picker above the permission policy block', () => {
+    expect(aiModelsSource).toContain('<DefaultGenerationModelsSection')
+    expect(aiModelsSource.indexOf('<DefaultGenerationModelsSection'))
+      .toBeLessThan(aiModelsSource.indexOf("data-settings-section=\"production-policy\""))
   })
 
   it('keeps all five non-model sections byte-for-byte at the origin/main baseline', () => {

@@ -7,6 +7,14 @@ import type { AutomationPolicySettings } from '../../../electron/settings/automa
 import { buildProviderHealthView, type SettingsProviderInput } from './settingsAutomationView'
 import { listWorkbenchModelCatalogModels, type ModelCatalogModelDto } from '../api/modelCatalogApi'
 import type { ProductionPolicyRequirement } from '../production/productionPolicyRecovery'
+import { DefaultGenerationModelsSection } from './DefaultGenerationModelsSection'
+import {
+  getGenerationModelDefaults,
+  loadGenerationModelDefaults,
+  saveGenerationModelDefaults,
+  subscribeGenerationModelDefaults,
+  type GenerationModelDefaultMap,
+} from '../generationCanvas/model/generationModelDefaults'
 
 type Props = {
   settings: AutomationPolicySettings
@@ -44,7 +52,23 @@ export function AiModelsSection({
     }
   }, [])
 
+  const generationDefaults = React.useSyncExternalStore(
+    subscribeGenerationModelDefaults,
+    getGenerationModelDefaults,
+    getGenerationModelDefaults,
+  )
+  React.useEffect(() => {
+    void loadGenerationModelDefaults()
+  }, [])
+  const handleDefaultsChange = React.useCallback((next: GenerationModelDefaultMap) => {
+    void saveGenerationModelDefaults(next)
+  }, [])
+
   const health = buildProviderHealthView(providers)
+  const vendorNameOf = React.useCallback(
+    (vendorKey: string) => health.find((provider) => provider.key === vendorKey)?.name || vendorKey,
+    [health],
+  )
   const requiredProviderModels = React.useMemo(
     () => productionPolicyRequirement?.requiredProviderModels ?? [],
     [productionPolicyRequirement],
@@ -93,6 +117,13 @@ export function AiModelsSection({
   return (
     <div data-settings-section="ai-models">
       <h2 className="mb-5 text-title font-medium text-nomi-ink">{t('settings.ai.title')}</h2>
+
+      <DefaultGenerationModelsSection
+        models={models}
+        vendorNameOf={vendorNameOf}
+        defaults={generationDefaults}
+        onChange={handleDefaultsChange}
+      />
 
       {/* 2026-08-12 删掉顶部那段只读「模型连接」列表：模型的家搬去「模型」tab 之后，
           它就是第二个家；而且下面「默认模型策略」的勾选框本来就逐个列了 provider 且带状态，
