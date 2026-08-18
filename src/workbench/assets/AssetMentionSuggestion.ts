@@ -39,6 +39,15 @@ export function createAssetMentionSuggestion(options: {
           char: '@',
           allowSpaces: false,
           startOfLine: false,
+          // null = 关掉上游默认的「@ 前必须是空格」前缀检查。**中文场景下这条默认值等于把功能关掉**：
+          // @tiptap/suggestion 的默认是 allowedPrefixes: [' ']，只有前一个字符是空格、或处在段首才触发
+          // （dist/index.js:70 + :26 的 matchPrefixIsAllowed）。但中文写作根本不打空格——实测 7 种真实打法，
+          // 默认值下只有「段首」「换行后」「自己想到敲空格」这三种会弹，
+          // 「让@」「一个女孩站在@」「镜头，@」全部静默不弹（逗号后不弹尤其致命，那是最自然的引用位置）。
+          // 而静默不弹比报错更糟：用户以为没这功能。上游这条默认是为英文场景防 foo@bar.com 误触发，
+          // 在「视频提示词描述框」里几乎不存在这种输入，收益远大于代价。
+          // 回归由 tests/ux/archetype-modebar.e2e.mjs 钉住（那条走查按中文习惯**不打空格**地打 @）。
+          allowedPrefixes: null,
           items: ({ query }): MentionSuggestionItem[] => options.getCandidates(query || ''),
           command: ({ editor, range, props }) => {
             const item = props as MentionSuggestionItem
