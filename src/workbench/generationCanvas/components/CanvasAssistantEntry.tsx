@@ -1,7 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiAILabel } from '../../../design/identity'
-import { WorkbenchButton } from '../../../design/workbenchActions'
+import { WorkbenchButton } from '../../../design/actions'
 import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 
