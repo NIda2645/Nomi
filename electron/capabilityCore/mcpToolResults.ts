@@ -63,6 +63,26 @@ function rec(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }
 
+/**
+ * 历史遗留的坏 Run：`draft` 且一个阶段一道门都没有——起草时用的 playbook 没实现，流水线一格都没
+ * 建起来（2026-08-18 已在 repository 层堵死，见 productionPlaybooks.ts；盘上已有的仍读得到）。
+ * 它永远不会自己往前走，所以转述必须说实话：不能再按 draft 的默认提示叫 agent 去「定创意方向」
+ * ——根本没有方向门可定，那只会让它空转。
+ */
+function stalledDraftHint(value: Record<string, unknown>): (typeof RUN_STATUS_HINT)[string] | null {
+  if (str(value.status) !== 'draft') return null
+  const gates = Array.isArray(value.gates) ? value.gates : []
+  const stages = Array.isArray(value.stages) ? value.stages : []
+  if (gates.length > 0 || stages.length > 0) return null
+  return {
+    zh: '起不来的草稿',
+    en: 'stalled draft',
+    nextZh: '这个制作没建起任何阶段（起草时用的 playbook 未实现），不会自己往前走。用 nomi_control_run 取消它，再用受支持的 playbook 重新发起。',
+    nextEn: 'This run has no stages (its playbook was never implemented), so it will never progress. Cancel it with nomi_control_run, then start again with a supported playbook.',
+    action: 'cancel_run',
+  }
+}
+
 /** 参数回显行（样张⑧）：只回显真实收到的参数，缺的不编。 */
 function echoLine(ctx: Ctx, parts: Array<string | null | undefined>): string | null {
   const kept = parts.filter((p): p is string => Boolean(p && p.trim()))
@@ -262,7 +282,7 @@ export function buildToolOutcome(
 
   if (toolName === 'nomi_get_run') {
     const status = str(value.status) || 'unknown'
-    const hint = RUN_STATUS_HINT[status]
+    const hint = stalledDraftHint(value) ?? RUN_STATUS_HINT[status]
     const artifacts = Array.isArray(value.artifacts) ? (value.artifacts as Array<Record<string, unknown>>) : []
     const latest = artifacts.at(-1)
     const preview = latest ? rec(latest.preview) : {}

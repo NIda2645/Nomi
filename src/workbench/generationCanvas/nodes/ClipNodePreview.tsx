@@ -1,7 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlayerPause, IconPlayerPlay, IconVolume, IconVolumeOff, IconX } from '@tabler/icons-react'
-import { WorkbenchIconButton } from '../../../design/workbenchActions'
+import { WorkbenchIconButton } from '../../../design/actions'
 import { useVideoPlaybackHeal } from '../../../media/useVideoPlaybackHeal'
 import { cn } from '../../../utils/cn'
 import { resolveActiveClipsAtFrame } from '../../timeline/timelineMath'

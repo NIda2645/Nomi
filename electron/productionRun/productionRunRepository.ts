@@ -5,6 +5,7 @@ import path from "node:path";
 import { writeJsonFileAtomic } from "../jsonFile";
 import { getWorkspaceRepositoryDeps } from "../runtimePaths";
 import { resolveWorkspaceProjectDir } from "../workspace/workspaceRepository";
+import { initialPlaybookStages, requireProductionPlaybook } from "./productionPlaybooks";
 import { productionRunPaths, productionRunsRoot } from "./productionRunPaths";
 import { applyProductionCommand, type ProductionCommandEffect } from "./productionRunReducer";
 import { assertProductionPolicyReady } from "./productionPolicyReadiness";
@@ -205,53 +206,39 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
   }
 
   function create(input: CreateProductionRunInput): ProductionRun {
+    // 起草前先验入参：未登记的 playbook / 缺 brief 都造不出可推进的 Run。在**写盘前**抛人话错误，
+    // 不静默降级成一个 stages/gates 全空、永远停在 draft 的坏 Run（那会同时污染事件流、快照、
+    // 任务卡与 MCP 投影四处）。可用名单见 productionPlaybooks.ts。
+    const playbook = requireProductionPlaybook(input.playbook.name);
+    const brief = input.brief;
+    if (!brief) throw new Error(`playbook「${playbook.name}」需要 brief（至少一句 goal）才能起草`);
     const dir = projectDir(input.projectId);
     const runId = input.runId?.trim() || `run-${randomId()}`;
     const paths = productionRunPaths(dir, runId);
     if (fs.existsSync(paths.events) || fs.existsSync(paths.snapshot)) throw new Error(`Production run already exists: ${runId}`);
     const timestamp = now();
-    const isBrandPromo = input.playbook.name === "brand.promo" && Boolean(input.brief);
-    const stages: ProductionRun["stages"] = isBrandPromo
-      ? [
-          { stageId: "brief", title: "Brief", status: "completed", order: 0, startedAt: timestamp, completedAt: timestamp },
-          { stageId: "direction", title: "Direction", status: "awaiting_gate", order: 1, startedAt: timestamp },
-          { stageId: "script", title: "Script", status: "pending", order: 2 },
-          { stageId: "storyboard", title: "Storyboard", status: "pending", order: 3 },
-          { stageId: "build", title: "Canvas", status: "pending", order: 4 },
-          { stageId: "generate", title: "Generate", status: "pending", order: 5 },
-          { stageId: "qa", title: "QA", status: "pending", order: 6 },
-          { stageId: "assemble", title: "Assemble", status: "pending", order: 7 },
-          { stageId: "export", title: "Export", status: "pending", order: 8 },
-        ]
-      : [];
-    const briefArtifact: ProductionRun["artifacts"][number] | undefined = input.brief && isBrandPromo
-      ? { artifactId: "artifact-brief-v1", stageId: "brief", kind: "brief", status: "adopted", projectRelativePath: `.nomi/runs/${runId}/brief-v1.json`, createdAt: timestamp, adoptedAt: timestamp }
-      : undefined;
-    const directionArtifact: ProductionRun["artifacts"][number] | undefined = input.brief && isBrandPromo
-      ? { artifactId: "artifact-direction-v1", stageId: "direction", kind: "direction", status: "candidate", projectRelativePath: `.nomi/runs/${runId}/direction-v1.json`, createdAt: timestamp }
-      : undefined;
-    const directionGate: ProductionRun["gates"][number] | undefined = isBrandPromo
-      ? { gateId: "gate-direction-v1", scope: "stage", status: "waiting", planHash: crypto.createHash("sha256").update(JSON.stringify(input.brief || {})).digest("hex"), jobIds: [], title: "Confirm creative direction", summary: "Review audience, channel, tone, and truthful selling points before any model or paid API call.", createdAt: timestamp, expiresAt: new Date(Date.parse(timestamp) + 24 * 60 * 60 * 1000).toISOString() }
-      : undefined;
-    const initialArtifacts = [briefArtifact, directionArtifact].filter((value): value is ProductionRun["artifacts"][number] => Boolean(value));
+    const stages = initialPlaybookStages(playbook, timestamp);
+    const briefArtifact: ProductionRun["artifacts"][number] = { artifactId: "artifact-brief-v1", stageId: playbook.briefStageId, kind: "brief", status: "adopted", projectRelativePath: `.nomi/runs/${runId}/brief-v1.json`, createdAt: timestamp, adoptedAt: timestamp };
+    const directionArtifact: ProductionRun["artifacts"][number] = { artifactId: "artifact-direction-v1", stageId: playbook.directionStageId, kind: "direction", status: "candidate", projectRelativePath: `.nomi/runs/${runId}/direction-v1.json`, createdAt: timestamp };
+    const directionGate: ProductionRun["gates"][number] = { gateId: "gate-direction-v1", scope: "stage", status: "waiting", planHash: crypto.createHash("sha256").update(JSON.stringify(brief)).digest("hex"), jobIds: [], title: "Confirm creative direction", summary: "Review audience, channel, tone, and truthful selling points before any model or paid API call.", createdAt: timestamp, expiresAt: new Date(Date.parse(timestamp) + 24 * 60 * 60 * 1000).toISOString() };
     const run: ProductionRun = {
       schemaVersion: PRODUCTION_RUN_SCHEMA_VERSION,
       runId,
       projectId: input.projectId,
       revision: 0,
-      status: isBrandPromo ? "awaiting_direction" : "draft",
-      stageId: isBrandPromo ? "direction" : "brief",
+      status: "awaiting_direction",
+      stageId: playbook.directionStageId,
       playbook: input.playbook,
       origin: input.origin,
-      ...(input.brief ? { brief: input.brief } : {}),
+      brief,
       policy: { ...DEFAULT_POLICY, ...input.policy },
       budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
       planVersion: 1,
       snapshotCursor: 1,
       stages,
-      gates: directionGate ? [directionGate] : [],
+      gates: [directionGate],
       jobs: [],
-      artifacts: initialArtifacts,
+      artifacts: [briefArtifact, directionArtifact],
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -268,19 +255,19 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       payload: { run },
     };
     appendDurableJsonLine(paths.events, event);
-    if (input.brief && isBrandPromo) {
-      writeJsonFileAtomic(path.join(dir, `.nomi/runs/${runId}/brief-v1.json`), { schemaVersion: 1, kind: "brief", brief: input.brief });
-      writeJsonFileAtomic(path.join(dir, `.nomi/runs/${runId}/direction-v1.json`), { schemaVersion: 1, kind: "direction", brief: input.brief, status: "awaiting_direction" });
-      appendDurableJsonLine(paths.events, {
-        ...event,
-        eventId: `evt-${randomId()}`,
-        cursor: 2,
-        type: "gate.waiting",
-        message: "direction",
-        payload: { run },
-      } satisfies RunEvent);
-      run.snapshotCursor = 2;
-    }
+    writeJsonFileAtomic(path.join(dir, `.nomi/runs/${runId}/brief-v1.json`), { schemaVersion: 1, kind: "brief", brief });
+    writeJsonFileAtomic(path.join(dir, `.nomi/runs/${runId}/direction-v1.json`), { schemaVersion: 1, kind: "direction", brief, status: "awaiting_direction" });
+    // 事件里的 run 快照必须自带**这条事件**的游标：否则从事件恢复出来的 run 会说自己停在 cursor 1，
+    // 与最后一条事件（cursor 2）对不上 ⇒ 每次 read 都判定快照过期、反复重建。
+    run.snapshotCursor = 2;
+    appendDurableJsonLine(paths.events, {
+      ...event,
+      eventId: `evt-${randomId()}`,
+      cursor: 2,
+      type: "gate.waiting",
+      message: "direction",
+      payload: { run },
+    } satisfies RunEvent);
     fs.writeFileSync(paths.commands, "", { encoding: "utf8", flag: "a" });
     writeJsonFileAtomic(paths.snapshot, envelopeFor(run));
     return run;

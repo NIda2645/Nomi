@@ -142,7 +142,15 @@ try {
   if (await allTab.count()) await allTab.click({ timeout: 2000 }).catch(() => {})
   await win.waitForTimeout(900)
   // compact 侧栏格子不渲染文件名（tooltip 才有）,数瓦片：3 张落盘图（含「曾被软删.png」）全在=软删层解散。
-  const allTileCount = await win.locator('section[aria-label="素材库"] [aria-selected]').count()
+  //
+  // 2026-08-18 修假绿：这里原本数的是 `[aria-selected]`——那个属性在**来源 tab**（role=tab）和
+  // **种类过滤项**（role=option）身上都有，而瓦片的 aria-selected 是 `selectable ? selected : undefined`，
+  // 侧栏里根本不渲染这个属性。也就是说它**从来没数到过素材**：以前恰好有 3 个来源 tab
+  // （全部/项目/智能分组）让 `>= 3` 蒙混通过，智能分组一删就只剩 2 个、当场露馅。
+  // 改数瓦片自己的图片元素（每张素材渲染一个带 alt 的 img），这才是「素材可见」的真判据。
+  const tiles = win.locator('section[aria-label="素材库"] img[alt]')
+  await tiles.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {})
+  const allTileCount = await tiles.count()
   check('三张落盘素材全部可见（含曾软删,软删层解散预期）', allTileCount >= 3, `tiles=${allTileCount}`)
   await snap(win, '05-asset-library-all-assets')
 

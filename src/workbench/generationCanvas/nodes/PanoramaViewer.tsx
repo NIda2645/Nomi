@@ -6,7 +6,7 @@ import '@photo-sphere-viewer/core/index.css'
 import { IconCamera, IconMaximize, IconX } from '@tabler/icons-react'
 import { NomiImage } from '../../../design/media'
 import { cn } from '../../../utils/cn'
-import { WorkbenchIconButton } from '../../../design/workbenchActions'
+import { WorkbenchIconButton } from '../../../design/actions'
 import { toast } from '../../../ui/toast'
 import i18n from '../../../i18n'
 
