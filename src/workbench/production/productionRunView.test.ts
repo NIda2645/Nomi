@@ -74,8 +74,24 @@ describe('production run view', () => {
       primaryAction: null,
       controls: ['cancel'],
     })
-    expect(buildProductionRunView(run({ status: 'draft', jobs: [], stages: [] }), now).controls).toEqual([])
+    // draft 但阶段还在（历史 run）：没有可暂停的东西，也不催用户取消。
+    expect(buildProductionRunView(run({ status: 'draft', jobs: [] }), now).controls).toEqual([])
     expect(buildProductionRunView(run({ status: 'completed', jobs: [] }), now).controls).toEqual([])
+  })
+
+  // 2026-08-18 的坑：未实现的 playbook 曾静默建出 draft + 空 stages/gates 的坏 Run。它不会自己往前走，
+  // 卡片却挂着「查看当前阶段」——点了只切到一张空画布，还说「确认制作摘要后才会开始」（没有摘要可确认），
+  // 且不给取消。现在必须是诚实终态：说清楚推不动 + 只留取消这一个出口。
+  it('gives a stalled draft an honest dead-end and the cancel exit instead of a button that goes nowhere', () => {
+    const view = buildProductionRunView(run({ status: 'draft', jobs: [], stages: [], gates: [] }), now)
+
+    expect(view).toMatchObject({
+      tone: 'danger',
+      titleKey: 'production.status.stalledDraft',
+      descriptionKey: 'production.description.stalledDraft',
+      primaryAction: null,
+      controls: ['cancel'],
+    })
   })
 
   it('presents legacy terminal Runs as fully complete even if old stage bookkeeping was partial', () => {

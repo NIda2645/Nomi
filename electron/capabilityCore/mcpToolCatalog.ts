@@ -5,6 +5,7 @@
 //
 // build 里 nomi_generate 的画幅/时长参数归一走 buildGenerateParams（不 hardcode vendor，比例同时铺
 // aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键）。
+import { listProductionPlaybookNames } from '../productionRun/productionPlaybooks'
 import { buildGenerateParams } from './mcpGenerateParams'
 
 // 工具定义：name → { description, inputSchema(JSON Schema), method(能力核方法), build(args→params) }。
@@ -119,7 +120,13 @@ export const MCP_TOOL_CATALOG = [
       type: 'object',
       properties: {
         projectId: { type: 'string', description: '目标 Nomi 项目 id' },
-        playbook: { type: 'string', description: '制作 playbook，例如 brand.promo' },
+        // 只列真跑得动的（从注册表 derive，见 productionPlaybooks.ts）。不写「例如 xxx」——那会
+        // 暗示还有别的名字可传，实际传别的会被当场拒（原先是静默建一个永远推不动的坏 Run）。
+        playbook: {
+          type: 'string',
+          enum: listProductionPlaybookNames(),
+          description: `制作 playbook。当前只实现了：${listProductionPlaybookNames().join('、')}；传其它值会被拒绝。`,
+        },
         playbookVersion: { type: 'string', description: '可选版本；默认 1.0.0' },
         brief: {
           type: 'object',

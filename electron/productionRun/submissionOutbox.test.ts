@@ -35,6 +35,7 @@ function setup() {
     projectId: "project-1",
     playbook: { name: "brand.promo", version: "1.0.0" },
     origin: { host: "codex" },
+    brief: { goal: "submission outbox fixture" },
     policy: {
       mode: "balanced",
       trustedHosts: ["codex"],

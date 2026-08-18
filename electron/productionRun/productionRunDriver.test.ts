@@ -39,6 +39,42 @@ describe('ProductionRunService driver round 1', () => {
     expect(fs.existsSync(path.join(root, '.nomi/runs/run-driver-1/brief-v1.json'))).toBe(true)
   })
 
+  // 这条覆盖的坑（2026-08-18）：整条流水线只实现了 brand.promo，别的 playbook 名字**静默降级**成一个
+  // stages/gates 全空、永远停在 draft 的坏 Run，而 nomi_start_playbook 还回「成功」。上面那条只走
+  // brand.promo，所以放跑了它。现在未登记的名字必须当场失败，且**一个字节都不落盘**——不是「建了再删」。
+  it('rejects an unimplemented playbook at draft time and persists nothing', () => {
+    const root = makeRoot()
+    const repository = createProductionRunRepository({ projectDirResolver: () => root })
+    const service = createProductionRunService({ repository, projectRootResolver: () => root })
+
+    expect(() => service.createDraft({
+      runId: 'run-unknown-playbook',
+      projectId: 'project-1',
+      playbook: { name: 'film.scene-recreation', version: '1.0.0' },
+      origin: { host: 'codex' },
+      brief: { goal: 'recreate a scene' },
+    })).toThrow(/film\.scene-recreation.*brand\.promo/s)
+
+    expect(fs.existsSync(path.join(root, '.nomi/runs/run-unknown-playbook'))).toBe(false)
+    expect(repository.list('project-1')).toHaveLength(0)
+    expect(repository.read('project-1', 'run-unknown-playbook')).toBeNull()
+  })
+
+  // 同一类 bug 的第二个入口：brand.promo 但没给 brief，原先也掉进空 stages 的 draft。
+  it('rejects a briefless draft instead of creating one that can never advance', () => {
+    const root = makeRoot()
+    const repository = createProductionRunRepository({ projectDirResolver: () => root })
+
+    expect(() => repository.create({
+      runId: 'run-no-brief',
+      projectId: 'project-1',
+      playbook: { name: 'brand.promo', version: '1.0.0' },
+      origin: { host: 'codex' },
+    })).toThrow(/brief/)
+
+    expect(repository.list('project-1')).toHaveLength(0)
+  })
+
   it('plans once after direction approval, persists skill evidence, and attaches a contract without paid work', async () => {
     const root = makeRoot()
     const repository = createProductionRunRepository({ projectDirResolver: () => root })
