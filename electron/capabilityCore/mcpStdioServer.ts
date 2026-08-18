@@ -10,10 +10,9 @@ import readline from 'node:readline'
 import { app, session } from 'electron'
 import { createMcpProtocol, type McpInvokeOptions } from './mcpProtocol'
 import { getDesktopLocale, setDesktopLocale } from '../i18n'
-import { createDiskGateway, type ProjectGateway, type SpendConfirmInfo } from './gateway'
+import { createDiskGateway, withPreApprovedSpend, type ProjectGateway } from './gateway'
 import { readLiveInstance, type InstanceAdvertisement } from './lockfile'
 import { runTask, fetchTaskResult } from '../runtime'
-import { mintSpendGrant } from '../spendGrant'
 import { applySystemProxy } from '../systemProxy'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
 import { startArtifactPreviewHttpServer, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
@@ -45,15 +44,13 @@ function transportTimeoutMs(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : 360_000
 }
 
-/** 付费已确认（elicitation 真人点了）→ 直铸令牌放行本次生成。仅在 elicit confirmed 后用，不碰全局 env。 */
+/**
+ * 付费已确认（elicitation 真人点了）→ 直铸令牌放行本次生成。仅在 elicit confirmed 后用，不碰全局 env。
+ * 「预批付费」这层只此一份定义（gateway.withPreApprovedSpend），App 开着走 RPC 的那条路复用同一份
+ * ——两条路的钱路语义不会各写各的、漂移开（rpcServer.ts 读 body.spendConfirmed 处）。
+ */
 function makeConfirmedGateway(projectId: string): ProjectGateway {
-  const disk = createDiskGateway(projectId)
-  return {
-    readDoc: disk.readDoc,
-    apply: disk.apply,
-    confirmSpend: async (info: SpendConfirmInfo) => mintSpendGrant({ nodeIds: [info.nodeId] }),
-    confirmPlan: disk.confirmPlan, // 方案门免费可撤，headless 直放行（与 disk 一致）
-  }
+  return withPreApprovedSpend(createDiskGateway(projectId))
 }
 
 async function callViaRpc(
@@ -80,8 +77,15 @@ async function callViaRpc(
             }
           : {}),
       },
-      // planConfirmed 跨 RPC 到渲染层网关：方案已在聊天里批准 → App 不再弹方案卡（免双问）。付费不透传（钱路留 App）。
-      body: JSON.stringify({ method, params, ...(options?.planConfirmed ? { planConfirmed: true } : {}) }),
+      // planConfirmed / spendConfirmed 跨 RPC 到渲染层网关：已在调用方客户端经 elicitation 被真人确认过
+      // → App 不再弹第二次卡（免双问）。**没有这一行，App 开着时用户会在 Claude 点一次、再被叫去 Nomi 点一次。**
+      // 钱路为何敢过线、代价是什么：见 gateway.withPreApprovedSpend 与 rpcServer 读 body.spendConfirmed 处。
+      body: JSON.stringify({
+        method,
+        params,
+        ...(options?.planConfirmed ? { planConfirmed: true } : {}),
+        ...(options?.spendConfirmed ? { spendConfirmed: true } : {}),
+      }),
       signal: controller.signal,
     })
   } catch (error) {
