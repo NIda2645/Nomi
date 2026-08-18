@@ -327,6 +327,17 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
     promptEditor.commands.insertAssetMention(url, index >= 0 ? index + 1 : undefined)
   }, [mentionCandidates, promptEditor])
 
+  /**
+   * 描述框 placeholder：**这张卡已经有参考图时**才在尾巴上挂一句「打 @ 可引用参考图」。
+   *
+   * 为什么挂条件而不是写死进每条 placeholder 文案：@ 只是键盘加速器（可发现的主路径是点参考 tile
+   * 直接插 chip），没有参考图时打 @ 只会弹一个「没有可引用的图」的空面板——那句提示就成了误导。
+   * 挂在 placeholder 上而不是新增一行常驻说明，是因为这个面已经拍板过「最少文字」（omni 样张 v4
+   * 特意砍掉了三组标签/caption）：placeholder 一开始打字就消失，不占常驻预算。
+   */
+  const appendMentionHint = (base: string): string =>
+    mentionCandidates.length > 0 ? `${base} · ${t('assetLibrary.mentionPlaceholderHint')}` : base
+
   const loadPromptPickerItems = React.useCallback((): void => {
     void fetchUserPrompts()
       .then((prompts) => {
@@ -626,7 +637,7 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
           <PromptEditor
             className={cn('min-h-[72px]')}
             value={node.prompt || ''}
-            placeholder={isTextKind ? t(`generationCommon.${TEXT_MODE_PLACEHOLDER_KEY[textGenMode]}`) : getGenerationNodePromptPlaceholder(node.kind)}
+            placeholder={appendMentionHint(isTextKind ? t(`generationCommon.${TEXT_MODE_PLACEHOLDER_KEY[textGenMode]}`) : getGenerationNodePromptPlaceholder(node.kind))}
             editable={!node.locked}
             onChange={(next) => updateNode(node.id, { prompt: next })}
             onBlur={() => { void persistActiveWorkbenchProjectNow().catch(() => {}) }}

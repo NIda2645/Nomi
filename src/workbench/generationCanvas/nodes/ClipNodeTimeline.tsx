@@ -1,7 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlus } from '@tabler/icons-react'
-import { WorkbenchIconButton } from '../../../design/workbenchActions'
+import { WorkbenchIconButton } from '../../../design/actions'
 import { useFilmstrip } from '../../../media/useFilmstrip'
 import { cn } from '../../../utils/cn'
 import { canvasDragExceededThreshold } from '../components/canvasPointerGestureModel'
