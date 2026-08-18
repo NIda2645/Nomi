@@ -267,15 +267,15 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       runId: input.runId ? identifier(input.runId, 'run') : undefined,
       policy: { ...policyResolver(), ...(input.policy || {}) },
     })
-    if (!['draft', 'awaiting_direction'].includes(run.status) || run.jobs.length > 0 || (run.status === 'draft' && run.gates.length > 0) || run.budget.authorized !== 0) {
+    // create 只可能产出「等方向 + 至少一道门 + 零任务零预算」的草稿：未登记的 playbook / 缺 brief
+    // 在 repository 层就抛错（productionPlaybooks.ts），draft 已不可达，这里不再给它留口子。
+    if (run.status !== 'awaiting_direction' || run.gates.length === 0 || run.jobs.length > 0 || run.budget.authorized !== 0) {
       throw new Error('Production draft invariant failed')
     }
-    if (run.status === 'awaiting_direction') {
-      // B3：budget_only（「别问了直接出」）→ 自动批准创意方向门（留痕），不拟候选、不打扰。
-      // 其余档位 → 异步拟方向候选（GUI 有 LLM 才成；关着则保持兜底 gate）。均不阻塞返回。
-      if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
-      else void proposeDirections(run)
-    }
+    // B3：budget_only（「别问了直接出」）→ 自动批准创意方向门（留痕），不拟候选、不打扰。
+    // 其余档位 → 异步拟方向候选（GUI 有 LLM 才成；关着则保持兜底 gate）。均不阻塞返回。
+    if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
+    else void proposeDirections(run)
     return runProjection(run, projectRootResolver, previewSecret)
   }
 

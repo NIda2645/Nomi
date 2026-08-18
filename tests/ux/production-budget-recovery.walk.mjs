@@ -44,12 +44,9 @@ async function waitForRun(window, projectId, runId, predicate, timeoutMs = 15_00
 
 async function openRunFromTaskCenter(window) {
   await window.locator('[data-task-center-trigger="true"]').click()
-  const row = window
-    .locator('[data-nomi-right-panel="tasks"]', { hasText: 'brand.promo' })
-    .locator('[role="button"]', { hasText: 'brand.promo' })
-    .first()
-  await row.waitFor({ timeout: 10_000 })
-  await row.click()
+  // 载入中的那个 run 在任务中心里直接长成完整卡（N1 起就不再是「先点紧凑行再展开」了）。
+  // 原先这里等的是 [role="button"] 的紧凑行——那个形态对当前 run 已经不存在，等到超时为止。
+  await window.locator('[data-production-task-card]').waitFor({ timeout: 15_000 })
   await window.locator('[data-production-status-title]').waitFor({ timeout: 10_000 })
 }
 
@@ -188,6 +185,8 @@ try {
   if (run.budget.authorized !== 0) throw new Error('Policy recovery unexpectedly authorized spend before approval')
 
   await window.getByRole('button', { name: labels.close }).click()
+  // 去设置页补策略时任务中心被关掉了（面板点外面就收）——要再点主操作得先把它开回来。
+  await openRunFromTaskCenter(window)
   await window.locator('[data-production-primary-action]').click()
   await window.locator('[data-production-hard-budget="set"]').waitFor({ timeout: 5_000 })
   await window.locator('[data-production-provider-model-status="allowed"]').waitFor({ timeout: 5_000 })

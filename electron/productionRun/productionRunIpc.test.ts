@@ -80,6 +80,34 @@ describe("production run IPC", () => {
     })).rejects.toThrow("Production command is not available to the renderer");
   });
 
+  // 2026-08-18 走查逮到：run.control 在白名单里，payload 构造器却没有它的分支，于是掉进
+  // 末尾那句 artifact.adopt 的兜底 return —— 用户在 Nomi 里点「取消制作」只会看到
+  // 「Invalid artifact id」。暂停/继续/取消从渲染端就没通过。根因是「默认分支替别人猜形状」，
+  // 所以既补 run.control，也把兜底改成响亮报错。
+  it("carries a renderer pause/resume/cancel through instead of mistaking it for an artifact command", async () => {
+    const repo = repository();
+    registerProductionRunIpc(repo as never);
+    const command = {
+      commandId: "cmd-cancel",
+      expectedRevision: 2,
+      type: "run.control",
+      payload: { action: "cancel" },
+      issuedAt: "2026-08-08T08:00:00.000Z",
+    };
+
+    await handlers.get("nomi:production-runs:command")?.({}, { projectId: "project-1", runId: "run-1", command });
+
+    expect(repo.execute).toHaveBeenCalledWith("project-1", "run-1", expect.objectContaining({
+      type: "run.control",
+      payload: { action: "cancel" },
+    }));
+    await expect(handlers.get("nomi:production-runs:command")?.({}, {
+      projectId: "project-1",
+      runId: "run-1",
+      command: { ...command, commandId: "cmd-bogus", payload: { action: "explode" } },
+    })).rejects.toThrow("Invalid production control action");
+  });
+
   it("rejects a project/run mismatch before executing a command", async () => {
     const repo = repository();
     repo.read.mockReturnValue(fakeRun("project-other"));

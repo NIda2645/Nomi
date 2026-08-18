@@ -136,6 +136,20 @@ export function buildProductionRunView(
       targetId: unknown.jobId,
     }
   }
+  // 历史遗留坏 Run：draft 且一个阶段一道门都没有——起草时的 playbook 没实现，流水线没建起来
+  // （2026-08-18 已在 repository 层堵死，见 electron/productionRun/productionPlaybooks.ts；盘上
+  // 已有的仍读得到）。它不会自己往前走，所以给诚实终态 + 唯一出口：别再挂「查看当前阶段」——
+  // 那个按钮点了只会切到一张空画布，比没有按钮更误导。
+  if (run.status === 'draft' && run.stages.length === 0 && run.gates.length === 0) {
+    return {
+      ...base,
+      tone: 'danger',
+      titleKey: 'production.status.stalledDraft',
+      descriptionKey: 'production.description.stalledDraft',
+      primaryAction: null,
+      controls: ['cancel'],
+    }
+  }
   if (run.status === 'completed') {
     return {
       ...base,
