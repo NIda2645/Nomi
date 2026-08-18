@@ -10,13 +10,14 @@
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconKey, IconExternalLink, IconPencil } from '@tabler/icons-react'
+import { IconKey, IconExternalLink } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { confirmDialog } from '../../design'
 import type { KnownVendor } from '../../config/knownVendors'
 import { FoldableModelCard } from './FoldableModelCard'
 import { ModelChipGroups, type ChipModel } from './ModelChipGroups'
+import { VendorBaseUrlField } from './VendorBaseUrlField'
 import { useVendorHealth } from './useVendorHealth'
 import { vendorConnectionPill } from './vendorConnectionView'
 import { VendorConnectionNotice } from './VendorConnectionNotice'
@@ -62,10 +63,7 @@ export function VendorOnboardCard({
   const [drafts, setDrafts] = React.useState<Record<string, string>>({})
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
-  const [urlEditing, setUrlEditing] = React.useState(false)
-  const [urlDraft, setUrlDraft] = React.useState('')
   const credentialInputRef = React.useRef<HTMLInputElement>(null)
-  const urlInputRef = React.useRef<HTMLInputElement>(null)
   const handledFocusRequestRef = React.useRef<number | null>(null)
   // 连接状态的唯一来源（主进程自取凭证探测）。地址一改 fingerprint 就变，effect 自动重探；
   // 换 key 不改地址，所以解锁后要显式 recheck()。
@@ -75,22 +73,18 @@ export function VendorOnboardCard({
     setEditing(!hasApiKey)
   }, [hasApiKey])
 
+  // 只管 apiKey 那一路；baseUrl 的聚焦请求由 VendorBaseUrlField 自己认（它持有那个 input）。
   React.useEffect(() => {
-    if (!focus || handledFocusRequestRef.current === focus.requestId) return
+    if (!focus || focus.target !== 'apiKey' || handledFocusRequestRef.current === focus.requestId) return
     handledFocusRequestRef.current = focus.requestId
-    if (focus.target === 'apiKey') setEditing(true)
-    else {
-      setUrlDraft(baseUrl)
-      setUrlEditing(true)
-    }
+    setEditing(true)
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        const input = focus.target === 'apiKey' ? credentialInputRef.current : urlInputRef.current
-        input?.focus({ preventScroll: false })
-        input?.scrollIntoView({ block: 'center' })
+        credentialInputRef.current?.focus({ preventScroll: false })
+        credentialInputRef.current?.scrollIntoView({ block: 'center' })
       })
     })
-  }, [baseUrl, focus])
+  }, [focus])
 
   const total = models.length
 
@@ -169,28 +163,6 @@ export function VendorOnboardCard({
       setBusy(false)
     }
   }, [directory.vendorKey, vendorName, onChanged, t])
-
-  const handleSaveBaseUrl = React.useCallback(() => {
-    const next = urlDraft.trim().replace(/\/+$/, '')
-    if (!/^https?:\/\/\S+$/.test(next)) {
-      setError(t('onboardingProviders.vendorCard.invalidAddress'))
-      return
-    }
-    const bridge = getDesktopBridge()
-    if (!bridge) return
-    setBusy(true)
-    setError('')
-    try {
-      bridge.modelCatalog.upsertVendor({ key: directory.vendorKey, baseUrlHint: next })
-      setUrlEditing(false)
-      // 地址变了 → useVendorHealth 的 fingerprint 变 → 自动重探，这里不用手动触发。
-      onChanged()
-    } catch (e) {
-      setError(t('onboardingProviders.vendorCard.saveFailed', { message: e instanceof Error ? e.message : String(e) }))
-    } finally {
-      setBusy(false)
-    }
-  }, [urlDraft, directory.vendorKey, onChanged, t])
 
   const openPromo = React.useCallback(() => {
     if (directory.promo) window.open(directory.promo.url, '_blank', 'noopener')
@@ -360,78 +332,19 @@ export function VendorOnboardCard({
 
       {error ? <div className="text-caption text-workbench-danger">{error}</div> : null}
 
-      {/* 连接状态说明：紧挨地址行，用户看完原因就能就地改地址（地址编辑仍是下面那支铅笔，不另开入口）。 */}
+      {/* 连接状态说明：紧挨地址行，用户看完原因就能就地改地址。 */}
       <VendorConnectionNotice connection={connection} onRecheck={recheck} disabled={busy} />
 
-      {urlEditing ? (
-        <div className="flex gap-2">
-          <input
-            ref={urlInputRef}
-            data-model-connection-field="baseUrl"
-            type="text"
-            aria-label={t('onboardingProviders.vendorCard.addressAria', { name: vendorName })}
-            placeholder={t('onboardingProviders.vendorCard.addressPlaceholder')}
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveBaseUrl()
-              if (e.key === 'Escape') {
-                setUrlEditing(false)
-                setError('')
-              }
-            }}
-            disabled={busy}
-            autoFocus
-            className={cn(
-              'flex-1 min-w-0 h-8 rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2.5',
-              'text-body-sm text-nomi-ink placeholder:text-nomi-ink-40',
-              'outline-none focus:border-nomi-accent',
-            )}
-          />
-          <button
-            type="button"
-            onClick={handleSaveBaseUrl}
-            disabled={busy}
-            className={cn(
-              'shrink-0 h-8 px-3 rounded-nomi-sm bg-nomi-ink text-nomi-paper',
-              'text-body-sm font-semibold',
-              'hover:bg-nomi-accent disabled:opacity-50 disabled:cursor-not-allowed',
-            )}
-          >
-            {t('onboardingProviders.vendorCard.save')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setUrlEditing(false)
-              setError('')
-            }}
-            data-model-connection-edit="baseUrl"
-            disabled={busy}
-            className="shrink-0 text-caption text-nomi-ink-40 hover:text-nomi-ink-60"
-          >
-            {t('common.cancel')}
-          </button>
-        </div>
-      ) : baseUrl ? (
-        <div className="flex items-center gap-1 min-w-0">
-          <span className="text-caption text-nomi-ink-30 truncate">
-            {t('onboardingProviders.vendorCard.address', { address: baseUrl })}
-          </span>
-          <button
-            type="button"
-            aria-label={t('onboardingProviders.vendorCard.editAddressAria', { name: vendorName })}
-            onClick={() => {
-              setUrlDraft(baseUrl)
-              setUrlEditing(true)
-            }}
-            disabled={busy}
-            className="shrink-0 p-0.5 text-nomi-ink-30 hover:text-nomi-ink-60"
-          >
-            <IconPencil size={13} stroke={1.6} />
-          </button>
-        </div>
-      ) : null}
+      {/* 地址行与自定义中转家卡共用同一份实现（P1：此前两边各写了一份一模一样的）。 */}
+      <VendorBaseUrlField
+        vendorKey={directory.vendorKey}
+        vendorName={vendorName}
+        baseUrl={baseUrl}
+        disabled={busy}
+        onSaved={onChanged}
+        hideWhenEmpty
+        focus={focus}
+      />
 
       <ModelChipGroups
         models={models}

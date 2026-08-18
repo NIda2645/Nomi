@@ -241,11 +241,6 @@ export function OnboardingDrawer(): JSX.Element {
     }
   }, [refresh, t])
 
-  const handleDeleteVendor = React.useCallback(async (vendorKey: string, vendorName: string, modelCount: number) => {
-    const res = await confirmAndDeleteVendor({ vendorKey, vendorName, modelCount, onChanged: refresh })
-    if (res.error) void alertDialog({ title: t('onboardingProviders.drawer.deleteFailed'), message: res.error })
-  }, [refresh, t])
-
   const knownCards = KNOWN_VENDORS
     .map((directory) => {
       const meta = vendorMeta.get(directory.vendorKey)
@@ -334,7 +329,6 @@ export function OnboardingDrawer(): JSX.Element {
         onDelete={handleDelete}
         onCustomCall={(row) => openCustomCall(row.vendorKey, row.modelKey)}
         onRetype={handleRetype}
-        onDeleteVendor={() => void handleDeleteVendor(group.vendorKey, group.name, group.models.length)}
         onChanged={refresh}
         detailMode={detailMode}
         focus={focus}
@@ -375,13 +369,23 @@ export function OnboardingDrawer(): JSX.Element {
       models: card.vendorModels,
       logo: card.directory.logo,
       glyph: card.directory.glyph,
+      baseUrl: card.meta.baseUrl,
+      hasApiKey: card.meta.hasApiKey,
     })),
-    ...otherVendorGroups.map((group) => homeConnection({
-      vendorKey: group.vendorKey,
-      name: group.name,
-      kind: 'api',
-      models: group.models,
-    })),
+    ...otherVendorGroups.map((group) => {
+      const meta = vendorMeta.get(group.vendorKey)
+      return homeConnection({
+        vendorKey: group.vendorKey,
+        name: group.name,
+        kind: 'api',
+        models: group.models,
+        baseUrl: meta?.baseUrl ?? '',
+        hasApiKey: meta?.hasApiKey ?? true,
+        // 与 renderCustomVendorCard 同一判据：direct-script 那类没有可预检的通用接口。
+        skipHealthProbe: Boolean(meta?.customCallOnly)
+          && group.models.every((model) => model.hasCustomCall || model.customCallDraft),
+      })
+    }),
     ...comfyuiConnected.map((instance) => homeConnection({
       vendorKey: instance.key,
       name: instance.meta.name,

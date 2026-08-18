@@ -13,7 +13,13 @@ import type { Mapping } from '../../../electron/catalog/types'
 import { DesignButton, DesignSearchInput, NomiLoadingMark } from '../../design'
 import { cn } from '../../utils/cn'
 import type { ChipModel } from './ModelChipGroups'
-import { resolveModelHomeStatus, summarizeModelHomeConnection } from './modelSettingsHomeState'
+import { useVendorHealth } from './useVendorHealth'
+import { vendorConnectionPill } from './vendorConnectionView'
+import {
+  resolveModelHomeStatus,
+  summarizeModelHomeConnection,
+  type ModelHomeConnectionState,
+} from './modelSettingsHomeState'
 
 const CONNECTION_STATUS_TONE = {
   working: 'bg-nomi-accent',
@@ -36,6 +42,11 @@ export type ModelSettingsHomeConnection = {
   models: ChipModel[]
   logo?: string
   glyph?: string
+  /** 连接健康探测要的两个入参；缺省（本地/会员类连接）则这一行不探。 */
+  baseUrl?: string
+  hasApiKey?: boolean
+  /** direct-script 那类家没有可预检的通用接口，别白探（与卡片侧同一套策略）。 */
+  skipHealthProbe?: boolean
   onOpen: () => void
 }
 
@@ -168,16 +179,91 @@ function AvailableConnectionRow({
   )
 }
 
+/**
+ * 已连入的一行。**单独成组件是为了能调 useVendorHealth**（hook 不能在 map 回调里调）——
+ * 复用卡片侧那个现成 hook，不另写一套探测（P1）；主进程自带新鲜期缓存与并发去重，
+ * 同一家在首页行与详情卡之间共享同一份结果，不会探两遍。
+ *
+ * 为什么这一行非要显示连接健康（2026-08-18）：此前它只算 summarizeModelHomeConnection（模型能力，
+ * 不看网络），于是一家 401 的中转站在**用户扫视的这一屏**上写着灰色「24 个可使用」——
+ * 群里「翻了半天没找到改 api url 的地方」，一半原因是他压根不知道该点哪一行。
+ * 连不上压倒模型统计（与 CustomVendorCard 的胶囊同一套语义）。
+ */
+function ConnectedRow({
+  connection,
+  mappings,
+  onHealthChange,
+}: {
+  connection: ModelSettingsHomeConnection
+  mappings: readonly Mapping[]
+  /** 把「这家连不上」报给区块标题，免得标题写「24 个可使用」而底下那行写「连不上」。 */
+  onHealthChange: (vendorKey: string, unreachable: boolean) => void
+}): JSX.Element {
+  const { t } = useTranslation()
+  const { connection: health } = useVendorHealth(connection.vendorKey, {
+    hasApiKey: connection.hasApiKey ?? false,
+    baseUrl: connection.baseUrl ?? '',
+    disableProbe: connection.skipHealthProbe ?? false,
+  })
+  const summary = summarizeModelHomeConnection(connection.models, mappings)
+  const pill = health ? vendorConnectionPill(health) : null
+  const unreachable = pill?.status === 'error'
+
+  React.useEffect(() => {
+    onHealthChange(connection.vendorKey, unreachable)
+  }, [connection.vendorKey, unreachable, onHealthChange])
+  const state: ModelHomeConnectionState = unreachable ? 'attention' : summary.state
+  const statusLabel = unreachable && pill
+    ? t(pill.labelKey)
+    : summary.state === 'attention'
+      ? t('onboardingProviders.drawer.home.needsSetupCount', { count: summary.needsSetup })
+      : summary.state === 'working'
+        ? t('onboardingProviders.drawer.home.workingCount', { count: summary.working })
+        : summary.state === 'disabled'
+          ? t('onboardingProviders.drawer.home.disabledCount', { count: summary.disabled })
+          : t('onboardingProviders.drawer.home.readyCount', { count: summary.ready })
+
+  return (
+    <button
+      type="button"
+      onClick={connection.onOpen}
+      data-model-home-connection={connection.vendorKey}
+      data-model-home-unreachable={unreachable ? '' : undefined}
+      className="group flex min-h-[52px] w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-nomi-ink-10"
+    >
+      <ConnectionMark connection={connection} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-caption font-semibold text-nomi-ink">{connection.name}</span>
+        <span className="mt-0.5 block text-micro leading-relaxed text-nomi-ink-40">
+          {t('onboardingProviders.drawer.home.connectionSummary', { count: connection.models.length })}
+        </span>
+      </span>
+      <span className={cn(
+        'inline-flex shrink-0 items-center gap-1.5 text-micro',
+        unreachable ? 'text-workbench-danger' : CONNECTION_STATUS_TEXT_TONE[state],
+      )}>
+        <span className={cn(
+          'size-1.5 rounded-full',
+          unreachable ? 'bg-workbench-danger' : CONNECTION_STATUS_TONE[state],
+        )} />
+        {statusLabel}
+      </span>
+      <IconChevronRight size={15} stroke={1.7} className="shrink-0 text-nomi-ink-30 group-hover:text-nomi-accent" aria-hidden="true" />
+    </button>
+  )
+}
+
 function ConnectedRows({
   connections,
   mappings,
   search,
+  onHealthChange,
 }: {
   connections: ModelSettingsHomeConnection[]
   mappings: readonly Mapping[]
   search: string
+  onHealthChange: (vendorKey: string, unreachable: boolean) => void
 }): JSX.Element | null {
-  const { t } = useTranslation()
   const normalizedSearch = search.trim().toLocaleLowerCase()
   const filtered = connections.filter((connection) => {
     if (!normalizedSearch) return true
@@ -189,41 +275,14 @@ function ConnectedRows({
 
   return (
     <RowGroup>
-      {filtered.map((connection) => {
-        const summary = summarizeModelHomeConnection(connection.models, mappings)
-        const statusLabel = summary.state === 'attention'
-          ? t('onboardingProviders.drawer.home.needsSetupCount', { count: summary.needsSetup })
-          : summary.state === 'working'
-            ? t('onboardingProviders.drawer.home.workingCount', { count: summary.working })
-            : summary.state === 'disabled'
-              ? t('onboardingProviders.drawer.home.disabledCount', { count: summary.disabled })
-              : t('onboardingProviders.drawer.home.readyCount', { count: summary.ready })
-        return (
-          <button
-            key={connection.vendorKey}
-            type="button"
-            onClick={connection.onOpen}
-            data-model-home-connection={connection.vendorKey}
-            className="group flex min-h-[52px] w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-nomi-ink-10"
-          >
-            <ConnectionMark connection={connection} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-caption font-semibold text-nomi-ink">{connection.name}</span>
-              <span className="mt-0.5 block text-micro leading-relaxed text-nomi-ink-40">
-                {t('onboardingProviders.drawer.home.connectionSummary', { count: connection.models.length })}
-              </span>
-            </span>
-            <span className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 text-micro',
-              CONNECTION_STATUS_TEXT_TONE[summary.state],
-            )}>
-              <span className={cn('size-1.5 rounded-full', CONNECTION_STATUS_TONE[summary.state])} />
-              {statusLabel}
-            </span>
-            <IconChevronRight size={15} stroke={1.7} className="shrink-0 text-nomi-ink-30 group-hover:text-nomi-accent" aria-hidden="true" />
-          </button>
-        )
-      })}
+      {filtered.map((connection) => (
+        <ConnectedRow
+          key={connection.vendorKey}
+          connection={connection}
+          mappings={mappings}
+          onHealthChange={onHealthChange}
+        />
+      ))}
     </RowGroup>
   )
 }
@@ -270,6 +329,17 @@ export function ModelSettingsHome({
   const [search, setSearch] = React.useState('')
   const [morePlatformsOpen, setMorePlatformsOpen] = React.useState(false)
   const [otherWaysOpen, setOtherWaysOpen] = React.useState(false)
+  // 各行探完把结果报上来（探测本身仍归每行的 useVendorHealth，这里只收结论，不第二次探）。
+  const [unreachableKeys, setUnreachableKeys] = React.useState<ReadonlySet<string>>(() => new Set())
+  const handleHealthChange = React.useCallback((vendorKey: string, unreachable: boolean) => {
+    setUnreachableKeys((prev) => {
+      if (prev.has(vendorKey) === unreachable) return prev
+      const next = new Set(prev)
+      if (unreachable) next.add(vendorKey)
+      else next.delete(vendorKey)
+      return next
+    })
+  }, [])
   const allModels = connections.flatMap((connection) => connection.models)
   const statuses = allModels.map((model) => resolveModelHomeStatus(model, mappings))
   const needsSetupCount = statuses.filter((status) => status === 'needsSetup' || status === 'failed').length
@@ -288,15 +358,24 @@ export function ModelSettingsHome({
     ? t('onboardingProviders.drawer.home.subtitle', { connections: connections.length, models: allModels.length })
     : t('onboardingProviders.drawer.home.emptySubtitle')
 
+  // 「连不上」压倒模型统计：一家都通不了的时候，标题写「24 个可使用」是在骗人（与行内红字打架）。
+  const unreachableAside = unreachableKeys.size > 0
+    ? t('onboardingProviders.drawer.home.unreachableCount', { count: unreachableKeys.size })
+    : null
   const connectedSection = hasConnections ? (
     <section className="mt-5" data-model-home-connected>
       <SectionHeading
         title={t('onboardingProviders.drawer.home.connected')}
-        aside={hasAttention
+        aside={unreachableAside ?? (hasAttention
           ? t('onboardingProviders.drawer.home.connectedAttention', { ready: allModels.length - needsSetupCount, pending: needsSetupCount })
-          : t('onboardingProviders.drawer.home.readyCount', { count: allModels.length })}
+          : t('onboardingProviders.drawer.home.readyCount', { count: allModels.length }))}
       />
-      <ConnectedRows connections={connections} mappings={mappings} search={search} />
+      <ConnectedRows
+        connections={connections}
+        mappings={mappings}
+        search={search}
+        onHealthChange={handleHealthChange}
+      />
     </section>
   ) : null
 

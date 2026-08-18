@@ -197,13 +197,58 @@ describe('model settings workspace structure', () => {
     const verification = read('src/ui/onboarding/AdapterVerificationScreen.tsx')
     const known = read('src/ui/onboarding/VendorOnboardCard.tsx')
     const custom = read('src/ui/onboarding/CustomVendorManage.tsx')
+    const urlField = read('src/ui/onboarding/VendorBaseUrlField.tsx')
 
     expect(verification).toContain("onRecoverConnection(advice.action === 'fixUrl' ? 'baseUrl' : 'apiKey')")
     expect(drawer).toContain('openModelSettingsConnectionPage(current, run.vendorKey')
+    // key 那一路仍归各自的卡（内置家支持多段凭证，自定义家恒单段——是真实差异，不是重复）。
     expect(known).toContain('data-model-connection-field="apiKey"')
-    expect(known).toContain('data-model-connection-field="baseUrl"')
     expect(custom).toContain('data-model-connection-field="apiKey"')
-    expect(custom).toContain('data-model-connection-field="baseUrl"')
+    // 地址那一路两张卡共用同一份实现，且都把 focus 透传下去，否则 fixUrl 的恢复流程会落空。
+    for (const [name, source] of [['known', known], ['custom', custom]] as const) {
+      expect(source, `${name} 卡要用共用的地址字段`).toContain('<VendorBaseUrlField')
+      expect(source, `${name} 卡要把 focus 透传给地址字段`).toContain('focus={focus}')
+    }
+    expect(urlField).toContain('data-model-connection-field="baseUrl"')
+    expect(urlField).toContain("focus.target !== 'baseUrl'")
+  })
+
+  // 2026-08-18：群里「要改 api url 翻了半天没找到」的实测根因是——地址/凭证排在 24 行模型列表
+  // 之后，落地连接详情页那一屏整块被弹窗 overflow 裁在窗外（铅笔 y=817 / 弹窗底边 y=706）。
+  // 见 docs/plan/2026-08-18-vendor-connection-discoverability.md。
+  it('puts the connection block before the model list on the custom vendor card', () => {
+    const card = read('src/ui/onboarding/CustomVendorCard.tsx')
+    const connectionAt = card.indexOf('<CustomVendorManage')
+    const modelsAt = card.indexOf('<ModelEnableEditor')
+    expect(connectionAt, 'CustomVendorManage 要在卡里').toBeGreaterThan(-1)
+    expect(modelsAt, 'ModelEnableEditor 要在卡里').toBeGreaterThan(-1)
+    expect(connectionAt, '「连接」必须排在「模型」之前——这一页的主语是连接').toBeLessThan(modelsAt)
+  })
+
+  // 首页那一行此前只算 summarizeModelHomeConnection（模型能力，不看网络），于是 401 的家
+  // 在用户扫视的那一屏上写着灰色「24 个可使用」——他根本不知道该点哪一行去改地址。
+  it('surfaces connection health on the model home rows without a second probe', () => {
+    const home = read('src/ui/onboarding/ModelSettingsHome.tsx')
+    const drawer = read('src/ui/onboarding/OnboardingDrawer.tsx')
+    // 复用卡片侧那个现成 hook，不另写一套探测（P1 无并行实现）。
+    expect(home).toContain("import { useVendorHealth } from './useVendorHealth'")
+    expect(home).not.toContain('useVendorHealthMap')
+    expect(home).toContain('data-model-home-unreachable')
+    // 探测要的入参得真的从 drawer 传下来，否则 hook 拿到空 baseUrl 永远探不出结果。
+    expect(drawer).toContain('hasApiKey: meta?.hasApiKey ?? true')
+    expect(drawer).toContain('baseUrl: card.meta.baseUrl')
+    // 区块标题不许在有家连不上时还写「N 个可使用」（与行内红字打架）。
+    expect(home).toContain('unreachableAside ?? (hasAttention')
+  })
+
+  // §1.5.2 一功能一个家：删除整家此前有两个入口（卡头垃圾桶 + 连接组按钮）。
+  it('keeps exactly one entry point for deleting a whole vendor', () => {
+    const card = read('src/ui/onboarding/CustomVendorCard.tsx')
+    const manage = read('src/ui/onboarding/CustomVendorManage.tsx')
+    expect(card).not.toContain('headerAction')
+    expect(card).not.toContain('onDeleteVendor')
+    expect(manage).toContain('confirmAndDeleteVendor')
+    expect(manage.match(/confirmAndDeleteVendor\(/g) ?? []).toHaveLength(1)
   })
 
   it('uses progressive disclosure for wire-level capability fields', () => {
