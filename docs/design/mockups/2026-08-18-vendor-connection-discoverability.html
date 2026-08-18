@@ -1,0 +1,141 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>模型连接详情页 · 改地址/删供应商的可发现性（2026-08-18）</title>
+<!--
+  样张来源：真实布局 + 改动，不是脑补。
+  BEFORE 一比一照抄 tests/ux/shots/baseurl-discoverability/05-connection-page-top.png
+  （走查脚本 tests/ux/vendor-baseurl-discoverability.walk.mjs 实拍）。
+  实测数字：铅笔 rect top=817 / 设置弹窗底边 706 → 落地这一屏被裁在窗外；命中测试打到遮罩层。
+           铅笔命中区 17×17px；外层还需滚 205px；模型列表自带 max-h-[300px] 内滚（521px）。
+  规则依据：设计系统 §1.5.3 手法优先级「先分组 → 再去重 → 再归位 → 最后才收纳」，本方案只用了前三招。
+-->
+<style>
+  :root{
+    --nomi-paper:#fff; --nomi-bg:oklch(0.985 0.003 90);
+    --nomi-ink:oklch(0.22 0.01 80); --nomi-ink-60:oklch(0.50 0.01 80);
+    --nomi-ink-40:oklch(0.68 0.01 80); --nomi-ink-30:oklch(0.78 0.01 80);
+    --nomi-ink-05:oklch(0.97 0.003 80); --nomi-line:oklch(0.91 0.004 80);
+    --nomi-line-soft:oklch(0.95 0.003 80); --nomi-accent:oklch(0.55 0.13 250);
+    --workbench-danger:#ff3b30; --workbench-danger-soft:rgba(255,59,48,.1);
+    --workbench-success:#34c759;
+  }
+  body{margin:0;padding:32px;background:var(--nomi-bg);font:14px/1.5 -apple-system,"PingFang SC",system-ui,sans-serif;color:var(--nomi-ink)}
+  h1{font-size:20px;font-weight:600;margin:0 0 4px}
+  .lede{color:var(--nomi-ink-60);font-size:13px;margin:0 0 28px;max-width:64ch;line-height:1.7}
+  .cols{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+  .col{flex:1 1 380px;min-width:340px}
+  .cap{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px}
+  .bad{background:var(--workbench-danger-soft);color:var(--workbench-danger)}
+  .good{background:rgba(52,199,89,.12);color:#248a3d}
+  .capnote{font-size:12px;color:var(--nomi-ink-60)}
+  /* 设置弹窗右侧内容区：760 - 196 sidebar = 564px 宽（真实尺寸） */
+  .pane{width:100%;max-width:564px;background:var(--nomi-paper);border:1px solid var(--nomi-line);border-radius:14px;overflow:hidden;font-size:12px}
+  .hd{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--nomi-line)}
+  .hdr{font-size:13px;font-weight:600}
+  .tag{font-size:11px;color:var(--nomi-ink-40)}
+  .bd{padding:12px}
+  .card{display:flex;align-items:center;gap:10px;border:1px solid var(--nomi-line);border-radius:10px;padding:9px 10px}
+  .glyph{width:22px;height:22px;border-radius:6px;background:var(--nomi-ink-05);display:grid;place-items:center;font-size:10px;color:var(--nomi-ink-60)}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .dot{width:5px;height:5px;border-radius:999px}
+  .field{border:1px solid var(--nomi-line);border-radius:6px;padding:5px 9px;color:var(--nomi-ink-30);margin-top:10px}
+  .row{display:flex;align-items:center;gap:8px;padding:6px 4px}
+  .btn{border:1px solid var(--nomi-line);background:var(--nomi-paper);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--nomi-ink-60);min-height:24px;box-sizing:border-box}
+  .btn.danger{border-color:rgba(255,59,48,.35);color:var(--workbench-danger)}
+  .chk{width:13px;height:13px;border-radius:3px;background:var(--nomi-accent)}
+  .sect{font-size:11px;font-weight:600;color:var(--nomi-ink-60);margin:12px 0 6px}
+  .grp{border:1px solid var(--nomi-line);border-radius:10px;overflow:hidden}
+  .gr{display:flex;align-items:center;gap:10px;padding:9px 10px}
+  .gr+.gr{border-top:1px solid var(--nomi-line-soft)}
+  .lbl{font-size:11px;color:var(--nomi-ink-40);width:56px;flex:0 0 auto}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+  .banner{display:flex;align-items:center;gap:8px;background:var(--workbench-danger-soft);border-radius:10px;padding:8px 10px;color:var(--workbench-danger)}
+  .fold{height:24px;background:linear-gradient(to bottom,rgba(255,255,255,0),#fff);margin-top:-2px}
+  .foldtxt{text-align:center;font-size:11px;color:var(--workbench-danger)}
+  .foldtxt.mute{color:var(--nomi-ink-40)}
+  .why{margin-top:14px;font-size:12px;color:var(--nomi-ink-60);line-height:1.8;max-width:60ch}
+  .why b{color:var(--nomi-ink);font-weight:600}
+  .pencil{font-size:11px;color:var(--nomi-ink-30)}
+</style>
+
+<h1>「改 Base URL / 删供应商」的可发现性</h1>
+<p class="lede">
+  能力自 v0.16.1 就在（<code>CustomVendorManage.tsx</code>：改地址 / 换 key / 删整家齐全），群里两条投诉是<b>找不到</b>，不是没有。
+  下面左边是真机实拍的当前第一屏，右边是只用「归位 + 去重」两招后的同一屏——不加新功能、不写并行实现。
+</p>
+
+<div class="cols">
+
+<div class="col">
+  <div class="cap"><span class="badge bad">现在</span><span class="capnote">点进「阶跃星辰中转」后落地的第一屏</span></div>
+  <div class="pane">
+    <div class="hd">
+      <span style="color:var(--nomi-ink-40)">←</span>
+      <div style="flex:1"><div class="hdr">阶跃星辰中转</div><div class="tag">管理连接、模型和调用方式。</div></div>
+      <span class="tag">＋ 添加其他模型</span><span class="tag">✕</span>
+    </div>
+    <div class="bd">
+      <div class="card">
+        <span class="glyph">阶</span>
+        <div style="flex:1"><div class="hdr">阶跃星辰中转</div><div class="tag">24 / 24 个模型已启用</div></div>
+        <span class="pill bad"><span class="dot" style="background:var(--workbench-danger)"></span>连不上</span>
+        <span style="color:var(--nomi-ink-30)">🗑</span>
+      </div>
+      <div class="field">🔍 搜索模型名…</div>
+      <div class="row"><span class="btn">全选</span><span class="btn">全不选</span><span class="btn">批量删除</span><span style="flex:1"></span><span class="tag">已启用 24 / 24</span></div>
+      <div class="tag" style="margin:2px 0 4px">文本 24/24</div>
+      <div class="row"><span class="chk"></span>Hunyuan Standard</div>
+      <div class="row"><span class="chk"></span>Doubao Pro 32k</div>
+      <div class="row"><span class="chk"></span>Ernie 4.0</div>
+      <div class="row"><span class="chk"></span>Yi Large</div>
+      <div class="fold"></div>
+      <div class="foldtxt">↓ 还有 20 个模型 · 再滚 205px 才看得到「接入地址」和那支 13px 铅笔</div>
+    </div>
+  </div>
+  <p class="why">
+    实测：铅笔矩形落在 <b>y=817</b>，设置弹窗底边在 <b>y=706</b>——落地这一屏它被裁在窗外，
+    <code>elementFromPoint</code> 打到的是遮罩层。红色「连不上」在最上面，<b>治它的那个控件在最下面</b>。
+    模型列表还自带 <code>max-h-[300px]</code> 内滚（521px），鼠标停在列表上滚，先吃掉 521px 才轮到外层动。
+  </p>
+</div>
+
+<div class="col">
+  <div class="cap"><span class="badge good">改后</span><span class="capnote">同一屏，只做归位 + 去重</span></div>
+  <div class="pane">
+    <div class="hd">
+      <span style="color:var(--nomi-ink-40)">←</span>
+      <div style="flex:1"><div class="hdr">阶跃星辰中转</div><div class="tag">管理连接、模型和调用方式。</div></div>
+      <span class="tag">＋ 添加其他模型</span><span class="tag">✕</span>
+    </div>
+    <div class="bd">
+      <div class="banner">
+        <span>⚠</span><div style="flex:1">连不上 · 无效的接入地址（mock 上游）</div><span class="btn danger">重新检查</span>
+      </div>
+
+      <p class="sect">连接</p>
+      <div class="grp">
+        <div class="gr"><span class="lbl">接入地址</span><span style="flex:1" class="mono">http://127.0.0.1:54520/v1/wrong-path</span><span class="btn">✎ 修改</span></div>
+        <div class="gr"><span class="lbl">API Key</span><span style="flex:1;color:var(--nomi-ink-40)">已保存</span><span class="btn">更换</span><span class="btn">断开</span></div>
+        <div class="gr"><span class="lbl">供应商</span><span style="flex:1;color:var(--nomi-ink-40)">删除后 24 个模型一并移除</span><span class="btn danger">🗑 删除整个供应商</span></div>
+      </div>
+
+      <div style="display:flex;align-items:center;margin:14px 0 6px"><span class="sect" style="margin:0">模型</span><span style="flex:1"></span><span class="tag">已启用 24 / 24</span></div>
+      <div style="border:1px solid var(--nomi-line);border-radius:6px;padding:5px 9px;color:var(--nomi-ink-30)">🔍 搜索模型名…</div>
+      <div class="row"><span class="btn">全选</span><span class="btn">全不选</span><span class="btn">批量删除</span></div>
+      <div class="row"><span class="chk"></span>Hunyuan Standard</div>
+      <div class="row"><span class="chk"></span>Doubao Pro 32k</div>
+      <div class="fold"></div>
+      <div class="foldtxt mute">↓ 模型列表照旧，滚下去就是</div>
+    </div>
+  </div>
+  <p class="why">
+    ① <b>归位</b>（§1.5.3 第三招，可达性代价 0）：失败横幅 +「连接」组提到模型列表<b>上方</b>——
+    连接详情页的主语本来就是「连接」，模型列表是它的附属。<br>
+    ② <b>字段化</b>：地址从「灰小字 + 13px 铅笔」变成带标签的字段行 + 有字的「修改」按钮，
+    命中区 17×17 → ≥24px（WCAG 2.2 AA 最小目标尺寸）。<br>
+    ③ <b>去重</b>（一功能一个家）：卡头那个垃圾桶图标删掉，删除整家只留「连接」组里这一个。
+  </p>
+</div>
+
+</div>
