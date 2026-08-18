@@ -9,8 +9,7 @@
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconStack2, IconTrash } from '@tabler/icons-react'
-import { cn } from '../../utils/cn'
+import { IconStack2 } from '@tabler/icons-react'
 import { FoldableModelCard } from './FoldableModelCard'
 import { ModelEnableEditor } from './ModelEnableEditor'
 import { CustomVendorManage } from './CustomVendorManage'
@@ -37,7 +36,6 @@ type CustomVendorCardProps = {
   onCustomCall: ModelEditorProps['onCustomCall']
   /** 改类型（接入时按模型名猜的，猜错在这里改）。 */
   onRetype: ModelEditorProps['onRetype']
-  onDeleteVendor: () => void
   onChanged: () => void
   onOpenDetails?: () => void
   detailMode?: boolean
@@ -56,7 +54,6 @@ export function CustomVendorCard({
   onDelete,
   onCustomCall,
   onRetype,
-  onDeleteVendor,
   onChanged,
   onOpenDetails,
   detailMode = false,
@@ -93,29 +90,11 @@ export function CustomVendorCard({
       defaultExpanded={false}
       onOpenDetails={onOpenDetails}
       detailMode={detailMode}
-      headerAction={
-        <button
-          type="button"
-          aria-label={t('onboardingProviders.drawer.deleteVendorAria', { name })}
-          title={t('onboardingProviders.drawer.deleteVendorTitle')}
-          onClick={onDeleteVendor}
-          className={cn(
-            'grid place-items-center size-7 rounded-nomi-sm text-nomi-ink-40 transition-colors',
-            'hover:bg-[var(--workbench-danger-soft)] hover:text-workbench-danger',
-          )}
-        >
-          <IconTrash size={15} stroke={1.7} />
-        </button>
-      }
     >
-      <ModelEnableEditor
-        models={models}
-        onToggle={onToggle}
-        onDelete={onDelete}
-        onCustomCall={onCustomCall}
-        onRetype={onRetype}
-        onOpenModel={onOpenModel}
-      />
+      {/* 「连接」在「模型」之前——这一页的主语是连接，模型列表是它的附属。
+          此前反着排：24 行模型把地址/凭证挤到弹窗 overflow 之外，落地首屏根本看不见改地址的入口
+          （实测铅笔 y=817 / 弹窗底边 y=706），这就是群里「翻了半天没找到」的根因。
+          见 docs/plan/2026-08-18-vendor-connection-discoverability.md。 */}
       <CustomVendorManage
         vendorKey={vendorKey}
         vendorName={name}
@@ -127,6 +106,19 @@ export function CustomVendorCard({
         onChanged={onChanged}
         focus={focus}
       />
+      <div className="flex flex-col gap-2 border-t border-nomi-line-soft pt-3">
+        <h3 className="text-caption font-semibold text-nomi-ink-60">
+          {t('onboardingProviders.customVendor.modelsSection')}
+        </h3>
+        <ModelEnableEditor
+          models={models}
+          onToggle={onToggle}
+          onDelete={onDelete}
+          onCustomCall={onCustomCall}
+          onRetype={onRetype}
+          onOpenModel={onOpenModel}
+        />
+      </div>
     </FoldableModelCard>
   )
 }
