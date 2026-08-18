@@ -23,6 +23,7 @@ import {
   resolveArchetypeForModel,
 } from '../../../config/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
+import { isComfyuiVendorKey } from './comfyuiTaskControl'
 import { loadUsableVendorKeys, remapArchetypeMode, resolveUsableModelForNode } from './usableVendorModel'
 
 export type CatalogTaskActionOptions = {
@@ -80,7 +81,9 @@ export function resolveTaskArchetype(meta: Record<string, unknown>) {
   const modelKey = asTrimmedString(meta.modelKey) || asTrimmedString(meta.modelAlias)
   // 本地 ComfyUI workflow 是用户导入的通用图，不是内置档案模型。旧节点可能残留上一模型的
   // meta.archetype，若继续信它，参考图会被投到 archetypeInput 而不是 workflow 的 flat 参数。
-  if (vendor === 'comfyui-local') return null
+  // 判据必须用前缀判据而非字面量：第 2+ 台实例的 key 是 `comfyui-local-{slug}`（见
+  // AddComfyuiInstanceButton），硬比 'comfyui-local' 只保得住第一台。
+  if (isComfyuiVendorKey(vendor)) return null
   return resolveArchetypeForModel({
     modelKey,
     modelAlias: asTrimmedString(meta.modelAlias),

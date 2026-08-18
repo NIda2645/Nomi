@@ -17,6 +17,7 @@ import {
   optionLabel,
   optionValue,
 } from './controls/parameterControlModel'
+import { hasUsableSliderStep, isCompleteNumericDraft } from './controls/numericDraft'
 import { commonRatioSortKey } from './aspectRatio'
 import { resolveArchetypeForOption } from './nodeModelArchetype'
 import { useDedupedModelSelect } from '../../common/useDedupedModelSelect'
@@ -43,6 +44,61 @@ type InlineParameterBarProps = {
 // 2026-07-17 用户拍板（样张 docs/design/mockups/node-param-panel.html），替代旧「前 2 内联 + 更多弹层」
 // 方案 B——参数多时内联下拉挤、分层线武断；摘要 pill 让当前配置一眼读完、面板给全部参数同一交互。
 // 「生成方式」（文生/图生 tab）保持在 composer 顶部不进面板（用户拍板第 2 点）。
+
+/**
+ * 面板里的自由输入行（无候选项、无可用区间的参数）。
+ *
+ * 数字参数必须带草稿缓冲：这个框是受控的，每次击键都回写 meta。而输 `0.4` 要途经 `0.`，
+ * 它按 HTML 规范不是合法浮点数、`input.value` 读出来是空串——于是那一键把 null 写进了节点 meta，
+ * 也就写进了生成请求参数。（显示不受影响：type="number" 会保留用户键入的原文，坏的是写出去的值。）
+ * 所以聚焦期间显示本地草稿，只在草稿构成完整数值时才提交；失焦时若仍是中间态就丢弃草稿回到已提交值。
+ * 文本参数没有这个问题，逐键提交即可。
+ */
+function ParameterTextInput({
+  control,
+  value,
+  onCommit,
+}: {
+  control: ModelParameterControl
+  value: string
+  onCommit: (value: string) => void
+}): JSX.Element {
+  const isNumeric = control.type === 'number'
+  const [draft, setDraft] = React.useState<string | null>(null)
+
+  const handleChange = (next: string): void => {
+    if (!isNumeric) {
+      onCommit(next)
+      return
+    }
+    setDraft(next)
+    if (isCompleteNumericDraft(next)) onCommit(next)
+  }
+
+  return (
+    <label
+      className={cn(
+        'flex items-center gap-2 px-2.5 rounded-nomi border border-nomi-line min-w-0 focus-within:border-nomi-accent',
+      )}
+      style={{ height: 30 }}
+    >
+      <input
+        className={cn(
+          'flex-1 appearance-none bg-transparent border-0 outline-0 text-caption text-nomi-ink-80 min-w-0',
+        )}
+        aria-label={control.label}
+        type={isNumeric ? 'number' : 'text'}
+        value={draft ?? value}
+        min={control.min}
+        max={control.max}
+        step={control.step}
+        placeholder={control.placeholder}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={() => setDraft(null)}
+      />
+    </label>
+  )
+}
 
 /** 比例文本（"16:9"）→ 宽高比小图形（描边矩形，最长边 18px）。
  *  value 和 label 都试（图片模型 size 值常是像素 "1024x1024"，label 才是 "16:9"——只看 value 会漏画）。 */
@@ -301,7 +357,13 @@ export default function InlineParameterBar({
         )
       }
       // 数值 + min/max（时长秒数这类连续档）→ 滑杆 + 当前值（2026-07-17 用户拍板）。
-      if (control.type === 'number' && typeof control.min === 'number' && typeof control.max === 'number') {
+      // 但步长切不出两档以上的区间（如未声明步长的 0–1）滑杆等于废掉，退回下面的数字框。
+      if (
+        control.type === 'number'
+        && typeof control.min === 'number'
+        && typeof control.max === 'number'
+        && hasUsableSliderStep(control.min, control.max, control.step)
+      ) {
         const current = Number(controlInitialValue(control, meta))
         const value = Number.isFinite(current) ? current : control.min
         return (
@@ -329,26 +391,11 @@ export default function InlineParameterBar({
       }
       // 自由数值/文本（无候选项、无范围）：面板内输入行。
       return (
-        <label
-          className={cn(
-            'flex items-center gap-2 px-2.5 rounded-nomi border border-nomi-line min-w-0 focus-within:border-nomi-accent',
-          )}
-          style={{ height: 30 }}
-        >
-          <input
-            className={cn(
-              'flex-1 appearance-none bg-transparent border-0 outline-0 text-caption text-nomi-ink-80 min-w-0',
-            )}
-            aria-label={control.label}
-            type={control.type === 'number' ? 'number' : 'text'}
-            value={controlInitialValue(control, meta)}
-            min={control.min}
-            max={control.max}
-            step={control.step}
-            placeholder={control.placeholder}
-            onChange={(e) => onParameterControlChange(control, e.target.value)}
-          />
-        </label>
+        <ParameterTextInput
+          control={control}
+          value={controlInitialValue(control, meta)}
+          onCommit={(v) => onParameterControlChange(control, v)}
+        />
       )
     })()
     return (

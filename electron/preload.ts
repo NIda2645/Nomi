@@ -89,6 +89,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       get: () => ipcRenderer.invoke("nomi:settings:system-prompts-get"),
       set: (payload: unknown) => ipcRenderer.invoke("nomi:settings:system-prompts-set", payload),
     },
+    generationModelDefaults: {
+      get: () => ipcRenderer.invoke("nomi:settings:generation-model-defaults-get"),
+      set: (payload: unknown) => ipcRenderer.invoke("nomi:settings:generation-model-defaults-set", payload),
+    },
   },
   browserChromeMenu: {
     select: (id: unknown) => ipcRenderer.send("browser:chrome-menu:select", id),
