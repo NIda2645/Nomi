@@ -22,8 +22,11 @@ import {
   SHOT_SENSITIVITY_MAX,
   SHOT_SENSITIVITY_MIN,
   SHOT_SENSITIVITY_STEP,
+  evenFrameCount,
+  evenFrameSeconds,
   filterShotCuts,
   formatShotTimestamp,
+  pickDefaultSensitivity,
   shotSheetRows,
   shotSheetTileStyle,
   type ShotCut,
@@ -35,6 +38,7 @@ type DetectState =
   | {
       phase: 'ready'
       cuts: ShotCut[]
+      durationSeconds: number
       sheetUrl: string | null
       sheetColumns: number
       truncated: boolean
@@ -48,6 +52,8 @@ export default function NodeShotCutPanel({ node, onClose }: Props): JSX.Element 
   const [threshold, setThreshold] = React.useState(SHOT_SENSITIVITY_DEFAULT)
   const [excluded, setExcluded] = React.useState<ReadonlySet<number>>(() => new Set())
   const [committing, setCommitting] = React.useState<{ done: number; total: number } | null>(null)
+  /** 打开时替用户放宽到了哪一档（没放宽则 null）。用户一动滑杆这条说明就过时了，故按值比对而不是布尔。 */
+  const [autoRelaxedTo, setAutoRelaxedTo] = React.useState<number | null>(null)
 
   const videoUrl = node.result?.url
   React.useEffect(() => {
@@ -61,9 +67,15 @@ export default function NodeShotCutPanel({ node, onClose }: Props): JSX.Element 
     detect({ videoUrl, projectId })
       .then((result) => {
         if (!alive) return
+        const cuts = result.cuts ?? []
+        // 灵敏度从这条视频自己的分数分布 derive——写死 0.3 会让弱切点的片子「打开即空」。
+        const picked = pickDefaultSensitivity(cuts)
+        setThreshold(picked)
+        setAutoRelaxedTo(picked < SHOT_SENSITIVITY_DEFAULT ? picked : null)
         setState({
           phase: 'ready',
-          cuts: result.cuts ?? [],
+          cuts,
+          durationSeconds: Number(result.durationSeconds) || 0,
           sheetUrl: result.sheetUrl ?? null,
           sheetColumns: result.sheetColumns || 8,
           truncated: Boolean(result.truncated),
@@ -87,6 +99,15 @@ export default function NodeShotCutPanel({ node, onClose }: Props): JSX.Element 
   const selected = React.useMemo(() => visible.filter((cut) => !excluded.has(cut.index)), [visible, excluded])
   const rows = state.phase === 'ready' ? shotSheetRows(allCuts.length, state.sheetColumns) : 1
 
+  const durationSeconds = state.phase === 'ready' ? state.durationSeconds : 0
+  /** 全集 = 0：这段结构上就是一镜到底（AI 生成的片段基本都是）。不是失败，是换一条路——均匀抽帧。 */
+  const isOneShot = state.phase === 'ready' && allCuts.length === 0
+  const evenCount = evenFrameCount(durationSeconds)
+  /** 全集非 0 但当前灵敏度筛没了（用户自己把滑杆拉高了）：给一键回到能看到的那档，别让他对着空白猜。 */
+  const relaxTo = React.useMemo(() => pickDefaultSensitivity(allCuts), [allCuts])
+  const relaxCount = React.useMemo(() => filterShotCuts(allCuts, relaxTo).length, [allCuts, relaxTo])
+  const filteredOut = state.phase === 'ready' && allCuts.length > 0 && visible.length === 0
+
   const toggle = (index: number) => {
     setExcluded((prev) => {
       const next = new Set(prev)
@@ -96,17 +117,25 @@ export default function NodeShotCutPanel({ node, onClose }: Props): JSX.Element 
     })
   }
 
-  const commit = async () => {
-    if (!selected.length || committing) return
-    setCommitting({ done: 0, total: selected.length })
-    await extractShotCutsToNodes({
-      node,
-      seconds: selected.map((cut) => cut.seconds),
-      onProgress: (progress) => setCommitting(progress),
-    })
+  /** 落画布只有这一条管线：切点选出来的秒数、均匀抽出来的秒数，走的都是它。 */
+  const commitSeconds = async (seconds: readonly number[]) => {
+    if (!seconds.length || committing) return
+    setCommitting({ done: 0, total: seconds.length })
+    await extractShotCutsToNodes({ node, seconds, onProgress: (progress) => setCommitting(progress) })
     setCommitting(null)
     onClose()
   }
+
+  const subtitle =
+    state.phase === 'detecting'
+      ? t('generationCommon.node.shotCuts.detecting')
+      : state.phase === 'failed'
+        ? t('generationCommon.node.shotCuts.failed')
+        : isOneShot
+          ? t('generationCommon.node.shotCuts.oneShot')
+          : autoRelaxedTo !== null && threshold === autoRelaxedTo
+            ? t('generationCommon.node.shotCuts.foundAutoRelaxed', { count: visible.length })
+            : t('generationCommon.node.shotCuts.found', { count: visible.length })
 
   const canvasViewport =
     typeof document === 'undefined' ? null : document.querySelector<HTMLElement>('.workbench-generation__canvas')
@@ -133,13 +162,7 @@ export default function NodeShotCutPanel({ node, onClose }: Props): JSX.Element 
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-body font-medium text-nomi-ink">{t('generationCommon.node.shotCuts.title')}</div>
-            <div className="mt-0.5 text-body-sm text-nomi-ink-60">
-              {state.phase === 'detecting'
-                ? t('generationCommon.node.shotCuts.detecting')
-                : state.phase === 'failed'
-                  ? t('generationCommon.node.shotCuts.failed')
-                  : t('generationCommon.node.shotCuts.found', { count: visible.length })}
-            </div>
+            <div className="mt-0.5 text-body-sm text-nomi-ink-60">{subtitle}</div>
           </div>
           <button
             type="button"
@@ -158,9 +181,29 @@ export default function NodeShotCutPanel({ node, onClose }: Props): JSX.Element 
           <div className="rounded-nomi-sm bg-nomi-ink-05 px-3 py-2 text-body-sm text-nomi-ink-80">{state.message}</div>
         ) : null}
 
-        {state.phase === 'ready' && allCuts.length === 0 ? (
-          <div className="rounded-nomi-sm bg-nomi-ink-05 px-3 py-2 text-body-sm text-nomi-ink-80">
-            {t('generationCommon.node.shotCuts.noCuts')}
+        {isOneShot ? (
+          <div className="rounded-nomi-sm bg-nomi-ink-05 px-3 py-2 text-body-sm leading-relaxed text-nomi-ink-80">
+            {durationSeconds > 0
+              ? t('generationCommon.node.shotCuts.oneShotBody', { duration: durationSeconds.toFixed(1) })
+              : t('generationCommon.node.shotCuts.noCuts')}
+          </div>
+        ) : null}
+
+        {filteredOut ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-nomi-sm bg-nomi-ink-05 px-3 py-2 text-body-sm text-nomi-ink-80">
+            <span>{t('generationCommon.node.shotCuts.filteredOut')}</span>
+            <button
+              type="button"
+              data-shot-cut-relax="true"
+              className={cn(
+                'h-7 rounded-nomi-sm border-0 bg-transparent px-2 text-body-sm cursor-pointer',
+                'text-nomi-accent underline underline-offset-2 hover:bg-nomi-accent-soft disabled:opacity-40',
+              )}
+              disabled={Boolean(committing)}
+              onClick={() => setThreshold(relaxTo)}
+            >
+              {t('generationCommon.node.shotCuts.relaxAction', { count: relaxCount })}
+            </button>
           </div>
         ) : null}
 
@@ -240,37 +283,52 @@ export default function NodeShotCutPanel({ node, onClose }: Props): JSX.Element 
         ) : null}
 
         <div className="flex items-center justify-between gap-2 border-t border-nomi-line-soft pt-3">
-          <button
-            type="button"
-            className={cn(
-              'h-8 rounded-nomi-sm border-0 bg-transparent px-2 text-body-sm cursor-pointer',
-              'text-nomi-ink-60 hover:bg-nomi-ink-05 hover:text-nomi-ink disabled:opacity-40',
-            )}
-            disabled={state.phase !== 'ready' || !visible.length || Boolean(committing)}
-            onClick={() => setExcluded(selected.length === visible.length ? new Set(visible.map((c) => c.index)) : new Set())}
-          >
-            {selected.length === visible.length && visible.length > 0
-              ? t('generationCommon.node.shotCuts.selectNone')
-              : t('generationCommon.node.shotCuts.selectAll')}
-          </button>
+          {/* 一镜到底时没有任何东西可选：不摆一个永远点不了的「全选」（设计系统 C4 禁用不做沟通死路）。 */}
+          {isOneShot ? (
+            <span />
+          ) : (
+            <button
+              type="button"
+              className={cn(
+                'h-8 rounded-nomi-sm border-0 bg-transparent px-2 text-body-sm cursor-pointer',
+                'text-nomi-ink-60 hover:bg-nomi-ink-05 hover:text-nomi-ink disabled:opacity-40',
+              )}
+              disabled={state.phase !== 'ready' || !visible.length || Boolean(committing)}
+              onClick={() => setExcluded(selected.length === visible.length ? new Set(visible.map((c) => c.index)) : new Set())}
+            >
+              {selected.length === visible.length && visible.length > 0
+                ? t('generationCommon.node.shotCuts.selectNone')
+                : t('generationCommon.node.shotCuts.selectAll')}
+            </button>
+          )}
           <div className="flex items-center gap-2">
             {committing ? (
               <span className="text-body-sm text-nomi-ink-60">
                 {t('generationCommon.node.shotCuts.committing', { done: committing.done, total: committing.total })}
               </span>
             ) : null}
+            {/* 一镜到底：主操作换成「均匀抽帧」——用户点「按镜头拆」要的是从这段里取画面，没切点不代表没得取。 */}
             <button
               type="button"
               data-shot-cut-commit="true"
+              data-shot-cut-mode={isOneShot ? 'even' : 'cuts'}
               className={cn(
                 'inline-flex h-9 items-center rounded-full border-0 px-4 cursor-pointer',
                 'bg-nomi-ink text-body font-medium text-nomi-paper hover:bg-nomi-accent',
                 'transition-colors duration-[var(--nomi-transition-fast)] disabled:opacity-40 disabled:cursor-not-allowed',
               )}
-              disabled={!selected.length || Boolean(committing)}
-              onClick={() => { void commit() }}
+              disabled={(isOneShot ? durationSeconds <= 0 : !selected.length) || Boolean(committing)}
+              onClick={() => {
+                void commitSeconds(
+                  isOneShot
+                    ? evenFrameSeconds(durationSeconds, evenCount)
+                    : selected.map((cut) => cut.seconds),
+                )
+              }}
             >
-              {t('generationCommon.node.shotCuts.commit', { count: selected.length })}
+              {isOneShot
+                ? t('generationCommon.node.shotCuts.evenFrames', { count: evenCount })
+                : t('generationCommon.node.shotCuts.commit', { count: selected.length })}
             </button>
           </div>
         </div>
