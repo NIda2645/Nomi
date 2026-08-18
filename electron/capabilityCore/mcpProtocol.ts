@@ -5,8 +5,8 @@
 // 配置后实时驱动 Nomi。**这是唯一的 MCP server 实现**——打包/dev 都由 app 自身二进制以 NOMI_MCP_STDIO
 // 模式拉起 mcpStdioServer.ts，后者把本模块接到 stdin/stdout + 进程内 invoke（取代旧 scripts/nomi-mcp.mjs，P1）。
 //
-// 传输经 McpTransport 注入：send（服务端→客户端帧）/ invoke（调能力核）/ isAppOpen（Nomi 开着没，决定
-// 付费确认走应用内卡片还是 Claude 侧 elicitation）。本模块不 import electron → 协议握手可纯逻辑单测。
+// 传输经 McpTransport 注入：send（服务端→客户端帧）/ invoke（调能力核）/ isAppOpen（Nomi 开着没 = 还有没有
+// 应用内确认卡这条兜底问法；**不用来猜用户注意力在哪**）。本模块不 import electron → 协议握手可纯逻辑单测。
 //
 // MCP Apps（GUI 宿主内嵌活 widget，扩展 id io.modelcontextprotocol/ui，Stable 2026-01-26）：
 // nomi_generate 挂 _meta.ui.resourceUri → 指向 ui:// 资源（widget HTML，经 resources/read 取）；
@@ -44,7 +44,10 @@ export interface McpTransport {
   send(message: unknown): void
   /** 调一次能力核方法。spendConfirmed=真人已在 Claude 侧确认付费 → 透传给传输层放行本次。 */
   invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown>
-  /** Nomi 是否开着（有活实例）。开着→付费确认走应用内卡，关着→走 elicitation。 */
+  /**
+   * Nomi 是否开着（有活实例）= **「应用内确认卡这条问法还在不在」**，不是「用户注意力在不在 Nomi」。
+   * 确认优先弹在调用方（客户端声明 elicitation 即可）；本标志只用于回答「客户端问不了时，还有谁能问」。
+   */
   isAppOpen(): boolean
   /** 结果/进度文案语言（可选；缺省 zh-CN，跟 App 语言设置走）。 */
   getLocale?(): ResultLocale
@@ -376,6 +379,11 @@ export function createMcpProtocol(transport: McpTransport) {
         // 且 App 开着时，把确认递进聊天问一次而非让人跑去 App 点弹窗；批准记会话级信任、同项目后续不再问。
         // 不满足（单节点 / 不声明 elicitation / headless）→ 落到下面原样 invoke，走既有 gateway.confirmPlan
         //（App 弹窗 / headless 自动放行），逐字节不变。headless 即便声明 elicitation 也不问——它本就是无人值守自动放行。
+        //
+        // ⚠️ 这里的 isAppOpen() 与付费路那条**不是同一个意思**，别跟着一起删：付费路曾用它猜「用户在不在
+        // Nomi 边上」（错的，已改判据）；这里它问的是「不这么做的话，会不会弹出一张应用内方案卡」——
+        // 本分支的价值就是把那张卡搬进聊天。App 关着时 confirmPlan 恒 true（免费可撤、无人值守自动放行，
+        // 见 createDiskGateway），没有卡可替代，去掉这个条件只会凭空多问一次 → 与「少让用户点」正相反。
         if (
           tool.name === 'nomi_add_nodes'
           && clientSupportsElicitation
@@ -399,26 +407,33 @@ export function createMcpProtocol(transport: McpTransport) {
           reply(id, buildToolResultPayload(tool.name, args, result))
           return
         }
-        // 付费生成 + Nomi 没开（无应用内确认卡可弹）→ 在 Claude 这一侧弹 elicitation 让真人确认。
-        // 真人确认才以 spendConfirmed 授权本次生成；enforcement 仍在主进程硬闸。
-        // app 开着则照常走——由应用内确认卡处理（用户人在 Nomi 边上）。
-        if (tool.name === 'nomi_generate' && !transport.isAppOpen()) {
-          const costHint = describeSpend(args)
-          const confirm = await elicitSpendConfirm(`Nomi 未打开。${costHint}\n确认现在生成吗？`)
-          if (!confirm.supported) {
+        // 付费生成必须有真人确认。**判据是「谁能替我们问到真人」，不是「Nomi 窗口开着没」**：
+        // 请求经 MCP 进来，本身就证明人正坐在调用方那头（Claude/Codex/Cursor）；窗口开着 ≠ 注意力在 Nomi
+        // （用户桌面上常年挂着 Nomi）。按窗口路由 → 只要 Nomi 开着就把人赶去 App 点一下，白跑一趟。
+        //  ① 客户端声明 elicitation → 就地弹在调用方（**不管 App 开没开**），真人 accept 才带 spendConfirmed 放行；
+        //  ② 客户端问不了、App 开着 → 落到下面原样 invoke，由应用内确认卡兜底（唯一还能问到人的地方）；
+        //  ③ 两者都没有 → 无处问真人 → 诚实报错，绝不静默花钱。
+        // elicitSpendConfirm 在客户端没声明 elicitation 时返回 supported:false，故它就是①/②的唯一判据
+        // （不另读 clientSupportsElicitation，免两处能力判断漂移）。enforcement 仍在主进程硬闸。
+        if (tool.name === 'nomi_generate') {
+          const confirm = await elicitSpendConfirm(`${describeSpend(args)}\n确认现在生成吗？`)
+          if (confirm.supported) {
+            if (!confirm.confirmed) {
+              reply(id, { content: [{ type: 'text', text: '已取消：你未确认这次付费生成，未生成、未消耗额度。' }], isError: true })
+              return
+            }
+            const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
+            reply(id, buildToolResultPayload(tool.name, args, result))
+            return
+          }
+          if (!transport.isAppOpen()) {
             reply(id, {
-              content: [{ type: 'text', text: '已暂停：Nomi 未打开，且当前客户端不支持弹确认。请打开 Nomi 后再触发生成（或在 Nomi 里确认）。节点/提示词若已通过其它工具写入则已保存。' }],
+              content: [{ type: 'text', text: '已暂停：当前客户端不支持弹确认，Nomi 也没打开——没有地方能确认这次付费生成。请打开 Nomi 后再触发生成。节点/提示词若已通过其它工具写入则已保存。' }],
               isError: true,
             })
             return
           }
-          if (!confirm.confirmed) {
-            reply(id, { content: [{ type: 'text', text: '已取消：你未确认这次付费生成，未生成、未消耗额度。' }], isError: true })
-            return
-          }
-          const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
-          reply(id, buildToolResultPayload(tool.name, args, result))
-          return
+          // App 开着但客户端问不了 → 落到下面原样 invoke，走应用内确认卡。
         }
         const result = await transport.invoke(tool.method, built)
         reply(id, buildToolResultPayload(tool.name, args, result))
