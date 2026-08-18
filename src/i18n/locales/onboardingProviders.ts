@@ -317,7 +317,8 @@ export const zhOnboardingProviders = {
       advancedBadge: '高级',
       connected: '已接入',
       connectedAttention: '{{ready}} 个可使用 · {{pending}} 个待设置',
-      connectionSummary: '{{count}} 个模型 · 查看并增删模型',
+      unreachableCount: '{{count}} 家连不上',
+      connectionSummary: '{{count}} 个模型 · 管理地址、密钥与模型',
       adaptedPlatforms: '已适配平台',
       firstTwoKeyOnly: '前两项只需 Key',
       addServices: '添加模型服务',
@@ -406,8 +407,6 @@ export const zhOnboardingProviders = {
     },
     modelsEnabled: '{{enabled}} / {{total}} 个模型已启用',
     configured: '已配置',
-    deleteVendorAria: '删除供应商 {{name}}',
-    deleteVendorTitle: '删除该供应商',
     deleteVendorDialog: {
       title: '删除整个供应商',
       message: '删除「{{name}}」及其全部 {{count}} 个模型？此操作不可恢复，之后要用需重新接入。',
@@ -535,7 +534,6 @@ export const zhOnboardingProviders = {
     replace: '更换',
     addressAria: '{{name}} 接入地址',
     save: '保存',
-    address: '接入地址：{{address}}',
     editAddressAria: '编辑 {{name}} 接入地址',
     apiKeyAria: '{{name}} API Key',
     addressPlaceholder: 'https://…',
@@ -622,6 +620,11 @@ export const zhOnboardingProviders = {
     newKeyPlaceholder: '粘贴新的 API Key（sk-…）',
     notSet: '（未设置）',
     deleteEntire: '删除整个供应商',
+    deleteEntireHint: '连同 {{count}} 个模型一并移除',
+    connectionSection: '连接',
+    modelsSection: '模型',
+    addressLabel: '接入地址',
+    editAddress: '修改',
   },
   modelControls: {
     kind: {
@@ -1484,7 +1487,8 @@ export const enOnboardingProviders = {
       advancedBadge: 'Advanced',
       connected: 'Connected',
       connectedAttention: '{{ready}} usable · {{pending}} need setup',
-      connectionSummary: '{{count}} models · View, add, or remove models',
+      unreachableCount: '{{count}} unreachable',
+      connectionSummary: '{{count}} models · Manage address, key, and models',
       adaptedPlatforms: 'Adapted platforms',
       firstTwoKeyOnly: 'First two need only a key',
       addServices: 'Add model service',
@@ -1576,8 +1580,6 @@ export const enOnboardingProviders = {
     },
     modelsEnabled: '{{enabled}} / {{total}} models enabled',
     configured: 'Configured',
-    deleteVendorAria: 'Delete provider {{name}}',
-    deleteVendorTitle: 'Delete this provider',
     deleteVendorDialog: {
       title: 'Delete provider',
       message:
@@ -1711,7 +1713,6 @@ export const enOnboardingProviders = {
     replace: 'Replace',
     addressAria: '{{name}} connection address',
     save: 'Save',
-    address: 'Connection address: {{address}}',
     editAddressAria: 'Edit {{name}} connection address',
     apiKeyAria: '{{name}} API key',
     addressPlaceholder: 'https://…',
@@ -1803,6 +1804,11 @@ export const enOnboardingProviders = {
     newKeyPlaceholder: 'Paste a new API key (sk-…)',
     notSet: '(Not set)',
     deleteEntire: 'Delete provider',
+    deleteEntireHint: 'Also removes {{count}} models',
+    connectionSection: 'Connection',
+    modelsSection: 'Models',
+    addressLabel: 'Address',
+    editAddress: 'Edit',
   },
   modelControls: {
     kind: {
