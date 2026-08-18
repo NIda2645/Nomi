@@ -12,7 +12,7 @@ import type { AddressInfo } from 'node:net'
 
 import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { RpcError } from './dispatcher'
-import { createDiskGateway, createHybridGateway, createRendererGateway, type ProjectGateway } from './gateway'
+import { createDiskGateway, createHybridGateway, createRendererGateway, withPreApprovedSpend, type ProjectGateway } from './gateway'
 import { isRendererAvailable } from './rendererBridge'
 import { resolveMcpOrigin, verifyToken } from './security'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
@@ -93,7 +93,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         if (req.method !== 'POST' || req.url !== '/rpc') throw new RpcError('仅支持 POST /rpc', 404)
         if (!verifyToken(bearerToken(req))) throw new RpcError('鉴权失败：token 无效', 401)
         const raw = await readBody(req)
-        let parsed: { method?: unknown; params?: unknown; planConfirmed?: unknown }
+        let parsed: { method?: unknown; params?: unknown; planConfirmed?: unknown; spendConfirmed?: unknown }
         try {
           parsed = JSON.parse(raw || '{}')
         } catch {
@@ -105,12 +105,27 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           firstHeader(req.headers['x-nomi-mcp-client']),
           firstHeader(req.headers['x-nomi-mcp-client-proof']),
         )
+        // 付费已在**调用方客户端**经 elicitation 被真人确认（协议层 mcpProtocol.ts 只在收到
+        // `action:'accept' + confirm:true` 后才置位）→ 预批准付费门，App 不再弹第二张确认卡。
+        //
+        // 这条曾**刻意不过线**，注释写着「永远不预批 confirmSpend」。2026-08-18 用户拍板放开，理由与代价：
+        // · 为什么放开——旧判据是「Nomi 窗口开着没」，它跟「用户注意力在不在 Nomi」没有因果关系（桌面上常年
+        //   挂着 Nomi）。结果：人在 Claude 里驱动生成，却被赶回 Nomi 点一下。若信号不过线，协议层弹完
+        //   elicitation 这边照样弹卡 → 变成点两次，比原来更糟。
+        // · 为什么仍守得住 spendGrant.ts 写死的威胁模型（「Nomi 的 AI 触发不了未确认的付费生成」）——模型只能
+        //   吐 tool-call/文本，伪造不了客户端写进 server stdin 的 elicitation 响应帧；且 App 关着时这条一模一样的
+        //   信任链早已在用（makeConfirmedGateway）。
+        // · 代价（已知并接受）——能读 `~/.nomi/capability-core/token` 的本地进程可借此静默烧额度；此前它触发生成
+        //   会弹卡、用户看得见能拒。这是把「防本地攻击者」这层纵深换成「少跑一趟」，不是「防 AI」那道红线松了。
+        // ⚠️ 边界仅放宽到付费确认这一处：令牌仍只在主进程铸、assertAndConsumeSpendGrant 仍逐次硬校验、
+        // 导出等其余硬边界一律不得复制本模式（那些是抗伪造红线，客户端一个 flag 不足以过）。
+        const preApprovedSpend = parsed.spendConfirmed === true
         // 交付②④：dispatch + 生成结果富化收口在 dispatchAndEnrich（0a）——传输里没有 bare dispatch 可调，
         // 缩略图 base64 / 签名预览链的富化在结构上不可能被忘（此进程有 nativeImage，launcher bare node 做不了）。
         const result = await dispatchAndEnrich(method, params, {
           runTask: options.runTask,
           fetchTaskResult: options.fetchTaskResult,
-          makeGateway,
+          makeGateway: preApprovedSpend ? (projectId: string) => withPreApprovedSpend(makeGateway(projectId)) : makeGateway,
           productionRuns,
           origin: { host: origin },
           // 画布方案已在聊天里确认（协议层 elicitation-first）→ addNodes 预批准方案门、渲染层不再弹卡（免双问）。
@@ -118,9 +133,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           // 为什么这里敢信客户端传的 planConfirmed（对比 origin「never trust」的硬边界）：方案门守的是
           // 「模型的决定要过真人」这道软闸，不是抗伪造令牌的红线——加节点免费、可撤销，且持有本 RPC token
           // 的进程在 headless 下 confirmPlan 本就恒 true，客户端「预批」拿不到它本来拿不到的权限。协议层也只
-          // 在真人 accept 之后才置这个位。**它只能预批 confirmPlan，永远不预批 confirmSpend**——花钱那条硬边界
-          // 刻意不过线（spendConfirmed 不跨 RPC，令牌只在主进程真人点卡后铸）。⚠️ 禁止把本模式复制到
-          // spend/export 等硬边界：那些是「抗伪造」红线，客户端一个 flag 不足以过。
+          // 在真人 accept 之后才置这个位。
           ...(parsed.planConfirmed === true ? { planConfirmed: true } : {}),
         })
         send(200, { ok: true, result })

@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMcpProtocol, type McpTransport } from './mcpProtocol'
 
-// MCP 协议层的 elicitation 付费确认握手（B 模式：Nomi 没开）。
+// MCP 协议层的 elicitation 付费确认握手。
 // 验证手搓双向 JSON-RPC：服务端能发 elicitation/create 给客户端、按 id 路由响应、按确认结果放行/拦截。
-// 直接驱动纯协议层 mcpProtocol.ts（注入假 transport）——不 spawn 任何进程、不触发真实生成，
-// 只覆盖 decline / 不支持 两条不调 invoke 的路径（取代旧的 spawn `node scripts/nomi-mcp.mjs`）。
+// 直接驱动纯协议层 mcpProtocol.ts（注入假 transport）——不 spawn 任何进程、不触发真实生成。
+//
+// 路由判据 = 「谁能替我们问到真人」，**不是「Nomi 窗口开着没」**（2026-08-18 修：窗口开着 ≠ 用户注意力
+// 在 Nomi，旧判据害得人从 Claude 跑回 App 点一下）。下面 4 条锁死 {支持 elicitation × App 开/关} 全矩阵。
 
 type RpcMessage = { jsonrpc?: string; id?: unknown; method?: string; params?: Record<string, unknown>; result?: unknown; error?: { code?: number; message?: string } }
 
@@ -70,23 +72,28 @@ afterEach(() => {
   harness = null
 })
 
-describe('nomi-mcp · 付费 elicitation 握手（B 模式）', () => {
-  it('客户端支持 elicitation：generate → 弹确认 → decline → 拦截不生成', async () => {
+describe('nomi-mcp · 付费确认按「谁能问到真人」路由', () => {
+  const GENERATE_ARGS = { projectId: 'p', vendor: 'apimart', modelKey: 'doubao-seedance-2.0', intent: 'video', prompt: '巷口回头' }
+  const callGenerate = (h: ProtocolHarness) =>
+    h.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'nomi_generate', arguments: GENERATE_ARGS } })
+  /** 生成成功的 invoke 桩：只有「真人确认过」的路径才该走到这里。 */
+  const generateOk = async (method: string) => {
+    if (method === 'generate') return { nodeId: 'n1', assetPath: '/tmp/a.mp4' }
+    throw new Error(`unexpected invoke: ${method}`)
+  }
+
+  it('① 支持 elicitation + App 关：弹在调用方 → decline → 拦截不生成', async () => {
     harness = new ProtocolHarness(false)
     await harness.initialize(true)
-    harness.send({
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: { name: 'nomi_generate', arguments: { projectId: 'p', vendor: 'apimart', modelKey: 'doubao-seedance-2.0', intent: 'video', prompt: '巷口回头' } },
-    })
+    callGenerate(harness)
     // 服务端应先发 elicitation/create 请求给客户端。
     const elicit = await harness.next()
     expect(elicit.method).toBe('elicitation/create')
     expect(typeof elicit.id).toBe('string')
     const params = elicit.params as { message?: string }
-    expect(params.message).toContain('Nomi 未打开')
     expect(params.message).toContain('doubao-seedance-2.0')
+    // 旧文案硬编码了「Nomi 未打开。」开头；改判据后 App 开着也走这条，那句话不再成立 → 必须已删。
+    expect(params.message).not.toContain('Nomi 未打开')
     // 真人点了取消 → decline。
     harness.send({ jsonrpc: '2.0', id: elicit.id, result: { action: 'decline' } })
     const toolRes = await harness.next()
@@ -97,29 +104,52 @@ describe('nomi-mcp · 付费 elicitation 握手（B 模式）', () => {
     expect(harness.invoke).not.toHaveBeenCalled()
   })
 
+  it('② 支持 elicitation + App 开：仍弹在调用方（不赶人回 Nomi），accept 才带 spendConfirmed 放行', async () => {
+    // 这条就是本次修复的核心：旧判据下 App 一开就跳过 elicitation、把人赶去点应用内卡片。
+    harness = new ProtocolHarness(true, generateOk)
+    await harness.initialize(true)
+    callGenerate(harness)
+    const elicit = await harness.next()
+    expect(elicit.method).toBe('elicitation/create')
+    expect((elicit.params as { message?: string }).message).not.toContain('Nomi 未打开')
+    harness.send({ jsonrpc: '2.0', id: elicit.id, result: { action: 'accept', content: { confirm: true } } })
+    const toolRes = await harness.next()
+    expect(toolRes.id).toBe(2)
+    expect(toolRes.result).not.toMatchObject({ isError: true })
+    // 真人在调用方确认过 → 必须带 spendConfirmed 过线，否则 App 会再弹一次卡（双问）。
+    expect(harness.invoke).toHaveBeenCalledWith('generate', expect.anything(), { spendConfirmed: true })
+  })
+
+  it('③ 不支持 elicitation + App 开：不弹、原样 invoke（由应用内确认卡兜底），绝不自带 spendConfirmed', async () => {
+    harness = new ProtocolHarness(true, generateOk)
+    await harness.initialize(false)
+    callGenerate(harness)
+    const toolRes = await harness.next()
+    expect(toolRes.id).toBe(2)
+    expect(toolRes.result).not.toMatchObject({ isError: true })
+    // 没人替我们问过真人 → 这次 invoke 不许预批付费，确认权留给应用内卡片。
+    expect(harness.invoke).toHaveBeenCalledTimes(1)
+    expect(harness.invoke.mock.calls[0][2]).not.toMatchObject({ spendConfirmed: true })
+  })
+
+  it('④ 不支持 elicitation + App 关：无处问真人 → 诚实报错，不生成', async () => {
+    harness = new ProtocolHarness(false)
+    await harness.initialize(false)
+    callGenerate(harness)
+    const toolRes = await harness.next()
+    expect(toolRes.id).toBe(2)
+    const result = toolRes.result as { content: Array<{ text: string }>; isError?: boolean }
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('不支持弹确认')
+    expect(harness.invoke).not.toHaveBeenCalled()
+  })
+
   it('握手回显客户端请求的协议版本（兼容只讲老协议的客户端，如 Codex/Cursor 早期）', async () => {
     harness = new ProtocolHarness(false)
     // 老客户端只讲 2025-03-26（elicitation 之前的修订）。
     const res = await harness.initialize(false, '2025-03-26')
     const result = res.result as { protocolVersion?: string }
     expect(result.protocolVersion).toBe('2025-03-26')
-  })
-
-  it('客户端不支持 elicitation：generate → 不弹、回可操作错误', async () => {
-    harness = new ProtocolHarness(false)
-    await harness.initialize(false)
-    harness.send({
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: { name: 'nomi_generate', arguments: { projectId: 'p', vendor: 'apimart', modelKey: 'sora-2', intent: 'video', prompt: 'x' } },
-    })
-    const toolRes = await harness.next()
-    expect(toolRes.id).toBe(2)
-    const result = toolRes.result as { content: Array<{ text: string }>; isError?: boolean }
-    expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('Nomi 未打开')
-    expect(harness.invoke).not.toHaveBeenCalled()
   })
 })
 
