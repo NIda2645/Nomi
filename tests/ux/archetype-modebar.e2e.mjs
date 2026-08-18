@@ -189,34 +189,44 @@ try {
   record('omni 上传一张 → tile 按顺序编号 ①（角色参考1）且可拖拽重排')
   await shot('omni-uploaded')
 
-  // ── @ 引用：打「空格 + @」唤起候选 → 插入 18px 缩略图 chip ────────────────
+  // ── 引用参考图的**主路径**：点 tile 直接往描述框光标处插 chip ───────────────
+  // 这条是可发现的那条（tile 就摆在眼前、点一下是人人会试的动作）；下面的 @ 是键盘加速器。
+  // 两条都得验：主路径断了用户就彻底没法引用，加速器断了则是「老手觉得这功能不存在」。
   await win.keyboard.press('Escape') // 关掉素材选择器，别盖住描述框
-  await clickOrFail(win.locator('.generation-canvas-v2-node__prompt-input'), '描述框')
-  // @ **前面必须有空格**：tiptap Suggestion 的 allowedPrefixes 默认只认空格/行首，
-  // 直接打「光@」不会唤起面板（这不是产品 bug，本轮探针在这儿绕了一圈）。
-  await win.keyboard.type('光 ')
+  const editor = win.locator('.generation-canvas-v2-node__prompt-input')
+  await clickOrFail(editor, '描述框')
+  await win.keyboard.type('阳光下')
+  await clickOrFail(composer.locator('[aria-label="角色参考1"]'), '参考 tile（主路径）')
+  await expectVisible(editor.locator('[data-asset-mention] img'), '点 tile → 描述框插入带缩略图的引用 chip')
+  record('点参考 tile → 描述框光标处插入引用 chip（可发现的主路径）')
+
+  // ── 加速器：中文里**不打空格**直接打 @ → 唤起候选 → 再插一个 chip ──────────
+  // 刻意**紧贴中文字符**打 @（「让@」），不给空格——中文写作本来就不打空格。
+  // 上游 @tiptap/suggestion 的默认 allowedPrefixes: [' '] 会让这种最常见的写法静默不弹，
+  // 等于把功能关掉；AssetMentionSuggestion 传 allowedPrefixes: null 关掉了那道检查。
+  // 这条判据就是那个修复的回归闸：一旦有人把 null 改回默认，这里立刻报红。
+  await win.keyboard.type('让')
   await win.keyboard.type('@')
   const mentionItems = win.locator('[data-mention-list="true"] [data-mention-item]')
-  await expectVisible(mentionItems.first(), '打 @ → 弹出参考缩略图候选（渲染在 body，不被 composer 裁剪）')
+  await expectVisible(mentionItems.first(), '中文字符后直接打 @（无空格）→ 弹出参考候选')
   await expect(mentionItems.first(), '已加的那张应当在「当前参考」组里').toHaveAttribute('data-mention-group', 'current')
-  record('打「空格 + @」→ 弹出参考候选，已加的那张归在「当前参考」组')
+  record('中文后直接打 @（无空格）→ 弹出参考候选，已加的那张归在「当前参考」组')
   await shot('mention-popup')
 
-  const editor = win.locator('.generation-canvas-v2-node__prompt-input')
   await mentionItems.first().click()
-  await expectVisible(editor.locator('[data-asset-mention] img'), '点候选 → 描述框插入带缩略图的 @ 引用 chip')
-  const chipProof = await proveProbe(editor.locator('[data-asset-mention]'), '描述框里确实插入了 @ 引用 chip')
-  record('点候选 → 描述框光标处插入 @ 引用 chip（带 18px 缩略图）')
+  await expect(editor.locator('[data-asset-mention]'), '两条路径各插了一个 chip').toHaveCount(2)
+  const chipProof = await proveProbe(editor.locator('[data-asset-mention]'), '描述框里确实插入了引用 chip')
+  record('点候选 → 描述框光标处再插一个 @ 引用 chip（带 18px 缩略图）')
   await shot('mention-chip')
 
   // 删 tile → 描述框里指向它的 chip 同步消失（不留悬空引用）。
   await clickOrFail(composer.locator('button[aria-label^="移除"]'), '移除参考 tile')
   await expectAbsent(editor.locator('[data-asset-mention]'), {
     provenBy: chipProof,
-    message: '删掉参考 tile 后，描述框里指向它的 @ chip 应当同步消失',
+    message: '删掉参考 tile 后，描述框里指向它的两个 chip 都应当同步消失',
   })
   await expectAbsent(slot('角色参考1'), { provenBy: addRefProof, message: '删掉后 tile 本身也该没了' })
-  record('删参考 tile → 描述框里对应的 @ chip 同步消失（无悬空引用）')
+  record('删参考 tile → 描述框里指向它的 chip 全部同步消失（无悬空引用）')
 
   // ── 生成参数面板：标量参数带标签 ─────────────────────────────────────────
   await clickOrFail(composer.locator('button[aria-label="生成参数"]'), '「生成参数」')
