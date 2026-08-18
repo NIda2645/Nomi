@@ -76,6 +76,9 @@ export const zhAssetLibrary = {
   confirmDeleteFolderMessage: '夹内素材回到未分类，不会删除任何文件。',
   mentionEmpty: '没有可引用的图',
   mentionLabel: '引用',
+  // 描述框 placeholder 的尾巴，**只在这张卡已经有参考图时**才挂（见 NodeGenerationComposer）。
+  // @ 是键盘加速器，主路径是点参考 tile；没有参考图时挂这句会指向一个空面板，反而添乱。
+  mentionPlaceholderHint: '打 @ 可引用参考图',
   mentionGroupCurrent: '当前参考',
   mentionGroupCanvas: '画布',
   mentionGroupLibrary: '素材库',
@@ -183,6 +186,7 @@ export const enAssetLibrary = {
   confirmDeleteFolderMessage: 'Assets in this folder return to Uncategorized. No files are deleted.',
   mentionEmpty: 'No images available to reference',
   mentionLabel: 'Reference',
+  mentionPlaceholderHint: 'type @ to reference them',
   mentionGroupCurrent: 'Current references',
   mentionGroupCanvas: 'Canvas',
   mentionGroupLibrary: 'Asset library',

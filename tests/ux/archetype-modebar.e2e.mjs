@@ -173,6 +173,11 @@ try {
 
   const addRefProof = await proveProbe(slot('加参考'), 'omni 模式下「加参考」确实会出现')
 
+  // 描述框 placeholder 的「打 @ 可引用参考图」尾巴：**还没有参考图时不该挂**（会指向一个空面板）。
+  // 基线文案从真实 DOM 读出来、不写死，这样改 placeholder 主文案不会误伤这条。
+  const placeholderNode = win.locator('.generation-canvas-v2-node__prompt-input [data-placeholder]')
+  const basePlaceholder = await placeholderNode.getAttribute('data-placeholder')
+
   // ── 往 omni 槽里放一张图：tile 带编号 + 可拖拽重排 ────────────────────────
   const tmpPng = path.join(tempRoot, 'char1.png')
   fs.writeFileSync(
@@ -188,6 +193,13 @@ try {
   await expectVisible(composer.locator('[aria-label="角色参考1"][draggable="true"]'), '参考 tile 可拖拽重排')
   record('omni 上传一张 → tile 按顺序编号 ①（角色参考1）且可拖拽重排')
   await shot('omni-uploaded')
+
+  // 有参考图了 → placeholder 尾巴才挂上「打 @ 可引用参考图」（@ 是加速器，得先有东西可引用）。
+  // placeholder 是 tiptap 扩展在创建时配死的，靠 PromptEditor 传函数 + 空事务重画才跟得上；
+  // 这条判据同时钉住那套接线：谁把它改回直接传字符串，这里立刻报红。
+  await expect(placeholderNode, '加了参考图后 placeholder 应当挂上「打 @」提示')
+    .toHaveAttribute('data-placeholder', `${basePlaceholder} · 打 @ 可引用参考图`)
+  record('有参考图后，描述框 placeholder 才挂出「打 @ 可引用参考图」')
 
   // ── 引用参考图的**主路径**：点 tile 直接往描述框光标处插 chip ───────────────
   // 这条是可发现的那条（tile 就摆在眼前、点一下是人人会试的动作）；下面的 @ 是键盘加速器。
