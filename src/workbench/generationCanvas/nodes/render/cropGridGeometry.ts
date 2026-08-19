@@ -24,41 +24,42 @@ function edges(start: number, span: number, cuts: number[]): number[] {
 
 export type TileBox = { x: number; y: number; width: number; height: number }
 
-// 切图瓦片的落点/尺寸（相对块原点 0,0，调用方再加 baseX/baseY）。
-// 设计：整块宽收敛到 blockWidth(≈源节点宽，不再每格撑到 240)；每列宽按 cell 占框宽的比例分；
-// 每格高 = 列宽 / 自身宽高比(不拉伸)；行距取该行最高；小间距行列对齐成紧凑方块——治「切完飘」。
-// 1 个 cell（裁剪）退化为单个 blockWidth 宽的盒子，与切图共用这一条布局（P1，不另算）。
+/**
+ * 把切图瓦片摆成行列对齐的紧凑方块（相对块原点 0,0，调用方再加 baseX/baseY）。
+ *
+ * 契约：**尺寸不由这里决定**——`sizes[i]` 必须是卡片**真正会渲染成的**宽高
+ * （调用方拿 `resolveNodeVisualSize` 问壳要，见 useNodeImageEditing）。这里只负责排布：
+ * 列宽取该列最宽、行高取该行最高，间距 gap，于是**任何两张卡都不会重叠**。
+ *
+ * 为什么把尺寸踢出去（2026-08-20 用户「布局很乱」的根因）：旧版自己按比例算格宽
+ * （minTileWidth 默认 96），可壳把每张卡的宽度地板价钉在 MIN_NODE_WIDTH=240。
+ * 于是 3×3 按 129px 的步距摆，卡片却各渲染成 240 宽——九张互相压掉 110px，
+ * 看上去就是糊成一团。布局和渲染各算各的尺寸 = 必然错位；真相源只能有一个。
+ */
 export function computeSplitLayout(
   cells: GridCell[],
-  frameWidth: number,
-  blockWidth: number,
-  aspects: number[],
-  options?: { gap?: number; minTileWidth?: number },
+  sizes: readonly { width: number; height: number }[],
+  options?: { gap?: number },
 ): TileBox[] {
   if (cells.length === 0) return []
   const gap = options?.gap ?? 16
-  const minTileWidth = options?.minTileWidth ?? 96
-  const fw = Math.max(0.0001, frameWidth)
   const colCount = Math.max(...cells.map((c) => c.column)) + 1
   const rowCount = Math.max(...cells.map((c) => c.row)) + 1
-  const colWidths = Array.from({ length: colCount }, (_, c) => {
-    const sample = cells.find((cell) => cell.column === c)
-    const frac = sample ? sample.w / fw : 1 / colCount
-    return Math.max(minTileWidth, Math.round(frac * blockWidth))
+  const sizeAt = (index: number) => ({
+    width: Math.max(1, Math.round(sizes[index]?.width || 0)),
+    height: Math.max(1, Math.round(sizes[index]?.height || 0)),
   })
-  const cellHeights = cells.map((cell, i) => {
-    const aspect = aspects[i] && aspects[i] > 0 ? aspects[i] : cell.w / Math.max(0.0001, cell.h)
-    return Math.max(1, Math.round(colWidths[cell.column] / aspect))
-  })
+  const colWidths = Array.from({ length: colCount }, (_, c) =>
+    Math.max(1, ...cells.map((cell, i) => (cell.column === c ? sizeAt(i).width : 0))))
   const rowHeights = Array.from({ length: rowCount }, (_, r) =>
-    Math.max(1, ...cells.map((cell, i) => (cell.row === r ? cellHeights[i] : 0))))
+    Math.max(1, ...cells.map((cell, i) => (cell.row === r ? sizeAt(i).height : 0))))
   const colX = colWidths.map((_, c) => colWidths.slice(0, c).reduce((sum, w) => sum + w + gap, 0))
   const rowY = rowHeights.map((_, r) => rowHeights.slice(0, r).reduce((sum, h) => sum + h + gap, 0))
   return cells.map((cell, i) => ({
     x: colX[cell.column],
     y: rowY[cell.row],
-    width: colWidths[cell.column],
-    height: cellHeights[i],
+    width: sizeAt(i).width,
+    height: sizeAt(i).height,
   }))
 }
 
