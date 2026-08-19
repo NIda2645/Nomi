@@ -1,6 +1,7 @@
 import type {
   ComfyGraph,
   WorkflowBinding,
+  WorkflowImageBinding,
   WorkflowParamBinding,
   WorkflowParamType,
 } from "./comfyuiWorkflowImport";
@@ -55,16 +56,89 @@ export function inputKeyOf(nodeId: string, inputKey: string): string {
 
 export function roleBoundInputKeys(binding: WorkflowBinding): Set<string> {
   const keys = new Set<string>();
-  const roles: Array<[string | undefined, string | undefined]> = [
-    [binding.promptNodeId, binding.promptInputKey],
-    [binding.firstFrameNodeId, binding.firstFrameInputKey],
-    [binding.lastFrameNodeId, binding.lastFrameInputKey],
-    [binding.sourceVideoNodeId, binding.sourceVideoInputKey],
-  ];
-  for (const [nodeId, inputKey] of roles) {
-    if (nodeId && inputKey) keys.add(inputKeyOf(nodeId, inputKey));
+  if (binding.promptNodeId && binding.promptInputKey) {
+    keys.add(inputKeyOf(binding.promptNodeId, binding.promptInputKey));
+  }
+  // 媒体输入已统一进 images[]（老角色由 normalizeWorkflowBinding 读时折进来），
+  // 所以这里只需遍历它——参数绑定据此避开已被媒体占用的 input，不会重复绑同一个槽。
+  for (const image of binding.images ?? []) {
+    keys.add(inputKeyOf(image.nodeId, image.inputKey));
   }
   return keys;
+}
+
+function mediaKindOf(value: unknown, fallback: "image" | "video"): "image" | "video" {
+  return value === "video" || value === "image" ? value : fallback;
+}
+
+/** 三个老角色的保留 paramKey。模板图里写死的就是它们，且画布靠 key 名推首帧/尾帧分组。 */
+const RESERVED_IMAGE_PARAM_KEYS = new Set<string>(["first_frame_url", "last_frame_url", "source_video_url"]);
+
+/**
+ * 媒体参数键规范化。**必须幂等**——binding 会反复过这个函数（IPC 一次、落库一次、读出再一次），
+ * 而 normalizeParamKey 会强行套上 `comfy_` 命名空间：直接用它会把已经规范好的
+ * `first_frame_url` 在第二遍变成 `comfy_first_frame_url`，模板图里的占位当场对不上、图静默收不到素材。
+ * 所以三个保留键原样放行；其余交给 normalizeParamKey（它对 `comfy_X` 已是幂等的）。
+ */
+function normalizeImageParamKey(raw: unknown, fallback: string): string {
+  const text = String(raw ?? "").trim();
+  if (RESERVED_IMAGE_PARAM_KEYS.has(text)) return text;
+  return normalizeParamKey(raw, fallback);
+}
+
+/**
+ * 媒体输入收敛：显式 `images[]` 优先，随后把 firstFrame/lastFrame/sourceVideo 三个老角色折进来。
+ *
+ * 老角色的 paramKey **必须**沿用 first_frame_url / last_frame_url / source_video_url：
+ * 已存工作流的模板图里写的就是这些占位，且画布侧 inferImageUrlGroup 靠 key 名把它们
+ * 分回首帧/尾帧组。换名字 = 老工作流的连边全部掉回「参考图」组，语义静默漂移。
+ */
+function normalizeImageBindings(
+  source: Record<string, unknown>,
+  normalized: WorkflowBinding,
+  graph?: ComfyGraph,
+): WorkflowImageBinding[] {
+  const images: WorkflowImageBinding[] = [];
+  const seenTargets = new Set<string>();
+  const seenKeys = new Set<string>();
+
+  const push = (nodeId: string, inputKey: string, paramKey: string, label: string, mediaKind: "image" | "video") => {
+    const targetKey = inputKeyOf(nodeId, inputKey);
+    if (seenTargets.has(targetKey) || seenKeys.has(paramKey)) return;
+    // 有图就校验这个 input 真的存在且是标量 widget（连线口不是可填的槽）。
+    if (graph && !isScalar(graph[nodeId]?.inputs?.[inputKey])) return;
+    seenTargets.add(targetKey);
+    seenKeys.add(paramKey);
+    images.push({ nodeId, inputKey, paramKey, label, mediaKind });
+  };
+
+  for (const raw of Array.isArray(source.images) ? source.images : []) {
+    if (!isRecord(raw)) continue;
+    const nodeId = nonEmptyString(raw.nodeId);
+    const inputKey = nonEmptyString(raw.inputKey);
+    if (!nodeId || !inputKey) continue;
+    const mediaKind = mediaKindOf(raw.mediaKind, "image");
+    const fallbackKey = `comfy_${mediaKind}_${images.length + 1}`;
+    const baseKey = normalizeImageParamKey(raw.paramKey, fallbackKey);
+    let paramKey = baseKey;
+    let suffix = 2;
+    while (seenKeys.has(paramKey)) paramKey = `${baseKey}_${suffix++}`;
+    push(nodeId, inputKey, paramKey, nonEmptyString(raw.label) ?? inputKey, mediaKind);
+  }
+
+  const legacyRoles: Array<[keyof WorkflowBinding, keyof WorkflowBinding, string, "image" | "video"]> = [
+    ["firstFrameNodeId", "firstFrameInputKey", "first_frame_url", "image"],
+    ["lastFrameNodeId", "lastFrameInputKey", "last_frame_url", "image"],
+    ["sourceVideoNodeId", "sourceVideoInputKey", "source_video_url", "video"],
+  ];
+  for (const [nodeField, inputField, paramKey, mediaKind] of legacyRoles) {
+    const nodeId = normalized[nodeField];
+    const inputKey = normalized[inputField];
+    if (typeof nodeId !== "string" || typeof inputKey !== "string") continue;
+    push(nodeId, inputKey, paramKey, inputKey, mediaKind);
+  }
+
+  return images;
 }
 
 /** 把 IPC 或旧 catalog 中的 binding 收敛成唯一、可持久化的现代格式。 */
@@ -106,6 +180,13 @@ export function normalizeWorkflowBinding(binding: unknown, graph?: ComfyGraph): 
     }
     seenRoleTargets.add(targetKey);
   }
+
+  // 媒体输入收敛成 images[]：先吃显式声明的，再把三个老角色**折进来**（读时一次性迁移）。
+  // 迁移后老角色字段即从产物里删掉——写路径与消费路径只认 images[]，不留并行版（P1）。
+  normalized.images = normalizeImageBindings(source, normalized, graph);
+  delete normalized.firstFrameNodeId; delete normalized.firstFrameInputKey;
+  delete normalized.lastFrameNodeId; delete normalized.lastFrameInputKey;
+  delete normalized.sourceVideoNodeId; delete normalized.sourceVideoInputKey;
 
   const hasParamsField = Object.prototype.hasOwnProperty.call(source, "params");
   const rawParams: unknown[] = hasParamsField

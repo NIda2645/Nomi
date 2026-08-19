@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { ModelParameterControl } from '../../../../config/modelCatalogMeta'
 import {
-  buildComfyWorkflowImageUrlSlots,
+  buildImageUrlSlots,
   parseControlInput,
   shouldUseVideoFrameSlotFallback,
   videoAspectDefaultPatch,
@@ -78,41 +78,35 @@ describe('videoAspectDefaultPatch（2026-07-17：视频首选 16:9 / 输入全�
   })
 })
 
-describe('buildComfyWorkflowImageUrlSlots — 按导入 binding 显示 Comfy 图像槽', () => {
-  const labels = { firstFrame: '首帧', lastFrame: '尾帧' }
+// 2026-08-20：原先这里测的是 buildComfyWorkflowImageUrlSlots——一个只认 firstFrame/lastFrame
+// 两个角色的 ComfyUI 特例。它已按 P1 删除：导入侧把**声明的每个**媒体输入都写成 type:'image-url'
+// 参数，于是通用的 buildImageUrlSlots 逐条出槽。下面测的就是这条通用路（群反馈 G2#421 的判据）。
+describe('buildImageUrlSlots — ComfyUI 导入工作流按声明逐条出槽', () => {
+  const comfyMeta = (parameters: Array<{ key: string; label: string; type: string }>) => ({ parameters })
 
-  it('只绑定首帧的 i2v workflow → 只显示首帧槽', () => {
-    const slots = buildComfyWorkflowImageUrlSlots({
-      comfyWorkflowImport: {
-        binding: { firstFrameNodeId: '57', firstFrameInputKey: 'image', outputKind: 'video' },
-      },
-    }, labels)
-    expect(slots).toEqual([{ key: 'firstFrameUrl', label: '首帧', group: 'first_frame' }])
+  it('声明 3 个图像输入 → 出 3 个槽（多参工作流不再只能连一张）', () => {
+    const slots = buildImageUrlSlots(comfyMeta([
+      { key: 'comfy_ref_a', label: '参考图 A', type: 'image-url' },
+      { key: 'comfy_ref_b', label: '参考图 B', type: 'image-url' },
+      { key: 'comfy_ref_c', label: '参考图 C', type: 'image-url' },
+    ]))
+    expect(slots.map((s) => s.key)).toEqual(['comfy_ref_a', 'comfy_ref_b', 'comfy_ref_c'])
+    expect(slots.map((s) => s.label)).toEqual(['参考图 A', '参考图 B', '参考图 C'])
   })
 
-  it('首尾帧 workflow → 显示首帧和尾帧槽', () => {
-    const slots = buildComfyWorkflowImageUrlSlots({
-      comfyWorkflowImport: {
-        binding: {
-          firstFrameNodeId: '80',
-          firstFrameInputKey: 'image',
-          lastFrameNodeId: '89',
-          lastFrameInputKey: 'image',
-        },
-      },
-    }, labels)
+  it('老工作流的首/尾帧键仍分回首帧/尾帧组（迁移不改语义）', () => {
+    const slots = buildImageUrlSlots(comfyMeta([
+      { key: 'first_frame_url', label: '首帧', type: 'image-url' },
+      { key: 'last_frame_url', label: '尾帧', type: 'image-url' },
+    ]))
     expect(slots).toEqual([
-      { key: 'firstFrameUrl', label: '首帧', group: 'first_frame' },
-      { key: 'lastFrameUrl', label: '尾帧', group: 'last_frame' },
+      { key: 'first_frame_url', label: '首帧', group: 'first_frame' },
+      { key: 'last_frame_url', label: '尾帧', group: 'last_frame' },
     ])
   })
 
-  it('Comfy 文生视频 workflow 无帧绑定 → 返回空槽数组，调用方不应再用视频首尾帧兜底', () => {
-    expect(buildComfyWorkflowImageUrlSlots({ comfyWorkflowImport: { binding: { outputKind: 'video' } } }, labels)).toEqual([])
-  })
-
-  it('非 Comfy 导入模型 → 返回 null，调用方继续走通用参数解析和视频兜底', () => {
-    expect(buildComfyWorkflowImageUrlSlots({ parameters: [] }, labels)).toBeNull()
+  it('一个图像输入都没声明 → 一个槽都不出，绝不瞎猜首尾帧', () => {
+    expect(buildImageUrlSlots(comfyMeta([{ key: 'comfy_seed', label: 'Seed', type: 'number' }]))).toEqual([])
   })
 })
 
