@@ -167,6 +167,59 @@ function referenceTag(ctx: Ctx, references: Record<string, unknown>): string {
   return `${L(ctx, '参考', 'refs')}:${kinds.join('+')}${modeHint}`
 }
 
+/** 审片环交付形（W1）：与 shotVerifyOrchestrate.ShotVerifyOutcome 结构对齐的稳定字段。 */
+type VerifyOutcomeShape = {
+  passed: boolean
+  retries: number
+  scores: Record<string, number>
+  flagged: Array<{ dimension: string; dimensionName: string; score: number; reason: string }>
+  suggestion: string | null
+}
+
+/** 从 core 返回里解审片 outcome（只认 evaluated:true 的真判分；未评/缺失 → null，交付不显审片行）。 */
+function parseVerifyOutcome(raw: unknown): VerifyOutcomeShape | null {
+  if (!raw || typeof raw !== 'object') return null
+  const v = raw as Record<string, unknown>
+  if (v.evaluated !== true) return null
+  const flaggedRaw = Array.isArray(v.flagged) ? v.flagged : []
+  const flagged = flaggedRaw.map((f) => {
+    const r = rec(f)
+    return { dimension: str(r.dimension), dimensionName: str(r.dimensionName), score: Number(r.score) || 0, reason: str(r.reason) }
+  })
+  const scoresRaw = rec(v.scores)
+  const scores: Record<string, number> = {}
+  for (const [k, val] of Object.entries(scoresRaw)) if (typeof val === 'number') scores[k] = val
+  return {
+    passed: v.passed === true,
+    retries: Number(v.retries) || 0,
+    scores,
+    flagged,
+    suggestion: typeof v.suggestion === 'string' ? v.suggestion : null,
+  }
+}
+
+/**
+ * 审片行（双语，内联 L()——MCP 结果文案不走 i18n key，方案 §7）。诚实标注不达标镜头（蓝图 D4）：
+ * 通过 → 一句「审片通过（含重试次数）」；有红标 → 逐轴点名「第 N 档，低于阈值，建议重滚」，不藏。
+ */
+function buildVerifyLine(ctx: Ctx, v: VerifyOutcomeShape): string {
+  if (v.passed) {
+    return v.retries > 0
+      ? L(ctx, `审片：定向重试 ${v.retries} 次后通过（身份/构图/连贯达标）`, `Review: passed after ${v.retries} targeted ${v.retries === 1 ? 'retry' : 'retries'} (identity/composition/continuity on-bar)`)
+      : L(ctx, '审片：一次通过（身份/构图/连贯达标）', 'Review: passed on first try (identity/composition/continuity on-bar)')
+  }
+  const flagLines = v.flagged.map((f) =>
+    L(ctx, `  ⚠️ ${f.dimensionName}第 ${f.score} 档，低于阈值——${f.reason}`, `  ⚠️ ${f.dimensionName} scored ${f.score}/5, below bar — ${f.reason}`),
+  )
+  const head = L(
+    ctx,
+    `⚠️ 审片：${v.retries} 次定向重试后仍有 ${v.flagged.length} 个维度不达标（已标红，不藏）`,
+    `⚠️ Review: ${v.flagged.length} dimension(s) still below bar after ${v.retries} targeted ${v.retries === 1 ? 'retry' : 'retries'} (flagged, not hidden)`,
+  )
+  const tail = v.suggestion ? L(ctx, `  建议：${v.suggestion}`, `  Suggestion: ${v.suggestion}`) : null
+  return [head, ...flagLines, tail].filter(Boolean).join('\n')
+}
+
 /** 交付1 · 模型清单 → 双语转述（按 keyStatus 分组，只有 ok 说可用）+ 结构化透传（模型精确读）。 */
 function buildListModelsOutcome(ctx: Ctx, value: Record<string, unknown>): ToolOutcome {
   const models = Array.isArray(value.models) ? (value.models as Array<Record<string, unknown>>) : []
@@ -479,9 +532,14 @@ export function buildToolOutcome(
     // 结果里可能夹带 App 侧富化的内部字段（_nomiThumbnail=缩略图 base64，已单独成 image block；
     // _nomiPreviewUrl=签名预览链，已进 widget）——都不该原样 JSON dump 进文本（base64 会灌爆终端）。dump 前剥掉。
     const dump = stripInternalEnrichFields(result)
+    // 审片环结果（W1）：core 生成成功后跑判分→定向重试→红标，把 ShotVerifyOutcome 挂在 result.verify。
+    // 只在真跑了判分（evaluated）时出审片行/结构字段——默认路径（未接审片）无此字段，转述与今天一致。
+    const verifyOutcome = parseVerifyOutcome(value.verify)
+    const verifyLine = verifyOutcome ? buildVerifyLine(ctx, verifyOutcome) : null
     const text = [
       `✓ ${L(ctx, '已生成', 'Generated')}${label ? L(ctx, label.zh, label.en) : L(ctx, '一个素材', 'an asset')}`,
       echo ? `  ${echo}` : null,
+      verifyLine,
       JSON.stringify(dump, null, 2),
       deepLink ? `${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${deepLink}` : null,
     ].filter(Boolean).join('\n')
@@ -492,6 +550,8 @@ export function buildToolOutcome(
         params: { vendor: str(args.vendor), modelKey: str(args.modelKey), intent, references: refs },
         nextActions: ['open_in_nomi'],
         openInNomi: deepLink || null,
+        // 审片环结构化字段（模型稳定读「过检/红标/建议」，不必从文本抠，harness 幕 6）。未评则不附。
+        ...(verifyOutcome ? { verify: verifyOutcome } : {}),
       },
     }
   }

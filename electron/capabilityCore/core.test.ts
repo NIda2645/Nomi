@@ -247,4 +247,77 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
   it('未知项目抛清晰错误', async () => {
     await expect(readProjectCanvas(createDiskGateway('ghost-id'))).rejects.toThrow(/项目不存在/)
   })
+
+  // ── W1 审片环 hook（方案 T5）：默认不传 makeVerifyDeps = 行为逐字节不变；传了才判分。 ──
+
+  it('审片环回归：不传 makeVerifyDeps → 返回对象逐字节同今天（无 verify 字段、键集不变）', async () => {
+    const project = createNamedProject('审片回归-无deps')
+    const out = await generateOnProject(
+      { projectId: project.id, intent: 'image', prompt: '一只猫', vendor: 'apimart', modelKey: 'seedream-4' },
+      createDiskGateway(project.id),
+      async () => ({ id: 't', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://a.png' }] }),
+    )
+    // 键集恰为 { nodeId, status, assets }（text 分支不触发；**不含 verify**）——默认路径与旧版一致。
+    expect(Object.keys(out).sort()).toEqual(['assets', 'nodeId', 'status'])
+    expect('verify' in out).toBe(false)
+    expect(out.status).toBe('succeeded')
+  })
+
+  it('审片环回归：传了 makeVerifyDeps 但生成失败 → 不判分、无 verify（审片只在成功产物上跑）', async () => {
+    const project = createNamedProject('审片回归-失败不判')
+    let depsMade = false
+    await expect(generateOnProject(
+      {
+        projectId: project.id, intent: 'image', prompt: '一只猫', vendor: 'apimart', modelKey: 'seedream-4',
+        makeVerifyDeps: () => { depsMade = true; return stubVerifyDeps('{"scores":{"identity":1}}') },
+      },
+      createDiskGateway(project.id),
+      async () => { throw new Error('vendor down') },
+    )).rejects.toThrow(/vendor down/)
+    expect(depsMade).toBe(false) // 生成失败 → 审片分支根本不进
+  })
+
+  it('审片环：传 stub makeVerifyDeps（judge 低分）→ 返回带 verify.flagged 红标 + retries', async () => {
+    const project = createNamedProject('审片-低分红标')
+    const out = await generateOnProject(
+      {
+        projectId: project.id, intent: 'image', prompt: '小周站在冰柜前', vendor: 'apimart', modelKey: 'seedream-4',
+        // judge 恒返身份 1 档 → 触发重试；重试后仍 1 档（stub 不变）→ K=2 用尽 → 红标。
+        makeVerifyDeps: () => stubVerifyDeps('{"scores":{"identity":1,"composition":5,"continuity":5},"reason":"张冠李戴"}'),
+      },
+      createDiskGateway(project.id),
+      async () => ({ id: 't', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://gen.png' }] }),
+    )
+    expect(out.verify).toBeDefined()
+    expect(out.verify?.evaluated).toBe(true)
+    expect(out.verify?.passed).toBe(false)
+    expect(out.verify?.retries).toBe(2) // K≤2 封顶
+    expect(out.verify?.flagged.map((f) => f.dimension)).toEqual(['identity'])
+  })
+
+  it('审片环：judge 首发即高分 → verify.passed、零重试、无红标', async () => {
+    const project = createNamedProject('审片-一次过')
+    const out = await generateOnProject(
+      {
+        projectId: project.id, intent: 'image', prompt: '小周', vendor: 'apimart', modelKey: 'seedream-4',
+        makeVerifyDeps: () => stubVerifyDeps('{"scores":{"identity":5,"composition":5,"continuity":5},"reason":"好"}'),
+      },
+      createDiskGateway(project.id),
+      async () => ({ id: 't', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://gen.png' }] }),
+    )
+    expect(out.verify?.passed).toBe(true)
+    expect(out.verify?.retries).toBe(0)
+    expect(out.verify?.flagged).toEqual([])
+  })
 })
+
+/** 审片 deps 桩：judge 恒返给定判决 JSON；regenerate 返新图 url；视觉恒可用；不真打 vendor。 */
+function stubVerifyDeps(verdictJson: string): import('./shotVerifyOrchestrate').ShotVerifyDeps {
+  let regen = 0
+  return {
+    visionAvailable: () => true,
+    extractFrame: async (u) => u,
+    judge: async () => verdictJson,
+    regenerate: async () => { regen += 1; return { frameSourceUrl: `nomi-local://re-${regen}.png`, isVideo: false } },
+  }
+}

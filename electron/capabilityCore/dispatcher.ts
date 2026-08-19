@@ -12,6 +12,7 @@ import {
   setProjectNodePrompt,
   type FetchTaskResultFn,
   type GenerateInput,
+  type MakeVerifyDeps,
   type RunTaskFn,
 } from './core'
 import { listSkillSummaries, readSkillContent } from '../skills/skillStore'
@@ -46,6 +47,12 @@ export type DispatchContext = {
    * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
    */
   planConfirmed?: boolean
+  /**
+   * 审片环 deps 工厂（W1，可选）。传输层注入真实现（headless=makeShotVerifyDeps；GUI-RPC 同一份）→
+   * generate 生成成功后跑判分→定向重试→红标。**不注入 = generate 行为逐字节不变**（默认）。
+   * 领域策略住 shotVerifyOrchestrate，传输层只注入 deps，core 只透传 outcome（三层干净，方案 §3/§9）。
+   */
+  makeVerifyDeps?: MakeVerifyDeps
 }
 
 const PRODUCTION_START_FIELDS = new Set([
@@ -251,7 +258,14 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
     case 'canvas.deleteNodes':
       return deleteProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodeIds) ? (params.nodeIds as string[]) : [])
     case 'generate':
-      return generateOnProject(params as unknown as GenerateInput, ctx.makeGateway(projectIdOf(params)), ctx.runTask, ctx.fetchTaskResult)
+      // makeVerifyDeps 是**传输层注入**（不是模型能填的入参）→ 从 ctx 取、覆盖任何请求体里的同名字段
+      // （防外部 agent 伪造），与 makeGateway/planConfirmed 同注入模式。不注入 = 审片环不跑（默认行为不变）。
+      return generateOnProject(
+        { ...(params as unknown as GenerateInput), makeVerifyDeps: ctx.makeVerifyDeps },
+        ctx.makeGateway(projectIdOf(params)),
+        ctx.runTask,
+        ctx.fetchTaskResult,
+      )
     default:
       throw new RpcError(`未知方法: ${method}`, 404)
   }

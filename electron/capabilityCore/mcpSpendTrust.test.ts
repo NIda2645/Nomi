@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMcpProtocol, type McpInvokeOptions, type McpTransport } from './mcpProtocol'
-import { SPEND_TRUST_REASK_AFTER } from './mcpSpendTrust'
+import { SPEND_TRUST_REASK_AFTER, SPEND_AUTO_RETRY_MAX, spendConfirmElicit } from './mcpSpendTrust'
 
 // 会话级付费信任（plan 2026-08-19-session-scoped-spend-trust）：治用户原话「反复去软件确认 不是太麻烦了」。
 // 纯协议层单测（注入假 transport）——不 spawn 进程、不碰真实库/App、不花额度。验证：
@@ -208,5 +208,22 @@ describe('nomi-mcp · 付费会话级信任（应用内卡片路 · 客户端不
     expect(calls).toHaveLength(2)
     // 两次都没被预批：说明信任没被错记。
     expect(calls.every((c) => c.options?.spendConfirmed !== true)).toBe(true)
+  })
+})
+
+// W1 裁定 D：确认闸诚实披露「含自动审片 + 最多 N 次定向重试」——用户批的其实是「首发 + 最多 N 次重试」，
+// 重试也算这次的额度，不写明就是骗同意（D4）。
+describe('spendConfirmElicit · 审片重试的诚实披露（W1 裁定 D）', () => {
+  it('首次确认文案讲清「含自动审片 + 最多 N 次重试 + 重试算额度」', () => {
+    const { message, description } = spendConfirmElicit('即将用 X 生成一段视频，将消耗模型额度。', false)
+    expect(message).toContain('自动审片')
+    expect(message).toContain(String(SPEND_AUTO_RETRY_MAX)) // N 次重试写明
+    expect(message).toContain('也算这次生成的额度') // 重试花钱说清
+    expect(description).toContain('自动审片')
+  })
+  it('reask 文案同样带审片重试披露（用满额度再问时也不隐瞒）', () => {
+    const { message } = spendConfirmElicit('costHint', true)
+    expect(message).toContain('自动审片')
+    expect(message).toContain(String(SPEND_AUTO_RETRY_MAX))
   })
 })

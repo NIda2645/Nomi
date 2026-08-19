@@ -76,6 +76,90 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     expect(text).not.toContain('nomi://')
   })
 
+  // ── W1 审片环交付标注（方案 T7）：result.verify → 文本审片行 + 结构化 outcome.verify ──
+
+  it('generate 无审片字段（默认路径）→ 文本无审片行、outcome 无 verify（转述与今天一致）', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      { assetId: 'a1' }, // 无 verify
+    )
+    expect(text).not.toContain('审片')
+    expect('verify' in (outcome as Record<string, unknown>)).toBe(false)
+  })
+
+  it('generate 审片通过（含重试次数）→ 文本一句通过行 + outcome.verify.passed', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      { assetId: 'a1', verify: { evaluated: true, passed: true, retries: 1, scores: { identity: 5, composition: 4, continuity: 5 }, flagged: [], suggestion: null } },
+    )
+    expect(text).toContain('审片')
+    expect(text).toContain('重试 1 次后通过')
+    expect(outcome).toMatchObject({ verify: { passed: true, retries: 1 } })
+    expect((outcome!.verify as { flagged: unknown[] }).flagged).toEqual([])
+  })
+
+  it('generate 审片一次过（retries=0）→ 文本「一次通过」', () => {
+    const { text } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      { assetId: 'a1', verify: { evaluated: true, passed: true, retries: 0, scores: { identity: 5 }, flagged: [], suggestion: null } },
+    )
+    expect(text).toContain('一次通过')
+  })
+
+  it('generate 审片红标（重试用尽仍不达标）→ 文本逐轴点名 + 建议 + outcome.verify.flagged（诚实不藏）', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      {
+        assetId: 'a1',
+        verify: {
+          evaluated: true, passed: false, retries: 2,
+          scores: { identity: 1, composition: 5, continuity: 5 },
+          flagged: [{ dimension: 'identity', dimensionName: '身份', score: 1, reason: '张冠李戴' }],
+          suggestion: '建议在 Nomi 里重滚这一镜',
+        },
+      },
+    )
+    expect(text).toContain('⚠️')
+    expect(text).toContain('身份第 1 档')
+    expect(text).toContain('张冠李戴')
+    expect(text).toContain('建议')
+    expect(outcome).toMatchObject({ verify: { passed: false, retries: 2 } })
+    expect((outcome!.verify as { flagged: Array<{ dimension: string }> }).flagged[0].dimension).toBe('identity')
+  })
+
+  it('generate 审片红标 · en locale → 英文审片行', () => {
+    const { text } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      {
+        assetId: 'a1',
+        verify: {
+          evaluated: true, passed: false, retries: 2, scores: { identity: 1 },
+          flagged: [{ dimension: 'identity', dimensionName: 'identity', score: 1, reason: 'wrong subject' }],
+          suggestion: 're-roll this shot in Nomi',
+        },
+      },
+      'en',
+    )
+    expect(text).toContain('Review:')
+    expect(text).toContain('below bar')
+    expect(text).toContain('Suggestion:')
+  })
+
+  it('generate 审片 evaluated:false（跳过判分）→ 不显审片行、outcome 无 verify', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      { assetId: 'a1', verify: { evaluated: false, passed: true, retries: 0, scores: {}, flagged: [], suggestion: null } },
+    )
+    expect(text).not.toContain('审片')
+    expect('verify' in (outcome as Record<string, unknown>)).toBe(false)
+  })
+
   it('画布低层工具维持 JSON 直出（text=null 不接管）', () => {
     const { text, outcome } = buildToolOutcome('nomi_read_canvas', { projectId: 'p1' }, { nodes: [] })
     expect(text).toBeNull()

@@ -27,9 +27,31 @@ import {
   type NodeSpec,
 } from './canvasGraph'
 import type { ProjectGateway } from './gateway'
+import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
 
 /** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
+
+/**
+ * 审片环 deps 工厂（可选注入，由传输层提供）。**默认不传 = 行为逐字节不变**（batchPlanPreview 渲染层路径、
+ * 纯 CLI 评测路径都不受影响）。传了 → 生成成功后 core 调一次 verifyAndMaybeRetry 并把 outcome 挂返回。
+ * 领域策略住 shotVerifyOrchestrate（纯）、传输层只注入 deps、core 只透传 outcome——三层干净（方案 §3/§9）。
+ *
+ * ctx 是 core 在生成时算出的真实上下文（复用首发 grantId + 同 nodeId + 同模型/参数/参考重试的原料）。
+ */
+export type ShotVerifyDepsContext = {
+  projectId: string
+  grantId: string
+  nodeId: string
+  vendor: string
+  modelKey: string
+  generationKind: string
+  nodeKind: string
+  basePrompt: string
+  params: Record<string, unknown>
+  references: string[]
+}
+export type MakeVerifyDeps = (ctx: ShotVerifyDepsContext) => ShotVerifyDeps
 
 type TaskResultLike = {
   id?: string
@@ -253,6 +275,12 @@ export type GenerateInput = {
    * 故应用内确认卡要多写一句授权范围。只影响卡上文案，不放宽任何授权——令牌照旧逐次铸、逐次核验。
    */
   grantsSessionTrust?: boolean
+  /**
+   * 审片环 deps 工厂（可选，传输层注入）。**不传 = 行为逐字节不变**（不判分、不重试，返回同今天）。
+   * 传了 → 生成成功后跑一次审片环（判分→定向重试 K≤2→红标），outcome 挂到返回的 `verify`。
+   * 不是模型能填的入参——由 dispatcher 从 DispatchContext 注入（同 makeGateway 的注入模式）。
+   */
+  makeVerifyDeps?: MakeVerifyDeps
 }
 
 /**
@@ -270,6 +298,8 @@ export async function generateOnProject(
   nodeId: string
   status: string
   assets: TaskResultLike['assets']
+  /** 审片环结果（仅当注入了 makeVerifyDeps 且判分真跑时出现；默认路径不含此字段=行为不变）。 */
+  verify?: ShotVerifyOutcome
 }> {
   let snapshot = await gateway.readDoc()
 
@@ -396,5 +426,59 @@ export async function generateOnProject(
 
   const primary = (result.assets || [])[0]
   const text = intent === 'text' ? extractTextFromRaw(result.raw) : (typeof primary?.text === 'string' ? primary.text : '')
-  return { nodeId, status: result.status || 'unknown', assets: result.assets || [], ...(text ? { text } : {}) }
+
+  // 审片环 hook（W1）：注入了 makeVerifyDeps 且生成出了可视产物 → 跑一次判分→定向重试→红标，outcome 挂返回。
+  // **默认不传 = 不进这个分支 = 返回逐字节同今天**（T5 回归测试锁死）。审片是增益：任一步失败绝不阻断生成完成。
+  let verify: ShotVerifyOutcome | undefined
+  const canVerify =
+    typeof input.makeVerifyDeps === 'function'
+    && result.status === 'succeeded'
+    && (intent === 'image' || intent === 'video')
+    && typeof primary?.url === 'string' && primary.url.length > 0
+  if (canVerify) {
+    try {
+      const deps = input.makeVerifyDeps!({
+        projectId: input.projectId,
+        grantId: grantId || '',
+        nodeId,
+        vendor: input.vendor,
+        modelKey: input.modelKey,
+        generationKind: kind,
+        nodeKind: typeof node.kind === 'string' ? node.kind : (intent === 'video' ? 'video' : 'image'),
+        basePrompt: prompt,
+        params: input.params || {},
+        references,
+      })
+      const outcome = await verifyAndMaybeRetry(
+        {
+          shot: {
+            shotNodeId: nodeId,
+            shotTitle: typeof node.title === 'string' && node.title ? node.title : (typeof input.title === 'string' ? input.title : `镜头 ${nodeId}`),
+            shotPrompt: prompt,
+            anchorDescriptions: anchorDescriptionsForNode(snapshot, nodeId),
+            frameSourceUrl: primary!.url as string,
+            isVideo: intent === 'video',
+          },
+        },
+        deps,
+      )
+      if (outcome.evaluated) verify = outcome
+    } catch {
+      /* 审片失败绝不掩盖「生成已完成」——静默降级为无审片信息（同渲染层 runner 的增益语义）。 */
+    }
+  }
+
+  return { nodeId, status: result.status || 'unknown', assets: result.assets || [], ...(text ? { text } : {}), ...(verify ? { verify } : {}) }
+}
+
+/** 该镜锚描述：指向本节点的参考类入边的**源节点 prompt**（角色/场景卡的设定文本，身份轴对照基准）。 */
+function anchorDescriptionsForNode(snapshot: CanvasSnapshot, nodeId: string): string[] {
+  const out: string[] = []
+  for (const edge of snapshot.edges || []) {
+    if (edge.target !== nodeId || !REFERENCE_EDGE_MODES.has(edge.mode || 'reference')) continue
+    const source = snapshot.nodes.find((n) => n.id === edge.source)
+    const desc = source && typeof source.prompt === 'string' ? source.prompt.trim() : ''
+    if (desc && !out.includes(desc)) out.push(desc)
+  }
+  return out
 }

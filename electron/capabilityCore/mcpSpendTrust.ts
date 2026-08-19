@@ -49,10 +49,17 @@ export function createSpendTrustStore() {
 
 export type SpendTrustStore = ReturnType<typeof createSpendTrustStore>
 
+/** 单节点自动重试上限（W1 审片环）——与 shotVerifyOrchestrate 的封顶、spendGrant 的 maxAttemptsPerNode-1 对齐。 */
+export const SPEND_AUTO_RETRY_MAX = 2
+
 /**
  * 付费确认的聊天弹框文案。**必须说清它在授权什么**：
  * 用户以为批的是「这一张」，实际批的是「本会话这个项目往后都不问」——不写明就是骗同意（D4「缺口明着标」）。
  * reask=true 是用满免问额度后的那一问，要讲清为什么又来问，否则用户以为坏了。
+ *
+ * W1 诚实披露（裁定 D）：这次生成还包含**自动审片 + 最多 N 次定向重试**——重试落在同一颗 grant 的
+ * 同节点预算内（不额外弹卡），但会真的多花「≤N 次重生」的额度。用户批的其实是「首发 + 最多 N 次重试」，
+ * 不写明同样是骗同意。判分本身走文本 chat、不进这笔生成预算（成本远小于一次重生），故不在此逐项拆。
  */
 export function spendConfirmElicit(costHint: string, reask: boolean): {
   message: string
@@ -60,11 +67,12 @@ export function spendConfirmElicit(costHint: string, reask: boolean): {
   description: string
 } {
   const scope = `批准后，本会话在这个项目里的后续生成不再逐次询问（最多 ${SPEND_TRUST_REASK_AFTER} 次，之后会再确认一次）。`
+  const reviewNote = `本次生成含自动审片，画面不达标会定向重试最多 ${SPEND_AUTO_RETRY_MAX} 次（重试也算这次生成的额度）。`
   return {
     message: reask
-      ? `本会话在这个项目已免问生成 ${SPEND_TRUST_REASK_AFTER} 次，按上限再确认一次。\n${costHint}\n${scope}\n继续吗？`
-      : `${costHint}\n${scope}\n确认现在生成吗？`,
+      ? `本会话在这个项目已免问生成 ${SPEND_TRUST_REASK_AFTER} 次，按上限再确认一次。\n${costHint}\n${reviewNote}\n${scope}\n继续吗？`
+      : `${costHint}\n${reviewNote}\n${scope}\n确认现在生成吗？`,
     title: '确认生成',
-    description: `确认后将消耗模型额度生成；取消则不生成、不花费。${scope}`,
+    description: `确认后将消耗模型额度生成；取消则不生成、不花费。${reviewNote}${scope}`,
   }
 }

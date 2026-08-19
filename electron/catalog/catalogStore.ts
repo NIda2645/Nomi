@@ -286,6 +286,8 @@ export function listModelCatalogMappings(params?: unknown): Mapping[] {
 export function resolveOnboardingAgentFromCatalog(): {
   providerKind: AiSdkProviderKind;
   baseUrl: string;
+  /** 选中 text 模型所属 vendor 的 key。审片环 judge 走 runTask 需要它（runTask 按 vendorKey 解模型）。 */
+  vendorKey: string;
   modelId: string;
   apiKey: string;
   extraHeaders?: Record<string, string>;
@@ -301,6 +303,7 @@ export function resolveOnboardingAgentFromCatalog(): {
     return {
       providerKind: normalizeProviderKind(vendor.providerKind),
       baseUrl: vendor.baseUrlHint,
+      vendorKey: vendor.key,
       modelId: model.modelKey,
       apiKey,
       ...(extraHeaders ? { extraHeaders } : {}),

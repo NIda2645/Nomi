@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   assertBuilt,
+  BAD_SHOT_MARKER,
   makeIsolatedDirs,
   parseToolResult,
   repoRoot,
@@ -142,10 +143,59 @@ try {
     assertTrue(askedSecond === 0, `同项目第二镜免问（多问了 ${askedSecond} 次）`)
     record('幕5 生成+信任', 'pass', '2 镜真跑 mock 管线；进度帧/深链齐；付费确认全程恰 1 次（会话信任生效）。审片 stub 判分 + 定向重试等 W1 点亮。')
   }
-  record('幕5b 审片重试环', 'pending', '等 W1：注入坏判分镜头 100% 走重试、重试仍败带红标交付。shotVerify 未接 MCP 路径，不假测。')
+  // ── 幕 5b · 审片重试环（W1 点亮：注入坏判分镜头 100% 走重试、重试仍败带红标交付） ──
+  let badVerify = null
+  let badDelivery = null
+  {
+    // 注入 1 坏镜：图片镜（图片镜跳过抽帧，判分直接吃 result.url——mock 图是真 PNG），prompt 埋 BAD_SHOT_MARKER
+    // → mock judge 命中标记返回身份 1 档。带角色锚引用边 → 身份轴被评（有 anchorDescriptions）。
+    const badAnchorRes = parseToolResult(await mcp.callToolOrThrow('nomi_add_nodes', {
+      projectId,
+      nodes: [{ kind: 'character', title: '坏镜锚 · 定妆', prompt: '短发圆脸、左眉痣、深蓝工装，正面平光' }],
+    }))
+    const badAnchorId = (badAnchorRes.json?.ids || [])[0]
+    assertTrue(badAnchorId, '坏镜的角色锚落画布')
+    const badShotRes = parseToolResult(await mcp.callToolOrThrow('nomi_add_nodes', {
+      projectId,
+      nodes: [{ kind: 'image', title: '#坏镜 身份错', prompt: `小周站在冰柜前的画面 ${BAD_SHOT_MARKER}`, vendor: 'nomi-mock', modelKey: 'nomi-mock-image' }],
+    }))
+    const badShotId = (badShotRes.json?.ids || [])[0]
+    assertTrue(badShotId, '坏镜节点落画布')
+    await mcp.callToolOrThrow('nomi_connect_nodes', {
+      projectId,
+      connections: [{ source: badAnchorId, target: badShotId, mode: 'character_ref' }],
+    })
+    // 生成坏镜 → 审片环应判分低 → 定向重试（复用首发 grant，K≤2）→ 仍低 → 红标交付。
+    const gen = parseToolResult(await mcp.callTool('nomi_generate', {
+      projectId, nodeId: badShotId, vendor: 'nomi-mock', modelKey: 'nomi-mock-image', intent: 'image',
+      prompt: `小周站在冰柜前的画面 ${BAD_SHOT_MARKER}`,
+    }, { timeoutMs: 90_000, progressToken: 'dj-bad' }))
+    assertTrue(!gen.isError && gen.json?.status === 'succeeded', `坏镜生成成功（status=${gen.json?.status}）`)
+    badDelivery = gen
+    // 审片环结果在结构化 outcome.verify（模型稳定读，不必抠文本）。
+    badVerify = gen.outcome?.verify || null
+    assertTrue(badVerify && badVerify.evaluated !== false, '审片真的跑了（outcome.verify 存在）——旧构建下此处为空即红')
+    assertTrue(badVerify.passed === false, '注入坏判分镜头未通过审片（passed=false）')
+    assertTrue(badVerify.retries === 2, `坏镜走满定向重试 K=2（实际 ${badVerify.retries}）——「100% 走重试」`)
+    const flaggedDims = (badVerify.flagged || []).map((f) => f.dimension)
+    assertTrue(flaggedDims.includes('identity'), `身份轴被标红（flagged=${flaggedDims.join(',')}）`)
+    // 会话信任下坏镜生成不再问人（幕 5 已批准过本项目）。
+    record('幕5b 审片重试环', 'pass', `注入坏判分镜头 100% 走重试（K=2）、仍败带红标交付（flagged=${flaggedDims.join(',')}）。judge 走真 stdio + mock-catalog-judge，零额度。`)
+  }
 
-  // ── 幕 6 · 交付报告 ─────────────────────────────────────────────
-  record('幕6 交付报告', 'pending', '等 W1：过检数/红标/建议/价格结构化报告。今天结果已带深链与结构化字段（幕 5 已验），报告形态不假测。')
+  // ── 幕 6 · 交付报告（W1 点亮：过检数/红标/建议/深链结构化） ───────
+  {
+    // 交付物结构：passed / flagged / suggestion / 深链缺一不可（harness 幕 6 硬判据 + 四硬判据④）。
+    assertTrue(badVerify, '幕 6 依赖幕 5b 的审片交付')
+    assertTrue(typeof badVerify.passed === 'boolean', '交付含过检结论（passed 布尔）')
+    assertTrue(Array.isArray(badVerify.flagged) && badVerify.flagged.length >= 1, '交付含红标清单（flagged 非空，诚实标崩坏）')
+    assertTrue(typeof badVerify.suggestion === 'string' && badVerify.suggestion.length > 0, '交付含建议（suggestion 人话，非空）')
+    assertTrue(Boolean(badDelivery?.deepLink), '交付含 nomi:// 深链')
+    // 文本转述里红标可见（诚实不藏，D4）：⚠️ 红标标记 + 审片行（stdio locale 可能是 en，故 审片/Review 二择一）。
+    const t = badDelivery.text
+    assertTrue(t.includes('⚠️') && (t.includes('审片') || t.includes('Review')), '交付文本含审片红标行（⚠️ + 审片/Review）')
+    record('幕6 交付报告', 'pass', '交付结构含 过检结论/红标清单/建议/深链，文本红标行可见（诚实标崩坏，不藏）。')
+  }
 
   // ── 横切指标（对今天已点亮的部分） ──────────────────────────────
   {
