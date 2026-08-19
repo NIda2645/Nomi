@@ -752,6 +752,7 @@ export const zhGenerationCommon = {
   },
   audio: {
     progress: '播放进度',
+    uploadFailed: '音频存进项目失败，请重试导入',
     noSubtitleContent: '暂无可生成字幕的内容',
     subtitleCopied: '字幕已复制（SRT，可粘贴为 .srt）',
     copyTranscript: '复制转写文本',
@@ -2001,6 +2002,7 @@ export const enGenerationCommon = {
   },
   audio: {
     progress: 'Playback progress',
+    uploadFailed: 'Saving the audio into the project failed. Try importing it again.',
     noSubtitleContent: 'No content is available for subtitles',
     subtitleCopied: 'Subtitles copied as SRT. Paste them into an .srt file.',
     copyTranscript: 'Copy transcript',
