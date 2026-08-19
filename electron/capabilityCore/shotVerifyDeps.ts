@@ -12,9 +12,12 @@
 //    绝不第二次 confirmSpend——重试吃同一颗 grant 的剩余次数（maxAttemptsPerNode=3 天然封顶 K≤2），
 //    spendGrant.ts 一字不动（方案 §4/§10 铁律）。
 
+import fs from 'node:fs'
+import path from 'node:path'
 import { runTask } from '../runtime'
 import { listOnboardingAgentCandidates } from '../catalog/catalogStore'
 import { extractVideoFrameToAsset } from '../video/extractVideoFrame'
+import { parseLocalAssetUrl } from '../protocol/localProtocol'
 import type { ShotVerifyDeps } from './shotVerifyOrchestrate'
 
 /** 首发生成的上下文——重试要复用它（同 grant/同 node/同模型/同参数），judge 要它的 projectId。 */
@@ -103,6 +106,8 @@ export function makeShotVerifyDeps(
     runTaskFn?: RunTaskLike
     listJudgeCandidates?: ListJudgeCandidates
     extractFirstFrame?: ExtractFirstFrame
+    /** 本地资产解析（注入式，便于测试；缺省真 parseLocalAssetUrl）。 */
+    resolveLocalAsset?: (url: string) => { filePath: string } | null
   },
 ): ShotVerifyDeps {
   const runTaskFn: RunTaskLike = injected?.runTaskFn ?? (runTask as unknown as RunTaskLike)
@@ -119,6 +124,23 @@ export function makeShotVerifyDeps(
   // 本次会话判分模型的进程内缓存：一旦某候选成功，后续判分（含重生后复判）直接用它，不再重试已失败的前序候选。
   let cachedAgent: JudgeCandidate | null = null
 
+  /**
+   * 判分图必须是外部 vendor 取得到的形态。`nomi-local://` 是应用内部协议——直接发给 vendor 会被拒
+   * （L3 实跑现场：moonshot 400「unsupported image url: nomi-local://…」）。渲染层判分能跑是因为渲染
+   * 管线先转了 base64；headless 在此对称：本地资产 → 读盘 → `data:image/…;base64,`。http(s)/data: 原样。
+   */
+  const resolveLocalAsset: (url: string) => { filePath: string } | null =
+    injected?.resolveLocalAsset ?? ((url) => parseLocalAssetUrl(url))
+  function toJudgeImageUrl(frameImageUrl: string): string {
+    if (!frameImageUrl.startsWith('nomi-local://')) return frameImageUrl
+    const parsed = resolveLocalAsset(frameImageUrl)
+    if (!parsed) throw new Error(`判分图解析失败：${frameImageUrl}`)
+    const bytes = fs.readFileSync(parsed.filePath)
+    const ext = path.extname(parsed.filePath).slice(1).toLowerCase()
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png'
+    return `data:${mime};base64,${bytes.toString('base64')}`
+  }
+
   /** 单候选跑一次 judge（走 runTask image_to_prompt → text 路，runtime.ts 早于 grant 校验返回，不花生成额度）。 */
   async function callJudge(agent: JudgeCandidate, prompt: string, frameImageUrl: string): Promise<string> {
     const result = await runTaskFn({
@@ -130,7 +152,7 @@ export function makeShotVerifyDeps(
           modelKey: agent.modelKey,
           modelAlias: agent.modelKey,
           projectId: ctx.projectId,
-          referenceImages: [frameImageUrl], // firstReferenceImage 取它当多模态图
+          referenceImages: [toJudgeImageUrl(frameImageUrl)], // firstReferenceImage 取它当多模态图（本地资产已转 data:）
         },
       },
     })

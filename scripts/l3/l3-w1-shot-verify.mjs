@@ -134,7 +134,7 @@ const genImgWithFallback = async (label, nodeId, prompt, timeoutMs) => {
 }
 
 // ① 锚图（1 图）：先出定妆照——它自己没有锚引用，判分按无锚上下文跑或跳过身份轴。
-await gen('锚·定妆照', anchorId, 'image', ANCHOR_DESC, img, 300_000)
+await genImgWithFallback('锚·定妆照', anchorId, ANCHOR_DESC, 300_000)
 // ② 好镜（1 图 + 可能重试）：与锚一致的画面 → 期待 passed。
 const goodId = await mk('image', '#好镜', '小周站在便利店冰柜前微笑，短发圆脸左眉痣清晰可见，深蓝工装，冷白灯光', img.vendorKey || img.vendor, img.modelKey)
 await genImgWithFallback('好镜', goodId, '小周站在便利店冰柜前微笑，短发圆脸左眉痣清晰可见，深蓝工装，冷白灯光', 300_000)
@@ -157,5 +157,6 @@ collected.forEach((p, i) => fs.copyFileSync(p, path.join(outDir, `${String(i + 1
 fs.writeFileSync(path.join(outDir, 'run.json'), JSON.stringify({ ranAt: new Date().toISOString(), spendConfirms, audit }, null, 2))
 console.log(`\nL3-W1 完成：${audit.length} 次生成 · elicitation 确认 ${spendConfirms} 次 · 产物 ${collected.length} 张已拷到 ${path.relative(repoRoot, outDir)}/`)
 const badV = bad?.verify
-console.log(badV && badV.passed === false ? '✓ 坏镜被真 VLM 检出（criterion ⑥ 达成）' : `⚠ 坏镜判分结果：${JSON.stringify(badV)}——待人工核`)
+const detected = badV && badV.skipped !== true && (badV.passed === false || (badV.flagged || []).length > 0)
+console.log(detected ? '✓ 坏镜被真 VLM 检出（criterion ⑥ 达成）' : `⚠ 坏镜判分未达成检出（skipped=${badV?.skipped}）：${JSON.stringify(badV)}——待人工核`)
 cleanup(0)

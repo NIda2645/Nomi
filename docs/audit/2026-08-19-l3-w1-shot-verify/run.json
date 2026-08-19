@@ -1,39 +1,67 @@
 {
-  "ranAt": "2026-08-19T13:43:39.319Z",
-  "spendConfirms": 1,
+  "ranAt": "2026-08-19T13:57:22.275Z",
+  "spendConfirms": 3,
   "audit": [
     {
       "label": "锚·定妆照",
+      "model": "code-newcli-com/gpt-image-2",
+      "isError": true,
+      "verify": null,
+      "text": "✗ Provider request failed (HTTP 400) at code-newcli-com POST https://code.newcli.com/codex/v1/images/generations: (no detail from provider)\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    },
+    {
+      "label": "好镜",
+      "model": "code-newcli-com/gpt-image-2",
+      "isError": true,
+      "verify": null,
+      "text": "✗ Provider request failed (HTTP 400) at code-newcli-com POST https://code.newcli.com/codex/v1/images/generations: (no detail from provider)\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    },
+    {
+      "label": "好镜",
+      "model": "apimart/doubao-seedream-4.5",
       "status": "succeeded",
       "isError": false,
       "verify": {
         "skipped": true,
         "reason": "判分未能在时限内完成（判分模型无响应/持续失败，已跳过审片，不影响本次生成）",
-        "passed": true,
+        "passed": false,
         "retries": 0,
         "scores": {},
         "flagged": [],
         "suggestion": null
       },
-      "text": "✓ 已生成一张画面\n  apimart · z-image-turbo · image · 「年轻女性便利店收银员小周：短发、圆脸、左眉一颗痣，深蓝色工装…」\n审片：跳过（判分未能在时限内完成（判分模型无响应/持续失败，已跳过审片，不影响本次生成））\n{\n  \"nodeId\": \"node-81d50571-1\",\n  \"status\": \"succeeded\",\n  \"assets\": [\n    {\n      \"type\": \"image\",\n      \"url\": \"nomi-local://asset/workspace-43487a70-4eb2-445a-9570-33246492a9bb/assets/generated/2026-08-19/image-1787146956674.png\",\n      \"thumbnailUrl\": \"nomi-local://ass"
-    },
-    {
-      "label": "好镜",
-      "isError": true,
-      "verify": null,
-      "text": "✗ 模型「Z-Image Turbo」没有「图生图（改图）」通道，参考图发不出去。请改用支持图生图的模型，或断开参考图走纯文生图。\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+      "text": "✓ 已生成一张画面\n  apimart · doubao-seedream-4.5 · image · 「小周站在便利店冰柜前微笑，短发圆脸左眉痣清晰可见，深蓝工装，…」\n审片：跳过（判分未能在时限内完成（判分模型无响应/持续失败，已跳过审片，不影响本次生成））\n{\n  \"nodeId\": \"node-30593709-2\",\n  \"status\": \"succeeded\",\n  \"assets\": [\n    {\n      \"type\": \"image\",\n      \"url\": \"nomi-local://asset/workspace-18831cf6-fe5f-4a38-a729-b0fdbb6b77b2/assets/generated/2026-08-19/image-1787147598188.jpg\",\n      \"thumbnailUrl\": \"nomi-local"
     },
     {
       "label": "坏镜(身份矛盾)",
+      "model": "code-newcli-com/gpt-image-2",
       "isError": true,
       "verify": null,
-      "text": "✗ 模型「Z-Image Turbo」没有「图生图（改图）」通道，参考图发不出去。请改用支持图生图的模型，或断开参考图走纯文生图。\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+      "text": "✗ Provider request failed (HTTP 400) at code-newcli-com POST https://code.newcli.com/codex/v1/images/generations: (no detail from provider)\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    },
+    {
+      "label": "坏镜(身份矛盾)",
+      "model": "apimart/doubao-seedream-4.5",
+      "status": "succeeded",
+      "isError": false,
+      "verify": {
+        "skipped": true,
+        "reason": "判分未能在时限内完成（判分模型无响应/持续失败，已跳过审片，不影响本次生成）",
+        "passed": false,
+        "retries": 0,
+        "scores": {},
+        "flagged": [],
+        "suggestion": null
+      },
+      "text": "✓ 已生成一张画面\n  apimart · doubao-seedream-4.5 · image · 「满脸皱纹的白发老年男性船长在海上驾驶舱的特写，风暴之夜」\n审片：跳过（判分未能在时限内完成（判分模型无响应/持续失败，已跳过审片，不影响本次生成））\n{\n  \"nodeId\": \"node-956d8f04-4\",\n  \"status\": \"succeeded\",\n  \"assets\": [\n    {\n      \"type\": \"image\",\n      \"url\": \"nomi-local://asset/workspace-18831cf6-fe5f-4a38-a729-b0fdbb6b77b2/assets/generated/2026-08-19/image-1787147676938.jpg\",\n      \"thumbnailUrl\": \"nomi-local://a"
     },
     {
       "label": "视频镜",
-      "isError": true,
+      "model": "apimart/doubao-seedance-2.0",
+      "status": "failed",
+      "isError": false,
       "verify": null,
-      "text": "✗ 模型「Seedance 2.0」在这个接入方式下发不出：参考图。连上的这些素材不会进入请求——为免白扣费这次不发。请断开它们，或换一个支持这些参考的渠道/模型。\n该模型没有任何模式能携带你连上的参考图；请断开它们，或用 nomi_list_models 找一个 references 覆盖参考图的模型。\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+      "text": "✓ 已生成一段视频\n  apimart · doubao-seedance-2.0 · video · 「小周在便利店里缓缓抬头看向墙上时钟，固定机位，冷白灯光」\n{\n  \"nodeId\": \"node-c95c640c-6\",\n  \"status\": \"failed\",\n  \"assets\": []\n}\n在 Nomi 打开 nomi://project/workspace-18831cf6-fe5f-4a38-a729-b0fdbb6b77b2"
     }
   ]
 }

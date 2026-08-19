@@ -43,13 +43,13 @@ describe('makeShotVerifyDeps · judge 候选回退（单点→候选序列）', 
 
     expect(deps.visionAvailable()).toBe(true) // 有候选 → 视觉可用
 
-    const out1 = await deps.judge('prompt-1', 'nomi-local://frame.png')
+    const out1 = await deps.judge('prompt-1', 'data:image/png;base64,FRAME1')
     expect(out1).toContain('identity') // 拿到判决文本
     expect(attemptedVendors).toEqual(['bad-vendor', 'good-vendor']) // 首选失败后顺移次选
 
     // 第二次判分：缓存生效 → 直接用 good-vendor，不再试 bad-vendor
     attemptedVendors.length = 0
-    const out2 = await deps.judge('prompt-2', 'nomi-local://frame2.png')
+    const out2 = await deps.judge('prompt-2', 'data:image/png;base64,FRAME2')
     expect(out2).toContain('identity')
     expect(attemptedVendors).toEqual(['good-vendor']) // ★缓存生效：不再试已失败的首选
   })
@@ -102,5 +102,42 @@ describe('makeShotVerifyDeps · judge 候选回退（单点→候选序列）', 
     const deps = makeShotVerifyDeps(ctx, { runTaskFn, listJudgeCandidates: () => candidates })
     await deps.judge('p', 'f')
     expect(attempted).toEqual(['first']) // 首选成功就停
+  })
+})
+
+describe('toJudgeImageUrl（判分图形态转换：本地资产 → data:）', () => {
+  it('nomi-local:// → 读盘转 data:image/...;base64（外部 vendor 才取得到；L3 现场 moonshot 400 的根因）', async () => {
+    const os = await import('node:os')
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge-img-'))
+    const file = path.join(dir, 'frame.jpg')
+    fs.writeFileSync(file, Buffer.from([0xff, 0xd8, 0xff, 0xe0]))
+    const sent: string[] = []
+    const runTaskFn = async (payload: { vendor: string; request: unknown }) => {
+      const req = payload.request as { extras?: { referenceImages?: string[] } }
+      sent.push(...(req.extras?.referenceImages || []))
+      return { assets: [], raw: { choices: [{ message: { content: '{"scores":{"identity":5},"reason":"ok"}' } }] } }
+    }
+    const deps = makeShotVerifyDeps(ctx, {
+      runTaskFn,
+      listJudgeCandidates: () => [{ vendor: 'v', modelKey: 'm-vision' }],
+      resolveLocalAsset: () => ({ filePath: file }),
+    })
+    await deps.judge('p', 'nomi-local://asset/proj/assets/frame.jpg')
+    expect(sent[0].startsWith('data:image/jpeg;base64,')).toBe(true)
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('http(s)/data: 原样透传（不无谓转码）', async () => {
+    const sent: string[] = []
+    const runTaskFn = async (payload: { vendor: string; request: unknown }) => {
+      const req = payload.request as { extras?: { referenceImages?: string[] } }
+      sent.push(...(req.extras?.referenceImages || []))
+      return { assets: [], raw: { choices: [{ message: { content: '{"scores":{"identity":5},"reason":"ok"}' } }] } }
+    }
+    const deps = makeShotVerifyDeps(ctx, { runTaskFn, listJudgeCandidates: () => [{ vendor: 'v', modelKey: 'm' }] })
+    await deps.judge('p', 'https://example.com/f.png')
+    expect(sent[0]).toBe('https://example.com/f.png')
   })
 })
