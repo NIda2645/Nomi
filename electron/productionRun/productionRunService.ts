@@ -98,6 +98,8 @@ const MEANINGFUL_EVENT_TYPES = new Set([
   'skill.applied',
   'plan.proposed',
   'plan.attached',
+  // W1.5：审片判决（per-shot 过检/红标）——纳入可转述事件，让 nomi_subscribe_run 读得到。
+  'qa.verdict',
 ])
 
 function identifier(value: string, label: string): string {
@@ -141,6 +143,8 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
       stageId: stage.stageId, title: safeExternalText(stage.title), status: stage.status, order: stage.order,
       ...(stage.startedAt ? { startedAt: stage.startedAt } : {}),
       ...(stage.completedAt ? { completedAt: stage.completedAt } : {}),
+      // W1.5：审片摘要透出（仅 qa 阶段有，文本经 sanitizer）。
+      ...(stage.qaSummary ? { qaSummary: safeExternalText(stage.qaSummary) } : {}),
     })),
     gates: run.gates.map((gate) => ({
       gateId: gate.gateId, scope: gate.scope, status: gate.status, title: safeExternalText(gate.title), summary: safeExternalText(gate.summary),

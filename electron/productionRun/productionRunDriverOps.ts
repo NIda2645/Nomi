@@ -9,6 +9,7 @@
 import crypto from 'node:crypto'
 
 import { settlePauseIfQuiet } from './productionRunControl'
+import { adoptedGenerationShotNodeIds, buildQaStageOutcome, type QaVerifyResponse } from './productionQaVerdict'
 import type { ProductionRunRepository } from './productionRunRepository'
 import { trustLevelOf, type ProductionRun } from './productionRunTypes'
 
@@ -126,6 +127,35 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     directionsInFlight,
   } = deps
   const generationRerunRequested = new Set<string>()
+
+  /**
+   * W1.5 qa 阶段：对本次已 adopted 的生成镜头发 production.verify-shots 给渲染层（复用现成
+   * verifyShotsAndReport 判分+对账闭环），把 per-shot 判决落成 qa.verdict 事件 + qa 阶段摘要。
+   * qa 是「生成后判分呈现」不是新门：不弹确认、不改状态机、绝不阻断 run——渲染层不可达 / 判分失败 →
+   * 诚实降级为一条「审片跳过」事件，qa 仍标 completed 继续走 assemble（同 direction 拟案失败的降级策略）。
+   */
+  async function runQaStage(projectId: string, runId: string, incoming: ProductionRun): Promise<ProductionRun> {
+    let current = incoming
+    const shotNodeIds = adoptedGenerationShotNodeIds(current)
+    let response: QaVerifyResponse | null = null
+    if (shotNodeIds.length > 0) {
+      try {
+        response = await requestRenderer('production.verify-shots', { projectId, runId, shotNodeIds }, 10 * 60_000) as QaVerifyResponse
+      } catch (error) {
+        // 渲染层不可达 / 判分异常 → 不抛、不阻断，落「审片跳过」（buildQaStageOutcome 对 null 的降级）。
+        console.error('[nomi:production] shot verify failed (qa skipped):', error instanceof Error ? error.message : String(error))
+        response = null
+      }
+    }
+    const outcome = buildQaStageOutcome(shotNodeIds.length === 0 ? { skipped: true, skipReason: '本次没有可审片的已生成镜头' } : response)
+    current = requireRun(projectId, runId)
+    let verdictIndex = 0
+    for (const event of outcome.events) {
+      current = executeInternal(projectId, runId, current, 'qa.verdict', { summary: event.summary }, `driver-${runId}-qa-verdict-${verdictIndex}`).run
+      verdictIndex += 1
+    }
+    return executeInternal(projectId, runId, current, 'stage.upsert', { stage: stageValue(current, 'qa', { status: 'completed', completedAt: new Date().toISOString(), qaSummary: outcome.stageSummary }) }, `driver-${runId}-stage-qa`).run
+  }
 
   async function proposeDirections(run: ProductionRun): Promise<void> {
     // B1：run 停在 awaiting_direction、方向门 waiting 且还没候选 → 让 renderer 的 LLM 拟 2-3 个方向。
@@ -325,7 +355,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       if (current.status !== 'running') return
       if (current.jobs.some((job) => !['adopted', 'cancelled_remote', 'detached'].includes(job.status))) return
       current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'generate', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-generate`).run
-      current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'qa', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-qa`).run
+      current = await runQaStage(run.projectId, run.runId, current)
       current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'assemble', { status: 'running', startedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-assemble`).run
       const arrangement = await requestRenderer('production.arrange', { projectId: run.projectId, runId: run.runId }, 5 * 60_000)
       const timelinePath = `.nomi/runs/${run.runId}/timeline-v${current.planVersion}.json`
