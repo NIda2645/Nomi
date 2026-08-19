@@ -12,7 +12,8 @@ export const MCP_TOOL_CATALOG = [
   {
     name: 'nomi_list_projects',
     description: '列出本机 Nomi 的所有项目（id / 名称 / 更新时间）。',
-    inputSchema: { type: 'object', properties: {} },
+    // 无参工具的官方推荐形态（tools spec 2026-07-28）：显式只收空对象，模型幻觉出的参数早拒。
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     method: 'project.list',
     build: () => ({}),
   },
@@ -31,7 +32,7 @@ export const MCP_TOOL_CATALOG = [
       + 'locked=Key 在但当前宿主身份解不开（让用户去 Nomi 应用重存该 Key）；statusReason 给一句人话缺口。'
       + 'references 说这个模型带不带得动参考：{image,video,audio,multiImage,referenceModes}——带参考图/视频前先看它，'
       + 'referenceModes 指出用哪个模式（如 image_to_video）才发得出，multiImage=能否多张参考图。选型只挑 keyStatus=ok 的。',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     method: 'models.list',
     build: () => ({}),
   },
