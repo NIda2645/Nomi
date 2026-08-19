@@ -14,7 +14,7 @@
 import crypto from 'node:crypto'
 import { listProjects, createProject, readProject } from '../projects/repository'
 import { readCatalog } from '../catalog/catalogStore'
-import { deriveModelListing, type ModelListingEntry } from '../catalog/modelCatalogListing'
+import { deriveModelListing, referenceModeForIntent, type ModelListingEntry } from '../catalog/modelCatalogListing'
 import { desktopT } from '../i18n'
 import {
   addNodes,
@@ -329,7 +329,15 @@ export async function generateOnProject(
   const references = input.references && input.references.length
     ? input.references
     : (Array.isArray(node.references) && node.references.length ? node.references : referencesFromEdges(snapshot, nodeId))
-  const kind = input.kind || defaultKindForIntent(intent, references.length > 0)
+  // kind 选择（W1d，见 docs/plan/2026-08-20-w1d-reference-mode-alignment.md）：显式 input.kind 最高优先；
+  // 带参考时**按目录 derive**该模型真实可带参考的模式（与 list_models 的 referenceModes 同一份源，P1），不再硬编码
+  // image→image_edit / video→image_to_video（那对「参考模式≠默认名」的模型会选错 kind、被护栏误拒）。derive 不出
+  // （无任何参考模式，或 intent 非 image/video）→ 回退 defaultKindForIntent 走护栏诚实拒绝（语义不放松）。
+  const derivedRefKind =
+    references.length > 0 && (intent === 'image' || intent === 'video')
+      ? referenceModeForIntent(readCatalog(), input.vendor, input.modelKey, intent)
+      : null
+  const kind = input.kind || derivedRefKind || defaultKindForIntent(intent, references.length > 0)
 
   // 先把节点以「排队中」态写出去——A 模式：节点立即出现在画布（所见即所得）；B 模式：落盘占位。
   snapshot = setNodeStatusInSnapshot(snapshot, nodeId, 'queued')

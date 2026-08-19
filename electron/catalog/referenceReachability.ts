@@ -124,15 +124,27 @@ const CONTROL_KEY_PREFIX = /^(generate|return|enable|disable|use|include|with|al
 
 export type ReferenceFamily = "image" | "video" | "audio";
 
+/** 一个参考载体键的族 + 是否多值（数组/多角色键）。null = 不是参考载体。 */
+export type ReferenceKeyKind = { family: ReferenceFamily; multiImage: boolean };
+
+/**
+ * 一个 param 键的参考分类明细（族 + 数组/单值），供「往这个键投影参考」时决定塞数组还是单串。
+ * **与 classifyReferenceKey / bodyReferenceSupport 同一张表**（REFERENCE_KEY_FAMILY），不另写判据（P1）。
+ * 动作/开关键（generate_audio / return_last_frame…）先被 CONTROL_KEY_PREFIX 排除 → 返回 null。
+ */
+export function classifyReferenceKeyDetailed(key: string): ReferenceKeyKind | null {
+  if (CONTROL_KEY_PREFIX.test(key)) return null;
+  for (const rule of REFERENCE_KEY_FAMILY) if (rule.re.test(key)) return { family: rule.family, multiImage: rule.multiImage === true };
+  return null;
+}
+
 /**
  * 一个 param 键（或参考输入键）属于哪个参考族——image / video / audio / null（不是参考载体）。
  * **单一分类真相源**：body 承载力（bodyReferenceSupport）与「本次携带了哪些族」（拒发建议用）都用它，不各写一份。
  * 动作/开关键（generate_audio / return_last_frame…）先被 CONTROL_KEY_PREFIX 排除 → 返回 null。
  */
 export function classifyReferenceKey(key: string): ReferenceFamily | null {
-  if (CONTROL_KEY_PREFIX.test(key)) return null;
-  for (const rule of REFERENCE_KEY_FAMILY) if (rule.re.test(key)) return rule.family;
-  return null;
+  return classifyReferenceKeyDetailed(key)?.family ?? null;
 }
 
 /**

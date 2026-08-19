@@ -205,6 +205,83 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(kind).toBe('text_to_image')
   })
 
+  // W1d：kind 按目录 derive——catalog 里模型声明了参考模式时，带参考生成用它选 kind（不硬编码 defaultKind）。
+  // 落一份最小 catalog 到设置根（mockedUserDataRoot = getSettingsRoot），让 referenceModeForIntent 读得到。
+  function seedCatalog(models: unknown[], mappings: unknown[]): void {
+    const now = new Date().toISOString()
+    const catalog = {
+      version: 9,
+      vendors: [{ key: 'apimart', name: 'APImart', enabled: true, authType: 'none', providerKind: 'openai-compatible', createdAt: now, updatedAt: now }],
+      models, mappings, apiKeysByVendor: {},
+    }
+    fs.writeFileSync(path.join(mockedUserDataRoot, 'model-catalog.json'), JSON.stringify(catalog), 'utf8')
+  }
+
+  it('generate：image + 参考图 + 目录把参考模式声明在 text_to_image（读 image_urls）→ derive 出 text_to_image（≠硬编码 image_edit，证明真查目录）', async () => {
+    // 关键：这个模型的**唯一**带参考模式挂在 text_to_image 上（少见但合法：某些中转的「改图」就复用 t2i 端点+图键）。
+    // 硬编码 defaultKindForIntent('image', hasRefs) 会回 image_edit（那条 mapping 不存在 → 护栏拒），derive 则回
+    // text_to_image（真实可发）。两者分叉 → 这条用例把「是否真查目录」和「是否只是硬编码」区分开（防假绿）。
+    const project = createNamedProject('kind-derive-分叉')
+    seedCatalog(
+      [{ modelKey: 'relay-edit', vendorKey: 'apimart', labelZh: 'Relay 改图', kind: 'image', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [{ id: 't2i', vendorKey: 'apimart', modelKey: 'relay-edit', taskKind: 'text_to_image', name: 't2i', enabled: true, create: { method: 'POST', path: '/x', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' }],
+    )
+    let req: { kind: string; extras: Record<string, unknown> } | null = null
+    await generateOnProject(
+      { projectId: project.id, intent: 'image', prompt: '把围巾改成蓝色', vendor: 'apimart', modelKey: 'relay-edit', references: ['https://cdn/anchor.jpg'] },
+      createDiskGateway(project.id),
+      async (payload) => { req = payload.request as typeof req; return { id: 't', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://gen.png' }] } },
+    )
+    expect(req!.kind).toBe('text_to_image') // derive 出真实带参考模式，而非硬编码 image_edit
+    // 参考经 core 落进 extras.referenceImages（wire 侧 runtime 再投影到 image_urls——core 注入的 runTask 不过 runtime，此处验 core 职责）。
+    expect(req!.extras.referenceImages).toEqual(['https://cdn/anchor.jpg'])
+  })
+
+  it('generate：video + 参考图 + 目录只声明 image_to_video → derive 出 image_to_video', async () => {
+    const project = createNamedProject('kind-derive-i2v')
+    seedCatalog(
+      [{ modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [{ id: 'i2v', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/x', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' }],
+    )
+    let kind = ''
+    await generateOnProject(
+      { projectId: project.id, intent: 'video', prompt: '缓慢推近', vendor: 'apimart', modelKey: 'seedance', references: ['https://cdn/frame.jpg'] },
+      createDiskGateway(project.id),
+      async (payload) => { kind = (payload.request as { kind: string }).kind; return { id: 't', status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://v.mp4' }] } },
+    )
+    expect(kind).toBe('image_to_video')
+  })
+
+  it('generate：image + 参考图 + 目录无任何带参考模式 → 回退硬编码 defaultKind（image_edit），护栏语义不变', async () => {
+    const project = createNamedProject('kind-derive-回退')
+    seedCatalog(
+      [{ modelKey: 'zimage', vendorKey: 'apimart', labelZh: 'Z-Image', kind: 'image', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [{ id: 't2i', vendorKey: 'apimart', modelKey: 'zimage', taskKind: 'text_to_image', name: 't2i', enabled: true, create: { method: 'POST', path: '/x', body: { size: '{{request.params.size}}' } }, createdAt: 't', updatedAt: 't' }],
+    )
+    let kind = ''
+    await generateOnProject(
+      { projectId: project.id, intent: 'image', prompt: '改图', vendor: 'apimart', modelKey: 'zimage', references: ['https://cdn/x.jpg'] },
+      createDiskGateway(project.id),
+      async (payload) => { kind = (payload.request as { kind: string }).kind; return { id: 't', status: 'succeeded', assets: [] } },
+    )
+    expect(kind).toBe('image_edit') // derive 返 null → 回退 defaultKindForIntent（走护栏诚实拒绝路径，语义一字不动）
+  })
+
+  it('generate：显式 input.kind 覆盖目录 derive（最高优先）', async () => {
+    const project = createNamedProject('kind-显式覆盖')
+    seedCatalog(
+      [{ modelKey: 'seedream', vendorKey: 'apimart', labelZh: 'Seedream', kind: 'image', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [{ id: 'edit', vendorKey: 'apimart', modelKey: 'seedream', taskKind: 'image_edit', name: 'edit', enabled: true, create: { method: 'POST', path: '/x', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' }],
+    )
+    let kind = ''
+    await generateOnProject(
+      { projectId: project.id, intent: 'image', kind: 'text_to_image', prompt: '纯文生', vendor: 'apimart', modelKey: 'seedream', references: ['https://cdn/x.jpg'] },
+      createDiskGateway(project.id),
+      async (payload) => { kind = (payload.request as { kind: string }).kind; return { id: 't', status: 'succeeded', assets: [] } },
+    )
+    expect(kind).toBe('text_to_image') // 显式 kind 赢过 derive 的 image_edit
+  })
+
   it('generate：video + 有参考图 → image_to_video', async () => {
     const project = createNamedProject('视频意图测试')
     let kind = ''

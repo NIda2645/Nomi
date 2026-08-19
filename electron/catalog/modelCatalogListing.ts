@@ -9,7 +9,7 @@
 import { apiKeyDecryptStatus, type ApiKeyDecryptStatus, type ApiKeyRecord } from "./secrets";
 import { bodyReferenceSupport, type BodyReferenceSupport } from "./referenceReachability";
 import type { ModelModeBody } from "./taskParams";
-import type { CatalogState, Mapping, ProfileKind } from "./types";
+import { billingKindForTaskKind, type BillingModelKind, type CatalogState, type Mapping, type ProfileKind } from "./types";
 
 /** 一个模型跨其所有 mapping 汇总出的参考承载力 + 是哪些模式（taskKind）带得动。 */
 export type ModelReferenceSupport = BodyReferenceSupport & {
@@ -92,6 +92,34 @@ function referenceSupportForModel(modelMappings: Mapping[]): ModelReferenceSuppo
   // 稳定排序（输出确定性，便于快照/断言）。
   out.referenceModes = [...modes].sort();
   return out;
+}
+
+/**
+ * 「带参考时该用哪个 taskKind 生成」——**derive 自该模型真实可带参考的模式**（与 list_models 的 referenceModes
+ * 同一份判据，P1 单一真相），不再硬编码 image→image_edit / video→image_to_video。
+ *
+ * 根因（docs/plan/2026-08-20-w1d-reference-mode-alignment.md）：core.generateOnProject 此前硬编码
+ * defaultKindForIntent(intent, hasReferences)——对多数模型恰好对（image_edit/image_to_video mapping 存在），
+ * 但对「参考模式≠默认名」的模型会选错 kind、护栏按错 kind 判「发不出」。改为查真实模式：
+ *   · 只看**匹配 intent 计费口径**的参考模式（image intent → 计费为 image 的模式如 image_edit；
+ *     video intent → 计费为 video 的模式如 image_to_video）；
+ *   · 有多个匹配时取字典序最小（稳定），交给护栏的 modeBodies 兜底纠偏；
+ *   · 一个都没有 → 返回 null，调用方回退 defaultKindForIntent（走护栏诚实拒绝，语义不放松）。
+ *
+ * 纯函数（输入 CatalogState），可零依赖单测。
+ */
+export function referenceModeForIntent(
+  state: CatalogState,
+  vendorKey: string,
+  modelKey: string,
+  intent: BillingModelKind,
+): ProfileKind | null {
+  const model = state.models.find((m) => m.vendorKey === vendorKey && m.modelKey === modelKey && m.enabled);
+  const modelMappings = mappingsForModel(state.mappings, vendorKey, modelKey, model?.modelAlias);
+  const referenceModes = referenceSupportForModel(modelMappings).referenceModes;
+  const matching = referenceModes.filter((taskKind) => billingKindForTaskKind(taskKind) === intent);
+  // referenceModes 已字典序稳定，取首个匹配即可（护栏 reachableModeSuggestion 仍会在拒发时点名更优模式）。
+  return matching[0] ?? null;
 }
 
 /**
