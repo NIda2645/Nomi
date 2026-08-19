@@ -12,12 +12,13 @@ import NodeImageEditToolbar from './NodeImageEditToolbar'
 import { ImageResultStackControls } from './ImageResultStack'
 import { FloatingToolbarShell, TOOLBAR_ICON as TBI, ToolbarButton, ToolbarDivider, ToolbarProvenanceButton } from './NodeFloatingToolbar'
 import { useNodeImageEditing } from './useNodeImageEditing'
+import { isLocalImageOpPending, isRemoveBackgroundPending } from './localImageOpPhase'
 import { useNodeDragResize } from './useNodeDragResize'
 import { useHasFrameSourceEdge, useShotIndex, useMountedCards } from '../hooks/useNodeRelationships'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import {
   PendingGenerationPlaceholder,
-  RemoveBackgroundPendingOverlay,
+  LocalImageOpPendingStatus,
   RemoveBackgroundPendingPlaceholder,
   Scene3DEditorLoading,
   STRIPED_BG_CLASS,
@@ -194,8 +195,7 @@ function BaseGenerationNodeImpl({
     : ''
   const canOpenImagePreview = Boolean(imagePreviewUrl)
   const mediaPreviewPriority = selected || focusFlash
-  const isRemoveBackgroundPending =
-    (node.status === 'queued' || node.status === 'running') && node.progress?.phase === 'remove-background'
+  const localImageOpPending = isLocalImageOpPending(node)
   // 可视尺寸（卡片固定宽 / 动态高）的单一真相源 resolveNodeVisualSize——连线锚点 / 最小地图 /
   // fitView 与本外壳共用同一函数，避免名义 size 与渲染尺寸两套真相源（连线起笔飘在节点外的根因）。
   const visualSize = resolveNodeVisualSize(node)
@@ -422,7 +422,7 @@ function BaseGenerationNodeImpl({
           onCrop={() => imageEditing.openEdit(1)}
           onTransform={(op) => void imageEditing.handleImageTransform(op)}
           onRemoveBackground={() => void imageEditing.handleRemoveBackground()}
-          removeBackgroundBusy={isRemoveBackgroundPending}
+          removeBackgroundBusy={isRemoveBackgroundPending(node)}
           onPreview={openMediaPreview}
           onOpenProvenance={() => setProvenanceOpen(true)}
         />
@@ -591,8 +591,8 @@ function BaseGenerationNodeImpl({
               className={cn(
                 'w-full h-full min-h-0 object-contain pointer-events-none',
                 'select-none',
-                isRemoveBackgroundPending && 'blur-sm scale-[1.02] transition-[filter,opacity]',
-                isRemoveBackgroundPending && '[animation:_remove-bg-pulse_1.5s_ease-in-out_infinite]',
+                localImageOpPending && 'blur-sm scale-[1.02] transition-[filter,opacity]',
+                localImageOpPending && '[animation:_remove-bg-pulse_1.5s_ease-in-out_infinite]',
               )}
               src={node.result.url}
               priority={mediaPreviewPriority}
@@ -602,7 +602,7 @@ function BaseGenerationNodeImpl({
               }}
             />
           )
-        ) : isRemoveBackgroundPending ? (
+        ) : localImageOpPending ? (
           <RemoveBackgroundPendingPlaceholder title={node.title} progress={node.progress?.percent} />
         ) : (
           <PendingGenerationPlaceholder
@@ -631,8 +631,8 @@ function BaseGenerationNodeImpl({
             onCancel={() => imageEditing.cancelEdit()}
           />
         ) : null}
-        {isRemoveBackgroundPending && hasResult ? (
-          <RemoveBackgroundPendingOverlay message={node.progress?.message} progress={node.progress?.percent} />
+        {localImageOpPending && hasResult ? (
+          <LocalImageOpPendingStatus message={node.progress?.message} progress={node.progress?.percent} />
         ) : null}
       </div>
       {showImageResultStack ? (
@@ -665,7 +665,7 @@ function BaseGenerationNodeImpl({
         />
       ) : null}
 
-      {isGenerating && !isRemoveBackgroundPending ? <NodeGeneratingOverlay node={node} /> : null}
+      {isGenerating && !localImageOpPending ? <NodeGeneratingOverlay node={node} /> : null}
       {isQueued && !isGenerating ? <NodeQueuedBadge /> : null}
       {showSideTimelineDrag ? (
         <SideTimelineDragHandle onAddAtPlayhead={handleAddToTimelineAtPlayhead} onDragStart={handleTimelineDragStart} />
