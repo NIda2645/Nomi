@@ -248,6 +248,11 @@ export type GenerateInput = {
   /** 参考图（公网 URL 或 nomi-local://），落进 extras.referenceImages。 */
   references?: string[]
   title?: string
+  /**
+   * 由 **MCP 协议层置位**（mcpProtocol.ts，非模型入参）：这次确认还会换来「本会话该项目后续生成免问」，
+   * 故应用内确认卡要多写一句授权范围。只影响卡上文案，不放宽任何授权——令牌照旧逐次铸、逐次核验。
+   */
+  grantsSessionTrust?: boolean
 }
 
 /**
@@ -307,6 +312,8 @@ export async function generateOnProject(
     vendor: input.vendor,
     modelKey: input.modelKey,
     prompt,
+    // 协议层置位（不是模型能填的入参）：这张卡点下去还会换来一段免问期 → 卡上要写明授权范围。
+    ...(input.grantsSessionTrust ? { grantsSessionTrust: true } : {}),
   })
 
   // 进入生成中态（A 模式：节点显示「生成中」）。

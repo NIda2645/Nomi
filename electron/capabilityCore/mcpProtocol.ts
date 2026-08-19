@@ -24,6 +24,7 @@ import { assembleToolResultContent } from './mcpResultPayload'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
+import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
 
 // spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
 // （elicitation-first 画布确认，见 mcpPlanTrust.ts）——透传给传输层，让最终跑 confirmPlan 的网关预批准、
@@ -106,6 +107,9 @@ export function createMcpProtocol(transport: McpTransport) {
   // 画布方案确认的会话级信任：某项目首次批量方案在聊天里批准过 → 本会话该项目后续批量直接放行。
   // 挂闭包 = 随这条 MCP 连接/会话存活，连接断即亡，不持久化（见 mcpPlanTrust.ts）。
   const planTrust = createPlanTrustStore()
+  // 付费的会话级信任（治「反复去软件确认」）：某项目批准一次 → 本会话该项目后续生成免问，
+  // 用满 SPEND_TRUST_REASK_AFTER 次再问一次。同样挂闭包 = 随这条连接存活，断即亡（见 mcpSpendTrust.ts）。
+  const spendTrust = createSpendTrustStore()
   // 服务端→客户端请求自管 id 与 pending，等客户端回响应。
   let serverReqSeq = 0
   const pendingServerReqs = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -203,14 +207,6 @@ export function createMcpProtocol(transport: McpTransport) {
       // 超时/异常 → 当作未确认（不死等、不偷偷花钱）。
       return { supported: true, confirmed: false }
     }
-  }
-
-  async function elicitSpendConfirm(text: string): Promise<{ supported: boolean; confirmed?: boolean }> {
-    return elicitBooleanConfirm({
-      message: text,
-      title: '确认生成',
-      description: '确认后将消耗模型额度生成；取消则不生成、不花费。',
-    })
   }
 
   /**
@@ -416,13 +412,25 @@ export function createMcpProtocol(transport: McpTransport) {
         // elicitSpendConfirm 在客户端没声明 elicitation 时返回 supported:false，故它就是①/②的唯一判据
         // （不另读 clientSupportsElicitation，免两处能力判断漂移）。enforcement 仍在主进程硬闸。
         if (tool.name === 'nomi_generate') {
-          const confirm = await elicitSpendConfirm(`${describeSpend(args)}\n确认现在生成吗？`)
+          const spendProjectId = typeof built.projectId === 'string' ? built.projectId : ''
+          // 会话级信任命中 → 这次不问（治「反复确认」，见 mcpSpendTrust.ts）。硬闸不受影响：
+          // 下游照旧逐次铸 node-bound 令牌、assertAndConsumeSpendGrant 逐次校验。
+          if (spendTrust.isTrusted(spendProjectId)) {
+            spendTrust.countPass(spendProjectId)
+            const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
+            reply(id, buildToolResultPayload(tool.name, args, result))
+            return
+          }
+          const reask = spendTrust.hasApprovedBefore(spendProjectId)
+          const confirm = await elicitBooleanConfirm(spendConfirmElicit(describeSpend(args), reask))
           if (confirm.supported) {
             if (!confirm.confirmed) {
               reply(id, { content: [{ type: 'text', text: '已取消：你未确认这次付费生成，未生成、未消耗额度。' }], isError: true })
               return
             }
             const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
+            // 只在真跑成功后记信任：invoke 抛错（无令牌/供应商失败）不该换来一段免问期。
+            spendTrust.trust(spendProjectId)
             reply(id, buildToolResultPayload(tool.name, args, result))
             return
           }
@@ -433,7 +441,15 @@ export function createMcpProtocol(transport: McpTransport) {
             })
             return
           }
-          // App 开着但客户端问不了 → 落到下面原样 invoke，走应用内确认卡。
+          // App 开着但客户端问不了 → 走应用内确认卡。**invoke 成功即等于真人点了卡**：没点 → 无令牌 →
+          // 主进程 assertAndConsumeSpendGrant 抛错 → invoke 失败。故成功后同样记信任（这条路也要免掉
+          // 「反复」，否则 Claude Code 这类不声明 elicitation 的客户端一点好处都拿不到）。
+          // grantsSessionTrust 让那张卡把授权范围写在脸上——用户以为批的是「这一张」，别让他不知情地批掉一段。
+          built.grantsSessionTrust = true
+          const cardResult = await transport.invoke(tool.method, built)
+          spendTrust.trust(spendProjectId)
+          reply(id, buildToolResultPayload(tool.name, args, cardResult))
+          return
         }
         const result = await transport.invoke(tool.method, built)
         reply(id, buildToolResultPayload(tool.name, args, result))

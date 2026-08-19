@@ -22,6 +22,11 @@ export type SpendConfirmInfo = {
   vendor: string
   modelKey: string
   prompt: string
+  /**
+   * 这次确认同时会换来「本会话该项目后续生成免问」（MCP 付费会话级信任，见 mcpSpendTrust.ts）。
+   * 卡上必须据它多写一句授权范围——用户以为批的是「这一张」，不写明就是骗同意（D4）。
+   */
+  grantsSessionTrust?: boolean
 }
 
 /** 方案门（Phase B）：外部 agent 要往画布落一套节点方案时，弹应用内卡让用户一眼看懂 AI 要建什么。 */

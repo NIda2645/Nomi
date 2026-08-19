@@ -23,6 +23,8 @@ type SpendConfirmPayload = {
   vendor?: string
   modelKey?: string
   prompt?: string
+  /** 主进程带上：这次确认还会换来「本会话该项目后续生成免问」→ 卡上多写一句授权范围。 */
+  grantsSessionTrust?: boolean
 }
 
 // 方案门（Phase B）：外部 agent 批量落节点前的确认。projectId 由主进程网关带上（可能非当前项目）。
@@ -58,11 +60,15 @@ async function confirmSpendForAgent(info: SpendConfirmPayload): Promise<{ confir
     title: isReference
       ? i18n.t('runtime.capability.referenceTitle')
       : i18n.t('runtime.capability.spendTitle', { intent: describeIntent(info.intent) }),
-    message: promptPreview
-      ? i18n.t('runtime.capability.spendMessageWithPrompt', {
-          prompt: `${promptPreview}${info.prompt && info.prompt.length > 60 ? '…' : ''}`,
-        })
-      : i18n.t('runtime.capability.spendMessage'),
+    // 授权范围写在脸上：这一点下去还会换来「本会话该项目后续生成免问」，不写明就是骗同意（D4）。
+    message: [
+      promptPreview
+        ? i18n.t('runtime.capability.spendMessageWithPrompt', {
+            prompt: `${promptPreview}${info.prompt && info.prompt.length > 60 ? '…' : ''}`,
+          })
+        : i18n.t('runtime.capability.spendMessage'),
+      ...(info.grantsSessionTrust ? [i18n.t('runtime.capability.spendGrantsSessionTrust')] : []),
+    ].join('\n'),
     confirmLabel: i18n.t('runtime.capability.confirmGenerate'),
     source: 'agent',
     countdownMs: 60_000,
