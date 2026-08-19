@@ -4,6 +4,7 @@ import { useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
 import { getDesktopBridge } from '../../desktop/bridge'
 import i18n from '../../i18n'
 import { runStoryboardPlanner } from '../generationCanvas/agent/runStoryboardPlanner'
+import { runDirectionPlanner } from '../generationCanvas/agent/runDirectionPlanner'
 import { useWorkbenchStore } from '../workbenchStore'
 import { mintSpendGrant } from '../api/taskApi'
 import { runGenerationNode } from '../generationCanvas/runner/generationRunController'
@@ -134,6 +135,18 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       return confirmSpendForAgent(data as SpendConfirmPayload)
     case 'plan.confirm':
       return confirmPlanForAgent(data as PlanConfirmPayload)
+    case 'production.plan-directions': {
+      // B1 方向门：driver 停在 awaiting_direction 时让渲染层拟 2-3 个「创意方向」候选（三选一）。
+      // 走无工具的一次性文本链路（runDirectionPlanner），语言跟随 brief。失败冒泡给 driver 走
+      // gate title/summary 兜底——不静默编造候选（诚实降级）。
+      const brief = data.brief && typeof data.brief === 'object' && !Array.isArray(data.brief)
+        ? data.brief as Record<string, unknown>
+        : {}
+      const playbook = data.playbook && typeof data.playbook === 'object' && !Array.isArray(data.playbook)
+        ? data.playbook as Record<string, unknown>
+        : null
+      return runDirectionPlanner({ brief, playbook })
+    }
     case 'production.plan-storyboard': {
       const brief = data.brief && typeof data.brief === 'object' && !Array.isArray(data.brief)
         ? data.brief as Record<string, unknown>
