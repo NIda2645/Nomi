@@ -150,7 +150,7 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     expect(text).toContain('Suggestion:')
   })
 
-  it('generate 审片 evaluated:false（跳过判分）→ 不显审片行、outcome 无 verify', () => {
+  it('generate 审片 evaluated:false 无 reason（静默跳过）→ 不显审片行、outcome 无 verify', () => {
     const { text, outcome } = buildToolOutcome(
       'nomi_generate',
       { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
@@ -158,6 +158,35 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     )
     expect(text).not.toContain('审片')
     expect('verify' in (outcome as Record<string, unknown>)).toBe(false)
+  })
+
+  // L3 韧性缺陷修复（2026-08-19）：判分挂起/连续 500 → orchestrate 硬界收成 skipped(reason)，
+  // 生成结果照常交付；交付文案要诚实标「审片：跳过（原因）」，结构化字段带 skipped/reason（D4 不藏）。
+  it('generate 审片 skipped(reason)（判分超时/失败）→ 文本「审片：跳过（原因）」+ outcome.verify.skipped/reason', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      { assetId: 'a1', verify: { evaluated: false, skipped: true, reason: '判分模型无响应（已超时跳过，不影响生成）', passed: true, retries: 0, scores: {}, flagged: [], suggestion: null } },
+    )
+    expect(text).toContain('审片')
+    expect(text).toContain('跳过')
+    expect(text).toContain('判分模型无响应')
+    const v = (outcome as Record<string, unknown>).verify as { skipped?: boolean; reason?: string } | undefined
+    expect(v).toBeTruthy()
+    expect(v!.skipped).toBe(true)
+    expect(v!.reason).toContain('判分模型无响应')
+  })
+
+  it('generate 审片 skipped · en locale → 英文跳过行', () => {
+    const { text } = buildToolOutcome(
+      'nomi_generate',
+      { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
+      { assetId: 'a1', verify: { evaluated: false, skipped: true, reason: 'judge model unavailable', passed: true, retries: 0, scores: {}, flagged: [], suggestion: null } },
+      'en',
+    )
+    expect(text).toContain('Review')
+    expect(text.toLowerCase()).toContain('skipped')
+    expect(text).toContain('judge model unavailable')
   })
 
   it('画布低层工具维持 JSON 直出（text=null 不接管）', () => {

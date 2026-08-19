@@ -142,6 +142,77 @@ describe('verifyAndMaybeRetry（审片环：判分→定向重试→红标）', 
   })
 })
 
+// L3 真额度验收抓出的韧性缺陷（2026-08-19）：判分模型端点连续 500/挂起时，判分把整个 tools/call
+// 拖到 300s 客户端超时 → 生成结果丢给超时错误。修：判分总时长硬界——超界/抛错 → skipped(reason)，
+// 生成结果照常返回；判分失败**绝不**触发 regenerate（重试只对「真拿到低分判决」的镜头）。
+describe('verifyAndMaybeRetry 总时长硬界（判分失败绝不拖垮生成）', () => {
+  it('judge 永不 resolve（挂起）→ 硬界内返回 skipped(reason)、不重试、不误报为过', async () => {
+    const regenCalls: Array<{ nodeId: string; directive: string }> = []
+    const deps: ShotVerifyDeps = {
+      visionAvailable: () => true,
+      extractFrame: async (u) => u,
+      judge: () => new Promise<string>(() => {}), // 永不 resolve（模拟端点挂死）
+      regenerate: async (nodeId, directive) => {
+        regenCalls.push({ nodeId, directive })
+        return { frameSourceUrl: 'nomi-local://x.png', isVideo: false }
+      },
+    }
+    const t0 = Date.now()
+    const out = await verifyAndMaybeRetry({ shot: baseShot, deadlineMs: 40 }, deps)
+    const elapsed = Date.now() - t0
+    expect(elapsed).toBeLessThan(2000) // 绝不拖到 300s——硬界内立即返回
+    expect(out.evaluated).toBe(false)
+    expect(out.skipped).toBe(true)
+    expect(typeof out.reason === 'string' && out.reason!.length > 0).toBe(true) // 人话原因
+    expect(out.passed).toBe(true) // 无偏差可报（生成照常交付）
+    expect(regenCalls).toHaveLength(0) // 判分失败绝不触发 regenerate
+  })
+
+  it('judge 抛错 → skipped(reason) 且 regenerate 未被调（失败≠低分）', async () => {
+    const regenCalls: Array<{ nodeId: string }> = []
+    const deps: ShotVerifyDeps = {
+      visionAvailable: () => true,
+      extractFrame: async (u) => u,
+      judge: async () => { throw new Error('[vendor-http] 500 ×3') }, // L3 真实现场
+      regenerate: async (nodeId) => { regenCalls.push({ nodeId }); return { frameSourceUrl: 'x', isVideo: false } },
+    }
+    const out = await verifyAndMaybeRetry({ shot: baseShot }, deps)
+    expect(out.evaluated).toBe(false)
+    expect(out.skipped).toBe(true)
+    expect(out.reason).toBeTruthy()
+    expect(regenCalls).toHaveLength(0) // ★判分失败绝不重生
+  })
+
+  it('重试过程中 judge 挂起 → 硬界内用「首发那次成功判决」收尾、不无限等', async () => {
+    // 首判低分（触发重试）→ 重生成功 → 重生后判分挂起 → 硬界应让整体在界内结束，不卡死。
+    let judgeIdx = 0
+    const deps: ShotVerifyDeps = {
+      visionAvailable: () => true,
+      extractFrame: async (u) => u,
+      judge: async () => {
+        judgeIdx += 1
+        if (judgeIdx === 1) return BAD_IDENTITY // 首判低 → 触发重试
+        return await new Promise<string>(() => {}) // 重生后判分挂死
+      },
+      regenerate: async () => ({ frameSourceUrl: 'nomi-local://gen-1.png', isVideo: false }),
+    }
+    const t0 = Date.now()
+    const out = await verifyAndMaybeRetry({ shot: baseShot, deadlineMs: 40 }, deps)
+    expect(Date.now() - t0).toBeLessThan(2000)
+    // 硬界触发：整体判分超时 → skipped（生成照常返回），不是卡死也不是误报为过
+    expect(out.evaluated).toBe(false)
+    expect(out.skipped).toBe(true)
+  })
+
+  it('judge 在界内正常返回 → 不受硬界影响（正常通过路径不回退）', async () => {
+    const { deps } = makeDeps({ verdicts: [PASS] })
+    const out = await verifyAndMaybeRetry({ shot: baseShot, deadlineMs: 5000 }, deps)
+    expect(out.evaluated).toBe(true)
+    expect(out.skipped).toBeFalsy()
+    expect(out.passed).toBe(true)
+  })
+})
+
 describe('buildRetryDirective（定向重试指令：保背景、不含角色名）', () => {
   const ctxShot = { shotNodeId: 's', shotTitle: '#1', shotPrompt: 'p', anchorDescriptions: ['短发圆脸小周'] }
   it('身份轴低 → directive 含「保持…背景…不变」+「修正主体身份」，不含角色名/锚原文', () => {

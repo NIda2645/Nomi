@@ -41,6 +41,12 @@ export type ShotVerifyOrchestrateInput = {
   shot: ShotVerifyShot
   /** 定向重试上限（K）。默认 2——配 spendGrant 的 maxAttemptsPerNode=3（1 首发 + 2 重试）。 */
   maxRetries?: number
+  /**
+   * 判分总时长硬界（毫秒，默认 ~60s）。判分（含底层 HTTP 重试 + 定向重试全过程）超界/抛错 →
+   * 立即返回 skipped(reason)、生成结果照常交付。L3 实跑抓出的韧性铁律：判分**绝不**拖垮生成
+   * （现场：判分模型端点连续 500 把整个 tools/call 拖到 300s 客户端超时，生成结果被丢给超时错误）。
+   */
+  deadlineMs?: number
 }
 
 /** 重生一镜：由接线层复用**首发 grantId + 同 nodeId** 直发 runTask（不第二次 confirmSpend）。 */
@@ -66,8 +72,15 @@ export type ShotVerifyDeps = {
 
 /** 交付标注（方案 §7）：供 core 透传、mcpToolResults 读它填结构化 + 文本审片行。 */
 export type ShotVerifyOutcome = {
-  /** 判分是否真跑了（视觉不可用 / 取帧失败 → false，此时其余字段为空态，交付不显审片行）。 */
+  /** 判分是否真跑了（视觉不可用 / 取帧失败 / 判分超时/失败 → false，此时其余字段为空态）。 */
   evaluated: boolean
+  /**
+   * 判分被跳过（视觉不可用 / 取帧失败 / **判分超时或连续失败**）。true 时 reason 给人话原因，
+   * 交付显「审片：跳过（原因）」并把 skipped/reason 进结构化字段（诚实标缺口，D4）。
+   */
+  skipped: boolean
+  /** 跳过原因（人话，供交付文案与结构化字段）；未跳过时 null。 */
+  reason: string | null
   /** 三轴均达标（无低于阈值的**该评**轴）。evaluated=false 时为 true（无偏差可报）。 */
   passed: boolean
   /** 实际定向重试次数（0 = 首发即过 / 未评）。 */
@@ -142,21 +155,63 @@ function activeScores(shot: ShotVerifyShot, scores: Record<ShotVerifyDimensionKe
   return out
 }
 
-const SKIPPED_OUTCOME: ShotVerifyOutcome = { evaluated: false, passed: true, retries: 0, scores: {}, flagged: [], suggestion: null }
+/** 跳过态 outcome（视觉不可用 / 取帧失败 / 判分超时或连续失败）——生成照常交付，reason 给人话缺口。 */
+function skippedOutcome(reason: string | null): ShotVerifyOutcome {
+  return { evaluated: false, skipped: true, reason, passed: true, retries: 0, scores: {}, flagged: [], suggestion: null }
+}
+
+/** 判分总时长硬界默认值（毫秒）。判分含底层 HTTP 重试可能慢，但绝不该拖垮生成——超此即 skipped。 */
+const DEFAULT_VERIFY_DEADLINE_MS = 60_000
+
+/** 哨兵：judge/retry 全过程超界时由 deadline 竞速抛出，verifyAndMaybeRetry 捕获后收成 skipped。 */
+class VerifyDeadlineError extends Error {
+  constructor() {
+    super('shot-verify deadline exceeded')
+    this.name = 'VerifyDeadlineError'
+  }
+}
 
 /**
  * 审片环：判分 → 不过 → 定向重试（K≤2，接线层复用首发 grantId 直发）→ 仍不过 → 红标。
- * - 视觉不可用 / 首次判分就跳过（取帧/判决失败）→ 返回 evaluated:false（交付不显审片行，仅生成）。
+ * - 视觉不可用 / 首次判分就跳过（取帧/判决失败）→ 返回 skipped(reason)（交付显「跳过（原因）」，仅生成）。
  * - 每次重试后重新判分；一旦达标即 passed 收尾；用尽 K 仍有低分轴 → flagged + suggestion。
  * - 重试自身失败（regenerate 抛错）→ 用「当前这轮的判决」收尾（红标基于最后一次成功判分），不阻断。
+ * - **总时长硬界**（deadlineMs，默认 ~60s）：判分（含底层 HTTP 重试 + 全部定向重试）超界或抛错 →
+ *   立即返回 skipped(reason)、生成结果照常交付。L3 铁律：判分**绝不**把 tools/call 拖到客户端超时。
+ *   判分失败**绝不**触发 regenerate（重试只对「真拿到低分判决」的镜头，判分失败≠低分）。
  */
 export async function verifyAndMaybeRetry(input: ShotVerifyOrchestrateInput, deps: ShotVerifyDeps): Promise<ShotVerifyOutcome> {
-  if (!deps.visionAvailable()) return SKIPPED_OUTCOME
+  if (!deps.visionAvailable()) return skippedOutcome('无可用判分模型（未配置 text 模型），本镜仅生成、未审片')
+  const deadlineMs = Math.max(1, input.deadlineMs ?? DEFAULT_VERIFY_DEADLINE_MS)
+
+  // 把整段判分+重试工作与「硬界超时」竞速：任一先到即收尾。判分挂死/连续 500 时，deadline 先到 → skipped，
+  // 生成结果不被拖到 300s 客户端超时（L3 现场根因）。judge 内部若已挂起，我们不苦等它 settle——竞速即返回。
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new VerifyDeadlineError()), deadlineMs)
+    // node 环境：别让这颗定时器吊住进程退出（judge 已过就赢，这颗只是保险丝）。
+    if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref()
+  })
+  try {
+    return await Promise.race([runVerifyLoop(input, deps), deadline])
+  } catch (err) {
+    if (err instanceof VerifyDeadlineError) {
+      return skippedOutcome('判分未能在时限内完成（判分模型无响应/持续失败，已跳过审片，不影响本次生成）')
+    }
+    // 判分/重试过程里意外抛错（非低分，非 deadline）→ 同样跳过、绝不拖垮生成。
+    return skippedOutcome('审片过程出错，已跳过（不影响本次生成）')
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/** 判分+定向重试主循环（被 deadline 竞速包裹）。判分失败只跳过、绝不触发 regenerate。 */
+async function runVerifyLoop(input: ShotVerifyOrchestrateInput, deps: ShotVerifyDeps): Promise<ShotVerifyOutcome> {
   const maxRetries = Math.max(0, Math.min(2, input.maxRetries ?? 2)) // 硬封顶 2：配 grant 的 maxAttemptsPerNode=3
 
   let shot = input.shot
   let judged = await judgeOnce(shot, deps)
-  if (!judged) return SKIPPED_OUTCOME // 连首次判分都没跑成 → 跳过（不误报为「过」也不红标）
+  if (!judged) return skippedOutcome('判分未成功（取帧或判决失败），本镜仅生成、未审片') // 连首次判分都没跑成 → 跳过（不误报为「过」也不重试）
 
   let retries = 0
   while (judged.deviations.length > 0 && retries < maxRetries) {
@@ -180,5 +235,5 @@ export async function verifyAndMaybeRetry(input: ShotVerifyOrchestrateInput, dep
   const suggestion = passed
     ? null
     : `${flagged.length} 个维度仍未达标（${flagged.map((f) => f.dimensionName).join('、')}），建议在 Nomi 里重滚这一镜或调整提示词`
-  return { evaluated: true, passed, retries, scores, flagged, suggestion }
+  return { evaluated: true, skipped: false, reason: null, passed, retries, scores, flagged, suggestion }
 }

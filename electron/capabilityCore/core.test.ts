@@ -309,6 +309,36 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(out.verify?.retries).toBe(0)
     expect(out.verify?.flagged).toEqual([])
   })
+
+  // L3 韧性修复（2026-08-19）：判分挂起/连续失败 → orchestrate 硬界收成 skipped(reason)。
+  // core 必须把「带 reason 的诚实跳过」也挂到返回 verify（供交付显「审片：跳过（原因）」，D4 不藏），
+  // 而不是像纯静默跳过那样丢弃——且生成结果照常返回。
+  it('审片环：judge 挂起 → 硬界 skipped(reason) 挂到返回 verify、生成结果照常返回', async () => {
+    const project = createNamedProject('审片-判分挂起跳过')
+    const hangDeps: import('./shotVerifyOrchestrate').ShotVerifyDeps = {
+      visionAvailable: () => true,
+      extractFrame: async (u) => u,
+      judge: () => new Promise<string>(() => {}), // 永不 resolve（模拟端点挂死/连续 500）
+      regenerate: async () => ({ frameSourceUrl: 'x', isVideo: false }),
+    }
+    const out = await generateOnProject(
+      {
+        projectId: project.id, intent: 'image', prompt: '小周', vendor: 'apimart', modelKey: 'seedream-4',
+        makeVerifyDeps: () => hangDeps,
+        verifyDeadlineMs: 40, // 快速界，测试不等真 60s
+      },
+      createDiskGateway(project.id),
+      async () => ({ id: 't', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://gen.png' }] }),
+    )
+    // 生成结果照常返回（钱没白花）
+    expect(out.status).toBe('succeeded')
+    expect(out.assets?.[0]?.url).toBe('nomi-local://gen.png')
+    // 审片诚实跳过挂上，带人话原因
+    expect(out.verify).toBeDefined()
+    expect(out.verify?.evaluated).toBe(false)
+    expect(out.verify?.skipped).toBe(true)
+    expect(out.verify?.reason).toBeTruthy()
+  })
 })
 
 /** 审片 deps 桩：judge 恒返给定判决 JSON；regenerate 返新图 url；视觉恒可用；不真打 vendor。 */

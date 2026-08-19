@@ -169,6 +169,9 @@ function referenceTag(ctx: Ctx, references: Record<string, unknown>): string {
 
 /** 审片环交付形（W1）：与 shotVerifyOrchestrate.ShotVerifyOutcome 结构对齐的稳定字段。 */
 type VerifyOutcomeShape = {
+  /** true = 判分被跳过（超时/连续失败/无判分模型），此时只出「跳过（reason）」行、无评分/红标。 */
+  skipped: boolean
+  reason: string | null
   passed: boolean
   retries: number
   scores: Record<string, number>
@@ -176,11 +179,19 @@ type VerifyOutcomeShape = {
   suggestion: string | null
 }
 
-/** 从 core 返回里解审片 outcome（只认 evaluated:true 的真判分；未评/缺失 → null，交付不显审片行）。 */
+/**
+ * 从 core 返回里解审片 outcome：
+ * - evaluated:true → 真判分（passed/flagged/…）。
+ * - skipped:true 且带 reason → 判分超时/连续失败的**诚实跳过**：出「审片：跳过（原因）」行（L3 韧性修复，D4 不藏）。
+ * - 其余（evaluated:false 且无 reason，如视觉静默不可用）→ null，交付不显审片行（与今天一致）。
+ */
 function parseVerifyOutcome(raw: unknown): VerifyOutcomeShape | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
-  if (v.evaluated !== true) return null
+  const skipped = v.skipped === true
+  const reason = typeof v.reason === 'string' && v.reason.length > 0 ? v.reason : null
+  // 未评且无 reason（视觉静默不可用等）→ 不显审片行（保持既有静默语义）。
+  if (v.evaluated !== true && !(skipped && reason)) return null
   const flaggedRaw = Array.isArray(v.flagged) ? v.flagged : []
   const flagged = flaggedRaw.map((f) => {
     const r = rec(f)
@@ -190,6 +201,8 @@ function parseVerifyOutcome(raw: unknown): VerifyOutcomeShape | null {
   const scores: Record<string, number> = {}
   for (const [k, val] of Object.entries(scoresRaw)) if (typeof val === 'number') scores[k] = val
   return {
+    skipped: v.evaluated !== true, // 只有真判分才 evaluated:true；带 reason 的跳过在这里记为 skipped
+    reason,
     passed: v.passed === true,
     retries: Number(v.retries) || 0,
     scores,
@@ -200,9 +213,14 @@ function parseVerifyOutcome(raw: unknown): VerifyOutcomeShape | null {
 
 /**
  * 审片行（双语，内联 L()——MCP 结果文案不走 i18n key，方案 §7）。诚实标注不达标镜头（蓝图 D4）：
+ * 跳过（判分超时/失败）→ 一句「审片：跳过（原因）」（不影响生成，诚实标缺口）；
  * 通过 → 一句「审片通过（含重试次数）」；有红标 → 逐轴点名「第 N 档，低于阈值，建议重滚」，不藏。
  */
 function buildVerifyLine(ctx: Ctx, v: VerifyOutcomeShape): string {
+  if (v.skipped) {
+    const why = v.reason || L(ctx, '判分模型不可用', 'judge model unavailable')
+    return L(ctx, `审片：跳过（${why}）`, `Review: skipped (${why})`)
+  }
   if (v.passed) {
     return v.retries > 0
       ? L(ctx, `审片：定向重试 ${v.retries} 次后通过（身份/构图/连贯达标）`, `Review: passed after ${v.retries} targeted ${v.retries === 1 ? 'retry' : 'retries'} (identity/composition/continuity on-bar)`)

@@ -281,6 +281,11 @@ export type GenerateInput = {
    * 不是模型能填的入参——由 dispatcher 从 DispatchContext 注入（同 makeGateway 的注入模式）。
    */
   makeVerifyDeps?: MakeVerifyDeps
+  /**
+   * 审片总时长硬界（毫秒，缺省 orchestrate 内 ~60s）。判分（含底层 HTTP 重试 + 定向重试）超界/失败 →
+   * skipped(reason)、生成结果照常返回（L3 韧性铁律：判分绝不把 tools/call 拖到客户端超时）。主要给测试注入。
+   */
+  verifyDeadlineMs?: number
 }
 
 /**
@@ -459,10 +464,13 @@ export async function generateOnProject(
             frameSourceUrl: primary!.url as string,
             isVideo: intent === 'video',
           },
+          ...(typeof input.verifyDeadlineMs === 'number' ? { deadlineMs: input.verifyDeadlineMs } : {}),
         },
         deps,
       )
-      if (outcome.evaluated) verify = outcome
+      // 真判分（evaluated）→ 挂交付；判分**超时/连续失败**的诚实跳过（skipped 带 reason）也挂——
+      // 让交付诚实标「审片：跳过（原因）」（L3 韧性修复，D4 不藏）。纯静默跳过（无 reason）不挂，转述与今天一致。
+      if (outcome.evaluated || (outcome.skipped && outcome.reason)) verify = outcome
     } catch {
       /* 审片失败绝不掩盖「生成已完成」——静默降级为无审片信息（同渲染层 runner 的增益语义）。 */
     }

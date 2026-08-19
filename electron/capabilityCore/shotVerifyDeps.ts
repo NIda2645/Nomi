@@ -13,7 +13,7 @@
 //    spendGrant.ts 一字不动（方案 §4/§10 铁律）。
 
 import { runTask } from '../runtime'
-import { resolveOnboardingAgentFromCatalog } from '../catalog/catalogStore'
+import { listOnboardingAgentCandidates } from '../catalog/catalogStore'
 import { extractVideoFrameToAsset } from '../video/extractVideoFrame'
 import type { ShotVerifyDeps } from './shotVerifyOrchestrate'
 
@@ -46,16 +46,21 @@ type RunTaskLike = (payload: { vendor: string; request: unknown }) => Promise<{
   raw?: unknown
 }>
 
-/** 判分模型解析形状（注入式，便于测试；缺省真 catalog）。 */
-type ResolveJudgeAgent = () => { vendor: string; modelKey: string } | null
+/** 单个判分模型候选（vendor + modelKey，runTask 按 vendorKey 解模型）。 */
+type JudgeCandidate = { vendor: string; modelKey: string }
+
+/** 判分候选序列解析形状（注入式，便于测试；缺省真 catalog）。 */
+type ListJudgeCandidates = () => JudgeCandidate[]
 
 /** 抽帧形状（注入式；缺省主进程 ffmpeg 抽帧）。 */
 type ExtractFirstFrame = (payload: { videoUrl: string; projectId: string }) => Promise<{ url: string }>
 
-/** 缺省判分模型解析：复用 resolveOnboardingAgentFromCatalog 的挑选（第一个可用 text 模型），取其 vendorKey+modelId。 */
-function defaultResolveJudgeAgent(): { vendor: string; modelKey: string } | null {
-  const agent = resolveOnboardingAgentFromCatalog()
-  return agent ? { vendor: agent.vendorKey, modelKey: agent.modelId } : null
+/** judge 首调最多试几个候选就放弃（防一路 500 时把审片拖太久；配 orchestrate 的总时长硬界双保险）。 */
+const MAX_JUDGE_CANDIDATE_ATTEMPTS = 3
+
+/** 缺省判分候选序列：复用 listOnboardingAgentCandidates（目录里全部可用 text 模型，既有排序），取其 vendorKey+modelId。 */
+function defaultListJudgeCandidates(): JudgeCandidate[] {
+  return listOnboardingAgentCandidates().map((a) => ({ vendor: a.vendorKey, modelKey: a.modelId }))
 }
 
 /**
@@ -80,46 +85,73 @@ function judgeTextFromResult(result: { raw?: unknown; assets?: Array<{ text?: st
 /**
  * 组装审片环的 electron 真实 deps。judge/regenerate/extractFrame 全在此接真运行时，
  * orchestrate 只认这四个函数、不认识 runTask/grant 的真身。
- * 判分模型在**组装时解一次**（visionAvailable 据它定：无可用 text 模型 → 整体跳过判分，仅生成不报错）。
+ * 判分模型在**组装时解出候选序列**（visionAvailable 据它定：无任何可用 text 模型 → 整体跳过判分，仅生成不报错）。
  *
- * 注入点（默认真实现，测试可换桩）：runTaskFn / resolveJudgeAgent / extractFirstFrame。
+ * 判分候选回退（L3 实跑抓出的韧性缺陷，2026-08-19）：单点依赖「目录第一个 text 模型」太脆——
+ * 用户真实目录里它是经中转的 claude-fable-5，对 chat 调用连续 500 → 判分把整个 tools/call 拖到 300s 超时。
+ * 改为候选序列（目录里全部可用 text 模型，既有排序）：judge 首调失败（传输层错误/非 JSON 无所谓，
+ * 这里只按「抛错」判失败）→ 顺移下一候选（至多试 3 个），成功者**进程内缓存**为本次会话判分模型
+ * （第二次判分不再重试已失败的首选）。全部失败 → 抛错（上层 orchestrate 收成 skipped）。不加任何环境变量开关（P1）。
+ *
+ * 注入点（默认真实现，测试可换桩）：runTaskFn / listJudgeCandidates / extractFirstFrame。
  */
 export function makeShotVerifyDeps(
   ctx: ShotVerifyDepsContext,
   injected?: {
     runTaskFn?: RunTaskLike
-    resolveJudgeAgent?: ResolveJudgeAgent
+    listJudgeCandidates?: ListJudgeCandidates
     extractFirstFrame?: ExtractFirstFrame
   },
 ): ShotVerifyDeps {
   const runTaskFn: RunTaskLike = injected?.runTaskFn ?? (runTask as unknown as RunTaskLike)
-  const resolveJudge: ResolveJudgeAgent = injected?.resolveJudgeAgent ?? defaultResolveJudgeAgent
+  const listCandidates: ListJudgeCandidates = injected?.listJudgeCandidates ?? defaultListJudgeCandidates
   const extractFirstFrame: ExtractFirstFrame = injected?.extractFirstFrame ?? ((payload) => extractVideoFrameToAsset({ ...payload, which: 'first' }))
 
-  const judgeAgent = resolveJudge()
+  // 组装时解出候选序列（至多试前 3 个）。空 → 视觉不可用（整体跳过判分，仅生成不报错，方案 §2）。
+  const candidates = listCandidates().slice(0, MAX_JUDGE_CANDIDATE_ATTEMPTS)
+  // 本次会话判分模型的进程内缓存：一旦某候选成功，后续判分（含重生后复判）直接用它，不再重试已失败的前序候选。
+  let cachedAgent: JudgeCandidate | null = null
+
+  /** 单候选跑一次 judge（走 runTask image_to_prompt → text 路，runtime.ts 早于 grant 校验返回，不花生成额度）。 */
+  async function callJudge(agent: JudgeCandidate, prompt: string, frameImageUrl: string): Promise<string> {
+    const result = await runTaskFn({
+      vendor: agent.vendor,
+      request: {
+        kind: 'image_to_prompt', // billingKindForTaskKind → 'text'，runtime.ts 早于 grant 校验返回（不花生成额度）
+        prompt,
+        extras: {
+          modelKey: agent.modelKey,
+          modelAlias: agent.modelKey,
+          projectId: ctx.projectId,
+          referenceImages: [frameImageUrl], // firstReferenceImage 取它当多模态图
+        },
+      },
+    })
+    return judgeTextFromResult(result)
+  }
 
   return {
-    visionAvailable: () => Boolean(judgeAgent), // 无可用 text 判分模型 → 整体跳过（仅生成，不报错，方案 §2）
+    visionAvailable: () => candidates.length > 0, // 无任何可用 text 判分模型 → 整体跳过（仅生成，不报错，方案 §2）
     extractFrame: async (videoUrl: string) => {
       const { url } = await extractFirstFrame({ videoUrl, projectId: ctx.projectId })
       return url
     },
     judge: async (prompt: string, frameImageUrl: string) => {
-      if (!judgeAgent) throw new Error('no judge model') // 上层 visionAvailable 已挡，双保险
-      const result = await runTaskFn({
-        vendor: judgeAgent.vendor,
-        request: {
-          kind: 'image_to_prompt', // billingKindForTaskKind → 'text'，runtime.ts 早于 grant 校验返回（不花生成额度）
-          prompt,
-          extras: {
-            modelKey: judgeAgent.modelKey,
-            modelAlias: judgeAgent.modelKey,
-            projectId: ctx.projectId,
-            referenceImages: [frameImageUrl], // firstReferenceImage 取它当多模态图
-          },
-        },
-      })
-      return judgeTextFromResult(result)
+      if (candidates.length === 0) throw new Error('no judge model') // 上层 visionAvailable 已挡，双保险
+      // 缓存命中 → 直接用（第二次判分不再从头试失败的首选）。
+      if (cachedAgent) return await callJudge(cachedAgent, prompt, frameImageUrl)
+      // 首次：按序试候选，成功即缓存并返回；失败顺移下一个（至多 3 个）。全失败 → 抛最后一个错。
+      let lastErr: unknown
+      for (const agent of candidates) {
+        try {
+          const text = await callJudge(agent, prompt, frameImageUrl)
+          cachedAgent = agent // 成功者缓存为本次会话判分模型
+          return text
+        } catch (err) {
+          lastErr = err // 传输层错误 → 顺移下一候选
+        }
+      }
+      throw lastErr instanceof Error ? lastErr : new Error('all judge candidates failed')
     },
     regenerate: async (nodeId: string, retryDirective: string) => {
       // 复用首发 grantId + 同 nodeId 直发 runTask（不 confirmSpend），吃同一颗 grant 的剩余次数。
