@@ -3,9 +3,10 @@ import type { GenerationCanvasNode, GenerationNodeResult } from '../model/genera
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { persistNodeImageBlob } from '../adapters/persistNodeImage'
 import type { CropGridResult, CropGridSize } from './render/ImageCropGridOverlay'
-import { computeGridCells, type GridCell } from './render/cropGridGeometry'
+import { computeGridCells, computeSplitLayout, type GridCell } from './render/cropGridGeometry'
 import { removeBackgroundBlob } from '../../../lib/removeBackground'
 import { IMAGE_EDIT_PHASE, REMOVE_BACKGROUND_PHASE } from './localImageOpPhase'
+import { withCanvasGestureContext } from '../events/canvasGestureContext'
 import i18n from '../../../i18n'
 
 // 裁切 / 旋转 / 网格切分统一产 PNG **Blob**，落盘换 nomi-local:// 之后才写 store。
@@ -165,10 +166,109 @@ export function useNodeImageEditing(
   const nodeHistory = node.history
   const nodeMeta = node.meta
   const nodeStatus = node.status
+  const nodeTitle = node.title
+  const nodeCategoryId = node.categoryId
+  const nodePositionX = node.position.x
+  const nodePositionY = node.position.y
 
-  // 裁剪 / 切图统一走可调框确认：computeGridCells 把「外框 + 框内线」换算成 N 个 image 归一化
-  // cell；逐格裁出 PNG Blob → 落盘换 nomi-local:// → **一次**写回节点 history。
-  // 1 cell = 裁剪；N cell = 切图堆叠。逐格 await 是有意的：让出主线程，切图期间画布仍可拖可点。
+  // 切图（N 格）：每切好一格就**当场落一个节点**在画布上，一张接一张冒出来（用户拍板 2026-08-20）——
+  // 进度就是画面本身，不用另加进度条；切完把这批瓦片编成一组，整组能一起拖走。
+  // 落点走纯函数 computeSplitLayout（紧凑方块，单测锁不变量）+ exactPosition 信任落点，
+  // 否则逐卡避让会把成组瓦片推散（「切完飘」的老根因）。原图零改动。
+  const splitIntoTiles = React.useCallback(
+    async (imageUrl: string, grid: CropGridSize, cells: GridCell[], frameWidth: number) => {
+      const store = useGenerationCanvasStore.getState()
+      const createdAt = Date.now()
+      const baseX = Math.round(nodePositionX + visualWidth + 40)
+      const baseY = Math.round(nodePositionY)
+      const blockWidth = clampNumber(visualWidth, MIN_NODE_WIDTH, MAX_NODE_WIDTH)
+      // 落点要在切之前就定死（这样瓦片是"填进既定格位"，而不是边切边挪位置）。
+      // 此刻还不知道每格真实像素宽高比，用 cell 自身的几何比例代替——等分切图两者一致。
+      const layout = computeSplitLayout(cells, frameWidth, blockWidth, cells.map((cell) => cell.w / Math.max(0.0001, cell.h)))
+      const tileIds: string[] = []
+      // 一次切图 = 一个 Cmd+Z 步：第一张打 barrier，其余瓦片与编组挂同一 txn 且抑制自带 barrier
+      // （否则撤销一次九宫格要按 10 次）。只包**同步**段——canvasGestureContext 明令禁止跨 await：
+      // 异步间隙用户手势会插队，上下文会串台。
+      const txnId = `txn_split_${createdAt}`
+      let barrierPushed = false
+      const inSplitTxn = <T,>(fn: () => T): T => {
+        // 只有整次切图的**第一个** store 写入放行 barrier（addNode 与随后的 updateNode 各会打一个，
+        // 所以按调用逐个关，不能按"第几张瓦片"关）。
+        const suppressUndoBarriers = barrierPushed
+        barrierPushed = true
+        return withCanvasGestureContext({ source: 'user', txnId, suppressUndoBarriers }, fn)
+      }
+      const source = await decodeSourceBitmap(imageUrl)
+      try {
+        for (const [index, cell] of cells.entries()) {
+          const tile = await cropBitmapRegion(source, cell)
+          if (!tile) continue
+          const stored = await persistNodeImageBlob(tile.blob, nodeId, `split-${nodeId}-${createdAt}-${index}.png`)
+          const slot = layout[index]
+          const created = inSplitTxn(() =>
+            store.addNode({
+              kind: 'asset',
+              title: i18n.t('generationCommon.imageToolbar.tileTitle', {
+                source: nodeTitle || i18n.t('generationCommon.imageToolbar.image'),
+                index: index + 1,
+              }),
+              position: { x: baseX + slot.x, y: baseY + slot.y },
+              categoryId: nodeCategoryId,
+              exactPosition: true,
+              select: false,
+            }),
+          )
+          inSplitTxn(() => {
+            const result: GenerationNodeResult = {
+              id: `image-split-${created.id}-${createdAt}`,
+              type: 'image' as const,
+              url: stored.url,
+              createdAt,
+            }
+            updateNode(created.id, {
+              result,
+              history: [result],
+              status: 'success',
+              size: { width: slot.width, height: slot.height },
+              meta: {
+                ...(created.meta || {}),
+                source: `image-grid-split-${grid}x${grid}`,
+                sourceNodeId: nodeId,
+                localOnly: stored.localOnly,
+                ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }),
+                gridSize: grid,
+                gridRow: cell.row,
+                gridColumn: cell.column,
+                imageWidth: tile.width,
+                imageHeight: tile.height,
+                imageAspectRatio: tile.width / Math.max(1, tile.height),
+                previewHeight: slot.height,
+              },
+            })
+          })
+          tileIds.push(created.id)
+        }
+      } finally {
+        source.close()
+      }
+      if (tileIds.length < 2) return tileIds.length
+      // 编组：这 9 张是一件东西的九个部分，整组能一起选、一起拖、一起删。
+      inSplitTxn(() => {
+        const latest = useGenerationCanvasStore.getState()
+        latest.selectNodes(tileIds)
+        latest.groupSelectedNodes(
+          nodeCategoryId || 'shots',
+          i18n.t('generationCommon.imageToolbar.tileGroupName', { grid, source: nodeTitle || i18n.t('generationCommon.imageToolbar.image') }),
+        )
+      })
+      return tileIds.length
+    },
+    [nodeCategoryId, nodeId, nodePositionX, nodePositionY, nodeTitle, updateNode, visualWidth],
+  )
+
+  // 可调框确认：computeGridCells 把「外框 + 框内线」换算成 N 个 image 归一化 cell。
+  // 1 cell = 裁剪 → 原地改这张（进本节点堆叠）；N cell = 切图 → 摊成 N 个节点（splitIntoTiles）。
+  // 逐格 await 是有意的：让出主线程，切图期间画布仍可拖可点。
   const handleEditConfirm = React.useCallback(
     async (confirmed: CropGridResult) => {
       const imageUrl = nodeResult?.type === 'image' ? nodeResult.url : undefined
@@ -200,36 +300,34 @@ export function useNodeImageEditing(
         )
       try {
         reportProgress(0)
+        // 切图 = 摊成 N 个节点（原图不动）；裁剪 = 原地改这张（进本节点堆叠）。
+        if (isSplit) {
+          const made = await splitIntoTiles(imageUrl, grid, cells, confirmed.rect.w)
+          if (made === 0) throw new Error('image split produced no tile')
+          updateNode(nodeId, { status: previousStatus, progress: undefined }, { persist: false })
+          return
+        }
         const source = await decodeSourceBitmap(imageUrl)
-        const tiles: { cell: GridCell; index: number; tile: EditedTile }[] = []
+        let cropped: EditedTile | null = null
         try {
-          for (const [index, cell] of cells.entries()) {
-            const tile = await cropBitmapRegion(source, cell)
-            if (tile) tiles.push({ cell, index, tile })
-            reportProgress(index + 1)
-          }
+          cropped = await cropBitmapRegion(source, cells[0])
         } finally {
           source.close()
         }
-        const outputs = await Promise.all(
-          tiles.map(async ({ cell, index, tile }) => {
-            const stored = await persistNodeImageBlob(tile.blob, nodeId, `edit-${nodeId}-${createdAt}-${index}.png`)
-            const result: GenerationNodeResult = {
-              id: `image-${isSplit ? 'split' : 'crop'}-${nodeId}-${createdAt}-${index}`,
-              type: 'image' as const,
-              url: stored.url,
-              createdAt,
-            }
-            return { cell, tile, result, localOnly: stored.localOnly }
-          }),
-        )
-        const main = outputs[0]
-        if (!main) throw new Error('image edit produced no tile')
+        if (!cropped) throw new Error('image crop produced no tile')
+        reportProgress(1)
+        const stored = await persistNodeImageBlob(cropped.blob, nodeId, `crop-${nodeId}-${createdAt}.png`)
+        const result: GenerationNodeResult = {
+          id: `image-crop-${nodeId}-${createdAt}`,
+          type: 'image' as const,
+          url: stored.url,
+          createdAt,
+        }
         const preferredWidth = clampNumber(visualWidth, MIN_NODE_WIDTH, MAX_NODE_WIDTH)
-        const newSize = imageGridTileNodeSize(main.tile.width, main.tile.height, preferredWidth)
+        const newSize = imageGridTileNodeSize(cropped.width, cropped.height, preferredWidth)
         updateNode(nodeId, {
-          result: main.result,
-          history: mergeNodeImageHistory(nodeResult, nodeHistory, outputs.map((entry) => entry.result)),
+          result,
+          history: mergeNodeImageHistory(nodeResult, nodeHistory, [result]),
           status: 'success',
           error: undefined,
           progress: undefined,
@@ -238,13 +336,12 @@ export function useNodeImageEditing(
             : {}),
           meta: {
             ...(nodeMeta || {}),
-            source: isSplit ? `image-grid-split-${grid}x${grid}` : 'image-crop',
-            localOnly: main.localOnly,
-            ...(main.localOnly ? {} : { uploadStatus: 'uploaded' as const }),
-            ...(isSplit ? { gridSize: grid, gridRow: main.cell.row, gridColumn: main.cell.column } : {}),
-            imageWidth: main.tile.width,
-            imageHeight: main.tile.height,
-            imageAspectRatio: main.tile.width / Math.max(1, main.tile.height),
+            source: 'image-crop',
+            localOnly: stored.localOnly,
+            ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }),
+            imageWidth: cropped.width,
+            imageHeight: cropped.height,
+            imageAspectRatio: cropped.width / Math.max(1, cropped.height),
             previewHeight: newSize?.previewHeight,
           },
         })
@@ -257,7 +354,7 @@ export function useNodeImageEditing(
         setImageOpBusy(false)
       }
     },
-    [cancelEdit, editGrid, imageOpBusy, nodeHistory, nodeId, nodeMeta, nodeResult, nodeStatus, updateNode, visualWidth],
+    [cancelEdit, editGrid, imageOpBusy, nodeHistory, nodeId, nodeMeta, nodeResult, nodeStatus, splitIntoTiles, updateNode, visualWidth],
   )
 
   // 旋转 / 翻转：写回当前节点历史堆叠，并切换为当前主图。

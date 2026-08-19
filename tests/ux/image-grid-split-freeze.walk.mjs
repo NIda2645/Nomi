@@ -9,12 +9,15 @@
 //   ① 主线程最长单次阻塞 < 400ms（「卡死」的直接度量：心跳漏拍）
 //   ② 全程零次同步 toDataURL（同步 PNG 编码=主线程被霸占的根因）
 //   ③ store/DOM 里零 data: URL（base64 进 store = 「图多即卡」的病根，也是 JSON 深拷贝的燃料）
-// 外加行为对账：9 张切片确实都进了堆叠、切图期间有「切图中」反馈。
+// 外加行为对账（2026-08-20 用户拍板的切图长相）：
+//   ④ 9 张切片摊成 9 个**独立节点**（不是藏进堆叠）
+//   ⑤ **逐步**冒出来——中途能抓到「已经有几张、还没满 9 张」的中间态
+//   ⑥ 切完自动**编组**，整组能一起拖走
 //
 // 零额度——只用本地 ffmpeg 造的 4K 细节图，不触发任何生成。
 // 用法：node tests/ux/image-grid-split-freeze.walk.mjs
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
-import { clickOrFail, expect, expectVisible } from './_assert.mjs'
+import { clickOrFail, expect, expectCount, expectVisible } from './_assert.mjs'
 import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -131,18 +134,30 @@ try {
   const t0 = Date.now()
   await clickOrFail(confirmSplit, '取景框「确认切图」')
 
-  // ① 切图期间有反馈：读屏状态播报「切图中」（视觉那层是图的模糊呼吸，见 03 截图）
-  const splittingStatus = getWin().getByRole('status', { name: /切图中/ })
-  const sawFeedback = await splittingStatus.first().isVisible({ timeout: 3_000 }).catch(() => false)
-  await snap('03-splitting.png')
+  // ① 逐步布局：切的过程中盯节点数——抓得到「多于 1、还没到 10」的中间态才叫逐步。
+  //    （一次性 10 个的旧写法在这里必然抓不到中间态，所以这条断言测得到真东西。）
+  let sawPartial = false
+  let sawFeedback = false
+  for (let i = 0; i < 60; i += 1) {
+    const [count, splitting] = await Promise.all([
+      getWin().locator('[data-node-id]').count(),
+      getWin().getByRole('status', { name: /切图中/ }).count(),
+    ])
+    if (splitting > 0) sawFeedback = true
+    if (count > 1 && count < 10) sawPartial = true
+    if (count >= 10) break
+    if (i === 2) await snap('03-splitting.png')
+    await getWin().waitForTimeout(120)
+  }
 
-  // ② 结果对账：9 张切片 + 原图 = 10 张进堆叠（堆叠计数是 aria-label，不靠像素）
-  await expectVisible(getWin().getByLabel('10 张堆叠图片').first(), '九宫格没切出 9 张（堆叠计数不对）', 60_000)
+  // ② 结果对账：原图 1 + 切片 9 = 10 个节点（不是藏进堆叠的 10 张）
+  await expectCount(getWin().locator('[data-node-id]'), 10, '九宫格没摊成 9 个节点', 60_000)
   const elapsed = Date.now() - t0
-  console.log(`  · 确认 → 9 张切片全部就位 ${(elapsed / 1000).toFixed(1)} s`)
+  console.log(`  · 确认 → 9 个切片节点全部就位 ${(elapsed / 1000).toFixed(1)} s`)
 
   const hb = await getWin().evaluate(() => window.__nomiHb)
   check('切图期间有「切图中」反馈（不是点完没动静）', sawFeedback)
+  check('逐步冒出来（抓到未满 9 张的中间态）', sawPartial)
   check(`主线程最长阻塞 < ${BLOCK_BUDGET_MS}ms`, hb.max < BLOCK_BUDGET_MS, `实测 ${Math.round(hb.max)}ms（修前 782ms）`)
   check('零次同步 PNG 编码（toDataURL）', !hb.syncEncodes, `实测 ${hb.syncEncodes} 次（修前 9 次）`)
 
@@ -151,10 +166,26 @@ try {
     [...document.querySelectorAll('[data-node-id] img')].map((img) => (img.currentSrc || img.src || '').slice(0, 12)))
   check('切片零 base64（全是 nomi-local:// 门牌号）', urls.every((u) => !u.startsWith('data:')), JSON.stringify(urls))
 
-  // —— 展开堆叠，人眼看 9 张切片确实可挑可用 ——
-  await clickOrFail(getWin().getByLabel('展开堆叠图片'), '展开堆叠')
-  await expectVisible(getWin().getByRole('list', { name: '可切换的堆叠图片' }).first(), '堆叠展不开')
-  await snap('04-stack-open.png')
+  // ④ 切完自动编组：画布上应出现一个把 9 张圈起来的组框
+  await expectCount(getWin().locator('[data-group-id]'), 1, '切完没自动编组', 30_000)
+  const grouped = await getWin().evaluate(() => {
+    const frame = document.querySelector('[data-group-id]')
+    const box = frame?.getBoundingClientRect()
+    const tiles = [...document.querySelectorAll('[data-node-id]')].map((n) => n.getBoundingClientRect())
+    const inside = tiles.filter((r) => box && r.left >= box.left - 4 && r.right <= box.right + 4
+      && r.top >= box.top - 4 && r.bottom <= box.bottom + 4)
+    return { members: inside.length, label: frame?.textContent?.trim().slice(0, 40) || '' }
+  })
+  check('组框圈住 9 张切片', grouped.members === 9, JSON.stringify(grouped))
+  await snap('04-tiles-grouped.png')
+
+  // ⑤ 一次切图 = 一个 Cmd+Z 步（9 个节点 + 编组挂同一 txn，否则撤销要按 10 次）
+  await getWin().locator('.generation-canvas-v2__stage').first().click({ position: { x: 40, y: 40 } })
+  await getWin().keyboard.press('Meta+z')
+  await expectCount(getWin().locator('[data-node-id]'), 1, '一次 Cmd+Z 没把整次切图撤干净（9 张瓦片+编组要挂同一个撤销步）', 20_000)
+  await expectCount(getWin().locator('[data-group-id]'), 0, 'Cmd+Z 后组框还在', 20_000)
+  check('一次 Cmd+Z 撤掉整次切图', true)
+  await snap('05-after-undo.png')
 
   const failed = verdicts.filter(([, ok]) => !ok)
   console.log(`\n  ${failed.length ? `❌ ${failed.length} 项未过` : '✅ 全部通过'}`)

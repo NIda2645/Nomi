@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeGridCells } from './cropGridGeometry'
+import { computeGridCells, computeSplitLayout } from './cropGridGeometry'
 
 const FULL = { x: 0, y: 0, w: 1, h: 1 }
 
@@ -55,5 +55,54 @@ describe('computeGridCells', () => {
   it('乱序传入的线也会被升序处理', () => {
     const cells = computeGridCells(FULL, [2 / 3, 1 / 3], [])
     expect(cells.map((c) => c.x)).toEqual([0, 1 / 3, 2 / 3])
+  })
+})
+
+describe('computeSplitLayout（切完不飘：紧凑方块）', () => {
+  const square = (n: number) => Array.from({ length: n }, () => 1)
+
+  it('等分 2×2：四格等大，整块≈源宽，间距=gap，行列对齐', () => {
+    const cells = computeGridCells(FULL, [0.5], [0.5])
+    const boxes = computeSplitLayout(cells, 1, 240, square(4), { gap: 16 })
+    // 四格同宽同高
+    expect(new Set(boxes.map((b) => b.width))).toEqual(new Set([120]))
+    expect(new Set(boxes.map((b) => b.height))).toEqual(new Set([120]))
+    // 相邻列/行间距 = 宽/高 + gap（紧凑、不飘）
+    expect(boxes[1].x - boxes[0].x).toBe(120 + 16)
+    expect(boxes[2].y - boxes[0].y).toBe(120 + 16)
+    // 整块宽 ≈ 源宽（120+16+120=256，而非旧版每格 240 的 ~536）
+    const blockW = Math.max(...boxes.map((b) => b.x + b.width))
+    expect(blockW).toBeLessThanOrEqual(260)
+    // 左上格在原点，行列严格对齐
+    expect(boxes[0]).toMatchObject({ x: 0, y: 0 })
+    expect(boxes[0].x).toBe(boxes[2].x)
+    expect(boxes[1].x).toBe(boxes[3].x)
+  })
+
+  it('不等分：把竖线拖到 0.7 → 左列更宽、右列更窄', () => {
+    const cells = computeGridCells(FULL, [0.7], [0.5])
+    const boxes = computeSplitLayout(cells, 1, 400, square(4), { gap: 16 })
+    expect(boxes[0].width).toBe(280) // 0.7 × 400
+    expect(boxes[1].width).toBe(120) // 0.3 × 400
+  })
+
+  it('过窄列设地板，不至于窄到没法用', () => {
+    const cells = computeGridCells(FULL, [0.95], [])
+    const boxes = computeSplitLayout(cells, 1, 200, square(2), { gap: 16, minTileWidth: 96 })
+    expect(boxes[1].width).toBe(96) // 0.05×200=10 → 抬到地板 96
+  })
+
+  it('裁剪退化（1 格）：单盒 = blockWidth × blockWidth/宽高比', () => {
+    const cells = computeGridCells({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, [], [])
+    const boxes = computeSplitLayout(cells, 0.8, 300, [1.5])
+    expect(boxes).toHaveLength(1)
+    expect(boxes[0]).toMatchObject({ x: 0, y: 0, width: 300, height: 200 })
+  })
+
+  it('每格高随自身宽高比，不拉伸', () => {
+    const cells = computeGridCells(FULL, [0.5], [])
+    const boxes = computeSplitLayout(cells, 1, 240, [2, 0.5], { gap: 16 })
+    expect(boxes[0].height).toBe(60) // 120 / 2
+    expect(boxes[1].height).toBe(240) // 120 / 0.5
   })
 })
