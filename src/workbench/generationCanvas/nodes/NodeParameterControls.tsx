@@ -31,6 +31,7 @@ import {
   getSlotNodeRef,
   getSlotThumbUrl,
   imageCatalogReferenceSlot,
+  isImportedComfyWorkflowModel,
   nodeSelectedModelAddress,
   parseControlInput,
   readMeta,
@@ -635,6 +636,12 @@ export default function NodeParameterControls({
 
   // section="parameters"：底栏 = 模型芯片 + 变体 + 最常调参数内联 + 「更多」弹层（主次分层，实现见 InlineParameterBar）。
   if (section === 'parameters') {
+    // 导入的 ComfyUI 工作流：参数名是作者随手起的（采样步数/帧率/Float (duration)…），
+    // 把当前值串成 pill（`15 · 24`）没人认得出那是自己勾的东西。改成报名字+条数。
+    // 判据取 meta.comfyWorkflowImport 是否存在——它只由导入流程写入，档案模型不会有。
+    const workflowSummary = isImportedComfyWorkflowModel(selectedModelOption?.meta) && renderedControls.length > 0
+      ? t('generationCommon.parameters.workflowParams', { count: renderedControls.length })
+      : undefined
     return (
       <InlineParameterBar
         modelOptions={modelOptions}
@@ -649,6 +656,7 @@ export default function NodeParameterControls({
         variantChoices={showVariantBar ? variantChoices : []}
         activeVariantId={activeVariantId}
         onVariantSelect={handleVariantSwitch}
+        summaryOverride={workflowSummary}
       />
     )
   }
