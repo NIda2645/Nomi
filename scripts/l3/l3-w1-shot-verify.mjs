@@ -22,6 +22,22 @@ if (!probeOnly && process.env.NOMI_L3_REAL !== '1') {
 }
 if (!fs.existsSync(BIN)) { console.log(`打包产物不存在：${BIN}（先 pnpm run dist:mac:dir）`); process.exit(2) }
 
+// 签名守卫（结构性防「顺序错误」）：启动任何进程前，确保包已用本机稳定证书签名。
+// ad-hoc 指纹每次打包都变，用它碰钥匙串 = 每包每进程都弹密码框（2026-08-19 用户被连弹三轮的根因，
+// 其中一轮是 dist 自带冒烟测试对 3 个 origin 各起一进程 ×3 弹）。证书身份恒定 → 一次「始终允许」永久生效。
+{
+  const { execSync } = await import('node:child_process')
+  const APP = path.join(repoRoot, 'release/mac-arm64/Nomi.app')
+  const IDENTITY = 'Nomi Local Codesign'
+  const hasIdentity = (() => { try { return execSync('security find-identity -v -p codesigning', { encoding: 'utf8' }).includes(IDENTITY) } catch { return false } })()
+  const signedByUs = (() => { try { return execSync(`codesign -dvv "${APP}" 2>&1`, { encoding: 'utf8' }).includes(IDENTITY) } catch { return false } })()
+  if (!signedByUs) {
+    if (!hasIdentity) { console.log(`✗ 本机没有「${IDENTITY}」证书——先建证书再跑，否则钥匙串会反复弹框。`); process.exit(2) }
+    console.log(`· 包尚未用稳定证书签名，现在补签（${IDENTITY}）…`)
+    execSync(`codesign --force --deep --sign "${IDENTITY}" "${APP}"`, { stdio: 'inherit' })
+  }
+}
+
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-l3-w1-'))
 const projectsDir = path.join(base, 'projects')
 const capDir = path.join(base, 'capability')
