@@ -94,7 +94,7 @@ describe('verifyAndMaybeRetry（审片环：判分→定向重试→红标）', 
     const { deps, judgeCalls, regenCalls } = makeDeps({ verdicts: [BAD_IDENTITY], visionAvailable: false })
     const out = await verifyAndMaybeRetry({ shot: baseShot }, deps)
     expect(out.evaluated).toBe(false)
-    expect(out.passed).toBe(true) // 无偏差可报
+    expect(out.passed).toBe(false) // skipped ≠ passed：没判过不自称通过
     expect(judgeCalls).toHaveLength(0)
     expect(regenCalls).toHaveLength(0)
   })
@@ -164,7 +164,7 @@ describe('verifyAndMaybeRetry 总时长硬界（判分失败绝不拖垮生成�
     expect(out.evaluated).toBe(false)
     expect(out.skipped).toBe(true)
     expect(typeof out.reason === 'string' && out.reason!.length > 0).toBe(true) // 人话原因
-    expect(out.passed).toBe(true) // 无偏差可报（生成照常交付）
+    expect(out.passed).toBe(false) // skipped ≠ passed：没判过不自称通过（生成照常交付）
     expect(regenCalls).toHaveLength(0) // 判分失败绝不触发 regenerate
   })
 

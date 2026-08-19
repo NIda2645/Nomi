@@ -56,7 +56,9 @@ type ListJudgeCandidates = () => JudgeCandidate[]
 type ExtractFirstFrame = (payload: { videoUrl: string; projectId: string }) => Promise<{ url: string }>
 
 /** judge 首调最多试几个候选就放弃（防一路 500 时把审片拖太久；配 orchestrate 的总时长硬界双保险）。 */
-const MAX_JUDGE_CANDIDATE_ATTEMPTS = 3
+// 至多试几个判分候选。放到 6：真实目录里坏中转/纯文本模型可能挤满前排（L3 实跑现场），
+// 总耗时由 orchestrate 的 deadline 硬界（默认 60s）兜底，这个帽只是冗余保护、不是延迟预算。
+const MAX_JUDGE_CANDIDATE_ATTEMPTS = 6
 
 /** 缺省判分候选序列：复用 listOnboardingAgentCandidates（目录里全部可用 text 模型，既有排序），取其 vendorKey+modelId。 */
 function defaultListJudgeCandidates(): JudgeCandidate[] {
@@ -107,8 +109,13 @@ export function makeShotVerifyDeps(
   const listCandidates: ListJudgeCandidates = injected?.listJudgeCandidates ?? defaultListJudgeCandidates
   const extractFirstFrame: ExtractFirstFrame = injected?.extractFirstFrame ?? ((payload) => extractVideoFrameToAsset({ ...payload, which: 'first' }))
 
-  // 组装时解出候选序列（至多试前 3 个）。空 → 视觉不可用（整体跳过判分，仅生成不报错，方案 §2）。
-  const candidates = listCandidates().slice(0, MAX_JUDGE_CANDIDATE_ATTEMPTS)
+  // 组装时解出候选序列。L3 实跑教训（2026-08-19）：目录前几个 text 模型可能全是「纯文本/坏中转」
+  // （真实现场：中转 claude 500 + 两个无视觉 Qwen 挤满前 3，能看图的 vision 模型排第 6）——
+  // ① 名字带 vision/vl 等多模态暗示的候选**排前**（判分要看图，derive 自目录数据，非硬编码某家）；
+  // ② 窗口放宽到 MAX_JUDGE_CANDIDATE_ATTEMPTS（总耗时由 orchestrate 的 deadline 硬界兜底，帽是冗余保护）。
+  const looksMultimodal = (m: JudgeCandidate) => /vision|[-_.]vl\b|vl[-_.]|multimodal|omni/i.test(m.modelKey)
+  const ranked = [...listCandidates()].sort((a, b) => Number(looksMultimodal(b)) - Number(looksMultimodal(a)))
+  const candidates = ranked.slice(0, MAX_JUDGE_CANDIDATE_ATTEMPTS)
   // 本次会话判分模型的进程内缓存：一旦某候选成功，后续判分（含重生后复判）直接用它，不再重试已失败的前序候选。
   let cachedAgent: JudgeCandidate | null = null
 

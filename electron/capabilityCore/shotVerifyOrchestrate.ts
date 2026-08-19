@@ -157,7 +157,8 @@ function activeScores(shot: ShotVerifyShot, scores: Record<ShotVerifyDimensionKe
 
 /** 跳过态 outcome（视觉不可用 / 取帧失败 / 判分超时或连续失败）——生成照常交付，reason 给人话缺口。 */
 function skippedOutcome(reason: string | null): ShotVerifyOutcome {
-  return { evaluated: false, skipped: true, reason, passed: true, retries: 0, scores: {}, flagged: [], suggestion: null }
+  // skipped ≠ passed：没判过就不许自称「通过」（L3 实跑抓出 skipped:true 与 passed:true 并存的语义瑕疵）。
+  return { evaluated: false, skipped: true, reason, passed: false, retries: 0, scores: {}, flagged: [], suggestion: null }
 }
 
 /** 判分总时长硬界默认值（毫秒）。判分含底层 HTTP 重试可能慢，但绝不该拖垮生成——超此即 skipped。 */

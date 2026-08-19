@@ -1,0 +1,39 @@
+{
+  "ranAt": "2026-08-19T13:43:39.319Z",
+  "spendConfirms": 1,
+  "audit": [
+    {
+      "label": "锚·定妆照",
+      "status": "succeeded",
+      "isError": false,
+      "verify": {
+        "skipped": true,
+        "reason": "判分未能在时限内完成（判分模型无响应/持续失败，已跳过审片，不影响本次生成）",
+        "passed": true,
+        "retries": 0,
+        "scores": {},
+        "flagged": [],
+        "suggestion": null
+      },
+      "text": "✓ 已生成一张画面\n  apimart · z-image-turbo · image · 「年轻女性便利店收银员小周：短发、圆脸、左眉一颗痣，深蓝色工装…」\n审片：跳过（判分未能在时限内完成（判分模型无响应/持续失败，已跳过审片，不影响本次生成））\n{\n  \"nodeId\": \"node-81d50571-1\",\n  \"status\": \"succeeded\",\n  \"assets\": [\n    {\n      \"type\": \"image\",\n      \"url\": \"nomi-local://asset/workspace-43487a70-4eb2-445a-9570-33246492a9bb/assets/generated/2026-08-19/image-1787146956674.png\",\n      \"thumbnailUrl\": \"nomi-local://ass"
+    },
+    {
+      "label": "好镜",
+      "isError": true,
+      "verify": null,
+      "text": "✗ 模型「Z-Image Turbo」没有「图生图（改图）」通道，参考图发不出去。请改用支持图生图的模型，或断开参考图走纯文生图。\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    },
+    {
+      "label": "坏镜(身份矛盾)",
+      "isError": true,
+      "verify": null,
+      "text": "✗ 模型「Z-Image Turbo」没有「图生图（改图）」通道，参考图发不出去。请改用支持图生图的模型，或断开参考图走纯文生图。\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    },
+    {
+      "label": "视频镜",
+      "isError": true,
+      "verify": null,
+      "text": "✗ 模型「Seedance 2.0」在这个接入方式下发不出：参考图。连上的这些素材不会进入请求——为免白扣费这次不发。请断开它们，或换一个支持这些参考的渠道/模型。\n该模型没有任何模式能携带你连上的参考图；请断开它们，或用 nomi_list_models 找一个 references 覆盖参考图的模型。\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    }
+  ]
+}

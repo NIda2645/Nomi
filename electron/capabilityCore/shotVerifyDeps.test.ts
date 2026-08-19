@@ -54,13 +54,9 @@ describe('makeShotVerifyDeps · judge 候选回退（单点→候选序列）', 
     expect(attemptedVendors).toEqual(['good-vendor']) // ★缓存生效：不再试已失败的首选
   })
 
-  it('至多试 3 个候选：前 3 个都失败 → 抛错（不试第 4 个）；orchestrate 上层收成 skipped', async () => {
-    const candidates = [
-      { vendor: 'c1', modelKey: 'm1' },
-      { vendor: 'c2', modelKey: 'm2' },
-      { vendor: 'c3', modelKey: 'm3' },
-      { vendor: 'c4', modelKey: 'm4' }, // 不该被试到
-    ]
+  it('至多试 6 个候选：前 6 个都失败 → 抛错（不试第 7 个）；orchestrate 上层收成 skipped', async () => {
+    // L3 实跑教训：坏中转/纯文本模型能挤满前 3，窗口放宽到 6（总耗时由 deadline 硬界兜底）。
+    const candidates = Array.from({ length: 7 }, (_, i) => ({ vendor: `c${i + 1}`, modelKey: `m${i + 1}` }))
     const attempted: string[] = []
     const runTaskFn = async (payload: { vendor: string; request: unknown }) => {
       attempted.push(payload.vendor)
@@ -68,7 +64,24 @@ describe('makeShotVerifyDeps · judge 候选回退（单点→候选序列）', 
     }
     const deps = makeShotVerifyDeps(ctx, { runTaskFn, listJudgeCandidates: () => candidates })
     await expect(deps.judge('p', 'f')).rejects.toThrow()
-    expect(attempted).toEqual(['c1', 'c2', 'c3']) // 至多 3 个，不碰第 4 个
+    expect(attempted).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6']) // 至多 6 个，不碰第 7 个
+  })
+
+  it('vision 命名的候选排前：名字带 vision/vl 的模型优先被试（判分要看图）', async () => {
+    // L3 实跑现场：能看图的 moonshot-vision-preview 排目录第 6，被纯文本模型挤出窗口 → 排序治根。
+    const candidates = [
+      { vendor: 'relay', modelKey: 'claude-text' },
+      { vendor: 'ms', modelKey: 'Qwen3-8B' },
+      { vendor: 'moonshot', modelKey: 'moonshot-v1-128k-vision-preview' },
+    ]
+    const attempted: string[] = []
+    const runTaskFn = async (payload: { vendor: string; request: unknown }) => {
+      attempted.push(payload.vendor)
+      return { assets: [], raw: { choices: [{ message: { content: '{"scores":{"identity":5},"reason":"ok"}' } }] } }
+    }
+    const deps = makeShotVerifyDeps(ctx, { runTaskFn, listJudgeCandidates: () => candidates })
+    await deps.judge('p', 'f')
+    expect(attempted[0]).toBe('moonshot') // vision 命名者第一个被试
   })
 
   it('无任何候选 → visionAvailable=false（整体跳过判分，仅生成不报错）', () => {

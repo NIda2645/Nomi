@@ -166,7 +166,7 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     const { text, outcome } = buildToolOutcome(
       'nomi_generate',
       { projectId: 'p1', vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'hi' },
-      { assetId: 'a1', verify: { evaluated: false, skipped: true, reason: '判分模型无响应（已超时跳过，不影响生成）', passed: true, retries: 0, scores: {}, flagged: [], suggestion: null } },
+      { assetId: 'a1', verify: { evaluated: false, skipped: true, reason: '判分模型无响应（已超时跳过，不影响生成）', passed: false, retries: 0, scores: {}, flagged: [], suggestion: null } },
     )
     expect(text).toContain('审片')
     expect(text).toContain('跳过')
