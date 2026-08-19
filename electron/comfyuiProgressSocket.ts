@@ -362,30 +362,53 @@ export function unwatchComfyuiTask(promptId: unknown): void {
 }
 
 /**
- * 取消优先走官方原子定向 POST /api/jobs/{id}/cancel。旧服没有该路由时只做 /queue delete：
- * 它能安全删除排队任务，却不会像旧 /interrupt 那样误伤同一实例上别人的当前任务。
+ * 取消。优先走官方原子定向 POST /api/jobs/{id}/cancel（运行中走 interrupt_if_running、
+ * 排队中走 delete_queue_item，state-agnostic）。
+ *
+ * 两处按官方源码实查修正（2026-08-20 对账 comfyanonymous/ComfyUI master server.py）：
+ *
+ * ① **这条恒 200，必须读 body 里的 `cancelled`**。官方注释写明：取消一个已结束或不认识的 id
+ *    「returns 200 with {"cancelled": false} rather than an error」。只看 res.ok 会把
+ *    「什么都没取消」当成功报上去——用户点了取消、GPU 还在转，界面却说取消了（D4 不糊弄）。
+ *
+ * ② **旧服兜底原来停不掉正在跑的任务**。`POST /queue {delete:[id]}` 走的是 delete_queue_item，
+ *    只摘**排队**项，对当前正在执行的那个毫无作用。原先绕开 /interrupt 是怕误伤同实例上
+ *    别人的任务——**这个顾虑已经过期**：官方 /interrupt 现在收 `prompt_id`，只在「它正好是
+ *    当前运行的那个」时才打断（`if item[1] == prompt_id: should_interrupt = True`），否则跳过。
+ *    所以旧服兜底改成**两条都发**：/interrupt 管运行中、/queue delete 管排队中，
+ *    各自不适用时都是 no-op，谁成了都算取消成功。
  */
-export type ComfyuiCancelResult = { ok: boolean; mode: "targeted" | "queue-only" | "failed" };
+export type ComfyuiCancelResult = { ok: boolean; mode: "targeted" | "nothing-to-cancel" | "legacy" | "failed" };
 
 export async function cancelComfyuiPrompt(
   baseUrl: string,
   promptId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ComfyuiCancelResult> {
-  const targeted = await fetchImpl(comfyuiJobCancelEndpoint(baseUrl, promptId), {
-    method: "POST",
-    signal: AbortSignal.timeout(4000),
-  }).catch(() => null);
-  if (targeted?.ok) return { ok: true, mode: "targeted" };
+  const postJson = (url: string, body?: unknown) =>
+    fetchImpl(url, {
+      method: "POST",
+      ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(4000),
+    }).catch(() => null);
+
+  const targeted = await postJson(comfyuiJobCancelEndpoint(baseUrl, promptId));
+  if (targeted?.ok) {
+    const cancelled = await targeted
+      .json()
+      .then((body) => (isRec(body) ? body.cancelled === true : false))
+      .catch(() => false);
+    return cancelled ? { ok: true, mode: "targeted" } : { ok: true, mode: "nothing-to-cancel" };
+  }
+  // 404/405 = 老服务端没有 jobs 命名空间；其余状态码是真出错，别再拿老路径试一遍把它盖过去。
   if (targeted && targeted.status !== 404 && targeted.status !== 405) return { ok: false, mode: "failed" };
 
-  const queued = await fetchImpl(comfyuiEndpoint(baseUrl, "queue"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ delete: [promptId] }),
-    signal: AbortSignal.timeout(4000),
-  }).catch(() => null);
-  return { ok: Boolean(queued?.ok), mode: queued?.ok ? "queue-only" : "failed" };
+  const [interrupted, dequeued] = await Promise.all([
+    postJson(comfyuiEndpoint(baseUrl, "interrupt"), { prompt_id: promptId }),
+    postJson(comfyuiEndpoint(baseUrl, "queue"), { delete: [promptId] }),
+  ]);
+  const ok = Boolean(interrupted?.ok) || Boolean(dequeued?.ok);
+  return { ok, mode: ok ? "legacy" : "failed" };
 }
 
 export async function interruptComfyuiTask(promptId: unknown): Promise<ComfyuiCancelResult> {
