@@ -66,6 +66,7 @@ body{background:${INK};color:${PAPER};font-family:"PingFang SC","Hiragino Sans G
 .brand img{width:${format.eyebrow + 14}px;height:${format.eyebrow + 14}px;border-radius:6px}
 .eyebrow{margin-left:auto;padding:7px 14px;border:1px solid ${MUTED};border-radius:999px;font-size:${format.eyebrow - 4}px;font-weight:700;letter-spacing:.6px;opacity:.82}
 .claim{margin:${isWide ? '44px' : '58px'} 0 0;font-size:${format.headline}px;line-height:1.08;font-weight:800;letter-spacing:-1px}
+.claim span,.claim em{white-space:nowrap}
 .claim span,.claim em{display:block;font-style:normal}
 .claim em{color:${ORANGE}}
 .sub{margin:${isWide ? '22px' : '26px'} 0 0;font-size:${format.sub}px;line-height:1.55;font-weight:500;opacity:.6;max-width:${isWide ? '92%' : '88%'}}

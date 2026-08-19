@@ -120,10 +120,26 @@ node scripts/render-marketing-posters.mjs A1-one-project B2-3d-stage
 3. `node scripts/render-marketing-posters.mjs`
 4. 人眼过一遍，发小红书 / B站 / 即刻
 
-**要加氛围底板时**（可选，花额度）：
-1. `nomi_generate` 出底板（modelscope / Qwen-Image-Edit-2511 + 参考图 URL），GUI 里点确认
-2. 产物存到 `marketing/assets/boards/<name>.png`
-3. spec 里填 `"board": "marketing/assets/boards/<name>.png"`，重跑渲染
+### 加氛围底板（L1，可选）
+
+**通路已验证**：spec 填 `board` 后，底板以 `opacity:.5` 铺满，上面盖一层 165° 渐变遮罩压到纯 ink，文字与截图可读性不受影响。用 `marketing/assets/demo-poster.jpg` 实渲染确认过。
+
+**但现在生成不了**：见 `docs/qa/2026-08-20-mcp-issues.md` 的 M3——经 Claude Code 的 MCP，付费生成 100% 发不出，不是「点一下就行」。**底板只能在 Nomi GUI 里手动生成**，或等 M3 修好。
+
+**GUI 里生成底板的提示词**（竖版选 9:16，横版选 16:9；出完存到 `marketing/assets/boards/<name>.png`，spec 里填路径即可）：
+
+```
+抽象氛围背景，无任何文字、无任何界面元素、无人物。
+深暖灰近黑色（#171715）为主调，画面右上方有一束极柔和的暖橙色光晕（#ef6a49），
+强度很低，像是暗房里远处的一盏灯。整体极简、大量纯净暗部、轻微胶片颗粒。
+不要渐变色带，不要几何图形，不要网格，不要科技感线条，不要发光粒子。
+质感参考：高端产品发布会主视觉的背景板，克制、昂贵、留白。
+```
+
+变体做法（保证系列一致）：把第一张出好的底板当参考图，改一句「光源移到左下」「光晕换成更冷的灰蓝」，出 3-5 张同源变体。
+> ⚠️ 参考图这条也被 M1 挡着（内置家经 MCP 发不出参考图）——但 **GUI 里是好的**，UI 路径会正确投影参数键。所以底板全流程走 GUI 即可。
+
+**先不填也完全成立**：当前 6 张都是纯 ink 底，已经够干净。底板是锦上添花，不是前置依赖。
 
 ---
 

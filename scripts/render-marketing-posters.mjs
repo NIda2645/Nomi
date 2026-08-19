@@ -25,6 +25,19 @@ try {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2 })
     await page.setContent(renderPosterCard(spec), { waitUntil: 'load' })
     await page.evaluate(() => document.fonts.ready)
+    // 标题按 spec 里写的断行来排，写长了就自动收字号——否则每加一条文案都要手调，就不叫批量了
+    const fitted = await page.evaluate(() => {
+      const claim = document.querySelector('.claim')
+      const limit = claim.clientWidth
+      let size = Number.parseFloat(getComputedStyle(claim).fontSize)
+      const widest = () => Math.max(...[...claim.children].map((line) => line.scrollWidth))
+      while (widest() > limit && size > 40) {
+        size -= 2
+        claim.style.fontSize = `${size}px`
+      }
+      return size
+    })
+    if (fitted !== FORMATS[spec.format].headline) console.log(`  ↳ ${spec.id} 标题收到 ${fitted}px（原 ${FORMATS[spec.format].headline}px）`)
     const target = path.join(outputDir, `${spec.id}.png`)
     await page.screenshot({ path: target })
     await page.close()
