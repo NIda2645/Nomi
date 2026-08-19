@@ -7,6 +7,9 @@ import { computeGridCells, computeSplitLayout, type GridCell } from './render/cr
 import { removeBackgroundBlob } from '../../../lib/removeBackground'
 import { IMAGE_EDIT_PHASE, REMOVE_BACKGROUND_PHASE } from './localImageOpPhase'
 import { withCanvasGestureContext } from '../events/canvasGestureContext'
+import { useWorkbenchStore } from '../../workbenchStore'
+// 尺寸上下界与"卡片实际渲染多大"都从 nodeSizing 拿——这里再抄一份就是布局错位的温床。
+import { MAX_NODE_WIDTH, MIN_NODE_WIDTH, resolveNodeVisualSize } from './nodeSizing'
 import i18n from '../../../i18n'
 
 // 裁切 / 旋转 / 网格切分统一产 PNG **Blob**，落盘换 nomi-local:// 之后才写 store。
@@ -98,10 +101,6 @@ function mergeNodeImageHistory(
 export type ImageGridSize = 2 | 3
 export type ImageTransformOp = 'rotate-left' | 'rotate-right' | 'flip-h' | 'flip-v'
 
-// 这几个布局上下界与壳里 resize 用的同名常量保持一致（壳负责 resize，这里负责编辑后主图尺寸）。
-const MIN_NODE_WIDTH = 240
-const MAX_NODE_WIDTH = 680
-
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
@@ -182,9 +181,6 @@ export function useNodeImageEditing(
       const baseX = Math.round(nodePositionX + visualWidth + 40)
       const baseY = Math.round(nodePositionY)
       const blockWidth = clampNumber(visualWidth, MIN_NODE_WIDTH, MAX_NODE_WIDTH)
-      // 落点要在切之前就定死（这样瓦片是"填进既定格位"，而不是边切边挪位置）。
-      // 此刻还不知道每格真实像素宽高比，用 cell 自身的几何比例代替——等分切图两者一致。
-      const layout = computeSplitLayout(cells, frameWidth, blockWidth, cells.map((cell) => cell.w / Math.max(0.0001, cell.h)))
       const tileIds: string[] = []
       // 一次切图 = 一个 Cmd+Z 步：第一张打 barrier，其余瓦片与编组挂同一 txn 且抑制自带 barrier
       // （否则撤销一次九宫格要按 10 次）。只包**同步**段——canvasGestureContext 明令禁止跨 await：
@@ -199,6 +195,21 @@ export function useNodeImageEditing(
         return withCanvasGestureContext({ source: 'user', txnId, suppressUndoBarriers }, fn)
       }
       const source = await decodeSourceBitmap(imageUrl)
+      // 落点在切之前就定死（瓦片是"填进既定格位"，不是边切边挪）。尺寸**问壳要**：
+      // resolveNodeVisualSize 是卡片实际渲染尺寸的唯一真相源（宽度有 240 地板价等一堆夹取规则）。
+      // 自己按比例复刻一遍就会错位——上一版按 129px 步距摆、卡片却各渲染 240 宽，九张糊成一团。
+      const tileSizes = cells.map((cell) => {
+        const pixelAspect = (cell.w * source.width) / Math.max(1, cell.h * source.height)
+        const width = clampNumber(Math.round((cell.w / Math.max(0.0001, frameWidth)) * blockWidth), MIN_NODE_WIDTH, MAX_NODE_WIDTH)
+        const height = Math.max(1, Math.round(width / Math.max(0.0001, pixelAspect)))
+        return resolveNodeVisualSize({
+          kind: 'asset',
+          size: { width, height },
+          meta: { source: `image-grid-split-${grid}x${grid}`, previewHeight: height },
+          result: { id: 'probe', type: 'image', url: 'probe', createdAt },
+        })
+      })
+      const layout = computeSplitLayout(cells, tileSizes)
       try {
         for (const [index, cell] of cells.entries()) {
           const tile = await cropBitmapRegion(source, cell)
@@ -261,6 +272,9 @@ export function useNodeImageEditing(
           i18n.t('generationCommon.imageToolbar.tileGroupName', { grid, source: nodeTitle || i18n.t('generationCommon.imageToolbar.image') }),
         )
       })
+      // 九张摊开比原图占地大得多，多半有一半落在视口外——用批量落节点那套既有的 fit 信号
+      // 把整块揭出来（同 3D 录完 take 的做法），否则用户只看到左边两列，以为切歪了。
+      useWorkbenchStore.getState().requestCanvasFit(nodeCategoryId)
       return tileIds.length
     },
     [nodeCategoryId, nodeId, nodePositionX, nodePositionY, nodeTitle, updateNode, visualWidth],

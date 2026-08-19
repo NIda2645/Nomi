@@ -177,7 +177,38 @@ try {
     return { members: inside.length, label: frame?.textContent?.trim().slice(0, 40) || '' }
   })
   check('组框圈住 9 张切片', grouped.members === 9, JSON.stringify(grouped))
+
+  // ⑤ 切完要能一眼看全：九张摊开比原图占地大得多，多半有一半在视口外 —— 复用批量落节点的 fit 信号揭出来
+  let allVisible = false
+  for (let i = 0; i < 20 && !allVisible; i += 1) {
+    allVisible = await getWin().evaluate(() => [...document.querySelectorAll('[data-node-id]')].every((n) => {
+      const r = n.getBoundingClientRect()
+      return r.left >= -2 && r.top >= -2 && r.right <= window.innerWidth + 2 && r.bottom <= window.innerHeight + 2
+    }))
+    if (!allVisible) await getWin().waitForTimeout(250)
+  }
+  check('切完九张全在视口里（不用自己找）', allVisible)
   await snap('04-tiles-grouped.png')
+
+  // ⑤ 几何体检：算出来的格位 vs 真正渲染出来的方框，对不上就是用户说的「很乱」。
+  //    栽过：布局按 129px 步距摆，可壳把每张卡钉在 240 宽 → 九张互相压掉 110px，糊成一团。
+  const geometry = await getWin().evaluate(() => {
+    const tiles = [...document.querySelectorAll('[data-node-id]')]
+      .map((n) => { const r = n.getBoundingClientRect(); return { id: n.getAttribute('data-node-id'), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } })
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+    let overlaps = 0
+    for (let i = 0; i < tiles.length; i += 1) for (let j = i + 1; j < tiles.length; j += 1) {
+      const a = tiles[i], b = tiles[j]
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) overlaps += 1
+    }
+    return { tiles, overlaps, widths: [...new Set(tiles.map((t) => t.w))], heights: [...new Set(tiles.map((t) => t.h))] }
+  })
+  const tileRects = geometry.tiles.filter((t) => t.w < 300) // 源图卡比瓦片宽，按宽度剔掉
+  check('九张切片零重叠', geometry.overlaps === 0, `重叠对数 ${geometry.overlaps}`)
+  check('九张切片同宽同高（等分切图应等大）', geometry.widths.length === 2 && geometry.heights.length === 2,
+    `宽 ${JSON.stringify(geometry.widths)} 高 ${JSON.stringify(geometry.heights)}`)
+  check('摆成 3 列 3 行', new Set(tileRects.map((t) => t.x)).size === 3 && new Set(tileRects.map((t) => t.y)).size === 3,
+    `列 ${new Set(tileRects.map((t) => t.x)).size} 行 ${new Set(tileRects.map((t) => t.y)).size}`)
 
   // ⑤ 一次切图 = 一个 Cmd+Z 步（9 个节点 + 编组挂同一 txn，否则撤销要按 10 次）
   await getWin().locator('.generation-canvas-v2__stage').first().click({ position: { x: 40, y: 40 } })
