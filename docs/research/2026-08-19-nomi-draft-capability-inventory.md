@@ -103,3 +103,9 @@
 **编剧（writer-，服务剧本）**——`writer.screenwriter`/`writer.structure`(Truby)/`writer.dialogue`(Mamet)/`writer.adaptation`/`writer.incubation`/`writer.novel-digester`/`writer.review`/`writer.improv`/`writer.behavior-psychology`/`writer.songfangjin`/`writer.style-schrader` 共 11 个，覆盖结构/对白/改编/孵化/审查/风格，均为「参考方法论」性质，产出自由文本剧本，不产结构化产物。
 
 > 注：`skillStore.ts:148` 的 `CRAFT_SKILL_PREFIXES` 只含 `director-`/`writer-`；`workbench.*`（storyboard/fixation/generation/creation planner）与 `brand.promo`、`creation-edit`、`skill-author` 是**内部编排技能**，不经 craft 库外暴露。
+
+---
+
+## 补遗（2026-08-19 · 用户当场抓出的盘点遗漏）
+
+**全资产大师 V3.0**（`src/workbench/creation/assetMasterPrompt.ts`，525 行，用户 2026-08-12 提供并接入，commit c9ed0b7e）：创作助手「素材规划」模式的领域规范——场景七层递进模板、角色概念表布局、道具小资产卡、题材万能、默认真人写实、纯中文输出。**产品路径**（选中素材规划模式即生效，约 27KB 随该模式发送）。本盘点初版只记了 `buildAnchorSheetPrompt`（定妆卡）而漏了它。对蓝图的意义：它就是「角色圣经」的内容生成器（幕 1-2），其道具卡正好补第 7 条「道具锚无专用节点种类」的缺口。
