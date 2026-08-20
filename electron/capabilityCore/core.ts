@@ -17,6 +17,7 @@ import path from 'node:path'
 import { listProjects, createProject, readProject } from '../projects/repository'
 import { readCatalog } from '../catalog/catalogStore'
 import { deriveModelListing, referenceModeForIntent, videoBodyKeysForModel, type ModelListingEntry } from '../catalog/modelCatalogListing'
+import { classifyReferenceKeyDetailed } from '../catalog/referenceReachability'
 import { desktopT } from '../i18n'
 import {
   addNodes,
@@ -480,13 +481,18 @@ export async function generateOnProject(
   }
 
   const videoBodyKeys = videoBodyKeysForModel(readCatalog(), input.vendor, input.modelKey)
+  // 「这个模型的 video 模式吃不吃图片参考」——问目录那张经实战打磨的参考键族表（list_models 同源），
+  // 不再自己写正则猜键名（那正是两跳在 Seedance 上从没触发过的根因：image_urls 匹配不上 image_url$）。
+  const videoAcceptsImageReference = videoBodyKeys.some(
+    (key) => classifyReferenceKeyDetailed(key)?.family === 'image',
+  )
   // 尾帧只在「模型真有尾帧槽 + 分镜真给了 lfDesc」时才出——两者缺一就不多烧这张图。
   const wantsLastFrame = shouldRenderLastFrame({
     twoHopApplied: true, // 这里只问「模型/分镜条件够不够」；真没走成两跳时 runFirstHop 会自己短路
     ...(input.lastFrameDesc ? { lastFrameDesc: input.lastFrameDesc } : {}),
     videoBodyKeys,
   })
-  const twoHop = shouldUseTwoHop({ intent, references, videoBodyKeys })
+  const twoHop = shouldUseTwoHop({ intent, references, videoAcceptsImageReference })
     ? await runFirstHop(
         {
           prompt,
@@ -523,8 +529,17 @@ export async function generateOnProject(
       projectId: input.projectId,
       nodeId,
       nodeKind: node.kind,
-      ...(references.length ? { referenceImages: references } : {}),
-      // 两跳成了 → 首帧图经 firstFrameUrl 投影成模型的 first_frame 键（archetypeInput.ts:26-28 现成线）。
+      // 两跳成了 → **参考通道换成那张首帧静帧**，不再发原始锚卡。
+      //
+      // 为什么这才是两跳的意义：锚卡是「中性灰背景的正面证件照」，把它当 i2v 的驱动图，等于让视频
+      // 从一张证件照开始动；而首帧静帧是「已经长成这一镜该有的样子」的画面（含 ffDesc 的景别/光线/
+      // 场景）**且身份已由锚卡锁定**——它同时携带身份与构图，比锚卡强得多。
+      // 只发静帧不再补发锚卡：i2v 语义里第一张图就是驱动图，两张会打架。
+      ...(twoHop?.applied && twoHop.firstFrameUrl
+        ? { referenceImages: [twoHop.firstFrameUrl] }
+        : references.length ? { referenceImages: references } : {}),
+      // 有独立 first_frame 键的模型（如 Kling）再走这条专用位；Seedance 这类没有该键的，
+      // 靠上面的参考通道送达——**两条路都留着，谁读得到谁生效**，不是并行实现（同一张图、同一个语义）。
       ...(twoHop?.applied && twoHop.firstFrameUrl ? { firstFrameUrl: twoHop.firstFrameUrl } : {}),
       // 尾帧图同理经 lastFrameUrl → last_frame_url（archetypeInput 里这条线早就通了，缺的一直是图本身）。
       ...(twoHop?.applied && twoHop.lastFrameUrl ? { lastFrameUrl: twoHop.lastFrameUrl } : {}),

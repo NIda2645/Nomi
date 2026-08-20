@@ -75,12 +75,20 @@ const oneHop = (reason: string): I2vTwoHopOutcome => ({
 export function shouldUseTwoHop(input: {
   intent: string
   references: string[]
-  /** 该模型 video 模式 body 真实引用的参数键（core 从目录 derive 后传入）。 */
-  videoBodyKeys: string[]
+  /**
+   * 该模型的 video 模式**吃不吃图片参考**（core 用目录既有的参考键族表 derive 后传入）。
+   *
+   * **曾经这里自己写正则猜键名**（`/first_frame|firstframe|start_image|image_url$|^image$/`），
+   * 结果 Seedance 的 `image_urls`（复数）匹配不上——`image_url$` 要求以 image_url 结尾。
+   * 于是两跳在主力视频模型上**从来没触发过**，W2 的招牌功能是死的，而 L3-W2 那轮还报了「两跳真跑」。
+   * 根因不是漏了一个 s，是拿手写模式去猜各家键名，下一家换个叫法照样漏。改由目录那张
+   * 经实战打磨的键族表（referenceReachability.REFERENCE_KEY_FAMILY，list_models 用的同一份源）说了算。
+   */
+  videoAcceptsImageReference: boolean
 }): boolean {
   if (input.intent !== 'video') return false
   if (!input.references.length) return false
-  return input.videoBodyKeys.some((key) => /first_frame|firstframe|start_image|image_url$|^image$/i.test(key))
+  return input.videoAcceptsImageReference
 }
 
 /**
@@ -91,7 +99,14 @@ export function shouldUseTwoHop(input: {
  * 缺的一直是这张图本身。
  *
  * 三个条件缺一不可：走成了两跳（没有首帧谈不上尾帧）、分镜真给了 lfDesc（没有就不要凭空编一个终态）、
- * 该模型 body 真读得到尾帧键（读不到硬塞也会被护栏拦，白烧一张图）。
+ * 该模型 body 真有**专用尾帧键**（读不到硬塞也会被护栏拦，白烧一张图）。
+ *
+ * 与 shouldUseTwoHop 的区别：那条问「吃不吃图片参考」（用目录的族表），这条问「有没有**指定尾帧**的位置」
+ * ——族表把首帧/尾帧都归为 image 族，区分不出来，所以这里仍按键名匹配，是问题本身的形状决定的。
+ *
+ * **已知未覆盖**：Seedance 用角色数组 `image_with_roles: [{url, role:'first_frame'|'last_frame'}]` 表达首尾帧，
+ * 不是独立键，这里匹配不上 → Seedance 不出尾帧图。**这是安全的**：我们的 `lastFrameUrl` 投影发的是
+ * `last_frame_url`，本来也到不了它，宁可不生成也别烧一张送不到的图。真要支持得先补角色数组的投影。
  */
 export function shouldRenderLastFrame(input: {
   twoHopApplied: boolean

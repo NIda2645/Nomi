@@ -354,11 +354,15 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(calls[1].firstFrameUrl).toBe('nomi-local://ff.png')
   })
 
-  it('两跳降级：模型 video body 不读任何首帧键 → 只发一次（维持今天的一跳，不白跑首帧）', async () => {
-    const project = createNamedProject('两跳-降级-无首帧键')
+  it('两跳降级：模型**完全不吃图片参考**（纯文生）→ 只发一次（不白跑首帧）', async () => {
+    // 夹具原本用的是 `reference_image_urls`——那其实**是**一条图片参考通道，只是没有「专用首帧键」这个名字。
+    // 旧判据用手写正则猜键名，把它判成「不能带首帧」，于是这条测试固化了错误行为。
+    // （同一个洞让两跳在 Seedance 上从来没触发过，见 docs/audit/2026-08-20-l3-f1-full-journey。）
+    // 要保住这条测试的**本意**（模型根本收不到图 → 别浪费一跳），夹具必须是真的纯文生 body。
+    const project = createNamedProject('两跳-降级-纯文生')
     seedCatalog(
       [{ modelKey: 'plainvid', vendorKey: 'apimart', labelZh: 'Plain', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
-      [{ id: 'i2v', vendorKey: 'apimart', modelKey: 'plainvid', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { reference_image_urls: '{{request.params.reference_image_urls}}' } }, createdAt: 't', updatedAt: 't' }],
+      [{ id: 'i2v', vendorKey: 'apimart', modelKey: 'plainvid', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { prompt: '{{request.prompt}}', duration: '{{request.params.duration}}', generate_audio: '{{request.params.generate_audio}}' } }, createdAt: 't', updatedAt: 't' }],
     )
     const kinds: string[] = []
     await generateOnProject(
@@ -367,6 +371,32 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
       async (payload) => { kinds.push((payload.request as { kind: string }).kind); return { id: 't', status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://v.mp4' }] } },
     )
     expect(kinds).toEqual(['image_to_video'])
+  })
+
+  it('★两跳哨兵：body 用数组式参考键（reference_image_urls / image_urls，无专用首帧键）→ **照样两跳**', async () => {
+    // 这是 L3-F1 那个 bug 在 core 层的哨兵：Seedance 用 image_urls，旧正则 `image_url$` 匹配不上，
+    // 于是招牌功能在主力模型上从来没跑过，而 L3-W2 还报了「两跳真跑」。
+    const project = createNamedProject('两跳-数组参考键')
+    seedCatalog(
+      [{ modelKey: 'arrvid', vendorKey: 'apimart', labelZh: 'Arr', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [{ id: 'i2v', vendorKey: 'apimart', modelKey: 'arrvid', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' }],
+      )
+    const calls: Array<{ kind: string; refs?: unknown }> = []
+    await generateOnProject(
+      { projectId: project.id, intent: 'video', prompt: 'p', vendor: 'apimart', modelKey: 'arrvid', references: ['nomi-local://a.png'] },
+      createDiskGateway(project.id),
+      async (payload) => {
+        const req = payload.request as { kind: string; extras?: Record<string, unknown> }
+        calls.push({ kind: req.kind, refs: req.extras?.referenceImages })
+        return req.kind === 'image_to_video'
+          ? { id: 'v', status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://v.mp4' }] }
+          : { id: 'ff', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://ff.png' }] }
+      },
+    )
+    expect(calls.map((c) => c.kind)).toEqual(['image_edit', 'image_to_video'])
+    // 且第 2 跳的参考通道换成了**那张首帧静帧**，不再是原始锚卡——
+    // 锚卡是中性灰背景的证件照，拿它当 i2v 驱动图等于让视频从证件照开始动。
+    expect(calls[1].refs).toEqual(['nomi-local://ff.png'])
   })
 
   it('两跳韧性：首帧那跳抛错 → 降级发视频（首帧失败绝不拖垮整个生成）', async () => {

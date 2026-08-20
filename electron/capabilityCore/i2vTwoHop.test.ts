@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { classifyReferenceKeyDetailed } from '../catalog/referenceReachability'
 import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop, type I2vTwoHopDeps } from './i2vTwoHop'
 
 // W2 §3 · I2V 两跳（参考图 → 首帧 I2I → I2V）。纯编排单测：注入 renderFirstFrame / verifyFirstFrame 桩，
@@ -10,27 +11,48 @@ import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop,
 const okFrame: I2vTwoHopDeps = { renderFirstFrame: async () => ({ url: 'nomi-local://asset/p/ff.png', nodeId: 'kf-1' }) }
 
 describe('shouldUseTwoHop（该不该走两跳 · 纯判据）', () => {
-  const base = { intent: 'video', references: ['nomi-local://a.png'], videoBodyKeys: ['first_frame_url', 'prompt'] }
+  const REFS = ['nomi-local://anchor.png']
 
-  it('video + 有参考 + 模型读 first_frame_url → 走两跳', () => {
-    expect(shouldUseTwoHop(base)).toBe(true)
+  it('video + 有锚 + 模型吃图片参考 → 走两跳', () => {
+    expect(shouldUseTwoHop({ intent: 'video', references: REFS, videoAcceptsImageReference: true })).toBe(true)
   })
 
-  it('模型 video body 不读任何首帧键 → 不走两跳（硬塞也会被护栏拦，不如老实一跳）', () => {
-    expect(shouldUseTwoHop({ ...base, videoBodyKeys: ['prompt', 'duration', 'reference_image_urls'] })).toBe(false)
+  it('图片镜不走（没有「首帧」这个概念）', () => {
+    expect(shouldUseTwoHop({ intent: 'image', references: REFS, videoAcceptsImageReference: true })).toBe(false)
   })
 
-  it('无锚参考 → 不走两跳（T2V 兜底，蓝图幕 2）', () => {
-    expect(shouldUseTwoHop({ ...base, references: [] })).toBe(false)
+  it('没有锚参考图 → 不走（无锚可定，两跳没有意义，退 T2V 兜底）', () => {
+    expect(shouldUseTwoHop({ intent: 'video', references: [], videoAcceptsImageReference: true })).toBe(false)
   })
 
-  it('image intent → 不走两跳（图片镜没有「首帧」概念）', () => {
-    expect(shouldUseTwoHop({ ...base, intent: 'image' })).toBe(false)
+  it('模型不吃图片参考（纯 T2V）→ 不走（硬塞也会被护栏拦，不如老实一跳）', () => {
+    expect(shouldUseTwoHop({ intent: 'video', references: REFS, videoAcceptsImageReference: false })).toBe(false)
+  })
+})
+
+// ★ 这一条是 L3-F1 那个 bug 的哨兵：判据曾用手写正则猜键名，Seedance 的 image_urls（复数）
+// 匹配不上 image_url$，两跳在主力模型上从来没触发过。夹具用**从打包目录里实测 dump 出来的真键名**，
+// 不用手编的——编的键名当初就是这么骗过自己的。
+describe('两跳判据必须认得真实模型的键名（用实测 dump 的键，不是编的）', () => {
+  // dump 自 dist-electron/catalog/apimartVideos.js，doubao-seedance-2.0 的 image_to_video mapping
+  const SEEDANCE_KEYS = ['audio_urls', 'duration', 'generate_audio', 'image_urls', 'image_with_roles', 'model', 'resolution', 'seed', 'size', 'video_urls']
+  const KLING_KEYS = ['resolution', 'duration', 'first_frame_image']
+  const T2V_ONLY_KEYS = ['model', 'prompt', 'size', 'resolution', 'duration', 'seed', 'generate_audio']
+
+  // 复刻 core 的 derive（问目录的族表，不自己写正则）——这里只钉「结论」，实现在 referenceReachability。
+  const acceptsImage = (keys: string[]) => keys.some((k) => classifyReferenceKeyDetailed(k)?.family === 'image')
+
+  it('★Seedance：image_urls / image_with_roles 都该被认出来（旧正则一个都认不出）', () => {
+    expect(acceptsImage(SEEDANCE_KEYS)).toBe(true)
+    expect(shouldUseTwoHop({ intent: 'video', references: ['a'], videoAcceptsImageReference: acceptsImage(SEEDANCE_KEYS) })).toBe(true)
   })
 
-  it('首帧键别名（start_image / image_url）也认（derive 不 hardcode 单一键名）', () => {
-    expect(shouldUseTwoHop({ ...base, videoBodyKeys: ['start_image'] })).toBe(true)
-    expect(shouldUseTwoHop({ ...base, videoBodyKeys: ['image_url'] })).toBe(true)
+  it('Kling 的 first_frame_image 照样认（修完不能把原来就通的搞坏）', () => {
+    expect(acceptsImage(KLING_KEYS)).toBe(true)
+  })
+
+  it('★纯文生 body 不该被误判成能带参考（generate_audio 含 audio、不是载体）', () => {
+    expect(acceptsImage(T2V_ONLY_KEYS)).toBe(false)
   })
 })
 
@@ -107,6 +129,11 @@ describe('shouldRenderLastFrame（三个条件缺一不可，缺了就别多烧�
   it('两跳都没走成 → 不出（没有首帧谈不上尾帧）', () => {
     expect(shouldRenderLastFrame({ twoHopApplied: false, lastFrameDesc: '她把钥匙放下', videoBodyKeys: TAIL_KEYS })).toBe(false)
   })
+  it('★Seedance 的 image_with_roles 角色数组不算尾帧槽 → 不出尾帧图。这是**故意的**：我们的投影发的是 last_frame_url，本来也到不了它，宁可不生成也别烧一张送不到的图', () => {
+    const SEEDANCE_KEYS = ['audio_urls', 'duration', 'generate_audio', 'image_urls', 'image_with_roles', 'model', 'resolution', 'seed', 'size', 'video_urls']
+    expect(shouldRenderLastFrame({ twoHopApplied: true, lastFrameDesc: '她把钥匙放下', videoBodyKeys: SEEDANCE_KEYS })).toBe(false)
+  })
+
   it('键名 derive 不 hardcode 某家：image_tail / end_image 同样认', () => {
     for (const key of ['image_tail', 'end_image', 'tail_image', 'lastFrame']) {
       expect(shouldRenderLastFrame({ twoHopApplied: true, lastFrameDesc: 'x', videoBodyKeys: ['prompt', key] })).toBe(true)
