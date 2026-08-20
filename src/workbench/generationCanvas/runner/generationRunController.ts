@@ -30,6 +30,10 @@ import {
   currentArchetypeMode,
   hasArchetypeArrayReferences,
 } from '../nodes/controls/archetypeMeta'
+import {
+  nodeUnmetReferenceDependency,
+  type UnmetReferenceDependency,
+} from '../nodes/controls/referenceDependency'
 import { resolveTaskArchetype } from './catalogTaskResolve'
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
@@ -594,10 +598,28 @@ export function canRunGenerationNode(
   // 有参考槽的模式（i2v/首尾帧/全能参考 omni）→ 需至少一个参考。omni 靠参考数组（referenceImageUrls 等），
   // 单看 resolveGenerationReferences 看不到 → 补一条档案数组判断（否则已放参考的 omni 被误判不可生成）。
   const references = resolveGenerationReferences(node, context)
-  return Boolean(
+  const hasAnyReference = Boolean(
     references.firstFrameUrl ||
     references.lastFrameUrl ||
     references.referenceImages.length > 0 ||
     (archetype && hasArchetypeArrayReferences(meta, archetype)),
   )
+  if (!hasAnyReference) return false
+  // 跨槽依赖（档案 slot.requiresAnyOf）：有参考 ≠ 组合合法。Seedance 2.0 的参考音频必须搭配图或视频
+  // （方舟「不支持"文本+音频"、"纯音频" 输入」/ APIMart "Must be used together with reference images
+  // or reference videos"），只放一段音频此前会被判可生成、发出去才被服务商拒。2.5 已解除，故按档案声明判、
+  // 不写死模型名。置灰文案取同一判定（unmetReferenceDependencyForNode），不让 composer 再猜一遍。
+  return !unmetReferenceDependencyForNode(node, context)
+}
+
+/**
+ * 该节点当前有没有「有值却缺伴随」的参考槽（档案 slot.requiresAnyOf）。
+ * `canRunGenerationNode` 用它决定能不能点，composer 用它决定置灰时说哪句人话 —— **同一个判定**。
+ */
+export function unmetReferenceDependencyForNode(
+  node: GenerationCanvasNode,
+  context: GenerationRunContext = {},
+): UnmetReferenceDependency | null {
+  const meta = node.meta || {}
+  return nodeUnmetReferenceDependency(meta, resolveTaskArchetype(meta), resolveGenerationReferences(node, context))
 }
