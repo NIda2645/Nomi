@@ -330,10 +330,16 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
   it('两跳：video + 参考 + 模型 body 读 first_frame_url → 先发一次 image 出首帧，再把它当 firstFrameUrl 发 I2V', async () => {
     const project = createNamedProject('两跳-生效')
     seedCatalog(
-      [{ modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      // 两跳需要**两个模型**：视频模型出这一镜，外加一个真的图片模型来画首帧静帧。
+      // 曾经这里只种视频模型也能过——因为 runTaskFn 是桩，桩不管你要什么 kind 都还你一张图。
+      // 真机上 findExecutableModel 按 kind 过滤，拿视频模型发 image_edit 必然抛错（L3-F1b 抓出）。
+      [
+        { modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' },
+        { modelKey: 'seedream', vendorKey: 'apimart', labelZh: 'Seedream', kind: 'image', enabled: true, createdAt: 't', updatedAt: 't' },
+      ],
       [
         { id: 'i2v', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { first_frame_url: '{{request.params.first_frame_url}}' } }, createdAt: 't', updatedAt: 't' },
-        { id: 'edit', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_edit', name: 'edit', enabled: true, create: { method: 'POST', path: '/i', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
+        { id: 'paint', vendorKey: 'apimart', modelKey: 'seedream', taskKind: 'image_edit', name: 'paint', enabled: true, create: { method: 'POST', path: '/i', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
       ],
     )
     const calls: Array<{ kind: string; firstFrameUrl?: unknown; grantId?: unknown }> = []
@@ -378,8 +384,14 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     // 于是招牌功能在主力模型上从来没跑过，而 L3-W2 还报了「两跳真跑」。
     const project = createNamedProject('两跳-数组参考键')
     seedCatalog(
-      [{ modelKey: 'arrvid', vendorKey: 'apimart', labelZh: 'Arr', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
-      [{ id: 'i2v', vendorKey: 'apimart', modelKey: 'arrvid', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' }],
+      [
+        { modelKey: 'arrvid', vendorKey: 'apimart', labelZh: 'Arr', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' },
+        { modelKey: 'seedream', vendorKey: 'apimart', labelZh: 'Seedream', kind: 'image', enabled: true, createdAt: 't', updatedAt: 't' },
+      ],
+      [
+        { id: 'i2v', vendorKey: 'apimart', modelKey: 'arrvid', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
+        { id: 'paint', vendorKey: 'apimart', modelKey: 'seedream', taskKind: 'image_edit', name: 'paint', enabled: true, create: { method: 'POST', path: '/i', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
+      ],
       )
     const calls: Array<{ kind: string; refs?: unknown }> = []
     await generateOnProject(
@@ -399,13 +411,37 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(calls[1].refs).toEqual(['nomi-local://ff.png'])
   })
 
+  it('★两跳根因哨兵：目录里只有视频模型、没有图片模型 → 降级一跳，且**把理由说出来**（不静默）', async () => {
+    // L3-F1b 真机抓出的根因：第 1 跳曾拿视频模型自己去发 image_edit，findExecutableModel 按 kind
+    // 过滤必然失败 → 抛错 → runFirstHop 吞掉 → 静默降级。外面只看得到「两跳没跑」，查了半小时。
+    // 降级本身没错（韧性设计），**沉默才是错**。
+    const project = createNamedProject('两跳-无画师')
+    seedCatalog(
+      [{ modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [{ id: 'i2v', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { first_frame_url: '{{request.params.first_frame_url}}' } }, createdAt: 't', updatedAt: 't' }],
+    )
+    const kinds: string[] = []
+    const out = await generateOnProject(
+      { projectId: project.id, intent: 'video', prompt: 'p', vendor: 'apimart', modelKey: 'seedance', references: ['nomi-local://a.png'] },
+      createDiskGateway(project.id),
+      async (payload) => { kinds.push((payload.request as { kind: string }).kind); return { id: 't', status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://v.mp4' }] } },
+    ) as { advisories?: string[] }
+    expect(kinds).toEqual(['image_to_video']) // 只发一次，没白跑首帧
+    const said = (out.advisories || []).join('\n')
+    expect(said).toContain('未走')
+    expect(said).toContain('图片模型') // 说清楚缺的是什么，而不是「失败了」
+  })
+
   it('两跳韧性：首帧那跳抛错 → 降级发视频（首帧失败绝不拖垮整个生成）', async () => {
     const project = createNamedProject('两跳-首帧失败')
     seedCatalog(
-      [{ modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [
+        { modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' },
+        { modelKey: 'seedream', vendorKey: 'apimart', labelZh: 'Seedream', kind: 'image', enabled: true, createdAt: 't', updatedAt: 't' },
+      ],
       [
         { id: 'i2v', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { first_frame_url: '{{request.params.first_frame_url}}' } }, createdAt: 't', updatedAt: 't' },
-        { id: 'edit', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_edit', name: 'edit', enabled: true, create: { method: 'POST', path: '/i', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
+        { id: 'paint', vendorKey: 'apimart', modelKey: 'seedream', taskKind: 'image_edit', name: 'paint', enabled: true, create: { method: 'POST', path: '/i', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
       ],
     )
     const kinds: string[] = []

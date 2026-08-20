@@ -33,6 +33,7 @@ import type { ProjectGateway } from './gateway'
 import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
 import { unfrozenAnchorsForShot } from './anchorBible'
 import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
+import { pickFirstFramePainter } from './firstFramePainter'
 import { previousShotPromptFor } from './shotOrder'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 import { copyAssetFile } from '../assets/projectAssetStore'
@@ -453,23 +454,39 @@ export async function generateOnProject(
    * 出一张「静态帧」图（首帧或尾帧），供两跳当锚。两个槽共用这一份实现：同一供应商/模型、同一批锚参考、
    * 各自铸**独立 grant**（方案解 A：镜头 grant 的 3 次配额留给视频本身 + 审片重试，spendGrant.ts 一字不动）。
    */
+  // 谁来画首帧图：**必须是图片模型**，不能是这一镜的视频模型。
+  // 曾经这里直接用 input.modelKey（= Seedance，目录里是 video 类）去发 image_edit，
+  // findExecutableModel 按 kind 过滤当然找不到 → 抛错 → runFirstHop 吞掉 → 静默降级一跳。
+  // 这就是两跳修好键名判据后**仍然**不触发的真根因（L3-F1b 复验抓出）。
+  const painter = pickFirstFramePainter(
+    deriveModelListing(readCatalog()).map((m) => ({
+      vendorKey: m.vendor, modelKey: m.modelKey, kind: m.kind,
+      keyStatus: m.keyStatus, references: m.references,
+    })),
+    input.vendor,
+  )
   const renderStaticFrame = async (
     slot: 'ff' | 'lf',
     { prompt: framePrompt, references: frameRefs }: { prompt: string; references: string[] },
   ) => {
+    if (!painter) throw new Error('本机没有可用于出首帧图的图片模型（需 kind=image 且吃得下图片参考）')
     const grant = await gateway.confirmSpend({
       projectId: input.projectId, ...(projectName ? { projectName } : {}), nodeId,
-      intent: 'image', vendor: input.vendor, modelKey: input.modelKey, prompt: framePrompt,
+      intent: 'image', vendor: painter.vendorKey, modelKey: painter.modelKey, prompt: framePrompt,
     })
-    const frameKind = referenceModeForIntent(readCatalog(), input.vendor, input.modelKey, 'image') || 'image_edit'
+    const frameKind = referenceModeForIntent(readCatalog(), painter.vendorKey, painter.modelKey, 'image') || 'image_edit'
     const out = await runTaskFn({
-      vendor: input.vendor,
+      vendor: painter.vendorKey,
       request: {
         kind: frameKind,
         prompt: framePrompt,
         extras: {
-          ...(input.params || {}),
-          modelKey: input.modelKey, modelAlias: input.modelKey, projectId: input.projectId,
+          // 不继承 input.params：那些是**视频模型**的参数（duration/generate_audio…），
+          // 塞进图片请求纯属噪音。只留画幅——首帧图必须和视频同画幅，否则第 2 跳会裁切或加边。
+          ...(input.params && typeof input.params === 'object'
+            ? Object.fromEntries(Object.entries(input.params).filter(([k]) => /aspect|ratio|size/i.test(k)))
+            : {}),
+          modelKey: painter.modelKey, modelAlias: painter.modelKey, projectId: input.projectId,
           nodeId, nodeKind: 'image', referenceImages: frameRefs,
           ...(grant ? { grantId: grant } : {}),
           idempotencyKey: `mcp-${slot}-${crypto.randomUUID()}`,
@@ -668,12 +685,19 @@ export async function generateOnProject(
   // 放在**结果里**而不是生成前拦：单镜生成不该被批量语义的门挡住（增益不是关卡），但 agent 读到这句后
   // 能在铺开后面十几镜之前先请用户过目——真正的灾难是二十个镜头全建在没定妆的脸上，不是这一张。
   const unfrozen = unfrozenAnchorsForShot(referenceSourceNodes(snapshot, nodeId))
-  const advisories = unfrozen.length
-    ? [
-        `这一镜引用的 ${unfrozen.length} 张卡还没冻结定妆：${unfrozen.map((n) => n.title || n.id).join('、')}。`
-        + '没冻结就往下铺镜头，跨镜很容易换脸——建议先把这几张卡拿给用户过目、确认后再批量生成。',
-      ]
-    : []
+  const advisories: string[] = []
+  if (unfrozen.length) {
+    advisories.push(
+      `这一镜引用的 ${unfrozen.length} 张卡还没冻结定妆：${unfrozen.map((n) => n.title || n.id).join('、')}。`
+      + '没冻结就往下铺镜头，跨镜很容易换脸——建议先把这几张卡拿给用户过目、确认后再批量生成。',
+    )
+  }
+  // 两跳降级的**理由必须说出来**（D4 缺口明着标）。它一直被算出来却从没暴露过——
+  // 于是「两跳没跑」这件事在外面表现为**完全静默**，L3-F1b 复验时我只能靠数生成图的张数反推，
+  // 还查了半小时才定位。降级本身不是错（它是韧性设计），沉默才是。
+  if (twoHop && !twoHop.applied && twoHop.reason) {
+    advisories.push(`未走「先出首帧图再生成视频」的两跳：${twoHop.reason}`)
+  }
 
   return {
     nodeId,

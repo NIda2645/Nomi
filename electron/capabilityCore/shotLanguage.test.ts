@@ -89,7 +89,9 @@ describe('checkShotLanguage 汇总体检', () => {
 
   it('好的写法零问题（背影 + 物体 + 外貌指代）', () => {
     const issues = checkShotLanguage({
-      motionText: '短发圆脸的女性背对镜头站立，画面右侧出现亮着的便利店招牌',
+      // 原夹具写的是「亮着的便利店招牌」——加了品牌泄漏规则后它**如实命中**了：招牌正是商标会
+      // 出现的地方，那一镜大概率渲出真实 logo（L3-F1 实测过）。改夹具而不是改规则。
+      motionText: '短发圆脸的女性背对镜头站立，画面右侧出现一扇亮着的窗',
       characterNames: ['小周'],
     })
     expect(issues).toEqual([])
@@ -97,5 +99,28 @@ describe('checkShotLanguage 汇总体检', () => {
 
   it('空输入不炸', () => {
     expect(checkShotLanguage({ motionText: '' })).toEqual([])
+  })
+})
+
+// ── 品牌泄漏（2026-08-20 L3-F1 实测：「便利店工装」让模型画出了 7-Eleven 工牌）──────────────
+describe('品牌泄漏词：不是崩坏，但成片会带着别人的商标', () => {
+  it('★「便利店」命中，且改法要能直接抄进 prompt', () => {
+    const hits = findPollutionWords('便利店夜班收银员的定妆肖像，深蓝工装')
+    const hit = hits.find((h) => h.word === '便利店')
+    expect(hit).toBeTruthy()
+    expect(hit!.trap).toContain('品牌商标')
+    expect(hit!.fix).toContain('无文字商标')
+  })
+
+  it('同族的其它场所/商品词也认（球鞋/快餐店…）', () => {
+    for (const w of ['快餐店', '球鞋', '咖啡店']) {
+      expect(findPollutionWords(`他站在${w}前`).some((h) => h.word === w)).toBe(true)
+    }
+  })
+
+  it('已经写了无品牌约束的提示词仍会命中——这是**故意的**：规则只报告不阻断，由人判断是否已处理', () => {
+    // 不做「已包含否定词就不报」的智能判断：模型看到否定词照样脑补（污染词铁律的第一条就是这个），
+    // 与其猜，不如照报，让写提示词的人自己确认。误报的代价（多看一行）远小于漏报（成片带商标）。
+    expect(findPollutionWords('便利店，无任何品牌标识').some((h) => h.word === '便利店')).toBe(true)
   })
 })
