@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
+import { listProductionPlaybookNames } from '../productionRun/productionPlaybooks'
 import { createMcpProtocol, MCP_TOOL_NAMES, type McpTransport } from './mcpProtocol'
 
 type RpcMessage = {
@@ -101,6 +102,23 @@ describe('production run MCP tools', () => {
     const subscribe = tools.find((tool) => tool.name === 'nomi_subscribe_run')
     expect(subscribe?.inputSchema.properties?.waitMs?.maximum).toBe(25_000)
     expect(subscribe?.inputSchema.required).toEqual(['projectId', 'runId'])
+  })
+
+  // 2026-08-18：描述原先写「制作 playbook，例如 brand.promo」——「例如」暗示还有别的名字可传，
+  // 实际只实现了一个，传别的会静默建出永远推不动的坏 Run。schema 层就把可选值钉死在注册表上，
+  // 且描述必须由注册表 derive，不容许再手写一份会漂移的名单。
+  it('constrains the playbook argument to the implemented registry instead of hinting at more', async () => {
+    const harness = new ProductionHarness()
+    const response = await harness.call(1, 'tools/list')
+    const tools = (response.result as {
+      tools: Array<{ name: string; inputSchema: { properties?: Record<string, { enum?: string[]; description?: string }> } }>
+    }).tools
+    const playbook = tools.find((tool) => tool.name === 'nomi_start_playbook')?.inputSchema.properties?.playbook
+
+    expect(playbook?.enum).toEqual(listProductionPlaybookNames())
+    expect(playbook?.enum).toContain('brand.promo')
+    expect(playbook?.description).not.toContain('例如')
+    for (const name of listProductionPlaybookNames()) expect(playbook?.description).toContain(name)
   })
 
   it('keeps the current README count and guide table aligned with the exported catalog', () => {

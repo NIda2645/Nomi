@@ -108,3 +108,6 @@ docs/feedback/*
 # Python 运行副产物（decrypt_wechat.py 等被 import/执行时生成，绝不入库）
 __pycache__/
 *.pyc
+
+# 走查产出的截图（可随时重跑生成，别进库）
+docs/design/mockups/2026-08-20-grid-split-freeze/

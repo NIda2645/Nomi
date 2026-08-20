@@ -64,7 +64,17 @@ function rendererCommandPayload(type: string, value: unknown): Record<string, un
     if (outcome !== "found" && outcome !== "not_found") throw new Error("Invalid production reconciliation outcome");
     return { jobId: identifier(raw.jobId, "job"), outcome };
   }
-  return { artifactId: identifier(raw.artifactId, "artifact") };
+  // A4 暂停/继续/取消。合法性（当前状态允不允许这个动作）由 applyRunControl 判，这里只管形状。
+  if (type === "run.control") {
+    const action = typeof raw.action === "string" ? raw.action.trim() : "";
+    if (!["pause", "resume", "cancel"].includes(action)) throw new Error("Invalid production control action");
+    return { action };
+  }
+  if (type === "artifact.adopt") return { artifactId: identifier(raw.artifactId, "artifact") };
+  // 白名单里有、这里却没建 payload 的类型必须**响亮地**炸。原先这行是 artifact.adopt 的兜底 return，
+  // 于是 run.control 掉进来被当成产物命令，用户在 Nomi 里点取消只会看到「Invalid artifact id」——
+  // 暂停/继续/取消从渲染端就没通过（2026-08-18 走查逮到）。默认分支不许再替别人猜形状。
+  throw new Error(`Production command payload is not implemented: ${type}`);
 }
 
 function createDraftInput(value: unknown): CreateProductionRunInput {

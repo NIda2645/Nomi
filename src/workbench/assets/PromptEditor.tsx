@@ -54,6 +54,11 @@ export default function PromptEditor({ value, onChange, placeholder, className, 
   React.useEffect(() => { searchRef.current = mentionSearch }, [mentionSearch])
   const selectRef = React.useRef(onMentionSelect)
   React.useEffect(() => { selectRef.current = onMentionSelect }, [onMentionSelect])
+  // placeholder 同理走 ref：扩展只在 editor 创建时配一次，直接把 prop 传进 configure 的话，
+  // 调用方**后来**改的 placeholder 永远不生效——「已有参考图才提示打 @」正是这种后来才成立的条件。
+  // 官方类型允许传函数（PlaceholderOptions.placeholder: ((props) => string) | string），
+  // 函数在每次装饰重算时被调用，于是 ref 一更新就能读到最新值。
+  const placeholderRef = React.useRef(placeholder ?? '')
   const suggestionExt = React.useMemo(
     () => createAssetMentionSuggestion({
       getCandidates: (query) => searchRef.current?.(query) ?? [],
@@ -67,7 +72,7 @@ export default function PromptEditor({ value, onChange, placeholder, className, 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: false, bulletList: false, orderedList: false, blockquote: false, codeBlock: false, horizontalRule: false }),
-      Placeholder.configure({ placeholder: placeholder ?? '' }),
+      Placeholder.configure({ placeholder: () => placeholderRef.current }),
       AssetMention,
       suggestionExt,
     ],
@@ -84,6 +89,18 @@ export default function PromptEditor({ value, onChange, placeholder, className, 
   React.useEffect(() => {
     if (editor && onReady) onReady(editor)
   }, [editor, onReady])
+
+  // placeholder 变了要**主动重画一次**：装饰只在有事务时重算，而「加了一张参考图」这类外部变化
+  // 不会在编辑器里产生任何事务，光更新 ref 是看不到的。
+  // 空事务安全：core 的 dispatchTransaction 里 `!transactions.some(tr => tr.docChanged)` 直接 return，
+  // 不会触发 onUpdate，也就不会把 prompt 误标成用户改过（index.js:5193）。
+  React.useEffect(() => {
+    const next = placeholder ?? ''
+    if (placeholderRef.current === next) return
+    placeholderRef.current = next
+    if (!editor || editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr)
+  }, [editor, placeholder])
 
   // 锁切换时同步只读态(官方 setEditable;emitUpdate=false,只读切换不产出内容变更)。
   React.useEffect(() => {

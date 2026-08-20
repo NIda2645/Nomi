@@ -16,6 +16,7 @@ import {
   setEventLogSecretsProvider,
 } from "./eventLogRepository";
 import { redactDeep } from "./redact";
+import { stripOversizeStrings } from "./eventLogRepository";
 
 let tmpRoot = "";
 
@@ -146,5 +147,41 @@ describe("redactDeep", () => {
     expect(s).not.toContain("AbC%2Bd123");
     expect(s).toContain("model=foo"); // 非鉴权参数保留
     expect(s).toContain("ok");
+  });
+});
+
+describe("超大字段硬上限(旁路观察不许拖死主进程)", () => {
+  // 2026-08-20 用户报「九宫格切图卡了半个小时」：写路径是同步跑在主进程的，
+  // 一条带 11MB base64 的 patch 会让 redactDeep 逐密钥 split/join + 两遍全局正则、
+  // sha256 整串、再 writeFileSync 一份 11MB sidecar。十条 = 上百 MB 同步 IO，app 全冻。
+  const huge = `data:image/png;base64,${"A".repeat(2 * 1024 * 1024)}`;
+
+  it("大字符串被换成体积标记：不留全文、不算 sha256", () => {
+    const out = stripOversizeStrings({ nodeId: "n1", patch: { result: { url: huge } } }) as {
+      nodeId: string;
+      patch: { result: { url: { truncated: boolean; oversize: boolean; byteSize: number; sha256: string } } };
+    };
+    expect(out.nodeId).toBe("n1"); // 小字段原样穿过
+    const field = out.patch.result.url;
+    expect(field.truncated).toBe(true);
+    expect(field.oversize).toBe(true);
+    expect(field.byteSize).toBeGreaterThan(2 * 1024 * 1024);
+    expect(field.sha256).toBe(""); // 不哈希——哈希本身就是那笔要命的开销
+  });
+
+  it("落盘后日志里不含大字段全文，也不写 sidecar 大文件", () => {
+    appendEvents("p1", [evt("canvas.node.updated", { nodeId: "n1", patch: { result: { url: huge } } })]);
+    const dir = path.join(tmpRoot, "p1", ".nomi", "events");
+    const logBytes = fs
+      .readdirSync(dir)
+      .filter((name) => name.endsWith(".jsonl"))
+      .reduce((sum, name) => sum + fs.statSync(path.join(dir, name)).size, 0);
+    expect(logBytes).toBeLessThan(64 * 1024); // 11MB 的图绝不进日志
+    const sidecarDir = path.join(dir, "sidecar");
+    const sidecarBytes = fs.existsSync(sidecarDir)
+      ? fs.readdirSync(sidecarDir).reduce((sum, name) => sum + fs.statSync(path.join(sidecarDir, name)).size, 0)
+      : 0;
+    expect(sidecarBytes).toBeLessThan(64 * 1024);
+    expect(readEvents("p1")).toHaveLength(1); // 事件本身照记：少记内容，不少记事
   });
 });

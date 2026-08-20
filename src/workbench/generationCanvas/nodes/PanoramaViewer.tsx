@@ -6,12 +6,13 @@ import '@photo-sphere-viewer/core/index.css'
 import { IconCamera, IconMaximize, IconX } from '@tabler/icons-react'
 import { NomiImage } from '../../../design/media'
 import { cn } from '../../../utils/cn'
-import { WorkbenchIconButton } from '../../../design/workbenchActions'
+import { WorkbenchIconButton } from '../../../design/actions'
 import { toast } from '../../../ui/toast'
 import i18n from '../../../i18n'
 
 export type PanoramaScreenshot = {
-  dataUrl: string
+  /** PNG Blob，不是 base64：全景图动辄 8K，base64 进 store 会被逐次 JSON 深拷贝 + 全量存盘。 */
+  blob: Blob
   dimensions: { width: number; height: number }
   title?: string
   prompt?: string
@@ -97,7 +98,7 @@ function getPhotoSphereCanvas(viewer: Viewer | null): HTMLCanvasElement | null {
   return (viewer?.container.querySelector('canvas') as HTMLCanvasElement | null) ?? null
 }
 
-function cropCurrentPanoramaFrame(viewer: Viewer, frameElement: HTMLElement): PanoramaScreenshot | null {
+async function cropCurrentPanoramaFrame(viewer: Viewer, frameElement: HTMLElement): Promise<PanoramaScreenshot | null> {
   const canvas = getPhotoSphereCanvas(viewer)
   if (!canvas || canvas.width <= 0 || canvas.height <= 0) return null
 
@@ -115,16 +116,16 @@ function cropCurrentPanoramaFrame(viewer: Viewer, frameElement: HTMLElement): Pa
   const sourceY = Math.max(0, Math.round((top - containerRect.top) * scaleY))
   const sourceWidth = Math.max(1, Math.min(canvas.width - sourceX, Math.round((right - left) * scaleX)))
   const sourceHeight = Math.max(1, Math.min(canvas.height - sourceY, Math.round((bottom - top) * scaleY)))
-  const outputCanvas = document.createElement('canvas')
-  outputCanvas.width = sourceWidth
-  outputCanvas.height = sourceHeight
+  const outputCanvas = new OffscreenCanvas(sourceWidth, sourceHeight)
   const context = outputCanvas.getContext('2d')
   if (!context) return null
 
   try {
     context.drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight)
+    const blob = await outputCanvas.convertToBlob({ type: 'image/png' })
+    if (!blob) return null
     return {
-      dataUrl: outputCanvas.toDataURL('image/png'),
+      blob,
       dimensions: { width: outputCanvas.width, height: outputCanvas.height },
       title: i18n.t('generationCommon.panorama.screenshotTitle'),
       prompt: i18n.t('generationCommon.panorama.screenshotPrompt'),
@@ -144,7 +145,7 @@ function captureFramedPanoramaView(viewer: Viewer, frameElement: HTMLElement): P
       if (resolved) return
       resolved = true
       if (timeout) clearTimeout(timeout)
-      resolve(cropCurrentPanoramaFrame(viewer, frameElement))
+      void cropCurrentPanoramaFrame(viewer, frameElement).then(resolve)
     }
     viewer.addEventListener('render', finish, { once: true })
     timeout = setTimeout(finish, 250)
