@@ -268,6 +268,10 @@ export const zhGenerationCommon = {
         reason: '参考图没能送到服务商',
         hint: '服务商要的是一个公网能取到的图片地址，而这张图只在你本机，Nomi 只好走免费图床中转（服务商还没被请求到，不扣额度）。这两个图床都在境外，网络或代理没覆盖到它们时就会连不上——最常见的原因是这个，其次才是图床本身临时故障。请先确认代理正常；想彻底跳过这一跳，接一个自带上传通道的服务商（KIE / apimart / 本地 ComfyUI），Nomi 会优先走它。',
       },
+      assetTooLarge: {
+        reason: '这个素材太大，传不上去',
+        hint: '本机素材要先换成公网地址才能给服务商用，而这个文件超过了所有可用上传通道的大小上限（HTTP 413），Nomi 每条通道都试过了。重试没用——同一个文件每次都会被同一个上限挡回来。请把它压缩或裁短一点再放进来（视频尤其常见），或在「模型接入」接一个上传上限更高的通道。具体是哪个素材、多大，见下方技术详情。',
+      },
       server: { reason: '服务商故障', hint: '服务商服务异常，请稍后重试，或换一个模型。' },
       input: {
         reason: '参数不被接受',
@@ -1513,6 +1517,10 @@ export const enGenerationCommon = {
       assetUploadFailed: {
         reason: 'Reference image never reached the provider',
         hint: 'The provider needs a publicly reachable image URL, but this image only exists on your machine, so Nomi relayed it through a free image host (the provider was never called, so nothing was charged). Both hosts are overseas and unreachable when your network or proxy does not cover them — that is the most common cause here, ahead of the hosts actually being down. Check your proxy first; to skip this hop for good, connect a provider with its own upload channel (KIE, apimart, or local ComfyUI) and Nomi will prefer it.',
+      },
+      assetTooLarge: {
+        reason: 'This asset is too large to upload',
+        hint: 'Local assets must first be turned into a publicly reachable URL, and this file exceeds the size limit of every available upload channel (HTTP 413) — Nomi tried them all. Retrying will not help: the same file hits the same ceiling every time. Compress or trim it (videos especially) and add it again, or connect a channel with a higher upload limit under Model Access. The technical details below name the asset and its size.',
       },
       server: {
         reason: 'Provider error',
