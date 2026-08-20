@@ -328,3 +328,31 @@ PlanShot 扩（storyboardPlan.ts:39-70 + zod planShotSchema :99-121）：
    - 本次落地了**结构**：`PlanAnchor.staticFeatures/dynamicFeatures`（+zod）、落画布透传进 `node.meta`（GUI 路 `applyCanvasToolCall`）、`buildAnchorSheetPrompt` 分区、`anchorBible` 判据。但「由分镜规划师从全资产大师 V3.0 资产卡的『基础面容锚点/服装层次』**填**进这两个字段」这条 LLM 转换（§1.3）**尚未接线** —— 规划师 prompt 还没教它产出 static/dynamic 分组。故当前 static/dynamic 字段**能落能读能判、但常空**（规划师没填）。这是 W2 的「填充」半边，结构半边已足以让冻结门跑起来（冻结判据只看 `referenceSheet`+`frozen`，不看 static/dynamic 是否非空）。留 W2 后续或并进 W4 镜头语言字段化时一起接。
 
 4. **【方案 §3/§4 的 I2V 两跳 + 首尾帧锚定未实现 —— 本次范围只到冻结门】** `i2vTwoHop.ts`、首帧判分接缝、`ffDesc/lfDesc`、相邻镜 `first_frame` 续接链均**未落**（brief 明确本次只收尾「圣经 meta + 冻结门」）。方案 §3/§4 的侦察结论仍有效，留后续波按图施工。
+
+
+---
+
+## 遗留（W2 交付后的诚实缺口，2026-08-20 补记）
+
+W2 已交付：圣经数据模型（static/dynamic + frozen 落 node.meta）、冻结门双拦截（GUI 波次 + production gate）、
+I2V 两跳（参考图 → 首帧 I2I →〔可选首帧判分〕→ I2V）、`ffDesc/lfDesc` 静态首尾帧分解字段。
+
+**未做，且是有意识地不做（按 §4.2 自己的判断）**：
+
+1. **相邻镜续接（shot[i] 尾帧 → shot[i+1] 首帧）尚未连链。** §4.2 已论证代价：连链后依赖波次变深、
+   批量不再全并发，且首镜（I2I 出首帧）与后镜（抽上镜尾帧）**首帧来源分叉**、编排要分支。当前
+   `ffDesc/lfDesc` 只驱动**本镜首帧**（keyframe prompt 优先级：`keyframe.prompt` > `ffDesc` > `shot.prompt`），
+   `lfDesc` 是**语义占位 + 未来尾帧槽的原料**，尚未驱动抽帧链。抽帧线本身是现成的
+   （`extractVideoFrameToAsset({which:'last'})` + `first_frame` 边的尾帧接力语义），所以这是「接不接」的
+   取舍问题，不是「有没有」的能力问题。**建议随 W3 批次闸一起评估**——那时批量的波次呈现方式会重做，
+   连链的代价（多波）正好在那个上下文里一并权衡。
+
+2. **`lfDesc` 未喂给支持尾帧槽的模型。** 同 §3 的两跳判据做法，应 derive「模型 body 读不读 `last_frame_url`」
+   再决定填不填；当前未接。
+
+3. **MCP 单镜循环可绕冻结门**（§2.5 死锁论证的必然代价）：单镜 `nomi_generate` 不拦冻结门，故 agent
+   连发 N 次单镜等效于一次未冻结批量。**W3 给 MCP 加批量语义时，新批量入口必须同样过冻结门、读同一份
+   `anchorBible` 判据**，否则就是开了个新绕行口。
+
+4. **圣经 static/dynamic 字段的自动填充未接线**：字段与结构就位，但「谁来填」还靠全资产大师 V3.0 的
+   自由文本产出 + 人工/规划师落字段，没有从 V3.0 输出结构化解析到 `meta` 的自动通道。

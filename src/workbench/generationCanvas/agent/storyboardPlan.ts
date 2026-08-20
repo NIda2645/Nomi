@@ -68,6 +68,18 @@ export type PlanShot = {
   /** 用户为该镜调的模型参数（archetype 控件键 → 值，如 aspect_ratio/resolution）；落画布铺进节点 meta。留空=用模型默认。 */
   params?: Record<string, unknown>
   /**
+   * **静态首帧快照**描述（W2 §4.1，对齐 ViMax 的 ff_desc）：景别/角度/构图/光/人物位置，**不写运动**
+   * （运动在 shot.prompt）。有它时首帧图按它生成——「先定住一帧、再让它动」比让模型边想边动稳。
+   * 与 keyframe.prompt 的关系：keyframe.prompt 是用户在编辑器手改过的首帧提示词，**优先级更高**；
+   * ffDesc 是 planner 产出的语义分解。两者都没有 → 退回 shot.prompt（今天的行为）。
+   */
+  ffDesc?: string
+  /**
+   * **静态尾帧快照**描述（ViMax lf_desc）：须与首帧 + 运动逻辑自洽。当前用于 ①喂给视频模型的尾帧槽
+   * （模型支持时）②相邻镜续接的语义依据。**尚未驱动 shot→shot 抽帧链**（见文件末尾遗留说明）。
+   */
+  lfDesc?: string
+  /**
    * 图片+视频模式：逻辑上仍是一条 video shot，但落画布时先建一张首帧 image 节点，再用 first_frame
    * 边喂给视频节点。这样 shots[] 仍按真实镜头数计数，不用把「首帧图」伪装成另一条镜头。
    */
@@ -127,6 +139,8 @@ export const planShotSchema = z.object({
   modelKey: z.string().optional(),
   modeId: z.string().optional(),
   params: z.record(z.unknown()).optional(),
+  ffDesc: z.string().optional().describe('静态首帧快照描述（景别/角度/构图/光/人物位置，不写运动）。首帧图按它生成。'),
+  lfDesc: z.string().optional().describe('静态尾帧快照描述（须与首帧+运动自洽）。供尾帧槽与相邻镜续接用。'),
   keyframe: z
     .object({
       enabled: z.boolean().optional(),
@@ -328,9 +342,12 @@ function buildShotPrompt(shot: PlanShot, anchorById: Map<string, PlanAnchor>): s
 }
 
 function buildKeyframePrompt(shot: PlanShot, anchorById: Map<string, PlanAnchor>): string {
+  // 优先级：用户在编辑器手改的 keyframe.prompt > planner 的静态首帧分解 ffDesc > 镜头 prompt（今天的兜底）。
+  // 为什么 ffDesc 排在 shot.prompt 前：shot.prompt 写的是「运动」（推进/摇移/动作演进），拿它当首帧图
+  // 提示词会让静态首帧被运动词污染（director-shot-translation 的污染词铁律）；ffDesc 才是那一帧的快照。
   const keyframePrompt = typeof shot.keyframe?.prompt === 'string' && shot.keyframe.prompt.trim()
     ? shot.keyframe.prompt.trim()
-    : shot.prompt.trim()
+    : (typeof shot.ffDesc === 'string' && shot.ffDesc.trim() ? shot.ffDesc.trim() : shot.prompt.trim())
   const textBits = shot.anchorIds
     .map((id) => anchorById.get(id))
     .filter((anchor): anchor is PlanAnchor => Boolean(anchor) && anchor!.carrier === 'text')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAnchorSheetPrompt, parseStoryboardPlan, storyboardPlanToCreateNodesArgs, type StoryboardPlan } from './storyboardPlan'
+import { buildAnchorSheetPrompt, parseStoryboardPlan, storyboardPlanSchema, storyboardPlanToCreateNodesArgs, type StoryboardPlan } from './storyboardPlan'
 
 const PLAN: StoryboardPlan = {
   title: '雨夜追凶',
@@ -239,6 +239,66 @@ describe('图片分镜（shotKind=image，用户拍板 2026-07-02 image-first）
 
   it('parseStoryboardPlan 接受带 shotKind 的方案（schema 同步）', () => {
     expect(() => parseStoryboardPlan(IMAGE_PLAN)).not.toThrow()
+  })
+})
+
+describe('ffDesc/lfDesc 静态首尾帧分解（W2 §4.1，对齐 ViMax ff_desc/lf_desc）', () => {
+  const base = {
+    title: '首尾帧分解',
+    anchors: [{ id: 'a-hero', kind: 'character' as const, name: '主角', description: '黑风衣', carrier: 'visual' as const }],
+  }
+  const opts = {
+    defaultImageModelKey: 'img-model', defaultImageModeId: 'img-t2i', defaultImageRefModeId: 'img-i2i',
+    defaultVideoModelKey: 'vid-model', defaultVideoModeId: 'vid-i2v',
+  }
+
+  it('有 ffDesc 无 keyframe.prompt → 首帧图用 ffDesc（不被镜头的运动词污染）', () => {
+    const plan: StoryboardPlan = {
+      ...base,
+      shots: [{
+        index: 1, shotKind: 'video', durationSec: 6, anchorIds: ['a-hero'],
+        ffDesc: '中近景静态：主角坐在电脑前，冷蓝屏幕光照亮侧脸',
+        prompt: '镜头缓慢推近，他抬手点击连接', // 运动描述——不该当首帧图提示词
+        keyframe: { enabled: true },
+      }],
+    }
+    const { nodes } = storyboardPlanToCreateNodesArgs(plan, opts)
+    const kf = nodes.find((n) => n.clientId === 'shot-1-keyframe')
+    expect(kf?.prompt).toContain('中近景静态')
+    expect(kf?.prompt).not.toContain('缓慢推近') // ★首帧不吃运动词
+  })
+
+  it('keyframe.prompt（用户手改）优先级高于 ffDesc', () => {
+    const plan: StoryboardPlan = {
+      ...base,
+      shots: [{
+        index: 1, shotKind: 'video', durationSec: 6, anchorIds: ['a-hero'],
+        ffDesc: 'planner 给的首帧', prompt: '运动',
+        keyframe: { enabled: true, prompt: '用户手改的首帧' },
+      }],
+    }
+    const { nodes } = storyboardPlanToCreateNodesArgs(plan, opts)
+    expect(nodes.find((n) => n.clientId === 'shot-1-keyframe')?.prompt).toContain('用户手改的首帧')
+  })
+
+  it('两者都没有 → 退回 shot.prompt（今天的行为，零退化）', () => {
+    const plan: StoryboardPlan = {
+      ...base,
+      shots: [{ index: 1, shotKind: 'video', durationSec: 6, anchorIds: ['a-hero'], prompt: '镜头推进', keyframe: { enabled: true } }],
+    }
+    const { nodes } = storyboardPlanToCreateNodesArgs(plan, opts)
+    expect(nodes.find((n) => n.clientId === 'shot-1-keyframe')?.prompt).toContain('镜头推进')
+  })
+
+  it('zod：ffDesc/lfDesc 是可选字符串，带上能过校验、不带也能过（旧草稿不破）', () => {
+    const withDesc = storyboardPlanSchema.safeParse({
+      title: 't', anchors: [], shots: [{ index: 1, durationSec: 5, anchorIds: [], prompt: 'p', ffDesc: '首帧', lfDesc: '尾帧' }],
+    })
+    expect(withDesc.success).toBe(true)
+    const without = storyboardPlanSchema.safeParse({
+      title: 't', anchors: [], shots: [{ index: 1, durationSec: 5, anchorIds: [], prompt: 'p' }],
+    })
+    expect(without.success).toBe(true)
   })
 })
 
