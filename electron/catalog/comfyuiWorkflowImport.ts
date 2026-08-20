@@ -42,18 +42,48 @@ export type WorkflowParamBinding = {
   default: string | number | boolean;
 };
 
+/** 一个绑定的媒体输入。**任意条**——工作流声明几个，这里就有几条。
+ *
+ *  为什么是列表而不是「首帧/尾帧/源视频」三个固定角色（2026-08-20 改）：
+ *  ComfyUI 官方模型里**根本没有这三个概念**——一张工作流就是 N 个 LoadImage 节点，
+ *  每个节点一个 `image` widget 收文件名（官方 workflow API format + POST /upload/image 文档实测）。
+ *  那三个角色是 Nomi 这侧从「视频生成」倒推出来的，套不住任意图：
+ *  一张声明 3 个参考图的工作流，结构上最多只能绑到 2 个，且必须叫首帧/尾帧
+ *  ——这就是群反馈「多参工作流只能连一张图」的根。改成按声明出条，几个就是几个。 */
+export type WorkflowImageBinding = {
+  nodeId: string;
+  inputKey: string;
+  /** → {{request.params.<paramKey>}}；老角色沿用 first_frame_url / last_frame_url / source_video_url，
+   *  这样已存工作流的语义与画布的首帧/尾帧分组推断都不变。 */
+  paramKey: string;
+  /** 画布插槽上显示的名字，默认取节点标题 / 输入名。 */
+  label: string;
+  /** 收图还是收视频（LoadVideo.file 收视频，绝不能当首帧图发）。 */
+  mediaKind: "image" | "video";
+};
+
 /** 绑定选择（自动建议或用户在 UI 里改）。 */
 export type WorkflowBinding = {
   promptNodeId?: string; promptInputKey?: string;         // → {{request.prompt}}
-  firstFrameNodeId?: string; firstFrameInputKey?: string; // → {{request.params.first_frame_url}}（S2 上传后是 ComfyUI 文件名）
-  lastFrameNodeId?: string; lastFrameInputKey?: string;   // → {{request.params.last_frame_url}}
-  /** 源视频输入（补帧/视频超分/视频去背景这类「视频进视频出」的工作流入口）。
-   *  → {{request.params.source_video_url}}（comfyui-upload 传进 ComfyUI 后是它自己的文件名）。 */
+  /** 媒体输入（任意条）。**消费侧只认这个**——下面三组老角色字段仅供 normalize 读时迁移。 */
+  images?: WorkflowImageBinding[];
+  /** @deprecated 读时由 normalizeWorkflowBinding 折进 images[]；写路径与消费路径都不要再用。 */
+  firstFrameNodeId?: string; firstFrameInputKey?: string;
+  /** @deprecated 同上。 */
+  lastFrameNodeId?: string; lastFrameInputKey?: string;
+  /** @deprecated 同上。 */
   sourceVideoNodeId?: string; sourceVideoInputKey?: string;
   outputNodeId?: string; outputKind?: "image" | "video" | "model3d";
   numeric?: WorkflowNumericParam[];                       // 旧字段：兼容已保存 workflow
   params?: WorkflowParamBinding[];                        // → {{request.params.comfy_X}}
 };
+
+/** 老角色 → 固定 paramKey。迁移与「新绑的图该叫什么」都从这里取，别在别处重打字面量。 */
+export const LEGACY_IMAGE_ROLE_PARAM_KEYS = {
+  firstFrame: "first_frame_url",
+  lastFrame: "last_frame_url",
+  sourceVideo: "source_video_url",
+} as const;
 
 export type WorkflowAnalysis = {
   textInputs: NodeInputCandidate[];
@@ -64,7 +94,9 @@ export type WorkflowAnalysis = {
   suggested: WorkflowBinding;
 };
 
-export type ParamControl = { key: string; label: string; type: WorkflowParamType | "select"; default: number | string | boolean; options?: string[] };
+/** `image-url`：媒体输入槽。画布侧 looksLikeImageUrlControl 认这个 type，
+ *  于是通用出槽器 buildImageUrlSlots 会**按条出槽**——声明几个就长几个，不再靠 key 名瞎猜。 */
+export type ParamControl = { key: string; label: string; type: WorkflowParamType | "select" | "image-url"; default: number | string | boolean; options?: string[] };
 export type ImportedWorkflow = { templatedGraph: ComfyGraph; parameters: ParamControl[]; kind: "image" | "video" | "model3d"; taskKind: "text_to_image" | "image_edit" | "text_to_video" | "image_to_video" | "text_to_3d" | "image_to_3d" };
 export type ComfyWorkflowImportDraft = { text: string; binding: WorkflowBinding; uiWorkflowText?: string };
 /** (classType, inputKey) → 本机 combo 可选值（reconcile 顺手带出；导入/保存时烤进参数控件）。 */
@@ -512,20 +544,18 @@ export function buildImportedWorkflow(graph: ComfyGraph, binding: WorkflowBindin
   if (normalizedBinding.promptNodeId && normalizedBinding.promptInputKey) {
     setInput(templated, normalizedBinding.promptNodeId, normalizedBinding.promptInputKey, "{{request.prompt}}");
   }
-  if (normalizedBinding.firstFrameNodeId && normalizedBinding.firstFrameInputKey) {
-    // first_frame_url：S2 的 comfyui-upload 把本地首帧传进 ComfyUI 后，这个 param 里是 ComfyUI 的文件名。
-    setMediaInput(templated, normalizedBinding.firstFrameNodeId, normalizedBinding.firstFrameInputKey, "{{request.params.first_frame_url}}");
-  }
-  if (normalizedBinding.lastFrameNodeId && normalizedBinding.lastFrameInputKey) {
-    setMediaInput(templated, normalizedBinding.lastFrameNodeId, normalizedBinding.lastFrameInputKey, "{{request.params.last_frame_url}}");
-  }
-  if (normalizedBinding.sourceVideoNodeId && normalizedBinding.sourceVideoInputKey) {
-    // 源视频：comfyui-upload 把本地视频 POST 进 ComfyUI 的 input 目录（实测 /upload/image 收视频，
-    // 返回的文件名当场就出现在 LoadVideo.file 的 combo 里）→ 这个 param 里是 ComfyUI 的文件名。
-    setMediaInput(templated, normalizedBinding.sourceVideoNodeId, normalizedBinding.sourceVideoInputKey, "{{request.params.source_video_url}}");
-  }
   const enumFor = new Map((enumOptions ?? []).map((e) => [`${e.classType} ${e.inputKey}`, e.options]));
   const parameters: ParamControl[] = [];
+  // 媒体输入：声明几条就注几条参、出几个槽。
+  // 值在运行时由 comfyui-upload 换成 ComfyUI 自己的文件名——本地 ComfyUI 的 LoadImage/LoadVideo
+  // 只认它 input 目录里的文件名，不认公网 URL（官方 POST /upload/image 返回 {name} 正是此用途；
+  // 视频同走这个端点，实测返回的文件名当场出现在 LoadVideo.file 的 combo 里）。
+  // 把它们**推进 parameters[]** 是关键一步：画布侧通用出槽器 buildImageUrlSlots 读的就是这里，
+  // 于是 N 条声明自动长出 N 个槽，不再需要任何「首帧/尾帧」特例。
+  for (const image of normalizedBinding.images ?? []) {
+    setMediaInput(templated, image.nodeId, image.inputKey, `{{request.params.${image.paramKey}}}`);
+    parameters.push({ key: image.paramKey, label: image.label || image.inputKey, type: "image-url", default: "" });
+  }
   for (const np of normalizedBinding.params ?? []) {
     const paramKey = np.paramKey;
     setInput(templated, np.nodeId, np.inputKey, `{{request.params.${paramKey}}}`);
@@ -544,10 +574,8 @@ export function buildImportedWorkflow(graph: ComfyGraph, binding: WorkflowBindin
     parameters.push({ key: paramKey, label: np.label || np.inputKey, type: resolvedType, default: defaultValue });
   }
   const outputKind = normalizedBinding.outputKind ?? "image";
-  const hasFrameInput = Boolean(
-    (normalizedBinding.firstFrameNodeId && normalizedBinding.firstFrameInputKey) ||
-    (normalizedBinding.lastFrameNodeId && normalizedBinding.lastFrameInputKey),
-  );
+  // 只数**图**输入：视频输入不进 taskKind 的判据（原因见下方注释），所以过滤掉 mediaKind==='video'。
+  const hasFrameInput = (normalizedBinding.images ?? []).some((image) => image.mediaKind === "image");
   // 视频输入**不进** taskKind 的判据：ProfileKind 没有 video_to_video，而画布侧 resolveTaskKind
   // 只按「有没有图输入」分 image_to_video/text_to_video。这里硬造一个新枚举，会让画布算出的 kind
   // 与 mapping 登记的对不上 → 选不到 mapping → 直接报「没有可用模型」。所以视频走「参考视频」通道

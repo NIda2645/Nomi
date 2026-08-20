@@ -37,6 +37,15 @@ type InlineParameterBarProps = {
   variantChoices?: readonly { id: string; label: string }[]
   activeVariantId?: string
   onVariantSelect?: (id: string) => void
+  /**
+   * 摘要 pill 文案覆盖。默认 pill 显示各参数**当前值**串接（`16:9 · 2k`）——
+   * 这对档案模型可读：你一眼认得出比例和清晰度。但 ComfyUI 导入工作流的参数是**任意**的，
+   * 值串出来是 `15 · 24`（采样步数和帧率），没人看得出那是自己导入时勾的东西
+   * （群反馈 2026-08-20 G2#433「勾了功能画布里没对应按钮」——其实渲染了，只是这颗 pill 没说）。
+   * 传了就用它当 pill 文案；点开的参数面板内容不受影响。
+   * 2026-08-20 用户拍板，是 2026-07-17「摘要 pill」拍板形态内的一处窄例外。
+   */
+  summaryOverride?: string
 }
 
 // section="parameters"：底栏 = 模型芯片 + 变体 + **摘要 pill**（当前参数一句话）。
@@ -172,6 +181,7 @@ export default function InlineParameterBar({
   variantChoices,
   activeVariantId,
   onVariantSelect,
+  summaryOverride,
 }: InlineParameterBarProps): JSX.Element {
   const { t } = useTranslation()
   // 去重选择 view-model（hook 必须在任何早返回前调用）。
@@ -183,7 +193,7 @@ export default function InlineParameterBar({
   )
 
   // 摘要 pill 文本：各参数当前值串接（16:9 · 1080p · 5 · 音频）。
-  const summaryText = renderedControls
+  const summaryText = summaryOverride || renderedControls
     .map((c) => summaryPart(c, meta, t('generationCommon.parameters.auto')))
     .filter(Boolean)
     .join(' · ')

@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { toast } from '../../../ui/toast'
 import { cn } from '../../../utils/cn'
 import CanvasToolbar, { NodeAddMenu } from './CanvasToolbar'
+import NodeContextMenu from './NodeContextMenu'
+import { buildCanvasMenuActions } from './useCanvasMenuActions'
+import { hasClipboardContent } from '../store/canvasClipboard'
 import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
 import { ASSET_LIBRARY_DRAG_MIME } from '../../assets/assetLibraryDrag'
 import {
@@ -181,6 +184,11 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     zoomRef,
     pendingConnectionSourceId,
     clearSelection,
+    // 右键落在节点上：已在多选里就原样保留（别把批量选择打断成单选），否则单选它。
+    ensureNodeSelected: React.useCallback((nodeId: string) => {
+      if (useGenerationCanvasStore.getState().selectedNodeIds.includes(nodeId)) return
+      selectNode(nodeId)
+    }, [selectNode]),
   })
   const [connectionCreateMenu, setConnectionCreateMenu] = React.useState<{
     sourceNodeId: string
@@ -510,31 +518,20 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     finishContextMenuPointerUp(event, event.button === 2 && pointer.shouldSuppressContextMenu())
   }, [finishContextMenuPointerUp, pointer])
 
-  const handleAddContextNode = (kind: GenerationNodeKind) => {
-    if (!contextNodeMenu) return
-    addNode({
-      kind,
-      position: { x: contextNodeMenu.canvasX, y: contextNodeMenu.canvasY },
-      categoryId: activeCategoryId,
-    })
-    setContextNodeMenu(null)
-  }
-
-  const handleAddConnectedNode = (kind: GenerationNodeKind) => {
-    if (!connectionCreateMenu) return
-    const sourceNodeId = connectionCreateMenu.sourceNodeId
-    const sourceSide = connectionCreateMenu.sourceSide
-    const created = addNode({
-      kind,
-      position: { x: connectionCreateMenu.canvasX, y: connectionCreateMenu.canvasY },
-      categoryId: activeCategoryId,
-      exactPosition: true,
-      select: true,
-    })
-    startConnection(sourceNodeId, sourceSide)
-    completeNodeConnection(created.id)
-    setConnectionCreateMenu(null)
-  }
+  const { handleAddContextNode, handleNodeContextAction, handleAddConnectedNode } = buildCanvasMenuActions({
+    activeCategoryId,
+    contextNodeMenu,
+    setContextNodeMenu,
+    connectionCreateMenu,
+    setConnectionCreateMenu,
+    addNode,
+    startConnection,
+    copySelectedNodes,
+    cutSelectedNodes,
+    pasteNodes,
+    groupSelectedNodes: handleGroupSelectedNodes,
+    deleteSelectedNodes,
+  })
 
   // animate=true：用户点「适应视图」按钮，平滑过渡；自动加载（useAutoFitOnLoad）传 false 即时定位，避免每次开项目都「飞入」。
   const fitView = React.useCallback((animate = false) => {
@@ -741,7 +738,17 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
               onCreate={() => addNode({ kind: 'image', position: { x: 240, y: 240 }, categoryId: activeCategoryId, select: true })}
             />
           ) : null}
-          {contextNodeMenu ? (
+          {contextNodeMenu?.nodeId ? (
+            <NodeContextMenu
+              className={cn('generation-canvas-v2__node-context-menu', 'z-[20]')}
+              style={{ left: contextNodeMenu.stageX, top: contextNodeMenu.stageY }}
+              canPaste={hasClipboardContent()}
+              canGroup={selectedNodeIds.length >= 2}
+              onPointerDown={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+              onAction={handleNodeContextAction}
+            />
+          ) : contextNodeMenu ? (
             <NodeAddMenu
               className={cn('generation-canvas-v2__context-node-menu', 'z-[20]')}
               style={{ left: contextNodeMenu.stageX, top: contextNodeMenu.stageY }}

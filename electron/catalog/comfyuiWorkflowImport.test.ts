@@ -198,14 +198,71 @@ describe("normalizeWorkflowBinding", () => {
       sourceVideoNodeId: "missing", sourceVideoInputKey: "file",
       outputNodeId: "2", outputKind: "image", params: [],
     }, mediaGraph);
-    expect(normalized).toMatchObject({ firstFrameNodeId: "1", firstFrameInputKey: "image" });
-    expect(normalized.lastFrameNodeId).toBeUndefined();
-    expect(normalized.lastFrameInputKey).toBeUndefined();
-    expect(normalized.sourceVideoNodeId).toBeUndefined();
-    expect(normalized.sourceVideoInputKey).toBeUndefined();
+    // 老角色读时折进 images[]，且同一个 widget **只保留第一个**——不能同时当首帧和尾帧。
+    expect(normalized.images).toEqual([
+      { nodeId: "1", inputKey: "image", paramKey: "first_frame_url", label: "image", mediaKind: "image" },
+    ]);
+    // 迁移后老字段从产物里消失：写路径与消费路径只认 images[]，不留并行版（P1）。
+    expect(normalized).not.toHaveProperty("firstFrameNodeId");
+    expect(normalized).not.toHaveProperty("lastFrameNodeId");
+    expect(normalized).not.toHaveProperty("sourceVideoNodeId");
 
     const built = buildImportedWorkflow(mediaGraph, normalized);
     expect(built.templatedGraph["1"].inputs?.image).toBe("{{request.params.first_frame_url}}");
+  });
+
+  it("normalize 幂等：binding 反复过一遍（IPC→落库→读出），保留键不被再套一层 comfy_ 命名空间", () => {
+    // 反例代价很实在：first_frame_url 第二遍变成 comfy_first_frame_url，
+    // 模板图里写死的占位当场对不上 → 图静默收不到素材，界面上还看不出任何异常。
+    const mediaGraph: ComfyGraph = {
+      "1": { class_type: "LoadImage", inputs: { image: "author.png" } },
+      "2": { class_type: "SaveImage", inputs: { images: ["1", 0] } },
+    };
+    const once = normalizeWorkflowBinding({
+      firstFrameNodeId: "1", firstFrameInputKey: "image", outputNodeId: "2", outputKind: "image", params: [],
+    }, mediaGraph);
+    const twice = normalizeWorkflowBinding(once, mediaGraph);
+    expect(twice).toEqual(once);
+    expect(twice.images?.[0]?.paramKey).toBe("first_frame_url");
+  });
+
+  it("声明几个图像输入就出几条 images——多参工作流不再被压成首/尾帧两个角色", () => {
+    // 群反馈 2026-08-20 G2#421：多参工作流「连一个图片就不能再连」。
+    // ComfyUI 侧一张工作流就是 N 个 LoadImage，各自一个 image widget（官方 workflow API format），
+    // 所以三个图像输入必须出三条，各自注各自的参。
+    const threeImageGraph: ComfyGraph = {
+      "1": { class_type: "LoadImage", inputs: { image: "a.png" } },
+      "2": { class_type: "LoadImage", inputs: { image: "b.png" } },
+      "3": { class_type: "LoadImage", inputs: { image: "c.png" } },
+      "9": { class_type: "SaveImage", inputs: { images: ["1", 0] } },
+    };
+    const normalized = normalizeWorkflowBinding({
+      images: [
+        { nodeId: "1", inputKey: "image", paramKey: "ref_a", label: "参考图 A", mediaKind: "image" },
+        { nodeId: "2", inputKey: "image", paramKey: "ref_b", label: "参考图 B", mediaKind: "image" },
+        { nodeId: "3", inputKey: "image", paramKey: "ref_c", label: "参考图 C", mediaKind: "image" },
+      ],
+      outputNodeId: "9", outputKind: "image", params: [],
+    }, threeImageGraph);
+    expect(normalized.images).toHaveLength(3);
+
+    const built = buildImportedWorkflow(threeImageGraph, normalized);
+    expect(built.templatedGraph["1"].inputs?.image).toBe("{{request.params.comfy_ref_a}}");
+    expect(built.templatedGraph["2"].inputs?.image).toBe("{{request.params.comfy_ref_b}}");
+    expect(built.templatedGraph["3"].inputs?.image).toBe("{{request.params.comfy_ref_c}}");
+    // 每条都进 parameters[] 且标成 image-url —— 画布的通用出槽器据此长出 3 个槽。
+    const imageParams = built.parameters.filter((p) => p.type === "image-url");
+    expect(imageParams.map((p) => p.key)).toEqual(["comfy_ref_a", "comfy_ref_b", "comfy_ref_c"]);
+  });
+
+  it("一个图像输入都没声明 → 一条都不出，绝不瞎猜首/尾帧", () => {
+    const textOnlyGraph: ComfyGraph = {
+      "1": { class_type: "CLIPTextEncode", inputs: { text: "hi" } },
+      "9": { class_type: "SaveImage", inputs: { images: ["1", 0] } },
+    };
+    const normalized = normalizeWorkflowBinding({ outputNodeId: "9", outputKind: "image", params: [] }, textOnlyGraph);
+    expect(normalized.images).toEqual([]);
+    expect(buildImportedWorkflow(textOnlyGraph, normalized).parameters.filter((p) => p.type === "image-url")).toEqual([]);
   });
 
   it("params 缺失时迁移 legacy numeric，缺省值可从原图安全补齐且不再保留 numeric", () => {
@@ -217,6 +274,7 @@ describe("normalizeWorkflowBinding", () => {
     expect(normalized).toEqual({
       outputNodeId: "9",
       outputKind: "image",
+      images: [],
       params: [{ nodeId: "1", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", type: "number", default: 7 }],
     });
     expect(normalized).not.toHaveProperty("numeric");
@@ -329,7 +387,8 @@ describe("buildImportedWorkflow", () => {
     expect(built.templatedGraph["293"].inputs!.value).toBe("{{request.params.comfy_height}}");
     expect(built.templatedGraph["291"].inputs!.value).toBe("{{request.params.comfy_seconds}}");
     expect(built.templatedGraph["285"].inputs!.value).toBe("{{request.params.comfy_fps}}");
-    expect(built.parameters.map((p) => p.key)).toEqual(["comfy_width", "comfy_height", "comfy_seconds", "comfy_fps"]);
+    // 图像输入现在也是一条声明参数（type:'image-url'，排在数值参数前）——画布据此出槽。
+    expect(built.parameters.map((p) => p.key)).toEqual(["first_frame_url", "comfy_width", "comfy_height", "comfy_seconds", "comfy_fps"]);
   });
 
   it("媒体所有权标记保留作者已有的 _meta", () => {
