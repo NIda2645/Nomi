@@ -25,6 +25,17 @@ export type PlanAnchor = {
   name: string
   /** 标准描述：视觉锚 → 卡片/定妆 prompt；文本锚 → 拼进引用镜头的 prompt。 */
   description: string
+  /**
+   * 身份 DNA（脸型/发色/骨相/标志物）——跨镜必须一致、是身份轴对照的基准（W2 圣经 static 层）。
+   * 由分镜规划师从全资产大师 V3.0 资产卡的「基础面容锚点」填。落画布写进 node.meta.staticFeatures；
+   * 与 description 并存时 `buildAnchorSheetPrompt` 优先用 static+dynamic 分区（description 保留向后兼容）。
+   */
+  staticFeatures?: string
+  /**
+   * 服装/配饰/状态（允许跨镜变，不进身份匹配）——W2 圣经 dynamic 层（ViMax：身份只看 static、服装 dynamic 可换）。
+   * 由规划师从 V3.0 资产卡的「服装层次/特殊状态」填。落画布写进 node.meta.dynamicFeatures。
+   */
+  dynamicFeatures?: string
   carrier: PlanAnchorCarrier
   /** all=每镜常驻（风格/品牌）；selective=被点名才用（角色/场景/道具）。缺省按 kind 推。 */
   scope?: 'all' | 'selective'
@@ -85,6 +96,14 @@ export const planAnchorSchema = z.object({
   kind: z.enum(['character', 'scene', 'prop', 'style']),
   name: z.string().min(1),
   description: z.string(),
+  staticFeatures: z
+    .string()
+    .optional()
+    .describe('身份 DNA（脸型/发色/骨相/标志物）——跨镜必须一致、身份轴对照基准。从资产卡「基础面容锚点」填。'),
+  dynamicFeatures: z
+    .string()
+    .optional()
+    .describe('服装/配饰/状态（允许跨镜变，不进身份匹配）。从资产卡「服装层次/特殊状态」填。'),
   carrier: z.enum(['visual', 'text']),
   scope: z.enum(['all', 'selective']).optional(),
   variants: z
@@ -165,6 +184,10 @@ export type PlanCreatedNode = {
   params?: Record<string, unknown>
   /** 参考卡身份（角色/场景/道具锚）：落画布写进 node.meta.referenceSheet → 永不占镜头编号（shotNumbering）。 */
   referenceSheet?: true
+  /** 身份 DNA（W2 圣经 static 层）：落画布写进 node.meta.staticFeatures → 身份轴对照基准、冻结门可显示。 */
+  staticFeatures?: string
+  /** 服装/配饰/状态（W2 圣经 dynamic 层）：落画布写进 node.meta.dynamicFeatures → 允许跨镜变、不进身份匹配。 */
+  dynamicFeatures?: string
   /**
    * 图片+视频分镜的首帧图身份：落画布写进 node.meta.storyboardKeyframe → 创建时不自动领号
    * （shotNumbering 跳过），随后由落地层把所属视频的镜号写回（与手动「转视频」桥共号同语义）。
@@ -244,9 +267,26 @@ function shotKeyframeClientId(shot: PlanShot): string {
  * 中性背景+平光+小标签，多视图+多变体集中一张图，整张喂参考视频）。GPT Image 2 尤擅此类多面板版面。
  * 视觉锚（character/scene/prop）→ 卡片大图；变体（成年/童年、白天/夜晚…）拼进「变体行」。
  */
+/**
+ * 锚的「身份描述段」：W2 圣经优先用 static（身份 DNA）+ dynamic（服装/状态）分区拼——身份 DNA 先锁、
+ * 服装状态另起一行，让身份与可变层在卡片 prompt 里就分开（对齐 ViMax：身份只看 static）。二者都空时
+ * 退化到旧 description（旧草稿无新字段时向后兼容）。
+ */
+function anchorIdentityBody(anchor: PlanAnchor): string {
+  const staticFeatures = (anchor.staticFeatures || '').trim()
+  const dynamicFeatures = (anchor.dynamicFeatures || '').trim()
+  if (staticFeatures || dynamicFeatures) {
+    return [
+      staticFeatures ? `身份特征（跨镜保持一致）：${staticFeatures}` : '',
+      dynamicFeatures ? `服装与状态：${dynamicFeatures}` : '',
+    ].filter(Boolean).join('\n')
+  }
+  return anchor.description.trim()
+}
+
 export function buildAnchorSheetPrompt(anchor: PlanAnchor): string {
   const name = anchor.name.trim()
-  const desc = anchor.description.trim()
+  const desc = anchorIdentityBody(anchor)
   const variantLine =
     anchor.variants && anchor.variants.length
       ? `\n变体行：${anchor.variants.map((v) => v.trim()).filter(Boolean).join('、')}（每个变体各占一格并在格下标注）。`
@@ -327,6 +367,10 @@ export function storyboardPlanToCreateNodesArgs(
       prompt: buildAnchorSheetPrompt(anchor),
       // 参考卡永不占镜号（道具锚 kind=image 落 shots 分类，不标记会吃掉「镜头 1/2」，R13 抓出）。
       referenceSheet: true,
+      // W2 圣经：static/dynamic 落画布写进 node.meta（passthrough 自动持久化）→ 身份轴基准 + 冻结门可显示。
+      // description 仍拼进 prompt（buildAnchorSheetPrompt），二者并存不矛盾（static/dynamic 是 description 的结构化细化）。
+      ...(anchor.staticFeatures && anchor.staticFeatures.trim() ? { staticFeatures: anchor.staticFeatures.trim() } : {}),
+      ...(anchor.dynamicFeatures && anchor.dynamicFeatures.trim() ? { dynamicFeatures: anchor.dynamicFeatures.trim() } : {}),
       ...(options.defaultImageModelKey ? { modelKey: options.defaultImageModelKey } : {}),
       ...(options.defaultImageModeId ? { modeId: options.defaultImageModeId } : {}),
     })

@@ -352,3 +352,55 @@ describe('参考卡身份标记（referenceSheet，防占镜号）', () => {
     }
   })
 })
+
+describe('W2 圣经字段（static/dynamic 落 meta + 卡片 prompt 分区）', () => {
+  const BIBLE_PLAN: StoryboardPlan = {
+    title: '圣经计划',
+    anchors: [
+      {
+        id: 'a-hero',
+        kind: 'character',
+        name: '林夏',
+        description: '齐肩黑发，红色校服',
+        staticFeatures: '鹅蛋脸、左眉一颗痣、单眼皮、身高约 165',
+        dynamicFeatures: '红色校服 / 雨夜披深蓝雨衣',
+        carrier: 'visual',
+      },
+    ],
+    shots: [{ index: 1, durationSec: 5, anchorIds: ['a-hero'], prompt: '林夏倚护栏远望' }],
+  }
+
+  it('static/dynamic 落进锚节点顶层字段（→ applyCanvasToolCall 透传 node.meta）', () => {
+    const { nodes } = storyboardPlanToCreateNodesArgs(BIBLE_PLAN)
+    const hero = nodes.find((n) => n.clientId === 'a-hero')!
+    expect(hero.staticFeatures).toBe('鹅蛋脸、左眉一颗痣、单眼皮、身高约 165')
+    expect(hero.dynamicFeatures).toBe('红色校服 / 雨夜披深蓝雨衣')
+  })
+
+  it('无 static/dynamic 的锚不带这些字段（旧草稿向后兼容，不凭空塞空串）', () => {
+    const { nodes } = storyboardPlanToCreateNodesArgs(PLAN)
+    const hero = nodes.find((n) => n.clientId === 'a-linxia')!
+    expect(hero).not.toHaveProperty('staticFeatures')
+    expect(hero).not.toHaveProperty('dynamicFeatures')
+  })
+
+  it('buildAnchorSheetPrompt 有 static/dynamic 时用「身份特征/服装与状态」分区（身份先锁、可变层另起）', () => {
+    const p = buildAnchorSheetPrompt(BIBLE_PLAN.anchors[0])
+    expect(p).toContain('身份特征（跨镜保持一致）：鹅蛋脸、左眉一颗痣')
+    expect(p).toContain('服装与状态：红色校服 / 雨夜披深蓝雨衣')
+    // 仍是角色定妆卡骨架（多视图/身份锁没丢）。
+    expect(p).toContain('角色定妆参考卡')
+    expect(p).toContain('正面全身 A-Pose')
+  })
+
+  it('buildAnchorSheetPrompt 无 static/dynamic 时退化到 description（旧行为不变）', () => {
+    const p = buildAnchorSheetPrompt({ id: 'a', kind: 'character', name: '林夏', description: '齐肩黑发，红校服', carrier: 'visual' })
+    expect(p).toContain('齐肩黑发')
+    expect(p).not.toContain('身份特征（跨镜保持一致）')
+  })
+
+  it('parseStoryboardPlan 接受带 static/dynamic 的方案（schema 同步）', () => {
+    expect(() => parseStoryboardPlan(BIBLE_PLAN)).not.toThrow()
+    expect(parseStoryboardPlan(BIBLE_PLAN).anchors[0].staticFeatures).toBe('鹅蛋脸、左眉一颗痣、单眼皮、身高约 165')
+  })
+})
