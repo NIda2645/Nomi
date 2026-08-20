@@ -492,6 +492,7 @@ export const zhGenerationCommon = {
   },
   parameters: {
     auto: '自动',
+    workflowParams: '工作流参数 · {{count}} 项',
     configureModel: '去配置模型',
     openModelCatalog: '点击打开模型设置',
     configure: '去配置 →',
@@ -1742,6 +1743,7 @@ export const enGenerationCommon = {
   },
   parameters: {
     auto: 'Auto',
+    workflowParams: 'Workflow params · {{count}}',
     configureModel: 'Configure a model',
     openModelCatalog: 'Open model setup',
     configure: 'Configure →',
