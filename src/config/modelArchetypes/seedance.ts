@@ -75,7 +75,10 @@ const SEEDANCE_2_MODES: ModelArchetype["modes"] = [
     slots: [
       { kind: "image_ref", label: "角色参考", min: 0, max: 9, characterIndexed: true },
       { kind: "video_ref", label: "参考视频", min: 0, max: 3 },
-      { kind: "audio_ref", label: "参考音频", min: 0, max: 3 },
+      // 音频不能单独用。这是**模型级**契约（方舟「不支持"文本+音频"、"纯音频" 输入」/ APIMart
+      // "Must be used together with reference images or reference videos"），与谁做中转无关，
+      // 故 kie 这条渠道同样带上（档案按模型身份认，供应商只管传输）。2.5 已解除此限。
+      { kind: "audio_ref", label: "参考音频", min: 0, max: 3, requiresAnyOf: ["image_ref", "video_ref"] },
     ],
     params: FIRST_MODE_PARAMS,
   },

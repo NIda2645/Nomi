@@ -1,0 +1,5 @@
+{
+  "sync-image-encode": 5,
+  "base64-into-store": 0,
+  "duplicate-node-size-bounds": 0
+}

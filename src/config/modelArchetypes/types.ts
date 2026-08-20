@@ -38,6 +38,21 @@ export type ArchetypeReferenceSlot = {
    *  仅角色槽为 true（Seedance 全能参考、HappyHorse 角色参考）；普通参考图（如 video-edit 的参考图）为 false。 */
   characterIndexed?: boolean;
   /**
+   * **跨槽依赖**（模型级契约，供应商无关）：本槽有值时，这里列出的 kind 的槽**至少一个**也必须有值，
+   * 否则该模型不受理。缺省 = 无依赖，本槽可单独使用（绝大多数槽如此）。
+   *
+   * 首例：Seedance 2.0 的参考音频不能单独用（火山方舟「不支持"文本+音频"、"纯音频" 输入」/
+   * APIMart "Must be used together with reference images or reference videos"）→
+   * `audio_ref` 声明 `requiresAnyOf: ['image_ref', 'video_ref']`。**Seedance 2.5 已解除此限**
+   * （方舟「新增支持纯音频参考生成视频」）→ 2.5 不声明。正因为同族两代不同，才必须是**声明**而非写死的 if。
+   *
+   * 语义是**析取**（任一即可），因为三家原文都是「图片**或**视频」。判定见 archetypeMeta 的
+   * `unmetReferenceDependency`；它同时喂 canRunGenerationNode 与 composer 的置灰文案（单一真相源）。
+   * 注意这是**依赖**不是**容量**：容量（max）满了就该在放入那一刻拦，依赖不满足只该拦生成 ——
+   * 用户先拖音频再拖图片是合理顺序，在第一步拦死等于惩罚操作顺序。
+   */
+  requiresAnyOf?: ArchetypeReferenceSlotKind[];
+  /**
    * **角色数组合并用**（配合 mode.combineSlotsInto）：该槽在合并出的对象数组里的 `role` 字段值。
    * **缺省由 kind 派生**（first_frame→first_frame、last_frame→last_frame、image_ref→reference_image，
    * 见 archetypeMeta DEFAULT_ROLE_FOR_KIND）——故绝大多数情况不写，避免 role 与 kind 两条平行真相源（P1）。

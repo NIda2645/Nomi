@@ -58,51 +58,61 @@ describe('computeGridCells', () => {
   })
 })
 
-describe('computeSplitLayout（切完不飘：紧凑方块）', () => {
-  const square = (n: number) => Array.from({ length: n }, () => 1)
+describe('computeSplitLayout（排布：行列对齐 + 绝不重叠）', () => {
+  const grid = (n: number) => computeGridCells({ x: 0, y: 0, w: 1, h: 1 }, cuts(n), cuts(n))
+  const cuts = (n: number) => Array.from({ length: n - 1 }, (_, i) => (i + 1) / n)
+  const same = (count: number, width: number, height: number) => Array.from({ length: count }, () => ({ width, height }))
+  const overlaps = (boxes: { x: number; y: number; width: number; height: number }[]) => {
+    let hits = 0
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        const a = boxes[i]
+        const b = boxes[j]
+        if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) hits += 1
+      }
+    }
+    return hits
+  }
 
-  it('等分 2×2：四格等大，整块≈源宽，间距=gap，行列对齐', () => {
-    const cells = computeGridCells(FULL, [0.5], [0.5])
-    const boxes = computeSplitLayout(cells, 1, 240, square(4), { gap: 16 })
-    // 四格同宽同高
-    expect(new Set(boxes.map((b) => b.width))).toEqual(new Set([120]))
-    expect(new Set(boxes.map((b) => b.height))).toEqual(new Set([120]))
-    // 相邻列/行间距 = 宽/高 + gap（紧凑、不飘）
-    expect(boxes[1].x - boxes[0].x).toBe(120 + 16)
-    expect(boxes[2].y - boxes[0].y).toBe(120 + 16)
-    // 整块宽 ≈ 源宽（120+16+120=256，而非旧版每格 240 的 ~536）
-    const blockW = Math.max(...boxes.map((b) => b.x + b.width))
-    expect(blockW).toBeLessThanOrEqual(260)
-    // 左上格在原点，行列严格对齐
-    expect(boxes[0]).toMatchObject({ x: 0, y: 0 })
-    expect(boxes[0].x).toBe(boxes[2].x)
-    expect(boxes[1].x).toBe(boxes[3].x)
+  it('九宫格等大瓦片：3 列 3 行、步距=尺寸+间距、零重叠', () => {
+    const cells = grid(3)
+    const boxes = computeSplitLayout(cells, same(9, 240, 240), { gap: 16 })
+    expect(boxes).toHaveLength(9)
+    expect([...new Set(boxes.map((b) => b.x))]).toEqual([0, 256, 512])
+    expect([...new Set(boxes.map((b) => b.y))]).toEqual([0, 256, 512])
+    expect(overlaps(boxes)).toBe(0)
   })
 
-  it('不等分：把竖线拖到 0.7 → 左列更宽、右列更窄', () => {
-    const cells = computeGridCells(FULL, [0.7], [0.5])
-    const boxes = computeSplitLayout(cells, 1, 400, square(4), { gap: 16 })
-    expect(boxes[0].width).toBe(280) // 0.7 × 400
-    expect(boxes[1].width).toBe(120) // 0.3 × 400
+  // 「布局很乱」的回归锁：卡片实际渲染得比按比例算出来的格子大时，排布必须跟着卡片走。
+  it('卡片被壳撑到地板尺寸时也不重叠（旧版按比例算格宽 → 九张互相压掉 110px）', () => {
+    const cells = grid(3)
+    const boxes = computeSplitLayout(cells, same(9, 240, 240), { gap: 16 })
+    const pitchX = boxes[1].x - boxes[0].x
+    expect(pitchX).toBeGreaterThanOrEqual(240)
+    expect(overlaps(boxes)).toBe(0)
   })
 
-  it('过窄列设地板，不至于窄到没法用', () => {
-    const cells = computeGridCells(FULL, [0.95], [])
-    const boxes = computeSplitLayout(cells, 1, 200, square(2), { gap: 16, minTileWidth: 96 })
-    expect(boxes[1].width).toBe(96) // 0.05×200=10 → 抬到地板 96
+  it('同列不等高：列宽取该列最宽、行高取该行最高，仍然行列对齐', () => {
+    const cells = grid(2)
+    const boxes = computeSplitLayout(cells, [
+      { width: 240, height: 200 },
+      { width: 300, height: 240 },
+      { width: 240, height: 180 },
+      { width: 260, height: 160 },
+    ], { gap: 16 })
+    expect(boxes[0].x).toBe(0)
+    expect(boxes[1].x).toBe(256) // 第 2 列起点 = 第 1 列最宽(240) + gap
+    expect(boxes[2].x).toBe(0)
+    expect(boxes[2].y).toBe(256) // 第 2 行起点 = 第 1 行最高(240) + gap
+    expect(overlaps(boxes)).toBe(0)
   })
 
-  it('裁剪退化（1 格）：单盒 = blockWidth × blockWidth/宽高比', () => {
+  it('单格（裁剪退化）：一个盒子，原点对齐', () => {
     const cells = computeGridCells({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, [], [])
-    const boxes = computeSplitLayout(cells, 0.8, 300, [1.5])
-    expect(boxes).toHaveLength(1)
-    expect(boxes[0]).toMatchObject({ x: 0, y: 0, width: 300, height: 200 })
+    expect(computeSplitLayout(cells, [{ width: 320, height: 200 }])).toEqual([{ x: 0, y: 0, width: 320, height: 200 }])
   })
 
-  it('每格高随自身宽高比，不拉伸', () => {
-    const cells = computeGridCells(FULL, [0.5], [])
-    const boxes = computeSplitLayout(cells, 1, 240, [2, 0.5], { gap: 16 })
-    expect(boxes[0].height).toBe(60) // 120 / 2
-    expect(boxes[1].height).toBe(240) // 120 / 0.5
+  it('空输入不炸', () => {
+    expect(computeSplitLayout([], [])).toEqual([])
   })
 })
