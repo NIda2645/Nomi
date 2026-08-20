@@ -131,7 +131,9 @@ describe('C3 全能参考 — 数组槽声明', () => {
     expect(OMNI.slots).toEqual([
       { kind: 'image_ref', label: '角色参考', min: 0, max: 9, characterIndexed: true },
       { kind: 'video_ref', label: '参考视频', min: 0, max: 3 },
-      { kind: 'audio_ref', label: '参考音频', min: 0, max: 3 },
+      // requiresAnyOf：Seedance 2.0 的参考音频不能单独用（三家官方文档一致，2026-08-20 核实；
+      // 2.5 已解除）。判定见 referenceDependency.ts，契约见 seedance20Contract.test.ts。
+      { kind: 'audio_ref', label: '参考音频', min: 0, max: 3, requiresAnyOf: ['image_ref', 'video_ref'] },
     ])
     const arr = archetypeModeArraySlots(OMNI)
     expect(arr.map((s) => [s.metaKey, s.max, s.numbered])).toEqual([

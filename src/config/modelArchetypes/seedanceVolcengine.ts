@@ -48,7 +48,9 @@ const MODES: ModelArchetype["modes"] = [
     slots: [
       { kind: "image_ref", label: "角色参考", min: 0, max: 9, characterIndexed: true, inputKey: "volcengine_image_contents" },
       { kind: "video_ref", label: "参考视频", min: 0, max: 3, inputKey: "volcengine_video_contents" },
-      { kind: "audio_ref", label: "参考音频", min: 0, max: 3, inputKey: "volcengine_audio_contents" },
+      // 音频不能单独用：方舟原文「您可任意组合以下模态内容，注意不支持"文本+音频"、"纯音频" 输入。」
+      // （docs.volcengine.com/docs/82379/2291680）。2.5 已解除此限，故声明而非写死（见 types 注释）。
+      { kind: "audio_ref", label: "参考音频", min: 0, max: 3, inputKey: "volcengine_audio_contents", requiresAnyOf: ["image_ref", "video_ref"] },
     ],
     params: PARAMS,
   },

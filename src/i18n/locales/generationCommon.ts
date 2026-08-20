@@ -550,6 +550,10 @@ export const zhGenerationCommon = {
     rewritePlaceholder: '改写要求…（先在正文里选中要改的文字）',
     replacePlaceholder: '重写要求…（替换整篇）',
     videoReferenceRequired: '需要先添加参考素材（拖入 / 连线 / 点 +）',
+    // 跨槽依赖（档案 slot.requiresAnyOf）。槽名与伴随项都由档案声明 derive，不写死「音频」——
+    // 换个模型声明别的依赖，这句照样说得对。
+    referenceCompanionRequired: '{{slot}}不能单独使用，还需要{{companions}}',
+    companionOr: '或',
     videoFirstFrameRequired: '需要先连接一个图片节点作为首帧',
     promptReferenceUnsupported: '当前模型不支持参考图，已只应用提示词文本',
     imageReferenceRequired: '图生图需要参考图（拖入 / 连线 / 点 +），或切回「文生图」',
@@ -1795,6 +1799,8 @@ export const enGenerationCommon = {
     rewritePlaceholder: 'Describe how to revise… (select text in the document first)',
     replacePlaceholder: 'Describe how to rewrite the entire document…',
     videoReferenceRequired: 'Add a reference first (drag, connect, or click +)',
+    referenceCompanionRequired: '{{slot}} cannot be used on its own — add {{companions}} as well',
+    companionOr: ' or ',
     videoFirstFrameRequired: 'Connect an image node as the first frame',
     promptReferenceUnsupported: 'This model does not accept reference images; only the prompt text was applied',
     imageReferenceRequired:
