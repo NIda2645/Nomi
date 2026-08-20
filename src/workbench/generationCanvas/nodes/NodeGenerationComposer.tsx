@@ -13,7 +13,8 @@ import { useAllProjectAssets } from '../../assets/useAllProjectAssets'
 import { useNodeMentionSource } from './useNodeMentionSource'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { canRunGenerationNode, confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace } from '../runner/generationRunController'
+import { canRunGenerationNode, confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace, unmetReferenceDependencyForNode } from '../runner/generationRunController'
+import type { UnmetReferenceDependency } from './controls/referenceDependency'
 import { collectUngeneratedReferenceAncestors } from '../runner/referenceAncestors'
 import { buildDependencyWaves } from '../runner/dependencyWaves'
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
@@ -269,6 +270,17 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
   const canGenerate = useGenerationCanvasStore((state) =>
     canRunGenerationNode(node, { nodes: state.nodes, edges: state.edges }),
   ) && !isGenerating
+  // 跨槽依赖未满足（档案 slot.requiresAnyOf；如 Seedance 2.0 只放了参考音频、缺图/视频）。
+  // 与 canGenerate 同一个判定（unmetReferenceDependencyForNode），composer 不再按 node.kind 重猜原因。
+  // 订阅**字符串**而非对象：对象选择器每帧新引用会破坏 v0.7.2 的 primitive 订阅防抖；
+  // 文案仍留到渲染时用 t() 格式化，保证切语言能实时重渲。
+  const unmetDependencyKey = useGenerationCanvasStore((state) =>
+    JSON.stringify(unmetReferenceDependencyForNode(node, { nodes: state.nodes, edges: state.edges })),
+  )
+  const unmetDependency = React.useMemo(
+    () => JSON.parse(unmetDependencyKey) as UnmetReferenceDependency | null,
+    [unmetDependencyKey],
+  )
   // 自动备齐参考（对话 2026-06-14）：本节点经参考边、尚未出图的上游 id（稳定 key 订阅防抖）。
   // 有则「生成」不裸跑，转而排依赖波次（参考先生成→本节点后生成）走批量确认条。
   const pendingRefKey = useGenerationCanvasStore((state) =>
@@ -680,7 +692,12 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
           />
         ) : null}
         {(() => {
-          const disabledReason = !canGenerateNow && !isGenerating
+          const disabledReason = unmetDependency
+            ? t('generationCommon.composer.referenceCompanionRequired', {
+                slot: unmetDependency.slotLabel,
+                companions: unmetDependency.companionLabels.join(t('generationCommon.composer.companionOr')),
+              })
+            : !canGenerateNow && !isGenerating
             ? nodeExecutionKind === 'video'
               ? acceptsDrop
                 ? t('generationCommon.composer.videoReferenceRequired')
