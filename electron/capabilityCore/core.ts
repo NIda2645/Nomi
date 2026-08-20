@@ -493,7 +493,24 @@ export async function generateOnProject(
         },
       },
     })
-    const url = (out.assets || [])[0]?.url
+    // **异步 vendor 首调只返 taskId，必须轮询到终态**——这是两跳一直失败的最后一环：
+    // seedream 这类图片模型走「提交 → 轮询」，首次返回没有 assets，这里直接读 assets[0] 永远是空，
+    // 于是 runFirstHop 判「首帧未产出可用图」→ 每次都降级。主路径（下面那段）一直有轮询，
+    // 这条支路漏了（单测的 runTaskFn 桩是同步返图的，桩不会 queued，所以测不出来）。
+    let frame = out
+    if (fetchTaskResultFn && frame.status && !TERMINAL_STATUSES.has(frame.status)) {
+      const startedAt = Date.now()
+      while (frame.status && !TERMINAL_STATUSES.has(frame.status)) {
+        if (Date.now() - startedAt > 240000) break // 首帧是增益，到点就放弃走一跳，不拖垮整镜
+        await delay(1500)
+        const polled = await fetchTaskResultFn({
+          taskId: frame.id || '', vendor: painter.vendorKey, taskKind: frameKind,
+          prompt: framePrompt, modelKey: painter.modelKey,
+        })
+        frame = polled.result
+      }
+    }
+    const url = (frame.assets || [])[0]?.url
     return url ? { url } : null
   }
 

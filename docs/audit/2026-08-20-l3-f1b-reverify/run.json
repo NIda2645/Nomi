@@ -1,5 +1,5 @@
 {
-  "projectId": "workspace-d85378f1-16cf-410e-ba81-9de93ba94a15",
+  "projectId": "workspace-c265679e-3057-482f-8e96-fcca4f8c36ec",
   "elicitations": 1,
   "results": [
     {
@@ -12,31 +12,13 @@
         "passed": true,
         "retries": 0,
         "scores": {
-          "identity": 3,
-          "composition": 5
-        },
-        "flagged": [],
-        "suggestion": null
-      }
-    },
-    {
-      "title": "#2 逐渐显出（B 的复刻）",
-      "status": "succeeded",
-      "newImages": 0,
-      "verify": {
-        "skipped": false,
-        "reason": null,
-        "passed": true,
-        "retries": 0,
-        "scores": {
-          "identity": 0,
-          "composition": 5,
-          "continuity": 3
+          "identity": 5,
+          "composition": 3
         },
         "flagged": [],
         "suggestion": null
       }
     }
   ],
-  "artifacts": 5
+  "artifacts": 3
 }

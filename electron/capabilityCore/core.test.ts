@@ -411,6 +411,44 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(calls[1].refs).toEqual(['nomi-local://ff.png'])
   })
 
+  it('★两跳根因哨兵之二：图片模型是**异步 vendor**（首调只返 taskId）→ 必须轮询到终态，不能当「没出图」', async () => {
+    // L3-F1b 第三轮真机抓出的最后一环：seedream 走「提交 → 轮询」，首调没有 assets，
+    // 而首帧那跳直接读 assets[0] → 永远判「首帧未产出可用图」→ 每次都降级。
+    // 主路径一直有轮询，这条支路漏了。**单测以前测不出来是因为桩同步返图**——桩不会 queued。
+    const project = createNamedProject('两跳-异步画师')
+    seedCatalog(
+      [
+        { modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' },
+        { modelKey: 'seedream', vendorKey: 'apimart', labelZh: 'Seedream', kind: 'image', enabled: true, createdAt: 't', updatedAt: 't' },
+      ],
+      [
+        { id: 'i2v', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { first_frame_url: '{{request.params.first_frame_url}}' } }, createdAt: 't', updatedAt: 't' },
+        { id: 'paint', vendorKey: 'apimart', modelKey: 'seedream', taskKind: 'image_edit', name: 'paint', enabled: true, create: { method: 'POST', path: '/i', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
+      ],
+    )
+    const kinds: string[] = []
+    let polls = 0
+    const out = await generateOnProject(
+      { projectId: project.id, intent: 'video', prompt: 'p', vendor: 'apimart', modelKey: 'seedance', references: ['nomi-local://a.png'] },
+      createDiskGateway(project.id),
+      // 画师像真 vendor 一样先返 queued（无 assets）；视频那跳同步返（简化）。
+      async (payload) => {
+        const req = payload.request as { kind: string }
+        kinds.push(req.kind)
+        return req.kind === 'image_edit'
+          ? { id: 'ff-task', status: 'queued', assets: [] }
+          : { id: 'v', status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://v.mp4' }] }
+      },
+      async () => {
+        polls += 1
+        return { result: { id: 'ff-task', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://ff.png' }] } }
+      },
+    ) as { advisories?: string[] }
+    expect(kinds).toEqual(['image_edit', 'image_to_video']) // 两跳真的都发了
+    expect(polls).toBeGreaterThan(0) // 而且真的轮询了，没把 queued 当成「没出图」
+    expect((out.advisories || []).join('\n')).not.toContain('未走') // 没有降级
+  })
+
   it('★两跳根因哨兵：目录里只有视频模型、没有图片模型 → 降级一跳，且**把理由说出来**（不静默）', async () => {
     // L3-F1b 真机抓出的根因：第 1 跳曾拿视频模型自己去发 image_edit，findExecutableModel 按 kind
     // 过滤必然失败 → 抛错 → runFirstHop 吞掉 → 静默降级。外面只看得到「两跳没跑」，查了半小时。

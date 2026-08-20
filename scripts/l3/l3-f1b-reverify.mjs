@@ -142,12 +142,17 @@ await callTool('nomi_connect_nodes', { projectId, connections: shotIds.map((id) 
 
 const results = []
 let before = afterAnchor
-for (let i = 0; i < SHOTS.length; i += 1) {
+const ONLY = Number(process.env.NOMI_L3_SHOTS || SHOTS.length)
+for (let i = 0; i < Math.min(ONLY, SHOTS.length); i += 1) {
   const s = SHOTS[i]
   const g = await callTool('nomi_generate', {
     projectId, nodeId: shotIds[i], vendor: vid.vendorKey || vid.vendor, modelKey: vid.modelKey,
     intent: 'video', prompt: s.prompt, firstFrameDesc: s.ff, lastFrameDesc: s.lf, aspect_ratio: '9:16', duration: 5,
   }, 600_000)
+  // 把完整回执打出来：两跳降级的理由就在 advisories 里（它一直被算出来却没人看）。
+  for (const line of (g.text || '').split('\n')) {
+    if (/未走|⚠️|advisor/i.test(line)) console.log('    [回执]', line.trim().slice(0, 300))
+  }
   const now = countGeneratedImages()
   const newImages = now - before
   before = now
