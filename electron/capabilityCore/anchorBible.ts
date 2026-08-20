@@ -43,6 +43,15 @@ function metaOf(node: AnchorNodeLike | undefined | null): Record<string, unknown
   return meta && typeof meta === 'object' && !Array.isArray(meta) ? (meta as Record<string, unknown>) : undefined
 }
 
+/**
+ * 这个 kind 本身是不是「视觉锚卡」的 kind（character/scene/prop）。
+ * 落节点的地方据它自动打 referenceSheet 标记——**别让调用方记得传**，忘一次冻结门就对那条路失明
+ * （2026-08-20 实测：headless MCP 建的角色卡因为没这个标记，整条 MCP 路的冻结门从来没生效过）。
+ */
+export function isVisualAnchorKind(kind: string | undefined | null): boolean {
+  return VISUAL_ANCHOR_KINDS.has(String(kind || ''))
+}
+
 /** 是否是「需要冻结的视觉锚」：meta.referenceSheet===true 且 kind ∈ character/scene/prop。 */
 export function isVisualAnchorNode(node: AnchorNodeLike | undefined | null): boolean {
   const meta = metaOf(node)
@@ -78,4 +87,23 @@ export function unfrozenVisualAnchors<T extends AnchorNodeLike & { id?: string; 
   nodes: readonly T[],
 ): T[] {
   return nodes.filter((node) => isVisualAnchorNode(node) && !isAnchorFrozen(node))
+}
+
+/**
+ * 单镜生成时「你引用的这几张卡还没冻结」的提醒判据（W2 冻结门的**第三层**，2026-08-20 补）。
+ *
+ * 为什么需要第三层：冻结门原本只在 production run 的批量提交前拦一次。但 MCP 客户端完全可以绕开
+ * playbook，自己 `nomi_generate` 一镜一镜循环——那条路上一次门也不过，二十个镜头全建在没定妆的脸上，
+ * 正是冻结门要防的那场灾难（业界实测约 1/4 镜头因此返工）。
+ *
+ * **但这一层只提醒不拦。** 单镜生成是低层工具，用户就想出一张图时不该被批量语义的门挡住
+ * （同审片环哲学：增益不是关卡）。所以这里返回「该被提醒的锚」，由结果文本如实带一句给 agent——
+ * 它读到后可以自己决定先请用户过目，或者明知故犯地继续。信息到位，选择权留给上面。
+ *
+ * 纯函数：调用方把「这一镜实际引用了哪些源节点」算好传进来，我们不猜边。
+ */
+export function unfrozenAnchorsForShot<T extends AnchorNodeLike & { id?: string; title?: string }>(
+  referencedNodes: readonly T[],
+): T[] {
+  return unfrozenVisualAnchors(referencedNodes)
 }

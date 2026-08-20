@@ -139,9 +139,11 @@ try {
     //    节点不被当作待冻结锚」；「未冻结锚在本批内仍可单镜跑、只有引用它的镜头被拦」的完整波次流程见
     //    dependencyWaves.test.ts。生成放行本身由幕 5 的真 nomi_generate 顺带证（此处不重复花付费确认，免扰幕 5 计数）。
     assertTrue(!anchorBible.isVisualAnchorNode({ id: freezeShotId, kind: 'video', meta: {} }), '镜头节点不是视觉锚（单镜生成不被冻结门拦——破死锁）')
+    // ④ 冻结门第三层的**验证挪到幕 5**：那里本来就有一次真 generate，在这儿再跑一次会提前建立
+    //    会话信任、打乱幕 5 的「首镜确认恰 1 次」计数（原注释早就警告过这点）。
     // 完整「镜头→blocked / 冻结确认恰 1 次」的拦截**流程**由铁律层覆盖（gate 的执行面是渲染层/production，非
     // headless MCP 可达）：GUI 波次拦截 dependencyWaves.test.ts、production 冻结门 productionRunDriver.test.ts。
-    record('幕2 定妆冻结', 'pass', '真判据(dist-electron/anchorBible)：未冻结锚被挑出(拒批量)/冻结后放行/镜头非锚(单镜不拦破死锁)；锚+镜头+引用边真落画布。镜头→blocked 全流程 + 确认恰 1 次由 L1(dependencyWaves/productionRunDriver)覆盖(gate 执行面在渲染层/production，非 headless 可达)。')
+    record('幕2 定妆冻结', 'pass', '真判据(dist-electron/anchorBible)：未冻结锚被挑出(拒批量)/冻结后放行/镜头非锚(单镜不拦破死锁)；锚+镜头+引用边真落画布；第三层单镜提醒真到 agent 眼前且不拦。镜头→blocked 全流程 + 确认恰 1 次由 L1(dependencyWaves/productionRunDriver)覆盖(gate 执行面在渲染层/production，非 headless 可达)。')
   }
 
   // ── 幕 3 · 分镜落画布 + 参考连线（今天可测） ────────────────────
@@ -209,6 +211,14 @@ try {
     assertTrue(!gen1.isError && gen1.json?.status === 'succeeded', `镜 S1 生成成功（status=${gen1.json?.status}）`)
     assertTrue(mcp.progressForToken('dj-s1') >= 1, '生成期间有进度帧')
     assertTrue(Boolean(gen1.deepLink), '结果带 nomi:// 深链')
+    // 冻结门**第三层**（2026-08-20 补）：单镜生成不拦，但必须如实提醒「你引用的卡还没冻结」——
+    // 否则 MCP 客户端绕开 playbook 一镜一镜循环，一次门都不过，二十个镜头全建在没定妆的脸上。
+    // 这一镜引用的锚（幕 3 建的）此刻确实未冻结，故提醒必须出现在**给 agent 的文本里**，
+    // 不能只挂在结构化字段里没人读。（真实事故：MCP 建的角色卡从来没带 referenceSheet 标记，
+    // 冻结门在整条 MCP 路上失明——这条断言就是那个洞的哨兵。）
+    assertTrue(/还没冻结定妆/.test(gen1.text || ''), '单镜生成如实提醒「引用的卡还没冻结」（第三层：只提醒不拦）')
+    assertTrue(/林夏|小周|锚/.test(gen1.text || ''), '提醒里点名是哪张卡（说「有问题」不说是哪张 = 等于没说）')
+    assertTrue(!gen1.isError, '★提醒不拦：带着未冻结锚照样生成成功（增益不是关卡）')
     const askedFirst = mcp.elicitationCount() - before
     assertTrue(askedFirst === 1, `首镜付费确认恰 1 次（得 ${askedFirst}）`)
     // 会话信任：同项目第二镜不再问（昨天落的机制，这里是它在旅程里的横切断言）。

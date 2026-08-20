@@ -558,10 +558,15 @@ export function buildToolOutcome(
     // 只在真跑了判分（evaluated）时出审片行/结构字段——默认路径（未接审片）无此字段，转述与今天一致。
     const verifyOutcome = parseVerifyOutcome(value.verify)
     const verifyLine = verifyOutcome ? buildVerifyLine(ctx, verifyOutcome) : null
+    // 冻结提醒（core 的第三层冻结门，只提醒不拦）——**必须进文本**，挂在结构化字段里模型不一定读。
+    const advisoryLines = Array.isArray(value.advisories)
+      ? value.advisories.filter((a): a is string => typeof a === 'string' && a.trim().length > 0).map((a) => `⚠️ ${a}`)
+      : []
     const text = [
       `✓ ${L(ctx, '已生成', 'Generated')}${label ? L(ctx, label.zh, label.en) : L(ctx, '一个素材', 'an asset')}`,
       echo ? `  ${echo}` : null,
       verifyLine,
+      ...advisoryLines,
       JSON.stringify(dump, null, 2),
       deepLink ? `${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${deepLink}` : null,
     ].filter(Boolean).join('\n')
@@ -574,6 +579,7 @@ export function buildToolOutcome(
         openInNomi: deepLink || null,
         // 审片环结构化字段（模型稳定读「过检/红标/建议」，不必从文本抠，harness 幕 6）。未评则不附。
         ...(verifyOutcome ? { verify: verifyOutcome } : {}),
+        ...(advisoryLines.length ? { advisories: value.advisories } : {}),
       },
     }
   }

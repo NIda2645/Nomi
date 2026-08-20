@@ -30,6 +30,7 @@ import {
 } from './canvasGraph'
 import type { ProjectGateway } from './gateway'
 import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
+import { unfrozenAnchorsForShot } from './anchorBible'
 import { runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 import { copyAssetFile } from '../assets/projectAssetStore'
@@ -103,6 +104,14 @@ function sourceNodeAssetUrl(node: { result?: unknown; references?: unknown; url?
   const refs = node.references
   if (Array.isArray(refs) && typeof refs[0] === 'string' && refs[0]) return refs[0]
   return ''
+}
+
+/** 指向 nodeId 的参考类入边的**源节点**（与 referencesFromEdges 同一组边判据，P1 不另立标准）。 */
+export function referenceSourceNodes(snapshot: CanvasSnapshot, nodeId: string): CanvasSnapshot['nodes'] {
+  const sources = (snapshot.edges || [])
+    .filter((edge) => edge.target === nodeId && REFERENCE_EDGE_MODES.has(edge.mode || 'reference'))
+    .map((edge) => snapshot.nodes.find((n) => n.id === edge.source))
+  return sources.filter((n): n is CanvasSnapshot['nodes'][number] => Boolean(n))
 }
 
 /** 从指向 nodeId 的参考类入边解析参考图 URL（按 order 排、去重）。供 headless 生成兜底用。 */
@@ -618,7 +627,25 @@ export async function generateOnProject(
     }
   }
 
-  return { nodeId, status: result.status || 'unknown', assets: result.assets || [], ...(text ? { text } : {}), ...(verify ? { verify } : {}) }
+  // 冻结门第三层（只提醒不拦）：这一镜引用的角色/场景卡里有没有还没定妆冻结的。
+  // 放在**结果里**而不是生成前拦：单镜生成不该被批量语义的门挡住（增益不是关卡），但 agent 读到这句后
+  // 能在铺开后面十几镜之前先请用户过目——真正的灾难是二十个镜头全建在没定妆的脸上，不是这一张。
+  const unfrozen = unfrozenAnchorsForShot(referenceSourceNodes(snapshot, nodeId))
+  const advisories = unfrozen.length
+    ? [
+        `这一镜引用的 ${unfrozen.length} 张卡还没冻结定妆：${unfrozen.map((n) => n.title || n.id).join('、')}。`
+        + '没冻结就往下铺镜头，跨镜很容易换脸——建议先把这几张卡拿给用户过目、确认后再批量生成。',
+      ]
+    : []
+
+  return {
+    nodeId,
+    status: result.status || 'unknown',
+    assets: result.assets || [],
+    ...(text ? { text } : {}),
+    ...(verify ? { verify } : {}),
+    ...(advisories.length ? { advisories } : {}),
+  }
 }
 
 /** 该镜锚描述：指向本节点的参考类入边的**源节点 prompt**（角色/场景卡的设定文本，身份轴对照基准）。 */
