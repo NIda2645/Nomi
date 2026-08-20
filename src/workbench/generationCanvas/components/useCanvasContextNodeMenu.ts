@@ -9,6 +9,8 @@ export type CanvasContextNodeMenu = {
   stageY: number
   canvasX: number
   canvasY: number
+  /** 右键落在某个节点上时带上它的 id → 弹「节点操作」菜单；空白处为 null → 弹「添加节点」菜单。 */
+  nodeId: string | null
 }
 
 type PendingContextNodeMenu = {
@@ -35,12 +37,26 @@ type UseCanvasContextNodeMenuArgs = {
   zoomRef: React.MutableRefObject<number>
   pendingConnectionSourceId: string | null
   clearSelection: () => void
+  /**
+   * 右键落在节点上时保证它是被选中的——菜单里的复制/剪切/删除都作用于「选中项」，
+   * 不先选中就会点了没反应（§1.6 C1）。已在多选里的节点要**保留整个多选**，
+   * 否则右键会把批量选择打断成单选。
+   */
+  ensureNodeSelected: (nodeId: string) => void
 }
 
+// 这里**不再包含** `.generation-canvas-v2-node`（2026-08-20）：节点原先被一并排除，于是右键节点
+// 什么都不弹 = 死路，而复制/剪切/删除只有键盘一条路、没有任何可见入口（群反馈「copy 键是啥呢」）。
+// 现在节点改为分流到「节点操作」菜单，空白仍是「添加节点」菜单。
+// 仍然排除的是：工具条/浮条/边、以及所有可交互控件——它们有自己的语义，右键不该被画布接管。
 const CONTEXT_TARGET_GUARD =
-  '.generation-canvas-v2-node, .generation-canvas-v2-toolbar, .generation-canvas-v2__zoom-bar, .generation-canvas-v2__selection-toolbar, .generation-canvas-v2__edge, .generation-canvas-v2__edge-preview, button, input, textarea, select, [role="menu"], [role="menuitem"]'
+  '.generation-canvas-v2-toolbar, .generation-canvas-v2__zoom-bar, .generation-canvas-v2__selection-toolbar, .generation-canvas-v2__edge, .generation-canvas-v2__edge-preview, button, input, textarea, select, [role="menu"], [role="menuitem"]'
+/** 节点根元素上带 data-node-id；右键命中它就把 id 记进 pending 菜单。 */
+const NODE_SELECTOR = '.generation-canvas-v2-node'
 const MENU_WIDTH = 148
 const MENU_HEIGHT = 330
+/** 节点操作菜单只有 5 项 + 1 条分隔线，比添加菜单矮得多。 */
+const NODE_MENU_HEIGHT = 196
 const MENU_EDGE_GAP = 8
 
 /**
@@ -59,6 +75,7 @@ export function useCanvasContextNodeMenu({
   zoomRef,
   pendingConnectionSourceId,
   clearSelection,
+  ensureNodeSelected,
 }: UseCanvasContextNodeMenuArgs) {
   const [contextNodeMenu, setContextNodeMenu] = React.useState<CanvasContextNodeMenu | null>(null)
   const pendingMenuRef = React.useRef<PendingContextNodeMenu | null>(null)
@@ -80,6 +97,9 @@ export function useCanvasContextNodeMenu({
     const stageX = event.clientX - rect.left
     const stageY = event.clientY - rect.top
     const zoom = zoomRef.current || 1
+    const nodeId = target?.closest(NODE_SELECTOR)?.getAttribute('data-node-id') || null
+    // 节点菜单比添加菜单矮：按各自高度夹边，免得贴着视口下缘弹出时被切掉。
+    const menuHeight = nodeId ? NODE_MENU_HEIGHT : MENU_HEIGHT
     pendingMenuRef.current = {
       pointerId: event.pointerId,
       button: event.button,
@@ -89,9 +109,10 @@ export function useCanvasContextNodeMenu({
       contextMenuSeen: false,
       menu: {
         stageX: clampNumber(stageX, MENU_EDGE_GAP, Math.max(MENU_EDGE_GAP, rect.width - MENU_WIDTH - MENU_EDGE_GAP)),
-        stageY: clampNumber(stageY, MENU_EDGE_GAP, Math.max(MENU_EDGE_GAP, rect.height - MENU_HEIGHT - MENU_EDGE_GAP)),
+        stageY: clampNumber(stageY, MENU_EDGE_GAP, Math.max(MENU_EDGE_GAP, rect.height - menuHeight - MENU_EDGE_GAP)),
         canvasX: Math.round((stageX - offsetRef.current.x) / zoom),
         canvasY: Math.round((stageY - offsetRef.current.y) / zoom),
+        nodeId,
       },
     }
     return event.button === 0
@@ -135,13 +156,15 @@ export function useCanvasContextNodeMenu({
     )
     if (!suppressMenu && pendingMenuRef.current) {
       if (!pending.moved) {
-        clearSelection()
+        // 节点上：先确保它选中（菜单动作都作用于选中项）；空白处：清掉选择再弹添加菜单。
+        if (pending.menu.nodeId) ensureNodeSelected(pending.menu.nodeId)
+        else clearSelection()
         setContextNodeMenu(pending.menu)
       }
     }
     pendingMenuRef.current = null
     activeContextPointerRef.current = null
-  }, [clearSelection])
+  }, [clearSelection, ensureNodeSelected])
 
   const handleStageContextMenu = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const pending = pendingMenuRef.current

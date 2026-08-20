@@ -64,20 +64,32 @@ describe("ComfyUI 安全取消", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("http://127.0.0.1:8188/api/jobs/p1/cancel");
   });
 
-  it("旧服 jobs 404 时只删排队项，绝不请求全局 /interrupt", async () => {
+  it("jobs cancel 恒 200：cancelled:false 是「没什么可取消」，不许当成功报出去", async () => {
+    // 官方这条对已结束/不认识的 id 也回 200，只是 body 里 cancelled=false。
+    // 光看 res.ok 会让「点了取消、GPU 还在转」显示成已取消。
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ cancelled: false })));
+    await expect(cancelComfyuiPrompt("http://127.0.0.1:8188", "p9", fetchMock as typeof fetch))
+      .resolves.toEqual({ ok: true, mode: "nothing-to-cancel" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("旧服 jobs 404 时同时发定向 /interrupt 与 /queue delete —— 光删排队停不掉正在跑的", async () => {
+    // /queue {delete} 走 delete_queue_item，只摘排队项；正在执行的那个必须靠 /interrupt。
+    // 定向 /interrupt 带 prompt_id，只在它正好是当前运行的那个时才打断，不误伤别人。
     const urls: string[] = [];
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       urls.push(String(url));
-      return urls.length === 1 ? new Response("missing", { status: 404 }) : new Response("{}");
+      return String(url).endsWith("/cancel") ? new Response("missing", { status: 404 }) : new Response("{}");
     });
     await expect(cancelComfyuiPrompt("http://127.0.0.1:8188", "p2", fetchMock as typeof fetch))
-      .resolves.toEqual({ ok: true, mode: "queue-only" });
-    expect(urls).toEqual([
-      "http://127.0.0.1:8188/api/jobs/p2/cancel",
+      .resolves.toEqual({ ok: true, mode: "legacy" });
+    expect(urls[0]).toBe("http://127.0.0.1:8188/api/jobs/p2/cancel");
+    expect(urls.slice(1).sort()).toEqual([
+      "http://127.0.0.1:8188/interrupt",
       "http://127.0.0.1:8188/queue",
     ]);
-    expect(urls.some((url) => url.endsWith("/interrupt"))).toBe(false);
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ delete: ["p2"] });
+    const bodies = fetchMock.mock.calls.slice(1).map((c) => JSON.parse(String(c[1]?.body)));
+    expect(bodies).toEqual(expect.arrayContaining([{ prompt_id: "p2" }, { delete: ["p2"] }]));
   });
 
   it("鉴权/服务错误不伪装成旧服并发第二个请求", async () => {
