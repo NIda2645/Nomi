@@ -227,7 +227,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       const gate = full.gates.find((item) => item.gateId === gateId)
       if (!gate) throw new RpcError(`Production gate not found: ${gateId}`, 404)
       const creativeGate = gate.scope === 'stage'
-        && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-'))
+        && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-') || gate.gateId.startsWith('gate-freeze-'))
       if (!creativeGate) throw new RpcError('This production gate must be decided in Nomi', 403)
       await ctx.productionRuns.command(projectId, runId, {
         commandId: `mcp-decide-${gateId}-${decision}-${full.revision}`,

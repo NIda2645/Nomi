@@ -13,6 +13,7 @@
 // 用法：pnpm run build && node tests/ux/draft-journey.e2e.mjs
 import fs from 'node:fs'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import {
   assertBuilt,
   BAD_SHOT_MARKER,
@@ -23,6 +24,8 @@ import {
   startMockVendorServer,
   writeIsolatedCatalog,
 } from './_mcpJourney.mjs'
+
+const require = createRequire(import.meta.url)
 
 assertBuilt()
 const dirs = makeIsolatedDirs('nomi-draft-journey-')
@@ -81,8 +84,49 @@ try {
     record('幕1 剧本+指改', 'pass', '3 场落画布；#3 指改生效、#2 未动。圣经 static/dynamic 字段等 W2 点亮。')
   }
 
-  // ── 幕 2 · 定妆冻结门 ───────────────────────────────────────────
-  record('幕2 定妆冻结', 'pending', '等 W2：冻结门（未冻结拒批量、冻结后强制引用）。今天无 frozen 状态，不假测。')
+  // ── 幕 2 · 定妆冻结门（W2 点亮：未冻结锚拒批量 / 冻结后放行 / 单镜不拦破死锁） ──
+  {
+    // 冻结门的**真实拦截判据**是 electron 单一真相源 `anchorBible`（headless 冻结门 + production 冻结门读它；
+    // GUI 依赖波次读 src 镜像，equivalence 测钉死两侧语义等价）。这里 require **已构建的真判据**（同 harness
+    // 既有 require(dist-electron/nodeKindDomain.js) 的先例），对三种锚形态判——即 buildDependencyWaves 把镜头
+    // 踢进 blocked('unfrozen-anchor') 时用的**同一个谓词**。先红后绿：stash 掉 electron/anchorBible.ts 后此
+    // require 取不到（模块不存在）→ 幕 2 直接红；接回即绿。
+    const anchorBible = require(path.join(repoRoot, 'dist-electron/capabilityCore/anchorBible.js'))
+    const anchorNode = (frozen) => ({
+      id: 'anchor-林夏', kind: 'character',
+      meta: { referenceSheet: true, ...(frozen ? { frozen: { at: 1_700_000_000_000, by: 'user' } } : {}) },
+    })
+    // ① 未冻结拒批量的判据：未冻结视觉锚被真判据挑出 → 这正是「引用它的镜头进 blocked（拒发批量）」的触发条件。
+    const unfrozen = anchorBible.unfrozenVisualAnchors([anchorNode(false)])
+    assertTrue(unfrozen.length === 1 && unfrozen[0].id === 'anchor-林夏', '未冻结角色卡被真判据挑出（→ 引用它的镜头拒发批量）')
+    assertTrue(anchorBible.isVisualAnchorNode(anchorNode(false)) && !anchorBible.isAnchorFrozen(anchorNode(false)), '未冻结锚：isVisualAnchor∧¬isFrozen（波次拦截命中条件）')
+    // ② 冻结后放行：同一张卡点了「冻结」（meta.frozen 落时间戳）→ 真判据不再挑出 → 引用它的镜头放行。
+    assertTrue(anchorBible.isAnchorFrozen(anchorNode(true)), '冻结后 isAnchorFrozen=真（→ 镜头放行、强制引用该冻结卡）')
+    assertTrue(anchorBible.unfrozenVisualAnchors([anchorNode(true)]).length === 0, '冻结后不再被挑出（放行）')
+    // 真实画布拓扑：锚 + 镜头 + character_ref 边真的落 headless 画布（冻结门要拦的就是这条引用边的下游）。
+    const a2 = parseToolResult(await mcp.callToolOrThrow('nomi_add_nodes', {
+      projectId,
+      nodes: [
+        { kind: 'character', title: '幕2锚 · 林夏定妆', prompt: '齐肩黑发、左眉一颗痣，红色校服，正面平光定妆照' },
+        { kind: 'video', title: '#幕2镜 引用林夏', prompt: '林夏倚护栏远望，缓慢推近', vendor: 'nomi-mock', modelKey: 'nomi-mock-video' },
+      ],
+    }))
+    const [freezeAnchorId, freezeShotId] = a2.json?.ids || []
+    assertTrue(freezeAnchorId && freezeShotId, '幕2 锚 + 引用镜头落画布')
+    await mcp.callToolOrThrow('nomi_connect_nodes', { projectId, connections: [{ source: freezeAnchorId, target: freezeShotId, mode: 'character_ref' }] })
+    const c2 = parseToolResult(await mcp.callToolOrThrow('nomi_read_canvas', { projectId }))
+    const anchorBack = (c2.json?.nodes || []).find((n) => n.id === freezeAnchorId)
+    const refEdge = (c2.json?.edges || []).find((e) => e.source === freezeAnchorId && e.target === freezeShotId)
+    assertTrue(anchorBack?.kind === 'character' && refEdge, '锚(kind=character)+镜头+character_ref 边真的持久化（批量拓扑成立）')
+    // ③ 单镜不拦（破死锁）的判据面：冻结门只作用于「参考卡（视觉锚）」；镜头节点本身不是视觉锚 → 单镜
+    //    生成它/生成锚卡都不被冻结门谓词命中（锚要先出图才能冻结，若单镜也拦则永远死锁）。这里用真判据证「镜头
+    //    节点不被当作待冻结锚」；「未冻结锚在本批内仍可单镜跑、只有引用它的镜头被拦」的完整波次流程见
+    //    dependencyWaves.test.ts。生成放行本身由幕 5 的真 nomi_generate 顺带证（此处不重复花付费确认，免扰幕 5 计数）。
+    assertTrue(!anchorBible.isVisualAnchorNode({ id: freezeShotId, kind: 'video', meta: {} }), '镜头节点不是视觉锚（单镜生成不被冻结门拦——破死锁）')
+    // 完整「镜头→blocked / 冻结确认恰 1 次」的拦截**流程**由铁律层覆盖（gate 的执行面是渲染层/production，非
+    // headless MCP 可达）：GUI 波次拦截 dependencyWaves.test.ts、production 冻结门 productionRunDriver.test.ts。
+    record('幕2 定妆冻结', 'pass', '真判据(dist-electron/anchorBible)：未冻结锚被挑出(拒批量)/冻结后放行/镜头非锚(单镜不拦破死锁)；锚+镜头+引用边真落画布。镜头→blocked 全流程 + 确认恰 1 次由 L1(dependencyWaves/productionRunDriver)覆盖(gate 执行面在渲染层/production，非 headless 可达)。')
+  }
 
   // ── 幕 3 · 分镜落画布 + 参考连线（今天可测） ────────────────────
   let anchorId = ''

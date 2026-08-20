@@ -55,9 +55,12 @@ export const useBatchPlanPreviewStore = create<BatchPlanPreviewState>()((set, ge
 export function describeBlockedNotice(plan: DependencyWavePlan): string | null {
   if (plan.blocked.length === 0) return null
   const cycle = plan.blocked.filter((b) => b.reason === 'cycle').length
-  const waiting = plan.blocked.length - cycle
+  const unfrozen = plan.blocked.filter((b) => b.reason === 'unfrozen-anchor').length
+  // 「缺啥提示啥」：未冻结与「上游没生成」是不同原因（前者去卡上点「冻结」，后者要先生成上游），分开报。
+  const waiting = plan.blocked.length - cycle - unfrozen
   const parts: string[] = []
   if (waiting > 0) parts.push(i18n.t('generationCommon.batchPlan.waitingUpstream', { count: waiting }))
+  if (unfrozen > 0) parts.push(i18n.t('generationCommon.batchPlan.unfrozenAnchors', { count: unfrozen }))
   if (cycle > 0) parts.push(i18n.t('generationCommon.batchPlan.cyclicReferences', { count: cycle }))
   return i18n.t('generationCommon.batchPlan.blockedNotice', {
     details: parts.join(i18n.t('generationCommon.batchPlan.detailSeparator')),

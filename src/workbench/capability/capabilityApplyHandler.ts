@@ -11,6 +11,7 @@ import { runGenerationNode } from '../generationCanvas/runner/generationRunContr
 import { arrangeStoryboardToTimeline } from '../generationCanvas/agent/sendStoryboardToTimeline'
 import { exportTimelineToMp4 } from '../export/exportApi'
 import { verifyShotsAndReport, useShotVerifyStore, isShotVerifyEnabled } from '../generationCanvas/agent/shotVerifyStore'
+import { isAnchorFrozen, isVisualAnchorNode } from '../generationCanvas/model/anchorBibleKeys'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
 // 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
@@ -230,6 +231,15 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
         ? data.shotNodeIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
         : []
       return verifyShotsForProduction(shotNodeIds)
+    }
+    case 'production.check-frozen': {
+      // W2 冻结门：driver 提交任何镜头前，问渲染层「本 run 的画布上有哪些视觉锚（角色/场景/道具卡）还没冻结」。
+      // 读画布 store 的 node.meta.frozen（判据走 anchorBibleKeys 单一镜像，与 headless/GUI 依赖波次同语义）。
+      // 只回未冻结的那些（nodeId + 标题）；driver 据此设冻结门 waiting 或放行（全冻结 → 空数组 → 放行）。
+      const unfrozenAnchors = useGenerationCanvasStore.getState().nodes
+        .filter((node) => isVisualAnchorNode(node) && !isAnchorFrozen(node))
+        .map((node) => ({ nodeId: node.id, ...(node.title && node.title.trim() ? { title: node.title.trim() } : {}) }))
+      return { unfrozenAnchors }
     }
     case 'production.export': {
       const project = typeof data.projectId === 'string' ? data.projectId : ''

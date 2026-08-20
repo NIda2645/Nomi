@@ -230,8 +230,10 @@ export function createMcpProtocol(transport: McpTransport) {
     const gate = gates.find((candidate) => candidate.gateId === gateId && candidate.status === 'waiting')
     if (!gate) throw new Error(`Production gate is not waiting: ${gateId}`)
     const creative = gate.scope === 'stage'
-      && (gateId.startsWith('gate-direction-') || gateId.startsWith('gate-sample-'))
+      && (gateId.startsWith('gate-direction-') || gateId.startsWith('gate-sample-') || gateId.startsWith('gate-freeze-'))
     if (!creative) throw new Error('This decision must be completed in Nomi')
+    // W2 冻结门是「视觉确认」语义（确认这批角色/场景卡定妆了、可锁死当身份基准），走同一条创意门 seam。
+    const isFreeze = gateId.startsWith('gate-freeze-')
 
     const approved = args.decision === 'approved'
     const choiceKey = typeof args.choiceKey === 'string' ? args.choiceKey : ''
@@ -254,10 +256,16 @@ export function createMcpProtocol(transport: McpTransport) {
       .join('\n')
     return elicitBooleanConfirm({
       message: `${decisionText}?\n${details}`,
-      title: isEnglish ? 'Confirm this creative decision' : '确认这次创意决定',
-      description: isEnglish
-        ? 'Only this reversible creative gate will be decided. Spending and export approvals remain in Nomi.'
-        : '只会决定这道可逆创意门；支出与导出仍必须在 Nomi 中确认。',
+      title: isFreeze
+        ? (isEnglish ? 'Confirm you have reviewed and frozen these cards' : '确认这些卡已过目并冻结')
+        : (isEnglish ? 'Confirm this creative decision' : '确认这次创意决定'),
+      description: isFreeze
+        ? (isEnglish
+            ? 'Freezing locks these character/scene cards as the identity baseline for every shot. Review them in Nomi first. Spending and export approvals still happen in Nomi.'
+            : '冻结会把这些角色/场景卡锁成每个镜头的身份基准，请先在 Nomi 里过目。支出与导出仍必须在 Nomi 中确认。')
+        : (isEnglish
+            ? 'Only this reversible creative gate will be decided. Spending and export approvals remain in Nomi.'
+            : '只会决定这道可逆创意门；支出与导出仍必须在 Nomi 中确认。'),
     })
   }
 
