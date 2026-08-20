@@ -10,9 +10,15 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+// 判据⑦的均分口径不在这儿手算——引 app 内同一份纯核（dist-electron 是打包产物的来源），
+// 否则「文档写的口径 / app 里跑的口径 / 验收脚本算的口径」会各是一套，报告就成了自说自话。
+const { assessableAverage } = createRequire(import.meta.url)(
+  path.join(repoRoot, 'dist-electron/capabilityCore/shotVerifyCore.js'),
+)
 const APP = path.join(repoRoot, 'release/mac-arm64/Nomi.app')
 const BIN = path.join(APP, 'Contents/MacOS/Nomi')
 const probeOnly = process.argv.includes('--probe')
@@ -152,8 +158,20 @@ const collected = []
 const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(png|jpg|jpeg|webp)$/i.test(e.name)) collected.push(p) } }
 walk(projectsDir)
 collected.forEach((p, i) => fs.copyFileSync(p, path.join(outDir, `${String(i + 1).padStart(2, '0')}-${path.basename(p)}`)))
-const avg = identityScores.length ? identityScores.reduce((a, b) => a + b, 0) / identityScores.length : 0
-fs.writeFileSync(path.join(outDir, 'run.json'), JSON.stringify({ spendConfirms, identityScores, identityAvg: Number(avg.toFixed(2)), audit }, null, 2))
+// 均分只统计判分器判得了的镜头：0 = 「这题没法答」（眼部微距等看不到脸的合法景别），
+// 计入会凭空拉低、当满分会凭空拉高，两种都是编造结论。未验的单列报出来，不静默丢。
+const { average, assessed, notAssessable } = assessableAverage(identityScores)
+fs.writeFileSync(
+  path.join(outDir, 'run.json'),
+  JSON.stringify({ spendConfirms, identityScores, identityAvg: average, identityAssessed: assessed, identityNotAssessable: notAssessable, audit }, null, 2),
+)
 console.log(`\nL3-W2：${audit.length} 步 · 确认 ${spendConfirms} 次 · 产物 ${collected.length} 张 → ${path.relative(repoRoot, outDir)}/`)
-console.log(`判据⑦ 同角色跨镜 identity 均分 = ${avg.toFixed(2)}（要求 ≥4）：${avg >= 4 ? '✓ 达成' : '⚠ 未达成，待人工核'}`)
+if (average === null) {
+  console.log(`判据⑦ 同角色跨镜 identity：${notAssessable} 镜全部无法判定 → 本轮**没有结论**（不是通过，也不是不通过）`)
+} else {
+  const verdict = average >= 4 ? '✓ 达成' : '⚠ 未达成，待人工核'
+  console.log(`判据⑦ 同角色跨镜 identity 均分 = ${average.toFixed(2)}（分母 ${assessed} 镜，要求 ≥4）：${verdict}`)
+  if (notAssessable > 0) console.log(`  ⚠ 另有 ${notAssessable} 镜判分器无法判定（画面中无可比对的身份特征），未计入均分、也未验过`)
+  if (assessed < 3) console.log(`  ⚠ 分母只有 ${assessed} 镜，样本太小，不足以据此宣布判据⑦通过`)
+}
 cleanup(0)

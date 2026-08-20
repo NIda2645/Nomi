@@ -95,13 +95,50 @@ export function activeDimensions(ctx: ShotVerifyContext): ShotVerifyDimension[] 
 function clampScore(value: unknown): number {
   const n = Number(value)
   if (!Number.isFinite(n)) return 1
-  if (Math.round(n) === SHOT_VERIFY_NOT_ASSESSABLE) return SHOT_VERIFY_NOT_ASSESSABLE
+  // 「无法判定」只认**判分器真的写了个 0**。不这么卡的话 Number(null)/Number('')/Number(false) 全是 0,
+  // 于是判分器漏字段或给 null 会被读成「这题没法答」而静默出均分分母——正是本档最怕的注水路径。
+  // 拿不准一律落最保守的 1（判不出别放行），只有明确的数字 0 才是哨兵。
+  const explicitlyNumeric = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')
+  if (explicitlyNumeric && Math.round(n) === SHOT_VERIFY_NOT_ASSESSABLE) return SHOT_VERIFY_NOT_ASSESSABLE
   return Math.max(1, Math.min(5, Math.round(n)))
 }
 
 /** 1-5 档 → 0-1 归一(与 eval judge 同口径:1→0,3→0.5,5→1)。 */
 export function normalizeShotScore(score: number): number {
   return +((clampScore(score) - 1) / 4).toFixed(3)
+}
+
+/** 某一轴的均分统计口径（见 assessableAverage）。 */
+export type AssessableAverage = {
+  /** 均分；一镜都判不了时为 null（**不是 0**——0 会被读成「很差」，那是在编造结论）。 */
+  average: number | null
+  /** 进了分母的镜头数。 */
+  assessed: number
+  /** 判分器判不了、被排除在分母外的镜头数——**报告里必须单列**，不许静默丢掉。 */
+  notAssessable: number
+}
+
+/**
+ * 均分只统计判分器**判得了**的镜头（验收判据⑦口径，2026-08-20 校准）。
+ *
+ * 为什么不是简单平均：0 是「这题没法答」的哨兵（见 SHOT_VERIFY_NOT_ASSESSABLE）。把它按 0 计入会
+ * 凭空拉低（一个合法的眼部微距就能把 5 分拽成 2.5），按 5 计入会凭空拉高——两种都是在编造没有的信息。
+ * 故 0 出分母、单独计数，让「有 N 镜没被验过」这件事在报告里看得见（D4 缺口明着标）。
+ *
+ * **这条只会让判据更严不会更松**：分母变小，任何一个真·低分镜头对均分的拖累反而更大。
+ * 负数一律被 clampScore 夹回 1，堵死「借无法判定之名把差镜头洗出分母」的注水路径。
+ */
+export function assessableAverage(scores: readonly unknown[]): AssessableAverage {
+  const kept: number[] = []
+  let notAssessable = 0
+  for (const raw of scores) {
+    const s = clampScore(raw)
+    if (s === SHOT_VERIFY_NOT_ASSESSABLE) notAssessable += 1
+    else kept.push(s)
+  }
+  if (kept.length === 0) return { average: null, assessed: 0, notAssessable }
+  const sum = kept.reduce((a, b) => a + b, 0)
+  return { average: +(sum / kept.length).toFixed(2), assessed: kept.length, notAssessable }
 }
 
 /**

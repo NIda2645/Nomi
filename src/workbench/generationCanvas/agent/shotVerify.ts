@@ -89,7 +89,11 @@ export function activeDimensions(ctx: ShotVerifyContext): ShotVerifyDimension[] 
 function clampScore(value: unknown): number {
   const n = Number(value)
   if (!Number.isFinite(n)) return 1
-  if (Math.round(n) === SHOT_VERIFY_NOT_ASSESSABLE) return SHOT_VERIFY_NOT_ASSESSABLE
+  // 「无法判定」只认**判分器真的写了个 0**。不这么卡的话 Number(null)/Number('')/Number(false) 全是 0,
+  // 于是判分器漏字段或给 null 会被读成「这题没法答」而静默出均分分母——正是本档最怕的注水路径。
+  // 拿不准一律落最保守的 1（判不出别放行），只有明确的数字 0 才是哨兵。
+  const explicitlyNumeric = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')
+  if (explicitlyNumeric && Math.round(n) === SHOT_VERIFY_NOT_ASSESSABLE) return SHOT_VERIFY_NOT_ASSESSABLE
   return Math.max(1, Math.min(5, Math.round(n)))
 }
 
