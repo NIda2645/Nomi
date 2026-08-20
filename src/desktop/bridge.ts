@@ -324,7 +324,8 @@ export type DesktopBridge = DesktopMediaBridge & {
   app?: {
     reopenLibraryWindow: () => void
     hardReloadWindow?: () => void
-    onProductionDeepLink?: (cb: (payload: { projectId: string; runId: string; artifactId?: string }) => void) => () => void
+    /** 深链三形状：工程级只有 projectId；节点级带 nodeId；Run 级带 runId(+artifactId)。 */
+    onProductionDeepLink?: (cb: (payload: { projectId: string; runId?: string; nodeId?: string; artifactId?: string }) => void) => () => void
   }
   settings?: DesktopSettingsBridge
   productionRuns?: DesktopProductionRunBridge

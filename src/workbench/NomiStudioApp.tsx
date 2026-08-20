@@ -17,6 +17,8 @@ import { useWorkspaceEvents } from './useWorkspaceEvents'
 import { useWorkbenchStore, type WorkspaceMode } from './workbenchStore'
 import { swapGenerationAiProject } from './generationCanvas/store/generationAiConversation'
 import { useGenerationCanvasStore } from './generationCanvas/store/generationCanvasStore'
+import { FOCUS_GENERATION_NODE_EVENT } from './generationCanvas/nodes/nodeSizing'
+import { focusCanvasNodeWhenReady } from './deepLinkFocus'
 import {
   flushConversationsNow,
   initConversationPersistence,
@@ -353,17 +355,35 @@ export default function NomiStudioApp(): JSX.Element {
     return onDeepLink((payload) => {
       const projectId = typeof payload?.projectId === 'string' ? payload.projectId.trim() : ''
       const runId = typeof payload?.runId === 'string' ? payload.runId.trim() : ''
-      if (!projectId || !runId) return
+      const nodeId = typeof payload?.nodeId === 'string' ? payload.nodeId.trim() : ''
+      // 只要有 projectId 就该跳。**曾经这里要求必须有 runId**，于是工程级 `nomi://project/{id}`
+      // （每条生成结果都在给用户的那个链接）和节点级链接点了**毫无反应**——连窗口都不亮一下。
+      // 三种形状各自的归宿：run→任务中心、node→画布并选中那一镜、纯工程→打开项目即可。
+      if (!projectId) return
       void (async () => {
         useWorkbenchStore.getState().setWorkspaceMode('generation')
         if (activeProjectIdRef.current !== projectId) {
           const opened = await hydrateProject(projectId, { replaceUrl: true })
           if (!opened) return
         }
-        // 深链落到制作任务的新家：任务中心（不再展开画布助手面板——制作已从那儿搬走）。
-        window.dispatchEvent(new CustomEvent('nomi-open-task-center'))
-        await useProductionRunStore.getState().navigateTo(projectId, runId, payload.artifactId)
-      })().catch((error) => console.error('production deep link failed', error))
+        if (runId) {
+          // 深链落到制作任务的新家：任务中心（不再展开画布助手面板——制作已从那儿搬走）。
+          window.dispatchEvent(new CustomEvent('nomi-open-task-center'))
+          await useProductionRunStore.getState().navigateTo(projectId, runId, payload.artifactId)
+          return
+        }
+        if (nodeId) {
+          // 「指着看」：复用画布既有的聚焦通道（切到该节点所在分类页签 + 选中 + 平移到视野 + 闪一下），
+          // 不自造第二套选中逻辑（P1）。刚 hydrate 完节点可能还没进 store，等它出现再派。
+          await focusCanvasNodeWhenReady({
+            nodeId,
+            hasNode: () => useGenerationCanvasStore.getState().nodes.some((node) => node.id === nodeId),
+            dispatch: (id) =>
+              window.dispatchEvent(new CustomEvent(FOCUS_GENERATION_NODE_EVENT, { detail: { nodeId: id } })),
+            waitFrame: () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())),
+          })
+        }
+      })().catch((error) => console.error('deep link navigation failed', error))
     })
   }, [hydrateProject])
 
