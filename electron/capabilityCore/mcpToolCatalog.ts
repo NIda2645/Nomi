@@ -13,7 +13,8 @@ export const MCP_TOOL_CATALOG = [
   {
     name: 'nomi_list_projects',
     description: '列出本机 Nomi 的所有项目（id / 名称 / 更新时间）。',
-    inputSchema: { type: 'object', properties: {} },
+    // 无参工具的官方推荐形态（tools spec 2026-07-28）：显式只收空对象，模型幻觉出的参数早拒。
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     method: 'project.list',
     build: () => ({}),
   },
@@ -32,7 +33,7 @@ export const MCP_TOOL_CATALOG = [
       + 'locked=Key 在但当前宿主身份解不开（让用户去 Nomi 应用重存该 Key）；statusReason 给一句人话缺口。'
       + 'references 说这个模型带不带得动参考：{image,video,audio,multiImage,referenceModes}——带参考图/视频前先看它，'
       + 'referenceModes 指出用哪个模式（如 image_to_video）才发得出，multiImage=能否多张参考图。选型只挑 keyStatus=ok 的。',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     method: 'models.list',
     build: () => ({}),
   },
@@ -254,6 +255,44 @@ export const MCP_TOOL_CATALOG = [
     build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, gateId: a.gateId, decision: a.decision, choiceKey: a.choiceKey }),
   },
   {
+    name: 'nomi_intake_brief',
+    description:
+      '开拍前的**一次性方向收敛**：一屏最多问 3 题（基调 / 画幅 / 风格），每题带候选与「按你判断」。'
+      + '**整局只该调一次**——拿到方向后按它写剧本、拟分镜、生成，不要再就方向反复问用户。'
+      + '客户端不支持表单时会返回题面与候选，请你在对话里一次性问全（同样只问一次），或直接用默认继续。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        kind: { type: 'string', description: '片型（如 brand.promo / 短剧），决定候选措辞；不给用通用候选。' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    method: 'brief.intake',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, ...(a.kind ? { kind: a.kind } : {}) }),
+  },
+  {
+    name: 'nomi_import_asset',
+    description:
+      '把**本机文件**导入项目当素材，返回可直接引用的 nomi-local:// 地址。'
+      + '用它把手绘帧 / 截图 / 用户给的参考图弄进来——导入后把返回的 url 放进 nomi_generate 的 references，'
+      + '或当画布节点的参考源。只收图片与视频（png/jpg/webp/gif/bmp/tiff/heic/mp4/mov/webm/m4v），'
+      + '单个 ≤64MB，须传**绝对路径**；系统/凭据目录（如 ~/.ssh、~/.nomi）的文件会被拒绝。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        path: { type: 'string', description: '本机文件的绝对路径，如 /Users/你/Desktop/参考.png' },
+        title: { type: 'string', description: '可选：素材名（不带扩展名也行，会自动补）' },
+      },
+      required: ['projectId', 'path'],
+      additionalProperties: false,
+    },
+    method: 'asset.import',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, path: a.path, ...(a.title ? { title: a.title } : {}) }),
+  },
+  {
     name: 'nomi_generate',
     description:
       '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。'
@@ -273,12 +312,33 @@ export const MCP_TOOL_CATALOG = [
         aspect_ratio: { type: 'string', description: '画面比例，如 "16:9" / "9:16" / "1:1"（可选；覆盖模型默认）。' },
         resolution: { type: 'string', description: '清晰度，如 "1080p" / "2K" / "720p"（可选；取值随模型而定）。' },
         duration: { type: 'number', description: '视频时长（秒，可选；仅视频类有效）。' },
+        seed: { type: 'number', description: '随机种子（可选）。同 prompt + 同 seed 可复现同一结果——做系列风格一致时用它。' },
+        // 首尾帧语义分解（W2）。**必须在 schema 里露出来，模型才知道能填**——这两个字段在能力核里
+        // 早就通到底了（首帧图 → first_frame_url，尾帧图 → last_frame_url），此前只是没写进工具清单，
+        // 于是永远收不到值，等于没做。
+        firstFrameDesc: {
+          type: 'string',
+          description:
+            '视频镜可选：这一镜**开头那一帧**的静态画面描述（景别/角度/构图/光/人物位置，不写运动）。'
+            + '给了它就先出一张首帧图再让它动起来——「给模型照片让它动」比「让它凭文字想象一个人」稳得多。'
+            + '注意：prompt 写运动，这里写静止的那一帧，别把运动词写进来。',
+        },
+        lastFrameDesc: {
+          type: 'string',
+          description:
+            '视频镜可选：这一镜**结束那一帧**的静态画面描述，须与首帧 + 运动逻辑自洽。'
+            + '首尾都给，运动的落点被两端夹住，不会「动到一半人就变了」。'
+            + '仅在该模型确有尾帧槽时才会生效并多花一张图的额度；模型没有这个槽就自动忽略。',
+        },
       },
       required: ['projectId', 'vendor', 'modelKey', 'intent', 'prompt'],
     },
     method: 'generate',
     build: (a: Record<string, unknown>) => ({
       projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId, references: a.references,
+      // 首尾帧描述直通能力核（core 自己判「模型有没有这个槽」再决定要不要多出那张图）。
+      ...(typeof a.firstFrameDesc === 'string' && a.firstFrameDesc.trim() ? { firstFrameDesc: a.firstFrameDesc.trim() } : {}),
+      ...(typeof a.lastFrameDesc === 'string' && a.lastFrameDesc.trim() ? { lastFrameDesc: a.lastFrameDesc.trim() } : {}),
       // 画幅/时长经既有 extras/params 通道下沉到 applyHeadlessParamDefaults（caller-wins）。装配为规范化的
       // params 交给 core.generateOnProject（它把 params 铺进 extras）——键名归一在 buildGenerateParams，
       // 不 hardcode 任何 vendor：比例同时铺 aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键。
