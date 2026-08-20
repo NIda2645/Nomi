@@ -6,6 +6,7 @@ import {
   createNamedProject,
   deleteProjectNodes,
   generateOnProject,
+  importProjectAsset,
   listAllProjects,
   listAvailableModels,
   readProjectCanvas,
@@ -257,6 +258,14 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       )
     case 'canvas.deleteNodes':
       return deleteProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodeIds) ? (params.nodeIds as string[]) : [])
+    case 'asset.import':
+      // M2：本机文件 → 项目素材 → nomi-local:// URL。安全判据在 importAssetGuard（纯函数，逐条单测）。
+      assertOnlyFields(params, new Set(['projectId', 'path', 'title']))
+      return importProjectAsset({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        path: String(params.path || ''),
+        ...(typeof params.title === 'string' && params.title.trim() ? { title: params.title.trim() } : {}),
+      })
     case 'generate':
       // makeVerifyDeps 是**传输层注入**（不是模型能填的入参）→ 从 ctx 取、覆盖任何请求体里的同名字段
       // （防外部 agent 伪造），与 makeGateway/planConfirmed 同注入模式。不注入 = 审片环不跑（默认行为不变）。

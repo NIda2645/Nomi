@@ -12,6 +12,8 @@
 // 真相源（P1）：generate 不重建 archetype→body——runTask 主进程内部据 catalog mapping + extras
 // 自己组装请求体（findExecutableModel / requestPipeline / 资产本地化）。本核只构造高层 TaskRequest。
 import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
 import { listProjects, createProject, readProject } from '../projects/repository'
 import { readCatalog } from '../catalog/catalogStore'
 import { deriveModelListing, referenceModeForIntent, videoBodyKeysForModel, type ModelListingEntry } from '../catalog/modelCatalogListing'
@@ -29,6 +31,8 @@ import {
 import type { ProjectGateway } from './gateway'
 import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
 import { runFirstHop, shouldUseTwoHop } from './i2vTwoHop'
+import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
+import { copyAssetFile } from '../assets/projectAssetStore'
 
 /** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
@@ -190,6 +194,60 @@ function writeResultToSnapshot(snapshot: CanvasSnapshot, nodeId: string, result:
 }
 
 // ── 工程级 ─────────────────────────────────────────────────────────────
+
+/**
+ * 把**本机文件**导入项目当素材，返回 `nomi-local://` URL（MCP 清单 M2）。
+ *
+ * 为什么必须有：agent 想拿手绘帧/截图/用户给的参考图当 references，此前只能靠人先在 GUI 里拖进去——
+ * 「让 Agent 端到端跑完」在素材侧是断的。导入后返回的 URL 可直接进 nomi_generate 的 references
+ * 或当画布节点的源。
+ *
+ * 安全：判据全在 importAssetGuard（纯函数、逐条单测）——这是「远端 agent 读本机文件」的口子，
+ * deny 优先于白名单、且对 realpath 再查一遍（软链逃逸在此断掉）。落盘复用既有 copyAssetFile
+ * （不走 Buffer、不另造资产管线，P1）。
+ */
+export async function importProjectAsset(input: {
+  projectId: string
+  path: string
+  title?: string
+}): Promise<{ url: string; name: string; contentType: string; sizeBytes: number }> {
+  if (!readProject(input.projectId)) throw new Error(`项目不存在: ${input.projectId}`)
+  const raw = String(input.path || '')
+  // I/O 先做（realpath 解软链 + stat），判据本身保持纯函数。
+  let realPath: string | null = null
+  let sizeBytes: number | null = null
+  let isFile = false
+  try {
+    realPath = fs.realpathSync(raw)
+    const stat = fs.statSync(realPath)
+    sizeBytes = stat.size
+    isFile = stat.isFile()
+  } catch {
+    realPath = null
+  }
+  const verdict = checkImportAsset({ rawPath: raw, realPath, sizeBytes, isFile })
+  if (!verdict.ok) throw new Error(verdict.reason)
+
+  const fileName = (() => {
+    const titled = typeof input.title === 'string' ? input.title.trim() : ''
+    const base = titled || path.basename(verdict.realPath)
+    // 标题不带扩展名时补上真实扩展名（落盘/回读都靠它认类型）。
+    return base.toLowerCase().endsWith(verdict.extension) ? base : `${base}${verdict.extension}`
+  })()
+  const contentType = contentTypeForExtension(verdict.extension)
+  const record = (await copyAssetFile(input.projectId, verdict.realPath, fileName, contentType, {
+    kind: 'imported',
+    source: 'mcp-import',
+  })) as { name?: string; data?: { url?: string; size?: number } }
+  const url = record?.data?.url
+  if (!url) throw new Error('素材已复制但没拿到可引用的地址，请重试。')
+  return {
+    url,
+    name: record.name || fileName,
+    contentType,
+    sizeBytes: record.data?.size ?? sizeBytes ?? 0,
+  }
+}
 
 export function listAllProjects(): Array<{ id: string; name: string; updatedAt: number }> {
   return listProjects().map((project) => ({ id: project.id, name: project.name, updatedAt: project.updatedAt }))

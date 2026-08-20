@@ -248,6 +248,26 @@ export const MCP_TOOL_CATALOG = [
     build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, gateId: a.gateId, decision: a.decision, choiceKey: a.choiceKey }),
   },
   {
+    name: 'nomi_import_asset',
+    description:
+      '把**本机文件**导入项目当素材，返回可直接引用的 nomi-local:// 地址。'
+      + '用它把手绘帧 / 截图 / 用户给的参考图弄进来——导入后把返回的 url 放进 nomi_generate 的 references，'
+      + '或当画布节点的参考源。只收图片与视频（png/jpg/webp/gif/bmp/tiff/heic/mp4/mov/webm/m4v），'
+      + '单个 ≤64MB，须传**绝对路径**；系统/凭据目录（如 ~/.ssh、~/.nomi）的文件会被拒绝。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        path: { type: 'string', description: '本机文件的绝对路径，如 /Users/你/Desktop/参考.png' },
+        title: { type: 'string', description: '可选：素材名（不带扩展名也行，会自动补）' },
+      },
+      required: ['projectId', 'path'],
+      additionalProperties: false,
+    },
+    method: 'asset.import',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, path: a.path, ...(a.title ? { title: a.title } : {}) }),
+  },
+  {
     name: 'nomi_generate',
     description:
       '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。'
@@ -267,6 +287,7 @@ export const MCP_TOOL_CATALOG = [
         aspect_ratio: { type: 'string', description: '画面比例，如 "16:9" / "9:16" / "1:1"（可选；覆盖模型默认）。' },
         resolution: { type: 'string', description: '清晰度，如 "1080p" / "2K" / "720p"（可选；取值随模型而定）。' },
         duration: { type: 'number', description: '视频时长（秒，可选；仅视频类有效）。' },
+        seed: { type: 'number', description: '随机种子（可选）。同 prompt + 同 seed 可复现同一结果——做系列风格一致时用它。' },
       },
       required: ['projectId', 'vendor', 'modelKey', 'intent', 'prompt'],
     },
