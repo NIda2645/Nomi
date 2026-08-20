@@ -266,7 +266,8 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
         commandId: `driver:${run.runId}:skill:${hash.slice(0, 16)}`,
         expectedRevision: result.run.revision,
         type: 'skill.evidence',
-        payload: { skillName: 'brand.promo', version: run.playbook.version },
+        // 同上：技能证据必须是**真跑的那个** playbook，硬编码会让用户看到一条假的「证据」。
+        payload: { skillName: run.playbook.name, version: run.playbook.version },
         issuedAt: timestamp,
       })
     } catch (error) {

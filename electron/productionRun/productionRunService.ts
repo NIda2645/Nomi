@@ -455,7 +455,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           specs: { durationSeconds: current.brief?.durationSeconds, shotCount: jobs.length },
           claims: (current.brief?.sellingPoints || []).map((text, index) => ({ text, evidenceIds: [`brief-${index + 1}`] })),
           evidence: (current.brief?.sellingPoints || []).map((label, index) => ({ evidenceId: `brief-${index + 1}`, label })),
-          skills: [{ name: 'brand.promo', version: current.playbook.version }],
+          // 取**本 run 的** playbook 名（W4：此前硬编码 'brand.promo'——换任何 playbook 都会在合同里谎报技能名）。
+          skills: [{ name: current.playbook.name, version: current.playbook.version }],
           ...(maxSpend !== null ? { estimatedCost: { currency: current.budget.currency, minimum: 0, maximum: maxSpend } } : {}),
         },
         createdAt: new Date().toISOString(),

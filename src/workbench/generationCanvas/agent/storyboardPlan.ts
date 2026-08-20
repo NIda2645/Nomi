@@ -75,6 +75,17 @@ export type PlanShot = {
    */
   ffDesc?: string
   /**
+   * 镜头内变化幅度（ViMax variation_type，W4）：**审片与生成策略的路由键**——
+   * large=构图与焦点剧变（重点审转场/几何崩塌）；medium=有人进出场或转身面向镜头；
+   * small=微变（表情/走坐站/中等运镜，重点审身份细节）。缺省不填 → 按 small 保守处理。
+   */
+  variationType?: 'large' | 'medium' | 'small'
+  /**
+   * 机位索引（ViMax cam_idx，W4）：同机位的镜头可复用同一组参考与构图 —— 低成本一致性抓手。
+   * 同一 camIdx 的镜头在生成时应尽量共享参考图与构图描述。缺省=各自独立机位。
+   */
+  camIdx?: number
+  /**
    * **静态尾帧快照**描述（ViMax lf_desc）：须与首帧 + 运动逻辑自洽。当前用于 ①喂给视频模型的尾帧槽
    * （模型支持时）②相邻镜续接的语义依据。**尚未驱动 shot→shot 抽帧链**（见文件末尾遗留说明）。
    */
@@ -139,6 +150,8 @@ export const planShotSchema = z.object({
   modelKey: z.string().optional(),
   modeId: z.string().optional(),
   params: z.record(z.unknown()).optional(),
+  variationType: z.enum(['large', 'medium', 'small']).optional().describe('镜头内变化幅度：审片与生成策略的路由键。'),
+  camIdx: z.number().int().min(0).optional().describe('机位索引：同机位复用参考与构图（低成本一致性抓手）。'),
   ffDesc: z.string().optional().describe('静态首帧快照描述（景别/角度/构图/光/人物位置，不写运动）。首帧图按它生成。'),
   lfDesc: z.string().optional().describe('静态尾帧快照描述（须与首帧+运动自洽）。供尾帧槽与相邻镜续接用。'),
   keyframe: z

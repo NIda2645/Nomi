@@ -806,6 +806,11 @@ export const zhGenerationCommon = {
     idea: '结合用户的想法：{{idea}}',
     imageDetails: '把画面拆成可枚举的结构化事实并逐项补齐：主体及其关键属性（数量、外观、材质）、主体之间与环境的空间关系、动作与状态；不堆形容词、不为长而长；',
     videoDetails: '把内容拆成可枚举的结构化事实并逐项补齐：谁/什么（及关键属性）、在哪、什么空间关系、动作先后顺序、镜头怎么动、节奏如何；不堆形容词、不为长而长；',
+    // W4：把 director-shot-translation 的「污染词铁律」注进改写指令——此前优化器是纯自由文本改写、
+    // 不读任何铁律，模型看到「望向」照样强行出正脸，把用户要的背影镜毁掉（盘点 D#5）。
+    pollutionRule: '铁律：只描述画面看得见的东西。禁用抽象概念（意识/记忆/命运→改成瞳孔收缩等物理表现）、'
+      + '禁用视线类抽象动作（望向/注视/凝视/看向→拆成「身体朝向 + 视线所及物体的具体描述」，否则模型会强行出正脸毁掉背影镜）、'
+      + '禁用事件名（打游戏/驾驶/战斗→拆成具体动作与操作的物体）。运动描述里不要出现角色名（模型认不出专有名词），改用外貌特征指代。',
     outputRule: '保持原意，只输出优化后的提示词本身，不要解释、不要加引号、不要分点。',
     imageResult: '图',
     videoResult: '片',
@@ -2044,6 +2049,9 @@ export const enGenerationCommon = {
     idea: 'Incorporate the user’s idea: {{idea}}',
     imageDetails: 'Decompose the image into enumerable structured facts and fill in each one: subjects and their key attributes (count, appearance, material), spatial relations between subjects and with the environment, actions and states. Do not pile up adjectives; do not pad for length.',
     videoDetails: 'Decompose the video into enumerable structured facts and fill in each one: who or what (with key attributes), where, spatial relations, the order of actions, camera movement, and pacing. Do not pile up adjectives; do not pad for length.',
+    pollutionRule: 'Hard rule: describe only what the camera can see. Avoid abstract concepts (consciousness/memory/fate -> use physical tells such as a contracting pupil), '
+      + 'avoid gaze verbs (gazes at / looks toward -> split into "body orientation + concrete description of the object in view", otherwise the model forces a frontal face and ruins a back-view shot), '
+      + 'and avoid event nouns (gaming/driving/fighting -> spell out the concrete actions and the objects handled). Do not put character names in motion text (models cannot resolve proper nouns); refer to them by appearance instead.',
     outputRule:
       'Preserve the intent. Return only the improved prompt, with no explanation, quotation marks, or bullet points.',
     imageResult: 'image',

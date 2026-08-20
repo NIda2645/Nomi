@@ -120,7 +120,7 @@ export const MCP_TOOL_CATALOG = [
       type: 'object',
       properties: {
         projectId: { type: 'string', description: '目标 Nomi 项目 id' },
-        playbook: { type: 'string', description: '制作 playbook，例如 brand.promo' },
+        playbook: { type: 'string', description: '制作 playbook：brand.promo=品牌宣传片（卖点并列）；drama.short=剧情短剧（同一角色连续时空，先冻结定妆卡再批量生成）。按用户要做的片型选。' },
         playbookVersion: { type: 'string', description: '可选版本；默认 1.0.0' },
         brief: {
           type: 'object',
