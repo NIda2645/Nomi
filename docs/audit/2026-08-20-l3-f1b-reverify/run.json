@@ -1,24 +1,24 @@
 {
-  "projectId": "workspace-c265679e-3057-482f-8e96-fcca4f8c36ec",
+  "projectId": "workspace-d11d01ac-ad38-41df-b3fe-f8011621f40b",
   "elicitations": 1,
   "results": [
     {
       "title": "#1 她抬头",
       "status": "succeeded",
-      "newImages": 0,
+      "newImages": 1,
       "verify": {
         "skipped": false,
         "reason": null,
         "passed": true,
         "retries": 0,
         "scores": {
-          "identity": 5,
-          "composition": 3
+          "identity": 3,
+          "composition": 4
         },
         "flagged": [],
         "suggestion": null
       }
     }
   ],
-  "artifacts": 3
+  "artifacts": 4
 }
