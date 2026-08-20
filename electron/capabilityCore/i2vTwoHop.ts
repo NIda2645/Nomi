@@ -154,3 +154,31 @@ export async function runFirstHop(input: I2vTwoHopInput, deps: I2vTwoHopDeps): P
     reason: verify && verify.passed === false ? '首帧判分未达标（已如实标注，仍按你的要求推进生成）' : null,
   }
 }
+
+/**
+ * 没走两跳时，把首/尾帧描述**折进视频提示词**（L3-F1 实测抓出的信息丢失，2026-08-20）。
+ *
+ * 真实事故：分镜给 #1「深夜便利店内，收银台后的挂钟特写，冷白灯管，右下角虚化的货架」当 ffDesc，
+ * 但那是个空镜（没连角色锚）→ 不满足两跳条件 → ffDesc **一个字都没被用上**，视频模型只收到运动那行
+ * 「挂钟特写，秒针跳动，玻璃反光浮现人影」。结果出来一座**维多利亚书房座钟**——场景全错，而判分器
+ * 按它收到的提示词判「构图 5 分完全符合」也没错：信息是在上游丢的，判分器无从知晓。
+ *
+ * 为什么两跳时反而不折：那时静态信息已经以**真图**的形式喂进去了（first_frame_url），
+ * 再用文字复述一遍是冗余，还可能和图打架（模型在图和文之间摇摆）。图比文强，有图就别再啰嗦。
+ *
+ * 纯函数。折的顺序是「静态场景 → 运动 → 落点」——T2V 提示词的标准结构，不是我编的格式。
+ */
+export function composeShotPrompt(input: {
+  prompt: string
+  firstFrameDesc?: string
+  lastFrameDesc?: string
+  /** 走成两跳了吗。true = 原样返回（静态信息已由真图承载）。 */
+  twoHopApplied: boolean
+}): string {
+  const motion = String(input.prompt || '').trim()
+  if (input.twoHopApplied) return motion
+  const ff = String(input.firstFrameDesc || '').trim()
+  const lf = String(input.lastFrameDesc || '').trim()
+  if (!ff && !lf) return motion
+  return [ff, motion, lf ? `收尾停在：${lf}` : ''].filter(Boolean).join('。')
+}

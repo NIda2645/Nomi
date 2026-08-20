@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { runFirstHop, shouldRenderLastFrame, shouldUseTwoHop, type I2vTwoHopDeps } from './i2vTwoHop'
+import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop, type I2vTwoHopDeps } from './i2vTwoHop'
 
 // W2 §3 · I2V 两跳（参考图 → 首帧 I2I → I2V）。纯编排单测：注入 renderFirstFrame / verifyFirstFrame 桩，
 // 不打 vendor、不碰 electron。核心不变量：
@@ -154,5 +154,40 @@ describe('runFirstHop 的尾帧半跳（纯增益：坏了也不许拖垮整镜�
     expect(out.applied).toBe(false)
     expect(out.firstFrameUrl).toBeNull()
     expect(out.lastFrameUrl).toBeNull()
+  })
+})
+
+// ── 没走两跳时的提示词折叠（L3-F1 实测抓出的信息丢失，2026-08-20）────────────────────────
+describe('composeShotPrompt（分镜写的场景描述不许静默蒸发）', () => {
+  const FF = '深夜便利店内，收银台后的挂钟特写，冷白灯管，右下角虚化的货架'
+  const MOTION = '固定机位，挂钟特写，秒针跳动，玻璃反光里浮现人影'
+  const LF = '同一挂钟，玻璃面上多了一道人形倒影'
+
+  it('★空镜（没锚→不走两跳）：ffDesc 折进提示词，场景信息不再丢', () => {
+    const out = composeShotPrompt({ prompt: MOTION, firstFrameDesc: FF, twoHopApplied: false })
+    expect(out).toContain('便利店')
+    expect(out).toContain('冷白灯管')
+    expect(out).toContain(MOTION)
+    // 顺序：静态场景在前、运动在后（T2V 提示词标准结构）
+    expect(out.indexOf(FF)).toBeLessThan(out.indexOf(MOTION))
+  })
+
+  it('尾帧描述折成「收尾停在」，给模型一个落点', () => {
+    const out = composeShotPrompt({ prompt: MOTION, firstFrameDesc: FF, lastFrameDesc: LF, twoHopApplied: false })
+    expect(out).toContain('收尾停在：同一挂钟')
+    expect(out.indexOf(MOTION)).toBeLessThan(out.indexOf('收尾停在'))
+  })
+
+  it('★走成两跳时原样返回：静态信息已由真图承载，再用文字复述会和图打架', () => {
+    expect(composeShotPrompt({ prompt: MOTION, firstFrameDesc: FF, lastFrameDesc: LF, twoHopApplied: true })).toBe(MOTION)
+  })
+
+  it('没给 ff/lf → 原样返回（行为与加这条之前逐字节一致）', () => {
+    expect(composeShotPrompt({ prompt: MOTION, twoHopApplied: false })).toBe(MOTION)
+    expect(composeShotPrompt({ prompt: MOTION, firstFrameDesc: '  ', lastFrameDesc: '', twoHopApplied: false })).toBe(MOTION)
+  })
+
+  it('只有 lfDesc（分镜只写了落点）也折得进去', () => {
+    expect(composeShotPrompt({ prompt: MOTION, lastFrameDesc: LF, twoHopApplied: false })).toContain('收尾停在')
   })
 })

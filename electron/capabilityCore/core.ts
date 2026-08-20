@@ -31,7 +31,8 @@ import {
 import type { ProjectGateway } from './gateway'
 import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
 import { unfrozenAnchorsForShot } from './anchorBible'
-import { runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
+import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
+import { previousShotPromptFor } from './shotOrder'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 import { copyAssetFile } from '../assets/projectAssetStore'
 
@@ -502,9 +503,19 @@ export async function generateOnProject(
       )
     : null
 
+  // 没走两跳时把分镜的首/尾帧描述折进提示词——否则那些场景描述一个字都用不上（L3-F1 实测：
+  // 空镜的 ffDesc 全丢，模型只收到运动那行，出来一座维多利亚书房座钟而不是便利店挂钟）。
+  // 走成两跳时原样不动：静态信息已由真图承载，再用文字复述会和图打架。
+  const effectivePrompt = composeShotPrompt({
+    prompt,
+    ...(input.firstFrameDesc ? { firstFrameDesc: input.firstFrameDesc } : {}),
+    ...(input.lastFrameDesc ? { lastFrameDesc: input.lastFrameDesc } : {}),
+    twoHopApplied: Boolean(twoHop?.applied),
+  })
+
   const request = {
     kind,
-    prompt,
+    prompt: effectivePrompt,
     extras: {
       ...(input.params || {}),
       modelKey: input.modelKey,
@@ -610,8 +621,19 @@ export async function generateOnProject(
           shot: {
             shotNodeId: nodeId,
             shotTitle: typeof node.title === 'string' && node.title ? node.title : (typeof input.title === 'string' ? input.title : `镜头 ${nodeId}`),
-            shotPrompt: prompt,
+            // 判分要对着**我们真正发给模型的那份提示词**判，不是原始那行运动描述。
+            // L3-F1 实测的第二层坑：ffDesc 被丢掉时，判分器拿到的是同一份被削过的提示词，
+            // 于是「便利店挂钟」出成「书房座钟」它照样给构图 5 分——**判分环对上游丢失的信息是盲的**。
+            // 对齐成同一份后，场景漂移才变成判分器抓得到的东西。
+            shotPrompt: effectivePrompt,
             anchorDescriptions: anchorDescriptionsForNode(snapshot, nodeId),
+            // 连贯轴的参照物：同分类里紧邻的上一镜（按 shotIndex derive）。以前从没传过，于是审片环
+            // 对外说三轴、实际只跑了两轴——而「接不接得上」正是短剧最容易崩的那一轴（L3-F1 实测抓出）。
+            // 判不出上一镜时返回 undefined → 判分器按「首镜不评 continuity」处理，不拿错参照物硬比。
+            ...(() => {
+              const prev = previousShotPromptFor(snapshot.nodes, nodeId)
+              return prev ? { previousShotPrompt: prev } : {}
+            })(),
             frameSourceUrl: primary!.url as string,
             isVideo: intent === 'video',
           },
