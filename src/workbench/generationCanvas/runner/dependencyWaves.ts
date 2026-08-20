@@ -3,12 +3,19 @@
 // 纯函数:同一份计划既给确认 UI 画,也给调度器跑——显示的 ≡ 执行的(可断言)。
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { isTextPromptEdge } from '../agent/referenceEdgeCapability'
+import { isAnchorFrozen, isVisualAnchorNode } from '../model/anchorBibleKeys'
 
 export type DependencyWavePlan = {
   /** 执行波次:waves[0] 全部并行,waves[n] 等 waves[n-1] 完成。 */
   waves: string[][]
-  /** 不进本批的节点及原因。 */
-  blocked: { nodeId: string; reason: 'cycle' | 'missing-upstream'; detail: string }[]
+  /**
+   * 不进本批的节点及原因。
+   * - missing-upstream：上游参考没生成又不在本批（跑了必裸跑）。
+   * - cycle：与其他节点构成循环引用。
+   * - unfrozen-anchor（W2 冻结门）：引用的角色/场景/道具卡还没冻结——结构强制「未冻结锚的下游踢出本批」，
+   *   不靠 agent 自觉。就算锚生成了图，只要没点「冻结」，引用它的镜头依然拦下（一致性地基）。
+   */
+  blocked: { nodeId: string; reason: 'cycle' | 'missing-upstream' | 'unfrozen-anchor'; detail: string }[]
   /** 本次计划用到的依赖边(target 在选择集内、source 是它的生成输入)。 */
   edgesUsed: GenerationCanvasEdge[]
 }
@@ -17,6 +24,14 @@ function hasUsableResult(node: GenerationCanvasNode | undefined): boolean {
   if (!node) return false
   const url = node.result?.url || node.result?.thumbnailUrl
   return typeof url === 'string' && url.length > 0
+}
+
+/**
+ * W2 冻结门判据（GUI 批量侧）：source 是视觉锚（角色/场景/道具卡）但**未冻结** → 引用它的 target 镜头拦下。
+ * 判据来自 anchorBibleKeys 单一镜像（electron equivalence 钉死），与 headless 冻结门读同一份语义。
+ */
+function isUnfrozenVisualAnchor(node: GenerationCanvasNode | undefined): boolean {
+  return isVisualAnchorNode(node) && !isAnchorFrozen(node)
 }
 
 /**
@@ -46,6 +61,17 @@ export function buildDependencyWaves(
     const sourceNode = nodesById.get(edge.source)
     const targetNode = nodesById.get(edge.target)
     if (sourceNode && targetNode && isTextPromptEdge(sourceNode, targetNode, edge.mode)) continue
+    // W2 冻结门（优先于「有没有结果」判据）：source 是视觉锚但没冻结 → target 镜头拦下，理由 unfrozen-anchor。
+    // 就算锚生成了图、甚至锚也在本批里（会先跑），只要它没被点「冻结」，引用它的镜头就不放行——一致性地基是
+    // 结构强制的，不靠 agent 自觉；破解死锁靠单镜 generate 不拦（锚自己单镜生成→看图→点冻结→批量才放行）。
+    if (isUnfrozenVisualAnchor(sourceNode)) {
+      if (!blockedIds.has(edge.target)) {
+        blockedIds.add(edge.target)
+        const sourceTitle = sourceNode?.title || edge.source
+        blocked.push({ nodeId: edge.target, reason: 'unfrozen-anchor', detail: `参考卡「${sourceTitle}」还没冻结` })
+      }
+      continue
+    }
     if (selection.has(edge.source)) {
       internalDeps.get(edge.target)?.add(edge.source)
       edgesUsed.push(edge)

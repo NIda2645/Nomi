@@ -6,18 +6,21 @@ import {
   createNamedProject,
   deleteProjectNodes,
   generateOnProject,
+  importProjectAsset,
   listAllProjects,
   listAvailableModels,
   readProjectCanvas,
   setProjectNodePrompt,
   type FetchTaskResultFn,
   type GenerateInput,
+  type MakeVerifyDeps,
   type RunTaskFn,
 } from './core'
 import { listSkillSummaries, readSkillContent } from '../skills/skillStore'
 import type { ProductionRunService } from '../productionRun/productionRunService'
 import type { ProductionBrief } from '../productionRun/productionRunTypes'
 import { withPreApprovedPlan, type ProjectGateway } from './gateway'
+import { INTAKE_MAX_QUESTIONS, buildIntakeMessage, buildIntakeQuestions } from './mcpBriefIntake'
 import type { CapabilityOriginHost } from './security'
 
 export class RpcError extends Error {
@@ -46,6 +49,12 @@ export type DispatchContext = {
    * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
    */
   planConfirmed?: boolean
+  /**
+   * 审片环 deps 工厂（W1，可选）。传输层注入真实现（headless=makeShotVerifyDeps；GUI-RPC 同一份）→
+   * generate 生成成功后跑判分→定向重试→红标。**不注入 = generate 行为逐字节不变**（默认）。
+   * 领域策略住 shotVerifyOrchestrate，传输层只注入 deps，core 只透传 outcome（三层干净，方案 §3/§9）。
+   */
+  makeVerifyDeps?: MakeVerifyDeps
 }
 
 const PRODUCTION_START_FIELDS = new Set([
@@ -220,7 +229,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       const gate = full.gates.find((item) => item.gateId === gateId)
       if (!gate) throw new RpcError(`Production gate not found: ${gateId}`, 404)
       const creativeGate = gate.scope === 'stage'
-        && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-'))
+        && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-') || gate.gateId.startsWith('gate-freeze-'))
       if (!creativeGate) throw new RpcError('This production gate must be decided in Nomi', 403)
       await ctx.productionRuns.command(projectId, runId, {
         commandId: `mcp-decide-${gateId}-${decision}-${full.revision}`,
@@ -250,8 +259,30 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       )
     case 'canvas.deleteNodes':
       return deleteProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodeIds) ? (params.nodeIds as string[]) : [])
+    case 'brief.intake': {
+      // W3 幕 0：只组题/给默认，**不落任何状态**——真正的「问」由协议层弹 elicitation（enum 候选），
+      // 客户端不支持表单时协议层退化成把题面交给模型在对话里一次问全。
+      assertOnlyFields(params, new Set(['projectId', 'kind']))
+      const questions = buildIntakeQuestions({ kind: typeof params.kind === 'string' ? params.kind : '' })
+      return { questions, message: buildIntakeMessage(questions), maxQuestions: INTAKE_MAX_QUESTIONS }
+    }
+    case 'asset.import':
+      // M2：本机文件 → 项目素材 → nomi-local:// URL。安全判据在 importAssetGuard（纯函数，逐条单测）。
+      assertOnlyFields(params, new Set(['projectId', 'path', 'title']))
+      return importProjectAsset({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        path: String(params.path || ''),
+        ...(typeof params.title === 'string' && params.title.trim() ? { title: params.title.trim() } : {}),
+      })
     case 'generate':
-      return generateOnProject(params as unknown as GenerateInput, ctx.makeGateway(projectIdOf(params)), ctx.runTask, ctx.fetchTaskResult)
+      // makeVerifyDeps 是**传输层注入**（不是模型能填的入参）→ 从 ctx 取、覆盖任何请求体里的同名字段
+      // （防外部 agent 伪造），与 makeGateway/planConfirmed 同注入模式。不注入 = 审片环不跑（默认行为不变）。
+      return generateOnProject(
+        { ...(params as unknown as GenerateInput), makeVerifyDeps: ctx.makeVerifyDeps },
+        ctx.makeGateway(projectIdOf(params)),
+        ctx.runTask,
+        ctx.fetchTaskResult,
+      )
     default:
       throw new RpcError(`未知方法: ${method}`, 404)
   }

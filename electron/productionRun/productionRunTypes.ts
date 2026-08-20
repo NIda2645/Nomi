@@ -123,6 +123,12 @@ export type ProductionStage = {
   order: number;
   startedAt?: string;
   completedAt?: string;
+  /**
+   * W1.5 审片摘要（仅 qa 阶段）：driver 跑完审片后把「N 镜过检 · M 面红标」这类一句话人话摘要
+   * 盖在 qa 阶段上，让 nomi_get_run 投影读得到（per-shot 明细走 qa.verdict 事件，此处只留总览）。
+   * 文本经投影 sanitizer；老 run 无字段 → 不显。
+   */
+  qaSummary?: string;
 };
 
 export type ProductionJob = {

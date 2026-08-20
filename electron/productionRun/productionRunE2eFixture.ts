@@ -154,6 +154,19 @@ export function createProductionRunE2eRenderer(options: FixtureOptions) {
       }
     }
 
+    if (operation === 'production.verify-shots') {
+      // W1.5 qa 阶段审片（fixture，零额度）：让 production journey 测试不悬挂，且能看到 qa.verdict 事件
+      // 与 qa 阶段摘要落地。回一个「全部过检」的判决（真判分链路由 L1/L2 覆盖，此处只做端到端不阻断）。
+      const rawIds = (payload as Record<string, unknown>).shotNodeIds
+      const shotNodeIds = Array.isArray(rawIds)
+        ? rawIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        : []
+      return {
+        reviewedShotIds: shotNodeIds,
+        verdicts: shotNodeIds.map((shotNodeId) => ({ shotNodeId, passed: true })),
+      }
+    }
+
     if (operation === 'production.export') {
       const sourceRelativePath = generatedByRun.get(`${projectId}:${runId}`)
         ?? `assets/generated/fixture-${runId}.mp4`

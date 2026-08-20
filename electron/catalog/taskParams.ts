@@ -8,7 +8,7 @@ import { firstString, type JsonRecord } from "../jsonUtils";
 import { referenceInputParams } from "./archetypeInput";
 import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archetypeWireDefaults.generated";
 import { bodyReferencedParamKeys } from "./paramTranslate";
-import { bodyReferenceSupport, classifyReferenceKey, type ReferenceFamily } from "./referenceReachability";
+import { bodyReferenceSupport, classifyReferenceKey, classifyReferenceKeyDetailed, type ReferenceFamily } from "./referenceReachability";
 
 /** taskTemplateParams 实际用到的 TaskRequest 子集（结构化，避免与 runtime 的 TaskRequest 循环依赖）。 */
 export type TaskParamsInput = {
@@ -85,9 +85,11 @@ function sizeDefaultIsRatioSemantic(
 }
 
 /**
- * headless/MCP 两道缺参兜底（既有值优先）：① 档案参数默认值（单一真相源，按 archetypeId+taskKind 桥接自
- * src/config，vendorParams 覆盖优先、回退通用 "*"；补 model 变体/duration(int)/比例/清晰度/voice/size）；
- * ② mapping 级 defaultParams（仅非档案派生的兜底）。逻辑收口在此 → runtime 一行调用，不喂巨壳。
+ * headless/MCP 三道缺参兜底（均「既有值优先」，UI 路已填故零影响）：① 档案参数默认值（单一真相源，按
+ * archetypeId+taskKind 桥接自 src/config，vendorParams 覆盖优先、回退通用 "*"；补 model 变体/duration(int)/
+ * 比例/清晰度/voice/size）；② mapping 级 defaultParams（仅非档案派生的兜底）；③ **参考键形态投影**
+ * （createBody 给了才做，W1d）——把携带的参考投影到 body 真读的键（image_urls/first_frame_image…），
+ * 见 projectReferencesOntoBodyKeys。逻辑收口在此 → runtime 一行调用，不喂巨壳。
  *
  * 附一道 `size` 别名闸（见 sizeDefaultIsRatioSemantic）：调用方比例铺进的 `size` 仅当该模式 size 默认是比例形时
  * 才保留，否则剥掉，免得把只说像素的目标（火山 seedream 等）的 size 覆写成 "16:9" 发出废请求。
@@ -98,6 +100,8 @@ export function applyHeadlessParamDefaults(
   taskKind: string,
   vendorKey: string,
   mappingDefaults: Record<string, unknown> | undefined,
+  /** 这条 mapping 的 create body（给了才做参考键形态投影，W1d）。不给 = 只做①②缺参兜底，行为不变。 */
+  createBody?: unknown,
 ): Record<string, unknown> | undefined {
   const perKind = archetypeId ? ARCHETYPE_WIRE_DEFAULTS[archetypeId]?.[taskKind] : undefined;
   const archetypeDefaults = perKind ? (perKind[vendorKey] ?? perKind["*"]) : undefined;
@@ -107,7 +111,11 @@ export function applyHeadlessParamDefaults(
     && !sizeDefaultIsRatioSemantic(archetypeId, taskKind, archetypeDefaults, mappingDefaults)
     ? (() => { const { size: _dropped, ...rest } = extras; return rest; })()
     : extras;
-  return applyWireDefaults(applyWireDefaults(guarded, archetypeDefaults), mappingDefaults);
+  const withDefaults = applyWireDefaults(applyWireDefaults(guarded, archetypeDefaults), mappingDefaults);
+  // ③ 参考键形态投影（既有值优先 → 渲染层已填 archetypeInput 时 no-op）。在缺参兜底之后做，看到的是合并后的 extras。
+  if (typeof createBody === "undefined") return withDefaults;
+  const projected = projectReferencesOntoBodyKeys(withDefaults, createBody);
+  return Object.keys(projected).length ? { ...(withDefaults || {}), ...projected } : withDefaults;
 }
 
 export function taskTemplateParams(request: TaskParamsInput): JsonRecord {
@@ -170,6 +178,19 @@ function numericWireParam(value: unknown): number | string | undefined {
 // 参考值的 URL 形状（http/nomi-local/data/blob/绝对路径）。护栏判定只认它——archetypeInput 里还混着
 // model enum（如 "gpt-image-2-image-to-image"）和 fixedParams 常量，按「有任意值」判会误报有参考。
 const REF_URL_RE = /^(https?:\/\/|nomi-local:\/\/|data:|blob:|\/)/i;
+
+// 「对象形态」参考键：值必须是 [{url, role}] / content 项对象数组（渲染层 archetypeInput 才构造得对），
+// 不能塞 plain URL。projectReferencesOntoBodyKeys 跳过它们走 plain 键（image_urls 等），对象键留空由模板丢。
+const OBJECT_SHAPE_REF_KEY = /with_roles|_contents\b|_content\b/i;
+
+// 数组形态键：复数 URL 键（image_urls / video_urls / audio_urls / input_urls / reference_*_urls / *_images / *_paths）。
+// classifyReferenceKeyDetailed 的 multiImage 只覆盖 image 族的多图信号，video/audio 复数键靠此补齐 → 塞数组不塞单串。
+const ARRAY_SHAPE_REF_KEY = /_urls$|urls$|_images$|images$|_paths$|paths$/i;
+
+/** 往这个 body 参考键投影时该塞数组还是单串：多图键（multiImage）或复数 URL 键 → 数组；否则单串（首帧/单图聚合位）。 */
+function refKeyWantsArray(key: string, multiImage: boolean): boolean {
+  return multiImage || ARRAY_SHAPE_REF_KEY.test(key);
+}
 
 function containsRefUrl(value: unknown): boolean {
   if (typeof value === "string") return REF_URL_RE.test(value.trim());
@@ -338,6 +359,89 @@ export function reachableModeSuggestion(
     return `${modeName}${multi}`;
   });
   return `可改用该模型的：${parts.join(" / ")}——它读得到你携带的${carriedText}。`;
+}
+
+/**
+ * 本次携带的参考 URL，按族分组、保序去重（image 内首/尾帧排前，同 carriedReferences 口径）。
+ * 真相源 = referenceInputParams(extras)——headless 路的 referenceImages/firstFrameUrl/… 都归一到它。
+ */
+function carriedReferenceUrlsByFamily(extras: JsonRecord): Record<ReferenceFamily, string[]> {
+  const out: Record<ReferenceFamily, string[]> = { image: [], video: [], audio: [] };
+  const walk = (key: string, value: unknown): void => {
+    if (typeof value === "string") {
+      const url = value.trim();
+      if (!url || !REF_URL_RE.test(url)) return;
+      const family = classifyReferenceKey(key);
+      if (family && !out[family].includes(url)) out[family].push(url);
+      return;
+    }
+    if (Array.isArray(value)) for (const item of value) walk(key, item);
+    else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(k, v);
+  };
+  for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  return out;
+}
+
+/**
+ * **headless/MCP 参考键形态投影**（纯函数，W1d 根因修复，见
+ * docs/plan/2026-08-20-w1d-reference-mode-alignment.md）：把携带的参考投影到**这条 body 真实读的参考键**上。
+ *
+ * 根因：渲染层用 buildArchetypeInputParams 把参考按档案 slot inputKey 投影成 body 读的键（image_urls /
+ * first_frame_image …），headless 没有这一步——参考只落在标准键 reference_images，body 读的却是 image_urls
+ * → 第三闸判「发不出」、护栏诚实拒绝，图生图/图生视频整条走不通（L3 三跑现场）。
+ *
+ * 投影判据**与护栏同一套**（P1）：目标键 = bodyReferencedParamKeys(createBody) 里被 classifyReferenceKeyDetailed
+ * 判为参考载体的键；按族匹配（image 键收图参考、video 收视频、audio 收音频）；多值键（image_urls/input_urls…）
+ * 收整组、单值键（first_frame_image/单图聚合位）收首张（沿用 firstReferenceImage 优先级）。
+ *
+ * 两条边界（headless 无档案模式语义，必须自守）：
+ *  · **每族至多填一个键**——headless 的 references 是**扁平列表**（无「这张是首帧、那张是角色图」的槽区分），
+ *    同族多个 body 键（如 image_urls + first_frame_image）全填会把同一批 URL 重复塞进互斥键。**优先多值键**
+ *    （扁平列表的天然去处），无多值键才退单值键（首帧/单图聚合位）。渲染层靠边 mode 区分槽，headless 靠这条。
+ *  · **跳过对象形态键**（image_with_roles / *_contents）——它们要的是 [{url, role}] 对象，plain URL 塞进去既错
+ *    形状又与 image_urls 互斥（seedance SEEDANCE_I2V_BODY 正是此例）。这些键只有渲染层 archetypeInput 才构造得对，
+ *    headless 走 plain 键即可，对象键留空由模板引擎自动丢（= 该模型的「plain 参考」模式）。
+ *
+ * **既有值优先**：该键在 extras 里已有非空值（渲染层已填 archetypeInput，或调用方显式给）→ 跳过 → 渲染层路径逐字节 no-op。
+ * **不 hardcode 任何 vendor 键名**——键从 body 反推。nomi-local:// 由 runtime 的 localizeAssetsForVendor 兜（本函数只搬 URL）。
+ *
+ * @returns 仅**新填**的键（overlay）；无可填 → 空对象。调用方 `{ ...extras, ...overlay }` 并入即可。
+ */
+export function projectReferencesOntoBodyKeys(
+  extras: Record<string, unknown> | undefined,
+  createBody: unknown,
+): Record<string, unknown> {
+  const src = extras || {};
+  const byFamily = carriedReferenceUrlsByFamily(src);
+  if (byFamily.image.length === 0 && byFamily.video.length === 0 && byFamily.audio.length === 0) return {};
+
+  const hasNonEmpty = (value: unknown): boolean =>
+    (typeof value === "string" && value.trim() !== "") ||
+    (Array.isArray(value) && value.length > 0) ||
+    (value != null && typeof value === "object");
+
+  // 先按族归拢 body 里可填的 plain 参考键（跳过对象形态键），每族选一个目标：优先数组键（扁平列表天然去处）。
+  const candidateByFamily: Partial<Record<ReferenceFamily, { key: string; wantsArray: boolean }>> = {};
+  for (const key of bodyReferencedParamKeys(createBody)) {
+    const detail = classifyReferenceKeyDetailed(key);
+    if (!detail) continue; // 非参考载体键（size/duration/seed…）不碰。
+    if (OBJECT_SHAPE_REF_KEY.test(key)) continue; // 对象形态键（image_with_roles/*_contents）headless 不填，留空由模板丢。
+    if (byFamily[detail.family].length === 0) continue; // 没有这个族的参考可填。
+    if (hasNonEmpty(src[key])) continue; // 既有值优先（渲染层 archetypeInput / 调用方显式）→ 不覆盖。
+    const wantsArray = refKeyWantsArray(key, detail.multiImage);
+    const current = candidateByFamily[detail.family];
+    // 每族至多一个：优先数组键（扁平参考列表的天然去处）；已有数组候选则不再被单值键替换。
+    if (!current || (wantsArray && !current.wantsArray)) candidateByFamily[detail.family] = { key, wantsArray };
+  }
+
+  const overlay: Record<string, unknown> = {};
+  for (const family of Object.keys(candidateByFamily) as ReferenceFamily[]) {
+    const cand = candidateByFamily[family]!;
+    const urls = byFamily[family];
+    // 数组键塞整组、单值键塞首张（严格端点对 image:string 期待单串，塞数组会 400——沿用 asArray 声明的教训）。
+    overlay[cand.key] = cand.wantsArray ? [...urls] : urls[0];
+  }
+  return overlay;
 }
 
 /**

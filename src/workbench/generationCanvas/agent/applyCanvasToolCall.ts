@@ -5,6 +5,7 @@ import type {
 } from '../model/generationCanvasTypes'
 import { CATEGORY_IDS } from '../model/generationCanvasTypes'
 import { getDefaultCategoryForNodeKind, getGenerationNodeDefaultTitle } from '../model/generationNodeKinds'
+import { ANCHOR_META_KEYS } from '../model/anchorBibleKeys'
 import { generationCanvasTools, type CreateGenerationNodeToolInput } from './generationCanvasTools'
 import { listAvailableModelsForAgent, type AgentModelEntry } from './availableModels'
 import { buildPlannedNodeMeta } from './plannedNodeMeta'
@@ -279,9 +280,15 @@ export async function applyCanvasToolCall(
       const plannedMeta = buildPlannedNodeMeta(node, entryByKey)
       // 参考卡身份透传（分镜方案的角色/场景/道具锚）→ node.meta.referenceSheet，编号分配处据此跳过。
       // 首帧图身份同机制 → node.meta.storyboardKeyframe：创建时不领号，随后共用所属视频的镜号（见下）。
+      // W2 圣经：static/dynamic 特征也透传进 meta（键名走 anchorBibleKeys 单一常量，防 GUI/headless 漂移）——
+      // 身份轴对照读 meta.staticFeatures、冻结门/交付可显示；passthrough schema 自动持久化，零 schema 改动。
+      const staticFeatures = typeof node.staticFeatures === 'string' && node.staticFeatures.trim() ? node.staticFeatures.trim() : ''
+      const dynamicFeatures = typeof node.dynamicFeatures === 'string' && node.dynamicFeatures.trim() ? node.dynamicFeatures.trim() : ''
       const identityMarks = {
         ...(node.referenceSheet === true ? { referenceSheet: true } : {}),
         ...(node.storyboardKeyframe === true ? { storyboardKeyframe: true } : {}),
+        ...(staticFeatures ? { [ANCHOR_META_KEYS.staticFeatures]: staticFeatures } : {}),
+        ...(dynamicFeatures ? { [ANCHOR_META_KEYS.dynamicFeatures]: dynamicFeatures } : {}),
       }
       const meta = Object.keys(identityMarks).length ? { ...(plannedMeta ?? {}), ...identityMarks } : plannedMeta
       // 单节点：尊重 agent 指定位置（增量添加可能要贴近某节点），否则同走避让布局。

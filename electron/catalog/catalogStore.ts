@@ -274,6 +274,50 @@ export function listModelCatalogMappings(params?: unknown): Mapping[] {
   return filterByParams(readCatalog().mappings, params);
 }
 
+/** 单个可用 text「语言大脑」候选的解出形（onboarding 文档读取 / 审片环 judge 共用）。 */
+export type OnboardingAgent = {
+  providerKind: AiSdkProviderKind;
+  baseUrl: string;
+  /** 选中 text 模型所属 vendor 的 key。审片环 judge 走 runTask 需要它（runTask 按 vendorKey 解模型）。 */
+  vendorKey: string;
+  modelId: string;
+  apiKey: string;
+  extraHeaders?: Record<string, string>;
+};
+
+/**
+ * List **all** usable text-model "language brain" candidates from the catalog, in
+ * catalog order (same filters as {@link resolveOnboardingAgentFromCatalog}: kind
+ * text + enabled, vendor enabled + baseUrlHint, decryptable key). This is the
+ * source of truth for candidate selection — {@link resolveOnboardingAgentFromCatalog}
+ * is `candidates[0] ?? null`, so existing callers keep exact semantics.
+ *
+ * 审片环 judge 用它做**候选回退**（L3 实跑抓出的韧性缺陷）：单点依赖「目录第一个 text 模型」太脆——
+ * 用户真实目录里它是经中转的 claude-fable-5，对 chat 调用连续 500。judge 首调失败 → 顺移下一候选。
+ * 排序与既有一致（catalog 顺序），不引入任何环境变量开关（P1），选择逻辑纯 derive 自目录数据。
+ */
+export function listOnboardingAgentCandidates(): OnboardingAgent[] {
+  const state = readCatalog();
+  const out: OnboardingAgent[] = [];
+  for (const model of state.models) {
+    if (model.kind !== "text" || !model.enabled) continue;
+    const vendor = state.vendors.find((v) => v.key === model.vendorKey && v.enabled);
+    if (!vendor || !vendor.baseUrlHint) continue;
+    const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);
+    if (!apiKey) continue;
+    const extraHeaders = extractVendorExtraHeaders(vendor);
+    out.push({
+      providerKind: normalizeProviderKind(vendor.providerKind),
+      baseUrl: vendor.baseUrlHint,
+      vendorKey: vendor.key,
+      modelId: model.modelKey,
+      apiKey,
+      ...(extraHeaders ? { extraHeaders } : {}),
+    });
+  }
+  return out;
+}
+
 /**
  * Resolve the onboarding doc-reader LLM from a configured **text** model in the
  * catalog — i.e. the model the user already added (e.g. dm-fox GPT-5.5). This is
@@ -282,31 +326,12 @@ export function listModelCatalogMappings(params?: unknown): Mapping[] {
  * leaves the process. Returns null when no usable text model is configured (the
  * caller then surfaces a "add a text model first" message). Bearer/none-auth
  * vendors only — query/x-api-key auth isn't a chat-completions shape.
+ *
+ * = `listOnboardingAgentCandidates()[0] ?? null`（第一个可用 text 模型，语义与既往逐字一致，
+ * 现有调用方不受影响）。审片环 judge 改用**全候选序列**做回退，见 listOnboardingAgentCandidates。
  */
-export function resolveOnboardingAgentFromCatalog(): {
-  providerKind: AiSdkProviderKind;
-  baseUrl: string;
-  modelId: string;
-  apiKey: string;
-  extraHeaders?: Record<string, string>;
-} | null {
-  const state = readCatalog();
-  for (const model of state.models) {
-    if (model.kind !== "text" || !model.enabled) continue;
-    const vendor = state.vendors.find((v) => v.key === model.vendorKey && v.enabled);
-    if (!vendor || !vendor.baseUrlHint) continue;
-    const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);
-    if (!apiKey) continue;
-    const extraHeaders = extractVendorExtraHeaders(vendor);
-    return {
-      providerKind: normalizeProviderKind(vendor.providerKind),
-      baseUrl: vendor.baseUrlHint,
-      modelId: model.modelKey,
-      apiKey,
-      ...(extraHeaders ? { extraHeaders } : {}),
-    };
-  }
-  return null;
+export function resolveOnboardingAgentFromCatalog(): OnboardingAgent | null {
+  return listOnboardingAgentCandidates()[0] ?? null;
 }
 
 export function getModelCatalogHealth(): unknown {

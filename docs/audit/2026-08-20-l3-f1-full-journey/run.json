@@ -1,0 +1,173 @@
+{
+  "projectId": "workspace-2f2cc6db-c915-4071-98dc-bb747a869076",
+  "minutes": 17,
+  "spend": {
+    "images": 4,
+    "videos": 6,
+    "capImages": 34,
+    "capVideos": 8
+  },
+  "elicitations": 1,
+  "spendConfirms": 1,
+  "elicitLog": [
+    "即将用 apimart · doubao-seedream-4.5 生成一张画面 「年轻女性便利店夜班收银员小周的正面平光定妆肖像：短发、圆脸、左眉一颗痣、单眼皮、瘦削；深蓝色便利店工…」，将消耗模型额度。\n本次生成含自动审片，画面不达标会定向重试最多 2 次（重试也算这次生成的额度）。\n批准后，本会话在这个项目里的后续生成不再逐次询问（最多 20 次，之后会再确认一次）。\n确认现在生成吗？"
+  ],
+  "identityScores": [
+    4,
+    0,
+    5
+  ],
+  "identityAvg": 4.5,
+  "identityAssessed": 2,
+  "identityNotAssessable": 1,
+  "succeeded": 7,
+  "total": 7,
+  "flagged": [
+    {
+      "act": "#5 反转·街上",
+      "axes": [
+        {
+          "dimension": "composition",
+          "dimensionName": "构图",
+          "score": 1,
+          "reason": "主体背影不可见，无法判定身份；构图未展现横移，不符合描述。"
+        }
+      ]
+    }
+  ],
+  "freezeAdvisorySeen": true,
+  "artifacts": 13,
+  "audit": [
+    {
+      "act": "定妆卡",
+      "status": "succeeded",
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 3,
+          "composition": 5
+        },
+        "flagged": [],
+        "suggestion": null
+      }
+    },
+    {
+      "act": "#1 钩子·2:17",
+      "usesAnchor": false,
+      "status": "succeeded",
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 0,
+          "composition": 5
+        },
+        "flagged": [],
+        "suggestion": null
+      },
+      "deepLink": "nomi://project/workspace-2f2cc6db-c915-4071-98dc-bb747a869076/node/node-347835c1-2"
+    },
+    {
+      "act": "#2 她抬头",
+      "usesAnchor": true,
+      "status": "succeeded",
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 4,
+          "composition": 4
+        },
+        "flagged": [],
+        "suggestion": null
+      },
+      "deepLink": "nomi://project/workspace-2f2cc6db-c915-4071-98dc-bb747a869076/node/node-ecd5f221-3"
+    },
+    {
+      "act": "#3 门外的影",
+      "usesAnchor": false,
+      "status": "succeeded",
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 0,
+          "composition": 5
+        },
+        "flagged": [],
+        "suggestion": null
+      },
+      "deepLink": "nomi://project/workspace-2f2cc6db-c915-4071-98dc-bb747a869076/node/node-6485e8b4-4"
+    },
+    {
+      "act": "#4 她推门",
+      "usesAnchor": true,
+      "status": "succeeded",
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 0,
+          "composition": 5
+        },
+        "flagged": [],
+        "suggestion": null
+      },
+      "deepLink": "nomi://project/workspace-2f2cc6db-c915-4071-98dc-bb747a869076/node/node-0b1b96e8-5"
+    },
+    {
+      "act": "#5 反转·街上",
+      "usesAnchor": false,
+      "status": "succeeded",
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": false,
+        "retries": 1,
+        "scores": {
+          "identity": 0,
+          "composition": 1
+        },
+        "flagged": [
+          {
+            "dimension": "composition",
+            "dimensionName": "构图",
+            "score": 1,
+            "reason": "主体背影不可见，无法判定身份；构图未展现横移，不符合描述。"
+          }
+        ],
+        "suggestion": "1 个维度仍未达标（构图），建议在 Nomi 里重滚这一镜或调整提示词"
+      },
+      "deepLink": "nomi://project/workspace-2f2cc6db-c915-4071-98dc-bb747a869076/node/node-97fde843-6"
+    },
+    {
+      "act": "#6 结尾·同一张脸",
+      "usesAnchor": true,
+      "status": "succeeded",
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 5,
+          "composition": 3
+        },
+        "flagged": [],
+        "suggestion": null
+      },
+      "deepLink": "nomi://project/workspace-2f2cc6db-c915-4071-98dc-bb747a869076/node/node-a05caf97-7"
+    }
+  ]
+}

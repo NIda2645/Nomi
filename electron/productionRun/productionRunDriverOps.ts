@@ -9,6 +9,7 @@
 import crypto from 'node:crypto'
 
 import { settlePauseIfQuiet } from './productionRunControl'
+import { adoptedGenerationShotNodeIds, buildQaStageOutcome, type QaVerifyResponse } from './productionQaVerdict'
 import type { ProductionRunRepository } from './productionRunRepository'
 import { trustLevelOf, type ProductionRun } from './productionRunTypes'
 
@@ -87,6 +88,50 @@ function sampleGateId(planVersion: number): string {
   return `gate-sample-v${planVersion}`
 }
 
+/** W2 冻结门 id（每个 planVersion 一道，样片门语义扩展的「更早一站」——看锚而非看首镜）。 */
+function freezeGateId(planVersion: number): string {
+  return `gate-freeze-v${planVersion}`
+}
+
+/** W2 冻结门是否已放行（approved）：放行后同批锚幂等，不再重设。 */
+function hasApprovedFreezeGate(run: ProductionRun): boolean {
+  return run.gates.some((gate) => gate.gateId === freezeGateId(run.planVersion) && gate.status === 'approved')
+}
+
+/** W2 冻结门是否在等（waiting）：等过目期间停在门上，不提交任何镜头。 */
+function hasWaitingFreezeGate(run: ProductionRun): boolean {
+  return run.gates.some((gate) => gate.gateId === freezeGateId(run.planVersion) && gate.status === 'waiting')
+}
+
+/**
+ * W2 冻结门读锚：问渲染层「本 run 的画布上有哪些视觉锚还没冻结」。复用 production.verify-shots 的同款
+ * 主进程→渲染层桥（渲染层读画布 store 的 node.meta.frozen，判据走 anchorBibleKeys 单一镜像）。
+ * 韧性铁律（同 qa/审片「绝不阻断生成」）：渲染层不可达 / 桥异常 → 返回空（放行，fail-open），不把冻结门
+ * 卡成死结——结构强制的核由 GUI 依赖波次（dependencyWaves，L1 铁律层）与本桥返回真数据时共同承担；
+ * 桥挂了不该让整个 production run 永远卡在冻结门。降级留痕（console.error）。
+ */
+async function readUnfrozenAnchors(
+  requestRenderer: DriverOpsDeps['requestRenderer'],
+  projectId: string,
+  runId: string,
+): Promise<Array<{ nodeId: string; title?: string }>> {
+  try {
+    const response = await requestRenderer('production.check-frozen', { projectId, runId }, 60_000) as
+      | { unfrozenAnchors?: Array<{ nodeId?: unknown; title?: unknown }> }
+      | null
+    const raw = Array.isArray(response?.unfrozenAnchors) ? response!.unfrozenAnchors : []
+    return raw
+      .map((item) => ({
+        nodeId: typeof item?.nodeId === 'string' ? item.nodeId.trim() : '',
+        ...(typeof item?.title === 'string' && item.title.trim() ? { title: item.title.trim() } : {}),
+      }))
+      .filter((item): item is { nodeId: string; title?: string } => item.nodeId.length > 0)
+  } catch (error) {
+    console.error('[nomi:production] freeze check failed (freeze gate skipped):', error instanceof Error ? error.message : String(error))
+    return []
+  }
+}
+
 /** One durable, URL-safe gate per plan/job. The hash keeps ids stable even when node ids collide
  * after sanitization, while jobIds[0] remains the authoritative job identity. */
 export function shotGateId(planVersion: number, jobId: string, round = 1): string {
@@ -126,6 +171,35 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     directionsInFlight,
   } = deps
   const generationRerunRequested = new Set<string>()
+
+  /**
+   * W1.5 qa 阶段：对本次已 adopted 的生成镜头发 production.verify-shots 给渲染层（复用现成
+   * verifyShotsAndReport 判分+对账闭环），把 per-shot 判决落成 qa.verdict 事件 + qa 阶段摘要。
+   * qa 是「生成后判分呈现」不是新门：不弹确认、不改状态机、绝不阻断 run——渲染层不可达 / 判分失败 →
+   * 诚实降级为一条「审片跳过」事件，qa 仍标 completed 继续走 assemble（同 direction 拟案失败的降级策略）。
+   */
+  async function runQaStage(projectId: string, runId: string, incoming: ProductionRun): Promise<ProductionRun> {
+    let current = incoming
+    const shotNodeIds = adoptedGenerationShotNodeIds(current)
+    let response: QaVerifyResponse | null = null
+    if (shotNodeIds.length > 0) {
+      try {
+        response = await requestRenderer('production.verify-shots', { projectId, runId, shotNodeIds }, 10 * 60_000) as QaVerifyResponse
+      } catch (error) {
+        // 渲染层不可达 / 判分异常 → 不抛、不阻断，落「审片跳过」（buildQaStageOutcome 对 null 的降级）。
+        console.error('[nomi:production] shot verify failed (qa skipped):', error instanceof Error ? error.message : String(error))
+        response = null
+      }
+    }
+    const outcome = buildQaStageOutcome(shotNodeIds.length === 0 ? { skipped: true, skipReason: '本次没有可审片的已生成镜头' } : response)
+    current = requireRun(projectId, runId)
+    let verdictIndex = 0
+    for (const event of outcome.events) {
+      current = executeInternal(projectId, runId, current, 'qa.verdict', { summary: event.summary }, `driver-${runId}-qa-verdict-${verdictIndex}`).run
+      verdictIndex += 1
+    }
+    return executeInternal(projectId, runId, current, 'stage.upsert', { stage: stageValue(current, 'qa', { status: 'completed', completedAt: new Date().toISOString(), qaSummary: outcome.stageSummary }) }, `driver-${runId}-stage-qa`).run
+  }
 
   async function proposeDirections(run: ProductionRun): Promise<void> {
     // B1：run 停在 awaiting_direction、方向门 waiting 且还没候选 → 让 renderer 的 LLM 拟 2-3 个方向。
@@ -192,7 +266,8 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
         commandId: `driver:${run.runId}:skill:${hash.slice(0, 16)}`,
         expectedRevision: result.run.revision,
         type: 'skill.evidence',
-        payload: { skillName: 'brand.promo', version: run.playbook.version },
+        // 同上：技能证据必须是**真跑的那个** playbook，硬编码会让用户看到一条假的「证据」。
+        payload: { skillName: run.playbook.name, version: run.playbook.version },
         issuedAt: timestamp,
       })
     } catch (error) {
@@ -228,6 +303,36 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       let current = requireRun(run.projectId, run.runId)
       if (current.status === 'ready') {
         current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'running' }, `driver-${run.runId}-generation-start`).run
+      }
+      // W2 冻结门（样片门语义扩展的「更早一站」）：批量提交任何镜头**之前**，先确认本 run 的角色/场景卡都已冻结。
+      // 未冻结 → 停在冻结门（scope:'stage'、jobIds:[]，不授权花钱、只呈现「有 N 个锚待冻结」），等真人视觉确认后
+      // 批准（gate.decide 钩子重踢 driveGeneration 续跑）。放行后同批锚幂等不再问（hasApprovedFreezeGate）。
+      // 只在「有待提交镜头 + run 仍 running」时查（暂停/取消/无 job 不触发）；桥挂了 fail-open（readUnfrozenAnchors 韧性）。
+      if (current.status === 'running' && !hasApprovedFreezeGate(current)) {
+        const pendingJobs = current.jobs.filter((job) => job.status === 'authorized' || job.status === 'submit_intent_persisted')
+        if (hasWaitingFreezeGate(current)) return // 已停在冻结门 → 不重复设、不提交（等 decide）。
+        if (pendingJobs.length > 0) {
+          const unfrozen = await readUnfrozenAnchors(requestRenderer, run.projectId, run.runId)
+          current = requireRun(run.projectId, run.runId)
+          if (unfrozen.length > 0 && current.status === 'running'
+            && !current.gates.some((gate) => gate.gateId === freezeGateId(current.planVersion))) {
+            const gateId = freezeGateId(current.planVersion)
+            const anchorList = unfrozen.map((item) => item.title || item.nodeId).join('、')
+            const freezeGate = {
+              gateId,
+              scope: 'stage' as const,
+              status: 'waiting' as const,
+              planHash: crypto.createHash('sha256').update(`${current.planVersion}:freeze:${unfrozen.map((item) => item.nodeId).sort().join(',')}`).digest('hex'),
+              jobIds: [],
+              title: 'Freeze character and scene cards before the batch',
+              summary: `Freeze ${unfrozen.length} reference card(s) in Nomi before Nomi generates the shots that reference them: ${anchorList}. No provider call occurs before you freeze and approve.`,
+              createdAt: new Date().toISOString(),
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            }
+            executeInternal(run.projectId, run.runId, current, 'gate.add', { gate: freezeGate }, `driver-${gateId}`)
+            return // 停在冻结门；批准时 gate.decide 钩子重踢 driveGeneration。
+          }
+        }
       }
       const jobs = current.jobs.filter((job) => job.status === 'authorized' || job.status === 'submit_intent_persisted')
       for (const job of jobs) {
@@ -325,7 +430,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       if (current.status !== 'running') return
       if (current.jobs.some((job) => !['adopted', 'cancelled_remote', 'detached'].includes(job.status))) return
       current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'generate', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-generate`).run
-      current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'qa', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-qa`).run
+      current = await runQaStage(run.projectId, run.runId, current)
       current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'assemble', { status: 'running', startedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-assemble`).run
       const arrangement = await requestRenderer('production.arrange', { projectId: run.projectId, runId: run.runId }, 5 * 60_000)
       const timelinePath = `.nomi/runs/${run.runId}/timeline-v${current.planVersion}.json`

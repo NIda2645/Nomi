@@ -98,6 +98,8 @@ const MEANINGFUL_EVENT_TYPES = new Set([
   'skill.applied',
   'plan.proposed',
   'plan.attached',
+  // W1.5：审片判决（per-shot 过检/红标）——纳入可转述事件，让 nomi_subscribe_run 读得到。
+  'qa.verdict',
 ])
 
 function identifier(value: string, label: string): string {
@@ -141,6 +143,8 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
       stageId: stage.stageId, title: safeExternalText(stage.title), status: stage.status, order: stage.order,
       ...(stage.startedAt ? { startedAt: stage.startedAt } : {}),
       ...(stage.completedAt ? { completedAt: stage.completedAt } : {}),
+      // W1.5：审片摘要透出（仅 qa 阶段有，文本经 sanitizer）。
+      ...(stage.qaSummary ? { qaSummary: safeExternalText(stage.qaSummary) } : {}),
     })),
     gates: run.gates.map((gate) => ({
       gateId: gate.gateId, scope: gate.scope, status: gate.status, title: safeExternalText(gate.title), summary: safeExternalText(gate.summary),
@@ -451,7 +455,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           specs: { durationSeconds: current.brief?.durationSeconds, shotCount: jobs.length },
           claims: (current.brief?.sellingPoints || []).map((text, index) => ({ text, evidenceIds: [`brief-${index + 1}`] })),
           evidence: (current.brief?.sellingPoints || []).map((label, index) => ({ evidenceId: `brief-${index + 1}`, label })),
-          skills: [{ name: 'brand.promo', version: current.playbook.version }],
+          // 取**本 run 的** playbook 名（W4：此前硬编码 'brand.promo'——换任何 playbook 都会在合同里谎报技能名）。
+          skills: [{ name: current.playbook.name, version: current.playbook.version }],
           ...(maxSpend !== null ? { estimatedCost: { currency: current.budget.currency, minimum: 0, maximum: maxSpend } } : {}),
         },
         createdAt: new Date().toISOString(),
@@ -495,6 +500,25 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === `gate-contract-v${result.run.planVersion}`) {
       void driveGeneration(result.run)
+    }
+    // W2 冻结门：批准（真人视觉确认了角色/场景卡）→ 续跑 driver（此时 hasApprovedFreezeGate 为真 → 不再拦，进
+    // 首镜提交）；否决 → 暂停 run，让用户回去改/冻结卡后再继续（与样片门否决同形，不作废任何已生成物）。
+    if (runCommand.type === 'gate.decide' && runCommand.payload.gateId === `gate-freeze-v${result.run.planVersion}`) {
+      if (runCommand.payload.status === 'approved') {
+        void driveGeneration(result.run)
+      } else if (runCommand.payload.status === 'rejected' && result.run.status === 'running') {
+        try {
+          applyRunControl(repository, safeProjectId, safeRunId, result.run, {
+            commandId: `${runCommand.commandId}:freeze-reject-pause`,
+            expectedRevision: result.run.revision,
+            type: 'run.control',
+            payload: { action: 'pause' },
+            issuedAt: new Date().toISOString(),
+          })
+        } catch (error) {
+          console.error('[nomi:production] freeze gate reject pause failed:', error instanceof Error ? error.message : String(error))
+        }
+      }
     }
     // B2 样片门：批准 → 续跑剩余镜头（重踢 driver）；否决 → 暂停 run，让用户改提示词后再继续（不作废已生成的样片）。
     if (runCommand.type === 'gate.decide' && runCommand.payload.gateId === `gate-sample-v${result.run.planVersion}`) {

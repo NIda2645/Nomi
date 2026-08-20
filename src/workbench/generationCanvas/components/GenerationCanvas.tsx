@@ -23,6 +23,8 @@ import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import { getGenerationNodeComponent } from '../nodes/renderRegistry'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
+// 事件名单一真相源：派发方（深链）与监听方（这里）必须读同一个常量，否则改名字会静默断链。
+import { FOCUS_GENERATION_NODE_EVENT } from '../nodes/nodeSizing'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useBatchPlanPreviewStore } from './batchPlanPreview'
 import { useCanvasGroupActions } from './useCanvasGroupActions'
@@ -63,7 +65,6 @@ import { useComposerVisibilityPan } from './useComposerVisibilityPan'
 import { useCanvasFitSignal } from './useCanvasFitSignal'
 import '../styles/generationCanvas.css'
 
-const FOCUS_GENERATION_NODE_EVENT = 'nomi-focus-generation-node'
 const StagingCaptureHost = lazyWithChunkBoundary('3D 站位捕获', () =>
   import('../nodes/scene3d/StagingCaptureHost').then((module) => ({ default: module.StagingCaptureHost })),
 )

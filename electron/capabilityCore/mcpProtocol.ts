@@ -24,6 +24,8 @@ import { assembleToolResultContent } from './mcpResultPayload'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
+import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
+import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
 
 // spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
 // （elicitation-first 画布确认，见 mcpPlanTrust.ts）——透传给传输层，让最终跑 confirmPlan 的网关预批准、
@@ -106,6 +108,9 @@ export function createMcpProtocol(transport: McpTransport) {
   // 画布方案确认的会话级信任：某项目首次批量方案在聊天里批准过 → 本会话该项目后续批量直接放行。
   // 挂闭包 = 随这条 MCP 连接/会话存活，连接断即亡，不持久化（见 mcpPlanTrust.ts）。
   const planTrust = createPlanTrustStore()
+  // 付费的会话级信任（治「反复去软件确认」）：某项目批准一次 → 本会话该项目后续生成免问，
+  // 用满 SPEND_TRUST_REASK_AFTER 次再问一次。同样挂闭包 = 随这条连接存活，断即亡（见 mcpSpendTrust.ts）。
+  const spendTrust = createSpendTrustStore()
   // 服务端→客户端请求自管 id 与 pending，等客户端回响应。
   let serverReqSeq = 0
   const pendingServerReqs = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -205,20 +210,30 @@ export function createMcpProtocol(transport: McpTransport) {
     }
   }
 
-  async function elicitSpendConfirm(text: string): Promise<{ supported: boolean; confirmed?: boolean }> {
-    return elicitBooleanConfirm({
-      message: text,
-      title: '确认生成',
-      description: '确认后将消耗模型额度生成；取消则不生成、不花费。',
-    })
-  }
-
   /**
    * 画布方案确认（免费、可撤）：把「要不要往画布加这 N 个节点」递进聊天问一次。
    * 与 spend/creative-gate 同一条 seam——协议层拦在 transport.invoke 之前，accept 才放行。
    */
   async function elicitPlanConfirm(nodeCount: number): Promise<{ supported: boolean; confirmed?: boolean }> {
     return elicitBooleanConfirm(planConfirmElicit(nodeCount))
+  }
+
+  /**
+   * 开场收敛表单（W3 幕 0）：一次弹全 ≤3 题的 enum 选择。与 elicitBooleanConfirm 并列——
+   * 那个是「是/否」，这个是「选项」，两者都只是 elicitation/create 的不同 requestedSchema，不另造机制。
+   */
+  async function elicitIntake(questions: ReturnType<typeof buildIntakeQuestions>): Promise<{ supported: boolean; values?: Record<string, unknown> }> {
+    if (!clientSupportsElicitation) return { supported: false }
+    try {
+      const res = (await sendServerRequest('elicitation/create', {
+        message: buildIntakeMessage(questions),
+        requestedSchema: buildIntakeSchema(questions),
+      })) as { action?: string; content?: Record<string, unknown> } | null
+      // decline/cancel 不是错误——收敛这步「跳过永远安全」，交给 resolveIntake 全落默认。
+      return { supported: true, values: res?.action === 'accept' ? (res.content || {}) : {} }
+    } catch {
+      return { supported: true, values: {} } // 超时同理：走默认继续，不卡住用户
+    }
   }
 
   async function elicitCreativeGateDecision(
@@ -234,8 +249,10 @@ export function createMcpProtocol(transport: McpTransport) {
     const gate = gates.find((candidate) => candidate.gateId === gateId && candidate.status === 'waiting')
     if (!gate) throw new Error(`Production gate is not waiting: ${gateId}`)
     const creative = gate.scope === 'stage'
-      && (gateId.startsWith('gate-direction-') || gateId.startsWith('gate-sample-'))
+      && (gateId.startsWith('gate-direction-') || gateId.startsWith('gate-sample-') || gateId.startsWith('gate-freeze-'))
     if (!creative) throw new Error('This decision must be completed in Nomi')
+    // W2 冻结门是「视觉确认」语义（确认这批角色/场景卡定妆了、可锁死当身份基准），走同一条创意门 seam。
+    const isFreeze = gateId.startsWith('gate-freeze-')
 
     const approved = args.decision === 'approved'
     const choiceKey = typeof args.choiceKey === 'string' ? args.choiceKey : ''
@@ -258,10 +275,16 @@ export function createMcpProtocol(transport: McpTransport) {
       .join('\n')
     return elicitBooleanConfirm({
       message: `${decisionText}?\n${details}`,
-      title: isEnglish ? 'Confirm this creative decision' : '确认这次创意决定',
-      description: isEnglish
-        ? 'Only this reversible creative gate will be decided. Spending and export approvals remain in Nomi.'
-        : '只会决定这道可逆创意门；支出与导出仍必须在 Nomi 中确认。',
+      title: isFreeze
+        ? (isEnglish ? 'Confirm you have reviewed and frozen these cards' : '确认这些卡已过目并冻结')
+        : (isEnglish ? 'Confirm this creative decision' : '确认这次创意决定'),
+      description: isFreeze
+        ? (isEnglish
+            ? 'Freezing locks these character/scene cards as the identity baseline for every shot. Review them in Nomi first. Spending and export approvals still happen in Nomi.'
+            : '冻结会把这些角色/场景卡锁成每个镜头的身份基准，请先在 Nomi 里过目。支出与导出仍必须在 Nomi 中确认。')
+        : (isEnglish
+            ? 'Only this reversible creative gate will be decided. Spending and export approvals remain in Nomi.'
+            : '只会决定这道可逆创意门；支出与导出仍必须在 Nomi 中确认。'),
     })
   }
 
@@ -407,6 +430,27 @@ export function createMcpProtocol(transport: McpTransport) {
           reply(id, buildToolResultPayload(tool.name, args, result))
           return
         }
+        // W3 幕 0 · 开场收敛：一屏 ≤3 题弹在调用方（enum 候选，客户端渲染成按钮）。
+        // 客户端不支持表单 → **不假装问过**：把题面与候选原样交给模型，由它在对话里一次问全（同样只问一次）。
+        // 任何一题留空/选「按你判断」/给非法值 → 走系统默认（跳过永远安全，C 路调研铁律）。
+        if (tool.name === 'nomi_intake_brief') {
+          const questions = buildIntakeQuestions({ kind: typeof built.kind === 'string' ? built.kind : '' })
+          const asked = await elicitIntake(questions)
+          if (!asked.supported) {
+            // 退化路径：如实告诉模型「我没法弹表单，题在这儿，你一次问全」——不静默用默认，也不假装问过。
+            reply(id, buildToolResultPayload(tool.name, args, {
+              questions, message: buildIntakeMessage(questions), elicited: false,
+              note: '当前客户端不支持表单：请把上面三题一次性问全用户（只问这一次），或直接用各题默认继续。',
+            }))
+            return
+          }
+          const decision = resolveIntake(questions, asked.values)
+          reply(id, buildToolResultPayload(tool.name, args, {
+            elicited: true, values: decision.values, answered: decision.answered,
+            usedDefaults: decision.usedDefaults, summary: summarizeIntake(questions, decision),
+          }))
+          return
+        }
         // 付费生成必须有真人确认。**判据是「谁能替我们问到真人」，不是「Nomi 窗口开着没」**：
         // 请求经 MCP 进来，本身就证明人正坐在调用方那头（Claude/Codex/Cursor）；窗口开着 ≠ 注意力在 Nomi
         // （用户桌面上常年挂着 Nomi）。按窗口路由 → 只要 Nomi 开着就把人赶去 App 点一下，白跑一趟。
@@ -416,13 +460,25 @@ export function createMcpProtocol(transport: McpTransport) {
         // elicitSpendConfirm 在客户端没声明 elicitation 时返回 supported:false，故它就是①/②的唯一判据
         // （不另读 clientSupportsElicitation，免两处能力判断漂移）。enforcement 仍在主进程硬闸。
         if (tool.name === 'nomi_generate') {
-          const confirm = await elicitSpendConfirm(`${describeSpend(args)}\n确认现在生成吗？`)
+          const spendProjectId = typeof built.projectId === 'string' ? built.projectId : ''
+          // 会话级信任命中 → 这次不问（治「反复确认」，见 mcpSpendTrust.ts）。硬闸不受影响：
+          // 下游照旧逐次铸 node-bound 令牌、assertAndConsumeSpendGrant 逐次校验。
+          if (spendTrust.isTrusted(spendProjectId)) {
+            spendTrust.countPass(spendProjectId)
+            const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
+            reply(id, buildToolResultPayload(tool.name, args, result))
+            return
+          }
+          const reask = spendTrust.hasApprovedBefore(spendProjectId)
+          const confirm = await elicitBooleanConfirm(spendConfirmElicit(describeSpend(args), reask))
           if (confirm.supported) {
             if (!confirm.confirmed) {
               reply(id, { content: [{ type: 'text', text: '已取消：你未确认这次付费生成，未生成、未消耗额度。' }], isError: true })
               return
             }
             const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
+            // 只在真跑成功后记信任：invoke 抛错（无令牌/供应商失败）不该换来一段免问期。
+            spendTrust.trust(spendProjectId)
             reply(id, buildToolResultPayload(tool.name, args, result))
             return
           }
@@ -433,7 +489,15 @@ export function createMcpProtocol(transport: McpTransport) {
             })
             return
           }
-          // App 开着但客户端问不了 → 落到下面原样 invoke，走应用内确认卡。
+          // App 开着但客户端问不了 → 走应用内确认卡。**invoke 成功即等于真人点了卡**：没点 → 无令牌 →
+          // 主进程 assertAndConsumeSpendGrant 抛错 → invoke 失败。故成功后同样记信任（这条路也要免掉
+          // 「反复」，否则 Claude Code 这类不声明 elicitation 的客户端一点好处都拿不到）。
+          // grantsSessionTrust 让那张卡把授权范围写在脸上——用户以为批的是「这一张」，别让他不知情地批掉一段。
+          built.grantsSessionTrust = true
+          const cardResult = await transport.invoke(tool.method, built)
+          spendTrust.trust(spendProjectId)
+          reply(id, buildToolResultPayload(tool.name, args, cardResult))
+          return
         }
         const result = await transport.invoke(tool.method, built)
         reply(id, buildToolResultPayload(tool.name, args, result))

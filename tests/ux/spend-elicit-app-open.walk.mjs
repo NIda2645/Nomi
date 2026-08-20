@@ -69,6 +69,7 @@ function spawnAgent({ capabilities, clientName }) {
   const pending = new Map()
   const elicitInbox = []
   let elicitWaiter = null
+  let elicitSeen = 0
   let seq = 0
   const child = spawn(require('electron'), withLinuxNoSandbox([repoRoot, '--disable-gpu']), {
     cwd: repoRoot,
@@ -79,6 +80,7 @@ function spawnAgent({ capabilities, clientName }) {
     const t = line.trim(); if (!t.startsWith('{')) return
     let msg; try { msg = JSON.parse(t) } catch { return }
     if (msg.method === 'elicitation/create' && msg.id != null) {
+      elicitSeen += 1
       if (elicitWaiter) { const w = elicitWaiter; elicitWaiter = null; w(msg) } else elicitInbox.push(msg)
       return
     }
@@ -118,7 +120,8 @@ function spawnAgent({ capabilities, clientName }) {
     answerElicit(id, confirm) {
       child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, result: confirm ? { action: 'accept', content: { confirm: true } } : { action: 'decline' } }) + '\n')
     },
-    elicitCount: () => elicitInbox.length,
+    /** 累计收到过几次 elicitation/create（断言「第二次没再问」用）。 */
+    elicitSeen: () => elicitSeen,
   }
 }
 
@@ -165,9 +168,22 @@ try {
   const cardProof = await proveProbe(spendCard, '客户端不支持 elicitation 时，App 确实会弹付费确认卡', 30_000)
   await win.screenshot({ path: path.join(shotsDir, '02-fallback-card-shown.png') })
   ok(true, '不声明 elicitation + App 开着 → 应用内确认卡照旧弹出（没修坏兜底路）')
+  // 卡上必须写明这一点还换来一段免问期（不写 = 骗同意）。
+  const cardBody = await spendCard.first().innerText().catch(() => '')
+  ok(/不再逐次打断你/.test(cardBody), '卡上写明了授权范围（「后续生成不再逐次打断你」），不是偷偷记信任')
   await clickOrFail(spendCard.locator('button').last(), '确认生成')
   const resA = await genA
   ok(resA.json?.status === 'succeeded', `点了卡之后生成跑完（status=${resA.json?.status}）`)
+
+  // ★ 会话级信任：同项目第二次生成不该再弹卡——这是 Claude Code 这类客户端今天就能拿到的好处。
+  console.log('  · 同项目再发一次生成，应当不再弹卡…')
+  const resA2 = await plainAgent.callTool('nomi_generate', {
+    projectId: projectIdA, vendor: 'nomi-mock', modelKey: 'nomi-mock-image', intent: 'image', prompt: '兜底腿：第二张',
+  })
+  ok(resA2.json?.status === 'succeeded', `第二次生成直接跑完（status=${resA2.json?.status}）——没再要一次点击`)
+  await win.screenshot({ path: path.join(shotsDir, '02b-second-gen-no-card.png') })
+  await expectAbsent(spendCard, { provenBy: cardProof, message: '同会话同项目第二次生成不该再弹卡' })
+  ok(true, '同项目第二次生成**没再弹卡**（治「反复确认」，卡片路也生效）')
   plainAgent.child.kill('SIGTERM')
 
   // ══ B 腿 · 修复本体：客户端声明 elicitation → 确认弹在调用方，App 不再弹卡 ══
@@ -205,7 +221,18 @@ try {
   await win.screenshot({ path: path.join(shotsDir, '04-after-generate.png') })
   await expectAbsent(spendCard, { provenBy: cardProof, message: '生成结束后也不该补问一次' })
   ok(true, '生成结束后 App 依然没冒出确认卡（确认没被补问）')
-  ok(mockVendor.hits.length >= 2, `两腿都真跑了生成管线，打的是 mock vendor（${mockVendor.hits.length} 次，零额度）`)
+
+  // ★ 会话级信任（elicitation 路）：同项目第二次连 elicitation 都不该再弹。
+  const elicitBefore = elicitAgent.elicitSeen()
+  const resB2 = await elicitAgent.callTool('nomi_generate', {
+    projectId: projectIdB, vendor: 'nomi-mock', modelKey: 'nomi-mock-image', intent: 'image', prompt: '调用方腿：第二张',
+  })
+  ok(resB2.json?.status === 'succeeded', `第二次生成直接跑完（status=${resB2.json?.status}）`)
+  ok(elicitAgent.elicitSeen() === elicitBefore, '同项目第二次生成**没再 elicit**（调用方那头也不再被打断）')
+  await expectAbsent(spendCard, { provenBy: cardProof, message: '免问放行也不该退回去弹 App 卡' })
+  ok(true, '免问放行没有退化成弹 App 卡')
+
+  ok(mockVendor.hits.length >= 4, `两腿各两次生成都真跑了管线，打的是 mock vendor（${mockVendor.hits.length} 次，零额度）`)
 
   console.log(`\nSPEND-ELICIT PASS: ${passed} 断言——问得到真人的客户端就地问，问不到的照旧走 App 卡。`)
   console.log('  截图 →', shotsDir)

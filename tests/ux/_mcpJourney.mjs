@@ -74,7 +74,39 @@ export async function startMockVendorServer() {
     let body = ''
     req.on('data', (chunk) => { body += chunk })
     req.on('end', () => {
-      hits.push({ url: req.url, method: req.method })
+      hits.push({ url: req.url, method: req.method, body })
+
+      // W1 shot-verify judge: streamTextTask POSTs here for kind:image_to_prompt (billed as text → returns
+      // BEFORE any spend grant in runtime.ts, zero generation quota). AI SDK defaults to SSE (body.stream);
+      // reply with an event-stream carrying a score JSON. Route by the injected marker: low identity when the
+      // shot prompt (echoed into the judge prompt) contains BAD_SHOT_MARKER, all-5 otherwise. SSE frame shape
+      // copied from the already-verified local-gateway-onboarding.walk.mjs.
+      if (typeof req.url === 'string' && req.url.startsWith('/v1/chat/completions')) {
+        let parsed = {}
+        try { parsed = body ? JSON.parse(body) : {} } catch { parsed = {} }
+        const messagesText = JSON.stringify(parsed.messages || [])
+        const bad = messagesText.includes(BAD_SHOT_MARKER)
+        const verdict = bad
+          ? '{"scores":{"identity":1,"composition":5,"continuity":5},"reason":"注入的坏镜：主体身份对不上(换人换装)"}'
+          : '{"scores":{"identity":5,"composition":5,"continuity":5},"reason":"三轴达标"}'
+        if (parsed.stream) {
+          res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+          const id = 'chatcmpl-mock-judge'
+          const model = parsed.model || 'nomi-mock-judge'
+          const frame = (delta, finish) => `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: 1, model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`
+          res.write(frame({ role: 'assistant', content: '' }, null))
+          res.write(frame({ content: verdict }, null))
+          res.write(frame({}, 'stop'))
+          res.write('data: [DONE]\n\n')
+          res.end()
+          return
+        }
+        const payload = JSON.stringify({ id: 'c1', object: 'chat.completion', created: 1, model: parsed.model, choices: [{ index: 0, message: { role: 'assistant', content: verdict }, finish_reason: 'stop' }] })
+        res.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) })
+        res.end(payload)
+        return
+      }
+
       // Image + video both resolve to the same tiny PNG data URL. Video's fallback localizer sets
       // thumbnailUrl:null (runtime.localizeTaskAsset), so the video result legitimately carries no image
       // block — exactly T2's "video may omit" rule; the harness asserts images strictly, video loosely.
@@ -152,6 +184,15 @@ function crc32(buf) {
  * image and a video model, PLUS a real no-key vendor kept enabled so nomi_list_models must flag it
  * not-usable (keyStatus missing) rather than hide it. mockOrigin points the mock vendor at the loopback
  * server so runTask's fallback path reaches it.
+ *
+ * W1 (draft-journey 幕 5b/6): also exposes a TEXT model `nomi-mock-judge` on the mock vendor so the
+ * headless shot-verify judge (resolveOnboardingAgentFromCatalog → first usable text model → streamTextTask
+ * → POST {baseUrl}/v1/chat/completions) resolves and runs end-to-end at zero quota. resolveOnboardingAgent
+ * REQUIRES a non-empty decrypted apiKey even for none-auth vendors, so we seed a plain key record for
+ * nomi-mock (the mock server ignores auth). PRODUCTION and L2 run the SAME code — the only difference is
+ * that catalog text model points at the mock server; there is no env branch and no `if (test)` in the
+ * judge path (P1: zero escape hatch). The mock's /v1/chat/completions returns a controllable score JSON
+ * (low when the shot prompt carries the injected BAD_SHOT_MARKER, all-5 otherwise) — see startMockVendorServer.
  */
 export function writeIsolatedCatalog(settingsDir, mockOrigin) {
   const now = new Date().toISOString()
@@ -173,13 +214,27 @@ export function writeIsolatedCatalog(settingsDir, mockOrigin) {
     models: [
       { modelKey: 'nomi-mock-image', vendorKey: 'nomi-mock', labelZh: 'Mock 图片', kind: 'image', enabled: true, createdAt: now, updatedAt: now },
       { modelKey: 'nomi-mock-video', vendorKey: 'nomi-mock', labelZh: 'Mock 视频', kind: 'video', enabled: true, createdAt: now, updatedAt: now },
+      // W1 judge model: the FIRST usable text model → resolveOnboardingAgentFromCatalog picks it for shot-verify.
+      { modelKey: 'nomi-mock-judge', vendorKey: 'nomi-mock', labelZh: 'Mock 审片', kind: 'text', enabled: true, createdAt: now, updatedAt: now },
       { modelKey: 'apimart-image-nokey', vendorKey: 'apimart', labelZh: 'APImart 图片(无Key)', kind: 'image', enabled: true, createdAt: now, updatedAt: now },
     ],
     mappings: [],
-    apiKeysByVendor: {},
+    // resolveOnboardingAgentFromCatalog needs a non-empty decrypted key even for none-auth vendors → seed a
+    // plain (legacy) key record so the judge text model resolves. The mock server ignores auth entirely.
+    apiKeysByVendor: {
+      'nomi-mock': { vendorKey: 'nomi-mock', apiKey: 'mock-judge-key', enc: 'plain', enabled: true, createdAt: now, updatedAt: now },
+    },
   }
   fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify(catalog), 'utf8')
 }
+
+/**
+ * Marker embedded in an injected "bad shot" prompt (W1 幕 5b). ASCII so sanitizeForBroadCompat leaves it
+ * intact through streamTextTask. The mock judge returns a low identity score whenever it sees this marker in
+ * the request messages → shot-verify triggers targeted retry. Because regenerate re-sends the SAME base
+ * prompt (still carrying the marker), the mock keeps scoring it low → K=2 exhausted → red-flagged delivery.
+ */
+export const BAD_SHOT_MARKER = '#BADSHOT'
 
 /**
  * Spawn the real in-Electron MCP stdio server (headless) and return a JSON-RPC client.

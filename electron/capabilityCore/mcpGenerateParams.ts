@@ -20,5 +20,10 @@ export function buildGenerateParams(a: Record<string, unknown>): Record<string, 
   const resolution = typeof a.resolution === 'string' ? a.resolution.trim() : ''
   if (resolution) params.resolution = resolution
   if (typeof a.duration === 'number' && Number.isFinite(a.duration)) params.duration = a.duration
+  // seed（M5）：同 prompt + 同 seed 可复现同一结果——做系列风格一致时的关键。键名全站一致（wire body
+  // 直读 params.seed），原样铺即可；不传不铺（保持不传时逐字节等同旧默认）。
+  const seed = typeof a.seed === 'number' && Number.isFinite(a.seed) ? Math.trunc(a.seed) : null
+  if (seed !== null) params.seed = seed
+
   return params
 }

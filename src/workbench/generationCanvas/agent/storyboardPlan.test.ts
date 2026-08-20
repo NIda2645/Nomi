@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAnchorSheetPrompt, parseStoryboardPlan, storyboardPlanToCreateNodesArgs, type StoryboardPlan } from './storyboardPlan'
+import { buildAnchorSheetPrompt, parseStoryboardPlan, storyboardPlanSchema, storyboardPlanToCreateNodesArgs, type StoryboardPlan } from './storyboardPlan'
 
 const PLAN: StoryboardPlan = {
   title: '雨夜追凶',
@@ -242,6 +242,66 @@ describe('图片分镜（shotKind=image，用户拍板 2026-07-02 image-first）
   })
 })
 
+describe('ffDesc/lfDesc 静态首尾帧分解（W2 §4.1，对齐 ViMax ff_desc/lf_desc）', () => {
+  const base = {
+    title: '首尾帧分解',
+    anchors: [{ id: 'a-hero', kind: 'character' as const, name: '主角', description: '黑风衣', carrier: 'visual' as const }],
+  }
+  const opts = {
+    defaultImageModelKey: 'img-model', defaultImageModeId: 'img-t2i', defaultImageRefModeId: 'img-i2i',
+    defaultVideoModelKey: 'vid-model', defaultVideoModeId: 'vid-i2v',
+  }
+
+  it('有 ffDesc 无 keyframe.prompt → 首帧图用 ffDesc（不被镜头的运动词污染）', () => {
+    const plan: StoryboardPlan = {
+      ...base,
+      shots: [{
+        index: 1, shotKind: 'video', durationSec: 6, anchorIds: ['a-hero'],
+        ffDesc: '中近景静态：主角坐在电脑前，冷蓝屏幕光照亮侧脸',
+        prompt: '镜头缓慢推近，他抬手点击连接', // 运动描述——不该当首帧图提示词
+        keyframe: { enabled: true },
+      }],
+    }
+    const { nodes } = storyboardPlanToCreateNodesArgs(plan, opts)
+    const kf = nodes.find((n) => n.clientId === 'shot-1-keyframe')
+    expect(kf?.prompt).toContain('中近景静态')
+    expect(kf?.prompt).not.toContain('缓慢推近') // ★首帧不吃运动词
+  })
+
+  it('keyframe.prompt（用户手改）优先级高于 ffDesc', () => {
+    const plan: StoryboardPlan = {
+      ...base,
+      shots: [{
+        index: 1, shotKind: 'video', durationSec: 6, anchorIds: ['a-hero'],
+        ffDesc: 'planner 给的首帧', prompt: '运动',
+        keyframe: { enabled: true, prompt: '用户手改的首帧' },
+      }],
+    }
+    const { nodes } = storyboardPlanToCreateNodesArgs(plan, opts)
+    expect(nodes.find((n) => n.clientId === 'shot-1-keyframe')?.prompt).toContain('用户手改的首帧')
+  })
+
+  it('两者都没有 → 退回 shot.prompt（今天的行为，零退化）', () => {
+    const plan: StoryboardPlan = {
+      ...base,
+      shots: [{ index: 1, shotKind: 'video', durationSec: 6, anchorIds: ['a-hero'], prompt: '镜头推进', keyframe: { enabled: true } }],
+    }
+    const { nodes } = storyboardPlanToCreateNodesArgs(plan, opts)
+    expect(nodes.find((n) => n.clientId === 'shot-1-keyframe')?.prompt).toContain('镜头推进')
+  })
+
+  it('zod：ffDesc/lfDesc 是可选字符串，带上能过校验、不带也能过（旧草稿不破）', () => {
+    const withDesc = storyboardPlanSchema.safeParse({
+      title: 't', anchors: [], shots: [{ index: 1, durationSec: 5, anchorIds: [], prompt: 'p', ffDesc: '首帧', lfDesc: '尾帧' }],
+    })
+    expect(withDesc.success).toBe(true)
+    const without = storyboardPlanSchema.safeParse({
+      title: 't', anchors: [], shots: [{ index: 1, durationSec: 5, anchorIds: [], prompt: 'p' }],
+    })
+    expect(without.success).toBe(true)
+  })
+})
+
 describe('图片+视频分镜（video shot + keyframe.enabled）', () => {
   const IMAGE_VIDEO_PLAN: StoryboardPlan = {
     title: '首帧驱动视频',
@@ -350,5 +410,57 @@ describe('参考卡身份标记（referenceSheet，防占镜号）', () => {
     for (const n of nodes.filter((node) => node.clientId.startsWith('shot-'))) {
       expect(n.referenceSheet).toBeUndefined()
     }
+  })
+})
+
+describe('W2 圣经字段（static/dynamic 落 meta + 卡片 prompt 分区）', () => {
+  const BIBLE_PLAN: StoryboardPlan = {
+    title: '圣经计划',
+    anchors: [
+      {
+        id: 'a-hero',
+        kind: 'character',
+        name: '林夏',
+        description: '齐肩黑发，红色校服',
+        staticFeatures: '鹅蛋脸、左眉一颗痣、单眼皮、身高约 165',
+        dynamicFeatures: '红色校服 / 雨夜披深蓝雨衣',
+        carrier: 'visual',
+      },
+    ],
+    shots: [{ index: 1, durationSec: 5, anchorIds: ['a-hero'], prompt: '林夏倚护栏远望' }],
+  }
+
+  it('static/dynamic 落进锚节点顶层字段（→ applyCanvasToolCall 透传 node.meta）', () => {
+    const { nodes } = storyboardPlanToCreateNodesArgs(BIBLE_PLAN)
+    const hero = nodes.find((n) => n.clientId === 'a-hero')!
+    expect(hero.staticFeatures).toBe('鹅蛋脸、左眉一颗痣、单眼皮、身高约 165')
+    expect(hero.dynamicFeatures).toBe('红色校服 / 雨夜披深蓝雨衣')
+  })
+
+  it('无 static/dynamic 的锚不带这些字段（旧草稿向后兼容，不凭空塞空串）', () => {
+    const { nodes } = storyboardPlanToCreateNodesArgs(PLAN)
+    const hero = nodes.find((n) => n.clientId === 'a-linxia')!
+    expect(hero).not.toHaveProperty('staticFeatures')
+    expect(hero).not.toHaveProperty('dynamicFeatures')
+  })
+
+  it('buildAnchorSheetPrompt 有 static/dynamic 时用「身份特征/服装与状态」分区（身份先锁、可变层另起）', () => {
+    const p = buildAnchorSheetPrompt(BIBLE_PLAN.anchors[0])
+    expect(p).toContain('身份特征（跨镜保持一致）：鹅蛋脸、左眉一颗痣')
+    expect(p).toContain('服装与状态：红色校服 / 雨夜披深蓝雨衣')
+    // 仍是角色定妆卡骨架（多视图/身份锁没丢）。
+    expect(p).toContain('角色定妆参考卡')
+    expect(p).toContain('正面全身 A-Pose')
+  })
+
+  it('buildAnchorSheetPrompt 无 static/dynamic 时退化到 description（旧行为不变）', () => {
+    const p = buildAnchorSheetPrompt({ id: 'a', kind: 'character', name: '林夏', description: '齐肩黑发，红校服', carrier: 'visual' })
+    expect(p).toContain('齐肩黑发')
+    expect(p).not.toContain('身份特征（跨镜保持一致）')
+  })
+
+  it('parseStoryboardPlan 接受带 static/dynamic 的方案（schema 同步）', () => {
+    expect(() => parseStoryboardPlan(BIBLE_PLAN)).not.toThrow()
+    expect(parseStoryboardPlan(BIBLE_PLAN).anchors[0].staticFeatures).toBe('鹅蛋脸、左眉一颗痣、单眼皮、身高约 165')
   })
 })

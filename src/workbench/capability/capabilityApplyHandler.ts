@@ -4,11 +4,14 @@ import { useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
 import { getDesktopBridge } from '../../desktop/bridge'
 import i18n from '../../i18n'
 import { runStoryboardPlanner } from '../generationCanvas/agent/runStoryboardPlanner'
+import { runDirectionPlanner } from '../generationCanvas/agent/runDirectionPlanner'
 import { useWorkbenchStore } from '../workbenchStore'
 import { mintSpendGrant } from '../api/taskApi'
 import { runGenerationNode } from '../generationCanvas/runner/generationRunController'
 import { arrangeStoryboardToTimeline } from '../generationCanvas/agent/sendStoryboardToTimeline'
 import { exportTimelineToMp4 } from '../export/exportApi'
+import { verifyShotsAndReport, useShotVerifyStore, isShotVerifyEnabled } from '../generationCanvas/agent/shotVerifyStore'
+import { isAnchorFrozen, isVisualAnchorNode } from '../generationCanvas/model/anchorBibleKeys'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
 // 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
@@ -23,6 +26,8 @@ type SpendConfirmPayload = {
   vendor?: string
   modelKey?: string
   prompt?: string
+  /** 主进程带上：这次确认还会换来「本会话该项目后续生成免问」→ 卡上多写一句授权范围。 */
+  grantsSessionTrust?: boolean
 }
 
 // 方案门（Phase B）：外部 agent 批量落节点前的确认。projectId 由主进程网关带上（可能非当前项目）。
@@ -58,11 +63,15 @@ async function confirmSpendForAgent(info: SpendConfirmPayload): Promise<{ confir
     title: isReference
       ? i18n.t('runtime.capability.referenceTitle')
       : i18n.t('runtime.capability.spendTitle', { intent: describeIntent(info.intent) }),
-    message: promptPreview
-      ? i18n.t('runtime.capability.spendMessageWithPrompt', {
-          prompt: `${promptPreview}${info.prompt && info.prompt.length > 60 ? '…' : ''}`,
-        })
-      : i18n.t('runtime.capability.spendMessage'),
+    // 授权范围写在脸上：这一点下去还会换来「本会话该项目后续生成免问」，不写明就是骗同意（D4）。
+    message: [
+      promptPreview
+        ? i18n.t('runtime.capability.spendMessageWithPrompt', {
+            prompt: `${promptPreview}${info.prompt && info.prompt.length > 60 ? '…' : ''}`,
+          })
+        : i18n.t('runtime.capability.spendMessage'),
+      ...(info.grantsSessionTrust ? [i18n.t('runtime.capability.spendGrantsSessionTrust')] : []),
+    ].join('\n'),
     confirmLabel: i18n.t('runtime.capability.confirmGenerate'),
     source: 'agent',
     countdownMs: 60_000,
@@ -106,6 +115,54 @@ async function confirmPlanForAgent(info: PlanConfirmPayload): Promise<{ confirme
   return { confirmed: Boolean(ok) }
 }
 
+/** 从 content 偏差的 `actual`（人话「第 N 档」）抠回 1-5 档分数；抠不出给 undefined。 */
+function scoreFromDeviationActual(actual: unknown): number | undefined {
+  const match = typeof actual === 'string' ? actual.match(/(\d+)/) : null
+  if (!match) return undefined
+  const n = Number(match[1])
+  return Number.isFinite(n) ? Math.max(1, Math.min(5, n)) : undefined
+}
+
+/**
+ * W1.5 路径②审片：production run 的 qa 阶段让渲染层对本次生成镜头判分。
+ * 复用**现成的** verifyShotsAndReport（判分+对账卡+回灌闭环，内部逻辑一字不改），
+ * 这里只做参数适配（run 的镜头节点 id → 它的入参）+ 从 shotVerify store 读回判决塑形回传。
+ * 判决 = content 偏差（每条 kind:'content' 回指 shotNodeId + 维度 field + 档位 actual + reason）；
+ * 被审但无偏差的镜头 = 过检。verify 关闭 / 无镜头 → skipped（driver 据此落「审片跳过」）。
+ */
+async function verifyShotsForProduction(shotNodeIds: readonly string[]): Promise<unknown> {
+  if (!isShotVerifyEnabled()) return { skipped: true, skipReason: '画面审片已在设置中关闭' }
+  const knownNodeIds = new Set(useGenerationCanvasStore.getState().nodes.map((node) => node.id))
+  const reviewedShotIds = shotNodeIds.filter((id) => knownNodeIds.has(id))
+  if (reviewedShotIds.length === 0) return { skipped: true, skipReason: '当前项目里找不到本次生成的镜头节点' }
+  // 现成闭环：内部 gather → 判分 → 写 shotVerify store（不改它）。判决从 store 读回。
+  await verifyShotsAndReport(reviewedShotIds)
+  const deviations = useShotVerifyStore.getState().deviations
+  const flaggedByShot = new Map<string, Array<{ dimensionName?: string; score?: number; reason?: string }>>()
+  for (const deviation of deviations) {
+    if (deviation.kind !== 'content' || !deviation.shotNodeId) continue
+    const list = flaggedByShot.get(deviation.shotNodeId) ?? []
+    list.push({
+      dimensionName: typeof deviation.field === 'string' ? deviation.field : undefined,
+      score: scoreFromDeviationActual(deviation.actual),
+      reason: typeof deviation.reason === 'string' ? deviation.reason : undefined,
+    })
+    flaggedByShot.set(deviation.shotNodeId, list)
+  }
+  const nodesById = new Map(useGenerationCanvasStore.getState().nodes.map((node) => [node.id, node]))
+  const verdicts = reviewedShotIds.map((shotNodeId) => {
+    const flagged = flaggedByShot.get(shotNodeId) ?? []
+    const title = (nodesById.get(shotNodeId)?.title || '').trim()
+    return {
+      shotNodeId,
+      passed: flagged.length === 0,
+      ...(title ? { shotTitle: title } : {}),
+      ...(flagged.length ? { flagged } : {}),
+    }
+  })
+  return { reviewedShotIds, verdicts }
+}
+
 /** 处理一条主进程转发来的能力操作。未知操作抛错（主进程会把错误透传给 agent）。 */
 export async function handleCapabilityApply(op: string, payload: unknown): Promise<unknown> {
   const data = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>
@@ -128,6 +185,18 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       return confirmSpendForAgent(data as SpendConfirmPayload)
     case 'plan.confirm':
       return confirmPlanForAgent(data as PlanConfirmPayload)
+    case 'production.plan-directions': {
+      // B1 方向门：driver 停在 awaiting_direction 时让渲染层拟 2-3 个「创意方向」候选（三选一）。
+      // 走无工具的一次性文本链路（runDirectionPlanner），语言跟随 brief。失败冒泡给 driver 走
+      // gate title/summary 兜底——不静默编造候选（诚实降级）。
+      const brief = data.brief && typeof data.brief === 'object' && !Array.isArray(data.brief)
+        ? data.brief as Record<string, unknown>
+        : {}
+      const playbook = data.playbook && typeof data.playbook === 'object' && !Array.isArray(data.playbook)
+        ? data.playbook as Record<string, unknown>
+        : null
+      return runDirectionPlanner({ brief, playbook })
+    }
     case 'production.plan-storyboard': {
       const brief = data.brief && typeof data.brief === 'object' && !Array.isArray(data.brief)
         ? data.brief as Record<string, unknown>
@@ -155,6 +224,22 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       const result = arrangeStoryboardToTimeline()
       if (!result.ok && result.total === 0) throw new Error('没有可排片的镜头')
       return { arranged: result.sent.length, total: result.total, placed: result.sent.map((item) => ({ nodeId: item.nodeId, role: item.role, startFrame: item.startFrame })), skipped: result.skipped }
+    }
+    case 'production.verify-shots': {
+      // W1.5：qa 阶段审片（路径②）。driver 传本次已生成的镜头节点 id，渲染层复用现成审片闭环判分回传。
+      const shotNodeIds = Array.isArray(data.shotNodeIds)
+        ? data.shotNodeIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        : []
+      return verifyShotsForProduction(shotNodeIds)
+    }
+    case 'production.check-frozen': {
+      // W2 冻结门：driver 提交任何镜头前，问渲染层「本 run 的画布上有哪些视觉锚（角色/场景/道具卡）还没冻结」。
+      // 读画布 store 的 node.meta.frozen（判据走 anchorBibleKeys 单一镜像，与 headless/GUI 依赖波次同语义）。
+      // 只回未冻结的那些（nodeId + 标题）；driver 据此设冻结门 waiting 或放行（全冻结 → 空数组 → 放行）。
+      const unfrozenAnchors = useGenerationCanvasStore.getState().nodes
+        .filter((node) => isVisualAnchorNode(node) && !isAnchorFrozen(node))
+        .map((node) => ({ nodeId: node.id, ...(node.title && node.title.trim() ? { title: node.title.trim() } : {}) }))
+      return { unfrozenAnchors }
     }
     case 'production.export': {
       const project = typeof data.projectId === 'string' ? data.projectId : ''

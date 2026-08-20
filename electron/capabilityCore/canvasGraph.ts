@@ -11,6 +11,7 @@
 // per-kind 几何/语义注入自 `nodeKindDomain`（由等价测试钉死 === src registry）。故 MCP 建的节点与
 // UI 建的节点**字段级等价**（meta/categoryId/shotIndex/size 全齐），不再是缺字段的「二等公民」。
 import { randomUUID } from 'node:crypto'
+import { ANCHOR_META_KEYS, isVisualAnchorKind } from './anchorBible'
 import { buildCanvasNodes, type CanvasNodeFactorySpec, type NodeFactoryDeps } from './canvasNodeFactory'
 import { layoutBatchWith, type NodeBox } from './canvasNodeLayout'
 import {
@@ -196,7 +197,17 @@ export function addNodes(
     shotIndex: typeof node.shotIndex === 'number' ? node.shotIndex : undefined,
   }))
   const built = buildCanvasNodes(factorySpecs, positions, existingShotIndexes, ELECTRON_NODE_FACTORY_DEPS)
-  for (const node of built) next.nodes.push(node as unknown as CanvasNode)
+  for (const node of built) {
+    // 角色/场景/道具卡自动带上 referenceSheet 标记——它本来就是参考卡，这是 kind 的推论，不是调用方的选项。
+    // 为什么必须在这儿打：冻结门（anchorBible.isVisualAnchorNode）同时要 kind 和这个标记，而渲染层落节点
+    // 时会写、headless MCP 这条路以前不写 → **MCP 建的定妆卡冻结门根本看不见**，整条「先冻脸再铺镜头」
+    // 的一致性护栏在 MCP 路上等于不存在（2026-08-20 L2 走查实测抓出）。derive 不 hardcode，别人加新锚 kind
+    // 时改 anchorBible 一处即可。
+    const withAnchorMark = isVisualAnchorKind(node.kind)
+      ? { ...node, meta: { ...((node as { meta?: Record<string, unknown> }).meta || {}), [ANCHOR_META_KEYS.referenceSheet]: true } }
+      : node
+    next.nodes.push(withAnchorMark as unknown as CanvasNode)
+  }
   return { snapshot: next, ids: built.map((node) => node.id) }
 }
 

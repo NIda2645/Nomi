@@ -235,6 +235,13 @@ export function applyProductionCommand(
       const skillName = text(command.payload, "skillName");
       return { run: { ...current, updatedAt: now }, eventType: "skill.loaded", message: skillName };
     }
+    case "qa.verdict": {
+      // W1.5 审片判决：生成后一镜一条「过检 / 红标」的耐久事实事件（同 skill.evidence 的写法——
+      // 只留痕、不改 run 结构）。message = 一句话人话判决（per-shot），经投影 sanitizer 后
+      // nomi_subscribe_run 读得到；不是新门、不弹确认、不改任何状态机语义。
+      const summary = text(command.payload, "summary");
+      return { run: { ...current, updatedAt: now }, eventType: "qa.verdict", message: summary };
+    }
     case "artifact.add": {
       const nextArtifact = artifact(command.payload);
       if (current.artifacts.some((item) => item.artifactId === nextArtifact.artifactId)) {

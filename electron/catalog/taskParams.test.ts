@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasImageEditReferences, taskTemplateParams, firstReferenceImage } from "./taskParams";
+import { hasImageEditReferences, taskTemplateParams, firstReferenceImage, projectReferencesOntoBodyKeys, unreachableReferenceLabels, imageEditGuardError } from "./taskParams";
 
 // 「接入即验证」的零额度一环：在不真跑、不花额度的前提下，核对"摊平给模板的参数"是否完整、类型对。
 // 这些坑都只在真实参数构建里暴露（实测）：① duration 是数字被 firstString 吞成 ""；
@@ -124,5 +124,64 @@ describe("hasImageEditReferences — L3 诚实护栏判定（图生图/图生视
   });
   it("firstFrameUrl 单图口径 → true", () => {
     expect(hasImageEditReferences({ extras: { firstFrameUrl: "https://cdn/f.png" } })).toBe(true);
+  });
+});
+
+// W1d：headless/MCP 参考键形态投影（把 referenceImages 投影到 body 真读的 image_urls / first_frame_image…）。
+// 现场：docs/audit/2026-08-19-l3-w1-shot-verify/run.json——参考落 reference_images、body 读 image_urls → 全被护栏拒。
+describe("projectReferencesOntoBodyKeys — headless 参考键形态投影（W1d 根因修复）", () => {
+  // seedream/gemini 改图真实 seed body：读 image_urls（数组）。
+  const editBody = { model: "{{model.modelKey}}", size: "{{request.params.size}}", image_urls: "{{request.params.image_urls}}" };
+  // seedance i2v 真实 seed body：image_urls 与 image_with_roles 互斥同存。
+  const seedanceI2v = { image_urls: "{{request.params.image_urls}}", video_urls: "{{request.params.video_urls}}", audio_urls: "{{request.params.audio_urls}}", image_with_roles: "{{request.params.image_with_roles}}" };
+  // kling i2v：单图字符串首帧键。
+  const klingI2v = { first_frame_image: "{{request.params.first_frame_image}}" };
+  // 纯文生 body（无参考键）。
+  const t2iBody = { model: "{{model.modelKey}}", size: "{{request.params.size}}" };
+
+  it("referenceImages 投影到 image_urls（数组键塞整组）→ 护栏放行", () => {
+    const extras = { referenceImages: ["nomi-local://asset/p/a.jpg", "nomi-local://asset/p/b.jpg"] };
+    const overlay = projectReferencesOntoBodyKeys(extras, editBody);
+    expect(overlay).toEqual({ image_urls: ["nomi-local://asset/p/a.jpg", "nomi-local://asset/p/b.jpg"] });
+    // 投影后 body 读得到参考 → 第三闸不再判「参考图发不出」。
+    const merged = { ...extras, ...overlay };
+    expect(unreachableReferenceLabels({ extras: merged }, editBody)).toEqual([]);
+    expect(imageEditGuardError("image_edit", { extras: merged }, true, "Seedream 4.5", editBody, [{ taskKind: "image_edit", body: editBody }])).toBeNull();
+  });
+
+  it("单图字符串键（first_frame_image）塞首张、不塞数组（严格端点期待 string）", () => {
+    const overlay = projectReferencesOntoBodyKeys({ referenceImages: ["nomi-local://a.jpg", "nomi-local://b.jpg"] }, klingI2v);
+    expect(overlay).toEqual({ first_frame_image: "nomi-local://a.jpg" });
+  });
+
+  it("互斥的对象形态键（image_with_roles）不填——只填 plain image_urls，避免既错形状又互斥", () => {
+    const overlay = projectReferencesOntoBodyKeys({ referenceImages: ["nomi-local://a.jpg", "nomi-local://b.jpg"] }, seedanceI2v);
+    expect(overlay).toEqual({ image_urls: ["nomi-local://a.jpg", "nomi-local://b.jpg"] });
+    expect(overlay).not.toHaveProperty("image_with_roles");
+  });
+
+  it("同族多键（image_urls 数组 + first_frame_image 单值）只填一个：优先数组键（扁平列表天然去处）", () => {
+    const happyhorse = { first_frame_image: "{{request.params.first_frame_image}}", image_urls: "{{request.params.image_urls}}" };
+    const overlay = projectReferencesOntoBodyKeys({ referenceImages: ["nomi-local://a.jpg", "nomi-local://b.jpg"] }, happyhorse);
+    expect(overlay).toEqual({ image_urls: ["nomi-local://a.jpg", "nomi-local://b.jpg"] });
+  });
+
+  it("image + video 两族各填自己的 plain 复数键（都塞数组）", () => {
+    const overlay = projectReferencesOntoBodyKeys({ referenceImages: ["nomi-local://a.jpg"], referenceVideoUrls: ["nomi-local://v.mp4"] }, seedanceI2v);
+    expect(overlay).toEqual({ image_urls: ["nomi-local://a.jpg"], video_urls: ["nomi-local://v.mp4"] });
+  });
+
+  it("纯文生 body（无参考键）→ 投影 no-op（行为逐字节不变）", () => {
+    expect(projectReferencesOntoBodyKeys({ referenceImages: ["nomi-local://a.jpg"] }, t2iBody)).toEqual({});
+  });
+
+  it("既有值优先：extras 已填 image_urls（渲染层 archetypeInput 或调用方显式）→ 不覆盖（渲染层路径 no-op）", () => {
+    const overlay = projectReferencesOntoBodyKeys({ referenceImages: ["nomi-local://new.jpg"], image_urls: ["https://cdn/preset.jpg"] }, editBody);
+    expect(overlay).toEqual({});
+  });
+
+  it("无任何携带参考 → 空对象（零开销）", () => {
+    expect(projectReferencesOntoBodyKeys({}, editBody)).toEqual({});
+    expect(projectReferencesOntoBodyKeys(undefined, editBody)).toEqual({});
   });
 });
