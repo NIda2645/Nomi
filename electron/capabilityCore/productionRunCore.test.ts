@@ -8,6 +8,7 @@ function context() {
     readProjection: vi.fn(async () => ({ runId: 'run-1', status: 'draft' })),
     readEvents: vi.fn(async () => ({ events: [], nextCursor: 4 })),
     readArtifactProjection: vi.fn(async () => ({ artifactId: 'artifact-1', kind: 'storyboard' })),
+    materializeStoryboard: vi.fn(async (input: unknown) => ({ materialized: true, input })),
     readFull: vi.fn(() => null),
     command: vi.fn(async () => ({ run: {}, events: [] })),
   }
@@ -102,6 +103,19 @@ describe('production run capability methods', () => {
     expect(productionRuns.readEvents).toHaveBeenCalledWith('project-1', 'run-1', 3, 25_000)
     expect(productionRuns.readArtifactProjection).toHaveBeenCalledWith('project-1', 'run-1', 'artifact-1')
     expect(ctx.makeGateway).not.toHaveBeenCalled()
+  })
+
+  it('materializes only through the versioned storyboard business seam', async () => {
+    const { ctx, productionRuns } = context()
+    await expect(dispatch('production.storyboard.materialize', {
+      projectId: 'project-1', runId: 'run-1', artifactId: 'artifact-storyboard-v2', expectedVersion: 2,
+    }, ctx as never)).resolves.toMatchObject({ materialized: true })
+    expect(productionRuns.materializeStoryboard).toHaveBeenCalledWith({
+      projectId: 'project-1', runId: 'run-1', artifactId: 'artifact-storyboard-v2', expectedVersion: 2,
+    })
+    await expect(dispatch('production.storyboard.materialize', {
+      projectId: 'project-1', runId: 'run-1', artifactId: 'artifact-storyboard-v2', expectedVersion: 0,
+    }, ctx as never)).rejects.toThrow(/version/i)
   })
 
   it('surfaces an actionable unknown-run error', async () => {

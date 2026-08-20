@@ -25,6 +25,7 @@ const INTENT_LABEL: Record<string, { zh: string; en: string }> = {
 const RUN_STATUS_HINT: Record<string, { zh: string; en: string; nextZh: string; nextEn: string; action: string }> = {
   draft: { zh: '草稿', en: 'draft', nextZh: '下一步：定创意方向（尚未花费）', nextEn: 'Next: pick a creative direction (nothing spent yet)', action: 'pick_direction' },
   awaiting_direction: { zh: '等你定方向', en: 'awaiting direction', nextZh: '下一步：在对话里选一个创意方向', nextEn: 'Next: choose a creative direction in the conversation', action: 'pick_direction' },
+  awaiting_script_review: { zh: '剧本等你审阅', en: 'script awaiting review', nextZh: '下一步：审阅剧本；批准后才会拟分镜', nextEn: 'Next: review the script; the storyboard is drafted only after approval', action: 'review_script' },
   awaiting_storyboard_review: { zh: '分镜等你审阅', en: 'storyboard awaiting review', nextZh: '下一步：审阅分镜；确认后才会生成制作合同', nextEn: 'Next: review the storyboard; the contract is created after you confirm', action: 'review_storyboard' },
   awaiting_contract: { zh: '等待批准预算', en: 'awaiting budget approval', nextZh: '下一步：批准制作合同后才会开始付费生成', nextEn: 'Next: approve the production contract before any paid generation', action: 'approve_contract' },
   ready: { zh: '已就绪', en: 'ready', nextZh: '合同已批准，生成即将开始', nextEn: 'Contract approved; generation starts shortly', action: 'watch_or_pause' },
@@ -92,6 +93,92 @@ function echoLine(ctx: Ctx, parts: Array<string | null | undefined>): string | n
 function truncate(text: string, max = 40): string {
   const trimmed = text.trim()
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
+}
+
+/** Artifact bodies are already sanitized by the production projection, but this final MCP boundary
+ * still drops credential/path-shaped fields if a legacy run contains one. Never expose a local path,
+ * provider URL, token, or API key merely because an old snapshot carried it. */
+function safeArtifactValue(value: unknown, key = ''): unknown {
+  if (Array.isArray(value)) return value.map((item) => safeArtifactValue(item))
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+      if (/api.?key|secret|authorization|provider.?url|private.?url|access.?token/i.test(childKey)) continue
+      out[childKey] = safeArtifactValue(childValue, childKey)
+    }
+    return out
+  }
+  if (typeof value === 'string' && /path|file/i.test(key) && (/^(?:\/|[A-Za-z]:[\\/])/.test(value) || value.includes('\\'))) return '[redacted]'
+  if (typeof value === 'string' && /^https?:\/\//i.test(value) && /provider|vendor|source/i.test(key)) return '[redacted]'
+  return value
+}
+
+/** Final redaction seam shared by tool results and the versioned artifact resource reader. */
+export function sanitizeArtifactResource(value: unknown): unknown {
+  return safeArtifactValue(value)
+}
+
+function safeNomiDeepLink(value: string): string {
+  if (/^nomi:\/\/project\/[A-Za-z0-9._-]{1,160}(?:\/run\/[A-Za-z0-9._-]{1,160}(?:\?artifact=[A-Za-z0-9._-]{1,160})?|\/node\/[A-Za-z0-9._-]{1,160})?$/.test(value)) return value
+  return ''
+}
+
+function artifactVersionValue(value: Record<string, unknown>): number | null {
+  return Number.isInteger(value.version) && Number(value.version) > 0 ? Number(value.version) : null
+}
+
+function buildArtifactBodyOutcome(
+  ctx: Ctx,
+  toolName: string,
+  args: Record<string, unknown>,
+  value: Record<string, unknown>,
+  openInNomi: string,
+  runId: string,
+  projectId: string,
+): ToolOutcome {
+  const artifactId = str(value.artifactId) || str(args.artifactId)
+  const kind = str(value.kind) || str(args.kind) || 'artifact'
+  const status = str(value.status) || 'unknown'
+  const version = artifactVersionValue(value)
+  const contentHash = str(value.contentHash)
+  const content = value.content === undefined ? undefined : safeArtifactValue(value.content)
+  const bodyText = content === undefined ? null : JSON.stringify(content, null, 2)
+  const preview = rec(value.preview)
+  const previewUrl = str(preview.url)
+  const isRevision = toolName === 'nomi_request_script_revision' || toolName === 'nomi_request_storyboard_revision'
+  const isReview = toolName === 'nomi_review_artifact'
+  const head = isRevision
+    ? L(ctx, '✓ 修订候选已创建', '✓ Revision candidate created')
+    : isReview
+      ? (status === 'adopted' || str(args.decision) === 'approved'
+          ? L(ctx, '✓ 产物版本已批准', '✓ Artifact version approved')
+          : L(ctx, '✓ 产物审阅决定已记录', '✓ Artifact review decision recorded'))
+      : `[Nomi] ${kind} · ${status}`
+  const text = [
+    `${head} · ${artifactId}`,
+    `${L(ctx, '状态', 'status')} ${status}`,
+    version !== null ? `${L(ctx, '版本', 'version')} ${version}` : null,
+    contentHash ? `${L(ctx, '内容 hash', 'content hash')} ${contentHash}` : null,
+    previewUrl ? `${L(ctx, '预览', 'preview')} ${previewUrl}` : null,
+    isRevision && str(value.parentArtifactId) ? `${L(ctx, '基于', 'based on')} ${str(value.parentArtifactId)}${value.sourceVersion ? ` @${String(value.sourceVersion)}` : ''}` : null,
+    bodyText ? `${L(ctx, '内容', 'content')}\n${bodyText}` : null,
+  ].filter(Boolean).join('\n') + (openInNomi ? `\n${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${openInNomi}` : '')
+  return {
+    text,
+    outcome: {
+      kind: isRevision ? 'artifact_revision' : isReview ? 'artifact_review' : 'artifact',
+      operation: isRevision ? 'revise' : isReview ? 'review' : 'read',
+      runId, projectId, artifactId, artifactKind: kind, status,
+      ...(version !== null ? { version } : {}),
+      ...(contentHash ? { contentHash } : {}),
+      ...(previewUrl ? { previewUrl } : {}),
+      ...(str(value.parentArtifactId) ? { parentArtifactId: str(value.parentArtifactId) } : {}),
+      ...(value.sourceVersion !== undefined ? { sourceVersion: value.sourceVersion } : {}),
+      ...(content !== undefined ? { content } : {}),
+      ...(openInNomi ? { openInNomi } : {}),
+      nextActions: isRevision ? ['review_artifact'] : ['open_in_nomi'],
+    },
+  }
 }
 
 type DirectionCandidate = { key: string; title: string; oneLiner: string }
@@ -433,11 +520,12 @@ export function buildToolOutcome(
   if (toolName === 'nomi_get_artifact') {
     const preview = rec(value.preview)
     const nomiUri = str(value.nomiUri)
+    const artifactOpenInNomi = safeNomiDeepLink(openInNomi)
     const text = [
       `[Nomi] ${str(value.kind) || 'artifact'} · ${str(value.status) || 'unknown'} · ${str(value.artifactId)}`,
       nomiUri ? `${L(ctx, '产物', 'Artifact')} ${nomiUri}` : null,
       preview.url ? `${L(ctx, '预览', 'Preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
-    ].filter(Boolean).join('\n') + openLine
+    ].filter(Boolean).join('\n') + (artifactOpenInNomi ? `\n${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${artifactOpenInNomi}` : '')
     return {
       text,
       outcome: {
@@ -445,6 +533,42 @@ export function buildToolOutcome(
         artifactId: str(value.artifactId), artifactKind: str(value.kind) || null,
         previewUrl: str(preview.url) || null, nomiUri: nomiUri || null,
         nextActions: ['open_in_nomi'],
+        openInNomi: artifactOpenInNomi || null,
+      },
+    }
+  }
+
+  if (toolName === 'nomi_read_artifact'
+    || toolName === 'nomi_request_script_revision'
+    || toolName === 'nomi_request_storyboard_revision'
+    || toolName === 'nomi_review_artifact') {
+    return buildArtifactBodyOutcome(ctx, toolName, args, value, safeNomiDeepLink(openInNomi), runId, projectId)
+  }
+
+  if (toolName === 'nomi_materialize_storyboard') {
+    const artifactId = str(value.artifactId) || str(args.artifactId)
+    const rawArtifactVersion = value.artifactVersion
+    const version = artifactVersionValue(value)
+      ?? (Number.isInteger(rawArtifactVersion) && Number(rawArtifactVersion) > 0 ? Number(rawArtifactVersion) : null)
+    const createdNodeIds = Array.isArray(value.createdNodeIds)
+      ? value.createdNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string' && Boolean(nodeId.trim()))
+      : []
+    const bindings = Array.isArray(value.bindings) ? value.bindings : []
+    const text = [
+      `✓ ${L(ctx, '分镜已落到 Nomi 画布', 'Storyboard materialized into the Nomi canvas')} · ${artifactId}`,
+      version !== null ? `${L(ctx, '分镜版本', 'storyboard version')} ${version}` : null,
+      `${L(ctx, '画布节点', 'canvas nodes')} ${createdNodeIds.length} · ${L(ctx, '制作绑定', 'production bindings')} ${bindings.length}`,
+      createdNodeIds.length ? `${L(ctx, '节点 id', 'node ids')} ${createdNodeIds.slice(0, 12).join(', ')}${createdNodeIds.length > 12 ? '…' : ''}` : null,
+      L(ctx, '还没有批准预算，也没有调用付费模型；下一步在 Nomi 查看画布并批准制作合同。', 'No budget was approved and no paid model was called; next, review the canvas in Nomi and approve the production contract.'),
+    ].filter(Boolean).join('\n') + openLine
+    return {
+      text,
+      outcome: {
+        kind: 'storyboard_materialized', operation: 'materialize', runId, projectId, artifactId,
+        ...(version !== null ? { version } : {}),
+        createdNodeIds, bindingCount: bindings.length,
+        status: str(value.status) || null,
+        nextActions: ['open_in_nomi', 'approve_contract'],
         openInNomi: openInNomi || null,
       },
     }

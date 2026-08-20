@@ -41,7 +41,13 @@ export type DispatchContext = {
   runTask: RunTaskFn
   fetchTaskResult?: FetchTaskResultFn
   makeGateway: (projectId: string) => ProjectGateway
-  productionRuns: Pick<ProductionRunService, 'createDraft' | 'readProjection' | 'readEvents' | 'readArtifactProjection' | 'readFull' | 'command'>
+  productionRuns: Pick<ProductionRunService, 'createDraft' | 'readProjection' | 'readEvents' | 'readArtifactProjection' | 'readFull' | 'command'> & Partial<{
+    /** Task 4 versioned artifact MCP seam. Optional keeps low-level test doubles/source-compatible. */
+    readArtifactContent: (projectId: string, runId: string, artifactId: string) => unknown
+    requestArtifactRevision: (input: { projectId: string; runId: string; artifactId: string; expectedVersion: number; instruction: string; kind: 'script' | 'storyboard' }) => unknown
+    reviewArtifact: (input: { projectId: string; runId: string; artifactId: string; expectedVersion: number; decision: 'approved' | 'changes_requested' | 'rejected' }) => unknown
+    materializeStoryboard: (input: { projectId: string; runId: string; artifactId: string; expectedVersion: number }) => unknown
+  }>
   /** Transport-owned authority. Request bodies may provide only an audit label, never trust. */
   origin?: { host: CapabilityOriginHost; actorId?: string }
   /**
@@ -83,6 +89,38 @@ function stringList(value: unknown, label: string, maxItems = 20): string[] | un
   if (value === undefined) return undefined
   if (!Array.isArray(value) || value.length > maxItems) throw new RpcError(`Invalid ${label}`, 400)
   return value.map((item, index) => optionalText(item, `${label}[${index}]`) as string)
+}
+
+function artifactVersion(value: unknown): number {
+  const version = Number(value)
+  if (!Number.isInteger(version) || version < 1) throw new RpcError('Invalid artifact version', 400)
+  return version
+}
+
+function revisionInstruction(value: unknown): string {
+  const instruction = typeof value === 'string' ? value.trim() : ''
+  if (!instruction || instruction.length > 4_000) throw new RpcError('Invalid revision instruction', 400)
+  return instruction
+}
+
+function artifactReadService(ctx: DispatchContext) {
+  if (typeof ctx.productionRuns.readArtifactContent !== 'function') throw new RpcError('Versioned artifact reads are unavailable', 501)
+  return ctx.productionRuns.readArtifactContent
+}
+
+function artifactRevisionService(ctx: DispatchContext) {
+  if (typeof ctx.productionRuns.requestArtifactRevision !== 'function') throw new RpcError('Artifact revisions are unavailable', 501)
+  return ctx.productionRuns.requestArtifactRevision
+}
+
+function artifactReviewService(ctx: DispatchContext) {
+  if (typeof ctx.productionRuns.reviewArtifact !== 'function') throw new RpcError('Artifact review is unavailable', 501)
+  return ctx.productionRuns.reviewArtifact
+}
+
+function storyboardMaterializeService(ctx: DispatchContext) {
+  if (typeof ctx.productionRuns.materializeStoryboard !== 'function') throw new RpcError('Storyboard materialization is unavailable', 501)
+  return ctx.productionRuns.materializeStoryboard
 }
 
 function productionBrief(value: unknown): ProductionBrief {
@@ -179,6 +217,50 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         requiredIdentifier(params.runId, 'run'),
         requiredIdentifier(params.artifactId, 'artifact'),
       )
+    case 'production.artifact.read': {
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'artifactId']))
+      return artifactReadService(ctx)(
+        requiredIdentifier(params.projectId, 'project'),
+        requiredIdentifier(params.runId, 'run'),
+        requiredIdentifier(params.artifactId, 'artifact'),
+      )
+    }
+    case 'production.artifact.revise': {
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'artifactId', 'expectedVersion', 'instruction', 'kind']))
+      const kind = params.kind === 'script' || params.kind === 'storyboard' ? params.kind : ''
+      if (!kind) throw new RpcError('Artifact revision kind must be script or storyboard', 400)
+      return artifactRevisionService(ctx)({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        runId: requiredIdentifier(params.runId, 'run'),
+        artifactId: requiredIdentifier(params.artifactId, 'artifact'),
+        expectedVersion: artifactVersion(params.expectedVersion),
+        instruction: revisionInstruction(params.instruction),
+        kind,
+      })
+    }
+    case 'production.artifact.review': {
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'artifactId', 'expectedVersion', 'decision']))
+      const decision = params.decision === 'approved' || params.decision === 'changes_requested' || params.decision === 'rejected'
+        ? params.decision
+        : ''
+      if (!decision) throw new RpcError('Invalid artifact review decision', 400)
+      return artifactReviewService(ctx)({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        runId: requiredIdentifier(params.runId, 'run'),
+        artifactId: requiredIdentifier(params.artifactId, 'artifact'),
+        expectedVersion: artifactVersion(params.expectedVersion),
+        decision,
+      })
+    }
+    case 'production.storyboard.materialize': {
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'artifactId', 'expectedVersion']))
+      return storyboardMaterializeService(ctx)({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        runId: requiredIdentifier(params.runId, 'run'),
+        artifactId: requiredIdentifier(params.artifactId, 'artifact'),
+        expectedVersion: artifactVersion(params.expectedVersion),
+      })
+    }
     case 'production.control': {
       // A4：pause/resume/cancel。B3：set_trust（配 trustLevel）改信任档位。
       // commandId 按 (action[/trustLevel], revision) 确定 → 同一状态下重复触发天然幂等。

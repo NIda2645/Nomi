@@ -103,6 +103,7 @@ describe('nomi-mcp · MCP Apps 活生成 widget serving', () => {
       'nomi_get_run',
       'nomi_list_models',
       'nomi_list_projects',
+      'nomi_read_artifact',
       'nomi_read_canvas',
       'nomi_subscribe_run',
     ])

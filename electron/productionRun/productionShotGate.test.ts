@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { buildToolOutcome } from '../capabilityCore/mcpToolResults'
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
 
 async function waitFor(check: () => boolean, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -25,6 +26,7 @@ function makeRuntime(root: string, submissions: string[]) {
         { key: 'a', title: 'Direction A', oneLiner: 'Quiet product story' },
         { key: 'b', title: 'Direction B', oneLiner: 'Fast product montage' },
       ] }
+      if (op === 'production.plan-script') return { text: 'shot gate script' }
       if (op === 'production.plan-storyboard') return { plan: {
         title: 'promo', anchors: [], shots: [
           { index: 1, shotKind: 'video', prompt: 'shot one' },
@@ -68,7 +70,8 @@ async function driveToFirstShotGate(
     commandId: 'approve-direction', expectedRevision: current.revision, type: 'gate.decide',
     payload: { gateId: 'gate-direction-v1', status: 'approved', choiceKey: 'a' }, issuedAt: new Date().toISOString(),
   })
-  await waitFor(() => Boolean(service.readFull('project-1', runId)?.artifacts.some((artifact) => artifact.kind === 'storyboard')))
+  await approveLatestScript(service, 'project-1', runId)
+  await approveLatestStoryboard(service, 'project-1', runId)
   current = service.readFull('project-1', runId)!
   const storyboard = current.artifacts.find((artifact) => artifact.kind === 'storyboard')!
   const attached = await service.command('project-1', runId, {

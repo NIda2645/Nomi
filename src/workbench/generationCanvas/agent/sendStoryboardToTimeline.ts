@@ -2,7 +2,7 @@ import { useWorkbenchStore } from '../../workbenchStore'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { sendGenerationNodeToTimeline } from './sendGenerationNodeToTimeline'
 import { planStoryboardTimeline, type StoryboardTimelineUnitRole } from './storyboardTimelinePlan'
-import type { TimelineState } from '../../timeline/timelineTypes'
+import type { TimelineState, TimelineTextClip, TimelineTransition } from '../../timeline/timelineTypes'
 
 export type SendStoryboardToTimelineResult = {
   ok: boolean
@@ -31,6 +31,45 @@ function timelineSourceNodeIds(timeline: TimelineState): Set<string> {
     }
   }
   return ids
+}
+
+/** Prefer an authored subtitle; dialogue is the honest fallback when no subtitle was supplied. */
+export function storyboardCaptionText(node: { meta?: Record<string, unknown> }): string | undefined {
+  const meta = node.meta || {}
+  for (const key of ['subtitle', 'dialogue']) {
+    const value = meta[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+function materializeStoryboardCaption(nodeId: string, clip: { startFrame: number; endFrame: number }, text: string): void {
+  const store = useWorkbenchStore.getState()
+  const timeline = store.timeline
+  // arrange is append-idempotent, but manual “send selected” can be repeated after moving a clip.
+  // Source provenance—not a generated random text id—keeps one storyboard subtitle per shot.
+  if (timeline.textClips.some((candidate) => candidate.sourceNodeId === nodeId)) return
+  const textClip: TimelineTextClip = {
+    id: `storyboard-caption-${nodeId.replace(/[^A-Za-z0-9._-]+/g, '-')}`,
+    sourceNodeId: nodeId,
+    text,
+    style: 'caption',
+    startFrame: clip.startFrame,
+    endFrame: clip.endFrame,
+  }
+  store.setTimeline({ ...timeline, textClips: [...timeline.textClips, textClip] })
+}
+
+function transitionFromNode(node: { meta?: Record<string, unknown> }): Omit<TimelineTransition, 'fromClipId' | 'toClipId'> | undefined {
+  const raw = node.meta?.transition
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const record = raw as Record<string, unknown>
+  const type = record.type
+  if (!['cut', 'dissolve', 'fade', 'match_cut', 'whip_pan'].includes(String(type))) return undefined
+  const durationFrames = Number.isInteger(record.durationFrames) && Number(record.durationFrames) > 0
+    ? Number(record.durationFrames)
+    : undefined
+  return { type: type as TimelineTransition['type'], ...(durationFrames ? { durationFrames } : {}) }
 }
 
 /**
@@ -67,6 +106,7 @@ function placeUnitsSequentially(
 ): SendStoryboardToTimelineResult['sent'] {
   let cursor = Math.max(0, Math.floor(startFrame))
   const sent: SendStoryboardToTimelineResult['sent'] = []
+  const sentNodes: Array<{ nodeId: string; clipId: string }> = []
   for (const unit of units) {
     const result = sendGenerationNodeToTimeline(
       {
@@ -82,6 +122,10 @@ function placeUnitsSequentially(
     )
     if (result.ok) {
       cursor = result.startFrame + result.clip.frameCount
+      const node = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === unit.nodeId)
+      const caption = node ? storyboardCaptionText(node) : undefined
+      if (caption) materializeStoryboardCaption(unit.nodeId, result.clip, caption)
+      sentNodes.push({ nodeId: unit.nodeId, clipId: result.clip.id })
       sent.push({
         nodeId: unit.nodeId,
         clipId: result.clip.id,
@@ -89,6 +133,25 @@ function placeUnitsSequentially(
         startFrame: result.startFrame,
         ...(unit.role ? { role: unit.role } : {}),
       })
+    }
+  }
+  // Transitions are authored metadata, not a count of adjacent cuts. Only an explicit
+  // transition on the preceding shot becomes a timeline entry; missing metadata remains a cut.
+  if (sentNodes.length > 1) {
+    const canvasNodes = useGenerationCanvasStore.getState().nodes
+    const existing = useWorkbenchStore.getState().timeline.transitions || []
+    const additions: TimelineTransition[] = []
+    for (let index = 0; index < sentNodes.length - 1; index += 1) {
+      const transition = transitionFromNode(canvasNodes.find((node) => node.id === sentNodes[index].nodeId) || {})
+      if (!transition) continue
+      const pair = { fromClipId: sentNodes[index].clipId, toClipId: sentNodes[index + 1].clipId, ...transition }
+      if (existing.some((candidate) => candidate.fromClipId === pair.fromClipId && candidate.toClipId === pair.toClipId)
+        || additions.some((candidate) => candidate.fromClipId === pair.fromClipId && candidate.toClipId === pair.toClipId)) continue
+      additions.push(pair)
+    }
+    if (additions.length) {
+      const timeline = useWorkbenchStore.getState().timeline
+      useWorkbenchStore.getState().setTimeline({ ...timeline, transitions: [...(timeline.transitions || []), ...additions] })
     }
   }
   return sent

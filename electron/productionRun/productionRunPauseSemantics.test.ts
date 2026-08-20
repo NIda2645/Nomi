@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
 
 // 暂停的花钱语义（2026-08-11 用户质疑「中转已提交的收不回」后补的三洞修复）：
 // ① 提交门：pausing/paused 后 driver 不再提交新任务（能守住的唯一花钱边界）；
@@ -37,6 +38,7 @@ describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () 
           { key: 'b', title: '方向二', oneLiner: 'y' },
         ] }
       }
+      if (op === 'production.plan-script') return { text: 'pause semantics script' }
       if (op === 'production.plan-storyboard') {
         return { plan: { title: 'promo', anchors: [], shots: [
           { index: 1, shotKind: 'video', prompt: 'shot one' },
@@ -74,7 +76,8 @@ describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () 
       commandId: 'direction', expectedRevision: 0, type: 'gate.decide',
       payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
     })
-    await waitFor(() => Boolean(service.readFull('project-1', runId)?.artifacts.some((a) => a.kind === 'storyboard')))
+    await approveLatestScript(service, 'project-1', runId)
+    await approveLatestStoryboard(service, 'project-1', runId)
     const planned = service.readFull('project-1', runId)!
     const storyboardId = planned.artifacts.find((a) => a.kind === 'storyboard')!.artifactId
     const attached = await service.command('project-1', runId, {

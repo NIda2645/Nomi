@@ -91,6 +91,7 @@ export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Elemen
       statuses: {
         draft: t('taskCenter.productionRun.statuses.draft'),
         awaiting_direction: t('taskCenter.productionRun.statuses.awaitingDirection'),
+        awaiting_script_review: t('taskCenter.productionRun.statuses.awaitingScriptReview'),
         awaiting_storyboard_review: t('taskCenter.productionRun.statuses.awaitingStoryboardReview'),
         awaiting_contract: t('taskCenter.productionRun.statuses.awaitingContract'),
         ready: t('taskCenter.productionRun.statuses.ready'),

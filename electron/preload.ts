@@ -134,6 +134,8 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     createDraft: (payload: unknown) => ipcRenderer.invoke("nomi:production-runs:create-draft", payload),
     command: (projectId: string, runId: string, command: unknown) =>
       ipcRenderer.invoke("nomi:production-runs:command", { projectId, runId, command }),
+    materializeStoryboard: (projectId: string, runId: string, artifactId: string, expectedVersion: number) =>
+      ipcRenderer.invoke("nomi:production-runs:materialize-storyboard", { projectId, runId, artifactId, expectedVersion }),
     events: (projectId: string, runId: string, afterCursor: number) =>
       ipcRenderer.invoke("nomi:production-runs:events", { projectId, runId, afterCursor }),
   },

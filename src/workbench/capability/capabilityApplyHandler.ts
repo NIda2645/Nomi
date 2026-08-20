@@ -5,6 +5,10 @@ import { getDesktopBridge } from '../../desktop/bridge'
 import i18n from '../../i18n'
 import { runStoryboardPlanner } from '../generationCanvas/agent/runStoryboardPlanner'
 import { runDirectionPlanner } from '../generationCanvas/agent/runDirectionPlanner'
+import { sendWorkbenchAiMessage } from '../ai/workbenchAiClient'
+import { clearWorkbenchAgentSession } from '../../api/desktopClient'
+import { getAssistantModelPref } from '../ai/assistantModelPref'
+import { readWindowUrlParam } from '../windowUrlParam'
 import { useWorkbenchStore } from '../workbenchStore'
 import { mintSpendGrant } from '../api/taskApi'
 import { runGenerationNode } from '../generationCanvas/runner/generationRunController'
@@ -12,6 +16,13 @@ import { arrangeStoryboardToTimeline } from '../generationCanvas/agent/sendStory
 import { exportTimelineToMp4 } from '../export/exportApi'
 import { verifyShotsAndReport, useShotVerifyStore, isShotVerifyEnabled } from '../generationCanvas/agent/shotVerifyStore'
 import { isAnchorFrozen, isVisualAnchorNode } from '../generationCanvas/model/anchorBibleKeys'
+import { assertDraftFilmReady, draftFilmTimelineFromState } from '../preview/timelineSubtitleTransitionContract'
+import {
+  parseStoryboardPlan,
+  storyboardPlanToCreateNodesArgs,
+} from '../generationCanvas/agent/storyboardPlan'
+import { resolveStoryboardImageDefault, resolveStoryboardVideoDefault } from '../generationCanvas/agent/availableModels'
+import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
 // 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
@@ -43,6 +54,56 @@ function describeIntent(intent: string | undefined): string {
     return i18n.t(`runtime.capability.intent.${normalized}`)
   }
   return i18n.t('runtime.capability.intent.fallback')
+}
+
+async function runProductionTextPlanner(input: {
+  projectId?: string
+  goal?: string
+  instruction?: string
+  source?: string
+  outputFormat?: 'script' | 'storyboard'
+}): Promise<string> {
+  const projectId = input.projectId || readWindowUrlParam('projectId') || ''
+  const sessionKey = `nomi:production-script:${projectId || 'local'}`
+  await clearWorkbenchAgentSession(sessionKey).catch(() => {})
+  const prompt = input.outputFormat === 'storyboard'
+    ? [
+        '你是分镜规划师。请根据下面的原分镜方案和修改要求，输出一份完整、可执行的 StoryboardPlan JSON。',
+        '只输出 JSON，不要 Markdown、解释或代码围栏。必须包含 title、anchors、shots；每个 shot 必须包含 index、durationSec、anchorIds、prompt。',
+        '允许的 shot 字段：shotId、shotKind(image|video)、durationSec、anchorIds、prompt、modelKey、modeId、params、ffDesc、motionDesc、lfDesc、subtitle、dialogue、variationType(large|medium|small)、camIdx、continuity、transition({type:cut|dissolve|fade|match_cut|whip_pan,durationFrames?})、keyframe。',
+        `修改要求：${input.instruction || '保持原方案，只修正明显问题。'}`,
+        '原分镜方案：',
+        input.source || '',
+      ].join('\n')
+    : input.instruction
+    ? [
+        '你是短视频编剧。请在不改变事实的前提下，按修改要求改写下面的稿件。',
+        `修改要求：${input.instruction}`,
+        '原稿：',
+        input.source || input.goal || '',
+        '只输出改写后的完整稿件，不要解释。',
+      ].join('\n')
+    : [
+        '你是短视频编剧。请把下面的创作简报写成一份可审阅的完整初稿。',
+        '要求：有明确开场、发展、转折和结尾；每镜写清画面、动作、声音/对白和字幕；不要编造简报没有的产品事实。',
+        '创作简报：',
+        input.goal || '',
+        '只输出稿件正文，不要解释。',
+      ].join('\n')
+  const pref = getAssistantModelPref()
+  const response = await sendWorkbenchAiMessage({
+    prompt,
+    displayPrompt: input.instruction ? '修改制作稿件' : '生成制作剧本',
+    sessionKey,
+    ...(projectId ? { projectId } : {}),
+    skillKey: 'workbench.production.script-planner',
+    skillName: '剧本初稿规划',
+    mode: 'chat',
+    ...(pref ? { agentModelKey: pref.modelKey, agentVendorKey: pref.vendorKey } : {}),
+  }, {})
+  const text = response.text?.trim()
+  if (!text) throw new Error('剧本规划没有返回可审阅内容')
+  return text
 }
 
 /** 外部 MCP 付费确认：弹全仓唯一的确认对话框（agent 来源 + 明细 + 60s 倒计时），真人点了才回 confirmed。 */
@@ -197,6 +258,46 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
         : null
       return runDirectionPlanner({ brief, playbook })
     }
+    case 'production.plan-script': {
+      const brief = data.brief && typeof data.brief === 'object' && !Array.isArray(data.brief)
+        ? data.brief as Record<string, unknown>
+        : {}
+      const lines = [
+        typeof brief.goal === 'string' ? `目标：${brief.goal}` : '',
+        typeof brief.audience === 'string' ? `受众：${brief.audience}` : '',
+        typeof brief.channel === 'string' ? `渠道：${brief.channel}` : '',
+        typeof brief.tone === 'string' ? `调性：${brief.tone}` : '',
+        typeof brief.durationSeconds === 'number' ? `时长：约 ${brief.durationSeconds} 秒` : '',
+        Array.isArray(brief.sellingPoints) ? `卖点：${brief.sellingPoints.filter((value): value is string => typeof value === 'string').join('、')}` : '',
+      ].filter(Boolean)
+      return { text: await runProductionTextPlanner({ projectId, goal: lines.join('\n') }) }
+    }
+    case 'production.revise-script': {
+      return { text: await runProductionTextPlanner({
+        projectId,
+        instruction: typeof data.instruction === 'string' ? data.instruction : '',
+        source: typeof data.sourceContent === 'string' ? data.sourceContent : '',
+      }) }
+    }
+    case 'production.revise-storyboard': {
+      const revised = await runProductionTextPlanner({
+        projectId,
+        instruction: typeof data.instruction === 'string' ? data.instruction : '',
+        source: typeof data.sourceContent === 'string' ? data.sourceContent : '',
+        outputFormat: 'storyboard',
+      })
+      // The storyboard revision contract is deliberately stricter than script
+      // revision: prose is never silently accepted as a plan.  Accept only a
+      // raw JSON object (or a JSON fenced block for providers that add fences),
+      // then run the same runtime schema used by materialization.
+      const fenced = revised.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1]
+      const candidate = fenced || revised.trim()
+      const parsed = JSON.parse(candidate) as unknown
+      const plan = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'plan' in parsed
+        ? (parsed as Record<string, unknown>).plan
+        : parsed
+      return { plan: parseStoryboardPlan(plan) }
+    }
     case 'production.plan-storyboard': {
       const brief = data.brief && typeof data.brief === 'object' && !Array.isArray(data.brief)
         ? data.brief as Record<string, unknown>
@@ -209,11 +310,65 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       if (!plan) throw new Error(i18n.t('runtime.capability.storyboardPlanMissing'))
       return { text: result.text, plan }
     }
+    case 'production.materialize-storyboard': {
+      // External MCP and the in-app StoryboardPlanEditor deliberately share
+      // this callable path: parse the approved IR, convert it to the canonical
+      // create_canvas_nodes payload, then let applyCanvasToolCall perform the
+      // real Zustand mutation/edge wiring/layout. The service performs all
+      // project/run/version/provenance checks before this operation is reached.
+      const plan = parseStoryboardPlan(data.plan)
+      const [imageDefault, videoDefault] = await Promise.all([
+        resolveStoryboardImageDefault(),
+        resolveStoryboardVideoDefault(),
+      ])
+      const args = storyboardPlanToCreateNodesArgs(plan, {
+        ...(imageDefault.modelKey ? { defaultImageModelKey: imageDefault.modelKey } : {}),
+        ...(imageDefault.modeId ? { defaultImageModeId: imageDefault.modeId } : {}),
+        ...(imageDefault.refModeId ? { defaultImageRefModeId: imageDefault.refModeId } : {}),
+        ...(videoDefault.modelKey ? { defaultVideoModelKey: videoDefault.modelKey } : {}),
+        ...(videoDefault.modeId ? { defaultVideoModeId: videoDefault.modeId } : {}),
+      })
+      const applied = await applyCanvasToolCall('create_canvas_nodes', args) as {
+        createdNodeIds?: unknown
+        clientIdToNodeId?: unknown
+        connectedCount?: unknown
+      }
+      const createdNodeIds = Array.isArray(applied?.createdNodeIds)
+        ? applied.createdNodeIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+        : []
+      const clientIdToNodeId = applied?.clientIdToNodeId && typeof applied.clientIdToNodeId === 'object' && !Array.isArray(applied.clientIdToNodeId)
+        ? applied.clientIdToNodeId as Record<string, unknown>
+        : {}
+      const nodeById = new Map(useGenerationCanvasStore.getState().nodes.map((node) => [node.id, node]))
+      const bindings = args.nodes
+        .map((created) => {
+          const mapped = clientIdToNodeId[created.clientId]
+          const nodeId = typeof mapped === 'string' && mapped.trim() ? mapped : resolveCanvasToolNodeId(created.clientId)
+          const node = nodeById.get(nodeId)
+          const meta = node?.meta as Record<string, unknown> | undefined
+          return {
+            nodeId,
+            stageId: 'generate',
+            provider: typeof meta?.modelVendor === 'string' ? meta.modelVendor : typeof meta?.vendor === 'string' ? meta.vendor : '',
+            model: typeof meta?.modelKey === 'string' ? meta.modelKey : '',
+            ...(created.metadata ? { metadata: created.metadata } : {}),
+          }
+        })
+        .filter((binding) => binding.nodeId && binding.provider && binding.model)
+      return {
+        createdNodeIds,
+        ...(typeof applied?.connectedCount === 'number' ? { connectedCount: applied.connectedCount } : {}),
+        bindings,
+      }
+    }
     case 'production.generate-node': {
       const nodeId = typeof data.nodeId === 'string' ? data.nodeId.trim() : ''
       if (!nodeId) throw new Error('Production generation requires a node')
       const grantId = await mintSpendGrant([nodeId], typeof data.maxAttemptsPerJob === 'number' ? data.maxAttemptsPerJob : undefined)
-      const result = await runGenerationNode(nodeId, { grantId })
+      const retryDirective = typeof data.retryDirective === 'string' && data.retryDirective.trim()
+        ? data.retryDirective.trim()
+        : undefined
+      const result = await runGenerationNode(nodeId, { grantId, ...(retryDirective ? { promptSuffix: retryDirective } : {}) })
       return {
         nodeId,
         status: 'succeeded',
@@ -223,7 +378,14 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
     case 'production.arrange': {
       const result = arrangeStoryboardToTimeline()
       if (!result.ok && result.total === 0) throw new Error('没有可排片的镜头')
-      return { arranged: result.sent.length, total: result.total, placed: result.sent.map((item) => ({ nodeId: item.nodeId, role: item.role, startFrame: item.startFrame })), skipped: result.skipped }
+      const timelineContract = draftFilmTimelineFromState(useWorkbenchStore.getState().timeline)
+      return {
+        arranged: result.sent.length,
+        total: result.total,
+        placed: result.sent.map((item) => ({ nodeId: item.nodeId, role: item.role, startFrame: item.startFrame })),
+        skipped: result.skipped,
+        timelineContract,
+      }
     }
     case 'production.verify-shots': {
       // W1.5：qa 阶段审片（路径②）。driver 传本次已生成的镜头节点 id，渲染层复用现成审片闭环判分回传。
@@ -244,6 +406,13 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
     case 'production.export': {
       const project = typeof data.projectId === 'string' ? data.projectId : ''
       const state = useWorkbenchStore.getState()
+      // Production Run exports are the final quality gate: a rough cut without
+      // captions or a complete shot sequence must stop with an actionable
+      // message instead of being reported as a finished film. Manual exports
+      // without a runId retain the existing flexible editor behavior.
+      if (typeof data.runId === 'string' && data.runId.trim()) {
+        assertDraftFilmReady(draftFilmTimelineFromState(state.timeline))
+      }
       const result = await exportTimelineToMp4({
         projectId: project,
         timeline: state.timeline,

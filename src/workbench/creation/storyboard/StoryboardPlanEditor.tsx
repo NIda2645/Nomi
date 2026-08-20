@@ -28,6 +28,30 @@ import StoryboardBulkBar from './StoryboardBulkBar'
 import StoryboardShotCard from './StoryboardShotCard'
 import { productionRunApi } from '../../production/productionRunApi'
 import { useProductionRunStore } from '../../production/productionRunStore'
+import type { StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
+
+type ApprovedScriptLike = {
+  artifactId: string
+  kind: string
+  status: string
+  version?: number
+  contentHash?: string
+}
+
+/** Pure provenance check shared by the UI guard and its adversarial tests. */
+export function storyboardPlanSourceMatchesApprovedScript(
+  plan: Pick<StoryboardPlan, 'sourceScriptArtifactId' | 'sourceScriptVersion' | 'sourceScriptHash'>,
+  artifacts: readonly ApprovedScriptLike[],
+): boolean {
+  if (!plan.sourceScriptArtifactId && plan.sourceScriptVersion === undefined && !plan.sourceScriptHash) return true
+  const approvedScript = [...artifacts]
+    .reverse()
+    .find((artifact) => artifact.kind === 'script' && (artifact.status === 'adopted' || artifact.status === 'ready'))
+  return Boolean(approvedScript)
+    && plan.sourceScriptArtifactId === approvedScript?.artifactId
+    && plan.sourceScriptVersion === approvedScript?.version
+    && plan.sourceScriptHash === approvedScript?.contentHash
+}
 
 /**
  * 分镜方案字段编辑器（S3，决策 B）。创作区主列在 storyboardPlan 存在时替换文档编辑器渲染它。
@@ -76,8 +100,52 @@ export default function StoryboardPlanEditor(): JSX.Element | null {
 
   const onConfirm = async () => {
     if (issues.length > 0 || landing) return
+    // A storyboard is a one-way projection of the approved script. Check the
+    // identity before mutating the canvas so a stale plan cannot leave orphaned
+    // nodes that the production run will later reject.
+    const productionRunBeforeLanding = useProductionRunStore.getState().run
+    if (productionRunBeforeLanding && (plan.sourceScriptHash || plan.sourceScriptArtifactId || plan.sourceScriptVersion)) {
+      // A provenance-bearing plan is only valid when the exact approved source
+      // is still present. Missing source metadata is not a match: otherwise an
+      // old storyboard could silently land after the script was revised.
+      const matches = storyboardPlanSourceMatchesApprovedScript(plan, productionRunBeforeLanding.artifacts)
+      if (!matches) {
+        await alertDialog({
+          title: t('storyboardEditor.landFailed'),
+          message: t('storyboardEditor.unknownRetry'),
+        })
+        return
+      }
+    }
     setLanding(true)
     try {
+      const productionRun = useProductionRunStore.getState().run
+      const storyboardArtifact = productionRun?.artifacts.find((artifact) => artifact.kind === 'storyboard' && artifact.status === 'candidate')
+      // Production runs use the same durable review → materialize seam as
+      // external MCP. The UI confirmation is the storyboard review decision;
+      // only after it is adopted does the main process ask the renderer to
+      // create nodes and return durable bindings.
+      if (productionRun && storyboardArtifact) {
+        const reviewed = await productionRunApi.command(productionRun.projectId, productionRun.runId, {
+          commandId: globalThis.crypto.randomUUID(),
+          expectedRevision: productionRun.revision,
+          type: 'artifact.review',
+          payload: { artifactId: storyboardArtifact.artifactId, decision: 'approved' },
+          issuedAt: new Date().toISOString(),
+        })
+        const materialized = await productionRunApi.materializeStoryboard(
+          productionRun.projectId,
+          productionRun.runId,
+          storyboardArtifact.artifactId,
+          reviewed.run.artifacts.find((artifact) => artifact.artifactId === storyboardArtifact.artifactId)?.version || storyboardArtifact.version || 1,
+        )
+        await useProductionRunStore.getState().load(productionRun.projectId)
+        commitStoryboardPlan()
+        setWorkspaceMode('generation')
+        const landedIds = materialized.createdNodeIds
+        if (landedIds.length > 1) useGenerationCanvasStore.getState().selectNodes(landedIds)
+        return
+      }
       // 注入默认模型（用户拍板 B-clean）：定妆卡=图片模型（偏好 GPT Image 2）；镜头=视频模型
       // （偏好 Seedance，没在编辑器为某镜选模型时兜底）。通用解析，解析失败/无可用模型 → 全空，
       // 节点不带模型、用户在画布上自己选（不阻断落画布）。
@@ -93,32 +161,6 @@ export default function StoryboardPlanEditor(): JSX.Element | null {
         ...(videoDefault.modeId ? { defaultVideoModeId: videoDefault.modeId } : {}),
       })
       await applyCanvasToolCall('create_canvas_nodes', args)
-      const productionRun = useProductionRunStore.getState().run
-      const storyboardArtifact = productionRun?.artifacts.find((artifact) => artifact.kind === 'storyboard' && artifact.status === 'candidate')
-      if (productionRun && storyboardArtifact) {
-        const nodeById = new Map(useGenerationCanvasStore.getState().nodes.map((node) => [node.id, node]))
-        const bindings = args.nodes
-          .map((created) => {
-            const nodeId = resolveCanvasToolNodeId(created.clientId)
-            const node = nodeById.get(nodeId)
-            const meta = node?.meta as Record<string, unknown> | undefined
-            return {
-              nodeId,
-              stageId: 'generate',
-              provider: typeof meta?.modelVendor === 'string' ? meta.modelVendor : typeof meta?.vendor === 'string' ? meta.vendor : '',
-              model: typeof meta?.modelKey === 'string' ? meta.modelKey : '',
-            }
-          })
-          .filter((binding) => binding.nodeId)
-        await productionRunApi.command(productionRun.projectId, productionRun.runId, {
-          commandId: globalThis.crypto.randomUUID(),
-          expectedRevision: productionRun.revision,
-          type: 'plan.attach',
-          payload: { artifactId: storyboardArtifact.artifactId, bindings },
-          issuedAt: new Date().toISOString(),
-        })
-        await useProductionRunStore.getState().load(productionRun.projectId)
-      }
       // 不再即焚:方案保留、转「已落画布」、收起编辑器 → 卡片留在对话流可回看/再编辑。
       commitStoryboardPlan()
       setWorkspaceMode('generation')

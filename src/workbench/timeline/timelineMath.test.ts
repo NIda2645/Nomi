@@ -164,6 +164,22 @@ describe('normalizeTimeline — 归一化与清洗', () => {
     ] }] }
     expect(videoTrackClips(normalizeTimeline(input))).toEqual([])
   })
+
+  it('只保留明确的转场元数据，不把非法时长冒充转场', () => {
+    const out = normalizeTimeline({
+      tracks: [],
+      transitions: [
+        { fromClipId: 'a', toClipId: 'b', type: 'dissolve', durationFrames: 6 },
+        { fromClipId: 'b', toClipId: 'c', type: 'cut' },
+        { fromClipId: 'c', toClipId: 'd', type: 'fade', durationFrames: 0 },
+      ],
+    })
+    expect(out.transitions).toEqual([
+      { fromClipId: 'a', toClipId: 'b', type: 'dissolve', durationFrames: 6 },
+      { fromClipId: 'b', toClipId: 'c', type: 'cut' },
+      { fromClipId: 'c', toClipId: 'd', type: 'fade' },
+    ])
+  })
 })
 
 describe('normalizeTimeline — fps derive（不再钉死 30）', () => {

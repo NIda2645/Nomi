@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
-import { buildQaStageOutcome, adoptedGenerationShotNodeIds } from './productionQaVerdict'
+import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
+import { buildQaRetryPlans, buildQaStageOutcome, adoptedGenerationShotNodeIds } from './productionQaVerdict'
 
 // W1.5 · 把审片接进 production run 路径②的 qa 阶段。
 // 方案：docs/plan/2026-08-19-w1-shot-verify-wiring.md §3「production run 路径②的对称落点」+ T10。
@@ -31,7 +32,8 @@ async function driveToRoughCut(
     commandId: 'direction', expectedRevision: service.readFull('project-1', runId)!.revision, type: 'gate.decide',
     payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
   })
-  await waitFor(() => Boolean(service.readFull('project-1', runId)?.artifacts.some((a) => a.kind === 'storyboard')))
+  await approveLatestScript(service, 'project-1', runId)
+  await approveLatestStoryboard(service, 'project-1', runId)
   const planned = service.readFull('project-1', runId)!
   const storyboardId = planned.artifacts.find((a) => a.kind === 'storyboard')!.artifactId
   const attached = await service.command('project-1', runId, {
@@ -61,11 +63,16 @@ function makeTwoShotService(root: string, verifyResponse: (shotNodeIds: string[]
   const requestRenderer = async (op: string, payload: unknown) => {
     seen.push(op)
     if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+    if (op === 'production.plan-script') return { text: 'qa script' }
     if (op === 'production.plan-storyboard') return { plan: { title: 'promo', anchors: [], shots: [
       { index: 1, shotKind: 'video', prompt: 'shot one' },
       { index: 2, shotKind: 'video', prompt: 'shot two' },
     ] } }
-    if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
+    if (op === 'production.generate-node') {
+      const retryDirective = (payload as Record<string, unknown>).retryDirective
+      if (typeof retryDirective === 'string' && retryDirective.trim()) seen.push(`retry-directive:${retryDirective}`)
+      return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
+    }
     if (op === 'production.verify-shots') {
       const rawIds = (payload as Record<string, unknown>).shotNodeIds
       const ids = Array.isArray(rawIds) ? rawIds.filter((id): id is string => typeof id === 'string') : []
@@ -106,16 +113,23 @@ describe('production qa 审片接线（W1.5 · 路径②）', () => {
     // qa.verdict 事件：两镜各一条，过检/红标可辨、红标带维度与理由。
     const events = await service.readEvents('project-1', runId, 0, 0)
     const verdictEvents = events.events.filter((e) => (e as { type?: string }).type === 'qa.verdict')
-    expect(verdictEvents).toHaveLength(2)
+    // First pass + one bounded targeted retry for the red-marked shot.
+    expect(verdictEvents.length).toBeGreaterThanOrEqual(2)
     const messages = verdictEvents.map((e) => (e as { message: string }).message)
     expect(messages.some((m) => m.includes('审片通过'))).toBe(true)
     expect(messages.some((m) => m.includes('审片红标') && m.includes('身份') && m.includes('主体换脸了'))).toBe(true)
+    expect(messages.some((m) => m.includes('已安排定向重滚'))).toBe(true)
+    expect(seen.some((item) => item.startsWith('retry-directive:') && item.includes('身份'))).toBe(true)
 
     // qa 阶段摘要进投影（nomi_get_run 读得到），且 qa 阶段 completed。
     const projection = service.readProjection('project-1', runId)
     const qaStage = projection.stages.find((s) => s.stageId === 'qa')
     expect(qaStage?.status).toBe('completed')
     expect((qaStage as { qaSummary?: string })?.qaSummary).toContain('红标')
+    const retryJob = projection.jobs.find((job) => job.retryCount === 1)
+    expect(retryJob).toMatchObject({ parentJobId: expect.stringContaining('shot-2'), retryReason: expect.stringContaining('身份') })
+    const retryArtifact = projection.artifacts.find((artifact) => artifact.retryCount === 1)
+    expect(retryArtifact).toMatchObject({ parentArtifactId: expect.stringContaining('shot-2'), retryReason: expect.stringContaining('身份') })
     // 不新增门、不改花钱语义：qa 阶段没有新增任何 gate。
     expect(projection.gates.some((g) => g.gateId.startsWith('gate-qa'))).toBe(false)
   })
@@ -175,5 +189,31 @@ describe('buildQaStageOutcome / adoptedGenerationShotNodeIds（纯逻辑）', ()
       { stageId: 'generate', status: 'adopted', nodeId: 'shot-3' },
     ] } as unknown as Parameters<typeof adoptedGenerationShotNodeIds>[0]
     expect(adoptedGenerationShotNodeIds(run)).toEqual(['shot-1', 'shot-3'])
+  })
+
+  it('只为低分镜头生成定向重试计划，并受 attempt 与预算双重边界限制', () => {
+    const run = {
+      policy: { maxAttemptsPerJob: 1 },
+      budget: { authorized: 1, reserved: 0, actual: 0, unsettled: 0 },
+      jobs: [{ jobId: 'job:a', stageId: 'generate', nodeId: 'a', attempt: 0, updatedAt: '2026-01-01T00:00:00.000Z' },
+        { jobId: 'job:b', stageId: 'generate', nodeId: 'b', attempt: 0, updatedAt: '2026-01-01T00:00:00.000Z' }],
+    } as unknown as Parameters<typeof buildQaRetryPlans>[0]
+    const plans = buildQaRetryPlans(run, [
+      { shotNodeId: 'a', passed: false, flagged: [{ dimensionName: '身份', score: 2, reason: '换脸' }] },
+      { shotNodeId: 'b', passed: false, flagged: [{ dimensionName: '构图', score: 0, reason: '无法判定' }] },
+    ])
+    expect(plans).toHaveLength(1)
+    expect(plans[0]).toMatchObject({ shotNodeId: 'a', eligible: true, retryCount: 1, nextAttempt: 1 })
+    expect(plans[0].retryDirective).toContain('身份')
+
+    const exhausted = buildQaRetryPlans({ ...run, budget: { ...run.budget, reserved: 1 } }, [
+      { shotNodeId: 'a', passed: false, flagged: [{ dimensionName: '身份', score: 2 }] },
+    ])
+    expect(exhausted[0]).toMatchObject({ eligible: false, blockedReason: 'budget_exhausted' })
+
+    const atLimit = buildQaRetryPlans({ ...run, jobs: [{ ...run.jobs[0], attempt: 1 }] }, [
+      { shotNodeId: 'a', passed: false, flagged: [{ dimensionName: '身份', score: 2 }] },
+    ])
+    expect(atLimit[0]).toMatchObject({ eligible: false, blockedReason: 'attempt_limit' })
   })
 })

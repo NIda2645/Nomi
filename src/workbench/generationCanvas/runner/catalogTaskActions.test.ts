@@ -572,6 +572,13 @@ describe('buildCatalogTaskRequest — idempotencyKey 穿透到 request.extras', 
     const built = buildCatalogTaskRequest(node, {})
     expect((built.request.extras as Record<string, unknown>).idempotencyKey).toBeUndefined()
   })
+  it('production QA 的 promptSuffix 只追加到本次请求，不改写节点原始 prompt', () => {
+    const node: GenerationCanvasNode = { id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '保持雨夜窗边构图', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', archetype: { id: 'gpt-image-2', modeId: 't2i' } } }
+    const built = buildCatalogTaskRequest(node, { promptSuffix: '只修正：主体身份，不改变背景。' })
+    expect(built.request.prompt).toContain('保持雨夜窗边构图')
+    expect(built.request.prompt).toContain('只修正：主体身份，不改变背景。')
+    expect(node.prompt).toBe('保持雨夜窗边构图')
+  })
 })
 
 describe('normalizeCatalogTaskResult — image path unaffected', () => {

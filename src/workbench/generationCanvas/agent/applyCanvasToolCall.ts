@@ -290,7 +290,17 @@ export async function applyCanvasToolCall(
         ...(staticFeatures ? { [ANCHOR_META_KEYS.staticFeatures]: staticFeatures } : {}),
         ...(dynamicFeatures ? { [ANCHOR_META_KEYS.dynamicFeatures]: dynamicFeatures } : {}),
       }
-      const meta = Object.keys(identityMarks).length ? { ...(plannedMeta ?? {}), ...identityMarks } : plannedMeta
+      // StoryboardPlan supplies structured provenance/shot-language under `metadata`.
+      // Keep this as a single generic passthrough so plan fields survive in the real
+      // canvas node (not only in the prompt); identity marks remain the authoritative
+      // values for their reserved keys.
+      const structuredMetadata =
+        node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)
+          ? (node.metadata as Record<string, unknown>)
+          : undefined
+      const meta = structuredMetadata || Object.keys(identityMarks).length
+        ? { ...(plannedMeta ?? {}), ...(structuredMetadata ?? {}), ...identityMarks }
+        : plannedMeta
       // 单节点：尊重 agent 指定位置（增量添加可能要贴近某节点），否则同走避让布局。
       const position =
         total > 1

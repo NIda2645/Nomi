@@ -38,12 +38,84 @@ const ARTIFACT_STATUSES = new Set<ProductionArtifact["status"]>([
 ]);
 const GATE_STATUSES = new Set<ProductionGate["status"]>(["waiting", "approved", "rejected", "expired", "revoked"]);
 
+type ArtifactReviewDecision = "approved" | "changes_requested" | "rejected";
+
+function artifactVersion(value: ProductionArtifact): number {
+  return Number.isInteger(value.version) && (value.version as number) > 0 ? value.version as number : 1;
+}
+
+function artifactHash(value: ProductionArtifact | undefined): string | undefined {
+  return value?.contentHash;
+}
+
+function isApprovedScript(value: ProductionArtifact | undefined): boolean {
+  return Boolean(value && value.kind === "script" && value.status === "adopted" && (value.reviewStatus === undefined || value.reviewStatus === "approved"));
+}
+
+function reviewDecision(payload: Record<string, unknown>): ArtifactReviewDecision {
+  const value = typeof payload.decision === "string" ? payload.decision : payload.status;
+  if (value !== "approved" && value !== "changes_requested" && value !== "rejected") {
+    throw new Error("Invalid artifact review decision");
+  }
+  return value;
+}
+
+/** Return whether this candidate has passed review and can become the adopted artifact. */
+export function canAdoptArtifact(run: ProductionRun, artifactId: string): boolean {
+  const candidate = run.artifacts.find((item) => item.artifactId === artifactId);
+  if (!candidate || candidate.status !== "candidate" || candidate.reviewStatus !== "approved") return false;
+  if (candidate.kind === "storyboard") {
+    try {
+      assertStoryboardSourceApproved(run, artifactId);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Enforce the one-way script → storyboard provenance boundary. */
+export function assertStoryboardSourceApproved(run: ProductionRun, artifactId: string): void {
+  const storyboard = run.artifacts.find((item) => item.artifactId === artifactId);
+  if (!storyboard || storyboard.kind !== "storyboard") throw new Error("Storyboard artifact not found");
+  const sourceId = storyboard.sourceArtifactId || storyboard.sourceScriptArtifactId;
+  const source = sourceId ? run.artifacts.find((item) => item.artifactId === sourceId) : undefined;
+  if (!isApprovedScript(source)) throw new Error("approved script required");
+  const sourceVersion = storyboard.sourceVersion ?? storyboard.sourceScriptVersion;
+  if (sourceVersion !== undefined && sourceVersion !== artifactVersion(source!)) {
+    throw new Error("storyboard source script version is stale");
+  }
+  const sourceHash = storyboard.sourceContentHash || storyboard.sourceHash || storyboard.sourceScriptHash;
+  if (sourceHash && artifactHash(source) && sourceHash !== artifactHash(source)) {
+    throw new Error("storyboard source script hash is stale");
+  }
+}
+
+/** Mark derived artifacts rejected when their source is superseded or explicitly changed. */
+export function markDerivedArtifactsStale(run: ProductionRun, sourceArtifactId: string): ProductionRun {
+  const artifacts = run.artifacts.map((item) => {
+    if (item.sourceArtifactId !== sourceArtifactId || item.status === "rejected") return item;
+    return { ...item, status: "rejected" as const, reviewStatus: "changes_requested" as const };
+  });
+  return { ...run, artifacts };
+}
+
+function normalizeArtifactContract(value: ProductionArtifact): ProductionArtifact {
+  const next: ProductionArtifact = {
+    ...value,
+    version: artifactVersion(value),
+    ...(value.source ? {} : { source: "nomi-agent" as const }),
+    ...(value.status === "candidate" && !value.reviewStatus ? { reviewStatus: "waiting" as const } : {}),
+  };
+  return next;
+}
+
 function artifact(payload: Record<string, unknown>): ProductionArtifact {
   const value = record(payload, "artifact");
   if (!ARTIFACT_STATUSES.has(value.status as ProductionArtifact["status"])) {
     throw new Error("Invalid artifact status");
   }
-  return value as ProductionArtifact;
+  return normalizeArtifactContract(value as ProductionArtifact);
 }
 
 /** B1：校验方向候选 —— 2-3 个、key 唯一且安全、title/oneLiner 非空且截断。别信 LLM 原样入库。 */
@@ -114,6 +186,18 @@ export function applyProductionCommand(
       const job = record(command.payload, "job") as ProductionJob;
       if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
       return { run: { ...current, jobs: [...current.jobs, job], updatedAt: now }, eventType: "job.created", message: job.jobId };
+    }
+    case "qa.retry.schedule": {
+      // Budget reservation and retry-job creation are one durable command. A
+      // crash cannot leave a reserved unit with no job to consume it.
+      const job = record(command.payload, "job") as ProductionJob;
+      if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
+      const budget = validateBudget({ ...current.budget, reserved: current.budget.reserved + 1 }, current.budget);
+      return {
+        run: { ...current, budget, jobs: [...current.jobs, job], updatedAt: now },
+        eventType: "qa.retry.scheduled",
+        message: job.jobId,
+      };
     }
     case "job.status": {
       const jobId = text(command.payload, "jobId");
@@ -200,14 +284,52 @@ export function applyProductionCommand(
       if (proposed.some((nextArtifact) => current.artifacts.some((item) => item.artifactId === nextArtifact.artifactId))) {
         throw new Error("Duplicate production plan artifact");
       }
+      const scriptProposal = proposed.find((item) => item.kind === "script");
+      const storyboardProposal = proposed.find((item) => item.kind === "storyboard");
+      if (storyboardProposal) {
+        const withProposed = { ...current, artifacts: [...current.artifacts, ...proposed] };
+        assertStoryboardSourceApproved(withProposed, storyboardProposal.artifactId);
+      }
       const stages = current.stages.map((stage) => {
-        if (stage.stageId === "script" || stage.stageId === "storyboard") return { ...stage, status: "completed" as const, completedAt: now };
+        if (scriptProposal && stage.stageId === "script") return { ...stage, status: "awaiting_gate" as const, startedAt: stage.startedAt || now };
+        if (!scriptProposal && stage.stageId === "script" || storyboardProposal && stage.stageId === "storyboard") return { ...stage, status: "completed" as const, completedAt: now };
         if (stage.stageId === "build") return { ...stage, status: "awaiting_gate" as const };
         return stage;
       });
-      const next = { ...current, artifacts: [...current.artifacts, ...proposed], stages, stageId: "storyboard", updatedAt: now };
-      const run = current.status === "running" ? transitionRun(next, "awaiting_storyboard_review", now) : next;
+      const next = { ...current, artifacts: [...current.artifacts, ...proposed], stages, stageId: scriptProposal ? "script" : "storyboard", updatedAt: now };
+      const run = scriptProposal && ["running", "awaiting_storyboard_review"].includes(current.status)
+        ? transitionRun(next, "awaiting_script_review", now)
+        : storyboardProposal && current.status === "running"
+          ? transitionRun(next, "awaiting_storyboard_review", now)
+          : next;
       return { run, eventType: "plan.proposed", message: proposed[0].artifactId };
+    }
+    case "script.review":
+    case "artifact.review": {
+      const artifactId = text(command.payload, "artifactId");
+      const decision = reviewDecision(command.payload);
+      const target = current.artifacts.find((item) => item.artifactId === artifactId);
+      if (!target) throw new Error(`Production entity not found: ${artifactId}`);
+      if (target.status !== "candidate") throw new Error("Only candidate artifacts can be reviewed");
+      if (decision === "approved" && target.kind === "storyboard") assertStoryboardSourceApproved(current, artifactId);
+      let artifacts = current.artifacts.map((item) => item.artifactId === artifactId
+        ? {
+            ...item,
+            status: decision === "approved" ? "adopted" as const : decision === "rejected" ? "rejected" as const : "candidate" as const,
+            reviewStatus: decision === "approved" ? "approved" as const : "changes_requested" as const,
+            ...(decision === "approved" ? { adoptedAt: now } : {}),
+          }
+        : item);
+      let next: ProductionRun = { ...current, artifacts, updatedAt: now };
+      if (decision === "approved" && target.kind === "script") {
+        next = markDerivedArtifactsStale(next, artifactId);
+        const stages = next.stages.map((stage) => stage.stageId === "script"
+          ? { ...stage, status: "completed" as const, completedAt: now }
+          : stage);
+        next = { ...next, stages, stageId: "storyboard" };
+        if (current.status === "awaiting_script_review") next = transitionRun(next, "running", now);
+      }
+      return { run: next, eventType: decision === "approved" ? "artifact.adopted" : "artifact.reviewed", message: artifactId };
     }
     case "plan.attach": {
       const artifactId = text(command.payload, "artifactId");
@@ -217,6 +339,7 @@ export function applyProductionCommand(
       const gate = record(command.payload, "gate") as unknown as ProductionGate;
       const nextArtifact = current.artifacts.find((item) => item.artifactId === artifactId);
       if (!nextArtifact) throw new Error(`Production entity not found: ${artifactId}`);
+      if (nextArtifact.kind !== 'storyboard' || nextArtifact.status !== 'adopted' || (nextArtifact.reviewStatus !== undefined && nextArtifact.reviewStatus !== 'approved')) throw new Error("Approved storyboard artifact required before attach");
       if (current.gates.some((item) => item.gateId === gate.gateId)) throw new Error(`Duplicate gate: ${gate.gateId}`);
       if (jobs.some((job) => current.jobs.some((item) => item.jobId === job.jobId))) throw new Error("Duplicate production job");
       const stages = current.stages.map((stage) => {
@@ -233,7 +356,18 @@ export function applyProductionCommand(
     }
     case "skill.evidence": {
       const skillName = text(command.payload, "skillName");
-      return { run: { ...current, updatedAt: now }, eventType: "skill.loaded", message: skillName };
+      const artifactId = typeof command.payload.artifactId === "string" ? command.payload.artifactId.trim() : "";
+      const evidence = Array.isArray(command.payload.skillEvidence)
+        ? command.payload.skillEvidence.filter((item): item is { name: string; version: string; stageId: string } => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+            const value = item as Record<string, unknown>;
+            return typeof value.name === "string" && typeof value.version === "string" && typeof value.stageId === "string";
+          })
+        : [];
+      const artifacts = artifactId && evidence.length > 0
+        ? current.artifacts.map((item) => item.artifactId === artifactId ? { ...item, skillEvidence: evidence } : item)
+        : current.artifacts;
+      return { run: { ...current, artifacts, updatedAt: now }, eventType: "skill.loaded", message: skillName };
     }
     case "qa.verdict": {
       // W1.5 审片判决：生成后一镜一条「过检 / 红标」的耐久事实事件（同 skill.evidence 的写法——
@@ -251,12 +385,17 @@ export function applyProductionCommand(
     }
     case "artifact.adopt": {
       const artifactId = text(command.payload, "artifactId");
+      if (!canAdoptArtifact(current, artifactId)) throw new Error("Artifact requires approved review");
       const artifacts = replaceById(current.artifacts, artifactId, (artifact) => artifact.artifactId, (artifact): ProductionArtifact => ({
         ...artifact,
         status: "adopted",
+        reviewStatus: "approved",
         adoptedAt: now,
       }));
-      return { run: { ...current, artifacts, updatedAt: now }, eventType: "artifact.adopted", message: artifactId };
+      const next = current.artifacts.find((artifact) => artifact.artifactId === artifactId)?.kind === "script"
+        ? markDerivedArtifactsStale({ ...current, artifacts, updatedAt: now }, artifactId)
+        : { ...current, artifacts, updatedAt: now };
+      return { run: next, eventType: "artifact.adopted", message: artifactId };
     }
     case "budget.set": {
       const budget = validateBudget(record(command.payload, "budget"), current.budget);

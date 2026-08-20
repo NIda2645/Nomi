@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
 import { normalizeTrustLevel, trustLevelOf, DEFAULT_TRUST_LEVEL } from './productionRunTypes'
 import { shouldSampleGate } from './productionRunDriverOps'
 import { buildToolOutcome } from '../capabilityCore/mcpToolResults'
@@ -29,6 +30,7 @@ function makeService(root: string, trackCalls: { count: number }) {
         { key: 'b', title: '方向二', oneLiner: 'y' },
       ] }
     }
+    if (op === 'production.plan-script') return { text: 'trust level script' }
     if (op === 'production.plan-storyboard') {
       return { plan: { title: 'promo', anchors: [], shots: [
         { index: 1, shotKind: 'video', prompt: 'shot one' },
@@ -54,7 +56,8 @@ function makeService(root: string, trackCalls: { count: number }) {
 /** 走到「合同已批准、driver 开始提镜」的公共前置（含方向门批准）。 */
 async function driveToContract(service: ReturnType<typeof createProductionRunService>, runId: string) {
   await waitFor(() => Boolean(service.readFull('project-1', runId)?.gates.some((g) => g.gateId === 'gate-direction-v1' && g.status === 'approved')))
-  await waitFor(() => Boolean(service.readFull('project-1', runId)?.artifacts.some((a) => a.kind === 'storyboard')))
+  await approveLatestScript(service, 'project-1', runId)
+  await approveLatestStoryboard(service, 'project-1', runId)
   const planned = service.readFull('project-1', runId)!
   const storyboardId = planned.artifacts.find((a) => a.kind === 'storyboard')!.artifactId
   const attached = await service.command('project-1', runId, {

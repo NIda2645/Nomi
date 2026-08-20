@@ -216,6 +216,97 @@ export const MCP_TOOL_CATALOG = [
     }),
   },
   {
+    name: 'nomi_read_artifact',
+    description: '读取一个版本化剧本、分镜或制作产物的完整安全内容、版本号、内容 hash、来源和 Nomi 深链；不返回绝对路径、密钥或供应商私有地址。',
+    inputSchema: {
+      type: 'object',
+      properties: { projectId: { type: 'string' }, runId: { type: 'string' }, artifactId: { type: 'string' } },
+      required: ['projectId', 'runId', 'artifactId'],
+      additionalProperties: false,
+    },
+    method: 'production.artifact.read',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, artifactId: a.artifactId }),
+  },
+  {
+    name: 'nomi_request_script_revision',
+    description: '基于当前版本的剧本请求一次定点修订；只创建新的 candidate 版本，不会自动采用或触发付费生成。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' }, runId: { type: 'string' }, artifactId: { type: 'string' },
+        expectedVersion: { type: 'integer', minimum: 1, description: '你刚读到的当前剧本版本；版本变化后请求会被拒绝。' },
+        instruction: { type: 'string', minLength: 1, maxLength: 4_000, description: '只描述这次定点修改。' },
+      },
+      required: ['projectId', 'runId', 'artifactId', 'expectedVersion', 'instruction'],
+      additionalProperties: false,
+    },
+    method: 'production.artifact.revise',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId, runId: a.runId, artifactId: a.artifactId,
+      expectedVersion: a.expectedVersion, instruction: a.instruction, kind: 'script',
+    }),
+  },
+  {
+    name: 'nomi_request_storyboard_revision',
+    description: '基于当前版本的分镜请求一次定点修订；只创建新的 candidate 版本，不会自动采用或触发付费生成。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' }, runId: { type: 'string' }, artifactId: { type: 'string' },
+        expectedVersion: { type: 'integer', minimum: 1, description: '你刚读到的当前分镜版本；版本变化后请求会被拒绝。' },
+        instruction: { type: 'string', minLength: 1, maxLength: 4_000, description: '只描述这次定点修改。' },
+      },
+      required: ['projectId', 'runId', 'artifactId', 'expectedVersion', 'instruction'],
+      additionalProperties: false,
+    },
+    method: 'production.artifact.revise',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId, runId: a.runId, artifactId: a.artifactId,
+      expectedVersion: a.expectedVersion, instruction: a.instruction, kind: 'storyboard',
+    }),
+  },
+  {
+    name: 'nomi_review_artifact',
+    description: '审阅一个当前版本的剧本或分镜：approved 采用，changes_requested 保持候选并请求修改，rejected 否决；只能操作你读到的版本。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' }, runId: { type: 'string' }, artifactId: { type: 'string' },
+        expectedVersion: { type: 'integer', minimum: 1, description: '你刚读到的 artifact 版本。' },
+        decision: { type: 'string', enum: ['approved', 'changes_requested', 'rejected'] },
+      },
+      required: ['projectId', 'runId', 'artifactId', 'expectedVersion', 'decision'],
+      additionalProperties: false,
+    },
+    method: 'production.artifact.review',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId, runId: a.runId, artifactId: a.artifactId,
+      expectedVersion: a.expectedVersion, decision: a.decision,
+    }),
+  },
+  {
+    name: 'nomi_materialize_storyboard',
+    description:
+      '把已批准且仍对应当前剧本的分镜一次性落到目标 Nomi 项目画布，并登记同一批 Production jobs/预算合同。'
+      + '只接受你刚读到的 artifact 版本；不会批准剧本/分镜、不会批准预算，也不会直接调用付费模型。'
+      + '落地成功后返回画布节点 id、制作 Run 状态和可在 Nomi 打开的深链。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        runId: { type: 'string' },
+        artifactId: { type: 'string', description: '已批准的 storyboard artifact id' },
+        expectedVersion: { type: 'integer', minimum: 1, description: '你刚读取到的分镜版本；版本变化后拒绝，避免覆盖新稿。' },
+      },
+      required: ['projectId', 'runId', 'artifactId', 'expectedVersion'],
+      additionalProperties: false,
+    },
+    method: 'production.storyboard.materialize',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId, runId: a.runId, artifactId: a.artifactId, expectedVersion: a.expectedVersion,
+    }),
+  },
+  {
     name: 'nomi_control_run',
     description:
       '控制制作 Run：pause 暂停（保住已花预算与已完成镜头）/ resume 从断点继续（不重做不重付）/ cancel 取消（未提交任务不计费）'

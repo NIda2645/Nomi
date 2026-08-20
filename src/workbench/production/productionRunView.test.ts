@@ -108,6 +108,31 @@ describe('production run view', () => {
     expect(view.details.stages.every((stage) => stage.status === 'completed')).toBe(true)
   })
 
+  it('routes the script-first review pause to the script draft instead of pretending production is running', () => {
+    const value = run({
+      status: 'awaiting_script_review',
+      jobs: [],
+      artifacts: [{
+        artifactId: 'script-v1',
+        stageId: 'script',
+        kind: 'script',
+        status: 'candidate',
+        version: 1,
+        reviewStatus: 'waiting',
+        projectRelativePath: '.nomi/runs/run-1/script-v1.json',
+        createdAt: '2026-08-08T08:09:00.000Z',
+      }],
+    })
+
+    expect(buildProductionRunView(value, now)).toMatchObject({
+      tone: 'attention',
+      titleKey: 'production.status.scriptReady',
+      descriptionKey: 'production.description.scriptReady',
+      primaryAction: 'review-script',
+      targetId: 'script-v1',
+    })
+  })
+
   it('prioritizes a pending contextual gate with one approval action', () => {
     const value = run({
       status: 'awaiting_contract',
