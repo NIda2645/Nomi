@@ -58,7 +58,23 @@ try {
   assertTrue(projectId, '建项目返回 id')
 
   // ── 幕 0 · 开场收敛 ─────────────────────────────────────────────
-  record('幕0 开场收敛', 'pending', '等 W3：一屏 ≤3 题 elicitation（enum 候选 + 按你判断）。今天没有收敛机制，不假测。')
+  {
+    // W3 幕 0 点亮：一屏 ≤3 题弹在调用方。harness 客户端声明 elicitation 且**自动 accept 空内容**
+    // （_mcpJourney 的 auto-accept 回 {confirm:true}，不含题目键）→ 正好压到「跳过永远安全」这条铁律：
+    // 一题没答也必须全落默认、不报错、不二次追问。
+    const beforeIntake = mcp.elicitationCount()
+    const intake = parseToolResult(await mcp.callToolOrThrow('nomi_intake_brief', { projectId, kind: '短剧' }))
+    const askedTimes = mcp.elicitationCount() - beforeIntake
+    assertTrue(askedTimes === 1, `收敛恰好弹 1 次表单（得 ${askedTimes}）——一屏问全，不逐条追问`)
+    const j = intake.json || {}
+    assertTrue(j.elicited === true, '走的是表单路（客户端声明了 elicitation）')
+    const values = j.values || {}
+    assertTrue(Object.keys(values).length === 3, `拿到三个方向取值（得 ${Object.keys(values).length}）`)
+    assertTrue(typeof j.summary === 'string' && j.summary.includes('方向已定'), '回执给人话方向摘要')
+    assertTrue(Array.isArray(j.usedDefaults) && j.usedDefaults.length === 3, '一题没答 → 三题全落默认（跳过永远安全）')
+    assertTrue(j.summary.includes('按默认'), '走了默认要明着标（D4 缺口不藏）')
+    record('幕0 开场收敛', 'pass', `一屏 ≤3 题恰弹 1 次；未答全部落默认且如实标注；回执含方向摘要「${j.summary.slice(0, 40)}」。`)
+  }
 
   // ── 幕 1 · 剧本 + 圣经（今天可测「剧本落节点 + 指改」半幕；圣经字段等 W2） ──
   {
@@ -163,7 +179,25 @@ try {
   }
 
   // ── 幕 4 · 批次确认闸 ───────────────────────────────────────────
-  record('幕4 批次确认闸', 'pending', '等 W1（预算披露）/W3（批次清单形态）。今天的单镜付费确认由幕 5 顺带验。')
+  {
+    // W3 幕 4 点亮：批次披露纯核（与幕 2 同法 require 已构建的真判据——这是确认闸真正摊给用户看的那段文案）。
+    const batch = require(path.join(repoRoot, 'dist-electron/capabilityCore/mcpBatchGate.js'))
+    const d = batch.buildBatchDisclosure({
+      shots: [
+        { index: 1, title: '开场', anchorNames: ['小周'], intent: 'image', model: 'seedream' },
+        { index: 2, title: '对视', anchorNames: ['小周', '便利店'], intent: 'video', model: 'seedance' },
+      ],
+      retryBudgetPerShot: 2,
+      verifyEnabled: true,
+    })
+    assertTrue(d.imageCount === 1 && d.videoCount === 1, '图/视频分开计数（价位差一个量级）')
+    assertTrue(d.maxGenerations === 6, `重试预算计入上界（2 镜×(1+2)=6，得 ${d.maxGenerations}）——自动重滚的花费不瞒着`)
+    assertTrue(d.message.includes('最坏跑 6 次'), '披露里明说最坏跑几次')
+    assertTrue(d.lines[0].includes('#1') && d.lines[1].includes('小周、便利店'), '逐镜清单带镜号（指改地址）与引用锚')
+    assertTrue(d.message.includes('不再逐镜打断'), '明说批准后整批跑完——这正是它区别于逐镜确认的价值')
+    assertTrue(!/[¥$€]|元/.test(d.message), '不谎报金额（跨 vendor 计费口径不一，凑数字=误导）')
+    record('幕4 批次确认闸', 'pass', '批次披露真判据：图/视频分计、重试预算计入上界(最坏 6 次)、逐镜清单带镜号与锚、明示整批不打断、不谎报金额。授权仍走既有付费闸(幕5 已验)。')
+  }
 
   // ── 幕 5 · 生成 + 审片重试（今天可测：生成/进度/会话信任；审片环等 W1） ──
   {

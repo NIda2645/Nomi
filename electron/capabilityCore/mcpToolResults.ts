@@ -546,7 +546,11 @@ export function buildToolOutcome(
     ])
     // 交付③：深链数据化——优先用上游已给的（如 artifact 级 run 链），否则据 projectId 兜工程级
     // nomi://project/{id}。既进结构化字段（openInNomi）、也现于文本（纯文本宿主可点）。无 projectId 不编。
-    const deepLink = openInNomi || (projectId ? `nomi://project/${projectId}` : '')
+    // W3③：深链粒度扩到**节点级**——「指着看」要直达那一镜，而不是把人丢到项目首页自己找。
+    // 有 nodeId 就带上（nomi://project/{p}/node/{n}）；没有才退回工程级。上游给的（artifact 级 run 链）仍最优先。
+    const shotNodeId = str(value.nodeId) || str(args.nodeId)
+    const deepLink = openInNomi
+      || (projectId ? (shotNodeId ? `nomi://project/${projectId}/node/${shotNodeId}` : `nomi://project/${projectId}`) : '')
     // 结果里可能夹带 App 侧富化的内部字段（_nomiThumbnail=缩略图 base64，已单独成 image block；
     // _nomiPreviewUrl=签名预览链，已进 widget）——都不该原样 JSON dump 进文本（base64 会灌爆终端）。dump 前剥掉。
     const dump = stripInternalEnrichFields(result)

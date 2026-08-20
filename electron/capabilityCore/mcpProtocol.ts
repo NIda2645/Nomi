@@ -25,6 +25,7 @@ import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
+import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
 
 // spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
 // （elicitation-first 画布确认，见 mcpPlanTrust.ts）——透传给传输层，让最终跑 confirmPlan 的网关预批准、
@@ -215,6 +216,24 @@ export function createMcpProtocol(transport: McpTransport) {
    */
   async function elicitPlanConfirm(nodeCount: number): Promise<{ supported: boolean; confirmed?: boolean }> {
     return elicitBooleanConfirm(planConfirmElicit(nodeCount))
+  }
+
+  /**
+   * 开场收敛表单（W3 幕 0）：一次弹全 ≤3 题的 enum 选择。与 elicitBooleanConfirm 并列——
+   * 那个是「是/否」，这个是「选项」，两者都只是 elicitation/create 的不同 requestedSchema，不另造机制。
+   */
+  async function elicitIntake(questions: ReturnType<typeof buildIntakeQuestions>): Promise<{ supported: boolean; values?: Record<string, unknown> }> {
+    if (!clientSupportsElicitation) return { supported: false }
+    try {
+      const res = (await sendServerRequest('elicitation/create', {
+        message: buildIntakeMessage(questions),
+        requestedSchema: buildIntakeSchema(questions),
+      })) as { action?: string; content?: Record<string, unknown> } | null
+      // decline/cancel 不是错误——收敛这步「跳过永远安全」，交给 resolveIntake 全落默认。
+      return { supported: true, values: res?.action === 'accept' ? (res.content || {}) : {} }
+    } catch {
+      return { supported: true, values: {} } // 超时同理：走默认继续，不卡住用户
+    }
   }
 
   async function elicitCreativeGateDecision(
@@ -409,6 +428,27 @@ export function createMcpProtocol(transport: McpTransport) {
           // 已信任或刚批准 → 带 planConfirmed 放行：下游 confirmPlan 预批准、渲染层弹窗不再出现（免双问）。
           const result = await transport.invoke(tool.method, built, { planConfirmed: true })
           reply(id, buildToolResultPayload(tool.name, args, result))
+          return
+        }
+        // W3 幕 0 · 开场收敛：一屏 ≤3 题弹在调用方（enum 候选，客户端渲染成按钮）。
+        // 客户端不支持表单 → **不假装问过**：把题面与候选原样交给模型，由它在对话里一次问全（同样只问一次）。
+        // 任何一题留空/选「按你判断」/给非法值 → 走系统默认（跳过永远安全，C 路调研铁律）。
+        if (tool.name === 'nomi_intake_brief') {
+          const questions = buildIntakeQuestions({ kind: typeof built.kind === 'string' ? built.kind : '' })
+          const asked = await elicitIntake(questions)
+          if (!asked.supported) {
+            // 退化路径：如实告诉模型「我没法弹表单，题在这儿，你一次问全」——不静默用默认，也不假装问过。
+            reply(id, buildToolResultPayload(tool.name, args, {
+              questions, message: buildIntakeMessage(questions), elicited: false,
+              note: '当前客户端不支持表单：请把上面三题一次性问全用户（只问这一次），或直接用各题默认继续。',
+            }))
+            return
+          }
+          const decision = resolveIntake(questions, asked.values)
+          reply(id, buildToolResultPayload(tool.name, args, {
+            elicited: true, values: decision.values, answered: decision.answered,
+            usedDefaults: decision.usedDefaults, summary: summarizeIntake(questions, decision),
+          }))
           return
         }
         // 付费生成必须有真人确认。**判据是「谁能替我们问到真人」，不是「Nomi 窗口开着没」**：

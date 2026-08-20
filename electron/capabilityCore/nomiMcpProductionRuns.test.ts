@@ -81,7 +81,7 @@ class ProductionHarness {
 }
 
 describe('production run MCP tools', () => {
-  it('exposes the exact 16-tool contract with truthful read-only annotations', async () => {
+  it('exposes the exact 17-tool contract with truthful read-only annotations', async () => {
     const harness = new ProductionHarness()
     const response = await harness.call(1, 'tools/list')
     const tools = (response.result as {
@@ -93,7 +93,7 @@ describe('production run MCP tools', () => {
     }).tools
     const names = tools.map((tool) => tool.name)
     expect(names).toEqual([...MCP_TOOL_NAMES])
-    expect(names).toHaveLength(16)
+    expect(names).toHaveLength(17)
     expect(tools.find((tool) => tool.name === 'nomi_start_playbook')?.annotations?.readOnlyHint).toBeUndefined()
     for (const name of ['nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
       expect(tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(true)
@@ -106,8 +106,8 @@ describe('production run MCP tools', () => {
   it('keeps the current README count and guide table aligned with the exported catalog', () => {
     const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8')
     const guide = fs.readFileSync(path.join(process.cwd(), 'docs/guide/capability-core-cli-mcp.md'), 'utf8')
-    expect(readme).toContain('Sixteen MCP tools')
-    expect(guide).toContain('16 个工具')
+    expect(readme).toContain('Seventeen MCP tools')
+    expect(guide).toContain('17 个工具')
     for (const name of MCP_TOOL_NAMES) expect(guide).toContain(`\`${name}\``)
   })
 

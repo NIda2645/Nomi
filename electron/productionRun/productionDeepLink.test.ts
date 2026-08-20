@@ -44,3 +44,26 @@ describe('production deep links', () => {
     )).toThrow(/artifact/i)
   })
 })
+
+describe('三种链接形状（W3③ 扩宽：此前只认 /run/，工程级链接是既有死链）', () => {
+  const repo = { read: () => null } as unknown as Parameters<typeof resolveProductionDeepLink>[1]
+
+  it('★工程级 nomi://project/{p} 现在解析得出（此前抛 Invalid path → 用户点了没反应）', () => {
+    expect(resolveProductionDeepLink('nomi://project/proj-1', repo)).toEqual({ projectId: 'proj-1' })
+  })
+
+  it('节点级 nomi://project/{p}/node/{n} 解析出 nodeId（「指着看」直达那一镜）', () => {
+    expect(resolveProductionDeepLink('nomi://project/proj-1/node/node-7', repo)).toEqual({ projectId: 'proj-1', nodeId: 'node-7' })
+  })
+
+  it('节点级不查 run 仓库（节点住画布快照，不在 production 仓库里）——repo 恒空也能解析', () => {
+    expect(() => resolveProductionDeepLink('nomi://project/p/node/n', repo)).not.toThrow()
+  })
+
+  it('形状仍然收紧：未知段 /foo/ 拒、带查询参数的工程级拒、非法 id 拒', () => {
+    expect(() => resolveProductionDeepLink('nomi://project/p/foo/x', repo)).toThrow()
+    expect(() => resolveProductionDeepLink('nomi://project/p?artifact=a', repo)).toThrow()
+    expect(() => resolveProductionDeepLink('nomi://project/..', repo)).toThrow()
+    expect(() => resolveProductionDeepLink('nomi://project/p/node/../etc', repo)).toThrow()
+  })
+})

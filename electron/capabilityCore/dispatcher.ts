@@ -20,6 +20,7 @@ import { listSkillSummaries, readSkillContent } from '../skills/skillStore'
 import type { ProductionRunService } from '../productionRun/productionRunService'
 import type { ProductionBrief } from '../productionRun/productionRunTypes'
 import { withPreApprovedPlan, type ProjectGateway } from './gateway'
+import { INTAKE_MAX_QUESTIONS, buildIntakeMessage, buildIntakeQuestions } from './mcpBriefIntake'
 import type { CapabilityOriginHost } from './security'
 
 export class RpcError extends Error {
@@ -258,6 +259,13 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       )
     case 'canvas.deleteNodes':
       return deleteProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodeIds) ? (params.nodeIds as string[]) : [])
+    case 'brief.intake': {
+      // W3 幕 0：只组题/给默认，**不落任何状态**——真正的「问」由协议层弹 elicitation（enum 候选），
+      // 客户端不支持表单时协议层退化成把题面交给模型在对话里一次问全。
+      assertOnlyFields(params, new Set(['projectId', 'kind']))
+      const questions = buildIntakeQuestions({ kind: typeof params.kind === 'string' ? params.kind : '' })
+      return { questions, message: buildIntakeMessage(questions), maxQuestions: INTAKE_MAX_QUESTIONS }
+    }
     case 'asset.import':
       // M2：本机文件 → 项目素材 → nomi-local:// URL。安全判据在 importAssetGuard（纯函数，逐条单测）。
       assertOnlyFields(params, new Set(['projectId', 'path', 'title']))

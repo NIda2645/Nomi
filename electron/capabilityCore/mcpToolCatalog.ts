@@ -248,6 +248,24 @@ export const MCP_TOOL_CATALOG = [
     build: (a: Record<string, unknown>) => ({ projectId: a.projectId, runId: a.runId, gateId: a.gateId, decision: a.decision, choiceKey: a.choiceKey }),
   },
   {
+    name: 'nomi_intake_brief',
+    description:
+      '开拍前的**一次性方向收敛**：一屏最多问 3 题（基调 / 画幅 / 风格），每题带候选与「按你判断」。'
+      + '**整局只该调一次**——拿到方向后按它写剧本、拟分镜、生成，不要再就方向反复问用户。'
+      + '客户端不支持表单时会返回题面与候选，请你在对话里一次性问全（同样只问一次），或直接用默认继续。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        kind: { type: 'string', description: '片型（如 brand.promo / 短剧），决定候选措辞；不给用通用候选。' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    method: 'brief.intake',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, ...(a.kind ? { kind: a.kind } : {}) }),
+  },
+  {
     name: 'nomi_import_asset',
     description:
       '把**本机文件**导入项目当素材，返回可直接引用的 nomi-local:// 地址。'

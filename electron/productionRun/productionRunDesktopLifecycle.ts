@@ -23,7 +23,14 @@ export function installProductionRunDesktopLifecycle(args: InstallArgs): {
   function deliverProductionDeepLink(target: ProductionDeepLinkTarget): void {
     const window = getMainWindow();
     if (!window || window.isDestroyed()) {
-      pendingProductionDeepLink = `nomi://project/${encodeURIComponent(target.projectId)}/run/${encodeURIComponent(target.runId)}${target.artifactId ? `?artifact=${encodeURIComponent(target.artifactId)}` : ""}`;
+      // 按目标形状重建（工程级/节点级/Run 级三种，见 ProductionDeepLinkTarget）——
+      // 旧版无条件拼 /run/{runId}，工程级目标会拼出 /run/undefined 这种再也解析不回来的链接。
+      const project = encodeURIComponent(target.projectId);
+      pendingProductionDeepLink = target.runId
+        ? `nomi://project/${project}/run/${encodeURIComponent(target.runId)}${target.artifactId ? `?artifact=${encodeURIComponent(target.artifactId)}` : ""}`
+        : target.nodeId
+          ? `nomi://project/${project}/node/${encodeURIComponent(target.nodeId)}`
+          : `nomi://project/${project}`;
       return;
     }
     if (window.isMinimized()) window.restore();
