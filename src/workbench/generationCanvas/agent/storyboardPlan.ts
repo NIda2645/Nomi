@@ -301,6 +301,8 @@ export type StoryboardPlanToArgsOptions = {
   defaultVideoModelKey?: string
   /** 镜头默认视频模式 id（优先带 image_ref/first_frame 槽的 i2v，定妆卡参考才喂得进）；调用方传入。 */
   defaultVideoModeId?: string
+  /** Stable id used to make a production materialization retry converge on existing nodes. */
+  materializationOperationId?: string
 }
 
 const VISUAL_KINDS: ReadonlySet<PlanAnchorKind> = new Set(['character', 'scene', 'prop'])
@@ -339,8 +341,14 @@ function shotKeyframeClientId(shot: PlanShot): string {
 function storyboardShotMetadata(
   plan: StoryboardPlan,
   shot: PlanShot,
+  materializationOperationId?: string,
+  materializationClientId?: string,
 ): Record<string, unknown> {
   const metadata: Record<string, unknown> = { shotId: stableShotId(shot) }
+  if (materializationOperationId && materializationClientId) {
+    metadata.materializationOperationId = materializationOperationId
+    metadata.materializationClientId = materializationClientId
+  }
   if (typeof plan.sourceScriptArtifactId === 'string' && plan.sourceScriptArtifactId.trim()) {
     metadata.sourceScriptArtifactId = plan.sourceScriptArtifactId.trim()
   }
@@ -474,6 +482,12 @@ export function storyboardPlanToCreateNodesArgs(
       // description 仍拼进 prompt（buildAnchorSheetPrompt），二者并存不矛盾（static/dynamic 是 description 的结构化细化）。
       ...(anchor.staticFeatures && anchor.staticFeatures.trim() ? { staticFeatures: anchor.staticFeatures.trim() } : {}),
       ...(anchor.dynamicFeatures && anchor.dynamicFeatures.trim() ? { dynamicFeatures: anchor.dynamicFeatures.trim() } : {}),
+      ...(options.materializationOperationId ? {
+        metadata: {
+          materializationOperationId: options.materializationOperationId,
+          materializationClientId: anchor.id,
+        },
+      } : {}),
       ...(options.defaultImageModelKey ? { modelKey: options.defaultImageModelKey } : {}),
       ...(options.defaultImageModeId ? { modeId: options.defaultImageModeId } : {}),
     })
@@ -517,7 +531,7 @@ export function storyboardPlanToCreateNodesArgs(
         ...(keyframeModelKey ? { modelKey: keyframeModelKey } : {}),
         ...(keyframeModeId ? { modeId: keyframeModeId } : {}),
         ...(shot.keyframe?.params ? { params: shot.keyframe.params } : {}),
-        metadata: storyboardShotMetadata(plan, shot),
+        metadata: storyboardShotMetadata(plan, shot, options.materializationOperationId, referenceTargetId),
       })
     }
     nodes.push({
@@ -533,7 +547,7 @@ export function storyboardPlanToCreateNodesArgs(
         ...(shot.params || {}),
         ...(!isImageShot && Number.isFinite(shot.durationSec) ? { duration: shot.durationSec } : {}),
       },
-      metadata: storyboardShotMetadata(plan, shot),
+      metadata: storyboardShotMetadata(plan, shot, options.materializationOperationId, id),
     })
     // 定妆卡 → 这一镜参考边（角色 character_ref / 场景·风格 style_ref / 道具 reference）。图片/视频镜头都连。
     for (const anchorId of visualAnchorIds) {

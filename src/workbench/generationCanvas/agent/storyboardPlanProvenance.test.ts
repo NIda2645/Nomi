@@ -68,4 +68,18 @@ describe('StoryboardPlan provenance', () => {
     const shot = storyboardPlanToCreateNodesArgs(plan).nodes.find((node) => node.clientId === 'shot-1')
     expect(shot?.metadata).toMatchObject({ shotId: 'shot-1' })
   })
+
+  it('stamps a stable materialization operation on every node for crash-safe retries', () => {
+    const plan: StoryboardPlan = {
+      ...PLAN,
+      anchors: [{ id: 'hero', kind: 'character', carrier: 'visual', name: '主角', description: '雨夜里的主角' }],
+      shots: [{ ...PLAN.shots[0], anchorIds: ['hero'] }],
+    }
+    const args = storyboardPlanToCreateNodesArgs(plan, { materializationOperationId: 'materialize:run-1:v1' })
+
+    expect(args.nodes.map((node) => node.metadata)).toEqual(expect.arrayContaining([
+      { materializationOperationId: 'materialize:run-1:v1', materializationClientId: 'hero' },
+      expect.objectContaining({ materializationOperationId: 'materialize:run-1:v1', materializationClientId: 'shot-stable-1' }),
+    ]))
+  })
 })

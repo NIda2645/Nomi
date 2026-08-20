@@ -196,7 +196,15 @@ export function createArtifactOperations(deps: ArtifactOperationsDeps) {
     const rawPlan = content.plan && typeof content.plan === 'object' && !Array.isArray(content.plan) ? content.plan as Record<string, unknown> : content
     if (!Array.isArray(rawPlan.anchors) || !Array.isArray(rawPlan.shots)) throw new Error('Storyboard artifact content is not a valid StoryboardPlan')
     const plan = { ...rawPlan, ...(source.artifactId ? { sourceScriptArtifactId: source.artifactId } : {}), ...(source.version ? { sourceScriptVersion: source.version } : {}), ...(source.hash ? { sourceScriptHash: source.hash } : {}) }
-    const rendered = await requestRenderer('production.materialize-storyboard', { projectId: input.projectId, runId: input.runId, artifactId: artifact.artifactId, plan }, 5 * 60_000) as Record<string, unknown>
+    const materializationOperationId = `materialize:${input.projectId}:${input.runId}:${artifact.artifactId}:v${version}`
+    const rendered = await requestRenderer('production.materialize-storyboard', {
+      projectId: input.projectId,
+      runId: input.runId,
+      artifactId: artifact.artifactId,
+      operationId: materializationOperationId,
+      materializationOperationId,
+      plan,
+    }, 5 * 60_000) as Record<string, unknown>
     const createdNodeIds = Array.isArray(rendered?.createdNodeIds) ? rendered.createdNodeIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())) : []
     const bindings = Array.isArray(rendered?.bindings) ? rendered.bindings.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value))).map((binding) => ({ nodeId: typeof binding.nodeId === 'string' ? binding.nodeId.trim() : '', provider: typeof binding.provider === 'string' ? binding.provider.trim() : '', model: typeof binding.model === 'string' ? binding.model.trim() : '', stageId: typeof binding.stageId === 'string' && binding.stageId.trim() ? binding.stageId.trim() : 'generate', ...(binding.metadata && typeof binding.metadata === 'object' && !Array.isArray(binding.metadata) ? { metadata: binding.metadata as Record<string, unknown> } : {}) })).filter((binding) => binding.nodeId && binding.provider && binding.model) : []
     if (createdNodeIds.length === 0 || bindings.length === 0) throw new Error('Storyboard materialization returned no usable canvas bindings')
@@ -206,7 +214,11 @@ export function createArtifactOperations(deps: ArtifactOperationsDeps) {
   }
 
   function requestArtifactRevision(input: Parameters<typeof requestArtifactRevisionImpl>[0]): Promise<Record<string, unknown>> {
-    const key = `${input.projectId}:${input.runId}:${input.artifactId}:${input.expectedVersion}:${input.kind}`
+    // Two concurrent edits of the same version are not interchangeable. Include
+    // the instruction digest so the in-process coalescer never returns the first
+    // user's revision to the second user's request.
+    const instructionHash = crypto.createHash('sha256').update(input.instruction.trim(), 'utf8').digest('hex').slice(0, 16)
+    const key = `${input.projectId}:${input.runId}:${input.artifactId}:${input.expectedVersion}:${input.kind}:${instructionHash}`
     const existing = revisionInFlight.get(key)
     if (existing) return existing
     const promise = requestArtifactRevisionImpl(input).finally(() => revisionInFlight.delete(key))

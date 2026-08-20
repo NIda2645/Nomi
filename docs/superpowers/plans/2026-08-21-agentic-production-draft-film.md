@@ -627,6 +627,7 @@ Run: `git diff --check && pnpm run check:secrets && pnpm run check:symlinks && g
 - [x] Task 7：任务中心成为 Production Run 的项目内入口；待审剧本、分镜、样片、粗剪、导出均有安全预览和 `nomi://` 深链。
 - [x] Task 8：确定性对抗测试、真实 Electron + MCP 旅程、8 镜头零额度 fixture 片和独立 30 秒导出样片均已跑通。
 - [x] Task 9：`pnpm run gates`、全量 Vitest、typecheck、build、桌面 smoke、基础 MCP 旅程、生产 MCP 旅程均通过；最终 reviewer 复核后 P0/P1 已清零。
+- [x] 后续完成性审计：新增 `tests/production/real-draft-film.test.mjs` 媒体/项目合同与 `agenticProductionAdversarial.test.ts` 对抗矩阵；物化请求增加稳定 operation id，渲染层可从已落节点恢复，重复 revision 指令不再被错误合并。
 
 ### 真实样片证据与边界
 

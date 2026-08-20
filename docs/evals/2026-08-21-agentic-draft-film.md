@@ -35,7 +35,13 @@ pnpm vitest run electron/capabilityCore/mcpConversationJourney.test.ts  PASS (2)
 pnpm vitest run electron/productionRun/productionRunE2eFixture.test.ts  PASS (2)
 pnpm vitest run src/workbench/preview/timelineSubtitleTransitionContract.test.ts  PASS
 pnpm vitest run src/workbench/timeline/timelineMath.test.ts  PASS
+pnpm vitest run tests/production/real-draft-film.test.mjs electron/productionRun/agenticProductionAdversarial.test.ts  PASS
 ```
+
+这条媒体合同测试会在 `artifacts/` 还没有生成物时先运行
+`node scripts/build-agentic-draft-film.mjs`，再用 ffprobe 和项目内 JSON 对账；因此
+它不是只检查“文件存在”，而是检查 30 秒、音视频编码、字幕流时长、镜头连续性、
+显式转场、剧本→分镜 provenance 和项目归档。
 
 外部 Agent 旅程覆盖：方向 → 剧本 candidate → `nomi_review_artifact` → 分镜 candidate → `nomi_review_artifact` → `nomi_materialize_storyboard`。Nomi 画布侧和外部 MCP 共享 `production.materialize-storyboard` renderer seam；没有另造一套转换器。
 

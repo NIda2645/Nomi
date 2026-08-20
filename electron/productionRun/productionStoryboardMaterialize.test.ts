@@ -18,11 +18,12 @@ async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
 
 async function approvedStoryboard(options: { stale?: boolean } = {}) {
   const root = makeRoot()
+  const materializePayloads: unknown[] = []
   const repository = createProductionRunRepository({ projectDirResolver: () => root })
   const service = createProductionRunService({
     repository,
     projectRootResolver: () => root,
-    requestRenderer: async (op) => {
+    requestRenderer: async (op, payload) => {
       if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
       if (op === 'production.plan-script') return { text: 'approved script text' }
       if (op === 'production.plan-storyboard') {
@@ -34,6 +35,10 @@ async function approvedStoryboard(options: { stale?: boolean } = {}) {
         }
       }
       if (op === 'production.materialize-storyboard') {
+        // Keep the renderer receipt visible to the test: retries must carry the
+        // same operation id even when the main process did not attach the first
+        // response yet.
+        materializePayloads.push(payload)
         return {
           createdNodeIds: ['node-shot-1'], connectedCount: 0,
           bindings: [{ nodeId: 'node-shot-1', provider: 'local', model: 'demo-video', stageId: 'generate', metadata: { shotId: 'shot-1' } }],
@@ -74,12 +79,12 @@ async function approvedStoryboard(options: { stale?: boolean } = {}) {
     projectId: 'project-1', runId, artifactId: storyboard.artifactId,
     expectedVersion: storyboard.version || 1, decision: 'approved',
   })
-  return { root, service, runId, storyboard }
+  return { root, service, runId, storyboard, materializePayloads }
 }
 
 describe('external storyboard materialization', () => {
   it('materializes only an approved storyboard and attaches one durable contract', async () => {
-    const { service, runId, storyboard } = await approvedStoryboard()
+    const { service, runId, storyboard, materializePayloads } = await approvedStoryboard()
     const result = await service.materializeStoryboard({
       projectId: 'project-1', runId, artifactId: storyboard.artifactId, expectedVersion: storyboard.version || 1,
     })
@@ -95,6 +100,9 @@ describe('external storyboard materialization', () => {
     })
     expect(replay.revision).toBe(result.revision)
     expect(replay.gates.filter((gate) => gate.scope === 'budget_envelope')).toHaveLength(1)
+    expect(materializePayloads).toHaveLength(1)
+    expect((materializePayloads[0] as Record<string, unknown>).materializationOperationId)
+      .toBe('materialize:project-1:run-materialize-1:artifact-storyboard-v1:v1')
   })
 
   it('rejects a stale storyboard before asking the renderer to mutate the canvas', async () => {

@@ -127,7 +127,10 @@ function writeProjectArtifacts(timeline, scriptContent, sourceHash) {
       camIdx: index % 3,
       continuity: { world: 'nomi-world', previousShot: index ? `shot-${index}` : null },
       subtitle: timeline.subtitles.find((cue) => cue.startFrame >= clip.startFrame && cue.startFrame < clip.endFrame)?.text,
-      transition: timeline.transitions.find((transition) => transition.fromShotId === clip.shotId),
+      transition: (() => {
+        const transition = timeline.transitions.find((candidate) => candidate.fromShotId === clip.shotId)
+        return transition ? { type: transition.type, ...(transition.durationFrames ? { durationFrames: transition.durationFrames } : {}) } : undefined
+      })(),
     })),
   }
   writeJson(path.join('.nomi', 'runs', 'run-agentic-draft-film-30s', 'script-v1.json'), {
