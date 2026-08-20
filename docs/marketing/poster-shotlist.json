@@ -1,0 +1,83 @@
+{
+  "$comment": "图文营销分镜表。一行 = 一张海报。文案全部取自 docs/marketing/2026-08-02-intro-copy-kit.md（已对宣称红线核过），改文案只改这里，不改渲染器。board 为空 = 纯 ink 底；填 AI 底板路径则叠加氛围层。",
+  "posters": [
+    {
+      "id": "A1-one-project",
+      "series": "核心主张",
+      "format": "xhs",
+      "eyebrow": "开源 · 本地优先",
+      "headline": ["一个项目，", "不是十一个标签页"],
+      "emphasisLine": 1,
+      "sub": "故事、镜头、参考、生成结果和时间线，在同一个文件里。",
+      "screenshot": "marketing/assets/screen-canvas-2026-08-17.png",
+      "board": null,
+      "searchQuery": "GitHub Nomi",
+      "hint": "搜「GitHub Nomi」即可下载"
+    },
+    {
+      "id": "A2-same-person",
+      "series": "核心主张",
+      "format": "xhs",
+      "eyebrow": "跨镜头一致性",
+      "headline": ["第 4 个镜头和第 9 个镜头，", "得是同一个人"],
+      "emphasisLine": 1,
+      "sub": "人物、场景、道具、风格先锁一次，后面的镜头继承它，而不是重新赌一次提示词。",
+      "screenshot": "marketing/assets/screen-canvas-2026-08-17.png",
+      "board": null,
+      "searchQuery": "GitHub Nomi",
+      "hint": "搜「GitHub Nomi」即可下载"
+    },
+    {
+      "id": "A3-bring-your-own",
+      "series": "核心主张",
+      "format": "xhs",
+      "eyebrow": "自带全套",
+      "headline": ["模型你自己带，", "密钥不上传"],
+      "emphasisLine": 1,
+      "sub": "任何 OpenAI 兼容接口，或者你本机跑着的 ComfyUI。项目和密钥都在你自己电脑上。",
+      "screenshot": "marketing/assets/screen-script-2026-08-17.png",
+      "board": null,
+      "searchQuery": "GitHub Nomi",
+      "hint": "搜「GitHub Nomi」即可下载"
+    },
+    {
+      "id": "B1-agent-can-operate",
+      "series": "功能迭代 · v0.20",
+      "format": "xhs",
+      "eyebrow": "v0.20 · MCP",
+      "headline": ["你的 AI 助手，", "能真的操作它"],
+      "emphasisLine": 1,
+      "sub": "15 个 MCP 工具，让 Claude Code / Codex / Cursor 建项目、排镜头、连参考、跑生成。要花钱的每一步都会停下来问你。",
+      "screenshot": "marketing/assets/screen-agentic-2026-08-17.png",
+      "board": null,
+      "searchQuery": "GitHub Nomi",
+      "hint": "搜「GitHub Nomi」即可下载"
+    },
+    {
+      "id": "B2-3d-stage",
+      "series": "功能迭代 · v0.20",
+      "format": "xhs",
+      "eyebrow": "3D 导演台",
+      "headline": ["先摆好机位，", "再让模型开拍"],
+      "emphasisLine": 1,
+      "sub": "摆人偶、定机位、抓首尾帧参考。这个功能还年轻，但它把「运镜靠描述」变成了「运镜靠摆」。",
+      "screenshot": "marketing/assets/screen-3d-2026-08-17.png",
+      "board": null,
+      "searchQuery": "GitHub Nomi",
+      "hint": "搜「GitHub Nomi」即可下载"
+    },
+    {
+      "id": "B3-real-timeline",
+      "series": "功能迭代 · v0.20",
+      "format": "wide",
+      "eyebrow": "真时间轴",
+      "headline": ["不是在浏览器里", "假装在剪辑"],
+      "emphasisLine": 1,
+      "sub": "AI 生成 + 真时间线 + 真导出 MP4（内置 FFmpeg，H.264 / AAC）。",
+      "screenshot": "marketing/assets/screen-timeline-2026-08-17.png",
+      "board": null,
+      "searchQuery": "GitHub Nomi",
+      "hint": "搜「GitHub Nomi」即可下载"
+    }
+  ]
+}
