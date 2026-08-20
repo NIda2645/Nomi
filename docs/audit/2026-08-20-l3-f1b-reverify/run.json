@@ -1,24 +1,12 @@
 {
-  "projectId": "workspace-d11d01ac-ad38-41df-b3fe-f8011621f40b",
+  "projectId": "workspace-a68f1194-d5c3-4995-a7ed-4a5c4b487176",
   "elicitations": 1,
   "results": [
     {
-      "title": "#1 她抬头",
-      "status": "succeeded",
+      "title": "#3 逐渐显出（B 的复刻）",
       "newImages": 1,
-      "verify": {
-        "skipped": false,
-        "reason": null,
-        "passed": true,
-        "retries": 0,
-        "scores": {
-          "identity": 3,
-          "composition": 4
-        },
-        "flagged": [],
-        "suggestion": null
-      }
+      "verify": null
     }
   ],
-  "artifacts": 4
+  "artifacts": 2
 }

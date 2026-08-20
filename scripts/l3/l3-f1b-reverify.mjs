@@ -74,7 +74,14 @@ function rpc(method, params, timeoutMs = 30_000) {
   })
 }
 async function callTool(name, args, timeoutMs = 90_000) {
-  const res = (await rpc('tools/call', { name, arguments: args }, timeoutMs)).result
+  const msg = await rpc('tools/call', { name, arguments: args }, timeoutMs)
+  // **JSON-RPC 层的错误不许静默吞掉**——上一轮 #3 就是这么变成「status: undefined」的：
+  // 服务端返了 error，驱动只读 .result，于是我对着一个空对象猜了半天。同我批评过的那个毛病。
+  if (msg?.error) {
+    console.log(`  ✗ [RPC error] ${name}: ${JSON.stringify(msg.error).slice(0, 400)}`)
+    return { isError: true, text: JSON.stringify(msg.error), json: null, outcome: {} }
+  }
+  const res = msg.result
   const text = (res?.content || []).find((b) => b?.type === 'text')?.text || ''
   let json = null
   try { json = JSON.parse(text) } catch {
@@ -126,11 +133,15 @@ console.log(`\n锚出图完成。生成图计数 = ${afterAnchor}（应为 1：�
 // 两镜：都带锚（走两跳）。第 2 镜复刻 F1 里被误报的「逐渐显出」设计。
 const SHOTS = [
   {
-    title: '#1 她抬头', ff: '深夜便利店内，短发圆脸的女性收银员低头理货，腰部以上中景，冷白顶光，深蓝工装，背景货架与冰柜',
+    title: '#1 中景·理货', ff: '深夜便利店内，短发圆脸的女性收银员低头理货，腰部以上中景，冷白顶光，深蓝工装，背景货架与冰柜',
     lf: '同一女性已抬起头，手停在货架上', prompt: '中景，短发圆脸的女性缓缓抬头，手上的动作停住，身体朝向画面右前方',
   },
   {
-    title: '#2 逐渐显出（B 的复刻）', ff: '空荡的便利店走道远景，冷白灯管，货架延伸向深处，画面中央无人',
+    title: '#2 近景·收银台', ff: '深夜便利店收银台后，短发圆脸的女性面部近景，冷白顶光自上方打下，背景虚化的香烟柜',
+    lf: '同一张脸，视线从下方票据移向画面右侧', prompt: '近景，短发圆脸的女性从低头看票据到缓缓侧转视线，肩膀微动',
+  },
+  {
+    title: '#3 逐渐显出（B 的复刻）', ff: '空荡的便利店走道远景，冷白灯管，货架延伸向深处，画面中央无人',
     lf: '同一条走道，走道尽头站着一个穿深蓝工装的背影', prompt: '远景，镜头缓缓推进扫过空走道，走道尽头逐渐显出一个静止的背影',
   },
 ]
@@ -143,7 +154,8 @@ await callTool('nomi_connect_nodes', { projectId, connections: shotIds.map((id) 
 const results = []
 let before = afterAnchor
 const ONLY = Number(process.env.NOMI_L3_SHOTS || SHOTS.length)
-for (let i = 0; i < Math.min(ONLY, SHOTS.length); i += 1) {
+const PICK = process.env.NOMI_L3_ONLY_INDEX ? Number(process.env.NOMI_L3_ONLY_INDEX) : null
+for (let i = PICK ?? 0; i < (PICK !== null ? PICK + 1 : Math.min(ONLY, SHOTS.length)); i += 1) {
   const s = SHOTS[i]
   const g = await callTool('nomi_generate', {
     projectId, nodeId: shotIds[i], vendor: vid.vendorKey || vid.vendor, modelKey: vid.modelKey,
@@ -152,6 +164,11 @@ for (let i = 0; i < Math.min(ONLY, SHOTS.length); i += 1) {
   // 把完整回执打出来：两跳降级的理由就在 advisories 里（它一直被算出来却没人看）。
   for (const line of (g.text || '').split('\n')) {
     if (/未走|⚠️|advisor/i.test(line)) console.log('    [回执]', line.trim().slice(0, 300))
+  }
+  // **这一镜没成功就把原文吐出来**，别让它退化成一句「undefined」——
+  // 上一轮 #3 就是这样：服务端明明说了话，驱动只挑自己认识的行看，等于没看。
+  if (g.isError || !g.json?.status) {
+    console.log(`    ✗ [原文] isError=${g.isError} text=${JSON.stringify((g.text || '').slice(0, 600))}`)
   }
   const now = countGeneratedImages()
   const newImages = now - before
@@ -166,8 +183,12 @@ for (let i = 0; i < Math.min(ONLY, SHOTS.length); i += 1) {
 }
 
 const outDir = path.join(repoRoot, 'docs/audit/2026-08-20-l3-f1b-reverify')
-fs.rmSync(outDir, { recursive: true, force: true })
+// **不整目录 rm**：这里躺着人写的 report.md，删了就没了（本轮真删过一次）。
+// 只清上一轮的产物文件（编号前缀 + run.json），文档一律留着。
 fs.mkdirSync(outDir, { recursive: true })
+for (const f of fs.readdirSync(outDir)) {
+  if (/^\d+-/.test(f) || f === 'run.json') fs.rmSync(path.join(outDir, f), { force: true })
+}
 const collected = []
 const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(png|jpg|jpeg|webp|mp4)$/i.test(e.name)) collected.push(p) } }
 walk(projectsDir)
