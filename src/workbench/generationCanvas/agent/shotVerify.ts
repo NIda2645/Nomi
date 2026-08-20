@@ -70,6 +70,11 @@ export type ShotVerifyContext = {
   anchorDescriptions: string[]
   /** 前一镜提示词(连贯轴对照);无前一镜则不传。 */
   previousShotPrompt?: string
+  /**
+   * 喂进来的图是不是「首帧+尾帧」的横向拼图（视频镜专用）。
+   * 影响 rubric 措辞：不告诉判分器它看的是两帧，拼图只会让它更困惑（把右半当成穿帮）。
+   */
+  framePair?: boolean
 }
 
 function hasPreviousShot(ctx: ShotVerifyContext): boolean {
@@ -114,7 +119,9 @@ export function buildShotVerifyPrompt(ctx: ShotVerifyContext): string {
     .join('\n')
   const anchorBlock = ctx.anchorDescriptions.map((s) => s.trim()).filter(Boolean)
   return [
-    '你是资深影视分镜审片。下面这张图是某个镜头实际生成出来的画面，按 Rubric 逐维度对着锚点判它该打第几档(1-5)。',
+    ctx.framePair
+      ? '你是资深影视分镜审片。下面这张图是某个镜头的**首帧(左)与尾帧(右)横向拼在一起**，按 Rubric 逐维度对着锚点判它该打第几档(1-5)。'
+      : '你是资深影视分镜审片。下面这张图是某个镜头实际生成出来的画面，按 Rubric 逐维度对着锚点判它该打第几档(1-5)。',
     '',
     `镜头：《${ctx.shotTitle.trim()}》`,
     `镜头意图(提示词)：${ctx.shotPrompt.trim() || '(无)'}`,
@@ -129,6 +136,11 @@ export function buildShotVerifyPrompt(ctx: ShotVerifyContext): string {
     'reason 简短(每轴一句、整体不超过 100 字)。',
     '打分铁律：① 主体对不上/机位错就低分，不要因为图清晰就给高分；② 拿不准（看得见但吃不准像不像）给保守的偏低分；',
     `③ **但如果这个镜别根本看不到可比对的依据**（如眼部或手部微距、极远景主体只有几十像素、纯背影），该轴请给 ${SHOT_VERIFY_NOT_ASSESSABLE} 表示「无法判定」——${SHOT_VERIFY_NOT_ASSESSABLE} 不是低分，我们会跳过该轴；把「看不到」打成低分会触发一轮永远救不回来的重做。`,
+    ctx.framePair
+      ? '④ **这是首尾两帧，镜头内容随时间展开是正常的**：像「逐渐显出/由暗转亮/缓缓推近」这类设计，'
+        + '左边空、右边才出现要的东西——那是**做对了**，按两帧合起来是否兑现镜头意图打分，不要只看左边就判不达标。'
+        + '⑤ identity 轴请**同时比较左右两帧是不是同一个人**：中途变脸是视频最常见的崩坏，只看一帧查不出来。'
+      : null,
   ].join('\n')
 }
 

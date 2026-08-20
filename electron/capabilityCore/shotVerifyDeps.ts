@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { runTask } from '../runtime'
 import { listOnboardingAgentCandidates } from '../catalog/catalogStore'
-import { extractVideoFrameToAsset } from '../video/extractVideoFrame'
+import { extractVideoEndpointsToAsset, extractVideoFrameToAsset } from '../video/extractVideoFrame'
 import { parseLocalAssetUrl } from '../protocol/localProtocol'
 import type { ShotVerifyDeps } from './shotVerifyOrchestrate'
 
@@ -112,7 +112,16 @@ export function makeShotVerifyDeps(
 ): ShotVerifyDeps {
   const runTaskFn: RunTaskLike = injected?.runTaskFn ?? (runTask as unknown as RunTaskLike)
   const listCandidates: ListJudgeCandidates = injected?.listJudgeCandidates ?? defaultListJudgeCandidates
-  const extractFirstFrame: ExtractFirstFrame = injected?.extractFirstFrame ?? ((payload) => extractVideoFrameToAsset({ ...payload, which: 'first' }))
+  // 视频镜喂给判分器的是**首帧+尾帧的横向拼图**，不是单张首帧（L3-F1 实测：只看首帧会把
+  // 「逐渐显出」类镜头误判成不达标并白烧一次重滚，且对中途变脸完全失明）。
+  // 拼图失败 → 退回单张首帧（有总比没有强），仍失败才由上层按「取帧失败 → 跳过判分」处理。
+  const extractFirstFrame: ExtractFirstFrame = injected?.extractFirstFrame ?? (async (payload) => {
+    try {
+      return await extractVideoEndpointsToAsset(payload)
+    } catch {
+      return await extractVideoFrameToAsset({ ...payload, which: 'first' })
+    }
+  })
 
   // 组装时解出候选序列。L3 实跑教训（2026-08-19）：目录前几个 text 模型可能全是「纯文本/坏中转」
   // （真实现场：中转 claude 500 + 两个无视觉 Qwen 挤满前 3，能看图的 vision 模型排第 6）——

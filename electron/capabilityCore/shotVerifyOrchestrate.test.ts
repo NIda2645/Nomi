@@ -6,7 +6,9 @@ import {
   type ShotVerifyDeps,
   type ShotVerifyShot,
 } from './shotVerifyOrchestrate'
-import { deviationsFromVerdict } from './shotVerifyCore'
+import { deviationsFromVerdict,
+  buildShotVerifyPrompt,
+} from './shotVerifyCore'
 
 // L1 机制层（harness §一）：审片环分支矩阵——judge 桩注入可控判分，断言
 // 判分低→定向重试、K≤2 封顶、仍败带红标、首镜不评 continuity、视觉不可用整体跳过。
@@ -249,5 +251,35 @@ describe('buildRetryDirective（定向重试指令：保背景、不含角色名
     expect(dir).toContain('机位')
     // composition 被判低，就不该出现在「保持…构图…不变」里（否则自相矛盾）。
     expect(dir).not.toMatch(/保持[^。]*构图[^。]*不变/)
+  })
+})
+
+// ── 视频判分看首尾两帧（L3-F1 实测：只看首帧把「逐渐显出」类镜头误判成不达标）─────────────
+describe('framePair：视频镜的 rubric 必须知道自己看的是两帧', () => {
+  const base = {
+    shotNodeId: 'n1', shotTitle: '#5 空街反转',
+    shotPrompt: '远景，镜头缓缓横移扫过空街，远处路灯下逐渐显出一个静止的背影',
+    anchorDescriptions: [], frameSourceUrl: 'nomi-local://v.mp4',
+  }
+
+  it('★视频镜：prompt 明说「首帧(左)与尾帧(右)」+ 明说内容随时间展开是正常的', () => {
+    const text = buildShotVerifyPrompt({ ...base, framePair: true })
+    expect(text).toContain('首帧(左)与尾帧(右)')
+    expect(text).toContain('逐渐显出')
+    expect(text).toContain('那是**做对了**')
+    // 不说这句，判分器会把右半才出现的东西当穿帮——正是 #5 被误报的机制
+    expect(text).toContain('不要只看左边')
+  })
+
+  it('★identity 轴要被明确要求比较两帧（中途变脸只看一帧查不出来）', () => {
+    const text = buildShotVerifyPrompt({ ...base, framePair: true })
+    expect(text).toContain('同时比较左右两帧是不是同一个人')
+  })
+
+  it('图片镜不带这段（单张图说「首帧尾帧」纯属误导）', () => {
+    const text = buildShotVerifyPrompt(base)
+    expect(text).not.toContain('首帧(左)')
+    expect(text).not.toContain('不要只看左边')
+    expect(text).toContain('下面这张图是某个镜头实际生成出来的画面')
   })
 })

@@ -100,6 +100,9 @@ function toContext(shot: ShotVerifyShot): ShotVerifyContext {
     shotPrompt: shot.shotPrompt,
     anchorDescriptions: shot.anchorDescriptions,
     ...(shot.previousShotPrompt ? { previousShotPrompt: shot.previousShotPrompt } : {}),
+    // 视频镜喂的是首尾拼图 → 告诉 rubric，否则判分器会把「右半才出现的东西」当成穿帮
+    // （而那恰恰是「逐渐显出」类镜头做对了的样子）。
+    ...(shot.isVideo ? { framePair: true } : {}),
   }
 }
 
