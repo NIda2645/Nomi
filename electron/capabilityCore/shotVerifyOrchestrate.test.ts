@@ -213,6 +213,24 @@ describe('verifyAndMaybeRetry 总时长硬界（判分失败绝不拖垮生成�
   })
 })
 
+describe('「无法判定」档（L3 实测抓出：判分器把「看不到」误当「不像」）', () => {
+  it('identity=0（眼部微距/极远景判不了）→ 不算偏差、不红标、**不触发重试**（重做救不回来）', async () => {
+    const { deps, regenCalls } = makeDeps({ verdicts: ['{"scores":{"identity":0,"composition":5,"continuity":5},"reason":"该镜别看不到脸部结构，身份无法判定"}'] })
+    const out = await verifyAndMaybeRetry({ shot: baseShot }, deps)
+    expect(out.evaluated).toBe(true)
+    expect(out.flagged).toHaveLength(0) // 0 档不进红标
+    expect(out.passed).toBe(true)
+    expect(regenCalls).toHaveLength(0) // ★关键：不白烧一轮永远救不回来的重试
+  })
+
+  it('0 档与真低分可区分：identity=1 照旧红标+重试（别把修复做成放水）', async () => {
+    const { deps, regenCalls } = makeDeps({ verdicts: [BAD_IDENTITY, BAD_IDENTITY, BAD_IDENTITY] })
+    const out = await verifyAndMaybeRetry({ shot: baseShot }, deps)
+    expect(out.flagged.length).toBeGreaterThan(0)
+    expect(regenCalls.length).toBeGreaterThan(0)
+  })
+})
+
 describe('buildRetryDirective（定向重试指令：保背景、不含角色名）', () => {
   const ctxShot = { shotNodeId: 's', shotTitle: '#1', shotPrompt: 'p', anchorDescriptions: ['短发圆脸小周'] }
   it('身份轴低 → directive 含「保持…背景…不变」+「修正主体身份」，不含角色名/锚原文', () => {

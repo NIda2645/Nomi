@@ -47,6 +47,17 @@ export const SHOT_VERIFY_DIMENSIONS: readonly ShotVerifyDimension[] = [
 /** 任一轴低于此档即判该镜画面有偏差(进对账卡)。 */
 export const SHOT_VERIFY_PASS_THRESHOLD = 3
 
+/**
+ * 「该镜别根本判不了这一轴」的哨兵档（0）——**不是低分，不算偏差，不触发重试**。
+ *
+ * 为什么必须有（2026-08-20 L3 真额度实测抓出）：同一个锚喂 5 个不同景别，identity 打分成了
+ * 「脸在画面里占多大」的函数而非一致性的函数——中景 5 档（确实同一个人）、远景 3 档（脸几十像素）、
+ * **眼部微距 1 档并标红**（画面里根本没有可比对的脸部结构）。原 prompt 的「拿不准给偏低分」把
+ * 「看不到」误当成「不像」，于是：① 误报红标；② 触发一轮永远救不回来的定向重试（重滚一张眼睛微距
+ * 不会让眼睛变得更可辨认）——白烧额度。故给判分器一条正路：看不到就报 0，我们据此跳过该轴。
+ */
+export const SHOT_VERIFY_NOT_ASSESSABLE = 0
+
 /** 一镜校验所需的上下文(由 runner 层从节点+锚+前一镜组装,纯数据)。 */
 export type ShotVerifyContext = {
   /** 被校验的镜头节点 id(偏差回指用)。 */
@@ -71,9 +82,14 @@ export function activeDimensions(ctx: ShotVerifyContext): ShotVerifyDimension[] 
   return SHOT_VERIFY_DIMENSIONS.filter((d) => (d.requiresPreviousShot ? prev : true))
 }
 
+/**
+ * 档位归一。**0 是「无法判定」哨兵**，不是低分——原样保留（见 SHOT_VERIFY_NOT_ASSESSABLE）。
+ * 其余夹进 1-5；非数字按最保守的 1 处理（判不出就别放行）。
+ */
 function clampScore(value: unknown): number {
   const n = Number(value)
   if (!Number.isFinite(n)) return 1
+  if (Math.round(n) === SHOT_VERIFY_NOT_ASSESSABLE) return SHOT_VERIFY_NOT_ASSESSABLE
   return Math.max(1, Math.min(5, Math.round(n)))
 }
 
@@ -106,7 +122,9 @@ export function buildShotVerifyPrompt(ctx: ShotVerifyContext): string {
     '</Rubric>',
     '',
     `不要调用任何工具，只输出 JSON：{"reason": string, "scores": {${keys.map((k) => `"${k}": 1-5`).join(', ')}}}。`,
-    'reason 简短(每轴一句、整体不超过 100 字)。打分铁律：拿不准给保守(偏低)分；不要因为图清晰就给高分，主体对不上/机位错就低分。',
+    'reason 简短(每轴一句、整体不超过 100 字)。',
+    '打分铁律：① 主体对不上/机位错就低分，不要因为图清晰就给高分；② 拿不准（看得见但吃不准像不像）给保守的偏低分；',
+    `③ **但如果这个镜别根本看不到可比对的依据**（如眼部或手部微距、极远景主体只有几十像素、纯背影），该轴请给 ${SHOT_VERIFY_NOT_ASSESSABLE} 表示「无法判定」——${SHOT_VERIFY_NOT_ASSESSABLE} 不是低分，我们会跳过该轴；把「看不到」打成低分会触发一轮永远救不回来的重做。`,
   ].join('\n')
 }
 
@@ -160,6 +178,8 @@ export function deviationsFromVerdict(
   for (const d of SHOT_VERIFY_DIMENSIONS) {
     if (!active.has(d.key)) continue
     const score = clampScore(verdict.scores[d.key])
+    // 0 = 该镜别判不了这一轴（眼部微距/极远景/背影）→ 不算偏差、不红标、不重试（重做也救不回来）。
+    if (score === SHOT_VERIFY_NOT_ASSESSABLE) continue
     if (score >= SHOT_VERIFY_PASS_THRESHOLD) continue
     out.push({
       shotNodeId: ctx.shotNodeId,
