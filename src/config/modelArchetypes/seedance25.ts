@@ -4,7 +4,8 @@ import type { ModelArchetype } from "./types";
 // Seedance 2.5 档案。契约逐项对账自**两家**官方文档（2026-08-12 复核，用户给的链接）：
 //   - kie:     docs.kie.ai/market/bytedance/seedance-2-5 · POST /api/v1/jobs/createTask
 //              input.reference_image_urls / reference_video_urls / reference_audio_urls = 30 / 10 / 10
-//   - apimart: docs.apimart.ai/cn/api-reference/videos/doubao-seedance-2-5 · POST /v1/videos/generations
+//   - apimart: docs.apimart.ai/en/api-reference/videos/seedance-2-5/generation · POST /v1/videos/generations
+//              （原 /cn/.../doubao-seedance-2-5 已 404，2026-08-20 复核后更新为现行路径；30/10/10 未变）
 //              image_urls / video_urls / audio_urls = 30 / 10 / 10（另有 image_with_roles 表达首尾帧）
 //
 // ⚠️ 2026-08-12 修正：此前写 9 图 / 3 视频 / 3 音频、比例默认 16:9——**两处都不是文档里的数**，
@@ -69,8 +70,9 @@ export const SEEDANCE_2_5_ARCHETYPE: ModelArchetype = {
       covers: "POST /api/v1/jobs/createTask；input.reference_image_urls/_video_/_audio_ 上限 30/10/10；aspect_ratio 默认 adaptive；首尾帧与多模态参考互斥",
     },
     {
-      url: "https://docs.apimart.ai/cn/api-reference/videos/doubao-seedance-2-5",
-      checkedAt: "2026-08-12",
+      // 原 /cn/api-reference/videos/doubao-seedance-2-5 已 404（2026-08-20 复核），文档搬到这个路径。
+      url: "https://docs.apimart.ai/en/api-reference/videos/seedance-2-5/generation",
+      checkedAt: "2026-08-20",
       vendorKey: "apimart",
       covers: "POST /v1/videos/generations；image_urls/video_urls/audio_urls 上限 30/10/10；image_with_roles 表首尾帧；首尾帧与参考编辑类提示词下 size 必须 adaptive",
     },
@@ -127,6 +129,9 @@ export const SEEDANCE_2_5_ARCHETYPE: ModelArchetype = {
       slots: [
         { kind: "image_ref", label: "角色参考", min: 0, max: 30, characterIndexed: true },
         { kind: "video_ref", label: "参考视频", min: 0, max: 10 },
+        // **故意不声明 requiresAnyOf**：2.0 的参考音频必须搭配图/视频，2.5 明确解除了
+        // （方舟「Seedance 2.5 新增支持纯音频参考生成视频，无需搭配图片或视频素材」；APIMart "audio-only OK"）。
+        // 别在"对齐两代"时补回来——seedance20Contract.test.ts 有负向钉子拦着。
         { kind: "audio_ref", label: "参考音频", min: 0, max: 10 },
       ],
       params: PARAMS,

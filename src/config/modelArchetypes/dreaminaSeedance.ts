@@ -43,7 +43,8 @@ const MODES: ModelArchetype["modes"] = [
     slots: [
       { kind: "image_ref", label: "角色参考", min: 0, max: 9, characterIndexed: true, inputKey: "mm_images" },
       { kind: "video_ref", label: "参考视频", min: 0, max: 3, inputKey: "mm_videos" },
-      { kind: "audio_ref", label: "参考音频", min: 0, max: 3, inputKey: "mm_audios" },
+      // 音频不能单独用（即梦跑的就是 Seedance 2.0，模型级契约同方舟/APIMart：不支持纯音频输入）。
+      { kind: "audio_ref", label: "参考音频", min: 0, max: 3, inputKey: "mm_audios", requiresAnyOf: ["image_ref", "video_ref"] },
     ], params: PARAMS_WITH_RATIO,
   },
 ];
