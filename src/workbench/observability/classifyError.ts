@@ -307,7 +307,20 @@ function detectContentModerationTarget(upstream: string | undefined, raw: string
  * 请求到**的服务商，再配一句没用的「换一个模型」。
  */
 function detectAssetUploadFailed(raw: string): boolean {
-  return raw.includes('所有免配置上传 host 都失败')
+  // 三种形态都要认（都出自 assetLocalization / localAssetFile，是我们自己的字符串）：
+  // ① 匿名链包出来的；② 逐条候选通道都挂的汇总；③ 某条通道直接抛的裸 `素材上传失败(HTTP 4xx)`。
+  // 只认 ① 的时候，直连通道（KIE/apimart）抛的 413 落进 unknown → 用户看到「可能是服务商临时故障
+  // 或额度问题，建议稍等重试」（2026-08-20 用户截图逐字如此），于是不停重试一个必然再撞的上限。
+  return (
+    raw.includes('所有免配置上传 host 都失败') ||
+    raw.includes('的所有上传通道都没成功') ||
+    raw.includes('素材上传失败')
+  )
+}
+
+/** 素材大到所有上传通道都装不下（HTTP 413）——重试永远不会成，得让用户去压缩，不能说「稍等重试」。 */
+function detectAssetTooLarge(raw: string): boolean {
+  return raw.includes('超过了所有可用上传通道的大小上限') || raw.includes('HTTP 413')
 }
 
 /**
@@ -427,6 +440,8 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
     return reportFor('balance', cleanRaw, structured?.upstreamMsg)
   }
   // 素材上传失败先于 category 判——失败在我们这侧，服务商根本没被请求到，不能借上游的状态码说话。
+  // 太大（413）比「上传失败」更具体，先判——否则会被归成「稍等重试」，而重试永远不可能成。
+  if (detectAssetTooLarge(cleanRaw)) return reportFor('asset-too-large', cleanRaw, undefined)
   if (detectAssetUploadFailed(cleanRaw)) return reportFor('asset-upload-failed', cleanRaw, undefined)
   // 内容安全拦截先于 category 判——审核拒绝走 HTTP 400，会被派生成「参数不被接受·检查比例/尺寸」
   // 并配一个必然再撞的「重试」（理由见 detectContentModerationTarget）。

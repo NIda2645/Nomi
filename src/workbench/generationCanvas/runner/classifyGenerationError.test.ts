@@ -222,6 +222,36 @@ describe('classifyGenerationError — 已知分类', () => {
     expect(r.providerMessage).toMatch(/litterbox/)
   })
 
+  // 2026-08-20 用户真机截图：本机 mp4 → 直连通道（非匿名链）抛裸 `素材上传失败(HTTP 413)`。
+  // 旧行为落 unknown → 「可能是服务商临时故障或额度问题，建议稍等重试」，逐字如此。
+  // 413 = 文件超过该 host 的 body 上限，是**确定性**失败：同一个文件重试一万次都是同一堵墙，
+  // 而且每次都要把整个文件完整传上去再被拒。必须说「去压缩」，不能说「稍等重试」。
+  it('素材超上传上限（413）→ 说清是文件太大，不说「稍等重试」', () => {
+    const bare = classifyGenerationError(
+      "Error invoking remote method 'nomi:tasks:run': Error: 素材上传失败(HTTP 413)：(无详情)",
+    )
+    expect(bare.kind).toBe('asset-too-large')
+    expect(bare.hint).not.toMatch(/稍等重试|临时故障|额度问题/)
+    expect(bare.hint).toMatch(/压缩|裁短/)
+    // 换通道全挂后的汇总形态（带素材名 + 大小）同样归到这一类。
+    const summarized = classifyGenerationError(
+      'Error: 视频「clip.mp4（180.0MB）」超过了所有可用上传通道的大小上限，传不上去。详情：small: 素材上传失败(HTTP 413)：(无详情)',
+    )
+    expect(summarized.kind).toBe('asset-too-large')
+    // 具体是哪个素材、多大，必须在技术详情里留得住（用户据此判断压到多少）。
+    expect(summarized.raw).toMatch(/clip\.mp4/)
+    expect(summarized.raw).toMatch(/180\.0MB/)
+  })
+
+  // 直连通道（KIE/apimart）抛的裸上传失败，不带匿名链那句包装 → 此前也会落 unknown 甩锅服务商。
+  it('直连通道的上传失败（非 413）也归到「没送到服务商」，不落 unknown', () => {
+    const r = classifyGenerationError(
+      "Error invoking remote method 'nomi:tasks:run': Error: 素材上传失败(HTTP 401)：invalid key",
+    )
+    expect(r.kind).toBe('asset-upload-failed')
+    expect(r.kind).not.toBe('unknown')
+  })
+
   it('未识别错误的首行不再顶着 Electron IPC 包装前缀（对用户零信息）', () => {
     const r = classifyGenerationError(
       "Error invoking remote method 'nomi:tasks:run': Error: 上游返回了一个我们没见过的形状",

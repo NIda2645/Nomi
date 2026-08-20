@@ -254,7 +254,7 @@ describe("resolveLocalAsset (per strategy)", () => {
 
 describe("localizeAssetsForVendor", () => {
   const ingestion: AssetIngestion = { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "url" };
-  const resolverFor = (ing: AssetIngestion, key = "k") => () => ({ ingestion: ing, uploadApiKey: key });
+  const resolverFor = (ing: AssetIngestion, key = "k") => () => [{ ingestion: ing, uploadApiKey: key }];
 
   it("uploads each unique url once and replaces all occurrences", async () => {
     const post = vi.fn().mockImplementation((_u, _h, body: Record<string, string>) => {
@@ -292,7 +292,7 @@ describe("localizeAssetsForVendor", () => {
     const imageIngestion: AssetIngestion = { strategy: "upload-url", endpoint: "https://img/up", base64Field: "b", urlPath: "url", accepts: ["image"] };
     const videoIngestion: AssetIngestion = { strategy: "upload-stream", endpoint: "https://vid/up", urlPath: "data.downloadUrl", accepts: ["image", "video"] };
     const resolver = (kind: "image" | "video" | "audio") =>
-      kind === "video" ? { ingestion: videoIngestion, uploadApiKey: "vk" } : { ingestion: imageIngestion, uploadApiKey: "ik" };
+      kind === "video" ? [{ ingestion: videoIngestion, uploadApiKey: "vk" }] : [{ ingestion: imageIngestion, uploadApiKey: "ik" }];
     const post = vi.fn().mockResolvedValue({ url: "https://pub/img.png" });
     const postMultipart = vi.fn().mockResolvedValue({ data: { downloadUrl: "https://pub/clip.mp4" } });
     const extras = { referenceImageUrls: [localUrl("a.png")], referenceVideoUrls: [localUrl("clip.mp4")] };
@@ -311,63 +311,122 @@ describe("localizeAssetsForVendor", () => {
 
   it("throws an honest error when no channel accepts the asset's media kind", async () => {
     const readVideo = (url: string): LocalAsset | null => ({ bytes: Buffer.from("v"), contentType: "video/mp4", fileName: url.split("/").pop() || "v.mp4" });
-    const resolver = () => null; // no channel for any kind
+    const resolver = () => []; // no channel for any kind
     const extras = { referenceVideoUrls: [localUrl("clip.mp4")] };
     await expect(localizeAssetsForVendor(extras, resolver, readVideo, vi.fn(), noMultipart)).rejects.toThrow(/运镜参考视频需要支持视频上传的通道/);
   });
 });
+
+// 2026-08-20 用户报 HTTP 413：一条通道装不下就整个生成死掉，而排在它后面、收得下的通道从没被试过。
+// 此前 localizeAssetsForVendor 只拿第一条候选、没有 try/catch —— 「fallback」只对能力生效、对失败不生效。
+describe("localizeAssetsForVendor — 上传失败换下一条通道（413 类）", () => {
+  const bigVideo = (): LocalAsset => ({ bytes: Buffer.alloc(3 * 1024 * 1024, 1), contentType: "video/mp4", fileName: "clip.mp4" });
+  const small: AssetIngestion = { strategy: "upload-multipart", endpoint: "https://small.example/up", urlPath: "url", accepts: ["video"] };
+  const roomy: AssetIngestion = { strategy: "upload-multipart", endpoint: "https://roomy.example/up", urlPath: "url", accepts: ["video"] };
+
+  it("第一条 413 → 自动换第二条，生成照常继续", async () => {
+    const postMultipart = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("small.example")) return Promise.reject(new Error("素材上传失败(HTTP 413)：(无详情)"));
+      return Promise.resolve({ url: "https://cdn/clip.mp4" });
+    });
+    const out = await localizeAssetsForVendor(
+      { referenceVideoUrls: [localUrl("clip.mp4")] },
+      () => [{ ingestion: small, uploadApiKey: "a" }, { ingestion: roomy, uploadApiKey: "b" }],
+      bigVideo,
+      vi.fn(),
+      postMultipart,
+    );
+    expect((out.value as { referenceVideoUrls: string[] }).referenceVideoUrls[0]).toBe("https://cdn/clip.mp4");
+    expect(postMultipart).toHaveBeenCalledTimes(2); // 试过 small（413）才换 roomy
+  });
+
+  it("全部 413 → 错误说人话：哪个素材、多大、别再重试", async () => {
+    const postMultipart = vi.fn().mockRejectedValue(new Error("素材上传失败(HTTP 413)：(无详情)"));
+    const run = localizeAssetsForVendor(
+      { referenceVideoUrls: [localUrl("clip.mp4")] },
+      () => [{ ingestion: small, uploadApiKey: "a" }, { ingestion: roomy, uploadApiKey: "b" }],
+      bigVideo,
+      vi.fn(),
+      postMultipart,
+    );
+    // 要点名素材、报出大小、点破「超上限」——不能再是「服务商临时故障，稍等重试」那种甩锅文案。
+    await expect(run).rejects.toThrow(/clip\.mp4/);
+    await expect(run).rejects.toThrow(/3\.0MB/);
+    await expect(run).rejects.toThrow(/超过了所有可用上传通道的大小上限/);
+  });
+
+  it("非 413 的全失败 → 汇总每条通道各自的原因（别吞掉线索）", async () => {
+    const postMultipart = vi.fn()
+      .mockRejectedValueOnce(new Error("素材上传失败(HTTP 401)：bad key"))
+      .mockRejectedValueOnce(new Error("fetch failed"));
+    const run = localizeAssetsForVendor(
+      { referenceVideoUrls: [localUrl("clip.mp4")] },
+      () => [{ ingestion: small, uploadApiKey: "a" }, { ingestion: roomy, uploadApiKey: "b" }],
+      bigVideo,
+      vi.fn(),
+      postMultipart,
+    );
+    await expect(run).rejects.toThrow(/small\.example.*401/s);
+    await expect(run).rejects.toThrow(/roomy\.example.*fetch failed/s);
+  });
+});
+
+// 通道解析返回的是**按优先级排好的候选列表**（一条挂了要能换下一条，见 localizeAssetsForVendor）。
+// 下面这些用例断言的是「排第一的是谁」，取 [0] 即可；空列表 = 没有任何可用通道。
+const firstIngestion = (...args: Parameters<typeof resolveAssetIngestionWithFallback>) =>
+  resolveAssetIngestionWithFallback(...args)[0] ?? null;
 
 describe("resolveAssetIngestionWithFallback (跨 vendor 上传优先级链)", () => {
   // getApiKey 工厂：用一组「已配置 key 的 vendor」构造查询函数
   const keysOf = (...vendorKeys: string[]) => (k: string) => (vendorKeys.includes(k) ? `key-${k}` : null);
 
   it("① 目标 vendor 自己有上传能力 → 用目标 + 目标的 key", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"));
+    const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"));
     expect(out?.ingestion.strategy).toBe("upload-multipart");
     expect(out?.uploadApiKey).toBe("key-apimart");
   });
 
   it("② 目标无上传能力 + 配了 KIE → 用 KIE 中转 + KIE 的 key", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "openai" }, { key: "kie" }], keysOf("openai", "kie"));
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, { key: "kie" }], keysOf("openai", "kie"));
     expect(out?.ingestion.strategy).toBe("upload-url"); // KIE = upload-url
     expect(out?.uploadApiKey).toBe("key-kie");
   });
 
   it("③ 无 KIE + 配了 apimart(且目标≠apimart) → 用 apimart 中转 + apimart 的 key", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "openai" }, { key: "apimart" }], keysOf("openai", "apimart"));
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, { key: "apimart" }], keysOf("openai", "apimart"));
     expect(out?.ingestion.strategy).toBe("upload-multipart");
     expect(out?.uploadApiKey).toBe("key-apimart");
   });
 
   it("KIE 优先于 apimart（两者都配时选 KIE）", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "kie" }, { key: "apimart" }], keysOf("openai", "kie", "apimart"));
+    const out = firstIngestion({ key: "openai" }, [{ key: "kie" }, { key: "apimart" }], keysOf("openai", "kie", "apimart"));
     expect(out?.uploadApiKey).toBe("key-kie");
   });
 
   it("④ 无 KIE/apimart + 另一 vendor 自带 upload-url 声明 → 用它中转", () => {
     const custom = { key: "custom", assetIngestion: { strategy: "upload-url", endpoint: "https://c/up", base64Field: "b", urlPath: "url" } as AssetIngestion };
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "openai" }, custom], keysOf("openai", "custom"));
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, custom], keysOf("openai", "custom"));
     expect(out?.ingestion.strategy).toBe("upload-url");
     expect(out?.uploadApiKey).toBe("key-custom");
   });
 
   it("inline-base64 的 vendor 不算「有上传能力」，不被选作中转 → 落到匿名链零配置兜底", () => {
     const inlineVendor = { key: "inliner", assetIngestion: { strategy: "inline-base64" } as AssetIngestion };
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "openai" }, inlineVendor], keysOf("openai", "inliner"));
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, inlineVendor], keysOf("openai", "inliner"));
     // 没有真正能产出公网 URL 的供应商通道 → 匿名链（零配置）接住
     expect(out?.ingestion.strategy).toBe("anon-chain");
     expect(out?.uploadApiKey).toBe("");
   });
 
   it("⑤ 无任何供应商上传通道 → 匿名链零配置兜底（不再返回 null）", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "openai" }], keysOf("openai"));
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }], keysOf("openai"));
     expect(out?.ingestion.strategy).toBe("anon-chain");
     expect(out?.uploadApiKey).toBe("");
   });
 
   it("配了 KIE 但没填 key → 不选 KIE，落到匿名链（key 缺失视为不可用）", () => {
     // vendor 列表里有 kie，但 getApiKey('kie') 返回 null
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "openai" }, { key: "kie" }], keysOf("openai"));
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, { key: "kie" }], keysOf("openai"));
     expect(out?.ingestion.strategy).toBe("anon-chain");
   });
 });
@@ -376,19 +435,19 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
   const keysOf = (...vendorKeys: string[]) => (k: string) => (vendorKeys.includes(k) ? `key-${k}` : null);
 
   it("image asset → apimart chosen (image channel)", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "image");
+    const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "image");
     expect(out?.ingestion.strategy).toBe("upload-multipart");
     expect(out?.uploadApiKey).toBe("key-apimart");
   });
 
   it("video asset + only apimart configured → anon chain (apimart image-only, zero-config fallback)", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
+    const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
     expect(out?.ingestion.strategy).toBe("anon-chain");
     expect(out?.uploadApiKey).toBe("");
   });
 
   it("video asset + KIE configured → KIE stream chosen", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "apimart" }, [{ key: "apimart" }, { key: "kie" }], keysOf("apimart", "kie"), "video");
+    const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }, { key: "kie" }], keysOf("apimart", "kie"), "video");
     expect(out?.ingestion.strategy).toBe("upload-stream");
     expect(out?.uploadApiKey).toBe("key-kie");
     if (out?.ingestion.strategy === "upload-stream") {
@@ -399,14 +458,14 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
 
   it("video asset + apimart target + KIE configured → apimart skipped, KIE used", () => {
     // target is apimart, but mp4 can't go there; KIE picks it up
-    const out = resolveAssetIngestionWithFallback({ key: "apimart" }, [{ key: "kie" }], keysOf("kie"), "video");
+    const out = firstIngestion({ key: "apimart" }, [{ key: "kie" }], keysOf("kie"), "video");
     expect(out?.uploadApiKey).toBe("key-kie");
     expect(out?.ingestion.strategy).toBe("upload-stream");
   });
 
   it("video asset + no KIE (only apimart, image-only) → anon chain zero-config fallback, no honest error", () => {
     // target apimart can't take mp4, no KIE key → anon chain (no key) catches it
-    const out = resolveAssetIngestionWithFallback({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
+    const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
     expect(out).not.toBeNull();
     expect(out?.uploadApiKey).toBe(""); // anonymous, no key needed
     if (out?.ingestion.strategy === "anon-chain") {
@@ -420,19 +479,19 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
   });
 
   it("video asset + nothing configured at all → still anon chain (zero user config)", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "openai" }], keysOf("openai"), "video");
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }], keysOf("openai"), "video");
     expect(out?.uploadApiKey).toBe("");
     expect(out?.ingestion.strategy).toBe("anon-chain");
   });
 
   it("video asset + KIE present → KIE wins over anon chain (upgrade when key available)", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "openai" }, [{ key: "openai" }, { key: "kie" }], keysOf("openai", "kie"), "video");
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, { key: "kie" }], keysOf("openai", "kie"), "video");
     expect(out?.ingestion.strategy).toBe("upload-stream");
     expect(out?.uploadApiKey).toBe("key-kie");
   });
 
   it("image asset + apimart present → apimart still wins over litterbox", () => {
-    const out = resolveAssetIngestionWithFallback({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "image");
+    const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "image");
     expect(out?.ingestion.strategy).toBe("upload-multipart");
     expect(out?.ingestion.endpoint).toBe("https://api.apimart.ai/v1/uploads/images");
     expect(out?.uploadApiKey).toBe("key-apimart");
@@ -470,7 +529,7 @@ describe("sidecar originalUrl 新鲜度门（L2：参考图永不过期）", () 
   it("localize：新鲜 sidecar 直接用公网直链，零上传", async () => {
     const post = vi.fn();
     const readFresh = () => withSidecar(FRESH);
-    const out = await localizeAssetsForVendor({ input_urls: [localUrl("a.png")] }, () => ({ ingestion: { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "u" }, uploadApiKey: "k" }), readFresh, post, noMultipart);
+    const out = await localizeAssetsForVendor({ input_urls: [localUrl("a.png")] }, () => [{ ingestion: { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "u" }, uploadApiKey: "k" }], readFresh, post, noMultipart);
     expect((out.value as { input_urls: string[] }).input_urls).toEqual(["https://cdn.example.com/orig-a.png"]);
     expect(post).not.toHaveBeenCalled();
   });
@@ -478,7 +537,7 @@ describe("sidecar originalUrl 新鲜度门（L2：参考图永不过期）", () 
   it("localize：过窗 sidecar 忽略 → 用本地字节走上传通道换新链（治「发过期临时链」整类）", async () => {
     const post = vi.fn().mockResolvedValue({ u: "https://fresh.example.com/new-a.png" });
     const readStale = () => withSidecar(STALE);
-    const out = await localizeAssetsForVendor({ input_urls: [localUrl("a.png")] }, () => ({ ingestion: { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "u" }, uploadApiKey: "k" }), readStale, post, noMultipart);
+    const out = await localizeAssetsForVendor({ input_urls: [localUrl("a.png")] }, () => [{ ingestion: { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "u" }, uploadApiKey: "k" }], readStale, post, noMultipart);
     expect((out.value as { input_urls: string[] }).input_urls).toEqual(["https://fresh.example.com/new-a.png"]);
     expect(post).toHaveBeenCalledTimes(1);
   });
@@ -501,9 +560,9 @@ describe("comfyui-upload（本地 ComfyUI 首帧上传，S2）", () => {
   });
 
   it("resolveAssetIngestionWithFallback：comfyui-local 图片 → comfyui-upload，端点从 baseUrl 派生（默认 + 自定义 + 尾斜杠归一）", () => {
-    const def = resolveAssetIngestionWithFallback({ key: "comfyui-local" }, [], () => null, "image");
+    const def = firstIngestion({ key: "comfyui-local" }, [], () => null, "image");
     expect(def?.ingestion).toEqual({ strategy: "comfyui-upload", endpoint: "http://127.0.0.1:8188/upload/image", accepts: ["image", "video"] });
-    const custom = resolveAssetIngestionWithFallback({ key: "comfyui-local", baseUrlHint: "http://192.168.1.9:8000/" }, [], () => null, "image");
+    const custom = firstIngestion({ key: "comfyui-local", baseUrlHint: "http://192.168.1.9:8000/" }, [], () => null, "image");
     expect((custom?.ingestion as { endpoint: string }).endpoint).toBe("http://192.168.1.9:8000/upload/image");
   });
 
@@ -512,7 +571,7 @@ describe("comfyui-upload（本地 ComfyUI 首帧上传，S2）", () => {
     // 真机 ComfyUI 0.29 实测：POST mp4 进 /upload/image 返回 {name,subfolder,type}，
     // 返回的文件名当场出现在 LoadVideo.file 的 combo 里。走通用兜底（litterbox 等公网链）反而是错的：
     // ComfyUI 的 LoadVideo 只认自己 input 目录里的文件名，给它公网 URL 必失败。
-    const vid = resolveAssetIngestionWithFallback({ key: "comfyui-local" }, [], () => null, "video");
+    const vid = firstIngestion({ key: "comfyui-local" }, [], () => null, "video");
     expect(vid?.ingestion.strategy).toBe("comfyui-upload");
     expect((vid?.ingestion as { endpoint: string }).endpoint).toBe("http://127.0.0.1:8188/upload/image");
   });
@@ -550,7 +609,7 @@ describe("comfyui-upload（本地 ComfyUI 首帧上传，S2）", () => {
     const post = vi.fn().mockResolvedValue({ name: "frame.png", subfolder: "in", type: "input" });
     const out = await localizeAssetsForVendor(
       { firstFrameUrl: localUrl("f.png") },
-      () => ({ ingestion: comfyIngestion(), uploadApiKey: "" }),
+      () => [{ ingestion: comfyIngestion(), uploadApiKey: "" }],
       () => readFresh("f.png"),
       vi.fn(),
       post,

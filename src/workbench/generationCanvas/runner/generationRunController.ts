@@ -28,7 +28,7 @@ import { archetypeForNode, resolveModeForConnectedReferences } from '../agent/re
 import {
   applyArchetypeModeSwitch,
   currentArchetypeMode,
-  hasArchetypeArrayReferences,
+  hasAnyArchetypeReference,
 } from '../nodes/controls/archetypeMeta'
 import { resolveTaskArchetype } from './catalogTaskResolve'
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
@@ -561,13 +561,9 @@ export function canRunGenerationNode(
     const meta = node.meta || {}
     const imageArchetype = resolveTaskArchetype(meta)
     const imageMode = imageArchetype ? currentArchetypeMode(imageArchetype, meta) : null
-    if (!imageMode || imageMode.transportTaskKind !== 'image_edit' || (imageMode.slots || []).length === 0) return true
+    if (!imageArchetype || !imageMode || imageMode.transportTaskKind !== 'image_edit' || (imageMode.slots || []).length === 0) return true
     const references = resolveGenerationReferences(node, context)
-    return Boolean(
-      references.referenceImages.length > 0 ||
-      references.firstFrameUrl ||
-      (imageArchetype && hasArchetypeArrayReferences(meta, imageArchetype)),
-    )
+    return hasAnyArchetypeReference(meta, imageArchetype, references)
   }
   // C5: 文本节点只要选了文本模型就能生成；prompt 缺失由 buildCatalogTaskRequest 兜底报错。
   if (executionKind === 'text') return true
@@ -579,7 +575,10 @@ export function canRunGenerationNode(
     const mode = audioArchetype ? currentArchetypeMode(audioArchetype, meta) : null
     const needsAudioRef = (mode?.slots || []).some((slot) => slot.kind === 'audio_ref')
     if (!needsAudioRef) return true
-    return Boolean(audioArchetype && hasArchetypeArrayReferences(meta, audioArchetype))
+    // 连线来源也算（今天没有音频源节点种类，SLOT_ACCEPTS.audio_ref=[]，故实际恒空）——口径与另两支一致，
+    // 将来加了音频节点不必再想起来补这一处。
+    const audioReferences = 'id' in node && node.id ? resolveGenerationReferences(node, context) : undefined
+    return Boolean(audioArchetype && hasAnyArchetypeReference(meta, audioArchetype, audioReferences))
   }
   if (executionKind !== 'video') return false
   if (!('id' in node) || !node.id) return false
@@ -591,13 +590,15 @@ export function canRunGenerationNode(
   // 只是用户多从图片边起步才没暴露。根因 = 此判定原本不分模式，一律要参考。
   const mode = archetype ? currentArchetypeMode(archetype, meta) : null
   if (mode && (mode.slots || []).length === 0) return true
-  // 有参考槽的模式（i2v/首尾帧/全能参考 omni）→ 需至少一个参考。omni 靠参考数组（referenceImageUrls 等），
-  // 单看 resolveGenerationReferences 看不到 → 补一条档案数组判断（否则已放参考的 omni 被误判不可生成）。
+  // 有参考槽的模式（i2v/首尾帧/全能参考 omni/视频编辑）→ 需至少一个参考。判据统一交给
+  // hasAnyArchetypeReference：它遍历**本模式声明的槽**，每个槽同时看「画布边」和「meta 手动上传」，
+  // 与显示（resolveReferenceSlots）、发送（buildArchetypeInputParams）同一口径。
+  // 此前这里是一串就地展开的 OR，每加一种槽都得记得再补一条 → 漏了连线参考视频、尾帧接力、
+  // 源视频三处，用户明明连了线、缩略图也显示着，↑ 按钮却死着（2026-08-20 用户反馈 + 不变量测试）。
   const references = resolveGenerationReferences(node, context)
+  if (archetype) return hasAnyArchetypeReference(meta, archetype, references)
+  // 无档案（ComfyUI 导入工作流等）：没有槽声明可遍历，沿用旧启发式。
   return Boolean(
-    references.firstFrameUrl ||
-    references.lastFrameUrl ||
-    references.referenceImages.length > 0 ||
-    (archetype && hasArchetypeArrayReferences(meta, archetype)),
+    references.firstFrameUrl || references.lastFrameUrl || references.referenceImages.length > 0,
   )
 }

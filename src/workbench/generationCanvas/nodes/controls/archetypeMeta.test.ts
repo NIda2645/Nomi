@@ -14,7 +14,7 @@ import {
   currentArchetypeMode,
   currentArchetypeVariant,
   ensureArchetypeNodeMeta,
-  hasArchetypeArrayReferences,
+  hasAnyArchetypeReference,
   mergeOrderedReferenceImageUrls,
   modeHasCharacterSlot,
   normalizeArchetypeVariantMeta,
@@ -121,6 +121,22 @@ describe('buildArchetypeInputParams — M2 互斥发生在档案驱动的 input 
     const meta = { archetype: { id: 'seedance-2', modeId: 'firstlast' }, firstFrameUrl: '  ' }
     expect(buildArchetypeInputParams(meta, SEEDANCE)).toEqual({ model: 'bytedance/seedance-2' })
   })
+  // 2026-08-20：source_video 单值槽此前只认 meta.sourceVideoUrl，连线来的源视频取不到值 →
+  // video_url 键根本不发（HappyHorse 视频编辑「拖一段视频进去」等于白拖）。
+  it('source_video 槽：连线来的源视频也要上线（不只认手动上传）', () => {
+    const happyhorse = getArchetypeById('happyhorse')!
+    const editMode = happyhorse.modes.find((m) => m.id === 'edit')!
+    expect(editMode.slots.some((s) => s.kind === 'source_video')).toBe(true)
+    const meta = { archetype: { id: happyhorse.id, modeId: 'edit' } }
+    const out = buildArchetypeInputParams(meta, happyhorse, { referenceVideos: ['https://cdn/src.mp4'] })
+    expect(out.video_url).toBe('https://cdn/src.mp4')
+  })
+  // 「不冒充首帧」不变量：首帧槽连的是视频（尾帧接力）时，抽帧前**不能**把视频 URL 当首帧发出去。
+  it('relayFromVideoUrl 永不上线当首帧（抽帧由 relayFrameResolver 在提交前填 firstFrameUrl）', () => {
+    const meta = { archetype: { id: 'seedance-2', modeId: 'first' } }
+    const out = buildArchetypeInputParams(meta, SEEDANCE, { relayFromVideoUrl: 'https://cdn/prev.mp4' })
+    expect(out.first_frame_url).toBeUndefined()
+  })
 })
 
 // ───────────────────────── C3：全能参考数组槽 ─────────────────────────
@@ -149,17 +165,33 @@ describe('C3 全能参考 — 数组槽声明', () => {
     expect(modeHasCharacterSlot(OMNI)).toBe(true)
     expect(modeHasCharacterSlot(SEEDANCE.modes.find((m) => m.id === 'first')!)).toBe(false)
   })
-  it('hasArchetypeArrayReferences：omni 放了参考数组 → true（修复 omni 误判"需要首帧"锁死生成）', () => {
+  it('hasAnyArchetypeReference：omni 放了参考数组 → true（修复 omni 误判"需要首帧"锁死生成）', () => {
     const empty = { archetype: { id: 'seedance-2', modeId: 'omni' } }
-    expect(hasArchetypeArrayReferences(empty, SEEDANCE)).toBe(false)
+    expect(hasAnyArchetypeReference(empty, SEEDANCE)).toBe(false)
     const withImg = { ...empty, referenceImageUrls: ['c1.png'] }
-    expect(hasArchetypeArrayReferences(withImg, SEEDANCE)).toBe(true)
+    expect(hasAnyArchetypeReference(withImg, SEEDANCE)).toBe(true)
     // nomi-local:// 也算「有参考」（传输前 R1 本地化），不做 http 过滤
     const withLocal = { ...empty, referenceVideoUrls: ['nomi-local://asset/p/v.mp4'] }
-    expect(hasArchetypeArrayReferences(withLocal, SEEDANCE)).toBe(true)
+    expect(hasAnyArchetypeReference(withLocal, SEEDANCE)).toBe(true)
     // 首帧模式无数组槽 → 即便 meta 残留 referenceImageUrls 也不算（互斥）
     const firstMode = { archetype: { id: 'seedance-2', modeId: 'first' }, referenceImageUrls: ['c1.png'] }
-    expect(hasArchetypeArrayReferences(firstMode, SEEDANCE)).toBe(false)
+    expect(hasAnyArchetypeReference(firstMode, SEEDANCE)).toBe(false)
+  })
+  // 2026-08-20 用户反馈：参考只从画布边来（没走手动上传）时，判定必须照样看得见。
+  it('hasAnyArchetypeReference：连线来的参考（meta 全空）也算——三种槽都要覆盖', () => {
+    const omni = { archetype: { id: 'seedance-2', modeId: 'omni' } }
+    // 只连了一段参考视频 → 可生成（此前只读 meta，这里恒 false → ↑ 按钮锁死）
+    expect(hasAnyArchetypeReference(omni, SEEDANCE, { referenceVideos: ['nomi-local://asset/p/v.mp4'] })).toBe(true)
+    expect(hasAnyArchetypeReference(omni, SEEDANCE, { referenceImages: ['https://cdn/a.png'] })).toBe(true)
+    expect(hasAnyArchetypeReference(omni, SEEDANCE, { referenceAudios: ['https://cdn/a.mp3'] })).toBe(true)
+    // 空 references 仍然是 false（别把「有对象」当成「有参考」）
+    expect(hasAnyArchetypeReference(omni, SEEDANCE, { referenceVideos: [], referenceImages: [] })).toBe(false)
+    // 资产类型要对上槽：首帧模式只有 first_frame 槽，喂一串参考视频不算「有首帧」
+    const first = { archetype: { id: 'seedance-2', modeId: 'first' } }
+    expect(hasAnyArchetypeReference(first, SEEDANCE, { referenceVideos: ['https://cdn/v.mp4'] })).toBe(false)
+    expect(hasAnyArchetypeReference(first, SEEDANCE, { firstFrameUrl: 'https://cdn/f.png' })).toBe(true)
+    // 尾帧接力：首帧槽连的是视频，抽帧要等提交时才跑 → 判定阶段也得算「已放参考」
+    expect(hasAnyArchetypeReference(first, SEEDANCE, { relayFromVideoUrl: 'https://cdn/prev.mp4' })).toBe(true)
   })
 })
 
