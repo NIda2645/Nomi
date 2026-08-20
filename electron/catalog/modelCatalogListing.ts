@@ -8,6 +8,7 @@
 // 不静默丢任何模型——发不出/没 key 的照列，带上状态与一句人话，让 agent 能对用户说「kie 没配 key」而非瞎猜。
 import { apiKeyDecryptStatus, type ApiKeyDecryptStatus, type ApiKeyRecord } from "./secrets";
 import { bodyReferenceSupport, type BodyReferenceSupport } from "./referenceReachability";
+import { bodyReferencedParamKeys } from "./paramTranslate";
 import type { ModelModeBody } from "./taskParams";
 import { billingKindForTaskKind, type BillingModelKind, type CatalogState, type Mapping, type ProfileKind } from "./types";
 
@@ -92,6 +93,30 @@ function referenceSupportForModel(modelMappings: Mapping[]): ModelReferenceSuppo
   // 稳定排序（输出确定性，便于快照/断言）。
   out.referenceModes = [...modes].sort();
   return out;
+}
+
+/**
+ * 该模型**视频类模式的 body 真实引用了哪些参数键**（W2 §3 两跳判据的原料）。
+ *
+ * 为什么要它：两跳要把首帧图喂进模型的 first_frame 槽——但不是每家 video 模型都有这个槽。硬塞
+ * firstFrameUrl 给读不到它的模型只会被 L3 护栏拦（白跑一趟 + 一条看不懂的错）。故「支不支持首帧」
+ * 必须**从目录 body derive**（与 referenceModeForIntent 同一份源，P1），不 hardcode 家名。
+ *
+ * 纯函数（输入 CatalogState）。返回去重 + 字典序的键名数组（顺序稳定，便于断言）。
+ */
+export function videoBodyKeysForModel(
+  state: CatalogState,
+  vendorKey: string,
+  modelKey: string,
+): string[] {
+  const model = state.models.find((m) => m.vendorKey === vendorKey && m.modelKey === modelKey && m.enabled);
+  const modelMappings = mappingsForModel(state.mappings, vendorKey, modelKey, model?.modelAlias);
+  const keys = new Set<string>();
+  for (const mapping of modelMappings) {
+    if (billingKindForTaskKind(mapping.taskKind) !== "video") continue;
+    for (const key of bodyReferencedParamKeys(mapping.create?.body)) keys.add(key);
+  }
+  return [...keys].sort();
 }
 
 /**

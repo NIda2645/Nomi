@@ -325,6 +325,89 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     await expect(readProjectCanvas(createDiskGateway('ghost-id'))).rejects.toThrow(/项目不存在/)
   })
 
+  // ── W2 §3 I2V 两跳（参考图 → 首帧 I2I → I2V）：接线层断言。判据/编排的分支矩阵在 i2vTwoHop.test.ts。 ──
+
+  it('两跳：video + 参考 + 模型 body 读 first_frame_url → 先发一次 image 出首帧，再把它当 firstFrameUrl 发 I2V', async () => {
+    const project = createNamedProject('两跳-生效')
+    seedCatalog(
+      [{ modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [
+        { id: 'i2v', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { first_frame_url: '{{request.params.first_frame_url}}' } }, createdAt: 't', updatedAt: 't' },
+        { id: 'edit', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_edit', name: 'edit', enabled: true, create: { method: 'POST', path: '/i', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
+      ],
+    )
+    const calls: Array<{ kind: string; firstFrameUrl?: unknown; grantId?: unknown }> = []
+    await generateOnProject(
+      { projectId: project.id, intent: 'video', prompt: '小周抬头看钟', vendor: 'apimart', modelKey: 'seedance', references: ['nomi-local://anchor.png'] },
+      createDiskGateway(project.id),
+      async (payload) => {
+        const req = payload.request as { kind: string; extras?: Record<string, unknown> }
+        calls.push({ kind: req.kind, firstFrameUrl: req.extras?.firstFrameUrl, grantId: req.extras?.grantId })
+        return req.kind === 'image_edit'
+          ? { id: 'ff', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://ff.png' }] }
+          : { id: 'v', status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://v.mp4' }] }
+      },
+    )
+    // 两次 vendor 调用，顺序 = 先首帧图、后视频。
+    expect(calls.map((c) => c.kind)).toEqual(['image_edit', 'image_to_video'])
+    // 第 2 跳把首帧图填进 firstFrameUrl（archetypeInput 会投影成模型的 first_frame_url 键）。
+    expect(calls[1].firstFrameUrl).toBe('nomi-local://ff.png')
+  })
+
+  it('两跳降级：模型 video body 不读任何首帧键 → 只发一次（维持今天的一跳，不白跑首帧）', async () => {
+    const project = createNamedProject('两跳-降级-无首帧键')
+    seedCatalog(
+      [{ modelKey: 'plainvid', vendorKey: 'apimart', labelZh: 'Plain', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [{ id: 'i2v', vendorKey: 'apimart', modelKey: 'plainvid', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { reference_image_urls: '{{request.params.reference_image_urls}}' } }, createdAt: 't', updatedAt: 't' }],
+    )
+    const kinds: string[] = []
+    await generateOnProject(
+      { projectId: project.id, intent: 'video', prompt: 'p', vendor: 'apimart', modelKey: 'plainvid', references: ['nomi-local://a.png'] },
+      createDiskGateway(project.id),
+      async (payload) => { kinds.push((payload.request as { kind: string }).kind); return { id: 't', status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://v.mp4' }] } },
+    )
+    expect(kinds).toEqual(['image_to_video'])
+  })
+
+  it('两跳韧性：首帧那跳抛错 → 降级发视频（首帧失败绝不拖垮整个生成）', async () => {
+    const project = createNamedProject('两跳-首帧失败')
+    seedCatalog(
+      [{ modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [
+        { id: 'i2v', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { first_frame_url: '{{request.params.first_frame_url}}' } }, createdAt: 't', updatedAt: 't' },
+        { id: 'edit', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_edit', name: 'edit', enabled: true, create: { method: 'POST', path: '/i', body: { image_urls: '{{request.params.image_urls}}' } }, createdAt: 't', updatedAt: 't' },
+      ],
+    )
+    const kinds: string[] = []
+    const out = await generateOnProject(
+      { projectId: project.id, intent: 'video', prompt: 'p', vendor: 'apimart', modelKey: 'seedance', references: ['nomi-local://a.png'] },
+      createDiskGateway(project.id),
+      async (payload) => {
+        const kind = (payload.request as { kind: string }).kind
+        kinds.push(kind)
+        if (kind === 'image_edit') throw new Error('首帧 vendor 500')
+        return { id: 'v', status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://v.mp4' }] }
+      },
+    )
+    expect(kinds).toEqual(['image_edit', 'image_to_video']) // 首帧失败后照样发视频
+    expect(out.status).toBe('succeeded')
+  })
+
+  it('两跳不触发：无参考图 → T2V 兜底，只发一次（蓝图幕2「T2V 降级为无参考兜底」）', async () => {
+    const project = createNamedProject('两跳-无参考')
+    seedCatalog(
+      [{ modelKey: 'seedance', vendorKey: 'apimart', labelZh: 'Seedance', kind: 'video', enabled: true, createdAt: 't', updatedAt: 't' }],
+      [{ id: 'i2v', vendorKey: 'apimart', modelKey: 'seedance', taskKind: 'image_to_video', name: 'i2v', enabled: true, create: { method: 'POST', path: '/v', body: { first_frame_url: '{{request.params.first_frame_url}}' } }, createdAt: 't', updatedAt: 't' }],
+    )
+    const kinds: string[] = []
+    await generateOnProject(
+      { projectId: project.id, intent: 'video', prompt: '纯文生视频', vendor: 'apimart', modelKey: 'seedance' },
+      createDiskGateway(project.id),
+      async (payload) => { kinds.push((payload.request as { kind: string }).kind); return { id: 't', status: 'succeeded', assets: [] } },
+    )
+    expect(kinds).toEqual(['text_to_video'])
+  })
+
   // ── W1 审片环 hook（方案 T5）：默认不传 makeVerifyDeps = 行为逐字节不变；传了才判分。 ──
 
   it('审片环回归：不传 makeVerifyDeps → 返回对象逐字节同今天（无 verify 字段、键集不变）', async () => {

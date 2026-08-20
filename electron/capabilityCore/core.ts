@@ -14,7 +14,7 @@
 import crypto from 'node:crypto'
 import { listProjects, createProject, readProject } from '../projects/repository'
 import { readCatalog } from '../catalog/catalogStore'
-import { deriveModelListing, referenceModeForIntent, type ModelListingEntry } from '../catalog/modelCatalogListing'
+import { deriveModelListing, referenceModeForIntent, videoBodyKeysForModel, type ModelListingEntry } from '../catalog/modelCatalogListing'
 import { desktopT } from '../i18n'
 import {
   addNodes,
@@ -28,6 +28,7 @@ import {
 } from './canvasGraph'
 import type { ProjectGateway } from './gateway'
 import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
+import { runFirstHop, shouldUseTwoHop } from './i2vTwoHop'
 
 /** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
@@ -271,6 +272,11 @@ export type GenerateInput = {
   references?: string[]
   title?: string
   /**
+   * 分镜给的**静态首帧画面描述**（PlanShot.ffDesc，W2 §4）。video 镜走两跳时第 1 跳用它出首帧图；
+   * 不给则退回镜头 prompt。纯增量字段——不给 = 行为与今天一致。
+   */
+  firstFrameDesc?: string
+  /**
    * 由 **MCP 协议层置位**（mcpProtocol.ts，非模型入参）：这次确认还会换来「本会话该项目后续生成免问」，
    * 故应用内确认卡要多写一句授权范围。只影响卡上文案，不放宽任何授权——令牌照旧逐次铸、逐次核验。
    */
@@ -363,6 +369,42 @@ export async function generateOnProject(
   snapshot = setNodeStatusInSnapshot(snapshot, nodeId, 'running')
   await gateway.apply(snapshot)
 
+  // I2V 两跳（W2 §3）：video 镜带锚参考、且该模型 body 真读得到首帧键 → 先出一张首帧图（I2I 锚身份），
+  // 再把它当 first_frame 喂 I2V。「给它照片让它动起来」比「凭文字想象一个人」稳一个数量级（业界共识）。
+  // 判据/编排住 i2vTwoHop.ts（纯，可裸测）；这里只做接线。任一步不成 → applied:false 降级为今天的一跳，
+  // **绝不让首帧那跳的失败拖垮整个生成**。首帧走独立 grant（方案解 A：镜头 grant 的 3 次留给视频+审片重试，
+  // spendGrant.ts 一字不动）。
+  const twoHop = shouldUseTwoHop({ intent, references, videoBodyKeys: videoBodyKeysForModel(readCatalog(), input.vendor, input.modelKey) })
+    ? await runFirstHop(
+        { prompt, ...(input.firstFrameDesc ? { firstFrameDesc: input.firstFrameDesc } : {}), references },
+        {
+          renderFirstFrame: async ({ prompt: ffPrompt, references: ffRefs }) => {
+            const ffGrant = await gateway.confirmSpend({
+              projectId: input.projectId, ...(projectName ? { projectName } : {}), nodeId,
+              intent: 'image', vendor: input.vendor, modelKey: input.modelKey, prompt: ffPrompt,
+            })
+            const ffKind = referenceModeForIntent(readCatalog(), input.vendor, input.modelKey, 'image') || 'image_edit'
+            const ff = await runTaskFn({
+              vendor: input.vendor,
+              request: {
+                kind: ffKind,
+                prompt: ffPrompt,
+                extras: {
+                  ...(input.params || {}),
+                  modelKey: input.modelKey, modelAlias: input.modelKey, projectId: input.projectId,
+                  nodeId, nodeKind: 'image', referenceImages: ffRefs,
+                  ...(ffGrant ? { grantId: ffGrant } : {}),
+                  idempotencyKey: `mcp-ff-${crypto.randomUUID()}`,
+                },
+              },
+            })
+            const url = (ff.assets || [])[0]?.url
+            return url ? { url } : null
+          },
+        },
+      )
+    : null
+
   const request = {
     kind,
     prompt,
@@ -374,6 +416,8 @@ export async function generateOnProject(
       nodeId,
       nodeKind: node.kind,
       ...(references.length ? { referenceImages: references } : {}),
+      // 两跳成了 → 首帧图经 firstFrameUrl 投影成模型的 first_frame 键（archetypeInput.ts:26-28 现成线）。
+      ...(twoHop?.applied && twoHop.firstFrameUrl ? { firstFrameUrl: twoHop.firstFrameUrl } : {}),
       ...(grantId ? { grantId } : {}),
       // 提交幂等键：headless 路自生一个（本路无重试循环故无双发向量，纯纵深防御 + 未来若加重试已护住）。
       idempotencyKey: `mcp-${crypto.randomUUID()}`,
