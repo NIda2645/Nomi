@@ -306,12 +306,32 @@ export const MCP_TOOL_CATALOG = [
         resolution: { type: 'string', description: '清晰度，如 "1080p" / "2K" / "720p"（可选；取值随模型而定）。' },
         duration: { type: 'number', description: '视频时长（秒，可选；仅视频类有效）。' },
         seed: { type: 'number', description: '随机种子（可选）。同 prompt + 同 seed 可复现同一结果——做系列风格一致时用它。' },
+        // 首尾帧语义分解（W2）。**必须在 schema 里露出来，模型才知道能填**——这两个字段在能力核里
+        // 早就通到底了（首帧图 → first_frame_url，尾帧图 → last_frame_url），此前只是没写进工具清单，
+        // 于是永远收不到值，等于没做。
+        firstFrameDesc: {
+          type: 'string',
+          description:
+            '视频镜可选：这一镜**开头那一帧**的静态画面描述（景别/角度/构图/光/人物位置，不写运动）。'
+            + '给了它就先出一张首帧图再让它动起来——「给模型照片让它动」比「让它凭文字想象一个人」稳得多。'
+            + '注意：prompt 写运动，这里写静止的那一帧，别把运动词写进来。',
+        },
+        lastFrameDesc: {
+          type: 'string',
+          description:
+            '视频镜可选：这一镜**结束那一帧**的静态画面描述，须与首帧 + 运动逻辑自洽。'
+            + '首尾都给，运动的落点被两端夹住，不会「动到一半人就变了」。'
+            + '仅在该模型确有尾帧槽时才会生效并多花一张图的额度；模型没有这个槽就自动忽略。',
+        },
       },
       required: ['projectId', 'vendor', 'modelKey', 'intent', 'prompt'],
     },
     method: 'generate',
     build: (a: Record<string, unknown>) => ({
       projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId, references: a.references,
+      // 首尾帧描述直通能力核（core 自己判「模型有没有这个槽」再决定要不要多出那张图）。
+      ...(typeof a.firstFrameDesc === 'string' && a.firstFrameDesc.trim() ? { firstFrameDesc: a.firstFrameDesc.trim() } : {}),
+      ...(typeof a.lastFrameDesc === 'string' && a.lastFrameDesc.trim() ? { lastFrameDesc: a.lastFrameDesc.trim() } : {}),
       // 画幅/时长经既有 extras/params 通道下沉到 applyHeadlessParamDefaults（caller-wins）。装配为规范化的
       // params 交给 core.generateOnProject（它把 params 铺进 extras）——键名归一在 buildGenerateParams，
       // 不 hardcode 任何 vendor：比例同时铺 aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键。

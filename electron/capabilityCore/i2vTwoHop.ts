@@ -25,6 +25,11 @@ export type VerifyFirstFrame = (frameUrl: string) => Promise<{ passed: boolean; 
 export type I2vTwoHopDeps = {
   renderFirstFrame: RenderFirstFrame
   verifyFirstFrame?: VerifyFirstFrame
+  /**
+   * 出尾帧图。**不传 = 调用方判定该模型没尾帧槽**（或不想多烧一张），此时整条尾帧路径不存在。
+   * 与首帧同形：同样吃锚参考图，保证两端是同一个人。
+   */
+  renderLastFrame?: RenderFirstFrame
 }
 
 export type I2vTwoHopInput = {
@@ -32,6 +37,8 @@ export type I2vTwoHopInput = {
   prompt: string
   /** 分镜给的首帧画面描述（PlanShot.ffDesc）。有则第 1 跳用它，更贴「静态首帧」语义。 */
   firstFrameDesc?: string
+  /** 分镜给的**尾帧**画面描述（PlanShot.lfDesc）。有它 + 模型有尾帧槽 → 多出一张尾帧图夹住运动落点。 */
+  lastFrameDesc?: string
   /** 锚参考图。空 → 两跳无意义（没有可锚定的身份），调用方应直接走一跳。 */
   references: string[]
 }
@@ -44,6 +51,8 @@ export type I2vTwoHopOutcome = {
   firstFrameUrl: string | null
   /** 首帧落的节点 id（若接线层落了 keyframe 节点）。 */
   firstFrameNodeId: string | null
+  /** 尾帧图 url；null = 没出（模型没槽 / 分镜没给 lfDesc / 出图失败——都不阻断）。 */
+  lastFrameUrl: string | null
   /** 首帧判分结论：null=没判（不可用/跳过）。**不过检也不阻断**，只如实带出。 */
   firstFrameVerify: { passed: boolean; flagged: number } | null
   /** 降级/异常时的人话原因（诚实标注，D4）。 */
@@ -51,7 +60,7 @@ export type I2vTwoHopOutcome = {
 }
 
 const oneHop = (reason: string): I2vTwoHopOutcome => ({
-  applied: false, firstFrameUrl: null, firstFrameNodeId: null, firstFrameVerify: null, reason,
+  applied: false, firstFrameUrl: null, firstFrameNodeId: null, lastFrameUrl: null, firstFrameVerify: null, reason,
 })
 
 /**
@@ -72,6 +81,26 @@ export function shouldUseTwoHop(input: {
   if (input.intent !== 'video') return false
   if (!input.references.length) return false
   return input.videoBodyKeys.some((key) => /first_frame|firstframe|start_image|image_url$|^image$/i.test(key))
+}
+
+/**
+ * 判「这一镜还该不该多出一张**尾帧**图」——同样 derive 自目录 body，不 hardcode 某家。
+ *
+ * 为什么值得多烧一张图：只给首帧，模型只知道从哪儿开始，中后段全靠自己发挥（这正是「运动到一半人就变了」
+ * 的来源）；首尾都给，运动被两端夹住，落点可控。`last_frame_url` 的投影早在 archetypeInput 里就通了，
+ * 缺的一直是这张图本身。
+ *
+ * 三个条件缺一不可：走成了两跳（没有首帧谈不上尾帧）、分镜真给了 lfDesc（没有就不要凭空编一个终态）、
+ * 该模型 body 真读得到尾帧键（读不到硬塞也会被护栏拦，白烧一张图）。
+ */
+export function shouldRenderLastFrame(input: {
+  twoHopApplied: boolean
+  lastFrameDesc?: string
+  videoBodyKeys: string[]
+}): boolean {
+  if (!input.twoHopApplied) return false
+  if (!(input.lastFrameDesc || '').trim()) return false
+  return input.videoBodyKeys.some((key) => /last_frame|lastframe|end_image|image_tail|tail_image/i.test(key))
 }
 
 /**
@@ -103,10 +132,24 @@ export async function runFirstHop(input: I2vTwoHopInput, deps: I2vTwoHopDeps): P
       verify = null // 判分自身出错 = 没判过，不影响推进
     }
   }
+  // 尾帧（可选、纯增益）：deps 没给 renderLastFrame 或分镜没给 lfDesc → 整段跳过，行为与今天一致。
+  // 出错一律吞掉走无尾帧——为一张锦上添花的图拖垮整镜生成是本末倒置。
+  let lastFrameUrl: string | null = null
+  const lfPrompt = (input.lastFrameDesc || '').trim()
+  if (deps.renderLastFrame && lfPrompt) {
+    try {
+      const tail = await deps.renderLastFrame({ prompt: lfPrompt, references: input.references })
+      lastFrameUrl = tail?.url || null
+    } catch {
+      lastFrameUrl = null
+    }
+  }
+
   return {
     applied: true,
     firstFrameUrl: frame.url,
     firstFrameNodeId: frame.nodeId ?? null,
+    lastFrameUrl,
     firstFrameVerify: verify,
     reason: verify && verify.passed === false ? '首帧判分未达标（已如实标注，仍按你的要求推进生成）' : null,
   }

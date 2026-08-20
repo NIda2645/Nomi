@@ -30,7 +30,7 @@ import {
 } from './canvasGraph'
 import type { ProjectGateway } from './gateway'
 import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
-import { runFirstHop, shouldUseTwoHop } from './i2vTwoHop'
+import { runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 import { copyAssetFile } from '../assets/projectAssetStore'
 
@@ -335,6 +335,12 @@ export type GenerateInput = {
    */
   firstFrameDesc?: string
   /**
+   * 分镜给的**静态尾帧画面描述**（PlanShot.lfDesc，W2 §4）。有它 + 模型 body 真有尾帧槽时，
+   * 两跳会多出一张尾帧图，把运动的落点也夹住（只给首帧时中后段全靠模型自己发挥）。
+   * 纯增量——不给 = 行为与今天一致，多花的那张图只在真用得上时才花。
+   */
+  lastFrameDesc?: string
+  /**
    * 由 **MCP 协议层置位**（mcpProtocol.ts，非模型入参）：这次确认还会换来「本会话该项目后续生成免问」，
    * 故应用内确认卡要多写一句授权范围。只影响卡上文案，不放宽任何授权——令牌照旧逐次铸、逐次核验。
    */
@@ -432,33 +438,57 @@ export async function generateOnProject(
   // 判据/编排住 i2vTwoHop.ts（纯，可裸测）；这里只做接线。任一步不成 → applied:false 降级为今天的一跳，
   // **绝不让首帧那跳的失败拖垮整个生成**。首帧走独立 grant（方案解 A：镜头 grant 的 3 次留给视频+审片重试，
   // spendGrant.ts 一字不动）。
-  const twoHop = shouldUseTwoHop({ intent, references, videoBodyKeys: videoBodyKeysForModel(readCatalog(), input.vendor, input.modelKey) })
+  /**
+   * 出一张「静态帧」图（首帧或尾帧），供两跳当锚。两个槽共用这一份实现：同一供应商/模型、同一批锚参考、
+   * 各自铸**独立 grant**（方案解 A：镜头 grant 的 3 次配额留给视频本身 + 审片重试，spendGrant.ts 一字不动）。
+   */
+  const renderStaticFrame = async (
+    slot: 'ff' | 'lf',
+    { prompt: framePrompt, references: frameRefs }: { prompt: string; references: string[] },
+  ) => {
+    const grant = await gateway.confirmSpend({
+      projectId: input.projectId, ...(projectName ? { projectName } : {}), nodeId,
+      intent: 'image', vendor: input.vendor, modelKey: input.modelKey, prompt: framePrompt,
+    })
+    const frameKind = referenceModeForIntent(readCatalog(), input.vendor, input.modelKey, 'image') || 'image_edit'
+    const out = await runTaskFn({
+      vendor: input.vendor,
+      request: {
+        kind: frameKind,
+        prompt: framePrompt,
+        extras: {
+          ...(input.params || {}),
+          modelKey: input.modelKey, modelAlias: input.modelKey, projectId: input.projectId,
+          nodeId, nodeKind: 'image', referenceImages: frameRefs,
+          ...(grant ? { grantId: grant } : {}),
+          idempotencyKey: `mcp-${slot}-${crypto.randomUUID()}`,
+        },
+      },
+    })
+    const url = (out.assets || [])[0]?.url
+    return url ? { url } : null
+  }
+
+  const videoBodyKeys = videoBodyKeysForModel(readCatalog(), input.vendor, input.modelKey)
+  // 尾帧只在「模型真有尾帧槽 + 分镜真给了 lfDesc」时才出——两者缺一就不多烧这张图。
+  const wantsLastFrame = shouldRenderLastFrame({
+    twoHopApplied: true, // 这里只问「模型/分镜条件够不够」；真没走成两跳时 runFirstHop 会自己短路
+    ...(input.lastFrameDesc ? { lastFrameDesc: input.lastFrameDesc } : {}),
+    videoBodyKeys,
+  })
+  const twoHop = shouldUseTwoHop({ intent, references, videoBodyKeys })
     ? await runFirstHop(
-        { prompt, ...(input.firstFrameDesc ? { firstFrameDesc: input.firstFrameDesc } : {}), references },
         {
-          renderFirstFrame: async ({ prompt: ffPrompt, references: ffRefs }) => {
-            const ffGrant = await gateway.confirmSpend({
-              projectId: input.projectId, ...(projectName ? { projectName } : {}), nodeId,
-              intent: 'image', vendor: input.vendor, modelKey: input.modelKey, prompt: ffPrompt,
-            })
-            const ffKind = referenceModeForIntent(readCatalog(), input.vendor, input.modelKey, 'image') || 'image_edit'
-            const ff = await runTaskFn({
-              vendor: input.vendor,
-              request: {
-                kind: ffKind,
-                prompt: ffPrompt,
-                extras: {
-                  ...(input.params || {}),
-                  modelKey: input.modelKey, modelAlias: input.modelKey, projectId: input.projectId,
-                  nodeId, nodeKind: 'image', referenceImages: ffRefs,
-                  ...(ffGrant ? { grantId: ffGrant } : {}),
-                  idempotencyKey: `mcp-ff-${crypto.randomUUID()}`,
-                },
-              },
-            })
-            const url = (ff.assets || [])[0]?.url
-            return url ? { url } : null
-          },
+          prompt,
+          ...(input.firstFrameDesc ? { firstFrameDesc: input.firstFrameDesc } : {}),
+          ...(wantsLastFrame && input.lastFrameDesc ? { lastFrameDesc: input.lastFrameDesc } : {}),
+          references,
+        },
+        {
+          renderFirstFrame: (args) => renderStaticFrame('ff', args),
+          // 尾帧与首帧同一条出图路径（同锚参考、同独立 grant），只有幂等键前缀不同——
+          // 不写第二份实现（P1）。模型没尾帧槽 / 分镜没给 lfDesc → 这里根本不传，整段路径不存在。
+          ...(wantsLastFrame ? { renderLastFrame: (args) => renderStaticFrame('lf', args) } : {}),
         },
       )
     : null
@@ -476,6 +506,8 @@ export async function generateOnProject(
       ...(references.length ? { referenceImages: references } : {}),
       // 两跳成了 → 首帧图经 firstFrameUrl 投影成模型的 first_frame 键（archetypeInput.ts:26-28 现成线）。
       ...(twoHop?.applied && twoHop.firstFrameUrl ? { firstFrameUrl: twoHop.firstFrameUrl } : {}),
+      // 尾帧图同理经 lastFrameUrl → last_frame_url（archetypeInput 里这条线早就通了，缺的一直是图本身）。
+      ...(twoHop?.applied && twoHop.lastFrameUrl ? { lastFrameUrl: twoHop.lastFrameUrl } : {}),
       ...(grantId ? { grantId } : {}),
       // 提交幂等键：headless 路自生一个（本路无重试循环故无双发向量，纯纵深防御 + 未来若加重试已护住）。
       idempotencyKey: `mcp-${crypto.randomUUID()}`,

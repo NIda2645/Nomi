@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { runFirstHop, shouldUseTwoHop, type I2vTwoHopDeps } from './i2vTwoHop'
+import { runFirstHop, shouldRenderLastFrame, shouldUseTwoHop, type I2vTwoHopDeps } from './i2vTwoHop'
 
 // W2 §3 · I2V 两跳（参考图 → 首帧 I2I → I2V）。纯编排单测：注入 renderFirstFrame / verifyFirstFrame 桩，
 // 不打 vendor、不碰 electron。核心不变量：
@@ -88,5 +88,71 @@ describe('runFirstHop（第 1 跳 + 首帧判分）', () => {
     expect(out.applied).toBe(true)
     expect(out.firstFrameVerify).toBeNull()
     expect(out.reason).toBeNull()
+  })
+})
+
+// ── 尾帧那一跳（W2 「首尾帧锚定」的另一半，2026-08-20 补齐）──────────────────────────────
+describe('shouldRenderLastFrame（三个条件缺一不可，缺了就别多烧这张图）', () => {
+  const TAIL_KEYS = ['prompt', 'first_frame_url', 'last_frame_url']
+  it('三条都满足 → 出尾帧', () => {
+    expect(shouldRenderLastFrame({ twoHopApplied: true, lastFrameDesc: '她把钥匙放在柜台上，手离开画面', videoBodyKeys: TAIL_KEYS })).toBe(true)
+  })
+  it('模型没尾帧槽 → 不出（硬塞也会被护栏拦，纯白烧）', () => {
+    expect(shouldRenderLastFrame({ twoHopApplied: true, lastFrameDesc: '她把钥匙放下', videoBodyKeys: ['prompt', 'first_frame_url'] })).toBe(false)
+  })
+  it('分镜没给 lfDesc → 不出（不凭空编一个终态塞给模型）', () => {
+    expect(shouldRenderLastFrame({ twoHopApplied: true, videoBodyKeys: TAIL_KEYS })).toBe(false)
+    expect(shouldRenderLastFrame({ twoHopApplied: true, lastFrameDesc: '   ', videoBodyKeys: TAIL_KEYS })).toBe(false)
+  })
+  it('两跳都没走成 → 不出（没有首帧谈不上尾帧）', () => {
+    expect(shouldRenderLastFrame({ twoHopApplied: false, lastFrameDesc: '她把钥匙放下', videoBodyKeys: TAIL_KEYS })).toBe(false)
+  })
+  it('键名 derive 不 hardcode 某家：image_tail / end_image 同样认', () => {
+    for (const key of ['image_tail', 'end_image', 'tail_image', 'lastFrame']) {
+      expect(shouldRenderLastFrame({ twoHopApplied: true, lastFrameDesc: 'x', videoBodyKeys: ['prompt', key] })).toBe(true)
+    }
+  })
+})
+
+describe('runFirstHop 的尾帧半跳（纯增益：坏了也不许拖垮整镜）', () => {
+  const okFrame = async ({ prompt }: { prompt: string }) => ({ url: `https://cdn/${encodeURIComponent(prompt)}.png` })
+
+  it('给了 renderLastFrame + lfDesc → 尾帧图带出来，且用的是 lfDesc 不是镜头 prompt', async () => {
+    const out = await runFirstHop(
+      { prompt: '镜头缓推，她抬头', firstFrameDesc: '中景，她低头擦杯子', lastFrameDesc: '近景，她抬头看向钟', references: ['ref://a'] },
+      { renderFirstFrame: okFrame, renderLastFrame: okFrame },
+    )
+    expect(out.applied).toBe(true)
+    expect(out.firstFrameUrl).toContain(encodeURIComponent('中景，她低头擦杯子'))
+    expect(out.lastFrameUrl).toContain(encodeURIComponent('近景，她抬头看向钟'))
+  })
+
+  it('★尾帧出图炸了 → 首帧照常、整镜照常推进，只是没有尾帧（不阻断）', async () => {
+    const out = await runFirstHop(
+      { prompt: 'p', firstFrameDesc: 'ff', lastFrameDesc: 'lf', references: ['ref://a'] },
+      { renderFirstFrame: okFrame, renderLastFrame: async () => { throw new Error('尾帧模型 500') } },
+    )
+    expect(out.applied).toBe(true)
+    expect(out.firstFrameUrl).toBeTruthy()
+    expect(out.lastFrameUrl).toBeNull()
+  })
+
+  it('没传 renderLastFrame（模型没槽）→ 尾帧路径根本不存在，行为与加这条之前一致', async () => {
+    const out = await runFirstHop(
+      { prompt: 'p', firstFrameDesc: 'ff', lastFrameDesc: 'lf', references: ['ref://a'] },
+      { renderFirstFrame: okFrame },
+    )
+    expect(out.applied).toBe(true)
+    expect(out.lastFrameUrl).toBeNull()
+  })
+
+  it('降级一跳时尾帧也一并为空（不会出现「没首帧却有尾帧」的怪状态）', async () => {
+    const out = await runFirstHop(
+      { prompt: 'p', lastFrameDesc: 'lf', references: [] },
+      { renderFirstFrame: okFrame, renderLastFrame: okFrame },
+    )
+    expect(out.applied).toBe(false)
+    expect(out.firstFrameUrl).toBeNull()
+    expect(out.lastFrameUrl).toBeNull()
   })
 })
