@@ -3,11 +3,14 @@ import {
   MEDIA_TYPES,
   acceptAttrForKinds,
   contentTypeFromExtension,
+  contentTypeFromMagicBytes,
   extensionFromContentType,
   extensionsForKind,
   mediaKindFromExtension,
   normalizeExtension,
+  resolveContentType,
 } from "./mediaTypes";
+import { mediaKindFromContentType } from "../catalog/assetLocalization";
 
 describe("media types registry — single source of truth", () => {
   it("has no duplicate extensions", () => {
@@ -96,5 +99,57 @@ describe("acceptAttrForKinds", () => {
     // 不含其它 kind
     expect(accept).not.toContain(".pdf");
     expect(accept).not.toContain(".glb");
+  });
+});
+
+// 2026-08-20 用户报「素材上传失败(HTTP 413)」，而那只是段 2 秒的视频。根因不是文件大：
+// 上传前判「这是图还是视频」只看扩展名，认不出时 mediaKindFromContentType 一律当图片
+// → 视频被送进 base64 图片通道（整个文件塞进 JSON body）→ 反代 413。
+// 文件名是人起的，字节是事实：扩展名认不出就读文件头。
+describe("contentTypeFromMagicBytes / resolveContentType（扩展名认不出时读字节）", () => {
+  const head = (...parts: Array<number[] | string>) => {
+    const bytes: number[] = [];
+    for (const part of parts) {
+      if (typeof part === "string") bytes.push(...[...part].map((c) => c.charCodeAt(0)));
+      else bytes.push(...part);
+    }
+    while (bytes.length < 16) bytes.push(0);
+    return Uint8Array.from(bytes);
+  };
+  const mp4 = head([0, 0, 0, 0x20], "ftyp", "isom");
+  const mov = head([0, 0, 0, 0x14], "ftyp", "qt  ");
+  const matroska = head([0x1a, 0x45, 0xdf, 0xa3]);
+  const wav = head("RIFF", [0, 0, 0, 0], "WAVE");
+  const webp = head("RIFF", [0, 0, 0, 0], "WEBP");
+  const png = head([0x89], "PNG\r\n\n");
+
+  it("认得出常见容器的文件头", () => {
+    expect(contentTypeFromMagicBytes(mp4)).toBe("video/mp4");
+    expect(contentTypeFromMagicBytes(mov)).toBe("video/quicktime");
+    expect(contentTypeFromMagicBytes(matroska)).toBe("video/webm");
+    expect(contentTypeFromMagicBytes(wav)).toBe("audio/wav");
+    expect(contentTypeFromMagicBytes(webp)).toBe("image/webp");
+    expect(contentTypeFromMagicBytes(png)).toBe("image/png");
+    expect(contentTypeFromMagicBytes(head([1, 2, 3, 4]))).toBeNull();
+  });
+
+  it("扩展名认得出就用扩展名（快路不变）", () => {
+    expect(resolveContentType("/p/clip.mp4", mp4)).toBe("video/mp4");
+    expect(resolveContentType("/p/a.png", png)).toBe("image/png");
+  });
+
+  // 这三种正是用户可能踩到的：落盘扩展名缺失兜底成 .bin、导入的 .mkv、URL 没扩展名。
+  it.each([["/p/clip.bin"], ["/p/clip.mkv"], ["/p/clip"]])(
+    "扩展名认不出（%s）时读文件头，视频不再被判成图片",
+    (filePath) => {
+      const contentType = resolveContentType(filePath, mp4);
+      expect(contentType).toBe("video/mp4");
+      // 这一步就是原来出事的地方：判成 image → 走 base64 图片通道 → 413
+      expect(mediaKindFromContentType(contentType)).toBe("video");
+    },
+  );
+
+  it("字节也认不出才落到 octet-stream（此时仍会被当图片，属于已知下界）", () => {
+    expect(resolveContentType("/p/x.bin", head([1, 2, 3, 4]))).toBe("application/octet-stream");
   });
 });

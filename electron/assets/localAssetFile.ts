@@ -2,7 +2,7 @@
 // R1 用:把本地素材(nomi-local://)读成字节,或 POST 到 vendor 上传端点。
 import fs from "node:fs";
 import { resolveProjectRelativePath } from "../projects/repository";
-import { contentTypeFromPath } from "./assetPaths";
+import { resolveContentType } from "./mediaTypes";
 import { categorizeVendorFailure } from "../vendor/vendorHttp";
 import { maybeResolveVendorBase, rewriteVendorUrl } from "../vendor/vendorBaseFallback";
 import type { LocalAsset } from "../catalog/assetLocalization";
@@ -87,9 +87,13 @@ export function readNomiLocalAsset(url: string): LocalAsset | null {
     try {
       ageMs = Math.max(0, Date.now() - fs.statSync(absolutePath).mtimeMs);
     } catch { /* stat 失败按未知处理 */ }
+    // contentType 认不出时**读文件头**，不能只信扩展名：认不出会被 mediaKindFromContentType
+    // 一律当图片，视频于是走进 base64 图片通道被反代 413 顶回来（2026-08-20 用户实测，2 秒的视频
+    // 也失败）。字节已在手上，嗅探零额外 IO。
+    const bytes = fs.readFileSync(absolutePath);
     return {
-      bytes: fs.readFileSync(absolutePath),
-      contentType: contentTypeFromPath(absolutePath),
+      bytes,
+      contentType: resolveContentType(absolutePath, bytes),
       fileName: relativePath.split("/").pop() || "asset",
       originalUrl,
       ...(typeof ageMs === "number" ? { ageMs } : {}),
