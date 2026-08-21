@@ -12,6 +12,10 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
 
 const repoRoot = path.resolve(new URL('..', import.meta.url).pathname)
 const sampleRoot = path.join(repoRoot, 'artifacts', 'nomi-agentic-draft-film-2026-08-21')
@@ -94,7 +98,7 @@ function writeJson(relativePath, value) {
 
 function buildFilm() {
   fs.mkdirSync(exportDir, { recursive: true })
-  execFileSync('ffmpeg', [
+  execFileSync(ffmpegPath, [
     '-y', '-ss', '0', '-t', '30', '-i', sourceVideo, '-i', trimmedVtt,
     '-map', '0:v:0', '-map', '0:a:0?', '-map', '1:0',
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
