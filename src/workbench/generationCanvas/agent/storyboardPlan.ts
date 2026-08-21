@@ -49,6 +49,8 @@ export type PlanAnchor = {
 
 export type PlanShot = {
   index: number
+  /** Stable story-order identifier. Legacy plans may omit it; the converter derives `shot-${index}`. */
+  shotId?: string
   /**
    * 该镜种类：'image'=图片分镜（落 image 节点、无时长、绑图片模型）；'video'=视频分镜（落 video 节点、带时长）。
    * 缺省（旧草稿无此字段）按 'video' 兜底以保持既有行为；新计划由拆镜头开关/planner 显式标注
@@ -74,6 +76,16 @@ export type PlanShot = {
    * ffDesc 是 planner 产出的语义分解。两者都没有 → 退回 shot.prompt（今天的行为）。
    */
   ffDesc?: string
+  /** Explicit motion description (kept separate from the rendered prompt for downstream QA/binding). */
+  motionDesc?: string
+  /** Optional caption/dialogue text carried to timeline assembly without reparsing the prompt. */
+  subtitle?: string
+  dialogue?: string
+  /** Explicit editorial transition into the next shot; omitted means no authored transition metadata. */
+  transition?: {
+    type: 'cut' | 'dissolve' | 'fade' | 'match_cut' | 'whip_pan'
+    durationFrames?: number
+  }
   /**
    * 镜头内变化幅度（ViMax variation_type，W4）：**审片与生成策略的路由键**——
    * large=构图与焦点剧变（重点审转场/几何崩塌）；medium=有人进出场或转身面向镜头；
@@ -85,6 +97,8 @@ export type PlanShot = {
    * 同一 camIdx 的镜头在生成时应尽量共享参考图与构图描述。缺省=各自独立机位。
    */
   camIdx?: number
+  /** Continuity instruction/evidence carried with the shot (kept opaque so playbooks can extend it). */
+  continuity?: string | number | Record<string, unknown>
   /**
    * **静态尾帧快照**描述（ViMax lf_desc）：须与首帧 + 运动逻辑自洽。
    *
@@ -110,6 +124,10 @@ export type StoryboardPlan = {
   title: string
   anchors: PlanAnchor[]
   shots: PlanShot[]
+  /** The exact approved script this plan was derived from. */
+  sourceScriptArtifactId?: string
+  sourceScriptVersion?: number
+  sourceScriptHash?: string
 }
 
 // ── 校验 schema：planner 产出/落库前的运行时守卫（也是 S3 激活时交给 LLM 的工具参数 schema）──
@@ -143,6 +161,7 @@ export const planAnchorSchema = z.object({
 
 export const planShotSchema = z.object({
   index: z.number().int(),
+  shotId: z.string().min(1).optional().describe('稳定镜头 ID；缺省时由系统按镜号生成。'),
   shotKind: z
     .enum(['image', 'video'])
     .optional()
@@ -157,6 +176,17 @@ export const planShotSchema = z.object({
   camIdx: z.number().int().min(0).optional().describe('机位索引：同机位复用参考与构图（低成本一致性抓手）。'),
   ffDesc: z.string().optional().describe('静态首帧快照描述（景别/角度/构图/光/人物位置，不写运动）。首帧图按它生成。'),
   lfDesc: z.string().optional().describe('静态尾帧快照描述（须与首帧+运动自洽）。供尾帧槽与相邻镜续接用。'),
+  motionDesc: z.string().optional().describe('显式运动描述；与 prompt 并存，供审片与生产绑定读取。'),
+  subtitle: z.string().optional().describe('该镜字幕/台词，原样保留到画布 metadata 与时间轴。'),
+  dialogue: z.string().optional().describe('该镜对白文本（没有 subtitle 时可供时间轴层使用）。'),
+  transition: z.object({
+    type: z.enum(['cut', 'dissolve', 'fade', 'match_cut', 'whip_pan']),
+    durationFrames: z.number().int().positive().optional(),
+  }).optional().describe('进入下一镜的明确剪辑转场；可填 cut 表示明确硬切，不填表示未声明。'),
+  continuity: z
+    .union([z.string(), z.number(), z.record(z.unknown())])
+    .optional()
+    .describe('跨镜连贯约束/说明，原样保留到画布 metadata 与 Production binding。'),
   keyframe: z
     .object({
       enabled: z.boolean().optional(),
@@ -185,6 +215,9 @@ export const storyboardPlanSchema = z.object({
   title: z.string(),
   anchors: z.array(planAnchorSchema),
   shots: z.preprocess(parseJsonArrayString, z.array(planShotSchema)),
+  sourceScriptArtifactId: z.string().min(1).optional(),
+  sourceScriptVersion: z.number().int().positive().optional(),
+  sourceScriptHash: z.string().min(1).optional(),
 })
 
 // 编译期漂移守卫：仅当 zod 推断类型 ⟺ 手写类型互相可赋值时才编译通过（零运行时）。
@@ -212,6 +245,8 @@ export type PlanCreatedNode = {
   modelKey?: string
   modeId?: string
   params?: Record<string, unknown>
+  /** Structured provenance/shot-language metadata. applyCanvasToolCall maps this to node.meta. */
+  metadata?: Record<string, unknown>
   /** 参考卡身份（角色/场景/道具锚）：落画布写进 node.meta.referenceSheet → 永不占镜头编号（shotNumbering）。 */
   referenceSheet?: true
   /** 身份 DNA（W2 圣经 static 层）：落画布写进 node.meta.staticFeatures → 身份轴对照基准、冻结门可显示。 */
@@ -249,6 +284,10 @@ export type PlanCreateNodesArgs = {
    * 且不破坏编号（character/scene kind 不参与 shotIndex，见 model/shotNumbering.ts）。
    */
   groupCategoryId?: BuiltinCanvasCategoryId
+  /** Script provenance copied into the storyboard artifact and attach binding. */
+  sourceScriptArtifactId?: string
+  sourceScriptVersion?: number
+  sourceScriptHash?: string
 }
 
 export type StoryboardPlanToArgsOptions = {
@@ -262,6 +301,8 @@ export type StoryboardPlanToArgsOptions = {
   defaultVideoModelKey?: string
   /** 镜头默认视频模式 id（优先带 image_ref/first_frame 槽的 i2v，定妆卡参考才喂得进）；调用方传入。 */
   defaultVideoModeId?: string
+  /** Stable id used to make a production materialization retry converge on existing nodes. */
+  materializationOperationId?: string
 }
 
 const VISUAL_KINDS: ReadonlySet<PlanAnchorKind> = new Set(['character', 'scene', 'prop'])
@@ -284,12 +325,49 @@ function anchorKindToNodeKind(kind: PlanAnchorKind): string {
   return 'image' // prop（style 是文本锚，不走到这）
 }
 
+function stableShotId(shot: PlanShot): string {
+  const candidate = typeof shot.shotId === 'string' ? shot.shotId.trim() : ''
+  return /^[A-Za-z0-9._-]{1,160}$/.test(candidate) ? candidate : `shot-${shot.index}`
+}
+
 function shotClientId(shot: PlanShot): string {
-  return `shot-${shot.index}`
+  return stableShotId(shot)
 }
 
 function shotKeyframeClientId(shot: PlanShot): string {
-  return `shot-${shot.index}-keyframe`
+  return `${stableShotId(shot)}-keyframe`
+}
+
+function storyboardShotMetadata(
+  plan: StoryboardPlan,
+  shot: PlanShot,
+  materializationOperationId?: string,
+  materializationClientId?: string,
+): Record<string, unknown> {
+  const metadata: Record<string, unknown> = { shotId: stableShotId(shot) }
+  if (materializationOperationId && materializationClientId) {
+    metadata.materializationOperationId = materializationOperationId
+    metadata.materializationClientId = materializationClientId
+  }
+  if (typeof plan.sourceScriptArtifactId === 'string' && plan.sourceScriptArtifactId.trim()) {
+    metadata.sourceScriptArtifactId = plan.sourceScriptArtifactId.trim()
+  }
+  if (typeof plan.sourceScriptVersion === 'number' && Number.isInteger(plan.sourceScriptVersion) && plan.sourceScriptVersion > 0) {
+    metadata.sourceScriptVersion = plan.sourceScriptVersion
+  }
+  if (typeof plan.sourceScriptHash === 'string' && plan.sourceScriptHash.trim()) {
+    metadata.sourceScriptHash = plan.sourceScriptHash.trim()
+  }
+  if (typeof shot.ffDesc === 'string' && shot.ffDesc.trim()) metadata.ffDesc = shot.ffDesc.trim()
+  if (typeof shot.motionDesc === 'string' && shot.motionDesc.trim()) metadata.motionDesc = shot.motionDesc.trim()
+  if (typeof shot.subtitle === 'string' && shot.subtitle.trim()) metadata.subtitle = shot.subtitle.trim()
+  if (typeof shot.dialogue === 'string' && shot.dialogue.trim()) metadata.dialogue = shot.dialogue.trim()
+  if (shot.transition?.type) metadata.transition = { ...shot.transition }
+  if (typeof shot.lfDesc === 'string' && shot.lfDesc.trim()) metadata.lfDesc = shot.lfDesc.trim()
+  if (shot.variationType) metadata.variationType = shot.variationType
+  if (typeof shot.camIdx === 'number' && Number.isInteger(shot.camIdx) && shot.camIdx >= 0) metadata.camIdx = shot.camIdx
+  if (shot.continuity !== undefined) metadata.continuity = shot.continuity
+  return metadata
 }
 
 /**
@@ -404,6 +482,12 @@ export function storyboardPlanToCreateNodesArgs(
       // description 仍拼进 prompt（buildAnchorSheetPrompt），二者并存不矛盾（static/dynamic 是 description 的结构化细化）。
       ...(anchor.staticFeatures && anchor.staticFeatures.trim() ? { staticFeatures: anchor.staticFeatures.trim() } : {}),
       ...(anchor.dynamicFeatures && anchor.dynamicFeatures.trim() ? { dynamicFeatures: anchor.dynamicFeatures.trim() } : {}),
+      ...(options.materializationOperationId ? {
+        metadata: {
+          materializationOperationId: options.materializationOperationId,
+          materializationClientId: anchor.id,
+        },
+      } : {}),
       ...(options.defaultImageModelKey ? { modelKey: options.defaultImageModelKey } : {}),
       ...(options.defaultImageModeId ? { modeId: options.defaultImageModeId } : {}),
     })
@@ -447,6 +531,7 @@ export function storyboardPlanToCreateNodesArgs(
         ...(keyframeModelKey ? { modelKey: keyframeModelKey } : {}),
         ...(keyframeModeId ? { modeId: keyframeModeId } : {}),
         ...(shot.keyframe?.params ? { params: shot.keyframe.params } : {}),
+        metadata: storyboardShotMetadata(plan, shot, options.materializationOperationId, referenceTargetId),
       })
     }
     nodes.push({
@@ -462,6 +547,7 @@ export function storyboardPlanToCreateNodesArgs(
         ...(shot.params || {}),
         ...(!isImageShot && Number.isFinite(shot.durationSec) ? { duration: shot.durationSec } : {}),
       },
+      metadata: storyboardShotMetadata(plan, shot, options.materializationOperationId, id),
     })
     // 定妆卡 → 这一镜参考边（角色 character_ref / 场景·风格 style_ref / 道具 reference）。图片/视频镜头都连。
     for (const anchorId of visualAnchorIds) {
@@ -476,5 +562,20 @@ export function storyboardPlanToCreateNodesArgs(
   }
 
   // 整批落「分镜」分类：角色/场景与镜头同处一个视图，参考边同屏可见可连（用户拍板 A）。
-  return { summary: plan.title.trim() || '分镜方案', nodes, edges, anchorCount, groupCategoryId: 'shots' }
+  const candidateSourceScriptVersion = plan.sourceScriptVersion
+  const sourceScriptVersion = typeof candidateSourceScriptVersion === 'number'
+    && Number.isInteger(candidateSourceScriptVersion)
+    && candidateSourceScriptVersion > 0
+    ? candidateSourceScriptVersion
+    : undefined
+  return {
+    summary: plan.title.trim() || '分镜方案',
+    nodes,
+    edges,
+    anchorCount,
+    groupCategoryId: 'shots',
+    ...(plan.sourceScriptArtifactId?.trim() ? { sourceScriptArtifactId: plan.sourceScriptArtifactId.trim() } : {}),
+    ...(sourceScriptVersion !== undefined ? { sourceScriptVersion } : {}),
+    ...(plan.sourceScriptHash?.trim() ? { sourceScriptHash: plan.sourceScriptHash.trim() } : {}),
+  }
 }

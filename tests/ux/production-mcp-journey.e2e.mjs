@@ -81,7 +81,7 @@ async function waitForRunStatus(projectId, runId, expected, timeoutMs = 20_000) 
     if (run?.status === expected) return run
     await delay(250)
   }
-  throw new Error(`Run ${runId} did not reach ${expected}; last=${run?.status || 'missing'}`)
+  throw new Error(`Run ${runId} did not reach ${expected}; last=${JSON.stringify({ status: run?.status, stageId: run?.stageId, stages: run?.stages?.map((stage) => [stage.stageId, stage.status]), jobs: run?.jobs?.map((job) => [job.jobId, job.status]), gates: run?.gates?.map((gate) => [gate.gateId, gate.status]) })}`)
 }
 
 async function waitForWaitingGate(projectId, runId, gateIdPrefix, timeoutMs = 20_000) {
@@ -148,8 +148,11 @@ try {
   mcp = spawnMcpStdioClient({ ...mcpDirs, clientInfo: mcpClientInfo, capabilities: mcpCapabilities, env: mcpEnv })
   await initializeMcp()
   const tools = (await mcp.rpc('tools/list', {}, 20_000)).result?.tools || []
-  check(tools.length === 15, 'real MCP stdio exposes the exact 15-tool catalog')
-  for (const name of ['nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
+  check(tools.length === 22, 'real MCP stdio exposes the exact 22-tool catalog')
+  for (const name of [
+    'nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact',
+    'nomi_read_artifact', 'nomi_review_artifact', 'nomi_materialize_storyboard',
+  ]) {
     check(tools.some((tool) => tool.name === name), `${name} is registered over real stdio`)
   }
 
@@ -198,32 +201,44 @@ try {
   await window.screenshot({ path: path.join(shotsDir, '01a-direction-candidates.png') })
   const directionOverlay = window.locator('.fixed.inset-0').filter({ has: window.locator('button') }).last()
   await directionOverlay.locator('button').last().click()
-  let run = await waitForRunStatus(projectId, runId, 'awaiting_storyboard_review')
+  let run = await waitForRunStatus(projectId, runId, 'awaiting_script_review')
   const decidedDirection = run.gates.find((gate) => gate.gateId === 'gate-direction-v1')
   check(decidedDirection?.decidedChoiceKey === 'kinetic', 'approval records the chosen direction as decidedChoiceKey')
-  check(run.artifacts.some((artifact) => artifact.kind === 'script') && run.artifacts.some((artifact) => artifact.kind === 'storyboard'), 'direction approval produces durable script and storyboard artifacts')
+  const scriptArtifact = run.artifacts.find((artifact) => artifact.kind === 'script')
+  check(Boolean(scriptArtifact) && !run.artifacts.some((artifact) => artifact.kind === 'storyboard'), 'direction approval produces a durable script candidate before any storyboard')
+  await callTool('nomi_review_artifact', {
+    projectId,
+    runId,
+    artifactId: scriptArtifact.artifactId,
+    expectedVersion: scriptArtifact.version || 1,
+    decision: 'approved',
+  })
+  run = await waitForRunStatus(projectId, runId, 'awaiting_storyboard_review')
+  check(run.artifacts.some((artifact) => artifact.kind === 'storyboard'), 'script approval produces the durable storyboard candidate')
   const events = await callTool('nomi_subscribe_run', { projectId, runId, afterCursor: 0, waitMs: 0 })
   check(events.structuredContent?.nomiRunData?.events?.some((event) => event.type === 'skill.loaded'), 'MCP event stream exposes durable skill evidence')
 
-  const attached = await window.evaluate(async ({ projectId: pid, runId: rid }) => {
-    const bridge = window.nomiDesktop?.productionRuns
-    const current = await bridge.read(pid, rid)
-    const storyboard = current.artifacts.find((artifact) => artifact.kind === 'storyboard')
-    return bridge.command(pid, rid, {
-      commandId: crypto.randomUUID(),
-      expectedRevision: current.revision,
-      type: 'plan.attach',
-      payload: {
-        artifactId: storyboard.artifactId,
-        bindings: [
-          { nodeId: 'shot-1', provider: 'nomi-e2e-fixture', model: 'nomi-e2e-fixture-video', stageId: 'generate' },
-          { nodeId: 'shot-2', provider: 'nomi-e2e-fixture', model: 'nomi-e2e-fixture-video', stageId: 'generate' },
-        ],
-      },
-      issuedAt: new Date().toISOString(),
-    })
+  const storyboardArtifact = run.artifacts.find((artifact) => artifact.kind === 'storyboard')
+  await callTool('nomi_review_artifact', {
+    projectId,
+    runId,
+    artifactId: storyboardArtifact.artifactId,
+    expectedVersion: storyboardArtifact.version || 1,
+    decision: 'approved',
+  })
+  const materialized = await callTool('nomi_materialize_storyboard', {
+    projectId,
+    runId,
+    artifactId: storyboardArtifact.artifactId,
+    expectedVersion: storyboardArtifact.version || 1,
+  })
+  const attached = materialized.structuredContent?.nomiOutcome
+  check(attached?.kind === 'storyboard_materialized' && Number(attached?.bindingCount) === 8, 'approved storyboard materializes through the external MCP seam with eight planned jobs')
+  const materializedRun = await window.evaluate(async ({ projectId: pid, runId: rid }) => {
+    return window.nomiDesktop?.productionRuns?.read(pid, rid)
   }, { projectId, runId })
-  check(attached.run.jobs.length === 2 && attached.run.status === 'awaiting_contract', 'storyboard binding crosses the real renderer IPC with two planned jobs')
+  check(materializedRun.jobs[0]?.metadata?.subtitle === '1', 'external materialize preserves storyboard subtitle metadata on the first job')
+  check(materializedRun.jobs[0]?.metadata?.transition?.type === 'dissolve' && materializedRun.jobs[0]?.metadata?.transition?.durationFrames === 12, 'external materialize preserves authored transition metadata')
   await window.screenshot({ path: path.join(shotsDir, '02-contract.png') })
 
   // 钱门必须在 Nomi 批准；confirm_all 随后在第一次供应商提交前创建逐镜头门。
@@ -259,8 +274,19 @@ try {
   await openRunFromTaskCenter(gui.window, '03b-shot-2-gate.png')
   await approveCurrentProductionGate(gui.window)
 
+  // The approved storyboard is eight shots. In confirm_all mode every remaining
+  // shot gets the same durable one-job gate; walk them rather than silently
+  // assuming that approving shot two authorizes the whole batch.
+  for (let shotNumber = 3; shotNumber <= 8; shotNumber += 1) {
+    await waitForWaitingGate(projectId, runId, 'gate-shot-', 30_000)
+    const waiting = await getRunData(projectId, runId)
+    const waitingGate = waiting.gates.find((gate) => gate.gateId.startsWith('gate-shot-') && gate.status === 'waiting')
+    check(waitingGate?.jobIds?.length === 1, `shot ${shotNumber} receives one explicit approval gate`)
+    await approveCurrentProductionGate(gui.window)
+  }
+
   run = await waitForRunStatus(projectId, runId, 'awaiting_rough_cut_review', 30_000)
-  check(run.jobs.length === 2 && run.jobs.every((job) => job.status === 'adopted'), 'each approved fixture shot reaches adopted exactly once')
+  check(run.jobs.length === 8 && run.jobs.every((job) => job.status === 'adopted'), 'each approved fixture shot reaches adopted exactly once')
   check(run.artifacts.some((artifact) => artifact.kind === 'video') && run.artifacts.some((artifact) => artifact.kind === 'timeline'), 'generation and assembly produce local video and timeline artifacts')
   await openRunFromTaskCenter(gui.window)
   // 获批样张：视频先出封面 + 播放键（原生 controls chrome 在窄卡里又挤又脏），点了才进播放态。

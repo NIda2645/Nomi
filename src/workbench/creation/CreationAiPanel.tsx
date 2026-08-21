@@ -43,28 +43,21 @@ import { AutoGrowTextarea } from '../ai/composer/AutoGrowTextarea'
 import { COMPOSER_ATTACHMENT_ACCEPT, useComposerAttachments } from '../ai/composer/useComposerAttachments'
 import { useRafCoalesce } from '../ai/useRafCoalesce'
 import StoryboardNudge from './storyboard/StoryboardNudge'
+import { snapshotScriptDraft } from './scriptDraftSnapshot'
 
 export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => void } = {}): JSX.Element {
   const { t } = useTranslation()
-  // 流式生命周期(sending/cancel/待批写卡/消息 id)收口到 turn 控制器,组件只读不持有 ——
-  // 这样切项目/新对话/卸载能统一中止在途轮次(治串台),按钮态也随之复位。
   const sending = useCreationTurnStore((state) => state.sending)
   const pendingToolCalls = useCreationTurnStore((state) => state.pendingToolCalls)
   const turn = useCreationTurnStore
-  // 流式吐字 rAF 合帧：把每 token 一次的整 messages 重渲合并到每帧最多一次（治掉字掉帧）。
   const { push: pushStreamFrame, cancel: cancelStreamFrame } = useRafCoalesce()
-  // 项目记忆卡刷新键:每完成一轮(sending true→false)+1,触发记忆重取(本轮可能提炼新事实)。
   const [memoryRefreshKey, setMemoryRefreshKey] = React.useState(0)
   const prevSendingRef = React.useRef(sending)
   React.useEffect(() => {
     if (prevSendingRef.current && !sending) setMemoryRefreshKey((key) => key + 1)
     prevSendingRef.current = sending
   }, [sending])
-  // 放大/全屏对话：把整块面板移到 body 级居中浮层（仿 Scene3D 全屏 portal）。
   const [expanded, setExpanded] = React.useState(false)
-  // 注意:不在卸载时 abort。turn 状态已搬到控制器(模块级单例)+ 消息在 store,
-  // 折叠/切 tab 会卸载本面板,但在途轮次应继续跑、重开面板时无缝接回(折叠续跑)。
-  // 跨项目串台由 swapCreationAiProject→abandon 兜底,与面板卸载解耦。
   const messagesScrollRef = useTransientScrollingClass<HTMLDivElement>('workbench-scrollbar-visible')
   const workbenchDocument = useWorkbenchStore((state) => state.workbenchDocument)
   const documentTools = useWorkbenchStore((state) => state.creationDocumentTools)
@@ -74,7 +67,6 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
   const setActiveSkill = useWorkbenchStore((state) => state.setCreationActiveSkill)
   const draft = useWorkbenchStore((state) => state.creationAiDraft)
   const messages = useWorkbenchStore((state) => state.creationAiMessages)
-  // S1b 诚实分隔线:气泡有历史而 LLM 记忆为空 → 在历史末尾画「以上对话 AI 已不再记得」。
   const staleBoundaryId = useStaleConversationBoundary(messages.map((message) => message.id), 'creation')
   // 分镜方案卡挂在「产出它的那条消息」下面（治「卡片跟着对话跑」）。取**最后一条**带标消息：
   // 改方案会新产出一条带标的，卡片随之前移，永远只显示一张。
@@ -149,10 +141,9 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     if (call.toolName === 'insert_at_cursor') tools.insertAtCursor(call.content)
     else if (call.toolName === 'replace_selection') tools.replaceSelection(call.content)
     else tools.appendToEnd(call.content)
-    resolvePending(call.toolCallId, { ok: true, result: { applied: true } })
+    const scriptDraft = snapshotScriptDraft({ content: tools.readFullText(), source: 'user' })
+    resolvePending(call.toolCallId, { ok: true, result: { applied: true, scriptDraft } })
   }, [resolvePending])
-
-
   const writeToolIcon = React.useCallback((name: WriteToolName) => {
     if (name === 'insert_at_cursor') return <IconCursorText size={13} />
     if (name === 'replace_selection') return <IconReplace size={13} />
@@ -164,11 +155,23 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     const store = useWorkbenchStore.getState()
     const currentPlan = store.storyboardPlan
     const isRevision = Boolean(currentPlan && !store.storyboardPlanCommitted && revisionRequest?.trim())
-    const docStory = (selectedText || documentText).trim()
-    // 编辑器为空但用户把故事打在了对话里 → 用对话正文，并补写进文稿（单一真相源），
-    // 别让他把已经敲过的故事再搬一遍（D1）。裸命令抠不出故事则维持下面的提示。
+    const liveDocumentText = documentToolsRef.current?.readFullText() || documentText
+    const docStory = (selectedText || liveDocumentText).trim()
+    // 编辑器为空但用户把故事打在了对话里 → 用对话正文，并补写进文稿（单一真相源），别让他把已经敲过的故事再搬一遍。
     const chatStory = docStory ? '' : extractStoryFromRequest(displayPrompt)
-    if (chatStory) documentToolsRef.current?.appendToEnd(chatStory)
+    if (chatStory) {
+      const toolCallId = `local-script-draft-${turn.getState().nextMessageId('assistant')}`
+      turn.getState().addPendingToolCall({
+        toolCallId,
+        toolName: 'append_to_end',
+        content: chatStory,
+        confirm: async (decision) => {
+          if (!decision.ok) return
+          launchStoryboardPlanning(displayPrompt, undefined, shotMode)
+        },
+      })
+      return
+    }
     const storyText = docStory || chatStory
     if (!isRevision && !storyText) {
       setError(t('creationAi.writeStoryFirst'))

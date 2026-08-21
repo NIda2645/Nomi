@@ -10,6 +10,18 @@
 
 import type { ProductionRun } from './productionRunTypes'
 
+/** A retry is deliberately one durable job per failing shot, never a batch replay. */
+export type QaRetryPlan = {
+  shotNodeId: string
+  parentJobId: string
+  retryCount: number
+  retryReason: string
+  retryDirective: string
+  nextAttempt: number
+  eligible: boolean
+  blockedReason?: 'attempt_limit' | 'budget_exhausted'
+}
+
 /** 渲染层 production.verify-shots 回传的单镜判决（由 capabilityApplyHandler 从 shotVerify store 映射）。 */
 export type QaShotVerdict = {
   shotNodeId: string
@@ -54,6 +66,70 @@ export function adoptedGenerationShotNodeIds(run: ProductionRun): string[] {
     out.push(nodeId)
   }
   return out
+}
+
+function latestJobForShot(run: ProductionRun, shotNodeId: string): ProductionRun['jobs'][number] | undefined {
+  return run.jobs
+    .filter((job) => job.stageId === 'generate' && job.nodeId === shotNodeId)
+    .sort((left, right) => (right.attempt - left.attempt) || right.updatedAt.localeCompare(left.updatedAt))[0]
+}
+
+function retryDirective(flags: NonNullable<QaShotVerdict['flagged']>): string {
+  const dimensions = new Set(flags.map((flag) => (flag.dimensionName || flag.dimension || '').trim()).filter(Boolean))
+  const fixes = Array.from(dimensions)
+  const fixText = fixes.length ? fixes.join('、') : '审片标红的维度'
+  return `【定向重滚】保持背景、光线与未标红的构图尽量不变，只修正：${fixText}。不要引入新人物或新场景。`
+}
+
+/**
+ * Build a bounded retry plan from QA results. This is pure so the driver can persist the
+ * decision before any provider call. `maxAttemptsPerJob` is the hard attempt ceiling; the
+ * run-level ledger must also have one authorized unit left for each retry.
+ */
+export function buildQaRetryPlans(run: ProductionRun, verdicts: readonly QaShotVerdict[]): QaRetryPlan[] {
+  const authorizedRemaining = run.budget.authorized - run.budget.reserved - run.budget.actual - run.budget.unsettled
+  const maxAttempts = Math.max(0, Math.floor(Number(run.policy.maxAttemptsPerJob) || 0))
+  const plans: QaRetryPlan[] = []
+  for (const verdict of verdicts) {
+    if (verdict.passed || !Array.isArray(verdict.flagged) || verdict.flagged.length === 0) continue
+    const shotNodeId = typeof verdict.shotNodeId === 'string' ? verdict.shotNodeId.trim() : ''
+    if (!shotNodeId) continue
+    // Verifiers should return one verdict per shot. Treat duplicate rows as one retry
+    // decision so a malformed response cannot reserve two budget units for one shot.
+    if (plans.some((plan) => plan.shotNodeId === shotNodeId)) continue
+    // A score of 0 means “not assessable”, not a low score; do not burn a retry on it.
+    const lowFlags = verdict.flagged.filter((flag) => typeof flag.score !== 'number' || (flag.score > 0 && flag.score < 3))
+    if (lowFlags.length === 0) continue
+    const parent = latestJobForShot(run, shotNodeId)
+    if (!parent) continue
+    const previousRetryCount = Math.max(0, Math.floor(Number(parent.retryCount ?? parent.metadata?.retryCount) || 0))
+    const retryCount = previousRetryCount + 1
+    const retryReason = lowFlags
+      .map((flag) => {
+        const dimension = (flag.dimensionName || flag.dimension || '画面').trim()
+        const score = typeof flag.score === 'number' && Number.isFinite(flag.score) ? `第 ${flag.score} 档` : '偏差'
+        return `${dimension} ${score}${flag.reason?.trim() ? `：${flag.reason.trim()}` : ''}`
+      })
+      .join('；')
+    const base = {
+      shotNodeId,
+      parentJobId: parent.jobId,
+      retryCount,
+      retryReason,
+      retryDirective: retryDirective(lowFlags),
+      nextAttempt: parent.attempt + 1,
+    }
+    if (retryCount > maxAttempts || base.nextAttempt > maxAttempts) {
+      plans.push({ ...base, eligible: false, blockedReason: 'attempt_limit' })
+      continue
+    }
+    if (authorizedRemaining < plans.filter((plan) => plan.eligible).length + 1) {
+      plans.push({ ...base, eligible: false, blockedReason: 'budget_exhausted' })
+      continue
+    }
+    plans.push({ ...base, eligible: true })
+  }
+  return plans
 }
 
 function verdictLine(verdict: QaShotVerdict): string {

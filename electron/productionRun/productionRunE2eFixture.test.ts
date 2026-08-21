@@ -27,14 +27,22 @@ describe('production Run E2E fixture', () => {
     const plan = await renderer('production.plan-storyboard', {
       projectId: 'project-fixture', runId: 'run-fixture', brief: { goal: 'Truthful Nomi promo' },
     }, 1_000) as { plan?: { shots?: unknown[] } }
-    expect(plan.plan?.shots).toHaveLength(2)
+    expect(plan.plan?.shots).toHaveLength(8)
 
-    const generated = await renderer('production.generate-node', {
-      projectId: 'project-fixture', runId: 'run-fixture', jobId: 'job:run-fixture:shot-1',
-    }, 30_000) as { assets?: Array<{ url?: string; thumbnailUrl?: string }> }
-    expect(generated.assets?.[0]?.url).toBe('nomi-local://asset/project-fixture/assets/generated/fixture-run-fixture.mp4')
-    expect(generated.assets?.[0]?.thumbnailUrl).toBe('nomi-local://asset/project-fixture/assets/generated/fixture-run-fixture.jpg')
+    const generatedResults = await Promise.all(Array.from({ length: 8 }, (_, index) => renderer('production.generate-node', {
+      projectId: 'project-fixture', runId: 'run-fixture', jobId: `job:run-fixture:shot-${index + 1}`, nodeId: `shot-${index + 1}`,
+    }, 30_000) as Promise<{ assets?: Array<{ url?: string; thumbnailUrl?: string }> }>))
+    const generated = generatedResults[0]
+    expect(generated.assets?.[0]?.url).toBe('nomi-local://asset/project-fixture/assets/generated/fixture-run-fixture-shot-1.mp4')
+    expect(generated.assets?.[0]?.thumbnailUrl).toBe('nomi-local://asset/project-fixture/assets/generated/fixture-run-fixture-shot-1.jpg')
 
+    const arrangement = await renderer('production.arrange', { projectId: 'project-fixture', runId: 'run-fixture' }, 30_000) as {
+      timelineContract?: { durationFrames?: number; clips?: unknown[]; subtitles?: unknown[]; transitions?: unknown[] }
+    }
+    expect(arrangement.timelineContract).toMatchObject({ durationFrames: 900 })
+    expect(arrangement.timelineContract?.clips).toHaveLength(8)
+    expect(arrangement.timelineContract?.subtitles).toHaveLength(8)
+    expect(arrangement.timelineContract?.transitions).toHaveLength(3)
     const exported = await renderer('production.export', {
       projectId: 'project-fixture', runId: 'run-fixture', outputName: 'nomi-run-fixture.mp4',
     }, 30_000) as { relativePath?: string }
@@ -45,7 +53,7 @@ describe('production Run E2E fixture', () => {
     const probe = JSON.parse(execFileSync(ffprobe, [
       '-v', 'error', '-show_entries', 'format=duration:stream=codec_type,codec_name', '-of', 'json', exportPath,
     ], { encoding: 'utf8' })) as { format?: { duration?: string }; streams?: Array<{ codec_type?: string; codec_name?: string }> }
-    expect(Number(probe.format?.duration)).toBeGreaterThan(0)
+    expect(Number(probe.format?.duration)).toBeGreaterThan(29)
     expect(probe.streams?.some((stream) => stream.codec_type === 'video' && stream.codec_name === 'h264')).toBe(true)
     expect(probe.streams?.some((stream) => stream.codec_type === 'audio' && stream.codec_name === 'aac')).toBe(true)
   }, 30_000)

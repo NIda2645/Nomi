@@ -5,6 +5,8 @@
   "description": "做产品/品牌宣传片。当用户要把产品文案、卖点或品牌介绍做成一条短宣传视频，或提到「宣传片 / 产品视频 / 品牌短片 / promo / 广告片」时用我。",
   "author": "@nomi",
   "tools": [
+    "read_full_text",
+    "read_selection",
     "read_canvas_state",
     "propose_storyboard_plan",
     "create_canvas_nodes",
@@ -30,9 +32,19 @@
   ],
   "stages": [
     {
+      "id": "script",
+      "goal": "先生成一份可审阅的编号剧本和产品/场景事实，不落画布、不调用付费模型；用户确认或提出定点修改后才进入视觉规划。",
+      "tools": ["read_full_text", "read_selection"],
+      "skillRefs": ["writer-screenwriter", "writer-structure", "writer-dialogue", "writer-review"],
+      "pause": true,
+      "modelPrefs": [{ "kind": "text" }]
+    },
+    {
       "id": "storyboard",
       "goal": "把产品文案拆成一份宣传片分镜方案（3 秒钩子 → 每个卖点一镜 → 使用场景 → 行动号召），交用户在创作区审阅修改。",
       "tools": ["read_canvas_state", "propose_storyboard_plan"],
+      "dependsOn": ["script"],
+      "skillRefs": ["director-shot-translation", "director-cinematography", "director-consistency", "director-staging"],
       "pause": true,
       "modelPrefs": [{ "kind": "text" }]
     },

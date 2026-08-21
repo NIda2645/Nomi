@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
 import { buildToolOutcome } from '../capabilityCore/mcpToolResults'
 
 // B2 样片门 + 窗口化定档（plan 2026-08-11-mcp-conversation-native-phase-b）：
@@ -27,6 +28,7 @@ function makeTwoShotRun(root: string, trackCalls: { count: number }) {
         { key: 'b', title: '方向二', oneLiner: 'y' },
       ] }
     }
+    if (op === 'production.plan-script') return { text: 'sample gate script' }
     if (op === 'production.plan-storyboard') {
       return { plan: { title: 'promo', anchors: [], shots: [
         { index: 1, shotKind: 'video', prompt: 'shot one' },
@@ -60,7 +62,8 @@ async function driveToContract(service: ReturnType<typeof createProductionRunSer
     commandId: 'direction', expectedRevision: service.readFull('project-1', runId)!.revision, type: 'gate.decide',
     payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
   })
-  await waitFor(() => Boolean(service.readFull('project-1', runId)?.artifacts.some((a) => a.kind === 'storyboard')))
+  await approveLatestScript(service, 'project-1', runId)
+  await approveLatestStoryboard(service, 'project-1', runId)
   const planned = service.readFull('project-1', runId)!
   const storyboardId = planned.artifacts.find((a) => a.kind === 'storyboard')!.artifactId
   const attached = await service.command('project-1', runId, {

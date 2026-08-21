@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
 import { normalizeDirectionCandidates } from './productionRunDriverOps'
+import { approveLatestScript, waitForProduction } from './productionRunTestHelpers'
 
 // B1 创意方向门带方案（plan 2026-08-11-mcp-conversation-native-phase-b）：
 // driver 拟 2-3 个候选挂上方向门 → 投影透出 directionCandidates → 批准带 choiceKey 留痕。
@@ -57,6 +58,7 @@ describe('direction gate with candidates (B1 全链)', () => {
           { key: 'montage', title: '快节奏踩点混剪', oneLiner: '鼓点卡切，15 个场景闪回' },
         ] }
       }
+      if (op === 'production.plan-script') return { text: 'direction script' }
       if (op === 'production.plan-storyboard') {
         return { plan: { title: 'promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'shot one' }] } }
       }
@@ -99,7 +101,8 @@ describe('direction gate with candidates (B1 全链)', () => {
     })
 
     // 方向批准后 driver 真提分镜案（run 走到分镜审阅）。
-    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_storyboard_review')
+    await approveLatestScript(service, 'project-1', runId)
+    await waitForProduction(() => service.readFull('project-1', runId)!.status === 'awaiting_storyboard_review')
   })
 
   it('不属于本门的 choiceKey 被丢弃（不留痕假选择）', async () => {
@@ -110,6 +113,7 @@ describe('direction gate with candidates (B1 全链)', () => {
           { key: 'studio', title: '极简产品美学', oneLiner: 'b' },
         ] }
       }
+      if (op === 'production.plan-script') return { text: 'direction script' }
       if (op === 'production.plan-storyboard') return { plan: { title: 'p', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'x' }] } }
       throw new Error(`unexpected op: ${op}`)
     })
@@ -132,6 +136,7 @@ describe('direction gate with candidates (B1 全链)', () => {
   it('GUI 关着拟方向失败 → 方向门保持兜底（无候选），仍可正常批准', async () => {
     const { service } = makeService(async (op) => {
       if (op === 'production.plan-directions') throw new Error('renderer unavailable (Nomi closed)')
+      if (op === 'production.plan-script') return { text: 'fallback script' }
       if (op === 'production.plan-storyboard') return { plan: { title: 'p', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'x' }] } }
       throw new Error(`unexpected op: ${op}`)
     })
@@ -153,6 +158,7 @@ describe('direction gate with candidates (B1 全链)', () => {
       commandId: 'approve-fallback', expectedRevision: current.revision, type: 'gate.decide',
       payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
     })
-    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_storyboard_review')
+    await approveLatestScript(service, 'project-1', runId)
+    await waitForProduction(() => service.readFull('project-1', runId)!.status === 'awaiting_storyboard_review')
   })
 })

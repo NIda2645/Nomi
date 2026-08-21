@@ -95,7 +95,7 @@ export function getDesktopLocale(): DesktopLocale {
 export function desktopT(key: DesktopTranslationKey, values: Record<string, string | number> = {}): string {
   let text: string = translations[currentLocale][key];
   for (const [name, value] of Object.entries(values)) {
-    text = text.replaceAll(`{{${name}}}`, String(value));
+    text = text.replace(new RegExp(`\\{\\{${name}\\}\\}`, 'g'), String(value));
   }
   return text;
 }

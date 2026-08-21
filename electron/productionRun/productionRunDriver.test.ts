@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
 
 function makeRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-production-driver-'))
@@ -79,8 +80,9 @@ describe('ProductionRunService driver round 1', () => {
     const root = makeRoot()
     const repository = createProductionRunRepository({ projectDirResolver: () => root })
     const requestRenderer = async (op: string) => {
-      // B1：createDraft 会先异步拟方向候选（production.plan-directions）；分镜案仍走 plan-storyboard。
+      // B1：createDraft 会先异步拟方向候选；剧本审阅通过后才走 plan-storyboard。
       if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+      if (op === 'production.plan-script') return { text: 'Nomi promo script' }
       expect(op).toBe('production.plan-storyboard')
       return { text: '已完成分镜规划', plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
     }
@@ -98,7 +100,8 @@ describe('ProductionRunService driver round 1', () => {
       payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
     })
     expect(approved.run.status).toBe('running')
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await approveLatestScript(service, 'project-1', 'run-driver-2')
+    await approveLatestStoryboard(service, 'project-1', 'run-driver-2')
     const planned = service.readFull('project-1', 'run-driver-2')
     expect(planned.status).toBe('awaiting_storyboard_review')
     expect(planned.artifacts.map((item) => item.kind)).toEqual(expect.arrayContaining(['script', 'storyboard']))
@@ -156,6 +159,7 @@ describe('ProductionRunService driver round 1', () => {
     const requestRenderer = async (op: string) => {
       calls.push(op)
       if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+      if (op === 'production.plan-script') return { text: 'Nomi promo script' }
       if (op === 'production.plan-storyboard') return { plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
       if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
       if (op === 'production.arrange') return { arranged: 1, total: 1 }
@@ -177,7 +181,8 @@ describe('ProductionRunService driver round 1', () => {
       brief: { goal: 'Make a truthful Nomi product promo', durationSeconds: 60 },
     })
     await service.command('project-1', 'run-driver-3', { commandId: 'direction-3', expectedRevision: 0, type: 'gate.decide', payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
-    await waitFor(() => calls.includes('production.plan-storyboard'))
+    await approveLatestScript(service, 'project-1', 'run-driver-3')
+    await approveLatestStoryboard(service, 'project-1', 'run-driver-3')
     const planned = service.readFull('project-1', 'run-driver-3')
     const attached = await service.command('project-1', 'run-driver-3', {
       commandId: 'attach-3', expectedRevision: planned.revision, type: 'plan.attach',
@@ -224,6 +229,7 @@ describe('ProductionRunService driver round 1', () => {
     const requestRenderer = async (op: string) => {
       calls.push(op)
       if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+      if (op === 'production.plan-script') return { text: 'Nomi promo script' }
       if (op === 'production.plan-storyboard') return { plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
       if (op === 'production.check-frozen') return { unfrozenAnchors: [{ nodeId: 'anchor-hero', title: '林夏 · 定妆' }] }
       if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
@@ -242,7 +248,8 @@ describe('ProductionRunService driver round 1', () => {
       brief: { goal: 'Make a truthful Nomi product promo', durationSeconds: 60 },
     })
     await service.command('project-1', 'run-freeze', { commandId: 'direction-f', expectedRevision: 0, type: 'gate.decide', payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
-    await waitFor(() => calls.includes('production.plan-storyboard'))
+    await approveLatestScript(service, 'project-1', 'run-freeze')
+    await approveLatestStoryboard(service, 'project-1', 'run-freeze')
     const planned = service.readFull('project-1', 'run-freeze')
     const attached = await service.command('project-1', 'run-freeze', {
       commandId: 'attach-f', expectedRevision: planned.revision, type: 'plan.attach',
@@ -274,6 +281,7 @@ describe('ProductionRunService driver round 1', () => {
     const requestRenderer = async (op: string) => {
       calls.push(op)
       if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+      if (op === 'production.plan-script') return { text: 'Nomi promo script' }
       if (op === 'production.plan-storyboard') return { plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
       if (op === 'production.check-frozen') return { unfrozenAnchors: [] } // 全冻结
       if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
@@ -292,7 +300,8 @@ describe('ProductionRunService driver round 1', () => {
       brief: { goal: 'Make a truthful Nomi product promo', durationSeconds: 60 },
     })
     await service.command('project-1', 'run-frozen-ok', { commandId: 'direction-ok', expectedRevision: 0, type: 'gate.decide', payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
-    await waitFor(() => calls.includes('production.plan-storyboard'))
+    await approveLatestScript(service, 'project-1', 'run-frozen-ok')
+    await approveLatestStoryboard(service, 'project-1', 'run-frozen-ok')
     const planned = service.readFull('project-1', 'run-frozen-ok')
     const attached = await service.command('project-1', 'run-frozen-ok', {
       commandId: 'attach-ok', expectedRevision: planned.revision, type: 'plan.attach',

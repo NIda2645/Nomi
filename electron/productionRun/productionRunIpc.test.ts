@@ -40,6 +40,7 @@ describe("production run IPC", () => {
       "nomi:production-runs:read",
       "nomi:production-runs:create-draft",
       "nomi:production-runs:command",
+      "nomi:production-runs:materialize-storyboard",
       "nomi:production-runs:events",
     ]);
   });
