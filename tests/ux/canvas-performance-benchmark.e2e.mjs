@@ -1043,14 +1043,18 @@ function sampleHardFailures(sample) {
     failures.push(`simultaneously playing videos ${sample.probe.maxActiveVideos} > 1`)
   if (sample.scenario === 'media-error' && sample.actionDetails?.explicitFailures < 1)
     failures.push('media failure did not remain explicit after retry')
-  if (
-    sample.scenario === 'low-zoom-preview' &&
-    Number.isFinite(sample.actionDetails?.zoom) &&
-    sample.actionDetails.zoom < 0.55 &&
-    sample.actionDetails.settled?.lightweightCanvasNodes > 0 &&
-    sample.actionDetails.settled.lightweightPreviewNodes < 1
-  )
-    failures.push('low-zoom lightweight nodes rendered without any media preview')
+  if (sample.scenario === 'low-zoom-preview' && !sample.error) {
+    const zoom = sample.actionDetails?.zoom
+    const lightweightNodeCount = sample.actionDetails?.settled?.lightweightCanvasNodes
+    const lightweightPreviewCount = sample.actionDetails?.settled?.lightweightPreviewNodes
+    if (!Number.isFinite(zoom) || zoom >= 0.55) {
+      failures.push(`low-zoom scenario settled above lightweight threshold: ${zoom ?? 'unknown'}`)
+    } else if (!Number.isFinite(lightweightNodeCount) || lightweightNodeCount < 1) {
+      failures.push('low-zoom scenario did not mount any lightweight nodes')
+    } else if (!Number.isFinite(lightweightPreviewCount) || lightweightPreviewCount < 1) {
+      failures.push('low-zoom lightweight nodes rendered without any media preview')
+    }
+  }
   const settledSnapshots = [sample.cold?.settled, sample.actionDetails?.settled]
     .filter(Boolean)
     .concat(sample.scenario === 'reload-heavy' ? sample.actionDetails?.snapshots || [] : [])
