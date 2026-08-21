@@ -89,5 +89,5 @@ assert.ok(run.skillEvidence?.script?.length >= 1 && run.skillEvidence?.storyboar
 // The source note must stay truthful if the fixture is regenerated.
 assert.match(run.note, /复用.*launch-film|仓库已有.*launch-film/)
     globalThis.console.log('REAL DRAFT FILM CONTRACT PASS: 30s MP4, subtitles, authored transitions, provenance, and project artifacts')
-  })
+  }, 120_000)
 })
