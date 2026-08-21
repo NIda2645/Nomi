@@ -1,5 +1,5 @@
 // 目录模型选择走查：验证创作助手和生成节点都保留模型入口，且选中的身份来自 catalog。
-// 不发生成请求、不消耗额度；fixture 使用已知 provider 的模型 id（DeepSeek V3.1 / GPT-5.2 /
+// 不发生成请求、不消耗额度；fixture 使用已知 provider 的模型 id（DeepSeek V4 Pro / GPT-5.2 /
 // GPT Image 2 / Nano Banana），只验证 catalog 身份、退役项清理、选择和持久化。
 import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
@@ -42,12 +42,12 @@ fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
     },
   ],
   models: [
-    { modelKey: 'deepseek-v3.1-250821', vendorKey: VENDOR, labelZh: 'DeepSeek V3.1（目录）', kind: 'text', enabled: true, createdAt: NOW, updatedAt: NOW },
+    { modelKey: 'deepseek-v4-pro', vendorKey: VENDOR, labelZh: 'DeepSeek V4 Pro（目录）', kind: 'text', enabled: true, createdAt: NOW, updatedAt: NOW },
     { modelKey: 'gpt-5.2', vendorKey: VENDOR, labelZh: 'GPT-5.2（目录）', kind: 'text', enabled: true, createdAt: NOW, updatedAt: NOW },
     { modelKey: 'prompt-refiner', vendorKey: VENDOR, labelZh: '仅提示词增强（不可对话）', kind: 'text', enabled: true, meta: { promptRefineOnly: true }, createdAt: NOW, updatedAt: NOW },
     { modelKey: 'gpt-image-2', vendorKey: VENDOR, labelZh: 'GPT Image 2（目录）', kind: 'image', enabled: true, createdAt: NOW, updatedAt: NOW },
     { modelKey: 'nano-banana', vendorKey: VENDOR, labelZh: 'Nano Banana（目录）', kind: 'image', enabled: true, createdAt: NOW, updatedAt: NOW },
-    { modelKey: 'deepseek-v4-pro', vendorKey: 'apimart', labelZh: 'DeepSeek V4 Pro（旧记录）', kind: 'text', enabled: true, createdAt: NOW, updatedAt: NOW },
+    { modelKey: 'deepseek-v3.1-250821', vendorKey: 'apimart', labelZh: 'DeepSeek V3.1（旧记录）', kind: 'text', enabled: true, createdAt: NOW, updatedAt: NOW },
   ],
   mappings: [],
   apiKeysByVendor: {},
@@ -107,13 +107,13 @@ try {
       .map((vendor) => String(vendor.key).toLowerCase()))
     const available = models.filter((model) => availableVendorKeys.has(String(model.vendorKey).toLowerCase()))
     return {
-      hasRetiredApimartV4: models.some((model) => model.vendorKey === 'apimart' && model.modelKey === 'deepseek-v4-pro'),
+      hasRetiredApimartV31: models.some((model) => model.vendorKey === 'apimart' && model.modelKey === 'deepseek-v3.1-250821'),
       text: available.filter((model) => model.kind === 'text').map((model) => ({ vendorKey: model.vendorKey, modelKey: model.modelKey, labelZh: model.labelZh })),
       image: available.filter((model) => model.kind === 'image').map((model) => ({ vendorKey: model.vendorKey, modelKey: model.modelKey, labelZh: model.labelZh })),
     }
   })
-  assert(!catalog.hasRetiredApimartV4, 'APIMart 退役 DeepSeek V4 不进入真实 catalog')
-  assert(catalog.text.some((model) => model.modelKey === 'deepseek-v3.1-250821'), '真实文本模型 DeepSeek V3.1 在 catalog')
+  assert(!catalog.hasRetiredApimartV31, 'APIMart 退役 DeepSeek V3.1 250821 不进入真实 catalog')
+  assert(catalog.text.some((model) => model.modelKey === 'deepseek-v4-pro'), '真实文本模型 DeepSeek V4 Pro 在 catalog')
   assert(catalog.image.some((model) => model.modelKey === 'nano-banana'), '真实图片模型 Nano Banana 在 catalog')
 
   await win.getByText('新建空白项目', { exact: false }).first().click({ timeout: 5000 })
@@ -125,7 +125,7 @@ try {
   await assistantPicker.click()
   const assistantOptionTexts = await win.getByRole('option').allTextContents()
   assert(assistantOptionTexts.some((text) => text.includes('GPT-5.2（目录）')), '助手下拉展示 catalog 中的真实 GPT-5.2')
-  assert(!assistantOptionTexts.some((text) => /DeepSeek V4 Pro/i.test(text)), '助手下拉没有假 DeepSeek V4 Pro')
+  assert(assistantOptionTexts.some((text) => /DeepSeek V4 Pro/i.test(text)), '助手下拉展示当前 APIMart DeepSeek V4 Pro')
   assert(!assistantOptionTexts.some((text) => text.includes('仅提示词增强')), '提示词增强专用模型不出现在通用助手下拉')
   await win.getByRole('option', { name: /GPT-5\.2（目录）/ }).click()
   await win.waitForTimeout(300)

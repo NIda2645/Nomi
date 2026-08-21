@@ -14,9 +14,10 @@ import { APIMART_CREATE_TASK_ID_PATH, APIMART_STATUS_MAPPING } from "./apimartVe
 // buildLanguageModelForVendor（apimart 默认 providerKind=openai-compatible → baseURL=/v1 → AI SDK
 // 自动补 /chat/completions）。catalog 只需一条 kind="text" 的 Model 记录，modelKey 即 chat model id。
 //
-// 默认大脑 = deepseek-v3.1-250821：使用 APIMart 官方文档当前列出的 DeepSeek V3.1 变体。
-// 用户可在「模型设置」自行加别的
-// 文本模型（gpt-5 / claude-opus-4-8 等），chooseTextModel 会把用户启用的一并纳入选择池。
+// 默认大脑 = deepseek-v4-pro：2026-08-21 用已配置 key 调 APIMart 官方
+// GET /v1/models?expand=category&category=chat 对账，并逐个以 chat + tool-call 探针确认。
+// 用户可在「模型设置」自行加别的文本模型（gpt-5 / claude-opus-4-8 等），chooseTextModel
+// 会把用户启用的一并纳入选择池。
 
 /** 一个 apimart 文本模型的 curated 定义（无 archetype / 无 mapping；modelKey = chat model id）。 */
 export type ApimartTextModel = {
@@ -27,9 +28,14 @@ export type ApimartTextModel = {
 };
 
 /**
- * apimart 的 curated 文本模型（单源）。
+ * apimart 的 curated 文本模型（单源）。DeepSeek IDs 来自 2026-08-21
+ * 的 authenticated `/v1/models?expand=category&category=chat` 返回，并通过 chat + tool-call 探针。
  *
- * - `deepseek-v3.1-250821`：默认大脑，纯文本、中文创作与工具调用的主控入口。
+ * - `deepseek-v4-pro`：默认大脑，思考型纯文本与工具调用的主控入口。
+ * - `deepseek-v4-flash`：低延迟回退，纯文本与工具调用。
+ * - `deepseek-v3.2`：通用文本与工具调用回退。
+ * - `deepseek-v3.2-think`：思考型文本与工具调用回退（自动选择时降权）。
+ * - `deepseek-v3.1-terminus`：V3.1 终版文本与工具调用回退。
  * - `gemini-3.5-flash`：**看得见的那个**。图进文字出（image_to_prompt）走它——浏览器「画面复刻/画面风格」
  *   提取、以及视频拆解读帧，都需要一个能读图的文本模型；deepseek 读不了图。
  *
@@ -46,7 +52,11 @@ export type ApimartTextModel = {
  *      单镜分镜提取实测：1178 token 进（图片占 1058）/ 1160 出 / 10.4s。
  */
 export const APIMART_TEXT_MODELS: ApimartTextModel[] = [
-  { modelKey: "deepseek-v3.1-250821", labelZh: "DeepSeek V3.1" },
+  { modelKey: "deepseek-v4-pro", labelZh: "DeepSeek V4 Pro" },
+  { modelKey: "deepseek-v4-flash", labelZh: "DeepSeek V4 Flash" },
+  { modelKey: "deepseek-v3.2", labelZh: "DeepSeek V3.2" },
+  { modelKey: "deepseek-v3.2-think", labelZh: "DeepSeek V3.2 Think" },
+  { modelKey: "deepseek-v3.1-terminus", labelZh: "DeepSeek V3.1 Terminus" },
   { modelKey: "gemini-3.5-flash", labelZh: "Gemini 3.5 Flash", meta: { supportsImageInput: true } },
   { modelKey: "MiniMax-H3-Context-IR", labelZh: "MiniMax H3 · Context-IR 提示词增强", meta: { promptRefineOnly: true } },
 ];
