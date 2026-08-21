@@ -6,21 +6,28 @@ function catalogWithRetiredModel(): CatalogState {
   return {
     version: 3,
     vendors: [{ key: 'apimart', name: 'APIMart', enabled: true, authType: 'bearer', createdAt: 'a', updatedAt: 'a' }],
-    models: [{ modelKey: 'deepseek-v4-pro', vendorKey: 'apimart', labelZh: 'DeepSeek V4 Pro', kind: 'text', enabled: true, createdAt: 'a', updatedAt: 'a' }],
+    models: [{ modelKey: 'deepseek-v3.1-250821', vendorKey: 'apimart', labelZh: 'DeepSeek V3.1', kind: 'text', enabled: true, createdAt: 'a', updatedAt: 'a' }],
     mappings: [],
     apiKeysByVendor: {},
   }
 }
 
 describe('APIMart text model migration', () => {
-  it('removes the retired DeepSeek V4 Pro seed and installs a verified V3.1 entry', () => {
+  it('removes the stale DeepSeek V3.1 seed and installs the verified current text set', () => {
     const { state } = applyBuiltinSeeds(catalogWithRetiredModel(), '2026-08-13T00:00:00.000Z')
-    expect(state.models.some((model) => model.vendorKey === 'apimart' && model.modelKey === 'deepseek-v4-pro')).toBe(false)
-    expect(state.models.find((model) => model.vendorKey === 'apimart' && model.modelKey === 'deepseek-v3.1-250821')).toMatchObject({
-      labelZh: 'DeepSeek V3.1',
-      kind: 'text',
-      enabled: true,
-    })
+    expect(state.models.some((model) => model.vendorKey === 'apimart' && model.modelKey === 'deepseek-v3.1-250821')).toBe(false)
+    for (const modelKey of [
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+      'deepseek-v3.2',
+      'deepseek-v3.2-think',
+      'deepseek-v3.1-terminus',
+    ]) {
+      expect(state.models.find((model) => model.vendorKey === 'apimart' && model.modelKey === modelKey)).toMatchObject({
+        kind: 'text',
+        enabled: true,
+      })
+    }
   })
 
   it('does not remove a same-named model from another vendor', () => {

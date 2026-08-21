@@ -238,14 +238,23 @@ describe("applyBuiltinSeeds", () => {
     expect(state.models.find((m) => m.modelKey === "my-custom-seedance-fast")).toBeTruthy();
   });
 
-  it("文本大脑：fresh seed 给 apimart 播一个 enabled 的 kind=text 模型（创作助手主控，Issue #9）", () => {
+  it("文本大脑：fresh seed 给 apimart 播一组 enabled 的 kind=text 模型（创作助手主控，Issue #9）", () => {
     const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
-    const brain = state.models.find((m) => m.vendorKey === "apimart" && m.modelKey === "deepseek-v3.1-250821");
-    expect(brain).toMatchObject({ kind: "text", enabled: true });
-    // 文本模型不挂 archetype（走 buildLanguageModelForVendor 直连 chat，不需 mapping）。
-    expect((brain?.meta as { archetypeId?: string } | undefined)?.archetypeId).toBeUndefined();
-    // 也不该为文本大脑造任何 mapping（避免 unused dead data）。
-    expect(state.mappings.find((mp) => mp.vendorKey === "apimart" && mp.modelKey === "deepseek-v3.1-250821")).toBeUndefined();
+    const brainKeys = [
+      "deepseek-v4-pro",
+      "deepseek-v4-flash",
+      "deepseek-v3.2",
+      "deepseek-v3.2-think",
+      "deepseek-v3.1-terminus",
+    ];
+    for (const modelKey of brainKeys) {
+      const brain = state.models.find((m) => m.vendorKey === "apimart" && m.modelKey === modelKey);
+      expect(brain).toMatchObject({ kind: "text", enabled: true });
+      // 文本模型不挂 archetype（走 buildLanguageModelForVendor 直连 chat，不需 mapping）。
+      expect((brain?.meta as { archetypeId?: string } | undefined)?.archetypeId).toBeUndefined();
+      // 也不该为文本大脑造任何 mapping（避免 unused dead data）。
+      expect(state.mappings.find((mp) => mp.vendorKey === "apimart" && mp.modelKey === modelKey)).toBeUndefined();
+    }
   });
 
   it("文本大脑：老装机（apimart 已接但无文本模型）→ reconcile 漂移自愈补上大脑", () => {
@@ -255,7 +264,7 @@ describe("applyBuiltinSeeds", () => {
     expect(stale.models.find((m) => m.vendorKey === "apimart" && m.kind === "text")).toBeUndefined();
     const { state, changed } = applyBuiltinSeeds(stale, "2026-06-19T00:00:00.000Z");
     expect(changed).toBe(true);
-    expect(state.models.find((m) => m.vendorKey === "apimart" && m.modelKey === "deepseek-v3.1-250821")).toMatchObject({ kind: "text", enabled: true });
+    expect(state.models.find((m) => m.vendorKey === "apimart" && m.modelKey === "deepseek-v4-pro")).toMatchObject({ kind: "text", enabled: true });
   });
 
   it("存在即跳过：不覆盖用户已有的同 key 记录", () => {

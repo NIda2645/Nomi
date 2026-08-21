@@ -23,8 +23,8 @@ const vendor: Vendor = {
 };
 const model: Model = {
   vendorKey: vendor.key,
-  modelKey: "deepseek-v3.1-250821",
-  labelZh: "deepseek-v3.1-250821",
+  modelKey: "deepseek-v4-pro",
+  labelZh: "deepseek-v4-pro",
   kind: "text",
   enabled: false,
   meta: { adapter: { state: "testing", runId: "run-1", modes: [], updatedAt: now } },
