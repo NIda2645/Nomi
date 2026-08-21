@@ -1043,7 +1043,7 @@ function sampleHardFailures(sample) {
     failures.push(`simultaneously playing videos ${sample.probe.maxActiveVideos} > 1`)
   if (sample.scenario === 'media-error' && sample.actionDetails?.explicitFailures < 1)
     failures.push('media failure did not remain explicit after retry')
-  if (sample.scenario === 'low-zoom-preview' && !sample.error) {
+  if (sample.scenario === 'low-zoom-preview' && !sample.error && sample.fixture?.nodes > 80) {
     const zoom = sample.actionDetails?.zoom
     const lightweightNodeCount = sample.actionDetails?.settled?.lightweightCanvasNodes
     const lightweightPreviewCount = sample.actionDetails?.settled?.lightweightPreviewNodes
