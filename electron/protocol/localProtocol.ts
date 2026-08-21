@@ -1,6 +1,5 @@
-import { net, protocol } from "electron";
+import { protocol } from "electron";
 import fs from "node:fs";
-import { pathToFileURL } from "node:url";
 import { contentTypeFromPath } from "../assets/assetPaths";
 import { resolveContentType } from "../assets/mediaTypes";
 import { resolveProjectRelativePath } from "../projects/repository";
@@ -69,14 +68,16 @@ function assetPathFromUrl(rawUrl: string): string | null {
 function contentTypeForFile(filePath: string): string {
   const extensionType = contentTypeFromPath(filePath);
   if (extensionType !== "application/octet-stream") return extensionType;
+  let descriptor: number | null = null;
   try {
-    const handle = fs.openSync(filePath, "r");
+    descriptor = fs.openSync(filePath, "r");
     const header = Buffer.alloc(4096);
-    const bytesRead = fs.readSync(handle, header, 0, header.length, 0);
-    fs.closeSync(handle);
+    const bytesRead = fs.readSync(descriptor, header, 0, header.length, 0);
     return resolveContentType(filePath, header.subarray(0, bytesRead));
   } catch {
     return extensionType;
+  } finally {
+    if (descriptor !== null) fs.closeSync(descriptor);
   }
 }
 
@@ -131,10 +132,17 @@ export async function handleNomiLocalRequest(request: Request): Promise<Response
       if (!range) return rangeNotSatisfiable(stat.size);
       return streamRange(filePath, range, stat.size, request.method);
     }
-    const fileResponse = await net.fetch(pathToFileURL(filePath).toString());
-    const corsHeaders = withLocalAssetHeaders(fileResponse.headers);
-    corsHeaders.set("Content-Type", contentTypeForFile(filePath));
-    return new Response(request.method === "HEAD" ? null : fileResponse.body, { status: fileResponse.status, headers: corsHeaders });
+    const stat = fs.statSync(filePath);
+    const headers = withLocalAssetHeaders({
+      "Content-Type": contentTypeForFile(filePath),
+      "Content-Length": String(stat.size),
+    });
+    // Do not wrap net.fetch's undici ReadableStream here. Under concurrent media
+    // playback Electron can close that stream once for the protocol response and
+    // once for the original Response, surfacing ERR_INVALID_STATE in the main process.
+    // A fresh file stream has one owner and follows the same path as ranged playback.
+    const body = request.method === "HEAD" ? null : fs.createReadStream(filePath);
+    return new Response(body as BodyInit | null, { status: 200, headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : "local asset not found";
     return new Response(message, { status: 404 });
