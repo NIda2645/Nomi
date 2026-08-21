@@ -143,6 +143,30 @@ export function AiModelsSection({
             aria-label={t('settings.ai.upload.minimize')}
           />
         </div>
+        <div className="mt-2 grid gap-3 rounded-nomi-sm border border-nomi-line-soft bg-nomi-ink-05 p-3" data-settings-upload-guidance>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-body-sm font-medium text-nomi-ink">{t('settings.ai.upload.kieTitle')}</div>
+              <div className="mt-0.5 text-caption leading-relaxed text-nomi-ink-60">{t('settings.ai.upload.kieHint')}</div>
+            </div>
+            {onOpenModelCatalog ? (
+              <WorkbenchButton size="sm" className="shrink-0" onClick={onOpenModelCatalog}>
+                {t('settings.ai.upload.kieConfigure')}
+              </WorkbenchButton>
+            ) : null}
+          </div>
+          <div className="flex min-h-10 items-center justify-between gap-4 border-t border-nomi-line-soft pt-2">
+            <div className="min-w-0">
+              <div className="text-body-sm text-nomi-ink">{t('settings.ai.upload.anonymousPrompt')}</div>
+              <div className="mt-0.5 text-caption leading-relaxed text-nomi-ink-40">{t('settings.ai.upload.anonymousPromptHint')}</div>
+            </div>
+            <DesignSwitch
+              checked={settings.anonymousAssetHosting === 'ask'}
+              onChange={(event) => onChange({ anonymousAssetHosting: event.currentTarget.checked ? 'ask' : 'allow' })}
+              aria-label={t('settings.ai.upload.anonymousPrompt')}
+            />
+          </div>
+        </div>
       </section>
 
       <section

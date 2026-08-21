@@ -13,6 +13,12 @@ export const zhGenerationCommon = {
     queueOnly: '这版 ComfyUI 只能安全移除排队任务；如果任务已经运行，它会在本地继续完成',
     failed: '没能确认 ComfyUI 已取消任务；它可能仍在本地运行',
   },
+  assetUploadConsent: {
+    title: 'KIE 视频上传 / 公共托管确认',
+    message: '当前没有配置 KIE 视频上传。KIE 的文件上传本身免费，配置后会优先使用它；现在也可以继续使用公共临时托管，但素材会离开本机，链接通常只短期有效并存在隐私风险。',
+    confirm: '继续上传',
+    cancel: '取消生成',
+  },
   provenance: {
     dialogAria: '生成记录',
     title: '生成记录 · {{name}}',
@@ -1274,6 +1280,12 @@ export const enGenerationCommon = {
   comfyuiCancel: {
     queueOnly: 'This ComfyUI version can only remove queued jobs safely. A running job will continue locally.',
     failed: 'Nomi could not confirm that ComfyUI cancelled the job. It may still be running locally.',
+  },
+  assetUploadConsent: {
+    title: 'KIE video upload / public hosting confirmation',
+    message: 'KIE video upload is not configured. KIE file upload itself is free and will be preferred once configured; you can continue with a public temporary host, but the media leaves this computer, the link is short-lived, and privacy risk applies.',
+    confirm: 'Continue upload',
+    cancel: 'Cancel generation',
   },
   provenance: {
     dialogAria: 'Generation record',

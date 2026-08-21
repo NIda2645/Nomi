@@ -4,6 +4,13 @@
 // 全部依赖注入(读本地字节 read / POST 上传 postJson),故可零网络零额度单测。
 
 import { isComfyuiVendor, type AssetIngestion, type AssetMediaKind } from "./types";
+import {
+  anonymousConsentFromUnknown,
+  canUseAnonymousAssetHosting,
+  ingestionHasSufficientLease,
+  ingestionVisibility,
+  type AnonymousAssetConsent,
+} from "./assetTransportPolicy";
 
 const NOMI_LOCAL_PREFIX = "nomi-local://";
 
@@ -15,6 +22,13 @@ export type LocalAsset = {
   /** 资产落盘至今的毫秒数（文件 mtime 推）。用于判 originalUrl（服务商临时直链）是否仍新鲜。 */
   ageMs?: number;
 };
+
+export class AnonymousAssetConsentRequiredError extends Error {
+  constructor() {
+    super("参考素材需要上传到公共临时托管。KIE 视频文件上传免费，配置 KIE 后可优先使用；继续前请确认公共链接和有效期风险。");
+    this.name = "AnonymousAssetConsentRequiredError";
+  }
+}
 
 /** sidecar originalUrl 的信任窗：kie ~3 天 / apimart 72h 的安全下界。窗内直接用公网直链（零上传
  *  零延迟）；过窗视为可能已死 → 走上传链用本地字节换新链。ageMs 未知（老调用方/stat 失败）按新鲜
@@ -71,6 +85,9 @@ export function mediaKindFromContentType(contentType: string | undefined): Asset
 /** 该通道接受哪些媒体类型;缺省视为 ['image']（今天的通道都面向图片）。none 通道不接受任何。 */
 export function ingestionAccepts(ingestion: AssetIngestion, kind: AssetMediaKind): boolean {
   if (ingestion.strategy === "none") return false;
+  // 只有图片允许 base64 JSON；视频/音频必须走二进制 multipart/stream，避免把一个
+  // 几十 MB 的视频膨胀成 1.33× JSON 再撞上 413。
+  if (kind !== "image" && (ingestion.strategy === "inline-base64" || ingestion.strategy === "upload-url")) return false;
   const accepts = ingestion.accepts ?? (["image"] as ReadonlyArray<AssetMediaKind>);
   return accepts.includes(kind);
 }
@@ -93,6 +110,51 @@ export function replaceLocalAssetUrls<T>(value: T, urlMap: Map<string, string>):
     return out as unknown as T;
   }
   return value;
+}
+
+/**
+ * 付费守卫前的纯本地/策略预检：不上传、不调用供应商，只确认本地字节可读、媒体类型明确，
+ * 且至少存在一条能覆盖本次生成窗口的安全通道。这样项目迁移后丢文件、`.bin` 未知素材或
+ * 未披露的公共 fallback 都不会先消耗 spend grant 再失败。
+ */
+export function assertLocalAssetTransportReady(
+  value: unknown,
+  resolveIngestion: IngestionResolver,
+  read: LocalAssetReader,
+  options: LocalizeAssetsOptions = {},
+): void {
+  const effectiveValue = options.minimizeUploads && options.activeAssetUrls
+    ? pruneInactiveLocalAssets(value, new Set(options.activeAssetUrls))
+    : value;
+  for (const url of collectLocalAssetUrls(effectiveValue)) {
+    const asset = read(url);
+    if (!asset) throw new Error(`参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${url}。请重新生成该节点或重新导入这张素材。`);
+    if (!asset.contentType || asset.contentType.toLowerCase().split(";")[0].trim() === "application/octet-stream") {
+      throw new Error(`无法识别本地素材「${asset.fileName || url}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`);
+    }
+    if (trustedOriginalUrl(asset)) continue;
+    const mediaKind = mediaKindFromContentType(asset.contentType);
+    const candidates = resolveIngestion(mediaKind);
+    let consentRequired = false;
+    const safe = candidates.some((candidate) => {
+      if (!ingestionHasSufficientLease(candidate.ingestion, mediaKind)) return false;
+      if (ingestionVisibility(candidate.ingestion) === "public-anonymous") {
+        const consent = anonymousConsentFromUnknown(options.anonymousConsent ?? "ask");
+        if (!canUseAnonymousAssetHosting(consent)) {
+          consentRequired = true;
+          return false;
+        }
+      }
+      return true;
+    });
+    if (safe) continue;
+    if (consentRequired) throw new AnonymousAssetConsentRequiredError();
+    throw new Error(
+      mediaKind === "video"
+        ? "运镜参考视频需要支持视频上传的通道：请在「模型接入」配置 KIE key（免费）或部署 relay。"
+        : `没有可用的${mediaKind === "audio" ? "音频" : "图片"}上传通道：请配置一个支持该媒体类型的供应商通道。`,
+    );
+  }
 }
 
 function readNestedPath(value: unknown, path: string): unknown {
@@ -245,6 +307,40 @@ export type IngestionResolver = (
   mediaKind: AssetMediaKind,
 ) => Array<{ ingestion: AssetIngestion; uploadApiKey: string }>;
 
+export type LocalizeAssetsOptions = {
+  anonymousConsent?: AnonymousAssetConsent;
+  minimizeUploads?: boolean;
+  activeAssetUrls?: ReadonlyArray<string>;
+};
+
+function pruneInactiveLocalAssets(value: unknown, active: ReadonlySet<string>): unknown {
+  if (isLocalAssetUrl(value)) return active.has(value) ? value : undefined;
+  if (Array.isArray(value)) return value.map((item) => pruneInactiveLocalAssets(item, active)).filter((item) => item !== undefined);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      const next = pruneInactiveLocalAssets(item, active);
+      if (next !== undefined) out[key] = next;
+    }
+    return out;
+  }
+  return value;
+}
+
+/** 内部传输提示只给本地上传策略使用，绝不能泄漏到供应商请求体。 */
+function stripTransportHints(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripTransportHints);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (key === "activeAssetUrls") continue;
+      out[key] = stripTransportHints(item);
+    }
+    return out;
+  }
+  return value;
+}
+
 /** 人话文件大小（错误里要告诉用户「多大」，否则他没法判断该压到多少）。 */
 function humanSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
@@ -287,12 +383,21 @@ export async function localizeAssetsForVendor(
   read: LocalAssetReader,
   postJson: HttpPostJson,
   postMultipart: HttpPostMultipart,
+  options: LocalizeAssetsOptions = {},
 ): Promise<{ value: unknown; uploaded: number }> {
-  const urls = Array.from(collectLocalAssetUrls(value));
-  if (urls.length === 0) return { value, uploaded: 0 };
+  const effectiveValue = options.minimizeUploads && options.activeAssetUrls
+    ? pruneInactiveLocalAssets(value, new Set(options.activeAssetUrls))
+    : value;
+  const urls = Array.from(collectLocalAssetUrls(effectiveValue));
+  if (urls.length === 0) {
+    return { value: effectiveValue === value ? value : stripTransportHints(effectiveValue), uploaded: 0 };
+  }
   const urlMap = new Map<string, string>();
   for (const url of urls) {
     const asset = read(url);
+    if (asset && (!asset.contentType || asset.contentType.toLowerCase().split(";")[0].trim() === "application/octet-stream")) {
+      throw new Error(`无法识别本地素材「${asset.fileName || url}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`);
+    }
     const mediaKind = mediaKindFromContentType(asset?.contentType);
     const candidates = resolveIngestion(mediaKind);
     // 本地 ComfyUI（comfyui-upload）：公网 URL 用不了，必须传到它自己的 input 目录换文件名 → 跳过 trusted 快路，恒上传。
@@ -316,8 +421,20 @@ export async function localizeAssetsForVendor(
     // 逐条候选试，谁先换出可达值就用谁。一条失败不等于这个素材没救——最常见的就是 HTTP 413
     // （这条 host 的 body 上限装不下），换一条收得下的就过了（2026-08-20 用户反馈修）。
     const failures: string[] = [];
+    let consentRequired = false;
     let resolvedValue: string | null = null;
     for (const candidate of candidates) {
+      const visibility = ingestionVisibility(candidate.ingestion);
+      const consent = anonymousConsentFromUnknown(options.anonymousConsent ?? "allow");
+      if (visibility === "public-anonymous" && !canUseAnonymousAssetHosting(consent)) {
+        consentRequired = true;
+        failures.push(`${hostLabel(candidate.ingestion)}: 需要先确认公共临时托管`);
+        continue;
+      }
+      if (!ingestionHasSufficientLease(candidate.ingestion, mediaKind)) {
+        failures.push(`${hostLabel(candidate.ingestion)}: URL 有效期不足以覆盖${MEDIA_LABEL[mediaKind]}生成`);
+        continue;
+      }
       try {
         resolvedValue = await resolveLocalAsset(url, candidate.ingestion, candidate.uploadApiKey, read, postJson, postMultipart);
         break;
@@ -325,10 +442,13 @@ export async function localizeAssetsForVendor(
         failures.push(`${hostLabel(candidate.ingestion)}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    if (resolvedValue === null) throw allChannelsFailedError(asset, mediaKind, failures);
+    if (resolvedValue === null) {
+      if (consentRequired) throw new AnonymousAssetConsentRequiredError();
+      throw allChannelsFailedError(asset, mediaKind, failures);
+    }
     urlMap.set(url, resolvedValue);
   }
-  return { value: replaceLocalAssetUrls(value, urlMap), uploaded: urls.length };
+  return { value: stripTransportHints(replaceLocalAssetUrls(effectiveValue, urlMap)), uploaded: urls.length };
 }
 
 /**
@@ -348,10 +468,12 @@ const CURATED_ASSET_INGESTION: Record<string, AssetIngestion> = {
     fileNameField: "fileName",
     urlPath: "data.downloadUrl",
     accepts: ["image"],
+    visibility: "provider-private",
+    ttlSeconds: 24 * 60 * 60,
   },
   // apimart:POST /v1/uploads/images（multipart/form-data），返回有效 72h 公网 URL（field: url）。
   // 仅图片：该端点是 image-only（jpeg/png/webp/gif,20MB），收 mp4 会 HTTP 400。视频走 KIE/relay。
-  apimart: { strategy: "upload-multipart", endpoint: "https://api.apimart.ai/v1/uploads/images", urlPath: "url", accepts: ["image"] },
+  apimart: { strategy: "upload-multipart", endpoint: "https://api.apimart.ai/v1/uploads/images", urlPath: "url", accepts: ["image"], visibility: "provider-private", ttlSeconds: 72 * 60 * 60 },
   // 魔搭：改图（Qwen-Image-Edit）的 image_url 直收 data URL（真实 E2E 验证 2026-06-19），无需上传端点。仅图片。
   modelscope: { strategy: "inline-base64", accepts: ["image"] },
 };
@@ -367,6 +489,8 @@ const CURATED_VIDEO_INGESTION: Record<string, AssetIngestion> = {
     fileNameField: "fileName",
     urlPath: "data.downloadUrl",
     accepts: ["image", "video", "audio"],
+    visibility: "provider-private",
+    ttlSeconds: 24 * 60 * 60,
   },
 };
 
@@ -391,6 +515,9 @@ export const LITTERBOX_INGESTION: AssetIngestion = {
   fileField: "fileToUpload",
   extraFields: { reqtype: "fileupload", time: "24h" },
   accepts: ["image", "video", "audio"],
+  visibility: "public-anonymous",
+  ttlSeconds: 24 * 60 * 60,
+  requiresConsent: true,
 };
 
 /**
@@ -408,6 +535,9 @@ export const TMPFILES_INGESTION: AssetIngestion = {
   urlPath: "data.url",
   urlTransform: { search: "tmpfiles.org/", replace: "tmpfiles.org/dl/" },
   accepts: ["image", "video", "audio"],
+  visibility: "public-anonymous",
+  ttlSeconds: 60 * 60,
+  requiresConsent: true,
 };
 
 /**
@@ -419,6 +549,9 @@ export const ANON_UPLOAD_CHAIN: AssetIngestion = {
   strategy: "anon-chain",
   chain: [LITTERBOX_INGESTION, TMPFILES_INGESTION],
   accepts: ["image", "video", "audio"],
+  visibility: "public-anonymous",
+  ttlSeconds: 60 * 60,
+  requiresConsent: true,
 };
 
 /** 取某 vendor 的吞入策略:优先持久化声明,回退 curated 注册表。 */

@@ -39,6 +39,7 @@ import {
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { RecoverableTimeoutError } from './recoverableTimeout'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
+import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
 
 // 重导出：实现已拆到 catalogTaskResolve（节点→vendor/model/kind 选择）与
 // catalogTaskResultParse（raw/asset/failure/provenance 解析），但 catalogTaskActions
@@ -258,6 +259,25 @@ export function buildCatalogTaskRequest(
   const steps = asFiniteNumber(meta.steps)
   const cfgScale = asFiniteNumber(meta.cfgScale)
   const seed = asFiniteNumber(meta.seed)
+  const referenceExtras = buildReferenceExtras(node, references)
+  const extras = {
+    ...meta,
+    modelKey,
+    modelAlias: asTrimmedString(meta.modelAlias) || modelKey,
+    nodeId: node.id,
+    nodeKind: node.kind,
+    // 付费守卫令牌：随 extras 下到主进程 runTask 核验消费（无则主进程拦截）。
+    ...(options.grantId ? { grantId: options.grantId } : {}),
+    ...(options.anonymousAssetHostingConsent ? { anonymousAssetHostingConsent: options.anonymousAssetHostingConsent } : {}),
+    // 提交幂等键：随 extras 下到主进程 runTask，同键提交内核 at-most-once（堵「丢回执→重试→二次下单」）。
+    ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    // S8 缓存语义:节点血统里已出过图(result 或 history,含「基于此重生成」副本)→
+    // 再点生成=用户要重抽 → 强制重跑绕指纹缓存;首次生成/批量补跑同配方命中缓存
+    // 秒回零花费(防双击/重复受理重复扣费)。路由旗标,不进指纹。
+    ...(node.result || (node.history && node.history.length > 0) ? { forceRerun: true } : {}),
+    ...referenceExtras,
+  }
+  const activeAssetUrls = Array.from(collectLocalAssetUrls(extras))
 
   return {
     vendor,
@@ -269,21 +289,10 @@ export function buildCatalogTaskRequest(
       ...(typeof height === 'number' ? { height } : {}),
       ...(typeof steps === 'number' ? { steps } : {}),
       ...(typeof cfgScale === 'number' ? { cfgScale } : {}),
+      // 主进程根据这个 allowlist 只上传仍然活跃的本地素材；过期/残留引用不再把生成卡死。
       extras: {
-        ...meta,
-        modelKey,
-        modelAlias: asTrimmedString(meta.modelAlias) || modelKey,
-        nodeId: node.id,
-        nodeKind: node.kind,
-        // 付费守卫令牌：随 extras 下到主进程 runTask 核验消费（无则主进程拦截）。
-        ...(options.grantId ? { grantId: options.grantId } : {}),
-        // 提交幂等键：随 extras 下到主进程 runTask，同键提交内核 at-most-once（堵「丢回执→重试→二次下单」）。
-        ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
-        // S8 缓存语义:节点血统里已出过图(result 或 history,含「基于此重生成」副本)→
-        // 再点生成=用户要重抽 → 强制重跑绕指纹缓存;首次生成/批量补跑同配方命中缓存
-        // 秒回零花费(防双击/重复受理重复扣费)。路由旗标,不进指纹。
-        ...(node.result || (node.history && node.history.length > 0) ? { forceRerun: true } : {}),
-        ...buildReferenceExtras(node, references),
+        ...extras,
+        ...(activeAssetUrls.length ? { activeAssetUrls } : {}),
       },
     },
   }

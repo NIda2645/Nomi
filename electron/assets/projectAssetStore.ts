@@ -9,6 +9,7 @@ import { broadcastAssetsUpdated } from "./assetEvents";
 import { collectFilesRecursively, parseDataUrl } from "./assetBytes";
 import {
   assetBucketFromMeta,
+  canonicalAssetFileName,
   assetKindFromContentType,
   contentTypeFromPath,
   extensionFromMime,
@@ -17,6 +18,7 @@ import {
   sanitizeAssetMetaForKind,
   stableAssetId,
 } from "./assetPaths";
+import { resolveContentType } from "./mediaTypes";
 
 type LocalAssetRecord = {
   id: string;
@@ -55,6 +57,30 @@ function writeAssetSidecarMeta(absolutePath: string, meta: JsonRecord): void {
   } catch {
     /* non-fatal */
   }
+}
+
+function contentTypeFromStoredFile(absolutePath: string): string {
+  const extensionType = contentTypeFromPath(absolutePath);
+  if (extensionType !== "application/octet-stream") return extensionType;
+  try {
+    const handle = fs.openSync(absolutePath, "r");
+    const header = Buffer.alloc(4096);
+    const bytesRead = fs.readSync(handle, header, 0, header.length, 0);
+    fs.closeSync(handle);
+    return resolveContentType(absolutePath, header.subarray(0, bytesRead));
+  } catch {
+    return extensionType;
+  }
+}
+
+function effectiveContentType(fileName: string, declared: string, bytes?: Uint8Array): string {
+  const normalized = String(declared || "application/octet-stream").toLowerCase().split(";")[0].trim();
+  const extension = path.extname(fileName).toLowerCase();
+  // 已有真实扩展名的旧文件保留其历史落盘语义（例如 .avi 交给懒自愈处理）；
+  // 只有无扩展名或通用 .bin 才需要用文件头把视频从未知类型救回来。
+  return normalized === "application/octet-stream" && (!extension || extension === ".bin")
+    ? resolveContentType(fileName, bytes)
+    : declared;
 }
 
 async function writeAssetSidecarMetaAsync(absolutePath: string, meta: JsonRecord): Promise<void> {
@@ -102,7 +128,9 @@ export function writeAsset(
 ): unknown {
   // 唯一 sidecar 写入者之一：capture 族 originalUrl 恒 null 的不变量在此收口（见 assetPaths）。
   const meta = sanitizeAssetMetaForKind(rawMeta);
-  const { absolutePath, relativePath } = uniqueAssetPath(projectId, fileName, assetBucketFromMeta(meta));
+  const actualContentType = effectiveContentType(fileName, contentType, bytes);
+  const storageFileName = canonicalAssetFileName(fileName, actualContentType);
+  const { absolutePath, relativePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
   fs.writeFileSync(absolutePath, bytes);
   writeAssetSidecarMeta(absolutePath, meta);
   broadcastAssetsUpdated(projectId);
@@ -120,7 +148,7 @@ export function writeAsset(
       url,
       relativePath,
       absolutePath,
-      contentType,
+      contentType: actualContentType,
       size: bytes.byteLength,
     },
   };
@@ -135,7 +163,19 @@ export async function copyAssetFile(
   rawMeta: JsonRecord,
 ): Promise<unknown> {
   const meta = sanitizeAssetMetaForKind(rawMeta);
-  const { absolutePath, relativePath } = uniqueAssetPath(projectId, fileName, assetBucketFromMeta(meta));
+  let actualContentType = contentType;
+  if (String(contentType || "").toLowerCase().split(";")[0].trim() === "application/octet-stream") {
+    const handle = await fs.promises.open(sourcePath, "r");
+    try {
+      const header = Buffer.alloc(4096);
+      const { bytesRead } = await handle.read(header, 0, header.length, 0);
+      actualContentType = effectiveContentType(fileName, contentType, header.subarray(0, bytesRead));
+    } finally {
+      await handle.close();
+    }
+  }
+  const storageFileName = canonicalAssetFileName(fileName, actualContentType);
+  const { absolutePath, relativePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
   await fs.promises.copyFile(sourcePath, absolutePath);
   const stat = await fs.promises.stat(absolutePath);
   await writeAssetSidecarMetaAsync(absolutePath, meta);
@@ -154,7 +194,7 @@ export async function copyAssetFile(
       url,
       relativePath,
       absolutePath,
-      contentType,
+      contentType: actualContentType,
       size: stat.size,
     },
   };
@@ -169,7 +209,21 @@ export function moveAssetFile(
 ): unknown {
   // 唯一 sidecar 写入者之二：与 writeAsset 同一道 capture 族隐私收口。
   const meta = sanitizeAssetMetaForKind(rawMeta);
-  const { absolutePath, relativePath } = uniqueAssetPath(projectId, fileName, assetBucketFromMeta(meta));
+  const header = String(contentType || "").toLowerCase().split(";")[0].trim() === "application/octet-stream"
+    ? (() => {
+        const handle = fs.openSync(sourcePath, "r");
+        try {
+          const bytes = Buffer.alloc(4096);
+          const bytesRead = fs.readSync(handle, bytes, 0, bytes.length, 0);
+          return bytes.subarray(0, bytesRead);
+        } finally {
+          fs.closeSync(handle);
+        }
+      })()
+    : undefined;
+  const actualContentType = effectiveContentType(fileName, contentType, header);
+  const storageFileName = canonicalAssetFileName(fileName, actualContentType);
+  const { absolutePath, relativePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
   try {
     fs.renameSync(sourcePath, absolutePath);
   } catch (error) {
@@ -194,7 +248,7 @@ export function moveAssetFile(
       url,
       relativePath,
       absolutePath,
-      contentType,
+      contentType: actualContentType,
       size: stat.size,
     },
   };
@@ -240,10 +294,14 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
     allowContentTypes: ["image/", "video/", "audio/", "application/octet-stream"],
     ...(options.trustedPrivateOrigin ? { allowedPrivateOrigins: [options.trustedPrivateOrigin] } : {}),
   });
-  const contentType = fetched.contentType || "application/octet-stream";
   const bytes = fetched.bytes;
+  const hintedContentType = fetched.contentType || "application/octet-stream";
+  const rawFileName = String(raw.fileName || path.basename(new URL(url).pathname) || "").trim();
+  const contentType = hintedContentType.toLowerCase().split(";")[0] === "application/octet-stream"
+    ? resolveContentType(rawFileName || url, bytes)
+    : hintedContentType;
   const ext = extensionFromMime(contentType, extensionFromUrl(url));
-  const fileName = String(raw.fileName || path.basename(new URL(url).pathname) || `asset-${Date.now()}.${ext}`);
+  const fileName = rawFileName || `asset-${Date.now()}.${ext}`;
   return writeAsset(projectId, bytes, fileName.includes(".") ? fileName : `${fileName}.${ext}`, contentType, {
     kind: raw.kind || "generated",
     originalUrl: url,
@@ -268,7 +326,7 @@ export function listProjectAssets(payload: unknown): { items: LocalAssetRecord[]
         if (absolutePath.endsWith(".meta")) return [];
         const stat = fs.statSync(absolutePath);
         const relativePath = path.relative(projectDir, absolutePath).replace(/\\/g, "/");
-        const contentType = contentTypeFromPath(absolutePath);
+        const contentType = contentTypeFromStoredFile(absolutePath);
         const sidecarMeta = readAssetSidecarMeta(absolutePath);
         const mediaKind = assetKindFromContentType(contentType);
         const sidecarKind =

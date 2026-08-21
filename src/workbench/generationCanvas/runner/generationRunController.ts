@@ -37,6 +37,11 @@ import {
 import { resolveTaskArchetype } from './catalogTaskResolve'
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
+import {
+  AssetUploadConsentCancelledError,
+  hasLocalAssetReference,
+  requestAssetUploadConsent,
+} from './assetUploadConsent'
 
 /** 节点 kind → 付费预估用的产物口径（视频/配音/画面），喂给 describeGenerationCost 报对名词与时长。 */
 function spendCostKind(kind: GenerationNodeKind): 'image' | 'video' | 'audio' {
@@ -168,6 +173,27 @@ export async function runGenerationNode(
     )
   }
 
+  // Reference uploads happen in the main process immediately before the vendor
+  // request. Ask here, before queueing/grant consumption, so a public temporary
+  // host is never used silently and KIE's free video path is discoverable.
+  const resolvedReferences = resolveGenerationReferences(initialNode, { nodes: initialState.nodes, edges: initialState.edges })
+  const consentNode = {
+    ...initialNode,
+    references: [
+      ...(initialNode.references || []),
+      ...resolvedReferences.referenceImages,
+      ...resolvedReferences.referenceVideos,
+      ...resolvedReferences.referenceAudios,
+      ...(resolvedReferences.firstFrameUrl ? [resolvedReferences.firstFrameUrl] : []),
+      ...(resolvedReferences.lastFrameUrl ? [resolvedReferences.lastFrameUrl] : []),
+      ...(resolvedReferences.relayFromVideoUrl ? [resolvedReferences.relayFromVideoUrl] : []),
+    ],
+  }
+  const hasLocalReference = hasLocalAssetReference(consentNode)
+  if (!(await requestAssetUploadConsent(consentNode))) {
+    throw new AssetUploadConsentCancelledError()
+  }
+
   // 队列登记：批量路径由 runGenerationNodesByPlan 预先整批登记（含后续波次），单发路径自建 1 节点批次。
   // markRunning 只把 queued 翻成 running（幂等），所以两条路都能安全调。
   const ownsBatch = !options.batchId
@@ -203,6 +229,7 @@ export async function runGenerationNode(
           // 提交幂等键 = 本次 run.id：重试循环内每次 attempt 复用同一个 run.id，
           // electron 侧台账据此认作「同一次意图提交」→ 重试绝不二次下单。新生成 = 新 run.id。
           idempotencyKey: run.id,
+          ...(hasLocalReference ? { anonymousAssetHostingConsent: 'allow' as const } : {}),
           // S2:catalog 任务各阶段回报 → 节点进度(人话已由 narrate 翻好)。
           onProgress: (progress) => {
             useGenerationCanvasStore.getState().setNodeProgress(id, {
@@ -251,6 +278,11 @@ export async function runGenerationNode(
       // 用户主动停的：不进刹车计数（模型没挂，是人喊停的）。
       useGenerationQueueStore.getState().markSettled(batchId, id, 'cancelled', { countsTowardBrake: false })
       throw isComfyuiTaskCancelledError(error) ? error : new ComfyuiTaskCancelledError()
+    }
+    if (error instanceof AssetUploadConsentCancelledError) {
+      useGenerationCanvasStore.getState().setNodeStatus(id, 'idle')
+      useGenerationQueueStore.getState().markSettled(batchId, id, 'cancelled', { countsTowardBrake: false })
+      throw error
     }
     // 可找回超时：上游可能仍在跑/已出片 → 落 recoverable（不进红色错误桶），给「重新拉取」入口。
     // taskId 已在 run 记录里持久化，recover 动作从节点重建续查（重启后也能拉）。

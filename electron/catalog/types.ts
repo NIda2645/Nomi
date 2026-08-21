@@ -39,8 +39,8 @@ export type AiSdkProviderKind = "openai-compatible" | "anthropic" | "openai-resp
 export type AssetMediaKind = "image" | "video" | "audio";
 
 export type AssetIngestion =
-  | { strategy: "inline-base64"; accepts?: ReadonlyArray<AssetMediaKind> }
-  | { strategy: "none"; accepts?: ReadonlyArray<AssetMediaKind> }
+  | { strategy: "inline-base64"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
+  | { strategy: "none"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
   | {
       strategy: "upload-stream";
       /** 上传端点(完整 URL)。multipart/form-data,file 字段为二进制,另带 uploadPath/fileName。 */
@@ -56,6 +56,9 @@ export type AssetIngestion =
       authType?: "bearer";
       /** 该通道接受的媒体类型;缺省 ['image']。 */
       accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "provider-private";
+      ttlSeconds?: number;
+      requiresConsent?: false;
     }
   | {
       strategy: "upload-url";
@@ -76,6 +79,9 @@ export type AssetIngestion =
       urlPath: string;
       /** 鉴权:复用 vendor 的 api key(默认 bearer)。 */
       authType?: "bearer";
+      visibility?: "provider-private";
+      ttlSeconds?: number;
+      requiresConsent?: false;
     }
   | {
       strategy: "upload-multipart";
@@ -107,6 +113,9 @@ export type AssetIngestion =
       authType?: "bearer";
       /** 该通道接受的媒体类型;缺省 ['image']。 */
       accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "provider-private" | "public-anonymous";
+      ttlSeconds?: number;
+      requiresConsent?: boolean;
     }
   | {
       /**
@@ -119,6 +128,8 @@ export type AssetIngestion =
       /** 完整上传端点，如 http://127.0.0.1:8188/upload/image。 */
       endpoint: string;
       accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "provider-private";
+      ttlSeconds?: number;
     }
   | {
       /**
@@ -131,6 +142,9 @@ export type AssetIngestion =
       chain: ReadonlyArray<AssetIngestion>;
       /** 该链接受的媒体类型;缺省 ['image']。匿名 host 收任意文件,声明全媒体类型。 */
       accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "public-anonymous";
+      ttlSeconds?: number;
+      requiresConsent?: true;
     };
 
 /** 本地 ComfyUI **第一台**的固定 key（种子 + assetLocalization 识别它走自己的 /upload/image，单源防漂移）。 */

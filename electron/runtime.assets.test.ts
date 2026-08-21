@@ -123,6 +123,20 @@ describe("runtime workspace asset storage", () => {
     expect([...fs.readFileSync(asset.data.absolutePath)]).toEqual([1, 2, 3]);
   });
 
+  it("sniffs an extensionless octet-stream video before importing", async () => {
+    const workspace = createWorkspace();
+    const bytes = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from("ftypisom", "ascii"), Buffer.alloc(16)]);
+    const asset = (await importLocalFile({
+      projectId: workspace.id,
+      bytes,
+      contentType: "application/octet-stream",
+      fileName: "clip",
+    })) as AssetRecord;
+
+    expect(asset.data.relativePath).toMatch(/assets\/imported\/2026-05-31\/clip\.mp4$/);
+    expect(asset.data.contentType).toBe("video/mp4");
+  });
+
   it("imports a native file path without copying the full file through renderer IPC", async () => {
     const workspace = createWorkspace();
     const sourceDir = makeTempDir("nomi-native-import-source-");

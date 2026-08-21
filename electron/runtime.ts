@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { localizeAssetsForVendor, resolveAssetIngestionWithFallback, trustedLocalOutputOrigin } from "./catalog/assetLocalization";
+import { assertLocalAssetTransportReady, localizeAssetsForVendor, trustedLocalOutputOrigin } from "./catalog/assetLocalization";
+import { assetIngestionResolver, assetLocalizationOptions } from "./catalog/assetTransportRuntime";
 import { readNomiLocalAsset, postJsonForAssetUpload, postMultipartForAssetUpload } from "./assets/localAssetFile";
 import { importRemoteAsset, writeAsset } from "./assets/projectAssetStore";
 import { endpoint } from "./vendorEndpoint";
@@ -27,7 +28,6 @@ import { applyRequestTransform } from "./tasks/requestTransforms";
 import { TtlLruCache } from "./tasks/taskCache";
 import { markTaskAdmitted } from "./tasks/taskAdmission";
 import { readCachedTaskResult, recipeFingerprint, rememberTaskResult } from "./vendor/fingerprintCache";
-import { decryptApiKeyRecord } from "./catalog/secrets";
 import {
   createProject,
   deleteProject,
@@ -41,12 +41,10 @@ export { createProject, deleteProject, listProjects, readProject, resolveProject
 export { copyAssetFile, importRemoteAsset, listProjectAssets, moveAssetFile, writeAsset } from "./assets/projectAssetStore";
 // localizedTaskAssetFileName 已抽到 ./assets/localizedAsset（规则 9/12 减负 giant shell）；re-export 保持既有 import（含 runtime.assets.test）不变。
 export { localizedTaskAssetFileName };
-
 // 任务执行复用 catalog 状态（readCatalog + extractVendorExtraHeaders 纯函数）；
 // catalogStore 反向复用本文件任务引擎 → 运行期循环引用（CommonJS 安全）。
 import { extractVendorExtraHeaders, readCatalog } from "./catalog/catalogStore";
 import { activeTaskProjectFallback, unlocalizedTaskAsset } from "./tasks/activeProjectFallback";
-
 import type { BillingModelKind, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./catalog/types";
 import { billingKindForTaskKind, selectExecutableModel, selectTaskMapping } from "./catalog/types";
 import { applyHeadlessParamDefaults, imageEditGuardError } from "./catalog/taskParams";
@@ -112,7 +110,6 @@ export type {
   AgentChatV2Hooks,
   RunAgentChatV2Payload,
 } from "./ai/agentChatV2";
-
 export type TaskRequest = {
   kind: ProfileKind;
   prompt: string;
@@ -124,7 +121,6 @@ export type TaskRequest = {
   cfgScale?: number;
   extras?: Record<string, unknown>;
 };
-
 export type TaskResult = {
   id: string;
   kind: ProfileKind;
@@ -275,16 +271,11 @@ export async function executeProfileOperation(input: {
   const uploadCatalog = readCatalog();
   const localized = await localizeAssetsForVendor(
     input.request.extras,
-    (mediaKind) =>
-      resolveAssetIngestionWithFallback(
-        input.vendor,
-        uploadCatalog.vendors,
-        (key) => decryptApiKeyRecord(uploadCatalog.apiKeysByVendor[key]),
-        mediaKind,
-      ),
+    assetIngestionResolver(input.vendor, uploadCatalog),
     input.localAssetReader || readNomiLocalAsset,
     postJsonForAssetUpload,
     postMultipartForAssetUpload,
+    assetLocalizationOptions(input.request.extras),
   );
   const effectiveInput =
     localized.uploaded > 0
@@ -394,6 +385,15 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
     return runAudioTask({ vendor, model, apiKey, request, kind, taskId, projectId, nodeId, mapping });
   }
   if (mapping) {
+    const uploadCatalog = readCatalog();
+    if (!mapping.create.multipart && !mapping.create.process) {
+      assertLocalAssetTransportReady(
+        request.extras,
+        assetIngestionResolver(vendor, uploadCatalog),
+        readNomiLocalAsset,
+        assetLocalizationOptions(request.extras),
+      );
+    }
     // S8 指纹缓存:同配方(参数没动)秒回上次成功结果,零 vendor 调用;强制重跑经 extras.forceRerun 绕读。
     const recipe = buildNormalizedRecipe({
       vendor,

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { MEDIA_TYPES, type MediaKind } from "../assets/mediaTypes";
+import { MEDIA_TYPES, resolveContentType, type MediaKind } from "../assets/mediaTypes";
 import { isBrowserCaptureAssetKind } from "../assets/assetPaths";
 
 export type WorkspaceFileKind = "directory" | "text" | "image" | "video" | "audio" | "document" | "file";
@@ -66,7 +66,25 @@ export function resolveWorkspaceFilePath(rootPath: string, relativePath: string)
 }
 
 function classify(filePath: string): { kind: WorkspaceFileKind; contentType: string } {
-  return CONTENT_TYPES[path.extname(filePath).toLowerCase()] || { kind: "file", contentType: "application/octet-stream" };
+  const byExtension = CONTENT_TYPES[path.extname(filePath).toLowerCase()];
+  if (byExtension) return byExtension;
+  try {
+    const handle = fs.openSync(filePath, "r");
+    const header = Buffer.alloc(4096);
+    const bytesRead = fs.readSync(handle, header, 0, header.length, 0);
+    fs.closeSync(handle);
+    const contentType = resolveContentType(filePath, header.subarray(0, bytesRead));
+    const kind: WorkspaceFileKind = contentType.startsWith("image/")
+      ? "image"
+      : contentType.startsWith("video/")
+        ? "video"
+        : contentType.startsWith("audio/")
+          ? "audio"
+          : "file";
+    return { kind, contentType };
+  } catch {
+    return { kind: "file", contentType: "application/octet-stream" };
+  }
 }
 
 function readAssetSidecarKind(absolutePath: string): string {
@@ -139,7 +157,7 @@ export function listWorkspaceFiles(input: { rootPath: string; maxFiles?: number;
           children: scanDir(absolutePath),
         });
       } else if (entry.isFile()) {
-        const type = classify(entry.name);
+        const type = classify(absolutePath);
         nodes.push({
           id: relativePath,
           name: entry.name,
