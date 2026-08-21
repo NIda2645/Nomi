@@ -5,7 +5,7 @@ import { getProductionRunService } from "./productionRunRuntime";
 import type { ProductionRunService } from "./productionRunService";
 import type { CreateProductionRunInput, RunCommand } from "./productionRunTypes";
 
-const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "plan.attach", "policy.refresh", "job.reconcile"]);
+const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "artifact.review", "plan.attach", "policy.refresh", "job.reconcile"]);
 
 function identifier(value: unknown, label: string): string {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -16,6 +16,32 @@ function identifier(value: unknown, label: string): string {
 function objectValue(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid ${label}`);
   return value as Record<string, unknown>;
+}
+
+function storyboardMetadata(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const metadata: Record<string, unknown> = {};
+  for (const key of ["shotId", "ffDesc", "motionDesc", "subtitle", "dialogue", "lfDesc"]) {
+    if (typeof raw[key] === "string" && raw[key].trim()) metadata[key] = raw[key].trim();
+  }
+  const transition = raw.transition;
+  const transitionType = transition && typeof transition === "object" && !Array.isArray(transition)
+    ? (transition as Record<string, unknown>).type
+    : transition;
+  if (transitionType === "cut" || transitionType === "dissolve" || transitionType === "fade" || transitionType === "match_cut" || transitionType === "whip_pan") {
+    const durationFrames = transition && typeof transition === "object" && !Array.isArray(transition)
+      ? (transition as Record<string, unknown>).durationFrames
+      : undefined;
+    metadata.transition = {
+      type: transitionType,
+      ...(typeof durationFrames === "number" && Number.isInteger(durationFrames) && durationFrames > 0 ? { durationFrames } : {}),
+    };
+  }
+  if (raw.variationType === "large" || raw.variationType === "medium" || raw.variationType === "small") metadata.variationType = raw.variationType;
+  if (typeof raw.camIdx === "number" && Number.isInteger(raw.camIdx) && raw.camIdx >= 0) metadata.camIdx = raw.camIdx;
+  if (raw.continuity !== undefined && (typeof raw.continuity === "string" || typeof raw.continuity === "number" || (typeof raw.continuity === "object" && raw.continuity !== null && !Array.isArray(raw.continuity)))) metadata.continuity = raw.continuity;
+  return Object.keys(metadata).length ? metadata : undefined;
 }
 
 function rendererCommandPayload(type: string, value: unknown): Record<string, unknown> {
@@ -46,15 +72,20 @@ function rendererCommandPayload(type: string, value: unknown): Record<string, un
       if (!model || model.length > 240 || hasControlCharacter || model.startsWith("/") || model.startsWith("\\") || model.split(/[\\/]+/).includes("..")) {
         throw new Error(`Invalid production binding model ${index}`);
       }
+      const metadata = storyboardMetadata(binding.metadata ?? binding);
       return {
         nodeId: identifier(binding.nodeId, "node"),
         provider: identifier(binding.provider, "provider"),
         model,
         stageId: identifier(binding.stageId ?? "generate", "stage"),
+        ...(metadata ? { metadata } : {}),
       };
     });
     return {
       artifactId: identifier(raw.artifactId, "artifact"),
+      ...(raw.sourceScriptArtifactId !== undefined ? { sourceScriptArtifactId: identifier(raw.sourceScriptArtifactId, "source script artifact") } : {}),
+      ...(raw.sourceScriptVersion !== undefined ? { sourceScriptVersion: Number.isInteger(raw.sourceScriptVersion) && Number(raw.sourceScriptVersion) > 0 ? Number(raw.sourceScriptVersion) : (() => { throw new Error("Invalid source script version"); })() } : {}),
+      ...(raw.sourceScriptHash !== undefined ? { sourceScriptHash: typeof raw.sourceScriptHash === "string" && raw.sourceScriptHash.trim() && raw.sourceScriptHash.length <= 256 ? raw.sourceScriptHash.trim() : (() => { throw new Error("Invalid source script hash"); })() } : {}),
       bindings,
     };
   }
@@ -71,6 +102,11 @@ function rendererCommandPayload(type: string, value: unknown): Record<string, un
     return { action };
   }
   if (type === "artifact.adopt") return { artifactId: identifier(raw.artifactId, "artifact") };
+  if (type === "artifact.review") {
+    const decision = typeof raw.decision === "string" ? raw.decision.trim() : "";
+    if (!["approved", "changes_requested", "rejected"].includes(decision)) throw new Error("Invalid artifact review decision");
+    return { artifactId: identifier(raw.artifactId, "artifact"), decision };
+  }
   // 白名单里有、这里却没建 payload 的类型必须**响亮地**炸。原先这行是 artifact.adopt 的兜底 return，
   // 于是 run.control 掉进来被当成产物命令，用户在 Nomi 里点取消只会看到「Invalid artifact id」——
   // 暂停/继续/取消从渲染端就没通过（2026-08-18 走查逮到）。默认分支不许再替别人猜形状。
@@ -166,6 +202,15 @@ export function registerProductionRunIpc(
     }
     assertProjectRun(repository!, projectId, runId);
     return repository!.execute(projectId, runId, rendererCommand(raw.command));
+  });
+  ipcMain.handle("nomi:production-runs:materialize-storyboard", async (_event, payload: unknown) => {
+    const { projectId, runId, raw } = projectRunPayload(payload);
+    if (!read(projectId, runId)) throw new Error(`Production run not found: ${runId}`);
+    const artifactId = identifier(raw.artifactId, "artifact");
+    const expectedVersion = Number(raw.expectedVersion);
+    if (!Number.isInteger(expectedVersion) || expectedVersion <= 0) throw new Error("Invalid storyboard artifact version");
+    if (!service) throw new Error("Storyboard materialization requires the production service");
+    return service.materializeStoryboard({ projectId, runId, artifactId, expectedVersion });
   });
   ipcMain.handle("nomi:production-runs:events", async (_event, payload: unknown) => {
     const { projectId, runId, raw } = projectRunPayload(payload);

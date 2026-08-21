@@ -245,7 +245,15 @@ try {
     assert(Boolean(parsed.deepLink), `image ${i + 1} result carries an openInNomi deep link (${parsed.deepLink})`)
     assert(/^nomi:\/\/project\//.test(String(parsed.deepLink)), `image ${i + 1} deep link is a structured nomi:// URL`)
     assert(progressNotifs >= 1, `image ${i + 1} progressToken yielded ≥1 progress frame (${progressNotifs})`)
-    assert(elicitationUsed, `image ${i + 1} spend confirmed via elicitation (headless, no App dialog)`)
+    // The first paid action asks for spend confirmation.  Once the user accepts the
+    // project-scoped session trust, subsequent actions deliberately do not ask again;
+    // they still carry a fresh node-bound grant underneath (see mcpSpendTrust).
+    assert(
+      i === 0 ? elicitationUsed : !elicitationUsed,
+      i === 0
+        ? `image ${i + 1} spend confirmed via elicitation (headless, no App dialog)`
+        : `image ${i + 1} reused the approved project spend session without a second prompt`,
+    )
   }
 
   // ── Step g · nomi_generate ×1 video via mock (image block only if the mock supplies a poster) ─────

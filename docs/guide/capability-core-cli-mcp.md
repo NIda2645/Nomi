@@ -130,10 +130,10 @@ node scripts/nomi.mjs generate workspace-xxxx modelscope "Tongyi-MAI/Z-Image-Tur
 
 **② 完成两侧权限并重启对应客户端**：
 
-- Claude Code / Codex：卡片真实握手成功后，确认 `nomi` 的 17 个工具出现。
+- Claude Code / Codex：卡片真实握手成功后，确认 `nomi` 的 22 个工具出现。
 - Cursor：先在 Nomi「设置 → 自动化与权限」允许 Cursor 发起草稿；首次在 Cursor 调用 Nomi 时，Cursor 自己仍可能要求你批准本地 MCP。Nomi 不会代替你静默批准 Cursor。
 
-17 个工具包括 `nomi_list_models`、`nomi_create_project`、`nomi_intake_brief`、`nomi_import_asset`、`nomi_generate`、`nomi_start_playbook`、`nomi_control_run` 和 `nomi_decide_gate`。
+22 个工具包括 `nomi_list_models`、`nomi_create_project`、`nomi_intake_brief`、`nomi_import_asset`、`nomi_generate`、`nomi_start_playbook`、`nomi_materialize_storyboard`、`nomi_control_run` 和 `nomi_decide_gate`。
 
 **③ 直接说人话**，它自己挑工具完成：
 
@@ -202,6 +202,7 @@ Claude Code 会依次调 `nomi_create_project` → `nomi_list_models` → `nomi_
 | `nomi_start_playbook` | 创建不花钱、可恢复的制作草稿；当前完整流程为 `brand.promo` |
 | `nomi_get_run` / `nomi_subscribe_run` | 读取制作状态 / 按游标等待持久事件 |
 | `nomi_get_artifact` | 取得指定 Run 产物的安全投影、精确 Nomi 深链和限时预览 |
+| `nomi_materialize_storyboard` | 将已批准且来源新鲜的分镜一次性落到 Nomi 画布并登记制作合同（不批准预算、不调用付费模型） |
 | `nomi_control_run` | 暂停、继续、取消 Run，或切换信任档位；预算门仍不会被跳过 |
 | `nomi_decide_gate` | 决定方向/样片等可逆创意门；服务端会再次向真人确认，不能决定预算、逐镜头付费、导出或发布 |
 

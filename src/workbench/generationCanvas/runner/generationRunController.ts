@@ -70,6 +70,8 @@ export type RunGenerationNodeOptions = {
   }
   /** 付费守卫令牌：真人确认后铸的 grantId，透传到 executor → request.extras 供主进程核验。 */
   grantId?: string
+  /** One-shot correction appended to the provider prompt for a bounded QA retry. */
+  promptSuffix?: string
   /** 队列批次 id（任务中心的调度真相源，见 generationQueueStore）。不传 = 单发，内部自建 1 节点批次。 */
   batchId?: string
 }
@@ -223,6 +225,7 @@ export async function runGenerationNode(
           nodes: state.nodes,
           edges: state.edges,
           ...(options.grantId ? { grantId: options.grantId } : {}),
+          ...(options.promptSuffix ? { promptSuffix: options.promptSuffix } : {}),
           // 提交幂等键 = 本次 run.id：重试循环内每次 attempt 复用同一个 run.id，
           // electron 侧台账据此认作「同一次意图提交」→ 重试绝不二次下单。新生成 = 新 run.id。
           idempotencyKey: run.id,

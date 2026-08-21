@@ -20,13 +20,18 @@ import { applyRunControl } from './productionRunControl'
 import { createDriverOps, isShotGate } from './productionRunDriverOps'
 import { withEventTap } from './productionRunEventTap'
 import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
+import { assertStoryboardSourceFresh, createArtifactOperations } from './productionRunArtifactOperations'
+import { assertStoryboardSourceApproved } from './productionRunReducer'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
 import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
+import {
+  metadataProjection,
+  storyboardMetadata,
+} from './productionRunArtifactHelpers'
 import type {
   AutomationPolicy,
   CreateProductionRunInput,
-  ProductionArtifact,
   ProductionRun,
   RunEvent,
   RunCommand,
@@ -35,7 +40,7 @@ import type {
 type SafeProductionGate = Omit<ProductionRun['gates'][number], 'planHash' | 'contract'> & {
   contract?: ReturnType<typeof safeProductionContract>
 }
-type SafeProductionJob = Pick<ProductionRun['jobs'][number], 'jobId' | 'stageId' | 'status' | 'attempt' | 'provider' | 'model' | 'nodeId' | 'progressPercent' | 'lastPollAt' | 'lastVendorStateChangeAt' | 'createdAt' | 'updatedAt' | 'errorCode'>
+type SafeProductionJob = Pick<ProductionRun['jobs'][number], 'jobId' | 'stageId' | 'status' | 'attempt' | 'provider' | 'model' | 'nodeId' | 'parentJobId' | 'retryCount' | 'retryReason' | 'progressPercent' | 'lastPollAt' | 'lastVendorStateChangeAt' | 'createdAt' | 'updatedAt' | 'errorCode'>
 export type ProductionRunProjection = {
   schemaVersion: number
   runId: string
@@ -63,6 +68,27 @@ export type ProductionEventProjection = Pick<RunEvent, 'schemaVersion' | 'eventI
 
 export type ProductionArtifactProjection = ArtifactProjection
 
+/**
+ * Renderer result for the external-agent storyboard materialization seam.
+ * The renderer owns the actual Zustand canvas mutation; the service only accepts
+ * the small, validated binding receipt needed to attach the production contract.
+ */
+export type MaterializeStoryboardResult = ProductionRunProjection & {
+  materialized: true
+  artifactId: string
+  artifactVersion: number
+  createdNodeIds: string[]
+  connectedCount?: number
+  /** Stable canvas node bindings copied into production jobs. */
+  bindings: Array<{
+    nodeId: string
+    provider: string
+    model: string
+    stageId: string
+    metadata?: Record<string, unknown>
+  }>
+}
+
 type ServiceDeps = {
   repository?: ProductionRunRepository
   sleep?: (delayMs: number) => Promise<void>
@@ -89,6 +115,7 @@ const MEANINGFUL_EVENT_TYPES = new Set([
   'gate.decided',
   'artifact.ready',
   'artifact.adopted',
+  'artifact.reviewed',
   'job.ready',
   'job.adopted',
   'job.submission_unknown',
@@ -106,22 +133,6 @@ function identifier(value: string, label: string): string {
   const normalized = String(value || '').trim()
   if (!/^[A-Za-z0-9._-]{1,160}$/.test(normalized) || normalized === '.' || normalized === '..') throw new Error(`Invalid ${label} id`)
   return normalized
-}
-
-function metadataProjection(run: ProductionRun, artifact: ProductionArtifact): Omit<ArtifactProjection, 'preview'> {
-  return {
-    artifactId: artifact.artifactId,
-    runId: run.runId,
-    projectId: run.projectId,
-    stageId: artifact.stageId,
-    ...(artifact.jobId ? { jobId: artifact.jobId } : {}),
-    kind: artifact.kind,
-    status: artifact.status,
-    createdAt: artifact.createdAt,
-    ...(artifact.adoptedAt ? { adoptedAt: artifact.adoptedAt } : {}),
-    nomiUri: `nomi://project/${encodeURIComponent(run.projectId)}/run/${encodeURIComponent(run.runId)}/artifact/${encodeURIComponent(artifact.artifactId)}`,
-    openInNomi: buildProductionDeepLink(run.projectId, run.runId, artifact.artifactId),
-  }
 }
 
 function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'artifacts' | 'openInNomi'> {
@@ -158,6 +169,9 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
     jobs: run.jobs.map((job) => ({
       jobId: job.jobId, stageId: job.stageId, status: job.status, attempt: job.attempt,
       provider: job.provider, model: job.model, ...(job.nodeId ? { nodeId: job.nodeId } : {}),
+      ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}),
+      ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
+      ...(job.retryReason ? { retryReason: safeExternalText(job.retryReason) } : {}),
       ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
       ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
       ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
@@ -327,7 +341,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       try { stat = fs.statSync(target) } catch { throw new Error('导出文件不存在') }
       if (!stat.isFile()) throw new Error('导出结果不是文件')
     }
-    return relativePath.replaceAll('\\', '/')
+    return relativePath.replace(/\\/g, '/')
   }
 
   function stageValue(run: ProductionRun, stageId: string, patch: Record<string, unknown>): Record<string, unknown> {
@@ -338,7 +352,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
 
   // B0：driver 编排（拟分镜 / 生成 / 导出 / 对账）抽到 productionRunDriverOps.ts，行为零变化。
   // service 保留其依赖的路径工具 + in-flight 去重集，经参数注入，仍可单测（R9 ≤800）。
-  const { proposeDirections, proposeStoryboard, driveGeneration, driveExport, driveReconciliation } = createDriverOps({
+  const { proposeDirections, proposeScript, proposeStoryboard, driveGeneration, driveExport, driveReconciliation } = createDriverOps({
     repository,
     sleep,
     requireRun,
@@ -415,11 +429,29 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       if (runCommand.payload.action === 'resume' && controlled.run.status === 'running') void driveGeneration(controlled.run) // 恢复必须重踢 driver：只回状态不回工作=假 resume
       return controlled
     }
+    if (runCommand.type === 'script.review' || runCommand.type === 'artifact.review') {
+      const current = requireRun(safeProjectId, safeRunId)
+      const artifactId = typeof runCommand.payload.artifactId === 'string' ? runCommand.payload.artifactId.trim() : ''
+      const artifact = current.artifacts.find((candidate) => candidate.artifactId === artifactId)
+      if (!artifact || !['script', 'storyboard'].includes(artifact.kind)) throw new Error('Production artifact is not ready to review')
+      const decision = runCommand.payload.decision ?? runCommand.payload.status
+      if (!['approved', 'changes_requested', 'rejected'].includes(String(decision))) throw new Error('Invalid script review decision')
+      const result = repository.execute(safeProjectId, safeRunId, {
+        ...runCommand,
+        type: 'script.review',
+        payload: { ...runCommand.payload, artifactId, decision },
+      })
+      if (decision === 'approved' && artifact.kind === 'script') void proposeStoryboard(result.run)
+      return result
+    }
     if (runCommand.type === 'plan.attach') {
       const current = requireRun(safeProjectId, safeRunId)
       const artifactId = typeof runCommand.payload.artifactId === 'string' ? runCommand.payload.artifactId : ''
       const artifact = current.artifacts.find((item) => item.artifactId === artifactId && item.kind === 'storyboard')
       if (!artifact) throw new Error('Storyboard artifact is not ready to attach')
+      if (artifact.status !== 'adopted' || (artifact.reviewStatus !== undefined && artifact.reviewStatus !== 'approved')) throw new Error('Approved storyboard artifact required before attach')
+      assertStoryboardSourceApproved(current, artifact.artifactId)
+      const source = assertStoryboardSourceFresh(projectRootResolver, current, artifact, runCommand.payload)
       const bindings = Array.isArray(runCommand.payload.bindings) ? runCommand.payload.bindings : []
       const jobs = bindings.map((value, index) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid storyboard binding ${index}`)
@@ -429,6 +461,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         const model = typeof binding.model === 'string' ? binding.model.trim() : ''
         const stageId = typeof binding.stageId === 'string' && binding.stageId.trim() ? binding.stageId.trim() : 'generate'
         if (!nodeId || !provider || !model) throw new Error('Every production shot must have a provider and model before approval')
+        const metadata = storyboardMetadata(binding.metadata ?? binding)
         return {
           jobId: `job:${safeRunId}:${nodeId}`,
           stageId,
@@ -438,6 +471,10 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           model,
           idempotencyKey: `production:${safeRunId}:${nodeId}`,
           nodeId,
+          ...(source.artifactId ? { sourceScriptArtifactId: source.artifactId } : {}),
+          ...(source.version ? { sourceScriptVersion: source.version } : {}),
+          ...(source.hash ? { sourceScriptHash: source.hash } : {}),
+          ...(metadata ? { metadata } : {}),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
@@ -451,6 +488,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         jobIds: jobs.map((job) => job.jobId),
         title: 'Approve production contract and budget',
         summary: 'Review shots, models, and the hard spend limit before Nomi submits any paid generation.',
+        artifactId,
+        artifactVersion: artifact.version || 1,
         contract: {
           specs: { durationSeconds: current.brief?.durationSeconds, shotCount: jobs.length },
           claims: (current.brief?.sellingPoints || []).map((text, index) => ({ text, evidenceIds: [`brief-${index + 1}`] })),
@@ -496,7 +535,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     }
     const result = repository.execute(safeProjectId, safeRunId, runCommand)
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === 'gate-direction-v1') {
-      void proposeStoryboard(result.run)
+      void proposeScript(result.run)
     }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === `gate-contract-v${result.run.planVersion}`) {
       void driveGeneration(result.run)
@@ -622,9 +661,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           if (trustLevelOf(current.policy) === 'budget_only') void autoApproveGate(current.projectId, current.runId, 'gate-direction-v1')
           else void proposeDirections(current)
         }
-        if (current.status === 'running' && current.stageId === 'direction') void proposeStoryboard(current)
+        if (current.status === 'running' && current.stageId === 'direction') void proposeScript(current)
+        const qaStage = current.stages.find((stage) => stage.stageId === 'qa')
+        const resumableProductionStage = current.status === 'running'
+          && (current.stageId === 'qa' || current.stageId === 'assemble' || current.stageId === 'generate' && qaStage?.status !== 'completed')
         if (current.status === 'ready'
-          || current.status === 'running' && current.jobs.some((job) => ['authorized', 'submit_intent_persisted'].includes(job.status))) {
+          || current.status === 'running' && current.jobs.some((job) => ['authorized', 'submit_intent_persisted'].includes(job.status))
+          || resumableProductionStage) {
           void driveGeneration(current)
         }
       }
@@ -644,6 +687,27 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     return requireRun(projectId, runId)
   }
 
+  const artifactOperations = createArtifactOperations({
+    repository,
+    projectRootResolver,
+    previewSecret,
+    requestRenderer,
+    requireRun,
+    command,
+    writeProjectJson,
+    runProjection: (run) => runProjection(run, projectRootResolver, previewSecret),
+    identifier,
+    buildDeepLink: buildProductionDeepLink,
+  })
+  const {
+    readArtifactProjection,
+    readArtifactContent,
+    readScriptDraft,
+    requestArtifactRevision,
+    reviewArtifact,
+    materializeStoryboard,
+  } = artifactOperations
+
   async function readEvents(projectId: string, runId: string, afterCursor = 0, waitMs = 0): Promise<{
     events: ProductionEventProjection[]
     nextCursor: number
@@ -661,29 +725,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     return { events: durableEvents.filter((event) => MEANINGFUL_EVENT_TYPES.has(event.type)).map(eventProjection), nextCursor }
   }
 
-  function readArtifactProjection(projectId: string, runId: string, artifactId: string): ProductionArtifactProjection {
-    const run = requireRun(projectId, runId)
-    const safeArtifactId = identifier(artifactId, 'artifact')
-    const artifact = run.artifacts.find((candidate) => candidate.artifactId === safeArtifactId)
-    if (!artifact) throw new Error(`Production artifact not found in run ${run.runId}: ${safeArtifactId}`)
-    const root = projectRootResolver(run.projectId)
-    if (root && (artifact.projectRelativePath || artifact.thumbnailRelativePath)) {
-      try {
-        return createArtifactProjection({ projectRoot: root, run, artifact, secret: previewSecret })
-      } catch {
-        // Return safe metadata when a previously-ready file has been moved or removed.
-      }
-    }
-    return metadataProjection(run, artifact)
-  }
-
   function resolveArtifactPreview(token: string): { filePath: string; expiresAt: string } {
     const claims = verifyArtifactPreviewHandle({ token, secret: previewSecret })
     const run = requireRun(claims.projectId, claims.runId)
     const artifact = run.artifacts.find((candidate) => candidate.artifactId === claims.artifactId)
     if (!artifact) throw new Error('Production artifact preview scope mismatch')
     const relativePath = artifact.thumbnailRelativePath || artifact.projectRelativePath
-    if (!relativePath || relativePath.replaceAll('\\', '/') !== claims.relativePath) {
+    if (!relativePath || relativePath.replace(/\\/g, '/') !== claims.relativePath) {
       throw new Error('Production artifact preview path mismatch')
     }
     const root = projectRootResolver(run.projectId)
@@ -700,7 +748,11 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     return repository.list(identifier(projectId, 'project')).map((summary) => requireRun(projectId, summary.runId))
   }
 
-  return { createDraft, readProjection, readFull, readEvents, readArtifactProjection, resolveArtifactPreview, command, proposeStoryboard, resumeUnfinishedRuns, listProjections, listFull }
+  return {
+    createDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
+    requestArtifactRevision, reviewArtifact, materializeStoryboard, resolveArtifactPreview, command, proposeScript, proposeStoryboard,
+    resumeUnfinishedRuns, listProjections, listFull,
+  }
 }
 
 export type ProductionRunService = ReturnType<typeof createProductionRunService>

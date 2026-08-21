@@ -13,6 +13,8 @@ import { generateVideo } from './videoActions'
 export type GenerationNodeExecutorContext = {
   nodes?: GenerationCanvasNode[]
   edges?: GenerationCanvasEdge[]
+  /** One-shot correction appended to the provider prompt for a bounded QA retry. */
+  promptSuffix?: string
   /** S2 进度透传:catalog 任务各阶段 → 控制器 → setNodeProgress。 */
   onProgress?: CatalogTaskActionOptions['onProgress']
   /** 付费守卫令牌：透传到 build request 的 extras.grantId。 */
@@ -37,6 +39,7 @@ export const generationNodeExecutor: GenerationNodeExecutor = async (node, conte
     ...(grantId ? { grantId } : {}),
     ...(context?.idempotencyKey ? { idempotencyKey: context.idempotencyKey } : {}),
     ...(context?.anonymousAssetHostingConsent ? { anonymousAssetHostingConsent: context.anonymousAssetHostingConsent } : {}),
+    ...(context?.promptSuffix ? { promptSuffix: context.promptSuffix } : {}),
   }
   if (executionKind === 'image') {
     const references = resolveGenerationReferences(node, context)

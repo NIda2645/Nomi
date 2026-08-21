@@ -19,7 +19,7 @@ export function gateKindOf(gate: { gateId: string; scope: string }): ProductionG
   if (gate.scope === 'export') return 'export'
   return 'stage'
 }
-export type ProductionRunPrimaryAction = 'open-stage' | 'open-gate' | 'review-storyboard' | 'reconcile' | 'review-rough-cut' | 'open-export' | 'resume-run' | null
+export type ProductionRunPrimaryAction = 'open-stage' | 'open-gate' | 'review-script' | 'review-storyboard' | 'reconcile' | 'review-rough-cut' | 'open-export' | 'resume-run' | null
 /** A4 情境控制（§1.5 L2：进行中才出现，不占常驻预算）。 */
 export type ProductionRunControl = 'pause' | 'cancel'
 
@@ -157,6 +157,19 @@ export function buildProductionRunView(
       titleKey: 'production.status.completed',
       descriptionKey: 'production.description.completed',
       primaryAction: null,
+    }
+  }
+  if (run.status === 'awaiting_script_review') {
+    const script = [...run.artifacts]
+      .reverse()
+      .find((artifact) => artifact.kind === 'script' && artifact.status === 'candidate')
+    return {
+      ...base,
+      tone: 'attention',
+      titleKey: 'production.status.scriptReady',
+      descriptionKey: 'production.description.scriptReady',
+      primaryAction: 'review-script',
+      ...(script ? { targetId: script.artifactId } : {}),
     }
   }
   if (run.status === 'awaiting_storyboard_review') {

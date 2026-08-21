@@ -12,5 +12,6 @@ export const productionRunApi = {
   read: (projectId: string, runId: string) => bridge().read(projectId, runId),
   createDraft: (input: Parameters<ReturnType<typeof bridge>['createDraft']>[0]) => bridge().createDraft(input),
   command: (projectId: string, runId: string, command: RunCommand) => bridge().command(projectId, runId, command),
+  materializeStoryboard: (projectId: string, runId: string, artifactId: string, expectedVersion: number) => bridge().materializeStoryboard(projectId, runId, artifactId, expectedVersion),
   events: (projectId: string, runId: string, afterCursor: number) => bridge().events(projectId, runId, afterCursor),
 }

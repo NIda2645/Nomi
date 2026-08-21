@@ -48,6 +48,7 @@ export type BudgetLedgerSummary = {
 export type ProductionRunStatus =
   | "draft"
   | "awaiting_direction"
+  | "awaiting_script_review"
   | "awaiting_storyboard_review"
   | "awaiting_contract"
   | "ready"
@@ -142,6 +143,16 @@ export type ProductionJob = {
   providerTaskId?: string;
   taskKind?: string;
   nodeId?: string;
+  /** Storyboard provenance copied from the approved script at plan.attach time. */
+  sourceScriptArtifactId?: string;
+  sourceScriptVersion?: number;
+  sourceScriptHash?: string;
+  /** Structured shot metadata (ff/lf/motion/variation/camera/continuity). */
+  metadata?: Record<string, unknown>;
+  /** QA retry lineage. A retry is a new job so the original result remains inspectable. */
+  parentJobId?: string;
+  retryCount?: number;
+  retryReason?: string;
   progressPercent?: number;
   lastPollAt?: string;
   lastVendorStateChangeAt?: string;
@@ -177,6 +188,9 @@ export type ProductionGate = {
   decidedAt?: string;
   /** B1：方向门被批准时用户选中的候选 key（decide payload choiceKey → 事件留痕）。 */
   decidedChoiceKey?: string;
+  /** The approved storyboard revision this contract was materialized from. */
+  artifactId?: string;
+  artifactVersion?: number;
 };
 
 export type ProductionArtifact = {
@@ -185,6 +199,25 @@ export type ProductionArtifact = {
   jobId?: string;
   kind: "brief" | "direction" | "script" | "storyboard" | "image" | "video" | "audio" | "timeline" | "export";
   status: "candidate" | "ready" | "adopted" | "rejected";
+  /** Monotonic artifact version within a run. Optional for pre-contract artifacts. */
+  version?: number;
+  /** Actor that produced the artifact; persisted for provenance/audit. */
+  source?: "user" | "nomi-agent" | "external-mcp";
+  parentArtifactId?: string;
+  retryCount?: number;
+  retryReason?: string;
+  contentHash?: string;
+  /** The source artifact/version/hash for a derived artifact (for example storyboard → script). */
+  sourceArtifactId?: string;
+  sourceVersion?: number;
+  sourceContentHash?: string;
+  /** Alias used by older callers and external projections. */
+  sourceHash?: string;
+  sourceScriptArtifactId?: string;
+  sourceScriptVersion?: number;
+  sourceScriptHash?: string;
+  reviewStatus?: "waiting" | "approved" | "changes_requested";
+  skillEvidence?: Array<{ name: string; version: string; stageId: string }>;
   projectRelativePath?: string;
   thumbnailRelativePath?: string;
   createdAt: string;

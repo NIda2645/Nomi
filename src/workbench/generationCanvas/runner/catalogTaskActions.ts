@@ -245,10 +245,15 @@ export function buildCatalogTaskRequest(
   const prompt = projectPromptForSend(rawPrompt, orderedReferenceUrls)
   // 站位构图参考：出关键帧时把 staging 灰模图当「构图蓝图」而非编辑底图——照站位/姿势/机位，
   // 但写实重渲染，别照搬灰模 3D 外观（评测发现 image_edit 直喂会出 CGI 感）。只对图像生成加。
-  const finalPrompt =
+  const renderedPrompt =
     references.stagingComposition && (kind === 'text_to_image' || kind === 'image_edit')
       ? `${prompt}\n\n（构图参考仅用于确定人物站位、各自姿势和镜头机位；请据此完全写实地重新渲染人物与场景——真实皮肤/衣物/光影，不要保留参考图里灰色人偶或 3D 渲染的外观。）`
       : prompt
+  // Production QA targeted retries carry a short, machine-authored correction directive.
+  // Keep it out of the node's durable prompt (the original remains inspectable) and append it
+  // only to this submission so a retry fixes the flagged axis without rewriting the storyboard.
+  const promptSuffix = asTrimmedString(options.promptSuffix)
+  const finalPrompt = promptSuffix ? `${renderedPrompt}\n\n${promptSuffix}` : renderedPrompt
   const width = asFiniteNumber(meta.width)
   const height = asFiniteNumber(meta.height)
   const steps = asFiniteNumber(meta.steps)

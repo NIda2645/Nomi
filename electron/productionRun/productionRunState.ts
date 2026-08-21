@@ -31,10 +31,11 @@ const JOB_TRANSITIONS: Record<ProductionJobStatus, readonly ProductionJobStatus[
 const RUN_TRANSITIONS: Record<ProductionRunStatus, readonly ProductionRunStatus[]> = {
   draft: ["awaiting_direction", "awaiting_contract", "cancelled"],
   awaiting_direction: ["running", "cancelled"],
-  awaiting_storyboard_review: ["awaiting_contract", "cancelled"],
+  awaiting_script_review: ["running", "cancelled"],
+  awaiting_storyboard_review: ["awaiting_script_review", "awaiting_contract", "cancelled"],
   awaiting_contract: ["ready", "cancelled"],
   ready: ["running", "cancelled"],
-  running: ["pausing", "needs_attention", "awaiting_storyboard_review", "awaiting_rough_cut_review", "awaiting_export", "cancelled"],
+  running: ["pausing", "needs_attention", "awaiting_script_review", "awaiting_storyboard_review", "awaiting_rough_cut_review", "awaiting_export", "cancelled"],
   pausing: ["paused", "needs_attention"],
   paused: ["running", "cancelled"],
   needs_attention: ["running", "paused", "cancelled"],

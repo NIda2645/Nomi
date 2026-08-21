@@ -19,7 +19,7 @@ import {
   buildNomiDraftFromGenerate,
   buildNomiRunFromProjection,
 } from './mcpAppWidget'
-import { buildToolErrorOutcome, buildProgressStartMessage, type ResultLocale } from './mcpToolResults'
+import { buildToolErrorOutcome, buildProgressStartMessage, sanitizeArtifactResource, type ResultLocale } from './mcpToolResults'
 import { assembleToolResultContent } from './mcpResultPayload'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
@@ -78,6 +78,7 @@ const READ_ONLY_TOOLS = new Set([
   'nomi_get_run',
   'nomi_subscribe_run',
   'nomi_get_artifact',
+  'nomi_read_artifact',
 ])
 
 const INTENT_LABEL: Record<string, string> = { image: '一张画面', video: '一段视频', audio: '一段音频', text: '一段文本' }
@@ -517,6 +518,29 @@ export function createMcpProtocol(transport: McpTransport) {
     // ── 技能库（导演/编剧方法论）经 resources + prompts 暴露 · 渐进披露 ────────────
     // skills.list 只返元数据（name+描述，不含正文）；skills.read 才载正文——客户端只为用到的技能付上下文。
     const SKILL_URI_PREFIX = 'nomi-skill://'
+    const PRODUCTION_ARTIFACT_URI_PREFIX = 'nomi://project/'
+
+    /** Parse the only production artifact resource shape we expose. IDs are validated again in dispatch/service. */
+    function productionArtifactResource(uri: string): Record<string, string> | null {
+      if (!uri.startsWith(PRODUCTION_ARTIFACT_URI_PREFIX)) return null
+      const match = /^nomi:\/\/project\/([^/]+)\/run\/([^/]+)\/artifact\/([^/]+)$/.exec(uri)
+      if (!match) throw new Error(`未知资源 uri: ${uri}`)
+      let projectId: string
+      let runId: string
+      let artifactId: string
+      try {
+        projectId = decodeURIComponent(match[1])
+        runId = decodeURIComponent(match[2])
+        artifactId = decodeURIComponent(match[3])
+      } catch {
+        throw new Error(`资源 uri 编码无效: ${uri}`)
+      }
+      if (!/^[A-Za-z0-9._-]{1,160}$/.test(projectId) || !/^[A-Za-z0-9._-]{1,160}$/.test(runId) || !/^[A-Za-z0-9._-]{1,160}$/.test(artifactId)) {
+        throw new Error(`资源 uri 标识无效: ${uri}`)
+      }
+      return { projectId, runId, artifactId }
+    }
+
     if (method === 'resources/list') {
       const res = (await transport.invoke('skills.list', {})) as { skills?: SkillSummaryFrame[] } | null
       const skillResources = (res?.skills || []).map((s) => ({
@@ -535,11 +559,35 @@ export function createMcpProtocol(transport: McpTransport) {
       reply(id, { resources: [...uiResources, ...skillResources] })
       return
     }
+    if (method === 'resources/templates/list') {
+      reply(id, {
+        resourceTemplates: [{
+          uriTemplate: 'nomi://project/{projectId}/run/{runId}/artifact/{artifactId}',
+          name: 'Nomi production artifact',
+          description: 'Versioned script, storyboard, or production artifact content scoped to one local project and run.',
+          mimeType: 'application/json',
+        }],
+      })
+      return
+    }
     if (method === 'resources/read') {
       const uri = String(params?.uri || '')
       // 活 widget HTML（text/html;profile=mcp-app）——宿主装进沙箱 iframe。
       if (uri === NOMI_LIVE_DRAFT_UI_URI) {
         reply(id, { contents: [{ uri, mimeType: MCP_APP_MIME_TYPE, text: NOMI_LIVE_DRAFT_WIDGET_HTML }] })
+        return
+      }
+      if (uri.startsWith(PRODUCTION_ARTIFACT_URI_PREFIX)) {
+        try {
+          const artifact = productionArtifactResource(uri)
+          if (!artifact) throw new Error(`未知资源 uri: ${uri}`)
+          const result = await transport.invoke('production.artifact.read', artifact)
+          reply(id, {
+            contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(sanitizeArtifactResource(result), null, 2) }],
+          })
+        } catch (error) {
+          replyError(id, -32602, error instanceof Error ? error.message : String(error))
+        }
         return
       }
       if (!uri.startsWith(SKILL_URI_PREFIX)) {

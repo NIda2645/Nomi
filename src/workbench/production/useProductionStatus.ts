@@ -87,7 +87,7 @@ export function useProductionStatus(options: { enabled?: boolean } = {}) {
           run.jobs.find((job) => job.jobId === view?.targetId) ??
           [...run.jobs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
 
-        if (action === 'review-storyboard') {
+        if (action === 'review-script' || action === 'review-storyboard') {
           useWorkbenchStore.getState().setWorkspaceMode('creation')
           return
         }

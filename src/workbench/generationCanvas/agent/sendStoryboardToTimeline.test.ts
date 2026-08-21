@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { partitionUnitsByTimelinePresence } from './sendStoryboardToTimeline'
+import { partitionUnitsByTimelinePresence, storyboardCaptionText } from './sendStoryboardToTimeline'
 
 // arrange_storyboard_to_timeline 的 append 幂等地基（issue #5）：
 // 重复触发不应把已在时间轴上的节点再复制一份到末尾。clip id 含 startFrame，
@@ -34,5 +34,13 @@ describe('partitionUnitsByTimelinePresence — append 幂等去重', () => {
     ]
     const { kept } = partitionUnitsByTimelinePresence(units, new Set(['a']))
     expect(kept).toEqual([{ nodeId: 'b', role: 'placeholder', shotIndex: 2 }])
+  })
+})
+
+describe('storyboardCaptionText — 分镜台词到字幕轨', () => {
+  it('subtitle 优先，dialogue 作为缺省回退', () => {
+    expect(storyboardCaptionText({ meta: { subtitle: '字幕', dialogue: '对白' } })).toBe('字幕')
+    expect(storyboardCaptionText({ meta: { dialogue: '对白' } })).toBe('对白')
+    expect(storyboardCaptionText({ meta: { subtitle: '  ', dialogue: '  ' } })).toBeUndefined()
   })
 })
