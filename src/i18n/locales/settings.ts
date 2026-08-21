@@ -24,6 +24,11 @@ export const zhSettings = {
       title: '数据上传',
       minimize: '仅发送当前任务需要的素材',
       minimizeHint: '项目文件、历史记录和未采用素材默认不上传；外部模型仍会收到完成任务所必需的数据。',
+      kieTitle: '视频参考上传：推荐 KIE（免费）',
+      kieHint: '视频不会走图片上传接口。配置 KIE API Key 后，Nomi 会优先用 KIE 的流式文件上传；KIE 上传本身不收费，Key 只加密保存在这台电脑上。',
+      kieConfigure: '去配置 KIE',
+      anonymousPrompt: '公共临时托管上传前提醒我',
+      anonymousPromptHint: '未配置 KIE 时仍可临时上传到公共托管；Nomi 会先告诉你托管方、有效期和隐私风险。',
     },
     policy: {
       title: '默认模型策略',
@@ -179,6 +184,11 @@ export const enSettings = {
       title: 'Data upload',
       minimize: 'Send only assets needed for the current task',
       minimizeHint: 'Project files, history, and unused assets stay local by default. External models still receive data required to complete the task.',
+      kieTitle: 'Video references: KIE recommended (free)',
+      kieHint: 'Video references never use the image upload endpoint. Once a KIE API key is configured, Nomi prefers KIE streaming uploads; KIE file hosting itself is free and the key stays encrypted on this computer.',
+      kieConfigure: 'Configure KIE',
+      anonymousPrompt: 'Warn me before public temporary hosting',
+      anonymousPromptHint: 'If KIE is not configured, Nomi can still use a temporary public host, but it will show the host, lifetime, and privacy risk first.',
     },
     policy: {
       title: 'Default model policy',

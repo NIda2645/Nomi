@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   collectLocalAssetUrls,
+  assertLocalAssetTransportReady,
   replaceLocalAssetUrls,
   resolveLocalAsset,
   localizeAssetsForVendor,
@@ -43,6 +44,22 @@ describe("isLocalAssetUrl / collect / replace", () => {
     const map = new Map([[localUrl("a.png"), "https://pub/a.png"]]);
     const out = replaceLocalAssetUrls({ x: localUrl("a.png"), y: ["https://pub/c.png", localUrl("a.png")] }, map);
     expect(out).toEqual({ x: "https://pub/a.png", y: ["https://pub/c.png", "https://pub/a.png"] });
+  });
+
+  it("fails before paid submission when a local reference disappeared", () => {
+    expect(() => assertLocalAssetTransportReady(
+      { referenceImageUrls: [localUrl("missing.png")] },
+      () => [{ ingestion: { strategy: "none" }, uploadApiKey: "" }],
+      () => null,
+    )).toThrow(/本地文件读取失败/);
+  });
+
+  it("fails closed for unknown octet-stream instead of guessing image", () => {
+    expect(() => assertLocalAssetTransportReady(
+      { referenceVideoUrls: [localUrl("unknown.bin")] },
+      () => [{ ingestion: { strategy: "upload-url", endpoint: "https://upload", base64Field: "data", urlPath: "url" }, uploadApiKey: "k" }],
+      () => ({ bytes: Buffer.from([1, 2, 3]), contentType: "application/octet-stream", fileName: "unknown.bin" }),
+    )).toThrow(/无法识别/);
   });
 });
 
@@ -315,6 +332,73 @@ describe("localizeAssetsForVendor", () => {
     const extras = { referenceVideoUrls: [localUrl("clip.mp4")] };
     await expect(localizeAssetsForVendor(extras, resolver, readVideo, vi.fn(), noMultipart)).rejects.toThrow(/运镜参考视频需要支持视频上传的通道/);
   });
+
+  it("does not guess an unknown octet-stream file is an image", async () => {
+    const resolver = vi.fn(() => [{ ingestion, uploadApiKey: "k" }]);
+    await expect(localizeAssetsForVendor(
+      { referenceVideoUrls: [localUrl("mystery.bin")] },
+      resolver,
+      () => ({ bytes: Buffer.from("not-media"), contentType: "application/octet-stream", fileName: "mystery.bin" }),
+      vi.fn(),
+      noMultipart,
+    )).rejects.toThrow(/无法识别.*图片|视频|音频/);
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it("strips stale local references when the renderer provides the active asset allowlist", async () => {
+    const post = vi.fn().mockResolvedValue({ url: "https://cdn/active.png" });
+    const out = await localizeAssetsForVendor(
+      { activeAssetUrls: [localUrl("active.png")], referenceImageUrls: [localUrl("active.png"), localUrl("stale.png")] },
+      resolverFor(ingestion),
+      read,
+      post,
+      noMultipart,
+      { minimizeUploads: true, activeAssetUrls: [localUrl("active.png")] },
+    );
+    expect((out.value as { referenceImageUrls: string[] }).referenceImageUrls).toEqual(["https://cdn/active.png"]);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires disclosure before an anonymous fallback upload", async () => {
+    const anonymous: AssetIngestion = {
+      strategy: "anon-chain",
+      chain: [],
+      accepts: ["video"],
+      visibility: "public-anonymous",
+      requiresConsent: true,
+      ttlSeconds: 60 * 60,
+    };
+    const postMultipart = vi.fn();
+    await expect(localizeAssetsForVendor(
+      { referenceVideoUrls: [localUrl("clip.mp4")] },
+      () => [{ ingestion: anonymous, uploadApiKey: "" }],
+      () => ({ bytes: Buffer.from("v"), contentType: "video/mp4", fileName: "clip.mp4" }),
+      vi.fn(),
+      postMultipart,
+      { anonymousConsent: "ask" },
+    )).rejects.toThrow(/KIE.*免费|公共临时托管/);
+    expect(postMultipart).not.toHaveBeenCalled();
+  });
+
+  it("rejects a public URL lease that is too short for video generation", async () => {
+    const shortLease: AssetIngestion = {
+      strategy: "upload-multipart",
+      endpoint: "https://tmp.example/upload",
+      responseIsPlainTextUrl: true,
+      accepts: ["video"],
+      visibility: "public-anonymous",
+      requiresConsent: true,
+      ttlSeconds: 60,
+    };
+    await expect(localizeAssetsForVendor(
+      { referenceVideoUrls: [localUrl("clip.mp4")] },
+      () => [{ ingestion: shortLease, uploadApiKey: "" }],
+      () => ({ bytes: Buffer.from("v"), contentType: "video/mp4", fileName: "clip.mp4" }),
+      vi.fn(),
+      vi.fn(),
+      { anonymousConsent: "allow" },
+    )).rejects.toThrow(/有效期|lease|所有上传通道/);
+  });
 });
 
 // 2026-08-20 用户报 HTTP 413：一条通道装不下就整个生成死掉，而排在它后面、收得下的通道从没被试过。
@@ -495,6 +579,12 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
     expect(out?.ingestion.strategy).toBe("upload-multipart");
     expect(out?.ingestion.endpoint).toBe("https://api.apimart.ai/v1/uploads/images");
     expect(out?.uploadApiKey).toBe("key-apimart");
+  });
+
+  it("rejects a custom base64/upload-url declaration for video", () => {
+    const unsafe = { key: "custom", assetIngestion: { strategy: "upload-url", endpoint: "https://c/up", base64Field: "b", urlPath: "url", accepts: ["video"] } as AssetIngestion };
+    const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, unsafe], keysOf("openai", "custom"), "video");
+    expect(out?.ingestion.strategy).toBe("anon-chain");
   });
 });
 

@@ -10,6 +10,23 @@ export function extensionFromMime(contentType: string, fallback = "bin"): string
   return extensionFromContentType(contentType) ?? fallback;
 }
 
+/**
+ * Give a persisted asset a truthful extension when the source filename is
+ * missing one or carries the generic `.bin` fallback. The bytes/content type
+ * are the identity; a filename is only a hint. Keeping this at the storage
+ * boundary prevents later MIME-only consumers (workspace tree, protocol,
+ * drag/drop) from silently treating a video as an image.
+ */
+export function canonicalAssetFileName(fileName: string, contentType: string): string {
+  const raw = String(fileName || "").trim() || "asset";
+  const canonicalExt = extensionFromContentType(contentType);
+  if (!canonicalExt) return raw;
+  const currentExt = path.extname(raw).replace(/^\./, "").toLowerCase();
+  if (currentExt && currentExt !== "bin") return raw;
+  const parsed = path.parse(raw);
+  return `${parsed.name || "asset"}.${canonicalExt}`;
+}
+
 export function extensionFromUrl(url: string): string {
   try {
     const ext = path.extname(new URL(url).pathname).replace(/^\./, "").toLowerCase();

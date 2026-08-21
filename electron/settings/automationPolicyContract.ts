@@ -20,6 +20,8 @@ export type AutomationPolicySettings = {
   notifyOnFailure: boolean;
   notifyOnCompletion: boolean;
   minimizeUploads: boolean;
+  /** Anonymous temporary hosting is available by default, but UI asks before first use. */
+  anonymousAssetHosting: "ask" | "allow" | "deny";
 };
 
 export const DEFAULT_AUTOMATION_POLICY_SETTINGS: AutomationPolicySettings = {
@@ -39,6 +41,7 @@ export const DEFAULT_AUTOMATION_POLICY_SETTINGS: AutomationPolicySettings = {
   notifyOnFailure: true,
   notifyOnCompletion: true,
   minimizeUploads: true,
+  anonymousAssetHosting: "ask",
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -73,6 +76,9 @@ export function normalizeAutomationPolicySettings(value: unknown): AutomationPol
   const attempts = typeof raw.maxAttemptsPerJob === "number" && Number.isFinite(raw.maxAttemptsPerJob)
     ? Math.min(10, Math.max(1, Math.floor(raw.maxAttemptsPerJob)))
     : DEFAULT_AUTOMATION_POLICY_SETTINGS.maxAttemptsPerJob;
+  const anonymousAssetHosting = raw.anonymousAssetHosting === "allow" || raw.anonymousAssetHosting === "deny"
+    ? raw.anonymousAssetHosting
+    : DEFAULT_AUTOMATION_POLICY_SETTINGS.anonymousAssetHosting;
   return {
     schemaVersion: 1,
     mode,
@@ -90,5 +96,6 @@ export function normalizeAutomationPolicySettings(value: unknown): AutomationPol
     notifyOnFailure: boolean(raw.notifyOnFailure, true),
     notifyOnCompletion: boolean(raw.notifyOnCompletion, true),
     minimizeUploads: boolean(raw.minimizeUploads, true),
+    anonymousAssetHosting,
   };
 }

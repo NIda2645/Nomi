@@ -567,6 +567,23 @@ describe('buildCatalogTaskRequest — idempotencyKey 穿透到 request.extras', 
     const built = buildCatalogTaskRequest(node, { idempotencyKey: 'run-abc-123' })
     expect((built.request.extras as Record<string, unknown>).idempotencyKey).toBe('run-abc-123')
   })
+
+  it('anonymous upload consent 穿透到 request.extras', () => {
+    const built = buildCatalogTaskRequest({ ...imageNode(), prompt: 'a cat', meta: { modelKey: 'sd', modelVendor: 'openai' } }, { anonymousAssetHostingConsent: 'allow' })
+    expect((built.request.extras as Record<string, unknown>).anonymousAssetHostingConsent).toBe('allow')
+  })
+
+  it('把当前请求实际引用的本地素材作为上传 allowlist 传给主进程', () => {
+    const built = buildCatalogTaskRequest(
+      {
+        ...imageNode(),
+        prompt: 'a cat',
+        meta: { modelKey: 'sd', modelVendor: 'openai', referenceImageUrls: ['nomi-local://asset/active.png'] },
+      },
+      { references: { referenceImages: ['nomi-local://asset/active.png'] } },
+    )
+    expect((built.request.extras as Record<string, unknown>).activeAssetUrls).toEqual(['nomi-local://asset/active.png'])
+  })
   it('未给 idempotencyKey → extras 不带该键（无键时 runTask 不介入，向后兼容）', () => {
     const node: GenerationCanvasNode = { id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', archetype: { id: 'gpt-image-2', modeId: 't2i' } } }
     const built = buildCatalogTaskRequest(node, {})

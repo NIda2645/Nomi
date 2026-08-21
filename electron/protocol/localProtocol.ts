@@ -2,6 +2,7 @@ import { net, protocol } from "electron";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import { contentTypeFromPath } from "../assets/assetPaths";
+import { resolveContentType } from "../assets/mediaTypes";
 import { resolveProjectRelativePath } from "../projects/repository";
 import { getArtifactPreviewSecret, verifyArtifactPreviewHandle } from "../productionRun/artifactProjection";
 
@@ -65,6 +66,20 @@ function assetPathFromUrl(rawUrl: string): string | null {
   return parseLocalAssetUrl(rawUrl)?.filePath ?? null;
 }
 
+function contentTypeForFile(filePath: string): string {
+  const extensionType = contentTypeFromPath(filePath);
+  if (extensionType !== "application/octet-stream") return extensionType;
+  try {
+    const handle = fs.openSync(filePath, "r");
+    const header = Buffer.alloc(4096);
+    const bytesRead = fs.readSync(handle, header, 0, header.length, 0);
+    fs.closeSync(handle);
+    return resolveContentType(filePath, header.subarray(0, bytesRead));
+  } catch {
+    return extensionType;
+  }
+}
+
 type ByteRange = { start: number; end: number };
 
 function parseRangeHeader(rangeHeader: string, size: number): ByteRange | null {
@@ -88,7 +103,7 @@ function parseRangeHeader(rangeHeader: string, size: number): ByteRange | null {
 function streamRange(filePath: string, range: ByteRange, size: number, method: string): Response {
   const contentLength = range.end - range.start + 1;
   const headers = withLocalAssetHeaders({
-    "Content-Type": contentTypeFromPath(filePath),
+    "Content-Type": contentTypeForFile(filePath),
     "Content-Length": String(contentLength),
     "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
   });
@@ -118,6 +133,7 @@ export async function handleNomiLocalRequest(request: Request): Promise<Response
     }
     const fileResponse = await net.fetch(pathToFileURL(filePath).toString());
     const corsHeaders = withLocalAssetHeaders(fileResponse.headers);
+    corsHeaders.set("Content-Type", contentTypeForFile(filePath));
     return new Response(request.method === "HEAD" ? null : fileResponse.body, { status: fileResponse.status, headers: corsHeaders });
   } catch (error) {
     const message = error instanceof Error ? error.message : "local asset not found";

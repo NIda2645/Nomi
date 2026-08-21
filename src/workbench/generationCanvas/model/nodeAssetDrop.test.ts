@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   dropKindFromMime,
+  dropKindFromFile,
   dropKindFromNodeKind,
   dropKindFromWorkspaceKind,
   findArraySlotForKind,
@@ -17,6 +18,11 @@ describe('dropKindFromMime — OS 文件 MIME 路由', () => {
     expect(dropKindFromMime('application/pdf')).toBeNull()
     expect(dropKindFromMime('')).toBeNull()
     expect(dropKindFromMime(undefined)).toBeNull()
+  })
+
+  it('application/octet-stream 不覆盖文件名扩展名判定', () => {
+    // macOS/Windows 对未注册的 mkv、无扩展名视频常给这个 MIME；不能因此静默丢掉拖拽。
+    expect(dropKindFromFile({ type: 'application/octet-stream', name: 'clip.mkv' })).toBe('video')
   })
 })
 

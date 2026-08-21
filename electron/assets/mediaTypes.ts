@@ -44,6 +44,7 @@ export const MEDIA_TYPES: readonly MediaTypeEntry[] = [
   { ext: '.m4v', contentType: 'video/x-m4v', kind: 'video' },
   { ext: '.ogv', contentType: 'video/ogg', kind: 'video' },
   { ext: '.avi', contentType: 'video/x-msvideo', kind: 'video' },
+  { ext: '.mkv', contentType: 'video/x-matroska', kind: 'video' },
   { ext: '.mpeg', contentType: 'video/mpeg', kind: 'video' },
   // audio
   { ext: '.mp3', contentType: 'audio/mpeg', kind: 'audio' },
@@ -141,14 +142,13 @@ export function contentTypeFromMagicBytes(bytes: Uint8Array): string | null {
 }
 
 /**
- * 素材真实 contentType 的**唯一判定顺序**：扩展名认得出就用它（快且几乎总对），
- * 认不出就读文件头，再不行才 octet-stream。别只用其中一条 —— 只看扩展名会把视频判成图片（见上）。
+ * 素材真实 contentType 的**唯一判定顺序**：有字节时先信文件头（字节事实优先于错误扩展名），
+ * 文件头认不出再用扩展名，最后才 octet-stream。没有字节时走扩展名快路。
  */
 export function resolveContentType(fileNameOrPath: string, bytes?: Uint8Array): string {
   const byExt = contentTypeFromExtension(fileNameOrPath)
-  if (byExt) return byExt
   const bySniff = bytes ? contentTypeFromMagicBytes(bytes) : null
-  return bySniff ?? 'application/octet-stream'
+  return bySniff ?? byExt ?? 'application/octet-stream'
 }
 
 /**

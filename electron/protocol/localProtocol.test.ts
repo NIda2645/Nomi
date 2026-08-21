@@ -9,7 +9,7 @@ vi.mock("electron", () => ({
     fetch: vi.fn(async (url: string) => {
       const filePath = new URL(url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
       const bytes = fs.readFileSync(decodeURIComponent(filePath));
-      return new Response(bytes, { headers: { "Content-Type": "video/mp4" } });
+      return new Response(bytes, { headers: { "Content-Type": filePath.endsWith(".bin") ? "application/octet-stream" : "video/mp4" } });
     }),
   },
 }));
@@ -29,6 +29,11 @@ beforeAll(() => {
   assetPath = path.join(projectRoot, "assets", "generated", "clip.mp4");
   fs.mkdirSync(path.dirname(assetPath), { recursive: true });
   fs.writeFileSync(assetPath, Buffer.from("0123456789"));
+  fs.writeFileSync(path.join(projectRoot, "assets", "generated", "clip.bin"), Buffer.concat([
+    Buffer.from([0, 0, 0, 0x20]),
+    Buffer.from("ftypisom", "ascii"),
+    Buffer.alloc(16),
+  ]));
 });
 
 afterAll(() => {
@@ -48,6 +53,20 @@ describe("handleNomiLocalRequest", () => {
     expect(response.headers.get("Content-Range")).toBe("bytes 0-0/10");
     expect(response.headers.get("Content-Length")).toBe("1");
     expect(await response.text()).toBe("0");
+  });
+
+  it("sniffs a legacy .bin video for ranged playback", async () => {
+    const response = await handleNomiLocalRequest(new Request(assetUrl("assets/generated/clip.bin"), { headers: { Range: "bytes=0-0" } }));
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Type")).toBe("video/mp4");
+  });
+
+  it("sniffs a legacy .bin video for full-file playback", async () => {
+    const response = await handleNomiLocalRequest(new Request(assetUrl("assets/generated/clip.bin")));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("video/mp4");
   });
 
   it("serves suffix ranges", async () => {
