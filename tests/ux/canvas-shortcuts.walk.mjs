@@ -35,6 +35,10 @@ const { app, win: initialWin } = await launchNomiApp({
   userDataDir, settingsDir: userDataDir, projectsDir,
   args: ['--no-proxy-server'], settleMs: 0,
 })
+// keyboard.press(`${mod}+v`) emits a real paste event in Electron. Clear the
+// user's ambient OS clipboard so this walk exercises the canvas-node fallback,
+// not an unrelated URL/image import left by another app or test.
+await app.evaluate(({ clipboard }) => clipboard.clear())
 
 let passed = 0
 function assert(condition, label, detail = '') {
