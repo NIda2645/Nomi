@@ -32,7 +32,7 @@ if (hasArg('--help') || hasArg('-h')) {
   console.log('用法：node tests/ux/canvas-performance-benchmark.e2e.mjs <label> [--scale L] [--runs 5]')
   console.log(`scale：${Object.keys(CANVAS_PERF_SCALES).join(' / ')}`)
   console.log(
-    'scenario：all / cold-open / blank-pan / node-drag-image / node-drag-video / marquee-select / click-select / wheel-zoom / pan-zoom-mix / resize / media-reveal / media-error / video-hover / reload-heavy',
+    'scenario：all / cold-open / blank-pan / node-drag-image / node-drag-video / marquee-select / click-select / wheel-zoom / pan-zoom-mix / resize / media-reveal / low-zoom-preview / media-error / video-hover / reload-heavy',
   )
   process.exit(0)
 }
@@ -62,6 +62,7 @@ const allScenarios = [
   'pan-zoom-mix',
   'resize',
   'media-reveal',
+  'low-zoom-preview',
   'media-error',
   'video-hover',
   'reload-heavy',
@@ -266,6 +267,9 @@ async function pageSnapshot(page) {
       canvasNodes: nodeElements.length,
       lightweightCanvasNodes: nodeElements.filter((node) => node.getAttribute('data-render-mode') === 'lightweight')
         .length,
+      lightweightPreviewNodes: nodeElements.filter(
+        (node) => node.getAttribute('data-render-mode') === 'lightweight' && node.querySelector('img[src],video[src]'),
+      ).length,
       imageElements: images.length,
       videoElements: videos.length,
       visibleMedia: media.filter((element) => {
@@ -521,16 +525,17 @@ async function openProject(app, page, fixture) {
 }
 
 async function prepareScenario(page, scenario) {
-  if (scenario !== 'marquee-select') return
+  if (scenario !== 'marquee-select' && scenario !== 'low-zoom-preview') return
   const stage = await page.locator('.generation-canvas-v2__stage').boundingBox()
   if (!stage) throw new Error('画布 stage 不存在')
   await page.mouse.move(stage.x + stage.width * 0.5, stage.y + stage.height * 0.5)
-  for (let index = 0; index < 12; index += 1) {
+  const targetZoom = scenario === 'low-zoom-preview' ? 0.45 : 0.72
+  for (let index = 0; index < 20; index += 1) {
     const zoom = await page.evaluate(
       () =>
         new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.generation-canvas-v2__canvas')).transform).a,
     )
-    if (zoom <= 0.72) break
+    if (zoom <= targetZoom) break
     await page.mouse.wheel(0, 100)
     await sleep(page, 60)
   }
@@ -784,6 +789,12 @@ async function runAction(page, scenario, fixture) {
       }),
     }
   }
+  if (scenario === 'low-zoom-preview') {
+    const settled = await waitForVisibleMediaSettlement(page, {
+      expectMedia: fixture.summary.imageNodes + fixture.summary.videoNodes > 0,
+    })
+    return { settled, zoom: settled.transform?.zoom ?? null }
+  }
   if (scenario === 'media-error') {
     const failure = page.locator('[data-node-media-failure="error"]').first()
     await failure.waitFor({ timeout: 10_000 })
@@ -1032,6 +1043,18 @@ function sampleHardFailures(sample) {
     failures.push(`simultaneously playing videos ${sample.probe.maxActiveVideos} > 1`)
   if (sample.scenario === 'media-error' && sample.actionDetails?.explicitFailures < 1)
     failures.push('media failure did not remain explicit after retry')
+  if (sample.scenario === 'low-zoom-preview' && !sample.error && sample.fixture?.nodes > 80) {
+    const zoom = sample.actionDetails?.zoom
+    const lightweightNodeCount = sample.actionDetails?.settled?.lightweightCanvasNodes
+    const lightweightPreviewCount = sample.actionDetails?.settled?.lightweightPreviewNodes
+    if (!Number.isFinite(zoom) || zoom >= 0.55) {
+      failures.push(`low-zoom scenario settled above lightweight threshold: ${zoom ?? 'unknown'}`)
+    } else if (!Number.isFinite(lightweightNodeCount) || lightweightNodeCount < 1) {
+      failures.push('low-zoom scenario did not mount any lightweight nodes')
+    } else if (!Number.isFinite(lightweightPreviewCount) || lightweightPreviewCount < 1) {
+      failures.push('low-zoom lightweight nodes rendered without any media preview')
+    }
+  }
   const settledSnapshots = [sample.cold?.settled, sample.actionDetails?.settled]
     .filter(Boolean)
     .concat(sample.scenario === 'reload-heavy' ? sample.actionDetails?.snapshots || [] : [])

@@ -45,6 +45,16 @@ function assetUrl(relativePath = "assets/generated/clip.mp4"): string {
 }
 
 describe("handleNomiLocalRequest", () => {
+  it("serves full files without reopening an undici response stream", async () => {
+    const fetchMock = vi.mocked((await import("electron")).net.fetch);
+    fetchMock.mockRejectedValueOnce(new Error("net.fetch must not serve local files"));
+
+    const response = await handleNomiLocalRequest(new Request(assetUrl()));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("0123456789");
+  });
+
   it("serves byte ranges for video playback", async () => {
     const response = await handleNomiLocalRequest(new Request(assetUrl(), { headers: { Range: "bytes=0-0" } }));
 
@@ -67,6 +77,7 @@ describe("handleNomiLocalRequest", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("video/mp4");
+    await response.arrayBuffer();
   });
 
   it("serves suffix ranges", async () => {
@@ -104,6 +115,7 @@ describe("handleNomiLocalRequest", () => {
     });
     const valid = await handleNomiLocalRequest(new Request(projection.preview!.nomiUrl));
     expect(valid.status).toBe(200);
+    await valid.arrayBuffer();
     const tampered = await handleNomiLocalRequest(new Request(`${projection.preview!.nomiUrl.slice(0, -1)}x`));
     expect(tampered.status).toBe(404);
   });
