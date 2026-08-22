@@ -75,6 +75,44 @@ durable receipt/lease/WAL, provider idempotency, provider recovery, runtime
 envelope, projection and materialization work remain blocked behind later
 checkpoints. No semantic route has a write owner in this slice.
 
+## Continued P0 durable foundation — 2026-08-23
+
+The approved A/A/A safety policy is now represented by zero-provider foundation
+modules, still behind the blocked semantic phase and with no default paid-path
+wiring:
+
+```text
+reviewed HEAD: 6ecb6a82 (codex/p0-runtime-foundation-20260822)
+implementation commits added: 099d9649, 6ecb6a82
+durable foundation focused suites: PASS — 25 tests
+full gates: PASS — 669 files passed, 1 skipped; 6038 tests passed, 1 skipped; 0 lint errors, 96 pre-existing warnings
+provider calls: 0
+spend grants/materialization: 0
+```
+
+`productionRunIntentLog` appends authenticated, checksummed prepare/commit/
+abort records with a hash chain, strict parse/MAC failure, fencing epoch and
+side-effect-free replay. `productionRunLock` provides an exclusive per-run
+lease with persistent monotonically increasing fencing epochs; an expired or
+lost owner cannot renew, release or continue a claim. The optional
+`submissionOutbox` integration persists a provider-submit claim before dispatch
+and makes restart after a lost receipt reconcile-only; only the explicit
+`SubmissionNotDispatchedError` disposition opens a same-key retry.
+
+`projectLease`/`projectLeaseStore` now issue and verify signed project-selection
+and project-scope leases across restart, expiry, scope mismatch, tampering and
+revocation. `approvalReceipt` persists challenge/receipt records, rejects raw
+boolean or external elicitation approval, requires a signed main-process
+gesture attestation, and makes receipt consumption one-time with replay of the
+original result.
+
+These modules are intentionally not yet connected to the semantic dispatcher,
+production gate/reducer, runtime envelope or real provider adapter. Therefore
+the durable owners are tested in isolation but P0 remains `blocked` until the
+main-process lease/receipt verification is wired into every semantic entry and
+the fake-provider lifecycle proves prepare → submit → providerTaskId persist →
+restart/reconcile without a duplicate call.
+
 The following hashes identify the reviewed docs snapshot for this record (the
 evidence file itself is intentionally excluded to avoid a self-referential
 hash). They are the current docs-only review input, not an implementation pass:
