@@ -106,12 +106,11 @@ boolean or external elicitation approval, requires a signed main-process
 gesture attestation, and makes receipt consumption one-time with replay of the
 original result.
 
-These modules are intentionally not yet connected to the semantic dispatcher,
-production gate/reducer, runtime envelope or real provider adapter. Therefore
-the durable owners are tested in isolation but P0 remains `blocked` until the
-main-process lease/receipt verification is wired into every semantic entry and
-the fake-provider lifecycle proves prepare → submit → providerTaskId persist →
-restart/reconcile without a duplicate call.
+At this checkpoint these modules were intentionally not yet connected to the
+semantic dispatcher, production gate/reducer, runtime envelope or real provider
+adapter. The next slice below records the first safe wiring step; the durable
+foundation alone remained blocked until that step and the fake-provider
+lifecycle were proven.
 
 The following hashes identify the reviewed docs snapshot for this record (the
 evidence file itself is intentionally excluded to avoid a self-referential
@@ -126,6 +125,41 @@ d879a43c73c0559b0bc4b09c4f6173659b089b9a50fdd63ad1f89a99790988ed  docs/audit/202
 faafc75e5bc8f4cb777961fd1a942fa022c9794a824e89b8c512093df520b7c0  docs/plan/2026-06-11-nomi-harness-master-plan.md
 939372aa2a16787caea39a0ef28797eae25b304cbfeca316352804d4937adad2  docs/workflow/2026-06-13-agent-and-eval-primer.md
 ```
+
+## Continued P0 semantic lease/receipt wiring — 2026-08-23
+
+The approved A/A/A policy is now enforced at the semantic boundary, still with
+zero provider and paid-path activity.
+
+Evidence: reviewed HEAD 15df16476b1c73cba96a490757fae72f57f6705c on
+codex/p0-runtime-foundation-20260822; focused lease/receipt/service suites
+passed 45 tests; full gates passed 669 files (1 skipped) and 6042 tests (1
+skipped), with 0 lint errors and 96 pre-existing warnings. Provider calls,
+spend grants and materialization remained 0.
+
+nomi_session_open now accepts only a main-process verified
+ProjectSelectionHandleV1, resolves current project/session identity through a
+server-owned callback, and returns the signed ProjectLeaseV1 projection.
+Every post-open semantic route verifies the lease and required scope before its
+owner seam; the lease project identity replaces any body-supplied projectId.
+Tampering, expiry, revocation, foreign project and insufficient scope return
+structured lease errors. RPC, app integration and in-process MCP stdio expose
+the same optional authority injection points.
+
+nomi_decide_generation_gate requires a verified, scope-bound receipt and
+rejects approved, confirm and spendConfirmed booleans as proof. The dispatcher
+only verifies; ProductionRunService consumes the receipt after the durable gate
+event, leaving replay semantics with the Run owner. New workspace manifests
+record an immutable project UUID and generation for future selection-handle
+resolution; old manifests remain readable but are not implicitly upgraded by
+ordinary reads.
+
+This is still not a P0 pass. The live app has not yet supplied a production
+project-selection resolver/keyring, semantic write owners remain not_ready, and
+no runtime envelope or real provider adapter is wired. The remaining
+zero-provider proof is the fake-provider prepare → submit → providerTaskId
+persist → restart/reconcile lifecycle, followed by the explicit P0 checkpoint
+review.
 
 ## P0 blockers recorded before code
 
