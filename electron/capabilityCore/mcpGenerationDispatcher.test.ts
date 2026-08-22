@@ -154,6 +154,35 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     expect(productionRuns.command).toHaveBeenCalledTimes(1)
   })
 
+  it.each([
+    'production.get',
+    'production.events',
+    'production.artifact',
+    'production.artifact.read',
+    'production.artifact.revise',
+    'production.artifact.review',
+    'production.storyboard.materialize',
+  ])('firewalls semantic bindings on legacy %s before read/write services', async (method) => {
+    const { ctx, productionRuns } = context({ generationPolicy: policy() })
+    await expect(dispatch(method, {
+      projectId: 'project-1', runId: 'run-1', artifactId: 'artifact-1', leaseHandle: 'lease-1',
+    }, ctx as never)).rejects.toMatchObject({
+      code: 'legacy_path_forbidden',
+      nextAction: expect.any(String),
+    })
+    expect(productionRuns.readProjection).not.toHaveBeenCalled()
+    expect(productionRuns.readEvents).not.toHaveBeenCalled()
+    expect(productionRuns.readArtifactProjection).not.toHaveBeenCalled()
+    expect(productionRuns.command).not.toHaveBeenCalled()
+  })
+
+  it('does not infer a P3 binding from bare legacy identifiers', async () => {
+    const { ctx, productionRuns } = context({ generationPolicy: policy() })
+    await expect(dispatch('production.get', { projectId: 'project-1', runId: 'run-1' }, ctx as never))
+      .resolves.toMatchObject({ runId: 'run-1' })
+    expect(productionRuns.readProjection).toHaveBeenCalledWith('project-1', 'run-1')
+  })
+
   it('exposes policy errors as RpcError instances', async () => {
     const { ctx } = context({ generationPolicy: policy() })
     try {

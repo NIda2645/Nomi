@@ -233,8 +233,16 @@ const LEGACY_ROUTE_CAPABILITY: Readonly<Record<string, McpGenerationCapability>>
   generate: 'create',
   nomi_generate: 'create',
   'production.start': 'create',
+  'production.get': 'read',
+  'production.events': 'events',
+  'production.artifact': 'read',
+  'production.artifact.read': 'read',
+  'production.artifact.revise': 'plan',
+  'production.artifact.review': 'plan',
+  'production.storyboard.materialize': 'create',
   'production.control': 'cancel',
   'production.decide-gate': 'gate_decide',
+  'production.generate-node': 'start',
   nomi_start_playbook: 'create',
 })
 
@@ -255,19 +263,16 @@ function unavailableSemanticRoute(policy: McpGenerationPolicy, capability: McpGe
   }, `generation.single-shot ${capability} is not ready`)
 }
 
-function hasSemanticBinding(route: string, params: Record<string, unknown>): boolean {
+function hasSemanticBinding(params: Record<string, unknown>): boolean {
   const keys = Object.keys(params)
   if (keys.some((key) => SEMANTIC_BINDING_FIELDS.has(key))) return true
-  // runId is a normal identifier on the two legacy run-control calls. It is a
-  // P3 binding marker only when paired with another sealed semantic field.
-  if (keys.includes('runId') && keys.some((key) => SEMANTIC_BINDING_FIELDS.has(key))) return true
-  // The legacy draft entry points never accepted a runId at all; fail closed
-  // before their normal field validator can turn a P3 call into a generic 400.
-  return ['generate', 'nomi_generate', 'production.start', 'nomi_start_playbook'].includes(route) && keys.includes('runId')
+  // Bare projectId/runId/gateId remain legacy identifiers. A P3 binding is
+  // recognized only by one of the sealed marker fields above.
+  return false
 }
 
 function guardLegacyRoute(policy: McpGenerationPolicy, route: string, params: Record<string, unknown>): void {
-  if (!hasSemanticBinding(route, params)) return
+  if (!hasSemanticBinding(params)) return
   const snapshot = policy.snapshot()
   const capability = LEGACY_ROUTE_CAPABILITY[route] ?? 'create'
   throw policyError({
@@ -302,7 +307,12 @@ async function dispatchSemanticStub(
 export async function dispatch(method: string, params: Record<string, unknown>, ctx: DispatchContext): Promise<unknown> {
   const generationPolicy = ctx.generationPolicy ?? createMcpGenerationPolicy()
   const classifiedRoute = generationPolicy.classifyRoute(method)
-  if (classifiedRoute.kind === 'legacy') guardLegacyRoute(generationPolicy, method, params)
+  const legacyRoute = classifiedRoute.kind === 'legacy'
+    ? classifiedRoute.route
+    : method.startsWith('production.')
+      ? method
+      : null
+  if (legacyRoute) guardLegacyRoute(generationPolicy, legacyRoute, params)
   const semanticRoute = SEMANTIC_GENERATION_ROUTES[method]
   if (semanticRoute) return dispatchSemanticStub(semanticRoute, params, ctx, generationPolicy)
 

@@ -49,6 +49,27 @@ type PlanConfirmPayload = {
   titles?: string[]
 }
 
+const LEGACY_GENERATION_SEMANTIC_FIELDS = new Set([
+  'leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId',
+  'immutableProjectUuid', 'projectGeneration', 'serverNonce', 'handoff', 'actionNonce',
+  'projectSelectionHandle', 'targetHash', 'reservationId',
+])
+
+export class LegacyPathForbiddenError extends Error {
+  readonly code = 'legacy_path_forbidden' as const
+
+  constructor() {
+    super('legacy_path_forbidden')
+    this.name = 'LegacyPathForbiddenError'
+  }
+}
+
+/** Pure renderer-side firewall for the direct legacy generation bridge. */
+export function assertLegacyGenerationPayload(payload: Record<string, unknown>): void {
+  if (!Object.keys(payload).some((key) => LEGACY_GENERATION_SEMANTIC_FIELDS.has(key))) return
+  throw new LegacyPathForbiddenError()
+}
+
 function describeIntent(intent: string | undefined): string {
   const normalized = String(intent || '')
   if (normalized === 'image' || normalized === 'video' || normalized === 'audio' || normalized === 'text') {
@@ -228,6 +249,7 @@ async function verifyShotsForProduction(shotNodeIds: readonly string[]): Promise
 /** 处理一条主进程转发来的能力操作。未知操作抛错（主进程会把错误透传给 agent）。 */
 export async function handleCapabilityApply(op: string, payload: unknown): Promise<unknown> {
   const data = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>
+  if (op === 'production.generate-node') assertLegacyGenerationPayload(data)
   const projectId = typeof data.projectId === 'string' ? data.projectId : ''
   const activeId = getActiveWorkbenchProjectId()
   // 画布读写**只能**作用于当前打开的项目（动 store → 必须是活动项目，否则串台）；目标≠活动 → 拒。
