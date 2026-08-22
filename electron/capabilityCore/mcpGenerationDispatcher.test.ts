@@ -257,6 +257,7 @@ describe('generation.single-shot dispatcher policy boundary', () => {
       generationPolicy: policy({ enabled: true, p0Passed: true, p2Passed: true, p3Passed: true }),
       projectLeaseAuthority: leaseAuthority,
       approvalReceiptAuthority: approval.authority,
+      projectRevisionResolver: () => 1,
     })
 
     await expect(dispatch('nomi_decide_generation_gate', {

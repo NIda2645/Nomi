@@ -38,6 +38,7 @@ export type McpStdioServerOptions = {
   approvalReceiptAuthority?: ApprovalReceiptAuthority
   generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  projectRevisionResolver?: (projectId: string) => number | undefined
 }
 
 /**

@@ -65,6 +65,7 @@ export async function startCapabilityCore(
     approvalReceiptAuthority?: ApprovalReceiptAuthority
     generationPolicy?: McpGenerationPolicy
     generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+    projectRevisionResolver?: (projectId: string) => number | undefined
   } = {},
 ): Promise<void> {
   try {

@@ -155,6 +155,7 @@ describe('production run service projection boundary', () => {
       repository: repository as never,
       projectRootResolver: () => null,
       approvalReceiptAuthority: approval.authority,
+      projectRevisionResolver: () => 2,
     })
 
     await expect(service.command('project-1', 'run-1', {

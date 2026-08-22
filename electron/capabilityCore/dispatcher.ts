@@ -105,6 +105,8 @@ export type DispatchContext = {
   }
   /** Main-process approval-receipt authority. Gate routes verify receipts here; the Run owner consumes them. */
   approvalReceiptAuthority?: ApprovalReceiptAuthority
+  /** Project-owner revision lookup. Receipt bindings never trust a revision supplied by the caller. */
+  projectRevisionResolver?: (projectId: string) => number | undefined
   /**
    * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ canvas.addNodes 预批准
    * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
@@ -391,6 +393,11 @@ function requireApprovalReceipt(
   try {
     const token = suppliedToken || authority.resolveReceiptToken(receiptId)
     const receipt = authority.verifyReceipt(token)
+    const currentProjectRevision = ctx.projectRevisionResolver?.(lease.projectId)
+    if (!Number.isInteger(currentProjectRevision)) error('receipt_invalid', 'Current project revision is unavailable')
+    if (params.projectRevision !== undefined && Number(params.projectRevision) !== currentProjectRevision) {
+      error('receipt_invalid', 'Generation approval receipt project revision does not match the current project')
+    }
     const bodyBinding: Array<[keyof HumanApprovalReceiptV1, unknown]> = [
       ['projectId', lease.projectId],
       ['immutableProjectUuid', lease.immutableProjectUuid],
@@ -399,7 +406,7 @@ function requireApprovalReceipt(
       ['gateId', params.gateId],
       ['contractHash', params.contractHash],
       ['targetHash', params.targetHash],
-      ['projectRevision', params.projectRevision],
+      ['projectRevision', currentProjectRevision],
     ]
     for (const [key, expected] of bodyBinding) {
       if (expected !== undefined && expected !== null && String(receipt[key]) !== String(expected)) {

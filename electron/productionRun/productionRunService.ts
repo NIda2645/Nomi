@@ -107,6 +107,8 @@ type ServiceDeps = {
   onEvents?: (events: RunEvent[], run: ProductionRun) => void
   /** Optional main-process receipt owner. When supplied, gate.decide must verify and consume a receipt. */
   approvalReceiptAuthority?: ApprovalReceiptAuthority
+  /** Current project document revision, resolved by the project owner rather than the command body. */
+  projectRevisionResolver?: (projectId: string) => number | undefined
 }
 
 const MEANINGFUL_EVENT_TYPES = new Set([
@@ -523,7 +525,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         return { run: current, events: [] }
       }
     }
-    const gateReceipt = approvalReceiptForGate(deps.approvalReceiptAuthority, safeProjectId, safeRunId, runCommand)
+    const gateReceipt = approvalReceiptForGate(
+      deps.approvalReceiptAuthority,
+      safeProjectId,
+      safeRunId,
+      runCommand,
+      deps.projectRevisionResolver,
+    )
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved') {
       const current = requireRun(safeProjectId, safeRunId)
       const gateId = typeof runCommand.payload.gateId === 'string' ? runCommand.payload.gateId.trim() : ''

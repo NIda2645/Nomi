@@ -40,6 +40,7 @@ export type RpcServerOptions = {
   approvalReceiptAuthority?: ApprovalReceiptAuthority
   generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  projectRevisionResolver?: (projectId: string) => number | undefined
 }
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -140,6 +141,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           origin: { host: origin },
           generationPolicy: options.generationPolicy,
           generationContext: options.generationContext,
+          projectRevisionResolver: options.projectRevisionResolver,
           projectLeaseAuthority: options.projectLeaseAuthority,
           approvalReceiptAuthority: options.approvalReceiptAuthority,
           // 审片环（W1）：GUI-开着的 RPC 路复用同一份主进程 deps（judge/抽帧/重试都在主进程跑，与 headless 同实现，
