@@ -131,7 +131,7 @@ faafc75e5bc8f4cb777961fd1a942fa022c9794a824e89b8c512093df520b7c0  docs/plan/2026
 The approved A/A/A policy is now enforced at the semantic boundary, still with
 zero provider and paid-path activity.
 
-Evidence: reviewed HEAD 15df16476b1c73cba96a490757fae72f57f6705c on
+Evidence: reviewed HEAD 22e592ce on
 codex/p0-runtime-foundation-20260822; focused lease/receipt/service suites
 passed 45 tests; full gates passed 669 files (1 skipped) and 6042 tests (1
 skipped), with 0 lint errors and 96 pre-existing warnings. Provider calls,
@@ -149,7 +149,10 @@ the same optional authority injection points.
 nomi_decide_generation_gate requires a verified, scope-bound receipt and
 rejects approved, confirm and spendConfirmed booleans as proof. The dispatcher
 only verifies; ProductionRunService consumes the receipt after the durable gate
-event, leaving replay semantics with the Run owner. New workspace manifests
+event, leaving replay semantics with the Run owner. Receipt bindings now resolve
+the current project revision through the injected project owner; an unavailable
+or stale revision fails closed rather than trusting command-supplied metadata.
+New workspace manifests
 record an immutable project UUID and generation for future selection-handle
 resolution; old manifests remain readable but are not implicitly upgraded by
 ordinary reads.
