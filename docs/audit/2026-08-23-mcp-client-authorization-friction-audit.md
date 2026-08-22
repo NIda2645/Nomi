@@ -62,3 +62,20 @@
 ## Backlog 归档
 
 本轮不扩张为全 App 审计。与本链路直接相关的条目进入 backlog：B8（一次确认与授权心智收敛），C5（连接/授权/错误文案分层）。B8 先于 P3 provider 接入，C5 与同一批实现一起收口。
+
+## 实施与体验证据（2026-08-23）
+
+本轮在隔离 worktree、零真实额度下完成了以下验证：
+
+- `mcpGenerationConfirmation`、dispatcher、lease、receipt、RPC/MCP outcome、renderer gate 等聚焦套件：107 tests passed；同一 challenge 重放只复用原结果，不重复弹窗。
+- `pnpm run test:mcp`：45 assertions passed；真实 stdio、mock vendor、一次确认后的会话复用均通过，mock vendor requests 6 次，真实 provider quota 为 0。
+- `node tests/ux/production-mcp-journey.e2e.mjs`：55 assertions passed；GUI 任务中心、等待确认、重启恢复、reconcile-only 和最终产物路径通过，fixture actual/unsettled spend 保持 0。
+- `node tests/ux/spend-elicit-app-open.walk.mjs`：22 assertions passed；不支持 elicitation 的客户端只在 Nomi 点一次，支持 elicitation 的客户端只在调用方确认一次，期间没有第二张 Nomi 卡。
+
+关键截图已由同构建实机走查并人工检查：
+
+- `tests/ux/shots/spend-elicit-app-open/02-fallback-card-shown.png`：Nomi 兜底卡只呈现项目、节点、模型和产物，动作是“确认生成”。
+- `tests/ux/shots/spend-elicit-app-open/03-during-elicit-no-card.png`：调用方确认等待期间，Nomi 不再叠第二张卡。
+- `tests/ux/shots/production-mcp/02a-shot-1-gate.png`、`03b-shot-2-gate.png`：任务中心就地显示“提交前等你确认”，用户无需理解 lease/receipt/hash。
+
+安全修正也一并固化：标准 MCP `confirm:true` 没有 challenge-bound attestation 时不会直接铸 receipt，而是沿同一个 challenge 走 GUI；因此当前真实客户端若只有标准 elicitation，会多一次“切到 Nomi”的动作，但不会出现双重确认或裸 boolean 放行。

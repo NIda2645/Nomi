@@ -1,6 +1,6 @@
 # MCP 客户端优先授权与一次确认设计
 
-> 状态：用户已确认方向，待实现前复核。本文是 `2026-08-22-nomi-unified-editor-runtime.md` 与 `2026-08-22-mcp-ai-generation-vertical-slice.md` 的用户体验补充，不建立第二套运行时方案。
+> 状态：用户已确认方向；P0 授权/体验 seam 已实现并完成零额度回归。真实 provider 接入与客户端 attestation 扩展仍是下一决策点。本文是 `2026-08-22-nomi-unified-editor-runtime.md` 与 `2026-08-22-mcp-ai-generation-vertical-slice.md` 的用户体验补充，不建立第二套运行时方案。
 >
 > 目标：在不降低项目隔离、真人审批、一次提交和崩溃恢复约束的前提下，把用户需要做的确认收敛为一次，并放在用户正在使用的 Claude Code / Codex / Cursor 等客户端里；客户端做不到时，才由 Nomi GUI 兜底。
 

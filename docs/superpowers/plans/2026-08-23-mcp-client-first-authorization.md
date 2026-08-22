@@ -97,6 +97,13 @@ Deferred:
 6. Simplicity: a real user can complete the happy path without reading protocol docs or entering internal IDs.
 7. Documentation and code remain single-owner: no second authorization store, client-specific fork, or mandatory GUI step for attested clients.
 
+## Current implementation checkpoint (2026-08-23)
+
+- Tasks 1–4 are implemented on the P0 branch: current-project bootstrap, read-only lease reuse, one shared client/GUI challenge, main-process receipt issuance, simple `nextAction` copy, and duplicate-challenge dedupe.
+- Zero-credit evidence is green: focused authorization suites (107 tests), full MCP stdio journey (45 assertions), production GUI/recovery journey (55 assertions), and the two-leg spend confirmation walk (22 assertions). The latter verifies one GUI click for clients without elicitation and one client-side prompt with no second GUI card when elicitation is available.
+- A standard MCP `confirm:true` is intentionally not treated as a receipt. Until a client supplies a challenge-bound attestation that the main process can verify, it uses the same GUI fallback. This preserves the one-click UX without creating a forged approval path.
+- The next stop is therefore not another settings or confirmation screen: it is the product/architecture decision about a real client attestation extension (if client-side confirmation is required for named clients) and, separately, the real provider/P3 submission adapter.
+
 ## Rollback
 
 The change is behind the existing generation feature flag and only changes the semantic P0/P3 path. If a client registry or bootstrap resolver is unavailable, return the existing typed `human_approval_required`/`not_ready` response and keep legacy routes unchanged. Do not silently fall back to raw booleans or the legacy provider driver.
