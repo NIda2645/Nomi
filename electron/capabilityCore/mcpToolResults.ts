@@ -57,6 +57,18 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
   },
 }
 
+/** User projection deliberately has only four actions; protocol codes stay in structuredContent for machines. */
+const USER_ACTION_HINT: Record<string, { action: string; zh: string; en: string }> = {
+  human_approval_required: { action: 'in_nomi', zh: '请在 Nomi 确认这次生成。', en: 'Confirm this generation in Nomi.' },
+  receipt_invalid: { action: 'in_nomi', zh: '这次确认已失效，请在 Nomi 重新确认。', en: 'This confirmation is no longer valid; confirm again in Nomi.' },
+  receipt_expired: { action: 'in_nomi', zh: '确认已过期，请在 Nomi 重新确认。', en: 'The confirmation expired; confirm again in Nomi.' },
+  lease_required: { action: 'reselect_project', zh: '请重新选择当前项目。', en: 'Select the current project again.' },
+  lease_invalid: { action: 'reselect_project', zh: '项目连接已失效，请重新选择当前项目。', en: 'The project connection expired; select the current project again.' },
+  project_scope_changed: { action: 'reselect_project', zh: '项目范围已变化，请重新选择项目。', en: 'The project scope changed; select the project again.' },
+  lease_expired: { action: 'reselect_project', zh: '项目连接已过期，请重新选择当前项目。', en: 'The project connection expired; select the current project again.' },
+  lease_revoked: { action: 'reselect_project', zh: '项目连接已撤销，请重新选择当前项目。', en: 'The project connection was revoked; select the current project again.' },
+}
+
 function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
@@ -468,6 +480,14 @@ export function buildToolOutcome(
         `  ${shotTarget ? `${shotTarget}；` : ''}批准前不会调用供应商，也不会产生这镜的费用。请回 Nomi 决定。`,
         `  ${shotTarget ? `${shotTarget}; ` : ''}no provider call or charge occurs before approval. Decide in Nomi.`),
     ] : []
+    const jobsArr = Array.isArray(value.jobs) ? (value.jobs as Array<Record<string, unknown>>) : []
+    const unknownJobs = jobsArr.filter((job) => str(job.status) === 'submission_unknown')
+    const reconciliationLines = unknownJobs.length ? [
+      L(ctx,
+        `有 ${unknownJobs.length} 个任务的供应商状态还没核实；Nomi 不会自动重提，正在等待对账。`,
+        `${unknownJobs.length} job(s) have an unverified provider state; Nomi will not resubmit automatically and is waiting for reconciliation.`,
+      ),
+    ] : []
     // B3：状态转述带当前信任档位（非默认时才占一行，避免默认档噪音）。
     const trustLevel = str(value.trustLevel) || 'key_confirm'
     const text = [
@@ -478,6 +498,7 @@ export function buildToolOutcome(
       ...candidateLines,
       ...sampleLines,
       ...shotLines,
+      ...reconciliationLines,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
@@ -489,7 +510,9 @@ export function buildToolOutcome(
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
         ...(sampleGateId ? { sampleGateId } : {}),
         ...(shotGate ? { shotGateId: shotGate.gateId, shotJobId: shotGate.jobId } : {}),
-        nextActions: direction && direction.candidates.length
+        nextActions: unknownJobs.length
+          ? ['wait_reconciliation']
+          : direction && direction.candidates.length
           ? ['decide_direction']
           : sampleGateId
             ? ['review_sample']
@@ -762,7 +785,11 @@ export function buildToolErrorOutcome(
   const structuredCode = typeof errorRecord.code === 'string'
     ? errorRecord.code
     : typeof errorRecord.errorCode === 'string' ? errorRecord.errorCode : null
-  const policyCode = new Set(['legacy_path_forbidden', 'feature_disabled', 'phase_not_ready', 'not_ready'])
+  const policyCode = new Set([
+    'legacy_path_forbidden', 'feature_disabled', 'phase_not_ready', 'not_ready',
+    'human_approval_required', 'receipt_invalid', 'receipt_expired',
+    'lease_required', 'lease_invalid', 'project_scope_changed', 'lease_expired', 'lease_revoked',
+  ])
   const code = structuredCode && policyCode.has(structuredCode)
     ? structuredCode
     : Object.keys(ERROR_HINT).find((key) => message.includes(key)) || null
@@ -774,17 +801,23 @@ export function buildToolErrorOutcome(
       }
     : {}
   const hint = code ? ERROR_HINT[code] : null
+  const userAction = code ? USER_ACTION_HINT[code] : null
   const recover = hint ? hint.recover.map((r) => L(ctx, r.zh, r.en)) : []
   const text = [
-    `✗ ${hint ? L(ctx, hint.zh, hint.en) : message}`,
-    code ? `${L(ctx, '诊断', 'diagnostic')} ${code}` : null,
-    ...recover.map((line, index) => `${index + 1}. ${line}`),
+    `✗ ${userAction ? L(ctx, userAction.zh, userAction.en) : hint ? L(ctx, hint.zh, hint.en) : message}`,
+    userAction ? null : code ? `${L(ctx, '诊断', 'diagnostic')} ${code}` : null,
+    ...(!userAction ? recover.map((line, index) => `${index + 1}. ${line}`) : []),
     !hint && toolName === 'nomi_generate'
       ? L(ctx, '已完成的内容安全；确认模型服务与 API Key 后可重试。', 'Finished work is safe; verify the model service and API key, then retry.')
       : null,
   ].filter(Boolean).join('\n')
   return {
     text,
-    outcome: { kind: 'error', tool: toolName, errorCode: code, message, recoveryActions: recover, ...policyDetails },
+    outcome: {
+      kind: 'error', tool: toolName, errorCode: code, message,
+      recoveryActions: userAction ? [L(ctx, userAction.zh, userAction.en)] : recover,
+      ...(userAction ? { nextActions: [userAction.action] } : {}),
+      ...policyDetails,
+    },
   }
 }
