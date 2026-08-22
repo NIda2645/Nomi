@@ -54,7 +54,7 @@ const LEGACY_GENERATION_SEMANTIC_FIELDS = new Set([
   'immutableProjectUuid', 'projectGeneration', 'serverNonce', 'handoff', 'actionNonce',
   'projectSelectionHandle', 'targetHash', 'reservationId', 'executionBinding', 'requestFingerprint',
   'providerIdempotencyKey', 'runtimeEnvelopeRef', 'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState',
-  'providerTaskId', 'sessionId', 'nonce',
+  'providerTaskId', 'sessionId', 'nonce', 'baseRevision', 'projectRevision', 'attempt', 'runtimeEnvelope',
 ])
 
 export class LegacyPathForbiddenError extends Error {
@@ -67,8 +67,18 @@ export class LegacyPathForbiddenError extends Error {
 }
 
 /** Pure renderer-side firewall for the direct legacy generation bridge. */
+function hasLegacyGenerationBinding(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (!value || typeof value !== 'object') return false
+  if (seen.has(value)) return false
+  seen.add(value)
+  if (Array.isArray(value)) return value.some((item) => hasLegacyGenerationBinding(item, seen))
+  return Object.entries(value as Record<string, unknown>).some(([key, child]) => (
+    LEGACY_GENERATION_SEMANTIC_FIELDS.has(key) || hasLegacyGenerationBinding(child, seen)
+  ))
+}
+
 export function assertLegacyGenerationPayload(payload: Record<string, unknown>): void {
-  if (!Object.keys(payload).some((key) => LEGACY_GENERATION_SEMANTIC_FIELDS.has(key))) return
+  if (!hasLegacyGenerationBinding(payload)) return
   throw new LegacyPathForbiddenError()
 }
 

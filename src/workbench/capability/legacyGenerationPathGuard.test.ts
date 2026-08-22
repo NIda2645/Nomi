@@ -13,6 +13,7 @@ describe('renderer legacy generation path firewall', () => {
     'leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId',
     'executionBinding', 'requestFingerprint', 'providerIdempotencyKey', 'runtimeEnvelopeRef',
     'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState', 'providerTaskId', 'sessionId', 'nonce',
+    'baseRevision', 'projectRevision', 'attempt', 'runtimeEnvelope',
   ])
     ('rejects the semantic binding %s with a stable error code', (field) => {
       try {
@@ -23,6 +24,11 @@ describe('renderer legacy generation path firewall', () => {
         expect(error).toMatchObject({ code: 'legacy_path_forbidden' })
       }
     })
+
+  it('rejects a nested semantic binding object', () => {
+    expect(() => assertLegacyGenerationPayload({ nodeId: 'node-1', params: { runtime: { runtimeEnvelope: {} } } }))
+      .toThrow(LegacyPathForbiddenError)
+  })
 
   it('runs before production.generate-node can mint a spend grant', async () => {
     await expect(handleCapabilityApply('production.generate-node', {

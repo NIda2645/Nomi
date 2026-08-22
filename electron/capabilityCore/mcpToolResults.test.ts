@@ -304,7 +304,9 @@ describe('buildToolErrorOutcome (A6 错误契约)', () => {
       code: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
     })
     const { outcome } = buildToolErrorOutcome('nomi_start_generation', error)
-    expect(outcome).toMatchObject({ kind: 'error', errorCode: 'phase_not_ready' })
+    expect(outcome).toMatchObject({
+      kind: 'error', errorCode: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+    })
   })
 })
 

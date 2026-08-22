@@ -228,7 +228,7 @@ const SEMANTIC_BINDING_FIELDS = new Set([
   'immutableProjectUuid', 'projectGeneration', 'serverNonce', 'handoff', 'actionNonce',
   'projectSelectionHandle', 'targetHash', 'reservationId', 'executionBinding', 'requestFingerprint',
   'providerIdempotencyKey', 'runtimeEnvelopeRef', 'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState',
-  'providerTaskId', 'sessionId', 'nonce',
+  'providerTaskId', 'sessionId', 'nonce', 'baseRevision', 'projectRevision', 'attempt', 'runtimeEnvelope',
 ])
 
 const LEGACY_ROUTE_CAPABILITY: Readonly<Record<string, McpGenerationCapability>> = Object.freeze({
@@ -265,12 +265,14 @@ function unavailableSemanticRoute(policy: McpGenerationPolicy, capability: McpGe
   }, `generation.single-shot ${capability} is not ready`)
 }
 
-function hasSemanticBinding(params: Record<string, unknown>): boolean {
-  const keys = Object.keys(params)
-  if (keys.some((key) => SEMANTIC_BINDING_FIELDS.has(key))) return true
-  // Bare projectId/runId/gateId remain legacy identifiers. A P3 binding is
-  // recognized only by one of the sealed marker fields above.
-  return false
+function hasSemanticBinding(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (!value || typeof value !== 'object') return false
+  if (seen.has(value)) return false
+  seen.add(value)
+  if (Array.isArray(value)) return value.some((item) => hasSemanticBinding(item, seen))
+  return Object.entries(value as Record<string, unknown>).some(([key, child]) => (
+    SEMANTIC_BINDING_FIELDS.has(key) || hasSemanticBinding(child, seen)
+  ))
 }
 
 function guardLegacyRoute(policy: McpGenerationPolicy, route: string, params: Record<string, unknown>): void {

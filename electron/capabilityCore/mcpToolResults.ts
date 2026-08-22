@@ -766,6 +766,13 @@ export function buildToolErrorOutcome(
   const code = structuredCode && policyCode.has(structuredCode)
     ? structuredCode
     : Object.keys(ERROR_HINT).find((key) => message.includes(key)) || null
+  const policyDetails = structuredCode && policyCode.has(structuredCode)
+    ? {
+        ...(typeof errorRecord.nextAction === 'string' ? { nextAction: errorRecord.nextAction } : {}),
+        ...(typeof errorRecord.phase === 'string' ? { phase: errorRecord.phase } : {}),
+        ...(typeof errorRecord.capability === 'string' ? { capability: errorRecord.capability } : {}),
+      }
+    : {}
   const hint = code ? ERROR_HINT[code] : null
   const recover = hint ? hint.recover.map((r) => L(ctx, r.zh, r.en)) : []
   const text = [
@@ -778,6 +785,6 @@ export function buildToolErrorOutcome(
   ].filter(Boolean).join('\n')
   return {
     text,
-    outcome: { kind: 'error', tool: toolName, errorCode: code, message, recoveryActions: recover },
+    outcome: { kind: 'error', tool: toolName, errorCode: code, message, recoveryActions: recover, ...policyDetails },
   }
 }
