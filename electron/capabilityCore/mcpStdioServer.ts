@@ -30,12 +30,16 @@ import {
 import type { ProjectLeaseAuthority } from './projectLease'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import type { McpGenerationPolicy } from './mcpGenerationPolicy'
+import type { DispatchContext } from './dispatcher'
 
 const productionRuns = getProductionRunService()
 
 export type McpStdioServerOptions = {
   projectLeaseAuthority?: ProjectLeaseAuthority
+  resolveCurrentProject?: DispatchContext['resolveCurrentProject']
   approvalReceiptAuthority?: ApprovalReceiptAuthority
+  requestGenerationGate?: DispatchContext['requestGenerationGate']
+  authorizeGeneration?: DispatchContext['authorizeGeneration']
   generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   projectRevisionResolver?: (projectId: string) => number | undefined

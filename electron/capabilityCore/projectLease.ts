@@ -269,6 +269,52 @@ export function createProjectLeaseAuthority(deps: ProjectLeaseAuthorityDeps) {
     return { token, lease };
   }
 
+  /**
+   * Create a short-lived scope upgrade for the same verified project/session.
+   * The caller must have already verified the human approval that permits the
+   * expansion; this authority only preserves the lease binding and refuses
+   * shrinking or rebinding it.
+   */
+  function upgradeLeaseScope(token: string, scopeSet: string[]): { token: string; lease: ProjectLeaseV1 } {
+    const current = verifyLease(token);
+    const normalized = normalizeScope(scopeSet);
+    if (current.scopeSet.some((scope) => !normalized.includes(scope))) {
+      throw new ProjectLeaseScopeError("Project lease scope cannot be reduced");
+    }
+    if (stableJson(current.scopeSet) === stableJson(normalized)) return { token, lease: current };
+    const issuedAt = now();
+    const withoutMac: Omit<ProjectLeaseV1, "mac"> = {
+      version: PROJECT_LEASE_VERSION,
+      keyId,
+      algorithm: PROJECT_LEASE_ALGORITHM,
+      issuer: "nomi-main",
+      projectId: current.projectId,
+      immutableProjectUuid: current.immutableProjectUuid,
+      projectGeneration: current.projectGeneration,
+      canonicalRootDigest: current.canonicalRootDigest,
+      manifestDigest: current.manifestDigest,
+      audience: PROJECT_LEASE_AUDIENCE,
+      leasePrincipal: current.leasePrincipal,
+      sessionId: current.sessionId,
+      issuedAt,
+      expiresAt: expiresAt(issuedAt, undefined, current.expiresAt),
+      nonce: randomId(),
+      scopeSet: normalized,
+      scopeHash: digest(normalized),
+      revocationEpoch: current.revocationEpoch,
+      connectionNonce: current.connectionNonce,
+    };
+    const lease: ProjectLeaseV1 = { ...withoutMac, mac: sign(withoutMac, deps.macKey) };
+    const upgradedToken = encode(lease);
+    deps.store.recordIssued({
+      tokenHash: digest(upgradedToken),
+      projectId: lease.projectId,
+      immutableProjectUuid: lease.immutableProjectUuid,
+      projectGeneration: lease.projectGeneration,
+    });
+    return { token: upgradedToken, lease };
+  }
+
   function verifyLease(token: string, expected: ProjectLeaseExpectation = {}): ProjectLeaseV1 {
     const lease = verifySigned<ProjectLeaseV1>(token, "lease");
     checkExpiry(lease, now());
@@ -297,7 +343,7 @@ export function createProjectLeaseAuthority(deps: ProjectLeaseAuthorityDeps) {
     void lease;
   }
 
-  return { issueSelectionHandle, verifySelectionHandle, issueLease, verifyLease, revoke };
+  return { issueSelectionHandle, verifySelectionHandle, issueLease, upgradeLeaseScope, verifyLease, revoke };
 }
 
 export type ProjectLeaseAuthority = ReturnType<typeof createProjectLeaseAuthority>;

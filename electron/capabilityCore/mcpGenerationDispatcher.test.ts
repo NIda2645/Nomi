@@ -229,6 +229,88 @@ describe('generation.single-shot dispatcher policy boundary', () => {
       .rejects.toMatchObject({ httpStatus: 400 })
   })
 
+  it('opens a read-only session from a registered client current-project bootstrap without trusting project fields', async () => {
+    const authority = makeAuthority()
+    const resolveCurrentProject = vi.fn((request: { client: string; clientSessionNonce: string }) => {
+      expect(request).toEqual({ client: 'codex', clientSessionNonce: 'client-session-1' })
+      return {
+        projectId: 'project-1',
+        immutableProjectUuid: 'immutable-project-uuid-1',
+        projectGeneration: 1,
+        canonicalRootDigest: 'root-digest-1',
+        manifestDigest: 'manifest-digest-1',
+        revocationEpoch: 0,
+        leasePrincipal: 'mcp:codex',
+        sessionId: 'session-1',
+        connectionNonce: 'connection-1',
+        serverNonce: 'server-nonce-1',
+      }
+    })
+    const { ctx } = context({
+      generationPolicy: policy({ enabled: true, p0Passed: true, p2Passed: true }),
+      projectLeaseAuthority: authority,
+      resolveCurrentProject,
+      origin: { host: 'codex' as const },
+    })
+
+    const opened = await dispatch('nomi_session_open', {
+      bootstrap: { mode: 'current_project', clientSessionNonce: 'client-session-1' },
+    }, ctx as never)
+
+    expect(opened).toMatchObject({ projectId: 'project-1', sessionId: 'session-1', serverNonce: 'server-nonce-1' })
+    const projection = opened as { leaseHandle: string }
+    expect(authority.verifyLease(projection.leaseHandle)).toMatchObject({
+      projectId: 'project-1',
+      scopeSet: ['context:read'],
+    })
+    expect(resolveCurrentProject).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects current-project bootstrap from an unregistered origin before resolving a project', async () => {
+    const resolveCurrentProject = vi.fn()
+    const { ctx } = context({
+      generationPolicy: policy({ enabled: true, p0Passed: true, p2Passed: true }),
+      projectLeaseAuthority: makeAuthority(),
+      resolveCurrentProject,
+      origin: { host: 'external' as const },
+    })
+
+    await expect(dispatch('nomi_session_open', {
+      bootstrap: { mode: 'current_project', clientSessionNonce: 'client-session-1' },
+    }, ctx as never)).rejects.toMatchObject({ code: 'lease_required', capability: 'context' })
+    expect(resolveCurrentProject).not.toHaveBeenCalled()
+  })
+
+  it('rejects bootstrap requests that try to select a path or expand the read-only scope', async () => {
+    const resolveCurrentProject = vi.fn(() => ({
+      projectId: 'project-1',
+      immutableProjectUuid: 'immutable-project-uuid-1',
+      projectGeneration: 1,
+      canonicalRootDigest: 'root-digest-1',
+      manifestDigest: 'manifest-digest-1',
+      revocationEpoch: 0,
+      leasePrincipal: 'mcp:codex',
+      sessionId: 'session-1',
+      connectionNonce: 'connection-1',
+      serverNonce: 'server-nonce-1',
+    }))
+    const { ctx } = context({
+      generationPolicy: policy({ enabled: true, p0Passed: true, p2Passed: true }),
+      projectLeaseAuthority: makeAuthority(),
+      resolveCurrentProject,
+      origin: { host: 'codex' as const },
+    })
+
+    await expect(dispatch('nomi_session_open', {
+      bootstrap: { mode: 'current_project', clientSessionNonce: 'client-session-1', scopeSet: ['generation:submit'] },
+    }, ctx as never)).rejects.toMatchObject({ httpStatus: 400 })
+    await expect(dispatch('nomi_session_open', {
+      bootstrap: { mode: 'current_project', clientSessionNonce: 'client-session-1' },
+      path: '/tmp/foreign-project',
+    }, ctx as never)).rejects.toMatchObject({ httpStatus: 400 })
+    expect(resolveCurrentProject).not.toHaveBeenCalled()
+  })
+
   it('accepts only a verified project lease before invoking semantic context/read', async () => {
     const generationContext = vi.fn(async (params: Record<string, unknown>) => ({ params, phase: 'e0_zero_credit' }))
     const liveAuthority = makeAuthority()
@@ -278,6 +360,63 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     })
     // Verification is read-only at this boundary; the ProductionRun gate owner consumes the receipt.
     expect(approval.authority.verifyReceipt(approval.token).receiptId).toBe(approval.receiptId)
+  })
+
+  it('passes one verified receipt and lease to the generation authorization owner without invoking a provider', async () => {
+    const leaseAuthority = makeAuthority()
+    const leaseHandle = makeLease(leaseAuthority, 'project-1', ['generation:gate'])
+    const approval = makeApprovalReceipt()
+    const authorizeGeneration = vi.fn(async (input: { lease: unknown; receipt: { receiptId: string }; params: Record<string, unknown> }) => ({
+      status: 'authorization_committed',
+      receiptId: input.receipt.receiptId,
+      projectId: input.params.projectId,
+    }))
+    const { ctx } = context({
+      generationPolicy: policy({ enabled: true, p0Passed: true, p2Passed: true, p3Passed: true }),
+      projectLeaseAuthority: leaseAuthority,
+      approvalReceiptAuthority: approval.authority,
+      projectRevisionResolver: () => 1,
+      authorizeGeneration,
+    })
+
+    await expect(dispatch('nomi_decide_generation_gate', {
+      projectId: 'project-1', leaseHandle, runId: 'run-1', gateId: 'gate-1',
+      contractHash: 'contract-1', receiptId: approval.receiptId,
+    }, ctx as never)).resolves.toEqual({
+      status: 'authorization_committed',
+      receiptId: approval.receiptId,
+      projectId: 'project-1',
+    })
+    expect(authorizeGeneration).toHaveBeenCalledTimes(1)
+    expect(ctx.runTask).not.toHaveBeenCalled()
+    expect(ctx.makeGateway).not.toHaveBeenCalled()
+  })
+
+  it('returns one server-owned generation challenge projection before any provider or spend call', async () => {
+    const leaseAuthority = makeAuthority()
+    const leaseHandle = makeLease(leaseAuthority, 'project-1', ['generation:gate'])
+    const requestGenerationGate = vi.fn(async (input: { lease: { projectId: string }; params: Record<string, unknown> }) => ({
+      challengeId: 'challenge-1',
+      confirmationText: '允许 Nomi 在当前项目使用模型 X，最多花费 ¥5，生成这一镜吗？',
+      projectId: input.lease.projectId,
+      model: input.params.model,
+      maximumCost: 5,
+    }))
+    const { ctx } = context({
+      generationPolicy: policy({ enabled: true, p0Passed: true, p2Passed: true, p3Passed: true }),
+      projectLeaseAuthority: leaseAuthority,
+      requestGenerationGate,
+    })
+
+    await expect(dispatch('nomi_request_generation_gate', {
+      projectId: 'project-1', leaseHandle, model: 'model-x', runId: 'run-1', contractHash: 'contract-1',
+    }, ctx as never)).resolves.toMatchObject({
+      challengeId: 'challenge-1',
+      confirmationText: expect.stringContaining('最多花费'),
+    })
+    expect(requestGenerationGate).toHaveBeenCalledTimes(1)
+    expect(ctx.runTask).not.toHaveBeenCalled()
+    expect(ctx.makeGateway).not.toHaveBeenCalled()
   })
 
   it('returns not_ready for context/read when no handler exists', async () => {

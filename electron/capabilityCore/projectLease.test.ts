@@ -98,4 +98,32 @@ describe("ProjectLeaseAuthority", () => {
     expect(leaseA.lease.scopeHash).toBe(leaseB.lease.scopeHash);
     expect(() => authority.verifyLease(leaseA.token, { projectId: "project-forged", immutableProjectUuid: "uuid-1" })).toThrow(ProjectLeaseScopeError);
   });
+
+  it("upgrades only the current lease scope, preserves its project/session binding, and caps expiry", () => {
+    const { authority } = makeAuthority();
+    const handle = authority.issueSelectionHandle({ ...selection, scopeSet: ["context:read"] });
+    const lease = authority.issueLease(handle.token, {
+      projectId: "project-1",
+      leasePrincipal: "mcp:codex",
+      sessionId: "session-1",
+      connectionNonce: "connection-1",
+      ttlMs: 60_000,
+    });
+
+    const upgraded = authority.upgradeLeaseScope(lease.token, ["context:read", "generation:gate"]);
+    expect(upgraded.lease).toMatchObject({
+      projectId: "project-1",
+      immutableProjectUuid: "uuid-1",
+      projectGeneration: 3,
+      sessionId: "session-1",
+      connectionNonce: "connection-1",
+      scopeSet: ["context:read", "generation:gate"],
+    });
+    expect(Date.parse(upgraded.lease.expiresAt)).toBeLessThanOrEqual(Date.parse(lease.lease.expiresAt));
+    expect(authority.verifyLease(upgraded.token, { scope: "generation:gate", sessionId: "session-1" })).toMatchObject({
+      projectId: "project-1",
+      scopeSet: ["context:read", "generation:gate"],
+    });
+    expect(() => authority.upgradeLeaseScope(lease.token, ["generation:submit"])).toThrow(ProjectLeaseScopeError);
+  });
 });

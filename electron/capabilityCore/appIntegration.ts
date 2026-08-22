@@ -12,22 +12,90 @@
 //
 // 这里只做接线，不碰 main.ts 的其它职责（保持 main.ts 精简、单一关注点）。
 import { app } from 'electron'
+import crypto from 'node:crypto'
+import path from 'node:path'
 import { startRpcServer, type RpcServerHandle } from './rpcServer'
-import { ensureToken } from './security'
+import { capabilityCoreDir, ensureCapabilitySigningKey, ensureToken } from './security'
 import { clearInstanceAdvertisement, writeInstanceAdvertisement } from './lockfile'
 import { HEARTBEAT_INTERVAL_MS, type InstanceAdvertisement } from './instanceAdvert'
-import { getProjectLocationState } from '../runtimePaths'
+import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
-import type { ProjectLeaseAuthority } from './projectLease'
-import type { ApprovalReceiptAuthority } from './approvalReceipt'
+import { createProjectLeaseAuthority, type ProjectLeaseAuthority } from './projectLease'
+import { createProjectLeaseStore } from './projectLeaseStore'
+import { createApprovalReceiptAuthority, type ApprovalReceiptAuthority } from './approvalReceipt'
+import { createProductionRunLock } from '../productionRun/productionRunLock'
+import { readWorkspaceProject } from '../workspace/workspaceRepository'
+import { createCurrentProjectResolver, deriveProjectIdentityDigests } from './currentProjectResolver'
+import type { ProjectSelectionHandleV1 } from './projectLease'
 import type { McpGenerationPolicy } from './mcpGenerationPolicy'
+import type { DispatchContext } from './dispatcher'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
 // 心跳定时器 + 当前广告所在库（退出时按同一命名空间文件名清理）。
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let advertisedLibrary: { projectsRoot: string; isDefault: boolean } | null = null
+
+function createDefaultAuthorities(): Pick<
+  DispatchContext,
+  'projectLeaseAuthority' | 'resolveProjectSelection' | 'resolveCurrentProject' | 'approvalReceiptAuthority' | 'projectRevisionResolver'
+> {
+  const authorityDir = capabilityCoreDir()
+  const sharedLock = createProductionRunLock({
+    filePath: path.join(authorityDir, 'semantic-authorities.lock'),
+    epochPath: path.join(authorityDir, 'semantic-authorities.epoch'),
+    ownerId: `capability-core-${process.pid}`,
+  })
+  const leaseKey = ensureCapabilitySigningKey('project-lease')
+  const leaseAuthority = createProjectLeaseAuthority({
+    macKey: leaseKey,
+    keyId: 'project-lease-v1',
+    store: createProjectLeaseStore({
+      filePath: path.join(authorityDir, 'project-leases.json'),
+      macKey: ensureCapabilitySigningKey('project-lease-store'),
+      keyId: 'project-lease-store-v1',
+      lock: sharedLock,
+    }),
+  })
+  const receiptAuthority = createApprovalReceiptAuthority({
+    filePath: path.join(authorityDir, 'approval-receipts.json'),
+    macKey: ensureCapabilitySigningKey('approval-receipt'),
+    storeMacKey: ensureCapabilitySigningKey('approval-receipt-store'),
+    keyId: 'approval-receipt-v1',
+    lock: sharedLock,
+  })
+  const resolver = createCurrentProjectResolver({
+    getOpenProjectId: () => openProjectId,
+    readProject: (projectId) => readWorkspaceProject(projectId, getWorkspaceRepositoryDeps()),
+  })
+  const resolveProjectSelection = (selection: ProjectSelectionHandleV1) => {
+    const projectId = openProjectId.trim()
+    const record = projectId ? readWorkspaceProject(projectId, getWorkspaceRepositoryDeps()) : null
+    if (!record || record.id !== projectId || record.immutableProjectUuid !== selection.immutableProjectUuid
+      || record.projectGeneration !== selection.projectGeneration) {
+      throw new Error('Project selection handle does not match the open project')
+    }
+    const digests = deriveProjectIdentityDigests(record)
+    if (digests.canonicalRootDigest !== selection.canonicalRootDigest || digests.manifestDigest !== selection.manifestDigest) {
+      throw new Error('Project selection handle is stale for the open project')
+    }
+    return {
+      projectId,
+      leasePrincipal: 'nomi-gui',
+      sessionId: `nomi-gui:${selection.sessionNonce}`,
+      connectionNonce: selection.sessionNonce,
+      serverNonce: crypto.randomUUID(),
+    }
+  }
+  return {
+    projectLeaseAuthority: leaseAuthority,
+    resolveProjectSelection,
+    resolveCurrentProject: resolver,
+    approvalReceiptAuthority: receiptAuthority,
+    projectRevisionResolver: (projectId) => readWorkspaceProject(projectId, getWorkspaceRepositoryDeps())?.revision,
+  }
+}
 
 /** renderer 上报当前打开的项目（打开/切换=id，关闭=''）。A/B 守卫据此拒绝直写打开中的工程。 */
 export function setOpenProjectId(projectId: string): void {
@@ -62,7 +130,10 @@ export async function startCapabilityCore(
   fetchTaskResult: FetchTaskResultFn,
   authorities: {
     projectLeaseAuthority?: ProjectLeaseAuthority
+    resolveCurrentProject?: DispatchContext['resolveCurrentProject']
     approvalReceiptAuthority?: ApprovalReceiptAuthority
+    requestGenerationGate?: DispatchContext['requestGenerationGate']
+    authorizeGeneration?: DispatchContext['authorizeGeneration']
     generationPolicy?: McpGenerationPolicy
     generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
     projectRevisionResolver?: (projectId: string) => number | undefined
@@ -70,11 +141,13 @@ export async function startCapabilityCore(
 ): Promise<void> {
   try {
     const token = ensureToken()
+    const defaults = createDefaultAuthorities()
     handle = await startRpcServer({
       runTask,
       fetchTaskResult,
       isProjectOpen: (id) => Boolean(openProjectId) && id === openProjectId,
       productionRuns: getProductionRunService(),
+      ...defaults,
       ...authorities,
     })
     const location = getProjectLocationState()

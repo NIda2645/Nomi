@@ -37,7 +37,10 @@ export type RpcServerOptions = {
   productionRuns?: ReturnType<typeof getProductionRunService>
   /** Optional main-process lease/receipt authorities. Omitted callers remain fail-closed for semantic routes. */
   projectLeaseAuthority?: ProjectLeaseAuthority
+  resolveCurrentProject?: import('./dispatcher').DispatchContext['resolveCurrentProject']
   approvalReceiptAuthority?: ApprovalReceiptAuthority
+  requestGenerationGate?: import('./dispatcher').DispatchContext['requestGenerationGate']
+  authorizeGeneration?: import('./dispatcher').DispatchContext['authorizeGeneration']
   generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   projectRevisionResolver?: (projectId: string) => number | undefined
@@ -143,7 +146,10 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           generationContext: options.generationContext,
           projectRevisionResolver: options.projectRevisionResolver,
           projectLeaseAuthority: options.projectLeaseAuthority,
+          resolveCurrentProject: options.resolveCurrentProject,
           approvalReceiptAuthority: options.approvalReceiptAuthority,
+          requestGenerationGate: options.requestGenerationGate,
+          authorizeGeneration: options.authorizeGeneration,
           // 审片环（W1）：GUI-开着的 RPC 路复用同一份主进程 deps（judge/抽帧/重试都在主进程跑，与 headless 同实现，
           // 无并行版 P1）。生成在主进程 core、判分也在主进程，路径①两条传输吃同一 makeShotVerifyDeps。
           makeVerifyDeps: (verifyCtx) => makeShotVerifyDeps(verifyCtx),
