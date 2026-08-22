@@ -445,6 +445,8 @@ function requireApprovalReceipt(
       ['contractHash', params.contractHash],
       ['targetHash', params.targetHash],
       ['projectRevision', currentProjectRevision],
+      ['costScope', params.costScope],
+      ['pricingSnapshotHash', params.pricingSnapshotHash],
     ]
     for (const [key, expected] of bodyBinding) {
       if (expected !== undefined && expected !== null && String(receipt[key]) !== String(expected)) {
@@ -627,7 +629,22 @@ async function dispatchSemanticStub(
     })
     const receipt = requireApprovalReceipt(leased.params, leased.lease, route.capability, ctx, policy)
     if (ctx.authorizeGeneration) {
-      return ctx.authorizeGeneration({ params: leased.params, lease: leased.lease, receipt })
+      const leaseToken = typeof leased.params.leaseHandle === 'string' ? leased.params.leaseHandle : ''
+      if (!leaseToken || !ctx.projectLeaseAuthority) throw policyError({
+        code: 'lease_required',
+        nextAction: policy.snapshot().nextAction,
+        phase: policy.snapshot().phase,
+        capability: route.capability,
+      })
+      const upgraded = ctx.projectLeaseAuthority.upgradeLeaseScope(leaseToken, [
+        ...leased.lease.scopeSet,
+        'generation:submit',
+      ])
+      return ctx.authorizeGeneration({
+        params: { ...leased.params, leaseHandle: upgraded.token },
+        lease: upgraded.lease,
+        receipt,
+      })
     }
   }
   if (route.contextRead && typeof ctx.generationContext === 'function') return ctx.generationContext(leased.params)

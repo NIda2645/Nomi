@@ -358,6 +358,13 @@ describe('generation.single-shot dispatcher policy boundary', () => {
       capability: 'gate_decide',
       phase: 'e1_paid',
     })
+    await expect(dispatch('nomi_decide_generation_gate', {
+      projectId: 'project-1', leaseHandle, runId: 'run-1', gateId: 'gate-1',
+      contractHash: 'contract-1', pricingSnapshotHash: 'price-new', receiptId: approval.receiptId,
+    }, ctx as never)).rejects.toMatchObject({
+      code: 'receipt_invalid',
+      capability: 'gate_decide',
+    })
     // Verification is read-only at this boundary; the ProductionRun gate owner consumes the receipt.
     expect(approval.authority.verifyReceipt(approval.token).receiptId).toBe(approval.receiptId)
   })
@@ -388,6 +395,13 @@ describe('generation.single-shot dispatcher policy boundary', () => {
       projectId: 'project-1',
     })
     expect(authorizeGeneration).toHaveBeenCalledTimes(1)
+    expect(authorizeGeneration.mock.calls[0]?.[0].lease).toMatchObject({
+      projectId: 'project-1',
+      scopeSet: expect.arrayContaining(['generation:gate', 'generation:submit']),
+    })
+    expect(leaseAuthority.verifyLease(authorizeGeneration.mock.calls[0]?.[0].params.leaseHandle)).toMatchObject({
+      scopeSet: expect.arrayContaining(['generation:submit']),
+    })
     expect(ctx.runTask).not.toHaveBeenCalled()
     expect(ctx.makeGateway).not.toHaveBeenCalled()
   })
