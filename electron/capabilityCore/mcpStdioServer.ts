@@ -27,8 +27,18 @@ import {
   resolveMcpOrigin,
   type CapabilityOriginHost,
 } from './security'
+import type { ProjectLeaseAuthority } from './projectLease'
+import type { ApprovalReceiptAuthority } from './approvalReceipt'
+import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 
 const productionRuns = getProductionRunService()
+
+export type McpStdioServerOptions = {
+  projectLeaseAuthority?: ProjectLeaseAuthority
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
+  generationPolicy?: McpGenerationPolicy
+  generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+}
 
 /**
  * 本进程（in-Electron stdio）服务的库 → 传给 readLiveInstance 读**对应命名空间**的广告文件。与 appIntegration
@@ -107,7 +117,12 @@ async function callViaRpc(
 }
 
 /** 进程内调能力核：GUI 开着→转发 RPC（实时 + 应用内确认卡）；关着→进程内 dispatch（磁盘网关）。 */
-async function invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown> {
+async function invoke(
+  method: string,
+  params: Record<string, unknown>,
+  options: McpInvokeOptions | undefined,
+  authorities: McpStdioServerOptions,
+): Promise<unknown> {
   const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
   const instance = readLiveInstance(currentLibrary())
   // GUI 开着 → RPC 转发，rpcServer 侧已做生成结果富化（缩略图/签名链），此处不再重复富化。
@@ -121,6 +136,7 @@ async function invoke(method: string, params: Record<string, unknown>, options?:
     makeGateway,
     productionRuns,
     origin: { host: origin },
+    ...authorities,
     ...(options?.planConfirmed ? { planConfirmed: true } : {}),
     // 审片环（W1）：headless 路的真实 deps——judge 走 runTask 文本路（不花生成额度）、抽帧走主进程 ffmpeg、
     // 重试复用首发 grantId+同 nodeId 直发。judge 模型无可用 text 模型时 visionAvailable=false → 整体跳过。
@@ -129,7 +145,7 @@ async function invoke(method: string, params: Record<string, unknown>, options?:
 }
 
 /** 启动 stdio JSON-RPC server。main.ts 在 NOMI_MCP_STDIO 模式的 app.whenReady 后调；不开窗、不抢单实例锁。 */
-export async function startMcpStdioServer(): Promise<void> {
+export async function startMcpStdioServer(authorities: McpStdioServerOptions = {}): Promise<void> {
   // 无窗口进程：mac 别在 dock 弹图标。
   app.dock?.hide?.()
   const previewServer = await startArtifactPreviewHttpServer(
@@ -162,7 +178,7 @@ export async function startMcpStdioServer(): Promise<void> {
 
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
-    invoke,
+    invoke: (method, params, options) => invoke(method, params, options, authorities),
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
     getLocale: () => getDesktopLocale(),
   })

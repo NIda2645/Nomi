@@ -427,6 +427,15 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
     return receipt;
   }
 
+  /** Resolve the opaque receipt handle carried by a semantic gate call without mutating consumption state. */
+  function resolveReceiptToken(receiptId: string): string {
+    const normalized = typeof receiptId === "string" ? receiptId.trim() : "";
+    if (!normalized) throw new ReceiptScopeError("Receipt id is required");
+    const record = Object.values(readState().receipts).find((item) => item.receipt.receiptId === normalized);
+    if (!record) throw new ReceiptScopeError("Receipt is not registered");
+    return record.token;
+  }
+
   function consumeReceipt(token: string): ReceiptReplayResult {
     const receipt = verifyReceipt(token);
     const tokenKey = digest(token);
@@ -446,6 +455,7 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
     createMainProcessGestureAttestation,
     mintReceipt,
     verifyReceipt,
+    resolveReceiptToken,
     consumeReceipt,
   };
 }

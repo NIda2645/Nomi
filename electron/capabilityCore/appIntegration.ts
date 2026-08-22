@@ -19,6 +19,9 @@ import { HEARTBEAT_INTERVAL_MS, type InstanceAdvertisement } from './instanceAdv
 import { getProjectLocationState } from '../runtimePaths'
 import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
+import type { ProjectLeaseAuthority } from './projectLease'
+import type { ApprovalReceiptAuthority } from './approvalReceipt'
+import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
@@ -54,7 +57,16 @@ function buildAdvert(port: number, token: string, projectsRoot: string): Instanc
 /**
  * 启动能力核对外口。绝不拖垮 app 启动：任何失败只记日志、不抛（fail-open，与 applySystemProxy 同纪律）。
  */
-export async function startCapabilityCore(runTask: RunTaskFn, fetchTaskResult: FetchTaskResultFn): Promise<void> {
+export async function startCapabilityCore(
+  runTask: RunTaskFn,
+  fetchTaskResult: FetchTaskResultFn,
+  authorities: {
+    projectLeaseAuthority?: ProjectLeaseAuthority
+    approvalReceiptAuthority?: ApprovalReceiptAuthority
+    generationPolicy?: McpGenerationPolicy
+    generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  } = {},
+): Promise<void> {
   try {
     const token = ensureToken()
     handle = await startRpcServer({
@@ -62,6 +74,7 @@ export async function startCapabilityCore(runTask: RunTaskFn, fetchTaskResult: F
       fetchTaskResult,
       isProjectOpen: (id) => Boolean(openProjectId) && id === openProjectId,
       productionRuns: getProductionRunService(),
+      ...authorities,
     })
     const location = getProjectLocationState()
     advertisedLibrary = { projectsRoot: location.path, isDefault: location.source === 'default' }

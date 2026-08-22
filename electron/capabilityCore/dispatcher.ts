@@ -29,8 +29,22 @@ import {
   type McpGenerationPolicySnapshot,
 } from './mcpGenerationPolicy'
 import { hasGenerationBinding } from './generationBindingGuard'
+import type { ProjectLeaseAuthority, ProjectLeaseV1, ProjectSelectionHandleV1 } from './projectLease'
+import type { ApprovalReceiptAuthority, HumanApprovalReceiptV1 } from './approvalReceipt'
 
-export type RpcPolicyErrorCode = 'feature_disabled' | 'phase_not_ready' | 'not_ready' | 'legacy_path_forbidden'
+export type RpcPolicyErrorCode =
+  | 'feature_disabled'
+  | 'phase_not_ready'
+  | 'not_ready'
+  | 'legacy_path_forbidden'
+  | 'lease_required'
+  | 'lease_invalid'
+  | 'project_scope_changed'
+  | 'lease_expired'
+  | 'lease_revoked'
+  | 'human_approval_required'
+  | 'receipt_invalid'
+  | 'receipt_expired'
 
 export type RpcPolicyErrorDetails = Readonly<{
   code: RpcPolicyErrorCode
@@ -79,6 +93,18 @@ export type DispatchContext = {
   generationPolicy?: McpGenerationPolicy
   /** Optional read-only context seam. No semantic route may fall through to a legacy service. */
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  /** Main-process project-lease authority. Semantic routes never trust body.projectId without this verifier. */
+  projectLeaseAuthority?: ProjectLeaseAuthority
+  /** Main-process resolver for a signed selection handle. It supplies current project identity and connection binding. */
+  resolveProjectSelection?: (handle: ProjectSelectionHandleV1) => {
+    projectId: string
+    leasePrincipal: string
+    sessionId: string
+    connectionNonce: string
+    serverNonce: string
+  }
+  /** Main-process approval-receipt authority. Gate routes verify receipts here; the Run owner consumes them. */
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
   /**
    * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ canvas.addNodes 预批准
    * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
@@ -205,14 +231,19 @@ function productionStartInput(params: Record<string, unknown>, authority: Dispat
 const SEMANTIC_GENERATION_ROUTES: Readonly<Record<string, Readonly<{
   capability: McpGenerationCapability
   contextRead?: boolean
+  requiresLease?: boolean
+  requiresReceipt?: boolean
+  sessionOpen?: boolean
 }>>> = Object.freeze({
-  nomi_session_open: { capability: 'context' },
+  // session/open is the bootstrap operation that establishes the lease; all post-open
+  // semantic operations must present one verified lease before their owner is called.
+  nomi_session_open: { capability: 'context', requiresLease: false, sessionOpen: true },
   nomi_get_generation_context: { capability: 'context', contextRead: true },
   nomi_operation_create: { capability: 'create' },
   nomi_submit_generation_plan: { capability: 'plan' },
   nomi_preview_execution: { capability: 'preview' },
   nomi_request_generation_gate: { capability: 'gate_request' },
-  nomi_decide_generation_gate: { capability: 'gate_decide' },
+  nomi_decide_generation_gate: { capability: 'gate_decide', requiresReceipt: true },
   nomi_start_generation: { capability: 'start' },
   nomi_operation_read: { capability: 'read' },
   nomi_subscribe_run: { capability: 'events' },
@@ -270,8 +301,189 @@ function guardLegacyRoute(policy: McpGenerationPolicy, route: string, params: Re
   }, `Legacy route ${route} cannot carry generation.single-shot bindings`)
 }
 
+function leaseFailureCode(error: unknown): Extract<RpcPolicyErrorCode, 'lease_invalid' | 'project_scope_changed' | 'lease_expired' | 'lease_revoked'> {
+  const code = error && typeof error === 'object' && 'code' in error
+    ? (error as { code?: unknown }).code
+    : undefined
+  const message = error instanceof Error ? error.message : ''
+  if (code === 'project_scope_changed'
+    && (/does not match current scope|scope is insufficient/i.test(message))) return code
+  if (code === 'lease_expired' || code === 'lease_revoked') return code
+  return 'lease_invalid'
+}
+
+function leaseScopeForCapability(capability: McpGenerationCapability): string {
+  switch (capability) {
+    case 'context': return 'context:read'
+    case 'read': return 'generation:read'
+    case 'events': return 'generation:events'
+    case 'create': return 'generation:create'
+    case 'plan': return 'generation:plan'
+    case 'preview': return 'generation:preview'
+    case 'gate_request':
+    case 'gate_decide': return 'generation:gate'
+    case 'start': return 'generation:submit'
+    case 'cancel':
+    case 'steer': return 'generation:control'
+    case 'reconcile': return 'generation:reconcile'
+  }
+}
+
+function requireProjectLease(
+  params: Record<string, unknown>,
+  capability: McpGenerationCapability,
+  ctx: DispatchContext,
+  policy: McpGenerationPolicy,
+): { params: Record<string, unknown>; lease: ProjectLeaseV1 } {
+  const snapshot = policy.snapshot()
+  const details = (code: RpcPolicyErrorCode, nextAction = snapshot.nextAction) => ({
+    code,
+    nextAction,
+    phase: snapshot.phase,
+    capability,
+  })
+  const token = typeof params.leaseHandle === 'string' ? params.leaseHandle.trim() : ''
+  if (!token) throw policyError(details('lease_required'), 'A verified project lease is required')
+  if (!ctx.projectLeaseAuthority) throw policyError(details('lease_required'), 'Project lease authority is unavailable')
+  const expectedProjectId = typeof params.projectId === 'string' && params.projectId.trim()
+    ? params.projectId.trim()
+    : undefined
+  try {
+    const lease = ctx.projectLeaseAuthority.verifyLease(token, {
+      projectId: expectedProjectId,
+      scope: leaseScopeForCapability(capability),
+    })
+    // The lease, not the request body, is the authoritative project identity. This
+    // normalized copy is the only object that enters the semantic owner seam.
+    return { params: { ...params, projectId: lease.projectId }, lease }
+  } catch (error) {
+    const code = leaseFailureCode(error)
+    throw policyError(details(code), error instanceof Error ? error.message : 'Project lease is invalid')
+  }
+}
+
+function requireApprovalReceipt(
+  params: Record<string, unknown>,
+  lease: ProjectLeaseV1,
+  capability: McpGenerationCapability,
+  ctx: DispatchContext,
+  policy: McpGenerationPolicy,
+): HumanApprovalReceiptV1 {
+  const snapshot = policy.snapshot()
+  const error = (code: Extract<RpcPolicyErrorCode, 'human_approval_required' | 'receipt_invalid' | 'receipt_expired'>, message: string): never => {
+    throw policyError({ code, nextAction: snapshot.nextAction, phase: snapshot.phase, capability }, message)
+  }
+  const authority = ctx.approvalReceiptAuthority
+  if (!authority) {
+    throw policyError({
+      code: 'human_approval_required',
+      nextAction: snapshot.nextAction,
+      phase: snapshot.phase,
+      capability,
+    }, 'A main-process human approval receipt is required')
+  }
+  if (params.approved !== undefined || params.confirm !== undefined || params.spendConfirmed !== undefined) {
+    error('human_approval_required', 'Approval booleans cannot replace a Nomi human approval receipt')
+  }
+  const receiptId = typeof params.receiptId === 'string' ? params.receiptId.trim() : ''
+  const suppliedToken = typeof params.receiptToken === 'string' ? params.receiptToken.trim() : ''
+  if (!receiptId && !suppliedToken) error('human_approval_required', 'A verified generation gate receipt is required')
+  try {
+    const token = suppliedToken || authority.resolveReceiptToken(receiptId)
+    const receipt = authority.verifyReceipt(token)
+    const bodyBinding: Array<[keyof HumanApprovalReceiptV1, unknown]> = [
+      ['projectId', lease.projectId],
+      ['immutableProjectUuid', lease.immutableProjectUuid],
+      ['projectGeneration', lease.projectGeneration],
+      ['runId', params.runId],
+      ['gateId', params.gateId],
+      ['contractHash', params.contractHash],
+      ['targetHash', params.targetHash],
+      ['projectRevision', params.projectRevision],
+    ]
+    for (const [key, expected] of bodyBinding) {
+      if (expected !== undefined && expected !== null && String(receipt[key]) !== String(expected)) {
+        error('receipt_invalid', 'Generation approval receipt ' + String(key) + ' does not match the current scope')
+      }
+    }
+    if (receiptId && receipt.receiptId !== receiptId) error('receipt_invalid', 'Generation approval receipt id is invalid')
+    return receipt
+  } catch (caught) {
+    if (caught instanceof RpcError) throw caught
+    const code = caught && typeof caught === 'object' && 'code' in caught
+      ? (caught as { code?: unknown }).code
+      : undefined
+    if (code === 'receipt_expired') error('receipt_expired', caught instanceof Error ? caught.message : 'Approval receipt expired')
+    return error('receipt_invalid', caught instanceof Error ? caught.message : 'Approval receipt is invalid')
+  }
+}
+
+function openProjectLease(
+  params: Record<string, unknown>,
+  ctx: DispatchContext,
+  policy: McpGenerationPolicy,
+): Record<string, unknown> {
+  const snapshot = policy.snapshot()
+  const missing = (message: string): never => {
+    throw policyError({
+      code: 'lease_required',
+      nextAction: snapshot.nextAction,
+      phase: snapshot.phase,
+      capability: 'context',
+    }, message)
+  }
+  assertOnlyFields(params, new Set(['projectSelectionHandle']))
+  const selectionToken = typeof params.projectSelectionHandle === 'string' ? params.projectSelectionHandle.trim() : ''
+  if (!selectionToken) missing('A signed project selection handle is required')
+  const authority = ctx.projectLeaseAuthority
+  const resolveProjectSelection = ctx.resolveProjectSelection
+  if (!authority || !resolveProjectSelection) {
+    throw policyError({
+      code: 'lease_required',
+      nextAction: snapshot.nextAction,
+      phase: snapshot.phase,
+      capability: 'context',
+    }, 'Project lease authority is unavailable')
+  }
+  try {
+    const handle = authority.verifySelectionHandle(selectionToken)
+    const session = resolveProjectSelection(handle)
+    if (!session.projectId || !session.leasePrincipal || !session.sessionId || !session.connectionNonce || !session.serverNonce) {
+      missing('Project lease session binding is incomplete')
+    }
+    const issued = authority.issueLease(selectionToken, {
+      projectId: session.projectId,
+      leasePrincipal: session.leasePrincipal,
+      sessionId: session.sessionId,
+      connectionNonce: session.connectionNonce,
+    })
+    return {
+      protocolVersion: 1,
+      sessionId: issued.lease.sessionId,
+      leaseHandle: issued.token,
+      immutableProjectUuid: issued.lease.immutableProjectUuid,
+      projectGeneration: issued.lease.projectGeneration,
+      projectId: issued.lease.projectId,
+      expiresAt: issued.lease.expiresAt,
+      audience: issued.lease.audience,
+      phase: snapshot.phase,
+      effectiveScope: [...snapshot.effectiveScope],
+      serverNonce: session.serverNonce,
+    }
+  } catch (error) {
+    if (error instanceof RpcError) throw error
+    const code = leaseFailureCode(error)
+    throw policyError({
+      code,
+      nextAction: snapshot.nextAction,
+      phase: snapshot.phase,
+      capability: 'context',
+    }, error instanceof Error ? error.message : 'Project selection handle is invalid')
+  }
+}
+
 async function dispatchSemanticStub(
-  route: Readonly<{ capability: McpGenerationCapability; contextRead?: boolean }>,
+  route: Readonly<{ capability: McpGenerationCapability; contextRead?: boolean; requiresLease?: boolean; requiresReceipt?: boolean; sessionOpen?: boolean }>,
   params: Record<string, unknown>,
   ctx: DispatchContext,
   policy: McpGenerationPolicy,
@@ -285,7 +497,23 @@ async function dispatchSemanticStub(
       capability: decision.capability,
     })
   }
-  if (route.contextRead && typeof ctx.generationContext === 'function') return ctx.generationContext(params)
+  if (route.sessionOpen) return openProjectLease(params, ctx, policy)
+  if (route.contextRead && typeof ctx.generationContext !== 'function') {
+    throw unavailableSemanticRoute(policy, route.capability)
+  }
+  const leased = route.requiresLease === false
+    ? { params, lease: undefined }
+    : requireProjectLease(params, route.capability, ctx, policy)
+  if (route.requiresReceipt) {
+    if (!leased.lease) throw policyError({
+      code: 'lease_required',
+      nextAction: policy.snapshot().nextAction,
+      phase: policy.snapshot().phase,
+      capability: route.capability,
+    })
+    requireApprovalReceipt(leased.params, leased.lease, route.capability, ctx, policy)
+  }
+  if (route.contextRead && typeof ctx.generationContext === 'function') return ctx.generationContext(leased.params)
   // Even when a phase advertises a capability, this slice has no write owner.
   // Keep the route explicit so it cannot fall through to a legacy service.
   throw unavailableSemanticRoute(policy, route.capability)
