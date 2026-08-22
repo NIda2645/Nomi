@@ -24,6 +24,7 @@ import {
 import { resolveStoryboardImageDefault, resolveStoryboardVideoDefault } from '../generationCanvas/agent/availableModels'
 import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'
 import { generationCanvasTools } from '../generationCanvas/agent/generationCanvasTools'
+import { hasGenerationBinding } from '../../../electron/capabilityCore/generationBindingGuard'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
 // 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
@@ -49,14 +50,6 @@ type PlanConfirmPayload = {
   titles?: string[]
 }
 
-const LEGACY_GENERATION_SEMANTIC_FIELDS = new Set([
-  'leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId',
-  'immutableProjectUuid', 'projectGeneration', 'serverNonce', 'handoff', 'actionNonce',
-  'projectSelectionHandle', 'targetHash', 'reservationId', 'executionBinding', 'requestFingerprint',
-  'providerIdempotencyKey', 'runtimeEnvelopeRef', 'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState',
-  'providerTaskId', 'sessionId', 'nonce', 'baseRevision', 'projectRevision', 'attempt', 'runtimeEnvelope',
-])
-
 export class LegacyPathForbiddenError extends Error {
   readonly code = 'legacy_path_forbidden' as const
 
@@ -67,18 +60,8 @@ export class LegacyPathForbiddenError extends Error {
 }
 
 /** Pure renderer-side firewall for the direct legacy generation bridge. */
-function hasLegacyGenerationBinding(value: unknown, seen = new WeakSet<object>()): boolean {
-  if (!value || typeof value !== 'object') return false
-  if (seen.has(value)) return false
-  seen.add(value)
-  if (Array.isArray(value)) return value.some((item) => hasLegacyGenerationBinding(item, seen))
-  return Object.entries(value as Record<string, unknown>).some(([key, child]) => (
-    LEGACY_GENERATION_SEMANTIC_FIELDS.has(key) || hasLegacyGenerationBinding(child, seen)
-  ))
-}
-
 export function assertLegacyGenerationPayload(payload: Record<string, unknown>): void {
-  if (!hasLegacyGenerationBinding(payload)) return
+  if (!hasGenerationBinding(payload)) return
   throw new LegacyPathForbiddenError()
 }
 

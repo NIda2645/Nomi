@@ -28,6 +28,7 @@ import {
   type McpGenerationPolicy,
   type McpGenerationPolicySnapshot,
 } from './mcpGenerationPolicy'
+import { hasGenerationBinding } from './generationBindingGuard'
 
 export type RpcPolicyErrorCode = 'feature_disabled' | 'phase_not_ready' | 'not_ready' | 'legacy_path_forbidden'
 
@@ -223,14 +224,6 @@ const SEMANTIC_GENERATION_ROUTES: Readonly<Record<string, Readonly<{
   nomi_propose_adopt_artifact: { capability: 'create' },
 })
 
-const SEMANTIC_BINDING_FIELDS = new Set([
-  'leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId',
-  'immutableProjectUuid', 'projectGeneration', 'serverNonce', 'handoff', 'actionNonce',
-  'projectSelectionHandle', 'targetHash', 'reservationId', 'executionBinding', 'requestFingerprint',
-  'providerIdempotencyKey', 'runtimeEnvelopeRef', 'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState',
-  'providerTaskId', 'sessionId', 'nonce', 'baseRevision', 'projectRevision', 'attempt', 'runtimeEnvelope',
-])
-
 const LEGACY_ROUTE_CAPABILITY: Readonly<Record<string, McpGenerationCapability>> = Object.freeze({
   generate: 'create',
   nomi_generate: 'create',
@@ -265,18 +258,8 @@ function unavailableSemanticRoute(policy: McpGenerationPolicy, capability: McpGe
   }, `generation.single-shot ${capability} is not ready`)
 }
 
-function hasSemanticBinding(value: unknown, seen = new WeakSet<object>()): boolean {
-  if (!value || typeof value !== 'object') return false
-  if (seen.has(value)) return false
-  seen.add(value)
-  if (Array.isArray(value)) return value.some((item) => hasSemanticBinding(item, seen))
-  return Object.entries(value as Record<string, unknown>).some(([key, child]) => (
-    SEMANTIC_BINDING_FIELDS.has(key) || hasSemanticBinding(child, seen)
-  ))
-}
-
 function guardLegacyRoute(policy: McpGenerationPolicy, route: string, params: Record<string, unknown>): void {
-  if (!hasSemanticBinding(params)) return
+  if (!hasGenerationBinding(params)) return
   const snapshot = policy.snapshot()
   const capability = LEGACY_ROUTE_CAPABILITY[route] ?? 'create'
   throw policyError({

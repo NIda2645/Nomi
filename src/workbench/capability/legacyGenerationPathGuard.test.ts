@@ -25,8 +25,8 @@ describe('renderer legacy generation path firewall', () => {
       }
     })
 
-  it('rejects a nested semantic binding object', () => {
-    expect(() => assertLegacyGenerationPayload({ nodeId: 'node-1', params: { runtime: { runtimeEnvelope: {} } } }))
+  it.each(['moduleRef', 'candidate', 'providerId'])('rejects nested canonical wrapper marker %s', (field) => {
+    expect(() => assertLegacyGenerationPayload({ nodeId: 'node-1', params: { runtime: { [field]: {} } } }))
       .toThrow(LegacyPathForbiddenError)
   })
 

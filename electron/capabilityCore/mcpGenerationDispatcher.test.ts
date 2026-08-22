@@ -151,14 +151,24 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     expect(ctx.makeGateway).not.toHaveBeenCalled()
   })
 
-  it('firewalls canonical binding markers nested inside generate params', async () => {
+  it.each(['moduleRef', 'candidate', 'providerId'])('firewalls nested canonical wrapper marker %s inside generate params', async (field) => {
     const { ctx } = context({ generationPolicy: policy() })
     await expect(dispatch('generate', {
       projectId: 'project-1', vendor: 'provider', modelKey: 'model', intent: 'image', prompt: 'legacy',
-      params: { runtime: { executionBinding: { runId: 'run-1' } } },
+      params: { runtime: { [field]: { runId: 'run-1' } } },
     }, ctx as never)).rejects.toMatchObject({ code: 'legacy_path_forbidden' })
     expect(ctx.runTask).not.toHaveBeenCalled()
     expect(ctx.makeGateway).not.toHaveBeenCalled()
+  })
+
+  it('fails closed on excessively deep legacy payloads', async () => {
+    let nested: Record<string, unknown> = { leaf: true }
+    for (let index = 0; index < 40; index += 1) nested = { nested }
+    const { ctx } = context({ generationPolicy: policy() })
+    await expect(dispatch('generate', {
+      projectId: 'project-1', vendor: 'provider', modelKey: 'model', intent: 'image', prompt: 'legacy', params: nested,
+    }, ctx as never)).rejects.toMatchObject({ code: 'legacy_path_forbidden' })
+    expect(ctx.runTask).not.toHaveBeenCalled()
   })
 
   it('does not change unknown method errors', async () => {
