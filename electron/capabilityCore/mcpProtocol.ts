@@ -149,6 +149,7 @@ export function createMcpProtocol(transport: McpTransport) {
   // 服务端→客户端请求自管 id 与 pending，等客户端回响应。
   let serverReqSeq = 0
   const pendingServerReqs = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  const generationConfirmationInFlight = new Map<string, Promise<GenerationGateConfirmation>>()
 
   function send(message: unknown): void {
     transport.send(message)
@@ -255,7 +256,7 @@ export function createMcpProtocol(transport: McpTransport) {
    * challenge is deliberately passed unchanged to the GUI fallback so a
    * client timeout/reconnect cannot mint a second prompt or nonce.
    */
-  async function requestGenerationConfirmation(
+  async function resolveGenerationConfirmation(
     challenge: GenerationGateChallengeProjection,
   ): Promise<GenerationGateConfirmation> {
     if (!challenge.challengeId || !challenge.model || !challenge.costScope || !Number.isFinite(challenge.maximumCost)
@@ -321,6 +322,23 @@ export function createMcpProtocol(transport: McpTransport) {
       confirmed: false,
       surface: 'none',
       nextAction: 'in_nomi',
+    }
+  }
+
+  async function requestGenerationConfirmation(
+    challenge: GenerationGateChallengeProjection,
+  ): Promise<GenerationGateConfirmation> {
+    const existing = generationConfirmationInFlight.get(challenge.challengeId)
+    if (existing) return existing
+    const pending = resolveGenerationConfirmation(challenge)
+    generationConfirmationInFlight.set(challenge.challengeId, pending)
+    try {
+      const result = await pending
+      if (!result.confirmed) generationConfirmationInFlight.delete(challenge.challengeId)
+      return result
+    } catch (error) {
+      generationConfirmationInFlight.delete(challenge.challengeId)
+      throw error
     }
   }
 

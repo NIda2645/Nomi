@@ -71,7 +71,11 @@ describe('one generation challenge, two confirmation surfaces', () => {
     await expect(protocol.requestGenerationConfirmation(challenge)).resolves.toEqual({
       challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi',
     })
+    await expect(protocol.requestGenerationConfirmation(challenge)).resolves.toEqual({
+      challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi',
+    })
     expect(frames.some((frame) => (frame as { method?: string }).method === 'elicitation/create')).toBe(false)
+    expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
   })
 
   it('falls back to Nomi when a registered client returns bare confirm:true without a verifiable attestation', async () => {
@@ -89,6 +93,9 @@ describe('one generation challenge, two confirmation surfaces', () => {
     const request = frames.find((frame) => (frame as { method?: string }).method === 'elicitation/create') as { id: string }
     protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true } } })
     await expect(resultPromise).resolves.toMatchObject({
+      challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi', receiptId: 'receipt-1',
+    })
+    await expect(protocol.requestGenerationConfirmation(challenge)).resolves.toMatchObject({
       challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi', receiptId: 'receipt-1',
     })
     expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
