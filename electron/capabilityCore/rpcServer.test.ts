@@ -245,4 +245,23 @@ describe('capabilityCore/rpcServer', () => {
       code: 'feature_disabled', nextAction: expect.any(String), phase: 'schema_only', capability: 'create',
     })
   })
+
+  it('allows only a signed MCP client to request the GUI fallback for one challenge', async () => {
+    await server!.close()
+    const confirmGenerationInNomi = vi.fn(async (input: { challengeToken: string }) => ({
+      confirmed: true,
+      challengeToken: input.challengeToken,
+      receiptId: 'receipt-1',
+    }))
+    server = await startRpcServer({
+      runTask: async () => ({ id: 't', status: 'succeeded', assets: [] }),
+      confirmGenerationInNomi,
+    })
+    const proof = signMcpClient('codex')!
+    const accepted = await rpc('nomi_confirm_generation_gate', { challengeToken: 'signed-challenge-token' }, token, { client: 'codex', proof })
+    expect(accepted.body).toMatchObject({ ok: true, result: { confirmed: true, receiptId: 'receipt-1' } })
+    const forged = await rpc('nomi_confirm_generation_gate', { challengeToken: 'signed-challenge-token' })
+    expect(forged.status).toBe(403)
+    expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
+  })
 })

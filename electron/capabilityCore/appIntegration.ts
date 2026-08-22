@@ -30,6 +30,7 @@ import { createCurrentProjectResolver, deriveProjectIdentityDigests } from './cu
 import type { ProjectSelectionHandleV1 } from './projectLease'
 import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
+import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
@@ -40,6 +41,7 @@ let advertisedLibrary: { projectsRoot: string; isDefault: boolean } | null = nul
 function createDefaultAuthorities(): Pick<
   DispatchContext,
   'projectLeaseAuthority' | 'resolveProjectSelection' | 'resolveCurrentProject' | 'approvalReceiptAuthority' | 'projectRevisionResolver'
+  | 'confirmGenerationInNomi'
 > {
   const authorityDir = capabilityCoreDir()
   const sharedLock = createProductionRunLock({
@@ -88,11 +90,39 @@ function createDefaultAuthorities(): Pick<
       serverNonce: crypto.randomUUID(),
     }
   }
+  const confirmGenerationInNomi = async ({ challengeToken }: { challengeToken: string }) => {
+    const challenge = receiptAuthority.verifyChallenge(challengeToken)
+    const target = rendererTargetIdentity()
+    if (!target || !challenge.display?.model) return { confirmed: false, challengeId: challenge.challengeId }
+    const result = await requestRenderer('generation.gate.confirm', {
+      challengeId: challenge.challengeId,
+      projectName: challenge.display.projectName,
+      shotSummary: challenge.display.shotSummary,
+      model: challenge.display.model,
+      referenceCount: challenge.display.referenceCount,
+      maximumCost: challenge.reservationPreview.maximum,
+      currency: challenge.reservationPreview.currency,
+      expiresAt: challenge.expiresAt,
+    }, 60_000) as { confirmed?: unknown } | null
+    if (result?.confirmed !== true) return { confirmed: false, challengeId: challenge.challengeId }
+    const attestation = receiptAuthority.createMainProcessGestureAttestation(challengeToken, {
+      ...target,
+      decision: 'accept',
+    })
+    const receipt = receiptAuthority.mintReceipt(challengeToken, attestation)
+    return {
+      confirmed: true,
+      challengeId: challenge.challengeId,
+      receiptId: receipt.receipt.receiptId,
+      receiptToken: receipt.token,
+    }
+  }
   return {
     projectLeaseAuthority: leaseAuthority,
     resolveProjectSelection,
     resolveCurrentProject: resolver,
     approvalReceiptAuthority: receiptAuthority,
+    confirmGenerationInNomi,
     projectRevisionResolver: (projectId) => readWorkspaceProject(projectId, getWorkspaceRepositoryDeps())?.revision,
   }
 }
@@ -134,6 +164,7 @@ export async function startCapabilityCore(
     approvalReceiptAuthority?: ApprovalReceiptAuthority
     requestGenerationGate?: DispatchContext['requestGenerationGate']
     authorizeGeneration?: DispatchContext['authorizeGeneration']
+    confirmGenerationInNomi?: import('./rpcServer').RpcServerOptions['confirmGenerationInNomi']
     generationPolicy?: McpGenerationPolicy
     generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
     projectRevisionResolver?: (projectId: string) => number | undefined

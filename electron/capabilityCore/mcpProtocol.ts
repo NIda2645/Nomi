@@ -54,6 +54,8 @@ export type GenerationGateConfirmation = {
   confirmed: boolean
   surface: 'client' | 'nomi' | 'none'
   nextAction: 'in_client' | 'in_nomi' | 'wait_for_reconciliation'
+  receiptId?: string
+  receiptToken?: string
 }
 
 // 哪些工具挂活 widget（tool.name → ui:// 资源）：单次生成与 production Run 共用一张活面板。
@@ -78,7 +80,7 @@ export interface McpTransport {
   /** Main-process proof that this connection was installed for a known MCP client. */
   getAuthenticatedClient?(): AuthenticatedMcpClient | null
   /** GUI fallback for the exact server-owned challenge. It must return only the gesture result. */
-  confirmGenerationInNomi?(challenge: GenerationGateChallengeProjection): Promise<boolean>
+  confirmGenerationInNomi?(challenge: GenerationGateChallengeProjection): Promise<boolean | Pick<GenerationGateConfirmation, 'confirmed' | 'receiptId' | 'receiptToken'>>
   /** 结果/进度文案语言（可选；缺省 zh-CN，跟 App 语言设置走）。 */
   getLocale?(): ResultLocale
 }
@@ -270,12 +272,17 @@ export function createMcpProtocol(transport: McpTransport) {
       }
     }
     if (typeof transport.confirmGenerationInNomi === 'function' && transport.isAppOpen()) {
-      const confirmed = await transport.confirmGenerationInNomi(challenge)
+      const fallback = await transport.confirmGenerationInNomi(challenge)
+      const confirmed = typeof fallback === 'boolean' ? fallback : fallback.confirmed === true
       return {
         challengeId: challenge.challengeId,
         confirmed,
         surface: 'nomi',
         nextAction: confirmed ? 'in_nomi' : 'wait_for_reconciliation',
+        ...(typeof fallback === 'object' ? {
+          ...(fallback.receiptId ? { receiptId: fallback.receiptId } : {}),
+          ...(fallback.receiptToken ? { receiptToken: fallback.receiptToken } : {}),
+        } : {}),
       }
     }
     return {

@@ -41,6 +41,8 @@ export type RpcServerOptions = {
   approvalReceiptAuthority?: ApprovalReceiptAuthority
   requestGenerationGate?: import('./dispatcher').DispatchContext['requestGenerationGate']
   authorizeGeneration?: import('./dispatcher').DispatchContext['authorizeGeneration']
+  /** Internal client→GUI fallback. The callback must verify the challenge before prompting. */
+  confirmGenerationInNomi?: (input: { challengeToken: string }) => Promise<unknown>
   generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   projectRevisionResolver?: (projectId: string) => number | undefined
@@ -119,6 +121,15 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           firstHeader(req.headers['x-nomi-mcp-client']),
           firstHeader(req.headers['x-nomi-mcp-client-proof']),
         )
+        if (method === 'nomi_confirm_generation_gate') {
+          if (origin === 'external' || origin === 'nomi') throw new RpcError('Registered MCP client proof is required', 403)
+          const challengeToken = typeof params.challengeToken === 'string' ? params.challengeToken.trim() : ''
+          if (!challengeToken) throw new RpcError('Generation challenge is required', 400)
+          if (typeof options.confirmGenerationInNomi !== 'function') throw new RpcError('Nomi confirmation is unavailable', 501)
+          const result = await options.confirmGenerationInNomi({ challengeToken })
+          send(200, { ok: true, result })
+          return
+        }
         // 付费已在**调用方客户端**经 elicitation 被真人确认（协议层 mcpProtocol.ts 只在收到
         // `action:'accept' + confirm:true` 后才置位）→ 预批准付费门，App 不再弹第二张确认卡。
         //

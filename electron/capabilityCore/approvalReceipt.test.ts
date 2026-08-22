@@ -51,6 +51,7 @@ function challenge(authority: ReturnType<typeof createApprovalReceiptAuthority>,
     costScope: "CNY:5",
     pricingSnapshotHash: "price-1",
     reservationPreview: { currency: "CNY", maximum: 5 },
+    display: { projectName: "短片 A", shotSummary: "生成这一镜", model: "model-x", referenceCount: 2 },
     ttlMs,
   });
 }
@@ -59,6 +60,7 @@ describe("ApprovalReceiptAuthority", () => {
   it("persists a challenge, replays it after restart, and never treats external confirm as proof", () => {
     const { authority } = makeAuthority();
     const first = challenge(authority);
+    expect(first.challenge.display).toEqual({ projectName: "短片 A", shotSummary: "生成这一镜", model: "model-x", referenceCount: 2 });
     const external = { action: "accept", content: { confirm: true } };
     expect(() => authority.mintReceipt(first.token, external)).toThrow(HumanApprovalRequiredError);
 

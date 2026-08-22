@@ -8,6 +8,13 @@ export const HUMAN_APPROVAL_VERSION = 1 as const;
 export const HUMAN_APPROVAL_ALGORITHM = "HMAC-SHA256" as const;
 export const HUMAN_APPROVAL_AUDIENCE = "nomi-mcp" as const;
 
+export type HumanApprovalDisplay = {
+  projectName?: string;
+  shotSummary?: string;
+  model: string;
+  referenceCount?: number;
+};
+
 export type HumanApprovalChallengeInput = {
   challengeKey: string;
   immutableProjectUuid: string;
@@ -22,6 +29,7 @@ export type HumanApprovalChallengeInput = {
   costScope: string;
   pricingSnapshotHash: string;
   reservationPreview: { currency: string; maximum: number };
+  display?: HumanApprovalDisplay;
   ttlMs?: number;
 };
 
@@ -275,6 +283,11 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
       || !challenge.contractHash || challenge.targetHash !== challenge.contractHash || !Number.isInteger(challenge.projectRevision)) {
       throw new ReceiptScopeError("Challenge binding is incomplete");
     }
+    if (challenge.display !== undefined && (!challenge.display || typeof challenge.display !== "object"
+      || !challenge.display.model || (challenge.display.referenceCount !== undefined
+        && (!Number.isInteger(challenge.display.referenceCount) || challenge.display.referenceCount < 0)))) {
+      throw new ReceiptScopeError("Challenge display is invalid");
+    }
     const state = readState();
     const record = state.challenges[challenge.challengeId];
     if (!record || record.token !== token) throw new ReceiptScopeError("Challenge is not registered");
@@ -317,6 +330,7 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
         costScope: input.costScope,
         pricingSnapshotHash: input.pricingSnapshotHash,
         reservationPreview: { ...input.reservationPreview },
+        ...(input.display ? { display: { ...input.display } } : {}),
         audience: HUMAN_APPROVAL_AUDIENCE,
         issuedAt,
         expiresAt: expiresAt(issuedAt, input.ttlMs, defaultTtlMs),

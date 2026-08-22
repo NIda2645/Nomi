@@ -133,6 +133,8 @@ export type DispatchContext = {
   approvalReceiptAuthority?: ApprovalReceiptAuthority
   /** Run-owned challenge projection. It must recompute model/cost/contract from main-process state. */
   requestGenerationGate?: (input: { params: Record<string, unknown>; lease: ProjectLeaseV1 }) => unknown | Promise<unknown>
+  /** Main-process GUI fallback for the exact challenge; it may return the receipt minted from the gesture. */
+  confirmGenerationInNomi?: (input: { challengeToken: string }) => Promise<unknown>
   /**
    * Run-owned generation authorization seam. It receives already verified
    * lease/receipt bindings; the dispatcher never persists a second gate or

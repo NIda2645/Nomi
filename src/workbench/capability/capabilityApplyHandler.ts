@@ -50,6 +50,17 @@ type PlanConfirmPayload = {
   titles?: string[]
 }
 
+type GenerationGateConfirmPayload = {
+  challengeId?: string
+  projectName?: string
+  shotSummary?: string
+  model?: string
+  referenceCount?: number
+  maximumCost?: number
+  currency?: string
+  expiresAt?: string
+}
+
 export class LegacyPathForbiddenError extends Error {
   readonly code = 'legacy_path_forbidden' as const
 
@@ -167,6 +178,32 @@ async function confirmSpendForAgent(info: SpendConfirmPayload): Promise<{ confir
   return { confirmed: Boolean(ok) }
 }
 
+/** One user-facing confirmation card for the semantic generation challenge. */
+async function confirmGenerationGateForAgent(info: GenerationGateConfirmPayload): Promise<{ confirmed: boolean; challengeId?: string }> {
+  const model = typeof info.model === 'string' && info.model.trim() ? info.model.trim() : i18n.t('runtime.capability.defaultModel')
+  const shot = typeof info.shotSummary === 'string' && info.shotSummary.trim()
+    ? info.shotSummary.trim()
+    : i18n.t('runtime.capability.generationGateShotFallback')
+  const maximumCost = Number.isFinite(info.maximumCost) ? Number(info.maximumCost) : 0
+  const cost = `${typeof info.currency === 'string' ? info.currency : ''}${maximumCost}`
+  const ok = await useSpendConfirmStore.getState().requestConfirm({
+    kind: 'generation',
+    title: i18n.t('runtime.capability.generationGateTitle'),
+    message: i18n.t('runtime.capability.generationGateMessage', { model, cost, shot }),
+    confirmLabel: i18n.t('runtime.capability.confirmGenerate'),
+    source: 'agent',
+    countdownMs: 60_000,
+    details: [
+      ...(info.projectName ? [{ label: i18n.t('runtime.capability.generationGateProject'), value: info.projectName }] : []),
+      { label: i18n.t('runtime.capability.generationGateModel'), value: model },
+      ...(Number.isInteger(info.referenceCount) ? [{ label: i18n.t('runtime.capability.generationGateReferences'), value: String(info.referenceCount) }] : []),
+      { label: i18n.t('runtime.capability.generationGateCost'), value: cost },
+      ...(info.expiresAt ? [{ label: i18n.t('runtime.capability.generationGateExpires'), value: info.expiresAt }] : []),
+    ],
+  })
+  return { confirmed: Boolean(ok), ...(info.challengeId ? { challengeId: info.challengeId } : {}) }
+}
+
 /** 外部 MCP 方案门（Phase B）：agent 要往画布落一套节点（≥2）前弹确认卡（免费可撤），复用同一漏斗（P1）。 */
 async function confirmPlanForAgent(info: PlanConfirmPayload): Promise<{ confirmed: boolean }> {
   const count = typeof info.nodeCount === 'number' ? info.nodeCount : 0
@@ -262,6 +299,8 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       return { ok: true }
     case 'spend.confirm':
       return confirmSpendForAgent(data as SpendConfirmPayload)
+    case 'generation.gate.confirm':
+      return confirmGenerationGateForAgent(data as GenerationGateConfirmPayload)
     case 'plan.confirm':
       return confirmPlanForAgent(data as PlanConfirmPayload)
     case 'production.plan-directions': {

@@ -189,6 +189,17 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
       const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
       return origin === 'external' || origin === 'nomi' ? null : origin
     },
+    confirmGenerationInNomi: async (challenge) => {
+      const challengeToken = challenge.handoff && typeof challenge.handoff.challengeToken === 'string'
+        ? challenge.handoff.challengeToken
+        : ''
+      const instance = readLiveInstance(currentLibrary())
+      if (!challengeToken || !instance) return { confirmed: false }
+      const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
+      const result = await callViaRpc(instance, 'nomi_confirm_generation_gate', { challengeToken }, origin)
+      const typed = result as { confirmed?: boolean; receiptId?: string; receiptToken?: string }
+      return { confirmed: typed.confirmed === true, ...(typed.receiptId ? { receiptId: typed.receiptId } : {}), ...(typed.receiptToken ? { receiptToken: typed.receiptToken } : {}) }
+    },
     getLocale: () => getDesktopLocale(),
   })
 
