@@ -22,6 +22,7 @@ import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { getWorkspaceRepositoryDeps } from '../runtimePaths'
 import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import { makeShotVerifyDeps } from './shotVerifyDeps'
+import { rpcErrorWirePayload } from './mcpRpcError'
 
 export type RpcServerOptions = {
   /** 真实生成入口（runtime.runTask）。注入式：headless host 与 app 各自传同一份。 */
@@ -143,19 +144,9 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         send(200, { ok: true, result })
       } catch (error) {
         const status = error instanceof RpcError ? error.httpStatus : 500
-        const message = error instanceof Error ? error.message : String(error)
-        const details = error instanceof RpcError && error.code
-          ? {
-              message,
-              code: error.code,
-              nextAction: error.nextAction,
-              phase: error.phase,
-              capability: error.capability,
-            }
-          : null
         // Keep ordinary errors as legacy strings; policy errors preserve their
         // typed recovery contract for local RPC clients.
-        send(status, { ok: false, error: details ?? message })
+        send(status, { ok: false, error: rpcErrorWirePayload(error) })
       }
     })()
   })

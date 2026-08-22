@@ -1,4 +1,6 @@
 /** Structured error boundary shared by the local RPC client and MCP transport. */
+import { RpcError } from './dispatcher'
+
 export type RpcErrorWireDetails = Readonly<{
   message?: string
   code?: string
@@ -7,6 +9,8 @@ export type RpcErrorWireDetails = Readonly<{
   phase?: string
   capability?: string
 }>
+
+export type RpcErrorWirePayload = string | RpcErrorWireDetails
 
 export class RpcTransportError extends Error {
   readonly code?: string
@@ -23,6 +27,19 @@ export class RpcTransportError extends Error {
     this.nextAction = details.nextAction
     this.phase = details.phase
     this.capability = details.capability
+  }
+}
+
+/** Serialize local RPC failures without dropping the typed policy recovery contract. */
+export function rpcErrorWirePayload(error: unknown): RpcErrorWirePayload {
+  const message = error instanceof Error ? error.message : String(error)
+  if (!(error instanceof RpcError) || !error.code) return message
+  return {
+    message,
+    code: error.code,
+    nextAction: error.nextAction,
+    phase: error.phase,
+    capability: error.capability,
   }
 }
 
