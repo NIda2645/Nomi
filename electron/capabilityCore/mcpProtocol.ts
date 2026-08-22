@@ -26,11 +26,35 @@ import { createProgressReporter } from './mcpProgress'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
 import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
+import type { AuthenticatedMcpClient } from './security'
 
 // spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
 // （elicitation-first 画布确认，见 mcpPlanTrust.ts）——透传给传输层，让最终跑 confirmPlan 的网关预批准、
 // 不再弹 App 卡（免双问）。因方案 elicitation 发生在 App 开着时，planConfirmed 需跨 RPC 边界到达渲染层网关。
 export type McpInvokeOptions = { spendConfirmed?: boolean; planConfirmed?: boolean }
+
+export type GenerationGateChallengeProjection = {
+  challengeId: string
+  nonce?: string
+  projectName?: string
+  shotSummary?: string
+  model: string
+  referenceCount?: number
+  costScope: string
+  maximumCost: number
+  currency?: string
+  expiresAt: string
+  confirmationText?: string
+  /** Opaque server handoff data. It never belongs in user-facing copy. */
+  handoff?: Record<string, unknown>
+}
+
+export type GenerationGateConfirmation = {
+  challengeId: string
+  confirmed: boolean
+  surface: 'client' | 'nomi' | 'none'
+  nextAction: 'in_client' | 'in_nomi' | 'wait_for_reconciliation'
+}
 
 // 哪些工具挂活 widget（tool.name → ui:// 资源）：单次生成与 production Run 共用一张活面板。
 const TOOL_UI_RESOURCE: Record<string, string> = {
@@ -51,6 +75,10 @@ export interface McpTransport {
    * 确认优先弹在调用方（客户端声明 elicitation 即可）；本标志只用于回答「客户端问不了时，还有谁能问」。
    */
   isAppOpen(): boolean
+  /** Main-process proof that this connection was installed for a known MCP client. */
+  getAuthenticatedClient?(): AuthenticatedMcpClient | null
+  /** GUI fallback for the exact server-owned challenge. It must return only the gesture result. */
+  confirmGenerationInNomi?(challenge: GenerationGateChallengeProjection): Promise<boolean>
   /** 结果/进度文案语言（可选；缺省 zh-CN，跟 App 语言设置走）。 */
   getLocale?(): ResultLocale
 }
@@ -208,6 +236,53 @@ export function createMcpProtocol(transport: McpTransport) {
     } catch {
       // 超时/异常 → 当作未确认（不死等、不偷偷花钱）。
       return { supported: true, confirmed: false }
+    }
+  }
+
+  /**
+   * Answer one server-owned generation challenge on exactly one surface. The
+   * challenge is deliberately passed unchanged to the GUI fallback so a
+   * client timeout/reconnect cannot mint a second prompt or nonce.
+   */
+  async function requestGenerationConfirmation(
+    challenge: GenerationGateChallengeProjection,
+  ): Promise<GenerationGateConfirmation> {
+    if (!challenge.challengeId || !challenge.model || !challenge.costScope || !Number.isFinite(challenge.maximumCost)
+      || !challenge.expiresAt) throw new Error('Invalid generation gate challenge')
+    const authenticatedClient = transport.getAuthenticatedClient?.() ?? null
+    if (clientSupportsElicitation && authenticatedClient) {
+      const confirmed = await elicitBooleanConfirm({
+        message: challenge.confirmationText || [
+          `允许 Nomi 在${challenge.projectName ? `项目《${challenge.projectName}》` : '当前项目'}使用模型 ${challenge.model}`,
+          `最多花费 ${challenge.currency || ''}${challenge.maximumCost}，${challenge.shotSummary || '生成这一镜'}吗？`,
+        ].join('，'),
+        title: '确认这次生成',
+        description: [
+          challenge.referenceCount === undefined ? '' : `参考图 ${challenge.referenceCount} 张`,
+          `有效期至 ${challenge.expiresAt}`,
+        ].filter(Boolean).join(' · '),
+      })
+      return {
+        challengeId: challenge.challengeId,
+        confirmed: confirmed.confirmed === true,
+        surface: 'client',
+        nextAction: confirmed.confirmed ? 'in_client' : 'wait_for_reconciliation',
+      }
+    }
+    if (typeof transport.confirmGenerationInNomi === 'function' && transport.isAppOpen()) {
+      const confirmed = await transport.confirmGenerationInNomi(challenge)
+      return {
+        challengeId: challenge.challengeId,
+        confirmed,
+        surface: 'nomi',
+        nextAction: confirmed ? 'in_nomi' : 'wait_for_reconciliation',
+      }
+    }
+    return {
+      challengeId: challenge.challengeId,
+      confirmed: false,
+      surface: 'none',
+      nextAction: 'in_nomi',
     }
   }
 
@@ -645,6 +720,7 @@ export function createMcpProtocol(transport: McpTransport) {
       void handle(message).catch((error) => {
         if (message && message.id != null) replyError(message.id, -32603, error instanceof Error ? error.message : String(error))
       })
-    },
+      },
+    requestGenerationConfirmation,
   }
 }

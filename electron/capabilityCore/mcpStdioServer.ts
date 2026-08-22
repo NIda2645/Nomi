@@ -185,6 +185,10 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
     invoke: (method, params, options) => invoke(method, params, options, authorities),
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
+    getAuthenticatedClient: () => {
+      const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
+      return origin === 'external' || origin === 'nomi' ? null : origin
+    },
     getLocale: () => getDesktopLocale(),
   })
 
