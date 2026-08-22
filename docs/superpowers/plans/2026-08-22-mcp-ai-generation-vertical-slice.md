@@ -239,12 +239,13 @@ the P0/P2 checkpoints (or when the flag is off), the effective phase remains
 `schema_only`, write-like calls return `phase_not_ready` or `feature_disabled`
 respectively, and `operation/create`/`operation/plan` are not writable. After
 P0/P2, `e0_zero_credit` adds `create`/`plan`/`preview`; only `e1_paid` adds paid
-controls. `sessionId`/`projectId` are derived from the signed
-selection handle, never accepted from the host. The connection binds one session/lease; duplicate
+controls. `sessionId`/`projectId` are derived from either the signed selection
+handle or a server-owned bootstrap resolver for an already registered client,
+never accepted from the host. The connection binds one session/lease; duplicate
 initialize, rebind, version downgrade or unknown fields fail closed. A headless
-client obtains the handle through a main-process/GUI or pre-registered local
+client may bootstrap the handle through a main-process/GUI or pre-registered local
 challenge-response ceremony; a bearer token is transport authentication only,
-never an issuer.
+never an issuer. The bootstrap request carries no project path or projectId.
 
 The main process creates a fresh 256-bit `serverNonce` per connection and stores
 only its MACed binding to `handle.sessionNonce`, the lease nonce and the
@@ -466,11 +467,16 @@ there is no ACL/path fallback. A global bearer token plus an arbitrary
 projectId/path is never sufficient.
 An external MCP `elicitation/create` response (for example
 `{action:'accept', content.confirm:true}`) is only a request to show/complete the
-challenge; it is not human proof. P3 issues `HumanApprovalReceipt` only from the
-Nomi GUI/main-process user gesture (or a separately registered, attested client
-whose identity and user binding are verified by `approvalReceipt.ts`). Without
-that attestation the response returns `human_approval_required` with a
-project-scoped handoff/deep link and cannot reach `gate.decide`.
+challenge; it is not human proof. **The default confirmation surface is a
+separately registered, attested client whose identity and user binding are
+verified by `approvalReceipt.ts`; one verified accept mints the receipt directly
+and does not open a second Nomi prompt.** Without that attestation the response
+returns `human_approval_required` with a project-scoped handoff/deep link; Nomi
+GUI answers the same challenge once and the original request resumes. The
+connection action establishes client identity, a read-only current-project lease
+may be reused for context/preview, and the first `generation_submit` confirmation
+atomically upgrades scope and consumes the receipt. Neither path accepts raw
+`confirm`/`approved`/`spendConfirmed` as authority.
 
 `GestureAttestationV1` is a closed, server-verified union rather than an
 arbitrary object:
@@ -511,11 +517,12 @@ Lease seam: `projectLease.ts` is the only main-process issuer/verifier for a
 canonicalRootDigest, manifestDigest, audience:'nomi-mcp', sessionNonce,
 issuedAt, expiresAt, revocationEpoch, scopeSet, mac}`. Its key ring lives in
 app-owned storage/OS keychain; neither the project directory, an MCP host, nor
-a renderer can mint or rotate a key. `session/open` accepts only this handle
-and derives `sessionId`/`projectId` from it. A global bearer token and arbitrary
-projectId/path cannot create it. Headless mode must use a one-time main-process
-or pre-registered local-client challenge response; an environment token is
-transport authentication only.
+a renderer can mint or rotate a key. `session/open` accepts this handle or the
+closed server-owned `bootstrap:'current_project'` request for an already
+registered client; both derive `sessionId`/`projectId` in the main process. A
+global bearer token and arbitrary projectId/path cannot create it. Headless mode
+must use a one-time main-process or pre-registered local-client challenge
+response; an environment token is transport authentication only.
 
 `ProjectLeaseV1` includes `{version:1,keyId,algorithm:'HMAC-SHA256',issuer:'nomi-main',projectId,
 immutableProjectUuid,projectGeneration,canonicalRootDigest,manifestDigest,
@@ -1253,7 +1260,7 @@ The alias adapter has a closed typed boundary (implemented in
 
 ```ts
 type ExternalAliasRequest =
-  | { alias: 'session/open'; version: 1; projectSelectionHandle: string }
+  | { alias: 'session/open'; version: 1; projectSelectionHandle?: string; bootstrap?: { mode: 'current_project'; clientSessionNonce: string } }
   | { alias: 'context/read'; version: 1; leaseHandle: string; serverNonce: string; runId?: string }
   | { alias: 'operation/create'; version: 1; leaseHandle: string; serverNonce: string; operationId: string; runId?: string; draftNonce?: string }
   | { alias: 'operation/plan'; version: 1; leaseHandle: string; serverNonce: string; operationId: string; runId: string; candidate: PlanCandidate }

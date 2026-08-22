@@ -312,9 +312,11 @@ P3 只启用一个组合门 `generation_submit`（计划审阅 + 预算 + provid
 projectRevision,costScope,pricingSnapshotHash,reservationPreview,issuedAt,expiresAt,
 immutableProjectUuid,projectGeneration,audience,mac}`；字段完整签名，但只有
 脱敏的 `reservationPreview` 展示给真人。MCP `elicitation/create` 只负责展示/传输 challenge，
-永远不能单独铸造 receipt。只有 Nomi GUI/main-process user gesture，或预登记且
-可验证的 attested client 响应，才允许主进程 `approvalReceipt.ts` 签发一次性
-`HumanApprovalReceipt`；随后 `nomi_decide_generation_gate({receiptId})` 只负责消费
+永远不能单独铸造 receipt。默认由预登记且可验证的 attested client 响应触发主进程
+`approvalReceipt.ts` 签发一次性 receipt；客户端无法提供该证明时，才由 Nomi
+GUI/main-process user gesture 通过同一 challenge 兜底。两条路径都必须经过主进程
+验证，才允许签发一次性 `HumanApprovalReceipt`；随后
+`nomi_decide_generation_gate({receiptId})` 只负责消费
 并核验该 receipt，不能反过来签发或代替真人决定。给真人看的 challenge projection 只展示
 `reservationPreview`（金额、币种、有效期）；完整 `HumanApprovalChallengeV1` 仍签名保存
 gate/合同/项目代际等内部绑定字段，不提前创建 live reservationId；
@@ -323,7 +325,7 @@ GUI 接受可来自不同 renderer/session，但必须携带主进程签发的 p
 handle 与 user-gesture attestation；最终 receipt 的 `humanActor`/nonce/target 仍由
 主进程验证。lease 只提供 scope/session，不提供人审身份；工具参数中的 `approved`
 和旧 `spendConfirmed` 不能替代真人决定。
-外部 MCP 返回的 `elicitation/create` accept/confirm 只是 transport 结果，不是人审凭证；P3 只允许 Nomi GUI/main-process user gesture（或另行注册并可验证的 attested client）铸造 receipt。缺少 attestation 时返回 `human_approval_required` 和 project-scoped handoff/deep link，不得进入 `gate.decide`。
+外部 MCP 返回的 `elicitation/create` accept/confirm 只是 transport 结果，不是人审凭证；**已登记且可验证的 attested client 是默认确认面**，主进程验证通过后直接铸造 receipt；缺少 attestation 时才返回 `human_approval_required` 和 project-scoped handoff/deep link，由 Nomi GUI 使用同一 challenge 兜底，不得要求第二次确认。连接动作只建立客户端身份；只读 session lease 可从主进程验证的当前活动项目静默签发，第一次 `generation_submit` 将项目范围升级和生成审批合成一次确认。新 semantic 路径绝不回退到裸 `confirm`/`approved`/`spendConfirmed`。
 
 Challenge 在 transport 发起前由 Run-owned intent log 持久化：记录
 `generation.gate.challenge` 的 challengeId、nonce、contractHash、project/run、
@@ -605,7 +607,7 @@ E0 才允许在零额度模式持久化封存合同、authorization-required job
 
 | 外部别名 | Nomi 唯一入口 | 约束 |
 |---|---|---|
-| `session/open` | initialize + 主进程签发/验证 `ProjectLease` | 只收签名 `projectSelectionHandle`；`projectId`、`trust` 不由请求自报；无花费权限 |
+| `session/open` | initialize + 主进程签发/验证 `ProjectLease` | 收签名 `projectSelectionHandle`，或由已登记客户端走 server-owned `bootstrap:'current_project'`；`projectId`、路径、`trust` 不由请求自报；无花费权限 |
 | `context/read` | `nomi_get_generation_context`（read adapter） | 只读、无网络/上传/provider call；服务端固定 `createDraft=false`，host 不能传 mode |
 | `operation/create` | `nomi_operation_create` → `createGenerationSingleShotDraft`（仅 P0/P2 通过后） | 创建/复用 deterministic draft Run；不创建 job/gate/provider；与 read adapter 分开 |
 | `operation/plan` | `nomi_submit_generation_plan` | 封存合同并原子创建现有 authorization-required ProductionJob + `generation_submit` gate；仍无 provider/spend |
@@ -662,13 +664,18 @@ dispatch 都用 no-follow realpath、manifest digest 和 project generation 做 
 epoch 和目录 fsync。`nomi_session_open` 返回的 `serverNonce` 绑定当前连接，后续
 alias 必须回带该连接绑定；复制 `leaseHandle` 到另一 transport 不得获得同一
 operation 的读/控权限。headless 只能走主进程一次性 challenge 或预登记 client
-key 的 challenge-response，不能用环境变量自签 project scope。
+key 的 challenge-response，不能用环境变量自签 project scope。为降低首次使用
+摩擦，`nomi_session_open` 还可接受闭集的
+`bootstrap:{mode:'current_project',clientSessionNonce}`：主进程从当前已打开项目
+和已登记客户端解析并签发只读 lease；该请求不能指定 projectId/path。第一次
+`generation_submit` 再用同一 session challenge 原子升级 scope 并消费 receipt，
+不产生第二个可见确认。
 
 别名的最小 typed projection 与 English execution plan 同源：
 
 ```ts
 ExternalAliasRequest = discriminated union by alias:
-  session/open(version:1, projectSelectionHandle) // sessionId/projectId derive from signed handle
+  session/open(version:1, projectSelectionHandle? | bootstrap:'current_project') // identity derives in main
   context/read(version:1, leaseHandle, serverNonce, runId?)
   operation/create(version:1, leaseHandle, serverNonce, operationId, runId?, draftNonce?)
   operation/plan(version:1, leaseHandle, serverNonce, operationId, runId, candidate)
@@ -954,12 +961,14 @@ type PhaseEvidence = {
 ## 12. 当前第一条可执行路径
 
 ```text
-nomi_session_open (verified project-selection handle)
+nomi_session_open (verified project-selection handle
+  or registered-client bootstrap:'current_project')
 nomi_get_generation_context
 → nomi_operation_create
 → nomi_submit_generation_plan
 → nomi_preview_execution
-→ nomi_request_generation_gate → Nomi GUI/主进程 challenge + 可验证 user gesture
+→ nomi_request_generation_gate → attested client elicitation (preferred)
+  or the same challenge in Nomi GUI (fallback)
 → 主进程铸造 HumanApprovalReceipt → nomi_decide_generation_gate({receiptId}) (generation_submit)
 → nomi_start_generation
 → nomi_operation_read / nomi_subscribe_run / nomi_cancel_generation / nomi_reconcile_generation

@@ -20,10 +20,15 @@ Nomi 要做的不是“再造一套 MCP 协议”，而是让用户留在自己�
 → Artifact 回到正确项目
 ```
 
-用户不应被强行拉回 Nomi 界面。外部软件可以是确认界面，但普通的
+用户不应被强行拉回 Nomi 界面。**默认把一次确认放在用户正在使用的、已登记且可验证的外部软件里；客户端做不到时，才用 Nomi GUI 兜底。**普通的
 `confirm: true`、MCP elicitation 返回值或旧 `spendConfirmed` 不能直接当作真人凭证。
 外部客户端必须预先登记并能证明这次真实用户操作；Nomi 主进程负责验证并签发一次性审批凭证。
-外部软件确认成功后，Nomi 不应再次要求用户点击第二次。
+一次确认要同时说明当前项目、模型、成本和本次生成目标；客户端确认成功后，Nomi 不应再次要求用户点击第二次。
+
+这条用户体验取舍的完整设计和相似摩擦审计见：
+`docs/superpowers/specs/2026-08-23-mcp-client-first-authorization-design.md`、
+`docs/audit/2026-08-23-mcp-client-authorization-friction-audit.md`、
+`docs/superpowers/plans/2026-08-23-mcp-client-first-authorization.md`。
 
 ## 1. 唯一方案层级
 
@@ -104,7 +109,9 @@ Task 与阶段对应关系：`Task 0 ≈ P0`，`Task 1 ≈ P1`，`Task 2 ≈ P2`
 ### Task 4：审批和一次提交
 
 - 实现 typed challenge/receipt、reservation、spend grant 和唯一 P3 provider adapter。
-- 支持两条正向确认路径：Nomi GUI；已登记并可验证的外部软件界面。
+- 支持两条正向确认路径：**已登记并可验证的外部软件界面优先**；Nomi GUI 使用同一 challenge 兜底。
+- 连接动作只建立客户端身份；只读上下文复用当前项目 lease；第一次 generation_submit 将项目范围与生成审批组合成一次确认。
+- 同一 session/contract 的预览、进度、取消、重连和 reconcile 不再次确认；项目、scope、价格或合同实质变化才重新确认。
 - 同时测试三类失败：普通外部 `confirm:true`、未登记客户端、重放/跨项目/错误任务。
 - 成功路径只能产生一个 provider job；支持 poll、cancel、reconcile、restart。
 
@@ -155,10 +162,10 @@ Task 与阶段对应关系：`Task 0 ≈ P0`，`Task 1 ≈ P1`，`Task 2 ≈ P2`
 3. 从 Task 0 的 P0 checkpoint 开始：先补边界/失败测试/证据。
 4. P0 未通过前，不写 provider submit、Asset materialization、Pi adapter 或时间轴写入。
 5. P3 验收必须明确包含：
-   - Nomi GUI 确认成功；
-   - 已登记外部软件确认成功；
+   - 已登记外部软件确认成功且不打开 Nomi；
+   - 不支持可验证外部确认的客户端由同一 challenge 进入 Nomi GUI，确认一次即可继续；
    - 普通外部确认被拒绝；
-   - 外部确认后不要求第二次 Nomi 点击。
+   - 任一确认路径都不要求第二次点击。
 
 ## 6. 给新对话的启动句
 
@@ -168,4 +175,3 @@ docs/superpowers/plans/2026-08-22-nomi-runtime-handoff.md
 
 然后按其中唯一路线继续。不要把旧文档当第二套方案，也不要把“用户可在外部软件确认”改回“必须回 Nomi 界面”。当前只从 Task 0/P0 开始，先给出本轮要写的失败测试和放行标准；不要直接进入 provider 或付费代码。
 ```
-
