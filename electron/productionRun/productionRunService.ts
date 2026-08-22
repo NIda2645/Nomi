@@ -679,7 +679,6 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function readProjection(projectId: string, runId: string): ProductionRunProjection {
-    void resumeUnfinishedRuns(projectId)
     return runProjection(requireRun(projectId, runId), projectRootResolver, previewSecret)
   }
 

@@ -22,10 +22,34 @@ import type { ProductionBrief } from '../productionRun/productionRunTypes'
 import { withPreApprovedPlan, type ProjectGateway } from './gateway'
 import { INTAKE_MAX_QUESTIONS, buildIntakeMessage, buildIntakeQuestions } from './mcpBriefIntake'
 import type { CapabilityOriginHost } from './security'
+import {
+  createMcpGenerationPolicy,
+  type McpGenerationCapability,
+  type McpGenerationPolicy,
+  type McpGenerationPolicySnapshot,
+} from './mcpGenerationPolicy'
+
+export type RpcPolicyErrorCode = 'feature_disabled' | 'phase_not_ready' | 'not_ready' | 'legacy_path_forbidden'
+
+export type RpcPolicyErrorDetails = Readonly<{
+  code: RpcPolicyErrorCode
+  nextAction: string
+  phase: McpGenerationPolicySnapshot['phase']
+  capability: McpGenerationCapability
+}>
 
 export class RpcError extends Error {
-  constructor(message: string, readonly httpStatus: number) {
+  readonly code?: RpcPolicyErrorCode
+  readonly nextAction?: string
+  readonly phase?: McpGenerationPolicySnapshot['phase']
+  readonly capability?: McpGenerationCapability
+
+  constructor(message: string, readonly httpStatus: number, details?: RpcPolicyErrorDetails) {
     super(message)
+    this.code = details?.code
+    this.nextAction = details?.nextAction
+    this.phase = details?.phase
+    this.capability = details?.capability
   }
 }
 
@@ -50,6 +74,10 @@ export type DispatchContext = {
   }>
   /** Transport-owned authority. Request bodies may provide only an audit label, never trust. */
   origin?: { host: CapabilityOriginHost; actorId?: string }
+  /** The frozen server-side generation policy. Omit in legacy callers to build the default snapshot. */
+  generationPolicy?: McpGenerationPolicy
+  /** Optional read-only context seam. No semantic route may fall through to a legacy service. */
+  generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   /**
    * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ canvas.addNodes 预批准
    * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
@@ -173,7 +201,110 @@ function productionStartInput(params: Record<string, unknown>, authority: Dispat
   }
 }
 
+const SEMANTIC_GENERATION_ROUTES: Readonly<Record<string, Readonly<{
+  capability: McpGenerationCapability
+  contextRead?: boolean
+}>>> = Object.freeze({
+  nomi_session_open: { capability: 'context' },
+  nomi_get_generation_context: { capability: 'context', contextRead: true },
+  nomi_operation_create: { capability: 'create' },
+  nomi_submit_generation_plan: { capability: 'plan' },
+  nomi_preview_execution: { capability: 'preview' },
+  nomi_request_generation_gate: { capability: 'gate_request' },
+  nomi_decide_generation_gate: { capability: 'gate_decide' },
+  nomi_start_generation: { capability: 'start' },
+  nomi_operation_read: { capability: 'read' },
+  nomi_subscribe_run: { capability: 'events' },
+  nomi_cancel_generation: { capability: 'cancel' },
+  nomi_reconcile_generation: { capability: 'reconcile' },
+  nomi_steer_generation: { capability: 'steer' },
+  // P5 compatibility names are intentionally explicit stubs, not aliases to old artifact owners.
+  nomi_get_artifact: { capability: 'read' },
+  nomi_propose_adopt_artifact: { capability: 'create' },
+})
+
+const SEMANTIC_BINDING_FIELDS = new Set([
+  'leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId',
+  'immutableProjectUuid', 'projectGeneration', 'serverNonce', 'handoff', 'actionNonce',
+  'projectSelectionHandle', 'targetHash', 'reservationId',
+])
+
+const LEGACY_ROUTE_CAPABILITY: Readonly<Record<string, McpGenerationCapability>> = Object.freeze({
+  nomi_generate: 'create',
+  'production.start': 'create',
+  'production.control': 'cancel',
+  'production.decide-gate': 'gate_decide',
+  nomi_start_playbook: 'create',
+})
+
+function policyError(
+  details: RpcPolicyErrorDetails,
+  message = `generation.single-shot ${details.code}`,
+): RpcError {
+  return new RpcError(message, 403, details)
+}
+
+function unavailableSemanticRoute(policy: McpGenerationPolicy, capability: McpGenerationCapability): RpcError {
+  const snapshot = policy.snapshot()
+  return policyError({
+    code: 'not_ready',
+    nextAction: snapshot.nextAction,
+    phase: snapshot.phase,
+    capability,
+  }, `generation.single-shot ${capability} is not ready`)
+}
+
+function hasSemanticBinding(route: string, params: Record<string, unknown>): boolean {
+  const keys = Object.keys(params)
+  if (keys.some((key) => SEMANTIC_BINDING_FIELDS.has(key))) return true
+  // runId is a normal identifier on the two legacy run-control calls. It is a
+  // P3 binding marker only when paired with another sealed semantic field.
+  if (keys.includes('runId') && keys.some((key) => SEMANTIC_BINDING_FIELDS.has(key))) return true
+  // The legacy draft entry points never accepted a runId at all; fail closed
+  // before their normal field validator can turn a P3 call into a generic 400.
+  return ['nomi_generate', 'production.start', 'nomi_start_playbook'].includes(route) && keys.includes('runId')
+}
+
+function guardLegacyRoute(policy: McpGenerationPolicy, route: string, params: Record<string, unknown>): void {
+  if (!hasSemanticBinding(route, params)) return
+  const snapshot = policy.snapshot()
+  const capability = LEGACY_ROUTE_CAPABILITY[route] ?? 'create'
+  throw policyError({
+    code: 'legacy_path_forbidden',
+    nextAction: snapshot.nextAction,
+    phase: snapshot.phase,
+    capability,
+  }, `Legacy route ${route} cannot carry generation.single-shot bindings`)
+}
+
+async function dispatchSemanticStub(
+  route: Readonly<{ capability: McpGenerationCapability; contextRead?: boolean }>,
+  params: Record<string, unknown>,
+  ctx: DispatchContext,
+  policy: McpGenerationPolicy,
+): Promise<unknown> {
+  const decision = policy.decide(route.capability)
+  if (decision.kind === 'blocked') {
+    throw policyError({
+      code: decision.code,
+      nextAction: decision.nextAction,
+      phase: decision.phase,
+      capability: decision.capability,
+    })
+  }
+  if (route.contextRead && typeof ctx.generationContext === 'function') return ctx.generationContext(params)
+  // Even when a phase advertises a capability, this slice has no write owner.
+  // Keep the route explicit so it cannot fall through to a legacy service.
+  throw unavailableSemanticRoute(policy, route.capability)
+}
+
 export async function dispatch(method: string, params: Record<string, unknown>, ctx: DispatchContext): Promise<unknown> {
+  const generationPolicy = ctx.generationPolicy ?? createMcpGenerationPolicy()
+  const classifiedRoute = generationPolicy.classifyRoute(method)
+  if (classifiedRoute.kind === 'legacy') guardLegacyRoute(generationPolicy, method, params)
+  const semanticRoute = SEMANTIC_GENERATION_ROUTES[method]
+  if (semanticRoute) return dispatchSemanticStub(semanticRoute, params, ctx, generationPolicy)
+
   switch (method) {
     case 'ping':
       return { ok: true }

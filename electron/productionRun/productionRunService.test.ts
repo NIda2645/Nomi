@@ -27,6 +27,22 @@ const run: ProductionRun = {
 const event = (cursor: number, type: string): RunEvent => ({ schemaVersion: 1, eventId: `event-${cursor}`, cursor, runId: 'run-1', runRevision: cursor, commandId: `cmd-${cursor}`, type, message: type, emittedAt: '2026-08-08T10:00:00.000Z', payload: { secret: 'must not cross boundary' } })
 
 describe('production run service projection boundary', () => {
+  it('keeps readProjection pure and leaves restart recovery explicit', async () => {
+    const repository = {
+      read: vi.fn(() => run),
+      readEvents: vi.fn(() => []),
+      list: vi.fn(() => [{ runId: run.runId }]),
+      execute: vi.fn(),
+    }
+    const service = createProductionRunService({ repository: repository as never, projectRootResolver: () => null })
+
+    service.readProjection('project-1', 'run-1')
+    await Promise.resolve()
+
+    expect(repository.list).not.toHaveBeenCalled()
+    expect(repository.execute).not.toHaveBeenCalled()
+  })
+
   it('keeps actionable submission identity while redacting policy, credentials and paths', () => {
     const repository = { read: vi.fn(() => run), readEvents: vi.fn(() => []) }
     const projection = createProductionRunService({ repository: repository as never, projectRootResolver: () => null }).readProjection('project-1', 'run-1')
