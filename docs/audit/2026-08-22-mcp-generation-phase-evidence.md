@@ -1,10 +1,10 @@
 # MCP generation phase evidence — 2026-08-22
 
-状态：`blocked`（docs-only static review；未授权任何 provider/paid/runtime code）。
+状态：`blocked`（P0 policy skeleton + docs；未授权任何 provider/paid/runtime code）。
 
 ## Baseline
 
-证据工作树：`/Users/aoqimin/Desktop/Nomi-unified-runtime-design`（与共享脏工作树隔离）。
+证据工作树：`/Users/aoqimin/Desktop/Nomi-p0-runtime-20260822`（与共享脏工作树隔离）。
 
 ```text
 code baseline (historical): origin/main @ ae53045bb094ca1db0cb6aefe1fa7a7e0baa6b07
@@ -17,6 +17,26 @@ pnpm run check:i18n: PASS
 pnpm run lint:ci: PASS — 0 errors, 96 pre-existing warnings (within 98-warning ratchet)
 pnpm run build: PASS
 ```
+
+## P0 implementation snapshot
+
+```text
+implementation branch: codex/p0-runtime-foundation-20260822
+implementation baseline: origin/main @ ae53045bb094ca1db0cb6aefe1fa7a7e0baa6b07
+policy owner: electron/capabilityCore/mcpGenerationPolicy.ts
+policy test: pnpm exec vitest run electron/capabilityCore/mcpGenerationPolicy.test.ts — PASS (7 passed)
+policy typecheck: pnpm run typecheck — PASS
+policy lint: targeted eslint — PASS (Node emitted only the repository's existing module-type warning)
+full gates: pnpm run gates — PASS (660 files passed, 1 skipped; 5945 tests passed, 1 skipped; 96 pre-existing lint warnings)
+provider calls: 0
+paid/runtime writes: 0
+```
+
+The policy snapshot is intentionally not a P0 pass by itself. It is the single
+flag/phase decision owner and keeps legacy generation routes outside the new
+semantic surface; dispatcher, durable receipt/lease/WAL, provider idempotency,
+recovery, projection and materialization work remain blocked behind later
+checkpoints.
 
 The following hashes identify the reviewed docs snapshot for this record (the
 evidence file itself is intentionally excluded to avoid a self-referential
@@ -54,12 +74,12 @@ faafc75e5bc8f4cb777961fd1a942fa022c9794a824e89b8c512093df520b7c0  docs/plan/2026
 
 ## Current P0 gate
 
-`P0` is `blocked`, not `passed`: the canonical documents are directionally
-usable, but no runtime code has been changed and the receipt, lease, provider
-idempotency, recovery, projection and materialization tests are not implemented.
-No paid provider path is authorized by this evidence. A static `ATTENTION` is
-never promoted to an implementation pass without code, adversarial tests and a
-reproducible reviewed-tree snapshot.
+`P0` is `blocked`, not `passed`: the canonical documents and the single policy
+owner are present, but the receipt, lease, provider idempotency, recovery,
+projection and materialization tests are not implemented. No paid provider path
+is authorized by this evidence. A static `ATTENTION` is never promoted to an
+implementation pass without code, adversarial tests and a reproducible reviewed-
+tree snapshot.
 
 ## Evidence rules
 
