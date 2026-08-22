@@ -40,8 +40,8 @@ and fail closed before they can reach a service, spend grant, renderer
 generation call, or provider:
 
 ```text
-reviewed HEAD: a4417b03 (codex/p0-runtime-foundation-20260822)
-implementation commits: 0e6a323a, 4694e88b, 7e2b9359, 484ec38a, cb38bb5e, 567b1fb8, a4417b03
+reviewed HEAD: cf9880ed (codex/p0-runtime-foundation-20260822)
+implementation commits: 0e6a323a, 4694e88b, 7e2b9359, 484ec38a, cb38bb5e, 567b1fb8, a4417b03, cf9880ed
 policy/dispatcher/renderer focused suites: PASS — 123 tests before final recovery-test adjustment
 final full gates: PASS — 664 files passed, 1 skipped; 6017 tests passed, 1 skipped
 lint: PASS — 0 errors, 96 pre-existing warnings (within 98-warning ratchet)
@@ -60,6 +60,8 @@ route stubs consult the immutable generation policy and return typed
 `feature_disabled`/`phase_not_ready`/`not_ready` errors without a write owner.
 RPC and MCP stdio preserve the policy error fields (`code`, `nextAction`,
 `phase`, `capability`) into the structured tool outcome.
+The same policy error envelope is now preserved by the one-shot host/RPC
+transport; ordinary untyped errors retain their legacy string wire shape.
 
 `ProductionRunService.readProjection` and the repository read path are now
 strictly read-only: corrupt or stale snapshots are rebuilt in memory without
