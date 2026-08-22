@@ -298,6 +298,14 @@ describe('buildToolErrorOutcome (A6 错误契约)', () => {
     expect(text).toContain('已完成的内容安全')
     expect(outcome).toMatchObject({ errorCode: null, message: 'ECONNRESET boom' })
   })
+
+  it('preserves typed generation policy codes in structured MCP outcomes', () => {
+    const error = Object.assign(new Error('generation.single-shot phase_not_ready'), {
+      code: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+    })
+    const { outcome } = buildToolErrorOutcome('nomi_start_generation', error)
+    expect(outcome).toMatchObject({ kind: 'error', errorCode: 'phase_not_ready' })
+  })
 })
 
 describe('buildProgressStartMessage (A1 起始帧参数回显)', () => {

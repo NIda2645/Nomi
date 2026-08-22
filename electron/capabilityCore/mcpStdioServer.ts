@@ -20,6 +20,7 @@ import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import { makeShotVerifyDeps } from './shotVerifyDeps'
+import { rpcErrorFromPayload } from './mcpRpcError'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
@@ -100,8 +101,8 @@ async function callViaRpc(
   } finally {
     clearTimeout(timer)
   }
-  const body = (await res.json()) as { ok?: boolean; error?: string; result?: unknown }
-  if (!body.ok) throw new Error(body.error || `RPC ${res.status}`)
+  const body = (await res.json()) as { ok?: boolean; error?: unknown; result?: unknown }
+  if (!body.ok) throw rpcErrorFromPayload(body, res.status)
   return body.result
 }
 

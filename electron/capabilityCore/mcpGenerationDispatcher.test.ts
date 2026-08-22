@@ -137,6 +137,19 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     expect(ctx.makeGateway).not.toHaveBeenCalled()
   })
 
+  it.each([
+    'executionBinding', 'requestFingerprint', 'providerIdempotencyKey', 'runtimeEnvelopeRef',
+    'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState', 'providerTaskId', 'sessionId', 'nonce',
+  ])('firewalls canonical binding marker %s on generate', async (field) => {
+    const { ctx } = context({ generationPolicy: policy() })
+    await expect(dispatch('generate', {
+      projectId: 'project-1', vendor: 'provider', modelKey: 'model', intent: 'image', prompt: 'legacy',
+      [field]: 'sealed-value',
+    }, ctx as never)).rejects.toMatchObject({ code: 'legacy_path_forbidden' })
+    expect(ctx.runTask).not.toHaveBeenCalled()
+    expect(ctx.makeGateway).not.toHaveBeenCalled()
+  })
+
   it('does not change unknown method errors', async () => {
     const { ctx } = context({ generationPolicy: policy({ enabled: true }) })
     await expect(dispatch('nomi_unknown_generation_method', {}, ctx as never))

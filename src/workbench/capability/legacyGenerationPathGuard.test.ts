@@ -9,7 +9,11 @@ describe('renderer legacy generation path firewall', () => {
     })).not.toThrow()
   })
 
-  it.each(['leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId'])
+  it.each([
+    'leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId',
+    'executionBinding', 'requestFingerprint', 'providerIdempotencyKey', 'runtimeEnvelopeRef',
+    'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState', 'providerTaskId', 'sessionId', 'nonce',
+  ])
     ('rejects the semantic binding %s with a stable error code', (field) => {
       try {
         assertLegacyGenerationPayload({ nodeId: 'node-1', [field]: 'sealed-value' })

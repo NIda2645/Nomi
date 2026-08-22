@@ -226,7 +226,9 @@ const SEMANTIC_GENERATION_ROUTES: Readonly<Record<string, Readonly<{
 const SEMANTIC_BINDING_FIELDS = new Set([
   'leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId',
   'immutableProjectUuid', 'projectGeneration', 'serverNonce', 'handoff', 'actionNonce',
-  'projectSelectionHandle', 'targetHash', 'reservationId',
+  'projectSelectionHandle', 'targetHash', 'reservationId', 'executionBinding', 'requestFingerprint',
+  'providerIdempotencyKey', 'runtimeEnvelopeRef', 'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState',
+  'providerTaskId', 'sessionId', 'nonce',
 ])
 
 const LEGACY_ROUTE_CAPABILITY: Readonly<Record<string, McpGenerationCapability>> = Object.freeze({

@@ -143,7 +143,19 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         send(200, { ok: true, result })
       } catch (error) {
         const status = error instanceof RpcError ? error.httpStatus : 500
-        send(status, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        const message = error instanceof Error ? error.message : String(error)
+        const details = error instanceof RpcError && error.code
+          ? {
+              message,
+              code: error.code,
+              nextAction: error.nextAction,
+              phase: error.phase,
+              capability: error.capability,
+            }
+          : null
+        // Keep ordinary errors as legacy strings; policy errors preserve their
+        // typed recovery contract for local RPC clients.
+        send(status, { ok: false, error: details ?? message })
       }
     })()
   })

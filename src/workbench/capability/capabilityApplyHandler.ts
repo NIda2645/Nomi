@@ -52,7 +52,9 @@ type PlanConfirmPayload = {
 const LEGACY_GENERATION_SEMANTIC_FIELDS = new Set([
   'leaseHandle', 'receiptId', 'contractHash', 'gateKind', 'operationId', 'shotId', 'runtimeTaskId',
   'immutableProjectUuid', 'projectGeneration', 'serverNonce', 'handoff', 'actionNonce',
-  'projectSelectionHandle', 'targetHash', 'reservationId',
+  'projectSelectionHandle', 'targetHash', 'reservationId', 'executionBinding', 'requestFingerprint',
+  'providerIdempotencyKey', 'runtimeEnvelopeRef', 'runtimeEnvelopeHash', 'fencingEpoch', 'envelopeState',
+  'providerTaskId', 'sessionId', 'nonce',
 ])
 
 export class LegacyPathForbiddenError extends Error {

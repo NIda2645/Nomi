@@ -61,7 +61,7 @@ async function rpc(
     },
     body: JSON.stringify({ method, params }),
   })
-  return { status: res.status, body: (await res.json()) as { ok: boolean; result?: unknown; error?: string } }
+  return { status: res.status, body: (await res.json()) as { ok: boolean; result?: unknown; error?: unknown } }
 }
 
 /** 发原始请求体：用于测顶层旁路标志（planConfirmed / spendConfirmed），它们不在 params 里。 */
@@ -236,5 +236,13 @@ describe('capabilityCore/rpcServer', () => {
   it('未知方法 → 404', async () => {
     const res = await rpc('nope')
     expect(res.status).toBe(404)
+  })
+
+  it('keeps typed generation policy details in the local RPC error payload', async () => {
+    const res = await rpc('nomi_operation_create', {})
+    expect(res.status).toBe(403)
+    expect(res.body.error).toMatchObject({
+      code: 'feature_disabled', nextAction: expect.any(String), phase: 'schema_only', capability: 'create',
+    })
   })
 })

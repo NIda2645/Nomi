@@ -758,7 +758,14 @@ export function buildToolErrorOutcome(
 ): { text: string; outcome: Record<string, unknown> } {
   const ctx: Ctx = { locale }
   const message = error instanceof Error ? error.message : String(error)
-  const code = Object.keys(ERROR_HINT).find((key) => message.includes(key)) || null
+  const errorRecord = error && typeof error === 'object' ? error as Record<string, unknown> : {}
+  const structuredCode = typeof errorRecord.code === 'string'
+    ? errorRecord.code
+    : typeof errorRecord.errorCode === 'string' ? errorRecord.errorCode : null
+  const policyCode = new Set(['legacy_path_forbidden', 'feature_disabled', 'phase_not_ready', 'not_ready'])
+  const code = structuredCode && policyCode.has(structuredCode)
+    ? structuredCode
+    : Object.keys(ERROR_HINT).find((key) => message.includes(key)) || null
   const hint = code ? ERROR_HINT[code] : null
   const recover = hint ? hint.recover.map((r) => L(ctx, r.zh, r.en)) : []
   const text = [
