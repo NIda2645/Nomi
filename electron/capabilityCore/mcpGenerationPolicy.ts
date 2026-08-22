@@ -53,7 +53,7 @@ export type McpGenerationDecision =
       nextAction: string
     }>
 
-export type LegacyMcpGenerationRoute = 'nomi_generate' | 'production.start' | 'production.control' | 'production.decide-gate' | 'nomi_start_playbook'
+export type LegacyMcpGenerationRoute = 'generate' | 'nomi_generate' | 'production.start' | 'production.control' | 'production.decide-gate' | 'nomi_start_playbook'
 
 export type McpGenerationRoute =
   | Readonly<{ kind: 'legacy'; route: LegacyMcpGenerationRoute }>
@@ -73,6 +73,7 @@ export type McpGenerationPolicy = Readonly<{
 }>
 
 const LEGACY_GENERATION_ROUTES: ReadonlySet<LegacyMcpGenerationRoute> = new Set([
+  'generate',
   'nomi_generate',
   'production.start',
   'production.control',

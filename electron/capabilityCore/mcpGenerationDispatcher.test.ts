@@ -122,6 +122,21 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     expect(productionRuns.createDraft).not.toHaveBeenCalled()
   })
 
+  it('firewalls the actual generate dispatcher method before it can reach the provider path', async () => {
+    const { ctx } = context({ generationPolicy: policy() })
+
+    await expect(dispatch('generate', {
+      projectId: 'project-1', vendor: 'provider', modelKey: 'model', intent: 'image', prompt: 'legacy',
+      leaseHandle: 'lease-1', operationId: 'operation-1', contractHash: 'hash-1',
+    }, ctx as never)).rejects.toMatchObject({
+      code: 'legacy_path_forbidden',
+      capability: 'create',
+      phase: 'schema_only',
+    })
+    expect(ctx.runTask).not.toHaveBeenCalled()
+    expect(ctx.makeGateway).not.toHaveBeenCalled()
+  })
+
   it('does not change unknown method errors', async () => {
     const { ctx } = context({ generationPolicy: policy({ enabled: true }) })
     await expect(dispatch('nomi_unknown_generation_method', {}, ctx as never))

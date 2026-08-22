@@ -230,6 +230,7 @@ const SEMANTIC_BINDING_FIELDS = new Set([
 ])
 
 const LEGACY_ROUTE_CAPABILITY: Readonly<Record<string, McpGenerationCapability>> = Object.freeze({
+  generate: 'create',
   nomi_generate: 'create',
   'production.start': 'create',
   'production.control': 'cancel',
@@ -262,7 +263,7 @@ function hasSemanticBinding(route: string, params: Record<string, unknown>): boo
   if (keys.includes('runId') && keys.some((key) => SEMANTIC_BINDING_FIELDS.has(key))) return true
   // The legacy draft entry points never accepted a runId at all; fail closed
   // before their normal field validator can turn a P3 call into a generic 400.
-  return ['nomi_generate', 'production.start', 'nomi_start_playbook'].includes(route) && keys.includes('runId')
+  return ['generate', 'nomi_generate', 'production.start', 'nomi_start_playbook'].includes(route) && keys.includes('runId')
 }
 
 function guardLegacyRoute(policy: McpGenerationPolicy, route: string, params: Record<string, unknown>): void {
