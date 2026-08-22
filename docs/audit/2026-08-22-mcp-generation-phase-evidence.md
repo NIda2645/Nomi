@@ -32,11 +32,46 @@ provider calls: 0
 paid/runtime writes: 0
 ```
 
-The policy snapshot is intentionally not a P0 pass by itself. It is the single
-flag/phase decision owner and keeps legacy generation routes outside the new
-semantic surface; dispatcher, durable receipt/lease/WAL, provider idempotency,
-recovery, projection and materialization work remain blocked behind later
-checkpoints.
+## Continued P0 boundary hardening — 2026-08-23
+
+The policy-only skeleton was followed by a zero-provider/zero-credit boundary
+slice. It does not authorize generation; it makes the unsafe paths observable
+and fail closed before they can reach a service, spend grant, renderer
+generation call, or provider:
+
+```text
+reviewed HEAD: a4417b03 (codex/p0-runtime-foundation-20260822)
+implementation commits: 0e6a323a, 4694e88b, 7e2b9359, 484ec38a, cb38bb5e, 567b1fb8, a4417b03
+policy/dispatcher/renderer focused suites: PASS — 123 tests before final recovery-test adjustment
+final full gates: PASS — 664 files passed, 1 skipped; 6017 tests passed, 1 skipped
+lint: PASS — 0 errors, 96 pre-existing warnings (within 98-warning ratchet)
+typecheck: PASS
+build: PASS
+provider calls: 0
+spend grants/materialization: 0
+```
+
+The slice now has one shared `generationBindingGuard` marker owner used by the
+main dispatcher and renderer bridge. It recursively scans JSON-shaped legacy
+payloads with an explicit depth cap and rejects canonical execution/operation
+bindings (including nested `params`, runtime-envelope and provider namespace
+markers) as `legacy_path_forbidden` before service/grant/provider work. Semantic
+route stubs consult the immutable generation policy and return typed
+`feature_disabled`/`phase_not_ready`/`not_ready` errors without a write owner.
+RPC and MCP stdio preserve the policy error fields (`code`, `nextAction`,
+`phase`, `capability`) into the structured tool outcome.
+
+`ProductionRunService.readProjection` and the repository read path are now
+strictly read-only: corrupt or stale snapshots are rebuilt in memory without
+backup, rewrite, or directory mutation. Restart recovery is explicit through
+`resumeUnfinishedRuns`; the existing restart test was updated to exercise that
+explicit command rather than relying on a read side effect.
+
+The policy and boundary slice is intentionally not a P0 pass by itself. It is
+the single flag/phase decision owner plus a fail-closed dispatcher/read seam;
+durable receipt/lease/WAL, provider idempotency, provider recovery, runtime
+envelope, projection and materialization work remain blocked behind later
+checkpoints. No semantic route has a write owner in this slice.
 
 The following hashes identify the reviewed docs snapshot for this record (the
 evidence file itself is intentionally excluded to avoid a self-referential
@@ -74,12 +109,12 @@ faafc75e5bc8f4cb777961fd1a942fa022c9794a824e89b8c512093df520b7c0  docs/plan/2026
 
 ## Current P0 gate
 
-`P0` is `blocked`, not `passed`: the canonical documents and the single policy
-owner are present, but the receipt, lease, provider idempotency, recovery,
-projection and materialization tests are not implemented. No paid provider path
-is authorized by this evidence. A static `ATTENTION` is never promoted to an
-implementation pass without code, adversarial tests and a reproducible reviewed-
-tree snapshot.
+`P0` is `blocked`, not `passed`: the policy/dispatcher firewall and pure-read
+boundary are implemented and fully gated, but the receipt, lease, WAL,
+provider idempotency/reconcile, runtime-envelope, recovery and materialization
+owners are not implemented. No paid provider path is authorized by this
+evidence. A static `ATTENTION` is never promoted to an implementation pass
+without code, adversarial tests and a reproducible reviewed-tree snapshot.
 
 ## Evidence rules
 
