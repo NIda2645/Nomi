@@ -58,6 +58,8 @@ export type GenerationGateConfirmation = {
   receiptToken?: string
 }
 
+export type GenerationGateVerificationResult = Pick<GenerationGateConfirmation, 'confirmed' | 'receiptId' | 'receiptToken'>
+
 // 哪些工具挂活 widget（tool.name → ui:// 资源）：单次生成与 production Run 共用一张活面板。
 const TOOL_UI_RESOURCE: Record<string, string> = {
   nomi_generate: NOMI_LIVE_DRAFT_UI_URI,
@@ -79,8 +81,10 @@ export interface McpTransport {
   isAppOpen(): boolean
   /** Main-process proof that this connection was installed for a known MCP client. */
   getAuthenticatedClient?(): AuthenticatedMcpClient | null
+  /** Optional per-challenge verifier. A static client proof is not enough to mint a receipt. */
+  verifyClientGenerationConfirmation?(challenge: GenerationGateChallengeProjection, attestation: unknown): Promise<boolean | GenerationGateVerificationResult>
   /** GUI fallback for the exact server-owned challenge. It must return only the gesture result. */
-  confirmGenerationInNomi?(challenge: GenerationGateChallengeProjection): Promise<boolean | Pick<GenerationGateConfirmation, 'confirmed' | 'receiptId' | 'receiptToken'>>
+  confirmGenerationInNomi?(challenge: GenerationGateChallengeProjection): Promise<boolean | GenerationGateVerificationResult>
   /** 结果/进度文案语言（可选；缺省 zh-CN，跟 App 语言设置走）。 */
   getLocale?(): ResultLocale
 }
@@ -219,7 +223,7 @@ export function createMcpProtocol(transport: McpTransport) {
     message: string
     title: string
     description: string
-  }): Promise<{ supported: boolean; confirmed?: boolean }> {
+  }): Promise<{ supported: boolean; confirmed?: boolean; action?: 'accept' | 'decline' | 'cancel' | 'timeout'; attestation?: unknown }> {
     if (!clientSupportsElicitation) return { supported: false }
     try {
       const res = (await sendServerRequest('elicitation/create', {
@@ -231,13 +235,18 @@ export function createMcpProtocol(transport: McpTransport) {
           },
           required: ['confirm'],
         },
-      })) as { action?: string; content?: { confirm?: boolean } } | null
+      })) as { action?: string; content?: { confirm?: boolean; attestation?: unknown; confirmationAttestation?: unknown } } | null
       // 三态：accept / decline / cancel。只有明确 accept + confirm=true 才能跨过服务端边界。
       const confirmed = res?.action === 'accept' && res?.content?.confirm === true
-      return { supported: true, confirmed }
+      return {
+        supported: true,
+        confirmed,
+        action: res?.action === 'accept' || res?.action === 'decline' || res?.action === 'cancel' ? res.action : 'cancel',
+        attestation: res?.content?.attestation ?? res?.content?.confirmationAttestation,
+      }
     } catch {
       // 超时/异常 → 当作未确认（不死等、不偷偷花钱）。
-      return { supported: true, confirmed: false }
+      return { supported: true, confirmed: false, action: 'timeout' }
     }
   }
 
@@ -253,7 +262,7 @@ export function createMcpProtocol(transport: McpTransport) {
       || !challenge.expiresAt) throw new Error('Invalid generation gate challenge')
     const authenticatedClient = transport.getAuthenticatedClient?.() ?? null
     if (clientSupportsElicitation && authenticatedClient) {
-      const confirmed = await elicitBooleanConfirm({
+      const elicited = await elicitBooleanConfirm({
         message: challenge.confirmationText || [
           `允许 Nomi 在${challenge.projectName ? `项目《${challenge.projectName}》` : '当前项目'}使用模型 ${challenge.model}`,
           `最多花费 ${challenge.currency || ''}${challenge.maximumCost}，${challenge.shotSummary || '生成这一镜'}吗？`,
@@ -264,12 +273,34 @@ export function createMcpProtocol(transport: McpTransport) {
           `有效期至 ${challenge.expiresAt}`,
         ].filter(Boolean).join(' · '),
       })
-      return {
-        challengeId: challenge.challengeId,
-        confirmed: confirmed.confirmed === true,
-        surface: 'client',
-        nextAction: confirmed.confirmed ? 'in_client' : 'wait_for_reconciliation',
+      if (!elicited.confirmed) {
+        // A deliberate decline/cancel is a completed human decision; do not ask
+        // the same person again on a second surface. A timeout is also kept on
+        // the client surface so a reconnect can reuse the unexpired challenge.
+        return {
+          challengeId: challenge.challengeId,
+          confirmed: false,
+          surface: 'client',
+          nextAction: 'wait_for_reconciliation',
+        }
       }
+      if (elicited.attestation && typeof transport.verifyClientGenerationConfirmation === 'function') {
+        const verified = await transport.verifyClientGenerationConfirmation(challenge, elicited.attestation)
+        const result = typeof verified === 'boolean' ? { confirmed: verified } : verified
+        if (result.confirmed === true) {
+          return {
+            challengeId: challenge.challengeId,
+            confirmed: true,
+            surface: 'client',
+            nextAction: 'in_client',
+            ...(result.receiptId ? { receiptId: result.receiptId } : {}),
+            ...(result.receiptToken ? { receiptToken: result.receiptToken } : {}),
+          }
+        }
+      }
+      // Standard MCP elicitation has no portable click attestation. A bare
+      // accept therefore falls through to the same GUI challenge, never to a
+      // provider or spend path.
     }
     if (typeof transport.confirmGenerationInNomi === 'function' && transport.isAppOpen()) {
       const fallback = await transport.confirmGenerationInNomi(challenge)

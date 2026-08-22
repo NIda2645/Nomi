@@ -39,6 +39,7 @@ describe('one generation challenge, two confirmation surfaces', () => {
       invoke: vi.fn(async () => ({})),
       isAppOpen: () => true,
       getAuthenticatedClient: () => 'codex',
+      verifyClientGenerationConfirmation: vi.fn(async (_challenge, attestation) => attestation === 'attestation-1'),
       confirmGenerationInNomi: vi.fn(async () => true),
     }
     const protocol = await initialized(transport)
@@ -46,7 +47,7 @@ describe('one generation challenge, two confirmation surfaces', () => {
     await tick()
     const request = frames.find((frame) => (frame as { method?: string }).method === 'elicitation/create') as { id: string; params: { message: string } }
     expect(request.params.message).toContain('最多花费 ¥5')
-    protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true } } })
+    protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true, attestation: 'attestation-1' } } })
 
     await expect(resultPromise).resolves.toEqual({
       challengeId: 'challenge-1', confirmed: true, surface: 'client', nextAction: 'in_client',
@@ -71,6 +72,26 @@ describe('one generation challenge, two confirmation surfaces', () => {
       challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi',
     })
     expect(frames.some((frame) => (frame as { method?: string }).method === 'elicitation/create')).toBe(false)
+  })
+
+  it('falls back to Nomi when a registered client returns bare confirm:true without a verifiable attestation', async () => {
+    const confirmGenerationInNomi = vi.fn(async () => ({ confirmed: true, receiptId: 'receipt-1' }))
+    const frames: unknown[] = []
+    const protocol = await initialized({
+      send: (frame) => frames.push(frame),
+      invoke: vi.fn(async () => ({})),
+      isAppOpen: () => true,
+      getAuthenticatedClient: () => 'cursor',
+      confirmGenerationInNomi,
+    })
+    const resultPromise = protocol.requestGenerationConfirmation(challenge)
+    await tick()
+    const request = frames.find((frame) => (frame as { method?: string }).method === 'elicitation/create') as { id: string }
+    protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true } } })
+    await expect(resultPromise).resolves.toMatchObject({
+      challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi', receiptId: 'receipt-1',
+    })
+    expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
   })
 
   it('does not create a receipt surface when neither client nor GUI can confirm', async () => {
