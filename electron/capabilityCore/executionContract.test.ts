@@ -106,5 +106,25 @@ describe("ExecutionContract compiler", () => {
     expect(draft.parameters).toEqual({ aspectRatio: "1:1", seed: 8 });
     expect(() => applyPlanCandidatePatch({ ...candidate(), sealedContractHash: "a".repeat(64) }, { prompt: "new" })).toThrow(/new_draft_required/);
   });
-});
 
+  it("preserves reference kind and role in the sealed contract", () => {
+    const contract = compileExecutionContract(candidate({
+      references: [{ assetId: "asset-character", contentHash: "c".repeat(64), version: 1, kind: "image", role: "character" }],
+    }), registry);
+
+    expect(contract.references[0]).toMatchObject({ kind: "image", role: "character" });
+  });
+
+  it("changes the contract when only a reference role changes", () => {
+    const original = candidate({
+      references: [{ assetId: "asset-a", contentHash: "a".repeat(64), version: 1, kind: "image", role: "character" }],
+    });
+    const changed = applyPlanCandidatePatch(original, {
+      references: [{ ...original.references[0]!, role: "first_frame" }],
+    });
+
+    expect(changed.revision).toBe(original.revision + 1);
+    expect(compileExecutionContract(changed, registry).contractHash)
+      .not.toBe(compileExecutionContract(original, registry).contractHash);
+  });
+});

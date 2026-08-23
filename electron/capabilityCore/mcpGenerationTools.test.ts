@@ -102,6 +102,24 @@ describe("semantic MCP generation tools", () => {
     expect(preview).toMatchObject({ operationId, candidateRevision: 2, nextAction: "request_gate", contract: { mode: "image-to-image", contractHash: expect.any(String) } });
   });
 
+  it("keeps reference kind and role when an MCP draft is created", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z" });
+    const created = await handler({
+      capability: "create",
+      params: {
+        candidate: candidate({
+          references: [{ assetId: "asset-character", contentHash: "c".repeat(64), version: 1, kind: "image", role: "character" }],
+        }),
+      },
+      lease,
+    });
+    const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+
+    expect((await operations.read("project-1", operationId))?.candidate.references[0])
+      .toMatchObject({ kind: "image", role: "character" });
+  });
+
   it("returns a new-draft error instead of mutating a sealed plan", async () => {
     const operations = createInMemoryGenerationOperationStore();
     const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z" });

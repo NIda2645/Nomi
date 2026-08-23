@@ -284,7 +284,17 @@ function candidateFrom(value: unknown): PlanCandidate {
     references: references.map((reference, index) => {
       const item = record(reference, `candidate reference ${index}`);
       if (typeof item.assetId !== "string" || typeof item.contentHash !== "string" || !Number.isInteger(item.version)) throw new Error(`Invalid candidate reference ${index}`);
-      return { assetId: item.assetId, contentHash: item.contentHash, version: Number(item.version) };
+      const kind = item.kind;
+      const role = item.role;
+      if (kind !== undefined && kind !== "image" && kind !== "video" && kind !== "audio") throw new Error(`Invalid candidate reference kind ${index}`);
+      if (role !== undefined && role !== "character" && role !== "first_frame" && role !== "last_frame" && role !== "reference" && role !== "audio") throw new Error(`Invalid candidate reference role ${index}`);
+      return {
+        assetId: item.assetId,
+        contentHash: item.contentHash,
+        version: Number(item.version),
+        ...(kind === undefined ? {} : { kind }),
+        ...(role === undefined ? {} : { role }),
+      };
     }),
   };
 }

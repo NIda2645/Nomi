@@ -8,6 +8,8 @@ export type PlanAssetReference = {
   assetId: string;
   contentHash: string;
   version: number;
+  kind?: "image" | "video" | "audio";
+  role?: "character" | "first_frame" | "last_frame" | "reference" | "audio";
 };
 
 export type PlanCandidate = {
@@ -152,4 +154,3 @@ export function applyPlanCandidatePatch(candidate: PlanCandidate, patch: Partial
     references: patch.references ? structuredClone(patch.references) : structuredClone(candidate.references),
   };
 }
-

@@ -205,7 +205,7 @@ git commit -m "refactor: derive video recommendations from capability facts"
 - Modify: `electron/capabilityCore/executionContract.test.ts`
 - Modify: `electron/capabilityCore/mcpGenerationTools.test.ts`
 
-- [ ] **Step 1: Add red tests for role-preserving edits and stable hashes**
+- [x] **Step 1: Add red tests for role-preserving edits and stable hashes**
 
 Extend the P2 tests with optional reference context:
 
@@ -226,7 +226,7 @@ it('changing only a reference role creates a new candidate revision and contract
 });
 ```
 
-- [ ] **Step 2: Run the focused tests and verify the fields are currently dropped**
+- [x] **Step 2: Run the focused tests and verify the fields are currently dropped**
 
 ```bash
 pnpm exec vitest run electron/capabilityCore/executionContract.test.ts electron/capabilityCore/mcpGenerationTools.test.ts --reporter=dot
@@ -234,7 +234,7 @@ pnpm exec vitest run electron/capabilityCore/executionContract.test.ts electron/
 
 Expected: FAIL because `PlanAssetReference` and `candidateFrom` discard `kind`/`role`.
 
-- [ ] **Step 3: Add optional typed context without breaking legacy drafts**
+- [x] **Step 3: Add optional typed context without breaking legacy drafts**
 
 Add optional fields to `PlanAssetReference`:
 
@@ -245,7 +245,7 @@ role?: 'character' | 'first_frame' | 'last_frame' | 'reference' | 'audio';
 
 Update `candidateFrom` to validate and retain these fields when present. Existing references without context remain valid. Contract hashing must include the optional fields when supplied, so the sealed request conserves the user’s role choice.
 
-- [ ] **Step 4: Run focused tests and all contract tests**
+- [x] **Step 4: Run focused tests and all contract tests**
 
 ```bash
 pnpm exec vitest run electron/capabilityCore/executionContract.test.ts electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/productionGenerationOperationStore.test.ts --reporter=dot
@@ -254,7 +254,7 @@ pnpm run typecheck
 
 Expected: all tests pass; old fixture drafts remain readable.
 
-- [ ] **Step 5: Commit the P2 reference context**
+- [x] **Step 5: Commit the P2 reference context**
 
 ```bash
 git add electron/capabilityCore/executionContract.ts electron/capabilityCore/mcpGenerationTools.ts electron/capabilityCore/executionContract.test.ts electron/capabilityCore/mcpGenerationTools.test.ts
