@@ -327,6 +327,16 @@ describe('buildToolErrorOutcome (A6 错误契约)', () => {
     expect(text).toContain('等待对账')
     expect(text).not.toContain('retry')
     expect(outcome).toMatchObject({ nextActions: ['wait_reconciliation'] })
+    expect(outcome).toMatchObject({ recovery: { allowAutomaticRetry: false, allowNewAttempt: true, nextAction: 'manual_review' } })
+  })
+
+  it('keeps the recovery message in the requested locale', () => {
+    const { text, outcome } = buildToolOutcome('nomi_get_run', { projectId: 'p1', runId: 'run-1' }, {
+      runId: 'run-1', status: 'needs_attention', stageId: 'generate',
+      budget: {}, jobs: [{ jobId: 'job-1', status: 'submission_unknown' }],
+    }, 'en')
+    expect(text).toContain('waiting for reconciliation')
+    expect((outcome as Record<string, unknown>).recovery).toMatchObject({ profile: 'submit_only', nextAction: 'manual_review' })
   })
 })
 

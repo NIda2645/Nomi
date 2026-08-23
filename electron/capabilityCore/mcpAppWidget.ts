@@ -11,6 +11,7 @@
 // 本 widget = 「Nomi 活生成」：把外部 agent 驱动的这次生成，在宿主对话里内嵌一张 Nomi 风格活面板——
 // 标题 + 逐镜缩略图（带状态徽标）+「在 Nomi 中打开」。宿主不支持该扩展时 tool 仍回文本兜底（不裸奔）。
 // 纯字符串（无 electron/DOM 依赖）→ 可裸 node 单测 serving，也可独立浏览器渲染截图验。
+import { projectGenerationRecovery, type GenerationRecoveryProjection } from './generationRecoveryProjection'
 
 /**
  * widget `<img src>` 用的安全图 URL 校验器——**run 路与生成路共用的唯一一把**（0b 关闭校验不对称）。
@@ -88,6 +89,8 @@ export type NomiDraftState = {
   runId?: string
   /** 第一个 waiting 门；卡内渲染确认区（样张桌面形态贰/肆幕）。 */
   gate?: NomiDraftGate
+  /** Shared degraded-provider recovery projection; the widget only explains it, never retries. */
+  recovery?: GenerationRecoveryProjection
 }
 
 /** Convert a safe MCP production projection into the same compact widget state used by generation. */
@@ -116,6 +119,17 @@ export function buildNomiRunFromProjection(args: {
   const runId = typeof value.runId === 'string' ? value.runId : args.runId
   const playbook = value.playbook && typeof value.playbook === 'object' ? value.playbook as Record<string, unknown> : {}
   const artifacts = Array.isArray(value.artifacts) ? value.artifacts as Array<Record<string, unknown>> : []
+  const jobs = Array.isArray(value.jobs) ? value.jobs as Array<Record<string, unknown>> : []
+  const unknownJob = jobs.find((job) => job.status === 'submission_unknown')
+  const cancelRequestedJob = jobs.find((job) => job.status === 'cancel_requested')
+  const recoveryProfile = value.providerCapabilityProfile === 'full_recovery' || value.providerCapabilityProfile === 'observe_only'
+    ? value.providerCapabilityProfile
+    : 'submit_only'
+  const recovery = unknownJob
+    ? projectGenerationRecovery({ state: 'submission_unknown', profile: recoveryProfile })
+    : cancelRequestedJob
+      ? projectGenerationRecovery({ state: 'cancel_requested', profile: recoveryProfile })
+      : undefined
   // run 路预览 URL 走共用校验器（0b）：artifact 预览在服务侧只出①nomi-local②签名 127.0.0.1 两形，行为与旧
   // 内联版一致（一般 https 不会出现在这条路），但改用同一把尺子后生成路也能复用、两路不再各写一份。
   const safePreviewUrl = safeWidgetImageUrl
@@ -177,11 +191,11 @@ export function buildNomiRunFromProjection(args: {
   const deepLink = RUN_DEEP_LINK_RE.test(candidateDeepLink)
     ? candidateDeepLink
     : (projectId && runId ? `nomi://project/${encodeURIComponent(projectId)}/run/${encodeURIComponent(runId)}` : undefined)
-  const fallbackMessage = status === 'unknown'
+  const fallbackMessage = recovery?.message || (status === 'unknown'
     ? '已查询 Nomi，当前结果未提供运行状态。'
     : status === 'available'
       ? 'Nomi 已准备好当前结果，未自动批准付费或导出。'
-      : undefined
+      : undefined)
   return {
     kind: 'production',
     title: `Nomi · ${typeof playbook.name === 'string' ? playbook.name : '制作 Run'}`,
@@ -194,6 +208,7 @@ export function buildNomiRunFromProjection(args: {
     ...(runId ? { runId } : {}),
     ...(deepLink ? { deepLink } : {}),
     ...(gate ? { gate } : {}),
+    ...(recovery ? { recovery } : {}),
   }
 }
 

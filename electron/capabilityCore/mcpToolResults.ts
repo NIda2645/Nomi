@@ -8,6 +8,7 @@
 
 import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
+import { projectGenerationRecovery } from './generationRecoveryProjection'
 
 export { buildToolErrorOutcome } from './mcpToolErrorResults'
 
@@ -453,11 +454,18 @@ export function buildToolOutcome(
     ] : []
     const jobsArr = Array.isArray(value.jobs) ? (value.jobs as Array<Record<string, unknown>>) : []
     const unknownJobs = jobsArr.filter((job) => str(job.status) === 'submission_unknown')
+    const recoveryProfile = value.providerCapabilityProfile === 'full_recovery' || value.providerCapabilityProfile === 'observe_only'
+      ? value.providerCapabilityProfile
+      : 'submit_only'
+    const recovery = unknownJobs.length
+      ? projectGenerationRecovery({ state: 'submission_unknown', profile: recoveryProfile, locale: ctx.locale })
+      : undefined
     const reconciliationLines = unknownJobs.length ? [
       L(ctx,
-        `有 ${unknownJobs.length} 个任务的供应商状态还没核实；Nomi 不会自动重提，正在等待对账。`,
-        `${unknownJobs.length} job(s) have an unverified provider state; Nomi will not resubmit automatically and is waiting for reconciliation.`,
+        `有 ${unknownJobs.length} 个任务的供应商状态还没核实；正在等待对账，Nomi 不会自动重提。`,
+        `${unknownJobs.length} job(s) have an unverified provider state; waiting for reconciliation and no automatic resubmit.`,
       ),
+      `  ${recovery?.message}`,
     ] : []
     // B3：状态转述带当前信任档位（非默认时才占一行，避免默认档噪音）。
     const trustLevel = str(value.trustLevel) || 'key_confirm'
@@ -481,7 +489,8 @@ export function buildToolOutcome(
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
         ...(sampleGateId ? { sampleGateId } : {}),
         ...(shotGate ? { shotGateId: shotGate.gateId, shotJobId: shotGate.jobId } : {}),
-        nextActions: unknownJobs.length
+        ...(recovery ? { recovery } : {}),
+        nextActions: recovery
           ? ['wait_reconciliation']
           : direction && direction.candidates.length
           ? ['decide_direction']

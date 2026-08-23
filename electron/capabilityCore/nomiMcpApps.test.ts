@@ -334,6 +334,20 @@ describe('buildNomiRunFromProjection（纯函数）', () => {
     expect(artifact.status).toBe('available')
     expect(artifact.shots).toHaveLength(1)
   })
+
+  it('shows degraded-provider recovery guidance without adding a retry button', () => {
+    const run = buildNomiRunFromProjection({
+      projectId: 'project-1',
+      runId: 'run-1',
+      result: {
+        projectId: 'project-1', runId: 'run-1', status: 'needs_attention',
+        jobs: [{ jobId: 'job-1', status: 'submission_unknown' }],
+      },
+    })
+    expect(run.recovery).toMatchObject({ profile: 'submit_only', allowAutomaticRetry: false, allowNewAttempt: true })
+    expect(run.message).toContain('不会自动重提')
+    expect(NOMI_LIVE_DRAFT_WIDGET_HTML).not.toContain('自动重试')
+  })
 })
 
 describe('buildNomiRunFromProjection · B6 gate 卡映射', () => {

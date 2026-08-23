@@ -3,6 +3,7 @@
 // 本文件零 electron 依赖（可裸 node 单测）；发通知与聚焦在 productionNotificationsDesktop.ts。
 
 import type { ProductionRun, RunEvent } from './productionRunTypes'
+import { projectGenerationRecovery, type GenerationRecoveryProjection } from '../capabilityCore/generationRecoveryProjection'
 
 export type ProductionNotice = {
   /** 去重键：同 run 同类事件在窗口期内只打扰一次。 */
@@ -10,6 +11,7 @@ export type ProductionNotice = {
   title: string
   body: string
   target: { projectId: string; runId: string }
+  recovery?: GenerationRecoveryProjection
 }
 
 type NoticeLocale = 'zh-CN' | 'en'
@@ -33,13 +35,14 @@ const COPY: Record<string, { zh: [string, string]; en: [string, string] }> = {
   },
 }
 
-function notice(kind: keyof typeof COPY, run: ProductionRun, locale: NoticeLocale, detail?: string): ProductionNotice {
+function notice(kind: keyof typeof COPY, run: ProductionRun, locale: NoticeLocale, detail?: string, recovery?: GenerationRecoveryProjection): ProductionNotice {
   const [title, fallbackBody] = locale === 'en' ? COPY[kind].en : COPY[kind].zh
   return {
     key: `${kind}:${run.runId}`,
     title,
     body: detail?.trim() || fallbackBody,
     target: { projectId: run.projectId, runId: run.runId },
+    ...(recovery ? { recovery } : {}),
   }
 }
 
@@ -55,7 +58,18 @@ export function decideProductionNotice(
   if (!events.length) return null
   const byType = (type: string) => events.find((event) => event.type === type)
   const unknown = byType('job.submission_unknown')
-  if (unknown) return notice('submission_unknown', run, locale, unknown.message)
+  if (unknown) {
+    const profile = unknown.payload?.providerCapabilityProfile === 'full_recovery' || unknown.payload?.providerCapabilityProfile === 'observe_only'
+      ? unknown.payload.providerCapabilityProfile
+      : 'submit_only'
+    const recovery = projectGenerationRecovery({
+      state: 'submission_unknown',
+      profile,
+      providerReference: typeof unknown.payload?.providerTaskId === 'string' ? unknown.payload.providerTaskId : undefined,
+      locale,
+    })
+    return notice('submission_unknown', run, locale, unknown.message || recovery.message, recovery)
+  }
   const attention = byType('job.needs_attention')
   if (attention || run.status === 'needs_attention') return notice('attention', run, locale, attention?.message)
   const gate = byType('gate.waiting')
