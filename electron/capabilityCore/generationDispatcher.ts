@@ -346,7 +346,7 @@ async function dispatchSemanticStub(
     })
   }
   if (route.sessionOpen) return openProjectLease(params, ctx, policy)
-  if (route.contextRead && typeof ctx.generationContext !== 'function') {
+  if (route.contextRead && typeof ctx.generationContext !== 'function' && typeof ctx.generationPlanning !== 'function') {
     throw unavailableSemanticRoute(policy, route.capability)
   }
   const leased = route.requiresLease === false

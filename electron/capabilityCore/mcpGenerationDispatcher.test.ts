@@ -363,6 +363,25 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     expect(ctx.makeGateway).not.toHaveBeenCalled()
   })
 
+  it('lets the same shared handler serve context/read when no second context owner exists', async () => {
+    const leaseAuthority = makeAuthority()
+    const leaseHandle = makeLease(leaseAuthority, 'project-1', ['context:read'])
+    const generationPlanning = vi.fn(async (input: { capability: string; lease: { projectId: string } }) => ({
+      capability: input.capability,
+      projectId: input.lease.projectId,
+      nextAction: 'create',
+    }))
+    const { ctx } = context({
+      generationPolicy: policy({ enabled: true, p0Passed: true, p2Passed: true }),
+      projectLeaseAuthority: leaseAuthority,
+      generationPlanning,
+    })
+
+    await expect(dispatch('nomi_get_generation_context', { projectId: 'project-1', leaseHandle }, ctx as never))
+      .resolves.toEqual({ capability: 'context', projectId: 'project-1', nextAction: 'create' })
+    expect(generationPlanning).toHaveBeenCalledTimes(1)
+  })
+
   it('requires a main-process receipt for gate decisions and never treats a boolean as proof', async () => {
     const leaseAuthority = makeAuthority()
     const leaseHandle = makeLease(leaseAuthority, 'project-1', ['generation:gate'])

@@ -31,6 +31,9 @@ import type { ProjectLeaseAuthority } from './projectLease'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
+import { createGenerationPlanningHandler } from './mcpGenerationTools'
+import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import type { ModuleRegistry } from './moduleRegistry'
 
 const productionRuns = getProductionRunService()
 
@@ -43,6 +46,7 @@ export type McpStdioServerOptions = {
   generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   generationPlanning?: DispatchContext['generationPlanning']
+  generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
   projectRevisionResolver?: (projectId: string) => number | undefined
 }
 
@@ -182,9 +186,16 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     /* 取不到系统 locale → 保持 zh-CN 缺省 */
   }
 
+  const generationPlanning = authorities.generationPlanning
+    ?? (authorities.generationModuleRegistry
+      ? createGenerationPlanningHandler({
+        registry: authorities.generationModuleRegistry,
+        operations: createProductionGenerationOperationStore(productionRuns),
+      })
+      : undefined)
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
-    invoke: (method, params, options) => invoke(method, params, options, authorities),
+    invoke: (method, params, options) => invoke(method, params, options, { ...authorities, generationPlanning }),
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
     getAuthenticatedClient: () => {
       const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])

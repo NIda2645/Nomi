@@ -1,4 +1,5 @@
 import type { ProductionExecutionBinding } from "./productionExecutionBinding";
+import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
 
 export const PRODUCTION_RUN_SCHEMA_VERSION = 1;
 
@@ -169,6 +170,14 @@ export type ProductionJob = {
   updatedAt: string;
 };
 
+export type ProductionGenerationPlan = {
+  operationId: string;
+  state: "draft" | "sealed" | "cancelled" | "submitted";
+  candidate: PlanCandidate;
+  contract?: ExecutionContractV1;
+  updatedAt: string;
+};
+
 /**
  * B1 创意方向候选：AI 拟的一句话方向，用户在对话/面板里三选一（或「都不要，自己描述」）。
  * key = 稳定选项标识（决议时回填进事件留痕）；oneLiner = 一句话描述（用户可读，走 i18n 转述）。
@@ -249,6 +258,8 @@ export type ProductionRun = {
   gates: ProductionGate[];
   jobs: ProductionJob[];
   artifacts: ProductionArtifact[];
+  /** Optional single-shot plan owned by this Run; legacy playbooks omit it. */
+  generationPlan?: ProductionGenerationPlan;
   createdAt: string;
   updatedAt: string;
 };

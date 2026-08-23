@@ -34,6 +34,7 @@ import {
 import type {
   AutomationPolicy,
   CreateProductionRunInput,
+  ProductionGenerationPlan,
   ProductionRun,
   RunEvent,
   RunCommand,
@@ -113,6 +114,9 @@ type ServiceDeps = {
 
 const MEANINGFUL_EVENT_TYPES = new Set([
   'run.created',
+  'generation.plan.updated',
+  'generation.plan.sealed',
+  'generation.plan.cancelled',
   'run.status.changed',
   'run.stage.changed',
   'stage.updated',
@@ -301,6 +305,16 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
     else void proposeDirections(run)
     return runProjection(run, projectRootResolver, previewSecret)
+  }
+
+  function createGenerationDraft(input: {
+    operationId: string
+    projectId: string
+    origin: { host: string; actorId?: string }
+    candidate: ProductionGenerationPlan['candidate']
+    currency?: string
+  }): ProductionRun {
+    return repository.createGenerationDraft(input)
   }
 
   function writeProjectJson(projectId: string, relativePath: string, value: unknown): void {
@@ -766,7 +780,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   return {
-    createDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
+    createDraft, createGenerationDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
     requestArtifactRevision, reviewArtifact, materializeStoryboard, resolveArtifactPreview, command, proposeScript, proposeStoryboard,
     resumeUnfinishedRuns, listProjections, listFull,
   }

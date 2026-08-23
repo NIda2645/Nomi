@@ -6,6 +6,7 @@ import type {
   ProductionGate,
   ProductionJob,
   ProductionJobStatus,
+  ProductionGenerationPlan,
   ProductionRun,
   ProductionRunStatus,
   ProductionStage,
@@ -175,6 +176,47 @@ export function applyProductionCommand(
     case "run.stage": {
       const stageId = text(command.payload, "stageId");
       return { run: { ...current, stageId, updatedAt: now }, eventType: "run.stage.changed", message: stageId };
+    }
+    case "generation.patch": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "draft") throw new Error("new_draft_required: edit a new generation draft");
+      const patch = record(command.payload, "patch") as Partial<ProductionGenerationPlan["candidate"]>;
+      const candidate = {
+        ...currentPlan.candidate,
+        ...patch,
+        revision: currentPlan.candidate.revision + 1,
+        parameters: patch.parameters ? structuredClone(patch.parameters) : structuredClone(currentPlan.candidate.parameters),
+        references: patch.references ? structuredClone(patch.references) : structuredClone(currentPlan.candidate.references),
+      };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, candidate, updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.updated",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.seal": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "draft") throw new Error("Generation plan is not editable");
+      const contract = record(command.payload, "contract") as ProductionGenerationPlan["contract"];
+      if (!contract || typeof contract.contractHash !== "string" || contract.contractHash.trim() === "") throw new Error("Invalid generation contract");
+      if (contract.candidateId !== currentPlan.candidate.candidateId || contract.candidateRevision !== currentPlan.candidate.revision) {
+        throw new Error("Generation contract does not match the current draft");
+      }
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, candidate: { ...currentPlan.candidate, sealedContractHash: contract.contractHash }, contract, state: "sealed", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.sealed",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.cancel": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan) throw new Error("Generation plan not found");
+      if (currentPlan.state === "submitted") throw new Error("Submitted generation cannot be cancelled as a draft");
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, state: "cancelled", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.cancelled",
+        message: currentPlan.operationId,
+      };
     }
     case "stage.upsert": {
       const stage = record(command.payload, "stage") as ProductionStage;

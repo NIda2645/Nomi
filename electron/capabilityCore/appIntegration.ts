@@ -31,6 +31,9 @@ import type { ProjectSelectionHandleV1 } from './projectLease'
 import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
 import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
+import { createGenerationPlanningHandler } from './mcpGenerationTools'
+import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import type { ModuleRegistry } from './moduleRegistry'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
@@ -168,12 +171,20 @@ export async function startCapabilityCore(
     generationPolicy?: McpGenerationPolicy
     generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
     generationPlanning?: DispatchContext['generationPlanning']
+    generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
     projectRevisionResolver?: (projectId: string) => number | undefined
   } = {},
 ): Promise<void> {
   try {
     const token = ensureToken()
     const defaults = createDefaultAuthorities()
+    const generationPlanning = authorities.generationPlanning
+      ?? (authorities.generationModuleRegistry
+        ? createGenerationPlanningHandler({
+          registry: authorities.generationModuleRegistry,
+          operations: createProductionGenerationOperationStore(getProductionRunService()),
+        })
+        : undefined)
     handle = await startRpcServer({
       runTask,
       fetchTaskResult,
@@ -181,6 +192,7 @@ export async function startCapabilityCore(
       productionRuns: getProductionRunService(),
       ...defaults,
       ...authorities,
+      generationPlanning,
     })
     const location = getProjectLocationState()
     advertisedLibrary = { projectsRoot: location.path, isDefault: location.source === 'default' }
