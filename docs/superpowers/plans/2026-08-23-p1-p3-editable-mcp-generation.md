@@ -366,14 +366,14 @@ pnpm run test:e2e -- tests/ux/mcp-generation-single-shot.e2e.mjs tests/ux/mcp-ge
 
 共享确认链已逐项检查：主操作只有一个且目标足够大；摘要使用项目/模型/产物等用户语言；客户端确认时 Nomi 不重复弹卡；GUI fallback 卡片有明确“忽略/确认生成”；真实截图已写入 evidence。semantic 精确 challenge 与恢复态的人眼对账待下一段。
 
-- [ ] **Step 4: 提交 P3 零额度证据**
+- [x] **Step 4: 提交 P3 零额度证据**
 
 ```bash
 pnpm run test:mcp
 pnpm run gates
 ```
 
-Expected: MCP zero-credit assertions 全绿；fake provider raw submit=1；全量 gates 通过；`docs/audit/2026-08-23-p1-p3-evidence.md` 写明测试数量、截图入口、provider/spend 计数、恢复矩阵与剩余决策门。
+已通过：MCP zero-credit assertions 全绿；fake provider raw submit=1；全量 gates 通过；审计文档已写明测试数量、截图入口、provider/spend 计数、恢复矩阵与剩余决策门。
 
 ```bash
 git add tests/ux docs/audit/2026-08-23-p1-p3-evidence.md
@@ -386,11 +386,11 @@ git commit -m "test: verify editable MCP generation user journeys"
 - Modify: `docs/audit/2026-08-23-p1-p3-evidence.md`
 - Reference: `docs/superpowers/plans/2026-08-22-nomi-unified-editor-runtime.md`
 
-- [ ] **Step 1: 生成可复核的阶段表**
+- [x] **Step 1: 生成可复核的阶段表**
 
 文档必须按 P1/P2/P3 分开写：用户任务、已验证行为、provider/spend 计数、失败与恢复、截图路径、未完成项。未完成项只能是 P4+（多镜连续性、Timeline adopt、动态模块、Agent parity），不能把 P1/P2/P3 缺口藏进“后续优化”。
 
-- [ ] **Step 2: 跑交付前五门**
+- [x] **Step 2: 跑交付前五门**
 
 ```bash
 pnpm run check:filesize
@@ -402,7 +402,7 @@ pnpm run test
 pnpm run build
 ```
 
-Expected: 五门全绿；用户可见变更已做真实截图与旅程走查，代码只在本隔离分支产生提交。
+已通过：五门全绿；用户可见共享确认变更已做真实截图与旅程走查；代码只在本隔离分支产生提交。
 
 - [ ] **Step 3: 在真实 provider 前停下并向用户汇报决策**
 
