@@ -45,6 +45,7 @@ export type RpcServerOptions = {
   confirmGenerationInNomi?: (input: { challengeToken: string }) => Promise<unknown>
   generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  generationPlanning?: import('./dispatcher').DispatchContext['generationPlanning']
   projectRevisionResolver?: (projectId: string) => number | undefined
 }
 
@@ -155,6 +156,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           origin: { host: origin },
           generationPolicy: options.generationPolicy,
           generationContext: options.generationContext,
+          generationPlanning: options.generationPlanning,
           projectRevisionResolver: options.projectRevisionResolver,
           projectLeaseAuthority: options.projectLeaseAuthority,
           resolveCurrentProject: options.resolveCurrentProject,

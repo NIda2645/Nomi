@@ -391,6 +391,11 @@ async function dispatchSemanticStub(
     }
   }
   if (route.contextRead && typeof ctx.generationContext === 'function') return ctx.generationContext(leased.params)
+  if (typeof ctx.generationPlanning === 'function'
+    && route.capability !== 'gate_request'
+    && route.capability !== 'gate_decide') {
+    return ctx.generationPlanning({ capability: route.capability, params: leased.params, lease: leased.lease })
+  }
   throw unavailableSemanticRoute(policy, route.capability)
 }
 

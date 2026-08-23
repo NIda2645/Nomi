@@ -331,6 +331,38 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     expect(generationContext).toHaveBeenCalledTimes(1)
   })
 
+  it('routes editable semantic planning through one shared handler without touching a provider', async () => {
+    const leaseAuthority = makeAuthority()
+    const leaseHandle = makeLease(leaseAuthority, 'project-1', ['generation:create', 'generation:plan', 'generation:preview'])
+    const generationPlanning = vi.fn(async (input: { capability: string; params: Record<string, unknown>; lease: { projectId: string } }) => ({
+      capability: input.capability,
+      projectId: input.lease.projectId,
+      candidateRevision: 2,
+      contractHash: 'contract-hash-2',
+      nextAction: 'preview',
+    }))
+    const { ctx } = context({
+      generationPolicy: policy({ enabled: true, p0Passed: true, p2Passed: true }),
+      projectLeaseAuthority: leaseAuthority,
+      generationPlanning,
+    })
+
+    await expect(dispatch('nomi_preview_execution', {
+      projectId: 'project-1',
+      leaseHandle,
+      candidate: { moduleRef: 'generation.single-shot', providerId: 'provider.image', modelId: 'model.image.v1', mode: 'image-to-image' },
+    }, ctx as never)).resolves.toEqual({
+      capability: 'preview',
+      projectId: 'project-1',
+      candidateRevision: 2,
+      contractHash: 'contract-hash-2',
+      nextAction: 'preview',
+    })
+    expect(generationPlanning).toHaveBeenCalledTimes(1)
+    expect(ctx.runTask).not.toHaveBeenCalled()
+    expect(ctx.makeGateway).not.toHaveBeenCalled()
+  })
+
   it('requires a main-process receipt for gate decisions and never treats a boolean as proof', async () => {
     const leaseAuthority = makeAuthority()
     const leaseHandle = makeLease(leaseAuthority, 'project-1', ['generation:gate'])
