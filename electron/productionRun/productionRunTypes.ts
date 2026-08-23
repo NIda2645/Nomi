@@ -1,3 +1,5 @@
+import type { ProductionExecutionBinding } from "./productionExecutionBinding";
+
 export const PRODUCTION_RUN_SCHEMA_VERSION = 1;
 
 export type AutomationMode = "guided" | "balanced" | "policy-auto";
@@ -141,6 +143,11 @@ export type ProductionJob = {
   model: string;
   idempotencyKey: string;
   providerTaskId?: string;
+  /** P1/P3 sealed execution identity; absent only on legacy jobs. */
+  executionBinding?: ProductionExecutionBinding;
+  requestFingerprint?: string;
+  runtimeEnvelopeRef?: string;
+  providerIdempotencyKey?: string;
   taskKind?: string;
   nodeId?: string;
   /** Storyboard provenance copied from the approved script at plan.attach time. */

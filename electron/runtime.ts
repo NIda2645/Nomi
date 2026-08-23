@@ -52,6 +52,7 @@ import { modelModeBodies } from "./catalog/modelCatalogListing";
 import { runCustomCallTask } from "./catalog/customCallDispatch";
 import { resolveCustomCallExecution } from "./catalog/customCallMode";
 import { assertAndConsumeSpendGrant } from "./spendGrant";
+import type { ProductionExecutionBinding } from "./productionRun/productionExecutionBinding";
 export type {
   AiSdkProviderKind,
   BillingModelKind,
@@ -119,7 +120,9 @@ export type TaskRequest = {
   height?: number;
   steps?: number;
   cfgScale?: number;
-  extras?: Record<string, unknown>;
+  extras?: Record<string, unknown> & {
+    executionBinding?: ProductionExecutionBinding;
+  };
 };
 export type TaskResult = {
   id: string;
