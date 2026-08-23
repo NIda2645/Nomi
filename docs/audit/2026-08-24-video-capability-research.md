@@ -67,7 +67,7 @@ pnpm exec vitest run src/config/modelArchetypes electron/catalog --reporter=dot
 pnpm run test
 # 699 files passed, 1 skipped / 6172 tests passed, 1 skipped
 pnpm run test:mcp
-# real Electron stdio journey passed: 45 assertions / 10 steps / 963ms; 6 mock-vendor requests, zero provider quota
+# real Electron stdio journey passed: 45 assertions / 10 steps / 738ms; 6 mock-vendor requests, zero provider quota
 pnpm run typecheck
 pnpm run build
 pnpm run check:filesize
