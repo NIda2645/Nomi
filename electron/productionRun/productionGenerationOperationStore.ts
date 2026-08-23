@@ -77,13 +77,13 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
       if (!operation) throw new Error("Production Run lost its generation plan");
       return operation;
     },
-    async approve(projectId, operationId, receiptId, now) {
+    async approve(projectId, operationId, receiptId, now, options) {
       const current = read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
         commandId: `generation.approve:${operationId}:${receiptId}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.approve",
-        payload: { receiptId, contractHash: current.contract?.contractHash },
+        payload: { receiptId, contractHash: current.contract?.contractHash, ...(options?.attempt === undefined ? {} : { attempt: options.attempt }) },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);

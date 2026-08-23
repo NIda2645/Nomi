@@ -66,7 +66,7 @@ function setup() {
       allowedProviders: ["fixture-provider"],
       allowedModels: ["fixture-model"],
       maxSpend: 0,
-      maxAttemptsPerJob: 1,
+      maxAttemptsPerJob: 2,
     },
   });
   repository.execute("project-1", "op-1", {
@@ -185,6 +185,29 @@ describe("Run-owned semantic generation submission", () => {
     await expect(restarted.resume({ projectId: "project-1", operationId: "op-1" })).resolves.toMatchObject({ action: "reconcile" });
   });
 
+  it("submits an observe-only provider once and resumes by its provider task id", async () => {
+    const { root, repository } = setup();
+    const submit = vi.fn(async () => ({ providerTaskId: "provider-task-observe-only" }));
+    const runner = createProductionGenerationSubmission({
+      repository,
+      projectRoot: root,
+      immutableProjectUuid: "project-uuid-1",
+      projectGeneration: 1,
+      intentMacKey: "test-intent-key",
+      provider: {
+        providerId: "fixture-provider",
+        capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+        buildRequest: (input) => input,
+        submit,
+      },
+      now: () => "2026-08-23T00:00:00.000Z",
+    });
+
+    await expect(runner.start({ projectId: "project-1", operationId: "op-1" })).resolves.toMatchObject({ providerTaskId: "provider-task-observe-only" });
+    await expect(runner.resume({ projectId: "project-1", operationId: "op-1" })).resolves.toMatchObject({ action: "poll", nextAction: "poll", providerTaskId: "provider-task-observe-only" });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
   it("can resume after a crash before dispatch only with an explicit not-submitted disposition", async () => {
     const { root, repository } = setup();
     const beforeDispatch = vi.fn(() => { throw new Error("crash before dispatch"); });
@@ -227,7 +250,7 @@ describe("Run-owned semantic generation submission", () => {
     expect(secondSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it("blocks a provider without native recovery capabilities before creating a job or intent", async () => {
+  it("submits even when a provider exposes no native recovery capabilities", async () => {
     const { root, repository, contract } = setup();
     const submit = vi.fn(async () => ({ providerTaskId: "should-not-run" }));
     const runner = createProductionGenerationSubmission({
@@ -244,8 +267,60 @@ describe("Run-owned semantic generation submission", () => {
       },
       now: () => "2026-08-23T00:00:00.000Z",
     });
-    await expect(runner.start({ projectId: "project-1", operationId: "op-1" })).rejects.toMatchObject({ code: "provider_capability_missing" });
-    expect(submit).not.toHaveBeenCalled();
-    expect(repository.read("project-1", "op-1")).toMatchObject({ generationPlan: { contract: { contractHash: contract.contractHash } }, jobs: [] });
+    await expect(runner.start({ projectId: "project-1", operationId: "op-1" })).resolves.toMatchObject({ providerTaskId: "should-not-run" });
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(repository.read("project-1", "op-1")).toMatchObject({ generationPlan: { contract: { contractHash: contract.contractHash } }, jobs: [{ status: "provider_accepted" }] });
+  });
+
+  it("requires a fresh approval before an explicit second attempt", async () => {
+    const { root, repository, contract } = setup();
+    const firstSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-unknown" }));
+    const first = createProductionGenerationSubmission({
+      repository,
+      projectRoot: root,
+      immutableProjectUuid: "project-uuid-1",
+      projectGeneration: 1,
+      intentMacKey: "test-intent-key",
+      provider: {
+        providerId: "fixture-provider",
+        capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+        buildRequest: (input) => input,
+        submit: firstSubmit,
+      },
+      afterProviderAcceptance: () => { throw new Error("receipt lost after acceptance"); },
+      now: () => "2026-08-23T00:00:00.000Z",
+    });
+    await expect(first.start({ projectId: "project-1", operationId: "op-1" })).rejects.toBeInstanceOf(SubmissionReceiptUnknownError);
+    const next = await first.createNewAttempt({ projectId: "project-1", operationId: "op-1", reason: "submission_unknown" });
+    expect(next).toMatchObject({ attempt: 2, nextAction: "confirm", warning: expect.stringContaining("新的提交尝试") });
+    await expect(first.start({ projectId: "project-1", operationId: "op-1", attempt: 2 })).rejects.toThrow("Seal and confirm");
+
+    const pending = repository.read("project-1", "op-1");
+    expect(pending).toBeTruthy();
+    repository.execute("project-1", "op-1", {
+      commandId: "generation.approve:op-1:receipt-attempt-2",
+      expectedRevision: pending!.revision,
+      type: "generation.approve",
+      payload: { receiptId: "receipt-attempt-2", contractHash: contract.contractHash, attempt: 2 },
+      issuedAt: "2026-08-23T00:00:00.000Z",
+    });
+    const secondSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-2" }));
+    const second = createProductionGenerationSubmission({
+      repository,
+      projectRoot: root,
+      immutableProjectUuid: "project-uuid-1",
+      projectGeneration: 1,
+      intentMacKey: "test-intent-key",
+      provider: {
+        providerId: "fixture-provider",
+        capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+        buildRequest: (input) => input,
+        submit: secondSubmit,
+      },
+      now: () => "2026-08-23T00:01:00.000Z",
+    });
+    await expect(second.start({ projectId: "project-1", operationId: "op-1", attempt: 2 })).resolves.toMatchObject({ attempt: 2, providerTaskId: "provider-task-2" });
+    expect(firstSubmit).toHaveBeenCalledTimes(1);
+    expect(secondSubmit).toHaveBeenCalledTimes(1);
   });
 });

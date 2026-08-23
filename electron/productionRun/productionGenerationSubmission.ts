@@ -3,10 +3,10 @@ import path from "node:path";
 
 import {
   createGenerationRuntimeAdapter,
-  assertGenerationProviderCapabilities,
   resolveExecutionContract,
   type GenerationProvider,
 } from "../capabilityCore/generationRuntimeAdapter";
+import { assertGenerationProviderCanSubmit } from "../capabilityCore/generationProviderCapabilities";
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
 import { createProductionRunRuntimeEnvelope } from "./productionRunRuntimeEnvelope";
 import { createProductionRunIntentLog } from "./productionRunIntentLog";
@@ -29,6 +29,8 @@ export type GenerationSubmissionStartInput = {
   projectId: string;
   operationId: string;
   definitelyNotSubmitted?: boolean;
+  /** Explicitly selected attempt; omitted means the latest durable attempt. */
+  attempt?: number;
 };
 
 export type GenerationSubmissionResult = {
@@ -36,6 +38,7 @@ export type GenerationSubmissionResult = {
   runId: string;
   jobId: string;
   providerTaskId: string;
+  attempt: number;
   nextAction: "observe";
 };
 
@@ -43,6 +46,21 @@ export type GenerationSubmissionResumeResult = GenerationResumeDecision & {
   operationId: string;
   nextAction: "poll" | "reconcile" | "dispatch" | "attention";
   providerTaskId?: string;
+};
+
+export type GenerationNewAttemptInput = {
+  projectId: string;
+  operationId: string;
+  reason: "submission_unknown" | "needs_attention";
+};
+
+export type GenerationNewAttemptResult = {
+  operationId: string;
+  runId: string;
+  jobId: string;
+  attempt: number;
+  nextAction: "confirm";
+  warning: string;
 };
 
 export type ProductionGenerationSubmissionDependencies = {
@@ -53,7 +71,7 @@ export type ProductionGenerationSubmissionDependencies = {
   intentMacKey: string | NodeJS.TypedArray;
   provider: GenerationProvider;
   now?: () => string;
-  runtimeTaskId?: (input: { runId: string; contractHash: string }) => string;
+  runtimeTaskId?: (input: { runId: string; contractHash: string; attempt?: number }) => string;
   afterProviderAcceptance?: (input: { providerTaskId: string; run: ProductionRun }) => void | Promise<void>;
   beforeDispatch?: (input: { run: ProductionRun; job: ProductionJob }) => void | Promise<void>;
 };
@@ -93,15 +111,22 @@ function requiredContract(run: ProductionRun): ExecutionContractV1 {
   return plan.contract;
 }
 
-function jobIdFor(runId: string, contractHash: string): string {
-  return `generation-${runId}-${contractHash.slice(0, 16)}`;
+function jobIdFor(runId: string, contractHash: string, attempt = 1): string {
+  return `generation-${runId}-${contractHash.slice(0, 16)}${attempt > 1 ? `-attempt-${attempt}` : ""}`;
+}
+
+function latestGenerationAttempt(run: ProductionRun, contractHash: string): number {
+  const prefix = `generation-${run.runId}-${contractHash.slice(0, 16)}`;
+  return run.jobs
+    .filter((job) => job.jobId === prefix || job.jobId.startsWith(`${prefix}-attempt-`))
+    .reduce((latest, job) => Math.max(latest, job.attempt), 0);
 }
 
 function envelopeRefFor(runId: string, jobId: string): string {
   return `.nomi/runs/${runId}/jobs/${jobId}/runtime-envelope.json`;
 }
 
-function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: ProductionRun, contract: ExecutionContractV1, jobId: string, fencingEpoch: number): ProductionExecutionBinding {
+function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: ProductionRun, contract: ExecutionContractV1, jobId: string, attempt: number, fencingEpoch: number): ProductionExecutionBinding {
   const existing = run.jobs.find((job) => job.jobId === jobId)?.executionBinding;
   if (existing) {
     if (existing.contractHash !== contract.contractHash || existing.providerNamespace !== contract.providerId) {
@@ -109,8 +134,8 @@ function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: Pr
     }
     return existing;
   }
-  const runtimeTaskId = deps.runtimeTaskId?.({ runId: run.runId, contractHash: contract.contractHash })
-    || `runtime-${run.runId}-${contract.contractHash.slice(0, 16)}`;
+  const runtimeTaskId = deps.runtimeTaskId?.({ runId: run.runId, contractHash: contract.contractHash, attempt })
+    || `runtime-${run.runId}-${contract.contractHash.slice(0, 16)}-attempt-${attempt}`;
   const requestFingerprint = sha256({
     contractHash: contract.contractHash,
     providerId: contract.providerId,
@@ -128,7 +153,7 @@ function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: Pr
     contractHash: contract.contractHash,
     runtimeTaskId,
     providerNamespace: contract.providerId,
-    providerIdempotencyKey: `generation:${run.runId}:${contract.contractHash}`,
+    providerIdempotencyKey: `generation:${run.runId}:${contract.contractHash}:attempt-${attempt}`,
     requestFingerprint,
     runtimeEnvelopeRef: envelopeRefFor(run.runId, jobId),
     fencingEpoch,
@@ -165,15 +190,16 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     }).run;
   }
 
-  function prepare(run: ProductionRun, contract: ExecutionContractV1, binding: ProductionExecutionBinding, jobId: string): { run: ProductionRun; envelope: ReturnType<typeof createProductionRunRuntimeEnvelope> } {
+  function prepare(run: ProductionRun, contract: ExecutionContractV1, binding: ProductionExecutionBinding, jobId: string, attempt: number): { run: ProductionRun; envelope: ReturnType<typeof createProductionRunRuntimeEnvelope> } {
     let current = run;
     const existingJob = current.jobs.find((job) => job.jobId === jobId);
-    if (!existingJob) {
+    const addedJob = !existingJob;
+    if (addedJob) {
       const job: ProductionJob = {
         jobId,
         stageId: "generate",
         status: "authorized",
-        attempt: 1,
+        attempt,
         provider: contract.providerId,
         model: contract.modelId,
         idempotencyKey: binding.providerIdempotencyKey,
@@ -186,32 +212,34 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         updatedAt: now(),
       };
       current = command(current, "job.add", { job }, "job-add");
-      const approvalId = `approval:generation:${current.runId}:${contract.contractHash}`;
-      const existingApproval = deps.repository.readApprovals(current.projectId, current.runId).find((approval) => approval.approvalId === approvalId);
-      if (!existingApproval) {
-        current = deps.repository.execute(current.projectId, current.runId, {
-          commandId: `generation.runtime:${current.runId}:approval-record`,
-          expectedRevision: current.revision,
-          type: "approval.record",
-          payload: {
-            approval: {
-              approvalId,
-              runId: current.runId,
-              scope: "job_set",
-              planHash: contract.contractHash,
-              jobIds: [jobId],
-              allowedProviders: [contract.providerId],
-              allowedModels: [contract.modelId],
-              currency: current.budget.currency,
-              maxSpend: 0,
-              maxAttemptsPerJob: 1,
-              decidedAt: now(),
-              expiresAt: new Date(Date.parse(now()) + 24 * 60 * 60 * 1000).toISOString(),
-            },
+    }
+    const approvalId = `approval:generation:${current.runId}:${contract.contractHash}:${jobId}`;
+    const existingApproval = deps.repository.readApprovals(current.projectId, current.runId).find((approval) => approval.approvalId === approvalId);
+    if (!existingApproval) {
+      current = deps.repository.execute(current.projectId, current.runId, {
+        commandId: `generation.runtime:${current.runId}:approval-record:${jobId}`,
+        expectedRevision: current.revision,
+        type: "approval.record",
+        payload: {
+          approval: {
+            approvalId,
+            runId: current.runId,
+            scope: "job_set",
+            planHash: contract.contractHash,
+            jobIds: [jobId],
+            allowedProviders: [contract.providerId],
+            allowedModels: [contract.modelId],
+            currency: current.budget.currency,
+            maxSpend: 0,
+            maxAttemptsPerJob: current.policy.maxAttemptsPerJob,
+            decidedAt: now(),
+            expiresAt: new Date(Date.parse(now()) + 24 * 60 * 60 * 1000).toISOString(),
           },
-          issuedAt: now(),
-        }).run;
-      }
+        },
+        issuedAt: now(),
+      }).run;
+    }
+    if (addedJob) {
       if (current.budget.authorized < 0) throw new Error("Invalid generation budget authorization");
       if (current.budget.authorized === 0 && current.budget.reserved === 0 && current.budget.actual === 0 && current.budget.unsettled === 0) {
         current = command(current, "budget.entry", {
@@ -236,24 +264,28 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   async function start(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionResult> {
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
     const contract = requiredContract(run);
-    const jobId = jobIdFor(run.runId, contract.contractHash);
+    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash));
+    if (!Number.isInteger(attempt) || attempt < 1) throw new Error("Generation attempt is invalid");
+    let jobId = jobIdFor(run.runId, contract.contractHash, attempt);
     const existingJob = run.jobs.find((job) => job.jobId === jobId);
     if (existingJob?.status === "provider_accepted" && existingJob.providerTaskId) {
       if (run.generationPlan?.state !== "submitted") run = command(run, "generation.submit", {}, "plan-submit");
-      return { operationId: run.runId, runId: run.runId, jobId, providerTaskId: existingJob.providerTaskId, nextAction: "observe" };
+      return { operationId: run.runId, runId: run.runId, jobId, providerTaskId: existingJob.providerTaskId, attempt, nextAction: "observe" };
     }
     if (existingJob && ["submission_unknown", "reconciling", "needs_attention", "cancel_requested"].includes(existingJob.status)) {
       throw new SubmissionReconciliationRequiredError();
     }
-    assertGenerationProviderCapabilities(deps.provider);
+    assertGenerationProviderCanSubmit(deps.provider);
 
     const runLock = lock(run.runId);
     return runLock.withLock(async (lease) => {
       run = requiredRun(deps.repository, input.projectId, input.operationId);
       const lockedContract = requiredContract(run);
       if (lockedContract.contractHash !== contract.contractHash) throw new Error("Generation contract changed while waiting for the Run lock");
-      const binding = ensureBinding(deps, run, lockedContract, jobId, lease.fencingEpoch);
-      const prepared = prepare(run, lockedContract, binding, jobId);
+      const lockedAttempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, lockedContract.contractHash));
+      jobId = jobIdFor(run.runId, lockedContract.contractHash, lockedAttempt);
+      const binding = ensureBinding(deps, run, lockedContract, jobId, lockedAttempt, lease.fencingEpoch);
+      const prepared = prepare(run, lockedContract, binding, jobId, lockedAttempt);
       run = prepared.run;
       const log = intentLog(run.runId);
       let rawReceipt: unknown;
@@ -288,7 +320,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
           }
         },
       });
-      const approvalId = `approval:generation:${run.runId}:${lockedContract.contractHash}`;
+      const approvalId = `approval:generation:${run.runId}:${lockedContract.contractHash}:${jobId}`;
       const result = await outbox.submit({
         projectId: run.projectId,
         runId: run.runId,
@@ -301,14 +333,59 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
       });
       run = result.run;
       if (run.generationPlan?.state !== "submitted") run = command(run, "generation.submit", {}, "plan-submit");
-      return { operationId: run.runId, runId: run.runId, jobId, providerTaskId: result.providerTaskId, nextAction: "observe" };
+      return { operationId: run.runId, runId: run.runId, jobId, providerTaskId: result.providerTaskId, attempt: lockedAttempt, nextAction: "observe" };
+    });
+  }
+
+  async function createNewAttempt(input: GenerationNewAttemptInput): Promise<GenerationNewAttemptResult> {
+    let run = requiredRun(deps.repository, input.projectId, input.operationId);
+    const contract = requiredContract(run);
+    const previousAttempt = Math.max(1, latestGenerationAttempt(run, contract.contractHash));
+    const previousJob = run.jobs.find((job) => job.jobId === jobIdFor(run.runId, contract.contractHash, previousAttempt));
+    if (!previousJob || previousJob.status !== input.reason) throw new SubmissionReconciliationRequiredError("A new attempt is only available after the selected submission issue is recorded");
+    const runLock = lock(run.runId);
+    return runLock.withLock(async (lease) => {
+      run = requiredRun(deps.repository, input.projectId, input.operationId);
+      const lockedContract = requiredContract(run);
+      const lockedPreviousAttempt = Math.max(1, latestGenerationAttempt(run, lockedContract.contractHash));
+      const lockedPreviousJob = run.jobs.find((job) => job.jobId === jobIdFor(run.runId, lockedContract.contractHash, lockedPreviousAttempt));
+      if (!lockedPreviousJob || lockedPreviousJob.status !== input.reason) throw new SubmissionReconciliationRequiredError("The submission state changed; reconcile it before creating a new attempt");
+      const nextAttempt = lockedPreviousAttempt + 1;
+      const jobId = jobIdFor(run.runId, lockedContract.contractHash, nextAttempt);
+      const binding = ensureBinding(deps, run, lockedContract, jobId, nextAttempt, lease.fencingEpoch);
+      const job: ProductionJob = {
+        jobId,
+        stageId: "generate",
+        status: "authorized",
+        attempt: nextAttempt,
+        provider: lockedContract.providerId,
+        model: lockedContract.modelId,
+        idempotencyKey: binding.providerIdempotencyKey,
+        executionBinding: binding,
+        requestFingerprint: binding.requestFingerprint,
+        providerIdempotencyKey: binding.providerIdempotencyKey,
+        runtimeEnvelopeRef: binding.runtimeEnvelopeRef,
+        taskKind: lockedContract.mode,
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      run = command(run, "generation.new_attempt", { job }, `new-attempt-${nextAttempt}`);
+      return {
+        operationId: run.runId,
+        runId: run.runId,
+        jobId,
+        attempt: nextAttempt,
+        nextAction: "confirm",
+        warning: "这是一次新的提交尝试；上一次结果仍可能已计费，请先确认后再提交。",
+      };
     });
   }
 
   async function resume(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionResumeResult> {
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
     const contract = requiredContract(run);
-    const jobId = jobIdFor(run.runId, contract.contractHash);
+    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash));
+    const jobId = jobIdFor(run.runId, contract.contractHash, attempt);
     const job = run.jobs.find((candidate) => candidate.jobId === jobId);
     if (!job) return { operationId: run.runId, action: "attention", reason: "invalid_recovery_state", nextAction: "attention" };
     const currentEnvelope = envelope(run.runId, jobId).read();
@@ -327,7 +404,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     return { operationId: run.runId, ...decision, nextAction: "attention" };
   }
 
-  return { start, resume };
+  return { start, createNewAttempt, resume };
 }
 
 export type ProductionGenerationSubmission = ReturnType<typeof createProductionGenerationSubmission>;

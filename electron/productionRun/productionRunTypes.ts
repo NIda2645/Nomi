@@ -177,6 +177,8 @@ export type ProductionGenerationPlan = {
   contract?: ExecutionContractV1;
   approvedReceiptId?: string;
   approvedAt?: string;
+  /** Which explicit submission attempt the latest human receipt authorizes. */
+  approvedAttempt?: number;
   updatedAt: string;
 };
 

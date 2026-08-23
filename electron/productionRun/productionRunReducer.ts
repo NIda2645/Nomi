@@ -236,11 +236,37 @@ export function applyProductionCommand(
       const contractHash = text(command.payload, "contractHash");
       if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.contract) throw new Error("A sealed generation plan is required before approval");
       if (currentPlan.contract.contractHash !== contractHash) throw new Error("Generation approval does not match the sealed contract");
-      if (currentPlan.approvedReceiptId === receiptId) return { run: current, eventType: "generation.plan.approved", message: currentPlan.operationId };
+      const rawAttempt = command.payload.attempt;
+      const approvedAttempt = rawAttempt === undefined ? undefined : Number(rawAttempt);
+      if (approvedAttempt !== undefined && (!Number.isInteger(approvedAttempt) || approvedAttempt < 1)) throw new Error("Generation approval attempt is invalid");
+      if (currentPlan.approvedReceiptId === receiptId && currentPlan.approvedAttempt === approvedAttempt) return { run: current, eventType: "generation.plan.approved", message: currentPlan.operationId };
       return {
-        run: { ...current, generationPlan: { ...currentPlan, approvedReceiptId: receiptId, approvedAt: now, updatedAt: now }, updatedAt: now },
+        run: { ...current, generationPlan: { ...currentPlan, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), approvedAt: now, updatedAt: now }, updatedAt: now },
         eventType: "generation.plan.approved",
         message: currentPlan.operationId,
+      };
+    }
+    case "generation.new_attempt": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || !currentPlan.contract || (currentPlan.state !== "sealed" && currentPlan.state !== "submitted")) throw new Error("A submitted generation is required before a new attempt");
+      const job = record(command.payload, "job") as ProductionJob;
+      if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
+      if (!Number.isInteger(job.attempt) || job.attempt < 1 || current.jobs.some((item) => item.attempt >= job.attempt && item.provider === job.provider && item.model === job.model && item.stageId === job.stageId)) {
+        throw new Error("Generation attempt must be newer than the previous attempt");
+      }
+      if (job.executionBinding) {
+        const binding = validateProductionExecutionBinding(job.executionBinding);
+        if (binding.runId !== current.runId || binding.providerNamespace !== job.provider || binding.providerIdempotencyKey !== job.idempotencyKey) throw new Error("Invalid execution binding for new generation attempt");
+      }
+      return {
+        run: {
+          ...current,
+          generationPlan: { ...currentPlan, state: "sealed", approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now },
+          jobs: [...current.jobs, job],
+          updatedAt: now,
+        },
+        eventType: "generation.attempt.created",
+        message: job.jobId,
       };
     }
     case "stage.upsert": {

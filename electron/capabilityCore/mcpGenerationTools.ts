@@ -109,12 +109,12 @@ export const MCP_GENERATION_TOOL_CATALOG = [
     description: "提交当前客户端已完成的真人确认凭据；裸 confirm/approved 不被接受。",
     inputSchema: {
       type: "object",
-      properties: { projectId: { type: "string" }, leaseHandle: { type: "string" }, operationId: { type: "string" }, receiptId: { type: "string" }, receiptToken: { type: "string" } },
+      properties: { projectId: { type: "string" }, leaseHandle: { type: "string" }, operationId: { type: "string" }, attempt: { type: "integer", minimum: 1 }, receiptId: { type: "string" }, receiptToken: { type: "string" } },
       required: ["leaseHandle", "operationId"],
       additionalProperties: false,
     },
     method: "nomi_decide_generation_gate",
-    build: (args: Record<string, unknown>) => ({ projectId: args.projectId, leaseHandle: args.leaseHandle, operationId: args.operationId, receiptId: args.receiptId, receiptToken: args.receiptToken }),
+    build: (args: Record<string, unknown>) => ({ projectId: args.projectId, leaseHandle: args.leaseHandle, operationId: args.operationId, attempt: args.attempt, receiptId: args.receiptId, receiptToken: args.receiptToken }),
   },
   {
     name: "nomi_start_generation",
@@ -183,7 +183,7 @@ export type GenerationOperationStore = {
   read(projectId: string, operationId: string): GenerationOperation | null | Promise<GenerationOperation | null>;
   patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string): GenerationOperation | Promise<GenerationOperation>;
   seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string): GenerationOperation | Promise<GenerationOperation>;
-  approve(projectId: string, operationId: string, receiptId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
+  approve(projectId: string, operationId: string, receiptId: string, now: string, options?: { attempt?: number }): GenerationOperation | Promise<GenerationOperation>;
   cancel(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
 };
 
@@ -401,7 +401,8 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     if (input.capability === "gate_decide") {
       const receiptId = typeof params.receiptId === "string" ? params.receiptId.trim() : "";
       if (!receiptId) throw new Error("A verified generation gate receipt is required");
-      const operation = await deps.operations.approve(input.lease.projectId, operationId, receiptId, now());
+      const attempt = Number.isInteger(params.attempt) && Number(params.attempt) > 0 ? Number(params.attempt) : undefined;
+      const operation = await deps.operations.approve(input.lease.projectId, operationId, receiptId, now(), attempt === undefined ? undefined : { attempt });
       return { operation, nextAction: "start" };
     }
     if (input.capability === "start") {
