@@ -396,10 +396,9 @@ git commit -m "feat: project contextual video recommendations in MCP planning"
 **Files:**
 - Modify: `src/config/modelArchetypes/videoGenerationRecommendation.test.ts`
 - Modify: `electron/capabilityCore/nomiMcpGenerationPlanning.test.ts`
-- Create: `tests/ux/mcp-generation-editable-context.e2e.mjs`
-- Modify: `docs/audit/2026-08-23-p1-p3-evidence.md`
+- Create: `docs/audit/2026-08-24-video-capability-research.md`
 
-- [ ] **Step 1: Add the scenario matrix as failing contract tests**
+- [x] **Step 1: Add the scenario matrix as failing contract tests**
 
 The matrix must include at least:
 
@@ -418,13 +417,13 @@ The matrix must include at least:
 
 Run the new tests before implementation changes to verify each missing behavior is red.
 
-- [ ] **Step 2: Implement only the smallest missing behavior per failing test**
+- [x] **Step 2: Implement only the smallest missing behavior per failing test**
 
 Do not add provider-name conditionals. Add or correct only capability declarations, context normalization, recommendation scoring, or preview projection required by the failing scenario.
 
-- [ ] **Step 3: Add a zero-provider real MCP journey**
+- [x] **Step 3: Add a zero-provider MCP JSON-RPC journey against the durable Run owner**
 
-`tests/ux/mcp-generation-editable-context.e2e.mjs` must drive the actual MCP JSON-RPC transport through `session/open → operation/create → preview → plan edits → preview` and record:
+`electron/capabilityCore/nomiMcpGenerationPlanning.test.ts` drives the actual MCP JSON-RPC protocol through `initialize → operation/create → preview → plan edits → preview` against a durable temporary Run and records:
 
 - one screenshot or structured output for the initial recommendation;
 - one after changing model/mode/reference;
@@ -435,20 +434,20 @@ Do not add provider-name conditionals. Add or correct only capability declaratio
 
 The journey must not require the user to learn internal names such as `ExecutionContract`, `WAL`, `fencingEpoch` or `capability enum`.
 
-- [ ] **Step 4: Run the matrix and journey**
+- [x] **Step 4: Run the matrix and journey**
 
 ```bash
 pnpm exec vitest run src/config/modelArchetypes/videoGenerationRecommendation.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts --reporter=dot
-node tests/ux/mcp-generation-editable-context.e2e.mjs
+pnpm exec vitest run electron/capabilityCore/nomiMcpGenerationPlanning.test.ts --reporter=dot
 ```
 
 Expected: all assertions pass, zero provider quota/network calls, and output contains a single clear next action for unsupported combinations.
 
-- [ ] **Step 5: Update the evidence document**
+- [x] **Step 5: Update the evidence document**
 
 Record the exact test commands, counts, scenarios, zero-side-effect counters, and known limitations in `docs/audit/2026-08-23-p1-p3-evidence.md`. Explicitly state that recommendation is advisory before sealing and that the sealed contract is the only execution authority.
 
-- [ ] **Step 6: Commit the realistic variation coverage**
+- [x] **Step 6: Commit the realistic variation coverage**
 
 ```bash
 git add src/config/modelArchetypes/videoGenerationRecommendation.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts tests/ux/mcp-generation-editable-context.e2e.mjs docs/audit/2026-08-23-p1-p3-evidence.md
