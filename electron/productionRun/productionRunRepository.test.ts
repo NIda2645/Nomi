@@ -38,12 +38,45 @@ function createRun() {
   });
 }
 
+function generationCandidate() {
+  return {
+    candidateId: "candidate-1",
+    revision: 1,
+    moduleId: "generation.single-shot",
+    providerId: "fixture-provider",
+    modelId: "fixture-model",
+    mode: "text-to-image",
+    prompt: "A paper boat",
+    parameters: {},
+    references: [],
+  } as const;
+}
+
 describe("ProductionRunRepository", () => {
   it("creates and reads a checksummed run snapshot", () => {
     const created = createRun();
 
     expect(created).toMatchObject({ runId: "run-1", revision: 0, status: "awaiting_direction", snapshotCursor: 2 });
     expect(repository().read("project-1", "run-1")).toEqual(created);
+    expect(repository().list("project-1")).toHaveLength(1);
+  });
+
+  it("creates a single-shot generation draft in the same durable Run owner", () => {
+    const created = repository().createGenerationDraft({
+      operationId: "op-1",
+      projectId: "project-1",
+      origin: { host: "semantic-mcp" },
+      candidate: generationCandidate(),
+    });
+
+    expect(created).toMatchObject({
+      runId: "op-1",
+      playbook: { name: "generation.single-shot" },
+      status: "draft",
+      gates: [],
+      generationPlan: { operationId: "op-1", state: "draft", candidate: { revision: 1 } },
+    });
+    expect(repository().read("project-1", "op-1")).toEqual(created);
     expect(repository().list("project-1")).toHaveLength(1);
   });
 

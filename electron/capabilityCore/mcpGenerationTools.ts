@@ -173,11 +173,11 @@ export type GenerationOperation = Readonly<{
 }>;
 
 export type GenerationOperationStore = {
-  create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string }): GenerationOperation;
-  read(projectId: string, operationId: string): GenerationOperation | null;
-  patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string): GenerationOperation;
-  seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string): GenerationOperation;
-  cancel(projectId: string, operationId: string, now: string): GenerationOperation;
+  create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string }): GenerationOperation | Promise<GenerationOperation>;
+  read(projectId: string, operationId: string): GenerationOperation | null | Promise<GenerationOperation | null>;
+  patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string): GenerationOperation | Promise<GenerationOperation>;
+  seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string): GenerationOperation | Promise<GenerationOperation>;
+  cancel(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
 };
 
 function freeze<T>(value: T): T {
@@ -270,13 +270,13 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     if (input.capability === "context") return deps.context?.({ projectId: input.lease.projectId, lease: input.lease }) ?? { projectId: input.lease.projectId, nextAction: "create" };
     const operationId = typeof params.operationId === "string" && params.operationId.trim() ? params.operationId.trim() : `op-${crypto.randomUUID()}`;
     if (input.capability === "create") {
-      const operation = deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: candidateFrom(params.candidate), now: now() });
+      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: candidateFrom(params.candidate), now: now() });
       return { operation, nextAction: "preview" };
     }
-    const current = deps.operations.read(input.lease.projectId, operationId);
+    const current = await deps.operations.read(input.lease.projectId, operationId);
     if (!current) throw new Error(`Generation operation not found: ${operationId}`);
     if (input.capability === "plan") {
-      const operation = deps.operations.patch(input.lease.projectId, operationId, record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now());
+      const operation = await deps.operations.patch(input.lease.projectId, operationId, record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now());
       return { operation, nextAction: "preview" };
     }
     if (input.capability === "preview") {
@@ -287,7 +287,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       if (current.state !== "sealed" || !current.contract) throw new Error("Seal and confirm the generation plan before starting");
       return deps.start?.(current, input.lease) ?? { operationId, state: current.state, nextAction: "provider_not_configured" };
     }
-    if (input.capability === "cancel") return { operation: deps.operations.cancel(input.lease.projectId, operationId, now()), nextAction: "create" };
+    if (input.capability === "cancel") return { operation: await deps.operations.cancel(input.lease.projectId, operationId, now()), nextAction: "create" };
     if (input.capability === "reconcile") {
       const outcome = params.outcome === "found" || params.outcome === "not_found" ? params.outcome : null;
       if (!outcome) throw new Error("Reconciliation outcome is required");
