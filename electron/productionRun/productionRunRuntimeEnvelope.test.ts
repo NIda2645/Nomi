@@ -34,6 +34,7 @@ describe("ProductionRunRuntimeEnvelope", () => {
     const restarted = createProductionRunRuntimeEnvelope({ filePath: path.join(dir, "envelope.json"), now: () => "2026-08-23T00:01:00.000Z" });
     expect(restarted.read()).toEqual(sealed);
     expect(restarted.seal(input)).toEqual(sealed);
+    expect(restarted.seal({ ...input, request: { modelId: "model.image.v1", prompt: "fox", providerId: "provider.image" } })).toEqual(sealed);
   });
 
   it("rejects replacing a sealed contract and records provider acceptance before polling", () => {
@@ -53,4 +54,3 @@ describe("ProductionRunRuntimeEnvelope", () => {
     expect(envelope.read()).toEqual(accepted);
   });
 });
-

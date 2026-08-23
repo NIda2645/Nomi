@@ -31,6 +31,23 @@ export class RuntimeEnvelopeConflictError extends Error {
   }
 }
 
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new RuntimeEnvelopeConflictError("Runtime request contains a non-finite number");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, child]) => child !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+      .join(",")}}`;
+  }
+  throw new RuntimeEnvelopeConflictError("Runtime request is not JSON serializable");
+}
+
 function sameSemanticInput(left: RuntimeEnvelopeSealInput, right: ProductionRunRuntimeEnvelope): boolean {
   return left.runId === right.runId
     && left.jobId === right.jobId
@@ -38,7 +55,7 @@ function sameSemanticInput(left: RuntimeEnvelopeSealInput, right: ProductionRunR
     && left.contractHash === right.contractHash
     && left.providerIdempotencyKey === right.providerIdempotencyKey
     && left.requestFingerprint === right.requestFingerprint
-    && JSON.stringify(left.request) === JSON.stringify(right.request);
+    && canonicalJson(left.request) === canonicalJson(right.request);
 }
 
 export function createProductionRunRuntimeEnvelope(deps: { filePath: string; now?: () => string }) {
@@ -107,4 +124,3 @@ export function createProductionRunRuntimeEnvelope(deps: { filePath: string; now
 }
 
 export type ProductionRunRuntimeEnvelopeStore = ReturnType<typeof createProductionRunRuntimeEnvelope>;
-
