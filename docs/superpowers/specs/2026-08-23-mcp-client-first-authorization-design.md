@@ -1,6 +1,6 @@
 # MCP 客户端优先授权与一次确认设计
 
-> 状态：用户已确认方向；P0 授权/体验 seam 已实现并完成零额度回归。真实 provider 接入与客户端 attestation 扩展仍是下一决策点。本文是 `2026-08-22-nomi-unified-editor-runtime.md` 与 `2026-08-22-mcp-ai-generation-vertical-slice.md` 的用户体验补充，不建立第二套运行时方案。
+> 状态：用户已确认方向；P0 授权/体验 seam 已实现并完成零额度回归。用户进一步确认采用“客户端内一次确认”方案：已登记 MCP 客户端的标准 elicitation 响应可以直接完成本次 challenge 的授权；不支持/未登记/连接失效时才由 Nomi GUI 兜底。真实 provider 接入仍是下一决策点。本文是 `2026-08-22-nomi-unified-editor-runtime.md` 与 `2026-08-22-mcp-ai-generation-vertical-slice.md` 的用户体验补充，不建立第二套运行时方案。
 >
 > 目标：在不降低项目隔离、真人审批、一次提交和崩溃恢复约束的前提下，把用户需要做的确认收敛为一次，并放在用户正在使用的 Claude Code / Codex / Cursor 等客户端里；客户端做不到时，才由 Nomi GUI 兜底。
 
@@ -18,7 +18,7 @@
 | 每个读取/轮询/恢复都可能重新问 | 现有 `mcpSpendTrust` 是进程内重复确认/信任地图；新 lease 也可能被误用成每步门 | 长任务变成确认马拉松 | lease 按 MCP session 复用；同一 sealed contract 的轮询、取消、重连、reconcile 不重新确认 |
 | 出错时让用户看协议错误码 | RPC/MCP 已有 typed fields，但用户真正需要的是下一步 | “human_approval_required” 对用户没有行动指引 | 统一 `nextAction`：在客户端确认、打开 Nomi、重试当前预览、或等待对账；协议字段仍保留给机器 |
 
-这些优化不改变安全事实：客户端的 `accept`、`confirm:true`、`spendConfirmed`、bearer token 或 `projectId` 都不是凭证。它们只能触发主进程去验证一个已登记的客户端通道和当前 challenge。
+这些优化不改变安全事实：脱离正在等待的 elicitation 请求的 `confirm:true`、`spendConfirmed`、bearer token 或 `projectId` 都不是凭证。客户端内确认的安全依据是“已登记通道 + 服务端当前未过期 challenge 的响应关联”，不是消息里某个裸 boolean 自己声称有权限。这个取舍明确牺牲了“证明物理点击来自真人”的强保证，换取用户无需切换到 Nomi；因此无人值守/未登记连接仍不会获得语义生成权限。
 
 ## 2. 选择的用户流程
 
@@ -54,9 +54,9 @@
 
 该确认框只展示用户能做决定的信息：项目名、镜头摘要、模型、参考图数量、估算成本、有效期。内部 hash、nonce、provider/account namespace 仍签名保存但不要求用户阅读。
 
-如果客户端支持 MCP elicitation 且已经是已登记/可验证的客户端，确认就在客户端发生。MCP 规范并不规定具体 UI，因此 Nomi 只依赖客户端声明能力和主进程验证的通道，不假定某一个软件的按钮样式。[MCP Elicitation 规范](https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation)
+如果客户端支持 MCP elicitation 且已经是已登记客户端，确认就在客户端发生。这里采用“登记通道信任”而不是要求每个客户端实现 Nomi 专用的点击签名：服务端只接受自己刚刚发出的、仍在等待中的 challenge 响应，并把响应与已验证的客户端通道、当前项目、一次性 challenge 和过期时间绑定。这样用户只需在正在使用的 Claude/Codex/Cursor 中点一次；客户端不会因为没有 Nomi 专用 attestation 而把用户赶回另一个软件。MCP 规范并不规定具体 UI，因此 Nomi 不假定某一个软件的按钮样式。[MCP Elicitation 规范](https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation)
 
-如果客户端不能完成可验证的真人响应，主进程返回 `human_approval_required` 和 project-scoped handoff/deep link，Nomi GUI 显示同一份确认内容。GUI 点击后直接生成 receipt，客户端只继续原请求；不再让用户在 GUI 点完又回客户端确认第二次。
+如果客户端没有 elicitation、未登记或连接在 challenge 期间失效，主进程返回 `human_approval_required` 和 project-scoped handoff/deep link，Nomi GUI 显示同一份确认内容。GUI 点击后直接生成 receipt，客户端只继续原请求；不再让用户在 GUI 点完又回客户端确认第二次。
 
 ### 2.3 后续只在“实质变化”时再问
 
@@ -86,8 +86,8 @@
 
 | 客户端状态 | 用户看到的动作 | Nomi 行为 |
 |---|---|---|
-| 已登记 + 支持 elicitation + 可验证真人响应 | 客户端内一次确认 | 主进程直接铸 receipt；不打开 Nomi |
-| 已登记但只能传输 elicitation，不能证明通道/真人 | 客户端收到清晰提示，点击“在 Nomi 确认” | 打开 Nomi 同一 challenge；一次 GUI 点击后继续 |
+| 已登记 + 支持 elicitation | 客户端内一次确认 | 主进程把当前等待中的 challenge 响应直接铸成 receipt；不打开 Nomi |
+| 未登记、连接失效或客户端不支持 elicitation | 客户端收到清晰提示，点击“在 Nomi 确认” | 打开 Nomi 同一 challenge；一次 GUI 点击后继续 |
 | 未接入/客户端不可用 | Nomi 设置里的接入提示 | 先完成连接；不进入生成，不要求用户填配置 |
 | 项目失效/代际变化/权限不足 | “选择项目/重新授权” | 只给一个明确下一步；不让用户猜错误码 |
 
@@ -106,7 +106,7 @@
 
 ## 5. 交付顺序
 
-1. **方案先行**：本设计、聚焦 UX 审计、两份 canonical plan 和 backlog 同步；没有第二套路线。
+1. **方案先行**：本设计、聚焦 UX 审计、两份 canonical plan 和 backlog 同步；没有第二套路线。用户已确认 A：标准 MCP 客户端确认优先，Nomi 仅兜底。
 2. **P0 seam**：实现 bootstrap resolver/client registry；只读 lease 静默建立；组合 challenge 原子升级 generation scope + receipt；GUI/client 两条回答面共用一个 challenge。
 3. **零额度验证**：fake client/fake provider 验证一次确认、无二次确认、重连复用、项目变化再问、unknown 只对账。
 4. **真实 host 走查**：至少覆盖已登记客户端、只支持 elicitation 的客户端、无 elicitation 的客户端；记录截图和用户动作数。

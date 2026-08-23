@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. This plan is a UX/security slice under the existing 2026-08-22 canonical plans; it does not create a second Runtime, Run, Asset, or approval owner.
 
-**Goal:** 把外部 AI 软件调用 Nomi 的可见授权动作收敛为一次：已登记且可验证的 MCP 客户端在本软件内确认；不具备可验证确认能力时，Nomi GUI 用同一 challenge 兜底，且两条路径都不会二次确认。
+**Goal:** 把外部 AI 软件调用 Nomi 的可见授权动作收敛为一次：用户在当前正在使用的、已登记 MCP 客户端内确认；客户端不支持 elicitation、未登记或连接失效时，Nomi GUI 用同一 challenge 兜底，且两条路径都不会二次确认。
 
 **User value:** 用户不需要理解 handle、lease、receipt、hash，也不需要在两个窗口重复点击；连接后可以直接读当前项目、提出计划，第一次真正生成时只确认一次项目、模型和成本，之后同一任务的查看/恢复不再打断。
 
@@ -17,7 +17,7 @@
 
 Included:
 
-- client-first attested confirmation when MCP elicitation is available;
+- client-first confirmation for a registered MCP channel when MCP elicitation is available; the response is accepted only while the server-owned challenge request is pending;
 - silent read-only session lease for the connected current project;
 - one combined generation challenge that upgrades scope and issues the receipt;
 - one shared challenge across client elicitation and Nomi GUI fallback;
@@ -29,7 +29,8 @@ Deferred:
 - provider/model adapter and real spend;
 - permanent trust, blanket project access, or raw boolean authorization;
 - automatic Timeline/Canvas mutation;
-- client-specific UI code or per-client parallel authorization implementations.
+- client-specific UI code or per-client parallel authorization implementations;
+- per-click cryptographic attestation for standard MCP clients (an optional future hardening, not a prerequisite for the simple path).
 
 ## Execution order
 
@@ -49,8 +50,8 @@ Deferred:
 
 **Modify:** `electron/capabilityCore/mcpProtocol.ts`, `electron/capabilityCore/rpcServer.ts`, `electron/capabilityCore/mcpStdioServer.ts`, `electron/capabilityCore/host.ts`, renderer/preload bridge seam selected by the existing capability handler.
 
-- If the connection is registered and attested, send the challenge through MCP `elicitation/create`; the main process verifies the signed response and continues without opening Nomi.
-- If the client only declares elicitation but cannot prove the registered channel, return `human_approval_required` with a project-scoped handoff; the GUI answers the same challenge and the original request resumes.
+- If the connection is registered, send the challenge through MCP `elicitation/create`; the main process accepts only the response to that outstanding request and continues without opening Nomi.
+- If the client is unregistered, disconnected, or does not support elicitation, return `human_approval_required` with a project-scoped handoff; the GUI answers the same challenge and the original request resumes.
 - Ensure GUI fallback does not trigger a second client prompt and does not create a second challenge/nonce.
 - Preserve structured `code`, `phase`, `capability` and `nextAction` for machines; render a single human action phrase.
 
@@ -89,7 +90,7 @@ Deferred:
 
 ## Acceptance gates
 
-1. Client-first path: one visible accept, no Nomi second click, exactly one receipt and zero pre-confirm provider calls.
+1. Client-first path: one visible accept in the active MCP client, no Nomi second click, exactly one receipt and zero pre-confirm provider calls.
 2. GUI fallback: one visible Nomi accept, no client second prompt, same challenge ID/nonce and same receipt semantics.
 3. Read/reconnect path: no new prompt for the same lease/contract; project/scope/price/contract changes prompt once.
 4. Failure safety: reject/cancel/timeout/foreign/stale/deep-link replay produce no spend/provider/materialization side effect.
@@ -101,8 +102,8 @@ Deferred:
 
 - Tasks 1–4 are implemented on the P0 branch: current-project bootstrap, read-only lease reuse, one shared client/GUI challenge, main-process receipt issuance, simple `nextAction` copy, and duplicate-challenge dedupe.
 - Zero-credit evidence is green: focused authorization suites (107 tests), full MCP stdio journey (45 assertions), production GUI/recovery journey (55 assertions), and the two-leg spend confirmation walk (22 assertions). The latter verifies one GUI click for clients without elicitation and one client-side prompt with no second GUI card when elicitation is available.
-- A standard MCP `confirm:true` is intentionally not treated as a receipt. Until a client supplies a challenge-bound attestation that the main process can verify, it uses the same GUI fallback. This preserves the one-click UX without creating a forged approval path.
-- The next stop is therefore not another settings or confirmation screen: it is the product/architecture decision about a real client attestation extension (if client-side confirmation is required for named clients) and, separately, the real provider/P3 submission adapter.
+- A standard MCP `confirm:true` is accepted only when it is the response to the server's outstanding generation challenge on an already registered client channel. A detached `confirm:true`/`spendConfirmed` payload still cannot mint authority. If an optional client attestation is supplied and fails verification, the same challenge falls back to Nomi instead of being downgraded to a client approval.
+- The next stop is therefore not another settings or confirmation screen: it is the real provider/P3 submission adapter. Per-click client attestation remains optional future hardening, not a prerequisite for the simple user path.
 
 ## Rollback
 

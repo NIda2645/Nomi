@@ -30,7 +30,7 @@ function makeAuthority() {
       return () => `id-${++index}`;
     })(),
   });
-  return { authority, store, advance };
+  return { authority, store, advance, now };
 }
 
 afterEach(() => {
@@ -47,7 +47,7 @@ const selection = {
 
 describe("ProjectLeaseAuthority", () => {
   it("issues a signed selection handle and project lease that survive restart", () => {
-    const { authority, store } = makeAuthority();
+    const { authority, store, now } = makeAuthority();
     const handle = authority.issueSelectionHandle(selection);
     const lease = authority.issueLease(handle.token, {
       projectId: "project-1",
@@ -59,7 +59,7 @@ describe("ProjectLeaseAuthority", () => {
     expect(lease.lease).toMatchObject({ projectId: "project-1", projectGeneration: 3, audience: "nomi-mcp" });
     expect(authority.verifyLease(lease.token, { projectId: "project-1", sessionId: "session-1" })).toMatchObject({ projectId: "project-1" });
 
-    const restarted = createProjectLeaseAuthority({ macKey: "authority-key", keyId: "authority-v1", store });
+    const restarted = createProjectLeaseAuthority({ macKey: "authority-key", keyId: "authority-v1", store, now });
     expect(restarted.verifyLease(lease.token, { projectId: "project-1", sessionId: "session-1" })).toEqual(lease.lease);
   });
 

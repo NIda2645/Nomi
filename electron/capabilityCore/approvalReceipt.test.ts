@@ -34,7 +34,7 @@ function makeAuthority() {
       return () => `receipt-id-${++index}`;
     })(),
   });
-  return { authority, advance };
+  return { authority, advance, now };
 }
 
 function challenge(authority: ReturnType<typeof createApprovalReceiptAuthority>, ttlMs = 60_000) {
@@ -58,13 +58,13 @@ function challenge(authority: ReturnType<typeof createApprovalReceiptAuthority>,
 
 describe("ApprovalReceiptAuthority", () => {
   it("persists a challenge, replays it after restart, and never treats external confirm as proof", () => {
-    const { authority } = makeAuthority();
+    const { authority, now } = makeAuthority();
     const first = challenge(authority);
     expect(first.challenge.display).toEqual({ projectName: "短片 A", shotSummary: "生成这一镜", model: "model-x", referenceCount: 2 });
     const external = { action: "accept", content: { confirm: true } };
     expect(() => authority.mintReceipt(first.token, external)).toThrow(HumanApprovalRequiredError);
 
-    const restarted = createApprovalReceiptAuthority({ filePath: authority.filePath, macKey: "receipt-authority-key", storeMacKey: "receipt-store-key", keyId: "receipt-v1" });
+    const restarted = createApprovalReceiptAuthority({ filePath: authority.filePath, macKey: "receipt-authority-key", storeMacKey: "receipt-store-key", keyId: "receipt-v1", now });
     expect(restarted.requestChallenge({ ...first.input })).toEqual(first);
   });
 
@@ -88,7 +88,7 @@ describe("ApprovalReceiptAuthority", () => {
   });
 
   it("consumes a receipt once, preserves the original result on replay, and survives restart", () => {
-    const { authority } = makeAuthority();
+    const { authority, now } = makeAuthority();
     const pending = challenge(authority);
     const attestation = authority.createMainProcessGestureAttestation(pending.token, { webContentsId: 10, frameId: 2, origin: "app://nomi", decision: "accept" });
     const minted = authority.mintReceipt(pending.token, attestation);
@@ -97,7 +97,7 @@ describe("ApprovalReceiptAuthority", () => {
     const replayed = authority.consumeReceipt(minted.token);
     expect(replayed).toEqual({ receipt: consumed.receipt, replayed: true } satisfies ReceiptReplayResult);
 
-    const restarted = createApprovalReceiptAuthority({ filePath: authority.filePath, macKey: "receipt-authority-key", storeMacKey: "receipt-store-key", keyId: "receipt-v1" });
+    const restarted = createApprovalReceiptAuthority({ filePath: authority.filePath, macKey: "receipt-authority-key", storeMacKey: "receipt-store-key", keyId: "receipt-v1", now });
     expect(restarted.consumeReceipt(minted.token)).toEqual({ receipt: consumed.receipt, replayed: true });
   });
 

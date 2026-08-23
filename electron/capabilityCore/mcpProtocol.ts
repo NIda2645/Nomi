@@ -81,7 +81,7 @@ export interface McpTransport {
   isAppOpen(): boolean
   /** Main-process proof that this connection was installed for a known MCP client. */
   getAuthenticatedClient?(): AuthenticatedMcpClient | null
-  /** Optional per-challenge verifier. A static client proof is not enough to mint a receipt. */
+  /** Optional stronger per-challenge verifier. Standard MCP clients may use the registered channel instead. */
   verifyClientGenerationConfirmation?(challenge: GenerationGateChallengeProjection, attestation: unknown): Promise<boolean | GenerationGateVerificationResult>
   /** GUI fallback for the exact server-owned challenge. It must return only the gesture result. */
   confirmGenerationInNomi?(challenge: GenerationGateChallengeProjection): Promise<boolean | GenerationGateVerificationResult>
@@ -285,7 +285,7 @@ export function createMcpProtocol(transport: McpTransport) {
           nextAction: 'wait_for_reconciliation',
         }
       }
-      if (elicited.attestation && typeof transport.verifyClientGenerationConfirmation === 'function') {
+      if (elicited.attestation != null && typeof transport.verifyClientGenerationConfirmation === 'function') {
         const verified = await transport.verifyClientGenerationConfirmation(challenge, elicited.attestation)
         const result = typeof verified === 'boolean' ? { confirmed: verified } : verified
         if (result.confirmed === true) {
@@ -298,10 +298,24 @@ export function createMcpProtocol(transport: McpTransport) {
             ...(result.receiptToken ? { receiptToken: result.receiptToken } : {}),
           }
         }
+        // A client-provided attestation that the main process cannot verify is
+        // never silently downgraded to a normal accept. The client can still
+        // use the shared GUI fallback for this exact challenge.
+      } else if (elicited.attestation == null) {
+        // Option A: the user stays in the active MCP client. The response is
+        // accepted only because this connection is already registered and the
+        // server is resolving the response to its still-pending challenge;
+        // a detached `confirm:true` request has no such path and remains
+        // rejected by the semantic dispatcher.
+        return {
+          challengeId: challenge.challengeId,
+          confirmed: true,
+          surface: 'client',
+          nextAction: 'in_client',
+        }
       }
-      // Standard MCP elicitation has no portable click attestation. A bare
-      // accept therefore falls through to the same GUI challenge, never to a
-      // provider or spend path.
+      // A supplied but unverifiable attestation falls through to the same GUI
+      // challenge, never to a provider or spend path.
     }
     if (typeof transport.confirmGenerationInNomi === 'function' && transport.isAppOpen()) {
       const fallback = await transport.confirmGenerationInNomi(challenge)

@@ -78,7 +78,7 @@ describe('one generation challenge, two confirmation surfaces', () => {
     expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
   })
 
-  it('falls back to Nomi when a registered client returns bare confirm:true without a verifiable attestation', async () => {
+  it('accepts one registered client confirm:true on the outstanding challenge without opening Nomi', async () => {
     const confirmGenerationInNomi = vi.fn(async () => ({ confirmed: true, receiptId: 'receipt-1' }))
     const frames: unknown[] = []
     const protocol = await initialized({
@@ -92,11 +92,32 @@ describe('one generation challenge, two confirmation surfaces', () => {
     await tick()
     const request = frames.find((frame) => (frame as { method?: string }).method === 'elicitation/create') as { id: string }
     protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true } } })
-    await expect(resultPromise).resolves.toMatchObject({
-      challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi', receiptId: 'receipt-1',
+    await expect(resultPromise).resolves.toEqual({
+      challengeId: 'challenge-1', confirmed: true, surface: 'client', nextAction: 'in_client',
     })
     await expect(protocol.requestGenerationConfirmation(challenge)).resolves.toMatchObject({
-      challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi', receiptId: 'receipt-1',
+      challengeId: 'challenge-1', confirmed: true, surface: 'client', nextAction: 'in_client',
+    })
+    expect(confirmGenerationInNomi).not.toHaveBeenCalled()
+  })
+
+  it('does not downgrade an invalid optional attestation to client approval', async () => {
+    const confirmGenerationInNomi = vi.fn(async () => ({ confirmed: true, receiptId: 'receipt-2' }))
+    const frames: unknown[] = []
+    const protocol = await initialized({
+      send: (frame) => frames.push(frame),
+      invoke: vi.fn(async () => ({})),
+      isAppOpen: () => true,
+      getAuthenticatedClient: () => 'claude',
+      verifyClientGenerationConfirmation: vi.fn(async () => false),
+      confirmGenerationInNomi,
+    })
+    const resultPromise = protocol.requestGenerationConfirmation(challenge)
+    await tick()
+    const request = frames.find((frame) => (frame as { method?: string }).method === 'elicitation/create') as { id: string }
+    protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true, attestation: 'invalid' } } })
+    await expect(resultPromise).resolves.toMatchObject({
+      challengeId: 'challenge-1', confirmed: true, surface: 'nomi', nextAction: 'in_nomi', receiptId: 'receipt-2',
     })
     expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
   })
