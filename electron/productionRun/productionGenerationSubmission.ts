@@ -59,7 +59,9 @@ export type GenerationNewAttemptResult = {
   runId: string;
   jobId: string;
   attempt: number;
-  nextAction: "confirm";
+  contractHash: string;
+  requiresFreshReceipt: true;
+  nextAction: "request_gate";
   warning: string;
 };
 
@@ -375,7 +377,9 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         runId: run.runId,
         jobId,
         attempt: nextAttempt,
-        nextAction: "confirm",
+        contractHash: lockedContract.contractHash,
+        requiresFreshReceipt: true,
+        nextAction: "request_gate",
         warning: "这是一次新的提交尝试；上一次结果仍可能已计费，请先确认后再提交。",
       };
     });

@@ -292,7 +292,7 @@ describe("Run-owned semantic generation submission", () => {
     });
     await expect(first.start({ projectId: "project-1", operationId: "op-1" })).rejects.toBeInstanceOf(SubmissionReceiptUnknownError);
     const next = await first.createNewAttempt({ projectId: "project-1", operationId: "op-1", reason: "submission_unknown" });
-    expect(next).toMatchObject({ attempt: 2, nextAction: "confirm", warning: expect.stringContaining("新的提交尝试") });
+    expect(next).toMatchObject({ attempt: 2, contractHash: contract.contractHash, requiresFreshReceipt: true, nextAction: "request_gate", warning: expect.stringContaining("新的提交尝试") });
     await expect(first.start({ projectId: "project-1", operationId: "op-1", attempt: 2 })).rejects.toThrow("Seal and confirm");
 
     const pending = repository.read("project-1", "op-1");
