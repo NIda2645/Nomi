@@ -8,6 +8,10 @@ import {
 } from "./executionContract";
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { ProjectLeaseV1 } from "./projectLease";
+import {
+  classifyGenerationProviderCapabilities,
+  type GenerationProviderCapabilityProfile,
+} from "./generationProviderCapabilities";
 import { GenerationProviderCapabilityError } from "./generationRuntimeAdapter";
 
 /**
@@ -246,6 +250,18 @@ export type GenerationPlanningHandlerDependencies = {
   operations: GenerationOperationStore;
   now?: () => string;
   context?: (input: { projectId: string; lease: ProjectLeaseV1 }) => unknown | Promise<unknown>;
+  /**
+   * Recovery capabilities are descriptive only. This resolver answers the
+   * separate question of whether an executable adapter + credential exists for
+   * the selected provider/model. Keeping that seam separate means a provider
+   * without native recovery is still allowed to submit normally.
+   */
+  providerReadiness?: (input: {
+    providerId: string;
+    modelId: string;
+    moduleId: string;
+    mode: string;
+  }) => { providerReady: boolean; missingForSubmit?: string[] };
   start?: (operation: GenerationOperation, lease: ProjectLeaseV1) => unknown | Promise<unknown>;
   reconcile?: (operation: GenerationOperation, outcome: "found" | "not_found", lease: ProjectLeaseV1) => unknown | Promise<unknown>;
 };
@@ -273,11 +289,41 @@ function candidateFrom(value: unknown): PlanCandidate {
   };
 }
 
-const REQUIRED_PROVIDER_CAPABILITIES = ["submitIdempotency", "query", "reconcile", "cancel"] as const;
+const RECOVERY_CAPABILITIES = ["submitIdempotency", "query", "reconcile", "cancel"] as const;
 
-function providerCapabilityGaps(registry: Pick<ModuleRegistry, "resolve">, candidate: PlanCandidate): string[] {
-  const resolved = registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode });
-  return REQUIRED_PROVIDER_CAPABILITIES.filter((capability) => !resolved.capabilities[capability]);
+type ProviderReadiness = {
+  providerReady: boolean;
+  providerCapabilityProfile: GenerationProviderCapabilityProfile;
+  recoveryNotice: string;
+  providerCapabilitiesMissing: string[];
+  missingForSubmit: string[];
+};
+
+function recoveryNotice(profile: GenerationProviderCapabilityProfile): string {
+  if (profile === "full_recovery") return "可正常生成；异常时 Nomi 可以继续查询并恢复。";
+  if (profile === "observe_only") return "可正常生成；如果提交结果不确定，需要到供应商核对任务，Nomi 不会自动重提。";
+  return "可正常生成；如果提交结果不确定，需要你到供应商核对后再决定，Nomi 不会自动重提。";
+}
+
+function resolveProviderReadiness(
+  deps: Pick<GenerationPlanningHandlerDependencies, "registry" | "providerReadiness">,
+  candidate: PlanCandidate,
+): ProviderReadiness {
+  const resolved = deps.registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode });
+  const providerCapabilitiesMissing = RECOVERY_CAPABILITIES.filter((capability) => !resolved.capabilities[capability]);
+  const adapterReadiness = deps.providerReadiness?.({
+    providerId: resolved.providerId,
+    modelId: resolved.modelId,
+    moduleId: resolved.moduleId,
+    mode: resolved.mode,
+  }) ?? { providerReady: true };
+  return {
+    providerReady: adapterReadiness.providerReady,
+    providerCapabilityProfile: classifyGenerationProviderCapabilities(resolved.capabilities),
+    recoveryNotice: recoveryNotice(classifyGenerationProviderCapabilities(resolved.capabilities)),
+    providerCapabilitiesMissing,
+    missingForSubmit: adapterReadiness.missingForSubmit ?? [],
+  };
 }
 
 export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerDependencies) {
@@ -314,19 +360,22 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     if (input.capability === "preview") {
       const contract = compileExecutionContract(current.candidate, deps.registry);
-      const missing = providerCapabilityGaps(deps.registry, current.candidate);
+      const readiness = resolveProviderReadiness(deps, current.candidate);
       return {
         operationId,
         candidateRevision: current.candidate.revision,
         contract,
-        providerReady: missing.length === 0,
-        ...(missing.length ? { providerCapabilitiesMissing: missing, nextAction: "provider_configure" } : { nextAction: "request_gate" }),
+        providerReady: readiness.providerReady,
+        providerCapabilityProfile: readiness.providerCapabilityProfile,
+        recoveryNotice: readiness.recoveryNotice,
+        ...(readiness.providerCapabilitiesMissing.length ? { providerCapabilitiesMissing: readiness.providerCapabilitiesMissing } : {}),
+        ...(readiness.providerReady ? { nextAction: "request_gate" } : { nextAction: "provider_configure" }),
       };
     }
     if (input.capability === "gate_request") {
       const contract = compileExecutionContract(current.candidate, deps.registry);
-      const missing = providerCapabilityGaps(deps.registry, current.candidate);
-      if (missing.length) throw new GenerationProviderCapabilityError(contract.providerId, missing);
+      const readiness = resolveProviderReadiness(deps, current.candidate);
+      if (!readiness.providerReady) throw new GenerationProviderCapabilityError(contract.providerId, readiness.missingForSubmit.length ? readiness.missingForSubmit : ["configured_provider"]);
       const sealed = current.state === "draft"
         ? await deps.operations.seal(input.lease.projectId, operationId, contract, now())
         : current;
@@ -342,6 +391,10 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         currency: "CNY",
         expiresAt: new Date(Date.parse(now()) + 10 * 60 * 1000).toISOString(),
         shotSummary: contract.prompt.slice(0, 120),
+        providerReady: readiness.providerReady,
+        providerCapabilityProfile: readiness.providerCapabilityProfile,
+        recoveryNotice: readiness.recoveryNotice,
+        ...(readiness.providerCapabilitiesMissing.length ? { providerCapabilitiesMissing: readiness.providerCapabilitiesMissing } : {}),
         nextAction: "confirm",
       };
     }

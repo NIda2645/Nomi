@@ -126,13 +126,13 @@ describe("semantic MCP generation tools", () => {
     await expect(handler({ capability: "start", params: { operationId }, lease })).resolves.toMatchObject({ nextAction: "provider_not_configured" });
   });
 
-  it("shows missing recovery capability before confirmation and never seals the draft", async () => {
+  it("allows a submit-only provider while making recovery limits explicit", async () => {
     const operations = createInMemoryGenerationOperationStore();
     const handler = createGenerationPlanningHandler({ registry: blockedRegistry, operations, now: () => "2026-08-23T00:00:00.000Z" });
     const created = await handler({ capability: "create", params: { candidate: candidate({ providerId: "blocked-provider", modelId: "blocked-model" }) }, lease });
     const operationId = (created as { operation: { operationId: string } }).operation.operationId;
-    await expect(handler({ capability: "preview", params: { operationId }, lease })).resolves.toMatchObject({ providerReady: false, nextAction: "provider_configure", providerCapabilitiesMissing: expect.arrayContaining(["query", "reconcile"]) });
-    await expect(handler({ capability: "gate_request", params: { operationId }, lease })).rejects.toThrow(/lacks required recovery capabilities/);
-    expect((await operations.read("project-1", operationId))?.state).toBe("draft");
+    await expect(handler({ capability: "preview", params: { operationId }, lease })).resolves.toMatchObject({ providerReady: true, providerCapabilityProfile: "submit_only", nextAction: "request_gate", providerCapabilitiesMissing: expect.arrayContaining(["query", "reconcile"]) });
+    await expect(handler({ capability: "gate_request", params: { operationId }, lease })).resolves.toMatchObject({ nextAction: "confirm", providerCapabilityProfile: "submit_only", recoveryNotice: expect.stringContaining("核对") });
+    expect((await operations.read("project-1", operationId))?.state).toBe("sealed");
   });
 });

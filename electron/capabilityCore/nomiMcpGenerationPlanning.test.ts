@@ -29,6 +29,20 @@ const registry = createModuleRegistry([{
   }],
 }]);
 
+const degradedRegistry = createModuleRegistry([{
+  moduleId: "generation.single-shot",
+  version: "1.0.0",
+  inputKinds: ["text"],
+  outputKinds: ["image"],
+  modes: ["text-to-image"],
+  parameterSchema: { aspectRatio: { type: "enum", enum: ["1:1", "16:9"] } },
+  assetInputSchema: {},
+  providers: [{
+    providerId: "apimart",
+    models: [{ modelId: "gpt-image-2", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false } }],
+  }],
+}]);
+
 const editableRegistry = createModuleRegistry([{
   moduleId: "generation.single-shot",
   version: "1.0.0",
@@ -198,5 +212,35 @@ describe("MCP semantic generation planning journey", () => {
     }
     expect(repository.read("project-1", operationId!).generationPlan?.candidate.revision).toBe(3);
     expect(context.runTask).not.toHaveBeenCalled();
+  });
+
+  it("allows gate request for an observe-only provider and explains recovery limits", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-mcp-generation-degraded-"));
+    roots.push(root);
+    const repository = createProductionRunRepository({ projectDirResolver: () => root, now: () => "2026-08-23T00:00:00.000Z" });
+    const service = createProductionRunService({ repository, projectRootResolver: () => root, sleep: async () => {} });
+    const operations = createProductionGenerationOperationStore(service);
+    const handler = createGenerationPlanningHandler({ registry: degradedRegistry, operations, now: () => "2026-08-23T00:00:00.000Z" });
+    const authority = makeAuthority(root);
+    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["generation:create", "generation:preview", "generation:gate"] });
+    const lease = authority.issueLease(selection.token, { projectId: "project-1", leasePrincipal: "mcp:test", sessionId: "session-1", connectionNonce: "connection-1" }).lease;
+    const candidate = {
+      candidateId: "candidate-degraded",
+      revision: 1,
+      moduleId: "generation.single-shot",
+      providerId: "apimart",
+      modelId: "gpt-image-2",
+      mode: "text-to-image",
+      prompt: "A red paper crane",
+      parameters: { aspectRatio: "1:1" },
+      references: [],
+    };
+    const created = await handler({ capability: "create", params: { candidate }, lease });
+    const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+    const preview = await handler({ capability: "preview", params: { operationId }, lease }) as Record<string, unknown>;
+    expect(preview.providerReady).toBe(true);
+    expect(preview.providerCapabilityProfile).toBe("observe_only");
+    expect(preview.recoveryNotice).toContain("核对");
+    await expect(handler({ capability: "gate_request", params: { operationId }, lease })).resolves.toMatchObject({ nextAction: "confirm" });
   });
 });
