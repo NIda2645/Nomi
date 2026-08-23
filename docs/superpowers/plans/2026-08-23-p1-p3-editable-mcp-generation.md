@@ -32,6 +32,14 @@
 
 P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都由工程自主完成。只有在 P3 零额度证据全绿后，才停在真实 provider smoke 前，请用户决定真实供应商凭证、模型、预算上限以及是否坚持“缺少原生幂等/查询/核账能力的 provider 直接阻塞”。默认建议：严格阻塞；`submission_unknown` 只允许 reconcile，不允许人工确认后盲重提。
 
+### 当前执行进度（2026-08-23）
+
+- [x] P1 typed Module/Runtime/Asset boundary：模块能力声明、Run binding、RuntimeTask binding、资产稳定 identity/lease。
+- [x] P2 pure `PlanCandidate → ExecutionContract`：稳定 hash、字段解释、封存前编辑/封存后新草稿。
+- [x] P2 shared planning seam：semantic dispatcher 已有 MCP/GUI 共用 callback，未触碰 legacy provider path。
+- [x] P3 first seam：provider-neutral adapter、durable runtime envelope、unknown/reconcile-only recovery classifier、single-shot ordering tests。
+- [ ] P3 default ProductionRun wiring、真实 MCP/UI journey、full gates 与决策包：正在推进。
+
 ## 文件地图与唯一 owner
 
 | 文件 | 本计划中的职责 |
@@ -90,7 +98,7 @@ rg -n 'T(BD|ODO)|implement[[:space:]]+later|fill[[:space:]]+in[[:space:]]+detail
 
 Expected: no matches。计划中的每个生产改动都有明确文件、失败测试、通过命令和 commit 门。
 
-- [ ] **Step 3: 提交计划文档**
+- [x] **Step 3: 提交计划文档**
 
 ```bash
 git add docs/superpowers/plans/2026-08-23-p1-p3-editable-mcp-generation.md
@@ -111,7 +119,7 @@ Expected: one documentation-only commit，未触碰 provider、额度或用户�
 - Modify: `electron/assets/projectAssetStore.ts`
 - Test: `electron/capabilityCore/moduleManifest.test.ts`, `electron/capabilityCore/moduleRegistry.test.ts`, `electron/productionRun/productionExecutionBinding.test.ts`, `electron/runtime.task-envelope.test.ts`, `electron/assets/projectAssetLease.test.ts`
 
-- [ ] **Step 1: 先写失败测试，证明差异来自声明而不是 vendor 分支**
+- [x] **Step 1: 先写失败测试，证明差异来自声明而不是 vendor 分支**
 
 测试必须使用两个仅存在于 fixture 的 capability profile：一个声明 image + `aspectRatio/seed`，另一个声明 video + `duration/fps`；测试同时覆盖参数增删、模式切换、参考素材替换/排序、未知 module/provider capability、过期/foreign asset lease。断言：所有失败发生在 provider dispatch 前，且错误带字段路径和恢复动作。
 
@@ -121,19 +129,19 @@ pnpm exec vitest run electron/capabilityCore/moduleManifest.test.ts electron/cap
 
 Expected: FAIL，原因是 typed manifest/binding/lease seam 尚不存在；不得调用真实网络或 spend grant。
 
-- [ ] **Step 2: 实现最小通用 schema 与 registry**
+- [x] **Step 2: 实现最小通用 schema 与 registry**
 
 `ModuleManifest` 必须声明 input/output kinds、parameter schema、asset input schema、provider recovery capabilities（submit idempotency/query/reconcile/cancel）和 allowlist；`ModuleRegistry` 为一次 Run 固定 snapshot。任何不支持的字段返回显式 `unsupported_capability`，不能静默删掉；provider/model 名称只作为数据，不成为代码分支。
 
-- [ ] **Step 3: 给 RuntimeTask/ProductionJob 加 typed binding**
+- [x] **Step 3: 给 RuntimeTask/ProductionJob 加 typed binding**
 
 绑定至少包含 immutable project UUID/generation、runId/shotId、contractHash、runtimeTaskId、provider namespace、provider idempotency key、request fingerprint、fencing epoch 和 envelope ref。旧记录读入时只能生成只读 migration projection，不能在普通 read 中写回或改状态。
 
-- [ ] **Step 4: 统一资产引用与 lease**
+- [x] **Step 4: 统一资产引用与 lease**
 
 `AssetRef` 以 project/generation/contentHash/version/privacy/expiry 为边界；写入、替换、删除、排序只改变 candidate；provider 前验证 lease/state。列表读取与生成结果使用同一个稳定 identity，不能同时保留随机写入 ID 与重算 ID 两套真相。
 
-- [ ] **Step 5: 运行红→绿与提交**
+- [x] **Step 5: 运行红→绿与提交**
 
 ```bash
 pnpm exec vitest run electron/capabilityCore/moduleManifest.test.ts electron/capabilityCore/moduleRegistry.test.ts electron/productionRun/productionExecutionBinding.test.ts electron/runtime.task-envelope.test.ts electron/assets/projectAssetLease.test.ts --reporter=dot
@@ -157,7 +165,7 @@ git commit -m "feat: add generic runtime module and asset boundaries"
 - Test: `electron/capabilityCore/executionContract.test.ts`, `electron/capabilityCore/generationContext.test.ts`
 - Reference: `electron/capabilityCore/mcpGenerateParams.ts`, `electron/runtime.ts`, `electron/productionRun/productionRunTypes.ts`
 
-- [ ] **Step 1: 写失败测试覆盖“真实页面式编辑”**
+- [x] **Step 1: 写失败测试覆盖“真实页面式编辑”**
 
 同一 candidate 依次执行以下操作并比较每次 preview：切换模型、切换供应商、切换 image/video 模式、修改任意参数、增加/删除/替换/重排参考素材、恢复上一次版本。断言：每次都生成新的 candidate revision；未封存时可以继续编辑；同一输入 + 同一 registry snapshot 得到完全相同的 contract hash；不同输入绝不沿用旧 hash。
 
@@ -167,19 +175,19 @@ pnpm exec vitest run electron/capabilityCore/executionContract.test.ts electron/
 
 Expected: FAIL，原因是 compiler/context 尚未实现。
 
-- [ ] **Step 2: 实现 canonicalization、hash 与 field ledger**
+- [x] **Step 2: 实现 canonicalization、hash 与 field ledger**
 
 编译器只接受结构化 `PlanCandidate` 与 registry snapshot，输出 `ExecutionContractV1`、canonical JSON/hash、保留字段 ledger、warning/dropped-field ledger、required confirmation scope 和 provider-neutral `ResolvedTaskRequestV1` 输入。排序只对明确的集合字段 canonicalize；用户素材顺序和参数语义不得被意外重排。
 
-- [ ] **Step 3: 实现能力/资产/预算预检**
+- [x] **Step 3: 实现能力/资产/预算预检**
 
 `generationContext` 只读地合并当前 project lease、素材状态、module/provider/model manifest 与费用估算。任何 unsupported parameter、过期素材、provider 不具备 native submit idempotency/query/reconcile 的情况，在 contract 生成阶段返回可读错误；不得在 preview 阶段发起 provider 请求或 mint grant。
 
-- [ ] **Step 4: 实现封存语义**
+- [x] **Step 4: 实现封存语义**
 
 封存时记录 `contractHash` 与 `baseRevision`。封存前修改只更新 draft；封存后修改原 candidate 必须返回 `new_draft_required`，原 Job/receipt/artifact 可继续查询。provider/model/参数/素材变化都必须纳入 hash，不能只比较 display name。
 
-- [ ] **Step 5: 红→绿、提交并记录 P2 证据**
+- [x] **Step 5: 红→绿、提交并记录 P2 证据**
 
 ```bash
 pnpm exec vitest run electron/capabilityCore/executionContract.test.ts electron/capabilityCore/generationContext.test.ts --reporter=dot
