@@ -59,9 +59,9 @@
 为验证“用户在软件里点击一次即可完成确认，并且请求确实走到供应商”，本轮又启动了本分支的隔离 Electron 实例（独立 userData / 项目目录），没有触碰已安装的正式 Nomi 项目。通过电脑控制完成了完整的可见操作：新建项目 → 生成 → 添加视频节点 → 输入提示词 → 打开模型/参数选择 → 选择短规格 → 点击“生成素材” → 在“开始生成”对话框点击一次“生成”。
 
 - 第一条 GUI 旅程选择了即梦 Seedance 2.0，16:9、720p、4 秒、Fast 变体；确认弹窗正常出现，点击后进入真实 provider 路径，供应商明确返回“账号权限不足”，没有生成素材。这证明失败发生在供应商权限层，不是 UI 确认闸或 MCP 共享规划层。
-- 第二条旅程先在「设置 → 模型」里接入用户提供的 APIMart Key；页面显示“APIMart 已接入”，模型列表出现 28 个预置模型。随后在画布中输入同一短提示词，使用 16:9、480p、6 秒的最低规格，点击同一个确认对话框一次。生成记录明确记录了 `provider=apimart`、`model=grok-imagine-1.5-video-apimart` 和供应商 `task` ID；约 35 秒后媒体回载显示“加载超时，请重试”，没有再次自动提交。
-- 这次 APIMart GUI smoke 证明了“接入凭据 → GUI 模型目录 → 可编辑参数 → 一次确认 → provider 异步任务 → 结果回载/超时反馈”的真实链路。它实际验证的是 APIMart 的 Grok wire，不把它冒充成 Seedance 在线成功；Seedance 的跨变体选择和参数约束仍由零额度真实 catalog journey + 既有 Seedance paid evidence 覆盖。
-- 本轮没有重复重试、没有长视频/高分辨率，也没有把 API Key 写入仓库或文档；隔离开发实例随后已关闭。
+- 第二条旅程先在「设置 → 模型」里接入用户提供的 APIMart Key；页面显示“APIMart 已接入”，模型列表出现 28 个预置模型。随后在画布中输入同一短提示词，使用 16:9、480p、6 秒的最低规格，点击同一个确认对话框一次。生成记录明确记录了 `provider=apimart`、`model=grok-imagine-1.5-video-apimart` 和供应商 `task` ID；约 35 秒后第一次媒体显示曾短暂出现“加载超时，请重试”，但后台任务实际已经完成，MP4 已落到项目资产目录，技术检查为 6.0s、黑帧 0%、静音 0%。修复本地媒体队列/`nomi-local` 视频播放后，隔离 GUI 重开项目即可看到播放控件并实际播放，过程中没有再次提交供应商任务。
+- 这次 APIMart GUI smoke 证明了“接入凭据 → GUI 模型目录 → 可编辑参数 → 一次确认 → provider 异步任务 → 本地落盘 → 重开后播放”的真实链路，也暴露并修复了慢媒体首次回载时的错误超时体验。它实际验证的是 APIMart 的 Grok wire，不把它冒充成 Seedance 在线成功；Seedance 的跨变体选择和参数约束仍由零额度真实 catalog journey + 既有 Seedance paid evidence 覆盖。
+- 本轮没有重复提交、没有长视频/高分辨率，也没有把 API Key 写入仓库或文档；隔离开发实例随后已关闭。
 
 用户价值：用户只在自己正在看的软件里点一次确认，不需要回到 Nomi 再点第二次；供应商拒绝或回载超时会落成可理解的下一步，而不是静默卡住或盲目重提。
 
@@ -83,7 +83,7 @@ pnpm exec vitest run electron/shared/videoCapabilities/index.test.ts electron/ca
 pnpm exec vitest run src/config/modelArchetypes electron/catalog --reporter=dot
 # 87 files / 833 tests passed
 pnpm run test
-# 699 files passed, 1 skipped / 6174 tests passed, 1 skipped
+# 699 files passed, 1 skipped / 6175 tests passed, 1 skipped
 pnpm run test:mcp
 # real Electron stdio journey passed: 45 assertions / 10 steps; 6 mock-vendor requests, zero provider quota
 pnpm run typecheck
