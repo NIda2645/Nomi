@@ -23,6 +23,8 @@ const videoModelCandidates = buildVideoModelCandidates([
 
 const realCatalogVideoModelCandidates = buildVideoModelCandidates([
   { provider: "apimart", modelKey: "doubao-seedance-2.0", label: "Seedance 2.0", archetypeId: "seedance-2-apimart" },
+  { provider: "apimart", modelKey: "doubao-seedance-2.0-fast", label: "Seedance 2.0 Fast", archetypeId: "seedance-2-apimart" },
+  { provider: "apimart", modelKey: "doubao-seedance-2.0-mini", label: "Seedance 2.0 Mini", archetypeId: "seedance-2-apimart" },
   { provider: "apimart", modelKey: "veo3.1-fast", label: "Veo 3.1", archetypeId: "veo-3.1" },
   { provider: "apimart", modelKey: "MiniMax-Hailuo-2.3", label: "Hailuo 2.3", archetypeId: "hailuo-2.3" },
 ]);

@@ -332,7 +332,6 @@ function candidatesForCurrentVideoModel(
   const modelId = normalizedModelIdentity(candidate.modelId);
   const exactMatches = providerCandidates.filter((item) => [
     item.modelKey,
-    item.archetype.catalogModelKey,
     item.archetype.variants?.find((variant) => variant.id === (item.variantId ?? item.archetype.defaultVariantId))?.modelKey,
   ].some((identity) => typeof identity === "string" && normalizedModelIdentity(identity) === modelId));
   if (exactMatches.length > 0) return exactMatches;
