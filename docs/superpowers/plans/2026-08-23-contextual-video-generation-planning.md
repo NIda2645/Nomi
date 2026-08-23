@@ -540,3 +540,7 @@ Inventory existing successful paid evidence first. Existing Seedance, Sora, Veo,
 - [x] **Step 5: Run full gates and update evidence**
 
 Run the focused matrix, all catalog/request tests, `check:filesize`, `check:tokens`, `check:i18n`, `lint:ci`, `typecheck`, full test and build. Record exact model/mode coverage, reused paid evidence, new spend and any provider limitation. Commit only scoped files.
+
+- [x] **Step 6: Walk the real GUI catalog through the MCP editing journey**
+
+Use the same catalog-backed profiles that the GUI exposes and drive one zero-cost JSON-RPC journey through Seedance → Veo → Hailuo. The journey changes model, mode, reference role and parameters, then previews after each edit while asserting that `runTask`, provider submission, gateway creation and spend remain at zero. During this pass a real UX defect was found and fixed: once a user selects a model that exists in the catalog, recommendation candidates are scoped to that model (with exact model identity taking precedence over aliases), so preview cannot silently put another model first. If a configured model is not yet represented in the catalog, the existing provider/catalog fallback remains available rather than blocking the user.

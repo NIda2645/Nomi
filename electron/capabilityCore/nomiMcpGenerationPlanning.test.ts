@@ -21,6 +21,12 @@ const videoModelCandidates = buildVideoModelCandidates([
   { provider: "apimart", modelKey: "doubao-seedance-2.0-mini", label: "Seedance 2.0 Mini" },
 ]);
 
+const realCatalogVideoModelCandidates = buildVideoModelCandidates([
+  { provider: "apimart", modelKey: "doubao-seedance-2.0", label: "Seedance 2.0", archetypeId: "seedance-2-apimart" },
+  { provider: "apimart", modelKey: "veo3.1-fast", label: "Veo 3.1", archetypeId: "veo-3.1" },
+  { provider: "apimart", modelKey: "MiniMax-Hailuo-2.3", label: "Hailuo 2.3", archetypeId: "hailuo-2.3" },
+]);
+
 const roots: string[] = [];
 const registry = createModuleRegistry([{
   moduleId: "generation.single-shot",
@@ -80,6 +86,24 @@ const videoEditableRegistry = createModuleRegistry([{
       parameterSchema: { duration: { type: "number" }, seed: { type: "integer" } },
       capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true },
     }],
+  }],
+}]);
+
+const realCatalogVideoRegistry = createModuleRegistry([{
+  moduleId: "generation.single-shot",
+  version: "1.0.0",
+  inputKinds: ["text", "image"],
+  outputKinds: ["video"],
+  modes: ["text-to-video", "image-to-video", "firstlast", "omni", "reference"],
+  parameterSchema: { duration: { type: "number" }, resolution: { type: "string" }, size: { type: "string" } },
+  assetInputSchema: { references: { kind: "asset", max: 9 } },
+  providers: [{
+    providerId: "apimart",
+    models: [
+      { modelId: "doubao-seedance-2.0", modes: ["text-to-video", "image-to-video", "firstlast", "omni"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
+      { modelId: "veo3.1-fast", modes: ["text-to-video", "image-to-video", "reference", "firstlast"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
+      { modelId: "MiniMax-Hailuo-2.3", modes: ["text-to-video", "image-to-video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
+    ],
   }],
 }]);
 
@@ -316,6 +340,103 @@ describe("MCP semantic generation planning journey", () => {
     expect(secondPayload.contract.droppedFields).toEqual([{ path: "parameters.trajectory", reason: "unsupported_parameter" }]);
     expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "firstlast" } });
     expect(runTask).not.toHaveBeenCalled();
+  });
+
+  it("walks the real GUI catalog profiles through model, mode, reference and parameter switches", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-mcp-generation-real-catalog-"));
+    roots.push(root);
+    const repository = createProductionRunRepository({ projectDirResolver: () => root, now: () => "2026-08-23T00:00:00.000Z" });
+    const service = createProductionRunService({ repository, projectRootResolver: () => root, sleep: async () => {} });
+    const operations = createProductionGenerationOperationStore(service);
+    const runTask = vi.fn(async () => { throw new Error("real catalog planning must not call runTask"); });
+    const handler = createGenerationPlanningHandler({
+      registry: realCatalogVideoRegistry,
+      operations,
+      videoModelCandidates: realCatalogVideoModelCandidates,
+      recommendVideoGeneration,
+      now: () => "2026-08-23T00:00:00.000Z",
+    });
+    const authority = makeAuthority(root);
+    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read"] });
+    const lease = authority.issueLease(selection.token, { projectId: "project-1", leasePrincipal: "mcp:test", sessionId: "session-1", connectionNonce: "connection-1" }).token;
+    const context = {
+      runTask,
+      makeGateway: () => { throw new Error("real catalog planning must not create a gateway"); },
+      productionRuns: service,
+      origin: { host: "codex" as const },
+      generationPolicy: createMcpGenerationPolicy({ env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: "1" }, checkpoints: { p0Passed: true, p2Passed: true } }),
+      projectLeaseAuthority: authority,
+      generationPlanning: handler,
+    };
+    const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
+    await harness.call(31, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "Codex" } });
+    const created = await harness.call(32, "tools/call", {
+      name: "nomi_operation_create",
+      arguments: {
+        leaseHandle: lease,
+        candidate: {
+          candidateId: "real-catalog-video",
+          revision: 1,
+          moduleId: "generation.single-shot",
+          providerId: "apimart",
+          modelId: "doubao-seedance-2.0",
+          mode: "omni",
+          prompt: "角色走向镜头",
+          parameters: { duration: 5, resolution: "720p" },
+          references: [{ assetId: "character", contentHash: "c".repeat(64), version: 1, kind: "image", role: "character" }],
+        },
+      },
+    });
+    const operationId = [...(await repository.list("project-1"))][0]?.runId;
+    expect(created.result).toBeTruthy();
+    expect(operationId).toMatch(/^op-/);
+
+    const preview = async (id: number) => {
+      const response = await harness.call(id, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+      return JSON.parse((response.result as { content: Array<{ text: string }> }).content[0]!.text) as {
+        recommendation?: { recommendations?: Array<{ modelKey: string; modeId: string; params: Record<string, unknown> }> };
+        contract: { providerId: string; modelId: string; mode: string; contractHash: string };
+      };
+    };
+    const seedance = await preview(33);
+    expect(seedance.recommendation?.recommendations?.[0]).toMatchObject({ modelKey: "doubao-seedance-2.0", modeId: "omni" });
+
+    await harness.call(34, "tools/call", {
+      name: "nomi_submit_generation_plan",
+      arguments: {
+        leaseHandle: lease,
+        operationId,
+        patch: {
+          modelId: "veo3.1-fast",
+          mode: "reference",
+          parameters: { resolution: "720p" },
+          references: [{ assetId: "style", contentHash: "s".repeat(64), version: 1, kind: "image", role: "reference" }],
+        },
+      },
+    });
+    const veo = await preview(35);
+    expect(veo.recommendation?.recommendations?.[0]).toMatchObject({ modelKey: "veo3.1-fast", modeId: "reference" });
+    expect(veo.contract).toMatchObject({ providerId: "apimart", modelId: "veo3.1-fast", mode: "reference" });
+    expect(veo.contract.contractHash).not.toBe(seedance.contract.contractHash);
+
+    await harness.call(36, "tools/call", {
+      name: "nomi_submit_generation_plan",
+      arguments: {
+        leaseHandle: lease,
+        operationId,
+        patch: {
+          modelId: "MiniMax-Hailuo-2.3",
+          mode: "image-to-video",
+          parameters: { duration: 6, resolution: "768p" },
+          references: [{ assetId: "first", contentHash: "f".repeat(64), version: 1, kind: "image", role: "first_frame" }],
+        },
+      },
+    });
+    const hailuo = await preview(37);
+    expect(hailuo.recommendation?.recommendations?.[0]).toMatchObject({ modelKey: "MiniMax-Hailuo-2.3", modeId: "i2v" });
+    expect(hailuo.recommendation?.recommendations?.[0]?.params).not.toHaveProperty("aspect_ratio");
+    expect(hailuo.contract).toMatchObject({ providerId: "apimart", modelId: "MiniMax-Hailuo-2.3", mode: "image-to-video" });
+    expect(context.runTask).not.toHaveBeenCalled();
   });
 
   it("allows gate request for an observe-only provider and explains recovery limits", async () => {

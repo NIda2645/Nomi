@@ -314,6 +314,37 @@ function videoRecommendationInput(candidate: PlanCandidate): VideoGenerationReco
   };
 }
 
+const normalizedModelIdentity = (value: string): string => value.trim().toLowerCase();
+
+/**
+ * Keep recommendations anchored to the model the user currently selected in
+ * the GUI/MCP plan. The catalog may contain aliases for a model family, so an
+ * exact catalog key wins before falling back to source-declared identifiers.
+ * If the selected model is not in the catalog yet (for example, a provider
+ * fixture or a newly configured adapter), preserve the existing cross-catalog
+ * fallback rather than making preview unusable.
+ */
+function candidatesForCurrentVideoModel(
+  candidate: PlanCandidate,
+  candidates: readonly VideoModelCandidate[],
+): readonly VideoModelCandidate[] {
+  const providerCandidates = candidates.filter((item) => normalizedModelIdentity(item.provider) === normalizedModelIdentity(candidate.providerId));
+  const modelId = normalizedModelIdentity(candidate.modelId);
+  const exactMatches = providerCandidates.filter((item) => [
+    item.modelKey,
+    item.archetype.catalogModelKey,
+    item.archetype.variants?.find((variant) => variant.id === (item.variantId ?? item.archetype.defaultVariantId))?.modelKey,
+  ].some((identity) => typeof identity === "string" && normalizedModelIdentity(identity) === modelId));
+  if (exactMatches.length > 0) return exactMatches;
+
+  const aliasMatches = providerCandidates.filter((item) => {
+    const variant = item.archetype.variants?.find((entry) => entry.id === (item.variantId ?? item.archetype.defaultVariantId));
+    return [...item.archetype.identifierPatterns, ...(variant?.identifierPatterns ?? [])]
+      .some((identity) => normalizedModelIdentity(identity) === modelId);
+  });
+  return aliasMatches.length > 0 ? aliasMatches : providerCandidates.length > 0 ? providerCandidates : candidates;
+}
+
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid ${label}`);
   return value as Record<string, unknown>;
@@ -429,7 +460,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         ? videoRecommendationInput(current.candidate)
         : null;
       const recommendation = recommendationInput && deps.recommendVideoGeneration && deps.videoModelCandidates
-        ? deps.recommendVideoGeneration(recommendationInput, deps.videoModelCandidates)
+        ? deps.recommendVideoGeneration(recommendationInput, candidatesForCurrentVideoModel(current.candidate, deps.videoModelCandidates))
         : undefined;
       return {
         operationId,

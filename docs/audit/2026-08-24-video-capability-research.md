@@ -53,18 +53,21 @@
 2. 将参考图替换成首帧+尾帧 → preview 改为首尾帧模式；
 3. 修改时长并加入当前模型未声明的 `trajectory` → revision/hash 变化，合同明确返回 `droppedFields: parameters.trajectory / unsupported_parameter`；
 4. 整个 create/edit/preview JSON-RPC journey 中 `runTask`、provider submit、gateway、spend 均为 0；旧 sealed draft 不会被原地编辑。
+5. 真实 GUI catalog MCP journey：同一 operation 依次切换 APIMart Seedance 2.0（全能参考）→ Veo 3.1 Fast（参考图）→ Hailuo 2.3（首帧），每次同步切换模式、参考角色与参数。验证 preview 始终把当前已选模型放在推荐首位，不会在用户切换到 Veo/Hailuo 后又跳回 Seedance；模型未出现在当前 catalog 时才保留兼容回退。
 
 ## 验证命令
 
 ```bash
 pnpm exec vitest run electron/shared/videoCapabilities src/config/modelArchetypes electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts --reporter=dot
-# shared/MCP 现有 focused suites 通过；本轮新增 shared/catalog contract suites 10 tests
+# shared/MCP focused suites 通过；包含真实 GUI catalog 的 Seedance → Veo → Hailuo 编辑旅程
 pnpm exec vitest run electron/shared/videoCapabilities/index.test.ts electron/catalog/apimartVideoSharedContracts.test.ts electron/catalog/curatedVideoSharedContracts.test.ts --reporter=dot
 # 3 files / 10 tests passed
 pnpm exec vitest run src/config/modelArchetypes electron/catalog --reporter=dot
 # 87 files / 833 tests passed
 pnpm run test
-# 699 files passed, 1 skipped / 6171 tests passed, 1 skipped
+# 699 files passed, 1 skipped / 6172 tests passed, 1 skipped
+pnpm run test:mcp
+# real Electron stdio journey passed: 45 assertions / 10 steps / 963ms; 6 mock-vendor requests, zero provider quota
 pnpm run typecheck
 pnpm run build
 pnpm run check:filesize
@@ -74,7 +77,7 @@ pnpm run check:archetype-sources
 pnpm run lint:ci
 ```
 
-本轮完整门岗结果：`check:filesize`、`check:tokens`、`check:i18n`、`check:archetype-sources`、`lint:ci`（95 warnings，低于 98 棘轮）、`typecheck`、`test`、`build` 和 `git diff --check` 均通过。结构性验证没有新增 provider/spend/Canvas/Timeline 副作用。
+本轮完整门岗结果：`check:filesize`、`check:tokens`、`check:i18n`、`check:archetype-sources`、`lint:ci`（95 warnings，低于 98 棘轮）、`typecheck`、`test`、`test:mcp`、`build` 和 `git diff --check` 均通过。结构性验证没有新增 APIMart/provider/spend/Canvas/Timeline 副作用；真实 MCP 旅程仅使用本地 mock vendor。
 
 ## 当前还没有替用户做的决定
 
