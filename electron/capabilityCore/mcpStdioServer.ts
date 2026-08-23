@@ -42,6 +42,7 @@ export type McpStdioServerOptions = {
   authorizeGeneration?: DispatchContext['authorizeGeneration']
   generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  generationPlanning?: DispatchContext['generationPlanning']
   projectRevisionResolver?: (projectId: string) => number | undefined
 }
 

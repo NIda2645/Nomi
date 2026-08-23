@@ -167,6 +167,7 @@ export async function startCapabilityCore(
     confirmGenerationInNomi?: import('./rpcServer').RpcServerOptions['confirmGenerationInNomi']
     generationPolicy?: McpGenerationPolicy
     generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+    generationPlanning?: DispatchContext['generationPlanning']
     projectRevisionResolver?: (projectId: string) => number | undefined
   } = {},
 ): Promise<void> {
