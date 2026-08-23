@@ -15,6 +15,40 @@ import {
 import { GenerationProviderCapabilityError } from "./generationRuntimeAdapter";
 
 /**
+ * Structural boundary for the pure recommendation adapter. The renderer-side
+ * model archetype implementation is injected at bootstrap; the Electron
+ * planning owner only knows this serializable context/result shape.
+ */
+type VideoGenerationRecommendationInput = {
+  prompt?: string;
+  references: Array<{ kind: "image" | "video" | "audio"; role?: "character" | "first_frame" | "last_frame" | "reference" | "audio" }>;
+  cameraIntent?: "locked" | "pan" | "tilt" | "dolly" | "orbit" | "handheld" | "path";
+  preferredFamily?: string;
+  goals?: {
+    preserveCharacter?: boolean;
+    preserveTransition?: boolean;
+    useReferenceAudio?: boolean;
+    generateAudio?: boolean;
+    durationSeconds?: number;
+    aspectRatio?: string;
+    quality?: "draft" | "balanced" | "final";
+  };
+};
+
+type VideoModelCandidate = {
+  provider: string;
+  modelKey: string;
+  label: string;
+  variantId?: string;
+  archetype: unknown;
+};
+
+type VideoGenerationRecommendationResult = {
+  recommendations: Array<Record<string, unknown>>;
+  nextAction?: string;
+};
+
+/**
  * The semantic MCP surface is deliberately data-only.  These tools are the
  * same vocabulary a GUI adapter uses; neither the catalog nor this handler
  * knows a vendor-specific parameter or calls a provider.
@@ -262,9 +296,52 @@ export type GenerationPlanningHandlerDependencies = {
     moduleId: string;
     mode: string;
   }) => { providerReady: boolean; missingForSubmit?: string[] };
+  videoModelCandidates?: readonly VideoModelCandidate[];
+  recommendVideoGeneration?: (
+    input: VideoGenerationRecommendationInput,
+    candidates: readonly VideoModelCandidate[],
+  ) => VideoGenerationRecommendationResult;
   start?: (operation: GenerationOperation, lease: ProjectLeaseV1) => unknown | Promise<unknown>;
   reconcile?: (operation: GenerationOperation, outcome: "found" | "not_found", lease: ProjectLeaseV1) => unknown | Promise<unknown>;
 };
+
+const CAMERA_INTENTS = new Set<NonNullable<VideoGenerationRecommendationInput["cameraIntent"]>>([
+  "locked", "pan", "tilt", "dolly", "orbit", "handheld", "path",
+]);
+
+function videoRecommendationInput(candidate: PlanCandidate): VideoGenerationRecommendationInput | null {
+  if (candidate.references.some((reference) => !reference.kind)) return null;
+  const parameters = candidate.parameters;
+  const durationSeconds = typeof parameters.duration === "number"
+    ? parameters.duration
+    : typeof parameters.durationSeconds === "number" ? parameters.durationSeconds : undefined;
+  const aspectRatio = typeof parameters.aspectRatio === "string"
+    ? parameters.aspectRatio
+    : typeof parameters.aspect_ratio === "string" ? parameters.aspect_ratio
+      : typeof parameters.size === "string" ? parameters.size : undefined;
+  const quality = parameters.quality === "draft" || parameters.quality === "balanced" || parameters.quality === "final"
+    ? parameters.quality
+    : undefined;
+  const cameraIntent = typeof parameters.cameraIntent === "string" && CAMERA_INTENTS.has(parameters.cameraIntent as NonNullable<VideoGenerationRecommendationInput["cameraIntent"]>)
+    ? parameters.cameraIntent as NonNullable<VideoGenerationRecommendationInput["cameraIntent"]>
+    : undefined;
+  const goals: NonNullable<VideoGenerationRecommendationInput["goals"]> = {
+    ...(typeof parameters.preserveCharacter === "boolean" ? { preserveCharacter: parameters.preserveCharacter } : {}),
+    ...(typeof parameters.preserveTransition === "boolean" ? { preserveTransition: parameters.preserveTransition } : {}),
+    ...(typeof parameters.useReferenceAudio === "boolean" ? { useReferenceAudio: parameters.useReferenceAudio } : {}),
+    ...(typeof parameters.generate_audio === "boolean" ? { generateAudio: parameters.generate_audio } : {}),
+    ...(durationSeconds === undefined ? {} : { durationSeconds }),
+    ...(aspectRatio === undefined ? {} : { aspectRatio }),
+    ...(quality === undefined ? {} : { quality }),
+  };
+  return {
+    prompt: candidate.prompt,
+    references: candidate.references.map((reference) => ({ kind: reference.kind!, role: reference.role })),
+    ...(cameraIntent === undefined ? {} : { cameraIntent }),
+    ...(typeof parameters.preferredFamily === "string" ? { preferredFamily: parameters.preferredFamily } : {}),
+    ...(Object.keys(goals).length === 0 ? {} : { goals }),
+  };
+}
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid ${label}`);
@@ -371,10 +448,23 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     if (input.capability === "preview") {
       const contract = compileExecutionContract(current.candidate, deps.registry);
       const readiness = resolveProviderReadiness(deps, current.candidate);
+      const resolved = deps.registry.resolve({
+        moduleId: current.candidate.moduleId,
+        providerId: current.candidate.providerId,
+        modelId: current.candidate.modelId,
+        mode: current.candidate.mode,
+      });
+      const recommendationInput = resolved.outputKinds.includes("video")
+        ? videoRecommendationInput(current.candidate)
+        : null;
+      const recommendation = recommendationInput && deps.recommendVideoGeneration && deps.videoModelCandidates
+        ? deps.recommendVideoGeneration(recommendationInput, deps.videoModelCandidates)
+        : undefined;
       return {
         operationId,
         candidateRevision: current.candidate.revision,
         contract,
+        ...(recommendation ? { recommendation } : {}),
         providerReady: readiness.providerReady,
         providerCapabilityProfile: readiness.providerCapabilityProfile,
         recoveryNotice: readiness.recoveryNotice,

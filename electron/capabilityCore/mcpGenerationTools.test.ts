@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createModuleRegistry } from "./moduleRegistry";
 import { createGenerationPlanningHandler, createInMemoryGenerationOperationStore, MCP_GENERATION_TOOL_CATALOG } from "./mcpGenerationTools";
+import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "../../src/config/modelArchetypes/seedance25Apimart";
 
 const registry = createModuleRegistry([{
   moduleId: "generation.single-shot",
@@ -31,6 +32,25 @@ const blockedRegistry = createModuleRegistry([{
   parameterSchema: {},
   assetInputSchema: { references: { kind: "asset" } },
   providers: [{ providerId: "blocked-provider", models: [{ modelId: "blocked-model", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: false, query: false, reconcile: false, cancel: false } }] }],
+}]);
+
+const videoRegistry = createModuleRegistry([{
+  moduleId: "generation.single-shot",
+  version: "1.0.0",
+  inputKinds: ["text", "image", "video"],
+  outputKinds: ["video"],
+  modes: ["text-to-video", "image-to-video"],
+  parameterSchema: { duration: { type: "number" } },
+  assetInputSchema: { references: { kind: "asset", max: 30 } },
+  providers: [{
+    providerId: "video-provider",
+    models: [{
+      modelId: "video-model",
+      modes: ["text-to-video", "image-to-video"],
+      parameterSchema: { duration: { type: "number" } },
+      capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+    }],
+  }],
 }]);
 
 const lease = {
@@ -118,6 +138,59 @@ describe("semantic MCP generation tools", () => {
 
     expect((await operations.read("project-1", operationId))?.candidate.references[0])
       .toMatchObject({ kind: "image", role: "character" });
+  });
+
+  it("projects a contextual recommendation during video preview without provider side effects", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const recommendVideoGeneration = vi.fn(() => ({
+      recommendations: [{
+        provider: "apimart",
+        modelKey: "doubao-seedance-2.5",
+        label: "Seedance 2.5",
+        modeId: "firstlast",
+        modeLabel: "首尾帧",
+        params: { duration: 8 },
+        editableParams: ["duration"],
+        reasons: ["提供了首帧和尾帧"],
+        limitations: [],
+        score: 175,
+      }],
+    }));
+    const start = vi.fn(async () => { throw new Error("video preview must not start a provider"); });
+    const handler = createGenerationPlanningHandler({
+      registry: videoRegistry,
+      operations,
+      videoModelCandidates: [{ provider: "apimart", modelKey: "doubao-seedance-2.5", label: "Seedance 2.5", archetype: SEEDANCE_2_5_APIMART_ARCHETYPE }],
+      recommendVideoGeneration,
+      start,
+      now: () => "2026-08-23T00:00:00.000Z",
+    });
+    const created = await handler({
+      capability: "create",
+      params: {
+        candidate: {
+          candidateId: "video-candidate",
+          revision: 1,
+          moduleId: "generation.single-shot",
+          providerId: "video-provider",
+          modelId: "video-model",
+          mode: "text-to-video",
+          prompt: "从白天过渡到夜晚",
+          parameters: { duration: 8 },
+          references: [
+            { assetId: "first", contentHash: "f".repeat(64), version: 1, kind: "image", role: "first_frame" },
+            { assetId: "last", contentHash: "l".repeat(64), version: 1, kind: "image", role: "last_frame" },
+          ],
+        },
+      },
+      lease,
+    });
+    const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+
+    const preview = await handler({ capability: "preview", params: { operationId }, lease });
+    expect(preview).toMatchObject({ recommendation: { recommendations: [{ modeId: "firstlast" }] } });
+    expect(recommendVideoGeneration).toHaveBeenCalledTimes(1);
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("returns a new-draft error instead of mutating a sealed plan", async () => {

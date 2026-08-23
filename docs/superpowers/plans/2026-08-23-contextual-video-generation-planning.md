@@ -269,7 +269,7 @@ git commit -m "feat: preserve reference roles in generation contracts"
 - Modify: `electron/capabilityCore/nomiMcpGenerationPlanning.test.ts`
 - Modify: `electron/capabilityCore/mcpToolResults.ts` only if the existing structured result needs a new optional recommendation projection
 
-- [ ] **Step 1: Add a red handler test for recommendation-only create/preview**
+- [x] **Step 1: Add a red handler test for recommendation-only create/preview**
 
 Inject a pure recommender dependency and assert that create/preview returns a recommendation without calling `start`, `runTask`, gateway, provider or spend:
 
@@ -284,7 +284,7 @@ it('returns an editable contextual recommendation during preview without provide
 });
 ```
 
-- [ ] **Step 2: Run the focused test and verify the handler has no recommendation seam**
+- [x] **Step 2: Run the focused test and verify the handler has no recommendation seam**
 
 ```bash
 pnpm exec vitest run electron/capabilityCore/mcpGenerationTools.test.ts --reporter=dot
@@ -292,7 +292,7 @@ pnpm exec vitest run electron/capabilityCore/mcpGenerationTools.test.ts --report
 
 Expected: FAIL because the handler does not accept or project a recommender.
 
-- [ ] **Step 3: Add the pure recommendation seam and projection**
+- [x] **Step 3: Add the pure recommendation seam and projection**
 
 Extend `GenerationPlanningHandlerDependencies` with an optional `recommendVideoGeneration` function. On `create` and `preview`, call it only when the candidate/module is video and the caller supplies enough typed context. Return it as an optional `recommendation` field alongside the existing `contract`, `providerReady`, and `recoveryNotice` fields. Do not replace the candidate automatically. If the caller explicitly edits provider/model/mode/parameters/references, recompute the recommendation from the new candidate/context before preview.
 
