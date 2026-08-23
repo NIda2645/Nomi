@@ -119,7 +119,7 @@ export type TaskRequest = {
   height?: number;
   steps?: number;
   cfgScale?: number;
-  extras?: Record<string, unknown>;
+  extras?: Record<string, unknown> & { executionBinding?: import("./productionRun/productionExecutionBinding").ProductionExecutionBinding };
 };
 export type TaskResult = {
   id: string;

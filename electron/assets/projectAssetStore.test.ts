@@ -37,6 +37,16 @@ describe("writeAsset canonical media filename", () => {
     expect(result.data?.relativePath).toMatch(/poster\.png$/);
   });
 
+  it("returns the same stable identity that a later project listing reads", () => {
+    const result = writeAsset("project-1", Buffer.from("stable-image"), "stable.png", "image/png", { kind: "imported" }) as {
+      id?: string;
+      data?: { relativePath?: string };
+    };
+
+    const listed = listProjectAssets({ projectId: "project-1", limit: 20 }).items.find((entry) => entry.data.relativePath === result.data?.relativePath);
+    expect(listed?.id).toBe(result.id);
+  });
+
   it("sniffs an octet-stream video before selecting its stored extension", () => {
     const bytes = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from("ftypisom", "ascii"), Buffer.alloc(16)]);
     const result = writeAsset("project-1", bytes, "upload", "application/octet-stream", { kind: "imported" }) as {

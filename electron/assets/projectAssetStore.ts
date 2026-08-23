@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { hardenedFetch } from "../hardenedFetch";
@@ -119,6 +118,20 @@ function uniqueAssetPath(
   };
 }
 
+function stableStoredAssetId(projectId: string, relativePath: string): string {
+  return stableAssetId(projectId, relativePath);
+}
+
+function stableLocalReferenceId(projectId: string, url: string): string {
+  try {
+    const parts = new URL(url).pathname.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+    if (parts[0] === projectId && parts.length > 1) return stableStoredAssetId(projectId, parts.slice(1).join("/"));
+  } catch {
+    // Fall through to a deterministic reference identity for malformed legacy URLs.
+  }
+  return stableStoredAssetId(projectId, url);
+}
+
 export function writeAsset(
   projectId: string,
   bytes: Buffer,
@@ -137,7 +150,7 @@ export function writeAsset(
   const url = localAssetUrl(projectId, relativePath);
   const t = nowIso();
   return {
-    id: `asset-${crypto.randomUUID()}`,
+    id: stableStoredAssetId(projectId, relativePath),
     name: sanitizeName(fileName, "asset"),
     userId: "local",
     projectId,
@@ -183,7 +196,7 @@ export async function copyAssetFile(
   const url = localAssetUrl(projectId, relativePath);
   const t = nowIso();
   return {
-    id: `asset-${crypto.randomUUID()}`,
+    id: stableStoredAssetId(projectId, relativePath),
     name: sanitizeName(fileName, "asset"),
     userId: "local",
     projectId,
@@ -237,7 +250,7 @@ export function moveAssetFile(
   const url = localAssetUrl(projectId, relativePath);
   const t = nowIso();
   return {
-    id: `asset-${crypto.randomUUID()}`,
+    id: stableStoredAssetId(projectId, relativePath),
     name: sanitizeName(fileName, "asset"),
     userId: "local",
     projectId,
@@ -267,7 +280,7 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
   if (!url) throw new Error("url is required");
   if (url.startsWith("nomi-local://")) {
     return {
-      id: `asset-${crypto.randomUUID()}`,
+      id: stableLocalReferenceId(projectId, url),
       name: String(raw.fileName || "local asset"),
       userId: "local",
       projectId,

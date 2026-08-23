@@ -6,11 +6,13 @@ import type {
   ProductionGate,
   ProductionJob,
   ProductionJobStatus,
+  ProductionGenerationPlan,
   ProductionRun,
   ProductionRunStatus,
   ProductionStage,
   RunCommand,
 } from "./productionRunTypes";
+import { validateProductionExecutionBinding } from "./productionExecutionBinding";
 
 export type ProductionCommandEffect = {
   run: ProductionRun;
@@ -175,6 +177,98 @@ export function applyProductionCommand(
       const stageId = text(command.payload, "stageId");
       return { run: { ...current, stageId, updatedAt: now }, eventType: "run.stage.changed", message: stageId };
     }
+    case "generation.patch": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "draft") throw new Error("new_draft_required: edit a new generation draft");
+      const patch = record(command.payload, "patch") as Partial<ProductionGenerationPlan["candidate"]>;
+      const candidate = {
+        ...currentPlan.candidate,
+        ...patch,
+        revision: currentPlan.candidate.revision + 1,
+        parameters: patch.parameters ? structuredClone(patch.parameters) : structuredClone(currentPlan.candidate.parameters),
+        references: patch.references ? structuredClone(patch.references) : structuredClone(currentPlan.candidate.references),
+      };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, candidate, updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.updated",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.seal": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "draft") throw new Error("Generation plan is not editable");
+      const contract = record(command.payload, "contract") as ProductionGenerationPlan["contract"];
+      if (!contract || typeof contract.contractHash !== "string" || contract.contractHash.trim() === "") throw new Error("Invalid generation contract");
+      if (contract.candidateId !== currentPlan.candidate.candidateId || contract.candidateRevision !== currentPlan.candidate.revision) {
+        throw new Error("Generation contract does not match the current draft");
+      }
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, candidate: { ...currentPlan.candidate, sealedContractHash: contract.contractHash }, contract, state: "sealed", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.sealed",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.cancel": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan) throw new Error("Generation plan not found");
+      if (currentPlan.state === "submitted") throw new Error("Submitted generation cannot be cancelled as a draft");
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, state: "cancelled", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.cancelled",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.submit": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || !currentPlan.contract || currentPlan.state === "draft" || currentPlan.state === "cancelled") {
+        throw new Error("A sealed generation plan is required before submission");
+      }
+      if (currentPlan.state === "submitted") return { run: current, eventType: "generation.plan.submitted", message: currentPlan.operationId };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, state: "submitted", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.submitted",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.approve": {
+      const currentPlan = current.generationPlan;
+      const receiptId = text(command.payload, "receiptId");
+      const contractHash = text(command.payload, "contractHash");
+      if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.contract) throw new Error("A sealed generation plan is required before approval");
+      if (currentPlan.contract.contractHash !== contractHash) throw new Error("Generation approval does not match the sealed contract");
+      const rawAttempt = command.payload.attempt;
+      const approvedAttempt = rawAttempt === undefined ? undefined : Number(rawAttempt);
+      if (approvedAttempt !== undefined && (!Number.isInteger(approvedAttempt) || approvedAttempt < 1)) throw new Error("Generation approval attempt is invalid");
+      if (currentPlan.approvedReceiptId === receiptId && currentPlan.approvedAttempt === approvedAttempt) return { run: current, eventType: "generation.plan.approved", message: currentPlan.operationId };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), approvedAt: now, updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.approved",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.new_attempt": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || !currentPlan.contract || (currentPlan.state !== "sealed" && currentPlan.state !== "submitted")) throw new Error("A submitted generation is required before a new attempt");
+      const job = record(command.payload, "job") as ProductionJob;
+      if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
+      if (!Number.isInteger(job.attempt) || job.attempt < 1 || current.jobs.some((item) => item.attempt >= job.attempt && item.provider === job.provider && item.model === job.model && item.stageId === job.stageId)) {
+        throw new Error("Generation attempt must be newer than the previous attempt");
+      }
+      if (job.executionBinding) {
+        const binding = validateProductionExecutionBinding(job.executionBinding);
+        if (binding.runId !== current.runId || binding.providerNamespace !== job.provider || binding.providerIdempotencyKey !== job.idempotencyKey) throw new Error("Invalid execution binding for new generation attempt");
+      }
+      return {
+        run: {
+          ...current,
+          generationPlan: { ...currentPlan, state: "sealed", approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now },
+          jobs: [...current.jobs, job],
+          updatedAt: now,
+        },
+        eventType: "generation.attempt.created",
+        message: job.jobId,
+      };
+    }
     case "stage.upsert": {
       const stage = record(command.payload, "stage") as ProductionStage;
       const stages = current.stages.some((item) => item.stageId === stage.stageId)
@@ -185,6 +279,12 @@ export function applyProductionCommand(
     case "job.add": {
       const job = record(command.payload, "job") as ProductionJob;
       if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
+      if (job.executionBinding) {
+        const binding = validateProductionExecutionBinding(job.executionBinding);
+        if (binding.runId !== current.runId) throw new Error("Invalid execution binding: run id does not match ProductionRun");
+        if (binding.providerNamespace !== job.provider) throw new Error("Invalid execution binding: provider namespace does not match job provider");
+        if (binding.providerIdempotencyKey !== job.idempotencyKey) throw new Error("Invalid execution binding: idempotency key does not match job");
+      }
       return { run: { ...current, jobs: [...current.jobs, job], updatedAt: now }, eventType: "job.created", message: job.jobId };
     }
     case "qa.retry.schedule": {
@@ -312,7 +412,7 @@ export function applyProductionCommand(
       if (!target) throw new Error(`Production entity not found: ${artifactId}`);
       if (target.status !== "candidate") throw new Error("Only candidate artifacts can be reviewed");
       if (decision === "approved" && target.kind === "storyboard") assertStoryboardSourceApproved(current, artifactId);
-      let artifacts = current.artifacts.map((item) => item.artifactId === artifactId
+      const artifacts = current.artifacts.map((item) => item.artifactId === artifactId
         ? {
             ...item,
             status: decision === "approved" ? "adopted" as const : decision === "rejected" ? "rejected" as const : "candidate" as const,

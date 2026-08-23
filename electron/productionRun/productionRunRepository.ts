@@ -27,6 +27,7 @@ import {
   type RunCommandResult,
   type RunEvent,
 } from "./productionRunTypes";
+import type { PlanCandidate } from "../capabilityCore/executionContract";
 
 type SnapshotEnvelope = {
   schemaVersion: number;
@@ -52,6 +53,15 @@ export class ProductionRunRevisionConflictError extends Error {
   constructor(expected: number, actual: number) {
     super(`Production run revision conflict: expected ${expected}, actual ${actual}`);
     this.name = "ProductionRunRevisionConflictError";
+  }
+}
+
+export class ProductionRunParseError extends Error {
+  readonly code = "migration_parse_error" as const;
+
+  constructor(filePath: string, lineNumber: number) {
+    super(`migration_parse_error: invalid JSON in ${path.basename(filePath)} at line ${lineNumber}`);
+    this.name = "ProductionRunParseError";
   }
 }
 
@@ -88,12 +98,12 @@ function appendDurableJsonLine(filePath: string, value: unknown): void {
 function readJsonLines<T>(filePath: string): T[] {
   if (!fs.existsSync(filePath)) return [];
   const values: T[] = [];
-  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
+  for (const [index, line] of fs.readFileSync(filePath, "utf8").split("\n").entries()) {
     if (!line.trim()) continue;
     try {
       values.push(JSON.parse(line) as T);
     } catch {
-      break;
+      throw new ProductionRunParseError(filePath, index + 1);
     }
   }
   return values;
@@ -196,13 +206,10 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     const latestEvent = events.at(-1);
     const snapshot = fs.existsSync(paths.snapshot) ? validSnapshot(paths.snapshot) : null;
     if (snapshot && snapshot.snapshotCursor === (latestEvent?.cursor ?? snapshot.snapshotCursor)) return snapshot.run;
-    if (fs.existsSync(paths.snapshot) && !snapshot) {
-      const backup = path.join(paths.dir, `run.corrupt-${Date.now()}-${randomId().slice(0, 8)}.json`);
-      fs.copyFileSync(paths.snapshot, backup);
-    }
-    const recovered = runFromEvent(latestEvent);
-    if (recovered) writeJsonFileAtomic(paths.snapshot, envelopeFor(recovered));
-    return recovered;
+    // Reads may rebuild an in-memory projection for callers, but never repair
+    // durable bytes. Backup/migration/rewrite belongs to an explicit command;
+    // a projection read must be safe to retry after a crash and side-effect free.
+    return runFromEvent(latestEvent);
   }
 
   function create(input: CreateProductionRunInput): ProductionRun {
@@ -268,6 +275,62 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       message: "direction",
       payload: { run },
     } satisfies RunEvent);
+    fs.writeFileSync(paths.commands, "", { encoding: "utf8", flag: "a" });
+    writeJsonFileAtomic(paths.snapshot, envelopeFor(run));
+    return run;
+  }
+
+  /** Create a single-shot generation operation without entering the legacy playbook driver. */
+  function createGenerationDraft(input: {
+    operationId: string;
+    projectId: string;
+    origin: { host: string; actorId?: string };
+    candidate: PlanCandidate;
+    currency?: string;
+    policy?: Partial<AutomationPolicy>;
+  }): ProductionRun {
+    const projectId = String(input.projectId || "").trim();
+    const operationId = String(input.operationId || "").trim();
+    if (!/^[A-Za-z0-9._:-]{1,240}$/.test(operationId)) throw new Error("Invalid generation operation id");
+    const dir = projectDir(projectId);
+    const paths = productionRunPaths(dir, operationId);
+    if (fs.existsSync(paths.events) || fs.existsSync(paths.snapshot)) throw new Error(`Production run already exists: ${operationId}`);
+    const timestamp = now();
+    const run: ProductionRun = {
+      schemaVersion: PRODUCTION_RUN_SCHEMA_VERSION,
+      runId: operationId,
+      projectId,
+      revision: 0,
+      status: "draft",
+      stageId: "generate",
+      playbook: { name: "generation.single-shot", version: "1.0.0" },
+      origin: input.origin,
+      policy: { ...DEFAULT_POLICY, ...(input.policy || {}) },
+      budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      planVersion: 1,
+      snapshotCursor: 1,
+      stages: [{ stageId: "generate", title: "Generate", status: "pending", order: 0 }],
+      gates: [],
+      jobs: [],
+      artifacts: [],
+      generationPlan: { operationId, state: "draft", candidate: structuredClone(input.candidate), updatedAt: timestamp },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const event: RunEvent = {
+      schemaVersion: PRODUCTION_RUN_SCHEMA_VERSION,
+      eventId: `evt-${randomId()}`,
+      cursor: 1,
+      runId: operationId,
+      runRevision: 0,
+      commandId: `generation.create:${operationId}`,
+      type: "run.created",
+      message: "generation.single-shot",
+      emittedAt: timestamp,
+      stageId: "generate",
+      payload: { run },
+    };
+    appendDurableJsonLine(paths.events, event);
     fs.writeFileSync(paths.commands, "", { encoding: "utf8", flag: "a" });
     writeJsonFileAtomic(paths.snapshot, envelopeFor(run));
     return run;
@@ -403,7 +466,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  return { create, read, list, execute, readEvents, readApprovals, readBudgetLedger, rebuild };
+  return { create, createGenerationDraft, read, list, execute, readEvents, readApprovals, readBudgetLedger, rebuild };
 }
 
 export type ProductionRunRepository = ReturnType<typeof createProductionRunRepository>;

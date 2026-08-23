@@ -118,8 +118,17 @@ async function smokeClient(client) {
     assert(initialized.result?.serverInfo?.name === 'nomi-capability-core', `${client} initialize handshake`)
 
     const tools = (await rpc('tools/list')).result?.tools || []
-    assert(tools.length === 22, `${client} expected 22 tools, got ${tools.length}`)
-    for (const name of ['nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact', 'nomi_control_run', 'nomi_decide_gate']) {
+    // The catalog is intentionally extensible: semantic generation tools are additive
+    // and provider/model declarations must not turn this smoke test into a fixed count.
+    assert(tools.length >= 22, `${client} expected the legacy catalog baseline, got ${tools.length}`)
+    const requiredTools = [
+      'nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact', 'nomi_control_run', 'nomi_decide_gate',
+      'nomi_session_open', 'nomi_operation_create', 'nomi_submit_generation_plan', 'nomi_preview_execution',
+      'nomi_request_generation_gate', 'nomi_decide_generation_gate', 'nomi_start_generation', 'nomi_operation_read',
+      'nomi_cancel_generation', 'nomi_reconcile_generation',
+    ]
+    assert(new Set(tools.map((tool) => tool.name)).size === tools.length, `${client} tools/list contains duplicate names`)
+    for (const name of requiredTools) {
       assert(tools.some((tool) => tool.name === name), `${client} ${name} is missing`)
     }
 
