@@ -11,6 +11,7 @@ import type {
   ProductionStage,
   RunCommand,
 } from "./productionRunTypes";
+import { validateProductionExecutionBinding } from "./productionExecutionBinding";
 
 export type ProductionCommandEffect = {
   run: ProductionRun;
@@ -185,6 +186,12 @@ export function applyProductionCommand(
     case "job.add": {
       const job = record(command.payload, "job") as ProductionJob;
       if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
+      if (job.executionBinding) {
+        const binding = validateProductionExecutionBinding(job.executionBinding);
+        if (binding.runId !== current.runId) throw new Error("Invalid execution binding: run id does not match ProductionRun");
+        if (binding.providerNamespace !== job.provider) throw new Error("Invalid execution binding: provider namespace does not match job provider");
+        if (binding.providerIdempotencyKey !== job.idempotencyKey) throw new Error("Invalid execution binding: idempotency key does not match job");
+      }
       return { run: { ...current, jobs: [...current.jobs, job], updatedAt: now }, eventType: "job.created", message: job.jobId };
     }
     case "qa.retry.schedule": {
