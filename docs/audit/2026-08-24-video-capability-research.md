@@ -48,11 +48,11 @@
 本轮按用户授权追加了一次最小 APIMart Seedance smoke 尝试（4 秒、480p、16:9、Fast 变体请求体）。结果没有产生任务，也没有扣额度：
 
 - 通过系统代理直连 APIMart 返回 HTTP 401 `invalid API key`；此前直接连接因未继承系统代理超时，修正代理后才得到明确鉴权结果；
-- 通过 Nomi 的 MCP 真实生成入口时，应用的付费确认闸返回“未确认”，请求在 provider 之前被取消；
+- 通过当前非交互的 Nomi MCP 测试入口时，没有可展示 `elicitation/create` 的外部确认面，付费确认闸返回“未确认”，请求在 provider 之前被取消；这不代表支持 elicitation 的 Claude/Codex/Cursor 必须跳回 Nomi；
 - 因此本轮没有把一次失败的鉴权/确认结果误报成“模型参数不兼容”，也没有盲目重试或绕过确认闸；
 - Nomi 当前模型目录仍显示 APIMart keyStatus=ok，但该密钥只在 Nomi 主进程钥匙串中可用，外部 smoke 不读取或打印它。
 
-这条结果把后续问题缩小为“使用 Nomi 应用内确认 + 已配置密钥完成一次真实提交”，而不是重新设计共享参数层。若未来发现某个供应商的在线行为与现有配方冲突，只针对那一条新 wire 族做最低规格 smoke；不会把“每个模型各跑一次”当成质量证明。
+这条结果把后续问题缩小为“使用支持交互确认的 MCP 客户端，或在客户端不支持时使用 Nomi 兜底确认，再配合有效密钥完成一次真实提交”，而不是重新设计共享参数层。确认优先发生在用户正在使用的 MCP 软件里，Nomi 只负责主进程权威和不支持客户端时的兜底；若未来发现某个供应商的在线行为与现有配方冲突，只针对那一条新 wire 族做最低规格 smoke；不会把“每个模型各跑一次”当成质量证明。
 
 ## 用户任务测试
 
@@ -72,7 +72,7 @@ pnpm exec vitest run electron/shared/videoCapabilities/index.test.ts electron/ca
 pnpm exec vitest run src/config/modelArchetypes electron/catalog --reporter=dot
 # 87 files / 833 tests passed
 pnpm run test
-# 699 files passed, 1 skipped / 6172 tests passed, 1 skipped
+# 699 files passed, 1 skipped / 6174 tests passed, 1 skipped
 pnpm run test:mcp
 # real Electron stdio journey passed: 45 assertions / 10 steps; 6 mock-vendor requests, zero provider quota
 pnpm run typecheck
@@ -98,4 +98,4 @@ pnpm run lint:ci
 | 每个模型/变体都各跑一次最低规格 | 每个具体入口都有独立在线证据 | 可能重复花费，且不能额外证明共享代码正确 |
 | 继续只做零额度契约验证 | 零成本、最快 | 不能证明供应商当前在线端点仍接受请求 |
 
-当前规划与参数层已完成；真实 provider smoke 的剩余前提是 Nomi 应用内确认可用且使用当前有效 APIMart key。用户无需在模型覆盖面上做选择；只有当需要更换/重新配置供应商凭据，或要扩大到多供应商在线生成时，才是新的重要决策点。
+当前规划与参数层已完成；真实 provider smoke 的剩余前提是发起调用的 MCP 软件能展示确认，或 Nomi 兜底确认可用，并且使用当前有效 APIMart key。用户无需在模型覆盖面上做选择；只有当需要更换/重新配置供应商凭据，或要扩大到多供应商在线生成时，才是新的重要决策点。
