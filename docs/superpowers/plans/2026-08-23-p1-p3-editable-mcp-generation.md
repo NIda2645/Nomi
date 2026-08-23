@@ -351,7 +351,7 @@ git commit -m "feat: add durable single-shot runtime submission and recovery"
 5. 生成中看到文字+图标进度，可取消；断线/重启后看到明确的继续核账或重试（仅 definitely_not_submitted），不出现重复扣费。
 6. provider unknown 时，界面直接说明“已提交但回执丢失，需要核账”，只有一个下一步；不要求用户猜内部状态名。
 
-已先实现并通过可验证 attestation 的一次确认旅程（`mcpSemanticGenerationConfirmation.test.ts`）；完整编辑矩阵、GUI fallback、人眼截图和断线恢复仍需补齐。
+已先实现并通过可验证 attestation 的一次确认旅程与 JSON-RPC 可变输入矩阵（`mcpSemanticGenerationConfirmation.test.ts`、`nomiMcpGenerationPlanning.test.ts`）；GUI fallback 的真实入口、人眼截图和断线恢复仍需补齐。
 
 - [ ] **Step 2: 实现并运行旅程**
 
