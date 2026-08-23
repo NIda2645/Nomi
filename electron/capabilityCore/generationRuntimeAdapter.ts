@@ -47,6 +47,12 @@ export class GenerationRuntimeBindingError extends Error {
   }
 }
 
+export function assertGenerationProviderCapabilities(provider: GenerationProvider): void {
+  const missing = (["submitIdempotency", "query", "reconcile", "cancel"] as const)
+    .filter((capability) => !provider.capabilities[capability]);
+  if (missing.length > 0) throw new GenerationProviderCapabilityError(provider.providerId, missing);
+}
+
 export function resolveExecutionContract(contract: ExecutionContractV1, binding: ProductionExecutionBinding): ResolvedTaskRequestV1 {
   if (contract.contractHash !== binding.contractHash) throw new GenerationRuntimeBindingError("Contract hash does not match the sealed execution binding");
   if (contract.providerId !== binding.providerNamespace) throw new GenerationRuntimeBindingError("Provider namespace does not match the sealed execution binding");
@@ -76,8 +82,7 @@ export function createGenerationRuntimeAdapter(deps: { providers: readonly Gener
     const request = resolveExecutionContract(input.contract, input.binding);
     const provider = providers.get(request.providerId);
     if (!provider) throw new GenerationProviderCapabilityError(request.providerId, ["registered_provider"]);
-    const missing = (["submitIdempotency", "query", "reconcile", "cancel"] as const).filter((capability) => !provider.capabilities[capability]);
-    if (missing.length > 0) throw new GenerationProviderCapabilityError(provider.providerId, missing);
+    assertGenerationProviderCapabilities(provider);
     const providerRequest = provider.buildRequest(request);
     const result = await provider.submit(providerRequest, request.idempotencyKey);
     if (!result.providerTaskId.trim()) throw new Error("Provider returned an empty task id");
@@ -86,4 +91,3 @@ export function createGenerationRuntimeAdapter(deps: { providers: readonly Gener
 
   return { submit };
 }
-

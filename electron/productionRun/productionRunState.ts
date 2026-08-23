@@ -19,7 +19,7 @@ const JOB_TRANSITIONS: Record<ProductionJobStatus, readonly ProductionJobStatus[
   validating_content: ["ready", "needs_attention"],
   ready: ["adopted"],
   adopted: [],
-  submission_unknown: ["reconciling", "needs_attention", "cancel_requested"],
+  submission_unknown: ["reconciling", "needs_attention", "cancel_requested", "submit_intent_persisted"],
   reconciling: ["provider_accepted", "needs_attention", "cancel_requested"],
   needs_attention: ["reconciling", "cancel_requested"],
   cancel_requested: ["cancelled_remote", "detached", "too_late"],

@@ -116,6 +116,7 @@ const MEANINGFUL_EVENT_TYPES = new Set([
   'run.created',
   'generation.plan.updated',
   'generation.plan.sealed',
+  'generation.plan.submitted',
   'generation.plan.cancelled',
   'run.status.changed',
   'run.stage.changed',
@@ -313,6 +314,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     origin: { host: string; actorId?: string }
     candidate: ProductionGenerationPlan['candidate']
     currency?: string
+    policy?: Partial<AutomationPolicy>
   }): ProductionRun {
     return repository.createGenerationDraft(input)
   }

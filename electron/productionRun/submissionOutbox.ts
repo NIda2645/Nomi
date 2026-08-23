@@ -2,7 +2,7 @@ import { dedupeSubmission } from "../submissionLedger";
 import { authorizeSubmission } from "./approvalPolicy";
 import type { ProductionRunRepository } from "./productionRunRepository";
 import type { ProductionRunIntentLog } from "./productionRunIntentLog";
-import type { ProductionRunLock } from "./productionRunLock";
+import type { ProductionRunLock, ProductionRunLockLease } from "./productionRunLock";
 import type { ProductionJob, ProductionRun } from "./productionRunTypes";
 
 export class SubmissionNotDispatchedError extends Error {
@@ -41,6 +41,8 @@ export type SubmissionOutboxRequest = {
   planHash: string;
   costCeiling: number | null;
   currency: string;
+  /** Only a durable definitely-not-submitted disposition may reopen an aborted intent. */
+  allowRetryAfterAbort?: boolean;
 };
 
 export type ProviderDispatchInput = {
@@ -61,6 +63,8 @@ export type SubmissionOutboxDependencies = {
   intentLog?: ProductionRunIntentLog;
   /** Optional cross-process fencing lease. The durable claim carries its epoch. */
   lock?: ProductionRunLock;
+  /** Reuse an already-held Run lock; prevents nested acquisition in one-shot orchestration. */
+  lockLease?: ProductionRunLockLease;
   now?: () => string;
   beforeDispatch?: (input: ProviderDispatchInput) => void | Promise<void>;
   afterDispatch?: (result: ProviderDispatchResult, input: ProviderDispatchInput) => void | Promise<void>;
@@ -214,6 +218,7 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
         idempotencyKey: dispatchInput.idempotencyKey,
       },
       fencingEpoch,
+      allowRetryAfterAbort: request.allowRetryAfterAbort,
     });
     if (submitIntent) submitIntent = deps.intentLog!.commit(submitIntent.intentId, { fencingEpoch });
 
@@ -264,9 +269,11 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
 
   function submit(request: SubmissionOutboxRequest): Promise<SubmissionOutboxResult> {
     const key = `${request.projectId}:${request.runId}:${request.jobId}`;
-    const execute = () => deps.lock
-      ? deps.lock.withLock((lease) => submitOnce(request, lease.fencingEpoch))
-      : submitOnce(request);
+    const execute = () => deps.lockLease
+      ? (deps.lock?.assertOwned(deps.lockLease), submitOnce(request, deps.lockLease.fencingEpoch))
+      : deps.lock
+        ? deps.lock.withLock((lease) => submitOnce(request, lease.fencingEpoch))
+        : submitOnce(request);
     return dedupeSubmission(inflight, key, execute, { ttlMs: 0 });
   }
 

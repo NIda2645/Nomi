@@ -218,6 +218,18 @@ export function applyProductionCommand(
         message: currentPlan.operationId,
       };
     }
+    case "generation.submit": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || !currentPlan.contract || currentPlan.state === "draft" || currentPlan.state === "cancelled") {
+        throw new Error("A sealed generation plan is required before submission");
+      }
+      if (currentPlan.state === "submitted") return { run: current, eventType: "generation.plan.submitted", message: currentPlan.operationId };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, state: "submitted", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.submitted",
+        message: currentPlan.operationId,
+      };
+    }
     case "stage.upsert": {
       const stage = record(command.payload, "stage") as ProductionStage;
       const stages = current.stages.some((item) => item.stageId === stage.stageId)
@@ -361,7 +373,7 @@ export function applyProductionCommand(
       if (!target) throw new Error(`Production entity not found: ${artifactId}`);
       if (target.status !== "candidate") throw new Error("Only candidate artifacts can be reviewed");
       if (decision === "approved" && target.kind === "storyboard") assertStoryboardSourceApproved(current, artifactId);
-      let artifacts = current.artifacts.map((item) => item.artifactId === artifactId
+      const artifacts = current.artifacts.map((item) => item.artifactId === artifactId
         ? {
             ...item,
             status: decision === "approved" ? "adopted" as const : decision === "rejected" ? "rejected" as const : "candidate" as const,

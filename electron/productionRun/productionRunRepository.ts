@@ -287,6 +287,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     origin: { host: string; actorId?: string };
     candidate: PlanCandidate;
     currency?: string;
+    policy?: Partial<AutomationPolicy>;
   }): ProductionRun {
     const projectId = String(input.projectId || "").trim();
     const operationId = String(input.operationId || "").trim();
@@ -304,7 +305,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       stageId: "generate",
       playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: input.origin,
-      policy: { ...DEFAULT_POLICY },
+      policy: { ...DEFAULT_POLICY, ...(input.policy || {}) },
       budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
       planVersion: 1,
       snapshotCursor: 1,

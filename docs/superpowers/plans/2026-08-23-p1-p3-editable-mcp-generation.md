@@ -40,7 +40,7 @@ P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都�
 - [x] P3 first seam：provider-neutral adapter、durable runtime envelope、unknown/reconcile-only recovery classifier、single-shot ordering tests。
 - [x] P2 semantic tool vocabulary + shared planning handler：MCP/GUI 共用 `context → operation → patch → preview`，目录只声明能力，handler 不调用 provider。
 - [x] P3 first durable planning wiring：semantic operation 草稿已由 `ProductionRun` events/snapshot/CAS 持有；真实 MCP JSON-RPC create/edit/preview 零额度旅程已通过。
-- [ ] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与决策包：正在推进。
+- [ ] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与决策包：零额度 Run-owned seam 已完成，默认进程接线与真实确认旅程正在推进。
 
 ## 文件地图与唯一 owner
 
@@ -266,7 +266,7 @@ git commit -m "feat: expose one editable generation semantic flow"
 - Modify: `electron/tasks/taskResultQuery.ts`
 - Test: `electron/capabilityCore/generationRuntimeAdapter.test.ts`, `electron/capabilityCore/generationSingleShot.test.ts`, `electron/productionRun/productionRunRuntimeEnvelope.test.ts`, `electron/productionRun/productionRunResume.test.ts`, `electron/productionRun/submissionOutbox.test.ts`
 
-- [ ] **Step 1: 写失败的 crash/idempotency matrix**
+- [x] **Step 1: 写失败的 crash/idempotency matrix**
 
 fake provider 必须可配置在以下窗口抛错：准备前、intent commit 后 dispatch 前、provider 已接受但响应丢失、polling 中重启、materialization 前后。断言：
 
@@ -285,19 +285,23 @@ pnpm exec vitest run electron/capabilityCore/generationRuntimeAdapter.test.ts el
 
 Expected: FAIL，原因是默认 production path 还没有用 Run-owned WAL/outbox 和 P3 adapter。
 
-- [ ] **Step 2: 实现 durable prepare 顺序**
+- [x] **Step 2: 实现 durable prepare 顺序**
 
 在任何 provider call 前按固定顺序写：sealed contract → reservation → runtime envelope → `generation.submit.intent` prepared/committed → job status `submit_intent_persisted/submitting`。每一步使用 Run lock/fencing + repository CAS；恢复时以 WAL 记录而不是进程内 Map 判断是否已提交。
 
-- [ ] **Step 3: 实现唯一 provider seam 与 provider capability gate**
+- [x] **Step 3: 实现唯一 provider seam 与 provider capability gate**
 
 `generationRuntimeAdapter` 只接收 sealed `ExecutionContract` 和 resolved request；provider adapter 必须声明 native submit idempotency/query/reconcile/cancel。缺任一能力直接 `provider_capability_missing`，不发请求。模型与供应商特有字段由 manifest schema 映射并保留 ledger；不支持的字段不能静默 fallback。
 
 - [ ] **Step 4: 持久化 receipt、providerTaskId、poll payload 与 Artifact**
 
+本轮先完成零额度的可验证部分：Run-owned job binding、runtime envelope、provider task id/raw receipt 和 unknown 状态已持久化；poll payload、真实 Artifact/materialization 仍在 provider opt-in 前保持未调用。
+
 provider 返回后，先在同一 Run command 中写 providerTaskId/raw request fingerprint/receipt，再进入 polling；查询 payload 可跨进程重建。成功只通过 Asset store 的 content hash/materialization receipt 写 Artifact；失败、取消、unknown 分别 settle/release/unsettled，unknown 保持 `needs_attention`。
 
 - [ ] **Step 5: 接入 P3 resume 并隔离旧 driver**
+
+Run-owned `productionGenerationSubmission` 已具备单独的 resume/reconcile seam；默认 main-process semantic handler 尚未把它绑定到真实 provider registry，故此步保持未完成。
 
 `productionRunResume` 只处理 `generation.single-shot`，读取 projection 不触发恢复写；重启后根据 envelope/WAL 进入 poll/reconcile/attention。对 legacy playbook 保留原行为，但 P3 测试必须证明 `productionRunDriverOps` 的 arrange/export 未被调用。
 
