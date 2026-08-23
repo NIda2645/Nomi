@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "./seedance25Apimart";
 import { recommendVideoGeneration, type VideoModelCandidate } from "./videoGenerationRecommendation";
+import type { ArchetypeCameraControl, ModelArchetype } from "./types";
 
 const seedance20: VideoModelCandidate = {
   provider: "apimart",
@@ -17,6 +18,34 @@ const seedance25: VideoModelCandidate = {
   label: "Seedance 2.5",
   archetype: SEEDANCE_2_5_APIMART_ARCHETYPE,
 };
+
+const withModeCameraControl = (
+  candidate: VideoModelCandidate,
+  modeId: string,
+  cameraControl: ArchetypeCameraControl,
+): VideoModelCandidate => ({
+  ...candidate,
+  archetype: {
+    ...candidate.archetype,
+    modes: candidate.archetype.modes.map((mode) => mode.id === modeId ? { ...mode, cameraControl } : mode),
+  } satisfies ModelArchetype,
+});
+
+const withAudioSlotDependency = (
+  candidate: VideoModelCandidate,
+  requiresAnyOf: NonNullable<NonNullable<ModelArchetype["modes"][number]["slots"][number]["requiresAnyOf"]>> | undefined,
+): VideoModelCandidate => ({
+  ...candidate,
+  archetype: {
+    ...candidate.archetype,
+    modes: candidate.archetype.modes.map((mode) => mode.id === "omni"
+      ? {
+          ...mode,
+          slots: mode.slots.map((slot) => slot.kind === "audio_ref" ? { ...slot, requiresAnyOf } : slot),
+        }
+      : mode),
+  } satisfies ModelArchetype,
+});
 
 describe("APIMart video recommendation", () => {
   it("prefers a character/reference mode over text-to-video when the user supplies a character image", () => {
@@ -68,7 +97,8 @@ describe("APIMart video recommendation", () => {
     );
 
     expect(result.recommendations[0]?.modeId).toBe("t2v");
-    expect(result.recommendations[0]?.limitations.join(" ")).toContain("没有独立的轨迹控制模式");
+    expect(result.recommendations[0]?.limitations.join(" ")).toContain("通过提示词");
+    expect(result.recommendations[0]?.limitations.join(" ")).not.toContain("trajectory");
   });
 
   it("keeps Seedance 2.5 first/last size fixed to the provider-required adaptive value", () => {
@@ -112,5 +142,26 @@ describe("APIMart video recommendation", () => {
 
     expect(result.recommendations).toHaveLength(0);
     expect(result.nextAction).toContain("参考图或参考视频");
+  });
+
+  it("does not claim trajectory is unavailable when the selected mode declares native orbit", () => {
+    const nativeOrbit = withModeCameraControl(seedance20, "t2v", { strategy: "native", nativeIntents: ["orbit"] });
+    const result = recommendVideoGeneration({ prompt: "环绕镜头", cameraIntent: "orbit" }, [nativeOrbit]);
+
+    expect(result.recommendations[0]?.limitations.join(" ")).not.toContain("没有独立的轨迹控制");
+  });
+
+  it("derives audio-only support from reference-slot dependencies, not the provider name", () => {
+    const audioOnly = withAudioSlotDependency(seedance20, undefined);
+    const result = recommendVideoGeneration({ references: [{ kind: "audio", role: "audio" }] }, [audioOnly]);
+
+    expect(result.recommendations).not.toHaveLength(0);
+  });
+
+  it("returns a generic unsupported-input action when all candidates reject the reference combination", () => {
+    const result = recommendVideoGeneration({ references: [{ kind: "audio", role: "audio" }] }, [seedance20]);
+
+    expect(result.nextAction).toContain("参考图或参考视频");
+    expect(result.nextAction).not.toContain("APIMart Seedance");
   });
 });

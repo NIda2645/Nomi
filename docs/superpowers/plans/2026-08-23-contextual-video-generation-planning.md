@@ -61,7 +61,7 @@
 - Modify: `src/config/modelArchetypes/seedance25Apimart.ts`
 - Test: `src/config/modelArchetypes/modelArchetypeCapabilities.test.ts`
 
-- [ ] **Step 1: Write failing tests for declared camera expression and reference constraints**
+- [x] **Step 1: Write failing tests for declared camera expression and reference constraints**
 
 Add tests that assert facts are read from the selected mode, not inferred from provider/model names:
 
@@ -83,7 +83,7 @@ it('does not assume Seedance 2.5 has the Seedance 2.0 audio dependency', () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused test and verify it fails for the missing capability field**
+- [x] **Step 2: Run the focused test and verify it fails for the missing capability field**
 
 Run:
 
@@ -93,7 +93,7 @@ pnpm exec vitest run src/config/modelArchetypes/modelArchetypeCapabilities.test.
 
 Expected: FAIL because `ArchetypeMode` has no `cameraControl` field.
 
-- [ ] **Step 3: Add the smallest typed capability declaration**
+- [x] **Step 3: Add the smallest typed capability declaration**
 
 Add to `types.ts`:
 
@@ -114,7 +114,7 @@ export type ArchetypeCameraControl = {
 
 Add `cameraControl?: ArchetypeCameraControl` to `ArchetypeMode`. Declare the actual Seedance facts in the APIMart mode profiles. Do not add provider-specific branching to the recommender.
 
-- [ ] **Step 4: Run focused tests and typecheck**
+- [x] **Step 4: Run focused tests and typecheck**
 
 Run:
 
@@ -125,7 +125,7 @@ pnpm run typecheck
 
 Expected: all focused tests pass and typecheck exits 0.
 
-- [ ] **Step 5: Commit the capability fact boundary**
+- [x] **Step 5: Commit the capability fact boundary**
 
 ```bash
 git add src/config/modelArchetypes/types.ts src/config/modelArchetypes/seedanceApimart.ts src/config/modelArchetypes/seedance25Apimart.ts src/config/modelArchetypes/modelArchetypeCapabilities.test.ts
@@ -139,7 +139,7 @@ git commit -m "feat: declare model-specific video capability facts"
 - Modify: `src/config/modelArchetypes/videoGenerationRecommendation.test.ts`
 - Test: `src/config/modelArchetypes/videoGenerationRecommendation.test.ts`
 
-- [ ] **Step 1: Add red tests for non-hardcoded camera and audio decisions**
+- [x] **Step 1: Add red tests for non-hardcoded camera and audio decisions**
 
 Add tests with two synthetic model profiles: one with native orbit support and one with no declared support. Add a profile whose audio slot has no dependency. The tests must prove that the recommender follows profile facts:
 
@@ -163,7 +163,7 @@ it('returns a generic unsupported-input action when all candidates reject the re
 });
 ```
 
-- [ ] **Step 2: Run the focused tests and verify the old hardcoded behavior fails**
+- [x] **Step 2: Run the focused tests and verify the old hardcoded behavior fails**
 
 ```bash
 pnpm exec vitest run src/config/modelArchetypes/videoGenerationRecommendation.test.ts --reporter=dot
@@ -171,7 +171,7 @@ pnpm exec vitest run src/config/modelArchetypes/videoGenerationRecommendation.te
 
 Expected: FAIL on the native-orbit and generic audio cases.
 
-- [ ] **Step 3: Replace hardcoded decisions with profile-driven helpers**
+- [x] **Step 3: Replace hardcoded decisions with profile-driven helpers**
 
 Implement these rules in `videoGenerationRecommendation.ts`:
 
@@ -180,7 +180,7 @@ Implement these rules in `videoGenerationRecommendation.ts`:
 3. Keep `fixedParams` and `requiresAnyOf` as profile facts. The generic recommender only reads them.
 4. Keep recommendation output advisory: `score`, `reasons`, and `limitations` are projections; they must not mutate the candidate or call a provider.
 
-- [ ] **Step 4: Run focused tests, full archetype tests, lint and typecheck**
+- [x] **Step 4: Run focused tests, full archetype tests, lint and typecheck**
 
 ```bash
 pnpm exec vitest run src/config/modelArchetypes/modelArchetypeCapabilities.test.ts src/config/modelArchetypes/videoGenerationRecommendation.test.ts --reporter=dot
@@ -190,7 +190,7 @@ pnpm run typecheck
 
 Expected: all tests pass, eslint has no new errors, typecheck exits 0.
 
-- [ ] **Step 5: Commit the generic recommendation engine**
+- [x] **Step 5: Commit the generic recommendation engine**
 
 ```bash
 git add src/config/modelArchetypes/videoGenerationRecommendation.ts src/config/modelArchetypes/videoGenerationRecommendation.test.ts
@@ -446,4 +446,3 @@ Report:
 5. comparison of the next provider scope options.
 
 Stop only at the provider-scope decision described above; do not start P4–P7 work in this slice.
-

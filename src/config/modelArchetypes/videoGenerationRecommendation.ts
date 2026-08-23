@@ -187,7 +187,24 @@ const buildReasons = (mode: ArchetypeMode, summary: ReferenceSummary, input: Vid
 
 const buildLimitations = (mode: ArchetypeMode, input: VideoGenerationRecommendationInput): string[] => {
   const limitations: string[] = [];
-  if (input.cameraIntent) limitations.push("当前模型没有独立的轨迹控制模式；相机意图会通过提示词或参考视频近似表达");
+  if (input.cameraIntent) {
+    const cameraControl = mode.cameraControl;
+    if (!cameraControl || cameraControl.strategy === "unknown") {
+      limitations.push("当前模式的相机控制能力尚未完成对账，建议先确认生成效果");
+    } else if (cameraControl.strategy === "unsupported") {
+      limitations.push("当前模式没有可验证的相机控制方式");
+    } else if (cameraControl.strategy === "native") {
+      if (!cameraControl.nativeIntents?.includes(input.cameraIntent)) {
+        limitations.push("当前模式没有声明这个相机意图的原生控制");
+      }
+    } else if (cameraControl.strategy === "prompt") {
+      limitations.push("当前模式通过提示词表达相机意图，不提供独立轨迹参数");
+    } else if (cameraControl.strategy === "reference_video") {
+      limitations.push("当前模式通过参考视频表达相机意图，不提供独立轨迹参数");
+    } else {
+      limitations.push("当前模式通过提示词或参考视频近似表达相机意图，不提供独立轨迹参数");
+    }
+  }
   if (mode.fixedParams?.size === "adaptive") limitations.push("当前供应商要求此模式使用 adaptive 比例，比例不能自由改");
   if (input.goals?.generateAudio && !mode.params.some((control) => control.key === "generate_audio")) limitations.push("当前模式没有可验证的生成音频参数");
   if (typeof input.goals?.durationSeconds === "number") {
@@ -196,6 +213,13 @@ const buildLimitations = (mode: ArchetypeMode, input: VideoGenerationRecommendat
   }
   return limitations;
 };
+
+const hasDependentAudioMode = (candidates: readonly VideoModelCandidate[]): boolean => candidates.some((candidate) =>
+  effectiveModes(candidate).some((mode) => {
+    const audioSlot = slotForKind(mode, "audio_ref");
+    return Boolean(audioSlot?.requiresAnyOf?.length);
+  }),
+);
 
 const modeLabel = (mode: ArchetypeMode): string => mode.vendorTerm || mode.id;
 
@@ -226,8 +250,8 @@ export function recommendVideoGeneration(
   }).sort((left, right) => right.score - left.score);
 
   if (recommendations.length > 0) return { recommendations };
-  if (summary.audios > 0 && summary.images === 0 && summary.videos === 0) {
-    return { recommendations: [], nextAction: "请提供参考图或参考视频，当前 APIMart Seedance 不能只用音频作为参考输入" };
+  if (summary.audios > 0 && summary.images === 0 && summary.videos === 0 && hasDependentAudioMode(candidates)) {
+    return { recommendations: [], nextAction: "请再提供参考图或参考视频；当前候选模式要求参考音频与其中一种素材一起使用" };
   }
   return { recommendations: [], nextAction: "当前模型没有同时满足这些素材和目标的模式，请减少一种参考类型或切换到支持它的模型" };
 }
