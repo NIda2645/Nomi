@@ -6,6 +6,7 @@ export type ResolvedTaskRequestV1 = {
   moduleId: string;
   providerId: string;
   modelId: string;
+  variantId?: string;
   mode: string;
   prompt: string;
   parameters: Record<string, unknown>;
@@ -64,6 +65,7 @@ export function resolveExecutionContract(contract: ExecutionContractV1, binding:
     moduleId: contract.moduleId,
     providerId: contract.providerId,
     modelId: contract.modelId,
+    ...(contract.variantId ? { variantId: contract.variantId } : {}),
     mode: contract.mode,
     prompt: contract.prompt,
     parameters: structuredClone(contract.parameters),

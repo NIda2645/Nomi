@@ -197,6 +197,9 @@ export function buildVideoModelCandidates(models: readonly VideoCatalogModel[]):
         label: model.label || model.modelKey,
         archetype,
         ...(variantFor(model, archetype) ? { variantId: variantFor(model, archetype) } : {}),
+        ...(archetype.variants?.length ? {
+          variantChoices: archetype.variants.map((variant) => ({ id: variant.id, label: variant.label, modelKey: variant.modelKey })),
+        } : {}),
       };
     });
 }

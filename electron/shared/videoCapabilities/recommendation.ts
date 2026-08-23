@@ -29,6 +29,7 @@ export type VideoModelCandidate = {
   label: string;
   archetype: ModelArchetype;
   variantId?: string;
+  variantChoices?: readonly { id: string; label: string; modelKey: string }[];
 };
 
 export type VideoGenerationRecommendation = {
@@ -97,7 +98,14 @@ const modeMatchesReferences = (mode: ArchetypeMode, summary: ReferenceSummary): 
   return summary.first + summary.last + summary.images + summary.videos + summary.audios > 0;
 };
 
-const effectiveModes = (candidate: VideoModelCandidate): ArchetypeMode[] => {
+export function canonicalVideoVariantId(archetype: ModelArchetype, requested?: string): string | undefined {
+  const normalized = typeof requested === "string" ? requested.trim().toLowerCase() : "";
+  if (!normalized) return undefined;
+  return archetype.variants?.find((variant) => variant.id.toLowerCase() === normalized)?.id
+    ?? Object.entries(archetype.variantIdAliases ?? {}).find(([alias]) => alias.toLowerCase() === normalized)?.[1];
+}
+
+export const effectiveVideoModes = (candidate: VideoModelCandidate): ArchetypeMode[] => {
   const variantId = candidate.variantId ?? candidate.archetype.defaultVariantId;
   const variant = candidate.archetype.variants?.find((item) => item.id === variantId);
   return candidate.archetype.modes.map((mode) => {
@@ -230,7 +238,7 @@ const buildLimitations = (mode: ArchetypeMode, input: VideoGenerationRecommendat
 };
 
 const hasDependentAudioMode = (candidates: readonly VideoModelCandidate[]): boolean => candidates.some((candidate) =>
-  effectiveModes(candidate).some((mode) => Boolean(slotForKind(mode, "audio_ref")?.requiresAnyOf?.length)),
+  effectiveVideoModes(candidate).some((mode) => Boolean(slotForKind(mode, "audio_ref")?.requiresAnyOf?.length)),
 );
 
 const modeLabel = (mode: ArchetypeMode): string => mode.vendorTerm || mode.id;
@@ -238,7 +246,7 @@ const modeLabel = (mode: ArchetypeMode): string => mode.vendorTerm || mode.id;
 export function recommendVideoGeneration(input: VideoGenerationRecommendationInput, candidates: readonly VideoModelCandidate[]): VideoGenerationRecommendationResult {
   const summary = summarizeReferences(input.references ?? []);
   const recommendations = candidates.flatMap((candidate) => {
-    const modes = effectiveModes(candidate);
+    const modes = effectiveVideoModes(candidate);
     return modes.filter((mode) => modeMatchesReferences(mode, summary)).map((mode) => {
       const built = buildParams(mode, input);
       const familyBonus = input.preferredFamily && candidate.archetype.family === input.preferredFamily ? 25 : 0;

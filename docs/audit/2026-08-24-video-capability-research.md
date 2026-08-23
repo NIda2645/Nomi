@@ -53,7 +53,7 @@
 2. 将参考图替换成首帧+尾帧 → preview 改为首尾帧模式；
 3. 修改时长并加入当前模型未声明的 `trajectory` → revision/hash 变化，合同明确返回 `droppedFields: parameters.trajectory / unsupported_parameter`；
 4. 整个 create/edit/preview JSON-RPC journey 中 `runTask`、provider submit、gateway、spend 均为 0；旧 sealed draft 不会被原地编辑。
-5. 真实 GUI catalog MCP journey：同一 operation 依次切换 APIMart Seedance 2.0（全能参考）→ Veo 3.1 Fast（参考图）→ Hailuo 2.3（首帧），每次同步切换模式、参考角色与参数。验证 preview 始终把当前已选模型放在推荐首位，不会在用户切换到 Veo/Hailuo 后又跳回 Seedance；模型未出现在当前 catalog 时才保留兼容回退。
+5. 真实 GUI catalog MCP journey：从内置 APIMart catalog seed 读取 Seedance 2.0、Veo 3.1 Fast、Hailuo 2.3 的基础 model row 和既有 mapping；同一 operation 依次切换 Seedance 的 standard → fast → mini 变体，再切换 Veo/Hailuo 的模式、参考角色与参数。验证 context 暴露 GUI 同源的变体列表及各变体参数约束，别名会标准化、非法变体和 Fast/Mini 不支持的清晰度会在 preview 前拒绝；preview 的全部候选都绑定当前 model/variant，不会在用户切换后跳回别的模型；模型未出现在当前 catalog 时才保留兼容回退。
 
 ## 验证命令
 
@@ -67,7 +67,7 @@ pnpm exec vitest run src/config/modelArchetypes electron/catalog --reporter=dot
 pnpm run test
 # 699 files passed, 1 skipped / 6172 tests passed, 1 skipped
 pnpm run test:mcp
-# real Electron stdio journey passed: 45 assertions / 10 steps / 738ms; 6 mock-vendor requests, zero provider quota
+# real Electron stdio journey passed: 45 assertions / 10 steps; 6 mock-vendor requests, zero provider quota
 pnpm run typecheck
 pnpm run build
 pnpm run check:filesize

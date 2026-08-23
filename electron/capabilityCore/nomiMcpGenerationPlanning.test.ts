@@ -8,12 +8,15 @@ import { dispatch } from "./dispatcher";
 import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createGenerationPlanningHandler } from "./mcpGenerationTools";
 import { createModuleRegistry } from "./moduleRegistry";
+import { createCatalogModuleRegistry } from "./moduleCatalogBootstrap";
 import { createProjectLeaseAuthority } from "./projectLease";
 import { createProjectLeaseStore } from "./projectLeaseStore";
 import { createProductionGenerationOperationStore } from "../productionRun/productionGenerationOperationStore";
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
 import { createProductionRunService } from "../productionRun/productionRunService";
-import { buildVideoModelCandidates, recommendVideoGeneration } from "../shared/videoCapabilities";
+import { APIMART_VIDEO_MODELS } from "../catalog/apimartVideos";
+import { applyBuiltinSeeds } from "../catalog/seedBuiltins";
+import { buildVideoModelCandidates, recommendVideoGeneration, videoArchetypeIdFromMeta } from "../shared/videoCapabilities";
 
 const videoModelCandidates = buildVideoModelCandidates([
   { provider: "apimart", modelKey: "doubao-seedance-2.0", label: "Seedance 2.0" },
@@ -21,13 +24,17 @@ const videoModelCandidates = buildVideoModelCandidates([
   { provider: "apimart", modelKey: "doubao-seedance-2.0-mini", label: "Seedance 2.0 Mini" },
 ]);
 
-const realCatalogVideoModelCandidates = buildVideoModelCandidates([
-  { provider: "apimart", modelKey: "doubao-seedance-2.0", label: "Seedance 2.0", archetypeId: "seedance-2-apimart" },
-  { provider: "apimart", modelKey: "doubao-seedance-2.0-fast", label: "Seedance 2.0 Fast", archetypeId: "seedance-2-apimart" },
-  { provider: "apimart", modelKey: "doubao-seedance-2.0-mini", label: "Seedance 2.0 Mini", archetypeId: "seedance-2-apimart" },
-  { provider: "apimart", modelKey: "veo3.1-fast", label: "Veo 3.1", archetypeId: "veo-3.1" },
-  { provider: "apimart", modelKey: "MiniMax-Hailuo-2.3", label: "Hailuo 2.3", archetypeId: "hailuo-2.3" },
-]);
+const seededCatalog = applyBuiltinSeeds({ version: 4, vendors: [], models: [], mappings: [], apiKeysByVendor: {} }, "2026-08-23T00:00:00.000Z").state;
+const realCatalogModelKeys = new Set(APIMART_VIDEO_MODELS
+  .filter((model) => ["doubao-seedance-2.0", "veo3.1-fast", "MiniMax-Hailuo-2.3"].includes(model.modelKey))
+  .map((model) => model.modelKey));
+const realCatalogModels = seededCatalog.models.filter((model) => model.vendorKey === "apimart" && model.kind === "video" && realCatalogModelKeys.has(model.modelKey));
+const realCatalogVideoModelCandidates = buildVideoModelCandidates(realCatalogModels.map((model) => ({
+  provider: model.vendorKey,
+  modelKey: model.modelKey,
+  label: model.labelZh,
+  archetypeId: videoArchetypeIdFromMeta(model.meta),
+})));
 
 const roots: string[] = [];
 const registry = createModuleRegistry([{
@@ -91,23 +98,14 @@ const videoEditableRegistry = createModuleRegistry([{
   }],
 }]);
 
-const realCatalogVideoRegistry = createModuleRegistry([{
-  moduleId: "generation.single-shot",
-  version: "1.0.0",
-  inputKinds: ["text", "image"],
-  outputKinds: ["video"],
-  modes: ["text-to-video", "image-to-video", "firstlast", "omni", "reference"],
-  parameterSchema: { duration: { type: "number" }, resolution: { type: "string" }, size: { type: "string" } },
-  assetInputSchema: { references: { kind: "asset", max: 9 } },
-  providers: [{
-    providerId: "apimart",
-    models: [
-      { modelId: "doubao-seedance-2.0", modes: ["text-to-video", "image-to-video", "firstlast", "omni"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
-      { modelId: "veo3.1-fast", modes: ["text-to-video", "image-to-video", "reference", "firstlast"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
-      { modelId: "MiniMax-Hailuo-2.3", modes: ["text-to-video", "image-to-video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
-    ],
-  }],
-}]);
+const realCatalogVideoRegistry = createCatalogModuleRegistry(seededCatalog, {
+  readinessByProvider: {
+    apimart: {
+      providerReady: true,
+      capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true },
+    },
+  },
+});
 
 function makeAuthority(root: string) {
   return createProjectLeaseAuthority({
@@ -195,7 +193,7 @@ describe("MCP semantic generation planning journey", () => {
     const operations = createProductionGenerationOperationStore(service);
     const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z" });
     const authority = makeAuthority(root);
-    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read"] });
+    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["context:read", "generation:create", "generation:plan", "generation:preview", "generation:read"] });
     const lease = authority.issueLease(selection.token, { projectId: "project-1", leasePrincipal: "mcp:test", sessionId: "session-1", connectionNonce: "connection-1" }).token;
     const runTask = vi.fn(async () => { throw new Error("semantic planning must not call runTask"); });
     const context = {
@@ -231,7 +229,7 @@ describe("MCP semantic generation planning journey", () => {
     const operations = createProductionGenerationOperationStore(service);
     const handler = createGenerationPlanningHandler({ registry: editableRegistry, operations, now: () => "2026-08-23T00:00:00.000Z" });
     const authority = makeAuthority(root);
-    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read"] });
+    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["context:read", "generation:create", "generation:plan", "generation:preview", "generation:read"] });
     const lease = authority.issueLease(selection.token, { projectId: "project-1", leasePrincipal: "mcp:test", sessionId: "session-1", connectionNonce: "connection-1" }).token;
     const context = {
       runTask: vi.fn(async () => { throw new Error("editable semantic journey must not call runTask"); }),
@@ -281,7 +279,7 @@ describe("MCP semantic generation planning journey", () => {
       now: () => "2026-08-23T00:00:00.000Z",
     });
     const authority = makeAuthority(root);
-    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read"] });
+    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["context:read", "generation:create", "generation:plan", "generation:preview", "generation:read"] });
     const lease = authority.issueLease(selection.token, { projectId: "project-1", leasePrincipal: "mcp:test", sessionId: "session-1", connectionNonce: "connection-1" }).token;
     const context = {
       runTask,
@@ -359,8 +357,9 @@ describe("MCP semantic generation planning journey", () => {
       now: () => "2026-08-23T00:00:00.000Z",
     });
     const authority = makeAuthority(root);
-    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read"] });
+    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["context:read", "generation:create", "generation:plan", "generation:preview", "generation:read"] });
     const lease = authority.issueLease(selection.token, { projectId: "project-1", leasePrincipal: "mcp:test", sessionId: "session-1", connectionNonce: "connection-1" }).token;
+    const verifiedLease = authority.verifyLease(lease);
     const context = {
       runTask,
       makeGateway: () => { throw new Error("real catalog planning must not create a gateway"); },
@@ -372,6 +371,22 @@ describe("MCP semantic generation planning journey", () => {
     };
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
     await harness.call(31, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "Codex" } });
+    const contextResponse = await harness.call(315, "tools/call", { name: "nomi_get_generation_context", arguments: { leaseHandle: lease } });
+    const contextPayload = JSON.parse((contextResponse.result as { content: Array<{ text: string }> }).content[0]!.text) as {
+      videoModels?: Array<{
+        modelId: string;
+        archetypeId: string;
+        modes: Array<{ id: string; parameters: Array<{ key: string; options?: Array<{ value: unknown }> }> }>;
+        variants: Array<{ id: string; modelKey: string; modes: Array<{ id: string; parameters: Array<{ key: string; options?: Array<{ value: unknown }> }> }> }>;
+      }>;
+    };
+    const seedanceContext = contextPayload.videoModels?.find((model) => model.modelId === "doubao-seedance-2.0");
+    expect(seedanceContext).toMatchObject({ modelId: "doubao-seedance-2.0", archetypeId: "seedance-2-apimart" });
+    expect(seedanceContext?.variants.map((variant) => variant.id)).toEqual(expect.arrayContaining(["standard", "fast", "mini"]));
+    const resolutionOptions = (modes: Array<{ parameters: Array<{ key: string; options?: Array<{ value: unknown }> }> }>) => modes.find((mode) => mode.id === "omni")?.parameters.find((parameter) => parameter.key === "resolution")?.options?.map((option) => option.value);
+    expect(resolutionOptions(seedanceContext?.modes ?? [])).toEqual(["480p", "720p", "1080p", "4k"]);
+    expect(resolutionOptions(seedanceContext?.variants.find((variant) => variant.id === "standard")?.modes ?? [])).toEqual(["480p", "720p", "1080p", "4k"]);
+    expect(resolutionOptions(seedanceContext?.variants.find((variant) => variant.id === "fast")?.modes ?? [])).toEqual(["480p", "720p"]);
     const created = await harness.call(32, "tools/call", {
       name: "nomi_operation_create",
       arguments: {
@@ -382,7 +397,8 @@ describe("MCP semantic generation planning journey", () => {
           moduleId: "generation.single-shot",
           providerId: "apimart",
           modelId: "doubao-seedance-2.0",
-          mode: "omni",
+          variantId: "standard",
+          mode: "image_to_video",
           prompt: "角色走向镜头",
           parameters: { duration: 5, resolution: "720p" },
           references: [{ assetId: "character", contentHash: "c".repeat(64), version: 1, kind: "image", role: "character" }],
@@ -396,12 +412,48 @@ describe("MCP semantic generation planning journey", () => {
     const preview = async (id: number) => {
       const response = await harness.call(id, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
       return JSON.parse((response.result as { content: Array<{ text: string }> }).content[0]!.text) as {
-        recommendation?: { recommendations?: Array<{ modelKey: string; modeId: string; params: Record<string, unknown> }> };
-        contract: { providerId: string; modelId: string; mode: string; contractHash: string };
+        recommendation?: { recommendations?: Array<{ modelKey: string; variantId?: string; modeId: string; params: Record<string, unknown> }> };
+        contract: { providerId: string; modelId: string; variantId?: string; mode: string; contractHash: string };
       };
     };
     const seedance = await preview(33);
-    expect(seedance.recommendation?.recommendations?.[0]).toMatchObject({ modelKey: "doubao-seedance-2.0", modeId: "omni" });
+    expect(seedance.contract).toMatchObject({ providerId: "apimart", modelId: "doubao-seedance-2.0", variantId: "standard", mode: "image_to_video" });
+    expect(seedance.recommendation?.recommendations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ modelKey: "doubao-seedance-2.0", variantId: "standard", modeId: "omni" }),
+    ]));
+    expect(seedance.recommendation?.recommendations?.every((item) => item.modelKey === "doubao-seedance-2.0" && item.variantId === "standard")).toBe(true);
+
+    await harness.call(335, "tools/call", {
+      name: "nomi_submit_generation_plan",
+      arguments: { leaseHandle: lease, operationId, patch: { variantId: "fast-face", parameters: { duration: 6, resolution: "720p" } } },
+    });
+    const seedanceFast = await preview(336);
+    expect(seedanceFast.contract).toMatchObject({ modelId: "doubao-seedance-2.0", variantId: "fast" });
+    expect(seedanceFast.recommendation?.recommendations?.every((item) => item.modelKey === "doubao-seedance-2.0" && item.variantId === "fast")).toBe(true);
+
+    await harness.call(3365, "tools/call", {
+      name: "nomi_submit_generation_plan",
+      arguments: { leaseHandle: lease, operationId, patch: { modelId: "doubao-seedance-2.0", parameters: { duration: 7, resolution: "720p" } } },
+    });
+    const sameModelFast = await preview(3366);
+    expect(sameModelFast.contract).toMatchObject({ modelId: "doubao-seedance-2.0", variantId: "fast" });
+
+    await expect(handler({ capability: "plan", params: { operationId, patch: { variantId: "ghost" } }, lease: verifiedLease }))
+      .rejects.toThrow("Unknown video variant");
+    await harness.call(337, "tools/call", {
+      name: "nomi_submit_generation_plan",
+      arguments: { leaseHandle: lease, operationId, patch: { variantId: "fast", parameters: { duration: 6, resolution: "1080p" } } },
+    });
+    await expect(handler({ capability: "preview", params: { operationId }, lease: verifiedLease }))
+      .rejects.toThrow("parameters.resolution");
+
+    await harness.call(338, "tools/call", {
+      name: "nomi_submit_generation_plan",
+      arguments: { leaseHandle: lease, operationId, patch: { variantId: "mini", parameters: { duration: 6, resolution: "720p" } } },
+    });
+    const seedanceMini = await preview(339);
+    expect(seedanceMini.contract).toMatchObject({ modelId: "doubao-seedance-2.0", variantId: "mini" });
+    expect(seedanceMini.recommendation?.recommendations?.every((item) => item.modelKey === "doubao-seedance-2.0" && item.variantId === "mini")).toBe(true);
 
     await harness.call(34, "tools/call", {
       name: "nomi_submit_generation_plan",
@@ -410,15 +462,18 @@ describe("MCP semantic generation planning journey", () => {
         operationId,
         patch: {
           modelId: "veo3.1-fast",
-          mode: "reference",
+          mode: "image_to_video",
           parameters: { resolution: "720p" },
           references: [{ assetId: "style", contentHash: "s".repeat(64), version: 1, kind: "image", role: "reference" }],
         },
       },
     });
     const veo = await preview(35);
-    expect(veo.recommendation?.recommendations?.[0]).toMatchObject({ modelKey: "veo3.1-fast", modeId: "reference" });
-    expect(veo.contract).toMatchObject({ providerId: "apimart", modelId: "veo3.1-fast", mode: "reference" });
+    expect(veo.recommendation?.recommendations?.every((item) => item.modelKey === "veo3.1-fast" && item.variantId === "fast")).toBe(true);
+    expect(veo.recommendation?.recommendations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ modelKey: "veo3.1-fast", variantId: "fast", modeId: "reference" }),
+    ]));
+    expect(veo.contract).toMatchObject({ providerId: "apimart", modelId: "veo3.1-fast", variantId: "fast", mode: "image_to_video" });
     expect(veo.contract.contractHash).not.toBe(seedance.contract.contractHash);
 
     await harness.call(36, "tools/call", {
@@ -428,16 +483,20 @@ describe("MCP semantic generation planning journey", () => {
         operationId,
         patch: {
           modelId: "MiniMax-Hailuo-2.3",
-          mode: "image-to-video",
+          variantId: "standard",
+          mode: "image_to_video",
           parameters: { duration: 6, resolution: "768p" },
           references: [{ assetId: "first", contentHash: "f".repeat(64), version: 1, kind: "image", role: "first_frame" }],
         },
       },
     });
     const hailuo = await preview(37);
-    expect(hailuo.recommendation?.recommendations?.[0]).toMatchObject({ modelKey: "MiniMax-Hailuo-2.3", modeId: "i2v" });
+    expect(hailuo.recommendation?.recommendations?.every((item) => item.modelKey === "MiniMax-Hailuo-2.3" && item.variantId === "standard")).toBe(true);
+    expect(hailuo.recommendation?.recommendations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ modelKey: "MiniMax-Hailuo-2.3", variantId: "standard", modeId: "i2v" }),
+    ]));
     expect(hailuo.recommendation?.recommendations?.[0]?.params).not.toHaveProperty("aspect_ratio");
-    expect(hailuo.contract).toMatchObject({ providerId: "apimart", modelId: "MiniMax-Hailuo-2.3", mode: "image-to-video" });
+    expect(hailuo.contract).toMatchObject({ providerId: "apimart", modelId: "MiniMax-Hailuo-2.3", variantId: "standard", mode: "image_to_video" });
     expect(context.runTask).not.toHaveBeenCalled();
   });
 

@@ -7,6 +7,7 @@ import {
   type PlanCandidate,
 } from "./executionContract";
 import type { ModuleRegistry } from "./moduleRegistry";
+import type { ParameterField } from "./moduleManifest";
 import type { ProjectLeaseV1 } from "./projectLease";
 import {
   classifyGenerationProviderCapabilities,
@@ -18,6 +19,8 @@ import type {
   VideoGenerationRecommendationResult,
   VideoModelCandidate,
 } from "../shared/videoCapabilities/recommendation";
+import { canonicalVideoVariantId, effectiveVideoModes } from "../shared/videoCapabilities/recommendation";
+import type { ModelParameterControl } from "../shared/videoCapabilities/types";
 
 /**
  * The semantic MCP surface is deliberately data-only.  These tools are the
@@ -330,18 +333,71 @@ function candidatesForCurrentVideoModel(
 ): readonly VideoModelCandidate[] {
   const providerCandidates = candidates.filter((item) => normalizedModelIdentity(item.provider) === normalizedModelIdentity(candidate.providerId));
   const modelId = normalizedModelIdentity(candidate.modelId);
-  const exactMatches = providerCandidates.filter((item) => [
-    item.modelKey,
-    item.archetype.variants?.find((variant) => variant.id === (item.variantId ?? item.archetype.defaultVariantId))?.modelKey,
-  ].some((identity) => typeof identity === "string" && normalizedModelIdentity(identity) === modelId));
-  if (exactMatches.length > 0) return exactMatches;
+  const variantsFor = (item: VideoModelCandidate) => item.archetype.variants ?? [];
+  const variantForModelId = (item: VideoModelCandidate) => variantsFor(item).find((variant) =>
+    normalizedModelIdentity(variant.modelKey) === modelId
+      || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId),
+  );
+  const exactMatches = providerCandidates.filter((item) => normalizedModelIdentity(item.modelKey) === modelId || Boolean(variantForModelId(item)));
+  const aliasMatches = providerCandidates.filter((item) => item.archetype.identifierPatterns
+    .some((identity) => normalizedModelIdentity(identity) === modelId)
+    || variantsFor(item).some((variant) => (variant.identifierPatterns ?? [])
+      .some((identity) => normalizedModelIdentity(identity) === modelId)));
+  const scoped = exactMatches.length > 0 ? exactMatches : aliasMatches;
+  const selectedVariantId = (item: VideoModelCandidate): string | undefined => {
+    const requested = typeof candidate.variantId === "string" ? candidate.variantId.trim() : "";
+    const requestedCanonical = canonicalVideoVariantId(item.archetype, requested);
+    return requestedCanonical || variantForModelId(item)?.id || item.variantId;
+  };
+  if (scoped.length > 0) return scoped.map((item) => ({ ...item, ...(selectedVariantId(item) ? { variantId: selectedVariantId(item) } : {}) }));
+  return providerCandidates.length > 0 ? providerCandidates : candidates;
+}
 
-  const aliasMatches = providerCandidates.filter((item) => {
-    const variant = item.archetype.variants?.find((entry) => entry.id === (item.variantId ?? item.archetype.defaultVariantId));
-    return [...item.archetype.identifierPatterns, ...(variant?.identifierPatterns ?? [])]
-      .some((identity) => normalizedModelIdentity(identity) === modelId);
-  });
-  return aliasMatches.length > 0 ? aliasMatches : providerCandidates.length > 0 ? providerCandidates : candidates;
+function videoCandidateForPlan(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[]): { candidate: PlanCandidate; videoCandidate: VideoModelCandidate } | null {
+  const provider = normalizedModelIdentity(candidate.providerId);
+  const modelId = normalizedModelIdentity(candidate.modelId);
+  const source = candidates.find((item) => normalizedModelIdentity(item.provider) === provider && (
+    normalizedModelIdentity(item.modelKey) === modelId
+      || (item.archetype.variants ?? []).some((variant) => normalizedModelIdentity(variant.modelKey) === modelId
+        || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId))
+  ));
+  if (!source) return null;
+  const inferredVariant = (source.archetype.variants ?? []).find((variant) => normalizedModelIdentity(variant.modelKey) === modelId
+    || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId));
+  const requested = typeof candidate.variantId === "string" ? candidate.variantId.trim() : "";
+  const requestedCanonical = canonicalVideoVariantId(source.archetype, requested);
+  if (requested && !requestedCanonical) throw new Error(`Unknown video variant: ${candidate.variantId}`);
+  const variantId = requestedCanonical ?? inferredVariant?.id ?? source.variantId ?? source.archetype.defaultVariantId;
+  return {
+    candidate: { ...candidate, modelId: source.modelKey, ...(variantId ? { variantId } : {}) },
+    videoCandidate: { ...source, ...(variantId ? { variantId } : {}) },
+  };
+}
+
+function parameterFieldForControl(control: ModelParameterControl): ParameterField {
+  if (control.type === "select") {
+    const stringOptions = control.options.map((option) => option.value).filter((value): value is string => typeof value === "string");
+    return stringOptions.length === control.options.length && stringOptions.length > 0
+      ? { type: "enum", enum: stringOptions }
+      : { type: control.options.some((option) => typeof option.value === "number") ? "number" : "string" };
+  }
+  if (control.type === "number") return { type: "number" };
+  if (control.type === "boolean") return { type: "boolean" };
+  return { type: "string" };
+}
+
+function videoParameterSchema(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): Record<string, ParameterField> | undefined {
+  if (!candidates) return undefined;
+  const selected = videoCandidateForPlan(candidate, candidates);
+  if (!selected) return undefined;
+  const mode = effectiveVideoModes(selected.videoCandidate).find((item) => item.transportTaskKind === candidate.mode);
+  if (!mode) return undefined;
+  return Object.fromEntries(mode.params.map((control) => [control.key, parameterFieldForControl(control)]));
+}
+
+function normalizeVideoCandidate(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): PlanCandidate {
+  const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
+  return selected?.candidate ?? candidate;
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -356,8 +412,9 @@ function candidateFrom(value: unknown): PlanCandidate {
   if (typeof raw.moduleId !== "string" || typeof raw.providerId !== "string" || typeof raw.modelId !== "string" || typeof raw.mode !== "string") throw new Error("Candidate module, provider, model and mode are required");
   if (typeof raw.prompt !== "string") throw new Error("Candidate prompt is required");
   if (!Number.isInteger(raw.revision) || Number(raw.revision) < 1) throw new Error("Candidate revision must be a positive integer");
+  if (raw.variantId !== undefined && (typeof raw.variantId !== "string" || !raw.variantId.trim())) throw new Error("Candidate variant id must be a non-empty string");
   return {
-    candidateId: raw.candidateId.trim(), revision: Number(raw.revision), moduleId: raw.moduleId.trim(), providerId: raw.providerId.trim(), modelId: raw.modelId.trim(), mode: raw.mode.trim(), prompt: raw.prompt,
+    candidateId: raw.candidateId.trim(), revision: Number(raw.revision), moduleId: raw.moduleId.trim(), providerId: raw.providerId.trim(), modelId: raw.modelId.trim(), ...(typeof raw.variantId === "string" ? { variantId: raw.variantId.trim() } : {}), mode: raw.mode.trim(), prompt: raw.prompt,
     parameters: record(raw.parameters ?? {}, "candidate parameters"),
     references: references.map((reference, index) => {
       const item = record(reference, `candidate reference ${index}`);
@@ -427,39 +484,78 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         modes: [...new Set(provider.models.flatMap((model) => model.modes))],
         capabilities: provider.models.map((model) => ({ modelId: model.modelId, ...model.capabilities })),
       })));
+      const projectVideoModes = (videoCandidate: VideoModelCandidate) => effectiveVideoModes(videoCandidate).map((mode) => ({
+        id: mode.id,
+        intent: mode.intent,
+        vendorTerm: mode.vendorTerm,
+        transportTaskKind: mode.transportTaskKind,
+        references: mode.slots.map((slot) => ({ kind: slot.kind, min: slot.min, max: slot.max, label: slot.label })),
+        parameters: mode.params.map((parameter) => ({ key: parameter.key, type: parameter.type, options: parameter.options })),
+      }));
+      const videoModels = (deps.videoModelCandidates ?? []).map((videoCandidate) => ({
+        providerId: videoCandidate.provider,
+        modelId: videoCandidate.modelKey,
+        label: videoCandidate.label,
+        archetypeId: videoCandidate.archetype.id,
+        ...(videoCandidate.variantId ? { variantId: videoCandidate.variantId } : {}),
+        variants: (videoCandidate.variantChoices ?? []).map((variant) => ({
+          ...variant,
+          modes: projectVideoModes({ ...videoCandidate, variantId: variant.id }),
+        })),
+        modes: projectVideoModes(videoCandidate),
+      }));
       return {
         projectId: input.lease.projectId,
         immutableProjectUuid: input.lease.immutableProjectUuid,
         projectGeneration: input.lease.projectGeneration,
         providerProfiles,
+        ...(videoModels.length ? { videoModels } : {}),
         nextAction: "create",
       };
     }
     const operationId = typeof params.operationId === "string" && params.operationId.trim() ? params.operationId.trim() : `op-${crypto.randomUUID()}`;
     if (input.capability === "create") {
-      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: candidateFrom(params.candidate), now: now() });
+      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(candidateFrom(params.candidate), deps.videoModelCandidates), now: now() });
       return { operation, nextAction: "preview" };
     }
     const current = await deps.operations.read(input.lease.projectId, operationId);
     if (!current) throw new Error(`Generation operation not found: ${operationId}`);
     if (input.capability === "plan") {
-      const operation = await deps.operations.patch(input.lease.projectId, operationId, record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now());
+      const rawPatch = record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
+      const nextProviderId = typeof rawPatch.providerId === "string" ? rawPatch.providerId : current.candidate.providerId;
+      const nextModelId = typeof rawPatch.modelId === "string" ? rawPatch.modelId : current.candidate.modelId;
+      const modelChanged = normalizedModelIdentity(nextProviderId) !== normalizedModelIdentity(current.candidate.providerId)
+        || normalizedModelIdentity(nextModelId) !== normalizedModelIdentity(current.candidate.modelId);
+      const mergedCandidate = {
+        ...current.candidate,
+        ...rawPatch,
+        ...(modelChanged && rawPatch.variantId === undefined ? { variantId: undefined } : {}),
+        parameters: rawPatch.parameters ?? current.candidate.parameters,
+        references: rawPatch.references ?? current.candidate.references,
+      } as PlanCandidate;
+      const normalizedCandidate = normalizeVideoCandidate(mergedCandidate, deps.videoModelCandidates);
+      const normalizedPatch = {
+        ...rawPatch,
+        ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
+      };
+      const operation = await deps.operations.patch(input.lease.projectId, operationId, normalizedPatch, now());
       return { operation, nextAction: "preview" };
     }
     if (input.capability === "preview") {
-      const contract = compileExecutionContract(current.candidate, deps.registry);
-      const readiness = resolveProviderReadiness(deps, current.candidate);
+      const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
+      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const readiness = resolveProviderReadiness(deps, candidate);
       const resolved = deps.registry.resolve({
-        moduleId: current.candidate.moduleId,
-        providerId: current.candidate.providerId,
-        modelId: current.candidate.modelId,
-        mode: current.candidate.mode,
+        moduleId: candidate.moduleId,
+        providerId: candidate.providerId,
+        modelId: candidate.modelId,
+        mode: candidate.mode,
       });
       const recommendationInput = resolved.outputKinds.includes("video")
-        ? videoRecommendationInput(current.candidate)
+        ? videoRecommendationInput(candidate)
         : null;
       const recommendation = recommendationInput && deps.recommendVideoGeneration && deps.videoModelCandidates
-        ? deps.recommendVideoGeneration(recommendationInput, candidatesForCurrentVideoModel(current.candidate, deps.videoModelCandidates))
+        ? deps.recommendVideoGeneration(recommendationInput, candidatesForCurrentVideoModel(candidate, deps.videoModelCandidates))
         : undefined;
       return {
         operationId,
@@ -474,8 +570,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       };
     }
     if (input.capability === "gate_request") {
-      const contract = compileExecutionContract(current.candidate, deps.registry);
-      const readiness = resolveProviderReadiness(deps, current.candidate);
+      const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
+      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const readiness = resolveProviderReadiness(deps, candidate);
       if (!readiness.providerReady) throw new GenerationProviderCapabilityError(contract.providerId, readiness.missingForSubmit.length ? readiness.missingForSubmit : ["configured_provider"]);
       const sealed = current.state === "draft"
         ? await deps.operations.seal(input.lease.projectId, operationId, contract, now())
