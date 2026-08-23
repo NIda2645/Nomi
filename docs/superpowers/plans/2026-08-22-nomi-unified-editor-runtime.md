@@ -838,6 +838,8 @@ unsettled ledger，unknown 只能 reconcile。
 
 **退出条件：** 真实外部 MCP host 从 context 到 artifact 完整走通；批准前 providerCalls=0；fake provider raw submit=1；重启不重复扣费；Artifact 可在项目中重开读取；封存前所有允许的编辑都能形成新的可解释预览，封存后修改模型/provider/模式/输入只产生 `new_draft_required`，不原地改写已批准合同；UI 与 MCP 走同一语义合同。真实 provider smoke 是独立证据附录，不得用 mock 结果冒充媒体完成。
 
+所有用户可见面（MCP elicitation、structured result、progress、error/recovery、GUI gate、任务中心、Artifact preview）都必须通过同一 UX 验收：少量主信息、单一主动作、可撤销边界、非颜色状态、进行中反馈、一个明确恢复动作，以及真实截图/走查证据。用户看不到或不理解内部阶段，不能算 P3 完成。
+
 ### P4：生产恢复与受控扩展
 
 **交付：** 在 P2/P3 已验证的 `ProductionJob.executionBinding`、reconcile/cancel/lease 基础上扩展有限并发、波次和局部重试；不把 binding/lease 继续当作 P4 的未实现前置。

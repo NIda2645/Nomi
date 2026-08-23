@@ -87,6 +87,7 @@ Deferred:
 - Run an editability matrix before the gate: change model/provider, switch generation mode, edit parameters, add/remove/replace/reorder reference assets, cancel a draft and replan, reconnect before confirmation, and compare the resulting MCP contract preview with the equivalent UI semantic action.
 - Capture screenshots at connection, one confirmation, waiting/reconnect and `submission_unknown` reconciliation.
 - Record visible click count, provider calls, spend calls, receipt count, challenge count, submit count, contract hash, preview cost, Asset count and any UI/MCP semantic difference.
+- Audit every visible surface in the journey—MCP elicitation, tool result, progress, GUI fallback, task center and artifact preview—for one primary action, no internal jargon, non-color status, keyboard/readable feedback and one recovery action.
 - Do not enter real provider/P3 spend until both journeys satisfy the invariants in the design spec.
 
 ## Acceptance gates
@@ -98,7 +99,8 @@ Deferred:
 5. Recovery safety: `submission_unknown` offers reconcile only; raw boolean/transport proof cannot mint authority.
 6. Simplicity: a real user can complete the happy path without reading protocol docs or entering internal IDs.
 7. Editability parity: before sealing, model/provider/mode/parameters/reference assets can be changed with the same semantic result as the UI; after sealing, changes create a new draft instead of mutating the approved contract.
-8. Documentation and code remain single-owner: no second authorization store, client-specific fork, or mandatory GUI step for registered clients.
+8. Visible UX parity: MCP and GUI use the same user vocabulary, state meaning, accessibility cues, progress feedback and recovery action; a hidden backend transition is not accepted as a finished user experience.
+9. Documentation and code remain single-owner: no second authorization store, client-specific fork, or mandatory GUI step for registered clients.
 
 ## Current implementation checkpoint (2026-08-23)
 
