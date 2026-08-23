@@ -784,7 +784,7 @@ Agent parity 也属于 P4。用户一句话的默认体验仍是“一次预览�
 
 **测试与证据：** plan→node→runtime request→ProductionJob 字段守恒；未知字段、失效 asset version、能力降级、旧 contract migration fixture；contract hash 稳定性。
 
-**退出条件：** 同一输入和同一 registry snapshot 生成相同 contract；任何 warning/dropped field 都可在 preview 中解释；无合同不得进入 provider submit。
+**退出条件：** 同一输入和同一 registry snapshot 生成相同 contract；任何 warning/dropped field 都可在 preview 中解释；无合同不得进入 provider submit；UI 与 MCP 对同一语义编辑（模型/provider、模式、参数、参考素材替换/删除/排序）必须编译出同一合同或同一明确的 capability error，不能各自静默降级。
 
 ### P3：MCP AI generation single-shot
 
@@ -834,9 +834,9 @@ ProductionJob 对应一个 shot）；`consumeGenerationSpendGrant`
 重铸都拒绝。provider 成功/失败/cancel/unknown 分别写 settle/release/
 unsettled ledger，unknown 只能 reconcile。
 
-**测试与证据：** real Electron stdio + real MCP client、零额度 fake provider、progress、cancel、restart、duplicate callback、submission_unknown、跨项目拒绝。真实 provider smoke 使用独立 `tests/ux/mcp-generation-single-shot.real-provider.mjs`，在 P3 checkpoint 通过后以显式 provider/model/feature flag/cost ceiling/receipt 运行；凭证或成本未知时为 `blocked`。
+**测试与证据：** real Electron stdio + real MCP client、零额度 fake provider、progress、cancel、restart、duplicate callback、submission_unknown、跨项目拒绝，以及真实用户编辑矩阵：创建草稿后替换模型/provider、切换生成模式、修改参数、添加/删除/替换/排序参考素材、撤销后重新计划、确认前重连。每个场景都记录最终合同、预览成本、可见确认次数、providerCalls、rawSubmitCount、Asset 数量和 UI/MCP 语义差异；真实 provider smoke 使用独立 `tests/ux/mcp-generation-single-shot.real-provider.mjs`，在 P3 checkpoint 通过后以显式 provider/model/feature flag/cost ceiling/receipt 运行；凭证或成本未知时为 `blocked`。
 
-**退出条件：** 真实外部 MCP host 从 context 到 artifact 完整走通；批准前 providerCalls=0；fake provider raw submit=1；重启不重复扣费；Artifact 可在项目中重开读取。真实 provider smoke 是独立证据附录，不得用 mock 结果冒充媒体完成。
+**退出条件：** 真实外部 MCP host 从 context 到 artifact 完整走通；批准前 providerCalls=0；fake provider raw submit=1；重启不重复扣费；Artifact 可在项目中重开读取；封存前所有允许的编辑都能形成新的可解释预览，封存后修改模型/provider/模式/输入只产生 `new_draft_required`，不原地改写已批准合同；UI 与 MCP 走同一语义合同。真实 provider smoke 是独立证据附录，不得用 mock 结果冒充媒体完成。
 
 ### P4：生产恢复与受控扩展
 

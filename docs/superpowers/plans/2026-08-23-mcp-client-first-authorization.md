@@ -84,8 +84,9 @@ Deferred:
 **Add/modify:** `tests/ux/` journey harness and `docs/audit/2026-08-23-mcp-client-authorization-friction-audit.md` evidence section.
 
 - Run one registered-client journey and one GUI-fallback journey with a fake provider.
+- Run an editability matrix before the gate: change model/provider, switch generation mode, edit parameters, add/remove/replace/reorder reference assets, cancel a draft and replan, reconnect before confirmation, and compare the resulting MCP contract preview with the equivalent UI semantic action.
 - Capture screenshots at connection, one confirmation, waiting/reconnect and `submission_unknown` reconciliation.
-- Record visible click count, provider calls, spend calls, receipt count, challenge count and submit count.
+- Record visible click count, provider calls, spend calls, receipt count, challenge count, submit count, contract hash, preview cost, Asset count and any UI/MCP semantic difference.
 - Do not enter real provider/P3 spend until both journeys satisfy the invariants in the design spec.
 
 ## Acceptance gates
@@ -96,7 +97,8 @@ Deferred:
 4. Failure safety: reject/cancel/timeout/foreign/stale/deep-link replay produce no spend/provider/materialization side effect.
 5. Recovery safety: `submission_unknown` offers reconcile only; raw boolean/transport proof cannot mint authority.
 6. Simplicity: a real user can complete the happy path without reading protocol docs or entering internal IDs.
-7. Documentation and code remain single-owner: no second authorization store, client-specific fork, or mandatory GUI step for attested clients.
+7. Editability parity: before sealing, model/provider/mode/parameters/reference assets can be changed with the same semantic result as the UI; after sealing, changes create a new draft instead of mutating the approved contract.
+8. Documentation and code remain single-owner: no second authorization store, client-specific fork, or mandatory GUI step for registered clients.
 
 ## Current implementation checkpoint (2026-08-23)
 

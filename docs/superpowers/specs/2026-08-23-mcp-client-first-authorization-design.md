@@ -68,6 +68,14 @@
 - 新项目/新项目代际、lease 过期或撤销、scope 扩大、模型/账户/价格/成本上限变化、新的 generation contract：重新确认一次；
 - `artifact_adopt`、导出发布等后置高影响动作：使用各自的后置 gate，不偷借 generation receipt。
 
+### 2.4 MCP 也必须像真实界面一样可编辑
+
+MCP 不是只能提交一份固定表单的“窄入口”。在生成合同封存前，用户应能通过当前客户端反复调整与 UI 同一语义层的内容：模型/provider、生成模式、提示词、参考素材的添加/替换/删除/排序、画幅、时长、质量和其他当前模块声明支持的参数。每次调整都重新计算能力、成本、预览和候选合同；调整过程不产生 provider call、扣费、Asset 或真人确认。
+
+“像 UI 一样可编辑”指语义能力和边界一致，不要求 Claude/Codex/Cursor 复制 Nomi 的控件外观。UI 能做的动作，只要当前模块/模型能力允许，就必须有一个等价的 MCP 语义操作；能力不允许时要明确返回 `unsupported_capability`/`new_draft_required`，不能静默丢字段、偷偷降级或把旧值继续沿用。
+
+一旦真人 challenge 发出、合同封存或 provider 已提交，模型、provider、模式、输入素材、成本、幂等键和 providerTaskId 都不可原地修改。用户要改这些内容时，系统应保留当前 Run 的事实，创建新的候选/草稿并重新预览、确认；已提交的任务只能查询、取消或对账。
+
 ## 3. 信任边界与兼容策略
 
 ### 3.1 主进程仍是唯一 authority
@@ -102,13 +110,15 @@
 - 不因客户端不支持 elicitation 而报“请看文档”，而是给可点击的 Nomi handoff；
 - 不因安全校验而让用户输入 handle、路径、projectId、hash 或成本数字；
 - 用户确认文本来自主进程重新解析的当前状态，host 提供的摘要只能作为不可信候选；
+- 封存前模型、provider、模式、参数和参考素材可自由调整，且每次调整都可在预览中解释；封存后不允许原地改写；
+- MCP 语义操作与 GUI 操作共享同一能力声明、合同编译器和错误边界，不为某个客户端复制一套特殊流程；
 - 连接、授权、生成审批的文案各自只有一个心智：连接软件、允许本次生成、查看/撤销授权。
 
 ## 5. 交付顺序
 
 1. **方案先行**：本设计、聚焦 UX 审计、两份 canonical plan 和 backlog 同步；没有第二套路线。用户已确认 A：标准 MCP 客户端确认优先，Nomi 仅兜底。
 2. **P0 seam**：实现 bootstrap resolver/client registry；只读 lease 静默建立；组合 challenge 原子升级 generation scope + receipt；GUI/client 两条回答面共用一个 challenge。
-3. **零额度验证**：fake client/fake provider 验证一次确认、无二次确认、重连复用、项目变化再问、unknown 只对账。
+3. **零额度验证**：fake client/fake provider 验证一次确认、无二次确认、重连复用、项目变化再问、unknown 只对账；同一用户意图在 MCP 中替换模型/provider、替换/删除/排序参考素材、切换模式和修改参数时，合同预览与 UI 语义保持一致。
 4. **真实 host 走查**：至少覆盖已登记客户端、只支持 elicitation 的客户端、无 elicitation 的客户端；记录截图和用户动作数。
 5. **再进入 provider/P3**：所有 UX 不变量和安全对抗证据通过后，才接真实 adapter/付费路径。
 
@@ -120,5 +130,6 @@
 2. “客户端不支持时，Nomi 是否自动给我一个明确的确认入口，而不是让我自己找设置？”
 3. “我是否不用理解 lease、receipt、handle、contractHash 这些词？”
 4. “同一任务重连或查看进度时，是否没有被反复打断？”
+5. “我能否像在 Nomi 界面里一样，在真正确认前自由调整模型、模式、参数和参考素材？”
 
 只要答案有一项是否定，优先改体验入口或下一步提示，不通过增加说明文字来掩盖流程复杂度。
