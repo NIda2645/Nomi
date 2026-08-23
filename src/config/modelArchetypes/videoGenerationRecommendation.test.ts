@@ -158,6 +158,36 @@ describe("APIMart video recommendation", () => {
     expect(result.recommendations).not.toHaveLength(0);
   });
 
+  it("allows a newer model profile to accept audio-only references when its facts allow it", () => {
+    const result = recommendVideoGeneration(
+      {
+        prompt: "让音乐驱动画面节奏",
+        references: [{ kind: "audio", role: "audio" }],
+        goals: { useReferenceAudio: true },
+      },
+      [seedance25],
+    );
+
+    expect(result.recommendations).not.toHaveLength(0);
+    expect(result.recommendations[0]?.modelKey).toBe("doubao-seedance-2.5");
+  });
+
+  it("re-evaluates the same input against a switched provider/model profile", () => {
+    const switchedProvider: VideoModelCandidate = {
+      provider: "other-provider",
+      modelKey: "other-video-model",
+      label: "Other video model",
+      archetype: SEEDANCE_2_5_APIMART_ARCHETYPE,
+    };
+    const result = recommendVideoGeneration(
+      { prompt: "持续 20 秒的长镜头", goals: { durationSeconds: 20 } },
+      [seedance20, switchedProvider],
+    );
+
+    expect(result.recommendations[0]?.provider).toBe("other-provider");
+    expect(result.recommendations[0]?.modelKey).toBe("other-video-model");
+  });
+
   it("returns a generic unsupported-input action when all candidates reject the reference combination", () => {
     const result = recommendVideoGeneration({ references: [{ kind: "audio", role: "audio" }] }, [seedance20]);
 
