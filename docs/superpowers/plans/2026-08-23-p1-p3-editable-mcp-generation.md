@@ -340,7 +340,7 @@ git commit -m "feat: add durable single-shot runtime submission and recovery"
 - Create: `docs/audit/2026-08-23-p1-p3-evidence.md`
 - Reference: `docs/superpowers/specs/2026-08-23-mcp-client-first-authorization-design.md`
 
-- [ ] **Step 1: 写可执行的真实用户任务矩阵**
+- [x] **Step 1: 写可执行的真实用户任务矩阵**
 
 旅程必须按用户任务而非 API 列表编写：
 
@@ -351,20 +351,20 @@ git commit -m "feat: add durable single-shot runtime submission and recovery"
 5. 生成中看到文字+图标进度，可取消；断线/重启后看到明确的继续核账或重试（仅 definitely_not_submitted），不出现重复扣费。
 6. provider unknown 时，界面直接说明“已提交但回执丢失，需要核账”，只有一个下一步；不要求用户猜内部状态名。
 
-已先实现并通过可验证 attestation 的一次确认旅程与 JSON-RPC 可变输入矩阵（`mcpSemanticGenerationConfirmation.test.ts`、`nomiMcpGenerationPlanning.test.ts`）；GUI fallback 的真实入口、人眼截图和断线恢复仍需补齐。
+已实现并通过可验证 attestation 的一次确认旅程与 JSON-RPC 可变输入矩阵（`mcpSemanticGenerationConfirmation.test.ts`、`nomiMcpGenerationPlanning.test.ts`）。共享确认链的真实 Electron 入口也已走查通过（`tests/ux/spend-elicit-app-open.walk.mjs`，22 assertions；截图已写入 evidence）；`generation.single-shot` 精确 challenge 的 GUI fallback、断线恢复和 unknown/reconcile 仍需补齐。
 
-- [ ] **Step 2: 实现并运行旅程**
+- [x] **Step 2: 实现并运行旅程（已完成零额度子集）**
 
 ```bash
 pnpm exec vitest run electron/capabilityCore/nomiMcpGenerationPlanning.test.ts electron/capabilityCore/mcpSemanticGenerationConfirmation.test.ts electron/capabilityCore/moduleCatalogBootstrap.test.ts --reporter=dot
 pnpm run test:e2e -- tests/ux/mcp-generation-single-shot.e2e.mjs tests/ux/mcp-generation-editability.e2e.mjs
 ```
 
-Expected: standard-client one-click、GUI fallback one-click、editability matrix、reconnect/restart 全 PASS；截图来自真实 Electron 入口，不使用静态 mock 页面。
+已通过：standard-client one-click、共享确认链 GUI fallback、editability matrix；均为零额度。`generation.single-shot` 精确 challenge 的 GUI fallback、reconnect/restart/unknown/reconcile 仍是下一段实现，不把 legacy 走查冒充 semantic 全链路。
 
-- [ ] **Step 3: 做人眼 UX 对账**
+- [x] **Step 3: 做人眼 UX 对账（共享确认链）**
 
-逐项检查：主操作只有一个且目标足够大；文案短、无内部术语；状态不依赖颜色；进行中有反馈；错误说明发生了什么和下一步；返回/取消不会丢草稿；模型/供应商/模式/参数/素材编辑入口与真实 UI 习惯一致。截图写入 evidence，并记录每个失败任务的修复 commit。
+共享确认链已逐项检查：主操作只有一个且目标足够大；摘要使用项目/模型/产物等用户语言；客户端确认时 Nomi 不重复弹卡；GUI fallback 卡片有明确“忽略/确认生成”；真实截图已写入 evidence。semantic 精确 challenge 与恢复态的人眼对账待下一段。
 
 - [ ] **Step 4: 提交 P3 零额度证据**
 
