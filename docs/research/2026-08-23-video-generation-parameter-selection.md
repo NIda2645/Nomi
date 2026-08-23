@@ -3,6 +3,10 @@
 > 状态：研究完成，未接入真实付费生成。
 > 研究问题：用户只说“我要一个这样的镜头”时，Nomi 什么时候该选什么模式、模型和参数，怎样保持供应商通用，同时不把复杂度转嫁给用户？
 
+> 重要修正（Seedance-first）：前一版把行业里存在的 camera-control/trajectory 说法写成了通用模式，这是规格错误。
+> Seedance 的真实模式必须以当前渠道的官方接入文档为准；用户的“环绕/推近/跟拍”是创作意图，不等于 Seedance 有一个可选的轨迹控制 API。
+> 本版把 APIMart 的真实档案放在推荐链路中心，其他模型只作为对照，不能反向改写 Seedance 的模式或参数。
+
 ## 结论先说
 
 真正决定质量的不是“把参数调大”，而是先判断这条镜头要解决哪一种控制问题：
@@ -48,7 +52,7 @@
 |---|---|---|
 | 故事分镜做视频 | 把角色板、场景图、分镜和提示词连成可执行镜头 | 需要 storyboard/asset/shot 的输入模式，而不是一个大 prompt |
 | 15 秒长视频怎么写 | 时长、事件数量和提示词复杂度互相冲突 | 先拆镜头或选 multi-shot，不能把更多动作继续塞进单镜头 |
-| 一镜到底、首尾帧、穿越机 | 需要明确的起点、终点或相机路径 | 优先 first/last-frame、keyframe 或 camera-control 模式 |
+| 一镜到底、首尾帧、复杂运镜 | 需要明确的起点、终点或镜头语言 | 有端点才选 first/last；相机运动在 Seedance 里写进 prompt 或使用参考视频，不虚构 trajectory mode |
 | 角色站桩、画面平、打戏没力道 | 主体动作、受力、节奏和相机运动没有分开 | 先区分 subject motion / camera motion / motion intensity |
 | 场景没质感 | 场景、空间层次、光影和风格没有被表达 | 不一定换模型；先补 scene/lighting/style 语义 |
 | 多人多机位 | 人物关系、机位切换和跨镜一致性同时存在 | 需要按 shot 维护实体记忆和镜头级参数 |
@@ -67,7 +71,56 @@
 
 这说明 Nomi 的最佳 UX 不是把所有参数同时打开，而是让用户先看到“试跑一次”，然后在失败位置上改一个最有可能有效的变量。
 
-## 2. 官方产品如何划分模式和参数
+## 2. APIMart 真实模型档案：推荐的事实底座
+
+这张表不是新的公共 UI；它是 Nomi 已有 `ModelArchetype` 和 APIMart mapping 的审计结果。推荐器先读这张能力事实，
+再决定用户应该看到什么。字段名、数量上限和模式互斥必须跟档案/官方文档一起变更，不能从 Seedance 推给其他模型。
+
+| APIMart 模型 | 实际可用模式/参考输入 | 关键参数（以当前档案为准） | 推荐时的判断 |
+|---|---|---|---|
+| Seedance 2.0（标准/Fast/Mini） | `t2v`；`i2v` 单/多图；`firstlast`；`omni` 图/视频/音频参考 | `size`、`resolution`、`duration 4–15`、`seed`、`generate_audio`；标准与 Fast/Mini 的分辨率不同；`image_urls` 与 `image_with_roles` 互斥，音频需图或视频 | 有角色图 → `omni`；有首尾两图 → `firstlast`；只有一张起始图 → `i2v`；无素材 → `t2v` |
+| Seedance 2.5 | `t2v`、首帧、首尾帧、`omni` 图/视频/音频参考 | `size`、`resolution 480/720p`、`duration 4–30`、`generate_audio`、`return_last_frame`、`seed`；首帧/首尾帧 `size` 必须 `adaptive`；参考上限图/视频/音频 30/10/10 | 先按素材角色选模式；首尾帧不能让用户自由选比例，UI 直接说明“跟随输入图” |
+| MiniMax H3 | `t2v`、首帧、首尾帧、多模态参考 | `aspect_ratio`、`resolution 2K/768P`、`duration 4–15`、`watermark`、`webhook`；参考图/视频/音频槽各有上限，音频不能单独输入 | 角色/场景参考 → `ref`；首尾端点明确 → `firstlast`；没有素材 → `t2v` |
+| Veo 3.1 | `t2v`、参考图、首尾帧 | `aspect_ratio`、`resolution`；时长固定 8 秒；参考图和首尾帧通过不同 `generation_type` 表达 | 不是 Seedance 的模式模板；只能按 Veo 自己的 `reference/frame` 选择 |
+| Sora 2 | `t2v`、单图 `i2v` | `aspect_ratio`、`resolution`、离散时长 4/8/12/16/20；Pro 变体扩大分辨率 | 只给一张图时可推荐 `i2v`，不能推荐首尾帧/全能参考 |
+| Kling 3.0 / Turbo | 文生、图生；Turbo 只有单张首帧 | Kling 3.0 用 `mode`、`duration`、`aspect_ratio`、`audio`；Turbo 用 `resolution`，图生比例跟图 | 同名模型也不能共用参数；Turbo 不显示尾帧控件 |
+| Wan 2.7 | `t2v`、图生首/尾帧、角色参考（图+视频） | `size`、`resolution 720P/1080P`、`duration 2–15`、负向提示/种子；参考视频时长和图+视频总数有限制 | 角色一致性/动作参考 → `ref`；首尾图 → `i2v`；比例由参考帧决定时不显示比例 |
+| Hailuo 2.3 | `t2v`、单张首帧 | 无比例字段；`resolution 768p/1080p`；时长仅 6/10 秒；Fast 适合首帧图 | 不要把 Hailuo 的时长控件当成通用连续数字 |
+| Vidu Q3 | 只有参考生视频，1–7 张参考图 | `duration 3–16`（Mix 可到 1 秒）、`resolution`、`aspect_ratio`、`seed` | 用户没有参考图时不推荐它，直接给出需要参考素材的提示 |
+| Grok Imagine 1.5 | `t2v`、最多 7 张图生 | `quality 480/720p`、`duration 6–30`、文生有 `size`，图生比例跟图 | 图生时不展示比例控件 |
+| Omni-Flash-Ext | 文生、1 或 3 张参考图 | `size`、`resolution`、离散时长 4/6/8/10；2 张图不支持；当前接入未启用参考视频 | 需要参考图时先校验数量，不能把 2 张自动塞进去 |
+| MiniMax H3 再生成 | 仅从已有 H3 768P 成片任务再生成 | `source_task_id` | 不是普通新建视频模型，不进入首轮模型推荐 |
+
+当前 APIMart 传输入口和字段映射集中在 [`electron/catalog/apimartVideos.ts`](../../electron/catalog/apimartVideos.ts)，
+模式、参考槽和参数档案集中在 [`src/config/modelArchetypes`](../../src/config/modelArchetypes)。这两层已经证明了一个关键事实：
+同一“用户意图”可以通用，但请求字段不通用。例如 Seedance 用 `size`，MiniMax H3 用 `aspect_ratio`；Seedance 首尾帧用
+`image_with_roles`，Veo 首尾帧用有序 `image_urls` + `generation_type`，Hailuo 首帧是单独的 `first_frame_image`。
+
+本轮对账使用的入口文档包括：[APIMart Seedance 2.0](https://docs.apimart.ai/cn/api-reference/videos/doubao-seedance-2-0/generation)、
+[KIE Seedance 2.0（用于对照字段差异）](https://docs.kie.ai/market/bytedance/seedance-2)、以及[火山方舟视频生成 API](https://api.volcengine.com/api-docs/view?action=CreateContentsGenerationsTasks&serviceCode=ark&version=2024-01-01)。
+APIMart 的 2.5 档案也有独立文档入口，当前 Nomi 已把 `size=adaptive` 等硬约束压进模式档案，而不是让用户误选。
+
+### APIMart 推荐的选择顺序
+
+```text
+先看用户有没有素材，以及素材扮演什么角色
+  首帧 + 尾帧          → 当前模型有 firstlast 才推荐 firstlast
+  角色/场景参考图      → 当前模型有 character/ref/omni 才推荐对应模式
+  参考视频或音频       → 当前模型声明 video_ref/audio_ref 且依赖满足才推荐
+  只有一张起始图        → 当前模型的 single/i2v
+  没有参考素材          → t2v
+
+再看模型真实参数
+  只发当前 mode 的参数；fixedParams 不做假控件；互斥字段不同时发
+  用户目标时长/比例/清晰度能落入当前枚举才采用，否则选最近合法值并说明
+  当前模型没有这个参数 → 不伪造、不静默换模型，给“近似/不支持”说明
+```
+
+对用户价值来说，这意味着“有角色参考图时优先图生/参考”不是一条写死的 Seedance 特例，而是一个可解释的推荐原则：
+参考图已经把主体外观框住，模型只需解决运动和镜头；纯文生则需要同时猜主体、构图和动作，身份稳定性通常更差。
+但最终落到哪个模式，仍由当前 APIMart 模型的真实档案决定。
+
+## 3. 官方产品如何划分模式和参数
 
 | 产品/官方能力 | 模式或控制 | 约束/差异 | 对 Nomi 的启示 |
 |---|---|---|---|
@@ -78,7 +131,7 @@
 | MiniMax Hailuo | 文生、图生、首尾帧、多模态参考（图/视频/音频） | 通过 `content[]` 和 `role` 区分 first/last/reference；duration、resolution 随模型变化 | “参考素材是什么角色”比“上传了几张图”更重要；Nomi 需要保留素材角色，不只保留 URL 列表。见[视频生成指南](https://platform.minimaxi.com/docs/guides/video-generation) |
 | Luma Ray | 文生、图生、keyframes、loop；相机运动用语言/概念 | 官方提供 camera motion 列表，但仍以自然语言控制，且相似说法可能有偏差 | 相机运动应是语义能力，可映射到供应商词表；不能承诺精确轨迹，必须在 UI 标注“可控程度”。见[Luma Video Generation](https://docs.lumalabs.ai/ue/docs/video-generation) |
 
-补充一个容易被忽略的事实：Runway 的 API 变更日志已经出现同一 provider 下不同模型拥有不同的比例、时长、音频和 reference 规则。这证明“provider 级别的 if/else”也不够，能力声明必须落到 `provider + model + mode`。
+补充一个容易被忽略的事实：Runway 的 API 变更日志已经出现同一 provider 下不同模型拥有不同的比例、时长、音频和 reference 规则。这证明“provider 级别的 if/else”也不够，能力声明必须落到 `provider + channel + model + variant + mode`。
 
 ## 3. 论文与开源实现告诉我们的边界
 
@@ -120,7 +173,7 @@ qualityPriority: explore | balanced | final
 
 ### 4.2 `ModelCapabilityProfile`
 
-每个 `provider + model` 声明：
+每个 `provider + channel + model + variant + mode` 声明：
 
 - 支持哪些模式：T2V、I2V、first/last、video-to-video、extension、multi-shot；
 - 每个模式支持哪些输入角色和最大数量；
@@ -137,11 +190,13 @@ qualityPriority: explore | balanced | final
 ```text
 先看用户要保持什么，再看用户要改变什么。
 
-有明确首帧且要锁主体/场景       → 优先 I2V
-有明确起点和终点                 → 优先 first/last
-有动作/姿态/相机参考视频或路径    → 优先 control/reference-video
-要跨多个镜头保持实体             → multi-shot 或逐镜生成 + entity memory
-没有参考、只想探索风格和动作      → T2V
+先看当前 provider/channel/model/variant 实际声明了哪些模式
+有明确首帧且要锁主体/场景       → 在当前档案支持时选 single/I2V
+有明确起点和终点                 → 在当前档案支持时选 firstlast
+有角色/场景参考图                → 在当前档案支持时选 character/ref/omni
+有参考视频或音频                  → 只有对应 slot 存在且依赖满足才选参考模式
+有相机环绕/推近等意图             → 写入 prompt；有 video_ref 时才可用参考视频近似，不生成 trajectory mode
+没有参考、只想探索风格和动作      → 在当前档案支持时选 T2V
 
 模式确定后：
   只暴露该模式真正有影响的参数；
@@ -155,8 +210,8 @@ qualityPriority: explore | balanced | final
 | 用户目标 | 首选模式 | 系统先选的参数/输入 | 为什么 | 用户可见的取舍 |
 |---|---|---|---|---|
 | 角色脸和服装必须稳定，只想让她转身 | I2V + character reference | 锁参考图；prompt 只写动作；低到中运动强度；短镜头 | 画面已经确定，减少模型重画主体 | 稳定性更高，但自由构图更少 |
-| 手机广告从背面变成正面 | first/last 或 keyframe | 首帧、尾帧、过渡动作、4–8 秒范围 | 起点和终点都重要，不能只靠长 prompt | 过渡更可控，但两帧冲突会增加失败率 |
-| 航拍穿越/环绕 | camera-control / camera concept | 相机轨迹/语义、主体动作分开；避免同时堆多个复杂动作 | 主要问题是相机路径，不是画面风格 | 相机更听话，但部分模型只能近似执行 |
+| 手机广告从背面变成正面 | 当前模型支持的 firstlast/首尾帧模式 | 首帧、尾帧、过渡动作和当前模型允许的时长 | 起点和终点都重要，不能只靠长 prompt | 过渡更可控，但两帧冲突会增加失败率 |
+| 航拍穿越/环绕 | 当前模型的 prompt camera language 或参考视频能力 | 相机意图和主体动作分开；只有档案声明 video_ref 时才使用参考视频 | Seedance 没有独立轨迹模式，不能把路径控件伪装成原生能力 |
 | 打戏有力道 | I2V 或 motion/reference-video | 对抗关系、受力、动作节奏、主体动作；必要时姿态/动作参考 | “打得激烈”太抽象，必须转成物理动作 | 动作更清楚，但需要更具体的输入 |
 | 一条分钟级短剧 | multi-shot 或逐镜生成 | 先拆 shot；每镜独立时长/运动；实体记忆；最后剪辑 | 单镜模型不擅长同时承载多个场景变化 | 可控性高，但流程多一步 |
 | 先快速找感觉 | fast/draft、720p、短时长、少参考 | 固定意图，降低清晰度/时长/候选数 | 先验证构图和动作，不浪费最终预算 | 预览质量低，不代表最终质量 |
@@ -166,11 +221,11 @@ qualityPriority: explore | balanced | final
 
 ## 5. 供应商缺能力时，用户仍然能用
 
-不能因为某供应商没有 native camera control、first/last、query 或 idempotency，就把整个能力从 Nomi 删除。应把能力分为三档：
+不能因为某供应商没有独立相机路径、first/last、query 或 idempotency，就把整个能力从 Nomi 删除。应把能力分为三档：
 
 | 能力状态 | 系统行为 | 用户看到什么 |
 |---|---|---|
-| `native` | 直接映射到官方字段 | “相机轨迹：已由模型原生支持” |
+| `native` | 直接映射到官方字段或官方模式 | “首尾帧：当前模型原生支持” |
 | `translated` | 转成 prompt/参考素材/分镜拆分等最接近方案 | “该模型没有独立运镜控制，已用镜头描述近似；可控性较低” |
 | `unsupported` | 不伪装，不静默换模型；保留其他能力 | “此模型无法保证首尾帧过渡。可改用首帧模式，或换一个支持该能力的模型” |
 
@@ -216,10 +271,10 @@ qualityPriority: explore | balanced | final
 
 用 fake providers 覆盖同一意图在不同能力组合下的映射：
 
-1. 三种输入：无参考、单参考、首尾帧/参考视频；
-2. 六种目标：角色稳定、场景稳定、相机路径、动作/打戏、首尾过渡、多镜头叙事；
-3. 三种 provider profile：全能力、只有基础 T2V/I2V、只有 prompt 近似；
-4. 每个场景切换模型、供应商、模式、素材顺序和参数，断言合同预览语义保持一致；
+1. APIMart Seedance 2.0/2.5：无参考、角色参考图、首尾帧、参考视频、参考音频；
+2. APIMart 其他档案：只有参考生（Vidu Q3）、只有单首帧（Hailuo/Turbo）、离散时长（Sora/Omni-Flash-Ext）和不同字段名；
+3. 六种目标：角色稳定、场景稳定、相机语言、动作/打戏、首尾过渡、多镜头叙事；
+4. 每个场景切换模型、变体、模式、素材顺序和参数，断言合同预览语义保持一致；
 5. 断言确认前 provider/spend/materialization 都为 0，确认后最多一次提交；
 6. 断言 unsupported 不会静默改成另一模型，unknown 不会盲目重提。
 
@@ -229,9 +284,9 @@ qualityPriority: explore | balanced | final
 
 - J1：一句话生成角色走位镜头；
 - J2：替换角色参考图后重新预览；
-- J3：同一镜头在文生/图生/首尾帧之间切换；
+- J3：同一镜头在 APIMart Seedance 的文生/图生/首尾帧/全能参考之间切换；
 - J4：自由替换模型、供应商、画幅、时长和一个高级参数；
-- J5：供应商缺少相机控制、首尾帧或查询能力时完成生成/恢复。
+- J5：供应商缺少独立相机路径、首尾帧或查询能力时完成生成/恢复，并看到诚实的降级说明。
 
 每条任务按“意图保持、角色一致、主体动作、相机执行、时序、空间关系、音画同步、失败解释、编辑自由度”分项记录，不能用一个总分掩盖具体失败。
 
@@ -255,13 +310,11 @@ qualityPriority: explore | balanced | final
 
 ## 9. 当前决定与下一个决策点
 
-本轮无需用户决定的部分：通用意图层、能力 profile、模式优先级、缺能力降级、零额度测试矩阵，均是对现有 P4 和已确认 MCP 方案的具体化。
+本轮无需用户决定的部分：保持 P0 生产边界、使用现有 APIMart 档案、做纯推荐器和零额度合同测试，均是对既定 Nomi 方案的继续推进。
 
-真正需要用户决定的是下一步产品范围：
+下一步的唯一产品决策点是：**第一轮真实质量 A/B 是否锁定 APIMart 的 Seedance 2.0/2.5，还是同时纳入 APIMart 其他视频模型？**
 
-> **先实现“通用选择器 + 真实用户任务测试”，还是先接一个真实 provider 做质量 A/B？**
-
-我的推荐是先做通用选择器和零额度任务闭环，再接 provider：否则很容易把第一个供应商的参数误写成 Nomi 的公共模型，后面换模型时用户体验会崩。
+我的推荐是先锁定 Seedance 2.0/2.5：它们是当前 Nomi 的核心能力，且模式最能覆盖角色参考、首尾帧和全能参考；其他 APIMart 模型继续进入能力矩阵和推荐候选，但不把首轮质量验证摊得过宽。无论选择哪一项，推荐器都只从该模型真实档案生成参数，不会把 Seedance 的字段复制给其他模型。
 
 ## 来源与限制
 
