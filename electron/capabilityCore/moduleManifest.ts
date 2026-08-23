@@ -1,9 +1,11 @@
 import { z } from "zod";
 
+const primitiveEnumValueSchema = z.union([z.string(), z.number().finite(), z.boolean()]);
+
 const parameterFieldSchema = z.object({
   type: z.enum(["string", "number", "integer", "boolean", "enum", "object", "array"]),
   required: z.boolean().optional(),
-  enum: z.array(z.string()).min(1).optional(),
+  enum: z.array(primitiveEnumValueSchema).min(1).optional(),
   description: z.string().optional(),
 }).strict();
 
@@ -66,4 +68,3 @@ export function parseModuleManifest(value: unknown): ModuleManifest {
     throw error;
   }
 }
-

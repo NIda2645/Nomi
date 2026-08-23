@@ -376,10 +376,15 @@ function videoCandidateForPlan(candidate: PlanCandidate, candidates: readonly Vi
 
 function parameterFieldForControl(control: ModelParameterControl): ParameterField {
   if (control.type === "select") {
-    const stringOptions = control.options.map((option) => option.value).filter((value): value is string => typeof value === "string");
-    return stringOptions.length === control.options.length && stringOptions.length > 0
-      ? { type: "enum", enum: stringOptions }
-      : { type: control.options.some((option) => typeof option.value === "number") ? "number" : "string" };
+    const optionValues = control.options.map((option) => option.value);
+    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "string")) return { type: "enum", enum: optionValues };
+    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "number" && Number.isFinite(value))) {
+      return { type: "number", enum: optionValues };
+    }
+    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "boolean")) {
+      return { type: "boolean", enum: optionValues };
+    }
+    return { type: control.options.some((option) => typeof option.value === "number") ? "number" : "string" };
   }
   if (control.type === "number") return { type: "number" };
   if (control.type === "boolean") return { type: "boolean" };

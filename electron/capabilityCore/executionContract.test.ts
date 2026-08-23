@@ -100,6 +100,33 @@ describe("ExecutionContract compiler", () => {
     }), registry)).toThrow(ContractCompilationError);
   });
 
+  it("keeps discrete numeric choices discrete instead of accepting arbitrary numbers", () => {
+    const constrainedRegistry = createModuleRegistry([{
+      ...manifest,
+      providers: [{
+        providerId: "provider.video",
+        models: [{
+          modelId: "model.video.v1",
+          modes: ["text-to-video"],
+          parameterSchema: { duration: { type: "number", enum: [6, 10], required: true } },
+          capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true },
+        }],
+      }],
+    }]);
+    expect(compileExecutionContract(candidate({
+      providerId: "provider.video",
+      modelId: "model.video.v1",
+      mode: "text-to-video",
+      parameters: { aspectRatio: "16:9", duration: 6 },
+    }), constrainedRegistry).parameters.duration).toBe(6);
+    expect(() => compileExecutionContract(candidate({
+      providerId: "provider.video",
+      modelId: "model.video.v1",
+      mode: "text-to-video",
+      parameters: { aspectRatio: "16:9", duration: 7 },
+    }), constrainedRegistry)).toThrow(ContractCompilationError);
+  });
+
   it("allows edits before sealing and requires a new draft after sealing", () => {
     const draft = applyPlanCandidatePatch(candidate(), { parameters: { aspectRatio: "1:1", seed: 8 } });
     expect(draft.revision).toBe(2);

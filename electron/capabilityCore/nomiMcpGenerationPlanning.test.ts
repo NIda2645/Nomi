@@ -497,6 +497,9 @@ describe("MCP semantic generation planning journey", () => {
     ]));
     expect(hailuo.recommendation?.recommendations?.[0]?.params).not.toHaveProperty("aspect_ratio");
     expect(hailuo.contract).toMatchObject({ providerId: "apimart", modelId: "MiniMax-Hailuo-2.3", variantId: "standard", mode: "image_to_video" });
+    const hailuoContext = contextPayload.videoModels?.find((model) => model.modelId === "MiniMax-Hailuo-2.3");
+    const hailuoDuration = hailuoContext?.modes.find((mode) => mode.id === "i2v")?.parameters.find((parameter) => parameter.key === "duration");
+    expect(hailuoDuration?.options?.map((option) => option.value)).toEqual([6, 10]);
     expect(context.runTask).not.toHaveBeenCalled();
   });
 

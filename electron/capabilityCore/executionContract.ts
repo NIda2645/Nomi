@@ -110,7 +110,7 @@ function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { 
       warnings.push(`参数 ${key} 不被 ${module.providerId}/${module.modelId} 支持，已从合同中移除`);
       continue;
     }
-    if (!parameterMatches(field.type, value) || (field.enum && typeof value === "string" && !field.enum.includes(value))) {
+    if (!parameterMatches(field.type, value) || (field.enum && !field.enum.some((option) => Object.is(option, value)))) {
       droppedFields.push({ path: `parameters.${key}`, reason: "invalid_parameter" });
       throw new ContractCompilationError(`参数 parameters.${key} 不符合当前模型的声明`);
     }

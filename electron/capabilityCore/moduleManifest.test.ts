@@ -40,4 +40,17 @@ describe("moduleManifestSchema", () => {
     delete (malformed.providers[0].models[0] as { capabilities?: unknown }).capabilities;
     expect(() => parseModuleManifest(malformed)).toThrow(ModuleManifestValidationError);
   });
+
+  it("accepts primitive enum values for discrete numeric and boolean controls", () => {
+    const manifest = structuredClone(imageManifest);
+    manifest.parameterSchema = {
+      ...manifest.parameterSchema,
+      duration: { type: "number", enum: [6, 10] },
+      audio: { type: "boolean", enum: [true, false] },
+    };
+    expect(parseModuleManifest(manifest).parameterSchema).toMatchObject({
+      duration: { type: "number", enum: [6, 10] },
+      audio: { type: "boolean", enum: [true, false] },
+    });
+  });
 });
