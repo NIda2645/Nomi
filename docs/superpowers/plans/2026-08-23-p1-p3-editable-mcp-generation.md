@@ -39,7 +39,8 @@ P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都�
 - [x] P2 shared planning seam：semantic dispatcher 已有 MCP/GUI 共用 callback，未触碰 legacy provider path。
 - [x] P3 first seam：provider-neutral adapter、durable runtime envelope、unknown/reconcile-only recovery classifier、single-shot ordering tests。
 - [x] P2 semantic tool vocabulary + shared planning handler：MCP/GUI 共用 `context → operation → patch → preview`，目录只声明能力，handler 不调用 provider。
-- [ ] P3 default ProductionRun wiring、真实 MCP/UI journey、full gates 与决策包：正在推进。
+- [x] P3 first durable planning wiring：semantic operation 草稿已由 `ProductionRun` events/snapshot/CAS 持有；真实 MCP JSON-RPC create/edit/preview 零额度旅程已通过。
+- [ ] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与决策包：正在推进。
 
 ## 文件地图与唯一 owner
 
