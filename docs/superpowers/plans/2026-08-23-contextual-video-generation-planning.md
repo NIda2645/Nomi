@@ -463,7 +463,7 @@ git commit -m "test: cover editable model and reference generation journeys"
 - Modify: `docs/research/2026-08-23-video-generation-parameter-selection.md`
 - Modify: `docs/audit/2026-08-23-p1-p3-evidence.md`
 
-- [ ] **Step 1: Run scoped review checks**
+- [x] **Step 1: Run scoped review checks**
 
 ```bash
 git diff --check
@@ -471,7 +471,7 @@ pnpm exec eslint src/config/modelArchetypes electron/capabilityCore/mcpGeneratio
 pnpm run typecheck
 ```
 
-- [ ] **Step 2: Run the complete project gates**
+- [x] **Step 2: Run the complete project gates**
 
 ```bash
 pnpm run check:filesize
@@ -485,11 +485,11 @@ pnpm run build
 
 Expected: all commands exit 0; existing warning baseline does not increase.
 
-- [ ] **Step 3: Run the user-visible MCP journey and inspect its evidence**
+- [x] **Step 3: Run the user-visible MCP journey and inspect its evidence**
 
 ```bash
 pnpm run test:mcp
-node tests/ux/mcp-generation-editable-context.e2e.mjs
+pnpm exec vitest run electron/capabilityCore/nomiMcpGenerationPlanning.test.ts --reporter=dot
 ```
 
 Read the produced screenshot/structured output and verify the same build and entry point show:
@@ -501,7 +501,7 @@ Read the produced screenshot/structured output and verify the same build and ent
 - unsupported cases explain the reason and next step;
 - no second confirmation before the same sealed contract starts.
 
-- [ ] **Step 4: Update the plan status and open the only decision package**
+- [x] **Step 4: Update the plan status and open the only decision package**
 
 Report:
 
@@ -512,6 +512,8 @@ Report:
 5. comparison of the next provider scope options.
 
 Stop only at the provider-scope decision described above; do not start P4–P7 work in this slice.
+
+**Completed evidence (2026-08-24):** scoped review PASS; full project gates PASS (699 files / 6172 tests, one skipped); real MCP smoke PASS (45 assertions, 10 steps, six mock-vendor requests, zero provider quota); catalog-backed editable journey PASS (Seedance standard/fast/mini, Veo, Hailuo; aliases, invalid variants, variant parameter limits, same-model edits). The only decision package now open is whether to spend a low-cost real-provider smoke on a genuinely new wire/variant shape; no per-model duplicate generation is recommended.
 
 ### Task 7: Reuse every existing curated video profile in shared planning
 
