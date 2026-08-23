@@ -37,7 +37,8 @@ import { createProductionGenerationSubmission } from '../productionRun/productio
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
-import { VIDEO_MODEL_CANDIDATES, recommendVideoGeneration } from '../shared/videoCapabilities'
+import { readCatalog } from '../catalog/catalogStore'
+import { buildVideoModelCandidates, recommendVideoGeneration } from '../shared/videoCapabilities'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
@@ -184,12 +185,26 @@ export async function startCapabilityCore(
     const defaults = createDefaultAuthorities()
     const providerBootstrap = createGenerationProviderBootstrap()
     const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry(undefined, { readinessByProvider: providerBootstrap.readinessByProvider })
+    const videoModelCandidates = buildVideoModelCandidates(readCatalog().models
+      .filter((model) => model.enabled && model.kind === 'video')
+      .map((model) => ({
+        provider: model.vendorKey,
+        modelKey: model.modelKey,
+        label: model.labelZh,
+        parameterControls: model.onboarding?.fields?.map((field) => ({
+          key: field.key,
+          label: field.displayName,
+          type: field.type,
+          options: (field.options ?? []).map((option) => ({ value: option.value, label: option.label })),
+          ...(field.default === undefined ? {} : { defaultValue: field.default }),
+        })),
+      })))
     const generationService = getProductionRunService()
     const generationPlanning = authorities.generationPlanning
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
         operations: createProductionGenerationOperationStore(generationService),
-        videoModelCandidates: VIDEO_MODEL_CANDIDATES,
+        videoModelCandidates,
         recommendVideoGeneration,
         providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
         start: async (operation, lease) => {

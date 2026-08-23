@@ -62,6 +62,8 @@
 
 因此下面原先围绕 `cameraControl/nativeIntents` 的实现步骤不再执行；先完成新的 capability facts，再继续推荐器和 MCP wiring。2.5 APIMart 官方页面本轮抓取返回 404，未重新核验前保持 `unknown`，不扩大承诺。研究结论已写入 `docs/research/2026-08-24-video-capability-shared-layer.md`，并在当前分支删除了临时字段。
 
+共享 registry 的候选列表不再硬编码供应商模型名：Electron/stdio 从当前 catalog 构造视频候选；命中逐项对账档案才使用精确能力，未对账模型使用保守 unknown 档案。这样供应商缺少高级能力不会让基础能力被整体禁用，新增模型也不需要修改推荐器。
+
 ### Task 1: Replace provisional camera field with research-backed expression channels
 
 **Files:**
@@ -162,7 +164,7 @@ The shared module may contain types, source-backed capability facts, pure recomm
 
 - [x] **Step 3: Wire both default planning entry points to the shared registry**
 
-`startCapabilityCore` and `startMcpStdioServer` pass the same shared candidates and pure recommender into `createGenerationPlanningHandler`. Existing authority injection remains an explicit test seam, but production defaults must no longer omit recommendations.
+`startCapabilityCore` and `startMcpStdioServer` read the current catalog, resolve the same shared candidates and pure recommender, and pass them into `createGenerationPlanningHandler`. Existing authority injection remains an explicit test seam, but production defaults must no longer omit recommendations or assume a fixed provider model list.
 
 - [x] **Step 4: Run focused tests, typecheck, source gate and diff check**
 

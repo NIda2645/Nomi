@@ -3,7 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createModuleRegistry } from "./moduleRegistry";
 import { createGenerationPlanningHandler, createInMemoryGenerationOperationStore, MCP_GENERATION_TOOL_CATALOG } from "./mcpGenerationTools";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "../../src/config/modelArchetypes/seedance25Apimart";
-import { VIDEO_MODEL_CANDIDATES, recommendVideoGeneration } from "../shared/videoCapabilities";
+import { buildVideoModelCandidates, recommendVideoGeneration } from "../shared/videoCapabilities";
+
+const videoModelCandidates = buildVideoModelCandidates([
+  { provider: "apimart", modelKey: "doubao-seedance-2.0", label: "Seedance 2.0" },
+  { provider: "apimart", modelKey: "doubao-seedance-2.0-fast", label: "Seedance 2.0 Fast" },
+  { provider: "apimart", modelKey: "doubao-seedance-2.0-mini", label: "Seedance 2.0 Mini" },
+]);
 
 const registry = createModuleRegistry([{
   moduleId: "generation.single-shot",
@@ -200,7 +206,7 @@ describe("semantic MCP generation tools", () => {
     const handler = createGenerationPlanningHandler({
       registry: videoRegistry,
       operations,
-      videoModelCandidates: VIDEO_MODEL_CANDIDATES,
+      videoModelCandidates,
       recommendVideoGeneration,
       start,
       now: () => "2026-08-23T00:00:00.000Z",

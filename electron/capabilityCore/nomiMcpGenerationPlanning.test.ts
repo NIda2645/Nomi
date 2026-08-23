@@ -13,7 +13,13 @@ import { createProjectLeaseStore } from "./projectLeaseStore";
 import { createProductionGenerationOperationStore } from "../productionRun/productionGenerationOperationStore";
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
 import { createProductionRunService } from "../productionRun/productionRunService";
-import { VIDEO_MODEL_CANDIDATES, recommendVideoGeneration } from "../shared/videoCapabilities";
+import { buildVideoModelCandidates, recommendVideoGeneration } from "../shared/videoCapabilities";
+
+const videoModelCandidates = buildVideoModelCandidates([
+  { provider: "apimart", modelKey: "doubao-seedance-2.0", label: "Seedance 2.0" },
+  { provider: "apimart", modelKey: "doubao-seedance-2.0-fast", label: "Seedance 2.0 Fast" },
+  { provider: "apimart", modelKey: "doubao-seedance-2.0-mini", label: "Seedance 2.0 Mini" },
+]);
 
 const roots: string[] = [];
 const registry = createModuleRegistry([{
@@ -244,7 +250,7 @@ describe("MCP semantic generation planning journey", () => {
     const handler = createGenerationPlanningHandler({
       registry: videoEditableRegistry,
       operations,
-      videoModelCandidates: VIDEO_MODEL_CANDIDATES,
+      videoModelCandidates,
       recommendVideoGeneration,
       now: () => "2026-08-23T00:00:00.000Z",
     });
