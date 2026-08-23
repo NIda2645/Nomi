@@ -8,6 +8,17 @@
 
 **Tech Stack:** Electron main process, TypeScript, Zod, Vitest, existing ProductionRun repository/outbox/lock, existing APIMart catalog mappings, MCP JSON-RPC/GUI shared generation planning.
 
+## Execution record (2026-08-23)
+
+Tasks 1–7 are implemented on `codex/p0-runtime-foundation-20260822`:
+
+- `eba7dfbe`, `51e6e7c6`, `94fe4f85`, `b4f1b1cb`: capability profiles, degraded submit adapter, profile-aware planning, durable explicit new attempts.
+- `a13ede83`: APIMart observe-only adapter and default catalog/bootstrap wiring.
+- `3615758a`: shared recovery projection in MCP text, desktop notifications and MCP Apps widget.
+- `tests/ux/mcp-generation-provider-degradation.e2e.mjs`: 8-check, zero-credit matrix covering observe-only/submit-only providers and editable model/mode/parameters/references.
+
+Task 8 remains the final gate: full checks, same-build UX review, evidence update and isolated branch push.
+
 ---
 
 ## Scope and user-facing contract

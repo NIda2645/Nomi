@@ -1,7 +1,7 @@
 # Provider Capability Degradation Design
 
 日期：2026-08-23  
-状态：已获用户原则确认，进入实现前规格复核  
+状态：已获用户原则确认；核心链路已实现，进入全门与真实场景验收
 关联计划：`docs/superpowers/plans/2026-08-23-p1-p3-editable-mcp-generation.md`
 
 ## 1. 问题与用户价值
