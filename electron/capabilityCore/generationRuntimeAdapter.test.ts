@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createModuleRegistry } from "./moduleRegistry";
 import { compileExecutionContract, type ExecutionContractV1, type PlanCandidate } from "./executionContract";
 import {
+  assertGenerationProviderCapabilities,
   GenerationProviderCapabilityError,
   createGenerationRuntimeAdapter,
   resolveExecutionContract,
@@ -103,18 +104,43 @@ describe("GenerationRuntimeAdapter", () => {
     expect(videoSubmit).toHaveBeenCalledWith(expect.objectContaining({ endpointShape: "video" }), videoBinding.providerIdempotencyKey);
   });
 
-  it("fails closed before submit when a provider lacks native recovery capabilities", async () => {
+  it("keeps the full recovery assertion available for callers that explicitly require it", () => {
     const submit = vi.fn();
-    const adapter = createGenerationRuntimeAdapter({ providers: [{
+    const provider = {
       providerId: "provider.image",
       capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: true },
+      buildRequest: (input) => input,
+      submit,
+    };
+    expect(() => assertGenerationProviderCapabilities(provider)).toThrow(GenerationProviderCapabilityError);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("submits an observe-only provider without requiring native retry or cancel", async () => {
+    const submit = vi.fn(async () => ({ providerTaskId: "task-apimart-1" }));
+    const adapter = createGenerationRuntimeAdapter({ providers: [{
+      providerId: "provider.image",
+      capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
       buildRequest: (input) => input,
       submit,
     }] });
     const imageContract = contract("provider.image", "model.image.v1", "text-to-image", { aspectRatio: "1:1" });
     await expect(adapter.submit({ contract: imageContract, binding: bindingFor("provider.image", imageContract.contractHash) }))
-      .rejects.toThrow(GenerationProviderCapabilityError);
-    expect(submit).not.toHaveBeenCalled();
+      .resolves.toMatchObject({ providerTaskId: "task-apimart-1" });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits a submit-only provider without inventing recovery capabilities", async () => {
+    const submit = vi.fn(async () => ({ providerTaskId: "provider-reference-1" }));
+    const adapter = createGenerationRuntimeAdapter({ providers: [{
+      providerId: "provider.image",
+      capabilities: { submitIdempotency: false, query: false, reconcile: false, cancel: false },
+      buildRequest: (input) => input,
+      submit,
+    }] });
+    const imageContract = contract("provider.image", "model.image.v1", "text-to-image", { aspectRatio: "1:1" });
+    await expect(adapter.submit({ contract: imageContract, binding: bindingFor("provider.image", imageContract.contractHash) }))
+      .resolves.toMatchObject({ providerTaskId: "provider-reference-1" });
   });
 
   it("creates a provider-neutral request with the sealed contract hash and idempotency key", () => {

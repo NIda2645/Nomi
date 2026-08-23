@@ -1,5 +1,6 @@
 import type { ProductionExecutionBinding } from "../productionRun/productionExecutionBinding";
 import type { ExecutionContractV1 } from "./executionContract";
+import { assertGenerationProviderCanSubmit } from "./generationProviderCapabilities";
 
 export type ResolvedTaskRequestV1 = {
   moduleId: string;
@@ -27,6 +28,9 @@ export type GenerationProvider = {
   capabilities: GenerationProviderCapabilities;
   buildRequest: (input: ResolvedTaskRequestV1) => unknown;
   submit: (request: unknown, idempotencyKey: string) => Promise<{ providerTaskId: string; raw?: unknown }>;
+  query?: (providerTaskId: string) => Promise<{ status: string; raw?: unknown }>;
+  reconcile?: (input: { idempotencyKey: string; providerTaskId?: string }) => Promise<{ found: boolean; providerTaskId?: string; raw?: unknown }>;
+  cancel?: (providerTaskId: string) => Promise<{ status: "cancelled_remote" | "too_late" | "detached"; raw?: unknown }>;
 };
 
 export class GenerationProviderCapabilityError extends Error {
@@ -82,7 +86,7 @@ export function createGenerationRuntimeAdapter(deps: { providers: readonly Gener
     const request = resolveExecutionContract(input.contract, input.binding);
     const provider = providers.get(request.providerId);
     if (!provider) throw new GenerationProviderCapabilityError(request.providerId, ["registered_provider"]);
-    assertGenerationProviderCapabilities(provider);
+    assertGenerationProviderCanSubmit(provider);
     const providerRequest = provider.buildRequest(request);
     const result = await provider.submit(providerRequest, request.idempotencyKey);
     if (!result.providerTaskId.trim()) throw new Error("Provider returned an empty task id");
