@@ -9,7 +9,7 @@
  */
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import {
   HANDBOOK_TITLE,
   HANDBOOK_SUBTITLE,
@@ -18,9 +18,48 @@ import {
   HANDBOOK_INTENT_ROUTES,
   HANDBOOK_GOTCHAS,
 } from '../src/workbench/onboarding/handbookContent.ts'
+import { shared } from './marketing/content.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const OUT = resolve(__dirname, '../marketing/handbook.html')
+const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf8'))
+const handbookUrl = `${shared.siteUrl}${shared.handbookUrl}`
+const handbookDescription = `${HANDBOOK_SUBTITLE} 按照安装、模型接入、分镜、生成、时间线与导出顺序，快速完成 Nomi 的第一条 AI 视频。`
+const handbookImage = `${shared.siteUrl}/assets/social-preview-zh.jpg`
+const handbookJsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${shared.siteUrl}/#website`,
+      name: 'Nomi',
+      url: `${shared.siteUrl}/`,
+      inLanguage: ['zh-CN', 'en'],
+    },
+    {
+      '@type': 'WebPage',
+      '@id': handbookUrl,
+      url: handbookUrl,
+      name: HANDBOOK_TITLE,
+      description: handbookDescription,
+      inLanguage: 'zh-CN',
+      isPartOf: { '@id': `${shared.siteUrl}/#website` },
+      about: { '@id': `${shared.siteUrl}/#application` },
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${shared.siteUrl}/#application`,
+      name: 'Nomi',
+      applicationCategory: 'MultimediaApplication',
+      operatingSystem: 'macOS, Windows',
+      codeRepository: shared.repositoryUrl,
+      license: shared.licenseUrl,
+      softwareVersion: packageJson.version,
+      url: `${shared.siteUrl}/`,
+      downloadUrl: shared.releaseUrl,
+    },
+  ],
+}).replaceAll('<', '\\u003c')
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const icon = (key) => `<i class="ti ti-${esc(key)}" aria-hidden="true"></i>`
@@ -50,7 +89,28 @@ const html = `<!DOCTYPE html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(HANDBOOK_TITLE)}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
+<meta name="description" content="${esc(handbookDescription)}" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#faf9f6" />
+<link rel="canonical" href="${esc(handbookUrl)}" />
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Nomi" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:title" content="${esc(HANDBOOK_TITLE)}" />
+<meta property="og:description" content="${esc(handbookDescription)}" />
+<meta property="og:url" content="${esc(handbookUrl)}" />
+<meta property="og:image" content="${esc(handbookImage)}" />
+<meta property="og:image:alt" content="${esc(HANDBOOK_TITLE)}" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${esc(HANDBOOK_TITLE)}" />
+<meta name="twitter:description" content="${esc(handbookDescription)}" />
+<meta name="twitter:image" content="${esc(handbookImage)}" />
+<meta name="twitter:image:alt" content="${esc(HANDBOOK_TITLE)}" />
+<script type="application/ld+json">${handbookJsonLd}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<!-- Icon font loads non-render-blocking so a slow or blocked jsdelivr cannot blank first paint. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" media="print" onload="this.media='all'" />
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" /></noscript>
 <style>
   :root{--bg:#faf9f6;--paper:#fff;--ink:#1c1b19;--ink80:#3d3c39;--ink60:#6a6862;--ink40:#9b9990;--line:#e6e3db;--soft:#f1efe8;--accent:#534ab7;--accent-soft:#eeedfe}
   @media (prefers-color-scheme: dark){:root{--bg:#161513;--paper:#1f1e1b;--ink:#f3f1ea;--ink80:#d6d3ca;--ink60:#a3a199;--ink40:#76746d;--line:#33312c;--soft:#26241f;--accent:#afa9ec;--accent-soft:#26215c}}
@@ -119,5 +179,14 @@ const html = `<!DOCTYPE html>
 </html>
 `
 
-writeFileSync(OUT, html, 'utf8')
-console.log(`[handbook] 已生成 ${OUT}`)
+if (process.argv.includes('--check')) {
+  if (!existsSync(OUT) || readFileSync(OUT, 'utf8') !== html) {
+    console.error(`[handbook] 输出过期：${OUT}`)
+    process.exitCode = 1
+  } else {
+    console.log('[handbook] CHECK PASS')
+  }
+} else {
+  writeFileSync(OUT, html, 'utf8')
+  console.log(`[handbook] 已生成 ${OUT}`)
+}
