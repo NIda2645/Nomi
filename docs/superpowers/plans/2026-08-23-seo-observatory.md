@@ -149,7 +149,7 @@
 
   Dispatch a reviewer against the branch diff, resolve all P0–P2 findings, and rerun affected tests.
 
-- [ ] **Step 4: Commit and push the task branch**
+- [x] **Step 4: Commit and push the task branch**
 
   Commit only scoped changes as `feat(seo): add metadata contract and observatory`, push `codex/seo-observatory` to origin, and do not push or merge `main`.
 
