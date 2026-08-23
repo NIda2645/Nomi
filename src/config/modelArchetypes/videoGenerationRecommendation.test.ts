@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "./seedance25Apimart";
 import { recommendVideoGeneration, type VideoModelCandidate } from "./videoGenerationRecommendation";
-import type { ArchetypeCameraControl, ModelArchetype } from "./types";
+import type { ArchetypeExpressionChannel, ModelArchetype } from "./types";
 
 const seedance20: VideoModelCandidate = {
   provider: "apimart",
@@ -19,15 +19,15 @@ const seedance25: VideoModelCandidate = {
   archetype: SEEDANCE_2_5_APIMART_ARCHETYPE,
 };
 
-const withModeCameraControl = (
+const withModeExpressionChannels = (
   candidate: VideoModelCandidate,
   modeId: string,
-  cameraControl: ArchetypeCameraControl,
+  expressionChannels: ArchetypeExpressionChannel[],
 ): VideoModelCandidate => ({
   ...candidate,
   archetype: {
     ...candidate.archetype,
-    modes: candidate.archetype.modes.map((mode) => mode.id === modeId ? { ...mode, cameraControl } : mode),
+    modes: candidate.archetype.modes.map((mode) => mode.id === modeId ? { ...mode, expressionChannels } : mode),
   } satisfies ModelArchetype,
 });
 
@@ -144,11 +144,47 @@ describe("APIMart video recommendation", () => {
     expect(result.nextAction).toContain("参考图或参考视频");
   });
 
-  it("does not claim trajectory is unavailable when the selected mode declares native orbit", () => {
-    const nativeOrbit = withModeCameraControl(seedance20, "t2v", { strategy: "native", nativeIntents: ["orbit"] });
-    const result = recommendVideoGeneration({ prompt: "环绕镜头", cameraIntent: "orbit" }, [nativeOrbit]);
+  it("does not claim structured trajectory is available when only prompt camera expression is documented", () => {
+    const promptCamera = withModeExpressionChannels(seedance20, "t2v", [
+      { signal: "camera_motion", via: "prompt", status: "documented" },
+    ]);
+    const result = recommendVideoGeneration({ prompt: "环绕镜头", cameraIntent: "orbit" }, [promptCamera]);
 
     expect(result.recommendations[0]?.limitations.join(" ")).not.toContain("没有独立的轨迹控制");
+    expect(result.recommendations[0]?.limitations.join(" ")).toContain("提示词");
+  });
+
+  it("mentions structured trajectory only for the exact documented parameter channel", () => {
+    const trajectory = withModeExpressionChannels(seedance20, "t2v", [
+      {
+        signal: "trajectory",
+        via: "structured_parameter",
+        status: "documented",
+        parameterPath: "video.edit.controls.trajectory",
+      },
+    ]);
+    const result = recommendVideoGeneration({ prompt: "沿路径移动", cameraIntent: "path" }, [trajectory]);
+
+    expect(result.recommendations[0]?.limitations.join(" ")).toContain("结构化");
+    expect(result.recommendations[0]?.limitations.join(" ")).toContain("不等同于统一的相机轨迹控件");
+  });
+
+  it("keeps an unverified model honest instead of turning missing evidence into unsupported", () => {
+    const result = recommendVideoGeneration({ prompt: "镜头推进", cameraIntent: "dolly" }, [seedance25]);
+
+    expect(result.recommendations[0]?.limitations.join(" ")).toContain("尚未完成对账");
+    expect(result.recommendations[0]?.limitations.join(" ")).not.toContain("明确不支持");
+  });
+
+  it("keeps a documented prompt channel usable when another channel is explicitly restricted", () => {
+    const mixed = withModeExpressionChannels(seedance20, "t2v", [
+      { signal: "camera_motion", via: "prompt", status: "documented" },
+      { signal: "trajectory", via: "structured_parameter", status: "unsupported" },
+    ]);
+    const result = recommendVideoGeneration({ prompt: "镜头推进", cameraIntent: "dolly" }, [mixed]);
+
+    expect(result.recommendations[0]?.limitations.join(" ")).toContain("提示词");
+    expect(result.recommendations[0]?.limitations.join(" ")).toContain("另一种运镜通道");
   });
 
   it("derives audio-only support from reference-slot dependencies, not the provider name", () => {

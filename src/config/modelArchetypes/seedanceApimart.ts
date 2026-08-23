@@ -1,5 +1,5 @@
 import type { ModelParameterControl } from "../modelCatalogMeta";
-import type { ModelArchetype } from "./types";
+import type { ArchetypeSource, ModelArchetype } from "./types";
 
 // Seedance 2.0 经 apimart 的视频档案。**独立于 kie 的 seedance-2 档案**：apimart 图生视频用 image_urls
 // 数组（≤9），与 kie 的 first/last/omni 多槽分离键结构不同——这是 B/A 混用的合理边界（枚举差异用
@@ -21,16 +21,45 @@ const PARAMS: ModelParameterControl[] = [
   { key: "generate_audio", label: "生成音频", type: "boolean", options: [], defaultValue: true },
 ];
 
+const APIMART_SOURCE: ArchetypeSource = {
+  url: "https://docs.apimart.ai/cn/api-reference/videos/doubao-seedance-2-0/generation",
+  checkedAt: "2026-08-24",
+  vendorKey: "apimart",
+  covers: "image/video/audio reference channels, role arrays, and mutual exclusions",
+};
+
+const VOLCENGINE_SOURCE: ArchetypeSource = {
+  url: "https://api.volcengine.com/api-docs/view?action=CreateContentsGenerationsTasks&serviceCode=ark&version=2024-01-01",
+  checkedAt: "2026-08-24",
+  vendorKey: "volcengine",
+  covers: "Seedance duration/ratio/audio fields and prompt examples describing camera motion",
+};
+
+const PROMPT_CAMERA_CHANNEL = {
+  signal: "camera_motion",
+  via: "prompt" as const,
+  status: "documented" as const,
+  evidence: VOLCENGINE_SOURCE,
+};
+
+const MOTION_REFERENCE_CHANNEL = {
+  signal: "motion_reference",
+  via: "reference_slot" as const,
+  status: "documented" as const,
+  slotKind: "video_ref" as const,
+  evidence: APIMART_SOURCE,
+};
+
 // 三模式共用（t2v/i2v/全能参考）。全能参考(omni)：多模态参考数组（官方文档「全能参考」模式）——
 // image_urls≤9 + video_urls≤3 + audio_urls≤3，走档案级 image_to_video 桶（与 i2v 同一 mapping，
 // 一条 body 覆盖；非当前模式的空数组键由模板自动丢弃，同 kie Seedance omni）。
 const SEEDANCE_2_APIMART_MODES: ModelArchetype["modes"] = [
-  { id: "t2v", intent: "text", vendorTerm: "文生视频", hint: "纯文字生成视频", promptRequired: true, transportTaskKind: "text_to_video", slots: [], cameraControl: { strategy: "prompt", nativeIntents: [] }, params: PARAMS },
+  { id: "t2v", intent: "text", vendorTerm: "文生视频", hint: "纯文字生成视频", promptRequired: true, transportTaskKind: "text_to_video", slots: [], expressionChannels: [PROMPT_CAMERA_CHANNEL], params: PARAMS },
   {
     id: "i2v", intent: "single", vendorTerm: "图生视频", hint: "首帧/参考图驱动（最多 9 张）", promptRequired: true,
     transportTaskKind: "image_to_video",
     slots: [{ kind: "image_ref", label: "参考图", min: 1, max: 9, inputKey: "image_urls" }],
-    cameraControl: { strategy: "prompt", nativeIntents: [] },
+    expressionChannels: [PROMPT_CAMERA_CHANNEL],
     params: PARAMS,
   },
   {
@@ -43,7 +72,7 @@ const SEEDANCE_2_APIMART_MODES: ModelArchetype["modes"] = [
       // 方舟同义：「不支持"文本+音频"、"纯音频" 输入」）。2.5 已解除此限，故声明而非写死（见 types 注释）。
       { kind: "audio_ref", label: "参考音频", min: 0, max: 3, inputKey: "audio_urls", requiresAnyOf: ["image_ref", "video_ref"] },
     ],
-    cameraControl: { strategy: "prompt_or_reference_video", nativeIntents: [] },
+    expressionChannels: [PROMPT_CAMERA_CHANNEL, MOTION_REFERENCE_CHANNEL],
     params: PARAMS,
   },
   {
@@ -57,7 +86,7 @@ const SEEDANCE_2_APIMART_MODES: ModelArchetype["modes"] = [
       { kind: "last_frame", label: "尾帧", min: 0, max: 1 },
     ],
     combineSlotsInto: { key: "image_with_roles" },
-    cameraControl: { strategy: "prompt", nativeIntents: [] },
+    expressionChannels: [PROMPT_CAMERA_CHANNEL],
     params: PARAMS,
   },
 ];
@@ -76,6 +105,7 @@ export const SEEDANCE_2_APIMART_ARCHETYPE: ModelArchetype = {
   family: "seedance",
   label: "Seedance 2.0",
   kind: "video",
+  sources: [APIMART_SOURCE, VOLCENGINE_SOURCE],
   defaultModeId: "t2v",
   transportTaskKind: "text_to_video",
   // face/fast-face 已从当前文档下线，但继续收纳旧 modelKey，确保旧项目仍能解析并迁移。

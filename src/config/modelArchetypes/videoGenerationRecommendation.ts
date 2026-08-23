@@ -185,24 +185,50 @@ const buildReasons = (mode: ArchetypeMode, summary: ReferenceSummary, input: Vid
   return reasons;
 };
 
+const expressionChannelsFor = (mode: ArchetypeMode) => {
+  const channels = mode.expressionChannels ?? [];
+  const hasCameraChannel = channels.some((channel) => channel.signal === "camera_motion");
+  const hasMotionReferenceChannel = channels.some((channel) => channel.signal === "motion_reference");
+  const hasTrajectoryChannel = channels.some((channel) => channel.signal === "trajectory");
+  return {
+    camera: channels.filter((channel) => channel.signal === "camera_motion"),
+    motionReference: channels.filter((channel) => channel.signal === "motion_reference"),
+    trajectory: channels.filter((channel) => channel.signal === "trajectory"),
+    hasCameraChannel,
+    hasMotionReferenceChannel,
+    hasTrajectoryChannel,
+  };
+};
+
 const buildLimitations = (mode: ArchetypeMode, input: VideoGenerationRecommendationInput): string[] => {
   const limitations: string[] = [];
   if (input.cameraIntent) {
-    const cameraControl = mode.cameraControl;
-    if (!cameraControl || cameraControl.strategy === "unknown") {
-      limitations.push("当前模式的相机控制能力尚未完成对账，建议先确认生成效果");
-    } else if (cameraControl.strategy === "unsupported") {
-      limitations.push("当前模式没有可验证的相机控制方式");
-    } else if (cameraControl.strategy === "native") {
-      if (!cameraControl.nativeIntents?.includes(input.cameraIntent)) {
-        limitations.push("当前模式没有声明这个相机意图的原生控制");
-      }
-    } else if (cameraControl.strategy === "prompt") {
-      limitations.push("当前模式通过提示词表达相机意图，不提供独立轨迹参数");
-    } else if (cameraControl.strategy === "reference_video") {
-      limitations.push("当前模式通过参考视频表达相机意图，不提供独立轨迹参数");
+    const channels = expressionChannelsFor(mode);
+    const declaredChannels = [
+      ...channels.camera,
+      ...channels.motionReference,
+      ...channels.trajectory,
+    ];
+    const documentedChannels = declaredChannels.filter((channel) => channel.status === "documented");
+    const unknownChannels = declaredChannels.filter((channel) => channel.status === "unknown");
+    const unsupportedChannels = declaredChannels.filter((channel) => channel.status === "unsupported");
+    if (documentedChannels.length === 0 && unsupportedChannels.length > 0 && unknownChannels.length === 0) {
+      limitations.push("当前模式的官方文档明确不支持这种运镜表达");
+    } else if (documentedChannels.length === 0) {
+      limitations.push("当前模式的运镜表达尚未完成对账，建议先确认生成效果");
     } else {
-      limitations.push("当前模式通过提示词或参考视频近似表达相机意图，不提供独立轨迹参数");
+      const via = [
+        channels.hasCameraChannel ? "提示词" : "",
+        channels.hasMotionReferenceChannel ? "参考视频" : "",
+        channels.hasTrajectoryChannel ? "结构化运动参数" : "",
+      ].filter(Boolean);
+      limitations.push(`当前模式通过${via.join("或")}表达运镜意图`);
+      if (channels.hasTrajectoryChannel && !channels.hasCameraChannel) {
+        limitations.push("结构化运动参数只在档案声明的任务和字段路径下有效，不等同于统一的相机轨迹控件");
+      }
+      if (unsupportedChannels.length > 0) {
+        limitations.push("当前模式中的另一种运镜通道被官方明确限制，已保留可用的表达方式");
+      }
     }
   }
   if (mode.fixedParams?.size === "adaptive") limitations.push("当前供应商要求此模式使用 adaptive 比例，比例不能自由改");

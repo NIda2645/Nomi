@@ -4,7 +4,7 @@
 
 **Goal:** 把真实模型能力事实、用户上下文和可编辑的 P2 生成草稿连接起来，让 Nomi 根据当前输入推荐合适的模型/模式/参数，同时不把任何供应商判断写成全局硬编码，也不创建第二条生成执行路径。
 
-**Architecture:** 能力档案只保存逐项对账后的事实（模式、参数、参考槽、供应商限制和相机表达能力）；纯推荐器读取候选档案与当前上下文，输出排序、理由、限制和下一步，不调用 provider、不铸 grant、不写 Run。推荐结果只作为 P2 `PlanCandidate` 的初始建议和 preview 投影，用户可以在封存前自由编辑；确认后由现有 `ExecutionContract` 冻结精确值，P3 统一 Runtime Adapter 只执行封存合同。
+**Architecture:** 能力档案只保存逐项对账后的事实（模式、参数、参考槽、供应商限制和有来源的表达通道）；不再抽象一个跨模型的 `cameraControl`。纯推荐器读取候选档案与当前上下文，输出排序、理由、限制和下一步，不调用 provider、不铸 grant、不写 Run。推荐结果只作为 P2 `PlanCandidate` 的初始建议和 preview 投影，用户可以在封存前自由编辑；确认后由现有 `ExecutionContract` 冻结精确值，P3 统一 Runtime Adapter 只执行封存合同。
 
 **Tech Stack:** TypeScript, Vitest, existing `ModelArchetype` catalog, `PlanCandidate`/`ExecutionContractV1`, MCP semantic generation handler, existing provider-neutral runtime adapter.
 
@@ -15,6 +15,7 @@
 本计划覆盖：
 
 - Seedance/APIMart 当前真实档案的通用化修正；
+- Seedance、Veo、Runway、Luma、Kling 官方能力对照，以及共享能力层的真实证据边界；
 - 模型/供应商/模式/参数/参考素材切换的上下文推荐；
 - P2 MCP planning/preview 的推荐投影；
 - 零额度真实 MCP journey、provider counter 和错误/限制投影测试；
@@ -45,7 +46,7 @@
 
 本计划执行到以下状态后暂停汇报，不自行扩大范围：
 
-1. 通用推荐器和 P2 preview/编辑链路通过全门；
+1. 研究-backed 能力注册表和通用推荐器通过全门；
 2. Seedance/APIMart 低规格真实视频 smoke 的请求映射、查询和降级 UX 有可复核证据；
 3. 需要选择下一批真实 provider/model（只继续 Seedance/APIMart，还是扩展到其他已对账模型）时，提供用户价值/成本/覆盖面的对比表，由产品负责人决定。
 
@@ -53,22 +54,35 @@
 
 ---
 
-### Task 1: Define capability facts for context-sensitive decisions
+## Research checkpoint — 2026-08-24
+
+当前提交中的 `CameraControlStrategy` 是先前为了让推荐器有测试 seam 而做的临时抽象，已经被官方文档对照证明过窄：Seedance/Veo/Runway/Kling 主要通过 prompt 或参考素材表达，Luma 的 `trajectory` 是限定在 `video_edit` 的结构化运动条件，不等同于统一相机枚举。
+
+正式共享原语改为模式级 `expressionChannels`：`signal + via(prompt/reference_slot/structured_parameter) + status(documented/unsupported/unknown) + 真实 slot/parameter path + source`。完整证据和用户价值见 `docs/research/2026-08-24-video-capability-shared-layer.md`。
+
+因此下面原先围绕 `cameraControl/nativeIntents` 的实现步骤不再执行；先完成新的 capability facts，再继续推荐器和 MCP wiring。2.5 APIMart 官方页面本轮抓取返回 404，未重新核验前保持 `unknown`，不扩大承诺。
+
+### Task 1: Replace provisional camera field with research-backed expression channels
 
 **Files:**
 - Modify: `src/config/modelArchetypes/types.ts`
 - Modify: `src/config/modelArchetypes/seedanceApimart.ts`
 - Modify: `src/config/modelArchetypes/seedance25Apimart.ts`
+- Modify: `docs/research/2026-08-24-video-capability-shared-layer.md`
 - Test: `src/config/modelArchetypes/modelArchetypeCapabilities.test.ts`
 
-- [x] **Step 1: Write failing tests for declared camera expression and reference constraints**
+- [ ] **Step 1: Write failing tests for expression channels and reference constraints**
 
 Add tests that assert facts are read from the selected mode, not inferred from provider/model names:
 
 ```ts
-it('declares Seedance camera expression as prompt/reference-video, never native trajectory', () => {
+it('declares Seedance prompt and motion-reference channels without a native camera enum', () => {
   const mode = SEEDANCE_2_APIMART_ARCHETYPE.modes.find((item) => item.id === 'omni');
-  expect(mode?.cameraControl).toEqual({ strategy: 'prompt_or_reference_video', nativeIntents: [] });
+  expect(mode?.expressionChannels).toEqual(expect.arrayContaining([
+    expect.objectContaining({ signal: 'camera_motion', via: 'prompt', status: 'documented' }),
+    expect.objectContaining({ signal: 'motion_reference', via: 'reference_slot', slotKind: 'video_ref', status: 'documented' }),
+  ]));
+  expect(mode).not.toHaveProperty('cameraControl');
 });
 
 it('keeps Seedance 2.0 audio dependency in the mode slot declaration', () => {
@@ -91,30 +105,27 @@ Run:
 pnpm exec vitest run src/config/modelArchetypes/modelArchetypeCapabilities.test.ts --reporter=dot
 ```
 
-Expected: FAIL because `ArchetypeMode` has no `cameraControl` field.
+Expected: FAIL because `ArchetypeMode` has no `expressionChannels` field and the provisional camera field is still present.
 
 - [x] **Step 3: Add the smallest typed capability declaration**
 
 Add to `types.ts`:
 
 ```ts
-export type CameraControlStrategy =
-  | 'native'
-  | 'prompt'
-  | 'reference_video'
-  | 'prompt_or_reference_video'
-  | 'unsupported'
-  | 'unknown';
-
-export type ArchetypeCameraControl = {
-  strategy: CameraControlStrategy;
-  nativeIntents?: Array<'locked' | 'pan' | 'tilt' | 'dolly' | 'orbit' | 'handheld' | 'path'>;
+export type ArchetypeExpressionChannel = {
+  signal: string;
+  via: 'prompt' | 'reference_slot' | 'structured_parameter';
+  status: 'documented' | 'unsupported' | 'unknown';
+  slotKind?: ArchetypeReferenceSlotKind;
+  parameterKey?: string;
+  parameterPath?: string;
+  evidence?: ArchetypeSource;
 };
 ```
 
-Add `cameraControl?: ArchetypeCameraControl` to `ArchetypeMode`. Declare the actual Seedance facts in the APIMart mode profiles. Do not add provider-specific branching to the recommender.
+Replace the provisional field with `expressionChannels?: ArchetypeExpressionChannel[]` on `ArchetypeMode`. Declare only evidence-backed Seedance facts in the APIMart mode profiles. Do not add provider-specific branching to the recommender, and do not normalize Luma `trajectory` into camera motion.
 
-- [x] **Step 4: Run focused tests and typecheck**
+- [ ] **Step 4: Run focused tests and typecheck**
 
 Run:
 
@@ -125,7 +136,7 @@ pnpm run typecheck
 
 Expected: all focused tests pass and typecheck exits 0.
 
-- [x] **Step 5: Commit the capability fact boundary**
+- [ ] **Step 5: Commit the capability fact boundary**
 
 ```bash
 git add src/config/modelArchetypes/types.ts src/config/modelArchetypes/seedanceApimart.ts src/config/modelArchetypes/seedance25Apimart.ts src/config/modelArchetypes/modelArchetypeCapabilities.test.ts
@@ -141,12 +152,12 @@ git commit -m "feat: declare model-specific video capability facts"
 
 - [x] **Step 1: Add red tests for non-hardcoded camera and audio decisions**
 
-Add tests with two synthetic model profiles: one with native orbit support and one with no declared support. Add a profile whose audio slot has no dependency. The tests must prove that the recommender follows profile facts:
+Add tests with synthetic model profiles that expose different expression channels and one with no declared camera evidence. Add a profile whose audio slot has no dependency. The tests must prove that the recommender follows profile facts:
 
 ```ts
-it('does not claim trajectory is unavailable when the selected mode declares native orbit', () => {
-  const nativeOrbit = withModeCameraControl(seedance20, 't2v', { strategy: 'native', nativeIntents: ['orbit'] });
-  const result = recommendVideoGeneration({ prompt: '环绕镜头', cameraIntent: 'orbit' }, [nativeOrbit]);
+it('does not claim structured trajectory is available when only prompt camera expression is documented', () => {
+  const promptCamera = withModeExpressionChannels(seedance20, 't2v', [{ signal: 'camera_motion', via: 'prompt', status: 'documented' }]);
+  const result = recommendVideoGeneration({ prompt: '环绕镜头', cameraIntent: 'orbit' }, [promptCamera]);
   expect(result.recommendations[0]?.limitations.join(' ')).not.toContain('没有独立的轨迹控制');
 });
 
@@ -175,7 +186,7 @@ Expected: FAIL on the native-orbit and generic audio cases.
 
 Implement these rules in `videoGenerationRecommendation.ts`:
 
-1. `buildLimitations` reads `mode.cameraControl`; `native` with a matching intent produces no “no trajectory” warning; `prompt_or_reference_video` describes the available expression; `unknown` produces an uncertainty note; absent camera facts never claims unsupported.
+1. `buildLimitations` reads `mode.expressionChannels`; prompt/reference/structured channels are described accurately, and an absent or unknown channel never becomes a false “unsupported” claim. Structured trajectory is only mentioned when the selected mode declares that exact parameter path.
 2. The no-recommendation action is derived from candidate slot dependencies. It may mention “再添加参考图或参考视频”，but it must not mention a provider or model name.
 3. Keep `fixedParams` and `requiresAnyOf` as profile facts. The generic recommender only reads them.
 4. Keep recommendation output advisory: `score`, `reasons`, and `limitations` are projections; they must not mutate the candidate or call a provider.
@@ -302,7 +313,7 @@ The handler must continue to use `compileExecutionContract` for the final contra
 
 Completed and verified on the isolated branch:
 
-- capability facts for Seedance camera expression and 2.0/2.5 reference-audio differences;
+- capability facts for Seedance expression channels and 2.0/2.5 reference-audio differences;
 - provider/model-agnostic recommendation logic;
 - P2 reference `kind`/`role` preservation and hash changes;
 - Electron planning handler recommendation DTO seam and preview projection;
@@ -364,7 +375,7 @@ The matrix must include at least:
 | user chooses unsupported parameter | preview explains and blocks that field; no silent drop |
 | user replaces a reference | revision/hash changes; old sealed operation is unchanged |
 | provider/model switch | recommendation re-evaluates against the new profile, not old model rules |
-| native camera control profile | no false “trajectory unavailable” warning |
+| prompt-only camera expression profile | no false claim of native trajectory control |
 
 Run the new tests before implementation changes to verify each missing behavior is red.
 

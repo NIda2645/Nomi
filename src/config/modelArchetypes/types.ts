@@ -61,17 +61,23 @@ export type ArchetypeReferenceSlot = {
   roleName?: string;
 };
 
-export type CameraControlStrategy =
-  | "native"
-  | "prompt"
-  | "reference_video"
-  | "prompt_or_reference_video"
-  | "unsupported"
-  | "unknown";
-
-export type ArchetypeCameraControl = {
-  strategy: CameraControlStrategy;
-  nativeIntents?: Array<"locked" | "pan" | "tilt" | "dolly" | "orbit" | "handheld" | "path">;
+/**
+ * A source-backed way in which a mode can express a user signal.
+ *
+ * This deliberately does not define a universal camera-control enum. Some models
+ * express camera motion only in prompt text, some accept a reference video, and
+ * a few expose a structured control that is valid only for a particular task.
+ * `status` distinguishes documented support from a documented rejection and from
+ * an area that has not been verified yet.
+ */
+export type ArchetypeExpressionChannel = {
+  signal: string;
+  via: "prompt" | "reference_slot" | "structured_parameter";
+  status: "documented" | "unsupported" | "unknown";
+  slotKind?: ArchetypeReferenceSlotKind;
+  parameterKey?: string;
+  parameterPath?: string;
+  evidence?: ArchetypeSource;
 };
 
 /** 跨模型统一的「意图」——UI 主标签按它走（角色参考/单图首帧/首尾帧/文生/视频编辑）。 */
@@ -93,10 +99,11 @@ export type ArchetypeMode = {
   hint: string;
   slots: ArchetypeReferenceSlot[];
   /**
-   * How this mode can express camera intent. This is model-contract data,
-   * not a universal assumption: different models expose different controls.
+   * How this mode can express documented user signals. This is model-contract
+   * data, not a universal assumption: different models expose different
+   * channels and scopes.
    */
-  cameraControl?: ArchetypeCameraControl;
+  expressionChannels?: ArchetypeExpressionChannel[];
   /** 标量参数：复用现有控件类型（规则 1，不另造）。供应商无关的**缺省**集；某供应商字段枚举不同时用 vendorParams 覆盖。 */
   params: ModelParameterControl[];
   /**

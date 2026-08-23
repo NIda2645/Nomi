@@ -3,9 +3,13 @@ import { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "./seedance25Apimart";
 
 describe("model capability facts", () => {
-  it("declares Seedance camera expression as prompt/reference-video, never native trajectory", () => {
+  it("declares Seedance expression channels without inventing a native camera control", () => {
     const mode = SEEDANCE_2_APIMART_ARCHETYPE.modes.find((item) => item.id === "omni");
-    expect(mode?.cameraControl).toEqual({ strategy: "prompt_or_reference_video", nativeIntents: [] });
+    expect(mode?.expressionChannels).toEqual(expect.arrayContaining([
+      expect.objectContaining({ signal: "camera_motion", via: "prompt", status: "documented" }),
+      expect.objectContaining({ signal: "motion_reference", via: "reference_slot", slotKind: "video_ref", status: "documented" }),
+    ]));
+    expect(mode).not.toHaveProperty("cameraControl");
   });
 
   it("keeps Seedance 2.0 audio dependency in the mode slot declaration", () => {
