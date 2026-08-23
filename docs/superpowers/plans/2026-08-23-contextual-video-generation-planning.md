@@ -298,6 +298,21 @@ Extend `GenerationPlanningHandlerDependencies` with an optional `recommendVideoG
 
 The handler must continue to use `compileExecutionContract` for the final contract. The recommendation is never part of the contract hash and never authorizes a start.
 
+## Execution checkpoint — 2026-08-24
+
+Completed and verified on the isolated branch:
+
+- capability facts for Seedance camera expression and 2.0/2.5 reference-audio differences;
+- provider/model-agnostic recommendation logic;
+- P2 reference `kind`/`role` preservation and hash changes;
+- Electron planning handler recommendation DTO seam and preview projection;
+- 30 focused assertions across capability, recommendation, contract and MCP planning suites;
+- `pnpm run typecheck` and `git diff --check`.
+
+The next step is deliberately paused at one architecture decision. The pure recommender currently lives with the renderer model archetype catalog, while the semantic planning owner runs in Electron. Importing the renderer catalog directly into Electron violates the Electron `rootDir` boundary and would pull unrelated UI/i18n code into the main-process build. Duplicating Seedance profiles in Electron would create the exact second truth source this plan is meant to avoid.
+
+Recommended decision: move the capability facts and pure recommendation implementation into one shared, main-readable capability registry. Both renderer controls and MCP planning should consume that registry; the P2 contract remains the only execution authority. The alternative is renderer-only injection, which leaves headless MCP without recommendations when Nomi is closed.
+
 - [ ] **Step 4: Add MCP journey tests for free editing**
 
 In `nomiMcpGenerationPlanning.test.ts`, add one zero-provider journey that:
