@@ -136,14 +136,14 @@ describe("ProductionRunRepository", () => {
     expect(fs.readdirSync(paths.dir).sort()).toEqual(beforeEntries);
   });
 
-  it("ignores a torn final event and keeps cursor ordering after restart", () => {
+  it("surfaces a torn final event as a migration parse error instead of silently truncating the Run", () => {
     createRun();
     const paths = productionRunPaths(root, "run-1");
     fs.appendFileSync(paths.events, "{torn", "utf8");
 
     const restarted = repository();
-    expect(restarted.read("project-1", "run-1")).toMatchObject({ snapshotCursor: 2 });
-    expect(restarted.readEvents("project-1", "run-1").map((event) => event.cursor)).toEqual([1, 2]);
+    expect(() => restarted.read("project-1", "run-1")).toThrow(/migration_parse_error/);
+    expect(() => restarted.readEvents("project-1", "run-1")).toThrow(/migration_parse_error/);
   });
 
   it("rejects an artifact payload with an unknown lifecycle status", () => {

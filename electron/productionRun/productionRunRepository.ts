@@ -55,6 +55,15 @@ export class ProductionRunRevisionConflictError extends Error {
   }
 }
 
+export class ProductionRunParseError extends Error {
+  readonly code = "migration_parse_error" as const;
+
+  constructor(filePath: string, lineNumber: number) {
+    super(`migration_parse_error: invalid JSON in ${path.basename(filePath)} at line ${lineNumber}`);
+    this.name = "ProductionRunParseError";
+  }
+}
+
 const DEFAULT_POLICY: AutomationPolicy = {
   mode: "balanced",
   trustedHosts: [],
@@ -88,12 +97,12 @@ function appendDurableJsonLine(filePath: string, value: unknown): void {
 function readJsonLines<T>(filePath: string): T[] {
   if (!fs.existsSync(filePath)) return [];
   const values: T[] = [];
-  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
+  for (const [index, line] of fs.readFileSync(filePath, "utf8").split("\n").entries()) {
     if (!line.trim()) continue;
     try {
       values.push(JSON.parse(line) as T);
     } catch {
-      break;
+      throw new ProductionRunParseError(filePath, index + 1);
     }
   }
   return values;
