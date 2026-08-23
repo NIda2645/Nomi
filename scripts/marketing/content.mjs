@@ -5,7 +5,7 @@ export const shared = Object.freeze({
   repositoryUrl: 'https://github.com/aqm857886159/Nomi',
   releaseUrl: 'https://github.com/aqm857886159/Nomi/releases/latest',
   businessUrl: 'https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml',
-  discussionUrl: 'https://github.com/aqm857886159/Nomi/discussions',
+  discussionUrl: 'https://github.com/aqm857886159/Nomi/issues',
   licenseName: 'AGPL-3.0-only',
   licenseUrl: 'https://www.gnu.org/licenses/agpl-3.0.html',
   wechatId: 'TZ857886159',
@@ -188,7 +188,7 @@ const zhCN = {
       eyebrow: 'USER COMMUNITY',
       title: '加入 Nomi 用户群，一起把成本继续打下来。',
       description: '交流工作流、反馈问题、获取版本动态。群码失效时可以直接添加作者微信。',
-      discussion: 'GitHub 讨论',
+      discussion: 'GitHub Issues',
       qrAlt: 'Nomi 用户群微信二维码',
       qrCaption: '扫码加入 Nomi 用户群',
     },
@@ -248,7 +248,7 @@ const english = {
   ogLocale: 'en_US',
   meta: {
     title: 'Nomi — Bring the cost of AI video down',
-    description: 'An open-source, local-first AI video workbench. Bring your own models, subscriptions, APIs, or local ComfyUI and reduce platform markup, duplicate tools, wasted generations, and repetitive work.',
+    description: 'Open-source, local-first AI video workbench. Bring your own models, APIs, or ComfyUI to script, storyboard, generate, edit, and export with less waste.',
     imageAlt: 'Nomi, an open-source local-first workbench for lower-cost AI video production',
   },
   nav: {
@@ -413,8 +413,8 @@ const english = {
     group: {
       eyebrow: 'USER COMMUNITY',
       title: 'Join the Nomi community and keep pushing costs down.',
-      description: 'Share workflows, report friction, and follow releases. GitHub Discussions is open internationally; WeChat users can scan the group code directly.',
-      discussion: 'GitHub Discussions',
+      description: 'Share workflows, report friction, and follow releases through GitHub Issues. WeChat users can scan the group code directly.',
+      discussion: 'GitHub Issues',
       qrAlt: 'WeChat QR code for the Nomi user group',
       qrCaption: 'Scan to join the Nomi WeChat group',
     },
