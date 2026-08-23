@@ -50,6 +50,7 @@ const EXCLUDED_PREFIXES = [
   'src/i18n/', // translation resources themselves
   'src/devlab/',
   'electron/capabilityCore/', // MCP/RPC schemas and agent-facing protocol text
+  'electron/shared/videoCapabilities/', // source-backed model facts; rendered by GUI/MCP capability boundaries
 ]
 const EXCLUDED_FILES = new Set([
   'src/config/knownVendors.ts', // getLocalizedKnownVendors translates every displayed field
