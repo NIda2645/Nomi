@@ -13,40 +13,11 @@ import {
   type GenerationProviderCapabilityProfile,
 } from "./generationProviderCapabilities";
 import { GenerationProviderCapabilityError } from "./generationRuntimeAdapter";
-
-/**
- * Structural boundary for the pure recommendation adapter. The renderer-side
- * model archetype implementation is injected at bootstrap; the Electron
- * planning owner only knows this serializable context/result shape.
- */
-type VideoGenerationRecommendationInput = {
-  prompt?: string;
-  references: Array<{ kind: "image" | "video" | "audio"; role?: "character" | "first_frame" | "last_frame" | "reference" | "audio" }>;
-  cameraIntent?: "locked" | "pan" | "tilt" | "dolly" | "orbit" | "handheld" | "path";
-  preferredFamily?: string;
-  goals?: {
-    preserveCharacter?: boolean;
-    preserveTransition?: boolean;
-    useReferenceAudio?: boolean;
-    generateAudio?: boolean;
-    durationSeconds?: number;
-    aspectRatio?: string;
-    quality?: "draft" | "balanced" | "final";
-  };
-};
-
-type VideoModelCandidate = {
-  provider: string;
-  modelKey: string;
-  label: string;
-  variantId?: string;
-  archetype: unknown;
-};
-
-type VideoGenerationRecommendationResult = {
-  recommendations: Array<Record<string, unknown>>;
-  nextAction?: string;
-};
+import type {
+  VideoGenerationRecommendationInput,
+  VideoGenerationRecommendationResult,
+  VideoModelCandidate,
+} from "../shared/videoCapabilities/recommendation";
 
 /**
  * The semantic MCP surface is deliberately data-only.  These tools are the

@@ -60,7 +60,7 @@
 
 正式共享原语改为模式级 `expressionChannels`：`signal + via(prompt/reference_slot/structured_parameter) + status(documented/unsupported/unknown) + 真实 slot/parameter path + source`。完整证据和用户价值见 `docs/research/2026-08-24-video-capability-shared-layer.md`。
 
-因此下面原先围绕 `cameraControl/nativeIntents` 的实现步骤不再执行；先完成新的 capability facts，再继续推荐器和 MCP wiring。2.5 APIMart 官方页面本轮抓取返回 404，未重新核验前保持 `unknown`，不扩大承诺。
+因此下面原先围绕 `cameraControl/nativeIntents` 的实现步骤不再执行；先完成新的 capability facts，再继续推荐器和 MCP wiring。2.5 APIMart 官方页面本轮抓取返回 404，未重新核验前保持 `unknown`，不扩大承诺。研究结论已写入 `docs/research/2026-08-24-video-capability-shared-layer.md`，并在当前分支删除了临时字段。
 
 ### Task 1: Replace provisional camera field with research-backed expression channels
 
@@ -71,7 +71,7 @@
 - Modify: `docs/research/2026-08-24-video-capability-shared-layer.md`
 - Test: `src/config/modelArchetypes/modelArchetypeCapabilities.test.ts`
 
-- [ ] **Step 1: Write failing tests for expression channels and reference constraints**
+- [x] **Step 1: Write failing tests for expression channels and reference constraints**
 
 Add tests that assert facts are read from the selected mode, not inferred from provider/model names:
 
@@ -125,7 +125,7 @@ export type ArchetypeExpressionChannel = {
 
 Replace the provisional field with `expressionChannels?: ArchetypeExpressionChannel[]` on `ArchetypeMode`. Declare only evidence-backed Seedance facts in the APIMart mode profiles. Do not add provider-specific branching to the recommender, and do not normalize Luma `trajectory` into camera motion.
 
-- [ ] **Step 4: Run focused tests and typecheck**
+- [x] **Step 4: Run focused tests and typecheck**
 
 Run:
 
@@ -136,11 +136,47 @@ pnpm run typecheck
 
 Expected: all focused tests pass and typecheck exits 0.
 
-- [ ] **Step 5: Commit the capability fact boundary**
+- [x] **Step 5: Commit the capability fact boundary**
 
 ```bash
 git add src/config/modelArchetypes/types.ts src/config/modelArchetypes/seedanceApimart.ts src/config/modelArchetypes/seedance25Apimart.ts src/config/modelArchetypes/modelArchetypeCapabilities.test.ts
 git commit -m "feat: declare model-specific video capability facts"
+```
+
+### Task 2A: Make the capability registry readable by Electron and renderer without a second truth
+
+**Files:**
+- Create: `electron/shared/videoCapabilities/*`
+- Modify: `src/config/modelArchetypes/*` to consume/re-export the shared pure registry
+- Modify: `electron/capabilityCore/appIntegration.ts`
+- Modify: `electron/capabilityCore/mcpStdioServer.ts`
+- Test: `electron/shared/videoCapabilities/*.test.ts`
+
+- [x] **Step 1: Add a red bootstrap test**
+
+Prove that the default GUI and stdio planning handlers receive the same source-backed Seedance candidate list and that no provider/start/spend path is called during preview. The test must fail while `videoModelCandidates` and `recommendVideoGeneration` are optional and unwired.
+
+- [x] **Step 2: Move only pure facts and pure recommendation code behind a main-readable shared boundary**
+
+The shared module may contain types, source-backed capability facts, pure recommendation logic and serialization-safe constants. It must not import React, i18n, Electron, filesystem code or provider clients. Renderer-facing modules re-export the shared values; Electron imports the same values directly. Do not copy APIMart profiles into Electron.
+
+- [x] **Step 3: Wire both default planning entry points to the shared registry**
+
+`startCapabilityCore` and `startMcpStdioServer` pass the same shared candidates and pure recommender into `createGenerationPlanningHandler`. Existing authority injection remains an explicit test seam, but production defaults must no longer omit recommendations.
+
+- [x] **Step 4: Run focused tests, typecheck, source gate and diff check**
+
+```bash
+pnpm exec vitest run electron/shared/videoCapabilities electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts --reporter=dot
+pnpm run typecheck
+pnpm run check:archetype-sources
+git diff --check
+```
+
+- [x] **Step 5: Commit the single-owner shared registry wiring**
+
+```bash
+git commit -m "feat: wire shared video capability registry into MCP planning"
 ```
 
 ### Task 2: Make the recommendation engine provider/model agnostic
@@ -317,14 +353,15 @@ Completed and verified on the isolated branch:
 - provider/model-agnostic recommendation logic;
 - P2 reference `kind`/`role` preservation and hash changes;
 - Electron planning handler recommendation DTO seam and preview projection;
-- 30 focused assertions across capability, recommendation, contract and MCP planning suites;
+- single-owner Electron/renderer shared capability registry and default MCP planning wiring;
+- 123 focused assertions across capability, recommendation, contract and MCP planning suites;
 - `pnpm run typecheck` and `git diff --check`.
 
 The next step is deliberately paused at one architecture decision. The pure recommender currently lives with the renderer model archetype catalog, while the semantic planning owner runs in Electron. Importing the renderer catalog directly into Electron violates the Electron `rootDir` boundary and would pull unrelated UI/i18n code into the main-process build. Duplicating Seedance profiles in Electron would create the exact second truth source this plan is meant to avoid.
 
 Recommended decision: move the capability facts and pure recommendation implementation into one shared, main-readable capability registry. Both renderer controls and MCP planning should consume that registry; the P2 contract remains the only execution authority. The alternative is renderer-only injection, which leaves headless MCP without recommendations when Nomi is closed.
 
-- [ ] **Step 4: Add MCP journey tests for free editing**
+- [x] **Step 4: Add MCP journey tests for free editing**
 
 In `nomiMcpGenerationPlanning.test.ts`, add one zero-provider journey that:
 
@@ -336,7 +373,7 @@ In `nomiMcpGenerationPlanning.test.ts`, add one zero-provider journey that:
 6. asserts candidate revision and contract hash change on every edit;
 7. asserts `runTask`, provider submit, gateway and spend counts stay zero.
 
-- [ ] **Step 5: Run focused MCP suites and typecheck**
+- [x] **Step 5: Run focused MCP suites and typecheck**
 
 ```bash
 pnpm exec vitest run electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts electron/capabilityCore/mcpSemanticGenerationConfirmation.test.ts --reporter=dot
@@ -345,7 +382,7 @@ pnpm run typecheck
 
 Expected: all tests pass and no pre-confirmation side effect occurs.
 
-- [ ] **Step 6: Commit the P2 recommendation integration**
+- [x] **Step 6: Commit the P2 recommendation integration**
 
 ```bash
 git add electron/capabilityCore/mcpGenerationTools.ts electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts electron/capabilityCore/mcpToolResults.ts

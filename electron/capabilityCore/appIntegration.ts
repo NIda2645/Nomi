@@ -37,6 +37,7 @@ import { createProductionGenerationSubmission } from '../productionRun/productio
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
+import { VIDEO_MODEL_CANDIDATES, recommendVideoGeneration } from '../shared/videoCapabilities'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
@@ -188,6 +189,8 @@ export async function startCapabilityCore(
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
         operations: createProductionGenerationOperationStore(generationService),
+        videoModelCandidates: VIDEO_MODEL_CANDIDATES,
+        recommendVideoGeneration,
         providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
         start: async (operation, lease) => {
           const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)

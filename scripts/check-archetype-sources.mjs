@@ -13,22 +13,29 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const archetypeDir = path.join(repoRoot, 'src/config/modelArchetypes')
+const archetypeDirs = [
+  path.join(repoRoot, 'src/config/modelArchetypes'),
+  // Pure source-backed facts are shared by renderer and Electron. Keep them in
+  // the same provenance gate so moving an owner cannot hide an unverified model.
+  path.join(repoRoot, 'electron/shared/videoCapabilities'),
+]
 const baselinePath = path.join(repoRoot, 'scripts/archetype-sources-baseline.json')
 
 /** 未登记出处的存量档案。**只减不增** —— 补一个删一行，新增档案不许进这里。 */
 const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'))
 const allowed = new Set(baseline.unsourced)
 
-const files = fs
-  .readdirSync(archetypeDir)
-  .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !['index.ts', 'types.ts', 'archetypeMeta.ts'].includes(f))
+const files = archetypeDirs.flatMap((dir) => fs
+  .readdirSync(dir)
+  .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !['index.ts', 'types.ts', 'archetypeMeta.ts', 'recommendation.ts'].includes(f))
+  .map((file) => ({ file, path: path.join(dir, file) })))
 
 const problems = []
 const unsourced = []
 
-for (const file of files) {
-  const src = fs.readFileSync(path.join(archetypeDir, file), 'utf8')
+for (const entry of files) {
+  const { file } = entry
+  const src = fs.readFileSync(entry.path, 'utf8')
   // 一个文件可能声明多个档案；按 `id: "..."` 逐个认。
   const ids = [...src.matchAll(/^\s{2}id:\s*["']([^"']+)["']/gm)].map((m) => m[1])
   if (ids.length === 0) continue

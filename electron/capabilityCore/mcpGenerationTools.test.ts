@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createModuleRegistry } from "./moduleRegistry";
 import { createGenerationPlanningHandler, createInMemoryGenerationOperationStore, MCP_GENERATION_TOOL_CATALOG } from "./mcpGenerationTools";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "../../src/config/modelArchetypes/seedance25Apimart";
+import { VIDEO_MODEL_CANDIDATES, recommendVideoGeneration } from "../shared/videoCapabilities";
 
 const registry = createModuleRegistry([{
   moduleId: "generation.single-shot",
@@ -190,6 +191,48 @@ describe("semantic MCP generation tools", () => {
     const preview = await handler({ capability: "preview", params: { operationId }, lease });
     expect(preview).toMatchObject({ recommendation: { recommendations: [{ modeId: "firstlast" }] } });
     expect(recommendVideoGeneration).toHaveBeenCalledTimes(1);
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("uses the shared source-backed registry for a real preview path without starting a provider", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const start = vi.fn(async () => { throw new Error("shared preview must not start a provider"); });
+    const handler = createGenerationPlanningHandler({
+      registry: videoRegistry,
+      operations,
+      videoModelCandidates: VIDEO_MODEL_CANDIDATES,
+      recommendVideoGeneration,
+      start,
+      now: () => "2026-08-23T00:00:00.000Z",
+    });
+    const created = await handler({
+      capability: "create",
+      params: {
+        candidate: {
+          candidateId: "shared-video-candidate",
+          revision: 1,
+          moduleId: "generation.single-shot",
+          providerId: "video-provider",
+          modelId: "video-model",
+          mode: "text-to-video",
+          prompt: "从首帧自然过渡到尾帧",
+          parameters: { duration: 8, preserveTransition: true },
+          references: [
+            { assetId: "first", contentHash: "f".repeat(64), version: 1, kind: "image", role: "first_frame" },
+            { assetId: "last", contentHash: "l".repeat(64), version: 1, kind: "image", role: "last_frame" },
+          ],
+        },
+      },
+      lease,
+    });
+    const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+
+    const preview = await handler({ capability: "preview", params: { operationId }, lease });
+
+    const recommendations = (preview as { recommendation: { recommendations: Array<Record<string, unknown>> } }).recommendation.recommendations;
+    expect(recommendations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: "apimart", modelKey: "doubao-seedance-2.0", modeId: "firstlast" }),
+    ]));
     expect(start).not.toHaveBeenCalled();
   });
 

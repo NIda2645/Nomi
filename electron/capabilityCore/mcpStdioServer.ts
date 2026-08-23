@@ -38,6 +38,7 @@ import { createProductionGenerationSubmission } from '../productionRun/productio
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
+import { VIDEO_MODEL_CANDIDATES, recommendVideoGeneration } from '../shared/videoCapabilities'
 
 const productionRuns = getProductionRunService()
 
@@ -196,6 +197,8 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     ?? createGenerationPlanningHandler({
       registry: generationRegistry,
       operations: createProductionGenerationOperationStore(productionRuns),
+      videoModelCandidates: VIDEO_MODEL_CANDIDATES,
+      recommendVideoGeneration,
       providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
       start: async (operation, lease) => {
         const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)

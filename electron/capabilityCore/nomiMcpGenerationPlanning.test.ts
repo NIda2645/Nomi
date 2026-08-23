@@ -13,6 +13,7 @@ import { createProjectLeaseStore } from "./projectLeaseStore";
 import { createProductionGenerationOperationStore } from "../productionRun/productionGenerationOperationStore";
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
 import { createProductionRunService } from "../productionRun/productionRunService";
+import { VIDEO_MODEL_CANDIDATES, recommendVideoGeneration } from "../shared/videoCapabilities";
 
 const roots: string[] = [];
 const registry = createModuleRegistry([{
@@ -55,6 +56,25 @@ const editableRegistry = createModuleRegistry([{
     { providerId: "provider-image", models: [{ modelId: "model-image-a", modes: ["text-to-image", "image-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } }] },
     { providerId: "provider-video", models: [{ modelId: "model-video-b", modes: ["text-to-video", "image-to-video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } }] },
   ],
+}]);
+
+const videoEditableRegistry = createModuleRegistry([{
+  moduleId: "generation.single-shot",
+  version: "1.0.0",
+  inputKinds: ["text", "image", "video"],
+  outputKinds: ["video"],
+  modes: ["text-to-video", "image-to-video", "firstlast"],
+  parameterSchema: { duration: { type: "number" }, seed: { type: "integer" } },
+  assetInputSchema: { references: { kind: "asset", max: 9 } },
+  providers: [{
+    providerId: "video-provider",
+    models: [{
+      modelId: "video-model",
+      modes: ["text-to-video", "image-to-video", "firstlast"],
+      parameterSchema: { duration: { type: "number" }, seed: { type: "integer" } },
+      capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true },
+    }],
+  }],
 }]);
 
 function makeAuthority(root: string) {
@@ -212,6 +232,84 @@ describe("MCP semantic generation planning journey", () => {
     }
     expect(repository.read("project-1", operationId!).generationPlan?.candidate.revision).toBe(3);
     expect(context.runTask).not.toHaveBeenCalled();
+  });
+
+  it("recomputes shared recommendations when a user replaces references and edits a model parameter", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-mcp-generation-video-edit-"));
+    roots.push(root);
+    const repository = createProductionRunRepository({ projectDirResolver: () => root, now: () => "2026-08-23T00:00:00.000Z" });
+    const service = createProductionRunService({ repository, projectRootResolver: () => root, sleep: async () => {} });
+    const operations = createProductionGenerationOperationStore(service);
+    const runTask = vi.fn(async () => { throw new Error("video planning must not call runTask"); });
+    const handler = createGenerationPlanningHandler({
+      registry: videoEditableRegistry,
+      operations,
+      videoModelCandidates: VIDEO_MODEL_CANDIDATES,
+      recommendVideoGeneration,
+      now: () => "2026-08-23T00:00:00.000Z",
+    });
+    const authority = makeAuthority(root);
+    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read"] });
+    const lease = authority.issueLease(selection.token, { projectId: "project-1", leasePrincipal: "mcp:test", sessionId: "session-1", connectionNonce: "connection-1" }).token;
+    const context = {
+      runTask,
+      makeGateway: () => { throw new Error("video planning must not create a gateway"); },
+      productionRuns: service,
+      origin: { host: "codex" as const },
+      generationPolicy: createMcpGenerationPolicy({ env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: "1" }, checkpoints: { p0Passed: true, p2Passed: true } }),
+      projectLeaseAuthority: authority,
+      generationPlanning: handler,
+    };
+    const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
+    await harness.call(21, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "Codex" } });
+    const created = await harness.call(22, "tools/call", {
+      name: "nomi_operation_create",
+      arguments: {
+        leaseHandle: lease,
+        candidate: {
+          candidateId: "video-editable",
+          revision: 1,
+          moduleId: "generation.single-shot",
+          providerId: "video-provider",
+          modelId: "video-model",
+          mode: "image-to-video",
+          prompt: "角色走向镜头",
+          parameters: { duration: 5 },
+          references: [{ assetId: "character", contentHash: "c".repeat(64), version: 1, kind: "image", role: "character" }],
+        },
+      },
+    });
+    const operationId = [...(await repository.list("project-1"))][0]?.runId;
+    expect(created.result).toBeTruthy();
+    expect(operationId).toMatch(/^op-/);
+
+    const firstPreview = await harness.call(23, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+    const firstPayload = JSON.parse((firstPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string } };
+    expect(firstPayload.recommendation.recommendations[0]?.modeId).toBe("omni");
+    const firstHash = firstPayload.contract.contractHash;
+
+    await harness.call(24, "tools/call", {
+      name: "nomi_submit_generation_plan",
+      arguments: {
+        leaseHandle: lease,
+        operationId,
+        patch: {
+          mode: "firstlast",
+          parameters: { duration: 8, trajectory: "orbit" },
+          references: [
+            { assetId: "first", contentHash: "f".repeat(64), version: 1, kind: "image", role: "first_frame" },
+            { assetId: "last", contentHash: "l".repeat(64), version: 1, kind: "image", role: "last_frame" },
+          ],
+        },
+      },
+    });
+    const secondPreview = await harness.call(25, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+    const secondPayload = JSON.parse((secondPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string; droppedFields: Array<{ path: string }> } };
+    expect(secondPayload.recommendation.recommendations[0]?.modeId).toBe("firstlast");
+    expect(secondPayload.contract.contractHash).not.toBe(firstHash);
+    expect(secondPayload.contract.droppedFields).toEqual([{ path: "parameters.trajectory", reason: "unsupported_parameter" }]);
+    expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "firstlast" } });
+    expect(runTask).not.toHaveBeenCalled();
   });
 
   it("allows gate request for an observe-only provider and explains recovery limits", async () => {
