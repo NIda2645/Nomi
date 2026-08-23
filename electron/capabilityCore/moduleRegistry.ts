@@ -74,3 +74,4 @@ export function createModuleRegistry(input: readonly unknown[]) {
   };
 }
 
+export type ModuleRegistry = ReturnType<typeof createModuleRegistry>;

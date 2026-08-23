@@ -109,6 +109,8 @@ const READ_ONLY_TOOLS = new Set([
   'nomi_list_projects',
   'nomi_list_models',
   'nomi_read_canvas',
+  'nomi_get_generation_context',
+  'nomi_operation_read',
   'nomi_get_run',
   'nomi_subscribe_run',
   'nomi_get_artifact',
@@ -500,7 +502,9 @@ export function createMcpProtocol(transport: McpTransport) {
         ? params._meta as Record<string, unknown>
         : {}
       const rawToken = meta.progressToken
-      const isLongTool = tool.name === 'nomi_generate' || tool.name === 'nomi_start_playbook'
+      const isLongTool = tool.name === 'nomi_generate'
+        || tool.name === 'nomi_start_playbook'
+        || tool.name === 'nomi_start_generation'
       const progress = createProgressReporter({
         send,
         progressToken: isLongTool && (typeof rawToken === 'string' || typeof rawToken === 'number') ? rawToken : undefined,

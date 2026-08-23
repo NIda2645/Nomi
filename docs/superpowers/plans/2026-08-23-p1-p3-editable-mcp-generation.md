@@ -38,6 +38,7 @@ P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都�
 - [x] P2 pure `PlanCandidate → ExecutionContract`：稳定 hash、字段解释、封存前编辑/封存后新草稿。
 - [x] P2 shared planning seam：semantic dispatcher 已有 MCP/GUI 共用 callback，未触碰 legacy provider path。
 - [x] P3 first seam：provider-neutral adapter、durable runtime envelope、unknown/reconcile-only recovery classifier、single-shot ordering tests。
+- [x] P2 semantic tool vocabulary + shared planning handler：MCP/GUI 共用 `context → operation → patch → preview`，目录只声明能力，handler 不调用 provider。
 - [ ] P3 default ProductionRun wiring、真实 MCP/UI journey、full gates 与决策包：正在推进。
 
 ## 文件地图与唯一 owner
@@ -214,7 +215,7 @@ git commit -m "feat: compile editable generation plans into contracts"
 - Modify: `electron/preload.ts`, `src/desktop/bridge.ts`
 - Test: `electron/capabilityCore/mcpGenerationTools.test.ts`, `electron/capabilityCore/generationDispatcher.test.ts`, `electron/capabilityCore/nomiMcpGenerationPlanning.test.ts`, `electron/capabilityCore/rpcServer.test.ts`
 
-- [ ] **Step 1: 写失败的跨入口一致性测试**
+- [x] **Step 1: 写失败的跨入口一致性测试**
 
 用同一 candidate 分别从 MCP stdio、RPC、renderer/GUI adapter 提交 preview/edit；断言三者返回相同 `candidateRevision`, `contractHash`, `warnings`, `nextAction`。对旧 alias（`nomi_generate`、`production.*`）携带任何 semantic binding 继续返回 `legacy_path_forbidden`；裸 legacy read 兼容不变。
 
@@ -224,15 +225,17 @@ pnpm exec vitest run electron/capabilityCore/mcpGenerationTools.test.ts electron
 
 Expected: FAIL，原因是 planning/edit routes 未接到共享 compiler/service。
 
-- [ ] **Step 2: 接入只读 context 与草稿操作**
+- [x] **Step 2: 接入只读 context 与草稿操作**
 
 提供 `context/read`、`operation/create`、`plan/patch`、`preview`、`plan/submit`；每个写操作要求已验证 `ProjectLease`、使用 Run repository CAS，并返回结构化 `nextAction`。只读 projection 不调用 `resumeUnfinishedRuns`、不修复文件、不触发 driver。
 
-- [ ] **Step 3: 做可编辑交互的最小 projection**
+- [x] **Step 3: 做可编辑交互的最小 projection**
 
 MCP 结果显示摘要、当前模型/供应商/模式、参数变更、参考素材缩略/顺序、估算费用、warning 和单一 primary action；GUI 若被 MCP 客户端能力限制，只显示同一摘要和一个“在当前客户端确认”的 fallback card，不创建第二个审批流程。错误文本使用普通语言，状态同时用文字/图标表达，不只靠颜色。
 
-- [ ] **Step 4: 红→绿并提交**
+- [x] **Step 4: 红→绿并提交**
+
+本步证据：`mcpGenerationTools.test.ts` 4 tests，连同 dispatcher/policy/RPC/MCP 相关 5 suites 共 87 tests；semantic tool catalog 已进入 `tools/list`，`nomi_start_generation` 接入标准进度 token。该 handler 仍是可替换的纯 planning seam；默认 Run-owned durable adapter 与真实 MCP/UI 旅程留在 Task 4/5，避免把内存 fixture 当生产事实源。
 
 ```bash
 pnpm exec vitest run electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/generationDispatcher.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts electron/capabilityCore/rpcServer.test.ts --reporter=dot
