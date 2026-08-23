@@ -24,6 +24,7 @@ import { rpcErrorFromPayload } from './mcpRpcError'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
+  ensureCapabilitySigningKey,
   resolveMcpOrigin,
   type CapabilityOriginHost,
 } from './security'
@@ -33,8 +34,10 @@ import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
+import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
 
 const productionRuns = getProductionRunService()
 
@@ -187,11 +190,26 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     /* 取不到系统 locale → 保持 zh-CN 缺省 */
   }
 
-  const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry()
+  const providerBootstrap = createGenerationProviderBootstrap()
+  const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry(undefined, { readinessByProvider: providerBootstrap.readinessByProvider })
   const generationPlanning = authorities.generationPlanning
     ?? createGenerationPlanningHandler({
       registry: generationRegistry,
       operations: createProductionGenerationOperationStore(productionRuns),
+      providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
+      start: async (operation, lease) => {
+        const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
+        const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
+        if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, state: operation.state, nextAction: 'provider_not_configured' }
+        return createProductionGenerationSubmission({
+          repository: productionRuns.repository,
+          projectRoot,
+          immutableProjectUuid: lease.immutableProjectUuid,
+          projectGeneration: lease.projectGeneration,
+          intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+          provider,
+        }).start({ projectId: lease.projectId, operationId: operation.operationId })
+      },
     })
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),

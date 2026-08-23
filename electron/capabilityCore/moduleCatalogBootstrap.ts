@@ -1,5 +1,6 @@
 import { createModuleRegistry } from "./moduleRegistry";
 import type { ModuleManifest } from "./moduleManifest";
+import type { GenerationProviderCapabilities } from "./generationRuntimeAdapter";
 import { readCatalog } from "../catalog/catalogStore";
 import type { CatalogState, Mapping, Model } from "../catalog/types";
 
@@ -12,6 +13,14 @@ export function createBuiltinModuleRegistry(manifests: readonly ModuleManifest[]
 }
 
 const SINGLE_SHOT_MODULE_ID = "generation.single-shot";
+
+export type GenerationProviderReadiness = {
+  providerReady: boolean;
+  capabilities: GenerationProviderCapabilities;
+  missingForSubmit?: string[];
+};
+
+export type GenerationProviderReadinessMap = Readonly<Record<string, GenerationProviderReadiness>>;
 
 function modeForKind(kind: Model["kind"]): string {
   return kind === "text"
@@ -53,7 +62,7 @@ function modelParameterSchema(model: Model, mappings: readonly Mapping[]) {
   return schema;
 }
 
-function manifestFromCatalog(state: CatalogState): ModuleManifest | null {
+function manifestFromCatalog(state: CatalogState, readinessByProvider: GenerationProviderReadinessMap = {}): ModuleManifest | null {
   const enabledModels = state.models.filter((model) => model.enabled);
   if (!enabledModels.length) return null;
   const enabledModelKeys = new Set(enabledModels.map((model) => `${model.vendorKey}\u0000${model.modelKey}`));
@@ -75,9 +84,9 @@ function manifestFromCatalog(state: CatalogState): ModuleManifest | null {
         modes: declaredModes.length ? declaredModes : [modeForKind(candidate.kind)],
         parameterSchema: modelParameterSchema(candidate, mappings),
         // Catalog mappings describe wire shape, not proof of native recovery.
-        // Keep these false until a GenerationProvider adapter explicitly proves
-        // idempotency/query/reconcile/cancel at the provider boundary.
-        capabilities: { submitIdempotency: false, query: false, reconcile: false, cancel: false },
+        // A bootstrap adapter may prove a subset; absent proof stays false while
+        // the model remains visible and submit remains a separate readiness check.
+        capabilities: readinessByProvider[model.vendorKey]?.capabilities ?? { submitIdempotency: false, query: false, reconcile: false, cancel: false },
       };
     });
     return [model.vendorKey, { providerId: model.vendorKey, models }];
@@ -100,7 +109,7 @@ function manifestFromCatalog(state: CatalogState): ModuleManifest | null {
  * and never reads API keys. A missing/empty catalog yields an empty registry,
  * so planning fails before any provider or spend path is touched.
  */
-export function createCatalogModuleRegistry(state: CatalogState = readCatalog()) {
-  const manifest = manifestFromCatalog(state);
+export function createCatalogModuleRegistry(state: CatalogState = readCatalog(), options: { readinessByProvider?: GenerationProviderReadinessMap } = {}) {
+  const manifest = manifestFromCatalog(state, options.readinessByProvider);
   return createBuiltinModuleRegistry(manifest ? [manifest] : []);
 }

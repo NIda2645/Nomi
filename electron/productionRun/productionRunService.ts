@@ -783,6 +783,9 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   return {
+    // The semantic generation submission adapter is a thin orchestration layer;
+    // ProductionRun's repository remains its only durable owner.
+    repository,
     createDraft, createGenerationDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
     requestArtifactRevision, reviewArtifact, materializeStoryboard, resolveArtifactPreview, command, proposeScript, proposeStoryboard,
     resumeUnfinishedRuns, listProjections, listFull,
