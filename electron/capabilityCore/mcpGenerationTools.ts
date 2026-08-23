@@ -8,6 +8,7 @@ import {
 } from "./executionContract";
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { ProjectLeaseV1 } from "./projectLease";
+import { GenerationProviderCapabilityError } from "./generationRuntimeAdapter";
 
 /**
  * The semantic MCP surface is deliberately data-only.  These tools are the
@@ -169,6 +170,7 @@ export type GenerationOperation = Readonly<{
   candidate: PlanCandidate;
   state: GenerationOperationState;
   contract?: ExecutionContractV1;
+  approvedReceiptId?: string;
   updatedAt: string;
 }>;
 
@@ -177,6 +179,7 @@ export type GenerationOperationStore = {
   read(projectId: string, operationId: string): GenerationOperation | null | Promise<GenerationOperation | null>;
   patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string): GenerationOperation | Promise<GenerationOperation>;
   seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string): GenerationOperation | Promise<GenerationOperation>;
+  approve(projectId: string, operationId: string, receiptId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   cancel(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
 };
 
@@ -219,6 +222,14 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },
+    approve(projectId, operationId, receiptId, now) {
+      const current = read(projectId, operationId);
+      if (!current) throw new Error(`Generation operation not found: ${operationId}`);
+      if (current.state !== "sealed" || !current.contract) throw new Error("A sealed generation plan is required before approval");
+      const next = freeze({ ...current, approvedReceiptId: receiptId, updatedAt: now });
+      operations.set(keyFor(projectId, operationId), next);
+      return next;
+    },
     cancel(projectId, operationId, now) {
       const current = read(projectId, operationId);
       if (!current) throw new Error(`Generation operation not found: ${operationId}`);
@@ -231,7 +242,7 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
 }
 
 export type GenerationPlanningHandlerDependencies = {
-  registry: Pick<ModuleRegistry, "resolve">;
+  registry: Pick<ModuleRegistry, "resolve"> & Partial<Pick<ModuleRegistry, "snapshot">>;
   operations: GenerationOperationStore;
   now?: () => string;
   context?: (input: { projectId: string; lease: ProjectLeaseV1 }) => unknown | Promise<unknown>;
@@ -262,12 +273,34 @@ function candidateFrom(value: unknown): PlanCandidate {
   };
 }
 
+const REQUIRED_PROVIDER_CAPABILITIES = ["submitIdempotency", "query", "reconcile", "cancel"] as const;
+
+function providerCapabilityGaps(registry: Pick<ModuleRegistry, "resolve">, candidate: PlanCandidate): string[] {
+  const resolved = registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode });
+  return REQUIRED_PROVIDER_CAPABILITIES.filter((capability) => !resolved.capabilities[capability]);
+}
+
 export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerDependencies) {
   const now = deps.now ?? (() => new Date().toISOString());
   return async (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1 }): Promise<unknown> => {
     if (!input.lease) throw new Error("A verified project lease is required");
     const params = input.params;
-    if (input.capability === "context") return deps.context?.({ projectId: input.lease.projectId, lease: input.lease }) ?? { projectId: input.lease.projectId, nextAction: "create" };
+    if (input.capability === "context") {
+      if (deps.context) return deps.context({ projectId: input.lease.projectId, lease: input.lease });
+      const providerProfiles = (deps.registry.snapshot?.() ?? []).flatMap((manifest) => manifest.providers.map((provider) => ({
+        providerId: provider.providerId,
+        modelIds: provider.models.map((model) => model.modelId),
+        modes: [...new Set(provider.models.flatMap((model) => model.modes))],
+        capabilities: provider.models.map((model) => ({ modelId: model.modelId, ...model.capabilities })),
+      })));
+      return {
+        projectId: input.lease.projectId,
+        immutableProjectUuid: input.lease.immutableProjectUuid,
+        projectGeneration: input.lease.projectGeneration,
+        providerProfiles,
+        nextAction: "create",
+      };
+    }
     const operationId = typeof params.operationId === "string" && params.operationId.trim() ? params.operationId.trim() : `op-${crypto.randomUUID()}`;
     if (input.capability === "create") {
       const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: candidateFrom(params.candidate), now: now() });
@@ -281,10 +314,45 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     if (input.capability === "preview") {
       const contract = compileExecutionContract(current.candidate, deps.registry);
-      return { operationId, candidateRevision: current.candidate.revision, contract, nextAction: "request_gate" };
+      const missing = providerCapabilityGaps(deps.registry, current.candidate);
+      return {
+        operationId,
+        candidateRevision: current.candidate.revision,
+        contract,
+        providerReady: missing.length === 0,
+        ...(missing.length ? { providerCapabilitiesMissing: missing, nextAction: "provider_configure" } : { nextAction: "request_gate" }),
+      };
+    }
+    if (input.capability === "gate_request") {
+      const contract = compileExecutionContract(current.candidate, deps.registry);
+      const missing = providerCapabilityGaps(deps.registry, current.candidate);
+      if (missing.length) throw new GenerationProviderCapabilityError(contract.providerId, missing);
+      const sealed = current.state === "draft"
+        ? await deps.operations.seal(input.lease.projectId, operationId, contract, now())
+        : current;
+      return {
+        operation: sealed,
+        operationId,
+        projectId: input.lease.projectId,
+        contractHash: contract.contractHash,
+        model: `${contract.providerId}/${contract.modelId}`,
+        referenceCount: contract.references.length,
+        costScope: `generation.single-shot:${operationId}`,
+        maximumCost: 0,
+        currency: "CNY",
+        expiresAt: new Date(Date.parse(now()) + 10 * 60 * 1000).toISOString(),
+        shotSummary: contract.prompt.slice(0, 120),
+        nextAction: "confirm",
+      };
+    }
+    if (input.capability === "gate_decide") {
+      const receiptId = typeof params.receiptId === "string" ? params.receiptId.trim() : "";
+      if (!receiptId) throw new Error("A verified generation gate receipt is required");
+      const operation = await deps.operations.approve(input.lease.projectId, operationId, receiptId, now());
+      return { operation, nextAction: "start" };
     }
     if (input.capability === "start") {
-      if (current.state !== "sealed" || !current.contract) throw new Error("Seal and confirm the generation plan before starting");
+      if (current.state !== "sealed" || !current.contract || !current.approvedReceiptId) throw new Error("Confirm the generation plan before starting");
       return deps.start?.(current, input.lease) ?? { operationId, state: current.state, nextAction: "provider_not_configured" };
     }
     if (input.capability === "cancel") return { operation: await deps.operations.cancel(input.lease.projectId, operationId, now()), nextAction: "create" };

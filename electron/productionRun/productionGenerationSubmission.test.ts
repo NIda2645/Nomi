@@ -76,6 +76,13 @@ function setup() {
     payload: { contract },
     issuedAt: "2026-08-23T00:00:00.000Z",
   });
+  repository.execute("project-1", "op-1", {
+    commandId: "generation.approve:op-1:receipt-fixture",
+    expectedRevision: 1,
+    type: "generation.approve",
+    payload: { receiptId: "receipt-fixture", contractHash: contract.contractHash },
+    issuedAt: "2026-08-23T00:00:00.000Z",
+  });
   return { root, repository, contract };
 }
 

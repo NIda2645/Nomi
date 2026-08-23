@@ -362,6 +362,55 @@ async function dispatchSemanticStub(
     if (typeof ctx.requestGenerationGate === 'function') {
       return ctx.requestGenerationGate({ params: leased.params, lease: leased.lease })
     }
+    if (typeof ctx.generationPlanning === 'function') {
+      const planned = await ctx.generationPlanning({ capability: route.capability, params: leased.params, lease: leased.lease })
+      const value = planned && typeof planned === 'object' && !Array.isArray(planned)
+        ? planned as Record<string, unknown>
+        : null
+      const authority = ctx.approvalReceiptAuthority
+      const contractHash = typeof value?.contractHash === 'string' ? value.contractHash.trim() : ''
+      const projectRevision = ctx.projectRevisionResolver?.(leased.lease.projectId)
+      if (!authority || !contractHash || !Number.isInteger(projectRevision)) {
+        return planned
+      }
+      const verifiedProjectRevision = projectRevision as number
+      const model = typeof value?.model === 'string' ? value.model : '当前模型'
+      const maximumCost = typeof value?.maximumCost === 'number' && Number.isFinite(value.maximumCost) ? value.maximumCost : 0
+      const challenge = authority.requestChallenge({
+        challengeKey: `generation.single-shot:${leased.lease.projectId}:${String(value?.operationId || '')}:${contractHash}`,
+        immutableProjectUuid: leased.lease.immutableProjectUuid,
+        projectGeneration: leased.lease.projectGeneration,
+        projectId: leased.lease.projectId,
+        runId: typeof value?.operationId === 'string' ? value.operationId : String(leased.params.operationId || ''),
+        gateId: `generation-gate:${String(value?.operationId || leased.params.operationId || '')}`,
+        contractHash,
+        targetHash: contractHash,
+        projectRevision: verifiedProjectRevision,
+        revocationEpoch: leased.lease.revocationEpoch,
+        costScope: typeof value?.costScope === 'string' ? value.costScope : 'generation.single-shot',
+        pricingSnapshotHash: contractHash,
+        reservationPreview: {
+          currency: typeof value?.currency === 'string' ? value.currency : 'CNY',
+          maximum: maximumCost,
+        },
+        display: {
+          model,
+          shotSummary: typeof value?.shotSummary === 'string' ? value.shotSummary : undefined,
+          referenceCount: typeof value?.referenceCount === 'number' ? value.referenceCount : undefined,
+        },
+      })
+      return {
+        ...value,
+        challengeId: challenge.challenge.challengeId,
+        nonce: challenge.challenge.nonce,
+        expiresAt: challenge.challenge.expiresAt,
+        model,
+        costScope: challenge.challenge.costScope,
+        maximumCost: challenge.challenge.reservationPreview.maximum,
+        currency: challenge.challenge.reservationPreview.currency,
+        handoff: { challengeToken: challenge.token, clientAttestation: true, contractHash, operationId: value?.operationId },
+      }
+    }
   }
   if (route.requiresReceipt) {
     if (!leased.lease) throw policyError({
@@ -388,6 +437,28 @@ async function dispatchSemanticStub(
         lease: upgraded.lease,
         receipt,
       })
+    }
+    if (typeof ctx.generationPlanning === 'function' && route.capability === 'gate_decide') {
+      const leaseToken = typeof leased.params.leaseHandle === 'string' ? leased.params.leaseHandle : ''
+      if (!leaseToken || !ctx.projectLeaseAuthority) {
+        throw policyError(policyDetails(policy, route.capability, 'lease_required'), 'A verified project lease is required')
+      }
+      const upgraded = ctx.projectLeaseAuthority.upgradeLeaseScope(leaseToken, [
+        ...leased.lease.scopeSet,
+        'generation:submit',
+      ])
+      const receiptToken = typeof leased.params.receiptToken === 'string' && leased.params.receiptToken.trim()
+        ? leased.params.receiptToken.trim()
+        : ctx.approvalReceiptAuthority?.resolveReceiptToken(receipt.receiptId)
+      const result = await ctx.generationPlanning({
+        capability: route.capability,
+        params: { ...leased.params, leaseHandle: upgraded.token, receiptId: receipt.receiptId, receiptToken },
+        lease: upgraded.lease,
+      })
+      if (receiptToken) ctx.approvalReceiptAuthority?.consumeReceipt(receiptToken)
+      return result && typeof result === 'object' && !Array.isArray(result)
+        ? { ...(result as Record<string, unknown>), leaseHandle: upgraded.token }
+        : { result, leaseHandle: upgraded.token }
     }
   }
   if (route.contextRead && typeof ctx.generationContext === 'function') return ctx.generationContext(leased.params)

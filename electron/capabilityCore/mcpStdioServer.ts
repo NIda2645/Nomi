@@ -34,6 +34,7 @@ import type { DispatchContext } from './dispatcher'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import type { ModuleRegistry } from './moduleRegistry'
+import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 
 const productionRuns = getProductionRunService()
 
@@ -186,13 +187,12 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     /* 取不到系统 locale → 保持 zh-CN 缺省 */
   }
 
+  const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry()
   const generationPlanning = authorities.generationPlanning
-    ?? (authorities.generationModuleRegistry
-      ? createGenerationPlanningHandler({
-        registry: authorities.generationModuleRegistry,
-        operations: createProductionGenerationOperationStore(productionRuns),
-      })
-      : undefined)
+    ?? createGenerationPlanningHandler({
+      registry: generationRegistry,
+      operations: createProductionGenerationOperationStore(productionRuns),
+    })
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
     invoke: (method, params, options) => invoke(method, params, options, { ...authorities, generationPlanning }),

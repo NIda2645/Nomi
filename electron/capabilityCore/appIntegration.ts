@@ -34,6 +34,7 @@ import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import type { ModuleRegistry } from './moduleRegistry'
+import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
@@ -178,13 +179,12 @@ export async function startCapabilityCore(
   try {
     const token = ensureToken()
     const defaults = createDefaultAuthorities()
+    const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry()
     const generationPlanning = authorities.generationPlanning
-      ?? (authorities.generationModuleRegistry
-        ? createGenerationPlanningHandler({
-          registry: authorities.generationModuleRegistry,
-          operations: createProductionGenerationOperationStore(getProductionRunService()),
-        })
-        : undefined)
+      ?? createGenerationPlanningHandler({
+        registry: generationRegistry,
+        operations: createProductionGenerationOperationStore(getProductionRunService()),
+      })
     handle = await startRpcServer({
       runTask,
       fetchTaskResult,

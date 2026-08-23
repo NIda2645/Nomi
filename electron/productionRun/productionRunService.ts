@@ -117,6 +117,7 @@ const MEANINGFUL_EVENT_TYPES = new Set([
   'generation.plan.updated',
   'generation.plan.sealed',
   'generation.plan.submitted',
+  'generation.plan.approved',
   'generation.plan.cancelled',
   'run.status.changed',
   'run.stage.changed',

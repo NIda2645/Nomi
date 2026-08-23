@@ -28,6 +28,15 @@
 - 合同封存后，编辑不会 patch 原 Job；返回 `new_draft_required` 并保留原合同可恢复。
 - P0 已完成的 policy、lease、receipt、legacy firewall、typed transport error、pure read 继续作为硬边界；本计划不恢复旧 `nomi_generate` 或 `production.generate-node→arrange→export` 路径。
 
+### 用户体验不变量（真实用户看到的每一处都适用）
+
+- 当前 MCP 客户端是主场：标准 elicitation 能在客户端确认且客户端能提供主进程可验证的 attestation，就只确认一次；客户端没有可验证证明时，沿用同一个 challenge 走一张 GUI fallback card，不再生成第二个独立审批。
+- 少即是多：预览只显示用户需要做决定的模型/供应商、模式、关键参数、参考素材和费用边界；内部 Run、WAL、fencing、receipt 等只作为状态证据，不要求用户学习。
+- 用户可控且可撤销：封存前可以像真实界面一样改模型、供应商、模式、任意参数以及参考素材的增删替换排序；取消保留草稿；封存后明确告诉用户“新草稿”，不偷偷改旧任务。
+- 状态不靠颜色：进行中同时有短文案、图标和进度；失败明确回答“发生了什么、是否可能已提交、下一步只有什么”；`submission_unknown` 用“需要核账”解释，不要求用户猜内部术语。
+- 通用而非硬编码：UI/dispatcher 不按具体供应商或模型分支；能力、参数、输入模式和素材约束来自可替换 manifest，未知项在付费前说明并阻塞。
+- 真实页面自由度验收：测试不是只把固定 candidate 送进编译器，而是模拟用户来回换模型/供应商/模式、改参数、换参考素材、重排素材、重启和断线，验证每一步的可见结果和恢复动作。
+
 ### 本计划唯一需要用户决策的点
 
 P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都由工程自主完成。只有在 P3 零额度证据全绿后，才停在真实 provider smoke 前，请用户决定真实供应商凭证、模型、预算上限以及是否坚持“缺少原生幂等/查询/核账能力的 provider 直接阻塞”。默认建议：严格阻塞；`submission_unknown` 只允许 reconcile，不允许人工确认后盲重提。
@@ -40,7 +49,7 @@ P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都�
 - [x] P3 first seam：provider-neutral adapter、durable runtime envelope、unknown/reconcile-only recovery classifier、single-shot ordering tests。
 - [x] P2 semantic tool vocabulary + shared planning handler：MCP/GUI 共用 `context → operation → patch → preview`，目录只声明能力，handler 不调用 provider。
 - [x] P3 first durable planning wiring：semantic operation 草稿已由 `ProductionRun` events/snapshot/CAS 持有；真实 MCP JSON-RPC create/edit/preview 零额度旅程已通过。
-- [ ] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与决策包：零额度 Run-owned seam 已完成，默认进程接线与真实确认旅程正在推进。
+- [ ] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与决策包：Run-owned 零额度 seam、用户模型目录驱动 registry 与可验证 attestation 一次确认链已完成；provider adapter、GUI fallback 走查和完整编辑/断线矩阵正在推进。
 
 ## 文件地图与唯一 owner
 
@@ -238,6 +247,8 @@ MCP 结果显示摘要、当前模型/供应商/模式、参数变更、参考�
 
 本步证据：`mcpGenerationTools.test.ts` 4 tests，连同 dispatcher/policy/RPC/MCP 相关 5 suites 共 87 tests；semantic tool catalog 已进入 `tools/list`，`nomi_start_generation` 接入标准进度 token。该 handler 仍是可替换的纯 planning seam；默认 Run-owned durable adapter 与真实 MCP/UI 旅程留在 Task 4/5，避免把内存 fixture 当生产事实源。
 
+语义 gate 已补为同一 challenge 的一键链：`request_generation_gate` 在封存前生成 contract/challenge；MCP 客户端提交可验证 attestation 后由主进程签发 receipt，`decide_generation_gate` 持久批准后自动进入 `start_generation`。没有可验证 attestation 时只允许 GUI fallback，不接受裸 `confirm`。
+
 ```bash
 pnpm exec vitest run electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/generationDispatcher.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts electron/capabilityCore/rpcServer.test.ts --reporter=dot
 pnpm run typecheck
@@ -333,17 +344,19 @@ git commit -m "feat: add durable single-shot runtime submission and recovery"
 
 旅程必须按用户任务而非 API 列表编写：
 
-1. MCP 客户端已注册：展示预览后，用户在当前客户端点一次标准确认；Nomi 不再弹第二次确认。
+1. MCP 客户端支持可验证 attestation：展示预览后，用户在当前客户端点一次标准确认；Nomi 不再弹第二次确认。
 2. MCP 客户端不支持标准 elicitation：只显示一个简短 GUI fallback card；用户点一次后回到当前客户端继续。
 3. 用户切换模型/供应商/模式、改任意参数、添加/删除/替换/重排参考素材，再预览；所有改动可见且合同 hash 更新。
 4. 用户在封存前取消并重规划；封存后再改动，收到“新草稿”而不是原任务被偷偷改写。
 5. 生成中看到文字+图标进度，可取消；断线/重启后看到明确的继续核账或重试（仅 definitely_not_submitted），不出现重复扣费。
 6. provider unknown 时，界面直接说明“已提交但回执丢失，需要核账”，只有一个下一步；不要求用户猜内部状态名。
 
+已先实现并通过可验证 attestation 的一次确认旅程（`mcpSemanticGenerationConfirmation.test.ts`）；完整编辑矩阵、GUI fallback、人眼截图和断线恢复仍需补齐。
+
 - [ ] **Step 2: 实现并运行旅程**
 
 ```bash
-pnpm exec vitest run electron/capabilityCore/nomiMcpGenerationSingleShot.test.ts --reporter=dot
+pnpm exec vitest run electron/capabilityCore/nomiMcpGenerationPlanning.test.ts electron/capabilityCore/mcpSemanticGenerationConfirmation.test.ts electron/capabilityCore/moduleCatalogBootstrap.test.ts --reporter=dot
 pnpm run test:e2e -- tests/ux/mcp-generation-single-shot.e2e.mjs tests/ux/mcp-generation-editability.e2e.mjs
 ```
 

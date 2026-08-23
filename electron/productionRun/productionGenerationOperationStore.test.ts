@@ -49,12 +49,14 @@ describe("ProductionRun-owned generation operation store", () => {
     const contract = compileExecutionContract(edited.candidate, registry);
     const sealed = await operations.seal("project-1", "op-1", contract, "2026-08-23T00:00:02.000Z");
     expect(sealed).toMatchObject({ state: "sealed", contract: { contractHash: contract.contractHash } });
+    const approved = await operations.approve("project-1", "op-1", "receipt-1", "2026-08-23T00:00:02.500Z");
+    expect(approved).toMatchObject({ state: "sealed", approvedReceiptId: "receipt-1" });
 
     const restartedService = createProductionRunService({
       repository: createProductionRunRepository({ projectDirResolver: () => root, now: () => "2026-08-23T00:00:03.000Z" }),
       projectRootResolver: () => root,
       sleep: async () => {},
     });
-    expect(createProductionGenerationOperationStore(restartedService).read("project-1", "op-1")).toMatchObject({ state: "sealed", contract: { contractHash: contract.contractHash } });
+    expect(createProductionGenerationOperationStore(restartedService).read("project-1", "op-1")).toMatchObject({ state: "sealed", approvedReceiptId: "receipt-1", contract: { contractHash: contract.contractHash } });
   });
 });

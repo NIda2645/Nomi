@@ -23,6 +23,7 @@ import { buildToolErrorOutcome, buildProgressStartMessage, sanitizeArtifactResou
 import { assembleToolResultContent } from './mcpResultPayload'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
+import { handleSemanticGenerationGate } from './mcpSemanticGenerationFlow'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
 import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
@@ -81,7 +82,7 @@ export interface McpTransport {
   isAppOpen(): boolean
   /** Main-process proof that this connection was installed for a known MCP client. */
   getAuthenticatedClient?(): AuthenticatedMcpClient | null
-  /** Optional stronger per-challenge verifier. Standard MCP clients may use the registered channel instead. */
+  /** Optional stronger per-challenge verifier. The client must provide a proof the main process can verify. */
   verifyClientGenerationConfirmation?(challenge: GenerationGateChallengeProjection, attestation: unknown): Promise<boolean | GenerationGateVerificationResult>
   /** GUI fallback for the exact server-owned challenge. It must return only the gesture result. */
   confirmGenerationInNomi?(challenge: GenerationGateChallengeProjection): Promise<boolean | GenerationGateVerificationResult>
@@ -277,9 +278,6 @@ export function createMcpProtocol(transport: McpTransport) {
         ].filter(Boolean).join(' · '),
       })
       if (!elicited.confirmed) {
-        // A deliberate decline/cancel is a completed human decision; do not ask
-        // the same person again on a second surface. A timeout is also kept on
-        // the client surface so a reconnect can reuse the unexpired challenge.
         return {
           challengeId: challenge.challengeId,
           confirmed: false,
@@ -300,15 +298,7 @@ export function createMcpProtocol(transport: McpTransport) {
             ...(result.receiptToken ? { receiptToken: result.receiptToken } : {}),
           }
         }
-        // A client-provided attestation that the main process cannot verify is
-        // never silently downgraded to a normal accept. The client can still
-        // use the shared GUI fallback for this exact challenge.
-      } else if (elicited.attestation == null) {
-        // Option A: the user stays in the active MCP client. The response is
-        // accepted only because this connection is already registered and the
-        // server is resolving the response to its still-pending challenge;
-        // a detached `confirm:true` request has no such path and remains
-        // rejected by the semantic dispatcher.
+      } else if (elicited.attestation == null && challenge.handoff?.clientAttestation !== true) {
         return {
           challengeId: challenge.challengeId,
           confirmed: true,
@@ -316,8 +306,6 @@ export function createMcpProtocol(transport: McpTransport) {
           nextAction: 'in_client',
         }
       }
-      // A supplied but unverifiable attestation falls through to the same GUI
-      // challenge, never to a provider or spend path.
     }
     if (typeof transport.confirmGenerationInNomi === 'function' && transport.isAppOpen()) {
       const fallback = await transport.confirmGenerationInNomi(challenge)
@@ -647,6 +635,16 @@ export function createMcpProtocol(transport: McpTransport) {
           const cardResult = await transport.invoke(tool.method, built)
           spendTrust.trust(spendProjectId)
           reply(id, buildToolResultPayload(tool.name, args, cardResult))
+          return
+        }
+        if (tool.name === 'nomi_request_generation_gate') {
+          await handleSemanticGenerationGate(id, tool.name, args, built, {
+            invoke: (method, params) => transport.invoke(method, params),
+            requestConfirmation: requestGenerationConfirmation,
+            buildResult: buildToolResultPayload,
+            reply,
+            locale,
+          })
           return
         }
         const result = await transport.invoke(tool.method, built)

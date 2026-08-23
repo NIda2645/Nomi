@@ -13,6 +13,7 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
     candidate: structuredClone(plan.candidate),
     state: plan.state,
     ...(plan.contract ? { contract: structuredClone(plan.contract) } : {}),
+    ...(plan.approvedReceiptId ? { approvedReceiptId: plan.approvedReceiptId } : {}),
     updatedAt: plan.updatedAt,
   };
 }
@@ -70,6 +71,19 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.cancel",
         payload: {},
+        issuedAt: now,
+      });
+      const operation = operationFromRun(result.run);
+      if (!operation) throw new Error("Production Run lost its generation plan");
+      return operation;
+    },
+    async approve(projectId, operationId, receiptId, now) {
+      const current = read(projectId, operationId);
+      const result = await owner.command(projectId, operationId, {
+        commandId: `generation.approve:${operationId}:${receiptId}`,
+        expectedRevision: owner.readFull(projectId, operationId).revision,
+        type: "generation.approve",
+        payload: { receiptId, contractHash: current.contract?.contractHash },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);

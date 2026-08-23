@@ -87,7 +87,7 @@ function requiredRun(repository: ProductionRunRepository, projectId: string, run
 
 function requiredContract(run: ProductionRun): ExecutionContractV1 {
   const plan = run.generationPlan;
-  if (!plan?.contract || (plan.state !== "sealed" && plan.state !== "submitted")) {
+  if (!plan?.contract || !plan.approvedReceiptId || (plan.state !== "sealed" && plan.state !== "submitted")) {
     throw new Error("Seal and confirm the generation plan before starting");
   }
   return plan.contract;

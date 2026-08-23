@@ -29,6 +29,20 @@ const registry = createModuleRegistry([{
   }],
 }]);
 
+const editableRegistry = createModuleRegistry([{
+  moduleId: "generation.single-shot",
+  version: "1.0.0",
+  inputKinds: ["image", "video"],
+  outputKinds: ["image", "video"],
+  modes: ["text-to-image", "image-to-image", "text-to-video", "image-to-video"],
+  parameterSchema: { aspectRatio: { type: "enum", enum: ["1:1", "16:9"] }, duration: { type: "number" }, seed: { type: "integer" } },
+  assetInputSchema: { references: { kind: "asset", max: 4 } },
+  providers: [
+    { providerId: "provider-image", models: [{ modelId: "model-image-a", modes: ["text-to-image", "image-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } }] },
+    { providerId: "provider-video", models: [{ modelId: "model-video-b", modes: ["text-to-video", "image-to-video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } }] },
+  ],
+}]);
+
 function makeAuthority(root: string) {
   return createProjectLeaseAuthority({
     macKey: "mcp-journey-authority",
@@ -50,6 +64,20 @@ function makeCandidate() {
     prompt: "A quiet paper boat on a lake",
     parameters: { aspectRatio: "1:1", seed: 4 },
     references: [],
+  };
+}
+
+function makeEditableCandidate() {
+  return {
+    candidateId: "candidate-editable",
+    revision: 1,
+    moduleId: "generation.single-shot",
+    providerId: "provider-image",
+    modelId: "model-image-a",
+    mode: "text-to-image",
+    prompt: "A quiet paper boat on a lake",
+    parameters: { aspectRatio: "1:1", seed: 4 },
+    references: [{ assetId: "asset-a", contentHash: "hash-a", version: 1 }],
   };
 }
 
@@ -127,5 +155,48 @@ describe("MCP semantic generation planning journey", () => {
     expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "image-to-image" } });
     expect(runTask).not.toHaveBeenCalled();
     expect(harness.invoke).toHaveBeenCalledWith("nomi_preview_execution", expect.objectContaining({ operationId }));
+  });
+
+  it("keeps real-page freedom across provider/model/mode/parameter/reference edits", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-mcp-generation-edit-matrix-"));
+    roots.push(root);
+    const repository = createProductionRunRepository({ projectDirResolver: () => root, now: () => "2026-08-23T00:00:00.000Z" });
+    const service = createProductionRunService({ repository, projectRootResolver: () => root, sleep: async () => {} });
+    const operations = createProductionGenerationOperationStore(service);
+    const handler = createGenerationPlanningHandler({ registry: editableRegistry, operations, now: () => "2026-08-23T00:00:00.000Z" });
+    const authority = makeAuthority(root);
+    const selection = authority.issueSelectionHandle({ immutableProjectUuid: "project-uuid", projectGeneration: 1, canonicalRootDigest: "root", manifestDigest: "manifest", scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read"] });
+    const lease = authority.issueLease(selection.token, { projectId: "project-1", leasePrincipal: "mcp:test", sessionId: "session-1", connectionNonce: "connection-1" }).token;
+    const context = {
+      runTask: vi.fn(async () => { throw new Error("editable semantic journey must not call runTask"); }),
+      makeGateway: () => { throw new Error("editable semantic journey must not create a gateway"); },
+      productionRuns: service,
+      origin: { host: "codex" as const },
+      generationPolicy: createMcpGenerationPolicy({ env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: "1" }, checkpoints: { p0Passed: true, p2Passed: true } }),
+      projectLeaseAuthority: authority,
+      generationPlanning: handler,
+    };
+    const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
+    await harness.call(11, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "Codex" } });
+    const created = await harness.call(12, "tools/call", { name: "nomi_operation_create", arguments: { leaseHandle: lease, candidate: makeEditableCandidate() } });
+    expect(created.result).toBeTruthy();
+    const operationId = [...(await repository.list("project-1"))][0]?.runId;
+    expect(operationId).toMatch(/^op-/);
+
+    const edits = [
+      { providerId: "provider-image", modelId: "model-image-a", mode: "image-to-image", parameters: { aspectRatio: "16:9", seed: 8 }, references: [{ assetId: "asset-b", contentHash: "hash-b", version: 2 }, { assetId: "asset-a", contentHash: "hash-a", version: 1 }] },
+      { providerId: "provider-video", modelId: "model-video-b", mode: "image-to-video", parameters: { duration: 5 }, references: [{ assetId: "asset-c", contentHash: "hash-c", version: 1 }] },
+    ];
+    for (const [index, patch] of edits.entries()) {
+      await harness.call(13 + index * 2, "tools/call", { name: "nomi_submit_generation_plan", arguments: { leaseHandle: lease, operationId, patch } });
+      const preview = await harness.call(14 + index * 2, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+      expect(preview.result).toBeTruthy();
+      expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: patch });
+      const previewText = (preview.result as { content?: Array<{ text?: string }> }).content?.[0]?.text;
+      const previewPayload = JSON.parse(previewText ?? "{}");
+      expect(previewPayload.contract).toMatchObject({ providerId: patch.providerId, mode: patch.mode, contractHash: expect.any(String) });
+    }
+    expect(repository.read("project-1", operationId!).generationPlan?.candidate.revision).toBe(3);
+    expect(context.runTask).not.toHaveBeenCalled();
   });
 });

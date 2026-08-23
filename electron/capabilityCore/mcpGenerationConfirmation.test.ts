@@ -78,6 +78,24 @@ describe('one generation challenge, two confirmation surfaces', () => {
     expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
   })
 
+  it('uses one GUI fallback card for a semantic challenge and returns its receipt', async () => {
+    const confirmGenerationInNomi = vi.fn(async (received: GenerationGateChallengeProjection) => {
+      expect(received.handoff).toMatchObject({ clientAttestation: true, challengeToken: 'challenge-token' })
+      return { confirmed: true, receiptId: 'receipt-gui-semantic', receiptToken: 'token-gui-semantic' }
+    })
+    const protocol = createMcpProtocol({
+      send: () => undefined,
+      invoke: vi.fn(async () => ({})),
+      isAppOpen: () => true,
+      getAuthenticatedClient: () => 'codex',
+      confirmGenerationInNomi,
+    })
+    await expect(protocol.requestGenerationConfirmation({ ...challenge, handoff: { clientAttestation: true, challengeToken: 'challenge-token' } })).resolves.toMatchObject({
+      surface: 'nomi', confirmed: true, receiptId: 'receipt-gui-semantic', receiptToken: 'token-gui-semantic',
+    })
+    expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
+  })
+
   it('accepts one registered client confirm:true on the outstanding challenge without opening Nomi', async () => {
     const confirmGenerationInNomi = vi.fn(async () => ({ confirmed: true, receiptId: 'receipt-1' }))
     const frames: unknown[] = []
@@ -132,6 +150,54 @@ describe('one generation challenge, two confirmation surfaces', () => {
     await expect(protocol.requestGenerationConfirmation(challenge)).resolves.toEqual({
       challengeId: 'challenge-1', confirmed: false, surface: 'none', nextAction: 'in_nomi',
     })
+  })
+
+  it('uses a registered client receipt channel for semantic generation challenges without a second GUI click', async () => {
+    const frames: unknown[] = []
+    const verifyClientGenerationConfirmation = vi.fn(async (_challenge: GenerationGateChallengeProjection, attestation: unknown) => {
+      expect(attestation).toEqual('signed-client-attestation')
+      return { confirmed: true, receiptId: 'receipt-semantic-1', receiptToken: 'token-semantic-1' }
+    })
+    const confirmGenerationInNomi = vi.fn(async () => ({ confirmed: true, receiptId: 'receipt-gui' }))
+    const protocol = await initialized({
+      send: (frame) => frames.push(frame),
+      invoke: vi.fn(async () => ({})),
+      isAppOpen: () => true,
+      getAuthenticatedClient: () => 'codex',
+      verifyClientGenerationConfirmation,
+      confirmGenerationInNomi,
+    })
+    const resultPromise = protocol.requestGenerationConfirmation({ ...challenge, handoff: { clientAttestation: true, challengeToken: 'challenge-token' } })
+    await tick()
+    const request = frames.find((frame) => (frame as { method?: string }).method === 'elicitation/create') as { id: string }
+    protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true, attestation: 'signed-client-attestation' } } })
+    await expect(resultPromise).resolves.toMatchObject({ surface: 'client', receiptId: 'receipt-semantic-1', receiptToken: 'token-semantic-1' })
+    expect(confirmGenerationInNomi).not.toHaveBeenCalled()
+    expect(verifyClientGenerationConfirmation).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes a bare semantic client accept to the same GUI challenge', async () => {
+    const frames: unknown[] = []
+    const verifyClientGenerationConfirmation = vi.fn(async () => ({ confirmed: true, receiptId: 'should-not-be-used' }))
+    const confirmGenerationInNomi = vi.fn(async (received: GenerationGateChallengeProjection) => {
+      expect(received.handoff).toMatchObject({ clientAttestation: true, challengeToken: 'challenge-token' })
+      return { confirmed: true, receiptId: 'receipt-gui' }
+    })
+    const protocol = await initialized({
+      send: (frame) => frames.push(frame),
+      invoke: vi.fn(async () => ({})),
+      isAppOpen: () => true,
+      getAuthenticatedClient: () => 'codex',
+      verifyClientGenerationConfirmation,
+      confirmGenerationInNomi,
+    })
+    const resultPromise = protocol.requestGenerationConfirmation({ ...challenge, handoff: { clientAttestation: true, challengeToken: 'challenge-token' } })
+    await tick()
+    const request = frames.find((frame) => (frame as { method?: string }).method === 'elicitation/create') as { id: string }
+    protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true } } })
+    await expect(resultPromise).resolves.toMatchObject({ surface: 'nomi', receiptId: 'receipt-gui' })
+    expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
+    expect(verifyClientGenerationConfirmation).not.toHaveBeenCalled()
   })
 
   it('treats client decline as no approval and keeps the challenge identity', async () => {

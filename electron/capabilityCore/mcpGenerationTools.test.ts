@@ -22,6 +22,17 @@ const registry = createModuleRegistry([{
   }],
 }]);
 
+const blockedRegistry = createModuleRegistry([{
+  moduleId: "generation.single-shot",
+  version: "1.0.0",
+  inputKinds: ["image"],
+  outputKinds: ["image"],
+  modes: ["text-to-image"],
+  parameterSchema: {},
+  assetInputSchema: { references: { kind: "asset" } },
+  providers: [{ providerId: "blocked-provider", models: [{ modelId: "blocked-model", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: false, query: false, reconcile: false, cancel: false } }] }],
+}]);
+
 const lease = {
   leaseId: "lease-1",
   projectId: "project-1",
@@ -55,6 +66,15 @@ function candidate(overrides: Record<string, unknown> = {}) {
 }
 
 describe("semantic MCP generation tools", () => {
+  it("returns the current catalog context without calling a provider", async () => {
+    const handler = createGenerationPlanningHandler({ registry, operations: createInMemoryGenerationOperationStore(), now: () => "2026-08-23T00:00:00.000Z" });
+    await expect(handler({ capability: "context", params: {}, lease })).resolves.toMatchObject({
+      projectId: "project-1",
+      immutableProjectUuid: "project-uuid-1",
+      providerProfiles: [{ providerId: "fixture-provider", modelIds: ["fixture-model"], modes: expect.arrayContaining(["text-to-image", "image-to-image"]) }],
+    });
+  });
+
   it("exposes one vocabulary for MCP and GUI adapters", () => {
     expect(MCP_GENERATION_TOOL_CATALOG.map((tool) => tool.name)).toEqual(expect.arrayContaining([
       "nomi_session_open",
@@ -102,6 +122,17 @@ describe("semantic MCP generation tools", () => {
     const operationId = (created as { operation: { operationId: string } }).operation.operationId;
     const preview = await handler({ capability: "preview", params: { operationId }, lease });
     operations.seal("project-1", operationId, (preview as { contract: never }).contract, "2026-08-23T00:00:00.000Z");
+    operations.approve("project-1", operationId, "receipt-1", "2026-08-23T00:00:00.000Z");
     await expect(handler({ capability: "start", params: { operationId }, lease })).resolves.toMatchObject({ nextAction: "provider_not_configured" });
+  });
+
+  it("shows missing recovery capability before confirmation and never seals the draft", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const handler = createGenerationPlanningHandler({ registry: blockedRegistry, operations, now: () => "2026-08-23T00:00:00.000Z" });
+    const created = await handler({ capability: "create", params: { candidate: candidate({ providerId: "blocked-provider", modelId: "blocked-model" }) }, lease });
+    const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+    await expect(handler({ capability: "preview", params: { operationId }, lease })).resolves.toMatchObject({ providerReady: false, nextAction: "provider_configure", providerCapabilitiesMissing: expect.arrayContaining(["query", "reconcile"]) });
+    await expect(handler({ capability: "gate_request", params: { operationId }, lease })).rejects.toThrow(/lacks required recovery capabilities/);
+    expect((await operations.read("project-1", operationId))?.state).toBe("draft");
   });
 });

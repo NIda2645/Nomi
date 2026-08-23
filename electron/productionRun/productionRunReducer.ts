@@ -230,6 +230,19 @@ export function applyProductionCommand(
         message: currentPlan.operationId,
       };
     }
+    case "generation.approve": {
+      const currentPlan = current.generationPlan;
+      const receiptId = text(command.payload, "receiptId");
+      const contractHash = text(command.payload, "contractHash");
+      if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.contract) throw new Error("A sealed generation plan is required before approval");
+      if (currentPlan.contract.contractHash !== contractHash) throw new Error("Generation approval does not match the sealed contract");
+      if (currentPlan.approvedReceiptId === receiptId) return { run: current, eventType: "generation.plan.approved", message: currentPlan.operationId };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, approvedReceiptId: receiptId, approvedAt: now, updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.approved",
+        message: currentPlan.operationId,
+      };
+    }
     case "stage.upsert": {
       const stage = record(command.payload, "stage") as ProductionStage;
       const stages = current.stages.some((item) => item.stageId === stage.stageId)

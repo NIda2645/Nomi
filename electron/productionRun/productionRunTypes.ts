@@ -175,6 +175,8 @@ export type ProductionGenerationPlan = {
   state: "draft" | "sealed" | "cancelled" | "submitted";
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
+  approvedReceiptId?: string;
+  approvedAt?: string;
   updatedAt: string;
 };
 
