@@ -61,6 +61,19 @@ export type ArchetypeReferenceSlot = {
   roleName?: string;
 };
 
+export type CameraControlStrategy =
+  | "native"
+  | "prompt"
+  | "reference_video"
+  | "prompt_or_reference_video"
+  | "unsupported"
+  | "unknown";
+
+export type ArchetypeCameraControl = {
+  strategy: CameraControlStrategy;
+  nativeIntents?: Array<"locked" | "pan" | "tilt" | "dolly" | "orbit" | "handheld" | "path">;
+};
+
 /** 跨模型统一的「意图」——UI 主标签按它走（角色参考/单图首帧/首尾帧/文生/视频编辑）。 */
 export type ArchetypeIntent = "text" | "single" | "firstlast" | "character" | "edit";
 
@@ -79,6 +92,11 @@ export type ArchetypeMode = {
   vendorTerm: string;
   hint: string;
   slots: ArchetypeReferenceSlot[];
+  /**
+   * How this mode can express camera intent. This is model-contract data,
+   * not a universal assumption: different models expose different controls.
+   */
+  cameraControl?: ArchetypeCameraControl;
   /** 标量参数：复用现有控件类型（规则 1，不另造）。供应商无关的**缺省**集；某供应商字段枚举不同时用 vendorParams 覆盖。 */
   params: ModelParameterControl[];
   /**

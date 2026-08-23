@@ -25,11 +25,12 @@ const PARAMS: ModelParameterControl[] = [
 // image_urls≤9 + video_urls≤3 + audio_urls≤3，走档案级 image_to_video 桶（与 i2v 同一 mapping，
 // 一条 body 覆盖；非当前模式的空数组键由模板自动丢弃，同 kie Seedance omni）。
 const SEEDANCE_2_APIMART_MODES: ModelArchetype["modes"] = [
-  { id: "t2v", intent: "text", vendorTerm: "文生视频", hint: "纯文字生成视频", promptRequired: true, transportTaskKind: "text_to_video", slots: [], params: PARAMS },
+  { id: "t2v", intent: "text", vendorTerm: "文生视频", hint: "纯文字生成视频", promptRequired: true, transportTaskKind: "text_to_video", slots: [], cameraControl: { strategy: "prompt", nativeIntents: [] }, params: PARAMS },
   {
     id: "i2v", intent: "single", vendorTerm: "图生视频", hint: "首帧/参考图驱动（最多 9 张）", promptRequired: true,
     transportTaskKind: "image_to_video",
     slots: [{ kind: "image_ref", label: "参考图", min: 1, max: 9, inputKey: "image_urls" }],
+    cameraControl: { strategy: "prompt", nativeIntents: [] },
     params: PARAMS,
   },
   {
@@ -42,6 +43,7 @@ const SEEDANCE_2_APIMART_MODES: ModelArchetype["modes"] = [
       // 方舟同义：「不支持"文本+音频"、"纯音频" 输入」）。2.5 已解除此限，故声明而非写死（见 types 注释）。
       { kind: "audio_ref", label: "参考音频", min: 0, max: 3, inputKey: "audio_urls", requiresAnyOf: ["image_ref", "video_ref"] },
     ],
+    cameraControl: { strategy: "prompt_or_reference_video", nativeIntents: [] },
     params: PARAMS,
   },
   {
@@ -55,6 +57,7 @@ const SEEDANCE_2_APIMART_MODES: ModelArchetype["modes"] = [
       { kind: "last_frame", label: "尾帧", min: 0, max: 1 },
     ],
     combineSlotsInto: { key: "image_with_roles" },
+    cameraControl: { strategy: "prompt", nativeIntents: [] },
     params: PARAMS,
   },
 ];

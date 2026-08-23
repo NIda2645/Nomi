@@ -73,6 +73,7 @@ export const SEEDANCE_2_5_APIMART_ARCHETYPE: ModelArchetype = {
       promptRequired: true,
       transportTaskKind: "text_to_video",
       slots: [],
+      cameraControl: { strategy: "prompt", nativeIntents: [] },
       params: PARAMS,
     },
     {
@@ -86,6 +87,7 @@ export const SEEDANCE_2_5_APIMART_ARCHETYPE: ModelArchetype = {
       combineSlotsInto: { key: "image_with_roles" },
       // 官方：首尾帧类模式 size 必须 adaptive（输出比例跟随输入图）。
       fixedParams: { size: "adaptive" },
+      cameraControl: { strategy: "prompt", nativeIntents: [] },
       params: FRAME_PARAMS,
     },
     {
@@ -101,6 +103,7 @@ export const SEEDANCE_2_5_APIMART_ARCHETYPE: ModelArchetype = {
       ],
       combineSlotsInto: { key: "image_with_roles" },
       fixedParams: { size: "adaptive" },
+      cameraControl: { strategy: "prompt", nativeIntents: [] },
       params: FRAME_PARAMS,
     },
     {
@@ -119,6 +122,7 @@ export const SEEDANCE_2_5_APIMART_ARCHETYPE: ModelArchetype = {
       // 官方另有一条我们**测不出来**的约束：参考 + 「编辑/删除/修改」或「延长/续写」类提示词时
       // size 也必须 adaptive。那取决于提示词内容，没法可靠判定 —— 故此处不钉死，只把默认设为
       // adaptive（用户不动就是对的）。宁可默认安全，也不假装我们能识别用户的意图。
+      cameraControl: { strategy: "prompt_or_reference_video", nativeIntents: [] },
       params: PARAMS,
     },
   ],

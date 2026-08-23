@@ -1,0 +1,449 @@
+# Contextual Video Generation Planning Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Each checkbox is a small TDD step with a concrete verification command.
+
+**Goal:** 把真实模型能力事实、用户上下文和可编辑的 P2 生成草稿连接起来，让 Nomi 根据当前输入推荐合适的模型/模式/参数，同时不把任何供应商判断写成全局硬编码，也不创建第二条生成执行路径。
+
+**Architecture:** 能力档案只保存逐项对账后的事实（模式、参数、参考槽、供应商限制和相机表达能力）；纯推荐器读取候选档案与当前上下文，输出排序、理由、限制和下一步，不调用 provider、不铸 grant、不写 Run。推荐结果只作为 P2 `PlanCandidate` 的初始建议和 preview 投影，用户可以在封存前自由编辑；确认后由现有 `ExecutionContract` 冻结精确值，P3 统一 Runtime Adapter 只执行封存合同。
+
+**Tech Stack:** TypeScript, Vitest, existing `ModelArchetype` catalog, `PlanCandidate`/`ExecutionContractV1`, MCP semantic generation handler, existing provider-neutral runtime adapter.
+
+---
+
+## Scope and non-goals
+
+本计划覆盖：
+
+- Seedance/APIMart 当前真实档案的通用化修正；
+- 模型/供应商/模式/参数/参考素材切换的上下文推荐；
+- P2 MCP planning/preview 的推荐投影；
+- 零额度真实 MCP journey、provider counter 和错误/限制投影测试；
+- 计划、证据和下一决策点更新。
+
+本计划不做：
+
+- 不新增 provider、gateway、RuntimeTask 或 ProductionRun owner；
+- 不把 `Seedance`、`APIMart`、`trajectory`、`adaptive` 等判断写进 dispatcher；
+- 不在未确认前调用 provider、上传资产、铸 spend grant 或写 Canvas/Timeline；
+- 不自动改写用户已选择的模型/模式/参数；
+- 不在本计划内完成 P4–P7 的多镜、时间轴 Adopt、音频/审片扩展或完整 Editor。
+
+## User-visible acceptance
+
+用户在当前 MCP 客户端看到的是一张短预览：
+
+```text
+建议：Seedance 2.5 · 首尾帧 · 720p · 8 秒
+原因：你提供了首帧和尾帧，当前模型支持这两张图之间的过渡
+限制：首尾帧模式的比例由输入图决定
+操作：编辑方案 / 确认生成
+```
+
+用户可以换模型、供应商、模式、参数和素材。每次编辑都重新生成候选 revision/hash；封存后编辑返回 `new_draft_required`。如果当前模型不支持用户输入，预览给出事实和唯一下一步，不静默丢字段，不伪造不存在的模式。
+
+## Decision gate
+
+本计划执行到以下状态后暂停汇报，不自行扩大范围：
+
+1. 通用推荐器和 P2 preview/编辑链路通过全门；
+2. Seedance/APIMart 低规格真实视频 smoke 的请求映射、查询和降级 UX 有可复核证据；
+3. 需要选择下一批真实 provider/model（只继续 Seedance/APIMart，还是扩展到其他已对账模型）时，提供用户价值/成本/覆盖面的对比表，由产品负责人决定。
+
+在此之前默认自主推进，所有零额度测试和低规格验证额度已获授权。
+
+---
+
+### Task 1: Define capability facts for context-sensitive decisions
+
+**Files:**
+- Modify: `src/config/modelArchetypes/types.ts`
+- Modify: `src/config/modelArchetypes/seedanceApimart.ts`
+- Modify: `src/config/modelArchetypes/seedance25Apimart.ts`
+- Test: `src/config/modelArchetypes/modelArchetypeCapabilities.test.ts`
+
+- [ ] **Step 1: Write failing tests for declared camera expression and reference constraints**
+
+Add tests that assert facts are read from the selected mode, not inferred from provider/model names:
+
+```ts
+it('declares Seedance camera expression as prompt/reference-video, never native trajectory', () => {
+  const mode = SEEDANCE_2_APIMART_ARCHETYPE.modes.find((item) => item.id === 'omni');
+  expect(mode?.cameraControl).toEqual({ strategy: 'prompt_or_reference_video', nativeIntents: [] });
+});
+
+it('keeps Seedance 2.0 audio dependency in the mode slot declaration', () => {
+  const omni = SEEDANCE_2_APIMART_ARCHETYPE.modes.find((item) => item.id === 'omni');
+  expect(omni?.slots.find((slot) => slot.kind === 'audio_ref')?.requiresAnyOf)
+    .toEqual(['image_ref', 'video_ref']);
+});
+
+it('does not assume Seedance 2.5 has the Seedance 2.0 audio dependency', () => {
+  const omni = SEEDANCE_2_5_APIMART_ARCHETYPE.modes.find((item) => item.id === 'omni');
+  expect(omni?.slots.find((slot) => slot.kind === 'audio_ref')?.requiresAnyOf).toBeUndefined();
+});
+```
+
+- [ ] **Step 2: Run the focused test and verify it fails for the missing capability field**
+
+Run:
+
+```bash
+pnpm exec vitest run src/config/modelArchetypes/modelArchetypeCapabilities.test.ts --reporter=dot
+```
+
+Expected: FAIL because `ArchetypeMode` has no `cameraControl` field.
+
+- [ ] **Step 3: Add the smallest typed capability declaration**
+
+Add to `types.ts`:
+
+```ts
+export type CameraControlStrategy =
+  | 'native'
+  | 'prompt'
+  | 'reference_video'
+  | 'prompt_or_reference_video'
+  | 'unsupported'
+  | 'unknown';
+
+export type ArchetypeCameraControl = {
+  strategy: CameraControlStrategy;
+  nativeIntents?: Array<'locked' | 'pan' | 'tilt' | 'dolly' | 'orbit' | 'handheld' | 'path'>;
+};
+```
+
+Add `cameraControl?: ArchetypeCameraControl` to `ArchetypeMode`. Declare the actual Seedance facts in the APIMart mode profiles. Do not add provider-specific branching to the recommender.
+
+- [ ] **Step 4: Run focused tests and typecheck**
+
+Run:
+
+```bash
+pnpm exec vitest run src/config/modelArchetypes/modelArchetypeCapabilities.test.ts src/config/modelArchetypes/videoGenerationRecommendation.test.ts --reporter=dot
+pnpm run typecheck
+```
+
+Expected: all focused tests pass and typecheck exits 0.
+
+- [ ] **Step 5: Commit the capability fact boundary**
+
+```bash
+git add src/config/modelArchetypes/types.ts src/config/modelArchetypes/seedanceApimart.ts src/config/modelArchetypes/seedance25Apimart.ts src/config/modelArchetypes/modelArchetypeCapabilities.test.ts
+git commit -m "feat: declare model-specific video capability facts"
+```
+
+### Task 2: Make the recommendation engine provider/model agnostic
+
+**Files:**
+- Modify: `src/config/modelArchetypes/videoGenerationRecommendation.ts`
+- Modify: `src/config/modelArchetypes/videoGenerationRecommendation.test.ts`
+- Test: `src/config/modelArchetypes/videoGenerationRecommendation.test.ts`
+
+- [ ] **Step 1: Add red tests for non-hardcoded camera and audio decisions**
+
+Add tests with two synthetic model profiles: one with native orbit support and one with no declared support. Add a profile whose audio slot has no dependency. The tests must prove that the recommender follows profile facts:
+
+```ts
+it('does not claim trajectory is unavailable when the selected mode declares native orbit', () => {
+  const nativeOrbit = withModeCameraControl(seedance20, 't2v', { strategy: 'native', nativeIntents: ['orbit'] });
+  const result = recommendVideoGeneration({ prompt: '环绕镜头', cameraIntent: 'orbit' }, [nativeOrbit]);
+  expect(result.recommendations[0]?.limitations.join(' ')).not.toContain('没有独立的轨迹控制');
+});
+
+it('derives audio-only next action from reference-slot dependencies, not APIMart name', () => {
+  const audioOnly = withAudioSlotDependency(seedance20, undefined);
+  const result = recommendVideoGeneration({ references: [{ kind: 'audio', role: 'audio' }] }, [audioOnly]);
+  expect(result.recommendations).not.toHaveLength(0);
+});
+
+it('returns a generic unsupported-input action when all candidates reject the reference combination', () => {
+  const result = recommendVideoGeneration({ references: [{ kind: 'audio', role: 'audio' }] }, [seedance20]);
+  expect(result.nextAction).toContain('参考图或参考视频');
+  expect(result.nextAction).not.toContain('APIMart Seedance');
+});
+```
+
+- [ ] **Step 2: Run the focused tests and verify the old hardcoded behavior fails**
+
+```bash
+pnpm exec vitest run src/config/modelArchetypes/videoGenerationRecommendation.test.ts --reporter=dot
+```
+
+Expected: FAIL on the native-orbit and generic audio cases.
+
+- [ ] **Step 3: Replace hardcoded decisions with profile-driven helpers**
+
+Implement these rules in `videoGenerationRecommendation.ts`:
+
+1. `buildLimitations` reads `mode.cameraControl`; `native` with a matching intent produces no “no trajectory” warning; `prompt_or_reference_video` describes the available expression; `unknown` produces an uncertainty note; absent camera facts never claims unsupported.
+2. The no-recommendation action is derived from candidate slot dependencies. It may mention “再添加参考图或参考视频”，but it must not mention a provider or model name.
+3. Keep `fixedParams` and `requiresAnyOf` as profile facts. The generic recommender only reads them.
+4. Keep recommendation output advisory: `score`, `reasons`, and `limitations` are projections; they must not mutate the candidate or call a provider.
+
+- [ ] **Step 4: Run focused tests, full archetype tests, lint and typecheck**
+
+```bash
+pnpm exec vitest run src/config/modelArchetypes/modelArchetypeCapabilities.test.ts src/config/modelArchetypes/videoGenerationRecommendation.test.ts --reporter=dot
+pnpm exec eslint src/config/modelArchetypes/types.ts src/config/modelArchetypes/seedanceApimart.ts src/config/modelArchetypes/seedance25Apimart.ts src/config/modelArchetypes/videoGenerationRecommendation.ts src/config/modelArchetypes/modelArchetypeCapabilities.test.ts src/config/modelArchetypes/videoGenerationRecommendation.test.ts
+pnpm run typecheck
+```
+
+Expected: all tests pass, eslint has no new errors, typecheck exits 0.
+
+- [ ] **Step 5: Commit the generic recommendation engine**
+
+```bash
+git add src/config/modelArchetypes/videoGenerationRecommendation.ts src/config/modelArchetypes/videoGenerationRecommendation.test.ts
+git commit -m "refactor: derive video recommendations from capability facts"
+```
+
+### Task 3: Preserve reference roles in the editable P2 contract
+
+**Files:**
+- Modify: `electron/capabilityCore/executionContract.ts`
+- Modify: `electron/capabilityCore/mcpGenerationTools.ts`
+- Modify: `electron/capabilityCore/executionContract.test.ts`
+- Modify: `electron/capabilityCore/mcpGenerationTools.test.ts`
+
+- [ ] **Step 1: Add red tests for role-preserving edits and stable hashes**
+
+Extend the P2 tests with optional reference context:
+
+```ts
+it('preserves reference kind and role in the sealed contract', () => {
+  const candidate = makeCandidate({
+    references: [{ assetId: 'asset-character', contentHash: 'c'.repeat(64), version: 1, kind: 'image', role: 'character' }],
+  });
+  const contract = compileExecutionContract(candidate, registry);
+  expect(contract.references[0]).toMatchObject({ kind: 'image', role: 'character' });
+});
+
+it('changing only a reference role creates a new candidate revision and contract hash', () => {
+  const original = makeCandidate({ references: [{ assetId: 'asset-a', contentHash: 'a'.repeat(64), version: 1, kind: 'image', role: 'character' }] });
+  const changed = applyPlanCandidatePatch(original, { references: [{ ...original.references[0]!, role: 'first_frame' }] });
+  expect(changed.revision).toBe(original.revision + 1);
+  expect(compileExecutionContract(changed, registry).contractHash).not.toBe(compileExecutionContract(original, registry).contractHash);
+});
+```
+
+- [ ] **Step 2: Run the focused tests and verify the fields are currently dropped**
+
+```bash
+pnpm exec vitest run electron/capabilityCore/executionContract.test.ts electron/capabilityCore/mcpGenerationTools.test.ts --reporter=dot
+```
+
+Expected: FAIL because `PlanAssetReference` and `candidateFrom` discard `kind`/`role`.
+
+- [ ] **Step 3: Add optional typed context without breaking legacy drafts**
+
+Add optional fields to `PlanAssetReference`:
+
+```ts
+kind?: 'image' | 'video' | 'audio';
+role?: 'character' | 'first_frame' | 'last_frame' | 'reference' | 'audio';
+```
+
+Update `candidateFrom` to validate and retain these fields when present. Existing references without context remain valid. Contract hashing must include the optional fields when supplied, so the sealed request conserves the user’s role choice.
+
+- [ ] **Step 4: Run focused tests and all contract tests**
+
+```bash
+pnpm exec vitest run electron/capabilityCore/executionContract.test.ts electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/productionGenerationOperationStore.test.ts --reporter=dot
+pnpm run typecheck
+```
+
+Expected: all tests pass; old fixture drafts remain readable.
+
+- [ ] **Step 5: Commit the P2 reference context**
+
+```bash
+git add electron/capabilityCore/executionContract.ts electron/capabilityCore/mcpGenerationTools.ts electron/capabilityCore/executionContract.test.ts electron/capabilityCore/mcpGenerationTools.test.ts
+git commit -m "feat: preserve reference roles in generation contracts"
+```
+
+### Task 4: Integrate recommendations into semantic planning and preview
+
+**Files:**
+- Modify: `electron/capabilityCore/mcpGenerationTools.ts`
+- Modify: `electron/capabilityCore/mcpGenerationTools.test.ts`
+- Modify: `electron/capabilityCore/nomiMcpGenerationPlanning.test.ts`
+- Modify: `electron/capabilityCore/mcpToolResults.ts` only if the existing structured result needs a new optional recommendation projection
+
+- [ ] **Step 1: Add a red handler test for recommendation-only create/preview**
+
+Inject a pure recommender dependency and assert that create/preview returns a recommendation without calling `start`, `runTask`, gateway, provider or spend:
+
+```ts
+it('returns an editable contextual recommendation during preview without provider side effects', async () => {
+  const recommend = vi.fn(() => ({ recommendations: [{ provider: 'apimart', modelKey: 'doubao-seedance-2.5', modeId: 'firstlast', modeLabel: '首尾帧', params: { duration: 8 }, editableParams: ['duration'], reasons: ['提供了首帧和尾帧'], limitations: [], score: 175 } ] }));
+  const handler = createGenerationPlanningHandler({ registry, operations, recommendVideoGeneration: recommend, now: fixedNow });
+  const preview = await handler({ capability: 'preview', lease, params: { operationId } });
+  expect(preview).toMatchObject({ recommendation: { recommendations: [{ modeId: 'firstlast' }] } });
+  expect(start).not.toHaveBeenCalled();
+  expect(runTask).not.toHaveBeenCalled();
+});
+```
+
+- [ ] **Step 2: Run the focused test and verify the handler has no recommendation seam**
+
+```bash
+pnpm exec vitest run electron/capabilityCore/mcpGenerationTools.test.ts --reporter=dot
+```
+
+Expected: FAIL because the handler does not accept or project a recommender.
+
+- [ ] **Step 3: Add the pure recommendation seam and projection**
+
+Extend `GenerationPlanningHandlerDependencies` with an optional `recommendVideoGeneration` function. On `create` and `preview`, call it only when the candidate/module is video and the caller supplies enough typed context. Return it as an optional `recommendation` field alongside the existing `contract`, `providerReady`, and `recoveryNotice` fields. Do not replace the candidate automatically. If the caller explicitly edits provider/model/mode/parameters/references, recompute the recommendation from the new candidate/context before preview.
+
+The handler must continue to use `compileExecutionContract` for the final contract. The recommendation is never part of the contract hash and never authorizes a start.
+
+- [ ] **Step 4: Add MCP journey tests for free editing**
+
+In `nomiMcpGenerationPlanning.test.ts`, add one zero-provider journey that:
+
+1. creates a video candidate with a character image;
+2. previews and receives a character/reference recommendation;
+3. edits the provider/model/mode and replaces the reference with first+last frame;
+4. previews again and receives a first/last recommendation;
+5. changes duration and a model-specific parameter;
+6. asserts candidate revision and contract hash change on every edit;
+7. asserts `runTask`, provider submit, gateway and spend counts stay zero.
+
+- [ ] **Step 5: Run focused MCP suites and typecheck**
+
+```bash
+pnpm exec vitest run electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts electron/capabilityCore/mcpSemanticGenerationConfirmation.test.ts --reporter=dot
+pnpm run typecheck
+```
+
+Expected: all tests pass and no pre-confirmation side effect occurs.
+
+- [ ] **Step 6: Commit the P2 recommendation integration**
+
+```bash
+git add electron/capabilityCore/mcpGenerationTools.ts electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts electron/capabilityCore/mcpToolResults.ts
+git commit -m "feat: project contextual video recommendations in MCP planning"
+```
+
+### Task 5: Cover realistic model/provider/input variation
+
+**Files:**
+- Modify: `src/config/modelArchetypes/videoGenerationRecommendation.test.ts`
+- Modify: `electron/capabilityCore/nomiMcpGenerationPlanning.test.ts`
+- Create: `tests/ux/mcp-generation-editable-context.e2e.mjs`
+- Modify: `docs/audit/2026-08-23-p1-p3-evidence.md`
+
+- [ ] **Step 1: Add the scenario matrix as failing contract tests**
+
+The matrix must include at least:
+
+| Scenario | Expected behavior |
+|---|---|
+| no references + short target | text-to-video candidate is recommended when supported |
+| character image | character/omni/reference mode outranks text-only mode |
+| first + last frame | first/last mode is selected only on profiles declaring it |
+| reference video | video-reference mode is selected only when the slot exists |
+| audio-only on a model with dependency | no recommendation; generic next action asks for required companion input |
+| audio-only on a model that supports it | recommendation is available |
+| user chooses unsupported parameter | preview explains and blocks that field; no silent drop |
+| user replaces a reference | revision/hash changes; old sealed operation is unchanged |
+| provider/model switch | recommendation re-evaluates against the new profile, not old model rules |
+| native camera control profile | no false “trajectory unavailable” warning |
+
+Run the new tests before implementation changes to verify each missing behavior is red.
+
+- [ ] **Step 2: Implement only the smallest missing behavior per failing test**
+
+Do not add provider-name conditionals. Add or correct only capability declarations, context normalization, recommendation scoring, or preview projection required by the failing scenario.
+
+- [ ] **Step 3: Add a zero-provider real MCP journey**
+
+`tests/ux/mcp-generation-editable-context.e2e.mjs` must drive the actual MCP JSON-RPC transport through `session/open → operation/create → preview → plan edits → preview` and record:
+
+- one screenshot or structured output for the initial recommendation;
+- one after changing model/mode/reference;
+- one unsupported-input explanation;
+- provider request count = 0;
+- spend grant count = 0;
+- Canvas/Timeline write count = 0.
+
+The journey must not require the user to learn internal names such as `ExecutionContract`, `WAL`, `fencingEpoch` or `capability enum`.
+
+- [ ] **Step 4: Run the matrix and journey**
+
+```bash
+pnpm exec vitest run src/config/modelArchetypes/videoGenerationRecommendation.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts --reporter=dot
+node tests/ux/mcp-generation-editable-context.e2e.mjs
+```
+
+Expected: all assertions pass, zero provider quota/network calls, and output contains a single clear next action for unsupported combinations.
+
+- [ ] **Step 5: Update the evidence document**
+
+Record the exact test commands, counts, scenarios, zero-side-effect counters, and known limitations in `docs/audit/2026-08-23-p1-p3-evidence.md`. Explicitly state that recommendation is advisory before sealing and that the sealed contract is the only execution authority.
+
+- [ ] **Step 6: Commit the realistic variation coverage**
+
+```bash
+git add src/config/modelArchetypes/videoGenerationRecommendation.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts tests/ux/mcp-generation-editable-context.e2e.mjs docs/audit/2026-08-23-p1-p3-evidence.md
+git commit -m "test: cover editable model and reference generation journeys"
+```
+
+### Task 6: Review, gates, and decision package
+
+**Files:**
+- Modify: `docs/plan/2026-08-23-video-generation-parameter-research.md`
+- Modify: `docs/research/2026-08-23-video-generation-parameter-selection.md`
+- Modify: `docs/audit/2026-08-23-p1-p3-evidence.md`
+
+- [ ] **Step 1: Run scoped review checks**
+
+```bash
+git diff --check
+pnpm exec eslint src/config/modelArchetypes electron/capabilityCore/mcpGenerationTools.ts electron/capabilityCore/executionContract.ts
+pnpm run typecheck
+```
+
+- [ ] **Step 2: Run the complete project gates**
+
+```bash
+pnpm run check:filesize
+pnpm run check:tokens
+pnpm run check:i18n
+pnpm run lint:ci
+pnpm run typecheck
+pnpm run test
+pnpm run build
+```
+
+Expected: all commands exit 0; existing warning baseline does not increase.
+
+- [ ] **Step 3: Run the user-visible MCP journey and inspect its evidence**
+
+```bash
+pnpm run test:mcp
+node tests/ux/mcp-generation-editable-context.e2e.mjs
+```
+
+Read the produced screenshot/structured output and verify the same build and entry point show:
+
+- concise recommendation;
+- user-editable model/mode/parameter/reference choices;
+- no internal jargon;
+- one primary confirmation action;
+- unsupported cases explain the reason and next step;
+- no second confirmation before the same sealed contract starts.
+
+- [ ] **Step 4: Update the plan status and open the only decision package**
+
+Report:
+
+1. P0–P3 current implementation/evidence status;
+2. model/provider/mode/reference scenario counts;
+3. provider/spend/Canvas/Timeline counters;
+4. remaining provider capability limits;
+5. comparison of the next provider scope options.
+
+Stop only at the provider-scope decision described above; do not start P4–P7 work in this slice.
+
