@@ -19,6 +19,34 @@
 
 这保证了“供应商没有高级参数”不会把整个能力关掉，同时也不会把不存在或未核验的字段发给供应商。
 
+## UI ↔ MCP 上下文一致性
+
+本轮发现并修复了一个结构性缺口：GUI 已经有完整的视频档案，但 MCP 共享层最初只注册了 Seedance APIMart 两份档案，其余已接模型会退成通用 `unknown` 档案。现在所有 seeded catalog 视频档案都从同一个纯共享 owner 读取，renderer 原路径保留兼容重导出；Electron/stdio 会同时读取 catalog 的既有 `meta.archetypeId` 指针和当前 mapping。
+
+已覆盖的 seeded 视频档案族包括 KIE、APIMart、火山、Dreamina、RunningHub 和 Agnes；APIMart 现有 14 条视频模型配方全部逐条通过。模型身份解析遵循大小写精确、普通精确、最具体匹配的优先级，避免 `seedance-2` 这类短通配符抢走 APIMart Fast/Mini 或其他供应商档案。
+
+验证的不变量：
+
+- 每个 seeded 视频模型都能从 GUI 已有 `archetypeId` 回到同一个 shared profile 对象；
+- 每个 profile mode 都有既有 catalog mapping，声明的参考槽至少有一条真实可达 wire 通道；
+- 每个 APIMart mode 可渲染出带具体 model identity 的真实请求模板，鉴权只在 header，secret 不进入 body；
+- 用户切换模型时只读取新 profile 的参数和模式，不继承上一模型的专属字段；
+- 未知/用户自建模型仍走保守回退，不假造高级模式。
+
+## 真实 smoke 证据复用与本轮花费
+
+本轮先盘点已有真实 APIMart 证据，没有重复发请求：
+
+| 已有证据 | 覆盖的接口形态 |
+|---|---|
+| 2026-06-16 `apimart-params.e2e.mjs` 6/6 出片 | Sora Pro 文生变体、Veo 参考图/首尾帧有序 `image_urls`、Omni `generation_type:reference`、Hailuo Fast 单 `first_frame_image` |
+| 2026-06-16 `seedance-apimart.e2e.mjs` | Seedance 首尾帧 `image_with_roles` 角色对象数组、整数 duration、异步轮询与素材落地 |
+| 2026-07-29 `apimart-new-models-20260729.cjs` | Vidu Q3 图参考、Kling Turbo 文生、HappyHorse 1.1 图参考、Wan 2.7-R2V `image_with_roles` |
+
+这些证据已经覆盖当前 APIMart 配方的不同 wire 族：纯文生、单首帧、顺序首尾帧、角色对象数组、参考图融合和异步 task 查询。H3、Seedance 2.5 等同族档案通过零额度模板/参数不变量验证；没有必要因为换一个 model 字符串而重复生成。**本轮新增付费请求数：0，新增额度消耗：0。**
+
+如果未来发现某个供应商的在线行为与现有配方冲突，只针对那一条新 wire 族做最低规格 smoke；不会把“每个模型各跑一次”当成质量证明。
+
 ## 用户任务测试
 
 1. 角色参考图 → preview 推荐全能/参考模式；
@@ -30,9 +58,13 @@
 
 ```bash
 pnpm exec vitest run electron/shared/videoCapabilities src/config/modelArchetypes electron/capabilityCore/mcpGenerationTools.test.ts electron/capabilityCore/nomiMcpGenerationPlanning.test.ts --reporter=dot
-# 13 files / 117 tests passed
+# shared/MCP 现有 focused suites 通过；本轮新增 shared/catalog contract suites 10 tests
+pnpm exec vitest run electron/shared/videoCapabilities/index.test.ts electron/catalog/apimartVideoSharedContracts.test.ts electron/catalog/curatedVideoSharedContracts.test.ts --reporter=dot
+# 3 files / 10 tests passed
+pnpm exec vitest run src/config/modelArchetypes electron/catalog --reporter=dot
+# 87 files / 833 tests passed
 pnpm run test
-# 697 files passed, 1 skipped / 6164 tests passed, 1 skipped
+# 699 files passed, 1 skipped / 6171 tests passed, 1 skipped
 pnpm run typecheck
 pnpm run build
 pnpm run check:filesize
@@ -42,14 +74,16 @@ pnpm run check:archetype-sources
 pnpm run lint:ci
 ```
 
-## 还没有替用户做的决定
+本轮完整门岗结果：`check:filesize`、`check:tokens`、`check:i18n`、`check:archetype-sources`、`lint:ci`（95 warnings，低于 98 棘轮）、`typecheck`、`test`、`build` 和 `git diff --check` 均通过。结构性验证没有新增 provider/spend/Canvas/Timeline 副作用。
 
-下一步不是再设计一个抽象，而是选择真实 provider 范围：
+## 当前还没有替用户做的决定
+
+模型档案和零额度请求契约的范围已经自主完成，不需要用户在“只做 Seedance 还是全做”之间再选择。剩余决策只在真实付费 smoke 的成本/覆盖面上：
 
 | 选择 | 用户看到的价值 | 代价 |
 |---|---|---|
-| 只先完成 APIMart Seedance 2.0 | 最快得到一个证据闭环，模式/参数/参考角色最完整 | 暂时不覆盖其他供应商 |
-| 同时补 APIMart 其他视频模型 | 可直接比较 Seedance、Veo、Kling、Wan、Hailuo 的真实差异 | 每个模型都要逐项对账、做低规格 smoke，周期更长 |
-| 先接任意 catalog 模型的保守 unknown 档案 | 用户可以立即切换新模型，不被 Nomi 阻塞 | 高级模式要等官方证据后才显示，推荐会更谨慎 |
+| 复用已有真实成功证据，只补未覆盖的接口族 | 花费最少，验证重点放在真正不同的请求形态 | 某些同形态模型不再重复生成 |
+| 每个模型/变体都各跑一次最低规格 | 每个具体入口都有独立在线证据 | 可能重复花费，且不能额外证明共享代码正确 |
+| 继续只做零额度契约验证 | 零成本、最快 | 不能证明供应商当前在线端点仍接受请求 |
 
-当前代码已支持第三种默认行为；需要产品负责人决定是否把第二种的真实 provider 覆盖面作为下一阶段目标。
+当前默认按第一种推进。只有预计剩余 smoke 费用明显上升，或某供应商实际行为与现有档案冲突，才暂停请用户决策；否则继续自主完成。

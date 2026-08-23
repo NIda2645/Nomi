@@ -38,7 +38,7 @@ import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
 import { readCatalog } from '../catalog/catalogStore'
-import { buildVideoModelCandidates, recommendVideoGeneration } from '../shared/videoCapabilities'
+import { buildVideoModelCandidates, recommendVideoGeneration, videoArchetypeIdFromMeta } from '../shared/videoCapabilities'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
@@ -191,6 +191,7 @@ export async function startCapabilityCore(
         provider: model.vendorKey,
         modelKey: model.modelKey,
         label: model.labelZh,
+        archetypeId: videoArchetypeIdFromMeta(model.meta),
         parameterControls: model.onboarding?.fields?.map((field) => ({
           key: field.key,
           label: field.displayName,

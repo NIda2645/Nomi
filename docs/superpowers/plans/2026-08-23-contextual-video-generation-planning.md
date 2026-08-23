@@ -363,6 +363,8 @@ The next step is deliberately paused at one architecture decision. The pure reco
 
 Recommended decision: move the capability facts and pure recommendation implementation into one shared, main-readable capability registry. Both renderer controls and MCP planning should consume that registry; the P2 contract remains the only execution authority. The alternative is renderer-only injection, which leaves headless MCP without recommendations when Nomi is closed.
 
+Decision resolved: the user selected the shared-registry option. The first slice moved the recommender and Seedance APIMart facts. Follow-up inspection showed that the existing GUI catalog already owns complete model/mode/parameter/reference facts for the other curated video models; therefore the continuation must reuse those facts instead of re-researching or recreating them. Official documentation is consulted only for a concrete conflict, missing fact or stale declaration.
+
 - [x] **Step 4: Add MCP journey tests for free editing**
 
 In `nomiMcpGenerationPlanning.test.ts`, add one zero-provider journey that:
@@ -510,3 +512,31 @@ Report:
 5. comparison of the next provider scope options.
 
 Stop only at the provider-scope decision described above; do not start P4–P7 work in this slice.
+
+### Task 7: Reuse every existing curated video profile in shared planning
+
+**User value:** changing from Seedance to Sora, Veo, Kling, Wan, Hailuo, Vidu or another already-integrated APIMart video model must preserve the same editable modes and parameters the GUI already exposes. MCP must not reduce known models to a generic text/image fallback, and values from the previous model must not leak into the newly selected model.
+
+**Scope:** this task does not invent capabilities, change provider payloads, or re-audit every official document. It moves the existing pure video profile facts to the shared owner, keeps renderer imports as compatibility re-exports, and validates the existing catalog-to-request path.
+
+**Context rule:** the GUI is the first place to inspect for product context. Before adding an MCP recommendation field or model abstraction, trace the GUI's archetype, variant, mode, reference-slot and mapping inputs. MCP may share that owner or add a genuinely missing fact, but must not create a parallel simplified catalog.
+
+- [x] **Step 1: Add the all-curated-model red test**
+
+Enumerate `APIMART_VIDEO_MODELS`. For every seeded catalog row, require `buildVideoModelCandidates` to resolve its exact `archetypeId`, use provider-specialized parameters, and expose only modes backed by an existing transport mapping. Add a model-switch case proving Sora-only fields do not survive a switch to Hailuo and vice versa.
+
+- [x] **Step 2: Establish one shared owner for the existing video profiles**
+
+Move the pure APIMart video archetype declarations into `electron/shared/videoCapabilities/`. Replace the renderer declarations with compatibility re-exports. Extend the catalog candidate input with the existing `meta.archetypeId` pointer so exact identity wins over fuzzy model-key matching. Keep unknown/user-added catalog models on the conservative fallback.
+
+- [x] **Step 3: Validate the existing request contracts without provider spend**
+
+For every APIMart seeded video model/mode, render the real HTTP request template with its current defaults and assert: required model identity is present; declared reference slots reach a compatible wire field; parameters belong to the selected profile; switching profiles does not retain unsupported keys; sensitive headers are not exposed. Reuse the existing catalog/request pipeline and tests rather than creating a second serializer.
+
+- [x] **Step 4: Inventory paid evidence and avoid duplicate smoke**
+
+Inventory existing successful paid evidence first. Existing Seedance, Sora, Veo, Omni, Hailuo, Vidu, Kling Turbo, HappyHorse and Wan evidence already covers the distinct APIMart wire shapes (role-object frames, ordered arrays, single first-frame string, reference image, text-to-video and async task query). No new paid smoke is needed in this slice. If a future provider exposes a genuinely new unverified shape, run only that shortest/lowest-resolution/audio-off case; do not run one paid generation per alias/variant. Stop for user approval only if the remaining necessary smoke set has material cost or the provider gives conflicting behavior.
+
+- [x] **Step 5: Run full gates and update evidence**
+
+Run the focused matrix, all catalog/request tests, `check:filesize`, `check:tokens`, `check:i18n`, `lint:ci`, `typecheck`, full test and build. Record exact model/mode coverage, reused paid evidence, new spend and any provider limitation. Commit only scoped files.

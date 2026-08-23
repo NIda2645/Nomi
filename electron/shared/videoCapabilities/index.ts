@@ -1,6 +1,6 @@
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "./seedance25Apimart";
 import { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
-export { buildVideoModelCandidates, sourceBackedVideoProfiles } from "./registry";
+export { buildVideoModelCandidates, sourceBackedVideoProfiles, videoArchetypeIdFromMeta } from "./registry";
 
 export { SEEDANCE_2_APIMART_ARCHETYPE, SEEDANCE_2_5_APIMART_ARCHETYPE };
 export { recommendVideoGeneration } from "./recommendation";

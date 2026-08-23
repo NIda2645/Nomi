@@ -5,8 +5,30 @@ import type {
   ModelParameterControl,
 } from "./types";
 import type { VideoModelCandidate } from "./recommendation";
+import { AGNES_VIDEO_ARCHETYPE } from "./agnesVideo";
+import { DREAMINA_MULTIFRAME_ARCHETYPE } from "./dreaminaMultiframe";
+import { DREAMINA_SEEDANCE_ARCHETYPE } from "./dreaminaSeedance";
+import { GROK_IMAGINE_1_5_VIDEO_ARCHETYPE } from "./grokImagine15Video";
+import { HAILUO_2_3_ARCHETYPE } from "./hailuo23";
+import { HAPPYHORSE_ARCHETYPE } from "./happyhorse";
+import { HAPPYHORSE_1_1_ARCHETYPE } from "./happyhorse11";
+import { KLING_3_ARCHETYPE } from "./kling";
+import { KLING_3_TURBO_ARCHETYPE } from "./kling30Turbo";
+import { MINIMAX_H3_ARCHETYPE } from "./minimaxH3";
+import { MINIMAX_H3_APIMART_ARCHETYPE } from "./minimaxH3Apimart";
+import { MINIMAX_H3_REGENERATION_ARCHETYPE } from "./minimaxH3Regeneration";
+import { OMNI_FLASH_EXT_ARCHETYPE } from "./omniFlashExt";
+import { RUNNINGHUB_SEEDANCE_ARCHETYPE } from "./runninghubSeedance";
+import { RUNNINGHUB_VIDEO_ARCHETYPES } from "./runninghubVideoArchetypes";
+import { SEEDANCE_2_ARCHETYPE } from "./seedance";
+import { SEEDANCE_2_5_ARCHETYPE } from "./seedance25";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "./seedance25Apimart";
 import { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
+import { SEEDANCE_VOLCENGINE_ARCHETYPE } from "./seedanceVolcengine";
+import { SORA_2_ARCHETYPE } from "./sora2";
+import { VEO_3_1_ARCHETYPE } from "./veo31";
+import { VIDU_Q3_ARCHETYPE } from "./viduQ3";
+import { WAN_2_7_ARCHETYPE } from "./wan27";
 
 /**
  * The catalog is the user's source of truth for which models actually exist.
@@ -17,20 +39,55 @@ export type VideoCatalogModel = {
   provider: string;
   modelKey: string;
   label: string;
+  archetypeId?: string;
   parameterControls?: readonly ModelParameterControl[];
 };
 
+export function videoArchetypeIdFromMeta(meta: unknown): string | undefined {
+  if (!meta || typeof meta !== "object") return undefined;
+  const value = (meta as { archetypeId?: unknown }).archetypeId;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 const SOURCE_BACKED_PROFILES: readonly ModelArchetype[] = [
+  SEEDANCE_2_ARCHETYPE,
+  SEEDANCE_2_5_ARCHETYPE,
+  MINIMAX_H3_ARCHETYPE,
+  HAPPYHORSE_ARCHETYPE,
+  VIDU_Q3_ARCHETYPE,
+  KLING_3_TURBO_ARCHETYPE,
+  HAPPYHORSE_1_1_ARCHETYPE,
+  GROK_IMAGINE_1_5_VIDEO_ARCHETYPE,
+  SORA_2_ARCHETYPE,
+  VEO_3_1_ARCHETYPE,
+  KLING_3_ARCHETYPE,
   SEEDANCE_2_APIMART_ARCHETYPE,
   SEEDANCE_2_5_APIMART_ARCHETYPE,
+  MINIMAX_H3_APIMART_ARCHETYPE,
+  WAN_2_7_ARCHETYPE,
+  HAILUO_2_3_ARCHETYPE,
+  OMNI_FLASH_EXT_ARCHETYPE,
+  MINIMAX_H3_REGENERATION_ARCHETYPE,
+  SEEDANCE_VOLCENGINE_ARCHETYPE,
+  DREAMINA_SEEDANCE_ARCHETYPE,
+  DREAMINA_MULTIFRAME_ARCHETYPE,
+  RUNNINGHUB_SEEDANCE_ARCHETYPE,
+  ...RUNNINGHUB_VIDEO_ARCHETYPES,
+  AGNES_VIDEO_ARCHETYPE,
 ];
 
-function modelMatchesProfile(modelKey: string, profile: ModelArchetype): boolean {
-  const normalized = modelKey.trim().toLowerCase();
-  return profile.identifierPatterns.some((pattern) => {
-    const candidate = pattern.trim().toLowerCase();
-    return candidate.length > 0 && (normalized === candidate || normalized.includes(candidate));
-  });
+function modelProfileMatchScore(modelKey: string, profile: ModelArchetype): number {
+  const raw = modelKey.trim();
+  const normalized = raw.toLowerCase();
+  return profile.identifierPatterns.reduce((best, pattern) => {
+    const rawPattern = pattern.trim();
+    const candidate = rawPattern.toLowerCase();
+    if (!candidate) return best;
+    if (raw === rawPattern) return Math.max(best, 30_000 + rawPattern.length);
+    if (normalized === candidate) return Math.max(best, 20_000 + candidate.length);
+    if (normalized.includes(candidate)) return Math.max(best, 10_000 + candidate.length);
+    return best;
+  }, 0);
 }
 
 function controlsFor(model: VideoCatalogModel): ModelParameterControl[] {
@@ -97,7 +154,26 @@ function unknownVideoArchetype(model: VideoCatalogModel): ModelArchetype {
 }
 
 function profileFor(model: VideoCatalogModel): ModelArchetype {
-  return SOURCE_BACKED_PROFILES.find((profile) => modelMatchesProfile(model.modelKey, profile)) ?? unknownVideoArchetype(model);
+  const exact = model.archetypeId
+    ? SOURCE_BACKED_PROFILES.find((profile) => profile.id === model.archetypeId)
+    : undefined;
+  if (exact) return exact;
+  const ranked = SOURCE_BACKED_PROFILES
+    .map((profile) => ({ profile, score: modelProfileMatchScore(model.modelKey, profile) }))
+    .filter((match) => match.score > 0)
+    .sort((left, right) => right.score - left.score);
+  return ranked[0]?.profile ?? unknownVideoArchetype(model);
+}
+
+function specializeForProvider(archetype: ModelArchetype, provider: string): ModelArchetype {
+  if (!archetype.modes.some((mode) => mode.vendorParams?.[provider])) return archetype;
+  return {
+    ...archetype,
+    modes: archetype.modes.map((mode) => {
+      const params = mode.vendorParams?.[provider];
+      return params ? { ...mode, params } : mode;
+    }),
+  };
 }
 
 function variantFor(model: VideoCatalogModel, archetype: ModelArchetype): string | undefined {
@@ -114,7 +190,7 @@ export function buildVideoModelCandidates(models: readonly VideoCatalogModel[]):
   return models
     .filter((model) => model.provider.trim() && model.modelKey.trim())
     .map((model) => {
-      const archetype = profileFor(model);
+      const archetype = specializeForProvider(profileFor(model), model.provider);
       return {
         provider: model.provider,
         modelKey: model.modelKey,

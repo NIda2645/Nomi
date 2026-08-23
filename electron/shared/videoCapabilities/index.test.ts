@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { APIMART_VIDEO_MODELS } from "../../catalog/apimartVideos";
+import { applyBuiltinSeeds } from "../../catalog/seedBuiltins";
+import type { CatalogState } from "../../catalog/types";
+import { getArchetypeById } from "../../../src/config/modelArchetypes";
 import { SEEDANCE_2_APIMART_ARCHETYPE as rendererSeedance20 } from "../../../src/config/modelArchetypes/seedanceApimart";
 import {
   SEEDANCE_2_APIMART_ARCHETYPE,
   buildVideoModelCandidates,
   recommendVideoGeneration,
+  sourceBackedVideoProfiles,
+  videoArchetypeIdFromMeta,
 } from "./index";
 
 describe("shared video capability registry", () => {
@@ -48,5 +54,59 @@ describe("shared video capability registry", () => {
     ]);
     expect(recommendVideoGeneration({ references: [{ kind: "image", role: "character" }] }, [candidate!]).recommendations[0]?.modeId).toBe("i2v");
     expect(recommendVideoGeneration({ references: [{ kind: "image", role: "first_frame" }, { kind: "image", role: "last_frame" }] }, [candidate!]).recommendations).toHaveLength(0);
+  });
+
+  it("resolves every curated APIMart video model through its existing archetype pointer", () => {
+    const candidates = buildVideoModelCandidates(APIMART_VIDEO_MODELS.map((model) => ({
+      provider: "apimart",
+      modelKey: model.modelKey,
+      label: model.labelZh,
+      archetypeId: model.archetypeId,
+    })));
+
+    expect(candidates).toHaveLength(APIMART_VIDEO_MODELS.length);
+    expect(candidates.map((candidate) => candidate.archetype.id)).toEqual(
+      APIMART_VIDEO_MODELS.map((model) => model.archetypeId),
+    );
+  });
+
+  it("uses the existing provider-specific controls and isolates them across model switches", () => {
+    const candidates = buildVideoModelCandidates([
+      { provider: "apimart", modelKey: "kling-v3", label: "Kling 3.0", archetypeId: "kling-3.0" },
+      { provider: "apimart", modelKey: "MiniMax-Hailuo-2.3", label: "Hailuo 2.3", archetypeId: "hailuo-2.3" },
+    ]);
+    const klingParams = candidates[0]?.archetype.modes.find((mode) => mode.id === "t2v")?.params.map((control) => control.key);
+    const hailuoParams = candidates[1]?.archetype.modes.find((mode) => mode.id === "t2v")?.params.map((control) => control.key);
+
+    expect(klingParams).toContain("audio");
+    expect(klingParams).not.toContain("sound");
+    expect(klingParams).toContain("aspect_ratio");
+    expect(hailuoParams).toEqual(["resolution", "duration"]);
+  });
+
+  it("reuses every existing curated video archetype across all seeded providers", () => {
+    const empty: CatalogState = { version: 4, vendors: [], models: [], mappings: [], apiKeysByVendor: {} };
+    const state = applyBuiltinSeeds(empty, "2026-08-24T00:00:00.000Z").state;
+    const models = state.models.filter((model) => model.kind === "video" && videoArchetypeIdFromMeta(model.meta));
+    const candidates = buildVideoModelCandidates(models.map((model) => ({
+      provider: model.vendorKey,
+      modelKey: model.modelKey,
+      label: model.labelZh,
+      archetypeId: videoArchetypeIdFromMeta(model.meta),
+    })));
+    const mismatches = candidates.flatMap((candidate, index) => {
+      const expected = videoArchetypeIdFromMeta(models[index]?.meta);
+      return candidate.archetype.id === expected ? [] : [`${models[index]?.vendorKey}/${candidate.modelKey}: ${candidate.archetype.id} != ${expected}`];
+    });
+
+    expect(mismatches).toEqual([]);
+  });
+
+  it("keeps renderer lookups and main-process planning on the same profile objects", () => {
+    const mismatches = sourceBackedVideoProfiles().flatMap((profile) =>
+      getArchetypeById(profile.id) === profile ? [] : [profile.id],
+    );
+
+    expect(mismatches).toEqual([]);
   });
 });
