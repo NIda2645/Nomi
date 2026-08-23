@@ -100,9 +100,11 @@ describe('nomi-mcp · MCP Apps 活生成 widget serving', () => {
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name).sort()
     expect(readOnly).toEqual([
       'nomi_get_artifact',
+      'nomi_get_generation_context',
       'nomi_get_run',
       'nomi_list_models',
       'nomi_list_projects',
+      'nomi_operation_read',
       'nomi_read_artifact',
       'nomi_read_canvas',
       'nomi_subscribe_run',
