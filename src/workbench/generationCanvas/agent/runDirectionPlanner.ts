@@ -11,9 +11,8 @@
 // 既有 gate title/summary 兜底——绝不静默编造候选（诚实降级，D4）。
 
 import { z } from 'zod'
-import { sendWorkbenchAiMessage } from '../../ai/workbenchAiClient'
-import { clearWorkbenchAgentSession } from '../../../api/desktopClient'
-import { getAssistantModelPref } from '../../ai/assistantModelPref'
+import { directionSessionKey } from '../../ai/agentSessionKey'
+import { runSingleShotAgent } from '../../ai/agentLoopMode'
 import { readWindowUrlParam } from '../../windowUrlParam'
 
 export type DirectionCandidate = { key: string; title: string; oneLiner: string }
@@ -32,11 +31,6 @@ export type RunDirectionPlannerInput = {
   brief?: DirectionPlannerBrief | null
   /** playbook 声明（key/name 等），用于给模型「这是哪类片子」的上下文；结构宽松，只读取文本字段。 */
   playbook?: Record<string, unknown> | null
-}
-
-/** 方向门用独立会话键（与创作/生成区线程隔离，不污染用户对话历史）。 */
-function directionSessionKey(): string {
-  return `nomi:production-directions:${readWindowUrlParam('projectId') || 'local'}`
 }
 
 /** 把 brief 里有值的字段拼成人话上下文行（缺省字段不占位，避免喂模型一堆 undefined）。 */
@@ -143,25 +137,16 @@ export function parseDirectionCandidates(text: string): DirectionCandidate[] {
 export async function runDirectionPlanner(
   input: RunDirectionPlannerInput,
 ): Promise<{ candidates: DirectionCandidate[] }> {
-  const sessionKey = directionSessionKey()
-  // 每次独立：清会话，避免上一轮/别处上下文污染方向构思。
-  await clearWorkbenchAgentSession(sessionKey).catch(() => {})
-  const pref = getAssistantModelPref()
   const projectId = readWindowUrlParam('projectId') || ''
-  const prompt = buildDirectionPlannerPrompt(input)
-  const response = await sendWorkbenchAiMessage(
-    {
-      prompt,
-      displayPrompt: '构思创意方向',
-      sessionKey,
-      ...(projectId ? { projectId } : {}),
-      skillKey: 'workbench.production.direction-planner',
-      skillName: '方向候选规划',
-      mode: 'chat', // 无工具的一次性文本产出（方向候选不碰画布、不花生成额度）
-      ...(pref ? { agentModelKey: pref.modelKey, agentVendorKey: pref.vendorKey } : {}),
-    },
-    {},
-  )
+  // 单次链路（清会话 + mode:'chat' + 模型偏好）收口到 runSingleShotAgent；方向候选不碰画布、不花生成额度。
+  const response = await runSingleShotAgent({
+    sessionKey: directionSessionKey(),
+    prompt: buildDirectionPlannerPrompt(input),
+    displayPrompt: '构思创意方向',
+    ...(projectId ? { projectId } : {}),
+    skillKey: 'workbench.production.direction-planner',
+    skillName: '方向候选规划',
+  })
   const candidates = parseDirectionCandidates(response.text ?? '')
   return { candidates }
 }
