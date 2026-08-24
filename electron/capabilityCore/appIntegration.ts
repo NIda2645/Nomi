@@ -34,6 +34,7 @@ import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
+import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
@@ -203,12 +204,16 @@ export async function startCapabilityCore(
         })),
       })))
     const generationService = getProductionRunService()
+    // P4 S2: real per-shot pricing from the live catalog (resolve lazily so pricing edits apply).
+    const resolveModelPricing = (providerId: string, modelId: string) => createCatalogModelPricingResolver(readCatalog().models)(providerId, modelId)
+    const resolveShotPrice = (contract: Parameters<ReturnType<typeof createCatalogShotPriceResolver>>[0]) => createCatalogShotPriceResolver(readCatalog().models)(contract)
     const generationPlanning = authorities.generationPlanning
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
         operations: createProductionGenerationOperationStore(generationService),
         videoModelCandidates,
         recommendVideoGeneration,
+        resolveModelPricing,
         providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
         start: async (operation, lease) => {
           const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
@@ -221,6 +226,7 @@ export async function startCapabilityCore(
             projectGeneration: lease.projectGeneration,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             provider,
+            resolveShotPrice,
             materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
           }).start({ projectId: lease.projectId, operationId: operation.operationId })
         },
@@ -237,6 +243,7 @@ export async function startCapabilityCore(
             projectGeneration: lease.projectGeneration,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             provider,
+            resolveShotPrice,
             materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
           })
           try {

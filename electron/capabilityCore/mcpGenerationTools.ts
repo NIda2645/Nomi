@@ -6,6 +6,13 @@ import {
   type ExecutionContractV1,
   type PlanCandidate,
 } from "./executionContract";
+import {
+  deriveShotPrice,
+  projectMultiShotPreview,
+  type ModelPricing,
+  type MultiShotPreviewProjection,
+  type ShotPrice,
+} from "../productionRun/shotPricing";
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { ParameterField } from "./moduleManifest";
 import type { ProjectLeaseV1 } from "./projectLease";
@@ -275,6 +282,13 @@ export type GenerationPlanningHandlerDependencies = {
     input: VideoGenerationRecommendationInput,
     candidates: readonly VideoModelCandidate[],
   ) => VideoGenerationRecommendationResult;
+  /**
+   * P4 S2: resolve the catalog pricing row for a provider/model identity (candidate.providerId maps
+   * to the catalog vendorKey). preview derives per-shot single prices from it; gate_request feeds the
+   * derived amount into the receipt's maximumCost (replacing the ¥0 placeholder). Omitted → preview
+   * reports the price as unknown and gate_request keeps maximumCost 0 (unpriced, unbounded like today).
+   */
+  resolveModelPricing?: (providerId: string, modelId: string) => ModelPricing | undefined;
   start?: (operation: GenerationOperation, lease: ProjectLeaseV1) => unknown | Promise<unknown>;
   reconcile?: (operation: GenerationOperation, outcome: "found" | "not_found", lease: ProjectLeaseV1) => unknown | Promise<unknown>;
 };
@@ -318,6 +332,37 @@ function videoRecommendationInput(candidate: PlanCandidate): VideoGenerationReco
 }
 
 const normalizedModelIdentity = (value: string): string => value.trim().toLowerCase();
+
+/**
+ * P4 S2: a shot's duration estimate in seconds from its selected parameters, or undefined when it
+ * cannot be honestly estimated (plan §9: "估不出的诚实标未知"). Reads the same duration keys the
+ * recommendation input reads (duration / durationSeconds), so the estimate matches the sealed request.
+ */
+function shotDurationSeconds(candidate: Pick<PlanCandidate, "parameters">): number | undefined {
+  const parameters = candidate.parameters ?? {};
+  if (typeof parameters.duration === "number" && Number.isFinite(parameters.duration) && parameters.duration >= 0) return parameters.duration;
+  if (typeof parameters.durationSeconds === "number" && Number.isFinite(parameters.durationSeconds) && parameters.durationSeconds >= 0) return parameters.durationSeconds;
+  return undefined;
+}
+
+/**
+ * P4 S2: whether the selected video model exposes a reference-image channel (a mode slot that accepts
+ * image references). Used to flag the "该模型认不了脸" degradation for character shots on models with
+ * no image-reference slot. When the model is not a known video candidate we cannot prove absence, so we
+ * assume support (no false degradation warning).
+ */
+const IMAGE_REFERENCE_SLOT_KINDS = new Set(["image_ref", "first_frame", "last_frame"]);
+
+function modelSupportsReferenceImage(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): boolean {
+  const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
+  if (!selected) return true;
+  return effectiveVideoModes(selected.videoCandidate).some((mode) => mode.slots.some((slot) => IMAGE_REFERENCE_SLOT_KINDS.has(slot.kind)));
+}
+
+/** P4 S2: whether the candidate carries a character reference (role=character), i.e. a face to preserve. */
+function candidateHasCharacterReference(candidate: PlanCandidate): boolean {
+  return candidate.references.some((reference) => reference.role === "character");
+}
 
 /**
  * Keep recommendations anchored to the model the user currently selected in
@@ -478,6 +523,10 @@ function resolveProviderReadiness(
 
 export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerDependencies) {
   const now = deps.now ?? (() => new Date().toISOString());
+  // P4 S2: derive a candidate's real per-shot price from the catalog pricing. Unknown (never a
+  // fabricated 0) when there is no resolver, no pricing row, disabled pricing, or no base cost.
+  const priceForCandidate = (candidate: PlanCandidate): ShotPrice =>
+    deriveShotPrice({ candidate, resolvePricing: (providerId, modelId) => deps.resolveModelPricing?.(providerId, modelId) });
   return async (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1; origin?: { host: string; actorId?: string } }): Promise<unknown> => {
     if (!input.lease) throw new Error("A verified project lease is required");
     const params = input.params;
@@ -562,11 +611,27 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const recommendation = recommendationInput && deps.recommendVideoGeneration && deps.videoModelCandidates
         ? deps.recommendVideoGeneration(recommendationInput, candidatesForCurrentVideoModel(candidate, deps.videoModelCandidates))
         : undefined;
+      // P4 S2: per-shot pricing/duration/degradation projection. The mcp operation is single-candidate
+      // today, so this is a 1-shot projection; it uses the shared multi-shot projector so the same
+      // (single source of truth) function scales once shots[] is threaded through the operation.
+      // Still zero provider calls — pure derive over the catalog pricing (preview invariant).
+      const projection: MultiShotPreviewProjection = projectMultiShotPreview({
+        shots: [{
+          shotId: candidate.candidateId,
+          candidate,
+          hasCharacter: candidateHasCharacterReference(candidate),
+          supportsReferenceImage: modelSupportsReferenceImage(candidate, deps.videoModelCandidates),
+        }],
+        resolvePricing: (providerId, modelId) => deps.resolveModelPricing?.(providerId, modelId),
+        durationSeconds: (shotCandidate) => shotDurationSeconds(shotCandidate),
+        currency: "CNY",
+      });
       return {
         operationId,
         candidateRevision: current.candidate.revision,
         contract,
         ...(recommendation ? { recommendation } : {}),
+        pricing: projection,
         providerReady: readiness.providerReady,
         providerCapabilityProfile: readiness.providerCapabilityProfile,
         recoveryNotice: readiness.recoveryNotice,
@@ -582,6 +647,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const sealed = current.state === "draft"
         ? await deps.operations.seal(input.lease.projectId, operationId, contract, now())
         : current;
+      // P4 S2: the receipt's cost ceiling is this shot's derived price. Unknown (no resolver / no
+      // catalog pricing) → 0, meaning unbounded exactly as before (an unpriced model still confirms).
+      const price = priceForCandidate(candidate);
       return {
         operation: sealed,
         operationId,
@@ -590,7 +658,8 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         model: `${contract.providerId}/${contract.modelId}`,
         referenceCount: contract.references.length,
         costScope: `generation.single-shot:${operationId}`,
-        maximumCost: 0,
+        maximumCost: price.known ? price.amount : 0,
+        costKnown: price.known,
         currency: "CNY",
         expiresAt: new Date(Date.parse(now()) + 10 * 60 * 1000).toISOString(),
         shotSummary: contract.prompt.slice(0, 120),
