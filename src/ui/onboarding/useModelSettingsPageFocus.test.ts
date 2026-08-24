@@ -19,6 +19,19 @@ describe('model settings keyboard and focus policy', () => {
     expect(modelSettingsFocusAction('connection', true)).toBe('restore-trigger')
   })
 
+  it('yields initial focus to a page that declares its own primary input', () => {
+    // 页面级焦点在 rAF 里跑，晚于 React 的 autoFocus——不让路的话，凡是「整页就一个输入框」的
+    // 接入页（所有 key-only 供应商）都会被无声改成「还得先自己点一下输入框」。
+    expect(hookSource).toContain("querySelector<HTMLElement>('[data-model-settings-autofocus]')")
+    const autofocusAt = hookSource.indexOf("'[data-model-settings-autofocus]'")
+    const backAt = hookSource.indexOf("workspace.querySelector<HTMLElement>('[data-model-settings-back]')")
+    expect(autofocusAt).toBeGreaterThan(-1)
+    // 顺序即优先级：让路必须发生在「兜底聚焦返回键」之前，否则等于没让。
+    expect(autofocusAt).toBeLessThan(backAt)
+    const keyPageSource = fs.readFileSync(path.join(process.cwd(), 'src/ui/onboarding/KnownVendorKeyConnectPage.tsx'), 'utf8')
+    expect(keyPageSource).toContain('data-model-settings-autofocus')
+  })
+
   it('records activation inside the workspace and resolves it after the previous page remounts', () => {
     expect(hookSource).toContain("document.addEventListener('click', rememberTrigger, true)")
     expect(hookSource).toContain("document.querySelector<HTMLElement>(WORKSPACE_SELECTOR)")

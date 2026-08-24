@@ -49,7 +49,7 @@ describe("isLocalAssetUrl / collect / replace", () => {
   it("fails before paid submission when a local reference disappeared", () => {
     expect(() => assertLocalAssetTransportReady(
       { referenceImageUrls: [localUrl("missing.png")] },
-      () => [{ ingestion: { strategy: "none" }, uploadApiKey: "" }],
+      () => [{ vendorKey: "kie", ingestion: { strategy: "none" }, uploadApiKey: "" }],
       () => null,
     )).toThrow(/本地文件读取失败/);
   });
@@ -57,7 +57,7 @@ describe("isLocalAssetUrl / collect / replace", () => {
   it("fails closed for unknown octet-stream instead of guessing image", () => {
     expect(() => assertLocalAssetTransportReady(
       { referenceVideoUrls: [localUrl("unknown.bin")] },
-      () => [{ ingestion: { strategy: "upload-url", endpoint: "https://upload", base64Field: "data", urlPath: "url" }, uploadApiKey: "k" }],
+      () => [{ vendorKey: "kie", ingestion: { strategy: "upload-url", endpoint: "https://upload", base64Field: "data", urlPath: "url" }, uploadApiKey: "k" }],
       () => ({ bytes: Buffer.from([1, 2, 3]), contentType: "application/octet-stream", fileName: "unknown.bin" }),
     )).toThrow(/无法识别/);
   });
@@ -271,7 +271,7 @@ describe("resolveLocalAsset (per strategy)", () => {
 
 describe("localizeAssetsForVendor", () => {
   const ingestion: AssetIngestion = { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "url" };
-  const resolverFor = (ing: AssetIngestion, key = "k") => () => [{ ingestion: ing, uploadApiKey: key }];
+  const resolverFor = (ing: AssetIngestion, key = "k") => () => [{ vendorKey: "kie", ingestion: ing, uploadApiKey: key }];
 
   it("uploads each unique url once and replaces all occurrences", async () => {
     const post = vi.fn().mockImplementation((_u, _h, body: Record<string, string>) => {
@@ -309,7 +309,7 @@ describe("localizeAssetsForVendor", () => {
     const imageIngestion: AssetIngestion = { strategy: "upload-url", endpoint: "https://img/up", base64Field: "b", urlPath: "url", accepts: ["image"] };
     const videoIngestion: AssetIngestion = { strategy: "upload-stream", endpoint: "https://vid/up", urlPath: "data.downloadUrl", accepts: ["image", "video"] };
     const resolver = (kind: "image" | "video" | "audio") =>
-      kind === "video" ? [{ ingestion: videoIngestion, uploadApiKey: "vk" }] : [{ ingestion: imageIngestion, uploadApiKey: "ik" }];
+      kind === "video" ? [{ vendorKey: "kie", ingestion: videoIngestion, uploadApiKey: "vk" }] : [{ vendorKey: "kie", ingestion: imageIngestion, uploadApiKey: "ik" }];
     const post = vi.fn().mockResolvedValue({ url: "https://pub/img.png" });
     const postMultipart = vi.fn().mockResolvedValue({ data: { downloadUrl: "https://pub/clip.mp4" } });
     const extras = { referenceImageUrls: [localUrl("a.png")], referenceVideoUrls: [localUrl("clip.mp4")] };
@@ -334,7 +334,7 @@ describe("localizeAssetsForVendor", () => {
   });
 
   it("does not guess an unknown octet-stream file is an image", async () => {
-    const resolver = vi.fn(() => [{ ingestion, uploadApiKey: "k" }]);
+    const resolver = vi.fn(() => [{ vendorKey: "kie", ingestion, uploadApiKey: "k" }]);
     await expect(localizeAssetsForVendor(
       { referenceVideoUrls: [localUrl("mystery.bin")] },
       resolver,
@@ -371,7 +371,7 @@ describe("localizeAssetsForVendor", () => {
     const postMultipart = vi.fn();
     await expect(localizeAssetsForVendor(
       { referenceVideoUrls: [localUrl("clip.mp4")] },
-      () => [{ ingestion: anonymous, uploadApiKey: "" }],
+      () => [{ vendorKey: "kie", ingestion: anonymous, uploadApiKey: "" }],
       () => ({ bytes: Buffer.from("v"), contentType: "video/mp4", fileName: "clip.mp4" }),
       vi.fn(),
       postMultipart,
@@ -392,7 +392,7 @@ describe("localizeAssetsForVendor", () => {
     };
     await expect(localizeAssetsForVendor(
       { referenceVideoUrls: [localUrl("clip.mp4")] },
-      () => [{ ingestion: shortLease, uploadApiKey: "" }],
+      () => [{ vendorKey: "kie", ingestion: shortLease, uploadApiKey: "" }],
       () => ({ bytes: Buffer.from("v"), contentType: "video/mp4", fileName: "clip.mp4" }),
       vi.fn(),
       vi.fn(),
@@ -415,7 +415,7 @@ describe("localizeAssetsForVendor — 上传失败换下一条通道（413 类�
     });
     const out = await localizeAssetsForVendor(
       { referenceVideoUrls: [localUrl("clip.mp4")] },
-      () => [{ ingestion: small, uploadApiKey: "a" }, { ingestion: roomy, uploadApiKey: "b" }],
+      () => [{ vendorKey: "kie", ingestion: small, uploadApiKey: "a" }, { vendorKey: "kie", ingestion: roomy, uploadApiKey: "b" }],
       bigVideo,
       vi.fn(),
       postMultipart,
@@ -428,7 +428,7 @@ describe("localizeAssetsForVendor — 上传失败换下一条通道（413 类�
     const postMultipart = vi.fn().mockRejectedValue(new Error("素材上传失败(HTTP 413)：(无详情)"));
     const run = localizeAssetsForVendor(
       { referenceVideoUrls: [localUrl("clip.mp4")] },
-      () => [{ ingestion: small, uploadApiKey: "a" }, { ingestion: roomy, uploadApiKey: "b" }],
+      () => [{ vendorKey: "kie", ingestion: small, uploadApiKey: "a" }, { vendorKey: "kie", ingestion: roomy, uploadApiKey: "b" }],
       bigVideo,
       vi.fn(),
       postMultipart,
@@ -445,7 +445,7 @@ describe("localizeAssetsForVendor — 上传失败换下一条通道（413 类�
       .mockRejectedValueOnce(new Error("fetch failed"));
     const run = localizeAssetsForVendor(
       { referenceVideoUrls: [localUrl("clip.mp4")] },
-      () => [{ ingestion: small, uploadApiKey: "a" }, { ingestion: roomy, uploadApiKey: "b" }],
+      () => [{ vendorKey: "kie", ingestion: small, uploadApiKey: "a" }, { vendorKey: "kie", ingestion: roomy, uploadApiKey: "b" }],
       bigVideo,
       vi.fn(),
       postMultipart,
@@ -619,7 +619,7 @@ describe("sidecar originalUrl 新鲜度门（L2：参考图永不过期）", () 
   it("localize：新鲜 sidecar 直接用公网直链，零上传", async () => {
     const post = vi.fn();
     const readFresh = () => withSidecar(FRESH);
-    const out = await localizeAssetsForVendor({ input_urls: [localUrl("a.png")] }, () => [{ ingestion: { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "u" }, uploadApiKey: "k" }], readFresh, post, noMultipart);
+    const out = await localizeAssetsForVendor({ input_urls: [localUrl("a.png")] }, () => [{ vendorKey: "kie", ingestion: { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "u" }, uploadApiKey: "k" }], readFresh, post, noMultipart);
     expect((out.value as { input_urls: string[] }).input_urls).toEqual(["https://cdn.example.com/orig-a.png"]);
     expect(post).not.toHaveBeenCalled();
   });
@@ -627,7 +627,7 @@ describe("sidecar originalUrl 新鲜度门（L2：参考图永不过期）", () 
   it("localize：过窗 sidecar 忽略 → 用本地字节走上传通道换新链（治「发过期临时链」整类）", async () => {
     const post = vi.fn().mockResolvedValue({ u: "https://fresh.example.com/new-a.png" });
     const readStale = () => withSidecar(STALE);
-    const out = await localizeAssetsForVendor({ input_urls: [localUrl("a.png")] }, () => [{ ingestion: { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "u" }, uploadApiKey: "k" }], readStale, post, noMultipart);
+    const out = await localizeAssetsForVendor({ input_urls: [localUrl("a.png")] }, () => [{ vendorKey: "kie", ingestion: { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "u" }, uploadApiKey: "k" }], readStale, post, noMultipart);
     expect((out.value as { input_urls: string[] }).input_urls).toEqual(["https://fresh.example.com/new-a.png"]);
     expect(post).toHaveBeenCalledTimes(1);
   });
@@ -699,7 +699,7 @@ describe("comfyui-upload（本地 ComfyUI 首帧上传，S2）", () => {
     const post = vi.fn().mockResolvedValue({ name: "frame.png", subfolder: "in", type: "input" });
     const out = await localizeAssetsForVendor(
       { firstFrameUrl: localUrl("f.png") },
-      () => [{ ingestion: comfyIngestion(), uploadApiKey: "" }],
+      () => [{ vendorKey: "kie", ingestion: comfyIngestion(), uploadApiKey: "" }],
       () => readFresh("f.png"),
       vi.fn(),
       post,

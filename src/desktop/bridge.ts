@@ -45,6 +45,17 @@ export type PersistedConversationsV2 = {
 /** 代理三态：跟随系统探测 / 只对 Nomi 生效的自定义地址 / 强制直连。 */
 export type DesktopProxyMode = 'system' | 'custom' | 'off'
 
+/** 一种媒体类型现在实际走的上传通道（main 侧 describeAssetTransportChannels 的产物）。 */
+export type AssetTransportChannelView = {
+  kind: 'image' | 'video' | 'audio'
+  /** 走哪家；匿名公共托管为 null。 */
+  vendorKey: string | null
+  /** 真正收文件的主机名；无端点策略为 null。 */
+  host: string | null
+  visibility: 'provider-private' | 'public-anonymous'
+  ttlSeconds: number | null
+}
+
 /** 用户选了什么 × 实际生效什么。两者不一致时正是用户最需要看见的（如探到 SOCKS 但用不了）。 */
 export type DesktopProxyStatus = {
   mode: DesktopProxyMode
@@ -625,6 +636,11 @@ export type DesktopBridge = DesktopMediaBridge & {
     get: () => Promise<{ ok: boolean; status: DesktopProxyStatus }>
     set: (payload: { mode: DesktopProxyMode; customUrl: string }) => Promise<{ ok: boolean; status: DesktopProxyStatus }>
     test: () => Promise<{ ok: boolean; result: DesktopProxyProbe; status: DesktopProxyStatus }>
+  }
+  /** 本机素材上传通道的现状描述。优先级规则只住 main（electron/catalog/assetTransportDescribe.ts），
+   *  渲染层只显示、不重算——否则状态卡会和真实行为漂移。 */
+  assetTransport?: {
+    describeChannels: () => AssetTransportChannelView[]
   }
   modelCatalog: CustomCallBridge & {
     listVendors: () => unknown[]

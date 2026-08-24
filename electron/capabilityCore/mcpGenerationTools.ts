@@ -7,9 +7,11 @@ import {
   type PlanCandidate,
 } from "./executionContract";
 import {
+  buildMultiShotGateProjection,
   deriveShotPrice,
   projectMultiShotPreview,
   type ModelPricing,
+  type MultiShotGateProjection,
   type MultiShotPreviewProjection,
   type ShotPrice,
 } from "../productionRun/shotPricing";
@@ -183,6 +185,19 @@ export const MCP_GENERATION_TOOL_CATALOG = [
 
 export type GenerationOperationState = "draft" | "sealed" | "cancelled" | "submitted";
 
+/**
+ * P4 S4: one shot within a multi-shot operation, projected for the MCP surface. `role` distinguishes
+ * anchor (identity image) from video shot; `included` drives 试拍/分批. Present only when the operation's
+ * plan has shots[]; a single-shot operation omits `shots` entirely (byte-identical to today).
+ */
+export type GenerationOperationShot = Readonly<{
+  shotId: string;
+  role?: "anchor" | "shot";
+  included?: boolean;
+  candidate: PlanCandidate;
+  contract?: ExecutionContractV1;
+}>;
+
 export type GenerationOperation = Readonly<{
   operationId: string;
   projectId: string;
@@ -190,6 +205,10 @@ export type GenerationOperation = Readonly<{
   state: GenerationOperationState;
   contract?: ExecutionContractV1;
   approvedReceiptId?: string;
+  /** P4 S4: multi-shot entries (anchors + video shots). Absent = single-shot (today's flat path). */
+  shots?: ReadonlyArray<GenerationOperationShot>;
+  planHash?: string;
+  planVersion?: number;
   updatedAt: string;
 }>;
 
@@ -200,6 +219,8 @@ export type GenerationOperationStore = {
   seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string): GenerationOperation | Promise<GenerationOperation>;
   approve(projectId: string, operationId: string, receiptId: string, now: string, options?: { attempt?: number }): GenerationOperation | Promise<GenerationOperation>;
   cancel(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
+  /** P4 S4 试拍首镜: narrow a sealed multi-shot plan to its first included video shot (+ a new plan hash). */
+  trialNarrow?(projectId: string, operationId: string, planHash: string, now: string): GenerationOperation | Promise<GenerationOperation>;
 };
 
 function freeze<T>(value: T): T {
@@ -527,6 +548,47 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
   // fabricated 0) when there is no resolver, no pricing row, disabled pricing, or no base cost.
   const priceForCandidate = (candidate: PlanCandidate): ShotPrice =>
     deriveShotPrice({ candidate, resolvePricing: (providerId, modelId) => deps.resolveModelPricing?.(providerId, modelId) });
+
+  /** Human "provider · model（mode）" string for the card — the renderer never re-joins provider/model. */
+  const providerModelText = (candidate: PlanCandidate): string => {
+    const label = deps.videoModelCandidates ? videoCandidateForPlan(candidate, deps.videoModelCandidates)?.videoCandidate.label : undefined;
+    const model = label || candidate.modelId;
+    return candidate.mode ? `${candidate.providerId} · ${model}（${candidate.mode}）` : `${candidate.providerId} · ${model}`;
+  };
+
+  /**
+   * P4 S4 — build the real multi-shot display.shots (the ASSEMBLY the S3a card was waiting on;
+   * mcpGenerationTools.ts:616 "scales once shots[] is threaded through"). Projects the operation's
+   * INCLUDED video shots (anchors ride separately as chips) into the serializable gate projection using
+   * the same S2 pricing/degradation single source of truth. Returns undefined for a single-shot op.
+   */
+  const multiShotGateProjectionFor = (operation: GenerationOperation): MultiShotGateProjection | undefined => {
+    if (!operation.shots || operation.shots.length === 0) return undefined;
+    const includedVideo = operation.shots.filter((shot) => shot.role !== "anchor" && shot.included !== false);
+    const anchors = operation.shots.filter((shot) => shot.role === "anchor" && shot.included !== false);
+    if (includedVideo.length === 0) return undefined;
+    const normalized = (candidate: PlanCandidate) => normalizeVideoCandidate(candidate, deps.videoModelCandidates);
+    return buildMultiShotGateProjection({
+      shots: includedVideo.map((shot) => {
+        const candidate = normalized(shot.candidate);
+        return {
+          shotId: shot.shotId,
+          sceneOneLiner: candidate.prompt.slice(0, 120),
+          providerModelText: providerModelText(candidate),
+          candidate,
+          durationSeconds: shotDurationSeconds(candidate),
+          hasCharacter: candidateHasCharacterReference(candidate),
+          supportsReferenceImage: modelSupportsReferenceImage(candidate, deps.videoModelCandidates),
+        };
+      }),
+      resolvePricing: (providerId, modelId) => deps.resolveModelPricing?.(providerId, modelId),
+      currency: "CNY",
+      ...(operation.planVersion !== undefined ? { planVersion: operation.planVersion } : {}),
+      ...(operation.planHash ? { planHash: operation.planHash } : {}),
+      specs: { shotCount: includedVideo.length },
+      anchorChips: anchors.map((anchor) => ({ label: normalized(anchor.candidate).prompt.slice(0, 40), price: priceForCandidate(normalized(anchor.candidate)) })),
+    });
+  };
   return async (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1; origin?: { host: string; actorId?: string } }): Promise<unknown> => {
     if (!input.lease) throw new Error("A verified project lease is required");
     const params = input.params;
@@ -650,6 +712,38 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // P4 S2: the receipt's cost ceiling is this shot's derived price. Unknown (no resolver / no
       // catalog pricing) → 0, meaning unbounded exactly as before (an unpriced model still confirms).
       const price = priceForCandidate(candidate);
+      const expiresAt = new Date(Date.parse(now()) + 10 * 60 * 1000).toISOString();
+      // P4 S4: for a multi-shot operation, build the real display.shots (the S3a card's data) and use the
+      // PLAN-LEVEL cost as the receipt ceiling. A single-shot op omits `shots` → flat card, unchanged.
+      const multiShot = multiShotGateProjectionFor(sealed);
+      if (multiShot) {
+        const knownSubtotal = multiShot.shots.reduce((sum, shot) => (shot.price.known ? sum + shot.price.amount : sum), 0)
+          + (multiShot.anchorChips ?? []).reduce((sum, chip) => (chip.price.known ? sum + chip.price.amount : sum), 0);
+        return {
+          operation: sealed,
+          operationId,
+          projectId: input.lease.projectId,
+          // A multi-shot receipt is keyed on the PLAN hash (covers the whole batch — §1).
+          contractHash: sealed.planHash ?? contract.contractHash,
+          model: `${contract.providerId}/${contract.modelId}`,
+          referenceCount: contract.references.length,
+          costScope: `generation.multi-shot:${operationId}`,
+          maximumCost: knownSubtotal,
+          costKnown: multiShot.shots.every((shot) => shot.price.known),
+          currency: "CNY",
+          expiresAt,
+          shotSummary: multiShot.shots[0]?.sceneOneLiner ?? contract.prompt.slice(0, 120),
+          // The full projection rides here → dispatcher threads it into the MAC-signed challenge display.shots.
+          // hardLimit = the estimated plan total (the natural ceiling shown on the card); the scheduler
+          // enforces the real cap = min(this, policy.maxSpend) at reserve time (§3.3).
+          shots: { ...multiShot, hardLimit: knownSubtotal, waitSeconds: 180, frozenItems: ["shots", "models", "references", "price"], expiresAt },
+          providerReady: readiness.providerReady,
+          providerCapabilityProfile: readiness.providerCapabilityProfile,
+          recoveryNotice: readiness.recoveryNotice,
+          ...(readiness.providerCapabilitiesMissing.length ? { providerCapabilitiesMissing: readiness.providerCapabilitiesMissing } : {}),
+          nextAction: "confirm",
+        };
+      }
       return {
         operation: sealed,
         operationId,
@@ -661,7 +755,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         maximumCost: price.known ? price.amount : 0,
         costKnown: price.known,
         currency: "CNY",
-        expiresAt: new Date(Date.parse(now()) + 10 * 60 * 1000).toISOString(),
+        expiresAt,
         shotSummary: contract.prompt.slice(0, 120),
         providerReady: readiness.providerReady,
         providerCapabilityProfile: readiness.providerCapabilityProfile,

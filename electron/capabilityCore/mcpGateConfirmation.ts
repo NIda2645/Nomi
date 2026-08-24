@@ -33,9 +33,10 @@ export type GenerationGateConfirmation = {
   nextAction: 'in_client' | 'in_nomi' | 'wait_for_reconciliation'
   receiptId?: string
   receiptToken?: string
+  trialFirst?: boolean // P4 S4 「先试拍第 1 镜」(§6 T3): {confirmed:false,trialFirst:true} → backend narrows plan to shot 1 + re-gates. Never approval.
 }
 
-export type GenerationGateVerificationResult = Pick<GenerationGateConfirmation, 'confirmed' | 'receiptId' | 'receiptToken'>
+export type GenerationGateVerificationResult = Pick<GenerationGateConfirmation, 'confirmed' | 'receiptId' | 'receiptToken' | 'trialFirst'>
 
 export type GenerationGateConfirmationDependencies = {
   /** McpTransport 的结构子集——只取本流用到的四项，不 import 回 mcpProtocol（免类型环）。 */
@@ -123,6 +124,7 @@ export function createGenerationGateConfirmation({ transport, clientSupportsElic
         ...(typeof fallback === 'object' ? {
           ...(fallback.receiptId ? { receiptId: fallback.receiptId } : {}),
           ...(fallback.receiptToken ? { receiptToken: fallback.receiptToken } : {}),
+          ...(fallback.trialFirst === true ? { trialFirst: true } : {}), // P4 S4: carry trial-first so the caller shrinks the plan + re-gates
         } : {}),
       }
     }

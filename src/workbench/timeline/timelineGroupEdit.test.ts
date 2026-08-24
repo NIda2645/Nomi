@@ -17,6 +17,7 @@ function timeline(imageClips: TimelineClip[], videoClips: TimelineClip[] = []): 
       { id: 'imageTrack', type: 'image', label: '图片轨', clips: imageClips },
       { id: 'videoTrack', type: 'video', label: '媒体轨', clips: videoClips },
     ],
+    textClips: [],
   }
 }
 
