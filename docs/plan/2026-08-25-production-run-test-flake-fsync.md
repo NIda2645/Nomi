@@ -132,6 +132,18 @@ fsync 的意义是「掉电/崩溃后数据不撕裂」（见 `jsonFile.ts` 注�
 `productionRunE2eFixture` 的「materializes a playable local clip and a valid MP4」约 1.2 s ——
 真在编码 MP4，CPU-bound，跟 fsync 无关，也从未出现在这次的失败集里。余量 ~4×，暂不动。
 
+### 收口：把「不许直接 fsync」从注释变成门岗（2026-08-25 补）
+
+本方案落地时，`electron/durability.ts` 里写着「除本模块外不要直接调 `fs.fsyncSync`」——**但没有任何东西执行它**。
+`durability.test.ts` 只钉住了「模式翻转」（`setDurabilityMode('ephemeral')` 不许出现在 harness 之外），
+**调用点**是敞开的：新加一处直接 `fs.fsyncSync` 就绕过屏障，那条写路径在测试里重新变慢，
+flake 长回来一角，而本地单跑照样全绿。按 P2「能 grep 的做成棘轮门岗」，这条本就该有闸。
+
+已补：`scripts/check-heavy-path.mjs` 的 `unguarded-fsync` 规则，基线 0，已在 `gates` 链上。
+判据是「这次 fsync 有没有过屏障」而不是「在哪个文件」——现存两处目录 fd 的 `fs.fsyncSync`
+（`productionRunIntentLog.ts` / `productionRunLock.ts`）因为前面有 `if (!isDurable()) return`
+被认成合规，所以基线是 0 而非 2。理由与验证方式见 `docs/engineering-rules.md` R17。
+
 ## 回滚
 
 改动集中在 4 个新/改文件 + `vitest.config.ts` 一行 `setupFiles`。

@@ -28,40 +28,17 @@ import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
 import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
 import type { AuthenticatedMcpClient } from './security'
-import type { MultiShotGateProjection } from '../productionRun/shotPricing'
 
 // spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
 // （elicitation-first 画布确认，见 mcpPlanTrust.ts）——透传给传输层，让最终跑 confirmPlan 的网关预批准、
 // 不再弹 App 卡（免双问）。因方案 elicitation 发生在 App 开着时，planConfirmed 需跨 RPC 边界到达渲染层网关。
 export type McpInvokeOptions = { spendConfirmed?: boolean; planConfirmed?: boolean }
 
-export type GenerationGateChallengeProjection = {
-  challengeId: string
-  nonce?: string
-  projectName?: string
-  shotSummary?: string
-  model: string
-  referenceCount?: number
-  costScope: string
-  maximumCost: number
-  currency?: string
-  expiresAt: string
-  confirmationText?: string
-  /** P4 S3a — optional multi-shot projection: present → multi-shot card, absent → flat single-shot card (mcpProtocol). */
-  shots?: MultiShotGateProjection
-  handoff?: Record<string, unknown> // Opaque server handoff data. It never belongs in user-facing copy.
-}
-
-export type GenerationGateConfirmation = {
-  challengeId: string
-  confirmed: boolean
-  surface: 'client' | 'nomi' | 'none'
-  nextAction: 'in_client' | 'in_nomi' | 'wait_for_reconciliation'
-  receiptId?: string
-  receiptToken?: string
-}
-
-export type GenerationGateVerificationResult = Pick<GenerationGateConfirmation, 'confirmed' | 'receiptId' | 'receiptToken'>
+// 生成门确认流（challenge → 恰好一个确认面 + 同 challengeId in-flight 去重）抽到 mcpGateConfirmation.ts
+//（壳到 800/800 的 headroom 提取）；类型经此再导出，外部 import 路径不变（mcpSemanticGenerationFlow / 测试）。
+import { createGenerationGateConfirmation } from './mcpGateConfirmation'
+import type { GenerationGateChallengeProjection, GenerationGateVerificationResult } from './mcpGateConfirmation'
+export type { GenerationGateChallengeProjection, GenerationGateConfirmation, GenerationGateVerificationResult } from './mcpGateConfirmation'
 
 // 哪些工具挂活 widget（tool.name → ui:// 资源）：单次生成与 production Run 共用一张活面板。
 const TOOL_UI_RESOURCE: Record<string, string> = {
@@ -154,7 +131,6 @@ export function createMcpProtocol(transport: McpTransport) {
   // 服务端→客户端请求自管 id 与 pending，等客户端回响应。
   let serverReqSeq = 0
   const pendingServerReqs = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
-  const generationConfirmationInFlight = new Map<string, Promise<GenerationGateConfirmation>>()
 
   function send(message: unknown): void {
     transport.send(message)
@@ -256,97 +232,13 @@ export function createMcpProtocol(transport: McpTransport) {
     }
   }
 
-  /**
-   * Answer one server-owned generation challenge on exactly one surface. The
-   * challenge is deliberately passed unchanged to the GUI fallback so a
-   * client timeout/reconnect cannot mint a second prompt or nonce.
-   */
-  async function resolveGenerationConfirmation(
-    challenge: GenerationGateChallengeProjection,
-  ): Promise<GenerationGateConfirmation> {
-    if (!challenge.challengeId || !challenge.model || !challenge.costScope || !Number.isFinite(challenge.maximumCost)
-      || !challenge.expiresAt) throw new Error('Invalid generation gate challenge')
-    const authenticatedClient = transport.getAuthenticatedClient?.() ?? null
-    if (clientSupportsElicitation && authenticatedClient) {
-      const elicited = await elicitBooleanConfirm({
-        message: challenge.confirmationText || [
-          `允许 Nomi 在${challenge.projectName ? `项目《${challenge.projectName}》` : '当前项目'}使用模型 ${challenge.model}`,
-          `最多花费 ${challenge.currency || ''}${challenge.maximumCost}，${challenge.shotSummary || '生成这一镜'}吗？`,
-        ].join('，'),
-        title: '确认这次生成',
-        description: [
-          challenge.referenceCount === undefined ? '' : `参考图 ${challenge.referenceCount} 张`,
-          `有效期至 ${challenge.expiresAt}`,
-        ].filter(Boolean).join(' · '),
-      })
-      if (!elicited.confirmed) {
-        return {
-          challengeId: challenge.challengeId,
-          confirmed: false,
-          surface: 'client',
-          nextAction: 'wait_for_reconciliation',
-        }
-      }
-      if (elicited.attestation != null && typeof transport.verifyClientGenerationConfirmation === 'function') {
-        const verified = await transport.verifyClientGenerationConfirmation(challenge, elicited.attestation)
-        const result = typeof verified === 'boolean' ? { confirmed: verified } : verified
-        if (result.confirmed === true) {
-          return {
-            challengeId: challenge.challengeId,
-            confirmed: true,
-            surface: 'client',
-            nextAction: 'in_client',
-            ...(result.receiptId ? { receiptId: result.receiptId } : {}),
-            ...(result.receiptToken ? { receiptToken: result.receiptToken } : {}),
-          }
-        }
-      } else if (elicited.attestation == null && challenge.handoff?.clientAttestation !== true) {
-        return {
-          challengeId: challenge.challengeId,
-          confirmed: true,
-          surface: 'client',
-          nextAction: 'in_client',
-        }
-      }
-    }
-    if (typeof transport.confirmGenerationInNomi === 'function' && transport.isAppOpen()) {
-      const fallback = await transport.confirmGenerationInNomi(challenge)
-      const confirmed = typeof fallback === 'boolean' ? fallback : fallback.confirmed === true
-      return {
-        challengeId: challenge.challengeId,
-        confirmed,
-        surface: 'nomi',
-        nextAction: confirmed ? 'in_nomi' : 'wait_for_reconciliation',
-        ...(typeof fallback === 'object' ? {
-          ...(fallback.receiptId ? { receiptId: fallback.receiptId } : {}),
-          ...(fallback.receiptToken ? { receiptToken: fallback.receiptToken } : {}),
-        } : {}),
-      }
-    }
-    return {
-      challengeId: challenge.challengeId,
-      confirmed: false,
-      surface: 'none',
-      nextAction: 'in_nomi',
-    }
-  }
-
-  async function requestGenerationConfirmation(
-    challenge: GenerationGateChallengeProjection,
-  ): Promise<GenerationGateConfirmation> {
-    const existing = generationConfirmationInFlight.get(challenge.challengeId)
-    if (existing) return existing
-    const pending = resolveGenerationConfirmation(challenge)
-    generationConfirmationInFlight.set(challenge.challengeId, pending)
-    try {
-      const result = await pending
-      if (!result.confirmed) generationConfirmationInFlight.delete(challenge.challengeId)
-      return result
-    } catch (error) {
-      generationConfirmationInFlight.delete(challenge.challengeId)
-      throw error
-    }
-  }
+  // 生成门确认（challenge → 恰好一个确认面，同 challengeId 并发去重）：逻辑住 mcpGateConfirmation.ts，
+  // 这里只喂依赖。elicitation 能力在 initialize 时才定 → 传 getter 不传快照。
+  const { requestGenerationConfirmation } = createGenerationGateConfirmation({
+    transport,
+    clientSupportsElicitation: () => clientSupportsElicitation,
+    elicitBooleanConfirm,
+  })
 
   /**
    * 画布方案确认（免费、可撤）：把「要不要往画布加这 N 个节点」递进聊天问一次。

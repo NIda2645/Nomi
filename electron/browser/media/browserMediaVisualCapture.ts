@@ -15,7 +15,10 @@ import { bgraLumaStats, isBlankFrameLuma } from "./browserMediaValidation";
 function rejectBlankCurrentFrame(image: Electron.NativeImage): void {
   const size = image.getSize();
   if (size.width <= 0 || size.height <= 0) return;
-  const stats = bgraLumaStats(image.getBitmap());
+  // Electron 43 起 getBitmap() 已是 toBitmap() 的 @deprecated 别名（类型退化成 void）。
+  // toBitmap() 返回的是**拷贝**，不像 getBitmap() 那样要求「必须在当前事件循环 tick 内用完」，
+  // 对这里「拿去算亮度统计」的用法反而更稳。
+  const stats = bgraLumaStats(image.toBitmap());
   if (isBlankFrameLuma(stats.mean, stats.variance)) {
     throw captureError("black-frame", "视频当前是黑屏/无画面——先在页面里播放到有清晰画面的一帧，再保存当前帧");
   }

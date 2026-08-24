@@ -62,8 +62,6 @@ export type ShotPriceInput = {
   resolvePricing: PricingResolver;
 };
 
-const normalizedIdentity = (value: string): string => value.trim().toLowerCase();
-
 function isFiniteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
@@ -226,6 +224,73 @@ export function projectMultiShotPreview(input: ProjectMultiShotPreviewInput): Mu
   const knownSubtotal = shots.reduce((sum, shot) => (shot.price.known ? sum + shot.price.amount : sum), 0);
   const unknownShotCount = shots.reduce((count, shot) => (shot.price.known ? count : count + 1), 0);
   return { shots, total: { knownSubtotal, unknownShotCount, currency } };
+}
+
+// ---------------------------------------------------------------------------------------------------
+// P4 S4 — build the multi-shot gate projection (the real display.shots the confirmation card renders).
+// This is the ASSEMBLY the S3a card was waiting on (mcpGenerationTools.ts:616 "scales once shots[] is
+// threaded through"). Pure — no provider call (the gate stays zero-request). Same single source of
+// truth as the single-shot preview (deriveShotPrice / shotDegradations), so prices/degradations agree.
+// ---------------------------------------------------------------------------------------------------
+
+/** One shot's already-resolved display inputs (the caller joins provider/model into the human string). */
+export type GateShotInput = {
+  shotId: string;
+  /** One-line scene description shown on the card (from the candidate prompt). */
+  sceneOneLiner: string;
+  /** Human "provider · model（mode）" string built by the caller — the renderer never re-joins it. */
+  providerModelText: string;
+  candidate: Pick<PlanCandidate, "providerId" | "modelId" | "parameters">;
+  durationSeconds?: number;
+  hasCharacter?: boolean;
+  supportsReferenceImage?: boolean;
+};
+
+export type BuildMultiShotGateProjectionInput = {
+  shots: ReadonlyArray<GateShotInput>;
+  resolvePricing: PricingResolver;
+  currency?: string;
+  planVersion?: number;
+  planHash?: string;
+  specs?: MultiShotGateProjection["specs"];
+  hardLimit?: number | null;
+  anchorChips?: MultiShotGateProjection["anchorChips"];
+  waitSeconds?: number | null;
+  frozenItems?: string[];
+  expiresAt?: string | null;
+};
+
+/**
+ * Build the serializable {@link MultiShotGateProjection} the confirmation card renders. Every per-shot
+ * row is resolved to what the card shows; prices keep the honest-unknown semantics (never a fabricated
+ * 0), and degradations stay STRUCTURED (code + params) so the renderer translates them via t().
+ */
+export function buildMultiShotGateProjection(input: BuildMultiShotGateProjectionInput): MultiShotGateProjection {
+  const shots: MultiShotGateShot[] = input.shots.map((shot, index): MultiShotGateShot => {
+    const price = deriveShotPrice({ candidate: shot.candidate, resolvePricing: input.resolvePricing });
+    const seconds = shot.durationSeconds;
+    return {
+      shotId: shot.shotId,
+      index: index + 1,
+      sceneOneLiner: shot.sceneOneLiner,
+      providerModelText: shot.providerModelText,
+      durationSeconds: isFiniteNonNegative(seconds) ? seconds : null,
+      price,
+      degradations: shotDegradations({ shotId: shot.shotId, candidate: shot.candidate as never, hasCharacter: shot.hasCharacter, supportsReferenceImage: shot.supportsReferenceImage }),
+    };
+  });
+  return {
+    ...(input.planVersion !== undefined ? { planVersion: input.planVersion } : {}),
+    ...(input.planHash !== undefined ? { planHash: input.planHash } : {}),
+    ...(input.specs ? { specs: input.specs } : {}),
+    shots,
+    currency: input.currency?.trim() || "CNY",
+    ...(input.hardLimit !== undefined ? { hardLimit: input.hardLimit } : {}),
+    ...(input.anchorChips ? { anchorChips: input.anchorChips } : {}),
+    ...(input.waitSeconds !== undefined ? { waitSeconds: input.waitSeconds } : {}),
+    ...(input.frozenItems ? { frozenItems: input.frozenItems } : {}),
+    ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------------
