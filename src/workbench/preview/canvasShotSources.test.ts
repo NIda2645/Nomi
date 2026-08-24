@@ -17,16 +17,16 @@ function node(partial: Partial<GenerationCanvasNode> & { id: string }): Generati
 }
 
 const withResult = (id: string, extra: Partial<GenerationCanvasNode> = {}): GenerationCanvasNode =>
-  node({ id, result: { id: `r-${id}`, type: 'video', url: `nomi-local://asset/p/${id}.mp4` }, ...extra })
+  node({ id, result: { id: `r-${id}`, type: 'video', url: `nomi-local://asset/p/${id}.mp4`, createdAt: 0 }, ...extra })
 
 describe('selectCanvasShotSources', () => {
   it('只收有产物 url 的图/视频节点', () => {
     const nodes = [
       withResult('a', { shotIndex: 1 }),
       node({ id: 'no-result', shotIndex: 2 }),
-      node({ id: 'empty-url', shotIndex: 3, result: { id: 'r', type: 'video', url: '   ' } }),
-      node({ id: 'text', kind: 'text', shotIndex: 4, result: { id: 'r', type: 'text', text: 'hi' } }),
-      node({ id: 'audio', kind: 'audio', result: { id: 'r', type: 'audio', url: 'a.mp3' } }),
+      node({ id: 'empty-url', shotIndex: 3, result: { id: 'r', type: 'video', url: '   ', createdAt: 0 } }),
+      node({ id: 'text', kind: 'text', shotIndex: 4, result: { id: 'r', type: 'text', text: 'hi', createdAt: 0 } }),
+      node({ id: 'audio', kind: 'audio', result: { id: 'r', type: 'audio', url: 'a.mp3', createdAt: 0 } }),
     ]
     expect(selectCanvasShotSources(nodes).map((s) => s.nodeId)).toEqual(['a'])
   })
@@ -69,8 +69,8 @@ describe('selectCanvasShotSources', () => {
 
   it('带出封面与媒体类型供格子渲染', () => {
     const nodes = [
-      withResult('v', { shotIndex: 1, result: { id: 'r', type: 'video', url: 'v.mp4', thumbnailUrl: 'cover.jpg' } }),
-      withResult('i', { kind: 'image', shotIndex: 2, result: { id: 'r2', type: 'image', url: 'i.png' } }),
+      withResult('v', { shotIndex: 1, result: { id: 'r', type: 'video', url: 'v.mp4', thumbnailUrl: 'cover.jpg', createdAt: 0 } }),
+      withResult('i', { kind: 'image', shotIndex: 2, result: { id: 'r2', type: 'image', url: 'i.png', createdAt: 0 } }),
     ]
     const sources = selectCanvasShotSources(nodes)
     expect(sources[0]).toMatchObject({ mediaType: 'video', thumbnailUrl: 'cover.jpg', url: 'v.mp4' })

@@ -1,6 +1,11 @@
 {
-  "//": "渲染层 (src/) 全量类型检查配置。build 用 vite(esbuild) 只转译不查类型，",
-  "//2": "这份给 `pnpm typecheck` / CI 做真正的 tsc --noEmit，覆盖整个 src（含测试）。",
+  "//": "渲染层 (src/) 类型检查配置。build 用 vite(esbuild) 只转译不查类型，这份给 `pnpm typecheck` / CI 做真正的 tsc --noEmit。",
+  "//2": "覆盖范围：src/ 下的 .ts/.tsx/.d.ts，**不含** *.test.ts / *.test.tsx（见下面 exclude）。",
+  "//3": "⚠️ 别把这里的绿灯读成「整个 src 类型没问题」——它看不见任何测试文件。",
+  "//4": "测试文件由 `pnpm run check:test-types`（走 tsconfig.test.json，已进 gates）负责，不是这份。",
+  "//5": "2026-08-25 之前测试确实没有任何工具在查（vitest 走 esbuild 只转译不核对，tsc 又被这里排除），",
+  "//6": "写在测试里的类型级护栏全是装饰品；那次补门岗时挖出 84 个存量类型错，含 Op 联合漏 lock 变体等真漂移。",
+  "//7": "排除测试不是为了快——实测放进来耗时无差异（~9s vs ~9s）；纯粹是这份配置的定位是「app 构建面」，测试不属于它。",
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true
