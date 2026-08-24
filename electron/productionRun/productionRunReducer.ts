@@ -1,4 +1,5 @@
 import { transitionJob, transitionRun } from "./productionRunState";
+import { bindShotNodes, detachShotNodes } from "./productionRunCanvasLandingReducer";
 import type {
   BudgetLedgerSummary,
   ProductionArtifact,
@@ -433,6 +434,11 @@ export function applyProductionCommand(
         message: currentPlan.operationId,
       };
     }
+    case "plan.bind-shot-nodes":
+      // P4 S5 画布落地：拆进 productionRunCanvasLandingReducer 守 800 行门岗（R9）。
+      return bindShotNodes(current, command, now);
+    case "plan.detach-shot-nodes":
+      return detachShotNodes(current, command, now);
     case "generation.approve": {
       const currentPlan = current.generationPlan;
       const receiptId = text(command.payload, "receiptId");

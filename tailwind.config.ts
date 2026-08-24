@@ -56,6 +56,10 @@ const workbenchBasePlugin = plugin(({ addBase, addUtilities }) => {
       // 工作区语义块），该病已根除，两层按语义就近取用。
       '--nomi-danger': 'oklch(0.55 0.20 27)',
       '--nomi-warning': 'oklch(0.62 0.14 75)',
+      // 根层语义绿（设计系统 ① 层）。P4 S5 补：多镜占位「完成」态、批次进度回执的成功信号要在
+      // portal/画布层用（同 --nomi-danger/-warning 那类根层色的动机——作用域色 portal 够不到）。
+      // 与 --workbench-success(#34c759) 同色相、走 oklch 以随明暗自动过渡。
+      '--nomi-success': 'oklch(0.62 0.16 150)',
       // 全局焦点环色（accent 42%）。所有交互控件 :focus-visible 统一用它，覆盖 macOS 系统强调色的
       // outline:auto（用户设了橙/黄就冒橙环）。全局 :root → portal 到 body 的面板也生效。
       '--nomi-focus': 'color-mix(in srgb, var(--nomi-accent) 42%, transparent)',
@@ -250,6 +254,8 @@ const workbenchBasePlugin = plugin(({ addBase, addUtilities }) => {
       '--nomi-accent-soft': 'color-mix(in srgb, var(--nomi-accent) 26%, var(--nomi-paper))',
       '--nomi-danger': 'oklch(0.72 0.16 25)',
       '--nomi-warning': 'oklch(0.78 0.13 75)',
+      // 暗底提亮以保持可辨（与 --workbench-success 暗色 #45d483 同族）。
+      '--nomi-success': 'oklch(0.75 0.15 150)',
       '--nomi-focus': 'color-mix(in srgb, var(--nomi-accent) 50%, transparent)',
       // 时间轴三轨：暗底提亮以保持可辨（fork 未覆盖，本次补）。
       '--nomi-track-text': 'oklch(0.75 0.15 305)',
@@ -585,6 +591,11 @@ export default {
           accent: tokenColor('--nomi-accent'),
           'accent-soft': tokenColor('--nomi-accent-soft'),
           danger: tokenColor('--nomi-danger'),
+          // P4 S5：根层 warning/success 映射（此前 --nomi-warning 有 CSS 变量但无 Tailwind 映射，
+          // --nomi-success 根本不存在 → text-nomi-success 静默失色）。多镜占位三态用它们（warning=已停、
+          // success=完成），portal/画布层都解析得到。
+          warning: tokenColor('--nomi-warning'),
+          success: tokenColor('--nomi-success'),
           scrim: tokenColor('--nomi-scrim'),
           'overlay-chip': tokenColor('--nomi-overlay-chip'),
           'overlay-chip-strong': tokenColor('--nomi-overlay-chip-strong'),

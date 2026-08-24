@@ -65,6 +65,9 @@ describe("durability barrier", () => {
     expect(fs.readFileSync(ephemeralPath, "utf8")).toBe(fs.readFileSync(durablePath, "utf8"));
   });
 
+  // 注：这条钉的是**模式翻转**（谁有权关屏障）。屏障的另一半——**调用点**
+  // （不许绕过 fsyncIfDurable 直接 fs.fsyncSync）由 `pnpm run check:heavy-path` 的
+  // `unguarded-fsync` 规则把着，不在这里重复实现（P1：一个不变量一个执行处）。
   it("只有测试 harness 能翻成 ephemeral——生产代码里不许出现（防 flake 修复被当成万能开关滥用）", () => {
     const offenders: string[] = [];
     const walk = (dir: string): void => {

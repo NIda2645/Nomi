@@ -37,6 +37,7 @@ import { ASSET_KIND_FILTER_VALUES, FILTER_OPTIONS, type FilterValue } from './as
 import { filterImageVideoAssets, filterPlayableAssets } from './assetLibrarySources'
 import { deleteAssetResult } from './deleteAssetResult'
 import { addAssetToTimelineEnd } from '../timeline/addAssetToTimeline'
+import { useAssetLibraryLocalImport } from './assetLibraryLocalImport'
 import {
   assetToDragPayload,
   assetsForLibraryDrag,
@@ -150,6 +151,7 @@ export function AssetLibraryContent({
     refresh: refreshProjectAssets,
   } = useAssetPool(projectId)
   const { assets: allProjectAssets, refresh: refreshAllProjectAssets } = useAllProjectAssets()
+  const localImport = useAssetLibraryLocalImport({ projectId, refreshProjectAssets, refreshAllProjectAssets })
   const folderApi = useAssetFolders(projectId)
   const allSourceAssets = React.useMemo(
     () => (includeAudio ? filterPlayableAssets(allProjectAssets) : filterImageVideoAssets(allProjectAssets)),
@@ -601,14 +603,12 @@ export function AssetLibraryContent({
 
   return (
     <TooltipProvider delayDuration={180} skipDelayDuration={80}>
-      <div className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', className)}>
+      <div tabIndex={0} onDragOver={localImport.onDragOver} onDragLeave={localImport.onDragLeave} onDrop={localImport.onDrop} onPaste={localImport.onPaste} className={cn('flex min-h-0 flex-1 flex-col overflow-hidden outline-none', className, localImport.isDragOver && 'ring-2 ring-inset ring-nomi-accent/50')}>
         {/* 头部 */}
         {showHeader ? (
           <div className={cn('flex items-center gap-2 px-4 pt-3.5 pb-3 border-b border-nomi-line')}>
             <b className={cn('text-title font-bold text-nomi-ink')}>{t('assetLibrary.title')}</b>
             <span className={cn('text-caption text-nomi-ink-40')}>· {sourceFilteredAssets.length}</span>
-            {/* 「网页捕捞」入口已删（方案一 2026-07-12）：顶栏「浏览器」是唯一上网门，
-                双门牌被用户体感为重复。 */}
             <span className={cn('flex-1')} />
             {onClose ? (
               <button

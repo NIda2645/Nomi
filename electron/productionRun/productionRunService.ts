@@ -22,6 +22,7 @@ import { withEventTap } from './productionRunEventTap'
 import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
 import { assertStoryboardSourceFresh, createArtifactOperations } from './productionRunArtifactOperations'
 import { assertStoryboardSourceApproved } from './productionRunReducer'
+import { MEANINGFUL_EVENT_TYPES } from './productionRunMeaningfulEvents'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
 import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
@@ -111,35 +112,6 @@ type ServiceDeps = {
   /** Current project document revision, resolved by the project owner rather than the command body. */
   projectRevisionResolver?: (projectId: string) => number | undefined
 }
-
-const MEANINGFUL_EVENT_TYPES = new Set([
-  'run.created',
-  'generation.plan.updated',
-  'generation.plan.sealed',
-  'generation.plan.submitted',
-  'generation.plan.approved',
-  'generation.plan.cancelled',
-  'run.status.changed',
-  'run.stage.changed',
-  'stage.updated',
-  'gate.waiting',
-  'gate.candidates',
-  'gate.decided',
-  'artifact.ready',
-  'artifact.adopted',
-  'artifact.reviewed',
-  'job.ready',
-  'job.adopted',
-  'job.submission_unknown',
-  'job.needs_attention',
-  'job.vendor_state_stale',
-  'skill.loaded',
-  'skill.applied',
-  'plan.proposed',
-  'plan.attached',
-  // W1.5：审片判决（per-shot 过检/红标）——纳入可转述事件，让 nomi_subscribe_run 读得到。
-  'qa.verdict',
-])
 
 function identifier(value: string, label: string): string {
   const normalized = String(value || '').trim()
