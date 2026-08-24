@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fsyncIfDurable } from "../durability";
 import { writeJsonFileAtomic } from "../jsonFile";
 import { getWorkspaceRepositoryDeps } from "../runtimePaths";
 import { resolveWorkspaceProjectDir } from "../workspace/workspaceRepository";
@@ -90,7 +91,7 @@ function appendDurableJsonLine(filePath: string, value: unknown): void {
   const fd = fs.openSync(filePath, "a");
   try {
     fs.writeSync(fd, `${JSON.stringify(value)}\n`, undefined, "utf8");
-    fs.fsyncSync(fd);
+    fsyncIfDurable(fd);
   } finally {
     fs.closeSync(fd);
   }

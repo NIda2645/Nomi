@@ -149,6 +149,50 @@ export type MultiShotPreviewProjection = {
   total: MultiShotPreviewTotal;
 };
 
+// ---------------------------------------------------------------------------------------------------
+// P4 S3a — multi-shot confirmation gate projection (the wire shape carried through the three layers:
+// approvalReceipt challenge → mcpProtocol → appIntegration → renderer confirmation card).
+// ---------------------------------------------------------------------------------------------------
+
+/**
+ * A single read-only shot row on the multi-shot confirmation card. Every field is already resolved
+ * to what the card shows: `providerModelText` is the human-readable "model · mode" string built here
+ * (the renderer never re-joins provider/model), while `degradations` stay STRUCTURED (code + params)
+ * so the renderer translates them via t() — never a pre-rendered string that would pierce the i18n gate.
+ * Price/duration keep the S2 honest-unknown semantics (never a fabricated 0/"¥0").
+ */
+export type MultiShotGateShot = {
+  shotId: string;
+  index: number;
+  sceneOneLiner: string;
+  providerModelText: string;
+  durationSeconds: number | null;
+  price: ShotPrice;
+  degradations: ShotDegradation[];
+};
+
+/**
+ * The whole multi-shot projection attached to a generation gate challenge. Serializable end-to-end.
+ * Its presence is what makes the renderer show the multi-shot card instead of the flat single-shot one;
+ * a single-shot gate omits it entirely (byte-identical to today — the single-shot E2E is the regression gate).
+ */
+export type MultiShotGateProjection = {
+  planVersion?: number;
+  planHash?: string;
+  specs?: {
+    durationSeconds?: number | null;
+    aspectRatio?: string | null;
+    shotCount?: number | null;
+  };
+  shots: MultiShotGateShot[];
+  currency?: string;
+  hardLimit?: number | null;
+  anchorChips?: Array<{ label: string; price: ShotPrice }>;
+  waitSeconds?: number | null;
+  frozenItems?: string[];
+  expiresAt?: string | null;
+};
+
 export type ProjectMultiShotPreviewInput = {
   shots: ReadonlyArray<PreviewShotInput>;
   resolvePricing: PricingResolver;
