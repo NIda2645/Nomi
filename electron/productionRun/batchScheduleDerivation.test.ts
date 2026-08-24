@@ -129,7 +129,6 @@ function baseInput(overrides: Partial<BatchDerivationInput> = {}): BatchDerivati
     jobs: [],
     budget: { currency: "CNY", authorized: 100, reserved: 0, actual: 0, unsettled: 0 },
     perShotPrice: () => ({ known: true, amount: 6 }),
-    anchors: [],
     anchorGate: undefined,
     now: NOW,
     ...overrides,

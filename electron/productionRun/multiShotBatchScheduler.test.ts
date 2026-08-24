@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { compileExecutionContract, type PlanCandidate } from "../capabilityCore/executionContract";
 import { createModuleRegistry } from "../capabilityCore/moduleRegistry";
+import type { GenerationProvider } from "../capabilityCore/generationRuntimeAdapter";
 import { createProductionGenerationSubmission } from "./productionGenerationSubmission";
 import { createProductionRunRepository } from "./productionRunRepository";
 import { createMultiShotBatchScheduler } from "./multiShotBatchScheduler";
@@ -99,14 +100,14 @@ function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null):
 }
 
 /** A mock provider that accepts + immediately reports succeeded + materializes a tiny artifact. */
-function mockProvider(submit: ReturnType<typeof vi.fn>) {
+function mockProvider(submit: ReturnType<typeof vi.fn>): GenerationProvider {
   return {
     providerId: "apimart",
     capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },
-    buildRequest: (input: unknown) => input,
-    submit,
-    query: async (providerTaskId: string) => ({ status: "succeeded", raw: { id: providerTaskId, status: "succeeded" } }),
-    materialize: async ({ providerTaskId }: { providerTaskId: string }) => ({ outputs: [{ url: `nomi-local://asset/project-1/${providerTaskId}.png`, kind: "video" as const }] }),
+    buildRequest: (input) => input,
+    submit: submit as unknown as GenerationProvider["submit"],
+    query: async (providerTaskId) => ({ status: "succeeded", raw: { id: providerTaskId, status: "succeeded" } }),
+    materialize: async ({ providerTaskId }) => ({ outputs: [{ url: `nomi-local://asset/project-1/${providerTaskId}.png`, kind: "video" as const }] }),
   };
 }
 
