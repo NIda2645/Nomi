@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PlanCandidate } from "../capabilityCore/executionContract";
 import {
+  buildMultiShotGateProjection,
   checkSealAffordability,
   deriveShotPrice,
   projectMultiShotPreview,
@@ -284,5 +285,46 @@ describe("checkSealAffordability", () => {
     });
     // a=20 ≤ 25 fits; b unknown (0 toward cap) still fits; c pushes to 40 > 25 → 2 shots affordable.
     expect(result).toEqual({ ok: false, maxAffordableShots: 2, knownSubtotal: 40, maxSpend: 25 });
+  });
+});
+
+describe("P4 S4 buildMultiShotGateProjection (the real display.shots for the confirmation card)", () => {
+  const resolve = (providerId: string, modelId: string) =>
+    modelId === "unpriced-model" ? undefined : { cost: 6, enabled: true, specCosts: [] };
+
+  it("builds serializable per-shot rows with index, human model text, and honest prices", () => {
+    const projection = buildMultiShotGateProjection({
+      shots: [
+        { shotId: "shot-1", sceneOneLiner: "雨夜推门", providerModelText: "APIMart · 即梦（文生图）", candidate: { providerId: "apimart", modelId: "video-model", parameters: {} }, durationSeconds: 5 },
+        { shotId: "shot-2", sceneOneLiner: "货架对视", providerModelText: "APIMart · 未定价模型", candidate: { providerId: "apimart", modelId: "unpriced-model", parameters: {} } },
+      ],
+      resolvePricing: resolve,
+      currency: "CNY",
+      planVersion: 3,
+      planHash: "sha256:x",
+      specs: { durationSeconds: 40, aspectRatio: "9:16", shotCount: 2 },
+      hardLimit: 30,
+      anchorChips: [{ label: "主角 · 阿雨", price: { known: true, amount: 2 } }],
+      waitSeconds: 180,
+      frozenItems: ["shots", "models"],
+    });
+
+    expect(projection.shots).toHaveLength(2);
+    expect(projection.shots[0]).toMatchObject({ shotId: "shot-1", index: 1, sceneOneLiner: "雨夜推门", providerModelText: "APIMart · 即梦（文生图）", durationSeconds: 5, price: { known: true, amount: 6 } });
+    // Unpriced model → honest unknown, never a fabricated 0. Missing duration → null.
+    expect(projection.shots[1]).toMatchObject({ shotId: "shot-2", index: 2, price: { known: false }, durationSeconds: null });
+    // Metadata passes through end-to-end.
+    expect(projection).toMatchObject({ planVersion: 3, planHash: "sha256:x", hardLimit: 30, waitSeconds: 180, currency: "CNY" });
+    expect(projection.anchorChips).toEqual([{ label: "主角 · 阿雨", price: { known: true, amount: 2 } }]);
+    // Serializable (no functions / undefined-only fields).
+    expect(() => JSON.stringify(projection)).not.toThrow();
+  });
+
+  it("flags the 'model_cannot_take_character_reference' degradation as a STRUCTURED code (not a string)", () => {
+    const projection = buildMultiShotGateProjection({
+      shots: [{ shotId: "s", sceneOneLiner: "x", providerModelText: "m", candidate: { providerId: "apimart", modelId: "no-ref", parameters: {} }, hasCharacter: true, supportsReferenceImage: false }],
+      resolvePricing: resolve,
+    });
+    expect(projection.shots[0].degradations).toEqual([{ code: "model_cannot_take_character_reference", params: { modelId: "no-ref" } }]);
   });
 });

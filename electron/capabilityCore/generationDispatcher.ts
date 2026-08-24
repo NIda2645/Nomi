@@ -413,6 +413,9 @@ async function dispatchSemanticStub(
           model,
           shotSummary: typeof value?.shotSummary === 'string' ? value.shotSummary : undefined,
           referenceCount: typeof value?.referenceCount === 'number' ? value.referenceCount : undefined,
+          // P4 S4: thread the multi-shot projection into the MAC-signed challenge so the per-shot rows the
+          // user sees are tamper-proof. Present only for a multi-shot gate_request; single-shot omits it.
+          ...(value?.shots && typeof value.shots === 'object' && !Array.isArray(value.shots) ? { shots: value.shots as never } : {}),
         },
       })
       return {

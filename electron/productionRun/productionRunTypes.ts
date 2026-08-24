@@ -185,6 +185,14 @@ export type ProductionJob = {
 export type ProductionGenerationShot = {
   /** Stable per-shot identity; enters the sub-contract and every derived key (jobId/idempotency). */
   shotId: string;
+  /**
+   * P4 S4 role within the batch. `"anchor"` = an identity/scene definition IMAGE that must generate
+   * BEFORE the video shots and gate them through the anchor checkpoint (§3.2); `"shot"` (or absent,
+   * backward compatible) = a video shot released only after the checkpoint passes. Anchors and shots
+   * ride the SAME Run and SAME shots[] array — the scheduler partitions by role. Enumerating anchors
+   * here is what makes "总请求数 = 锚数 + 镜数" a durable, replay-stable fact (§5 invariant).
+   */
+  role?: "anchor" | "shot";
   /** Checkbox for 试拍/分批: a sealed contract only covers included shots. Absent → included. */
   included?: boolean;
   candidate: PlanCandidate;
@@ -237,7 +245,15 @@ export type ProductionDirectionCandidate = {
 
 export type ProductionGate = {
   gateId: string;
-  scope: "stage" | "job_set" | "budget_envelope" | "export" | "publish";
+  /**
+   * P4 S4 adds `anchor_checkpoint`: the "锚亮相检查点" (§3.2). It gates the shot batch on the user
+   * approving the anchor definition images — a quality checkpoint, NOT a spend gate. It rides the same
+   * gate.add/gate.decide channel (fact written into the Run, never the renderer store) but is scoped
+   * distinctly so the service-layer budget authorization (which only fires on `budget_envelope`) never
+   * connects it — the checkpoint costs nothing and needs no fresh receipt (the receipt already covered
+   * the batch at confirmation; this pause only asks "does the face look right?").
+   */
+  scope: "stage" | "job_set" | "budget_envelope" | "export" | "publish" | "anchor_checkpoint";
   status: ProductionGateStatus;
   planHash: string;
   jobIds: string[];
