@@ -4,6 +4,7 @@ import {
   buildStoryboardPlanningMessage,
   STORYBOARD_PLANNER_SKILL,
 } from './generationCanvas/agent/storyboardLauncher'
+import type { StoryboardPlan } from './generationCanvas/agent/storyboardPlan'
 import { buildStoryDocument, TRY_NOW_EXAMPLES } from './library/tryNowExamples'
 
 describe('Phase C storyboard happy path', () => {
@@ -200,7 +201,7 @@ describe('Phase C storyboard happy path', () => {
     })
 
     it('修改模式：带当前方案 + 修改要求时，产出基于现方案的修改指令（P0-9 Slice 3）', () => {
-      const currentPlan = {
+      const currentPlan: StoryboardPlan = {
         title: '测试方案 · 2 镜',
         anchors: [{ id: 'anchor-1', kind: 'character', name: '小明', carrier: 'visual', description: '少年' }],
         shots: [
