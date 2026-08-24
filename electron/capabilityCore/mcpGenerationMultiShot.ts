@@ -11,6 +11,7 @@ import crypto from "node:crypto";
 
 import { compileExecutionContract, type ExecutionContractV1, type PlanCandidate } from "./executionContract";
 import type { ModuleRegistry } from "./moduleRegistry";
+import type { ParameterField } from "./moduleManifest";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
 
 /**
@@ -132,7 +133,7 @@ export type MultiShotHelperDeps = {
   planStoryboard?: (input: { projectId: string; scriptText: string }) => StoryboardPlanResult | Promise<StoryboardPlanResult>;
   parsers: MultiShotCandidateParsers;
   normalizeVideoCandidate: (candidate: PlanCandidate) => PlanCandidate;
-  videoParameterSchema: (candidate: PlanCandidate) => Record<string, unknown> | undefined;
+  videoParameterSchema: (candidate: PlanCandidate) => Record<string, ParameterField> | undefined;
   priceForCandidate: (candidate: PlanCandidate) => { known: boolean; amount?: number };
   effectiveVideoModes: (candidate: VideoModelCandidate) => Array<{ transportTaskKind?: string }>;
 };
@@ -195,7 +196,7 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
       const included = shot.included !== false;
       if (!included) return { shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), included: false, candidate: shot.candidate };
       const normalized = deps.normalizeVideoCandidate(shot.candidate);
-      const contract = compileExecutionContract(normalized, deps.registry, { parameterSchema: deps.videoParameterSchema(normalized) as never });
+      const contract = compileExecutionContract(normalized, deps.registry, { parameterSchema: deps.videoParameterSchema(normalized) });
       return {
         shotId: shot.shotId,
         ...(shot.role ? { role: shot.role } : {}),

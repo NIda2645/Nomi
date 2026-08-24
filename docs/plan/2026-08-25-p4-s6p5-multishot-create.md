@@ -87,6 +87,14 @@
 8. 截图全部自己 Read 亲眼看过再写结论。
 9. 失败分类：401 停下报告、参数不支持→回官方 API 文档对账（R5）、超时→查 reconcile；禁 blanket retry 烧钱。
 
+### 4.1 交付时实做记录（harness `tests/ux/p4-s6p5-multishot-paid.e2e.mjs`）
+实做踩到并解决的三件事（写下来免后来人重踩）：
+- **lease 拿法不是直发 HTTP**：语义 gate 确认编排（request→等卡→decide→start 一气呵成）住 stdio 层 `mcpSemanticGenerationFlow.ts`，HTTP `/rpc` 只做 raw dispatch。故 harness 用 **stdio MCP 子进程**（不是直 POST），且要：① 在 GUI 里先 `createBlankProject` 打开项目 → 它成 `openProjectId`；② stdio 子进程带**注册客户端证明** `NOMI_MCP_CLIENT=claude` + `NOMI_MCP_CLIENT_PROOF=HMAC(capToken,"nomi-mcp-client:v1:claude")`，否则 `current_project` bootstrap 拒发 lease；③ session_open 用 `bootstrap:{mode:'current_project', clientSessionNonce}` 拿 lease。
+- **语义调用别传 projectId**：dispatcher 用 lease.projectId 覆盖，传了不一致的（如目录名≠workspace id）当场 `project_scope_changed`。production 读工具（get_run/get_artifact）用 lease 返回的 projectId。
+- **operationId 服务端生成**：`nomi_operation_create` 工具 schema 不收 operationId → 服务端发 UUID；后续 preview/gate/get_run 全用 create 返回的 operationId（预挑一个传进去会「Run not found」）。
+- **零额度干跑已 9 断言全绿**（`S6P5_DRY_RUN_NO_SPEND=1`）：真语义入口 create({shots})→preview→request_gate 把**真多镜卡弹到 live GUI**，卡显「2 镜 / apimart Seedance 2.0（text_to_video）/ 术语人话（无封存物化合同）/ 固定 footer / 倒计时」（截图 `01-multishot-confirm-card.png` / `00-gate-pending-state.png` 亲验）。证明 create 双入口经真 GUI RPC 全链通——付费前的链路确证。
+- **观察到的卡显示摩擦**（S2/S3a 存量、非本切片）：卡上「总时长 未知 / 画幅 未知」即使 shot 传了 duration=4/size=16:9 仍显未知；「价未知 / ¥0」因真 catalog 未给 apimart per-model pricing。记为摩擦。
+
 ## 5. 回归（全保持）
 - 单镜 E2E 14/14、S3a、elicitation、S4 批次、S5 走查、S6 J2 返工 + 版本条走查。
 - 单镜 create/seal 路径字节不动；appIntegration 单镜 start 分支不动。
