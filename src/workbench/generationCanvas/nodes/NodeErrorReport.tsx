@@ -1,13 +1,13 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconRefresh, IconReplace, IconSettings, IconWand } from '@tabler/icons-react'
+import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconRefresh, IconReplace, IconSettings, IconWand, IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { WorkbenchButton } from '../../../design'
 import { isKnownVendor } from '../../../config/knownVendors'
 import { notifyModelOptionsRefresh } from '../../../config/modelCatalogCache'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { setPendingCustomCallIntent } from '../../../ui/onboarding/customCallIntent'
-import { isComfyuiVendorKey } from '../runner/comfyuiTaskControl'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { nodeSelectedModelAddress } from './controls/parameterControlModel'
 import { classifyGenerationError } from '../runner/generationRunController'
 import { narrateErrorActionLabel, narrateModelKind, type GenerationErrorAction } from '../../observability/narrate'
@@ -35,10 +35,13 @@ const CUSTOM_CALL_HINT_KINDS = new Set(['model-config', 'image-route-disabled', 
 export function NodeErrorReport({
   message,
   onRetry,
+  onDismiss,
   meta,
 }: {
   message: string
   onRetry?: () => void
+  /** 收起这张卡（不删错误，只把遮罩撤掉露出下面的产物）。不给 = 不显示关闭钮。 */
+  onDismiss?: () => void
   /** 节点 meta（内部经 nodeSelectedModelAddress 取双键寻址，防同名 modelKey 误路由）。 */
   meta?: Record<string, unknown>
 }): JSX.Element {
@@ -72,6 +75,14 @@ export function NodeErrorReport({
       onRetry?.()
     },
     [onRetry],
+  )
+
+  const handleDismiss = React.useCallback(
+    (event: React.MouseEvent) => {
+      event.stopPropagation()
+      onDismiss?.()
+    },
+    [onDismiss],
   )
 
   /**
@@ -179,7 +190,26 @@ export function NodeErrorReport({
     >
       <div className="flex items-start gap-2">
         <IconAlertTriangle size={16} stroke={1.6} className="mt-[1px] shrink-0 text-workbench-danger" />
-        <span className="select-text cursor-text text-body font-bold leading-snug text-nomi-ink">{report.reason}</span>
+        <span className="min-w-0 flex-1 select-text cursor-text text-body font-bold leading-snug text-nomi-ink">{report.reason}</span>
+        {/* 收起：失败卡是铺满正文的遮罩，节点先前生成的片子就压在它下面——没有这颗钮，用户「一直看不了
+            原本的视频」（2026-08-24 用户反馈，并在截图上把 × 画在了这个位置）。§1.5：它是 L2 情境控件，
+            只随失败卡存在，且长在卡自己的不透明表面上、不是压在画面内容上（§1.5.3 那条硬规则）。
+            错误不会因此丢失——原文仍在 runs 里，任务日志/生成记录查得到（用户原话「所有的报错可以在任务日志里看」）。 */}
+        {onDismiss ? (
+          <button
+            type="button"
+            onClick={handleDismiss}
+            aria-label={t('generationCommon.error.dismiss')}
+            title={t('generationCommon.error.dismiss')}
+            className={cn(
+              '-mr-1 -mt-1 inline-grid size-6 shrink-0 cursor-pointer place-items-center rounded-nomi-sm border-0 bg-transparent',
+              'text-nomi-ink-40 transition-[background,color] duration-[var(--nomi-transition-fast)]',
+              'hover:bg-nomi-ink-05 hover:text-nomi-ink',
+            )}
+          >
+            <IconX size={16} stroke={1.6} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       {/* 正文区独立滚动 —— 这一层是结构保证，不是样式偏好：错误卡铺满节点正文，而节点可以很小，
           hint + 上游原话却可以很长。不给正文独立滚动，长文案会把整排动作按钮顶出卡外，用户连

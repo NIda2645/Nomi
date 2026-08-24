@@ -10,7 +10,7 @@
 //  · ComfyUI 导入图 → 由**图自己**决定（图里有没有提示词绑定）。渲染层看不到图，
 //    但后端渲染模板时空提示词只会渲成空串——在这里硬抛只会把整类工作流堵死。
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
-import { isComfyuiVendorKey } from './comfyuiTaskControl'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { resolveTaskArchetype } from './catalogTaskResolve'
 
 /** 该节点这次提交是否必须有非空提示词。 */

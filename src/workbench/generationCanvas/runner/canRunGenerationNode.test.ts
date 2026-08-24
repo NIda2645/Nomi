@@ -60,6 +60,34 @@ describe('canRunGenerationNode — 视频节点参考判定', () => {
     } as GenerationCanvasNode
     expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
   })
+
+  // 回归（2026-08-24 用户反馈）：「Comfyui 我配置的文生视频工作流，但是提交必须输入图片才能发出」。
+  // 死锁链：本判定原本「无档案 → 必须先有参考才放行」，而 ComfyUI 导入图**从不带档案**
+  // （resolveTaskArchetype 对 comfy vendor 直接返回 null）→ 纯文生视频的图里没有图输入、UI 也不显示参考框，
+  // 按钮却非要一张参考才亮 → 用户只能连张图去喂它 → runtime 又以「模型没有『图生视频』通道，参考图发不出去」
+  // 拒发 → 两头堵死，这类工作流整个发不出去。判据改回「模型自己声明要什么」：无档案一律放行，
+  // 由 runtime 的诚实闸兜底（与 image/audio 两支同口径）。
+  it('ComfyUI 文生视频工作流（无档案）无参考也可生成', () => {
+    const node = {
+      id: 'v1', kind: 'video', title: 'v', position: { x: 0, y: 0 }, prompt: '日出前，面包师打开木质百叶窗',
+      meta: { modelKey: 'h3-t2v', modelVendor: 'comfyui-local', vendor: 'comfyui-local' },
+    } as GenerationCanvasNode
+    expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
+  })
+  it('第 2+ 台 ComfyUI 实例（comfyui-local-xxx 前缀）同样放行，不能只保得住第一台', () => {
+    const node = {
+      id: 'v1', kind: 'video', title: 'v', position: { x: 0, y: 0 }, prompt: '一只猫跳下沙发',
+      meta: { modelKey: 'h3-t2v', modelVendor: 'comfyui-local-rtx4090', vendor: 'comfyui-local-rtx4090' },
+    } as GenerationCanvasNode
+    expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
+  })
+  it('自定义接入的无档案视频模型同样放行（判据是「模型声明了什么」，不是「手上有没有参考」）', () => {
+    const node = {
+      id: 'v1', kind: 'video', title: 'v', position: { x: 0, y: 0 }, prompt: '一只猫跳下沙发',
+      meta: { modelKey: 'some-custom-t2v', modelVendor: 'my-relay', vendor: 'my-relay' },
+    } as GenerationCanvasNode
+    expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
+  })
 })
 
 // L3 护栏（2026-07-06）：图生图模式（image_edit + 有参考槽）零参考 → 不可生成，
