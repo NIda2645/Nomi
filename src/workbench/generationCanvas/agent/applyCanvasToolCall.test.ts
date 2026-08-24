@@ -402,7 +402,7 @@ describe('applyCanvasToolCall create_camera_move 执行', () => {
       customMove: '快速甩镜到窗外街景（whip pan）',
     })
     const after = useGenerationCanvasStore.getState().nodes.find((n) => n.id === targetId)
-    expect((after?.prompt.match(/快速甩镜/g) || []).length).toBe(1)
+    expect(((after?.prompt ?? '').match(/快速甩镜/g) || []).length).toBe(1)
   })
 
   it('move 与 customMove 都缺 → 抛错（不静默兜 push_in 硬塞运镜）', async () => {

@@ -56,8 +56,9 @@ import {
   replaceModelSettingsPage,
   type ModelSettingsPage,
 } from './modelSettingsNavigation'
+import { useModelPageRequest, type ModelPageRequest } from './useModelPageRequest'
 
-export function OnboardingDrawer(): JSX.Element {
+export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPageRequest } = {}): JSX.Element {
   const { t } = useTranslation()
   const [navigation, setNavigation] = React.useState(createModelSettingsNavigation)
   const page = currentModelSettingsPage(navigation)
@@ -65,6 +66,7 @@ export function OnboardingDrawer(): JSX.Element {
   const openPage = React.useCallback((next: Exclude<ModelSettingsPage, { type: 'home' }>) => {
     setNavigation((current) => openModelSettingsPage(current, next))
   }, [])
+  useModelPageRequest(pageRequest, openPage)
   const goBack = React.useCallback(() => setNavigation((current) => backModelSettingsPage(current)), [])
   useModelSettingsPageFocus(page, goBack)
   const openWizard = React.useCallback((preset?: string, existingVendorKey?: string, initialScreen?: 'form' | 'scriptDraft') => {

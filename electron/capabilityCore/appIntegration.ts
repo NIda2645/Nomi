@@ -113,8 +113,19 @@ function createDefaultAuthorities(): Pick<
       maximumCost: challenge.reservationPreview.maximum,
       currency: challenge.reservationPreview.currency,
       expiresAt: challenge.expiresAt,
-    }, 60_000) as { confirmed?: unknown } | null
-    if (result?.confirmed !== true) return { confirmed: false, challengeId: challenge.challengeId }
+      // P4 S3a — forward the (MAC-signed) multi-shot projection when the challenge carries one; a
+      // single-shot challenge omits it and the renderer keeps rendering today's flat card unchanged.
+      ...(challenge.display.shots ? { shots: challenge.display.shots } : {}),
+    }, 60_000) as { confirmed?: unknown; trialFirst?: unknown } | null
+    // P4 S3a — 「先试拍第 1 镜」信号：渲染层回 { confirmed:false, trialFirst:true }。S3a 边界 = 把它
+    // 原样上抛给调用方，主进程侧「缩到首镜 + 重封存 + 重发 gate」属 S4；这里不落地重封存。
+    if (result?.confirmed !== true) {
+      return {
+        confirmed: false,
+        challengeId: challenge.challengeId,
+        ...(result?.trialFirst === true ? { trialFirst: true } : {}),
+      }
+    }
     const attestation = receiptAuthority.createMainProcessGestureAttestation(challengeToken, {
       ...target,
       decision: 'accept',

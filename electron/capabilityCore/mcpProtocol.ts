@@ -28,6 +28,7 @@ import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
 import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
 import type { AuthenticatedMcpClient } from './security'
+import type { MultiShotGateProjection } from '../productionRun/shotPricing'
 
 // spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
 // （elicitation-first 画布确认，见 mcpPlanTrust.ts）——透传给传输层，让最终跑 confirmPlan 的网关预批准、
@@ -46,8 +47,9 @@ export type GenerationGateChallengeProjection = {
   currency?: string
   expiresAt: string
   confirmationText?: string
-  /** Opaque server handoff data. It never belongs in user-facing copy. */
-  handoff?: Record<string, unknown>
+  /** P4 S3a — optional multi-shot projection: present → multi-shot card, absent → flat single-shot card (mcpProtocol). */
+  shots?: MultiShotGateProjection
+  handoff?: Record<string, unknown> // Opaque server handoff data. It never belongs in user-facing copy.
 }
 
 export type GenerationGateConfirmation = {

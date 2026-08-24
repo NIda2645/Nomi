@@ -23,6 +23,7 @@ const labels = {
   statuses: {
     draft: '等待开始',
     awaiting_direction: '等待确认方向',
+    awaiting_script_review: '等待审核剧本',
     awaiting_storyboard_review: '等待审核分镜',
     awaiting_contract: '等待确认制作与预算',
     ready: '准备生成',

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { importLocalMediaFilesToGenerationCanvas } from './assetImportAdapter'
 import { useGenerationCanvasStore, __resetGenerationCanvasHistoryForTests } from '../store/generationCanvasStore'
+import type { WorkbenchAssetDto } from '../../api/assetUploadApi'
 
 function makeImageFile(name = 'image.png', size = 1024): File {
   return new File([new Uint8Array(size)], name, {
@@ -28,8 +29,8 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
   })
 
   it('does not persist a data URL before the local asset import finishes', async () => {
-    let resolveUpload: ((asset: any) => void) | null = null
-    const uploadFile = vi.fn(() => new Promise<any>((resolve) => {
+    let resolveUpload: ((asset: WorkbenchAssetDto) => void) | null = null
+    const uploadFile = vi.fn(() => new Promise<WorkbenchAssetDto>((resolve) => {
       resolveUpload = resolve
     }))
     const promise = importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
@@ -51,7 +52,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     expect(uploadingNode.history).toEqual([])
     expect(uploadingNode.meta?.uploadStatus).toBe('uploading')
 
-    resolveUpload?.({
+    resolveUpload!({
       id: 'asset-1',
       name: 'image',
       userId: 'local',

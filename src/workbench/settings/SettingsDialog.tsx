@@ -33,6 +33,8 @@ import { hasSettingsUnsavedChanges } from './settingsUnsavedChanges'
 const OnboardingDrawer = lazyWithChunkBoundary('模型', () =>
   import('../../ui/onboarding/OnboardingDrawer').then((module) => ({ default: module.OnboardingDrawer })),
 )
+// 纯类型（`import type` 会被编译期抹掉），不会把上面那个 160KB chunk 拽进首屏。
+import type { ModelPageRequest } from '../../ui/onboarding/useModelPageRequest'
 
 // 语言用「母语名」直读，不随界面语言翻译——换语言时两个名字都稳定可认（沿用 PR#50 的判断）。
 const LOCALE_LABEL_KEY: Record<AppLocale, string> = { 'zh-CN': 'common.chinese', en: 'common.english' }
@@ -75,6 +77,8 @@ export function SettingsDialog({
   const { isDark } = useNomiColorScheme()
   const [tab, setTab] = React.useState<SettingsTab>(initialTab)
   const [modelsMounted, setModelsMounted] = React.useState(initialTab === 'models')
+  // 「去配置 KIE」这类请求：切到模型 tab 还不够，得让模型工作区直接落到那家的 Key 输入页。
+  const [modelPageRequest, setModelPageRequest] = React.useState<ModelPageRequest>(null)
   // t 随语言变化重渲，渲染时读 getAppLocale() 即拿最新值（沿用 LanguageMenuButton 的做法）。
   const locale = getAppLocale()
   const [enabled, setEnabled] = React.useState(false)
@@ -331,7 +335,7 @@ export function SettingsDialog({
               >
                 {/* 本地 Suspense 保住懒加载边界；没有访问模型页时仍不会下载接入模块。 */}
                 <React.Suspense fallback={<div className="px-4 py-3 pr-14 text-caption text-nomi-ink-40 sm:px-5 sm:pr-14">{t('settings.automation.loading')}</div>}>
-                  <OnboardingDrawer />
+                  <OnboardingDrawer pageRequest={modelPageRequest} />
                 </React.Suspense>
               </div>
             ) : null}
@@ -381,7 +385,12 @@ export function SettingsDialog({
                   onChange={updateAutomationPolicy}
                   productionPolicyRequirement={productionPolicyRequirement}
                   focusEnabled={automationPolicyLoaded}
-                  onOpenModelCatalog={() => selectTab('models')}
+                  onOpenModelCatalog={(vendorKey) => {
+                    selectTab('models')
+                    // token 用递增计数而非 vendorKey 本身：模型工作区常驻挂载，返回首页后再点一次
+                    // 得能重新打开（值没变 = effect 不跑 = 按钮第二次点了没反应）。
+                    if (vendorKey) setModelPageRequest((current) => ({ vendorKey, token: (current?.token ?? 0) + 1 }))
+                  }}
                 />
                 {/* 系统提示词的家（用户 2026-08-17 拍板）：过去只能在创作面板 popover 的 64px 只读小框里看。
                     它是「AI 怎么干活」的设置，和本 tab 的模型策略同源，故归位到这里而不是新开 tab（§1.5 归位）。 */}
