@@ -13,6 +13,10 @@
 //
 // 为什么值得一道门岗而不是写进文档：这类写法**当场看不出问题**——小图上跑得飞快，
 // 大图上才冻死；写的人手里多半是小图。靠自觉记不住，只能靠机器每次拦。
+//
+// 2026-08-24 扩了族的定义：本门岗管的是「**本地看不出、线上才炸**」的写法，不限于「卡死」。
+// 新增 node-stream-into-response——把 Node 流交给 undici 管生命周期，小文件/不 seek 时完全正常，
+// 大视频一拖进度条就可能抛不可捕获的 ERR_INVALID_STATE 弹框。同一条判据：写的人当场看不出来。
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -81,6 +85,49 @@ const RULES = [
       const hits = []
       code.split('\n').forEach((line, i) => {
         if (/\b(const|let)\s+(MIN|MAX)_NODE_(WIDTH|HEIGHT)\s*=/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+        }
+      })
+      return hits
+    },
+  },
+  {
+    id: 'node-stream-into-response',
+    label: '把 Node 流交给别人管生命周期（new Response(流) / Readable.toWeb）——取消时抛不可捕获的 ERR_INVALID_STATE',
+    hint: '用 createOwnedFileStream()（electron/protocol/fileResponseStream.ts）自己拥有流：'
+      + '它用一个同步置位的 closed 闸，让 close 与 cancel 不可能互相竞争。',
+    scan(code, file) {
+      // 为什么必须拦：undici 的 extractBody 见到「异步可迭代」就转交 ReadableStreamFrom，
+      // 那里的 close 是 queueMicrotask 里的裸调用、cancel() 又不置任何标记，于是
+      // 「in-flight 的 pull 解析出 done → 延迟 close 打在已关闭的 controller 上」→ 从 microtask 抛出，
+      // call site 的 try/catch 一律接不住。该缺陷在 undici 6.19.8 / 7.29.0 / 8.10.0 / main 中一致存在，
+      // 升 Electron 修不掉——唯一的解是别把流交出去。详见
+      // docs/plan/2026-08-24-local-protocol-stream-ownership.md。
+      //
+      // 同族的第二条路：`Readable.toWeb(fs.createReadStream(...))`。它绕开了 undici，
+      // 却换成 Node 自己的适配器——nodejs/node#64529「toWeb(): 背压恢复期间被取消会抛
+      // uncaughtException(ERR_INVALID_STATE)」**至今 OPEN、修复 PR 未合**，抛的是同一个错误码。
+      // 本仓一度就走在这条路上（origin/main 的 fileBody()），所以必须一起拦：
+      // 判据不是「用了哪个 API」，而是「**流的关闭权在不在我们手里**」。
+      //
+      // 只认 createReadStream / Readable.from / Readable.toWeb 这几类**明确的** Node 流来源：
+      // 「任意 Node Readable」静态判不出来，宁可漏报也不要噪音（同 base64-into-store 的取舍）。
+      const hits = []
+      const lines = code.split('\n')
+      const streamVars = new Map()
+      lines.forEach((line, i) => {
+        if (/Readable\.toWeb\s*\(/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+          return
+        }
+        if (/new Response\s*\(\s*(?:(?:fs|fsp)\.)?(?:createReadStream|Readable\.from)\s*\(/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+          return
+        }
+        const assigned = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^=].*?(?:createReadStream|Readable\.from)\s*\(/.exec(line)
+        if (assigned) streamVars.set(assigned[1], i)
+        const used = /new Response\s*\(\s*([A-Za-z_$][\w$]*)\b/.exec(line)
+        if (used && streamVars.has(used[1]) && i - streamVars.get(used[1]) <= 8) {
           hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
         }
       })
