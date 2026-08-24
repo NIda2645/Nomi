@@ -36,6 +36,7 @@ import { useWorkbenchStore } from '../../workbenchStore'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { NodeGeneratingOverlay } from './NodeGeneratingOverlay'
 import { NodeQueuedBadge } from './NodeQueuedBadge'
+import { ProductionShotPlaceholder } from './ProductionShotPlaceholder'
 import { selectIsNodeQueued, useGenerationQueueStore } from '../runner/generationQueueStore'
 import { encodeTimelineGenerationNodeDragPayload, TIMELINE_GENERATION_NODE_DRAG_MIME } from '../../timeline/timelineDragPayload'
 import { addGenerationNodeToTimelineEnd } from '../../timeline/addNodeToTimelineEnd'
@@ -215,8 +216,8 @@ function BaseGenerationNodeImpl({
     commitPersistedChange,
   })
   const isGenerating = status === 'queued' || status === 'running'
-  // 「已排队但还没轮到」的真相在队列 store（与 node.status 零重叠，见 generationQueueStore 头注释）。
-  // 在此之前后续波次的节点 status 还是 idle，画布上看着像压根没被选中——用户以为漏点了。
+  // 「已排队但还没轮到」的真相在队列 store（与 node.status 零重叠，见 generationQueueStore 头注释）：在此之前
+  // 后续波次的节点 status 还是 idle，画布上看着像压根没被选中——用户以为漏点了。
   const isQueued = useGenerationQueueStore((state) => selectIsNodeQueued(state, node.id))
   const canGenerate =
     useGenerationCanvasStore((state) =>
@@ -234,8 +235,7 @@ function BaseGenerationNodeImpl({
     (node.result?.type === 'image' || node.result?.type === 'video') &&
     !imageStackOpen
   const showSideTimelineDrag = canSendToTimeline && node.kind !== 'scene3d' && !showTimelineNotch
-  // 失败态不再显示文字徽标——错误信息已铺满节点正文（NodeErrorReport），
-  // 顶部再写一遍「生成失败」是重复噪音（2026-06-03 6 角色评审）。
+  // 失败态不显文字徽标——错误已铺满节点正文（NodeErrorReport），顶部再写「生成失败」是重复噪音（2026-06-03 评审）。
   const showStatusBadge = status === 'queued' || status === 'running'
 
   const sourceNodeLabel =
@@ -666,10 +666,10 @@ function BaseGenerationNodeImpl({
 
       {isGenerating && !localImageOpPending ? <NodeGeneratingOverlay node={node} /> : null}
       {isQueued && !isGenerating ? <NodeQueuedBadge /> : null}
+      <ProductionShotPlaceholder node={node} />{/* P4 S5 多镜占位三态：非占位节点内部早退零开销 */}
       {showSideTimelineDrag ? (
         <SideTimelineDragHandle onAddAtPlayhead={handleAddToTimelineAtPlayhead} onDragStart={handleTimelineDragStart} />
       ) : null}
-
       {/* composer：生成类节点 + **单选**时浮出。多选(框选)一律不挂——否则每个选中节点都弹自己的
           大 composer 层叠糊成一片(用户反馈 bug，根因收口此唯一挂载入口)。批量生成走选中浮条。 */}
       {selected &&

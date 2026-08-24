@@ -375,21 +375,37 @@ export const createCanvasGraphActions: CanvasSliceCreator<CanvasGraphActions> = 
       ])
     }
   },
-  createGroup: (categoryId, name) => {
+  createGroup: (categoryId, name, options) => {
     const id = String(categoryId || '').trim()
     if (!isCategoryId(id)) return null
     const now = Date.now()
     const existingCount = get().groups.filter((group) => group.categoryId === id).length
+    // P4 S5：物化通道可传入明确的成员 id（节点刚建好、还没进 selection），避免「先 selectNodes 再 group」
+    // 的两步竞态。传入时按分类过滤（只收该分类节点，与 groupSelectedNodes 同规则）+ 从旧组抢走。
+    const explicitNodeIds = Array.isArray(options?.nodeIds)
+      ? get().nodes.filter((node) => options!.nodeIds!.includes(node.id) && (node.categoryId || 'shots') === id).map((node) => node.id)
+      : []
+    const stamp = options?.materializationOperationId?.trim()
     const group: NodeGroup = {
       id: createGroupId(id),
       name: (name || '').trim() || `组 ${existingCount + 1}`,
       categoryId: id,
-      nodeIds: [],
+      nodeIds: explicitNodeIds,
+      ...(stamp ? { materializationOperationId: stamp } : {}),
       createdAt: now,
       updatedAt: now,
     }
     pushUndoSnapshot(get())
     set((state) => {
+      // 抢走旧组成员（同 groupSelectedNodes 语义）：一个节点只属一个组。
+      if (explicitNodeIds.length) {
+        for (const existingGroup of state.groups) {
+          existingGroup.nodeIds = existingGroup.nodeIds.filter((nodeId) => !explicitNodeIds.includes(nodeId))
+        }
+        for (const node of state.nodes) {
+          if (explicitNodeIds.includes(node.id)) node.groupId = group.id
+        }
+      }
       state.groups.push(group)
       bumpPersistRevision(state)
       Object.assign(state, getHistoryFlags())

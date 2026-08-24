@@ -308,6 +308,12 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     const existingJob = current.jobs.find((job) => job.jobId === jobId);
     const addedJob = !existingJob;
     if (addedJob) {
+      // P4 S5: inherit the shot's canvas placeholder node (bound at 确认即落 / 打开项目补齐) so the
+      // scheduler's job carries nodeId for reconcile/attach-shot-result. A shot whose node the user later
+      // deleted has canvasDetached set + no nodeId → the job carries none (§3.4 撤销事实优先, no revive).
+      const boundNodeId = shotId
+        ? (current.generationPlan?.shots ?? []).find((shot) => shot.shotId === shotId)?.nodeId
+        : undefined;
       const job: ProductionJob = {
         jobId,
         stageId: "generate",
@@ -321,6 +327,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         providerIdempotencyKey: binding.providerIdempotencyKey,
         runtimeEnvelopeRef: binding.runtimeEnvelopeRef,
         taskKind: contract.mode,
+        ...(boundNodeId ? { nodeId: boundNodeId } : {}),
         // P4 S1: stamp the shot lineage so per-shot attempt monotonicity survives replay (reducer reads
         // metadata.shotId). Default shot omits it → the reducer treats it as the single default lineage.
         ...(shotId ? { metadata: { shotId } } : {}),
