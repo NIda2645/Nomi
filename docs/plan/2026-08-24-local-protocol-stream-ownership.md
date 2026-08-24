@@ -238,7 +238,11 @@ TypeError [ERR_INVALID_STATE]: Invalid state: ReadableStream is already closed
 | `pnpm run gates` | — | **全绿**（exit 0） |
 | 既有 `localProtocol.test.ts` | 绿 | 绿（无回归） |
 
-### ⚠️ §1.6 那一环：**仍未闭合**，如实记录
+### ⚠️ §1.6 那一环：仍未闭合 —— **本节结论已被 §7d 推翻，保留作过程记录**
+
+> 下面这段把「走查跑不出崩溃」解释成了「平台差异，得去 Windows 验」。**那个解释是错的。**
+> 不够灵的是**尺子**，不是平台：换一把为这条竞态设计的仪器后，**在 macOS 上当场就复现了**。
+> 正确结论见 §7d。这段留着，是因为「低鉴别力的绿灯长得和真绿一模一样」本身就是要记住的教训。
 
 新建 `scripts/local-protocol-seek-walkthrough.mjs`（主进程装 `uncaughtException` 收集器，
 直接观测生产故障本身，而非截图推测）。为让它真有鉴别力，中途修了自己两个坑：
@@ -302,6 +306,120 @@ function fileBody(filePath, options) {
 > 附带的教训：§7b 里那次 A/B 对照，对照组用的是**我方基线**（`new Response(fs 流)`），
 > 不是 main 当时已经在跑的 `toWeb` 版本。所以那次对照说明的是「Race B 在 macOS 上跑不出来」，
 > 并未覆盖 Race C。这不改变结论（两条我们都不再走），但记下来免得日后误读那张表。
+
+## 7d. §1.6 **已闭合**（2026-08-24 回填）：不用 Windows，macOS 上就复现了
+
+### 先说结论
+
+| 臂 | 提交 | 响应体形态 | 阳性对照 | 真实路径 `ERR_INVALID_STATE` |
+|---|---|---|---|---|
+| `undici` | `4e4fb0d0`（v0.20.1 **之前**） | `new Response(fs 流)` → undici `ReadableStreamFrom` | 命中 40（仪器有效） | **79 / 2400 次取消（3.29%）** |
+| `toweb` | `e83fe73e`（**今天的 main**） | `Readable.toWeb(fs 流)` → Node 适配器 | 命中 40（仪器有效） | 0 / 2400 |
+| `owned` | `713f38c9`（**本 PR**） | `createOwnedFileStream` | 命中 40（仪器有效） | **0 / 4000** |
+
+跑在 macOS 26.5.1 / Electron 31 / arm64 / APFS。`undici` 臂抓到的栈与用户回报**逐帧对上**：
+
+```
+TypeError [ERR_INVALID_STATE]: Invalid state: ReadableStream is already closed
+    at ReadableByteStreamController.close (node:internal/webstreams/readablestream:1155:13)
+    at node:internal/deps/undici/undici:1465:28          ← §1.1 对的就是这一帧
+    at node:internal/process/task_queues:140:7
+```
+
+即：**对照组复现、修复版不复现**，§1.6 要的那个前后对照拿到了。
+本轮的依据不再只是「消除危险类别」（§7b 那段的措辞），而是**验证过的前后对照**。
+
+### §7b 那个「得去 Windows」的前提是错的
+
+§7b 把「走查跑不出崩溃」归因于平台（NTFS/APFS、Chromium 媒体栈时序）。实测：
+**同一台 macOS、同一份代码，换把尺子就复现了。** 问题在仪器，不在平台。
+
+新仪器 `scripts/local-protocol-abort-stress.mjs` 与走查的分工：
+走查跑**真实用户旅程**，负责证明「修复没把流式播放搞坏」，继续留用；
+本脚本只干一件事——**去撞这条竞态**。三处设计缺一不可：
+
+1. **现场自证**：开跑前从 `dist-electron/protocol/localProtocol.js` 里读出响应体形态
+   （owned / toweb / undici），与 `STRESS_EXPECT_SHAPE` 不符就当场退出。
+   跑错版本的 A/B 是最贵的假证据。
+   （踩过：`tsc` 默认**保留注释**，而本文件注释里逐条列举了走过的三条弯路、含
+   `Readable.toWeb(nodeStream)` 字样，裸文本匹配把注释当代码 → 形态识别不唯一。
+   已改为先剥注释再认形态；当时是被「命中不唯一就停」这条自证拦下的。）
+2. **阳性对照**：先在主进程里用**手控时序**的异步可迭代喂 `new Response()`，
+   故意撞同一条竞态——**它必须炸**。炸了才说明「这台机器能炸 + 收集器接得住 + 判据有鉴别力」。
+   没有这一条，修复版的 0 命中和「仪器坏了」**长得一模一样**，没法解读。
+   三臂的阳性对照均命中 40 次，所以上表两个 0 是**真 0**。
+   （对照的异常会不会漏进真实路径的统计桶、把 79 那个数刷出来？不会：脚本在对照跑完后
+   把收集器截回原长，而**另外 5 轮**——macOS 的 `toweb`/`owned` 与 Windows 三臂——
+   都是「对照命中 40、真实路径 0」。同一段对照代码在 5 轮里漏了 0 条，
+   所以 `undici` 臂那 79 条只能来自真实路径。）
+3. **压测**：数千次取消 × 取消时刻扫描（0–21ms，13 档）× 混合整文件 / 4MB 区间 / 64KB 区间
+   × 大文件随机偏移 × 高并发。
+
+### 为什么走查压不出来：不是次数不够，是**没有 I/O 争用**
+
+竞态窗口 =「`pull()` 已发出 `iterator.next()`、它还没解析」那一段，宽度约等于**一次磁盘读的耗时**。
+串行顺序读命中页缓存 → `next()` 几乎瞬时解析 → 窗口趋近于 0。单变量消融（同臂、同 2400 次取消，只改并发）：
+
+| 并发 | 命中率 |
+|---|---|
+| 12 | 79 / 2400 = **3.29%** |
+| 1 | 2 / 2400 = **0.083%** |
+
+**约 40 倍差距。** 按 0.083% 反推走查（60 次 abort、串行、只发整文件请求）的检出概率：
+`1 − (1 − 0.00083)^60 ≈ 4.9%`。
+也就是说，**即便跑在有病的版本上，那条走查也有约 95% 的概率是绿的**——
+它压根不具备下「不可复现」这个结论的资格。**高并发（制造 I/O 争用把窗口撑宽）才是关键杠杆，不是加次数。**
+
+### 一个意外但重要的发现：`toweb` 臂（今天的 main）没能压出来
+
+`main` 的 `Readable.toWeb`（Race C，`nodejs/node#64529`）在**同一把尺子、同样 2400 次取消下 0 命中**，
+而 `undici` 臂 79 命中。两种解释，目前的数据分不开：
+
+- Race C 的触发条件与 Race B **不同**（上游 issue 描述的是「**背压恢复期间**被取消」），
+  本仪器的取消模式可能压根没造出那个条件；
+- 或者 Race C 的窗口确实窄得多。
+
+**因此不能把这个 0 读成「main 是安全的」**——那是本文档反复警告的那种假绿。
+能说的是两件事：① 用户回报的那条崩溃（Race B）**在 v0.20.1 就已经不在主路径上了**，
+所以升到 v0.20.1+ 的用户大概率已经不再看到那个弹框；
+② 本 PR 的价值在于**把两条竞态一起从结构上排除**，而不是「修好一个正在爆的线上故障」。
+这个区别应当如实写进 PR 描述，别把它说成后者。
+
+### 复现方式
+
+```bash
+# 换臂：把 electron/protocol 换成目标提交的版本，重新 build，再跑
+git checkout <4e4fb0d0|e83fe73e|713f38c9> -- electron/protocol/
+pnpm build
+STRESS_EXPECT_SHAPE=<undici|toweb|owned> STRESS_ROUNDS=2400 STRESS_CONCURRENCY=12 \
+  node scripts/local-protocol-abort-stress.mjs
+```
+
+### Windows 维度：跑了，但**没有鉴别力**（结论与直觉相反）
+
+本机无 Windows，改用 GitHub Actions 的 `windows-latest`（真 Windows + 真 NTFS）跑同一套三臂对照：
+`.github/workflows/win-invalid-state-probe.yml`，
+[run 32743160547](https://github.com/aqm857886159/Nomi/actions/runs/32743160547)。三臂均 4000 次取消 / 并发 16：
+
+| 臂 | 阳性对照 | 真实路径 `ERR_INVALID_STATE` | 同轮走查（30 seek + 60 abort） |
+|---|---|---|---|
+| `undici` | 命中 40（仪器有效） | **0 / 4000** | 绿（缓存覆盖 0.064，真流式） |
+| `toweb` | 命中 40（仪器有效） | 0 / 4000 | 绿 |
+| `owned` | 命中 40（仪器有效） | 0 / 4000 | 绿（缓存覆盖 0.060） |
+
+**注意 `undici` 那一行**：同一份代码、同一把尺子，在 macOS 上 79/2400 命中，在 Windows CI 上 0/4000。
+也就是说 **Windows CI 这一轮是非鉴别性的**——它和 §7b 那次 macOS 走查属于同一类证据：
+阳性对照有效、但对照臂压不出来，**因此它既不能证实也不能证伪 Windows 上的行为**。上表三个 0 不可读作「Windows 安全」。
+
+这恰好把 §7b 的归因彻底反过来了：那段猜的是「Windows 复现、macOS 不复现，所以要去 Windows」；
+实测是**macOS 复现、Windows CI 不复现**。所以关键变量从来不是平台，**是仪器设计**。
+（`windows-latest` 是 Azure VM：无 GPU、核数少、磁盘特性与用户桌面差很多，
+I/O 争用造不出同样的窗口宽度是合理的。**CI 的 Windows ≠ 报障用户的 Windows**，这条别混。）
+
+顺带确认了一件计划外但有用的事：**那条走查在 Windows 上同样不具备鉴别力**（对照臂也是绿的），
+和 macOS 表现一致。所以它作为「崩溃检测器」是不合格的——
+它的正当用途只有一个：**证明修复没把流式播放搞坏**（`readyState=4`、`error=null`、真流式缓存覆盖）。
+按这个定位继续留用，别再拿它的绿灯下「不可复现」的结论。
 
 ## 8. 后续（不在本轮）
 
