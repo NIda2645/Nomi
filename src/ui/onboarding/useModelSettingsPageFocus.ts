@@ -161,6 +161,15 @@ export function useModelSettingsPageFocus(page: ModelSettingsPage, onBack: () =>
           return
         }
       }
+      // 页面自己声明了首要输入目标就让给它。这个 rAF 跑在 React 的 autoFocus **之后**，
+      // 于是「进来就能打字」的页面（所有 key-only 供应商的接入页都是这种：整页就一个 Key 输入框）
+      // 会被无声地改成「还得先自己点一下输入框」——autoFocus 写了等于没写。
+      // 焦点仍落在新页面内部，读屏进入新上下文的语义不受影响。
+      const autofocusTarget = workspace.querySelector<HTMLElement>('[data-model-settings-autofocus]')
+      if (autofocusTarget) {
+        autofocusTarget.focus({ preventScroll: true })
+        return
+      }
       workspace.querySelector<HTMLElement>('[data-model-settings-back]')?.focus({ preventScroll: true })
     })
     return () => window.cancelAnimationFrame(frame)

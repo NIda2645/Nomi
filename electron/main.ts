@@ -460,9 +460,9 @@ function registerIpc(): void {
   registerSyncIpc("nomi:model-catalog:mapping:delete", deleteModelCatalogMapping);
   registerSyncIpc("nomi:model-catalog:export", exportModelCatalogPackage);
   registerSyncIpc("nomi:model-catalog:import", importModelCatalogPackage);
-  // ComfyUI 域 IPC（探测/导入/缺件对账）全住 electron/comfyuiIpc.ts（main.ts 800 行门腾空间）。
-  const { registerComfyuiIpc } = require("./comfyuiIpc") as typeof import("./comfyuiIpc");
-  registerComfyuiIpc(registerSyncIpc);
+  // 域 IPC 各住各的模块（给 main.ts 800 行门腾空间；新通道加到对应模块里，别回填这里）。
+  (require("./comfyuiIpc") as typeof import("./comfyuiIpc")).registerComfyuiIpc(registerSyncIpc);
+  (require("./assetTransportIpc") as typeof import("./assetTransportIpc")).registerAssetTransportIpc(registerSyncIpc);
   // 自定义调用域（契约/AI 指令/试跑）住 electron/catalog/customCallIpc.ts（同上，腾 800 行门）。
   const { registerCustomCallIpc } = require("./catalog/customCallIpc") as typeof import("./catalog/customCallIpc");
   registerCustomCallIpc(registerSyncIpc);
