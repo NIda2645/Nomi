@@ -165,12 +165,24 @@ function shotFinished(runId: string, shot: ProductionGenerationShot, jobs: Produ
 
 function shotInFlight(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[]): boolean {
   const job = jobForShot(runId, shot, jobs);
-  return Boolean(job && !TERMINAL_DONE.has(job.status));
+  // 「在飞」= 有 job 且既没完成、也不是「待派发」（authorized/submit_intent_persisted 归 needsDispatch，
+  // 不算在飞——它还没提交给 provider）。否则一个待派发的返工/崩溃残留 job 会被误当在飞，永不派发。
+  return Boolean(job && !TERMINAL_DONE.has(job.status) && !PRE_SUBMISSION.has(job.status));
 }
 
-/** A unit with no durable job for its current attempt is a dispatch candidate. */
+/**
+ * A unit needs dispatch when it has NO durable job for its current attempt, OR its current-attempt job is
+ * still **pre-submission** (`authorized`/`submit_intent_persisted`) — i.e. approved but not yet handed to the
+ * provider. Two callers rely on this: ① P4 S6 返工 pre-creates an `authorized` new-attempt job (parentJobId
+ * 谱系), then the scheduler submits it; ② crash-during-dispatch recovery (job.add persisted but the outbox
+ * dispatch had not run) — a fresh scheduler must resubmit. `start` is idempotent (reuses the existing job via
+ * `prepare`, and the outbox intent log guarantees ≤1 real submit), so re-dispatching a pre-submission job is safe.
+ */
+const PRE_SUBMISSION = new Set<ProductionJob["status"]>(["authorized", "submit_intent_persisted"]);
 function needsDispatch(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[]): boolean {
-  return Boolean(shot.contract?.contractHash) && jobForShot(runId, shot, jobs) === undefined;
+  if (!shot.contract?.contractHash) return false;
+  const job = jobForShot(runId, shot, jobs);
+  return job === undefined || PRE_SUBMISSION.has(job.status);
 }
 
 function priceAmount(price: ShotPrice): number {

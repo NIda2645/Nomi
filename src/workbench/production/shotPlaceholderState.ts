@@ -42,7 +42,8 @@ function jobForNode(run: ProductionRun, nodeId: string): ProductionJob | undefin
   return jobs.reduce((latest, job) => (Date.parse(job.createdAt) >= Date.parse(latest.createdAt) ? job : latest))
 }
 
-function shotIdForNode(run: ProductionRun, nodeId: string): string | undefined {
+/** P4 S6：占位/失败镜的返工要拿到该节点对应的 shotId（shots[].nodeId 是「shot ↔ 画布节点」单一真相）。 */
+export function shotIdForNode(run: ProductionRun, nodeId: string): string | undefined {
   const shot = (run.generationPlan?.shots ?? []).find((candidate) => candidate.nodeId === nodeId)
   return shot?.shotId
 }

@@ -36,7 +36,8 @@ import { useWorkbenchStore } from '../../workbenchStore'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { NodeGeneratingOverlay } from './NodeGeneratingOverlay'
 import { NodeQueuedBadge } from './NodeQueuedBadge'
-import { ProductionShotPlaceholder } from './ProductionShotPlaceholder'
+import { ProductionShotOverlays } from './ProductionShotOverlays'
+import { useProductionNodeRetry } from './useProductionNodeRetry'
 import { selectIsNodeQueued, useGenerationQueueStore } from '../runner/generationQueueStore'
 import { encodeTimelineGenerationNodeDragPayload, TIMELINE_GENERATION_NODE_DRAG_MIME } from '../../timeline/timelineDragPayload'
 import { addGenerationNodeToTimelineEnd } from '../../timeline/addNodeToTimelineEnd'
@@ -91,6 +92,7 @@ function BaseGenerationNodeImpl({
   appear = false,
 }: BaseGenerationNodeProps): JSX.Element {
   const { t } = useTranslation()
+  const productionRetry = useProductionNodeRetry(node) // P4 S6：多镜节点失败→返工链；非多镜/项目没开→null 退回本地重跑（回归门）
   const selectNode = useGenerationCanvasStore((state) => state.selectNode)
   const captureHistory = useGenerationCanvasStore((state) => state.captureHistory)
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
@@ -123,9 +125,7 @@ function BaseGenerationNodeImpl({
   const [provenanceOpen, setProvenanceOpen] = React.useState(false)
   const [imageStackOpen, setImageStackOpen] = React.useState(false)
   const { openMediaPreview, mediaPreviewControls, mediaPreviewDoubleClick } = useNodeMediaPreview(node, selected && !isMultiSelectActive && !imageStackOpen, () => setProvenanceOpen(true))
-  const handleImageStackOpenChange = React.useCallback((nextOpen: boolean) => {
-    setImageStackOpen(nextOpen)
-  }, [])
+  const handleImageStackOpenChange = setImageStackOpen // setState 身份稳定，直接透传（免一层等价 useCallback）
   const sizeBounds = getNodeSizeBounds(node.kind)
 
   const handleTimelineDragStart = (event: React.DragEvent<HTMLElement>) => {
@@ -226,9 +226,7 @@ function BaseGenerationNodeImpl({
         edges: state.edges,
       }),
     ) && !isGenerating
-  const canSendToTimeline = canDragGenerationNodeToTimeline(node, {
-    readOnly,
-  })
+  const canSendToTimeline = canDragGenerationNodeToTimeline(node, { readOnly })
   const showTimelineNotch =
     canSendToTimeline &&
     node.kind !== 'scene3d' &&
@@ -490,9 +488,10 @@ function BaseGenerationNodeImpl({
           onRetry={
             isAssetKind && node.meta?.source === 'clipboard-url'
               ? undefined
-              : () => {
+              // P4 S6：多镜物化节点走返工链（一功能一个家 §3.E）；否则本地重跑/素材重导入（单镜/普通节点不变=回归门）。
+              : productionRetry ?? (() => {
                   void (node.meta?.retryableImport === true ? retryLocalAssetImport(node.id) : confirmAndRunNode(node.id))
-                }
+                })
           }
         />
       ) : null}
@@ -666,7 +665,7 @@ function BaseGenerationNodeImpl({
 
       {isGenerating && !localImageOpPending ? <NodeGeneratingOverlay node={node} /> : null}
       {isQueued && !isGenerating ? <NodeQueuedBadge /> : null}
-      <ProductionShotPlaceholder node={node} />{/* P4 S5 多镜占位三态：非占位节点内部早退零开销 */}
+      <ProductionShotOverlays node={node} selected={selected && !isMultiSelectActive} />{/* P4 S5+S6 多镜叠加：占位三态 + 版本条（非多镜早退零开销） */}
       {showSideTimelineDrag ? (
         <SideTimelineDragHandle onAddAtPlayhead={handleAddToTimelineAtPlayhead} onDragStart={handleTimelineDragStart} />
       ) : null}

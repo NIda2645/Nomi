@@ -13,7 +13,8 @@ import { IconAlertTriangle, IconClock, IconPlayerPause, IconRefresh } from '@tab
 import { cn } from '../../../utils/cn'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useProductionCanvasLandingStore } from '../../production/productionCanvasLandingStore'
-import { deriveShotPlaceholderState } from '../../production/shotPlaceholderState'
+import { deriveShotPlaceholderState, shotIdForNode } from '../../production/shotPlaceholderState'
+import { reworkProductionShot, resumeProductionBatch } from '../../production/productionShotActions'
 import { GeneratingOverlay } from './render/CardCommon'
 
 /** 该节点是否属某多镜 Run 的占位（meta.productionRunId）。非占位 → 组件早退，零开销。 */
@@ -29,6 +30,21 @@ export function ProductionShotPlaceholder({ node }: { node: GenerationCanvasNode
   const state = useProductionCanvasLandingStore((store) =>
     runId && store.run?.runId === runId ? deriveShotPlaceholderState(store.run, node.id) : null,
   )
+  // 返工/续拍要拿到 projectId（Run 归属项目）+ 该节点的 shotId（shots[].nodeId 单一真相）。
+  const projectId = useProductionCanvasLandingStore((store) => (runId && store.run?.runId === runId ? store.projectId : null))
+  const shotId = useProductionCanvasLandingStore((store) => (runId && store.run?.runId === runId ? shotIdForNode(store.run, node.id) : undefined))
+  const stoppedReason = state?.stoppedReason
+  const [busy, setBusy] = React.useState(false)
+  const runResume = React.useCallback(() => {
+    if (!projectId || !runId || busy) return
+    setBusy(true)
+    void resumeProductionBatch(projectId, runId, stoppedReason === 'budget' ? 'budget' : 'manual').finally(() => setBusy(false))
+  }, [busy, projectId, runId, stoppedReason])
+  const runRework = React.useCallback(() => {
+    if (!projectId || !runId || busy) return
+    setBusy(true)
+    void reworkProductionShot(projectId, runId, shotId).finally(() => setBusy(false))
+  }, [busy, projectId, runId, shotId])
 
   // 非占位节点 / 已回填 result（占位退场）/ 派生为 done → 不渲染任何占位（露出真片）。
   if (!runId || !state || state.phase === 'done') return null
@@ -82,13 +98,19 @@ export function ProductionShotPlaceholder({ node }: { node: GenerationCanvasNode
       >
         <IconPlayerPause size={18} stroke={1.6} className="text-nomi-warning" aria-hidden="true" />
         <span className="text-caption leading-snug text-nomi-ink-80">{message}</span>
-        {/* 提额/继续入口：本切片**只留位不接线**（返工/续拍链是 S6）。disabled 且标注，避免点了没反应。 */}
+        {/* P4 S6：提额续拍 / 急停继续接活。data-* 用 active 值供走查；busy 期间禁重复点。 */}
         <button
           type="button"
-          disabled
-          data-production-shot-action="resume-pending-s6"
-          className="cursor-not-allowed rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2.5 py-1 text-caption text-nomi-ink-40"
-          title={t('generationCommon.production.canvasLanding.actionComingSoon')}
+          disabled={busy || !projectId}
+          onClick={runResume}
+          onPointerDown={(event) => event.stopPropagation()}
+          data-production-shot-action={stoppedReason === 'budget' ? 'resume-budget' : 'resume-manual'}
+          className={cn(
+            'rounded-nomi-sm border px-2.5 py-1 text-caption',
+            busy || !projectId
+              ? 'cursor-not-allowed border-nomi-line bg-nomi-paper text-nomi-ink-40'
+              : 'border-[color-mix(in_oklch,var(--nomi-warning)_36%,transparent)] bg-nomi-paper text-nomi-ink hover:bg-[color-mix(in_oklch,var(--nomi-warning)_8%,var(--nomi-paper))]',
+          )}
         >
           {actionLabel}
         </button>
@@ -119,14 +141,20 @@ export function ProductionShotPlaceholder({ node }: { node: GenerationCanvasNode
           {state.failureMessage || t('generationCommon.production.canvasLanding.failedFallback')}
         </p>
       </div>
-      {/* 重试钮：本切片**只留位不接线**（返工链带锚参考 + 单镜确认 = S6，一功能一个家）。 */}
+      {/* P4 S6：失败镜返工钮接活（同 Run 新 Job + 锚参考继承 + 单镜确认，一功能一个家）。busy 期间禁重复点。 */}
       <div className="flex items-center gap-2">
         <button
           type="button"
-          disabled
-          data-production-shot-action="retry-pending-s6"
-          className="inline-flex shrink-0 cursor-not-allowed items-center gap-1 whitespace-nowrap rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2.5 py-1 text-caption text-nomi-ink-40"
-          title={t('generationCommon.production.canvasLanding.actionComingSoon')}
+          disabled={busy || !projectId}
+          onClick={runRework}
+          onPointerDown={(event) => event.stopPropagation()}
+          data-production-shot-action="rework"
+          className={cn(
+            'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-nomi-sm border px-2.5 py-1 text-caption',
+            busy || !projectId
+              ? 'cursor-not-allowed border-nomi-line bg-nomi-paper text-nomi-ink-40'
+              : 'border-nomi-line bg-nomi-paper text-nomi-ink hover:bg-nomi-ink-05',
+          )}
         >
           <IconRefresh size={13} stroke={1.6} aria-hidden="true" />
           {t('generationCommon.production.canvasLanding.retry')}

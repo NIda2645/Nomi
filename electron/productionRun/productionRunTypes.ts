@@ -343,6 +343,25 @@ export type ProductionRunSummary = Pick<
   "runId" | "projectId" | "revision" | "status" | "stageId" | "playbook" | "origin" | "budget" | "updatedAt"
 >;
 
+/**
+ * P4 S6：返工/续拍编排的结构化结果（appIntegration 编排 → main.ts IPC → 渲染层给用户人话反馈）。
+ * 住在纯类型文件里（不在 appIntegration），这样渲染层 bridge/API 引它时不把 electron 主进程模块图拖进 src 类型检查。
+ * 绝不含任何密钥；`code` 由渲染层 t() 翻译（不拼串穿透 i18n 门）。
+ */
+export type ProductionActionResult = {
+  ok: boolean;
+  code:
+    | "reworked" // 返工已确认并派发
+    | "rework_declined" // 用户取消/超时单镜确认 → 不扣费，新 Job 留 authorized
+    | "resumed" // 续拍已重启
+    | "no_prior_attempt" // 该镜没有可返工的上一次（从没生成过）
+    | "run_not_open" // 该项目不是当前打开的项目（守卫）
+    | "not_multishot" // 不是语义多镜 Run
+    | "unavailable" // 能力核未就绪 / provider 未配置
+    | "failed"; // 其它失败（人话原因在 message，供日志）
+  message?: string;
+};
+
 export type CreateProductionRunInput = {
   runId?: string;
   projectId: string;

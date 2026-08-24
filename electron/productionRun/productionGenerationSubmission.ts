@@ -110,6 +110,32 @@ export type GenerationNewAttemptResult = {
   requiresFreshReceipt: true;
   nextAction: "request_gate";
   warning: string;
+  /** P4 S6: 谱系——本次尝试是从哪个 job 派生的（原结果仍可查/可切回）。 */
+  parentJobId?: string;
+};
+
+/**
+ * P4 S6 返工：对**任意终态**的一镜（ready/adopted 已完成、needs_attention 失败、detached 已停）发起「同 Run 新 Job」。
+ * 与 `createNewAttempt` 的区别是语义而非机制：createNewAttempt 是「恢复」（只认失败/失证态，reason 门），
+ * reworkShot 是「返工」（用户主动对已成/已停镜重拍）。二者都用 reducer 的 `generation.new_attempt` 命令
+ * （同镜谱系 attempt 单调 + 只清该镜 approval，不连坐），都设 parentJobId 留痕——不是并行版，是两个语义入口。
+ */
+export type GenerationReworkInput = {
+  projectId: string;
+  operationId: string;
+  /** 返工哪一镜。多镜返工必带；单镜（默认镜）省略。 */
+  shotId?: string;
+};
+
+export type GenerationReworkResult = {
+  operationId: string;
+  runId: string;
+  jobId: string;
+  attempt: number;
+  contractHash: string;
+  requiresFreshReceipt: true;
+  nextAction: "request_gate";
+  parentJobId: string;
 };
 
 export type ProductionGenerationSubmissionDependencies = {
@@ -592,6 +618,8 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         providerIdempotencyKey: binding.providerIdempotencyKey,
         runtimeEnvelopeRef: binding.runtimeEnvelopeRef,
         taskKind: lockedContract.mode,
+        // P4 S6: 谱系留痕——新尝试从上一 job 派生，原结果仍可查（productionRunTypes.ts:163）。
+        parentJobId: lockedPreviousJob.jobId,
         // P4 S1: carry the shot lineage so the reducer scopes attempt monotonicity + approval reset.
         ...(shotId ? { metadata: { shotId } } : {}),
         createdAt: now(),
@@ -607,6 +635,67 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         requiresFreshReceipt: true,
         nextAction: "request_gate",
         warning: "这是一次新的提交尝试；上一次结果仍可能已计费，请先确认后再提交。",
+        parentJobId: lockedPreviousJob.jobId,
+      };
+    });
+  }
+
+  /**
+   * P4 S6 返工：对任意终态的一镜发起「同 Run 新 Job」。复用 `generation.new_attempt` 命令（reducer 已通用：
+   * 同镜谱系 attempt 单调 + 只清该镜 approval，不连坐兄弟镜），设 parentJobId 留痕，返回 `request_gate`——
+   * 调用方随后起**单镜 gate（该镜子合同单价）**确认，铸 receipt 后 approve 该 attempt、kick scheduler 派发。
+   * 锚 character_ref 与 DNA 提示词天然继承：新 job 复用该镜现有子合同（requiredContract(run, shotId)），
+   * 其 references 就是锚（§3.2「每镜 references 自动带锚」）。
+   */
+  async function reworkShot(input: GenerationReworkInput): Promise<GenerationReworkResult> {
+    const shotId = input.shotId;
+    let run = requiredRun(deps.repository, input.projectId, input.operationId);
+    const contract = requiredContract(run, shotId);
+    const previousAttempt = Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
+    const previousJob = run.jobs.find((job) => job.jobId === jobIdFor(run.runId, contract.contractHash, previousAttempt, shotId));
+    // 返工必须有一个已存在的上一 job 可派生（这一镜从没生成过 → 走正常首次派发，不是返工）。
+    if (!previousJob) throw new Error("No prior submission to rework for this shot");
+    const runLock = lock(run.runId);
+    return runLock.withLock(async (lease) => {
+      run = requiredRun(deps.repository, input.projectId, input.operationId);
+      const lockedContract = requiredContract(run, shotId);
+      const lockedPreviousAttempt = Math.max(1, latestGenerationAttempt(run, lockedContract.contractHash, shotId));
+      const lockedPreviousJob = run.jobs.find((job) => job.jobId === jobIdFor(run.runId, lockedContract.contractHash, lockedPreviousAttempt, shotId));
+      if (!lockedPreviousJob) throw new Error("No prior submission to rework for this shot");
+      const nextAttempt = lockedPreviousAttempt + 1;
+      const jobId = jobIdFor(run.runId, lockedContract.contractHash, nextAttempt, shotId);
+      const binding = ensureBinding(deps, run, lockedContract, jobId, nextAttempt, lease.fencingEpoch, shotId);
+      const job: ProductionJob = {
+        jobId,
+        stageId: "generate",
+        status: "authorized",
+        attempt: nextAttempt,
+        provider: lockedContract.providerId,
+        model: lockedContract.modelId,
+        idempotencyKey: binding.providerIdempotencyKey,
+        executionBinding: binding,
+        requestFingerprint: binding.requestFingerprint,
+        providerIdempotencyKey: binding.providerIdempotencyKey,
+        runtimeEnvelopeRef: binding.runtimeEnvelopeRef,
+        taskKind: lockedContract.mode,
+        parentJobId: lockedPreviousJob.jobId,
+        retryReason: "rework",
+        // 继承上一 job 的 nodeId：返工的新版落回**同一画布节点**（版本切换的前提），不新建节点。
+        ...(lockedPreviousJob.nodeId ? { nodeId: lockedPreviousJob.nodeId } : {}),
+        ...(shotId ? { metadata: { shotId } } : {}),
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      run = command(run, "generation.new_attempt", { job, ...(shotId ? { shotId } : {}) }, `rework-${shotId ? `${shotId}-` : ""}${nextAttempt}`);
+      return {
+        operationId: run.runId,
+        runId: run.runId,
+        jobId,
+        attempt: nextAttempt,
+        contractHash: lockedContract.contractHash,
+        requiresFreshReceipt: true,
+        nextAction: "request_gate",
+        parentJobId: lockedPreviousJob.jobId,
       };
     });
   }
@@ -636,7 +725,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     return { operationId: run.runId, ...decision, nextAction: "attention" };
   }
 
-  return { start, poll, materialize, createNewAttempt, resume };
+  return { start, poll, materialize, createNewAttempt, reworkShot, resume };
 }
 
 export type ProductionGenerationSubmission = ReturnType<typeof createProductionGenerationSubmission>;

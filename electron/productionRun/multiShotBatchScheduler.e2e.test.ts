@@ -104,17 +104,21 @@ function setup(shots: ProductionGenerationShot[]) {
   return { root, repository };
 }
 
-function scheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, origin: string, submits: string[], options: Parameters<typeof createMultiShotBatchScheduler>[0]["options"] = {}) {
+function buildSubmission(root: string, repository: ReturnType<typeof createProductionRunRepository>, origin: string, submits: string[]) {
   const provider = loopbackProvider(origin, submits);
   // Sanity: the real adapter must accept this provider (proves we exercise the genuine adapter path).
   createGenerationRuntimeAdapter({ providers: [provider] });
-  const submission = createProductionGenerationSubmission({
+  return createProductionGenerationSubmission({
     repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
     intentMacKey: "test-intent-key", provider,
     resolveShotPrice: () => ({ known: true, amount: 6 }),
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });
+}
+
+function scheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, origin: string, submits: string[], options: Parameters<typeof createMultiShotBatchScheduler>[0]["options"] = {}) {
+  const submission = buildSubmission(root, repository, origin, submits);
   return createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-batch", perShotPrice: () => ({ known: true, amount: 6 }), now, options });
 }
 
@@ -203,4 +207,81 @@ describe("P4 S4 J3 — crash recovery + detached driver over a real loopback ven
       await vendor.close();
     }
   });
+});
+
+// P4 S6 J2 — 单镜返工（rework）over a real loopback vendor (zero quota). Proves the §3.5 chain end-to-end:
+// batch completes → rework shot-2 (同 Run 新 Job + parentJobId 谱系 + 该镜子合同复用 = 锚 character_ref 继承)
+// → single-shot confirm 后 approve → scheduler dispatches ONLY the reworked shot → new artifact on the SAME
+// shot → 旧 job/artifact 保留（版本可切回，数据层 rollbackHistory 另有单测）→ 其余镜 job 数不变（无重复扣费）
+// → 锚引用在新请求中保持。Plus 插镜变体（组内插新镜、继承锚、结构正确）.
+describe("P4 S6 J2 — single-shot rework over a real loopback vendor", () => {
+  it("reworks one shot into a new same-Run Job with parentJobId lineage; siblings untouched (no double charge); anchor ref preserved; old version kept", async () => {
+    const shots = [shotEntry("anchor-1", "阿雨 定妆照", "anchor"), shotEntry("shot-1", "雨夜推门", "shot"), shotEntry("shot-2", "货架对视", "shot")];
+    const { root, repository } = setup(shots);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      // Phase A: full batch — anchor (checkpoint auto-released here for brevity) → 2 shots.
+      await scheduler(root, repository, vendor.origin, submits, { anchorAutoReleaseMs: 0 }).runToQuiescence();
+      let run = repository.read("project-1", "op-batch")!;
+      expect(submits).toHaveLength(3); // 1 anchor + 2 shots
+      const shot2JobBefore = run.jobs.find((j) => j.metadata?.shotId === "shot-2" && (j.status === "ready" || j.status === "adopted"))!;
+      expect(shot2JobBefore).toBeDefined();
+      const shot1JobsBefore = run.jobs.filter((j) => j.metadata?.shotId === "shot-1").length;
+      const anchorRefBefore = shot2JobBefore.executionBinding!.requestFingerprint;
+
+      // Phase B: user reworks shot-2. reworkShot pre-creates the new-attempt job (authorized) with parentJobId.
+      const submission = buildSubmission(root, repository, vendor.origin, submits);
+      const rework = await submission.reworkShot({ projectId: "project-1", operationId: "op-batch", shotId: "shot-2" });
+      expect(rework.attempt).toBe(2);
+      expect(rework.parentJobId).toBe(shot2JobBefore.jobId);
+      expect(rework.nextAction).toBe("request_gate");
+
+      run = repository.read("project-1", "op-batch")!;
+      const reworkedJob = run.jobs.find((j) => j.jobId === rework.jobId)!;
+      expect(reworkedJob.status).toBe("authorized"); // waiting for the single-shot gate + dispatch
+      expect(reworkedJob.parentJobId).toBe(shot2JobBefore.jobId); // 谱系 durable
+      expect(reworkedJob.retryReason).toBe("rework");
+      expect(reworkedJob.nodeId).toBe(shot2JobBefore.nodeId); // 新版落回同一画布节点（此处两者都无 nodeId）
+      // Anchor/DNA inherited: the reworked job reuses shot-2's SAME sub-contract → identical request fingerprint.
+      expect(reworkedJob.requestFingerprint).toBe(anchorRefBefore);
+      // Old shot-2 job + its artifact are still present (version-switchable).
+      expect(run.jobs.some((j) => j.jobId === shot2JobBefore.jobId)).toBe(true);
+      expect(run.artifacts.some((a) => a.jobId === shot2JobBefore.jobId && a.status === "ready")).toBe(true);
+
+      // Phase C: user confirms the single-shot price → orchestration re-approves (with the new attempt) +
+      // re-submits the plan (reworkShot reverted state→sealed + cleared this shot's approval), then kicks the
+      // scheduler with the raised authorization. The scheduler dispatches ONLY the pre-submission (authorized)
+      // rework job; siblings (anchor + shot-1) are already ready → not re-submitted (no double charge).
+      run = repository.execute("project-1", "op-batch", { commandId: "approve-rework", expectedRevision: run.revision, type: "generation.approve", payload: { receiptId: "receipt-rework", contractHash: "plan-hash-batch", attempt: rework.attempt }, issuedAt: tickClock() }).run;
+      run = repository.execute("project-1", "op-batch", { commandId: "submit-rework", expectedRevision: run.revision, type: "generation.submit", payload: {}, issuedAt: tickClock() }).run;
+      const afterRework = await scheduler(root, repository, vendor.origin, submits, { anchorAutoReleaseMs: 0, raisePlanAuthorizationTo: 24 }).runToQuiescence();
+      expect(afterRework.progress.completed).toBe(2); // both video shots still count as completed
+
+      run = repository.read("project-1", "op-batch")!;
+      // Exactly ONE new submit (the reworked shot); anchor + shot-1 were NOT re-submitted (no double charge).
+      expect(submits).toHaveLength(4);
+      // shot-1 still has exactly its original job count — untouched.
+      expect(run.jobs.filter((j) => j.metadata?.shotId === "shot-1").length).toBe(shot1JobsBefore);
+      // shot-2 now has TWO jobs (v1 kept + v2 rework), the new one succeeded.
+      const shot2Jobs = run.jobs.filter((j) => j.metadata?.shotId === "shot-2");
+      expect(shot2Jobs.length).toBe(2);
+      const reworkedDone = run.jobs.find((j) => j.jobId === rework.jobId)!;
+      expect(["ready", "adopted"]).toContain(reworkedDone.status);
+      expect(reworkedDone.parentJobId).toBe(shot2JobBefore.jobId);
+      // A new artifact landed for the reworked attempt (old one still there → two shot-2 artifacts).
+      expect(run.artifacts.filter((a) => shot2Jobs.some((j) => j.jobId === a.jobId) && a.status === "ready").length).toBe(2);
+      // Every idempotency key was used at most once (≤1 submit per job).
+      expect(new Set(submits).size).toBe(submits.length);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  // 插镜（§3.5「插镜同机制」）**本切片不落 E2E**：当前 durable 模型没有「往已 submitted 计划的 shots[] 追加新镜」的
+  // 命令——`generation.seal`/`generation.patch` 都硬要 `state==='draft'`（reducer 332-334 / 293），`generation.trial_narrow`
+  // 只**收窄**（勾掉镜）不追加，`generation.new_attempt` 只为**已存在**镜谱系加 job。插镜要么新造一条 reducer 命令
+  // （`generation.insert-shot`：追加新镜 + 继承锚 references + 只对新镜起子合同 re-gate），要么走「新草稿」(§1「seal 后改=
+  // 新草稿」=新 operationId，违反「同 Run」)。前者是计划未 spec 的新架构、§8 禁做倾向不扩，故此切片**只交付返工 J2**，
+  // 插镜作为岔路上报（见交付报告）。返工 J2 的锚继承已由上面用例证明（reworkedJob.requestFingerprint 与旧一致）。
 });

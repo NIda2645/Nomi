@@ -1254,7 +1254,30 @@ export const zhGenerationCommon = {
       failedTitle: '这一镜没生成出来',
       failedFallback: '生成未成功。可稍后重拍这一镜。',
       retry: '重拍这镜',
-      actionComingSoon: '单镜返工即将上线',
+      // P4 S6：返工/续拍已接线，这句留作占位钮的兜底（正常路径不再走它）。
+      actionComingSoon: '此操作暂不可用',
+      // P4 S6 返工/续拍的人话反馈（按结构化结果 code 翻译，禁拼串穿透 i18n 门）。
+      rework: {
+        pending: '正在准备重拍这一镜…',
+        reworked: '已生成新版本 · 完成后可切回旧版',
+        reworkDeclined: '已取消，没有扣费',
+        noPriorAttempt: '这一镜还没生成过，先让它正常开拍',
+        resumed: '已继续，接着拍剩下的镜头',
+        resumePending: '正在继续…',
+        unavailable: '暂时用不了，请稍后再试',
+        failed: '操作没成功，请稍后再试',
+      },
+      // P4 S6 版本条：返工后一个镜头节点会有多版，可切回旧版/切到新版（L2 情境控件，选中才出）。
+      versionStrip: {
+        badge: '第 {{index}}/{{total}} 版',
+        expandAria: '版本 {{count}} 个 · 展开切换',
+        collapseAria: '收起版本',
+        current: '当前版本',
+        switchTo: '切到这版',
+        currentBadge: '当前',
+        rerun: '重拍这镜',
+        versionAlt: '第 {{index}} 版',
+      },
     },
     // 逐镜降级：从 S2 的结构化 code 翻人话徽标（禁拼串穿透 i18n 门）。
     degradation: {
@@ -2587,7 +2610,30 @@ export const enGenerationCommon = {
       failedTitle: 'This shot didn\'t generate',
       failedFallback: 'Generation failed. You can re-film this shot later.',
       retry: 'Re-film shot',
-      actionComingSoon: 'Single-shot rework coming soon',
+      // P4 S6: rework/resume are wired now; this stays as a disabled-button fallback (the normal path skips it).
+      actionComingSoon: 'This action isn\'t available right now',
+      // P4 S6 rework/resume plain-language feedback (translated by structured result code — never a raw string).
+      rework: {
+        pending: 'Getting this shot ready to re-film…',
+        reworked: 'New version generated · switch back to the old one anytime',
+        reworkDeclined: 'Cancelled — nothing was charged',
+        noPriorAttempt: 'This shot hasn\'t been generated yet — let it film first',
+        resumed: 'Resumed — filming the remaining shots',
+        resumePending: 'Resuming…',
+        unavailable: 'Not available right now, please try again later',
+        failed: 'That didn\'t work, please try again later',
+      },
+      // P4 S6 version strip: after a rework a shot node has multiple versions; switch back/forward (L2 contextual, on select).
+      versionStrip: {
+        badge: 'v{{index}}/{{total}}',
+        expandAria: '{{count}} versions · expand to switch',
+        collapseAria: 'Collapse versions',
+        current: 'Current version',
+        switchTo: 'Switch to this',
+        currentBadge: 'Current',
+        rerun: 'Re-film shot',
+        versionAlt: 'Version {{index}}',
+      },
     },
     // Per-shot degradation: translate S2 structured code into a plain-language badge (never a raw string).
     degradation: {
