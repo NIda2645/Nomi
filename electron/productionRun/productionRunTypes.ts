@@ -172,6 +172,34 @@ export type ProductionJob = {
   updatedAt: string;
 };
 
+/**
+ * P4 S1 一个镜头的可编辑草稿 + shot 粒度记账。
+ *
+ * 单镜链的旧形态（plan 顶层直接挂 candidate/contract/approvedReceiptId）保持不动 —— 一个 shots[]
+ * 为空的 plan 就是「一个默认镜」，读路径全部走顶层字段，老 Run 快照零迁移。多镜形态把每一镜的
+ * candidate/子合同/批准记账/attempt 谱系收进这里，plan 顶层只保留计划级的 hash 与状态。
+ *
+ * 记账降到 shot 粒度是硬要求（§3.3）：一镜 new_attempt 不得清计划级批准、不得连坐其他镜；
+ * attempt 单调性只在**同一镜谱系**内比较（`attemptCount` = 该镜已发起的提交尝试数）。
+ */
+export type ProductionGenerationShot = {
+  /** Stable per-shot identity; enters the sub-contract and every derived key (jobId/idempotency). */
+  shotId: string;
+  /** Checkbox for 试拍/分批: a sealed contract only covers included shots. Absent → included. */
+  included?: boolean;
+  candidate: PlanCandidate;
+  /** Sealed sub-contract for this shot; absent until the plan is sealed. */
+  contract?: ExecutionContractV1;
+  /** Shot-grained receipt approval — never cleared by a sibling shot's new attempt. */
+  approvedReceiptId?: string;
+  approvedAt?: string;
+  /** Which explicit submission attempt this shot's latest human receipt authorizes. */
+  approvedAttempt?: number;
+  /** Monotonic count of submission attempts issued for THIS shot's lineage (attempt-scoped to the shot). */
+  attemptCount?: number;
+  updatedAt: string;
+};
+
 export type ProductionGenerationPlan = {
   operationId: string;
   state: "draft" | "sealed" | "cancelled" | "submitted";
@@ -181,6 +209,13 @@ export type ProductionGenerationPlan = {
   approvedAt?: string;
   /** Which explicit submission attempt the latest human receipt authorizes. */
   approvedAttempt?: number;
+  /**
+   * P4 S1 多镜形态：每镜的草稿 + shot 粒度记账。空/缺省 = 单镜旧形态（走顶层 candidate/contract）。
+   * 顶层字段永不删除（老 Run 快照读路径依赖它）；多镜时顶层继续描述「默认镜」以维持向后兼容。
+   */
+  shots?: ProductionGenerationShot[];
+  /** Plan-level hash freezing the whole multi-shot operation (anchor + included shots) at seal time. */
+  planHash?: string;
   updatedAt: string;
 };
 

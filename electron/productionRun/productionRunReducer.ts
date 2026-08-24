@@ -7,12 +7,77 @@ import type {
   ProductionJob,
   ProductionJobStatus,
   ProductionGenerationPlan,
+  ProductionGenerationShot,
   ProductionRun,
   ProductionRunStatus,
   ProductionStage,
   RunCommand,
 } from "./productionRunTypes";
 import { validateProductionExecutionBinding } from "./productionExecutionBinding";
+
+/**
+ * P4 S1 shot 谱系 = 一个 job 归属哪一镜。多镜 job 把 shotId 写进 `metadata.shotId`（子合同派生时带上）；
+ * 单镜/legacy job 无此字段 → 归属默认镜（返回 undefined，等价于「不参与 shot 分组」）。
+ * attempt 单调性、new_attempt 连坐豁免都按这个谱系键分组，绝不跨镜比较。
+ */
+function jobShotLineage(job: Pick<ProductionJob, "metadata">): string | undefined {
+  const shotId = job.metadata?.shotId;
+  return typeof shotId === "string" && shotId.trim() ? shotId : undefined;
+}
+
+/** Update one shot inside a plan by id; throws if the plan has no such shot. */
+function replaceShot(
+  plan: ProductionGenerationPlan,
+  shotId: string,
+  update: (shot: ProductionGenerationShot) => ProductionGenerationShot,
+): ProductionGenerationShot[] {
+  const shots = plan.shots ?? [];
+  let found = false;
+  const next = shots.map((shot) => {
+    if (shot.shotId !== shotId) return shot;
+    found = true;
+    return update(shot);
+  });
+  if (!found) throw new Error(`Generation shot not found: ${shotId}`);
+  return next;
+}
+
+/** A shot is included in the sealed contract unless it was explicitly unchecked (试拍/分批). */
+function isShotIncluded(shot: Pick<ProductionGenerationShot, "included">): boolean {
+  return shot.included !== false;
+}
+
+/**
+ * P4 S1 seal helper: validate + freeze the shots[] payload. Returns undefined for a single-shot seal
+ * (no shots[] payload → today's byte-identical path). For a multi-shot seal, every INCLUDED shot must
+ * carry a matching sealed sub-contract; excluded shots must not; shot ids must be unique and non-empty.
+ */
+function sealGenerationShots(plan: ProductionGenerationPlan, raw: unknown): ProductionGenerationShot[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error("Multi-shot generation seal requires a non-empty shots list");
+  const seen = new Set<string>();
+  const sealed = raw.map((value, index) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid generation shot ${index}`);
+    const shot = value as ProductionGenerationShot;
+    const shotId = typeof shot.shotId === "string" ? shot.shotId.trim() : "";
+    if (!shotId || seen.has(shotId)) throw new Error(`Invalid generation shot id at ${index}`);
+    seen.add(shotId);
+    const included = isShotIncluded(shot);
+    if (included) {
+      if (!shot.contract || typeof shot.contract.contractHash !== "string" || !shot.contract.contractHash.trim()) {
+        throw new Error(`Included generation shot ${shotId} needs a sealed sub-contract`);
+      }
+      if (shot.candidate?.sealedContractHash !== shot.contract.contractHash) {
+        throw new Error(`Generation shot ${shotId} sub-contract does not match its sealed candidate`);
+      }
+    } else if (shot.contract) {
+      throw new Error(`Excluded generation shot ${shotId} must not carry a sealed sub-contract`);
+    }
+    return shot;
+  });
+  void plan;
+  return sealed;
+}
 
 export type ProductionCommandEffect = {
   run: ProductionRun;
@@ -180,7 +245,31 @@ export function applyProductionCommand(
     case "generation.patch": {
       const currentPlan = current.generationPlan;
       if (!currentPlan || currentPlan.state !== "draft") throw new Error("new_draft_required: edit a new generation draft");
-      const patch = record(command.payload, "patch") as Partial<ProductionGenerationPlan["candidate"]>;
+      const patch = record(command.payload, "patch") as Partial<ProductionGenerationShot["candidate"]>;
+      // P4 S1 shot-addressing patch variant: edit one shot's candidate (model/mode/params/prompt/refs)
+      // and/or its included flag (试拍/分批). No shotId → patch the top-level candidate exactly as today.
+      const rawShotId = typeof command.payload.shotId === "string" ? command.payload.shotId.trim() : "";
+      const shotId = rawShotId || undefined;
+      if (shotId) {
+        const hasIncluded = typeof command.payload.included === "boolean";
+        const shots = replaceShot(currentPlan, shotId, (shot) => ({
+          ...shot,
+          candidate: {
+            ...shot.candidate,
+            ...patch,
+            revision: shot.candidate.revision + 1,
+            parameters: patch.parameters ? structuredClone(patch.parameters) : structuredClone(shot.candidate.parameters),
+            references: patch.references ? structuredClone(patch.references) : structuredClone(shot.candidate.references),
+          },
+          ...(hasIncluded ? { included: command.payload.included as boolean } : {}),
+          updatedAt: now,
+        }));
+        return {
+          run: { ...current, generationPlan: { ...currentPlan, shots, updatedAt: now }, updatedAt: now },
+          eventType: "generation.plan.updated",
+          message: currentPlan.operationId,
+        };
+      }
       const candidate = {
         ...currentPlan.candidate,
         ...patch,
@@ -202,8 +291,24 @@ export function applyProductionCommand(
       if (contract.candidateId !== currentPlan.candidate.candidateId || contract.candidateRevision !== currentPlan.candidate.revision) {
         throw new Error("Generation contract does not match the current draft");
       }
+      // P4 S1 multi-shot seal: freeze per-shot sub-contracts (included shots only) + the plan-level hash.
+      // Single-shot seal (no shots[] in payload) stays byte-identical to today.
+      const sealedShots = sealGenerationShots(currentPlan, command.payload.shots);
+      const rawPlanHash = typeof command.payload.planHash === "string" ? command.payload.planHash.trim() : "";
+      if (sealedShots && !rawPlanHash) throw new Error("A multi-shot generation seal requires a plan hash");
       return {
-        run: { ...current, generationPlan: { ...currentPlan, candidate: { ...currentPlan.candidate, sealedContractHash: contract.contractHash }, contract, state: "sealed", updatedAt: now }, updatedAt: now },
+        run: {
+          ...current,
+          generationPlan: {
+            ...currentPlan,
+            candidate: { ...currentPlan.candidate, sealedContractHash: contract.contractHash },
+            contract,
+            state: "sealed",
+            ...(sealedShots ? { shots: sealedShots, planHash: rawPlanHash } : {}),
+            updatedAt: now,
+          },
+          updatedAt: now,
+        },
         eventType: "generation.plan.sealed",
         message: currentPlan.operationId,
       };
@@ -235,13 +340,23 @@ export function applyProductionCommand(
       const receiptId = text(command.payload, "receiptId");
       const contractHash = text(command.payload, "contractHash");
       if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.contract) throw new Error("A sealed generation plan is required before approval");
-      if (currentPlan.contract.contractHash !== contractHash) throw new Error("Generation approval does not match the sealed contract");
+      // P4 S1: a multi-shot receipt is keyed on the plan-level hash (covers the whole operation);
+      // a single-shot receipt is keyed on the one sealed contract hash. Accept whichever this plan uses.
+      const expectedHash = currentPlan.shots ? currentPlan.planHash : currentPlan.contract.contractHash;
+      if (expectedHash !== contractHash) throw new Error("Generation approval does not match the sealed contract");
       const rawAttempt = command.payload.attempt;
       const approvedAttempt = rawAttempt === undefined ? undefined : Number(rawAttempt);
       if (approvedAttempt !== undefined && (!Number.isInteger(approvedAttempt) || approvedAttempt < 1)) throw new Error("Generation approval attempt is invalid");
       if (currentPlan.approvedReceiptId === receiptId && currentPlan.approvedAttempt === approvedAttempt) return { run: current, eventType: "generation.plan.approved", message: currentPlan.operationId };
+      // P4 S1: the plan-level receipt approves every INCLUDED shot (a per-operation receipt covers the
+      // whole batch — §1). Excluded shots stay unapproved. Single-shot plans (no shots[]) are unaffected.
+      const approvedShots = currentPlan.shots
+        ? currentPlan.shots.map((shot) => (isShotIncluded(shot)
+            ? { ...shot, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), approvedAt: now, updatedAt: now }
+            : shot))
+        : undefined;
       return {
-        run: { ...current, generationPlan: { ...currentPlan, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), approvedAt: now, updatedAt: now }, updatedAt: now },
+        run: { ...current, generationPlan: { ...currentPlan, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), ...(approvedShots ? { shots: approvedShots } : {}), approvedAt: now, updatedAt: now }, updatedAt: now },
         eventType: "generation.plan.approved",
         message: currentPlan.operationId,
       };
@@ -251,17 +366,49 @@ export function applyProductionCommand(
       if (!currentPlan || !currentPlan.contract || (currentPlan.state !== "sealed" && currentPlan.state !== "submitted")) throw new Error("A submitted generation is required before a new attempt");
       const job = record(command.payload, "job") as ProductionJob;
       if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
-      if (!Number.isInteger(job.attempt) || job.attempt < 1 || current.jobs.some((item) => item.attempt >= job.attempt && item.provider === job.provider && item.model === job.model && item.stageId === job.stageId)) {
+      // P4 S1: a per-shot attempt addresses one shot lineage. Absent shotId = single-shot (today's chain).
+      const rawShotId = typeof command.payload.shotId === "string" ? command.payload.shotId.trim() : "";
+      const shotId = rawShotId || undefined;
+      if (shotId && !(currentPlan.shots ?? []).some((shot) => shot.shotId === shotId)) throw new Error(`Generation shot not found: ${shotId}`);
+      // Attempt monotonicity is scoped to the SAME shot lineage — a sibling shot's attempt N must not
+      // block this shot's attempt N. For single-shot plans the lineage is "the default shot" (undefined),
+      // which keeps the original provider/model/stage comparison across the whole plan's default jobs.
+      const jobLineage = shotId ?? jobShotLineage(job);
+      const lineageConflict = current.jobs.some((item) =>
+        item.attempt >= job.attempt
+        && item.provider === job.provider
+        && item.model === job.model
+        && item.stageId === job.stageId
+        && (jobShotLineage(item) ?? undefined) === (jobLineage ?? undefined));
+      if (!Number.isInteger(job.attempt) || job.attempt < 1 || lineageConflict) {
         throw new Error("Generation attempt must be newer than the previous attempt");
       }
       if (job.executionBinding) {
         const binding = validateProductionExecutionBinding(job.executionBinding);
         if (binding.runId !== current.runId || binding.providerNamespace !== job.provider || binding.providerIdempotencyKey !== job.idempotencyKey) throw new Error("Invalid execution binding for new generation attempt");
       }
+      // Multi-shot: keep the plan-level receipt, reset ONLY this shot's per-shot approval + bump its
+      // attemptCount — never clear plan-level approval, never touch sibling shots (§3.3).
+      // Single-shot: keep today's behavior (the plan-level receipt IS the shot's, so it must be cleared).
+      const nextPlan: ProductionGenerationPlan = shotId
+        ? {
+            ...currentPlan,
+            state: "sealed",
+            shots: replaceShot(currentPlan, shotId, (shot) => ({
+              ...shot,
+              approvedReceiptId: undefined,
+              approvedAt: undefined,
+              approvedAttempt: undefined,
+              attemptCount: job.attempt,
+              updatedAt: now,
+            })),
+            updatedAt: now,
+          }
+        : { ...currentPlan, state: "sealed", approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now };
       return {
         run: {
           ...current,
-          generationPlan: { ...currentPlan, state: "sealed", approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now },
+          generationPlan: nextPlan,
           jobs: [...current.jobs, job],
           updatedAt: now,
         },
