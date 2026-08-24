@@ -16,8 +16,11 @@ describe("bv2av（BV→AV，第二代算法）", () => {
 
 describe("WBI 签名", () => {
   it("getMixinKey 命中官方示例", () => {
-    const imgKey = "653657f524a547ac981ded72ea172057";
-    const subKey = "6e4909c702f846728e64f6007736a338";
+    // 下面三串是 B站 WBI 算法的社区文档公开已知向量（img_key/sub_key 本就是 nav 接口公开下发、会轮换的盐，
+    // 不是凭证）。形状和 32 位 hex 的 API key 一模一样，熵也一样，扫描器分不开——只能逐行标注。
+    const imgKey = "653657f524a547ac981ded72ea172057"; // nomi-secret-scan:allow B站 WBI 公开测试向量，非凭证
+    const subKey = "6e4909c702f846728e64f6007736a338"; // nomi-secret-scan:allow B站 WBI 公开测试向量，非凭证
+    // nomi-secret-scan:allow B站 WBI 公开测试向量的已知答案，非凭证
     expect(getMixinKey(imgKey + subKey)).toBe("72136226c6a73669787ee4fd02a74c27");
   });
   it("encWbi 产出排序后的 query + 32位 w_rid", () => {

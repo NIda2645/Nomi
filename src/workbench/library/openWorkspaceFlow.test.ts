@@ -8,21 +8,23 @@ function desktopBridge(overrides: Partial<DesktopBridge['workspace']>): DesktopB
     workspace: {
       selectFolder: vi.fn(async () => ({ canceled: true as const })),
       openFolder: vi.fn(async () => ({ id: 'project-id' })),
+      listFiles: vi.fn(async () => ({ files: [] })) as never,
+      revealFile: vi.fn(async () => ({ ok: true })),
+      revealProjectFolder: vi.fn(async () => ({ ok: true })),
       ...overrides,
     },
     projects: {} as DesktopBridge['projects'],
-    cost: {} as DesktopBridge['cost'],
     assets: {} as DesktopBridge['assets'],
     exports: {} as DesktopBridge['exports'],
     tasks: {} as DesktopBridge['tasks'],
     agents: {} as DesktopBridge['agents'],
     modelCatalog: {} as DesktopBridge['modelCatalog'],
-  }
+  } as DesktopBridge
 }
 
 describe('openWorkspaceFromLibrary', () => {
   it('does nothing when folder selection is canceled', async () => {
-    const bridge = desktopBridge({ selectFolder: vi.fn(async () => ({ canceled: true })) })
+    const bridge = desktopBridge({ selectFolder: vi.fn(async () => ({ canceled: true as const })) })
     const hydrateProject = vi.fn()
 
     await openWorkspaceFromLibrary({ bridge, hydrateProject, confirmInitialize: vi.fn(), refreshProjects: vi.fn(), showMessage: vi.fn() })

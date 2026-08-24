@@ -512,6 +512,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       };
     },
   },
+  assetTransport: {
+    /** 每种媒体类型现在实际会走的第一条上传通道（设置页状态卡；优先级真相在 main 的解析器里）。 */
+    describeChannels: () => invokeSync("nomi:asset-transport:channels:describe"),
+  },
   modelCatalog: {
     listVendors: () => invokeSync("nomi:model-catalog:vendors:list"),
     listModels: (params?: unknown) => invokeSync("nomi:model-catalog:models:list", params),

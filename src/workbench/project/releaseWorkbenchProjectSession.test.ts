@@ -26,7 +26,7 @@ describe('releaseWorkbenchProjectRuntimeState', () => {
       isReady: true,
       nodes: [node('n1')],
       edges: [{ id: 'e1', source: 'n1', target: 'n2' }],
-      groups: [{ id: 'g1', name: 'Group', categoryId: 'shots', nodeIds: ['n1'] }],
+      groups: [{ id: 'g1', name: 'Group', categoryId: 'shots', nodeIds: ['n1'], createdAt: 0, updatedAt: 0 }],
       selectedNodeIds: ['n1'],
       generationAiDraft: 'draft',
       generationAiMessages: [{ id: 'm1', role: 'assistant', content: 'hello' }],

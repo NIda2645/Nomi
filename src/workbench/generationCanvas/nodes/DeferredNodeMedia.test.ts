@@ -143,12 +143,12 @@ describe('deferred node media queue', () => {
   })
 
   it('tracks IntersectionObserver visibility until cleanup', () => {
-    let observerCallback: IntersectionObserverCallback | null = null
+    const cb = { current: null as IntersectionObserverCallback | null }
     const disconnect = vi.fn()
     const observe = vi.fn()
     class FakeIntersectionObserver {
       constructor(callback: IntersectionObserverCallback) {
-        observerCallback = callback
+        cb.current = callback
       }
 
       observe = observe
@@ -163,20 +163,20 @@ describe('deferred node media queue', () => {
     expect(observe).toHaveBeenCalledWith(element)
     expect(onVisibilityChange).not.toHaveBeenCalled()
 
-    observerCallback?.(
+    cb.current?.(
       [{ isIntersecting: false, intersectionRatio: 0 } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     )
     expect(onVisibilityChange).toHaveBeenLastCalledWith(false)
 
-    observerCallback?.(
+    cb.current?.(
       [{ isIntersecting: true, intersectionRatio: 0 } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     )
     expect(onVisibilityChange).toHaveBeenLastCalledWith(true)
     expect(disconnect).not.toHaveBeenCalled()
 
-    observerCallback?.(
+    cb.current?.(
       [{ isIntersecting: false, intersectionRatio: 0 } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     )

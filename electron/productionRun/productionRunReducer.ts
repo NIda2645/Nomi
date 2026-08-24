@@ -374,6 +374,43 @@ export function applyProductionCommand(
         message: currentPlan.operationId,
       };
     }
+    case "generation.trial_narrow": {
+      // P4 S4 试拍首镜 (§6 T3): narrow a SEALED multi-shot plan to only its first included video shot,
+      // clearing the plan-level receipt (a trial re-gate must re-confirm the smaller scope). Anchors stay
+      // included (the trial still needs the identity image). Idempotent: re-narrowing an already-narrowed
+      // plan is a no-op. This is a controlled reshape (not a user edit) so it operates on a sealed plan.
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.shots) throw new Error("A sealed multi-shot plan is required to narrow to a trial shot");
+      const videoShots = currentPlan.shots.filter((shot) => shot.role !== "anchor");
+      const firstIncludedVideo = videoShots.find((shot) => isShotIncluded(shot));
+      if (!firstIncludedVideo) throw new Error("No included video shot to trial");
+      const alreadyNarrowed = videoShots.every((shot) => (shot.shotId === firstIncludedVideo.shotId) === isShotIncluded(shot));
+      if (alreadyNarrowed) return { run: current, eventType: "generation.plan.updated", message: currentPlan.operationId };
+      const rawPlanHash = typeof command.payload.planHash === "string" ? command.payload.planHash.trim() : "";
+      if (!rawPlanHash) throw new Error("A trial narrow requires a new plan hash");
+      const shots = currentPlan.shots.map((shot) => {
+        if (shot.role === "anchor") return { ...shot, updatedAt: now };
+        const keep = shot.shotId === firstIncludedVideo.shotId;
+        return { ...shot, included: keep, approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now };
+      });
+      return {
+        run: {
+          ...current,
+          generationPlan: {
+            ...currentPlan,
+            shots,
+            planHash: rawPlanHash,
+            approvedReceiptId: undefined,
+            approvedAt: undefined,
+            approvedAttempt: undefined,
+            updatedAt: now,
+          },
+          updatedAt: now,
+        },
+        eventType: "generation.plan.updated",
+        message: currentPlan.operationId,
+      };
+    }
     case "generation.cancel": {
       const currentPlan = current.generationPlan;
       if (!currentPlan) throw new Error("Generation plan not found");

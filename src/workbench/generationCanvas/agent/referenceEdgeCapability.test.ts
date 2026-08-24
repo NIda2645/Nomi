@@ -12,12 +12,10 @@ function node(id: string, kind: string, archetypeId?: string): GenerationCanvasN
     kind: kind as GenerationCanvasNode['kind'],
     title: id,
     prompt: '',
-    x: 0,
-    y: 0,
-    width: 100,
-    height: 100,
+    position: { x: 0, y: 0 },
+    size: { width: 100, height: 100 },
     ...(archetypeId ? { meta: { archetype: { id: archetypeId, modeId: '' } } } : {}),
-  } as GenerationCanvasNode
+  }
 }
 
 describe('referenceAssetKindForNode — 源能给哪种可参考资产', () => {
@@ -140,7 +138,7 @@ describe('partitionConnectableEdges — 批准时剔除连不上的边(批准≡
 describe('resolveTargetModeForEdge — 连线后目标自动切到能消费这条参考的「生成方式」', () => {
   // 节点(可指定当前 modeId)。imageGen 用 image kind + 有 edit(image_ref) 模式的档案。
   function nodeWithMode(id: string, kind: string, archetypeId: string, modeId: string): GenerationCanvasNode {
-    return { id, kind: kind as GenerationCanvasNode['kind'], title: id, prompt: '', x: 0, y: 0, width: 100, height: 100, meta: { archetype: { id: archetypeId, modeId } } } as GenerationCanvasNode
+    return { id, kind: kind as GenerationCanvasNode['kind'], title: id, prompt: '', position: { x: 0, y: 0 }, size: { width: 100, height: 100 }, meta: { archetype: { id: archetypeId, modeId } } }
   }
 
   it.each(['seedream', 'nano-banana'])(

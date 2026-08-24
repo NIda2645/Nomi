@@ -9,6 +9,7 @@ function makeTimeline(tracks: TimelineTrack[] = []): TimelineState {
     scale: 1,
     playheadFrame: 0,
     tracks,
+    textClips: [],
   }
 }
 

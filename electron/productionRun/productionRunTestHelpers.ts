@@ -8,12 +8,17 @@ type ProductionService = ReturnType<typeof createProductionRunService>
  * 这是全仓**唯一**一份等待实现 —— 曾经有 10 份复制粘贴散在各 test 文件里，默认超时从 500 一路飘到
  * 5000（5000 = testTimeout 本身，等于永远轮不到它先响，只是在给 flake 打补丁）。真正的 flake 根因是
  * 每次写盘都真 fsync，已在 `electron/durability.ts` 修掉；单测现在整体跑在 ephemeral 模式，
- * 这些编排测试的墙钟从 ~4.9 s 掉到 ~0.2 s。所以这里一个统一预算就够，且余量 ~10×。
+ * 这些编排测试的墙钟从 ~4.9 s 掉到 ~0.2 s。
+ *
+ * 预算为什么是 20s 不是 2s：测试自己不 fsync 了，但邻居进程打满文件系统时（多 worktree 并行跑
+ * gates），外部负载仍能把链路拖几十倍（2026-08-25 实测 8 个 fsync 锤子下 2s/5s 双双顶穿）。
+ * 这里的上限只该拦「条件永远不成立」的真回归，不给机器排队计时——低于 vitest testTimeout（30s），
+ * 保证先抛出**带条件源码**的错误，而不是被 vitest 一刀切成看不出在等什么的 timeout。
  *
  * 超时信息带上 check 的源码 —— 「waitFor timed out」看不出在等什么，
  * 打印出条件本身能直接定位是哪一步没推进。
  */
-const WAIT_TIMEOUT_MS = 2000
+const WAIT_TIMEOUT_MS = 20_000
 
 export async function waitForProduction(
   check: () => boolean,

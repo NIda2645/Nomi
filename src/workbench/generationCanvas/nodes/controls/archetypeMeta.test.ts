@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getArchetypeById, specializeArchetypeForVariant, type ModelArchetype } from '../../../../config/modelArchetypes'
-import { archetypeModeModelEnum } from './archetypeMeta'
+import { archetypeModeModelEnum, type ResolvedReferenceValues } from './archetypeMeta'
 import {
   type ArchetypeArraySlot,
   appendArchetypeArrayValue,
@@ -134,7 +134,8 @@ describe('buildArchetypeInputParams — M2 互斥发生在档案驱动的 input 
   // 「不冒充首帧」不变量：首帧槽连的是视频（尾帧接力）时，抽帧前**不能**把视频 URL 当首帧发出去。
   it('relayFromVideoUrl 永不上线当首帧（抽帧由 relayFrameResolver 在提交前填 firstFrameUrl）', () => {
     const meta = { archetype: { id: 'seedance-2', modeId: 'first' } }
-    const out = buildArchetypeInputParams(meta, SEEDANCE, { relayFromVideoUrl: 'https://cdn/prev.mp4' })
+    const refs: ResolvedReferenceValues = { relayFromVideoUrl: 'https://cdn/prev.mp4' }
+    const out = buildArchetypeInputParams(meta, SEEDANCE, refs)
     expect(out.first_frame_url).toBeUndefined()
   })
 })
