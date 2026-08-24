@@ -8,7 +8,7 @@
  */
 import React from 'react'
 import { getDesktopBridge } from '../../../desktop/bridge'
-import { isComfyuiVendorKey } from '../../../workbench/generationCanvas/runner/comfyuiTaskControl'
+import { isComfyuiVendorKey } from '../../../workbench/generationCanvas/model/comfyuiVendor'
 import { COMFYUI_VENDOR_KEY } from '../ComfyuiLocalCard'
 import type { WorkflowBinding } from '../comfyuiWorkflowBinding'
 import type { EnumOption } from '../comfyuiCanvasPreview'

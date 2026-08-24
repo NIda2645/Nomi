@@ -26,7 +26,7 @@ const SCAN_DIRS = ["src", "electron"];
 // 改小某个数 = 你成功瘦身后锁定的新上限。新增条目应经人工评审。
 const ALLOWLIST = {
   "electron/runtime.ts": 539, // …→ 543（2026-08-01）→ 540（2026-08-11）→ 539（2026-08-15 模式脚本接入时移除过期注释）
-  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 733, // …→ 734（2026-08-09 拖动态改画布级）→ 733（2026-08-16 移除死属性）
+  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 732, // …→ 734（2026-08-09 拖动态改画布级）→ 733（2026-08-16 移除死属性）→ 732（2026-08-24 失败卡加收起钮，同处把 onRetry 的嵌套箭头体压平抵回）
   // PR#21 白板节点引入（2026-06-25）：WhiteboardDrawingTool（1032）与 WhiteboardLeaferCanvas（3406）两巨壳
   // 已按 Rule 9 全部拆完、双双出白名单。LeaferCanvas → whiteboardCanvasTypes/Export/NodeOps/Geometry 四纯模块
   // + whiteboardSceneRender（渲染树）+ useWhiteboardDrawing/BoxSelection/SelectionActions/SceneSync 四交互 hook，

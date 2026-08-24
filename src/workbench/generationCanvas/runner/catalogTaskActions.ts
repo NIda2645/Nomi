@@ -32,10 +32,10 @@ import { localizeRemoteResultUrl } from './resultAssetLocalization'
 import {
   ComfyuiTaskCancelledError,
   isComfyuiCancelRequested,
-  isComfyuiVendorKey,
   unwatchComfyuiProgress,
   watchComfyuiProgress,
 } from './comfyuiTaskControl'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { RecoverableTimeoutError } from './recoverableTimeout'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'

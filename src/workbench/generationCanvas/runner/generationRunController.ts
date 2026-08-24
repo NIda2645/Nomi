@@ -623,26 +623,27 @@ export function canRunGenerationNode(
   if (!('id' in node) || !node.id) return false
   const meta = node.meta || {}
   const archetype = resolveTaskArchetype(meta)
+  // 无档案模型（ComfyUI 导入图 / 自定义接入）→ 放行。判据必须是**模型自己声明要什么**，不是
+  // 「用户手上现在有没有参考」——后者把因果反过来了。图/音两支早已收口成「无档案 = 放行，由 runtime
+  // 的诚实闸兜底拒发」（见上 image 分支注释），只有 video 这支漏了，于是**图定义的文生视频工作流**
+  // 被锁死：图里没有图输入、UI 也不显示参考框，按钮却非要一张参考才亮 → 用户只能连张图去喂它 →
+  // runtime 又以「没有『图生视频』通道」拒发 → 两头堵死，纯文生视频整类发不出去（2026-08-24 用户反馈：
+  // 「Comfyui 我配置的文生视频工作流，但是提交必须输入图片才能发出」）。
+  // 与 promptRequiredForNode 同一条思路：需不需要某种输入是模型的属性，这一层不猜。
+  if (!archetype) return true
   // 当前模式无参考槽 = 纯文生视频（t2v）→ 只要 prompt 即可生成，同 text/image 节点（prompt 缺失下游兜底）。
   // 不能因「video 一律要首帧」把 t2v 的生成按钮锁死——栽过：RunningHub Seedance 默认 text 模式（slots:[]）
   // 按钮被置灰、误提示"需要首帧"，用户根本点不了文生视频（2026-06-30 用户反馈）。apimart/kie Seedance 同病，
   // 只是用户多从图片边起步才没暴露。根因 = 此判定原本不分模式，一律要参考。
-  const mode = archetype ? currentArchetypeMode(archetype, meta) : null
-  if (mode && (mode.slots || []).length === 0) return true
+  const mode = currentArchetypeMode(archetype, meta)
+  if ((mode.slots || []).length === 0) return true
   // 有参考槽的模式（i2v/首尾帧/全能参考 omni/视频编辑）→ 需至少一个参考。判据统一交给
   // hasAnyArchetypeReference：它遍历**本模式声明的槽**，每个槽同时看「画布边」和「meta 手动上传」，
   // 与显示（resolveReferenceSlots）、发送（buildArchetypeInputParams）同一口径。
   // 此前这里是一串就地展开的 OR，每加一种槽都得记得再补一条 → 漏了连线参考视频、尾帧接力、
   // 源视频三处，用户明明连了线、缩略图也显示着，↑ 按钮却死着（2026-08-20 用户反馈 + 不变量测试）。
   const references = resolveGenerationReferences(node, context)
-  const hasAnyReference = archetype
-    ? hasAnyArchetypeReference(meta, archetype, references)
-    : Boolean(
-        references.firstFrameUrl ||
-        references.lastFrameUrl ||
-        references.referenceImages.length > 0,
-      )
-  if (!hasAnyReference) return false
+  if (!hasAnyArchetypeReference(meta, archetype, references)) return false
   // 跨槽依赖（档案 slot.requiresAnyOf）：有参考 ≠ 组合合法。Seedance 2.0 的参考音频必须搭配图或视频
   // （方舟「不支持"文本+音频"、"纯音频" 输入」/ APIMart "Must be used together with reference images
   // or reference videos"），只放一段音频此前会被判可生成、发出去才被服务商拒。2.5 已解除，故按档案声明判、

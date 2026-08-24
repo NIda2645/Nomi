@@ -1,4 +1,4 @@
-import { isComfyuiVendorKey } from '../runner/comfyuiTaskControl'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { create } from 'zustand'
 import { mintSpendGrant } from '../../api/taskApi'
 import type { ProductionContractView } from './productionContractView'

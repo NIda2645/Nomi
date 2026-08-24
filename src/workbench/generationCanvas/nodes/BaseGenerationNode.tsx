@@ -486,13 +486,12 @@ function BaseGenerationNodeImpl({
       {status === 'error' && node.error ? (
         <NodeErrorReport
           message={node.error} meta={node.meta}
+          onDismiss={() => useGenerationCanvasStore.getState().dismissNodeError(node.id)}
           onRetry={
             isAssetKind && node.meta?.source === 'clipboard-url'
               ? undefined
               : () => {
-                  void (node.meta?.retryableImport === true
-                    ? retryLocalAssetImport(node.id)
-                    : confirmAndRunNode(node.id))
+                  void (node.meta?.retryableImport === true ? retryLocalAssetImport(node.id) : confirmAndRunNode(node.id))
                 }
           }
         />
