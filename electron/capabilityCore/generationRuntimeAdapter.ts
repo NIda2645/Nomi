@@ -34,6 +34,17 @@ export type GenerationProvider = {
   cancel?: (providerTaskId: string) => Promise<{ status: "cancelled_remote" | "too_late" | "detached"; raw?: unknown }>;
 };
 
+export type GenerationProviderQueryResult = {
+  status: string;
+  raw?: unknown;
+};
+
+export type GenerationProviderReconcileResult = {
+  found: boolean;
+  providerTaskId?: string;
+  raw?: unknown;
+};
+
 export class GenerationProviderCapabilityError extends Error {
   readonly code = "provider_capability_missing" as const;
 
@@ -49,6 +60,15 @@ export class GenerationRuntimeBindingError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "GenerationRuntimeBindingError";
+  }
+}
+
+export class GenerationProviderObservationError extends Error {
+  readonly code = "provider_observation_unsupported" as const;
+
+  constructor(providerId: string, operation: "query" | "reconcile") {
+    super(`Provider ${providerId} does not expose ${operation} for recovery`);
+    this.name = "GenerationProviderObservationError";
   }
 }
 
@@ -95,5 +115,21 @@ export function createGenerationRuntimeAdapter(deps: { providers: readonly Gener
     return { ...result, request };
   }
 
-  return { submit };
+  async function query(input: { providerId: string; providerTaskId: string }): Promise<GenerationProviderQueryResult> {
+    const providerTaskId = input.providerTaskId.trim();
+    if (!providerTaskId) throw new Error("Provider task id is required for query");
+    const provider = providers.get(input.providerId);
+    if (!provider) throw new GenerationProviderCapabilityError(input.providerId, ["registered_provider"]);
+    if (!provider.query || !provider.capabilities.query) throw new GenerationProviderObservationError(input.providerId, "query");
+    return provider.query(providerTaskId);
+  }
+
+  async function reconcile(input: { providerId: string; idempotencyKey: string; providerTaskId?: string }): Promise<GenerationProviderReconcileResult> {
+    const provider = providers.get(input.providerId);
+    if (!provider) throw new GenerationProviderCapabilityError(input.providerId, ["registered_provider"]);
+    if (!provider.reconcile || !provider.capabilities.reconcile) throw new GenerationProviderObservationError(input.providerId, "reconcile");
+    return provider.reconcile({ idempotencyKey: input.idempotencyKey, ...(input.providerTaskId?.trim() ? { providerTaskId: input.providerTaskId.trim() } : {}) });
+  }
+
+  return { submit, query, reconcile };
 }

@@ -185,6 +185,7 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
       ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
       ...(job.retryReason ? { retryReason: safeExternalText(job.retryReason) } : {}),
       ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
+      ...(job.providerStatus ? { providerStatus: safeExternalText(job.providerStatus) } : {}),
       ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
       ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
       ...(job.errorCode ? { errorCode: job.errorCode } : {}),

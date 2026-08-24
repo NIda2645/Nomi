@@ -53,4 +53,25 @@ describe("ProductionRunRuntimeEnvelope", () => {
     expect(accepted).toMatchObject({ state: "provider_accepted", providerTaskId: "provider-task-1" });
     expect(envelope.read()).toEqual(accepted);
   });
+
+  it("persists the latest provider observation without changing the sealed request", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-runtime-envelope-"));
+    tempDirs.push(dir);
+    const envelope = createProductionRunRuntimeEnvelope({ filePath: path.join(dir, "envelope.json"), now: () => "2026-08-23T00:02:00.000Z" });
+    envelope.seal({
+      runId: "run-1", jobId: "job-1", runtimeTaskId: "task-1", contractHash: "a".repeat(64),
+      providerIdempotencyKey: "key-1", requestFingerprint: "b".repeat(64), request: { prompt: "fox" },
+    });
+    envelope.markProviderAccepted({ providerTaskId: "provider-task-1" });
+
+    const observed = envelope.markPolled({ status: "processing", raw: { status: "processing", progress: 42 } });
+    expect(observed).toMatchObject({
+      state: "provider_accepted",
+      providerTaskId: "provider-task-1",
+      lastPoll: { status: "processing", raw: { progress: 42 }, observedAt: "2026-08-23T00:02:00.000Z" },
+      request: { prompt: "fox" },
+    });
+    const restarted = createProductionRunRuntimeEnvelope({ filePath: path.join(dir, "envelope.json") });
+    expect(restarted.read()).toEqual(observed);
+  });
 });

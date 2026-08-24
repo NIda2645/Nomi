@@ -221,6 +221,21 @@ export async function startCapabilityCore(
             provider,
           }).start({ projectId: lease.projectId, operationId: operation.operationId })
         },
+        reconcile: async (operation, outcome, lease) => {
+          if (outcome === 'not_found') return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
+          const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
+          const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
+          if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
+          if (!provider.query || !provider.capabilities.query) return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '该供应商没有可用的任务查询；请到供应商核对。' }
+          return createProductionGenerationSubmission({
+            repository: generationService.repository,
+            projectRoot,
+            immutableProjectUuid: lease.immutableProjectUuid,
+            projectGeneration: lease.projectGeneration,
+            intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+            provider,
+          }).poll({ projectId: lease.projectId, operationId: operation.operationId })
+        },
       })
     handle = await startRpcServer({
       runTask,

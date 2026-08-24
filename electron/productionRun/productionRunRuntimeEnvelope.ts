@@ -17,6 +17,11 @@ export type ProductionRunRuntimeEnvelope = {
   state: RuntimeEnvelopeState;
   providerTaskId?: string;
   rawReceipt?: unknown;
+  lastPoll?: {
+    status: string;
+    raw?: unknown;
+    observedAt: string;
+  };
   updatedAt: string;
 };
 
@@ -112,6 +117,27 @@ export function createProductionRunRuntimeEnvelope(deps: { filePath: string; now
     return next;
   }
 
+  function markPolled(input: { status: string; raw?: unknown }): ProductionRunRuntimeEnvelope {
+    const current = read();
+    if (!current || !current.providerTaskId || current.state !== "provider_accepted") {
+      throw new RuntimeEnvelopeConflictError("Provider acceptance is required before recording a poll");
+    }
+    const status = input.status.trim();
+    if (!status) throw new RuntimeEnvelopeConflictError("Provider poll status is required");
+    const observedAt = now();
+    const next: ProductionRunRuntimeEnvelope = {
+      ...current,
+      lastPoll: {
+        status,
+        ...(input.raw === undefined ? {} : { raw: structuredClone(input.raw) }),
+        observedAt,
+      },
+      updatedAt: observedAt,
+    };
+    writeJsonFileAtomic(deps.filePath, next);
+    return next;
+  }
+
   function markDefinitelyNotSubmitted(): ProductionRunRuntimeEnvelope {
     const current = read();
     if (!current || current.state !== "submitted_unknown") {
@@ -136,7 +162,7 @@ export function createProductionRunRuntimeEnvelope(deps: { filePath: string; now
     return next;
   }
 
-  return { read, seal, markProviderAccepted, markSubmittedUnknown, markDefinitelyNotSubmitted, markMaterialized };
+  return { read, seal, markProviderAccepted, markPolled, markSubmittedUnknown, markDefinitelyNotSubmitted, markMaterialized };
 }
 
 export type ProductionRunRuntimeEnvelopeStore = ReturnType<typeof createProductionRunRuntimeEnvelope>;

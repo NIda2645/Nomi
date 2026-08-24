@@ -144,6 +144,8 @@ export type ProductionJob = {
   model: string;
   idempotencyKey: string;
   providerTaskId?: string;
+  /** Last provider status observed through the provider's query/reconcile capability. */
+  providerStatus?: string;
   /** P1/P3 sealed execution identity; absent only on legacy jobs. */
   executionBinding?: ProductionExecutionBinding;
   requestFingerprint?: string;

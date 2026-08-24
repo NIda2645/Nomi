@@ -143,6 +143,23 @@ describe("GenerationRuntimeAdapter", () => {
       .resolves.toMatchObject({ providerTaskId: "provider-reference-1" });
   });
 
+  it("queries a provider task without submitting again", async () => {
+    const query = vi.fn(async (providerTaskId: string) => ({ status: "processing", raw: { id: providerTaskId, status: "processing" } }));
+    const submit = vi.fn(async () => ({ providerTaskId: "task-1" }));
+    const adapter = createGenerationRuntimeAdapter({ providers: [{
+      providerId: "provider.image",
+      capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+      buildRequest: (input) => input,
+      submit,
+      query,
+    }] });
+
+    await expect(adapter.query({ providerId: "provider.image", providerTaskId: "task-1" }))
+      .resolves.toMatchObject({ status: "processing", raw: { id: "task-1" } });
+    expect(query).toHaveBeenCalledWith("task-1");
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("creates a provider-neutral request with the sealed contract hash and idempotency key", () => {
     const imageContract = contract("provider.image", "model.image.v1", "text-to-image", { aspectRatio: "1:1" });
     const imageBinding = bindingFor("provider.image", imageContract.contractHash);

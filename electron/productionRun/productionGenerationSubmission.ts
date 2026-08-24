@@ -42,6 +42,15 @@ export type GenerationSubmissionResult = {
   nextAction: "observe";
 };
 
+export type GenerationSubmissionPollResult = {
+  operationId: string;
+  runId: string;
+  jobId: string;
+  providerTaskId: string;
+  providerStatus: string;
+  nextAction: "poll" | "materialize" | "attention";
+};
+
 export type GenerationSubmissionResumeResult = GenerationResumeDecision & {
   operationId: string;
   nextAction: "poll" | "reconcile" | "dispatch" | "attention";
@@ -126,6 +135,14 @@ function latestGenerationAttempt(run: ProductionRun, contractHash: string): numb
 
 function envelopeRefFor(runId: string, jobId: string): string {
   return `.nomi/runs/${runId}/jobs/${jobId}/runtime-envelope.json`;
+}
+
+function isPendingProviderStatus(status: string): boolean {
+  return ["queued", "pending", "processing", "running", "in_progress"].includes(status.trim().toLowerCase());
+}
+
+function isFailedProviderStatus(status: string): boolean {
+  return ["failed", "error", "cancelled", "canceled", "rejected"].includes(status.trim().toLowerCase());
 }
 
 function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: ProductionRun, contract: ExecutionContractV1, jobId: string, attempt: number, fencingEpoch: number): ProductionExecutionBinding {
@@ -339,6 +356,42 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     });
   }
 
+  async function poll(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionPollResult> {
+    const run = requiredRun(deps.repository, input.projectId, input.operationId);
+    const contract = requiredContract(run);
+    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash));
+    const jobId = jobIdFor(run.runId, contract.contractHash, attempt);
+    const job = run.jobs.find((candidate) => candidate.jobId === jobId);
+    if (!job?.providerTaskId) throw new SubmissionReconciliationRequiredError("A provider task id is required before polling");
+
+    const result = await adapter.query({ providerId: job.provider, providerTaskId: job.providerTaskId });
+    const providerStatus = result.status.trim();
+    if (!providerStatus) throw new Error("Provider returned an empty poll status");
+    const envelopeStore = envelope(run.runId, job.jobId);
+    envelopeStore.markPolled({ status: providerStatus, raw: result.raw });
+    const observedAt = now();
+    const statusChanged = job.providerStatus !== providerStatus;
+    const nextStatus = isPendingProviderStatus(providerStatus) ? "polling" : isFailedProviderStatus(providerStatus) ? "needs_attention" : job.status;
+    command(run, "job.status", {
+      jobId: job.jobId,
+      status: nextStatus,
+      patch: {
+        providerStatus,
+        lastPollAt: observedAt,
+        ...(statusChanged ? { lastVendorStateChangeAt: observedAt } : {}),
+        ...(isFailedProviderStatus(providerStatus) ? { errorCode: "provider_task_failed", errorMessage: "供应商任务已返回失败状态" } : {}),
+      },
+    }, `poll:${run.revision}:${providerStatus}`);
+    return {
+      operationId: run.runId,
+      runId: run.runId,
+      jobId: job.jobId,
+      providerTaskId: job.providerTaskId,
+      providerStatus,
+      nextAction: isPendingProviderStatus(providerStatus) ? "poll" : isFailedProviderStatus(providerStatus) ? "attention" : "materialize",
+    };
+  }
+
   async function createNewAttempt(input: GenerationNewAttemptInput): Promise<GenerationNewAttemptResult> {
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
     const contract = requiredContract(run);
@@ -408,7 +461,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     return { operationId: run.runId, ...decision, nextAction: "attention" };
   }
 
-  return { start, createNewAttempt, resume };
+  return { start, poll, createNewAttempt, resume };
 }
 
 export type ProductionGenerationSubmission = ReturnType<typeof createProductionGenerationSubmission>;

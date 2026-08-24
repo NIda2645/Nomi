@@ -208,6 +208,40 @@ describe("Run-owned semantic generation submission", () => {
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
+  it("records a provider poll durably without submitting again", async () => {
+    const { root, repository } = setup();
+    const submit = vi.fn(async () => ({ providerTaskId: "provider-task-poll" }));
+    const query = vi.fn(async (providerTaskId: string) => ({ status: "processing", raw: { taskId: providerTaskId, progress: 42 } }));
+    const runner = createProductionGenerationSubmission({
+      repository,
+      projectRoot: root,
+      immutableProjectUuid: "project-uuid-1",
+      projectGeneration: 1,
+      intentMacKey: "test-intent-key",
+      provider: {
+        providerId: "fixture-provider",
+        capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+        buildRequest: (input) => input,
+        submit,
+        query,
+      },
+      now: () => "2026-08-23T00:03:00.000Z",
+    });
+
+    await runner.start({ projectId: "project-1", operationId: "op-1" });
+    await expect(runner.poll({ projectId: "project-1", operationId: "op-1" })).resolves.toMatchObject({
+      providerTaskId: "provider-task-poll",
+      providerStatus: "processing",
+      nextAction: "poll",
+    });
+    expect(query).toHaveBeenCalledWith("provider-task-poll");
+    expect(submit).toHaveBeenCalledTimes(1);
+    const job = repository.read("project-1", "op-1")?.jobs[0];
+    expect(job).toMatchObject({ status: "polling", providerTaskId: "provider-task-poll", providerStatus: "processing" });
+    const envelopePath = path.join(root, ".nomi", "runs", "op-1", "jobs", job!.jobId, "runtime-envelope.json");
+    expect(JSON.parse(fs.readFileSync(envelopePath, "utf8"))).toMatchObject({ lastPoll: { status: "processing", raw: { progress: 42 } } });
+  });
+
   it("can resume after a crash before dispatch only with an explicit not-submitted disposition", async () => {
     const { root, repository } = setup();
     const beforeDispatch = vi.fn(() => { throw new Error("crash before dispatch"); });

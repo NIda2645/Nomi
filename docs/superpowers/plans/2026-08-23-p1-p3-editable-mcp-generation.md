@@ -49,7 +49,7 @@ P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都�
 - [x] P3 first seam：provider-neutral adapter、durable runtime envelope、unknown/reconcile-only recovery classifier、single-shot ordering tests。
 - [x] P2 semantic tool vocabulary + shared planning handler：MCP/GUI 共用 `context → operation → patch → preview`，目录只声明能力，handler 不调用 provider。
 - [x] P3 first durable planning wiring：semantic operation 草稿已由 `ProductionRun` events/snapshot/CAS 持有；真实 MCP JSON-RPC create/edit/preview 零额度旅程已通过。
-- [ ] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与决策包：Run-owned 零额度 seam、用户模型目录驱动 registry、可验证 attestation 一次确认链、完整编辑矩阵和一次 APIMart 1K transport smoke 已完成；APIMart 的原生幂等/取消能力未被官方文档证明，因此按 fail-closed 规则仍不接入默认付费提交。
+- [ ] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与决策包：Run-owned 零额度 seam、用户模型目录驱动 registry、可验证 attestation 一次确认链、完整编辑矩阵、一次 APIMart 1K transport smoke 和 provider capability degradation gate 已完成；2026-08-24 又补上了 provider query → runtime envelope poll 证据的持久化，以及 `nomi_reconcile_generation(found)` 的默认 query wiring。仍未完成的是 `generation.single-shot` 精确 challenge 的 GUI fallback 人眼走查、结果 Artifact/materialization 和跨进程恢复的完整生产闭环；这些不再通过重复付费模型测试解决。
 
 ## 文件地图与唯一 owner
 
