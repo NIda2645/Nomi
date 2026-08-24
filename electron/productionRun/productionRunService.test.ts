@@ -91,6 +91,45 @@ describe('production run service projection boundary', () => {
     expect(repository.execute).not.toHaveBeenCalled()
   })
 
+  it('keeps listFull read-only and leaves restart recovery explicit', () => {
+    const repository = {
+      read: vi.fn(() => run),
+      readEvents: vi.fn(() => []),
+      list: vi.fn(() => [{ runId: run.runId }]),
+      execute: vi.fn(),
+    }
+    const service = createProductionRunService({ repository: repository as never, projectRootResolver: () => null })
+
+    expect(service.listFull('project-1')).toHaveLength(1)
+    expect(repository.execute).not.toHaveBeenCalled()
+  })
+
+  it('does not let legacy restart recovery rewrite a semantic single-shot job', async () => {
+    const semanticRun = {
+      ...run,
+      playbook: { name: 'generation.single-shot', version: '1.0.0' },
+      generationPlan: { operationId: run.runId } as ProductionRun['generationPlan'],
+      jobs: [{
+        ...run.jobs[0],
+        jobId: 'generation-run-1-contract-attempt-1',
+        status: 'provider_accepted' as const,
+        executionBinding: { runId: run.runId, contractHash: 'contract', providerNamespace: run.jobs[0].provider } as never,
+        runtimeEnvelopeRef: '.nomi/runs/run-1/jobs/generation-run-1-contract-attempt-1/runtime-envelope.json',
+      }],
+    } satisfies ProductionRun
+    const repository = {
+      read: vi.fn(() => semanticRun),
+      readEvents: vi.fn(() => []),
+      list: vi.fn(() => [{ runId: semanticRun.runId }]),
+      execute: vi.fn(),
+    }
+    const service = createProductionRunService({ repository: repository as never, projectRootResolver: () => null })
+
+    await service.resumeUnfinishedRuns('project-1')
+
+    expect(repository.execute).not.toHaveBeenCalled()
+  })
+
   it('keeps actionable submission identity while redacting policy, credentials and paths', () => {
     const repository = { read: vi.fn(() => run), readEvents: vi.fn(() => []) }
     const projection = createProductionRunService({ repository: repository as never, projectRootResolver: () => null }).readProjection('project-1', 'run-1')

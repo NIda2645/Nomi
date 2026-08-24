@@ -671,9 +671,15 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       for (const summary of summaries) {
         let current = repository.read(safeProjectId, summary.runId)
         if (!current || ['completed', 'cancelled'].includes(current.status)) continue
+        // Semantic single-shot runs own recovery through ProductionGenerationSubmission
+        // (resume/poll/reconcile). The legacy playbook driver must not rewrite their
+        // durable provider state to submission_unknown or kick a second submit.
+        const isSemanticSingleShot = current.playbook.name === 'generation.single-shot'
+          && current.generationPlan?.operationId === current.runId
         let changedUnknown = false
         for (const job of current.jobs) {
           if (!['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content'].includes(job.status)) continue
+          if (isSemanticSingleShot) continue
           try {
             current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
               jobId: job.jobId,
@@ -779,7 +785,6 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function listFull(projectId: string): ProductionRun[] {
-    void resumeUnfinishedRuns(projectId)
     return repository.list(identifier(projectId, 'project')).map((summary) => requireRun(projectId, summary.runId))
   }
 
