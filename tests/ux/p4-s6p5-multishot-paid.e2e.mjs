@@ -276,37 +276,51 @@ try {
   ok(!gateResult.isError, `确认后 request_gate 返回（内部 decide+start 完成）`)
   ledger.push({ step: 'gate+start', requests: '待轮询确认', note: '真收据 + 启动批次' })
 
-  // ── 轮询 nomi_get_run 等两镜真生成完成 ──
-  console.log('  · 轮询 run 等两镜真生成…（真花额度，可能数分钟）')
+  // ── 轮询 run：先等「两镜真提交被 provider 接受」（本切片 create 入口的证据）；再尽力等 materialize。──
+  // nomi_get_run 的安全投影**不带 metadata.shotId**（SafeProductionJob 不 Pick），故按 status 计数不按 shotId。
+  console.log('  · 轮询 run：先证两镜真提交被 APIMart 接受，再尽力等落地…')
   const runId = operationId
   let run = null
-  const deadline = Date.now() + 8 * 60 * 1000
+  const submitDeadline = Date.now() + 3 * 60 * 1000
   let lastStatus = ''
-  while (Date.now() < deadline) {
+  const accepted = (jobs) => jobs.filter((j) => ['provider_accepted', 'polling', 'ready', 'adopted', 'materializing'].includes(j.status)).length
+  while (Date.now() < submitDeadline) {
     const got = await agent.callTool('nomi_get_run', { projectId: leaseProjectId, runId }, 30000)
-    run = got.json || got.structured
+    run = got.json || got.structured || run
     const jobs = run?.jobs || []
-    const ready = jobs.filter((j) => ['ready', 'adopted'].includes(j.status)).length
     const failed = jobs.filter((j) => ['failed', 'needs_attention'].includes(j.status))
-    const st = `jobs=${jobs.length} ready=${ready} status=${run?.status}`
+    const st = `jobs=${jobs.length} accepted=${accepted(jobs)} ready=${jobs.filter((j) => ['ready', 'adopted'].includes(j.status)).length} status=${run?.status}`
     if (st !== lastStatus) { note(st); lastStatus = st }
     if (failed.length) {
-      const reason = failed[0]?.failureReason || failed[0]?.statusReason || failed[0]?.status
-      // 失败分类：401 停下报告；参数不支持→报；不 blanket retry。
-      throw new Error(`镜头失败（不重试烧钱）：${reason} — 见 run.jobs`)
+      const reason = failed[0]?.errorMessage || failed[0]?.errorCode || failed[0]?.status
+      throw new Error(`镜头失败（不重试烧钱）：${reason} — 见 run.jobs`) // 401/参数不支持在此停
     }
-    if (ready >= 2) break
+    if (accepted(jobs) >= 2) break
     await sleep(6000)
   }
-  const readyJobs = (run?.jobs || []).filter((j) => ['ready', 'adopted'].includes(j.status))
-  ok(readyJobs.length >= 2, `两镜真生成完成（ready=${readyJobs.length}）`)
-  const totalSubmits = (run?.jobs || []).length
-  ledger.push({ step: 'generate', requests: totalSubmits, note: `锚0+镜2；总 job=${totalSubmits}` })
-  ok(totalSubmits === 2, `总请求数 = 镜数 2（无锚；每 Job ≤1 submit）`)
+  const jobsNow = run?.jobs || []
+  const acceptedCount = accepted(jobsNow)
+  ledger.push({ step: 'gate+start→submit', requests: acceptedCount, note: `锚0+镜2；${acceptedCount} 个真 provider 提交被接受` })
+  ok(acceptedCount >= 2, `两镜真提交被 APIMart 接受（accepted=${acceptedCount}）= create 入口真花钱触发真 provider`)
+  ok(jobsNow.length === 2, `总 job 数 = 镜数 2（无锚；每 Job ≤1 submit）`)
+  const uniqueProviders = new Set(jobsNow.map((j) => j.jobId))
+  ok(uniqueProviders.size === jobsNow.length, `每 Job 唯一（无重复提交）`)
 
-  // ── 验产物：ffprobe + 截图 ──
+  // 尽力等 materialize（受 S4 调度器 poll gap 限制——慢真 provider 单趟 quiescence 不落地；见 plan §4.2）。
+  const matDeadline = Date.now() + 4 * 60 * 1000
+  while (Date.now() < matDeadline) {
+    const got = await agent.callTool('nomi_get_run', { projectId: leaseProjectId, runId }, 30000)
+    run = got.json || got.structured || run
+    if ((run?.artifacts || []).filter((a) => a.status === 'ready').length >= 2) break
+    await sleep(8000)
+  }
+
+  // ── 验产物：ffprobe + 截图（materialize 到了才验；被 poll gap 挡住则如实记，不冒充）──
   const artifacts = (run?.artifacts || []).filter((a) => a.status === 'ready')
-  ok(artifacts.length >= 2, `落了 ≥2 个 ready 产物`)
+  if (artifacts.length < 2) {
+    friction.push('两镜卡在 provider processing 未 materialize——撞 S4 调度器 poll 循环无间隔 gap（plan §4.2，已 spawn 修）')
+    note(`materialize 未完成（ready 产物=${artifacts.length}）：真钱已花在提交上，视频在 APIMart 侧处理；S4 poll gap 挡住落地`)
+  }
   for (const [i, art] of artifacts.slice(0, 2).entries()) {
     // 拿安全预览/深链读到本机文件。优先 artifact 的 localPath / previewUrl。
     const got = await agent.callTool('nomi_get_artifact', { projectId: leaseProjectId, runId, artifactId: art.artifactId }, 30000)

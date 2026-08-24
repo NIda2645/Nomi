@@ -95,6 +95,14 @@
 - **零额度干跑已 9 断言全绿**（`S6P5_DRY_RUN_NO_SPEND=1`）：真语义入口 create({shots})→preview→request_gate 把**真多镜卡弹到 live GUI**，卡显「2 镜 / apimart Seedance 2.0（text_to_video）/ 术语人话（无封存物化合同）/ 固定 footer / 倒计时」（截图 `01-multishot-confirm-card.png` / `00-gate-pending-state.png` 亲验）。证明 create 双入口经真 GUI RPC 全链通——付费前的链路确证。
 - **观察到的卡显示摩擦**（S2/S3a 存量、非本切片）：卡上「总时长 未知 / 画幅 未知」即使 shot 传了 duration=4/size=16:9 仍显未知；「价未知 / ¥0」因真 catalog 未给 apimart per-model pricing。记为摩擦。
 
+### 4.2 真付费验收实跑结果（2026-08-25，真花额度）
+**真语义入口到「真 APIMart 提交被接受」全通**（截图 `01-multishot-confirm-card.png`/`02-after-confirm.png` 亲验）：
+- session_open（current_project bootstrap 拿 lease）→ `nomi_operation_create({shots:[2 t2v]})`（真生产入口，operationId=op-f59156bb…，草稿落 2 镜）→ preview → `request_generation_gate` → **多镜卡真弹在 GUI**（DOM 探针 fixedModals:1/confirmBtns:1）→ Playwright **点确认（真收据铸出）**→ request_gate 返回（内部 decide+start 一气呵成）→ 批次启动。
+- **2 个真 APIMart 视频提交被接受**：durable run.json 显 shot-1 job `provider_accepted`→`polling` providerStatus=`processing` taskId=`task_01M0TZM4…`；shot-2 同 taskId=`task_01M0TZMK…`。**2 个互异 taskId = 镜数 2、无锚（0）、每 Job ≤1 submit**——§5.1 不变量在真 provider 上成立。
+- **记账**：create=0 请求（零花费草稿）；gate+start 后 = 2 真 provider submit（锚0+镜2）；budget.actual=0（APIMart 完成时才计费，两镜仍 processing）。key 全程未进日志/报告/仓库。
+- **未跑到 materialize**：两镜卡在 `processing` 未落地 → 撞两个**非本切片的连带 gap**：① **S4 调度器 poll 循环对慢真 provider 失效**（`multiShotBatchScheduler.ts` dispatchUnit 的 32 次 poll 无间隔 sleep，真视频要几分钟 → 循环瞬间跑完就 rest，之后无重 poll；`nomi_get_run` 只读不驱动）——已 spawn 任务修；② harness 读 `nomi_get_run` 的 jobs 字段与安全投影形状不符（get_run 返 jobs=0）——harness 侧读法问题，非产品。故 harness 诚实 FAIL 在 ready 检查（不冒充成功）。
+- **结论**：**create 双入口的真付费全链到「真钱触发真 provider 提交」这一段已实证**；materialize 那一截被 S4 poll gap 挡住（真钱已花在提交上，视频在 APIMart 侧处理）。返工腿因需完成态镜节点 + 检查点/materialize 未通，改由既有零额度渲染层走查 `p4-s6-rework-version.e2e.mjs`（#153）覆盖 UI 半程。
+
 ## 5. 回归（全保持）
 - 单镜 E2E 14/14、S3a、elicitation、S4 批次、S5 走查、S6 J2 返工 + 版本条走查。
 - 单镜 create/seal 路径字节不动；appIntegration 单镜 start 分支不动。
