@@ -50,7 +50,14 @@ export function isDurable(): boolean {
   return mode === "durable";
 }
 
-/** 生产：真 fsync。测试：no-op。除本模块外不要直接调 `fs.fsyncSync`。 */
+/**
+ * 生产：真 fsync。测试：no-op。
+ *
+ * 除本模块外不要直接调 `fs.fsyncSync` —— 这条由 `pnpm run check:heavy-path` 的
+ * `unguarded-fsync` 规则把着（不是靠自觉）。唯一的例外形态是「只为 fsync 而开的目录 fd」：
+ * 它连 `openSync` 都要省掉，没法用本函数表达，所以在开 fd 之前先 `if (!isDurable()) return`
+ * ——屏障一样被尊重，门岗也认这个形态。
+ */
 export function fsyncIfDurable(fd: number): void {
   if (mode === "durable") fs.fsyncSync(fd);
 }
