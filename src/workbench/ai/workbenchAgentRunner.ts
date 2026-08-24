@@ -1,5 +1,5 @@
 import type { AgentAttachmentPayload, AgentsChatResponseDto, AgentChatV2Session } from '../../api/desktopClient'
-import { sendWorkbenchAiMessage } from './workbenchAiClient'
+import { sendWorkbenchAiMessage, type WorkbenchAiRequest } from './workbenchAiClient'
 import { getAssistantModelPref } from './assistantModelPref'
 import { useAgentUsageStore } from './agentUsageStore'
 import { workbenchSessionKey, type WorkbenchAgentArea } from './agentSessionKey'
@@ -64,7 +64,10 @@ export async function runWorkbenchAgent(input: RunWorkbenchAgentInput): Promise<
   // 助手模型偏好（用户在助手面板选的）→ 加进 payload，后端 chooseTextModel 优先用它，
   // 否则回退「第一个可用 text 模型」。两个面板都走这里 → 自动生效，无需各自传。
   const pref = getAssistantModelPref()
-  const request = {
+  // 显式标注类型:让 TS 的 excess property check 对这个字面量生效。曾漏 systemPrompt——
+  // 无标注时 request 是变量,结构化子类型允许多带字段,于是它一路传到 buildWorkbenchAiPayload
+  // 被静默丢弃、typecheck 全绿。标注后任何「传了但 DTO 没声明」的字段当场编译报错。
+  const request: WorkbenchAiRequest = {
     prompt: input.prompt,
     ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
     displayPrompt: input.displayPrompt,
