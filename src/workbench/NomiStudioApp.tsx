@@ -28,7 +28,7 @@ import { initReviewEventBridge } from './generationCanvas/reviewEventBridge'
 import { initComfyuiProgressBridge } from './generationCanvas/comfyuiProgressBridge'
 import { initResultUrlRelocalizeBridge } from './generationCanvas/resultUrlRelocalizeBridge'
 import { setCanvasEventProjectIdProvider } from './generationCanvas/events/canvasEventEmitter'
-import { registerCapabilityApplyHandler } from './capability/capabilityApplyHandler'
+import { handleCapabilityApply, registerCapabilityApplyHandler } from './capability/capabilityApplyHandler'
 import { cn } from '../utils/cn'
 import { toast } from '../ui/toast'
 import { setDesktopActiveProjectId } from '../desktop/activeProject'
@@ -234,6 +234,20 @@ export default function NomiStudioApp(): JSX.Element {
   React.useEffect(() => setCanvasEventProjectIdProvider(() => activeProjectIdRef.current ?? null), [])
   // 能力核 A 模式实时桥:注册处理器,接主进程转发来的外部 MCP 画布读/写/付费确认(所见即所得)。
   React.useEffect(() => registerCapabilityApplyHandler(), [])
+
+  // E2E 专用桥（同 TaskCenterButton/CameraMoveCaptureHost 既有写法）：仅当 localStorage['__nomiE2E']==='1'
+  // 时把**真实**能力处理器挂到 window，供 R13 走查在页面上下文里以真 payload 驱动同一条渲染管线
+  // （generation.gate.confirm → confirmGenerationGateForAgent → buildMultiShotContractView → requestConfirm →
+  // SpendConfirmDialog）取证多镜确认卡。生产从不置该标志 → 永不暴露；不是并行实现，就是那一个真 handler。
+  React.useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage?.getItem('__nomiE2E') === '1') {
+        ;(window as unknown as { __nomiCapabilityApply?: unknown }).__nomiCapabilityApply = handleCapabilityApply
+      }
+    } catch {
+      // localStorage 不可用 → 跳过
+    }
+  }, [])
 
   React.useEffect(() => {
     const handleHardReloadShortcut = (event: KeyboardEvent) => {

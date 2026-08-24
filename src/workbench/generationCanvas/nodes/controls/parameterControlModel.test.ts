@@ -116,7 +116,6 @@ describe('shouldUseVideoFrameSlotFallback — 未识别视频模型兜底不套�
     expect(shouldUseVideoFrameSlotFallback({
       isVideoLike: true,
       modelImageUrlSlots: [],
-      comfyImageUrlSlots: null,
       vendor: 'custom-relay',
     })).toBe(true)
   })
@@ -125,7 +124,6 @@ describe('shouldUseVideoFrameSlotFallback — 未识别视频模型兜底不套�
     expect(shouldUseVideoFrameSlotFallback({
       isVideoLike: true,
       modelImageUrlSlots: [],
-      comfyImageUrlSlots: null,
       vendor: 'comfyui-local',
     })).toBe(false)
   })
@@ -134,7 +132,6 @@ describe('shouldUseVideoFrameSlotFallback — 未识别视频模型兜底不套�
     expect(shouldUseVideoFrameSlotFallback({
       isVideoLike: true,
       modelImageUrlSlots: [],
-      comfyImageUrlSlots: [],
       vendor: 'comfyui-local',
     })).toBe(false)
   })

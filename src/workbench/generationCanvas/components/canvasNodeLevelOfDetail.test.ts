@@ -47,7 +47,7 @@ describe('resolveLightweightNodePreview', () => {
   })
 
   it('does not mount media for non-visual results or empty URLs', () => {
-    expect(resolveLightweightNodePreview({ result: { type: 'text', text: 'hello' } })).toBeNull()
+    expect(resolveLightweightNodePreview({ result: { type: 'text' } })).toBeNull()
     expect(resolveLightweightNodePreview({ result: { type: 'image', url: '  ' } })).toBeNull()
   })
 })

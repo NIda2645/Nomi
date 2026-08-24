@@ -23,10 +23,12 @@ function clip(id: string, startFrame: number, endFrame: number): TimelineClip {
 
 function timeline(clips: TimelineClip[], playheadFrame = 100): TimelineState {
   return {
+    version: 1,
     fps: 30,
     playheadFrame,
     scale: 1,
-    tracks: [{ id: 'track', type: 'video', name: 'Video', muted: false, locked: false, clips }],
+    tracks: [{ id: 'track', type: 'video', label: 'Video', clips }],
+    textClips: [],
   }
 }
 

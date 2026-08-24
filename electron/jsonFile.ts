@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fsyncIfDurable } from "./durability";
+
 /**
  * Atomically (over)write a JSON file.
  *
@@ -51,7 +53,7 @@ export function writeJsonFileAtomic(filePath: string, value: unknown): void {
   const fd = fs.openSync(tempPath, "w");
   try {
     fs.writeFileSync(fd, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-    fs.fsyncSync(fd);
+    fsyncIfDurable(fd);
   } finally {
     fs.closeSync(fd);
   }

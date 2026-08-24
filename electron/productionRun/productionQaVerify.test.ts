@@ -5,19 +5,13 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
-import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 import { buildQaRetryPlans, buildQaStageOutcome, adoptedGenerationShotNodeIds } from './productionQaVerdict'
 
 // W1.5 · 把审片接进 production run 路径②的 qa 阶段。
 // 方案：docs/plan/2026-08-19-w1-shot-verify-wiring.md §3「production run 路径②的对称落点」+ T10。
 // 先红后绿：qa 阶段此前只 markComplete、零判分事件；接线后 qa 会发 production.verify-shots，
 // 把 per-shot 判决落成 qa.verdict 事件 + qa 阶段摘要（判分失败/无镜头 → 诚实降级「审片跳过」，不阻断）。
-
-async function waitFor(check: () => boolean, timeoutMs = 5000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
-  if (!check()) throw new Error('waitFor timed out')
-}
 
 /** 走到「合同已批准、样片门已批准」→ driver 会跑完两镜、进 qa、再进 assemble 的公共前置。 */
 async function driveToRoughCut(

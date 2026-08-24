@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ProductionGate, ProductionRun } from '../../../../electron/productionRun/productionRunTypes'
-import { buildProductionContractView } from './productionContractView'
+import { buildMultiShotContractView, buildProductionContractView, type MultiShotGatePayload } from './productionContractView'
 
 function run(overrides: Partial<ProductionRun> = {}): ProductionRun {
   return {
@@ -96,5 +96,106 @@ describe('production contract view', () => {
       maximum: null,
       hardLimit: 60,
     })
+  })
+
+  it('does not attach a multi-shot list on the legacy driver contract view', () => {
+    expect(buildProductionContractView(run(), gate()).shotList).toBeUndefined()
+  })
+})
+
+function multiShotPayload(overrides: Partial<MultiShotGatePayload> = {}): MultiShotGatePayload {
+  return {
+    projectName: '雨夜便利店',
+    planVersion: 3,
+    planHash: 'sha256:plan-3',
+    specs: { durationSeconds: 40, aspectRatio: '9:16', shotCount: 3 },
+    currency: 'CNY',
+    hardLimit: 30,
+    waitSeconds: 180,
+    frozenItems: ['shots', 'models', 'references', 'price'],
+    expiresAt: '2026-08-25T09:00:00.000Z',
+    anchorChips: [{ label: '主角 · 阿雨', price: { known: true, amount: 2 } }],
+    shots: [
+      {
+        shotId: 'shot-1', index: 1, sceneOneLiner: '雨夜，阿雨推开便利店玻璃门',
+        providerModelText: 'APIMart · 即梦（文生图）', durationSeconds: 5,
+        price: { known: true, amount: 4 }, degradations: [],
+      },
+      {
+        shotId: 'shot-2', index: 2, sceneOneLiner: '货架前，两人对视',
+        providerModelText: 'APIMart · 某视频模型（图生视频）', durationSeconds: 6,
+        price: { known: true, amount: 6 },
+        degradations: [{ code: 'model_cannot_take_character_reference', params: { modelId: 'some-video' } }],
+      },
+      {
+        shotId: 'shot-3', index: 3, sceneOneLiner: '收银台特写',
+        providerModelText: 'APIMart · 未定价模型', durationSeconds: null,
+        price: { known: false }, degradations: [],
+      },
+    ],
+    ...overrides,
+  }
+}
+
+describe('multi-shot contract view (P4 S3a)', () => {
+  it('projects per-shot rows, honest subtotal, unknown-price count, and reminder count', () => {
+    const view = buildMultiShotContractView(multiShotPayload())
+    expect(view.shotList).toBeDefined()
+    const list = view.shotList!
+    expect(list.shots).toHaveLength(3)
+    expect(list.shots.map((shot) => shot.index)).toEqual([1, 2, 3])
+    // subtotal counts ONLY known prices (4 + 6), never fabricating 0 for the unpriced shot.
+    expect(list.knownSubtotal).toBe(10)
+    expect(list.unknownShotCount).toBe(1)
+    // the one shot with a degradation is the only reminder.
+    expect(list.reminderShotCount).toBe(1)
+    expect(list.hardLimit).toBe(30)
+    expect(list.currency).toBe('CNY')
+    expect(list.frozenItems).toEqual(['shots', 'models', 'references', 'price'])
+    expect(list.waitSeconds).toBe(180)
+    expect(list.anchorChips).toEqual([{ label: '主角 · 阿雨', price: { known: true, amount: 2 } }])
+  })
+
+  it('passes structured degradation code through untouched (renderer translates via t())', () => {
+    const view = buildMultiShotContractView(multiShotPayload())
+    expect(view.shotList!.shots[1].degradations).toEqual([
+      { code: 'model_cannot_take_character_reference', params: { modelId: 'some-video' } },
+    ])
+  })
+
+  it('keeps an unknown per-shot price explicit rather than substituting 0', () => {
+    const view = buildMultiShotContractView(multiShotPayload())
+    expect(view.shotList!.shots[2].price).toEqual({ known: false })
+    expect(view.shotList!.shots[2].durationSeconds).toBeNull()
+  })
+
+  it('marks aggregate cost as unknown when any shot is unpriced', () => {
+    const view = buildMultiShotContractView(multiShotPayload())
+    expect(view.cost.known).toBe(false)
+    // but the known subtotal is still surfaced (10) rather than lost.
+    expect(view.cost.minimum).toBe(10)
+  })
+
+  it('marks aggregate cost as known when every shot is priced', () => {
+    const view = buildMultiShotContractView(multiShotPayload({
+      shots: [
+        { shotId: 's1', index: 1, sceneOneLiner: 'a', providerModelText: 'x · y', durationSeconds: 5, price: { known: true, amount: 4 }, degradations: [] },
+        { shotId: 's2', index: 2, sceneOneLiner: 'b', providerModelText: 'x · y', durationSeconds: 5, price: { known: true, amount: 5 }, degradations: [] },
+      ],
+    }))
+    expect(view.cost.known).toBe(true)
+    expect(view.shotList!.knownSubtotal).toBe(9)
+    expect(view.shotList!.unknownShotCount).toBe(0)
+  })
+
+  it('honestly reports a missing hard limit as null (never 0)', () => {
+    const view = buildMultiShotContractView(multiShotPayload({ hardLimit: null }))
+    expect(view.shotList!.hardLimit).toBeNull()
+    expect(view.cost.hardLimit).toBeNull()
+  })
+
+  it('falls back shotCount to the number of shots when specs omit it', () => {
+    const view = buildMultiShotContractView(multiShotPayload({ specs: { durationSeconds: 40, aspectRatio: '9:16' } }))
+    expect(view.specs.shotCount).toBe(3)
   })
 })

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createModuleRegistry } from "./moduleRegistry";
 import { createGenerationPlanningHandler, createInMemoryGenerationOperationStore, MCP_GENERATION_TOOL_CATALOG } from "./mcpGenerationTools";
+import { PROJECT_LEASE_ALGORITHM, PROJECT_LEASE_AUDIENCE, PROJECT_LEASE_VERSION, type ProjectLeaseV1 } from "./projectLease";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "../../src/config/modelArchetypes/seedance25Apimart";
 import { buildVideoModelCandidates, recommendVideoGeneration } from "../shared/videoCapabilities";
 
@@ -60,8 +61,16 @@ const videoRegistry = createModuleRegistry([{
   }],
 }]);
 
-const lease = {
-  leaseId: "lease-1",
+// 完整的 ProjectLeaseV1 形状。签名相关字段（keyId/nonce/scopeHash/mac）这些用例用不到
+// （handler 只读 projectId 之类），但类型上是必填的——缺了就是夹具在类型上撒谎。
+const lease: ProjectLeaseV1 = {
+  version: PROJECT_LEASE_VERSION,
+  keyId: "key-1",
+  algorithm: PROJECT_LEASE_ALGORITHM,
+  issuer: "nomi-main",
+  nonce: "nonce-1",
+  scopeHash: "scope-hash-1",
+  mac: "mac-1",
   projectId: "project-1",
   immutableProjectUuid: "project-uuid-1",
   projectGeneration: 1,
@@ -69,13 +78,13 @@ const lease = {
   manifestDigest: "manifest-1",
   issuedAt: "2026-08-23T00:00:00.000Z",
   expiresAt: "2026-08-23T01:00:00.000Z",
-  audience: "mcp",
+  audience: PROJECT_LEASE_AUDIENCE,
   leasePrincipal: "mcp:test",
   sessionId: "session-1",
   connectionNonce: "connection-1",
   revocationEpoch: 0,
   scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read", "generation:cancel"],
-} as const;
+};
 
 function candidate(overrides: Record<string, unknown> = {}) {
   return {
