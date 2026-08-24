@@ -7,12 +7,20 @@ import {
   type PlanCandidate,
 } from "./executionContract";
 import type { ModuleRegistry } from "./moduleRegistry";
+import type { ParameterField } from "./moduleManifest";
 import type { ProjectLeaseV1 } from "./projectLease";
 import {
   classifyGenerationProviderCapabilities,
   type GenerationProviderCapabilityProfile,
 } from "./generationProviderCapabilities";
 import { GenerationProviderCapabilityError } from "./generationRuntimeAdapter";
+import type {
+  VideoGenerationRecommendationInput,
+  VideoGenerationRecommendationResult,
+  VideoModelCandidate,
+} from "../shared/videoCapabilities/recommendation";
+import { canonicalVideoVariantId, effectiveVideoModes } from "../shared/videoCapabilities/recommendation";
+import type { ModelParameterControl } from "../shared/videoCapabilities/types";
 
 /**
  * The semantic MCP surface is deliberately data-only.  These tools are the
@@ -179,7 +187,7 @@ export type GenerationOperation = Readonly<{
 }>;
 
 export type GenerationOperationStore = {
-  create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string }): GenerationOperation | Promise<GenerationOperation>;
+  create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string; origin?: { host: string; actorId?: string } }): GenerationOperation | Promise<GenerationOperation>;
   read(projectId: string, operationId: string): GenerationOperation | null | Promise<GenerationOperation | null>;
   patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string): GenerationOperation | Promise<GenerationOperation>;
   seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string): GenerationOperation | Promise<GenerationOperation>;
@@ -262,9 +270,140 @@ export type GenerationPlanningHandlerDependencies = {
     moduleId: string;
     mode: string;
   }) => { providerReady: boolean; missingForSubmit?: string[] };
+  videoModelCandidates?: readonly VideoModelCandidate[];
+  recommendVideoGeneration?: (
+    input: VideoGenerationRecommendationInput,
+    candidates: readonly VideoModelCandidate[],
+  ) => VideoGenerationRecommendationResult;
   start?: (operation: GenerationOperation, lease: ProjectLeaseV1) => unknown | Promise<unknown>;
   reconcile?: (operation: GenerationOperation, outcome: "found" | "not_found", lease: ProjectLeaseV1) => unknown | Promise<unknown>;
 };
+
+const CAMERA_INTENTS = new Set<NonNullable<VideoGenerationRecommendationInput["cameraIntent"]>>([
+  "locked", "pan", "tilt", "dolly", "orbit", "handheld", "path",
+]);
+
+function videoRecommendationInput(candidate: PlanCandidate): VideoGenerationRecommendationInput | null {
+  if (candidate.references.some((reference) => !reference.kind)) return null;
+  const parameters = candidate.parameters;
+  const durationSeconds = typeof parameters.duration === "number"
+    ? parameters.duration
+    : typeof parameters.durationSeconds === "number" ? parameters.durationSeconds : undefined;
+  const aspectRatio = typeof parameters.aspectRatio === "string"
+    ? parameters.aspectRatio
+    : typeof parameters.aspect_ratio === "string" ? parameters.aspect_ratio
+      : typeof parameters.size === "string" ? parameters.size : undefined;
+  const quality = parameters.quality === "draft" || parameters.quality === "balanced" || parameters.quality === "final"
+    ? parameters.quality
+    : undefined;
+  const cameraIntent = typeof parameters.cameraIntent === "string" && CAMERA_INTENTS.has(parameters.cameraIntent as NonNullable<VideoGenerationRecommendationInput["cameraIntent"]>)
+    ? parameters.cameraIntent as NonNullable<VideoGenerationRecommendationInput["cameraIntent"]>
+    : undefined;
+  const goals: NonNullable<VideoGenerationRecommendationInput["goals"]> = {
+    ...(typeof parameters.preserveCharacter === "boolean" ? { preserveCharacter: parameters.preserveCharacter } : {}),
+    ...(typeof parameters.preserveTransition === "boolean" ? { preserveTransition: parameters.preserveTransition } : {}),
+    ...(typeof parameters.useReferenceAudio === "boolean" ? { useReferenceAudio: parameters.useReferenceAudio } : {}),
+    ...(typeof parameters.generate_audio === "boolean" ? { generateAudio: parameters.generate_audio } : {}),
+    ...(durationSeconds === undefined ? {} : { durationSeconds }),
+    ...(aspectRatio === undefined ? {} : { aspectRatio }),
+    ...(quality === undefined ? {} : { quality }),
+  };
+  return {
+    prompt: candidate.prompt,
+    references: candidate.references.map((reference) => ({ kind: reference.kind!, role: reference.role })),
+    ...(cameraIntent === undefined ? {} : { cameraIntent }),
+    ...(typeof parameters.preferredFamily === "string" ? { preferredFamily: parameters.preferredFamily } : {}),
+    ...(Object.keys(goals).length === 0 ? {} : { goals }),
+  };
+}
+
+const normalizedModelIdentity = (value: string): string => value.trim().toLowerCase();
+
+/**
+ * Keep recommendations anchored to the model the user currently selected in
+ * the GUI/MCP plan. The catalog may contain aliases for a model family, so an
+ * exact catalog key wins before falling back to source-declared identifiers.
+ * If the selected model is not in the catalog yet (for example, a provider
+ * fixture or a newly configured adapter), preserve the existing cross-catalog
+ * fallback rather than making preview unusable.
+ */
+function candidatesForCurrentVideoModel(
+  candidate: PlanCandidate,
+  candidates: readonly VideoModelCandidate[],
+): readonly VideoModelCandidate[] {
+  const providerCandidates = candidates.filter((item) => normalizedModelIdentity(item.provider) === normalizedModelIdentity(candidate.providerId));
+  const modelId = normalizedModelIdentity(candidate.modelId);
+  const variantsFor = (item: VideoModelCandidate) => item.archetype.variants ?? [];
+  const variantForModelId = (item: VideoModelCandidate) => variantsFor(item).find((variant) =>
+    normalizedModelIdentity(variant.modelKey) === modelId
+      || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId),
+  );
+  const exactMatches = providerCandidates.filter((item) => normalizedModelIdentity(item.modelKey) === modelId || Boolean(variantForModelId(item)));
+  const aliasMatches = providerCandidates.filter((item) => item.archetype.identifierPatterns
+    .some((identity) => normalizedModelIdentity(identity) === modelId)
+    || variantsFor(item).some((variant) => (variant.identifierPatterns ?? [])
+      .some((identity) => normalizedModelIdentity(identity) === modelId)));
+  const scoped = exactMatches.length > 0 ? exactMatches : aliasMatches;
+  const selectedVariantId = (item: VideoModelCandidate): string | undefined => {
+    const requested = typeof candidate.variantId === "string" ? candidate.variantId.trim() : "";
+    const requestedCanonical = canonicalVideoVariantId(item.archetype, requested);
+    return requestedCanonical || variantForModelId(item)?.id || item.variantId;
+  };
+  if (scoped.length > 0) return scoped.map((item) => ({ ...item, ...(selectedVariantId(item) ? { variantId: selectedVariantId(item) } : {}) }));
+  return providerCandidates.length > 0 ? providerCandidates : candidates;
+}
+
+function videoCandidateForPlan(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[]): { candidate: PlanCandidate; videoCandidate: VideoModelCandidate } | null {
+  const provider = normalizedModelIdentity(candidate.providerId);
+  const modelId = normalizedModelIdentity(candidate.modelId);
+  const source = candidates.find((item) => normalizedModelIdentity(item.provider) === provider && (
+    normalizedModelIdentity(item.modelKey) === modelId
+      || (item.archetype.variants ?? []).some((variant) => normalizedModelIdentity(variant.modelKey) === modelId
+        || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId))
+  ));
+  if (!source) return null;
+  const inferredVariant = (source.archetype.variants ?? []).find((variant) => normalizedModelIdentity(variant.modelKey) === modelId
+    || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId));
+  const requested = typeof candidate.variantId === "string" ? candidate.variantId.trim() : "";
+  const requestedCanonical = canonicalVideoVariantId(source.archetype, requested);
+  if (requested && !requestedCanonical) throw new Error(`Unknown video variant: ${candidate.variantId}`);
+  const variantId = requestedCanonical ?? inferredVariant?.id ?? source.variantId ?? source.archetype.defaultVariantId;
+  return {
+    candidate: { ...candidate, modelId: source.modelKey, ...(variantId ? { variantId } : {}) },
+    videoCandidate: { ...source, ...(variantId ? { variantId } : {}) },
+  };
+}
+
+function parameterFieldForControl(control: ModelParameterControl): ParameterField {
+  if (control.type === "select") {
+    const optionValues = control.options.map((option) => option.value);
+    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "string")) return { type: "enum", enum: optionValues };
+    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "number" && Number.isFinite(value))) {
+      return { type: "number", enum: optionValues };
+    }
+    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "boolean")) {
+      return { type: "boolean", enum: optionValues };
+    }
+    return { type: control.options.some((option) => typeof option.value === "number") ? "number" : "string" };
+  }
+  if (control.type === "number") return { type: "number" };
+  if (control.type === "boolean") return { type: "boolean" };
+  return { type: "string" };
+}
+
+function videoParameterSchema(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): Record<string, ParameterField> | undefined {
+  if (!candidates) return undefined;
+  const selected = videoCandidateForPlan(candidate, candidates);
+  if (!selected) return undefined;
+  const mode = effectiveVideoModes(selected.videoCandidate).find((item) => item.transportTaskKind === candidate.mode);
+  if (!mode) return undefined;
+  return Object.fromEntries(mode.params.map((control) => [control.key, parameterFieldForControl(control)]));
+}
+
+function normalizeVideoCandidate(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): PlanCandidate {
+  const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
+  return selected?.candidate ?? candidate;
+}
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid ${label}`);
@@ -278,13 +417,24 @@ function candidateFrom(value: unknown): PlanCandidate {
   if (typeof raw.moduleId !== "string" || typeof raw.providerId !== "string" || typeof raw.modelId !== "string" || typeof raw.mode !== "string") throw new Error("Candidate module, provider, model and mode are required");
   if (typeof raw.prompt !== "string") throw new Error("Candidate prompt is required");
   if (!Number.isInteger(raw.revision) || Number(raw.revision) < 1) throw new Error("Candidate revision must be a positive integer");
+  if (raw.variantId !== undefined && (typeof raw.variantId !== "string" || !raw.variantId.trim())) throw new Error("Candidate variant id must be a non-empty string");
   return {
-    candidateId: raw.candidateId.trim(), revision: Number(raw.revision), moduleId: raw.moduleId.trim(), providerId: raw.providerId.trim(), modelId: raw.modelId.trim(), mode: raw.mode.trim(), prompt: raw.prompt,
+    candidateId: raw.candidateId.trim(), revision: Number(raw.revision), moduleId: raw.moduleId.trim(), providerId: raw.providerId.trim(), modelId: raw.modelId.trim(), ...(typeof raw.variantId === "string" ? { variantId: raw.variantId.trim() } : {}), mode: raw.mode.trim(), prompt: raw.prompt,
     parameters: record(raw.parameters ?? {}, "candidate parameters"),
     references: references.map((reference, index) => {
       const item = record(reference, `candidate reference ${index}`);
       if (typeof item.assetId !== "string" || typeof item.contentHash !== "string" || !Number.isInteger(item.version)) throw new Error(`Invalid candidate reference ${index}`);
-      return { assetId: item.assetId, contentHash: item.contentHash, version: Number(item.version) };
+      const kind = item.kind;
+      const role = item.role;
+      if (kind !== undefined && kind !== "image" && kind !== "video" && kind !== "audio") throw new Error(`Invalid candidate reference kind ${index}`);
+      if (role !== undefined && role !== "character" && role !== "first_frame" && role !== "last_frame" && role !== "reference" && role !== "audio") throw new Error(`Invalid candidate reference role ${index}`);
+      return {
+        assetId: item.assetId,
+        contentHash: item.contentHash,
+        version: Number(item.version),
+        ...(kind === undefined ? {} : { kind }),
+        ...(role === undefined ? {} : { role }),
+      };
     }),
   };
 }
@@ -328,7 +478,7 @@ function resolveProviderReadiness(
 
 export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerDependencies) {
   const now = deps.now ?? (() => new Date().toISOString());
-  return async (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1 }): Promise<unknown> => {
+  return async (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1; origin?: { host: string; actorId?: string } }): Promise<unknown> => {
     if (!input.lease) throw new Error("A verified project lease is required");
     const params = input.params;
     if (input.capability === "context") {
@@ -339,32 +489,84 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         modes: [...new Set(provider.models.flatMap((model) => model.modes))],
         capabilities: provider.models.map((model) => ({ modelId: model.modelId, ...model.capabilities })),
       })));
+      const projectVideoModes = (videoCandidate: VideoModelCandidate) => effectiveVideoModes(videoCandidate).map((mode) => ({
+        id: mode.id,
+        intent: mode.intent,
+        vendorTerm: mode.vendorTerm,
+        transportTaskKind: mode.transportTaskKind,
+        references: mode.slots.map((slot) => ({ kind: slot.kind, min: slot.min, max: slot.max, label: slot.label })),
+        parameters: mode.params.map((parameter) => ({ key: parameter.key, type: parameter.type, options: parameter.options })),
+      }));
+      const videoModels = (deps.videoModelCandidates ?? []).map((videoCandidate) => ({
+        providerId: videoCandidate.provider,
+        modelId: videoCandidate.modelKey,
+        label: videoCandidate.label,
+        archetypeId: videoCandidate.archetype.id,
+        ...(videoCandidate.variantId ? { variantId: videoCandidate.variantId } : {}),
+        variants: (videoCandidate.variantChoices ?? []).map((variant) => ({
+          ...variant,
+          modes: projectVideoModes({ ...videoCandidate, variantId: variant.id }),
+        })),
+        modes: projectVideoModes(videoCandidate),
+      }));
       return {
         projectId: input.lease.projectId,
         immutableProjectUuid: input.lease.immutableProjectUuid,
         projectGeneration: input.lease.projectGeneration,
         providerProfiles,
+        ...(videoModels.length ? { videoModels } : {}),
         nextAction: "create",
       };
     }
     const operationId = typeof params.operationId === "string" && params.operationId.trim() ? params.operationId.trim() : `op-${crypto.randomUUID()}`;
     if (input.capability === "create") {
-      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: candidateFrom(params.candidate), now: now() });
+      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(candidateFrom(params.candidate), deps.videoModelCandidates), now: now(), origin: input.origin });
       return { operation, nextAction: "preview" };
     }
     const current = await deps.operations.read(input.lease.projectId, operationId);
     if (!current) throw new Error(`Generation operation not found: ${operationId}`);
     if (input.capability === "plan") {
-      const operation = await deps.operations.patch(input.lease.projectId, operationId, record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now());
+      const rawPatch = record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
+      const nextProviderId = typeof rawPatch.providerId === "string" ? rawPatch.providerId : current.candidate.providerId;
+      const nextModelId = typeof rawPatch.modelId === "string" ? rawPatch.modelId : current.candidate.modelId;
+      const modelChanged = normalizedModelIdentity(nextProviderId) !== normalizedModelIdentity(current.candidate.providerId)
+        || normalizedModelIdentity(nextModelId) !== normalizedModelIdentity(current.candidate.modelId);
+      const mergedCandidate = {
+        ...current.candidate,
+        ...rawPatch,
+        ...(modelChanged && rawPatch.variantId === undefined ? { variantId: undefined } : {}),
+        parameters: rawPatch.parameters ?? current.candidate.parameters,
+        references: rawPatch.references ?? current.candidate.references,
+      } as PlanCandidate;
+      const normalizedCandidate = normalizeVideoCandidate(mergedCandidate, deps.videoModelCandidates);
+      const normalizedPatch = {
+        ...rawPatch,
+        ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
+      };
+      const operation = await deps.operations.patch(input.lease.projectId, operationId, normalizedPatch, now());
       return { operation, nextAction: "preview" };
     }
     if (input.capability === "preview") {
-      const contract = compileExecutionContract(current.candidate, deps.registry);
-      const readiness = resolveProviderReadiness(deps, current.candidate);
+      const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
+      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const readiness = resolveProviderReadiness(deps, candidate);
+      const resolved = deps.registry.resolve({
+        moduleId: candidate.moduleId,
+        providerId: candidate.providerId,
+        modelId: candidate.modelId,
+        mode: candidate.mode,
+      });
+      const recommendationInput = resolved.outputKinds.includes("video")
+        ? videoRecommendationInput(candidate)
+        : null;
+      const recommendation = recommendationInput && deps.recommendVideoGeneration && deps.videoModelCandidates
+        ? deps.recommendVideoGeneration(recommendationInput, candidatesForCurrentVideoModel(candidate, deps.videoModelCandidates))
+        : undefined;
       return {
         operationId,
         candidateRevision: current.candidate.revision,
         contract,
+        ...(recommendation ? { recommendation } : {}),
         providerReady: readiness.providerReady,
         providerCapabilityProfile: readiness.providerCapabilityProfile,
         recoveryNotice: readiness.recoveryNotice,
@@ -373,8 +575,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       };
     }
     if (input.capability === "gate_request") {
-      const contract = compileExecutionContract(current.candidate, deps.registry);
-      const readiness = resolveProviderReadiness(deps, current.candidate);
+      const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
+      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const readiness = resolveProviderReadiness(deps, candidate);
       if (!readiness.providerReady) throw new GenerationProviderCapabilityError(contract.providerId, readiness.missingForSubmit.length ? readiness.missingForSubmit : ["configured_provider"]);
       const sealed = current.state === "draft"
         ? await deps.operations.seal(input.lease.projectId, operationId, contract, now())

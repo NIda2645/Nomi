@@ -25,7 +25,7 @@ describe("generation provider bootstrap", () => {
   it("proves only the capabilities implemented by the APIMart adapter", () => {
     const boot = createGenerationProviderBootstrap(state("test-key"), { apiKeyResolver: () => "test-key" });
     expect(boot.providers).toHaveLength(1);
-    expect(boot.providers[0]?.capabilities).toEqual({ submitIdempotency: false, query: true, reconcile: true, cancel: false });
+    expect(boot.providers[0]?.capabilities).toEqual({ submitIdempotency: false, query: true, reconcile: true, cancel: false, materialize: true });
     expect(boot.readinessByProvider.apimart).toMatchObject({ providerReady: true, capabilities: { query: true, reconcile: true, cancel: false } });
   });
 });

@@ -41,7 +41,7 @@ describe("APIMart observe-only generation provider", () => {
       resolution: "1K",
       n: 1,
     });
-    expect(provider.capabilities).toEqual({ submitIdempotency: false, query: true, reconcile: true, cancel: false });
+    expect(provider.capabilities).toEqual({ submitIdempotency: false, query: true, reconcile: true, cancel: false, materialize: true });
   });
 
   it("submits with bearer auth and extracts data[0].task_id", async () => {
@@ -67,6 +67,19 @@ describe("APIMart observe-only generation provider", () => {
     const fetchImpl = vi.fn();
     const provider = createApimartGenerationProvider({ apiKey: "test-key", fetchImpl });
     await expect(provider.reconcile?.({ idempotencyKey: "stable-key" })).resolves.toEqual({ found: false });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("extracts provider-specific image/video output shapes without making a second request", async () => {
+    const fetchImpl = vi.fn();
+    const provider = createApimartGenerationProvider({ apiKey: "test-key", fetchImpl });
+    await expect(provider.materialize?.({
+      providerTaskId: "task-1",
+      raw: { code: 200, data: { status: "completed", result: { images: [{ url: "https://cdn.example/image.png" }], videos: [{ url: "https://cdn.example/video.mp4" }] } } },
+    })).resolves.toMatchObject({ outputs: [
+      { kind: "image", url: "https://cdn.example/image.png" },
+      { kind: "video", url: "https://cdn.example/video.mp4", providerOutputId: "video-1" },
+    ] });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

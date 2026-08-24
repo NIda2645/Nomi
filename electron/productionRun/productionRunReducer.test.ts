@@ -76,4 +76,13 @@ describe('production run execution binding reducer boundary', () => {
       commandId: 'job-add-key', expectedRevision: 1, type: 'job.add', payload: { job: { ...job(), idempotencyKey: 'different-key' } }, issuedAt: now,
     }, now)).toThrow(/idempotency/)
   })
+
+  it('records provider observations without forcing an illegal same-status transition', () => {
+    const current = { ...runWithCandidateScript(), jobs: [{ ...job(), status: 'provider_accepted' as const }] }
+    const effect = applyProductionCommand(current, {
+      commandId: 'job-poll-observation', expectedRevision: 1, type: 'job.patch',
+      payload: { jobId: 'job-1', patch: { providerStatus: 'completed', lastPollAt: now } }, issuedAt: now,
+    }, now)
+    expect(effect.run.jobs[0]).toMatchObject({ status: 'provider_accepted', providerStatus: 'completed', lastPollAt: now })
+  })
 })

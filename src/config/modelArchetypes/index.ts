@@ -46,7 +46,15 @@ import { CODEX_IMAGEGEN_ARCHETYPE } from "./codexImagegen";
 import type { ModelArchetype } from "./types";
 import { customCapabilityArchetypeForModel } from "./customCapabilityContract";
 
-export type { ModelArchetype, ArchetypeMode, ArchetypeReferenceSlot, ArchetypeReferenceSlotKind, ArchetypeIntent, ArchetypeTransportTaskKind, ModelArchetypeVariant } from "./types";
+export type { ModelArchetype, ArchetypeMode, ArchetypeReferenceSlot, ArchetypeReferenceSlotKind, ArchetypeExpressionChannel, ArchetypeIntent, ArchetypeTransportTaskKind, ModelArchetypeVariant } from "./types";
+export { recommendVideoGeneration } from "./videoGenerationRecommendation";
+export type {
+  VideoGenerationRecommendation,
+  VideoGenerationRecommendationInput,
+  VideoGenerationRecommendationResult,
+  VideoModelCandidate,
+  VideoReferenceInput,
+} from "./videoGenerationRecommendation";
 export {
   CUSTOM_CAPABILITY_CONTRACT_META_KEY,
   CUSTOM_CAPABILITY_CONTRACT_VERSION,

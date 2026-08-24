@@ -100,11 +100,58 @@ describe("ExecutionContract compiler", () => {
     }), registry)).toThrow(ContractCompilationError);
   });
 
+  it("keeps discrete numeric choices discrete instead of accepting arbitrary numbers", () => {
+    const constrainedRegistry = createModuleRegistry([{
+      ...manifest,
+      providers: [{
+        providerId: "provider.video",
+        models: [{
+          modelId: "model.video.v1",
+          modes: ["text-to-video"],
+          parameterSchema: { duration: { type: "number", enum: [6, 10], required: true } },
+          capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true },
+        }],
+      }],
+    }]);
+    expect(compileExecutionContract(candidate({
+      providerId: "provider.video",
+      modelId: "model.video.v1",
+      mode: "text-to-video",
+      parameters: { aspectRatio: "16:9", duration: 6 },
+    }), constrainedRegistry).parameters.duration).toBe(6);
+    expect(() => compileExecutionContract(candidate({
+      providerId: "provider.video",
+      modelId: "model.video.v1",
+      mode: "text-to-video",
+      parameters: { aspectRatio: "16:9", duration: 7 },
+    }), constrainedRegistry)).toThrow(ContractCompilationError);
+  });
+
   it("allows edits before sealing and requires a new draft after sealing", () => {
     const draft = applyPlanCandidatePatch(candidate(), { parameters: { aspectRatio: "1:1", seed: 8 } });
     expect(draft.revision).toBe(2);
     expect(draft.parameters).toEqual({ aspectRatio: "1:1", seed: 8 });
     expect(() => applyPlanCandidatePatch({ ...candidate(), sealedContractHash: "a".repeat(64) }, { prompt: "new" })).toThrow(/new_draft_required/);
   });
-});
 
+  it("preserves reference kind and role in the sealed contract", () => {
+    const contract = compileExecutionContract(candidate({
+      references: [{ assetId: "asset-character", contentHash: "c".repeat(64), version: 1, kind: "image", role: "character" }],
+    }), registry);
+
+    expect(contract.references[0]).toMatchObject({ kind: "image", role: "character" });
+  });
+
+  it("changes the contract when only a reference role changes", () => {
+    const original = candidate({
+      references: [{ assetId: "asset-a", contentHash: "a".repeat(64), version: 1, kind: "image", role: "character" }],
+    });
+    const changed = applyPlanCandidatePatch(original, {
+      references: [{ ...original.references[0]!, role: "first_frame" }],
+    });
+
+    expect(changed.revision).toBe(original.revision + 1);
+    expect(compileExecutionContract(changed, registry).contractHash)
+      .not.toBe(compileExecutionContract(original, registry).contractHash);
+  });
+});

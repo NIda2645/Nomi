@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import type { ResolvedModule } from "./moduleRegistry";
+import type { ParameterField } from "./moduleManifest";
 
 export const EXECUTION_CONTRACT_SCHEMA_VERSION = 1 as const;
 
@@ -8,6 +9,8 @@ export type PlanAssetReference = {
   assetId: string;
   contentHash: string;
   version: number;
+  kind?: "image" | "video" | "audio";
+  role?: "character" | "first_frame" | "last_frame" | "reference" | "audio";
 };
 
 export type PlanCandidate = {
@@ -16,6 +19,7 @@ export type PlanCandidate = {
   moduleId: string;
   providerId: string;
   modelId: string;
+  variantId?: string;
   mode: string;
   prompt: string;
   parameters: Record<string, unknown>;
@@ -33,6 +37,7 @@ export type ExecutionContractV1 = {
   moduleVersion: string;
   providerId: string;
   modelId: string;
+  variantId?: string;
   mode: string;
   prompt: string;
   parameters: Record<string, unknown>;
@@ -105,7 +110,7 @@ function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { 
       warnings.push(`参数 ${key} 不被 ${module.providerId}/${module.modelId} 支持，已从合同中移除`);
       continue;
     }
-    if (!parameterMatches(field.type, value) || (field.enum && typeof value === "string" && !field.enum.includes(value))) {
+    if (!parameterMatches(field.type, value) || (field.enum && !field.enum.some((option) => Object.is(option, value)))) {
       droppedFields.push({ path: `parameters.${key}`, reason: "invalid_parameter" });
       throw new ContractCompilationError(`参数 parameters.${key} 不符合当前模型的声明`);
     }
@@ -117,15 +122,26 @@ function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { 
   return { parameters, warnings, droppedFields };
 }
 
-export function compileExecutionContract(candidate: PlanCandidate, registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule }): ExecutionContractV1 {
+export type ExecutionContractCompileOptions = {
+  /** Optional source-backed parameter projection (for example a selected video variant). */
+  parameterSchema?: Record<string, ParameterField>;
+};
+
+export function compileExecutionContract(
+  candidate: PlanCandidate,
+  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
+  options: ExecutionContractCompileOptions = {},
+): ExecutionContractV1 {
   if (!Number.isInteger(candidate.revision) || candidate.revision < 1) throw new ContractCompilationError("Candidate revision must be a positive integer");
   if (!candidate.prompt.trim()) throw new ContractCompilationError("Prompt is required");
+  if (candidate.variantId !== undefined && !candidate.variantId.trim()) throw new ContractCompilationError("Variant id must not be empty");
   if (candidate.sealedContractHash) throw new NewDraftRequiredError();
   const module = registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode });
   if (candidate.references.length > (module.assetInputSchema.references?.max ?? Number.MAX_SAFE_INTEGER)) {
     throw new ContractCompilationError("参考素材数量超过当前模式支持的上限");
   }
-  const { parameters, warnings, droppedFields } = compileParameters(candidate, module);
+  const effectiveModule = options.parameterSchema ? { ...module, parameterSchema: options.parameterSchema } : module;
+  const { parameters, warnings, droppedFields } = compileParameters(candidate, effectiveModule);
   const semantic = {
     schemaVersion: EXECUTION_CONTRACT_SCHEMA_VERSION,
     candidateId: candidate.candidateId,
@@ -134,6 +150,7 @@ export function compileExecutionContract(candidate: PlanCandidate, registry: { r
     moduleVersion: module.version,
     providerId: module.providerId,
     modelId: module.modelId,
+    ...(candidate.variantId ? { variantId: candidate.variantId.trim() } : {}),
     mode: module.mode,
     prompt: candidate.prompt,
     parameters,
@@ -152,4 +169,3 @@ export function applyPlanCandidatePatch(candidate: PlanCandidate, patch: Partial
     references: patch.references ? structuredClone(patch.references) : structuredClone(candidate.references),
   };
 }
-

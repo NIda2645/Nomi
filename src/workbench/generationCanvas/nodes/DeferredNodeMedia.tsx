@@ -131,6 +131,11 @@ export type DeferredNodeVideoProps = React.VideoHTMLAttributes<HTMLVideoElement>
 function releaseVideoElement(video: HTMLVideoElement | null): void {
   if (!video) return
   video.pause()
+  // React StrictMode intentionally runs effect cleanup once while the DOM node
+  // is still connected. Do not clear src in that synthetic cleanup: doing so
+  // leaves the mounted video at NETWORK_EMPTY and makes a valid asset look
+  // broken. A real unmount releases the element with its DOM subtree anyway.
+  if (video.isConnected) return
   video.removeAttribute('src')
   try {
     video.load()
@@ -144,6 +149,12 @@ function ManagedDeferredNodeVideo({
   ...props
 }: React.VideoHTMLAttributes<HTMLVideoElement> & { mediaKey: string }): JSX.Element {
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
+  React.useEffect(() => {
+    // React sets the src property before the node is attached in some Electron
+    // renderer transitions. Explicitly starting the load keeps a queued media
+    // retry from sitting at NETWORK_EMPTY forever.
+    videoRef.current?.load()
+  }, [mediaKey, props.src])
   React.useEffect(() => () => releaseVideoElement(videoRef.current), [])
   return <video {...props} key={mediaKey} ref={videoRef} />
 }

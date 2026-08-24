@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { hardenedFetch } from "../hardenedFetch";
 import { isJsonRecord, nowIso, type JsonRecord } from "../jsonUtils";
@@ -147,6 +148,58 @@ export function writeAsset(
   fs.writeFileSync(absolutePath, bytes);
   writeAssetSidecarMeta(absolutePath, meta);
   broadcastAssetsUpdated(projectId);
+  const url = localAssetUrl(projectId, relativePath);
+  const t = nowIso();
+  return {
+    id: stableStoredAssetId(projectId, relativePath),
+    name: sanitizeName(fileName, "asset"),
+    userId: "local",
+    projectId,
+    createdAt: t,
+    updatedAt: t,
+    data: {
+      ...meta,
+      url,
+      relativePath,
+      absolutePath,
+      contentType: actualContentType,
+      size: bytes.byteLength,
+    },
+  };
+}
+
+/**
+ * Persist a generated output at a path derived from its materialization key.
+ * A retry after a crash returns the same asset instead of creating `-2` copies.
+ */
+export function writeDeterministicAsset(
+  projectId: string,
+  bytes: Buffer,
+  fileName: string,
+  contentType: string,
+  rawMeta: JsonRecord,
+  materializationKey: string,
+): unknown {
+  const meta = sanitizeAssetMetaForKind(rawMeta);
+  const actualContentType = effectiveContentType(fileName, contentType, bytes);
+  const storageFileName = canonicalAssetFileName(fileName, actualContentType);
+  const parsed = path.parse(sanitizeName(storageFileName, "asset"));
+  const keyHash = crypto.createHash("sha256").update(materializationKey).digest("hex").slice(0, 24);
+  const projectDir = projectDirById(projectId);
+  if (!projectDir) throw new Error("Project not found");
+  const bucket = assetBucketFromMeta(meta);
+  const relativePath = path.posix.join("assets", bucket, "materialized", `${parsed.name || "asset"}-${keyHash}${parsed.ext || ".bin"}`);
+  const absolutePath = path.join(projectDir, relativePath);
+  ensureDir(path.dirname(absolutePath));
+  if (fs.existsSync(absolutePath)) {
+    const existingHash = crypto.createHash("sha256").update(fs.readFileSync(absolutePath)).digest("hex");
+    const nextHash = crypto.createHash("sha256").update(bytes).digest("hex");
+    if (existingHash !== nextHash) throw new Error("Deterministic materialization key maps to different bytes");
+  } else {
+    fs.writeFileSync(absolutePath, bytes);
+    writeAssetSidecarMeta(absolutePath, meta);
+    broadcastAssetsUpdated(projectId);
+  }
   const url = localAssetUrl(projectId, relativePath);
   const t = nowIso();
   return {
