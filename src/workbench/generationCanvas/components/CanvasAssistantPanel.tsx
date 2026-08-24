@@ -8,9 +8,8 @@ import {
   sendGenerationCanvasAgentMessage,
   type ToolCallEvent,
 } from '../agent/generationCanvasAgentClient'
-import { workbenchSessionKey } from '../../ai/workbenchAgentRunner'
+import { workbenchSessionKey, safeClearAgentSession } from '../../ai/agentSessionKey'
 import { startNewConversation } from '../../ai/conversationPersistence'
-import { clearWorkbenchAgentSession } from '../../../api/desktopClient'
 import { generationCanvasTools } from '../agent/generationCanvasTools'
 import { applyCanvasToolCall } from '../agent/applyCanvasToolCall'
 import { applyProposalBatch } from '../agent/proposalTxn'
@@ -532,7 +531,7 @@ export default function CanvasAssistantPanel({
     setDraft('')
     clearAttachments()
     // 新对话 = 该 area 模型上下文归零(创作/画布各一份键,互不影响)。
-    void clearWorkbenchAgentSession(workbenchSessionKey('generation'))
+    void safeClearAgentSession(workbenchSessionKey('generation'))
   }, [clearAttachments, setDraft])
 
   if (collapsed) {

@@ -55,7 +55,7 @@
 | 层 | 文件 | 前缀 | 你该不该直接用 |
 |---|---|---|---|
 | ① 规范底层（**唯一该新增的地方**）| `src/theme/nomi-tokens.css` | `--nomi-*` | ✅ 优先。新颜色/圆角/阴影只在这里加 |
-| ② 工作区语义映射 | `src/workbench/workbench.css` | `--workbench-*` | ✅ 工作区内语义色（success/danger/video/hover…）用这层；它们 alias 到 ①，少数语义色是 hex 落在这里（§2.1.4）|
+| ② 工作区语义映射 | `tailwind.config.ts` addBase `:root`（光/暗两块，与 ① 同机制；2026-08-24 从 workbench.css 收口） | `--workbench-*` | ✅ 工作区语义色（success/danger/video/hover…）用这层；多数 alias 到 ①，少数是 hex（§2.1.4）。**定义必须留在 :root**——写进类作用域，portal/库页浮层就解析不到（check:tokens 第 6 类当场拦）|
 | ③ 遗留并行命名 ⚠️ | `src/styles/globals.css` | `--tc-*` / `--handle-color-*` | ❌ **不要再用、不要再加**。这是早期暗色主题残留，绝大多数已死，详见 §14 漂移 |
 
 **铁律：新增 token 只进 ①（`nomi-tokens.css`）。** 看到 `--tc-*` 当它是历史包袱，别扩散。
@@ -214,7 +214,7 @@ DaVinci Resolve 确实有「选中跟随播放头」，但它是 **opt-in 且默
 | 层级 | 文件 | 内容 | Tailwind 暴露 |
 |---|---|---|---|
 | 底层颜色（OKLCH）| `src/theme/nomi-tokens.css` | `--nomi-bg` / `--nomi-paper` / `--nomi-ink*` / `--nomi-line*` / `--nomi-accent*` / `--nomi-shadow-*` / `--nomi-radius-*` / `--nomi-font-*` | `nomi-*` 颜色类、`rounded-nomi` |
-| 工作区映射 | `src/workbench/workbench.css` | `--workbench-*`（基于 nomi 但提供工作区语义命名）| `workbench-*` 颜色类 |
+| 工作区映射 | `tailwind.config.ts` addBase `:root`（光/暗两块）| `--workbench-*`（基于 nomi 但提供工作区语义命名）| `workbench-*` 颜色类 |
 | 几何/排版（TS）| `src/theme/nomiTheme.ts` 中的 `nomiDesignTokens` | `radius` / `spacing` / `fontSize` / `lineHeight` / `shadow` | Tailwind config 引用 |
 
 ### 2.1 颜色 token 全表
@@ -261,9 +261,9 @@ DaVinci Resolve 确实有「选中跟随播放头」，但它是 **opt-in 且默
 | `--nomi-snap-tag` | `oklch(0.45 0.18 30)` | 深橙 | 吸附标签 |
 | `--workbench-text` | `oklch(0.56 0.17 305)` | 紫 | 预览时间轴文字轨（字幕/标题卡），与图片轨蓝、视频轨青区分 |
 
-#### 2.1.4 工作区语义色（定义在 workbench.css，⚠️ 这几个是 hex/rgba 落在 ② 层）
+#### 2.1.4 工作区语义色（定义在 tailwind.config.ts addBase `:root`，⚠️ 这几个是 hex/rgba 落在 ② 层）
 
-> 注：这层语义色在 `workbench.css` 里是 **hex/rgba 直写**（历史原因），不是 oklch token。消费方**只用类名**（`text-workbench-danger` 等），不要把这些 hex 抄进组件。理想态应回收进 ① 层 oklch，见 §14 漂移。
+> 注：这层语义色是 **hex/rgba 直写**（历史原因），不是 oklch token。消费方**只用类名**（`text-workbench-danger` 等），不要把这些 hex 抄进组件。理想态应回收进 ① 层 oklch，见 §14 漂移。定义在 `:root` 而非 `.workbench-shell` 作用域——CSS 变量沿 DOM 继承，作用域定义会让 portal / 库页浮层静默退灰（2026-08-24 收口，docs/plan/2026-08-24-workbench-token-root-scope.md）。
 
 | Token | 实际值 | 用途 |
 |---|---|---|
@@ -903,7 +903,7 @@ import IconX from '@/assets/some-svg.svg'
 | 高层原则 | `Design.md`（根目录） |
 | 颜色 token | `src/theme/nomi-tokens.css` |
 | 几何/排版 token | `src/theme/nomiTheme.ts` |
-| 工作区 token | `src/workbench/workbench.css` |
+| 工作区 token | `tailwind.config.ts`（addBase `:root` ② 层，2026-08-24 从 workbench.css 收口）|
 | 组件库入口 | `src/design/index.ts` |
 | 组件库说明 | `src/design/README.md` |
 | Tailwind 扩展 | `tailwind.config.*` |
@@ -929,7 +929,7 @@ import IconX from '@/assets/some-svg.svg'
 | ~~S2~~ ✅ 已清 | `color-scheme: light dark` | 与 light-only 矛盾 | 已改 `color-scheme: light` |
 | ~~S3~~ ✅ 已清 | Inter / Fraunces 未打包 | 品牌字干净机器回退 | 已装 `@fontsource-variable/{inter,fraunces}` 自托管，字栈首位置 `"Inter Variable"`/`"Fraunces Variable"`（§2.6）|
 | ~~S4~~ ✅ 已清 | `--handle-color-*` 0 消费点死 token | 死代码 | 已随 S1 删除（连线另有取色路径，确认 0 悬空引用）|
-| S5 | 语义色 `--workbench-success/danger/video` 等是 hex/rgba（workbench.css），非 oklch | 与「颜色只在 nomi-tokens.css 写 oklch」不齐（§2.1.4）| 回收进 `--nomi-*` oklch 体系（**未做**，留 backlog）|
+| S5 | 语义色 `--workbench-success/danger/video` 等是 hex/rgba（② 层，tailwind.config.ts addBase；2026-08-24 已收口到 `:root` 并入 check:tokens 第 6 类），非 oklch | 与「颜色只写 oklch」不齐（§2.1.4）| 回收进 `--nomi-*` oklch 体系（**未做**，留 backlog；值本身未动）|
 
 ### 14.2 组件级（用户可见面 vs 文档不一致，2026-06-21 审计）
 

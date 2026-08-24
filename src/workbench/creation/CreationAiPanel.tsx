@@ -6,7 +6,7 @@ import { NomiLogoMark, WorkbenchButton, WorkbenchIconButton } from '../../design
 import { cn } from '../../utils/cn'
 import { runWorkbenchAgent, workbenchSessionKey, type ToolCallEvent } from '../ai/workbenchAgentRunner'
 import { startNewConversation } from '../ai/conversationPersistence'
-import { clearWorkbenchAgentSession } from '../../api/desktopClient'
+import { safeClearAgentSession } from '../ai/agentSessionKey'
 import { AssistantMessageView, UserMessageBubble } from '../ai/AssistantMessageView'
 import { NoTextModelRecoveryCard } from '../ai/NoTextModelRecoveryCard'
 import { AssistantErrorCard } from '../ai/AssistantErrorCard'
@@ -457,7 +457,7 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     clearAttachments()
     setError('')
     // 新对话 = 该 area 模型上下文归零(创作/画布各一份键,互不影响)。
-    void clearWorkbenchAgentSession(workbenchSessionKey('creation'))
+    void safeClearAgentSession(workbenchSessionKey('creation'))
   }, [clearAttachments, setDraft, setError, turn])
 
   const panelBody = (
@@ -780,11 +780,9 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
   )
 
   if (!expanded || typeof document === 'undefined') return panelBody
-  // portal 到 body 会脱离 .workbench-shell 作用域 → 所有 --workbench-* token 失效（面板背景/
-  // 蒙层全透明）。带上 workbench-shell 类把 token 作用域接回来（同 Scene3D 全屏壳做法）。
   return createPortal(
     <div
-      className={cn('workbench-shell', 'fixed inset-0 z-[200] grid place-items-center bg-[var(--workbench-backdrop)] p-4')}
+      className={cn('fixed inset-0 z-[200] grid place-items-center bg-[var(--workbench-backdrop)] p-4')}
       onClick={(event) => {
         if (event.target === event.currentTarget) setExpanded(false)
       }}

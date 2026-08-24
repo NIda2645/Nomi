@@ -33,6 +33,11 @@ export type GenerationSubmissionStartInput = {
   definitelyNotSubmitted?: boolean;
   /** Explicitly selected attempt; omitted means the latest durable attempt. */
   attempt?: number;
+  /**
+   * P4 S1 shot addressing: which shot's sub-contract to submit. Omitted = the default (single) shot,
+   * behaving exactly as the P1–P3 single-shot chain (top-level plan contract). Backward compatible.
+   */
+  shotId?: string;
 };
 
 export type GenerationSubmissionResult = {
@@ -91,6 +96,8 @@ export type GenerationNewAttemptInput = {
   projectId: string;
   operationId: string;
   reason: "submission_unknown" | "needs_attention";
+  /** P4 S1: which shot to re-attempt. Omitted = the default (single) shot — today's chain. */
+  shotId?: string;
 };
 
 export type GenerationNewAttemptResult = {
@@ -154,20 +161,38 @@ function requiredRun(repository: ProductionRunRepository, projectId: string, run
   return run;
 }
 
-function requiredContract(run: ProductionRun): ExecutionContractV1 {
+/**
+ * P4 S1: resolve the sub-contract this call addresses.
+ * - No shotId → the default (single) shot: top-level plan contract + plan-level receipt (today's chain).
+ * - shotId → that shot's sealed sub-contract + the shot's own receipt approval.
+ * Either way the plan must be sealed/submitted and the addressed unit must be approved before submit.
+ */
+function requiredContract(run: ProductionRun, shotId?: string): ExecutionContractV1 {
   const plan = run.generationPlan;
-  if (!plan?.contract || !plan.approvedReceiptId || (plan.state !== "sealed" && plan.state !== "submitted")) {
+  if (!plan || (plan.state !== "sealed" && plan.state !== "submitted")) {
     throw new Error("Seal and confirm the generation plan before starting");
   }
+  if (shotId) {
+    const shot = (plan.shots ?? []).find((candidate) => candidate.shotId === shotId);
+    if (!shot?.contract || !shot.approvedReceiptId) throw new Error("Seal and confirm the generation plan before starting");
+    return shot.contract;
+  }
+  if (!plan.contract || !plan.approvedReceiptId) throw new Error("Seal and confirm the generation plan before starting");
   return plan.contract;
 }
 
-function jobIdFor(runId: string, contractHash: string, attempt = 1): string {
-  return `generation-${runId}-${contractHash.slice(0, 16)}${attempt > 1 ? `-attempt-${attempt}` : ""}`;
+/**
+ * P4 S1 identity: shotId is part of the jobId so two shots with identical parameters (equal contract
+ * hash) never collide. The default shot keeps the legacy prefix (`generation-<run>-<hash16>`) so
+ * durable Runs and single-shot callers are byte-compatible; a named shot inserts `-<shotId>` after it.
+ */
+function jobIdFor(runId: string, contractHash: string, attempt = 1, shotId?: string): string {
+  const shotSegment = shotId ? `-${shotId}` : "";
+  return `generation-${runId}${shotSegment}-${contractHash.slice(0, 16)}${attempt > 1 ? `-attempt-${attempt}` : ""}`;
 }
 
-function latestGenerationAttempt(run: ProductionRun, contractHash: string): number {
-  const prefix = `generation-${run.runId}-${contractHash.slice(0, 16)}`;
+function latestGenerationAttempt(run: ProductionRun, contractHash: string, shotId?: string): number {
+  const prefix = jobIdFor(run.runId, contractHash, 1, shotId).replace(/-attempt-\d+$/, "");
   return run.jobs
     .filter((job) => job.jobId === prefix || job.jobId.startsWith(`${prefix}-attempt-`))
     .reduce((latest, job) => Math.max(latest, job.attempt), 0);
@@ -185,7 +210,12 @@ function isFailedProviderStatus(status: string): boolean {
   return ["failed", "error", "cancelled", "canceled", "rejected"].includes(status.trim().toLowerCase());
 }
 
-function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: ProductionRun, contract: ExecutionContractV1, jobId: string, attempt: number, fencingEpoch: number): ProductionExecutionBinding {
+/**
+ * The binding's `shotId` is the addressed shot (default shot → its jobId, keeping single-shot bindings
+ * byte-identical). The providerIdempotencyKey MUST include the shotId so two shots that hash identically
+ * derive different keys (#5): a two-shot batch with equal parameters must not collapse to one provider task.
+ */
+function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: ProductionRun, contract: ExecutionContractV1, jobId: string, attempt: number, fencingEpoch: number, shotId?: string): ProductionExecutionBinding {
   const existing = run.jobs.find((job) => job.jobId === jobId)?.executionBinding;
   if (existing) {
     if (existing.contractHash !== contract.contractHash || existing.providerNamespace !== contract.providerId) {
@@ -193,6 +223,9 @@ function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: Pr
     }
     return existing;
   }
+  // The default shot keeps the jobId as its shot identity (single-shot binding unchanged); a named shot
+  // uses its stable shotId. Both feed the idempotency key so identical-parameter shots stay distinct.
+  const bindingShotId = shotId ?? jobId;
   const runtimeTaskId = deps.runtimeTaskId?.({ runId: run.runId, contractHash: contract.contractHash, attempt })
     || `runtime-${run.runId}-${contract.contractHash.slice(0, 16)}-attempt-${attempt}`;
   const requestFingerprint = sha256({
@@ -208,11 +241,11 @@ function ensureBinding(deps: ProductionGenerationSubmissionDependencies, run: Pr
     immutableProjectUuid: deps.immutableProjectUuid,
     projectGeneration: deps.projectGeneration,
     runId: run.runId,
-    shotId: jobId,
+    shotId: bindingShotId,
     contractHash: contract.contractHash,
     runtimeTaskId,
     providerNamespace: contract.providerId,
-    providerIdempotencyKey: `generation:${run.runId}:${contract.contractHash}:attempt-${attempt}`,
+    providerIdempotencyKey: `generation:${run.runId}:${bindingShotId}:${contract.contractHash}:attempt-${attempt}`,
     requestFingerprint,
     runtimeEnvelopeRef: envelopeRefFor(run.runId, jobId),
     fencingEpoch,
@@ -249,7 +282,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     }).run;
   }
 
-  function prepare(run: ProductionRun, contract: ExecutionContractV1, binding: ProductionExecutionBinding, jobId: string, attempt: number): { run: ProductionRun; envelope: ReturnType<typeof createProductionRunRuntimeEnvelope> } {
+  function prepare(run: ProductionRun, contract: ExecutionContractV1, binding: ProductionExecutionBinding, jobId: string, attempt: number, shotId?: string): { run: ProductionRun; envelope: ReturnType<typeof createProductionRunRuntimeEnvelope> } {
     let current = run;
     const existingJob = current.jobs.find((job) => job.jobId === jobId);
     const addedJob = !existingJob;
@@ -267,10 +300,14 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         providerIdempotencyKey: binding.providerIdempotencyKey,
         runtimeEnvelopeRef: binding.runtimeEnvelopeRef,
         taskKind: contract.mode,
+        // P4 S1: stamp the shot lineage so per-shot attempt monotonicity survives replay (reducer reads
+        // metadata.shotId). Default shot omits it → the reducer treats it as the single default lineage.
+        ...(shotId ? { metadata: { shotId } } : {}),
         createdAt: now(),
         updatedAt: now(),
       };
-      current = command(current, "job.add", { job }, "job-add");
+      // #4 commandId: the suffix must carry jobId or a second job in the same Run is silently deduped.
+      current = command(current, "job.add", { job }, `job-add:${jobId}`);
     }
     const approvalId = `approval:generation:${current.runId}:${contract.contractHash}:${jobId}`;
     const existingApproval = deps.repository.readApprovals(current.projectId, current.runId).find((approval) => approval.approvalId === approvalId);
@@ -301,9 +338,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     if (addedJob) {
       if (current.budget.authorized < 0) throw new Error("Invalid generation budget authorization");
       if (current.budget.authorized === 0 && current.budget.reserved === 0 && current.budget.actual === 0 && current.budget.unsettled === 0) {
+        // #4 commandId: without jobId, a second shot's authorize reuses the first's commandId and is
+        // deduped into a stale-revision result. The billingEntryId already embeds jobId (via approvalId).
         current = command(current, "budget.entry", {
           entry: { billingEntryId: `${approvalId}:authorize`, kind: "authorize", amount: 0, occurredAt: now() },
-        }, "budget-authorize");
+        }, `budget-authorize:${jobId}`);
       }
     }
     const resolved = resolveExecutionContract(contract, binding);
@@ -321,11 +360,12 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   }
 
   async function start(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionResult> {
+    const shotId = input.shotId;
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
-    const contract = requiredContract(run);
-    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash));
+    const contract = requiredContract(run, shotId);
+    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
     if (!Number.isInteger(attempt) || attempt < 1) throw new Error("Generation attempt is invalid");
-    let jobId = jobIdFor(run.runId, contract.contractHash, attempt);
+    let jobId = jobIdFor(run.runId, contract.contractHash, attempt, shotId);
     const existingJob = run.jobs.find((job) => job.jobId === jobId);
     if (existingJob?.status === "provider_accepted" && existingJob.providerTaskId) {
       if (run.generationPlan?.state !== "submitted") run = command(run, "generation.submit", {}, "plan-submit");
@@ -339,12 +379,12 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     const runLock = lock(run.runId);
     return runLock.withLock(async (lease) => {
       run = requiredRun(deps.repository, input.projectId, input.operationId);
-      const lockedContract = requiredContract(run);
+      const lockedContract = requiredContract(run, shotId);
       if (lockedContract.contractHash !== contract.contractHash) throw new Error("Generation contract changed while waiting for the Run lock");
-      const lockedAttempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, lockedContract.contractHash));
-      jobId = jobIdFor(run.runId, lockedContract.contractHash, lockedAttempt);
-      const binding = ensureBinding(deps, run, lockedContract, jobId, lockedAttempt, lease.fencingEpoch);
-      const prepared = prepare(run, lockedContract, binding, jobId, lockedAttempt);
+      const lockedAttempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, lockedContract.contractHash, shotId));
+      jobId = jobIdFor(run.runId, lockedContract.contractHash, lockedAttempt, shotId);
+      const binding = ensureBinding(deps, run, lockedContract, jobId, lockedAttempt, lease.fencingEpoch, shotId);
+      const prepared = prepare(run, lockedContract, binding, jobId, lockedAttempt, shotId);
       run = prepared.run;
       const log = intentLog(run.runId);
       let rawReceipt: unknown;
@@ -397,10 +437,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   }
 
   async function poll(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionPollResult> {
+    const shotId = input.shotId;
     const run = requiredRun(deps.repository, input.projectId, input.operationId);
-    const contract = requiredContract(run);
-    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash));
-    const jobId = jobIdFor(run.runId, contract.contractHash, attempt);
+    const contract = requiredContract(run, shotId);
+    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
+    const jobId = jobIdFor(run.runId, contract.contractHash, attempt, shotId);
     const job = run.jobs.find((candidate) => candidate.jobId === jobId);
     if (!job?.providerTaskId) throw new SubmissionReconciliationRequiredError("A provider task id is required before polling");
 
@@ -433,10 +474,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   }
 
   async function materialize(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionMaterializeResult> {
+    const shotId = input.shotId;
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
-    const contract = requiredContract(run);
-    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash));
-    const jobId = jobIdFor(run.runId, contract.contractHash, attempt);
+    const contract = requiredContract(run, shotId);
+    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
+    const jobId = jobIdFor(run.runId, contract.contractHash, attempt, shotId);
     let job = run.jobs.find((candidate) => candidate.jobId === jobId);
     if (!job?.providerTaskId) throw new GenerationMaterializationError("A provider task id is required before materialization");
     const providerTaskId = job.providerTaskId;
@@ -487,21 +529,22 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   }
 
   async function createNewAttempt(input: GenerationNewAttemptInput): Promise<GenerationNewAttemptResult> {
+    const shotId = input.shotId;
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
-    const contract = requiredContract(run);
-    const previousAttempt = Math.max(1, latestGenerationAttempt(run, contract.contractHash));
-    const previousJob = run.jobs.find((job) => job.jobId === jobIdFor(run.runId, contract.contractHash, previousAttempt));
+    const contract = requiredContract(run, shotId);
+    const previousAttempt = Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
+    const previousJob = run.jobs.find((job) => job.jobId === jobIdFor(run.runId, contract.contractHash, previousAttempt, shotId));
     if (!previousJob || previousJob.status !== input.reason) throw new SubmissionReconciliationRequiredError("A new attempt is only available after the selected submission issue is recorded");
     const runLock = lock(run.runId);
     return runLock.withLock(async (lease) => {
       run = requiredRun(deps.repository, input.projectId, input.operationId);
-      const lockedContract = requiredContract(run);
-      const lockedPreviousAttempt = Math.max(1, latestGenerationAttempt(run, lockedContract.contractHash));
-      const lockedPreviousJob = run.jobs.find((job) => job.jobId === jobIdFor(run.runId, lockedContract.contractHash, lockedPreviousAttempt));
+      const lockedContract = requiredContract(run, shotId);
+      const lockedPreviousAttempt = Math.max(1, latestGenerationAttempt(run, lockedContract.contractHash, shotId));
+      const lockedPreviousJob = run.jobs.find((job) => job.jobId === jobIdFor(run.runId, lockedContract.contractHash, lockedPreviousAttempt, shotId));
       if (!lockedPreviousJob || lockedPreviousJob.status !== input.reason) throw new SubmissionReconciliationRequiredError("The submission state changed; reconcile it before creating a new attempt");
       const nextAttempt = lockedPreviousAttempt + 1;
-      const jobId = jobIdFor(run.runId, lockedContract.contractHash, nextAttempt);
-      const binding = ensureBinding(deps, run, lockedContract, jobId, nextAttempt, lease.fencingEpoch);
+      const jobId = jobIdFor(run.runId, lockedContract.contractHash, nextAttempt, shotId);
+      const binding = ensureBinding(deps, run, lockedContract, jobId, nextAttempt, lease.fencingEpoch, shotId);
       const job: ProductionJob = {
         jobId,
         stageId: "generate",
@@ -515,10 +558,12 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         providerIdempotencyKey: binding.providerIdempotencyKey,
         runtimeEnvelopeRef: binding.runtimeEnvelopeRef,
         taskKind: lockedContract.mode,
+        // P4 S1: carry the shot lineage so the reducer scopes attempt monotonicity + approval reset.
+        ...(shotId ? { metadata: { shotId } } : {}),
         createdAt: now(),
         updatedAt: now(),
       };
-      run = command(run, "generation.new_attempt", { job }, `new-attempt-${nextAttempt}`);
+      run = command(run, "generation.new_attempt", { job, ...(shotId ? { shotId } : {}) }, `new-attempt-${shotId ? `${shotId}-` : ""}${nextAttempt}`);
       return {
         operationId: run.runId,
         runId: run.runId,
@@ -533,10 +578,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   }
 
   async function resume(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionResumeResult> {
+    const shotId = input.shotId;
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
-    const contract = requiredContract(run);
-    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash));
-    const jobId = jobIdFor(run.runId, contract.contractHash, attempt);
+    const contract = requiredContract(run, shotId);
+    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
+    const jobId = jobIdFor(run.runId, contract.contractHash, attempt, shotId);
     const job = run.jobs.find((candidate) => candidate.jobId === jobId);
     if (!job) return { operationId: run.runId, action: "attention", reason: "invalid_recovery_state", nextAction: "attention" };
     const currentEnvelope = envelope(run.runId, jobId).read();
@@ -545,8 +591,9 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
       const committed = intentLog(run.runId).list().some((intent) => intent.key === `${run.runId}:${jobId}:${job.attempt}` && intent.status === "committed");
       if (committed) return { operationId: run.runId, action: "reconcile", reason: "submission_receipt_unknown", nextAction: "reconcile" };
       if (currentEnvelope.state === "submitted_unknown") envelope(run.runId, jobId).markDefinitelyNotSubmitted();
-      run = command(run, "job.status", { jobId, status: "submit_intent_persisted", patch: {} }, "explicit-retry");
-      return { ...(await start({ projectId: run.projectId, operationId: run.runId, definitelyNotSubmitted: true })), action: "dispatch", nextAction: "dispatch" };
+      // Suffix carries jobId so a per-shot explicit retry never dedupes against a sibling shot.
+      run = command(run, "job.status", { jobId, status: "submit_intent_persisted", patch: {} }, `explicit-retry:${jobId}`);
+      return { ...(await start({ projectId: run.projectId, operationId: run.runId, definitelyNotSubmitted: true, ...(shotId ? { shotId } : {}) })), action: "dispatch", nextAction: "dispatch" };
     }
     const decision = classifyGenerationResume({ jobStatus: job.status, providerTaskId: job.providerTaskId, envelopeState: currentEnvelope.state, definitelyNotSubmitted: input.definitelyNotSubmitted });
     if (decision.action === "poll") return { operationId: run.runId, ...decision, nextAction: "poll", providerTaskId: job.providerTaskId };

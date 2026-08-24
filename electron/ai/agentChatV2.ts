@@ -57,7 +57,7 @@ function readRequestedSkill(payload: JsonRecord): { key: string; name: string } 
  * 三层结构：① 这里 = 共享身份 + 产品/流程认知 + 输出铁律 + 语言规则；
  * ② payload.systemPrompt = 当前面的专长（如画布工具集）；③ skillSystemPrompt = 当前 skill 方法论。
  */
-const NOMI_AGENT_IDENTITY = [
+export const NOMI_AGENT_IDENTITY = [
   "你是 Nomi 的 AI 创作伙伴。",
   "",
   "Nomi 是一个本地优先的 AI 视频创作工作台。用户在这里把一个想法做成视频，路径是：创作区写文案/故事/剧本 →（拆镜头）→ 生成画布把每个镜头排成节点、选模型配参数 → 时间轴拼接预览 → 导出 MP4。你始终清楚用户正处在这条链的哪一环，给的帮助要能把他推进到下一环。",
@@ -95,6 +95,33 @@ function buildSkillSystemPrompt(payload: JsonRecord): string {
     "",
     skill.body,
   ].join("\n");
+}
+
+/**
+ * systemPrompt 合成器（B1c 单一合成点）——把四层收成一处：
+ *   ① identity        = NOMI_AGENT_IDENTITY（共享身份，单一真相源）
+ *   ② panelSystemPrompt = 当前面板专长（payload.systemPrompt，如生成画布工具说明）
+ *   ③ skillSystemPrompt = 当前 skill 方法论（buildSkillSystemPrompt）
+ *   ④ memoryBlock       = 项目记忆（殿后，见 runAgentChatV2 注）
+ *
+ * **字节稳定铁律**：vendor 前缀缓存依赖 system 段 byte 逐字节稳定——本函数只做
+ * 「过滤空段 → join('\n\n') → sanitizeForBroadCompat」，与旧内联逻辑逐字节等价，改一处不得漂移。
+ * 全空返回 undefined（不发 system 槽）。记忆放末尾：它变更最频繁，殿后只击穿后缀缓存，
+ * 前面身份/专长/skill 的前缀缓存仍命中。
+ */
+export function composeAgentSystemPrompt(layers: {
+  identity: string;
+  panelSystemPrompt: string;
+  skillSystemPrompt: string;
+  memoryBlock: string;
+}): string | undefined {
+  const parts = [
+    layers.identity,
+    layers.panelSystemPrompt,
+    layers.skillSystemPrompt,
+    layers.memoryBlock,
+  ].filter((part) => part && part.length > 0);
+  return parts.length > 0 ? sanitizeForBroadCompat(parts.join("\n\n")) : undefined;
 }
 
 // vision/preview/audio 等常不可靠发 tool_use → 无偏好时降权（仍作回退），让通用对话模型优先做 Agent 主控（2026-06-07 真机走查 P0）。
@@ -551,8 +578,13 @@ export async function runAgentChatV2(
     /* 记忆读取/提炼失败静默退回无记忆,绝不阻断对话 */
   }
 
-  const systemParts = [NOMI_AGENT_IDENTITY, systemPrompt, skillSystemPrompt, memoryBlock].filter((part) => part && part.length > 0);
-  const system = systemParts.length > 0 ? sanitizeForBroadCompat(systemParts.join("\n\n")) : undefined;
+  // 四层收口到单一合成器（B1c）：身份 + 面板专长 + skill 方法论 + 项目记忆，字节逐字节稳定。
+  const system = composeAgentSystemPrompt({
+    identity: NOMI_AGENT_IDENTITY,
+    panelSystemPrompt: systemPrompt,
+    skillSystemPrompt,
+    memoryBlock,
+  });
 
   const languageModel = buildLanguageModelForVendor(vendor, model, apiKey);
 

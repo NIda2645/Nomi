@@ -5,16 +5,10 @@
 // 方案:docs/plan/2026-06-28-storyboard-closed-loop-verify.md（Stage 1 实时编排，架构决策已锁定）。
 
 import { getDesktopBridge } from '../../../desktop/bridge'
-import { sendWorkbenchAiMessage } from '../../ai/workbenchAiClient'
-import { clearWorkbenchAgentSession } from '../../../api/desktopClient'
-import { getAssistantModelPref } from '../../ai/assistantModelPref'
+import { shotVerifySessionKey } from '../../ai/agentSessionKey'
+import { runSingleShotAgent } from '../../ai/agentLoopMode'
 import { readWindowUrlParam } from '../../windowUrlParam'
 import type { ShotVerifyDeps } from './shotVerifyRunner'
-
-/** verify 用独立会话键(与创作/生成区线程隔离,不污染用户对话历史)。 */
-function verifySessionKey(): string {
-  return `nomi:shot-verify:${readWindowUrlParam('projectId') || 'local'}`
-}
 
 /** 真实 deps 工厂(渲染层环境)。无桌面桥(非 Electron)→ extractFrame 抛错,被 runner 逐镜 catch 跳过。 */
 export function makeShotVerifyDeps(): ShotVerifyDeps {
@@ -29,24 +23,17 @@ export function makeShotVerifyDeps(): ShotVerifyDeps {
       return url
     },
     judge: async (prompt: string, frameImageUrl: string): Promise<string> => {
-      const sessionKey = verifySessionKey()
-      // 每镜判断必须独立:清会话,避免上一镜的图/判决污染本镜上下文(偏判)。
-      await clearWorkbenchAgentSession(sessionKey).catch(() => {})
-      const pref = getAssistantModelPref()
-      const response = await sendWorkbenchAiMessage(
-        {
-          prompt,
-          displayPrompt: prompt.slice(0, 40),
-          sessionKey,
-          ...(projectId ? { projectId } : {}),
-          skillKey: 'workbench.shot-verify',
-          skillName: '镜级画面校验',
-          mode: 'chat', // 无工具的纯多模态判断
-          ...(pref ? { agentModelKey: pref.modelKey, agentVendorKey: pref.vendorKey } : {}),
-          attachments: [{ url: frameImageUrl, contentType: 'image/png', fileName: 'shot-frame.png', kind: 'image' }],
-        },
-        {},
-      )
+      // 每镜判断必须独立:单次链路(清会话 + mode:'chat' 纯多模态判断 + 模型偏好)收口到 runSingleShotAgent,
+      // 避免上一镜的图/判决污染本镜上下文(偏判)。
+      const response = await runSingleShotAgent({
+        sessionKey: shotVerifySessionKey(),
+        prompt,
+        displayPrompt: prompt.slice(0, 40),
+        ...(projectId ? { projectId } : {}),
+        skillKey: 'workbench.shot-verify',
+        skillName: '镜级画面校验',
+        attachments: [{ url: frameImageUrl, contentType: 'image/png', fileName: 'shot-frame.png', kind: 'image' }],
+      })
       return response.text ?? ''
     },
     // 默认视觉开;非多模态模型 → judge 返回非 JSON,runner 逐镜 catch 跳过(降级仅结构校验)。

@@ -1,6 +1,6 @@
 import { protocol } from "electron";
 import fs from "node:fs";
-import { Readable } from "node:stream";
+import { createOwnedFileStream } from "./fileResponseStream";
 import { contentTypeFromPath } from "../assets/assetPaths";
 import { resolveContentType } from "../assets/mediaTypes";
 import { resolveProjectRelativePath } from "../projects/repository";
@@ -84,17 +84,6 @@ function contentTypeForFile(filePath: string): string {
 
 type ByteRange = { start: number; end: number };
 
-/**
- * Electron's protocol.handle Response consumes Web ReadableStreams reliably.
- * Passing a Node fs.ReadStream through a type cast works in unit-test Response
- * implementations, but can leave Chromium media requests pending in the real
- * desktop renderer. Convert at the boundary so full and ranged playback share
- * the same stream contract.
- */
-function fileBody(filePath: string, options?: { start?: number; end?: number }): ReadableStream<Uint8Array> {
-  return Readable.toWeb(fs.createReadStream(filePath, options)) as ReadableStream<Uint8Array>;
-}
-
 function parseRangeHeader(rangeHeader: string, size: number): ByteRange | null {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
   if (!match || size <= 0) return null;
@@ -120,7 +109,7 @@ function streamRange(filePath: string, range: ByteRange, size: number, method: s
     "Content-Length": String(contentLength),
     "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
   });
-  const body = method === "HEAD" ? null : fileBody(filePath, { start: range.start, end: range.end });
+  const body = method === "HEAD" ? null : createOwnedFileStream(filePath, { start: range.start, end: range.end });
   return new Response(body, { status: 206, headers });
 }
 
@@ -149,11 +138,15 @@ export async function handleNomiLocalRequest(request: Request): Promise<Response
       "Content-Type": contentTypeForFile(filePath),
       "Content-Length": String(stat.size),
     });
-    // Do not wrap net.fetch's undici ReadableStream here. Under concurrent media
-    // playback Electron can close that stream once for the protocol response and
-    // once for the original Response, surfacing ERR_INVALID_STATE in the main process.
-    // A fresh file stream has one owner and follows the same path as ranged playback.
-    const body = request.method === "HEAD" ? null : fileBody(filePath);
+    // 这里踩过三条路，**全都抛同一个 ERR_INVALID_STATE**（不可捕获，直接弹主进程崩溃框）。
+    // 判据不是「用哪个 API」，而是「**流的关闭权在不在我们手里**」：
+    //   ① 包 net.fetch 的响应流 → Electron 关一次、原始 Response 再关一次；
+    //   ② `new Response(nodeStream)` → 关闭权交给 undici 的 ReadableStreamFrom，
+    //      它在 queueMicrotask 里裸调 close()、cancel() 又不置标记（2026-08-24 用户报的就是这条）；
+    //   ③ `Readable.toWeb(nodeStream)` → 换成 Node 自己的适配器，同族竞态 nodejs/node#64529
+    //      至今 OPEN、修复 PR 未合（本仓 v0.20.1 的 fileBody() 曾走这条，已在本轮删除）。
+    // 三条都得避开：用我们自己拥有、自带关闭闸的流。见 ./fileResponseStream.ts。
+    const body = request.method === "HEAD" ? null : createOwnedFileStream(filePath);
     return new Response(body, { status: 200, headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : "local asset not found";
