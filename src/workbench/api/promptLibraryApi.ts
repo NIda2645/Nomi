@@ -114,6 +114,17 @@ export async function getTextBrain(): Promise<{ vendor: string; modelKey: string
   return res?.ok && res.brain ? res.brain : null
 }
 
+/**
+ * 文本大脑三态（ok / locked / missing）——上手清单第一步、恢复卡、库页状态条据此把
+ * 「已保存的 Key 读不出（locked）」和「压根没配（missing）」说清楚，而不是一律「去接入」。
+ * 与 getTextBrain 同一 IPC，判据同一份（chooseTextModel + apiKeyDecryptStatus）。
+ */
+export async function getTextBrainStatus(): Promise<'ok' | 'locked' | 'missing'> {
+  const desktop = requireDesktopRuntime('text brain status')
+  const res = await desktop.promptLibrary!.textBrain()
+  return res?.status ?? (res?.ok ? 'ok' : 'missing')
+}
+
 export type PromptCategory = 'all' | 'image' | 'video'
 
 /** 平凡过滤:分类(全部/图片/视频)+ 关键词(标题/正文/来源)。 */

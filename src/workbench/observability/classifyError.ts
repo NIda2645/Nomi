@@ -372,6 +372,21 @@ function detectModelKindMismatch(raw: string): { model: string; registered: stri
 }
 
 /**
+ * 「没有可用文本大脑」——创作助手/拆镜头缺可用 text 模型时 agentChatV2 抛的**内部**签名
+ * （新：`Model is not configured: no usable text model`；旧散句：`No local text model is configured`）。
+ *
+ * 为什么单列一类、且必须 upstream='' 处理（2026-08-25 走查 F5）：这是我们**自己**这侧的信号，
+ * 服务商根本没被请求到。旧行为里它落进 unknown（下面 legacy 的 'not configured' 抓不到字面
+ * "is configured"），reason 直接取英文原串——用户看到「服务器：…No local text model is configured…」
+ * 半中半英。归 model-config 报人话之外，还要**不**把这句英文塞进「服务商说：」框（那是纯栽赃，
+ * 同 model-kind-mismatch 的处理）。短语取窄，只认这两条我们自己的签名。
+ */
+function detectNoTextBrain(raw: string): boolean {
+  const lower = raw.toLowerCase()
+  return lower.includes('no usable text model') || lower.includes('no local text model')
+}
+
+/**
  * kind → 完整 report（文案 + 动作 + 上游原话）。收口原先重复 7 遍的四行样板：
  * 每处都得记着调 narrate、算 providerMessage、带 raw——漏一样就是一处失语。
  * `upstream` 给 undefined = 从 raw 里抠可读首行。
@@ -415,6 +430,9 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       },
     }
   }
+  // 缺可用文本大脑同样是**我们自己**的内部签名（服务商没被请求到）——归 model-config 报人话，
+  // upstream='' 抑制「服务商说：」框，别把那句英文散句栽赃给上游（2026-08-25 走查 F5）。
+  if (detectNoTextBrain(cleanRaw)) return reportFor('model-config', cleanRaw, '')
   // 账号档位闸（会员/企业 Key/网页授权）先判——它的关键词（会员/授权/开通即梦会员）比
   // model-not-open 更具体；反过来放后面会被宽词抢走（即梦 CLI 兜底文案曾被判成「模型未开通」
   // 并给出火山 Ark 指引，2026-07-06 真机走查抓出）。reason 出自 narrate，服务商原话单独提到可见区。

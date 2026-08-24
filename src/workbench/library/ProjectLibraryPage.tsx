@@ -338,7 +338,11 @@ export default function ProjectLibraryPage({
               title={
                 normalizedQuery
                   ? t('library.noMatchNamed', { query: query.trim() })
-                  : t('library.noProjectsInCategory')
+                  : sourceFilter !== 'all'
+                    ? t('library.noProjectsInSource')
+                    : // 首次空库（无搜索、来源=全部、零项目）：给行动指引指向正上方的「新建空白项目」卡，
+                      // 别用「这个分类下还没有项目」的系统腔（首屏没有分类概念，2026-08-25 走查 F1）。
+                      t('library.firstEmpty')
               }
               action={
                 normalizedQuery ? (
