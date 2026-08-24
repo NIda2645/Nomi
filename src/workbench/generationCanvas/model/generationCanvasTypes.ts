@@ -196,6 +196,12 @@ export type NodeGroup = {
    * 旧快照无此字段 → optional。
    */
   outputLinks?: { targetNodeId: string }[]
+  /**
+   * P4 S5 分镜组幂等章：多镜产物落画布时打的操作 id（materializationOperationId）。作用同节点上的
+   * 同名 meta——崩溃/重开项目补落时，先按此章找已建的分镜组复用，绝不重复建组（§3.4「组也打章」）。
+   * 只有语义多镜物化通道会写；用户手动建组 / 旧快照无此字段 → optional。
+   */
+  materializationOperationId?: string
   createdAt: number
   updatedAt: number
 }

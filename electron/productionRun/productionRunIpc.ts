@@ -5,7 +5,7 @@ import { getProductionRunService } from "./productionRunRuntime";
 import type { ProductionRunService } from "./productionRunService";
 import type { CreateProductionRunInput, RunCommand } from "./productionRunTypes";
 
-const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "artifact.review", "plan.attach", "policy.refresh", "job.reconcile"]);
+const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "artifact.review", "plan.attach", "policy.refresh", "job.reconcile", "plan.detach-shot-nodes"]);
 
 function identifier(value: unknown, label: string): string {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -100,6 +100,14 @@ function rendererCommandPayload(type: string, value: unknown): Record<string, un
     const action = typeof raw.action === "string" ? raw.action.trim() : "";
     if (!["pause", "resume", "cancel"].includes(action)) throw new Error("Invalid production control action");
     return { action };
+  }
+  // P4 S5：用户把这些占位节点从画布删掉（整批 Cmd+Z / 手动删）→ Run 记 detached（撤销事实优先，恢复不复活）。
+  // 渲染层发起是合法的（这是「用户删了画布节点」的忠实映射）；只收 nodeId 数组，形状受限、上限防滥用。
+  if (type === "plan.detach-shot-nodes") {
+    const rawNodeIds = Array.isArray(raw.nodeIds) ? raw.nodeIds : [];
+    if (rawNodeIds.length > 256) throw new Error("Too many detached nodes");
+    const nodeIds = rawNodeIds.map((value, index) => identifier(value, `node ${index}`));
+    return { nodeIds };
   }
   if (type === "artifact.adopt") return { artifactId: identifier(raw.artifactId, "artifact") };
   if (type === "artifact.review") {

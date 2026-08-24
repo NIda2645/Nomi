@@ -48,6 +48,11 @@ export type BatchSchedulerDependencies = {
   perShotPrice: (shot: ProductionGenerationShot) => ShotPrice;
   now?: () => string;
   options?: BatchSchedulerOptions;
+  /**
+   * P4 S5：一镜成功物化后回调（best-effort，永不抛）——appIntegration 据此 requestRenderer 把该镜 result
+   * 推给渲染层回填占位节点（「逐个冒」）。scheduler 本身不认识渲染层，只发这个信号（关注点分离）。
+   */
+  onShotMaterialized?: (shotId: string) => void | Promise<void>;
 };
 
 export type BatchOutcome = {
@@ -121,6 +126,14 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
       const polled = await deps.submission.poll({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
       if (polled.nextAction === "materialize") {
         await deps.submission.materialize({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
+        // P4 S5：这一镜落地了 → 通知上层把 result 推给渲染层回填占位（逐个冒）。best-effort，不阻断批次。
+        if (deps.onShotMaterialized) {
+          try {
+            await deps.onShotMaterialized(task.shotId);
+          } catch (error) {
+            console.warn("[nomi:production] onShotMaterialized failed:", error instanceof Error ? error.message : String(error));
+          }
+        }
         return;
       }
       if (polled.nextAction === "attention") return; // provider failed → job is needs_attention, leave it
