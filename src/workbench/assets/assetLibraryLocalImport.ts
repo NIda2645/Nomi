@@ -20,7 +20,8 @@ export function filePathsFromDrop(files: ArrayLike<File>, getPathForFile?: (file
     const file = files[index]
     let candidate: unknown
     try {
-      candidate = getPathForFile?.(file)
+      const nativePath = getPathForFile?.(file)
+      candidate = typeof nativePath === 'string' && nativePath.trim() ? nativePath : undefined
     } catch {
       candidate = undefined
     }

@@ -33,7 +33,9 @@ export function parseCopyFilesPayload(payload: unknown): { projectId: string; pa
 
 export function registerAssetsIpc(): void {
   ipcMain.handle("nomi:clipboard:read-file-paths", () =>
-    readClipboardFilePathsFromFormats(clipboard.availableFormats(), (format) => clipboard.readBuffer(format)),
+    readClipboardFilePathsFromFormats(clipboard.availableFormats(), (format) =>
+      format === "text/plain" ? Buffer.from(clipboard.readText(), "utf8") : clipboard.readBuffer(format),
+    ),
   );
   ipcMain.handle("nomi:assets:copy-files", (_event, payload) => {
     const parsed = parseCopyFilesPayload(payload);

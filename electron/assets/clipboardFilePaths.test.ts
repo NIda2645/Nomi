@@ -38,7 +38,9 @@ describe("parseClipboardFilePaths", () => {
   });
 
   it("returns no paths for unknown formats or relative values", () => {
-    expect(parseClipboardFilePaths("text/plain", Buffer.from("/tmp/a.png"))).toEqual([]);
+    expect(parseClipboardFilePaths("text/plain", Buffer.from("file:///tmp/a.png"))).toEqual(["/tmp/a.png"]);
+    expect(parseClipboardFilePaths("text/plain", Buffer.from("/tmp/b.png"))).toEqual(["/tmp/b.png"]);
     expect(parseClipboardFilePaths("FileNameW", Buffer.from("relative.png\0\0", "utf16le"))).toEqual([]);
+    expect(parseClipboardFilePaths("unknown", Buffer.from("/tmp/c.png"))).toEqual([]);
   });
 });

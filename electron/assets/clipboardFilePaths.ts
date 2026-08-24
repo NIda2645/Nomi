@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const URI_FORMATS = new Set(["public.file-url", "text/uri-list"]);
+const URI_FORMATS = new Set(["public.file-url", "text/uri-list", "text/plain"]);
 const WINDOWS_FORMATS = new Set(["FileNameW", "FileName"]);
 
 function isAbsoluteFilePath(value: string): boolean {
@@ -22,7 +22,8 @@ function normalizeCandidate(value: string, format: string): string | null {
   if (!candidate) return null;
   if (URI_FORMATS.has(format)) {
     const filePath = decodeFileUri(candidate);
-    return filePath && isAbsoluteFilePath(filePath) ? filePath : null;
+    if (filePath && isAbsoluteFilePath(filePath)) return filePath;
+    return format === "text/plain" && isAbsoluteFilePath(candidate) ? candidate : null;
   }
   return WINDOWS_FORMATS.has(format) && isAbsoluteFilePath(candidate) ? candidate : null;
 }
@@ -48,4 +49,4 @@ export function parseClipboardFilePaths(format: string, bytes: Buffer): string[]
   return paths;
 }
 
-export const CLIPBOARD_FILE_PATH_FORMATS = ["public.file-url", "text/uri-list", "FileNameW", "FileName"] as const;
+export const CLIPBOARD_FILE_PATH_FORMATS = ["public.file-url", "text/uri-list", "text/plain", "FileNameW", "FileName"] as const;

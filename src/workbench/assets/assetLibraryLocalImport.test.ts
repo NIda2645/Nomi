@@ -28,6 +28,12 @@ describe("assetLibraryLocalImport", () => {
     expect(filePathsFromDrop([file], () => "/Users/test/a.png")).toEqual(["/Users/test/a.png"]);
   });
 
+  it("falls back to File.path when Electron returns an empty native path", () => {
+    const file = { name: "a.png", path: "/Users/test/a.png" } as unknown as File;
+
+    expect(filePathsFromDrop([file], () => "")).toEqual(["/Users/test/a.png"]);
+  });
+
   it("does not treat an editing target as the asset library paste surface", () => {
     expect(isTextEditingTarget({ closest: () => ({}) })).toBe(true);
     expect(isTextEditingTarget({ closest: () => null })).toBe(false);
