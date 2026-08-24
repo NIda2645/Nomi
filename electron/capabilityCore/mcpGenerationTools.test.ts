@@ -275,4 +275,58 @@ describe("semantic MCP generation tools", () => {
     await expect(handler({ capability: "gate_request", params: { operationId }, lease })).resolves.toMatchObject({ nextAction: "confirm", providerCapabilityProfile: "submit_only", recoveryNotice: expect.stringContaining("核对") });
     expect((await operations.read("project-1", operationId))?.state).toBe("sealed");
   });
+
+  // P4 S2: preview surfaces a per-shot pricing projection and gate_request carries the derived
+  // maximumCost — both derived from the injected catalog pricing, never a hard-coded number.
+  describe("P4 S2 pricing on preview + gate_request", () => {
+    const resolveModelPricing = (providerId: string, modelId: string) =>
+      providerId === "fixture-provider" && modelId === "fixture-model"
+        ? { cost: 10, enabled: true, specCosts: [{ specKey: "aspectRatio:1:1", cost: 4, enabled: true }] }
+        : undefined;
+
+    it("projects a known per-shot price + total on preview without any provider call", async () => {
+      const operations = createInMemoryGenerationOperationStore();
+      const handler = createGenerationPlanningHandler({ registry, operations, resolveModelPricing, now: () => "2026-08-23T00:00:00.000Z" });
+      const created = await handler({ capability: "create", params: { candidate: candidate() }, lease });
+      const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+      const preview = await handler({ capability: "preview", params: { operationId }, lease }) as {
+        pricing: { shots: Array<{ price: unknown; durationEstimate: unknown; degradations: unknown[] }>; total: unknown };
+      };
+      // base 10 + matched specCost 4 (aspectRatio:1:1) = 14.
+      expect(preview.pricing.shots[0].price).toEqual({ known: true, amount: 14 });
+      expect(preview.pricing.shots[0].durationEstimate).toEqual({ known: false });
+      expect(preview.pricing.shots[0].degradations).toEqual([]);
+      expect(preview.pricing.total).toEqual({ knownSubtotal: 14, unknownShotCount: 0, currency: "CNY" });
+    });
+
+    it("reports the price as unknown on preview when no pricing resolver is wired", async () => {
+      const operations = createInMemoryGenerationOperationStore();
+      const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z" });
+      const created = await handler({ capability: "create", params: { candidate: candidate() }, lease });
+      const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+      const preview = await handler({ capability: "preview", params: { operationId }, lease }) as {
+        pricing: { shots: Array<{ price: unknown }>; total: unknown };
+      };
+      expect(preview.pricing.shots[0].price).toEqual({ known: false });
+      expect(preview.pricing.total).toEqual({ knownSubtotal: 0, unknownShotCount: 1, currency: "CNY" });
+    });
+
+    it("puts the derived price into the receipt's maximumCost (no longer ¥0) with costKnown=true", async () => {
+      const operations = createInMemoryGenerationOperationStore();
+      const handler = createGenerationPlanningHandler({ registry, operations, resolveModelPricing, now: () => "2026-08-23T00:00:00.000Z" });
+      const created = await handler({ capability: "create", params: { candidate: candidate() }, lease });
+      const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+      await expect(handler({ capability: "gate_request", params: { operationId }, lease }))
+        .resolves.toMatchObject({ maximumCost: 14, costKnown: true, currency: "CNY", nextAction: "confirm" });
+    });
+
+    it("keeps maximumCost 0 + costKnown=false for an unpriced model (unbounded, like today)", async () => {
+      const operations = createInMemoryGenerationOperationStore();
+      const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z" });
+      const created = await handler({ capability: "create", params: { candidate: candidate() }, lease });
+      const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+      await expect(handler({ capability: "gate_request", params: { operationId }, lease }))
+        .resolves.toMatchObject({ maximumCost: 0, costKnown: false, nextAction: "confirm" });
+    });
+  });
 });
