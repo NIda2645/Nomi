@@ -186,7 +186,7 @@ describe("全仓兜底", () => {
     const r = scan("--all");
     expect(r.out).not.toContain("🔴"); // 拦截横幅
     expect(r.code, r.out).toBe(0);
-  });
+  }, 60_000); // 全仓真扫 3500+ 文件，墙钟随仓库增长；5s 默认超时在 CI 上已被 main 的体量压穿（同 #139 的墙钟病）
 
   it("ALLOWLIST 里没有为那 8 个合法 hex 文件开的口子", () => {
     const src = fs.readFileSync(SCANNER, "utf8");
