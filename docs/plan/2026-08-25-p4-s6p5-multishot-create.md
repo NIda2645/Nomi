@@ -100,6 +100,12 @@ UI（零 UI 切片，无样张）、S7 legacy 收敛、配音、插镜命令层�
 ## 8. 回滚
 关 `NOMI_MCP_GENERATION_SINGLE_SHOT_V1` 即回（多镜 create 在语义面之下）；单 PR 可回滚；单镜/legacy 零触及。
 
+## 8.5 付费验收发现的连带 gap（锚检查点无生产审批入口）
+
+实做付费验收时实查发现：**anchor_checkpoint 门在生产没有任何审批入口**——① `production.decide-gate`（`nomi_decide_gate`）显式只放行 creative 门（`dispatcher.ts:378-380` `gate.scope==='stage'` 且 gateId 前缀 direction/sample/freeze），anchor_checkpoint（scope='anchor_checkpoint'）被硬拒「必须回 Nomi 决定」；② appIntegration 的 scheduler 不设 `anchorAutoReleaseMs`（生产不自动放行）；③ 渲染层无「定妆照检查点」审批 UI（S4 建了门、S5 落了占位，但审批卡未接）。→ 带锚的多镜批次一走到检查点就**停死无路可走**（测试靠 `repository.execute` 直发 gate.decide 或 `anchorAutoReleaseMs` 绕过，掩盖了这个 UI/入口缺口）。
+
+**裁定**：这是 S4/S5 的连带 gap，**修全要么加 MCP 审批工具+scheduler 重踢、要么加渲染层检查点卡（后者是 UI，本切片禁做）**——超出「create 入口」范围。故：① **付费验收改用 2 视频镜（无锚）**跑主证（create 入口→真花钱→真 APIMart 生成→落地→返工，检查点不在链上）；② 检查点审批入口作**发现的 issue** 上报 + spawn 后续任务。带锚的 create 入口逻辑本身已由零额度 E2E 全证（含锚检查点→approve→镜批，`mcpMultiShotCreateEntrance.e2e.test.ts` 用测试 gate.decide approve 检查点）。
+
 ## 9. 遗留（交付时更新）
 - **scriptText 生产 LLM planner 不接（v1 有意裁剪，见 §2.5）**：seam + 映射建齐并 stub-测；appIntegration 不注入 `planStoryboard` → scriptText 返回人话错误指向 plan 入口。真 planner（LLM 拟镜 + 结构化抽取 + 逐镜选型 + eval）作独立后续切片。
 - 锚"复用既有同名素材"入口不做（§3.1 显式入口留后续）；本切片锚=新 role='anchor' shot（调度器已验先跑锚+检查点）。
