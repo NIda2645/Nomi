@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
@@ -45,6 +46,16 @@ function assetUrl(relativePath = "assets/generated/clip.mp4"): string {
 }
 
 describe("handleNomiLocalRequest", () => {
+  it("converts file streams to Web streams for Electron protocol responses", async () => {
+    const toWeb = vi.spyOn(Readable, "toWeb");
+
+    const response = await handleNomiLocalRequest(new Request(assetUrl()));
+
+    expect(toWeb).toHaveBeenCalledTimes(1);
+    expect(await response.text()).toBe("0123456789");
+    toWeb.mockRestore();
+  });
+
   it("serves full files without reopening an undici response stream", async () => {
     const fetchMock = vi.mocked((await import("electron")).net.fetch);
     fetchMock.mockRejectedValueOnce(new Error("net.fetch must not serve local files"));

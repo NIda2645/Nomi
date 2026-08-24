@@ -1,5 +1,6 @@
 import { protocol } from "electron";
 import fs from "node:fs";
+import { Readable } from "node:stream";
 import { contentTypeFromPath } from "../assets/assetPaths";
 import { resolveContentType } from "../assets/mediaTypes";
 import { resolveProjectRelativePath } from "../projects/repository";
@@ -83,6 +84,17 @@ function contentTypeForFile(filePath: string): string {
 
 type ByteRange = { start: number; end: number };
 
+/**
+ * Electron's protocol.handle Response consumes Web ReadableStreams reliably.
+ * Passing a Node fs.ReadStream through a type cast works in unit-test Response
+ * implementations, but can leave Chromium media requests pending in the real
+ * desktop renderer. Convert at the boundary so full and ranged playback share
+ * the same stream contract.
+ */
+function fileBody(filePath: string, options?: { start?: number; end?: number }): ReadableStream<Uint8Array> {
+  return Readable.toWeb(fs.createReadStream(filePath, options)) as ReadableStream<Uint8Array>;
+}
+
 function parseRangeHeader(rangeHeader: string, size: number): ByteRange | null {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
   if (!match || size <= 0) return null;
@@ -108,8 +120,8 @@ function streamRange(filePath: string, range: ByteRange, size: number, method: s
     "Content-Length": String(contentLength),
     "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
   });
-  const body = method === "HEAD" ? null : fs.createReadStream(filePath, { start: range.start, end: range.end });
-  return new Response(body as BodyInit | null, { status: 206, headers });
+  const body = method === "HEAD" ? null : fileBody(filePath, { start: range.start, end: range.end });
+  return new Response(body, { status: 206, headers });
 }
 
 function rangeNotSatisfiable(size: number): Response {
@@ -141,8 +153,8 @@ export async function handleNomiLocalRequest(request: Request): Promise<Response
     // playback Electron can close that stream once for the protocol response and
     // once for the original Response, surfacing ERR_INVALID_STATE in the main process.
     // A fresh file stream has one owner and follows the same path as ranged playback.
-    const body = request.method === "HEAD" ? null : fs.createReadStream(filePath);
-    return new Response(body as BodyInit | null, { status: 200, headers });
+    const body = request.method === "HEAD" ? null : fileBody(filePath);
+    return new Response(body, { status: 200, headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : "local asset not found";
     return new Response(message, { status: 404 });

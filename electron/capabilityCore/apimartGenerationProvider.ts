@@ -1,4 +1,4 @@
-import type { ResolvedTaskRequestV1, GenerationProvider } from "./generationRuntimeAdapter";
+import type { GenerationProvider, GenerationProviderOutput, ResolvedTaskRequestV1 } from "./generationRuntimeAdapter";
 
 export type ApimartGenerationProviderOptions = {
   apiKey: string;
@@ -62,6 +62,40 @@ function providerMessage(payload: JsonRecord): string {
   return String(error?.message ?? data?.error ?? payload.message ?? payload.msg ?? "request rejected").slice(0, 256);
 }
 
+function outputUrl(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as JsonRecord;
+  for (const key of ["url", "video_url", "image_url", "audio_url"]) {
+    if (typeof item[key] === "string" && (item[key] as string).trim()) return (item[key] as string).trim();
+  }
+  return null;
+}
+
+function extractMaterializationOutputs(raw: unknown): GenerationProviderOutput[] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  const payload = raw as JsonRecord;
+  const data = payload.data && typeof payload.data === "object" && !Array.isArray(payload.data) ? payload.data as JsonRecord : payload;
+  const result = data.result && typeof data.result === "object" && !Array.isArray(data.result) ? data.result as JsonRecord : data;
+  const outputs: GenerationProviderOutput[] = [];
+  for (const [key, kind] of [["images", "image"], ["videos", "video"], ["audios", "audio"]] as const) {
+    const values = Array.isArray(result[key]) ? result[key] : [];
+    for (const [index, value] of values.entries()) {
+      const url = outputUrl(value);
+      if (url) {
+        const providerOutputId = value && typeof value === "object" && !Array.isArray(value) && typeof (value as JsonRecord).id === "string"
+          ? (value as JsonRecord).id as string
+          : `${kind}-${index + 1}`;
+        outputs.push({ kind, url, providerOutputId });
+      }
+    }
+  }
+  const directKind = typeof result.video_url === "string" ? "video" : typeof result.audio_url === "string" ? "audio" : typeof result.url === "string" ? "image" : null;
+  const directUrl = outputUrl(result);
+  if (directKind && directUrl && !outputs.some((output) => output.url === directUrl)) outputs.push({ kind: directKind, url: directUrl });
+  return outputs;
+}
+
 export function createApimartGenerationProvider(options: ApimartGenerationProviderOptions): GenerationProvider {
   const apiKey = options.apiKey.trim();
   const root = baseUrl(options.baseUrl);
@@ -94,7 +128,7 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
   };
   return {
     providerId: "apimart",
-    capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+    capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false, materialize: true },
     buildRequest: buildImageRequest,
     async submit(providerRequest) {
       const payload = await request(`${root}/v1/images/generations`, {
@@ -108,6 +142,9 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
       return { providerTaskId: taskId.trim(), raw: payload };
     },
     query: queryTask,
+    async materialize(input) {
+      return { outputs: extractMaterializationOutputs(input.raw), raw: input.raw };
+    },
     async reconcile(input) {
       if (!input.providerTaskId?.trim()) return { found: false };
       const result = await queryTask(input.providerTaskId);

@@ -229,7 +229,7 @@ describe('generation.single-shot dispatcher policy boundary', () => {
       .rejects.toMatchObject({ httpStatus: 400 })
   })
 
-  it('opens a read-only session from a registered client current-project bootstrap without trusting project fields', async () => {
+  it('opens a current-project planning session from a registered client bootstrap without trusting project fields', async () => {
     const authority = makeAuthority()
     const resolveCurrentProject = vi.fn((request: { client: string; clientSessionNonce: string }) => {
       expect(request).toEqual({ client: 'codex', clientSessionNonce: 'client-session-1' })
@@ -261,7 +261,14 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     const projection = opened as { leaseHandle: string }
     expect(authority.verifyLease(projection.leaseHandle)).toMatchObject({
       projectId: 'project-1',
-      scopeSet: ['context:read'],
+      scopeSet: expect.arrayContaining([
+        'context:read',
+        'generation:create',
+        'generation:plan',
+        'generation:preview',
+        'generation:read',
+        'generation:events',
+      ]),
     })
     expect(resolveCurrentProject).toHaveBeenCalledTimes(1)
   })

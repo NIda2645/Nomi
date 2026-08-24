@@ -7,6 +7,7 @@ import { getWorkspaceRepositoryDeps } from "../runtimePaths";
 import { resolveWorkspaceProjectDir } from "../workspace/workspaceRepository";
 import { initialPlaybookStages, requireProductionPlaybook } from "./productionPlaybooks";
 import { productionRunPaths, productionRunsRoot } from "./productionRunPaths";
+import { createProductionRunLock } from "./productionRunLock";
 import { applyProductionCommand, type ProductionCommandEffect } from "./productionRunReducer";
 import { assertProductionPolicyReady } from "./productionPolicyReadiness";
 import {
@@ -164,6 +165,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()));
   const now = deps.now ?? (() => new Date().toISOString());
   const randomId = deps.randomId ?? (() => crypto.randomUUID());
+  const repositoryOwnerId = `production-repository-${process.pid}-${randomId()}`;
 
   function projectDir(projectId: string): string {
     const dir = resolveProjectDir(String(projectId || "").trim());
@@ -336,7 +338,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     return run;
   }
 
-  function execute(projectId: string, runId: string, command: RunCommand): RunCommandResult {
+  function executeUnlocked(projectId: string, runId: string, command: RunCommand): RunCommandResult {
     const dir = projectDir(projectId);
     const paths = productionRunPaths(dir, runId);
     const allEvents = readJsonLines<RunEvent>(paths.events);
@@ -453,6 +455,25 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     appendDurableJsonLine(paths.commands, record);
     writeJsonFileAtomic(paths.snapshot, envelopeFor(next));
     return { run: next, events: [event] };
+  }
+
+  function execute(projectId: string, runId: string, command: RunCommand): RunCommandResult {
+    const dir = projectDir(projectId);
+    const paths = productionRunPaths(dir, runId);
+    const lock = createProductionRunLock({
+      filePath: paths.repositoryLock,
+      epochPath: paths.repositoryLockEpoch,
+      ownerId: repositoryOwnerId,
+      now,
+      randomId,
+      durability: "ephemeral",
+    });
+    const lease = lock.acquire();
+    try {
+      return executeUnlocked(projectId, runId, command);
+    } finally {
+      try { lock.release(lease); } catch { /* preserve the command result or original failure */ }
+    }
   }
 
   function list(projectId: string): ProductionRunSummary[] {

@@ -1,9 +1,11 @@
 import { z } from "zod";
 
+const primitiveEnumValueSchema = z.union([z.string(), z.number().finite(), z.boolean()]);
+
 const parameterFieldSchema = z.object({
   type: z.enum(["string", "number", "integer", "boolean", "enum", "object", "array"]),
   required: z.boolean().optional(),
-  enum: z.array(z.string()).min(1).optional(),
+  enum: z.array(primitiveEnumValueSchema).min(1).optional(),
   description: z.string().optional(),
 }).strict();
 
@@ -12,6 +14,8 @@ const recoveryCapabilitiesSchema = z.object({
   query: z.boolean(),
   reconcile: z.boolean(),
   cancel: z.boolean(),
+  /** Optional provider-owned terminal output extraction; older manifests may omit it. */
+  materialize: z.boolean().optional(),
 }).strict();
 
 const modelProfileSchema = z.object({
@@ -66,4 +70,3 @@ export function parseModuleManifest(value: unknown): ModuleManifest {
     throw error;
   }
 }
-

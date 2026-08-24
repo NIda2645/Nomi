@@ -56,7 +56,7 @@ export type DispatchContext = {
   /** Optional read-only context seam. No semantic route may fall through to a legacy service. */
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   /** Shared semantic planning/editing seam. MCP and GUI must provide the same handler; no provider call here. */
-  generationPlanning?: (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1 }) => unknown | Promise<unknown>
+  generationPlanning?: (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1; origin?: { host: CapabilityOriginHost; actorId?: string } }) => unknown | Promise<unknown>
   /** Main-process project-lease authority. Semantic routes never trust body.projectId without this verifier. */
   projectLeaseAuthority?: ProjectLeaseAuthority
   /** Main-process resolver for a signed selection handle. It supplies current project identity and connection binding. */

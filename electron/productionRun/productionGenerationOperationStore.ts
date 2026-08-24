@@ -30,7 +30,16 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
       const run = owner.createGenerationDraft({
         operationId: input.operationId,
         projectId: input.projectId,
-        origin: { host: "semantic-mcp" },
+        origin: input.origin ?? { host: "semantic-mcp" },
+        // A semantic draft is scoped to the verified transport and the exact
+        // candidate the user approved.  This is not a provider bypass: the
+        // receipt gate still authorizes the single submit, while the Run's
+        // policy prevents a later command from changing host/provider/model.
+        policy: {
+          trustedHosts: [input.origin?.host ?? "semantic-mcp"],
+          allowedProviders: [input.candidate.providerId],
+          allowedModels: [input.candidate.modelId],
+        },
         candidate: input.candidate,
       });
       const operation = operationFromRun(run);

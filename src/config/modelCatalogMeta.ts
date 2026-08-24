@@ -1,28 +1,19 @@
 import { normalizeOrientation, type Orientation } from '../utils/orientation'
 import { normalizeVideoResolution } from '../utils/videoGenerationSpec'
 import i18n from '../i18n'
+import type {
+  ModelParameterControl,
+  ModelParameterControlOption,
+  ModelParameterControlType,
+} from '../../electron/shared/videoCapabilities/types'
+
+export type {
+  ModelParameterControl,
+  ModelParameterControlOption,
+  ModelParameterControlType,
+} from '../../electron/shared/videoCapabilities/types'
 
 type UnknownRecord = Record<string, unknown>
-
-export type ModelParameterControlType = 'select' | 'number' | 'text' | 'boolean' | 'image-url'
-
-export type ModelParameterControlOption = {
-  value: string | number | boolean
-  label: string
-  priceLabel?: string
-}
-
-export type ModelParameterControl = {
-  key: string
-  label: string
-  type: ModelParameterControlType
-  options: ModelParameterControlOption[]
-  defaultValue?: string | number | boolean
-  min?: number
-  max?: number
-  step?: number
-  placeholder?: string
-}
 
 export type VideoModelDurationOption = {
   value: number

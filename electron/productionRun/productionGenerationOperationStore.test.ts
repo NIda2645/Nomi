@@ -59,4 +59,25 @@ describe("ProductionRun-owned generation operation store", () => {
     });
     expect(createProductionGenerationOperationStore(restartedService).read("project-1", "op-1")).toMatchObject({ state: "sealed", approvedReceiptId: "receipt-1", contract: { contractHash: contract.contractHash } });
   });
+
+  it("persists the authenticated transport origin instead of replacing it with a semantic default", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-generation-origin-"));
+    roots.push(root);
+    const repository = createProductionRunRepository({ projectDirResolver: () => root, now: () => "2026-08-23T00:00:00.000Z" });
+    const service = createProductionRunService({ repository, projectRootResolver: () => root, sleep: async () => {} });
+    const operations = createProductionGenerationOperationStore(service);
+
+    await operations.create({
+      operationId: "op-origin",
+      projectId: "project-1",
+      origin: { host: "codex", actorId: "client-1" },
+      candidate: candidate(),
+      now: "2026-08-23T00:00:00.000Z",
+    });
+
+    expect(service.readFull("project-1", "op-origin")).toMatchObject({
+      origin: { host: "codex", actorId: "client-1" },
+      policy: { trustedHosts: ["codex"], allowedProviders: ["fixture-provider"], allowedModels: ["fixture-model"] },
+    });
+  });
 });
