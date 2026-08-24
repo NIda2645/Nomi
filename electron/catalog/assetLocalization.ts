@@ -305,7 +305,15 @@ export async function resolveLocalAsset(
 /** 按某素材的媒体类型选出**按优先级排好的**上传通道候选(+ 各自的 apiKey);无可用通道返回空数组。 */
 export type IngestionResolver = (
   mediaKind: AssetMediaKind,
-) => Array<{ ingestion: AssetIngestion; uploadApiKey: string }>;
+) => Array<IngestionCandidate>;
+
+/** 一条上传通道候选。`vendorKey` 是这条通道属于哪家(匿名公共托管为 null)——
+ *  上传本身用不到它,设置页的「现在走哪条」要靠它说出托管方名字(靠 endpoint 反猜 host 太脆)。 */
+export type IngestionCandidate = {
+  ingestion: AssetIngestion;
+  uploadApiKey: string;
+  vendorKey: string | null;
+};
 
 export type LocalizeAssetsOptions = {
   anonymousConsent?: AnonymousAssetConsent;
@@ -456,8 +464,16 @@ export async function localizeAssetsForVendor(
  * 见 kieSeedance.ts)。onboarding 自接的 vendor 走 Vendor.assetIngestion(持久化)。
  */
 const CURATED_ASSET_INGESTION: Record<string, AssetIngestion> = {
-  // KIE:免费通用文件托管 → 临时公网 URL(文件 ~3天,够一次生成)。docs.kie.ai/file-upload-api
+  // KIE:免费通用文件托管 → 临时公网 URL。docs.kie.ai/file-upload-api
   // 图片走 base64(file-base64-upload);视频/音频走 stream(见 CURATED_VIDEO_INGESTION,base64 对 mp4 低效)。
+  //
+  // ⚠️ 2026-08-24 真机实测(真 key、真文件、回链 GET 逐字节比对)推翻官方文档三处,以实测为准:
+  //   1. 响应 data 实际只有 {success,fileName,filePath,downloadUrl,fileSize,mimeType,uploadedAt};
+  //      文档宣称的 fileId/fileUrl/uploadPath/originalName/expiresAt **都不存在**。只读 downloadUrl 才安全。
+  //   2. downloadUrl 落在 tempfile.redpandaai.co/<path>,不是文档写的 kieai.redpandaai.co/download/<fileId>
+  //      —— 故只认字段、不硬编码回链域名。
+  //   3. 有效期无字段可读,文档自相矛盾(横幅 24h vs 特性列表 3 天);唯一硬证据是回链响应头
+  //      Cache-Control: max-age=86400 → ttlSeconds 取 24h(保守,取 3 天会在过期后静默拿到死链)。
   kie: {
     strategy: "upload-url",
     endpoint: "https://kieai.redpandaai.co/api/file-base64-upload",
@@ -602,16 +618,16 @@ export function resolveAssetIngestionWithFallback(
   allVendors: Array<{ key?: string; assetIngestion?: AssetIngestion }>,
   getApiKey: (vendorKey: string) => string | null,
   mediaKind: AssetMediaKind = "image",
-): Array<{ ingestion: AssetIngestion; uploadApiKey: string }> {
-  const candidates: Array<{ ingestion: AssetIngestion; uploadApiKey: string }> = [];
+): Array<IngestionCandidate> {
+  const candidates: Array<IngestionCandidate> = [];
   const seen = new Set<string>();
   // 同一个物理端点只试一次（目标 vendor 恰好就是 KIE 时会被推两遍）。
-  const push = (ingestion: AssetIngestion | null | undefined, uploadApiKey: string) => {
+  const push = (ingestion: AssetIngestion | null | undefined, uploadApiKey: string, vendorKey: string | null) => {
     if (!ingestion || ingestion.strategy === "none") return;
     const id = ingestion.strategy === "anon-chain" ? "anon-chain" : `${ingestion.strategy}:${hostLabel(ingestion)}`;
     if (seen.has(id)) return;
     seen.add(id);
-    candidates.push({ ingestion, uploadApiKey });
+    candidates.push({ ingestion, uploadApiKey, vendorKey });
   };
   // 本地 ComfyUI：素材必须传到它自己的 /upload/image 换本地文件名（LoadImage/LoadVideo 都不认公网 URL），
   // 不走 KIE/apimart 中转（那给公网 URL）。端点从 vendor baseUrl 动态派生（用户可改地址）。
@@ -621,21 +637,21 @@ export function resolveAssetIngestionWithFallback(
   // 它是**唯一**候选，不给 fallback：公网 URL 对 LoadImage 没用，换通道等于换成一个必错的值。
   if (isComfyuiVendor(targetVendor) && (mediaKind === "image" || mediaKind === "video")) {
     const base = String(targetVendor?.baseUrlHint || "http://127.0.0.1:8188").replace(/\/+$/, "");
-    return [{ ingestion: { strategy: "comfyui-upload", endpoint: `${base}/upload/image`, accepts: ["image", "video"] }, uploadApiKey: "" }];
+    return [{ ingestion: { strategy: "comfyui-upload", endpoint: `${base}/upload/image`, accepts: ["image", "video"] }, uploadApiKey: "", vendorKey: targetVendor?.key ?? null }];
   }
   // 1. 目标供应商自己接受该类型 → 直接用（apiKey 也是目标供应商的）
   const targetIngestion = resolveAssetIngestionForKind(targetVendor, mediaKind);
   if (targetIngestion && targetIngestion.strategy !== "none") {
     const key = targetVendor?.key ? (getApiKey(targetVendor.key) ?? "") : "";
-    push(targetIngestion, key);
+    push(targetIngestion, key, targetVendor?.key ?? null);
   }
   // 2. KIE：免费上传，通用文件托管（图/视频/音频），返回公网 URL，所有供应商均可用该 URL
   const kieKey = getApiKey("kie");
-  if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey);
+  if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey, "kie");
   // 3. apimart：免费上传（72h，仅图片），目标不是 apimart 本身时才用（避免 key 二选一歧义）
   if (targetVendor?.key !== "apimart") {
     const apimartKey = getApiKey("apimart");
-    if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey);
+    if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey, "apimart");
   }
   // 4. 其他任意接受该类型且有上传能力（非 inline-base64）的已配供应商
   for (const vendor of allVendors) {
@@ -643,12 +659,12 @@ export function resolveAssetIngestionWithFallback(
     const ing = resolveAssetIngestionForKind(vendor, mediaKind);
     if (!ing || ing.strategy === "none" || ing.strategy === "inline-base64") continue;
     const key = getApiKey(vendor.key);
-    if (key) push(ing, key);
+    if (key) push(ing, key, vendor.key);
   }
   // 5. 匿名上传链：零配置兜底（无 key、收任意文件 → 临时公网直链）。多 host 有序 fallback
   //    (litterbox → tmpfiles)，单 host 限速/宕机时自动切下一个。走到这里说明上面更优的通道都没命中
   //    （图片几乎总有 apimart；视频缺 KIE 时此处接住）。NET：上传零配置"开箱即用"，诚实错误
   //    只在链里**所有** host 都不可达时才触发。
-  if (ingestionAccepts(ANON_UPLOAD_CHAIN, mediaKind)) push(ANON_UPLOAD_CHAIN, "");
+  if (ingestionAccepts(ANON_UPLOAD_CHAIN, mediaKind)) push(ANON_UPLOAD_CHAIN, "", null);
   return candidates;
 }
