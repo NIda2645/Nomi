@@ -67,6 +67,24 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   return file
 }
 
+/**
+ * 造一个「回完 initialize 立刻死」的 server：真实世界的「server 崩在握手中途」。
+ * 探针收到应答时子进程多半已死，仍会回写 initialized + tools/list 两帧——练的就是
+ * stdout 处理器在子进程死后继续 send 那条路（写死管道在源头必须无害）。
+ */
+function replyThenDieServerScript(): string {
+  const file = path.join(homeDir, 'reply-then-die-server.mjs')
+  fs.writeFileSync(
+    file,
+    `process.stdin.once('data', () => {
+  process.stdout.write(JSON.stringify({ jsonrpc:'2.0', id: 1, result: { protocolVersion: 'x', capabilities: {}, serverInfo: { name: 'half', version: '1' } } }) + '\\n')
+  process.exit(7)
+})
+`,
+  )
+  return file
+}
+
 beforeEach(() => {
   homeDir = tempHome()
   ensureToken()
@@ -101,6 +119,17 @@ describe('capabilityCore/mcpVerify', () => {
     const dud = path.join(homeDir, 'dud.mjs')
     fs.writeFileSync(dud, 'process.exit(3)')
     writeClaudeEntry(process.execPath, [dud])
+    const res = await verifyMcp('claude')
+    expect(res.ok).toBe(false)
+    expect(res.reason).toBe('handshake-failed')
+  })
+
+  // 「server 答完第一帧就崩」：探针会在子进程死后继续回写两帧。平时小包写走同步快路静默无事，
+  // 并行负载下这笔写会落进 libuv 异步队列 → 完成时对端已死 → EPIPE 在 stdin 流上异步 emit
+  // （2026-08-25 真实现场，确定性复现见 mcpVerify.stdinError.test.ts）。无论哪条路，
+  // 结论都必须是 handshake-failed，且不许有任何东西升级成 unhandled error。
+  it('server 回完 initialize 立刻崩掉 → handshake-failed（死后回写必须无害）', async () => {
+    writeClaudeEntry(process.execPath, [replyThenDieServerScript()])
     const res = await verifyMcp('claude')
     expect(res.ok).toBe(false)
     expect(res.reason).toBe('handshake-failed')
