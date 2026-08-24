@@ -394,3 +394,11 @@ git status --short --branch
 - 走查断言：`tests/ux/image-grid-split-freeze.walk.mjs` 量主线程最长阻塞、零 `toDataURL`、零 `data:` URL。
 
 **加新规则的姿势**（P2 通用性判定的落地路径）：修完一个 bug → 判断是不是通用 → 全仓实扫拿 file:line → 能 grep 的加进本门岗的 `RULES`（写清 label + hint，hint 必须给出替代写法）→ `node scripts/check-heavy-path.mjs --update-baseline` 把存量收进基线 → 存量后续慢慢清零。
+
+## R18 测试等待门岗（并行才炸的私有墙钟等待）
+
+**门岗**：`pnpm run check:test-waits`（`scripts/check-test-waits.mjs`，硬零无基线）。已进 `gates` 链。
+
+**它抓什么**：测试文件里的私有 `waitFor` 定义与 `Date.now()` 截止时间轮询。起因（2026-08-25）：electron/productionRun 十一个测试文件各自复制/手写墙钟等待（硬闹钟 500ms~5s），赛跑「每条命令 3 次真 fsync」的 ProductionRunService 编排链——单跑永远绿，vitest 并行满载时 fsync 排队放大 → 干净 main 上 5 跑 4 挂。flake 的两条腿分两处修：**耗时腿**在 `electron/durability.ts`（单测 ephemeral 不 fsync，测试 20× 提速，PR #139）；**赛跑腿**在本门岗——就算测试再快，复制粘贴的私有闹钟也是下一次事故的年轮，机器拦住不许再长。
+
+**正确姿势**：等 detached driver（`void driveGeneration(...)` 这类）一律用 `productionRunTestHelpers.waitForProduction`（全仓唯一等待实现，统一预算、超时信息带 `check.toString()` 直接定位卡在哪步）。不许在测试里再写 `function waitFor` 或 `Date.now()` 截止轮询——第 11 个复制品（`productionStoryboardBinding` 的匿名内联循环，连名字都不叫 waitFor）就是靠本门岗的模式扫描抓出来的。来龙去脉：`docs/plan/2026-08-25-production-run-test-flake-fsync.md`（耗时腿）+ `docs/plan/2026-08-25-fix-flaky-production-run-tests.md`（赛跑腿与门岗）。
