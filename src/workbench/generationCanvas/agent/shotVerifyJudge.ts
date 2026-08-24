@@ -8,13 +8,9 @@ import { getDesktopBridge } from '../../../desktop/bridge'
 import { sendWorkbenchAiMessage } from '../../ai/workbenchAiClient'
 import { clearWorkbenchAgentSession } from '../../../api/desktopClient'
 import { getAssistantModelPref } from '../../ai/assistantModelPref'
+import { shotVerifySessionKey } from '../../ai/agentSessionKey'
 import { readWindowUrlParam } from '../../windowUrlParam'
 import type { ShotVerifyDeps } from './shotVerifyRunner'
-
-/** verify 用独立会话键(与创作/生成区线程隔离,不污染用户对话历史)。 */
-function verifySessionKey(): string {
-  return `nomi:shot-verify:${readWindowUrlParam('projectId') || 'local'}`
-}
 
 /** 真实 deps 工厂(渲染层环境)。无桌面桥(非 Electron)→ extractFrame 抛错,被 runner 逐镜 catch 跳过。 */
 export function makeShotVerifyDeps(): ShotVerifyDeps {
@@ -29,7 +25,7 @@ export function makeShotVerifyDeps(): ShotVerifyDeps {
       return url
     },
     judge: async (prompt: string, frameImageUrl: string): Promise<string> => {
-      const sessionKey = verifySessionKey()
+      const sessionKey = shotVerifySessionKey()
       // 每镜判断必须独立:清会话,避免上一镜的图/判决污染本镜上下文(偏判)。
       await clearWorkbenchAgentSession(sessionKey).catch(() => {})
       const pref = getAssistantModelPref()

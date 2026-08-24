@@ -14,6 +14,7 @@ import { z } from 'zod'
 import { sendWorkbenchAiMessage } from '../../ai/workbenchAiClient'
 import { clearWorkbenchAgentSession } from '../../../api/desktopClient'
 import { getAssistantModelPref } from '../../ai/assistantModelPref'
+import { directionSessionKey } from '../../ai/agentSessionKey'
 import { readWindowUrlParam } from '../../windowUrlParam'
 
 export type DirectionCandidate = { key: string; title: string; oneLiner: string }
@@ -32,11 +33,6 @@ export type RunDirectionPlannerInput = {
   brief?: DirectionPlannerBrief | null
   /** playbook 声明（key/name 等），用于给模型「这是哪类片子」的上下文；结构宽松，只读取文本字段。 */
   playbook?: Record<string, unknown> | null
-}
-
-/** 方向门用独立会话键（与创作/生成区线程隔离，不污染用户对话历史）。 */
-function directionSessionKey(): string {
-  return `nomi:production-directions:${readWindowUrlParam('projectId') || 'local'}`
 }
 
 /** 把 brief 里有值的字段拼成人话上下文行（缺省字段不占位，避免喂模型一堆 undefined）。 */

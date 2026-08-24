@@ -8,6 +8,7 @@ import { runDirectionPlanner } from '../generationCanvas/agent/runDirectionPlann
 import { sendWorkbenchAiMessage } from '../ai/workbenchAiClient'
 import { clearWorkbenchAgentSession } from '../../api/desktopClient'
 import { getAssistantModelPref } from '../ai/assistantModelPref'
+import { productionScriptSessionKey } from '../ai/agentSessionKey'
 import { readWindowUrlParam } from '../windowUrlParam'
 import { useWorkbenchStore } from '../workbenchStore'
 import { mintSpendGrant } from '../api/taskApi'
@@ -92,7 +93,7 @@ async function runProductionTextPlanner(input: {
   outputFormat?: 'script' | 'storyboard'
 }): Promise<string> {
   const projectId = input.projectId || readWindowUrlParam('projectId') || ''
-  const sessionKey = `nomi:production-script:${projectId || 'local'}`
+  const sessionKey = productionScriptSessionKey(projectId)
   await clearWorkbenchAgentSession(sessionKey).catch(() => {})
   const prompt = input.outputFormat === 'storyboard'
     ? [
