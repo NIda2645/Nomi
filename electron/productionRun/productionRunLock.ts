@@ -24,6 +24,8 @@ export type ProductionRunLockDeps = {
   leaseMs?: number;
   now?: () => string;
   randomId?: () => string;
+  /** Repository mutation locks are short-lived mutexes; the Run lock remains the durable fence. */
+  durability?: "durable" | "ephemeral";
 };
 
 export class ProductionRunLockBusyError extends Error {
@@ -107,6 +109,7 @@ export function createProductionRunLock(deps: ProductionRunLockDeps) {
   const leaseMs = deps.leaseMs ?? 30_000;
   const now = deps.now ?? (() => new Date().toISOString());
   const randomId = deps.randomId ?? (() => crypto.randomUUID());
+  const durable = deps.durability !== "ephemeral";
   const epochPath = deps.epochPath ?? `${deps.filePath}.epoch`;
 
   if (!Number.isInteger(leaseMs) || leaseMs <= 0) throw new Error("Production run lock leaseMs must be positive");
@@ -130,7 +133,7 @@ export function createProductionRunLock(deps: ProductionRunLockDeps) {
     fs.mkdirSync(path.dirname(deps.filePath), { recursive: true });
     const existing = parseLease(deps.filePath);
     if (existing) reclaimExpired(existing);
-    const fencingEpoch = parseEpoch(epochPath) + 1;
+    const fencingEpoch = durable ? parseEpoch(epochPath) + 1 : 1;
     const lease: ProductionRunLockLease = {
       schemaVersion: PRODUCTION_RUN_LOCK_SCHEMA_VERSION,
       ownerId,
@@ -149,20 +152,22 @@ export function createProductionRunLock(deps: ProductionRunLockDeps) {
     }
     try {
       fs.writeSync(fd, `${JSON.stringify(lease)}\n`, undefined, "utf8");
-      fsyncFile(fd);
+      if (durable) fsyncFile(fd);
     } catch (error) {
       try { fs.rmSync(deps.filePath, { force: true }); } catch { /* preserve original error */ }
       throw error;
     } finally {
       fs.closeSync(fd);
     }
-    try {
-      writeJsonFileAtomic(epochPath, { schemaVersion: 1, fencingEpoch });
-    } catch (error) {
-      try { fs.rmSync(deps.filePath, { force: true }); } catch { /* preserve original error */ }
-      throw error;
+    if (durable) {
+      try {
+        writeJsonFileAtomic(epochPath, { schemaVersion: 1, fencingEpoch });
+      } catch (error) {
+        try { fs.rmSync(deps.filePath, { force: true }); } catch { /* preserve original error */ }
+        throw error;
+      }
     }
-    fsyncDirectory(deps.filePath);
+    if (durable) fsyncDirectory(deps.filePath);
     return lease;
   }
 
@@ -181,14 +186,14 @@ export function createProductionRunLock(deps: ProductionRunLockDeps) {
     // Heartbeats must not expose a partially written lock to a reclaiming
     // process; use the same temp+rename primitive as other durable metadata.
     writeJsonFileAtomic(deps.filePath, renewed);
-    fsyncDirectory(deps.filePath);
+    if (durable) fsyncDirectory(deps.filePath);
     return renewed;
   }
 
   function release(lease: ProductionRunLockLease): void {
     assertOwned(lease);
     fs.rmSync(deps.filePath, { force: true });
-    fsyncDirectory(deps.filePath);
+    if (durable) fsyncDirectory(deps.filePath);
   }
 
   async function withLock<T>(callback: (lease: ProductionRunLockLease) => Promise<T> | T): Promise<T> {

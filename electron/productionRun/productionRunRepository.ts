@@ -466,6 +466,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       ownerId: repositoryOwnerId,
       now,
       randomId,
+      durability: "ephemeral",
     });
     const lease = lock.acquire();
     try {
