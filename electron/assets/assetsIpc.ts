@@ -1,9 +1,47 @@
 // 素材域 IPC 注册器（2026-07-22 素材面收敛时从 main.ts 抽出,R9 巨壳门岗）：
 // 文件夹读写 + 本地文件导入 + 素材下载 + 自动另存/设置（集中设置页「文件与保存」）。
-import { dialog, ipcMain } from "electron";
+import { clipboard, dialog, ipcMain } from "electron";
 import { getAutoSavePrefs, setAutoSavePrefs, type AutoSavePrefs } from "./downloadPrefs";
+import { CLIPBOARD_FILE_PATH_FORMATS, parseClipboardFilePaths } from "./clipboardFilePaths";
+import { copyLocalImageFiles } from "./localFileCopy";
+
+export function readClipboardFilePathsFromFormats(
+  availableFormats: readonly string[],
+  readBuffer: (format: string) => Buffer,
+): string[] {
+  for (const format of CLIPBOARD_FILE_PATH_FORMATS) {
+    if (!availableFormats.includes(format)) continue;
+    try {
+      const paths = parseClipboardFilePaths(format, readBuffer(format));
+      if (paths.length > 0) return paths;
+    } catch {
+      // A clipboard format can disappear between availableFormats and readBuffer.
+    }
+  }
+  return [];
+}
+
+export function parseCopyFilesPayload(payload: unknown): { projectId: string; paths: string[] } | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const raw = payload as { projectId?: unknown; paths?: unknown };
+  const projectId = typeof raw.projectId === "string" ? raw.projectId.trim() : "";
+  const paths = Array.isArray(raw.paths)
+    ? [...new Set(raw.paths.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean))]
+    : [];
+  return projectId && paths.length > 0 ? { projectId, paths } : null;
+}
 
 export function registerAssetsIpc(): void {
+  ipcMain.handle("nomi:clipboard:read-file-paths", () =>
+    readClipboardFilePathsFromFormats(clipboard.availableFormats(), (format) =>
+      format === "text/plain" ? Buffer.from(clipboard.readText(), "utf8") : clipboard.readBuffer(format),
+    ),
+  );
+  ipcMain.handle("nomi:assets:copy-files", (_event, payload) => {
+    const parsed = parseCopyFilesPayload(payload);
+    if (!parsed) throw new Error("projectId and paths are required");
+    return copyLocalImageFiles(parsed.projectId, parsed.paths);
+  });
   ipcMain.handle("nomi:assets:folders-get", async (_event, payload) => {
     const { getAssetFolders } = await import("./assetFolders");
     return getAssetFolders(payload);
