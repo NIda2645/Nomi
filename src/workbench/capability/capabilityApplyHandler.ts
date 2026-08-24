@@ -5,9 +5,8 @@ import { getDesktopBridge } from '../../desktop/bridge'
 import i18n from '../../i18n'
 import { runStoryboardPlanner } from '../generationCanvas/agent/runStoryboardPlanner'
 import { runDirectionPlanner } from '../generationCanvas/agent/runDirectionPlanner'
-import { sendWorkbenchAiMessage } from '../ai/workbenchAiClient'
-import { getAssistantModelPref } from '../ai/assistantModelPref'
-import { productionScriptSessionKey, safeClearAgentSession } from '../ai/agentSessionKey'
+import { productionScriptSessionKey } from '../ai/agentSessionKey'
+import { runSingleShotAgent } from '../ai/agentLoopMode'
 import { readWindowUrlParam } from '../windowUrlParam'
 import { useWorkbenchStore } from '../workbenchStore'
 import { mintSpendGrant } from '../api/taskApi'
@@ -92,8 +91,6 @@ async function runProductionTextPlanner(input: {
   outputFormat?: 'script' | 'storyboard'
 }): Promise<string> {
   const projectId = input.projectId || readWindowUrlParam('projectId') || ''
-  const sessionKey = productionScriptSessionKey(projectId)
-  await safeClearAgentSession(sessionKey)
   const prompt = input.outputFormat === 'storyboard'
     ? [
         '你是分镜规划师。请根据下面的原分镜方案和修改要求，输出一份完整、可执行的 StoryboardPlan JSON。',
@@ -118,17 +115,15 @@ async function runProductionTextPlanner(input: {
         input.goal || '',
         '只输出稿件正文，不要解释。',
       ].join('\n')
-  const pref = getAssistantModelPref()
-  const response = await sendWorkbenchAiMessage({
+  // 单次链路（清会话 + mode:'chat' + 模型偏好）收口到 runSingleShotAgent。
+  const response = await runSingleShotAgent({
+    sessionKey: productionScriptSessionKey(projectId),
     prompt,
     displayPrompt: input.instruction ? '修改制作稿件' : '生成制作剧本',
-    sessionKey,
     ...(projectId ? { projectId } : {}),
     skillKey: 'workbench.production.script-planner',
     skillName: '剧本初稿规划',
-    mode: 'chat',
-    ...(pref ? { agentModelKey: pref.modelKey, agentVendorKey: pref.vendorKey } : {}),
-  }, {})
+  })
   const text = response.text?.trim()
   if (!text) throw new Error('剧本规划没有返回可审阅内容')
   return text
