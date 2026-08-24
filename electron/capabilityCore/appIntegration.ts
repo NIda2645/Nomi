@@ -28,7 +28,7 @@ import { createProductionRunLock } from '../productionRun/productionRunLock'
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { createCurrentProjectResolver, deriveProjectIdentityDigests } from './currentProjectResolver'
 import type { ProjectSelectionHandleV1 } from './projectLease'
-import type { McpGenerationPolicy } from './mcpGenerationPolicy'
+import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
 import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
@@ -258,6 +258,7 @@ export async function startCapabilityCore(
       productionRuns: getProductionRunService(),
       ...defaults,
       ...authorities,
+      generationPolicy: authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy(),
       generationPlanning,
     })
     const location = getProjectLocationState()

@@ -7,6 +7,8 @@
  */
 
 export const MCP_GENERATION_SINGLE_SHOT_FLAG = 'NOMI_MCP_GENERATION_SINGLE_SHOT_V1' as const
+/** Separate opt-in for the paid E1 surface; the base flag only exposes zero-credit planning/editing. */
+export const MCP_GENERATION_SINGLE_SHOT_E1_FLAG = 'NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1' as const
 export const DEFAULT_MCP_GENERATION_NEXT_ACTION = 'nomi://settings/automation?section=mcp-generation' as const
 
 export const MCP_GENERATION_READ_SCOPE = Object.freeze(['context', 'read', 'events'] as const)
@@ -112,6 +114,27 @@ function isReadOnlyCapability(capability: McpGenerationCapability): boolean {
 
 function isE0Capability(capability: McpGenerationCapability): boolean {
   return (MCP_GENERATION_E0_SCOPE as readonly string[]).includes(capability)
+}
+
+/**
+ * Build the immutable policy used by the real desktop RPC and stdio entrypoints.
+ *
+ * The base feature flag is deliberately enough for E0 (context/create/edit/preview)
+ * but never opens a paid gate by itself.  E1 requires a second explicit flag so a
+ * rollout or test cannot accidentally turn on provider submission merely by enabling
+ * the editable planning surface.
+ */
+export function createRuntimeMcpGenerationPolicy(env: NodeJS.ProcessEnv = process.env): McpGenerationPolicy {
+  const baseEnabled = readFlag(env[MCP_GENERATION_SINGLE_SHOT_FLAG])
+  const paidEnabled = baseEnabled && readFlag(env[MCP_GENERATION_SINGLE_SHOT_E1_FLAG])
+  return createMcpGenerationPolicy({
+    env,
+    checkpoints: {
+      p0Passed: baseEnabled,
+      p2Passed: baseEnabled,
+      p3Passed: paidEnabled,
+    },
+  })
 }
 
 export function createMcpGenerationPolicy(options: McpGenerationPolicyOptions = {}): McpGenerationPolicy {

@@ -30,7 +30,7 @@ import {
 } from './security'
 import type { ProjectLeaseAuthority } from './projectLease'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
-import type { McpGenerationPolicy } from './mcpGenerationPolicy'
+import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
@@ -259,9 +259,10 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
         }
       },
     })
+  const generationPolicy = authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy()
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
-    invoke: (method, params, options) => invoke(method, params, options, { ...authorities, generationPlanning }),
+    invoke: (method, params, options) => invoke(method, params, options, { ...authorities, generationPlanning, generationPolicy }),
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
     getAuthenticatedClient: () => {
       const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])

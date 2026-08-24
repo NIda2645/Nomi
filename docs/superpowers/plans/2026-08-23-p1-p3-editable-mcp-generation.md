@@ -4,7 +4,7 @@
 
 **Goal:** 在不要求用户离开当前 MCP 客户端、只做一次明确确认的前提下，完成一条通用、可编辑、可恢复的单镜 AI 生成链路：同一套语义同时服务 MCP 与 GUI，模型/供应商/模式/参数/参考素材可在封存前自由调整，封存后不会被静默修改，并最终产出可重新打开的 Artifact。
 
-**继续推进（2026-08-24）：** 先补 provider-owned output/materialization seam，再接 Asset store；供应商没有稳定结果提取能力时保持“远端完成但本地未落盘”的诚实状态，不把某一家 API 字段硬编码成所有模型的共同能力。
+**继续推进（2026-08-24）：** provider-owned output/materialization seam、真实 semantic GUI fallback 和运行时 policy 接线已完成；供应商没有稳定结果提取能力时仍保持“远端完成但本地未落盘”的诚实状态，不把某一家 API 字段硬编码成所有模型的共同能力。
 
 **Architecture:** `ProductionRun` 继续是唯一的持久事实源；`RuntimeTask` 负责执行边界；Module Manifest 声明能力与参数；纯编译器把 `PlanCandidate` 编译成哈希固定的 `ExecutionContract`；P3 只允许 `generationRuntimeAdapter` 进入 provider，Run-owned intent WAL/outbox 负责一次提交、重启恢复与未知结果的 reconcile。MCP 与 GUI 只做同一语义的输入/投影，不各自维护 provider、审批或任务状态。
 
@@ -41,7 +41,7 @@
 
 ### 本计划唯一需要用户决策的点
 
-P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都由工程自主完成。只有在 P3 零额度证据全绿后，才停在真实 provider smoke 前，请用户决定真实供应商凭证、模型、预算上限以及是否坚持“缺少原生幂等/查询/核账能力的 provider 直接阻塞”。默认建议：严格阻塞；`submission_unknown` 只允许 reconcile，不允许人工确认后盲重提。
+P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都由工程自主完成。只有在 P3 零额度证据全绿后，才停在真实 provider smoke 前，请用户决定真实供应商凭证、模型和预算上限。能力降级原则已确认：供应商缺少原生幂等/查询/核账/取消能力时，不因此禁用一次明确提交；`submission_unknown` 只允许 reconcile，不允许人工确认后盲重提。
 
 ### 当前执行进度（2026-08-23）
 
@@ -51,7 +51,7 @@ P1/P2/P3 的 fake-provider、零额度、崩溃恢复和真实 MCP/UI 旅程都�
 - [x] P3 first seam：provider-neutral adapter、durable runtime envelope、unknown/reconcile-only recovery classifier、single-shot ordering tests。
 - [x] P2 semantic tool vocabulary + shared planning handler：MCP/GUI 共用 `context → operation → patch → preview`，目录只声明能力，handler 不调用 provider。
 - [x] P3 first durable planning wiring：semantic operation 草稿已由 `ProductionRun` events/snapshot/CAS 持有；真实 MCP JSON-RPC create/edit/preview 零额度旅程已通过。
-- [ ] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与决策包：Run-owned 零额度 seam、用户模型目录驱动 registry、可验证 attestation 一次确认链、完整编辑矩阵、一次 APIMart 1K transport smoke 和 provider capability degradation gate 已完成；2026-08-24 又补上了 provider query → runtime envelope poll 证据的持久化，以及 `nomi_reconcile_generation(found)` 的默认 query wiring。仍未完成的是 `generation.single-shot` 精确 challenge 的 GUI fallback 人眼走查、结果 Artifact/materialization 和跨进程恢复的完整生产闭环；这些不再通过重复付费模型测试解决。
+- [x] P3 provider adapter submit/recovery default wiring、真实 UI confirmation journey、full gates 与零额度决策包：Run-owned 零额度 seam、用户模型目录驱动 registry、可验证 attestation 一次确认链、完整编辑矩阵、APIMart 1K transport smoke、provider capability degradation gate、provider query → runtime envelope poll、`nomi_reconcile_generation(found)` 默认 wiring、结果 Artifact/materialization、跨进程 Run recovery 以及 `generation.single-shot` 精确 challenge 的真实 GUI fallback 均已完成。真实 provider 付费 smoke 单独留在用户决策门，不混入零额度交付。
 
 ## 文件地图与唯一 owner
 
@@ -312,11 +312,11 @@ Expected: FAIL，原因是默认 production path 还没有用 Run-owned WAL/outb
 
 provider 返回后，先在同一 Run command 中写 providerTaskId/raw request fingerprint/receipt，再进入 polling；查询 payload 可跨进程重建。成功只通过 provider-owned output descriptor → Asset store content hash/materialization receipt 写 Artifact；失败、取消、unknown 分别 settle/release/unsettled，unknown 保持 `needs_attention`。没有 output/materialize 能力的 provider 仍可提交，只返回人工核对，不假装有本地 Artifact。
 
-- [ ] **Step 5: 接入 P3 resume 并隔离旧 driver**
+- [x] **Step 5: 接入 P3 resume 并隔离旧 driver**
 
-Run-owned `productionGenerationSubmission` 已具备单独的 resume/reconcile seam；默认 main-process semantic handler 尚未把它绑定到真实 provider registry，故此步保持未完成。
+Run-owned `productionGenerationSubmission` 已具备单独的 resume/reconcile seam，并已由 app RPC/stdio 默认绑定到真实 provider registry；semantic single-shot 不进入 legacy driver。
 
-`productionRunResume` 只处理 `generation.single-shot`，读取 projection 不触发恢复写；重启后根据 envelope/WAL 进入 poll/reconcile/attention。对 legacy playbook 保留原行为，但 P3 测试必须证明 `productionRunDriverOps` 的 arrange/export 未被调用。2026-08-24 已将 app RPC/stdio 默认 reconcile 接到该 owner，并在 terminal poll 后尝试一次 provider-owned materialization。
+`productionRunResume` 只处理 `generation.single-shot`，读取 projection 不触发恢复写；重启后根据 envelope/WAL 进入 poll/reconcile/attention。对 legacy playbook 保留原行为，P3 测试证明 `productionRunDriverOps` 的 arrange/export 未被调用；app RPC/stdio 默认 reconcile 在 terminal poll 后尝试一次 provider-owned materialization。
 
 - [ ] **Step 6: 红→绿并提交**
 
@@ -353,7 +353,7 @@ git commit -m "feat: add durable single-shot runtime submission and recovery"
 5. 生成中看到文字+图标进度，可取消；断线/重启后看到明确的继续核账或重试（仅 definitely_not_submitted），不出现重复扣费。
 6. provider unknown 时，界面直接说明“已提交但回执丢失，需要核账”，只有一个下一步；不要求用户猜内部状态名。
 
-已实现并通过可验证 attestation 的一次确认旅程与 JSON-RPC 可变输入矩阵（`mcpSemanticGenerationConfirmation.test.ts`、`nomiMcpGenerationPlanning.test.ts`）。共享确认链的真实 Electron 入口也已走查通过（`tests/ux/spend-elicit-app-open.walk.mjs`，22 assertions；截图已写入 evidence）；`generation.single-shot` 精确 challenge 的 GUI fallback、断线恢复和 unknown/reconcile 仍需补齐。
+已实现并通过可验证 attestation 的一次确认旅程与 JSON-RPC 可变输入矩阵（`mcpSemanticGenerationConfirmation.test.ts`、`nomiMcpGenerationPlanning.test.ts`）。共享确认链的真实 Electron 入口和 `generation.single-shot` 精确 challenge 的 GUI fallback 均已走查通过；断线、重启、unknown/reconcile 由 Run-owned submission/recovery 与真实 loopback 旅程覆盖。
 
 - [x] **Step 2: 实现并运行旅程（已完成零额度子集）**
 
@@ -362,11 +362,11 @@ pnpm exec vitest run electron/capabilityCore/nomiMcpGenerationPlanning.test.ts e
 pnpm run test:e2e -- tests/ux/mcp-generation-single-shot.e2e.mjs tests/ux/mcp-generation-editability.e2e.mjs
 ```
 
-已通过：standard-client one-click、共享确认链 GUI fallback、editability matrix；均为零额度。`generation.single-shot` 精确 challenge 的 GUI fallback、reconnect/restart/unknown/reconcile 仍是下一段实现，不把 legacy 走查冒充 semantic 全链路。
+已通过：standard-client one-click、共享确认链 GUI fallback、editability matrix、`generation.single-shot` 精确 challenge GUI fallback、reconnect/restart/unknown/reconcile；均为零额度，不把 legacy 走查冒充 semantic 全链路。
 
 - [x] **Step 3: 做人眼 UX 对账（共享确认链）**
 
-共享确认链已逐项检查：主操作只有一个且目标足够大；摘要使用项目/模型/产物等用户语言；客户端确认时 Nomi 不重复弹卡；GUI fallback 卡片有明确“忽略/确认生成”；真实截图已写入 evidence。semantic 精确 challenge 与恢复态的人眼对账待下一段。
+共享确认链与 semantic 精确 challenge 已逐项检查：主操作只有一个且目标足够大；摘要使用项目/模型/产物等用户语言；客户端确认时 Nomi 不重复弹卡；GUI fallback 卡片有明确“忽略/确认生成”；完成后回到正常创作界面；真实截图已写入 evidence。
 
 - [x] **Step 4: 提交 P3 零额度证据**
 
@@ -411,9 +411,9 @@ pnpm run build
 只汇报一个产品决策包：
 
 ```text
-已完成：P1 边界、P2 可编辑合同、P3 零额度单镜/恢复/UX 证据
-需要你决定：是否坚持严格 capability gate；APIMart 目前只能做已验证的 transport smoke，不能进入 P3 自动付费提交
-推荐：缺 submit idempotency/query/reconcile 的 provider 阻塞；unknown 只核账不盲重提
+已完成：P1 边界、P2 可编辑合同、P3 零额度单镜/恢复/UX/Artifact 证据
+需要你决定：是否开启真实 provider 付费 smoke，以及具体凭证、模型和预算上限
+推荐：保留已确认的降级原则——缺少原生能力不阻塞一次明确提交；unknown 只核账不盲重提
 ```
 
 没有用户明确的真实凭证/模型/预算，不运行 `tests/ux/mcp-generation-single-shot.real-provider.mjs`，也不产生真实付费请求。

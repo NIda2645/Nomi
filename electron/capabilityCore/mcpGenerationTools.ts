@@ -187,7 +187,7 @@ export type GenerationOperation = Readonly<{
 }>;
 
 export type GenerationOperationStore = {
-  create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string }): GenerationOperation | Promise<GenerationOperation>;
+  create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string; origin?: { host: string; actorId?: string } }): GenerationOperation | Promise<GenerationOperation>;
   read(projectId: string, operationId: string): GenerationOperation | null | Promise<GenerationOperation | null>;
   patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string): GenerationOperation | Promise<GenerationOperation>;
   seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string): GenerationOperation | Promise<GenerationOperation>;
@@ -478,7 +478,7 @@ function resolveProviderReadiness(
 
 export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerDependencies) {
   const now = deps.now ?? (() => new Date().toISOString());
-  return async (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1 }): Promise<unknown> => {
+  return async (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1; origin?: { host: string; actorId?: string } }): Promise<unknown> => {
     if (!input.lease) throw new Error("A verified project lease is required");
     const params = input.params;
     if (input.capability === "context") {
@@ -520,7 +520,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     const operationId = typeof params.operationId === "string" && params.operationId.trim() ? params.operationId.trim() : `op-${crypto.randomUUID()}`;
     if (input.capability === "create") {
-      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(candidateFrom(params.candidate), deps.videoModelCandidates), now: now() });
+      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(candidateFrom(params.candidate), deps.videoModelCandidates), now: now(), origin: input.origin });
       return { operation, nextAction: "preview" };
     }
     const current = await deps.operations.read(input.lease.projectId, operationId);

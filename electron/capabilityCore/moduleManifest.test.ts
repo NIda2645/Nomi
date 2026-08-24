@@ -35,6 +35,12 @@ describe("moduleManifestSchema", () => {
     expect(parseModuleManifest(imageManifest)).toEqual(imageManifest);
   });
 
+  it("accepts the optional provider-owned materialization capability", () => {
+    const manifest = structuredClone(imageManifest);
+    manifest.providers[0].models[0].capabilities.materialize = true;
+    expect(parseModuleManifest(manifest).providers[0].models[0].capabilities.materialize).toBe(true);
+  });
+
   it("rejects a provider profile without recovery capabilities", () => {
     const malformed = structuredClone(imageManifest);
     delete (malformed.providers[0].models[0] as { capabilities?: unknown }).capabilities;

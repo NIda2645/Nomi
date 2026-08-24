@@ -14,6 +14,8 @@ const recoveryCapabilitiesSchema = z.object({
   query: z.boolean(),
   reconcile: z.boolean(),
   cancel: z.boolean(),
+  /** Optional provider-owned terminal output extraction; older manifests may omit it. */
+  materialize: z.boolean().optional(),
 }).strict();
 
 const modelProfileSchema = z.object({
