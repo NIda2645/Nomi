@@ -338,6 +338,10 @@ export type DesktopBridge = DesktopMediaBridge & {
     /** 深链三形状：工程级只有 projectId；节点级带 nodeId；Run 级带 runId(+artifactId)。 */
     onProductionDeepLink?: (cb: (payload: { projectId: string; runId?: string; nodeId?: string; artifactId?: string }) => void) => () => void
   }
+  clipboard?: {
+    readFilePaths: () => Promise<string[]>
+    getPathForFile?: (file: File) => string
+  }
   settings?: DesktopSettingsBridge
   productionRuns?: DesktopProductionRunBridge
   startupProbe?: {
@@ -404,6 +408,11 @@ export type DesktopBridge = DesktopMediaBridge & {
       contentType?: string
       kind?: string
     }) => Promise<DesktopAssetDto | null>
+    copyFiles?: (payload: { projectId: string; paths: string[] }) => Promise<{
+      created: DesktopAssetDto[]
+      skippedUnsupportedCount: number
+      failedCount: number
+    }>
     /** 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 转码出新 MP4 资产；不适用 → null。 */
     ensurePlayable?: (payload: { url: string }) => Promise<DesktopAssetDto | null>
     /**
