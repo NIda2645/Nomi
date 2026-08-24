@@ -1,8 +1,10 @@
 // P4 S6 — 返工/版本切换的用户可见 UI 走查（真 Electron + 真渲染 + 真 store，零额度）。
 //
 // 证 S6 交付的**渲染层半程**（后端返工派发 + 单镜确认属 APIMart 真付费验收，那里花真钱；这里在渲染边界取证 UI）：
-//   ① 版本条：多镜节点（meta.productionRunId）+ history≥2 + 选中 → 出「第 n/N 版」徽标；展开列版本；点旧版 →
-//      rollbackHistory 切 result（**切回旧版→再切新版**，计划 §4 J2 要求的断言）；顺序不跳（rollbackHistory 不重排）。
+//   ① 版本条：多镜节点（meta.productionRunId）+ history≥1 + 选中 → 出「第 n/N 版」徽标。**首版（history=1）就出**：
+//      展开有「重拍这镜」——成功镜第一次返工的唯一入口（另两个入口都在错误态上，等 ≥2 才出=入口死锁）。非多镜节点
+//      同 selected 同有 result 也不出条（阳性对照）。返工落第二版后：展开列版本；点旧版 → rollbackHistory 切 result
+//      （**切回旧版→再切新版**，计划 §4 J2 要求的断言）；顺序不跳（rollbackHistory 不重排）。
 //   ② 已停占位：resume 钮从 disabled 留位变 active（data-production-shot-action=resume-budget/-manual）。
 //   ③ 失败占位：rework 钮 active（data-production-shot-action=rework）。
 // 截图人眼判断（R13）：版本条展开态（光/暗）。断言用 _assert 体系 + expectAbsent 阳性对照（切前旧版不是当前）。
@@ -52,29 +54,62 @@ try {
   const projectId = await win.evaluate(() => new URLSearchParams(window.location.hash.split('?')[1]).get('projectId'))
   check(Boolean(projectId), `进入项目（id=${projectId}）`)
 
-  // ── 造一个「返工后」的多镜视频节点：meta.productionRunId + 两版（history 新在前=v2 当前、v1 旧版）──
-  // rollbackHistory 按 history 里 id 找 result 设为当前、history 顺序不动 → 版本列表稳定（计划 §2 岔路裁定）。
+  // ── 造一个「首版刚拍成」的多镜视频节点：meta.productionRunId + 单版（history=[v1]）──
+  // 首版即可返工（门 history≥1）：成功镜第一次返工只有版本条这一个入口，必须从第 1 版就可达。
   const nodeId = await win.evaluate(({ runId }) => {
     const store = window.__nomiCanvasStore.getState()
-    const v2 = { id: 'ver-2', type: 'video', url: 'nomi-local://asset/p/shot-2-v2.mp4', thumbnailUrl: '', createdAt: Date.now() }
     const v1 = { id: 'ver-1', type: 'video', url: 'nomi-local://asset/p/shot-2-v1.mp4', thumbnailUrl: '', createdAt: Date.now() - 1000 }
     const node = store.addNode({
       kind: 'video', title: '货架对视', position: { x: 240, y: 160 },
       meta: { productionRunId: runId, productionShotId: 'shot-2' },
     })
-    // 直接落 result + history（模拟「返工落新版、旧版仍在 history」）。新在前：v2 当前、v1 旧。
-    store.updateNode(node.id, { result: v2, history: [v2, v1], status: 'success' })
+    store.updateNode(node.id, { result: v1, history: [v1], status: 'success' })
     return node.id
   }, { runId: RUN_ID })
-  check(Boolean(nodeId), `造多镜视频节点（meta.productionRunId=${RUN_ID}，两版 history）`)
+  check(Boolean(nodeId), `造多镜视频节点（meta.productionRunId=${RUN_ID}，首版 history=[v1]）`)
 
-  // 选中该节点（版本条门：selected + history≥2）。
+  // 阳性对照素材：普通节点（无 productionRunId），同样有 result+history。
+  const plainNodeId = await win.evaluate(() => {
+    const store = window.__nomiCanvasStore.getState()
+    const r = { id: 'plain-1', type: 'video', url: 'nomi-local://asset/p/plain.mp4', thumbnailUrl: '', createdAt: Date.now() }
+    const node = store.addNode({ kind: 'video', title: '普通节点', position: { x: 240, y: 480 } })
+    store.updateNode(node.id, { result: r, history: [r], status: 'success' })
+    return node.id
+  })
+
+  // 选中多镜节点（版本条门：多镜 + history≥1 + 选中）。
   await win.evaluate((id) => window.__nomiCanvasStore.getState().selectNode(id), nodeId)
   await win.waitForTimeout(400)
 
-  // ── ① 版本条徽标出现 ──
-  const stripPresent = await win.evaluate((id) => Boolean(document.querySelector(`[data-shot-version-strip="${id}"]`)), nodeId)
-  check(stripPresent, '版本条徽标出现（多镜节点 + history≥2 + 选中）')
+  // ── ①a 首版（history=1）版本条即出，展开有「重拍这镜」——成功镜第一次返工的入口 ──
+  const stripProof = await proveProbe(win.locator(`[data-shot-version-strip="${nodeId}"]`), '版本条徽标出现（多镜节点 + 首版 history=1 + 选中）')
+  await clickOrFail(win.locator(`[data-shot-version-strip="${nodeId}"] button`).first(), '展开首版版本条')
+  await win.waitForTimeout(300)
+  const firstVersionPanel = await win.evaluate(() => ({
+    items: document.querySelectorAll('[data-shot-version-item]').length,
+    rerun: (() => { const b = document.querySelector('[data-shot-version-rerun]'); return b ? { present: true, disabled: b.disabled } : { present: false, disabled: true } })(),
+  }))
+  check(firstVersionPanel.items === 1, `首版面板列出 1 版（实得 ${firstVersionPanel.items}）`)
+  check(firstVersionPanel.rerun.present && firstVersionPanel.rerun.disabled === false, '首版就有「重拍这镜」且可点（首次返工入口不死锁）')
+  await win.screenshot({ path: path.join(shotsDir, '00-version-strip-first-version.png') })
+  await clickOrFail(win.locator(`[data-shot-version-strip="${nodeId}"] button`).first(), '收起首版版本条')
+  await win.waitForTimeout(200)
+
+  // ── ①b 阳性对照：普通节点同 selected 同有 result，不出版本条 ──
+  await win.evaluate((id) => window.__nomiCanvasStore.getState().selectNode(id), plainNodeId)
+  await win.waitForTimeout(300)
+  await expectAbsent(win.locator(`[data-shot-version-strip="${plainNodeId}"]`), { provenBy: stripProof, message: '非多镜节点不出版本条（同选中同有 result，探针已在多镜节点证活）' })
+  await win.evaluate((id) => window.__nomiCanvasStore.getState().selectNode(id), nodeId)
+  await win.waitForTimeout(300)
+
+  // ── 模拟返工落新版：v2 成为当前，v1 留 history（新在前；rollbackHistory 不重排 → 版本列表稳定，计划 §2 裁定）──
+  await win.evaluate(({ id }) => {
+    const store = window.__nomiCanvasStore.getState()
+    const v1 = (store.nodes.find((n) => n.id === id)?.history || [])[0]
+    const v2 = { id: 'ver-2', type: 'video', url: 'nomi-local://asset/p/shot-2-v2.mp4', thumbnailUrl: '', createdAt: Date.now() }
+    store.updateNode(id, { result: v2, history: [v2, v1], status: 'success' })
+  }, { id: nodeId })
+  await win.waitForTimeout(300)
 
   // 当前是 v2（ver-2）。展开版本条。
   const currentBefore = await win.evaluate((id) => window.__nomiCanvasStore.getState().nodes.find((n) => n.id === id)?.result?.id, nodeId)
@@ -172,7 +207,7 @@ try {
   // 截图在**解 pin 前**（此刻已停/失败占位钮还在屏上，供人眼判断续拍/返工钮长相）。
   await win.screenshot({ path: path.join(shotsDir, '03-resume-rework-buttons.png') })
   await win.evaluate(() => window.__nomiProductionLandingStore.setState({ pinnedForE2E: false, run: null }))
-  for (const f of ['01-version-strip-light.png', '02-version-strip-dark.png', '03-resume-rework-buttons.png']) {
+  for (const f of ['00-version-strip-first-version.png', '01-version-strip-light.png', '02-version-strip-dark.png', '03-resume-rework-buttons.png']) {
     const stat = fs.statSync(path.join(shotsDir, f))
     check(stat.size > 0, `截图 ${f} 落地且非空（${stat.size} 字节）`)
   }

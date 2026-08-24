@@ -2,8 +2,10 @@
 //
 // 与 ImageResultStack 的区别（P1 不复用它的 image-only 实现）：① 支持 video（缩略用 thumbnailUrl，没有则显首帧占位）；
 // ② 切版走 rollbackHistory（**只改 node.result 指向、history 顺序不动**）而非 promoteNodeResult（后者重排 history →
-// 「切回旧版再切新版」会错乱，见计划 §2 岔路裁定）。只对多镜节点（meta.productionRunId）且 history≥2 时出，L2 情境
+// 「切回旧版再切新版」会错乱，见计划 §2 岔路裁定）。只对多镜节点（meta.productionRunId）且 history≥1 时出，L2 情境
 // 控件（选中才出，§1.5），token-only。「重拍这镜」入口也在这（= 触发返工，一功能一个家 §3.F）。
+// 门是 ≥1 不是 ≥2：另两个返工入口（失败占位钮 / NodeErrorReport onRetry）都只在错误态上，成功镜的**第一次**返工
+// 只有这里可进——若等 history≥2 才出条，而 history 到 2 又只能靠返工，入口就死锁在门后（拍成了想重来的镜永远无门）。
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconCheck, IconChevronRight, IconRefresh } from '@tabler/icons-react'
@@ -12,7 +14,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { cn } from '../../../utils/cn'
 import type { GenerationCanvasNode, GenerationNodeResult } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { useProductionCanvasLandingStore } from '../../production/productionCanvasLandingStore'
+import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { reworkProductionShot } from '../../production/productionShotActions'
 
 /** 该节点属某多镜 Run + 携带 shotId（materialize 落节点时写 meta.productionRunId / meta.productionShotId）。 */
@@ -37,7 +39,10 @@ function VersionThumb({ result, label }: { result: GenerationNodeResult; label: 
 export function ShotVersionStrip({ node, selected }: { node: GenerationCanvasNode; selected: boolean }): JSX.Element | null {
   const { t } = useTranslation()
   const rollbackHistory = useGenerationCanvasStore((state) => state.rollbackHistory)
-  const projectId = useProductionCanvasLandingStore((store) => store.projectId)
+  // projectId 用画布层正源（工作台会话），不用 landing store：版本条纯靠节点持久数据渲染，返工在
+  // 「隔天回来、run 早已不挂在生产面板上」时也必须可用；landing store 只有活动 run 时才有值（占位三态
+  // 才该耦合它——占位本来就派生自那个 store）。ClipNode 同款惯用法。
+  const projectId = getActiveWorkbenchProjectId()
   const [open, setOpen] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
 
@@ -51,11 +56,11 @@ export function ShotVersionStrip({ node, selected }: { node: GenerationCanvasNod
   }, [versions, currentId, node.result?.url])
 
   React.useEffect(() => {
-    if (!selected || versions.length < 2) setOpen(false)
+    if (!selected || versions.length < 1) setOpen(false)
   }, [selected, versions.length])
 
-  // 门：多镜节点 + 有可切版本（≥2）+ 选中。非此不出（L2 情境控件，§1.5）。
-  if (!production || versions.length < 2 || !selected) return null
+  // 门：多镜节点 + 已有版本（≥1，首版即可返工；为什么不是 ≥2 见文件头）+ 选中。非此不出（L2 情境控件，§1.5）。
+  if (!production || versions.length < 1 || !selected) return null
 
   const switchTo = (entry: GenerationNodeResult) => {
     if (!entry.id) return
