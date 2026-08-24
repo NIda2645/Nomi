@@ -10,6 +10,15 @@ describe("parseClipboardFilePaths", () => {
     ]);
   });
 
+  it("parses multiple macOS file URLs separated by NUL bytes", () => {
+    const bytes = Buffer.from("file:///Users/test/a.png\0file:///Users/test/b.jpg\0", "utf8");
+
+    expect(parseClipboardFilePaths("public.file-url", bytes)).toEqual([
+      "/Users/test/a.png",
+      "/Users/test/b.jpg",
+    ]);
+  });
+
   it("parses Linux text/uri-list and ignores comments and non-file URLs", () => {
     const bytes = Buffer.from(
       "# copied files\r\nfile:///tmp/a.png\r\nhttps://example.com/b.png\r\nfile:///tmp/a.png\r\n",

@@ -29,7 +29,7 @@ function normalizeCandidate(value: string, format: string): string | null {
 
 function decodeCandidates(format: string, bytes: Buffer): string[] {
   if (format === "FileNameW") return bytes.toString("utf16le").split("\0");
-  if (WINDOWS_FORMATS.has(format) || URI_FORMATS.has(format)) return bytes.toString("utf8").split(/\r?\n/);
+  if (WINDOWS_FORMATS.has(format) || URI_FORMATS.has(format)) return bytes.toString("utf8").split(/[\0\r\n]+/);
   return [];
 }
 

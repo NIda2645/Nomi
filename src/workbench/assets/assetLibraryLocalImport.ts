@@ -13,11 +13,18 @@ function isAbsoluteFilePath(value: string): boolean {
   return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || /^\\\\/.test(value)
 }
 
-export function filePathsFromDrop(files: ArrayLike<File>): string[] {
+export function filePathsFromDrop(files: ArrayLike<File>, getPathForFile?: (file: File) => string): string[] {
   const paths: string[] = []
   const seen = new Set<string>()
   for (let index = 0; index < files.length; index += 1) {
-    const candidate = (files[index] as File & { path?: unknown } | undefined)?.path
+    const file = files[index]
+    let candidate: unknown
+    try {
+      candidate = getPathForFile?.(file)
+    } catch {
+      candidate = undefined
+    }
+    candidate ??= (file as File & { path?: unknown } | undefined)?.path
     const filePath = typeof candidate === 'string' ? candidate.trim() : ''
     if (!filePath || !isAbsoluteFilePath(filePath) || seen.has(filePath)) continue
     seen.add(filePath)
@@ -103,7 +110,7 @@ export function useAssetLibraryLocalImport({
     if (!Array.from(event.dataTransfer.types).includes('Files')) return
     event.preventDefault()
     setIsDragOver(false)
-    void runImport(filePathsFromDrop(event.dataTransfer.files))
+    void runImport(filePathsFromDrop(event.dataTransfer.files, getDesktopBridge()?.clipboard?.getPathForFile))
   }, [runImport])
 
   const onPaste = React.useCallback<React.ClipboardEventHandler<HTMLDivElement>>((event) => {

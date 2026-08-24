@@ -130,6 +130,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
   },
   clipboard: {
     readFilePaths: () => ipcRenderer.invoke("nomi:clipboard:read-file-paths") as Promise<string[]>,
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
   },
   productionRuns: {
     list: (projectId: string) => ipcRenderer.invoke("nomi:production-runs:list", { projectId }),
