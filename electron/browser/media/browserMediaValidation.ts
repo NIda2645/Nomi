@@ -12,14 +12,14 @@ export function mediaTypeFromContentType(contentType: string): "image" | "video"
 // B站等的播放器首轮可能是纯黑阻断画面；把全黑「当前帧」当成功卡是假进度（复测 P1）。
 // 落库前算亮度均值 + 方差，纯黑/纯色空帧拒绝，提示用户先播放到有效画面。
 
-/** BGRA 位图（nativeImage.getBitmap()）按 stride 采样算亮度均值/方差。空/异常 → 全零（判为空帧）。 */
+/** BGRA 位图（nativeImage.toBitmap()）按 stride 采样算亮度均值/方差。空/异常 → 全零（判为空帧）。 */
 export function bgraLumaStats(bitmap: Uint8Array | Buffer, stride = 4): { mean: number; variance: number } {
   const pixelStride = Math.max(1, Math.floor(stride)) * 4;
   let count = 0;
   let sum = 0;
   let sumSq = 0;
   for (let i = 0; i + 3 < bitmap.length; i += pixelStride) {
-    // getBitmap() 是 B,G,R,A 序。
+    // toBitmap() 是 B,G,R,A 序。
     const luma = 0.114 * bitmap[i] + 0.587 * bitmap[i + 1] + 0.299 * bitmap[i + 2];
     sum += luma;
     sumSq += luma * luma;
