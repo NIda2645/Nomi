@@ -128,6 +128,9 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:projects:save-async", projectId, record),
     delete: (projectId: string) => invokeSync("nomi:projects:delete", projectId),
   },
+  clipboard: {
+    readFilePaths: () => ipcRenderer.invoke("nomi:clipboard:read-file-paths") as Promise<string[]>,
+  },
   productionRuns: {
     list: (projectId: string) => ipcRenderer.invoke("nomi:production-runs:list", { projectId }),
     read: (projectId: string, runId: string) => ipcRenderer.invoke("nomi:production-runs:read", { projectId, runId }),
@@ -158,6 +161,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       getPathForFile: (nativeFile) => webUtils.getPathForFile(nativeFile),
       invoke: (channel, request) => ipcRenderer.invoke(channel, request),
     }),
+    copyFiles: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-files", payload),
     // 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 主进程转码出新 MP4 资产。
     ensurePlayable: (payload: unknown) => ipcRenderer.invoke("nomi:assets:ensure-playable", payload),
     // 引导示例项目：把随包成图落成项目资产，回 clientId → nomi-local URL（渲染侧算不出稳定地址）。
