@@ -79,19 +79,29 @@ try {
   const projectCard = win.getByText('原生素材导入验收', { exact: false }).first()
   await projectCard.waitFor({ timeout: 8000 })
   await projectCard.click()
-  await win.waitForTimeout(1800)
   const continueButton = win.getByText('继续创作', { exact: false }).first()
-  if (await continueButton.count()) await continueButton.click().catch(() => {})
-  await win.waitForTimeout(900)
-
-  if ((await win.locator('section[aria-label="素材库"]').count()) === 0) {
-    await win.getByRole('button', { name: '素材库', exact: true }).first().click()
-    await win.waitForTimeout(700)
+  const libraryButton = win.getByRole('button', { name: '素材库', exact: true }).first()
+  const assetSection = win.locator('section[aria-label="素材库"]')
+  const nextStep = await Promise.any([
+    continueButton.waitFor({ state: 'visible', timeout: 8000 }).then(() => 'continue'),
+    assetSection.waitFor({ state: 'visible', timeout: 8000 }).then(() => 'library'),
+  ])
+  if (nextStep === 'continue') {
+    await continueButton.click()
+    const postContinue = await Promise.any([
+      assetSection.waitFor({ state: 'visible', timeout: 8000 }).then(() => 'library'),
+      libraryButton.waitFor({ state: 'visible', timeout: 8000 }).then(() => 'button'),
+    ])
+    if (postContinue === 'button' && !(await assetSection.isVisible())) await libraryButton.click()
+  } else if (!(await assetSection.isVisible())) {
+    await libraryButton.waitFor({ state: 'visible', timeout: 8000 })
+    await libraryButton.click()
   }
   const panel = win.locator('section[aria-label="素材库"] > div').first()
-  await panel.waitFor({ timeout: 8000 })
+  await panel.waitFor({ state: 'visible', timeout: 8000 })
   const initialFiles = importedFiles()
-  if (initialFiles.length !== 0) throw new Error(`走查前项目已有导入图片：${initialFiles.join(', ')}`)
+  const existingFile = initialFiles.find(Boolean)
+  if (existingFile) throw new Error(`走查前项目已有导入图片：${initialFiles.join(', ')}`)
 
   // 模拟 Finder 复制文件：主进程写入 native file-url，渲染层仍通过 clipboard IPC 读取。
   await app.evaluate(({ clipboard }, fileUrl) => {
@@ -116,9 +126,7 @@ try {
   }
   if (created.length !== 1) throw new Error(`粘贴后未落盘单张图片，发现 ${created.length} 张`)
   const targetPath = created[0]
-  if ((await win.locator('section[aria-label="素材库"] img[alt="Finder 复制的原图.png"]').count()) === 0) {
-    throw new Error('粘贴后素材库未显示原图文件名')
-  }
+  await win.locator('section[aria-label="素材库"] img[alt="Finder 复制的原图.png"]').waitFor({ state: 'visible', timeout: 8000 })
   const sourceHash = sha256(sourcePath)
   const targetHash = sha256(targetPath)
   if (sourceHash !== targetHash) throw new Error(`无损校验失败：source=${sourceHash} target=${targetHash}`)

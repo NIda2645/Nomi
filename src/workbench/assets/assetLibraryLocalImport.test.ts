@@ -35,8 +35,8 @@ describe("assetLibraryLocalImport", () => {
   });
 
   it("does not treat an editing target as the asset library paste surface", () => {
-    expect(isTextEditingTarget({ closest: () => ({}) })).toBe(true);
-    expect(isTextEditingTarget({ closest: () => null })).toBe(false);
+    expect(isTextEditingTarget({ closest: () => ({}) } as unknown as EventTarget)).toBe(true);
+    expect(isTextEditingTarget({ closest: () => null } as unknown as EventTarget)).toBe(false);
     expect(isTextEditingTarget(null)).toBe(false);
   });
 

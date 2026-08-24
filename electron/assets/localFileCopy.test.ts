@@ -46,14 +46,14 @@ function hash(filePath: string): string {
 }
 
 describe("copyLocalImageFile", () => {
-  it("copies image bytes into imported assets and keeps the source", () => {
+  it("copies image bytes into imported assets and keeps the source", async () => {
     const workspace = createWorkspace();
     const sourceDir = makeTempDir();
     const sourcePath = path.join(sourceDir, "hero.png");
     fs.writeFileSync(sourcePath, Buffer.from([137, 80, 78, 71, 0, 1, 2, 3]));
     const sourceHash = hash(sourcePath);
 
-    const asset = copyLocalImageFile(workspace.id, sourcePath) as { data: { absolutePath: string; relativePath: string; kind: string } };
+    const asset = await copyLocalImageFile(workspace.id, sourcePath) as { data: { absolutePath: string; relativePath: string; kind: string } };
 
     expect(asset.data.relativePath).toBe("assets/imported/" + new Date().toISOString().slice(0, 10) + "/hero.png");
     expect(asset.data.kind).toBe("upload");
@@ -61,7 +61,7 @@ describe("copyLocalImageFile", () => {
     expect(fs.existsSync(sourcePath)).toBe(true);
   });
 
-  it("uses a unique filename and skips non-images in a batch", () => {
+  it("uses a unique filename and skips non-images in a batch", async () => {
     const workspace = createWorkspace();
     const sourceDir = makeTempDir();
     const first = path.join(sourceDir, "same.jpg");
@@ -69,7 +69,7 @@ describe("copyLocalImageFile", () => {
     fs.writeFileSync(first, Buffer.from([255, 216, 255, 0]));
     fs.writeFileSync(text, "not an image");
 
-    const result = copyLocalImageFiles(workspace.id, [first, first, text]);
+    const result = await copyLocalImageFiles(workspace.id, [first, first, text]);
 
     expect(result.created).toHaveLength(2);
     expect(result.created.map((item) => (item as { data: { relativePath: string } }).data.relativePath).sort()).toEqual([
@@ -80,10 +80,10 @@ describe("copyLocalImageFile", () => {
     expect(result.failedCount).toBe(0);
   });
 
-  it("reports a missing source as a failed item without throwing", () => {
+  it("reports a missing source as a failed item without throwing", async () => {
     const workspace = createWorkspace();
 
-    const result = copyLocalImageFiles(workspace.id, ["/tmp/nomi-source-does-not-exist.png"]);
+    const result = await copyLocalImageFiles(workspace.id, ["/tmp/nomi-source-does-not-exist.png"]);
 
     expect(result.created).toHaveLength(0);
     expect(result.skippedUnsupportedCount).toBe(0);

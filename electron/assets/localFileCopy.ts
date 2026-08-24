@@ -17,7 +17,7 @@ function readImageSource(sourcePath: string): { fileName: string; contentType: s
   return { fileName, contentType };
 }
 
-export function copyLocalImageFile(projectId: string, sourcePath: string): unknown {
+export async function copyLocalImageFile(projectId: string, sourcePath: string): Promise<unknown> {
   const { fileName, contentType } = readImageSource(sourcePath);
   const meta: JsonRecord = { kind: "upload", originalName: fileName };
   return copyAssetFile(projectId, sourcePath, fileName, contentType, meta);
@@ -29,11 +29,11 @@ export type LocalImageCopyBatchResult = {
   failedCount: number;
 };
 
-export function copyLocalImageFiles(projectId: string, sourcePaths: string[]): LocalImageCopyBatchResult {
+export async function copyLocalImageFiles(projectId: string, sourcePaths: string[]): Promise<LocalImageCopyBatchResult> {
   const result: LocalImageCopyBatchResult = { created: [], skippedUnsupportedCount: 0, failedCount: 0 };
   for (const sourcePath of sourcePaths) {
     try {
-      result.created.push(copyLocalImageFile(projectId, sourcePath));
+      result.created.push(await copyLocalImageFile(projectId, sourcePath));
     } catch (error) {
       if (error instanceof UnsupportedLocalImageError) result.skippedUnsupportedCount += 1;
       else result.failedCount += 1;
