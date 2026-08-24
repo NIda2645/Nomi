@@ -6,17 +6,11 @@ import { describe, expect, it } from 'vitest'
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
 import { normalizeDirectionCandidates } from './productionRunDriverOps'
-import { approveLatestScript, waitForProduction } from './productionRunTestHelpers'
+import { approveLatestScript, waitForProduction, waitForProduction as waitFor } from './productionRunTestHelpers'
 
 // B1 创意方向门带方案（plan 2026-08-11-mcp-conversation-native-phase-b）：
 // driver 拟 2-3 个候选挂上方向门 → 投影透出 directionCandidates → 批准带 choiceKey 留痕。
 // GUI 关着（拟方向失败）→ 保持现状 gate 兜底，不硬塞空候选、不炸主流程。
-
-async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
-  if (!check()) throw new Error('waitFor timed out')
-}
 
 function makeService(requestRenderer: (op: string) => Promise<unknown>) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-direction-gate-'))

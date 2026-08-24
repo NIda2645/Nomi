@@ -5,15 +5,10 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
-import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 
 function makeRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-production-driver-'))
-}
-
-async function waitFor(check: () => boolean, timeoutMs = 500): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
 }
 
 describe('ProductionRunService driver round 1', () => {
@@ -267,7 +262,7 @@ describe('ProductionRunService driver round 1', () => {
     expect(atFreeze.budget.actual).toBe(0)
     // 冻结确认走创意门 seam（视觉确认），批准 → 重踢 driver → 首镜提交。
     await service.command('project-1', 'run-freeze', { commandId: 'freeze-f', expectedRevision: atFreeze.revision, type: 'gate.decide', payload: { gateId: 'gate-freeze-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
-    await waitFor(() => service.readFull('project-1', 'run-freeze').jobs.some((job) => job.status === 'adopted' || job.status === 'submitting'), 1_000)
+    await waitFor(() => service.readFull('project-1', 'run-freeze').jobs.some((job) => job.status === 'adopted' || job.status === 'submitting'))
     expect(calls).toContain('production.generate-node') // 冻结放行后才提交
     // 冻结桥只在放行前问一次（放行后 hasApprovedFreezeGate 短路）。
     expect(calls.filter((op) => op === 'production.check-frozen')).toHaveLength(1)
@@ -309,7 +304,7 @@ describe('ProductionRunService driver round 1', () => {
     })
     await service.command('project-1', 'run-frozen-ok', { commandId: 'contract-ok', expectedRevision: attached.run.revision, type: 'gate.decide', payload: { gateId: 'gate-contract-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
     // 全冻结 → 无冻结门、直接进首镜（会停在样片门，证明已越过冻结门）。
-    await waitFor(() => service.readFull('project-1', 'run-frozen-ok').gates.some((gate) => gate.gateId === 'gate-sample-v1' && gate.status === 'waiting'), 1_000)
+    await waitFor(() => service.readFull('project-1', 'run-frozen-ok').gates.some((gate) => gate.gateId === 'gate-sample-v1' && gate.status === 'waiting'))
     const state = service.readFull('project-1', 'run-frozen-ok')
     expect(state.gates.some((gate) => gate.gateId === 'gate-freeze-v1')).toBe(false)
     expect(calls).toContain('production.generate-node')
