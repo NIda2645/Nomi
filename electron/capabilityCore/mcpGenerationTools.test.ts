@@ -329,4 +329,53 @@ describe("semantic MCP generation tools", () => {
         .resolves.toMatchObject({ maximumCost: 0, costKnown: false, nextAction: "confirm" });
     });
   });
+
+  // P4 S4: gate_request builds the REAL display.shots for a multi-shot operation (the assembly the S3a
+  // card was waiting on). A single-shot op still gets the flat card (no `shots`), so the 14/14 E2E holds.
+  describe("P4 S4 multi-shot gate_request assembly (real display.shots)", () => {
+    const resolveModelPricing = (providerId: string, modelId: string) =>
+      providerId === "fixture-provider" && modelId === "fixture-model"
+        ? { cost: 6, enabled: true, specCosts: [] }
+        : undefined;
+
+    /** A store whose operation carries multi-shot `shots` (anchor + 2 video shots), already sealed. */
+    function multiShotStore() {
+      const sealedContract = { schemaVersion: 1 as const, candidateId: "candidate-1", candidateRevision: 1, moduleId: "generation.single-shot", moduleVersion: "1.0.0", providerId: "fixture-provider", modelId: "fixture-model", mode: "text-to-image", prompt: "p", parameters: { aspectRatio: "1:1" }, references: [], contractHash: "hash-top", warnings: [], droppedFields: [] };
+      const shotContract = (id: string, hash: string, prompt: string) => ({ ...sealedContract, candidateId: id, prompt, contractHash: hash });
+      const shots = [
+        { shotId: "anchor-1", role: "anchor" as const, candidate: { ...candidate({ candidateId: "cand-anchor", prompt: "主角 阿雨 定妆" }) }, contract: shotContract("cand-anchor", "hash-anchor", "主角 阿雨 定妆") },
+        { shotId: "shot-a", candidate: { ...candidate({ candidateId: "cand-a", prompt: "雨夜推门" }) }, contract: shotContract("cand-a", "hash-a", "雨夜推门") },
+        { shotId: "shot-b", candidate: { ...candidate({ candidateId: "cand-b", prompt: "货架对视" }) }, contract: shotContract("cand-b", "hash-b", "货架对视") },
+      ];
+      const operation = { operationId: "op-multi", projectId: "project-1", candidate: candidate(), state: "sealed" as const, contract: sealedContract, shots, planHash: "plan-hash-x", planVersion: 3, updatedAt: "2026-08-23T00:00:00.000Z" };
+      return {
+        create: () => operation,
+        read: () => operation,
+        patch: () => operation,
+        seal: () => operation,
+        approve: () => ({ ...operation, approvedReceiptId: "r" }),
+        cancel: () => ({ ...operation, state: "cancelled" as const }),
+      };
+    }
+
+    it("returns a serializable display.shots with per-shot rows + anchor chips + plan-level cost", async () => {
+      const handler = createGenerationPlanningHandler({ registry, operations: multiShotStore(), resolveModelPricing, now: () => "2026-08-23T00:00:00.000Z" });
+      const result = await handler({ capability: "gate_request", params: { operationId: "op-multi" }, lease }) as {
+        shots?: { shots: Array<{ shotId: string; index: number; price: unknown }>; anchorChips?: unknown[]; planHash?: string; hardLimit?: number };
+        maximumCost: number;
+        costScope: string;
+        contractHash: string;
+      };
+      expect(result.shots).toBeDefined();
+      // Two video shots on the card (the anchor rides as a chip, not a row).
+      expect(result.shots?.shots.map((s) => s.shotId)).toEqual(["shot-a", "shot-b"]);
+      expect(result.shots?.shots[0]).toMatchObject({ index: 1, price: { known: true, amount: 6 } });
+      expect(result.shots?.anchorChips).toHaveLength(1);
+      // Plan-level cost = 2 video shots (¥6 each) + 1 anchor (¥6) = ¥18; receipt keyed on the plan hash.
+      expect(result.maximumCost).toBe(18);
+      expect(result.contractHash).toBe("plan-hash-x");
+      expect(result.costScope).toBe("generation.multi-shot:op-multi");
+      expect(() => JSON.stringify(result.shots)).not.toThrow();
+    });
+  });
 });

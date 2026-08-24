@@ -14,6 +14,21 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
     state: plan.state,
     ...(plan.contract ? { contract: structuredClone(plan.contract) } : {}),
     ...(plan.approvedReceiptId ? { approvedReceiptId: plan.approvedReceiptId } : {}),
+    // P4 S4: project the multi-shot entries so the MCP gate can build the real display.shots. A
+    // single-shot plan has no shots[] → this is omitted and the flat single-shot path is unchanged.
+    ...(plan.shots && plan.shots.length > 0
+      ? {
+          shots: plan.shots.map((shot) => ({
+            shotId: shot.shotId,
+            ...(shot.role ? { role: shot.role } : {}),
+            ...(shot.included !== undefined ? { included: shot.included } : {}),
+            candidate: structuredClone(shot.candidate),
+            ...(shot.contract ? { contract: structuredClone(shot.contract) } : {}),
+          })),
+          ...(plan.planHash ? { planHash: plan.planHash } : {}),
+          planVersion: run.planVersion,
+        }
+      : {}),
     updatedAt: plan.updatedAt,
   };
 }
@@ -93,6 +108,20 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.approve",
         payload: { receiptId, contractHash: current.contract?.contractHash, ...(options?.attempt === undefined ? {} : { attempt: options.attempt }) },
+        issuedAt: now,
+      });
+      const operation = operationFromRun(result.run);
+      if (!operation) throw new Error("Production Run lost its generation plan");
+      return operation;
+    },
+    async trialNarrow(projectId, operationId, planHash, now) {
+      read(projectId, operationId);
+      const result = await owner.command(projectId, operationId, {
+        // commandId includes the target planHash so a retry is idempotent (same narrow → same result).
+        commandId: `generation.trial_narrow:${operationId}:${planHash}`,
+        expectedRevision: owner.readFull(projectId, operationId).revision,
+        type: "generation.trial_narrow",
+        payload: { planHash },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);

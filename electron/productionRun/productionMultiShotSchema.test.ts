@@ -389,4 +389,57 @@ describe("P4 S1 reducer shot addressing", () => {
     expect(sealed.shots?.find((s) => s.shotId === "shot-b")?.contract).toBeUndefined();
     expect(sealed.shots?.find((s) => s.shotId === "shot-a")?.contract?.contractHash).toBe(shotAContract.contractHash);
   });
+
+  it("P4 S4 trial_narrow: shrinks a sealed multi-shot plan to only the first included video shot", () => {
+    // A sealed 2-video-shot plan (shot-a, shot-b) + a plan-level receipt. Trial-first narrows to shot-a.
+    const run = sealedTwoShotRun();
+    const effect = applyProductionCommand(run, {
+      commandId: "trial", expectedRevision: 5, type: "generation.trial_narrow",
+      payload: { planHash: "plan-hash-trial" }, issuedAt: now,
+    }, now);
+
+    const narrowed = effect.run.generationPlan!;
+    expect(narrowed.state).toBe("sealed");
+    expect(narrowed.planHash).toBe("plan-hash-trial");
+    // Only shot-a stays included; shot-b is excluded.
+    expect(narrowed.shots?.find((s) => s.shotId === "shot-a")?.included).toBe(true);
+    expect(narrowed.shots?.find((s) => s.shotId === "shot-b")?.included).toBe(false);
+    // The plan-level receipt is cleared — a trial re-gate must re-confirm the smaller scope.
+    expect(narrowed.approvedReceiptId).toBeUndefined();
+    expect(narrowed.shots?.find((s) => s.shotId === "shot-a")?.approvedReceiptId).toBeUndefined();
+  });
+
+  it("P4 S4 trial_narrow: keeps anchors included (the trial still needs the identity image)", () => {
+    const anchorCandidate = candidate("cand-anchor", "hero look");
+    const shotACandidate = candidate("cand-a", "shot a");
+    const anchorContract = compileExecutionContract(anchorCandidate, registry);
+    const shotAContract = compileExecutionContract(shotACandidate, registry);
+    const run: ProductionRun = {
+      schemaVersion: 1, runId: "op-anchor", projectId: "project-1", revision: 4,
+      status: "draft", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
+      origin: { host: "semantic-mcp" },
+      policy: { mode: "balanced", trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 2, minimizeUploads: true },
+      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      planVersion: 1, snapshotCursor: 4, stages: [], gates: [], jobs: [], artifacts: [],
+      generationPlan: {
+        operationId: "op-anchor", state: "sealed", candidate: { ...anchorCandidate, sealedContractHash: anchorContract.contractHash }, contract: anchorContract,
+        planHash: "plan-hash-anchor", approvedReceiptId: "receipt-x",
+        shots: [
+          { shotId: "anchor-1", role: "anchor", candidate: { ...anchorCandidate, sealedContractHash: anchorContract.contractHash }, contract: anchorContract, approvedReceiptId: "receipt-x", updatedAt: now },
+          { shotId: "shot-a", candidate: { ...shotACandidate, sealedContractHash: shotAContract.contractHash }, contract: shotAContract, approvedReceiptId: "receipt-x", updatedAt: now },
+          { shotId: "shot-b", candidate: { ...candidate("cand-b", "shot b"), sealedContractHash: "h-b" }, contract: { ...shotAContract, contractHash: "h-b" }, approvedReceiptId: "receipt-x", updatedAt: now },
+        ],
+        updatedAt: now,
+      },
+      createdAt: now, updatedAt: now,
+    };
+    const effect = applyProductionCommand(run, {
+      commandId: "trial-anchor", expectedRevision: 4, type: "generation.trial_narrow",
+      payload: { planHash: "plan-hash-trial-anchor" }, issuedAt: now,
+    }, now);
+    const narrowed = effect.run.generationPlan!;
+    expect(narrowed.shots?.find((s) => s.shotId === "anchor-1")?.included).not.toBe(false); // anchor kept
+    expect(narrowed.shots?.find((s) => s.shotId === "shot-a")?.included).toBe(true); // first video kept
+    expect(narrowed.shots?.find((s) => s.shotId === "shot-b")?.included).toBe(false); // rest excluded
+  });
 });
