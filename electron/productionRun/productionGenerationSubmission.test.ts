@@ -287,6 +287,33 @@ describe("Run-owned semantic generation submission", () => {
     expect(JSON.parse(fs.readFileSync(path.join(root, ".nomi", "runs", "op-1", "jobs", jobId, "runtime-envelope.json"), "utf8"))).toMatchObject({ state: "materialized" });
   });
 
+  it("keeps a provider without materialization support usable but does not invent a local Artifact", async () => {
+    const { root, repository } = setup();
+    const materializeOutput = vi.fn();
+    const runner = createProductionGenerationSubmission({
+      repository,
+      projectRoot: root,
+      immutableProjectUuid: "project-uuid-1",
+      projectGeneration: 1,
+      intentMacKey: "test-intent-key",
+      provider: {
+        providerId: "fixture-provider",
+        capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+        buildRequest: (input) => input,
+        submit: vi.fn(async () => ({ providerTaskId: "provider-task-no-materialize" })),
+        query: vi.fn(async () => ({ status: "completed", raw: { result: { opaque: true } } })),
+      },
+      materializeOutput,
+      now: () => "2026-08-23T00:05:00.000Z",
+    });
+
+    await runner.start({ projectId: "project-1", operationId: "op-1" });
+    await runner.poll({ projectId: "project-1", operationId: "op-1" });
+    await expect(runner.materialize({ projectId: "project-1", operationId: "op-1" })).rejects.toMatchObject({ code: "provider_materialization_unsupported" });
+    expect(materializeOutput).not.toHaveBeenCalled();
+    expect(repository.read("project-1", "op-1")?.artifacts).toHaveLength(0);
+  });
+
   it("can resume after a crash before dispatch only with an explicit not-submitted disposition", async () => {
     const { root, repository } = setup();
     const beforeDispatch = vi.fn(() => { throw new Error("crash before dispatch"); });
