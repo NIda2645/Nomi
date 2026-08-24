@@ -35,6 +35,7 @@ import type { DispatchContext } from './dispatcher'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
+import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
@@ -211,12 +212,18 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
         ...(field.default === undefined ? {} : { defaultValue: field.default }),
       })),
     })))
+  // P4 S2: derive real per-shot prices from the live catalog pricing (readCatalog reflects user edits;
+  // resolve lazily so a mid-session pricing change is picked up). Preview/gate use the model-pricing
+  // resolver; the submission seam uses the contract→ShotPrice resolver for its ledger amounts.
+  const resolveModelPricing = (providerId: string, modelId: string) => createCatalogModelPricingResolver(readCatalog().models)(providerId, modelId)
+  const resolveShotPrice = (contract: Parameters<ReturnType<typeof createCatalogShotPriceResolver>>[0]) => createCatalogShotPriceResolver(readCatalog().models)(contract)
   const generationPlanning = authorities.generationPlanning
     ?? createGenerationPlanningHandler({
       registry: generationRegistry,
       operations: createProductionGenerationOperationStore(productionRuns),
       videoModelCandidates,
       recommendVideoGeneration,
+      resolveModelPricing,
       providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
       start: async (operation, lease) => {
         const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
@@ -229,6 +236,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           projectGeneration: lease.projectGeneration,
           intentMacKey: ensureCapabilitySigningKey('generation-intent'),
           provider,
+          resolveShotPrice,
           materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
         }).start({ projectId: lease.projectId, operationId: operation.operationId })
       },
@@ -245,6 +253,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           projectGeneration: lease.projectGeneration,
           intentMacKey: ensureCapabilitySigningKey('generation-intent'),
           provider,
+          resolveShotPrice,
           materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
         })
         try {
