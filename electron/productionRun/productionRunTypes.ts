@@ -216,6 +216,12 @@ export type ProductionGenerationPlan = {
   shots?: ProductionGenerationShot[];
   /** Plan-level hash freezing the whole multi-shot operation (anchor + included shots) at seal time. */
   planHash?: string;
+  /**
+   * P4 S2 seal-time cost certainty. "known" = every included shot had a derived price at seal.
+   * "partial" = the plan sealed with at least one unpriced shot (honest "we could not price all of
+   * these"; the seal is still allowed when the hard cap is satisfied or unset — plan §3.1/§9).
+   */
+  costCertainty?: "known" | "partial";
   updatedAt: string;
 };
 

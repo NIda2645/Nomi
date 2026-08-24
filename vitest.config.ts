@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     include: ["electron/**/*.test.ts", "src/**/*.test.ts", "evals/**/*.test.ts", "scripts/**/*.test.mjs", "tests/**/*.test.mjs"],
     environment: "node",
+    // 单测不做真 fsync：临时目录的数据没人需要它跨掉电存活，但 fsync 会让墙钟随磁盘队列漂移，
+    // 把 productionRun 的编排测试顶过 5000ms testTimeout（flake 根因）。见该文件顶部注释。
+    setupFiles: [fileURLToPath(new URL("./tests/setup/durability.ts", import.meta.url))],
   },
   resolve: {
     alias: {

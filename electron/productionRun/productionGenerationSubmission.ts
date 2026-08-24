@@ -24,6 +24,7 @@ import {
 import { classifyGenerationResume, type GenerationResumeDecision } from "./productionRunResume";
 import { createProductionExecutionBinding, type ProductionExecutionBinding } from "./productionExecutionBinding";
 import type { ProductionArtifact, ProductionJob, ProductionRun } from "./productionRunTypes";
+import type { ShotPrice } from "./shotPricing";
 
 export { SubmissionReceiptUnknownError, SubmissionReconciliationRequiredError };
 
@@ -119,6 +120,14 @@ export type ProductionGenerationSubmissionDependencies = {
   intentMacKey: string | NodeJS.TypedArray;
   provider: GenerationProvider;
   now?: () => string;
+  /**
+   * P4 S2: derive the real per-shot price for a sealed sub-contract from the catalog pricing.
+   * Replaces the ¥0 placeholders on approval.maxSpend / budget authorize / reserve costCeiling.
+   * Omitted (or an unknown result) → the shot has no priced liability and the seam keeps its
+   * backward-compatible 0 ledger amount (an unpriced model, e.g. one with no catalog `pricing`,
+   * must still be submittable — see submissionOutbox line "costCeiling === null" hard-fail).
+   */
+  resolveShotPrice?: (contract: ExecutionContractV1) => ShotPrice;
   runtimeTaskId?: (input: { runId: string; contractHash: string; attempt?: number }) => string;
   afterProviderAcceptance?: (input: { providerTaskId: string; run: ProductionRun }) => void | Promise<void>;
   beforeDispatch?: (input: { run: ProductionRun; job: ProductionJob }) => void | Promise<void>;
@@ -256,6 +265,16 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   const now = deps.now ?? (() => new Date().toISOString());
   const adapter = createGenerationRuntimeAdapter({ providers: [deps.provider] });
 
+  /**
+   * P4 S2: the real ledger amount for one shot's sub-contract. A known price flows straight into
+   * approval.maxSpend / authorize / reserve; an unknown or unresolved price keeps the legacy 0
+   * (no priced liability — the shot still submits, matching pre-S2 behavior for unpriced models).
+   */
+  function ledgerAmountFor(contract: ExecutionContractV1): number {
+    const price = deps.resolveShotPrice?.(contract);
+    return price?.known ? price.amount : 0;
+  }
+
   function intentLog(runId: string) {
     return createProductionRunIntentLog({
       filePath: productionRunPaths(deps.projectRoot, runId).intents,
@@ -284,6 +303,8 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
 
   function prepare(run: ProductionRun, contract: ExecutionContractV1, binding: ProductionExecutionBinding, jobId: string, attempt: number, shotId?: string): { run: ProductionRun; envelope: ReturnType<typeof createProductionRunRuntimeEnvelope> } {
     let current = run;
+    // P4 S2: this shot's real ledger amount (0 when the price is unknown — keeps unpriced models submittable).
+    const shotAmount = ledgerAmountFor(contract);
     const existingJob = current.jobs.find((job) => job.jobId === jobId);
     const addedJob = !existingJob;
     if (addedJob) {
@@ -326,7 +347,8 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
             allowedProviders: [contract.providerId],
             allowedModels: [contract.modelId],
             currency: current.budget.currency,
-            maxSpend: 0,
+            // P4 S2: this shot's derived price is its authorized ceiling (0 = unknown/unpriced, unbounded like today).
+            maxSpend: shotAmount,
             maxAttemptsPerJob: current.policy.maxAttemptsPerJob,
             decidedAt: now(),
             expiresAt: new Date(Date.parse(now()) + 24 * 60 * 60 * 1000).toISOString(),
@@ -340,8 +362,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
       if (current.budget.authorized === 0 && current.budget.reserved === 0 && current.budget.actual === 0 && current.budget.unsettled === 0) {
         // #4 commandId: without jobId, a second shot's authorize reuses the first's commandId and is
         // deduped into a stale-revision result. The billingEntryId already embeds jobId (via approvalId).
+        // P4 S2: authorize the ledger to this shot's derived price. For the single-shot chain that IS the
+        // plan cap; the plan-level cap that sums included shots up front is the scheduler's job (S4 §3.3),
+        // so this guard (first entry only) intentionally leaves multi-shot cap accumulation to S4.
         current = command(current, "budget.entry", {
-          entry: { billingEntryId: `${approvalId}:authorize`, kind: "authorize", amount: 0, occurredAt: now() },
+          entry: { billingEntryId: `${approvalId}:authorize`, kind: "authorize", amount: shotAmount, occurredAt: now() },
         }, `budget-authorize:${jobId}`);
       }
     }
@@ -426,7 +451,9 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         jobId,
         approvalId,
         planHash: lockedContract.contractHash,
-        costCeiling: 0,
+        // P4 S2: reserve this shot's derived price (the outbox also feeds it to authorizeSubmission as
+        // estimatedCost). 0 = unknown/unpriced → no priced reservation, keeping the pre-S2 submit path.
+        costCeiling: ledgerAmountFor(lockedContract),
         currency: run.budget.currency,
         allowRetryAfterAbort: input.definitelyNotSubmitted === true,
       });

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
-import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 import { normalizeTrustLevel, trustLevelOf, DEFAULT_TRUST_LEVEL } from './productionRunTypes'
 import { shouldSampleGate } from './productionRunDriverOps'
 import { buildToolOutcome } from '../capabilityCore/mcpToolResults'
@@ -13,12 +13,6 @@ import { buildToolOutcome } from '../capabilityCore/mcpToolResults'
 // B3 信任档位（plan 2026-08-11-mcp-conversation-native-phase-b）：
 // key_confirm（默认）= 五门全开；budget_only（「别问了直接出」）= 自动批准创意/样片门、只留预算门（永不跳）；
 // confirm_all = 每镜提交前在 Nomi 停门。降档留痕（事件 commandId 自证）。
-
-async function waitFor(check: () => boolean, timeoutMs = 4000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
-  if (!check()) throw new Error('waitFor timed out')
-}
 
 function makeService(root: string, trackCalls: { count: number }) {
   fs.mkdirSync(path.join(root, 'assets/generated'), { recursive: true })
@@ -120,7 +114,7 @@ describe('trust level gate-skip matrix (B3 · 预算门永不跳)', () => {
     await driveToContract(service, runId)
 
     // 首镜提交后不设样片门（budget_only 跳）；直接批量到粗剪。
-    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_rough_cut_review', 5000)
+    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_rough_cut_review')
     const done = service.readFull('project-1', runId)!
     expect(done.gates.some((g) => g.gateId === 'gate-sample-v1')).toBe(false) // 样片门被跳过
     expect(calls.count).toBe(2) // 两镜连提，无样片门中断
@@ -183,7 +177,7 @@ describe('set_trust 对话改档 (B3 · 降档留痕 + 立即生效)', () => {
 
     // 降档后 run 一路自动跑到粗剪（无样片门中断）。
     await driveToContract(service, runId)
-    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_rough_cut_review', 5000)
+    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_rough_cut_review')
     expect(service.readFull('project-1', runId)!.gates.some((g) => g.gateId === 'gate-sample-v1')).toBe(false)
   })
 
