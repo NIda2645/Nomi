@@ -35,6 +35,7 @@ import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
+import type { ProductionActionResult } from '../productionRun/productionRunTypes'
 import { landCanvasForRun } from '../productionRun/multiShotCanvasLanding'
 import { createArtifactProjection, getArtifactPreviewSecret } from '../productionRun/artifactProjection'
 import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
@@ -51,6 +52,10 @@ let openProjectId = ''
 // 幂等补落缺失节点/组、回填已完成 result，并恢复未完批次调度（resumeUnfinishedRuns）。模块级 hoist 是因为
 // setOpenProjectId 是模块级导出（main.ts 的 active-project IPC 直接调它），而补齐逻辑住在 start 闭包内。
 let reconcileOpenProjectHook: ((projectId: string) => void) | null = null
+// P4 S6：返工/续拍编排钩子（start 闭包装配后设进来）——住在 start 闭包里因为它们要用 scheduler builder +
+// 单镜 gate 确认（confirmGenerationInNomi + 收据机构）+ 提交门面，这些都在闭包内。main.ts 的 IPC 转调这两个导出。
+let reworkProductionShotHook: ((input: { projectId: string; runId: string; shotId?: string }) => Promise<ProductionActionResult>) | null = null
+let resumeProductionBatchHook: ((input: { projectId: string; runId: string; reason: 'budget' | 'manual' }) => Promise<ProductionActionResult>) | null = null
 // 心跳定时器 + 当前广告所在库（退出时按同一命名空间文件名清理）。
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let advertisedLibrary: { projectsRoot: string; isDefault: boolean } | null = null
@@ -182,6 +187,21 @@ export function setOpenProjectId(projectId: string): void {
 /** 当前进程 RPC 端口（未启动=null）。「接入助手卡」据此显示能力核就绪态。 */
 export function getCapabilityPort(): number | null {
   return handle?.port ?? null
+}
+
+/**
+ * P4 S6：渲染层（经 main.ts IPC）请求返工一镜 → 同 Run 新 Job + 单镜 gate 确认 + 派发。能力核未就绪 → unavailable。
+ * projectId 守卫（须 = 当前打开项目）在 hook 内做。绝不在结果里带任何密钥（只回结构化 code + 可选人话 message）。
+ */
+export async function reworkProductionShot(input: { projectId: string; runId: string; shotId?: string }): Promise<ProductionActionResult> {
+  if (!reworkProductionShotHook) return { ok: false, code: 'unavailable' }
+  return reworkProductionShotHook(input)
+}
+
+/** P4 S6：渲染层请求续拍已停批次（manual=急停继续 / budget=提额续拍）。能力核未就绪 → unavailable。 */
+export async function resumeProductionBatch(input: { projectId: string; runId: string; reason: 'budget' | 'manual' }): Promise<ProductionActionResult> {
+  if (!resumeProductionBatchHook) return { ok: false, code: 'unavailable' }
+  return resumeProductionBatchHook(input)
 }
 
 /** 组装本实例的 v2 广告：projectsRoot 取自 getProjectLocationState（与 runtimePaths 同源），心跳戳 = now。 */
@@ -340,6 +360,26 @@ export async function startCapabilityCore(
     }
     // P4 S5：re-kick 一个未完多镜批次的调度器（打开项目恢复用）。best-effort、不阻塞、异常只记 warn。
     // scheduler 无自有状态：从 jobs[]+ledger 纯派生「下一批」，已提交不重提、已完成不重扣（batchScheduleDerivation）。
+    // P4 S6：构造一个 Run 的批次调度器（返工/续拍/恢复共用同一 builder，P1 一个家）。options 透传给 scheduler
+    // （提额续拍传 raisePlanAuthorizationTo）。返回 null = provider 未配置 / 工程根不可达（调用方跳过）。
+    const buildSchedulerForRun = (
+      projectId: string,
+      runId: string,
+      run: { projectId: string; generationPlan?: { candidate: { providerId: string } }; jobs: Array<{ provider: string }> },
+      options?: { raisePlanAuthorizationTo?: number },
+    ) => {
+      const submission = buildSubmissionForRun(run)
+      if (!submission) return null
+      return createMultiShotBatchScheduler({
+        repository: generationService.repository,
+        submission,
+        projectId,
+        runId,
+        perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
+        onShotMaterialized: (shotId) => pushShotResultToRenderer(projectId, runId, shotId),
+        ...(options ? { options } : {}),
+      })
+    }
     const kickSchedulerForRun = (projectId: string, runId: string): void => {
       let run
       try {
@@ -350,16 +390,8 @@ export async function startCapabilityCore(
       if (!run || !run.generationPlan?.shots || run.generationPlan.shots.length === 0) return
       if (run.generationPlan.state !== 'submitted') return // 还没确认过的草稿不驱动
       if (['completed', 'cancelled', 'paused', 'pausing'].includes(run.status)) return // 已停/急停不自动续
-      const submission = buildSubmissionForRun(run)
-      if (!submission) return
-      const scheduler = createMultiShotBatchScheduler({
-        repository: generationService.repository,
-        submission,
-        projectId,
-        runId,
-        perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
-        onShotMaterialized: (shotId) => pushShotResultToRenderer(projectId, runId, shotId),
-      })
+      const scheduler = buildSchedulerForRun(projectId, runId, run)
+      if (!scheduler) return
       void scheduler.runToQuiescence().catch((error) => {
         console.warn('[nomi:production] batch resume tick failed:', error instanceof Error ? error.message : String(error))
       })
@@ -475,6 +507,167 @@ export async function startCapabilityCore(
         }
       })()
     }
+    // P4 S6 返工编排（§3.5 / §3.B）：对一镜发起「同 Run 新 Job」→ 起**单镜 gate**（该镜子合同单价，复用唯一
+    // spendConfirm 漏斗的扁平单镜卡 = 无 shots 键）→ 铸 receipt → durable `generation.approve` 带新 attempt（只批该
+    // 镜，不动兄弟镜的批准）→ kick scheduler 派发这个 authorized 新 Job。锚 character_ref/DNA 提示词天然继承（新 Job
+    // 复用该镜现有子合同）。用户取消/超时 → 新 Job 留 authorized 不扣费。**授权面只认 Nomi 自有确认（防注入）**。
+    const reworkProductionShot = async (input: { projectId: string; runId: string; shotId?: string }): Promise<ProductionActionResult> => {
+      const { projectId, runId, shotId } = input
+      // 守卫：返工只对当前打开的项目（用户在本机对本项目操作，§3.C）。
+      if (!isProjectOpen(projectId)) return { ok: false, code: 'run_not_open' }
+      let run
+      try {
+        run = generationService.repository.read(projectId, runId)
+      } catch {
+        return { ok: false, code: 'failed', message: 'run read failed' }
+      }
+      if (!run || !run.generationPlan?.shots || run.generationPlan.shots.length === 0) return { ok: false, code: 'not_multishot' }
+      const submission = buildSubmissionForRun(run)
+      if (!submission) return { ok: false, code: 'unavailable' }
+      const receiptAuthority = defaults.approvalReceiptAuthority
+      const confirm = defaults.confirmGenerationInNomi
+      const record = readWorkspaceProject(projectId, getWorkspaceRepositoryDeps())
+      const projectRevision = record?.revision
+      if (!receiptAuthority || !confirm || !record?.immutableProjectUuid || !record.projectGeneration || !Number.isInteger(projectRevision)) {
+        return { ok: false, code: 'unavailable' }
+      }
+      // 1. 造新 attempt Job（authorized、parentJobId 谱系、继承子合同=锚继承）。无可返工的上一 job → no_prior_attempt。
+      let rework
+      try {
+        rework = await submission.reworkShot({ projectId, operationId: runId, ...(shotId ? { shotId } : {}) })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (/No prior submission to rework/.test(message)) return { ok: false, code: 'no_prior_attempt' }
+        return { ok: false, code: 'failed', message }
+      }
+      // 2. 起单镜 gate：用该镜子合同单价作 receipt 上界，display 用单镜形态（无 shots → 渲染层走扁平单镜卡）。
+      const fresh = generationService.repository.read(projectId, runId)
+      const shot = shotId ? (fresh?.generationPlan?.shots ?? []).find((candidate) => candidate.shotId === shotId) : undefined
+      const shotContract = shot?.contract ?? fresh?.generationPlan?.contract
+      const price = shotContract ? resolveShotPrice(shotContract) : { known: false as const }
+      const maximumCost = price.known ? price.amount : 0
+      const modelLabel = shotContract?.modelId ?? run.generationPlan.candidate.modelId ?? ''
+      const shotSummary = typeof shot?.candidate.prompt === 'string' && shot.candidate.prompt.trim()
+        ? shot.candidate.prompt.trim().slice(0, 80)
+        : undefined
+      const challenge = receiptAuthority.requestChallenge({
+        challengeKey: `production.rework:${projectId}:${runId}:${shotId ?? 'default'}:${rework.attempt}`,
+        immutableProjectUuid: record.immutableProjectUuid,
+        projectGeneration: record.projectGeneration,
+        projectId,
+        runId,
+        gateId: `generation-rework:${runId}:${shotId ?? 'default'}:${rework.attempt}`,
+        contractHash: rework.contractHash,
+        targetHash: rework.contractHash,
+        projectRevision: projectRevision as number,
+        costScope: 'production.rework',
+        pricingSnapshotHash: rework.contractHash,
+        reservationPreview: { currency: run.budget.currency, maximum: maximumCost },
+        display: { model: modelLabel, ...(shotSummary ? { shotSummary } : {}), ...(shotContract?.references?.length ? { referenceCount: shotContract.references.length } : {}) },
+      })
+      // 3. 弹卡确认（Nomi 自有表面点头才算，防 prompt injection）。取消/超时 → 新 Job 留 authorized 不派发不扣费。
+      // confirmGenerationInNomi 声明返回 unknown（DispatchContext 契约）；这里塑形到它的真实成功/取消形状。
+      let confirmation: { confirmed?: unknown; receiptId?: unknown } | null
+      try {
+        confirmation = (await confirm({ challengeToken: challenge.token })) as { confirmed?: unknown; receiptId?: unknown } | null
+      } catch (error) {
+        return { ok: false, code: 'failed', message: error instanceof Error ? error.message : String(error) }
+      }
+      const receiptId = confirmation?.confirmed === true && typeof confirmation.receiptId === 'string' ? confirmation.receiptId : ''
+      if (!receiptId) {
+        return { ok: false, code: 'rework_declined' }
+      }
+      // 4. durable approve（带新 attempt = 只批该镜的这次尝试；reducer 保留计划级 receipt、只重置该镜 approval）。
+      try {
+        const approving = generationService.repository.read(projectId, runId)
+        if (!approving?.generationPlan) return { ok: false, code: 'failed', message: 'plan gone before approve' }
+        const approvalHash = approving.generationPlan.shots ? approving.generationPlan.planHash : approving.generationPlan.contract?.contractHash
+        await generationService.command(projectId, runId, {
+          commandId: `production-rework-approve:${runId}:${shotId ?? 'default'}:${rework.attempt}`,
+          expectedRevision: approving.revision,
+          type: 'generation.approve',
+          payload: { receiptId, contractHash: approvalHash, attempt: rework.attempt },
+          issuedAt: new Date().toISOString(),
+        })
+        // reworkShot 把 plan 退回 sealed（reducer new_attempt）→ 重新标 submitted，scheduler 才驱动。
+        const submitting = generationService.repository.read(projectId, runId)
+        if (submitting?.generationPlan?.state !== 'submitted') {
+          await generationService.command(projectId, runId, {
+            commandId: `production-rework-submit:${runId}:${shotId ?? 'default'}:${rework.attempt}`,
+            expectedRevision: submitting!.revision,
+            type: 'generation.submit',
+            payload: {},
+            issuedAt: new Date().toISOString(),
+          })
+        }
+      } catch (error) {
+        return { ok: false, code: 'failed', message: error instanceof Error ? error.message : String(error) }
+      }
+      // 5. kick scheduler：派发这个 authorized 新 Job（已完成兄弟镜不重扣）；提额上界给该镜单价（累计已授权则不降）。
+      const kicking = generationService.repository.read(projectId, runId)
+      if (kicking) {
+        const scheduler = buildSchedulerForRun(projectId, runId, kicking, maximumCost > 0 ? { raisePlanAuthorizationTo: kicking.budget.authorized + maximumCost } : undefined)
+        if (scheduler) {
+          void scheduler.runToQuiescence().catch((error) => {
+            console.warn('[nomi:production] rework dispatch tick failed:', error instanceof Error ? error.message : String(error))
+          })
+        }
+      }
+      return { ok: true, code: 'reworked' }
+    }
+    // P4 S6 续拍编排（§3.3 / §3.B）：把已停批次（急停 paused / 预算 halt needs_attention）转回 running 后重踢
+    // scheduler。manual（急停继续）= 转 running + kick；budget（提额续拍）= 转 running + kick 带 raisePlanAuthorizationTo
+    // （抬到「已授权 + 剩余勾选镜预估上界」）。scheduler 无自有状态：已提交不重提、已完成不重扣（batchScheduleDerivation）。
+    const resumeProductionBatch = async (input: { projectId: string; runId: string; reason: 'budget' | 'manual' }): Promise<ProductionActionResult> => {
+      const { projectId, runId, reason } = input
+      if (!isProjectOpen(projectId)) return { ok: false, code: 'run_not_open' }
+      let run
+      try {
+        run = generationService.repository.read(projectId, runId)
+      } catch {
+        return { ok: false, code: 'failed', message: 'run read failed' }
+      }
+      if (!run || !run.generationPlan?.shots || run.generationPlan.shots.length === 0) return { ok: false, code: 'not_multishot' }
+      if (run.generationPlan.state !== 'submitted') return { ok: false, code: 'failed', message: 'plan not submitted' }
+      // 只从「可续拍的停态」转回 running（paused=急停、needs_attention=预算 halt）。其它态（running/completed/cancelled）
+      // 不是待续拍——running 已在跑、completed/cancelled 是终态。pausing 是瞬态（等它落到 paused 再续）。
+      if (run.status === 'paused' || run.status === 'needs_attention') {
+        try {
+          await generationService.command(projectId, runId, {
+            commandId: `production-resume:${runId}:${run.revision}`,
+            expectedRevision: run.revision,
+            type: 'run.status',
+            payload: { status: 'running' },
+            issuedAt: new Date().toISOString(),
+          })
+        } catch (error) {
+          return { ok: false, code: 'failed', message: error instanceof Error ? error.message : String(error) }
+        }
+      } else if (run.status !== 'running') {
+        return { ok: false, code: 'failed', message: `run status ${run.status} is not resumable` }
+      }
+      const running = generationService.repository.read(projectId, runId)
+      if (!running) return { ok: false, code: 'failed', message: 'run gone after resume' }
+      // 提额续拍：抬到「已授权 + 剩余勾选镜预估上界」（scheduler 的 ledger 只接受 authorize ≥ 当前 liability，不降额）。
+      let raiseTo: number | undefined
+      if (reason === 'budget') {
+        let remaining = 0
+        for (const shot of running.generationPlan?.shots ?? []) {
+          if (shot.role === 'anchor' || shot.included === false || !shot.contract) continue
+          const price = resolveShotPrice(shot.contract)
+          if (price.known) remaining += price.amount
+        }
+        raiseTo = running.budget.authorized + remaining
+      }
+      const scheduler = buildSchedulerForRun(projectId, runId, running, raiseTo !== undefined ? { raisePlanAuthorizationTo: raiseTo } : undefined)
+      if (!scheduler) return { ok: false, code: 'unavailable' }
+      void scheduler.runToQuiescence().catch((error) => {
+        console.warn('[nomi:production] batch resume tick failed:', error instanceof Error ? error.message : String(error))
+      })
+      return { ok: true, code: 'resumed' }
+    }
+    reworkProductionShotHook = reworkProductionShot
+    resumeProductionBatchHook = resumeProductionBatch
     handle = await startRpcServer({
       runTask,
       fetchTaskResult,
@@ -519,4 +712,7 @@ export function stopCapabilityCore(): void {
     void handle.close()
     handle = null
   }
+  reconcileOpenProjectHook = null
+  reworkProductionShotHook = null
+  resumeProductionBatchHook = null
 }

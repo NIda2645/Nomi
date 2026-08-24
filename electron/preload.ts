@@ -142,6 +142,11 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:production-runs:materialize-storyboard", { projectId, runId, artifactId, expectedVersion }),
     events: (projectId: string, runId: string, afterCursor: number) =>
       ipcRenderer.invoke("nomi:production-runs:events", { projectId, runId, afterCursor }),
+    // P4 S6：返工一镜（同 Run 新 Job + 单镜确认 + 派发）；续拍已停批次（manual=急停继续 / budget=提额续拍）。
+    rework: (projectId: string, runId: string, shotId?: string) =>
+      ipcRenderer.invoke("nomi:production-runs:rework", { projectId, runId, ...(shotId ? { shotId } : {}) }),
+    resumeBatch: (projectId: string, runId: string, reason: "budget" | "manual") =>
+      ipcRenderer.invoke("nomi:production-runs:resume-batch", { projectId, runId, reason }),
   },
   assets: {
     list: (payload: unknown) => ipcRenderer.invoke("nomi:assets:list", payload),
