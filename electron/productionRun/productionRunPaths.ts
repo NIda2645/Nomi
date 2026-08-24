@@ -24,6 +24,8 @@ export function productionRunPaths(projectDir: string, runId: string) {
     intents: path.join(dir, "intents.ndjson"),
     lock: path.join(dir, "run.lock"),
     lockEpoch: path.join(dir, "run.lock.epoch"),
+    repositoryLock: path.join(dir, "repository.lock"),
+    repositoryLockEpoch: path.join(dir, "repository.lock.epoch"),
     jobsDir: path.join(dir, "jobs"),
   };
 }

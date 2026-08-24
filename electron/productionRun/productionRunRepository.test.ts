@@ -8,6 +8,7 @@ import {
   createProductionRunRepository,
 } from "./productionRunRepository";
 import { productionRunPaths } from "./productionRunPaths";
+import { createProductionRunLock } from "./productionRunLock";
 
 let root = "";
 
@@ -101,6 +102,36 @@ describe("ProductionRunRepository", () => {
         issuedAt: "2026-08-08T08:00:00.000Z",
       }),
     ).toThrow(ProductionRunRevisionConflictError);
+  });
+
+  it("fails closed when another process owns the repository mutation lock", () => {
+    createRun();
+    const paths = productionRunPaths(root, "run-1");
+    const held = createProductionRunLock({
+      filePath: paths.repositoryLock,
+      epochPath: paths.repositoryLockEpoch,
+      ownerId: "other-process",
+      now: () => "2026-08-08T08:00:00.000Z",
+      randomId: () => "held-lock",
+    });
+    const lease = held.acquire();
+    try {
+      let error: unknown;
+      try {
+        repository().execute("project-1", "run-1", {
+          commandId: "blocked-by-lock",
+          expectedRevision: 0,
+          type: "run.status",
+          payload: { status: "running" },
+          issuedAt: "2026-08-08T08:00:00.000Z",
+        });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toMatchObject({ code: "run_lock_busy" });
+    } finally {
+      held.release(lease);
+    }
   });
 
   it("returns the original result for a repeated command id", () => {
