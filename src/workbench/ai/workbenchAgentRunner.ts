@@ -2,7 +2,11 @@ import type { AgentAttachmentPayload, AgentsChatResponseDto, AgentChatV2Session 
 import { sendWorkbenchAiMessage } from './workbenchAiClient'
 import { getAssistantModelPref } from './assistantModelPref'
 import { useAgentUsageStore } from './agentUsageStore'
-import { readWindowUrlParam } from '../windowUrlParam'
+import { workbenchSessionKey, type WorkbenchAgentArea } from './agentSessionKey'
+
+// 会话键工厂已收口到 agentSessionKey.ts（B1a）。此处 re-export 保持既有 import 路径不破
+// （generationCanvasAgentClient / 两面板 / staleConversationDivider / conversationPersistence 仍从这里取）。
+export { workbenchSessionKey, type WorkbenchAgentArea } from './agentSessionKey'
 
 /**
  * One shared agent runner for both workbench panels (创作区 + 生成区).
@@ -16,18 +20,6 @@ import { readWindowUrlParam } from '../windowUrlParam'
  * Read tools are auto-confirmed by the caller; write/destructive tools render a
  * confirmation card and confirm only after the user approves.
  */
-
-export type WorkbenchAgentArea = 'creation' | 'generation'
-
-/**
- * 后端对话记忆键。会话历史(2026-06-14)起按 **area** 隔离:创作区 / 生成区各一份记忆,
- * 翻回各自的历史线程互不串台。仍按 project 隔离,不同项目不漏上下文。
- */
-export function workbenchSessionKey(area: WorkbenchAgentArea): string {
-  // readWindowUrlParam 兼容 prod 的 hash 路由——只读 search 段曾让打包版全部落 `local` 桶。
-  const projectId = readWindowUrlParam('projectId')
-  return `nomi:workbench:${projectId || 'local'}:${area}`
-}
 
 export type ToolCallEvent = {
   toolCallId: string
