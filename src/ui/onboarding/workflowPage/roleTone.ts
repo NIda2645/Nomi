@@ -4,8 +4,9 @@
 // 为什么集中：同一个角色在图上、菜单里、预览里必须是同一个颜色，否则用户没法把三处对上——
 // 各处各写一份就是第一次改颜色时开始漂。
 //
-// 色只用根层 token（--nomi-*）：这页 Portal 到 body，**够不到 .workbench-shell 作用域里的
-// --workbench-***（那会静默退回继承色，任务中心栽过，见 nomi-tokens.css --nomi-danger 的注释）。
+// 色只用根层 token（--nomi-*）：角色色是轨道语义（帧=图片轨、视频=视频轨），本来就该引 ① 层。
+// （历史注：曾因 --workbench-* 困在 .workbench-shell 作用域、portal 够不到而被迫如此；
+// 2026-08-24 起两层同在 :root，真源见 tailwind.config.ts addBase。）
 import { IconMessage, IconMovie, IconPhoto, IconStack2 } from '@tabler/icons-react'
 import type { WorkflowRole } from '../comfyuiWorkflowBinding'
 

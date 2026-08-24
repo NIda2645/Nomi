@@ -19,6 +19,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { HUE_DRIFT_THRESHOLD, analyzeHueDrift, collectTokenDefinitions } from "./lib/colorMixHue.mjs";
+import { scanScopedTokenDefinitions } from "./lib/scopedTokenScan.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -124,6 +125,28 @@ if (hueFindings.length > 0) {
   );
 }
 
+// ---- 第 6 类：语义 token 定义困在作用域里（非棘轮，零容忍）----
+//
+// CSS 自定义属性沿 **DOM 树**继承：--nomi-* / --workbench-* 的**定义**一旦写进 `.workbench-shell`
+// 之类的类作用域，portal 到 body / 挂在 app 根 / 库页的浮层就解析不到 → var() 静默失效退回继承色
+// （任务中心、库页确认卡勾勾两度实锤 rgb(201,201,201)），还会逼出「每个 portal 补挂作用域类」的桥。
+// 2026-08-24 已把两族全量收口到 :root（docs/plan/2026-08-24-workbench-token-root-scope.md）。
+// 本类拦回潮：只查真源层（src/electron 的 .css + tailwind.config.ts）；TSX 内联 style 是运行时
+// 参数化，放行。扫描器在 scripts/lib/scopedTokenScan.mjs，自证见 scripts/scopedTokenScan.test.mjs。
+const scopedDefs = scanScopedTokenDefinitions(
+  mixFiles.filter((f) => f.path.endsWith(".css") || f.path.endsWith("tailwind.config.ts")),
+);
+
+if (scopedDefs.length > 0) {
+  errors.push(
+    `✗ 语义 token 定义困在作用域：${scopedDefs.length} 处（--nomi-*/--workbench-* 必须定义在 :root 层，` +
+      `否则 portal/库页浮层解析不到、静默退灰）：\n` +
+      scopedDefs
+        .map((f) => `    ${f.file}:${f.line}  ${f.token} 定义在「${f.selector}」\n      修法：把定义挪进 tailwind.config.ts addBase 的 ':root'（暗色进 ':root[data-mantine-color-scheme="dark"]'）`)
+        .join("\n"),
+  );
+}
+
 for (const w of warnings) console.warn(w);
 
 if (errors.length > 0) {
@@ -133,5 +156,6 @@ if (errors.length > 0) {
 
 console.log(
   `✓ 设计 token 门岗通过：${RULES.length} 类棘轮（只减不增，目标清零）。当前 ${counts.join("/")}（${RULES.map((r) => r.baseline).join("/")}）。` +
-    `\n✓ color-mix 色相漂移零容忍：扫 ${mixFiles.length} 文件 / ${tokenDefs.size} 个 token 定义，无 in oklch 跨色相混合。`,
+    `\n✓ color-mix 色相漂移零容忍：扫 ${mixFiles.length} 文件 / ${tokenDefs.size} 个 token 定义，无 in oklch 跨色相混合。` +
+    `\n✓ 语义 token 作用域零容忍：--nomi-*/--workbench-* 定义全部在 :root 层（portal/浮层任意挂载点都解析得到）。`,
 );

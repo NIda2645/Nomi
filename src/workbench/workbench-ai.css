@@ -1,17 +1,5 @@
-.workbench-shell,
-.app-ai-chat-dialog.tc-ai-chat {
-  --workbench-ai-header-height: 60px;
-  --workbench-ai-composer-min-height: 112px;
-  --workbench-ai-panel-bg: var(--workbench-surface);
-  --workbench-ai-message-bg: var(--workbench-surface);
-  --workbench-ai-user-bg: var(--workbench-accent-soft);
-  --workbench-ai-composer-bg: var(--workbench-surface-soft);
-  --workbench-ai-border: var(--workbench-border-soft);
-  --workbench-ai-border-strong: var(--workbench-border);
-  --workbench-ai-radius: 8px;
-  --workbench-ai-control-radius: 7px;
-}
-
+/* --workbench-ai-* token 真源在 tailwind.config.ts addBase 的 :root（随 --workbench-* 一起收口，
+   2026-08-24）。此处只保留 .tc-ai-chat 的消费映射与组件样式。 */
 .app-ai-chat-dialog.tc-ai-chat {
   color-scheme: light;
   --tc-ai-chat-surface-bg: var(--workbench-ai-panel-bg);
