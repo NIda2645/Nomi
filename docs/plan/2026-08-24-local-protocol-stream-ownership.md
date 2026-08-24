@@ -430,7 +430,55 @@ I/O 争用造不出同样的窗口宽度是合理的。**CI 的 Windows ≠ 报�
 
 ## 8. 后续（不在本轮）
 
-- 给 undici 上游报 `ReadableStreamFrom` 无保护 close 的 issue（检索未发现已有上报）。上报后回填链接。
+- ~~给 undici 上游报 `ReadableStreamFrom` 无保护 close 的 issue~~ **已上报（2026-08-24）**：
+  [nodejs/undici#5715](https://github.com/nodejs/undici/issues/5715)。详见 §8a。
 - `nodejs/node#64529`（`Readable.toWeb` 同族竞态）已 OPEN，无需另报；若上游合入修复，
   本仓的门岗规则可相应放宽——但「自己拥有流」本身仍是更稳的形态，不建议回退。
+  （复核确认：该 issue 仍 OPEN，两个修复 PR [#62773](https://github.com/nodejs/node/pull/62773)、
+  [#64766](https://github.com/nodejs/node/pull/64766) 也都仍未合并。）
 - Electron 31 EOL 升级：见 `2026-08-24-electron-31-to-43-upgrade.md`。
+
+## 8a. 上游上报回填（2026-08-24）
+
+**[nodejs/undici#5715](https://github.com/nodejs/undici/issues/5715)** — OPEN，以 `aqm857886159` 发出。
+
+### 查重（先查再报，§1.3 那句「未检索到上游 issue」这次做实了）
+
+9 组关键词扫 issues + PRs、open + closed，确认无重复。几条形近的都**不是**这条，逐条排除：
+
+| 形近项 | 为什么不是 |
+|---|---|
+| #1564 / #2009 / #1137 | 全在 `fetchParams.controller.resume` / `cancelBody`——**响应体**路径，自 v6.0.0 起已被 `readableStreamClose()` 保护 |
+| #1940 | 讲的是 abort 后**不抛**，诉求相反 |
+| #4002 | 确实动过 `ReadableStreamFrom`，但改的是空 enqueue 时的 pull 行为，不是 close 保护 |
+| #5103 / #5104 → #5105 修复 | `WebSocketStream`，不同子系统——但**形状完全相同**，见下 |
+
+### 这次比 §1.3 多查出来的两件事
+
+1. **修法在 undici 自己仓库里已经现成了。** `readableStreamClose()`（`lib/web/fetch/util.js:968`）
+   包的就是 `controller.close()` + `byobRequest?.respond(0)` 这两行，且吞掉的字符串里**逐字包含**
+   `'ReadableStream is already closed'`。`ReadableStreamFrom` 手写了同样两行，唯独没走它。
+2. **四个月前他们刚用这个函数修过同形状的 bug**：#5105（`WebSocketStream`，cancel 关一次、
+   clean-close 又关一次 → uncaught `ERR_INVALID_STATE`），修法即「改走 `readableStreamClose()`」。
+
+   所以这份报告的性质是「**你们的标准修法已定，这一个调用点漏用了**」，而非「你们这儿有 bug」。
+
+   ⚠️ 附带排掉一个雷：**不能直接 import 那个函数**——`lib/web/fetch/util.js:9` 已经反向
+   `require('../../core/util')` 取 `ReadableStreamFrom`，直接引会**循环依赖**。故 issue 里给的是内联版。
+
+### 复现与补丁验证（都是实跑，不是推演）
+
+- 独立复现脚本（`node --test`，不带 Electron / 不带本仓代码）：手控 `next()` 时机，**5/5 稳定复现**。
+  undici 8.10.0 落 `lib/core/util.js:664`；Node 24.13.1 自带版落 `node:internal/deps/undici/undici:1538`。
+  call site 的 `.catch()` 抓到 `null`，实证「try/catch 接不住」。
+- 逐 tag 读源码复核行号（未沿用旧记录）：`6.19.8:481` / `7.29.0:636` / `8.10.0:664` / `main:663-664`，
+  四版 `cancel()` 均为裸 `return iterator.return()`。6.x 是 `async/await`、7+ 是 `.then()`，与竞态无关。
+- 把内联补丁打进 8.10.0 实测：复现脚本 **5/5 挂 → 5/5 过**；3 MB `createReadStream` 过
+  `new Response()` 字节完全一致；正常结束的异步生成器照常 close。**还原后再验仍复现**（阳性对照，
+  防的是「改完没重装/没重跑」那种假绿——见记忆：断言前先证明你在你以为的现场）。
+
+### 之后盯什么
+
+`electron/protocol/fileResponseStream.test.ts` 末尾那条**上游哨兵**测试钉的就是这个现状：
+上游一旦合入保护，该条会**变红**。届时才谈得上「可以直接用 `new Response(<Node 流>)`」——
+但 §7c 的判据不变：**流的关闭权在不在我们手里**才是根本形状，门岗规则可放宽，不建议回退实现。
