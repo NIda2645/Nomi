@@ -1,4 +1,4 @@
-import { isComfyuiVendorKey } from '../../workbench/generationCanvas/runner/comfyuiTaskControl'
+import { isComfyuiVendorKey } from '../../workbench/generationCanvas/model/comfyuiVendor'
 import type { ChipModel } from './ModelChipGroups'
 
 type RequestScriptModel = Pick<ChipModel, 'vendorKey'>

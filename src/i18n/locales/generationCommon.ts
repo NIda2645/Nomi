@@ -1231,6 +1231,7 @@ export const zhGenerationCommon = {
     copied: '已复制',
     copyDetails: '复制详情',
     technicalDetails: '技术详情',
+    dismiss: '收起这条报错',
   },
   recoverable: {
     aria: '任务可能已在上游完成，可重新拉取结果',
@@ -2504,6 +2505,7 @@ export const enGenerationCommon = {
     copied: 'Copied',
     copyDetails: 'Copy details',
     technicalDetails: 'Technical details',
+    dismiss: 'Dismiss this error',
   },
   recoverable: {
     aria: 'The upstream task may have completed; retrieve the result again',
