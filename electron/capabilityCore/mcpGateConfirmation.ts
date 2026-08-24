@@ -7,6 +7,7 @@
 // promise——客户端超时/重连铸不出第二张提示或 nonce。协议层只注入三样依赖（见依赖类型注释），
 // 不 import electron，保持纯逻辑单测边界。
 import type { AuthenticatedMcpClient } from './security'
+import type { MultiShotGateProjection } from '../productionRun/shotPricing'
 
 export type GenerationGateChallengeProjection = {
   challengeId: string
@@ -20,8 +21,9 @@ export type GenerationGateChallengeProjection = {
   currency?: string
   expiresAt: string
   confirmationText?: string
-  /** Opaque server handoff data. It never belongs in user-facing copy. */
-  handoff?: Record<string, unknown>
+  /** P4 S3a — optional multi-shot projection: present → multi-shot card, absent → flat single-shot card (mcpProtocol). */
+  shots?: MultiShotGateProjection
+  handoff?: Record<string, unknown> // Opaque server handoff data. It never belongs in user-facing copy.
 }
 
 export type GenerationGateConfirmation = {

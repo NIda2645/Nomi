@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 import { writeJsonFileAtomic } from "../jsonFile";
 import type { ProductionRunLock } from "../productionRun/productionRunLock";
+import type { MultiShotGateProjection } from "../productionRun/shotPricing";
 
 export const HUMAN_APPROVAL_VERSION = 1 as const;
 export const HUMAN_APPROVAL_ALGORITHM = "HMAC-SHA256" as const;
@@ -13,6 +14,12 @@ export type HumanApprovalDisplay = {
   shotSummary?: string;
   model: string;
   referenceCount?: number;
+  /**
+   * P4 S3a — optional multi-shot projection. When present the confirmation surface renders the
+   * multi-shot card (per-shot list + fixed footer); when absent the single-shot flat card is shown.
+   * It rides inside the MAC-signed challenge, so the per-shot prices/rows the user sees are tamper-proof.
+   */
+  shots?: MultiShotGateProjection;
 };
 
 export type HumanApprovalChallengeInput = {

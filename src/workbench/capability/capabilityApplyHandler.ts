@@ -1,6 +1,7 @@
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
 import { useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
+import { buildMultiShotContractView, type MultiShotGatePayload } from '../generationCanvas/spend/productionContractView'
 import { getDesktopBridge } from '../../desktop/bridge'
 import i18n from '../../i18n'
 import { runStoryboardPlanner } from '../generationCanvas/agent/runStoryboardPlanner'
@@ -58,6 +59,11 @@ type GenerationGateConfirmPayload = {
   maximumCost?: number
   currency?: string
   expiresAt?: string
+  /**
+   * P4 S3a — 多镜合同投影（三层管线末端）。有它 → 弹多镜确认卡（复用唯一 spendConfirm 漏斗的 contract 槽，
+   * 不造并行卡，P1）；无它 → 走今日扁平单镜卡（字节不动，单镜 E2E 是回归门）。
+   */
+  shots?: MultiShotGatePayload
 }
 
 export class LegacyPathForbiddenError extends Error {
@@ -173,8 +179,50 @@ async function confirmSpendForAgent(info: SpendConfirmPayload): Promise<{ confir
   return { confirmed: Boolean(ok) }
 }
 
-/** One user-facing confirmation card for the semantic generation challenge. */
-async function confirmGenerationGateForAgent(info: GenerationGateConfirmPayload): Promise<{ confirmed: boolean; challengeId?: string }> {
+/**
+ * One user-facing confirmation card for the semantic generation challenge.
+ *
+ * P4 S3a：payload 带 `shots`（多镜合同投影）→ 弹**多镜确认卡**（唯一 spendConfirm 漏斗的 contract 槽，
+ * 逐镜清单 + 固定 footer + 试拍/返回修改，P1 不造并行卡）；无 `shots` → 走今日扁平单镜卡（字节不动）。
+ * 试拍/返回修改经回调回传：`{ confirmed:false, trialFirst:true }`。缩到首镜 + 重封存 + 重发 gate = S4。
+ */
+async function confirmGenerationGateForAgent(info: GenerationGateConfirmPayload): Promise<{ confirmed: boolean; trialFirst?: boolean; challengeId?: string }> {
+  const withChallenge = <T extends Record<string, unknown>>(base: T) =>
+    ({ ...base, ...(info.challengeId ? { challengeId: info.challengeId } : {}) })
+
+  // ── 多镜路径（S3a 用户可见 UI）──
+  if (info.shots && Array.isArray(info.shots.shots) && info.shots.shots.length > 0) {
+    const payload: MultiShotGatePayload = {
+      ...info.shots,
+      ...(info.projectName ? { projectName: info.projectName } : {}),
+      // gate 有效期兜底进投影（payload 自带优先）。
+      ...(info.shots.expiresAt ? {} : info.expiresAt ? { expiresAt: info.expiresAt } : {}),
+    }
+    const contract = buildMultiShotContractView(payload)
+    const projectName = typeof info.projectName === 'string' ? info.projectName.trim() : ''
+    let trialFirst = false
+    let backToEdit = false
+    const ok = await useSpendConfirmStore.getState().requestConfirm({
+      kind: 'contract',
+      title: i18n.t('runtime.capability.generationGateBatchTitle'),
+      // 一句话正文：项目名 +「先出主角形象给你过目，点头后才开拍」（零内部术语）。
+      message: i18n.t('generationCommon.production.batch.body', {
+        project: projectName || i18n.t('runtime.capability.generationGateProject'),
+      }),
+      confirmLabel: i18n.t('generationCommon.production.batch.confirm', { count: payload.shots.length }),
+      source: 'agent',
+      // 倒计时时长随镜数伸缩：每镜 +8s，封顶 5 分钟（交互即暂停，见 SpendConfirmDialog）。
+      countdownMs: Math.min(300_000, 60_000 + payload.shots.length * 8_000),
+      contract,
+      onTrialFirst: () => { trialFirst = true },
+      onBackToEdit: () => { backToEdit = true },
+    })
+    // 试拍/返回修改都不算确认；只有试拍需要给主进程一个「缩到首镜重发」的信号（S4 落地）。
+    void backToEdit
+    return withChallenge({ confirmed: Boolean(ok), ...(trialFirst ? { trialFirst: true } : {}) })
+  }
+
+  // ── 单镜路径（今日形态，字节不动；单镜 E2E 是回归门）──
   const model = typeof info.model === 'string' && info.model.trim() ? info.model.trim() : i18n.t('runtime.capability.defaultModel')
   const shot = typeof info.shotSummary === 'string' && info.shotSummary.trim()
     ? info.shotSummary.trim()
@@ -196,7 +244,7 @@ async function confirmGenerationGateForAgent(info: GenerationGateConfirmPayload)
       ...(info.expiresAt ? [{ label: i18n.t('runtime.capability.generationGateExpires'), value: info.expiresAt }] : []),
     ],
   })
-  return { confirmed: Boolean(ok), ...(info.challengeId ? { challengeId: info.challengeId } : {}) }
+  return withChallenge({ confirmed: Boolean(ok) })
 }
 
 /** 外部 MCP 方案门（Phase B）：agent 要往画布落一套节点（≥2）前弹确认卡（免费可撤），复用同一漏斗（P1）。 */
