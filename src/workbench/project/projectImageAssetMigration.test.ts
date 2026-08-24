@@ -55,7 +55,7 @@ describe('normalizeLegacyImageAssetKinds', () => {
       makeNode({
         id: 'generated',
         kind: 'image',
-        result: { id: 'r', type: 'image', url: 'x', createdAt: 1, provenance: { model: 'm' } } as GenerationCanvasNode['result'],
+        result: { id: 'r', type: 'image', url: 'x', createdAt: 1, provenance: { timestamp: 1, modelKey: 'm' } } satisfies GenerationCanvasNode['result'],
         meta: { source: 'image-crop', localOnly: true },
       }),
       // 无素材特征的 image（纯生成节点，无 meta.source / 非 localOnly）。

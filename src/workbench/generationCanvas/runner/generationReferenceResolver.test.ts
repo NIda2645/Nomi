@@ -8,12 +8,10 @@ function node(id: string, kind: string, url?: string): GenerationCanvasNode {
     kind: kind as GenerationCanvasNode['kind'],
     title: id,
     prompt: '',
-    x: 0,
-    y: 0,
-    width: 100,
-    height: 100,
-    ...(url ? { result: { type: kind === 'video' ? 'video' : 'image', url } } : {}),
-  } as GenerationCanvasNode
+    position: { x: 0, y: 0 },
+    size: { width: 100, height: 100 },
+    ...(url ? { result: { id: `r-${id}`, type: kind === 'video' ? 'video' : 'image', url, createdAt: 0 } } : {}),
+  }
 }
 
 describe('resolveGenerationReferences — T5 尾帧接力分流', () => {

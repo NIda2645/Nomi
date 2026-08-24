@@ -1,4 +1,9 @@
 {
+  "//": "主进程构建配置：产出 dist-electron，也给 `pnpm typecheck` 查主进程类型。",
+  "//2": "⚠️ 下面 exclude 掉了 *.test.ts（352 个文件），所以这里的绿灯看不见主进程测试的类型。",
+  "//3": "主进程测试由 `pnpm run check:test-types`（走 ../tsconfig.test.json，已进 gates）负责。",
+  "//4": "别为了查测试去删那行 exclude：测试会 import src/ 下的东西（违反 rootDir: \".\"）且用 ESM 顶层 await",
+  "//5": "（与 module: CommonJS 冲突），删了会炸出 112 个纯配置形状错（TS6059/TS1378/TS1343），全是噪音。",
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2022",

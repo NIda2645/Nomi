@@ -37,6 +37,7 @@ type Op =
   | { kind: 'status'; pick: number; status: 'queued' | 'running' | 'success' | 'error' | 'idle' }
   | { kind: 'appendRun'; pick: number }
   | { kind: 'addResult'; pick: number; url: string }
+  | { kind: 'lock'; pick: number; locked: boolean }
   | { kind: 'cut' }
   | { kind: 'paste' }
   | { kind: 'undo' }
