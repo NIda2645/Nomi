@@ -496,7 +496,7 @@ export default function Scene3DFullscreen({
 
   const editorShell = (
     <div
-      className="workbench-shell fixed inset-0 isolate flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--workbench-bg)] text-[var(--workbench-ink)] font-[var(--nomi-font-sans)]"
+      className="fixed inset-0 isolate flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--workbench-bg)] text-[var(--workbench-ink)] font-[var(--nomi-font-sans)]"
       style={{
         position: 'fixed',
         inset: 0,

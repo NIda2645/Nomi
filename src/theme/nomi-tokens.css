@@ -15,8 +15,8 @@
   /* ⚠️ 必须 in srgb，别改回 in oklch —— oklch 会对色相走最短弧插值，把 accent(h250) 拽向 paper 被钉死的
      色相（浅 h=0 → 粉 h≈347 / 暗 h=80 → 橄榄绿 h≈124）。完整原委见 tailwind.config.ts 同名 token（运行时真源）。 */
   --nomi-accent-soft: color-mix(in srgb, var(--nomi-accent) 12%, var(--nomi-paper));
-  /* 根层语义红。--workbench-danger 只活在 .workbench-shell 作用域里，Portal 到 body 的浮层（任务中心等）
-     够不到它、会静默退回继承色（走查实锤读到 rgb(201,201,201)）——根层浮层一律用这个。 */
+  /* 根层语义红（① 层）。历史注：--workbench-danger 曾困在 .workbench-shell 作用域、portal 浮层够不到
+     而实锤退灰；2026-08-24 起 --workbench-* 也定义在 :root（真源见 tailwind.config.ts addBase）。 */
   --nomi-danger: oklch(0.55 0.20 27);
   --nomi-warning: oklch(0.62 0.14 75);
   --nomi-track-text: var(--nomi-accent);
