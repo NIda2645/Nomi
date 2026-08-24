@@ -118,4 +118,7 @@ S7 legacy 收敛、S3b 浮窗、配音、B 轨、MCP 新工具。版本条之外
 
 ## 10. 岔路与遗留（交付时更新）
 - 插镜 UI 入口（画布「+插一镜」）是否本切片做 = 看情境控件预算（禁做：不加新常驻控件）。
-- S2 遗留 `shotPricing.ts:65` lint warning：核实已在 S3a-S5 合并中清掉（当前 lint 98 基线绿，该行现为 `isFiniteNonNegative` 无未用变量）→ 若确无则报告说明，无需动。
+- 插镜 E2E：**有意识裁剪**——durable 模型没有「向已 submitted 计划追加 shot」的命令（需 plan 修订命令层），注释在 `multiShotBatchScheduler.e2e.test.ts` L433，滚 S7/验收门裁定。
+- S2 遗留 `shotPricing.ts:65` lint warning：核实已在 S3a-S5 合并中清掉（当前 lint 98 基线绿，该行现为 `isFiniteNonNegative` 无未用变量）→ 无需动。
+- 【2026-08-25 审查修复】版本条首次返工两处死锁：① 门 history≥2 而三个返工入口另两个都在错误态——成功镜第一次返工无门可入（≥2 又只能靠返工，循环锁死）；② 重拍钮 projectId 取自 landing store，run 不在面板上时永远灰。修于 e42c0c7d（门 ≥1 + `getActiveWorkbenchProjectId()` 画布正源），走查加严到 18 断言（首版返工入口 + 非多镜阳性对照）。
+- 【2026-08-25 审查裁定】**§6 APIMart 真付费验收顺延到「create 双入口」切片（S6.5）落地后走真入口执行**。审查全链实查发现：语义多镜链**没有生产入口**——`plan.shots` 只能经 `generation.seal` 命令带 shots[] 诞生（`productionRunReducer.ts:342` 已支持），但全仓唯一生产调用点 `productionGenerationOperationStore.ts:81` 只发 `{contract}` 不带 shots；MCP 参数面 `mcpGenerateParams.ts` 无 shots 字段；P4 计划 §4「create 双入口（scriptText / client 给 plan）」S1-S6 均未实现（S1 造 schema、S4 拼卡、S5 落地、S6 返工全是密封计划以下的下游）。链上所有演示（S3a 卡、S5/S6 走查、J2 E2E）均为测试注入驱动。把钱花在测试注入的复制流程上验不了真链，故付费验收与入口合为一次：S6.5 落地后，真入口→多镜卡→锚→2 镜→落画布→返工（本切片交付）一笔真金验全链。
