@@ -242,6 +242,51 @@ describe("Run-owned semantic generation submission", () => {
     expect(JSON.parse(fs.readFileSync(envelopePath, "utf8"))).toMatchObject({ lastPoll: { status: "processing", raw: { progress: 42 } } });
   });
 
+  it("materializes exactly one provider output through the Asset-owned receipt and is restart-idempotent", async () => {
+    const { root, repository } = setup();
+    const submit = vi.fn(async () => ({ providerTaskId: "provider-task-materialize" }));
+    const query = vi.fn(async () => ({ status: "completed", raw: { result: { image: "opaque-provider-shape" } } }));
+    const materialize = vi.fn(async () => ({ outputs: [{ kind: "image" as const, url: "https://cdn.example/image.png" }] }));
+    const materializeOutput = vi.fn(async () => ({
+      artifactId: "asset-image-1",
+      kind: "image" as const,
+      contentHash: "c".repeat(64),
+      projectRelativePath: "assets/generated/2026-08-23/image.png",
+    }));
+    const runner = createProductionGenerationSubmission({
+      repository,
+      projectRoot: root,
+      immutableProjectUuid: "project-uuid-1",
+      projectGeneration: 1,
+      intentMacKey: "test-intent-key",
+      provider: {
+        providerId: "fixture-provider",
+        capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false, materialize: true },
+        buildRequest: (input) => input,
+        submit,
+        query,
+        materialize,
+      },
+      materializeOutput,
+      now: () => "2026-08-23T00:04:00.000Z",
+    });
+
+    await runner.start({ projectId: "project-1", operationId: "op-1" });
+    await runner.poll({ projectId: "project-1", operationId: "op-1" });
+    await expect(runner.materialize({ projectId: "project-1", operationId: "op-1" })).resolves.toMatchObject({ artifactId: "asset-image-1", nextAction: "completed" });
+    await expect(runner.materialize({ projectId: "project-1", operationId: "op-1" })).resolves.toMatchObject({ artifactId: "asset-image-1", nextAction: "completed" });
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(materialize).toHaveBeenCalledTimes(1);
+    expect(materializeOutput).toHaveBeenCalledTimes(1);
+    expect(repository.read("project-1", "op-1")).toMatchObject({
+      jobs: [{ status: "ready", providerTaskId: "provider-task-materialize" }],
+      artifacts: [{ artifactId: "asset-image-1", jobId: expect.stringContaining("generation-op-1-") , kind: "image", status: "ready", contentHash: "c".repeat(64) }],
+    });
+    const jobId = repository.read("project-1", "op-1")!.jobs[0]!.jobId;
+    expect(JSON.parse(fs.readFileSync(path.join(root, ".nomi", "runs", "op-1", "jobs", jobId, "runtime-envelope.json"), "utf8"))).toMatchObject({ state: "materialized" });
+  });
+
   it("can resume after a crash before dispatch only with an explicit not-submitted disposition", async () => {
     const { root, repository } = setup();
     const beforeDispatch = vi.fn(() => { throw new Error("crash before dispatch"); });

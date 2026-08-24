@@ -37,6 +37,7 @@ import { createProductionGenerationSubmission } from '../productionRun/productio
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
+import { createGenerationOutputMaterializer } from './generationOutputMaterializer'
 import { readCatalog } from '../catalog/catalogStore'
 import { buildVideoModelCandidates, recommendVideoGeneration, videoArchetypeIdFromMeta } from '../shared/videoCapabilities'
 
@@ -184,6 +185,7 @@ export async function startCapabilityCore(
     const token = ensureToken()
     const defaults = createDefaultAuthorities()
     const providerBootstrap = createGenerationProviderBootstrap()
+    const outputMaterializer = createGenerationOutputMaterializer()
     const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry(undefined, { readinessByProvider: providerBootstrap.readinessByProvider })
     const videoModelCandidates = buildVideoModelCandidates(readCatalog().models
       .filter((model) => model.enabled && model.kind === 'video')
@@ -219,6 +221,7 @@ export async function startCapabilityCore(
             projectGeneration: lease.projectGeneration,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             provider,
+            materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
           }).start({ projectId: lease.projectId, operationId: operation.operationId })
         },
         reconcile: async (operation, outcome, lease) => {
@@ -227,14 +230,25 @@ export async function startCapabilityCore(
           const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
           if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
           if (!provider.query || !provider.capabilities.query) return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '该供应商没有可用的任务查询；请到供应商核对。' }
-          return createProductionGenerationSubmission({
+          const submission = createProductionGenerationSubmission({
             repository: generationService.repository,
             projectRoot,
             immutableProjectUuid: lease.immutableProjectUuid,
             projectGeneration: lease.projectGeneration,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             provider,
-          }).poll({ projectId: lease.projectId, operationId: operation.operationId })
+            materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+          })
+          try {
+            const polled = await submission.poll({ projectId: lease.projectId, operationId: operation.operationId })
+            return polled.nextAction === 'materialize'
+              ? await submission.materialize({ projectId: lease.projectId, operationId: operation.operationId })
+              : polled
+          } catch (error) {
+            const code = (error as { code?: unknown })?.code
+            if (code === 'provider_materialization_unsupported' || code === 'materialization_failed') return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '供应商任务已完成，但结果还没有安全落到 Nomi 项目；请到供应商核对或稍后重试。' }
+            throw error
+          }
         },
       })
     handle = await startRpcServer({

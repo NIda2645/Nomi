@@ -4,6 +4,8 @@
 
 **Goal:** 在不要求用户离开当前 MCP 客户端、只做一次明确确认的前提下，完成一条通用、可编辑、可恢复的单镜 AI 生成链路：同一套语义同时服务 MCP 与 GUI，模型/供应商/模式/参数/参考素材可在封存前自由调整，封存后不会被静默修改，并最终产出可重新打开的 Artifact。
 
+**继续推进（2026-08-24）：** 先补 provider-owned output/materialization seam，再接 Asset store；供应商没有稳定结果提取能力时保持“远端完成但本地未落盘”的诚实状态，不把某一家 API 字段硬编码成所有模型的共同能力。
+
 **Architecture:** `ProductionRun` 继续是唯一的持久事实源；`RuntimeTask` 负责执行边界；Module Manifest 声明能力与参数；纯编译器把 `PlanCandidate` 编译成哈希固定的 `ExecutionContract`；P3 只允许 `generationRuntimeAdapter` 进入 provider，Run-owned intent WAL/outbox 负责一次提交、重启恢复与未知结果的 reconcile。MCP 与 GUI 只做同一语义的输入/投影，不各自维护 provider、审批或任务状态。
 
 **Tech Stack:** Electron main process, TypeScript, Zod, Vitest, existing MCP stdio/RPC/dispatcher, existing ProductionRun repository/intent log/outbox/lock, Playwright/Node UX harness.
@@ -304,17 +306,17 @@ Expected: FAIL，原因是默认 production path 还没有用 Run-owned WAL/outb
 
 `generationRuntimeAdapter` 只接收 sealed `ExecutionContract` 和 resolved request；provider adapter 必须声明 native submit idempotency/query/reconcile/cancel。缺任一能力直接 `provider_capability_missing`，不发请求。模型与供应商特有字段由 manifest schema 映射并保留 ledger；不支持的字段不能静默 fallback。
 
-- [ ] **Step 4: 持久化 receipt、providerTaskId、poll payload 与 Artifact**
+- [x] **Step 4: 持久化 receipt、providerTaskId、poll payload 与 Artifact**
 
 本轮先完成零额度的可验证部分：Run-owned job binding、runtime envelope、provider task id/raw receipt 和 unknown 状态已持久化；poll payload、真实 Artifact/materialization 仍在 provider opt-in 前保持未调用。
 
-provider 返回后，先在同一 Run command 中写 providerTaskId/raw request fingerprint/receipt，再进入 polling；查询 payload 可跨进程重建。成功只通过 Asset store 的 content hash/materialization receipt 写 Artifact；失败、取消、unknown 分别 settle/release/unsettled，unknown 保持 `needs_attention`。
+provider 返回后，先在同一 Run command 中写 providerTaskId/raw request fingerprint/receipt，再进入 polling；查询 payload 可跨进程重建。成功只通过 provider-owned output descriptor → Asset store content hash/materialization receipt 写 Artifact；失败、取消、unknown 分别 settle/release/unsettled，unknown 保持 `needs_attention`。没有 output/materialize 能力的 provider 仍可提交，只返回人工核对，不假装有本地 Artifact。
 
 - [ ] **Step 5: 接入 P3 resume 并隔离旧 driver**
 
 Run-owned `productionGenerationSubmission` 已具备单独的 resume/reconcile seam；默认 main-process semantic handler 尚未把它绑定到真实 provider registry，故此步保持未完成。
 
-`productionRunResume` 只处理 `generation.single-shot`，读取 projection 不触发恢复写；重启后根据 envelope/WAL 进入 poll/reconcile/attention。对 legacy playbook 保留原行为，但 P3 测试必须证明 `productionRunDriverOps` 的 arrange/export 未被调用。
+`productionRunResume` 只处理 `generation.single-shot`，读取 projection 不触发恢复写；重启后根据 envelope/WAL 进入 poll/reconcile/attention。对 legacy playbook 保留原行为，但 P3 测试必须证明 `productionRunDriverOps` 的 arrange/export 未被调用。2026-08-24 已将 app RPC/stdio 默认 reconcile 接到该 owner，并在 terminal poll 后尝试一次 provider-owned materialization。
 
 - [ ] **Step 6: 红→绿并提交**
 

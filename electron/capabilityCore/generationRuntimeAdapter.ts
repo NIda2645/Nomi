@@ -22,6 +22,21 @@ export type GenerationProviderCapabilities = {
   query: boolean;
   reconcile: boolean;
   cancel: boolean;
+  /** Provider-owned extraction of a terminal task into downloadable outputs. */
+  materialize?: boolean;
+};
+
+export type GenerationProviderOutput = {
+  kind: "image" | "video" | "audio";
+  url: string;
+  contentType?: string;
+  fileName?: string;
+  providerOutputId?: string;
+};
+
+export type GenerationProviderMaterializationResult = {
+  outputs: readonly GenerationProviderOutput[];
+  raw?: unknown;
 };
 
 export type GenerationProvider = {
@@ -31,6 +46,7 @@ export type GenerationProvider = {
   submit: (request: unknown, idempotencyKey: string) => Promise<{ providerTaskId: string; raw?: unknown }>;
   query?: (providerTaskId: string) => Promise<{ status: string; raw?: unknown }>;
   reconcile?: (input: { idempotencyKey: string; providerTaskId?: string }) => Promise<{ found: boolean; providerTaskId?: string; raw?: unknown }>;
+  materialize?: (input: { providerTaskId: string; raw?: unknown }) => Promise<GenerationProviderMaterializationResult>;
   cancel?: (providerTaskId: string) => Promise<{ status: "cancelled_remote" | "too_late" | "detached"; raw?: unknown }>;
 };
 
@@ -66,7 +82,7 @@ export class GenerationRuntimeBindingError extends Error {
 export class GenerationProviderObservationError extends Error {
   readonly code = "provider_observation_unsupported" as const;
 
-  constructor(providerId: string, operation: "query" | "reconcile") {
+  constructor(providerId: string, operation: "query" | "reconcile" | "materialize") {
     super(`Provider ${providerId} does not expose ${operation} for recovery`);
     this.name = "GenerationProviderObservationError";
   }
@@ -131,5 +147,21 @@ export function createGenerationRuntimeAdapter(deps: { providers: readonly Gener
     return provider.reconcile({ idempotencyKey: input.idempotencyKey, ...(input.providerTaskId?.trim() ? { providerTaskId: input.providerTaskId.trim() } : {}) });
   }
 
-  return { submit, query, reconcile };
+  async function materialize(input: { providerId: string; providerTaskId: string; raw?: unknown }): Promise<GenerationProviderMaterializationResult> {
+    const providerTaskId = input.providerTaskId.trim();
+    if (!providerTaskId) throw new Error("Provider task id is required for materialization");
+    const provider = providers.get(input.providerId);
+    if (!provider) throw new GenerationProviderCapabilityError(input.providerId, ["registered_provider"]);
+    if (!provider.materialize || provider.capabilities.materialize !== true) throw new GenerationProviderObservationError(input.providerId, "materialize");
+    const result = await provider.materialize({ providerTaskId, raw: input.raw });
+    if (!Array.isArray(result.outputs)) throw new Error("Provider materialization returned invalid outputs");
+    for (const output of result.outputs) {
+      if (!output || !["image", "video", "audio"].includes(output.kind) || typeof output.url !== "string" || !output.url.trim()) {
+        throw new Error("Provider materialization returned an invalid output");
+      }
+    }
+    return result;
+  }
+
+  return { submit, query, reconcile, materialize };
 }

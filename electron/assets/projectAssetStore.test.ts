@@ -10,7 +10,7 @@ vi.mock("../projects/repository", () => ({
   sanitizeName: (value: unknown, fallback = "Untitled") => String(value || "").trim() || fallback,
 }));
 
-const { listProjectAssets, writeAsset } = await import("./projectAssetStore");
+const { listProjectAssets, writeAsset, writeDeterministicAsset } = await import("./projectAssetStore");
 
 beforeEach(() => {
   fs.rmSync(path.join(projectRoot, "assets"), { recursive: true, force: true });
@@ -68,5 +68,12 @@ describe("writeAsset canonical media filename", () => {
 
     const item = listProjectAssets({ projectId: "project-1", limit: 20 }).items.find((entry) => entry.data.relativePath === relativePath);
     expect(item?.data).toMatchObject({ contentType: "video/mp4", kind: "video", mediaType: "video" });
+  });
+
+  it("reuses one deterministic asset path when materialization is retried", () => {
+    const first = writeDeterministicAsset("project-1", Buffer.from("generated"), "result.mp4", "video/mp4", { kind: "generated" }, "task-1:output-1") as { id?: string; data?: { relativePath?: string } };
+    const second = writeDeterministicAsset("project-1", Buffer.from("generated"), "result.mp4", "video/mp4", { kind: "generated" }, "task-1:output-1") as { id?: string; data?: { relativePath?: string } };
+    expect(second).toMatchObject({ id: first.id, data: { relativePath: first.data?.relativePath } });
+    expect(fs.readdirSync(path.join(projectRoot, first.data?.relativePath ? path.dirname(first.data.relativePath) : "assets"))).toHaveLength(2);
   });
 });

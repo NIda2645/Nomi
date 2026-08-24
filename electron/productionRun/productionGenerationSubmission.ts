@@ -3,8 +3,10 @@ import path from "node:path";
 
 import {
   createGenerationRuntimeAdapter,
+  GenerationProviderObservationError,
   resolveExecutionContract,
   type GenerationProvider,
+  type GenerationProviderOutput,
 } from "../capabilityCore/generationRuntimeAdapter";
 import { assertGenerationProviderCanSubmit } from "../capabilityCore/generationProviderCapabilities";
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
@@ -21,7 +23,7 @@ import {
 } from "./submissionOutbox";
 import { classifyGenerationResume, type GenerationResumeDecision } from "./productionRunResume";
 import { createProductionExecutionBinding, type ProductionExecutionBinding } from "./productionExecutionBinding";
-import type { ProductionJob, ProductionRun } from "./productionRunTypes";
+import type { ProductionArtifact, ProductionJob, ProductionRun } from "./productionRunTypes";
 
 export { SubmissionReceiptUnknownError, SubmissionReconciliationRequiredError };
 
@@ -50,6 +52,34 @@ export type GenerationSubmissionPollResult = {
   providerStatus: string;
   nextAction: "poll" | "materialize" | "attention";
 };
+
+export type GenerationSubmissionMaterializeResult = {
+  operationId: string;
+  runId: string;
+  jobId: string;
+  providerTaskId: string;
+  artifactId: string;
+  contentHash: string;
+  nextAction: "completed";
+};
+
+export class GenerationMaterializationUnsupportedError extends Error {
+  readonly code = "provider_materialization_unsupported" as const;
+
+  constructor(message = "This provider has no verified output materialization path") {
+    super(message);
+    this.name = "GenerationMaterializationUnsupportedError";
+  }
+}
+
+export class GenerationMaterializationError extends Error {
+  readonly code = "materialization_failed" as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "GenerationMaterializationError";
+  }
+}
 
 export type GenerationSubmissionResumeResult = GenerationResumeDecision & {
   operationId: string;
@@ -85,6 +115,16 @@ export type ProductionGenerationSubmissionDependencies = {
   runtimeTaskId?: (input: { runId: string; contractHash: string; attempt?: number }) => string;
   afterProviderAcceptance?: (input: { providerTaskId: string; run: ProductionRun }) => void | Promise<void>;
   beforeDispatch?: (input: { run: ProductionRun; job: ProductionJob }) => void | Promise<void>;
+  /** Asset store owns bytes, identity and leases; the submission seam only commits its returned receipt. */
+  materializeOutput?: (input: {
+    projectId: string;
+    operationId: string;
+    run: ProductionRun;
+    job: ProductionJob;
+    contract: ExecutionContractV1;
+    providerTaskId: string;
+    output: GenerationProviderOutput;
+  }) => Promise<Pick<ProductionArtifact, "artifactId" | "kind" | "contentHash" | "projectRelativePath" | "thumbnailRelativePath">>;
 };
 
 function stableJson(value: unknown): string {
@@ -372,15 +412,15 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     const observedAt = now();
     const statusChanged = job.providerStatus !== providerStatus;
     const nextStatus = isPendingProviderStatus(providerStatus) ? "polling" : isFailedProviderStatus(providerStatus) ? "needs_attention" : job.status;
-    command(run, "job.status", {
+    const patch = {
+      providerStatus,
+      lastPollAt: observedAt,
+      ...(statusChanged ? { lastVendorStateChangeAt: observedAt } : {}),
+      ...(isFailedProviderStatus(providerStatus) ? { errorCode: "provider_task_failed", errorMessage: "供应商任务已返回失败状态" } : {}),
+    };
+    command(run, nextStatus === job.status ? "job.patch" : "job.status", {
       jobId: job.jobId,
-      status: nextStatus,
-      patch: {
-        providerStatus,
-        lastPollAt: observedAt,
-        ...(statusChanged ? { lastVendorStateChangeAt: observedAt } : {}),
-        ...(isFailedProviderStatus(providerStatus) ? { errorCode: "provider_task_failed", errorMessage: "供应商任务已返回失败状态" } : {}),
-      },
+      ...(nextStatus === job.status ? { patch } : { status: nextStatus, patch }),
     }, `poll:${run.revision}:${providerStatus}`);
     return {
       operationId: run.runId,
@@ -390,6 +430,60 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
       providerStatus,
       nextAction: isPendingProviderStatus(providerStatus) ? "poll" : isFailedProviderStatus(providerStatus) ? "attention" : "materialize",
     };
+  }
+
+  async function materialize(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionMaterializeResult> {
+    let run = requiredRun(deps.repository, input.projectId, input.operationId);
+    const contract = requiredContract(run);
+    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash));
+    const jobId = jobIdFor(run.runId, contract.contractHash, attempt);
+    let job = run.jobs.find((candidate) => candidate.jobId === jobId);
+    if (!job?.providerTaskId) throw new GenerationMaterializationError("A provider task id is required before materialization");
+    const providerTaskId = job.providerTaskId;
+    const existing = run.artifacts.find((artifact) => artifact.jobId === jobId && ["image", "video", "audio"].includes(artifact.kind) && artifact.status === "ready");
+    if (existing?.contentHash) {
+      if (job.status !== "ready") run = command(run, "job.status", { jobId, status: "ready", patch: {} }, `materialize-job:${jobId}`);
+      const currentEnvelope = envelope(run.runId, jobId).read();
+      if (currentEnvelope?.state === "provider_accepted") envelope(run.runId, jobId).markMaterialized();
+      return { operationId: run.runId, runId: run.runId, jobId, providerTaskId: job.providerTaskId, artifactId: existing.artifactId, contentHash: existing.contentHash, nextAction: "completed" };
+    }
+    const currentEnvelope = envelope(run.runId, jobId).read();
+    if (!currentEnvelope?.providerTaskId || currentEnvelope.state !== "provider_accepted") throw new GenerationMaterializationError("Provider acceptance is required before materialization");
+    const polled = currentEnvelope.lastPoll;
+    if (!polled || isPendingProviderStatus(polled.status)) throw new GenerationMaterializationError("The provider task is still processing");
+    if (isFailedProviderStatus(polled.status)) throw new GenerationMaterializationError("The provider task did not complete successfully");
+    let extracted: { outputs: readonly GenerationProviderOutput[] };
+    try {
+      extracted = await adapter.materialize({ providerId: job.provider, providerTaskId: job.providerTaskId, raw: polled.raw });
+    } catch (error) {
+      if (error instanceof GenerationProviderObservationError) throw new GenerationMaterializationUnsupportedError();
+      throw error;
+    }
+    if (extracted.outputs.length !== 1) throw new GenerationMaterializationError(extracted.outputs.length === 0 ? "Provider did not expose a materializable output" : "Single-shot generation returned more than one output");
+    if (!deps.materializeOutput) throw new GenerationMaterializationUnsupportedError();
+    const receipt = await deps.materializeOutput({ projectId: input.projectId, operationId: run.runId, run, job, contract, providerTaskId: job.providerTaskId, output: extracted.outputs[0] });
+    const artifactId = typeof receipt.artifactId === "string" ? receipt.artifactId.trim() : "";
+    const contentHash = typeof receipt.contentHash === "string" ? receipt.contentHash.trim() : "";
+    const projectRelativePath = typeof receipt.projectRelativePath === "string" ? receipt.projectRelativePath.trim() : "";
+    if (!artifactId || !contentHash || !projectRelativePath) throw new GenerationMaterializationError("Asset store returned an incomplete materialization receipt");
+    run = requiredRun(deps.repository, input.projectId, input.operationId);
+    job = run.jobs.find((candidate) => candidate.jobId === jobId) || job;
+    const artifact: ProductionArtifact = {
+      artifactId,
+      stageId: "generate",
+      jobId,
+      kind: receipt.kind,
+      status: "ready",
+      source: "external-mcp",
+      contentHash,
+      projectRelativePath,
+      ...(receipt.thumbnailRelativePath ? { thumbnailRelativePath: receipt.thumbnailRelativePath } : {}),
+      createdAt: now(),
+    };
+    run = command(run, "artifact.add", { artifact }, `materialize-artifact:${artifact.artifactId}`);
+    run = command(run, "job.status", { jobId, status: "ready", patch: { lastPollAt: job.lastPollAt } }, `materialize-job:${jobId}`);
+    envelope(run.runId, jobId).markMaterialized();
+    return { operationId: run.runId, runId: run.runId, jobId, providerTaskId, artifactId: artifact.artifactId, contentHash, nextAction: "completed" };
   }
 
   async function createNewAttempt(input: GenerationNewAttemptInput): Promise<GenerationNewAttemptResult> {
@@ -461,7 +555,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     return { operationId: run.runId, ...decision, nextAction: "attention" };
   }
 
-  return { start, poll, createNewAttempt, resume };
+  return { start, poll, materialize, createNewAttempt, resume };
 }
 
 export type ProductionGenerationSubmission = ReturnType<typeof createProductionGenerationSubmission>;

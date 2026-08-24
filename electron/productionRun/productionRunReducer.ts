@@ -314,6 +314,20 @@ export function applyProductionCommand(
       }));
       return { run: { ...current, jobs, updatedAt: now }, eventType: `job.${status}`, message: jobId };
     }
+    case "job.patch": {
+      const jobId = text(command.payload, "jobId");
+      const patch = command.payload.patch && typeof command.payload.patch === "object"
+        ? command.payload.patch as Partial<ProductionJob>
+        : {};
+      const jobs = replaceById(current.jobs, jobId, (job) => job.jobId, (job) => ({
+        ...job,
+        ...patch,
+        jobId: job.jobId,
+        status: job.status,
+        updatedAt: now,
+      }));
+      return { run: { ...current, jobs, updatedAt: now }, eventType: "job.updated", message: jobId };
+    }
     case "gate.add": {
       const gate = record(command.payload, "gate") as ProductionGate;
       if (current.gates.some((item) => item.gateId === gate.gateId)) throw new Error(`Duplicate gate: ${gate.gateId}`);

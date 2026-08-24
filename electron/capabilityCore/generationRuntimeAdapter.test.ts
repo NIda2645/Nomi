@@ -160,6 +160,24 @@ describe("GenerationRuntimeAdapter", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it("delegates terminal output extraction to the provider without assuming its response shape", async () => {
+    const materialize = vi.fn(async ({ providerTaskId, raw }: { providerTaskId: string; raw?: unknown }) => ({
+      outputs: [{ kind: "video" as const, url: "https://cdn.example/video.mp4", providerOutputId: providerTaskId }],
+      raw,
+    }));
+    const adapter = createGenerationRuntimeAdapter({ providers: [{
+      providerId: "provider.video",
+      capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false, materialize: true },
+      buildRequest: (input) => input,
+      submit: vi.fn(async () => ({ providerTaskId: "task-1" })),
+      materialize,
+    }] });
+
+    await expect(adapter.materialize({ providerId: "provider.video", providerTaskId: "task-1", raw: { provider: "opaque" } }))
+      .resolves.toMatchObject({ outputs: [{ kind: "video", url: "https://cdn.example/video.mp4" }], raw: { provider: "opaque" } });
+    expect(materialize).toHaveBeenCalledWith({ providerTaskId: "task-1", raw: { provider: "opaque" } });
+  });
+
   it("creates a provider-neutral request with the sealed contract hash and idempotency key", () => {
     const imageContract = contract("provider.image", "model.image.v1", "text-to-image", { aspectRatio: "1:1" });
     const imageBinding = bindingFor("provider.image", imageContract.contractHash);
