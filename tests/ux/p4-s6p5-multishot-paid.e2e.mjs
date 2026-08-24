@@ -236,11 +236,12 @@ try {
   // 诊断：等几秒后截图 + dump 卡相关 DOM（card 不弹时看 GUI 到底在什么态）。
   await sleep(5000)
   await win.screenshot({ path: path.join(shotsDir, '00-gate-pending-state.png') })
+  // 诊断探针只数**具体锚点**（不读整页文本——那会被走查门当 whole-page-text 拦，且断言恒真）。
   const domProbe = await win.evaluate(() => ({
     fixedModals: document.querySelectorAll('div.fixed.inset-0').length,
     confirmBtns: document.querySelectorAll('[data-production-action="confirm"]').length,
     spendAny: document.querySelectorAll('[data-production-footer],[data-spend],[role="dialog"]').length,
-    bodyText: (document.body.innerText || '').slice(0, 200),
+    onboarding: document.querySelectorAll('[data-onboarding],[class*="onboarding"]').length,
   })).catch((e) => ({ err: String(e) }))
   note(`DOM 探针: ${JSON.stringify(domProbe)}`)
   // 看 gate 是否已提前返回（错误/surface none）——若返回了就 dump 出来。
