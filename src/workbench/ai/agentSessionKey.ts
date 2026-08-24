@@ -10,6 +10,7 @@
 //   · feature 形态：nomi:<feature>:<pid>       —— 单次任务（方向/校验/脚本）用独立键，不污染对话历史线程。
 
 import { readWindowUrlParam } from '../windowUrlParam'
+import { clearWorkbenchAgentSession } from '../../api/desktopClient'
 
 export type WorkbenchAgentArea = 'creation' | 'generation'
 
@@ -45,4 +46,18 @@ export function shotVerifySessionKey(): string {
 /** 剧本/脚本单次规划用独立会话键；caller 可显式传 projectId（否则回退 URL）。 */
 export function productionScriptSessionKey(projectId?: string): string {
   return sessionKeyFor({ feature: 'production-script', ...(projectId ? { projectId } : {}) })
+}
+
+/**
+ * 清后端会话记忆的安全包装（B1b）——统一此前散在 5 处的两种写法（`.catch(()=>{})` 吞 / 裸 `void` 无 catch）。
+ * 清会话本就是 best-effort（清失败不该中断新对话/单次任务），但裸 `void` 会在失败时抛 unhandled rejection。
+ * 这里统一为：await 底层清理，失败 `console.warn` 记一次（带 sessionKey 便于定位）后吞掉，**永不外抛**。
+ * 行为与旧代码等价（都是尽力清、失败不阻断），只是把「有的静默吞、有的裸抛」收成一处带日志的安全语义。
+ */
+export async function safeClearAgentSession(sessionKey: string): Promise<void> {
+  try {
+    await clearWorkbenchAgentSession(sessionKey)
+  } catch (error: unknown) {
+    console.warn(`[agent] clear session failed (${sessionKey})`, error)
+  }
 }

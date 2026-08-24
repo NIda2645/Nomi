@@ -6,9 +6,8 @@ import i18n from '../../i18n'
 import { runStoryboardPlanner } from '../generationCanvas/agent/runStoryboardPlanner'
 import { runDirectionPlanner } from '../generationCanvas/agent/runDirectionPlanner'
 import { sendWorkbenchAiMessage } from '../ai/workbenchAiClient'
-import { clearWorkbenchAgentSession } from '../../api/desktopClient'
 import { getAssistantModelPref } from '../ai/assistantModelPref'
-import { productionScriptSessionKey } from '../ai/agentSessionKey'
+import { productionScriptSessionKey, safeClearAgentSession } from '../ai/agentSessionKey'
 import { readWindowUrlParam } from '../windowUrlParam'
 import { useWorkbenchStore } from '../workbenchStore'
 import { mintSpendGrant } from '../api/taskApi'
@@ -94,7 +93,7 @@ async function runProductionTextPlanner(input: {
 }): Promise<string> {
   const projectId = input.projectId || readWindowUrlParam('projectId') || ''
   const sessionKey = productionScriptSessionKey(projectId)
-  await clearWorkbenchAgentSession(sessionKey).catch(() => {})
+  await safeClearAgentSession(sessionKey)
   const prompt = input.outputFormat === 'storyboard'
     ? [
         '你是分镜规划师。请根据下面的原分镜方案和修改要求，输出一份完整、可执行的 StoryboardPlan JSON。',

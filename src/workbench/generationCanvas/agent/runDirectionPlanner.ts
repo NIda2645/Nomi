@@ -12,9 +12,8 @@
 
 import { z } from 'zod'
 import { sendWorkbenchAiMessage } from '../../ai/workbenchAiClient'
-import { clearWorkbenchAgentSession } from '../../../api/desktopClient'
 import { getAssistantModelPref } from '../../ai/assistantModelPref'
-import { directionSessionKey } from '../../ai/agentSessionKey'
+import { directionSessionKey, safeClearAgentSession } from '../../ai/agentSessionKey'
 import { readWindowUrlParam } from '../../windowUrlParam'
 
 export type DirectionCandidate = { key: string; title: string; oneLiner: string }
@@ -141,7 +140,7 @@ export async function runDirectionPlanner(
 ): Promise<{ candidates: DirectionCandidate[] }> {
   const sessionKey = directionSessionKey()
   // 每次独立：清会话，避免上一轮/别处上下文污染方向构思。
-  await clearWorkbenchAgentSession(sessionKey).catch(() => {})
+  await safeClearAgentSession(sessionKey)
   const pref = getAssistantModelPref()
   const projectId = readWindowUrlParam('projectId') || ''
   const prompt = buildDirectionPlannerPrompt(input)

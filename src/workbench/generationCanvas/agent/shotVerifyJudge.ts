@@ -6,9 +6,8 @@
 
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { sendWorkbenchAiMessage } from '../../ai/workbenchAiClient'
-import { clearWorkbenchAgentSession } from '../../../api/desktopClient'
 import { getAssistantModelPref } from '../../ai/assistantModelPref'
-import { shotVerifySessionKey } from '../../ai/agentSessionKey'
+import { shotVerifySessionKey, safeClearAgentSession } from '../../ai/agentSessionKey'
 import { readWindowUrlParam } from '../../windowUrlParam'
 import type { ShotVerifyDeps } from './shotVerifyRunner'
 
@@ -27,7 +26,7 @@ export function makeShotVerifyDeps(): ShotVerifyDeps {
     judge: async (prompt: string, frameImageUrl: string): Promise<string> => {
       const sessionKey = shotVerifySessionKey()
       // 每镜判断必须独立:清会话,避免上一镜的图/判决污染本镜上下文(偏判)。
-      await clearWorkbenchAgentSession(sessionKey).catch(() => {})
+      await safeClearAgentSession(sessionKey)
       const pref = getAssistantModelPref()
       const response = await sendWorkbenchAiMessage(
         {
