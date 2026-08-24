@@ -5,15 +5,10 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { waitForProduction as waitFor } from './productionRunTestHelpers'
 
 function makeRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-production-storyboard-materialize-'))
-}
-
-async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
-  if (!check()) throw new Error('waitFor timed out')
 }
 
 async function approvedStoryboard(options: { stale?: boolean } = {}) {

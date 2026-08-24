@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fsyncIfDurable } from "../durability";
 import { writeJsonFileAtomic } from "../jsonFile";
 import { getWorkspaceRepositoryDeps } from "../runtimePaths";
 import { resolveWorkspaceProjectDir } from "../workspace/workspaceRepository";
@@ -90,7 +91,7 @@ function appendDurableJsonLine(filePath: string, value: unknown): void {
   const fd = fs.openSync(filePath, "a");
   try {
     fs.writeSync(fd, `${JSON.stringify(value)}\n`, undefined, "utf8");
-    fs.fsyncSync(fd);
+    fsyncIfDurable(fd);
   } finally {
     fs.closeSync(fd);
   }
@@ -383,7 +384,12 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       const gate = current.gates.find((item) => item.gateId === gateId);
       if (!gate) throw new Error(`Production gate not found: ${gateId}`);
       if (Date.parse(timestamp) >= Date.parse(gate.expiresAt)) throw new Error("Production gate has expired");
-      if (gate.jobIds.length > 0) {
+      // The budget authorization + policy-readiness check is ONLY for a spend gate (budget_envelope).
+      // P4 S4 adds anchor_checkpoint gates that carry the anchor jobIds for reference but authorize NO
+      // budget — the checkpoint asks "does the face look right?", not "may Nomi spend?" (the receipt
+      // already covered the batch at confirmation). Firing this branch for it would (a) demand
+      // policy.maxSpend be set and (b) re-authorize the ledger — neither is correct for a free checkpoint.
+      if (gate.scope === "budget_envelope" && gate.jobIds.length > 0) {
         const jobs = gate.jobIds.map((jobId) => {
           const job = current.jobs.find((item) => item.jobId === jobId);
           if (!job) throw new Error(`Production job not found: ${jobId}`);

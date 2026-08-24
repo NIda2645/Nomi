@@ -14,6 +14,51 @@ import type {
   RunCommand,
 } from "./productionRunTypes";
 import { validateProductionExecutionBinding } from "./productionExecutionBinding";
+import { checkSealAffordability, type ShotPrice } from "./shotPricing";
+
+/**
+ * P4 S2: raised when a seal is requested with a hard spend ceiling that cannot cover the known-price
+ * subtotal of the included shots. Carries the structured "最多只能完成前 N 镜" signal (plan §3.1/§4) so
+ * the caller can tell the user to change the checkbox selection or raise the cap and re-seal.
+ */
+export class SealBudgetExceededError extends Error {
+  readonly code = "seal_budget_exceeded" as const;
+
+  constructor(
+    readonly maxAffordableShots: number,
+    readonly knownSubtotal: number,
+    readonly maxSpend: number,
+  ) {
+    super(`seal_budget_exceeded: hard spend ceiling ${maxSpend} covers only the first ${maxAffordableShots} shot(s)`);
+    this.name = "SealBudgetExceededError";
+  }
+}
+
+/**
+ * P4 S2: parse the optional per-shot prices a caller derived from the catalog for the seal precheck.
+ * Prices are keyed by shotId (order is taken from the included shots, i.e. checkbox order). A missing
+ * entry for an included shot → that shot is unknown-priced (contributes 0 to the cap, flags certainty).
+ */
+function shotPricesFrom(raw: unknown): Map<string, ShotPrice> | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) throw new Error("Generation seal shotPrices must be an array");
+  const prices = new Map<string, ShotPrice>();
+  for (const [index, value] of raw.entries()) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid seal shot price at ${index}`);
+    const entry = value as { shotId?: unknown; price?: unknown };
+    const shotId = typeof entry.shotId === "string" ? entry.shotId.trim() : "";
+    if (!shotId) throw new Error(`Invalid seal shot price id at ${index}`);
+    const price = entry.price as ShotPrice | undefined;
+    if (!price || typeof price !== "object" || typeof (price as { known?: unknown }).known !== "boolean") {
+      throw new Error(`Invalid seal shot price value at ${index}`);
+    }
+    if (price.known && !(Number.isFinite(price.amount) && price.amount >= 0)) {
+      throw new Error(`Invalid seal shot price amount at ${index}`);
+    }
+    prices.set(shotId, price.known ? { known: true, amount: price.amount } : { known: false });
+  }
+  return prices;
+}
 
 /**
  * P4 S1 shot 谱系 = 一个 job 归属哪一镜。多镜 job 把 shotId 写进 `metadata.shotId`（子合同派生时带上）；
@@ -296,6 +341,21 @@ export function applyProductionCommand(
       const sealedShots = sealGenerationShots(currentPlan, command.payload.shots);
       const rawPlanHash = typeof command.payload.planHash === "string" ? command.payload.planHash.trim() : "";
       if (sealedShots && !rawPlanHash) throw new Error("A multi-shot generation seal requires a plan hash");
+      // P4 S2 seal precheck: when the caller supplies per-shot prices (derived from the catalog), the
+      // reducer enforces the hard spend ceiling at the single source of truth. Absent shotPrices →
+      // byte-identical to today (no precheck, no costCertainty) so the single-shot chain is untouched.
+      const shotPrices = shotPricesFrom(command.payload.shotPrices);
+      let costCertainty: ProductionGenerationPlan["costCertainty"];
+      if (shotPrices) {
+        // Precheck order = included shots in their declared order (checkbox order), single default shot
+        // when there is no shots[] payload. maxAffordableShots is counted in exactly this order.
+        const orderedShots = sealedShots
+          ? sealedShots.filter(isShotIncluded).map((shot) => ({ shotId: shot.shotId, price: shotPrices.get(shot.shotId) ?? { known: false as const } }))
+          : [{ shotId: currentPlan.candidate.candidateId, price: shotPrices.get(currentPlan.candidate.candidateId) ?? { known: false as const } }];
+        const affordability = checkSealAffordability({ shots: orderedShots, maxSpend: current.policy.maxSpend });
+        if (!affordability.ok) throw new SealBudgetExceededError(affordability.maxAffordableShots, affordability.knownSubtotal, affordability.maxSpend);
+        costCertainty = affordability.hasUnknownPrice ? "partial" : "known";
+      }
       return {
         run: {
           ...current,
@@ -305,11 +365,49 @@ export function applyProductionCommand(
             contract,
             state: "sealed",
             ...(sealedShots ? { shots: sealedShots, planHash: rawPlanHash } : {}),
+            ...(costCertainty ? { costCertainty } : {}),
             updatedAt: now,
           },
           updatedAt: now,
         },
         eventType: "generation.plan.sealed",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.trial_narrow": {
+      // P4 S4 试拍首镜 (§6 T3): narrow a SEALED multi-shot plan to only its first included video shot,
+      // clearing the plan-level receipt (a trial re-gate must re-confirm the smaller scope). Anchors stay
+      // included (the trial still needs the identity image). Idempotent: re-narrowing an already-narrowed
+      // plan is a no-op. This is a controlled reshape (not a user edit) so it operates on a sealed plan.
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.shots) throw new Error("A sealed multi-shot plan is required to narrow to a trial shot");
+      const videoShots = currentPlan.shots.filter((shot) => shot.role !== "anchor");
+      const firstIncludedVideo = videoShots.find((shot) => isShotIncluded(shot));
+      if (!firstIncludedVideo) throw new Error("No included video shot to trial");
+      const alreadyNarrowed = videoShots.every((shot) => (shot.shotId === firstIncludedVideo.shotId) === isShotIncluded(shot));
+      if (alreadyNarrowed) return { run: current, eventType: "generation.plan.updated", message: currentPlan.operationId };
+      const rawPlanHash = typeof command.payload.planHash === "string" ? command.payload.planHash.trim() : "";
+      if (!rawPlanHash) throw new Error("A trial narrow requires a new plan hash");
+      const shots = currentPlan.shots.map((shot) => {
+        if (shot.role === "anchor") return { ...shot, updatedAt: now };
+        const keep = shot.shotId === firstIncludedVideo.shotId;
+        return { ...shot, included: keep, approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now };
+      });
+      return {
+        run: {
+          ...current,
+          generationPlan: {
+            ...currentPlan,
+            shots,
+            planHash: rawPlanHash,
+            approvedReceiptId: undefined,
+            approvedAt: undefined,
+            approvedAttempt: undefined,
+            updatedAt: now,
+          },
+          updatedAt: now,
+        },
+        eventType: "generation.plan.updated",
         message: currentPlan.operationId,
       };
     }

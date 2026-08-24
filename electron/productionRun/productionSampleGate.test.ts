@@ -5,18 +5,12 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
-import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 import { buildToolOutcome } from '../capabilityCore/mcpToolResults'
 
 // B2 样片门 + 窗口化定档（plan 2026-08-11-mcp-conversation-native-phase-b）：
 // 首镜落地后停一次样片门 → 剩余镜头在过目期间不提交（喊停最多亏样片这一镜）→
 // 批准续跑到粗剪 / 否决暂停 run（改提示词后可继续，不作废已生成样片）。
-
-async function waitFor(check: () => boolean, timeoutMs = 4000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
-  if (!check()) throw new Error('waitFor timed out')
-}
 
 function makeTwoShotRun(root: string, trackCalls: { count: number }) {
   fs.mkdirSync(path.join(root, 'assets/generated'), { recursive: true })
@@ -110,7 +104,7 @@ describe('sample gate (B2 · 首镜停门 + 窗口化)', () => {
       commandId: 'approve-sample', expectedRevision: atSample.revision, type: 'gate.decide',
       payload: { gateId: 'gate-sample-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
     })
-    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_rough_cut_review', 5000)
+    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_rough_cut_review')
     expect(calls.count).toBe(2) // 镜 2 提交了；镜 1 没重复提交
     const done = service.readFull('project-1', runId)!
     expect(done.jobs.every((j) => j.status === 'adopted')).toBe(true)

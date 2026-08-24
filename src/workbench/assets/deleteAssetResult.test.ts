@@ -91,8 +91,8 @@ describe('deleteAssetResult durability', () => {
   })
 
   it('serializes closed-project deletions so concurrent buttons cannot restore stale references', async () => {
-    let releaseFirstRead: ((value: unknown) => void) | null = null
-    const firstRead = new Promise((resolve) => { releaseFirstRead = resolve })
+    const latch = { resolve: null as ((value: unknown) => void) | null }
+    const firstRead = new Promise((resolve) => { latch.resolve = resolve })
     let storedProject = {
       id: 'project-1',
       name: '测试项目',
@@ -112,7 +112,7 @@ describe('deleteAssetResult durability', () => {
     await Promise.resolve()
     expect(mocks.readLocalProjectAsync).toHaveBeenCalledTimes(1)
 
-    releaseFirstRead?.(storedProject)
+    latch.resolve?.(storedProject)
     await Promise.all([deleteA, deleteB])
 
     expect(mocks.readLocalProjectAsync).toHaveBeenCalledTimes(2)

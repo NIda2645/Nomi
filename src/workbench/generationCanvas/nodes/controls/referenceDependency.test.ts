@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { filledReferenceKinds, nodeUnmetReferenceDependency, unmetReferenceDependency } from './referenceDependency'
 import { SEEDANCE_2_APIMART_ARCHETYPE } from '../../../../config/modelArchetypes/seedanceApimart'
 import { SEEDANCE_2_5_ARCHETYPE } from '../../../../config/modelArchetypes/seedance25'
-import type { ArchetypeMode } from '../../../../config/modelArchetypes'
+import type { ArchetypeMode, ArchetypeReferenceSlotKind } from '../../../../config/modelArchetypes'
 
 const omniOf = (archetype: { modes: ArchetypeMode[] }, id: string) =>
   archetype.modes.find((mode) => mode.id === id) as ArchetypeMode
@@ -19,17 +19,17 @@ const metaFor = (modeId: string, extra: Record<string, unknown> = {}) => ({
 
 describe('unmetReferenceDependency', () => {
   it('flags audio-only as unmet, naming the slot and its companions', () => {
-    const unmet = unmetReferenceDependency(OMNI_2_0, new Set(['audio_ref']))
+    const unmet = unmetReferenceDependency(OMNI_2_0, new Set<ArchetypeReferenceSlotKind>(['audio_ref']))
     expect(unmet).not.toBeNull()
     expect(unmet?.slotLabel).toBe('参考音频')
     expect(unmet?.companionLabels).toEqual(['角色参考', '参考视频'])
   })
 
   it.each([
-    ['an image', 'image_ref'],
-    ['a video', 'video_ref'],
+    ['an image', 'image_ref' as ArchetypeReferenceSlotKind],
+    ['a video', 'video_ref' as ArchetypeReferenceSlotKind],
   ])('is satisfied when audio is accompanied by %s (析取：任一即可)', (_label, companion) => {
-    expect(unmetReferenceDependency(OMNI_2_0, new Set(['audio_ref', companion]))).toBeNull()
+    expect(unmetReferenceDependency(OMNI_2_0, new Set<ArchetypeReferenceSlotKind>(['audio_ref', companion]))).toBeNull()
   })
 
   it('says nothing when the dependent slot itself is empty', () => {

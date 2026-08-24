@@ -34,6 +34,8 @@ import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
+import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
+import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
@@ -47,7 +49,15 @@ let openProjectId = ''
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let advertisedLibrary: { projectsRoot: string; isDefault: boolean } | null = null
 
-function createDefaultAuthorities(): Pick<
+function createDefaultAuthorities(hooks: {
+  /**
+   * P4 S4 试拍首镜 (§6 T3): called when a multi-shot confirmation card resolves trialFirst. Narrows the
+   * plan to shot 1 and re-seals it durably, so the client's re-requested gate lists a single shot. The
+   * challenge's runId is the operationId. Failures are swallowed (the client still gets trialFirst and
+   * can re-request the gate; a failed narrow only means the re-gate still lists the full plan).
+   */
+  onTrialFirst?: (input: { projectId: string; operationId: string }) => void | Promise<void>
+} = {}): Pick<
   DispatchContext,
   'projectLeaseAuthority' | 'resolveProjectSelection' | 'resolveCurrentProject' | 'approvalReceiptAuthority' | 'projectRevisionResolver'
   | 'confirmGenerationInNomi'
@@ -112,8 +122,26 @@ function createDefaultAuthorities(): Pick<
       maximumCost: challenge.reservationPreview.maximum,
       currency: challenge.reservationPreview.currency,
       expiresAt: challenge.expiresAt,
-    }, 60_000) as { confirmed?: unknown } | null
-    if (result?.confirmed !== true) return { confirmed: false, challengeId: challenge.challengeId }
+      // P4 S3a — forward the (MAC-signed) multi-shot projection when the challenge carries one; a
+      // single-shot challenge omits it and the renderer keeps rendering today's flat card unchanged.
+      ...(challenge.display.shots ? { shots: challenge.display.shots } : {}),
+    }, 60_000) as { confirmed?: unknown; trialFirst?: unknown } | null
+    // P4 S3a/S4 — 「先试拍第 1 镜」信号：渲染层回 { confirmed:false, trialFirst:true }。S4 在此把计划缩到
+    // 首镜 + 重封存（onTrialFirst），随后客户端重发 gate → 新卡只列 1 镜；narrow 失败只降级为「重发仍列全批」。
+    if (result?.confirmed !== true) {
+      if (result?.trialFirst === true && hooks.onTrialFirst && challenge.runId && challenge.projectId) {
+        try {
+          await hooks.onTrialFirst({ projectId: challenge.projectId, operationId: challenge.runId })
+        } catch (error) {
+          console.error('[nomi:capability-core] trial-first narrow failed:', error instanceof Error ? error.message : String(error))
+        }
+      }
+      return {
+        confirmed: false,
+        challengeId: challenge.challengeId,
+        ...(result?.trialFirst === true ? { trialFirst: true } : {}),
+      }
+    }
     const attestation = receiptAuthority.createMainProcessGestureAttestation(challengeToken, {
       ...target,
       decision: 'accept',
@@ -183,7 +211,18 @@ export async function startCapabilityCore(
 ): Promise<void> {
   try {
     const token = ensureToken()
-    const defaults = createDefaultAuthorities()
+    const generationService = getProductionRunService()
+    const operationStore = createProductionGenerationOperationStore(generationService)
+    // P4 S4: wire the trial-first narrow into the confirmation seam. When a multi-shot card resolves
+    // trialFirst, narrow the durable plan to shot 1 (a fresh plan hash) so the re-requested gate lists 1
+    // shot. Guarded by the same operationId the challenge carries as runId.
+    const defaults = createDefaultAuthorities({
+      onTrialFirst: async ({ projectId, operationId }) => {
+        if (!operationStore.trialNarrow) return
+        const trialPlanHash = `trial:${operationId}:${crypto.randomUUID()}`
+        await operationStore.trialNarrow(projectId, operationId, trialPlanHash, new Date().toISOString())
+      },
+    })
     const providerBootstrap = createGenerationProviderBootstrap()
     const outputMaterializer = createGenerationOutputMaterializer()
     const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry(undefined, { readinessByProvider: providerBootstrap.readinessByProvider })
@@ -202,27 +241,49 @@ export async function startCapabilityCore(
           ...(field.default === undefined ? {} : { defaultValue: field.default }),
         })),
       })))
-    const generationService = getProductionRunService()
+    // P4 S2: real per-shot pricing from the live catalog (resolve lazily so pricing edits apply).
+    const resolveModelPricing = (providerId: string, modelId: string) => createCatalogModelPricingResolver(readCatalog().models)(providerId, modelId)
+    const resolveShotPrice = (contract: Parameters<ReturnType<typeof createCatalogShotPriceResolver>>[0]) => createCatalogShotPriceResolver(readCatalog().models)(contract)
     const generationPlanning = authorities.generationPlanning
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
-        operations: createProductionGenerationOperationStore(generationService),
+        operations: operationStore,
         videoModelCandidates,
         recommendVideoGeneration,
+        resolveModelPricing,
         providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
         start: async (operation, lease) => {
           const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
           const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
           if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, state: operation.state, nextAction: 'provider_not_configured' }
-          return createProductionGenerationSubmission({
+          const submission = createProductionGenerationSubmission({
             repository: generationService.repository,
             projectRoot,
             immutableProjectUuid: lease.immutableProjectUuid,
             projectGeneration: lease.projectGeneration,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             provider,
+            resolveShotPrice,
             materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
-          }).start({ projectId: lease.projectId, operationId: operation.operationId })
+          })
+          // P4 S4: a multi-shot operation is driven by the durable batch scheduler (anchor → checkpoint →
+          // shot batch, with budget halt + stop). A single-shot operation keeps the flat one-call start.
+          if (operation.shots && operation.shots.length > 0) {
+            const scheduler = createMultiShotBatchScheduler({
+              repository: generationService.repository,
+              submission,
+              projectId: lease.projectId,
+              runId: operation.operationId,
+              perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
+            })
+            // Kick the batch off the request path (durable + restart-safe): the scheduler runs to its next
+            // resting point (anchors done + checkpoint waiting, or halt, or completion) without blocking.
+            void scheduler.runToQuiescence().catch((error) => {
+              console.error('[nomi:capability-core] batch scheduler tick failed:', error instanceof Error ? error.message : String(error))
+            })
+            return { operationId: operation.operationId, state: operation.state, nextAction: 'observe' }
+          }
+          return submission.start({ projectId: lease.projectId, operationId: operation.operationId })
         },
         reconcile: async (operation, outcome, lease) => {
           if (outcome === 'not_found') return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
@@ -237,6 +298,7 @@ export async function startCapabilityCore(
             projectGeneration: lease.projectGeneration,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             provider,
+            resolveShotPrice,
             materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
           })
           try {

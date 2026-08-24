@@ -101,7 +101,7 @@ describe('runPlanWithToasts concurrency', () => {
       .mockResolvedValueOnce({
         totalCount: 1,
         successes: [],
-        failures: [{ nodeId: 'a', error: 'mock failure' }],
+        failures: [{ nodeId: 'a', error: new Error('mock failure') }],
       })
       .mockResolvedValueOnce({
         totalCount: 1,

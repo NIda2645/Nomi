@@ -97,9 +97,15 @@ describe("production run state", () => {
     expect(current.status).toBe("completed");
   });
 
-  it("does not let a draft jump directly to running", () => {
-    expect(() => transitionRun(run("draft"), "running", NOW)).toThrow(
-      "Illegal run transition draft -> running",
-    );
+  it("lets a draft go directly to running for the P4 S4 semantic batch (pausable batch start)", () => {
+    // P4 S4: a semantic multi-shot batch (playbook generation.single-shot) stays draft while the plan is
+    // edited/sealed, then the scheduler drives it. To reuse Run pause/cancel it must become `running`.
+    // Single-shot runs never call the scheduler, so they never take this edge in practice.
+    expect(transitionRun(run("draft"), "running", NOW).status).toBe("running");
+  });
+
+  it("still rejects other illegal draft jumps (e.g. straight to paused or exporting)", () => {
+    expect(() => transitionRun(run("draft"), "paused", NOW)).toThrow("Illegal run transition draft -> paused");
+    expect(() => transitionRun(run("draft"), "exporting", NOW)).toThrow("Illegal run transition draft -> exporting");
   });
 });
