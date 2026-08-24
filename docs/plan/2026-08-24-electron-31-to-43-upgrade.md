@@ -361,3 +361,28 @@ getBitmap(options?: BitmapOptions): void;
 
 **两条既有坏走查**（`scene3d-safeframe`、`scene3d-export-journey`）与本轮无关，
 已另开任务跟进，不在本 PR 修——升级 PR 只含升级（§4）。
+
+### 9.7 ⚠️ 唯一真正影响用户的取舍：macOS 10.15 / 11 用户会被落下
+
+从**两个真实产物的 `Info.plist`** 直接读出（非推测）：
+
+| 构建 | `LSMinimumSystemVersion` |
+|---|---|
+| `/Applications/Nomi.app`（用户手里的 v0.20.1 / Electron 31） | **10.15**（Catalina） |
+| `release/mac-arm64/Nomi.app`（本轮 / Electron 43） | **12.0**（Monterey） |
+
+**后果**：仍在 macOS 10.15 或 11 的用户，装上新版后**完全打不开**（系统直接拒绝启动），
+而不是「功能少一点」。这是本次升级唯一一处对存量用户不可逆的影响。
+
+**这是产品决策，不是技术决策**，交用户拍板。可选项：
+
+1. **照常升级**——接受落下这部分用户。前提是他们占比小。
+   建议同时做两件事：下载页显式标注「需 macOS 12+」（目前站点**没有任何**最低版本声明，
+   见 `scripts/marketing/content.mjs`），并在 release note 里写清。
+2. **暂缓升级**——继续留在 Electron 31（EOL、无安全补丁）换取覆盖面。
+3. **分版本发布**——为旧系统保留一个 Electron 31 的维护分支。成本最高，solo 项目基本不现实（D2：约束即战略）。
+
+**没有数据支撑之前不替用户选**。需要的输入是：现有用户里 macOS < 12 的占比。
+若无遥测，可从 GitHub release 的下载数据或群反馈粗估。
+
+**Windows 侧无此问题**：32→44 无最低版本变化，且本仓 `win.target` 只有 x64。
