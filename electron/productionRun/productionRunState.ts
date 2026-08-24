@@ -29,7 +29,11 @@ const JOB_TRANSITIONS: Record<ProductionJobStatus, readonly ProductionJobStatus[
 };
 
 const RUN_TRANSITIONS: Record<ProductionRunStatus, readonly ProductionRunStatus[]> = {
-  draft: ["awaiting_direction", "awaiting_contract", "cancelled"],
+  // P4 S4 adds `draft → running`: a semantic multi-shot batch (playbook `generation.single-shot`) has a
+  // minimal lifecycle — it stays `draft` while the plan is edited/sealed, then the batch scheduler drives
+  // it. To reuse Run pause/cancel (§3.3), the run must be `running` while the batch generates (pause
+  // requires `running`). Single-shot runs never call the scheduler, so they never take this edge.
+  draft: ["awaiting_direction", "awaiting_contract", "running", "cancelled"],
   awaiting_direction: ["running", "cancelled"],
   awaiting_script_review: ["running", "cancelled"],
   awaiting_storyboard_review: ["awaiting_script_review", "awaiting_contract", "cancelled"],

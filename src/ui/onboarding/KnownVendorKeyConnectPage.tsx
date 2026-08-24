@@ -103,6 +103,9 @@ export function KnownVendorKeyConnectPage({
             type="password"
             value={saved ? 'saved-key' : apiKey}
             autoFocus={!saved}
+            // 光有 autoFocus 不够：页面级焦点管理在 rAF 里会把焦点收回「返回」键，晚于它执行。
+            // 这个标记就是告诉那一层「这页有更该聚焦的东西」（见 useModelSettingsPageFocus）。
+            data-model-settings-autofocus={saved ? undefined : ''}
             disabled={busy || saved}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}

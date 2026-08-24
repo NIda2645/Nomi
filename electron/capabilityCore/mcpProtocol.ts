@@ -59,9 +59,10 @@ export type GenerationGateConfirmation = {
   nextAction: 'in_client' | 'in_nomi' | 'wait_for_reconciliation'
   receiptId?: string
   receiptToken?: string
+  trialFirst?: boolean // P4 S4 「先试拍第 1 镜」(§6 T3): {confirmed:false,trialFirst:true} → backend narrows plan to shot 1 + re-gates. Never approval.
 }
 
-export type GenerationGateVerificationResult = Pick<GenerationGateConfirmation, 'confirmed' | 'receiptId' | 'receiptToken'>
+export type GenerationGateVerificationResult = Pick<GenerationGateConfirmation, 'confirmed' | 'receiptId' | 'receiptToken' | 'trialFirst'>
 
 // 哪些工具挂活 widget（tool.name → ui:// 资源）：单次生成与 production Run 共用一张活面板。
 const TOOL_UI_RESOURCE: Record<string, string> = {
@@ -256,11 +257,8 @@ export function createMcpProtocol(transport: McpTransport) {
     }
   }
 
-  /**
-   * Answer one server-owned generation challenge on exactly one surface. The
-   * challenge is deliberately passed unchanged to the GUI fallback so a
-   * client timeout/reconnect cannot mint a second prompt or nonce.
-   */
+  /** Answer one server-owned generation challenge on exactly one surface. The challenge is passed
+   * unchanged to the GUI fallback so a client timeout/reconnect cannot mint a second prompt or nonce. */
   async function resolveGenerationConfirmation(
     challenge: GenerationGateChallengeProjection,
   ): Promise<GenerationGateConfirmation> {
@@ -320,6 +318,7 @@ export function createMcpProtocol(transport: McpTransport) {
         ...(typeof fallback === 'object' ? {
           ...(fallback.receiptId ? { receiptId: fallback.receiptId } : {}),
           ...(fallback.receiptToken ? { receiptToken: fallback.receiptToken } : {}),
+          ...(fallback.trialFirst === true ? { trialFirst: true } : {}), // P4 S4: carry trial-first so the caller shrinks the plan + re-gates
         } : {}),
       }
     }

@@ -37,8 +37,13 @@ describe('buildNomiLaunchEnv', () => {
 
 describe('withLinuxNoSandbox', () => {
   test('Linux direct spawns disable the unavailable setuid sandbox once', () => {
-    expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'linux')).toEqual(['.', '--disable-gpu', '--no-sandbox'])
-    expect(withLinuxNoSandbox(['.', '--no-sandbox'], 'linux')).toEqual(['.', '--no-sandbox'])
+    expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'linux')).toEqual(['.', '--disable-gpu', '--no-sandbox', '--enable-unsafe-swiftshader'])
+    expect(withLinuxNoSandbox(['.', '--no-sandbox'], 'linux')).toEqual(['.', '--no-sandbox', '--enable-unsafe-swiftshader'])
+  })
+
+  test('Linux spawns opt in to SwiftShader WebGL exactly once (Chromium >=139 removed the fallback)', () => {
+    expect(withLinuxNoSandbox(['.', '--enable-unsafe-swiftshader'], 'linux'))
+      .toEqual(['.', '--enable-unsafe-swiftshader', '--no-sandbox'])
   })
 
   test('non-Linux spawns keep their original arguments', () => {

@@ -38,7 +38,9 @@ describe('model settings workspace structure', () => {
     expect(navigation).toContain('closeModelSettingsDialog')
     expect(settings).toContain('data-settings-content')
     expect(settings).toContain('data-settings-model-workspace')
-    expect(settings).toContain('<OnboardingDrawer />')
+    // 2026-08-25 起带 pageRequest：设置里的「去配置 KIE」要能直达那家的 Key 输入页，
+    // 而模型工作区首访后常驻挂载，只能靠这个请求值把它推到目标页（详见 useModelPageRequest）。
+    expect(settings).toContain('<OnboardingDrawer pageRequest={modelPageRequest} />')
     expect(drawer).not.toContain('data-model-settings-detail-panel')
     expect(drawer).not.toContain('data-model-settings-detail-context')
     expect(drawer).not.toContain('INERT_HTML_ATTRIBUTE')
