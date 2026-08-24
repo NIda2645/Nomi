@@ -13,6 +13,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { fsyncIfDurable } from '../durability'
+
 export const CAPABILITY_DIR_ENV = 'NOMI_CAPABILITY_DIR'
 export const MCP_CLIENT_ENV = 'NOMI_MCP_CLIENT'
 export const MCP_CLIENT_PROOF_ENV = 'NOMI_MCP_CLIENT_PROOF'
@@ -78,7 +80,7 @@ export function ensureCapabilitySigningKey(name: string): Buffer {
   }
   try {
     fs.writeSync(fd, key)
-    try { fs.fsyncSync(fd) } catch { /* best effort on filesystems without fsync */ }
+    try { fsyncIfDurable(fd) } catch { /* best effort on filesystems without fsync */ }
   } finally {
     fs.closeSync(fd)
   }
