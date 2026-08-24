@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fsyncIfDurable, isDurable } from "../durability";
 import { writeJsonFileAtomic } from "../jsonFile";
 
 export const PRODUCTION_RUN_LOCK_SCHEMA_VERSION = 1;
@@ -46,15 +47,19 @@ export class ProductionRunLockLostError extends Error {
   }
 }
 
+// 注：`deps.durability` 决定「这把锁要不要durable 围栏语义」；下面两个 helper 里的
+// `fsyncIfDurable`/`isDurable` 是另一回事——全局落盘屏障开关（测试里整体关掉，见
+// `electron/durability.ts`）。两者独立，别合并。
 function fsyncFile(fd: number): void {
   try {
-    fs.fsyncSync(fd);
+    fsyncIfDurable(fd);
   } catch {
     // Some filesystems do not expose fsync for a just-created lock file.
   }
 }
 
 function fsyncDirectory(filePath: string): void {
+  if (!isDurable()) return; // 连开目录 fd 都省掉——它存在的唯一目的就是被 fsync。
   try {
     const fd = fs.openSync(path.dirname(filePath), "r");
     try {

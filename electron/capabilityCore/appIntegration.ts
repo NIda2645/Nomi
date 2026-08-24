@@ -34,6 +34,7 @@ import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
+import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
 import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
@@ -112,8 +113,19 @@ function createDefaultAuthorities(): Pick<
       maximumCost: challenge.reservationPreview.maximum,
       currency: challenge.reservationPreview.currency,
       expiresAt: challenge.expiresAt,
-    }, 60_000) as { confirmed?: unknown } | null
-    if (result?.confirmed !== true) return { confirmed: false, challengeId: challenge.challengeId }
+      // P4 S3a — forward the (MAC-signed) multi-shot projection when the challenge carries one; a
+      // single-shot challenge omits it and the renderer keeps rendering today's flat card unchanged.
+      ...(challenge.display.shots ? { shots: challenge.display.shots } : {}),
+    }, 60_000) as { confirmed?: unknown; trialFirst?: unknown } | null
+    // P4 S3a — 「先试拍第 1 镜」信号：渲染层回 { confirmed:false, trialFirst:true }。S3a 边界 = 把它
+    // 原样上抛给调用方，主进程侧「缩到首镜 + 重封存 + 重发 gate」属 S4；这里不落地重封存。
+    if (result?.confirmed !== true) {
+      return {
+        confirmed: false,
+        challengeId: challenge.challengeId,
+        ...(result?.trialFirst === true ? { trialFirst: true } : {}),
+      }
+    }
     const attestation = receiptAuthority.createMainProcessGestureAttestation(challengeToken, {
       ...target,
       decision: 'accept',
@@ -203,12 +215,16 @@ export async function startCapabilityCore(
         })),
       })))
     const generationService = getProductionRunService()
+    // P4 S2: real per-shot pricing from the live catalog (resolve lazily so pricing edits apply).
+    const resolveModelPricing = (providerId: string, modelId: string) => createCatalogModelPricingResolver(readCatalog().models)(providerId, modelId)
+    const resolveShotPrice = (contract: Parameters<ReturnType<typeof createCatalogShotPriceResolver>>[0]) => createCatalogShotPriceResolver(readCatalog().models)(contract)
     const generationPlanning = authorities.generationPlanning
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
         operations: createProductionGenerationOperationStore(generationService),
         videoModelCandidates,
         recommendVideoGeneration,
+        resolveModelPricing,
         providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
         start: async (operation, lease) => {
           const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
@@ -221,6 +237,7 @@ export async function startCapabilityCore(
             projectGeneration: lease.projectGeneration,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             provider,
+            resolveShotPrice,
             materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
           }).start({ projectId: lease.projectId, operationId: operation.operationId })
         },
@@ -237,6 +254,7 @@ export async function startCapabilityCore(
             projectGeneration: lease.projectGeneration,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             provider,
+            resolveShotPrice,
             materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
           })
           try {
