@@ -20,14 +20,42 @@ import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import { makeShotVerifyDeps } from './shotVerifyDeps'
+import { rpcErrorFromPayload } from './mcpRpcError'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
+  ensureCapabilitySigningKey,
   resolveMcpOrigin,
   type CapabilityOriginHost,
 } from './security'
+import type { ProjectLeaseAuthority } from './projectLease'
+import type { ApprovalReceiptAuthority } from './approvalReceipt'
+import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
+import type { DispatchContext } from './dispatcher'
+import { createGenerationPlanningHandler } from './mcpGenerationTools'
+import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
+import type { ModuleRegistry } from './moduleRegistry'
+import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
+import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
+import { createGenerationOutputMaterializer } from './generationOutputMaterializer'
+import { readCatalog } from '../catalog/catalogStore'
+import { buildVideoModelCandidates, recommendVideoGeneration, videoArchetypeIdFromMeta } from '../shared/videoCapabilities'
 
 const productionRuns = getProductionRunService()
+
+export type McpStdioServerOptions = {
+  projectLeaseAuthority?: ProjectLeaseAuthority
+  resolveCurrentProject?: DispatchContext['resolveCurrentProject']
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
+  requestGenerationGate?: DispatchContext['requestGenerationGate']
+  authorizeGeneration?: DispatchContext['authorizeGeneration']
+  generationPolicy?: McpGenerationPolicy
+  generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  generationPlanning?: DispatchContext['generationPlanning']
+  generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
+  projectRevisionResolver?: (projectId: string) => number | undefined
+}
 
 /**
  * 本进程（in-Electron stdio）服务的库 → 传给 readLiveInstance 读**对应命名空间**的广告文件。与 appIntegration
@@ -100,13 +128,18 @@ async function callViaRpc(
   } finally {
     clearTimeout(timer)
   }
-  const body = (await res.json()) as { ok?: boolean; error?: string; result?: unknown }
-  if (!body.ok) throw new Error(body.error || `RPC ${res.status}`)
+  const body = (await res.json()) as { ok?: boolean; error?: unknown; result?: unknown }
+  if (!body.ok) throw rpcErrorFromPayload(body, res.status)
   return body.result
 }
 
 /** 进程内调能力核：GUI 开着→转发 RPC（实时 + 应用内确认卡）；关着→进程内 dispatch（磁盘网关）。 */
-async function invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown> {
+async function invoke(
+  method: string,
+  params: Record<string, unknown>,
+  options: McpInvokeOptions | undefined,
+  authorities: McpStdioServerOptions,
+): Promise<unknown> {
   const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
   const instance = readLiveInstance(currentLibrary())
   // GUI 开着 → RPC 转发，rpcServer 侧已做生成结果富化（缩略图/签名链），此处不再重复富化。
@@ -120,6 +153,7 @@ async function invoke(method: string, params: Record<string, unknown>, options?:
     makeGateway,
     productionRuns,
     origin: { host: origin },
+    ...authorities,
     ...(options?.planConfirmed ? { planConfirmed: true } : {}),
     // 审片环（W1）：headless 路的真实 deps——judge 走 runTask 文本路（不花生成额度）、抽帧走主进程 ffmpeg、
     // 重试复用首发 grantId+同 nodeId 直发。judge 模型无可用 text 模型时 visionAvailable=false → 整体跳过。
@@ -128,7 +162,7 @@ async function invoke(method: string, params: Record<string, unknown>, options?:
 }
 
 /** 启动 stdio JSON-RPC server。main.ts 在 NOMI_MCP_STDIO 模式的 app.whenReady 后调；不开窗、不抢单实例锁。 */
-export async function startMcpStdioServer(): Promise<void> {
+export async function startMcpStdioServer(authorities: McpStdioServerOptions = {}): Promise<void> {
   // 无窗口进程：mac 别在 dock 弹图标。
   app.dock?.hide?.()
   const previewServer = await startArtifactPreviewHttpServer(
@@ -159,10 +193,92 @@ export async function startMcpStdioServer(): Promise<void> {
     /* 取不到系统 locale → 保持 zh-CN 缺省 */
   }
 
+  const providerBootstrap = createGenerationProviderBootstrap()
+  const outputMaterializer = createGenerationOutputMaterializer()
+  const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry(undefined, { readinessByProvider: providerBootstrap.readinessByProvider })
+  const videoModelCandidates = buildVideoModelCandidates(readCatalog().models
+    .filter((model) => model.enabled && model.kind === 'video')
+    .map((model) => ({
+      provider: model.vendorKey,
+      modelKey: model.modelKey,
+      label: model.labelZh,
+      archetypeId: videoArchetypeIdFromMeta(model.meta),
+      parameterControls: model.onboarding?.fields?.map((field) => ({
+        key: field.key,
+        label: field.displayName,
+        type: field.type,
+        options: (field.options ?? []).map((option) => ({ value: option.value, label: option.label })),
+        ...(field.default === undefined ? {} : { defaultValue: field.default }),
+      })),
+    })))
+  const generationPlanning = authorities.generationPlanning
+    ?? createGenerationPlanningHandler({
+      registry: generationRegistry,
+      operations: createProductionGenerationOperationStore(productionRuns),
+      videoModelCandidates,
+      recommendVideoGeneration,
+      providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
+      start: async (operation, lease) => {
+        const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
+        const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
+        if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, state: operation.state, nextAction: 'provider_not_configured' }
+        return createProductionGenerationSubmission({
+          repository: productionRuns.repository,
+          projectRoot,
+          immutableProjectUuid: lease.immutableProjectUuid,
+          projectGeneration: lease.projectGeneration,
+          intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+          provider,
+          materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+        }).start({ projectId: lease.projectId, operationId: operation.operationId })
+      },
+      reconcile: async (operation, outcome, lease) => {
+        if (outcome === 'not_found') return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
+        const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
+        const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
+        if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
+        if (!provider.query || !provider.capabilities.query) return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '该供应商没有可用的任务查询；请到供应商核对。' }
+        const submission = createProductionGenerationSubmission({
+          repository: productionRuns.repository,
+          projectRoot,
+          immutableProjectUuid: lease.immutableProjectUuid,
+          projectGeneration: lease.projectGeneration,
+          intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+          provider,
+          materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+        })
+        try {
+          const polled = await submission.poll({ projectId: lease.projectId, operationId: operation.operationId })
+          return polled.nextAction === 'materialize'
+            ? await submission.materialize({ projectId: lease.projectId, operationId: operation.operationId })
+            : polled
+        } catch (error) {
+          const code = (error as { code?: unknown })?.code
+          if (code === 'provider_materialization_unsupported' || code === 'materialization_failed') return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '供应商任务已完成，但结果还没有安全落到 Nomi 项目；请到供应商核对或稍后重试。' }
+          throw error
+        }
+      },
+    })
+  const generationPolicy = authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy()
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
-    invoke,
+    invoke: (method, params, options) => invoke(method, params, options, { ...authorities, generationPlanning, generationPolicy }),
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
+    getAuthenticatedClient: () => {
+      const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
+      return origin === 'external' || origin === 'nomi' ? null : origin
+    },
+    confirmGenerationInNomi: async (challenge) => {
+      const challengeToken = challenge.handoff && typeof challenge.handoff.challengeToken === 'string'
+        ? challenge.handoff.challengeToken
+        : ''
+      const instance = readLiveInstance(currentLibrary())
+      if (!challengeToken || !instance) return { confirmed: false }
+      const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
+      const result = await callViaRpc(instance, 'nomi_confirm_generation_gate', { challengeToken }, origin)
+      const typed = result as { confirmed?: boolean; receiptId?: string; receiptToken?: string }
+      return { confirmed: typed.confirmed === true, ...(typed.receiptId ? { receiptId: typed.receiptId } : {}), ...(typed.receiptToken ? { receiptToken: typed.receiptToken } : {}) }
+    },
     getLocale: () => getDesktopLocale(),
   })
 

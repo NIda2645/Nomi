@@ -38,6 +38,7 @@ ${alternates}
 <meta name="twitter:title" content="${escapeAttr(metadata.openGraph.title)}" />
 <meta name="twitter:description" content="${escapeAttr(metadata.openGraph.description)}" />
 <meta name="twitter:image" content="${escapeAttr(metadata.openGraph.image)}" />
+<meta name="twitter:image:alt" content="${escapeAttr(metadata.openGraph.imageAlt)}" />
 <script type="application/ld+json">${jsonLd}</script>`
 }
 

@@ -7,9 +7,11 @@
 // aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键）。
 import { listProductionPlaybookNames } from '../productionRun/productionPlaybooks'
 import { buildGenerateParams } from './mcpGenerateParams'
+import { MCP_GENERATION_TOOL_CATALOG } from './mcpGenerationTools'
 
 // 工具定义：name → { description, inputSchema(JSON Schema), method(能力核方法), build(args→params) }。
 export const MCP_TOOL_CATALOG = [
+  ...MCP_GENERATION_TOOL_CATALOG,
   {
     name: 'nomi_list_projects',
     description: '列出本机 Nomi 的所有项目（id / 名称 / 更新时间）。',

@@ -104,7 +104,7 @@ async function auditStandardCase(browser, testCase) {
       return image ? [image.naturalWidth, image.naturalHeight] : [0, 0]
     })(),
     businessLink: Boolean(document.querySelector('a[href*="business_inquiry.yml"]')),
-    discussionsLink: Boolean(document.querySelector('a[href*="/discussions"]')),
+    discussionsLink: Boolean(document.querySelector('a[href*="/issues"]')),
     wechatText: (document.body.textContent || '').includes('TZ857886159'),
     costTabs: document.querySelectorAll('[data-cost]').length,
     workflowTabs: document.querySelectorAll('[data-step]').length,

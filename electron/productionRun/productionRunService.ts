@@ -25,6 +25,8 @@ import { assertStoryboardSourceApproved } from './productionRunReducer'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
 import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
+import { approvalReceiptForGate } from './productionRunApprovalReceipt'
+import type { ApprovalReceiptAuthority } from '../capabilityCore/approvalReceipt'
 import {
   metadataProjection,
   storyboardMetadata,
@@ -32,6 +34,7 @@ import {
 import type {
   AutomationPolicy,
   CreateProductionRunInput,
+  ProductionGenerationPlan,
   ProductionRun,
   RunEvent,
   RunCommand,
@@ -103,10 +106,19 @@ type ServiceDeps = {
   }>
   /** A5：每批持久化事件的旁路监听（系统通知等）。异常被吞，绝不影响制作主流程。 */
   onEvents?: (events: RunEvent[], run: ProductionRun) => void
+  /** Optional main-process receipt owner. When supplied, gate.decide must verify and consume a receipt. */
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
+  /** Current project document revision, resolved by the project owner rather than the command body. */
+  projectRevisionResolver?: (projectId: string) => number | undefined
 }
 
 const MEANINGFUL_EVENT_TYPES = new Set([
   'run.created',
+  'generation.plan.updated',
+  'generation.plan.sealed',
+  'generation.plan.submitted',
+  'generation.plan.approved',
+  'generation.plan.cancelled',
   'run.status.changed',
   'run.stage.changed',
   'stage.updated',
@@ -173,6 +185,7 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
       ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
       ...(job.retryReason ? { retryReason: safeExternalText(job.retryReason) } : {}),
       ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
+      ...(job.providerStatus ? { providerStatus: safeExternalText(job.providerStatus) } : {}),
       ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
       ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
       ...(job.errorCode ? { errorCode: job.errorCode } : {}),
@@ -295,6 +308,17 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
     else void proposeDirections(run)
     return runProjection(run, projectRootResolver, previewSecret)
+  }
+
+  function createGenerationDraft(input: {
+    operationId: string
+    projectId: string
+    origin: { host: string; actorId?: string }
+    candidate: ProductionGenerationPlan['candidate']
+    currency?: string
+    policy?: Partial<AutomationPolicy>
+  }): ProductionRun {
+    return repository.createGenerationDraft(input)
   }
 
   function writeProjectJson(projectId: string, relativePath: string, value: unknown): void {
@@ -519,6 +543,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         return { run: current, events: [] }
       }
     }
+    const gateReceipt = approvalReceiptForGate(
+      deps.approvalReceiptAuthority,
+      safeProjectId,
+      safeRunId,
+      runCommand,
+      deps.projectRevisionResolver,
+    )
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved') {
       const current = requireRun(safeProjectId, safeRunId)
       const gateId = typeof runCommand.payload.gateId === 'string' ? runCommand.payload.gateId.trim() : ''
@@ -534,6 +565,11 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       }
     }
     const result = repository.execute(safeProjectId, safeRunId, runCommand)
+    if (gateReceipt && deps.approvalReceiptAuthority) {
+      // The Run event is durable before receipt consumption. A crash can only leave
+      // a replayable receipt against an already-decided gate; it cannot reopen it.
+      deps.approvalReceiptAuthority.consumeReceipt(gateReceipt.token)
+    }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === 'gate-direction-v1') {
       void proposeScript(result.run)
     }
@@ -635,9 +671,15 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       for (const summary of summaries) {
         let current = repository.read(safeProjectId, summary.runId)
         if (!current || ['completed', 'cancelled'].includes(current.status)) continue
+        // Semantic single-shot runs own recovery through ProductionGenerationSubmission
+        // (resume/poll/reconcile). The legacy playbook driver must not rewrite their
+        // durable provider state to submission_unknown or kick a second submit.
+        const isSemanticSingleShot = current.playbook.name === 'generation.single-shot'
+          && current.generationPlan?.operationId === current.runId
         let changedUnknown = false
         for (const job of current.jobs) {
           if (!['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content'].includes(job.status)) continue
+          if (isSemanticSingleShot) continue
           try {
             current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
               jobId: job.jobId,
@@ -679,7 +721,6 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function readProjection(projectId: string, runId: string): ProductionRunProjection {
-    void resumeUnfinishedRuns(projectId)
     return runProjection(requireRun(projectId, runId), projectRootResolver, previewSecret)
   }
 
@@ -744,15 +785,16 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function listFull(projectId: string): ProductionRun[] {
-    void resumeUnfinishedRuns(projectId)
     return repository.list(identifier(projectId, 'project')).map((summary) => requireRun(projectId, summary.runId))
   }
 
   return {
-    createDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
+    // The semantic generation submission adapter is a thin orchestration layer;
+    // ProductionRun's repository remains its only durable owner.
+    repository,
+    createDraft, createGenerationDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
     requestArtifactRevision, reviewArtifact, materializeStoryboard, resolveArtifactPreview, command, proposeScript, proposeStoryboard,
     resumeUnfinishedRuns, listProjections, listFull,
   }
 }
-
 export type ProductionRunService = ReturnType<typeof createProductionRunService>

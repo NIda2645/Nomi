@@ -100,9 +100,11 @@ describe('nomi-mcp · MCP Apps 活生成 widget serving', () => {
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name).sort()
     expect(readOnly).toEqual([
       'nomi_get_artifact',
+      'nomi_get_generation_context',
       'nomi_get_run',
       'nomi_list_models',
       'nomi_list_projects',
+      'nomi_operation_read',
       'nomi_read_artifact',
       'nomi_read_canvas',
       'nomi_subscribe_run',
@@ -331,6 +333,20 @@ describe('buildNomiRunFromProjection（纯函数）', () => {
     })
     expect(artifact.status).toBe('available')
     expect(artifact.shots).toHaveLength(1)
+  })
+
+  it('shows degraded-provider recovery guidance without adding a retry button', () => {
+    const run = buildNomiRunFromProjection({
+      projectId: 'project-1',
+      runId: 'run-1',
+      result: {
+        projectId: 'project-1', runId: 'run-1', status: 'needs_attention',
+        jobs: [{ jobId: 'job-1', status: 'submission_unknown' }],
+      },
+    })
+    expect(run.recovery).toMatchObject({ profile: 'submit_only', allowAutomaticRetry: false, allowNewAttempt: true })
+    expect(run.message).toContain('不会自动重提')
+    expect(NOMI_LIVE_DRAFT_WIDGET_HTML).not.toContain('自动重试')
   })
 })
 

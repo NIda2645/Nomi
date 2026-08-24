@@ -30,6 +30,7 @@ describe('decideProductionNotice (A5)', () => {
       fakeRun('running'),
     )
     expect(unknownFirst?.key).toBe('submission_unknown:run-n1')
+    expect(unknownFirst?.recovery).toMatchObject({ allowAutomaticRetry: false, nextAction: 'manual_review' })
     const attentionFirst = decideProductionNotice(
       [ev('gate.waiting'), ev('job.needs_attention', '镜头 5 提交失败')],
       fakeRun('running'),

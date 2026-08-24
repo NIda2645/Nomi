@@ -1,3 +1,6 @@
+import type { ProductionExecutionBinding } from "./productionExecutionBinding";
+import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
+
 export const PRODUCTION_RUN_SCHEMA_VERSION = 1;
 
 export type AutomationMode = "guided" | "balanced" | "policy-auto";
@@ -141,6 +144,13 @@ export type ProductionJob = {
   model: string;
   idempotencyKey: string;
   providerTaskId?: string;
+  /** Last provider status observed through the provider's query/reconcile capability. */
+  providerStatus?: string;
+  /** P1/P3 sealed execution identity; absent only on legacy jobs. */
+  executionBinding?: ProductionExecutionBinding;
+  requestFingerprint?: string;
+  runtimeEnvelopeRef?: string;
+  providerIdempotencyKey?: string;
   taskKind?: string;
   nodeId?: string;
   /** Storyboard provenance copied from the approved script at plan.attach time. */
@@ -159,6 +169,18 @@ export type ProductionJob = {
   errorCode?: string;
   errorMessage?: string;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type ProductionGenerationPlan = {
+  operationId: string;
+  state: "draft" | "sealed" | "cancelled" | "submitted";
+  candidate: PlanCandidate;
+  contract?: ExecutionContractV1;
+  approvedReceiptId?: string;
+  approvedAt?: string;
+  /** Which explicit submission attempt the latest human receipt authorizes. */
+  approvedAttempt?: number;
   updatedAt: string;
 };
 
@@ -242,6 +264,8 @@ export type ProductionRun = {
   gates: ProductionGate[];
   jobs: ProductionJob[];
   artifacts: ProductionArtifact[];
+  /** Optional single-shot plan owned by this Run; legacy playbooks omit it. */
+  generationPlan?: ProductionGenerationPlan;
   createdAt: string;
   updatedAt: string;
 };

@@ -8,6 +8,7 @@ import {
   createProductionRunRepository,
 } from "./productionRunRepository";
 import { productionRunPaths } from "./productionRunPaths";
+import { createProductionRunLock } from "./productionRunLock";
 
 let root = "";
 
@@ -38,12 +39,45 @@ function createRun() {
   });
 }
 
+function generationCandidate() {
+  return {
+    candidateId: "candidate-1",
+    revision: 1,
+    moduleId: "generation.single-shot",
+    providerId: "fixture-provider",
+    modelId: "fixture-model",
+    mode: "text-to-image",
+    prompt: "A paper boat",
+    parameters: {},
+    references: [],
+  } as const;
+}
+
 describe("ProductionRunRepository", () => {
   it("creates and reads a checksummed run snapshot", () => {
     const created = createRun();
 
     expect(created).toMatchObject({ runId: "run-1", revision: 0, status: "awaiting_direction", snapshotCursor: 2 });
     expect(repository().read("project-1", "run-1")).toEqual(created);
+    expect(repository().list("project-1")).toHaveLength(1);
+  });
+
+  it("creates a single-shot generation draft in the same durable Run owner", () => {
+    const created = repository().createGenerationDraft({
+      operationId: "op-1",
+      projectId: "project-1",
+      origin: { host: "semantic-mcp" },
+      candidate: generationCandidate(),
+    });
+
+    expect(created).toMatchObject({
+      runId: "op-1",
+      playbook: { name: "generation.single-shot" },
+      status: "draft",
+      gates: [],
+      generationPlan: { operationId: "op-1", state: "draft", candidate: { revision: 1 } },
+    });
+    expect(repository().read("project-1", "op-1")).toEqual(created);
     expect(repository().list("project-1")).toHaveLength(1);
   });
 
@@ -68,6 +102,36 @@ describe("ProductionRunRepository", () => {
         issuedAt: "2026-08-08T08:00:00.000Z",
       }),
     ).toThrow(ProductionRunRevisionConflictError);
+  });
+
+  it("fails closed when another process owns the repository mutation lock", () => {
+    createRun();
+    const paths = productionRunPaths(root, "run-1");
+    const held = createProductionRunLock({
+      filePath: paths.repositoryLock,
+      epochPath: paths.repositoryLockEpoch,
+      ownerId: "other-process",
+      now: () => "2026-08-08T08:00:00.000Z",
+      randomId: () => "held-lock",
+    });
+    const lease = held.acquire();
+    try {
+      let error: unknown;
+      try {
+        repository().execute("project-1", "run-1", {
+          commandId: "blocked-by-lock",
+          expectedRevision: 0,
+          type: "run.status",
+          payload: { status: "running" },
+          issuedAt: "2026-08-08T08:00:00.000Z",
+        });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toMatchObject({ code: "run_lock_busy" });
+    } finally {
+      held.release(lease);
+    }
   });
 
   it("returns the original result for a repeated command id", () => {
@@ -114,20 +178,36 @@ describe("ProductionRunRepository", () => {
     const paths = productionRunPaths(root, "run-1");
     const envelope = JSON.parse(fs.readFileSync(paths.snapshot, "utf8")) as Record<string, unknown>;
     fs.writeFileSync(paths.snapshot, JSON.stringify({ ...envelope, checksum: "wrong" }), "utf8");
+    const beforeBytes = fs.readFileSync(paths.snapshot);
+    const beforeEntries = fs.readdirSync(paths.dir).sort();
 
     // 快照坏掉时从事件重建：重建出的 run 必须自报最后一条事件的游标（2），否则每次 read 都判过期。
     expect(repository().read("project-1", "run-1")).toMatchObject({ status: "awaiting_direction", snapshotCursor: 2 });
-    expect(fs.readdirSync(paths.dir).some((name) => name.startsWith("run.corrupt-"))).toBe(true);
+    expect(fs.readFileSync(paths.snapshot)).toEqual(beforeBytes);
+    expect(fs.readdirSync(paths.dir).sort()).toEqual(beforeEntries);
   });
 
-  it("ignores a torn final event and keeps cursor ordering after restart", () => {
+  it("rebuilds a stale snapshot in memory without rewriting the snapshot or directory", () => {
+    createRun();
+    const paths = productionRunPaths(root, "run-1");
+    const latest = repository().readEvents("project-1", "run-1").at(-1)!;
+    fs.appendFileSync(paths.events, `${JSON.stringify({ ...latest, eventId: "evt-stale", cursor: 3 })}\n`, "utf8");
+    const beforeBytes = fs.readFileSync(paths.snapshot);
+    const beforeEntries = fs.readdirSync(paths.dir).sort();
+
+    expect(repository().read("project-1", "run-1")).toMatchObject({ status: "awaiting_direction", snapshotCursor: 2 });
+    expect(fs.readFileSync(paths.snapshot)).toEqual(beforeBytes);
+    expect(fs.readdirSync(paths.dir).sort()).toEqual(beforeEntries);
+  });
+
+  it("surfaces a torn final event as a migration parse error instead of silently truncating the Run", () => {
     createRun();
     const paths = productionRunPaths(root, "run-1");
     fs.appendFileSync(paths.events, "{torn", "utf8");
 
     const restarted = repository();
-    expect(restarted.read("project-1", "run-1")).toMatchObject({ snapshotCursor: 2 });
-    expect(restarted.readEvents("project-1", "run-1").map((event) => event.cursor)).toEqual([1, 2]);
+    expect(() => restarted.read("project-1", "run-1")).toThrow(/migration_parse_error/);
+    expect(() => restarted.readEvents("project-1", "run-1")).toThrow(/migration_parse_error/);
   });
 
   it("rejects an artifact payload with an unknown lifecycle status", () => {

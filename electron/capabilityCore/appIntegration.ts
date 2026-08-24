@@ -12,19 +12,129 @@
 //
 // 这里只做接线，不碰 main.ts 的其它职责（保持 main.ts 精简、单一关注点）。
 import { app } from 'electron'
+import crypto from 'node:crypto'
+import path from 'node:path'
 import { startRpcServer, type RpcServerHandle } from './rpcServer'
-import { ensureToken } from './security'
+import { capabilityCoreDir, ensureCapabilitySigningKey, ensureToken } from './security'
 import { clearInstanceAdvertisement, writeInstanceAdvertisement } from './lockfile'
 import { HEARTBEAT_INTERVAL_MS, type InstanceAdvertisement } from './instanceAdvert'
-import { getProjectLocationState } from '../runtimePaths'
+import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
+import { createProjectLeaseAuthority, type ProjectLeaseAuthority } from './projectLease'
+import { createProjectLeaseStore } from './projectLeaseStore'
+import { createApprovalReceiptAuthority, type ApprovalReceiptAuthority } from './approvalReceipt'
+import { createProductionRunLock } from '../productionRun/productionRunLock'
+import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
+import { createCurrentProjectResolver, deriveProjectIdentityDigests } from './currentProjectResolver'
+import type { ProjectSelectionHandleV1 } from './projectLease'
+import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
+import type { DispatchContext } from './dispatcher'
+import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
+import { createGenerationPlanningHandler } from './mcpGenerationTools'
+import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
+import type { ModuleRegistry } from './moduleRegistry'
+import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
+import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
+import { createGenerationOutputMaterializer } from './generationOutputMaterializer'
+import { readCatalog } from '../catalog/catalogStore'
+import { buildVideoModelCandidates, recommendVideoGeneration, videoArchetypeIdFromMeta } from '../shared/videoCapabilities'
 
 let handle: RpcServerHandle | null = null
 let openProjectId = ''
 // 心跳定时器 + 当前广告所在库（退出时按同一命名空间文件名清理）。
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let advertisedLibrary: { projectsRoot: string; isDefault: boolean } | null = null
+
+function createDefaultAuthorities(): Pick<
+  DispatchContext,
+  'projectLeaseAuthority' | 'resolveProjectSelection' | 'resolveCurrentProject' | 'approvalReceiptAuthority' | 'projectRevisionResolver'
+  | 'confirmGenerationInNomi'
+> {
+  const authorityDir = capabilityCoreDir()
+  const sharedLock = createProductionRunLock({
+    filePath: path.join(authorityDir, 'semantic-authorities.lock'),
+    epochPath: path.join(authorityDir, 'semantic-authorities.epoch'),
+    ownerId: `capability-core-${process.pid}`,
+  })
+  const leaseKey = ensureCapabilitySigningKey('project-lease')
+  const leaseAuthority = createProjectLeaseAuthority({
+    macKey: leaseKey,
+    keyId: 'project-lease-v1',
+    store: createProjectLeaseStore({
+      filePath: path.join(authorityDir, 'project-leases.json'),
+      macKey: ensureCapabilitySigningKey('project-lease-store'),
+      keyId: 'project-lease-store-v1',
+      lock: sharedLock,
+    }),
+  })
+  const receiptAuthority = createApprovalReceiptAuthority({
+    filePath: path.join(authorityDir, 'approval-receipts.json'),
+    macKey: ensureCapabilitySigningKey('approval-receipt'),
+    storeMacKey: ensureCapabilitySigningKey('approval-receipt-store'),
+    keyId: 'approval-receipt-v1',
+    lock: sharedLock,
+  })
+  const resolver = createCurrentProjectResolver({
+    getOpenProjectId: () => openProjectId,
+    readProject: (projectId) => readWorkspaceProject(projectId, getWorkspaceRepositoryDeps()),
+  })
+  const resolveProjectSelection = (selection: ProjectSelectionHandleV1) => {
+    const projectId = openProjectId.trim()
+    const record = projectId ? readWorkspaceProject(projectId, getWorkspaceRepositoryDeps()) : null
+    if (!record || record.id !== projectId || record.immutableProjectUuid !== selection.immutableProjectUuid
+      || record.projectGeneration !== selection.projectGeneration) {
+      throw new Error('Project selection handle does not match the open project')
+    }
+    const digests = deriveProjectIdentityDigests(record)
+    if (digests.canonicalRootDigest !== selection.canonicalRootDigest || digests.manifestDigest !== selection.manifestDigest) {
+      throw new Error('Project selection handle is stale for the open project')
+    }
+    return {
+      projectId,
+      leasePrincipal: 'nomi-gui',
+      sessionId: `nomi-gui:${selection.sessionNonce}`,
+      connectionNonce: selection.sessionNonce,
+      serverNonce: crypto.randomUUID(),
+    }
+  }
+  const confirmGenerationInNomi = async ({ challengeToken }: { challengeToken: string }) => {
+    const challenge = receiptAuthority.verifyChallenge(challengeToken)
+    const target = rendererTargetIdentity()
+    if (!target || !challenge.display?.model) return { confirmed: false, challengeId: challenge.challengeId }
+    const result = await requestRenderer('generation.gate.confirm', {
+      challengeId: challenge.challengeId,
+      projectName: challenge.display.projectName,
+      shotSummary: challenge.display.shotSummary,
+      model: challenge.display.model,
+      referenceCount: challenge.display.referenceCount,
+      maximumCost: challenge.reservationPreview.maximum,
+      currency: challenge.reservationPreview.currency,
+      expiresAt: challenge.expiresAt,
+    }, 60_000) as { confirmed?: unknown } | null
+    if (result?.confirmed !== true) return { confirmed: false, challengeId: challenge.challengeId }
+    const attestation = receiptAuthority.createMainProcessGestureAttestation(challengeToken, {
+      ...target,
+      decision: 'accept',
+    })
+    const receipt = receiptAuthority.mintReceipt(challengeToken, attestation)
+    return {
+      confirmed: true,
+      challengeId: challenge.challengeId,
+      receiptId: receipt.receipt.receiptId,
+      receiptToken: receipt.token,
+    }
+  }
+  return {
+    projectLeaseAuthority: leaseAuthority,
+    resolveProjectSelection,
+    resolveCurrentProject: resolver,
+    approvalReceiptAuthority: receiptAuthority,
+    confirmGenerationInNomi,
+    projectRevisionResolver: (projectId) => readWorkspaceProject(projectId, getWorkspaceRepositoryDeps())?.revision,
+  }
+}
 
 /** renderer 上报当前打开的项目（打开/切换=id，关闭=''）。A/B 守卫据此拒绝直写打开中的工程。 */
 export function setOpenProjectId(projectId: string): void {
@@ -54,14 +164,102 @@ function buildAdvert(port: number, token: string, projectsRoot: string): Instanc
 /**
  * 启动能力核对外口。绝不拖垮 app 启动：任何失败只记日志、不抛（fail-open，与 applySystemProxy 同纪律）。
  */
-export async function startCapabilityCore(runTask: RunTaskFn, fetchTaskResult: FetchTaskResultFn): Promise<void> {
+export async function startCapabilityCore(
+  runTask: RunTaskFn,
+  fetchTaskResult: FetchTaskResultFn,
+  authorities: {
+    projectLeaseAuthority?: ProjectLeaseAuthority
+    resolveCurrentProject?: DispatchContext['resolveCurrentProject']
+    approvalReceiptAuthority?: ApprovalReceiptAuthority
+    requestGenerationGate?: DispatchContext['requestGenerationGate']
+    authorizeGeneration?: DispatchContext['authorizeGeneration']
+    confirmGenerationInNomi?: import('./rpcServer').RpcServerOptions['confirmGenerationInNomi']
+    generationPolicy?: McpGenerationPolicy
+    generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+    generationPlanning?: DispatchContext['generationPlanning']
+    generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
+    projectRevisionResolver?: (projectId: string) => number | undefined
+  } = {},
+): Promise<void> {
   try {
     const token = ensureToken()
+    const defaults = createDefaultAuthorities()
+    const providerBootstrap = createGenerationProviderBootstrap()
+    const outputMaterializer = createGenerationOutputMaterializer()
+    const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry(undefined, { readinessByProvider: providerBootstrap.readinessByProvider })
+    const videoModelCandidates = buildVideoModelCandidates(readCatalog().models
+      .filter((model) => model.enabled && model.kind === 'video')
+      .map((model) => ({
+        provider: model.vendorKey,
+        modelKey: model.modelKey,
+        label: model.labelZh,
+        archetypeId: videoArchetypeIdFromMeta(model.meta),
+        parameterControls: model.onboarding?.fields?.map((field) => ({
+          key: field.key,
+          label: field.displayName,
+          type: field.type,
+          options: (field.options ?? []).map((option) => ({ value: option.value, label: option.label })),
+          ...(field.default === undefined ? {} : { defaultValue: field.default }),
+        })),
+      })))
+    const generationService = getProductionRunService()
+    const generationPlanning = authorities.generationPlanning
+      ?? createGenerationPlanningHandler({
+        registry: generationRegistry,
+        operations: createProductionGenerationOperationStore(generationService),
+        videoModelCandidates,
+        recommendVideoGeneration,
+        providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
+        start: async (operation, lease) => {
+          const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
+          const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
+          if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, state: operation.state, nextAction: 'provider_not_configured' }
+          return createProductionGenerationSubmission({
+            repository: generationService.repository,
+            projectRoot,
+            immutableProjectUuid: lease.immutableProjectUuid,
+            projectGeneration: lease.projectGeneration,
+            intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+            provider,
+            materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+          }).start({ projectId: lease.projectId, operationId: operation.operationId })
+        },
+        reconcile: async (operation, outcome, lease) => {
+          if (outcome === 'not_found') return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
+          const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
+          const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
+          if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
+          if (!provider.query || !provider.capabilities.query) return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '该供应商没有可用的任务查询；请到供应商核对。' }
+          const submission = createProductionGenerationSubmission({
+            repository: generationService.repository,
+            projectRoot,
+            immutableProjectUuid: lease.immutableProjectUuid,
+            projectGeneration: lease.projectGeneration,
+            intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+            provider,
+            materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+          })
+          try {
+            const polled = await submission.poll({ projectId: lease.projectId, operationId: operation.operationId })
+            return polled.nextAction === 'materialize'
+              ? await submission.materialize({ projectId: lease.projectId, operationId: operation.operationId })
+              : polled
+          } catch (error) {
+            const code = (error as { code?: unknown })?.code
+            if (code === 'provider_materialization_unsupported' || code === 'materialization_failed') return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '供应商任务已完成，但结果还没有安全落到 Nomi 项目；请到供应商核对或稍后重试。' }
+            throw error
+          }
+        },
+      })
     handle = await startRpcServer({
       runTask,
       fetchTaskResult,
       isProjectOpen: (id) => Boolean(openProjectId) && id === openProjectId,
       productionRuns: getProductionRunService(),
+      ...defaults,
+      ...authorities,
+      generationPolicy: authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy(),
+      generationPlanning,
     })
     const location = getProjectLocationState()
     advertisedLibrary = { projectsRoot: location.path, isDefault: location.source === 'default' }
