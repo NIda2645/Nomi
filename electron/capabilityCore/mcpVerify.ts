@@ -135,6 +135,12 @@ export async function verifyMcp(client?: string): Promise<McpVerifyResult> {
     child.stderr?.on('data', (chunk) => {
       stderr += String(chunk)
     })
+    // send() 的 try/catch 只接得住同步抛错。小包写平时走同步快路（对端刚死也静默成功），但并行
+    // 负载下写入会落进 libuv 异步队列——完成时子进程若已被收尸，EPIPE 在 stdin 流上**异步**
+    // emit 'error'：没挂监听就升级成进程级 unhandled（真机=主进程 uncaughtException；CI=测试
+    // 全过仍 exit 1，2026-08-25 现场，复现钉在 mcpVerify.stdinError.test.ts）。真实故障由下面
+    // 'error'（spawn-failed）/'exit'（handshake-failed）如实上报，这里只消掉流级回声、不改判定。
+    child.stdin?.on('error', () => { /* 见上：判定权在 child 的 error/exit */ })
     child.on('error', (error) => done(fail('spawn-failed', stale, error.message)))
     // 没握完手就退出 = 起不来（老配置指向的脚本报错、二进制被系统拦掉等）。
     child.on('exit', (code, signal) => done(fail('handshake-failed', stale, `exit=${code} signal=${signal} ${stderr}`)))

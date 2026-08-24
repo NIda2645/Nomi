@@ -385,6 +385,10 @@ export async function startCodexImageOperation(input: CodexImageInput): Promise<
 
   child.stdout?.on("data", (chunk) => { absorbOutput("stdout", chunk); });
   child.stderr?.on("data", (chunk) => { absorbOutput("stderr", chunk); });
+  // .end(prompt) 的写入在流上异步完成：codex 进程 spawn 失败/秒死时，EPIPE 会在 stdin 流上异步
+  // emit 'error'——try/catch 接不住，没挂监听就是主进程 uncaughtException（同族现场见
+  // capabilityCore/mcpVerify.stdinError.test.ts）。真实故障由下面 'error'/'close' 如实上报。
+  child.stdin?.on("error", () => { /* 流级回声，判定权在 child 的 error/close */ });
   child.stdin?.end(buildCodexImagePrompt(input.prompt, imagePaths.length > 0));
   child.on("error", (error) => {
     // ENOENT = 机器上定位不到 codex（GUI PATH 极简 + 安装位不在候选表）——给人话指引而不是裸报 spawn 错。

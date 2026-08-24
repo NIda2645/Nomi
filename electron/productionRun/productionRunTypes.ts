@@ -205,6 +205,17 @@ export type ProductionGenerationShot = {
   approvedAttempt?: number;
   /** Monotonic count of submission attempts issued for THIS shot's lineage (attempt-scoped to the shot). */
   attemptCount?: number;
+  /**
+   * P4 S5 画布落地绑定：这一镜对应的画布占位节点 id。确认即落（项目正开）或打开项目补齐时，物化通道建好
+   * 占位节点后经 `plan.bind-shot-nodes` 写回这里。**它是「shot ↔ 画布节点」的单一真相**（不另立本地撤销标记）：
+   *   - 有 nodeId + 节点在画布 → 生成完回填 result（attach-shot-result）；
+   *   - 有 nodeId 但节点被删（整批 Cmd+Z）→ 标 `canvasDetached`，恢复补齐**不再复活**（§3.4：以撤销事实为准）；
+   *   - 无 nodeId（确认时项目没开）→ 打开项目时按 shotId 补建再写回。
+   * 提交时 job 从这里继承 nodeId（productionGenerationSubmission.prepare），使 scheduler 的 job 也带 nodeId 供 reconcile。
+   */
+  nodeId?: string;
+  /** P4 S5：这一镜的画布节点曾被用户从画布删除（整批撤销/手动删）。恢复补齐据此不复活（撤销事实优先）。 */
+  canvasDetached?: boolean;
   updatedAt: string;
 };
 

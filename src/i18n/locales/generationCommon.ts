@@ -1240,6 +1240,22 @@ export const zhGenerationCommon = {
       ignore: '忽略',
       confirm: '确认生成 {{count}} 镜',
     },
+    // P4 S5 画布落地：占位节点三态 + 进度通知 + 组名 + 补齐文案。
+    canvasLanding: {
+      groupFallbackName: '分镜组',
+      shotFallbackTitle: '镜头 {{shot}}',
+      queued: '排队中',
+      queuedNth: '排队中 · 第 {{index}}/{{total}}',
+      progressToast: '正在生成分镜 · 已完成 {{completed}}/{{total}}',
+      stoppedBudget: '预算已用完，这镜还没开拍。提额后可继续拍剩下的。',
+      stoppedManual: '已停止剩余镜头。想继续可从这里接着拍。',
+      raiseBudget: '提额续拍',
+      continueRemaining: '继续剩余',
+      failedTitle: '这一镜没生成出来',
+      failedFallback: '生成未成功。可稍后重拍这一镜。',
+      retry: '重拍这镜',
+      actionComingSoon: '单镜返工即将上线',
+    },
     // 逐镜降级：从 S2 的结构化 code 翻人话徽标（禁拼串穿透 i18n 门）。
     degradation: {
       model_cannot_take_character_reference: '该模型认不了脸，容易换脸',
@@ -2556,6 +2572,22 @@ export const enGenerationCommon = {
       trialFirstUnknown: 'Try shot 1 first',
       ignore: 'Ignore',
       confirm: 'Confirm {{count}} shots',
+    },
+    // P4 S5 canvas landing: placeholder three states + progress toast + group name + reconcile copy.
+    canvasLanding: {
+      groupFallbackName: 'Shot group',
+      shotFallbackTitle: 'Shot {{shot}}',
+      queued: 'Queued',
+      queuedNth: 'Queued · {{index}}/{{total}}',
+      progressToast: 'Generating shots · {{completed}}/{{total}} done',
+      stoppedBudget: 'Budget ran out before this shot. Raise it to keep filming the rest.',
+      stoppedManual: 'Remaining shots stopped. Continue filming from here.',
+      raiseBudget: 'Raise budget',
+      continueRemaining: 'Continue remaining',
+      failedTitle: 'This shot didn\'t generate',
+      failedFallback: 'Generation failed. You can re-film this shot later.',
+      retry: 'Re-film shot',
+      actionComingSoon: 'Single-shot rework coming soon',
     },
     // Per-shot degradation: translate S2 structured code into a plain-language badge (never a raw string).
     degradation: {

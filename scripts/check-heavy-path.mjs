@@ -14,6 +14,10 @@
 // 为什么值得一道门岗而不是写进文档：这类写法**当场看不出问题**——小图上跑得飞快，
 // 大图上才冻死；写的人手里多半是小图。靠自觉记不住，只能靠机器每次拦。
 //
+// 2026-08-25 再扩一档：「炸」也包括**炸在 CI 上**。unguarded-fsync 拦的是绕过落盘屏障的
+// 直接 fsync——本地单跑照样全绿，只有 CI 磁盘队列深的那一刻才撞 testTimeout（productionRun
+// flake 的原病）。判据没变，还是那一条：**写的人当场看不出来**。
+//
 // 2026-08-24 扩了族的定义：本门岗管的是「**本地看不出、线上才炸**」的写法，不限于「卡死」。
 // 新增 node-stream-into-response——把 Node 流交给 undici 管生命周期，小文件/不 seek 时完全正常，
 // 大视频一拖进度条就可能抛不可捕获的 ERR_INVALID_STATE 弹框。同一条判据：写的人当场看不出来。
@@ -40,8 +44,15 @@ function collect() {
   return files
 }
 
+// 抹注释必须**逐行等高**，不能改变总行数——行号一挪，报出来的 file:line 点开就是别的地方。
+// 行号不准的门岗等于没门岗：人点一次发现对不上，下次就不信它了。两个坑都踩过：
+//   ① 块注释整段删 → 后面所有行往前挪一整个 JSDoc 的高度；改成只抹字符、保留换行。
+//   ② 行注释用 `^\s*//`：`\s` 是**含换行**的，于是 `^` 锚在空行、`\s*` 顺手吃掉那个换行和
+//      下一行的缩进——凡是「空行 + // 注释」就吞掉一行。必须用 `[^\S\n]*`（只吃水平空白）。
 function stripComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ''))
+    .replace(/^[^\S\n]*\/\/.*$/gm, '')
 }
 
 const RULES = [
@@ -92,6 +103,27 @@ const RULES = [
     },
   },
   {
+    id: 'child-stdin-write-unguarded',
+    label: '往子进程 stdin write/end 但没挂流级 error 监听——子进程先死时 EPIPE 升级成进程级 unhandled',
+    hint: "先 child.stdin?.on('error', () => {}) 再写：真实故障让 child 的 error/exit 事件如实上报，流级 EPIPE 只是回声（复现见 capabilityCore/mcpVerify.stdinError.test.ts）。",
+    scan(code, file) {
+      // 为什么当场看不出来：小包写平时走同步快路，对端刚死也静默成功；只有写入落进 libuv
+      // 异步队列（并行负载/缓冲挤压）、完成时对端已被收尸，EPIPE 才在流上**异步** emit——
+      // write 外面的 try/catch 一律接不住。2026-08-25 真实现场：vitest 3047 全过仍 exit 1；
+      // 真机上同一条路是主进程 uncaughtException。文件级判据：写过 stdin 的文件必须也挂过
+      // stdin 的 error 监听（宁可漏报，不要噪音——同 base64-into-store 的取舍）。
+      if (/\.stdin\??\.\s*(?:on|once)\s*\(\s*['"]error['"]/.test(code)) return []
+      const hits = []
+      code.split('\n').forEach((line, i) => {
+        if (/\bprocess\.stdin\b/.test(line)) return
+        if (/\.stdin\??\.\s*(?:write|end)\s*\(/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+        }
+      })
+      return hits
+    },
+  },
+  {
     id: 'node-stream-into-response',
     label: '把 Node 流交给别人管生命周期（new Response(流) / Readable.toWeb）——取消时抛不可捕获的 ERR_INVALID_STATE',
     hint: '用 createOwnedFileStream()（electron/protocol/fileResponseStream.ts）自己拥有流：'
@@ -134,6 +166,40 @@ const RULES = [
       return hits
     },
   },
+  {
+    id: 'unguarded-fsync',
+    label: '绕过落盘屏障直接 fsync——测试里关不掉，productionRun 的 flake 从这里长回来',
+    hint: '文件 fd 用 fsyncIfDurable(fd)（electron/durability.ts）；'
+      + '只为 fsync 而开的目录 fd，在 openSync 之前先 if (!isDurable()) return，整段省掉。',
+    scan(code, file) {
+      // 为什么必须拦（#139 的收口）：fsync 是唯一决定「字节要不要真落到物理介质」的调用，
+      // 全仓靠 electron/durability.ts 这一个屏障统一开关。测试把它翻成 'ephemeral' 后
+      // productionRun 子集 98.7s → 4.95s，撞 5000ms testTimeout 的 flake 才消失。
+      // 新加一处直接 fs.fsyncSync 就绕开了屏障：那条写路径在测试里重新变慢，flake 长回来一角，
+      // 而**本地单跑照样全绿**——只有 CI 磁盘队列深的那一刻才红。典型的「当场看不出毛病」。
+      //
+      // 判据不是「在哪个文件」，是「**这次 fsync 有没有过屏障**」：
+      //   ① fsyncIfDurable(fd)              —— 正道，本规则根本匹配不到；
+      //   ② if (!isDurable()) return; …fsyncSync(dirFd) —— 目录 fd 那一族的合法形态。
+      //      目录 fd 存在的唯一目的就是被 fsync，所以要连 openSync 一起省掉，
+      //      没法用 fsyncIfDurable 表达，只能自己判闸 —— 屏障一样被尊重。
+      // 于是基线是 0 而不是「现存 2 处」：那 2 处不是待清的存量，是本来就合规的写法，
+      // 收进基线等于把正确代码标成债（永远清不到 0），还会留个洞——删掉一处合法的、
+      // 新增一处违规的，计数不变，门岗照样绿。按闸判则两种情况都当场报红。
+      if (file === path.join(repoRoot, 'electron', 'durability.ts')) return [] // 屏障本体
+      const hits = []
+      const lines = code.split('\n')
+      lines.forEach((line, i) => {
+        if (!/\bfsyncSync\s*\(/.test(line)) return
+        // 往回退到本顶层声明的开头（上一个顶格 `}` 之后），闸必须落在这段里。
+        let start = i - 1
+        while (start >= 0 && !/^\}/.test(lines[start])) start -= 1
+        if (/\bisDurable\s*\(\s*\)/.test(lines.slice(start + 1, i).join('\n'))) return
+        hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+      })
+      return hits
+    },
+  },
 ]
 
 const files = collect()
@@ -170,7 +236,7 @@ for (const rule of RULES) {
 }
 
 if (failed) {
-  console.log('\n重活门岗未通过。这些写法在小图上看不出问题，大图上会把界面/主进程冻死。')
+  console.log('\n重活门岗未通过。这些写法在你手上跑都正常——大图才冻死界面/主进程，CI 磁盘忙才撞超时。')
   process.exit(1)
 }
 console.log(`✅ 重活门岗通过：${summary.join(' · ')}（棘轮只减不增）`)

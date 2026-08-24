@@ -295,6 +295,21 @@ describe('generationCanvasStore sidebar grouping actions', () => {
     expect(groupState?.color).toBe('#ffcc00')
   })
 
+  it('P4 S5: createGroup 带 materializationOperationId 章 + 明确成员 id（分镜组落地用）', () => {
+    // 补两个 shots 分类节点（beforeEach 只有 shot-1）。
+    useGenerationCanvasStore.getState().addNode({ kind: 'video', title: 'shot-a', categoryId: 'shots', exactPosition: true, position: { x: 0, y: 0 } })
+    useGenerationCanvasStore.getState().addNode({ kind: 'video', title: 'shot-b', categoryId: 'shots', exactPosition: true, position: { x: 200, y: 0 } })
+    const ids = useGenerationCanvasStore.getState().nodes.filter((n) => n.categoryId === 'shots' && n.id !== 'shot-1').map((n) => n.id)
+    expect(ids.length).toBe(2)
+    const created = useGenerationCanvasStore.getState().createGroup('shots', '分镜组·计划名', { materializationOperationId: 'canvas-landing:run-1', nodeIds: ids })
+    expect(created?.materializationOperationId).toBe('canvas-landing:run-1')
+    // 明确成员被收进组，且节点 groupId 指向它。
+    expect(created?.nodeIds.slice().sort()).toEqual(ids.slice().sort())
+    for (const id of ids) {
+      expect(useGenerationCanvasStore.getState().nodes.find((n) => n.id === id)?.groupId).toBe(created?.id)
+    }
+  })
+
   it('ungroups without deleting member nodes', () => {
     useGenerationCanvasStore.getState().ungroup('cast-group')
 
