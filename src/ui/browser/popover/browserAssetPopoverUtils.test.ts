@@ -84,7 +84,7 @@ describe('browser asset tile status', () => {
 })
 
 // ——— 2026-07-22 审计 P1：结构化错误码 → 文案 + 唯一下一步（通用「请重试」只留给 unknown） ———
-import { browserAssetImportErrorMessage } from './browserAssetPopoverUtils'
+// （browserAssetImportErrorMessage 已在文件顶部 import，这里不再重复导入。）
 
 describe('browserAssetImportErrorMessage 结构化错误码', () => {
   it('IPC 包裹后的 code 前缀仍能解析（不锚行首）', () => {

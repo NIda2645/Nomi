@@ -1,0 +1,23 @@
+{
+  "//": "测试文件（src/ + electron/ + evals/）的类型检查配置。由 `pnpm run check:test-types` 使用，",
+  "//2": "不进 `pnpm typecheck`——那两份配置（tsconfig.app.json / electron/tsconfig.json）都 exclude 了测试，",
+  "//3": "而 vitest 用 esbuild 转译，只删类型标注不核对。没有这份配置，测试文件的类型就没有任何工具在看。",
+  "//4": "为什么另起一份而不是删那两处 exclude：electron 的测试会 import src/ 下的东西（违反它 rootDir: \".\"），",
+  "//5": "且用了 ESM 顶层 await（与它 module: CommonJS 冲突）——直接删 exclude 会炸出 112 个纯配置形状错，全是噪音。",
+  "//6": "target/module 按**测试的真实运行环境**取：vitest 在 Node 里跑测试（不是浏览器、不是 CommonJS 主进程），",
+  "//7": "所以 ES2022 + ESM 才是诚实的；这也是 Object.hasOwn 之类写法在测试里合法的原因。",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*.test.ts", "electron/**/*.test.ts", "evals/**/*.test.ts", "src/**/*.d.ts"]
+}

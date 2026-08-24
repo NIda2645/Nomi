@@ -14,13 +14,11 @@ function node(
     kind: kind as GenerationCanvasNode['kind'],
     title: id,
     prompt: '',
-    x: 0,
-    y: 0,
-    width: 100,
-    height: 100,
+    position: { x: 0, y: 0 },
+    size: { width: 100, height: 100 },
     meta,
-    ...(opts.url ? { result: { type: kind === 'video' ? 'video' : 'image', url: opts.url } } : {}),
-  } as GenerationCanvasNode
+    ...(opts.url ? { result: { id: `r-${id}`, type: kind === 'video' ? 'video' : 'image', url: opts.url, createdAt: 0 } } : {}),
+  }
 }
 
 function target(kind: string, archetypeId: string, modeId: string, meta?: Record<string, unknown>) {
