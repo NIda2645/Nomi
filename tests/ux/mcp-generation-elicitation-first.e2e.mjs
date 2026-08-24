@@ -1,0 +1,161 @@
+// P4 S3a — elicitation 优先：自声明 elicitation 的客户端确认生成 → **0 张 GUI 卡**（含多镜确认卡）。
+//
+// 铁律（§3.8）：客户端声明 elicitation → 确认弹在客户端内，Nomi 主窗**不弹任何卡**。多镜确认卡（S3a）
+// 只经 confirmGenerationInNomi 这条 GUI 兜底路径弹出（capabilityApplyHandler.confirmGenerationGateForAgent）；
+// 而 elicitation 分支（mcpProtocol.ts:274）在**读 display.shots 之前**就抢先接管，根本不会走到渲染层。
+// 所以「elicitation 客户端 → 0 GUI 卡」这条不变量对单镜/多镜卡是同一条——多镜卡与单镜卡共用这条兜底门。
+//
+// 两阶段（expectAbsent 需阳性基线，_assert.mjs 在签名上强制）：
+//   Phase A 基线：**不声明** elicitation 的客户端驱动真 gate → GUI 确认卡真的会浮（proveProbe 证探针活）。
+//   Phase B 不变量：**声明** elicitation 的客户端驱动真 gate → 客户端内自动确认 → expectAbsent 断言 0 张 GUI 卡。
+// 全程零额度（provider fixture），不跑真生成。
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import http from 'node:http'
+import path from 'node:path'
+
+import { launchNomiApp } from './_launchApp.mjs'
+import { makeIsolatedDirs, parseToolResult, repoRoot, spawnMcpStdioClient, writeIsolatedCatalog } from './_mcpJourney.mjs'
+import { expectAbsent, proveProbe } from './_assert.mjs'
+
+const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+
+async function startSemanticProvider() {
+  const hits = []
+  const server = http.createServer((req, res) => {
+    let body = ''
+    req.on('data', (chunk) => { body += chunk })
+    req.on('end', () => {
+      hits.push({ method: req.method, url: req.url })
+      let payload
+      if (req.method === 'POST' && req.url === '/v1/images/generations') payload = { code: 200, data: [{ task_id: 'elicit-task-1' }] }
+      else if (req.method === 'GET' && req.url === '/v1/tasks/elicit-task-1') payload = { code: 200, data: { status: 'succeeded', result: { images: [{ id: 'elicit-out-1', url: PNG_DATA_URL }] } } }
+      else payload = { code: 404, message: 'unknown fixture route' }
+      res.writeHead(payload.code === 200 ? 200 : 404, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(payload))
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  return { origin: `http://127.0.0.1:${port}`, hits, close: () => new Promise((resolve) => server.close(resolve)) }
+}
+
+function configureSemanticCatalog(settingsDir, origin) {
+  writeIsolatedCatalog(settingsDir, origin)
+  const filePath = path.join(settingsDir, 'model-catalog.json')
+  const catalog = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  catalog.vendors.find((vendor) => vendor.key === 'apimart').baseUrlHint = origin
+  catalog.models.push({
+    modelKey: 'gpt-image-2', vendorKey: 'apimart', labelZh: '语义图片模型', kind: 'image', enabled: true,
+    onboarding: { addedVia: 'manual', addedAt: new Date().toISOString(), fields: [{ key: 'aspectRatio', displayName: '比例', type: 'select', options: [{ value: '1:1', label: '1:1' }] }] },
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  })
+  catalog.mappings.push({
+    id: 'semantic-apimart-image', vendorKey: 'apimart', modelKey: 'gpt-image-2', taskKind: 'text-to-image', name: 'semantic image', enabled: true,
+    create: { method: 'POST', path: '/v1/images/generations', body: {} }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  })
+  catalog.apiKeysByVendor.apimart = { vendorKey: 'apimart', apiKey: 'semantic-fixture-key', enc: 'plain', enabled: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+  fs.writeFileSync(filePath, JSON.stringify(catalog), 'utf8')
+}
+
+function proofFor(token, client) {
+  return crypto.createHmac('sha256', token).update(`nomi-mcp-client:v1:${client}`).digest('base64url')
+}
+
+/** Drive one real gate from a fresh MCP client with the given capabilities; returns the in-flight gate promise. */
+async function driveGate(dirs, token, { capabilities, clientName }) {
+  const mcp = spawnMcpStdioClient({
+    ...dirs,
+    clientInfo: { name: clientName, version: 'e2e' },
+    capabilities,
+    env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1', NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1', NOMI_MCP_CLIENT: 'codex', NOMI_MCP_CLIENT_PROOF: proofFor(token, 'codex') },
+  })
+  await mcp.initialize()
+  const opened = parseToolResult(await mcp.callTool('nomi_session_open', { bootstrap: { mode: 'current_project', clientSessionNonce: `${clientName}-session` } }))
+  const leaseHandle = opened.json?.leaseHandle || opened.outcome?.leaseHandle
+  const projectId = opened.json?.projectId || opened.outcome?.projectId
+  const candidate = {
+    candidateId: `elicit-${clientName}`, revision: 1, moduleId: 'generation.single-shot', providerId: 'apimart', modelId: 'gpt-image-2', mode: 'text-to-image',
+    prompt: '一只纸鹤停在窗台，晨光', parameters: { aspectRatio: '1:1' }, references: [],
+  }
+  const created = parseToolResult(await mcp.callTool('nomi_operation_create', { leaseHandle, projectId, candidate }))
+  const operationId = created.json?.operation?.operationId || created.outcome?.operation?.operationId
+  await mcp.callTool('nomi_preview_execution', { leaseHandle, projectId, operationId })
+  const gatePromise = mcp.callTool('nomi_request_generation_gate', { leaseHandle, projectId, operationId }, { timeoutMs: 90_000 }).catch((e) => ({ swallowed: String(e) }))
+  return { mcp, gatePromise }
+}
+
+const dirs = makeIsolatedDirs('nomi-elicit-first-')
+const shotsDir = path.join(repoRoot, 'tests/ux/shots/mcp-generation-elicitation-first')
+fs.rmSync(shotsDir, { recursive: true, force: true })
+fs.mkdirSync(shotsDir, { recursive: true })
+
+let gui
+let provider
+let mcpA
+let mcpB
+let exitCode = 0
+let passed = 0
+const check = (condition, message) => {
+  if (!condition) throw new Error(`ELICITATION-FIRST FAIL: ${message}`)
+  passed += 1
+  console.log(`  ✓ ${message}`)
+}
+
+try {
+  provider = await startSemanticProvider()
+  configureSemanticCatalog(dirs.settingsDir, provider.origin)
+  gui = await launchNomiApp({
+    name: 'mcp-generation-elicitation-first',
+    userDataDir: dirs.userDataDir, settingsDir: dirs.settingsDir, projectsDir: dirs.projectsDir,
+    env: { NOMI_CAPABILITY_DIR: dirs.capabilityDir, NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1', NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1' },
+    args: ['--disable-gpu', '--disable-software-rasterizer'], settleMs: 0,
+  })
+  const win = gui.win
+  await win.getByText('新建空白项目', { exact: false }).first().click()
+  await win.waitForFunction(() => window.location.hash.includes('projectId='), undefined, { timeout: 10_000 })
+  await win.waitForTimeout(1_000)
+  const token = fs.readFileSync(path.join(dirs.capabilityDir, 'token'), 'utf8').trim()
+
+  // 任意生成确认卡的定位器（单镜与多镜共用这条 GUI 兜底门；标题都含「允许 Nomi 生成」）。
+  const gateCard = win.locator('.fixed.inset-0').filter({ hasText: '允许 Nomi 生成' })
+
+  // ── Phase A 基线：不声明 elicitation → GUI 卡真的会浮（证探针活）。──
+  const a = await driveGate(dirs, token, { capabilities: {}, clientName: 'no-elicit-client' })
+  mcpA = a.mcp
+  const probe = await proveProbe(gateCard, '不声明 elicitation 的客户端会让 Nomi 弹一张 GUI 确认卡', 20_000)
+  check(true, '基线成立：非 elicitation 客户端 → GUI 生成确认卡确实浮出（探针活）')
+  await win.screenshot({ path: path.join(shotsDir, '01-baseline-gui-card.png') })
+  // 收掉这张卡（点背景关闭 = 未确认返回），让 Phase B 从干净现场开始。
+  await gateCard.locator('button').filter({ hasText: '忽略' }).first().click().catch(() => {})
+  await gateCard.waitFor({ state: 'detached', timeout: 8_000 }).catch(() => {})
+  await a.gatePromise.catch(() => {})
+  await mcpA.terminate().catch(() => {})
+  mcpA = null
+
+  // ── Phase B 不变量：声明 elicitation → 客户端内自动确认 → 0 张 GUI 卡。──
+  const b = await driveGate(dirs, token, { capabilities: { elicitation: {} }, clientName: 'elicit-client' })
+  mcpB = b.mcp
+  // 给 elicitation 往返 + 「若要弹卡也早该弹了」留足时间：等 gate promise 落地（elicitation 客户端自动 accept）。
+  const gateResult = await b.gatePromise
+  check(Boolean(gateResult), 'elicitation 客户端的 gate 请求已返回（在客户端内完成确认往返）')
+  check(b.mcp.elicitationCount() >= 1, 'elicitation 客户端确实收到并处理了 elicitation/create（在客户端内确认）')
+  // 关键断言：整条 elicitation 流程走完，Nomi 主窗一张 GUI 卡都没弹（多镜确认卡走同一门，同样不弹）。
+  await expectAbsent(gateCard, { provenBy: probe, message: 'elicitation 客户端确认时，Nomi 不该弹任何 GUI 生成确认卡（含多镜卡）' })
+  check(true, '不变量成立：elicitation 客户端确认多镜/单镜计划时 0 张 GUI 卡')
+  await win.screenshot({ path: path.join(shotsDir, '02-elicitation-no-card.png') })
+  const cardCount = await gateCard.count()
+  check(cardCount === 0, `确证 GUI 卡计数 = 0（实测 ${cardCount}）`)
+
+  console.log(`\nELICITATION-FIRST PASS: ${passed} 断言；elicitation 抢先接管，0 GUI 卡。`)
+  console.log('  截图 →', shotsDir)
+} catch (error) {
+  console.error(`✗ ${error?.stack || error}`)
+  exitCode = 1
+} finally {
+  await mcpA?.terminate().catch(() => undefined)
+  await mcpB?.terminate().catch(() => undefined)
+  await provider?.close().catch(() => undefined)
+  await gui?.app?.close().catch(() => undefined)
+  setTimeout(() => process.exit(exitCode), 300)
+}
