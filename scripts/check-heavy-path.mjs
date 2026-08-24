@@ -92,6 +92,27 @@ const RULES = [
     },
   },
   {
+    id: 'child-stdin-write-unguarded',
+    label: '往子进程 stdin write/end 但没挂流级 error 监听——子进程先死时 EPIPE 升级成进程级 unhandled',
+    hint: "先 child.stdin?.on('error', () => {}) 再写：真实故障让 child 的 error/exit 事件如实上报，流级 EPIPE 只是回声（复现见 capabilityCore/mcpVerify.stdinError.test.ts）。",
+    scan(code, file) {
+      // 为什么当场看不出来：小包写平时走同步快路，对端刚死也静默成功；只有写入落进 libuv
+      // 异步队列（并行负载/缓冲挤压）、完成时对端已被收尸，EPIPE 才在流上**异步** emit——
+      // write 外面的 try/catch 一律接不住。2026-08-25 真实现场：vitest 3047 全过仍 exit 1；
+      // 真机上同一条路是主进程 uncaughtException。文件级判据：写过 stdin 的文件必须也挂过
+      // stdin 的 error 监听（宁可漏报，不要噪音——同 base64-into-store 的取舍）。
+      if (/\.stdin\??\.\s*(?:on|once)\s*\(\s*['"]error['"]/.test(code)) return []
+      const hits = []
+      code.split('\n').forEach((line, i) => {
+        if (/\bprocess\.stdin\b/.test(line)) return
+        if (/\.stdin\??\.\s*(?:write|end)\s*\(/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+        }
+      })
+      return hits
+    },
+  },
+  {
     id: 'node-stream-into-response',
     label: '把 Node 流交给别人管生命周期（new Response(流) / Readable.toWeb）——取消时抛不可捕获的 ERR_INVALID_STATE',
     hint: '用 createOwnedFileStream()（electron/protocol/fileResponseStream.ts）自己拥有流：'
