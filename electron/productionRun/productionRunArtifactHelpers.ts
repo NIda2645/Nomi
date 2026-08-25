@@ -1,6 +1,6 @@
 import { safeExternalText } from './productionRunProjectionSanitizer'
 import { buildProductionDeepLink } from './productionDeepLink'
-import type { ArtifactProjection } from './artifactProjection'
+import { safeProjectRelativePath, type ArtifactProjection } from './artifactProjection'
 import type { ProductionArtifact, ProductionRun } from './productionRunTypes'
 
 export type ScriptProvenance = {
@@ -106,6 +106,7 @@ export function storyboardMetadata(value: unknown): Record<string, unknown> | un
 }
 
 export function metadataProjection(run: ProductionRun, artifact: ProductionArtifact): Omit<ArtifactProjection, 'preview'> {
+  const artifactPath = safeProjectRelativePath(artifact.projectRelativePath)
   return {
     artifactId: artifact.artifactId,
     runId: run.runId,
@@ -131,6 +132,8 @@ export function metadataProjection(run: ProductionRun, artifact: ProductionArtif
     ...(artifact.skillEvidence ? { skillEvidence: artifact.skillEvidence } : {}),
     createdAt: artifact.createdAt,
     ...(artifact.adoptedAt ? { adoptedAt: artifact.adoptedAt } : {}),
+    // 预览铸不出来（文件缺失/无项目根）时走这条，路径照样外发——本机 agent 仍能按它去找文件。同一把校验尺子。
+    ...(artifactPath ? { projectRelativePath: artifactPath } : {}),
     nomiUri: `nomi://project/${encodeURIComponent(run.projectId)}/run/${encodeURIComponent(run.runId)}/artifact/${encodeURIComponent(artifact.artifactId)}`,
     openInNomi: buildProductionDeepLink(run.projectId, run.runId, artifact.artifactId),
   }
