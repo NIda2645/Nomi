@@ -224,7 +224,10 @@ export const zhCN = {
     connectTextModel: '接入文本模型',
     sourceFilter: '筛选项目来源',
     noMatchNamed: '没有匹配「{{query}}」的项目',
-    noProjectsInCategory: '这个分类下还没有项目',
+    // 首次空库（无搜索、来源=全部、零项目）：给行动指引，别用系统腔（2026-08-25 走查 F1）。
+    firstEmpty: '还没有项目——从上方「新建空白项目」开始',
+    // 有项目、但当前来源筛选下为空：措辞跟「来源」走，不叫「分类」（首屏没有分类概念）。
+    noProjectsInSource: '这个来源下还没有项目',
     clearSearch: '清除搜索',
     deleteNamedProject: '删除项目 {{name}}',
     folderUnavailable: '文件夹暂不可用',
@@ -591,7 +594,8 @@ export const en = {
     connectTextModel: 'Connect text model',
     sourceFilter: 'Filter project sources',
     noMatchNamed: 'No projects match “{{query}}”',
-    noProjectsInCategory: 'No projects in this category yet',
+    firstEmpty: 'No projects yet — start with “New blank project” above',
+    noProjectsInSource: 'No projects from this source yet',
     clearSearch: 'Clear search',
     deleteNamedProject: 'Delete project {{name}}',
     folderUnavailable: 'Folder unavailable',

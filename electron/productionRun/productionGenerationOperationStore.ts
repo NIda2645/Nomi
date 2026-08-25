@@ -42,6 +42,12 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
   };
   return {
     create(input) {
+      // P4 S6.5: a multi-shot draft scopes its policy to the UNION of every shot's provider/model (anchor
+      // image model + video shot models differ). Without this the Run policy would reject the video shot's
+      // model at submit (它不在白名单). A single-shot draft's union is just the one candidate (unchanged).
+      const providers = new Set<string>([input.candidate.providerId]);
+      const models = new Set<string>([input.candidate.modelId]);
+      for (const shot of input.shots ?? []) { providers.add(shot.candidate.providerId); models.add(shot.candidate.modelId); }
       const run = owner.createGenerationDraft({
         operationId: input.operationId,
         projectId: input.projectId,
@@ -52,10 +58,11 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
         // policy prevents a later command from changing host/provider/model.
         policy: {
           trustedHosts: [input.origin?.host ?? "semantic-mcp"],
-          allowedProviders: [input.candidate.providerId],
-          allowedModels: [input.candidate.modelId],
+          allowedProviders: [...providers],
+          allowedModels: [...models],
         },
         candidate: input.candidate,
+        ...(input.shots && input.shots.length > 0 ? { shots: input.shots } : {}),
       });
       const operation = operationFromRun(run);
       if (!operation) throw new Error("Production Run did not persist a generation plan");
@@ -75,13 +82,20 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
       if (!operation) throw new Error("Production Run lost its generation plan");
       return operation;
     },
-    async seal(projectId, operationId, contract: ExecutionContractV1, now) {
+    async seal(projectId, operationId, contract: ExecutionContractV1, now, multiShot) {
       read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
-        commandId: `generation.seal:${operationId}:${contract.contractHash}`,
+        // P4 S6.5: a multi-shot seal keys its commandId on the plan hash (covers the whole batch); a
+        // single-shot seal keeps the contract-hash key (unchanged). This keeps re-seal idempotent per scope.
+        commandId: `generation.seal:${operationId}:${multiShot?.planHash ?? contract.contractHash}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.seal",
-        payload: { contract },
+        // P4 S6.5: forward the per-shot sub-contracts + planHash + derived shotPrices so the reducer
+        // freezes the batch and enforces the seal-time hard cap (reducer generation.seal already consumes
+        // shots/planHash/shotPrices). Single-shot seal sends only { contract } (byte-identical to today).
+        payload: multiShot
+          ? { contract, shots: multiShot.shots, planHash: multiShot.planHash, ...(multiShot.shotPrices ? { shotPrices: multiShot.shotPrices } : {}) }
+          : { contract },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);
@@ -103,11 +117,15 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
     },
     async approve(projectId, operationId, receiptId, now, options) {
       const current = read(projectId, operationId);
+      // P4 S6.5: a multi-shot receipt is keyed on the plan hash (covers the whole batch, reducer L446);
+      // a single-shot receipt is keyed on the one sealed contract hash. Send whichever this plan uses,
+      // else the reducer rejects the approval ("does not match the sealed contract").
+      const approvalHash = current.shots && current.shots.length > 0 ? current.planHash : current.contract?.contractHash;
       const result = await owner.command(projectId, operationId, {
         commandId: `generation.approve:${operationId}:${receiptId}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.approve",
-        payload: { receiptId, contractHash: current.contract?.contractHash, ...(options?.attempt === undefined ? {} : { attempt: options.attempt }) },
+        payload: { receiptId, contractHash: approvalHash, ...(options?.attempt === undefined ? {} : { attempt: options.attempt }) },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);

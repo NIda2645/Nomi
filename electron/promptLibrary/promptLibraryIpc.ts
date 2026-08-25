@@ -49,9 +49,12 @@ export function registerPromptLibraryIpc(): void {
   });
 
   // 节点提示词优化用的文本大脑(vendor/modelKey,不含 apiKey)——渲染层据此走现成文本流式管线。
+  // status 三态（ok/locked/missing）让上手清单/恢复卡把「Key 读不出」和「没配」说清楚（2026-08-25 走查）。
   ipcMain.handle("nomi:prompt-library:text-brain", async () => {
-    const { resolveTextBrainKeys } = await import("../ai/agentChatV2");
-    const brain = resolveTextBrainKeys();
-    return { ok: Boolean(brain), brain };
+    const { resolveTextBrainStatus } = await import("../ai/agentChatV2");
+    const resolved = resolveTextBrainStatus();
+    return resolved.status === "ok"
+      ? { ok: true, brain: resolved.brain, status: "ok" as const }
+      : { ok: false, brain: null, status: resolved.status };
   });
 }

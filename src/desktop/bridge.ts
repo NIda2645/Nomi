@@ -594,7 +594,7 @@ export type DesktopBridge = DesktopMediaBridge & {
    *  textBrain=节点提示词优化用的文本大脑键(不含 apiKey,渲染层据此走现成文本流式)。 */
   promptLibrary?: {
     list: () => Promise<{ ok: boolean; prompts: unknown[]; error?: string }>
-    textBrain: () => Promise<{ ok: boolean; brain: { vendor: string; modelKey: string } | null }>
+    textBrain: () => Promise<{ ok: boolean; brain: { vendor: string; modelKey: string } | null; status: 'ok' | 'locked' | 'missing' }>
     /** 我的库(用户级·跨项目):手写攒的提示词 CRUD,返回全量供渲染层本地过滤。 */
     userList: () => Promise<{ ok: boolean; prompts: unknown[]; error?: string }>
     userAdd: (input: {
