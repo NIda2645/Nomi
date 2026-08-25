@@ -18,7 +18,8 @@ export function anchorCheckpointGateId(runId: string): string {
   return `${GATE_PREFIX}${runId}`;
 }
 
-export function isAnchorCheckpointGate(gate: Pick<ProductionGate, "gateId" | "scope">): boolean {
+/** Widened to plain strings so projection gates (sanitized JSON) can be tested too, not only durable gates. */
+export function isAnchorCheckpointGate(gate: { gateId: string; scope: string }): boolean {
   return gate.scope === "anchor_checkpoint" && gate.gateId.startsWith(GATE_PREFIX);
 }
 

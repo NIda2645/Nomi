@@ -35,6 +35,7 @@ import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
+import { registerBatchSchedulerKicker } from '../productionRun/batchSchedulerKick'
 import type { ProductionActionResult } from '../productionRun/productionRunTypes'
 import { landCanvasForRun } from '../productionRun/multiShotCanvasLanding'
 import { createArtifactProjection, getArtifactPreviewSecret } from '../productionRun/artifactProjection'
@@ -396,6 +397,9 @@ export async function startCapabilityCore(
         console.warn('[nomi:production] batch resume tick failed:', error instanceof Error ? error.message : String(error))
       })
     }
+    // P4 §3.2：注册进 service 的 post-decide 重踢插槽——任何入口（MCP dispatcher / 渲染层 IPC / 未来的
+    // 检查点卡）批完锚定妆照检查点，批次自动续跑，入口自己不用记得踢（batchSchedulerKick.ts 有为什么）。
+    registerBatchSchedulerKicker(kickSchedulerForRun)
     const generationPlanning = authorities.generationPlanning
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,

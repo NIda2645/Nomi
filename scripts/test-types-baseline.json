@@ -14,7 +14,6 @@
   "electron/capabilityCore/nomiMcpElicitation.test.ts": 1,
   "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts": 5,
   "electron/capabilityCore/nomiMcpProductionArtifacts.test.ts": 2,
-  "electron/capabilityCore/productionRunCore.test.ts": 3,
   "electron/catalog/apimartSeedance25H3.test.ts": 1,
   "electron/catalog/assetLocalization.test.ts": 1,
   "electron/catalog/comfyuiLocal.test.ts": 3,

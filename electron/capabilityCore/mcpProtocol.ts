@@ -25,6 +25,7 @@ import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
 import { handleSemanticGenerationGate } from './mcpSemanticGenerationFlow'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
+import { isAnchorCheckpointGate } from '../productionRun/anchorCheckpoint'
 import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
 import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
 import type { AuthenticatedMcpClient } from './security'
@@ -280,7 +281,9 @@ export function createMcpProtocol(transport: McpTransport) {
     if (!gate) throw new Error(`Production gate is not waiting: ${gateId}`)
     const creative = gate.scope === 'stage'
       && (gateId.startsWith('gate-direction-') || gateId.startsWith('gate-sample-') || gateId.startsWith('gate-freeze-'))
-    if (!creative) throw new Error('This decision must be completed in Nomi')
+    // P4 §3.2：锚定妆照检查点与创意门同权（免费质量门，不授权预算）——判定用共享谓词，不再手抄前缀。
+    const isCheckpoint = typeof gate.scope === 'string' && isAnchorCheckpointGate({ gateId, scope: gate.scope })
+    if (!creative && !isCheckpoint) throw new Error('This decision must be completed in Nomi')
     // W2 冻结门是「视觉确认」语义（确认这批角色/场景卡定妆了、可锁死当身份基准），走同一条创意门 seam。
     const isFreeze = gateId.startsWith('gate-freeze-')
 
@@ -305,16 +308,22 @@ export function createMcpProtocol(transport: McpTransport) {
       .join('\n')
     return elicitBooleanConfirm({
       message: `${decisionText}?\n${details}`,
-      title: isFreeze
-        ? (isEnglish ? 'Confirm you have reviewed and frozen these cards' : '确认这些卡已过目并冻结')
-        : (isEnglish ? 'Confirm this creative decision' : '确认这次创意决定'),
-      description: isFreeze
+      title: isCheckpoint
+        ? (isEnglish ? 'Confirm you reviewed the stills — start the shots' : '确认定妆照已过目、可以开拍')
+        : isFreeze
+          ? (isEnglish ? 'Confirm you have reviewed and frozen these cards' : '确认这些卡已过目并冻结')
+          : (isEnglish ? 'Confirm this creative decision' : '确认这次创意决定'),
+      description: isCheckpoint
         ? (isEnglish
-            ? 'Freezing locks these character/scene cards as the identity baseline for every shot. Review them in Nomi first. Spending and export approvals still happen in Nomi.'
-            : '冻结会把这些角色/场景卡锁成每个镜头的身份基准，请先在 Nomi 里过目。支出与导出仍必须在 Nomi 中确认。')
-        : (isEnglish
-            ? 'Only this reversible creative gate will be decided. Spending and export approvals remain in Nomi.'
-            : '只会决定这道可逆创意门；支出与导出仍必须在 Nomi 中确认。'),
+            ? 'Approve = the look is right; the remaining shots generate within the budget you already confirmed (no new authorization). Reject = stay at the checkpoint; the stills are kept and can be regenerated. Review the stills in Nomi (or have the assistant show them) first.'
+            : '批准 = 认可这批定妆照，剩余镜头在你确认卡上已批的预算内继续生成（不新增授权）；否决 = 停在检查点，定妆照保留、可重出形象后再来。请先在 Nomi 画布过目定妆照，或让助手展示给你看。')
+        : isFreeze
+          ? (isEnglish
+              ? 'Freezing locks these character/scene cards as the identity baseline for every shot. Review them in Nomi first. Spending and export approvals still happen in Nomi.'
+              : '冻结会把这些角色/场景卡锁成每个镜头的身份基准，请先在 Nomi 里过目。支出与导出仍必须在 Nomi 中确认。')
+          : (isEnglish
+              ? 'Only this reversible creative gate will be decided. Spending and export approvals remain in Nomi.'
+              : '只会决定这道可逆创意门；支出与导出仍必须在 Nomi 中确认。'),
     })
   }
 
@@ -407,8 +416,8 @@ export function createMcpProtocol(transport: McpTransport) {
               content: [{
                 type: 'text',
                 text: locale() === 'en'
-                  ? 'Not applied: this client cannot show Nomi\'s required human confirmation. Decide the creative gate in Nomi instead.'
-                  : '未生效：当前客户端无法显示 Nomi 强制的人为确认，请改在 Nomi 中决定这道创意门。',
+                  ? 'Not applied: this client cannot show Nomi\'s required human confirmation. Decide this gate in Nomi instead.'
+                  : '未生效：当前客户端无法显示 Nomi 强制的人为确认，请改在 Nomi 中决定这道门。',
               }],
               isError: true,
             })
