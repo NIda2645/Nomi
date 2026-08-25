@@ -4,6 +4,7 @@
 // 通知钩子绝不允许影响制作主流程：全部 try/catch 吞错。
 
 import { BrowserWindow, Notification } from 'electron'
+import { logCrash } from '../crashLog'
 
 import { createNoticeDedupe, decideProductionNotice } from './productionNotifications'
 import type { ProductionRun, RunEvent } from './productionRunTypes'
@@ -32,6 +33,10 @@ export function createProductionNotificationsListener(): (events: RunEvent[], ru
       if (!decided || !allow(decided.key)) return
       const item = new Notification({ title: decided.title, body: decided.body })
       item.on('click', () => focusAndDeepLink(decided.target))
+      // macOS 自 Electron 42 起走 UNNotification，可能在 show() 之后**异步**拒发，
+      // 而 isSupported() 仍是 true。下面那个 catch 抓不到它（不是同步抛），
+      // 于是「出片完成没收到通知」会完全无迹可循。落盘留证。
+      item.on('failed', (_event, error) => logCrash('notification:failed', error))
       item.show()
     } catch {
       // 通知失败不影响制作。

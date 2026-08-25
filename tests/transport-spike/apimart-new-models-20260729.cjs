@@ -10,7 +10,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { app, safeStorage } = require("electron");
+const { app, safeStorage, session } = require("electron");
 
 app.setName("nomi"); // 对齐 dev electron 的 keychain 项名（nomi Safe Storage）
 
@@ -130,7 +130,7 @@ async function run(auth, name) {
 
 app.whenReady().then(async () => {
   try {
-    await applySystemProxy();
+    await applySystemProxy(session.defaultSession);
   } catch (e) {
     console.log("systemProxy 应用失败（继续直连）:", String(e).slice(0, 120));
   }

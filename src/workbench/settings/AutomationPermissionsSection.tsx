@@ -1,14 +1,34 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconLock } from '@tabler/icons-react'
+import { IconArrowLeft, IconChevronRight, IconLock, IconRobot } from '@tabler/icons-react'
 
-import { DesignSwitch, NomiSegmented } from '../../design'
+import { DesignSwitch, IconActionButton, NomiSegmented } from '../../design'
+import { getDesktopBridge } from '../../desktop/bridge'
+import type { McpInfo } from '../../desktop/mcpBridgeTypes'
+import { lazyWithChunkBoundary } from '../../ui/chunkBoundary'
 import type { AutomationPolicySettings } from '../../../electron/settings/automationPolicyContract'
 import { buildAutomationSettingsView, type SettingsHostKey } from './settingsAutomationView'
+
+const ConnectAssistantCard = lazyWithChunkBoundary('MCP', () =>
+  import('../../ui/onboarding/ConnectAssistantCard').then((module) => ({ default: module.ConnectAssistantCard })),
+)
 
 type Props = {
   settings: AutomationPolicySettings
   onChange: (patch: Partial<AutomationPolicySettings>) => void
+}
+
+type McpConnectionSnapshot =
+  | { phase: 'ready'; info: McpInfo }
+  | { phase: 'unavailable'; info: null }
+
+function readMcpConnectionSnapshot(): McpConnectionSnapshot {
+  try {
+    const info = getDesktopBridge()?.capability?.mcpInfo?.()
+    return info ? { phase: 'ready', info } : { phase: 'unavailable', info: null }
+  } catch {
+    return { phase: 'unavailable', info: null }
+  }
 }
 
 function SettingRow({
@@ -47,7 +67,17 @@ function LockedRule({ title, hint }: { title: string; hint: string }): JSX.Eleme
 
 export function AutomationPermissionsSection({ settings, onChange }: Props): JSX.Element {
   const { t } = useTranslation()
+  const rootRef = React.useRef<HTMLDivElement>(null)
+  const mcpBackButtonRef = React.useRef<HTMLButtonElement>(null)
+  const mcpEntryButtonRef = React.useRef<HTMLButtonElement>(null)
+  const [page, setPage] = React.useState<'main' | 'mcp'>('main')
+  const [focusCursorHost, setFocusCursorHost] = React.useState(false)
+  const [focusMcpEntry, setFocusMcpEntry] = React.useState(false)
+  const [mcpSnapshot, setMcpSnapshot] = React.useState<McpConnectionSnapshot>(readMcpConnectionSnapshot)
   const view = buildAutomationSettingsView(settings)
+  const refreshMcpInfo = React.useCallback(() => {
+    setMcpSnapshot(readMcpConnectionSnapshot())
+  }, [])
   const toggleHost = (host: SettingsHostKey, enabled: boolean): void => {
     if (host === 'nomi') return
     const next = new Set(settings.trustedHosts)
@@ -56,8 +86,89 @@ export function AutomationPermissionsSection({ settings, onChange }: Props): JSX
     onChange({ trustedHosts: ['nomi', ...[...next].filter((item) => item !== 'nomi')] })
   }
 
+  React.useEffect(() => {
+    if (page !== 'mcp') return
+    const frame = window.requestAnimationFrame(() => mcpBackButtonRef.current?.focus({ preventScroll: true }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [page])
+
+  React.useEffect(() => {
+    if (page !== 'main' || !focusMcpEntry) return
+    const frame = window.requestAnimationFrame(() => {
+      mcpEntryButtonRef.current?.focus({ preventScroll: true })
+      setFocusMcpEntry(false)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [focusMcpEntry, page])
+
+  React.useEffect(() => {
+    if (page !== 'main' || !focusCursorHost) return
+    const frame = window.requestAnimationFrame(() => {
+      const section = rootRef.current?.querySelector<HTMLElement>('[data-settings-section="cursor-host"]')
+      section?.scrollIntoView({ block: 'center' })
+      section?.querySelector<HTMLElement>('button, input, [tabindex]')?.focus({ preventScroll: true })
+      setFocusCursorHost(false)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [focusCursorHost, page])
+
+  if (page === 'mcp') {
+    return (
+      <div
+        ref={rootRef}
+        data-settings-section="mcp-assistant-connections"
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || event.defaultPrevented) return
+          event.preventDefault()
+          event.stopPropagation()
+          setFocusMcpEntry(true)
+          setPage('main')
+        }}
+      >
+        <header className="mb-5 flex min-h-8 items-center gap-2 pr-10">
+          <IconActionButton
+            ref={mcpBackButtonRef}
+            onClick={() => {
+              setFocusMcpEntry(true)
+              setPage('main')
+            }}
+            aria-label={t('settings.automation.mcp.back')}
+            title={t('settings.automation.mcp.back')}
+            className="size-11 shrink-0 text-nomi-ink-60 hover:bg-nomi-ink-05 hover:text-nomi-ink sm:size-8"
+            icon={<IconArrowLeft size={16} stroke={1.8} aria-hidden="true" />}
+          />
+          <h2 className="min-w-0 text-title font-medium text-nomi-ink">{t('settings.automation.mcp.title')}</h2>
+        </header>
+
+        {mcpSnapshot.phase === 'ready' ? (
+          <React.Suspense
+            fallback={(
+              <div role="status" className="rounded-nomi bg-nomi-ink-05 px-3 py-3 text-caption text-nomi-ink-40">
+                {t('settings.automation.mcp.loading')}
+              </div>
+            )}
+          >
+            <ConnectAssistantCard
+              info={mcpSnapshot.info}
+              onChanged={refreshMcpInfo}
+              onOpenAutomationPermissions={() => {
+                setFocusCursorHost(true)
+                setPage('main')
+              }}
+              detailMode
+            />
+          </React.Suspense>
+        ) : (
+          <div role="status" className="rounded-nomi bg-nomi-ink-05 px-3 py-3 text-caption leading-relaxed text-nomi-ink-60">
+            {t('settings.automation.mcp.unavailable')}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div data-settings-section="automation">
+    <div ref={rootRef} data-settings-section="automation">
       <h2 className="mb-5 text-title font-medium text-nomi-ink">{t('settings.automation.title')}</h2>
 
       <section className="mb-6" aria-labelledby="settings-mode-title">
@@ -92,6 +203,35 @@ export function AutomationPermissionsSection({ settings, onChange }: Props): JSX
           />
         </SettingRow>
         <LockedRule title={t('settings.automation.risk.irreversible')} hint={t('settings.automation.risk.irreversibleHint')} />
+      </section>
+
+      <section className="mb-6 border-t border-nomi-line pt-4" aria-labelledby="settings-mcp-title">
+        <h3 id="settings-mcp-title" className="mb-2 text-caption font-medium text-nomi-ink-60">
+          {t('settings.automation.mcp.title')}
+        </h3>
+        <button
+          ref={mcpEntryButtonRef}
+          type="button"
+          data-settings-action="manage-mcp-connections"
+          className="flex min-h-12 w-full items-center gap-2.5 rounded-nomi-sm border-0 bg-nomi-ink-05 px-3 py-2 text-left cursor-pointer transition-colors hover:bg-nomi-ink-10"
+          onClick={() => {
+            refreshMcpInfo()
+            setPage('mcp')
+          }}
+        >
+          <IconRobot size={18} stroke={1.6} className="shrink-0 text-nomi-accent" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-body-sm text-nomi-ink">{t('settings.automation.mcp.clients')}</span>
+            <span className="block text-micro leading-relaxed text-nomi-ink-40">{t('settings.automation.mcp.hint')}</span>
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1 text-caption text-nomi-ink-60">
+            <span className="hidden sm:inline">{t('settings.automation.mcp.manage')}</span>
+            <IconChevronRight size={16} stroke={1.8} className="text-nomi-ink-40" aria-hidden="true" />
+          </span>
+        </button>
+        <div className="mt-2 text-caption leading-relaxed text-nomi-ink-40">
+          {t('settings.automation.mcp.separationHint')}
+        </div>
       </section>
 
       <section className="mb-6 border-t border-nomi-line pt-4" aria-labelledby="settings-hosts-title">

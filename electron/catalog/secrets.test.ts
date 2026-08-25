@@ -14,7 +14,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-import { decryptApiKeyRecord, isSafeStorageAvailable, makeApiKeyRecordFromPlain } from "./secrets";
+import { apiKeyDecryptStatus, decryptApiKeyRecord, isSafeStorageAvailable, makeApiKeyRecordFromPlain } from "./secrets";
 
 describe("isSafeStorageAvailable", () => {
   it("reports availability from safeStorage", () => {
@@ -58,5 +58,33 @@ describe("decryptApiKeyRecord branches", () => {
     expect(decryptApiKeyRecord(corrupted)).toBe("");
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe("apiKeyDecryptStatus — 三态健康度（ok / missing / locked，单一真相源）", () => {
+  it("无记录 / 空 key 材料 → missing", () => {
+    expect(apiKeyDecryptStatus(undefined)).toBe("missing");
+    expect(apiKeyDecryptStatus({ vendorKey: "v", apiKey: "", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("missing");
+  });
+  it("safeStorage 密文解得开非空 → ok", () => {
+    const rec = makeApiKeyRecordFromPlain("sk-secret", "openai", true, "c", "u");
+    expect(apiKeyDecryptStatus(rec)).toBe("ok");
+  });
+  it("safeStorage 密文在但解不开（身份不匹配）→ locked，绝不误报 missing", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const locked = {
+      vendorKey: "volcengine",
+      apiKey: Buffer.from("FAIL", "utf8").toString("base64"),
+      enc: "safeStorage" as const,
+      enabled: true,
+      createdAt: "c",
+      updatedAt: "u",
+    };
+    expect(apiKeyDecryptStatus(locked)).toBe("locked");
+    spy.mockRestore();
+  });
+  it("plain / legacy 非空明文 → ok", () => {
+    expect(apiKeyDecryptStatus({ vendorKey: "v", apiKey: "raw", enc: "plain", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("ok");
+    expect(apiKeyDecryptStatus({ vendorKey: "v", apiKey: "legacy", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("ok");
   });
 });

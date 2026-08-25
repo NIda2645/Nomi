@@ -7,14 +7,15 @@
 // 录制中走快走慢都被忠实还原（匀速段与停顿段不会被均匀重采样抹平）。
 //
 // 配单测 takeRecording.test.ts（时间戳→timeRatio、去重、退化、duration/frameCount 换算）。
+import { cloneScene3DState } from './scene3dSerializer'
+import { objectVisualHalfHeight } from './scene3dCrowd'
+import { ROLE_COLOR_SEQUENCE, LOCOMOTION_CLIP_WALK } from './scene3dConstants'
 import {
+  cameraAimBindingId,
   createScene3DTrajectoryId,
   createScene3DTrajectoryPointId,
   createScene3DTrajectoryBindingId,
-  cloneScene3DState,
-} from './scene3dSerializer'
-import { ROLE_COLOR_SEQUENCE, LOCOMOTION_CLIP_WALK } from './scene3dConstants'
-import { cameraAimBindingId } from './scene3dBindingIds'
+} from './scene3dBindingIds'
 import { buildPoseTrack, type Scene3DPoseEvent } from './scene3dPoseTrack'
 import type {
   Scene3DState,
@@ -95,6 +96,15 @@ export function samplesToTrajectory(
     closed: false,
     color,
   }
+}
+
+/** 采样（视觉中心 y）→ 轨迹点（脚底 y）：整条竖直平移 -visualHalfHeight。见 buildRecordedTakeScene 注释。 */
+function footLevelSamples(samples: TakeSample[], visualHalfHeight: number): TakeSample[] {
+  if (visualHalfHeight === 0) return samples
+  return samples.map((entry) => ({
+    ...entry,
+    position: [entry.position[0], entry.position[1] - visualHalfHeight, entry.position[2]] as Scene3DVector3,
+  }))
 }
 
 /** 把一个物体绑到录制轨迹上，整段 [startTime, endTime] 正向播放、无偏移。 */
@@ -194,8 +204,12 @@ export function buildRecordedTakeScene(base: Scene3DState, take: RecordedTake): 
   const character = next.objects.find((object) => object.id === take.possessedObjectId)
   if (!character) return null
 
+  // 附身直驱把 group 钉在视觉中心高度，采到的也是中心 y；而轨迹点的语义是**脚底**
+  // （手画轨迹点落地面，回放两路——objectWithPlaybackPose 与直驱盖章 positionOffset——都会
+  // +objectVisualHalfHeight 抬回中心）。在唯一写入口换算成脚底：录哪儿、回放就在哪儿；
+  // 不换算则回放/导出浮空半身（跳跃弧线是相对地面的偏移，整体平移后原样保留）。
   const characterTrajectory = samplesToTrajectory(
-    take.characterSamples,
+    footLevelSamples(take.characterSamples, objectVisualHalfHeight(character)),
     ROLE_COLOR_SEQUENCE[0],
     `${character.name} 走位`,
   )

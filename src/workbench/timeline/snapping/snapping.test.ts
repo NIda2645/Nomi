@@ -18,6 +18,7 @@ function timeline(playheadFrame: number, imageClips: TimelineClip[], videoClips:
       { id: 'imageTrack', type: 'image', label: '图片轨', clips: imageClips },
       { id: 'videoTrack', type: 'video', label: '媒体轨', clips: videoClips },
     ],
+    textClips: [],
   }
 }
 

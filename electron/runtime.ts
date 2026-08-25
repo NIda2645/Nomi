@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { localizeAssetsForVendor, resolveAssetIngestionWithFallback, trustedLocalOutputOrigin } from "./catalog/assetLocalization";
+import { assertLocalAssetTransportReady, localizeAssetsForVendor, trustedLocalOutputOrigin } from "./catalog/assetLocalization";
+import { assetIngestionResolver, assetLocalizationOptions } from "./catalog/assetTransportRuntime";
 import { readNomiLocalAsset, postJsonForAssetUpload, postMultipartForAssetUpload } from "./assets/localAssetFile";
 import { importRemoteAsset, writeAsset } from "./assets/projectAssetStore";
 import { endpoint } from "./vendorEndpoint";
@@ -27,7 +28,6 @@ import { applyRequestTransform } from "./tasks/requestTransforms";
 import { TtlLruCache } from "./tasks/taskCache";
 import { markTaskAdmitted } from "./tasks/taskAdmission";
 import { readCachedTaskResult, recipeFingerprint, rememberTaskResult } from "./vendor/fingerprintCache";
-import { decryptApiKeyRecord } from "./catalog/secrets";
 import {
   createProject,
   deleteProject,
@@ -38,19 +38,19 @@ import {
 } from "./projects/repository";
 // 公共 API：main.ts 仍从 "./runtime" 消费这些 —— re-export 保持其 import 不变。
 export { createProject, deleteProject, listProjects, readProject, resolveProjectRelativePath, saveProject };
-export { importRemoteAsset, listProjectAssets, moveAssetFile, writeAsset } from "./assets/projectAssetStore";
+export { copyAssetFile, importRemoteAsset, listProjectAssets, moveAssetFile, writeAsset } from "./assets/projectAssetStore";
 // localizedTaskAssetFileName 已抽到 ./assets/localizedAsset（规则 9/12 减负 giant shell）；re-export 保持既有 import（含 runtime.assets.test）不变。
 export { localizedTaskAssetFileName };
-
 // 任务执行复用 catalog 状态（readCatalog + extractVendorExtraHeaders 纯函数）；
 // catalogStore 反向复用本文件任务引擎 → 运行期循环引用（CommonJS 安全）。
 import { extractVendorExtraHeaders, readCatalog } from "./catalog/catalogStore";
 import { activeTaskProjectFallback, unlocalizedTaskAsset } from "./tasks/activeProjectFallback";
-
 import type { BillingModelKind, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./catalog/types";
 import { billingKindForTaskKind, selectExecutableModel, selectTaskMapping } from "./catalog/types";
 import { applyHeadlessParamDefaults, imageEditGuardError } from "./catalog/taskParams";
+import { modelModeBodies } from "./catalog/modelCatalogListing";
 import { runCustomCallTask } from "./catalog/customCallDispatch";
+import { resolveCustomCallExecution } from "./catalog/customCallMode";
 import { assertAndConsumeSpendGrant } from "./spendGrant";
 export type {
   AiSdkProviderKind,
@@ -110,7 +110,6 @@ export type {
   AgentChatV2Hooks,
   RunAgentChatV2Payload,
 } from "./ai/agentChatV2";
-
 export type TaskRequest = {
   kind: ProfileKind;
   prompt: string;
@@ -120,9 +119,8 @@ export type TaskRequest = {
   height?: number;
   steps?: number;
   cfgScale?: number;
-  extras?: Record<string, unknown>;
+  extras?: Record<string, unknown> & { executionBinding?: import("./productionRun/productionExecutionBinding").ProductionExecutionBinding };
 };
-
 export type TaskResult = {
   id: string;
   kind: ProfileKind;
@@ -192,8 +190,6 @@ function authHeaders(vendor: Vendor, apiKey: string): Record<string, string> {
   return buildAuthHeaders(vendor.authType as AuthType, apiKey, vendor.authHeader ?? undefined);
 }
 
-// endpoint() 已抽到 electron/vendorEndpoint.ts（纯函数，便于无 electron 的单测）
-
 // billingKindForTaskKind 下沉到 catalog/types（R12 净减）；re-export 保住既有消费方 import 面。
 export { billingKindForTaskKind } from "./catalog/types";
 export { extractAssetUrl } from "./tasks/assetUrlExtract";
@@ -233,8 +229,7 @@ export async function localizeTaskAsset(
 }
 
 export function findTaskMapping(vendorKey: string, taskKind: ProfileKind, modelKey?: string): Mapping | null {
-  // 按 (vendor, taskKind, modelKey) 选——同 vendor 下两个模型共用一个 taskKind 但请求形状不同时
-  // （如 HappyHorse 与 Kling 都 text_to_video），靠 modelKey 精确路由，不再「第一个赢、另一个套错模板」。
+  // 按 (vendor, taskKind, modelKey) 选——同 vendor 下两模型共用一个 taskKind 但请求形状不同时（如 HappyHorse 与 Kling 都 text_to_video），靠 modelKey 精确路由，不再「第一个赢、另一个套错模板」。
   return selectTaskMapping(readCatalog().mappings, vendorKey, taskKind, modelKey);
 }
 
@@ -248,6 +243,7 @@ export async function executeProfileOperation(input: {
   operation: HttpOperation;
   providerMeta?: JsonRecord;
   localAssetReader?: import("./catalog/assetLocalization").LocalAssetReader;
+  signal?: AbortSignal;
 }): Promise<{ response: unknown; request: unknown }> {
   // 进程型 transport（P4 声明驱动）：op 声明 process（本地 CLI dreamina）→ spawn，不走 HTTP。
   // 渲染/spawn/本地文件导入全在 processOperation（注入 writeAsset，避免 ↔ runtime 循环依赖）。
@@ -266,26 +262,20 @@ export async function executeProfileOperation(input: {
       writeAsset,
     });
   }
-
   // multipart transport（P4）：op 声明 multipart（/v1/images/edits 图生图文件上传）→ 全套分发在 multipartOperation
   // （localize 前分流：要参考图原始字节，不先上传换 URL）。requestMultipart 注入以带 vendor 计费上下文。
-  if (input.operation.multipart) return runMultipartProfileOperation(input, (u, h, q, f) => requestMultipart(input.vendor, input.apiKey, u, h, q, f));
+  if (input.operation.multipart) return runMultipartProfileOperation(input, (u, h, q, f) => requestMultipart(input.vendor, input.apiKey, u, h, q, f, input.signal));
 
   // R1：发送前把本地素材(nomi-local://)按策略变成 vendor 可达值。带跨供应商 fallback + 内容类型感知：
   // 每素材按媒体类型挑通道(图→apimart/KIE base64;视频→KIE stream,apimart image-only 跳过)。上传 key 可异于生成 key。
   const uploadCatalog = readCatalog();
   const localized = await localizeAssetsForVendor(
     input.request.extras,
-    (mediaKind) =>
-      resolveAssetIngestionWithFallback(
-        input.vendor,
-        uploadCatalog.vendors,
-        (key) => decryptApiKeyRecord(uploadCatalog.apiKeysByVendor[key]),
-        mediaKind,
-      ),
+    assetIngestionResolver(input.vendor, uploadCatalog),
     input.localAssetReader || readNomiLocalAsset,
     postJsonForAssetUpload,
     postMultipartForAssetUpload,
+    assetLocalizationOptions(input.request.extras),
   );
   const effectiveInput =
     localized.uploaded > 0
@@ -293,9 +283,9 @@ export async function executeProfileOperation(input: {
       : input;
   const built = buildProfileHttpRequest(effectiveInput);
   // 命名请求变换（P4，与 response_transform 对称）：发送前按后端实况补全 body；未声明 → 原样。
-  const body = await applyRequestTransform(input.operation.request_transform, built.body, { baseUrl: String(input.vendor.baseUrlHint || "") });
+  const body = await applyRequestTransform(input.operation.request_transform, built.body, { baseUrl: String(input.vendor.baseUrlHint || ""), promptId: trim(input.request.extras?.comfyPromptId) });
   const { vendor, apiKey } = effectiveInput;
-  const response = await requestJson(vendor, apiKey, built.method, built.url, built.headers, built.query, body);
+  const response = await requestJson(vendor, apiKey, built.method, built.url, built.headers, built.query, body, input.signal);
   return { response, request: built.preview };
 }
 
@@ -374,27 +364,36 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const kind = request.kind;
   const wantedKind = billingKindForTaskKind(kind);
   const modelKey = firstString(request.extras?.modelKey, request.extras?.modelAlias);
-  const { vendor, model, apiKey } = findExecutableModel(vendorKey, modelKey, wantedKind);
+  const { vendor, model, apiKey, customConfig } = findExecutableModel(vendorKey, modelKey, wantedKind);
   const projectId = trim(request.extras?.projectId) || activeTaskProjectFallback();
   const nodeId = trim(request.extras?.nodeId);
   const grantId = trim(request.extras?.grantId);
   const taskId = `task-${crypto.randomUUID()}`;
   const mapping = findTaskMapping(vendorKey, kind, modelKey);
-  // headless 缺参兜底(档案默认+mapping)
-  request.extras = applyHeadlessParamDefaults(request.extras, (model?.meta as { archetypeId?: string } | undefined)?.archetypeId, kind, vendorKey, mapping?.create?.defaultParams);
-  // 自定义调用脚本（用户数据，plan 2026-08-04）：存在即接管图像/视频/3D 请求；对 L3 护栏它就是「有 mapping」（否则改图类被误拒），参考缺失的拒发仍生效。派发抽到 catalog/customCallDispatch（R12）。
-  const customCallScript = trim((model as Model).customCall?.script);
-  // L3 诚实护栏：图生图/图生视频缺参考或缺 mapping → 付费守卫之前拒发人话，绝不静默退化纯文生（判定在 taskParams.imageEditGuardError）。
-  const guardError = imageEditGuardError(kind, request, Boolean(mapping) || Boolean(customCallScript), model.labelZh || model.modelKey, customCallScript ? undefined : mapping?.create?.body);
+  // headless/MCP extras 预备：缺参兜底 + W1d 参考键形态投影（末参 createBody，逻辑/文档住 taskParams.applyHeadlessParamDefaults）；自定义调用脚本存在即接管图/视频/3D（对 L3 护栏算「有 mapping」，参考缺失拒发仍生效，派发抽到 catalog/customCallDispatch，R12）。
+  request.extras = applyHeadlessParamDefaults(request.extras, (model?.meta as { archetypeId?: string } | undefined)?.archetypeId, kind, vendorKey, mapping?.create?.defaultParams, mapping?.create?.body);
+  const customCall = resolveCustomCallExecution(model as Model, request, mapping);
+  const customCallScript = customCall?.script || "";
+  // L3 诚实护栏（判定在 taskParams.imageEditGuardError）：图生图/图生视频缺参考或缺 mapping → 付费守卫前拒发人话，绝不静默退化纯文生。末参 modelModeBodies（该模型所有模式 body）= 交付4：拒发时点名"哪个模式带得动你连的参考"（同套 mapping derive）。
+  const guardError = imageEditGuardError(kind, request, Boolean(mapping) || Boolean(customCallScript), model.labelZh || model.modelKey, customCallScript ? undefined : mapping?.create?.body, modelModeBodies(readCatalog().mappings, vendorKey, modelKey, (model as Model).modelAlias));
   if (guardError) throw new Error(guardError);
-  // 第四路 audio：TTS/Whisper 同步收口（二进制/multipart）。付费守卫：必发 vendor，进来即校验消费令牌。
+  if (customCallScript) // 先于 mapping/fallback；注入避免循环依赖。文本也走这里（去掉 wantedKind!=="text" 排除：那等于「接不上的文本模型毫无出路」，而用户最初踩的正是文本模型）；文本脚本 return { text }
+    return runCustomCallTask({ vendor, model, apiKey, customConfig, script: customCallScript, taskKind: customCall!.taskKind, modeId: customCall!.modeId, request, kind, wantedKind, projectId, nodeId, grantId, taskId, localizeTaskAsset, writeAsset });
+  // 第四路 audio：没有脚本接管时才走 TTS/Whisper 同步收口（二进制/multipart）。
   if (wantedKind === "audio") {
     assertAndConsumeSpendGrant(grantId, nodeId);
     return runAudioTask({ vendor, model, apiKey, request, kind, taskId, projectId, nodeId, mapping });
   }
-  if (customCallScript) // 先于 mapping/fallback；注入避免循环依赖。文本也走这里（去掉 wantedKind!=="text" 排除：那等于「接不上的文本模型毫无出路」，而用户最初踩的正是文本模型）；文本脚本 return { text }
-    return runCustomCallTask({ vendor, model, apiKey, script: customCallScript, request, kind, wantedKind, projectId, nodeId, grantId, taskId, localizeTaskAsset, writeAsset });
   if (mapping) {
+    const uploadCatalog = readCatalog();
+    if (!mapping.create.multipart && !mapping.create.process) {
+      assertLocalAssetTransportReady(
+        request.extras,
+        assetIngestionResolver(vendor, uploadCatalog),
+        readNomiLocalAsset,
+        assetLocalizationOptions(request.extras),
+      );
+    }
     // S8 指纹缓存:同配方(参数没动)秒回上次成功结果,零 vendor 调用;强制重跑经 extras.forceRerun 绕读。
     const recipe = buildNormalizedRecipe({
       vendor,

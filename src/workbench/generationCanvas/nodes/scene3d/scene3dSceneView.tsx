@@ -25,6 +25,11 @@ import {
 } from './scene3dConstants'
 import { SCENE3D_ASPECT_RATIOS } from './scene3dTypes'
 import type { Scene3DCamera, Scene3DObject, Scene3DVector3, Scene3DTransformMode } from './scene3dTypes'
+import { useScene3DObjectRefRegistration } from './trajectory/useScene3DObjectRefRegistration'
+import {
+  holdScene3DObjectRuntime,
+  releaseScene3DObjectRuntime,
+} from './trajectory/trajectoryRuntimeStore'
 import {
   ProceduralMannequin,
   Mannequin,
@@ -35,12 +40,10 @@ import {
   MannequinFootRings,
   MannequinAssetBoundary,
   StaticObjectVisual,
-  objectGroundFootprint,
-  objectVisualHalfHeight,
-  objectTransformAnchorPosition,
   singleMannequinLabelPosition,
   crowdLabelPositions,
 } from './scene3dObjects'
+import { objectGroundFootprint, objectTransformAnchorPosition, objectVisualHalfHeight } from './scene3dCrowd'
 
 export function CameraFrustumLines({
   cameraData,
@@ -161,6 +164,11 @@ export function SceneObjectView({
 }): JSX.Element {
   const visualRef = React.useRef<THREE.Group>(null!) as React.MutableRefObject<THREE.Group>
   const anchorRef = React.useRef<THREE.Group>(null!) as React.MutableRefObject<THREE.Group>
+  // 轨迹存脚底坐标，直驱 marker 需要抬到视觉中心；隐藏对象不应被播放层重新显示。
+  useScene3DObjectRefRegistration(object.id, visualRef, {
+    enabled: object.visible,
+    positionOffsetY: objectVisualHalfHeight(object),
+  })
   const transformRef = React.useRef<any>(null)
   const transformDraggingRef = React.useRef(false)
   const orbitControlsActiveRef = React.useRef(orbitControlsActive)
@@ -216,14 +224,18 @@ export function SceneObjectView({
       navigationLockedRef.current = dragging
       if (dragging && !wasDragging) {
         orbitControlsActiveRef.current = false
+        // 用户拖拽优先：手势期间挂 hold，直驱层（useTrajectoryAnimation 盖章）跳过该对象。
+        holdScene3DObjectRuntime(object.id)
         onTransformStart()
       }
+      if (!dragging && wasDragging) releaseScene3DObjectRuntime(object.id)
       if (controls && 'enabled' in controls) {
         ;(controls as { enabled: boolean }).enabled = dragging ? false : orbitControlsActiveRef.current
       }
     }
     tc.addEventListener('dragging-changed', handler)
     return () => {
+      releaseScene3DObjectRuntime(object.id)
       if (transformDraggingRef.current) {
         navigationLockedRef.current = false
         transformDraggingRef.current = false
@@ -231,24 +243,26 @@ export function SceneObjectView({
       }
       tc.removeEventListener('dragging-changed', handler)
     }
-  }, [controls, navigationLockedRef, onTransformEnd, onTransformStart, selected])
+  }, [controls, navigationLockedRef, object.id, onTransformEnd, onTransformStart, selected])
 
   const handleTransformMouseDown = React.useCallback(() => {
     orbitControlsActiveRef.current = false
     navigationLockedRef.current = true
+    holdScene3DObjectRuntime(object.id)
     onTransformStart()
     if (controls && 'enabled' in controls) {
       ;(controls as { enabled: boolean }).enabled = false
     }
-  }, [controls, navigationLockedRef, onTransformStart])
+  }, [controls, navigationLockedRef, object.id, onTransformStart])
 
   const handleTransformMouseUp = React.useCallback(() => {
     navigationLockedRef.current = false
+    releaseScene3DObjectRuntime(object.id)
     onTransformEnd()
     if (controls && 'enabled' in controls) {
       ;(controls as { enabled: boolean }).enabled = orbitControlsActiveRef.current
     }
-  }, [controls, navigationLockedRef, onTransformEnd])
+  }, [controls, navigationLockedRef, object.id, onTransformEnd])
 
   const group = (
     <group
@@ -366,7 +380,16 @@ export function CameraHelperView({
   onTransform: (patch: Partial<Scene3DCamera>) => void
 }): JSX.Element {
   const markerRef = React.useRef<THREE.Group>(null)
-  const positionDraggingRef = React.useRef(false)
+  // 注册生命周期跟随 marker，取景往返重挂后不会继续写已经离场的 Object3D。
+  useScene3DObjectRefRegistration(cameraData.id, markerRef, { enabled: cameraData.visible })
+  // 位置拖拽会话（pointerId + capture 目标）。move/up 走 window 级监听（与 aim 拖拽同模式）：
+  // r3f 的 pointer capture 一旦被环境打断（lostpointercapture 清 capturedMap），group 级
+  // move 就只剩 raycast 命中才送——marker 若被直驱层钉住、指针滑出命中球即拖拽中途冻死
+  // （2026-08-03 群反馈「拖到一半不跟手」的事件层根因）。window 监听不依赖 capture。
+  const positionDragRef = React.useRef<{
+    pointerId: number
+    target: PointerCaptureTarget | null
+  } | null>(null)
   const aimDraggingRef = React.useRef<{
     pointerId: number
     startX: number
@@ -381,7 +404,8 @@ export function CameraHelperView({
   const dragPlaneRef = React.useRef(new THREE.Plane())
   const dragHitRef = React.useRef(new THREE.Vector3())
   const dragOffsetRef = React.useRef(new THREE.Vector3())
-  const { controls } = useThree()
+  const dragRaycasterRef = React.useRef(new THREE.Raycaster())
+  const { controls, camera: viewCamera, gl } = useThree()
   const target = cameraData.target || CAMERA_DEFAULT_TARGET
   const cameraPosition = React.useMemo(() => vectorFromArray(cameraData.position), [cameraData.position])
   const cameraRotation = React.useMemo(
@@ -391,12 +415,16 @@ export function CameraHelperView({
 
   React.useEffect(() => () => {
     navigationLockedRef.current = false
+    positionDragRef.current = null
+    aimDraggingRef.current = null
+    // 拖拽中途组件被卸载（如切取景态）→ 必须撤 hold，否则该对象永久不被直驱层盖章。
+    releaseScene3DObjectRuntime(cameraData.id)
     if (controls && 'enabled' in controls && controlsEnabledBeforeDragRef.current !== null) {
       ;(controls as { enabled: boolean }).enabled = orbitControlsActiveRef.current
         ? controlsEnabledBeforeDragRef.current
         : false
     }
-  }, [controls, navigationLockedRef])
+  }, [cameraData.id, controls, navigationLockedRef])
 
   React.useLayoutEffect(() => {
     orbitControlsActiveRef.current = orbitControlsActive
@@ -429,8 +457,8 @@ export function CameraHelperView({
     event.stopPropagation()
   }, [])
 
-  const updatePositionFromEvent = React.useCallback((event: ThreeEvent<PointerEvent>) => {
-    const hit = event.ray.intersectPlane(dragPlaneRef.current, dragHitRef.current)
+  const updatePositionFromRay = React.useCallback((ray: THREE.Ray) => {
+    const hit = ray.intersectPlane(dragPlaneRef.current, dragHitRef.current)
     if (!hit) return
     const nextPosition = vectorToArray(hit.clone().add(dragOffsetRef.current))
     onTransform({
@@ -449,27 +477,22 @@ export function CameraHelperView({
     const planeNormal = new THREE.Vector3()
     event.camera.getWorldDirection(planeNormal)
     planeNormal.normalize()
-    dragPlaneRef.current.setFromNormalAndCoplanarPoint(planeNormal, cameraPosition)
+    // 拖拽平面与偏移锚到 marker 的**视觉**位置——直驱层可能已把它盖章到与 state 不同的
+    // 位置（如播放头停在轨迹中段），锚 state 会让球在第一步瞬移；抓哪儿就从哪儿跟手。
+    const anchor = markerRef.current
+      ? markerRef.current.getWorldPosition(new THREE.Vector3())
+      : cameraPosition.clone()
+    dragPlaneRef.current.setFromNormalAndCoplanarPoint(planeNormal, anchor)
     const hit = event.ray.intersectPlane(dragPlaneRef.current, dragHitRef.current)
-    dragOffsetRef.current.copy(hit ? cameraPosition.clone().sub(hit) : new THREE.Vector3())
-    positionDraggingRef.current = true
+    dragOffsetRef.current.copy(hit ? anchor.clone().sub(hit) : new THREE.Vector3())
+    positionDragRef.current = {
+      pointerId: event.pointerId,
+      target: pointerCaptureTarget(event.target),
+    }
+    // 用户拖拽优先：拖拽期间直驱层（useTrajectoryAnimation 盖章）跳过这台相机。
+    holdScene3DObjectRuntime(cameraData.id)
     pointerCaptureTarget(event.target)?.setPointerCapture?.(event.pointerId)
-  }, [cameraPosition, onSelect, onTransformStart, positionLocked, readOnly, setSceneControlsDragging, stopScenePointerEvent])
-
-  const handlePositionPointerMove = React.useCallback((event: ThreeEvent<PointerEvent>) => {
-    if (!positionDraggingRef.current || readOnly) return
-    stopScenePointerEvent(event)
-    updatePositionFromEvent(event)
-  }, [readOnly, stopScenePointerEvent, updatePositionFromEvent])
-
-  const stopCameraDrag = React.useCallback((event: ThreeEvent<PointerEvent>) => {
-    if (!positionDraggingRef.current) return
-    stopScenePointerEvent(event)
-    positionDraggingRef.current = false
-    setSceneControlsDragging(false)
-    onTransformEnd()
-    pointerCaptureTarget(event.target)?.releasePointerCapture?.(event.pointerId)
-  }, [onTransformEnd, setSceneControlsDragging, stopScenePointerEvent])
+  }, [cameraData.id, cameraPosition, onSelect, onTransformStart, positionLocked, readOnly, setSceneControlsDragging, stopScenePointerEvent])
 
   const updateAimFromDrag = React.useCallback((drag: NonNullable<typeof aimDraggingRef.current>, dx: number, dy: number, fine = false) => {
     const sensitivity = fine ? 0.003 : 0.008
@@ -534,6 +557,21 @@ export function CameraHelperView({
     }
 
     const handleWindowPointerMove = (event: PointerEvent) => {
+      const positionDrag = positionDragRef.current
+      if (positionDrag && positionDrag.pointerId === event.pointerId && !readOnly) {
+        stopNativePointerEvent(event)
+        const rect = gl.domElement.getBoundingClientRect()
+        if (rect.width <= 0 || rect.height <= 0) return
+        dragRaycasterRef.current.setFromCamera(
+          new THREE.Vector2(
+            ((event.clientX - rect.left) / rect.width) * 2 - 1,
+            -(((event.clientY - rect.top) / rect.height) * 2 - 1),
+          ),
+          viewCamera,
+        )
+        updatePositionFromRay(dragRaycasterRef.current.ray)
+        return
+      }
       const drag = aimDraggingRef.current
       if (!drag || drag.pointerId !== event.pointerId || readOnly) return
       stopNativePointerEvent(event)
@@ -545,7 +583,17 @@ export function CameraHelperView({
       )
     }
 
-    const stopWindowAimDrag = (event: PointerEvent) => {
+    const stopWindowDrag = (event: PointerEvent) => {
+      const positionDrag = positionDragRef.current
+      if (positionDrag && positionDrag.pointerId === event.pointerId) {
+        stopNativePointerEvent(event)
+        positionDragRef.current = null
+        setSceneControlsDragging(false)
+        releaseScene3DObjectRuntime(cameraData.id)
+        onTransformEnd()
+        positionDrag.target?.releasePointerCapture?.(positionDrag.pointerId)
+        return
+      }
       const drag = aimDraggingRef.current
       if (!drag || drag.pointerId !== event.pointerId) return
       stopNativePointerEvent(event)
@@ -556,14 +604,14 @@ export function CameraHelperView({
     }
 
     window.addEventListener('pointermove', handleWindowPointerMove, { capture: true })
-    window.addEventListener('pointerup', stopWindowAimDrag, { capture: true })
-    window.addEventListener('pointercancel', stopWindowAimDrag, { capture: true })
+    window.addEventListener('pointerup', stopWindowDrag, { capture: true })
+    window.addEventListener('pointercancel', stopWindowDrag, { capture: true })
     return () => {
       window.removeEventListener('pointermove', handleWindowPointerMove, { capture: true })
-      window.removeEventListener('pointerup', stopWindowAimDrag, { capture: true })
-      window.removeEventListener('pointercancel', stopWindowAimDrag, { capture: true })
+      window.removeEventListener('pointerup', stopWindowDrag, { capture: true })
+      window.removeEventListener('pointercancel', stopWindowDrag, { capture: true })
     }
-  }, [onTransformEnd, readOnly, setSceneControlsDragging, updateAimFromDrag])
+  }, [cameraData.id, gl, onTransformEnd, readOnly, setSceneControlsDragging, updateAimFromDrag, updatePositionFromRay, viewCamera])
 
   const positionInteractionDisabled = Boolean(positionLocked)
   const lockedPositionRaycast = React.useCallback(() => null, [])
@@ -577,9 +625,6 @@ export function CameraHelperView({
       position={cameraData.position}
       rotation={cameraRotation}
       onPointerDown={positionInteractionDisabled ? undefined : handlePositionPointerDown}
-      onPointerMove={positionInteractionDisabled ? undefined : handlePositionPointerMove}
-      onPointerUp={positionInteractionDisabled ? undefined : stopCameraDrag}
-      onPointerCancel={positionInteractionDisabled ? undefined : stopCameraDrag}
       onDoubleClick={positionInteractionDisabled ? undefined : (event) => {
         event.stopPropagation()
         onSelect()

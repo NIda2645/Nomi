@@ -28,11 +28,20 @@ import { archetypeForNode, resolveModeForConnectedReferences } from '../agent/re
 import {
   applyArchetypeModeSwitch,
   currentArchetypeMode,
-  hasArchetypeArrayReferences,
+  hasAnyArchetypeReference,
 } from '../nodes/controls/archetypeMeta'
+import {
+  nodeUnmetReferenceDependency,
+  type UnmetReferenceDependency,
+} from '../nodes/controls/referenceDependency'
 import { resolveTaskArchetype } from './catalogTaskResolve'
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
+import {
+  AssetUploadConsentCancelledError,
+  hasLocalAssetReference,
+  requestAssetUploadConsent,
+} from './assetUploadConsent'
 
 /** 节点 kind → 付费预估用的产物口径（视频/配音/画面），喂给 describeGenerationCost 报对名词与时长。 */
 function spendCostKind(kind: GenerationNodeKind): 'image' | 'video' | 'audio' {
@@ -61,6 +70,8 @@ export type RunGenerationNodeOptions = {
   }
   /** 付费守卫令牌：真人确认后铸的 grantId，透传到 executor → request.extras 供主进程核验。 */
   grantId?: string
+  /** One-shot correction appended to the provider prompt for a bounded QA retry. */
+  promptSuffix?: string
   /** 队列批次 id（任务中心的调度真相源，见 generationQueueStore）。不传 = 单发，内部自建 1 节点批次。 */
   batchId?: string
 }
@@ -162,6 +173,27 @@ export async function runGenerationNode(
     )
   }
 
+  // Reference uploads happen in the main process immediately before the vendor
+  // request. Ask here, before queueing/grant consumption, so a public temporary
+  // host is never used silently and KIE's free video path is discoverable.
+  const resolvedReferences = resolveGenerationReferences(initialNode, { nodes: initialState.nodes, edges: initialState.edges })
+  const consentNode = {
+    ...initialNode,
+    references: [
+      ...(initialNode.references || []),
+      ...resolvedReferences.referenceImages,
+      ...resolvedReferences.referenceVideos,
+      ...resolvedReferences.referenceAudios,
+      ...(resolvedReferences.firstFrameUrl ? [resolvedReferences.firstFrameUrl] : []),
+      ...(resolvedReferences.lastFrameUrl ? [resolvedReferences.lastFrameUrl] : []),
+      ...(resolvedReferences.relayFromVideoUrl ? [resolvedReferences.relayFromVideoUrl] : []),
+    ],
+  }
+  const hasLocalReference = hasLocalAssetReference(consentNode)
+  if (!(await requestAssetUploadConsent(consentNode))) {
+    throw new AssetUploadConsentCancelledError()
+  }
+
   // 队列登记：批量路径由 runGenerationNodesByPlan 预先整批登记（含后续波次），单发路径自建 1 节点批次。
   // markRunning 只把 queued 翻成 running（幂等），所以两条路都能安全调。
   const ownsBatch = !options.batchId
@@ -193,9 +225,11 @@ export async function runGenerationNode(
           nodes: state.nodes,
           edges: state.edges,
           ...(options.grantId ? { grantId: options.grantId } : {}),
+          ...(options.promptSuffix ? { promptSuffix: options.promptSuffix } : {}),
           // 提交幂等键 = 本次 run.id：重试循环内每次 attempt 复用同一个 run.id，
           // electron 侧台账据此认作「同一次意图提交」→ 重试绝不二次下单。新生成 = 新 run.id。
           idempotencyKey: run.id,
+          ...(hasLocalReference ? { anonymousAssetHostingConsent: 'allow' as const } : {}),
           // S2:catalog 任务各阶段回报 → 节点进度(人话已由 narrate 翻好)。
           onProgress: (progress) => {
             useGenerationCanvasStore.getState().setNodeProgress(id, {
@@ -244,6 +278,11 @@ export async function runGenerationNode(
       // 用户主动停的：不进刹车计数（模型没挂，是人喊停的）。
       useGenerationQueueStore.getState().markSettled(batchId, id, 'cancelled', { countsTowardBrake: false })
       throw isComfyuiTaskCancelledError(error) ? error : new ComfyuiTaskCancelledError()
+    }
+    if (error instanceof AssetUploadConsentCancelledError) {
+      useGenerationCanvasStore.getState().setNodeStatus(id, 'idle')
+      useGenerationQueueStore.getState().markSettled(batchId, id, 'cancelled', { countsTowardBrake: false })
+      throw error
     }
     // 可找回超时：上游可能仍在跑/已出片 → 落 recoverable（不进红色错误桶），给「重新拉取」入口。
     // taskId 已在 run 记录里持久化，recover 动作从节点重建续查（重启后也能拉）。
@@ -561,13 +600,9 @@ export function canRunGenerationNode(
     const meta = node.meta || {}
     const imageArchetype = resolveTaskArchetype(meta)
     const imageMode = imageArchetype ? currentArchetypeMode(imageArchetype, meta) : null
-    if (!imageMode || imageMode.transportTaskKind !== 'image_edit' || (imageMode.slots || []).length === 0) return true
+    if (!imageArchetype || !imageMode || imageMode.transportTaskKind !== 'image_edit' || (imageMode.slots || []).length === 0) return true
     const references = resolveGenerationReferences(node, context)
-    return Boolean(
-      references.referenceImages.length > 0 ||
-      references.firstFrameUrl ||
-      (imageArchetype && hasArchetypeArrayReferences(meta, imageArchetype)),
-    )
+    return hasAnyArchetypeReference(meta, imageArchetype, references)
   }
   // C5: 文本节点只要选了文本模型就能生成；prompt 缺失由 buildCatalogTaskRequest 兜底报错。
   if (executionKind === 'text') return true
@@ -579,25 +614,51 @@ export function canRunGenerationNode(
     const mode = audioArchetype ? currentArchetypeMode(audioArchetype, meta) : null
     const needsAudioRef = (mode?.slots || []).some((slot) => slot.kind === 'audio_ref')
     if (!needsAudioRef) return true
-    return Boolean(audioArchetype && hasArchetypeArrayReferences(meta, audioArchetype))
+    // 连线来源也算（今天没有音频源节点种类，SLOT_ACCEPTS.audio_ref=[]，故实际恒空）——口径与另两支一致，
+    // 将来加了音频节点不必再想起来补这一处。
+    const audioReferences = 'id' in node && node.id ? resolveGenerationReferences(node, context) : undefined
+    return Boolean(audioArchetype && hasAnyArchetypeReference(meta, audioArchetype, audioReferences))
   }
   if (executionKind !== 'video') return false
   if (!('id' in node) || !node.id) return false
   const meta = node.meta || {}
   const archetype = resolveTaskArchetype(meta)
+  // 无档案模型（ComfyUI 导入图 / 自定义接入）→ 放行。判据必须是**模型自己声明要什么**，不是
+  // 「用户手上现在有没有参考」——后者把因果反过来了。图/音两支早已收口成「无档案 = 放行，由 runtime
+  // 的诚实闸兜底拒发」（见上 image 分支注释），只有 video 这支漏了，于是**图定义的文生视频工作流**
+  // 被锁死：图里没有图输入、UI 也不显示参考框，按钮却非要一张参考才亮 → 用户只能连张图去喂它 →
+  // runtime 又以「没有『图生视频』通道」拒发 → 两头堵死，纯文生视频整类发不出去（2026-08-24 用户反馈：
+  // 「Comfyui 我配置的文生视频工作流，但是提交必须输入图片才能发出」）。
+  // 与 promptRequiredForNode 同一条思路：需不需要某种输入是模型的属性，这一层不猜。
+  if (!archetype) return true
   // 当前模式无参考槽 = 纯文生视频（t2v）→ 只要 prompt 即可生成，同 text/image 节点（prompt 缺失下游兜底）。
   // 不能因「video 一律要首帧」把 t2v 的生成按钮锁死——栽过：RunningHub Seedance 默认 text 模式（slots:[]）
   // 按钮被置灰、误提示"需要首帧"，用户根本点不了文生视频（2026-06-30 用户反馈）。apimart/kie Seedance 同病，
   // 只是用户多从图片边起步才没暴露。根因 = 此判定原本不分模式，一律要参考。
-  const mode = archetype ? currentArchetypeMode(archetype, meta) : null
-  if (mode && (mode.slots || []).length === 0) return true
-  // 有参考槽的模式（i2v/首尾帧/全能参考 omni）→ 需至少一个参考。omni 靠参考数组（referenceImageUrls 等），
-  // 单看 resolveGenerationReferences 看不到 → 补一条档案数组判断（否则已放参考的 omni 被误判不可生成）。
+  const mode = currentArchetypeMode(archetype, meta)
+  if ((mode.slots || []).length === 0) return true
+  // 有参考槽的模式（i2v/首尾帧/全能参考 omni/视频编辑）→ 需至少一个参考。判据统一交给
+  // hasAnyArchetypeReference：它遍历**本模式声明的槽**，每个槽同时看「画布边」和「meta 手动上传」，
+  // 与显示（resolveReferenceSlots）、发送（buildArchetypeInputParams）同一口径。
+  // 此前这里是一串就地展开的 OR，每加一种槽都得记得再补一条 → 漏了连线参考视频、尾帧接力、
+  // 源视频三处，用户明明连了线、缩略图也显示着，↑ 按钮却死着（2026-08-20 用户反馈 + 不变量测试）。
   const references = resolveGenerationReferences(node, context)
-  return Boolean(
-    references.firstFrameUrl ||
-    references.lastFrameUrl ||
-    references.referenceImages.length > 0 ||
-    (archetype && hasArchetypeArrayReferences(meta, archetype)),
-  )
+  if (!hasAnyArchetypeReference(meta, archetype, references)) return false
+  // 跨槽依赖（档案 slot.requiresAnyOf）：有参考 ≠ 组合合法。Seedance 2.0 的参考音频必须搭配图或视频
+  // （方舟「不支持"文本+音频"、"纯音频" 输入」/ APIMart "Must be used together with reference images
+  // or reference videos"），只放一段音频此前会被判可生成、发出去才被服务商拒。2.5 已解除，故按档案声明判、
+  // 不写死模型名。置灰文案取同一判定（unmetReferenceDependencyForNode），不让 composer 再猜一遍。
+  return !unmetReferenceDependencyForNode(node, context)
+}
+
+/**
+ * 该节点当前有没有「有值却缺伴随」的参考槽（档案 slot.requiresAnyOf）。
+ * `canRunGenerationNode` 用它决定能不能点，composer 用它决定置灰时说哪句人话 —— **同一个判定**。
+ */
+export function unmetReferenceDependencyForNode(
+  node: GenerationCanvasNode,
+  context: GenerationRunContext = {},
+): UnmetReferenceDependency | null {
+  const meta = node.meta || {}
+  return nodeUnmetReferenceDependency(meta, resolveTaskArchetype(meta), resolveGenerationReferences(node, context))
 }

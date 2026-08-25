@@ -108,6 +108,8 @@ export async function upsertWorkbenchModelCatalogModel(payload: {
   labelZh?: string
   kind?: BillingModelKind
   enabled?: boolean
+  /** Full model metadata. Omit to preserve the stored value. */
+  meta?: unknown
 }): Promise<ModelCatalogModelDto> {
   return requireDesktopRuntime('model catalog').modelCatalog.upsertModel(payload) as ModelCatalogModelDto
 }

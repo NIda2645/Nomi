@@ -71,6 +71,8 @@ export const skillStageSchema = z.object({
   dependsOn: z.array(z.string().min(1)).optional(),
   /** 完成后是否暂停让用户确认（缺省由编排器按 true 处理，对齐 Flova「何时暂停」）。 */
   pause: z.boolean().optional(),
+  /** 本阶段按需加载的创作方法论 skill 引用；只注入这些 skill，不把整包 craft skills 全量塞进上下文。 */
+  skillRefs: z.array(z.string().min(1)).optional(),
   /** 阶段级模型偏好（能力身份，见 skillStageModelPrefSchema）。 */
   modelPrefs: z.array(skillStageModelPrefSchema).optional(),
 });

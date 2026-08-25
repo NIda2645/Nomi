@@ -14,7 +14,7 @@ export type CanvasControlsHelpSection = {
   rows: CanvasControlsHelpRow[]
 }
 
-function platformModifier(platform: string): '⌘' | 'Ctrl' {
+export function platformModifier(platform: string): '⌘' | 'Ctrl' {
   return isMacCanvasPlatform(platform) ? '⌘' : 'Ctrl'
 }
 

@@ -14,6 +14,7 @@
 // 安全：隐藏窗口只加载**用户自己配置的那个 ComfyUI 地址**；不注入 preload、关 nodeIntegration、
 // 开 contextIsolation；只执行一段取图的脚本，不留驻、不导航别处。
 import { BrowserWindow } from "electron";
+import { normalizeComfyuiBaseUrl } from "./comfyui/endpointResolver";
 
 /** 前端就绪 + 转换的总超时（首次要下载 ComfyUI 前端资源，给足）。实测冷启 ~1.5s、热 ~0.4s。 */
 const CONVERT_TIMEOUT_MS = 45_000;
@@ -26,7 +27,7 @@ type Holder = { win: BrowserWindow; ready: Promise<boolean>; timer: NodeJS.Timeo
 const windowsByBase = new Map<string, Holder>();
 
 function normalizeBase(baseUrl: string): string {
-  return (baseUrl || "http://127.0.0.1:8188").replace(/\/+$/, "");
+  return normalizeComfyuiBaseUrl(baseUrl);
 }
 
 function scheduleIdleClose(base: string): void {

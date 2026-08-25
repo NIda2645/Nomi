@@ -5,14 +5,10 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 
 function makeRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-production-driver-'))
-}
-
-async function waitFor(check: () => boolean, timeoutMs = 500): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
 }
 
 describe('ProductionRunService driver round 1', () => {
@@ -39,12 +35,49 @@ describe('ProductionRunService driver round 1', () => {
     expect(fs.existsSync(path.join(root, '.nomi/runs/run-driver-1/brief-v1.json'))).toBe(true)
   })
 
+  // 这条覆盖的坑（2026-08-18）：整条流水线只实现了 brand.promo，别的 playbook 名字**静默降级**成一个
+  // stages/gates 全空、永远停在 draft 的坏 Run，而 nomi_start_playbook 还回「成功」。上面那条只走
+  // brand.promo，所以放跑了它。现在未登记的名字必须当场失败，且**一个字节都不落盘**——不是「建了再删」。
+  it('rejects an unimplemented playbook at draft time and persists nothing', () => {
+    const root = makeRoot()
+    const repository = createProductionRunRepository({ projectDirResolver: () => root })
+    const service = createProductionRunService({ repository, projectRootResolver: () => root })
+
+    expect(() => service.createDraft({
+      runId: 'run-unknown-playbook',
+      projectId: 'project-1',
+      playbook: { name: 'film.scene-recreation', version: '1.0.0' },
+      origin: { host: 'codex' },
+      brief: { goal: 'recreate a scene' },
+    })).toThrow(/film\.scene-recreation.*brand\.promo/s)
+
+    expect(fs.existsSync(path.join(root, '.nomi/runs/run-unknown-playbook'))).toBe(false)
+    expect(repository.list('project-1')).toHaveLength(0)
+    expect(repository.read('project-1', 'run-unknown-playbook')).toBeNull()
+  })
+
+  // 同一类 bug 的第二个入口：brand.promo 但没给 brief，原先也掉进空 stages 的 draft。
+  it('rejects a briefless draft instead of creating one that can never advance', () => {
+    const root = makeRoot()
+    const repository = createProductionRunRepository({ projectDirResolver: () => root })
+
+    expect(() => repository.create({
+      runId: 'run-no-brief',
+      projectId: 'project-1',
+      playbook: { name: 'brand.promo', version: '1.0.0' },
+      origin: { host: 'codex' },
+    })).toThrow(/brief/)
+
+    expect(repository.list('project-1')).toHaveLength(0)
+  })
+
   it('plans once after direction approval, persists skill evidence, and attaches a contract without paid work', async () => {
     const root = makeRoot()
     const repository = createProductionRunRepository({ projectDirResolver: () => root })
     const requestRenderer = async (op: string) => {
-      // B1：createDraft 会先异步拟方向候选（production.plan-directions）；分镜案仍走 plan-storyboard。
+      // B1：createDraft 会先异步拟方向候选；剧本审阅通过后才走 plan-storyboard。
       if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+      if (op === 'production.plan-script') return { text: 'Nomi promo script' }
       expect(op).toBe('production.plan-storyboard')
       return { text: '已完成分镜规划', plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
     }
@@ -62,7 +95,8 @@ describe('ProductionRunService driver round 1', () => {
       payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
     })
     expect(approved.run.status).toBe('running')
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await approveLatestScript(service, 'project-1', 'run-driver-2')
+    await approveLatestStoryboard(service, 'project-1', 'run-driver-2')
     const planned = service.readFull('project-1', 'run-driver-2')
     expect(planned.status).toBe('awaiting_storyboard_review')
     expect(planned.artifacts.map((item) => item.kind)).toEqual(expect.arrayContaining(['script', 'storyboard']))
@@ -120,6 +154,7 @@ describe('ProductionRunService driver round 1', () => {
     const requestRenderer = async (op: string) => {
       calls.push(op)
       if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+      if (op === 'production.plan-script') return { text: 'Nomi promo script' }
       if (op === 'production.plan-storyboard') return { plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
       if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
       if (op === 'production.arrange') return { arranged: 1, total: 1 }
@@ -141,7 +176,8 @@ describe('ProductionRunService driver round 1', () => {
       brief: { goal: 'Make a truthful Nomi product promo', durationSeconds: 60 },
     })
     await service.command('project-1', 'run-driver-3', { commandId: 'direction-3', expectedRevision: 0, type: 'gate.decide', payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
-    await waitFor(() => calls.includes('production.plan-storyboard'))
+    await approveLatestScript(service, 'project-1', 'run-driver-3')
+    await approveLatestStoryboard(service, 'project-1', 'run-driver-3')
     const planned = service.readFull('project-1', 'run-driver-3')
     const attached = await service.command('project-1', 'run-driver-3', {
       commandId: 'attach-3', expectedRevision: planned.revision, type: 'plan.attach',
@@ -175,6 +211,103 @@ describe('ProductionRunService driver round 1', () => {
     const completed = service.readFull('project-1', 'run-driver-3')
     expect(completed.status).toBe('completed')
     expect(completed.artifacts.find((item) => item.kind === 'export')?.projectRelativePath).toBe('exports/nomi-run-driver-3.mp4')
+  })
+
+  it('W2 冻结门：有未冻结视觉锚 → 合同批准后停在冻结门（零 provider 调用）；冻结批准后才提交镜头', async () => {
+    const root = makeRoot()
+    fs.mkdirSync(path.join(root, 'assets/generated'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'assets/generated/shot.mp4'), 'video', 'utf8')
+    fs.mkdirSync(path.join(root, 'exports'), { recursive: true })
+    const calls: string[] = []
+    // 冻结桥：合同批准前锚未冻结 → 回一个未冻结锚（driver 据此设冻结门）；冻结门放行后 hasApprovedFreezeGate
+    // 短路，不再调本桥（下面断言 check-frozen 恰 1 次）。
+    const requestRenderer = async (op: string) => {
+      calls.push(op)
+      if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+      if (op === 'production.plan-script') return { text: 'Nomi promo script' }
+      if (op === 'production.plan-storyboard') return { plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
+      if (op === 'production.check-frozen') return { unfrozenAnchors: [{ nodeId: 'anchor-hero', title: '林夏 · 定妆' }] }
+      if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
+      if (op === 'production.arrange') return { arranged: 1, total: 1 }
+      throw new Error(`unexpected renderer op: ${op}`)
+    }
+    const repository = createProductionRunRepository({ projectDirResolver: () => root })
+    const service = createProductionRunService({
+      repository,
+      projectRootResolver: () => root,
+      requestRenderer,
+      policyResolver: () => ({ trustedHosts: ['nomi', 'codex'], allowedProviders: ['local'], allowedModels: ['demo-video'], maxSpend: 10, maxAttemptsPerJob: 1 }),
+    })
+    service.createDraft({
+      runId: 'run-freeze', projectId: 'project-1', playbook: { name: 'brand.promo', version: '1.0.0' }, origin: { host: 'codex' },
+      brief: { goal: 'Make a truthful Nomi product promo', durationSeconds: 60 },
+    })
+    await service.command('project-1', 'run-freeze', { commandId: 'direction-f', expectedRevision: 0, type: 'gate.decide', payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
+    await approveLatestScript(service, 'project-1', 'run-freeze')
+    await approveLatestStoryboard(service, 'project-1', 'run-freeze')
+    const planned = service.readFull('project-1', 'run-freeze')
+    const attached = await service.command('project-1', 'run-freeze', {
+      commandId: 'attach-f', expectedRevision: planned.revision, type: 'plan.attach',
+      payload: { artifactId: planned.artifacts.find((item) => item.kind === 'storyboard')?.artifactId, bindings: [{ nodeId: 'shot-1', provider: 'local', model: 'demo-video', stageId: 'generate' }] }, issuedAt: new Date().toISOString(),
+    })
+    // 合同批准 → driveGeneration 触发；但有未冻结锚 → 停在冻结门，绝不提交（零 generate-node）。
+    await service.command('project-1', 'run-freeze', { commandId: 'contract-f', expectedRevision: attached.run.revision, type: 'gate.decide', payload: { gateId: 'gate-contract-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
+    await waitFor(() => service.readFull('project-1', 'run-freeze').gates.some((gate) => gate.gateId === 'gate-freeze-v1' && gate.status === 'waiting'))
+    const atFreeze = service.readFull('project-1', 'run-freeze')
+    const freezeGate = atFreeze.gates.find((gate) => gate.gateId === 'gate-freeze-v1')
+    expect(freezeGate?.scope).toBe('stage')
+    expect(freezeGate?.status).toBe('waiting')
+    expect(freezeGate?.jobIds).toEqual([]) // 不授权花钱、只呈现
+    expect(calls).not.toContain('production.generate-node') // 冻结门期间零 provider 调用
+    expect(atFreeze.budget.actual).toBe(0)
+    // 冻结确认走创意门 seam（视觉确认），批准 → 重踢 driver → 首镜提交。
+    await service.command('project-1', 'run-freeze', { commandId: 'freeze-f', expectedRevision: atFreeze.revision, type: 'gate.decide', payload: { gateId: 'gate-freeze-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
+    await waitFor(() => service.readFull('project-1', 'run-freeze').jobs.some((job) => job.status === 'adopted' || job.status === 'submitting'))
+    expect(calls).toContain('production.generate-node') // 冻结放行后才提交
+    // 冻结桥只在放行前问一次（放行后 hasApprovedFreezeGate 短路）。
+    expect(calls.filter((op) => op === 'production.check-frozen')).toHaveLength(1)
+  })
+
+  it('W2 冻结门：全部锚已冻结（桥回空）→ 不设冻结门，直接进首镜（回归：不平白拦住）', async () => {
+    const root = makeRoot()
+    fs.mkdirSync(path.join(root, 'assets/generated'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'assets/generated/shot.mp4'), 'video', 'utf8')
+    const calls: string[] = []
+    const requestRenderer = async (op: string) => {
+      calls.push(op)
+      if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
+      if (op === 'production.plan-script') return { text: 'Nomi promo script' }
+      if (op === 'production.plan-storyboard') return { plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
+      if (op === 'production.check-frozen') return { unfrozenAnchors: [] } // 全冻结
+      if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
+      if (op === 'production.arrange') return { arranged: 1, total: 1 }
+      throw new Error(`unexpected renderer op: ${op}`)
+    }
+    const repository = createProductionRunRepository({ projectDirResolver: () => root })
+    const service = createProductionRunService({
+      repository,
+      projectRootResolver: () => root,
+      requestRenderer,
+      policyResolver: () => ({ trustedHosts: ['nomi', 'codex'], allowedProviders: ['local'], allowedModels: ['demo-video'], maxSpend: 10, maxAttemptsPerJob: 1 }),
+    })
+    service.createDraft({
+      runId: 'run-frozen-ok', projectId: 'project-1', playbook: { name: 'brand.promo', version: '1.0.0' }, origin: { host: 'codex' },
+      brief: { goal: 'Make a truthful Nomi product promo', durationSeconds: 60 },
+    })
+    await service.command('project-1', 'run-frozen-ok', { commandId: 'direction-ok', expectedRevision: 0, type: 'gate.decide', payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
+    await approveLatestScript(service, 'project-1', 'run-frozen-ok')
+    await approveLatestStoryboard(service, 'project-1', 'run-frozen-ok')
+    const planned = service.readFull('project-1', 'run-frozen-ok')
+    const attached = await service.command('project-1', 'run-frozen-ok', {
+      commandId: 'attach-ok', expectedRevision: planned.revision, type: 'plan.attach',
+      payload: { artifactId: planned.artifacts.find((item) => item.kind === 'storyboard')?.artifactId, bindings: [{ nodeId: 'shot-1', provider: 'local', model: 'demo-video', stageId: 'generate' }] }, issuedAt: new Date().toISOString(),
+    })
+    await service.command('project-1', 'run-frozen-ok', { commandId: 'contract-ok', expectedRevision: attached.run.revision, type: 'gate.decide', payload: { gateId: 'gate-contract-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
+    // 全冻结 → 无冻结门、直接进首镜（会停在样片门，证明已越过冻结门）。
+    await waitFor(() => service.readFull('project-1', 'run-frozen-ok').gates.some((gate) => gate.gateId === 'gate-sample-v1' && gate.status === 'waiting'))
+    const state = service.readFull('project-1', 'run-frozen-ok')
+    expect(state.gates.some((gate) => gate.gateId === 'gate-freeze-v1')).toBe(false)
+    expect(calls).toContain('production.generate-node')
   })
 
   it('turns a submission in progress into submission_unknown after recovery instead of resubmitting', async () => {

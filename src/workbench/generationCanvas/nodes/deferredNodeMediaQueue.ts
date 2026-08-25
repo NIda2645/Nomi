@@ -10,6 +10,11 @@ import React from 'react'
 
 export type DeferredNodeMediaKind = 'image' | 'video'
 
+/** Metadata alone has no decoded frame; HAVE_CURRENT_DATA (2) is the first visually safe state. */
+export function isDeferredVideoFrameReady(readyState: number): boolean {
+  return Number.isFinite(readyState) && readyState >= 2
+}
+
 const DEFAULT_MEDIA_LIMITS: Record<DeferredNodeMediaKind, number> = {
   image: 4,
   video: 1,
@@ -23,8 +28,15 @@ type DeferredMediaQueueEntry = {
   activate: (release: () => void) => void
   activated: boolean
   cancelled: boolean
+  priority: boolean
+  onTimeout?: () => void
   release: (() => void) | null
   autoReleaseTimer: ReturnType<typeof setTimeout> | null
+}
+
+export type DeferredNodeMediaSlotRequest = {
+  cancel: () => void
+  setPriority: (priority: boolean) => void
 }
 
 let nextMediaQueueId = 1
@@ -37,6 +49,13 @@ function removeQueuedEntry(entry: DeferredMediaQueueEntry): void {
   const queue = mediaQueues[entry.kind]
   const index = queue.indexOf(entry)
   if (index >= 0) queue.splice(index, 1)
+}
+
+function sortDeferredMediaQueue(kind: DeferredNodeMediaKind): void {
+  mediaQueues[kind].sort((left, right) => {
+    if (left.priority !== right.priority) return left.priority ? -1 : 1
+    return left.id - right.id
+  })
 }
 
 function drainDeferredMediaQueue(kind: DeferredNodeMediaKind): void {
@@ -58,10 +77,18 @@ function drainDeferredMediaQueue(kind: DeferredNodeMediaKind): void {
       }
       activeMediaEntries.delete(entry)
       activeMediaCounts[kind] = Math.max(0, activeMediaCounts[kind] - 1)
+      entry.release = null
       drainDeferredMediaQueue(kind)
     }
     entry.release = release
-    entry.autoReleaseTimer = setTimeout(release, MEDIA_SLOT_AUTO_RELEASE_MS)
+    entry.autoReleaseTimer = setTimeout(() => {
+      if (entry.cancelled) return
+      try {
+        entry.onTimeout?.()
+      } finally {
+        release()
+      }
+    }, MEDIA_SLOT_AUTO_RELEASE_MS)
     entry.activate(release)
   }
 }
@@ -70,24 +97,34 @@ export function requestDeferredNodeMediaSlot(
   kind: DeferredNodeMediaKind,
   activate: (release: () => void) => void,
   priority = false,
-): () => void {
+  onTimeout?: () => void,
+): DeferredNodeMediaSlotRequest {
   const entry: DeferredMediaQueueEntry = {
     id: nextMediaQueueId,
     kind,
     activate,
     activated: false,
     cancelled: false,
+    priority,
+    onTimeout,
     release: null,
     autoReleaseTimer: null,
   }
   nextMediaQueueId += 1
-  if (priority) mediaQueues[kind].unshift(entry)
-  else mediaQueues[kind].push(entry)
+  mediaQueues[kind].push(entry)
+  sortDeferredMediaQueue(kind)
   drainDeferredMediaQueue(kind)
-  return () => {
-    entry.cancelled = true
-    if (!entry.activated) removeQueuedEntry(entry)
-    entry.release?.()
+  return {
+    cancel: () => {
+      entry.cancelled = true
+      if (!entry.activated) removeQueuedEntry(entry)
+      entry.release?.()
+    },
+    setPriority: (nextPriority) => {
+      if (entry.cancelled || entry.priority === nextPriority) return
+      entry.priority = nextPriority
+      if (!entry.activated) sortDeferredMediaQueue(kind)
+    },
   }
 }
 
@@ -112,9 +149,12 @@ export function scheduleAfterCanvasShellPaint(callback: () => void): () => void 
   const run = () => {
     if (cancelled) return
     if (typeof idleWindow.requestIdleCallback === 'function') {
-      idleHandle = idleWindow.requestIdleCallback(() => {
-        if (!cancelled) callback()
-      }, { timeout: 350 })
+      idleHandle = idleWindow.requestIdleCallback(
+        () => {
+          if (!cancelled) callback()
+        },
+        { timeout: 350 },
+      )
       return
     }
     fallbackTimer = setTimeout(() => {
@@ -143,22 +183,17 @@ type IntersectionObserverCapableWindow = Window & {
 
 export function observeDeferredNodeMediaVisibility(
   element: Element | null,
-  onVisible: () => void,
+  onVisibilityChange: (visible: boolean) => void,
 ): () => void {
   const win = typeof window === 'undefined' ? null : (window as IntersectionObserverCapableWindow)
   if (!element || !win?.IntersectionObserver) {
-    onVisible()
+    onVisibilityChange(true)
     return () => {}
   }
 
-  let done = false
   const observer = new win.IntersectionObserver(
     (entries) => {
-      if (done) return
-      if (!entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0)) return
-      done = true
-      observer.disconnect()
-      onVisible()
+      onVisibilityChange(entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0))
     },
     {
       root: null,
@@ -168,10 +203,11 @@ export function observeDeferredNodeMediaVisibility(
   )
   observer.observe(element)
   return () => {
-    done = true
     observer.disconnect()
   }
 }
+
+export type DeferredNodeMediaState = 'idle' | 'queued' | 'loading' | 'ready' | 'error' | 'timeout'
 
 export function useDeferredNodeMediaSrc({
   src,
@@ -182,19 +218,36 @@ export function useDeferredNodeMediaSrc({
   kind: DeferredNodeMediaKind
   priority?: boolean
 }): {
-  deferredSrc: string | null
+  activeSrc: string | null
+  readySrc: string | null
+  state: DeferredNodeMediaState
   loading: boolean
   placeholderRef: React.RefCallback<HTMLDivElement>
-  markLoaded: () => void
-  markFailed: () => void
+  loadKey: string
+  markLoaded: () => boolean
+  markFailed: () => boolean
+  retry: () => void
 } {
-  const [deferredSrc, setDeferredSrc] = React.useState<string | null>(null)
-  const [loadedSrc, setLoadedSrc] = React.useState<string | null>(null)
-  const [visibleSrc, setVisibleSrc] = React.useState<string | null>(null)
+  const [activeSrc, setActiveSrc] = React.useState<string | null>(null)
+  const [readySrc, setReadySrc] = React.useState<string | null>(null)
+  const [state, setState] = React.useState<DeferredNodeMediaState>('idle')
+  const [isVisible, setIsVisible] = React.useState(false)
+  const [retryToken, setRetryToken] = React.useState(0)
   const [placeholderElement, setPlaceholderElement] = React.useState<HTMLDivElement | null>(null)
   const releaseRef = React.useRef<(() => void) | null>(null)
+  const requestRef = React.useRef<DeferredNodeMediaSlotRequest | null>(null)
+  const stateRef = React.useRef<DeferredNodeMediaState>('idle')
+  const readySrcRef = React.useRef<string | null>(null)
+  const activeSrcRef = React.useRef<string | null>(null)
   const priorityRef = React.useRef(priority)
+  readySrcRef.current = readySrc
+  activeSrcRef.current = activeSrc
   priorityRef.current = priority
+
+  const transitionTo = React.useCallback((nextState: DeferredNodeMediaState) => {
+    stateRef.current = nextState
+    setState(nextState)
+  }, [])
 
   const releaseSlot = React.useCallback(() => {
     releaseRef.current?.()
@@ -203,25 +256,33 @@ export function useDeferredNodeMediaSrc({
 
   React.useEffect(() => {
     releaseSlot()
-    setDeferredSrc(null)
-    setLoadedSrc(null)
-    setVisibleSrc(null)
-    if (!src) return
-  }, [kind, releaseSlot, src])
+    requestRef.current?.cancel()
+    requestRef.current = null
+    setActiveSrc(readySrcRef.current === src ? (src ?? null) : null)
+    transitionTo(src && readySrcRef.current === src ? 'ready' : 'idle')
+  }, [kind, releaseSlot, src, transitionTo])
 
   React.useEffect(() => {
-    if (!src || loadedSrc === src || deferredSrc === src || visibleSrc === src) return undefined
-    if (!placeholderElement) return undefined
-    return observeDeferredNodeMediaVisibility(placeholderElement, () => setVisibleSrc(src))
-  }, [deferredSrc, loadedSrc, placeholderElement, src, visibleSrc])
+    if (!src || !placeholderElement) {
+      setIsVisible(false)
+      return undefined
+    }
+    return observeDeferredNodeMediaVisibility(placeholderElement, setIsVisible)
+  }, [placeholderElement, src])
 
   React.useEffect(() => {
-    if (!src || visibleSrc !== src) return undefined
+    requestRef.current?.setPriority(priority)
+  }, [priority])
+
+  React.useEffect(() => {
+    if (!src || !isVisible || readySrc === src) return undefined
+    if (stateRef.current === 'error' || stateRef.current === 'timeout') return undefined
     let cancelled = false
-    let cancelQueuedSlot: (() => void) | null = null
+    let queuedRequest: DeferredNodeMediaSlotRequest | null = null
+    transitionTo('queued')
     const cancelPaintWait = scheduleAfterCanvasShellPaint(() => {
       if (cancelled) return
-      cancelQueuedSlot = requestDeferredNodeMediaSlot(
+      queuedRequest = requestDeferredNodeMediaSlot(
         kind,
         (release) => {
           if (cancelled) {
@@ -229,40 +290,77 @@ export function useDeferredNodeMediaSrc({
             return
           }
           releaseRef.current = release
-          setDeferredSrc(src)
+          setActiveSrc(src)
+          transitionTo('loading')
         },
         priorityRef.current,
+        () => {
+          if (cancelled || activeSrcRef.current !== src) return
+          releaseRef.current = null
+          transitionTo('timeout')
+        },
       )
+      requestRef.current = queuedRequest
     })
 
     return () => {
       cancelled = true
       cancelPaintWait()
-      cancelQueuedSlot?.()
+      queuedRequest?.cancel()
+      if (requestRef.current === queuedRequest) requestRef.current = null
       releaseSlot()
     }
-  }, [kind, releaseSlot, src, visibleSrc])
+  }, [isVisible, kind, readySrc, releaseSlot, retryToken, src, transitionTo])
+
+  React.useEffect(() => {
+    if (isVisible || !src || readySrc === src) return
+    setActiveSrc(null)
+    if (stateRef.current === 'queued' || stateRef.current === 'loading') transitionTo('idle')
+  }, [isVisible, readySrc, src, transitionTo])
 
   const placeholderRef = React.useCallback((element: HTMLDivElement | null) => {
     setPlaceholderElement(element)
   }, [])
 
   const markLoaded = React.useCallback(() => {
-    setLoadedSrc(deferredSrc)
+    const loadedSrc = activeSrcRef.current
+    if (!loadedSrc || loadedSrc !== src || (stateRef.current !== 'loading' && stateRef.current !== 'timeout')) return false
+    setReadySrc(loadedSrc)
+    transitionTo('ready')
     releaseSlot()
-  }, [deferredSrc, releaseSlot])
+    return true
+  }, [releaseSlot, src, transitionTo])
 
   const markFailed = React.useCallback(() => {
-    setLoadedSrc(deferredSrc)
+    const failedSrc = activeSrcRef.current
+    if (!failedSrc || failedSrc !== src || (stateRef.current !== 'loading' && stateRef.current !== 'ready'))
+      return false
+    setActiveSrc(null)
+    if (readySrcRef.current === failedSrc) setReadySrc(null)
+    transitionTo('error')
     releaseSlot()
-  }, [deferredSrc, releaseSlot])
+    return true
+  }, [releaseSlot, src, transitionTo])
+
+  const retry = React.useCallback(() => {
+    requestRef.current?.cancel()
+    requestRef.current = null
+    releaseSlot()
+    setActiveSrc(null)
+    transitionTo('idle')
+    setRetryToken((current) => current + 1)
+  }, [releaseSlot, transitionTo])
 
   return {
-    deferredSrc,
-    loading: Boolean(src && loadedSrc !== src),
+    activeSrc,
+    readySrc,
+    state,
+    loading: Boolean(src && readySrc !== src && state !== 'error' && state !== 'timeout'),
     placeholderRef,
+    loadKey: `${src ?? ''}:${retryToken}`,
     markLoaded,
     markFailed,
+    retry,
   }
 }
 

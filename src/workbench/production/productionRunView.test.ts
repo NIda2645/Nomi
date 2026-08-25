@@ -74,8 +74,63 @@ describe('production run view', () => {
       primaryAction: null,
       controls: ['cancel'],
     })
-    expect(buildProductionRunView(run({ status: 'draft', jobs: [], stages: [] }), now).controls).toEqual([])
+    // draft 但阶段还在（历史 run）：没有可暂停的东西，也不催用户取消。
+    expect(buildProductionRunView(run({ status: 'draft', jobs: [] }), now).controls).toEqual([])
     expect(buildProductionRunView(run({ status: 'completed', jobs: [] }), now).controls).toEqual([])
+  })
+
+  // 2026-08-18 的坑：未实现的 playbook 曾静默建出 draft + 空 stages/gates 的坏 Run。它不会自己往前走，
+  // 卡片却挂着「查看当前阶段」——点了只切到一张空画布，还说「确认制作摘要后才会开始」（没有摘要可确认），
+  // 且不给取消。现在必须是诚实终态：说清楚推不动 + 只留取消这一个出口。
+  it('gives a stalled draft an honest dead-end and the cancel exit instead of a button that goes nowhere', () => {
+    const view = buildProductionRunView(run({ status: 'draft', jobs: [], stages: [], gates: [] }), now)
+
+    expect(view).toMatchObject({
+      tone: 'danger',
+      titleKey: 'production.status.stalledDraft',
+      descriptionKey: 'production.description.stalledDraft',
+      primaryAction: null,
+      controls: ['cancel'],
+    })
+  })
+
+  it('presents legacy terminal Runs as fully complete even if old stage bookkeeping was partial', () => {
+    const view = buildProductionRunView(run({
+      status: 'completed',
+      jobs: [],
+      stages: [
+        { stageId: 'direction', title: 'Direction', status: 'awaiting_gate', order: 1 },
+        { stageId: 'export', title: 'Export', status: 'completed', order: 2 },
+      ],
+    }), now)
+
+    expect(view.details).toMatchObject({ completedStages: 2, totalStages: 2 })
+    expect(view.details.stages.every((stage) => stage.status === 'completed')).toBe(true)
+  })
+
+  it('routes the script-first review pause to the script draft instead of pretending production is running', () => {
+    const value = run({
+      status: 'awaiting_script_review',
+      jobs: [],
+      artifacts: [{
+        artifactId: 'script-v1',
+        stageId: 'script',
+        kind: 'script',
+        status: 'candidate',
+        version: 1,
+        reviewStatus: 'waiting',
+        projectRelativePath: '.nomi/runs/run-1/script-v1.json',
+        createdAt: '2026-08-08T08:09:00.000Z',
+      }],
+    })
+
+    expect(buildProductionRunView(value, now)).toMatchObject({
+      tone: 'attention',
+      titleKey: 'production.status.scriptReady',
+      descriptionKey: 'production.description.scriptReady',
+      primaryAction: 'review-script',
+      targetId: 'script-v1',
+    })
   })
 
   it('prioritizes a pending contextual gate with one approval action', () => {
@@ -102,7 +157,7 @@ describe('production run view', () => {
   })
 
   it('N3 门类分文案：方向/样片门不再说「支出边界」，各说各的一句话', () => {
-    const gate = (gateId: string, scope: 'stage' | 'budget_envelope' | 'export') => ({
+    const gate = (gateId: string, scope: 'stage' | 'job_set' | 'budget_envelope' | 'export') => ({
       gateId, scope, status: 'waiting' as const, planHash: 'p', jobIds: [],
       title: 'gate', summary: 'summary',
       createdAt: '2026-08-08T08:00:00.000Z', expiresAt: '2026-08-08T09:00:00.000Z',
@@ -117,7 +172,19 @@ describe('production run view', () => {
     const sample = buildProductionRunView(run({ status: 'running', gates: [gate('gate-sample-v1', 'stage')] }), now)
     expect(sample).toMatchObject({ titleKey: 'production.status.sampleGate', gateKind: 'sample' })
     const contract = buildProductionRunView(run({ status: 'awaiting_contract', gates: [gate('gate-contract-v1', 'budget_envelope')] }), now)
-    expect(contract).toMatchObject({ titleKey: 'production.status.approvalRequired', gateKind: 'contract' })
+    expect(contract).toMatchObject({ titleKey: 'production.status.approvalRequired', gateKind: 'contract', decisionHome: 'nomi' })
+    const shot = buildProductionRunView(run({
+      status: 'running',
+      jobs: [{ ...run().jobs[0], nodeId: 'shot-1' }],
+      gates: [{ ...gate('gate-shot-v1-job', 'job_set'), jobIds: ['job-1'] }],
+    }), now)
+    expect(shot).toMatchObject({
+      titleKey: 'production.status.shotGate',
+      descriptionKey: 'production.description.shotGate',
+      gateKind: 'shot',
+      decisionHome: 'nomi',
+      gateJob: { index: 1, nodeId: 'shot-1', provider: 'tapcanvas', model: 'seedance' },
+    })
     // origin=nomi（用户自主发起，没有 CLI 可用）→ 门在 Nomi 是主路径
     const own = buildProductionRunView(run({ status: 'awaiting_direction', origin: { host: 'nomi' }, gates: [gate('gate-direction-v1', 'stage')] }), now)
     expect(own.decisionHome).toBe('nomi')

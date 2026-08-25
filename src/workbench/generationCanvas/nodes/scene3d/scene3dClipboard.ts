@@ -1,4 +1,4 @@
-import { createScene3DCameraId, createScene3DObjectId } from './scene3dSerializer'
+import { createScene3DCameraId, createScene3DObjectId } from './scene3dBindingIds'
 import type { Scene3DCamera, Scene3DObject, Scene3DVector3 } from './scene3dTypes'
 import { CLIPBOARD_PASTE_OFFSET } from './scene3dConstants'
 import { cameraLookAtRotation, clonePoseValue } from './scene3dMath'

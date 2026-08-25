@@ -62,12 +62,14 @@ describe('onboardingState', () => {
     })
   })
 
-  it('折叠态默认展开（false），写入后可读回', () => {
-    expect(readChecklistCollapsed()).toBe(false)
-    writeChecklistCollapsed(true)
+  it('折叠态默认收起（true），只有显式点开过（写 0）才读回展开', () => {
+    // 2026-08-25 走查 F4：清单默认收起——开屏就摊开的 fixed 覆盖层会盖住创作区右侧工作按钮。
+    // absent（首启）→ 收起；显式写 false（用户点开）→ 展开；写 true（用户收起）→ 收起。
     expect(readChecklistCollapsed()).toBe(true)
     writeChecklistCollapsed(false)
     expect(readChecklistCollapsed()).toBe(false)
+    writeChecklistCollapsed(true)
+    expect(readChecklistCollapsed()).toBe(true)
   })
 
   it('清单未关闭默认 false，标记后 true', () => {

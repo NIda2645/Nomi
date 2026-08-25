@@ -3,10 +3,11 @@
 > **怎么读这份文件（3 层，按访问频率分，每层只活一次，别重复 —— 这套分层本身是为了「文件再长注意力也不消散」）**：
 > - **L0 每轮** = `.claude/hooks/self-check.sh`（hook，每条消息自动注入「三闸 + 核心原则 + 近期坑」）——salience 层，本文件**不再复述它**。
 > - **L1 always 加载** = 本文件：项目事实 + 命令 + **P1–P5** + **D1–D5** + 规则索引。**每次 session 读完再动手。**保持精简（一屏左右）。
-> - **L2 触发才查** = `docs/engineering-rules.md`：R1–R15 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
+> - **L2 触发才查** = `docs/engineering-rules.md`：R1–R19 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
 >
 > **维护纪律（防它再胖回来 —— 治本）**：本文件是**策展的，不是 append 的**。新踩的坑/教训**默认进记忆**（`memory/`，按相关性召回）或 hook 的 `violations.log`，**不塞这里**；只有「反复出现 + 永远相关」的原则才提升进 L1、细节进 L2；每隔一阵压实一次。**加规则前先问「这条非得 always 加载吗」——不是，就别进 L1。**
 > 真相源仍单一：规则索引 + 各处指针指明每条住哪，不另立第二份。改触发清单同步 `self-check.sh`，规则细节只改 L2。注：`.claude/` 被 gitignore，hook 不随 git 走，换机/新 worktree 需手动复制 `.claude/hooks/` 与 settings.json 的 hooks 块。
+> **Codex 侧镜像 `AGENTS.md` 由 `scripts/gen-agents-md.mjs` 从 `CLAUDE.md` 生成，禁止手改**：改纪律只改 `CLAUDE.md`，再跑 `pnpm run gen:agents`；`check:agents-sync` 在 gates 链里拦漂移。（2026-08-25 加：此前两份手工维护，08-15 Codex 只写自己那份、08-20 我只写自己那份，双方都以为 R16 是末号，**双双取名 R17**，`engineering-rules.md` 一度两个 `## R17`，漂了 10 天。）
 
 ## 项目概览
 
@@ -14,7 +15,7 @@ Nomi：本地优先 AI 视频创作工作台。
 **技术栈**：Electron + React 18 + Tailwind 3 + Zustand + Vercel AI SDK。
 **主要模块**：项目库 → 创作（文本）→ 生成画布（节点系统）→ 时间轴预览 → 导出 MP4。
 **设计系统**：`Design.md` + `src/design/`，token-only，光/暗双模式（默认按本地时间「天黑自动暗」·手动切一次后记住·token 翻转），密度优先。
-**工作树**：`/Users/aoqimin/Desktop/Nomi/`，分支 `main`，直接在 main 上 commit + push。
+**主仓库**：`/Users/aoqimin/Desktop/Nomi/`。所有改动从最新 `origin/main` 创建独立任务分支/worktree，通过 PR 交付；禁止直接 push `main`。
 
 ## 常用命令
 
@@ -28,17 +29,19 @@ Nomi：本地优先 AI 视频创作工作台。
 | `pnpm run typecheck` | TypeScript 双向类型检查 |
 | `pnpm run check:filesize` | 巨壳文件门岗 |
 | `pnpm run check:tokens` | 设计 token 门岗（禁任意 px 字号/圆角、hex 色、默认色板；棘轮只减不增）|
+| `pnpm run check:heavy-path` | 重活门岗（同步图像编码 / base64 进 store / 尺寸双真相源；棘轮只减不增）|
 | `pnpm run check:i18n` | 可见文字国际化门岗（禁止新增硬编码 UI 文案；遗留基线只减不增）|
 | `pnpm run check:audit` | 审计节奏提醒（≥25 commit 提示） |
 | `npx skills experimental_install` | 从 `skills-lock.json` 还原 `.claude/skills/`（换机/协作者用） |
 
-**Push 前必须全过**：`check:filesize` → `check:tokens` → `check:i18n` → `lint:ci` → `typecheck` → `test` → `build`
+**Push 前必须全过**：`check:filesize` → `check:tokens` → `check:i18n` → `check:heavy-path` → `lint:ci` → `typecheck` → `test` → `build`
 
 ## 五条核心原则
 
 **P1 加新必删旧** — 引入新实现时同 commit 删旧实现，无并行版、无 fallback、无逃生口。CSS 同理：新样式只写组件 `className`，迁 Tailwind 即删旧 CSS；全局 CSS 只可减不可增。
 
-**P2 修根因不修症状** — 看到 bug 先分：症状 / 根因 / 这类 bug 的入口集。修在根因层，让整类不再复发，配结构保证（测试/不变量）。自检：「修完后这个问题还能从别的入口出现吗？」答不出"不能" = 没到根因。
+**P2 修根因不修症状 + 通用性判定** — 看到 bug 先分：症状 / 根因 / 这类 bug 的入口集。修在根因层，让整类不再复发，配结构保证（测试/不变量）。自检：「修完后这个问题还能从别的入口出现吗？」答不出"不能" = 没到根因。
+**修完必再问一层（2026-08-20 用户拍板）**：「这个病只在这个功能上，还是**别的功能也可能有**？」——是通用的就别只修这一处：① **全仓实扫**同类入口、给 file:line（扫，不猜）；② 能 grep 的做成**棘轮门岗**（`scripts/check-*.mjs` + baseline，只减不增），grep 不到的做成运行时断言或走查断言；③ 存量进基线慢慢清零，新增当场报红。理由：这类写法**当场看不出毛病**（小图跑得飞快、大图才冻死），靠自觉记不住，只能靠机器每次拦。已固化的一例：`check:heavy-path`（R17）。
 
 **P3 全绿 ≠ 完成** — CI 五门只证代码健康，证不了体验对不对。用户可见改动报完成前：① 和获批样张逐项并排对账；② 真体感走查（Playwright 截图人眼判断，不是 expect 断言）。缺一不算完成。**功能交付（尤其用户可见/体感）另过 R16：建几条「真实用户任务」端到端测试系统、带着真实任务跑通整个使用闭环、把过程中冒出的体验/设计/UI/UX/产品感/功能问题全修掉——才算真完成（2026-08-01 用户拍板：不留半成品）。**
 
@@ -78,6 +81,9 @@ Nomi：本地优先 AI 视频创作工作台。
 | R14 | 周期审计 | ≥25 commit 或发版前：多维 subagent 审计 + 走查 + `docs/audit` 文档 |
 | R15 | 可见文字国际化 | 所有用户可见文字必须走 i18n；默认 `zh-CN`，当前仅支持 `zh-CN` / `en`；门禁基线只减不增 |
 | R16 | 真实任务测试系统=完成的一部分 | 功能交付（尤其用户可见/体感）必建几条「真实用户任务」端到端测试、带真实任务跑通使用闭环（用 R13 走查法）、把过程中冒出的体验/设计/UI/UX/产品感/功能问题**全修掉**——才算真完成，不留半成品（R16 = P3 完成标准的量化门）|
+| R17 | 重活门岗（本地看不出、线上/CI 才炸的一族） | 这族写法做成棘轮：`check:heavy-path`，基线只减不增；**加规则必须先验它会红**（规则清单以脚本 `RULES` 为准，别在文档里数条数）|
+| R18 | 测试等待门岗 | 测试禁私有墙钟 waitFor / `Date.now()` 截止轮询（单跑绿、并行翻红一族）：`check:test-waits` 硬零；等编排链用 `waitForProduction` |
+| R19 | 解决状态必须可交付 | 侧分支只能称“已实现”；验证通过且提交已进入远端目标分支后才能称“已解决”（原 R17，2026-08-25 与「重活门岗」撞号后改号）|
 
 ## 决策自治
 
@@ -109,8 +115,8 @@ Nomi：本地优先 AI 视频创作工作台。
 
 ## 工作目录
 
-主工作树：`/Users/aoqimin/Desktop/Nomi/`，分支 `main`。操作文件用绝对路径；新建 worktree 放仓库目录**同级**（非嵌套）。
+主仓库：`/Users/aoqimin/Desktop/Nomi/`。操作文件用绝对路径；新建 worktree 放仓库目录**同级**（非嵌套），分支从最新 `origin/main` 创建。
 
-**并行纪律（这台机器常 20+ worktree 同时改 main：当前分支会被从底下切走、文件会被并行整份 clobber、commit 会被 force-push 顶掉）**：① 动任何 git **第一步 `git branch --show-current`**——别假设自己在 main（栽过：以为 main 实为并行切过去的 pr-27，commit 落错分支）；② 要把自己的活落 main，**别在被狂改的共享树上 commit/切分支/reset**——开一条独立 sibling worktree 钉 `origin/main`（`git worktree add --detach ../Nomi-x origin/main` → cherry-pick 自己的改动 → `ln -s` 复用主仓 node_modules 跑 `pnpm run gates` → `git push origin HEAD:main` → `git worktree remove`），五门只评自己的干净基线、不被别人的巨壳/半成品连坐；③ e2e/测试用的 window 桥等 hook 放**低争用子系统文件**，别放 store 根/热门入口（会被并行覆盖）。详见记忆 `parallel-session-on-main-hazard`。
+**并行纪律（这台机器常有 20+ worktree）**：① 动任何 git 第一步 `git branch --show-current`；② 不在共享主仓里切分支、commit 或解决任务冲突，使用独立 sibling worktree；③ push 前 fetch 最新 `origin/main` 并在任务分支上整合，完整门禁通过后只 push 任务分支并创建 PR；④ 不 force-push `main`，不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
 
 ---

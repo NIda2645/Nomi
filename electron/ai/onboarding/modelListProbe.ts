@@ -68,11 +68,21 @@ export async function fetchModelList(
   baseUrl: string,
   headers: Record<string, string>,
   signal: AbortSignal,
+  options: { query?: Record<string, string> } = {},
 ): Promise<ModelListResult> {
-  const candidates =
+  const rawCandidates =
     providerKind === "anthropic"
       ? [`${baseUrl}/v1/models`]
       : [`${baseUrl}/models`, `${baseUrl}/v1/models`];
+  const candidates = rawCandidates.map((candidate) => {
+    const query = options.query || {};
+    if (Object.keys(query).length === 0) return candidate;
+    const url = new URL(candidate);
+    for (const [key, value] of Object.entries(query)) {
+      if (key && value) url.searchParams.set(key, value);
+    }
+    return url.toString();
+  });
   let lastErr = "";
   let lastStatus: number | undefined;
   const statuses: number[] = [];

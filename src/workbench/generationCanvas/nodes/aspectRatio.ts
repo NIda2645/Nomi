@@ -28,9 +28,17 @@ const NAMED_RATIO_TO_WH: Readonly<Record<string, string>> = {
   landscape_21_9: "21:9",
 };
 
+// 「什么算 W:H」的单一真相。收在一处是因为解析与规范化必须同进同退——
+// 两边各写一份正则，迟早一边认得的值另一边不认（曾如此）。
+// 允许可选的说明后缀：ComfyUI 工作流的比例枚举常写成 "16:9 (宽屏)" / "4:3（标准）"，
+// 尾部锚死会把它整条判成非比例，卡片就不跟着改尺寸了。
+const ASPECT_RATIO_LABEL_RE = /\s*[（(][^）)]*[）)]$/;
+const ASPECT_RATIO_WH_RE = /^(\d+(?:\.\d+)?)\s*[:：]\s*(\d+(?:\.\d+)?)(?:\s*[（(][^）)]*[）)])?$/;
+
 /**
  * 把 "W:H" 比例字符串（或 named bucket）解析成数值宽高比（width / height）。
  * - "16:9" → 1.777…，"9:16" → 0.5625，"1:1" → 1
+ * - "16:9 (宽屏)" → 1.777…（带说明后缀的枚举标签同样认）
  * - named bucket（"square_hd" / "portrait_4_3" …）→ 对应 W:H 再解析
  * - 不认识的值（"adaptive" / "auto" / "2K" / "basic" / 空）→ null
  * 支持中文冒号「：」。
@@ -38,7 +46,7 @@ const NAMED_RATIO_TO_WH: Readonly<Record<string, string>> = {
 export function parseAspectRatioValue(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*[:：]\s*(\d+(?:\.\d+)?)$/);
+  const match = trimmed.match(ASPECT_RATIO_WH_RE);
   if (match) {
     const width = Number(match[1]);
     const height = Number(match[2]);
@@ -60,7 +68,9 @@ export function parseAspectRatioValue(value: unknown): number | null {
 export function normalizeAspectRatioToWH(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (/^(\d+(?:\.\d+)?)\s*[:：]\s*(\d+(?:\.\d+)?)$/.test(trimmed)) return trimmed;
+  // 带说明后缀的枚举（"16:9 (宽屏)"）只剥掉后缀；本就是裸 W:H 的原样返回，
+  // 连全角冒号也照原样留着——这里只负责去掉标签，不负责改写用户的字面量。
+  if (ASPECT_RATIO_WH_RE.test(trimmed)) return trimmed.replace(ASPECT_RATIO_LABEL_RE, "").trim();
   return NAMED_RATIO_TO_WH[trimmed] ?? null;
 }
 

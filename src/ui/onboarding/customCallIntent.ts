@@ -1,8 +1,8 @@
 /**
  * 「从报错卡跳进自定义调用编辑器」的一次性意图传递。
- * 报错卡先 set 再 dispatch `nomi-open-model-catalog`；面板宿主只负责打开抽屉，
+ * 报错卡先 set 再 dispatch `nomi-open-model-catalog`；设置控制器负责打开「模型」tab，
  * OnboardingDrawer 挂载/事件时 consume 并直接弹编辑器（无需展开对应卡——编辑器是全局弹窗）。
- * 用模块级单值而非事件 detail：抽屉可能在事件之后才挂载（首开竞态），单值可被晚到者消费。
+ * 用模块级单值而非事件 detail：模型页可能在事件之后才挂载（首开竞态），单值可被晚到者消费。
  */
 export type CustomCallIntent = { vendorKey: string; modelKey: string }
 

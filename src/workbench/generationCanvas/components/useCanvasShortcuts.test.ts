@@ -61,4 +61,12 @@ describe('画布快捷键的文本编辑边界', () => {
     expect(handler).toBeDefined()
     expect(handler?.indexOf('clearPasteFallback()')).toBeLessThan(handler?.indexOf('shouldIgnoreCanvasShortcut') ?? -1)
   })
+
+  it('已被节点或时间轴消费的按键不再进入画布命令', () => {
+    const source = readFileSync(fileURLToPath(new URL('./useCanvasShortcuts.ts', import.meta.url)), 'utf8')
+    const handler = source.match(/const handleKeyDown = \(event: KeyboardEvent\) => \{([\s\S]*?)\n {4}\}/)?.[1]
+
+    expect(handler).toBeDefined()
+    expect(handler?.indexOf('event.defaultPrevented')).toBeLessThan(handler?.indexOf('shouldIgnoreCanvasShortcut') ?? -1)
+  })
 })

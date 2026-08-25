@@ -1,7 +1,7 @@
 // 钉住启动器的核心不变量（替掉原 helpers/electronFixture.test.mjs，2026-08-11 收敛）。
 // 这条不变量就是本次修复的根因：漏掉这两个 env，窗口起不来且**毫无提示**，只会干等到超时。
 import { describe, expect, test } from 'vitest'
-import { buildNomiLaunchEnv } from './_launchApp.mjs'
+import { buildNomiLaunchEnv, withLinuxNoSandbox } from './_launchApp.mjs'
 
 const dirs = { userDataDir: '/tmp/case/user-data', settingsDir: '/tmp/case/settings', projectsDir: '/tmp/case/projects' }
 
@@ -32,5 +32,22 @@ describe('buildNomiLaunchEnv', () => {
     const env = buildNomiLaunchEnv({ ...dirs, baseEnv: { PATH: '/usr/bin' }, extraEnv: { NOMI_TEST_SYSTEM_LOCALE: '1' } })
     expect(env.NOMI_TEST_SYSTEM_LOCALE).toBe('1')
     expect(env.PATH).toBe('/usr/bin')
+  })
+})
+
+describe('withLinuxNoSandbox', () => {
+  test('Linux direct spawns disable the unavailable setuid sandbox once', () => {
+    expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'linux')).toEqual(['.', '--disable-gpu', '--no-sandbox', '--enable-unsafe-swiftshader'])
+    expect(withLinuxNoSandbox(['.', '--no-sandbox'], 'linux')).toEqual(['.', '--no-sandbox', '--enable-unsafe-swiftshader'])
+  })
+
+  test('Linux spawns opt in to SwiftShader WebGL exactly once (Chromium >=139 removed the fallback)', () => {
+    expect(withLinuxNoSandbox(['.', '--enable-unsafe-swiftshader'], 'linux'))
+      .toEqual(['.', '--enable-unsafe-swiftshader', '--no-sandbox'])
+  })
+
+  test('non-Linux spawns keep their original arguments', () => {
+    expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'darwin')).toEqual(['.', '--disable-gpu'])
+    expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'win32')).toEqual(['.', '--disable-gpu'])
   })
 })

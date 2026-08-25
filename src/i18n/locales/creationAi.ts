@@ -67,7 +67,6 @@ export const zhCreationAi = {
   planningShort: '正在拆镜头…',
   revisionComplete: '方案已按你的要求更新，见下方编辑器。',
   planComplete: '分镜方案已生成，见下方卡片——可打开编辑、修改后确认落画布。',
-  planFailed: '拆镜头失败：{{message}}',
   unknownError: '未知错误',
   writeScriptFirst: '先在左侧写一段剧本，再让 AI 按剧本定妆。',
   fixationStarted: '已切到生成区，正在让 AI 按剧本为角色/场景定妆。',
@@ -117,8 +116,11 @@ export const zhCreationAi = {
     descriptionBefore: '你接的是图片 / 视频生成模型，负责出画面。拆镜头、对话、写文案需要一个',
     textModel: '文本对话模型',
     descriptionAfter: '当大脑。',
+    // locked：文本模型接过、但本机读不出它的 Key（多见于换机/系统钥匙串身份变化）——不是没配，别叫用户再接一个。
+    lockedTitle: '文本模型的 API Key 读不出来了',
+    lockedDescription: '你接过文本模型，但本机现在解不开它保存的 Key（多见于换了机器或系统钥匙串变化）。去模型设置把这个 Key 重新粘贴一次即可。',
     enable: '启用 {{model}}',
-    settings: '去模型设置',
+    settings: '检查模型',
   },
   mode: {
     general: {
@@ -241,7 +243,6 @@ export const enCreationAi = {
   planningShort: 'Splitting into shots…',
   revisionComplete: 'The plan has been updated. Review it in the editor below.',
   planComplete: 'The storyboard plan is ready. Open the card below, edit it, then confirm to add it to the canvas.',
-  planFailed: 'Failed to split into shots: {{message}}',
   unknownError: 'Unknown error',
   writeScriptFirst: 'Write a script on the left before asking AI to create visual reference cards.',
   fixationStarted: 'Switched to Generation. AI is creating character and scene reference cards from the script.',
@@ -294,6 +295,9 @@ export const enCreationAi = {
       'Your image and video models create visuals. Splitting shots, chatting, and writing copy require a ',
     textModel: 'text conversation model',
     descriptionAfter: ' as the assistant’s brain.',
+    lockedTitle: 'Your text model’s API key can’t be read',
+    lockedDescription:
+      'You connected a text model, but this machine can’t decrypt its saved key (common after switching machines or a system keychain change). Open model setup and paste that key again.',
     enable: 'Enable {{model}}',
     settings: 'Open model setup',
   },

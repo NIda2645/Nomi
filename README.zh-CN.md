@@ -10,14 +10,14 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 
 项目、提示词和密钥都在你自己电脑上。不用注册，没有埋点。
 
-[English](README.md) · [官网](https://nomiaqm.com/) · [下载](https://github.com/aqm857886159/Nomi/releases/latest) · [夸克网盘镜像](https://pan.quark.cn/s/d3322c17e7b6) · [加入用户群](#用户群) · [团队合作](#团队服务) · [看 60 秒宣传片](https://nomiaqm.com/assets/demo.mp4)
+[English](README.md) · [官网](https://nomiaqm.com/) · [下载](#下载) · [夸克网盘镜像](https://pan.quark.cn/s/d3322c17e7b6) · [加入用户群](#用户群) · [团队合作](#团队服务) · [看 60 秒宣传片](https://nomiaqm.com/assets/demo.mp4)
 
 ## 微信联系
 
 ### 加入 Nomi 用户群
 
 <p align="center">
-  <a href="docs/media/nomi-canvas-group-wechat-2026-08-14.png"><img src="docs/media/nomi-canvas-group-wechat-2026-08-14.png" alt="Nomi 用户群微信二维码" width="220" /></a>
+  <a href="docs/media/nomi-canvas-group-wechat-2026-08-25.jpg"><img src="docs/media/nomi-canvas-group-wechat-2026-08-25.jpg" alt="Nomi 用户群微信二维码" width="220" /></a>
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
   群码失效，或沟通定制开发、系统集成、贴牌交付与持续迭代，请添加作者微信 <strong>TZ857886159</strong>。
 </p>
 
-[参与 GitHub 讨论](https://github.com/aqm857886159/Nomi/discussions) · [提交商务咨询](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml)
+[参与 GitHub Issues](https://github.com/aqm857886159/Nomi/issues) · [提交商务咨询](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml)
 
 [![最新版本](https://img.shields.io/github/v/release/aqm857886159/Nomi?label=release)](https://github.com/aqm857886159/Nomi/releases/latest)
 ![平台](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-1a1816)
@@ -48,7 +48,7 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 - **一个项目，不是十一个标签页**：故事、镜头、参考、生成结果和时间线在你自己盘上的同一个文件里，不用在多个工具之间反复搬运。
 - **第 4 个镜头和第 9 个镜头得是同一个人**：人物、场景、道具、机位和风格先锁一次，后面的镜头继承它，而不是重新赌一次提示词。
 - **自带全套**：内置约 10 家可直接用的供应商；任何 OpenAI 兼容 / Anthropic / Responses / 中转接口，粘贴地址和密钥就能加，不用重新编译。本机 ComfyUI 和云端模型一样是一个供应商：Nomi 会转换 ComfyUI 常规「保存」格式的工作流，你从网上下载的工作流能直接导入；并且会拿工作流和 `/object_info` 对账，在你按下运行之前就告诉你缺哪些自定义节点和模型文件。
-- **你的 AI 助手能真的操作它**：13 个 MCP 工具，让 Claude Code / Codex / Cursor 建项目、排镜头、连参考、跑生成并发起可恢复的完整制作。创作方向、付费生成、粗剪采用和导出都必须回到 Nomi 明确批准；审批由主进程强制执行，助手无法越权。
+- **你的 AI 助手能真的操作它**：15 个 MCP 工具，让 Claude Code / Codex / Cursor 建项目、排镜头、连参考、跑生成并发起可恢复的完整制作。创作方向、付费生成、粗剪采用和导出都必须回到 Nomi 明确批准；审批由主进程强制执行，助手无法越权。
 
 ## 下载
 
@@ -56,17 +56,31 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 |---|---|---|
 | macOS | Apple Silicon（M 系列） | [Nomi-mac-arm64.dmg](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg) |
 | macOS | Intel 芯片 | [Nomi-mac-intel.dmg](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg) |
-| Windows | Windows 10 / 11 | [Nomi-windows-setup.exe](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe) |
+| Windows | Windows 10 / 11 x64 | [Nomi-windows-setup.exe](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe) |
 
 🇨🇳 GitHub 打不开或下载慢：[夸克网盘镜像](https://pan.quark.cn/s/d3322c17e7b6)。最新版本以 [GitHub Releases](https://github.com/aqm857886159/Nomi/releases/latest) 和 [官网](https://nomiaqm.com/)为准。
 
-<details>
-<summary>第一次打开提示“未知开发者 / 已损坏”</summary>
+当前仅提供 macOS arm64/x64 与 Windows x64 安装包。
 
-- **macOS**：把 `Nomi.app` 拖进“应用程序”，在终端运行 `xattr -cr /Applications/Nomi.app`，然后重新打开。
-- **Windows**：SmartScreen 弹窗选择“更多信息”→“仍要运行”。
+### 在 macOS 上第一次打开
 
-</details>
+当前 macOS 安装包**未使用 Apple Developer ID 签名，也未经过 Apple 公证**，所以第一次打开时可能被系统拦截。请只使用上表直链、Nomi 官网或 Nomi GitHub 官方仓库提供的下载链接。
+
+1. 下载对应的 DMG，把 `Nomi.app` 拖进“应用程序”。
+2. 在 Finder 的“应用程序”中右键 `Nomi.app`，选择“打开”，再确认“打开”。
+3. 如果仍被拦截，打开“系统设置”→“隐私与安全”，找到 Nomi 的提示后点击“仍要打开”。
+
+仅当 macOS 提示 Nomi“已损坏”时，先确认安装包来自 Nomi 官方链接，再打开“终端”运行：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Nomi.app"
+```
+
+不需要、也不要全局关闭 Gatekeeper。升级时需下载对应 DMG 后手动替换 `/Applications/Nomi.app`。
+
+### 在 Windows 上第一次打开
+
+Windows 安装包未使用 Authenticode 签名。SmartScreen 弹窗选择“更多信息”→“仍要运行”。
 
 ## 三步开始
 
@@ -93,7 +107,7 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 
 欢迎加入“nomi 画布群”，反馈会直接进入产品迭代。
 
-群二维码已放在 README 首屏；也可以[打开群二维码原图](docs/media/nomi-canvas-group-wechat-2026-08-14.png)。二维码不可用时，添加作者微信 **TZ857886159** 拉你进群。
+群二维码已放在 README 首屏；也可以[打开群二维码原图](docs/media/nomi-canvas-group-wechat-2026-08-25.jpg)。二维码不可用时，添加作者微信 **TZ857886159** 拉你进群。
 
 ## 开发者
 

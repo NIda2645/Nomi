@@ -28,18 +28,12 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: File size guard (rule 12)
-        run: pnpm run check:filesize
-      - name: Marketing site
-        run: pnpm run check:site
-      - name: Lint (errors block; warnings ratcheted, only-decrease)
-        run: pnpm run lint:ci
-      - name: Typecheck (renderer + electron)
-        run: pnpm run typecheck
-      - name: Test
-        run: pnpm test
-      - name: Build
-        run: pnpm run build
+      - name: Repository gates
+        run: pnpm run gates
+      - name: Electron smoke journeys
+        run: xvfb-run -a pnpm run test:e2e
+      - name: Real user journey suite
+        run: xvfb-run -a pnpm run test:journeys
   mac-package:
     name: Mac Package
     runs-on: macos-latest

@@ -36,7 +36,10 @@ export default function CreationWorkspace(): JSX.Element {
         'pt-[22px] px-6 pb-6',
         'bg-workbench-bg',
         collapsed
-          ? 'grid max-w-[900px] mx-auto'
+          ? // 收起态：编辑器 1fr + 右侧「重开」pill 各占一格（in-flow），pill 有自己的列、
+            // 结构上不可能再压到编辑器。根治 3c2fe821 起 pill 用 absolute 浮在右上角、
+            // bf026cac 把撤销/重做移到右端后 pill 盖住按钮的重叠（editor 恒 1fr，不复发 #45 裁切）。
+            'grid grid-cols-[minmax(0,1fr)_auto] max-w-[1024px] mx-auto gap-5'
           : cn(
               'grid grid-cols-[minmax(0,1fr)_344px] max-w-[1264px] mx-auto gap-5',
               // 断点 1120→880（2026-08-07 飞书反馈「为什么变成上下了」）：1120 太宽，
@@ -93,7 +96,9 @@ export default function CreationWorkspace(): JSX.Element {
       {collapsed ? (
         <WorkbenchButton
           className={cn(
-            'absolute top-[22px] right-6 z-[20]',
+            // in-flow 占据右侧列、顶部对齐（mt-1 让 pill 竖直居中于 44px 工具栏带，
+            // 落在展开态面板头所在的位置）；不再 absolute，故不压编辑器。
+            'self-start mt-1',
             'inline-flex items-center gap-2 h-9 pl-[10px] pr-[14px]',
             'border border-nomi-line rounded-full bg-nomi-paper text-nomi-ink',
             'text-body-sm font-medium shadow-nomi-sm cursor-pointer',

@@ -6,6 +6,7 @@ import {
   type TimelineTextStyle,
   type TimelineTrack,
   type TimelineTrackType,
+  type TimelineTransition,
 } from './timelineTypes'
 import { resolveClipFraming, type ClipFraming } from './clipFraming'
 
@@ -87,6 +88,7 @@ function normalizeTextClip(input: unknown): TimelineTextClip | null {
   const endFrame = Math.max(startFrame + 1, toFiniteNonNegativeInteger(raw.endFrame, startFrame + 1))
   const clip: TimelineTextClip = {
     id,
+    ...(typeof raw.sourceNodeId === 'string' && raw.sourceNodeId.trim() ? { sourceNodeId: raw.sourceNodeId.trim() } : {}),
     text: typeof raw.text === 'string' ? raw.text : '',
     style,
     startFrame,
@@ -164,6 +166,20 @@ export function normalizeTimeline(input: unknown): TimelineState {
     })
     .sort((left, right) => left.startFrame - right.startFrame)
 
+  const transitions = (Array.isArray(raw.transitions) ? raw.transitions : [])
+    .map((value): TimelineTransition | null => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+      const record = value as Record<string, unknown>
+      const fromClipId = typeof record.fromClipId === 'string' ? record.fromClipId.trim() : ''
+      const toClipId = typeof record.toClipId === 'string' ? record.toClipId.trim() : ''
+      const type = record.type
+      if (!fromClipId || !toClipId || !['cut', 'dissolve', 'fade', 'match_cut', 'whip_pan'].includes(String(type))) return null
+      const rawDuration = record.durationFrames
+      const durationFrames = Number.isInteger(rawDuration) && Number(rawDuration) > 0 ? Number(rawDuration) : undefined
+      return { fromClipId, toClipId, type: type as TimelineTransition['type'], ...(durationFrames ? { durationFrames } : {}) }
+    })
+    .filter((value): value is TimelineTransition => Boolean(value))
+
   return {
     version: 1,
     fps: normalizeFps(raw.fps),
@@ -171,6 +187,7 @@ export function normalizeTimeline(input: unknown): TimelineState {
     playheadFrame: toFiniteNonNegativeInteger(raw.playheadFrame, 0),
     tracks,
     textClips,
+    ...(transitions.length ? { transitions } : {}),
   }
 }
 

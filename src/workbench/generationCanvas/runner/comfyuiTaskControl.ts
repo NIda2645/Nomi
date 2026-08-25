@@ -1,19 +1,14 @@
 // ComfyUI 任务的取消登记 + ws 进度 watch 帮手（P 轨 · 2026-08-01 拍板遮罩取消）。
-// 取消语义：① /interrupt + /queue delete（主进程 best-effort 双发）② 本地登记 nodeId → 轮询下一 tick
+// 取消语义：① 新服定向 jobs cancel，旧服只安全删除排队项 ② 本地登记 nodeId → 轮询下一 tick
 // 抛 ComfyuiTaskCancelledError（免费查询即刻停，不等 20min 硬超时）③ setNodeStatus(id,'idle') 走
 // 既有 cancelled 语义（canvasRunActions：最新 run 标 cancelled、节点回 idle，不进红色错误桶）。
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useComfyuiPreviewStore } from '../store/comfyuiPreviewStore'
+import { toast } from '../../../ui/toast'
+import i18n from '../../../i18n'
 
 const cancelRequested = new Set<string>()
-
-/** 渲染层侧的「这是不是一台 ComfyUI」判据——与主进程 catalog/types.isComfyuiVendor 同口径（前缀）。
- *  两端各一份是刻意的：渲染层不 import electron 侧模块；改一处必同步另一处（此注释即约定）。 */
-const COMFYUI_VENDOR_KEY = 'comfyui-local'
-export function isComfyuiVendorKey(vendorKey: string | null | undefined): boolean {
-  return typeof vendorKey === 'string' && (vendorKey === COMFYUI_VENDOR_KEY || vendorKey.startsWith(`${COMFYUI_VENDOR_KEY}-`))
-}
 
 export class ComfyuiTaskCancelledError extends Error {
   constructor() {
@@ -44,15 +39,20 @@ export function requestComfyuiCancel(node: {
   const promptId = (node.progress?.taskId || node.runs?.[0]?.taskId || '').trim()
   const tasks = getDesktopBridge()?.tasks
   if (promptId) {
-    void tasks?.comfyuiInterrupt?.(promptId).catch(() => undefined)
-    void tasks?.comfyuiUnwatch?.(promptId).catch(() => undefined)
+    void tasks?.comfyuiInterrupt?.(promptId)
+      .then((result) => {
+        if (result.mode === 'queue-only') toast(i18n.t('generationCommon.comfyuiCancel.queueOnly'), 'warning')
+        else if (!result.ok) toast(i18n.t('generationCommon.comfyuiCancel.failed'), 'warning')
+      })
+      .catch(() => toast(i18n.t('generationCommon.comfyuiCancel.failed'), 'warning'))
+      .finally(() => { void tasks?.comfyuiUnwatch?.(promptId).catch(() => undefined) })
   }
   useComfyuiPreviewStore.getState().clearPreview(node.id)
   useGenerationCanvasStore.getState().setNodeStatus(node.id, 'idle')
 }
 
 /** 提交拿到 prompt_id 后登记 ws 进度（fire-and-forget：桥不在/失败 = 没有进度，轮询照常兜底）。 */
-export function watchComfyuiProgress(payload: {
+export async function watchComfyuiProgress(payload: {
   promptId: string
   nodeId: string
   projectId?: string
@@ -60,8 +60,13 @@ export function watchComfyuiProgress(payload: {
   modelKey?: string | null
   /** 多实例：跑这个任务的那台 ComfyUI 的 vendorKey。 */
   vendorKey?: string
-}): void {
-  void getDesktopBridge()?.tasks?.comfyuiWatch?.(payload).catch(() => undefined)
+}): Promise<boolean> {
+  try {
+    const result = await getDesktopBridge()?.tasks?.comfyuiWatch?.(payload)
+    return Boolean(result?.ok)
+  } catch {
+    return false
+  }
 }
 
 export function unwatchComfyuiProgress(promptId: string): void {

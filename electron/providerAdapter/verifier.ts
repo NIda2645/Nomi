@@ -64,8 +64,28 @@ export type AdapterVerifierDependencies = {
     apiKey: string;
     prompt: string;
     imageUrl?: string;
+    signal?: AbortSignal;
   }) => Promise<{ text: string; finishReason?: string; reasoning?: string }>;
 };
+
+async function waitForPoll(
+  sleep: (ms: number) => Promise<void>,
+  ms: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!signal) return sleep(ms);
+  if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Verification cancelled");
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason instanceof Error ? signal.reason : new Error("Verification cancelled"));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    await Promise.race([sleep(ms), aborted]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
 
 const defaultReadFixture: LocalAssetReader = (url) =>
   url === REFERENCE_URL
@@ -135,7 +155,7 @@ function originOf(baseUrlHint: string | null | undefined): string | null {
 }
 
 export async function verifyAdapterMode(
-  input: { vendor: Vendor; model: Model; apiKey: string; mode: AdapterModeDraft },
+  input: { vendor: Vendor; model: Model; apiKey: string; mode: AdapterModeDraft; signal?: AbortSignal },
   dependencies: AdapterVerifierDependencies = {},
 ): Promise<AdapterVerificationResult> {
   const execute = dependencies.execute || executeProfileOperation;
@@ -148,7 +168,7 @@ export async function verifyAdapterMode(
       temperature: 0,
       maxTokens: TEXT_PROBE_MAX_TOKENS,
     },
-    { abortSignal: AbortSignal.timeout(45_000) },
+    { abortSignal: textInput.signal || AbortSignal.timeout(45_000) },
   ));
   const mapping = mappingFor(input.vendor, input.model, input.mode);
   const request = verificationRequest(input.model, input.mode);
@@ -168,6 +188,7 @@ export async function verifyAdapterMode(
         model: input.model,
         apiKey: input.apiKey,
         prompt,
+        signal: input.signal,
         ...(input.mode.taskKind === "image_to_prompt"
           ? { imageUrl: `data:image/png;base64,${REFERENCE_PNG.toString("base64")}` }
           : {}),
@@ -198,6 +219,7 @@ export async function verifyAdapterMode(
       request,
       operation: input.mode.create,
       localAssetReader: defaultReadFixture,
+      signal: input.signal,
     });
     requestSummary = executed.request;
     stage = "create";
@@ -219,7 +241,7 @@ export async function verifyAdapterMode(
       stage = "poll";
       const maxPolls = dependencies.maxPolls ?? 40;
       for (let attempt = 0; attempt < maxPolls && normalized.result.status !== "succeeded"; attempt += 1) {
-        if (attempt > 0) await sleep(dependencies.pollIntervalMs ?? 3_000);
+        if (attempt > 0) await waitForPoll(sleep, dependencies.pollIntervalMs ?? 3_000, input.signal);
         executed = await execute({
           vendor: input.vendor,
           model: input.model,
@@ -228,6 +250,7 @@ export async function verifyAdapterMode(
           operation: input.mode.query,
           providerMeta: normalized.providerMeta,
           localAssetReader: defaultReadFixture,
+          signal: input.signal,
         });
         requestSummary = executed.request;
         normalized = await normalize({
@@ -255,6 +278,7 @@ export async function verifyAdapterMode(
         timeoutMs: 20_000,
         maxBytes: input.model.kind === "video" ? 25 * 1024 * 1024 : 12 * 1024 * 1024,
         allowContentTypes: allowedContentTypes(input.model.kind),
+        signal: input.signal,
         // 自建/局域网端点产出的图片视频，URL 本身就在私网上（http://127.0.0.1:8080/asset/x.png）。
         // 不放行就必然卡在 verify_asset：「Refusing to fetch private/loopback host」→ 本地端点的
         // 图片/视频能力**永远无法通过验证**（真实走查跑出来的，见 tests/ux/local-gateway-onboarding.walk.mjs）。

@@ -10,11 +10,32 @@
 // 运行时；真正需要 electron 行为的测试各自注入自己的假实现。桩只需"存在且不抛"。
 // 真实 app 构建走 vite.config.ts，不受此 alias 影响。
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const globalScope = globalThis as { __nomiElectronStubRoot?: string };
+
+// 真 Electron 的 getPath() 永远返回绝对路径。测试桩按 worker 进程提供独立临时根，
+// 并在首次使用时清掉同 pid 的旧内容。缓存必须挂在 globalThis：Vitest 的模块隔离会
+// 重新求值本文件，模块级缓存会在同一轮测试中反复清目录，破坏别的测试刚写入的数据。
+function runtimeRoot(): string {
+  const existing = globalScope.__nomiElectronStubRoot;
+  if (existing) return existing;
+  const root = path.join(os.tmpdir(), `nomi-vitest-${process.pid}`);
+  fs.rmSync(root, { recursive: true, force: true });
+  globalScope.__nomiElectronStubRoot = root;
+  return root;
+}
+
 const noop = (): undefined => undefined;
 
 export const app = {
-  getPath: (_name?: string): string => "",
-  getAppPath: (): string => "",
+  // 真 Electron 的各 name（userData / temp / documents / downloads…）是不同目录，
+  // 这里同样分开，免得「项目默认目录」之类的东西被塞进 userData 里。
+  getPath: (name = "userData"): string => path.join(runtimeRoot(), name),
+  // 开发态下 getAppPath() 就是仓库根（既有各测试的自备 mock 也都这么写）。
+  getAppPath: (): string => process.cwd(),
   getName: (): string => "Nomi",
   getVersion: (): string => "0.0.0-test",
   on: noop,

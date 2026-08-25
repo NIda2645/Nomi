@@ -27,11 +27,12 @@ const argValue = (name) => {
   return index >= 0 ? args[index + 1] : undefined
 }
 const hasArg = (name) => args.includes(name)
+const captureScreenshots = hasArg('--screenshots')
 if (hasArg('--help') || hasArg('-h')) {
   console.log('用法：node tests/ux/canvas-performance-benchmark.e2e.mjs <label> [--scale L] [--runs 5]')
   console.log(`scale：${Object.keys(CANVAS_PERF_SCALES).join(' / ')}`)
   console.log(
-    'scenario：all / cold-open / blank-pan / node-drag-image / node-drag-video / marquee-select / click-select / wheel-zoom / pan-zoom-mix / resize / media-reveal / video-hover / reload-heavy',
+    'scenario：all / cold-open / blank-pan / node-drag-image / node-drag-video / marquee-select / click-select / wheel-zoom / pan-zoom-mix / resize / media-reveal / low-zoom-preview / media-error / video-hover / reload-heavy',
   )
   process.exit(0)
 }
@@ -61,6 +62,8 @@ const allScenarios = [
   'pan-zoom-mix',
   'resize',
   'media-reveal',
+  'low-zoom-preview',
+  'media-error',
   'video-hover',
   'reload-heavy',
 ]
@@ -242,12 +245,31 @@ async function pageSnapshot(page) {
     const images = Array.from(document.querySelectorAll('img'))
     const nodeElements = Array.from(document.querySelectorAll('.generation-canvas-v2-node'))
     const media = [...images, ...videos]
+    const stageRect = document.querySelector('.generation-canvas-v2__stage')?.getBoundingClientRect()
+    const visibleMediaStates = stageRect
+      ? Array.from(document.querySelectorAll('[data-node-media-state]'))
+          .filter((element) => {
+            const rect = element.getBoundingClientRect()
+            return (
+              rect.width > 2 &&
+              rect.height > 2 &&
+              rect.bottom > stageRect.top &&
+              rect.top < stageRect.bottom &&
+              rect.right > stageRect.left &&
+              rect.left < stageRect.right
+            )
+          })
+          .map((element) => element.getAttribute('data-node-media-state'))
+      : []
     const memory = performance.memory
     return {
       domNodes: document.querySelectorAll('*').length,
       canvasNodes: nodeElements.length,
       lightweightCanvasNodes: nodeElements.filter((node) => node.getAttribute('data-render-mode') === 'lightweight')
         .length,
+      lightweightPreviewNodes: nodeElements.filter(
+        (node) => node.getAttribute('data-render-mode') === 'lightweight' && node.querySelector('img[src],video[src]'),
+      ).length,
       imageElements: images.length,
       videoElements: videos.length,
       visibleMedia: media.filter((element) => {
@@ -263,6 +285,9 @@ async function pageSnapshot(page) {
       }).length,
       loadedImages: images.filter((image) => image.complete && image.naturalWidth > 0).length,
       loadedVideos: videos.filter((video) => video.readyState >= 1).length,
+      visibleMediaNodes: visibleMediaStates.length,
+      visibleMediaPending: visibleMediaStates.filter((state) => ['idle', 'queued', 'loading'].includes(state)).length,
+      visibleMediaFailures: visibleMediaStates.filter((state) => state === 'error' || state === 'timeout').length,
       activeVideos: videos.filter((video) => !video.paused && !video.ended).length,
       resourceCount: performance.getEntriesByType('resource').filter((entry) => entry.name.includes('/assets/')).length,
       jsHeapUsedMB: memory ? Math.round((memory.usedJSHeapSize / 1024 / 1024) * 10) / 10 : null,
@@ -274,6 +299,26 @@ async function pageSnapshot(page) {
       })(),
     }
   })
+}
+
+async function waitForVisibleMediaSettlement(page, { expectMedia = true, timeout = 30_000 } = {}) {
+  const deadline = Date.now() + timeout
+  let stableReads = 0
+  let previousTransform = ''
+  let snapshot = null
+  while (Date.now() < deadline) {
+    snapshot = await pageSnapshot(page)
+    const transform = JSON.stringify(snapshot.transform)
+    const mediaPresent = !expectMedia || snapshot.visibleMediaNodes > 0
+    if (mediaPresent && snapshot.visibleMediaPending === 0 && transform === previousTransform) stableReads += 1
+    else stableReads = 0
+    if (stableReads >= 3) return snapshot
+    previousTransform = transform
+    await sleep(page, 250)
+  }
+  throw new Error(
+    `当前视口媒体未稳定：visible=${snapshot?.visibleMediaNodes ?? 0}, pending=${snapshot?.visibleMediaPending ?? 0}`,
+  )
 }
 
 function diffMetrics(before, after) {
@@ -448,27 +493,18 @@ async function openProject(app, page, fixture) {
   const firstCanvasMs = Date.now() - startedAt
   const settleStartedAt = Date.now()
   await page.waitForFunction(
-    ({ nodeCount, imageCount, videoCount }) => {
+    ({ nodeCount }) => {
       const mountedNodes = document.querySelectorAll('.generation-canvas-v2-node').length
       const nodesReady = nodeCount === 0 || mountedNodes > 0
       const virtualizationReady = nodeCount <= 50 || mountedNodes < nodeCount
-      const loadedImages = Array.from(document.querySelectorAll('img')).filter(
-        (image) => image.complete && image.naturalWidth > 0,
-      ).length
-      const loadedVideos = Array.from(document.querySelectorAll('video')).filter(
-        (video) => video.readyState >= 1,
-      ).length
-      return (
-        nodesReady && virtualizationReady && (!imageCount || loadedImages >= 2) && (!videoCount || loadedVideos >= 2)
-      )
+      return nodesReady && virtualizationReady
     },
-    {
-      nodeCount: fixture.summary.nodes,
-      imageCount: fixture.summary.imageNodes,
-      videoCount: fixture.summary.videoNodes,
-    },
+    { nodeCount: fixture.summary.nodes },
     { timeout: 20_000 },
   )
+  await waitForVisibleMediaSettlement(page, {
+    expectMedia: fixture.summary.imageNodes + fixture.summary.videoNodes > 0,
+  })
   let stableReads = 0
   let previousKey = ''
   for (let attempt = 0; attempt < 20 && stableReads < 3; attempt += 1) {
@@ -489,16 +525,17 @@ async function openProject(app, page, fixture) {
 }
 
 async function prepareScenario(page, scenario) {
-  if (scenario !== 'marquee-select') return
+  if (scenario !== 'marquee-select' && scenario !== 'low-zoom-preview') return
   const stage = await page.locator('.generation-canvas-v2__stage').boundingBox()
   if (!stage) throw new Error('画布 stage 不存在')
   await page.mouse.move(stage.x + stage.width * 0.5, stage.y + stage.height * 0.5)
-  for (let index = 0; index < 12; index += 1) {
+  const targetZoom = scenario === 'low-zoom-preview' ? 0.45 : 0.72
+  for (let index = 0; index < 20; index += 1) {
     const zoom = await page.evaluate(
       () =>
         new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.generation-canvas-v2__canvas')).transform).a,
     )
-    if (zoom <= 0.72) break
+    if (zoom <= targetZoom) break
     await page.mouse.wheel(0, 100)
     await sleep(page, 60)
   }
@@ -745,7 +782,28 @@ async function runAction(page, scenario, fixture) {
       await sleep(page, 220)
       snapshots.push(await pageSnapshot(page))
     }
-    return { snapshots }
+    return {
+      snapshots,
+      settled: await waitForVisibleMediaSettlement(page, {
+        expectMedia: fixture.summary.imageNodes + fixture.summary.videoNodes > 0,
+      }),
+    }
+  }
+  if (scenario === 'low-zoom-preview') {
+    const settled = await waitForVisibleMediaSettlement(page, {
+      expectMedia: fixture.summary.imageNodes + fixture.summary.videoNodes > 0,
+    })
+    return { settled, zoom: settled.transform?.zoom ?? null }
+  }
+  if (scenario === 'media-error') {
+    const failure = page.locator('[data-node-media-failure="error"]').first()
+    await failure.waitFor({ timeout: 10_000 })
+    await failure.getByRole('button', { name: '重试' }).click()
+    await failure.waitFor({ timeout: 10_000 })
+    return {
+      explicitFailures: await page.locator('[data-node-media-failure="error"]').count(),
+      retryCompleted: true,
+    }
   }
   if (scenario === 'video-hover') {
     const nodes = page.locator('.generation-canvas-v2-node[data-kind="video"]')
@@ -778,6 +836,9 @@ async function runAction(page, scenario, fixture) {
         { nodeCount: fixture.summary.nodes },
         { timeout: 20_000 },
       )
+      await waitForVisibleMediaSettlement(page, {
+        expectMedia: fixture.summary.imageNodes + fixture.summary.videoNodes > 0,
+      })
       reloadDurationsMs.push(Date.now() - startedAt)
       await installProbe(page)
       await page.evaluate(() => window.__canvasPerformanceProbe.start())
@@ -808,6 +869,15 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
     projectId: `project-canvas-perf-${scale.toLowerCase()}-${scenario}-${runIndex}`,
     projectName: `ZZ Canvas 性能 ${scale} ${scenario} ${runIndex}`,
   })
+  if (scenario === 'media-error') {
+    const imageNode = fixture.record.payload.generationCanvas.nodes.find((node) => node.kind === 'image')
+    if (imageNode?.result) {
+      const missingUrl = `nomi-local://asset/${encodeURIComponent(fixture.record.id)}/assets/generated/canvas-performance/missing.png`
+      imageNode.result.url = missingUrl
+      imageNode.result.thumbnailUrl = missingUrl
+      fs.writeFileSync(path.join(fixture.projectRoot, '.nomi', 'project.json'), JSON.stringify(fixture.record, null, 1))
+    }
+  }
   let app = null
   let page = null
   const pageErrors = []
@@ -815,7 +885,8 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
   const attachDiagnostics = (candidate) => {
     candidate.on('pageerror', (error) => pageErrors.push(String(error)))
     candidate.on('console', (message) => {
-      if (message.type() === 'error') consoleErrors.push(message.text())
+      const expectedMissingFixture = scenario === 'media-error' && message.text().includes('404 (Not Found)')
+      if (message.type() === 'error' && !expectedMissingFixture) consoleErrors.push(message.text())
     })
   }
   const startedAt = Date.now()
@@ -857,6 +928,12 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
     await prepareScenario(page, scenario)
     if (scenario === 'marquee-select') await sleep(page, 500)
     const beforePage = await pageSnapshot(page)
+    if (captureScreenshots) {
+      fs.mkdirSync(path.join(outputDir, `canvas-${label}-shots`), { recursive: true })
+      await page.screenshot({
+        path: path.join(outputDir, `canvas-${label}-shots`, `${scale}-${scenario}-${runIndex}-before.png`),
+      })
+    }
     if (scenario === 'cold-open') {
       return {
         scale,
@@ -885,6 +962,11 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
       : combineProbeSummaries(actionDetails?.reloadProbes || [])
     const cdpAfter = await getCdpMetrics(cdp)
     const afterPage = await pageSnapshot(page)
+    if (captureScreenshots) {
+      await page.screenshot({
+        path: path.join(outputDir, `canvas-${label}-shots`, `${scale}-${scenario}-${runIndex}-after.png`),
+      })
+    }
     const nodeIdentity = probeSurvivesAction ? await readNodeIdentity(page, actionDetails?.nodeId) : null
     return {
       scale,
@@ -959,6 +1041,29 @@ function sampleHardFailures(sample) {
   if (sample.probe?.maxLoadingVideos > 1) failures.push(`video activation peak ${sample.probe.maxLoadingVideos} > 1`)
   if (sample.probe?.maxActiveVideos > 1)
     failures.push(`simultaneously playing videos ${sample.probe.maxActiveVideos} > 1`)
+  if (sample.scenario === 'media-error' && sample.actionDetails?.explicitFailures < 1)
+    failures.push('media failure did not remain explicit after retry')
+  if (sample.scenario === 'low-zoom-preview' && !sample.error && sample.fixture?.nodes > 80) {
+    const zoom = sample.actionDetails?.zoom
+    const lightweightNodeCount = sample.actionDetails?.settled?.lightweightCanvasNodes
+    const lightweightPreviewCount = sample.actionDetails?.settled?.lightweightPreviewNodes
+    if (!Number.isFinite(zoom) || zoom >= 0.55) {
+      failures.push(`low-zoom scenario settled above lightweight threshold: ${zoom ?? 'unknown'}`)
+    } else if (!Number.isFinite(lightweightNodeCount) || lightweightNodeCount < 1) {
+      failures.push('low-zoom scenario did not mount any lightweight nodes')
+    } else if (!Number.isFinite(lightweightPreviewCount) || lightweightPreviewCount < 1) {
+      failures.push('low-zoom lightweight nodes rendered without any media preview')
+    }
+  }
+  const settledSnapshots = [sample.cold?.settled, sample.actionDetails?.settled]
+    .filter(Boolean)
+    .concat(sample.scenario === 'reload-heavy' ? sample.actionDetails?.snapshots || [] : [])
+  for (const snapshot of settledSnapshots) {
+    if (snapshot.visibleMediaPending > 0) {
+      failures.push(`${snapshot.visibleMediaPending} visible media nodes never reached a visible terminal state`)
+      break
+    }
+  }
   return failures
 }
 
@@ -980,6 +1085,9 @@ function summarizeScenario(samples) {
     ['layoutDurationMs', (sample) => sample.cdpDelta?.LayoutDurationMs],
     ['jsHeapUsedMB', (sample) => sample.page?.jsHeapUsedMB],
     ['visibleMedia', (sample) => sample.page?.visibleMedia],
+    ['visibleMediaNodes', (sample) => sample.page?.visibleMediaNodes],
+    ['visibleMediaPending', (sample) => sample.page?.visibleMediaPending],
+    ['visibleMediaFailures', (sample) => sample.page?.visibleMediaFailures],
     ['loadedImages', (sample) => sample.page?.loadedImages],
     ['loadedVideos', (sample) => sample.page?.loadedVideos],
     ['activeVideos', (sample) => sample.page?.activeVideos],
@@ -1084,8 +1192,7 @@ try {
   )
   results.runtimeVersions = results.results.find((sample) => sample.runtimeVersions)?.runtimeVersions || null
   results.pass =
-    results.warmupFailures.length === 0 &&
-    Object.values(results.summary).every((summary) => summary.verdict.pass)
+    results.warmupFailures.length === 0 && Object.values(results.summary).every((summary) => summary.verdict.pass)
   const outputPath = writeResults(results, label)
   console.log(`\n✅ 画布性能 benchmark 完成：${outputPath}`)
   if (results.warmupFailures.length) console.log(`⚠ warmup 失败 ${results.warmupFailures.length} 次，结果标记为不可靠`)

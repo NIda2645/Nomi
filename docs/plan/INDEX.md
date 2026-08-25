@@ -35,6 +35,7 @@
 
 | 文件 | 一句话 | 状态 |
 |---|---|---|
+| [2026-08-13-video-deconstruction-storyboard-table.md](2026-08-13-video-deconstruction-storyboard-table.md) | **视频拆解→分镜表→复刻生成**（表格=节点组的视图，非新数据模型；含 gemini/whisper 实测契约） | 📋 |
 | [2026-06-06-composable-node-execution-plan.md](2026-06-06-composable-node-execution-plan.md) | **生成节点→「档案声明+通用原语组装」执行计划**（C0–C4 已落地） | ✅ |
 | [2026-06-06-composable-node-roadmap.md](2026-06-06-composable-node-roadmap.md) | 同上的路线图+现状盘点(带 file:line) | ✅ |
 | [2026-06-06-HANDOFF.md](2026-06-06-HANDOFF.md) | 生成节点「通用化」项目交接 | 📎 |
@@ -44,6 +45,7 @@
 | [2026-08-09-prompt-paste-node-duplication.md](2026-08-09-prompt-paste-node-duplication.md) | 外部提示词粘贴进编辑器时不再误触画布节点粘贴兜底 | ✅ |
 | [2026-08-09-windows-drag-floating-surfaces.md](2026-08-09-windows-drag-floating-surfaces.md) | Windows 顶部浮层避开自绘窗口栏与功能顶栏拖拽区 | ✅ |
 | [2026-08-09-batch-dock-terminal-dismiss.md](2026-08-09-batch-dock-terminal-dismiss.md) | 批量生成全部完成后隐藏“生成全部 0 个”底栏 | ✅ |
+| [2026-08-13-batch-dock-timeline-occlusion.md](2026-08-13-batch-dock-timeline-occlusion.md) | 批量生成底栏避让时间轴把手并支持按当前批次隐藏 | ✅ |
 | [2026-08-09-canvas-performance-benchmark.md](2026-08-09-canvas-performance-benchmark.md) | **画布性能基准**：大量图片/视频 + 高频微操作，统一采样交互、渲染、媒体和内存指标 | ✅ |
 | [2026-08-07-generation-canvas-gesture-semantics.md](2026-08-07-generation-canvas-gesture-semantics.md) | selection-first 手势 + 操作帮助面板（手势那半已被 08-08 推翻，帮助面板/纯模型仲裁保留）| ⛔ |
 | [2026-06-06-drop-and-wire-execution.md](2026-06-06-drop-and-wire-execution.md) | 拖入/连线→参考（drop-and-wire） | 🚧 |

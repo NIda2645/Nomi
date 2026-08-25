@@ -1,4 +1,4 @@
-import { isComfyuiVendorKey } from '../runner/comfyuiTaskControl'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { create } from 'zustand'
 import { mintSpendGrant } from '../../api/taskApi'
 import type { ProductionContractView } from './productionContractView'
@@ -13,6 +13,7 @@ export type SpendConfirmRequest = {
   title: string
   message: string
   confirmLabel?: string
+  cancelLabel?: string
   /** 轻确认（用户直发）：允许「本次会话不再提示」。agent 受理不传 = 每次必确认。 */
   light?: boolean
   /** 来源：'agent' = 外部 AI 助手（MCP）驱动，换机器人图标 + 副标。缺省按用户直发（金币图标）。 */
@@ -35,6 +36,16 @@ export type SpendConfirmRequest = {
   onDirectionDecision?: (choiceKey: string | null) => void
   /** Recovery for an incomplete contract policy. Closing through this action is not a rejection. */
   onOpenPolicySettings?: () => void
+  /**
+   * P4 S3a 多镜确认卡「先试拍第 1 镜」（T3 拍板）：点它 = 不确认、不铸 grant，把「试拍」信号沿确认链回传
+   * （沿用 onOpenPolicySettings 的「请求对象带回调」模式，不改 boolean 契约）。缩到首镜 + 重封存 + 重发 gate = S4。
+   */
+  onTrialFirst?: () => void
+  /**
+   * P4 S3a 多镜确认卡「返回修改」：卡是只读决策面，改内容的家只有计划编辑器（一功能一个家）。
+   * 点它 = 不确认、把「回去改」信号回传（S3a 边界：回传即可，跳转计划编辑器 = 后续切片）。
+   */
+  onBackToEdit?: () => void
   /** 明细行（节点 / 模型 / 预估），让用户一眼看懂谁要花钱、花在哪。 */
   details?: Array<{ label: string; value: string }>
   /**

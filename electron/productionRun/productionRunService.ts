@@ -17,25 +17,34 @@ import {
 } from './artifactProjection'
 import { buildProductionDeepLink } from './productionDeepLink'
 import { applyRunControl } from './productionRunControl'
-import { createDriverOps } from './productionRunDriverOps'
+import { createDriverOps, isShotGate } from './productionRunDriverOps'
 import { withEventTap } from './productionRunEventTap'
 import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
+import { assertStoryboardSourceFresh, createArtifactOperations } from './productionRunArtifactOperations'
+import { assertStoryboardSourceApproved } from './productionRunReducer'
+import { MEANINGFUL_EVENT_TYPES } from './productionRunMeaningfulEvents'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
 import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
+import { approvalReceiptForGate } from './productionRunApprovalReceipt'
+import type { ApprovalReceiptAuthority } from '../capabilityCore/approvalReceipt'
+import {
+  metadataProjection,
+  storyboardMetadata,
+} from './productionRunArtifactHelpers'
 import type {
   AutomationPolicy,
   CreateProductionRunInput,
-  ProductionArtifact,
+  ProductionGenerationPlan,
   ProductionRun,
   RunEvent,
   RunCommand,
 } from './productionRunTypes'
 
-type SafeProductionGate = Omit<ProductionRun['gates'][number], 'planHash' | 'jobIds' | 'contract'> & {
+type SafeProductionGate = Omit<ProductionRun['gates'][number], 'planHash' | 'contract'> & {
   contract?: ReturnType<typeof safeProductionContract>
 }
-type SafeProductionJob = Pick<ProductionRun['jobs'][number], 'jobId' | 'stageId' | 'status' | 'attempt' | 'progressPercent' | 'lastPollAt' | 'lastVendorStateChangeAt' | 'createdAt' | 'updatedAt' | 'errorCode'>
+type SafeProductionJob = Pick<ProductionRun['jobs'][number], 'jobId' | 'stageId' | 'status' | 'attempt' | 'provider' | 'model' | 'nodeId' | 'parentJobId' | 'retryCount' | 'retryReason' | 'progressPercent' | 'lastPollAt' | 'lastVendorStateChangeAt' | 'createdAt' | 'updatedAt' | 'errorCode'>
 export type ProductionRunProjection = {
   schemaVersion: number
   runId: string
@@ -63,6 +72,27 @@ export type ProductionEventProjection = Pick<RunEvent, 'schemaVersion' | 'eventI
 
 export type ProductionArtifactProjection = ArtifactProjection
 
+/**
+ * Renderer result for the external-agent storyboard materialization seam.
+ * The renderer owns the actual Zustand canvas mutation; the service only accepts
+ * the small, validated binding receipt needed to attach the production contract.
+ */
+export type MaterializeStoryboardResult = ProductionRunProjection & {
+  materialized: true
+  artifactId: string
+  artifactVersion: number
+  createdNodeIds: string[]
+  connectedCount?: number
+  /** Stable canvas node bindings copied into production jobs. */
+  bindings: Array<{
+    nodeId: string
+    provider: string
+    model: string
+    stageId: string
+    metadata?: Record<string, unknown>
+  }>
+}
+
 type ServiceDeps = {
   repository?: ProductionRunRepository
   sleep?: (delayMs: number) => Promise<void>
@@ -77,49 +107,16 @@ type ServiceDeps = {
   }>
   /** A5：每批持久化事件的旁路监听（系统通知等）。异常被吞，绝不影响制作主流程。 */
   onEvents?: (events: RunEvent[], run: ProductionRun) => void
+  /** Optional main-process receipt owner. When supplied, gate.decide must verify and consume a receipt. */
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
+  /** Current project document revision, resolved by the project owner rather than the command body. */
+  projectRevisionResolver?: (projectId: string) => number | undefined
 }
-
-const MEANINGFUL_EVENT_TYPES = new Set([
-  'run.created',
-  'run.status.changed',
-  'run.stage.changed',
-  'stage.updated',
-  'gate.waiting',
-  'gate.candidates',
-  'gate.decided',
-  'artifact.ready',
-  'artifact.adopted',
-  'job.ready',
-  'job.adopted',
-  'job.submission_unknown',
-  'job.needs_attention',
-  'job.vendor_state_stale',
-  'skill.loaded',
-  'skill.applied',
-  'plan.proposed',
-  'plan.attached',
-])
 
 function identifier(value: string, label: string): string {
   const normalized = String(value || '').trim()
   if (!/^[A-Za-z0-9._-]{1,160}$/.test(normalized) || normalized === '.' || normalized === '..') throw new Error(`Invalid ${label} id`)
   return normalized
-}
-
-function metadataProjection(run: ProductionRun, artifact: ProductionArtifact): Omit<ArtifactProjection, 'preview'> {
-  return {
-    artifactId: artifact.artifactId,
-    runId: run.runId,
-    projectId: run.projectId,
-    stageId: artifact.stageId,
-    ...(artifact.jobId ? { jobId: artifact.jobId } : {}),
-    kind: artifact.kind,
-    status: artifact.status,
-    createdAt: artifact.createdAt,
-    ...(artifact.adoptedAt ? { adoptedAt: artifact.adoptedAt } : {}),
-    nomiUri: `nomi://project/${encodeURIComponent(run.projectId)}/run/${encodeURIComponent(run.runId)}/artifact/${encodeURIComponent(artifact.artifactId)}`,
-    openInNomi: buildProductionDeepLink(run.projectId, run.runId, artifact.artifactId),
-  }
 }
 
 function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'artifacts' | 'openInNomi'> {
@@ -141,9 +138,12 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
       stageId: stage.stageId, title: safeExternalText(stage.title), status: stage.status, order: stage.order,
       ...(stage.startedAt ? { startedAt: stage.startedAt } : {}),
       ...(stage.completedAt ? { completedAt: stage.completedAt } : {}),
+      // W1.5：审片摘要透出（仅 qa 阶段有，文本经 sanitizer）。
+      ...(stage.qaSummary ? { qaSummary: safeExternalText(stage.qaSummary) } : {}),
     })),
     gates: run.gates.map((gate) => ({
       gateId: gate.gateId, scope: gate.scope, status: gate.status, title: safeExternalText(gate.title), summary: safeExternalText(gate.summary),
+      jobIds: [...gate.jobIds],
       createdAt: gate.createdAt, expiresAt: gate.expiresAt, ...(gate.decidedAt ? { decidedAt: gate.decidedAt } : {}),
       ...(gate.contract ? { contract: safeProductionContract(gate.contract) } : {}),
       // B1：方向候选透出（文本经 sanitizer）；决议后回填的 choiceKey 供转述/审计。
@@ -152,7 +152,12 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
     })),
     jobs: run.jobs.map((job) => ({
       jobId: job.jobId, stageId: job.stageId, status: job.status, attempt: job.attempt,
+      provider: job.provider, model: job.model, ...(job.nodeId ? { nodeId: job.nodeId } : {}),
+      ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}),
+      ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
+      ...(job.retryReason ? { retryReason: safeExternalText(job.retryReason) } : {}),
       ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
+      ...(job.providerStatus ? { providerStatus: safeExternalText(job.providerStatus) } : {}),
       ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
       ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
       ...(job.errorCode ? { errorCode: job.errorCode } : {}),
@@ -265,16 +270,27 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       runId: input.runId ? identifier(input.runId, 'run') : undefined,
       policy: { ...policyResolver(), ...(input.policy || {}) },
     })
-    if (!['draft', 'awaiting_direction'].includes(run.status) || run.jobs.length > 0 || (run.status === 'draft' && run.gates.length > 0) || run.budget.authorized !== 0) {
+    // create 只可能产出「等方向 + 至少一道门 + 零任务零预算」的草稿：未登记的 playbook / 缺 brief
+    // 在 repository 层就抛错（productionPlaybooks.ts），draft 已不可达，这里不再给它留口子。
+    if (run.status !== 'awaiting_direction' || run.gates.length === 0 || run.jobs.length > 0 || run.budget.authorized !== 0) {
       throw new Error('Production draft invariant failed')
     }
-    if (run.status === 'awaiting_direction') {
-      // B3：budget_only（「别问了直接出」）→ 自动批准创意方向门（留痕），不拟候选、不打扰。
-      // 其余档位 → 异步拟方向候选（GUI 有 LLM 才成；关着则保持兜底 gate）。均不阻塞返回。
-      if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
-      else void proposeDirections(run)
-    }
+    // B3：budget_only（「别问了直接出」）→ 自动批准创意方向门（留痕），不拟候选、不打扰。
+    // 其余档位 → 异步拟方向候选（GUI 有 LLM 才成；关着则保持兜底 gate）。均不阻塞返回。
+    if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
+    else void proposeDirections(run)
     return runProjection(run, projectRootResolver, previewSecret)
+  }
+
+  function createGenerationDraft(input: {
+    operationId: string
+    projectId: string
+    origin: { host: string; actorId?: string }
+    candidate: ProductionGenerationPlan['candidate']
+    currency?: string
+    policy?: Partial<AutomationPolicy>
+  }): ProductionRun {
+    return repository.createGenerationDraft(input)
   }
 
   function writeProjectJson(projectId: string, relativePath: string, value: unknown): void {
@@ -321,7 +337,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       try { stat = fs.statSync(target) } catch { throw new Error('导出文件不存在') }
       if (!stat.isFile()) throw new Error('导出结果不是文件')
     }
-    return relativePath.replaceAll('\\', '/')
+    return relativePath.replace(/\\/g, '/')
   }
 
   function stageValue(run: ProductionRun, stageId: string, patch: Record<string, unknown>): Record<string, unknown> {
@@ -332,7 +348,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
 
   // B0：driver 编排（拟分镜 / 生成 / 导出 / 对账）抽到 productionRunDriverOps.ts，行为零变化。
   // service 保留其依赖的路径工具 + in-flight 去重集，经参数注入，仍可单测（R9 ≤800）。
-  const { proposeDirections, proposeStoryboard, driveGeneration, driveExport, driveReconciliation } = createDriverOps({
+  const { proposeDirections, proposeScript, proposeStoryboard, driveGeneration, driveExport, driveReconciliation } = createDriverOps({
     repository,
     sleep,
     requireRun,
@@ -395,7 +411,10 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         payload: { policy: { ...current.policy, trustLevel } },
       })
       if (trustLevel === 'budget_only') {
-        const waitingCreativeGate = result.run.gates.find((gate) => gate.status === 'waiting' && gate.scope === 'stage' && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-')))
+        const waitingCreativeGate = result.run.gates.find((gate) => gate.status === 'waiting' && (
+          gate.scope === 'stage' && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-'))
+          || isShotGate(gate)
+        ))
         if (waitingCreativeGate) void autoApproveGate(safeProjectId, safeRunId, waitingCreativeGate.gateId)
       }
       return result
@@ -406,11 +425,29 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       if (runCommand.payload.action === 'resume' && controlled.run.status === 'running') void driveGeneration(controlled.run) // 恢复必须重踢 driver：只回状态不回工作=假 resume
       return controlled
     }
+    if (runCommand.type === 'script.review' || runCommand.type === 'artifact.review') {
+      const current = requireRun(safeProjectId, safeRunId)
+      const artifactId = typeof runCommand.payload.artifactId === 'string' ? runCommand.payload.artifactId.trim() : ''
+      const artifact = current.artifacts.find((candidate) => candidate.artifactId === artifactId)
+      if (!artifact || !['script', 'storyboard'].includes(artifact.kind)) throw new Error('Production artifact is not ready to review')
+      const decision = runCommand.payload.decision ?? runCommand.payload.status
+      if (!['approved', 'changes_requested', 'rejected'].includes(String(decision))) throw new Error('Invalid script review decision')
+      const result = repository.execute(safeProjectId, safeRunId, {
+        ...runCommand,
+        type: 'script.review',
+        payload: { ...runCommand.payload, artifactId, decision },
+      })
+      if (decision === 'approved' && artifact.kind === 'script') void proposeStoryboard(result.run)
+      return result
+    }
     if (runCommand.type === 'plan.attach') {
       const current = requireRun(safeProjectId, safeRunId)
       const artifactId = typeof runCommand.payload.artifactId === 'string' ? runCommand.payload.artifactId : ''
       const artifact = current.artifacts.find((item) => item.artifactId === artifactId && item.kind === 'storyboard')
       if (!artifact) throw new Error('Storyboard artifact is not ready to attach')
+      if (artifact.status !== 'adopted' || (artifact.reviewStatus !== undefined && artifact.reviewStatus !== 'approved')) throw new Error('Approved storyboard artifact required before attach')
+      assertStoryboardSourceApproved(current, artifact.artifactId)
+      const source = assertStoryboardSourceFresh(projectRootResolver, current, artifact, runCommand.payload)
       const bindings = Array.isArray(runCommand.payload.bindings) ? runCommand.payload.bindings : []
       const jobs = bindings.map((value, index) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid storyboard binding ${index}`)
@@ -420,6 +457,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         const model = typeof binding.model === 'string' ? binding.model.trim() : ''
         const stageId = typeof binding.stageId === 'string' && binding.stageId.trim() ? binding.stageId.trim() : 'generate'
         if (!nodeId || !provider || !model) throw new Error('Every production shot must have a provider and model before approval')
+        const metadata = storyboardMetadata(binding.metadata ?? binding)
         return {
           jobId: `job:${safeRunId}:${nodeId}`,
           stageId,
@@ -429,6 +467,10 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           model,
           idempotencyKey: `production:${safeRunId}:${nodeId}`,
           nodeId,
+          ...(source.artifactId ? { sourceScriptArtifactId: source.artifactId } : {}),
+          ...(source.version ? { sourceScriptVersion: source.version } : {}),
+          ...(source.hash ? { sourceScriptHash: source.hash } : {}),
+          ...(metadata ? { metadata } : {}),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
@@ -442,11 +484,14 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         jobIds: jobs.map((job) => job.jobId),
         title: 'Approve production contract and budget',
         summary: 'Review shots, models, and the hard spend limit before Nomi submits any paid generation.',
+        artifactId,
+        artifactVersion: artifact.version || 1,
         contract: {
           specs: { durationSeconds: current.brief?.durationSeconds, shotCount: jobs.length },
           claims: (current.brief?.sellingPoints || []).map((text, index) => ({ text, evidenceIds: [`brief-${index + 1}`] })),
           evidence: (current.brief?.sellingPoints || []).map((label, index) => ({ evidenceId: `brief-${index + 1}`, label })),
-          skills: [{ name: 'brand.promo', version: current.playbook.version }],
+          // 取**本 run 的** playbook 名（W4：此前硬编码 'brand.promo'——换任何 playbook 都会在合同里谎报技能名）。
+          skills: [{ name: current.playbook.name, version: current.playbook.version }],
           ...(maxSpend !== null ? { estimatedCost: { currency: current.budget.currency, minimum: 0, maximum: maxSpend } } : {}),
         },
         createdAt: new Date().toISOString(),
@@ -470,6 +515,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         return { run: current, events: [] }
       }
     }
+    const gateReceipt = approvalReceiptForGate(
+      deps.approvalReceiptAuthority,
+      safeProjectId,
+      safeRunId,
+      runCommand,
+      deps.projectRevisionResolver,
+    )
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved') {
       const current = requireRun(safeProjectId, safeRunId)
       const gateId = typeof runCommand.payload.gateId === 'string' ? runCommand.payload.gateId.trim() : ''
@@ -485,11 +537,35 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       }
     }
     const result = repository.execute(safeProjectId, safeRunId, runCommand)
+    if (gateReceipt && deps.approvalReceiptAuthority) {
+      // The Run event is durable before receipt consumption. A crash can only leave
+      // a replayable receipt against an already-decided gate; it cannot reopen it.
+      deps.approvalReceiptAuthority.consumeReceipt(gateReceipt.token)
+    }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === 'gate-direction-v1') {
-      void proposeStoryboard(result.run)
+      void proposeScript(result.run)
     }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === `gate-contract-v${result.run.planVersion}`) {
       void driveGeneration(result.run)
+    }
+    // W2 冻结门：批准（真人视觉确认了角色/场景卡）→ 续跑 driver（此时 hasApprovedFreezeGate 为真 → 不再拦，进
+    // 首镜提交）；否决 → 暂停 run，让用户回去改/冻结卡后再继续（与样片门否决同形，不作废任何已生成物）。
+    if (runCommand.type === 'gate.decide' && runCommand.payload.gateId === `gate-freeze-v${result.run.planVersion}`) {
+      if (runCommand.payload.status === 'approved') {
+        void driveGeneration(result.run)
+      } else if (runCommand.payload.status === 'rejected' && result.run.status === 'running') {
+        try {
+          applyRunControl(repository, safeProjectId, safeRunId, result.run, {
+            commandId: `${runCommand.commandId}:freeze-reject-pause`,
+            expectedRevision: result.run.revision,
+            type: 'run.control',
+            payload: { action: 'pause' },
+            issuedAt: new Date().toISOString(),
+          })
+        } catch (error) {
+          console.error('[nomi:production] freeze gate reject pause failed:', error instanceof Error ? error.message : String(error))
+        }
+      }
     }
     // B2 样片门：批准 → 续跑剩余镜头（重踢 driver）；否决 → 暂停 run，让用户改提示词后再继续（不作废已生成的样片）。
     if (runCommand.type === 'gate.decide' && runCommand.payload.gateId === `gate-sample-v${result.run.planVersion}`) {
@@ -507,6 +583,26 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         } catch (error) {
           // 暂停失败不掩盖否决本身（门已落 rejected）；run 状态仍可查、可手动暂停。
           console.error('[nomi:production] sample gate reject pause failed:', error instanceof Error ? error.message : String(error))
+        }
+      }
+    }
+    const decidedGate = runCommand.type === 'gate.decide'
+      ? result.run.gates.find((gate) => gate.gateId === runCommand.payload.gateId)
+      : undefined
+    if (runCommand.type === 'gate.decide' && decidedGate && isShotGate(decidedGate)) {
+      if (runCommand.payload.status === 'approved') {
+        void driveGeneration(result.run)
+      } else if (runCommand.payload.status === 'rejected' && result.run.status === 'running') {
+        try {
+          applyRunControl(repository, safeProjectId, safeRunId, result.run, {
+            commandId: `${runCommand.commandId}:shot-reject-pause`,
+            expectedRevision: result.run.revision,
+            type: 'run.control',
+            payload: { action: 'pause' },
+            issuedAt: new Date().toISOString(),
+          })
+        } catch (error) {
+          console.error('[nomi:production] shot gate reject pause failed:', error instanceof Error ? error.message : String(error))
         }
       }
     }
@@ -547,9 +643,15 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       for (const summary of summaries) {
         let current = repository.read(safeProjectId, summary.runId)
         if (!current || ['completed', 'cancelled'].includes(current.status)) continue
+        // Semantic single-shot runs own recovery through ProductionGenerationSubmission
+        // (resume/poll/reconcile). The legacy playbook driver must not rewrite their
+        // durable provider state to submission_unknown or kick a second submit.
+        const isSemanticSingleShot = current.playbook.name === 'generation.single-shot'
+          && current.generationPlan?.operationId === current.runId
         let changedUnknown = false
         for (const job of current.jobs) {
           if (!['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content'].includes(job.status)) continue
+          if (isSemanticSingleShot) continue
           try {
             current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
               jobId: job.jobId,
@@ -573,8 +675,15 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           if (trustLevelOf(current.policy) === 'budget_only') void autoApproveGate(current.projectId, current.runId, 'gate-direction-v1')
           else void proposeDirections(current)
         }
-        if (current.status === 'running' && current.stageId === 'direction') void proposeStoryboard(current)
-        if (current.status === 'ready') void driveGeneration(current)
+        if (current.status === 'running' && current.stageId === 'direction') void proposeScript(current)
+        const qaStage = current.stages.find((stage) => stage.stageId === 'qa')
+        const resumableProductionStage = current.status === 'running'
+          && (current.stageId === 'qa' || current.stageId === 'assemble' || current.stageId === 'generate' && qaStage?.status !== 'completed')
+        if (current.status === 'ready'
+          || current.status === 'running' && current.jobs.some((job) => ['authorized', 'submit_intent_persisted'].includes(job.status))
+          || resumableProductionStage) {
+          void driveGeneration(current)
+        }
       }
     } catch (error) {
       console.error('[nomi:production] recovery scan failed:', error instanceof Error ? error.message : String(error))
@@ -584,13 +693,33 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function readProjection(projectId: string, runId: string): ProductionRunProjection {
-    void resumeUnfinishedRuns(projectId)
     return runProjection(requireRun(projectId, runId), projectRootResolver, previewSecret)
   }
 
   function readFull(projectId: string, runId: string): ProductionRun {
     return requireRun(projectId, runId)
   }
+
+  const artifactOperations = createArtifactOperations({
+    repository,
+    projectRootResolver,
+    previewSecret,
+    requestRenderer,
+    requireRun,
+    command,
+    writeProjectJson,
+    runProjection: (run) => runProjection(run, projectRootResolver, previewSecret),
+    identifier,
+    buildDeepLink: buildProductionDeepLink,
+  })
+  const {
+    readArtifactProjection,
+    readArtifactContent,
+    readScriptDraft,
+    requestArtifactRevision,
+    reviewArtifact,
+    materializeStoryboard,
+  } = artifactOperations
 
   async function readEvents(projectId: string, runId: string, afterCursor = 0, waitMs = 0): Promise<{
     events: ProductionEventProjection[]
@@ -609,29 +738,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     return { events: durableEvents.filter((event) => MEANINGFUL_EVENT_TYPES.has(event.type)).map(eventProjection), nextCursor }
   }
 
-  function readArtifactProjection(projectId: string, runId: string, artifactId: string): ProductionArtifactProjection {
-    const run = requireRun(projectId, runId)
-    const safeArtifactId = identifier(artifactId, 'artifact')
-    const artifact = run.artifacts.find((candidate) => candidate.artifactId === safeArtifactId)
-    if (!artifact) throw new Error(`Production artifact not found in run ${run.runId}: ${safeArtifactId}`)
-    const root = projectRootResolver(run.projectId)
-    if (root && (artifact.projectRelativePath || artifact.thumbnailRelativePath)) {
-      try {
-        return createArtifactProjection({ projectRoot: root, run, artifact, secret: previewSecret })
-      } catch {
-        // Return safe metadata when a previously-ready file has been moved or removed.
-      }
-    }
-    return metadataProjection(run, artifact)
-  }
-
   function resolveArtifactPreview(token: string): { filePath: string; expiresAt: string } {
     const claims = verifyArtifactPreviewHandle({ token, secret: previewSecret })
     const run = requireRun(claims.projectId, claims.runId)
     const artifact = run.artifacts.find((candidate) => candidate.artifactId === claims.artifactId)
     if (!artifact) throw new Error('Production artifact preview scope mismatch')
     const relativePath = artifact.thumbnailRelativePath || artifact.projectRelativePath
-    if (!relativePath || relativePath.replaceAll('\\', '/') !== claims.relativePath) {
+    if (!relativePath || relativePath.replace(/\\/g, '/') !== claims.relativePath) {
       throw new Error('Production artifact preview path mismatch')
     }
     const root = projectRootResolver(run.projectId)
@@ -644,11 +757,16 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function listFull(projectId: string): ProductionRun[] {
-    void resumeUnfinishedRuns(projectId)
     return repository.list(identifier(projectId, 'project')).map((summary) => requireRun(projectId, summary.runId))
   }
 
-  return { createDraft, readProjection, readFull, readEvents, readArtifactProjection, resolveArtifactPreview, command, proposeStoryboard, resumeUnfinishedRuns, listProjections, listFull }
+  return {
+    // The semantic generation submission adapter is a thin orchestration layer;
+    // ProductionRun's repository remains its only durable owner.
+    repository,
+    createDraft, createGenerationDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
+    requestArtifactRevision, reviewArtifact, materializeStoryboard, resolveArtifactPreview, command, proposeScript, proposeStoryboard,
+    resumeUnfinishedRuns, listProjections, listFull,
+  }
 }
-
 export type ProductionRunService = ReturnType<typeof createProductionRunService>

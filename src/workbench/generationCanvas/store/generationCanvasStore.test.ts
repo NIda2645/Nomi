@@ -295,6 +295,21 @@ describe('generationCanvasStore sidebar grouping actions', () => {
     expect(groupState?.color).toBe('#ffcc00')
   })
 
+  it('P4 S5: createGroup 带 materializationOperationId 章 + 明确成员 id（分镜组落地用）', () => {
+    // 补两个 shots 分类节点（beforeEach 只有 shot-1）。
+    useGenerationCanvasStore.getState().addNode({ kind: 'video', title: 'shot-a', categoryId: 'shots', exactPosition: true, position: { x: 0, y: 0 } })
+    useGenerationCanvasStore.getState().addNode({ kind: 'video', title: 'shot-b', categoryId: 'shots', exactPosition: true, position: { x: 200, y: 0 } })
+    const ids = useGenerationCanvasStore.getState().nodes.filter((n) => n.categoryId === 'shots' && n.id !== 'shot-1').map((n) => n.id)
+    expect(ids.length).toBe(2)
+    const created = useGenerationCanvasStore.getState().createGroup('shots', '分镜组·计划名', { materializationOperationId: 'canvas-landing:run-1', nodeIds: ids })
+    expect(created?.materializationOperationId).toBe('canvas-landing:run-1')
+    // 明确成员被收进组，且节点 groupId 指向它。
+    expect(created?.nodeIds.slice().sort()).toEqual(ids.slice().sort())
+    for (const id of ids) {
+      expect(useGenerationCanvasStore.getState().nodes.find((n) => n.id === id)?.groupId).toBe(created?.id)
+    }
+  })
+
   it('ungroups without deleting member nodes', () => {
     useGenerationCanvasStore.getState().ungroup('cast-group')
 
@@ -472,6 +487,53 @@ describe('generationCanvasStore clipboard paste placement', () => {
       { x: 660, y: 640 },
     ])
     expect(useGenerationCanvasStore.getState().edges.some((edge) => edge.source === pasted[0]?.id && edge.target === pasted[1]?.id)).toBe(true)
+  })
+})
+
+// 2026-08-24 用户反馈：「下面是生了视频的，有这个报错窗口在，就一直看不了原本的视频」。
+// 失败卡是 absolute inset-0 铺满正文的遮罩，节点的 result 一直在它下面好端端躺着——所以「关掉」
+// 不能删数据，只能把节点放回它本来的样子：有产物 → success（片子露出来），没有 → idle。
+describe('dismissNodeError — 收起失败卡', () => {
+  it('节点有旧产物 → 回 success，产物原样保留（这正是用户要看的那条片子）', () => {
+    const kept = imageResult('r-1', 'https://cdn/keep.png')
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [{ ...node('n1', 'shots'), result: kept, status: 'error', error: '模型「H3文生视频」没有「图生视频」通道' }],
+      edges: [], selectedNodeIds: [], groups: [],
+    })
+
+    useGenerationCanvasStore.getState().dismissNodeError('n1')
+
+    const stateNode = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === 'n1')
+    expect(stateNode?.status).toBe('success')
+    expect(stateNode?.error).toBeUndefined()
+    expect(stateNode?.result?.id).toBe('r-1')
+  })
+
+  it('节点没有产物 → 回 idle（空卡，可以直接重新生成）', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [{ ...node('n1', 'shots'), status: 'error', error: 'boom' }],
+      edges: [], selectedNodeIds: [], groups: [],
+    })
+
+    useGenerationCanvasStore.getState().dismissNodeError('n1')
+
+    const stateNode = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === 'n1')
+    expect(stateNode?.status).toBe('idle')
+    expect(stateNode?.error).toBeUndefined()
+  })
+
+  it('不是失败态就不动它——别把正在跑的任务顺手掐了', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [node('n1', 'shots')],
+      edges: [], selectedNodeIds: [], groups: [],
+    })
+    // 必须走 setNodeStatus 而不是塞进 snapshot：restoreSnapshot 会把 running 归一成 idle
+    // （重启后不留僵尸 running，是刻意的），直接塞进去测不到「跑着的时候别动它」这件事。
+    useGenerationCanvasStore.getState().setNodeStatus('n1', 'running')
+
+    useGenerationCanvasStore.getState().dismissNodeError('n1')
+
+    expect(useGenerationCanvasStore.getState().nodes.find((c) => c.id === 'n1')?.status).toBe('running')
   })
 })
 

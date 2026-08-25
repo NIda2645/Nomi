@@ -15,6 +15,7 @@ import readline from 'node:readline'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
+import { withLinuxNoSandbox } from './_launchApp.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -28,7 +29,7 @@ const ok = (c, l) => { if (!c) throw new Error(`FAIL: ${l}`); passed += 1; conso
 const UI_EXT = 'io.modelcontextprotocol/ui'
 const MIME = 'text/html;profile=mcp-app'
 
-const child = spawn(require('electron'), [repoRoot, '--disable-gpu'], {
+const child = spawn(require('electron'), withLinuxNoSandbox([repoRoot, '--disable-gpu']), {
   cwd: repoRoot,
   env: { ...process.env, NOMI_MCP_STDIO: '1', NOMI_SETTINGS_DIR: tmp, NOMI_ELECTRON_USER_DATA_DIR: tmp, NOMI_PROJECTS_DIR: path.join(tmp, 'projects'), NOMI_CAPABILITY_DIR: path.join(tmp, 'cap') },
   stdio: ['pipe', 'pipe', 'inherit'],

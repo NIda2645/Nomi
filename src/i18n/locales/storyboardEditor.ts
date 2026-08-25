@@ -2,7 +2,15 @@ export const zhStoryboardEditor = {
   shotParams: {
     parameters: '参数',
     mode: '模式',
-    applyAll: '套用到全部镜头',
+    applyAll: '把这一镜的参数套用到全部',
+  },
+  bulk: {
+    scope: '全部镜头',
+    mixed: '混合',
+    typeAria: '全部镜头的类型',
+    modelAria: '全部镜头的模型',
+    durationAria: '全部镜头的时长',
+    hint: '改这里 = {{count}} 个镜头一起改',
   },
   issue: {
     noShots: '还没有镜头',
@@ -106,6 +114,7 @@ export const zhStoryboardEditor = {
     imageVideoMode: '图片+视频分镜',
     dismiss: '不用了，收起',
     typeAria: '分镜类型',
+    typeHint: '之后可以在每个镜头里选择图片或视频',
     imageHint: '每镜一张静态画面，满意后可转视频',
     videoHint: '每镜一段带时长的视频',
     imageVideoHint: '每镜先出首帧图，再用首帧生成视频',
@@ -122,7 +131,15 @@ export const enStoryboardEditor = {
   shotParams: {
     parameters: 'Parameters',
     mode: 'Mode',
-    applyAll: 'Apply to all shots',
+    applyAll: "Apply this shot's parameters to all",
+  },
+  bulk: {
+    scope: 'All shots',
+    mixed: 'Mixed',
+    typeAria: 'Type for all shots',
+    modelAria: 'Model for all shots',
+    durationAria: 'Duration for all shots',
+    hint: 'Changes here apply to all {{count}} shots',
   },
   issue: {
     noShots: 'There are no shots yet',
@@ -230,6 +247,7 @@ export const enStoryboardEditor = {
     imageVideoMode: 'Image+Video storyboard',
     dismiss: 'Dismiss',
     typeAria: 'Storyboard type',
+    typeHint: 'Choose image or video later for each shot',
     imageHint: 'One static image per shot; convert to video after approval',
     videoHint: 'One timed video clip per shot',
     imageVideoHint: 'Generate a first-frame image for each shot, then use it to create the video',

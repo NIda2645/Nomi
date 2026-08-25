@@ -82,6 +82,26 @@ describe('shouldShowCanvasBatchGenerateDock', () => {
     expect(shouldShowCanvasBatchGenerateDock({ readOnly: false, selectedCount: 1, eligibleCount: 2 })).toBe(false)
     expect(shouldShowCanvasBatchGenerateDock({ readOnly: true, selectedCount: 0, eligibleCount: 2 })).toBe(false)
   })
+
+  it('hides the dock only for the dismissed pending scope', () => {
+    const scopeKey = 'idle-image\u0000error-video'
+    const dismissed = {
+      readOnly: false,
+      selectedCount: 0,
+      eligibleCount: 2,
+      eligibleScopeKey: scopeKey,
+      dismissedScopeKey: scopeKey,
+    } as Parameters<typeof shouldShowCanvasBatchGenerateDock>[0]
+
+    expect(shouldShowCanvasBatchGenerateDock(dismissed)).toBe(false)
+    expect(
+      shouldShowCanvasBatchGenerateDock({
+        ...dismissed,
+        eligibleScopeKey: 'idle-image',
+        eligibleCount: 1,
+      }),
+    ).toBe(true)
+  })
 })
 
 describe('groupGenerationNodesByExecutionKind', () => {

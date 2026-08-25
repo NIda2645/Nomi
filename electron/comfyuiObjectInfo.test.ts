@@ -47,8 +47,10 @@ describe("fetch 层（stub 全局 fetch）", () => {
   });
 
   it("fetchComfyuiCheckpoints：/object_info/CheckpointLoaderSimple → 文件名列表", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ CheckpointLoaderSimple: FULL.CheckpointLoaderSimple }))));
-    expect(await fetchComfyuiCheckpoints("http://127.0.0.1:8188")).toEqual(["a.safetensors", "b.safetensors"]);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ CheckpointLoaderSimple: FULL.CheckpointLoaderSimple })));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchComfyuiCheckpoints("127.0.0.1:8188/")).toEqual(["a.safetensors", "b.safetensors"]);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8188/object_info/CheckpointLoaderSimple", expect.any(Object));
   });
 
   it("连不上 → null（调用方按「不可核对」处理，不误报全缺）", async () => {
@@ -67,6 +69,22 @@ describe("fetch 层（stub 全局 fetch）", () => {
     vi.stubGlobal("fetch", fetchMock);
     await fetchComfyuiObjectInfoIndex("http://127.0.0.1:8188");
     await fetchComfyuiObjectInfoIndex("http://127.0.0.1:8188");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("并发缓存：同 URL 的未完成请求合并成一次 fetch", async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetchMock = vi.fn(async () => {
+      await gate;
+      return new Response(JSON.stringify(FULL));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const requests = Array.from({ length: 20 }, () => fetchComfyuiObjectInfoIndex("http://127.0.0.1:8188"));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    release?.();
+    const results = await Promise.all(requests);
+    expect(results.every((item) => item?.classNames.has("KSampler"))).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

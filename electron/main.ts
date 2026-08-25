@@ -22,6 +22,7 @@ import {
   upsertModelCatalogVendor,
   upsertModelCatalogVendorApiKey,
 } from "./catalog/catalogStore";
+import { registerAssetTransportIpc } from "./assetTransportIpc";
 import { retypeModelCatalogModel } from "./catalog/modelRetype";
 import { runTaskWithIdempotency } from "./submissionLedger";
 import { runTaskIpcGuard } from "./tasks/taskIpcGuard";
@@ -46,6 +47,7 @@ import { registerProxyIpc } from "./proxyIpc";
 import { catalogSecretsProvider } from "./events/secretsProvider";
 import { registerOnboardingIpc } from "./ai/onboarding/onboardingIpc";
 import { registerProviderAdapterIpc } from "./providerAdapter/ipc";
+import { registerExistingConnectionIpc } from "./providerAdapter/existingConnectionIpc";
 import { registerUpdaterIpc } from "./update/autoUpdater";
 import { setRendererTarget } from "./capabilityCore/rendererBridge";
 import { readMcpInfo, installMcp, uninstallMcp } from "./capabilityCore/mcpConfig";
@@ -58,6 +60,7 @@ import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
 import { desktopT, registerI18nIpc, setDesktopLocale } from "./i18n";
 import { registerSettingsIpc } from "./settings/registerSettingsIpc";
 import { registerProductionRunIpc } from "./productionRun/productionRunIpc";
+import { registerProductionActionIpc } from "./productionRun/productionActionIpc";
 import { installProductionRunDesktopLifecycle } from "./productionRun/productionRunDesktopLifecycle";
 installMainProcessLifecycle(app);
 const configuredUserDataDir = String(process.env.NOMI_ELECTRON_USER_DATA_DIR || "").trim();
@@ -426,9 +429,7 @@ function registerIpc(): void {
   ipcMain.handle("nomi:projects:diagnose", (_event, projectId: unknown) => diagnoseProject(String(projectId || "")));
   ipcMain.handle("nomi:projects:recover", (_event, projectId: unknown) => recoverProject(String(projectId || "")));
   registerSyncIpc("nomi:projects:save", saveProject);
-  ipcMain.handle("nomi:projects:save-async", (_event, projectId: unknown, record: unknown) =>
-    saveProject(String(projectId || ""), record),
-  );
+  ipcMain.handle("nomi:projects:save-async", (_event, projectId: unknown, record: unknown) => saveProject(String(projectId || ""), record));
   registerSyncIpc("nomi:projects:delete", deleteProject);
   ipcMain.on("nomi:app:reopen-library-window", (event) => {
     recreateMainWindowFromSender(event.sender, { preserveRoute: false, reason: "reopen library window" });
@@ -459,9 +460,9 @@ function registerIpc(): void {
   registerSyncIpc("nomi:model-catalog:mapping:delete", deleteModelCatalogMapping);
   registerSyncIpc("nomi:model-catalog:export", exportModelCatalogPackage);
   registerSyncIpc("nomi:model-catalog:import", importModelCatalogPackage);
-  // ComfyUI 域 IPC（探测/导入/缺件对账）全住 electron/comfyuiIpc.ts（main.ts 800 行门腾空间）。
-  const { registerComfyuiIpc } = require("./comfyuiIpc") as typeof import("./comfyuiIpc");
-  registerComfyuiIpc(registerSyncIpc);
+  // 域 IPC 各住各的模块（给 main.ts 800 行门腾空间；新通道加到对应模块，别回填这里）。comfy 那棵树重 → 惰性 require；素材通道薄 → 顶部静态 import。
+  (require("./comfyuiIpc") as typeof import("./comfyuiIpc")).registerComfyuiIpc(registerSyncIpc);
+  registerAssetTransportIpc(registerSyncIpc);
   // 自定义调用域（契约/AI 指令/试跑）住 electron/catalog/customCallIpc.ts（同上，腾 800 行门）。
   const { registerCustomCallIpc } = require("./catalog/customCallIpc") as typeof import("./catalog/customCallIpc");
   registerCustomCallIpc(registerSyncIpc);
@@ -647,7 +648,9 @@ function registerIpc(): void {
   registerBrowserViewIpc(getRendererUrl);
   registerOnboardingIpc();
   registerProviderAdapterIpc();
+  registerExistingConnectionIpc();
   registerProductionRunIpc();
+  registerProductionActionIpc({ getActiveProjectId: () => activeCapabilityProjectId, loadCore: loadCapabilityCoreModule }); // P4 S6 返工/续拍
   registerUpdaterIpc();
   // M0 独立捕捞窗已退役（方案A 2026-07-12）：捕捞面收敛到应用内浏览器（registerBrowserViewIpc）。
   // S4-1 评测安全铁律:事件落盘前,已配置的 vendor key 精确匹配脱敏(形态兜底之外的地基)。

@@ -32,13 +32,14 @@ import { localizeRemoteResultUrl } from './resultAssetLocalization'
 import {
   ComfyuiTaskCancelledError,
   isComfyuiCancelRequested,
-  isComfyuiVendorKey,
   unwatchComfyuiProgress,
   watchComfyuiProgress,
 } from './comfyuiTaskControl'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { RecoverableTimeoutError } from './recoverableTimeout'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
+import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
 
 // 重导出：实现已拆到 catalogTaskResolve（节点→vendor/model/kind 选择）与
 // catalogTaskResultParse（raw/asset/failure/provenance 解析），但 catalogTaskActions
@@ -59,13 +60,16 @@ const TEXT_STREAM_KINDS = new Set<TaskKind>(['chat', 'prompt_refine', 'image_to_
 // 都跑在用户机器上,时延本质是「秒级到分钟级」且方差大,不能和「秒级返回的云图像 API」共用 2min 硬超时:
 // 否则本地图还在生成就被判超时落「可找回」,用户体验成「Codex 生图拉取步骤超时」(群反馈 2026-07-30 的根因)。
 // 判据用 vendor key(稳定:codex-local/comfyui-local 都是 local:// 或本机 127.0.0.1 后端)。
-const SLOW_LOCAL_BACKENDS = new Set(['codex-local', 'comfyui-local'])
+// ComfyUI 单列走前缀判据:第 2+ 台实例的 key 是 `comfyui-local-{slug}`,放进定值集合只覆盖得了第一台,
+// 用户加第二台机器就会被云 API 的 2min 硬超时腰斩。
+const SLOW_LOCAL_BACKENDS = new Set(['codex-local'])
 
 // 轮询按「后端时延」而非「视频 vs 图像」分档:慢道 = 视频 ∪ 本地进程后端。这样本地生图(codex/comfyui)
 // 不再被云 API 的 2min 硬超时腰斩,而 codex 进程真跑完(成功/失败)时 query 立即返回终态、循环自然结束,
 // 故放宽硬超时纯为「等它跑完」、不会平白多等(查结果免费、不重发、不二次扣费)。
 export function isSlowLaneBackend(kind: TaskKind, vendor: string): boolean {
-  return kind === 'text_to_video' || kind === 'image_to_video' || SLOW_LOCAL_BACKENDS.has(vendor)
+  return kind === 'text_to_video' || kind === 'image_to_video'
+    || SLOW_LOCAL_BACKENDS.has(vendor) || isComfyuiVendorKey(vendor)
 }
 
 /** 轮询预算(ms):慢道(视频/本地进程后端)5min 软 / 20min 硬;快道云 API 2min 软=硬。 */
@@ -241,15 +245,39 @@ export function buildCatalogTaskRequest(
   const prompt = projectPromptForSend(rawPrompt, orderedReferenceUrls)
   // 站位构图参考：出关键帧时把 staging 灰模图当「构图蓝图」而非编辑底图——照站位/姿势/机位，
   // 但写实重渲染，别照搬灰模 3D 外观（评测发现 image_edit 直喂会出 CGI 感）。只对图像生成加。
-  const finalPrompt =
+  const renderedPrompt =
     references.stagingComposition && (kind === 'text_to_image' || kind === 'image_edit')
       ? `${prompt}\n\n（构图参考仅用于确定人物站位、各自姿势和镜头机位；请据此完全写实地重新渲染人物与场景——真实皮肤/衣物/光影，不要保留参考图里灰色人偶或 3D 渲染的外观。）`
       : prompt
+  // Production QA targeted retries carry a short, machine-authored correction directive.
+  // Keep it out of the node's durable prompt (the original remains inspectable) and append it
+  // only to this submission so a retry fixes the flagged axis without rewriting the storyboard.
+  const promptSuffix = asTrimmedString(options.promptSuffix)
+  const finalPrompt = promptSuffix ? `${renderedPrompt}\n\n${promptSuffix}` : renderedPrompt
   const width = asFiniteNumber(meta.width)
   const height = asFiniteNumber(meta.height)
   const steps = asFiniteNumber(meta.steps)
   const cfgScale = asFiniteNumber(meta.cfgScale)
   const seed = asFiniteNumber(meta.seed)
+  const referenceExtras = buildReferenceExtras(node, references)
+  const extras = {
+    ...meta,
+    modelKey,
+    modelAlias: asTrimmedString(meta.modelAlias) || modelKey,
+    nodeId: node.id,
+    nodeKind: node.kind,
+    // 付费守卫令牌：随 extras 下到主进程 runTask 核验消费（无则主进程拦截）。
+    ...(options.grantId ? { grantId: options.grantId } : {}),
+    ...(options.anonymousAssetHostingConsent ? { anonymousAssetHostingConsent: options.anonymousAssetHostingConsent } : {}),
+    // 提交幂等键：随 extras 下到主进程 runTask，同键提交内核 at-most-once（堵「丢回执→重试→二次下单」）。
+    ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    // S8 缓存语义:节点血统里已出过图(result 或 history,含「基于此重生成」副本)→
+    // 再点生成=用户要重抽 → 强制重跑绕指纹缓存;首次生成/批量补跑同配方命中缓存
+    // 秒回零花费(防双击/重复受理重复扣费)。路由旗标,不进指纹。
+    ...(node.result || (node.history && node.history.length > 0) ? { forceRerun: true } : {}),
+    ...referenceExtras,
+  }
+  const activeAssetUrls = Array.from(collectLocalAssetUrls(extras))
 
   return {
     vendor,
@@ -261,21 +289,10 @@ export function buildCatalogTaskRequest(
       ...(typeof height === 'number' ? { height } : {}),
       ...(typeof steps === 'number' ? { steps } : {}),
       ...(typeof cfgScale === 'number' ? { cfgScale } : {}),
+      // 主进程根据这个 allowlist 只上传仍然活跃的本地素材；过期/残留引用不再把生成卡死。
       extras: {
-        ...meta,
-        modelKey,
-        modelAlias: asTrimmedString(meta.modelAlias) || modelKey,
-        nodeId: node.id,
-        nodeKind: node.kind,
-        // 付费守卫令牌：随 extras 下到主进程 runTask 核验消费（无则主进程拦截）。
-        ...(options.grantId ? { grantId: options.grantId } : {}),
-        // 提交幂等键：随 extras 下到主进程 runTask，同键提交内核 at-most-once（堵「丢回执→重试→二次下单」）。
-        ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
-        // S8 缓存语义:节点血统里已出过图(result 或 history,含「基于此重生成」副本)→
-        // 再点生成=用户要重抽 → 强制重跑绕指纹缓存;首次生成/批量补跑同配方命中缓存
-        // 秒回零花费(防双击/重复受理重复扣费)。路由旗标,不进指纹。
-        ...(node.result || (node.history && node.history.length > 0) ? { forceRerun: true } : {}),
-        ...buildReferenceExtras(node, references),
+        ...extras,
+        ...(activeAssetUrls.length ? { activeAssetUrls } : {}),
       },
     },
   }
@@ -393,13 +410,37 @@ export async function runCatalogGenerationTask(
 
   const runTask = options.runTask || runWorkbenchTaskByVendor
   report('requesting')
-  const initialResult = await runTask(vendor, request)
+  // ComfyUI 新协议允许客户端预生成 prompt UUID。先登记 WS、再 POST /prompt，极快任务的首事件也有归属；
+  // 旧服若忽略该 UUID 并返回另一个 id，下方会切换 watcher，history 轮询始终照常兜底。
+  const requestedComfyPromptId = isComfyuiVendorKey(vendor) ? crypto.randomUUID() : ''
+  if (requestedComfyPromptId) {
+    request.extras = { ...(request.extras ?? {}), comfyPromptId: requestedComfyPromptId }
+  }
+  let watchedPromptId = ''
+  if (requestedComfyPromptId) {
+    const registered = await watchComfyuiProgress({
+      promptId: requestedComfyPromptId,
+      nodeId: asTrimmedString(request.extras?.nodeId),
+      projectId: asTrimmedString(request.extras?.projectId),
+      taskKind: request.kind,
+      modelKey: asTrimmedString(request.extras?.modelKey) || null,
+      vendorKey: vendor,
+    })
+    if (registered) watchedPromptId = requestedComfyPromptId
+  }
+  let initialResult: TaskResultDto
+  try {
+    initialResult = await runTask(vendor, request)
+  } catch (error) {
+    if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
+    throw error
+  }
   report('waiting', initialResult.id)
-  // P 轨：本地 ComfyUI 提交成功即登记 ws 进度（prompt_id→节点）。桥不在/失败 = 没进度，轮询照常。
-  // 多实例：vendor 就是「跑这个任务的那台机器」的 key，带下去让主进程连对地址、查对 mapping。
+  // 旧 ComfyUI 可能不接受客户端 prompt id：按服务端真实回执切 watcher。
   const comfyWatching = isComfyuiVendorKey(vendor) && Boolean(initialResult.id)
-  if (comfyWatching) {
-    watchComfyuiProgress({
+  if (comfyWatching && initialResult.id !== watchedPromptId) {
+    if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
+    const registered = await watchComfyuiProgress({
       promptId: initialResult.id,
       nodeId: asTrimmedString(request.extras?.nodeId),
       projectId: asTrimmedString(request.extras?.projectId),
@@ -407,12 +448,13 @@ export async function runCatalogGenerationTask(
       modelKey: asTrimmedString(request.extras?.modelKey) || null,
       vendorKey: vendor,
     })
+    watchedPromptId = registered ? initialResult.id : ''
   }
   let finalResult: TaskResultDto
   try {
     finalResult = await waitForCatalogTaskResult(vendor, request, initialResult, options)
   } finally {
-    if (comfyWatching) unwatchComfyuiProgress(initialResult.id)
+    if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
   }
   report('finalizing', initialResult.id)
   const normalized = normalizeCatalogTaskResult(finalResult, executableNode)

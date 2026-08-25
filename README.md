@@ -10,14 +10,14 @@ Nomi is an open-source desktop workbench for AI video. Connect any OpenAI-compat
 
 Your projects, prompts, and API keys stay on your machine. No account. No telemetry.
 
-[简体中文](README.zh-CN.md) · [Website](https://nomiaqm.com/en/) · [Download](https://github.com/aqm857886159/Nomi/releases/latest) · [Community](https://github.com/aqm857886159/Nomi/discussions) · [For Teams](https://nomiaqm.com/en/#teams) · [Watch the 60s film](https://nomiaqm.com/assets/video/launch-film-en.mp4) · [Documentation](docs/user-guide.md)
+[简体中文](README.zh-CN.md) · [Website](https://nomiaqm.com/en/) · [Download](#download) · [Community](https://github.com/aqm857886159/Nomi/issues) · [For Teams](https://nomiaqm.com/en/#teams) · [Watch the 60s film](https://nomiaqm.com/assets/video/launch-film-en.mp4) · [Documentation](docs/user-guide.md)
 
 ## WeChat / 微信联系
 
 ### Join the Nomi user group / 加入 Nomi 用户群
 
 <p align="center">
-  <a href="docs/media/nomi-canvas-group-wechat-2026-08-14.png"><img src="docs/media/nomi-canvas-group-wechat-2026-08-14.png" alt="Nomi 用户群微信二维码" width="220" /></a>
+  <a href="docs/media/nomi-canvas-group-wechat-2026-08-25.jpg"><img src="docs/media/nomi-canvas-group-wechat-2026-08-25.jpg" alt="Nomi 用户群微信二维码" width="220" /></a>
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@ Your projects, prompts, and API keys stay on your machine. No account. No teleme
   群码失效，或沟通定制开发、系统集成、贴牌交付与持续迭代，请添加作者微信 <strong>TZ857886159</strong>。
 </p>
 
-International community: [GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) · Project inquiry: [Business Inquiry](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml)
+International community: [GitHub Issues](https://github.com/aqm857886159/Nomi/issues) · Project inquiry: [Business Inquiry](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml)
 
 [![Latest release](https://img.shields.io/github/v/release/aqm857886159/Nomi?label=release)](https://github.com/aqm857886159/Nomi/releases/latest)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-1a1816)
@@ -49,7 +49,7 @@ International community: [GitHub Discussions](https://github.com/aqm857886159/No
 - **One project, not eleven tabs.** Story, shots, references, generated takes, and the timeline live in the same file on your disk instead of being copied between disconnected tools.
 - **Shot 4 and shot 9 should be the same person.** Lock characters, locations, props, camera, and style once; later shots inherit them instead of restarting from a new prompt.
 - **Bring your own stack.** Around ten curated providers are pre-wired, and any OpenAI-compatible, Anthropic, Responses, or relay endpoint can be added by pasting a URL and a key — no rebuild. A local ComfyUI is a provider like any other: Nomi converts the normal "Save" workflow format, so the workflows you download actually import, and it diffs the graph against `/object_info` to tell you which custom nodes and model files you are missing before you run it.
-- **Your agent can operate it.** Thirteen MCP tools let Claude Code, Codex, or Cursor create projects, lay out shots, wire references, run generation, and start a durable production run. Direction, paid generation, rough-cut acceptance, and export stop for explicit approval in Nomi, enforced in the main process.
+- **Your agent can operate it.** Thirty-three MCP tools let Claude Code, Codex, or Cursor converge on a direction in one pass, create projects, import local assets, lay out shots, materialize an approved storyboard into the Nomi canvas, wire references, run generation, and control a durable production run. The staged semantic generation tools make model, provider, mode, parameters, and references editable before sealing; they remain zero-credit and feature-gated until the Run/recovery checks pass. Reversible direction and sample choices receive a server-issued human confirmation in the originating client; budgets, per-shot paid submissions, rough-cut acceptance, and export stay in Nomi, enforced in the main process.
 
 ## Download
 
@@ -57,15 +57,29 @@ International community: [GitHub Discussions](https://github.com/aqm857886159/No
 |---|---|---|
 | macOS | Apple Silicon | [Nomi-mac-arm64.dmg](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg) |
 | macOS | Intel | [Nomi-mac-intel.dmg](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg) |
-| Windows | Windows 10 / 11 | [Nomi-windows-setup.exe](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe) |
+| Windows | Windows 10 / 11 x64 | [Nomi-windows-setup.exe](https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe) |
 
-<details>
-<summary>First launch warning on macOS or Windows</summary>
+Supported release targets are macOS arm64/x64 and Windows x64. Linux, Windows arm64, and macOS universal installers are not currently published.
 
-- **macOS:** Move `Nomi.app` to Applications, run `xattr -cr /Applications/Nomi.app` in Terminal, then open it again.
-- **Windows:** In the SmartScreen prompt, choose **More info** → **Run anyway**.
+### First launch on macOS
 
-</details>
+The current macOS build is **not Apple Developer ID signed or notarized**, so macOS may block it on first launch. Only use the direct downloads in the table above or links from the official Nomi website and GitHub repository.
+
+1. Download the matching DMG and drag `Nomi.app` to Applications.
+2. In Finder, right-click `Nomi.app` in Applications, choose **Open**, then confirm **Open**.
+3. If it is still blocked, open **System Settings → Privacy & Security**, find the Nomi message, and click **Open Anyway**.
+
+Only if macOS says Nomi is “damaged”, first confirm the installer came from an official Nomi link, then run:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Nomi.app"
+```
+
+Do not disable Gatekeeper globally. Updates require downloading the matching DMG and replacing the app manually.
+
+### First launch on Windows
+
+The installer has no Authenticode signature. In the SmartScreen prompt, choose **More info** → **Run anyway**.
 
 ## Quick start
 
@@ -79,7 +93,7 @@ Read the [user guide](docs/user-guide.md), [provider guide](docs/provider-integr
 
 ## Community
 
-Join [GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) to share workflows, report friction, and follow what is being built next. WeChat users can use the group and maintainer QR codes at the top of this README; the [Chinese README](README.zh-CN.md#用户群) contains the full Chinese guide.
+Use [GitHub Issues](https://github.com/aqm857886159/Nomi/issues) to share workflows, report friction, and follow what is being built next. WeChat users can use the group and maintainer QR codes at the top of this README; the [Chinese README](README.zh-CN.md#用户群) contains the full Chinese guide.
 
 ## For Teams
 
@@ -119,7 +133,7 @@ Bug reports, feature proposals, documentation, and code contributions are welcom
 
 - [Report a bug](https://github.com/aqm857886159/Nomi/issues/new?template=bug_report.yml)
 - [Request a feature](https://github.com/aqm857886159/Nomi/issues/new?template=feedback.yml)
-- [Join a discussion](https://github.com/aqm857886159/Nomi/discussions)
+- [Ask a question or share an idea](https://github.com/aqm857886159/Nomi/issues)
 
 ## License
 

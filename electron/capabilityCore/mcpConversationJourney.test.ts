@@ -39,6 +39,11 @@ function makeJourney() {
           { key: 'montage', title: '快节奏踩点混剪', oneLiner: '鼓点卡切，15 个场景闪回' },
         ] }
       }
+      if (op === 'production.plan-script') return { text: '剧本：雨夜里，小满在街市找回走失的小猫。' }
+      if (op === 'production.materialize-storyboard') return {
+        createdNodeIds: ['canvas-shot-1'], connectedCount: 0,
+        bindings: [{ nodeId: 'canvas-shot-1', stageId: 'generate', provider: 'local', model: 'demo-video' }],
+      }
       return {
         text: '已完成分镜规划',
         plan: { title: '品牌宣传片', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: '清晨街市蒸汽中的小满' }] },
@@ -46,8 +51,18 @@ function makeJourney() {
     },
   })
   const frames: RpcFrame[] = []
+  const protocolRef: { current: ReturnType<typeof createMcpProtocol> | null } = { current: null }
   const transport: McpTransport = {
-    send: (message) => { frames.push(message as RpcFrame) },
+    send: (message) => {
+      const frame = message as RpcFrame
+      frames.push(frame)
+      if (frame.method === 'elicitation/create' && frame.id != null) {
+        queueMicrotask(() => protocolRef.current?.handleIncoming({
+          jsonrpc: '2.0', id: frame.id,
+          result: { action: 'accept', content: { confirm: true } },
+        }))
+      }
+    },
     isAppOpen: () => true,
     invoke: async (method, params) => {
       if (method === 'production.start') {
@@ -87,10 +102,24 @@ function makeJourney() {
         })
         return service.readProjection(String(params.projectId), String(params.runId))
       }
+      if (method === 'production.artifact.review') {
+        await service.reviewArtifact({
+          projectId: String(params.projectId), runId: String(params.runId), artifactId: String(params.artifactId),
+          expectedVersion: Number(params.expectedVersion), decision: params.decision as 'approved' | 'changes_requested' | 'rejected',
+        })
+        return service.readProjection(String(params.projectId), String(params.runId))
+      }
+      if (method === 'production.storyboard.materialize') {
+        return service.materializeStoryboard({
+          projectId: String(params.projectId), runId: String(params.runId), artifactId: String(params.artifactId),
+          expectedVersion: Number(params.expectedVersion),
+        })
+      }
       throw new Error(`unexpected invoke: ${method}`)
     },
   }
   const protocol = createMcpProtocol(transport)
+  protocolRef.current = protocol
   async function call(id: number, name: string, args: Record<string, unknown>, progressToken?: string): Promise<RpcFrame> {
     protocol.handleIncoming({
       jsonrpc: '2.0', id, method: 'tools/call',
@@ -147,45 +176,80 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     const optionKeys = (outcome(withOptions).directionCandidates as Array<{ key: string }>).map((candidate) => candidate.key)
     expect(optionKeys).toEqual(['street', 'studio', 'montage'])
 
-    // 模型已用 elicitation 问过真人拿到 accept（此处用 send 断言协议层可发 elicitation/create 帧的能力在 spend 路径已验，
-    // 方向门本身不弹 elicitation——由 agent 侧发；这里直接走 agent 已获批后的 nomi_decide_gate）。
+    // nomi_decide_gate 自己发服务端 elicitation；测试客户端明确 accept 后，协议层才调用 dispatcher。
     const decided = await call(4, 'nomi_decide_gate', { projectId: 'project-1', runId, gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio' })
+    expect(frames.some((frame) => frame.method === 'elicitation/create')).toBe(true)
     expect(text(decided)).toContain('✓ 方向已定')
     expect(text(decided)).toContain('极简产品美学')
     expect(outcome(decided).kind).toBe('gate_decision')
     expect(outcome(decided).choiceKey).toBe('studio')
 
-    await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_storyboard_review') }, { timeout: 3000 })
+    await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_script_review') }, { timeout: 3000 })
     // choiceKey 留痕进 gate（可审计「用户当时选了哪个方向」）。
     expect(service.readFull('project-1', runId)!.gates.find((item) => item.gateId === 'gate-direction-v1')!.decidedChoiceKey).toBe('studio')
 
+    // ── 剧本审阅点：先看剧本并批准，批准后才会拟分镜 ─────────────────────────
+    const scriptCandidate = service.readFull('project-1', runId)!.artifacts.find((item) => item.kind === 'script')!
+    const scriptStatus = await call(5, 'nomi_get_run', { projectId: 'project-1', runId })
+    expect(text(scriptStatus)).toContain('剧本')
+    expect(outcome(scriptStatus).nextActions).toEqual(['review_script'])
+    const scriptReview = await call(6, 'nomi_review_artifact', {
+      projectId: 'project-1', runId, artifactId: scriptCandidate.artifactId, expectedVersion: scriptCandidate.version || 1, decision: 'approved',
+    })
+    expect(text(scriptReview)).toContain('产物版本已批准')
+    await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_storyboard_review') }, { timeout: 3000 })
+
     // ── 状态可转述：分镜等审阅 → 人话 + 下一步 ──────────────────────────────
-    const status = await call(5, 'nomi_get_run', { projectId: 'project-1', runId })
+    const status = await call(7, 'nomi_get_run', { projectId: 'project-1', runId })
     expect(text(status)).toContain('分镜等你审阅')
     expect(outcome(status).nextActions).toEqual(['review_storyboard'])
 
     // ── 陆 · 掌控与错误契约：非法暂停给人话拒绝，取消合法且不计费 ─────────────
-    const illegalPause = await call(6, 'nomi_control_run', { projectId: 'project-1', runId, action: 'pause' })
+    const illegalPause = await call(8, 'nomi_control_run', { projectId: 'project-1', runId, action: 'pause' })
     expect(illegalPause.result?.isError).toBe(true)
     expect(text(illegalPause)).toContain('✗')
     expect(text(illegalPause)).toContain('无法暂停')
 
-    const cancelled = await call(7, 'nomi_control_run', { projectId: 'project-1', runId, action: 'cancel' })
+    const cancelled = await call(9, 'nomi_control_run', { projectId: 'project-1', runId, action: 'cancel' })
     expect(text(cancelled)).toContain('✓ 已取消')
     expect(text(cancelled)).toContain('已完成的产物保留在项目里')
     expect(outcome(cancelled).kind).toBe('run_control')
     expect(service.readFull('project-1', runId)!.status).toBe('cancelled')
 
     // ── 事件流：durable cursor 把整段旅程逐行透出（含方向候选事件）────────────
-    const events = await call(8, 'nomi_subscribe_run', { projectId: 'project-1', runId, afterCursor: 0 })
+    const events = await call(10, 'nomi_subscribe_run', { projectId: 'project-1', runId, afterCursor: 0 })
     expect(text(events)).toContain('[Nomi] run.created')
     expect(text(events)).toContain('gate.candidates')
     expect(text(events)).toContain('gate.decided')
     expect(text(events)).toMatch(/next cursor \d+/)
 
     // ── 错误契约：不存在的 run 返回人话 isError ─────────────────────────────
-    const missing = await call(9, 'nomi_control_run', { projectId: 'project-1', runId: 'run-missing', action: 'pause' })
+    const missing = await call(11, 'nomi_control_run', { projectId: 'project-1', runId: 'run-missing', action: 'pause' })
     expect(missing.result?.isError).toBe(true)
     expect(text(missing)).toContain('✗')
+  })
+
+  it('剧本和分镜都批准后，外部 Agent 可通过 MCP 把同一份分镜物化到 Nomi 项目', async () => {
+    const { service, protocol, call } = makeJourney()
+    protocol.handleIncoming({ jsonrpc: '2.0', id: 20, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: { elicitation: {} }, clientInfo: { name: 'codex' } } })
+    const started = await call(21, 'nomi_start_playbook', { projectId: 'project-1', playbook: 'brand.promo', brief: { goal: '雨夜找猫', durationSeconds: 30 } })
+    const runId = String(outcome(started).runId)
+    await vi.waitFor(() => {
+      expect(service.readFull('project-1', runId)!.gates.find((gate) => gate.gateId === 'gate-direction-v1')?.directionCandidates?.length).toBe(3)
+    }, { timeout: 3000 })
+    await call(22, 'nomi_decide_gate', { projectId: 'project-1', runId, gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'street' })
+    await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_script_review') }, { timeout: 3000 })
+    const runWithScript = service.readFull('project-1', runId)!
+    const script = runWithScript.artifacts.find((item) => item.kind === 'script')!
+    await call(23, 'nomi_review_artifact', { projectId: 'project-1', runId, artifactId: script.artifactId, expectedVersion: script.version || 1, decision: 'approved' })
+    await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_storyboard_review') }, { timeout: 3000 })
+    const runWithStoryboard = service.readFull('project-1', runId)!
+    const storyboard = runWithStoryboard.artifacts.find((item) => item.kind === 'storyboard')!
+    await call(24, 'nomi_review_artifact', { projectId: 'project-1', runId, artifactId: storyboard.artifactId, expectedVersion: storyboard.version || 1, decision: 'approved' })
+    const materialized = await call(25, 'nomi_materialize_storyboard', { projectId: 'project-1', runId, artifactId: storyboard.artifactId, expectedVersion: storyboard.version || 1 })
+    expect(text(materialized)).toContain('分镜已落到 Nomi 画布')
+    expect(text(materialized)).toContain('canvas-shot-1')
+    expect(outcome(materialized)).toMatchObject({ kind: 'storyboard_materialized', bindingCount: 1 })
+    expect(service.readFull('project-1', runId)!.artifacts.some((item) => item.kind === 'storyboard' && item.status === 'adopted')).toBe(true)
   })
 })

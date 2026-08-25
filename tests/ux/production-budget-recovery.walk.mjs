@@ -42,14 +42,42 @@ async function waitForRun(window, projectId, runId, predicate, timeoutMs = 15_00
   throw new Error('Timed out waiting for production run state')
 }
 
+async function sendRunCommand(window, projectId, runId, type, payload) {
+  // 乐观并发：driver 在 plan.proposed 之后还会紧跟 skill.evidence 等内部写入，
+  // 「读 revision → 发命令」之间可能被插队；revision 冲突就重读重发（有界），别把并发当失败。
+  for (let attempt = 0; ; attempt += 1) {
+    const result = await window.evaluate(
+      async ({ pid, rid, commandType, commandPayload }) => {
+        const bridge = window.nomiDesktop?.productionRuns
+        const run = await bridge?.read(pid, rid)
+        try {
+          await bridge?.command(pid, rid, {
+            commandId: crypto.randomUUID(),
+            expectedRevision: run.revision,
+            type: commandType,
+            payload: commandPayload,
+            issuedAt: new Date().toISOString(),
+          })
+          return { ok: true }
+        } catch (error) {
+          return { ok: false, message: String(error?.message ?? error) }
+        }
+      },
+      { pid: projectId, rid: runId, commandType: type, commandPayload: payload },
+    )
+    if (result.ok) return
+    if (attempt >= 2 || !/revision conflict/i.test(result.message)) {
+      throw new Error(`Production command ${type} failed: ${result.message}`)
+    }
+    await delay(200)
+  }
+}
+
 async function openRunFromTaskCenter(window) {
   await window.locator('[data-task-center-trigger="true"]').click()
-  const row = window
-    .locator('[data-nomi-right-panel="tasks"]', { hasText: 'brand.promo' })
-    .locator('[role="button"]', { hasText: 'brand.promo' })
-    .first()
-  await row.waitFor({ timeout: 10_000 })
-  await row.click()
+  // 载入中的那个 run 在任务中心里直接长成完整卡（N1 起就不再是「先点紧凑行再展开」了）。
+  // 原先这里等的是 [role="button"] 的紧凑行——那个形态对当前 run 已经不存在，等到超时为止。
+  await window.locator('[data-production-task-card]').waitFor({ timeout: 15_000 })
   await window.locator('[data-production-status-title]').waitFor({ timeout: 10_000 })
 }
 
@@ -99,48 +127,30 @@ try {
   const runId = created?.runId
   if (!runId) throw new Error('Production run was not created')
 
-  await window.evaluate(
-    async ({ pid, rid }) => {
-      const bridge = window.nomiDesktop?.productionRuns
-      const run = await bridge?.read(pid, rid)
-      await bridge?.command(pid, rid, {
-        commandId: crypto.randomUUID(),
-        expectedRevision: run.revision,
-        type: 'gate.decide',
-        payload: { gateId: 'gate-direction-v1', status: 'approved' },
-        issuedAt: new Date().toISOString(),
-      })
-    },
-    { pid: projectId, rid: runId },
-  )
+  await sendRunCommand(window, projectId, runId, 'gate.decide', { gateId: 'gate-direction-v1', status: 'approved' })
+
+  // brand.promo 的评审链：方向批准 → 出剧本（awaiting_script_review）→ 剧本批准 → 出分镜
+  //（awaiting_storyboard_review）→ 分镜批准后才挂得上执行合同（plan.attach 拒收候选分镜）。
+  const scripted = await waitForRun(window, projectId, runId, (run) => run.status === 'awaiting_script_review')
+  const script = scripted.artifacts.find((artifact) => artifact.kind === 'script')
+  if (!script) throw new Error('Script fixture was not produced')
+  await sendRunCommand(window, projectId, runId, 'artifact.review', { artifactId: script.artifactId, decision: 'approved' })
 
   const planned = await waitForRun(window, projectId, runId, (run) => run.status === 'awaiting_storyboard_review')
   const storyboard = planned.artifacts.find((artifact) => artifact.kind === 'storyboard')
   if (!storyboard) throw new Error('Storyboard fixture was not produced')
-  await window.evaluate(
-    async ({ pid, rid, artifactId }) => {
-      const bridge = window.nomiDesktop?.productionRuns
-      const run = await bridge?.read(pid, rid)
-      await bridge?.command(pid, rid, {
-        commandId: crypto.randomUUID(),
-        expectedRevision: run.revision,
-        type: 'plan.attach',
-        payload: {
-          artifactId,
-          bindings: [
-            {
-              nodeId: 'shot-1',
-              provider: 'kie',
-              model: 'gpt-image-2-text-to-image',
-              stageId: 'generate',
-            },
-          ],
-        },
-        issuedAt: new Date().toISOString(),
-      })
-    },
-    { pid: projectId, rid: runId, artifactId: storyboard.artifactId },
-  )
+  await sendRunCommand(window, projectId, runId, 'artifact.review', { artifactId: storyboard.artifactId, decision: 'approved' })
+  await sendRunCommand(window, projectId, runId, 'plan.attach', {
+    artifactId: storyboard.artifactId,
+    bindings: [
+      {
+        nodeId: 'shot-1',
+        provider: 'kie',
+        model: 'gpt-image-2-text-to-image',
+        stageId: 'generate',
+      },
+    ],
+  })
 
   await openRunFromTaskCenter(window)
   await window.locator('[data-production-primary-action]').click()
@@ -188,6 +198,8 @@ try {
   if (run.budget.authorized !== 0) throw new Error('Policy recovery unexpectedly authorized spend before approval')
 
   await window.getByRole('button', { name: labels.close }).click()
+  // 去设置页补策略时任务中心被关掉了（面板点外面就收）——要再点主操作得先把它开回来。
+  await openRunFromTaskCenter(window)
   await window.locator('[data-production-primary-action]').click()
   await window.locator('[data-production-hard-budget="set"]').waitFor({ timeout: 5_000 })
   await window.locator('[data-production-provider-model-status="allowed"]').waitFor({ timeout: 5_000 })

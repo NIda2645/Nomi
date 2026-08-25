@@ -15,6 +15,7 @@ import { setCanvasDragging } from './canvasDraggingFlag'
 import {
   canvasDragExceededThreshold,
   isCanvasCapturePanPointer,
+  isCanvasMenuTarget,
   isCanvasPanButtonHeld,
   resolveCanvasPanButtonFromMove,
   shouldPreventDefaultForCanvasPanStart,
@@ -315,13 +316,14 @@ export function useCanvasViewportGestures({
       beginPan(event, event.button as 0 | 1 | 2)
       return
     }
-    if (event.button === 0) setContextNodeMenu(null)
-    // 只有真空白处才收起激活边。边菜单也在 stage 里，而这是 capture 阶段：
-    // 子按钮的 stopPropagation 来不及拦。若不在此豁免，pointerdown 会先卸载菜单，
-    // 后续 click 无目标，表现为“改标签 / 断开都没反应”。
-    if (!activeEdgeId) return
+    // 菜单（节点右键菜单 / 边菜单）都在 stage 里，而这是 capture 阶段：子项的 stopPropagation
+    // 来不及拦。**两处收起都必须先问这一句**——否则 pointerdown 先卸载菜单，后续 click 无目标，
+    // 表现为“改标签 / 断开 / 菜单项都没反应”。（曾只豁免了边菜单，节点菜单漏在上一行。）
+    const menuTarget = isCanvasMenuTarget(event.target)
+    if (event.button === 0 && !menuTarget) setContextNodeMenu(null)
+    if (!activeEdgeId || menuTarget) return
     const target = event.target instanceof Element ? event.target : null
-    if (target?.closest('.generation-canvas-v2__edge-hit, .generation-canvas-v2__edge-cut, .generation-canvas-v2__edge-control, [role="menu"], [role="menuitem"], [role="menuitemradio"]')) return
+    if (target?.closest('.generation-canvas-v2__edge-hit, .generation-canvas-v2__edge-cut, .generation-canvas-v2__edge-control')) return
     setActiveEdge(null)
   }, [activeEdgeId, beginPan, setActiveEdge, setContextNodeMenu])
 
@@ -403,7 +405,8 @@ export function useCanvasViewportGestures({
 
   // 滚轮 / 触控板：缩放还是平移由用户设置决定（#832 二选一）；⌘/Ctrl+滚轮与捏合恒缩放。
   const handleWheel = React.useCallback((event: WheelEvent) => {
-    // 命中卡内可滚区（提示词编辑器等）→ 交原生滚动，画布不动（一处覆盖所有入口，P2）。
+    // 命中卡内可滚区（提示词编辑器等）→ 整个手势始终交给内部区域，画布不动（一处覆盖所有入口，P2）。
+    // 内部到顶/到底也继续归内部；若在边界把手势交回画布，节点会突然缩放/平移出视野。
     // 捏合/⌘+滚轮（ctrlKey/metaKey）不放行——浏览器此时本来就不滚内容，仍走缩放。
     // 主轴判定在 findScrollableAncestor 内做（横/纵都支持），不在此处折成单轴 delta。
     if (

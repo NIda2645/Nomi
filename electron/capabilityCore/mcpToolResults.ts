@@ -7,6 +7,10 @@
 // 纯逻辑、不碰 electron —— 与 mcpProtocol 同边界，可裸 node 单测。
 
 import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
+import { stripInternalEnrichFields } from './mcpResultEnrich'
+import { projectGenerationRecovery } from './generationRecoveryProjection'
+
+export { buildToolErrorOutcome } from './mcpToolErrorResults'
 
 export type ResultLocale = 'zh-CN' | 'en'
 
@@ -24,6 +28,7 @@ const INTENT_LABEL: Record<string, { zh: string; en: string }> = {
 const RUN_STATUS_HINT: Record<string, { zh: string; en: string; nextZh: string; nextEn: string; action: string }> = {
   draft: { zh: '草稿', en: 'draft', nextZh: '下一步：定创意方向（尚未花费）', nextEn: 'Next: pick a creative direction (nothing spent yet)', action: 'pick_direction' },
   awaiting_direction: { zh: '等你定方向', en: 'awaiting direction', nextZh: '下一步：在对话里选一个创意方向', nextEn: 'Next: choose a creative direction in the conversation', action: 'pick_direction' },
+  awaiting_script_review: { zh: '剧本等你审阅', en: 'script awaiting review', nextZh: '下一步：审阅剧本；批准后才会拟分镜', nextEn: 'Next: review the script; the storyboard is drafted only after approval', action: 'review_script' },
   awaiting_storyboard_review: { zh: '分镜等你审阅', en: 'storyboard awaiting review', nextZh: '下一步：审阅分镜；确认后才会生成制作合同', nextEn: 'Next: review the storyboard; the contract is created after you confirm', action: 'review_storyboard' },
   awaiting_contract: { zh: '等待批准预算', en: 'awaiting budget approval', nextZh: '下一步：批准制作合同后才会开始付费生成', nextEn: 'Next: approve the production contract before any paid generation', action: 'approve_contract' },
   ready: { zh: '已就绪', en: 'ready', nextZh: '合同已批准，生成即将开始', nextEn: 'Contract approved; generation starts shortly', action: 'watch_or_pause' },
@@ -36,30 +41,31 @@ const RUN_STATUS_HINT: Record<string, { zh: string; en: string; nextZh: string; 
   cancelled: { zh: '已取消', en: 'cancelled', nextZh: '未提交的任务不计费', nextEn: 'Unsubmitted jobs are not charged', action: 'none' },
 }
 
-/** A6 已知错误码 → 人话原因 + 恢复动作（只登记确证的码，不编造；未知码原样透传）。 */
-const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: string; en: string }> }> = {
-  asset_not_localized: {
-    zh: '参考素材还没落到本地，生成端拿不到它',
-    en: 'A referenced asset is not localized yet, so the generator cannot read it',
-    recover: [
-      { zh: '在 Nomi 里打开该节点让素材完成本地化后重试', en: 'Open the node in Nomi to finish localizing the asset, then retry' },
-    ],
-  },
-  renderer_or_provider_unknown: {
-    zh: '找不到能执行这次生成的渲染器或供应商配置',
-    en: 'No renderer or provider configuration can execute this generation',
-    recover: [
-      { zh: '用 nomi_list_models 核对可用模型后换一个', en: 'Check available models with nomi_list_models and switch' },
-      { zh: '在 Nomi 设置里补齐该供应商的接入', en: 'Complete the provider setup in Nomi settings' },
-    ],
-  },
-}
-
 function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 function rec(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+/**
+ * 历史遗留的坏 Run：`draft` 且一个阶段一道门都没有——起草时用的 playbook 没实现，流水线一格都没
+ * 建起来（2026-08-18 已在 repository 层堵死，见 productionPlaybooks.ts；盘上已有的仍读得到）。
+ * 它永远不会自己往前走，所以转述必须说实话：不能再按 draft 的默认提示叫 agent 去「定创意方向」
+ * ——根本没有方向门可定，那只会让它空转。
+ */
+function stalledDraftHint(value: Record<string, unknown>): (typeof RUN_STATUS_HINT)[string] | null {
+  if (str(value.status) !== 'draft') return null
+  const gates = Array.isArray(value.gates) ? value.gates : []
+  const stages = Array.isArray(value.stages) ? value.stages : []
+  if (gates.length > 0 || stages.length > 0) return null
+  return {
+    zh: '起不来的草稿',
+    en: 'stalled draft',
+    nextZh: '这个制作没建起任何阶段（起草时用的 playbook 未实现），不会自己往前走。用 nomi_control_run 取消它，再用受支持的 playbook 重新发起。',
+    nextEn: 'This run has no stages (its playbook was never implemented), so it will never progress. Cancel it with nomi_control_run, then start again with a supported playbook.',
+    action: 'cancel_run',
+  }
 }
 
 /** 参数回显行（样张⑧）：只回显真实收到的参数，缺的不编。 */
@@ -71,6 +77,92 @@ function echoLine(ctx: Ctx, parts: Array<string | null | undefined>): string | n
 function truncate(text: string, max = 40): string {
   const trimmed = text.trim()
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
+}
+
+/** Artifact bodies are already sanitized by the production projection, but this final MCP boundary
+ * still drops credential/path-shaped fields if a legacy run contains one. Never expose a local path,
+ * provider URL, token, or API key merely because an old snapshot carried it. */
+function safeArtifactValue(value: unknown, key = ''): unknown {
+  if (Array.isArray(value)) return value.map((item) => safeArtifactValue(item))
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+      if (/api.?key|secret|authorization|provider.?url|private.?url|access.?token/i.test(childKey)) continue
+      out[childKey] = safeArtifactValue(childValue, childKey)
+    }
+    return out
+  }
+  if (typeof value === 'string' && /path|file/i.test(key) && (/^(?:\/|[A-Za-z]:[\\/])/.test(value) || value.includes('\\'))) return '[redacted]'
+  if (typeof value === 'string' && /^https?:\/\//i.test(value) && /provider|vendor|source/i.test(key)) return '[redacted]'
+  return value
+}
+
+/** Final redaction seam shared by tool results and the versioned artifact resource reader. */
+export function sanitizeArtifactResource(value: unknown): unknown {
+  return safeArtifactValue(value)
+}
+
+function safeNomiDeepLink(value: string): string {
+  if (/^nomi:\/\/project\/[A-Za-z0-9._-]{1,160}(?:\/run\/[A-Za-z0-9._-]{1,160}(?:\?artifact=[A-Za-z0-9._-]{1,160})?|\/node\/[A-Za-z0-9._-]{1,160})?$/.test(value)) return value
+  return ''
+}
+
+function artifactVersionValue(value: Record<string, unknown>): number | null {
+  return Number.isInteger(value.version) && Number(value.version) > 0 ? Number(value.version) : null
+}
+
+function buildArtifactBodyOutcome(
+  ctx: Ctx,
+  toolName: string,
+  args: Record<string, unknown>,
+  value: Record<string, unknown>,
+  openInNomi: string,
+  runId: string,
+  projectId: string,
+): ToolOutcome {
+  const artifactId = str(value.artifactId) || str(args.artifactId)
+  const kind = str(value.kind) || str(args.kind) || 'artifact'
+  const status = str(value.status) || 'unknown'
+  const version = artifactVersionValue(value)
+  const contentHash = str(value.contentHash)
+  const content = value.content === undefined ? undefined : safeArtifactValue(value.content)
+  const bodyText = content === undefined ? null : JSON.stringify(content, null, 2)
+  const preview = rec(value.preview)
+  const previewUrl = str(preview.url)
+  const isRevision = toolName === 'nomi_request_script_revision' || toolName === 'nomi_request_storyboard_revision'
+  const isReview = toolName === 'nomi_review_artifact'
+  const head = isRevision
+    ? L(ctx, '✓ 修订候选已创建', '✓ Revision candidate created')
+    : isReview
+      ? (status === 'adopted' || str(args.decision) === 'approved'
+          ? L(ctx, '✓ 产物版本已批准', '✓ Artifact version approved')
+          : L(ctx, '✓ 产物审阅决定已记录', '✓ Artifact review decision recorded'))
+      : `[Nomi] ${kind} · ${status}`
+  const text = [
+    `${head} · ${artifactId}`,
+    `${L(ctx, '状态', 'status')} ${status}`,
+    version !== null ? `${L(ctx, '版本', 'version')} ${version}` : null,
+    contentHash ? `${L(ctx, '内容 hash', 'content hash')} ${contentHash}` : null,
+    previewUrl ? `${L(ctx, '预览', 'preview')} ${previewUrl}` : null,
+    isRevision && str(value.parentArtifactId) ? `${L(ctx, '基于', 'based on')} ${str(value.parentArtifactId)}${value.sourceVersion ? ` @${String(value.sourceVersion)}` : ''}` : null,
+    bodyText ? `${L(ctx, '内容', 'content')}\n${bodyText}` : null,
+  ].filter(Boolean).join('\n') + (openInNomi ? `\n${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${openInNomi}` : '')
+  return {
+    text,
+    outcome: {
+      kind: isRevision ? 'artifact_revision' : isReview ? 'artifact_review' : 'artifact',
+      operation: isRevision ? 'revise' : isReview ? 'review' : 'read',
+      runId, projectId, artifactId, artifactKind: kind, status,
+      ...(version !== null ? { version } : {}),
+      ...(contentHash ? { contentHash } : {}),
+      ...(previewUrl ? { previewUrl } : {}),
+      ...(str(value.parentArtifactId) ? { parentArtifactId: str(value.parentArtifactId) } : {}),
+      ...(value.sourceVersion !== undefined ? { sourceVersion: value.sourceVersion } : {}),
+      ...(content !== undefined ? { content } : {}),
+      ...(openInNomi ? { openInNomi } : {}),
+      nextActions: isRevision ? ['review_artifact'] : ['open_in_nomi'],
+    },
+  }
 }
 
 type DirectionCandidate = { key: string; title: string; oneLiner: string }
@@ -104,6 +196,32 @@ function waitingSampleGateId(value: Record<string, unknown>): string | null {
   return gate ? str(gate.gateId) : null
 }
 
+function waitingShotGate(value: Record<string, unknown>): {
+  gateId: string
+  jobId: string
+  index: number
+  nodeId: string
+  provider: string
+  model: string
+} | null {
+  const gates = Array.isArray(value.gates) ? value.gates as Array<Record<string, unknown>> : []
+  const jobs = Array.isArray(value.jobs) ? value.jobs as Array<Record<string, unknown>> : []
+  const gate = gates.find((item) => str(item.gateId).startsWith('gate-shot-')
+    && str(item.scope) === 'job_set' && str(item.status) === 'waiting')
+  const jobId = gate && Array.isArray(gate.jobIds) ? str(gate.jobIds[0]) : ''
+  const index = jobs.findIndex((job) => str(job.jobId) === jobId)
+  const job = index >= 0 ? jobs[index] : null
+  if (!gate || !jobId || !job) return null
+  return {
+    gateId: str(gate.gateId),
+    jobId,
+    index: index + 1,
+    nodeId: str(job.nodeId) || jobId,
+    provider: str(job.provider),
+    model: str(job.model),
+  }
+}
+
 /** B3：信任档位人话标签（合同/状态/改档转述都用这一处）。 */
 const TRUST_LABEL: Record<string, { zh: string; en: string }> = {
   key_confirm: { zh: '关键确认（默认，五门全开）', en: 'key confirmations (default; all gates on)' },
@@ -122,6 +240,138 @@ export type ToolOutcome = {
   outcome: Record<string, unknown> | null
 }
 
+const KEY_STATUS_LABEL: Record<string, { zh: string; en: string }> = {
+  ok: { zh: '可用', en: 'usable' },
+  missing: { zh: '未配 Key', en: 'no API key' },
+  locked: { zh: 'Key 解不开', en: 'key locked' },
+}
+
+/** 一个模型的参考能力压成一句短标签（只在真能带参考时出，纯文生模型不占字）。 */
+function referenceTag(ctx: Ctx, references: Record<string, unknown>): string {
+  const kinds: string[] = []
+  if (references.image) kinds.push(L(ctx, references.multiImage ? '多图' : '图', references.multiImage ? 'multi-image' : 'image'))
+  if (references.video) kinds.push(L(ctx, '视频', 'video'))
+  if (references.audio) kinds.push(L(ctx, '音频', 'audio'))
+  if (kinds.length === 0) return ''
+  const modes = Array.isArray(references.referenceModes) ? (references.referenceModes as string[]) : []
+  const modeHint = modes.length ? `@${modes.join('/')}` : ''
+  return `${L(ctx, '参考', 'refs')}:${kinds.join('+')}${modeHint}`
+}
+
+/** 审片环交付形（W1）：与 shotVerifyOrchestrate.ShotVerifyOutcome 结构对齐的稳定字段。 */
+type VerifyOutcomeShape = {
+  /** true = 判分被跳过（超时/连续失败/无判分模型），此时只出「跳过（reason）」行、无评分/红标。 */
+  skipped: boolean
+  reason: string | null
+  passed: boolean
+  retries: number
+  scores: Record<string, number>
+  flagged: Array<{ dimension: string; dimensionName: string; score: number; reason: string }>
+  suggestion: string | null
+}
+
+/**
+ * 从 core 返回里解审片 outcome：
+ * - evaluated:true → 真判分（passed/flagged/…）。
+ * - skipped:true 且带 reason → 判分超时/连续失败的**诚实跳过**：出「审片：跳过（原因）」行（L3 韧性修复，D4 不藏）。
+ * - 其余（evaluated:false 且无 reason，如视觉静默不可用）→ null，交付不显审片行（与今天一致）。
+ */
+function parseVerifyOutcome(raw: unknown): VerifyOutcomeShape | null {
+  if (!raw || typeof raw !== 'object') return null
+  const v = raw as Record<string, unknown>
+  const skipped = v.skipped === true
+  const reason = typeof v.reason === 'string' && v.reason.length > 0 ? v.reason : null
+  // 未评且无 reason（视觉静默不可用等）→ 不显审片行（保持既有静默语义）。
+  if (v.evaluated !== true && !(skipped && reason)) return null
+  const flaggedRaw = Array.isArray(v.flagged) ? v.flagged : []
+  const flagged = flaggedRaw.map((f) => {
+    const r = rec(f)
+    return { dimension: str(r.dimension), dimensionName: str(r.dimensionName), score: Number(r.score) || 0, reason: str(r.reason) }
+  })
+  const scoresRaw = rec(v.scores)
+  const scores: Record<string, number> = {}
+  for (const [k, val] of Object.entries(scoresRaw)) if (typeof val === 'number') scores[k] = val
+  return {
+    skipped: v.evaluated !== true, // 只有真判分才 evaluated:true；带 reason 的跳过在这里记为 skipped
+    reason,
+    passed: v.passed === true,
+    retries: Number(v.retries) || 0,
+    scores,
+    flagged,
+    suggestion: typeof v.suggestion === 'string' ? v.suggestion : null,
+  }
+}
+
+/**
+ * 审片行（双语，内联 L()——MCP 结果文案不走 i18n key，方案 §7）。诚实标注不达标镜头（蓝图 D4）：
+ * 跳过（判分超时/失败）→ 一句「审片：跳过（原因）」（不影响生成，诚实标缺口）；
+ * 通过 → 一句「审片通过（含重试次数）」；有红标 → 逐轴点名「第 N 档，低于阈值，建议重滚」，不藏。
+ */
+function buildVerifyLine(ctx: Ctx, v: VerifyOutcomeShape): string {
+  if (v.skipped) {
+    const why = v.reason || L(ctx, '判分模型不可用', 'judge model unavailable')
+    return L(ctx, `审片：跳过（${why}）`, `Review: skipped (${why})`)
+  }
+  if (v.passed) {
+    return v.retries > 0
+      ? L(ctx, `审片：定向重试 ${v.retries} 次后通过（身份/构图/连贯达标）`, `Review: passed after ${v.retries} targeted ${v.retries === 1 ? 'retry' : 'retries'} (identity/composition/continuity on-bar)`)
+      : L(ctx, '审片：一次通过（身份/构图/连贯达标）', 'Review: passed on first try (identity/composition/continuity on-bar)')
+  }
+  const flagLines = v.flagged.map((f) =>
+    L(ctx, `  ⚠️ ${f.dimensionName}第 ${f.score} 档，低于阈值——${f.reason}`, `  ⚠️ ${f.dimensionName} scored ${f.score}/5, below bar — ${f.reason}`),
+  )
+  const head = L(
+    ctx,
+    `⚠️ 审片：${v.retries} 次定向重试后仍有 ${v.flagged.length} 个维度不达标（已标红，不藏）`,
+    `⚠️ Review: ${v.flagged.length} dimension(s) still below bar after ${v.retries} targeted ${v.retries === 1 ? 'retry' : 'retries'} (flagged, not hidden)`,
+  )
+  const tail = v.suggestion ? L(ctx, `  建议：${v.suggestion}`, `  Suggestion: ${v.suggestion}`) : null
+  return [head, ...flagLines, tail].filter(Boolean).join('\n')
+}
+
+/** 交付1 · 模型清单 → 双语转述（按 keyStatus 分组，只有 ok 说可用）+ 结构化透传（模型精确读）。 */
+function buildListModelsOutcome(ctx: Ctx, value: Record<string, unknown>): ToolOutcome {
+  const models = Array.isArray(value.models) ? (value.models as Array<Record<string, unknown>>) : []
+  if (models.length === 0) {
+    return {
+      text: L(ctx, '没有已启用的模型。请先在 Nomi 应用的模型接入里添加并配置 API Key。', 'No enabled models. Add and configure one in Nomi settings first.'),
+      outcome: { kind: 'model_list', total: 0, usable: 0, models: [] },
+    }
+  }
+  const line = (m: Record<string, unknown>): string => {
+    const status = str(m.keyStatus) || 'missing'
+    const label = KEY_STATUS_LABEL[status] || KEY_STATUS_LABEL.missing
+    const refTag = referenceTag(ctx, rec(m.references))
+    const head = `${str(m.vendor)} · ${str(m.modelKey)}（${str(m.label)}, ${str(m.kind)}）`
+    const tail = status === 'ok'
+      ? `✓ ${L(ctx, label.zh, label.en)}${refTag ? ' · ' + refTag : ''}`
+      : `✗ ${L(ctx, label.zh, label.en)}——${str(m.statusReason)}`
+    return `  ${head} ${tail}`
+  }
+  const usable = models.filter((m) => str(m.keyStatus) === 'ok')
+  const blocked = models.filter((m) => str(m.keyStatus) !== 'ok')
+  const text = [
+    L(ctx, `可用模型 ${usable.length} 个（keyStatus=ok，选型只挑这些）：`, `${usable.length} usable model(s) (keyStatus=ok — pick from these):`),
+    ...(usable.length ? usable.map(line) : [L(ctx, '  （无——请先配置 API Key）', '  (none — configure an API key first)')]),
+    ...(blocked.length ? [L(ctx, `另有 ${blocked.length} 个已列出但暂不可用（缺 Key / Key 解不开）：`, `${blocked.length} listed but not usable (missing / locked key):`), ...blocked.map(line)] : []),
+  ].join('\n')
+  return {
+    text,
+    outcome: {
+      kind: 'model_list',
+      total: models.length,
+      usable: usable.length,
+      // 结构化原样透传逐模型真话字段（模型精确读，不必从文本抠）。
+      models: models.map((m) => ({
+        vendor: str(m.vendor), modelKey: str(m.modelKey), kind: str(m.kind), label: str(m.label),
+        keyStatus: str(m.keyStatus) || 'missing', statusReason: str(m.statusReason),
+        references: rec(m.references),
+      })),
+      nextActions: usable.length ? ['pick_model'] : ['configure_api_key'],
+    },
+  }
+}
+
 /** A2 · 生产类工具结果 → 文本 + 稳定结构化字段。 */
 export function buildToolOutcome(
   toolName: string,
@@ -135,6 +385,12 @@ export function buildToolOutcome(
   const runId = str(value.runId) || str(args.runId)
   const projectId = str(value.projectId) || str(args.projectId)
   const openLine = openInNomi ? `\n${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${openInNomi}` : ''
+
+  if (toolName === 'nomi_list_models') {
+    // 交付1：模型清单转述——**只把 keyStatus=ok 的说成"可用"**，missing/locked 各带缺口一句话（R15 双语）。
+    // 参考能力也点出来（能带图/视频/音频/多图 + 哪个模式），让选型不必再猜。结构化字段原样透传给模型精确读。
+    return buildListModelsOutcome(ctx, value)
+  }
 
   if (toolName === 'nomi_start_playbook') {
     const brief = rec(args.brief)
@@ -168,7 +424,7 @@ export function buildToolOutcome(
 
   if (toolName === 'nomi_get_run') {
     const status = str(value.status) || 'unknown'
-    const hint = RUN_STATUS_HINT[status]
+    const hint = stalledDraftHint(value) ?? RUN_STATUS_HINT[status]
     const artifacts = Array.isArray(value.artifacts) ? (value.artifacts as Array<Record<string, unknown>>) : []
     const latest = artifacts.at(-1)
     const preview = latest ? rec(latest.preview) : {}
@@ -186,6 +442,31 @@ export function buildToolOutcome(
       L(ctx, '样片就绪：首镜已生成，先过目再批量剩余镜头。', 'Sample ready: the first shot is generated — review it before the full batch.'),
       L(ctx, '  满意就批准继续；想改风格就否决（会暂停，改提示词后可继续）。', '  Approve to continue, or reject to pause and adjust the prompt.'),
     ] : []
+    const shotGate = waitingShotGate(value)
+    const shotTarget = shotGate ? [shotGate.provider, shotGate.model].filter(Boolean).join(' · ') : ''
+    const shotLines = shotGate ? [
+      L(ctx,
+        `第 ${shotGate.index} 镜（${shotGate.nodeId}）提交前正在等你确认。`,
+        `Shot ${shotGate.index} (${shotGate.nodeId}) is waiting for approval before provider submission.`),
+      L(ctx,
+        `  ${shotTarget ? `${shotTarget}；` : ''}批准前不会调用供应商，也不会产生这镜的费用。请回 Nomi 决定。`,
+        `  ${shotTarget ? `${shotTarget}; ` : ''}no provider call or charge occurs before approval. Decide in Nomi.`),
+    ] : []
+    const jobsArr = Array.isArray(value.jobs) ? (value.jobs as Array<Record<string, unknown>>) : []
+    const unknownJobs = jobsArr.filter((job) => str(job.status) === 'submission_unknown')
+    const recoveryProfile = value.providerCapabilityProfile === 'full_recovery' || value.providerCapabilityProfile === 'observe_only'
+      ? value.providerCapabilityProfile
+      : 'submit_only'
+    const recovery = unknownJobs.length
+      ? projectGenerationRecovery({ state: 'submission_unknown', profile: recoveryProfile, locale: ctx.locale })
+      : undefined
+    const reconciliationLines = unknownJobs.length ? [
+      L(ctx,
+        `有 ${unknownJobs.length} 个任务的供应商状态还没核实；正在等待对账，Nomi 不会自动重提。`,
+        `${unknownJobs.length} job(s) have an unverified provider state; waiting for reconciliation and no automatic resubmit.`,
+      ),
+      `  ${recovery?.message}`,
+    ] : []
     // B3：状态转述带当前信任档位（非默认时才占一行，避免默认档噪音）。
     const trustLevel = str(value.trustLevel) || 'key_confirm'
     const text = [
@@ -195,6 +476,8 @@ export function buildToolOutcome(
       preview.url ? `${L(ctx, '最新预览', 'Latest preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
       ...candidateLines,
       ...sampleLines,
+      ...shotLines,
+      ...reconciliationLines,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
@@ -205,7 +488,19 @@ export function buildToolOutcome(
         latestPreviewUrl: str(preview.url) || null,
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
         ...(sampleGateId ? { sampleGateId } : {}),
-        nextActions: direction && direction.candidates.length ? ['decide_direction'] : sampleGateId ? ['review_sample'] : hint ? [hint.action] : [],
+        ...(shotGate ? { shotGateId: shotGate.gateId, shotJobId: shotGate.jobId } : {}),
+        ...(recovery ? { recovery } : {}),
+        nextActions: recovery
+          ? ['wait_reconciliation']
+          : direction && direction.candidates.length
+          ? ['decide_direction']
+          : sampleGateId
+            ? ['review_sample']
+            : shotGate
+              ? ['review_shot_in_nomi']
+              : hint
+                ? [hint.action]
+                : [],
         openInNomi: openInNomi || null,
       },
     }
@@ -228,11 +523,12 @@ export function buildToolOutcome(
   if (toolName === 'nomi_get_artifact') {
     const preview = rec(value.preview)
     const nomiUri = str(value.nomiUri)
+    const artifactOpenInNomi = safeNomiDeepLink(openInNomi)
     const text = [
       `[Nomi] ${str(value.kind) || 'artifact'} · ${str(value.status) || 'unknown'} · ${str(value.artifactId)}`,
       nomiUri ? `${L(ctx, '产物', 'Artifact')} ${nomiUri}` : null,
       preview.url ? `${L(ctx, '预览', 'Preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
-    ].filter(Boolean).join('\n') + openLine
+    ].filter(Boolean).join('\n') + (artifactOpenInNomi ? `\n${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${artifactOpenInNomi}` : '')
     return {
       text,
       outcome: {
@@ -240,6 +536,42 @@ export function buildToolOutcome(
         artifactId: str(value.artifactId), artifactKind: str(value.kind) || null,
         previewUrl: str(preview.url) || null, nomiUri: nomiUri || null,
         nextActions: ['open_in_nomi'],
+        openInNomi: artifactOpenInNomi || null,
+      },
+    }
+  }
+
+  if (toolName === 'nomi_read_artifact'
+    || toolName === 'nomi_request_script_revision'
+    || toolName === 'nomi_request_storyboard_revision'
+    || toolName === 'nomi_review_artifact') {
+    return buildArtifactBodyOutcome(ctx, toolName, args, value, safeNomiDeepLink(openInNomi), runId, projectId)
+  }
+
+  if (toolName === 'nomi_materialize_storyboard') {
+    const artifactId = str(value.artifactId) || str(args.artifactId)
+    const rawArtifactVersion = value.artifactVersion
+    const version = artifactVersionValue(value)
+      ?? (Number.isInteger(rawArtifactVersion) && Number(rawArtifactVersion) > 0 ? Number(rawArtifactVersion) : null)
+    const createdNodeIds = Array.isArray(value.createdNodeIds)
+      ? value.createdNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string' && Boolean(nodeId.trim()))
+      : []
+    const bindings = Array.isArray(value.bindings) ? value.bindings : []
+    const text = [
+      `✓ ${L(ctx, '分镜已落到 Nomi 画布', 'Storyboard materialized into the Nomi canvas')} · ${artifactId}`,
+      version !== null ? `${L(ctx, '分镜版本', 'storyboard version')} ${version}` : null,
+      `${L(ctx, '画布节点', 'canvas nodes')} ${createdNodeIds.length} · ${L(ctx, '制作绑定', 'production bindings')} ${bindings.length}`,
+      createdNodeIds.length ? `${L(ctx, '节点 id', 'node ids')} ${createdNodeIds.slice(0, 12).join(', ')}${createdNodeIds.length > 12 ? '…' : ''}` : null,
+      L(ctx, '还没有批准预算，也没有调用付费模型；下一步在 Nomi 查看画布并批准制作合同。', 'No budget was approved and no paid model was called; next, review the canvas in Nomi and approve the production contract.'),
+    ].filter(Boolean).join('\n') + openLine
+    return {
+      text,
+      outcome: {
+        kind: 'storyboard_materialized', operation: 'materialize', runId, projectId, artifactId,
+        ...(version !== null ? { version } : {}),
+        createdNodeIds, bindingCount: bindings.length,
+        status: str(value.status) || null,
+        nextActions: ['open_in_nomi', 'approve_contract'],
         openInNomi: openInNomi || null,
       },
     }
@@ -359,10 +691,31 @@ export function buildToolOutcome(
       refs ? `${L(ctx, '参考', 'refs')} ${refs}` : null,
       str(args.prompt) ? `「${truncate(str(args.prompt), 30)}」` : null,
     ])
+    // 交付③：深链数据化——优先用上游已给的（如 artifact 级 run 链），否则据 projectId 兜工程级
+    // nomi://project/{id}。既进结构化字段（openInNomi）、也现于文本（纯文本宿主可点）。无 projectId 不编。
+    // W3③：深链粒度扩到**节点级**——「指着看」要直达那一镜，而不是把人丢到项目首页自己找。
+    // 有 nodeId 就带上（nomi://project/{p}/node/{n}）；没有才退回工程级。上游给的（artifact 级 run 链）仍最优先。
+    const shotNodeId = str(value.nodeId) || str(args.nodeId)
+    const deepLink = openInNomi
+      || (projectId ? (shotNodeId ? `nomi://project/${projectId}/node/${shotNodeId}` : `nomi://project/${projectId}`) : '')
+    // 结果里可能夹带 App 侧富化的内部字段（_nomiThumbnail=缩略图 base64，已单独成 image block；
+    // _nomiPreviewUrl=签名预览链，已进 widget）——都不该原样 JSON dump 进文本（base64 会灌爆终端）。dump 前剥掉。
+    const dump = stripInternalEnrichFields(result)
+    // 审片环结果（W1）：core 生成成功后跑判分→定向重试→红标，把 ShotVerifyOutcome 挂在 result.verify。
+    // 只在真跑了判分（evaluated）时出审片行/结构字段——默认路径（未接审片）无此字段，转述与今天一致。
+    const verifyOutcome = parseVerifyOutcome(value.verify)
+    const verifyLine = verifyOutcome ? buildVerifyLine(ctx, verifyOutcome) : null
+    // 冻结提醒（core 的第三层冻结门，只提醒不拦）——**必须进文本**，挂在结构化字段里模型不一定读。
+    const advisoryLines = Array.isArray(value.advisories)
+      ? value.advisories.filter((a): a is string => typeof a === 'string' && a.trim().length > 0).map((a) => `⚠️ ${a}`)
+      : []
     const text = [
       `✓ ${L(ctx, '已生成', 'Generated')}${label ? L(ctx, label.zh, label.en) : L(ctx, '一个素材', 'an asset')}`,
       echo ? `  ${echo}` : null,
-      JSON.stringify(result, null, 2),
+      verifyLine,
+      ...advisoryLines,
+      JSON.stringify(dump, null, 2),
+      deepLink ? `${L(ctx, '在 Nomi 打开', 'Open in Nomi')} ${deepLink}` : null,
     ].filter(Boolean).join('\n')
     return {
       text,
@@ -370,6 +723,10 @@ export function buildToolOutcome(
         kind: 'generation', projectId,
         params: { vendor: str(args.vendor), modelKey: str(args.modelKey), intent, references: refs },
         nextActions: ['open_in_nomi'],
+        openInNomi: deepLink || null,
+        // 审片环结构化字段（模型稳定读「过检/红标/建议」，不必从文本抠，harness 幕 6）。未评则不附。
+        ...(verifyOutcome ? { verify: verifyOutcome } : {}),
+        ...(advisoryLines.length ? { advisories: value.advisories } : {}),
       },
     }
   }
@@ -394,29 +751,4 @@ export function buildProgressStartMessage(
       .filter(Boolean).join(' · ')
   }
   return null
-}
-
-/** A6 · 错误 → 人话原因 + 恢复动作 + 诊断信息（未知错误不编内容，原样透传 message）。 */
-export function buildToolErrorOutcome(
-  toolName: string,
-  error: unknown,
-  locale: ResultLocale = 'zh-CN',
-): { text: string; outcome: Record<string, unknown> } {
-  const ctx: Ctx = { locale }
-  const message = error instanceof Error ? error.message : String(error)
-  const code = Object.keys(ERROR_HINT).find((key) => message.includes(key)) || null
-  const hint = code ? ERROR_HINT[code] : null
-  const recover = hint ? hint.recover.map((r) => L(ctx, r.zh, r.en)) : []
-  const text = [
-    `✗ ${hint ? L(ctx, hint.zh, hint.en) : message}`,
-    code ? `${L(ctx, '诊断', 'diagnostic')} ${code}` : null,
-    ...recover.map((line, index) => `${index + 1}. ${line}`),
-    !hint && toolName === 'nomi_generate'
-      ? L(ctx, '已完成的内容安全；确认模型服务与 API Key 后可重试。', 'Finished work is safe; verify the model service and API key, then retry.')
-      : null,
-  ].filter(Boolean).join('\n')
-  return {
-    text,
-    outcome: { kind: 'error', tool: toolName, errorCode: code, message, recoveryActions: recover },
-  }
 }

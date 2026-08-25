@@ -138,25 +138,6 @@ function check(condition, message, details = '') {
   console.log(`  ok: ${message}`)
 }
 
-async function matchesCssVariable(locator, property, variable) {
-  return locator.evaluate((element, { property, variable }) => {
-    const probe = document.createElement('span')
-    probe.style.setProperty(property, `var(${variable})`)
-    document.body.appendChild(probe)
-    const actual = getComputedStyle(element).getPropertyValue(property)
-    const expected = getComputedStyle(probe).getPropertyValue(property)
-    probe.remove()
-    return actual === expected
-  }, { property, variable })
-}
-
-async function hasPaintedClass(locator, className, property = 'background-color') {
-  return locator.evaluate((element, { className, property }) => {
-    const value = getComputedStyle(element).getPropertyValue(property)
-    return element.classList.contains(className) && value !== '' && value !== 'transparent' && value !== 'rgba(0, 0, 0, 0)'
-  }, { className, property })
-}
-
 async function dismissFirstRun(win) {
   await win.evaluate(() => {
     window.localStorage.setItem('__nomiE2E', '1')
@@ -252,20 +233,18 @@ try {
   await win.locator('[aria-label="工作区切换"]').getByText('生成', { exact: true }).click({ timeout: 5000 })
   await win.waitForTimeout(1400)
 
-  await win.getByRole('button', { name: /模型接入/ }).first().click({ timeout: 5000 })
-  const modelPanel = win.getByRole('dialog', { name: '模型设置' })
+  // 模型接入入口现在是应用栏的「打开模型设置」，打开的是统一「设置」弹窗里的模型区
+  // （main 的 8d54ad4a「unify model management in settings」把独立的「模型设置」弹窗并进了「设置」，
+  //  并撤掉了旧的按能力上色的 chip / 连通小绿点 UI）。这里只作为前置：确认种子进去的 Batch Mock
+  //  供应商已在设置里出现（= 可被批量模型选择器选到），能力 chip 的配色是设置面板的事、与本走查无关。
+  await win.getByRole('button', { name: /打开模型设置/ }).first().click({ timeout: 5000 })
+  const modelPanel = win.getByRole('dialog', { name: '设置' })
   await modelPanel.waitFor({ state: 'visible', timeout: 5000 })
   await win.waitForTimeout(900)
-  const imageCapability = modelPanel.locator('span').filter({ hasText: /^图片\s*\d+$/ }).first()
-  const connectedDot = modelPanel.locator('button').filter({ hasText: 'Batch Mock' }).first().locator('span.bg-workbench-success').first()
-  const connectedPill = connectedDot.locator('..')
-  await imageCapability.waitFor({ state: 'visible', timeout: 5000 })
-  await connectedDot.waitFor({ state: 'visible', timeout: 5000 })
-  check(await matchesCssVariable(imageCapability, 'color', '--nomi-accent'), '已启用图片能力使用 Nomi 强调蓝')
-  check(await hasPaintedClass(imageCapability, 'bg-nomi-accent-soft'), '能力 chip 使用强调色浅底')
-  check(await hasPaintedClass(connectedPill, 'bg-nomi-ink-10'), '已连通胶囊使用中性表面')
-  check(await hasPaintedClass(connectedDot, 'bg-workbench-success'), '已连通只保留小绿点')
-  await snap(win, 'light-model-status-colors')
+  const batchMockRow = modelPanel.locator('button').filter({ hasText: 'Batch Mock' }).first()
+  await batchMockRow.waitFor({ state: 'visible', timeout: 5000 })
+  check(await batchMockRow.count() === 1, '种子供应商 Batch Mock 已在模型设置里可见')
+  await snap(win, 'light-model-settings')
   await modelPanel.getByRole('button', { name: '关闭', exact: true }).click()
   await win.waitForTimeout(400)
 
@@ -357,11 +336,14 @@ try {
   await win.waitForTimeout(700)
   await snap(win, 'dark-mixed-selection-models')
 
-  await win.getByRole('button', { name: /模型接入/ }).first().click({ timeout: 5000 })
+  await win.getByRole('button', { name: /打开模型设置/ }).first().click({ timeout: 5000 })
   await modelPanel.waitFor({ state: 'visible', timeout: 5000 })
   await win.waitForTimeout(900)
-  check(await matchesCssVariable(modelPanel.locator('span').filter({ hasText: /^图片\s*\d+$/ }).first(), 'color', '--nomi-accent'), '暗色下能力强调蓝 token 生效')
-  check(await hasPaintedClass(connectedPill, 'bg-nomi-ink-10'), '暗色下已连通胶囊保持中性')
+  // 同上：能力 chip 上色是「设置」面板自己的事（且 main 已撤掉旧的按能力上色 UI）。这里只确认暗色下
+  // 面板仍能正常打开、种子供应商仍在，并保留「通知不遮挡面板」这条真正跨主题的布局回归。
+  const darkBatchMockRow = modelPanel.locator('button').filter({ hasText: 'Batch Mock' }).first()
+  await darkBatchMockRow.waitFor({ state: 'visible', timeout: 5000 })
+  check(await darkBatchMockRow.count() === 1, '暗色下模型设置仍列出 Batch Mock 供应商')
   const modelPanelBox = await modelPanel.boundingBox()
   const modelNotificationBoxes = await win
     .locator('.mantine-Notifications-root[data-position="top-right"]')
@@ -373,7 +355,7 @@ try {
     '模型面板打开时通知不会遮挡面板',
     JSON.stringify({ modelPanelBox, modelNotificationBoxes })
   )
-  await snap(win, 'dark-model-status-colors')
+  await snap(win, 'dark-model-settings')
   await modelPanel.getByRole('button', { name: '关闭', exact: true }).click()
   await win.waitForTimeout(400)
 
@@ -422,6 +404,23 @@ try {
   check(wireCalls.filter((call) => call.prompt.includes('重试')).map((call) => call.status).join(',') === '500,200', '失败节点通过一键重试成功')
   check(await win.evaluate(() => window.localStorage.getItem('nomi.canvas.batch-concurrency')) === '2', '重试后并发偏好仍为 2')
   await snap(win, 'retry-completed-dark')
+
+  // Bottom batch dock must not cover the collapsed timeline handle, and it needs a real escape hatch.
+  await clearSelection(win)
+  const finalBatchDock = win.locator('[data-batch-dock="true"]')
+  await finalBatchDock.waitFor({ timeout: 5000 })
+  const timelineHandle = win.getByRole('button', { name: '展开生成时间轴' })
+  check(await timelineHandle.count() === 1, '批量底栏没有盖住时间轴展开入口')
+  const dismissBatchDock = win.getByRole('button', { name: '隐藏批量生成栏' })
+  check(await dismissBatchDock.count() === 1, '批量底栏提供可识别的隐藏入口')
+  await dismissBatchDock.click()
+  await win.waitForTimeout(400)
+  check(await finalBatchDock.count() === 0, '隐藏批量底栏后不再遮挡画布底部')
+  check(await timelineHandle.count() === 1, '隐藏批量底栏后时间轴入口仍可用')
+  await timelineHandle.click()
+  await win.waitForTimeout(700)
+  check(await win.locator('section[aria-label="生成时间轴"]').count() === 1, '时间轴可从底部入口正常展开')
+  await snap(win, 'timeline-unblocked')
 
   const unexpectedConsoleErrors = consoleErrors.filter((message) => !/mock fail once|HTTP 500|生成失败/i.test(message))
   check(pageErrors.length === 0, '页面运行无 pageerror', pageErrors.join(' | '))

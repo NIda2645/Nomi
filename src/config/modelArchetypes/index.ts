@@ -23,6 +23,8 @@ import { HAILUO_2_3_ARCHETYPE } from "./hailuo23";
 import { GROK_IMAGINE_1_5_VIDEO_ARCHETYPE } from "./grokImagine15Video";
 import { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "./seedance25Apimart";
+import { MINIMAX_H3_APIMART_ARCHETYPE } from "./minimaxH3Apimart";
+import { MINIMAX_H3_REGENERATION_ARCHETYPE } from "./minimaxH3Regeneration";
 import { VIDU_Q3_ARCHETYPE } from "./viduQ3";
 import { KLING_3_TURBO_ARCHETYPE } from "./kling30Turbo";
 import { HAPPYHORSE_1_1_ARCHETYPE } from "./happyhorse11";
@@ -42,11 +44,28 @@ import { AGNES_IMAGE_ARCHETYPE } from "./agnesImage";
 import { AGNES_VIDEO_ARCHETYPE } from "./agnesVideo";
 import { CODEX_IMAGEGEN_ARCHETYPE } from "./codexImagegen";
 import type { ModelArchetype } from "./types";
+import { customCapabilityArchetypeForModel } from "./customCapabilityContract";
 
-export type { ModelArchetype, ArchetypeMode, ArchetypeReferenceSlot, ArchetypeReferenceSlotKind, ArchetypeIntent, ModelArchetypeVariant } from "./types";
+export type { ModelArchetype, ArchetypeMode, ArchetypeReferenceSlot, ArchetypeReferenceSlotKind, ArchetypeExpressionChannel, ArchetypeIntent, ArchetypeTransportTaskKind, ModelArchetypeVariant } from "./types";
+export { recommendVideoGeneration } from "./videoGenerationRecommendation";
+export type {
+  VideoGenerationRecommendation,
+  VideoGenerationRecommendationInput,
+  VideoGenerationRecommendationResult,
+  VideoModelCandidate,
+  VideoReferenceInput,
+} from "./videoGenerationRecommendation";
+export {
+  CUSTOM_CAPABILITY_CONTRACT_META_KEY,
+  CUSTOM_CAPABILITY_CONTRACT_VERSION,
+  normalizeCustomCapabilityContract,
+  parseCustomCapabilityContract,
+  replaceCustomCapabilityContractMeta,
+} from "./customCapabilityContract";
+export type { CustomCapabilityContractV1, CustomCapabilityModeV1 } from "./customCapabilityContract";
 
 /** 内置档案注册表。新模型族在这里登记一条。 */
-export const MODEL_ARCHETYPES: readonly ModelArchetype[] = [SEEDANCE_2_ARCHETYPE, SEEDANCE_2_5_ARCHETYPE, MINIMAX_H3_ARCHETYPE, HAPPYHORSE_ARCHETYPE, GPT_IMAGE_2_ARCHETYPE, SEEDREAM_ARCHETYPE, NANO_BANANA_ARCHETYPE, KLING_3_ARCHETYPE, QWEN_IMAGE_ARCHETYPE, IMAGEN_4_ARCHETYPE, Z_IMAGE_ARCHETYPE, SORA_2_ARCHETYPE, VEO_3_1_ARCHETYPE, WAN_2_7_ARCHETYPE, HAILUO_2_3_ARCHETYPE, GROK_IMAGINE_1_5_VIDEO_ARCHETYPE, SEEDANCE_2_APIMART_ARCHETYPE, SEEDANCE_2_5_APIMART_ARCHETYPE, VIDU_Q3_ARCHETYPE, KLING_3_TURBO_ARCHETYPE, HAPPYHORSE_1_1_ARCHETYPE, SEEDREAM_5_PRO_ARCHETYPE, OMNI_FLASH_EXT_ARCHETYPE, AUDIO_ARCHETYPE, DOUBAO_TTS_ARCHETYPE, SEED_TTS_ARCHETYPE, MODELSCOPE_IMAGE_ARCHETYPE, MODELSCOPE_IMAGE_EDIT_ARCHETYPE, SEEDREAM_VOLCENGINE_ARCHETYPE, SEEDANCE_VOLCENGINE_ARCHETYPE, DREAMINA_SEEDANCE_ARCHETYPE, DREAMINA_IMAGE_ARCHETYPE, DREAMINA_UPSCALE_ARCHETYPE, DREAMINA_MULTIFRAME_ARCHETYPE, CODEX_IMAGEGEN_ARCHETYPE, HUNYUAN3D_ARCHETYPE, HITEM3D_ARCHETYPE, MESHY6_ARCHETYPE, RUNNINGHUB_SEEDANCE_ARCHETYPE, ...RUNNINGHUB_VIDEO_ARCHETYPES, ...RUNNINGHUB_IMAGE_ARCHETYPES, AGNES_IMAGE_ARCHETYPE, AGNES_VIDEO_ARCHETYPE];
+export const MODEL_ARCHETYPES: readonly ModelArchetype[] = [SEEDANCE_2_ARCHETYPE, SEEDANCE_2_5_ARCHETYPE, MINIMAX_H3_ARCHETYPE, HAPPYHORSE_ARCHETYPE, GPT_IMAGE_2_ARCHETYPE, SEEDREAM_ARCHETYPE, NANO_BANANA_ARCHETYPE, KLING_3_ARCHETYPE, QWEN_IMAGE_ARCHETYPE, IMAGEN_4_ARCHETYPE, Z_IMAGE_ARCHETYPE, SORA_2_ARCHETYPE, VEO_3_1_ARCHETYPE, WAN_2_7_ARCHETYPE, HAILUO_2_3_ARCHETYPE, GROK_IMAGINE_1_5_VIDEO_ARCHETYPE, SEEDANCE_2_APIMART_ARCHETYPE, SEEDANCE_2_5_APIMART_ARCHETYPE, MINIMAX_H3_APIMART_ARCHETYPE, MINIMAX_H3_REGENERATION_ARCHETYPE, VIDU_Q3_ARCHETYPE, KLING_3_TURBO_ARCHETYPE, HAPPYHORSE_1_1_ARCHETYPE, SEEDREAM_5_PRO_ARCHETYPE, OMNI_FLASH_EXT_ARCHETYPE, AUDIO_ARCHETYPE, DOUBAO_TTS_ARCHETYPE, SEED_TTS_ARCHETYPE, MODELSCOPE_IMAGE_ARCHETYPE, MODELSCOPE_IMAGE_EDIT_ARCHETYPE, SEEDREAM_VOLCENGINE_ARCHETYPE, SEEDANCE_VOLCENGINE_ARCHETYPE, DREAMINA_SEEDANCE_ARCHETYPE, DREAMINA_IMAGE_ARCHETYPE, DREAMINA_UPSCALE_ARCHETYPE, DREAMINA_MULTIFRAME_ARCHETYPE, CODEX_IMAGEGEN_ARCHETYPE, HUNYUAN3D_ARCHETYPE, HITEM3D_ARCHETYPE, MESHY6_ARCHETYPE, RUNNINGHUB_SEEDANCE_ARCHETYPE, ...RUNNINGHUB_VIDEO_ARCHETYPES, ...RUNNINGHUB_IMAGE_ARCHETYPES, AGNES_IMAGE_ARCHETYPE, AGNES_VIDEO_ARCHETYPE];
 
 /** 按 id 取档案。 */
 export function getArchetypeById(id: string | null | undefined): ModelArchetype | null {
@@ -59,6 +78,12 @@ function normalizeIdentifier(value: unknown): string {
   const raw = typeof value === "string" ? value.trim() : "";
   const noPrefix = raw.startsWith("models/") ? raw.slice("models/".length) : raw;
   return noPrefix.toLowerCase();
+}
+
+/** 去掉 models/ 前缀但保留原始大小写；APIMart/KIE 的同名模型靠大小写区分官方 key。 */
+function rawIdentifier(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  return raw.startsWith("models/") ? raw.slice("models/".length) : raw;
 }
 
 /** 取标识的末段（去掉 vendor 前缀，如 "bytedance/seedance-2" → "seedance-2"）。 */
@@ -75,6 +100,12 @@ function lastSegment(identifier: string): string {
 function matchesExact(identifier: string, pattern: string): boolean {
   const id = normalizeIdentifier(identifier);
   const pat = normalizeIdentifier(pattern);
+  return Boolean(id) && Boolean(pat) && id === pat;
+}
+
+function matchesCaseExact(identifier: string, pattern: string): boolean {
+  const id = rawIdentifier(identifier);
+  const pat = rawIdentifier(pattern);
   return Boolean(id) && Boolean(pat) && id === pat;
 }
 
@@ -135,12 +166,19 @@ export function resolveArchetypeForModel(model: ArchetypeModelLike | null | unde
 
 /** 解析「基础」档案（供应商无关，未特化）：显式 archetypeId 优先，否则按身份匹配 pattern。 */
 function resolveBaseArchetype(model: ArchetypeModelLike): ModelArchetype | null {
+  // A valid user-authored capability contract is the most explicit source of truth. It is
+  // deliberately parsed before curated identity matching; invalid/unknown versions are inert
+  // and fall through to the existing curated resolution path.
+  const custom = customCapabilityArchetypeForModel(model);
+  if (custom) return custom;
   const explicit = getArchetypeById(readArchetypeIdFromMeta(model.meta));
   if (explicit) return explicit;
   const identifiers = [model.modelKey, model.modelAlias].filter((v): v is string => typeof v === "string" && v.trim().length > 0);
-  // **两趟**：先全表找精确整串命中，无果再找末段命中。单趟会让结果取决于档案声明顺序
+  // **三趟**：先保留官方 key 的大小写做精确命中，再做大小写不敏感的整串命中，最后才找末段。
+  // APIMart 的 `MiniMax-H3` 与 KIE 的 `minimax-h3` 归一后同名，但实际是两条不同线缆；
+  // 先看原始 key 才不会让一个供应商的档案抢走另一个供应商的报文契约。单趟会让结果取决于档案声明顺序
   // （实测「Tongyi-MAI/Z-Image-Turbo」被排在前面的 z-image-turbo 档案靠末段抢走 = 认错模型、参数全错）。
-  for (const match of [matchesExact, matchesLastSegment]) {
+  for (const match of [matchesCaseExact, matchesExact, matchesLastSegment]) {
     for (const archetype of MODEL_ARCHETYPES) {
       for (const identifier of identifiers) {
         if (archetype.identifierPatterns.some((pattern) => match(identifier, pattern))) return archetype;

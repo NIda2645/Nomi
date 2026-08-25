@@ -53,6 +53,20 @@ export const createCanvasRunActions: CanvasSliceCreator<CanvasRunActions> = (set
     })
     emitRunUpdated(nodeId)
   },
+  // 收起失败卡（2026-08-24 用户反馈：「下面是生了视频的，有这个报错窗口在，就一直看不了原本的视频」）。
+  // 失败卡是 absolute inset-0 铺满正文的**遮罩**，节点的 result 一直好端端在下面——错误态只是把它挡住了。
+  // 所以「关掉」不是删数据，而是把节点放回它本来的样子：有产物 → success（片子露出来），没有 → idle。
+  // 错误原文不丢：它在 runs[0] 里（任务日志/生成记录仍查得到），此处只动 node.status/node.error 这层展示态。
+  dismissNodeError: (nodeId) => {
+    set((state) => {
+      const node = state.nodes.find((candidate) => candidate.id === nodeId)
+      if (!node || node.status !== 'error') return
+      node.status = node.result ? 'success' : 'idle'
+      node.error = undefined
+      bumpPersistRevision(state)
+    })
+    emitRunUpdated(nodeId)
+  },
   setNodeProgress: (nodeId, progress) => {
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)

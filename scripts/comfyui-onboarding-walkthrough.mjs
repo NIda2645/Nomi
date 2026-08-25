@@ -5,7 +5,7 @@ import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -15,7 +15,7 @@ mkdirSync(outDir, { recursive: true })
 const settingsDir = mkdtempSync(path.join(os.tmpdir(), 'comfyui-walk-'))
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
 
-// 假 ComfyUI：只要 /system_stats（探测卡走这条）。绑 8188 = 种子 baseUrl。
+// 假 ComfyUI：只要 /system_stats（探测卡走这条）。随机端口避免碰到用户正在运行的本地实例。
 let statsHits = 0
 const mock = http.createServer((req, res) => {
   if ((req.url || '').startsWith('/system_stats')) {
@@ -29,8 +29,32 @@ const mock = http.createServer((req, res) => {
   }
   res.writeHead(404); res.end()
 })
-await new Promise((r) => mock.listen(8188, '127.0.0.1', r))
-console.log('  🟢 mock ComfyUI on 127.0.0.1:8188')
+await new Promise((resolve, reject) => {
+  mock.once('error', reject)
+  mock.listen(0, '127.0.0.1', resolve)
+})
+const mockAddress = mock.address()
+if (!mockAddress || typeof mockAddress === 'string') throw new Error('mock ComfyUI did not expose a TCP port')
+const mockBaseUrl = `http://127.0.0.1:${mockAddress.port}`
+console.log(`  🟢 mock ComfyUI on ${mockBaseUrl}`)
+
+const now = new Date().toISOString()
+writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
+  version: 8,
+  vendors: [{
+    key: 'comfyui-local',
+    name: '本地 ComfyUI',
+    enabled: false,
+    baseUrlHint: mockBaseUrl,
+    authType: 'none',
+    authHeader: null,
+    createdAt: now,
+    updatedAt: now,
+  }],
+  models: [],
+  mappings: [],
+  apiKeysByVendor: {},
+}))
 
 const { app, win } = await launchNomiApp({
   name: 'comfyui-onboarding',
@@ -45,10 +69,15 @@ try {
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
 
-  // 打开模型接入面板（库页顶部「模型接入」）。
-  await win.getByRole('button', { name: '模型接入', exact: false }).first().click()
+  // 统一从设置进入模型工作区，本地模型也不再打另一层抽屉。
+  const skip = win.getByRole('button', { name: /Skip|跳过/ }).first()
+  if (await skip.isVisible().catch(() => false)) await skip.click()
+  await win.getByRole('button', { name: '设置', exact: true }).first().click()
+  const settings = win.getByRole('dialog', { name: '设置' })
+  await settings.getByRole('button', { name: '模型', exact: true }).click()
+  await win.locator('[data-settings-section="models"]').waitFor({ state: 'visible' })
   await win.waitForTimeout(1200)
-  await shot(win, '01-drawer-open.png') // 验：模型设置 drawer
+  await shot(win, '01-settings-models-open.png') // 验：模型工作区位于设置右侧
 
   // 可接入分组「有本地 ComfyUI？」展开
   const group = win.getByText('有本地 ComfyUI', { exact: false }).first()
@@ -63,7 +92,7 @@ try {
   await shot(win, '02-card-disabled.png') // 验：未启用 + 接入地址 + 「启用本地 ComfyUI」按钮
 
   // 点启用 → 探测 mock → 卡上到「已接入」（折叠）。
-  await win.getByRole('button', { name: '启用本地 ComfyUI', exact: false }).first().click()
+  await win.getByRole('button', { name: /启用(?:本地)? ComfyUI/ }).first().click()
   console.log('  ⏳ 探测 /system_stats…')
   await win.waitForTimeout(2500)
   // 已接入卡默认折叠 → 展开看运行中态

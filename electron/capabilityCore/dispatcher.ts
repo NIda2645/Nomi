@@ -6,25 +6,29 @@ import {
   createNamedProject,
   deleteProjectNodes,
   generateOnProject,
+  importProjectAsset,
   listAllProjects,
   listAvailableModels,
   readProjectCanvas,
   setProjectNodePrompt,
   type FetchTaskResultFn,
   type GenerateInput,
+  type MakeVerifyDeps,
   type RunTaskFn,
 } from './core'
 import { listSkillSummaries, readSkillContent } from '../skills/skillStore'
 import type { ProductionRunService } from '../productionRun/productionRunService'
 import type { ProductionBrief } from '../productionRun/productionRunTypes'
-import type { ProjectGateway } from './gateway'
+import { withPreApprovedPlan, type ProjectGateway } from './gateway'
+import { INTAKE_MAX_QUESTIONS, buildIntakeMessage, buildIntakeQuestions } from './mcpBriefIntake'
 import type { CapabilityOriginHost } from './security'
-
-export class RpcError extends Error {
-  constructor(message: string, readonly httpStatus: number) {
-    super(message)
-  }
-}
+import { createMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
+import { dispatchSemanticGeneration, guardLegacyGenerationRoute, isSemanticGenerationRoute } from './generationDispatcher'
+import { RpcError } from './rpcError'
+export { RpcError } from './rpcError'
+export type { RpcPolicyErrorCode, RpcPolicyErrorDetails } from './rpcError'
+import type { ProjectLeaseAuthority, ProjectLeaseV1, ProjectSelectionHandleV1 } from './projectLease'
+import type { ApprovalReceiptAuthority, HumanApprovalReceiptV1 } from './approvalReceipt'
 
 export function projectIdOf(params: Record<string, unknown>): string {
   return typeof params.projectId === 'string' ? params.projectId : ''
@@ -38,9 +42,80 @@ export type DispatchContext = {
   runTask: RunTaskFn
   fetchTaskResult?: FetchTaskResultFn
   makeGateway: (projectId: string) => ProjectGateway
-  productionRuns: Pick<ProductionRunService, 'createDraft' | 'readProjection' | 'readEvents' | 'readArtifactProjection' | 'readFull' | 'command'>
+  productionRuns: Pick<ProductionRunService, 'createDraft' | 'readProjection' | 'readEvents' | 'readArtifactProjection' | 'readFull' | 'command'> & Partial<{
+    /** Task 4 versioned artifact MCP seam. Optional keeps low-level test doubles/source-compatible. */
+    readArtifactContent: (projectId: string, runId: string, artifactId: string) => unknown
+    requestArtifactRevision: (input: { projectId: string; runId: string; artifactId: string; expectedVersion: number; instruction: string; kind: 'script' | 'storyboard' }) => unknown
+    reviewArtifact: (input: { projectId: string; runId: string; artifactId: string; expectedVersion: number; decision: 'approved' | 'changes_requested' | 'rejected' }) => unknown
+    materializeStoryboard: (input: { projectId: string; runId: string; artifactId: string; expectedVersion: number }) => unknown
+  }>
   /** Transport-owned authority. Request bodies may provide only an audit label, never trust. */
   origin?: { host: CapabilityOriginHost; actorId?: string }
+  /** The frozen server-side generation policy. Omit in legacy callers to build the default snapshot. */
+  generationPolicy?: McpGenerationPolicy
+  /** Optional read-only context seam. No semantic route may fall through to a legacy service. */
+  generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  /** Shared semantic planning/editing seam. MCP and GUI must provide the same handler; no provider call here. */
+  generationPlanning?: (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV1; origin?: { host: CapabilityOriginHost; actorId?: string } }) => unknown | Promise<unknown>
+  /** Main-process project-lease authority. Semantic routes never trust body.projectId without this verifier. */
+  projectLeaseAuthority?: ProjectLeaseAuthority
+  /** Main-process resolver for a signed selection handle. It supplies current project identity and connection binding. */
+  resolveProjectSelection?: (handle: ProjectSelectionHandleV1) => {
+    projectId: string
+    leasePrincipal: string
+    sessionId: string
+    connectionNonce: string
+    serverNonce: string
+  }
+  /**
+   * Server-owned current-project bootstrap for a client that Nomi installed and
+   * authenticated. The callback must derive identity from main-process state;
+   * it receives no projectId/path from the request.
+   */
+  resolveCurrentProject?: (request: {
+    client: Extract<CapabilityOriginHost, 'claude' | 'codex' | 'cursor'>
+    clientSessionNonce: string
+  }) => {
+    projectId: string
+    immutableProjectUuid: string
+    projectGeneration: number
+    canonicalRootDigest: string
+    manifestDigest: string
+    revocationEpoch?: number
+    leasePrincipal: string
+    sessionId: string
+    connectionNonce: string
+    serverNonce: string
+  }
+  /** Main-process approval-receipt authority. Gate routes verify receipts here; the Run owner consumes them. */
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
+  /** Run-owned challenge projection. It must recompute model/cost/contract from main-process state. */
+  requestGenerationGate?: (input: { params: Record<string, unknown>; lease: ProjectLeaseV1 }) => unknown | Promise<unknown>
+  /** Main-process GUI fallback for the exact challenge; it may return the receipt minted from the gesture. */
+  confirmGenerationInNomi?: (input: { challengeToken: string }) => Promise<unknown>
+  /**
+   * Run-owned generation authorization seam. It receives already verified
+   * lease/receipt bindings; the dispatcher never persists a second gate or
+   * mints a spend grant itself.
+   */
+  authorizeGeneration?: (input: {
+    params: Record<string, unknown>
+    lease: ProjectLeaseV1
+    receipt: HumanApprovalReceiptV1
+  }) => unknown | Promise<unknown>
+  /** Project-owner revision lookup. Receipt bindings never trust a revision supplied by the caller. */
+  projectRevisionResolver?: (projectId: string) => number | undefined
+  /**
+   * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ canvas.addNodes 预批准
+   * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
+   */
+  planConfirmed?: boolean
+  /**
+   * 审片环 deps 工厂（W1，可选）。传输层注入真实现（headless=makeShotVerifyDeps；GUI-RPC 同一份）→
+   * generate 生成成功后跑判分→定向重试→红标。**不注入 = generate 行为逐字节不变**（默认）。
+   * 领域策略住 shotVerifyOrchestrate，传输层只注入 deps，core 只透传 outcome（三层干净，方案 §3/§9）。
+   */
+  makeVerifyDeps?: MakeVerifyDeps
 }
 
 const PRODUCTION_START_FIELDS = new Set([
@@ -69,6 +144,38 @@ function stringList(value: unknown, label: string, maxItems = 20): string[] | un
   if (value === undefined) return undefined
   if (!Array.isArray(value) || value.length > maxItems) throw new RpcError(`Invalid ${label}`, 400)
   return value.map((item, index) => optionalText(item, `${label}[${index}]`) as string)
+}
+
+function artifactVersion(value: unknown): number {
+  const version = Number(value)
+  if (!Number.isInteger(version) || version < 1) throw new RpcError('Invalid artifact version', 400)
+  return version
+}
+
+function revisionInstruction(value: unknown): string {
+  const instruction = typeof value === 'string' ? value.trim() : ''
+  if (!instruction || instruction.length > 4_000) throw new RpcError('Invalid revision instruction', 400)
+  return instruction
+}
+
+function artifactReadService(ctx: DispatchContext) {
+  if (typeof ctx.productionRuns.readArtifactContent !== 'function') throw new RpcError('Versioned artifact reads are unavailable', 501)
+  return ctx.productionRuns.readArtifactContent
+}
+
+function artifactRevisionService(ctx: DispatchContext) {
+  if (typeof ctx.productionRuns.requestArtifactRevision !== 'function') throw new RpcError('Artifact revisions are unavailable', 501)
+  return ctx.productionRuns.requestArtifactRevision
+}
+
+function artifactReviewService(ctx: DispatchContext) {
+  if (typeof ctx.productionRuns.reviewArtifact !== 'function') throw new RpcError('Artifact review is unavailable', 501)
+  return ctx.productionRuns.reviewArtifact
+}
+
+function storyboardMaterializeService(ctx: DispatchContext) {
+  if (typeof ctx.productionRuns.materializeStoryboard !== 'function') throw new RpcError('Storyboard materialization is unavailable', 501)
+  return ctx.productionRuns.materializeStoryboard
 }
 
 function productionBrief(value: unknown): ProductionBrief {
@@ -122,6 +229,16 @@ function productionStartInput(params: Record<string, unknown>, authority: Dispat
 }
 
 export async function dispatch(method: string, params: Record<string, unknown>, ctx: DispatchContext): Promise<unknown> {
+  const generationPolicy = ctx.generationPolicy ?? createMcpGenerationPolicy()
+  const classifiedRoute = generationPolicy.classifyRoute(method)
+  const legacyRoute = classifiedRoute.kind === 'legacy'
+    ? classifiedRoute.route
+    : method.startsWith('production.')
+      ? method
+      : null
+  if (legacyRoute) guardLegacyGenerationRoute(generationPolicy, legacyRoute, params)
+  if (isSemanticGenerationRoute(method)) return dispatchSemanticGeneration(method, params, ctx)
+
   switch (method) {
     case 'ping':
       return { ok: true }
@@ -165,6 +282,50 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         requiredIdentifier(params.runId, 'run'),
         requiredIdentifier(params.artifactId, 'artifact'),
       )
+    case 'production.artifact.read': {
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'artifactId']))
+      return artifactReadService(ctx)(
+        requiredIdentifier(params.projectId, 'project'),
+        requiredIdentifier(params.runId, 'run'),
+        requiredIdentifier(params.artifactId, 'artifact'),
+      )
+    }
+    case 'production.artifact.revise': {
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'artifactId', 'expectedVersion', 'instruction', 'kind']))
+      const kind = params.kind === 'script' || params.kind === 'storyboard' ? params.kind : ''
+      if (!kind) throw new RpcError('Artifact revision kind must be script or storyboard', 400)
+      return artifactRevisionService(ctx)({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        runId: requiredIdentifier(params.runId, 'run'),
+        artifactId: requiredIdentifier(params.artifactId, 'artifact'),
+        expectedVersion: artifactVersion(params.expectedVersion),
+        instruction: revisionInstruction(params.instruction),
+        kind,
+      })
+    }
+    case 'production.artifact.review': {
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'artifactId', 'expectedVersion', 'decision']))
+      const decision = params.decision === 'approved' || params.decision === 'changes_requested' || params.decision === 'rejected'
+        ? params.decision
+        : ''
+      if (!decision) throw new RpcError('Invalid artifact review decision', 400)
+      return artifactReviewService(ctx)({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        runId: requiredIdentifier(params.runId, 'run'),
+        artifactId: requiredIdentifier(params.artifactId, 'artifact'),
+        expectedVersion: artifactVersion(params.expectedVersion),
+        decision,
+      })
+    }
+    case 'production.storyboard.materialize': {
+      assertOnlyFields(params, new Set(['projectId', 'runId', 'artifactId', 'expectedVersion']))
+      return storyboardMaterializeService(ctx)({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        runId: requiredIdentifier(params.runId, 'run'),
+        artifactId: requiredIdentifier(params.artifactId, 'artifact'),
+        expectedVersion: artifactVersion(params.expectedVersion),
+      })
+    }
     case 'production.control': {
       // A4：pause/resume/cancel。B3：set_trust（配 trustLevel）改信任档位。
       // commandId 按 (action[/trustLevel], revision) 确定 → 同一状态下重复触发天然幂等。
@@ -178,6 +339,10 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       if (action === 'set_trust') {
         const trustLevel = String(params.trustLevel || '')
         if (!['key_confirm', 'budget_only', 'confirm_all'].includes(trustLevel)) throw new RpcError('Invalid trust level', 400)
+        if (trustLevel !== 'confirm_all' && full.gates.some((gate) => gate.status === 'waiting'
+          && gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-'))) {
+          throw new RpcError('Decide the waiting shot in Nomi before changing its trust level', 403)
+        }
         await ctx.productionRuns.command(projectId, runId, {
           commandId: `mcp-control-set_trust-${trustLevel}-${full.revision}`,
           expectedRevision: full.revision,
@@ -210,6 +375,9 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       if (!full) throw new RpcError(`Production run not found: ${runId}`, 404)
       const gate = full.gates.find((item) => item.gateId === gateId)
       if (!gate) throw new RpcError(`Production gate not found: ${gateId}`, 404)
+      const creativeGate = gate.scope === 'stage'
+        && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-') || gate.gateId.startsWith('gate-freeze-'))
+      if (!creativeGate) throw new RpcError('This production gate must be decided in Nomi', 403)
       await ctx.productionRuns.command(projectId, runId, {
         commandId: `mcp-decide-${gateId}-${decision}-${full.revision}`,
         expectedRevision: full.revision,
@@ -221,8 +389,12 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
     }
     case 'canvas.read':
       return readProjectCanvas(ctx.makeGateway(projectIdOf(params)))
-    case 'canvas.addNodes':
-      return addProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodes) ? (params.nodes as never[]) : [], projectIdOf(params))
+    case 'canvas.addNodes': {
+      // 方案已被协议层 elicitation-first 批准 → 预批准方案门（不再弹渲染层卡，免双问）；否则原网关照常确认。
+      const base = ctx.makeGateway(projectIdOf(params))
+      const gateway = ctx.planConfirmed ? withPreApprovedPlan(base) : base
+      return addProjectNodes(gateway, Array.isArray(params.nodes) ? (params.nodes as never[]) : [], projectIdOf(params))
+    }
     case 'canvas.connect':
       return connectProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.connections) ? (params.connections as never[]) : [])
     case 'canvas.setPrompt':
@@ -234,8 +406,30 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       )
     case 'canvas.deleteNodes':
       return deleteProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodeIds) ? (params.nodeIds as string[]) : [])
+    case 'brief.intake': {
+      // W3 幕 0：只组题/给默认，**不落任何状态**——真正的「问」由协议层弹 elicitation（enum 候选），
+      // 客户端不支持表单时协议层退化成把题面交给模型在对话里一次问全。
+      assertOnlyFields(params, new Set(['projectId', 'kind']))
+      const questions = buildIntakeQuestions({ kind: typeof params.kind === 'string' ? params.kind : '' })
+      return { questions, message: buildIntakeMessage(questions), maxQuestions: INTAKE_MAX_QUESTIONS }
+    }
+    case 'asset.import':
+      // M2：本机文件 → 项目素材 → nomi-local:// URL。安全判据在 importAssetGuard（纯函数，逐条单测）。
+      assertOnlyFields(params, new Set(['projectId', 'path', 'title']))
+      return importProjectAsset({
+        projectId: requiredIdentifier(params.projectId, 'project'),
+        path: String(params.path || ''),
+        ...(typeof params.title === 'string' && params.title.trim() ? { title: params.title.trim() } : {}),
+      })
     case 'generate':
-      return generateOnProject(params as unknown as GenerateInput, ctx.makeGateway(projectIdOf(params)), ctx.runTask, ctx.fetchTaskResult)
+      // makeVerifyDeps 是**传输层注入**（不是模型能填的入参）→ 从 ctx 取、覆盖任何请求体里的同名字段
+      // （防外部 agent 伪造），与 makeGateway/planConfirmed 同注入模式。不注入 = 审片环不跑（默认行为不变）。
+      return generateOnProject(
+        { ...(params as unknown as GenerateInput), makeVerifyDeps: ctx.makeVerifyDeps },
+        ctx.makeGateway(projectIdOf(params)),
+        ctx.runTask,
+        ctx.fetchTaskResult,
+      )
     default:
       throw new RpcError(`未知方法: ${method}`, 404)
   }

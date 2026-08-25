@@ -173,7 +173,12 @@ export function serializeArea(projectId: string, area: ConvArea, now: number): P
     title: thread.title,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
-    messages: thread.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
+    messages: thread.messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      ...(m.storyboardPlan ? { storyboardPlan: true as const } : {}),
+    })),
   }))
   return { activeId: model.activeId, threads }
 }
@@ -194,7 +199,12 @@ export function hydrateArea(
       title: typeof t.title === 'string' ? t.title : '',
       createdAt: Number.isFinite(t.createdAt) ? t.createdAt : now,
       updatedAt: Number.isFinite(t.updatedAt) ? t.updatedAt : now,
-      messages: (t.messages ?? []).map((m) => ({ id: m.id, role: m.role as WorkbenchAiMessage['role'], content: m.content })),
+      messages: (t.messages ?? []).map((m) => ({
+        id: m.id,
+        role: m.role as WorkbenchAiMessage['role'],
+        content: m.content,
+        ...(m.storyboardPlan === true ? { storyboardPlan: true as const } : {}),
+      })),
     })
   }
   let activeId = persisted?.activeId && threads.has(persisted.activeId) ? persisted.activeId : null

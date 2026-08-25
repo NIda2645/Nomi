@@ -10,16 +10,18 @@
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconKey, IconExternalLink, IconPencil } from '@tabler/icons-react'
+import { IconKey, IconExternalLink } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { confirmDialog } from '../../design'
 import type { KnownVendor } from '../../config/knownVendors'
 import { FoldableModelCard } from './FoldableModelCard'
 import { ModelChipGroups, type ChipModel } from './ModelChipGroups'
+import { VendorBaseUrlField } from './VendorBaseUrlField'
 import { useVendorHealth } from './useVendorHealth'
 import { vendorConnectionPill } from './vendorConnectionView'
 import { VendorConnectionNotice } from './VendorConnectionNotice'
+import type { ModelSettingsConnectionFocus } from './modelSettingsNavigation'
 
 type VendorOnboardCardProps = {
   directory: KnownVendor
@@ -35,6 +37,10 @@ type VendorOnboardCardProps = {
   onToggleModel?: (model: ChipModel, enabled: boolean) => void
   /** key 绑定/清除后刷新外层。 */
   onChanged: () => void
+  onOpenDetails?: () => void
+  detailMode?: boolean
+  onOpenModel?: (model: ChipModel) => void
+  focus?: ModelSettingsConnectionFocus
 }
 
 export function VendorOnboardCard({
@@ -45,6 +51,10 @@ export function VendorOnboardCard({
   models,
   onToggleModel,
   onChanged,
+  onOpenDetails,
+  detailMode = false,
+  onOpenModel,
+  focus,
 }: VendorOnboardCardProps): JSX.Element {
   const { t } = useTranslation()
   // 已连通默认折叠 key 输入（显「已保存」）；点「更换」展开输入。
@@ -53,8 +63,8 @@ export function VendorOnboardCard({
   const [drafts, setDrafts] = React.useState<Record<string, string>>({})
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
-  const [urlEditing, setUrlEditing] = React.useState(false)
-  const [urlDraft, setUrlDraft] = React.useState('')
+  const credentialInputRef = React.useRef<HTMLInputElement>(null)
+  const handledFocusRequestRef = React.useRef<number | null>(null)
   // 连接状态的唯一来源（主进程自取凭证探测）。地址一改 fingerprint 就变，effect 自动重探；
   // 换 key 不改地址，所以解锁后要显式 recheck()。
   const { connection, recheck } = useVendorHealth(directory.vendorKey, { hasApiKey, baseUrl })
@@ -62,6 +72,19 @@ export function VendorOnboardCard({
   React.useEffect(() => {
     setEditing(!hasApiKey)
   }, [hasApiKey])
+
+  // 只管 apiKey 那一路；baseUrl 的聚焦请求由 VendorBaseUrlField 自己认（它持有那个 input）。
+  React.useEffect(() => {
+    if (!focus || focus.target !== 'apiKey' || handledFocusRequestRef.current === focus.requestId) return
+    handledFocusRequestRef.current = focus.requestId
+    setEditing(true)
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        credentialInputRef.current?.focus({ preventScroll: false })
+        credentialInputRef.current?.scrollIntoView({ block: 'center' })
+      })
+    })
+  }, [focus])
 
   const total = models.length
 
@@ -141,28 +164,6 @@ export function VendorOnboardCard({
     }
   }, [directory.vendorKey, vendorName, onChanged, t])
 
-  const handleSaveBaseUrl = React.useCallback(() => {
-    const next = urlDraft.trim().replace(/\/+$/, '')
-    if (!/^https?:\/\/\S+$/.test(next)) {
-      setError(t('onboardingProviders.vendorCard.invalidAddress'))
-      return
-    }
-    const bridge = getDesktopBridge()
-    if (!bridge) return
-    setBusy(true)
-    setError('')
-    try {
-      bridge.modelCatalog.upsertVendor({ key: directory.vendorKey, baseUrlHint: next })
-      setUrlEditing(false)
-      // 地址变了 → useVendorHealth 的 fingerprint 变 → 自动重探，这里不用手动触发。
-      onChanged()
-    } catch (e) {
-      setError(t('onboardingProviders.vendorCard.saveFailed', { message: e instanceof Error ? e.message : String(e) }))
-    } finally {
-      setBusy(false)
-    }
-  }, [urlDraft, directory.vendorKey, onChanged, t])
-
   const openPromo = React.useCallback(() => {
     if (directory.promo) window.open(directory.promo.url, '_blank', 'noopener')
   }, [directory.promo])
@@ -187,6 +188,8 @@ export function VendorOnboardCard({
         ) : undefined
       }
       defaultExpanded={false}
+      onOpenDetails={onOpenDetails}
+      detailMode={detailMode}
     >
       {/* key 区 */}
       {editing ? (
@@ -203,6 +206,8 @@ export function VendorOnboardCard({
                     {field.label}
                   </label>
                   <input
+                    ref={field === fields[0] ? credentialInputRef : undefined}
+                    data-model-connection-field="apiKey"
                     id={`${directory.vendorKey}-${field.key}`}
                     type={field.secret ? 'password' : 'text'}
                     aria-label={`${vendorName} ${field.label}`}
@@ -253,6 +258,8 @@ export function VendorOnboardCard({
             <>
               <div className="flex gap-2">
                 <input
+                  ref={credentialInputRef}
+                  data-model-connection-field="apiKey"
                   type={fields[0].secret ? 'password' : 'text'}
                   aria-label={t('onboardingProviders.vendorCard.apiKeyAria', { name: vendorName })}
                   placeholder={fields[0].placeholder}
@@ -305,6 +312,7 @@ export function VendorOnboardCard({
             <button
               type="button"
               onClick={() => setEditing(true)}
+              data-model-connection-edit="apiKey"
               disabled={busy}
               className="text-caption text-nomi-ink-60 border border-nomi-line rounded-full px-2.5 py-[3px] hover:border-nomi-ink-20"
             >
@@ -324,77 +332,26 @@ export function VendorOnboardCard({
 
       {error ? <div className="text-caption text-workbench-danger">{error}</div> : null}
 
-      {/* 连接状态说明：紧挨地址行，用户看完原因就能就地改地址（地址编辑仍是下面那支铅笔，不另开入口）。 */}
+      {/* 连接状态说明：紧挨地址行，用户看完原因就能就地改地址。 */}
       <VendorConnectionNotice connection={connection} onRecheck={recheck} disabled={busy} />
 
-      {urlEditing ? (
-        <div className="flex gap-2">
-          <input
-            type="text"
-            aria-label={t('onboardingProviders.vendorCard.addressAria', { name: vendorName })}
-            placeholder={t('onboardingProviders.vendorCard.addressPlaceholder')}
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveBaseUrl()
-              if (e.key === 'Escape') {
-                setUrlEditing(false)
-                setError('')
-              }
-            }}
-            disabled={busy}
-            autoFocus
-            className={cn(
-              'flex-1 min-w-0 h-8 rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2.5',
-              'text-body-sm text-nomi-ink placeholder:text-nomi-ink-40',
-              'outline-none focus:border-nomi-accent',
-            )}
-          />
-          <button
-            type="button"
-            onClick={handleSaveBaseUrl}
-            disabled={busy}
-            className={cn(
-              'shrink-0 h-8 px-3 rounded-nomi-sm bg-nomi-ink text-nomi-paper',
-              'text-body-sm font-semibold',
-              'hover:bg-nomi-accent disabled:opacity-50 disabled:cursor-not-allowed',
-            )}
-          >
-            {t('onboardingProviders.vendorCard.save')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setUrlEditing(false)
-              setError('')
-            }}
-            disabled={busy}
-            className="shrink-0 text-caption text-nomi-ink-40 hover:text-nomi-ink-60"
-          >
-            {t('common.cancel')}
-          </button>
-        </div>
-      ) : baseUrl ? (
-        <div className="flex items-center gap-1 min-w-0">
-          <span className="text-caption text-nomi-ink-30 truncate">
-            {t('onboardingProviders.vendorCard.address', { address: baseUrl })}
-          </span>
-          <button
-            type="button"
-            aria-label={t('onboardingProviders.vendorCard.editAddressAria', { name: vendorName })}
-            onClick={() => {
-              setUrlDraft(baseUrl)
-              setUrlEditing(true)
-            }}
-            disabled={busy}
-            className="shrink-0 p-0.5 text-nomi-ink-30 hover:text-nomi-ink-60"
-          >
-            <IconPencil size={13} stroke={1.6} />
-          </button>
-        </div>
-      ) : null}
+      {/* 地址行与自定义中转家卡共用同一份实现（P1：此前两边各写了一份一模一样的）。 */}
+      <VendorBaseUrlField
+        vendorKey={directory.vendorKey}
+        vendorName={vendorName}
+        baseUrl={baseUrl}
+        disabled={busy}
+        onSaved={onChanged}
+        hideWhenEmpty
+        focus={focus}
+      />
 
-      <ModelChipGroups models={models} connected={hasApiKey} onToggle={hasApiKey ? onToggleModel : undefined} />
+      <ModelChipGroups
+        models={models}
+        connected={hasApiKey}
+        onToggle={hasApiKey ? onToggleModel : undefined}
+        onOpenModel={onOpenModel}
+      />
 
       {/* 推广位：移到 body 末尾，折叠态不显（减噪）；软话术、不营销 */}
       {directory.promo ? (

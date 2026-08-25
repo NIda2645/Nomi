@@ -83,7 +83,13 @@ describe("skillManifestSchema", () => {
       permissions: ["create"],
       author: "@nomi",
       stages: [
-        { id: "storyboard", goal: "拆镜头", tools: ["propose_storyboard_plan"], pause: true },
+        {
+          id: "storyboard",
+          goal: "拆镜头",
+          tools: ["propose_storyboard_plan"],
+          skillRefs: ["director-shot-translation", "director-consistency"],
+          pause: true,
+        },
         {
           id: "media",
           goal: "生成镜头",
@@ -95,6 +101,26 @@ describe("skillManifestSchema", () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.manifest.stages).toHaveLength(2);
+  });
+
+  it("accepts stage-level skill references for progressive craft loading", () => {
+    const result = parseSkillManifest({
+      name: "drama.short",
+      version: "1.0.0",
+      description: "d",
+      tools: [],
+      requiredProviders: ["text", "image", "video"],
+      permissions: ["create"],
+      stages: [{
+        id: "script",
+        goal: "写剧本",
+        tools: [],
+        pause: true,
+        skillRefs: ["writer-screenwriter", "writer-dialogue"],
+      }],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.manifest.stages?.[0].skillRefs).toEqual(["writer-screenwriter", "writer-dialogue"]);
   });
 
   it("REJECTS vendor-specific archetypeId in modelPrefs (P4: 只引 kind+family)", () => {

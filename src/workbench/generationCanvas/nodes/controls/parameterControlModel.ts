@@ -13,6 +13,7 @@ import {
   type VideoModelControlBinding,
 } from '../../../../config/modelCatalogMeta'
 import { normalizeOrientation, type Orientation } from '../../../../utils/orientation'
+import { isComfyuiVendorKey } from '../../model/comfyuiVendor'
 import { normalizeAspectRatioToWH } from '../aspectRatio'
 import { resultUrl } from '../../runner/referenceUrl'
 import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from '../../model/generationCanvasTypes'
@@ -112,38 +113,33 @@ export function buildImageUrlSlots(meta: unknown): ImageUrlSlot[] {
     .map((c) => ({ key: c.key, label: c.label, group: inferImageUrlGroup(c.key) }))
 }
 
-function readComfyWorkflowBinding(meta: unknown): Record<string, unknown> | null {
-  if (!meta || typeof meta !== 'object') return null
-  const draft = (meta as Record<string, unknown>).comfyWorkflowImport
-  if (!draft || typeof draft !== 'object') return null
-  const binding = (draft as Record<string, unknown>).binding
-  return binding && typeof binding === 'object' ? binding as Record<string, unknown> : null
-}
-
-export function buildComfyWorkflowImageUrlSlots(meta: unknown, labels: FrameSlotLabels): ImageUrlSlot[] | null {
-  const binding = readComfyWorkflowBinding(meta)
-  if (!binding) return null
-  const slots: ImageUrlSlot[] = []
-  if (typeof binding.firstFrameNodeId === 'string' && typeof binding.firstFrameInputKey === 'string') {
-    slots.push({ key: 'firstFrameUrl', label: labels.firstFrame, group: 'first_frame' })
-  }
-  if (typeof binding.lastFrameNodeId === 'string' && typeof binding.lastFrameInputKey === 'string') {
-    slots.push({ key: 'lastFrameUrl', label: labels.lastFrame, group: 'last_frame' })
-  }
-  return slots
+/**
+ * 这个模型是不是「用户导入的 ComfyUI 工作流」。
+ *
+ * 判据取 meta.comfyWorkflowImport 这个键是否存在——它只由导入流程写入，内置档案模型不会有。
+ * 用途：这类模型的参数名是工作流作者随手起的（采样步数 / 帧率 / Float (duration)…），
+ * 底栏摘要 pill 把当前值串起来会显示成 `15 · 24`，没人认得出那是自己导入时勾的东西
+ * （群反馈 2026-08-20 G2#433）——所以要换成「工作流参数 · N 项」这种报名字的写法。
+ */
+export function isImportedComfyWorkflowModel(meta: unknown): boolean {
+  return Boolean(meta && typeof meta === 'object' && 'comfyWorkflowImport' in (meta as Record<string, unknown>))
 }
 
 export function shouldUseVideoFrameSlotFallback(input: {
   isVideoLike: boolean
   modelImageUrlSlots: readonly ImageUrlSlot[]
-  comfyImageUrlSlots: ImageUrlSlot[] | null
   vendor?: string | null
 }): boolean {
   if (!input.isVideoLike || input.modelImageUrlSlots.length > 0) return false
-  // ComfyUI imported workflows are graph-defined. If their saved binding is absent
-  // or says no frame inputs, guessing first+last-frame creates invalid requests.
-  if (String(input.vendor || '').trim() === 'comfyui-local') return false
-  return !input.comfyImageUrlSlots
+  // ComfyUI imported workflows are graph-defined: 媒体输入已作为 image-url 参数逐条声明，
+  // 由上面的通用 buildImageUrlSlots 出槽。没声明就是真的没有——
+  // 猜首/尾帧只会造出无效请求（ComfyUI 侧根本没有「首帧/尾帧」这两个概念）。
+  // 判据走前缀（isComfyuiVendorKey），不能写字面量 === 'comfyui-local'：第 2+ 台实例的 key 是
+  // `comfyui-local-{slug}`，字面量只保得住第一台 —— 第二台起的**文生视频**工作流会在这里被判成
+  // 「不是 ComfyUI」→ 凭空补出首/尾帧参考槽 → 用户被诱导连一张图 → 提交时 runtime 以「没有图生视频通道」
+  // 拒发，正好把 2026-08-24 那条死锁在第二台机器上原样复活。
+  if (isComfyuiVendorKey(input.vendor)) return false
+  return true
 }
 
 export function imageCatalogReferenceSlot(config: ImageModelCatalogConfig | null): ImageUrlSlot[] {

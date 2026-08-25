@@ -2,10 +2,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fsyncIfDurable } from "../durability";
 import { writeJsonFileAtomic } from "../jsonFile";
 import { getWorkspaceRepositoryDeps } from "../runtimePaths";
 import { resolveWorkspaceProjectDir } from "../workspace/workspaceRepository";
+import { initialPlaybookStages, requireProductionPlaybook } from "./productionPlaybooks";
 import { productionRunPaths, productionRunsRoot } from "./productionRunPaths";
+import { createProductionRunLock } from "./productionRunLock";
 import { applyProductionCommand, type ProductionCommandEffect } from "./productionRunReducer";
 import { assertProductionPolicyReady } from "./productionPolicyReadiness";
 import {
@@ -20,12 +23,14 @@ import {
   type Approval,
   type AutomationPolicy,
   type CreateProductionRunInput,
+  type ProductionGenerationShot,
   type ProductionRun,
   type ProductionRunSummary,
   type RunCommand,
   type RunCommandResult,
   type RunEvent,
 } from "./productionRunTypes";
+import type { PlanCandidate } from "../capabilityCore/executionContract";
 
 type SnapshotEnvelope = {
   schemaVersion: number;
@@ -54,6 +59,15 @@ export class ProductionRunRevisionConflictError extends Error {
   }
 }
 
+export class ProductionRunParseError extends Error {
+  readonly code = "migration_parse_error" as const;
+
+  constructor(filePath: string, lineNumber: number) {
+    super(`migration_parse_error: invalid JSON in ${path.basename(filePath)} at line ${lineNumber}`);
+    this.name = "ProductionRunParseError";
+  }
+}
+
 const DEFAULT_POLICY: AutomationPolicy = {
   mode: "balanced",
   trustedHosts: [],
@@ -78,7 +92,7 @@ function appendDurableJsonLine(filePath: string, value: unknown): void {
   const fd = fs.openSync(filePath, "a");
   try {
     fs.writeSync(fd, `${JSON.stringify(value)}\n`, undefined, "utf8");
-    fs.fsyncSync(fd);
+    fsyncIfDurable(fd);
   } finally {
     fs.closeSync(fd);
   }
@@ -87,12 +101,12 @@ function appendDurableJsonLine(filePath: string, value: unknown): void {
 function readJsonLines<T>(filePath: string): T[] {
   if (!fs.existsSync(filePath)) return [];
   const values: T[] = [];
-  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
+  for (const [index, line] of fs.readFileSync(filePath, "utf8").split("\n").entries()) {
     if (!line.trim()) continue;
     try {
       values.push(JSON.parse(line) as T);
     } catch {
-      break;
+      throw new ProductionRunParseError(filePath, index + 1);
     }
   }
   return values;
@@ -153,6 +167,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()));
   const now = deps.now ?? (() => new Date().toISOString());
   const randomId = deps.randomId ?? (() => crypto.randomUUID());
+  const repositoryOwnerId = `production-repository-${process.pid}-${randomId()}`;
 
   function projectDir(projectId: string): string {
     const dir = resolveProjectDir(String(projectId || "").trim());
@@ -195,63 +210,46 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     const latestEvent = events.at(-1);
     const snapshot = fs.existsSync(paths.snapshot) ? validSnapshot(paths.snapshot) : null;
     if (snapshot && snapshot.snapshotCursor === (latestEvent?.cursor ?? snapshot.snapshotCursor)) return snapshot.run;
-    if (fs.existsSync(paths.snapshot) && !snapshot) {
-      const backup = path.join(paths.dir, `run.corrupt-${Date.now()}-${randomId().slice(0, 8)}.json`);
-      fs.copyFileSync(paths.snapshot, backup);
-    }
-    const recovered = runFromEvent(latestEvent);
-    if (recovered) writeJsonFileAtomic(paths.snapshot, envelopeFor(recovered));
-    return recovered;
+    // Reads may rebuild an in-memory projection for callers, but never repair
+    // durable bytes. Backup/migration/rewrite belongs to an explicit command;
+    // a projection read must be safe to retry after a crash and side-effect free.
+    return runFromEvent(latestEvent);
   }
 
   function create(input: CreateProductionRunInput): ProductionRun {
+    // 起草前先验入参：未登记的 playbook / 缺 brief 都造不出可推进的 Run。在**写盘前**抛人话错误，
+    // 不静默降级成一个 stages/gates 全空、永远停在 draft 的坏 Run（那会同时污染事件流、快照、
+    // 任务卡与 MCP 投影四处）。可用名单见 productionPlaybooks.ts。
+    const playbook = requireProductionPlaybook(input.playbook.name);
+    const brief = input.brief;
+    if (!brief) throw new Error(`playbook「${playbook.name}」需要 brief（至少一句 goal）才能起草`);
     const dir = projectDir(input.projectId);
     const runId = input.runId?.trim() || `run-${randomId()}`;
     const paths = productionRunPaths(dir, runId);
     if (fs.existsSync(paths.events) || fs.existsSync(paths.snapshot)) throw new Error(`Production run already exists: ${runId}`);
     const timestamp = now();
-    const isBrandPromo = input.playbook.name === "brand.promo" && Boolean(input.brief);
-    const stages: ProductionRun["stages"] = isBrandPromo
-      ? [
-          { stageId: "brief", title: "Brief", status: "completed", order: 0, startedAt: timestamp, completedAt: timestamp },
-          { stageId: "direction", title: "Direction", status: "awaiting_gate", order: 1, startedAt: timestamp },
-          { stageId: "script", title: "Script", status: "pending", order: 2 },
-          { stageId: "storyboard", title: "Storyboard", status: "pending", order: 3 },
-          { stageId: "build", title: "Canvas", status: "pending", order: 4 },
-          { stageId: "generate", title: "Generate", status: "pending", order: 5 },
-          { stageId: "qa", title: "QA", status: "pending", order: 6 },
-          { stageId: "assemble", title: "Assemble", status: "pending", order: 7 },
-          { stageId: "export", title: "Export", status: "pending", order: 8 },
-        ]
-      : [];
-    const briefArtifact: ProductionRun["artifacts"][number] | undefined = input.brief && isBrandPromo
-      ? { artifactId: "artifact-brief-v1", stageId: "brief", kind: "brief", status: "adopted", projectRelativePath: `.nomi/runs/${runId}/brief-v1.json`, createdAt: timestamp, adoptedAt: timestamp }
-      : undefined;
-    const directionArtifact: ProductionRun["artifacts"][number] | undefined = input.brief && isBrandPromo
-      ? { artifactId: "artifact-direction-v1", stageId: "direction", kind: "direction", status: "candidate", projectRelativePath: `.nomi/runs/${runId}/direction-v1.json`, createdAt: timestamp }
-      : undefined;
-    const directionGate: ProductionRun["gates"][number] | undefined = isBrandPromo
-      ? { gateId: "gate-direction-v1", scope: "stage", status: "waiting", planHash: crypto.createHash("sha256").update(JSON.stringify(input.brief || {})).digest("hex"), jobIds: [], title: "Confirm creative direction", summary: "Review audience, channel, tone, and truthful selling points before any model or paid API call.", createdAt: timestamp, expiresAt: new Date(Date.parse(timestamp) + 24 * 60 * 60 * 1000).toISOString() }
-      : undefined;
-    const initialArtifacts = [briefArtifact, directionArtifact].filter((value): value is ProductionRun["artifacts"][number] => Boolean(value));
+    const stages = initialPlaybookStages(playbook, timestamp);
+    const briefArtifact: ProductionRun["artifacts"][number] = { artifactId: "artifact-brief-v1", stageId: playbook.briefStageId, kind: "brief", status: "adopted", projectRelativePath: `.nomi/runs/${runId}/brief-v1.json`, createdAt: timestamp, adoptedAt: timestamp };
+    const directionArtifact: ProductionRun["artifacts"][number] = { artifactId: "artifact-direction-v1", stageId: playbook.directionStageId, kind: "direction", status: "candidate", projectRelativePath: `.nomi/runs/${runId}/direction-v1.json`, createdAt: timestamp };
+    const directionGate: ProductionRun["gates"][number] = { gateId: "gate-direction-v1", scope: "stage", status: "waiting", planHash: crypto.createHash("sha256").update(JSON.stringify(brief)).digest("hex"), jobIds: [], title: "Confirm creative direction", summary: "Review audience, channel, tone, and truthful selling points before any model or paid API call.", createdAt: timestamp, expiresAt: new Date(Date.parse(timestamp) + 24 * 60 * 60 * 1000).toISOString() };
     const run: ProductionRun = {
       schemaVersion: PRODUCTION_RUN_SCHEMA_VERSION,
       runId,
       projectId: input.projectId,
       revision: 0,
-      status: isBrandPromo ? "awaiting_direction" : "draft",
-      stageId: isBrandPromo ? "direction" : "brief",
+      status: "awaiting_direction",
+      stageId: playbook.directionStageId,
       playbook: input.playbook,
       origin: input.origin,
-      ...(input.brief ? { brief: input.brief } : {}),
+      brief,
       policy: { ...DEFAULT_POLICY, ...input.policy },
       budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
       planVersion: 1,
       snapshotCursor: 1,
       stages,
-      gates: directionGate ? [directionGate] : [],
+      gates: [directionGate],
       jobs: [],
-      artifacts: initialArtifacts,
+      artifacts: [briefArtifact, directionArtifact],
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -268,25 +266,98 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       payload: { run },
     };
     appendDurableJsonLine(paths.events, event);
-    if (input.brief && isBrandPromo) {
-      writeJsonFileAtomic(path.join(dir, `.nomi/runs/${runId}/brief-v1.json`), { schemaVersion: 1, kind: "brief", brief: input.brief });
-      writeJsonFileAtomic(path.join(dir, `.nomi/runs/${runId}/direction-v1.json`), { schemaVersion: 1, kind: "direction", brief: input.brief, status: "awaiting_direction" });
-      appendDurableJsonLine(paths.events, {
-        ...event,
-        eventId: `evt-${randomId()}`,
-        cursor: 2,
-        type: "gate.waiting",
-        message: "direction",
-        payload: { run },
-      } satisfies RunEvent);
-      run.snapshotCursor = 2;
-    }
+    writeJsonFileAtomic(path.join(dir, `.nomi/runs/${runId}/brief-v1.json`), { schemaVersion: 1, kind: "brief", brief });
+    writeJsonFileAtomic(path.join(dir, `.nomi/runs/${runId}/direction-v1.json`), { schemaVersion: 1, kind: "direction", brief, status: "awaiting_direction" });
+    // 事件里的 run 快照必须自带**这条事件**的游标：否则从事件恢复出来的 run 会说自己停在 cursor 1，
+    // 与最后一条事件（cursor 2）对不上 ⇒ 每次 read 都判定快照过期、反复重建。
+    run.snapshotCursor = 2;
+    appendDurableJsonLine(paths.events, {
+      ...event,
+      eventId: `evt-${randomId()}`,
+      cursor: 2,
+      type: "gate.waiting",
+      message: "direction",
+      payload: { run },
+    } satisfies RunEvent);
     fs.writeFileSync(paths.commands, "", { encoding: "utf8", flag: "a" });
     writeJsonFileAtomic(paths.snapshot, envelopeFor(run));
     return run;
   }
 
-  function execute(projectId: string, runId: string, command: RunCommand): RunCommandResult {
+  /** Create a single-shot generation operation without entering the legacy playbook driver. */
+  function createGenerationDraft(input: {
+    operationId: string;
+    projectId: string;
+    origin: { host: string; actorId?: string };
+    candidate: PlanCandidate;
+    currency?: string;
+    policy?: Partial<AutomationPolicy>;
+    /**
+     * P4 S6.5 生产入口: a multi-shot draft seeds its per-shot entries (anchor + video shots) here at
+     * create time so patch/preview can shot-address them (S1 `generation.patch` reads plan.shots) and
+     * gate_request can seal them into sub-contracts. Draft shots carry candidate/role/included only —
+     * their sealed sub-contract is compiled at seal. Absent → single-shot draft (byte-identical to today).
+     */
+    shots?: ReadonlyArray<Pick<ProductionGenerationShot, "shotId" | "role" | "included" | "candidate">>;
+  }): ProductionRun {
+    const projectId = String(input.projectId || "").trim();
+    const operationId = String(input.operationId || "").trim();
+    if (!/^[A-Za-z0-9._:-]{1,240}$/.test(operationId)) throw new Error("Invalid generation operation id");
+    const dir = projectDir(projectId);
+    const paths = productionRunPaths(dir, operationId);
+    if (fs.existsSync(paths.events) || fs.existsSync(paths.snapshot)) throw new Error(`Production run already exists: ${operationId}`);
+    const timestamp = now();
+    const run: ProductionRun = {
+      schemaVersion: PRODUCTION_RUN_SCHEMA_VERSION,
+      runId: operationId,
+      projectId,
+      revision: 0,
+      status: "draft",
+      stageId: "generate",
+      playbook: { name: "generation.single-shot", version: "1.0.0" },
+      origin: input.origin,
+      policy: { ...DEFAULT_POLICY, ...(input.policy || {}) },
+      budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      planVersion: 1,
+      snapshotCursor: 1,
+      stages: [{ stageId: "generate", title: "Generate", status: "pending", order: 0 }],
+      gates: [],
+      jobs: [],
+      artifacts: [],
+      generationPlan: {
+        operationId,
+        state: "draft",
+        candidate: structuredClone(input.candidate),
+        // P4 S6.5: seed draft shots (candidate/role/included; no sub-contract until seal). Single-shot
+        // drafts omit shots entirely — the read path stays on the top-level candidate (老 Run 零迁移).
+        ...(input.shots && input.shots.length > 0
+          ? { shots: input.shots.map((shot) => ({ shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), ...(shot.included !== undefined ? { included: shot.included } : {}), candidate: structuredClone(shot.candidate), updatedAt: timestamp })) }
+          : {}),
+        updatedAt: timestamp,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const event: RunEvent = {
+      schemaVersion: PRODUCTION_RUN_SCHEMA_VERSION,
+      eventId: `evt-${randomId()}`,
+      cursor: 1,
+      runId: operationId,
+      runRevision: 0,
+      commandId: `generation.create:${operationId}`,
+      type: "run.created",
+      message: "generation.single-shot",
+      emittedAt: timestamp,
+      stageId: "generate",
+      payload: { run },
+    };
+    appendDurableJsonLine(paths.events, event);
+    fs.writeFileSync(paths.commands, "", { encoding: "utf8", flag: "a" });
+    writeJsonFileAtomic(paths.snapshot, envelopeFor(run));
+    return run;
+  }
+
+  function executeUnlocked(projectId: string, runId: string, command: RunCommand): RunCommandResult {
     const dir = projectDir(projectId);
     const paths = productionRunPaths(dir, runId);
     const allEvents = readJsonLines<RunEvent>(paths.events);
@@ -331,7 +402,12 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       const gate = current.gates.find((item) => item.gateId === gateId);
       if (!gate) throw new Error(`Production gate not found: ${gateId}`);
       if (Date.parse(timestamp) >= Date.parse(gate.expiresAt)) throw new Error("Production gate has expired");
-      if (gate.jobIds.length > 0) {
+      // The budget authorization + policy-readiness check is ONLY for a spend gate (budget_envelope).
+      // P4 S4 adds anchor_checkpoint gates that carry the anchor jobIds for reference but authorize NO
+      // budget — the checkpoint asks "does the face look right?", not "may Nomi spend?" (the receipt
+      // already covered the batch at confirmation). Firing this branch for it would (a) demand
+      // policy.maxSpend be set and (b) re-authorize the ledger — neither is correct for a free checkpoint.
+      if (gate.scope === "budget_envelope" && gate.jobIds.length > 0) {
         const jobs = gate.jobIds.map((jobId) => {
           const job = current.jobs.find((item) => item.jobId === jobId);
           if (!job) throw new Error(`Production job not found: ${jobId}`);
@@ -405,6 +481,25 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     return { run: next, events: [event] };
   }
 
+  function execute(projectId: string, runId: string, command: RunCommand): RunCommandResult {
+    const dir = projectDir(projectId);
+    const paths = productionRunPaths(dir, runId);
+    const lock = createProductionRunLock({
+      filePath: paths.repositoryLock,
+      epochPath: paths.repositoryLockEpoch,
+      ownerId: repositoryOwnerId,
+      now,
+      randomId,
+      durability: "ephemeral",
+    });
+    const lease = lock.acquire();
+    try {
+      return executeUnlocked(projectId, runId, command);
+    } finally {
+      try { lock.release(lease); } catch { /* preserve the command result or original failure */ }
+    }
+  }
+
   function list(projectId: string): ProductionRunSummary[] {
     const root = productionRunsRoot(projectDir(projectId));
     if (!fs.existsSync(root)) return [];
@@ -416,7 +511,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  return { create, read, list, execute, readEvents, readApprovals, readBudgetLedger, rebuild };
+  return { create, createGenerationDraft, read, list, execute, readEvents, readApprovals, readBudgetLedger, rebuild };
 }
 
 export type ProductionRunRepository = ReturnType<typeof createProductionRunRepository>;

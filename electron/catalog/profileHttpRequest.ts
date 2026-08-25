@@ -5,7 +5,8 @@ import { buildTemplateContext, buildHttpRequest, type AuthType, type JsonRecord 
 import { extractVendorExtraHeaders } from "./catalogStore";
 import { taskTemplateParams } from "./taskParams";
 import { applyParamMap, type ParamMap } from "./paramTranslate";
-import type { HttpOperation, Model, Vendor } from "./types";
+import { isComfyuiVendor, type HttpOperation, type Model, type Vendor } from "./types";
+import { normalizeComfyuiBaseUrl } from "../comfyui/endpointResolver";
 import type { TaskRequest } from "../runtime";
 
 /** 共享 requestPipeline context 构造。铁律翻译层：渲染 body 前按 codec 的 paramMap 把档案中性参数译成该站 wire 字段。 */
@@ -45,7 +46,9 @@ export function buildProfileHttpRequest(input: {
 } {
   const extraHeaders = extractVendorExtraHeaders(input.vendor);
   return buildHttpRequest({
-    baseUrl: String(input.vendor.baseUrlHint || ""),
+    baseUrl: isComfyuiVendor(input.vendor)
+      ? normalizeComfyuiBaseUrl(String(input.vendor.baseUrlHint || ""))
+      : String(input.vendor.baseUrlHint || ""),
     authType: input.vendor.authType as AuthType,
     authHeaderName: input.vendor.authHeader ?? undefined,
     apiKey: input.apiKey,

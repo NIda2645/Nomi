@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildCatalogTaskRequest,
   isRateLimitedPollError,
@@ -14,6 +14,10 @@ import { MODEL_ARCHETYPES } from '../../../config/modelArchetypes'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { TaskRequestDto, TaskResultDto } from '../../api/taskApi'
 import type { ModelCatalogModelDto, ModelCatalogVendorDto } from '../../api/modelCatalogApi'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function textNode(): GenerationCanvasNode {
   return { id: 'n1', kind: 'text', title: '', position: { x: 0, y: 0 }, meta: { modelKey: 'gpt-x' } }
@@ -345,6 +349,78 @@ describe('runCatalogGenerationTask — 断开 kie 后老节点自动迁移到已
   })
 })
 
+describe('runCatalogGenerationTask — ComfyUI 提交时序与 prompt UUID', () => {
+  const comfyNode: GenerationCanvasNode = {
+    id: 'comfy-node',
+    kind: 'image',
+    title: '',
+    position: { x: 0, y: 0 },
+    prompt: '画一个红色立方体',
+    meta: { modelKey: 'my-comfy-workflow', modelVendor: 'comfyui-local', vendor: 'comfyui-local' },
+  }
+
+  function stubComfyBridge(events: string[], watched: Array<Record<string, unknown>>) {
+    vi.stubGlobal('window', {
+      nomiDesktop: {
+        tasks: {
+          comfyuiWatch: async (payload: Record<string, unknown>) => {
+            events.push('watch:start')
+            watched.push(payload)
+            await Promise.resolve()
+            events.push('watch:ready')
+            return { ok: true }
+          },
+          comfyuiUnwatch: async (promptId: string) => {
+            events.push(`unwatch:${promptId}`)
+          },
+        },
+      },
+    })
+  }
+
+  it('先等 watcher 就绪再提交，且客户端 UUID 原样穿透给 runTask', async () => {
+    const events: string[] = []
+    const watched: Array<Record<string, unknown>> = []
+    stubComfyBridge(events, watched)
+
+    const result = await runCatalogGenerationTask(comfyNode, {
+      runTask: async (_vendor, request) => {
+        events.push('run')
+        const promptId = String(request.extras?.comfyPromptId || '')
+        expect(promptId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+        expect(promptId).toBe(watched[0]?.promptId)
+        return {
+          id: promptId,
+          kind: request.kind,
+          status: 'succeeded',
+          assets: [{ type: 'image', url: 'nomi-local://comfy-output.png' }],
+          raw: {},
+        }
+      },
+    })
+
+    const promptId = String(watched[0]?.promptId)
+    expect(events).toEqual(['watch:start', 'watch:ready', 'run', `unwatch:${promptId}`])
+    expect(result.url).toBe('nomi-local://comfy-output.png')
+  })
+
+  it('提交失败时立即注销预登记 watcher', async () => {
+    const events: string[] = []
+    const watched: Array<Record<string, unknown>> = []
+    stubComfyBridge(events, watched)
+
+    await expect(runCatalogGenerationTask(comfyNode, {
+      runTask: async () => {
+        events.push('run')
+        throw new Error('submit failed')
+      },
+    })).rejects.toThrow('submit failed')
+
+    const promptId = String(watched[0]?.promptId)
+    expect(events).toEqual(['watch:start', 'watch:ready', 'run', `unwatch:${promptId}`])
+  })
+})
+
 describe('runCatalogGenerationTask — 轮询硬超时抛 RecoverableTimeoutError（可找回，非普通失败）', () => {
   const videoNode: GenerationCanvasNode = {
     id: 'v1', kind: 'video', title: '', position: { x: 0, y: 0 }, prompt: '一只猫跑过草地',
@@ -352,7 +428,7 @@ describe('runCatalogGenerationTask — 轮询硬超时抛 RecoverableTimeoutErro
   }
 
   it('超时抛 RecoverableTimeoutError，detail 带 taskId/vendor/taskKind，且软超时后回报 still-generating', async () => {
-    const { isRecoverableTimeoutError, RecoverableTimeoutError } = await import('./recoverableTimeout')
+    const { isRecoverableTimeoutError } = await import('./recoverableTimeout')
     const phases: string[] = []
     const error = await runCatalogGenerationTask(videoNode, {
       // 首发拿到 taskId、非终态 → 进轮询
@@ -365,7 +441,8 @@ describe('runCatalogGenerationTask — 轮询硬超时抛 RecoverableTimeoutErro
     }).catch((e) => e)
 
     expect(isRecoverableTimeoutError(error)).toBe(true)
-    expect((error as InstanceType<typeof RecoverableTimeoutError>).detail).toMatchObject({
+    if (!isRecoverableTimeoutError(error)) throw error
+    expect(error.detail).toMatchObject({
       taskId: 'up-task-9', vendor: 'asyncv', taskKind: 'text_to_video', modelKey: 'vid',
     })
   })
@@ -490,10 +567,34 @@ describe('buildCatalogTaskRequest — idempotencyKey 穿透到 request.extras', 
     const built = buildCatalogTaskRequest(node, { idempotencyKey: 'run-abc-123' })
     expect((built.request.extras as Record<string, unknown>).idempotencyKey).toBe('run-abc-123')
   })
+
+  it('anonymous upload consent 穿透到 request.extras', () => {
+    const built = buildCatalogTaskRequest({ ...imageNode(), prompt: 'a cat', meta: { modelKey: 'sd', modelVendor: 'openai' } }, { anonymousAssetHostingConsent: 'allow' })
+    expect((built.request.extras as Record<string, unknown>).anonymousAssetHostingConsent).toBe('allow')
+  })
+
+  it('把当前请求实际引用的本地素材作为上传 allowlist 传给主进程', () => {
+    const built = buildCatalogTaskRequest(
+      {
+        ...imageNode(),
+        prompt: 'a cat',
+        meta: { modelKey: 'sd', modelVendor: 'openai', referenceImageUrls: ['nomi-local://asset/active.png'] },
+      },
+      { references: { referenceImages: ['nomi-local://asset/active.png'] } },
+    )
+    expect((built.request.extras as Record<string, unknown>).activeAssetUrls).toEqual(['nomi-local://asset/active.png'])
+  })
   it('未给 idempotencyKey → extras 不带该键（无键时 runTask 不介入，向后兼容）', () => {
     const node: GenerationCanvasNode = { id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', archetype: { id: 'gpt-image-2', modeId: 't2i' } } }
     const built = buildCatalogTaskRequest(node, {})
     expect((built.request.extras as Record<string, unknown>).idempotencyKey).toBeUndefined()
+  })
+  it('production QA 的 promptSuffix 只追加到本次请求，不改写节点原始 prompt', () => {
+    const node: GenerationCanvasNode = { id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '保持雨夜窗边构图', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', archetype: { id: 'gpt-image-2', modeId: 't2i' } } }
+    const built = buildCatalogTaskRequest(node, { promptSuffix: '只修正：主体身份，不改变背景。' })
+    expect(built.request.prompt).toContain('保持雨夜窗边构图')
+    expect(built.request.prompt).toContain('只修正：主体身份，不改变背景。')
+    expect(node.prompt).toBe('保持雨夜窗边构图')
   })
 })
 

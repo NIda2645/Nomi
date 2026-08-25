@@ -61,7 +61,7 @@ describe("importComfyWorkflowToCatalog（S3 落库）", () => {
     expect(mine?.modelKey).toBe("comfy-wan-i2v-a-aaa");
   });
 
-  it("导入时保存原始 workflow + binding 草稿，供 UI 重新编辑", async () => {
+  it("导入时保存原始 workflow + 规范化 binding 草稿，供 UI 重新编辑", async () => {
     emptyCatalog();
     const { analyzeComfyWorkflowText, importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
     const { listModelCatalogModels } = await import("./catalogStore");
@@ -73,7 +73,84 @@ describe("importComfyWorkflowToCatalog（S3 落库）", () => {
     const models = listModelCatalogModels({ vendorKey: "comfyui-local" }) as Array<{ modelKey: string; meta?: { comfyWorkflowImport?: { text?: string; binding?: unknown } } }>;
     const model = models.find((m) => m.modelKey === modelKey);
     expect(model?.meta?.comfyWorkflowImport?.text).toBe(text);
-    expect(model?.meta?.comfyWorkflowImport?.binding).toEqual(binding);
+    const savedBinding = model?.meta?.comfyWorkflowImport?.binding as { params?: unknown[]; numeric?: unknown };
+    expect(savedBinding.params).toEqual((binding as { params?: unknown[] }).params);
+    expect(savedBinding).not.toHaveProperty("numeric");
+  });
+
+  it("显式 params: [] 落库后保持为空，不会从 numeric 复活已删除参数", async () => {
+    emptyCatalog();
+    const { importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
+    const { listModelCatalogModels } = await import("./catalogStore");
+    const text = videoWorkflow("explicit empty");
+    const result = importComfyWorkflowToCatalog({
+      text,
+      binding: {
+        promptNodeId: "2", promptInputKey: "text",
+        firstFrameNodeId: "1", firstFrameInputKey: "image",
+        outputNodeId: "5", outputKind: "video",
+        numeric: [{ nodeId: "4", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", default: 1 }],
+        params: [],
+      },
+      labelZh: "Explicit empty",
+    }, "empty1");
+    const modelKey = (result as { modelKey: string }).modelKey;
+    const model = (listModelCatalogModels({ vendorKey: "comfyui-local" }) as Array<{
+      modelKey: string;
+      meta?: {
+        parameters?: Array<{ key: string; type: string }>;
+        comfyWorkflowImport?: { binding?: { params?: unknown[]; numeric?: unknown } };
+      };
+    }>).find((item) => item.modelKey === modelKey);
+    // 本例只管「numeric 不复活」：值参数必须为空。
+    // 图像输入是另一条声明（type:'image-url'，由 binding.images 派生），不在此断言范围内——
+    // 这里按 type 过滤而不是笼统 toEqual([])，免得把这条用例的原意稀释掉。
+    expect(model?.meta?.parameters?.filter((p) => p.type !== "image-url")).toEqual([]);
+    expect(model?.meta?.parameters?.map((p) => p.key)).toEqual(["first_frame_url"]);
+    expect(model?.meta?.comfyWorkflowImport?.binding?.params).toEqual([]);
+    expect(model?.meta?.comfyWorkflowImport?.binding).not.toHaveProperty("numeric");
+  });
+
+  it("仅 params 缺失时把 legacy numeric 单向迁移成现代 params", async () => {
+    emptyCatalog();
+    const { importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
+    const { listModelCatalogModels } = await import("./catalogStore");
+    const text = videoWorkflow("legacy migration");
+    const result = importComfyWorkflowToCatalog({
+      text,
+      binding: {
+        outputNodeId: "5", outputKind: "video",
+        numeric: [{ nodeId: "4", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", default: 1 }],
+      },
+      labelZh: "Legacy migration",
+    }, "legacy1");
+    const modelKey = (result as { modelKey: string }).modelKey;
+    const model = (listModelCatalogModels({ vendorKey: "comfyui-local" }) as Array<{
+      modelKey: string;
+      meta?: { comfyWorkflowImport?: { binding?: { params?: unknown[]; numeric?: unknown } } };
+    }>).find((item) => item.modelKey === modelKey);
+    expect(model?.meta?.comfyWorkflowImport?.binding?.params).toEqual([
+      { nodeId: "4", inputKey: "seed", paramKey: "comfy_seed", label: "Seed", type: "number", default: 1 },
+    ]);
+    expect(model?.meta?.comfyWorkflowImport?.binding).not.toHaveProperty("numeric");
+  });
+
+  it("界面格式原图保留到草稿和提交 extra_pnginfo，API 文本仍是执行图", async () => {
+    emptyCatalog();
+    const { analyzeComfyWorkflowText, importComfyWorkflowToCatalog } = await import("./comfyuiWorkflowImportStore");
+    const { listModelCatalogModels, listModelCatalogMappings } = await import("./catalogStore");
+    const text = videoWorkflow("keep ui source");
+    const binding = (analyzeComfyWorkflowText(text) as { analysis: { suggested: unknown } }).analysis.suggested;
+    const uiWorkflowText = JSON.stringify({ nodes: [{ id: 5, type: "CreateVideo" }], links: [] });
+    const result = importComfyWorkflowToCatalog({ text, binding, labelZh: "UI source", uiWorkflowText }, "ui1");
+    const modelKey = (result as { modelKey: string }).modelKey;
+    const model = (listModelCatalogModels({ vendorKey: "comfyui-local" }) as Array<Record<string, unknown>>)
+      .find((item) => item.modelKey === modelKey) as { meta?: { comfyWorkflowImport?: { uiWorkflowText?: string } } };
+    const mapping = (listModelCatalogMappings({ vendorKey: "comfyui-local" }) as Array<Record<string, unknown>>)
+      .find((item) => item.modelKey === modelKey) as { create?: { body?: { extra_data?: unknown; prompt?: unknown } } };
+    expect(model.meta?.comfyWorkflowImport?.uiWorkflowText).toBe(uiWorkflowText);
+    expect(mapping.create?.body?.extra_data).toEqual({ extra_pnginfo: { workflow: JSON.parse(uiWorkflowText) } });
+    expect(mapping.create?.body?.prompt).toBeTruthy();
   });
 
   it("同 vendor 同 taskKind 两条导入靠 modelKey 不互相覆盖，selectTaskMapping 各取各的", async () => {
@@ -202,5 +279,54 @@ describe("多实例：两台 ComfyUI 互不串台（方案 A · key 前缀身份
     expect(trustedLocalOutputOrigin({ key: "comfyui-local-ws", baseUrlHint: "http://192.168.1.9:8188" })).toBe("http://192.168.1.9:8188");
     // 别家 vendor 即便配了私网地址也不给信任
     expect(trustedLocalOutputOrigin({ key: "apimart", baseUrlHint: "http://192.168.1.9:8188" })).toBeNull();
+  });
+});
+
+describe("reconcileComfyWorkflowTexts（设置页批量缺件对账）", () => {
+  it("20 条 workflow 只读取一次 /object_info，并按 id 返回独立结果", async () => {
+    emptyCatalog();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      CLIPTextEncode: { input: { required: { text: ["STRING"] } } },
+      CheckpointLoaderSimple: { input: { required: { ckpt_name: [["m.safetensors"]] } } },
+      KSampler: { input: { required: { seed: ["INT"], steps: ["INT"] } } },
+      CreateVideo: { input: { required: {} } },
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    const { reconcileComfyWorkflowTexts } = await import("./comfyuiWorkflowImportStore");
+    const items = Array.from({ length: 20 }, (_, index) => ({ id: `workflow-${index}`, text: textToVideoWorkflow(`prompt ${index}`) }));
+
+    const result = await reconcileComfyWorkflowTexts(items);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.results).toHaveLength(20);
+    expect(result.results.map((item) => item.id)).toEqual(items.map((item) => item.id));
+    expect(result.results.every((item) => item.result.ok && item.result.serverReachable)).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8188/object_info", expect.any(Object));
+    vi.unstubAllGlobals();
+  });
+
+  it("坏 workflow 只让该条失败，其他条仍完成对账", async () => {
+    emptyCatalog();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      CLIPTextEncode: { input: { required: {} } },
+      CheckpointLoaderSimple: { input: { required: { ckpt_name: [["m.safetensors"]] } } },
+      KSampler: { input: { required: {} } },
+      CreateVideo: { input: { required: {} } },
+    }))));
+    const { reconcileComfyWorkflowTexts } = await import("./comfyuiWorkflowImportStore");
+    const result = await reconcileComfyWorkflowTexts([
+      { id: "bad", text: "{bad json" },
+      { id: "good", text: textToVideoWorkflow("ok") },
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      results: [
+        { id: "bad", result: { ok: false } },
+        { id: "good", result: { ok: true, serverReachable: true } },
+      ],
+    });
+    vi.unstubAllGlobals();
   });
 });

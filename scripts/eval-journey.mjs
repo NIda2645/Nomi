@@ -47,6 +47,7 @@ const gitCommit = execSync("git rev-parse --short HEAD", { cwd: repoRoot, encodi
 const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
 const runDir = path.join(repoRoot, "evals", "runs", `${stamp}-journeys${ci ? "-ci" : smoke ? "-smoke" : ""}`);
 fs.mkdirSync(runDir, { recursive: true });
+const evidenceDir = path.join(runDir, "screenshots");
 const outputPath = path.join(runDir, "output.jsonl");
 
 console.log(`eval:journey — ${journeys.length} 旅程 × ${trials} trial${hasCatalog ? "" : "(无 catalog,需 agent 的旅程将跳过)"} → ${path.relative(repoRoot, runDir)}\n`);
@@ -63,7 +64,12 @@ for (const journey of journeys) {
   const trialGrades = [];
   const trialsDetail = [];
   for (let trial = 1; trial <= trials; trial += 1) {
-    const result = await runJourneyTrial(repoRoot, journey, { trial, modelPref, log: (m) => console.log(m) });
+    const result = await runJourneyTrial(repoRoot, journey, {
+      trial,
+      modelPref,
+      evidenceDir,
+      log: (m) => console.log(m),
+    });
     fs.appendFileSync(outputPath, `${JSON.stringify(result)}\n`);
     trialGrades.push({ pass: result.pass, score: result.score });
     trialsDetail.push(result);
@@ -103,6 +109,7 @@ const scores = {
       pass: t.pass,
       score: t.score,
       failureReason: t.failureReason,
+      evidence: t.evidence,
       milestones: t.milestones.map((m) => ({
         id: m.id,
         title: m.title,
@@ -128,6 +135,14 @@ for (const j of ran.filter((x) => !x.passAtK)) {
   for (const t of j.trialsDetail) {
     for (const m of t.milestones.filter((x) => !x.pass)) {
       lines.push(`- trial ${t.trial} · ${m.id}「${m.title}」: ${m.checks.filter((c) => !c.pass).map((c) => `${c.label}${c.reason ? ` (${c.reason})` : ""}`).join("; ")}`);
+    }
+  }
+}
+lines.push("", "## 截图证据");
+for (const j of ran) {
+  for (const trial of j.trialsDetail) {
+    for (const evidence of trial.evidence || []) {
+      lines.push(`- ${j.journeyId} · trial ${trial.trial} · ${evidence.milestoneId}: \`${evidence.path}\` (${evidence.bytes} bytes)`);
     }
   }
 }

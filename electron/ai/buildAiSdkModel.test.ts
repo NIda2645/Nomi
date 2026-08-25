@@ -1,5 +1,38 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import { generateText } from "ai";
 import { buildAiSdkModel } from "./buildAiSdkModel";
+import { buildLanguageModelForVendor } from "./vendorLanguageModel";
+import type { Model, Vendor } from "../catalog/types";
+
+let noAuthServer: http.Server;
+let noAuthBaseUrl = "";
+let observedAuthorization: string | undefined;
+
+beforeAll(async () => {
+  noAuthServer = http.createServer((req, res) => {
+    observedAuthorization = req.headers.authorization;
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        id: "local-response",
+        object: "chat.completion",
+        created: 1,
+        model: "local-model",
+        choices: [{ index: 0, message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }));
+    });
+  });
+  await new Promise<void>((resolve) => noAuthServer.listen(0, "127.0.0.1", resolve));
+  noAuthBaseUrl = `http://127.0.0.1:${(noAuthServer.address() as AddressInfo).port}`;
+});
+
+afterAll(async () => {
+  await new Promise<void>((resolve) => noAuthServer.close(() => resolve()));
+});
 
 describe("buildAiSdkModel", () => {
   it("returns an openai-compatible language model for kind=openai-compatible", () => {
@@ -58,6 +91,39 @@ describe("buildAiSdkModel", () => {
         modelId: "gpt-4o-mini",
       }),
     ).toThrow(/apiKey/);
+  });
+
+  it("runs an authType=none text gateway without sending Authorization", async () => {
+    observedAuthorization = "not-called";
+    const vendor: Vendor = {
+      key: "local-gateway",
+      name: "Local gateway",
+      enabled: true,
+      authType: "none",
+      providerKind: "openai-compatible",
+      baseUrlHint: noAuthBaseUrl,
+      createdAt: "2026-08-16T00:00:00.000Z",
+      updatedAt: "2026-08-16T00:00:00.000Z",
+    };
+    const model: Model = {
+      vendorKey: vendor.key,
+      modelKey: "local-model",
+      displayName: "Local model",
+      kind: "text",
+      enabled: true,
+      capabilities: {},
+      createdAt: "2026-08-16T00:00:00.000Z",
+      updatedAt: "2026-08-16T00:00:00.000Z",
+    };
+
+    const result = await generateText({
+      model: buildLanguageModelForVendor(vendor, model, ""),
+      prompt: "ping",
+      maxRetries: 0,
+    });
+
+    expect(result.text).toBe("pong");
+    expect(observedAuthorization).toBeUndefined();
   });
 
   it("requires baseURL for openai-compatible providers and accepts a custom one", () => {

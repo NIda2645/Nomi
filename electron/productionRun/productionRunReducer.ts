@@ -1,4 +1,5 @@
 import { transitionJob, transitionRun } from "./productionRunState";
+import { bindShotNodes, detachShotNodes } from "./productionRunCanvasLandingReducer";
 import type {
   BudgetLedgerSummary,
   ProductionArtifact,
@@ -6,11 +7,123 @@ import type {
   ProductionGate,
   ProductionJob,
   ProductionJobStatus,
+  ProductionGenerationPlan,
+  ProductionGenerationShot,
   ProductionRun,
   ProductionRunStatus,
   ProductionStage,
   RunCommand,
 } from "./productionRunTypes";
+import { validateProductionExecutionBinding } from "./productionExecutionBinding";
+import { checkSealAffordability, type ShotPrice } from "./shotPricing";
+
+/**
+ * P4 S2: raised when a seal is requested with a hard spend ceiling that cannot cover the known-price
+ * subtotal of the included shots. Carries the structured "最多只能完成前 N 镜" signal (plan §3.1/§4) so
+ * the caller can tell the user to change the checkbox selection or raise the cap and re-seal.
+ */
+export class SealBudgetExceededError extends Error {
+  readonly code = "seal_budget_exceeded" as const;
+
+  constructor(
+    readonly maxAffordableShots: number,
+    readonly knownSubtotal: number,
+    readonly maxSpend: number,
+  ) {
+    super(`seal_budget_exceeded: hard spend ceiling ${maxSpend} covers only the first ${maxAffordableShots} shot(s)`);
+    this.name = "SealBudgetExceededError";
+  }
+}
+
+/**
+ * P4 S2: parse the optional per-shot prices a caller derived from the catalog for the seal precheck.
+ * Prices are keyed by shotId (order is taken from the included shots, i.e. checkbox order). A missing
+ * entry for an included shot → that shot is unknown-priced (contributes 0 to the cap, flags certainty).
+ */
+function shotPricesFrom(raw: unknown): Map<string, ShotPrice> | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) throw new Error("Generation seal shotPrices must be an array");
+  const prices = new Map<string, ShotPrice>();
+  for (const [index, value] of raw.entries()) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid seal shot price at ${index}`);
+    const entry = value as { shotId?: unknown; price?: unknown };
+    const shotId = typeof entry.shotId === "string" ? entry.shotId.trim() : "";
+    if (!shotId) throw new Error(`Invalid seal shot price id at ${index}`);
+    const price = entry.price as ShotPrice | undefined;
+    if (!price || typeof price !== "object" || typeof (price as { known?: unknown }).known !== "boolean") {
+      throw new Error(`Invalid seal shot price value at ${index}`);
+    }
+    if (price.known && !(Number.isFinite(price.amount) && price.amount >= 0)) {
+      throw new Error(`Invalid seal shot price amount at ${index}`);
+    }
+    prices.set(shotId, price.known ? { known: true, amount: price.amount } : { known: false });
+  }
+  return prices;
+}
+
+/**
+ * P4 S1 shot 谱系 = 一个 job 归属哪一镜。多镜 job 把 shotId 写进 `metadata.shotId`（子合同派生时带上）；
+ * 单镜/legacy job 无此字段 → 归属默认镜（返回 undefined，等价于「不参与 shot 分组」）。
+ * attempt 单调性、new_attempt 连坐豁免都按这个谱系键分组，绝不跨镜比较。
+ */
+function jobShotLineage(job: Pick<ProductionJob, "metadata">): string | undefined {
+  const shotId = job.metadata?.shotId;
+  return typeof shotId === "string" && shotId.trim() ? shotId : undefined;
+}
+
+/** Update one shot inside a plan by id; throws if the plan has no such shot. */
+function replaceShot(
+  plan: ProductionGenerationPlan,
+  shotId: string,
+  update: (shot: ProductionGenerationShot) => ProductionGenerationShot,
+): ProductionGenerationShot[] {
+  const shots = plan.shots ?? [];
+  let found = false;
+  const next = shots.map((shot) => {
+    if (shot.shotId !== shotId) return shot;
+    found = true;
+    return update(shot);
+  });
+  if (!found) throw new Error(`Generation shot not found: ${shotId}`);
+  return next;
+}
+
+/** A shot is included in the sealed contract unless it was explicitly unchecked (试拍/分批). */
+function isShotIncluded(shot: Pick<ProductionGenerationShot, "included">): boolean {
+  return shot.included !== false;
+}
+
+/**
+ * P4 S1 seal helper: validate + freeze the shots[] payload. Returns undefined for a single-shot seal
+ * (no shots[] payload → today's byte-identical path). For a multi-shot seal, every INCLUDED shot must
+ * carry a matching sealed sub-contract; excluded shots must not; shot ids must be unique and non-empty.
+ */
+function sealGenerationShots(plan: ProductionGenerationPlan, raw: unknown): ProductionGenerationShot[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error("Multi-shot generation seal requires a non-empty shots list");
+  const seen = new Set<string>();
+  const sealed = raw.map((value, index) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid generation shot ${index}`);
+    const shot = value as ProductionGenerationShot;
+    const shotId = typeof shot.shotId === "string" ? shot.shotId.trim() : "";
+    if (!shotId || seen.has(shotId)) throw new Error(`Invalid generation shot id at ${index}`);
+    seen.add(shotId);
+    const included = isShotIncluded(shot);
+    if (included) {
+      if (!shot.contract || typeof shot.contract.contractHash !== "string" || !shot.contract.contractHash.trim()) {
+        throw new Error(`Included generation shot ${shotId} needs a sealed sub-contract`);
+      }
+      if (shot.candidate?.sealedContractHash !== shot.contract.contractHash) {
+        throw new Error(`Generation shot ${shotId} sub-contract does not match its sealed candidate`);
+      }
+    } else if (shot.contract) {
+      throw new Error(`Excluded generation shot ${shotId} must not carry a sealed sub-contract`);
+    }
+    return shot;
+  });
+  void plan;
+  return sealed;
+}
 
 export type ProductionCommandEffect = {
   run: ProductionRun;
@@ -38,12 +151,84 @@ const ARTIFACT_STATUSES = new Set<ProductionArtifact["status"]>([
 ]);
 const GATE_STATUSES = new Set<ProductionGate["status"]>(["waiting", "approved", "rejected", "expired", "revoked"]);
 
+type ArtifactReviewDecision = "approved" | "changes_requested" | "rejected";
+
+function artifactVersion(value: ProductionArtifact): number {
+  return Number.isInteger(value.version) && (value.version as number) > 0 ? value.version as number : 1;
+}
+
+function artifactHash(value: ProductionArtifact | undefined): string | undefined {
+  return value?.contentHash;
+}
+
+function isApprovedScript(value: ProductionArtifact | undefined): boolean {
+  return Boolean(value && value.kind === "script" && value.status === "adopted" && (value.reviewStatus === undefined || value.reviewStatus === "approved"));
+}
+
+function reviewDecision(payload: Record<string, unknown>): ArtifactReviewDecision {
+  const value = typeof payload.decision === "string" ? payload.decision : payload.status;
+  if (value !== "approved" && value !== "changes_requested" && value !== "rejected") {
+    throw new Error("Invalid artifact review decision");
+  }
+  return value;
+}
+
+/** Return whether this candidate has passed review and can become the adopted artifact. */
+export function canAdoptArtifact(run: ProductionRun, artifactId: string): boolean {
+  const candidate = run.artifacts.find((item) => item.artifactId === artifactId);
+  if (!candidate || candidate.status !== "candidate" || candidate.reviewStatus !== "approved") return false;
+  if (candidate.kind === "storyboard") {
+    try {
+      assertStoryboardSourceApproved(run, artifactId);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Enforce the one-way script → storyboard provenance boundary. */
+export function assertStoryboardSourceApproved(run: ProductionRun, artifactId: string): void {
+  const storyboard = run.artifacts.find((item) => item.artifactId === artifactId);
+  if (!storyboard || storyboard.kind !== "storyboard") throw new Error("Storyboard artifact not found");
+  const sourceId = storyboard.sourceArtifactId || storyboard.sourceScriptArtifactId;
+  const source = sourceId ? run.artifacts.find((item) => item.artifactId === sourceId) : undefined;
+  if (!isApprovedScript(source)) throw new Error("approved script required");
+  const sourceVersion = storyboard.sourceVersion ?? storyboard.sourceScriptVersion;
+  if (sourceVersion !== undefined && sourceVersion !== artifactVersion(source!)) {
+    throw new Error("storyboard source script version is stale");
+  }
+  const sourceHash = storyboard.sourceContentHash || storyboard.sourceHash || storyboard.sourceScriptHash;
+  if (sourceHash && artifactHash(source) && sourceHash !== artifactHash(source)) {
+    throw new Error("storyboard source script hash is stale");
+  }
+}
+
+/** Mark derived artifacts rejected when their source is superseded or explicitly changed. */
+export function markDerivedArtifactsStale(run: ProductionRun, sourceArtifactId: string): ProductionRun {
+  const artifacts = run.artifacts.map((item) => {
+    if (item.sourceArtifactId !== sourceArtifactId || item.status === "rejected") return item;
+    return { ...item, status: "rejected" as const, reviewStatus: "changes_requested" as const };
+  });
+  return { ...run, artifacts };
+}
+
+function normalizeArtifactContract(value: ProductionArtifact): ProductionArtifact {
+  const next: ProductionArtifact = {
+    ...value,
+    version: artifactVersion(value),
+    ...(value.source ? {} : { source: "nomi-agent" as const }),
+    ...(value.status === "candidate" && !value.reviewStatus ? { reviewStatus: "waiting" as const } : {}),
+  };
+  return next;
+}
+
 function artifact(payload: Record<string, unknown>): ProductionArtifact {
   const value = record(payload, "artifact");
   if (!ARTIFACT_STATUSES.has(value.status as ProductionArtifact["status"])) {
     throw new Error("Invalid artifact status");
   }
-  return value as ProductionArtifact;
+  return normalizeArtifactContract(value as ProductionArtifact);
 }
 
 /** B1：校验方向候选 —— 2-3 个、key 唯一且安全、title/oneLiner 非空且截断。别信 LLM 原样入库。 */
@@ -103,6 +288,238 @@ export function applyProductionCommand(
       const stageId = text(command.payload, "stageId");
       return { run: { ...current, stageId, updatedAt: now }, eventType: "run.stage.changed", message: stageId };
     }
+    case "generation.patch": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "draft") throw new Error("new_draft_required: edit a new generation draft");
+      const patch = record(command.payload, "patch") as Partial<ProductionGenerationShot["candidate"]>;
+      // P4 S1 shot-addressing patch variant: edit one shot's candidate (model/mode/params/prompt/refs)
+      // and/or its included flag (试拍/分批). No shotId → patch the top-level candidate exactly as today.
+      const rawShotId = typeof command.payload.shotId === "string" ? command.payload.shotId.trim() : "";
+      const shotId = rawShotId || undefined;
+      if (shotId) {
+        const hasIncluded = typeof command.payload.included === "boolean";
+        const shots = replaceShot(currentPlan, shotId, (shot) => ({
+          ...shot,
+          candidate: {
+            ...shot.candidate,
+            ...patch,
+            revision: shot.candidate.revision + 1,
+            parameters: patch.parameters ? structuredClone(patch.parameters) : structuredClone(shot.candidate.parameters),
+            references: patch.references ? structuredClone(patch.references) : structuredClone(shot.candidate.references),
+          },
+          ...(hasIncluded ? { included: command.payload.included as boolean } : {}),
+          updatedAt: now,
+        }));
+        return {
+          run: { ...current, generationPlan: { ...currentPlan, shots, updatedAt: now }, updatedAt: now },
+          eventType: "generation.plan.updated",
+          message: currentPlan.operationId,
+        };
+      }
+      const candidate = {
+        ...currentPlan.candidate,
+        ...patch,
+        revision: currentPlan.candidate.revision + 1,
+        parameters: patch.parameters ? structuredClone(patch.parameters) : structuredClone(currentPlan.candidate.parameters),
+        references: patch.references ? structuredClone(patch.references) : structuredClone(currentPlan.candidate.references),
+      };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, candidate, updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.updated",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.seal": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "draft") throw new Error("Generation plan is not editable");
+      const contract = record(command.payload, "contract") as ProductionGenerationPlan["contract"];
+      if (!contract || typeof contract.contractHash !== "string" || contract.contractHash.trim() === "") throw new Error("Invalid generation contract");
+      if (contract.candidateId !== currentPlan.candidate.candidateId || contract.candidateRevision !== currentPlan.candidate.revision) {
+        throw new Error("Generation contract does not match the current draft");
+      }
+      // P4 S1 multi-shot seal: freeze per-shot sub-contracts (included shots only) + the plan-level hash.
+      // Single-shot seal (no shots[] in payload) stays byte-identical to today.
+      const sealedShots = sealGenerationShots(currentPlan, command.payload.shots);
+      const rawPlanHash = typeof command.payload.planHash === "string" ? command.payload.planHash.trim() : "";
+      if (sealedShots && !rawPlanHash) throw new Error("A multi-shot generation seal requires a plan hash");
+      // P4 S2 seal precheck: when the caller supplies per-shot prices (derived from the catalog), the
+      // reducer enforces the hard spend ceiling at the single source of truth. Absent shotPrices →
+      // byte-identical to today (no precheck, no costCertainty) so the single-shot chain is untouched.
+      const shotPrices = shotPricesFrom(command.payload.shotPrices);
+      let costCertainty: ProductionGenerationPlan["costCertainty"];
+      if (shotPrices) {
+        // Precheck order = included shots in their declared order (checkbox order), single default shot
+        // when there is no shots[] payload. maxAffordableShots is counted in exactly this order.
+        const orderedShots = sealedShots
+          ? sealedShots.filter(isShotIncluded).map((shot) => ({ shotId: shot.shotId, price: shotPrices.get(shot.shotId) ?? { known: false as const } }))
+          : [{ shotId: currentPlan.candidate.candidateId, price: shotPrices.get(currentPlan.candidate.candidateId) ?? { known: false as const } }];
+        const affordability = checkSealAffordability({ shots: orderedShots, maxSpend: current.policy.maxSpend });
+        if (!affordability.ok) throw new SealBudgetExceededError(affordability.maxAffordableShots, affordability.knownSubtotal, affordability.maxSpend);
+        costCertainty = affordability.hasUnknownPrice ? "partial" : "known";
+      }
+      return {
+        run: {
+          ...current,
+          generationPlan: {
+            ...currentPlan,
+            candidate: { ...currentPlan.candidate, sealedContractHash: contract.contractHash },
+            contract,
+            state: "sealed",
+            ...(sealedShots ? { shots: sealedShots, planHash: rawPlanHash } : {}),
+            ...(costCertainty ? { costCertainty } : {}),
+            updatedAt: now,
+          },
+          updatedAt: now,
+        },
+        eventType: "generation.plan.sealed",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.trial_narrow": {
+      // P4 S4 试拍首镜 (§6 T3): narrow a SEALED multi-shot plan to only its first included video shot,
+      // clearing the plan-level receipt (a trial re-gate must re-confirm the smaller scope). Anchors stay
+      // included (the trial still needs the identity image). Idempotent: re-narrowing an already-narrowed
+      // plan is a no-op. This is a controlled reshape (not a user edit) so it operates on a sealed plan.
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.shots) throw new Error("A sealed multi-shot plan is required to narrow to a trial shot");
+      const videoShots = currentPlan.shots.filter((shot) => shot.role !== "anchor");
+      const firstIncludedVideo = videoShots.find((shot) => isShotIncluded(shot));
+      if (!firstIncludedVideo) throw new Error("No included video shot to trial");
+      const alreadyNarrowed = videoShots.every((shot) => (shot.shotId === firstIncludedVideo.shotId) === isShotIncluded(shot));
+      if (alreadyNarrowed) return { run: current, eventType: "generation.plan.updated", message: currentPlan.operationId };
+      const rawPlanHash = typeof command.payload.planHash === "string" ? command.payload.planHash.trim() : "";
+      if (!rawPlanHash) throw new Error("A trial narrow requires a new plan hash");
+      const shots = currentPlan.shots.map((shot) => {
+        if (shot.role === "anchor") return { ...shot, updatedAt: now };
+        const keep = shot.shotId === firstIncludedVideo.shotId;
+        return { ...shot, included: keep, approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now };
+      });
+      return {
+        run: {
+          ...current,
+          generationPlan: {
+            ...currentPlan,
+            shots,
+            planHash: rawPlanHash,
+            approvedReceiptId: undefined,
+            approvedAt: undefined,
+            approvedAttempt: undefined,
+            updatedAt: now,
+          },
+          updatedAt: now,
+        },
+        eventType: "generation.plan.updated",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.cancel": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan) throw new Error("Generation plan not found");
+      if (currentPlan.state === "submitted") throw new Error("Submitted generation cannot be cancelled as a draft");
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, state: "cancelled", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.cancelled",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.submit": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || !currentPlan.contract || currentPlan.state === "draft" || currentPlan.state === "cancelled") {
+        throw new Error("A sealed generation plan is required before submission");
+      }
+      if (currentPlan.state === "submitted") return { run: current, eventType: "generation.plan.submitted", message: currentPlan.operationId };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, state: "submitted", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.submitted",
+        message: currentPlan.operationId,
+      };
+    }
+    case "plan.bind-shot-nodes":
+      // P4 S5 画布落地：拆进 productionRunCanvasLandingReducer 守 800 行门岗（R9）。
+      return bindShotNodes(current, command, now);
+    case "plan.detach-shot-nodes":
+      return detachShotNodes(current, command, now);
+    case "generation.approve": {
+      const currentPlan = current.generationPlan;
+      const receiptId = text(command.payload, "receiptId");
+      const contractHash = text(command.payload, "contractHash");
+      if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.contract) throw new Error("A sealed generation plan is required before approval");
+      // P4 S1: a multi-shot receipt is keyed on the plan-level hash (covers the whole operation);
+      // a single-shot receipt is keyed on the one sealed contract hash. Accept whichever this plan uses.
+      const expectedHash = currentPlan.shots ? currentPlan.planHash : currentPlan.contract.contractHash;
+      if (expectedHash !== contractHash) throw new Error("Generation approval does not match the sealed contract");
+      const rawAttempt = command.payload.attempt;
+      const approvedAttempt = rawAttempt === undefined ? undefined : Number(rawAttempt);
+      if (approvedAttempt !== undefined && (!Number.isInteger(approvedAttempt) || approvedAttempt < 1)) throw new Error("Generation approval attempt is invalid");
+      if (currentPlan.approvedReceiptId === receiptId && currentPlan.approvedAttempt === approvedAttempt) return { run: current, eventType: "generation.plan.approved", message: currentPlan.operationId };
+      // P4 S1: the plan-level receipt approves every INCLUDED shot (a per-operation receipt covers the
+      // whole batch — §1). Excluded shots stay unapproved. Single-shot plans (no shots[]) are unaffected.
+      const approvedShots = currentPlan.shots
+        ? currentPlan.shots.map((shot) => (isShotIncluded(shot)
+            ? { ...shot, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), approvedAt: now, updatedAt: now }
+            : shot))
+        : undefined;
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), ...(approvedShots ? { shots: approvedShots } : {}), approvedAt: now, updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.approved",
+        message: currentPlan.operationId,
+      };
+    }
+    case "generation.new_attempt": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || !currentPlan.contract || (currentPlan.state !== "sealed" && currentPlan.state !== "submitted")) throw new Error("A submitted generation is required before a new attempt");
+      const job = record(command.payload, "job") as ProductionJob;
+      if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
+      // P4 S1: a per-shot attempt addresses one shot lineage. Absent shotId = single-shot (today's chain).
+      const rawShotId = typeof command.payload.shotId === "string" ? command.payload.shotId.trim() : "";
+      const shotId = rawShotId || undefined;
+      if (shotId && !(currentPlan.shots ?? []).some((shot) => shot.shotId === shotId)) throw new Error(`Generation shot not found: ${shotId}`);
+      // Attempt monotonicity is scoped to the SAME shot lineage — a sibling shot's attempt N must not
+      // block this shot's attempt N. For single-shot plans the lineage is "the default shot" (undefined),
+      // which keeps the original provider/model/stage comparison across the whole plan's default jobs.
+      const jobLineage = shotId ?? jobShotLineage(job);
+      const lineageConflict = current.jobs.some((item) =>
+        item.attempt >= job.attempt
+        && item.provider === job.provider
+        && item.model === job.model
+        && item.stageId === job.stageId
+        && (jobShotLineage(item) ?? undefined) === (jobLineage ?? undefined));
+      if (!Number.isInteger(job.attempt) || job.attempt < 1 || lineageConflict) {
+        throw new Error("Generation attempt must be newer than the previous attempt");
+      }
+      if (job.executionBinding) {
+        const binding = validateProductionExecutionBinding(job.executionBinding);
+        if (binding.runId !== current.runId || binding.providerNamespace !== job.provider || binding.providerIdempotencyKey !== job.idempotencyKey) throw new Error("Invalid execution binding for new generation attempt");
+      }
+      // Multi-shot: keep the plan-level receipt, reset ONLY this shot's per-shot approval + bump its
+      // attemptCount — never clear plan-level approval, never touch sibling shots (§3.3).
+      // Single-shot: keep today's behavior (the plan-level receipt IS the shot's, so it must be cleared).
+      const nextPlan: ProductionGenerationPlan = shotId
+        ? {
+            ...currentPlan,
+            state: "sealed",
+            shots: replaceShot(currentPlan, shotId, (shot) => ({
+              ...shot,
+              approvedReceiptId: undefined,
+              approvedAt: undefined,
+              approvedAttempt: undefined,
+              attemptCount: job.attempt,
+              updatedAt: now,
+            })),
+            updatedAt: now,
+          }
+        : { ...currentPlan, state: "sealed", approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now };
+      return {
+        run: {
+          ...current,
+          generationPlan: nextPlan,
+          jobs: [...current.jobs, job],
+          updatedAt: now,
+        },
+        eventType: "generation.attempt.created",
+        message: job.jobId,
+      };
+    }
     case "stage.upsert": {
       const stage = record(command.payload, "stage") as ProductionStage;
       const stages = current.stages.some((item) => item.stageId === stage.stageId)
@@ -113,7 +530,25 @@ export function applyProductionCommand(
     case "job.add": {
       const job = record(command.payload, "job") as ProductionJob;
       if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
+      if (job.executionBinding) {
+        const binding = validateProductionExecutionBinding(job.executionBinding);
+        if (binding.runId !== current.runId) throw new Error("Invalid execution binding: run id does not match ProductionRun");
+        if (binding.providerNamespace !== job.provider) throw new Error("Invalid execution binding: provider namespace does not match job provider");
+        if (binding.providerIdempotencyKey !== job.idempotencyKey) throw new Error("Invalid execution binding: idempotency key does not match job");
+      }
       return { run: { ...current, jobs: [...current.jobs, job], updatedAt: now }, eventType: "job.created", message: job.jobId };
+    }
+    case "qa.retry.schedule": {
+      // Budget reservation and retry-job creation are one durable command. A
+      // crash cannot leave a reserved unit with no job to consume it.
+      const job = record(command.payload, "job") as ProductionJob;
+      if (current.jobs.some((item) => item.jobId === job.jobId)) throw new Error(`Duplicate job: ${job.jobId}`);
+      const budget = validateBudget({ ...current.budget, reserved: current.budget.reserved + 1 }, current.budget);
+      return {
+        run: { ...current, budget, jobs: [...current.jobs, job], updatedAt: now },
+        eventType: "qa.retry.scheduled",
+        message: job.jobId,
+      };
     }
     case "job.status": {
       const jobId = text(command.payload, "jobId");
@@ -129,6 +564,20 @@ export function applyProductionCommand(
         updatedAt: now,
       }));
       return { run: { ...current, jobs, updatedAt: now }, eventType: `job.${status}`, message: jobId };
+    }
+    case "job.patch": {
+      const jobId = text(command.payload, "jobId");
+      const patch = command.payload.patch && typeof command.payload.patch === "object"
+        ? command.payload.patch as Partial<ProductionJob>
+        : {};
+      const jobs = replaceById(current.jobs, jobId, (job) => job.jobId, (job) => ({
+        ...job,
+        ...patch,
+        jobId: job.jobId,
+        status: job.status,
+        updatedAt: now,
+      }));
+      return { run: { ...current, jobs, updatedAt: now }, eventType: "job.updated", message: jobId };
     }
     case "gate.add": {
       const gate = record(command.payload, "gate") as ProductionGate;
@@ -172,13 +621,26 @@ export function applyProductionCommand(
           ? transitionJob(job, "authorized", now)
           : job)
         : current.jobs;
+      const approvesDirection = status === "approved" && current.status === "awaiting_direction"
+        && currentGate.scope === "stage" && gateId.startsWith("gate-direction-");
+      const approvesBuild = status === "approved" && current.status === "awaiting_contract"
+        && currentGate.scope === "budget_envelope";
+      const stages = current.stages.map((stage) => {
+        if (approvesDirection && stage.stageId === "direction") {
+          return { ...stage, status: "completed" as const, completedAt: now };
+        }
+        if (approvesBuild && stage.stageId === "build") {
+          return { ...stage, status: "completed" as const, completedAt: now };
+        }
+        return stage;
+      });
       const run = status === "approved" && current.status === "awaiting_contract"
-        ? transitionRun({ ...current, gates, jobs }, "ready", now)
+        ? transitionRun({ ...current, gates, jobs, stages }, "ready", now)
         : status === "approved" && current.status === "awaiting_direction"
-          ? transitionRun({ ...current, gates, jobs }, "running", now)
+          ? transitionRun({ ...current, gates, jobs, stages }, "running", now)
         : status === "approved" && current.status === "awaiting_rough_cut_review"
-          ? transitionRun({ ...current, gates, jobs }, "awaiting_export", now)
-        : { ...current, gates, jobs, updatedAt: now };
+          ? transitionRun({ ...current, gates, jobs, stages }, "awaiting_export", now)
+        : { ...current, gates, jobs, stages, updatedAt: now };
       return { run, eventType: "gate.decided", message: gateId };
     }
     case "plan.proposed": {
@@ -187,14 +649,52 @@ export function applyProductionCommand(
       if (proposed.some((nextArtifact) => current.artifacts.some((item) => item.artifactId === nextArtifact.artifactId))) {
         throw new Error("Duplicate production plan artifact");
       }
+      const scriptProposal = proposed.find((item) => item.kind === "script");
+      const storyboardProposal = proposed.find((item) => item.kind === "storyboard");
+      if (storyboardProposal) {
+        const withProposed = { ...current, artifacts: [...current.artifacts, ...proposed] };
+        assertStoryboardSourceApproved(withProposed, storyboardProposal.artifactId);
+      }
       const stages = current.stages.map((stage) => {
-        if (stage.stageId === "script" || stage.stageId === "storyboard") return { ...stage, status: "completed" as const, completedAt: now };
+        if (scriptProposal && stage.stageId === "script") return { ...stage, status: "awaiting_gate" as const, startedAt: stage.startedAt || now };
+        if (!scriptProposal && stage.stageId === "script" || storyboardProposal && stage.stageId === "storyboard") return { ...stage, status: "completed" as const, completedAt: now };
         if (stage.stageId === "build") return { ...stage, status: "awaiting_gate" as const };
         return stage;
       });
-      const next = { ...current, artifacts: [...current.artifacts, ...proposed], stages, stageId: "storyboard", updatedAt: now };
-      const run = current.status === "running" ? transitionRun(next, "awaiting_storyboard_review", now) : next;
+      const next = { ...current, artifacts: [...current.artifacts, ...proposed], stages, stageId: scriptProposal ? "script" : "storyboard", updatedAt: now };
+      const run = scriptProposal && ["running", "awaiting_storyboard_review"].includes(current.status)
+        ? transitionRun(next, "awaiting_script_review", now)
+        : storyboardProposal && current.status === "running"
+          ? transitionRun(next, "awaiting_storyboard_review", now)
+          : next;
       return { run, eventType: "plan.proposed", message: proposed[0].artifactId };
+    }
+    case "script.review":
+    case "artifact.review": {
+      const artifactId = text(command.payload, "artifactId");
+      const decision = reviewDecision(command.payload);
+      const target = current.artifacts.find((item) => item.artifactId === artifactId);
+      if (!target) throw new Error(`Production entity not found: ${artifactId}`);
+      if (target.status !== "candidate") throw new Error("Only candidate artifacts can be reviewed");
+      if (decision === "approved" && target.kind === "storyboard") assertStoryboardSourceApproved(current, artifactId);
+      const artifacts = current.artifacts.map((item) => item.artifactId === artifactId
+        ? {
+            ...item,
+            status: decision === "approved" ? "adopted" as const : decision === "rejected" ? "rejected" as const : "candidate" as const,
+            reviewStatus: decision === "approved" ? "approved" as const : "changes_requested" as const,
+            ...(decision === "approved" ? { adoptedAt: now } : {}),
+          }
+        : item);
+      let next: ProductionRun = { ...current, artifacts, updatedAt: now };
+      if (decision === "approved" && target.kind === "script") {
+        next = markDerivedArtifactsStale(next, artifactId);
+        const stages = next.stages.map((stage) => stage.stageId === "script"
+          ? { ...stage, status: "completed" as const, completedAt: now }
+          : stage);
+        next = { ...next, stages, stageId: "storyboard" };
+        if (current.status === "awaiting_script_review") next = transitionRun(next, "running", now);
+      }
+      return { run: next, eventType: decision === "approved" ? "artifact.adopted" : "artifact.reviewed", message: artifactId };
     }
     case "plan.attach": {
       const artifactId = text(command.payload, "artifactId");
@@ -204,6 +704,7 @@ export function applyProductionCommand(
       const gate = record(command.payload, "gate") as unknown as ProductionGate;
       const nextArtifact = current.artifacts.find((item) => item.artifactId === artifactId);
       if (!nextArtifact) throw new Error(`Production entity not found: ${artifactId}`);
+      if (nextArtifact.kind !== 'storyboard' || nextArtifact.status !== 'adopted' || (nextArtifact.reviewStatus !== undefined && nextArtifact.reviewStatus !== 'approved')) throw new Error("Approved storyboard artifact required before attach");
       if (current.gates.some((item) => item.gateId === gate.gateId)) throw new Error(`Duplicate gate: ${gate.gateId}`);
       if (jobs.some((job) => current.jobs.some((item) => item.jobId === job.jobId))) throw new Error("Duplicate production job");
       const stages = current.stages.map((stage) => {
@@ -220,7 +721,25 @@ export function applyProductionCommand(
     }
     case "skill.evidence": {
       const skillName = text(command.payload, "skillName");
-      return { run: { ...current, updatedAt: now }, eventType: "skill.loaded", message: skillName };
+      const artifactId = typeof command.payload.artifactId === "string" ? command.payload.artifactId.trim() : "";
+      const evidence = Array.isArray(command.payload.skillEvidence)
+        ? command.payload.skillEvidence.filter((item): item is { name: string; version: string; stageId: string } => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+            const value = item as Record<string, unknown>;
+            return typeof value.name === "string" && typeof value.version === "string" && typeof value.stageId === "string";
+          })
+        : [];
+      const artifacts = artifactId && evidence.length > 0
+        ? current.artifacts.map((item) => item.artifactId === artifactId ? { ...item, skillEvidence: evidence } : item)
+        : current.artifacts;
+      return { run: { ...current, artifacts, updatedAt: now }, eventType: "skill.loaded", message: skillName };
+    }
+    case "qa.verdict": {
+      // W1.5 审片判决：生成后一镜一条「过检 / 红标」的耐久事实事件（同 skill.evidence 的写法——
+      // 只留痕、不改 run 结构）。message = 一句话人话判决（per-shot），经投影 sanitizer 后
+      // nomi_subscribe_run 读得到；不是新门、不弹确认、不改任何状态机语义。
+      const summary = text(command.payload, "summary");
+      return { run: { ...current, updatedAt: now }, eventType: "qa.verdict", message: summary };
     }
     case "artifact.add": {
       const nextArtifact = artifact(command.payload);
@@ -231,12 +750,17 @@ export function applyProductionCommand(
     }
     case "artifact.adopt": {
       const artifactId = text(command.payload, "artifactId");
+      if (!canAdoptArtifact(current, artifactId)) throw new Error("Artifact requires approved review");
       const artifacts = replaceById(current.artifacts, artifactId, (artifact) => artifact.artifactId, (artifact): ProductionArtifact => ({
         ...artifact,
         status: "adopted",
+        reviewStatus: "approved",
         adoptedAt: now,
       }));
-      return { run: { ...current, artifacts, updatedAt: now }, eventType: "artifact.adopted", message: artifactId };
+      const next = current.artifacts.find((artifact) => artifact.artifactId === artifactId)?.kind === "script"
+        ? markDerivedArtifactsStale({ ...current, artifacts, updatedAt: now }, artifactId)
+        : { ...current, artifacts, updatedAt: now };
+      return { run: next, eventType: "artifact.adopted", message: artifactId };
     }
     case "budget.set": {
       const budget = validateBudget(record(command.payload, "budget"), current.budget);

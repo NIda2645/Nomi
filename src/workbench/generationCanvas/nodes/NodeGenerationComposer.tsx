@@ -13,7 +13,8 @@ import { useAllProjectAssets } from '../../assets/useAllProjectAssets'
 import { useNodeMentionSource } from './useNodeMentionSource'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { canRunGenerationNode, confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace } from '../runner/generationRunController'
+import { canRunGenerationNode, confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace, unmetReferenceDependencyForNode } from '../runner/generationRunController'
+import type { UnmetReferenceDependency } from './controls/referenceDependency'
 import { collectUngeneratedReferenceAncestors } from '../runner/referenceAncestors'
 import { buildDependencyWaves } from '../runner/dependencyWaves'
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
@@ -43,6 +44,12 @@ import {
   type GenerationVariantCount,
 } from './generationVariantCount'
 import { useComposerViewportPlacement } from './useComposerViewportPlacement'
+import {
+  findModelOptionByIdentifier,
+  useGenerationModelOptionsState,
+} from '../adapters/modelOptionsAdapter'
+import { nodeSelectedModelAddress } from './controls/parameterControlModel'
+import { comfyWorkflowTakesPrompt } from '../runner/promptRequirement'
 
 // C5 P2：文本节点的三种生成模式（label 由 composer.append/rewrite/replace 在渲染处翻译）。
 const TEXT_GEN_MODES: { value: TextGenMode; labelKey: string }[] = [
@@ -249,10 +256,31 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
   const isGenerating = status === 'queued' || status === 'running'
   const hasResult = Boolean(node.result?.url)
   const nodeExecutionKind = getGenerationNodeExecutionKind(node.kind)
+  const modelOptions = useGenerationModelOptionsState(node.kind).options
+  const selectedModelAddress = nodeSelectedModelAddress(node.meta || {})
+  const selectedModelOption = findModelOptionByIdentifier(
+    modelOptions,
+    selectedModelAddress.modelKey,
+    selectedModelAddress.vendorKey,
+  )
+  // 导入工作流是否接收提示词由保存下来的 binding 决定。明确不接收时，整组移除无效输入和动作；
+  // null 表示非 ComfyUI 或目录尚未就绪，维持普通模型原有体验。
+  const acceptsPrompt = comfyWorkflowTakesPrompt(selectedModelOption?.meta) !== false
   // v0.7.2 perf: 用 boolean primitive 订阅 canGenerate
   const canGenerate = useGenerationCanvasStore((state) =>
     canRunGenerationNode(node, { nodes: state.nodes, edges: state.edges }),
   ) && !isGenerating
+  // 跨槽依赖未满足（档案 slot.requiresAnyOf；如 Seedance 2.0 只放了参考音频、缺图/视频）。
+  // 与 canGenerate 同一个判定（unmetReferenceDependencyForNode），composer 不再按 node.kind 重猜原因。
+  // 订阅**字符串**而非对象：对象选择器每帧新引用会破坏 v0.7.2 的 primitive 订阅防抖；
+  // 文案仍留到渲染时用 t() 格式化，保证切语言能实时重渲。
+  const unmetDependencyKey = useGenerationCanvasStore((state) =>
+    JSON.stringify(unmetReferenceDependencyForNode(node, { nodes: state.nodes, edges: state.edges })),
+  )
+  const unmetDependency = React.useMemo(
+    () => JSON.parse(unmetDependencyKey) as UnmetReferenceDependency | null,
+    [unmetDependencyKey],
+  )
   // 自动备齐参考（对话 2026-06-14）：本节点经参考边、尚未出图的上游 id（稳定 key 订阅防抖）。
   // 有则「生成」不裸跑，转而排依赖波次（参考先生成→本节点后生成）走批量确认条。
   const pendingRefKey = useGenerationCanvasStore((state) =>
@@ -278,7 +306,7 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
   }, [isAudioKind, node.meta])
   const audioIsTranscribe = audioMode?.transportTaskKind === 'transcribe'
   const textGenMode = getTextGenMode(node)
-  const hasPromptPickerButton = Boolean(nodeExecutionKind) && !audioIsTranscribe && !isTextKind
+  const hasPromptPickerButton = Boolean(nodeExecutionKind) && acceptsPrompt && !audioIsTranscribe && !isTextKind
   const hasReferenceControls =
     isImageLikeGenerationNodeKind(node.kind) || isVideoLikeGenerationNodeKind(node.kind) || isAudioKind
   // 持有 prompt 编辑器实例,供「点参考 tile → 在光标处插入 chip」(@ 内联引用主路径)。
@@ -310,6 +338,17 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
     const index = mentionCandidates.indexOf(url)
     promptEditor.commands.insertAssetMention(url, index >= 0 ? index + 1 : undefined)
   }, [mentionCandidates, promptEditor])
+
+  /**
+   * 描述框 placeholder：**这张卡已经有参考图时**才在尾巴上挂一句「打 @ 可引用参考图」。
+   *
+   * 为什么挂条件而不是写死进每条 placeholder 文案：@ 只是键盘加速器（可发现的主路径是点参考 tile
+   * 直接插 chip），没有参考图时打 @ 只会弹一个「没有可引用的图」的空面板——那句提示就成了误导。
+   * 挂在 placeholder 上而不是新增一行常驻说明，是因为这个面已经拍板过「最少文字」（omni 样张 v4
+   * 特意砍掉了三组标签/caption）：placeholder 一开始打字就消失，不占常驻预算。
+   */
+  const appendMentionHint = (base: string): string =>
+    mentionCandidates.length > 0 ? `${base} · ${t('assetLibrary.mentionPlaceholderHint')}` : base
 
   const loadPromptPickerItems = React.useCallback((): void => {
     void fetchUserPrompts()
@@ -456,10 +495,11 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
     else await confirmAndRunNode(node.id)
   }
 
-  const { anchorRef, canvasZoom, flipUp, aboveClearance, shiftX } = useComposerViewportPlacement({
+  const { anchorRef, canvasZoom, flipUp, aboveClearance, shiftX, maxHeight } = useComposerViewportPlacement({
     node,
     visualSize,
     gap: composerLayout.gap,
+    preferredMaxHeight: composerLayout.maxHeight,
   })
 
   // 卡宽 = **内容驱动**（用户拍板 2026-06-16，推翻 06-13 的「按最宽模型恒定宽」）：
@@ -503,7 +543,8 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
       <div
         className={cn(
           'generation-canvas-v2-node__composer-card',
-          'relative flex flex-col gap-2.5 p-3 min-h-[150px] min-w-[360px] max-w-[880px] w-max',
+          'relative flex flex-col gap-2.5 p-3 min-w-[360px] max-w-[880px] w-max',
+          acceptsPrompt ? 'min-h-[150px]' : 'min-h-0',
           // 宽度内容驱动（w-max）：按底栏一行(锁+参数+生成钮)的真实宽长开，参数少则窄、多则宽，不塌不爆、不换行。
           // max-w-[880px] 兜底：现有最宽是 apimart Seedance 7 控件(model+变体+比例+清晰度+时长+seed+生成音频)
           // ≈810px，880 留头不触发截断；纯防极端（防 omni 模式参考槽行等异常撑爆）。实测 2026-06-16 校准。
@@ -511,7 +552,13 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
           'transition-[outline-color] duration-150',
           isDragOver && 'outline-2 outline-dashed outline-nomi-accent outline-offset-[-2px]',
         )}
-        style={{ maxHeight: composerLayout.maxHeight, cursor: 'default', userSelect: 'auto', touchAction: 'auto' }}
+        style={{
+          maxHeight,
+          minHeight: acceptsPrompt ? Math.min(150, maxHeight) : 0,
+          cursor: 'default',
+          userSelect: 'auto',
+          touchAction: 'auto',
+        }}
       >
       {hasReferenceControls || hasPromptPickerButton ? (
         <div className={cn('flex w-0 min-w-full items-start gap-3')}>
@@ -585,23 +632,24 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
         </div>
       ) : null}
       {/* 长 prompt 在编辑器内部滚动/换行；底栏永远贴底（卡宽确定，提示词在卡宽内自然换行，不撑爆）。 */}
-      {/* 提示词至少 3 行高（min-h-[72px]）——参考区/底栏再多也不把它挤成 1 行（修③）；超长时本区滚动。 */}
+      {/* 空间充足时 PromptEditor 保持 3 行；视口收紧时外层允许缩到 0 并内部滚动，底栏始终可见。 */}
       {/* 转写模式无台词输入（音频参考即输入）——隐藏 prompt，避免误导。 */}
-      {audioIsTranscribe || isTextKind ? null : (
+      {audioIsTranscribe || isTextKind || !acceptsPrompt ? null : (
         // w-0 min-w-full：填满卡宽但**贡献 0** 到 max-content（长 prompt 在卡宽内换行，不把卡撑爆 → 卡宽由底栏定）。
         // overflow-y-auto 直接挂在 flex-1 伸缩区上：该区高度被卡片 maxHeight 卡住后有界 → 超长 prompt 在本区内部
-        // 滚动，底栏（shrink-0）永远贴底可见。min-h-[72px] 保底 3 行。
+        // 滚动，底栏（shrink-0）永远贴底可见。外层必须 min-h-0，才能在视口高度不足时让出空间；
+        // 内层 PromptEditor 的 min-h-[72px] 仍提供正常状态的 3 行高度，并成为本区的滚动内容。
         // ⚠️ 别再往里套「无高度约束的内层块 + overflow-y-auto」：那样内层块按内容长到全高、滚动永不触发，
         // 整片 prompt 下溢盖住底栏（= 截图里「文字太长盖住 选择模型/优化」的根因）。滚动容器必须自己有界。
         // 用 overflow-y-auto 而非 overflow-auto：卡宽已被 w-0 min-w-full 锁死、prompt 在卡宽内换行，横向永不溢出，明确关掉横向滚动条。
         <div
-          className={cn('relative flex-1 min-h-[72px] w-0 min-w-full overflow-y-auto')}
+          className={cn('relative flex-1 min-h-0 w-0 min-w-full overflow-y-auto overscroll-contain')}
           style={{ cursor: node.locked ? 'default' : 'text', userSelect: node.locked ? 'auto' : 'text' }}
         >
           <PromptEditor
             className={cn('min-h-[72px]')}
             value={node.prompt || ''}
-            placeholder={isTextKind ? t(`generationCommon.${TEXT_MODE_PLACEHOLDER_KEY[textGenMode]}`) : getGenerationNodePromptPlaceholder(node.kind)}
+            placeholder={appendMentionHint(isTextKind ? t(`generationCommon.${TEXT_MODE_PLACEHOLDER_KEY[textGenMode]}`) : getGenerationNodePromptPlaceholder(node.kind))}
             editable={!node.locked}
             onChange={(next) => updateNode(node.id, { prompt: next })}
             onBlur={() => { void persistActiveWorkbenchProjectNow().catch(() => {}) }}
@@ -627,7 +675,7 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
         {isVideoLikeGenerationNodeKind(node.kind) && !node.locked ? (
           <NodeCameraMoveControl node={node} />
         ) : null}
-        {(nodeExecutionKind === 'image' || nodeExecutionKind === 'video') && !node.locked ? (
+        {acceptsPrompt && (nodeExecutionKind === 'image' || nodeExecutionKind === 'video') && !node.locked ? (
           <NodePromptOptimizer node={node} isVideo={nodeExecutionKind === 'video'} />
         ) : null}
         {(nodeExecutionKind === 'image' || nodeExecutionKind === 'video') && !node.locked ? (
@@ -644,7 +692,12 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
           />
         ) : null}
         {(() => {
-          const disabledReason = !canGenerateNow && !isGenerating
+          const disabledReason = unmetDependency
+            ? t('generationCommon.composer.referenceCompanionRequired', {
+                slot: unmetDependency.slotLabel,
+                companions: unmetDependency.companionLabels.join(t('generationCommon.composer.companionOr')),
+              })
+            : !canGenerateNow && !isGenerating
             ? nodeExecutionKind === 'video'
               ? acceptsDrop
                 ? t('generationCommon.composer.videoReferenceRequired')

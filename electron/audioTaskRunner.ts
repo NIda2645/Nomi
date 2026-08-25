@@ -67,7 +67,7 @@ async function runTextToSpeech(input: AudioTaskInput): Promise<TaskResult> {
       body: typeof built.body === "string" ? built.body : JSON.stringify(built.body),
     });
   } catch (error: unknown) {
-    throw new Error(`配音生成失败（${vendor.key} 网络错误）：${(error instanceof Error ? error.message : String(error)).slice(0, 256)}`, { cause: error });
+    throw new Error(`配音生成失败（${vendor.key} 网络错误）：${(error instanceof Error ? error.message : String(error)).slice(0, 256)}`);
   }
   if (!response.ok) {
     throw new Error(`配音生成失败（${vendor.key} HTTP ${response.status}）：${(await safeText(response)).slice(0, 300) || "(无详情)"}`);
@@ -122,7 +122,7 @@ async function runDoubaoUnidirectionalTts(input: AudioTaskInput, op: HttpOperati
       body,
     });
   } catch (error: unknown) {
-    throw new Error(`配音生成失败（${vendor.key} 网络错误）：${(error instanceof Error ? error.message : String(error)).slice(0, 256)}`, { cause: error });
+    throw new Error(`配音生成失败（${vendor.key} 网络错误）：${(error instanceof Error ? error.message : String(error)).slice(0, 256)}`);
   }
   if (!response.ok) {
     throw new Error(`配音生成失败（${vendor.key} HTTP ${response.status}）：${(await safeText(response)).slice(0, 300) || "(无详情)"}`);
@@ -168,7 +168,7 @@ async function runTranscribe(input: AudioTaskInput): Promise<TaskResult> {
   try {
     response = await fetch(url, { method: "POST", headers: auth, body: form });
   } catch (error: unknown) {
-    throw new Error(`转写失败（${vendor.key} 网络错误）：${(error instanceof Error ? error.message : String(error)).slice(0, 256)}`, { cause: error });
+    throw new Error(`转写失败（${vendor.key} 网络错误）：${(error instanceof Error ? error.message : String(error)).slice(0, 256)}`);
   }
   if (!response.ok) {
     throw new Error(`转写失败（${vendor.key} HTTP ${response.status}）：${(await safeText(response)).slice(0, 300) || "(无详情)"}`);

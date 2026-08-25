@@ -64,6 +64,7 @@ export { default as IconChevronRight } from '@tabler/icons-react/dist/esm/icons/
 export { default as IconCircleCheck } from '@tabler/icons-react/dist/esm/icons/IconCircleCheck.mjs'
 export { default as IconCircleFilled } from '@tabler/icons-react/dist/esm/icons/IconCircleFilled.mjs'
 export { default as IconClipboard } from '@tabler/icons-react/dist/esm/icons/IconClipboard.mjs'
+export { default as IconCloud } from '@tabler/icons-react/dist/esm/icons/IconCloud.mjs'
 export { default as IconCloudDownload } from '@tabler/icons-react/dist/esm/icons/IconCloudDownload.mjs'
 export { default as IconCode } from '@tabler/icons-react/dist/esm/icons/IconCode.mjs'
 export { default as IconCoin } from '@tabler/icons-react/dist/esm/icons/IconCoin.mjs'

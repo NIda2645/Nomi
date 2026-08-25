@@ -29,7 +29,11 @@ export function dropKindFromMime(mime: string | undefined | null): AssetDropKind
 export function dropKindFromFile(file: { type?: string; name?: string }): AssetDropKind | null {
   const byMime = dropKindFromMime(file.type)
   if (byMime) return byMime
-  if (file.type) return null
+  // application/octet-stream is not a useful media identity: browsers use it for
+  // unregistered extensions (notably mkv and files imported without a MIME). Keep
+  // the extension fallback for this sentinel, while still rejecting a concrete
+  // non-media MIME such as application/pdf.
+  if (file.type && file.type.toLowerCase() !== 'application/octet-stream') return null
   const kind = mediaKindFromExtension(String(file.name || ''))
   return kind === 'image' || kind === 'video' || kind === 'audio' ? kind : null
 }

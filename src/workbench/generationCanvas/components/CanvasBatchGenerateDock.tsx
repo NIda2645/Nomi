@@ -1,6 +1,6 @@
-import { IconPlayerPlay } from '@tabler/icons-react'
+import { IconPlayerPlay, IconX } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
-import { NomiSelect } from '../../../design'
+import { NomiSelect, WorkbenchIconButton } from '../../../design'
 import { cn } from '../../../utils/cn'
 import { CanvasBulkModelSelect, type CanvasApplyModelInput } from './CanvasBulkModelSelect'
 import type { CanvasGenerationExecutionGroup } from './canvasProductionScope'
@@ -14,6 +14,8 @@ export function CanvasBatchGenerateDock(props: {
   setConcurrency: (value: number) => void
   generate: () => void
   applyModel: (input: CanvasApplyModelInput) => void
+  onDismiss: () => void
+  timelineCollapsed: boolean
 }): JSX.Element {
   const { t } = useTranslation()
   const eligibleCount = props.eligibleIds.length
@@ -22,9 +24,11 @@ export function CanvasBatchGenerateDock(props: {
     <div
       className={cn(
         'generation-canvas-v2__production-dock',
-        'absolute bottom-4 left-1/2 z-[9] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto px-2 py-1.5',
+        'absolute left-1/2 z-[9] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto px-2 py-1.5',
+        props.timelineCollapsed ? 'bottom-16' : 'bottom-4',
         'rounded-full border border-nomi-line bg-nomi-paper/[0.96] shadow-nomi-md pointer-events-auto',
       )}
+      data-batch-dock="true"
       role="toolbar"
       aria-label={t('generationCommon.production.aria')}
       onPointerDown={(event) => event.stopPropagation()}
@@ -55,6 +59,12 @@ export function CanvasBatchGenerateDock(props: {
         options={CONCURRENCY_OPTIONS}
         size="xs"
         onChange={(value) => props.setConcurrency(Number(value))}
+      />
+      <span className={cn('w-px h-4 bg-nomi-line')} aria-hidden="true" />
+      <WorkbenchIconButton
+        label={t('generationCommon.production.dismiss')}
+        icon={<IconX size={16} />}
+        onClick={props.onDismiss}
       />
     </div>
   )

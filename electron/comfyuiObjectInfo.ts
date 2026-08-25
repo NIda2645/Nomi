@@ -4,6 +4,7 @@
 // 与 comfyuiProbe 同一直连纪律：全局 fetch（undici 不认系统代理 → 直连本机/局域网，不被 Clash 绕开）。
 // 形状实查 ComfyUI server.py：/object_info 返回 { <class_type>: { input: { required/optional: { <key>: [spec, opts?] } } } }，
 // combo 输入的 spec 是字符串数组（如 checkpoints 文件名列表）；/object_info/{class} 只返回该类同构子集。
+import { comfyuiEndpoint, normalizeComfyuiBaseUrl } from "./comfyui/endpointResolver";
 
 export type ComfyObjectInfoIndex = {
   /** 本机已装的全部节点 class_type。 */
@@ -50,7 +51,7 @@ export function parseObjectInfoIndex(json: unknown): ComfyObjectInfoIndex {
 }
 
 function normalizeBase(baseUrl: string): string {
-  return (baseUrl || "http://127.0.0.1:8188").replace(/\/+$/, "");
+  return normalizeComfyuiBaseUrl(baseUrl);
 }
 
 async function fetchJson(url: string, timeoutMs: number): Promise<unknown | null> {
@@ -65,6 +66,8 @@ async function fetchJson(url: string, timeoutMs: number): Promise<unknown | null
 
 // 60s TTL 缓存（按 URL）：一次导入面板里的多次分析 / 一批提交共享，不反复拉几 MB 的全量 object_info。
 const cache = new Map<string, { at: number; value: ComfyObjectInfoIndex }>();
+/** 同一个 ComfyUI origin 的并发读取共享一条网络请求，避免设置页批量加载时击穿缓存。 */
+const inFlight = new Map<string, Promise<ComfyObjectInfoIndex | null>>();
 const CACHE_TTL_MS = 60_000;
 
 function cached(url: string): ComfyObjectInfoIndex | null {
@@ -74,6 +77,7 @@ function cached(url: string): ComfyObjectInfoIndex | null {
 
 export function _resetComfyObjectInfoCacheForTest(): void {
   cache.clear();
+  inFlight.clear();
 }
 
 /**
@@ -90,27 +94,51 @@ export function bustComfyObjectInfoCache(baseUrl: string): void {
 
 /** 全量能力索引（导入对账用）。null = 服务器不可达/异常（调用方跳过核对，别当「没装任何节点」）。 */
 export async function fetchComfyuiObjectInfoIndex(baseUrl: string): Promise<ComfyObjectInfoIndex | null> {
-  const url = `${normalizeBase(baseUrl)}/object_info`;
+  const url = comfyuiEndpoint(baseUrl, "objectInfo");
   const hit = cached(url);
   if (hit) return hit;
-  const json = await fetchJson(url, 15_000); // 全量含全部自定义节点，可到几 MB —— 给足时间
-  if (json === null) return null;
-  const index = parseObjectInfoIndex(json);
-  // 空 classNames = 形状不认识（真 ComfyUI 至少有内置节点），按不可核对处理，别误报「全缺」。
-  if (index.classNames.size === 0) return null;
-  cache.set(url, { at: Date.now(), value: index });
-  return index;
+  const pending = inFlight.get(url);
+  if (pending) return pending;
+  const request = (async (): Promise<ComfyObjectInfoIndex | null> => {
+    const json = await fetchJson(url, 15_000); // 全量含全部自定义节点，可到几 MB —— 给足时间
+    if (json === null) return null;
+    const index = parseObjectInfoIndex(json);
+    // 空 classNames = 形状不认识（真 ComfyUI 至少有内置节点），按不可核对处理，别误报「全缺」。
+    if (index.classNames.size === 0) return null;
+    cache.set(url, { at: Date.now(), value: index });
+    return index;
+  })();
+  inFlight.set(url, request);
+  try {
+    return await request;
+  } finally {
+    if (inFlight.get(url) === request) inFlight.delete(url);
+  }
 }
 
 /** 本机已装 checkpoint 文件名（内置文生图 ckpt_name 留空时 derive 用）。null = 不可达。 */
 export async function fetchComfyuiCheckpoints(baseUrl: string): Promise<string[] | null> {
-  const url = `${normalizeBase(baseUrl)}/object_info/CheckpointLoaderSimple`;
+  const url = comfyuiEndpoint(baseUrl, "objectInfo", "CheckpointLoaderSimple");
   const hit = cached(url);
   if (hit) return hit.enumsByClass.get("CheckpointLoaderSimple")?.get("ckpt_name") ?? [];
-  const json = await fetchJson(url, 5_000);
-  if (json === null) return null;
-  const index = parseObjectInfoIndex(json);
-  if (index.classNames.size === 0) return null;
-  cache.set(url, { at: Date.now(), value: index });
-  return index.enumsByClass.get("CheckpointLoaderSimple")?.get("ckpt_name") ?? [];
+  const pending = inFlight.get(url);
+  if (pending) {
+    const index = await pending;
+    return index?.enumsByClass.get("CheckpointLoaderSimple")?.get("ckpt_name") ?? (index ? [] : null);
+  }
+  const request = (async (): Promise<ComfyObjectInfoIndex | null> => {
+    const json = await fetchJson(url, 5_000);
+    if (json === null) return null;
+    const index = parseObjectInfoIndex(json);
+    if (index.classNames.size === 0) return null;
+    cache.set(url, { at: Date.now(), value: index });
+    return index;
+  })();
+  inFlight.set(url, request);
+  try {
+    const index = await request;
+    return index?.enumsByClass.get("CheckpointLoaderSimple")?.get("ckpt_name") ?? (index ? [] : null);
+  } finally {
+    if (inFlight.get(url) === request) inFlight.delete(url);
+  }
 }

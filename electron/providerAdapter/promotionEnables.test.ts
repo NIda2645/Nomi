@@ -27,16 +27,19 @@ const model: Model = {
   labelZh: "deepseek-v4-pro",
   kind: "text",
   enabled: false,
+  meta: { adapter: { state: "testing", runId: "run-1", modes: [], updatedAt: now } },
   createdAt: now,
   updatedAt: now,
 };
 
 const upsertModel = vi.fn();
 const upsertVendor = vi.fn();
+const upsertApiKey = vi.fn();
+const deleteApiKey = vi.fn();
 vi.mock("../catalog/catalogStore", () => ({
   readCatalog: () => ({ vendors: [vendor], models: [model], mappings: [], apiKeysByVendor: {} }),
   mutateCatalog: (fn: (tx: unknown) => void) =>
-    fn({ upsertModel, upsertVendor, upsertMapping: vi.fn(), deleteMapping: vi.fn() }),
+    fn({ upsertModel, upsertVendor, upsertApiKey, deleteApiKey, upsertMapping: vi.fn(), deleteMapping: vi.fn() }),
   extractVendorExtraHeaders: () => ({}),
   normalizeProviderKind: (v: unknown) => v ?? "openai-compatible",
 }));
@@ -82,6 +85,27 @@ function promoteWithEverythingFailed(): void {
 }
 
 describe("adapter promotion", () => {
+  it("stages a keyless gateway by deleting stale credentials instead of writing an empty key", () => {
+    upsertApiKey.mockClear();
+    deleteApiKey.mockClear();
+    upsertVendor.mockImplementationOnce((payload) => payload);
+    upsertModel.mockImplementationOnce((payload) => payload);
+
+    defaultCatalog.stage({
+      vendorKey: "local-gateway",
+      runId: "run-keyless",
+      vendorName: "Local Gateway",
+      baseUrl: "http://192.168.1.8:8000/v1",
+      apiKey: "",
+      authType: "none",
+      providerKind: "openai-compatible",
+      models: [{ modelKey: "local-image", labelZh: "Local Image", kind: "image" }],
+    });
+
+    expect(deleteApiKey).toHaveBeenCalledWith("local-gateway");
+    expect(upsertApiKey).not.toHaveBeenCalled();
+  });
+
   it("still enables the model when every mode failed verification", () => {
     upsertModel.mockClear();
     upsertVendor.mockClear();

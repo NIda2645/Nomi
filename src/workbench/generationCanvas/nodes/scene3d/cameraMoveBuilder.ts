@@ -2,14 +2,14 @@
 // 纯函数，配单测 cameraMoveBuilder.test.ts。相机绑到轨迹随时间走，注视固定的胸口点(静态 target，
 // 主体在运镜里不动，故不设 followTargetId——见 buildCamera 注释/P0-A)。
 // 见 docs/plan/2026-06-22-ai-camera-move-tool.md。
+import { createDefaultScene3DState } from './scene3dSerializer'
 import {
-  createDefaultScene3DState,
   createScene3DObjectId,
   createScene3DCameraId,
   createScene3DTrajectoryId,
   createScene3DTrajectoryPointId,
   createScene3DTrajectoryBindingId,
-} from './scene3dSerializer'
+} from './scene3dBindingIds'
 import { cameraLookAtRotation } from './scene3dMath'
 import {
   MANNEQUIN_DEFAULT_SCALE,

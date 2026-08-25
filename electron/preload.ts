@@ -1,7 +1,8 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { importNativeFileFromPreload } from "./assets/nativeFileBridge";
 
 type SyncResult<T> = { ok: true; value: T } | { ok: false; error: string };
-type ProductionDeepLinkPayload = { projectId: string; runId: string; artifactId?: string };
+type ProductionDeepLinkPayload = { projectId: string; runId?: string; nodeId?: string; artifactId?: string };
 let queuedProductionDeepLink: ProductionDeepLinkPayload | null = null;
 const productionDeepLinkListeners = new Set<(payload: ProductionDeepLinkPayload) => void>();
 ipcRenderer.on("nomi:production-deep-link", (_event, payload: ProductionDeepLinkPayload) => {
@@ -84,6 +85,14 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       get: () => ipcRenderer.invoke("nomi:settings:automation-policy-get"),
       set: (payload: unknown) => ipcRenderer.invoke("nomi:settings:automation-policy-set", payload),
     },
+    systemPrompts: {
+      get: () => ipcRenderer.invoke("nomi:settings:system-prompts-get"),
+      set: (payload: unknown) => ipcRenderer.invoke("nomi:settings:system-prompts-set", payload),
+    },
+    generationModelDefaults: {
+      get: () => ipcRenderer.invoke("nomi:settings:generation-model-defaults-get"),
+      set: (payload: unknown) => ipcRenderer.invoke("nomi:settings:generation-model-defaults-set", payload),
+    },
   },
   browserChromeMenu: {
     select: (id: unknown) => ipcRenderer.send("browser:chrome-menu:select", id),
@@ -119,14 +128,25 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:projects:save-async", projectId, record),
     delete: (projectId: string) => invokeSync("nomi:projects:delete", projectId),
   },
+  clipboard: {
+    readFilePaths: () => ipcRenderer.invoke("nomi:clipboard:read-file-paths") as Promise<string[]>,
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  },
   productionRuns: {
     list: (projectId: string) => ipcRenderer.invoke("nomi:production-runs:list", { projectId }),
     read: (projectId: string, runId: string) => ipcRenderer.invoke("nomi:production-runs:read", { projectId, runId }),
     createDraft: (payload: unknown) => ipcRenderer.invoke("nomi:production-runs:create-draft", payload),
     command: (projectId: string, runId: string, command: unknown) =>
       ipcRenderer.invoke("nomi:production-runs:command", { projectId, runId, command }),
+    materializeStoryboard: (projectId: string, runId: string, artifactId: string, expectedVersion: number) =>
+      ipcRenderer.invoke("nomi:production-runs:materialize-storyboard", { projectId, runId, artifactId, expectedVersion }),
     events: (projectId: string, runId: string, afterCursor: number) =>
       ipcRenderer.invoke("nomi:production-runs:events", { projectId, runId, afterCursor }),
+    // P4 S6：返工一镜（同 Run 新 Job + 单镜确认 + 派发）；续拍已停批次（manual=急停继续 / budget=提额续拍）。
+    rework: (projectId: string, runId: string, shotId?: string) =>
+      ipcRenderer.invoke("nomi:production-runs:rework", { projectId, runId, ...(shotId ? { shotId } : {}) }),
+    resumeBatch: (projectId: string, runId: string, reason: "budget" | "manual") =>
+      ipcRenderer.invoke("nomi:production-runs:resume-batch", { projectId, runId, reason }),
   },
   assets: {
     list: (payload: unknown) => ipcRenderer.invoke("nomi:assets:list", payload),
@@ -142,6 +162,12 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     },
     importRemoteUrl: (payload: unknown) => ipcRenderer.invoke("nomi:assets:import-remote-url", payload),
     importFile: (payload: unknown) => ipcRenderer.invoke("nomi:assets:import-file", payload),
+    // 原生文件选择器返回的 File 由 preload 就地解析路径；路径不暴露给页面，且大视频不再整份穿过 renderer IPC。
+    importNativeFile: (file: File, payload: Record<string, unknown>) => importNativeFileFromPreload(file, payload, {
+      getPathForFile: (nativeFile) => webUtils.getPathForFile(nativeFile),
+      invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+    }),
+    copyFiles: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-files", payload),
     // 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 主进程转码出新 MP4 资产。
     ensurePlayable: (payload: unknown) => ipcRenderer.invoke("nomi:assets:ensure-playable", payload),
     // 引导示例项目：把随包成图落成项目资产，回 clientId → nomi-local URL（渲染侧算不出稳定地址）。
@@ -326,7 +352,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
         ipcRenderer.removeListener("nomi:tasks:text:event", listener as never);
       };
     },
-    // ComfyUI ws 进度桥（P 轨）：watch 登记 → 主进程推 progress/preview/queue/done；interrupt=取消。
+    // ComfyUI ws 进度桥（P 轨）：watch 登记 → 主进程推 progress/preview/queue/done；interrupt=安全定向取消。
     comfyuiWatch: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:comfyui:watch", payload),
     comfyuiUnwatch: (promptId: string) => ipcRenderer.invoke("nomi:tasks:comfyui:unwatch", promptId),
     comfyuiInterrupt: (promptId: string) => ipcRenderer.invoke("nomi:tasks:comfyui:interrupt", promptId),
@@ -368,6 +394,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:prompt-library:text-brain") as Promise<{
         ok: boolean;
         brain: { vendor: string; modelKey: string } | null;
+        status: "ok" | "locked" | "missing";
       }>,
     userList: () =>
       ipcRenderer.invoke("nomi:prompt-library:user-list") as Promise<{
@@ -428,12 +455,28 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     },
   },
   onboarding: {
+    adapterRegister: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:register", payload),
     adapterStart: (payload: unknown) =>
       ipcRenderer.invoke("nomi:provider-adapter:start", payload),
     adapterGet: (payload: unknown) =>
       ipcRenderer.invoke("nomi:provider-adapter:get", payload),
     adapterLatest: (payload: unknown) =>
       ipcRenderer.invoke("nomi:provider-adapter:latest", payload),
+    adapterCancel: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:cancel", payload),
+    adapterList: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:list", payload),
+    existingConnectionListModels: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:existing:list-models", payload),
+    adapterRegisterExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:existing:register", payload),
+    adapterStartExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:existing:start", payload),
+    adapterAdaptExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:existing:adapt", payload),
+    adapterRetry: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:provider-adapter:retry", payload),
     manualCommit: (payload: unknown) =>
       ipcRenderer.invoke("nomi:onboarding:manual-commit", payload) as Promise<{
         ok: boolean;
@@ -471,7 +514,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     check: () => ipcRenderer.invoke("nomi:update:check"),
     download: () => ipcRenderer.invoke("nomi:update:download"),
     install: () => ipcRenderer.invoke("nomi:update:install"),
-    openRelease: () => ipcRenderer.invoke("nomi:update:open-release"),
+    openDownload: () => ipcRenderer.invoke("nomi:update:open-download"),
     onEvent: (callback: (event: unknown) => void) => {
       const listener = (_event: unknown, payload: unknown) => callback(payload);
       ipcRenderer.on("nomi:update:event", listener as never);
@@ -479,6 +522,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
         ipcRenderer.removeListener("nomi:update:event", listener as never);
       };
     },
+  },
+  assetTransport: {
+    /** 每种媒体类型现在实际会走的第一条上传通道（设置页状态卡；优先级真相在 main 的解析器里）。 */
+    describeChannels: () => invokeSync("nomi:asset-transport:channels:describe"),
   },
   modelCatalog: {
     listVendors: () => invokeSync("nomi:model-catalog:vendors:list"),
@@ -495,8 +542,17 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     retypeModel: (payload: { vendorKey: string; modelKey: string; kind: string }) =>
       invokeSync("nomi:model-catalog:model:retype", payload),
     customCallContract: () => invokeSync("nomi:model-catalog:custom-call:contract"),
+    customCallConfigGet: (vendorKey: string) =>
+      invokeSync("nomi:model-catalog:custom-call:config:get", vendorKey),
+    customCallConfigSave: (vendorKey: string, payload: unknown) =>
+      invokeSync("nomi:model-catalog:custom-call:config:save", vendorKey, payload),
     customCallAiInstruction: (payload: unknown) => invokeSync("nomi:model-catalog:custom-call:ai-instruction", payload),
     customCallTestRun: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-run", payload),
+    customCallTestGet: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-get", payload),
+    customCallTestLatest: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-latest", payload),
+    customCallTestCancel: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:custom-call:test-cancel", payload),
+    customCallDraftCreate: (payload: unknown) => invokeSync("nomi:model-catalog:custom-call:draft-create", payload),
+    customCallDraftFinalize: (payload: unknown) => invokeSync("nomi:model-catalog:custom-call:draft-finalize", payload),
     deleteModel: (vendorKey: string, modelKey: string) =>
       invokeSync("nomi:model-catalog:model:delete", vendorKey, modelKey),
     deleteModels: (targets: { vendorKey: string; modelKey: string }[]) =>
@@ -511,6 +567,8 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     analyzeComfyWorkflow: (text: string) => invokeSync("nomi:model-catalog:comfyui:analyze-workflow", text),
     reconcileComfyWorkflow: (text: string, vendorKey?: string) =>
       ipcRenderer.invoke("nomi:model-catalog:comfyui:reconcile-workflow", text, vendorKey),
+    reconcileComfyWorkflows: (items: Array<{ id: string; text: string }>, vendorKey?: string) =>
+      ipcRenderer.invoke("nomi:model-catalog:comfyui:reconcile-workflows", items, vendorKey),
     // T1：贴什么格式都吃（界面格式借 ComfyUI 前端自动转 API）。
     analyzeComfyWorkflowSmart: (text: string, vendorKey?: string) =>
       ipcRenderer.invoke("nomi:model-catalog:comfyui:analyze-workflow-smart", text, vendorKey),
@@ -520,9 +578,9 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     getComfyuiTemplateDetail: (name: string, vendorKey?: string) =>
       ipcRenderer.invoke("nomi:model-catalog:comfyui:template-detail", name, vendorKey),
     listComfyuiPresets: () => invokeSync("nomi:model-catalog:comfyui:presets"),
-    importComfyWorkflow: (payload: { text: string; binding: unknown; labelZh: string; enumOptions?: unknown }) =>
+    importComfyWorkflow: (payload: { text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
       invokeSync("nomi:model-catalog:comfyui:import-workflow", payload),
-    updateComfyWorkflow: (payload: { modelKey: string; text: string; binding: unknown; labelZh: string; enumOptions?: unknown }) =>
+    updateComfyWorkflow: (payload: { modelKey: string; text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
       invokeSync("nomi:model-catalog:comfyui:update-workflow", payload),
   },
   skill: {

@@ -291,8 +291,6 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 
 **适用范围**：功能类交付（尤其用户可见 / 体感功能）必走；纯内部重构 / 文案 / 脚本类改动按 P3 常规走查即可，不强求建多条任务测试系统。
 
----
-
 ## 工作流框架（阶段 × agent 编排）
 
 > 核心三原则：① 独立工作并行、共享文件顺序；② 评审/验证用对抗式多视角（让 agent 挑毛病）；③ UI 收尾必过真实用户体验 agent。范围按事情大小缩放：小改省略中间阶段，项目级大改全走。
@@ -347,3 +345,69 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 **接入即验证 + 真实生成 E2E 回路**：一个模型/生成链路不算「接入成功」，直到一次真实 E2E 生成跑通。验证链路：定义真实任务 → 真机驱动 + 主进程埋点（Playwright 渲染层抓不到 vendor HTTP，它在 Electron 主进程发）→ 分层暴露所有问题（UI/交互/配置/传输/渲染）→ 逐个挖根因 → 分级修 → 补可观测 + 锁回归断言。缺 archetype 的模型先补 archetype 再配 mapping，别手配（手配必漂）。参考：`docs/workflow/2026-06-06-real-generation-e2e-loop.md`。
 
 **词汇 = 模型真名，别替用户翻译**：模式/能力标签用模型自己的叫法（vendor 原词）为主。自创意图词可能把能力说窄（「全能参考」写成「角色参考」会让人以为只能放角色）。
+
+## R17 重活门岗（用户体感「卡死」的一族）
+
+**门岗**：`pnpm run check:heavy-path`（`scripts/check-heavy-path.mjs` + `scripts/heavy-path-baseline.json`），每条规则各自棘轮，只减不增。已进 `gates` 链。（规则条数别写死在文档里——以脚本里的 `RULES` 为准。）
+
+**它抓什么、为什么这些是一族**（2026-08-20「九宫格切图卡死半小时」挖到底的产物）：
+
+| 规则 | 写法 | 后果 |
+|---|---|---|
+| `sync-image-encode` | `canvas.toDataURL()` | 同步 PNG 编码，编码期间整个界面冻住。9 张 4K 切片 = 701ms 纯阻塞。改用 `convertToBlob()`/`toBlob()`（异步、编码不占主线程）|
+| `base64-into-store` | `updateNode({ result: { url: dataUrl } })` | base64 进 store → 每次写入被 `emitCanvasGesture` 整段 JSON 深拷贝、压进撤销日志、IPC 发去事件日志、随每次保存全量序列化。改用 `persistNodeImageBlob()` 落盘换 `nomi-local://`，store 只存门牌号、只写一次 |
+| `duplicate-node-size-bounds` | 在 `nodeSizing` 外重新声明 `MIN/MAX_NODE_WIDTH/HEIGHT` | 布局算一套尺寸、渲染算另一套 → 必然错位（切图九张按 129px 步距摆、卡片各渲染 240 宽，互相压掉 110px）。尺寸只有一个真相源：常量从 `nodeSizing` 导入，「卡片实际渲染多大」问 `resolveNodeVisualSize()` |
+| `node-stream-into-response` | `new Response(createReadStream(...))` / `Readable.toWeb(...)` | 把 Node 流交给 undici / Node 适配器管生命周期。小文件、不 seek 时完全正常；大视频一拖进度条就从 microtask 抛出 `ERR_INVALID_STATE`，call site 的 try/catch 一律接不住。改用 `createOwnedFileStream()`（`electron/protocol/fileResponseStream.ts`）自己拥有流 |
+| `unguarded-fsync` | 在 `electron/durability.ts` 之外直接 `fs.fsyncSync(fd)` | 绕过全仓唯一的落盘屏障 → 那条写路径在测试里关不掉，productionRun 的 flake 长回来一角（屏障关掉前该子集 98.7s、最重的几个文件贴着 5000ms `testTimeout`）。而**本地单跑照样全绿**，只有 CI 磁盘队列深的那一刻才红。文件 fd 用 `fsyncIfDurable(fd)` |
+
+**`unguarded-fsync` 的判据是「有没有过闸」，不是「在哪个文件」**（所以基线是 0，不是「现存 2 处」）：
+
+- 正道 `fsyncIfDurable(fd)` 本就匹配不到；
+- 合法例外只有一种形态——**只为 fsync 而开的目录 fd**（`productionRunIntentLog.ts` / `productionRunLock.ts` 各一处）。它连 `openSync` 都要省掉，没法用 `fsyncIfDurable` 表达，于是在开 fd 之前先 `if (!isDurable()) return`；门岗按「本顶层声明里有没有这道闸」认它，屏障一样被尊重。
+- **为什么不把那 2 处收进基线**：基线在本仓的语义是「待清零的存量债」。那 2 处是永远正确的写法，收进去等于把正确代码标成永远清不掉的债；更要命的是留了个洞——删掉一处合法的、同时新增一处违规的，计数不变、门岗照样绿。按闸判则两种情况都当场报红，且将来新写的合规目录 fsync 不用抬基线（抬基线正是棘轮被磨平的方式）。
+
+**为什么必须是门岗而不是文档**：这些写法**当场看不出毛病**——小图上跑得飞快，大图才冻死；本地磁盘闲，CI 忙起来才超时。而写代码的人手里多半是小图、跑的多半是本地。靠自觉记不住，只能靠机器每次拦。`electron/durability.ts` 里那句「除本模块外不要直接调 `fs.fsyncSync`」当了一阵子纯注释、没有任何东西执行它，本规则就是来给它上闸的。
+
+**基线里还留着的（存量，只减不增）**：`sync-image-encode = 5`。其中 `electron/browser/media/browserMediaVisualCapture.ts` 那处跑在注入页面的脚本里，返回值必须可 JSON 序列化，base64 是被迫的——它是这条规则的合法例外，清零时最后处理。
+
+**配套的运行时/主进程护栏**（grep 抓不到的那半）：
+- `electron/events/eventLogRepository.ts` 的 `MAX_FIELD_BYTES = 256KB`：超限字符串在脱敏/哈希/落 sidecar **之前**就换成体积标记。事件日志是旁路观察，绝不许因为一个大字段把主进程拖死。
+- 走查断言：`tests/ux/image-grid-split-freeze.walk.mjs` 量主线程最长阻塞、零 `toDataURL`、零 `data:` URL。
+
+**加新规则的姿势**（P2 通用性判定的落地路径）：修完一个 bug → 判断是不是通用 → 全仓实扫拿 file:line → 能 grep 的加进本门岗的 `RULES`（写清 label + hint，hint 必须给出替代写法）→ `node scripts/check-heavy-path.mjs --update-baseline` 把存量收进基线 → 存量后续慢慢清零。**先问一句「存量是债还是本来就对」**：是债才进基线；本来就对的写法应该在 `scan()` 里判成合规（例：`unguarded-fsync` 认 `isDurable()` 闸），否则等于把正确代码标成永远清不掉的债，还会被「删一处合法的 + 加一处违规的」凑出假绿。
+
+**加规则前必须验一次它会红**（2026-08-25）：临时在 `electron/` 塞一处违规写法 → 跑门岗确认报红且 file:line 点得对 → 删掉。**只验过绿的门岗不算门岗**——绿有可能是正则根本没匹配上。对有「合法例外」的规则还要补一发反向控制：把真实合法处的豁免条件（如那道 `isDurable()` 闸）临时去掉，确认它当场变红——这才证明扫描器真的走到了那几行，而不是碰巧漏过。
+
+**`stripComments()` 必须逐行等高**：抹注释不许改变总行数，否则报出来的 `file:line` 点开是别的地方。两个坑都踩过并已修（2026-08-25）：① 块注释整段删会把后面的行整体上移；② 行注释正则写 `^\s*//` 时 `\s` **含换行**，「空行 + `//` 注释」会被吞掉一行。修之前全仓 2015 个被扫文件里 **1053 个行号是错的，最差的一个偏 995 行**。
+**加新规则的姿势**（P2 通用性判定的落地路径）：修完一个 bug → 判断是不是通用 → 全仓实扫拿 file:line → 能 grep 的加进本门岗的 `RULES`（写清 label + hint，hint 必须给出替代写法）→ `node scripts/check-heavy-path.mjs --update-baseline` 把存量收进基线 → 存量后续慢慢清零。
+## R18 测试等待门岗（并行才炸的私有墙钟等待）
+**门岗**：`pnpm run check:test-waits`（`scripts/check-test-waits.mjs`，硬零无基线）。已进 `gates` 链。
+**它抓什么**：测试文件里的私有 `waitFor` 定义与 `Date.now()` 截止时间轮询。起因（2026-08-25）：electron/productionRun 十一个测试文件各自复制/手写墙钟等待（硬闹钟 500ms~5s），赛跑「每条命令 3 次真 fsync」的 ProductionRunService 编排链——单跑永远绿，vitest 并行满载时 fsync 排队放大 → 干净 main 上 5 跑 4 挂。flake 的两条腿分两处修：**耗时腿**在 `electron/durability.ts`（单测 ephemeral 不 fsync，测试 20× 提速，PR #139）；**赛跑腿**在本门岗——就算测试再快，复制粘贴的私有闹钟也是下一次事故的年轮，机器拦住不许再长。
+**正确姿势**：等 detached driver（`void driveGeneration(...)` 这类）一律用 `productionRunTestHelpers.waitForProduction`（全仓唯一等待实现，统一预算、超时信息带 `check.toString()` 直接定位卡在哪步）。不许在测试里再写 `function waitFor` 或 `Date.now()` 截止轮询——第 11 个复制品（`productionStoryboardBinding` 的匿名内联循环，连名字都不叫 waitFor）就是靠本门岗的模式扫描抓出来的。来龙去脉：`docs/plan/2026-08-25-production-run-test-flake-fsync.md`（耗时腿）+ `docs/plan/2026-08-25-fix-flaky-production-run-tests.md`（赛跑腿与门岗）。
+
+## R19 解决状态必须可交付
+
+> 2026-08-15 用户要求固化。根因不是“忘了合分支”，而是把侧分支里的实现状态误报成了用户拿得到的解决状态。以后状态名称与 Git 证据绑定，不靠口头判断。
+>
+> **原为 R17，2026-08-25 改号为 R19**：本条当初只写进了 `AGENTS.md` 一侧的规则索引，`CLAUDE.md` 那侧从未见过它，于是 08-20 加「重活门岗」时把 R17 号又占了一次，本文件一度出现两个 `## R17`。因本条全仓零引用、而「重活门岗」被代码注释与 4 篇计划文档引用，故改本条。旧文中提到的「R17 解决状态」即此条。
+
+**状态词只有以下四种，禁止混用**：
+
+1. **已实现、未推送**：改动只在本地工作区或本地提交。必须给出工作树、分支和提交；不能称为“已解决”。
+2. **已推送、待合入**：远端侧分支能找到提交，但目标分支不包含它。必须给出远端分支/PR；不能称为“已解决”。
+3. **已合入、待验证**：目标分支已包含提交，但目标分支门禁或真实用户任务尚未通过。只能称“已合入”。
+4. **已解决**：修复提交已进入用户指定的远端目标分支，并且该目标分支上的必需门禁与真实用户任务都通过。
+
+**机械证据（报“已解决”前必做）**：
+
+```bash
+git fetch origin
+git merge-base --is-ancestor <fix-commit> origin/<target-branch>
+git status --short --branch
+```
+
+- 第一条祖先检查失败：状态必须降级为“已推送、待合入”，当轮继续完成合入，不能把尾巴留给用户。
+- 未推送提交不允许被引用为团队现状；需要保留就先推到明确命名的远端分支。
+- 删除分支前先逐提交审计；目标分支未包含的有效提交必须先合入或明确归档，不能靠删分支消失。
+- 完成报告必须同时给出目标分支、远端 commit、验证结果；不再只给一个侧分支 hash 让用户自行判断。
+- 若用户明确要求验收后再合入，只能报告“待验收修复”，直到用户批准并实际合入；不能提前写“已解决”。

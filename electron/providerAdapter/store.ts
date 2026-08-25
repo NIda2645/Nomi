@@ -10,7 +10,19 @@ import type {
 } from "./types";
 
 const EMPTY_STATE: ProviderAdapterStoreState = { version: 1, runs: [], revisions: [] };
-const TERMINAL_STAGES = new Set(["completed", "partial", "failed", "needs_ai", "stale"]);
+export const TERMINAL_ADAPTER_STAGES = new Set<ProviderAdapterRun["stage"]>([
+  "completed",
+  "partial",
+  "failed",
+  "needs_ai",
+  "cancelled",
+  "timed_out",
+  "stale",
+]);
+
+export function isTerminalAdapterStage(stage: ProviderAdapterRun["stage"]): boolean {
+  return TERMINAL_ADAPTER_STAGES.has(stage);
+}
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -51,6 +63,16 @@ export class ProviderAdapterStore {
     return found ? clone(found) : undefined;
   }
 
+  listRuns(options: { vendorKey?: string; activeOnly?: boolean; limit?: number } = {}): ProviderAdapterRun[] {
+    const limit = Math.max(1, Math.min(200, Math.trunc(options.limit || 50)));
+    return this.state.runs
+      .filter((run) => !options.vendorKey || run.vendorKey === options.vendorKey)
+      .filter((run) => !options.activeOnly || !isTerminalAdapterStage(run.stage))
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, limit)
+      .map(clone);
+  }
+
   upsertRun(run: ProviderAdapterRun): ProviderAdapterRun {
     const next = clone(run);
     const index = this.state.runs.findIndex((item) => item.id === run.id);
@@ -84,7 +106,7 @@ export class ProviderAdapterStore {
 
   markStaleIfConnectionChanged(id: string, currentFingerprint: string): ProviderAdapterRun | undefined {
     const run = this.getRun(id);
-    if (!run || TERMINAL_STAGES.has(run.stage) || run.connectionFingerprint === currentFingerprint) return run;
+    if (!run || isTerminalAdapterStage(run.stage) || run.connectionFingerprint === currentFingerprint) return run;
     return this.updateRun(id, (current) => ({
       ...current,
       stage: "stale",
@@ -99,7 +121,7 @@ export class ProviderAdapterStore {
 }
 
 export function recoverableAdapterRuns(runs: readonly ProviderAdapterRun[]): ProviderAdapterRun[] {
-  return runs.filter((run) => !TERMINAL_STAGES.has(run.stage)).map(clone);
+  return runs.filter((run) => !isTerminalAdapterStage(run.stage)).map(clone);
 }
 
 export function connectionFingerprint(input: {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   SHOT_VERIFY_DIMENSIONS,
+  SHOT_VERIFY_NOT_ASSESSABLE,
   SHOT_VERIFY_PASS_THRESHOLD,
   activeDimensions,
   buildShotVerifyPrompt,
@@ -73,11 +74,17 @@ describe('parseShotVerifyVerdict', () => {
     expect(v.scores.continuity).toBe(1) // 缺省维度兜底为最低档(由调用方按 active 过滤)
   })
 
-  it('夹取 1-5 并四舍五入；越界与非数值落 1', () => {
-    const v = parseShotVerifyVerdict('{"scores":{"identity":9,"composition":0,"continuity":"x"}}')
+  it('夹取 1-5 并四舍五入；超上界落 5、负数与非数值落 1', () => {
+    const v = parseShotVerifyVerdict('{"scores":{"identity":9,"composition":-3,"continuity":"x"}}')
     expect(v.scores.identity).toBe(5)
-    expect(v.scores.composition).toBe(1)
+    expect(v.scores.composition).toBe(1) // 负数仍按最保守的 1（判不出别放行）
     expect(v.scores.continuity).toBe(1)
+  })
+
+  it('0 是「无法判定」哨兵，原样保留——不再被夹成 1（L3 实测：把「看不到」当「不像」会误报+白重试）', () => {
+    const v = parseShotVerifyVerdict('{"scores":{"identity":0,"composition":4,"continuity":5}}')
+    expect(v.scores.identity).toBe(SHOT_VERIFY_NOT_ASSESSABLE)
+    expect(v.scores.composition).toBe(4) // 其余轴照旧
   })
 
   it('容忍尾逗号畸形', () => {

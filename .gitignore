@@ -60,12 +60,19 @@ tests/ux/_marketing/
 tests/system/runs/
 .scene3d-ux-lab/
 .scene3d-panorama-lab/
+.scene3d-stamp-lab/
+.scene3d-keyframe-lab/
+.scene3d-safeframe-lab/
+.viewfinder-marker-lab/
 .onboarding-demo-lab/
 .video-playback-heal-lab/
 .library-cover-walk-lab/
 .project-asset-healthcheck-lab/
 .toolbar-order-lab/
 .text-error-lab/
+# nomi-local 协议走查/压测的 fixture 与产出（里面躺着 ~500MB 的 mp4，一次 `git add -A` 就能进库）
+.local-protocol-seek-walk/
+.local-protocol-abort-stress/
 
 # 3D 预设动作校准台的本地输出（pose-lab）
 .pose-lab/
@@ -96,10 +103,16 @@ docs/feedback/*
 # R13 走查截图产物（scripts/*-walkthrough.mjs 输出，纯本地证据，不进 git）
 # 通用模式覆盖所有 .{name}-walk/ 输出目录；不合模式的特例单列
 .*-walk/
+.comfyui-real-user-journey/
 .failure-walk-ok/
 .model-panel-shot/
 .custom-call-recon/
+.model-home-mockup-review/
+.settings-original-main-baseline/
 
 # Python 运行副产物（decrypt_wechat.py 等被 import/执行时生成，绝不入库）
 __pycache__/
 *.pyc
+
+# 走查产出的截图（可随时重跑生成，别进库）
+docs/design/mockups/2026-08-20-grid-split-freeze/

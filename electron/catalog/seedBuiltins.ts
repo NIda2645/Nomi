@@ -42,7 +42,7 @@ import { APIMART_VENDOR_SEED } from "./apimartVendor";
 import { APIMART_IMAGE_MODELS, APIMART_IMAGE_QUERY, APIMART_IMAGE_STATUS } from "./apimartImages";
 import { APIMART_VIDEO_MODELS, APIMART_VIDEO_QUERY, APIMART_VIDEO_STATUS } from "./apimartVideos";
 import { APIMART_AUDIO_MODELS } from "./apimartAudios";
-import { APIMART_TEXT_MODELS } from "./apimartTexts";
+import { APIMART_TEXT_MAPPINGS, APIMART_TEXT_MODELS } from "./apimartTexts";
 import { AGNES_VENDOR_SEED, AGNES_VIDEO_QUERY_OP, AGNES_STATUS_MAPPING } from "./agnesVendor";
 import { AGNES_IMAGE_MODELS } from "./agnesImages";
 import { AGNES_VIDEO_MODELS } from "./agnesVideos";
@@ -134,12 +134,23 @@ const KIE_CURATED_MAPPINGS: CuratedMapping[] = [
 /** apimart 的 curated 模型 + mapping，从单源 APIMART_IMAGE_MODELS / APIMART_VIDEO_MODELS 派生。 */
 const APIMART_CURATED_MODELS: CuratedModel[] = [
   // 文本大脑（创作助手 / 拆镜头主控）：无 archetype / 无 mapping，走 buildLanguageModelForVendor 直连 chat。
-  ...APIMART_TEXT_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: "text" as const })),
+  // meta 透传：能读图的（gemini-3.5-flash）靠 meta.supportsImageInput 被 chooseTextModel 选中，
+  // 不靠 VISION_MODEL_RE 猜名字（显式声明优先，见 ai/agentUserContent.ts:33）。
+  ...APIMART_TEXT_MODELS.map((m) => ({
+    modelKey: m.modelKey,
+    labelZh: m.labelZh,
+    kind: "text" as const,
+    ...(m.meta ? { meta: m.meta } : {}),
+  })),
   ...APIMART_IMAGE_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: "image" as const, archetypeId: m.archetypeId })),
   ...APIMART_VIDEO_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: "video" as const, archetypeId: m.archetypeId })),
   ...APIMART_AUDIO_MODELS.map((m) => ({ modelKey: m.modelKey, labelZh: m.labelZh, kind: m.kind, archetypeId: m.archetypeId })),
 ];
 const APIMART_CURATED_MAPPINGS: CuratedMapping[] = [
+  ...APIMART_TEXT_MAPPINGS.map((mp) => ({
+    id: mp.id, taskKind: mp.taskKind, modelKey: mp.modelKey, name: mp.name,
+    create: mp.create, query: mp.query, statusMapping: mp.statusMapping,
+  })),
   ...APIMART_IMAGE_MODELS.flatMap((m) =>
     m.mappings.map((mp) => ({
       id: mp.id, taskKind: mp.taskKind, modelKey: m.modelKey, name: mp.name,
@@ -251,6 +262,9 @@ const RETIRED_KIE_VIDEO_MODEL_KEYS: readonly string[] = [
  */
 const RETIRED_APIMART_IMAGE_MODEL_KEYS: readonly string[] = ["imagen-4.0-apimart"];
 const RETIRED_APIMART_IMAGE_MAPPING_IDS: readonly string[] = ["seed-apimart-imagen-4-text_to_image"];
+// APIMart 早期误种的 DeepSeek V3.1 250821 已不在当前官方模型目录中；精确清理旧 curated 行，
+// 再由 APIMART_TEXT_MODELS 种入官方当前 DeepSeek 集合。只命中 apimart vendor，不碰用户其它供应商。
+const RETIRED_APIMART_TEXT_MODEL_KEYS: readonly string[] = ["deepseek-v3.1-250821"];
 
 const RETIRED_APIMART_VIDEO_MAPPING_IDS: readonly string[] = [
   "seed-apimart-seedance-2-apimart-fast-text_to_video",
@@ -469,6 +483,7 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
   // 只有走 prune 才摘得掉已经落在用户 catalog 里的那条。
   if (pruneRetiredModels(models, APIMART_VENDOR_SEED.key, RETIRED_APIMART_IMAGE_MODEL_KEYS)) changed = true;
   if (pruneRetiredMappings(mappings, RETIRED_APIMART_IMAGE_MAPPING_IDS)) changed = true;
+  if (pruneRetiredModels(models, APIMART_VENDOR_SEED.key, RETIRED_APIMART_TEXT_MODEL_KEYS)) changed = true;
   if (pruneRetiredModels(models, KIE_VENDOR_SEED.key, RETIRED_KIE_VIDEO_MODEL_KEYS)) changed = true;
 
   // 模型 insert + 对账（两家各跑同一套逻辑）。

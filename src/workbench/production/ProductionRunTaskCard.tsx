@@ -128,8 +128,16 @@ export function ProductionRunTaskCard({
   // 门在发起端（外部 CLI 驱动）→ 这里只指路，兜底键降为次级文字键；
   // 门在本地（origin=nomi，没有 CLI 可用）→ 主按钮直接开门。
   const routedGate = Boolean(view.gateKind && view.decisionHome === 'origin')
+  // 取消是这张卡上唯一能点的东西（无主动作、无暂停）——推不动的坏 Run 就长这样。
+  const onlyExit = !action && view.controls.length === 1 && view.controls[0] === 'cancel'
   const hostLabel = t(`generationCommon.production.origin.${view.originHost}`)
   const previewFocused = Boolean(focusedArtifactId && preview?.artifactId === focusedArtifactId)
+  const gateCopyParams = view.gateJob ? {
+    index: view.gateJob.index,
+    node: view.gateJob.nodeId,
+    provider: view.gateJob.provider,
+    model: view.gateJob.model,
+  } : {}
 
   return (
     <section
@@ -158,21 +166,24 @@ export function ProductionRunTaskCard({
 
       <div className={cn('grid gap-1')}>
         <h3 data-production-status-title className={cn('text-caption font-semibold leading-snug text-nomi-ink')}>
-          {t(`generationCommon.${view.titleKey}`)}
+          {t(`generationCommon.${view.titleKey}`, gateCopyParams)}
         </h3>
         <p className={cn('text-micro leading-relaxed text-nomi-ink-60')}>
-          {t(`generationCommon.${view.descriptionKey}`)}
+          {t(`generationCommon.${view.descriptionKey}`, gateCopyParams)}
         </p>
       </div>
 
       <div className={cn('flex flex-wrap gap-1')}>
         <span className={cn('rounded-full bg-nomi-ink-05 px-2 py-0.5 text-micro text-nomi-ink-60')}>{playbookName}</span>
-        <span className={cn('rounded-full bg-nomi-ink-05 px-2 py-0.5 text-micro text-nomi-ink-60')}>
-          {t('generationCommon.production.runDetails.stageCount', {
-            completed: view.details.completedStages,
-            total: view.details.totalStages,
-          })}
-        </span>
+        {/* 一个阶段都没有时不挂「0 / 0 已完成」——那是在给一条根本不存在的流水线报进度（同 N4 无产物不渲染）。 */}
+        {view.details.totalStages > 0 ? (
+          <span className={cn('rounded-full bg-nomi-ink-05 px-2 py-0.5 text-micro text-nomi-ink-60')}>
+            {t('generationCommon.production.runDetails.stageCount', {
+              completed: view.details.completedStages,
+              total: view.details.totalStages,
+            })}
+          </span>
+        ) : null}
         {typeof view.percent === 'number' ? (
           <span className={cn('rounded-full bg-nomi-ink-05 px-2 py-0.5 text-micro tabular-nums text-nomi-ink-60')}>
             {view.percent}%
@@ -295,20 +306,34 @@ export function ProductionRunTaskCard({
             {t('generationCommon.production.control.pause')}
           </WorkbenchButton>
         ) : null}
-        {/* N4：取消不可逆，不与暂停等权——降为弱化文字键，hover 转危险色。 */}
+        {/* N4：取消不可逆，不与暂停等权——降为弱化文字键，hover 转危险色。
+            例外：这张卡上**没有别的可点**时（推不动的坏 Run），取消就是唯一出路，
+            再压成灰色小字就又变成「没看到点的地方」。没有竞争对象时降权没有意义，
+            误点的防线本来也是那道 confirmDialog，不是把它藏起来。 */}
         {view.controls.includes('cancel') ? (
-          <button
-            type="button"
-            data-production-control="cancel"
-            disabled={actionInFlight}
-            onClick={() => runAction(() => onControl('cancel'))}
-            className={cn(
-              'shrink-0 text-micro text-nomi-ink-40 transition-colors',
-              'hover:text-workbench-danger disabled:text-nomi-ink-30',
-            )}
-          >
-            {t('generationCommon.production.control.cancel')}
-          </button>
+          onlyExit ? (
+            <WorkbenchButton
+              data-production-control="cancel"
+              className={cn('h-7 flex-1 text-micro')}
+              disabled={actionInFlight}
+              onClick={() => runAction(() => onControl('cancel'))}
+            >
+              {t('generationCommon.production.control.cancel')}
+            </WorkbenchButton>
+          ) : (
+            <button
+              type="button"
+              data-production-control="cancel"
+              disabled={actionInFlight}
+              onClick={() => runAction(() => onControl('cancel'))}
+              className={cn(
+                'shrink-0 text-micro text-nomi-ink-40 transition-colors',
+                'hover:text-workbench-danger disabled:text-nomi-ink-30',
+              )}
+            >
+              {t('generationCommon.production.control.cancel')}
+            </button>
+          )
         ) : null}
       </div>
 

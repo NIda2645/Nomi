@@ -142,6 +142,7 @@ function truncateUtf8(text: string, maxBytes: number): string {
 export async function discoverProviderDocs(options: {
   baseUrl: string;
   modelKeys: readonly string[];
+  signal?: AbortSignal;
   fetchText?: DocsFetchText;
   maxPages?: number;
   maxCorpusBytes?: number;
@@ -163,6 +164,9 @@ export async function discoverProviderDocs(options: {
   const maxAttempts = Math.max(maxPages * 4, maxPages + 8);
 
   while (queue.length > 0 && sources.length < maxPages && attempts < maxAttempts && Buffer.byteLength(corpus) < maxCorpusBytes) {
+    if (options.signal?.aborted) {
+      throw options.signal.reason instanceof Error ? options.signal.reason : new Error("Document discovery cancelled");
+    }
     const current = queue.shift();
     if (!current || seen.has(current)) continue;
     seen.add(current);
@@ -173,6 +177,7 @@ export async function discoverProviderDocs(options: {
       const result = await fetchText(current, {
         maxBytes: 1_000_000,
         timeoutMs: 8_000,
+        signal: options.signal,
         allowContentTypes: ["text/", "application/json", "application/xml", "application/yaml"],
       });
       const finalUrl = normalizedUrl(result.finalUrl || current);
@@ -191,7 +196,10 @@ export async function discoverProviderDocs(options: {
       const links = discoveredLinks(result.text, finalUrl, options.modelKeys)
         .filter((link) => !seen.has(link) && isProviderSite(new URL(link), domain));
       queue.unshift(...links);
-    } catch {
+    } catch (error) {
+      if (options.signal?.aborted) {
+        throw options.signal.reason instanceof Error ? options.signal.reason : error;
+      }
       // Discovery is best-effort across a bounded list; one missing conventional path is expected.
     }
   }

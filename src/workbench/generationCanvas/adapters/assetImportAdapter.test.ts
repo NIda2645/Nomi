@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { importLocalMediaFilesToGenerationCanvas } from './assetImportAdapter'
 import { useGenerationCanvasStore, __resetGenerationCanvasHistoryForTests } from '../store/generationCanvasStore'
+import type { WorkbenchAssetDto } from '../../api/assetUploadApi'
 
 function makeImageFile(name = 'image.png', size = 1024): File {
   return new File([new Uint8Array(size)], name, {
@@ -28,8 +29,8 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
   })
 
   it('does not persist a data URL before the local asset import finishes', async () => {
-    let resolveUpload: ((asset: any) => void) | null = null
-    const uploadFile = vi.fn(() => new Promise<any>((resolve) => {
+    let resolveUpload: ((asset: WorkbenchAssetDto) => void) | null = null
+    const uploadFile = vi.fn(() => new Promise<WorkbenchAssetDto>((resolve) => {
       resolveUpload = resolve
     }))
     const promise = importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
@@ -51,7 +52,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     expect(uploadingNode.history).toEqual([])
     expect(uploadingNode.meta?.uploadStatus).toBe('uploading')
 
-    resolveUpload?.({
+    resolveUpload!({
       id: 'asset-1',
       name: 'image',
       userId: 'local',
@@ -89,5 +90,21 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     expect(node.result?.type).toBe('video')
     expect(node.result?.url).toBe('nomi-local://asset/project-1/clip.mp4')
     expect(node.meta?.videoDuration).toBe(12.5)
+  })
+
+  it('keeps a failed video import retryable instead of losing the source file', async () => {
+    const uploadFile = vi.fn(async () => { throw new Error('copy failed') })
+    const result = await importLocalMediaFilesToGenerationCanvas([makeVideoFile()], {
+      basePosition: { x: 10, y: 20 },
+      uploadFile,
+      recoverFile: async () => null,
+      readVideoDuration: async () => null,
+    })
+
+    const node = useGenerationCanvasStore.getState().nodes[0]
+    expect(result.failedCount).toBe(1)
+    expect(node.status).toBe('error')
+    expect(node.error).toContain('重试导入')
+    expect(node.meta?.retryableImport).toBe(true)
   })
 })

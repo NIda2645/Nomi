@@ -44,6 +44,7 @@ type VerifyState = {
 
 const REASON_I18N: Partial<Record<McpVerifyReason, string>> = {
   'command-missing': 'commandMissing',
+  'argument-missing': 'argumentMissing',
   'spawn-failed': 'spawnFailed',
   timeout: 'timeout',
   'handshake-failed': 'handshakeFailed',
@@ -54,13 +55,23 @@ const REASON_I18N: Partial<Record<McpVerifyReason, string>> = {
 export type { McpInfo }
 
 type ConnectAssistantCardProps = {
-  /** MCP 接入状态由父组件统一 fetch 后下传（单一来源，见 plan §4.1）；null = 不显（加载中/老 preload）。 */
+  /** MCP 接入状态由设置宿主统一读取后下传；null = 不显（加载中/老 preload）。 */
   info: McpInfo | null
-  /** 接入/撤销后冒泡，父组件重查 + 重新分桶。 */
+  /** 接入/撤销后冒泡，由设置宿主重读连接快照。 */
   onChanged: () => void
+  onOpenDetails?: () => void
+  /** 设置内二级页可接管跳转，返回同页的可信发起方；其他宿主沿用全局设置事件。 */
+  onOpenAutomationPermissions?: () => void
+  detailMode?: boolean
 }
 
-export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardProps): JSX.Element | null {
+export function ConnectAssistantCard({
+  info,
+  onChanged,
+  onOpenDetails,
+  onOpenAutomationPermissions,
+  detailMode = false,
+}: ConnectAssistantCardProps): JSX.Element | null {
   const { t } = useTranslation()
   const [target, setTarget] = React.useState<ClientKey>('claude')
   const pickedDefault = React.useRef(false)
@@ -115,6 +126,9 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
 
   const label = CLIENT_LABEL[target]
   const client = info.clients[target]
+  const knownUpgrade = ['legacy-launcher', 'stale-development', 'auth-stale', 'launcher-stale'].includes(client.configState)
+  const migrated = client.migration === 'upgraded'
+  const developmentConnection = client.configState === 'development'
 
   const handleInstall = () => {
     if (!capability.installMcp) return
@@ -166,6 +180,10 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
 
   const openAutomationPermissions = () => {
     useToastStore.getState().remove(CURSOR_CONNECTED_TOAST_ID)
+    if (onOpenAutomationPermissions) {
+      onOpenAutomationPermissions()
+      return
+    }
     window.dispatchEvent(new CustomEvent('nomi-open-settings', { detail: { tab: 'automation', section: 'cursor-host' } }))
   }
 
@@ -206,6 +224,8 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
       status={activation.headerStatus}
       statusLabel={statusLabel}
       defaultExpanded={false}
+      onOpenDetails={onOpenDetails}
+      detailMode={detailMode}
     >
       {!info.tokenReady ? (
         <div className="text-caption text-nomi-ink-60 leading-relaxed">
@@ -224,8 +244,11 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
           {client.installed && broken ? (
             <>
               {/* 实连失败：不再显示绿色「已写入配置」，如实说坏在哪 + 给唯一出路（重写成当前启动方式）。 */}
-              <div className="flex items-start gap-2 rounded-nomi-sm bg-[var(--workbench-danger-soft)] px-3 py-2.5">
-                <IconAlertTriangle size={17} className="shrink-0 mt-0.5 text-workbench-danger" />
+              <div className={cn(
+                'flex items-start gap-2 rounded-nomi-sm px-3 py-2.5',
+                knownUpgrade ? 'bg-nomi-ink-05' : 'bg-[var(--workbench-danger-soft)]',
+              )}>
+                <IconAlertTriangle size={17} className={cn('shrink-0 mt-0.5', knownUpgrade ? 'text-nomi-warning' : 'text-workbench-danger')} />
                 <div className="min-w-0">
                   <div className="text-body-sm font-semibold text-nomi-ink">{t('onboardingProviders.assistant.brokenTitle')}</div>
                   <div className="text-caption text-nomi-ink-60 mt-0.5 leading-relaxed">
@@ -243,7 +266,8 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
                   'hover:bg-nomi-accent disabled:opacity-50 disabled:cursor-not-allowed',
                 )}
               >
-                <IconRefresh size={15} stroke={1.8} />{t('onboardingProviders.assistant.reconnect', { client: label })}
+                <IconRefresh size={15} stroke={1.8} />
+                {t(knownUpgrade ? 'onboardingProviders.assistant.upgrade' : 'onboardingProviders.assistant.repair', { client: label })}
               </button>
               <button
                 type="button"
@@ -266,7 +290,9 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
                 )}
                 <div className="min-w-0">
                   <div className="text-body-sm font-semibold text-nomi-ink">
-                    {cursorActivationNotice
+                    {migrated
+                      ? t('onboardingProviders.assistant.upgradedTitle', { client: label })
+                      : cursorActivationNotice
                       ? t('onboardingProviders.assistant.cursorConfigured')
                       : verify?.phase === 'ok'
                         ? t('onboardingProviders.assistant.verified', { client: label })
@@ -296,7 +322,7 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
                   ) : (
                     <div className="mt-0.5 text-caption text-nomi-ink-60">
                       {verify?.phase === 'ok' && typeof verify.toolCount === 'number'
-                        ? t('onboardingProviders.assistant.verifiedBody', { count: verify.toolCount })
+                        ? t(migrated ? 'onboardingProviders.assistant.upgradedBody' : 'onboardingProviders.assistant.verifiedBody', { count: verify.toolCount })
                         : t('onboardingProviders.assistant.restartClient', { client: label })}
                     </div>
                   )}
@@ -311,6 +337,12 @@ export function ConnectAssistantCard({ info, onChanged }: ConnectAssistantCardPr
                   <IconLock size={14} stroke={1.7} />
                   {t('onboardingProviders.assistant.openCursorPermissions')}
                 </button>
+              ) : null}
+              {developmentConnection ? (
+                <div className="flex items-start gap-2 rounded-nomi-sm bg-nomi-ink-05 px-3 py-2.5 text-caption text-nomi-ink-60">
+                  <IconAlertTriangle size={15} className="mt-0.5 shrink-0 text-nomi-warning" aria-hidden="true" />
+                  <span>{t('onboardingProviders.assistant.developmentConnection')}</span>
+                </div>
               ) : null}
               <div className="text-caption text-nomi-ink-40">
                 {t(cursorActivationNotice

@@ -1,28 +1,19 @@
 import { normalizeOrientation, type Orientation } from '../utils/orientation'
 import { normalizeVideoResolution } from '../utils/videoGenerationSpec'
 import i18n from '../i18n'
+import type {
+  ModelParameterControl,
+  ModelParameterControlOption,
+  ModelParameterControlType,
+} from '../../electron/shared/videoCapabilities/types'
+
+export type {
+  ModelParameterControl,
+  ModelParameterControlOption,
+  ModelParameterControlType,
+} from '../../electron/shared/videoCapabilities/types'
 
 type UnknownRecord = Record<string, unknown>
-
-export type ModelParameterControlType = 'select' | 'number' | 'text' | 'boolean' | 'image-url'
-
-export type ModelParameterControlOption = {
-  value: string | number | boolean
-  label: string
-  priceLabel?: string
-}
-
-export type ModelParameterControl = {
-  key: string
-  label: string
-  type: ModelParameterControlType
-  options: ModelParameterControlOption[]
-  defaultValue?: string | number | boolean
-  min?: number
-  max?: number
-  step?: number
-  placeholder?: string
-}
 
 export type VideoModelDurationOption = {
   value: number
@@ -127,9 +118,19 @@ function asTrimmedString(value: unknown): string {
 }
 
 function asPositiveNumber(value: unknown): number | null {
-  const num = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
-  if (!Number.isFinite(num) || num <= 0) return null
-  return num
+  const num = asFiniteNumber(value)
+  return num !== null && num > 0 ? num : null
+}
+
+/**
+ * 只要求是有限数（允许 0 与负数）——用于参数边界这类合法取值可以为 0 / 负的字段。
+ * 空串与纯空白必须挡掉：`Number('')` 是 0，放行就等于把「没填」当成「下界 0」。
+ */
+function asFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string' || value.trim() === '') return null
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
 }
 
 function asOptionalBoolean(value: unknown): boolean | undefined {
@@ -190,8 +191,10 @@ function parseParameterControl(value: unknown): ModelParameterControl | null {
         .filter((item): item is ModelParameterControlOption => item !== null)
     : []
   const defaultValue = asControlScalar(value.defaultValue ?? value.default)
-  const min = asPositiveNumber(value.min) ?? undefined
-  const max = asPositiveNumber(value.max) ?? undefined
+  // 边界可以是 0 甚至负数（CFG min=0、denoise 0–1、shift 可负），只有步长必须为正。
+  // 此前 min/max 也走 asPositiveNumber，把 0 和负值当非法丢掉，控件就失去了下界。
+  const min = asFiniteNumber(value.min) ?? undefined
+  const max = asFiniteNumber(value.max) ?? undefined
   const step = asPositiveNumber(value.step) ?? undefined
   const placeholder = asTrimmedString(value.placeholder)
   return {

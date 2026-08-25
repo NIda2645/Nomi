@@ -76,7 +76,7 @@ await snap(win, 'app-loaded')
 
 // 干净用户态会先放首启导览，跳掉它才看得到工作台。
 for (let i = 0; i < 6; i += 1) {
-  const skip = win.locator('text=/^\\s*Skip\\s*›?\\s*$/i').first()
+  const skip = win.locator('text=/^\\s*(Skip|跳过)\\s*›?\\s*$/i').first()
   if (!(await skip.count())) break
   await skip.click({ timeout: 2500 }).catch(() => {})
   await win.waitForTimeout(700)
@@ -85,7 +85,7 @@ await win.waitForTimeout(1200)
 await snap(win, 'after-skip-intro')
 
 // 界面语言可能是中文也可能是英文，两边都认。
-const trigger = win.locator('button, [role="button"]').filter({ hasText: /模型接入|Connect model/i }).first()
+const trigger = win.locator('button, [role="button"]').filter({ hasText: /接入模型|模型接入|Connect model/i }).first()
 if (await trigger.count()) {
   await trigger.click({ timeout: 5000 }).catch(() => {})
   await win.waitForTimeout(1500)

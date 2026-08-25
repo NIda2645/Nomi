@@ -18,16 +18,24 @@ import {
   isVideoLikeGenerationNodeKind,
 } from '../model/generationNodeKinds'
 import type { ResolvedGenerationReferences } from './generationReferenceResolver'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import {
+  replaceCustomCapabilityContractMeta,
+  resolveArchetypeForModel,
+} from '../../../config/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { loadUsableVendorKeys, remapArchetypeMode, resolveUsableModelForNode } from './usableVendorModel'
 
 export type CatalogTaskActionOptions = {
   references?: Partial<ResolvedGenerationReferences>
+  /** Optional bounded QA retry instruction appended to the model prompt for this one run. */
+  promptSuffix?: string
   /** 付费守卫令牌：真人确认后铸的 grantId，随 request.extras 下到主进程 runTask 核验消费。 */
   grantId?: string
   /** 提交幂等键（= node run.id）：随 request.extras 下到主进程，让同一次意图提交 at-most-once（不二次下单）。 */
   idempotencyKey?: string
+  /** Renderer disclosure gate for a public temporary-host fallback. */
+  anonymousAssetHostingConsent?: 'allow'
   runTask?: (vendor: string, request: TaskRequestDto) => Promise<TaskResultDto>
   listCatalogModels?: (params: { kind: BillingModelKind; enabled: true }) => Promise<ModelCatalogModelDto[]>
   listCatalogVendors?: () => Promise<ModelCatalogVendorDto[]>
@@ -77,7 +85,9 @@ export function resolveTaskArchetype(meta: Record<string, unknown>) {
   const modelKey = asTrimmedString(meta.modelKey) || asTrimmedString(meta.modelAlias)
   // 本地 ComfyUI workflow 是用户导入的通用图，不是内置档案模型。旧节点可能残留上一模型的
   // meta.archetype，若继续信它，参考图会被投到 archetypeInput 而不是 workflow 的 flat 参数。
-  if (vendor === 'comfyui-local') return null
+  // 判据必须用前缀判据而非字面量：第 2+ 台实例的 key 是 `comfyui-local-{slug}`（见
+  // AddComfyuiInstanceButton），硬比 'comfyui-local' 只保得住第一台。
+  if (isComfyuiVendorKey(vendor)) return null
   return resolveArchetypeForModel({
     modelKey,
     modelAlias: asTrimmedString(meta.modelAlias),
@@ -165,11 +175,12 @@ export async function resolveExecutableNodeFromCatalog(
   const remappedArchetype = targetArchetype
     ? remapArchetypeMode(sourceArchetype, asTrimmedString((meta.archetype as { modeId?: unknown } | undefined)?.modeId) || undefined, targetArchetype)
     : null
+  const migratedMeta = replaceCustomCapabilityContractMeta(meta, match.meta)
 
   return {
     ...node,
     meta: {
-      ...meta,
+      ...migratedMeta,
       modelKey: asTrimmedString(match.modelKey) || modelKey,
       modelAlias: asTrimmedString(match.modelAlias) || modelKey,
       modelVendor: resolvedVendor,

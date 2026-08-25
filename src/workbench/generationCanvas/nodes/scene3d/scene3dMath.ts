@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createScene3DCameraId, createScene3DObjectId } from './scene3dSerializer'
+import { createScene3DCameraId, createScene3DObjectId } from './scene3dBindingIds'
 import {
   SCENE3D_ASPECT_RATIOS,
   type Scene3DAspectRatio,
@@ -34,6 +34,11 @@ import {
 // 而 three 的 `getObjectByProperty(name, value)` 查的是 `object[name]`（顶层属性，非 userData）→ 永远找不到。
 // 误用 getObjectByProperty 会静默返回 null（直驱失效、采样为空）——所有按 runtime id 查 scene 对象的代码
 // 必须走这个助手，别再碰 getObjectByProperty(SCENE3D_RUNTIME_ID_KEY, ...)。
+//
+// ⚠️ 扫描结果**禁止长命持有**：marker 会被整组卸载重挂（取景调整隐藏相机 marker、undo/redo…），
+// 挂回来的是新 Object3D，攥着旧结果的注册表/缓存全变僵尸（2026-08-04 取景往返后 marker 冻住的根因）。
+// 本函数只适合「当次用完即弃」的查找；长命的直驱注册走 marker 自注册
+//（trajectory/useScene3DObjectRefRegistration，注册生命周期 = Object3D 生命周期）。
 export function findSceneObjectByRuntimeId(
   root: THREE.Object3D | null | undefined,
   runtimeId: string | null | undefined,

@@ -3,343 +3,653 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Nomi — Direct the shot. Not just the prompt.</title>
-<meta name="description" content="An open-source, local-first AI video workbench that connects story, visual anchors, generation, and timeline—and lets AI assistants advance an editable first cut over MCP." />
+<title>Nomi — Bring the cost of AI video down</title>
+<meta name="description" content="Open-source, local-first AI video workbench. Bring your own models, APIs, or ComfyUI to script, storyboard, generate, edit, and export with less waste." />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#f4f2ec" />
 <link rel="canonical" href="https://nomiaqm.com/en/" />
 <link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/" />
 <link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/" />
 <link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/" />
 <meta property="og:type" content="website" />
+<meta property="og:site_name" content="Nomi" />
 <meta property="og:locale" content="en_US" />
-<meta property="og:title" content="Nomi — Direct the shot. Not just the prompt." />
-<meta property="og:description" content="An open-source, local-first AI video workbench that connects story, visual anchors, generation, and timeline—and lets AI assistants advance an editable first cut over MCP." />
+<meta property="og:title" content="Nomi — Bring the cost of AI video down" />
+<meta property="og:description" content="Open-source, local-first AI video workbench. Bring your own models, APIs, or ComfyUI to script, storyboard, generate, edit, and export with less waste." />
 <meta property="og:url" content="https://nomiaqm.com/en/" />
 <meta property="og:image" content="https://nomiaqm.com/assets/social-preview-en.jpg" />
-<meta property="og:image:alt" content="Nomi local-first AI video workbench" />
+<meta property="og:image:alt" content="Nomi, an open-source local-first workbench for lower-cost AI video production" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Nomi — Direct the shot. Not just the prompt." />
-<meta name="twitter:description" content="An open-source, local-first AI video workbench that connects story, visual anchors, generation, and timeline—and lets AI assistants advance an editable first cut over MCP." />
+<meta name="twitter:title" content="Nomi — Bring the cost of AI video down" />
+<meta name="twitter:description" content="Open-source, local-first AI video workbench. Bring your own models, APIs, or ComfyUI to script, storyboard, generate, edit, and export with less waste." />
 <meta name="twitter:image" content="https://nomiaqm.com/assets/social-preview-en.jpg" />
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/en/","softwareVersion":"0.19.0","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest","inLanguage":"en"}</script>
+<meta name="twitter:image:alt" content="Nomi, an open-source local-first workbench for lower-cost AI video production" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/en/","url":"https://nomiaqm.com/en/","name":"Nomi — Bring the cost of AI video down","description":"Open-source, local-first AI video workbench. Bring your own models, APIs, or ComfyUI to script, storyboard, generate, edit, and export with less waste.","inLanguage":"en","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/social-preview-en.jpg"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.20.1","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"}]}</script>
+<script>(() => {
+  if (location.pathname !== '/') return
+  const localeKey = 'nomi_locale'
+  const preferred = (() => { try { return localStorage.getItem(localeKey) } catch { return null } })()
+  const browserLanguages = navigator.languages || [navigator.language || '']
+  const browserLocale = browserLanguages
+    .map((value) => String(value).toLowerCase())
+    .map((value) => value.startsWith('zh') ? 'zh-CN' : value.startsWith('en') ? 'en' : null)
+    .find(Boolean)
+  const resolvedLocale = preferred === 'en' || preferred === 'zh-CN' ? preferred : browserLocale
+  if (resolvedLocale === 'en') location.replace('/en/' + location.search + location.hash)
+})()</script>
 <link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;600;900&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" />
 <style>
 :root {
-  --paper: #f2efe8;
-  --paper-2: #ebe7dd;
-  --ink: #1a1816;
-  --ink-2: #3d3935;
-  --muted: #8a8278;
-  --rule: #d9d3c5;
-  --coral: #e8765a;
-  --coral-deep: #c7563d;
-  --display: "Instrument Serif", "Noto Serif SC", Georgia, serif;
-  --body: "Avenir Next", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, monospace;
-  --page: min(1280px, calc(100vw - 64px));
+  --paper: #f4f2ec;
+  --surface: #fbfaf7;
+  --ink: #171715;
+  --ink-soft: #4f4d48;
+  --muted: #86827a;
+  --rule: #cfcbc2;
+  --coral: #ef6a49;
+  --coral-dark: #b83c24;
+  --white: #ffffff;
+  --blue: #2768d8;
+  --shadow: 0 24px 70px rgba(23, 23, 21, 0.15);
+  --page: min(1320px, calc(100vw - 64px));
+  --nav-h: 72px;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; background: var(--paper); }
-body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--body); }
-a { color: inherit; text-decoration: none; }
+body { margin: 0; color: var(--ink); background: var(--paper); font-family: "Manrope", "Noto Sans SC", system-ui, sans-serif; font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+body.modal-open { overflow: hidden; }
+a { color: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
 button { font: inherit; }
 img, video { display: block; max-width: 100%; }
-:focus-visible { outline: 2px solid var(--coral); outline-offset: 4px; }
-.shell { width: var(--page); margin-inline: auto; }
-.mono { font-family: var(--mono); letter-spacing: .08em; text-transform: uppercase; }
-.site-head { position: relative; overflow: hidden; background: #222220; color: #f7f3ea; }
-.site-head::after { content: ""; position: absolute; inset: 0; border: 1px solid rgba(255,255,255,.07); pointer-events: none; }
-.nav { position: relative; z-index: 2; height: 82px; display: flex; align-items: center; gap: 30px; border-bottom: 1px solid rgba(255,255,255,.16); }
-.brand { display: flex; align-items: center; gap: 12px; margin-right: auto; font: 24px/1 var(--display); }
-.brand-logo { width: 28px; height: 28px; flex: none; }
-.nav-link { color: rgba(255,255,255,.68); font-size: 13px; }
-.nav-link:hover { color: #fff; }
-.locale { display: flex; gap: 6px; align-items: center; color: rgba(255,255,255,.58); font: 11px var(--mono); }
-.locale [aria-current="page"] { color: #fff; border-bottom: 1px solid var(--coral); }
-.button { min-height: 44px; padding: 0 18px; border: 1px solid currentColor; display: inline-flex; align-items: center; justify-content: center; gap: 18px; font-size: 13px; font-weight: 600; cursor: pointer; transition: transform .18s ease, background .18s ease, color .18s ease; }
+::selection { color: var(--white); background: var(--coral); }
+section[id] { scroll-margin-top: calc(var(--nav-h) + 12px); }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.skip-link { position: fixed; left: 16px; top: -80px; z-index: 200; padding: 10px 14px; color: var(--white); background: var(--ink); }
+.skip-link:focus { top: 16px; }
+.wrap { width: var(--page); margin: 0 auto; }
+.eyebrow { margin: 0 0 18px; color: var(--coral-dark); font-size: 12px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+
+.site-header { position: sticky; top: 0; z-index: 80; border-bottom: 1px solid color-mix(in srgb, var(--rule) 82%, transparent); background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(14px); }
+.nav { width: var(--page); min-height: var(--nav-h); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 28px; }
+.brand { display: inline-flex; align-items: center; gap: 11px; flex: none; font-size: 21px; font-weight: 800; text-decoration: none; }
+.brand img { width: 30px; height: 30px; }
+.nav-links { display: flex; align-items: center; justify-content: center; gap: 28px; }
+.nav-links a { color: var(--ink-soft); font-size: 14px; font-weight: 600; text-decoration: none; }
+.nav-links a:hover { color: var(--ink); }
+.nav-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: none; }
+.locale { min-width: 44px; min-height: 44px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--ink-soft); text-decoration: none; font-size: 13px; font-weight: 700; }
+.locale:hover { color: var(--ink); }
+.menu-toggle { display: none; min-width: 52px; min-height: 44px; border: 1px solid var(--ink); background: transparent; font-size: 12px; font-weight: 800; cursor: pointer; }
+
+.button { min-height: 46px; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--ink); border-radius: 5px; color: var(--ink); background: transparent; font-size: 14px; font-weight: 800; text-decoration: none; text-align: center; cursor: pointer; transition: transform 180ms ease, color 180ms ease, background 180ms ease; }
 .button:hover { transform: translateY(-2px); }
-.button--coral { background: var(--coral); border-color: var(--coral); color: #211d1a; }
-.button--ghost { color: #f7f3ea; border-color: rgba(255,255,255,.34); }
-.button--ink { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.hero { min-height: 680px; padding: 68px 0 56px; display: grid; grid-template-columns: minmax(0, .86fr) minmax(520px, 1.14fr); gap: 68px; align-items: center; }
-.hero-copy { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 7px; }
-.eyebrow { margin: 0 0 74px; color: var(--coral); font: 10px var(--mono); letter-spacing: .14em; }
-h1 { max-width: 650px; margin: 0; font: 400 clamp(64px, 6.8vw, 104px)/.86 var(--display); letter-spacing: -.035em; }
-h1 em { display: block; color: var(--coral); font-style: italic; }
-.lede { max-width: 520px; margin: 38px 0 32px; color: rgba(255,255,255,.66); font-size: 15px; line-height: 1.75; }
-.actions { display: flex; gap: 12px; flex-wrap: wrap; }
-.hero-note { margin-top: 66px; display: flex; justify-content: space-between; color: rgba(255,255,255,.38); font: 9px var(--mono); }
-.monitor { position: relative; margin: 0; background: #0f0f10; border: 1px solid rgba(255,255,255,.18); padding: 40px 30px 48px; box-shadow: 26px 26px 0 rgba(0,0,0,.12); }
-.monitor-top { display: flex; justify-content: space-between; margin-bottom: 26px; color: rgba(255,255,255,.46); font: 9px var(--mono); }
-.monitor-frame { position: relative; overflow: hidden; aspect-ratio: 16/10; border: 1px solid rgba(255,255,255,.15); background: #161616; }
-.monitor-frame video { width: 100%; height: 100%; object-fit: cover; object-position: center; filter: saturate(.86) contrast(1.03); }
-.monitor-frame::after { content: ""; position: absolute; inset: 7%; border: 1px solid rgba(232,118,90,.68); pointer-events: none; }
-.monitor-caption { display: grid; grid-template-columns: 1fr auto; gap: 16px; margin-top: 24px; color: rgba(255,255,255,.55); font: 9px/1.6 var(--mono); }
-.ticker { background: var(--coral); color: #251f1b; border-top: 1px solid #251f1b; border-bottom: 1px solid #251f1b; }
-.ticker-inner { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 20px; font: 9px var(--mono); }
-.ticker-dot { width: 5px; height: 5px; background: #251f1b; transform: rotate(45deg); }
-.intro { padding: 122px 0 88px; display: grid; grid-template-columns: 180px 1fr; gap: 80px; border-bottom: 1px solid var(--rule); }
-.section-kicker { margin: 8px 0 0; color: var(--coral-deep); font: 9px var(--mono); }
-h2 { max-width: 970px; margin: 0; font: 400 clamp(54px, 6vw, 90px)/.95 var(--display); letter-spacing: -.03em; }
-h2 em { color: var(--coral-deep); font-style: italic; }
-.proof { padding: 96px 0; border-bottom: 1px solid var(--rule); display: grid; grid-template-columns: 90px minmax(0, 1.12fr) minmax(300px, .7fr); gap: 46px; align-items: center; }
-.proof:nth-child(even) { grid-template-columns: 90px minmax(300px, .7fr) minmax(0, 1.12fr); }
-.proof:nth-child(even) .proof-media { grid-column: 3; }
-.proof:nth-child(even) .proof-copy { grid-column: 2; grid-row: 1; }
-.chapter { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; color: var(--muted); font: 9px var(--mono); }
-.chapter strong { color: var(--coral-deep); font-weight: 500; }
-.proof-media { position: relative; margin: 0; border: 1px solid var(--ink); background: var(--paper-2); padding: 13px; box-shadow: 18px 18px 0 var(--paper-2); }
-.proof-media img { aspect-ratio: 16/9; width: 100%; height: auto; object-fit: cover; border: 1px solid var(--rule); }
-.proof-media::before { content: "REC"; position: absolute; top: 24px; left: 25px; z-index: 1; padding: 5px 7px; background: var(--coral); color: var(--ink); font: 8px var(--mono); }
-.proof-copy h3 { margin: 0 0 24px; font: 400 clamp(42px, 4.2vw, 68px)/.95 var(--display); letter-spacing: -.02em; }
-.proof-copy p { max-width: 470px; margin: 0; color: var(--ink-2); font-size: 15px; line-height: 1.8; }
-.proof-tags { display: flex; gap: 8px; margin-top: 38px; flex-wrap: wrap; }
-.tag { border-top: 1px solid var(--rule); padding-top: 9px; min-width: 110px; color: var(--muted); font: 8px var(--mono); }
-.paths-section { background: #222220; color: #f7f3ea; padding: 112px 0; }
-.paths-head { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; margin-bottom: 64px; align-items: end; }
-.paths-head h2 { max-width: 720px; }
-.paths-head p { justify-self: end; max-width: 430px; color: rgba(255,255,255,.56); font-size: 14px; line-height: 1.75; }
-.paths { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid rgba(255,255,255,.2); }
-.path { min-height: 480px; padding: 46px; display: flex; flex-direction: column; }
-.path + .path { border-left: 1px solid rgba(255,255,255,.2); background: var(--paper); color: var(--ink); }
-.path-number { color: var(--coral); font: 9px var(--mono); }
-.path h3 { margin: 42px 0 20px; font: 400 clamp(44px, 4.7vw, 70px)/.93 var(--display); }
-.path-description { max-width: 470px; color: rgba(255,255,255,.54); font-size: 14px; line-height: 1.75; }
-.path + .path .path-description { color: var(--muted); }
-.service-list { margin: 38px 0 44px; border-top: 1px solid currentColor; }
-.service { display: flex; justify-content: space-between; gap: 20px; padding: 14px 0; border-bottom: 1px solid currentColor; font-size: 12px; }
-.service span:last-child { color: var(--coral-deep); font: 9px var(--mono); }
-.path-actions { margin-top: auto; display: flex; gap: 14px; flex-wrap: wrap; }
-.closing { padding: 108px 0 42px; }
-.closing-grid { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 70px; align-items: end; }
-.closing h2 { max-width: 900px; }
-.mascot { width: 190px; margin-left: auto; filter: grayscale(.25); }
-.closing-actions { margin-top: 50px; display: flex; gap: 12px; }
-.footer { margin-top: 90px; padding: 26px 0; border-top: 1px solid var(--ink); display: flex; justify-content: space-between; gap: 20px; color: var(--muted); font: 8px var(--mono); }
-dialog { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 32px); border: 0; padding: 0; background: #111; color: #fff; box-shadow: 0 30px 90px rgba(0,0,0,.45); }
-dialog::backdrop { background: rgba(20,18,16,.78); }
-.dialog-head { padding: 13px 16px; display: flex; justify-content: space-between; align-items: center; font: 9px var(--mono); }
-.dialog-head button { border: 0; background: none; color: #fff; cursor: pointer; }
-dialog video { width: 100%; max-height: calc(100vh - 76px); background: #000; }
-.no-js-fallback { margin: 12px 0 0; color: rgba(255,255,255,.6); font-size: 12px; }
-html[data-enhanced="true"] .no-js-fallback { display: none; }
-[data-reveal] { animation: reveal .7s cubic-bezier(.2,.7,.3,1) both; animation-delay: var(--delay, 0s); }
-@keyframes reveal { from { opacity: 0; transform: translateY(20px); } }
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+.button:active { transform: translateY(0); }
+.button.primary { color: var(--white); background: var(--ink); }
+.button.primary:hover { background: var(--coral-dark); }
+.button.light { color: var(--ink); background: var(--white); border-color: var(--white); }
+.button.coral { color: var(--ink); background: var(--coral); border-color: var(--coral); }
+
+.hero { min-height: calc(100vh - var(--nav-h)); padding: 72px 0 0; overflow: hidden; }
+.hero-copy { max-width: 1120px; margin: 0 auto; text-align: center; animation: hero-enter 520ms ease both; }
+.hero h1 { max-width: 1050px; margin: 0 auto; font-size: 88px; line-height: 1.04; font-weight: 900; letter-spacing: 0; }
+.hero h1 .line { display: block; }
+.hero h1 .hit { position: relative; color: var(--coral-dark); }
+.hero h1 .hit::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 7px; background: var(--coral); transform: rotate(-1.5deg); z-index: -1; }
+.hero-lede { max-width: 800px; margin: 28px auto 0; color: var(--ink-soft); font-size: 19px; line-height: 1.7; }
+.hero-actions { margin-top: 28px; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+.mac-download-note { max-width: 720px; margin: 14px auto 0; color: var(--ink-soft); font-size: 13px; }
+.mac-download-note a { color: var(--coral-dark); font-weight: 800; text-underline-offset: 3px; }
+.truth-note { margin: 18px auto 0; color: var(--muted); font-size: 12px; }
+.hero-product { width: var(--page); margin: 48px auto 0; position: relative; }
+.cost-ribbon { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--coral); border: 1px solid var(--ink); }
+.cost-ribbon span { padding: 12px 18px; border-right: 1px solid var(--ink); font-size: 13px; font-weight: 800; text-align: center; text-decoration: line-through 2px var(--ink); }
+.cost-ribbon span:last-child { border-right: 0; }
+.product-shot, .cost-evidence, .workflow-image-frame, .agent-image { position: relative; overflow: hidden; }
+.product-shot img, .cost-evidence img, .workflow-image-frame img, .agent-image img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.product-shot { aspect-ratio: 21 / 9; margin-top: -1px; border: 1px solid var(--ink); border-radius: 0 0 6px 6px; box-shadow: var(--shadow); background: var(--white); }
+
+.cost-section { margin-top: 88px; padding: 104px 0; color: var(--white); background: var(--ink); }
+.cost-heading { display: grid; grid-template-columns: 1.1fr .7fr; align-items: end; gap: 64px; }
+.cost-heading h2, .workflow h2, .stack h2, .open-source h2, .start h2, .community h2, .closing h2 { margin: 0; font-size: 58px; line-height: 1.08; font-weight: 800; letter-spacing: 0; }
+.cost-heading > p { margin: 0; color: #b9b6ad; font-size: 17px; }
+.cost-tabs { margin-top: 58px; display: grid; grid-template-columns: repeat(4, 1fr); border-block: 1px solid #3d3c38; }
+.cost-tab { min-height: 70px; padding: 12px; border: 0; border-right: 1px solid #3d3c38; color: #aaa79f; background: transparent; font-weight: 700; cursor: pointer; }
+.cost-tab:last-child { border-right: 0; }
+.cost-tab[aria-selected="true"] { color: var(--white); background: var(--coral-dark); }
+.cost-panel { padding-top: 54px; display: grid; grid-template-columns: .76fr 1.24fr; gap: 56px; align-items: stretch; }
+.cost-panel-copy { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; }
+.cost-index { color: var(--coral); font-size: 15px; font-weight: 800; }
+.cost-panel h3 { margin: 28px 0 20px; font-size: 42px; line-height: 1.14; }
+.cost-panel p { margin: 0; color: #c7c4bb; font-size: 17px; }
+.cost-proof { padding-top: 28px; border-top: 1px solid #3d3c38; color: var(--white); font-weight: 700; }
+.cost-evidence { aspect-ratio: 16 / 9.4; max-height: 500px; border: 1px solid #4b4944; border-radius: 6px; background: #20201d; }
+
+.stack { padding: 124px 0; }
+.stack-head { max-width: 980px; }
+.stack-head p { max-width: 720px; margin: 24px 0 0; color: var(--ink-soft); font-size: 18px; }
+.stack-map { margin-top: 72px; border-block: 1px solid var(--ink); }
+.stack-row { display: grid; grid-template-columns: 190px 1fr 56px 1fr; align-items: center; min-height: 118px; border-bottom: 1px solid var(--rule); }
+.stack-row:last-child { border-bottom: 0; }
+.stack-label { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.stack-items { display: flex; flex-wrap: wrap; gap: 10px 24px; font-size: 20px; font-weight: 700; }
+.stack-arrow { color: var(--coral-dark); font-size: 26px; font-weight: 800; text-align: center; }
+.stack-result { font-size: 20px; font-weight: 700; }
+
+.workflow { padding: 104px 0; background: var(--surface); border-block: 1px solid var(--rule); }
+.workflow-grid { margin-top: 56px; display: grid; grid-template-columns: minmax(280px, 320px) minmax(0, 1fr); gap: 56px; align-items: stretch; }
+.workflow-tabs { display: grid; grid-template-rows: repeat(4, 1fr); border-top: 1px solid var(--ink); }
+.workflow-tab { width: 100%; min-height: 0; padding: 16px 8px; display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
+.workflow-tab[aria-selected="true"] { color: var(--ink); }
+.workflow-tab span:first-child { font-size: 12px; font-weight: 800; }
+.workflow-tab strong { font-size: 18px; }
+.workflow-visual { min-width: 0; display: flex; flex-direction: column; }
+.workflow-image-frame { width: 100%; max-height: 460px; aspect-ratio: 21 / 10; border: 1px solid var(--ink); border-radius: 6px; background: var(--white); }
+.workflow-caption { min-height: 66px; margin: 16px 0 0; color: var(--ink-soft); font-size: 16px; }
+
+.agent-band { color: var(--white); background: #242c29; }
+.agent-grid { width: var(--page); margin: 0 auto; padding: 96px 0; display: grid; grid-template-columns: .88fr 1.12fr; align-items: center; gap: 64px; }
+.agent-copy h2 { margin: 0; font-size: 56px; line-height: 1.08; }
+.agent-copy p { margin: 24px 0 0; color: #c2c8c4; font-size: 17px; }
+.agent-list { margin: 34px 0 0; padding: 0; list-style: none; }
+.agent-list li { padding: 13px 0; border-bottom: 1px solid #48514d; font-weight: 700; }
+.agent-list li::before { content: "✓"; margin-right: 12px; color: #58d598; }
+.agent-image { width: 100%; max-height: 480px; aspect-ratio: 16 / 10; border: 1px solid #5c6661; border-radius: 6px; background: #303a36; }
+
+.open-source { padding: 118px 0; background: var(--coral); }
+.open-grid { display: grid; grid-template-columns: 1fr .72fr; gap: 100px; align-items: end; }
+.open-source h2 { max-width: 810px; }
+.open-facts { border-top: 1px solid var(--ink); }
+.open-fact { padding: 17px 0; display: flex; justify-content: space-between; gap: 24px; border-bottom: 1px solid color-mix(in srgb, var(--ink) 55%, transparent); font-weight: 700; }
+.open-fact span:last-child { text-align: right; }
+.open-actions { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 12px; }
+
+.start { padding: 120px 0; }
+.start-grid { margin-top: 58px; border-top: 1px solid var(--ink); }
+.start-row { min-height: 120px; display: grid; grid-template-columns: 80px 1fr 1fr; gap: 34px; align-items: center; border-bottom: 1px solid var(--rule); }
+.start-number { color: var(--coral-dark); font-size: 14px; font-weight: 800; }
+.start-row h3 { margin: 0; font-size: 24px; }
+.start-row p { margin: 0; color: var(--ink-soft); }
+.manual-links { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 12px; }
+
+.community { padding: 118px 0; background: var(--white); border-top: 1px solid var(--rule); }
+.community-head { max-width: 980px; }
+.community-head p { max-width: 720px; margin: 22px 0 0; color: var(--ink-soft); }
+.community-grid { margin-top: 54px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.community-card { min-height: 350px; padding: 34px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--ink); border-radius: 6px; background: var(--paper); }
+.community-card.user-community { display: grid; grid-template-columns: minmax(0, 1fr) 172px; gap: 28px; align-items: stretch; }
+.community-card.dark { color: var(--white); background: var(--ink); }
+.community-card h3 { max-width: 520px; margin: 0; font-size: 32px; line-height: 1.16; }
+.community-card p { max-width: 540px; margin: 18px 0 0; color: var(--ink-soft); }
+.community-card.dark p { color: #bab7ae; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.community-copy { display: flex; min-width: 0; flex-direction: column; justify-content: space-between; gap: 28px; }
+.community-qr { margin: 0; padding: 14px; align-self: center; border: 1px solid var(--rule); border-radius: 5px; background: var(--white); scroll-margin-top: calc(var(--nav-h) + 24px); }
+.community-qr img { width: 140px; height: 210px; object-fit: contain; }
+.community-qr figcaption { max-width: 140px; margin-top: 10px; color: var(--ink-soft); font-size: 12px; font-weight: 700; text-align: center; }
+
+.closing { padding: 110px 0 70px; color: var(--white); background: var(--ink); text-align: center; }
+.closing h2 { max-width: 980px; margin: 0 auto; font-size: 68px; }
+.closing > .wrap > p:not(.eyebrow) { max-width: 720px; margin: 24px auto 0; color: #bdbab1; }
+.closing .hero-actions { margin-top: 34px; }
+.footer { margin-top: 80px; padding-top: 28px; display: flex; justify-content: space-between; gap: 24px; border-top: 1px solid #3d3c38; color: #8f8c84; font-size: 12px; text-align: left; }
+.footer a { text-underline-offset: 3px; }
+
+dialog { width: min(900px, calc(100vw - 36px)); max-height: calc(100vh - 36px); padding: 0; overflow: auto; border: 1px solid var(--ink); border-radius: 6px; background: var(--paper); color: var(--ink); }
+dialog::backdrop { background: rgba(0,0,0,.72); }
+.dialog-head { min-height: 62px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--rule); }
+.dialog-head strong { font-size: 16px; }
+.dialog-close { width: 44px; height: 44px; flex: none; border: 0; background: transparent; font-size: 25px; cursor: pointer; }
+.dialog-body { padding: 22px; }
+.dialog-body video { width: 100%; background: #000; }
+.qr-content { max-width: 360px; margin: 0 auto; text-align: center; }
+.qr-content img { width: min(300px, 100%); margin: 0 auto; border: 1px solid var(--rule); }
+.qr-content p { margin: 16px 0 0; color: var(--ink-soft); }
+.download-dialog-body > p { margin: 0 0 22px; color: var(--ink-soft); }
+.download-options { border-top: 1px solid var(--ink); }
+.download-option { min-height: 76px; padding: 14px 4px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--rule); text-decoration: none; }
+.download-option:hover strong { color: var(--coral-dark); }
+.download-option span:first-child { min-width: 0; }
+.download-option strong, .download-option small { display: block; }
+.download-option strong { font-size: 16px; }
+.download-option small { margin-top: 3px; color: var(--muted); font-size: 12px; }
+.download-option > span:last-child { flex: none; color: var(--coral-dark); font-size: 12px; font-weight: 800; }
+.mac-install-guide { margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--ink); }
+.mac-install-guide-title { display: block; font-size: 16px; }
+.mac-install-guide p { margin: 10px 0 0; color: var(--ink-soft); }
+.mac-install-guide ol { margin: 14px 0 0; padding-left: 22px; }
+.mac-install-guide li + li { margin-top: 8px; }
+.mac-install-command { margin-top: 12px; padding: 12px 14px; display: block; max-width: 100%; overflow-wrap: anywhere; border: 1px solid var(--ink); background: var(--ink); color: var(--white); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.mac-install-guide .mac-install-safety { color: var(--muted); font-size: 12px; }
+.download-fallback { padding: 82px 0; background: var(--surface); border-top: 1px solid var(--rule); }
+.download-fallback h2 { margin: 0; font-size: 42px; line-height: 1.1; }
+.download-fallback p { max-width: 680px; color: var(--ink-soft); }
+.download-fallback .download-options { max-width: 760px; margin-top: 28px; }
+.download-fallback .mac-install-guide { max-width: 760px; }
+
+[data-reveal] { animation: reveal 520ms ease both; }
+@keyframes hero-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes reveal { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 1140px) {
+  .nav { gap: 18px; }
+  .nav-links { gap: 18px; }
+  .nav-links a { font-size: 13px; }
 }
-@media (max-width: 900px) {
-  :root { --page: min(calc(100% - 34px), 680px); }
-  .nav { height: 68px; gap: 12px; }
-  .nav-link { display: none; }
-  .brand { font-size: 22px; }
-  .nav .button { min-height: 36px; padding: 0 12px; font-size: 11px; }
-  .hero { min-height: 0; padding: 58px 0 42px; grid-template-columns: 1fr; gap: 42px; }
-  .eyebrow { margin-bottom: 44px; }
-  h1 { font-size: clamp(58px, 17vw, 82px); }
-  .lede { margin-top: 28px; }
-  .hero-note { margin-top: 44px; }
-  .monitor { padding: 24px 18px 30px; box-shadow: 12px 12px 0 rgba(0,0,0,.12); }
-  .ticker-inner span:nth-of-type(2), .ticker-inner span:nth-of-type(3), .ticker-inner .ticker-dot:nth-of-type(2) { display: none; }
-  .intro { padding: 82px 0 58px; grid-template-columns: 1fr; gap: 26px; }
-  h2 { font-size: clamp(52px, 14vw, 74px); }
-  .proof, .proof:nth-child(even) { padding: 62px 0; grid-template-columns: 42px 1fr; gap: 18px; align-items: start; }
-  .proof-media, .proof:nth-child(even) .proof-media { grid-column: 1 / -1; grid-row: 2; }
-  .proof-copy, .proof:nth-child(even) .proof-copy { grid-column: 2; grid-row: 1; }
-  .chapter { grid-column: 1; grid-row: 1; min-height: 135px; }
-  .proof-copy h3 { font-size: clamp(42px, 12vw, 58px); }
-  .proof-copy p { font-size: 14px; }
-  .proof-tags { margin-top: 24px; }
-  .paths-section { padding: 76px 0; }
-  .paths-head { grid-template-columns: 1fr; gap: 24px; }
-  .paths-head p { justify-self: start; }
-  .paths { grid-template-columns: 1fr; }
-  .path { min-height: 420px; padding: 34px 25px; }
-  .path + .path { border-left: 0; border-top: 1px solid rgba(255,255,255,.2); }
-  .closing { padding-top: 80px; }
-  .closing-grid { grid-template-columns: 1fr; }
-  .mascot { width: 120px; margin: 0; }
-  .footer { margin-top: 64px; flex-direction: column; }
+@media (max-width: 1050px) {
+  .hero h1 { font-size: 66px; }
+  .cost-heading h2, .workflow h2, .stack h2, .open-source h2, .start h2, .community h2 { font-size: 48px; }
+  .nav-links { display: none; }
+  .workflow-grid { grid-template-columns: 260px minmax(0, 1fr); gap: 40px; }
+  .agent-grid { grid-template-columns: 1fr; min-height: 0; }
+  .agent-image { justify-self: center; }
+  .open-grid { gap: 48px; }
+}
+@media (max-width: 760px) {
+  :root { --page: calc(100vw - 32px); --nav-h: 64px; }
+  .nav-download { display: none; }
+  .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  .nav-links.open { position: fixed; inset: var(--nav-h) 0 auto; padding: 20px 16px; display: grid; gap: 0; background: var(--paper); border-bottom: 1px solid var(--ink); box-shadow: 0 18px 35px rgba(23,23,21,.12); }
+  .nav-links.open a { min-height: 48px; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }
+  .hero { padding-top: 54px; }
+  .hero h1 { font-size: 45px; line-height: 1.08; }
+  .hero-lede { font-size: 16px; }
+  .hero-actions .button { width: 100%; }
+  .cost-ribbon { grid-template-columns: 1fr 1fr; }
+  .cost-ribbon span { border-bottom: 1px solid var(--ink); }
+  .cost-ribbon span:nth-child(2) { border-right: 0; }
+  .cost-ribbon span:nth-child(n+3) { border-bottom: 0; }
+  .product-shot { aspect-ratio: 4 / 3; }
+  .product-shot img { object-position: 52% top; }
+  .cost-section { margin-top: 72px; padding: 82px 0; }
+  .cost-heading, .cost-panel, .open-grid { grid-template-columns: 1fr; }
+  .cost-heading { gap: 24px; }
+  .cost-heading h2, .workflow h2, .stack h2, .open-source h2, .start h2, .community h2 { font-size: 38px; }
+  .cost-tabs { grid-template-columns: 1fr 1fr; }
+  .cost-tab { border-bottom: 1px solid #3d3c38; }
+  .cost-tab:nth-child(2) { border-right: 0; }
+  .cost-tab:nth-child(n+3) { border-bottom: 0; }
+  .cost-panel { min-height: 0; gap: 36px; }
+  .cost-panel-copy { gap: 34px; }
+  .cost-panel h3 { font-size: 32px; }
+  .cost-evidence { width: 100%; max-height: none; aspect-ratio: 4 / 3; }
+  .stack, .workflow, .open-source, .start, .community { padding: 82px 0; }
+  .stack-row { padding: 24px 0; grid-template-columns: 1fr; gap: 12px; }
+  .stack-arrow { width: 24px; text-align: left; transform: rotate(90deg); }
+  .workflow-grid { grid-template-columns: 1fr; gap: 28px; }
+  .workflow-tabs { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, 1fr); }
+  .workflow-tab { min-width: 0; grid-template-columns: 30px minmax(0, 1fr); min-height: 72px; padding-right: 12px; }
+  .workflow-image-frame { max-height: none; aspect-ratio: 4 / 3; }
+  .agent-grid { width: var(--page); padding: 82px 0; gap: 42px; }
+  .agent-copy h2 { font-size: 40px; }
+  .agent-image { max-height: none; aspect-ratio: 4 / 3; }
+  .open-grid { gap: 48px; }
+  .start-row { padding: 24px 0; grid-template-columns: 44px 1fr; gap: 12px; }
+  .start-row p { grid-column: 2; }
+  .community-grid { grid-template-columns: 1fr; }
+  .community-card { min-height: 310px; padding: 26px; }
+  .community-card.user-community { grid-template-columns: 1fr; gap: 28px; }
+  .community-qr { justify-self: center; }
+  .closing { padding-top: 82px; }
+  .closing h2 { font-size: 44px; }
+  .footer { flex-direction: column; }
+  .download-fallback h2 { font-size: 34px; }
 }
 @media (max-width: 360px) {
-  :root { --page: calc(100% - 24px); }
+  :root { --page: calc(100vw - 24px); }
   .brand span { display: none; }
   .actions, .closing-actions { flex-direction: column; }
-  .button { width: 100%; }
-  .proof, .proof:nth-child(even) { grid-template-columns: 34px 1fr; }
-  .path { padding-inline: 20px; }
+  .button { max-width: 100%; }
+  .community-card { padding-inline: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+  .hero-copy, [data-reveal] { animation: none; }
 }
 </style>
 </head>
 <body>
-<header class="site-head">
-<nav class="nav shell" aria-label="Primary navigation">
-  <a class="brand" href="/en/" aria-label="Nomi">
-    <img class="brand-logo" src="/assets/nomi-logo.svg" width="28" height="28" alt="" />
-    <span>Nomi</span>
-  </a>
-  <a class="nav-link" href="#product">Product</a>
-  <a class="nav-link" href="#teams">For Teams</a>
-  <a class="nav-link" href="#community">Community</a>
-  <a class="nav-link" href="https://github.com/aqm857886159/Nomi#quick-start">Docs</a>
-  <a class="nav-link" href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">GitHub</a>
-  <span class="locale" aria-label="Current language: English">
-    <a href="/" data-locale-choice="zh-CN">中文</a>
-    <span aria-hidden="true">/</span>
-    <a href="/en/" data-locale-choice="en" aria-current="page">EN</a>
-  </span>
-  <a class="button button--coral" data-download-nomi href="https://github.com/aqm857886159/Nomi/releases/latest" target="_blank" rel="noreferrer">
-    <span>Download</span><span aria-hidden="true">↘</span>
-  </a>
-</nav>
-<section id="top" class="hero shell">
-  <div class="hero-copy" data-reveal>
-    <div>
-      <p class="eyebrow">LOCAL-FIRST · OPEN SOURCE · AI VIDEO WORKBENCH</p>
-      <h1>Direct the shot.<em>Not just the prompt.</em></h1>
-      <p class="lede">Keep the story, storyboard, visual anchors, generation canvas, and timeline in one connected context.</p>
-      <div class="actions">
-        <a class="button button--coral" data-download-nomi href="https://github.com/aqm857886159/Nomi/releases/latest" target="_blank" rel="noreferrer"><span>Download Nomi</span><span aria-hidden="true">↘</span></a>
-        <a class="button button--ghost" href="/assets/video/launch-film-en.mp4" data-open-film><span>Watch the 60s film</span><span aria-hidden="true">▶</span></a>
-      </div>
-      <p class="no-js-fallback">Watch the 60s film · MP4</p>
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header">
+  <nav class="nav" aria-label="Primary navigation">
+    <a class="brand" href="/en/" aria-label="Nomi">
+      <img src="/assets/nomi-logo.svg" width="30" height="30" alt="" />
+      <span>Nomi</span>
+    </a>
+    <div class="nav-links" id="nav-links">
+      <a href="#cost">Why it costs less</a>
+      <a href="#workflow">How it works</a>
+      <a href="#open">Open source</a>
+      <a href="#start">User guide</a>
+      <a href="#community">Community &amp; projects</a>
     </div>
-    <div class="hero-note"><span>LOCAL-FIRST AI VIDEO WORKBENCH</span><span>01 / 06</span></div>
+    <div class="nav-actions">
+      <a class="locale" href="/" data-locale-choice="zh-CN" aria-label="Switch to Chinese">中文</a>
+      <a class="button primary nav-download" data-download-nomi href="#download-options">Download Nomi</a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    </div>
+  </nav>
+</header>
+<main id="main">
+<section class="hero" id="top">
+  <div class="wrap hero-copy" data-reveal>
+    <p class="eyebrow">OPEN-SOURCE · LOCAL-FIRST · AI VIDEO WORKBENCH</p>
+    <h1><span class="line">Bring the cost of AI video</span><span class="line hit">down.</span></h1>
+    <p class="hero-lede">Use your own models, subscriptions, APIs, and ComfyUI. Nomi brings scripts, storyboards, generation, editing, and AI assistants into one open-source workbench, so you do not pay again for platform bundles, duplicate tools, and inefficient retries.</p>
+    <div class="hero-actions">
+      <a class="button primary" data-download-nomi href="#download-options">Download Nomi</a>
+      <a class="button" href="/assets/video/launch-film-en.mp4" data-open-dialog="launch-film">Watch the 60s workflow</a>
+    </div>
+    <p class="mac-download-note">The macOS build is not yet signed or notarized, so macOS may block the first launch. <a href="#download-options" data-open-dialog="download-dialog">View safe opening steps</a></p>
+    <p class="truth-note">Generation still uses the quota of your chosen service. Nomi reduces platform markup, duplicate subscriptions, wasted generations, and repetitive work.</p>
   </div>
-  <figure class="monitor" style="--delay:.12s" data-reveal>
-    <div class="monitor-top"><span>NOMI / DIRECTOR MONITOR</span><span>REC · 00:00:14:22</span></div>
-    <div class="monitor-frame">
-      <video data-hero-video autoplay muted loop playsinline preload="metadata" poster="/assets/video/hero-poster.jpg" aria-label="Silent preview of the Nomi generation canvas workflow">
-        <source src="/assets/video/hero-loop.mp4" type="video/mp4" />
-      </video>
-    </div>
-    <figcaption class="monitor-caption"><span>See the whole sequence on one canvas instead of restarting from another prompt.</span><span>16:09 · LIVE</span></figcaption>
+  <figure class="hero-product">
+    <div class="cost-ribbon" aria-hidden="true"><span>Platform markup</span><span>Duplicate tools</span><span>Wasted rerolls</span><span>Repetitive work</span></div>
+    <div class="product-shot"><img src="/assets/screen-canvas-2026-08-17.png" alt="Nomi keeps character references, the generation canvas, and video timeline in one project" width="3200" height="1722" /></div>
   </figure>
 </section>
-</header>
-<div class="ticker" aria-hidden="true"><div class="ticker-inner shell"><span>STORY → STORYBOARD → CANVAS</span><i class="ticker-dot"></i><span>VISUAL ANCHORS → CONSISTENT WORLD</span><i class="ticker-dot"></i><span>MCP → SKILLS → EDITABLE FIRST CUT</span></div></div>
-<main>
-<section id="product" class="intro shell">
-  <p class="section-kicker">02 / PRODUCT PROOF</p>
-  <h2>Not more buttons.<br />A way for every shot to <em>inherit the same world.</em></h2>
-</section>
-<div class="shell"><article class="proof" id="proof-context" data-proof="context">
-  <div class="chapter"><strong>01</strong><span>CONTEXT<br />CONNECTED</span></div>
-  <figure class="proof-media"><img src="/assets/screen-script.png" alt="Nomi story and storyboard workspace" width="1600" height="900" /></figure>
-  <div class="proof-copy"><h3>Connected context</h3><p>Story, characters, storyboard, and generation evidence stay together. Every step knows what came before.</p><div class="proof-tags"><span class="tag">STORY</span><span class="tag">STORYBOARD</span><span class="tag">MEMORY</span></div></div>
-</article>
-<article class="proof" id="proof-world" data-proof="world">
-  <div class="chapter"><strong>02</strong><span>LOCK<br />THE<br />WORLD<br />FIRST</span></div>
-  <figure class="proof-media"><img src="/assets/screen-3d.png" alt="Character and camera staging in the Nomi 3D director stage" width="1600" height="900" /></figure>
-  <div class="proof-copy"><h3>Lock the world first</h3><p>Fix characters, locations, props, composition, and style first, so later shots inherit the same visual anchors.</p><div class="proof-tags"><span class="tag">CHARACTER</span><span class="tag">LOCATION</span><span class="tag">CAMERA</span></div></div>
-</article>
-<article class="proof" id="proof-canvas" data-proof="canvas">
-  <div class="chapter"><strong>03</strong><span>DIRECT<br />ON<br />CANVAS</span></div>
-  <figure class="proof-media"><img src="/assets/screen-canvas.png" alt="Connected shots and visual references on the Nomi generation canvas" width="1600" height="900" /></figure>
-  <div class="proof-copy"><h3>Direct on canvas</h3><p>Place media, draft prompts, and call generation tools while the full sequence remains in view.</p><div class="proof-tags"><span class="tag">PROMPTS</span><span class="tag">MEDIA</span><span class="tag">GENERATE</span></div></div>
-</article>
-<article class="proof" id="proof-agentic" data-proof="agentic">
-  <div class="chapter"><strong>04</strong><span>ONE<br />SENTENCE<br />TO<br />A<br />FIRST<br />CUT</span></div>
-  <figure class="proof-media"><img src="/assets/screen-agentic.jpg" alt="Real Nomi interface for connecting Claude Code, Codex, and Cursor" width="1600" height="900" /></figure>
-  <div class="proof-copy"><h3>One sentence to an editable first cut</h3><p>Let Claude Code or another AI assistant call Nomi over MCP and use Skills to build the project, storyboard the shot, connect references, and advance a first cut. You keep final control.</p><div class="proof-tags"><span class="tag">CLAUDE CODE</span><span class="tag">NOMI MCP</span><span class="tag">SKILLS</span></div></div>
-</article></div>
-<section id="teams" class="paths-section">
-  <div class="shell">
-    <div class="paths-head"><h2>Open for creators.<br /><em>Ready to fit a team.</em></h2><p>One product, two honest paths: download the open-source workbench, or bring us into a real delivery.</p></div>
-    <div class="paths">
-      <article class="path">
-        <span class="path-number">01 / OPEN SOURCE</span>
-        <h3>Open source for creators</h3>
-        <p class="path-description">Local-first and AGPL-3.0. Your projects and media stay on your computer; the workflow stays under your control.</p>
-        <div class="service-list"><a class="service" data-download-nomi href="https://github.com/aqm857886159/Nomi/releases/latest"><span>Download the desktop app</span><span>RELEASES</span></a><a class="service" href="https://github.com/aqm857886159/Nomi"><span>View the source</span><span>GITHUB</span></a><a class="service" href="https://github.com/aqm857886159/Nomi#quick-start"><span>Read the docs</span><span>DOCS</span></a></div>
-        <div class="path-actions"><a class="button button--coral" data-download-nomi href="https://github.com/aqm857886159/Nomi/releases/latest" target="_blank" rel="noreferrer"><span>Download Nomi</span><span aria-hidden="true">↘</span></a></div>
-      </article>
-      <article class="path">
-        <span class="path-number">02 / FOR TEAMS</span>
-        <h3>Make Nomi fit your product and delivery</h3>
-        <p class="path-description">For internal AI video workbenches, client projects, vertical workflows, and white-label products—from first validation through ongoing iteration. The public issue should contain only a non-confidential summary.</p>
-        <p class="path-description">Maintainer WeChat · TZ857886159</p>
-        <div class="service-list"><div class="service" data-service="custom"><span>Custom builds</span><span>CUSTOM</span></div><div class="service" data-service="integration"><span>System and model integrations</span><span>INTEGRATE</span></div><div class="service" data-service="whiteLabel"><span>White-label and commercial license</span><span>WHITE-LABEL</span></div><div class="service" data-service="iteration"><span>Ongoing optimization and iteration</span><span>ONGOING</span></div></div>
-        <div class="path-actions">
-          <a class="button button--ink" href="https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml" target="_blank" rel="noreferrer"><span>Discuss a project</span><span aria-hidden="true">↗</span></a>
-          <a class="button" href="/assets/qingyang-wechat.jpg" target="_blank" rel="noreferrer"><span>WeChat contact</span><span aria-hidden="true">↗</span></a>
-        </div>
-      </article>
+<section class="cost-section" id="cost">
+  <div class="wrap">
+    <div class="cost-heading" data-reveal>
+      <div><p class="eyebrow">WHY IT COSTS LESS</p><h2>The model is not the only expensive part.</h2></div>
+      <p>Costs compound when you buy the same capability twice, reroll without references, move assets between ten tools, and rebuild every project from scratch.</p>
+    </div>
+    <div class="cost-tabs" role="tablist" aria-label="Cost dimensions" data-reveal><button id="cost-tab-generation" class="cost-tab" type="button" role="tab" aria-selected="true" aria-controls="cost-panel" tabindex="0" data-cost="generation">Generation</button><button id="cost-tab-trial" class="cost-tab" type="button" role="tab" aria-selected="false" aria-controls="cost-panel" tabindex="-1" data-cost="trial">Iteration</button><button id="cost-tab-labor" class="cost-tab" type="button" role="tab" aria-selected="false" aria-controls="cost-panel" tabindex="-1" data-cost="labor">Labor</button><button id="cost-tab-lockin" class="cost-tab" type="button" role="tab" aria-selected="false" aria-controls="cost-panel" tabindex="-1" data-cost="lockin">Ownership</button></div>
+    <div class="cost-panel" id="cost-panel" role="tabpanel" aria-labelledby="cost-tab-generation" aria-live="polite" data-reveal>
+      <div class="cost-panel-copy">
+        <div><div class="cost-index" id="cost-index">01 / GENERATION</div><h3 id="cost-title">Keep using what you already pay for.</h3><p id="cost-copy">Your Dreamina subscription, preferred cloud API, and local ComfyUI can all stay in the workflow. Send each shot to the model that fits it best.</p></div>
+        <div class="cost-proof" id="cost-proof">Result: switching workbenches does not mean buying the same generation capability again.</div>
+      </div>
+      <div class="cost-evidence"><img id="cost-image" src="/assets/screen-canvas-2026-08-17.png" alt="Nomi generation canvas and model workflow" width="3200" height="1722" /></div>
     </div>
   </div>
 </section>
-<section id="community" class="paths-section" aria-labelledby="community-title">
-  <div class="shell">
-    <div class="paths-head"><h2 id="community-title">Build with Nomi.<br /><em>Help shape what comes next.</em></h2><p>See real workflows, discuss friction, follow releases, and bring useful feedback directly into the next iteration.</p></div>
-    <div class="paths"><article class="path" data-community-card="group">
-        <span class="path-number">01 / COMMUNITY</span>
-        <h3>Join the Nomi community</h3>
-        <p class="path-description">Use GitHub Discussions for an open, international conversation. WeChat users can also open the Chinese group QR.</p>
-        <div class="service-list">
-          <a class="service" href="https://github.com/aqm857886159/Nomi/discussions" target="_blank" rel="noreferrer"><span>Open GitHub Discussions</span><span>DISCUSS</span></a>
-          <a class="service" href="/assets/group-wechat-2026-08-14.png" target="_blank" rel="noreferrer"><span>Open the WeChat group QR</span><span>WECHAT GROUP</span></a>
-        </div>
-      </article><article class="path" data-community-card="author">
-        <span class="path-number">02 / FOR TEAMS</span>
-        <h3>Bring a real project</h3>
-        <p class="path-description">Discuss a custom build, integration, white-label delivery, commercial license, or ongoing iteration using non-confidential information. Maintainer WeChat · TZ857886159</p>
-        <div class="service-list">
-          <a class="service" href="https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml" target="_blank" rel="noreferrer"><span>Discuss a project</span><span>BUSINESS</span></a>
-          <a class="service" href="/assets/qingyang-wechat.jpg" target="_blank" rel="noreferrer"><span>Open the maintainer WeChat QR</span><span>WECHAT</span></a>
-        </div>
-      </article></div>
+<section class="stack" aria-labelledby="stack-title">
+  <div class="wrap">
+    <div class="stack-head" data-reveal>
+      <p class="eyebrow">BRING YOUR OWN STACK</p>
+      <h2 id="stack-title">Do not buy another model.<br />Connect the capabilities you already have.</h2>
+      <p>Nomi does not compete with Dreamina, ComfyUI, or model APIs. It organizes those capabilities into a video workflow you can edit, recover, and deliver.</p>
+    </div>
+    <div class="stack-map" data-reveal><div class="stack-row">
+    <div class="stack-label">Generation</div>
+    <div class="stack-items"><span>Dreamina</span><span>Any API</span><span>Local ComfyUI</span></div>
+    <div class="stack-arrow" aria-hidden="true">→</div>
+    <div class="stack-result">Image, video, text, and sound</div>
+  </div><div class="stack-row">
+    <div class="stack-label">Workbench</div>
+    <div class="stack-items"><span>Nomi canvas</span><span>Visual anchors</span><span>Real timeline</span></div>
+    <div class="stack-arrow" aria-hidden="true">→</div>
+    <div class="stack-result">A first cut you can keep editing</div>
+  </div><div class="stack-row">
+    <div class="stack-label">AI assistants</div>
+    <div class="stack-items"><span>Codex</span><span>Claude Code</span><span>Cursor</span></div>
+    <div class="stack-arrow" aria-hidden="true">→</div>
+    <div class="stack-result">Real work through MCP + Skills</div>
+  </div></div>
   </div>
 </section>
-<section class="closing shell">
-  <div class="closing-grid">
-    <div>
-      <p class="section-kicker">06 / BRING YOUR SHOT INTO FOCUS</p>
-      <h2>You see the shot.<br /><em>Nomi helps the model see it.</em></h2>
-      <div class="closing-actions">
-        <a class="button button--ink" data-download-nomi href="https://github.com/aqm857886159/Nomi/releases/latest" target="_blank" rel="noreferrer"><span>Download</span><span aria-hidden="true">↘</span></a>
-        <a class="button" href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+<section class="workflow" id="workflow">
+  <div class="wrap">
+    <p class="eyebrow" data-reveal>ONE PROJECT · ONE CONTEXT</p>
+    <h2 data-reveal>From one sentence to a video you can still edit.</h2>
+    <div class="workflow-grid" data-reveal>
+      <div class="workflow-tabs" role="tablist" aria-label="Nomi workflow"><button id="workflow-tab-story" class="workflow-tab" type="button" role="tab" aria-selected="true" aria-controls="workflow-panel" tabindex="0" data-step="story"><span>01</span><strong>Write &amp; plan</strong></button><button id="workflow-tab-anchor" class="workflow-tab" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-step="anchor"><span>02</span><strong>Lock references</strong></button><button id="workflow-tab-generate" class="workflow-tab" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-step="generate"><span>03</span><strong>Run generation</strong></button><button id="workflow-tab-edit" class="workflow-tab" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-step="edit"><span>04</span><strong>Edit &amp; deliver</strong></button></div>
+      <div class="workflow-visual" id="workflow-panel" role="tabpanel" aria-labelledby="workflow-tab-story" aria-live="polite">
+        <div class="workflow-image-frame"><img id="workflow-image" src="/assets/screen-script-2026-08-17.png" alt="Nomi story and storyboard workspace" width="3200" height="1722" /></div>
+        <p class="workflow-caption" id="workflow-caption">Story, characters, and shot plans stay in one project, so every later step knows what came before.</p>
       </div>
     </div>
-    <img class="mascot" src="/assets/mascot.png" alt="Nomi origami mascot" width="512" height="512" loading="lazy" />
   </div>
-  <footer class="footer">
-    <span>© 2026 NOMI · <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">AGPL-3.0-only</a></span>
-    <span>Historical releases keep the license they were published under</span>
-    <span>No website account · Nomi does not upload project media to its own servers</span>
-    <a href="/" data-locale-choice="zh-CN">简体中文</a>
-  </footer>
+</section>
+<section class="agent-band" aria-labelledby="agent-title">
+  <div class="agent-grid">
+    <div class="agent-copy" data-reveal>
+      <p class="eyebrow">MCP + SKILLS</p>
+      <h2 id="agent-title">Let AI assistants do the work,<br />not just suggest it.</h2>
+      <p>Codex, Claude Code, and Cursor can create Nomi projects, break down shots, connect references, call your configured models, and advance an editable first cut.</p>
+      <ul class="agent-list"><li>See the model and spending consequence before generation</li><li>You still approve budgets, accepted results, and exports</li><li>Resume interrupted work without submitting the same order twice</li></ul>
+    </div>
+    <div class="agent-image" data-reveal><img src="/assets/screen-agentic-2026-08-17.png" alt="Claude Code, Codex, and Cursor connection entry in Nomi automation and permission settings" width="3200" height="1722" /></div>
+  </div>
+</section>
+<section class="open-source" id="open">
+  <div class="wrap open-grid">
+    <div data-reveal>
+      <p class="eyebrow">OPEN SOURCE IS THE BUSINESS MODEL</p>
+      <h2>You control cost when you control the source.</h2>
+      <div class="open-actions">
+        <a class="button primary" href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">View on GitHub</a>
+        <a class="button" href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">Read the license</a>
+      </div>
+    </div>
+    <div class="open-facts" data-reveal><div class="open-fact"><span>Workbench</span><span>AGPL-3.0 open source</span></div><div class="open-fact"><span>Projects &amp; media</span><span>Stored on your computer</span></div><div class="open-fact"><span>Models &amp; keys</span><span>Chosen and held by you</span></div><div class="open-fact"><span>Closed integrations / white label</span><span>Commercial licensing available</span></div></div>
+  </div>
+</section>
+<section class="start" id="start">
+  <div class="wrap">
+    <p class="eyebrow" data-reveal>START WITH WHAT YOU HAVE</p>
+    <h2 data-reveal>Three steps to your first finished video.</h2>
+    <div class="start-grid" data-reveal><div class="start-row"><span class="start-number">01</span><h3>Download the desktop app</h3><p>Installers are available for Windows and macOS. No Docker or database required.</p></div><div class="start-row"><span class="start-number">02</span><h3>Connect what you already use</h3><p>Use your own APIs, Dreamina subscription, or local ComfyUI instead of buying another bundle.</p></div><div class="start-row"><span class="start-number">03</span><h3>Make a 3–6 shot short</h3><p>Complete the loop from story and references through generation, timeline editing, and MP4 export.</p></div></div>
+    <div class="manual-links" data-reveal>
+      <a class="button primary" href="https://github.com/aqm857886159/Nomi#quick-start">Quick start</a>
+      <a class="button" href="/handbook.html">Chinese handbook</a>
+      <a class="button" href="https://github.com/aqm857886159/Nomi/blob/main/docs/guide/capability-core-cli-mcp.md" target="_blank" rel="noreferrer">MCP guide</a>
+    </div>
+  </div>
+</section>
+<section class="community" id="community">
+  <div class="wrap">
+    <div class="community-head" data-reveal>
+      <p class="eyebrow">BUILD IN PUBLIC</p>
+      <h2>Your friction goes straight into the next iteration.</h2>
+      <p>Real creators use the product first, and real projects shape what gets fixed next. Community feedback and project work have separate paths.</p>
+    </div>
+    <div class="community-grid">
+      <article class="community-card user-community" data-reveal>
+        <div class="community-copy">
+          <div><p class="eyebrow">USER COMMUNITY</p><h3>Join the Nomi community and keep pushing costs down.</h3><p>Share workflows, report friction, and follow releases through GitHub Issues. WeChat users can scan the group code directly.</p></div>
+          <div class="card-actions"><a class="button" href="https://github.com/aqm857886159/Nomi/issues" target="_blank" rel="noreferrer">GitHub Issues</a></div>
+        </div>
+        <figure class="community-qr" id="community-qr"><img src="/assets/group-wechat-2026-08-25.jpg" alt="WeChat QR code for the Nomi user group" width="140" height="210" /><figcaption>Scan to join the Nomi WeChat group</figcaption></figure>
+      </article>
+      <article class="community-card dark" data-reveal>
+        <div><p class="eyebrow">FOR REAL PROJECTS</p><h3>Bring a real project and discuss how to ship it.</h3><p>Internal AI video workbenches, model integrations, vertical workflows, white-label delivery, and ongoing iteration.</p></div>
+        <div class="card-actions">
+          <button class="button light" type="button" data-open-dialog="author-dialog">Maintainer WeChat</button>
+          <a class="button coral" href="https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml" target="_blank" rel="noreferrer">Submit project brief</a>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+<section class="closing">
+  <div class="wrap">
+    <p class="eyebrow" data-reveal>NOMI / OPEN-SOURCE AI VIDEO WORKBENCH</p>
+    <h2 data-reveal>Bring the cost of AI video down.</h2>
+    <p data-reveal>Use your own models and workflow to finish a video that stays on your computer and remains editable.</p>
+    <div class="hero-actions" data-reveal>
+      <a class="button light" data-download-nomi href="#download-options">Download Nomi</a>
+      <a class="button coral" href="#community-qr">Join the community</a>
+    </div>
+    <footer class="footer">
+      <span>Nomi · Local-first AI video workbench · <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">AGPL-3.0-only</a></span>
+      <span>Open source does not mean every inference is offline · External models follow their own pricing and service terms</span>
+      <a href="/" data-locale-choice="zh-CN">简体中文</a>
+    </footer>
+  </div>
 </section>
 </main>
 <dialog id="launch-film" aria-labelledby="film-title">
-  <div class="dialog-head"><span id="film-title">Nomi English launch film · 60S</span><button type="button" data-close-film aria-label="Close launch film">ESC / CLOSE</button></div>
-  <video controls preload="metadata" poster="/assets/video/hero-poster.jpg">
-    <source src="/assets/video/launch-film-en.mp4" type="video/mp4" />
-    <track kind="captions" srclang="en" label="English" src="/assets/video/launch-film-en.vtt" default />
-  </video>
+  <div class="dialog-head"><strong id="film-title">The Nomi workflow</strong><button class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <div class="dialog-body"><video controls preload="metadata" poster="/assets/video/hero-poster.jpg"><source src="/assets/video/launch-film-en.mp4" type="video/mp4" /><track kind="captions" srclang="en" src="/assets/video/launch-film-en.vtt" label="English" default /></video></div>
 </dialog>
+<dialog id="author-dialog" aria-labelledby="author-title">
+  <div class="dialog-head"><strong id="author-title">Maintainer WeChat</strong><button class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <div class="dialog-body qr-content"><img src="/assets/qingyang-wechat.jpg" alt="Maintainer WeChat" width="960" height="960" /><p>WeChat ID: TZ857886159. Include a short description of the project, current workflow, and the cost you most want to reduce.</p></div>
+</dialog>
+<dialog id="download-dialog" aria-labelledby="download-title">
+  <div class="dialog-head"><strong id="download-title">Choose the version for this computer</strong><button class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <div class="dialog-body download-dialog-body"><p>Nomi downloads directly when the platform is known. If the Mac chip cannot be detected reliably, choose the matching installer.</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">First launch on macOS</strong>
+  <p>The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.</p>
+  <ol><li>Download the matching DMG and drag Nomi to Applications.</li><li>In Finder, right-click Nomi in Applications, choose Open, then confirm Open.</li><li>If it is still blocked, open System Settings → Privacy &amp; Security, find Nomi, and click Open Anyway.</li></ol>
+  <p>Only if macOS says Nomi is “damaged”: confirm the installer came from an official link above, then open Terminal and run:</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">You do not need to disable Gatekeeper globally, and should not do so.</p>
+</section></div>
+</dialog>
+<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>Choose the version for this computer</h2><p>Nomi downloads directly when the platform is known. If the Mac chip cannot be detected reliably, choose the matching installer.</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">First launch on macOS</strong>
+  <p>The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.</p>
+  <ol><li>Download the matching DMG and drag Nomi to Applications.</li><li>In Finder, right-click Nomi in Applications, choose Open, then confirm Open.</li><li>If it is still blocked, open System Settings → Privacy &amp; Security, find Nomi, and click Open Anyway.</li></ol>
+  <p>Only if macOS says Nomi is “damaged”: confirm the installer came from an official link above, then open Terminal and run:</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">You do not need to disable Gatekeeper globally, and should not do so.</p>
+</section></div></section></noscript>
 <script>(() => {
   const downloadUrls = {"windowsX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe","macArm64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg","macX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"}
+  const interactionData = {"cost":[{"id":"generation","label":"Generation","index":"01 / GENERATION","title":"Keep using what you already pay for.","description":"Your Dreamina subscription, preferred cloud API, and local ComfyUI can all stay in the workflow. Send each shot to the model that fits it best.","proof":"Result: switching workbenches does not mean buying the same generation capability again.","image":"/assets/screen-canvas-2026-08-17.png","imageAlt":"Nomi generation canvas and model workflow"},{"id":"trial","label":"Iteration","index":"02 / ITERATION","title":"Every avoided reroll keeps money in your budget.","description":"Characters, locations, props, composition, and style remain as visual anchors. Later shots inherit evidence instead of gambling on a fresh prompt.","proof":"Result: fewer identity shifts, spatial jumps, and blind generations without references.","image":"/assets/screen-3d-2026-08-17.png","imageAlt":"Character and camera references in the Nomi 3D director stage"},{"id":"labor","label":"Labor","index":"03 / LABOR","title":"Give repetitive production work to AI assistants.","description":"Codex, Claude Code, and Cursor use MCP and Skills to create projects, break down shots, connect references, call models, and advance a first cut. You decide direction, budget, and what gets accepted.","proof":"Result: spend time on judgment and creative direction, not mechanical setup and asset shuffling.","image":"/assets/screen-agentic-2026-08-17.png","imageAlt":"AI assistant connection entry in Nomi automation and permission settings"},{"id":"lockin","label":"Ownership","index":"04 / OWNERSHIP","title":"Switch models without switching homes.","description":"Projects, media, prompts, and keys stay on your computer. When a provider changes price or quality, replace the generation capability instead of abandoning the project.","proof":"Result: you keep the workflow, so a platform change does not force a restart.","image":"/assets/screen-timeline-2026-08-17.png","imageAlt":"A Nomi project and timeline stored on the local computer"}],"workflow":[{"id":"story","number":"01","label":"Write & plan","image":"/assets/screen-script-2026-08-17.png","imageAlt":"Nomi story and storyboard workspace","caption":"Story, characters, and shot plans stay in one project, so every later step knows what came before."},{"id":"anchor","number":"02","label":"Lock references","image":"/assets/screen-3d-2026-08-17.png","imageAlt":"Nomi 3D director stage and visual references","caption":"Lock characters, locations, props, camera position, and style before later shots inherit the same evidence."},{"id":"generate","number":"03","label":"Run generation","image":"/assets/screen-canvas-2026-08-17.png","imageAlt":"Nomi generation canvas","caption":"Keep prompts, references, results, and the next shot on one canvas, then choose the right model for each task."},{"id":"edit","number":"04","label":"Edit & deliver","image":"/assets/screen-timeline-2026-08-17.png","imageAlt":"Nomi video timeline","caption":"Move accepted results into a real timeline for editing, preview, and MP4 export instead of stopping at scattered assets."}]}
+  const selectDownload = function selectDownload({ platform = '', userAgent = '', architecture = '' } = {}) {
+  const platformText = `${platform} ${userAgent}`.toLowerCase()
+  const architectureText = String(architecture).toLowerCase()
+
+  if (/\b(?:win32|win64|windows)\b/.test(platformText) && !/arm/.test(architectureText)) return downloadUrls.windowsX64
+  if (!/mac|darwin|iphone|ipad/.test(platformText)) return null
+  if (/arm|aarch64/.test(architectureText) || /arm64/.test(platformText)) return downloadUrls.macArm64
+  if (/x86|x64|intel/.test(architectureText)) return downloadUrls.macX64
+  return null
+}
+  const resolveDownloadRequest = function resolveDownloadRequest({ search = '', platform = '', userAgent = '', architecture = '' } = {}) {
+  const params = new URLSearchParams(search)
+  const requestedPlatform = params.get('platform') || ''
+  const requestedArchitecture = params.get('arch') || ''
+  const hasExplicitTarget = params.has('platform') || params.has('arch')
+  const url = hasExplicitTarget
+    ? selectDownload({ platform: requestedPlatform, architecture: requestedArchitecture })
+    : selectDownload({ platform, userAgent, architecture })
+
+  return {
+    autoDownload: params.get('download') === '1',
+    hasExplicitTarget,
+    url,
+  }
+}
   const localeKey = 'nomi_locale'
   const pageLocale = document.documentElement.lang
-  const preferred = (() => { try { return localStorage.getItem(localeKey) } catch { return null } })()
-  const browserLanguages = navigator.languages || [navigator.language || '']
-  const wantsEnglish = browserLanguages[0]?.toLowerCase().startsWith('en') && !browserLanguages.some((value) => value.toLowerCase().startsWith('zh'))
-  if (location.pathname === '/' && !preferred && wantsEnglish) location.replace('/en/')
-  document.querySelectorAll('[data-locale-choice]').forEach((link) => link.addEventListener('click', () => {
-    try { localStorage.setItem(localeKey, link.dataset.localeChoice) } catch {}
-  }))
-  const dialog = document.querySelector('#launch-film')
-  const trigger = document.querySelector('[data-open-film]')
-  const close = document.querySelector('[data-close-film]')
-  if (dialog && trigger && typeof dialog.showModal === 'function') {
-    trigger.addEventListener('click', (event) => { event.preventDefault(); dialog.showModal() })
-    close?.addEventListener('click', () => dialog.close())
-    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })
+  document.querySelectorAll('[data-locale-choice]').forEach((link) => {
+    if (location.hash) {
+      const destination = new URL(link.href, location.href)
+      destination.hash = location.hash
+      link.href = destination.pathname + destination.search + destination.hash
+    }
+    link.addEventListener('click', () => {
+      try { localStorage.setItem(localeKey, link.dataset.localeChoice) } catch {}
+    })
+  })
+
+  const menuToggle = document.querySelector('.menu-toggle')
+  const navLinks = document.querySelector('#nav-links')
+  const closeMenu = () => {
+    navLinks?.classList.remove('open')
+    menuToggle?.setAttribute('aria-expanded', 'false')
   }
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) document.querySelector('[data-hero-video]')?.pause()
+  menuToggle?.addEventListener('click', () => {
+    const open = navLinks?.classList.toggle('open') || false
+    menuToggle.setAttribute('aria-expanded', String(open))
+  })
+  navLinks?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu))
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && navLinks?.classList.contains('open')) {
+      closeMenu()
+      menuToggle?.focus()
+    }
+  })
+
+  const activateCost = (tab) => {
+    const data = interactionData.cost.find((item) => item.id === tab.dataset.cost)
+    if (!data) return
+    document.querySelectorAll('[data-cost]').forEach((item) => {
+      const selected = item === tab
+      item.setAttribute('aria-selected', String(selected))
+      item.setAttribute('tabindex', selected ? '0' : '-1')
+    })
+    document.querySelector('#cost-panel')?.setAttribute('aria-labelledby', tab.id)
+    document.querySelector('#cost-index').textContent = data.index
+    document.querySelector('#cost-title').textContent = data.title
+    document.querySelector('#cost-copy').textContent = data.description
+    document.querySelector('#cost-proof').textContent = data.proof
+    const image = document.querySelector('#cost-image')
+    image.src = data.image
+    image.alt = data.imageAlt
+  }
+
+  const activateWorkflow = (tab) => {
+    const data = interactionData.workflow.find((item) => item.id === tab.dataset.step)
+    if (!data) return
+    document.querySelectorAll('[data-step]').forEach((item) => {
+      const selected = item === tab
+      item.setAttribute('aria-selected', String(selected))
+      item.setAttribute('tabindex', selected ? '0' : '-1')
+    })
+    document.querySelector('#workflow-panel')?.setAttribute('aria-labelledby', tab.id)
+    const image = document.querySelector('#workflow-image')
+    image.src = data.image
+    image.alt = data.imageAlt
+    document.querySelector('#workflow-caption').textContent = data.caption
+  }
+
+  const bindTabs = (selector, activate) => {
+    const tabs = Array.from(document.querySelectorAll(selector))
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activate(tab))
+      tab.addEventListener('keydown', (event) => {
+        const horizontal = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+        const vertical = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
+        let nextIndex = index + horizontal + vertical
+        if (event.key === 'Home') nextIndex = 0
+        else if (event.key === 'End') nextIndex = tabs.length - 1
+        else if (!horizontal && !vertical) return
+        event.preventDefault()
+        const next = tabs[(nextIndex + tabs.length) % tabs.length]
+        activate(next)
+        next.focus()
+      })
+    })
+  }
+  bindTabs('[data-cost]', activateCost)
+  bindTabs('[data-step]', activateWorkflow)
+
+  document.querySelectorAll('[data-open-dialog]').forEach((trigger) => trigger.addEventListener('click', (event) => {
+    const dialog = document.querySelector('#' + trigger.dataset.openDialog)
+    if (!dialog || typeof dialog.showModal !== 'function') return
+    event.preventDefault()
+    dialog.showModal()
+    document.body.classList.add('modal-open')
+  }))
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })
+    dialog.addEventListener('close', () => {
+      if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open')
+      dialog.querySelector('video')?.pause()
+    })
+  })
+
+  const downloadDialog = document.querySelector('#download-dialog')
+  const showDownloadOptions = () => {
+    if (!downloadDialog || typeof downloadDialog.showModal !== 'function') return
+    downloadDialog.showModal()
+    document.body.classList.add('modal-open')
+  }
+  downloadDialog?.querySelectorAll('[data-direct-download]').forEach((link) => link.addEventListener('click', () => {
+    downloadDialog.close()
+  }))
+
   const resolvePlatformDownload = async () => {
     const platform = navigator.platform || ''
     const userAgent = navigator.userAgent || ''
@@ -347,32 +657,29 @@ html[data-enhanced="true"] .no-js-fallback { display: none; }
     if (navigator.userAgentData?.getHighEntropyValues) {
       try { architecture = (await navigator.userAgentData.getHighEntropyValues(['architecture'])).architecture || '' } catch {}
     }
-    const platformText = (platform + ' ' + userAgent).toLowerCase()
-    const architectureText = architecture.toLowerCase()
-    const url = /win/.test(platformText) && !/arm/.test(architectureText)
-      ? downloadUrls.windowsX64
-      : /mac|iphone|ipad/.test(platformText) && /arm|aarch64/.test(architectureText)
-        ? downloadUrls.macArm64
-        : /mac|iphone|ipad/.test(platformText) && (/x86|x64|intel/.test(architectureText) || /intel mac/.test(platformText))
-          ? downloadUrls.macX64
-          : null
-    return url || null
+    return resolveDownloadRequest({ search: location.search, platform, userAgent, architecture })
   }
-  const applyPlatformDownload = async () => {
-    const url = await resolvePlatformDownload()
+  const applyPlatformDownload = (url) => {
     if (!url) return
     document.querySelectorAll('[data-download-nomi]').forEach((link) => {
       link.href = url
-      link.removeAttribute('target')
-      link.removeAttribute('rel')
     })
   }
   document.querySelectorAll('[data-download-nomi]').forEach((link) => link.addEventListener('click', async (event) => {
     event.preventDefault()
-    const url = await resolvePlatformDownload()
-    location.href = url || link.href
+    const request = await resolvePlatformDownload()
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
   }))
-  void applyPlatformDownload()
+  void resolvePlatformDownload().then((request) => {
+    applyPlatformDownload(request.url)
+    if (!request.autoDownload) return
+    const cleanUrl = new URL(location.href)
+    for (const key of ['download', 'source', 'platform', 'arch']) cleanUrl.searchParams.delete(key)
+    history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  })
   document.documentElement.dataset.enhanced = 'true'
   document.documentElement.dataset.locale = pageLocale
 })()</script>

@@ -38,15 +38,22 @@ describe("built-in skill packs", () => {
     expect(result.ok, result.ok ? "" : (result as { error: string }).error).toBe(true);
   });
 
-  it("brand-promo is a 4-stage playbook that topo-sorts cleanly", () => {
+  it("brand-promo is a script-first 5-stage playbook that topo-sorts cleanly", () => {
     const raw = JSON.parse(fs.readFileSync(path.join(SKILLS_DIR, "brand-promo", "skill.json"), "utf8"));
     const parsed = parseSkillManifest(raw);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const stages = parsed.manifest.stages ?? [];
-    expect(stages).toHaveLength(4);
+    expect(stages).toHaveLength(5);
     const ordered = orderPlaybookStages(stages).map((s) => s.id);
-    expect(ordered).toEqual(["storyboard", "build", "generate", "assemble"]);
+    expect(ordered).toEqual(["script", "storyboard", "build", "generate", "assemble"]);
+    expect(stages.find((stage) => stage.id === "script")?.pause).toBe(true);
+    expect(stages.find((stage) => stage.id === "script")?.skillRefs).toEqual([
+      "writer-screenwriter",
+      "writer-structure",
+      "writer-dialogue",
+      "writer-review",
+    ]);
   });
 
   it("every brand-promo stage tool is also declared in the top-level tools whitelist", () => {

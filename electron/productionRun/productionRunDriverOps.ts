@@ -9,8 +9,10 @@
 import crypto from 'node:crypto'
 
 import { settlePauseIfQuiet } from './productionRunControl'
+import { adoptedGenerationShotNodeIds, buildQaRetryPlans, buildQaStageOutcome, type QaVerifyResponse } from './productionQaVerdict'
 import type { ProductionRunRepository } from './productionRunRepository'
 import { trustLevelOf, type ProductionRun } from './productionRunTypes'
+import { loadPlaybookStageEvidence } from '../skills/skillExecutionEvidence'
 
 /** Job ids intentionally contain a namespace separator (`job:run:node`), but artifact ids are
  * public deep-link identifiers. Keep the mapping stable, collision-resistant, and URL-safe. */
@@ -87,6 +89,62 @@ function sampleGateId(planVersion: number): string {
   return `gate-sample-v${planVersion}`
 }
 
+/** W2 冻结门 id（每个 planVersion 一道，样片门语义扩展的「更早一站」——看锚而非看首镜）。 */
+function freezeGateId(planVersion: number): string {
+  return `gate-freeze-v${planVersion}`
+}
+
+/** W2 冻结门是否已放行（approved）：放行后同批锚幂等，不再重设。 */
+function hasApprovedFreezeGate(run: ProductionRun): boolean {
+  return run.gates.some((gate) => gate.gateId === freezeGateId(run.planVersion) && gate.status === 'approved')
+}
+
+/** W2 冻结门是否在等（waiting）：等过目期间停在门上，不提交任何镜头。 */
+function hasWaitingFreezeGate(run: ProductionRun): boolean {
+  return run.gates.some((gate) => gate.gateId === freezeGateId(run.planVersion) && gate.status === 'waiting')
+}
+
+/**
+ * W2 冻结门读锚：问渲染层「本 run 的画布上有哪些视觉锚还没冻结」。复用 production.verify-shots 的同款
+ * 主进程→渲染层桥（渲染层读画布 store 的 node.meta.frozen，判据走 anchorBibleKeys 单一镜像）。
+ * 韧性铁律（同 qa/审片「绝不阻断生成」）：渲染层不可达 / 桥异常 → 返回空（放行，fail-open），不把冻结门
+ * 卡成死结——结构强制的核由 GUI 依赖波次（dependencyWaves，L1 铁律层）与本桥返回真数据时共同承担；
+ * 桥挂了不该让整个 production run 永远卡在冻结门。降级留痕（console.error）。
+ */
+async function readUnfrozenAnchors(
+  requestRenderer: DriverOpsDeps['requestRenderer'],
+  projectId: string,
+  runId: string,
+): Promise<Array<{ nodeId: string; title?: string }>> {
+  try {
+    const response = await requestRenderer('production.check-frozen', { projectId, runId }, 60_000) as
+      | { unfrozenAnchors?: Array<{ nodeId?: unknown; title?: unknown }> }
+      | null
+    const raw = Array.isArray(response?.unfrozenAnchors) ? response!.unfrozenAnchors : []
+    return raw
+      .map((item) => ({
+        nodeId: typeof item?.nodeId === 'string' ? item.nodeId.trim() : '',
+        ...(typeof item?.title === 'string' && item.title.trim() ? { title: item.title.trim() } : {}),
+      }))
+      .filter((item): item is { nodeId: string; title?: string } => item.nodeId.length > 0)
+  } catch (error) {
+    console.error('[nomi:production] freeze check failed (freeze gate skipped):', error instanceof Error ? error.message : String(error))
+    return []
+  }
+}
+
+/** One durable, URL-safe gate per plan/job. The hash keeps ids stable even when node ids collide
+ * after sanitization, while jobIds[0] remains the authoritative job identity. */
+export function shotGateId(planVersion: number, jobId: string, round = 1): string {
+  const slug = jobId.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(-48) || 'shot'
+  const suffix = crypto.createHash('sha256').update(jobId).digest('hex').slice(0, 10)
+  return `gate-shot-v${planVersion}-${slug}-${suffix}${round > 1 ? `-r${round}` : ''}`
+}
+
+export function isShotGate(gate: Pick<ProductionRun['gates'][number], 'gateId' | 'scope'>): boolean {
+  return gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-')
+}
+
 /** B2：样片门是否在等（waiting）。等 → driver 不再提交新镜头（窗口化的花钱边界）。 */
 function hasWaitingSampleGate(run: ProductionRun): boolean {
   return run.gates.some((gate) => gate.gateId === sampleGateId(run.planVersion) && gate.status === 'waiting')
@@ -101,6 +159,7 @@ export function shouldSampleGate(run: ProductionRun): boolean {
 
 export type DriverOps = {
   proposeDirections: (run: ProductionRun) => Promise<void>
+  proposeScript: (run: ProductionRun) => Promise<void>
   proposeStoryboard: (run: ProductionRun) => Promise<void>
   driveGeneration: (run: ProductionRun) => Promise<void>
   driveExport: (run: ProductionRun) => Promise<void>
@@ -113,6 +172,87 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     localAssetPath, projectRelativePath, stageValue, reconcileProviderTask, inFlight, reconciliationInFlight,
     directionsInFlight,
   } = deps
+  const generationRerunRequested = new Set<string>()
+
+  /**
+   * W1.5 qa 阶段：对本次已 adopted 的生成镜头发 production.verify-shots 给渲染层（复用现成
+   * verifyShotsAndReport 判分+对账闭环），把 per-shot 判决落成 qa.verdict 事件 + qa 阶段摘要。
+   * qa 是「生成后判分呈现」不是新门：不弹确认、不改状态机、绝不阻断 run——渲染层不可达 / 判分失败 →
+   * 诚实降级为一条「审片跳过」事件，qa 仍标 completed 继续走 assemble（同 direction 拟案失败的降级策略）。
+   */
+  async function runQaStage(projectId: string, runId: string, incoming: ProductionRun): Promise<ProductionRun> {
+    let current = incoming
+    const shotNodeIds = adoptedGenerationShotNodeIds(current)
+    let response: QaVerifyResponse | null = null
+    if (shotNodeIds.length > 0) {
+      try {
+        response = await requestRenderer('production.verify-shots', { projectId, runId, shotNodeIds }, 10 * 60_000) as QaVerifyResponse
+      } catch (error) {
+        // 渲染层不可达 / 判分异常 → 不抛、不阻断，落「审片跳过」（buildQaStageOutcome 对 null 的降级）。
+        console.error('[nomi:production] shot verify failed (qa skipped):', error instanceof Error ? error.message : String(error))
+        response = null
+      }
+    }
+    const outcome = buildQaStageOutcome(shotNodeIds.length === 0 ? { skipped: true, skipReason: '本次没有可审片的已生成镜头' } : response)
+    current = requireRun(projectId, runId)
+    const retryPlans = Array.isArray(response?.verdicts) ? buildQaRetryPlans(current, response.verdicts) : []
+    let verdictIndex = 0
+    for (const event of outcome.events) {
+      const verdict = response?.verdicts?.[verdictIndex]
+      const retry = verdict ? retryPlans.find((plan) => plan.shotNodeId === verdict.shotNodeId) : undefined
+      const retrySuffix = retry
+        ? retry.eligible
+          ? `；已安排定向重滚（第 ${retry.retryCount} 次）：${retry.retryReason}`
+          : `；未重滚（${retry.blockedReason === 'budget_exhausted' ? '重试预算已用尽' : '已达到重试上限'}）`
+        : ''
+      // The same shot can be reviewed again after a targeted retry. Include the current
+      // revision in this durable command id so a later QA pass cannot replay an old verdict
+      // snapshot and then hit a revision conflict while appending the stage summary.
+      current = executeInternal(projectId, runId, current, 'qa.verdict', { summary: `${event.summary}${retrySuffix}` }, `driver-${runId}-qa-verdict-${verdictIndex}-${current.revision}`).run
+      verdictIndex += 1
+    }
+    // Persist retry decisions as new jobs. Keeping the original job immutable makes the first
+    // result and the targeted retry independently inspectable; the driver re-enters generation
+    // only for these authorized retry jobs, never for passing shots.
+    for (const retry of retryPlans.filter((plan) => plan.eligible)) {
+      const parent = current.jobs.find((job) => job.jobId === retry.parentJobId)
+      if (!parent || current.jobs.some((job) => job.parentJobId === retry.parentJobId && job.retryCount === retry.retryCount)) continue
+      const retryJob = {
+        ...parent,
+        jobId: `${parent.jobId}:retry-${retry.retryCount}`,
+        status: 'authorized' as const,
+        attempt: retry.nextAttempt,
+        idempotencyKey: `${parent.idempotencyKey}:retry-${retry.retryCount}`,
+        parentJobId: parent.jobId,
+        retryCount: retry.retryCount,
+        retryReason: retry.retryReason,
+        metadata: {
+          ...(parent.metadata || {}),
+          retryCount: retry.retryCount,
+          retryReason: retry.retryReason,
+          retryDirective: retry.retryDirective,
+          parentJobId: parent.jobId,
+        },
+        providerTaskId: undefined,
+        errorCode: undefined,
+        errorMessage: undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      current = executeInternal(projectId, runId, current, 'qa.retry.schedule', { job: retryJob }, `driver-${runId}-qa-retry-${retry.shotNodeId}-${retry.retryCount}`).run
+    }
+    const retrySummary = retryPlans.filter((plan) => plan.eligible).length
+    const stageSummary = retrySummary > 0
+      ? `${outcome.stageSummary}；已安排 ${retrySummary} 镜定向重滚`
+      : outcome.stageSummary
+    return executeInternal(projectId, runId, current, 'stage.upsert', {
+      stage: stageValue(current, 'qa', {
+        status: retrySummary > 0 ? 'running' : 'completed',
+        ...(retrySummary > 0 ? {} : { completedAt: new Date().toISOString() }),
+        qaSummary: stageSummary,
+      }),
+    }, `driver-${runId}-stage-qa-${current.revision}`).run
+  }
 
   async function proposeDirections(run: ProductionRun): Promise<void> {
     // B1：run 停在 awaiting_direction、方向门 waiting 且还没候选 → 让 renderer 的 LLM 拟 2-3 个方向。
@@ -144,59 +284,119 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     }
   }
 
-  async function proposeStoryboard(run: ProductionRun): Promise<void> {
+  function scriptText(value: unknown): string {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Script planner returned no draft')
+    const record = value as Record<string, unknown>
+    const nested = record.script && typeof record.script === 'object' && !Array.isArray(record.script)
+      ? record.script as Record<string, unknown>
+      : undefined
+    const text = [record.text, record.content, nested?.text, nested?.content]
+      .find((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0)
+    if (!text) throw new Error('Script planner returned no draft text')
+    return text
+  }
+
+  async function proposeScript(run: ProductionRun): Promise<void> {
     if (inFlight.has(run.runId)) return
     if (run.status !== 'running' || run.stageId !== 'direction') return
     inFlight.add(run.runId)
     try {
-      const planResult = await requestRenderer('production.plan-storyboard', {
-        projectId: run.projectId,
-        runId: run.runId,
-        brief: run.brief,
-        playbook: run.playbook,
+      const planResult = await requestRenderer('production.plan-script', {
+        projectId: run.projectId, runId: run.runId, brief: run.brief, playbook: run.playbook,
       }, 5 * 60_000)
-      const plan = planValue(planResult)
-      const hash = crypto.createHash('sha256').update(JSON.stringify(plan)).digest('hex')
+      const content = scriptText(planResult)
+      const hash = crypto.createHash('sha256').update(content).digest('hex')
       const current = requireRun(run.projectId, run.runId)
-      const scriptPath = `.nomi/runs/${run.runId}/script-v${current.planVersion}.json`
-      const storyboardPath = `.nomi/runs/${run.runId}/storyboard-v${current.planVersion}.json`
-      writeProjectJson(run.projectId, scriptPath, { schemaVersion: 1, kind: 'script', planHash: hash, brief: run.brief, plan })
-      writeProjectJson(run.projectId, storyboardPath, { schemaVersion: 1, kind: 'storyboard', planHash: hash, plan })
+      const version = Math.max(0, ...current.artifacts.filter((item) => item.kind === 'script').map((item) => item.version || 0)) + 1
+      const artifactId = `artifact-script-v${version}`
+      const skillEvidence = loadPlaybookStageEvidence(run.playbook.name, run.playbook.version, 'script')
+      const scriptPath = `.nomi/runs/${run.runId}/script-v${version}.json`
       const timestamp = new Date().toISOString()
-      const artifacts = [
-        { artifactId: `artifact-script-v${current.planVersion}`, stageId: 'script', kind: 'script' as const, status: 'adopted' as const, projectRelativePath: scriptPath, createdAt: timestamp, adoptedAt: timestamp },
-        { artifactId: `artifact-storyboard-v${current.planVersion}`, stageId: 'storyboard', kind: 'storyboard' as const, status: 'candidate' as const, projectRelativePath: storyboardPath, createdAt: timestamp },
-      ]
-      const result = repository.execute(run.projectId, run.runId, {
-        commandId: `driver:${run.runId}:plan-proposed:${hash.slice(0, 16)}`,
-        expectedRevision: current.revision,
-        type: 'plan.proposed',
-        payload: { artifacts },
-        issuedAt: timestamp,
+      writeProjectJson(run.projectId, scriptPath, {
+        schemaVersion: 1, kind: 'script', projectId: run.projectId, runId: run.runId, artifactId,
+        version, source: 'nomi-agent', content, contentHash: hash, createdAt: timestamp,
       })
-      // The skill evidence is a separate durable fact, so the user can see that the director skill actually ran.
+      const result = repository.execute(run.projectId, run.runId, {
+        commandId: `driver:${run.runId}:script-proposed:${hash.slice(0, 16)}`,
+        expectedRevision: current.revision, type: 'plan.proposed',
+        payload: { artifacts: [{
+          artifactId, stageId: 'script', kind: 'script' as const, status: 'candidate' as const,
+          version, source: 'nomi-agent' as const, contentHash: hash, reviewStatus: 'waiting' as const,
+          skillEvidence,
+          projectRelativePath: scriptPath, createdAt: timestamp,
+        }] }, issuedAt: timestamp,
+      })
       repository.execute(run.projectId, run.runId, {
-        commandId: `driver:${run.runId}:skill:${hash.slice(0, 16)}`,
-        expectedRevision: result.run.revision,
-        type: 'skill.evidence',
-        payload: { skillName: 'brand.promo', version: run.playbook.version },
-        issuedAt: timestamp,
+        commandId: `driver:${run.runId}:script-skill:${hash.slice(0, 16)}`,
+        expectedRevision: result.run.revision, type: 'skill.evidence',
+        payload: { skillName: run.playbook.name, version: run.playbook.version, artifactId, stageId: 'script', skillEvidence }, issuedAt: timestamp,
       })
     } catch (error) {
       const current = repository.read(run.projectId, run.runId)
       if (current && current.status === 'running') {
         try {
           repository.execute(run.projectId, run.runId, {
-            commandId: `driver:${run.runId}:plan-error:${current.revision}`,
-            expectedRevision: current.revision,
-            type: 'run.status',
-            payload: { status: 'needs_attention' },
-            issuedAt: new Date().toISOString(),
+            commandId: `driver:${run.runId}:script-error:${current.revision}`,
+            expectedRevision: current.revision, type: 'run.status', payload: { status: 'needs_attention' }, issuedAt: new Date().toISOString(),
           })
-        } catch {
-          // Preserve the original planning failure; the run remains inspectable on disk.
-        }
+        } catch { /* Preserve the original planning failure; the run remains inspectable. */ }
       }
+      console.error('[nomi:production] script planning failed:', error instanceof Error ? error.message : String(error))
+    } finally {
+      inFlight.delete(run.runId)
+    }
+  }
+
+  async function proposeStoryboard(run: ProductionRun): Promise<void> {
+    if (inFlight.has(run.runId)) return
+    if (run.status !== 'running' || run.stageId !== 'storyboard') return
+    const source = run.artifacts
+      .filter((item) => item.kind === 'script' && item.status === 'adopted')
+      .sort((left, right) => (right.version || 0) - (left.version || 0))[0]
+    if (!source) return
+    inFlight.add(run.runId)
+    try {
+      const planResult = await requestRenderer('production.plan-storyboard', {
+        projectId: run.projectId, runId: run.runId, brief: run.brief, playbook: run.playbook,
+        sourceScriptArtifactId: source.artifactId, sourceScriptVersion: source.version, sourceScriptHash: source.contentHash,
+      }, 5 * 60_000)
+      const rawPlan = planValue(planResult)
+      const plan = {
+        ...rawPlan,
+        sourceScriptArtifactId: source.artifactId,
+        sourceScriptVersion: source.version,
+        sourceScriptHash: source.contentHash,
+      }
+      const hash = crypto.createHash('sha256').update(JSON.stringify(plan)).digest('hex')
+      const current = requireRun(run.projectId, run.runId)
+      const version = Math.max(0, ...current.artifacts.filter((item) => item.kind === 'storyboard').map((item) => item.version || 0)) + 1
+      const storyboardPath = `.nomi/runs/${run.runId}/storyboard-v${version}.json`
+      const timestamp = new Date().toISOString()
+      const skillEvidence = loadPlaybookStageEvidence(run.playbook.name, run.playbook.version, 'storyboard')
+      writeProjectJson(run.projectId, storyboardPath, {
+        schemaVersion: 1, kind: 'storyboard', projectId: run.projectId, runId: run.runId, version,
+        source: 'nomi-agent', sourceArtifactId: source.artifactId, sourceVersion: source.version,
+        sourceContentHash: source.contentHash, sourceHash: source.contentHash, planHash: hash, plan,
+      })
+      const result = repository.execute(run.projectId, run.runId, {
+        commandId: `driver:${run.runId}:storyboard-proposed:${hash.slice(0, 16)}`,
+        expectedRevision: current.revision, type: 'plan.proposed',
+        payload: { artifacts: [{
+          artifactId: `artifact-storyboard-v${version}`, stageId: 'storyboard', kind: 'storyboard' as const,
+          status: 'candidate' as const, version, source: 'nomi-agent' as const,
+          sourceArtifactId: source.artifactId, sourceVersion: source.version,
+          sourceContentHash: source.contentHash, sourceHash: source.contentHash, reviewStatus: 'waiting' as const,
+          sourceScriptArtifactId: source.artifactId, sourceScriptVersion: source.version, sourceScriptHash: source.contentHash,
+          skillEvidence,
+          projectRelativePath: storyboardPath, createdAt: timestamp,
+        }] }, issuedAt: timestamp,
+      })
+      repository.execute(run.projectId, run.runId, {
+        commandId: `driver:${run.runId}:storyboard-skill:${hash.slice(0, 16)}`,
+        expectedRevision: result.run.revision, type: 'skill.evidence',
+        payload: { skillName: run.playbook.name, version: run.playbook.version, artifactId: `artifact-storyboard-v${version}`, stageId: 'storyboard', skillEvidence }, issuedAt: timestamp,
+      })
+    } catch (error) {
       console.error('[nomi:production] storyboard planning failed:', error instanceof Error ? error.message : String(error))
     } finally {
       inFlight.delete(run.runId)
@@ -204,22 +404,74 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
   }
 
   async function driveGeneration(run: ProductionRun): Promise<void> {
-    if (inFlight.has(run.runId)) return
+    if (inFlight.has(run.runId)) {
+      // A gate decision or resume can arrive after the gate is durable but before the current
+      // driver's finally releases its lock. Remember one rerun instead of losing that wake-up.
+      generationRerunRequested.add(run.runId)
+      return
+    }
     inFlight.add(run.runId)
     try {
       let current = requireRun(run.projectId, run.runId)
       if (current.status === 'ready') {
         current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'running' }, `driver-${run.runId}-generation-start`).run
       }
+      // W2 冻结门（样片门语义扩展的「更早一站」）：批量提交任何镜头**之前**，先确认本 run 的角色/场景卡都已冻结。
+      // 未冻结 → 停在冻结门（scope:'stage'、jobIds:[]，不授权花钱、只呈现「有 N 个锚待冻结」），等真人视觉确认后
+      // 批准（gate.decide 钩子重踢 driveGeneration 续跑）。放行后同批锚幂等不再问（hasApprovedFreezeGate）。
+      // 只在「有待提交镜头 + run 仍 running」时查（暂停/取消/无 job 不触发）；桥挂了 fail-open（readUnfrozenAnchors 韧性）。
+      if (current.status === 'running' && !hasApprovedFreezeGate(current)) {
+        const pendingJobs = current.jobs.filter((job) => job.status === 'authorized' || job.status === 'submit_intent_persisted')
+        if (hasWaitingFreezeGate(current)) return // 已停在冻结门 → 不重复设、不提交（等 decide）。
+        if (pendingJobs.length > 0) {
+          const unfrozen = await readUnfrozenAnchors(requestRenderer, run.projectId, run.runId)
+          current = requireRun(run.projectId, run.runId)
+          if (unfrozen.length > 0 && current.status === 'running'
+            && !current.gates.some((gate) => gate.gateId === freezeGateId(current.planVersion))) {
+            const gateId = freezeGateId(current.planVersion)
+            const anchorList = unfrozen.map((item) => item.title || item.nodeId).join('、')
+            const freezeGate = {
+              gateId,
+              scope: 'stage' as const,
+              status: 'waiting' as const,
+              planHash: crypto.createHash('sha256').update(`${current.planVersion}:freeze:${unfrozen.map((item) => item.nodeId).sort().join(',')}`).digest('hex'),
+              jobIds: [],
+              title: 'Freeze character and scene cards before the batch',
+              summary: `Freeze ${unfrozen.length} reference card(s) in Nomi before Nomi generates the shots that reference them: ${anchorList}. No provider call occurs before you freeze and approve.`,
+              createdAt: new Date().toISOString(),
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            }
+            executeInternal(run.projectId, run.runId, current, 'gate.add', { gate: freezeGate }, `driver-${gateId}`)
+            return // 停在冻结门；批准时 gate.decide 钩子重踢 driveGeneration。
+          }
+        }
+      }
       const jobs = current.jobs.filter((job) => job.status === 'authorized' || job.status === 'submit_intent_persisted')
       for (const job of jobs) {
         current = requireRun(run.projectId, run.runId)
         if (current.status !== 'running') break // 花钱边界：暂停/取消后不再提交（已提交的收不回，只能跑完收尾）
         if (hasWaitingSampleGate(current)) break // B2 样片门：等过目期间不提交剩余镜头（喊停最多亏样片这一镜）
-        // B3 confirm_all（每镜提交前都停）本期不实现每镜门——范围控制（见 plan「不动项」）。
-        // 未来落每镜门的唯一钩子点就在此：trustLevelOf(current.policy)==='confirm_all' 时，
-        // 提交前建一道 scope 'stage' 的 per-shot gate 并 break（复用下方样片门的注入写法）。
-        // 现档位语义靠类型与转述兜住：confirm_all 的合同/状态转述已明说「每镜提交前都停」。
+        const shotGates = current.gates.filter((gate) => isShotGate(gate)
+          && gate.gateId.startsWith(`gate-shot-v${current.planVersion}-`)
+          && gate.jobIds.includes(job.jobId))
+        if (shotGates.some((gate) => gate.status === 'waiting')) return
+        const approvedShotGate = shotGates.some((gate) => gate.status === 'approved')
+        if (trustLevelOf(current.policy) === 'confirm_all' && !approvedShotGate) {
+          const gateId = shotGateId(current.planVersion, job.jobId, shotGates.length + 1)
+          const shotGate = {
+            gateId,
+            scope: 'job_set' as const,
+            status: 'waiting' as const,
+            planHash: crypto.createHash('sha256').update(`${current.planVersion}:${job.jobId}:${job.provider}:${job.model}`).digest('hex'),
+            jobIds: [job.jobId],
+            title: 'Approve shot before provider submission',
+            summary: `${job.nodeId || job.jobId} will be submitted to ${job.provider} using ${job.model}. No provider call occurs before approval.`,
+            createdAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          }
+          executeInternal(run.projectId, run.runId, current, 'gate.add', { gate: shotGate }, `driver-${gateId}`)
+          return
+        }
         if (job.status === 'authorized') current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submit_intent_persisted' }, `driver-${job.jobId}-intent`).run
         current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submitting' }, `driver-${job.jobId}-submit`).run
         try {
@@ -230,6 +482,12 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
             nodeId: job.nodeId,
             maxAttemptsPerJob: current.policy.maxAttemptsPerJob,
             idempotencyKey: job.idempotencyKey,
+            ...(typeof job.retryCount === 'number' ? { retryCount: job.retryCount } : {}),
+            ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}),
+            ...(typeof job.retryReason === 'string' && job.retryReason.trim() ? { retryReason: job.retryReason } : {}),
+            ...(typeof job.metadata?.retryDirective === 'string' && job.metadata.retryDirective.trim()
+              ? { retryDirective: job.metadata.retryDirective.trim() }
+              : {}),
           }, 30 * 60_000) as { assets?: Array<{ type?: string; url?: string; thumbnailUrl?: string }> }
           for (const status of ['provider_accepted', 'polling', 'downloading', 'validating_technical', 'validating_content'] as const) {
             current = requireRun(run.projectId, run.runId)
@@ -244,7 +502,20 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
             const kind = asset.type === 'video' ? 'video' : asset.type === 'audio' ? 'audio' : 'image'
             const sampleArtifactId = artifactIdentifierForJob(job.jobId)
             current = executeInternal(run.projectId, run.runId, current, 'artifact.add', {
-              artifact: { artifactId: sampleArtifactId, stageId: 'generate', jobId: job.jobId, kind, status: 'adopted', projectRelativePath: relativePath, ...(thumbnailRelativePath ? { thumbnailRelativePath } : {}), createdAt: new Date().toISOString(), adoptedAt: new Date().toISOString() },
+              artifact: {
+                artifactId: sampleArtifactId,
+                stageId: 'generate',
+                jobId: job.jobId,
+                kind,
+                status: 'adopted',
+                ...(job.parentJobId ? { parentArtifactId: artifactIdentifierForJob(job.parentJobId) } : {}),
+                ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
+                ...(job.retryReason ? { retryReason: job.retryReason } : {}),
+                projectRelativePath: relativePath,
+                ...(thumbnailRelativePath ? { thumbnailRelativePath } : {}),
+                createdAt: new Date().toISOString(),
+                adoptedAt: new Date().toISOString(),
+              },
             }, `driver-${job.jobId}-artifact`).run
             current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'adopted' }, `driver-${job.jobId}-adopted`).run
             // B2 样片门：首镜（第一个 adopted 的 generate 任务）落地后停一次，看过再批量。
@@ -289,12 +560,24 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       current = settlePauseIfQuiet(repository, run.projectId, run.runId, requireRun(run.projectId, run.runId))
       if (current.status !== 'running') return
       if (current.jobs.some((job) => !['adopted', 'cancelled_remote', 'detached'].includes(job.status))) return
-      current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'generate', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-generate`).run
-      current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'qa', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-qa`).run
+      current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'generate', { status: 'completed', completedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-generate-${current.revision}`).run
+      const qaWasCompleted = current.stages.find((stage) => stage.stageId === 'qa')?.status === 'completed'
+      if (!qaWasCompleted) {
+        current = executeInternal(run.projectId, run.runId, current, 'run.stage', { stageId: 'qa' }, `driver-${run.runId}-stage-qa-start-${current.revision}`).run
+        current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'qa', { status: 'running', startedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-qa-running-${current.revision}`).run
+        current = await runQaStage(run.projectId, run.runId, current)
+      }
+      if (current.jobs.some((job) => job.status === 'authorized' && job.retryCount !== undefined)) {
+        // The current driver is single-flight. Ask its finally block to re-enter once the
+        // durable retry jobs exist, instead of recursively calling into the in-flight driver.
+        generationRerunRequested.add(run.runId)
+        return
+      }
+      current = executeInternal(run.projectId, run.runId, current, 'run.stage', { stageId: 'assemble' }, `driver-${run.runId}-stage-assemble-start-${current.revision}`).run
       current = executeInternal(run.projectId, run.runId, current, 'stage.upsert', { stage: stageValue(current, 'assemble', { status: 'running', startedAt: new Date().toISOString() }) }, `driver-${run.runId}-stage-assemble`).run
-      const arrangement = await requestRenderer('production.arrange', { projectId: run.projectId, runId: run.runId }, 5 * 60_000)
+      const arrangement = await requestRenderer('production.arrange', { projectId: run.projectId, runId: run.runId }, 5 * 60_000) as Record<string, unknown>
       const timelinePath = `.nomi/runs/${run.runId}/timeline-v${current.planVersion}.json`
-      writeProjectJson(run.projectId, timelinePath, { schemaVersion: 1, kind: 'timeline', arrangement })
+      writeProjectJson(run.projectId, timelinePath, { schemaVersion: 1, kind: 'timeline', arrangement, timelineContract: arrangement.timelineContract })
       current = requireRun(run.projectId, run.runId)
       current = executeInternal(run.projectId, run.runId, current, 'artifact.add', { artifact: { artifactId: `artifact-timeline-v${current.planVersion}`, stageId: 'assemble', kind: 'timeline', status: 'adopted', projectRelativePath: timelinePath, createdAt: new Date().toISOString(), adoptedAt: new Date().toISOString() } }, `driver-${run.runId}-timeline`).run
       const exportGate = { gateId: `gate-export-v${current.planVersion}`, scope: 'export' as const, status: 'waiting' as const, planHash: crypto.createHash('sha256').update(JSON.stringify(arrangement)).digest('hex'), jobIds: [], title: 'Review rough cut and approve export', summary: 'Check pacing and media in Preview before explicitly approving the MP4 export.', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() }
@@ -305,6 +588,10 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       console.error('[nomi:production] generation/assembly driver failed:', error instanceof Error ? error.message : String(error))
     } finally {
       inFlight.delete(run.runId)
+      if (generationRerunRequested.delete(run.runId)) {
+        const latest = repository.read(run.projectId, run.runId)
+        if (latest) void driveGeneration(latest)
+      }
     }
   }
 
@@ -408,5 +695,5 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     }
   }
 
-  return { proposeDirections, proposeStoryboard, driveGeneration, driveExport, driveReconciliation }
+  return { proposeDirections, proposeScript, proposeStoryboard, driveGeneration, driveExport, driveReconciliation }
 }

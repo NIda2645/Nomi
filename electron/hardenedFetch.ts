@@ -28,6 +28,8 @@ export type HardenedFetchOptions = {
   headers?: Record<string, string>;
   /** 请求体。string 直接发，object/array 自动 JSON.stringify。 */
   body?: unknown;
+  /** 上层任务取消信号；与本函数自己的超时共同中断请求。 */
+  signal?: AbortSignal;
   /** 是否拒抛非 2xx —— 默认 true（保持旧行为）。设为 false 则返回任何 status 不抛错（让调用方读 body 自己判断）。 */
   throwOnNon2xx?: boolean;
   /**
@@ -148,6 +150,9 @@ export async function hardenedFetch(
   // 可信本地服务只允许精确同源的一跳请求。禁止重定向，避免先访问重定向目标、事后才校验。
   const allowRedirect = allowedPrivateOrigins.length === 0 && options.allowRedirect !== false;
   const controller = new AbortController();
+  const relayAbort = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) relayAbort();
+  else options.signal?.addEventListener("abort", relayAbort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -225,6 +230,7 @@ export async function hardenedFetch(
     throw error;
   } finally {
     clearTimeout(timer);
+    options.signal?.removeEventListener("abort", relayAbort);
   }
 }
 

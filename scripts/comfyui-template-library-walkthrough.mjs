@@ -51,7 +51,7 @@ try {
   app.on('window', (w) => { w.on('dialog', (d) => void d.dismiss().catch(() => {})) })
   await win.getByRole('button', { name: '接入模型', exact: false }).first().click()
   await win.waitForTimeout(1200)
-  await win.getByText('ComfyUI · 本地', { exact: false }).first().click()
+  await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(3000) // 等模板库拉清单
 
   // ── ① 模板库列出来了吗 ──
@@ -70,8 +70,18 @@ try {
     await win.waitForTimeout(20000) // 转换要加载 ComfyUI 前端（首次几秒~十几秒）+ 对账
     await shot(win, '02-template-detail-missing.png')
     const detailText = await win.evaluate(() => document.body.innerText)
-    const gated = detailText.includes('缺文件时不给启用') || detailText.includes('这条在你机器上能跑') || detailText.includes('缺节点')
-    console.log('  点开当场对账（缺件闸/就绪）: ' + (gated ? '✓' : '✗'))
+    // 2026-08-11：缺件不再是死门，所以判据是「对账结果说清楚了」而不是「按钮被锁了」。
+    const reconciled = detailText.includes('缺文件只提示') || detailText.includes('这条在你机器上能跑') || detailText.includes('缺节点')
+    console.log('  点开当场对账（缺件提示/就绪）: ' + (reconciled ? '✓' : '✗'))
+    // 非阻断实证：缺件时按钮必须是可点的「仍要启用」，不是置灰。
+    const anyway = win.getByRole('button', { name: '仍要启用', exact: true }).first()
+    if (await anyway.count()) {
+      if (await anyway.isDisabled()) throw new Error('缺件时模板库按钮仍被置灰——非阻断口径没生效')
+      await anyway.click()
+      await win.waitForTimeout(400)
+      await shot(win, '02b-template-armed-risk.png') // 验：风险话术 + 按钮变「确认启用」
+      console.log('  缺件时按钮可点（仍要启用 → 确认启用）: ✓')
+    }
   } else {
     console.log('  ⚠️ 没找到 Image to Video 模板行')
   }
@@ -79,7 +89,7 @@ try {
   // ── ③ 贴界面格式 → 自动转换（此前会被直接拒）──
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(uiWorkflowText)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(uiWorkflowText)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(25000) // 借前端转换
   await shot(win, '03-ui-format-auto-converted.png')

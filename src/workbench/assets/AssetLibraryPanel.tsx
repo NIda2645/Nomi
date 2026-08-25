@@ -24,7 +24,6 @@ import type { GenerationAssetImportResult } from '../generationCanvas/adapters/a
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useWorkbenchStore } from '../workbenchStore'
 import { confirmDialog, DesignEmptyState, DesignSearchInput, TooltipProvider } from '../../design'
-import AssetFinderPanel from './autoGroup/AssetFinderPanel'
 import { acceptAttrForKinds, mediaKindFromExtension } from '../../../electron/assets/mediaTypes'
 import { toast } from '../../ui/toast'
 import {
@@ -38,6 +37,7 @@ import { ASSET_KIND_FILTER_VALUES, FILTER_OPTIONS, type FilterValue } from './as
 import { filterImageVideoAssets, filterPlayableAssets } from './assetLibrarySources'
 import { deleteAssetResult } from './deleteAssetResult'
 import { addAssetToTimelineEnd } from '../timeline/addAssetToTimeline'
+import { useAssetLibraryLocalImport } from './assetLibraryLocalImport'
 import {
   assetToDragPayload,
   assetsForLibraryDrag,
@@ -151,6 +151,7 @@ export function AssetLibraryContent({
     refresh: refreshProjectAssets,
   } = useAssetPool(projectId)
   const { assets: allProjectAssets, refresh: refreshAllProjectAssets } = useAllProjectAssets()
+  const localImport = useAssetLibraryLocalImport({ projectId, refreshProjectAssets, refreshAllProjectAssets })
   const folderApi = useAssetFolders(projectId)
   const allSourceAssets = React.useMemo(
     () => (includeAudio ? filterPlayableAssets(allProjectAssets) : filterImageVideoAssets(allProjectAssets)),
@@ -602,14 +603,12 @@ export function AssetLibraryContent({
 
   return (
     <TooltipProvider delayDuration={180} skipDelayDuration={80}>
-      <div className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', className)}>
+      <div tabIndex={0} onDragOver={localImport.onDragOver} onDragLeave={localImport.onDragLeave} onDrop={localImport.onDrop} onPaste={localImport.onPaste} className={cn('flex min-h-0 flex-1 flex-col overflow-hidden outline-none', className, localImport.isDragOver && 'ring-2 ring-inset ring-nomi-accent/50')}>
         {/* 头部 */}
         {showHeader ? (
           <div className={cn('flex items-center gap-2 px-4 pt-3.5 pb-3 border-b border-nomi-line')}>
             <b className={cn('text-title font-bold text-nomi-ink')}>{t('assetLibrary.title')}</b>
             <span className={cn('text-caption text-nomi-ink-40')}>· {sourceFilteredAssets.length}</span>
-            {/* 「网页捕捞」入口已删（方案一 2026-07-12）：顶栏「浏览器」是唯一上网门，
-                双门牌被用户体感为重复。 */}
             <span className={cn('flex-1')} />
             {onClose ? (
               <button
@@ -637,38 +636,36 @@ export function AssetLibraryContent({
           onChange={handleUploadFiles}
         />
 
-        {/* 工具行：筛选 + 搜索（智能分组页签整体换身为找素材视图，自带搜索/分区） */}
+        {/* 工具行：筛选 + 搜索 */}
         <div className={cn('grid gap-2', compact ? 'px-3 py-3' : 'px-3 py-2.5')}>
           <div className={cn('flex min-w-0 items-center gap-2')}>
             {sourceTabs}
             {uploadButton}
           </div>
-          {sourceFilter !== 'smart' ? (
-            <div className="flex min-w-0 items-center gap-2">
-              <DesignSearchInput className="min-w-0 flex-1" placeholder={t('assetLibrary.search')} ariaLabel={t('assetLibrary.searchAria')} value={query} onChange={setQuery} />
-              {deleteSelectedButton}
-              {projectSelectionEnabled ? (
-                newFolderOpen ? (
-                  <NewFolderInput onCreate={folderApi.createFolder} onCancel={() => setNewFolderOpen(false)} />
-                ) : (
-                  <button
-                    type="button"
-                    className={cn(
-                      'inline-flex h-8 shrink-0 items-center justify-center rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2.5',
-                      'cursor-pointer text-nomi-ink-65 transition-[background,color,border-color] duration-[var(--nomi-transition-fast)]',
-                      'hover:border-nomi-ink-20 hover:bg-nomi-ink-05 hover:text-nomi-ink',
-                    )}
-                    aria-label={t('assetLibrary.newFolder')}
-                    title={t('assetLibrary.newFolder')}
-                    onClick={() => setNewFolderOpen(true)}
-                  >
-                    <IconFolderPlus size={15} stroke={1.8} aria-hidden="true" />
-                  </button>
-                )
-              ) : null}
-              {categoryFilterButton}
-            </div>
-          ) : null}
+          <div className="flex min-w-0 items-center gap-2">
+            <DesignSearchInput className="min-w-0 flex-1" placeholder={t('assetLibrary.search')} ariaLabel={t('assetLibrary.searchAria')} value={query} onChange={setQuery} />
+            {deleteSelectedButton}
+            {projectSelectionEnabled ? (
+              newFolderOpen ? (
+                <NewFolderInput onCreate={folderApi.createFolder} onCancel={() => setNewFolderOpen(false)} />
+              ) : (
+                <button
+                  type="button"
+                  className={cn(
+                    'inline-flex h-8 shrink-0 items-center justify-center rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2.5',
+                    'cursor-pointer text-nomi-ink-65 transition-[background,color,border-color] duration-[var(--nomi-transition-fast)]',
+                    'hover:border-nomi-ink-20 hover:bg-nomi-ink-05 hover:text-nomi-ink',
+                  )}
+                  aria-label={t('assetLibrary.newFolder')}
+                  title={t('assetLibrary.newFolder')}
+                  onClick={() => setNewFolderOpen(true)}
+                >
+                  <IconFolderPlus size={15} stroke={1.8} aria-hidden="true" />
+                </button>
+              )
+            ) : null}
+            {categoryFilterButton}
+          </div>
           {folderViewActive && activeFolder ? (
             <div className="flex min-w-0 items-center gap-1.5">
               <button
@@ -694,11 +691,6 @@ export function AssetLibraryContent({
           ) : null}
         </div>
 
-        {sourceFilter === 'smart' ? (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <AssetFinderPanel />
-          </div>
-        ) : (
         <div ref={setScrollEl} className={cn('flex-1 overflow-y-auto', compact ? 'px-3 pb-3' : 'px-3.5 pb-4')}>
           {visibleFolders.length > 0 ? (
             <div
@@ -790,7 +782,6 @@ export function AssetLibraryContent({
             </div>
           )}
         </div>
-        )}
       </div>
       {previewAsset ? (
         <AssetPreviewDialog asset={previewAsset} onClose={() => setPreviewAsset(null)} />

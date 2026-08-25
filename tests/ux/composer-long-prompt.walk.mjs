@@ -65,7 +65,7 @@ async function measure() {
   return getWin().locator('.generation-canvas-v2-node__composer-card').last().evaluate((card) => {
     const cardRect = card.getBoundingClientRect()
     const pm = card.querySelector('.ProseMirror')
-    const scroller = pm ? pm.closest('.overflow-auto') : null
+    const scroller = pm ? pm.closest('.overflow-y-auto') : null
     const btn = card.querySelector('button[aria-label="生成素材"], button[aria-label="重新生成"]')
     const bRect = btn?.getBoundingClientRect()
     const cs = scroller ? getComputedStyle(scroller) : null
@@ -130,14 +130,18 @@ try {
     await getWin().waitForTimeout(1400)
   }
   await addNode('图片')
-  const nodeCount = await getWin().evaluate(() => document.querySelectorAll('.react-flow__node').length)
+  // 锚点必须是 [data-node-id]（BaseGenerationNode.tsx:283 / ClipNode.tsx:475 / LightweightGenerationNode.tsx:41）。
+  // 原来写的 .react-flow__node 在 src/ 里**零命中**——计数恒为 0，只是被 console.log 掉了没人看，
+  // 于是「节点加上了没有」这件事从来没被验证过（2026-08-18 走查框架体检发现）。
+  const nodeCount = await getWin().locator('[data-node-id]').count()
   console.log('  画布节点数:', nodeCount, 'url:', getWin().url())
+  check('画布上真的加出了节点', nodeCount > 0, `[data-node-id] 命中 ${nodeCount} 个`)
   await getWin().screenshot({ path: path.join(shotsDir, 'after-add.png') }).catch(() => {})
 
   const composer = getWin().locator('.generation-canvas-v2-node__composer').last()
   // 若未自动选中→点节点卡选中，浮出 composer
   if (!(await composer.isVisible().catch(() => false))) {
-    await getWin().locator('.react-flow__node').last().click({ timeout: 3000 }).catch(() => {})
+    await getWin().locator('[data-node-id]').last().click({ timeout: 3000 }).catch(() => {})
     await getWin().waitForTimeout(600)
   }
   await composer.waitFor({ state: 'visible', timeout: 10000 })
@@ -164,21 +168,95 @@ try {
   check('prompt 区真能滚动(scrollTop 可 >0 = 有界剪裁)', typeof after.scrollableBy === 'number' && after.scrollableBy > 0, `scrollableBy=${after.scrollableBy}`)
   check('生成钮在卡内(底栏未被顶出/裁掉)', after.buttonInsideCard === true)
 
+  // 滚轮归属回归：滚动手势从提示词区开始，就始终属于提示词区。到顶部/底部后继续滚只能停住，
+  // 不能把同一个手势交给画布缩放或平移（否则用户会突然找不到节点）。
+  const promptScroller = composer.locator('.overflow-y-auto').first()
+  const canvasLayer = getWin().locator('.generation-canvas-v2__canvas').first()
+  await promptScroller.hover()
+  await promptScroller.evaluate((element) => { element.scrollTop = 0 })
+  const middleCanvasBefore = await canvasLayer.getAttribute('style')
+  await getWin().mouse.wheel(0, 48)
+  await getWin().waitForTimeout(180)
+  const middleState = await promptScroller.evaluate((element) => ({
+    scrollTop: element.scrollTop,
+    maxScrollTop: element.scrollHeight - element.clientHeight,
+  }))
+  const middleCanvasAfter = await canvasLayer.getAttribute('style')
+  check('提示词区中间正常向下滚动', middleState.scrollTop > 0 && middleState.scrollTop < middleState.maxScrollTop)
+  check('提示词内部滚动时画布不动', middleCanvasAfter === middleCanvasBefore)
+
+  async function dispatchWheelWithModifier(modifier) {
+    await promptScroller.hover()
+    const key = modifier === 'ctrlKey' ? 'Control' : 'Meta'
+    await getWin().keyboard.down(key)
+    await getWin().mouse.wheel(0, 120)
+    await getWin().keyboard.up(key)
+    await getWin().waitForTimeout(180)
+  }
+
+  const ctrlCanvasBefore = await canvasLayer.getAttribute('style')
+  await dispatchWheelWithModifier('ctrlKey')
+  const ctrlCanvasAfter = await canvasLayer.getAttribute('style')
+  check('提示词区 Ctrl+滚轮仍缩放画布', ctrlCanvasAfter !== ctrlCanvasBefore)
+
+  const metaCanvasBefore = await canvasLayer.getAttribute('style')
+  await dispatchWheelWithModifier('metaKey')
+  const metaCanvasAfter = await canvasLayer.getAttribute('style')
+  check('提示词区 Command+滚轮仍缩放画布', metaCanvasAfter !== metaCanvasBefore)
+
+  await promptScroller.evaluate((element) => { element.scrollTop = element.scrollHeight })
+  await promptScroller.hover()
+  const bottomCanvasBefore = await canvasLayer.getAttribute('style')
+  await getWin().mouse.wheel(0, 420)
+  await getWin().waitForTimeout(180)
+  const bottomCanvasAfter = await canvasLayer.getAttribute('style')
+  const remainsAtBottom = await promptScroller.evaluate((element) => (
+    element.scrollTop + element.clientHeight >= element.scrollHeight - 1
+  ))
+  check('提示词到底后继续向下滚仍停在底部', remainsAtBottom)
+  check('提示词到底后继续向下滚不缩放/平移画布', bottomCanvasAfter === bottomCanvasBefore)
+
+  await promptScroller.evaluate((element) => { element.scrollTop = 0 })
+  await promptScroller.hover()
+  const topCanvasBefore = await canvasLayer.getAttribute('style')
+  await getWin().mouse.wheel(0, -420)
+  await getWin().waitForTimeout(180)
+  const topCanvasAfter = await canvasLayer.getAttribute('style')
+  check('提示词到顶后继续向上滚仍停在顶部', await promptScroller.evaluate((element) => element.scrollTop === 0))
+  check('提示词到顶后继续向上滚不缩放/平移画布', topCanvasAfter === topCanvasBefore)
+
+  const stage = getWin().locator('.generation-canvas-v2__stage').first()
+  const stageBox = await stage.boundingBox()
+  if (!stageBox) throw new Error('画布 stage 不可见，无法验证空白区滚轮')
+  await getWin().mouse.move(stageBox.x + stageBox.width - 64, stageBox.y + stageBox.height / 2)
+  const blankCanvasBefore = await canvasLayer.getAttribute('style')
+  await getWin().mouse.wheel(0, 120)
+  await getWin().waitForTimeout(180)
+  const blankCanvasAfter = await canvasLayer.getAttribute('style')
+  check('画布空白区滚轮仍能缩放/平移', blankCanvasAfter !== blankCanvasBefore)
+
   // ── BEFORE（A/B 定罪）── 把 overflow 改回 visible 复现「不剪裁 → 内容下溢盖底栏」
   await getWin().locator('.generation-canvas-v2-node__composer-card').last().evaluate((card) => {
-    const pm = card.querySelector('.ProseMirror'); const scroller = pm && pm.closest('.overflow-auto')
+    const pm = card.querySelector('.ProseMirror'); const scroller = pm && pm.closest('.overflow-y-auto')
     if (scroller) scroller.style.overflow = 'visible'
   })
   await getWin().waitForTimeout(400)
   await composer.screenshot({ path: path.join(shotsDir, 'before-broken.png') })
   await getWin().screenshot({ path: path.join(shotsDir, 'before-broken-full.png') }).catch(() => {})
   const brokenScrollable = await getWin().locator('.generation-canvas-v2-node__composer-card').last().evaluate((card) => {
-    const pm = card.querySelector('.ProseMirror'); const scroller = pm && pm.closest('.overflow-auto')
+    const pm = card.querySelector('.ProseMirror'); const scroller = pm && pm.closest('.overflow-y-auto')
     if (!scroller) return null
     const before = scroller.scrollTop; scroller.scrollTop = 9999; const v = scroller.scrollTop; scroller.scrollTop = before
     return v
   })
   check('A/B 定罪：overflow:visible 时不可滚动(scrollTop 恒 0 → 内容只能下溢盖底栏)', brokenScrollable === 0, `scrollableBy=${brokenScrollable}`)
+
+  await promptScroller.hover()
+  const visibleCanvasBefore = await canvasLayer.getAttribute('style')
+  await getWin().mouse.wheel(0, 120)
+  await getWin().waitForTimeout(180)
+  const visibleCanvasAfter = await canvasLayer.getAttribute('style')
+  check('滚动区运行时切为 visible 后，画布重新接管滚轮', visibleCanvasAfter !== visibleCanvasBefore)
 
   console.log('\n' + JSON.stringify({ after, brokenScrollable }, null, 2))
 } catch (error) {

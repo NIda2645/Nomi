@@ -7,6 +7,8 @@ export function buildMetadata(locale, content, shared) {
   const canonical = `${shared.siteUrl}${content.path}`
   const image = `${shared.siteUrl}${localizedImage[locale]}`
 
+  const websiteId = `${shared.siteUrl}/#website`
+  const applicationId = `${shared.siteUrl}/#application`
   return {
     title: content.meta.title,
     description: content.meta.description,
@@ -25,16 +27,38 @@ export function buildMetadata(locale, content, shared) {
     },
     jsonLd: {
       '@context': 'https://schema.org',
-      '@type': 'SoftwareApplication',
-      name: 'Nomi',
-      applicationCategory: 'MultimediaApplication',
-      operatingSystem: 'macOS, Windows',
-      codeRepository: shared.repositoryUrl,
-      license: shared.licenseUrl,
-      url: canonical,
-      softwareVersion: shared.version,
-      downloadUrl: shared.releaseUrl,
-      inLanguage: content.htmlLang,
+      '@graph': [
+        {
+          '@type': 'WebSite',
+          '@id': websiteId,
+          name: 'Nomi',
+          url: `${shared.siteUrl}/`,
+          inLanguage: ['zh-CN', 'en'],
+        },
+        {
+          '@type': 'WebPage',
+          '@id': canonical,
+          url: canonical,
+          name: content.meta.title,
+          description: content.meta.description,
+          inLanguage: content.htmlLang,
+          isPartOf: { '@id': websiteId },
+          about: { '@id': applicationId },
+          primaryImageOfPage: { '@type': 'ImageObject', contentUrl: image },
+        },
+        {
+          '@type': 'SoftwareApplication',
+          '@id': applicationId,
+          name: 'Nomi',
+          applicationCategory: 'MultimediaApplication',
+          operatingSystem: 'macOS, Windows',
+          codeRepository: shared.repositoryUrl,
+          license: shared.licenseUrl,
+          url: `${shared.siteUrl}/`,
+          softwareVersion: shared.version,
+          downloadUrl: shared.releaseUrl,
+        },
+      ],
     },
   }
 }

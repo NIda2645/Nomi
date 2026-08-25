@@ -81,7 +81,7 @@ export type CanvasGraphActions = {
   updateEdgeMode: (edgeId: string, mode: GenerationCanvasEdge['mode']) => void
   disconnectEdge: (edgeId: string) => void
   moveGroupNodes: (groupId: string, delta: { x: number; y: number }, options?: CanvasMutationOptions) => void
-  createGroup: (categoryId: string, name?: string) => NodeGroup | null
+  createGroup: (categoryId: string, name?: string, options?: { materializationOperationId?: string; nodeIds?: string[] }) => NodeGroup | null
   groupSelectedNodes: (categoryId: string, name?: string) => NodeGroup | null
   renameGroup: (groupId: string, name: string) => void
   setGroupColor: (groupId: string, color: string) => void
@@ -97,6 +97,8 @@ export type CanvasGraphActions = {
 
 export type CanvasRunActions = {
   setNodeStatus: (nodeId: string, status: GenerationNodeStatus, error?: string) => void
+  /** 收起失败卡：有旧产物 → 回 success（露出下面那条片子），没有 → 回 idle。错误原文仍留在 runs 里。 */
+  dismissNodeError: (nodeId: string) => void
   setNodeProgress: (nodeId: string, progress?: NodeProgressInput) => void
   appendNodeRun: (nodeId: string, run: NodeRunRecordInput) => GenerationNodeRunRecord
   trackNodeRun: (nodeId: string, runId: string, patch: NodeRunRecordPatch) => void

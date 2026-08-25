@@ -12,10 +12,17 @@ const STORYBOARD_NUDGE_MIN_CHARS = 60 // 故事正文达到这么多字才认为
 
 export default function StoryboardNudge({
   busy,
+  allowed = true,
   onRun,
 }: {
   /** 生成/规划进行中时不浮卡（避免和在途轮次抢注意）。 */
   busy?: boolean
+  /**
+   * 本轮允不允许把「拆成镜头」推到用户眼前。父层按模式/技能的能力声明判定
+   * （modeAllowsIntentRouting）——用户选了专职模式（如素材规划）就是已经指了路，
+   * 这时候浮卡等于跟他抢方向盘（2026-08-17 用户实测反馈的同一根因）。
+   */
+  allowed?: boolean
   onRun: (shotMode: StoryboardShotMode) => void
 }): JSX.Element | null {
   const { t } = useTranslation()
@@ -25,7 +32,7 @@ export default function StoryboardNudge({
   const documentText = React.useMemo(() => extractWorkbenchDocumentText(workbenchDocument), [workbenchDocument])
 
   // storyboardPlan≠null（已拆过、随项目持久化）→ 天然不再显示；收起=会话级。
-  const show = !busy && !storyboardPlan && !dismissed && documentText.trim().length >= STORYBOARD_NUDGE_MIN_CHARS
+  const show = allowed && !busy && !storyboardPlan && !dismissed && documentText.trim().length >= STORYBOARD_NUDGE_MIN_CHARS
   if (!show) return null
 
   return (

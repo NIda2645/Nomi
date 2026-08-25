@@ -15,6 +15,13 @@ describe("parseAspectRatioValue", () => {
     expect(parseAspectRatioValue(" 16：9 ")).toBeCloseTo(16 / 9);
   });
 
+  // ComfyUI 工作流的比例枚举常带说明后缀。尾部锚死会把整条判成非比例，卡片就不跟着改尺寸。
+  it("带说明后缀的枚举标签同样认（ComfyUI 常见写法）", () => {
+    expect(parseAspectRatioValue("16:9 (宽屏)")).toBeCloseTo(16 / 9);
+    expect(parseAspectRatioValue("4:3（标准）")).toBeCloseTo(4 / 3);
+    expect(parseAspectRatioValue("9:16 (portrait)")).toBeCloseTo(9 / 16);
+  });
+
   it("非比例值返回 null", () => {
     for (const v of ["adaptive", "auto", "2K", "4K", "basic", "high", "", "16:", ":9", "0:1", "16:0"]) {
       expect(parseAspectRatioValue(v)).toBeNull();
@@ -35,6 +42,13 @@ describe("normalizeAspectRatioToWH — 像素串绝不当比例（440 误显回�
     expect(normalizeAspectRatioToWH("16:9")).toBe("16:9");
     expect(normalizeAspectRatioToWH(" 9：16 ")).toBe("9：16");
     expect(normalizeAspectRatioToWH("landscape_16_9")).toBe("16:9");
+  });
+
+  // 写进 meta.aspect_ratio 的必须是裸 W:H：带着标签存下去，别处按字面量比对就对不上了。
+  it("带说明后缀 → 只剥掉后缀，冒号字面量不动", () => {
+    expect(normalizeAspectRatioToWH("16:9 (宽屏)")).toBe("16:9");
+    expect(normalizeAspectRatioToWH("4:3（标准）")).toBe("4:3");
+    expect(normalizeAspectRatioToWH("9：16 (竖屏)")).toBe("9：16");
   });
 
   it("像素尺寸串 / 非比例值 → null（不显示为比例）", () => {

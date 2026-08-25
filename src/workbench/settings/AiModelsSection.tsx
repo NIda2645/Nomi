@@ -1,19 +1,48 @@
+import { IconAlertTriangle, IconCheck } from '@tabler/icons-react'
 import React from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
 import { DesignSwitch, WorkbenchButton } from '../../design'
-import { getDesktopBridge } from '../../desktop/bridge'
+import { getDesktopBridge, type AssetTransportChannelView } from '../../desktop/bridge'
 import type { AutomationPolicySettings } from '../../../electron/settings/automationPolicyContract'
 import { buildProviderHealthView, type SettingsProviderInput } from './settingsAutomationView'
 import { listWorkbenchModelCatalogModels, type ModelCatalogModelDto } from '../api/modelCatalogApi'
 import type { ProductionPolicyRequirement } from '../production/productionPolicyRecovery'
+import { DefaultGenerationModelsSection } from './DefaultGenerationModelsSection'
+import {
+  getGenerationModelDefaults,
+  loadGenerationModelDefaults,
+  saveGenerationModelDefaults,
+  subscribeGenerationModelDefaults,
+  type GenerationModelDefaultMap,
+} from '../generationCanvas/model/generationModelDefaults'
 
 type Props = {
   settings: AutomationPolicySettings
   onChange: (patch: Partial<AutomationPolicySettings>) => void
   productionPolicyRequirement?: ProductionPolicyRequirement | null
   focusEnabled?: boolean
-  onOpenModelCatalog?: () => void
+  /** 打开模型工作区；带 vendorKey 时直接落到那家的接入页（上传通道卡靠它一步到 KIE 的 Key 框）。 */
+  onOpenModelCatalog?: (vendorKey?: string) => void
+}
+
+/** 链接有效期的人话。不足 1 小时按分钟报——「0 小时」会让人以为是 bug。 */
+function leaseLabel(ttlSeconds: number | null, t: TFunction): string {
+  if (ttlSeconds === null) return t('settings.ai.upload.channel.leaseUnknown')
+  if (ttlSeconds < 3600) return t('settings.ai.upload.channel.leaseMinutes', { count: Math.max(1, Math.round(ttlSeconds / 60)) })
+  return t('settings.ai.upload.channel.leaseHours', { count: Math.round(ttlSeconds / 3600) })
+}
+
+/** 托管方显示名：认得的供应商用它的正式名；匿名公共托管报真实主机名（用户要知道是谁收了文件）。 */
+function channelHostLabel(
+  channel: AssetTransportChannelView,
+  vendorNameOf: (vendorKey: string) => string,
+  t: TFunction,
+): string {
+  if (channel.vendorKey) return vendorNameOf(channel.vendorKey)
+  if (!channel.host) return t('settings.ai.upload.channel.none')
+  return t('settings.ai.upload.channel.publicHost', { host: channel.host })
 }
 
 export function AiModelsSection({
@@ -27,12 +56,17 @@ export function AiModelsSection({
   const [providers, setProviders] = React.useState<SettingsProviderInput[]>([])
   const [models, setModels] = React.useState<ModelCatalogModelDto[]>([])
   const [catalogLoaded, setCatalogLoaded] = React.useState(false)
+  // 「现在走哪条通道」问 main 的真解析器，渲染层不重算优先级（重算 = 第二个真相源，会和真实行为漂移）。
+  const [channels, setChannels] = React.useState<AssetTransportChannelView[]>([])
   const policySectionRef = React.useRef<HTMLElement>(null)
   const focusedRequirementRef = React.useRef<ProductionPolicyRequirement | null>(null)
 
   React.useEffect(() => {
     try {
-      const values = getDesktopBridge()?.modelCatalog.listVendors() as SettingsProviderInput[] | undefined
+      const bridge = getDesktopBridge()
+      const described = bridge?.assetTransport?.describeChannels()
+      setChannels(Array.isArray(described) ? described : [])
+      const values = bridge?.modelCatalog.listVendors() as SettingsProviderInput[] | undefined
       setProviders(Array.isArray(values) ? values : [])
       void listWorkbenchModelCatalogModels({ enabled: true })
         .then((values) => setModels(Array.isArray(values) ? values : []))
@@ -44,7 +78,26 @@ export function AiModelsSection({
     }
   }, [])
 
-  const health = buildProviderHealthView(providers, models, { modelsLoaded: catalogLoaded })
+  const generationDefaults = React.useSyncExternalStore(
+    subscribeGenerationModelDefaults,
+    getGenerationModelDefaults,
+    getGenerationModelDefaults,
+  )
+  React.useEffect(() => {
+    void loadGenerationModelDefaults()
+  }, [])
+  const handleDefaultsChange = React.useCallback((next: GenerationModelDefaultMap) => {
+    void saveGenerationModelDefaults(next)
+  }, [])
+
+  const health = buildProviderHealthView(providers)
+  // 「已接入」按**它是否真的在收文件**判，不按「key 存不存在」判——否则徽章说已接入、下面两行却写着
+  // 走公共图床，用户不知道该信哪个。
+  const kieConnected = channels.some((channel) => channel.vendorKey === 'kie')
+  const vendorNameOf = React.useCallback(
+    (vendorKey: string) => health.find((provider) => provider.key === vendorKey)?.name || vendorKey,
+    [health],
+  )
   const requiredProviderModels = React.useMemo(
     () => productionPolicyRequirement?.requiredProviderModels ?? [],
     [productionPolicyRequirement],
@@ -94,49 +147,17 @@ export function AiModelsSection({
     <div data-settings-section="ai-models">
       <h2 className="mb-5 text-title font-medium text-nomi-ink">{t('settings.ai.title')}</h2>
 
-      <section className="mb-6" aria-labelledby="settings-model-connections-title">
-        <h3 id="settings-model-connections-title" className="mb-2 text-caption font-medium text-nomi-ink-60">
-          {t('settings.ai.connections')}
-        </h3>
-        {health.length > 0 ? (
-          <div className="divide-y divide-nomi-line">
-            {health.map((provider) => (
-              <div key={provider.key} className="flex min-h-12 items-center justify-between gap-4 py-2">
-                {/* 名字下带一行能力摘要（「文本 82 · 图片 0」）。徽标只能回答「连上没有」，
-                    这一行回答「能干什么」——接入时类型猜错导致「82 个全是文本」时，这是唯一
-                    不用点开任何东西就能看出来的地方。 */}
-                <div className="min-w-0">
-                  <div className="truncate text-body-sm text-nomi-ink">{provider.name}</div>
-                  {catalogLoaded ? (
-                    <div className="mt-0.5 truncate text-caption text-nomi-ink-40">
-                      {provider.capabilities.length > 0
-                        ? provider.capabilities
-                          .map((cap) => `${t(`runtime.modelCatalog.kind.${cap.kind}` as 'runtime.modelCatalog.kind.image', { defaultValue: cap.kind })} ${cap.count}`)
-                          .join(' · ')
-                        : t('settings.ai.noEnabledModels')}
-                    </div>
-                  ) : null}
-                </div>
-                <span
-                  className={provider.state === 'connected' || provider.state === 'local'
-                    ? 'shrink-0 text-caption text-nomi-success'
-                    : provider.state === 'no-models'
-                      ? 'shrink-0 text-caption text-nomi-warning'
-                      : 'shrink-0 text-caption text-nomi-ink-40'}
-                >
-                  {t(`settings.ai.health.${provider.state}`)}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-nomi-sm bg-nomi-ink-05 px-3 py-3 text-caption leading-relaxed text-nomi-ink-60">
-            {t('settings.ai.empty')}
-          </div>
-        )}
-      </section>
+      <DefaultGenerationModelsSection
+        models={models}
+        vendorNameOf={vendorNameOf}
+        defaults={generationDefaults}
+        onChange={handleDefaultsChange}
+      />
 
-      <section className="mb-6 border-t border-nomi-line pt-4" aria-labelledby="settings-upload-title">
+      {/* 2026-08-12 删掉顶部那段只读「模型连接」列表：模型的家搬去「模型」tab 之后，
+          它就是第二个家；而且下面「默认模型策略」的勾选框本来就逐个列了 provider 且带状态，
+          纯重复（P1 加新必删旧）。health 仍被策略区用来排序/取显示名，故变量保留。 */}
+      <section className="mb-6" aria-labelledby="settings-upload-title">
         <h3 id="settings-upload-title" className="mb-1 text-caption font-medium text-nomi-ink-60">
           {t('settings.ai.upload.title')}
         </h3>
@@ -150,6 +171,62 @@ export function AiModelsSection({
             onChange={(event) => onChange({ minimizeUploads: event.currentTarget.checked })}
             aria-label={t('settings.ai.upload.minimize')}
           />
+        </div>
+        <div className="mt-2 grid gap-3 rounded-nomi-sm border border-nomi-line-soft bg-nomi-ink-05 p-3" data-settings-upload-guidance>
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-body-sm font-medium text-nomi-ink">{t('settings.ai.upload.channel.title')}</div>
+                <div className="mt-0.5 text-caption leading-relaxed text-nomi-ink-60">{t('settings.ai.upload.channel.hint')}</div>
+              </div>
+              {kieConnected ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-nomi-sm bg-[color-mix(in_oklch,var(--workbench-success)_12%,var(--nomi-paper))] px-2 py-1 text-caption text-[color:var(--workbench-success-ink)]">
+                  <IconCheck size={13} stroke={2} aria-hidden="true" />
+                  {t('settings.ai.upload.channel.kieConnected')}
+                </span>
+              ) : onOpenModelCatalog ? (
+                <WorkbenchButton size="sm" className="shrink-0" onClick={() => onOpenModelCatalog('kie')}>
+                  {t('settings.ai.upload.channel.configure')}
+                </WorkbenchButton>
+              ) : null}
+            </div>
+            <div className="mt-2 grid gap-1.5" data-settings-upload-channels>
+              {channels.map((channel) => (
+                <div
+                  key={channel.kind}
+                  data-upload-channel={channel.kind}
+                  className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-caption"
+                >
+                  <span className="w-8 shrink-0 text-nomi-ink-60">{t(`settings.ai.upload.channel.kind.${channel.kind}`)}</span>
+                  <span className="min-w-28 text-nomi-ink">{channelHostLabel(channel, vendorNameOf, t)}</span>
+                  {channel.visibility === 'public-anonymous' ? (
+                    <span className="inline-flex items-center gap-1 rounded-nomi-sm bg-[color-mix(in_oklch,var(--nomi-warning)_12%,var(--nomi-paper))] px-1.5 py-0.5 text-[color:var(--nomi-warning)]">
+                      <IconAlertTriangle size={12} stroke={2} aria-hidden="true" />
+                      {t('settings.ai.upload.channel.publicLease', { lease: leaseLabel(channel.ttlSeconds, t) })}
+                    </span>
+                  ) : (
+                    <span className="text-nomi-ink-40">
+                      {t('settings.ai.upload.channel.privateLease', { lease: leaseLabel(channel.ttlSeconds, t) })}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 text-caption leading-relaxed text-nomi-ink-60">
+              {t(kieConnected ? 'settings.ai.upload.channel.settled' : 'settings.ai.upload.channel.upsell')}
+            </div>
+          </div>
+          <div className="flex min-h-10 items-center justify-between gap-4 border-t border-nomi-line-soft pt-2">
+            <div className="min-w-0">
+              <div className="text-body-sm text-nomi-ink">{t('settings.ai.upload.anonymousPrompt')}</div>
+              <div className="mt-0.5 text-caption leading-relaxed text-nomi-ink-40">{t('settings.ai.upload.anonymousPromptHint')}</div>
+            </div>
+            <DesignSwitch
+              checked={settings.anonymousAssetHosting === 'ask'}
+              onChange={(event) => onChange({ anonymousAssetHosting: event.currentTarget.checked ? 'ask' : 'allow' })}
+              aria-label={t('settings.ai.upload.anonymousPrompt')}
+            />
+          </div>
         </div>
       </section>
 
@@ -186,7 +263,7 @@ export function AiModelsSection({
               </div>
             </div>
             {onOpenModelCatalog ? (
-              <WorkbenchButton size="sm" className="shrink-0" onClick={onOpenModelCatalog}>
+              <WorkbenchButton size="sm" className="shrink-0" onClick={() => onOpenModelCatalog()}>
                 {t('settings.ai.policy.openModelCatalog')}
               </WorkbenchButton>
             ) : null}

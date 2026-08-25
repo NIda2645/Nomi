@@ -24,4 +24,12 @@ export type DesktopSettingsBridge = {
     get: () => Promise<import('../../electron/settings/automationPolicyContract').AutomationPolicySettings>
     set: (payload: unknown) => Promise<import('../../electron/settings/automationPolicyContract').AutomationPolicySettings>
   }
+  systemPrompts: {
+    get: () => Promise<import('../../electron/settings/systemPromptsContract').SystemPromptOverrides>
+    set: (payload: unknown) => Promise<import('../../electron/settings/systemPromptsContract').SystemPromptOverrides>
+  }
+  generationModelDefaults: {
+    get: () => Promise<import('../../electron/settings/generationModelDefaultsContract').GenerationModelDefaults>
+    set: (payload: unknown) => Promise<import('../../electron/settings/generationModelDefaultsContract').GenerationModelDefaults>
+  }
 }

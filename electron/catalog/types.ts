@@ -39,8 +39,8 @@ export type AiSdkProviderKind = "openai-compatible" | "anthropic" | "openai-resp
 export type AssetMediaKind = "image" | "video" | "audio";
 
 export type AssetIngestion =
-  | { strategy: "inline-base64"; accepts?: ReadonlyArray<AssetMediaKind> }
-  | { strategy: "none"; accepts?: ReadonlyArray<AssetMediaKind> }
+  | { strategy: "inline-base64"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
+  | { strategy: "none"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
   | {
       strategy: "upload-stream";
       /** 上传端点(完整 URL)。multipart/form-data,file 字段为二进制,另带 uploadPath/fileName。 */
@@ -56,6 +56,9 @@ export type AssetIngestion =
       authType?: "bearer";
       /** 该通道接受的媒体类型;缺省 ['image']。 */
       accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "provider-private";
+      ttlSeconds?: number;
+      requiresConsent?: false;
     }
   | {
       strategy: "upload-url";
@@ -76,6 +79,9 @@ export type AssetIngestion =
       urlPath: string;
       /** 鉴权:复用 vendor 的 api key(默认 bearer)。 */
       authType?: "bearer";
+      visibility?: "provider-private";
+      ttlSeconds?: number;
+      requiresConsent?: false;
     }
   | {
       strategy: "upload-multipart";
@@ -107,6 +113,9 @@ export type AssetIngestion =
       authType?: "bearer";
       /** 该通道接受的媒体类型;缺省 ['image']。 */
       accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "provider-private" | "public-anonymous";
+      ttlSeconds?: number;
+      requiresConsent?: boolean;
     }
   | {
       /**
@@ -119,6 +128,8 @@ export type AssetIngestion =
       /** 完整上传端点，如 http://127.0.0.1:8188/upload/image。 */
       endpoint: string;
       accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "provider-private";
+      ttlSeconds?: number;
     }
   | {
       /**
@@ -131,6 +142,9 @@ export type AssetIngestion =
       chain: ReadonlyArray<AssetIngestion>;
       /** 该链接受的媒体类型;缺省 ['image']。匿名 host 收任意文件,声明全媒体类型。 */
       accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "public-anonymous";
+      ttlSeconds?: number;
+      requiresConsent?: true;
     };
 
 /** 本地 ComfyUI **第一台**的固定 key（种子 + assetLocalization 识别它走自己的 /upload/image，单源防漂移）。 */
@@ -183,7 +197,13 @@ export type Model = {
    * （runtime.runTask 单一派发点，先于 mapping）。与 enabled 同级的用户配置——拉取/重接入的
    * upsert 不得清掉它（applyModelUpsert：undefined=保留，null=显式删除）。
    */
-  customCall?: { script: string; updatedAt: string };
+  customCall?: {
+    /** 模型级兼容脚本：没有当前模式专用脚本时回退到这里。 */
+    script?: string;
+    /** 模式级覆盖：key 必须是该模型显式能力契约 / ModelArchetype 中的 mode id。 */
+    modes?: Record<string, { script: string; updatedAt: string }>;
+    updatedAt: string;
+  };
   pricing?: {
     cost: number;
     enabled: boolean;
@@ -449,8 +469,10 @@ export function billingKindForTaskKind(kind: ProfileKind): BillingModelKind {
 /*  v8 给存量中转 video 条目补「图生视频」通道(image_to_video mapping)。接入路径此前只建 text_to_video，
  *  视频节点一连参考图/首帧就报「没有配置图生视频通道·请删除后重新接入」，而重接也不会建（根因在接入
  *  路径，已同 commit 修）。只碰非内置 vendor + /video/generations 形状。 */
-export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-export const CURRENT_CATALOG_VERSION: CatalogVersion = 8;
+/*  v9 moves custom-call named configuration out of vendor.meta and into the
+ *  existing safeStorage-backed vendor credential record. */
+export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export const CURRENT_CATALOG_VERSION: CatalogVersion = 9;
 
 export type CatalogState = {
   version: CatalogVersion;

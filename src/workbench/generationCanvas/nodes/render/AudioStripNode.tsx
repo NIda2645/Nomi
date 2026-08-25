@@ -125,20 +125,16 @@ function AudioStripNodeImpl({ node }: Props): JSX.Element {
       event.currentTarget.value = ''
       if (!file) return
       const createdAt = Date.now()
-      const reader = new FileReader()
-      reader.onload = (loadEvent) => {
-        const dataUrl = loadEvent.target?.result
-        if (typeof dataUrl !== 'string') return
-        updateNode(node.id, {
-          result: { id: `upload-audio-${createdAt}`, type: 'audio', url: dataUrl, createdAt },
-          meta: { ...(node.meta || {}), audioFilename: file.name, audioMime: file.type },
-        })
-      }
-      reader.readAsDataURL(file)
+      // 先落盘再写 store：音频动辄几十 MB，base64 进 store 会被每次写入整段 JSON 深拷贝、
+      // 随每次保存全量序列化（同「九宫格切图卡死」的病根，见 docs/plan/2026-08-20-grid-split-freeze.md）。
       void persistNodeImageFile(file, node.id).then((localUrl) => {
-        if (!localUrl) return
+        if (!localUrl) {
+          toast(t('generationCommon.audio.uploadFailed'), 'error')
+          return
+        }
         updateNode(node.id, {
-          result: { id: `upload-audio-asset-${createdAt}`, type: 'audio', url: localUrl, createdAt },
+          result: { id: `upload-audio-${createdAt}`, type: 'audio', url: localUrl, createdAt },
+          meta: { ...(node.meta || {}), audioFilename: file.name, audioMime: file.type },
         })
       })
     },

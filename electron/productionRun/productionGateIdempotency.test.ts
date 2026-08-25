@@ -5,16 +5,11 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 
 // B4 gate.decide 幂等 + 并发（plan 2026-08-11-mcp-conversation-native-phase-b）：
 // 两个审批同时来（异 commandId、同决议）不再互相炸——同决议重复 = 幂等 no-op（返回当前态），
 // 只有「翻决议」（approved→rejected 或反之）才拒。两个 run 的门各自独立可决，互不覆盖。
-
-async function waitFor(check: () => boolean, timeoutMs = 4000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
-  if (!check()) throw new Error('waitFor timed out')
-}
 
 function makeService(root: string) {
   fs.mkdirSync(path.join(root, 'assets/generated'), { recursive: true })
@@ -23,6 +18,7 @@ function makeService(root: string) {
     if (op === 'production.plan-directions') {
       return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
     }
+    if (op === 'production.plan-script') return { text: 'idempotency script' }
     if (op === 'production.plan-storyboard') {
       return { plan: { title: 'promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'shot one' }] } }
     }
@@ -47,7 +43,8 @@ async function draftAtContractGate(service: ReturnType<typeof createProductionRu
     origin: { host: 'codex' }, brief: { goal: 'idempotency', durationSeconds: 30 },
     policy: { trustLevel: 'budget_only' },
   })
-  await waitFor(() => Boolean(service.readFull('project-1', runId)?.artifacts.some((a) => a.kind === 'storyboard')))
+  await approveLatestScript(service, 'project-1', runId)
+  await approveLatestStoryboard(service, 'project-1', runId)
   const planned = service.readFull('project-1', runId)!
   const storyboardId = planned.artifacts.find((a) => a.kind === 'storyboard')!.artifactId
   await service.command('project-1', runId, {

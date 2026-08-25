@@ -5,18 +5,13 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 
 // 暂停的花钱语义（2026-08-11 用户质疑「中转已提交的收不回」后补的三洞修复）：
 // ① 提交门：pausing/paused 后 driver 不再提交新任务（能守住的唯一花钱边界）；
 // ② 收尾落停：在途任务跑完后 pausing 自动 settle 成 paused（不再永远卡 pausing）；
 // ③ resume 重踢：恢复后剩余任务从断点继续提交，不重做不重付。
 // 已提交的任务无法撤回=物理现实，测试同时断言它「跑完并保留产物」。
-
-async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
-  if (!check()) throw new Error('waitFor timed out')
-}
 
 describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () => {
   it('两镜批次中途暂停：镜 2 不提交；镜 1 跑完保留；落 paused；resume 后镜 2 续跑到粗剪', async () => {
@@ -37,6 +32,7 @@ describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () 
           { key: 'b', title: '方向二', oneLiner: 'y' },
         ] }
       }
+      if (op === 'production.plan-script') return { text: 'pause semantics script' }
       if (op === 'production.plan-storyboard') {
         return { plan: { title: 'promo', anchors: [], shots: [
           { index: 1, shotKind: 'video', prompt: 'shot one' },
@@ -74,7 +70,8 @@ describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () 
       commandId: 'direction', expectedRevision: 0, type: 'gate.decide',
       payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
     })
-    await waitFor(() => Boolean(service.readFull('project-1', runId)?.artifacts.some((a) => a.kind === 'storyboard')))
+    await approveLatestScript(service, 'project-1', runId)
+    await approveLatestStoryboard(service, 'project-1', runId)
     const planned = service.readFull('project-1', runId)!
     const storyboardId = planned.artifacts.find((a) => a.kind === 'storyboard')!.artifactId
     const attached = await service.command('project-1', runId, {
@@ -112,7 +109,7 @@ describe('pause spend semantics (提交门 + 收尾落停 + resume 重踢)', () 
       commandId: 'user-resume', expectedRevision: settled.revision, type: 'run.control',
       payload: { action: 'resume' }, issuedAt: new Date().toISOString(),
     })
-    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_rough_cut_review', 5000)
+    await waitFor(() => service.readFull('project-1', runId)!.status === 'awaiting_rough_cut_review')
     expect(generateCalls).toBe(2) // 不重做不重付：镜 1 没有被重新提交
     const done = service.readFull('project-1', runId)!
     expect(done.jobs.every((j) => j.status === 'adopted')).toBe(true)

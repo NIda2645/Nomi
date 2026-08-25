@@ -186,7 +186,6 @@ type ResolveFfmpegPathOptions = {
 function resolveBundledFfmpegPath(): string {
   try {
     // @ffmpeg-installer/ffmpeg resolves to the platform-specific binary shipped with the app.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const bundled = require("@ffmpeg-installer/ffmpeg") as { path?: unknown };
     return typeof bundled.path === "string" ? bundled.path : "";
   } catch {

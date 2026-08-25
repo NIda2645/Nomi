@@ -64,4 +64,6 @@ export type TruncatedPayloadField = {
   /** 原值类型:string 原样回读,json 经 JSON.parse 回读(sidecar 回读用,S5-a3)。 */
   valueKind: "string" | "json";
   sidecarRef?: string;
+  /** 超硬上限被整段丢内容(不脱敏/不哈希/不落 sidecar):日志层不许因为一个大字段拖死主进程。 */
+  oversize?: true;
 };

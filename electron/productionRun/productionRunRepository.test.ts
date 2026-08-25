@@ -8,6 +8,7 @@ import {
   createProductionRunRepository,
 } from "./productionRunRepository";
 import { productionRunPaths } from "./productionRunPaths";
+import { createProductionRunLock } from "./productionRunLock";
 
 let root = "";
 
@@ -26,21 +27,57 @@ function repository() {
   });
 }
 
+// create 要求 playbook 已登记 + 带 brief（否则造不出可推进的 Run，见 productionPlaybooks.ts）。
+// 起草会写 2 条事件（run.created + gate.waiting），所以下面的游标断言都从 2 起步。
 function createRun() {
   return repository().create({
     runId: "run-1",
     projectId: "project-1",
     playbook: { name: "brand.promo", version: "1.0.0" },
     origin: { host: "codex" },
+    brief: { goal: "repository fixture" },
   });
+}
+
+function generationCandidate() {
+  return {
+    candidateId: "candidate-1",
+    revision: 1,
+    moduleId: "generation.single-shot",
+    providerId: "fixture-provider",
+    modelId: "fixture-model",
+    mode: "text-to-image",
+    prompt: "A paper boat",
+    parameters: {},
+    references: [],
+  } as const;
 }
 
 describe("ProductionRunRepository", () => {
   it("creates and reads a checksummed run snapshot", () => {
     const created = createRun();
 
-    expect(created).toMatchObject({ runId: "run-1", revision: 0, status: "draft", snapshotCursor: 1 });
+    expect(created).toMatchObject({ runId: "run-1", revision: 0, status: "awaiting_direction", snapshotCursor: 2 });
     expect(repository().read("project-1", "run-1")).toEqual(created);
+    expect(repository().list("project-1")).toHaveLength(1);
+  });
+
+  it("creates a single-shot generation draft in the same durable Run owner", () => {
+    const created = repository().createGenerationDraft({
+      operationId: "op-1",
+      projectId: "project-1",
+      origin: { host: "semantic-mcp" },
+      candidate: generationCandidate(),
+    });
+
+    expect(created).toMatchObject({
+      runId: "op-1",
+      playbook: { name: "generation.single-shot" },
+      status: "draft",
+      gates: [],
+      generationPlan: { operationId: "op-1", state: "draft", candidate: { revision: 1 } },
+    });
+    expect(repository().read("project-1", "op-1")).toEqual(created);
     expect(repository().list("project-1")).toHaveLength(1);
   });
 
@@ -50,12 +87,12 @@ describe("ProductionRunRepository", () => {
       commandId: "cmd-1",
       expectedRevision: 0,
       type: "run.status",
-      payload: { status: "awaiting_contract" },
+      payload: { status: "running" },
       issuedAt: "2026-08-08T08:00:00.000Z",
     });
 
-    expect(first.run).toMatchObject({ revision: 1, status: "awaiting_contract", snapshotCursor: 2 });
-    expect(first.events.map((event) => event.cursor)).toEqual([2]);
+    expect(first.run).toMatchObject({ revision: 1, status: "running", snapshotCursor: 3 });
+    expect(first.events.map((event) => event.cursor)).toEqual([3]);
     expect(() =>
       repository().execute("project-1", "run-1", {
         commandId: "cmd-stale",
@@ -67,13 +104,43 @@ describe("ProductionRunRepository", () => {
     ).toThrow(ProductionRunRevisionConflictError);
   });
 
+  it("fails closed when another process owns the repository mutation lock", () => {
+    createRun();
+    const paths = productionRunPaths(root, "run-1");
+    const held = createProductionRunLock({
+      filePath: paths.repositoryLock,
+      epochPath: paths.repositoryLockEpoch,
+      ownerId: "other-process",
+      now: () => "2026-08-08T08:00:00.000Z",
+      randomId: () => "held-lock",
+    });
+    const lease = held.acquire();
+    try {
+      let error: unknown;
+      try {
+        repository().execute("project-1", "run-1", {
+          commandId: "blocked-by-lock",
+          expectedRevision: 0,
+          type: "run.status",
+          payload: { status: "running" },
+          issuedAt: "2026-08-08T08:00:00.000Z",
+        });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toMatchObject({ code: "run_lock_busy" });
+    } finally {
+      held.release(lease);
+    }
+  });
+
   it("returns the original result for a repeated command id", () => {
     createRun();
     const command = {
       commandId: "cmd-repeat",
       expectedRevision: 0,
       type: "run.status",
-      payload: { status: "awaiting_contract" },
+      payload: { status: "running" },
       issuedAt: "2026-08-08T08:00:00.000Z",
     };
     const first = repository().execute("project-1", "run-1", command);
@@ -87,7 +154,7 @@ describe("ProductionRunRepository", () => {
 
     const repeated = repository().execute("project-1", "run-1", command);
     expect(repeated).toEqual(first);
-    expect(repository().readEvents("project-1", "run-1")).toHaveLength(3);
+    expect(repository().readEvents("project-1", "run-1")).toHaveLength(4);
   });
 
   it("deduplicates from the durable event even if the command index was lost", () => {
@@ -96,14 +163,14 @@ describe("ProductionRunRepository", () => {
       commandId: "cmd-event-dedupe",
       expectedRevision: 0,
       type: "run.status",
-      payload: { status: "awaiting_contract" },
+      payload: { status: "running" },
       issuedAt: "2026-08-08T08:00:00.000Z",
     };
     const first = repository().execute("project-1", "run-1", command);
     fs.writeFileSync(productionRunPaths(root, "run-1").commands, "", "utf8");
 
     expect(repository().execute("project-1", "run-1", command)).toEqual(first);
-    expect(repository().readEvents("project-1", "run-1")).toHaveLength(2);
+    expect(repository().readEvents("project-1", "run-1")).toHaveLength(3);
   });
 
   it("recovers a corrupt snapshot from events and preserves the corrupt bytes", () => {
@@ -111,19 +178,36 @@ describe("ProductionRunRepository", () => {
     const paths = productionRunPaths(root, "run-1");
     const envelope = JSON.parse(fs.readFileSync(paths.snapshot, "utf8")) as Record<string, unknown>;
     fs.writeFileSync(paths.snapshot, JSON.stringify({ ...envelope, checksum: "wrong" }), "utf8");
+    const beforeBytes = fs.readFileSync(paths.snapshot);
+    const beforeEntries = fs.readdirSync(paths.dir).sort();
 
-    expect(repository().read("project-1", "run-1")).toMatchObject({ status: "draft", snapshotCursor: 1 });
-    expect(fs.readdirSync(paths.dir).some((name) => name.startsWith("run.corrupt-"))).toBe(true);
+    // 快照坏掉时从事件重建：重建出的 run 必须自报最后一条事件的游标（2），否则每次 read 都判过期。
+    expect(repository().read("project-1", "run-1")).toMatchObject({ status: "awaiting_direction", snapshotCursor: 2 });
+    expect(fs.readFileSync(paths.snapshot)).toEqual(beforeBytes);
+    expect(fs.readdirSync(paths.dir).sort()).toEqual(beforeEntries);
   });
 
-  it("ignores a torn final event and keeps cursor ordering after restart", () => {
+  it("rebuilds a stale snapshot in memory without rewriting the snapshot or directory", () => {
+    createRun();
+    const paths = productionRunPaths(root, "run-1");
+    const latest = repository().readEvents("project-1", "run-1").at(-1)!;
+    fs.appendFileSync(paths.events, `${JSON.stringify({ ...latest, eventId: "evt-stale", cursor: 3 })}\n`, "utf8");
+    const beforeBytes = fs.readFileSync(paths.snapshot);
+    const beforeEntries = fs.readdirSync(paths.dir).sort();
+
+    expect(repository().read("project-1", "run-1")).toMatchObject({ status: "awaiting_direction", snapshotCursor: 2 });
+    expect(fs.readFileSync(paths.snapshot)).toEqual(beforeBytes);
+    expect(fs.readdirSync(paths.dir).sort()).toEqual(beforeEntries);
+  });
+
+  it("surfaces a torn final event as a migration parse error instead of silently truncating the Run", () => {
     createRun();
     const paths = productionRunPaths(root, "run-1");
     fs.appendFileSync(paths.events, "{torn", "utf8");
 
     const restarted = repository();
-    expect(restarted.read("project-1", "run-1")).toMatchObject({ snapshotCursor: 1 });
-    expect(restarted.readEvents("project-1", "run-1").map((event) => event.cursor)).toEqual([1]);
+    expect(() => restarted.read("project-1", "run-1")).toThrow(/migration_parse_error/);
+    expect(() => restarted.readEvents("project-1", "run-1")).toThrow(/migration_parse_error/);
   });
 
   it("rejects an artifact payload with an unknown lifecycle status", () => {
@@ -184,6 +268,7 @@ describe("ProductionRunRepository", () => {
       projectId: "project-1",
       playbook: { name: "brand.promo", version: "1.0.0" },
       origin: { host: "codex" },
+      brief: { goal: "durable authority fixture" },
       policy: {
         mode: "balanced",
         trustedHosts: ["codex"],
@@ -218,17 +303,20 @@ describe("ProductionRunRepository", () => {
       },
       issuedAt: "2026-08-08T08:00:00.000Z",
     });
-    repository().execute("project-1", "run-1", {
-      commandId: "await-contract",
-      expectedRevision: 2,
-      type: "run.status",
-      payload: { status: "awaiting_contract" },
-      issuedAt: "2026-08-08T08:00:00.000Z",
-    });
+    // 起草后是 awaiting_direction，要按真实状态机走到 awaiting_contract：定方向 → 拟分镜 → 审完出合同。
+    for (const [index, status] of ["running", "awaiting_storyboard_review", "awaiting_contract"].entries()) {
+      repository().execute("project-1", "run-1", {
+        commandId: `to-${status}`,
+        expectedRevision: 2 + index,
+        type: "run.status",
+        payload: { status },
+        issuedAt: "2026-08-08T08:00:00.000Z",
+      });
+    }
 
     const result = repository().execute("project-1", "run-1", {
       commandId: "approve-gate",
-      expectedRevision: 3,
+      expectedRevision: 5,
       type: "gate.decide",
       payload: { gateId: "gate-contract", status: "approved", approval: { maxSpend: 999999 } },
       issuedAt: "2026-08-08T08:00:00.000Z",
@@ -236,10 +324,11 @@ describe("ProductionRunRepository", () => {
 
     expect(result.run).toMatchObject({
       status: "ready",
-      gates: [{ gateId: "gate-contract", status: "approved" }],
       jobs: [{ jobId: "job-1", status: "authorized" }],
       budget: { authorized: 60 },
     });
+    // 起草自带方向门，所以这里按 id 找合同门，不整数组比对。
+    expect(result.run.gates).toContainEqual(expect.objectContaining({ gateId: "gate-contract", status: "approved" }));
     expect(repository().readApprovals("project-1", "run-1")).toMatchObject([{
       approvalId: "approval:gate-contract",
       runId: "run-1",

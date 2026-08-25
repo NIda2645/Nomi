@@ -123,6 +123,40 @@ describe("runtime workspace asset storage", () => {
     expect([...fs.readFileSync(asset.data.absolutePath)]).toEqual([1, 2, 3]);
   });
 
+  it("sniffs an extensionless octet-stream video before importing", async () => {
+    const workspace = createWorkspace();
+    const bytes = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from("ftypisom", "ascii"), Buffer.alloc(16)]);
+    const asset = (await importLocalFile({
+      projectId: workspace.id,
+      bytes,
+      contentType: "application/octet-stream",
+      fileName: "clip",
+    })) as AssetRecord;
+
+    expect(asset.data.relativePath).toMatch(/assets\/imported\/2026-05-31\/clip\.mp4$/);
+    expect(asset.data.contentType).toBe("video/mp4");
+  });
+
+  it("imports a native file path without copying the full file through renderer IPC", async () => {
+    const workspace = createWorkspace();
+    const sourceDir = makeTempDir("nomi-native-import-source-");
+    const sourcePath = path.join(sourceDir, "large-image.png");
+    fs.writeFileSync(sourcePath, Buffer.from([4, 5, 6, 7]));
+
+    const readFileSync = vi.spyOn(fs, "readFileSync");
+    const asset = (await importLocalFile({
+      projectId: workspace.id,
+      sourcePath,
+      contentType: "image/png",
+      fileName: "large-image.png",
+    }, { allowSourcePath: true })) as AssetRecord;
+
+    expect(asset.data.relativePath).toBe("assets/imported/2026-05-31/large-image.png");
+    expect([...fs.readFileSync(asset.data.absolutePath)]).toEqual([4, 5, 6, 7]);
+    expect(readFileSync).not.toHaveBeenCalledWith(sourcePath);
+    readFileSync.mockRestore();
+  });
+
   it("restores imported asset metadata when listing project assets", async () => {
     const workspace = createWorkspace();
 

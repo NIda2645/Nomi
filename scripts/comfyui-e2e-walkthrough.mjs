@@ -35,7 +35,7 @@ try {
   console.log('  /system_stats hits:', rx.stats)
   await win.screenshot({ path: path.join(outDir, '40-card-connected.png') }); console.log('  📸 40-card-connected.png (应显示已连上 + 显卡)')
   console.log('  import panel:', await clickByText(win, '导入自定义工作流')); await win.waitForTimeout(800)
-  const ta = win.getByLabel('workflow_api.json 粘贴框'); await ta.fill(WAN_I2V); await win.waitForTimeout(400)
+  const ta = win.getByLabel('ComfyUI 工作流 JSON'); await ta.fill(WAN_I2V); await win.waitForTimeout(400)
   console.log('  analyze:', await clickByText(win, '分析工作流')); await win.waitForTimeout(1200)
   const recognized = (await win.getByText('已识别为', { exact: false }).count()) > 0
   console.log(recognized ? '  ✓ 自动识别成功' : '  ✗ 无识别结果')

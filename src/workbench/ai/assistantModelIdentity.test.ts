@@ -3,7 +3,12 @@
 // 只认 modelKey 会显示成第一条、选中还会绑到另一个供应商去。
 import { describe, expect, it } from 'vitest'
 
-import { decodeModelIdentity, encodeModelIdentity, labelForModel } from './assistantModelIdentity'
+import {
+  decodeModelIdentity,
+  encodeModelIdentity,
+  filterUsableAssistantTextModels,
+  labelForModel,
+} from './assistantModelIdentity'
 
 describe('模型身份编解码', () => {
   it('两段身份可逆', () => {
@@ -46,5 +51,38 @@ describe('标签消歧', () => {
 
   it('取不到供应商名时退回 key，不显示空白', () => {
     expect(labelForModel(relay, [apimart, relay], {})).toBe('GPT-5.2 · my-relay')
+  })
+})
+
+describe('助手可选模型必须来自真实可用 catalog', () => {
+  const vendors = [
+    { key: 'apimart', enabled: true, authType: 'bearer' as const, hasApiKey: true },
+    { key: 'kie', enabled: true, authType: 'bearer' as const, hasApiKey: false },
+    { key: 'local', enabled: true, authType: 'none' as const, hasApiKey: false },
+  ]
+
+  it('只保留 text、启用、身份完整且供应商真实可用的目录行', () => {
+    const models = filterUsableAssistantTextModels([
+      { vendorKey: 'apimart', modelKey: 'deepseek-v4-pro', kind: 'text', enabled: true, labelZh: 'DeepSeek V4 Pro' },
+      { vendorKey: 'apimart', modelKey: 'prompt-refiner', kind: 'text', enabled: true, meta: { promptRefineOnly: true }, labelZh: 'Prompt Refiner' },
+      { vendorKey: 'kie', modelKey: 'fake-text', kind: 'text', enabled: true, labelZh: 'Fake' },
+      { vendorKey: 'apimart', modelKey: 'disabled', kind: 'text', enabled: false, labelZh: 'Disabled' },
+      { vendorKey: 'apimart', modelKey: 'image-model', kind: 'image', enabled: true, labelZh: 'Image' },
+      { vendorKey: '', modelKey: 'missing-vendor', kind: 'text', enabled: true, labelZh: 'Missing vendor' },
+      { vendorKey: 'local', modelKey: 'local-text', kind: 'text', enabled: true, labelZh: 'Local text' },
+    ], vendors)
+
+    expect(models.map((model) => `${model.vendorKey}:${model.modelKey}`)).toEqual([
+      'apimart:deepseek-v4-pro',
+      'local:local-text',
+    ])
+  })
+
+  it('没有真实可用供应商时返回空，调用方必须显示配置入口而不是假下拉', () => {
+    const models = filterUsableAssistantTextModels([
+      { vendorKey: 'apimart', modelKey: 'deepseek-v4-pro', kind: 'text', enabled: true, labelZh: 'DeepSeek V4 Pro' },
+    ], [{ key: 'apimart', enabled: true, authType: 'bearer', hasApiKey: false }])
+
+    expect(models).toEqual([])
   })
 })

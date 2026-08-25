@@ -2,11 +2,11 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import { IconCornerDownLeft, IconCursorText, IconFilePlus, IconMaximize, IconMinimize, IconPaperclip, IconPlayerStopFilled, IconReplace, IconSend2, IconX } from '@tabler/icons-react'
-import { NomiLogoMark, NomiSelect, WorkbenchButton, WorkbenchIconButton } from '../../design'
+import { NomiLogoMark, WorkbenchButton, WorkbenchIconButton } from '../../design'
 import { cn } from '../../utils/cn'
 import { runWorkbenchAgent, workbenchSessionKey, type ToolCallEvent } from '../ai/workbenchAgentRunner'
 import { startNewConversation } from '../ai/conversationPersistence'
-import { clearWorkbenchAgentSession } from '../../api/desktopClient'
+import { safeClearAgentSession } from '../ai/agentSessionKey'
 import { AssistantMessageView, UserMessageBubble } from '../ai/AssistantMessageView'
 import { NoTextModelRecoveryCard } from '../ai/NoTextModelRecoveryCard'
 import { AssistantErrorCard } from '../ai/AssistantErrorCard'
@@ -18,7 +18,7 @@ import { handleAiComposerKeyDown } from '../ai/aiComposerKeyboard'
 import { extractStoryFromRequest, routeCreationIntent } from './creationIntentRouting'
 import type { WorkbenchAiMessage } from '../ai/workbenchAiTypes'
 import { WorkbenchAiHeaderActions } from '../ai/WorkbenchAiHeaderActions'
-import ActiveSkillChip from '../ai/ActiveSkillChip'
+import CreationPromptPicker from '../ai/CreationPromptPicker'
 import { importWorkbenchSkill, getAvailableSkillProviders, skillCapabilityFor, type SkillProviderKind } from '../api/skillApi'
 import { MemoryFold } from '../generationCanvas/components/MemoryFold'
 import { useWorkbenchStore } from '../workbenchStore'
@@ -26,12 +26,14 @@ import { runStoryboardPlanner } from '../generationCanvas/agent/runStoryboardPla
 import { requestFixationPlanning } from '../generationCanvas/agent/fixationLauncher'
 import {
   buildCreationAiPrompt,
-  CREATION_AI_MODES,
   extractWorkbenchDocumentText,
   getCreationAiMode,
+  modeAllowsIntentRouting,
   modeAllowsWriteTools,
   type CreationAiModeId,
 } from './creationAiModes'
+import { readWorkbenchAiReplyText, writeToolLabelKey } from './creationAiReplyText'
+import { useSystemPromptOverrides } from './useSystemPromptOverrides'
 import { useTransientScrollingClass } from './useTransientScrollingClass'
 import { isWriteTool, useCreationTurnStore, type PendingDocToolCall, type WriteToolName } from './creationTurnController'
 import { readWindowUrlParam } from '../windowUrlParam'
@@ -41,52 +43,21 @@ import { AutoGrowTextarea } from '../ai/composer/AutoGrowTextarea'
 import { COMPOSER_ATTACHMENT_ACCEPT, useComposerAttachments } from '../ai/composer/useComposerAttachments'
 import { useRafCoalesce } from '../ai/useRafCoalesce'
 import StoryboardNudge from './storyboard/StoryboardNudge'
-
-
-// The creation agent's write tools map 1:1 to the editor's document mutations.
-// Read tools auto-confirm without a card; write tools queue a confirmation card.
-// 写工具名/类型/守卫/待批卡形态已收口到 creationTurnController（turn 控制器单一真相源）。
-function writeToolLabelKey(name: WriteToolName): 'creationAi.writeTool.insert' | 'creationAi.writeTool.replace' | 'creationAi.writeTool.append' {
-  if (name === 'insert_at_cursor') return 'creationAi.writeTool.insert'
-  if (name === 'replace_selection') return 'creationAi.writeTool.replace'
-  return 'creationAi.writeTool.append'
-}
-
-
-function readWorkbenchAiReplyText(response: unknown): string {
-  if (!response || typeof response !== 'object' || Array.isArray(response)) return ''
-  const record = response as Record<string, unknown>
-  const text = typeof record.text === 'string' ? record.text.trim() : ''
-  if (text) return text
-  const responseValue = record.response
-  if (responseValue && typeof responseValue === 'object' && !Array.isArray(responseValue)) {
-    const nestedText = (responseValue as Record<string, unknown>).text
-    return typeof nestedText === 'string' ? nestedText.trim() : ''
-  }
-  return ''
-}
+import { snapshotScriptDraft } from './scriptDraftSnapshot'
 
 export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => void } = {}): JSX.Element {
   const { t } = useTranslation()
-  // 流式生命周期(sending/cancel/待批写卡/消息 id)收口到 turn 控制器,组件只读不持有 ——
-  // 这样切项目/新对话/卸载能统一中止在途轮次(治串台),按钮态也随之复位。
   const sending = useCreationTurnStore((state) => state.sending)
   const pendingToolCalls = useCreationTurnStore((state) => state.pendingToolCalls)
   const turn = useCreationTurnStore
-  // 流式吐字 rAF 合帧：把每 token 一次的整 messages 重渲合并到每帧最多一次（治掉字掉帧）。
   const { push: pushStreamFrame, cancel: cancelStreamFrame } = useRafCoalesce()
-  // 项目记忆卡刷新键:每完成一轮(sending true→false)+1,触发记忆重取(本轮可能提炼新事实)。
   const [memoryRefreshKey, setMemoryRefreshKey] = React.useState(0)
   const prevSendingRef = React.useRef(sending)
   React.useEffect(() => {
     if (prevSendingRef.current && !sending) setMemoryRefreshKey((key) => key + 1)
     prevSendingRef.current = sending
   }, [sending])
-  // 放大/全屏对话：把整块面板移到 body 级居中浮层（仿 Scene3D 全屏 portal）。
   const [expanded, setExpanded] = React.useState(false)
-  // 注意:不在卸载时 abort。turn 状态已搬到控制器(模块级单例)+ 消息在 store,
-  // 折叠/切 tab 会卸载本面板,但在途轮次应继续跑、重开面板时无缝接回(折叠续跑)。
-  // 跨项目串台由 swapCreationAiProject→abandon 兜底,与面板卸载解耦。
   const messagesScrollRef = useTransientScrollingClass<HTMLDivElement>('workbench-scrollbar-visible')
   const workbenchDocument = useWorkbenchStore((state) => state.workbenchDocument)
   const documentTools = useWorkbenchStore((state) => state.creationDocumentTools)
@@ -96,8 +67,21 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
   const setActiveSkill = useWorkbenchStore((state) => state.setCreationActiveSkill)
   const draft = useWorkbenchStore((state) => state.creationAiDraft)
   const messages = useWorkbenchStore((state) => state.creationAiMessages)
-  // S1b 诚实分隔线:气泡有历史而 LLM 记忆为空 → 在历史末尾画「以上对话 AI 已不再记得」。
   const staleBoundaryId = useStaleConversationBoundary(messages.map((message) => message.id), 'creation')
+  // 分镜方案卡挂在「产出它的那条消息」下面（治「卡片跟着对话跑」）。取**最后一条**带标消息：
+  // 改方案会新产出一条带标的，卡片随之前移，永远只显示一张。
+  // 两种没有锚的情形（都不是 fallback，是「方案在本线程里没有家」这个事实的诚实呈现）：
+  //   ① 老项目：方案早于本次改动产生，消息上没有标；
+  //   ② 用户点了「新对话」：消息清空但方案是项目级的，仍在。
+  // 这时把卡片放在列表**顶部**当常驻产物，而不是放回尾部——放尾部就是把这个 bug 又请回来了。
+  const storyboardPlan = useWorkbenchStore((state) => state.storyboardPlan)
+  const storyboardAnchorId = React.useMemo(() => {
+    if (!storyboardPlan) return null
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].storyboardPlan) return messages[index].id
+    }
+    return null
+  }, [messages, storyboardPlan])
   // Issue #9：agent 报错且目录里没有 enabled 文本模型 → 报错气泡换成「缺大脑」恢复卡（判真实状态非匹配串）。
   // recoveryShownIds：某条报错已进入恢复卡后「黏住」——一键启用使 hasTextModel 翻 true 也不卸载卡片，
   // 让它能展示自己的「大脑已就位」done 态，而不是露出旧报错文本。
@@ -107,12 +91,12 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
   const [resolvedActionIds, setResolvedActionIds] = React.useState<ReadonlySet<string>>(() => new Set())
   const attachments = useWorkbenchStore((state) => state.creationAiAttachments)
   const error = useWorkbenchStore((state) => state.creationAiError)
-  const setModeId = useWorkbenchStore((state) => state.setCreationAiModeId)
   const setDraft = useWorkbenchStore((state) => state.setCreationAiDraft)
   const setMessages = useWorkbenchStore((state) => state.setCreationAiMessages)
   const setAttachments = useWorkbenchStore((state) => state.setCreationAiAttachments)
   const setError = useWorkbenchStore((state) => state.setCreationAiError)
   const setWorkspaceMode = useWorkbenchStore((state) => state.setWorkspaceMode)
+  const setModeId = useWorkbenchStore((state) => state.setCreationAiModeId)
 
   const {
     isDragging,
@@ -130,6 +114,8 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
   const documentToolsRef = React.useRef(documentTools)
   documentToolsRef.current = documentTools
 
+  // 订阅设置里改过的系统提示词：覆盖到货/变更即重渲，activeMode 随之拿到最新有效提示词（发送路径同源）。
+  useSystemPromptOverrides()
   const activeMode = getCreationAiMode(modeId as CreationAiModeId)
   // 同理:send 是空依赖 useCallback（稳定），不能直接闭包 activeSkill/activeMode（会捕获首渲染的旧值
   // → 点「AI 写技能」后 send 永远看不到）。用 live ref 让 send 取最新的技能选择。
@@ -155,10 +141,9 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     if (call.toolName === 'insert_at_cursor') tools.insertAtCursor(call.content)
     else if (call.toolName === 'replace_selection') tools.replaceSelection(call.content)
     else tools.appendToEnd(call.content)
-    resolvePending(call.toolCallId, { ok: true, result: { applied: true } })
+    const scriptDraft = snapshotScriptDraft({ content: tools.readFullText(), source: 'user' })
+    resolvePending(call.toolCallId, { ok: true, result: { applied: true, scriptDraft } })
   }, [resolvePending])
-
-
   const writeToolIcon = React.useCallback((name: WriteToolName) => {
     if (name === 'insert_at_cursor') return <IconCursorText size={13} />
     if (name === 'replace_selection') return <IconReplace size={13} />
@@ -170,11 +155,23 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     const store = useWorkbenchStore.getState()
     const currentPlan = store.storyboardPlan
     const isRevision = Boolean(currentPlan && !store.storyboardPlanCommitted && revisionRequest?.trim())
-    const docStory = (selectedText || documentText).trim()
-    // 编辑器为空但用户把故事打在了对话里 → 用对话正文，并补写进文稿（单一真相源），
-    // 别让他把已经敲过的故事再搬一遍（D1）。裸命令抠不出故事则维持下面的提示。
+    const liveDocumentText = documentToolsRef.current?.readFullText() || documentText
+    const docStory = (selectedText || liveDocumentText).trim()
+    // 编辑器为空但用户把故事打在了对话里 → 用对话正文，并补写进文稿（单一真相源），别让他把已经敲过的故事再搬一遍。
     const chatStory = docStory ? '' : extractStoryFromRequest(displayPrompt)
-    if (chatStory) documentToolsRef.current?.appendToEnd(chatStory)
+    if (chatStory) {
+      const toolCallId = `local-script-draft-${turn.getState().nextMessageId('assistant')}`
+      turn.getState().addPendingToolCall({
+        toolCallId,
+        toolName: 'append_to_end',
+        content: chatStory,
+        confirm: async (decision) => {
+          if (!decision.ok) return
+          launchStoryboardPlanning(displayPrompt, undefined, shotMode)
+        },
+      })
+      return
+    }
     const storyText = docStory || chatStory
     if (!isRevision && !storyText) {
       setError(t('creationAi.writeStoryFirst'))
@@ -185,7 +182,15 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     setMessages((prev) => [
       ...prev,
       { id: userId, role: 'user', content: displayPrompt },
-      { id: assistantId, role: 'assistant', content: isRevision ? t('creationAi.revisingPlan') : t('creationAi.planningStoryboard'), status: 'pending' as const },
+      {
+        id: assistantId,
+        role: 'assistant',
+        content: isRevision ? t('creationAi.revisingPlan') : t('creationAi.planningStoryboard'),
+        status: 'pending' as const,
+        // 方案卡锚在这条消息上（不再常驻对话流尾部跟着用户说话跑）。改方案同样打标 →
+        // 卡片自动移到最新那条，旧的那条不再是「最后一条带标的」，天然只显示一张。
+        storyboardPlan: true as const,
+      },
     ])
     setDraft('')
     setError('')
@@ -213,10 +218,14 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
         )
       } catch (error: unknown) {
         if (!handle.isCurrent()) return
+        // 存**原始**错误串（不再包一层中文前缀）——错误态统一由 AssistantErrorCard /
+        // NoTextModelRecoveryCard 渲染，它们内部走 classifyGenerationError 分类成人话；提前包
+        // 「拆镜头失败：<原串>」会污染 provider 原话抽取，且把英文散句直接怼到用户脸上（2026-08-25 走查）。
+        const rawMessage = error instanceof Error && error.message ? error.message : t('creationAi.unknownError')
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: t('creationAi.planFailed', { message: error instanceof Error && error.message ? error.message : t('creationAi.unknownError') }), status: 'error' as const }
+              ? { ...m, content: rawMessage, status: 'error' as const }
               : m,
           ),
         )
@@ -267,10 +276,11 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     // 对话驱动（删固定 chip，用户拍板 2026-06-13）：自然语言意图 → 甩给画布 agent。
     // 跳过意图路由的两种「用户已明确选了路」的情形（B1 分工讲清，2026-06-22）：
     //  ① 锁定了 active skill（如「AI 写技能」）；
-    //  ② 选了「写分镜」模式 = 明确要在文稿里写**文字分镜稿**，别再劫持到「拆镜头→画布」规划师
-    //     （规划师是结构化落画布路径；默认模式下说「拆镜头/分镜」才走它）。
-    // 否则含「分镜/镜头」的输入会盖过用户明确选的模式/技能（这正是双路互劫的根因）。
-    const skipIntentRouting = skillSelRef.current.activeSkill || skillSelRef.current.activeMode.id === 'storyboard'
+    //  ② 选了任何**专职模式**（素材规划/文字稿/提示词/审校）——他已经指了路，别再劫走。
+    // 2026-08-17 根因修正：②原来硬编码成 `id === 'storyboard'`，于是「素材规划」漏在守卫外——
+    // 用户选了素材规划、说一句带「画面/场景/镜头」的话就被劫持去拆分镜（用户实测反馈）。
+    // 改读模式自己的能力声明 modeAllowsIntentRouting，新增专职模式自动受保护，不会再漏这一类。
+    const skipIntentRouting = Boolean(skillSelRef.current.activeSkill) || !modeAllowsIntentRouting(skillSelRef.current.activeMode)
     const intent = skipIntentRouting ? null : routeCreationIntent(userRequest)
     if (intent) {
       // 识别到跨面板意图 → 不再静默直接开跑，推一张可见的动作卡（治隐形）：
@@ -451,7 +461,7 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     clearAttachments()
     setError('')
     // 新对话 = 该 area 模型上下文归零(创作/画布各一份键,互不影响)。
-    void clearWorkbenchAgentSession(workbenchSessionKey('creation'))
+    void safeClearAgentSession(workbenchSessionKey('creation'))
   }, [clearAttachments, setDraft, setError, turn])
 
   const panelBody = (
@@ -492,8 +502,9 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
           {/* 审计 A14：与入口词「创作」一致，不再裸叫「助手」 */}
           <span className={cn('text-body-sm font-semibold text-nomi-ink')}>{t('creationAi.title')}</span>
         </div>
+        {/* 提示词选择器已挪到 composer 发送键左边（用户 2026-08-18 拍板）——那里才是「马上要发这一句」
+            的决策位，和模型选择器并排。头部这颗不再保留：同一功能两个家 = P1/§1.5 一功能一个家。 */}
         <div className={cn('inline-flex items-center gap-2 ml-auto min-w-0')}>
-          <ActiveSkillChip activeSkill={activeSkill} autoLabel={t(`creationAi.mode.${activeMode.id}.title` as 'creationAi.mode.general.title')} onSelect={setActiveSkill} />
           <WorkbenchAiHeaderActions
             area="creation"
             className={cn('inline-flex items-center flex-nowrap gap-1')}
@@ -534,8 +545,14 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
       <div className={cn('[grid-area:tools] min-w-0')}>
         {/* 对齐画布助手:项目记忆「AI 记得 N 条」(N=0 不渲染);删工具条(与记忆条重复的灰杠)。 */}
         <MemoryFold refreshKey={memoryRefreshKey} />
-        {/* 情景卡自动浮现：写好故事还没拆镜头时，把「拆成镜头」入口在对的时机端到眼前（治「没有可点入口」）。 */}
-        <StoryboardNudge busy={sending} onRun={(shotMode) => launchStoryboardPlanning(t('creationAi.storyboardCommand'), undefined, shotMode)} />
+        {/* 情景卡自动浮现：写好故事还没拆镜头时，把「拆成镜头」入口在对的时机端到眼前（治「没有可点入口」）。
+            2026-08-17 补漏：专职模式（素材规划等）下不浮——它和上面的意图路由是同一件事的两个入口，
+            只堵路由不堵这张卡，用户选了素材规划照样会看见「拆成镜头」被推到脸上（同一根因的第二个出口）。 */}
+        <StoryboardNudge
+          busy={sending}
+          allowed={modeAllowsIntentRouting(activeMode) && !activeSkill}
+          onRun={(shotMode) => launchStoryboardPlanning(t('creationAi.storyboardCommand'), undefined, shotMode)}
+        />
       </div>
 
       <div
@@ -547,7 +564,9 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
         )}
         aria-live="polite"
       >
-        {messages.length === 0 && pendingToolCalls.length === 0 ? (
+        {/* 方案在本线程里没有锚（老项目 / 点过「新对话」）→ 当常驻产物钉在顶部，不放回尾部。 */}
+        {storyboardPlan && !storyboardAnchorId ? <StoryboardPlanCard /> : null}
+        {messages.length === 0 && pendingToolCalls.length === 0 && !storyboardPlan ? (
           <div className={cn(
             'flex h-full flex-col items-center justify-center gap-2',
             'max-w-[240px] mx-auto py-6 px-3 text-center',
@@ -616,6 +635,7 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
                   cancelled={message.status === 'cancelled'}
                 />
               )}
+              {message.id === storyboardAnchorId ? <StoryboardPlanCard /> : null}
               {message.id === staleBoundaryId ? <StaleConversationDivider /> : null}
             </React.Fragment>
           ))
@@ -660,8 +680,6 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
           </div>
         ) : null}
 
-        {/* 分镜方案卡片(回看链路):拆镜头产出常驻对话流尾部,自 storyboardPlan 自门控,null 不渲染。 */}
-        <StoryboardPlanCard />
       </div>
 
       {error ? (
@@ -708,7 +726,7 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
           onPaste={handlePaste}
         />
         <div className={cn('workbench-creation-ai__actions', 'flex items-center justify-between')}>
-          {/* 左侧：附件 + 模式 + 模型选择 */}
+          {/* 左侧：附件 + 工作方式 + 模型选择。内部模式不再占一个难懂的下拉。 */}
           <div className={cn('flex items-center gap-1.5 flex-1 min-w-0')}>
             <WorkbenchIconButton
               className={cn(
@@ -721,14 +739,12 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
               onClick={openFilePicker}
               icon={<IconPaperclip size={16} />}
             />
-            <NomiSelect
-              ariaLabel={t('creationAi.modeAria')}
-              leadingLabel={t('creationAi.modeLeading')}
-              size="sm"
-              title={t(`creationAi.mode.${activeMode.id}.description` as 'creationAi.mode.general.description')}
-              value={activeMode.id}
-              options={CREATION_AI_MODES.map((mode) => ({ value: mode.id, label: t(`creationAi.mode.${mode.id}.short` as 'creationAi.mode.general.short') }))}
-              onChange={(value) => setModeId(value as CreationAiModeId)}
+            {/* 「用哪段提示词」和「用哪个模型」是同一层决策（都作用于马上要发的这一句），并排放。 */}
+            <CreationPromptPicker
+              activeSkill={activeSkill}
+              modeId={modeId}
+              onModeChange={setModeId}
+              onSelect={setActiveSkill}
             />
             <AssistantModelPicker />
           </div>
@@ -768,11 +784,9 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
   )
 
   if (!expanded || typeof document === 'undefined') return panelBody
-  // portal 到 body 会脱离 .workbench-shell 作用域 → 所有 --workbench-* token 失效（面板背景/
-  // 蒙层全透明）。带上 workbench-shell 类把 token 作用域接回来（同 Scene3D 全屏壳做法）。
   return createPortal(
     <div
-      className={cn('workbench-shell', 'fixed inset-0 z-[200] grid place-items-center bg-[var(--workbench-backdrop)] p-4')}
+      className={cn('fixed inset-0 z-[200] grid place-items-center bg-[var(--workbench-backdrop)] p-4')}
       onClick={(event) => {
         if (event.target === event.currentTarget) setExpanded(false)
       }}

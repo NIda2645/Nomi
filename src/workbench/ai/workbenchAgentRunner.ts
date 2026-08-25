@@ -1,8 +1,12 @@
 import type { AgentAttachmentPayload, AgentsChatResponseDto, AgentChatV2Session } from '../../api/desktopClient'
-import { sendWorkbenchAiMessage } from './workbenchAiClient'
+import { sendWorkbenchAiMessage, type WorkbenchAiRequest } from './workbenchAiClient'
 import { getAssistantModelPref } from './assistantModelPref'
 import { useAgentUsageStore } from './agentUsageStore'
-import { readWindowUrlParam } from '../windowUrlParam'
+import { workbenchSessionKey, type WorkbenchAgentArea } from './agentSessionKey'
+
+// 会话键工厂已收口到 agentSessionKey.ts（B1a）。此处 re-export 保持既有 import 路径不破
+// （generationCanvasAgentClient / 两面板 / staleConversationDivider / conversationPersistence 仍从这里取）。
+export { workbenchSessionKey, type WorkbenchAgentArea } from './agentSessionKey'
 
 /**
  * One shared agent runner for both workbench panels (创作区 + 生成区).
@@ -16,18 +20,6 @@ import { readWindowUrlParam } from '../windowUrlParam'
  * Read tools are auto-confirmed by the caller; write/destructive tools render a
  * confirmation card and confirm only after the user approves.
  */
-
-export type WorkbenchAgentArea = 'creation' | 'generation'
-
-/**
- * 后端对话记忆键。会话历史(2026-06-14)起按 **area** 隔离:创作区 / 生成区各一份记忆,
- * 翻回各自的历史线程互不串台。仍按 project 隔离,不同项目不漏上下文。
- */
-export function workbenchSessionKey(area: WorkbenchAgentArea): string {
-  // readWindowUrlParam 兼容 prod 的 hash 路由——只读 search 段曾让打包版全部落 `local` 桶。
-  const projectId = readWindowUrlParam('projectId')
-  return `nomi:workbench:${projectId || 'local'}:${area}`
-}
 
 export type ToolCallEvent = {
   toolCallId: string
@@ -72,7 +64,10 @@ export async function runWorkbenchAgent(input: RunWorkbenchAgentInput): Promise<
   // 助手模型偏好（用户在助手面板选的）→ 加进 payload，后端 chooseTextModel 优先用它，
   // 否则回退「第一个可用 text 模型」。两个面板都走这里 → 自动生效，无需各自传。
   const pref = getAssistantModelPref()
-  const request = {
+  // 显式标注类型:让 TS 的 excess property check 对这个字面量生效。曾漏 systemPrompt——
+  // 无标注时 request 是变量,结构化子类型允许多带字段,于是它一路传到 buildWorkbenchAiPayload
+  // 被静默丢弃、typecheck 全绿。标注后任何「传了但 DTO 没声明」的字段当场编译报错。
+  const request: WorkbenchAiRequest = {
     prompt: input.prompt,
     ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
     displayPrompt: input.displayPrompt,

@@ -34,6 +34,7 @@ function timelineState(imageClips: TimelineClip[], videoClips: TimelineClip[] = 
   return {
     version: 1, fps: 30, scale: 1, playheadFrame: 0,
     tracks: [track('image', imageClips), track('video', videoClips)],
+    textClips: [],
   }
 }
 
@@ -47,7 +48,7 @@ describe('timelineHasVisualClips — 空态「拼成初稿」门控', () => {
     id: 'audioTrack', type: 'audio', label: '音频轨', clips,
   })
   const withTracks = (tracks: TimelineTrack[]): TimelineState => ({
-    version: 1, fps: 30, scale: 1, playheadFrame: 0, tracks,
+    version: 1, fps: 30, scale: 1, playheadFrame: 0, tracks, textClips: [],
   })
 
   it('空时间轴 = 无画面片段', () => {
@@ -163,6 +164,22 @@ describe('normalizeTimeline — 归一化与清洗', () => {
       { id: 'img', sourceNodeId: 'n', type: 'image', startFrame: 0, endFrame: 10 },
     ] }] }
     expect(videoTrackClips(normalizeTimeline(input))).toEqual([])
+  })
+
+  it('只保留明确的转场元数据，不把非法时长冒充转场', () => {
+    const out = normalizeTimeline({
+      tracks: [],
+      transitions: [
+        { fromClipId: 'a', toClipId: 'b', type: 'dissolve', durationFrames: 6 },
+        { fromClipId: 'b', toClipId: 'c', type: 'cut' },
+        { fromClipId: 'c', toClipId: 'd', type: 'fade', durationFrames: 0 },
+      ],
+    })
+    expect(out.transitions).toEqual([
+      { fromClipId: 'a', toClipId: 'b', type: 'dissolve', durationFrames: 6 },
+      { fromClipId: 'b', toClipId: 'c', type: 'cut' },
+      { fromClipId: 'c', toClipId: 'd', type: 'fade' },
+    ])
   })
 })
 

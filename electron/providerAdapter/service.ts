@@ -1,72 +1,58 @@
 import crypto from "node:crypto";
 import type { LanguageModelV1 } from "ai";
 import { buildLanguageModelForVendor } from "../ai/vendorLanguageModel";
-import {
-  extractVendorExtraHeaders,
-  mutateCatalog,
-  normalizeProviderKind,
-  readCatalog,
-} from "../catalog/catalogStore";
+import { readCatalog } from "../catalog/catalogStore";
 import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
 import { decryptApiKeyRecord } from "../catalog/secrets";
-import type { AiSdkProviderKind, BillingModelKind, Model, ProfileKind, Vendor } from "../catalog/types";
+import type { BillingModelKind, Model, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
 import { AdapterNeedsAiError, compileProviderAdapter, repairProviderAdapter } from "./compiler";
 import { discoverProviderDocs, type DiscoveredDocs } from "./docsDiscovery";
 import { builtinDraftForUndocumentedEndpoint } from "./builtinOpenAiCompatibleDraft";
-import { connectionFingerprint, ProviderAdapterStore, recoverableAdapterRuns } from "./store";
+import {
+  connectionFingerprint,
+  isTerminalAdapterStage,
+  ProviderAdapterStore,
+  recoverableAdapterRuns,
+} from "./store";
 import type {
   AdapterAuthType,
-  AdapterModelDraft,
   AdapterModeResult,
+  ProviderAdapterConnectionInput,
   ProviderAdapterCompilation,
   ProviderAdapterCompileFailure,
   ProviderAdapterDraft,
+  ProviderAdapterRegisterInput,
+  ProviderAdapterRegistration,
   ProviderAdapterRevision,
   ProviderAdapterRun,
 } from "./types";
-import { adapterModelMetadataForPromotion } from "./promotionMeta";
 import { adapterRevisionDigest } from "./validator";
 import { verifyAdapterMode, type AdapterVerificationResult } from "./verifier";
 import { redactAdapterSecrets } from "./redaction";
+import { defaultCatalog, type LoadedConnection, type ProviderAdapterCatalogPort } from "./serviceCatalog";
+import { AdapterWaitError, awaitAdapterStep, deadlineExpired, deadlineFrom } from "./serviceLifecycle";
+import {
+  completedModelCount,
+  failUnfinishedModes,
+  genericCompilation,
+  primaryTaskKind,
+  withTextModels,
+} from "./serviceFallback";
+import { compileMediaModels } from "./serviceCompilation";
+import { normalizeProviderAdapterInput, registerProviderConnection } from "./registration";
 
 export { adapterModelMetadataForPromotion } from "./promotionMeta";
+export { defaultCatalog } from "./serviceCatalog";
+export type { ProviderAdapterCatalogPort } from "./serviceCatalog";
 
-export type ProviderAdapterStartInput = {
-  vendorName: string;
-  baseUrl: string;
-  apiKey: string;
-  authType: AdapterAuthType;
-  providerKind?: AiSdkProviderKind;
-  authHeader?: string;
-  authQueryParam?: string;
-  headers?: Record<string, string>;
-  models: Array<{ modelKey: string; labelZh?: string; kind: BillingModelKind }>;
-};
-
-type LoadedConnection = {
-  vendor: Vendor;
-  models: Model[];
-  apiKey: string;
-  headers?: Record<string, string>;
-};
-
-export type ProviderAdapterCatalogPort = {
-  stage(input: ProviderAdapterStartInput & { vendorKey: string; runId: string }): { vendor: Vendor; models: Model[] };
-  load(vendorKey: string, selectedModelKeys: readonly string[]): LoadedConnection | null;
-  promote(input: {
-    run: ProviderAdapterRun;
-    draft: ProviderAdapterDraft;
-    revision: ProviderAdapterRevision;
-    verifiedModes: Array<{ modelKey: string; taskKind: ProfileKind }>;
-  }): void;
-  fail(run: ProviderAdapterRun): void;
-};
+export type ProviderAdapterStartInput = ProviderAdapterConnectionInput;
+export type { ProviderAdapterRegisterInput, ProviderAdapterRegistration } from "./types";
 
 export type ProviderAdapterServiceDependencies = {
   catalog: ProviderAdapterCatalogPort;
   schedule?: (runId: string) => void;
-  discover: (input: { baseUrl: string; modelKeys: readonly string[] }) => Promise<DiscoveredDocs>;
+  discover: (input: { baseUrl: string; modelKeys: readonly string[]; signal?: AbortSignal }) => Promise<DiscoveredDocs>;
   resolveLanguageModels: (connection: LoadedConnection) => readonly LanguageModelV1[];
   compile: (input: {
     languageModels: readonly LanguageModelV1[];
@@ -74,6 +60,7 @@ export type ProviderAdapterServiceDependencies = {
     authType: AdapterAuthType;
     selectedModels: Array<{ modelKey: string; label: string; kind: BillingModelKind }>;
     docs: DiscoveredDocs["sources"];
+    signal?: AbortSignal;
   }) => Promise<ProviderAdapterCompilation>;
   repair: (input: {
     languageModels: readonly LanguageModelV1[];
@@ -82,198 +69,23 @@ export type ProviderAdapterServiceDependencies = {
     previousDraft: ProviderAdapterDraft;
     failure: { stage: string; message: string; modelKey?: string; taskKind?: string; requestSummary?: unknown };
     docs: DiscoveredDocs["sources"];
+    signal?: AbortSignal;
   }) => Promise<ProviderAdapterDraft>;
   verify: (input: {
     vendor: Vendor;
     model: Model;
     apiKey: string;
     mode: ProviderAdapterDraft["models"][number]["modes"][number];
+    signal?: AbortSignal;
   }) => Promise<AdapterVerificationResult>;
   now: () => string;
   id: () => string;
   maxRepairs?: number;
-};
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-/**
- * 文本模式 create 的占位。文本的验证与生产都走 streamTextTask（AI SDK 那条路），
- * 从不按这份 create 发请求，promote 也不会为文本建 mapping——它只是让草稿结构完整。
- * 写成真实的 OpenAI 兼容路径而不是空对象，是为了让人读到时不误会「这里少填了东西」。
- */
-const TEXT_PRODUCTION_PATH_CREATE = { method: "POST", path: "/chat/completions" } as const;
-
-function primaryTaskKind(kind: BillingModelKind): ProfileKind {
-  if (kind === "image") return "text_to_image";
-  if (kind === "video") return "text_to_video";
-  if (kind === "audio") return "text_to_audio";
-  if (kind === "model3d") return "text_to_3d";
-  return "chat";
-}
-
-/** 导出仅为单测直接驱动真实 promote（验证结果不得决定 enabled 的不变量钉在那里）。 */
-export const defaultCatalog: ProviderAdapterCatalogPort = {
-  stage(input) {
-    const before = readCatalog();
-    const existingVendor = before.vendors.find((vendor) => vendor.key === input.vendorKey);
-    const cleanHeaders = Object.fromEntries(
-      Object.entries(input.headers || {}).filter(([key, value]) => key.trim() && value.trim()),
-    );
-    return mutateCatalog((tx) => {
-      const vendor = tx.upsertVendor({
-        key: input.vendorKey,
-        name: input.vendorName || existingVendor?.name || input.vendorKey,
-        enabled: existingVendor?.enabled ?? false,
-        baseUrlHint: input.baseUrl,
-        authType: input.authType,
-        authHeader: input.authHeader || null,
-        authQueryParam: input.authQueryParam || null,
-        providerKind: normalizeProviderKind(input.providerKind),
-        meta: {
-          ...asRecord(existingVendor?.meta),
-          ...(Object.keys(cleanHeaders).length ? { extraHeaders: cleanHeaders } : {}),
-        },
-      });
-      tx.upsertApiKey(input.vendorKey, { apiKey: input.apiKey, enabled: true });
-      const models = input.models.map((selected) => {
-        const existing = before.models.find(
-          (model) => model.vendorKey === input.vendorKey && model.modelKey === selected.modelKey,
-        );
-        return tx.upsertModel({
-          vendorKey: input.vendorKey,
-          modelKey: selected.modelKey,
-          modelAlias: existing?.modelAlias || selected.modelKey,
-          labelZh: selected.labelZh || existing?.labelZh || humanizeModelKey(selected.modelKey),
-          kind: selected.kind,
-          // Last-known-good remains executable; a brand-new candidate stays disabled until one mode passes.
-          enabled: existing?.enabled ?? false,
-          meta: {
-            ...asRecord(existing?.meta),
-            adapter: {
-              state: "testing",
-              runId: input.runId,
-              activeRevision: asRecord(asRecord(existing?.meta).adapter).activeRevision,
-              modes: [],
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        });
-      });
-      return { vendor, models };
-    });
-  },
-
-  load(vendorKey, selectedModelKeys) {
-    const state = readCatalog();
-    const vendor = state.vendors.find((item) => item.key === vendorKey);
-    if (!vendor) return null;
-    const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendorKey]);
-    if (vendor.authType !== "none" && !apiKey) return null;
-    const selected = new Set(selectedModelKeys);
-    const models = state.models.filter((model) => model.vendorKey === vendorKey && selected.has(model.modelKey));
-    if (models.length !== selected.size) return null;
-    return { vendor, models, apiKey, headers: extractVendorExtraHeaders(vendor) };
-  },
-
-  promote(input) {
-    const before = readCatalog();
-    const verified = new Set(input.verifiedModes.map((item) => `${item.modelKey}\0${item.taskKind}`));
-    mutateCatalog((tx) => {
-      const existingVendor = before.vendors.find((vendor) => vendor.key === input.run.vendorKey);
-      if (!existingVendor) throw new Error(`Provider disappeared before adapter promotion: ${input.run.vendorKey}`);
-      // 验证结果不再决定「给不给用」（2026-08-12）：用户明确要求加的东西就该加进来，
-      // 没验过的标记出来让他自己试——我们的探测比模型本身更容易错（接 DeepSeek 那次即是）。
-      tx.upsertVendor({ ...existingVendor, enabled: true });
-      for (const candidate of input.draft.models) {
-        const existing = before.models.find(
-          (model) => model.vendorKey === input.run.vendorKey && model.modelKey === candidate.modelKey,
-        );
-        if (!existing) continue;
-        const modeResults = input.run.models.find((model) => model.modelKey === candidate.modelKey)?.modes || [];
-        const oldMeta = asRecord(existing.meta);
-        tx.upsertModel({
-          ...existing,
-          enabled: true,
-          meta: adapterModelMetadataForPromotion({
-            oldMeta,
-            candidate,
-            modeResults,
-            runId: input.run.id,
-            revisionId: input.revision.id,
-            updatedAt: input.run.updatedAt,
-          }),
-        });
-        for (const mode of candidate.modes) {
-          if (!verified.has(`${candidate.modelKey}\0${mode.taskKind}`)) continue;
-          // Text stays on the existing AI SDK path so streaming remains intact; providerKind is part of the staged vendor.
-          if (candidate.kind === "text") continue;
-          tx.upsertMapping({
-            vendorKey: input.run.vendorKey,
-            modelKey: candidate.modelKey,
-            taskKind: mode.taskKind,
-            name: `${candidate.labelZh} · ${mode.taskKind}`,
-            enabled: true,
-            create: mode.create,
-            ...(mode.query ? { query: mode.query } : {}),
-            ...(mode.statusMapping ? { statusMapping: mode.statusMapping } : {}),
-          });
-        }
-      }
-      const compiledModels = new Set(input.draft.models.map((model) => model.modelKey));
-      for (const resultModel of input.run.models) {
-        if (compiledModels.has(resultModel.modelKey)) continue;
-        const existing = before.models.find(
-          (model) => model.vendorKey === input.run.vendorKey && model.modelKey === resultModel.modelKey,
-        );
-        if (!existing) continue;
-        const oldMeta = asRecord(existing.meta);
-        tx.upsertModel({
-          ...existing,
-          meta: {
-            ...oldMeta,
-            adapter: {
-              state: "failed",
-              runId: input.run.id,
-              activeRevision: asRecord(oldMeta.adapter).activeRevision,
-              modes: resultModel.modes,
-              updatedAt: input.run.updatedAt,
-            },
-          },
-        });
-      }
-    });
-  },
-
-  fail(run) {
-    const before = readCatalog();
-    mutateCatalog((tx) => {
-      for (const resultModel of run.models) {
-        const existing = before.models.find(
-          (model) => model.vendorKey === run.vendorKey && model.modelKey === resultModel.modelKey,
-        );
-        if (!existing) continue;
-        const oldMeta = asRecord(existing.meta);
-        const oldAdapter = asRecord(oldMeta.adapter);
-        tx.upsertModel({
-          ...existing,
-          meta: {
-            ...oldMeta,
-            adapter: {
-              state: "failed",
-              runId: run.id,
-              ...(typeof oldAdapter.activeRevision === "string"
-                ? { activeRevision: oldAdapter.activeRevision }
-                : {}),
-              modes: resultModel.modes,
-              updatedAt: run.updatedAt,
-            },
-          },
-        });
-      }
-    });
-  },
+  batchTimeoutMs?: number;
+  discoverTimeoutMs?: number;
+  compileTimeoutMs?: number;
+  repairTimeoutMs?: number;
+  verifyTimeoutMs?: number;
 };
 
 export function prioritizeCompilerCandidates<T extends { vendorKey: string }>(
@@ -335,7 +147,7 @@ function defaultResolveLanguageModels(connection: LoadedConnection): LanguageMod
 
 const defaultDependencies: ProviderAdapterServiceDependencies = {
   catalog: defaultCatalog,
-  discover: ({ baseUrl, modelKeys }) => discoverProviderDocs({ baseUrl, modelKeys }),
+  discover: ({ baseUrl, modelKeys, signal }) => discoverProviderDocs({ baseUrl, modelKeys, signal }),
   resolveLanguageModels: defaultResolveLanguageModels,
   compile: (input) => compileProviderAdapter(input),
   repair: (input) => repairProviderAdapter(input),
@@ -343,6 +155,11 @@ const defaultDependencies: ProviderAdapterServiceDependencies = {
   now: () => new Date().toISOString(),
   id: () => `adapter-run-${crypto.randomUUID()}`,
   maxRepairs: 2,
+  batchTimeoutMs: 5 * 60_000,
+  discoverTimeoutMs: 45_000,
+  compileTimeoutMs: 120_000,
+  repairTimeoutMs: 90_000,
+  verifyTimeoutMs: 90_000,
 };
 
 type ModeResultWithModel = AdapterModeResult & { modelKey: string };
@@ -350,6 +167,7 @@ type ModeResultWithModel = AdapterModeResult & { modelKey: string };
 export class ProviderAdapterService {
   private readonly dependencies: ProviderAdapterServiceDependencies;
   private readonly active = new Map<string, Promise<void>>();
+  private readonly controllers = new Map<string, AbortController>();
 
   constructor(
     private readonly store = new ProviderAdapterStore(),
@@ -358,11 +176,19 @@ export class ProviderAdapterService {
     this.dependencies = { ...defaultDependencies, ...dependencies };
   }
 
+  register(rawInput: ProviderAdapterRegisterInput): ProviderAdapterRegistration {
+    return registerProviderConnection({
+      rawInput,
+      catalog: this.dependencies.catalog,
+      now: this.dependencies.now,
+    });
+  }
+
   start(rawInput: ProviderAdapterStartInput): ProviderAdapterRun {
-    const input = this.normalizeStartInput(rawInput);
-    const id = this.dependencies.id();
-    const vendorKey = deriveVendorKeyFromBaseUrl(input.baseUrl);
+    const input = normalizeProviderAdapterInput(rawInput, "verify");
+    const vendorKey = String(input.catalogVendorKey || "").trim() || deriveVendorKeyFromBaseUrl(input.baseUrl);
     if (!vendorKey) throw new Error("Unable to derive a provider id from the API base URL");
+    const id = this.dependencies.id();
     const staged = this.dependencies.catalog.stage({ ...input, vendorKey, runId: id });
     const timestamp = this.dependencies.now();
     const run: ProviderAdapterRun = {
@@ -378,6 +204,11 @@ export class ProviderAdapterService {
       }),
       selectedModelKeys: input.models.map((model) => model.modelKey),
       stage: "queued",
+      completedCount: 0,
+      totalCount: input.models.length,
+      lastProgressAt: timestamp,
+      stageStartedAt: timestamp,
+      deadlineAt: deadlineFrom(timestamp, this.dependencies.batchTimeoutMs ?? 5 * 60_000),
       repairAttempt: 0,
       models: input.models.map((model) => ({
         modelKey: model.modelKey,
@@ -402,14 +233,42 @@ export class ProviderAdapterService {
     return this.store.latestRun(vendorKey);
   }
 
+  listRuns(options: { vendorKey?: string; activeOnly?: boolean; limit?: number } = {}): ProviderAdapterRun[] {
+    return this.store.listRuns(options);
+  }
+
+  cancel(id: string): ProviderAdapterRun | undefined {
+    const current = this.store.getRun(id);
+    if (!current || isTerminalAdapterStage(current.stage)) return current;
+    const run = this.finishTerminal(id, "cancelled", "Adapter verification cancelled by user");
+    this.controllers.get(id)?.abort();
+    return run;
+  }
+
   resumeInterrupted(): void {
-    for (const run of recoverableAdapterRuns(this.store.snapshot().runs)) this.schedule(run.id);
+    for (const run of recoverableAdapterRuns(this.store.snapshot().runs)) {
+      const deadlineAt = run.deadlineAt || deadlineFrom(run.createdAt, this.dependencies.batchTimeoutMs ?? 5 * 60_000);
+      if (deadlineExpired(deadlineAt, this.dependencies.now())) {
+        this.finishTerminal(run.id, "timed_out", "Adapter run deadline expired before it could resume");
+        continue;
+      }
+      this.finishWithError(
+        run.id,
+        "failed",
+        "Adapter verification was interrupted by an app restart. Review the saved connection and retry explicitly.",
+      );
+    }
   }
 
   async executeRun(id: string): Promise<void> {
     const existing = this.active.get(id);
     if (existing) return existing;
-    const work = this.process(id).finally(() => this.active.delete(id));
+    const controller = new AbortController();
+    this.controllers.set(id, controller);
+    const work = this.process(id).finally(() => {
+      this.active.delete(id);
+      if (this.controllers.get(id) === controller) this.controllers.delete(id);
+    });
     this.active.set(id, work);
     return work;
   }
@@ -420,8 +279,18 @@ export class ProviderAdapterService {
   }
 
   private async process(id: string): Promise<void> {
-    const initial = this.store.getRun(id);
-    if (!initial) return;
+    let initial = this.store.getRun(id);
+    if (!initial || isTerminalAdapterStage(initial.stage)) return;
+    if (!initial.deadlineAt) {
+      initial = this.store.updateRun(id, (current) => ({
+        ...current,
+        deadlineAt: deadlineFrom(current.createdAt, this.dependencies.batchTimeoutMs ?? 5 * 60_000),
+      }));
+    }
+    if (deadlineExpired(initial.deadlineAt, this.dependencies.now())) {
+      this.finishTerminal(id, "timed_out", "Adapter run deadline expired before execution");
+      return;
+    }
     if (this.markStaleIfSuperseded(initial)) return;
     const connection = this.dependencies.catalog.load(initial.vendorKey, initial.selectedModelKeys);
     if (!connection) {
@@ -445,7 +314,15 @@ export class ProviderAdapterService {
       // 不叫 AI，直接用内置 OpenAI 兼容契约进真实验证。必须在下面的分级之前——媒体模型也一样适用。
       const builtinDraft = builtinDraftForUndocumentedEndpoint(connection);
       if (builtinDraft) {
-        await this.promoteFinal(id, builtinDraft, await this.verifyDraft(id, connection, builtinDraft, 1, []));
+        const builtin = genericCompilation(connection, connection.models);
+        const verification = await this.verifyDraft(id, connection, builtin.draft, 1, builtin.failures);
+        await this.promoteFinal(
+          id,
+          builtin.draft,
+          verification.results,
+          verification.deadlineError,
+          Boolean(verification.deadlineError),
+        );
         return;
       }
       // 分级（2026-08-12）：只有「Nomi 不知道接法」的模型才值得查文档 + AI 编译。
@@ -457,102 +334,137 @@ export class ProviderAdapterService {
       const mediaModels = connection.models.filter((model) => model.kind !== "text");
       const needsCompile = mediaModels.length > 0;
       let docs: DiscoveredDocs = { sources: [], corpus: "" };
-      let compilation: ProviderAdapterCompilation = {
-        draft: {
-          provider: {
-            baseUrl: String(connection.vendor.baseUrlHint || ""),
-            authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
-            ...(connection.vendor.providerKind ? { providerKind: connection.vendor.providerKind } : {}),
-          },
-          sources: [],
-          models: [],
-        },
-        failures: [],
-      };
+      let compilation = genericCompilation(connection, []);
+      let compiledModelKeys = new Set<string>();
       const languageModels = needsCompile ? this.dependencies.resolveLanguageModels(connection) : [];
       if (needsCompile) {
         this.setStage(id, "discovering_docs");
-        docs = await this.dependencies.discover({
-          baseUrl: String(connection.vendor.baseUrlHint || ""),
-          modelKeys: mediaModels.map((model) => model.modelKey),
-        });
-        if (docs.sources.length === 0 || !docs.corpus.trim()) throw new Error("No official API documentation could be discovered on the provider site");
-        this.store.updateRun(id, (run) => ({
-          ...run,
-          sourceUrls: docs.sources.map((source) => source.url),
-          updatedAt: this.dependencies.now(),
-        }));
-        this.setStage(id, "compiling");
-        compilation = await this.dependencies.compile({
+        try {
+          docs = await this.awaitStep(id, "Document discovery", this.dependencies.discoverTimeoutMs ?? 45_000, (signal) =>
+            this.dependencies.discover({
+              baseUrl: String(connection.vendor.baseUrlHint || ""),
+              modelKeys: mediaModels.map((model) => model.modelKey),
+              signal,
+            }),
+          );
+        } catch (error) {
+          if (error instanceof AdapterWaitError && error.reason !== "step_timeout") throw error;
+          docs = { sources: [], corpus: "" };
+        }
+        if (docs.sources.length > 0 && docs.corpus.trim()) {
+          this.updateRunIfActive(id, (run) => ({
+            ...run,
+            sourceUrls: docs.sources.map((source) => source.url),
+            lastProgressAt: this.dependencies.now(),
+            updatedAt: this.dependencies.now(),
+          }));
+        }
+        const compiled = await compileMediaModels({
+          connection,
+          models: mediaModels,
+          docs,
           languageModels,
-          providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
-          authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
-          selectedModels: mediaModels.map((model) => ({ modelKey: model.modelKey, label: model.labelZh, kind: model.kind })),
-          docs: docs.sources,
+          onModel: (modelKey) => this.setStage(id, "compiling", modelKey),
+          compileOne: (model) => this.awaitStep(
+            id,
+            `Adapter compilation for ${model.modelKey}`,
+            this.dependencies.compileTimeoutMs ?? 120_000,
+            (signal) => this.dependencies.compile({
+              languageModels,
+              providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
+              authType: (connection.vendor.authType || "bearer") as AdapterAuthType,
+              selectedModels: [{ modelKey: model.modelKey, label: model.labelZh, kind: model.kind }],
+              docs: docs.sources,
+              signal,
+            }),
+          ),
         });
+        compilation = compiled.compilation;
+        compiledModelKeys = compiled.compiledModelKeys;
       }
       // 文本条目不经 AI：接法固定、模式表也固定（chat）。合进草稿只为让验证与展示有位置。
       // 文本条目**以这里为单一真相**——编译器万一也吐了同名文本条目（误分类/被喂了不该喂的），
       // 一律以这份为准替换掉，否则同一个模型会出现两条、验证跑两遍（有回归钉子）。
       const textModels = connection.models.filter((model) => model.kind === "text");
-      const textModelKeys = new Set(textModels.map((model) => model.modelKey));
-      const withTextModels = (compiled: readonly AdapterModelDraft[]): AdapterModelDraft[] => [
-        ...compiled.filter((model) => !textModelKeys.has(model.modelKey)),
-        ...textModels.map((model) => ({
-          modelKey: model.modelKey,
-          labelZh: model.labelZh,
-          kind: "text" as const,
-          modes: [{ taskKind: "chat" as const, create: TEXT_PRODUCTION_PATH_CREATE, testParams: {}, sourceUrls: [] }],
-        })),
-      ];
-      let candidate: ProviderAdapterDraft = { ...compilation.draft, models: withTextModels(compilation.draft.models) };
-      let results = await this.verifyDraft(id, connection, candidate, 1, compilation.failures);
+      let candidate: ProviderAdapterDraft = {
+        ...compilation.draft,
+        models: withTextModels(compilation.draft.models, textModels),
+      };
+      let verification = await this.verifyDraft(id, connection, candidate, 1, compilation.failures);
+      let results = verification.results;
+      if (verification.deadlineError) {
+        await this.promoteFinal(id, candidate, results, verification.deadlineError, true);
+        return;
+      }
       const maxRepairs = this.dependencies.maxRepairs ?? 2;
       let repairError: string | undefined;
+      let deadlineReached = false;
       // 自动修复重新生成的是「HTTP 接法草稿」，而文本模型的验证走 streamTextTask（生产同一条路）、
       // 压根不读这份草稿——对文本失败重修等于原样再发一次同样的请求，必然同样失败。
       // 旧行为：白转 2 轮、界面还写着「正在根据真实错误自动修复…」（假的），用户干等 2 分钟拿同一个结果。
       // 只让「修得动的」失败（真正按草稿发请求的非文本模型）触发重修。(2026-08-12)
-      const repairableKeys = new Set(
-        connection.models.filter((model) => model.kind !== "text").map((model) => model.modelKey),
-      );
+      const repairableKeys = compiledModelKeys;
       for (let repairAttempt = 1; repairAttempt <= maxRepairs; repairAttempt += 1) {
         const compiledKeys = new Set(candidate.models.map((model) => model.modelKey));
         const failure = results.find(
           (result) => result.state === "failed" && compiledKeys.has(result.modelKey) && repairableKeys.has(result.modelKey),
         );
         if (!failure) break;
-        this.store.updateRun(id, (run) => ({ ...run, stage: "repairing", repairAttempt, updatedAt: this.dependencies.now() }));
+        this.setStage(id, "repairing", failure.modelKey, { repairAttempt });
         try {
           // 只让重修碰它修得动的那些模型，修完再把文本条目按单一真相合回去——
           // 否则重修会顺手用 AI 重新生成文本条目，把确定性的那份覆盖掉。
-          const repaired = await this.dependencies.repair({
-            languageModels,
-            providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
-            selectedModelKeys: candidate.models.filter((model) => repairableKeys.has(model.modelKey)).map((model) => model.modelKey),
-            previousDraft: candidate,
-            failure: {
-              stage: failure.stage || "create",
-              message: failure.error || "Unknown verification failure",
-              modelKey: failure.modelKey,
-              taskKind: failure.taskKind,
-            },
-            docs: docs.sources,
-          });
-          candidate = { ...repaired, models: withTextModels(repaired.models) };
+          const repaired = await this.awaitStep(id, "Adapter repair", this.dependencies.repairTimeoutMs ?? 90_000, (signal) =>
+            this.dependencies.repair({
+              languageModels,
+              providerBaseUrl: String(connection.vendor.baseUrlHint || ""),
+              selectedModelKeys: candidate.models.filter((model) => repairableKeys.has(model.modelKey)).map((model) => model.modelKey),
+              previousDraft: candidate,
+              failure: {
+                stage: failure.stage || "create",
+                message: failure.error || "Unknown verification failure",
+                modelKey: failure.modelKey,
+                taskKind: failure.taskKind,
+              },
+              docs: docs.sources,
+              signal,
+            }),
+          );
+          candidate = { ...repaired, models: withTextModels(repaired.models, textModels) };
         } catch (error) {
+          if (error instanceof AdapterWaitError) {
+            if (error.reason === "cancelled" || error.reason === "terminal") throw error;
+            repairError = error.message;
+            deadlineReached = error.reason === "deadline";
+            break;
+          }
           repairError = redactAdapterSecrets(error instanceof Error ? error.message : String(error));
           break;
         }
         // Full regression after every repair: a local fix must not break a mode that previously passed.
-        results = await this.verifyDraft(id, connection, candidate, repairAttempt + 1, compilation.failures);
+        verification = await this.verifyDraft(id, connection, candidate, repairAttempt + 1, compilation.failures);
+        results = verification.results;
+        if (verification.deadlineError) {
+          repairError = verification.deadlineError;
+          deadlineReached = true;
+          break;
+        }
       }
       const compileError = compilation.failures.length
         ? compilation.failures.map((failure) => `${failure.modelKey}: ${failure.error}`).join("; ")
         : undefined;
-      await this.promoteFinal(id, candidate, results, [compileError, repairError].filter(Boolean).join("; ") || undefined);
+      await this.promoteFinal(
+        id,
+        candidate,
+        results,
+        [compileError, repairError].filter(Boolean).join("; ") || undefined,
+        deadlineReached,
+      );
     } catch (error) {
-      if (error instanceof AdapterNeedsAiError) this.finishWithError(id, "needs_ai", error.message);
+      if (error instanceof AdapterWaitError) {
+        if (error.reason === "cancelled" || error.reason === "terminal") return;
+        this.finishTerminal(id, "timed_out", error.message);
+      } else if (error instanceof AdapterNeedsAiError) this.finishWithError(id, "needs_ai", error.message);
       else this.finishWithError(id, "failed", error instanceof Error ? error.message : String(error));
     }
   }
@@ -563,7 +475,7 @@ export class ProviderAdapterService {
     draft: ProviderAdapterDraft,
     attempt: number,
     compileFailures: readonly ProviderAdapterCompileFailure[] = [],
-  ): Promise<ModeResultWithModel[]> {
+  ): Promise<{ results: ModeResultWithModel[]; deadlineError?: string }> {
     const candidates = new Map(draft.models.map((model) => [model.modelKey, model]));
     const failures = new Map(compileFailures.map((failure) => [failure.modelKey, failure]));
     const emptyModels = connection.models.map((model) => {
@@ -586,7 +498,18 @@ export class ProviderAdapterService {
             : [],
       };
     });
-    this.store.updateRun(id, (run) => ({ ...run, stage: "testing", models: emptyModels, updatedAt: this.dependencies.now() }));
+    const testingAt = this.dependencies.now();
+    this.updateRunIfActive(id, (run) => ({
+      ...run,
+      stage: "testing",
+      currentModelKey: undefined,
+      models: emptyModels,
+      completedCount: completedModelCount(emptyModels),
+      totalCount: connection.models.length,
+      stageStartedAt: testingAt,
+      lastProgressAt: testingAt,
+      updatedAt: testingAt,
+    }));
     const results: ModeResultWithModel[] = compileFailures.map((failure) => {
       const model = connection.models.find((item) => item.modelKey === failure.modelKey);
       return {
@@ -598,11 +521,12 @@ export class ProviderAdapterService {
         error: failure.error,
       };
     });
+    let deadlineError: string | undefined;
     for (const candidateModel of draft.models) {
       const model = connection.models.find((item) => item.modelKey === candidateModel.modelKey);
       if (!model) throw new Error(`Selected model disappeared during verification: ${candidateModel.modelKey}`);
       for (const mode of candidateModel.modes) {
-        this.store.updateRun(id, (run) => ({
+        this.updateRunIfActive(id, (run) => ({
           ...run,
           currentModelKey: candidateModel.modelKey,
           models: run.models.map((item) =>
@@ -615,9 +539,26 @@ export class ProviderAdapterService {
                 }
               : item,
           ),
+          lastProgressAt: this.dependencies.now(),
           updatedAt: this.dependencies.now(),
         }));
-        const verified = await this.dependencies.verify({ vendor: connection.vendor, model, apiKey: connection.apiKey, mode });
+        let verified: AdapterVerificationResult;
+        try {
+          verified = await this.awaitStep(id, "Model verification", this.dependencies.verifyTimeoutMs ?? 90_000, (signal) =>
+            this.dependencies.verify({ vendor: connection.vendor, model, apiKey: connection.apiKey, mode, signal }),
+          );
+        } catch (error) {
+          if (!(error instanceof AdapterWaitError)) throw error;
+          if (error.reason === "cancelled" || error.reason === "terminal") throw error;
+          if (error.reason === "deadline") deadlineError = error.message;
+          verified = {
+            ok: false,
+            taskKind: mode.taskKind,
+            stage: "verify_asset",
+            error: error.message,
+            errorCategory: "network",
+          };
+        }
         const modeResult: ModeResultWithModel = verified.ok
           ? {
               modelKey: candidateModel.modelKey,
@@ -648,18 +589,23 @@ export class ProviderAdapterService {
           ...(modeResult.httpStatus ? { httpStatus: modeResult.httpStatus } : {}),
           ...(modeResult.verifiedAt ? { verifiedAt: modeResult.verifiedAt } : {}),
         };
-        this.store.updateRun(id, (run) => ({
-          ...run,
-          models: run.models.map((item) =>
+        this.updateRunIfActive(id, (run) => {
+          const models = run.models.map((item) =>
             item.modelKey === candidateModel.modelKey
               ? { ...item, modes: item.modes.map((state) => (state.taskKind === mode.taskKind ? persistedModeResult : state)) }
-              : item,
-          ),
-          updatedAt: this.dependencies.now(),
-        }));
+              : item);
+          const progressAt = this.dependencies.now();
+          return {
+            ...run,
+            models,
+            completedCount: completedModelCount(models),
+            lastProgressAt: progressAt,
+            updatedAt: progressAt,
+          };
+        });
       }
     }
-    return results;
+    return { results, ...(deadlineError ? { deadlineError } : {}) };
   }
 
   private async promoteFinal(
@@ -667,9 +613,10 @@ export class ProviderAdapterService {
     draft: ProviderAdapterDraft,
     results: ModeResultWithModel[],
     repairError?: string,
+    deadlineReached = false,
   ): Promise<void> {
     const current = this.store.getRun(id);
-    if (!current || this.markStaleIfSuperseded(current)) return;
+    if (!current || isTerminalAdapterStage(current.stage) || this.markStaleIfSuperseded(current)) return;
     const verifiedModes = results
       .filter((result) => result.state === "verified")
       .map((result) => ({ modelKey: result.modelKey, taskKind: result.taskKind }));
@@ -682,74 +629,155 @@ export class ProviderAdapterService {
       verifiedModes,
       createdAt: this.dependencies.now(),
     };
-    const finalStage = verifiedModes.length === 0 ? "failed" : results.some((result) => result.state === "failed") ? "partial" : "completed";
-    const run = this.store.updateRun(id, (current) => ({
+    const finalStage = deadlineReached && verifiedModes.length === 0
+      ? "timed_out"
+      : verifiedModes.length === 0
+        ? "failed"
+        : results.some((result) => result.state === "failed")
+          ? "partial"
+          : "completed";
+    const completedAt = this.dependencies.now();
+    const completedRun: ProviderAdapterRun = {
       ...current,
       stage: finalStage,
       currentModelKey: undefined,
+      completedCount: current.totalCount ?? current.selectedModelKeys.length,
+      totalCount: current.totalCount ?? current.selectedModelKeys.length,
       activeRevision: verifiedModes.length > 0 ? revision.id : current.activeRevision,
       ...(repairError ? { error: repairError.slice(0, 2_000) } : {}),
-      updatedAt: this.dependencies.now(),
-    }));
-    this.dependencies.catalog.promote({ run, draft, revision, verifiedModes });
+      stageStartedAt: completedAt,
+      lastProgressAt: completedAt,
+      updatedAt: completedAt,
+    };
+    // The catalog is the user-visible result. Do not publish a successful run
+    // before that result is durable, otherwise a write failure becomes a false
+    // "completed" state that the outer error handler can no longer change.
+    this.dependencies.catalog.promote({ run: completedRun, draft, revision, verifiedModes });
+    this.store.upsertRun(completedRun);
     if (verifiedModes.length === 0) return;
     this.store.upsertRevision(revision);
   }
 
-  private setStage(id: string, stage: ProviderAdapterRun["stage"]): void {
-    this.store.updateRun(id, (run) => ({ ...run, stage, updatedAt: this.dependencies.now() }));
+  private setStage(
+    id: string,
+    stage: ProviderAdapterRun["stage"],
+    currentModelKey?: string,
+    extra: Partial<Pick<ProviderAdapterRun, "repairAttempt">> = {},
+  ): void {
+    const stageStartedAt = this.dependencies.now();
+    this.updateRunIfActive(id, (run) => ({
+      ...run,
+      ...extra,
+      stage,
+      currentModelKey,
+      stageStartedAt,
+      lastProgressAt: stageStartedAt,
+      updatedAt: stageStartedAt,
+    }));
   }
 
   private finishWithError(id: string, stage: "failed" | "needs_ai", message: string): void {
-    const run = this.store.updateRun(id, (current) => {
-      const failureStage = current.stage === "discovering_docs" ? "docs" : current.stage === "compiling" ? "compile" : "promote";
-      return {
-        ...current,
-        stage,
-        error: redactAdapterSecrets(message),
-        currentModelKey: undefined,
-        models: current.models.map((model) => ({
-          ...model,
-          modes: model.modes.length > 0
-            ? model.modes
-            : [{
-                taskKind: primaryTaskKind(model.kind),
-                state: "failed" as const,
-                attempts: 1,
-                stage: failureStage,
-                error: redactAdapterSecrets(message),
-              }],
-        })),
-        updatedAt: this.dependencies.now(),
-      };
-    });
+    this.finishRunWithFailure(id, stage, message);
+  }
+
+  private finishTerminal(
+    id: string,
+    stage: "cancelled" | "timed_out",
+    message: string,
+  ): ProviderAdapterRun | undefined {
+    try {
+      return this.finishRunWithFailure(id, stage, message);
+    } finally {
+      this.controllers.get(id)?.abort();
+    }
+  }
+
+  private finishRunWithFailure(
+    id: string,
+    stage: "failed" | "needs_ai" | "cancelled" | "timed_out",
+    message: string,
+  ): ProviderAdapterRun | undefined {
+    const existing = this.store.getRun(id);
+    if (!existing || isTerminalAdapterStage(existing.stage)) return existing;
+    const failureStage = existing.stage === "discovering_docs"
+      ? "docs"
+      : existing.stage === "compiling"
+        ? "compile"
+        : existing.stage === "testing"
+          ? "verify_asset"
+          : "promote";
+    const error = redactAdapterSecrets(message);
+    const finishedAt = this.dependencies.now();
+    const models = failUnfinishedModes(existing.models, failureStage, error);
+    const run = this.store.updateRun(id, (current) => ({
+      ...current,
+      stage,
+      error,
+      currentModelKey: undefined,
+      models,
+      completedCount: completedModelCount(models),
+      totalCount: current.totalCount ?? current.selectedModelKeys.length,
+      stageStartedAt: finishedAt,
+      lastProgressAt: finishedAt,
+      updatedAt: finishedAt,
+    }));
     this.dependencies.catalog.fail(run);
+    return run;
+  }
+
+  private updateRunIfActive(
+    id: string,
+    update: (current: ProviderAdapterRun) => ProviderAdapterRun,
+  ): ProviderAdapterRun | undefined {
+    const current = this.store.getRun(id);
+    if (!current || isTerminalAdapterStage(current.stage)) return current;
+    return this.store.updateRun(id, (fresh) => isTerminalAdapterStage(fresh.stage) ? fresh : update(fresh));
+  }
+
+  private async awaitStep<T>(
+    id: string,
+    step: string,
+    timeoutMs: number,
+    operation: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const run = this.store.getRun(id);
+    if (!run || isTerminalAdapterStage(run.stage)) {
+      throw new AdapterWaitError("terminal", step, `${step} ignored because the run is already terminal`);
+    }
+    const controller = this.controllers.get(id);
+    if (!controller) throw new AdapterWaitError("terminal", step, `${step} has no active execution`);
+    const result = await awaitAdapterStep({
+      signal: controller.signal,
+      deadlineAt: run.deadlineAt,
+      now: this.dependencies.now(),
+      timeoutMs,
+      step,
+      operation,
+    });
+    const latest = this.store.getRun(id);
+    if (!latest || isTerminalAdapterStage(latest.stage)) {
+      throw new AdapterWaitError("terminal", step, `${step} finished after the run became terminal`);
+    }
+    return result;
   }
 
   private markStaleIfSuperseded(run: ProviderAdapterRun): boolean {
+    if (isTerminalAdapterStage(run.stage)) return true;
     const latest = this.store.latestRun(run.vendorKey);
     if (!latest || latest.id === run.id) return false;
+    const staleAt = this.dependencies.now();
     this.store.updateRun(run.id, (current) => ({
       ...current,
       stage: "stale",
       error: "A newer verification run replaced this result",
       currentModelKey: undefined,
-      updatedAt: this.dependencies.now(),
+      stageStartedAt: staleAt,
+      lastProgressAt: staleAt,
+      updatedAt: staleAt,
     }));
     return true;
   }
 
-  private normalizeStartInput(input: ProviderAdapterStartInput): ProviderAdapterStartInput {
-    const baseUrl = input.baseUrl.trim().replace(/\/+$/, "");
-    if (!/^https?:\/\//i.test(baseUrl)) throw new Error("Provider base URL must begin with http:// or https://");
-    if (input.authType !== "none" && !input.apiKey.trim()) throw new Error("API key is required");
-    const seen = new Set<string>();
-    const models = input.models
-      .map((model) => ({ ...model, modelKey: model.modelKey.trim(), labelZh: model.labelZh?.trim() }))
-      .filter((model) => model.modelKey && !seen.has(model.modelKey) && seen.add(model.modelKey));
-    if (models.length === 0) throw new Error("Select at least one model to verify");
-    return { ...input, baseUrl, apiKey: input.apiKey.trim(), models };
-  }
 }
 
 let singleton: ProviderAdapterService | null = null;

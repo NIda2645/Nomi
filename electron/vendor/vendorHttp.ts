@@ -25,6 +25,12 @@ function vendorHttpTimeoutMs(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_VENDOR_HTTP_TIMEOUT_MS;
 }
 
+function callerCancellation(signal?: AbortSignal): Error | null {
+  if (!signal?.aborted) return null;
+  if (signal.reason instanceof Error) return signal.reason;
+  return new Error("Provider request cancelled");
+}
+
 export type VendorErrorStructured = {
   vendorKey: string;
   method: string;
@@ -95,6 +101,7 @@ async function requestVendor(
   headers: Record<string, string>,
   query: Record<string, unknown>,
   bodyInit: BodyInit | undefined,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const finalUrl = appendQueryParams(url, { ...authQueryParams(vendor, apiKey), ...query });
   const upperMethod = method.toUpperCase();
@@ -116,6 +123,9 @@ async function requestVendor(
   }
   const timeoutMs = vendorHttpTimeoutMs();
   const controller = new AbortController();
+  const relayAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) relayAbort();
+  else signal?.addEventListener("abort", relayAbort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
@@ -129,6 +139,9 @@ async function requestVendor(
     });
   } catch (error: unknown) {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", relayAbort);
+    const cancellation = callerCancellation(signal);
+    if (cancellation) throw cancellation;
     // abort = 我们的超时，给一条说人话的 timeout 错误（仍归 network 类、可重试），而不是裸 "aborted"。
     const aborted = error instanceof Error && error.name === "AbortError";
     const upstreamMsg = aborted
@@ -148,6 +161,8 @@ async function requestVendor(
   try {
     text = await response.text();
   } catch (error: unknown) {
+    const cancellation = callerCancellation(signal);
+    if (cancellation) throw cancellation;
     const aborted = error instanceof Error && error.name === "AbortError";
     const upstreamMsg = aborted
       ? `读取响应超时（${Math.round(timeoutMs / 1000)}s）`
@@ -162,6 +177,7 @@ async function requestVendor(
     });
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", relayAbort);
   }
   let json: unknown;
   try {
@@ -206,11 +222,12 @@ export async function requestJson(
   headers: Record<string, string>,
   query: Record<string, unknown>,
   body: unknown,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const upperMethod = method.toUpperCase();
   const hasBody = upperMethod !== "GET" && upperMethod !== "HEAD" && body != null;
   const bodyInit = hasBody ? (typeof body === "string" ? body : JSON.stringify(body)) : undefined;
-  return requestVendor(vendor, apiKey, upperMethod, url, headers, query, bodyInit);
+  return requestVendor(vendor, apiKey, upperMethod, url, headers, query, bodyInit, signal);
 }
 
 /**
@@ -225,9 +242,10 @@ export async function requestMultipart(
   headers: Record<string, string>,
   query: Record<string, unknown>,
   form: FormData,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const cleanHeaders = Object.fromEntries(
     Object.entries(headers).filter(([key]) => key.toLowerCase() !== "content-type"),
   );
-  return requestVendor(vendor, apiKey, "POST", url, cleanHeaders, query, form);
+  return requestVendor(vendor, apiKey, "POST", url, cleanHeaders, query, form, signal);
 }

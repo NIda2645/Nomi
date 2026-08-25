@@ -13,6 +13,8 @@ import { webContents } from "electron";
 import { WebSocket } from "undici";
 import { readCatalog } from "./catalog/catalogStore";
 import { COMFYUI_VENDOR_KEY, isComfyuiVendor } from "./catalog/types";
+import { COMFYUI_CLIENT_FEATURE_FLAGS, getComfyuiClientId } from "./comfyui/clientSession";
+import { comfyuiEndpoint, comfyuiJobCancelEndpoint, comfyuiWebSocketUrl } from "./comfyui/endpointResolver";
 
 export const COMFYUI_PROGRESS_CHANNEL = "nomi:tasks:comfyui:progress";
 
@@ -49,7 +51,13 @@ type WatchEntry = {
 };
 
 const registry = new Map<string, WatchEntry>();
-const socketsByBase = new Map<string, { ws: WebSocket; alive: boolean }>();
+type SocketHolder = {
+  ws: WebSocket;
+  alive: boolean;
+  ready: Promise<boolean>;
+  settleReady: (value: boolean) => void;
+};
+const socketsByBase = new Map<string, SocketHolder>();
 /** 该 server 当前正在执行的 prompt（binary 预览帧不带 prompt_id，归属按此判）。 */
 const currentPromptByBase = new Map<string, string>();
 
@@ -73,15 +81,32 @@ export function isComfyuiTerminalEvent(type: unknown): boolean {
   return typeof type === "string" && (COMFYUI_TERMINAL_EVENTS as readonly string[]).includes(type);
 }
 
-/** 纯函数（可单测）：ws 二进制帧 → 预览图。[>I event][>I format][bytes]，event 1=PREVIEW_IMAGE。 */
-export function parsePreviewFrame(buf: Buffer): { mime: string; bytes: Buffer } | null {
+/** 纯函数：event 1 旧帧；event 4 = metadata 长度 + JSON(prompt/node/image_type) + 图字节。 */
+export function parsePreviewFrame(buf: Buffer): { mime: string; bytes: Buffer; promptId?: string; nodeId?: string } | null {
   if (buf.length < 8) return null;
   const event = buf.readUInt32BE(0);
-  if (event !== 1) return null; // 只认 PREVIEW_IMAGE（3=TEXT 等跳过）
-  const format = buf.readUInt32BE(4);
-  const mime = format === 2 ? "image/png" : "image/jpeg";
-  const bytes = buf.subarray(8);
-  return bytes.length > 0 && bytes.length <= PREVIEW_MAX_BYTES ? { mime, bytes } : null;
+  if (event === 1) {
+    const format = buf.readUInt32BE(4);
+    const mime = format === 2 ? "image/png" : "image/jpeg";
+    const bytes = buf.subarray(8);
+    return bytes.length > 0 && bytes.length <= PREVIEW_MAX_BYTES ? { mime, bytes } : null;
+  }
+  if (event !== 4) return null;
+  const metadataLength = buf.readUInt32BE(4);
+  if (metadataLength <= 0 || metadataLength > 64 * 1024 || buf.length <= 8 + metadataLength) return null;
+  try {
+    const metadata = JSON.parse(buf.subarray(8, 8 + metadataLength).toString("utf8")) as Record<string, unknown>;
+    const bytes = buf.subarray(8 + metadataLength);
+    if (bytes.length === 0 || bytes.length > PREVIEW_MAX_BYTES) return null;
+    return {
+      mime: metadata.image_type === "image/png" ? "image/png" : "image/jpeg",
+      bytes,
+      ...(typeof metadata.prompt_id === "string" ? { promptId: metadata.prompt_id } : {}),
+      ...(typeof metadata.node_id === "string" ? { nodeId: metadata.node_id } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** 纯函数（可单测）：整体进度 =（已开跑节点数-1 + 当前节点比率）/ 总节点数。 */
@@ -107,10 +132,6 @@ function comfyuiBaseUrl(vendorKey?: string): string {
   const key = vendorKey && isComfyuiVendor({ key: vendorKey }) ? vendorKey : COMFYUI_VENDOR_KEY;
   const vendor = readCatalog().vendors.find((v) => v.key === key);
   return String(vendor?.baseUrlHint || "http://127.0.0.1:8188").replace(/\/+$/, "");
-}
-
-function wsUrl(baseUrl: string): string {
-  return `${baseUrl.replace(/^http/i, "ws")}/ws?clientId=nomi`;
 }
 
 function sweepExpired(now = Date.now()): void {
@@ -219,7 +240,7 @@ async function probeQueuePosition(entry: WatchEntry): Promise<void> {
   if (now - entry.lastQueueProbeAt < QUEUE_PROBE_MIN_INTERVAL_MS) return;
   entry.lastQueueProbeAt = now;
   try {
-    const res = await fetch(`${entry.baseUrl}/queue`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(comfyuiEndpoint(entry.baseUrl, "queue"), { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return;
     const data = (await res.json()) as { queue_pending?: unknown[] };
     const pending = Array.isArray(data.queue_pending) ? data.queue_pending : [];
@@ -229,35 +250,56 @@ async function probeQueuePosition(entry: WatchEntry): Promise<void> {
 }
 
 function handleBinaryMessage(baseUrl: string, buf: Buffer): void {
-  const promptId = currentPromptByBase.get(baseUrl);
+  const frame = parsePreviewFrame(buf);
+  if (!frame) return;
+  // event 4 用官方 metadata 精确归属；event 1 仅给旧服串行场景回落到当前执行任务。
+  const promptId = frame.promptId || currentPromptByBase.get(baseUrl);
   const entry = promptId ? registry.get(promptId) : undefined;
   if (!entry) return;
   const now = Date.now();
   if (now - entry.lastPreviewAt < PREVIEW_MIN_INTERVAL_MS) return; // 节流：IPC 别被 20fps 预览刷爆
-  const frame = parsePreviewFrame(buf);
-  if (!frame) return;
   entry.lastPreviewAt = now;
   send(entry, { kind: "preview", previewDataUrl: `data:${frame.mime};base64,${frame.bytes.toString("base64")}` });
 }
 
-function ensureSocket(baseUrl: string): void {
+function ensureSocket(baseUrl: string): Promise<boolean> {
   const existing = socketsByBase.get(baseUrl);
-  if (existing?.alive) return;
+  if (existing?.alive) return Promise.resolve(true);
+  if (existing) return existing.ready;
   let ws: WebSocket;
   try {
-    ws = new WebSocket(wsUrl(baseUrl));
+    ws = new WebSocket(comfyuiWebSocketUrl(baseUrl, getComfyuiClientId()));
   } catch {
-    return; // 起不来就没有进度（轮询照常兜底），不炸任务
+    return Promise.resolve(false); // 起不来就没有进度（轮询照常兜底），不炸任务
   }
-  const holder = { ws, alive: true };
+  let settled = false;
+  let resolveReady: (value: boolean) => void = () => undefined;
+  const ready = new Promise<boolean>((resolve) => { resolveReady = resolve; });
+  const settleReady = (value: boolean): void => {
+    if (settled) return;
+    settled = true;
+    resolveReady(value);
+  };
+  const holder: SocketHolder = { ws, alive: false, ready, settleReady };
   socketsByBase.set(baseUrl, holder);
   ws.binaryType = "arraybuffer";
+  const readyTimer = setTimeout(() => settleReady(false), 800);
+  readyTimer.unref?.();
+  ws.addEventListener("open", () => {
+    holder.alive = true;
+    clearTimeout(readyTimer);
+    // 官方约定：feature_flags 必须是客户端发出的第一条 WS 消息。
+    try { ws.send(JSON.stringify({ type: "feature_flags", data: COMFYUI_CLIENT_FEATURE_FLAGS })); } catch { /* 实时层失败不炸提交 */ }
+    settleReady(true);
+  });
   ws.addEventListener("message", (event) => {
     const payload = (event as { data?: unknown }).data;
     if (typeof payload === "string") handleTextMessage(baseUrl, payload);
     else if (payload instanceof ArrayBuffer) handleBinaryMessage(baseUrl, Buffer.from(payload));
   });
   const drop = () => {
+    clearTimeout(readyTimer);
+    settleReady(false);
     holder.alive = false;
     if (socketsByBase.get(baseUrl) === holder) socketsByBase.delete(baseUrl);
     // 还有 watcher（任务在跑但 ws 断了，如 ComfyUI 重启）→ 3s 后重连一次；轮询始终是终态真相源。
@@ -267,13 +309,14 @@ function ensureSocket(baseUrl: string): void {
   };
   ws.addEventListener("close", drop);
   ws.addEventListener("error", drop);
+  return ready;
 }
 
 /** 渲染层提交拿到 prompt_id 后登记（comfyuiIpc: nomi:tasks:comfyui:watch）。 */
-export function watchComfyuiTask(
+export async function watchComfyuiTask(
   payload: { promptId?: unknown; nodeId?: unknown; projectId?: unknown; taskKind?: unknown; modelKey?: unknown; vendorKey?: unknown },
   webContentsId: number,
-): { ok: boolean } {
+): Promise<{ ok: boolean }> {
   sweepExpired();
   const promptId = String(payload.promptId || "").trim();
   const nodeId = String(payload.nodeId || "").trim();
@@ -305,7 +348,8 @@ export function watchComfyuiTask(
     lastQueueProbeAt: 0,
     createdAt: Date.now(),
   });
-  ensureSocket(baseUrl);
+  // 等 open/feature negotiation 后 renderer 才提交，极快任务不会漏掉首批事件；超时仍由 history 兜底。
+  await ensureSocket(baseUrl);
   return { ok: true };
 }
 
@@ -318,23 +362,60 @@ export function unwatchComfyuiTask(promptId: unknown): void {
 }
 
 /**
- * 取消：POST /interrupt（带 prompt_id，新服务器定向打断、老服务器忽略 body 打断当前）+
- * POST /queue {delete:[id]}（还在排队的从队列摘掉）。两发都 best-effort——本地免费、幂等安全；
- * 轮询会在 /history 看到 interrupted → 「已取消」。直连 fetch（comfyuiProbe 同纪律，不走代理）。
+ * 取消。优先走官方原子定向 POST /api/jobs/{id}/cancel（运行中走 interrupt_if_running、
+ * 排队中走 delete_queue_item，state-agnostic）。
+ *
+ * 两处按官方源码实查修正（2026-08-20 对账 comfyanonymous/ComfyUI master server.py）：
+ *
+ * ① **这条恒 200，必须读 body 里的 `cancelled`**。官方注释写明：取消一个已结束或不认识的 id
+ *    「returns 200 with {"cancelled": false} rather than an error」。只看 res.ok 会把
+ *    「什么都没取消」当成功报上去——用户点了取消、GPU 还在转，界面却说取消了（D4 不糊弄）。
+ *
+ * ② **旧服兜底原来停不掉正在跑的任务**。`POST /queue {delete:[id]}` 走的是 delete_queue_item，
+ *    只摘**排队**项，对当前正在执行的那个毫无作用。原先绕开 /interrupt 是怕误伤同实例上
+ *    别人的任务——**这个顾虑已经过期**：官方 /interrupt 现在收 `prompt_id`，只在「它正好是
+ *    当前运行的那个」时才打断（`if item[1] == prompt_id: should_interrupt = True`），否则跳过。
+ *    所以旧服兜底改成**两条都发**：/interrupt 管运行中、/queue delete 管排队中，
+ *    各自不适用时都是 no-op，谁成了都算取消成功。
  */
-export async function interruptComfyuiTask(promptId: unknown): Promise<{ ok: boolean }> {
-  const id = String(promptId || "").trim();
-  if (!id) return { ok: false };
-  const baseUrl = registry.get(id)?.baseUrl || comfyuiBaseUrl();
-  const post = (path: string, body: unknown) =>
-    fetch(`${baseUrl}${path}`, {
+export type ComfyuiCancelResult = { ok: boolean; mode: "targeted" | "nothing-to-cancel" | "legacy" | "failed" };
+
+export async function cancelComfyuiPrompt(
+  baseUrl: string,
+  promptId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ComfyuiCancelResult> {
+  const postJson = (url: string, body?: unknown) =>
+    fetchImpl(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(4000),
     }).catch(() => null);
-  const [a, b] = await Promise.all([post("/interrupt", { prompt_id: id }), post("/queue", { delete: [id] })]);
-  return { ok: Boolean(a || b) };
+
+  const targeted = await postJson(comfyuiJobCancelEndpoint(baseUrl, promptId));
+  if (targeted?.ok) {
+    const cancelled = await targeted
+      .json()
+      .then((body) => (isRec(body) ? body.cancelled === true : false))
+      .catch(() => false);
+    return cancelled ? { ok: true, mode: "targeted" } : { ok: true, mode: "nothing-to-cancel" };
+  }
+  // 404/405 = 老服务端没有 jobs 命名空间；其余状态码是真出错，别再拿老路径试一遍把它盖过去。
+  if (targeted && targeted.status !== 404 && targeted.status !== 405) return { ok: false, mode: "failed" };
+
+  const [interrupted, dequeued] = await Promise.all([
+    postJson(comfyuiEndpoint(baseUrl, "interrupt"), { prompt_id: promptId }),
+    postJson(comfyuiEndpoint(baseUrl, "queue"), { delete: [promptId] }),
+  ]);
+  const ok = Boolean(interrupted?.ok) || Boolean(dequeued?.ok);
+  return { ok, mode: ok ? "legacy" : "failed" };
+}
+
+export async function interruptComfyuiTask(promptId: unknown): Promise<ComfyuiCancelResult> {
+  const id = String(promptId || "").trim();
+  if (!id) return { ok: false, mode: "failed" };
+  const baseUrl = registry.get(id)?.baseUrl || comfyuiBaseUrl();
+  return cancelComfyuiPrompt(baseUrl, id);
 }
 
 /** 测试钩子。 */

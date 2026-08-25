@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { toast } from '../../../ui/toast'
 import { cn } from '../../../utils/cn'
 import CanvasToolbar, { NodeAddMenu } from './CanvasToolbar'
+import NodeContextMenu from './NodeContextMenu'
+import { buildCanvasMenuActions } from './useCanvasMenuActions'
+import { hasClipboardContent } from '../store/canvasClipboard'
 import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
 import { ASSET_LIBRARY_DRAG_MIME } from '../../assets/assetLibraryDrag'
 import {
@@ -20,6 +23,8 @@ import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import { getGenerationNodeComponent } from '../nodes/renderRegistry'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
+// 事件名单一真相源：派发方（深链）与监听方（这里）必须读同一个常量，否则改名字会静默断链。
+import { FOCUS_GENERATION_NODE_EVENT } from '../nodes/nodeSizing'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useBatchPlanPreviewStore } from './batchPlanPreview'
 import { useCanvasGroupActions } from './useCanvasGroupActions'
@@ -54,11 +59,12 @@ import { useCanvasSelectionDrag } from './useCanvasSelectionDrag'
 import { CanvasSelectionToolbar } from './CanvasSelectionToolbar'
 import { CanvasBatchGenerateDock } from './CanvasBatchGenerateDock'
 import { useCanvasProductionActions } from './useCanvasProductionActions'
-import { shouldShowCanvasBatchGenerateDock } from './canvasProductionScope'
+import { useCanvasBatchDockVisibility } from './useCanvasBatchDockVisibility'
 import { useCanvasScreenshotCapture } from './useCanvasScreenshotCapture'
+import { useComposerVisibilityPan } from './useComposerVisibilityPan'
+import { useCanvasFitSignal } from './useCanvasFitSignal'
 import '../styles/generationCanvas.css'
 
-const FOCUS_GENERATION_NODE_EVENT = 'nomi-focus-generation-node'
 const StagingCaptureHost = lazyWithChunkBoundary('3D 站位捕获', () =>
   import('../nodes/scene3d/StagingCaptureHost').then((module) => ({ default: module.StagingCaptureHost })),
 )
@@ -85,7 +91,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
   const hasPendingStagingCapture = useGenerationCanvasStore((state) => hasPendingScene3DStagingCapture(state.nodes))
   const hasPendingCameraMoveCapture = useGenerationCanvasStore((state) => hasPendingScene3DCameraMoveCapture(state.nodes))
   const hasBatchPlanPreview = useBatchPlanPreviewStore((state) => Boolean(state.plan))
-  const activeCategoryId = useWorkbenchStore((state) => state.activeCategoryId)
+  const activeCategoryId = useWorkbenchStore((state) => state.activeCategoryId), timelineCollapsed = useWorkbenchStore((state) => state.timelinePanelCollapsed)
   const setActiveCategoryId = useWorkbenchStore((state) => state.setActiveCategoryId)
   // Phase E3: filter nodes by active sub-canvas. Nodes with no categoryId
   // fall back to the project default ("shots") so legacy projects keep
@@ -178,6 +184,11 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     zoomRef,
     pendingConnectionSourceId,
     clearSelection,
+    // 右键落在节点上：已在多选里就原样保留（别把批量选择打断成单选），否则单选它。
+    ensureNodeSelected: React.useCallback((nodeId: string) => {
+      if (useGenerationCanvasStore.getState().selectedNodeIds.includes(nodeId)) return
+      selectNode(nodeId)
+    }, [selectNode]),
   })
   const [connectionCreateMenu, setConnectionCreateMenu] = React.useState<{
     sourceNodeId: string
@@ -221,6 +232,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     selectNodesInRect,
   })
   const { setViewportTransform, animateViewportTo, zoomAtStagePoint } = pointer
+  useComposerVisibilityPan({ animateViewportTo, offsetRef, zoomRef })
   const { handleGroupFramePointerDown, handleSelectionBoundsPointerDown } = useCanvasSelectionDrag({
     readOnly,
     selectedNodeCount: selectedNodeIds.length,
@@ -331,7 +343,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     handleBuildContactSheet,
   } = useCanvasGroupActions({ activeCategoryId, selectedGroupIds, selectedNodeIds })
   const production = useCanvasProductionActions({ activeCategoryId, selectedNodeIds })
-
+  const batchDock = useCanvasBatchDockVisibility({ readOnly, selectedCount: selectedNodeIds.length, eligibleIds: production.eligibleIds })
   // 拖拽连线跟踪（含 rAF 节流预览线）抽到 useDragToConnect（R9/B3）
   const { pendingCursorPos } = useDragToConnect({
     readOnly,
@@ -506,31 +518,20 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     finishContextMenuPointerUp(event, event.button === 2 && pointer.shouldSuppressContextMenu())
   }, [finishContextMenuPointerUp, pointer])
 
-  const handleAddContextNode = (kind: GenerationNodeKind) => {
-    if (!contextNodeMenu) return
-    addNode({
-      kind,
-      position: { x: contextNodeMenu.canvasX, y: contextNodeMenu.canvasY },
-      categoryId: activeCategoryId,
-    })
-    setContextNodeMenu(null)
-  }
-
-  const handleAddConnectedNode = (kind: GenerationNodeKind) => {
-    if (!connectionCreateMenu) return
-    const sourceNodeId = connectionCreateMenu.sourceNodeId
-    const sourceSide = connectionCreateMenu.sourceSide
-    const created = addNode({
-      kind,
-      position: { x: connectionCreateMenu.canvasX, y: connectionCreateMenu.canvasY },
-      categoryId: activeCategoryId,
-      exactPosition: true,
-      select: true,
-    })
-    startConnection(sourceNodeId, sourceSide)
-    completeNodeConnection(created.id)
-    setConnectionCreateMenu(null)
-  }
+  const { handleAddContextNode, handleNodeContextAction, handleAddConnectedNode } = buildCanvasMenuActions({
+    activeCategoryId,
+    contextNodeMenu,
+    setContextNodeMenu,
+    connectionCreateMenu,
+    setConnectionCreateMenu,
+    addNode,
+    startConnection,
+    copySelectedNodes,
+    cutSelectedNodes,
+    pasteNodes,
+    groupSelectedNodes: handleGroupSelectedNodes,
+    deleteSelectedNodes,
+  })
 
   // animate=true：用户点「适应视图」按钮，平滑过渡；自动加载（useAutoFitOnLoad）传 false 即时定位，避免每次开项目都「飞入」。
   const fitView = React.useCallback((animate = false) => {
@@ -562,19 +563,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
   // 防止图都在视口外、用户误以为「图消失」）。逻辑抽到 useAutoFitOnLoad（防巨壳）。
   useAutoFitOnLoad({ nodes, selectedNodeIds, activeCategoryId, categoryViewports, fitView, stageRef, zoomRef, offsetRef })
 
-  // 一次性「请适应视图」信号（落画布等批量加节点场景，见 store.requestCanvasFit）。
-  // useAutoFitOnLoad 只在首次加载/切分类触发，加新节点不重跑——这里补「显式动作后揭示新内容」。
-  // 用 ref 取最新 fitView，确保 360ms 后 DOM 渲染完、节点就绪时 fit 到的是最新节点集。
-  const canvasFitNonce = useWorkbenchStore((state) => state.canvasFitNonce)
-  const fitViewRef = React.useRef(fitView)
-  fitViewRef.current = fitView
-  const lastFitNonceRef = React.useRef(0)
-  React.useEffect(() => {
-    if (canvasFitNonce === 0 || canvasFitNonce === lastFitNonceRef.current) return
-    lastFitNonceRef.current = canvasFitNonce
-    const tid = setTimeout(() => fitViewRef.current(true), 360) // 等模式切换 + 节点 DOM 渲染一帧
-    return () => clearTimeout(tid)
-  }, [canvasFitNonce])
+  useCanvasFitSignal(fitView)
 
   const zoomPercent = Math.round(zoom * 100)
   const selectedCount = selectedNodeIds.length
@@ -749,7 +738,17 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
               onCreate={() => addNode({ kind: 'image', position: { x: 240, y: 240 }, categoryId: activeCategoryId, select: true })}
             />
           ) : null}
-          {contextNodeMenu ? (
+          {contextNodeMenu?.nodeId ? (
+            <NodeContextMenu
+              className={cn('generation-canvas-v2__node-context-menu', 'z-[20]')}
+              style={{ left: contextNodeMenu.stageX, top: contextNodeMenu.stageY }}
+              canPaste={hasClipboardContent()}
+              canGroup={selectedNodeIds.length >= 2}
+              onPointerDown={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+              onAction={handleNodeContextAction}
+            />
+          ) : contextNodeMenu ? (
             <NodeAddMenu
               className={cn('generation-canvas-v2__context-node-menu', 'z-[20]')}
               style={{ left: contextNodeMenu.stageX, top: contextNodeMenu.stageY }}
@@ -769,7 +768,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
             />
           ) : null}
         </div>
-        {shouldShowCanvasBatchGenerateDock({ readOnly, selectedCount, eligibleCount: production.eligibleIds.length }) ? <CanvasBatchGenerateDock {...production} /> : null}
+        {batchDock.visible ? <CanvasBatchGenerateDock {...production} timelineCollapsed={timelineCollapsed} onDismiss={batchDock.dismiss} /> : null}
         <CanvasNavigationStack
           readOnly={readOnly}
           nodes={nodes}

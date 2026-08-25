@@ -2,7 +2,11 @@
 
 Date: 2026-05-28
 Agent: gpt-5.5 via foxcode (https://dm-fox.rjj.cc/codex/v1)
-Target: kie.ai (`42104af87243fa2d6f2e8d77bd78711f`)
+Target: kie.ai (key 见 `.secrets/target.key`，不入库)
+
+> ⚠️ 2026-08-25 补记：本行原先明文写着那把 kie.ai key，从 2026-05-28 起躺在**公开仓库**里约 3 个月。
+> key 已在 kie.ai 后台轮换作废，此处脱敏。同期给 `scripts/check-no-secrets.mjs` 补了明文凭证检测——
+> 当时漏掉的两个原因见该文件顶部「凭证检测」注释。
 
 ## Threat Model
 

@@ -50,6 +50,19 @@ describe("requestJson 结构化错误(S4-0,修压扁根因)", () => {
     expect(error.structured).toMatchObject({ category: "network", retryable: true, upstreamMsg: "fetch failed" });
   });
 
+  it("调用方取消请求 → 原样抛出取消原因，不伪装成可重试的网络超时", async () => {
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    })));
+    const pending = requestJson(vendor, "k", "GET", "https://x", {}, {}, null, controller.signal);
+
+    controller.abort(new Error("cancel vendor request"));
+
+    await expect(pending).rejects.toThrow("cancel vendor request");
+    await expect(pending).rejects.not.toBeInstanceOf(VendorRequestError);
+  });
+
   it("成功路径原样回 JSON", async () => {
     stubFetch(() => new Response(JSON.stringify({ ok: 1 }), { status: 200 }));
     await expect(requestJson(vendor, "k", "GET", "https://x", {}, {}, null)).resolves.toEqual({ ok: 1 });

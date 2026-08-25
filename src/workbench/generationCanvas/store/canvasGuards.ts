@@ -4,6 +4,7 @@ import type { CategoryId } from '../model/generationCanvasTypes'
 export type CanvasMutationOptions = {
   persist?: boolean
   emit?: boolean
+  history?: boolean
 }
 
 export function shouldPersistCanvasMutation(options?: CanvasMutationOptions): boolean {

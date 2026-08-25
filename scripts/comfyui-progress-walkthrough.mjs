@@ -1,19 +1,22 @@
 // R13 真机走查：ComfyUI ws 进度环 + 活预览帧 + 遮罩取消（P 轨 · 拍板 A 位）。
-// mock ComfyUI：HTTP(/prompt /history /object_info /queue /interrupt) + 手搓 RFC6455 ws
+// mock ComfyUI：HTTP(/prompt /history /object_info /queue /api/jobs/{id}/cancel) + 手搓 RFC6455 ws
 // 服务器（零依赖）持续推 executing/progress 事件与二进制预览帧；/history 永不完成 →
-// 只有取消能结束任务。验：① 遮罩出现确定圆环+节点人话+取消钮+预览帧 ② 点取消 → /interrupt
-// 被打 + 节点回 idle（无红错误卡）。
-// 用法：pnpm build && node scripts/comfyui-progress-walkthrough.mjs
+// 只有取消能结束任务。验：① 遮罩出现确定圆环+节点人话+取消钮+event 4 预览帧
+// ② 点取消 → 定向 jobs cancel 被打 + 节点回 idle（无红错误卡）。
+// 用法：pnpm build && COMFY_PROGRESS_PORT=8190 node scripts/comfyui-progress-walkthrough.mjs
 import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.comfyui-progress-walk')
+const mockPort = Number(process.env.COMFY_PROGRESS_PORT || 8188)
+if (!Number.isInteger(mockPort) || mockPort < 1 || mockPort > 65535) throw new Error('COMFY_PROGRESS_PORT 必须是有效端口')
+const mockBaseUrl = `http://127.0.0.1:${mockPort}`
 mkdirSync(outDir, { recursive: true })
 const settingsDir = mkdtempSync(path.join(os.tmpdir(), 'comfyui-progress-walk-'))
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
@@ -22,7 +25,7 @@ const shot = async (win, name) => { await win.screenshot({ path: path.join(outDi
 writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
   version: 8,
   vendors: [
-    { key: 'comfyui-local', name: '本地 ComfyUI', enabled: true, baseUrlHint: 'http://127.0.0.1:8188', authType: 'none', authHeader: null, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
+    { key: 'comfyui-local', name: '本地 ComfyUI', enabled: true, baseUrlHint: mockBaseUrl, authType: 'none', authHeader: null, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
     // 其它免 key 本地后端显式停用（enabled 属用户数据、seed 尊重）→ ComfyUI 成为唯一可执行模型 = 默认模型。
     { key: 'dreamina', name: '即梦', enabled: false, authType: 'none', authHeader: null, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
     { key: 'codex-local', name: 'Codex', enabled: false, authType: 'none', authHeader: null, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
@@ -30,7 +33,7 @@ writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
   models: [], mappings: [], apiKeysByVendor: {},
 }))
 
-const PNG_1x1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+const PREVIEW_PNG = readFileSync(path.join(repoRoot, 'src/assets/vendor-logos/modelscope.png'))
 const PROMPT_ID = 'walk-progress-1'
 let interruptHits = 0
 let promptSubmitted = false
@@ -81,7 +84,7 @@ const mock = http.createServer((req, res) => {
     res.end(JSON.stringify({ queue_running: [], queue_pending: [] }))
     return
   }
-  if (req.method === 'POST' && (url === '/interrupt' || url === '/queue')) {
+  if (req.method === 'POST' && (url === `/api/jobs/${PROMPT_ID}/cancel` || url === '/queue')) {
     interruptHits += 1
     res.writeHead(200); res.end('{}')
     return
@@ -97,7 +100,7 @@ mock.on('upgrade', (req, socket) => {
   socket.on('error', () => wsClients.delete(socket))
   socket.on('data', () => {}) // client 帧（含 close）忽略
 })
-await new Promise((r) => mock.listen(8188, '127.0.0.1', r))
+await new Promise((r) => mock.listen(mockPort, '127.0.0.1', r))
 
 // 提交后持续推 ws 事件：4 节点图（内置文生图），走到第 3 个节点 KSampler 的一半（永不完成）。
 const NODES = ['4', '5', '6', '3'] // CheckpointLoader → EmptyLatent → CLIPTextEncode → KSampler
@@ -113,11 +116,12 @@ const pump = setInterval(() => {
   wsSendJson({ type: 'progress', data: { prompt_id: PROMPT_ID, node, value: (tick % 3) + 1, max: 4 } })
   void CLASSES
   if (tick >= 4) {
-    // 二进制预览帧：[>I 1=PREVIEW_IMAGE][>I 2=PNG][png bytes]
+    // 新协议预览帧：[>I 4][>I metadata length][metadata][png bytes]，精确归属 prompt/node。
+    const metadata = Buffer.from(JSON.stringify({ prompt_id: PROMPT_ID, node_id: node, image_type: 'image/png' }))
     const head = Buffer.alloc(8)
-    head.writeUInt32BE(1, 0)
-    head.writeUInt32BE(2, 4)
-    wsSendBinary(Buffer.concat([head, PNG_1x1]))
+    head.writeUInt32BE(4, 0)
+    head.writeUInt32BE(metadata.length, 4)
+    wsSendBinary(Buffer.concat([head, metadata, PREVIEW_PNG]))
   }
 }, 600)
 
@@ -149,8 +153,10 @@ try {
 
   // 单节点：直接点 composer 的「生成素材」按钮 → 轻确认
   await win.getByRole('button', { name: '生成素材', exact: true }).first().click()
-  await win.getByText('开始生成', { exact: true }).first().waitFor({ timeout: 8000 })
-  await win.locator('.fixed.inset-0').last().getByRole('button', { name: '生成', exact: true }).first().click()
+  // 本地免费模型可能按当前策略跳过付费确认；弹窗出现才点，否则生成已开始。
+  const confirmation = win.getByText('开始生成', { exact: true }).first()
+  const needsConfirmation = await confirmation.waitFor({ timeout: 1500 }).then(() => true).catch(() => false)
+  if (needsConfirmation) await win.locator('.fixed.inset-0').last().getByRole('button', { name: '生成', exact: true }).first().click()
 
   // 等 ws 进度爬起来（提交 + watch + 几拍事件）
   await win.waitForTimeout(5000)
@@ -159,12 +165,15 @@ try {
   const cancelCount = await cancelBtn.count()
   console.log('  取消钮可见: ' + (cancelCount > 0))
   if (cancelCount === 0) throw new Error('遮罩取消钮没出现')
+  const previewCount = await win.getByRole('img', { name: 'ComfyUI 采样活预览', exact: true }).count()
+  console.log('  event 4 活预览可见: ' + (previewCount > 0))
+  if (previewCount === 0) throw new Error('event 4 已推送，但节点没有渲染活预览')
 
   await cancelBtn.first().click()
   await win.waitForTimeout(2500)
   await shot(win, '02-cancelled-back-to-idle.png') // 验：遮罩消失、节点回 idle、无红错误卡
-  console.log('  /interrupt 或 /queue delete 命中次数: ' + interruptHits)
-  if (interruptHits === 0) throw new Error('取消没有打到 /interrupt')
+  console.log('  定向 jobs cancel 命中次数: ' + interruptHits)
+  if (interruptHits === 0) throw new Error('取消没有打到 /api/jobs/{id}/cancel')
   const overlayGone = (await win.locator('.generation-canvas-v2-node__generating-overlay').count()) === 0
   console.log('  遮罩已消失: ' + overlayGone)
 

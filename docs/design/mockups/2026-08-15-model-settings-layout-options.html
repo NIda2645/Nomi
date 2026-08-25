@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>Nomi 设置 · 模型页面结构样张</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #efede8;
+      --paper: #fffdfa;
+      --paper-soft: #f8f6f1;
+      --paper-muted: #f2f0eb;
+      --ink: #292722;
+      --ink-80: #48453f;
+      --ink-60: #716d65;
+      --ink-40: #9b968d;
+      --ink-25: #bdb8ae;
+      --line: #dedbd4;
+      --line-soft: #ebe8e2;
+      --accent: #4d6e99;
+      --accent-strong: #3f5e87;
+      --accent-soft: #edf2f8;
+      --success: #2c7950;
+      --success-soft: #edf6f0;
+      --warning: #9a681c;
+      --warning-soft: #fff5df;
+      --danger: #ad4a40;
+      --danger-soft: #fff0ed;
+      --shadow: 0 18px 44px rgba(42, 38, 31, .14), 0 2px 8px rgba(42, 38, 31, .08);
+      --radius: 8px;
+      --font: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      min-height: 100svh;
+      overflow-x: hidden;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: var(--font);
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    button, input, textarea, select { font: inherit; letter-spacing: 0; }
+    button { color: inherit; }
+    button, [role="button"] { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--accent) 32%, transparent);
+      outline-offset: 2px;
+    }
+
+    .page {
+      width: min(1040px, calc(100vw - 32px));
+      min-height: 100svh;
+      margin: 0 auto;
+      padding: 20px 0 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sample-header {
+      width: min(900px, 100%);
+      margin-inline: auto;
+      min-height: 52px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .sample-kicker {
+      margin: 0 0 4px;
+      color: var(--accent-strong);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .sample-header h1 {
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: -.01em;
+    }
+
+    .sample-header p {
+      margin: 5px 0 0;
+      color: var(--ink-60);
+      font-size: 12px;
+    }
+
+    .architecture-badge {
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper-soft);
+      color: var(--ink-60);
+      font-size: 11px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .architecture-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+
+    .settings-shell {
+      position: relative;
+      width: min(760px, 100%);
+      height: min(560px, calc(100svh - 126px));
+      min-height: 460px;
+      margin-inline: auto;
+      display: grid;
+      grid-template-columns: 196px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid #d1cec7;
+      border-radius: 10px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .settings-nav {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 11px 12px;
+      border-right: 1px solid var(--line);
+      background: #eceae5;
+    }
+
+    .brand-row {
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 8px 17px;
+    }
+
+    .brand-mark {
+      width: 25px;
+      height: 25px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: Georgia, serif;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .brand-name { font-size: 14px; font-weight: 700; }
+    .brand-caption { margin-top: 1px; color: var(--ink-60); font-size: 10px; }
+
+    .nav-label {
+      padding: 0 9px 7px;
+      color: var(--ink-40);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .nav-list { display: grid; gap: 2px; }
+    .nav-item {
+      min-height: 35px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      padding: 0 9px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink-60);
+      text-align: left;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .nav-item:hover { background: rgba(255,255,255,.5); color: var(--ink); }
+    .nav-item[aria-current="page"] { background: var(--ink); color: var(--paper); font-weight: 650; }
+    .nav-item .icon { width: 16px; height: 16px; flex: none; }
+
+    .nav-foot {
+      margin-top: auto;
+      padding: 11px 9px 0;
+      border-top: 1px solid rgba(83, 78, 69, .12);
+      color: var(--ink-40);
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    .settings-main {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--paper);
+    }
+
+    .main-head {
+      height: 49px;
+      flex: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0 14px 0 18px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .main-head-title { font-size: 13px; font-weight: 700; }
+    .main-head-meta { color: var(--ink-40); font-size: 11px; }
+    .close-button, .icon-button {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      flex: none;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink-60);
+      cursor: pointer;
+    }
+    .close-button:hover, .icon-button:hover { background: var(--paper-muted); color: var(--ink); }
+    .icon { width: 15px; height: 15px; }
+
+    .content {
+      min-width: 0;
+      min-height: 0;
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .scroll {
+      height: 100%;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line) transparent;
+    }
+
+    .content-pad { padding: 18px 20px 20px; }
+    .section-title { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+    .section-subtitle { margin: 4px 0 0; color: var(--ink-60); font-size: 11px; line-height: 1.45; }
+    .eyebrow { color: var(--ink-40); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+    .toolbar {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .search {
+      min-width: 0;
+      height: 32px;
+      flex: 1;
+      padding: 0 10px 0 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      color: var(--ink);
+      outline: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23716d65' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: 10px center;
+      font-size: 11px;
+    }
+    .search:focus { border-color: var(--accent); }
+
+    .button {
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      color: var(--ink-80);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .button:hover { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+    .button.primary { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+    .button.primary:hover { border-color: var(--accent-strong); background: var(--accent-strong); }
+    .button.ghost { border-color: transparent; background: transparent; color: var(--ink-60); }
+    .button.ghost:hover { border-color: var(--line); background: var(--paper-muted); color: var(--ink); }
+    .button.danger { color: var(--danger); }
+    .button .icon { width: 14px; height: 14px; }
+
+    .model-summary {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink-60);
+      font-size: 11px;
+    }
+    .summary-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+    .summary-divider { color: var(--ink-25); }
+
+    .connection-list { margin-top: 13px; display: grid; gap: 10px; }
+    .connection-section { border-top: 1px solid var(--line); }
+    .connection-head {
+      min-height: 37px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 1px;
+    }
+    button.connection-head { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }
+    button.connection-head:hover { color: var(--accent-strong); }
+    .connection-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; font-weight: 700; }
+    .provider-mark {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      flex: none;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--paper-soft);
+      color: var(--ink-80);
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .provider-mark.blue { background: var(--accent-soft); border-color: #d5dfec; color: var(--accent-strong); }
+    .provider-mark.green { background: var(--success-soft); border-color: #d8eadf; color: var(--success); }
+    .connection-meta { color: var(--ink-40); font-size: 10px; font-weight: 500; }
+    .connection-head > span:last-child { color: var(--ink-40); font-size: 10px; }
+
+    .model-rows { display: grid; border-bottom: 1px solid var(--line-soft); }
+    .model-row {
+      min-height: 45px;
+      display: grid;
+      grid-template-columns: 8px minmax(0,1fr) auto auto 16px;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 0 5px;
+      border: 0;
+      border-top: 1px solid var(--line-soft);
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+    .model-row:hover { background: var(--paper-soft); }
+    .model-row[aria-selected="true"] { background: var(--accent-soft); }
+    .model-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+    .model-status-dot.warning { background: var(--warning); }
+    .model-status-dot.muted { background: var(--ink-25); }
+    .model-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+    .model-kind { color: var(--ink-40); font-size: 10px; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 21px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--success-soft);
+      color: var(--success);
+      font-size: 10px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .status.pending { background: var(--warning-soft); color: var(--warning); }
+    .status.muted { background: var(--paper-muted); color: var(--ink-60); }
+    .row-chevron { color: var(--ink-25); }
+
+    .model-layout { position: relative; height: 100%; min-height: 0; }
+    .model-layout .list-pane { height: 100%; }
+
+    .list-pane, .detail-pane { min-width: 0; min-height: 0; background: var(--paper); }
+    .list-pane { overflow: hidden; }
+    .list-scroll { height: 100%; overflow: auto; padding: 18px 15px 18px 18px; }
+    .list-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .list-head h2 { margin: 0; font-size: 16px; line-height: 1.25; }
+    .list-head p { margin: 4px 0 0; color: var(--ink-60); font-size: 10px; }
+    .list-head .button { min-height: 29px; padding: 0 8px; }
+    .list-toolbar { margin-top: 12px; }
+    .list-toolbar .search { width: 100%; }
+
+    .detail-pane { display: flex; flex-direction: column; overflow: hidden; }
+    .detail-header {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 13px;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .back-button { width: 28px; height: 28px; display: grid; place-items: center; flex: none; border: 0; border-radius: 6px; background: transparent; color: var(--ink-60); cursor: pointer; }
+    .back-button:hover { background: var(--paper-muted); color: var(--ink); }
+    .detail-title { min-width: 0; flex: 1; }
+    .detail-title .provider { color: var(--ink-40); font-size: 10px; }
+    .detail-title h2 { margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 1.2; }
+    .detail-actions { display: flex; align-items: center; gap: 2px; }
+    .detail-scroll { min-height: 0; flex: 1; overflow: auto; padding: 14px 16px 18px; }
+    .status-strip { display: flex; align-items: center; gap: 9px; padding: 11px 12px; border-left: 2px solid var(--success); background: var(--success-soft); }
+    .status-strip.pending { border-color: var(--warning); background: var(--warning-soft); }
+    .status-icon { width: 17px; height: 17px; flex: none; margin-top: 1px; color: var(--success); }
+    .status-strip.pending .status-icon { color: var(--warning); }
+    .status-strip strong { display: block; font-size: 11px; }
+    .status-strip p { margin: 3px 0 0; color: var(--ink-60); font-size: 10px; line-height: 1.4; }
+    .status-copy { min-width: 0; flex: 1; }
+    .detail-section { margin-top: 15px; }
+    .detail-section + .detail-section { border-top: 1px solid var(--line-soft); padding-top: 14px; }
+    .detail-section-title { margin-bottom: 8px; font-size: 11px; font-weight: 700; }
+    .setting-row { min-height: 35px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line-soft); }
+    .setting-row:last-child { border-bottom: 0; }
+    .setting-label { min-width: 0; }
+    .setting-label strong { display: block; font-size: 11px; font-weight: 600; }
+    .setting-label span { display: block; margin-top: 2px; color: var(--ink-40); font-size: 10px; }
+    .setting-value { color: var(--ink-60); font-size: 10px; text-align: right; }
+    .summary-row { width: 100%; min-height: 48px; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.35fr) auto; align-items: center; gap: 10px; padding: 0; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; cursor: pointer; text-align: left; }
+    .summary-row:hover { color: var(--accent-strong); }
+    .summary-row strong { font-size: 11px; }
+    .summary-row span { color: var(--ink-60); font-size: 10px; text-align: right; }
+    .more-actions { border-top: 1px solid var(--line); padding-top: 3px; }
+    .more-actions summary { min-height: 38px; display: flex; align-items: center; justify-content: space-between; color: var(--ink-60); cursor: pointer; font-size: 10px; font-weight: 700; list-style: none; }
+    .more-actions summary::-webkit-details-marker { display: none; }
+    .more-actions .button { margin: 4px 5px 4px 0; }
+    .switch { width: 28px; height: 17px; position: relative; flex: none; border-radius: 999px; background: var(--ink-25); cursor: pointer; }
+    .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 11px; height: 11px; border-radius: 50%; background: white; transition: transform .15s ease; }
+    .switch.on { background: var(--accent); }
+    .switch.on::after { transform: translateX(11px); }
+    .mode-list { display: grid; gap: 6px; }
+    .mode-row { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+    .mode-row.active { border-color: #c5d5e7; background: var(--accent-soft); }
+    .mode-name { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 11px; font-weight: 650; }
+    .mode-name .icon { color: var(--accent); }
+    .mode-slots { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+    .slot { padding: 3px 5px; border-radius: 4px; background: rgba(255,255,255,.72); color: var(--ink-60); font-size: 9px; }
+    .detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 13px; border-top: 1px solid var(--line); background: var(--paper-soft); }
+    .detail-footer .button { min-height: 29px; }
+    .footer-left { display: flex; align-items: center; gap: 4px; }
+    .footer-right { display: flex; align-items: center; gap: 5px; }
+
+    .model-dialog-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      padding: 12px;
+    }
+    .model-dialog-scrim { position: absolute; inset: 0; border: 0; background: rgba(35, 32, 27, .42); cursor: default; }
+    .model-dialog {
+      position: relative;
+      z-index: 1;
+      width: min(880px, calc(100vw - 24px));
+      height: min(640px, calc(100svh - 24px));
+      min-height: 480px;
+      overflow: hidden;
+      border: 1px solid #d1cec7;
+      border-radius: 10px;
+      background: var(--paper);
+      box-shadow: 0 26px 70px rgba(29, 26, 22, .25), 0 3px 12px rgba(29, 26, 22, .12);
+    }
+    .model-dialog .detail-pane { width: 100%; height: 100%; }
+    .model-dialog-page { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+    .model-dialog-page .scroll { min-height: 0; flex: 1; }
+    .model-dialog-page .content-pad { max-width: none; padding: 22px 24px 24px; }
+    .model-dialog-context { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 9px; color: var(--ink-40); font-size: 10px; }
+    .model-dialog-context .icon { width: 12px; height: 12px; }
+    .model-dialog-confirm-layer { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 16px; background: rgba(35, 32, 27, .30); }
+    .model-dialog-confirm { width: min(360px, 100%); padding: 17px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: var(--shadow); }
+    .model-dialog-confirm h3 { margin: 0; font-size: 14px; }
+    .model-dialog-confirm p { margin: 6px 0 0; color: var(--ink-60); font-size: 11px; line-height: 1.5; }
+    .model-dialog-confirm-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 16px; }
+
+    .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .page-head h2 { margin: 0; font-size: 17px; }
+    .page-head p { margin: 4px 0 0; color: var(--ink-60); font-size: 11px; line-height: 1.45; }
+    .rule-list { margin-top: 17px; border-top: 1px solid var(--line); }
+    .rule-row { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line-soft); }
+    .rule-row strong { display: block; font-size: 12px; font-weight: 650; }
+    .rule-row p { max-width: 410px; margin: 3px 0 0; color: var(--ink-40); font-size: 10px; line-height: 1.4; }
+    .compact-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; }
+    .field-group { min-width: 0; }
+    .field-label { display: block; margin-bottom: 6px; color: var(--ink-60); font-size: 10px; font-weight: 650; }
+    .field { width: 100%; height: 32px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font-size: 11px; }
+    .field.mono { font-family: var(--mono); font-size: 10px; }
+    textarea.field { height: 90px; padding-top: 8px; resize: vertical; }
+    .helper { margin-top: 5px; color: var(--ink-40); font-size: 10px; line-height: 1.4; }
+    .step-line { display: flex; align-items: center; gap: 0; margin: 15px 0 18px; }
+    .step { display: flex; align-items: center; gap: 6px; color: var(--ink-40); font-size: 10px; white-space: nowrap; }
+    .step + .step::before { content: ""; width: 25px; height: 1px; margin: 0 7px 0 3px; background: var(--line); }
+    .step.active { color: var(--accent-strong); font-weight: 700; }
+    .step-index { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 9px; }
+    .script-layout { display: grid; grid-template-columns: 176px minmax(0,1fr); gap: 14px; margin-top: 14px; }
+    .script-side { border-right: 1px solid var(--line); padding-right: 12px; }
+    .script-side h3 { margin: 0 0 8px; font-size: 11px; }
+    .script-side button { width: 100%; min-height: 29px; padding: 0 7px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-60); text-align: left; cursor: pointer; font-size: 10px; }
+    .script-side button:hover, .script-side button.active { background: var(--accent-soft); color: var(--accent-strong); }
+    .editor { min-width: 0; }
+    .editor-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .editor-head strong { font-size: 11px; }
+    .editor-head span { color: var(--ink-40); font-size: 10px; }
+    .script-toolbar { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 240px); gap: 8px; margin-bottom: 8px; }
+    .script-control { min-width: 0; }
+    .script-control .field-label { margin-bottom: 4px; }
+    .code-box { min-height: 176px; padding: 11px; border: 1px solid #d8d5ce; border-radius: 6px; background: #292a28; color: #e9e6df; font-family: var(--mono); font-size: 10px; line-height: 1.65; white-space: pre-wrap; }
+    .code-key { color: #a8c6ee; }
+    .code-string { color: #d9c493; }
+    .code-comment { color: #8f968e; }
+    .script-helper { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line-soft); color: var(--ink-60); font-size: 10px; }
+    .script-helper summary { cursor: pointer; font-weight: 650; }
+    .model-dialog-footer { min-height: 54px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 14px; border-top: 1px solid var(--line); background: var(--paper-soft); }
+    .model-dialog-footer-copy { min-width: 0; color: var(--ink-40); font-size: 10px; line-height: 1.4; }
+    .model-dialog-footer-actions { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 7px; }
+    .script-contract { margin-top: 9px; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
+    .contract-box { min-height: 58px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper-soft); }
+    .contract-box strong { display: block; font-size: 10px; }
+    .contract-box span { display: block; margin-top: 4px; color: var(--ink-60); font-size: 9px; line-height: 1.35; }
+    .task-row { display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: center; gap: 9px; min-height: 53px; border-bottom: 1px solid var(--line-soft); }
+    .task-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); }
+    .task-dot.done { background: var(--success); }
+    .task-row strong { display: block; font-size: 11px; }
+    .task-row span { display: block; margin-top: 3px; color: var(--ink-40); font-size: 10px; }
+    .task-progress { width: 62px; height: 4px; overflow: hidden; border-radius: 99px; background: var(--line); }
+    .task-progress i { display: block; width: 62%; height: 100%; background: var(--warning); }
+
+    .architecture-caption {
+      width: min(900px, 100%);
+      margin-inline: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 38px;
+      padding: 0 2px;
+    }
+    .architecture-caption strong { font-size: 12px; }
+    .architecture-caption p { margin: 3px 0 0; color: var(--ink-60); font-size: 10px; }
+    .architecture-caption .recommend { color: var(--accent-strong); font-size: 10px; font-weight: 700; white-space: nowrap; }
+
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 20px;
+      z-index: 20;
+      max-width: min(360px, calc(100vw - 44px));
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--ink);
+      color: var(--paper);
+      box-shadow: 0 10px 28px rgba(40, 36, 29, .18);
+      font-size: 11px;
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 760px) {
+      .page { width: 100%; padding: 10px 0 0; gap: 8px; }
+      .sample-header { align-items: flex-start; flex-direction: column; gap: 9px; padding: 0 12px; }
+      .sample-header p { display: none; }
+      .architecture-badge { align-self: flex-start; }
+      .settings-shell { width: 100%; height: calc(100svh - 88px); min-height: 0; border-right: 0; border-left: 0; border-radius: 0; grid-template-columns: 68px minmax(0, 1fr); }
+      .settings-nav { padding: 13px 6px 9px; }
+      .brand-row { justify-content: center; padding: 0 0 16px; }
+      .brand-copy, .nav-label, .nav-foot { display: none; }
+      .nav-item { justify-content: center; padding: 0; }
+      .nav-item span:not(.icon) { display: none; }
+      .main-head { padding-left: 13px; }
+      .content-pad { padding: 15px 14px 18px; }
+      .list-scroll { padding: 15px 12px 18px; }
+      .detail-scroll { padding: 13px 13px 17px; }
+      .compact-grid { grid-template-columns: 1fr; gap: 12px; }
+      .script-layout { grid-template-columns: 1fr; }
+      .script-toolbar { grid-template-columns: 1fr; }
+      .script-side { display: flex; gap: 5px; overflow-x: auto; padding: 0 0 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .script-side h3 { display: none; }
+      .script-side button { width: auto; flex: none; }
+      .script-contract { grid-template-columns: 1fr; }
+      .architecture-caption { padding: 0 12px; }
+      .model-dialog-layer { padding: 0; }
+      .model-dialog { width: 100vw; height: 100svh; min-height: 0; border: 0; border-radius: 0; }
+      .model-dialog-page .content-pad { padding: 16px 14px 20px; }
+      .status-strip { align-items: flex-start; flex-wrap: wrap; }
+      .status-strip .button { width: 100%; min-height: 36px; }
+      .summary-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; }
+      .model-dialog-footer { align-items: stretch; flex-direction: column; gap: 7px; padding: 9px 14px 12px; }
+      .model-dialog-footer-actions { width: 100%; }
+      .model-dialog-footer-actions .button.primary { flex: 1; min-height: 38px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <aside style="position:fixed;z-index:1000;left:50%;top:12px;transform:translateX(-50%);max-width:calc(100vw - 32px);padding:8px 12px;border:1px solid #dedbd4;border-radius:6px;background:#fffdfa;color:#716d65;box-shadow:0 4px 16px rgba(42,38,31,.12);font-size:12px">
+    历史布局比较稿，不是当前产品基线。最终方案见
+    <a href="2026-08-16-model-settings-home-information-architecture.html" style="color:#3f5e87">已批准的模型设置信息架构</a>。
+  </aside>
+  <div class="page">
+    <header class="sample-header">
+      <div>
+        <p class="sample-kicker">Nomi / settings architecture</p>
+        <h1>模型设置：固定设置壳 + 单模型第三层工作台</h1>
+        <p>模型首页和连接管理留在原设置右侧；具体模型与首页直达脚本草稿进入更宽的第三层弹窗。</p>
+      </div>
+      <div class="architecture-badge">最终交互方案</div>
+    </header>
+
+    <main class="settings-shell" aria-label="Nomi 设置样张">
+      <aside class="settings-nav">
+        <div class="brand-row">
+          <div class="brand-mark">N</div>
+          <div class="brand-copy">
+            <div class="brand-name">设置</div>
+            <div class="brand-caption">工作区偏好</div>
+          </div>
+        </div>
+        <div class="nav-label">Settings</div>
+        <nav class="nav-list" aria-label="设置分类">
+          <button class="nav-item" type="button" data-section="file" aria-current="false"><i class="icon" data-lucide="folder"></i><span>文件与保存</span></button>
+          <button class="nav-item" type="button" data-section="models" aria-current="page"><i class="icon" data-lucide="plug-zap"></i><span>模型</span></button>
+          <button class="nav-item" type="button" data-section="ai" aria-current="false"><i class="icon" data-lucide="brain"></i><span>AI 策略</span></button>
+          <button class="nav-item" type="button" data-section="automation" aria-current="false"><i class="icon" data-lucide="shield-check"></i><span>自动化权限</span></button>
+          <button class="nav-item" type="button" data-section="general" aria-current="false"><i class="icon" data-lucide="sliders-horizontal"></i><span>通用</span></button>
+          <button class="nav-item" type="button" data-section="about" aria-current="false"><i class="icon" data-lucide="info"></i><span>关于</span></button>
+        </nav>
+        <div class="nav-foot">设置外壳固定<br />单模型工作进入第三层</div>
+      </aside>
+
+      <section class="settings-main">
+        <header class="main-head">
+          <div>
+            <div class="main-head-title" id="main-title">模型</div>
+            <div class="main-head-meta" id="main-meta">3 个连接 · 7 个模型</div>
+          </div>
+          <button class="close-button" type="button" title="关闭设置" aria-label="关闭设置" data-action="close"><i class="icon" data-lucide="x"></i></button>
+        </header>
+        <div class="content" id="content"></div>
+      </section>
+    </main>
+
+    <div class="architecture-caption" aria-live="polite"><div><strong>页面归属由信息量决定</strong><p>连接级操作留在 760 × 560 设置右侧；具体模型和首页直达脚本草稿进入 880 × 640 弹窗，关闭后回到原入口。</p></div><span class="recommend">最终方案</span></div>
+  </div>
+  <div id="model-dialog-root"></div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"></script>
+  <script>
+    const models = [
+      { id: 'gpt-image-1', vendor: 'OpenAI Compatible', vendorKey: 'openai-compatible', kind: '图片', status: '已验证', statusClass: '', description: '通用图片生成', mode: '多参考图' },
+      { id: 'seedance-2.0', vendor: 'OpenAI Compatible', vendorKey: 'openai-compatible', kind: '视频', status: '需要配置', statusClass: 'pending', description: '视频生成 · 新模型', mode: '全能参考' },
+      { id: 'claude-sonnet-4', vendor: 'OpenAI Compatible', vendorKey: 'openai-compatible', kind: '文本', status: '已验证', statusClass: '', description: '文本与规划', mode: '文本' },
+      { id: 'flux-pro', vendor: 'Fal Gateway', vendorKey: 'fal', kind: '图片', status: '已验证', statusClass: '', description: '图片生成', mode: '参考图' },
+      { id: 'comfyui-local', vendor: 'ComfyUI · 本地', vendorKey: 'comfyui', kind: '视频', status: '已验证', statusClass: '', description: '本地工作流', mode: '工作流输入' },
+    ];
+    const directScriptDraftModel = {
+      id: 'new-video-model',
+      vendor: '新的兼容网关',
+      vendorKey: 'openai-compatible',
+      kind: '视频',
+      status: '脚本草稿',
+      statusClass: 'pending',
+      description: '从模型首页直接创建',
+      mode: '全能参考',
+    };
+
+    const state = {
+      section: 'models',
+      route: 'home',
+      selected: 'seedance-2.0',
+      selectedConnection: 'openai-compatible',
+      modelDialogOpen: false,
+      modelRoute: 'detail',
+      modelDirty: false,
+      scriptTested: false,
+      directScriptDraft: false,
+      scriptMode: 'all',
+      scriptTemplate: '',
+      confirmClose: false,
+      toastTimer: null,
+    };
+
+    const icon = (name, className = 'icon') => `<i class="${className}" data-lucide="${name}"></i>`;
+    const modelById = (id) => id === directScriptDraftModel.id
+      ? directScriptDraftModel
+      : models.find((model) => model.id === id) || models[0];
+
+    function refreshIcons() {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(state.toastTimer);
+      state.toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    function modelRow(model) {
+      const selected = state.selected === model.id;
+      const dot = model.statusClass === 'pending' ? 'warning' : '';
+      return `<button class="model-row" type="button" data-model="${model.id}" aria-selected="${selected}">
+        <span class="model-status-dot ${dot}"></span>
+        <span class="model-label" title="${model.id}">${model.id}</span>
+        <span class="model-kind">${model.kind}</span>
+        <span class="status ${model.statusClass}">${model.status}</span>
+        <span class="row-chevron">${icon('chevron-right')}</span>
+      </button>`;
+    }
+
+    function modelList() {
+      return `<div class="list-pane">
+        <div class="list-scroll">
+          <div class="list-head">
+            <div><h2>模型</h2><p>具体模型和直达脚本草稿都在第三层工作台完成</p></div>
+            <div style="display:flex;gap:5px"><button class="button" type="button" data-action="global-task" title="查看所有后台任务">${icon('activity')}任务</button><button class="button primary" type="button" data-action="add">${icon('plus')}添加连接</button></div>
+          </div>
+          <div class="list-toolbar"><input class="search" type="search" placeholder="搜索连接或模型" aria-label="搜索连接或模型" /></div>
+          <div class="model-summary"><span class="summary-dot"></span><span>4 个可用</span><span class="summary-divider">·</span><span>1 个需要配置</span></div>
+          <div style="margin-top:10px"><button class="button ghost" type="button" data-action="global-script">${icon('code-2')}我已有调用脚本，直接接入</button></div>
+          <div class="connection-list">
+            <section class="connection-section">
+              <button class="connection-head" type="button" data-connection="openai-compatible"><div class="connection-name"><span class="provider-mark blue">OC</span><span>OpenAI Compatible <span class="connection-meta">· API</span></span></div><span>3 个模型 ${icon('chevron-right')}</span></button>
+              <div class="model-rows">${models.filter((model) => model.vendorKey === 'openai-compatible').map(modelRow).join('')}</div>
+            </section>
+            <section class="connection-section">
+              <button class="connection-head" type="button" data-connection="fal"><div class="connection-name"><span class="provider-mark">FG</span><span>Fal Gateway <span class="connection-meta">· API</span></span></div><span>1 个模型 ${icon('chevron-right')}</span></button>
+              <div class="model-rows">${models.filter((model) => model.vendorKey === 'fal').map(modelRow).join('')}</div>
+            </section>
+            <section class="connection-section">
+              <button class="connection-head" type="button" data-connection="comfyui"><div class="connection-name"><span class="provider-mark green">C</span><span>ComfyUI · 本地 <span class="connection-meta">· 无 Key</span></span></div><span>1 个模型 ${icon('chevron-right')}</span></button>
+              <div class="model-rows">${models.filter((model) => model.vendorKey === 'comfyui').map(modelRow).join('')}</div>
+            </section>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    function detailPane() {
+      const model = modelById(state.selected);
+      const pending = model.statusClass === 'pending';
+      const returnLabel = state.directScriptDraft ? '返回模型首页' : '返回连接详情';
+      return `<aside class="detail-pane" aria-label="模型详情">
+        <header class="detail-header">
+          <button class="back-button" type="button" data-action="close-model" title="${returnLabel}" aria-label="${returnLabel}">${icon('arrow-left')}</button>
+          <div class="detail-title"><div class="provider">${model.vendor}</div><h2>${model.id}</h2></div>
+          <div class="detail-actions"><button class="icon-button" type="button" data-action="more" title="更多操作" aria-label="更多操作">${icon('more-horizontal')}</button><button class="icon-button" type="button" data-action="close-model" title="关闭模型详情" aria-label="关闭模型详情">${icon('x')}</button></div>
+        </header>
+        <div class="detail-scroll">
+          <div class="status-strip ${pending ? 'pending' : ''}">
+            ${icon(pending ? 'circle-alert' : 'circle-check', 'status-icon')}
+            <div class="status-copy"><strong>${pending ? '还需要完成配置' : '已测试，可以使用'}</strong><p>${pending ? '尚未设置输入与请求方式。先完成输入设置，再选择自动配置或手动脚本。' : '输入与请求方式已经确认，可以直接在画布中使用。'}</p></div>
+            ${pending ? `<button class="button primary" type="button" data-action="model-capability">设置输入方式 ${icon('chevron-right')}</button>` : ''}
+          </div>
+          <section class="detail-section">
+            <div class="detail-section-title">基本设置</div>
+            <div class="setting-row"><div class="setting-label"><strong>显示在画布的模型列表</strong><span>${pending ? '完成配置后才能开启' : '关闭后保留全部配置'}</span></div><button class="switch ${pending ? '' : 'on'}" type="button" aria-label="启用模型" data-action="toggle" ${pending ? 'disabled' : ''}></button></div>
+            <div class="setting-row"><div class="setting-label"><strong>模型类型</strong><span>决定出现在哪类生成节点</span></div><span class="setting-value">${model.kind}</span></div>
+          </section>
+          <section class="detail-section">
+            <button class="summary-row" type="button" data-action="model-capability"><strong>输入与生成方式</strong><span>${pending ? '尚未设置' : '已设置 2 种生成方式'}</span>${icon('chevron-right')}</button>
+            <button class="summary-row" type="button" data-action="model-script"><strong>请求方式</strong><span>${pending ? '尚未设置' : '使用连接的标准接口'}</span>${icon('chevron-right')}</button>
+          </section>
+          <details class="detail-section more-actions"><summary>更多操作 ${icon('chevron-down')}</summary><div>
+            <button class="button" type="button" data-action="model-verify">${icon('sparkles')}让 Nomi 自动配置</button>
+            <button class="button" type="button" data-action="model-script">${icon('code-2')}手动写请求脚本</button>
+            <button class="button" type="button" data-action="model-task">${icon('activity')}查看最近任务</button>
+            <button class="button ghost danger" type="button" data-action="delete">${icon('trash-2')}删除模型</button>
+          </div></details>
+        </div>
+      </aside>`;
+    }
+
+    function modelHome() {
+      return `<div class="model-layout" data-model-layout="settings-right-pane">${modelList()}</div>`;
+    }
+
+    function detailOnly(routeTitle, inner, actions = '') {
+      return `<div class="scroll"><div class="content-pad">
+        <div class="page-head"><div><button class="button ghost" type="button" data-action="back">${icon('arrow-left')}返回模型</button><h2 style="margin-top:12px">${routeTitle}</h2></div>${actions}</div>
+        ${inner}
+      </div></div>`;
+    }
+
+    function modelDialogPage(routeTitle, inner, footer = '') {
+      const model = modelById(state.selected);
+      return `<div class="model-dialog-page">
+        <div class="scroll"><div class="content-pad">
+          <div class="model-dialog-context">${icon('box')} ${model.vendor} / ${model.id}</div>
+          <div class="page-head"><div><button class="button ghost" type="button" data-action="model-back">${icon('arrow-left')}返回模型详情</button><h2 style="margin-top:12px">${routeTitle}</h2></div><button class="icon-button" type="button" data-action="close-model" title="关闭模型工作台" aria-label="关闭模型工作台">${icon('x')}</button></div>
+          ${inner}
+        </div></div>
+        ${footer}
+      </div>`;
+    }
+
+    function connectionPage() {
+      const connections = {
+        'openai-compatible': { name: 'OpenAI Compatible', url: 'https://api.example.com/v1', key: 'sk-••••••••••••7K9' },
+        fal: { name: 'Fal Gateway', url: 'https://fal.run', key: 'fal-••••••••••••P2' },
+        comfyui: { name: 'ComfyUI · 本地', url: 'http://127.0.0.1:8188', key: '无需 Key' },
+      };
+      const connection = connections[state.selectedConnection] || connections['openai-compatible'];
+      const connectionModels = models.filter((model) => model.vendorKey === state.selectedConnection);
+      return detailOnly(connection.name, `<p class="section-subtitle">连接信息和模型清单留在设置右侧；点击具体模型才打开第三层工作台。</p>
+        <div class="rule-list">
+          <div class="rule-row"><div><strong>连接状态</strong><p>已保存 · 最近一次请求 2 分钟前通过</p></div><span class="status">已连通</span></div>
+          <div class="rule-row"><div><strong>API 地址</strong><p class="mono">${connection.url}</p></div><button class="button" type="button" data-action="edit-connection">编辑</button></div>
+          <div class="rule-row"><div><strong>Key</strong><p class="mono">${connection.key}</p></div><button class="button" type="button" data-action="edit-connection">更新</button></div>
+          <div class="rule-row"><div><strong>模型数量</strong><p>${connectionModels.length} 个模型</p></div><button class="button" type="button" data-action="add-model">添加模型</button></div>
+        </div>
+        <div class="detail-section"><div class="detail-section-title">此连接的模型</div><div class="model-rows">${connectionModels.map(modelRow).join('')}</div></div>
+        <div style="margin-top:18px"><button class="button" type="button" data-action="global-task">${icon('activity')}查看全局后台任务</button></div>`);
+    }
+
+    function addPage() {
+      return detailOnly('添加模型', `<div class="step-line"><div class="step active"><span class="step-index">1</span>保存草稿</div><div class="step"><span class="step-index">2</span>选择模型</div><div class="step"><span class="step-index">3</span>验证或自定义</div></div>
+        <div class="compact-grid">
+          <label class="field-group"><span class="field-label">连接名称</span><input class="field" value="新的兼容网关" /></label>
+          <label class="field-group"><span class="field-label">模型 ID</span><input class="field mono" value="new-video-model" /></label>
+          <label class="field-group" style="grid-column:1/-1"><span class="field-label">API 地址</span><input class="field mono" value="https://api.example.com/v1" /><span class="helper">没有文档也可以先保存，后续从模型详情补齐请求。</span></label>
+          <label class="field-group"><span class="field-label">API Key</span><input class="field mono" value="sk-demo••••••" /></label>
+          <label class="field-group"><span class="field-label">初始类型</span><select class="field"><option>视频</option><option>图片</option><option>文本</option><option>音频</option></select></label>
+        </div>
+        <div class="rule-list" style="margin-top:18px"><div class="rule-row"><div><strong>保存策略</strong><p>保存只写入连接和模型，不查文档、不调用 AI，也不自动发起可能付费的验证。</p></div><span class="status">立即完成</span></div></div>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:17px"><button class="button" type="button" data-action="global-script">${icon('code-2')}直接写调用脚本</button><button class="button primary" type="button" data-action="save-draft">保存模型</button></div>`);
+    }
+
+    function scriptPage() {
+      const model = modelById(state.selected);
+      const title = `${state.directScriptDraft ? '直接调用脚本' : '请求脚本'} · ${model.id}`;
+      const verifyAction = state.directScriptDraft ? 'verify' : 'model-verify';
+      const saveAction = state.directScriptDraft ? 'save' : 'model-save';
+      const primaryAction = state.scriptTested
+        ? `<button class="button primary" type="button" data-action="${saveAction}">${icon('check')}保存并启用</button>`
+        : `<button class="button primary" type="button" data-action="${verifyAction}">${icon('play')}发送测试请求</button>`;
+      const inner = `<p class="section-subtitle">脚本负责真实请求；输入模式和素材槽仍由“输入与生成方式”管理。</p>
+        <div class="script-layout"><aside class="script-side"><h3>脚本返回值</h3><p class="helper">文本返回 { text }；素材返回 URL、URL 数组或含 url / urls 的对象。</p><h3 style="margin-top:14px">脚本 API</h3><p class="helper">prompt · params · references · modeId · http · request · poll · saveFile</p></aside><div class="editor"><div class="editor-head"><strong>脚本</strong><span data-script-test-status>${state.scriptTested ? '测试通过 · 可以保存' : '尚未测试'}</span></div><div class="script-toolbar"><label class="script-control"><span class="field-label">脚本用于</span><select class="field" data-script-change="mode"><option value="all" ${state.scriptMode === 'all' ? 'selected' : ''}>所有模式（通用兜底）</option><option value="omni" ${state.scriptMode === 'omni' ? 'selected' : ''}>全能参考</option><option value="multi-reference" ${state.scriptMode === 'multi-reference' ? 'selected' : ''}>多参考图</option><option value="first-last" ${state.scriptMode === 'first-last' ? 'selected' : ''}>首尾帧</option></select></label><label class="script-control"><span class="field-label">插入模板</span><select class="field" data-script-change="template"><option value="" ${state.scriptTemplate === '' ? 'selected' : ''}>选择一个模板…</option><option value="openai-image" ${state.scriptTemplate === 'openai-image' ? 'selected' : ''}>OpenAI 图片</option><option value="submit-poll-video" ${state.scriptTemplate === 'submit-poll-video' ? 'selected' : ''}>提交并轮询视频</option><option value="chat-image-edit" ${state.scriptTemplate === 'chat-image-edit' ? 'selected' : ''}>Chat 改图</option></select></label></div><div class="code-box" contenteditable="true" role="textbox" aria-label="请求脚本" data-script-editor><span class="code-comment">// 输入来自当前模式契约</span>\n<span class="code-key">const</span> body = {\n  <span class="code-string">prompt</span>: prompt,\n  <span class="code-string">images</span>: references.images,\n  <span class="code-string">mode</span>: modeId\n};\n\n<span class="code-key">return</span> http(<span class="code-string">\"/videos\"</span>, { method: <span class="code-string">\"POST\"</span>, body });</div><details class="script-helper"><summary>需要 Nomi 帮你写脚本？ <span style="color:var(--ink-40);font-weight:500">可选</span></summary><p>粘贴接口文档片段或 curl 示例后再让 AI 生成。</p></details><details class="script-helper"><summary>连接变量（可选）</summary><p>第二个密钥、区域或 API 版本可以在这里添加。</p></details></div></div>`;
+      const footer = `<footer class="model-dialog-footer"><div class="model-dialog-footer-copy">${state.scriptTested ? '本次脚本已经真实试调，可以保存并启用。' : '进入或修改脚本后需要重新发送测试请求。'}</div><div class="model-dialog-footer-actions"><button class="button" type="button" data-action="model-save-draft">仅保存草稿</button>${primaryAction}</div></footer>`;
+      return modelDialogPage(title, inner, footer);
+    }
+
+    function capabilityPage() {
+      return modelDialogPage('能力与输入模式 · ' + modelById(state.selected).id, `<p class="section-subtitle">模式是模型自己的能力声明，不假设所有模型都只有首尾帧或固定参考图。</p>
+        <div class="rule-list">
+          <div class="rule-row"><div><strong>全能参考</strong><p>提示词 + 任意数量参考图，模型自行决定融合方式</p></div><button class="button" type="button" data-action="edit-model-mode">编辑</button></div>
+          <div class="rule-row"><div><strong>多参考图</strong><p>提示词 + 参考图列表 + 可选遮罩</p></div><button class="button" type="button" data-action="edit-model-mode">编辑</button></div>
+          <div class="rule-row"><div><strong>首尾帧</strong><p>提示词 + 首帧 + 尾帧</p></div><button class="button" type="button" data-action="edit-model-mode">编辑</button></div>
+          <div class="rule-row"><div><strong>自定义模式</strong><p>用户可以新增模式，并为模式绑定脚本和输入槽</p></div><button class="button" type="button" data-action="edit-model-mode">${icon('plus')}新增</button></div>
+        </div>
+        <div style="margin-top:17px"><button class="button primary" type="button" data-action="model-save">保存能力配置</button></div>`);
+    }
+
+    function taskPage(modelScoped = false) {
+      const model = modelById(state.selected);
+      const taskRows = modelScoped
+        ? `<div class="task-row"><span class="task-dot"></span><div><strong>${model.id} · 正在验证</strong><span>编译请求映射 · 已运行 42 秒 · 1/3</span></div><div class="task-progress"><i></i></div></div>`
+        : `<div class="task-row"><span class="task-dot"></span><div><strong>seedance-2.0 · 正在验证</strong><span>编译请求映射 · 已运行 42 秒 · 1/3</span></div><div class="task-progress"><i></i></div></div><div class="task-row"><span class="task-dot done"></span><div><strong>gpt-image-1 · 已完成</strong><span>最近一次调用通过 · 2 分钟前</span></div><span class="status">通过</span></div>`;
+      const inner = `<p class="section-subtitle">${modelScoped ? '这里只显示当前模型的任务；关闭后回到连接详情。' : '这里汇总所有连接的后台任务，不打开单模型第三层。'}</p>
+        <div class="rule-list">${taskRows}</div>
+        <div style="display:flex;gap:6px;margin-top:17px"><button class="button" type="button" data-action="stop">停止验证</button><button class="button" type="button" data-action="retry">重试失败模型</button><button class="button ghost" type="button" data-action="background">转到后台</button></div>`;
+      return modelScoped ? modelDialogPage('当前模型任务', inner) : detailOnly('全局后台任务', inner);
+    }
+
+    function renderModelDialog() {
+      const root = document.getElementById('model-dialog-root');
+      if (!state.modelDialogOpen) {
+        root.innerHTML = '';
+        return;
+      }
+      const page = state.modelRoute === 'script'
+        ? scriptPage()
+        : state.modelRoute === 'capability'
+          ? capabilityPage()
+          : state.modelRoute === 'task'
+            ? taskPage(true)
+            : detailPane();
+      const confirmation = state.confirmClose
+        ? `<div class="model-dialog-confirm-layer"><section class="model-dialog-confirm" role="alertdialog" aria-modal="true" aria-labelledby="discard-title"><h3 id="discard-title">放弃未保存的修改？</h3><p>当前模型的能力或调用脚本还有修改。继续关闭会丢弃这些草稿。</p><div class="model-dialog-confirm-actions"><button class="button" type="button" data-action="keep-editing">继续编辑</button><button class="button primary" type="button" data-action="discard-model-changes">放弃并关闭</button></div></section></div>`
+        : '';
+      root.innerHTML = `<div class="model-dialog-layer" data-model-dialog-layer><button class="model-dialog-scrim" type="button" data-action="close-model" aria-label="关闭模型工作台"></button><section class="model-dialog" role="dialog" aria-modal="true" aria-label="单模型工作台" data-model-dialog>${page}${confirmation}</section></div>`;
+    }
+
+    function nonModelPage() {
+      const pages = {
+        file: { title: '文件与保存', subtitle: '项目文件和自动保存位置', rows: [['自动保存', '生成完成后自动写入指定目录', 'on'], ['项目位置', '当前项目保存在本地工作区', '工作区默认']], },
+        ai: { title: 'AI 策略', subtitle: '控制默认模型和辅助请求策略', rows: [['默认文本模型', '用于规划、编译和辅助任务', 'claude-sonnet-4'], ['上传边界', '限制辅助请求可读取的文件范围', '仅当前项目']], },
+        automation: { title: '自动化权限', subtitle: '控制自动化动作在当前项目中的范围', rows: [['允许文件写入', '自动化可以创建和更新项目文件', 'on'], ['允许网络请求', '仅对已配置连接发起请求', 'on'], ['敏感操作确认', '删除或覆盖前询问一次', 'on']], },
+        general: { title: '通用', subtitle: '语言、外观和画布交互偏好', rows: [['语言', '界面显示语言', '简体中文'], ['外观', '应用主题', '浅色'], ['画布手势', '缩放和拖动画布的方式', '触控板']], },
+        about: { title: '关于', subtitle: '版本、诊断和本地运行信息', rows: [['Nomi', '当前版本', '2026.08.15'], ['诊断日志', '用于排查模型接入问题', '可导出'], ['更新', '检查可用版本', '已是最新']], },
+      };
+      const page = pages[state.section] || pages.file;
+      return `<div class="scroll"><div class="content-pad"><div class="page-head"><div><h2>${page.title}</h2><p>${page.subtitle}</p></div></div><div class="rule-list">${page.rows.map(([title, desc, value]) => `<div class="rule-row"><div><strong>${title}</strong><p>${desc}</p></div>${value === 'on' ? '<button class="switch on" type="button" aria-label="开启"></button>' : `<span class="setting-value">${value}</span>`}</div>`).join('')}</div></div></div>`;
+    }
+
+    function render() {
+      document.body.dataset.activeSettingsSection = state.section;
+      const content = document.getElementById('content');
+      const title = document.getElementById('main-title');
+      const meta = document.getElementById('main-meta');
+      const sectionNames = { file: '文件与保存', models: '模型', ai: 'AI 策略', automation: '自动化权限', general: '通用', about: '关于' };
+      title.textContent = sectionNames[state.section];
+      meta.textContent = state.section === 'models' ? '3 个连接 · 7 个模型' : '设置';
+      document.querySelectorAll('.nav-item').forEach((item) => item.setAttribute('aria-current', item.dataset.section === state.section ? 'page' : 'false'));
+      if (state.section !== 'models') {
+        content.innerHTML = nonModelPage();
+      } else if (state.route === 'connection') {
+        content.innerHTML = connectionPage();
+      } else if (state.route === 'add') {
+        content.innerHTML = addPage();
+      } else if (state.route === 'global-task') {
+        content.innerHTML = taskPage(false);
+      } else {
+        content.innerHTML = modelHome();
+      }
+
+      renderModelDialog();
+      refreshIcons();
+      bindEvents();
+    }
+
+    function bindEvents() {
+      document.querySelectorAll('[data-section]').forEach((button) => button.addEventListener('click', () => {
+        state.section = button.dataset.section;
+        state.route = 'home';
+        render();
+      }));
+      document.querySelectorAll('[data-connection]').forEach((button) => button.addEventListener('click', () => {
+        state.selectedConnection = button.dataset.connection;
+        state.route = 'connection';
+        render();
+      }));
+      document.querySelectorAll('[data-model]').forEach((button) => button.addEventListener('click', () => {
+        state.selected = button.dataset.model;
+        state.selectedConnection = modelById(state.selected).vendorKey;
+        state.route = 'connection';
+        state.modelDialogOpen = true;
+        state.modelRoute = 'detail';
+        state.modelDirty = false;
+        state.scriptTested = false;
+        state.directScriptDraft = false;
+        state.confirmClose = false;
+        render();
+      }));
+      document.querySelectorAll('[data-script-change]').forEach((field) => field.addEventListener('change', () => {
+        if (field.dataset.scriptChange === 'mode') state.scriptMode = field.value;
+        if (field.dataset.scriptChange === 'template') state.scriptTemplate = field.value;
+        state.modelDirty = true;
+        state.scriptTested = false;
+        render();
+      }));
+      document.querySelectorAll('[data-script-editor]').forEach((field) => field.addEventListener('input', () => {
+        const hadPassedTest = state.scriptTested;
+        state.modelDirty = true;
+        state.scriptTested = false;
+        if (hadPassedTest) render();
+      }));
+      document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => {
+        const action = button.dataset.action;
+        if (action === 'back') state.route = 'home';
+        else if (action === 'add' || action === 'add-model') state.route = 'add';
+        else if (action === 'global-script') {
+          state.selected = directScriptDraftModel.id;
+          state.selectedConnection = directScriptDraftModel.vendorKey;
+          state.modelDialogOpen = true;
+          state.modelRoute = 'script';
+          state.modelDirty = false;
+          state.scriptTested = false;
+          state.directScriptDraft = true;
+          state.scriptMode = 'all';
+          state.scriptTemplate = '';
+          state.confirmClose = false;
+        }
+        else if (action === 'global-task') state.route = 'global-task';
+        else if (action === 'model-script') {
+          state.modelRoute = 'script';
+          state.scriptTested = false;
+        }
+        else if (action === 'model-capability') state.modelRoute = 'capability';
+        else if (action === 'model-task') state.modelRoute = 'task';
+        else if (action === 'model-back') state.modelRoute = 'detail';
+        else if (action === 'close-model') {
+          if (state.modelDirty) state.confirmClose = true;
+          else state.modelDialogOpen = false;
+        }
+        else if (action === 'keep-editing') state.confirmClose = false;
+        else if (action === 'discard-model-changes') {
+          state.modelDirty = false;
+          state.confirmClose = false;
+          state.modelDialogOpen = false;
+          showToast(state.directScriptDraft ? '已放弃草稿，返回模型首页' : '已放弃草稿，返回原连接详情');
+        }
+        else if (action === 'save-draft') {
+          state.selectedConnection = 'openai-compatible';
+          state.route = 'connection';
+          showToast('模型已保存；自动适配没有启动');
+        }
+        else if (action === 'verify-new') { showToast('验证任务已转到后台，模型仍可继续编辑'); state.route = 'global-task'; }
+        else if (action === 'model-save-draft') { state.modelDirty = false; showToast('脚本草稿已保存，模型仍未启用'); }
+        else if (action === 'verify') { state.scriptTested = true; showToast('直达脚本试调通过，现在可以保存并启用'); }
+        else if (action === 'save') { state.modelDirty = false; showToast('已保存并启用脚本草稿'); }
+        else if (action === 'model-verify') { state.scriptTested = true; showToast('当前模型试调通过，现在可以保存'); }
+        else if (action === 'model-save') { state.modelDirty = false; showToast('已保存当前模型配置'); }
+        else if (action === 'edit-model-mode') { state.modelDirty = true; showToast('模式草稿已修改，关闭前会提醒保存'); }
+        else if (action === 'stop') showToast('验证已停止，模型草稿保留');
+        else if (action === 'retry') showToast('已重新排队失败模型');
+        else if (action === 'background') {
+          if (state.modelDialogOpen) state.modelDialogOpen = false;
+          else state.route = 'home';
+          showToast('任务已转到后台，可从模型页再次打开');
+        }
+        else if (action === 'delete') showToast('这是样张操作，实际实现会要求确认');
+        else if (action === 'close') showToast('样张中关闭按钮只做演示');
+        else if (action === 'more' || action === 'toggle' || action === 'edit-connection' || action === 'edit-mode' || action === 'add-mode') showToast('这是可继续展开的局部操作');
+        render();
+      }));
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (state.confirmClose) state.confirmClose = false;
+      else if (state.modelDialogOpen && state.modelRoute !== 'detail') state.modelRoute = 'detail';
+      else if (state.modelDialogOpen) {
+        if (state.modelDirty) state.confirmClose = true;
+        else state.modelDialogOpen = false;
+      } else if (state.section === 'models' && state.route !== 'home') state.route = 'home';
+      else return;
+      event.preventDefault();
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

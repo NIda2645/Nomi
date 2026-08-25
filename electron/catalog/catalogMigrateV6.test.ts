@@ -54,7 +54,7 @@ describe("migrateRelayImageEditProtocols（v5→v6）", () => {
     expect(second.state.mappings.filter((item) => item.modelKey === "grok-imagine-image-quality")).toHaveLength(1);
   });
 
-  it("CURRENT_CATALOG_VERSION 已推进到 8（v7=存量 gpt-image 重迁移到 multipart；v8=存量中转视频补图生视频通道）", () => {
-    expect(CURRENT_CATALOG_VERSION).toBe(8);
+  it("CURRENT_CATALOG_VERSION 已推进到 9（v9=自定义调用命名配置迁入 safeStorage 凭据记录）", () => {
+    expect(CURRENT_CATALOG_VERSION).toBe(9);
   });
 });
