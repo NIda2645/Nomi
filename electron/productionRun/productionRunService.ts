@@ -27,6 +27,8 @@ import { readAutomationPolicySettings } from '../settings/automationPolicySettin
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
 import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
 import { approvalReceiptForGate } from './productionRunApprovalReceipt'
+import { isAnchorCheckpointGate } from './anchorCheckpoint'
+import { kickBatchSchedulerForRun } from './batchSchedulerKick'
 import type { ApprovalReceiptAuthority } from '../capabilityCore/approvalReceipt'
 import {
   metadataProjection,
@@ -608,6 +610,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === `gate-export-v${result.run.planVersion}`) {
       void driveExport(result.run)
+    }
+    // P4 §3.2 锚定妆照检查点：决议落库 → 重踢多镜批 scheduler（与上面 freeze/sample/shot 门的 driveGeneration
+    // 重踢同一个家——任何入口的 gate.decide 都经这里，入口自己不用记得踢）。approved = 放行镜头批；rejected =
+    // 免费空 tick（derivation 对 rejected 只在有新 attempt 时才重派锚，见 batchScheduleDerivation）。scheduler
+    // 构造依赖 appIntegration 接线，故经晚绑定插槽（batchSchedulerKick.ts 有为什么）。
+    if (runCommand.type === 'gate.decide' && decidedGate && isAnchorCheckpointGate(decidedGate)) {
+      kickBatchSchedulerForRun(safeProjectId, safeRunId)
     }
     return result
   }

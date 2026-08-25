@@ -7,6 +7,7 @@
 // 纯逻辑、不碰 electron —— 与 mcpProtocol 同边界，可裸 node 单测。
 
 import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
+import { isAnchorCheckpointGate } from '../productionRun/anchorCheckpoint'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { projectGenerationRecovery } from './generationRecoveryProjection'
 
@@ -194,6 +195,16 @@ function waitingSampleGateId(value: Record<string, unknown>): string | null {
   const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
   const gate = gates.find((item) => str(item.gateId).startsWith('gate-sample-') && str(item.status) === 'waiting')
   return gate ? str(gate.gateId) : null
+}
+
+/** P4 §3.2：waiting 的锚定妆照检查点（定妆照就绪，等真人过目后开拍镜头批）。 */
+function waitingAnchorCheckpointGate(value: Record<string, unknown>): { gateId: string; jobIds: string[] } | null {
+  const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
+  const gate = gates.find((item) => isAnchorCheckpointGate({ gateId: str(item.gateId), scope: str(item.scope) })
+    && str(item.status) === 'waiting')
+  if (!gate) return null
+  const jobIds = Array.isArray(gate.jobIds) ? gate.jobIds.map((id) => str(id)).filter(Boolean) : []
+  return { gateId: str(gate.gateId), jobIds }
 }
 
 function waitingShotGate(value: Record<string, unknown>): {
@@ -442,6 +453,16 @@ export function buildToolOutcome(
       L(ctx, '样片就绪：首镜已生成，先过目再批量剩余镜头。', 'Sample ready: the first shot is generated — review it before the full batch.'),
       L(ctx, '  满意就批准继续；想改风格就否决（会暂停，改提示词后可继续）。', '  Approve to continue, or reject to pause and adjust the prompt.'),
     ] : []
+    // P4 §3.2：定妆照检查点在等 → 指路「先看图再表态」（定妆照 = 本门 jobIds 对应的 artifacts）。
+    const checkpoint = waitingAnchorCheckpointGate(value)
+    const checkpointLines = checkpoint ? [
+      L(ctx,
+        '定妆照就绪：先过目再开拍。用 nomi_get_artifact 逐张预览本门 jobIds 对应的 artifacts，展示给用户看。',
+        'Character stills ready: review before shooting. Preview the artifacts matching this gate\'s jobIds via nomi_get_artifact and show them to the user.'),
+      L(ctx,
+        `  满意 → nomi_decide_gate approved 开拍剩余镜头（在已批预算内，不新增授权）；不满意 → rejected 停在检查点，可重出形象。门 id：${checkpoint.gateId}`,
+        `  Happy → nomi_decide_gate approved starts the remaining shots (within the approved budget, no new authorization); otherwise rejected keeps the batch parked for a re-shoot. Gate id: ${checkpoint.gateId}`),
+    ] : []
     const shotGate = waitingShotGate(value)
     const shotTarget = shotGate ? [shotGate.provider, shotGate.model].filter(Boolean).join(' · ') : ''
     const shotLines = shotGate ? [
@@ -476,6 +497,7 @@ export function buildToolOutcome(
       preview.url ? `${L(ctx, '最新预览', 'Latest preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
       ...candidateLines,
       ...sampleLines,
+      ...checkpointLines,
       ...shotLines,
       ...reconciliationLines,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
@@ -488,6 +510,7 @@ export function buildToolOutcome(
         latestPreviewUrl: str(preview.url) || null,
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
         ...(sampleGateId ? { sampleGateId } : {}),
+        ...(checkpoint ? { anchorCheckpointGateId: checkpoint.gateId, anchorCheckpointJobIds: checkpoint.jobIds } : {}),
         ...(shotGate ? { shotGateId: shotGate.gateId, shotJobId: shotGate.jobId } : {}),
         ...(recovery ? { recovery } : {}),
         nextActions: recovery
@@ -496,11 +519,13 @@ export function buildToolOutcome(
           ? ['decide_direction']
           : sampleGateId
             ? ['review_sample']
-            : shotGate
-              ? ['review_shot_in_nomi']
-              : hint
-                ? [hint.action]
-                : [],
+            : checkpoint
+              ? ['review_anchor_checkpoint']
+              : shotGate
+                ? ['review_shot_in_nomi']
+                : hint
+                  ? [hint.action]
+                  : [],
         openInNomi: openInNomi || null,
       },
     }
@@ -656,16 +681,23 @@ export function buildToolOutcome(
       ? gateCandidates.find((candidate) => candidate.key === chosenKey)
       : undefined
     const isSample = gateId.startsWith('gate-sample-')
+    // P4 §3.2：定妆照检查点回执——批准即批次自动续跑（service 钩子已重踢 scheduler，agent 不用再做别的）。
+    const isCheckpoint = gateId.startsWith('gate-anchor-checkpoint-')
     const head = decision === 'approved'
       ? (isDirection ? L(ctx, '✓ 方向已定', '✓ Direction settled')
         : isSample ? L(ctx, '✓ 样片通过，批量生成剩余镜头', '✓ Sample approved — generating the rest')
+        : isCheckpoint ? L(ctx, '✓ 定妆照通过，开拍镜头批次', '✓ Stills approved — shooting the shot batch')
         : L(ctx, '✓ 已批准', '✓ Approved'))
-      : (isSample ? L(ctx, '✓ 样片打回，已暂停', '✓ Sample rejected — run paused') : L(ctx, '✓ 已否决', '✓ Rejected'))
+      : (isSample ? L(ctx, '✓ 样片打回，已暂停', '✓ Sample rejected — run paused')
+        : isCheckpoint ? L(ctx, '✓ 定妆照打回，批次停在检查点', '✓ Stills rejected — batch parked at the checkpoint')
+        : L(ctx, '✓ 已否决', '✓ Rejected'))
     const text = [
       `${head} · ${gateId}`,
       chosen ? `  ${chosen.title} —— ${chosen.oneLiner}` : null,
       decision === 'rejected' && isDirection ? L(ctx, '方向未变，可重新给方案或让用户自己描述。', 'Direction unchanged; propose again or let the user describe their own.') : null,
       decision === 'rejected' && isSample ? L(ctx, '已生成的样片保留；改提示词后从这里继续，不重付已花的。', 'The generated sample is kept; adjust the prompt and resume — no double charge.') : null,
+      decision === 'approved' && isCheckpoint ? L(ctx, '剩余镜头已自动开拍（已批预算内），用 nomi_get_run 看进度。', 'The remaining shots are already generating (within the approved budget); track with nomi_get_run.') : null,
+      decision === 'rejected' && isCheckpoint ? L(ctx, '定妆照保留、镜头不开拍不扣费；重出形象后会再开一道检查点。', 'The stills are kept; no shot generates or charges. Re-shoot the look and a fresh checkpoint opens.') : null,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
