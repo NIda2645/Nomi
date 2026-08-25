@@ -62,12 +62,27 @@ function providerMessage(payload: JsonRecord): string {
   return String(error?.message ?? data?.error ?? payload.message ?? payload.msg ?? "request rejected").slice(0, 256);
 }
 
-function outputUrl(value: unknown): string | null {
+/** First non-empty string in a string-or-string-array field (real Seedance video payloads deliver
+ * `videos[].url` as an ARRAY of strings — observed live 2026-08-25, task_01M0VPQMBEN24HA665TM0KQZTS;
+ * the docs-implied plain string also occurs, so accept both). */
+function firstUrlString(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (typeof entry === "string" && entry.trim()) return entry.trim();
+    }
+  }
+  return null;
+}
+
+function outputUrl(value: unknown): string | null {
+  const direct = firstUrlString(value);
+  if (direct) return direct;
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as JsonRecord;
   for (const key of ["url", "video_url", "image_url", "audio_url"]) {
-    if (typeof item[key] === "string" && (item[key] as string).trim()) return (item[key] as string).trim();
+    const nested = firstUrlString(item[key]);
+    if (nested) return nested;
   }
   return null;
 }

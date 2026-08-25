@@ -82,4 +82,24 @@ describe("APIMart observe-only generation provider", () => {
     ] });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("extracts the REAL Seedance video payload where videos[].url is an ARRAY of strings", async () => {
+    // Live-captured 2026-08-25 (task_01M0VPQMBEN24HA665TM0KQZTS, S6.5 paid acceptance): the vendor
+    // delivers `videos[0].url` as ["https://…"], not a plain string. The old extractor returned zero
+    // outputs → adapter.materialize threw "no materializable output" on EVERY observe round, so a real
+    // completed video never landed. Docs-shaped plain strings must keep working (previous test).
+    const provider = createApimartGenerationProvider({ apiKey: "test-key", fetchImpl: vi.fn() });
+    await expect(provider.materialize?.({
+      providerTaskId: "task-1",
+      raw: {
+        code: 200,
+        data: {
+          actual_time: 128, progress: 100, status: "completed",
+          result: { videos: [{ url: ["https://cdn.example/real-video.mp4"], expires_at: 1787722735 }] },
+        },
+      },
+    })).resolves.toMatchObject({ outputs: [
+      { kind: "video", url: "https://cdn.example/real-video.mp4", providerOutputId: "video-1" },
+    ] });
+  });
 });
