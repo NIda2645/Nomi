@@ -5,12 +5,13 @@ import { alertDialog, confirmDialog } from '../../design'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
 import { buildProductionContractView } from '../generationCanvas/spend/productionContractView'
+import { buildAnchorCheckpointCard } from '../generationCanvas/spend/anchorCheckpointView'
 import { useWorkbenchStore } from '../workbenchStore'
 import { productionRunApi } from './productionRunApi'
 import { executeProductionRunCommand } from './productionRunCommands'
 import { buildProductionPolicySettingsTarget, isProductionPolicyError } from './productionPolicyRecovery'
 import { useProductionRunStore } from './productionRunStore'
-import { buildProductionRunView, type ProductionRunPrimaryAction } from './productionRunView'
+import { buildProductionRunView, gateKindOf, type ProductionRunPrimaryAction } from './productionRunView'
 import { useActiveProductionRun } from './useActiveProductionRun'
 
 function localizedGateCopy(
@@ -192,6 +193,66 @@ export function useProductionStatus(options: { enabled?: boolean } = {}) {
           activeRun.gates.find((item) => item.gateId === view?.targetId && item.status === 'waiting') ??
           run.gates.find((item) => item.status === 'waiting')
         if (!gate) return
+
+        // P4 §3.2 形象确认卡（anchor_checkpoint 免费质量门）：与花钱确认卡同一条对话框轨道，但决议语义不同——
+        //   开拍 = decide approved → service 钩子自动续踢镜批（不用手动踢）；
+        //   先不拍 = 不 decide、门保持 waiting（任务中心卡持续显示「查看」可重开）；
+        //   重拍选中 = decide rejected + 对选中 shotId 走 S6 返工链（reworkShot），新 attempt 完成后门重新武装、卡再弹。
+        if (gateKindOf(gate) === 'checkpoint') {
+          const model = buildAnchorCheckpointCard(activeRun, gate)
+          if (!model) return
+          const reworkShotIds: string[] = []
+          const approved = await useSpendConfirmStore.getState().requestConfirm({
+            title: t('generationCommon.production.checkpoint.title'),
+            message: '', // 形象卡自带副标题 + 承诺行，不用通用 message
+            kind: 'anchorCheckpoint',
+            anchorCheckpoint: model,
+            source: activeRun.origin.host === 'nomi' ? 'user' : 'agent',
+            onRework: (shotIds) => { reworkShotIds.push(...shotIds) },
+          })
+          // 重拍：decide rejected（停批、不扣费）+ 逐个 reworkShot（S6 返工链，新 attempt 完成后门重新武装）。
+          if (reworkShotIds.length > 0) {
+            try {
+              await executeCommand(activeRun.projectId, activeRun.runId, {
+                commandId: globalThis.crypto.randomUUID(),
+                expectedRevision: activeRun.revision,
+                type: 'gate.decide',
+                payload: { gateId: gate.gateId, status: 'rejected' },
+                issuedAt: new Date().toISOString(),
+              })
+              for (const shotId of reworkShotIds) {
+                await productionRunApi.rework(activeRun.projectId, activeRun.runId, shotId)
+              }
+              await useProductionRunStore.getState().loadRun(activeRun.projectId, activeRun.runId)
+            } catch (error) {
+              await alertDialog({
+                title: t('generationCommon.production.gate.failed'),
+                message: error instanceof Error ? error.message : String(error),
+              })
+            }
+            return
+          }
+          // 先不拍：不 decide，门保持 waiting（重开路径 = 任务中心 run 卡的「查看」主动作）。
+          if (!approved) return
+          // 开拍：decide approved → 钩子自动续踢镜批。
+          try {
+            await executeCommand(activeRun.projectId, activeRun.runId, {
+              commandId: globalThis.crypto.randomUUID(),
+              expectedRevision: activeRun.revision,
+              type: 'gate.decide',
+              payload: { gateId: gate.gateId, status: 'approved' },
+              issuedAt: new Date().toISOString(),
+            })
+            await useProductionRunStore.getState().loadRun(activeRun.projectId, activeRun.runId)
+          } catch (error) {
+            await alertDialog({
+              title: t('generationCommon.production.gate.failed'),
+              message: error instanceof Error ? error.message : String(error),
+            })
+          }
+          return
+        }
+
         if (gate.scope === 'budget_envelope') {
           try {
             const refreshed = await executeCommand(activeRun.projectId, activeRun.runId, {
