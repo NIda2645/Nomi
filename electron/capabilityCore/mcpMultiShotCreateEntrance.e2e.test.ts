@@ -211,9 +211,10 @@ describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loo
       expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(1); // anchor
       expect(run.jobs.some((j) => j.metadata?.shotId === "shot-1")).toBe(false); // checkpoint blocks shots
 
-      // 5. Approve the anchor checkpoint → re-kick the durable scheduler directly (this is how appIntegration
-      // does it via kickSchedulerForRun after the gate decision — NOT via the MCP `start` capability, which
-      // requires state 'sealed'; the plan is now 'submitted'). The scheduler 无自有状态：从 jobs[]+ledger 纯
+      // 5. Approve the anchor checkpoint + manually re-kick (test mechanics for THIS file's concern = the
+      // create entrance). The REAL production approval entrance (dispatcher `production.decide-gate` →
+      // service post-decide hook → batchSchedulerKick 插槽 → appIntegration.kickSchedulerForRun) is covered
+      // end-to-end by anchorCheckpointApproval.e2e.test.ts. The scheduler 无自有状态：从 jobs[]+ledger 纯
       // 派生「下一批」——已提交不重提，已完成不重扣. So this is a pure resume of the shot batch over the SAME Run.
       clock += 1000;
       repository.execute("project-1", operationId, { commandId: "approve-checkpoint", expectedRevision: run.revision, type: "gate.decide", payload: { gateId: checkpoint.gateId, status: "approved" }, issuedAt: now() });
