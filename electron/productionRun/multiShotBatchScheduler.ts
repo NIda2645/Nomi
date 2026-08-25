@@ -18,7 +18,20 @@ import { anchorCheckpointGateId, buildAnchorCheckpointGate } from "./anchorCheck
  * This is the ONE writer for its Run. Each shot's `reserve + submit` happens inside the submission
  * facade's Run lock (`productionGenerationSubmission.start` → `runLock.withLock`), so two shots can never
  * double-reserve. Concurrency lives only in "waiting for the provider" (poll), never across submits.
- * The loop is bounded by `maxTicks` (a safety valve; a healthy batch converges in a few ticks).
+ * The loop is bounded by `maxTicks` (a safety valve; a healthy batch converges in a few PROGRESS ticks).
+ *
+ * ## Slow providers: the observe loop (2026-08-25, APIMart 真付费验收抓到的三洞修复)
+ *
+ * A real video provider takes MINUTES. Dispatch therefore only submits + polls once (instant mocks
+ * settle in the same tick); everything still in flight lands in the derivation's `observe` list and is
+ * polled in rounds with REAL waits between them — backoff from 3s (厂商「查询间隔 ≥3-5s」契约, see
+ * docs/plan/2026-07-31-seedance-api-contract-reconciliation.md §三) doubling to a 15s cap. Waiting is
+ * bounded by `pollHorizonMs` per drive (default NOMI_POLL_TIMEOUT_MS or 300s, 对齐 core.ts 单镜链);
+ * when in-flight units outlive it the drive rests with `quiescent: false` — NEVER `true` while pollable
+ * work remains — and the caller (appIntegration) re-kicks later. Because `observe` is derived purely
+ * from jobs[], a re-kick (timer / project reopen / restart) resumes polling exactly where the durable
+ * Run stands: no double-submit (outbox intent log), no re-charge (commandId-idempotent ledger).
+ * Waiting rounds do NOT consume `maxTicks` — only state-advancing ticks do.
  */
 
 export type BatchSchedulerOptions = {
@@ -37,6 +50,12 @@ export type BatchSchedulerOptions = {
   maxShotsPerRun?: number;
   /** Safety cap on scheduler ticks before giving up (default 64). A healthy batch needs a few. */
   maxTicks?: number;
+  /**
+   * Total wait budget for one drive's observe rounds, in ms. Default: NOMI_POLL_TIMEOUT_MS or 300s
+   * (the single-shot legacy chain's video horizon, core.ts). In-flight units outliving it rest the
+   * drive with `quiescent: false`; the caller re-kicks later and the derivation resumes them.
+   */
+  pollHorizonMs?: number;
 };
 
 export type BatchSchedulerDependencies = {
@@ -47,6 +66,8 @@ export type BatchSchedulerDependencies = {
   /** Resolve a shot's derived price (S2) for the halt accounting. */
   perShotPrice: (shot: ProductionGenerationShot) => ShotPrice;
   now?: () => string;
+  /** Wait between observe rounds. Injectable (like `now`) so tests drive a virtual clock; default real setTimeout. */
+  sleep?: (ms: number) => Promise<void>;
   options?: BatchSchedulerOptions;
   /**
    * P4 S5：一镜成功物化后回调（best-effort，永不抛）——appIntegration 据此 requestRenderer 把该镜 result
@@ -59,7 +80,11 @@ export type BatchOutcome = {
   progress: BatchDerivationResult["progress"];
   checkpoint: CheckpointState;
   halt?: BudgetHalt;
-  /** True when the batch reached a stable resting point (all shots done, or blocked on checkpoint/halt/stop). */
+  /**
+   * True when the batch reached a stable resting point (all shots done, or blocked on checkpoint/halt/
+   * stop). False when pollable in-flight work outlived this drive's wait budget (slow provider) or the
+   * tick safety valve fired — the caller should re-kick later; the derivation's `observe` resumes it.
+   */
   quiescent: boolean;
 };
 
@@ -67,6 +92,16 @@ function requireRun(deps: BatchSchedulerDependencies): ProductionRun {
   const run = deps.repository.read(deps.projectId, deps.runId);
   if (!run) throw new Error(`Production run not found: ${deps.runId}`);
   return run;
+}
+
+/** Observe-round backoff: 3s floor (vendor "query interval ≥3-5s" contract), doubling to a 15s cap. */
+const POLL_DELAY_START_MS = 3_000;
+const POLL_DELAY_CAP_MS = 15_000;
+
+/** Same env override as the single-shot legacy chain (core.ts) so slow vendors tune ONE knob. */
+function defaultPollHorizonMs(): number {
+  const env = Number(process.env.NOMI_POLL_TIMEOUT_MS);
+  return Number.isFinite(env) && env > 0 ? env : 300_000;
 }
 
 /**
@@ -89,8 +124,10 @@ function planCeiling(run: ProductionRun, perShotPrice: (shot: ProductionGenerati
 
 export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) {
   const now = deps.now ?? (() => new Date().toISOString());
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const options = deps.options ?? {};
   const maxTicks = options.maxShotsPerRun !== undefined ? Math.max(options.maxShotsPerRun + 4, 8) : (options.maxTicks ?? 64);
+  const pollHorizonMs = options.pollHorizonMs ?? defaultPollHorizonMs();
 
   function command(run: ProductionRun, type: string, payload: Record<string, unknown>, suffix: string): ProductionRun {
     return deps.repository.execute(run.projectId, run.runId, {
@@ -117,12 +154,15 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
     }, `plan-authorize:${ceiling}`);
   }
 
-  /** Drive one unit (anchor or shot) to a terminal state through the submission facade (start→poll→materialize). */
-  async function dispatchUnit(task: DispatchTask): Promise<void> {
-    const started = await deps.submission.start({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
-    if (started.nextAction !== "observe") return;
-    // Poll until the provider settles, then materialize. Bounded so a stuck provider cannot spin forever.
-    for (let i = 0; i < 32; i += 1) {
+  /**
+   * Poll one in-flight unit ONCE; materialize (or leave at needs_attention) if it settled.
+   * "settled" = the unit reached a state the derivation reacts to (ready / attention); "pending" = still
+   * processing (or a transient poll/materialize error — swallowed with a warn so one flaky query can't
+   * kill the sibling units' long-running observation; the next round retries, bounded by the horizon).
+   * Budget errors cannot originate here: poll/materialize never reserve — submit-path halts are untouched.
+   */
+  async function observeUnitOnce(task: DispatchTask): Promise<"settled" | "pending"> {
+    try {
       const polled = await deps.submission.poll({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
       if (polled.nextAction === "materialize") {
         await deps.submission.materialize({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
@@ -134,11 +174,22 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
             console.warn("[nomi:production] onShotMaterialized failed:", error instanceof Error ? error.message : String(error));
           }
         }
-        return;
+        return "settled";
       }
-      if (polled.nextAction === "attention") return; // provider failed → job is needs_attention, leave it
-      // still polling → the mock/provider will settle on the next query; a real provider adds a wait.
+      if (polled.nextAction === "attention") return "settled"; // provider failed → job is needs_attention, leave it
+      return "pending";
+    } catch (error) {
+      console.warn(`[nomi:production] batch observe failed for ${task.shotId}:`, error instanceof Error ? error.message : String(error));
+      return "pending";
     }
+  }
+
+  /** Submit one unit (anchor or shot), then poll once: instant providers settle in the same tick; a slow
+   * provider leaves the job at `polling` and the derivation's `observe` list + waiting rounds take over. */
+  async function dispatchUnit(task: DispatchTask): Promise<void> {
+    const started = await deps.submission.start({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
+    if (started.nextAction !== "observe") return;
+    await observeUnitOnce(task);
   }
 
   /** Open the anchor checkpoint gate (§3.2) referencing the ready anchor jobs — a free quality gate. */
@@ -189,8 +240,17 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
       }
     }
 
-    for (let tick = 0; tick < maxTicks; tick += 1) {
-      void tick;
+    // Progress actions consume the maxTicks safety valve; WAITING rounds do not — those are bounded by
+    // pollHorizonMs instead, so a slow provider can wait minutes without exhausting the tick budget.
+    let progressTicks = 0;
+    let sleptMs = 0;
+    let backoffStep = 0;
+    const consumeTick = (): boolean => {
+      progressTicks += 1;
+      return progressTicks <= maxTicks;
+    };
+
+    while (true) {
       let run = requireRun(deps);
       const plan = run.generationPlan;
       if (!plan) throw new Error(`Batch scheduler requires a generation plan: ${run.runId}`);
@@ -214,37 +274,31 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
       // 1. Open the checkpoint once anchors are ready and no gate exists yet.
       if (result.checkpoint.status === "should_open") {
+        if (!consumeTick()) break;
         openCheckpoint(run, result.checkpoint);
         continue; // re-derive with the gate present
       }
       // 2. Auto-release: record the approval, then re-derive so shots release.
       if (result.checkpoint.status === "auto_release") {
+        if (!consumeTick()) break;
         autoReleaseCheckpoint(run);
         continue;
       }
 
       // 3. Dispatch anchors first (fresh or a rejected-checkpoint re-attempt).
       if (result.anchorDispatch.length > 0) {
+        if (!consumeTick()) break;
         for (const task of result.anchorDispatch) {
           await dispatchUnit(task);
         }
         continue; // re-derive: anchors now have jobs; checkpoint may open next
       }
 
-      // 4. If the checkpoint is waiting (user must approve) → rest here (nothing more to do this run).
-      if (result.checkpoint.status === "waiting" || result.checkpoint.status === "pending_anchors" || result.checkpoint.status === "rejected") {
-        return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
-      }
-
-      // 5. Budget halt → halt the Run and rest (提额续拍 is a fresh scheduler run).
-      if (result.halt && result.shotDispatch.length === 0) {
-        run = haltRun(run);
-        return { progress: result.progress, checkpoint: result.checkpoint, halt: result.halt, quiescent: true };
-      }
-
-      // 6. Dispatch shots (checkpoint released or no anchors). Reserve happens inside the Run lock; if the
-      // ledger's reserve throws "Budget authorization exceeded", that is the last hard wall → structured halt.
+      // 4. Dispatch shots (the derivation only clears them once the checkpoint released / no anchors).
+      // Reserve happens inside the Run lock; if the ledger's reserve throws "Budget authorization
+      // exceeded", that is the last hard wall → structured halt.
       if (result.shotDispatch.length > 0) {
+        if (!consumeTick()) break;
         for (const task of result.shotDispatch) {
           if (options.maxShotsPerRun !== undefined && dispatchedShots >= options.maxShotsPerRun) {
             return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
@@ -272,13 +326,54 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
         continue; // re-derive: dispatched shots now have jobs; halt/completion decided next
       }
 
-      // 7. Nothing to dispatch and no blocking checkpoint → the batch is complete (or stopped).
+      // 5. Units in flight → poll them in rounds with REAL waits between rounds (the slow-provider fix:
+      // this used to spin 32 instant polls inside dispatchUnit and then rest claiming "quiescent" while
+      // the jobs sat at processing forever). A settle re-derives immediately; otherwise back off and try
+      // again until the drive's wait budget runs out.
+      if (result.observe.length > 0) {
+        let settledCount = 0;
+        for (const task of result.observe) {
+          if ((await observeUnitOnce(task)) === "settled") settledCount += 1;
+        }
+        if (settledCount > 0) {
+          if (!consumeTick()) break;
+          backoffStep = 0; // a settle means siblings are likely close too — poll faster again
+          continue; // re-derive: checkpoint may open / halt may apply / batch may complete
+        }
+        if (sleptMs >= pollHorizonMs) {
+          // In-flight work outlived this drive's wait budget. Rest HONESTLY (quiescent: false — never
+          // true while pollable work remains): the durable Run keeps the jobs at provider_accepted/
+          // polling, so any re-kick (timer / project reopen / restart) resumes via `observe`.
+          return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: false };
+        }
+        const delayMs = Math.min(POLL_DELAY_START_MS * 2 ** backoffStep, POLL_DELAY_CAP_MS, pollHorizonMs - sleptMs);
+        backoffStep += 1;
+        sleptMs += delayMs;
+        await sleep(delayMs);
+        continue; // waiting round — bounded by pollHorizonMs, does not consume maxTicks
+      }
+
+      // 6. If the checkpoint is waiting (user must approve) → rest here (nothing more to do this run).
+      // pending_anchors here means anchors are neither dispatchable nor pollable (e.g. needs_attention)
+      // — a genuine rest until the user re-attempts them.
+      if (result.checkpoint.status === "waiting" || result.checkpoint.status === "pending_anchors" || result.checkpoint.status === "rejected") {
+        return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
+      }
+
+      // 7. Budget halt → halt the Run and rest (提额续拍 is a fresh scheduler run). In-flight units have
+      // already settled (case 5 runs first), so halting never strands pollable paid work.
+      if (result.halt) {
+        run = haltRun(run);
+        return { progress: result.progress, checkpoint: result.checkpoint, halt: result.halt, quiescent: true };
+      }
+
+      // 8. Nothing to dispatch, observe or decide → the batch is complete (or stopped).
       return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
     }
 
     // Bounded-out (should not happen for a healthy batch) — report the last derived state. The loop ran
     // at least once (maxTicks >= 8), so lastResult is set; fall back to an empty progress only defensively.
-    const result = lastResult ?? { progress: { total: 0, completed: 0, inFlight: 0, pending: 0 }, checkpoint: { status: "not_required" as const, readyAnchorJobIds: [] }, anchorDispatch: [], shotDispatch: [] };
+    const result = lastResult ?? { progress: { total: 0, completed: 0, inFlight: 0, pending: 0 }, checkpoint: { status: "not_required" as const, readyAnchorJobIds: [] }, anchorDispatch: [], shotDispatch: [], observe: [] };
     return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: false };
   }
 

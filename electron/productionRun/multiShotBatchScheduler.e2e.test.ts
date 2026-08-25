@@ -285,3 +285,127 @@ describe("P4 S6 J2 — single-shot rework over a real loopback vendor", () => {
   // 新草稿」=新 operationId，违反「同 Run」)。前者是计划未 spec 的新架构、§8 禁做倾向不扩，故此切片**只交付返工 J2**，
   // 插镜作为岔路上报（见交付报告）。返工 J2 的锚继承已由上面用例证明（reworkedJob.requestFingerprint 与旧一致）。
 });
+
+// P4 慢供应商修复（2026-08-25，S6.5 APIMart 真付费验收抓到的死锁）— a provider that stays "processing"
+// across many polls (real Seedance video is minutes-scale). Locks the three-hole fix end-to-end:
+//   ① the observe loop WAITS between rounds (virtual clock must advance ≥ the provider's processing
+//     time before it settles; query count stays a bounded backoff cadence instead of a burnt spin
+//     budget — the old loop fired 32 instant polls and gave up in milliseconds),
+//   ② a drive the provider outlives rests HONESTLY (quiescent:false, jobs still polling — the exact
+//     frozen state from the paid acceptance run), and
+//   ③ a later re-kick (fresh scheduler over the SAME durable Run = timer / project reopen / restart)
+//     resumes via the derivation's observe list and materializes with NO new submit (≤1 per job).
+describe("P4 slow provider — the batch waits (not spins) and still materializes", () => {
+  /** Server-side state the provider keeps across scheduler "restarts" (like the real vendor does). */
+  function slowVendorState() {
+    return { submittedAt: new Map<string, number>(), queries: { count: 0 } };
+  }
+
+  /** Loopback vendor variant whose query stays "processing" until `processingMs` of VIRTUAL time pass. */
+  function slowLoopbackProvider(origin: string, submits: string[], processingMs: number, state: ReturnType<typeof slowVendorState>): GenerationProvider {
+    return {
+      providerId: "apimart",
+      capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },
+      buildRequest: (input) => input,
+      submit: async (_request, idempotencyKey) => {
+        submits.push(idempotencyKey);
+        const res = await fetch(`${origin}/v1/generations`, { method: "POST", body: JSON.stringify({ idempotencyKey }) });
+        const json = await res.json() as { data: Array<{ task_id: string }> };
+        state.submittedAt.set(json.data[0].task_id, clock);
+        return { providerTaskId: json.data[0].task_id, raw: json };
+      },
+      query: async (providerTaskId) => {
+        state.queries.count += 1;
+        const startedAt = state.submittedAt.get(providerTaskId) ?? clock;
+        const done = clock - startedAt >= processingMs;
+        const status = done ? "succeeded" : "processing";
+        return { status, raw: { id: providerTaskId, status } };
+      },
+      materialize: async ({ providerTaskId }) => ({ outputs: [{ kind: "video", url: `nomi-local://asset/project-1/${providerTaskId}.png` }] }),
+    };
+  }
+
+  /** Scheduler over the slow provider with a VIRTUAL sleep: waiting advances the same clock the provider
+   * reads, so the test proves real waits were inserted without spending real time (R18-clean: no wall
+   * clock, no polling — the awaited runToQuiescence promise IS the synchronization). */
+  function slowScheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, provider: GenerationProvider, options: Parameters<typeof createMultiShotBatchScheduler>[0]["options"] = {}) {
+    const submission = createProductionGenerationSubmission({
+      repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
+      intentMacKey: "test-intent-key", provider,
+      resolveShotPrice: () => ({ known: true, amount: 6 }),
+      materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
+      now,
+    });
+    const sleep = async (ms: number) => { clock += ms; };
+    return createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-batch", perShotPrice: () => ({ known: true, amount: 6 }), now, sleep, options });
+  }
+
+  it("materializes a 2-shot batch from a minutes-scale provider: waits between polls, ≤1 submit per job", async () => {
+    const shots = [shotEntry("shot-1", "雨夜推门", "shot"), shotEntry("shot-2", "货架对视", "shot")];
+    const { root, repository } = setup(shots);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      const state = slowVendorState();
+      const PROCESSING_MS = 120_000; // two virtual minutes — the old spin loop never got there
+      const startClock = clock;
+      const provider = slowLoopbackProvider(vendor.origin, submits, PROCESSING_MS, state);
+
+      const outcome = await slowScheduler(root, repository, provider).runToQuiescence();
+
+      expect(outcome.quiescent).toBe(true);
+      expect(outcome.progress.completed).toBe(2);
+      // ≤1 submit per job across the whole wait (outbox intent log holds under the new loop).
+      expect(submits).toHaveLength(2);
+      expect(new Set(submits).size).toBe(2);
+      // The loop WAITED: virtual time advanced at least the provider's processing time…
+      expect(clock - startClock).toBeGreaterThanOrEqual(PROCESSING_MS);
+      // …at a bounded backoff cadence (3s→15s cap ⇒ ~11 rounds × 2 units + 2 dispatch polls ≈ 24),
+      // nowhere near a spin (the old loop burned 32 queries/unit instantly and still failed).
+      expect(state.queries.count).toBeLessThan(30);
+      const run = repository.read("project-1", "op-batch")!;
+      expect(run.artifacts.filter((a) => a.status === "ready")).toHaveLength(2);
+      expect(run.jobs.filter((j) => j.status === "ready")).toHaveLength(2);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("rests honestly when the provider outlives one drive's horizon; a re-kick materializes with no new submit", async () => {
+    const shots = [shotEntry("shot-1", "雨夜推门", "shot"), shotEntry("shot-2", "货架对视", "shot")];
+    const { root, repository } = setup(shots);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      const state = slowVendorState();
+      const PROCESSING_MS = 3_600_000; // one virtual hour — outlives any single drive's horizon below
+      const provider = slowLoopbackProvider(vendor.origin, submits, PROCESSING_MS, state);
+
+      // Drive 1 exhausts its wait budget → rests with quiescent:false and jobs still polling. This is
+      // the EXACT durable state the live paid run froze in (real task ids, providerStatus processing,
+      // zero artifacts) — except now the outcome says so instead of lying "quiescent".
+      const drive1 = await slowScheduler(root, repository, provider, { pollHorizonMs: 60_000 }).runToQuiescence();
+      expect(drive1.quiescent).toBe(false);
+      expect(drive1.progress.completed).toBe(0);
+      expect(submits).toHaveLength(2);
+      let run = repository.read("project-1", "op-batch")!;
+      expect(run.jobs.filter((j) => j.status === "polling" || j.status === "provider_accepted")).toHaveLength(2);
+      expect(run.artifacts.filter((a) => a.status === "ready")).toHaveLength(0);
+
+      // The provider finishes while the scheduler rests…
+      clock += PROCESSING_MS;
+      // …then a re-kick (timer / project reopen / app restart → FRESH scheduler, same durable Run +
+      // same provider-side state) resumes via the derivation's observe list and materializes.
+      const drive2 = await slowScheduler(root, repository, provider, { pollHorizonMs: 60_000 }).runToQuiescence();
+      expect(drive2.quiescent).toBe(true);
+      expect(drive2.progress.completed).toBe(2);
+      expect(submits).toHaveLength(2); // unchanged — the re-kick submitted NOTHING
+      expect(new Set(submits).size).toBe(2);
+      run = repository.read("project-1", "op-batch")!;
+      expect(run.artifacts.filter((a) => a.status === "ready")).toHaveLength(2);
+      expect(run.jobs.filter((j) => j.status === "ready")).toHaveLength(2);
+    } finally {
+      await vendor.close();
+    }
+  });
+});
