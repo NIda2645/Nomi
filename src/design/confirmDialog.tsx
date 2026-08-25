@@ -8,7 +8,7 @@ import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react'
 import { DesignModal } from './overlays'
 import { WorkbenchButton } from './actions'
 import { cn } from '../utils/cn'
-import { bindConfirmDialogHost, type DialogRequest } from './confirmDialogStore'
+import { bindConfirmDialogHost, confirmDialog, type DialogRequest } from './confirmDialogStore'
 import { useTranslation } from 'react-i18next'
 import { NOMI_OVERLAY_Z_INDEX } from './overlayLayers'
 
@@ -41,6 +41,22 @@ export function ConfirmDialogHost(): JSX.Element {
     setInputValue(active?.kind === 'prompt' ? (active.initialValue ?? '') : '')
   }, [active])
 
+  // E2E 专用桥（同 NomiStudioApp/CameraMoveCaptureHost 既有写法）：仅当 localStorage['__nomiE2E']==='1'
+  // 时把**真实** confirmDialog 挂到 window，供 R13 走查在页面上下文里驱动同一条渲染管线
+  // （confirmDialog → 本 Host → DesignModal → Mantine Modal）取证「弹层是否真的可见、可点」。
+  // 用途见 tests/ux/hosting-consent-dialog.walk.mjs：以素材托管确认卡的真 i18n 文案复现同一棵组件树，
+  // 钉死「卡可见/居中/可点、取消后遮罩清干净」（F16 那次「零高不可见」实为量错节点的假警报，
+  // 详见 docs/plan/2026-08-25-f16-hosting-consent-dialog.md）。生产从不置该标志 → 永不暴露，非并行实现。
+  React.useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage?.getItem('__nomiE2E') === '1') {
+        ;(window as unknown as { __nomiConfirmDialogE2E?: typeof confirmDialog }).__nomiConfirmDialogE2E = confirmDialog
+      }
+    } catch {
+      // localStorage 不可用 → 跳过
+    }
+  }, [])
+
   const settle = (value: boolean | string | null): void => {
     active?.resolve(value)
     setActive(pendingRef.current.shift() ?? null)
@@ -60,7 +76,14 @@ export function ConfirmDialogHost(): JSX.Element {
       zIndex={NOMI_OVERLAY_Z_INDEX.confirmation}
       data-confirm-dialog={active ? active.kind : undefined}
     >
-      <div className={cn('flex flex-col gap-3')}>
+      {/*
+        data-confirm-dialog 落在 Mantine Modal 的 **root**（静态壳，子层 position:fixed 脱流），
+        故 root 的 getBoundingClientRect 天生是 {w:100vw, h:0}——这是 Mantine 结构使然、不是 bug。
+        走查/工具若拿 [data-confirm-dialog] 量几何会误判「卡塌成 0 高」（F16 假警报即源于此）。
+        把可量的表面标记 data-confirm-dialog-surface 放在**可见 content 内**的这个 wrapper 上，
+        它带真实宽高，验可见性/居中/命中都盯它，别盯 root。
+      */}
+      <div className={cn('flex flex-col gap-3')} data-confirm-dialog-surface={active ? active.kind : undefined}>
         {active?.message || ToneIcon ? (
           <div className={cn('flex gap-3')}>
             {ToneIcon ? (

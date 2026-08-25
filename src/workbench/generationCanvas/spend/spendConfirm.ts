@@ -2,6 +2,7 @@ import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { create } from 'zustand'
 import { mintSpendGrant } from '../../api/taskApi'
 import type { ProductionContractView } from './productionContractView'
+import type { AnchorCheckpointCardModel } from './anchorCheckpointView'
 
 // 付费生成确认 + 铸令牌（渲染层单一收口）。
 // 方案：docs/plan/2026-06-21-spend-confirmation-gate.md（务实纵深 A1：用户直发轻确认、agent 强确认）。
@@ -24,9 +25,21 @@ export type SpendConfirmRequest = {
    * - 'reference'         = 参考图门：要花额度出参考图（定妆/场景卡），相机图标。
    * - 'plan'              = 方案门：AI 要往画布落一套节点方案（免费、可撤），分镜图标。
    */
-  kind?: 'generation' | 'reference' | 'plan' | 'contract'
+  kind?: 'generation' | 'reference' | 'plan' | 'contract' | 'anchorCheckpoint'
   /** Durable production summary shown inside the existing confirmation shell. */
   contract?: ProductionContractView
+  /**
+   * P4 §3.2 形象确认卡（anchor_checkpoint 门·免费质量门）：定妆照就绪、等真人过目后开拍镜头批。
+   * 与花钱确认卡同一条对话框轨道（P1 一功能一个家），kind:'anchorCheckpoint' 时渲染 AnchorCheckpointCard。
+   * 只读模型（哪些定妆照/缩略图/名称/新拍还是复用）由 buildAnchorCheckpointCard 从 Run 投影，卡不自己翻 run。
+   */
+  anchorCheckpoint?: AnchorCheckpointCardModel
+  /**
+   * 「重拍选中的」：点它 = 不确认（不 decide approved），把选中的 shotId 沿确认链回传（沿用
+   * onOpenPolicySettings 的「请求对象带回调」模式，不改 boolean 契约）。view 层据此 decide rejected +
+   * 对选中锚走 S6 返工链。为空则卡不进选中态（无重拍能力）。
+   */
+  onRework?: (shotIds: string[]) => void
   /**
    * B1 方向门候选（仅 kind:'plan' 的创意方向门）：显示单选行（默认选第一个），确认时把选中的 key
    * 经 onDirectionDecision 回传。为空则方向门退回普通「批准/取消」文案（LLM 关着没拟出候选的兜底）。
