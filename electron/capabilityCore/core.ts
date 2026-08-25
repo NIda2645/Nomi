@@ -705,8 +705,8 @@ export async function generateOnProject(
   const advisories: string[] = []
   if (unfrozen.length) {
     advisories.push(
-      `这一镜引用的 ${unfrozen.length} 张卡还没冻结定妆：${unfrozen.map((n) => n.title || n.id).join('、')}。`
-      + '没冻结就往下铺镜头，跨镜很容易换脸——建议先把这几张卡拿给用户过目、确认后再批量生成。',
+      `这一镜引用的 ${unfrozen.length} 张卡还没定妆：${unfrozen.map((n) => n.title || n.id).join('、')}。`
+      + '没定妆就往下铺镜头，跨镜很容易换脸——建议先把这几张卡拿给用户过目、在卡上点「定妆」确认后再批量生成。',
     )
   }
   // 两跳降级的**理由必须说出来**（D4 缺口明着标）。它一直被算出来却从没暴露过——

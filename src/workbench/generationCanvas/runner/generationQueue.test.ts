@@ -142,4 +142,42 @@ describe('生成队列外化', () => {
     expect(useGenerationQueueStore.getState().batches[batchId]?.paused).toBe(false)
     expect(useGenerationQueueStore.getState().batches[batchId]?.consecutiveFailures).toBe(1)
   })
+
+  // F15：等待态不许穿红衣——unfrozen-anchor / missing-upstream 是「在等前置」，不是失败。
+  describe('blocked 分「等待」与「失败」两桶', () => {
+    function planWithBlocked(
+      waves: string[][],
+      blocked: DependencyWavePlan['blocked'],
+    ): DependencyWavePlan {
+      return { waves, blocked, edgesUsed: [] } as unknown as DependencyWavePlan
+    }
+
+    it('unfrozen-anchor 被拦的镜头 → 留 idle（不画红错误卡）、不进 failures', async () => {
+      const [shotId] = addImageNodes(1)
+      const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'unfrozen-anchor', detail: '在等参考卡「便利店」定妆——在卡上点「定妆」' }])
+      const result = await runGenerationNodesByPlan(plan, { executor: async () => fakeResult('x') })
+      const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
+      expect(node?.status ?? 'idle').toBe('idle') // 不是 'error'——等待态去红
+      expect(node?.error).toBeFalsy()
+      expect(result.failures.map((f) => f.nodeId)).not.toContain(shotId) // 不进「重试失败」
+    })
+
+    it('missing-upstream 同样走等待桶（留 idle，不进 failures）', async () => {
+      const [shotId] = addImageNodes(1)
+      const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'missing-upstream', detail: '上游「前置镜」还没有生成结果' }])
+      const result = await runGenerationNodesByPlan(plan, { executor: async () => fakeResult('x') })
+      const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
+      expect(node?.status ?? 'idle').toBe('idle')
+      expect(result.failures.map((f) => f.nodeId)).not.toContain(shotId)
+    })
+
+    it('cycle（结构错误）仍走失败桶（红 error + 进 failures，可单独处理）', async () => {
+      const [shotId] = addImageNodes(1)
+      const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'cycle', detail: '与其他节点构成循环引用' }])
+      const result = await runGenerationNodesByPlan(plan, { executor: async () => fakeResult('x') })
+      const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
+      expect(node?.status).toBe('error')
+      expect(result.failures.map((f) => f.nodeId)).toContain(shotId)
+    })
+  })
 })
