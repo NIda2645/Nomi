@@ -74,5 +74,6 @@ export async function validateProfileRequestBeforeSpend(input: {
   await validateRequestTransform(transform, preflight.body, {
     baseUrl: String(input.vendor.baseUrlHint || ""),
     promptId: trim(input.request.extras?.comfyPromptId),
+    request: input.request,
   });
 }

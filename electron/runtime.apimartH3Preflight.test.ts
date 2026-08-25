@@ -29,8 +29,10 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllGlobals();
+  const spend = await import("./spendGrant");
+  spend.__resetSpendGrantsForTests();
   for (const root of tempRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -61,12 +63,6 @@ describe("runTask MiniMax H3 preflight", () => {
           grantId,
           firstFrameUrl: "nomi-local://first-frame",
           referenceImages: ["nomi-local://reference-image"],
-          // Renderer-produced mode projection can carry both keys in a stale/invalid node;
-          // the preflight must validate the rendered wire body, not only flat headless inputs.
-          archetypeInput: {
-            first_frame_image: "nomi-local://first-frame",
-            image_urls: ["nomi-local://reference-image"],
-          },
         },
       },
     }).catch((value) => value as Error);
@@ -75,5 +71,33 @@ describe("runTask MiniMax H3 preflight", () => {
     expect(String((error as Error).message)).toMatch(/首尾帧.*参考素材/);
     expect(fetchFn).not.toHaveBeenCalled();
     expect(__spendGrantCountForTests()).toBe(1);
+  }, 15_000);
+
+  it("preserves a valid UI first-frame projection without synthesizing image_urls", async () => {
+    await seedApimartH3();
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ code: 200, data: [{ task_id: "h3-task" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchFn);
+
+    const { runTask } = await import("./runtime");
+    const { mintSpendGrant } = await import("./spendGrant");
+    const result = await runTask({
+      vendor: "apimart",
+      request: {
+        kind: "image_to_video",
+        prompt: "让首帧里的办公室动起来",
+        extras: {
+          modelKey: "MiniMax-H3",
+          nodeId: "h3-node",
+          grantId: mintSpendGrant({ nodeIds: ["h3-node"], maxAttemptsPerNode: 1 }),
+          firstFrameUrl: "https://cdn.example.com/first.png",
+          archetypeInput: { first_frame_image: "https://cdn.example.com/first.png" },
+        },
+      },
+    });
+
+    expect(result.status).toBe("queued");
+    const body = JSON.parse(String((fetchFn.mock.calls[0]?.[1] as { body?: string })?.body || "{}")) as Record<string, unknown>;
+    expect(body.first_frame_image).toBe("https://cdn.example.com/first.png");
+    expect(body).not.toHaveProperty("image_urls");
   }, 15_000);
 });
