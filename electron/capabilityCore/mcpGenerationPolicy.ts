@@ -74,6 +74,10 @@ export type McpGenerationPolicy = Readonly<{
   classifyRoute(route: string): McpGenerationRoute
 }>
 
+// 这六条 legacy 生成路显式标 legacy（runtime plan §7 + P4 S7 收敛映射表，
+// docs/plan/2026-08-25-p4-s7-legacy-converge.md §2）：guardLegacyGenerationRoute 见语义 binding 即拒
+// （legacy_path_forbidden），不与新路径双写项目事实。集合缩水 = 语义 binding 可能从旧路穿透双写，
+// 由 check:batch-machines 规则 legacy-routes-shrunk 钉死。挪动任何一条必须同步收敛映射表。
 const LEGACY_GENERATION_ROUTES: ReadonlySet<LegacyMcpGenerationRoute> = new Set([
   'generate',
   'nomi_generate',

@@ -1,0 +1,55 @@
+import React from 'react'
+import { useTranslation } from 'react-i18next'
+import type { ModelOption } from '../../../config/models'
+import BulkModelPicker from '../../common/BulkModelPicker'
+import { useGenerationModelOptionsState } from '../adapters/modelOptionsAdapter'
+import type { CanvasGenerationExecutionGroup } from './canvasProductionScope'
+
+export type CanvasApplyModelInput = {
+  executionKind: string
+  value: string
+  vendor?: string
+  modelOptions: readonly ModelOption[]
+}
+
+function modelGroupLabel(executionKind: string, count: number, t: ReturnType<typeof useTranslation>['t']): string {
+  return t(
+    `generationCommon.production.modelGroup.${executionKind}` as 'generationCommon.production.modelGroup.image',
+    { count },
+  )
+}
+
+/**
+ * 批量「统一模型」下拉——**画布框选工具条**与**底部「生成全部」坞**共用同一份（P1，两入口不再漂移）。
+ * 选项**厂商明确**（一家一行）：用户 2026-08-18 报「框选没办法选择不同供应商的模型导致一直生成失败」，
+ * 过去折叠成一条标「N 家」、供应商由 pickHealthiestProvider 定死，那家在他账号上不通就永远失败且无路可换。
+ * 故实现住 BulkModelPicker（与分镜「全部镜头」批量条同一份）；无可选模型时返回 null，不给空下拉。
+ */
+export function CanvasBulkModelSelect({
+  group,
+  onApplyModel,
+}: {
+  group: CanvasGenerationExecutionGroup
+  onApplyModel: (input: CanvasApplyModelInput) => void
+}): JSX.Element | null {
+  const { t } = useTranslation()
+  const state = useGenerationModelOptionsState(group.representativeKind)
+  const handlePick = React.useCallback(
+    (value: string, vendor?: string) => {
+      onApplyModel({ executionKind: group.executionKind, value, vendor, modelOptions: state.options })
+    },
+    [group.executionKind, onApplyModel, state.options],
+  )
+  const label = modelGroupLabel(group.executionKind, group.nodeIds.length, t)
+  return (
+    <BulkModelPicker
+      modelOptions={state.options}
+      onPick={handlePick}
+      ariaLabel={label}
+      leadingLabel={label}
+      placeholder={t('generationCommon.production.unifyModel')}
+      size="xs"
+      triggerMaxWidth={140}
+    />
+  )
+}

@@ -340,6 +340,13 @@ function normalizeConcurrency(value: unknown): number {
  * goes through the same retry/failure semantics as `runGenerationNode`,
  * so callers can still display a per-node retry button if a run fails.
  * This is the runtime used by the storyboard demo's "全部生成" action.
+ *
+ * @legacy-batch-frozen (P4 S7, docs/plan/2026-08-25-p4-s7-legacy-converge.md)
+ * 这是 GUI 画布批量的**唯一自有派发循环**，也是默认构建里现役的唯一 GUI 批量路径（语义调度器默认关）。
+ * 冻结纪律：**不加新功能**。新批量能力（合同/收据/预算/锚检查点/慢供应商韧性）只进语义调度器
+ * multiShotBatchScheduler；本函数只做维护性修复，别在此长新逻辑。Canvas owner → 语义运行时的迁移
+ * 是 P5 Proposal adapter（runtime plan line 103/505），不是 S7。check:batch-machines 门岗钉死
+ * runGenerationNode 调用点不外扩（别在别处再起第四台批量循环）。
  */
 export async function runGenerationNodesBatch(
   nodeIds: readonly string[],
@@ -390,6 +397,9 @@ export async function runGenerationNodesBatch(
  * - 波内并行(沿用 runGenerationNodesBatch 的并发池/重试语义);
  * - 波间串行:依赖节点等到上游真完成才开跑——参考图不再"没出来就裸跑";
  * - blocked(上游缺果/环)与"上游本批失败"的下游 → **显式失败**,人话原因,可单独重试。
+ *
+ * @legacy-batch-frozen (P4 S7)：见下方 runGenerationNodesBatch 的冻结纪律——本函数是波次编排层，
+ * 同样冻结、不加新功能。新批量能力走语义调度器。
  */
 export async function runGenerationNodesByPlan(
   plan: DependencyWavePlan,
