@@ -14,11 +14,30 @@ export type RequestTransformContext = {
 };
 
 export type RequestTransformFn = (body: unknown, context: RequestTransformContext) => Promise<unknown> | unknown;
+export type RequestTransformValidator = (body: unknown, context: RequestTransformContext) => Promise<void> | void;
 
 const registry = new Map<string, RequestTransformFn>();
+const validators = new Map<string, RequestTransformValidator>();
 
-export function registerRequestTransform(name: string, fn: RequestTransformFn): void {
+export function registerRequestTransform(name: string, fn: RequestTransformFn, validate?: RequestTransformValidator): void {
   registry.set(name, fn);
+  if (validate) validators.set(name, validate);
+  else validators.delete(name);
+}
+
+/**
+ * Run the side-effect-free part of a request contract before spend/localization.
+ * The final transform still runs immediately before HTTP as defense-in-depth.
+ */
+export async function validateRequestTransform(
+  name: string | undefined,
+  body: unknown,
+  context: RequestTransformContext,
+): Promise<void> {
+  if (!name) return;
+  const validator = validators.get(name);
+  if (!validator) return;
+  await validator(body, context);
 }
 
 /** 应用具名变换；未声明或未注册 → 原样返回（对现有全部 vendor 零影响）。变换抛错向上冒泡（见文件头）。 */
