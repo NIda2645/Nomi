@@ -108,11 +108,14 @@ export default function AssistantModelPicker({ className }: { className?: string
         className={className}
         data-assistant-model-picker="true"
         data-state="empty"
-        aria-label={t('generationCommon.parameters.configureModel')}
+        // 点破缺的是**文本模型/大脑**（不是任意模型）：这个入口的 empty 态只在没有可用 text 模型时出现，
+        // 泛泛「去配置模型」让人以为要配图/视频模型（2026-08-25 走查 F2）。模型配置的家仍在顶栏「模型」，
+        // 这里只是缺大脑的就近提示，不新增第二个配置入口（一功能一个家）。
+        aria-label={t('generationCommon.parameters.selectTextModel')}
         title={t('generationCommon.parameters.openModelCatalog')}
         onClick={() => window.dispatchEvent(new CustomEvent('nomi-open-model-catalog'))}
       >
-        {t('generationCommon.parameters.configureModel')}
+        {t('generationCommon.parameters.selectTextModel')}
       </WorkbenchButton>
     )
   }

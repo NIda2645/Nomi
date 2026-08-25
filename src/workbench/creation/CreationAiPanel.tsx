@@ -218,10 +218,14 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
         )
       } catch (error: unknown) {
         if (!handle.isCurrent()) return
+        // 存**原始**错误串（不再包一层中文前缀）——错误态统一由 AssistantErrorCard /
+        // NoTextModelRecoveryCard 渲染，它们内部走 classifyGenerationError 分类成人话；提前包
+        // 「拆镜头失败：<原串>」会污染 provider 原话抽取，且把英文散句直接怼到用户脸上（2026-08-25 走查）。
+        const rawMessage = error instanceof Error && error.message ? error.message : t('creationAi.unknownError')
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: t('creationAi.planFailed', { message: error instanceof Error && error.message ? error.message : t('creationAi.unknownError') }), status: 'error' as const }
+              ? { ...m, content: rawMessage, status: 'error' as const }
               : m,
           ),
         )

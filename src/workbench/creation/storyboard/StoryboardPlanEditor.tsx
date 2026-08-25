@@ -23,6 +23,7 @@ import {
   validatePlan,
   type PlanIssue,
 } from '../../generationCanvas/agent/storyboardPlanEdits'
+import { classifyGenerationError } from '../../observability/classifyError'
 import StoryboardAnchorCard from './StoryboardAnchorCard'
 import StoryboardBulkBar from './StoryboardBulkBar'
 import StoryboardShotCard from './StoryboardShotCard'
@@ -170,9 +171,18 @@ export default function StoryboardPlanEditor(): JSX.Element | null {
       const landedIds = args.nodes.map((created) => resolveCanvasToolNodeId(created.clientId))
       if (landedIds.length > 1) useGenerationCanvasStore.getState().selectNodes(landedIds)
     } catch (error: unknown) {
+      // 人话化：别把服务端/内部原串直贴进对话框（2026-08-25 走查同类：CreationAiPanel 拆镜头也曾直通英文串）。
+      // 走 classifyGenerationError 拿分类后的 reason（+ 缺 key 时的一句指引），与错误卡同一真相源（P1）。
+      const raw = error instanceof Error && error.message ? error.message : ''
+      const report = raw ? classifyGenerationError(raw) : null
+      const message = report
+        ? report.hint
+          ? `${report.reason}——${report.hint}`
+          : report.reason
+        : t('storyboardEditor.unknownRetry')
       await alertDialog({
         title: t('storyboardEditor.landFailed'),
-        message: error instanceof Error && error.message ? error.message : t('storyboardEditor.unknownRetry'),
+        message,
       })
     } finally {
       setLanding(false)
