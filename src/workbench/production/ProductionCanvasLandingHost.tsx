@@ -13,6 +13,7 @@ import { productionRunApi } from './productionRunApi'
 import { useProductionCanvasLandingStore } from './productionCanvasLandingStore'
 import { deriveBatchProgress } from './shotPlaceholderState'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
+import { buildDependencyWaves } from '../generationCanvas/runner/dependencyWaves'
 import { useToastStore } from '../../ui/toast'
 
 const POLL_INTERVAL_MS = 1500
@@ -39,9 +40,15 @@ export function ProductionCanvasLandingHost({ projectId }: { projectId: string |
   React.useEffect(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage?.getItem('__nomiE2E') === '1') {
-        const w = window as unknown as { __nomiProductionLandingStore?: unknown; __nomiCanvasStore?: unknown }
+        const w = window as unknown as {
+          __nomiProductionLandingStore?: unknown
+          __nomiCanvasStore?: unknown
+          __nomiBuildDependencyWaves?: unknown
+        }
         w.__nomiProductionLandingStore = useProductionCanvasLandingStore
         w.__nomiCanvasStore = useGenerationCanvasStore
+        // F15 走查读依赖门（显示的≡执行的）：生产构建里源码路径不可 import，故把纯函数挂出来供零额度走查读。
+        w.__nomiBuildDependencyWaves = buildDependencyWaves
       }
     } catch {
       // localStorage 不可用 → 跳过

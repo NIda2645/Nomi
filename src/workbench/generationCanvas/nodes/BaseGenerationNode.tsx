@@ -50,7 +50,7 @@ import { WorkbenchButton } from '../../../design'
 import { completeNodeConnection } from './completeNodeConnection'
 import { buildVideoPlaybackUrl } from '../../../media/videoPlaybackUrl'
 import { getGenerationNodeExecutionKind, isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
-import { applyFixationMakeup } from '../fixation/buildFixationNode'
+import { anchorFreezeToolbarProps } from '../fixation/freezeAnchor'
 import { TechnicalReviewBadge } from './TechnicalReviewBadge'
 import { canDragGenerationNodeToTimeline } from '../model/timelineDragAffordance'
 import { useResultDownload } from './useResultDownload'
@@ -415,7 +415,7 @@ function BaseGenerationNodeImpl({
           node={node}
           editGrid={imageEditing.editGrid}
           imageOpBusy={imageEditing.imageOpBusy}
-          onMakeup={() => applyFixationMakeup(node)}
+          {...anchorFreezeToolbarProps(node)}
           onGridSplit={(g) => imageEditing.openEdit(g)}
           onCrop={() => imageEditing.openEdit(1)}
           onTransform={(op) => void imageEditing.handleImageTransform(op)}

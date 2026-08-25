@@ -68,7 +68,7 @@ export function buildDependencyWaves(
       if (!blockedIds.has(edge.target)) {
         blockedIds.add(edge.target)
         const sourceTitle = sourceNode?.title || edge.source
-        blocked.push({ nodeId: edge.target, reason: 'unfrozen-anchor', detail: `参考卡「${sourceTitle}」还没冻结` })
+        blocked.push({ nodeId: edge.target, reason: 'unfrozen-anchor', detail: `在等参考卡「${sourceTitle}」定妆——在卡上点「定妆」` })
       }
       continue
     }
