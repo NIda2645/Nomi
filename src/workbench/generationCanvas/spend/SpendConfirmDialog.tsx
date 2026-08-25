@@ -1,11 +1,12 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
-import { IconCoin, IconFileText, IconRobot, IconMovie, IconPhoto } from '@tabler/icons-react'
-import { WorkbenchButton } from '../../../design'
+import { IconCoin, IconFileText, IconRobot, IconMovie, IconPhoto, IconUser } from '@tabler/icons-react'
+import { BodyPortal, NOMI_OVERLAY_Z_INDEX, WorkbenchButton } from '../../../design'
 import { useSpendConfirmStore } from './spendConfirm'
 import { ProductionContractSummary } from './ProductionContractSummary'
 import { MultiShotContractSummary } from './MultiShotContractSummary'
+import { AnchorCheckpointCard } from './AnchorCheckpointCard'
 import type { MultiShotContractProjection } from './productionContractView'
 
 // 付费生成确认对话框（单一收口，挂一次于工作区根）。极简：标题 + 一句人话 + 取消/确认。
@@ -27,6 +28,9 @@ export function SpendConfirmDialog() {
   const [choiceKey, setChoiceKey] = React.useState<string | null>(null)
 
   const isMultiShot = pending?.kind === 'contract' && Boolean(pending.contract?.shotList)
+  // P4 §3.2 形象确认卡：与多镜卡同款「滚动内容区 + 固定 footer」布局（~560px），自渲染 footer（先不拍/开拍/重拍）。
+  const isAnchorCheckpoint = pending?.kind === 'anchorCheckpoint' && Boolean(pending.anchorCheckpoint)
+  const flexShell = isMultiShot || isAnchorCheckpoint
   const countdownPaused = isMultiShot && interacted
 
   React.useEffect(() => {
@@ -73,26 +77,33 @@ export function SpendConfirmDialog() {
       ? IconMovie
       : pending.kind === 'reference'
         ? IconPhoto
-        : isAgent ? IconRobot : IconCoin
+        : pending.kind === 'anchorCheckpoint'
+          ? IconUser
+          : isAgent ? IconRobot : IconCoin
   const countdownTotal = pending.countdownMs || 0
   const remainingSec = countdownTotal ? Math.ceil(remainingMs / 1000) : 0
   const remainingPct = countdownTotal ? Math.max(0, Math.min(100, (remainingMs / countdownTotal) * 100)) : 0
 
   return (
+    // BodyPortal + 中央 z 层级（overlayLayers 契约：全局浮层都 portal 到 body 消费统一层级）——
+    // 之前裸 z-[3500] 挂在 app 树里，被 body 级任务中心 Portal（floatingPanel:4000）盖住裁掉半张卡
+    // （门确认卡多半从任务中心 run 卡点开，680px 合同卡 / 560px 形象卡尤其明显，2026-08-25 走查抓出）。
+    // 用 dialog(9100)：高过任务中心，低过破坏性 confirmation(9300) 好让它能叠在本卡之上。
+    <BodyPortal>
     <div
-      // 全屏固定模态：付费确认是全局阻断性动作，要盖住整窗（含顶栏/侧栏），任意视图（库/studio）都能弹。
-      // 之前 absolute 只盖画布层 → 只在 studio 可见，是「外部生成到非当前项目静默黑洞」的放大器之一。
-      className={cn('fixed inset-0 z-[3500] flex items-center justify-center bg-nomi-ink/20 pointer-events-auto')}
+      // 全屏固定模态：付费/确认是全局阻断性动作，要盖住整窗（含顶栏/侧栏/任务中心），任意视图（库/studio）都能弹。
+      className={cn('fixed inset-0 flex items-center justify-center bg-nomi-ink/20 pointer-events-auto')}
+      style={{ zIndex: NOMI_OVERLAY_Z_INDEX.dialog }}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) resolvePending(false)
       }}
     >
       <div
         className={cn(
-          pending.kind === 'contract' ? 'w-[680px]' : 'w-[380px]',
+          pending.kind === 'contract' ? 'w-[680px]' : isAnchorCheckpoint ? 'w-[560px]' : 'w-[380px]',
           'max-h-[88vh] max-w-[88%] rounded-nomi-lg border border-nomi-line bg-nomi-paper p-4 shadow-nomi-md',
-          // 多镜卡：flex 列 + footer shrink-0，内容区滚动、footer 恒在（逐镜清单另有 ~40vh 内滚）。
-          isMultiShot ? 'flex flex-col overflow-hidden' : 'overflow-y-auto',
+          // 多镜卡 / 形象卡：flex 列 + footer shrink-0，内容区滚动、footer 恒在（清单/网格另有内滚）。
+          flexShell ? 'flex flex-col overflow-hidden' : 'overflow-y-auto',
         )}
         // 多镜卡「交互即暂停」：任意鼠标/键盘触达即冻结倒计时。
         {...(isMultiShot
@@ -103,7 +114,7 @@ export function SpendConfirmDialog() {
             }
           : {})}
       >
-        <div className={cn('flex items-center gap-2.5 mb-2', isMultiShot ? 'shrink-0' : '')}>
+        <div className={cn('flex items-center gap-2.5 mb-2', flexShell ? 'shrink-0' : '')}>
           <span
             className={cn(
               'shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-nomi',
@@ -123,7 +134,20 @@ export function SpendConfirmDialog() {
           </div>
         </div>
 
-        {isMultiShot && pending.contract?.shotList ? (
+        {isAnchorCheckpoint && pending.anchorCheckpoint ? (
+          // 形象确认卡：自渲染 flex-1 滚动内容区（网格 + 承诺）+ shrink-0 固定 footer（先不拍/开拍/重拍），
+          // 与 MultiShotCardBody 同款 fragment，由这个 flex 列直接摊开（不再外包滚动容器）。
+          <AnchorCheckpointCard
+            model={pending.anchorCheckpoint}
+            onApprove={() => resolvePending(true, false)}
+            onDefer={() => resolvePending(false)}
+            onRework={(shotIds) => {
+              const cb = pending.onRework
+              resolvePending(false)
+              cb?.(shotIds)
+            }}
+          />
+        ) : isMultiShot && pending.contract?.shotList ? (
           <MultiShotCardBody
             view={pending.contract}
             list={pending.contract.shotList}
@@ -278,6 +302,7 @@ export function SpendConfirmDialog() {
         )}
       </div>
     </div>
+    </BodyPortal>
   )
 }
 
