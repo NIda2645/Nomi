@@ -16,6 +16,7 @@ import { PROJECT_LEASE_ALGORITHM, PROJECT_LEASE_AUDIENCE, PROJECT_LEASE_VERSION,
 import { createProductionGenerationOperationStore } from "../productionRun/productionGenerationOperationStore";
 import { createProductionGenerationSubmission } from "../productionRun/productionGenerationSubmission";
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
+import { createProductionRunService } from "../productionRun/productionRunService";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
 import { anchorCheckpointGateId } from "../productionRun/anchorCheckpoint";
 
@@ -161,7 +162,7 @@ describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loo
   it("create({shots}) → seal(shots) → gate multi-shot projection → decide → start → anchor checkpoint → shot batch; total requests = anchors + shots", async () => {
     const vendor = await startLoopbackVendor();
     const submits: string[] = [];
-    const { repository, handler, buildScheduler } = harness(vendor.origin, submits);
+    const { root, repository, handler, buildScheduler } = harness(vendor.origin, submits);
     try {
       // 1. REAL create with a multi-shot plan (1 anchor + 2 video shots) — the production entrance.
       // operationId fixed to op-entrance so the harness scheduler (runId: op-entrance) drives THIS run.
@@ -227,6 +228,15 @@ describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loo
       expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(3); // anchor + 2 shots
       // Every idempotency key used at most once (≤1 submit per job).
       expect(new Set(submits).size).toBe(submits.length);
+
+      // 外发面（agent 真正读到的那份）也得带得动这批的身份：镜头谱系 + 产物的项目内相对路径。
+      // 少任何一格，agent 就只能按 status 数数、认不出哪个 job 是哪一镜、也找不到落地文件——S6.5 付费验收
+      // 就是这么瞎的（ffprobe 腿降级、返工腿恒失败）。这里用真管道跑出来的 Run 过真投影，零花费。
+      const projection = createProductionRunService({ repository, projectRootResolver: () => root })
+        .readProjection("project-1", operationId);
+      expect(projection.jobs.map((j) => j.metadata?.shotId).filter(Boolean).sort()).toEqual(["anchor-1", "shot-1", "shot-2"]);
+      expect(projection.artifacts.filter((a) => a.projectRelativePath?.startsWith(".nomi/out/"))).toHaveLength(3);
+      expect(JSON.stringify(projection)).not.toContain(root); // 相对路径出去了，项目绝对根仍不外发
     } finally {
       await vendor.close();
     }
