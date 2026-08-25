@@ -75,7 +75,7 @@ describe("runTask MiniMax H3 preflight", () => {
 
   it("preserves a valid UI first-frame projection without synthesizing image_urls", async () => {
     await seedApimartH3();
-    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ code: 200, data: [{ task_id: "h3-task" }] }), { status: 200 }));
+    const fetchFn = vi.fn(async (_input: unknown, _init?: { body?: string }) => new Response(JSON.stringify({ code: 200, data: [{ task_id: "h3-task" }] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchFn);
 
     const { runTask } = await import("./runtime");
@@ -96,7 +96,7 @@ describe("runTask MiniMax H3 preflight", () => {
     });
 
     expect(result.status).toBe("queued");
-    const body = JSON.parse(String((fetchFn.mock.calls[0]?.[1] as { body?: string })?.body || "{}")) as Record<string, unknown>;
+    const body = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body || "{}")) as Record<string, unknown>;
     expect(body.first_frame_image).toBe("https://cdn.example.com/first.png");
     expect(body).not.toHaveProperty("image_urls");
   }, 15_000);
