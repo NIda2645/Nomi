@@ -10,6 +10,18 @@ export const DEFAULT_CANVAS_BATCH_CONCURRENCY = 6
 
 type CanvasBatchConcurrencyStorage = Pick<Storage, 'getItem' | 'setItem'>
 
+export type CanvasGenerationScope = {
+  categoryId?: string
+  nodeIds?: readonly string[]
+}
+
+export function resolveCanvasGenerationScope(
+  activeCategoryId: string,
+  selectedNodeIds: readonly string[],
+): CanvasGenerationScope {
+  return selectedNodeIds.length > 0 ? { nodeIds: selectedNodeIds } : { categoryId: activeCategoryId }
+}
+
 export function normalizeCanvasBatchConcurrency(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_CANVAS_BATCH_CONCURRENCY
   return Math.max(1, Math.min(8, Math.floor(value)))
@@ -39,15 +51,24 @@ export function writeCanvasBatchConcurrency(value: unknown, storage = defaultSto
   return normalized
 }
 
+export function nodesInCanvasProductionScope(
+  nodes: readonly GenerationCanvasNode[],
+  scope: CanvasGenerationScope = {},
+): GenerationCanvasNode[] {
+  const scopedIds = scope.nodeIds ? new Set(scope.nodeIds) : null
+  return nodes.filter((node) => {
+    if (scope.categoryId && (node.categoryId || 'shots') !== scope.categoryId) return false
+    if (scopedIds && !scopedIds.has(node.id)) return false
+    return true
+  })
+}
+
 export function eligibleGenerationNodeIds(
   nodes: readonly GenerationCanvasNode[],
-  scope: { categoryId?: string; nodeIds?: readonly string[] } = {},
+  scope: CanvasGenerationScope = {},
 ): string[] {
-  const scopedIds = scope.nodeIds ? new Set(scope.nodeIds) : null
-  return nodes
+  return nodesInCanvasProductionScope(nodes, scope)
     .filter((node) => {
-      if (scope.categoryId && (node.categoryId || 'shots') !== scope.categoryId) return false
-      if (scopedIds && !scopedIds.has(node.id)) return false
       if (!getGenerationNodeExecutionKind(node.kind)) return false
       const status = node.status ?? 'idle'
       return status === 'idle' || status === 'error'

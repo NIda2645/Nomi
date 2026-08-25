@@ -2,14 +2,18 @@ import { IconPlayerPlay } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect } from '../../../design'
 import { cn } from '../../../utils/cn'
+import { CanvasBulkModelSelect, type CanvasApplyModelInput } from './CanvasBulkModelSelect'
+import type { CanvasGenerationExecutionGroup } from './canvasProductionScope'
 
 const CONCURRENCY_OPTIONS = [1, 2, 4, 6, 8].map((value) => ({ value: String(value), label: String(value) }))
 
 export function CanvasBatchGenerateDock(props: {
   eligibleIds: readonly string[]
+  executionGroups: readonly CanvasGenerationExecutionGroup[]
   concurrency: number
   setConcurrency: (value: number) => void
   generate: () => void
+  applyModel: (input: CanvasApplyModelInput) => void
 }): JSX.Element {
   const { t } = useTranslation()
   const eligibleCount = props.eligibleIds.length
@@ -18,13 +22,16 @@ export function CanvasBatchGenerateDock(props: {
     <div
       className={cn(
         'generation-canvas-v2__production-dock',
-        'absolute bottom-4 left-1/2 z-[9] flex -translate-x-1/2 items-center gap-2 px-2 py-1.5',
+        'absolute bottom-4 left-1/2 z-[9] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto px-2 py-1.5',
         'rounded-full border border-nomi-line bg-nomi-paper/[0.96] shadow-nomi-md pointer-events-auto',
       )}
       role="toolbar"
       aria-label={t('generationCommon.production.aria')}
       onPointerDown={(event) => event.stopPropagation()}
     >
+      {props.executionGroups.map((group) => (
+        <CanvasBulkModelSelect key={group.executionKind} group={group} onApplyModel={props.applyModel} />
+      ))}
       <button
         type="button"
         data-storyboard-run-all="true"

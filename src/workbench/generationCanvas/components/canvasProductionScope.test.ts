@@ -4,8 +4,10 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import {
   eligibleGenerationNodeIds,
   groupGenerationNodesByExecutionKind,
+  nodesInCanvasProductionScope,
   normalizeCanvasBatchConcurrency,
   readCanvasBatchConcurrency,
+  resolveCanvasGenerationScope,
   shouldShowCanvasBatchGenerateDock,
   writeCanvasBatchConcurrency,
 } from './canvasProductionScope'
@@ -42,6 +44,37 @@ describe('eligibleGenerationNodeIds', () => {
   })
 })
 
+describe('nodesInCanvasProductionScope', () => {
+  it('uses the active category when there is no explicit node selection', () => {
+    const nodes = [
+      node('shot-a', 'image', 'idle', 'shots'),
+      node('shot-b', 'video', 'success', 'shots'),
+      node('scene-a', 'image', 'idle', 'scene'),
+    ]
+
+    expect(nodesInCanvasProductionScope(nodes, { categoryId: 'shots' }).map((item) => item.id)).toEqual([
+      'shot-a',
+      'shot-b',
+    ])
+  })
+
+  it('uses an explicit node selection instead of the category scope', () => {
+    const nodes = [node('shot-a', 'image', 'idle', 'shots'), node('scene-a', 'image', 'idle', 'scene')]
+
+    expect(nodesInCanvasProductionScope(nodes, { nodeIds: ['scene-a'] }).map((item) => item.id)).toEqual(['scene-a'])
+  })
+})
+
+describe('resolveCanvasGenerationScope', () => {
+  it('uses the active category when there is no explicit selection', () => {
+    expect(resolveCanvasGenerationScope('shots', [])).toEqual({ categoryId: 'shots' })
+  })
+
+  it('uses selected node ids when the canvas has an explicit selection', () => {
+    expect(resolveCanvasGenerationScope('shots', ['scene-a'])).toEqual({ nodeIds: ['scene-a'] })
+  })
+})
+
 describe('shouldShowCanvasBatchGenerateDock', () => {
   it('shows only for an editable unselected canvas with pending work', () => {
     expect(shouldShowCanvasBatchGenerateDock({ readOnly: false, selectedCount: 0, eligibleCount: 2 })).toBe(true)
@@ -65,6 +98,14 @@ describe('groupGenerationNodesByExecutionKind', () => {
       { executionKind: 'image', nodeIds: ['image', 'character'], representativeKind: 'image' },
       { executionKind: 'video', nodeIds: ['video'], representativeKind: 'video' },
       { executionKind: 'text', nodeIds: ['text'], representativeKind: 'text' },
+    ])
+  })
+
+  it('keeps the active-category image group available for the no-selection scope', () => {
+    const nodes = [node('shot-image', 'image', 'idle', 'shots'), node('scene-image', 'image', 'idle', 'scene')]
+
+    expect(groupGenerationNodesByExecutionKind(nodesInCanvasProductionScope(nodes, { categoryId: 'shots' }))).toEqual([
+      { executionKind: 'image', nodeIds: ['shot-image'], representativeKind: 'image' },
     ])
   })
 })

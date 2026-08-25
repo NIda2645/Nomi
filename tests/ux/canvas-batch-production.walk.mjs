@@ -294,6 +294,15 @@ try {
   const generateAll = win.locator('[data-batch-scope="all"]')
   await generateAll.waitFor({ timeout: 5000 })
   check((await generateAll.textContent())?.includes('2'), '无选择入口显示两个待生成节点')
+  await chooseSelectOption(win, '图片 ×2', '批量图片 B')
+  await win.waitForTimeout(1200)
+  const allScopeProjectFile = findProjectJson(projectsDir)
+  check(Boolean(allScopeProjectFile), '未框选时批量模型更新已触发项目持久化')
+  const allScopePersistedNodes = JSON.parse(fs.readFileSync(allScopeProjectFile, 'utf8')).payload.generationCanvas.nodes
+  check(
+    allScopePersistedNodes.filter((node) => node.kind === 'image').every((node) => node.meta?.modelKey === IMAGE_B),
+    '未框选时图片节点统一切到图片 B',
+  )
   await chooseSelectOption(win, '并发', '2')
   check(await win.evaluate(() => window.localStorage.getItem('nomi.canvas.batch-concurrency')) === '2', '并发偏好写入本地存储')
   await snap(win, 'light-generate-all')
