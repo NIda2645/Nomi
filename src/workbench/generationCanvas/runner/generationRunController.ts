@@ -412,7 +412,20 @@ export async function runGenerationNodesByPlan(
     failures.push({ nodeId, error })
     options.onNodeResult?.({ ok: false, nodeId, error })
   }
-  for (const blocked of plan.blocked) failNode(blocked.nodeId, blocked.detail)
+  // 等待态不许穿红衣（F15）：`unfrozen-anchor`（等定妆）与 `missing-upstream`（等上游出图）不是「失败」，
+  // 是「在等一个还没做的前置」——红色错误卡只留给真失败（provider 报错）/结构错误（环）。这类：节点**留在 idle**
+  // （不画红错误卡）、队列条目记 `cancelled`（已结算、零扣费、不进刹车、不进「重试失败」），原因由确认条 +
+  // 完成汇总 notice 带可点下一步说清（去定妆 / 去生成上游）。retry 会再次被人话拦下，不静默、也不误当失败。
+  const waitNode = (nodeId: string) => {
+    useGenerationCanvasStore.getState().setNodeStatus(nodeId, 'idle')
+    useGenerationQueueStore.getState().markSettled(batchId, nodeId, 'cancelled', { countsTowardBrake: false })
+  }
+  const isWaitingReason = (reason: DependencyWavePlan['blocked'][number]['reason']): boolean =>
+    reason === 'unfrozen-anchor' || reason === 'missing-upstream'
+  for (const blocked of plan.blocked) {
+    if (isWaitingReason(blocked.reason)) waitNode(blocked.nodeId)
+    else failNode(blocked.nodeId, blocked.detail) // cycle 等结构错误 = 真失败桶（红），可单独处理
+  }
 
   const plannedIds = new Set(plan.waves.flat())
   const internalDeps = new Map<string, string[]>()

@@ -17,6 +17,7 @@ import {
 } from "../productionRun/shotPricing";
 import {
   createMultiShotCreateHelpers,
+  type AssertReferencesResolvable,
   type GenerationOperationDraftShot,
   type GenerationSealMultiShot,
   type StoryboardPlanResult,
@@ -386,6 +387,11 @@ export type GenerationPlanningHandlerDependencies = {
    * as a seam (not inlined) so the zero-credit E2E stubs a fixed board and only the `plan` entrance runs真.
    */
   planStoryboard?: (input: { projectId: string; scriptText: string }) => StoryboardPlanResult | Promise<StoryboardPlanResult>;
+  /**
+   * P4 §5.1.4 锚复用授权面: 校验 create 里引用的参考素材（复用锚 = 已有资产作 character 参考）存在且属于本项目。
+   * 单镜与多镜 create 都过它（一个入口两路都堵，P2 通用性）。抛人话 Error 即拒。Omitted → 不校验（向后兼容）。
+   */
+  assertReferencesResolvable?: AssertReferencesResolvable;
   start?: (operation: GenerationOperation, lease: ProjectLeaseV1) => unknown | Promise<unknown>;
   reconcile?: (operation: GenerationOperation, outcome: "found" | "not_found", lease: ProjectLeaseV1) => unknown | Promise<unknown>;
 };
@@ -486,6 +492,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     videoParameterSchema: (candidate) => videoParameterSchema(candidate, deps.videoModelCandidates),
     priceForCandidate,
     effectiveVideoModes,
+    ...(deps.assertReferencesResolvable ? { assertReferencesResolvable: deps.assertReferencesResolvable } : {}),
   });
 
   /**
@@ -574,7 +581,13 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedShots[0].candidate, shots: normalizedShots, now: now(), origin: input.origin });
         return { operation, nextAction: "preview" };
       }
-      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(candidateFrom(params.candidate), deps.videoModelCandidates), now: now(), origin: input.origin });
+      const singleCandidate = candidateFrom(params.candidate);
+      // P4 §5.1.4 锚复用授权面（单镜同守，P2 通用性）：单镜引用外来/不存在资产也当场拒——references 有三个入口，
+      // 单镜 candidate 是其一，不能只堵多镜。多镜路已在 resolveCreateShots 内校验过。
+      if (deps.assertReferencesResolvable && singleCandidate.references.length > 0) {
+        deps.assertReferencesResolvable(input.lease.projectId, singleCandidate.references);
+      }
+      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(singleCandidate, deps.videoModelCandidates), now: now(), origin: input.origin });
       return { operation, nextAction: "preview" };
     }
     const current = await deps.operations.read(input.lease.projectId, operationId);

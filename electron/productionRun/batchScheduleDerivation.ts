@@ -126,6 +126,14 @@ export type BatchDerivationInput = {
 export type BatchDerivationResult = {
   anchorDispatch: DispatchTask[];
   shotDispatch: DispatchTask[];
+  /**
+   * Units whose current-attempt job is submitted and still pollable (`provider_accepted`/`polling`
+   * with a providerTaskId). The orchestrator's observe loop polls these (with real waits) until they
+   * settle — THIS is what lets a re-kick (project reopen / timer) advance a slow provider's in-flight
+   * jobs after a restart: `needsDispatch` is false for them, so without this list a re-derivation
+   * would say "nothing to do" and the jobs would sit at `processing` forever.
+   */
+  observe: DispatchTask[];
   checkpoint: CheckpointState;
   progress: BatchProgress;
   halt?: BudgetHalt;
@@ -133,6 +141,13 @@ export type BatchDerivationResult = {
 
 /** Job statuses that mean "this unit finished successfully" — never re-dispatch. */
 const TERMINAL_DONE = new Set<ProductionJob["status"]>(["ready", "adopted"]);
+
+/**
+ * Post-submission, still-pollable statuses. Deliberately narrow: `needs_attention`/`submission_unknown`/
+ * `reconciling`/`cancel_requested` have their own recovery flows (resume/reconcile/cancel), and
+ * pre-submission statuses belong to `needsDispatch`. Requires a providerTaskId (poll needs one).
+ */
+const OBSERVABLE = new Set<ProductionJob["status"]>(["provider_accepted", "polling"]);
 
 /** Mirror productionGenerationSubmission.jobIdFor exactly — the deterministic durable identity. */
 function jobIdFor(runId: string, contractHash: string, attempt: number, shotId?: string): string {
@@ -254,11 +269,20 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
 
   const checkpoint = deriveCheckpoint(input, anchors);
 
+  // In-flight units to keep polling (anchors first, then shots — plan order). Derived purely from
+  // jobs[], so a crash-restart recomputes the same list and the observe loop resumes where it left off.
+  const observe: DispatchTask[] = [];
+  for (const shot of [...anchors, ...videoShots]) {
+    const job = jobForShot(input.runId, shot, input.jobs);
+    if (job && OBSERVABLE.has(job.status) && job.providerTaskId) observe.push(toTask(input.runId, shot));
+  }
+
   // Stop semantics (plan §3.3/§4): a stopped run dispatches nothing NEW (未提交=不提交不扣费).
-  // In-flight jobs settle on their own; completed jobs are preserved (both reflected in `progress`).
+  // In-flight jobs still settle: they are already paid for, so `observe` keeps them pollable and the
+  // orchestrator lands their results; completed jobs are preserved (both reflected in `progress`).
   const stopped = input.runStatus === "pausing" || input.runStatus === "paused" || input.runStatus === "cancelled";
   if (stopped) {
-    return { anchorDispatch: [], shotDispatch: [], checkpoint, progress };
+    return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress };
   }
 
   // Anchors go first. Any anchor still needing a job (fresh or a rejected-checkpoint re-attempt) is
@@ -269,7 +293,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   const checkpointReleased = checkpoint.status === "approved" || checkpoint.status === "auto_release";
   if (anchors.length > 0 && !checkpointReleased) {
     // Anchors present but checkpoint not released → dispatch anchors (if any pending), block shots.
-    return { anchorDispatch, shotDispatch: [], checkpoint, progress };
+    return { anchorDispatch, shotDispatch: [], observe, checkpoint, progress };
   }
 
   // Checkpoint released (approved / auto_release) or no anchors at all → consider video shots.
@@ -315,5 +339,5 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
     halt = { ...halt, dispatchableCount, remainingCount: remaining };
   }
 
-  return { anchorDispatch, shotDispatch, checkpoint, progress, ...(halt ? { halt } : {}) };
+  return { anchorDispatch, shotDispatch, observe, checkpoint, progress, ...(halt ? { halt } : {}) };
 }

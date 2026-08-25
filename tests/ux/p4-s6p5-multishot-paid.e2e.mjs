@@ -193,7 +193,9 @@ try {
     leaseHandle,
     shots: [
       { shotId: 'shot-1', role: 'shot', candidate: videoCandidate('shot-1', '雨夜便利店门口，一个人推门而入，霓虹灯反光，电影感') },
-      { shotId: 'shot-2', role: 'shot', candidate: videoCandidate('shot-2', '便利店货架间，两人隔着货架对视，暖光，特写') },
+      // shot-2 原「两人隔着货架对视，特写」两轮真跑都被 APIMart 内容审核挡（public figures/minors 误伤，
+      // cost=0 未计费）——确定性拦截会永远堵住「全批落地」验收目标，换成无人物特写的安全镜头。
+      { shotId: 'shot-2', role: 'shot', candidate: videoCandidate('shot-2', '便利店货架间，暖光，镜头沿货架缓慢推移，商品整齐排列，电影感') },
     ],
   })
   if (created.isError) {
@@ -295,20 +297,24 @@ try {
   const uniqueProviders = new Set(jobsNow.map((j) => j.jobId))
   ok(uniqueProviders.size === jobsNow.length, `每 Job 唯一（无重复提交）`)
 
-  // 尽力等 materialize（受 S4 调度器 poll gap 限制——慢真 provider 单趟 quiescence 不落地；见 plan §4.2）。
-  const matDeadline = Date.now() + 4 * 60 * 1000
+  // 等 materialize：调度器观察轮已带真实退避等待（2026-08-25 修掉 S4 poll gap——observe 派生 +
+  // pollHorizon + 15s re-kick），慢真 provider 也会在完成后被取回落地。fast/480p/4s 通常 1-2 分钟。
+  const matDeadline = Date.now() + 6 * 60 * 1000
   while (Date.now() < matDeadline) {
     const got = await agent.callTool('nomi_get_run', { projectId: leaseProjectId, runId }, 30000)
     run = runFrom(got) || run
-    if ((run?.artifacts || []).filter((a) => a.status === 'ready').length >= 2) break
+    const readyNow = (run?.artifacts || []).filter((a) => a.status === 'ready').length
+    const polls = (run?.jobs || []).map((j) => `${j.metadata?.shotId || j.jobId.slice(-6)}:${j.status}@${j.lastPollAt?.slice(11, 19) || '-'}`).join(' ')
+    note(`materialize 等待: ready=${readyNow} jobs=[${polls}]`)
+    if (readyNow >= 2) break
     await sleep(8000)
   }
 
   // ── 验产物：ffprobe + 截图（materialize 到了才验；被 poll gap 挡住则如实记，不冒充）──
   const artifacts = (run?.artifacts || []).filter((a) => a.status === 'ready')
   if (artifacts.length < 2) {
-    friction.push('两镜卡在 provider processing 未 materialize——撞 S4 调度器 poll 循环无间隔 gap（plan §4.2，已 spawn 修）')
-    note(`materialize 未完成（ready 产物=${artifacts.length}）：真钱已花在提交上，视频在 APIMart 侧处理；S4 poll gap 挡住落地`)
+    friction.push('两镜超 6 分钟未 materialize——供应商仍在处理或观察轮异常（查 run.jobs 的 providerStatus/lastPollAt 判因，别冒充成功）')
+    note(`materialize 未完成（ready 产物=${artifacts.length}）：真钱已花在提交上；lastPollAt 在走说明调度器仍在观察`)
   }
   for (const [i, art] of artifacts.slice(0, 2).entries()) {
     // 安全投影带项目内相对路径 → 拼项目根拿到本机文件，直接 ffprobe 验真（不再靠截图人眼降级）。
@@ -384,6 +390,7 @@ async function driveRework(agent, win, confirmBtn, projectId, runId, shotId, car
     const got = await agent.callTool('nomi_get_run', { projectId, runId }, 30000)
     const run = got.structured?.nomiRunData || got.json?.run || got.json
     // 安全投影现在带 metadata.shotId → 能按镜头认领 job（此前恒空，返工前提永远校验不过）。
+    // 不留 `|| j.shotId` 兜底：投影发的就是嵌套 metadata.shotId，扁平 shotId 从来不存在（P1 无并行版）。
     const shot1Jobs = (run?.jobs || []).filter((j) => j.metadata?.shotId === shotId)
     const terminal = shot1Jobs.find((j) => ['ready', 'adopted'].includes(j.status))
     if (!terminal) return { ok: false, reworked: false, msg: `第 1 镜没有可返工的终态 job（返工前提不满足）` }

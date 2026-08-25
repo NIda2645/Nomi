@@ -19,6 +19,7 @@ import {
 import { listSkillSummaries, readSkillContent } from '../skills/skillStore'
 import type { ProductionRunService } from '../productionRun/productionRunService'
 import type { ProductionBrief } from '../productionRun/productionRunTypes'
+import { isAnchorCheckpointGate } from '../productionRun/anchorCheckpoint'
 import { withPreApprovedPlan, type ProjectGateway } from './gateway'
 import { INTAKE_MAX_QUESTIONS, buildIntakeMessage, buildIntakeQuestions } from './mcpBriefIntake'
 import type { CapabilityOriginHost } from './security'
@@ -377,7 +378,9 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       if (!gate) throw new RpcError(`Production gate not found: ${gateId}`, 404)
       const creativeGate = gate.scope === 'stage'
         && (gate.gateId.startsWith('gate-direction-') || gate.gateId.startsWith('gate-sample-') || gate.gateId.startsWith('gate-freeze-'))
-      if (!creativeGate) throw new RpcError('This production gate must be decided in Nomi', 403)
+      // P4 §3.2：锚定妆照检查点也是免费质量门（不授权任何预算，见 anchorCheckpoint.ts）→ 与创意门同权
+      // 可经真人 elicitation 确认后在此表态；决议落库后 service 钩子重踢批次。预算/导出/逐镜付费门仍必须回 Nomi。
+      if (!creativeGate && !isAnchorCheckpointGate(gate)) throw new RpcError('This production gate must be decided in Nomi', 403)
       await ctx.productionRuns.command(projectId, runId, {
         commandId: `mcp-decide-${gateId}-${decision}-${full.revision}`,
         expectedRevision: full.revision,
