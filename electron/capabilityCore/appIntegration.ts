@@ -34,7 +34,7 @@ import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
-import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
+import { createMultiShotBatchScheduler, type MultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
 import type { ProductionActionResult } from '../productionRun/productionRunTypes'
 import { landCanvasForRun } from '../productionRun/multiShotCanvasLanding'
 import { createArtifactProjection, getArtifactPreviewSecret } from '../productionRun/artifactProjection'
@@ -380,7 +380,39 @@ export async function startCapabilityCore(
         ...(options ? { options } : {}),
       })
     }
+    // 慢供应商续力（2026-08-25，S6.5 APIMart 真付费验收抓到的死锁）：一次 drive 只等到 pollHorizon；
+    // 没到静止点（quiescent:false = 还有可轮询的在飞 job / bounded-out）就定时再踢，直到批次真正落定。
+    // 重启安全：定时器丢了没关系，开项目 reconcile 的 kick 经派生 observe 一样推进在飞 job。每 run 至多
+    // 一个待踢定时器；kick 路径带在飞 dedupe（长跑 drive 存续期间 reconcile/timer 不叠踢——dedupe 只是
+    // 省资源，正确性本就由 Run lock + intent log + commandId 幂等保住，漏网的并发 drive 也无害）。
+    // rework/resume 语义路径不 dedupe：提额要立即落 ledger。
+    const REKICK_DELAY_MS = 15_000
+    const activeBatchDrives = new Set<string>()
+    const batchRekickTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    const scheduleBatchRekick = (projectId: string, runId: string): void => {
+      const key = `${projectId}:${runId}`
+      if (batchRekickTimers.has(key)) return
+      const timer = setTimeout(() => {
+        batchRekickTimers.delete(key)
+        kickSchedulerForRun(projectId, runId)
+      }, REKICK_DELAY_MS)
+      timer.unref?.()
+      batchRekickTimers.set(key, timer)
+    }
+    const driveScheduler = (projectId: string, runId: string, scheduler: MultiShotBatchScheduler, label: string): void => {
+      const key = `${projectId}:${runId}`
+      activeBatchDrives.add(key)
+      void scheduler.runToQuiescence()
+        .then((outcome) => {
+          if (!outcome.quiescent) scheduleBatchRekick(projectId, runId)
+        })
+        .catch((error) => {
+          console.warn(`[nomi:production] ${label} failed:`, error instanceof Error ? error.message : String(error))
+        })
+        .finally(() => activeBatchDrives.delete(key))
+    }
     const kickSchedulerForRun = (projectId: string, runId: string): void => {
+      if (activeBatchDrives.has(`${projectId}:${runId}`)) return // 已有长跑 drive；它的下一轮派生会接住新状态
       let run
       try {
         run = generationService.repository.read(projectId, runId)
@@ -392,9 +424,7 @@ export async function startCapabilityCore(
       if (['completed', 'cancelled', 'paused', 'pausing'].includes(run.status)) return // 已停/急停不自动续
       const scheduler = buildSchedulerForRun(projectId, runId, run)
       if (!scheduler) return
-      void scheduler.runToQuiescence().catch((error) => {
-        console.warn('[nomi:production] batch resume tick failed:', error instanceof Error ? error.message : String(error))
-      })
+      driveScheduler(projectId, runId, scheduler, 'batch resume tick')
     }
     const generationPlanning = authorities.generationPlanning
       ?? createGenerationPlanningHandler({
@@ -453,9 +483,8 @@ export async function startCapabilityCore(
             })
             // Kick the batch off the request path (durable + restart-safe): the scheduler runs to its next
             // resting point (anchors done + checkpoint waiting, or halt, or completion) without blocking.
-            void scheduler.runToQuiescence().catch((error) => {
-              console.error('[nomi:capability-core] batch scheduler tick failed:', error instanceof Error ? error.message : String(error))
-            })
+            // 慢供应商没到静止点 → driveScheduler 定时再踢直到批次落定。
+            driveScheduler(lease.projectId, operation.operationId, scheduler, 'batch scheduler tick')
             return { operationId: operation.operationId, state: operation.state, nextAction: 'observe' }
           }
           return submission.start({ projectId: lease.projectId, operationId: operation.operationId })
@@ -623,9 +652,7 @@ export async function startCapabilityCore(
       if (kicking) {
         const scheduler = buildSchedulerForRun(projectId, runId, kicking, maximumCost > 0 ? { raisePlanAuthorizationTo: kicking.budget.authorized + maximumCost } : undefined)
         if (scheduler) {
-          void scheduler.runToQuiescence().catch((error) => {
-            console.warn('[nomi:production] rework dispatch tick failed:', error instanceof Error ? error.message : String(error))
-          })
+          driveScheduler(projectId, runId, scheduler, 'rework dispatch tick')
         }
       }
       return { ok: true, code: 'reworked' }
@@ -676,9 +703,7 @@ export async function startCapabilityCore(
       }
       const scheduler = buildSchedulerForRun(projectId, runId, running, raiseTo !== undefined ? { raisePlanAuthorizationTo: raiseTo } : undefined)
       if (!scheduler) return { ok: false, code: 'unavailable' }
-      void scheduler.runToQuiescence().catch((error) => {
-        console.warn('[nomi:production] batch resume tick failed:', error instanceof Error ? error.message : String(error))
-      })
+      driveScheduler(projectId, runId, scheduler, 'batch resume tick')
       return { ok: true, code: 'resumed' }
     }
     reworkProductionShotHook = reworkProductionShot

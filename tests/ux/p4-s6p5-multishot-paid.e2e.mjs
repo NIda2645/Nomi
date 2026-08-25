@@ -207,7 +207,9 @@ try {
     leaseHandle,
     shots: [
       { shotId: 'shot-1', role: 'shot', candidate: videoCandidate('shot-1', '雨夜便利店门口，一个人推门而入，霓虹灯反光，电影感') },
-      { shotId: 'shot-2', role: 'shot', candidate: videoCandidate('shot-2', '便利店货架间，两人隔着货架对视，暖光，特写') },
+      // shot-2 原「两人隔着货架对视，特写」两轮真跑都被 APIMart 内容审核挡（public figures/minors 误伤，
+      // cost=0 未计费）——确定性拦截会永远堵住「全批落地」验收目标，换成无人物特写的安全镜头。
+      { shotId: 'shot-2', role: 'shot', candidate: videoCandidate('shot-2', '便利店货架间，暖光，镜头沿货架缓慢推移，商品整齐排列，电影感') },
     ],
   })
   if (created.isError) {
@@ -285,9 +287,12 @@ try {
   const submitDeadline = Date.now() + 3 * 60 * 1000
   let lastStatus = ''
   const accepted = (jobs) => jobs.filter((j) => ['provider_accepted', 'polling', 'ready', 'adopted', 'materializing'].includes(j.status)).length
+  // nomi_get_run 的完整安全投影在 structuredContent.nomiRunData（text 是人话转述不是 JSON，
+  // structured 顶层是 {nomiOutcome,nomiRun,nomiRunData}——见 mcpProtocol.buildToolResultPayload）。
+  const runFrom = (got) => got.structured?.nomiRunData || got.json?.run || got.json || null
   while (Date.now() < submitDeadline) {
     const got = await agent.callTool('nomi_get_run', { projectId: leaseProjectId, runId }, 30000)
-    run = got.json || got.structured || run
+    run = runFrom(got) || run
     const jobs = run?.jobs || []
     const failed = jobs.filter((j) => ['failed', 'needs_attention'].includes(j.status))
     const st = `jobs=${jobs.length} accepted=${accepted(jobs)} ready=${jobs.filter((j) => ['ready', 'adopted'].includes(j.status)).length} status=${run?.status}`
@@ -307,25 +312,29 @@ try {
   const uniqueProviders = new Set(jobsNow.map((j) => j.jobId))
   ok(uniqueProviders.size === jobsNow.length, `每 Job 唯一（无重复提交）`)
 
-  // 尽力等 materialize（受 S4 调度器 poll gap 限制——慢真 provider 单趟 quiescence 不落地；见 plan §4.2）。
-  const matDeadline = Date.now() + 4 * 60 * 1000
+  // 等 materialize：调度器观察轮已带真实退避等待（2026-08-25 修掉 S4 poll gap——observe 派生 +
+  // pollHorizon + 15s re-kick），慢真 provider 也会在完成后被取回落地。fast/480p/4s 通常 1-2 分钟。
+  const matDeadline = Date.now() + 6 * 60 * 1000
   while (Date.now() < matDeadline) {
     const got = await agent.callTool('nomi_get_run', { projectId: leaseProjectId, runId }, 30000)
-    run = got.json || got.structured || run
-    if ((run?.artifacts || []).filter((a) => a.status === 'ready').length >= 2) break
+    run = runFrom(got) || run
+    const readyNow = (run?.artifacts || []).filter((a) => a.status === 'ready').length
+    const polls = (run?.jobs || []).map((j) => `${j.status}@${j.lastPollAt?.slice(11, 19) || '-'}`).join(' ')
+    note(`materialize 等待: ready=${readyNow} jobs=[${polls}]`)
+    if (readyNow >= 2) break
     await sleep(8000)
   }
 
   // ── 验产物：ffprobe + 截图（materialize 到了才验；被 poll gap 挡住则如实记，不冒充）──
   const artifacts = (run?.artifacts || []).filter((a) => a.status === 'ready')
   if (artifacts.length < 2) {
-    friction.push('两镜卡在 provider processing 未 materialize——撞 S4 调度器 poll 循环无间隔 gap（plan §4.2，已 spawn 修）')
-    note(`materialize 未完成（ready 产物=${artifacts.length}）：真钱已花在提交上，视频在 APIMart 侧处理；S4 poll gap 挡住落地`)
+    friction.push('两镜超 6 分钟未 materialize——供应商仍在处理或观察轮异常（查 run.jobs 的 providerStatus/lastPollAt 判因，别冒充成功）')
+    note(`materialize 未完成（ready 产物=${artifacts.length}）：真钱已花在提交上；lastPollAt 在走说明调度器仍在观察`)
   }
   for (const [i, art] of artifacts.slice(0, 2).entries()) {
     // 拿安全预览/深链读到本机文件。优先 artifact 的 localPath / previewUrl。
     const got = await agent.callTool('nomi_get_artifact', { projectId: leaseProjectId, runId, artifactId: art.artifactId }, 30000)
-    const meta = got.json || got.structured || {}
+    const meta = got.structured?.nomiRunData || got.json || got.structured || {}
     const localUrl = meta.localPath || meta.filePath || art.projectRelativePath || meta.url
     const localPath = resolveLocalArtifact(localUrl) || (art.projectRelativePath ? resolveLocalArtifact(art.projectRelativePath) : null)
     if (localPath && fs.existsSync(localPath)) {
@@ -344,7 +353,7 @@ try {
 
   // ── S6 返工腿：对第 1 镜返工（同 Run 新 Job）→ 单镜确认卡 → 真返工出第 2 版 ──
   console.log('\n  ── S6 返工腿：对第 1 镜返工 ──')
-  const reworkResult = await driveRework(agent, win, confirmBtn, projectId, runId, 'shot-1', cardProof, shotsDir, ledger, friction)
+  const reworkResult = await driveRework(agent, win, confirmBtn, leaseProjectId, runId, 'shot-1', cardProof, shotsDir, ledger, friction)
   if (reworkResult.ok) {
     passed += 1; console.log(`  ✓ ${reworkResult.msg}`)
   } else {
@@ -355,7 +364,7 @@ try {
   // ── 记账 + 摩擦报告 ──
   console.log('\n════ 付费验收记账 ════')
   for (const l of ledger) console.log(`  ${l.step}: 请求=${l.requests} · ${l.note}`)
-  console.log(`  总真实 provider 请求（生成 job）: ${totalSubmits}${reworkResult.reworked ? ' + 返工 1' : ''}`)
+  console.log(`  总真实 provider 请求（生成 job）: ${jobsNow.length}${reworkResult.reworked ? ' + 返工 1' : ''}`)
   console.log('\n════ 体验摩擦 ════')
   if (friction.length === 0) console.log('  （无明显摩擦）')
   else for (const f of friction) console.log(`  - ${f}`)
@@ -383,8 +392,8 @@ async function driveRework(agent, win, confirmBtn, projectId, runId, shotId, car
   try {
     // 语义面无独立 rework 工具（S6 返工走渲染层占位/版本条 → IPC nomi:production-runs:rework）。
     // 本 headless 腿只能验：run 里该镜有可返工的终态 job（返工的前提）。真返工的 UI 走查在 R13 走查腿覆盖。
-    const got = await agent.callTool('nomi_get_run', { projectId: leaseProjectId, runId }, 30000)
-    const run = got.json || got.structured
+    const got = await agent.callTool('nomi_get_run', { projectId, runId }, 30000)
+    const run = got.structured?.nomiRunData || got.json?.run || got.json
     const shot1Jobs = (run?.jobs || []).filter((j) => j.metadata?.shotId === shotId || j.shotId === shotId)
     const terminal = shot1Jobs.find((j) => ['ready', 'adopted'].includes(j.status))
     if (!terminal) return { ok: false, reworked: false, msg: `第 1 镜没有可返工的终态 job（返工前提不满足）` }

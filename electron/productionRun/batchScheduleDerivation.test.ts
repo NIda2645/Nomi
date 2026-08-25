@@ -341,3 +341,54 @@ describe("P4 S4 deriveBatchPlan — stop semantics", () => {
     expect(result.progress.total).toBe(3);
   });
 });
+
+// P4 慢供应商修复（2026-08-25）— the `observe` output: in-flight units the orchestrator must keep
+// polling. Without this list, a re-kick after the scheduler rested (or an app restart) re-derived
+// "nothing to do" and slow-provider jobs sat at `processing` forever (the S6.5 paid-acceptance freeze).
+describe("P4 slow-provider observe — in-flight units the orchestrator keeps polling", () => {
+  it("lists provider_accepted/polling jobs (with a providerTaskId); settled/pre-submission/attention excluded", () => {
+    const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64)), shot("shot-c", "c".repeat(64)), shot("shot-d", "d".repeat(64))];
+    const result = deriveBatchPlan(baseInput({
+      plan: sealedPlan(shots),
+      jobs: [
+        { ...jobFor("shot-a", "a".repeat(64), "polling"), providerTaskId: "task-a" },
+        { ...jobFor("shot-b", "b".repeat(64), "ready"), providerTaskId: "task-b" }, // done → not observed
+        jobFor("shot-c", "c".repeat(64), "authorized"), // pre-submission → needsDispatch, not observe
+        { ...jobFor("shot-d", "d".repeat(64), "needs_attention"), providerTaskId: "task-d" }, // own recovery flow
+      ],
+    }));
+    expect(result.observe.map((t) => t.shotId)).toEqual(["shot-a"]);
+    expect(result.shotDispatch.map((t) => t.shotId)).toEqual(["shot-c"]);
+  });
+
+  it("excludes an in-flight job that has no providerTaskId yet (nothing to poll)", () => {
+    const result = deriveBatchPlan(baseInput({
+      jobs: [jobFor("shot-a", "a".repeat(64), "polling")],
+    }));
+    expect(result.observe).toEqual([]);
+  });
+
+  it("keeps observing on a stopped run: paid in-flight work still settles, nothing NEW dispatches", () => {
+    const result = deriveBatchPlan(baseInput({
+      runStatus: "paused",
+      jobs: [{ ...jobFor("shot-a", "a".repeat(64), "polling"), providerTaskId: "task-a" }],
+    }));
+    expect(result.observe.map((t) => t.shotId)).toEqual(["shot-a"]);
+    expect(result.shotDispatch).toEqual([]);
+    expect(result.anchorDispatch).toEqual([]);
+  });
+
+  it("orders anchors before video shots and survives the anchors-not-released early return", () => {
+    const plan = sealedPlan([shot("shot-a", "a".repeat(64)), anchorShot("anchor-1")]);
+    const result = deriveBatchPlan(baseInput({
+      plan,
+      jobs: [
+        { ...jobFor("shot-a", "a".repeat(64), "polling"), providerTaskId: "task-s" },
+        { ...jobFor("anchor-1", ANCHOR_HASH, "polling"), model: "image-model", providerTaskId: "task-anchor" },
+      ],
+    }));
+    // Anchors in flight → checkpoint pending, shots blocked — but BOTH stay observable (anchor first).
+    expect(result.checkpoint.status).toBe("pending_anchors");
+    expect(result.observe.map((t) => t.shotId)).toEqual(["anchor-1", "shot-a"]);
+  });
+});
