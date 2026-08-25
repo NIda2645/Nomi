@@ -331,6 +331,8 @@ export const MCP_TOOL_CATALOG = [
     name: 'nomi_decide_gate',
     description:
       '对制作 Run 的可逆创意门表态：approved 批准 / rejected 否决。方向门（gate-direction-*）可带 choiceKey 指定候选。'
+      + '多镜批的定妆照检查点（gate-anchor-checkpoint-*）也在此表态——决定前先把定妆照给真人过目'
+      + '（nomi_get_run 取该门 jobIds，对应 artifacts 用 nomi_get_artifact 逐张预览）；批准即在已批预算内开拍剩余镜头，不新增授权。'
       + 'Nomi 会在服务端再次向真人发起确认；预算、逐镜头付费、导出和发布必须回 Nomi 决定，不能用本工具跳过。',
     inputSchema: {
       type: 'object',

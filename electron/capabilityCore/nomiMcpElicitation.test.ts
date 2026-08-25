@@ -221,6 +221,42 @@ describe('nomi-mcp · 创意门由服务端强制 elicitation', () => {
     })
   })
 
+  // P4 §3.2：锚定妆照检查点与创意门同权——elicitation 用「视觉确认」文案问过真人后才应用决定。
+  it('定妆照检查点：真人确认后应用决定（视觉确认文案）', async () => {
+    const checkpointProjection = {
+      runId: 'run-1', projectId: 'project-1', status: 'running',
+      gates: [{
+        gateId: 'gate-anchor-checkpoint-run-1', scope: 'anchor_checkpoint', status: 'waiting',
+        title: 'Review the character look before shooting', summary: 'Approve the look, then it generates each shot.',
+        jobIds: ['job-anchor-1'],
+      }],
+    }
+    harness = new ProtocolHarness(true, async (method) => {
+      if (method === 'production.get') return checkpointProjection
+      if (method === 'production.decide-gate') return {
+        ...checkpointProjection,
+        gates: [{ ...checkpointProjection.gates[0], status: 'approved' }],
+      }
+      throw new Error(`unexpected invoke: ${method}`)
+    })
+    await harness.initialize(true)
+    harness.send({
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'nomi_decide_gate', arguments: { projectId: 'project-1', runId: 'run-1', gateId: 'gate-anchor-checkpoint-run-1', decision: 'approved' } },
+    })
+    const elicit = await harness.next()
+    expect(elicit.method).toBe('elicitation/create')
+    // 视觉确认语义：标题让真人「先过目定妆照」，不是泛化创意门文案。
+    expect(JSON.stringify(elicit.params)).toContain('定妆照')
+    harness.send({ jsonrpc: '2.0', id: elicit.id, result: { action: 'accept', content: { confirm: true } } })
+    const response = await harness.next()
+    expect(response.id).toBe(2)
+    expect(response.result).not.toMatchObject({ isError: true })
+    expect(harness.invoke).toHaveBeenNthCalledWith(2, 'production.decide-gate', {
+      projectId: 'project-1', runId: 'run-1', gateId: 'gate-anchor-checkpoint-run-1', decision: 'approved',
+    })
+  })
+
   it('预算门在协议层直接拒绝，不向客户端伪装成可批准创意门', async () => {
     harness = new ProtocolHarness(true, async (method) => {
       if (method === 'production.get') return {
