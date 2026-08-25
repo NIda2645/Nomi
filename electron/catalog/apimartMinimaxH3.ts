@@ -51,8 +51,8 @@ export function validateMinimaxH3Body(body: unknown, context?: RequestTransformC
   }
 }
 
-export function normalizeMinimaxH3Body(body: unknown): unknown {
-  validateMinimaxH3Body(body);
+export function normalizeMinimaxH3Body(body: unknown, context?: RequestTransformContext): unknown {
+  validateMinimaxH3Body(body, context);
   if (!isRecord(body)) return body;
 
   const hasFrame = hasWireValue(body.first_frame_image) || hasWireValue(body.last_frame_image);
