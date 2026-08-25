@@ -14,6 +14,14 @@ export const ANCHOR_META_KEYS = {
   frozen: 'frozen',
 } as const
 
+/** 冻结记录形态（镜像 electron AnchorFrozenMark）：定妆写它、判据读它。by 目前只有用户视觉确认一种。 */
+export type AnchorFrozenMark = {
+  /** 定妆时刻（epoch ms）。 */
+  at: number
+  /** 谁定的妆：只有用户视觉确认（不吃 spend/plan 会话信任的自动放行）。 */
+  by: 'user'
+}
+
 /** 视觉锚 kind：只有角色/场景/道具会生成参考卡、需要冻结；style 是文本锚不走冻结门。 */
 const VISUAL_ANCHOR_KINDS: ReadonlySet<string> = new Set(['character', 'scene', 'prop'])
 

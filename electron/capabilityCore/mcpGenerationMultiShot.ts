@@ -87,6 +87,15 @@ export type MultiShotCandidateParsers = {
 };
 
 /**
+ * P4 §5.1.4 锚复用入口的**授权面守门**：一个 candidate 的参考素材（复用锚 = 已有资产作 character 参考）必须
+ * **存在于本项目且属于本项目**。`candidateFrom` 只做结构校验（assetId 是串…），不认「这资产真在这项目里吗」——
+ * 外来/不存在的 assetId 会被静默放行、编进子合同、发给 provider（对抗矩阵 #3）。这个可选注入把「归属」这层补上：
+ * App 层用真解析器（查 listProjectAssets / Run 自有 artifacts）接线；抛人话 Error 即拒。未注入 = 逐字节等同今天
+ * （不给不 seed 资产的老测试/路径强加依赖）。纯契约（不耦合 projectAssetStore），本模块保持不碰 electron。
+ */
+export type AssertReferencesResolvable = (projectId: string, references: ReadonlyArray<PlanCandidate["references"][number]>) => void;
+
+/**
  * P4 S6.5 `plan` 入口: parse one client-supplied shot `{ shotId?, role?, included?, candidate }` into a
  * draft shot. The candidate is a FULL PlanCandidate (same shape single-shot create takes) — reusing
  * `candidateFrom` means the `plan` entrance shares the single-shot validation (no second parser).
@@ -136,6 +145,8 @@ export type MultiShotHelperDeps = {
   videoParameterSchema: (candidate: PlanCandidate) => Record<string, ParameterField> | undefined;
   priceForCandidate: (candidate: PlanCandidate) => { known: boolean; amount?: number };
   effectiveVideoModes: (candidate: VideoModelCandidate) => Array<{ transportTaskKind?: string }>;
+  /** P4 §5.1.4: 校验复用锚（references）存在且属于本项目。未注入 = 不校验（向后兼容）。 */
+  assertReferencesResolvable?: AssertReferencesResolvable;
 };
 
 /** Minimal operation shape the seal helper reads (avoids importing the full GenerationOperation type). */
@@ -178,6 +189,10 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     for (const shot of shots) {
       if (ids.has(shot.shotId)) throw new Error(`镜头 id 重复：${shot.shotId}`);
       ids.add(shot.shotId);
+      // P4 §5.1.4 锚复用授权面：每个镜的参考素材（复用锚）必须存在且属于本项目（对抗矩阵 #3）。
+      if (deps.assertReferencesResolvable && shot.candidate.references.length > 0) {
+        deps.assertReferencesResolvable(projectId, shot.candidate.references);
+      }
     }
     if (!shots.some((shot) => shot.role !== "anchor")) throw new Error("多镜计划至少需要一个视频镜头（不能只有形象参考）");
     return shots;
