@@ -101,6 +101,8 @@
 - **2 个真 APIMart 视频提交被接受**：durable run.json 显 shot-1 job `provider_accepted`→`polling` providerStatus=`processing` taskId=`task_01M0TZM4…`；shot-2 同 taskId=`task_01M0TZMK…`。**2 个互异 taskId = 镜数 2、无锚（0）、每 Job ≤1 submit**——§5.1 不变量在真 provider 上成立。
 - **记账**：create=0 请求（零花费草稿）；gate+start 后 = 2 真 provider submit（锚0+镜2）；budget.actual=0（APIMart 完成时才计费，两镜仍 processing）。key 全程未进日志/报告/仓库。
 - **未跑到 materialize**：两镜卡在 `processing` 未落地 → 撞两个**非本切片的连带 gap**：① **S4 调度器 poll 循环对慢真 provider 失效**（`multiShotBatchScheduler.ts` dispatchUnit 的 32 次 poll 无间隔 sleep，真视频要几分钟 → 循环瞬间跑完就 rest，之后无重 poll；`nomi_get_run` 只读不驱动）——已 spawn 任务修；② harness 读 `nomi_get_run` 的 jobs 字段与安全投影形状不符（get_run 返 jobs=0）——harness 侧读法问题，非产品。故 harness 诚实 FAIL 在 ready 检查（不冒充成功）。
+
+> **② 的定性 2026-08-25 修正（当时只对了一半）**：`jobs=0` 确是 harness 读法坑（完整投影在 `structuredContent.nomiRunData`，text 是人话不是 JSON）；但**另有一半是真产品缺口**——安全投影当时**不带** `job.metadata.shotId` 与 `artifact.projectRelativePath`，于是 ffprobe 腿拿不到本机文件（降级成截图人眼）、按 shotId 认领 job 恒空（返工前提永远校验不过）。已补：两格都**按值校验后**外发（`safeShotId` / `safeProjectRelativePath`，绝对路径/穿越/URL/非法 id 一律省略），并由 `mcpMultiShotCreateEntrance.e2e.test.ts` 用真管道跑出的 Run 过真投影零花费锁死。附带修掉 harness 三处自身 bug：`driveRework` 取用 try 块内的 `leaseProjectId`（ReferenceError 被自家 catch 吞成「返工前提不满足」，看着像产品问题）、`totalSubmits` 未声明（付费路径记账处必崩）、`03-canvas-after-generate.png` 停在创作页没切生成画布（拍了个寂寞）。
 - **结论**：**create 双入口的真付费全链到「真钱触发真 provider 提交」这一段已实证**；materialize 那一截被 S4 poll gap 挡住（真钱已花在提交上，视频在 APIMart 侧处理）。返工腿因需完成态镜节点 + 检查点/materialize 未通，改由既有零额度渲染层走查 `p4-s6-rework-version.e2e.mjs`（#153）覆盖 UI 半程。
 
 ## 5. 回归（全保持）

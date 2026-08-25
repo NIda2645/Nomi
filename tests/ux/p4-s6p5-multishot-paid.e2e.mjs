@@ -84,27 +84,13 @@ function ffprobe(localPath) {
   }
 }
 
-// 把 nomi-local:// 或绝对路径解析成本机文件路径（供 ffprobe/截图）。
-function resolveLocalArtifact(url) {
-  if (!url) return null
-  if (url.startsWith('/')) return fs.existsSync(url) ? url : null
-  if (url.startsWith('nomi-local://')) {
-    // nomi-local://asset/<projectId>/<rel> → 项目目录下 assets/<rel>；实际布局用探测兜底。
-    const rel = url.replace('nomi-local://', '')
-    const candidates = []
-    // 常见落点：projectsDir/**/assets 或 .nomi/out。逐个探。
-    const walk = (dir, depth) => {
-      if (depth > 5 || !fs.existsSync(dir)) return
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        const p = path.join(dir, e.name)
-        if (e.isDirectory()) walk(p, depth + 1)
-        else if (rel.split('/').pop() && e.name === rel.split('/').pop()) candidates.push(p)
-      }
-    }
-    walk(iso.projectsDir, 0)
-    return candidates[0] || null
-  }
-  return null
+// 产物的本机文件路径（供 ffprobe）。安全投影现在带 artifact.projectRelativePath（项目内相对路径，
+// 经 safeProjectRelativePath 校验）→ 直接拼项目根就是精确命中。命不中 = 真没落地，如实记，不猜。
+// （旧版靠 fs 递归 walk 按文件名找同名文件——那是没有该字段时的将就，字段补上后同 commit 删掉。）
+function resolveLocalArtifact(relativePath, projectDir) {
+  if (!relativePath || !projectDir) return null
+  const target = path.join(projectDir, relativePath)
+  return fs.existsSync(target) ? target : null
 }
 
 /** 起一个 stdio MCP 子进程（不声明 elicitation → 确认弹在 GUI 卡）。同隔离 env → 探到运行中的 GUI 转发。
@@ -280,7 +266,6 @@ try {
   ledger.push({ step: 'gate+start', requests: '待轮询确认', note: '真收据 + 启动批次' })
 
   // ── 轮询 run：先等「两镜真提交被 provider 接受」（本切片 create 入口的证据）；再尽力等 materialize。──
-  // nomi_get_run 的安全投影**不带 metadata.shotId**（SafeProductionJob 不 Pick），故按 status 计数不按 shotId。
   console.log('  · 轮询 run：先证两镜真提交被 APIMart 接受，再尽力等落地…')
   const runId = operationId
   let run = null
@@ -319,7 +304,7 @@ try {
     const got = await agent.callTool('nomi_get_run', { projectId: leaseProjectId, runId }, 30000)
     run = runFrom(got) || run
     const readyNow = (run?.artifacts || []).filter((a) => a.status === 'ready').length
-    const polls = (run?.jobs || []).map((j) => `${j.status}@${j.lastPollAt?.slice(11, 19) || '-'}`).join(' ')
+    const polls = (run?.jobs || []).map((j) => `${j.metadata?.shotId || j.jobId.slice(-6)}:${j.status}@${j.lastPollAt?.slice(11, 19) || '-'}`).join(' ')
     note(`materialize 等待: ready=${readyNow} jobs=[${polls}]`)
     if (readyNow >= 2) break
     await sleep(8000)
@@ -332,24 +317,32 @@ try {
     note(`materialize 未完成（ready 产物=${artifacts.length}）：真钱已花在提交上；lastPollAt 在走说明调度器仍在观察`)
   }
   for (const [i, art] of artifacts.slice(0, 2).entries()) {
-    // 拿安全预览/深链读到本机文件。优先 artifact 的 localPath / previewUrl。
+    // 安全投影带项目内相对路径 → 拼项目根拿到本机文件，直接 ffprobe 验真（不再靠截图人眼降级）。
     const got = await agent.callTool('nomi_get_artifact', { projectId: leaseProjectId, runId, artifactId: art.artifactId }, 30000)
     const meta = got.structured?.nomiRunData || got.json || got.structured || {}
-    const localUrl = meta.localPath || meta.filePath || art.projectRelativePath || meta.url
-    const localPath = resolveLocalArtifact(localUrl) || (art.projectRelativePath ? resolveLocalArtifact(art.projectRelativePath) : null)
-    if (localPath && fs.existsSync(localPath)) {
+    const relativePath = art.projectRelativePath || meta.projectRelativePath
+    const localPath = resolveLocalArtifact(relativePath, projectDir)
+    if (localPath) {
       const probe = ffprobe(localPath)
       const dur = Number(probe?.format?.duration)
       const vstream = (probe?.streams || []).find((s) => s.codec_type === 'video')
       note(`镜${i + 1} ffprobe: dur=${dur}s codec=${vstream?.codec_name} ${vstream?.width}x${vstream?.height}`)
       ok(Number.isFinite(dur) && dur > 0, `镜${i + 1} 是有时长的真视频（${dur}s）`)
     } else {
-      note(`镜${i + 1} 未解析到本机文件（url=${String(localUrl).slice(0, 50)}）— 降级人眼复核（截图存证）`)
+      note(`镜${i + 1} 未解析到本机文件（relativePath=${String(relativePath || '缺失').slice(0, 60)}）— 降级人眼复核（截图存证）`)
     }
   }
-  // 打开项目看画布落地（best-effort：确认即落占位 + 回填）。截图存证。
+  // 看画布落地（确认即落占位 + 回填）。**先切到生成画布**再拍——此前这张停在创作页，拍的是「没切过去」，
+  // 存证里根本没有落地节点，等于白拍。切完等舞台真出现再拍，拍不到就如实记，不拿创作页冒充画布。
   await sleep(2000)
+  const genTab = win.getByRole('button', { name: '生成', exact: false }).first()
+  if (await genTab.count()) await genTab.click().catch(() => undefined)
+  const canvasStage = win.locator('.generation-canvas-v2__stage').first()
+  const onCanvas = await canvasStage.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false)
+  if (!onCanvas) friction.push('点「生成」后 15s 内没等到生成画布舞台——03 截图仍停在上一面，落地节点未取证')
+  await sleep(1500)
   await win.screenshot({ path: path.join(shotsDir, '03-canvas-after-generate.png') })
+  note(`03 截图：${onCanvas ? '已切到生成画布（舞台可见）' : '未切成功，见上条摩擦'}`)
 
   // ── S6 返工腿：对第 1 镜返工（同 Run 新 Job）→ 单镜确认卡 → 真返工出第 2 版 ──
   console.log('\n  ── S6 返工腿：对第 1 镜返工 ──')
@@ -392,9 +385,13 @@ async function driveRework(agent, win, confirmBtn, projectId, runId, shotId, car
   try {
     // 语义面无独立 rework 工具（S6 返工走渲染层占位/版本条 → IPC nomi:production-runs:rework）。
     // 本 headless 腿只能验：run 里该镜有可返工的终态 job（返工的前提）。真返工的 UI 走查在 R13 走查腿覆盖。
+    // projectId 用形参（leaseProjectId 是 try 块里的 const，函数作用域取不到——取了会 ReferenceError
+    // 被自家 catch 吞成「返工前提不满足」，看起来像产品问题，其实是本脚本的作用域 bug）。
     const got = await agent.callTool('nomi_get_run', { projectId, runId }, 30000)
     const run = got.structured?.nomiRunData || got.json?.run || got.json
-    const shot1Jobs = (run?.jobs || []).filter((j) => j.metadata?.shotId === shotId || j.shotId === shotId)
+    // 安全投影现在带 metadata.shotId → 能按镜头认领 job（此前恒空，返工前提永远校验不过）。
+    // 不留 `|| j.shotId` 兜底：投影发的就是嵌套 metadata.shotId，扁平 shotId 从来不存在（P1 无并行版）。
+    const shot1Jobs = (run?.jobs || []).filter((j) => j.metadata?.shotId === shotId)
     const terminal = shot1Jobs.find((j) => ['ready', 'adopted'].includes(j.status))
     if (!terminal) return { ok: false, reworked: false, msg: `第 1 镜没有可返工的终态 job（返工前提不满足）` }
     return {

@@ -20,6 +20,12 @@ export type ArtifactPreview = {
 export type ArtifactProjection = Omit<ProductionArtifact, 'projectRelativePath' | 'thumbnailRelativePath'> & {
   projectId: string
   runId: string
+  /**
+   * 项目内相对路径——**校验后**才外发（见 safeProjectRelativePath）。本机 agent 拿它 + 项目目录就能验产物
+   * （ffprobe 时长/编码之类），不必再走签名预览链。缩略图那条（thumbnailRelativePath）仍不外发：它是渲染
+   * 中间物，外部没有用它的理由。
+   */
+  projectRelativePath?: string
   nomiUri: string
   preview?: ArtifactPreview
   openInNomi: string
@@ -121,6 +127,20 @@ function normalizeRelativePath(value: string): string {
   return segments.join('/')
 }
 
+/**
+ * 外发前把产物路径过一遍 normalizeRelativePath：绝对路径 / 盘符 / provider URL / `..` 穿越 / 坏编码一律省略。
+ * 字段名写着 relative 但历史写入方并不保证（合同 evidence 里就见过 `/Users/...` 绝对路径），所以这里按**值**
+ * 判定、不按字段名信任——校验通过才算「项目内相对路径」，否则当没有。与预览链共用同一把尺子，不另立第二套。
+ */
+export function safeProjectRelativePath(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  try {
+    return normalizeRelativePath(value)
+  } catch {
+    return undefined
+  }
+}
+
 export function resolveOwnedArtifactFile(projectRoot: string, relativePath: string): string {
   const root = path.resolve(projectRoot)
   const target = path.resolve(root, relativePath)
@@ -193,6 +213,8 @@ export function createArtifactProjection(args: {
   const artifactId = identifier(args.artifact.artifactId, 'artifact')
   const sourcePath = args.artifact.thumbnailRelativePath || args.artifact.projectRelativePath
   const safePath = sourcePath ? normalizeRelativePath(sourcePath) : undefined
+  // 预览用的是「缩略图优先」那条；外发的产物路径必须是产物**自己**那条，且各自独立校验。
+  const artifactPath = safeProjectRelativePath(args.artifact.projectRelativePath)
   if (safePath) resolveOwnedArtifactFile(args.projectRoot, safePath)
   const nowMs = Number.isFinite(args.nowMs) ? Number(args.nowMs) : Date.now()
   const ttlMs = Math.min(MAX_TTL_MS, Math.max(1_000, Math.floor(args.ttlMs ?? DEFAULT_TTL_MS)))
@@ -237,6 +259,7 @@ export function createArtifactProjection(args: {
     ...(args.artifact.skillEvidence ? { skillEvidence: args.artifact.skillEvidence } : {}),
     createdAt: args.artifact.createdAt,
     ...(args.artifact.adoptedAt ? { adoptedAt: args.artifact.adoptedAt } : {}),
+    ...(artifactPath ? { projectRelativePath: artifactPath } : {}),
     nomiUri: `nomi://project/${encodeURIComponent(projectId)}/run/${encodeURIComponent(runId)}/artifact/${encodeURIComponent(artifactId)}`,
     ...(preview ? { preview } : {}),
     openInNomi: `nomi://project/${encodeURIComponent(projectId)}/run/${encodeURIComponent(runId)}?artifact=${encodeURIComponent(artifactId)}`,
