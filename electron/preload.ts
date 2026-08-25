@@ -394,6 +394,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:prompt-library:text-brain") as Promise<{
         ok: boolean;
         brain: { vendor: string; modelKey: string } | null;
+        status: "ok" | "locked" | "missing";
       }>,
     userList: () =>
       ipcRenderer.invoke("nomi:prompt-library:user-list") as Promise<{

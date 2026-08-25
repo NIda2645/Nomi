@@ -23,6 +23,7 @@ import {
   type Approval,
   type AutomationPolicy,
   type CreateProductionRunInput,
+  type ProductionGenerationShot,
   type ProductionRun,
   type ProductionRunSummary,
   type RunCommand,
@@ -291,6 +292,13 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     candidate: PlanCandidate;
     currency?: string;
     policy?: Partial<AutomationPolicy>;
+    /**
+     * P4 S6.5 生产入口: a multi-shot draft seeds its per-shot entries (anchor + video shots) here at
+     * create time so patch/preview can shot-address them (S1 `generation.patch` reads plan.shots) and
+     * gate_request can seal them into sub-contracts. Draft shots carry candidate/role/included only —
+     * their sealed sub-contract is compiled at seal. Absent → single-shot draft (byte-identical to today).
+     */
+    shots?: ReadonlyArray<Pick<ProductionGenerationShot, "shotId" | "role" | "included" | "candidate">>;
   }): ProductionRun {
     const projectId = String(input.projectId || "").trim();
     const operationId = String(input.operationId || "").trim();
@@ -316,7 +324,17 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       gates: [],
       jobs: [],
       artifacts: [],
-      generationPlan: { operationId, state: "draft", candidate: structuredClone(input.candidate), updatedAt: timestamp },
+      generationPlan: {
+        operationId,
+        state: "draft",
+        candidate: structuredClone(input.candidate),
+        // P4 S6.5: seed draft shots (candidate/role/included; no sub-contract until seal). Single-shot
+        // drafts omit shots entirely — the read path stays on the top-level candidate (老 Run 零迁移).
+        ...(input.shots && input.shots.length > 0
+          ? { shots: input.shots.map((shot) => ({ shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), ...(shot.included !== undefined ? { included: shot.included } : {}), candidate: structuredClone(shot.candidate), updatedAt: timestamp })) }
+          : {}),
+        updatedAt: timestamp,
+      },
       createdAt: timestamp,
       updatedAt: timestamp,
     };

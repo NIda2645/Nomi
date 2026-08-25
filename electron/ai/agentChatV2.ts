@@ -33,7 +33,7 @@ import {
 } from "./documentTools";
 import { readNestedRecord, trim, type JsonRecord } from "../jsonUtils";
 import { findSkillRecord } from "../skills/skillStore";
-import { decryptApiKeyRecord } from "../catalog/secrets";
+import { apiKeyDecryptStatus, decryptApiKeyRecord } from "../catalog/secrets";
 import { normalizeProviderKind, readCatalog } from "../catalog/catalogStore";
 import type { CatalogState, Model, Vendor } from "../catalog/types";
 import { readNomiLocalAsset } from "../assets/localAssetFile";
@@ -204,7 +204,10 @@ function chooseTextModel(
     const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[model.vendorKey]);
     if (vendor && (vendor.authType === "none" || apiKey)) return { vendor, model, apiKey };
   }
-  throw new Error("No local text model is configured. Open model settings and add an API key.");
+  // 稳定 code 前缀（沿用 electron 侧「专用签名」范式：Model is retired: / Model kind mismatch: …）。
+  // 渲染层 classifyGenerationError 按 "no usable text model" 签名归 model-config 报人话，不再原样甩英文散句
+  // （2026-08-25 走查：旧散句「No local text model is configured…」落进 unknown 分类，被原串直通给用户）。
+  throw new Error("Model is not configured: no usable text model. Open model settings and add an API key.");
 }
 
 /**
@@ -218,6 +221,30 @@ export function resolveTextBrainKeys(): { vendor: string; modelKey: string } | n
   } catch {
     return null;
   }
+}
+
+/**
+ * 文本大脑可用性的**三态**（不只是 bool）——供上手清单/恢复卡/库页状态条把「读不出」和「没配」说清楚。
+ *   · ok     ：解得出一个可用大脑（返回它的 vendor/modelKey）。
+ *   · locked ：有 enabled 的 text 模型、但候选的 key 记录**在**却当前宿主身份解不开（safeStorage 解密失败）——
+ *              这与「没配」天差地别：该去模型设置**重新粘贴** Key，而不是去接一个新模型。
+ *   · missing：连一个 enabled 的可用候选都没有（真没配文本模型）。
+ *
+ * 判据全部复用既有单一真相源（chooseTextModel 的候选选择 + secrets.apiKeyDecryptStatus），不另造探测（P1）。
+ */
+export function resolveTextBrainStatus():
+  | { status: "ok"; brain: { vendor: string; modelKey: string } }
+  | { status: "locked" | "missing" } {
+  const brain = resolveTextBrainKeys();
+  if (brain) return { status: "ok", brain };
+  // 没解出大脑：区分「有候选但都 locked」与「压根没候选」。
+  const state = readCatalog();
+  const candidates = selectTextModelCandidates(state);
+  const anyLocked = candidates.some(({ vendor }) => {
+    if (vendor.authType === "none") return false; // 本地后端不需要 key，不会 locked
+    return apiKeyDecryptStatus(state.apiKeysByVendor[vendor.key]) === "locked";
+  });
+  return { status: anyLocked ? "locked" : "missing" };
 }
 
 // vendor→LanguageModel 构造已抽到 ./vendorLanguageModel（单一真相,与文本任务引擎共用）。

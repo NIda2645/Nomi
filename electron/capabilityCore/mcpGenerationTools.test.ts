@@ -387,4 +387,61 @@ describe("semantic MCP generation tools", () => {
       expect(() => JSON.stringify(result.shots)).not.toThrow();
     });
   });
+
+  // P4 S6.5 生产入口 — the REAL create-with-shots entrance over the in-memory store (proves the entrance
+  // itself builds draft.shots then seals per-shot sub-contracts + planHash; the durable full-chain is in
+  // mcpMultiShotCreateEntrance.e2e.test.ts). Complements the S4 block above which pre-seals a store.
+  describe("P4 S6.5 multi-shot create entrance", () => {
+    const resolveModelPricing = (providerId: string, modelId: string) =>
+      providerId === "fixture-provider" && modelId === "fixture-model" ? { cost: 6, enabled: true, specCosts: [] } : undefined;
+
+    function shotFrom(shotId: string, prompt: string, role?: "anchor" | "shot") {
+      return { shotId, ...(role ? { role } : {}), candidate: candidate({ candidateId: `cand-${shotId}`, prompt }) };
+    }
+
+    it("create({shots}) persists draft shots and gate_request seals a real multi-shot bundle (sub-contracts + planHash)", async () => {
+      const operations = createInMemoryGenerationOperationStore();
+      const handler = createGenerationPlanningHandler({ registry, operations, resolveModelPricing, now: () => "2026-08-23T00:00:00.000Z" });
+      const created = await handler({ capability: "create", params: { operationId: "op-e", shots: [
+        shotFrom("anchor-1", "主角 阿雨 定妆", "anchor"),
+        shotFrom("shot-a", "雨夜推门", "shot"),
+        shotFrom("shot-b", "货架对视", "shot"),
+      ] }, lease }) as { operation: { operationId: string; shots?: unknown[] }; nextAction: string };
+      expect(created.nextAction).toBe("preview");
+      expect(created.operation.shots).toHaveLength(3);
+
+      await handler({ capability: "preview", params: { operationId: "op-e" }, lease });
+      const gate = await handler({ capability: "gate_request", params: { operationId: "op-e" }, lease }) as {
+        shots?: { shots: Array<{ shotId: string }>; anchorChips?: unknown[] }; maximumCost: number; costScope: string; contractHash: string; nextAction: string;
+      };
+      expect(gate.nextAction).toBe("confirm");
+      // 2 video shots on the card, anchor as a chip; plan-level cost = 3 × ¥6 = ¥18.
+      expect(gate.shots?.shots.map((s) => s.shotId)).toEqual(["shot-a", "shot-b"]);
+      expect(gate.shots?.anchorChips).toHaveLength(1);
+      expect(gate.maximumCost).toBe(18);
+      expect(gate.costScope).toBe("generation.multi-shot:op-e");
+      // The sealed operation now carries per-shot sub-contracts (candidate.sealedContractHash set).
+      const sealed = await operations.read("project-1", "op-e") as { shots?: Array<{ shotId: string; contract?: { contractHash: string }; candidate: { sealedContractHash?: string } }>; planHash?: string };
+      expect(sealed.shots).toBeDefined();
+      const videoShot = sealed.shots!.find((s) => s.shotId === "shot-a");
+      expect(videoShot?.contract?.contractHash).toBeTruthy();
+      expect(videoShot?.candidate.sealedContractHash).toBe(videoShot?.contract?.contractHash);
+      expect(gate.contractHash).toBe(sealed.planHash); // multi-shot receipt keyed on the plan hash
+    });
+
+    it("an excluded shot carries no sub-contract and drops off the card (试拍/分批)", async () => {
+      const operations = createInMemoryGenerationOperationStore();
+      const handler = createGenerationPlanningHandler({ registry, operations, resolveModelPricing, now: () => "2026-08-23T00:00:00.000Z" });
+      await handler({ capability: "create", params: { operationId: "op-x", shots: [
+        shotFrom("shot-a", "雨夜推门", "shot"),
+        { ...shotFrom("shot-b", "货架对视", "shot"), included: false },
+      ] }, lease });
+      await handler({ capability: "preview", params: { operationId: "op-x" }, lease });
+      const gate = await handler({ capability: "gate_request", params: { operationId: "op-x" }, lease }) as { shots?: { shots: Array<{ shotId: string }> }; maximumCost: number };
+      expect(gate.shots?.shots.map((s) => s.shotId)).toEqual(["shot-a"]); // only the included shot
+      expect(gate.maximumCost).toBe(6); // one included shot's price
+      const sealed = await operations.read("project-1", "op-x") as { shots?: Array<{ shotId: string; contract?: unknown }> };
+      expect(sealed.shots?.find((s) => s.shotId === "shot-b")?.contract).toBeUndefined();
+    });
+  });
 });

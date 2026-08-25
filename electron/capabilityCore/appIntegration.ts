@@ -458,6 +458,21 @@ export async function startCapabilityCore(
             if (isProjectOpen(lease.projectId)) {
               await landCanvasBestEffort(lease.projectId, operation.operationId)
             }
+            // P4 S6.5 生产入口修根因：调度器只驱动 state==='submitted' 的多镜计划（multiShotBatchScheduler
+            // batchActive 判据）。单镜走 submission.start 内部会转 submitted；多镜这条分支此前**从不转
+            // submitted**，sealed+approved 的计划停在 sealed → batchActive 恒 false → 调度器空转（S4/S5
+            // e2e 用 setup 直发 generation.submit 绕过 appIntegration 才没暴露，正是「没有生产入口」的直接
+            // 后果）。故 kick 前先经 durable 命令转 submitted（幂等：已 submitted 直接跳过）。
+            const beforeKick = generationService.repository.read(lease.projectId, operation.operationId)
+            if (beforeKick?.generationPlan?.state === 'sealed') {
+              await generationService.command(lease.projectId, operation.operationId, {
+                commandId: `generation.submit:${operation.operationId}:${beforeKick.generationPlan.planHash ?? beforeKick.generationPlan.contract?.contractHash ?? 'plan'}`,
+                expectedRevision: beforeKick.revision,
+                type: 'generation.submit',
+                payload: {},
+                issuedAt: new Date().toISOString(),
+              })
+            }
             const scheduler = createMultiShotBatchScheduler({
               repository: generationService.repository,
               submission,

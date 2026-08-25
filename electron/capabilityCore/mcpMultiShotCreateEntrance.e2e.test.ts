@@ -1,0 +1,324 @@
+import fs from "node:fs";
+import http from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { createModuleRegistry } from "./moduleRegistry";
+import { createGenerationRuntimeAdapter, type GenerationProvider } from "./generationRuntimeAdapter";
+import {
+  createGenerationPlanningHandler,
+  type GenerationOperation,
+  type GenerationOperationStore,
+  type StoryboardPlanResult,
+} from "./mcpGenerationTools";
+import { PROJECT_LEASE_ALGORITHM, PROJECT_LEASE_AUDIENCE, PROJECT_LEASE_VERSION, type ProjectLeaseV1 } from "./projectLease";
+import { createProductionGenerationOperationStore } from "../productionRun/productionGenerationOperationStore";
+import { createProductionGenerationSubmission } from "../productionRun/productionGenerationSubmission";
+import { createProductionRunRepository } from "../productionRun/productionRunRepository";
+import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
+import { anchorCheckpointGateId } from "../productionRun/anchorCheckpoint";
+
+// P4 S6.5 生产入口 — end-to-end over the REAL semantic create→seal→gate→start entrance (NOT test injection
+// into the reducer). This is the proof the review demanded: `nomi_operation_create` with a multi-shot
+// `plan` (or `scriptText`) → durable seal with shots[] → the SAME S1-S6 downstream (gate multi-shot
+// projection → anchor checkpoint → S4 scheduler → per-shot artifacts). Zero quota: a real loopback HTTP
+// vendor. The §5.1 invariant is asserted: 每 Job ≤1 submit;总请求数 = 锚数 + 镜数 (the anchor is a request too).
+
+const NOW_BASE = Date.parse("2026-08-25T00:00:00.000Z");
+const roots: string[] = [];
+let clock = NOW_BASE;
+const now = () => new Date(clock).toISOString();
+
+const registry = createModuleRegistry([{
+  moduleId: "generation.single-shot",
+  version: "1.0.0",
+  inputKinds: ["text", "image"],
+  outputKinds: ["image", "video"],
+  modes: ["text-to-image", "image-to-video"],
+  parameterSchema: {},
+  assetInputSchema: { references: { kind: "image", max: 4 } },
+  providers: [{
+    providerId: "apimart",
+    models: [
+      { modelId: "image-model", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
+      { modelId: "video-model", modes: ["image-to-video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
+    ],
+  }],
+}]);
+
+const lease: ProjectLeaseV1 = {
+  version: PROJECT_LEASE_VERSION,
+  keyId: "key-1",
+  algorithm: PROJECT_LEASE_ALGORITHM,
+  issuer: "nomi-main",
+  nonce: "nonce-1",
+  scopeHash: "scope-hash-1",
+  mac: "mac-1",
+  projectId: "project-1",
+  immutableProjectUuid: "project-uuid-1",
+  projectGeneration: 1,
+  canonicalRootDigest: "root-1",
+  manifestDigest: "manifest-1",
+  issuedAt: "2026-08-25T00:00:00.000Z",
+  expiresAt: "2026-08-25T01:00:00.000Z",
+  audience: PROJECT_LEASE_AUDIENCE,
+  leasePrincipal: "mcp:test",
+  sessionId: "session-1",
+  connectionNonce: "connection-1",
+  revocationEpoch: 0,
+  scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:gate", "generation:submit", "generation:read"],
+};
+
+/** A real loopback HTTP vendor (zero quota): accepts a task, reports succeeded, returns a decodable data URL. */
+async function startLoopbackVendor() {
+  const hits: Array<{ url: string; method: string }> = [];
+  const pngDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const server = http.createServer((req, res) => {
+    hits.push({ url: req.url ?? "", method: req.method ?? "" });
+    req.on("data", () => { /* drain */ }); req.on("end", () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ created: 1, data: [{ task_id: `task-${hits.length}`, status: "succeeded", url: pngDataUrl, images: [{ url: pngDataUrl }] }] }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as { port: number };
+  return { origin: `http://127.0.0.1:${port}`, hits, close: () => new Promise<void>((r) => server.close(() => r())) };
+}
+
+function loopbackProvider(origin: string, submits: string[]): GenerationProvider {
+  return {
+    providerId: "apimart",
+    capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },
+    buildRequest: (input) => input,
+    submit: async (_request, idempotencyKey) => {
+      submits.push(idempotencyKey);
+      const res = await fetch(`${origin}/v1/generations`, { method: "POST", body: JSON.stringify({ idempotencyKey }) });
+      const json = await res.json() as { data: Array<{ task_id: string }> };
+      return { providerTaskId: json.data[0].task_id, raw: json };
+    },
+    query: async (providerTaskId) => ({ status: "succeeded", raw: { id: providerTaskId, status: "succeeded" } }),
+    materialize: async ({ providerTaskId }) => ({ outputs: [{ kind: "video", url: `nomi-local://asset/project-1/${providerTaskId}.png` }] }),
+  };
+}
+
+/** Full candidate for a `plan`-entrance shot (client supplies these — same shape single-shot create takes). */
+function shotCandidate(id: string, prompt: string, role: "anchor" | "shot") {
+  const modelId = role === "anchor" ? "image-model" : "video-model";
+  const mode = role === "anchor" ? "text-to-image" : "image-to-video";
+  return { candidateId: `cand-${id}`, revision: 1, moduleId: "generation.single-shot", providerId: "apimart", modelId, mode, prompt, parameters: {}, references: [] };
+}
+
+function harness(vendorOrigin: string, submits: string[], planStoryboard?: (input: { projectId: string; scriptText: string }) => StoryboardPlanResult) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-entrance-e2e-"));
+  roots.push(root);
+  const repository = createProductionRunRepository({ projectDirResolver: (p) => (p === "project-1" ? root : null), now });
+  // Minimal Run owner over the durable repository (the store needs createGenerationDraft/readFull/command).
+  const owner = {
+    createGenerationDraft: repository.createGenerationDraft,
+    readFull: (projectId: string, operationId: string) => {
+      const run = repository.read(projectId, operationId);
+      if (!run) throw new Error(`Run not found: ${operationId}`);
+      return run;
+    },
+    command: async (projectId: string, operationId: string, command: Parameters<typeof repository.execute>[2]) => repository.execute(projectId, operationId, command),
+  };
+  const operations = createProductionGenerationOperationStore(owner as never) as GenerationOperationStore;
+  const provider = loopbackProvider(vendorOrigin, submits);
+  createGenerationRuntimeAdapter({ providers: [provider] }); // sanity: the real adapter accepts this provider
+  const submission = createProductionGenerationSubmission({
+    repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
+    intentMacKey: "test-intent-key", provider,
+    resolveShotPrice: () => ({ known: true, amount: 6 }),
+    materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
+    now,
+  });
+  const buildScheduler = () => createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-entrance", perShotPrice: () => ({ known: true, amount: 6 }), now });
+  // The `start` dep mirrors appIntegration's multi-shot start branch: transition sealed→submitted, then
+  // kick the durable scheduler. (This is exactly the branch S6.5 fixed — without the submit, batchActive
+  // stays false and the scheduler no-ops.)
+  const handler = createGenerationPlanningHandler({
+    registry,
+    operations,
+    resolveModelPricing: () => ({ cost: 6, enabled: true, specCosts: [] }),
+    ...(planStoryboard ? { planStoryboard } : {}),
+    now,
+    start: async (operation: GenerationOperation) => {
+      const run = repository.read("project-1", operation.operationId)!;
+      if (run.generationPlan?.state === "sealed") {
+        repository.execute("project-1", operation.operationId, { commandId: `submit:${operation.operationId}`, expectedRevision: run.revision, type: "generation.submit", payload: {}, issuedAt: now() });
+      }
+      await buildScheduler().runToQuiescence();
+      return { operationId: operation.operationId, nextAction: "observe" };
+    },
+  });
+  return { root, repository, handler, buildScheduler };
+}
+
+afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); clock = NOW_BASE; });
+
+describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loopback vendor", () => {
+  it("create({shots}) → seal(shots) → gate multi-shot projection → decide → start → anchor checkpoint → shot batch; total requests = anchors + shots", async () => {
+    const vendor = await startLoopbackVendor();
+    const submits: string[] = [];
+    const { repository, handler, buildScheduler } = harness(vendor.origin, submits);
+    try {
+      // 1. REAL create with a multi-shot plan (1 anchor + 2 video shots) — the production entrance.
+      // operationId fixed to op-entrance so the harness scheduler (runId: op-entrance) drives THIS run.
+      const created = await handler({ capability: "create", lease, params: { operationId: "op-entrance", shots: [
+        { shotId: "anchor-1", role: "anchor", candidate: shotCandidate("anchor-1", "阿雨 定妆照", "anchor") },
+        { shotId: "shot-1", role: "shot", candidate: shotCandidate("shot-1", "雨夜推门", "shot") },
+        { shotId: "shot-2", role: "shot", candidate: shotCandidate("shot-2", "货架对视", "shot") },
+      ] } }) as { operation: { operationId: string; shots?: unknown[] }; nextAction: string };
+      const operationId = created.operation.operationId;
+      expect(operationId).toBe("op-entrance");
+      expect(created.nextAction).toBe("preview");
+      // Draft persisted 3 shots (anchor + 2 video), no sub-contracts yet.
+      expect(created.operation.shots).toHaveLength(3);
+
+      // 2. Preview (zero provider calls) then gate_request → the REAL multi-shot gate projection.
+      await handler({ capability: "preview", lease, params: { operationId } });
+      const gate = await handler({ capability: "gate_request", lease, params: { operationId } }) as {
+        shots?: { shots: Array<{ shotId: string; sceneOneLiner: string }>; anchorChips?: unknown[]; hardLimit: number };
+        maximumCost: number; costScope: string; contractHash: string; nextAction: string;
+      };
+      expect(gate.nextAction).toBe("confirm");
+      // display.shots holds the 2 INCLUDED video shots; the anchor rides as a chip (§3.2).
+      expect(gate.shots?.shots.map((s) => s.shotId).sort()).toEqual(["shot-1", "shot-2"]);
+      expect(gate.shots?.anchorChips).toHaveLength(1);
+      // PLAN-LEVEL receipt ceiling = sum of the 2 video shots + 1 anchor = 3 × ¥6 = ¥18.
+      expect(gate.maximumCost).toBe(18);
+      expect(gate.costScope).toBe(`generation.multi-shot:${operationId}`);
+
+      // 3. Decide the gate (a verified receipt) → approve the whole batch.
+      const decided = await handler({ capability: "gate_decide", lease, params: { operationId, receiptId: "receipt-plan" } }) as { nextAction: string };
+      expect(decided.nextAction).toBe("start");
+
+      // Plan is sealed + approved; the scheduler needs 'submitted' (the S6.5 start-branch fix).
+      let run = repository.read("project-1", operationId)!;
+      expect(run.generationPlan?.state).toBe("sealed");
+      expect(run.generationPlan?.shots).toHaveLength(3);
+
+      // 4. START → the real start branch transitions submitted + kicks the durable scheduler.
+      await handler({ capability: "start", lease, params: { operationId } });
+
+      run = repository.read("project-1", operationId)!;
+      // Anchor generated, checkpoint opened & auto-passed? No — default has no auto-release, so the batch
+      // stops at the checkpoint after the anchor. Exactly 1 submit so far (the anchor image).
+      expect(submits).toHaveLength(1);
+      const checkpoint = run.gates.find((g) => g.gateId === anchorCheckpointGateId(operationId))!;
+      expect(checkpoint.status).toBe("waiting");
+      expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(1); // anchor
+      expect(run.jobs.some((j) => j.metadata?.shotId === "shot-1")).toBe(false); // checkpoint blocks shots
+
+      // 5. Approve the anchor checkpoint → re-kick the durable scheduler directly (this is how appIntegration
+      // does it via kickSchedulerForRun after the gate decision — NOT via the MCP `start` capability, which
+      // requires state 'sealed'; the plan is now 'submitted'). The scheduler 无自有状态：从 jobs[]+ledger 纯
+      // 派生「下一批」——已提交不重提，已完成不重扣. So this is a pure resume of the shot batch over the SAME Run.
+      clock += 1000;
+      repository.execute("project-1", operationId, { commandId: "approve-checkpoint", expectedRevision: run.revision, type: "gate.decide", payload: { gateId: checkpoint.gateId, status: "approved" }, issuedAt: now() });
+      await buildScheduler().runToQuiescence();
+
+      run = repository.read("project-1", operationId)!;
+      // §5.1 invariant: total provider submissions = 1 anchor + 2 shots = 3 (NOT ≤2).
+      expect(submits).toHaveLength(3);
+      const shotJobs = run.jobs.filter((j) => typeof j.metadata?.shotId === "string");
+      expect(shotJobs.map((j) => j.metadata!.shotId).sort()).toEqual(["anchor-1", "shot-1", "shot-2"]);
+      expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(3); // anchor + 2 shots
+      // Every idempotency key used at most once (≤1 submit per job).
+      expect(new Set(submits).size).toBe(submits.length);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("rejects a plan with no video shot (only an anchor) with a human error", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler } = harness(vendor.origin, []);
+    try {
+      await expect(handler({ capability: "create", lease, params: { shots: [
+        { role: "anchor", candidate: shotCandidate("anchor-1", "只有形象", "anchor") },
+      ] } })).rejects.toThrow(/至少需要一个视频镜头/);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("rejects duplicate shot ids with a human error", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler } = harness(vendor.origin, []);
+    try {
+      await expect(handler({ capability: "create", lease, params: { shots: [
+        { shotId: "dup", role: "shot", candidate: shotCandidate("a", "镜一", "shot") },
+        { shotId: "dup", role: "shot", candidate: shotCandidate("b", "镜二", "shot") },
+      ] } })).rejects.toThrow(/镜头 id 重复/);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("keeps single-shot create byte-identical (no shots persisted, flat gate card, single-shot cost scope)", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler, repository } = harness(vendor.origin, []);
+    try {
+      const created = await handler({ capability: "create", lease, params: { candidate: shotCandidate("solo", "单镜", "shot") } }) as { operation: { operationId: string; shots?: unknown[] } };
+      const operationId = created.operation.operationId;
+      expect(created.operation.shots).toBeUndefined(); // single-shot draft has no shots
+      expect(repository.read("project-1", operationId)!.generationPlan?.shots).toBeUndefined();
+      await handler({ capability: "preview", lease, params: { operationId } });
+      const gate = await handler({ capability: "gate_request", lease, params: { operationId } }) as { shots?: unknown; costScope: string; maximumCost: number };
+      expect(gate.shots).toBeUndefined(); // flat single-shot card (no display.shots)
+      expect(gate.costScope).toBe(`generation.single-shot:${operationId}`);
+      expect(gate.maximumCost).toBe(6); // one shot's derived price
+    } finally {
+      await vendor.close();
+    }
+  });
+});
+
+describe("P4 S6.5 — scriptText create entrance (stubbed planner)", () => {
+  it("maps the planner's board into draft shots (role/prompt preserved) and seals a real multi-shot gate", async () => {
+    const vendor = await startLoopbackVendor();
+    const submits: string[] = [];
+    // A real planner picks the exact module/provider/model/mode per shot (single-provider v1 = APIMart).
+    const planStoryboard = vi.fn((): StoryboardPlanResult => ({ shots: [
+      { shotId: "anchor-1", role: "anchor", prompt: "阿雨 定妆照", moduleId: "generation.single-shot", providerId: "apimart", modelId: "image-model", mode: "text-to-image" },
+      { shotId: "shot-1", role: "shot", prompt: "雨夜推门", moduleId: "generation.single-shot", providerId: "apimart", modelId: "video-model", mode: "image-to-video" },
+      { shotId: "shot-2", role: "shot", prompt: "货架对视", moduleId: "generation.single-shot", providerId: "apimart", modelId: "video-model", mode: "image-to-video" },
+    ] }));
+    const { handler } = harness(vendor.origin, submits, planStoryboard);
+    try {
+      const created = await handler({ capability: "create", lease, params: { scriptText: "雨夜便利店，两角色相遇。" } }) as {
+        operation: { operationId: string; shots?: Array<{ shotId: string; role?: string; candidate: { prompt: string } }> };
+      };
+      expect(planStoryboard).toHaveBeenCalledTimes(1);
+      const operationId = created.operation.operationId;
+      // The board mapped to 3 draft shots with roles + prompts preserved.
+      expect(created.operation.shots).toHaveLength(3);
+      const anchor = created.operation.shots!.find((s) => s.role === "anchor")!;
+      expect(anchor.candidate.prompt).toBe("阿雨 定妆照");
+      const videoPrompts = created.operation.shots!.filter((s) => s.role !== "anchor").map((s) => s.candidate.prompt).sort();
+      expect(videoPrompts).toEqual(["货架对视", "雨夜推门"]);
+
+      // The scriptText draft seals a real multi-shot gate exactly like the plan entrance.
+      await handler({ capability: "preview", lease, params: { operationId } });
+      const gate = await handler({ capability: "gate_request", lease, params: { operationId } }) as { shots?: { shots: unknown[]; anchorChips?: unknown[] }; costScope: string };
+      expect(gate.shots?.shots).toHaveLength(2); // 2 video shots
+      expect(gate.shots?.anchorChips).toHaveLength(1); // 1 anchor chip
+      expect(gate.costScope).toBe(`generation.multi-shot:${operationId}`);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("throws a human error when scriptText is given but no planner is configured", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler } = harness(vendor.origin, []); // no planStoryboard
+    try {
+      await expect(handler({ capability: "create", lease, params: { scriptText: "一段剧本" } }))
+        .rejects.toThrow(/未启用「剧本自动拟镜」/);
+    } finally {
+      await vendor.close();
+    }
+  });
+});
