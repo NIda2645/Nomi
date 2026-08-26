@@ -23,6 +23,8 @@ import type {
 } from "./types";
 import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
+import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
+import { antigravityConnection } from "../ai/antigravityConnection";
 import { extractLegacyStages, normalizeLegacyMappings } from "./legacyMappingMigration";
 import {
   applyPlainCustomConfig,
@@ -408,6 +410,8 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
   const key = sanitizeName(raw.key, "").toLowerCase().replace(/\s+/g, "-");
   if (!key) throw new Error("vendor key is required");
   const existing = state.vendors.find((vendor) => vendor.key === key);
+  guardAntigravityVendorWrite({ ...raw, key, enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true) }, existing,
+    (request) => antigravityConnection.canEnable(request));
   const t = nowIso();
   const incomingMeta = raw.meta !== undefined ? raw.meta : existing?.meta;
   const incomingConfig =
@@ -533,6 +537,8 @@ function applyModelUpsert(state: CatalogState, payload: unknown): Model {
   const vendorKey = String(raw.vendorKey || "").trim();
   if (!modelKey || !vendorKey) throw new Error("modelKey and vendorKey are required");
   const existing = state.models.find((model) => model.vendorKey === vendorKey && model.modelKey === modelKey);
+  guardAntigravityModelWrite({ ...raw, vendorKey, modelKey, enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true) }, existing,
+    (request) => antigravityConnection.canEnable(request));
   const t = nowIso();
   const customCall = normalizeCustomCall(raw.customCall, existing?.customCall);
   const model: Model = {
@@ -634,6 +640,7 @@ function applyMappingUpsert(state: CatalogState, payload: unknown): Mapping {
     createdAt: existing?.createdAt || t,
     updatedAt: t,
   };
+  guardAntigravityMappingWrite(mapping, (request) => Boolean(request && antigravityConnection.hasPassed(request)));
   state.mappings = [mapping, ...state.mappings.filter((item) => item.id !== id)];
   return mapping;
 }

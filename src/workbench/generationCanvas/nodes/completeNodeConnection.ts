@@ -53,7 +53,9 @@ export function completeNodeConnection(connectedNodeId: string): void {
       const landed = slots.some((s) => s.fills.some((f) => f.origin.type === 'edge' && f.origin.sourceNodeId === sourceNodeId))
       const hasEdge = edges.some((e) => e.source === sourceNodeId && e.target === targetNodeId)
       if (hasEdge && !landed) {
-        const maxOfSlots = slots.reduce((m, s) => Math.max(m, s.max), 0)
+        const maxOfSlots = slots.some(s => s.max === undefined)
+          ? 0
+          : slots.reduce((m, s) => Math.max(m, s.max ?? 0), 0)
         showInfoToast(
           maxOfSlots > 0
             ? i18n.t('connection.slotsFull', { max: maxOfSlots })

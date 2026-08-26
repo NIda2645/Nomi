@@ -544,6 +544,7 @@ export type DesktopBridge = DesktopMediaBridge & {
     showInFolder: (payload: { projectId: string; relativePath: string }) => Promise<{ ok: boolean }>
   }
   tasks: {
+    cancel?: (taskId: string) => Promise<{ ok: boolean }>
     run: (payload: unknown) => Promise<unknown>
     result: (payload: unknown) => Promise<unknown>
     grantSpend: (payload: { nodeIds: string[]; maxAttemptsPerNode?: number }) => Promise<{ grantId: string }>

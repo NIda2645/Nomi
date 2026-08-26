@@ -13,6 +13,7 @@ import { normalizeProviderKind } from "../../catalog/catalogStore";
 import { checkVendorHealth } from "./vendorHealth";
 
 import { assertTrustedSender } from "../../ipcSenderGuard";
+import { registerAntigravityIpc } from "../antigravityIpc";
 // ---------------------------------------------------------------------------
 // Onboarding — 中转拉取式接入 IPC（手填地址+key → 拉模型 → 按 id 分类 → 保存）。
 // 「AI 读文档」子系统已下线（Issue #8：各家中转参数不一，读文档抠参数不可靠）。
@@ -62,6 +63,7 @@ async function probeOneProtocol(
 }
 
 export function registerOnboardingIpc(): void {
+  registerAntigravityIpc();
   // 「AI 读文档」接入路径已下线（Issue #8：改为中转拉取式接入图片/视频/文本）。
 
   // 供应商连接健康：模型面板每次打开时按家自查「现在能不能用」。凭证由主进程自取——

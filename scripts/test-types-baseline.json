@@ -1,7 +1,6 @@
 {
   "electron/ai/agentLoopIntegration.test.ts": 1,
   "electron/ai/agentStreamConsumer.test.ts": 1,
-  "electron/ai/buildAiSdkModel.test.ts": 1,
   "electron/ai/composeAgentSystemPrompt.test.ts": 1,
   "electron/capabilityCore/apimartGenerationProvider.test.ts": 3,
   "electron/capabilityCore/generationProviderBootstrap.test.ts": 3,

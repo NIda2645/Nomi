@@ -1,3 +1,5 @@
+import { isComfyuiVendor } from './types'
+
 export type ParameterReferenceGroup = 'first_frame' | 'last_frame' | 'reference'
 export type ParameterReferenceSlot = {
   key: string
@@ -10,6 +12,7 @@ export type ParameterReferenceContract = {
   vendorKey: string
   slots: ParameterReferenceSlot[]
 }
+export type ParameterReferenceSelection = { modelKey?: string; vendorKey: string }
 
 const DECLARATION_KEY = 'parameterReferenceSlots'
 
@@ -57,4 +60,16 @@ export function readParameterReferenceContract(meta: Record<string, unknown> | u
 
 export function readParameterReferenceSlotsContract(meta: Record<string, unknown> | undefined): ParameterReferenceSlot[] {
   return readParameterReferenceContract(meta)?.slots ?? []
+}
+
+/** A declaration is exact-only only for the Comfy model actually selected for this request. */
+export function readSelectedComfyReferenceContract(
+  meta: Record<string, unknown> | undefined,
+  selected?: ParameterReferenceSelection,
+): ParameterReferenceContract | null {
+  const contract = readParameterReferenceContract(meta)
+  if (!contract || !isComfyuiVendor({ key: contract.vendorKey })) return null
+  if (selected && (contract.vendorKey !== selected.vendorKey
+    || (selected.modelKey !== undefined && contract.modelKey !== selected.modelKey))) return null
+  return contract
 }

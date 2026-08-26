@@ -1,3 +1,4 @@
+import { getDesktopBridge } from '../../../desktop/bridge'
 import {
   type TaskKind,
   type TaskRequestDto,
@@ -34,11 +35,11 @@ import { promptRequiredForNode } from './promptRequirement'
 import { normalizeCatalogTaskResult } from './catalogTaskResultParse'
 import { localizeRemoteResultUrl } from './resultAssetLocalization'
 import {
-  ComfyuiTaskCancelledError,
-  isComfyuiCancelRequested,
+  LocalTaskCancelledError,
+  isTaskCancelRequested,
   unwatchComfyuiProgress,
   watchComfyuiProgress,
-} from './comfyuiTaskControl'
+} from './localTaskControl'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { RecoverableTimeoutError } from './recoverableTimeout'
@@ -109,7 +110,7 @@ function usesComfyParameterContract(meta: Record<string, unknown>): boolean {
 // 判据用 vendor key(稳定:codex-local/comfyui-local 都是 local:// 或本机 127.0.0.1 后端)。
 // ComfyUI 单列走前缀判据:第 2+ 台实例的 key 是 `comfyui-local-{slug}`,放进定值集合只覆盖得了第一台,
 // 用户加第二台机器就会被云 API 的 2min 硬超时腰斩。
-const SLOW_LOCAL_BACKENDS = new Set(['codex-local'])
+const SLOW_LOCAL_BACKENDS = new Set(['codex-local', 'antigravity-cli'])
 
 // 轮询按「后端时延」而非「视频 vs 图像」分档:慢道 = 视频 ∪ 本地进程后端。这样本地生图(codex/comfyui)
 // 不再被云 API 的 2min 硬超时腰斩,而 codex 进程真跑完(成功/失败)时 query 立即返回终态、循环自然结束,
@@ -394,7 +395,7 @@ async function waitForCatalogTaskResult(
   const cancelNodeId = asTrimmedString(request.extras?.nodeId)
   while (!TERMINAL_STATUSES.has(current.status)) {
     // P 轨遮罩取消：/interrupt 已发（免费幂等），这里把免费轮询也即刻停掉，不等 20min 硬超时。
-    if (cancelNodeId && isComfyuiCancelRequested(cancelNodeId)) throw new ComfyuiTaskCancelledError()
+    if (cancelNodeId && isTaskCancelRequested(cancelNodeId)) throw new LocalTaskCancelledError()
     const elapsedMs = Date.now() - startedAt
     if (elapsedMs > hardTimeoutMs) {
       // 超时≠失败：上游可能仍在跑/已出片 → 抛可找回错误，节点落 recoverable，给「重新拉取」入口。
@@ -416,10 +417,12 @@ async function waitForCatalogTaskResult(
         prompt: request.prompt,
         modelKey: asTrimmedString(request.extras?.modelKey) || null,
       })
+      if (cancelNodeId && isTaskCancelRequested(cancelNodeId)) throw new LocalTaskCancelledError()
       current = response.result
       pollFailureStreakStartedAt = null // 查成功 → 重置失败连击计数
       rateLimitStreak = 0
     } catch (error) {
+      if (error instanceof LocalTaskCancelledError) throw error
       // 查结果失败：免费重试(下一轮再查)，绝不冒泡触发重发。持续失败超 grace 或已到硬超时 → 落可找回。
       // 被限流才累计退避；别的失败（网络抖动等）复位，否则一次抖动就把间隔滚上去、白拖出片。
       rateLimitStreak = isRateLimitedPollError(error) ? rateLimitStreak + 1 : 0
@@ -503,6 +506,10 @@ export async function runCatalogGenerationTask(
   } catch (error) {
     if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
     throw error
+  }
+  if (isTaskCancelRequested(asTrimmedString(request.extras?.nodeId))) {
+    if (initialResult.id.startsWith('local-')) await getDesktopBridge()?.tasks.cancel?.(initialResult.id)
+    throw new LocalTaskCancelledError()
   }
   report('waiting', initialResult.id)
   // 旧 ComfyUI 可能不接受客户端 prompt id：按服务端真实回执切 watcher。

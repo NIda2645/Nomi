@@ -15,6 +15,14 @@ export interface ModelOptionPricing {
   specCosts: ReadonlyArray<ModelOptionPricingSpec>
 }
 
+/** Display grouping only; each option still addresses its own executable catalog row. */
+export type ModelOptionVariant = Readonly<{
+  familyKey: string
+  familyLabel: string
+  variantLabel: string
+  defaultVariant: boolean
+}>
+
 export interface ModelOption {
   value: string
   label: string
@@ -25,6 +33,7 @@ export interface ModelOption {
   modelAlias?: string | null
   meta?: unknown
   pricing?: ModelOptionPricing
+  variant?: ModelOptionVariant
 }
 
 export const TEXT_MODELS: ModelOption[] = [

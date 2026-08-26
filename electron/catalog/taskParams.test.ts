@@ -121,20 +121,29 @@ describe("firstReferenceImage — 单图首选", () => {
 });
 
 describe("taskTemplateParams — explicit media slots precede aggregate fallbacks", () => {
-  it.each(["image_url", "first_frame_url", "last_frame_url", "source_video_url", "reference_images", "reference_image_urls", "reference_video_urls", "reference_audio_urls"])("preserves an explicitly empty %s slot", (key) => {
-    const params = taskTemplateParams({ extras: {
-      [key]: null, firstFrameUrl: "first.png", lastFrameUrl: "last.png",
-      referenceImages: ["fallback.png"], referenceImageUrls: ["fallback.png"],
-      referenceVideoUrls: ["fallback.mp4"], referenceAudioUrls: ["fallback.mp3"],
-    } });
-    expect(params[key]).toBeNull();
-  });
-
   it("keeps the archetype projection authoritative over explicit and aggregate values", () => {
     expect(taskTemplateParams({ extras: {
       first_frame_url: "explicit.png", firstFrameUrl: "fallback.png",
       archetypeInput: { first_frame_url: null },
     } }).first_frame_url).toBeNull();
+  });
+
+  it.each([null, []] as const)("binds exact Comfy %j authority to the actually selected vendor and model", (pending) => {
+    const extras = {
+      modelKey: "workflow", modelVendor: "comfyui-local",
+      parameterReferenceSlots: {
+        modelKey: "workflow", vendorKey: "comfyui-local",
+        slots: [{ key: "reference_images", label: "Reference", group: "reference", mediaKind: "image" }],
+      },
+      reference_images: pending,
+      referenceImages: ["nomi-local://asset/project/fallback.png"],
+    };
+    expect(taskTemplateParams({ extras }, { vendorKey: "comfyui-local", modelKey: "workflow" }).reference_images)
+      .toEqual(pending);
+    expect(taskTemplateParams({ extras }, { vendorKey: "antigravity-cli", modelKey: "generate_image" }).reference_images)
+      .toEqual(["nomi-local://asset/project/fallback.png"]);
+    expect(firstReferenceImage({ extras }, { vendorKey: "antigravity-cli", modelKey: "generate_image" }))
+      .toBe("nomi-local://asset/project/fallback.png");
   });
 
   it.each([
@@ -366,6 +375,19 @@ describe("projectReferencesOntoBodyKeys — headless 参考键形态投影（W1d
   it("无任何携带参考 → 空对象（零开销）", () => {
     expect(projectReferencesOntoBodyKeys({}, editBody)).toEqual({});
     expect(projectReferencesOntoBodyKeys(undefined, editBody)).toEqual({});
+  });
+});
+
+describe("declared numeric and negative controls", () => {
+  it("preserves extras seed and negative_prompt when top-level request fields are absent", () => {
+    const params = taskTemplateParams({ extras: { seed: "123", negative_prompt: "blur" } });
+    expect(params.seed).toBe(123);
+    expect(params.negative_prompt).toBe("blur");
+  });
+  it("top-level request values win over extras, including seed zero", () => {
+    const params = taskTemplateParams({ seed: 0, negativePrompt: "noise", extras: { seed: "123", negative_prompt: "blur" } });
+    expect(params.seed).toBe(0);
+    expect(params.negative_prompt).toBe("noise");
   });
 });
 

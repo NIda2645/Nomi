@@ -283,7 +283,7 @@ export default function NodeParameterControls({
     const occupied = resolveReferenceSlots(node, nodes, edges).find(
       (rs) => referenceSlotStorage({ kind: rs.slotKind })?.metaKey === slot.metaKey,
     )?.fills.length
-    if (occupied != null && occupied >= slot.max) {
+    if (occupied != null && slot.max !== undefined && occupied >= slot.max) {
       showInfoToast(t('generationCommon.parameters.referenceFull', { max: slot.max }))
       return
     }
@@ -507,7 +507,7 @@ export default function NodeParameterControls({
     .filter((slot) => slotReachByKey[slot.key] !== 'none')
     // 只挤得进单图聚合位的槽：如实收成 1 张并说明白，别让用户放了 9 张以为都发得出去。
     .map((slot) =>
-      slotReachByKey[slot.key] === 'single' && slot.max > 1
+      slotReachByKey[slot.key] === 'single' && (slot.max === undefined || slot.max > 1)
         ? { ...slot, max: 1, caption: t('generationCommon.parameters.channelSingleReferenceOnly') }
         : slot,
     )

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>() }));
 vi.mock("electron", () => ({
-  app: { getPath: () => process.cwd(), getAppPath: () => process.cwd() },
+  app: { getPath: () => process.cwd(), getAppPath: () => process.cwd(), on: vi.fn(), quit: vi.fn() },
   ipcMain: { handle: (channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler) },
 }));
 vi.mock("../../ipcSenderGuard", () => ({ assertTrustedSender: vi.fn() }));
