@@ -49,6 +49,23 @@ function source(id: string, pending: boolean): GenerationCanvasNode {
     ...(!pending ? { result: { id, type: 'video' as const, url: `https://fixture.test/${id}.mp4`, createdAt: 1 } } : {}) }
 }
 
+const genericReferenceAliases = [
+  'referenceImages', 'referenceImageUrl', 'referenceImageUrls', 'referenceImageRef',
+  'firstFrameUrl', 'firstFrameRef', 'firstFrameReference',
+  'lastFrameUrl', 'lastFrameRef', 'lastFrameReference',
+  'image_url', 'imageUrl', 'reference_images', 'reference_image_urls',
+  'archetypeInput',
+] as const
+
+function expectOnlyKeyedReference(
+  extras: Record<string, unknown> | undefined,
+  key: string,
+  value: string | null,
+): void {
+  expect(extras).toMatchObject({ [key]: value })
+  for (const alias of genericReferenceAliases) expect(extras).not.toHaveProperty(alias)
+}
+
 describe('multiple declared media inputs retain identity through the final wire template', () => {
   it.each([false, true])('keeps reverse-selected video slots independent, including pending=%s', (pending) => {
     const node: GenerationCanvasNode = { id: 'target', kind: 'video', title: '', prompt: '', position: { x: 0, y: 0 },
@@ -122,7 +139,17 @@ describe('multiple declared media inputs retain identity through the final wire 
       { parameters: builtSingleImage.parameters },
     )
     const [slot] = readParameterReferenceSlots(meta)
-    meta = { ...meta, ...parameterReferenceMetaPatch(slot, [slot], 'https://upload.test/reference.png') }
+    meta = {
+      ...meta,
+      ...parameterReferenceMetaPatch(slot, [slot], 'https://upload.test/reference.png'),
+      referenceImageUrls: ['https://upload.test/reference.png'],
+      firstFrameUrl: 'https://upload.test/reference.png',
+      firstFrameRef: 'stale-source',
+      firstFrameReference: 'stale-source',
+      image_url: 'https://upload.test/reference.png',
+      reference_images: ['https://upload.test/reference.png'],
+      archetypeInput: { reference_image_urls: ['https://upload.test/reference.png'] },
+    }
     const node: GenerationCanvasNode = {
       id: 'single', kind: 'image', title: '', prompt: 'restyle', position: { x: 0, y: 0 }, meta,
     }
@@ -133,7 +160,9 @@ describe('multiple declared media inputs retain identity through the final wire 
     expect(references.parameterReferenceUrls).toEqual({ [slot.key]: 'https://upload.test/reference.png' })
     expect(references.referenceImages).toEqual([])
     expect(references.firstFrameUrl).toBeUndefined()
-    expect(buildCatalogTaskRequest(node, { references }).request.kind).toBe('image_edit')
+    const { request } = buildCatalogTaskRequest(node, { references })
+    expect(request.kind).toBe('image_edit')
+    expectOnlyKeyedReference(request.extras, slot.key, 'https://upload.test/reference.png')
   })
 
   it('keeps a live or pending keyed Comfy edge out of generic fallbacks', () => {
@@ -161,6 +190,7 @@ describe('multiple declared media inputs retain identity through the final wire 
     expect(pendingReferences.parameterReferenceUrls).toEqual({ [slot.key]: null })
     expect(pendingReferences.referenceImages).toEqual([])
     expect(pendingReferences.firstFrameUrl).toBeUndefined()
+    expectOnlyKeyedReference(buildCatalogTaskRequest(node, { references: pendingReferences }).request.extras, slot.key, null)
   })
 
   it('keeps a LoadVideo-only SaveVideo workflow in text_to_video', () => {
@@ -208,6 +238,13 @@ describe('multiple declared media inputs retain identity through the final wire 
     expect(references.parameterReferenceUrls).toEqual({ [slot.key]: 'https://upload.test/custom.png' })
     expect(references.referenceImages).toEqual(['https://upload.test/custom.png'])
     expect(references.firstFrameUrl).toBe('https://upload.test/custom.png')
-    expect(buildCatalogTaskRequest(node, { references }).request.kind).toBe('image_edit')
+    const { request } = buildCatalogTaskRequest(node, { references })
+    expect(request.kind).toBe('image_edit')
+    expect(request.extras).toMatchObject({
+      [slot.key]: 'https://upload.test/custom.png',
+      referenceImages: ['https://upload.test/custom.png'],
+      referenceImageUrl: 'https://upload.test/custom.png',
+      referenceImageRef: null,
+    })
   })
 })

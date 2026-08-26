@@ -44,6 +44,7 @@ import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSessi
 import { RecoverableTimeoutError } from './recoverableTimeout'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
 import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
+import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
 
 // 重导出：实现已拆到 catalogTaskResolve（节点→vendor/model/kind 选择）与
 // catalogTaskResultParse（raw/asset/failure/provenance 解析），但 catalogTaskActions
@@ -59,6 +60,30 @@ const POLL_FAILURE_GRACE_MS = 45000
 
 // 走流式文本通道的 kind(与 catalogTaskResultParse 的 TEXT_TASK_KINDS 同语义)。
 const TEXT_STREAM_KINDS = new Set<TaskKind>(['chat', 'prompt_refine', 'image_to_prompt'])
+
+// Imported Comfy media inputs are exact keyed parameters. Unique-slot uploads
+// still persist these generic aliases for old projects/non-Comfy consumers, but
+// none of them may cross the Comfy request boundary and become a second wire.
+// A declared slot key always wins even if it happens to share a legacy name.
+const COMFY_PARAMETER_GENERIC_REFERENCE_KEYS = new Set([
+  'image', 'image_url', 'imageUrl',
+  'referenceImages', 'referenceImageUrl', 'referenceImageUrls', 'referenceImageRef', 'referenceImageRefs',
+  'reference_images', 'reference_image_urls',
+  'firstFrameUrl', 'firstFrameRef', 'firstFrameReference', 'first_frame_url',
+  'lastFrameUrl', 'lastFrameRef', 'lastFrameReference', 'last_frame_url',
+  'referenceVideoUrls', 'reference_video_urls', 'sourceVideoUrl', 'source_video_url', 'video_url',
+  'referenceAudioUrls', 'reference_audio_urls',
+  'styleReferenceImages', 'characterReferenceImages', 'compositionReferenceImages',
+  'upstreamResultUrls', 'archetypeInput', 'activeAssetUrls',
+])
+
+function parameterContractRequestMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  const contract = readParameterReferenceContract(meta)
+  if (!contract?.slots.length || !isComfyuiVendorKey(contract.vendorKey)) return meta
+  const declaredKeys = new Set(contract.slots.map((slot) => slot.key))
+  return Object.fromEntries(Object.entries(meta).filter(([key]) =>
+    declaredKeys.has(key) || !COMFY_PARAMETER_GENERIC_REFERENCE_KEYS.has(key)))
+}
 
 // 本地进程/队列后端：codex(`codex exec $imagegen`,官方 smoke 就 ~75s)、本地 ComfyUI 队列(可达数分钟)——
 // 都跑在用户机器上,时延本质是「秒级到分钟级」且方差大,不能和「秒级返回的云图像 API」共用 2min 硬超时:
@@ -136,10 +161,9 @@ export function isRateLimitedPollError(error: unknown): boolean {
 }
 
 function buildReferenceExtras(
-  node: GenerationCanvasNode,
+  meta: Record<string, unknown>,
   references: Partial<ResolvedGenerationReferences>,
 ): Record<string, unknown> {
-  const meta = node.meta || {}
   const parameterInputs = Object.fromEntries(readParameterReferenceSlots(meta)
     .filter((slot) => Object.prototype.hasOwnProperty.call(references.parameterReferenceUrls ?? {}, slot.key))
     .map((slot) => [slot.key, references.parameterReferenceUrls![slot.key]]))
@@ -242,7 +266,7 @@ export function buildCatalogTaskRequest(
 
   const references = options.references || {}
   const kind = resolveTaskKind(node, references)
-  const meta = node.meta || {}
+  const meta = parameterContractRequestMeta(node.meta || {})
   // @ 内联引用投影(R6 单源 · option 2):把 prompt 里的 @[asset:url] 标记转成 @imageN，
   // N = url 在「连线在前+上传」有序数组里的位置——**与实际发送的 reference_image 数组逐位一致**。此前只读
   // meta.referenceImageUrls，把连线进来的参考图当成「不在数组里」直接把 @ 标记删成空串（连线图 @ 不到/被
@@ -268,7 +292,7 @@ export function buildCatalogTaskRequest(
   const steps = asFiniteNumber(meta.steps)
   const cfgScale = asFiniteNumber(meta.cfgScale)
   const seed = asFiniteNumber(meta.seed)
-  const referenceExtras = buildReferenceExtras(node, references)
+  const referenceExtras = buildReferenceExtras(meta, references)
   const extras = {
     ...meta,
     modelKey,

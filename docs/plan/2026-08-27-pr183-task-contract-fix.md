@@ -82,3 +82,19 @@ introduced, so rollback requires no data transformation.
 - Re-run targeted media-wire/reference tests, the three Comfy walkthroughs, and
   full `pnpm run gates`; before the follow-up push, confirm the remote source
   branch is still at `dc989687ffa8c17936409f9a8a69f95be42ef333`.
+
+## Review follow-up: final request boundary
+
+- Preserve legacy aliases in durable node metadata, but remove generic image,
+  frame, archetype, and derived active-asset aliases from the request-only meta
+  view when a valid ComfyUI parameter contract is active.
+- Use that one filtered view for both `buildReferenceExtras` and the final
+  extras spread so neither assembly path can revive a stale alias.
+- Preserve exact declared parameter keys (including explicit `null` for a
+  pending keyed edge), even if a future declared key shares a legacy spelling.
+- Keep non-Comfy request assembly unchanged and verify its unique-slot legacy
+  aliases still select dynamic `image_edit`.
+- TDD evidence: the focused media-wire test first failed 2 of 9 cases because
+  upload and pending requests contained `referenceImages`; after the request
+  boundary fix, the focused test passed 9 of 9 and the expanded targeted set
+  passed 353 of 353.
