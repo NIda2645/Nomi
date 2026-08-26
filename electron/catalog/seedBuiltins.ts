@@ -61,7 +61,6 @@ import { RUNNINGHUB_VIDEO_CURATED_MODELS, RUNNINGHUB_VIDEO_CURATED_MAPPINGS } fr
 import { RUNNINGHUB_IMAGE_CURATED_MODELS, RUNNINGHUB_IMAGE_CURATED_MAPPINGS } from "./runninghubImages";
 import { COMFYUI_VENDOR_SEED, COMFYUI_CURATED_MODELS, COMFYUI_CURATED_MAPPINGS } from "./comfyuiLocal";
 import { CODEX_LOCAL_VENDOR_SEED, CODEX_IMAGE_CURATED_MODELS, CODEX_IMAGE_CURATED_MAPPINGS } from "./codexImages";
-import { ANTIGRAVITY_VENDOR_SEED, ANTIGRAVITY_TEXT_MODELS } from "./antigravityTexts";
 import { VOLCENGINE_IMAGE_MODELS } from "./volcengineImages";
 import { VOLCENGINE_AUDIO_MODELS } from "./volcengineAudios";
 import { VOLCENGINE_SEEDANCE_QUERY_OP, VOLCENGINE_SEEDANCE_STATUS_MAPPING, VOLCENGINE_VIDEO_MODELS } from "./volcengineVideos";
@@ -505,7 +504,6 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
   if (reconcileModels(models, RUNNINGHUB_VENDOR_SEED.key, RUNNINGHUB_IMAGE_CURATED_MODELS, now)) changed = true;
   if (reconcileModels(models, COMFYUI_VENDOR_SEED.key, COMFYUI_CURATED_MODELS, now)) changed = true;
   if (reconcileModels(models, CODEX_LOCAL_VENDOR_SEED.key, CODEX_IMAGE_CURATED_MODELS, now)) changed = true;
-  if (reconcileModels(models, ANTIGRAVITY_VENDOR_SEED.key, ANTIGRAVITY_TEXT_MODELS, now)) changed = true;
 
   // kie 历史包袱 repair：把视频形状的坏 (kie, text_to_image) 替换成正确的 GPT Image 2 文生图契约
   // （旧 onboarding 抽错留下的；契约见 kieGptImage2.ts 直连实测确认）。apimart 无此历史，不需要。

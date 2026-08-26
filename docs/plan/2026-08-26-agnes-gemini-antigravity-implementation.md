@@ -46,8 +46,8 @@ expect(requestUrl).toBe("https://generativelanguage.googleapis.com/v1beta/openai
 
 Files: new focused `electron/ai/antigravityCli*.ts` modules/tests; existing `streamTextTask.ts` transport boundary as required.
 
-- [ ] Inspect official installer, CLI help, headless, permissions and model discovery docs. Install only official binary without editing shell profiles or global Google config. User performs Google login; do not read tokens.
-- [ ] Before exposing execution, verify per-run permissions can reject file/command/MCP operations without mutating global permissions. Failure keeps the connection disabled and explicitly reports the missing guarantee.
+- [x] Inspect official installer, CLI help, headless, permissions and model discovery docs. Install only official binary without editing shell profiles or global Google config. User performs Google login; do not read tokens.
+- [x] Before exposing execution, verify per-run permissions can reject file/command/MCP operations without mutating global permissions. Failure keeps the connection disabled and explicitly reports the missing guarantee.
 - [x] Write process-fixture tests for split NDJSON, text deltas, one SUCCESS result, malformed/missing/duplicate terminal result, nonzero exit, stderr errors, timeout, cancellation and task process cleanup. For example:
 
 ```ts
@@ -81,6 +81,24 @@ Current Agnes Key lists six models; remaining four need provider eligibility for
 
 ### Authenticated continuation (2026-08-27)
 
+### Approved application wiring (2026-08-27)
+
+**Latest steering — design consistency (2026-08-27):** The user rejects the separate four-capability/model-selection interaction. Preserve completed runtime wiring and tests; pause further acceptance of the old card. Read the current design revision in `2026-08-26-agnes-gemini-antigravity-design.md`. Revise the same mockup to the real `SettingsDialog` connection shell, `ModelChipGroups`, and `ModelSettingsDetailDialog` / `ModelWorkspacePage` detail structure. The replacement was approved below and is now implemented for acceptance. Discovery/verification/enablement remain distinct; count 14 actual model IDs separately from automatic routing and the image tool. Remove the old card's independent selector/test/enable surface when replacing it; do not create a parallel details page. No new model calls during this design correction.
+
+**Follow-up — group reasoning variants:** Display seven model families, retaining all fourteen discovered wire IDs. Reuse the generic model-variant concept and existing detail/parameter controls: multiple discovered tiers get a selector, single-tier families get a fixed value. Preserve exact-ID verification, enabled preferences and existing node choices; grouping must not silently substitute IDs or promote one tier's successful check to its siblings. Keep unknown model identities separate. The revised static mockup includes seven initially rendered model names and declares exact tier IDs once in their metadata; no runtime-created empty model list. The user subsequently approved this revision; production replacement is implemented and under acceptance.
+
+**Approval and execution — 2026-08-27:** User approved “好的替换接入吧”. Replace production now; no further mockup approval needed. Steps: (1) add exact model-family/variant projection and identity tests, preserving unknown IDs; (2) replace the connection card with existing grouped chips and route them to the common model detail dialog; (3) extend common detail slots for per-model verification and variant selection, retaining the existing enable switch, input summary and request summary; (4) propagate the same grouping to existing creative/canvas selectors without dropping original IDs or migrating old selections to other tiers; (5) remove the former standalone capability selector, rerun unit/type/lint/build gates, verify the real Electron design and full media task/persistence/cancellation paths, then update scoped PR without merging. Existing official contract references and authenticated results remain valid inputs, not substitutes for new app acceptance.
+
+User approved proceeding with the four-capability design and explicitly requires listing the integrated models. Refreshed origin/main: existing task branch remains 2 commits ahead, 0 behind. Preserve previous mockup edits and outputs; no default-branch mutation.
+
+1. Extend the existing process lifecycle with trusted per-task media profiles, exact staged-image allowlists and the verified private plugin hook. No separate process runner, global config changes, token handling, unrestricted tools or shell supplied by renderer. Reuse strict stream validation; tool ERROR is failure. Only task-scoped emitted conversation artifacts may be read, validated and imported.
+2. Route text/vision and image/edit through existing Nomi task/asset persistence contracts. Input references must use the existing authorized asset reader. Media results must survive project reopening; cancellation must not mark success or leave published artifacts.
+3. Extend main-process connection state with individual capability and actual-model verification records. Discovery preserves exact IDs/labels, never manufactures current entitlement. Register text models from discovery and a separate image-tool capability (not a fabricated upstream model). Each model/capability verification is independent; no historical test data hardcoded as current readiness.
+4. Implement the approved card in the existing settings shell, with all four capability rows and the discovered model list/statuses. Use existing enable controls, i18n and token styles. Show failures and unverified entries explicitly. Enforce readiness in the backend, not only in renderer.
+5. Test first at each boundary, then spec and quality reviews. Run real native-through-Nomi text/vision/image/edit scenarios, persisted asset reopening, cancellation and permission negatives. Complete all repository gates before scoped branch commit/push and update draft PR #188; do not merge.
+
+Rollback: revert scoped application-wiring commits; retain user credentials, global Google config and generated user assets. No new framework or SDK; official CLI remains the only subscription transport. Video/audio generation remains unadvertised without a verified official callable contract. The local mockup file is blocked by Browser Use URL policy; do not use another surface to bypass that block. Production Electron acceptance is a distinct application task and must use its existing test harness.
+
 The login prerequisite is now resolved: explicitly passing the existing system proxy fixed the OAuth TCP timeout, and the user completed native Google login. See `docs/audit/2026-08-27-antigravity-authenticated-verification.md`; the earlier checkpoint remains historical evidence.
 
 - [x] Prove native text output and custom agent system-body loading without reading account credentials.
@@ -104,3 +122,12 @@ Baseline was synchronized to origin/main 5f09b95d (#185), then refreshed again t
 - Revised mockup contains independent text/vision/generate/edit states; 25 design checks passed. It is not real CLI acceptance and awaits user approval.
 - Final 7dab8ee8 checkpoint: full `pnpm run gates` exit 0; 760 test files / 6876 tests passed, one file/test skipped; build passed. Extra test-type gate exposed malformed Model fixtures; corrected them and reduced the existing baseline from 111 to 110. Actual Electron walkthrough verified ten visible catalog rows, both Image 2.1 modes and their parameters, and six retained assets after restart. No old canvas nodes were present, so legacy migration has unit coverage only. See the runtime audit for exact build/evidence boundaries.
 - Remaining: authenticated media contract/permission probes; actual image artifact import and cancellation; production capability routes/card; Gemini credential test; full Antigravity user-task acceptance. Preserve scoped changes in a draft checkpoint PR after gates; do not mark the overall task complete or merge.
+
+### Grouped-model acceptance progress (2026-08-27)
+
+- Seven visible family chips use the existing connection card and model dialog. Fourteen raw IDs remain intact; unknown IDs stay separate, and auto/tool are separate categories.
+- Thinking tier uses the existing select control, preserves the selected raw ID on return, and does not inherit sibling verification or enabled state. Canvas text nodes reuse the generic model/variant controls.
+- The former four-tile connection panel and raw-ID list implementation are removed. Native verification occupies the common model status section; the common enable switch remains explicit.
+- Added regression coverage for unselected/home rendering, grouping and unknown identities, renderer selector writes, exact proof and enablement, dialog dismissal cancellation, and quit while native/persistence work is active.
+- Real production Electron screenshots 08/09/11 were inspected: seven names visible, common detail raw ID matches selected High/Medium, dismissed test reports cancelled with no proof. Real High text verification passed. Media/asset and final-base acceptance remain in progress.
+- Repeatable native-app driver: `NOMI_LIVE_ANTIGRAVITY=1 node tests/ux/antigravity-cli.live.walk.mjs`; JSON-line actions are recorded in local outputs. The driver requires an already-installed/logged-in official CLI and explicitly opts into quota use. No account tokens or API keys are accepted by the driver.

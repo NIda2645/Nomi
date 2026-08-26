@@ -8,6 +8,10 @@ const result = { event: "result", result: { conversation_id: "task-1", status: "
 const delta = (text: string) => ({ event: "step_update", step_update: { conversation_id: "task-1", step_index: 1, state: "ACTIVE", step_type: "agent_response", text_delta: text } });
 
 describe("official Antigravity stream-json contract", () => {
+  it("classifies quota failure in a terminal result without exposing upstream diagnostics", () => {
+    const parser = new AntigravityProtocol(vi.fn(), vi.fn(), expected);
+    expect(() => parser.accept({ event: "result", result: { status: "ERROR", error: "Resource exhausted: quota exceeded" } })).toThrow("ANTIGRAVITY_QUOTA");
+  });
   it("recognizes the real CLI's authentication ERROR result before init without sending input", () => {
     const ready = vi.fn(); const parser = new AntigravityProtocol(ready, vi.fn(), expected);
     expect(() => parser.accept({ event: "result", result: { status: "ERROR", error: "authentication failed or timed out" } }))
@@ -113,5 +117,50 @@ describe("official Antigravity stream-json contract", () => {
     parser.accept({ ...result, result: { ...result.result, response: "好好" } });
     expect(onDelta.mock.calls.flat()).toEqual(["好", "好"]);
     expect(parser.finish().usage).toEqual(usage);
+  });
+});
+
+
+describe("bounded Antigravity media tools", () => {
+  const tool = (name: string, state = "DONE", index = 2) => ({ event: "step_update", step_update: {
+    conversation_id: "task-1", step_index: index, state, step_type: "tool", tool_info: { name },
+  } });
+  function media(capability: "vision" | "image" | "edit") {
+    const parser = new AntigravityProtocol(vi.fn(), vi.fn(), { ...expected, capability, maxToolCalls: 1 });
+    parser.accept(init); return parser;
+  }
+  it.each(["vision", "image", "edit"] as const)("accepts only the scoped tool and tracks completion: %s", (capability) => {
+    const parser = media(capability); const name = capability === "vision" ? "view_file" : "generate_image";
+    parser.accept(tool(name, "ACTIVE")); parser.accept(tool(name)); parser.accept(result);
+    expect(parser.toolSteps).toEqual([{ index: 2, name, state: "DONE" }]);
+    expect(parser.finish().text).toBe("你好");
+  });
+  it.each(["run_command", "view_file", "write_to_file"])("rejects image tool escalation: %s", (name) => {
+    expect(() => media("image").accept(tool(name))).toThrow("TOOLS_UNSUPPORTED");
+  });
+  it("rejects tool failure even if the agent could later claim success", () => {
+    expect(() => media("edit").accept(tool("generate_image", "ERROR"))).toThrow("TOOL_FAILED");
+  });
+  it("rejects a second generator invocation before accepting its result", () => {
+    const parser = media("image"); parser.accept(tool("generate_image"));
+    expect(() => parser.accept(tool("generate_image", "ACTIVE", 3))).toThrow("TOOL_BUDGET");
+  });
+  it.each(["image", "vision"] as const)("does not accept a claimed success without its required tool: %s", (capability) => {
+    expect(() => media(capability).accept(result)).toThrow("MEDIA_INCOMPLETE");
+  });
+  it("does not accept success while the tool is still active", () => {
+    const parser = media("image"); parser.accept(tool("generate_image", "ACTIVE"));
+    expect(() => parser.accept(result)).toThrow("MEDIA_INCOMPLETE");
+  });
+  it("rejects a non-string tool state before accepting the step", () => {
+    const parser = media("image");
+    expect(() => parser.accept({event:"step_update",step_update:{...tool("generate_image").step_update,state:["DONE"]}}))
+      .toThrow("INVALID_STEP");
+  });
+  it("does not permit subagents to bypass the scoped whitelist", () => {
+    const parser = media("image");
+    expect(() => parser.accept({ event: "step_update", step_update: {
+      ...tool("generate_image").step_update, subagent_info: {},
+    } })).toThrow("TOOLS_UNSUPPORTED");
   });
 });

@@ -16,9 +16,11 @@ import { contentTypeFromPath } from "../assets/assetPaths";
 import { materializeInputFiles } from "./dreaminaInputFiles";
 import type { JsonRecord } from "../jsonUtils";
 import { queryCodexImageOperation, startCodexImageOperation } from "./codexCli";
+import { executeAntigravityImageOperation } from "./antigravityImageOperation";
 
 /** runtime 注入的写资产原语（写本地字节进项目素材，返回含 data.url 的记录）。 */
 export type WriteAsset = (projectId: string, bytes: Buffer, fileName: string, contentType: string, meta: JsonRecord) => unknown;
+export type WriteDeterministicAsset = (...args: [...Parameters<WriteAsset>, materializationKey: string]) => unknown;
 
 export type ProcessOperationInput = {
   process: NonNullable<HttpOperation["process"]>;
@@ -27,7 +29,9 @@ export type ProcessOperationInput = {
   /** 项目 id：用于把 `--download_dir` 下载到的本地结果导入素材；空则仅取远端 URL。 */
   projectId: string;
   writeAsset: WriteAsset;
+  writeDeterministicAsset?: WriteDeterministicAsset;
   timeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 /** 归一后的「类 HTTP 响应」形状。response_mapping/statusMapping 据此读取（见 dreaminaVideos.ts）。 */
@@ -43,6 +47,7 @@ export type ProcessResponse = {
 };
 
 export async function executeProcessOperation(input: ProcessOperationInput): Promise<{ response: unknown; request: unknown }> {
+  if (input.process.parser === "antigravity-cli-image") return executeAntigravityImageOperation(input);
   if (input.process.parser === "codex-cli-image") {
     const request = (input.context.request as JsonRecord) ?? {};
     const params = (request.params as JsonRecord) ?? {};

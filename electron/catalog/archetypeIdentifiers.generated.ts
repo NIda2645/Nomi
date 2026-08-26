@@ -258,6 +258,9 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "codex-imagegen": [
     "codex-imagegen"
   ],
+  "antigravity-image": [
+    "antigravity-cli/generate_image"
+  ],
   "hunyuan3d": [
     "hunyuan3d-v3.1",
     "hunyuan3d",

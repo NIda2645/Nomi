@@ -313,7 +313,7 @@ export type HttpOperation = {
   process?: {
     bin: string;
     args: string[];
-    parser: "dreamina-cli" | "codex-cli-image";
+    parser: "dreamina-cli" | "codex-cli-image" | "antigravity-cli-image";
     appendDownloadDir?: boolean;
     /**
      * 特殊 arg 构建器（声明驱动分派）。缺省=用 `args` 模板渲染。"multiframe"=多帧按图数变形（2 图 shorthand /

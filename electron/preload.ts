@@ -334,6 +334,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     showInFolder: (payload: unknown) => ipcRenderer.invoke("nomi:exports:show-in-folder", payload),
   },
   tasks: {
+    cancel: (taskId: string) => ipcRenderer.invoke("nomi:tasks:cancel", taskId) as Promise<{ ok: boolean }>,
     run: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:run", payload),
     result: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:result", payload),
     // 付费守卫：真人确认后铸一次性令牌（绑 nodeIds），返回不透明 grantId 随生成请求下传。
@@ -455,6 +456,9 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     },
   },
   onboarding: {
+    antigravityStatus: () => ipcRenderer.invoke("nomi:antigravity:status"),
+    antigravityTest: (payload?: unknown) => ipcRenderer.invoke("nomi:antigravity:test", payload),
+    antigravityCancel: () => ipcRenderer.invoke("nomi:antigravity:cancel"),
     adapterRegister: (payload: unknown) =>
       ipcRenderer.invoke("nomi:provider-adapter:register", payload),
     adapterStart: (payload: unknown) =>

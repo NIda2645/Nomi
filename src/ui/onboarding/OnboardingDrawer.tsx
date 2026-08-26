@@ -13,6 +13,10 @@ import { isComfyuiVendorKey } from '../../workbench/generationCanvas/model/comfy
 import { NetworkSection } from './NetworkSection'
 import { CODEX_LOCAL_VENDOR_KEY } from './codexLocalProvider'
 import { CodexLocalImageCard } from './CodexLocalImageCard'
+import { AntigravityConnectionCard } from './AntigravityConnectionCard'
+import { useAntigravitySettings } from './useAntigravitySettings'
+import { useAntigravityModelWorkspace } from './useAntigravityModelWorkspace'
+import { getAntigravityModelVariant } from '../../../electron/shared/antigravityModelVariants'
 import { ANTIGRAVITY_VENDOR_KEY } from '../../../electron/shared/antigravity'
 import { projectOnboardingConnections } from './onboardingDrawerConnections'
 import { getDesktopBridge } from '../../desktop/bridge'
@@ -87,6 +91,17 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     reloadFromError,
     refresh,
   } = useOnboardingDrawerCatalog()
+  const [selectedVariants, setSelectedVariants] = React.useState<Record<string, string>>({})
+  const antigravitySession = useAntigravitySettings('vendorKey' in page && page.vendorKey === ANTIGRAVITY_VENDOR_KEY, refresh,
+    page.type === 'model' && page.vendorKey === ANTIGRAVITY_VENDOR_KEY ? page.modelKey : undefined)
+  const antigravityWorkspace = useAntigravityModelWorkspace(
+    page.type === 'model' ? models.find((model) => model.vendorKey === page.vendorKey && model.modelKey === page.modelKey) : undefined,
+    models, antigravitySession, (modelKey) => {
+      const familyKey = getAntigravityModelVariant(modelKey)?.familyKey ?? modelKey
+      setSelectedVariants((current) => ({ ...current, [familyKey]: modelKey }))
+      setNavigation((current) => replaceModelSettingsPage(current, { type: 'model', vendorKey: ANTIGRAVITY_VENDOR_KEY, modelKey }))
+    },
+  )
   const [customCallTarget, setCustomCallTarget] = React.useState<CustomCallTarget | null>(null)
   const [enableAfterCapability, setEnableAfterCapability] = React.useState<string | null>(null)
   const [registrationHandoff, setRegistrationHandoff] = React.useState<{
@@ -242,13 +257,13 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     }
   }, [refresh, t])
 
-  const { knownCards, otherVendorGroups, comfyuiInstances, comfyuiConnected, codexImageEnabled,
+  const { knownCards, otherVendorGroups, comfyuiInstances, comfyuiConnected, codexImageEnabled, antigravityEnabled,
     connectionTitle, homeConnections, availableHomeConnections } = projectOnboardingConnections({
     models, vendorMeta, dreaminaStatus, openPage,
     localNames: {
       dreamina: t('onboardingProviders.dreamina.name'),
       codex: t('onboardingProviders.codexImage.name'),
-      antigravity: vendorMeta.get(ANTIGRAVITY_VENDOR_KEY)?.name ?? ANTIGRAVITY_VENDOR_KEY,
+      antigravity: t('antigravity.name'),
     },
   })
   const kindGuessGap = resolveKindGuessGap(models, vendorMeta)
@@ -383,6 +398,12 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     }
     if (vendorKey === CODEX_LOCAL_VENDOR_KEY) {
       return <CodexLocalImageCard enabled={codexImageEnabled} onChanged={refresh} detailMode />
+    }
+    if (vendorKey === ANTIGRAVITY_VENDOR_KEY) {
+      return <AntigravityConnectionCard enabled={antigravityEnabled}
+        models={models.filter((model) => model.vendorKey === ANTIGRAVITY_VENDOR_KEY)}
+        selectedVariants={selectedVariants} session={antigravitySession} onChanged={refresh}
+        onOpenModel={(model) => openPage({ type: 'model', vendorKey: model.vendorKey, modelKey: model.modelKey })} />
     }
     return null
   }
@@ -598,6 +619,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       >
         <ModelWorkspacePage
           model={model}
+          connection={antigravityWorkspace}
           vendorName={vendorName}
           modelKey={page.modelKey}
           canUseScript={canUseScript}

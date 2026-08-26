@@ -1,6 +1,6 @@
-// ComfyUI 任务的取消登记 + ws 进度 watch 帮手（P 轨 · 2026-08-01 拍板遮罩取消）。
+// Local task cancellation shares one node registry; each backend owns its actual interrupt.
 // 取消语义：① 新服定向 jobs cancel，旧服只安全删除排队项 ② 本地登记 nodeId → 轮询下一 tick
-// 抛 ComfyuiTaskCancelledError（免费查询即刻停，不等 20min 硬超时）③ setNodeStatus(id,'idle') 走
+// 抛 LocalTaskCancelledError（免费查询即刻停，不等 20min 硬超时）③ setNodeStatus(id,'idle') 走
 // 既有 cancelled 语义（canvasRunActions：最新 run 标 cancelled、节点回 idle，不进红色错误桶）。
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
@@ -10,34 +10,47 @@ import i18n from '../../../i18n'
 
 const cancelRequested = new Set<string>()
 
-export class ComfyuiTaskCancelledError extends Error {
+export class LocalTaskCancelledError extends Error {
   constructor() {
     super('已取消')
-    this.name = 'ComfyuiTaskCancelledError'
+    this.name = 'LocalTaskCancelledError'
   }
 }
 
-export function isComfyuiTaskCancelledError(error: unknown): error is ComfyuiTaskCancelledError {
-  return error instanceof Error && error.name === 'ComfyuiTaskCancelledError'
+export function isLocalTaskCancelledError(error: unknown): error is LocalTaskCancelledError {
+  return error instanceof Error && error.name === 'LocalTaskCancelledError'
 }
 
-export function isComfyuiCancelRequested(nodeId: string): boolean {
+export function isTaskCancelRequested(nodeId: string): boolean {
   return cancelRequested.has(nodeId)
 }
 
-export function clearComfyuiCancel(nodeId: string): void {
+export function clearTaskCancel(nodeId: string): void {
   cancelRequested.delete(nodeId)
 }
 
 /** 遮罩取消按钮入口。prompt_id 优先读 node.progress.taskId，回落 runs[0].taskId（progress 是整体替换、run 是保底）。 */
-export function requestComfyuiCancel(node: {
+export function requestTaskCancel(node: {
   id: string
   progress?: { taskId?: string } | null
   runs?: Array<{ taskId?: string }> | null
 }): void {
-  cancelRequested.add(node.id)
   const promptId = (node.progress?.taskId || node.runs?.[0]?.taskId || '').trim()
   const tasks = getDesktopBridge()?.tasks
+  if (promptId.startsWith('local-')) {
+    void tasks?.cancel?.(promptId).then((result) => {
+      if (!result.ok) toast(i18n.t('generationCommon.comfyuiCancel.failed'), 'warning')
+      else {
+        const store = useGenerationCanvasStore.getState()
+        const current = store.nodes.find((candidate) => candidate.id === node.id)
+        if ((current?.progress?.taskId || current?.runs?.[0]?.taskId) !== promptId) return
+        if (current?.status === 'running') cancelRequested.add(node.id)
+        store.setNodeStatus(node.id, 'idle')
+      }
+    }).catch(() => toast(i18n.t('generationCommon.comfyuiCancel.failed'), 'warning'))
+    return
+  }
+  cancelRequested.add(node.id)
   if (promptId) {
     void tasks?.comfyuiInterrupt?.(promptId)
       .then((result) => {

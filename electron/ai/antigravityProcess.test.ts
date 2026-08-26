@@ -138,3 +138,44 @@ describe("Antigravity process ownership", () => {
     } finally { spy.mockRestore(); }
   });
 });
+
+describe("Antigravity bounded media process", () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5foAAAAASUVORK5CYII=", "base64");
+  it.each([undefined, "1.2.0"])("fails closed before spawn for unverified CLI media version: %s", async (cliVersion) => {
+    const f = await fixture("media-image");
+    await expect(runAntigravityProcess({ prompt: "draw", capability: "image", cliVersion }, { invocation: f.invocation }))
+      .rejects.toThrow("MEDIA_VERSION");
+    await expect(readFile(path.join(f.dir, "cwd"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it.each(["image", "edit", "vision"] as const)("runs %s with its exact input/tool scope", async (capability) => {
+    const f = await fixture("media-" + capability);
+    const result = await runAntigravityProcess({ prompt: "task", capability, cliVersion: "1.1.21",
+      ...(capability === "image" ? {} : { images: [{ bytes: png, mimeType: "image/png" }] }),
+    }, { invocation: f.invocation, env: { ...buildAntigravityEnv(), HOME: f.dir } });
+    const profile = await readFile(path.join(f.dir, "profile"), "utf8");
+    expect(JSON.parse(await readFile(path.join(f.dir, "preflight-files"), "utf8"))).not.toContain(true);
+    expect(profile).toContain(capability === "vision" ? "view_file" : "generate_image");
+    expect(profile).toContain("plugins:");
+    if (capability === "vision") expect(result.artifacts).toBeUndefined();
+    else expect(result.artifacts).toMatchObject([{ mimeType: "image/png", width: 1, height: 1 }]);
+    await expect(stat(await readFile(path.join(f.dir, "cwd"), "utf8"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it.each(["missing-hook", "wrong-reference", "double-generate", "artifact-outside", "artifact-symlink", "artifact-fifo", "artifact-corrupt"])("rejects unsafe media: %s", async (mode) => {
+    const f = await fixture("media-" + mode);
+    await expect(runAntigravityProcess({ prompt: "task", capability: "image", cliVersion: "1.1.21" },
+      { invocation: f.invocation, env: { ...buildAntigravityEnv(), HOME: f.dir } })).rejects.toThrow("ANTIGRAVITY_");
+  });
+  it("rejects non-image bytes before launching the CLI", async () => {
+    const f = await fixture("media-vision");
+    await expect(runAntigravityProcess({ prompt: "task", capability: "vision", cliVersion: "1.1.21",
+      images: [{ bytes: Buffer.from("not an image"), mimeType: "image/png" }] }, { invocation: f.invocation }))
+      .rejects.toThrow("IMAGE_INVALID");
+    await expect(readFile(path.join(f.dir, "cwd"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("does not release the task prompt when the private plugin did not initialize", async () => {
+    const f = await fixture("media-missing-hook");
+    await expect(runAntigravityProcess({ prompt: "PRIVATE_TASK_CONTENT", capability: "image", cliVersion: "1.1.21" },
+      { invocation: f.invocation, env: { ...buildAntigravityEnv(), HOME: f.dir } })).rejects.toThrow("HOOK_UNVERIFIED");
+    expect(await readFile(path.join(f.dir, "input"), "utf8")).not.toContain("PRIVATE_TASK_CONTENT");
+  });
+});

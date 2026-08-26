@@ -418,6 +418,12 @@ export default function InlineParameterBar({
 
   const hasProvider = modelSelect.providerOptions.length > 1
   const hasPanel = renderedControls.length > 0 || hasProvider
+  // Catalog variants keep separate exact IDs; media archetype variants keep their existing parameter contract.
+  // Both use the same approved variant control next to the family/model chip.
+  const catalogVariants = modelSelect.variantOptions.length > 0
+  const visibleVariants = catalogVariants
+    ? modelSelect.variantOptions
+    : (variantChoices || []).map((variant) => ({ value: variant.id, label: variant.label }))
 
   return (
     <div className={cn('generation-canvas-v2-node__params--parameters', 'flex items-center gap-2 min-w-0')}>
@@ -430,13 +436,14 @@ export default function InlineParameterBar({
         onChange={modelSelect.onModelPick}
       />
       {/* 变体（型号）小下拉：紧跟模型芯片（身份级，恒内联）。有变体的模型才显示。 */}
-      {variantChoices && variantChoices.length > 1 ? (
+      {catalogVariants || visibleVariants.length > 1 ? (
         <NomiSelect
           ariaLabel={t('generationCommon.parameters.variant')}
           leadingLabel={t('generationCommon.parameters.variant')}
-          value={activeVariantId || ''}
-          options={variantChoices.map((v) => ({ value: v.id, label: v.label }))}
-          onChange={(v) => onVariantSelect?.(v)}
+          value={catalogVariants ? modelSelect.variantValue : activeVariantId || ''}
+          options={visibleVariants}
+          disabled={visibleVariants.length < 2}
+          onChange={catalogVariants ? modelSelect.onVariantPick : (v) => onVariantSelect?.(v)}
         />
       ) : null}
       {/* 摘要 pill：当前参数一句话，点开统一参数面板。 */}

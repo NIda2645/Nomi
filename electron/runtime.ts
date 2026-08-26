@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { assertLocalAssetTransportReady, localizeAssetsForVendor, trustedLocalOutputOrigin } from "./catalog/assetLocalization";
 import { assetIngestionResolver, assetLocalizationOptions } from "./catalog/assetTransportRuntime";
 import { readNomiLocalAsset, postJsonForAssetUpload, postMultipartForAssetUpload } from "./assets/localAssetFile";
-import { importRemoteAsset, writeAsset } from "./assets/projectAssetStore";
+import { importRemoteAsset, writeAsset, writeDeterministicAsset } from "./assets/projectAssetStore";
 import { endpoint } from "./vendorEndpoint";
 import { requestJson, requestMultipart } from "./vendor/vendorHttp";
 import { runMultipartProfileOperation } from "./catalog/multipartOperation";
@@ -258,7 +258,7 @@ export async function executeProfileOperation(input: {
       process: input.operation.process,
       context,
       projectId: trim(input.request.extras?.projectId) || activeTaskProjectFallback(),
-      writeAsset,
+      writeAsset, writeDeterministicAsset, signal: input.signal,
     });
   }
   // multipart transport（P4）：op 声明 multipart（/v1/images/edits 图生图文件上传）→ 全套分发在 multipartOperation

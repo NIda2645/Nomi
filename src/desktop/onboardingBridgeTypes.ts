@@ -1,5 +1,5 @@
 import type { ProviderKind } from './providerKind'
-import type { AntigravityConnectionStatus } from '../../electron/shared/antigravity'
+import type { AntigravityConnectionStatus, AntigravityTestRequest } from '../../electron/shared/antigravity'
 export type { AntigravityConnectionStatus } from '../../electron/shared/antigravity'
 
 export type DesktopAdapterModeResult = {
@@ -93,8 +93,8 @@ type ExistingConnectionFailure = {
 
 export type DesktopOnboardingBridge = {
   antigravityStatus: () => Promise<AntigravityConnectionStatus>
-  antigravityTest: () => Promise<AntigravityConnectionStatus>
-  antigravityCancel: () => Promise<void>
+  antigravityTest: (request?: AntigravityTestRequest) => Promise<AntigravityConnectionStatus>
+  antigravityCancel: () => Promise<AntigravityConnectionStatus | undefined>
   adapterRegister: (payload: {
     vendorName: string
     baseUrl: string

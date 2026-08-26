@@ -1,4 +1,5 @@
-import { ANTIGRAVITY_VENDOR_KEY } from '../../../electron/shared/antigravity'
+import { ANTIGRAVITY_IMAGE_MODEL_KEY, ANTIGRAVITY_VENDOR_KEY } from '../../../electron/shared/antigravity'
+import { groupAntigravityCatalogModels } from './antigravityCardModel'
 import { KNOWN_VENDORS, isKnownVendor } from '../../config/knownVendors'
 import { isComfyuiVendorKey } from '../../workbench/generationCanvas/model/comfyuiVendor'
 import type { ChipModel } from './ModelChipGroups'
@@ -60,6 +61,7 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
 
   const otherVendorGroups = groupOtherVendorModels(otherModels, vendorMeta, otherVendorKeys)
   const antigravityEnabled = vendorMeta.get(ANTIGRAVITY_VENDOR_KEY)?.enabled === true
+  const antigravityModels = models.filter((model) => model.vendorKey === ANTIGRAVITY_VENDOR_KEY)
 
   const connectionTitle = (vendorKey: string): string => {
     const known = knownCards.find((card) => card.directory.vendorKey === vendorKey)
@@ -128,7 +130,15 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
       models: models.filter((model) => model.vendorKey === CODEX_LOCAL_VENDOR_KEY),
       glyph: 'C',
     })] : []),
-    // The CLI transport/card is not yet complete. Do not expose a dead detail route.
+    ...(antigravityEnabled ? [homeConnection({
+      vendorKey: ANTIGRAVITY_VENDOR_KEY,
+      name: connectionTitle(ANTIGRAVITY_VENDOR_KEY),
+      kind: 'local',
+      models: groupAntigravityCatalogModels(antigravityModels.filter((model) => model.modelKey !== 'auto' && model.modelKey !== ANTIGRAVITY_IMAGE_MODEL_KEY)).map((group) => group.model),
+      auxiliaryCounts: { tools: antigravityModels.filter((model) => model.modelKey === ANTIGRAVITY_IMAGE_MODEL_KEY).length, routes: antigravityModels.filter((model) => model.modelKey === 'auto').length },
+      skipHealthProbe: true,
+      glyph: 'AG',
+    })] : []),
   ]
 
   const availableHomeConnections: ModelSettingsHomeConnection[] = [
@@ -162,6 +172,13 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
       kind: 'local',
       models: [],
       glyph: 'C',
+    })] : []),
+    ...(vendorMeta.has(ANTIGRAVITY_VENDOR_KEY) && !antigravityEnabled ? [homeConnection({
+      vendorKey: ANTIGRAVITY_VENDOR_KEY,
+      name: connectionTitle(ANTIGRAVITY_VENDOR_KEY),
+      kind: 'local',
+      models: [],
+      glyph: 'AG',
     })] : []),
   ]
   return { knownCards, otherVendorGroups, comfyuiInstances, comfyuiConnected, codexImageEnabled,

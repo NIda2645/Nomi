@@ -11,7 +11,7 @@ describe("Antigravity connection state", () => {
     const { connection, run } = service();
     const status = await connection.status();
     expect(status.state).toBe("unverified");
-    expect(status.models).toEqual([{ id: "auto", label: "Antigravity CLI" }, ...discovery.models]);
+    expect(status.models).toEqual(discovery.models);
     expect(connection.canEnable()).toBe(false);
     expect(run).not.toHaveBeenCalled();
     expect((await connection.test()).state).toBe("ready");
@@ -44,6 +44,53 @@ describe("Antigravity connection state", () => {
     connection.cancel(); resolve(result);
     expect((await pending).state).not.toBe("ready");
     expect(connection.canEnable()).toBe(false);
+  });
+  it("verifies the selected real model independently without granting other capabilities", async () => {
+    const { connection, run } = service();
+    const request = { capability: "text" as const, modelId: discovery.models[0].id };
+    const status = await connection.test(request);
+    expect(run).toHaveBeenCalledWith(expect.any(AbortSignal), request, discovery.version);
+    expect(status.checks).toEqual([expect.objectContaining({ ...request, state: "passed" })]);
+    expect(connection.canEnable(request)).toBe(true);
+    expect(connection.canEnable({ ...request, capability: "vision" })).toBe(false);
+    expect(connection.canEnable({ capability: "text", modelId: "auto" })).toBe(false);
+  });
+  it("refuses fabricated model IDs before running a paid test", async () => {
+    const { connection, run } = service();
+    const status = await connection.test({ capability: "text", modelId: "made-up-model" });
+    expect(status.code).toBe("ANTIGRAVITY_MODEL_NOT_DISCOVERED");
+    expect(run).not.toHaveBeenCalled();
+  });
+  it("keeps text verification when an independent image test fails", async () => {
+    const { connection, run } = service();
+    await connection.test();
+    run.mockRejectedValueOnce(new Error("ANTIGRAVITY_QUOTA"));
+    const status = await connection.test({ capability: "image", modelId: "auto" });
+    expect(status.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ capability: "text", modelId: "auto", state: "passed" }),
+      expect.objectContaining({ capability: "image", state: "failed", code: "ANTIGRAVITY_QUOTA" }),
+    ]));
+    expect(connection.canEnable({ capability: "text", modelId: "auto" })).toBe(true);
+    expect(connection.canEnable({ capability: "image", modelId: "auto" })).toBe(false);
+  });
+  it("does not count a model's nonempty but wrong verification answer as success", async () => {
+    const { connection } = service(vi.fn().mockResolvedValue({ ...result, text: "not OK" }));
+    expect((await connection.test()).code).toBe("ANTIGRAVITY_TEST_ASSERTION_FAILED");
+    expect(connection.canEnable()).toBe(false);
+  });
+  it("invalidates every capability record when the installed CLI version changes", async () => {
+    const { connection, probe } = service();
+    await connection.test();
+    probe.mockResolvedValue({ ...discovery, version: "1.1.22" });
+    expect((await connection.status()).checks).toEqual([]);
+    expect(connection.canEnable()).toBe(false);
+  });
+  it("restores persisted evidence only after matching the currently installed CLI version", async () => {
+    const { connection } = service();
+    connection.restore([{ capability: "edit", modelId: "auto", state: "passed", version: "1.1.21", checkedAt: Date.now() }]);
+    expect(connection.canEnable()).toBe(false);
+    expect((await connection.status()).checks).toEqual([expect.objectContaining({ capability: "edit", state: "passed" })]);
+    expect(connection.canEnable({ capability: "edit", modelId: "auto" })).toBe(true);
   });
 });
 

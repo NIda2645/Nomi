@@ -14,9 +14,7 @@ describe("applyBuiltinSeeds", () => {
     const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
     const vendor = state.vendors.find((v) => v.key === "antigravity-cli");
     expect(vendor).toMatchObject({ authType: "none", enabled: false });
-    expect(state.models.find((m) => m.vendorKey === "antigravity-cli")).toMatchObject({
-      kind: "text", modelKey: "auto", meta: { supportsToolCalls: false, supportsImageInput: false },
-    });
+    expect(state.models.filter((m) => m.vendorKey === "antigravity-cli")).toEqual([]);
     vendor!.enabled = true;
     expect(applyBuiltinSeeds(state, NOW).state.vendors.find((v) => v.key === "antigravity-cli")?.enabled).toBe(true);
   });

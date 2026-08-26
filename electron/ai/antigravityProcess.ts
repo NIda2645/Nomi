@@ -5,10 +5,17 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { AntigravityProtocol, type AntigravityResult } from "./antigravityProtocol";
+import { AntigravityProtocol, type AntigravityResult, type AntigravityToolStep } from "./antigravityProtocol";
+
+import type { AntigravityCapability } from "../shared/antigravity";
+import { assertAntigravityMediaInput, prepareAntigravityMedia, stageAntigravityMedia, finishAntigravityMedia, type AntigravityImageInput } from "./antigravityMedia";
 
 type Invocation = { command: string; args: string[] };
-type RunOptions = {
+export type AntigravityRunOptions = {
+  capability?: AntigravityCapability;
+  images?: AntigravityImageInput[];
+  /** Exact version from trusted main-process discovery, required for media. */
+  cliVersion?: string;
   prompt: string;
   model?: string;
   signal?: AbortSignal;
@@ -67,32 +74,39 @@ function failureFromExit(stderr: string): Error {
   return new Error("ANTIGRAVITY_PROCESS_FAILED");
 }
 
-export async function runAntigravityProcess(input: RunOptions, options: ProcessOptions = {}): Promise<AntigravityResult> {
+export async function runAntigravityProcess(input: AntigravityRunOptions, options: ProcessOptions = {}): Promise<AntigravityResult> {
   // Windows needs a Job Object to own descendants even after the CLI exits.
   // Do not advertise bounded cancellation there until that boundary exists.
   if (process.platform === "win32" && !options.invocation) throw new Error("ANTIGRAVITY_PLATFORM_UNVERIFIED");
   if (input.signal?.aborted) throw abortError();
   if (!input.prompt.trim()) throw new Error("ANTIGRAVITY_EMPTY_PROMPT");
   if (input.model && !/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/.test(input.model)) throw new Error("ANTIGRAVITY_INVALID_MODEL");
+  const capability = input.capability ?? "text";
+  assertAntigravityMediaInput(capability, input.images ?? [], input.cliVersion);
   const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-antigravity-")));
-  const agentName = "nomi-text-" + randomUUID();
+  const agentName = "nomi-" + capability + "-" + randomUUID();
   try {
+    const media = capability === "text" ? undefined : await prepareAntigravityMedia(cwd, capability, input.images ?? [], input.signal);
     const agentDir = path.join(cwd, ".agents", "agents", agentName);
     await mkdir(agentDir, { recursive: true });
     await writeFile(path.join(agentDir, "agent.md"), [
-      "---", "name: " + agentName, "description: Nomi text generation", "tools: []",
+      "---", "name: " + agentName, "description: Nomi bounded generation", "tools: " + JSON.stringify(media?.tools ?? []),
+      ...(media ? ["plugins: " + JSON.stringify([media.plugin])] : []),
       "mainAgent: true", "subagent: false", 'commandExecutionPolicy: "off"',
       "inheritCustomizations: false", "---", "# System Prompt",
-      "Return only the requested text. Do not use tools or access files.",
+      media?.system ?? "Return only the requested text. Do not use tools or access files.",
     ].join("\n"), { mode: 0o600 });
     if (input.signal?.aborted) throw abortError();
     const invocation = options.invocation || { command: resolveAntigravityBin(), args: [] };
     const logPath = path.join(cwd, "cli.log");
     const args = [...invocation.args, "--add-dir", cwd, "--log-file", logPath, "--agent", agentName, "--input-format", "stream-json",
       "--output-format", "stream-json", "--disable-slash-commands", "--sandbox",
-      "--print-timeout", "120s", ...(input.model && input.model !== "auto" ? ["--model", input.model] : [])];
-    return await new Promise<AntigravityResult>((resolve, reject) => {
-      const child = spawn(invocation.command, args, { cwd, env: options.env ?? buildAntigravityEnv(), shell: false,
+      "--print-timeout", media ? "240s" : "120s", ...(input.model && input.model !== "auto" ? ["--model", input.model] : [])];
+    const environment = options.env ?? buildAntigravityEnv();
+    const home = media ? await realpath(environment.HOME ?? os.homedir()) : undefined;
+    let toolSteps: AntigravityToolStep[] = [];
+    const result = await new Promise<AntigravityResult>((resolve, reject) => {
+      const child = spawn(invocation.command, args, { cwd, env: home ? { ...environment, HOME: home } : environment, shell: false,
         detached: process.platform !== "win32", windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
       let failure: Error | undefined;
       let closed = false;
@@ -100,6 +114,8 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
       let stderr = "";
       let bytes = 0;
       let readiness = Promise.resolve();
+      let mediaReady = false;
+      let mediaPreparing = false;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let drainTimer: ReturnType<typeof setTimeout> | undefined;
       const killOwnedGroup = (signal: NodeJS.Signals) => {
@@ -124,7 +140,7 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
             if (code === "ESRCH") return;
             // macOS can briefly return EPERM while the killed group is reaped.
             // Only ESRCH confirms cleanup; persistent denial remains a failure.
-            if (code !== "EPERM" || Date.now() >= deadline) throw new Error("ANTIGRAVITY_CLEANUP_FAILED", { cause: error });
+            if (code !== "EPERM" || Date.now() >= deadline) throw Object.assign(new Error("ANTIGRAVITY_CLEANUP_FAILED"), { cause: error });
           }
           if (Date.now() >= deadline) throw new Error("ANTIGRAVITY_CLEANUP_TIMEOUT");
           await delay(20);
@@ -140,25 +156,39 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
         killTimer.unref();
       };
       const onAbort = () => stop(abortError());
-      const initTimer = setTimeout(() => stop(new Error("ANTIGRAVITY_INIT_TIMEOUT")), options.initTimeoutMs ?? 10_000);
-      const overallTimer = setTimeout(() => stop(new Error("ANTIGRAVITY_TIMEOUT")), options.timeoutMs ?? 125_000);
+      // Authenticated cold startup has exceeded 10s in the real CLI; still bounded independently of generation.
+      const initTimer = setTimeout(() => stop(new Error("ANTIGRAVITY_INIT_TIMEOUT")), options.initTimeoutMs ?? 30_000);
+      const overallTimer = setTimeout(() => stop(new Error("ANTIGRAVITY_TIMEOUT")), options.timeoutMs ?? (media ? 245_000 : 125_000));
       const parser = new AntigravityProtocol(() => {
         readiness = verifyProfileSelection(logPath).then(() => {
           clearTimeout(initTimer);
           if (!failure && !closed && !input.signal?.aborted) {
             // EOF ends the session after this single turn. No global --continue.
-            child.stdin.end(JSON.stringify({ event: "user", message: { content: input.prompt } }) + "\n");
+            const line = JSON.stringify({ event: "user", message: { content: media?.handshake ?? input.prompt } }) + "\n";
+            if (media) child.stdin.write(line); else child.stdin.end(line);
           }
         }).catch(stop);
-      }, (delta) => input.onDelta?.(delta), {
-        agent: agentName, cwd, ...(input.model && input.model !== "auto" ? { model: input.model } : {}),
+      }, (delta) => { if (!media) input.onDelta?.(delta); }, {
+        agent: agentName, cwd, capability: "text", ...(input.model && input.model !== "auto" ? { model: input.model } : {}),
       });
       const boundDrain = () => {
         drainTimer ??= setTimeout(() => stop(new Error("ANTIGRAVITY_DRAIN_TIMEOUT")), 2_000);
       };
       const acceptLine = (line: string) => {
         if (!line.trim() || failure) return;
-        try { parser.accept(JSON.parse(line)); if (parser.completed) boundDrain(); }
+        try {
+          parser.accept(JSON.parse(line));
+          if (parser.completed && media && !mediaReady) {
+            if (mediaPreparing || parser.finish().text.trim() !== media.handshake) throw new Error("ANTIGRAVITY_HOOK_UNVERIFIED");
+            mediaPreparing = true;
+            readiness = stageAntigravityMedia(media).then(() => {
+              if (failure || closed || input.signal?.aborted) return;
+              mediaReady = true;
+              parser.nextTurn(capability, capability === "vision" ? media.policy.images.length : 1);
+              child.stdin.end(JSON.stringify({ event: "user", message: { content: input.prompt } }) + "\n");
+            }).catch(stop);
+          } else if (parser.completed) boundDrain();
+        }
         catch (error) { stop(error instanceof SyntaxError ? new Error("ANTIGRAVITY_INVALID_JSON") : error as Error); }
       };
       child.stdout.setEncoding("utf8");
@@ -190,12 +220,17 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
           if (code !== 0) { reject(failureFromExit(stderr)); return; }
           acceptLine(buffer);
           if (failure) { reject(failure); return; }
-          try { resolve(parser.finish()); } catch (error) { reject(error); }
+          try { const result = parser.finish(); toolSteps = parser.toolSteps; resolve(result); } catch (error) { reject(error); }
         }, reject);
       });
       input.signal?.addEventListener("abort", onAbort, { once: true });
       if (input.signal?.aborted) onAbort();
     });
+    if (!media) return result;
+    const verified = await finishAntigravityMedia(media, result, toolSteps, home!, input.signal);
+    if (input.signal?.aborted) throw abortError();
+    input.onDelta?.(verified.text);
+    return verified;
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

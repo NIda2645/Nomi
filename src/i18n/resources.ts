@@ -1,3 +1,4 @@
+import { enAntigravity, zhAntigravity } from './locales/antigravity'
 import { enModelSetup, zhModelSetup } from './locales/modelSetup'
 import { enBrowserAssets, zhBrowserAssets } from './locales/browserAssets'
 import { enTimelinePreview, zhTimelinePreview } from './locales/timelinePreview'
@@ -362,6 +363,7 @@ export const zhCN = {
   assetLibrary: zhAssetLibrary,
   settings: zhSettings,
   onboardingProviders: zhOnboardingProviders,
+  antigravity: zhAntigravity,
   comfyuiWorkflowPage: zhComfyuiWorkflowPage,
   libraries: zhLibraries,
   scene3d: {
@@ -735,6 +737,7 @@ export const en = {
   assetLibrary: enAssetLibrary,
   settings: enSettings,
   onboardingProviders: enOnboardingProviders,
+  antigravity: enAntigravity,
   comfyuiWorkflowPage: enComfyuiWorkflowPage,
   libraries: enLibraries,
   scene3d: {

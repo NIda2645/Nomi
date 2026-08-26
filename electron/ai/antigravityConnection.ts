@@ -1,15 +1,16 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
-import type { AntigravityConnectionStatus } from "../shared/antigravity";
+import { parseAntigravityTestRequest, type AntigravityCheck, type AntigravityTestRequest, type AntigravityConnectionStatus } from "../shared/antigravity";
 import { buildAntigravityEnv, resolveAntigravityBin, runAntigravityProcess } from "./antigravityProcess";
 import type { AntigravityResult } from "./antigravityProtocol";
+import { verifyAntigravityCapability } from "./antigravityVerification";
 
 const exec = promisify(execFile);
 type Discovery = { version: string; models: AntigravityConnectionStatus["models"] };
 type Dependencies = {
   probe: (signal?: AbortSignal) => Promise<Discovery>;
-  run: (signal: AbortSignal) => Promise<AntigravityResult>;
+  run: (signal: AbortSignal, request: AntigravityTestRequest, version: string) => Promise<AntigravityResult>;
   bin: () => string;
 };
 
@@ -65,76 +66,118 @@ export async function probeAntigravity(signal?: AbortSignal, overrides: {
     return { version, models: parseAntigravityModels(modelResult.stdout) };
   } catch (error) {
     const failure = error as NodeJS.ErrnoException & { stderr?: string };
-    if (failure.code === "ENOENT") throw new Error("ANTIGRAVITY_NOT_INSTALLED", { cause: error });
+    if (failure.code === "ENOENT") throw Object.assign(new Error("ANTIGRAVITY_NOT_INSTALLED"), { cause: error });
     if (/please sign in|authentication required|not authenticated|login required/i.test(failure.stderr || "")) {
-      throw new Error("ANTIGRAVITY_LOGIN_REQUIRED", { cause: error });
+      throw Object.assign(new Error("ANTIGRAVITY_LOGIN_REQUIRED"), { cause: error });
     }
     if (failure.message.startsWith("ANTIGRAVITY_")) throw failure;
-    throw new Error("ANTIGRAVITY_PROBE_FAILED", { cause: error });
+    throw Object.assign(new Error("ANTIGRAVITY_PROBE_FAILED"), { cause: error });
   }
 }
 
 export class AntigravityConnection {
   private active?: AbortController;
-  private verified?: { version: string; at: number };
   private revision = 0;
+  private version?: string;
+  private checks: AntigravityCheck[] = [];
   private models: AntigravityConnectionStatus["models"] = [];
   constructor(private readonly deps: Dependencies) {}
 
-  private state(state: AntigravityConnectionStatus["state"], code?: string, version?: string): AntigravityConnectionStatus {
+  /** Main-only persistent evidence; never accept records through renderer IPC. */
+  restore(values: unknown): void {
+    if (this.revision || !Array.isArray(values)) return;
+    for (const raw of values) {
+      try {
+        if (!raw || typeof raw !== "object") continue;
+        const { capability, modelId, state, version, checkedAt, code } = raw;
+        const request = parseAntigravityTestRequest({ capability, modelId });
+        if (!["passed", "failed"].includes(state) || typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)
+          || !Number.isSafeInteger(checkedAt) || checkedAt < 0 || checkedAt > Date.now()) continue;
+        this.replaceCheck(request, { ...request, state, version, checkedAt,
+          ...(typeof code === "string" && /^ANTIGRAVITY_[A-Z_]+$/.test(code) ? { code } : {}) });
+      } catch { /* Invalid cached records never grant readiness. */ }
+    }
+  }
+
+  private state(state: AntigravityConnectionStatus["state"], code?: string): AntigravityConnectionStatus {
     const bin = this.deps.bin();
-    // A copyable command, not a shell invocation. CLI login is interactive bare agy.
     const quoted = "'" + bin.replace(/'/g, "'\\''") + "'";
-    return { state, ...(code ? { code } : {}), ...(version ? { version } : {}), checkedAt: Date.now(),
+    return { state, ...(code ? { code } : {}), ...(this.version ? { version: this.version } : {}), checkedAt: Date.now(),
       loginCommand: process.platform === "win32" ? '& "' + bin.replace(/"/g, '""') + '"' : quoted,
-      models: this.models.length ? [{ id: "auto", label: "Antigravity CLI" }, ...this.models] : [] };
+      models: this.models.map((model) => ({ ...model })), checks: this.checks.map((check) => ({ ...check })) };
   }
   private error(error: unknown): AntigravityConnectionStatus {
-    const code = error instanceof Error && error.message.startsWith("ANTIGRAVITY_") ? error.message : "ANTIGRAVITY_TEST_FAILED";
+    const code = error instanceof Error && /^ANTIGRAVITY_[A-Z_]+$/.test(error.message) ? error.message : "ANTIGRAVITY_TEST_FAILED";
     const state = code.includes("NOT_INSTALLED") ? "missing" : code.includes("LOGIN_REQUIRED") ? "login-required"
-      : /PROFILE_UNVERIFIED|INVALID_INIT|INIT_TIMEOUT|TOOLS_UNSUPPORTED|PLATFORM_UNVERIFIED/.test(code) ? "limited" : "error";
+      : /PROFILE_UNVERIFIED|INVALID_INIT|INIT_TIMEOUT|TOOLS_UNSUPPORTED|PLATFORM_UNVERIFIED|QUOTA/.test(code) ? "limited" : "error";
     return this.state(state, code);
   }
-  canEnable(): boolean { return Boolean(this.verified && Date.now() - this.verified.at < 600_000); }
+  private discovered(discovery: Discovery): void {
+    if (this.version && this.version !== discovery.version) this.checks = [];
+    this.checks = this.checks.filter((check) => check.version === discovery.version);
+    this.version = discovery.version;
+    this.models = discovery.models;
+    this.checks = this.checks.filter((check) => check.modelId === "auto" || this.models.some((model) => model.id === check.modelId));
+  }
+  canEnable(request?: AntigravityTestRequest): boolean {
+    return this.checks.some((check) => check.state === "passed" && check.version === this.version
+      && Date.now() - check.checkedAt < 600_000
+      && (!request || (check.capability === request.capability && check.modelId === request.modelId)));
+  }
+  private replaceCheck(request: AntigravityTestRequest, check?: AntigravityCheck): void {
+    this.checks = this.checks.filter((item) => item.capability !== request.capability || item.modelId !== request.modelId);
+    if (check) this.checks.push(check);
+  }
 
   async status(): Promise<AntigravityConnectionStatus> {
-    const revision = this.revision;
+    if (this.active) return this.state("unverified", "ANTIGRAVITY_TEST_ACTIVE");
+    const revision = ++this.revision;
     try {
-      const { version, models } = await this.deps.probe();
-      if (revision === this.revision) this.models = models;
-      const ready = revision === this.revision && this.canEnable() && this.verified?.version === version;
-      if (revision === this.revision && this.verified?.version !== version) this.verified = undefined;
-      return this.state(ready ? "ready" : "unverified", undefined, version);
+      const discovery = await this.deps.probe();
+      if (revision === this.revision) this.discovered(discovery);
+      return this.state(this.canEnable() ? "ready" : "unverified");
     } catch (error) {
-      if (revision === this.revision) { this.verified = undefined; this.models = []; }
+      if (revision !== this.revision) return this.state("unverified");
+      this.checks = []; this.models = [];
       return this.error(error);
     }
   }
 
-  async test(): Promise<AntigravityConnectionStatus> {
+  async test(value?: AntigravityTestRequest): Promise<AntigravityConnectionStatus> {
+    const request = parseAntigravityTestRequest(value);
     if (this.active) return this.state("unverified", "ANTIGRAVITY_TEST_ACTIVE");
     const controller = new AbortController(); this.active = controller;
-    const revision = ++this.revision; this.verified = undefined; this.models = [];
+    const revision = ++this.revision;
+    this.replaceCheck(request);
+    let discovered = false;
     try {
-      const { version, models } = await this.deps.probe(controller.signal);
-      if (controller.signal.aborted) return this.state("unverified", "ANTIGRAVITY_CANCELLED");
-      if (revision === this.revision) this.models = models;
-      await this.deps.run(controller.signal);
+      const discovery = await this.deps.probe(controller.signal);
       if (controller.signal.aborted || revision !== this.revision) return this.state("unverified", "ANTIGRAVITY_CANCELLED");
-      this.verified = { version, at: Date.now() };
-      return this.state("ready", undefined, version);
+      this.discovered(discovery); discovered = true;
+      if (request.modelId !== "auto" && !this.models.some((model) => model.id === request.modelId)) {
+        throw new Error("ANTIGRAVITY_MODEL_NOT_DISCOVERED");
+      }
+      const result = await this.deps.run(controller.signal, request, discovery.version);
+      if (controller.signal.aborted || revision !== this.revision) return this.state("unverified", "ANTIGRAVITY_CANCELLED");
+      if (request.capability === "text" && result.text.trim() !== "OK") throw new Error("ANTIGRAVITY_TEST_ASSERTION_FAILED");
+      this.replaceCheck(request, { ...request, state: "passed", version: discovery.version, checkedAt: Date.now() });
+      return this.state("ready");
     } catch (error) {
-      return controller.signal.aborted ? this.state("unverified", "ANTIGRAVITY_CANCELLED") : this.error(error);
+      if (controller.signal.aborted || revision !== this.revision) return this.state("unverified", "ANTIGRAVITY_CANCELLED");
+      if (!discovered) { this.checks = []; this.models = []; }
+      const status = this.error(error);
+      if (discovered) this.replaceCheck(request, { ...request, state: "failed", version: this.version!, checkedAt: Date.now(), code: status.code });
+      return this.error(error);
     } finally {
       if (this.active === controller) this.active = undefined;
     }
   }
 
-  cancel(): void { this.revision++; this.verified = undefined; this.active?.abort(); }
+  cancel(): void { this.revision++; this.active?.abort(); }
 }
 
 export const antigravityConnection = new AntigravityConnection({
   probe: probeAntigravity, bin: resolveAntigravityBin,
-  run: async (signal) => runAntigravityProcess({ prompt: "Reply with exactly OK.", signal },
-    { env: await antigravityEnvironment() }),
+  run: (signal, request, version) => verifyAntigravityCapability(request, version, signal,
+    async (input) => runAntigravityProcess(input, { env: await antigravityEnvironment() })),
 });

@@ -328,6 +328,13 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "i2i": "image_edit"
     }
   },
+  "antigravity-image": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "i2i": "image_edit"
+    }
+  },
   "hunyuan3d": {
     "defaultModeId": "text",
     "modes": {
