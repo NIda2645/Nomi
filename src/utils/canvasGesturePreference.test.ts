@@ -25,6 +25,7 @@ describe('resolveWheelIntent — 两档 × 修饰键真值表', () => {
   it.each([
     ['ctrlKey（触控板捏合浏览器合成的就是它）', { ctrlKey: true, metaKey: false }],
     ['metaKey（⌘+滚轮）', { ctrlKey: false, metaKey: true }],
+    ['ctrlKey + metaKey', { ctrlKey: true, metaKey: true }],
   ])('%s：两档都恒缩放', (_label, event) => {
     expect(resolveWheelIntent('wheel-zoom', event)).toBe('zoom')
     expect(resolveWheelIntent('modifier-zoom', event)).toBe('zoom')

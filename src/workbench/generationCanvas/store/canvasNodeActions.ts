@@ -1,4 +1,5 @@
 import { createGenerationNode, removeNodes, upsertNode } from '../model/graphOps'
+import { normalizeParameterEdges } from '../model/parameterReferenceSlots'
 import { resolveInsertionPosition } from './resolveInsertionPosition'
 import { tidyCanvasLayout } from './tidyCanvasLayout'
 import { getDefaultCategoryForNodeKind, type GenerationCanvasNode } from '../model/generationCanvasTypes'
@@ -103,7 +104,9 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
+      const declarationChanged = 'meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots
       Object.assign(node, patch)
+      if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       if (shouldPersistCanvasMutation(options)) bumpPersistRevision(state)
     })
     emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
@@ -116,10 +119,15 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     pushUndoSnapshot(currentState)
     set((state) => {
       const patches = new Map(applicable.map((update) => [update.nodeId, update.patch]))
+      let declarationChanged = false
       for (const node of state.nodes) {
         const patch = patches.get(node.id)
-        if (patch) Object.assign(node, patch)
+        if (patch) {
+          if ('meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots) declarationChanged = true
+          Object.assign(node, patch)
+        }
       }
+      if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       bumpPersistRevision(state)
       Object.assign(state, getHistoryFlags())
     })

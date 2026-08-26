@@ -1,8 +1,6 @@
 {
-  "electron/ai/buildAiSdkModel.test.ts": 1,
   "electron/ai/composeAgentSystemPrompt.test.ts": 1,
   "electron/capabilityCore/apimartGenerationProvider.test.ts": 3,
-  "electron/capabilityCore/generationProviderBootstrap.test.ts": 3,
   "electron/capabilityCore/generationRuntimeAdapter.test.ts": 3,
   "electron/capabilityCore/mcpGenerationDispatcher.test.ts": 1,
   "electron/capabilityCore/mcpGenerationTools.test.ts": 2,
@@ -27,7 +25,6 @@
   "electron/productionRun/productionRunRepository.test.ts": 1,
   "electron/productionRun/productionTrustLevel.test.ts": 1,
   "electron/providerAdapter/docsDiscovery.test.ts": 3,
-  "electron/providerAdapter/existingConnection.test.ts": 3,
   "electron/providerAdapter/service.test.ts": 3,
   "electron/providerAdapter/serviceLifecycle.test.ts": 3,
   "electron/providerAdapter/verifier.test.ts": 1,

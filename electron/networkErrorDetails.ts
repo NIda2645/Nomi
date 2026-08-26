@@ -36,7 +36,7 @@ export function networkFailureDetails(error: unknown): { code?: string; message:
 export function safeNetworkUrl(value: string): string {
   try {
     const url = new URL(value);
-    return `${url.protocol}//${url.host}${url.pathname}`;
+    return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname}`;
   } catch { return '[network address]'; }
 }
 

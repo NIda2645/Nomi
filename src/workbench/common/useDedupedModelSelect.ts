@@ -57,7 +57,8 @@ function isModelAiling(model: DedupedModel, isAiling: AilingProbe): boolean {
 export function buildModelSelectOptions(deduped: readonly DedupedModel[], isAiling: AilingProbe): NomiSelectOption[] {
   const toOption = (m: DedupedModel): NomiSelectOption => {
     // 厂商标注（用户 2026-07-17：模型来自哪家要看得见）：多家=「N 家」，单家=厂商短名。
-    const origin = m.providers.length > 1 ? `${m.providers.length} 家` : providerLabel(m.providers[0])
+    const providerCount = new Set(m.providers.map((p) => p.vendor || p.option.value)).size
+    const origin = providerCount > 1 ? `${providerCount} 家` : providerLabel(m.providers[0])
     if (!isModelAiling(m, isAiling)) return { value: m.canonicalId, label: m.label, trailing: origin }
     return {
       value: m.canonicalId,
@@ -197,6 +198,10 @@ export interface DedupedModelSelectView {
   providerValue: string
   /** 锁定某家供应商：解析寻址串后回写该家 (option.value, vendor)。 */
   onProviderPick: (addressValue: string) => void
+  /** Exact enabled catalog variants for the selected supplier; no synthetic model IDs. */
+  variantOptions: NomiSelectOption[]
+  variantValue: string
+  onVariantPick: (addressValue: string) => void
   /** 当前选中的去重模型（供上层取档案/变体等）。 */
   selectedModel: DedupedModel | null
 }
@@ -216,8 +221,8 @@ export function useDedupedModelSelect(
   const deduped = React.useMemo(() => dedupeModelOptions([...modelOptions]), [modelOptions])
 
   const selectedModel = React.useMemo(
-    () => deduped.find((m) => m.providers.some((p) => p.option.value === value)) || null,
-    [deduped, value],
+    () => deduped.find((m) => m.providers.some((p) => p.option.value === value && (!vendor || p.vendor === vendor))) || null,
+    [deduped, value, vendor],
   )
 
   const modelOptionsView = React.useMemo<NomiSelectOption[]>(
@@ -230,10 +235,14 @@ export function useDedupedModelSelect(
     (canonicalId: string) => {
       const model = deduped.find((m) => m.canonicalId === canonicalId)
       if (!model) return
+      // Reopening/reselecting the family must not reset a saved reasoning tier.
+      const current = model.providers.find((p) => p.option.value === value && (!vendor || p.vendor === vendor))
+      if (current) { onChange(current.option.value, current.vendor); return }
       const best = pickHealthiestProvider(model, isModelRecentlyAiling)
-      if (best) onChange(best.option.value, best.vendor)
+      const preferred = model.providers.find((p) => p.vendor === best?.vendor && p.option.variant?.defaultVariant) || best
+      if (preferred) onChange(preferred.option.value, preferred.vendor)
     },
-    [deduped, onChange],
+    [deduped, onChange, value, vendor],
   )
 
   const providerOptionsView = React.useMemo<NomiSelectOption[]>(
@@ -245,18 +254,31 @@ export function useDedupedModelSelect(
     (addressValue: string) => {
       const picked = selectedModel?.providers.find((p) => providerAddress(p) === addressValue)
       if (picked) onChange(picked.option.value, picked.vendor)
-      else if (addressValue) onChange(addressValue)
     },
     [selectedModel, onChange],
   )
+
+  const providerValue = resolveProviderSelectValue(selectedModel, value, vendor)
+  const selectedProvider = selectedModel?.providers.find((p) => providerAddress(p) === providerValue)
+  const variantOptions = selectedProvider?.option.variant
+    ? (selectedModel?.providers || [])
+        .filter((p) => p.vendor === selectedProvider.vendor && p.option.variant)
+        .map((p) => ({ value: providerAddress(p), label: p.option.variant!.variantLabel }))
+    : []
+  const onVariantPick = (addressValue: string): void => {
+    if (variantOptions.some((option) => option.value === addressValue)) onProviderPick(addressValue)
+  }
 
   return {
     modelOptions: modelOptionsView,
     modelValue: selectedModel?.canonicalId || '',
     onModelPick,
     providerOptions: providerOptionsView,
-    providerValue: resolveProviderSelectValue(selectedModel, value, vendor),
+    providerValue,
     onProviderPick,
+    variantOptions,
+    variantValue: selectedProvider ? providerAddress(selectedProvider) : '',
+    onVariantPick,
     selectedModel,
   }
 }

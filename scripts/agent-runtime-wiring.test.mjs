@@ -15,6 +15,25 @@ function json(relative) {
   return JSON.parse(read(relative))
 }
 
+function stringArrayProperty(relative, propertyName) {
+  const source = ts.createSourceFile(relative, read(relative), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  let values
+  const visit = (node) => {
+    if (ts.isPropertyAssignment(node)
+      && ((ts.isIdentifier(node.name) && node.name.text === propertyName)
+        || (ts.isStringLiteralLike(node.name) && node.name.text === propertyName))
+      && ts.isArrayLiteralExpression(node.initializer)) {
+      values = node.initializer.elements
+        .filter((element) => ts.isStringLiteralLike(element))
+        .map((element) => element.text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  if (!values) throw new Error(`missing string-array property ${propertyName} in ${relative}`)
+  return values
+}
+
 function reachable(entry) {
   const seen = new Set()
   const pending = [entry]
@@ -77,7 +96,7 @@ describe('private pi build and test wiring', () => {
     expect(reachable('gates').has('test:agent-runtime')).toBe(true)
     const config = json('tests/agent-runtime/tsconfig.json')
     expect(config.compilerOptions).toMatchObject({ rootDir: '../..', outDir: '../../.tmp/agent-runtime-tests' })
-    const vitestIncludes = JSON.parse(read('vitest.config.ts').match(/include:\s*(\[[^\]]*\])/)[1])
+    const vitestIncludes = stringArrayProperty('vitest.config.ts', 'include')
     for (const name of nativeTests) {
       const relative = `tests/agent-runtime/${name}`
       expect(fs.existsSync(path.join(repoRoot, relative)), `missing migrated suite: ${name}`).toBe(true)

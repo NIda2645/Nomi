@@ -1,6 +1,7 @@
 import { decryptApiKeyRecord, type ApiKeyRecord } from "../catalog/secrets";
 import { readCatalog } from "../catalog/catalogStore";
 import type { CatalogState, Model, Vendor } from "../catalog/types";
+import { modelSupportsToolCalls } from "../shared/textModelCapabilities";
 import { modelSupportsImageInput } from "./agentUserContent";
 
 // vision/preview/audio 等常不可靠发 tool_use → 无偏好时降权（仍作回退），让通用对话模型优先做 Agent 主控（2026-06-07 真机走查 P0）。
@@ -57,8 +58,13 @@ export function selectTextModelCandidates(
   preference?: TextModelPreference,
   preferImageInput = false,
 ): Array<{ vendor: Vendor; model: Model }> {
+  if (preference?.modelKey && state.models.some((model) => model.modelKey === preference.modelKey
+    && (!preference.vendorKey || model.vendorKey === preference.vendorKey)
+    && !modelSupportsToolCalls(model.meta))) {
+    throw new Error("Model does not support assistant tools");
+  }
   const texts = state.models.filter(
-    (item) => item.kind === "text" && item.enabled && !isPromptRefineOnlyModel(item),
+    (item) => item.kind === "text" && item.enabled && !isPromptRefineOnlyModel(item) && modelSupportsToolCalls(item.meta),
   );
   // 有偏好：用户选的排第一（其余作回退）。
   // 无偏好且本轮带图：优先支持图片输入的 text 模型（gpt-4o/claude/gemini 既能看图又擅长 tool_use）。

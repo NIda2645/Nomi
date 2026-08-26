@@ -1,6 +1,8 @@
 import type { ModelCatalogModelDto } from '../workbench/api/modelCatalogApi'
 import type { ModelOption, ModelOptionPricing } from './models'
 import { archetypeParameterControls } from './modelArchetypes'
+import { ANTIGRAVITY_VENDOR_KEY } from '../../electron/shared/antigravity'
+import { getAntigravityModelVariant } from '../../electron/shared/antigravityModelVariants'
 
 function toCatalogModelPricing(pricing: ModelCatalogModelDto['pricing']): ModelOptionPricing | undefined {
   if (!pricing) return undefined
@@ -51,9 +53,17 @@ export function toCatalogModelOptions(items: ModelCatalogModelDto[]): ModelOptio
     // 认得的模型（按模型身份，供应商无关）→ 用内置档案的控件覆盖 meta.parameterControls，
     // 这样现有渲染路径不变就能渲染档案控件；认不出则保持原 meta（走通用 flat 解析）。
     const archControls = archetypeParameterControls({ modelKey: modelKey || value, modelAlias: alias, vendorKey: vendor, meta: item?.meta })
-    const meta = archControls
+    let meta = archControls
       ? { ...(item?.meta && typeof item.meta === 'object' ? item.meta : {}), parameterControls: archControls }
       : item?.meta
+    const variant = vendor === ANTIGRAVITY_VENDOR_KEY ? getAntigravityModelVariant(value) : undefined
+    if (vendor === ANTIGRAVITY_VENDOR_KEY) {
+      // Exact discovered IDs remain separate catalog rows. Unknown identities must not merge by label.
+      meta = {
+        ...(meta && typeof meta === 'object' ? meta : {}),
+        canonicalModelId: variant ? `${vendor}:family:${variant.familyKey}` : `${vendor}:model:${value}`,
+      }
+    }
     out.push({
       value,
       label,
@@ -62,6 +72,7 @@ export function toCatalogModelOptions(items: ModelCatalogModelDto[]): ModelOptio
       modelAlias: alias || null,
       meta,
       pricing: toCatalogModelPricing(item?.pricing),
+      ...(variant ? { variant } : {}),
     })
   }
   return out

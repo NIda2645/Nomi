@@ -93,8 +93,8 @@ async function runTextToSpeech(input: AudioTaskInput): Promise<TaskResult> {
 //   三头鉴权（凭证存 APP_ID:ACCESS_KEY，此处 split）+ 嵌套 req_params body（additions 情感安全 JSON 转义）
 //   → fetch → NDJSON+base64 解码（decodeDoubaoNdjsonAudio）→ 落盘 mp3 资产。
 async function runDoubaoUnidirectionalTts(input: AudioTaskInput, op: HttpOperation): Promise<TaskResult> {
-  const { vendor, apiKey, request, kind, taskId, projectId } = input;
-  const params = taskTemplateParams(request);
+  const { vendor, model, apiKey, request, kind, taskId, projectId } = input;
+  const params = taskTemplateParams(request, { vendorKey: vendor.key, modelKey: model.modelKey });
   const text = trim(request.prompt) || firstString(params.text);
   if (!text) throw new Error("配音生成失败：没有台词文本");
   const voice = firstString(params.voice);
@@ -146,7 +146,7 @@ async function runDoubaoUnidirectionalTts(input: AudioTaskInput, op: HttpOperati
 // Whisper：读参考音频字节 → multipart(file+model+language+response_format) → 同步 JSON → 文本结果。
 async function runTranscribe(input: AudioTaskInput): Promise<TaskResult> {
   const { vendor, model, apiKey, request, kind, taskId } = input;
-  const params = taskTemplateParams(request);
+  const params = taskTemplateParams(request, { vendorKey: vendor.key, modelKey: model.modelKey });
   const audioUrl = resolveAudioSource(request, params);
   if (!audioUrl) throw new Error("转写失败：未提供音频（请先连接或上传一个音频）");
   const audio = await readAudioBytes(audioUrl);

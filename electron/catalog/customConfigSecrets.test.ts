@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CURRENT_CATALOG_VERSION } from "./types";
 
 const safeStorageState = vi.hoisted(() => ({
   available: true,
@@ -96,7 +97,7 @@ describe("custom-call custom config secure persistence", () => {
     expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
   });
 
-  it("reads a v9 plaintext API key without probing safeStorage or rewriting the catalog", async () => {
+  it("reads a v9 plaintext API key without probing safeStorage or encrypting it during the v10 structural migration", async () => {
     const apiKey = "plain-key-remains-readable";
     const persisted = {
       version: 9,
@@ -115,15 +116,16 @@ describe("custom-call custom config secure persistence", () => {
       },
     };
     writeCatalog(persisted);
-    const before = fs.readFileSync(catalogFile(), "utf8");
     const store = await import("./catalogStore");
     const secrets = await import("./secrets");
 
-    const record = store.readCatalog().apiKeysByVendor["signed-relay"];
+    const state = store.readCatalog();
+    const record = state.apiKeysByVendor["signed-relay"];
     expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(record).toEqual(persisted.apiKeysByVendor["signed-relay"]);
     expect(secrets.decryptApiKeyRecord(record)).toBe(apiKey);
-    expect(fs.readFileSync(catalogFile(), "utf8")).toBe(before);
+    expect(fs.readFileSync(catalogFile(), "utf8")).toContain(apiKey);
   });
 
   it("encrypts a newly saved API key only on the explicit credential write", async () => {
@@ -185,16 +187,16 @@ describe("custom-call custom config secure persistence", () => {
     ]);
   });
 
-  it("advances a v8 catalog with no legacy customConfig to v9 without probing safeStorage", async () => {
+  it("advances a v8 catalog with no legacy customConfig to the current version without probing safeStorage", async () => {
     writeCatalog({ version: 8, vendors: [vendor({ label: "public-only" })], models: [], mappings: [], apiKeysByVendor: {} });
     const store = await import("./catalogStore");
 
-    expect(store.readCatalog().version).toBe(9);
-    expect(JSON.parse(fs.readFileSync(catalogFile(), "utf8")).version).toBe(9);
+    expect(store.readCatalog().version).toBe(CURRENT_CATALOG_VERSION);
+    expect(JSON.parse(fs.readFileSync(catalogFile(), "utf8")).version).toBe(CURRENT_CATALOG_VERSION);
     expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
   });
 
-  it("migrates a v1 catalog to v9 while preserving a legacy API key without probing safeStorage", async () => {
+  it("migrates a v1 catalog to the current version while preserving a legacy API key without probing safeStorage", async () => {
     const apiKey = "v1-legacy-api-key";
     writeCatalog({
       version: 1,
@@ -216,11 +218,11 @@ describe("custom-call custom config secure persistence", () => {
 
     const state = store.readCatalog();
     const record = state.apiKeysByVendor["signed-relay"];
-    expect(state.version).toBe(9);
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(record.apiKey).toBe(apiKey);
     expect(record.enc).toBe("plain");
     expect(secrets.decryptApiKeyRecord(record)).toBe(apiKey);
-    expect(JSON.parse(fs.readFileSync(catalogFile(), "utf8")).version).toBe(9);
+    expect(JSON.parse(fs.readFileSync(catalogFile(), "utf8")).version).toBe(CURRENT_CATALOG_VERSION);
     expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
   });
 
@@ -373,7 +375,7 @@ describe("custom-call custom config secure persistence", () => {
     const state = store.readCatalog();
     expect(disk).not.toContain(oldSecret);
     expect(disk).not.toContain(newSecret);
-    expect(state.version).toBe(9);
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(state.vendors[0].meta).toEqual({ extraHeaders: { "x-tenant": "tenant-a" } });
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({ newSecret });
   });
@@ -428,7 +430,7 @@ describe("custom-call custom config secure persistence", () => {
     ]);
 
     const state = store.readCatalog();
-    expect(state.version).toBe(9);
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({
       shared: "encrypted-wins",
       legacyOnly: "legacy-only",
@@ -471,7 +473,7 @@ describe("custom-call custom config secure persistence", () => {
     ).toEqual([{ name: "shared", hasValue: true }]);
 
     const state = store.readCatalog();
-    expect(state.version).toBe(9);
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({
       shared: "encrypted-wins",
     });
@@ -500,7 +502,7 @@ describe("custom-call custom config secure persistence", () => {
 
     expect(store.upsertModelCatalogCustomCallConfig("signed-relay", [])).toEqual([]);
     const state = store.readCatalog();
-    expect(state.version).toBe(9);
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(state.vendors.map((item) => item.meta)).toEqual([
       { label: "first-public" },
       { label: "second-public" },
@@ -509,7 +511,7 @@ describe("custom-call custom config secure persistence", () => {
   });
 
   it("stores new values as ciphertext and returns only masked names to the renderer", async () => {
-    writeCatalog({ version: 9, vendors: [vendor()], models: [], mappings: [], apiKeysByVendor: {} });
+    writeCatalog({ version: CURRENT_CATALOG_VERSION, vendors: [vendor()], models: [], mappings: [], apiKeysByVendor: {} });
     const store = await import("./catalogStore");
     const secrets = await import("./secrets");
 
@@ -561,7 +563,7 @@ describe("custom-call custom config secure persistence", () => {
       ]),
     ).toEqual([{ name: "signingKey", hasValue: true }]);
     const state = store.readCatalog();
-    expect(state.version).toBe(9);
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(safeStorageState.isEncryptionAvailable).toHaveBeenCalledTimes(1);
     expect(fs.readFileSync(catalogFile(), "utf8")).not.toContain("retry-secret-42");
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({
@@ -633,7 +635,7 @@ describe("custom-call custom config secure persistence", () => {
 
   it("fails closed when safeStorage is unavailable and leaves the catalog unchanged", async () => {
     safeStorageState.available = false;
-    writeCatalog({ version: 9, vendors: [vendor()], models: [], mappings: [], apiKeysByVendor: {} });
+    writeCatalog({ version: CURRENT_CATALOG_VERSION, vendors: [vendor()], models: [], mappings: [], apiKeysByVendor: {} });
     const before = fs.readFileSync(catalogFile(), "utf8");
     const store = await import("./catalogStore");
 
