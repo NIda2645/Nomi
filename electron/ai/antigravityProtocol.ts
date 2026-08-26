@@ -1,6 +1,6 @@
 // Official contract: https://www.antigravity.google/docs/cli/headless/
-// The init gate describes runtime tools; it is not an OS sandbox or a claim
-// that user-installed startup hooks cannot run during CLI initialization.
+// init.tools is the CLI's advertised inventory, not the selected agent's
+// effective whitelist. The process owns the profile and checks selection logs.
 export type AntigravityResult = {
   text: string;
   conversationId: string;
@@ -30,11 +30,11 @@ export class AntigravityProtocol {
     if (event.event === "init") {
       const init = record(event.init);
       if (this.initialized
-        || !Array.isArray(init.tools) || init.tools.length !== 0
+        || !Array.isArray(init.tools) || !init.tools.every((tool) => typeof tool === "string" && tool.length > 0)
         || init.agent !== this.expected.agent || init.cwd !== this.expected.cwd
         || (this.expected.model && init.model !== this.expected.model)
         || init.permission_mode !== "request-review") {
-        throw new Error("ANTIGRAVITY_TEXT_ISOLATION_UNVERIFIED");
+        throw new Error("ANTIGRAVITY_INVALID_INIT");
       }
       if (event.conversation_id !== undefined) this.pinConversation(event.conversation_id);
       this.initialized = true;

@@ -3,7 +3,7 @@ import { AntigravityProtocol } from "./antigravityProtocol";
 
 const expected = { agent: "nomi-text", cwd: "/tmp/test" };
 const usage = { input_tokens: 4, output_tokens: 2, thinking_tokens: 0, cache_read_tokens: 0, total_tokens: 6 };
-const init = { event: "init", conversation_id: "task-1", init: { cwd: expected.cwd, tools: [], agent: "nomi-text", permission_mode: "request-review" } };
+const init = { event: "init", conversation_id: "task-1", init: { cwd: expected.cwd, tools: ["run_command", "generate_image", "view_file"], agent: "nomi-text", permission_mode: "request-review" } };
 const result = { event: "result", result: { conversation_id: "task-1", status: "SUCCESS", response: "你好", duration_seconds: 0.1, num_turns: 1, usage } };
 const delta = (text: string) => ({ event: "step_update", step_update: { conversation_id: "task-1", step_index: 1, state: "ACTIVE", step_type: "agent_response", text_delta: text } });
 
@@ -20,7 +20,7 @@ describe("official Antigravity stream-json contract", () => {
     parser.accept(delta("你")); parser.accept(result);
     expect(parser.finish().conversationId).toBe("task-1");
   });
-  it("opens the prompt gate only after an explicit empty tool list for our agent", () => {
+  it("accepts the advertised tool inventory without treating it as the agent whitelist", () => {
     const ready = vi.fn(); const onDelta = vi.fn();
     const parser = new AntigravityProtocol(ready, onDelta, expected);
     parser.accept(init);
@@ -31,7 +31,8 @@ describe("official Antigravity stream-json contract", () => {
   });
 
   it.each([
-    { ...init, init: { ...init.init, tools: ["run_command"] } },
+    { ...init, init: { ...init.init, tools: [42] } },
+    { ...init, init: { ...init.init, tools: [""] } },
     { ...init, init: { agent: "nomi-text" } },
     { ...init, init: { ...init.init, agent: "another-agent" } },
     { ...init, init: { ...init.init, permission_mode: "always-proceed" } },

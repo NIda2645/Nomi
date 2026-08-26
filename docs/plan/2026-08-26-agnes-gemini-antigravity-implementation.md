@@ -79,6 +79,20 @@ Files: dedicated CLI vendor seed and UI connection card, existing onboarding bri
 
 Current Agnes Key lists six models; remaining four need provider eligibility for true full-model testing. Official agy 1.1.21 is now installed and checksum-verified; the real process returns LOGIN_REQUIRED before any model prompt is sent. Google login and approval of the revised full-capability mockup remain external prerequisites. Native Gemini API tests separately require a Google API credential. These constraints must not be relabeled as successful real tests.
 
+### Authenticated continuation (2026-08-27)
+
+The login prerequisite is now resolved: explicitly passing the existing system proxy fixed the OAuth TCP timeout, and the user completed native Google login. See `docs/audit/2026-08-27-antigravity-authenticated-verification.md`; the earlier checkpoint remains historical evidence.
+
+- [x] Prove native text output and custom agent system-body loading without reading account credentials.
+- [x] Compare an empty tool whitelist against a view_file-only visual task using task-owned fixtures; distinguish advertised init inventory from effective agent permissions.
+- [x] Native image generation/editing, exact task reference evidence, JPEG decode and actual output path verification. Real Nomi text streaming cancellation passed.
+- [ ] Complete media execution-before-tool reference restrictions and application artifact import before implementing/exposing the media runtime adapter.
+- [x] Correct the process profile to the verified documented custom-agent format. Replace the false empty-init-inventory assumption with schema checks plus declared/reviewed per-profile permission rules; keep tool-event rejection for the text-only profile. Add regression fixtures before code edits and rerun the real adapter, not just native CLI.
+- [x] Discover 14 actual CLI model IDs and run each once: initially 11 exact text passes, GPT-OSS response mismatch, 2 Pro timeouts; bounded follow-up passes Pro High/GPT-OSS arithmetic, Pro Low still times out (13/14 with a passing real assertion).
+- [x] Implement model discovery projection with malformed-output and stdin EOF tests; do not advertise account access from discovery alone.
+- [ ] Wire existing text/media task paths and status/cancel IPC only after the relevant contract is verified; do not silently fall back to a paid API or mix API-key and subscription sessions.
+- [ ] Obtain revised full-capability mockup approval before implementing the production card; then repeat complete gates and real Nomi user-task acceptance, update draft PR, and keep it unmerged.
+
 ## Current checkpoint after scope correction
 
 Baseline was synchronized to origin/main 5f09b95d (#185), then refreshed again to 7dab8ee8 (#187 reference asset transport) before the checkpoint PR. The upstream split default generator and builtin vendor registry are retained; non-Agnes generated defaults are unchanged by this task. Recovery stashes 81e6ff9433d13cdc076dcdf29064ae7d7fddc9ee and b1dcd7b08ec7a3364e0c9046f48e2cd8c03eb522 are retained. Final gates and UI checks are rerun on 7dab8ee8; earlier 5f09b95d evidence remains explicitly dated below.

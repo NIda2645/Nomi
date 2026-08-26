@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm, stat } from "node:fs/promises";
+import { constants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { runAntigravityProcess, buildAntigravityEnv } from "./antigravityProcess";
@@ -21,12 +22,36 @@ describe("Antigravity process ownership", () => {
     expect(JSON.parse(await readFile(path.join(f.dir, "input"), "utf8")))
       .toEqual({ event: "user", message: { content: "write a scene" } });
     const cwd = await readFile(path.join(f.dir, "cwd"), "utf8");
+    const profile = await readFile(path.join(f.dir, "profile"), "utf8");
+    expect(profile).toContain("tools: []");
+    expect(profile).toContain("inheritCustomizations: false");
+    expect(profile).toContain("# System Prompt");
+    expect(await readFile(path.join(f.dir, "mounted-cwd"), "utf8")).toBe(cwd);
     await expect(stat(cwd)).rejects.toMatchObject({ code: "ENOENT" });
   });
-  it("withholds the prompt when tools are enabled", async () => {
-    const f = await fixture("tools");
-    await expect(runAntigravityProcess({ prompt: "secret task" }, { invocation: f.invocation })).rejects.toThrow("ISOLATION");
+  it.each(["agent-fallback", "missing-log", "oversize-log"])("withholds the prompt without a valid profile diagnostic: %s", async (mode) => {
+    const f = await fixture(mode);
+    await expect(runAntigravityProcess({ prompt: "secret task" }, { invocation: f.invocation })).rejects.toThrow("PROFILE");
     await expect(readFile(path.join(f.dir, "input"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("still rejects actual tool steps in a text session", async () => {
+    const f = await fixture("tool-call");
+    await expect(runAntigravityProcess({ prompt: "test" }, { invocation: f.invocation })).rejects.toThrow("TOOLS_UNSUPPORTED");
+  });
+  it.skipIf(process.platform === "win32").each(["fifo-log", "symlink-log"])("rejects nonregular diagnostics before sending input: %s", async (mode) => {
+    const f = await fixture(mode);
+    // Rescue a regressed blocking FIFO open after the init deadline, so RED
+    // fails with INIT_TIMEOUT instead of stranding the test's libuv worker.
+    const rescue = setTimeout(() => {
+      void readFile(path.join(f.dir, "cwd"), "utf8")
+        .then((cwd) => open(path.join(cwd, "cli.log"), constants.O_WRONLY | constants.O_NONBLOCK))
+        .then((file) => file.close()).catch(() => {});
+    }, 1_000);
+    try {
+      await expect(runAntigravityProcess({ prompt: "secret task" }, { invocation: f.invocation, initTimeoutMs: 500 }))
+        .rejects.toThrow("PROFILE_UNVERIFIED");
+      await expect(readFile(path.join(f.dir, "input"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { clearTimeout(rescue); }
   });
   it.each(["malformed", "malformed-tail", "trailing-garbage", "missing", "duplicate", "nonzero"])("rejects partial output: %s", async (mode) => {
     const f = await fixture(mode);
@@ -83,6 +108,22 @@ describe("Antigravity process ownership", () => {
       if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already reaped */ } }
       await settled;
     }
+  });
+  it.skipIf(process.platform === "win32").each([false, true])("does not treat EPERM as proof the process group is gone (persistent=%s)", async (persistent) => {
+    const f = await fixture("success");
+    const kill = process.kill.bind(process); let denied = false;
+    const spy = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid < 0 && signal === 0 && (persistent || !denied)) {
+        denied = true;
+        throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+      }
+      return kill(pid, signal);
+    });
+    try {
+      const run = runAntigravityProcess({ prompt: "test" }, { invocation: f.invocation });
+      if (persistent) await expect(run).rejects.toThrow("ANTIGRAVITY_CLEANUP_FAILED");
+      else await expect(run).resolves.toMatchObject({ text: "你好" });
+    } finally { spy.mockRestore(); }
   });
   it.skipIf(process.platform === "win32")("honors cancellation during asynchronous descendant cleanup", async () => {
     const f = await fixture("silent-descendant-success"); const controller = new AbortController();

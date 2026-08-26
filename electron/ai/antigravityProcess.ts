@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
+import { mkdtemp, mkdir, open, realpath, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -22,6 +22,26 @@ type ProcessOptions = {
   env?: NodeJS.ProcessEnv;
 };
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+const MAX_PROFILE_LOG_BYTES = 2 * 1024 * 1024;
+
+/** CLI 1.1.21 logs missing-agent fallback before init, but not on stderr. */
+async function verifyProfileSelection(logPath: string): Promise<void> {
+  try {
+    const file = await open(logPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const info = await file.stat();
+      if (!info.isFile() || !info.size || info.size > MAX_PROFILE_LOG_BYTES) throw new Error("invalid log");
+      const buffer = Buffer.alloc(MAX_PROFILE_LOG_BYTES + 1);
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+      const log = buffer.subarray(0, bytesRead).toString("utf8");
+      if (bytesRead > MAX_PROFILE_LOG_BYTES || !log.trim()) throw new Error("invalid log");
+      if (/Agent "[^"\r\n]+" not found, falling back to default/.test(log)) throw new Error("agent fallback");
+    } finally { await file.close(); }
+  } catch {
+    // Never expose CLI diagnostics: they can contain account or prompt data.
+    throw new Error("ANTIGRAVITY_PROFILE_UNVERIFIED");
+  }
+}
 
 export function resolveAntigravityBin(): string {
   const name = process.platform === "win32" ? "agy.exe" : "agy";
@@ -57,17 +77,18 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
   const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-antigravity-")));
   const agentName = "nomi-text-" + randomUUID();
   try {
-    const agentDir = path.join(cwd, ".agents", "agents");
+    const agentDir = path.join(cwd, ".agents", "agents", agentName);
     await mkdir(agentDir, { recursive: true });
-    await writeFile(path.join(agentDir, agentName + ".md"), [
+    await writeFile(path.join(agentDir, "agent.md"), [
       "---", "name: " + agentName, "description: Nomi text generation", "tools: []",
-      "mainAgent: true", "subagent: false", "commandExecutionPolicy: off", "mcpServers: []",
-      "skills: []", "plugins: []", "---",
+      "mainAgent: true", "subagent: false", 'commandExecutionPolicy: "off"',
+      "inheritCustomizations: false", "---", "# System Prompt",
       "Return only the requested text. Do not use tools or access files.",
     ].join("\n"), { mode: 0o600 });
     if (input.signal?.aborted) throw abortError();
     const invocation = options.invocation || { command: resolveAntigravityBin(), args: [] };
-    const args = [...invocation.args, "--agent", agentName, "--input-format", "stream-json",
+    const logPath = path.join(cwd, "cli.log");
+    const args = [...invocation.args, "--add-dir", cwd, "--log-file", logPath, "--agent", agentName, "--input-format", "stream-json",
       "--output-format", "stream-json", "--disable-slash-commands", "--sandbox",
       "--print-timeout", "120s", ...(input.model && input.model !== "auto" ? ["--model", input.model] : [])];
     return await new Promise<AntigravityResult>((resolve, reject) => {
@@ -78,6 +99,7 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
       let buffer = "";
       let stderr = "";
       let bytes = 0;
+      let readiness = Promise.resolve();
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let drainTimer: ReturnType<typeof setTimeout> | undefined;
       const killOwnedGroup = (signal: NodeJS.Signals) => {
@@ -98,8 +120,11 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
         while (true) {
           try { process.kill(-child.pid, 0); }
           catch (error) {
-            if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
-            throw new Error("ANTIGRAVITY_CLEANUP_FAILED", { cause: error });
+            const code = (error as NodeJS.ErrnoException).code;
+            if (code === "ESRCH") return;
+            // macOS can briefly return EPERM while the killed group is reaped.
+            // Only ESRCH confirms cleanup; persistent denial remains a failure.
+            if (code !== "EPERM" || Date.now() >= deadline) throw new Error("ANTIGRAVITY_CLEANUP_FAILED", { cause: error });
           }
           if (Date.now() >= deadline) throw new Error("ANTIGRAVITY_CLEANUP_TIMEOUT");
           await delay(20);
@@ -118,11 +143,13 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
       const initTimer = setTimeout(() => stop(new Error("ANTIGRAVITY_INIT_TIMEOUT")), options.initTimeoutMs ?? 10_000);
       const overallTimer = setTimeout(() => stop(new Error("ANTIGRAVITY_TIMEOUT")), options.timeoutMs ?? 125_000);
       const parser = new AntigravityProtocol(() => {
-        clearTimeout(initTimer);
-        if (!failure && !input.signal?.aborted) {
-          // EOF ends the session after this single turn. No global --continue.
-          child.stdin.end(JSON.stringify({ event: "user", message: { content: input.prompt } }) + "\n");
-        }
+        readiness = verifyProfileSelection(logPath).then(() => {
+          clearTimeout(initTimer);
+          if (!failure && !closed && !input.signal?.aborted) {
+            // EOF ends the session after this single turn. No global --continue.
+            child.stdin.end(JSON.stringify({ event: "user", message: { content: input.prompt } }) + "\n");
+          }
+        }).catch(stop);
       }, (delta) => input.onDelta?.(delta), {
         agent: agentName, cwd, ...(input.model && input.model !== "auto" ? { model: input.model } : {}),
       });
@@ -157,7 +184,7 @@ export async function runAntigravityProcess(input: RunOptions, options: ProcessO
         clearTimeout(initTimer); clearTimeout(overallTimer); if (killTimer) clearTimeout(killTimer);
         if (drainTimer) clearTimeout(drainTimer);
         input.signal?.removeEventListener("abort", onAbort);
-        void cleanupOwnedGroup().then(() => {
+        void Promise.all([cleanupOwnedGroup(), readiness]).then(() => {
           if (input.signal?.aborted) failure ??= abortError();
           if (failure) { reject(failure); return; }
           if (code !== 0) { reject(failureFromExit(stderr)); return; }
