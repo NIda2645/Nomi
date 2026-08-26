@@ -149,3 +149,16 @@ introduced, so rollback requires no data transformation.
   and final media wire, then the explicit-media control RED added two more
   failures. The minimal shared predicate and strict parser made the expanded
   focused set pass 99 assertions.
+
+## Walkthrough harness follow-up: close an overlapping long option list
+
+- The feedback walkthrough's old action clicked the file-prefix input while a
+  long searchable select list visibly covered that input. It failed twice at
+  the same pointer-interception boundary before reaching request assertions.
+- Model the real user action instead: press Escape in the focused search field,
+  wait for that field's own dropdown ancestor to become hidden, then edit the
+  next parameter. Do not use a wall-clock sleep or forced click.
+- Verification evidence: after narrowing the condition to the owning dropdown,
+  the complete feedback walkthrough passed twice consecutively. The final full
+  gate run passed 777 test files and 7,184 tests (one file/test skipped by the
+  repository baseline).

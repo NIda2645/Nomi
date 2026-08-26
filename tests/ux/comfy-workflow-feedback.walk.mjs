@@ -187,8 +187,13 @@ try {
   await clickOrFail(unet, '展开 UNet 文件列表')
   const search = win.getByRole('textbox', { name: '搜索选项', exact: true })
   await expect(search).toBeFocused()
+  const searchDropdown = search.locator('xpath=ancestor::div[@data-nomi-select-dropdown="true"]')
   const prefix = panel.getByRole('textbox', { name: '文件前缀', exact: true })
-  await clickOrFail(prefix, '下拉打开时改另一项不抢焦点')
+  // 真实用户先用 Esc 收起覆盖在后续参数上的长列表，再编辑另一项；等待浮层实际离场，
+  // 不用 sleep/force click 掩盖 pointer interception。
+  await search.press('Escape')
+  await expect(searchDropdown).toBeHidden()
+  await clickOrFail(prefix, '收起长列表后编辑另一项')
   await expect(prefix).toBeFocused()
   await prefix.pressSequentially('-edited')
   await expect(prefix).toHaveValue('test-edited')
