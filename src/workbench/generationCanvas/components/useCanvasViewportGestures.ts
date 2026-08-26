@@ -13,10 +13,10 @@ import { findScrollableAncestor } from './canvasScroll'
 import { resolveWheelIntent, useCanvasGestureScheme } from './canvasGesturePreference'
 import { setCanvasDragging } from './canvasDraggingFlag'
 import {
-  createViewportAnimationSettlement,
-  type ViewportAnimationSettlement,
-  type ViewportAnimationSettlementOutcome,
-} from './viewportAnimationSettlement'
+  createViewportAnimationCoordinator,
+  type ViewportAnimationCoordinator,
+} from './viewportAnimationCoordinator'
+import type { ViewportAnimationSettlementOutcome } from './viewportAnimationSettlement'
 import {
   canvasDragExceededThreshold,
   isCanvasCapturePanPointer,
@@ -73,8 +73,7 @@ export function useCanvasViewportGestures({
 }: UseCanvasViewportGesturesArgs): CanvasViewportGestures {
   const offsetFrameRef = React.useRef<number | null>(null)
   const pendingOffsetRef = React.useRef<Offset | null>(null)
-  const animFrameRef = React.useRef<number | null>(null)
-  const animationSettlementRef = React.useRef<ViewportAnimationSettlement | null>(null)
+  const animationCoordinatorRef = React.useRef<ViewportAnimationCoordinator | null>(null)
   const isPanningRef = React.useRef(false)
   const panStartRef = React.useRef<{
     pointerId: number
@@ -122,18 +121,30 @@ export function useCanvasViewportGestures({
     setStagePanFlag('data-space-pan', false)
   }, [setStagePanFlag])
 
-  const cancelAnim = React.useCallback(() => {
-    if (animFrameRef.current !== null) {
-      window.cancelAnimationFrame(animFrameRef.current)
-      animFrameRef.current = null
-    }
-    const settlement = animationSettlementRef.current
-    animationSettlementRef.current = null
-    settlement?.settle('cancelled')
-  }, [])
+  if (!animationCoordinatorRef.current) {
+    animationCoordinatorRef.current = createViewportAnimationCoordinator({
+      requestFrame: (callback) => window.requestAnimationFrame(callback),
+      cancelFrame: (frame) => window.cancelAnimationFrame(frame),
+      readViewport: () => ({ zoom: zoomRef.current || 1, offset: { ...offsetRef.current } }),
+      writeViewport: (next) => {
+        zoomRef.current = next.zoom
+        offsetRef.current = next.offset
+        setViewport(next)
+      },
+      prepareForAnimation: () => {
+        if (offsetFrameRef.current !== null) {
+          window.cancelAnimationFrame(offsetFrameRef.current)
+          offsetFrameRef.current = null
+        }
+        pendingOffsetRef.current = null
+      },
+    })
+  }
+  const animationCoordinator = animationCoordinatorRef.current
 
   const scheduleOffset = React.useCallback((nextOffset: Offset) => {
-    cancelAnim() // 任何手动平移立即接管，打断进行中的动画
+    // 任何手动平移先取得最新命令所有权。若旧动画的取消回调同步重入了更新动画，本次手动命令让路。
+    if (!animationCoordinator.takeOwnershipAndCancel()) return
     offsetRef.current = nextOffset
     pendingOffsetRef.current = nextOffset
     if (offsetFrameRef.current !== null) return
@@ -143,10 +154,10 @@ export function useCanvasViewportGestures({
       pendingOffsetRef.current = null
       if (pending) setViewport((current) => ({ ...current, offset: pending }))
     })
-  }, [cancelAnim, offsetRef, setViewport])
+  }, [animationCoordinator, offsetRef, setViewport])
 
   const setViewportTransform = React.useCallback((nextZoom: number, nextOffset: Offset) => {
-    cancelAnim()
+    if (!animationCoordinator.takeOwnershipAndCancel()) return
     if (offsetFrameRef.current !== null) {
       window.cancelAnimationFrame(offsetFrameRef.current)
       offsetFrameRef.current = null
@@ -155,7 +166,7 @@ export function useCanvasViewportGestures({
     zoomRef.current = nextZoom
     offsetRef.current = nextOffset
     setViewport({ zoom: nextZoom, offset: nextOffset })
-  }, [cancelAnim, offsetRef, setViewport, zoomRef])
+  }, [animationCoordinator, offsetRef, setViewport, zoomRef])
 
   // 离散跳转（适应视图 / 重置 / 聚焦节点）的平滑过渡：rAF 在 ~140ms（--nomi-transition-fast）
   // 内 easeOutCubic 插值 zoom+offset。连续控件（缩放条/捏合）不走这里，保持即时跟手。
@@ -165,40 +176,8 @@ export function useCanvasViewportGestures({
     duration = 140,
     onSettled?: (outcome: ViewportAnimationSettlementOutcome) => void,
   ) => {
-    cancelAnim()
-    if (offsetFrameRef.current !== null) {
-      window.cancelAnimationFrame(offsetFrameRef.current)
-      offsetFrameRef.current = null
-    }
-    pendingOffsetRef.current = null
-    const startZoom = zoomRef.current || 1
-    const startOffset = { ...offsetRef.current }
-    const settlement = createViewportAnimationSettlement(onSettled)
-    animationSettlementRef.current = settlement
-    let startTs: number | null = null
-    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
-    const step = (ts: number) => {
-      if (startTs === null) startTs = ts
-      const progress = duration <= 0 ? 1 : Math.min(1, (ts - startTs) / duration)
-      const e = ease(progress)
-      const zoom = startZoom + (targetZoom - startZoom) * e
-      const offset = {
-        x: startOffset.x + (targetOffset.x - startOffset.x) * e,
-        y: startOffset.y + (targetOffset.y - startOffset.y) * e,
-      }
-      zoomRef.current = zoom
-      offsetRef.current = offset
-      setViewport({ zoom, offset })
-      if (progress < 1) {
-        animFrameRef.current = window.requestAnimationFrame(step)
-      } else {
-        animFrameRef.current = null
-        if (animationSettlementRef.current === settlement) animationSettlementRef.current = null
-        settlement.settle('completed')
-      }
-    }
-    animFrameRef.current = window.requestAnimationFrame(step)
-  }, [cancelAnim, offsetRef, setViewport, zoomRef])
+    animationCoordinator.animateTo(targetZoom, targetOffset, duration, onSettled)
+  }, [animationCoordinator])
 
   const zoomAtStagePoint = React.useCallback((nextZoom: number, point: { x: number; y: number }) => {
     const currentZoom = zoomRef.current || 1
@@ -237,14 +216,8 @@ export function useCanvasViewportGestures({
       window.cancelAnimationFrame(offsetFrameRef.current)
       offsetFrameRef.current = null
     }
-    if (animFrameRef.current !== null) {
-      window.cancelAnimationFrame(animFrameRef.current)
-      animFrameRef.current = null
-    }
-    const settlement = animationSettlementRef.current
-    animationSettlementRef.current = null
-    settlement?.settle('cancelled')
-  }, [])
+    animationCoordinator.dispose()
+  }, [animationCoordinator])
 
   React.useEffect(() => {
     const handlePointerUp = (event: PointerEvent) => {

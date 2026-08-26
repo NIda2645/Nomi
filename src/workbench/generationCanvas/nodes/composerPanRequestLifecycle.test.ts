@@ -28,4 +28,20 @@ describe('composer pan request lifecycle', () => {
 
     expect(onReleased).toHaveBeenCalledTimes(1)
   })
+
+  it('does not release or reacquire on an intermediate zero-delta measurement', () => {
+    const onReleased = vi.fn()
+    const latch = createComposerPanRequestLatch(onReleased)
+    const acknowledge = latch.tryAcquire()
+
+    // A zero geometry sample while the viewport animation is between frames only means
+    // "do not dispatch another request". It is not ownership acknowledgement.
+    latch.observeNoRequest()
+    expect(latch.tryAcquire()).toBeNull()
+    expect(onReleased).not.toHaveBeenCalled()
+
+    acknowledge?.()
+    expect(onReleased).toHaveBeenCalledTimes(1)
+    expect(latch.tryAcquire()).toEqual(expect.any(Function))
+  })
 })

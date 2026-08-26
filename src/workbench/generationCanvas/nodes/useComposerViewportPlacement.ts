@@ -176,6 +176,8 @@ export function useComposerViewportPlacement(input: {
   }
   const panRequestLatch = panRequestLatchRef.current
 
+  React.useEffect(() => () => panRequestLatch.dispose(), [panRequestLatch])
+
   React.useLayoutEffect(() => {
     const anchor = anchorRef.current
     const stage = anchor?.closest('.generation-canvas-v2__stage')
@@ -247,7 +249,7 @@ export function useComposerViewportPlacement(input: {
         neededHeight: neededScreenHeight,
       })
       if (panDeltaY === 0) {
-        panRequestLatch.reset()
+        panRequestLatch.observeNoRequest()
       } else {
         const acknowledge = panRequestLatch.tryAcquire()
         if (acknowledge) {
