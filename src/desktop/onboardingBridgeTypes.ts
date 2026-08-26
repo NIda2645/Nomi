@@ -1,5 +1,6 @@
 import type { ProviderKind } from './providerKind'
 import type { AntigravityConnectionStatus, AntigravityTestRequest } from '../../electron/shared/antigravity'
+import type { ModelListFailureKind } from '../../electron/ai/onboarding/modelListResponse'
 export type { AntigravityConnectionStatus } from '../../electron/shared/antigravity'
 
 export type DesktopAdapterModeResult = {
@@ -88,6 +89,8 @@ type ExistingConnectionFailure = {
   ok: false
   code: ExistingConnectionErrorCode
   error: string
+  status?: number
+  failureKind?: ModelListFailureKind
   connection?: DesktopExistingConnectionSummary
 }
 
@@ -118,7 +121,7 @@ export type DesktopOnboardingBridge = {
   adapterCancel: (payload: { runId: string }) => AdapterResponse
   adapterList: (payload?: { vendorKey?: string; activeOnly?: boolean; limit?: number }) => AdapterListResponse
   existingConnectionListModels: (payload: { vendorKey: string }) => Promise<
-    | { ok: true; connection: DesktopExistingConnectionSummary; models: string[] }
+    | { ok: true; connection: DesktopExistingConnectionSummary; models: string[]; partial?: boolean }
     | ExistingConnectionFailure
   >
   adapterRegisterExisting: (payload: {
@@ -163,13 +166,14 @@ export type DesktopOnboardingBridge = {
     error?: string
     detectedKind?: ProviderKind
     reachabilityOnly?: boolean
+    failureKind?: ModelListFailureKind
   }>
   listModels: (payload: {
     baseUrl: string
     apiKey: string
     providerKind?: ProviderKind
     headers?: Record<string, string>
-  }) => Promise<{ ok: boolean; models?: string[]; status?: number; error?: string }>
+  }) => Promise<{ ok: boolean; models?: string[]; status?: number; error?: string; failureKind?: ModelListFailureKind; partial?: boolean }>
   guessKinds: (payload: { ids: string[] }) => Promise<{
     kinds: Record<string, 'text' | 'image' | 'video' | 'audio' | 'model3d'>
   }>
