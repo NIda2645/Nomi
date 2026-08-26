@@ -32,6 +32,12 @@
 - direct transform 与 scheduled offset 取消旧动画时遵守同一所有权协议；若取消回调重入更新动画，外层命令让路，后续取消仍能追踪并 exactly-once 结算最新动画。
 - active composer 请求期间，即使中间动画帧短暂测得 `panDelta=0` 也不能释放或重新取得闸门；几何零值只表示本帧不发请求，只有 ACK 释放，卸载时才清理。
 
+代码质量复核追加的通知隔离红测：
+
+- 旧动画的 `onSettled` 属于外部 best-effort ACK；即使它在取消通知里抛错，也不能打断新的 viewport command。
+- replacement animate 仍须取得唯一 generation/rAF，且后续取消 exactly-once 结算。
+- direct transform 与 scheduled offset 仍须执行，取消的旧 rAF 不得成为孤儿；异常只隔离在外部通知边界，settlement 本身仍先进入终态。
+
 ## 回滚
 
 - 按修复 commit 回滚本计划涉及的生命周期/ACK改动即可；#186 原有高度与几何修复仍保留。

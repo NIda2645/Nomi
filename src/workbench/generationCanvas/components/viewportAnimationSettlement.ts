@@ -16,7 +16,12 @@ export function createViewportAnimationSettlement(
     settle(outcome) {
       if (settled) return false
       settled = true
-      onSettled?.(outcome)
+      try {
+        onSettled?.(outcome)
+      } catch {
+        // Settlement notifications are best-effort UI ACKs. A legacy consumer
+        // must not abort the newer viewport command that cancelled this owner.
+      }
       return true
     },
   }

@@ -70,4 +70,48 @@ describe('viewport animation coordinator ownership', () => {
     expect(reentrantSettled).toHaveBeenCalledExactlyOnceWith('cancelled')
     expect(frameHarness.frames).toHaveLength(0)
   })
+
+  it('keeps the reentrant replacement animation owned when the cancelled callback throws', () => {
+    const frameHarness = createFrameHarness()
+    const replacementSettled = vi.fn()
+    const outerSettled = vi.fn()
+    const coordinator = createViewportAnimationCoordinator({
+      ...frameHarness,
+      readViewport: () => ({ zoom: 1, offset: { x: 0, y: 0 } }),
+      writeViewport: vi.fn(),
+    })
+
+    coordinator.animateTo(1, { x: 0, y: 20 }, 160, () => {
+      coordinator.animateTo(1, { x: 0, y: 40 }, 160, replacementSettled)
+      throw new Error('legacy viewport settlement failed')
+    })
+
+    expect(() => coordinator.animateTo(1, { x: 0, y: 60 }, 160, outerSettled)).not.toThrow()
+    expect(outerSettled).not.toHaveBeenCalled()
+    expect(frameHarness.frames).toHaveLength(1)
+
+    expect(coordinator.takeOwnershipAndCancel()).toBe(true)
+    expect(replacementSettled).toHaveBeenCalledExactlyOnceWith('cancelled')
+    expect(frameHarness.frames).toHaveLength(0)
+  })
+
+  it.each(['direct transform', 'scheduled offset'])('%s survives a throwing cancellation callback', () => {
+    const frameHarness = createFrameHarness()
+    const commandWrite = vi.fn()
+    const coordinator = createViewportAnimationCoordinator({
+      ...frameHarness,
+      readViewport: () => ({ zoom: 1, offset: { x: 0, y: 0 } }),
+      writeViewport: vi.fn(),
+    })
+
+    coordinator.animateTo(1, { x: 0, y: 20 }, 160, () => {
+      throw new Error('legacy viewport settlement failed')
+    })
+
+    expect(() => {
+      if (coordinator.takeOwnershipAndCancel()) commandWrite()
+    }).not.toThrow()
+    expect(commandWrite).toHaveBeenCalledOnce()
+    expect(frameHarness.frames).toHaveLength(0)
+  })
 })

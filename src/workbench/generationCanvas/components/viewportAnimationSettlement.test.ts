@@ -29,4 +29,15 @@ describe('viewport animation settlement', () => {
     expect(settlement.settle('completed')).toBe(true)
     expect(settlement.settle('cancelled')).toBe(false)
   })
+
+  it('keeps exactly-once state when an external settlement callback throws', () => {
+    const onSettled = vi.fn(() => {
+      throw new Error('legacy viewport settlement failed')
+    })
+    const settlement = createViewportAnimationSettlement(onSettled)
+
+    expect(() => settlement.settle('cancelled')).not.toThrow()
+    expect(settlement.settle('completed')).toBe(false)
+    expect(onSettled).toHaveBeenCalledExactlyOnceWith('cancelled')
+  })
 })
