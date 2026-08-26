@@ -77,6 +77,7 @@ describe('resolveComposerViewportPanDelta', () => {
     expect(resolveComposerViewportPanDelta({
       availableAbove: 130,
       availableBelow: 145,
+      viewportAvailableBelow: 200,
       headroomAbove: 200,
       headroomBelow: 200,
       neededHeight: 236,
@@ -138,6 +139,29 @@ describe('resolveComposerViewportPanDelta', () => {
       headroomBelow: 10,
       neededHeight: 200,
     })).toBe(-40)
+  })
+
+  // 回归（2026-08-27 linux J5）：节点+composer 在 stage 内放得下，但底部居中的时间轴把手让
+  // 「完全不重叠障碍」变成无解。旧 fallback 会在上下 partial gain 之间反复换向，最终把 composer 翻到顶外。
+  // 退路必须分清「障碍边界」和「真实视口边界」：先守住 stage containment，再接受与把手少量重叠。
+  it('falls back to stage containment instead of oscillating when the timeline handle makes both attachments impossible', () => {
+    expect(resolveComposerViewportPanDelta({
+      availableAbove: 0,
+      availableBelow: 78.8,
+      viewportAvailableBelow: 124.3,
+      headroomAbove: 41.7,
+      headroomBelow: 92.8,
+      neededHeight: 153,
+    })).toBeCloseTo(-28.7)
+
+    expect(resolveComposerViewportPanDelta({
+      availableAbove: 0,
+      availableBelow: 107.5,
+      viewportAvailableBelow: 153,
+      headroomAbove: 13,
+      headroomBelow: 121.5,
+      neededHeight: 153,
+    })).toBe(0)
   })
 })
 

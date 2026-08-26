@@ -1,4 +1,5 @@
 import React from 'react'
+import type { EnsureComposerVisibleEventDetail } from '../components/useComposerVisibilityPan'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import {
@@ -8,6 +9,7 @@ import {
   shouldAllowComposerAttachmentRecompute,
   shouldPreserveComposerAttachmentOnRatioChange,
 } from './nodeSizing'
+import { createComposerPanRequestLatch } from './composerPanRequestLifecycle'
 
 const FLIP_HYSTERESIS = 48
 const TOOLBAR_CLEARANCE_GAP = 18
@@ -108,6 +110,8 @@ export function resolveComposerViewportGeometry(input: {
 export function resolveComposerViewportPanDelta(input: {
   availableAbove: number
   availableBelow: number
+  /** 只扣 stage 边距、不扣软障碍（时间轴把手）的下方空间。 */
+  viewportAvailableBelow?: number
   headroomAbove: number
   headroomBelow: number
   neededHeight: number
@@ -125,6 +129,14 @@ export function resolveComposerViewportPanDelta(input: {
   const fitsByMovingDown = moveDown > 0 && moveDown <= headroomBelow
   if (fitsByMovingUp && (!fitsByMovingDown || moveUp <= moveDown)) return -moveUp
   if (fitsByMovingDown) return moveDown
+
+  // 两侧都无法完全绕开软障碍时，stage 是不能破的硬边界，把手退化为可最小重叠的软边界。
+  // 只向当前默认的下挂方向做满足视口所需的最小上移；一旦 stage 已容纳就收敛到 0，
+  // 不再因为另一侧 partial gain 较大而反向翻到顶外。
+  const viewportAvailableBelow = Math.max(0, input.viewportAvailableBelow ?? input.availableBelow)
+  if (viewportAvailableBelow >= input.neededHeight) return 0
+  const moveUpForViewport = input.neededHeight - viewportAvailableBelow
+  if (moveUpForViewport > 0 && moveUpForViewport <= headroomAbove) return -moveUpForViewport
 
   // 谁也满足不了：推到余量极限，取能换来更多空间的方向。总比留一条点不到的缝强。
   const gainBelow = Math.min(moveUp, headroomAbove)
@@ -155,7 +167,14 @@ export function useComposerViewportPlacement(input: {
   const [maxHeight, setMaxHeight] = React.useState(preferredMaxHeight)
   const aspectRatioKey = typeof node.meta?.aspect_ratio === 'string' ? node.meta.aspect_ratio : ''
   const previousAspectRatioRef = React.useRef<string | null>(null)
-  const panRequestPendingRef = React.useRef(false)
+  const [panSettlementRevision, requestPanRemeasure] = React.useReducer((revision: number) => revision + 1, 0)
+  const panRequestLatchRef = React.useRef<ReturnType<typeof createComposerPanRequestLatch> | null>(null)
+  if (!panRequestLatchRef.current) {
+    panRequestLatchRef.current = createComposerPanRequestLatch(() => {
+      if (anchorRef.current) requestPanRemeasure()
+    })
+  }
+  const panRequestLatch = panRequestLatchRef.current
 
   React.useLayoutEffect(() => {
     const anchor = anchorRef.current
@@ -190,6 +209,7 @@ export function useComposerViewportPlacement(input: {
       setShiftX(Math.round(nextShiftX))
 
       const timelineHandle = workspaceCanvas?.querySelector<HTMLElement>('.workbench-generation__timeline-handle')
+      const viewportSpaceBelow = Math.max(0, stageRect.bottom - nodeRect.bottom)
       const spaceBelow = getUnobstructedComposerSpaceBelow({
         stage: stageRect,
         node: nodeRect,
@@ -219,6 +239,7 @@ export function useComposerViewportPlacement(input: {
       const panDeltaY = resolveComposerViewportPanDelta({
         availableAbove: geometry.availableAbove,
         availableBelow: geometry.availableBelow,
+        viewportAvailableBelow: Math.max(0, viewportSpaceBelow - VIEWPORT_MARGIN - gap * canvasZoom),
         // 平移余量 = 节点还能往那个方向移多远（留 VIEWPORT_MARGIN 不让它贴死边），
         // 与「那一侧装得下多少」分开算——混用是逃生口失效的根因。
         headroomAbove: Math.max(0, spaceAbove - VIEWPORT_MARGIN),
@@ -226,12 +247,13 @@ export function useComposerViewportPlacement(input: {
         neededHeight: neededScreenHeight,
       })
       if (panDeltaY === 0) {
-        panRequestPendingRef.current = false
-      } else if (!panRequestPendingRef.current) {
-        panRequestPendingRef.current = true
-        window.dispatchEvent(new CustomEvent(ENSURE_COMPOSER_VISIBLE_EVENT, {
-          detail: { deltaY: panDeltaY },
-        }))
+        panRequestLatch.reset()
+      } else {
+        const acknowledge = panRequestLatch.tryAcquire()
+        if (acknowledge) {
+          const detail: EnsureComposerVisibleEventDetail = { deltaY: panDeltaY, onSettled: acknowledge }
+          window.dispatchEvent(new CustomEvent(ENSURE_COMPOSER_VISIBLE_EVENT, { detail }))
+        }
       }
       const attachmentObstructed = selectedAvailableSpace < neededScreenHeight
       const allowFlip = shouldAllowComposerAttachmentRecompute({
@@ -316,6 +338,8 @@ export function useComposerViewportPlacement(input: {
     node.position?.x,
     node.position?.y,
     node.result?.url,
+    panRequestLatch,
+    panSettlementRevision,
     preferredMaxHeight,
     visualSize.height,
     visualSize.width,

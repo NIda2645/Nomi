@@ -13,6 +13,11 @@ import { findScrollableAncestor } from './canvasScroll'
 import { resolveWheelIntent, useCanvasGestureScheme } from './canvasGesturePreference'
 import { setCanvasDragging } from './canvasDraggingFlag'
 import {
+  createViewportAnimationSettlement,
+  type ViewportAnimationSettlement,
+  type ViewportAnimationSettlementOutcome,
+} from './viewportAnimationSettlement'
+import {
   canvasDragExceededThreshold,
   isCanvasCapturePanPointer,
   isCanvasMenuTarget,
@@ -38,7 +43,12 @@ type UseCanvasViewportGesturesArgs = {
 export type CanvasViewportGestures = {
   scheduleOffset: (offset: Offset) => void
   setViewportTransform: (zoom: number, offset: Offset) => void
-  animateViewportTo: (zoom: number, offset: Offset, duration?: number) => void
+  animateViewportTo: (
+    zoom: number,
+    offset: Offset,
+    duration?: number,
+    onSettled?: (outcome: ViewportAnimationSettlementOutcome) => void,
+  ) => void
   zoomAtStagePoint: (zoom: number, point: { x: number; y: number }) => void
   handlePointerDownCapture: (event: React.PointerEvent<HTMLDivElement>) => void
   /** bubble 阶段的空白左键平移入口：由上层仲裁确认「这是画布空白」后才调。 */
@@ -64,6 +74,7 @@ export function useCanvasViewportGestures({
   const offsetFrameRef = React.useRef<number | null>(null)
   const pendingOffsetRef = React.useRef<Offset | null>(null)
   const animFrameRef = React.useRef<number | null>(null)
+  const animationSettlementRef = React.useRef<ViewportAnimationSettlement | null>(null)
   const isPanningRef = React.useRef(false)
   const panStartRef = React.useRef<{
     pointerId: number
@@ -116,6 +127,9 @@ export function useCanvasViewportGestures({
       window.cancelAnimationFrame(animFrameRef.current)
       animFrameRef.current = null
     }
+    const settlement = animationSettlementRef.current
+    animationSettlementRef.current = null
+    settlement?.settle('cancelled')
   }, [])
 
   const scheduleOffset = React.useCallback((nextOffset: Offset) => {
@@ -145,7 +159,12 @@ export function useCanvasViewportGestures({
 
   // 离散跳转（适应视图 / 重置 / 聚焦节点）的平滑过渡：rAF 在 ~140ms（--nomi-transition-fast）
   // 内 easeOutCubic 插值 zoom+offset。连续控件（缩放条/捏合）不走这里，保持即时跟手。
-  const animateViewportTo = React.useCallback((targetZoom: number, targetOffset: Offset, duration = 140) => {
+  const animateViewportTo = React.useCallback((
+    targetZoom: number,
+    targetOffset: Offset,
+    duration = 140,
+    onSettled?: (outcome: ViewportAnimationSettlementOutcome) => void,
+  ) => {
     cancelAnim()
     if (offsetFrameRef.current !== null) {
       window.cancelAnimationFrame(offsetFrameRef.current)
@@ -154,6 +173,8 @@ export function useCanvasViewportGestures({
     pendingOffsetRef.current = null
     const startZoom = zoomRef.current || 1
     const startOffset = { ...offsetRef.current }
+    const settlement = createViewportAnimationSettlement(onSettled)
+    animationSettlementRef.current = settlement
     let startTs: number | null = null
     const ease = (t: number) => 1 - Math.pow(1 - t, 3)
     const step = (ts: number) => {
@@ -168,7 +189,13 @@ export function useCanvasViewportGestures({
       zoomRef.current = zoom
       offsetRef.current = offset
       setViewport({ zoom, offset })
-      animFrameRef.current = progress < 1 ? window.requestAnimationFrame(step) : null
+      if (progress < 1) {
+        animFrameRef.current = window.requestAnimationFrame(step)
+      } else {
+        animFrameRef.current = null
+        if (animationSettlementRef.current === settlement) animationSettlementRef.current = null
+        settlement.settle('completed')
+      }
     }
     animFrameRef.current = window.requestAnimationFrame(step)
   }, [cancelAnim, offsetRef, setViewport, zoomRef])
@@ -214,6 +241,9 @@ export function useCanvasViewportGestures({
       window.cancelAnimationFrame(animFrameRef.current)
       animFrameRef.current = null
     }
+    const settlement = animationSettlementRef.current
+    animationSettlementRef.current = null
+    settlement?.settle('cancelled')
   }, [])
 
   React.useEffect(() => {
