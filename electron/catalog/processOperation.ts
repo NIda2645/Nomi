@@ -17,8 +17,10 @@ import { materializeInputFiles } from "./dreaminaInputFiles";
 import type { JsonRecord } from "../jsonUtils";
 import { queryCodexImageOperation, startCodexImageOperation } from "./codexCli";
 import { executeAntigravityImageOperation } from "./antigravityImageOperation";
+import type { AntigravityTaskPreflight } from "../ai/antigravityTask";
 import { assertCanonicalAntigravityOperation, assertCanonicalAntigravityProcessIdentity, type AntigravityProcessStage } from "./antigravityCatalog";
 export { assertCanonicalAntigravityOperation };
+export { prepareAntigravityCreateOperation } from "./antigravityCreatePreflight";
 
 /** runtime 注入的写资产原语（写本地字节进项目素材，返回含 data.url 的记录）。 */
 export type WriteAsset = (projectId: string, bytes: Buffer, fileName: string, contentType: string, meta: JsonRecord) => unknown;
@@ -37,6 +39,8 @@ export type ProcessOperationInput = {
   /** Catalog identity carried across the runtime boundary; process declarations alone are not authority. */
   identity?: { vendorKey: string; modelKey?: string; taskKind: string };
   stage?: AntigravityProcessStage;
+  /** Main-owned create preflight; renderer/catalog fields cannot construct it. */
+  antigravityPreflight?: AntigravityTaskPreflight;
 };
 
 /** 归一后的「类 HTTP 响应」形状。response_mapping/statusMapping 据此读取（见 dreaminaVideos.ts）。 */

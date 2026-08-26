@@ -26,6 +26,7 @@ export async function executeAntigravityImageOperation(input: ProcessOperationIn
   }
   const mode = input.process.args[0];
   if (mode !== "text_to_image" && mode !== "image_edit") throw new Error("ANTIGRAVITY_INVALID_CAPABILITY");
+  if (!input.antigravityPreflight) throw new Error("ANTIGRAVITY_PREFLIGHT_REQUIRED");
   const refs = params.reference_images;
   const imageUrls = refs == null ? [] : typeof refs === "string" ? [refs] : Array.isArray(refs) ? refs : [null];
   if (imageUrls.some((url) => typeof url !== "string" || !url.trim()) || imageUrls.length > 4
@@ -34,7 +35,7 @@ export async function executeAntigravityImageOperation(input: ProcessOperationIn
   if (!prompt.trim()) throw new Error("ANTIGRAVITY_EMPTY_PROMPT");
   const taskId = antigravityImageJobs.start(input.projectId, async (signal) => {
     return runAntigravityTask({ prompt, model: "auto", capability: mode === "image_edit" ? "edit" : "image",
-      imageUrls: imageUrls as string[], signal });
+      imageUrls: imageUrls as string[], signal }, { preflight: input.antigravityPreflight });
   }, input.signal);
   return { response: { task_id: taskId, status: "queued", image_urls: [] },
     request: { transport: "antigravity-cli", operation: mode, referenceCount: imageUrls.length } };

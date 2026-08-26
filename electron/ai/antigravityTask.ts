@@ -1,9 +1,10 @@
 import { readNomiLocalAsset } from "../assets/localAssetFile";
 import { hardenedFetch } from "../hardenedFetch";
-import { antigravityConnection, antigravityEnvironment, probeAntigravity } from "./antigravityConnection";
+import { antigravityConnection, prepareAntigravity, type PreparedAntigravity } from "./antigravityConnection";
 import { readAntigravityEvidence } from "./antigravityEvidenceStore";
 import { runAntigravityProcess, type AntigravityRunOptions } from "./antigravityProcess";
 import type { AntigravityImageInput } from "./antigravityMedia";
+import type { AntigravityCapability } from "../shared/antigravity";
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 function checkAbort(signal?: AbortSignal): void {
@@ -34,26 +35,46 @@ export async function loadAntigravityImage(url: string, signal?: AbortSignal): P
   return { bytes, mimeType };
 }
 
-export async function runAntigravityTask(input: Omit<AntigravityRunOptions, "images" | "cliVersion"> & { imageUrls?: string[] }) {
+export type AntigravityTaskPreflight = PreparedAntigravity & {
+  capability: AntigravityCapability;
+  modelId: string;
+};
+
+export async function prepareAntigravityTask(input: {
+  model?: string;
+  capability: AntigravityCapability;
+  signal?: AbortSignal;
+}): Promise<AntigravityTaskPreflight> {
   checkAbort(input.signal);
-  if ((input.imageUrls?.length ?? 0) > 4) throw new Error("ANTIGRAVITY_INVALID_IMAGES");
-  const env = await antigravityEnvironment();
-  const discovery = await probeAntigravity(input.signal, { env });
+  const prepared = await prepareAntigravity(input.signal);
   checkAbort(input.signal);
-  if (input.model && input.model !== "auto" && !discovery.models.some((model) => model.id === input.model)) {
+  const modelId = input.model || "auto";
+  if (modelId !== "auto" && !prepared.discovery.models.some((model) => model.id === modelId)) {
     throw new Error("ANTIGRAVITY_MODEL_UNAVAILABLE");
   }
+  // Lazy, idempotent restart restore. Discovery and the historical evidence are
+  // both main-owned; renderer/catalog metadata never grants execution.
+  antigravityConnection.restore(readAntigravityEvidence());
+  const passed = antigravityConnection.hasPassed({ capability: input.capability, modelId }, prepared.discovery.version)
+    || (input.capability === "text"
+      && antigravityConnection.hasPassed({ capability: "vision", modelId }, prepared.discovery.version));
+  if (!passed) throw new Error("ANTIGRAVITY_TEST_REQUIRED");
+  return { ...prepared, capability: input.capability, modelId };
+}
+
+export async function runAntigravityTask(
+  input: Omit<AntigravityRunOptions, "images" | "cliVersion"> & { imageUrls?: string[] },
+  options: { preflight?: AntigravityTaskPreflight } = {},
+) {
+  checkAbort(input.signal);
+  if ((input.imageUrls?.length ?? 0) > 4) throw new Error("ANTIGRAVITY_INVALID_IMAGES");
+  const capability = input.capability ?? ((input.imageUrls?.length ?? 0) ? "vision" : "text");
+  const modelId = input.model || "auto";
+  const preflight = options.preflight ?? await prepareAntigravityTask({ model: input.model, capability, signal: input.signal });
+  if (preflight.capability !== capability || preflight.modelId !== modelId) throw new Error("ANTIGRAVITY_PREFLIGHT_MISMATCH");
   const images: AntigravityImageInput[] = [];
   for (const url of input.imageUrls ?? []) images.push(await loadAntigravityImage(url, input.signal));
-  const capability = input.capability ?? (images.length ? "vision" : "text");
-  const modelId = input.model || "auto";
-  // Lazy, idempotent restart restore. The probed CLI version is the authority boundary;
-  // renderer/catalog metadata is never accepted as verification evidence.
-  antigravityConnection.restore(readAntigravityEvidence());
-  const passed = antigravityConnection.hasPassed({ capability, modelId }, discovery.version)
-    || (capability === "text"
-      && antigravityConnection.hasPassed({ capability: "vision", modelId }, discovery.version));
-  if (!passed) throw new Error("ANTIGRAVITY_TEST_REQUIRED");
   return runAntigravityProcess({ prompt: input.prompt, model: input.model, capability, images,
-    signal: input.signal, onDelta: input.onDelta, cliVersion: discovery.version }, { env });
+    signal: input.signal, onDelta: input.onDelta, cliVersion: preflight.discovery.version },
+  { preparedInvocation: preflight });
 }

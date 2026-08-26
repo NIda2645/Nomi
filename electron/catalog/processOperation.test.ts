@@ -38,12 +38,18 @@ beforeEach(() => {
 describe("Antigravity image process application route", () => {
   const artifact = { bytes: Buffer.from("decoded image bytes"), filename: "crane.jpg", mimeType: "image/jpeg", width: 64, height: 64 };
   const result: AntigravityResult = { text: "done", conversationId: "conversation", usage: { inputTokens: 1, outputTokens: 2 }, artifacts: [artifact] };
+  const preflight = {
+    discovery: { version: "1.1.21", models: [] }, invocation: { command: "/probe/agy", args: [] }, env: {},
+    identity: { realpath: "/probe/agy", dev: "1", ino: "2", size: "3", mtimeNs: "4", ctimeNs: "5" },
+    capability: "image" as const, modelId: "auto",
+  };
   const deterministicWrite = vi.fn(() => ({ data: { url: "nomi-local://asset/project/crane.jpg" } }));
   const input = (mode: string, context: JsonRecord): ProcessOperationInput & { stage: "create" | "query" } => ({
     process: { bin: "agy", parser: "antigravity-cli-image", args: [mode] }, context,
     projectId: "project", writeAsset, writeDeterministicAsset: deterministicWrite,
     identity: { vendorKey: "antigravity-cli", modelKey: "generate_image", taskKind: mode === "query_result" ? "text_to_image" : mode },
     stage: mode === "query_result" ? "query" : "create",
+    ...(mode === "query_result" ? {} : { antigravityPreflight: { ...preflight, capability: mode === "image_edit" ? "edit" as const : "image" as const } }),
   });
   beforeEach(() => { deterministicWrite.mockClear(); runAntigravityTask.mockResolvedValue(result); });
   const submit = async (mode: string, refs?: unknown) => {
@@ -61,7 +67,10 @@ describe("Antigravity image process application route", () => {
   ])("routes %s to its exact CLI capability and imports the result once", async (mode, refs, capability, imageUrls) => {
     const { id, started } = await submit(mode as string, refs);
     expect(started.response).toMatchObject({ task_id: id, status: "queued", image_urls: [] });
-    expect(runAntigravityTask).toHaveBeenCalledExactlyOnceWith({ prompt: "make a crane", model: "auto", capability, imageUrls, signal: expect.any(AbortSignal) });
+    expect(runAntigravityTask).toHaveBeenCalledExactlyOnceWith(
+      { prompt: "make a crane", model: "auto", capability, imageUrls, signal: expect.any(AbortSignal) },
+      { preflight: expect.objectContaining({ capability }) },
+    );
     expect(deterministicWrite).not.toHaveBeenCalled();
     expect((await query(id)).response).toMatchObject({ status: "succeeded", image_urls: ["nomi-local://asset/project/crane.jpg"] });
     await query(id);

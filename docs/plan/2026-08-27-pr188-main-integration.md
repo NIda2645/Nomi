@@ -67,6 +67,16 @@ export type { AntigravityConnectionStatus } from '../../electron/shared/antigrav
 - [x] 定向回归 27 文件 / 325 测试、typecheck、build、完整 gates 全绿；完整测试 780 文件中 779 通过 / 1 跳过，7302 项中 7301 通过 / 1 跳过。
 - [ ] 提交独立 fix；确认远端仍为 `01c7a52f7c049f140dc98d2132bf33bf72833cff`，普通 push 同一 PR 源分支，不 force、不 merge。
 
+## Task 6：规格审查三轮——CLI executable identity 与付费前置闸（TDD）
+
+- [x] 系统追踪 probe → proof → process spawn 以及 `runTask` 的 cache → grant → execute → trace/admit 顺序，记录当前两个断点：只传 version，且 canonical/evidence 晚于 grant 消费。
+- [x] 先在 `electron/ai/antigravityProcess.test.ts` / `antigravityTask.test.ts` 写 RED：probe A 后 resolver 切 B，或同 path 的 realpath/stat identity 改变，都必须在 spawn 前 fail closed；正常路径只 spawn 那份已 probe 的 exact invocation。
+- [x] 抽出 main-only prepared invocation：携带 absolute realpath、stat 稳定身份、args、env 和 discovery/version。probe、evidence 与执行复用同一份产物；spawn 前及释放 prompt 前复核 identity，升级/原子替换时提示重测。
+- [x] 先在 `electron/runtime.antigravityPreflight.test.ts` 写 runTask 级 RED：污染 create operation、无 proof、错 proof 在 create 边界直接拒绝，且 grant 不消费、local job 不入队、不记 `vendor.requested`、不返回 queued；合法路径仅消费一次并使用同一 prepared invocation。
+- [x] 在 mapping 缓存命中之后、grant 消费/任务入队之前 await Antigravity create preflight；将产物通过 `executeProfileOperation` → process choke → local job 透传，job 内不得再 probe/resolve。query 仅做现有 stage/canonical 验证，不消费 create grant。verification 仍使用 prepared invocation 直接运行，不经 historical-proof 用户任务闸。
+- [x] Antigravity/process/runtime 定向 18 文件 249 测试、typecheck、build 与完整 gates 全绿；完整测试 781 文件中 780 通过 / 1 跳过，7310 项中 7309 通过 / 1 跳过。`runtime.ts` 保持 539 行基线，非 Antigravity transport 与缓存命中分支未改变。
+- [ ] 提交本轮 scoped fix；核对远端 PR head 仍为 `d9212f9070cc4c4492708f7a3c70999a11954ac3`，普通 push 同源分支，不 force、不 merge。
+
 ## 回滚
 
 未发布前保留隔离工作树和原 PR 头，不影响主线。发布后若需撤销，通过后续修复 PR 或明确批准的 revert，不 force push、不 reset 共享树。

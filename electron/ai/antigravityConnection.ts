@@ -2,15 +2,26 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
 import { parseAntigravityTestRequest, type AntigravityCheck, type AntigravityTestRequest, type AntigravityConnectionStatus } from "../shared/antigravity";
-import { buildAntigravityEnv, resolveAntigravityBin, runAntigravityProcess } from "./antigravityProcess";
+import {
+  assertPreparedAntigravityInvocation,
+  buildAntigravityEnv,
+  prepareAntigravityInvocation,
+  resolveAntigravityBin,
+  runAntigravityProcess,
+  type AntigravityInvocation,
+  type PreparedAntigravityInvocation,
+} from "./antigravityProcess";
 import type { AntigravityResult } from "./antigravityProtocol";
 import { verifyAntigravityCapability } from "./antigravityVerification";
 
 const exec = promisify(execFile);
-type Discovery = { version: string; models: AntigravityConnectionStatus["models"] };
+export type AntigravityDiscovery = { version: string; models: AntigravityConnectionStatus["models"] };
+export type PreparedAntigravity = PreparedAntigravityInvocation & { discovery: AntigravityDiscovery };
 type Dependencies = {
-  probe: (signal?: AbortSignal) => Promise<Discovery>;
-  run: (signal: AbortSignal, request: AntigravityTestRequest, version: string) => Promise<AntigravityResult>;
+  probe: (signal?: AbortSignal) => Promise<AntigravityDiscovery>;
+  prepare?: (signal?: AbortSignal) => Promise<PreparedAntigravity>;
+  run: (signal: AbortSignal, request: AntigravityTestRequest, version: string,
+    prepared?: PreparedAntigravity) => Promise<AntigravityResult>;
   bin: () => string;
 };
 
@@ -43,18 +54,21 @@ export async function antigravityEnvironment(): Promise<NodeJS.ProcessEnv> {
 }
 
 /** Invocation/env overrides are main-process test seams, never renderer input. */
-export async function probeAntigravity(signal?: AbortSignal, overrides: {
-  invocation?: { command: string; args: string[] }; env?: NodeJS.ProcessEnv;
-} = {}): Promise<Discovery> {
-  const bin = overrides.invocation?.command ?? resolveAntigravityBin();
-  const prefix = overrides.invocation?.args ?? [];
-  const options = { cwd: os.tmpdir(), env: overrides.env ?? await antigravityEnvironment(), timeout: 15_000,
+export async function prepareAntigravity(signal?: AbortSignal, overrides: {
+  invocation?: AntigravityInvocation; env?: NodeJS.ProcessEnv;
+} = {}): Promise<PreparedAntigravity> {
+  const env = overrides.env ?? await antigravityEnvironment();
+  const prepared = await prepareAntigravityInvocation({ invocation: overrides.invocation, env });
+  const bin = prepared.invocation.command;
+  const prefix = prepared.invocation.args;
+  const options = { cwd: os.tmpdir(), env: prepared.env, timeout: 15_000,
     maxBuffer: 131_072, windowsHide: true, signal };
   try {
     const versionRun = exec(bin, [...prefix, "--version"], options);
     versionRun.child.stdin?.on("error", () => {}); // exec reports the authoritative process error/exit.
     versionRun.child.stdin?.end();
     const versionResult = await versionRun;
+    await assertPreparedAntigravityInvocation(prepared);
     const version = versionResult.stdout.match(/\b\d+\.\d+\.\d+\b/)?.[0];
     if (!version) throw new Error("ANTIGRAVITY_VERSION_UNRECOGNIZED");
     if (process.platform === "win32" && !overrides.invocation) throw new Error("ANTIGRAVITY_PLATFORM_UNVERIFIED");
@@ -63,7 +77,8 @@ export async function probeAntigravity(signal?: AbortSignal, overrides: {
     modelRun.child.stdin?.on("error", () => {});
     modelRun.child.stdin?.end();
     const modelResult = await modelRun;
-    return { version, models: parseAntigravityModels(modelResult.stdout) };
+    await assertPreparedAntigravityInvocation(prepared);
+    return { ...prepared, discovery: { version, models: parseAntigravityModels(modelResult.stdout) } };
   } catch (error) {
     const failure = error as NodeJS.ErrnoException & { stderr?: string };
     if (failure.code === "ENOENT") throw Object.assign(new Error("ANTIGRAVITY_NOT_INSTALLED"), { cause: error });
@@ -73,6 +88,13 @@ export async function probeAntigravity(signal?: AbortSignal, overrides: {
     if (failure.message.startsWith("ANTIGRAVITY_")) throw failure;
     throw Object.assign(new Error("ANTIGRAVITY_PROBE_FAILED"), { cause: error });
   }
+}
+
+/** Read-only discovery keeps its legacy return shape; execution callers use prepareAntigravity. */
+export async function probeAntigravity(signal?: AbortSignal, overrides: {
+  invocation?: AntigravityInvocation; env?: NodeJS.ProcessEnv;
+} = {}): Promise<AntigravityDiscovery> {
+  return (await prepareAntigravity(signal, overrides)).discovery;
 }
 
 export class AntigravityConnection {
@@ -112,7 +134,7 @@ export class AntigravityConnection {
       : /PROFILE_UNVERIFIED|INVALID_INIT|INIT_TIMEOUT|TOOLS_UNSUPPORTED|PLATFORM_UNVERIFIED|QUOTA/.test(code) ? "limited" : "error";
     return this.state(state, code);
   }
-  private discovered(discovery: Discovery): void {
+  private discovered(discovery: AntigravityDiscovery): void {
     if (this.version && this.version !== discovery.version) this.checks = [];
     this.checks = this.checks.filter((check) => check.version === discovery.version);
     this.version = discovery.version;
@@ -156,13 +178,16 @@ export class AntigravityConnection {
     this.replaceCheck(request);
     let discovered = false;
     try {
-      const discovery = await this.deps.probe(controller.signal);
+      const prepared = this.deps.prepare ? await this.deps.prepare(controller.signal) : undefined;
+      const discovery = prepared?.discovery ?? await this.deps.probe(controller.signal);
       if (controller.signal.aborted || revision !== this.revision) return this.state("unverified", "ANTIGRAVITY_CANCELLED");
       this.discovered(discovery); discovered = true;
       if (request.modelId !== "auto" && !this.models.some((model) => model.id === request.modelId)) {
         throw new Error("ANTIGRAVITY_MODEL_NOT_DISCOVERED");
       }
-      const result = await this.deps.run(controller.signal, request, discovery.version);
+      const result = prepared
+        ? await this.deps.run(controller.signal, request, discovery.version, prepared)
+        : await this.deps.run(controller.signal, request, discovery.version);
       if (controller.signal.aborted || revision !== this.revision) return this.state("unverified", "ANTIGRAVITY_CANCELLED");
       if (request.capability === "text" && result.text.trim() !== "OK") throw new Error("ANTIGRAVITY_TEST_ASSERTION_FAILED");
       this.replaceCheck(request, { ...request, state: "passed", version: discovery.version, checkedAt: Date.now() });
@@ -182,7 +207,10 @@ export class AntigravityConnection {
 }
 
 export const antigravityConnection = new AntigravityConnection({
-  probe: probeAntigravity, bin: resolveAntigravityBin,
-  run: (signal, request, version) => verifyAntigravityCapability(request, version, signal,
-    async (input) => runAntigravityProcess(input, { env: await antigravityEnvironment() })),
+  probe: probeAntigravity, prepare: prepareAntigravity, bin: resolveAntigravityBin,
+  run: (signal, request, version, prepared) => verifyAntigravityCapability(request, version, signal,
+    async (input) => {
+      if (!prepared) throw new Error("ANTIGRAVITY_EXECUTABLE_UNPREPARED");
+      return runAntigravityProcess(input, { preparedInvocation: prepared });
+    }),
 });

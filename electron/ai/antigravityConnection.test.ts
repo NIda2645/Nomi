@@ -55,6 +55,20 @@ describe("Antigravity connection state", () => {
     expect(connection.canEnable({ ...request, capability: "vision" })).toBe(false);
     expect(connection.canEnable({ capability: "text", modelId: "auto" })).toBe(false);
   });
+  it("passes the exact discovery preparation into capability verification", async () => {
+    const prepared = {
+      discovery, invocation: { command: "/prepared/agy", args: ["--profile", "tested"] }, env: {},
+      identity: { realpath: "/prepared/agy", dev: "1", ino: "2", size: "3", mtimeNs: "4", ctimeNs: "5" },
+    };
+    const run = vi.fn().mockResolvedValue(result);
+    const connection = new AntigravityConnection({
+      probe: vi.fn().mockRejectedValue(new Error("must not rediscover")),
+      prepare: vi.fn().mockResolvedValue(prepared), run, bin: () => "/test/agy",
+    });
+    await expect(connection.test()).resolves.toMatchObject({ state: "ready" });
+    expect(run).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal),
+      { capability: "text", modelId: "auto" }, discovery.version, prepared);
+  });
   it("refuses fabricated model IDs before running a paid test", async () => {
     const { connection, run } = service();
     const status = await connection.test({ capability: "text", modelId: "made-up-model" });

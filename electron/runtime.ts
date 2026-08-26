@@ -17,7 +17,7 @@ import {
   authHeaders as buildAuthHeaders,
   extractTaskId as extractTaskIdShared,
 } from "./ai/requestPipeline";
-import { assertCanonicalAntigravityOperation, executeProcessOperation } from "./catalog/processOperation";
+import { assertCanonicalAntigravityOperation, executeProcessOperation, prepareAntigravityCreateOperation } from "./catalog/processOperation";
 import { executeTextTask } from "./textTaskRunner";
 import { runAudioTask } from "./audioTaskRunner";
 import { firstString, isJsonRecord, trim, type JsonRecord } from "./jsonUtils";
@@ -241,7 +241,7 @@ export async function executeProfileOperation(input: {
   request: TaskRequest;
   operation: HttpOperation;
   providerMeta?: JsonRecord;
-  localAssetReader?: import("./catalog/assetLocalization").LocalAssetReader; signal?: AbortSignal; stage?: "create" | "query";
+  localAssetReader?: import("./catalog/assetLocalization").LocalAssetReader; signal?: AbortSignal; stage?: "create" | "query"; antigravityPreflight?: import("./ai/antigravityTask").AntigravityTaskPreflight;
 }): Promise<{ response: unknown; request: unknown }> {
   // 进程型 transport：op 声明 process → spawn；渲染/本地文件导入在 processOperation（注入 writeAsset 避免循环依赖）。
   if (input.operation.process) {
@@ -258,7 +258,7 @@ export async function executeProfileOperation(input: {
       process: input.operation.process,
       context,
       projectId: trim(input.request.extras?.projectId) || activeTaskProjectFallback(),
-      writeAsset, writeDeterministicAsset, signal: input.signal, stage: input.stage, identity: { vendorKey: input.vendor.key, modelKey: input.model.modelKey, taskKind: input.request.kind },
+      writeAsset, writeDeterministicAsset, signal: input.signal, stage: input.stage, identity: { vendorKey: input.vendor.key, modelKey: input.model.modelKey, taskKind: input.request.kind }, antigravityPreflight: input.antigravityPreflight,
     });
   }
   // multipart transport（P4）：op 声明 multipart（/v1/images/edits 图生图文件上传）→ 全套分发在 multipartOperation
@@ -404,19 +404,19 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
     const fingerprint = recipeFingerprint(recipe);
     const cachedHit = readCachedTaskResult({ projectId, fingerprint, nodeId, extras: request.extras });
     if (cachedHit) return cachedHit as TaskResult;
+    const antigravityPreflight = await prepareAntigravityCreateOperation({ vendorKey, modelKey: model.modelKey, taskKind: kind, operation: mapping.create });
     assertAndConsumeSpendGrant(grantId, nodeId); // 付费守卫：缓存未命中=真发 vendor，发前校验消费令牌
     // 中转生图路由回退（y7api 403 定案）：OpenAI images 端点被「分组未开通」类确定性拒绝（403 命中
     // 窄短语 / 404/405，未创建任务未扣费）→ 换 chat/completions 多模态 op 重发一次；结果归一按
     // 实际执行的 op 走（chat 同步返回，extractChatImageUrl 兜底解析）。详见 catalog/imageRouteFallback。
-    let createOperation = mapping.create;
-    let executed;
+    let createOperation = mapping.create; let executed;
     try {
-      executed = await executeProfileOperation({ vendor, model, apiKey, request, operation: createOperation, stage: "create" });
+      executed = await executeProfileOperation({ vendor, model, apiKey, request, operation: createOperation, stage: "create", antigravityPreflight });
     } catch (error) {
       const fallbackOp = chatImageFallbackOperation(error, createOperation, kind);
       if (!fallbackOp) throw error;
       createOperation = fallbackOp;
-      executed = await executeProfileOperation({ vendor, model, apiKey, request, operation: createOperation, stage: "create" });
+      executed = await executeProfileOperation({ vendor, model, apiKey, request, operation: createOperation, stage: "create", antigravityPreflight });
     }
     const normalized = await buildProfileTaskResult({
       response: executed.response,

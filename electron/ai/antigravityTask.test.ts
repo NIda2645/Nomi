@@ -1,22 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
-  run: vi.fn(), probe: vi.fn(), local: vi.fn(), fetch: vi.fn(),
+  run: vi.fn(), probe: vi.fn(), prepare: vi.fn(), local: vi.fn(), fetch: vi.fn(),
   restore: vi.fn(), hasPassed: vi.fn(), readEvidence: vi.fn(),
 }));
 vi.mock("./antigravityProcess", () => ({ runAntigravityProcess: mocks.run }));
 vi.mock("./antigravityConnection", () => ({
   probeAntigravity: mocks.probe,
+  prepareAntigravity: mocks.prepare,
   antigravityEnvironment: async () => ({}),
   antigravityConnection: { restore: mocks.restore, hasPassed: mocks.hasPassed },
 }));
 vi.mock("./antigravityEvidenceStore", () => ({ readAntigravityEvidence: mocks.readEvidence }));
 vi.mock("../assets/localAssetFile", () => ({ readNomiLocalAsset: mocks.local }));
 vi.mock("../hardenedFetch", () => ({ hardenedFetch: mocks.fetch }));
-import { loadAntigravityImage, runAntigravityTask } from "./antigravityTask";
+import { loadAntigravityImage, prepareAntigravityTask, runAntigravityTask } from "./antigravityTask";
 describe("Antigravity task route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.probe.mockResolvedValue({ version: "1.1.21", models: [{ id: "real-model" }] });
+    mocks.prepare.mockResolvedValue({
+      discovery: { version: "1.1.21", models: [{ id: "real-model" }] },
+      invocation: { command: "/probe/A/agy", args: [] },
+      identity: { realpath: "/probe/A/agy", dev: "1", ino: "2", size: "3", mtimeNs: "4", ctimeNs: "5" },
+      env: {},
+    });
     mocks.run.mockResolvedValue({ text: "ok" });
     mocks.readEvidence.mockReturnValue([]);
     mocks.hasPassed.mockReturnValue(true);
@@ -63,5 +70,14 @@ describe("Antigravity task route", () => {
     expect(mocks.hasPassed).toHaveBeenCalledWith({ capability: "text", modelId: "real-model" }, "1.1.21");
     expect(mocks.hasPassed).toHaveBeenCalledWith({ capability: "vision", modelId: "real-model" }, "1.1.21");
     expect(mocks.run).toHaveBeenCalledOnce();
+  });
+  it("reuses the exact prepared invocation even if later discovery would resolve a different binary", async () => {
+    const preflight = await prepareAntigravityTask({ model: "real-model", capability: "text" });
+    mocks.prepare.mockRejectedValue(new Error("resolver switched to B"));
+    await runAntigravityTask({ prompt: "hello", model: "real-model", capability: "text" }, { preflight });
+    expect(mocks.prepare).toHaveBeenCalledOnce();
+    expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ cliVersion: "1.1.21" }), {
+      preparedInvocation: expect.objectContaining({ invocation: { command: "/probe/A/agy", args: [] } }),
+    });
   });
 });

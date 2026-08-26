@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, open, readFile, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, open, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runAntigravityProcess, buildAntigravityEnv } from "./antigravityProcess";
+import { runAntigravityProcess, buildAntigravityEnv, prepareAntigravityInvocation } from "./antigravityProcess";
 
 const dirs: string[] = [];
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))); });
@@ -14,6 +14,29 @@ async function fixture(mode: string) {
 }
 
 describe("Antigravity process ownership", () => {
+  it("spawns only the exact executable identity prepared by discovery", async () => {
+    const f = await fixture("success");
+    const prepared = await prepareAntigravityInvocation({ invocation: f.invocation, env: process.env });
+    const result = await runAntigravityProcess({ prompt: "bound invocation" }, { preparedInvocation: prepared });
+    expect(result.text).toBe("\u4f60\u597d");
+    expect(JSON.parse(await readFile(path.join(f.dir, "input"), "utf8")))
+      .toEqual({ event: "user", message: { content: "bound invocation" } });
+  });
+
+  it("fails before spawn when the prepared executable identity no longer matches", async () => {
+    if (process.platform === "win32") return;
+    const dir = await mkdtemp(path.join(os.tmpdir(), "agy-identity-")); dirs.push(dir);
+    const executable = path.join(dir, "agy");
+    const spawned = path.join(dir, "spawned");
+    await writeFile(executable, `#!/bin/sh\nprintf spawned > '${spawned.replace(/'/g, "'\\''")}'\n`, { mode: 0o700 });
+    const prepared = await prepareAntigravityInvocation({ invocation: { command: executable, args: [] }, env: process.env });
+    await writeFile(executable, "#!/bin/sh\nexit 0\n");
+    await chmod(executable, 0o700);
+    await expect(runAntigravityProcess({ prompt: "must not spawn" }, { preparedInvocation: prepared }))
+      .rejects.toThrow("ANTIGRAVITY_EXECUTABLE_CHANGED");
+    await expect(readFile(spawned)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("handles split NDJSON and closes stdin after one prompt; removes its workspace", async () => {
     const f = await fixture("success"); const onDelta = vi.fn();
     const result = await runAntigravityProcess({ prompt: "write a scene", onDelta }, { invocation: f.invocation });
