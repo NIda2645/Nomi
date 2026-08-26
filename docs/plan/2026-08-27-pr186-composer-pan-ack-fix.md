@@ -38,6 +38,12 @@
 - replacement animate 仍须取得唯一 generation/rAF，且后续取消 exactly-once 结算。
 - direct transform 与 scheduled offset 仍须执行，取消的旧 rAF 不得成为孤儿；异常只隔离在外部通知边界，settlement 本身仍先进入终态。
 
+最终可观测性复核追加的红测：
+
+- throwing `onSettled` 不向新 viewport command 重抛，但原始异常必须通过 browser error reporter 恰好上报一次。
+- replacement animate、direct transform、scheduled offset 保持既有 ownership/rAF 断言，同时各自锁定 reporter exactly-once。
+- 测试注入 reporter，生产默认优先 `globalThis.reportError`，缺失环境沿用 renderer 的命名空间 `console.error` 策略；reporting 自身失败也不得打断视口命令。
+
 ## 回滚
 
 - 按修复 commit 回滚本计划涉及的生命周期/ACK改动即可；#186 原有高度与几何修复仍保留。

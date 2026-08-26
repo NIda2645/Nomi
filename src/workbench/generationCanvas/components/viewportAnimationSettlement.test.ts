@@ -31,13 +31,43 @@ describe('viewport animation settlement', () => {
   })
 
   it('keeps exactly-once state when an external settlement callback throws', () => {
+    const error = new Error('legacy viewport settlement failed')
     const onSettled = vi.fn(() => {
-      throw new Error('legacy viewport settlement failed')
+      throw error
     })
-    const settlement = createViewportAnimationSettlement(onSettled)
+    const reportError = vi.fn()
+    const settlement = createViewportAnimationSettlement(onSettled, reportError)
 
     expect(() => settlement.settle('cancelled')).not.toThrow()
     expect(settlement.settle('completed')).toBe(false)
     expect(onSettled).toHaveBeenCalledExactlyOnceWith('cancelled')
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(error)
+  })
+
+  it('reports through the browser error boundary when no reporter is injected', () => {
+    const error = new Error('browser-visible settlement failure')
+    const reportError = vi.fn()
+    vi.stubGlobal('reportError', reportError)
+    try {
+      const settlement = createViewportAnimationSettlement(() => { throw error })
+      expect(() => settlement.settle('completed')).not.toThrow()
+      expect(reportError).toHaveBeenCalledExactlyOnceWith(error)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('falls back to namespaced console reporting when browser reportError is unavailable', () => {
+    const error = new Error('fallback settlement failure')
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.stubGlobal('reportError', undefined)
+    try {
+      const settlement = createViewportAnimationSettlement(() => { throw error })
+      expect(() => settlement.settle('cancelled')).not.toThrow()
+      expect(consoleError).toHaveBeenCalledExactlyOnceWith('[nomi] viewport settlement callback failed:', error)
+    } finally {
+      vi.unstubAllGlobals()
+      consoleError.mockRestore()
+    }
   })
 })

@@ -75,15 +75,18 @@ describe('viewport animation coordinator ownership', () => {
     const frameHarness = createFrameHarness()
     const replacementSettled = vi.fn()
     const outerSettled = vi.fn()
+    const reportSettlementError = vi.fn()
+    const settlementError = new Error('legacy viewport settlement failed')
     const coordinator = createViewportAnimationCoordinator({
       ...frameHarness,
       readViewport: () => ({ zoom: 1, offset: { x: 0, y: 0 } }),
       writeViewport: vi.fn(),
+      reportSettlementError,
     })
 
     coordinator.animateTo(1, { x: 0, y: 20 }, 160, () => {
       coordinator.animateTo(1, { x: 0, y: 40 }, 160, replacementSettled)
-      throw new Error('legacy viewport settlement failed')
+      throw settlementError
     })
 
     expect(() => coordinator.animateTo(1, { x: 0, y: 60 }, 160, outerSettled)).not.toThrow()
@@ -92,26 +95,31 @@ describe('viewport animation coordinator ownership', () => {
 
     expect(coordinator.takeOwnershipAndCancel()).toBe(true)
     expect(replacementSettled).toHaveBeenCalledExactlyOnceWith('cancelled')
+    expect(reportSettlementError).toHaveBeenCalledExactlyOnceWith(settlementError)
     expect(frameHarness.frames).toHaveLength(0)
   })
 
   it.each(['direct transform', 'scheduled offset'])('%s survives a throwing cancellation callback', () => {
     const frameHarness = createFrameHarness()
     const commandWrite = vi.fn()
+    const reportSettlementError = vi.fn()
+    const settlementError = new Error('legacy viewport settlement failed')
     const coordinator = createViewportAnimationCoordinator({
       ...frameHarness,
       readViewport: () => ({ zoom: 1, offset: { x: 0, y: 0 } }),
       writeViewport: vi.fn(),
+      reportSettlementError,
     })
 
     coordinator.animateTo(1, { x: 0, y: 20 }, 160, () => {
-      throw new Error('legacy viewport settlement failed')
+      throw settlementError
     })
 
     expect(() => {
       if (coordinator.takeOwnershipAndCancel()) commandWrite()
     }).not.toThrow()
     expect(commandWrite).toHaveBeenCalledOnce()
+    expect(reportSettlementError).toHaveBeenCalledExactlyOnceWith(settlementError)
     expect(frameHarness.frames).toHaveLength(0)
   })
 })

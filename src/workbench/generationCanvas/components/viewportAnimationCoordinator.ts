@@ -1,6 +1,7 @@
 import {
   createViewportAnimationSettlement,
   type ViewportAnimationSettlement,
+  type ViewportAnimationSettlementErrorReporter,
   type ViewportAnimationSettlementOutcome,
 } from './viewportAnimationSettlement'
 
@@ -37,6 +38,7 @@ export function createViewportAnimationCoordinator(input: {
   readViewport: () => Viewport
   writeViewport: (viewport: Viewport) => void
   prepareForAnimation?: () => void
+  reportSettlementError?: ViewportAnimationSettlementErrorReporter
 }): ViewportAnimationCoordinator {
   let generation = 0
   let active: ActiveAnimation | null = null
@@ -78,7 +80,7 @@ export function createViewportAnimationCoordinator(input: {
     if (disposed || generation !== owner) return false
 
     const start = input.readViewport()
-    const settlement = createViewportAnimationSettlement(onSettled)
+    const settlement = createViewportAnimationSettlement(onSettled, input.reportSettlementError)
     const animation: ActiveAnimation = { owner, frame: null, settlement }
     active = animation
     let startTs: number | null = null
