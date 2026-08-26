@@ -1,4 +1,8 @@
-import { parseModelParameterControls, type ModelParameterControl } from '../../../config/modelCatalogMeta'
+import {
+  parseModelParameterControls,
+  parseModelParameterControlsAtomic,
+  type ModelParameterControl,
+} from '../../../config/modelCatalogMeta'
 import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from './generationCanvasTypes'
 import { getGenerationNodeDefinition, getGenerationNodeExecutionKind } from './generationNodeKinds'
 import { sortEdgesByOrder } from './graphOps'
@@ -37,22 +41,14 @@ export function usesExplicitParameterReferenceDeclarations(meta: unknown, vendor
       && 'comfyWorkflowImport' in (meta as Record<string, unknown>))
 }
 
-function hasCatalogParameterDeclaration(meta: unknown): boolean {
-  const catalog = record(meta)
-  return Array.isArray(catalog.parameters)
-    || Array.isArray(catalog.parameterControls)
-    || Object.prototype.hasOwnProperty.call(catalog, 'comfyWorkflowImport')
-}
-
 export function isParameterReferenceControl(control: ModelParameterControl, explicitOnly = false): boolean {
   return explicitOnly
     ? control.type === 'image-url' || control.mediaKind === 'image' || control.mediaKind === 'video'
     : looksLikeImageUrlControl(control)
 }
 
-export function buildImageUrlSlots(meta: unknown, vendorKey?: string | null): ImageUrlSlot[] {
-  const explicitOnly = usesExplicitParameterReferenceDeclarations(meta, vendorKey)
-  return parseModelParameterControls(meta).filter((control) => isParameterReferenceControl(control, explicitOnly)).map((control): ImageUrlSlot => {
+function slotsFromControls(controls: readonly ModelParameterControl[], explicitOnly: boolean): ImageUrlSlot[] {
+  return controls.filter((control) => isParameterReferenceControl(control, explicitOnly)).map((control): ImageUrlSlot => {
     const key = control.key.toLowerCase().replace(/[-_]/g, '')
     const mediaKind = control.mediaKind
     const group: ImageUrlGroup = mediaKind === 'video' ? 'reference'
@@ -62,12 +58,26 @@ export function buildImageUrlSlots(meta: unknown, vendorKey?: string | null): Im
   }).filter((slot, index, slots) => slots.findIndex((candidate) => candidate.key === slot.key) === index)
 }
 
+export function buildImageUrlSlots(meta: unknown, vendorKey?: string | null): ImageUrlSlot[] {
+  const explicitOnly = usesExplicitParameterReferenceDeclarations(meta, vendorKey)
+  const controls = explicitOnly ? parseModelParameterControlsAtomic(meta) : parseModelParameterControls(meta)
+  return controls ? slotsFromControls(controls, explicitOnly) : []
+}
+
 /** The declaration is a catalog-derived contract, never a snapshot of source URLs. */
 export function projectParameterReferenceSlots(meta: Record<string, unknown>, catalogMeta: unknown): Record<string, unknown> {
   const next = { ...meta }
   const previous = record(next[DECLARATION_KEY])
   const identity = parameterReferenceModelIdentity(next)
-  const slots = buildImageUrlSlots(catalogMeta, identity.vendorKey)
+  const explicitOnly = usesExplicitParameterReferenceDeclarations(catalogMeta, identity.vendorKey)
+  const atomicControls = explicitOnly ? parseModelParameterControlsAtomic(catalogMeta) : null
+  if (isComfyuiVendorKey(identity.vendorKey) && atomicControls === null) {
+    delete next[DECLARATION_KEY]
+    return next
+  }
+  const slots = atomicControls
+    ? slotsFromControls(atomicControls, true)
+    : buildImageUrlSlots(catalogMeta, identity.vendorKey)
   const slotsByKey = new Map(slots.map((slot) => [slot.key, slot]))
   const changedModel = previous.modelKey !== identity.modelKey || previous.vendorKey !== identity.vendorKey
   const previousSlots = (Array.isArray(previous.slots) ? previous.slots : []).map(record)
@@ -90,7 +100,7 @@ export function projectParameterReferenceSlots(meta: Record<string, unknown>, ca
     }
   }
   delete next[DECLARATION_KEY]
-  const explicitEmptyComfyContract = isComfyuiVendorKey(identity.vendorKey) && hasCatalogParameterDeclaration(catalogMeta)
+  const explicitEmptyComfyContract = isComfyuiVendorKey(identity.vendorKey) && atomicControls !== null
   if (identity.modelKey && (slots.length || explicitEmptyComfyContract)) next[DECLARATION_KEY] = { ...identity, slots }
   return next
 }

@@ -181,3 +181,25 @@ introduced, so rollback requires no data transformation.
   import-to-final-request wire. The contract-first implementation made the
   expanded focused set pass 154 assertions and passed renderer/electron
   typechecking before main integration.
+
+## Review follow-up: atomic catalog declaration evidence
+
+- An empty Comfy parameter contract is justified only by one explicitly present
+  parameter declaration array. The importer always persists `parameters`, so a
+  bare or malformed `comfyWorkflowImport` marker is not declaration evidence.
+- Parse the selected declaration atomically with the same control parser used by
+  catalog consumers. A malformed item, duplicate normalized key, non-array
+  source, simultaneous `parameters` and `parameterControls` fields, unknown
+  explicit control type, or media kind outside `image`/`video` rejects the
+  whole declaration instead of silently projecting a partial or empty
+  exact-only contract. Options and defaults remain lenient because they cannot
+  change whether a parameter is a media slot.
+- Invalid declaration metadata removes the exact contract without deleting
+  legacy reference fields. Resolver, task-kind, and final request assembly then
+  retain their established legacy behavior; one fully valid empty declaration
+  still persists `slots: []`.
+- TDD evidence: the first focused RED run failed all six malformed/ambiguous
+  catalog cases; a second RED run then isolated unknown `type` and unsupported
+  `mediaKind`. After the atomic declaration parser, the focused test passed 26
+  of 26 and the expanded importer/media-wire/resolver/request set passed 484 of
+  484.

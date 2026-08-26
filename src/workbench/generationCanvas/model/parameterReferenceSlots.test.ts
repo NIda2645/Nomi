@@ -60,6 +60,49 @@ describe('parameter reference assignment shared contract', () => {
     ).parameterReferenceSlots).toBeUndefined()
   })
 
+  it.each([
+    ['mixed malformed parameters', { parameters: [null, { label: 'missing key' }] }],
+    ['duplicate parameters', { parameters: [
+      { key: 'same', label: 'First', type: 'text' },
+      { key: 'same', label: 'Second', type: 'text' },
+    ] }],
+    ['malformed parameterControls', { parameterControls: [null] }],
+    ['unknown explicit control type', { parameters: [{ key: 'image', type: 'bogus' }] }],
+    ['unsupported explicit media kind', { parameters: [{ key: 'asset', type: 'text', mediaKind: 'audio' }] }],
+    ['non-string parameter key alias', { parameters: [{ name: ['image'], type: 'image-url' }] }],
+    ['ambiguous dual arrays', { parameters: [], parameterControls: [] }],
+    ['valid parameters with malformed spare controls', {
+      parameters: [], parameterControls: 'not-an-array',
+    }],
+    ['malformed imported workflow marker without parameters', {
+      comfyWorkflowImport: { binding: { images: [] } },
+    }],
+  ])('does not project an empty Comfy contract from %s', (_label, catalogMeta) => {
+    const stale = 'https://legacy.test/stale.png'
+    const meta = projectParameterReferenceSlots({
+      modelKey: 'text-only', modelVendor: 'comfyui-local', referenceImages: [stale], firstFrameUrl: stale,
+    }, catalogMeta)
+    expect(meta.parameterReferenceSlots).toBeUndefined()
+    const node: GenerationCanvasNode = {
+      id: 'malformed', kind: 'image', title: 'malformed', prompt: 'draw', position: { x: 0, y: 0 }, meta,
+    }
+    const references = resolveGenerationReferences(node)
+    const request = buildCatalogTaskRequest(node, { references }).request
+    expect(references.referenceImages).toContain(stale)
+    expect(request.kind).toBe('image_edit')
+    expect(request.extras?.referenceImages).toContain(stale)
+  })
+
+  it('accepts one fully valid parameterControls array as the empty Comfy declaration source', () => {
+    const meta = projectParameterReferenceSlots(
+      { modelKey: 'text-only-controls', modelVendor: 'comfyui-local' },
+      { parameterControls: [] },
+    )
+    expect(meta.parameterReferenceSlots).toEqual({
+      modelKey: 'text-only-controls', vendorKey: 'comfyui-local', slots: [],
+    })
+  })
+
   it('reserves explicit keys before ordered legacy edges, including pending sources', () => {
     const node = target()
     const pending = { ...source('pending'), result: undefined }
