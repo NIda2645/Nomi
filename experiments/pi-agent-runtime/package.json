@@ -1,0 +1,39 @@
+{
+  "name": "nomi-pi-runtime-compatibility",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.8.1",
+  "type": "module",
+  "description": "Isolated pi SDK compatibility gate; never imported by Nomi production",
+  "author": "Nomi",
+  "license": "AGPL-3.0-only",
+  "main": "electron-main.cjs",
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build && node --test --test-concurrency=1 dist/tests/*.test.js"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.84.3",
+    "@earendil-works/pi-ai": "0.84.3",
+    "@earendil-works/pi-coding-agent": "0.84.3",
+    "typebox": "1.3.7",
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@earendil-works/pi-agent-core": "0.84.3",
+      "@earendil-works/pi-ai": "0.84.3",
+      "@earendil-works/pi-client": "0.84.3",
+      "@earendil-works/pi-coding-agent": "0.84.3",
+      "@earendil-works/pi-protocol": "0.84.3",
+      "@earendil-works/pi-tui": "0.84.3"
+    }
+  }
+}

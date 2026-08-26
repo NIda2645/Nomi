@@ -74,7 +74,7 @@ L0 底座             ProductionRun / 合同 / 预算 / outbox / 资产   [✅ �
 9. **SKILL.md 渐进披露**：导演/编剧技能库迁 SKILL.md，内外共用。
 10. **v1 不做**：subagents、独立 plan 子系统、per-tool 弹窗、外部 orchestration runtime。
 
-**复用边界**（已定，别重新论证）：已复用 = Vercel AI SDK（模型抽象/工具循环/流式）。pi 允许**源码级搬运**（MIT）但不引依赖——① 它官方无权限系统而权限恰是命门 ② 不认识我们的 vendor 体系 ③ 演化期破坏性变更 solo 扛不住。**Claude Agent SDK 一票否决**（仅 Anthropic 模型 + API key，与 BYO 冲突）。行业佐证：Cline / LibTV / TapNow 无一家装他人 harness，全是「底层 SDK 复用 + 薄壳自建」。
+**复用边界（2026-08-26 用户确认调整）**：采用受控 pi AgentSession 复用通用循环、流式与工作上下文；先 R0 兼容验证，再 R1 替换现役 Agent 运行链，同一交付删除旧 engine，不设运行时 fallback。Nomi 的供应商配置、权限/确认、预算、Skill、MCP、ProductionRun、作品 Apply/Undo 不交给 SDK。R2-U1 必交项目级会话/任务与三空间共同宿主，不能只让两个页面调用同一 SDK 就报统一完成。执行细节见 [逐文件迁移方案](../plan/2026-08-26-pi-agent-loop-file-migration.md)。这条替代旧“不引 pi”判断，不代表兼容或实现已通过。
 
 ## 1.5 交互层规格（B5 的图纸，样张必须 owner 拍板）
 
@@ -292,10 +292,10 @@ L0 底座             ProductionRun / 合同 / 预算 / outbox / 资产   [✅ �
 
 # Part 5. 已拍板的决定（**不许重新论证**）
 
-1. **B4 四件套自建**，不买全栈 agent runtime。AI SDK 能白拿的只有模型抽象 / 工具 schema / 流式多步 / abort-retry-repair，**保持 `ai@4`**。
+1. **B4 的 Nomi 业务控制层保留，通用运行层改为 pi（2026-08-26 用户确认）**。依 R0 → R1 → R2-U1 分阶段实施；`ai@4` 继续服务非 Agent 文本/编译/验证链，不保留第二套 Agent loop。SDK 上下文恢复不等于生产账本恢复，外部 MCP 也不绕内嵌模型执行。
 2. **两条事件日志各走各的**，用 `runId / causeId / txnId / proposalId` 显式关联，**不物理合并**。
    - 量化理由：通用日志 `fs.appendFileSync` **不 fsync**；ProductionRun 走 `writeSync + fsyncIfDurable`（`electron/durability.ts` 是全仓唯一决定要不要真 fsync 的地方）。合并会强迫二选一：**要么高频对话事件都 fsync 拖慢交互，要么账本失去掉电保证。**
-3. **AI SDK 7 只做隔离只读 spike**，通过后再议升级。spike **不得写入** ProductionRun / 预算 / canvas。
+3. **AI SDK 7 spike 不与 pi 换芯同时推进第二个 Agent engine（2026-08-26 调整）**。若未来非 Agent 文本链有独立收益，再做隔离只读验证，不触及 ProductionRun / 预算 / canvas。
    - 反直觉点：SDK 7 新增的 durable execution 和 tool approvals 听起来正是我们要的，但**恰恰最不该买**——ProductionRun 账本和确认漏斗已经是护城河且是保护项。买它 = 用外部框架替换护城河。真正有价值的是它的 HarnessAgent adapter（属 Track C）。
 4. **Thread/Turn/Item 用 Nomi 自有 union**，对外做 adapter。**禁止 SDK 类型反向侵入业务模型。**
 5. **保护项永不被反向改写**：ProductionRun 账本、预算/收据/幂等、锚一致性、Proposal/撤销、能力核权限。
@@ -362,6 +362,8 @@ L0 底座             ProductionRun / 合同 / 预算 / outbox / 资产   [✅ �
 - **回滚**：停用投影消费者，保留日志，UI 回到现有 trace/Run projection。
 
 ## 6.5 B4-5：AI SDK 7 隔离 spike
+
+> 2026-08-26：本项暂缓，Agent 主线按已确认的 pi R0/R1/R2-U1 执行；以下是未来非 Agent 文本链重启验证时的原安全边界，不是当前并行开工任务。
 
 - **目标**：在临时 fixture 验证 SDK 7 映射、Electron bundling、abort/stream 兼容性。
 - **边界**：**只读**，不得触及 Run / 预算 / canvas。spike 失败直接删目录。

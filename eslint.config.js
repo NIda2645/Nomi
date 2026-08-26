@@ -15,6 +15,9 @@ export default tseslint.config(
       'dist/**',
       'dist-electron/**',
       'release/**',
+      // 独立 SDK 兼容实验的编译/打包产物；实验源码仍参加 lint。
+      'experiments/pi-agent-runtime/dist/**',
+      'experiments/pi-agent-runtime/release/**',
       'node_modules/**',
       // Vite 预打包依赖缓存（vite.config cacheDir = .tmp/vite）——第三方 bundle，非源码，不 lint。
       '.tmp/**',

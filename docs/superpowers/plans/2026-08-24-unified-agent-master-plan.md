@@ -2,6 +2,7 @@
 
 > 状态：**已终审定稿（2026-08-25 用户拍板：「继续全部推进，我没有什么疑问了」）。** 前置拍板（2026-08-24）：大脑=用户自接模型+能力分级；接管范围=创作主链优先；节奏=P4 照跑、agent 设计并行。P4 自身拍板（T1/T2/T3）见 p4 计划 §6。
 > **终审新增拍板（2026-08-25）**：① 配音/TTS **进第一条 Pack 的剪辑段（E2）、不进 P4**（§8 议题关闭；供应商对比表 Pack 立项时给）；② B1c systemPrompt 合成器**新增「项目偏好记忆层」**（用户自由偏好如色调/字幕风格，持久化进合成器一层——补齐 harness 对照里唯一的记忆缺口）；③ B1a-d 即刻开工授权（非 UI）；B5 交互层维持全部样张先行、用户亲眼拍板后实现。
+> **2026-08-26 实施调整（用户确认）**：通用运行层改为受控 pi AgentSession，先 R0 兼容验证、再 R1 替换现有运行链；随后 R2-U1 必交项目级会话/任务/三空间共同宿主。权限、预算、MCP、Skill、ProductionRun 和作品操作仍归 Nomi。非 Agent 文本链保留 ai@4。见 [逐文件迁移方案](../../plan/2026-08-26-pi-agent-loop-file-migration.md)；这是已批准方向，尚非已完成状态。
 > 证据基：七份同日调研——内部体检、战略文档对账（已决15/未决14/冲突10）、harness 情报、产品交互对标、Video Agent 架构调研、**agent 对话词汇调研**、**小云雀模式精读**（均在 docs/audit/、docs/research/ 下 2026-08-24 系列）。
 
 ## 0. 北极星（一句话）
@@ -26,7 +27,7 @@ L0 底座                  ProductionRun/合同/预算/outbox/reconcile/资产  
 
 采纳依据=harness 调研（该抄 10/该避 8/已有等价物 4）：
 
-1. **同步单循环**（OpenHands v0 异步总线反面教材）：Electron 主进程/utility process；Vercel AI SDK 做多供应商抽象（BYO key，栈内现役）。
+1. **单一状态推进循环**：Electron 主进程/utility process；现役为 Vercel AI SDK，已批准通过 R0 后改用受控 pi AgentSession（BYO key，Nomi 显式模型/工具/上下文配置）。不保留双 Agent engine；非 Agent 文本任务不在本次替换范围。
 2. **事件溯源会话日志=唯一真相源**（dsh「model-visible means logged」）：追加式 JSONL 派生模型上下文/UI 回放/断点续跑/fork；与耐久 Run 统一而非并存。
 3. **Thread→Turn→Item 事件流**（Codex App Server 形状、对齐 ACP）经 IPC 投影渲染层：每 Item 一个组件、`started→delta*→completed`；留外接 Claude Code/Gemini CLI 之门。
 4. **单一审批信道**：确认=事件流上的反向请求、turn 暂停等回答；「agent 只许提案不许花钱」是策略引擎 deny 规则（harness 强制，非 prompt）。
@@ -37,7 +38,7 @@ L0 底座                  ProductionRun/合同/预算/outbox/reconcile/资产  
 9. **SKILL.md 渐进披露**：导演/编剧技能库迁 SKILL.md，内外共用。
 10. **v1 不做**：subagents、独立 plan 子系统（计划=只读权限档）、per-tool 弹窗、外部 orchestration runtime。
 
-**复用边界（答「为何不直接装 pi/现成框架」）**：已复用的框架=Vercel AI SDK（模型抽象/工具循环/流式）；pi 允许**源码级搬运**（MIT）但不做依赖引入——① 它官方无权限系统而权限恰是我们命门；② 不认识我们 vendor 体系，适配胶水省的比花的少；③ 演化期破坏性变更 solo 扛不住。Claude Agent SDK 一票否决（仅 Anthropic 模型+API key，与 BYO 冲突）。行业佐证：Cline/LibTV/TapNow 无一家装他人 harness，全是「底层 SDK 复用+薄壳自建」。「一致性」落在形状层：事件语义对齐 ACP/App Server。
+**复用边界（2026-08-26 更新，替代旧“不引 pi”结论）**：通用模型/工具循环、流式和工作上下文复用 pi AgentSession；Nomi 保留供应商配置、Skill/项目偏好、权限、确认、预算、ProductionRun、作品编辑及 Undo。框架没有 Nomi 权限不等于不能复用其循环；权限在既有工具执行边界强制。先以固定版本通过原生 PDF、恢复、Electron/ASAR 等兼容门，再同一交付删除旧 Agent engine；不以失败 fallback 留双引擎。MCP 外部请求仍直达同一业务能力，不绕内嵌模型二次推理；外部客户端的聊天历史不冒充已自动同步。
 
 ## 3. 内部各自为战的收敛（Track B 前置清理）
 
