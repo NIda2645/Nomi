@@ -8,6 +8,15 @@ const result = { event: "result", result: { conversation_id: "task-1", status: "
 const delta = (text: string) => ({ event: "step_update", step_update: { conversation_id: "task-1", step_index: 1, state: "ACTIVE", step_type: "agent_response", text_delta: text } });
 
 describe("official Antigravity stream-json contract", () => {
+  it("classifies the native server-error step as a failed run, never text or a protocol success", () => {
+    const onDelta = vi.fn(); const parser = new AntigravityProtocol(vi.fn(), onDelta, expected);
+    parser.accept(init);
+    expect(() => parser.accept({ event: "step_update", step_update: {
+      conversation_id: "task-1", step_index: 2, state: "DONE", step_type: "error_message",
+    } })).toThrowError(new Error("ANTIGRAVITY_UNSUCCESSFUL_RESULT"));
+    expect(onDelta).not.toHaveBeenCalled();
+    expect(() => parser.finish()).toThrow("ANTIGRAVITY_MISSING_RESULT");
+  });
   it("classifies quota failure in a terminal result without exposing upstream diagnostics", () => {
     const parser = new AntigravityProtocol(vi.fn(), vi.fn(), expected);
     expect(() => parser.accept({ event: "result", result: { status: "ERROR", error: "Resource exhausted: quota exceeded" } })).toThrow("ANTIGRAVITY_QUOTA");
@@ -140,6 +149,13 @@ describe("bounded Antigravity media tools", () => {
   });
   it("rejects tool failure even if the agent could later claim success", () => {
     expect(() => media("edit").accept(tool("generate_image", "ERROR"))).toThrow("TOOL_FAILED");
+  });
+  it("classifies an image tool's real quota error before the misleading terminal timeout", () => {
+    const event = tool("generate_image", "ERROR");
+    const error = { type: "TOOL_ERROR", message: 'failed to generate content: 429 Too Many Requests, body: {"error":{"status":"RESOURCE_EXHAUSTED","message":"You have exhausted your capacity on this model."}}' };
+    expect(() => media("image").accept({ ...event, step_update: { ...event.step_update,
+      tool_info: { name: "generate_image", error },
+    } })).toThrowError(new Error("ANTIGRAVITY_QUOTA"));
   });
   it("rejects a second generator invocation before accepting its result", () => {
     const parser = media("image"); parser.accept(tool("generate_image"));

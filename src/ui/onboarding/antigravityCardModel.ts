@@ -8,7 +8,7 @@ export function groupAntigravityCatalogModels(models: ChipModel[], selected: Rea
   const groups = new Map<string, ChipModel[]>()
   for (const model of models) {
     const variant = model.vendorKey === ANTIGRAVITY_VENDOR_KEY ? getAntigravityModelVariant(model.modelKey) : undefined
-    const key = `${model.vendorKey}/${variant?.familyKey ?? model.modelKey}`
+    const key = variant ? `${model.vendorKey}/family/${variant.familyKey}` : `${model.vendorKey}/model/${model.modelKey}`
     groups.set(key, [...(groups.get(key) ?? []), model])
   }
   return [...groups.values()].map((variants) => {

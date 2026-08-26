@@ -68,10 +68,13 @@ export class AntigravityProtocol {
       this.pinConversation(step.conversation_id);
       if (!Number.isInteger(step.step_index) || Number(step.step_index) < 0
         || typeof step.state !== "string" || !["ACTIVE", "DONE"].includes(step.state)
-        || typeof step.step_type !== "string" || !["user_input", "agent_response", "checkpoint"].includes(step.step_type)
+        || typeof step.step_type !== "string" || !["user_input", "agent_response", "checkpoint", "error_message"].includes(step.step_type)
         || ("text_delta" in step && typeof step.text_delta !== "string")) {
         throw new Error("ANTIGRAVITY_INVALID_STEP");
       }
+      // CLI 1.1.21 emits this terminal error category before e.g. a busy-server
+      // result. Fail the run without treating provider failure as malformed text.
+      if (step.step_type === "error_message") throw new Error("ANTIGRAVITY_UNSUCCESSFUL_RESULT");
       if (step.step_type === "agent_response" && typeof step.text_delta === "string") {
         this.text += step.text_delta;
         this.onDelta(step.text_delta);
@@ -112,7 +115,16 @@ export class AntigravityProtocol {
     this.pinConversation(step.conversation_id);
     if (!Number.isSafeInteger(step.step_index) || Number(step.step_index) < 0
       || typeof step.state !== "string" || !["ACTIVE", "DONE", "ERROR"].includes(step.state)) throw new Error("ANTIGRAVITY_INVALID_STEP");
-    if (step.state === "ERROR" || info.error) throw new Error("ANTIGRAVITY_TOOL_FAILED");
+    if (step.state === "ERROR" || info.error) {
+      // The CLI can emit a generic timeout result after a precise tool error.
+      // Classify here without exposing the upstream body or account diagnostics.
+      const error = info.error && typeof info.error === "object" && !Array.isArray(info.error)
+        ? info.error as Record<string, unknown> : undefined;
+      if (typeof error?.message === "string" && /quota|rate.?limit|resource.exhausted|too many requests/i.test(error.message)) {
+        throw new Error("ANTIGRAVITY_QUOTA");
+      }
+      throw new Error("ANTIGRAVITY_TOOL_FAILED");
+    }
     const index = Number(step.step_index);
     const previous = this.tools.get(index);
     if (previous && (previous.name !== allowed || previous.state === "DONE")) throw new Error("ANTIGRAVITY_INVALID_STEP");

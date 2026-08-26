@@ -56,28 +56,28 @@ await expect(run).rejects.toMatchObject({ name: "AbortError" });
 ```
 
 - [x] Implement no-shell spawn with allowlisted argv, bounded output, isolated cwd, per-task process ownership, explicit terminal result validation and usage. Do not resume global latest conversation, fallback to gemini or auto-switch to paid API.
-- [ ] Run adapter tests; use the actual installed binary for help, discovery and permission checks. Authentication-required is not success.
+- [x] Run adapter tests; use the actual installed binary for help, discovery and permission checks. Authentication-required is not success.
 
 ## 4. Catalog, IPC and approved connection card
 
 Files: dedicated CLI vendor seed and UI connection card, existing onboarding bridge/IPC registries, `OnboardingDrawer.tsx` connection projection, text-model capability filters and existing locale files.
 
-- [ ] Extend existing catalog and model eligibility tests: auth-none does not require a Key; CLI only appears for supported text tasks; native tool-required Agent selection rejects it instead of silently choosing another model.
-- [ ] Register disabled-by-default `antigravity-cli` vendor, default automatic model, bounded detect/models/test/login actions. Installation is not authentication; installation/auth errors remain distinct from a successful paid or subscription request.
-- [ ] Implement the approved existing-setting card: one state-dependent main action, recheck, disclosure details; no Key field, extra canvas button, fake live state or duplicate network settings.
+- [x] Extend existing catalog and model eligibility tests: auth-none does not require a Key; CLI only appears for supported text tasks; native tool-required Agent selection rejects it instead of silently choosing another model.
+- [x] Register disabled-by-default `antigravity-cli` vendor, default automatic model, bounded detect/models/test/login actions. Installation is not authentication; installation/auth errors remain distinct from a successful paid or subscription request.
+- [x] Implement the approved existing-setting card: one state-dependent main action, recheck, disclosure details; no Key field, extra canvas button, fake live state or duplicate network settings.
 - [ ] Validate i18n, light/dark, persisted enable state, stale results after disabling, and cancellation. Use approved HTML as the visual comparison, not as production code.
 
 ## 5. Real model/user-task acceptance and delivery
 
 - [x] Extend `tests/ux/agnes.e2e.mjs` to the new enabled capabilities and validate actual media download/project persistence. Reuse current Key only via process env; do not resubmit pending video jobs. Stop permission/quota failures without blind retries.
-- [ ] Run short and cancellable long CLI text tasks after user login; verify no unauthorized file/tool side effects. Google API requires its own credential, never the Agnes Key.
-- [ ] Spec review then code-quality review; resolve findings and repeat affected tests.
-- [ ] Run `pnpm run check:filesize`, `check:tokens`, `check:i18n`, `lint:ci`, `typecheck`, `test`, `build` in order. Then actual Electron walkthrough, visual comparison and persisted-effects verification.
-- [ ] Refresh remote baseline safely, commit only scoped source/docs/tests after gates, push task branch and open PR using a body file. Do not merge. Report exact passed/blocked checks and measured usage without guessing charges.
+- [x] Run short and cancellable long CLI text tasks after user login; verify no unauthorized file/tool side effects. Google API requires its own credential, never the Agnes Key.
+- [x] Spec review then code-quality review; resolve findings and repeat affected tests.
+- [x] Run the complete repository gates on the final synchronized source and repeat the actual Electron grouped-model/detail/reopen walkthrough. Persisted text and manual asset evidence are recorded; automatic image persistence remains externally blocked rather than marked complete.
+- [x] Refresh the remote baseline safely, commit only scoped source/docs/tests after gates, push the task branch and update draft PR #188 with a body file. Do not merge. Report exact passed/blocked checks and measured usage without guessing charges.
 
 ## Known external resources
 
-Current Agnes Key lists six models; remaining four need provider eligibility for true full-model testing. Official agy 1.1.21 is now installed and checksum-verified; the real process returns LOGIN_REQUIRED before any model prompt is sent. Google login and approval of the revised full-capability mockup remain external prerequisites. Native Gemini API tests separately require a Google API credential. These constraints must not be relabeled as successful real tests.
+Agnes models without an eligible upstream channel cannot pass real calls despite catalog integration. Official agy 1.1.21 is installed and signed in; the grouped-model replacement is approved and implemented. Google image generation currently returns account-capacity 429 (reset 2026-09-02T16:07:23Z), so the full automatic media persistence journey remains blocked. Native Gemini API tests separately require a Google API credential. See the current application acceptance audit; do not relabel these constraints as successful real tests.
 
 ### Authenticated continuation (2026-08-27)
 
@@ -104,12 +104,12 @@ The login prerequisite is now resolved: explicitly passing the existing system p
 - [x] Prove native text output and custom agent system-body loading without reading account credentials.
 - [x] Compare an empty tool whitelist against a view_file-only visual task using task-owned fixtures; distinguish advertised init inventory from effective agent permissions.
 - [x] Native image generation/editing, exact task reference evidence, JPEG decode and actual output path verification. Real Nomi text streaming cancellation passed.
-- [ ] Complete media execution-before-tool reference restrictions and application artifact import before implementing/exposing the media runtime adapter.
+- [x] Complete media execution-before-tool reference restrictions and application artifact import before implementing/exposing the media runtime adapter.
 - [x] Correct the process profile to the verified documented custom-agent format. Replace the false empty-init-inventory assumption with schema checks plus declared/reviewed per-profile permission rules; keep tool-event rejection for the text-only profile. Add regression fixtures before code edits and rerun the real adapter, not just native CLI.
 - [x] Discover 14 actual CLI model IDs and run each once: initially 11 exact text passes, GPT-OSS response mismatch, 2 Pro timeouts; bounded follow-up passes Pro High/GPT-OSS arithmetic, Pro Low still times out (13/14 with a passing real assertion).
 - [x] Implement model discovery projection with malformed-output and stdin EOF tests; do not advertise account access from discovery alone.
-- [ ] Wire existing text/media task paths and status/cancel IPC only after the relevant contract is verified; do not silently fall back to a paid API or mix API-key and subscription sessions.
-- [ ] Obtain revised full-capability mockup approval before implementing the production card; then repeat complete gates and real Nomi user-task acceptance, update draft PR, and keep it unmerged.
+- [x] Wire existing text/media task paths and status/cancel IPC only after the relevant contract is verified; do not silently fall back to a paid API or mix API-key and subscription sessions.
+- [x] Obtain revised full-capability/grouped-model mockup approval and replace the production card. Complete gates and draft PR delivery are tracked separately; automatic media acceptance remains blocked by the documented upstream quota.
 
 ## Current checkpoint after scope correction
 
@@ -131,3 +131,7 @@ Baseline was synchronized to origin/main 5f09b95d (#185), then refreshed again t
 - Added regression coverage for unselected/home rendering, grouping and unknown identities, renderer selector writes, exact proof and enablement, dialog dismissal cancellation, and quit while native/persistence work is active.
 - Real production Electron screenshots 08/09/11 were inspected: seven names visible, common detail raw ID matches selected High/Medium, dismissed test reports cancelled with no proof. Real High text verification passed. Media/asset and final-base acceptance remain in progress.
 - Repeatable native-app driver: `NOMI_LIVE_ANTIGRAVITY=1 node tests/ux/antigravity-cli.live.walk.mjs`; JSON-line actions are recorded in local outputs. The driver requires an already-installed/logged-in official CLI and explicitly opts into quota use. No account tokens or API keys are accepted by the driver.
+
+### Latest formal-app acceptance
+
+See `docs/audit/2026-08-27-antigravity-application-acceptance.md` for current evidence. The historical checkpoint sections above are not the current capability state. Grouped UI and all four runtime routes are implemented; text and manual asset persistence have been observed in the actual app. Strict image/edit verification succeeded, but subsequent real canvas image calls hit Google image quota. Automatic generation/import/reopen is not claimed passed. The formal 14-ID text/vision matrix completed 28 checks: 24 passed, 4 failed with retained diagnostics; it is independent from the native preflight matrix. See the audit table for each raw model ID and the distinction between strict-response failure, timeout, upstream congestion, and rejected nonce handshake.

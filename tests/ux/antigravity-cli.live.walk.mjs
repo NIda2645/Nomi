@@ -18,6 +18,27 @@ if (fs.existsSync(path.join(out, 'report.json'))) fs.copyFileSync(path.join(out,
 const save = () => fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2))
 const { app, win: initialWin, close } = await launchNomiApp({ name: 'antigravity-application', tempRoot,
   env: { HTTPS_PROXY: 'http://127.0.0.1:7897', HTTP_PROXY: 'http://127.0.0.1:7897', NO_PROXY: 'localhost,127.0.0.1,::1' } })
+if (process.env.NOMI_LIVE_AGY_DIAGNOSTICS === '1') {
+  // Test-process observation only: same binary/argv/env and unchanged production request path.
+  // Captures only this isolated app's headless CLI stdout, never login or credential files.
+  await app.evaluate((_, directory) => {
+    const childProcess = process.getBuiltinModule('node:child_process')
+    const fs = process.getBuiltinModule('node:fs'); const path = process.getBuiltinModule('node:path')
+    const original = childProcess.spawn
+    childProcess.spawn = function (...args) {
+      const child = original.apply(this, args)
+      if (path.basename(String(args[0])) === 'agy' && args[1]?.includes('--input-format')) {
+        const file = path.join(directory, `native-${Date.now()}-${child.pid}.jsonl`)
+        let bytes = 0
+        child.stdout.on('data', chunk => {
+          bytes += Buffer.byteLength(chunk)
+          if (bytes <= 4 * 1024 * 1024) fs.appendFileSync(file, chunk, { mode: 0o600 })
+        })
+      }
+      return child
+    }
+  }, out).catch(async error => { await close(); throw error })
+}
 let win = initialWin
 win.on('pageerror', (error) => { report.errors.push(error.message); save() })
 const nativeWindow = await app.browserWindow(win)
@@ -33,7 +54,7 @@ async function inspect() {
       text: e.textContent?.trim().slice(0, 100), aria: e.getAttribute('aria-label'), testid: e.getAttribute('data-testid'),
       available: e.getAttribute('data-model-home-available'), connection: e.getAttribute('data-model-home-connection'), disabled: e.disabled,
     })).slice(0, 100),
-    nodes: [...document.querySelectorAll('[data-node-id][data-kind]')].map((e) => ({ id: e.getAttribute('data-node-id'), kind: e.getAttribute('data-kind') })),
+    nodes: [...document.querySelectorAll('[data-node-id][data-kind]')].map((e) => ({ id: e.getAttribute('data-node-id'), kind: e.getAttribute('data-kind'), status:e.getAttribute('data-status') })),
     images: [...document.images].filter((e) => e.getBoundingClientRect().width > 20).map((e) => ({alt:e.alt,loaded:e.complete && e.naturalWidth > 0, width:e.naturalWidth,height:e.naturalHeight})),
   }))
 }

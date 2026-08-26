@@ -28,6 +28,18 @@ describe('Antigravity card catalog projection', () => {
     expect(groupAntigravityCatalogModels(source)[0].model.modelKey).toBe('gemini-3.7-flash-high')
     expect(groupAntigravityCatalogModels(source.slice(2), { 'gemini-3.7-flash': 'removed' })[0].model.modelKey).toBe('gemini-3.7-flash-low')
   })
+  it.each([false, true])('keeps an unknown raw ID matching a family key independent (reversed=%s)', (reversed) => {
+    const unknown = chip('gemini-3.7-flash', true)
+    const source = [chip('gemini-3.7-flash-medium'), chip('gemini-3.7-flash-high'), unknown]
+    const result = groupAntigravityCatalogModels(reversed ? [...source].reverse() : source, {
+      'gemini-3.7-flash': 'gemini-3.7-flash-high',
+    })
+    expect(result).toHaveLength(2)
+    expect(result.find((group) => group.model.modelKey === unknown.modelKey)).toMatchObject({ model: unknown, variants: [unknown] })
+    const family = result.find((group) => group.model.modelKey === 'gemini-3.7-flash-high')
+    expect(family?.model).toMatchObject({ labelZh: 'Gemini 3.7 Flash', enabled: false })
+    expect(family?.variants.map((model) => model.modelKey).sort()).toEqual(['gemini-3.7-flash-high', 'gemini-3.7-flash-medium'])
+  })
   it('shows recorded timeouts and quota limits without inventing a passed capability', () => {
     expect(antigravityDisplayCheckState(undefined)).toBe('unverified')
     expect(antigravityDisplayCheckState({ ...status.checks![0], state: 'failed', code: 'ANTIGRAVITY_TIMEOUT' })).toBe('timeout')

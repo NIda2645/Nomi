@@ -6,7 +6,7 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { toast } from '../../../ui/toast'
 import { mintSpendGrant } from '../../api/taskApi'
-import { confirmGenerationSpend, describeGenerationCost } from '../spend/spendConfirm'
+import { confirmGenerationSpend, describeGenerationCost, type GenerationCostKind } from '../spend/spendConfirm'
 import { generationNodeExecutor, type GenerationNodeExecutor } from './generationNodeExecutor'
 import { narrateProgress } from '../../observability/narrate'
 import { LocalTaskCancelledError, clearTaskCancel, isTaskCancelRequested, isLocalTaskCancelledError } from './localTaskControl'
@@ -44,14 +44,14 @@ import {
 } from './assetUploadConsent'
 import type { HostingDisclosure } from '../spend/spendConfirm'
 
-/** 节点 kind → 付费预估用的产物口径（视频/配音/画面），喂给 describeGenerationCost 报对名词与时长。 */
-function spendCostKind(kind: GenerationNodeKind): 'image' | 'video' | 'audio' {
+/** 节点 kind → 付费预估用的产物口径，喂给 describeGenerationCost 报对名词与时长。 */
+function spendCostKind(kind: GenerationNodeKind): Exclude<GenerationCostKind, 'mixed'> {
   const exec = getGenerationNodeExecutionKind(kind)
-  return exec === 'video' ? 'video' : exec === 'audio' ? 'audio' : 'image'
+  return exec === 'text' || exec === 'video' || exec === 'audio' ? exec : 'image'
 }
 
 /** 一批节点的产物口径：全同则取该类，混合则 'mixed'，喂给 describeGenerationCost 报对名词。 */
-export function spendCostKindForNodes(ids: string[]): 'image' | 'video' | 'audio' | 'mixed' {
+export function spendCostKindForNodes(ids: string[]): GenerationCostKind {
   const nodes = useGenerationCanvasStore.getState().nodes
   const kinds = new Set(
     ids
