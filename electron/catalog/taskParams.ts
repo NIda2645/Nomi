@@ -9,6 +9,8 @@ import { referenceInputParams } from "./archetypeInput";
 import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archetypeWireDefaults.generated";
 import { bodyReferencedParamKeys } from "./paramTranslate";
 import { bodyReferenceSupport, classifyReferenceKey, classifyReferenceKeyDetailed, type ReferenceFamily } from "./referenceReachability";
+import { readParameterReferenceContract } from "./parameterReferenceContract";
+import { isComfyuiVendor } from "./types";
 
 /** taskTemplateParams 实际用到的 TaskRequest 子集（结构化，避免与 runtime 的 TaskRequest 循环依赖）。 */
 export type TaskParamsInput = {
@@ -215,6 +217,17 @@ function containsRefUrl(value: unknown): boolean {
   return false;
 }
 
+function declaredComfyReferences(extras: JsonRecord): Array<{ key: string; family: 'image' | 'video'; url: string }> {
+  const contract = readParameterReferenceContract(extras)
+  if (!contract || !isComfyuiVendor({ key: contract.vendorKey })) return []
+  return contract.slots.flatMap((slot) => {
+    const value = extras[slot.key]
+    const url = typeof value === 'string' ? value.trim() : ''
+    if (!url || !REF_URL_RE.test(url)) return []
+    return [{ key: slot.key, family: slot.mediaKind === 'video' ? 'video' as const : 'image' as const, url }]
+  })
+}
+
 /**
  * 图生图/图生视频请求里是否真的带了 ≥1 张参考素材（L3 诚实护栏，纯函数可测）。
  * 两路口径：① firstReferenceImage 单图聚合（image_url/firstFrameUrl/referenceImages[0]…）；
@@ -225,6 +238,7 @@ function containsRefUrl(value: unknown): boolean {
 export function hasImageEditReferences(request: TaskParamsInput): boolean {
   if (firstReferenceImage(request)) return true;
   const extras = request.extras || {};
+  if (declaredComfyReferences(extras).some((reference) => reference.family === 'image')) return true;
   // extras.image：headless/老调用方的裸键口径（部分 curated body 直读 {{request.params.image}}）。
   return containsRefUrl([extras.image, referenceInputParams(extras)]);
 }
@@ -277,6 +291,11 @@ function carriedReferences(extras: JsonRecord): Array<{ label: string; url: stri
   };
   // referenceInputParams 的插入顺序把首/尾帧排在前，故同一 URL 既是首帧又在 image_urls 里时取「首帧」。
   for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  for (const reference of declaredComfyReferences(extras)) {
+    if (seen.has(reference.url)) continue
+    seen.add(reference.url)
+    out.push({ label: referenceLabelForKey(reference.family), url: reference.url })
+  }
   return out;
 }
 
@@ -333,6 +352,7 @@ function carriedReferenceFamilies(extras: JsonRecord): Set<ReferenceFamily> {
     else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(k, v);
   };
   for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  for (const reference of declaredComfyReferences(extras)) families.add(reference.family)
   return families;
 }
 

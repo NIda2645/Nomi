@@ -2,9 +2,15 @@ import { parseModelParameterControls, type ModelParameterControl } from '../../.
 import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from './generationCanvasTypes'
 import { getGenerationNodeDefinition, getGenerationNodeExecutionKind } from './generationNodeKinds'
 import { sortEdgesByOrder } from './graphOps'
+import {
+  parameterReferenceModelIdentity,
+  readParameterReferenceSlotsContract,
+  type ParameterReferenceGroup,
+  type ParameterReferenceSlot,
+} from '../../../../electron/catalog/parameterReferenceContract'
 
-export type ImageUrlGroup = 'first_frame' | 'last_frame' | 'reference'
-export type ImageUrlSlot = { key: string; label: string; group: ImageUrlGroup; mediaKind?: 'image' | 'video' }
+export type ImageUrlGroup = ParameterReferenceGroup
+export type ImageUrlSlot = ParameterReferenceSlot
 export type ParameterReferenceAssignment = { slot: ImageUrlSlot; edge?: GenerationCanvasEdge }
 const DECLARATION_KEY = 'parameterReferenceSlots'
 const IMAGE_KEYS = ['imageurl', 'imgurl', 'imageurls', 'inputurl', 'inputurls', 'inputimage', 'inputimg', 'imageinput', 'referenceimage', 'refimage', 'initimage', 'sourceimage', 'sourceimg', 'startimage', 'endimage', 'firstframe', 'lastframe', 'frameurl', 'photourl']
@@ -14,12 +20,6 @@ const LAST_KEYS = ['lastframe', 'lastimage', 'endframe', 'endimage', 'finalframe
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : '' }
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
-}
-function modelIdentity(meta: Record<string, unknown>): { modelKey: string; vendorKey: string } {
-  return {
-    modelKey: text(meta.modelKey) || text(meta.modelAlias) || text(meta.imageModel) || text(meta.videoModel),
-    vendorKey: text(meta.modelVendor) || text(meta.vendor) || text(meta.imageModelVendor) || text(meta.videoModelVendor),
-  }
 }
 
 export function looksLikeImageUrlControl(control: ModelParameterControl): boolean {
@@ -44,7 +44,7 @@ export function buildImageUrlSlots(meta: unknown): ImageUrlSlot[] {
 export function projectParameterReferenceSlots(meta: Record<string, unknown>, catalogMeta: unknown): Record<string, unknown> {
   const next = { ...meta }
   const previous = record(next[DECLARATION_KEY])
-  const identity = modelIdentity(next)
+  const identity = parameterReferenceModelIdentity(next)
   const slots = buildImageUrlSlots(catalogMeta)
   const slotsByKey = new Map(slots.map((slot) => [slot.key, slot]))
   const changedModel = previous.modelKey !== identity.modelKey || previous.vendorKey !== identity.vendorKey
@@ -73,21 +73,7 @@ export function projectParameterReferenceSlots(meta: Record<string, unknown>, ca
 }
 
 export function readParameterReferenceSlots(meta: Record<string, unknown> | undefined): ImageUrlSlot[] {
-  if (!meta) return []
-  const declaration = record(meta[DECLARATION_KEY])
-  const identity = modelIdentity(meta)
-  if (declaration.modelKey !== identity.modelKey || declaration.vendorKey !== identity.vendorKey) return []
-  if (!Array.isArray(declaration.slots)) return []
-  const seen = new Set<string>()
-  return declaration.slots.flatMap((value): ImageUrlSlot[] => {
-    const slot = record(value)
-    const key = text(slot.key)
-    if (!key || seen.has(key) || !['reference', 'first_frame', 'last_frame'].includes(String(slot.group))) return []
-    seen.add(key)
-    return [{ key, label: text(slot.label) || key, group: slot.group as ImageUrlGroup,
-      ...(slot.mediaKind === 'image' || slot.mediaKind === 'video' ? { mediaKind: slot.mediaKind } : {}),
-    }]
-  })
+  return readParameterReferenceSlotsContract(meta)
 }
 
 export function edgeModeForGroup(group: ImageUrlGroup): GenerationCanvasEdgeMode { return group }

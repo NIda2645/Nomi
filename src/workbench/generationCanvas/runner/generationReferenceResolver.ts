@@ -3,7 +3,9 @@ import { sortEdgesByOrder } from '../model/graphOps'
 import { archetypeForNode, referenceAssetKindForNode } from '../agent/referenceEdgeCapability'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 import { asUrl, findNodeResultUrl, resolveReferenceUrl } from './referenceUrl'
-import { readParameterReferenceSlots, resolveIndexedParameterReferenceAssignments } from '../model/parameterReferenceSlots'
+import { resolveIndexedParameterReferenceAssignments } from '../model/parameterReferenceSlots'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
+import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
 
 export type ResolvedGenerationReferences = {
   /** Live parameter-specific inputs. null reserves a pending edge without reviving stale uploaded values. */
@@ -127,7 +129,9 @@ export function resolveGenerationReferences(
   let lastFrameFromEdge = ''
   let relayFromVideoUrl = ''
   let stagingComposition = false
-  const parameterSlots = readParameterReferenceSlots(node.meta)
+  const parameterContract = readParameterReferenceContract(node.meta)
+  const parameterSlots = parameterContract?.slots ?? []
+  const usesComfyParameterContract = parameterSlots.length > 0 && isComfyuiVendorKey(parameterContract?.vendorKey)
   const parameterAssignments = resolveIndexedParameterReferenceAssignments(node, parameterSlots, nodesById, edgesByTarget.get(node.id) || [])
   const slotByEdgeId = new Map(parameterAssignments.flatMap(({ slot, edge }) => edge ? [[edge.id, slot] as const] : []))
   const parameterReferenceUrls: Record<string, string | null> = Object.fromEntries(parameterAssignments
@@ -139,6 +143,10 @@ export function resolveGenerationReferences(
       const uploaded = asUrl(node.meta?.[slot.key])
       return uploaded ? [[slot.key, uploaded]] : []
     }))
+  const parameterOwnedUrls = new Set(parameterAssignments.flatMap(({ slot, edge }) => [
+    asUrl(node.meta?.[slot.key]),
+    edge ? findNodeResultUrl(nodesById, edge.source) : '',
+  ]).filter(Boolean))
 
   // **按 order 升序**遍历 → referenceImages（喂 buildArchetypeInputParams 的数组槽）顺序稳定，
   // 与显示侧 resolveReferenceSlots 同一口径，保住 character1..N（audit 2026-06-16 §1d「数组参考收口到有序边」）。
@@ -151,6 +159,10 @@ export function resolveGenerationReferences(
       : parameterSlot && parameterSlot.group !== 'reference' ? parameterSlot.group : edge.mode
     const sourceUrl = findNodeResultUrl(nodesById, edge.source)
     if (!sourceUrl) continue
+    // Imported Comfy media parameters are a keyed transport contract. Their
+    // edges have already populated parameterReferenceUrls above and must not
+    // also feed generic image/frame fallbacks.
+    if (usesComfyParameterContract && parameterSlot) continue
     if (mode === 'first_frame') {
       // 源是视频 → 尾帧接力：标记待抽帧，绝不把视频 URL/封面当首帧塞进去
       // （封死「用封面冒充尾帧」的静默回退，评审必改①）。源是 image → 现行为不变。
@@ -213,9 +225,8 @@ export function resolveGenerationReferences(
   })
   // 尾帧接力源（视频文件 URL）不是参考图，从 referenceImages 剔除——否则它既被当
   // 普通图片参考、又会经 referenceImages[0] fallback 冒充首帧（封死第二条泄漏路径）。
-  const cleanReferenceImages = relayFromVideoUrl
-    ? referenceImages.filter((url) => url !== relayFromVideoUrl)
-    : referenceImages
+  const cleanReferenceImages = referenceImages.filter((url) =>
+    url !== relayFromVideoUrl && (!usesComfyParameterContract || !parameterOwnedUrls.has(url)))
 
   // B4：按源节点资产类型把视频/音频 URL 从 referenceImages 分流出去——否则连线进来的视频参考会被当
   // 图片参考发（甚至经下面 fallback 冒充首帧）。URL→kind 由各节点 result.type / kind 派生（单源）。
@@ -230,10 +241,14 @@ export function resolveGenerationReferences(
     else imageReferenceImages.push(url)
   }
 
+  const genericMetaUrl = (value: unknown) => {
+    const url = asUrl(value)
+    return usesComfyParameterContract && parameterOwnedUrls.has(url) ? '' : url
+  }
   const firstFrameUrl =
     firstFrameFromEdge ||
-    asUrl(meta.firstFrameUrl) ||
-    asUrl(meta.first_frame_url) ||
+    genericMetaUrl(meta.firstFrameUrl) ||
+    genericMetaUrl(meta.first_frame_url) ||
     resolveReferenceUrl(nodesById, meta.firstFrameRef) ||
     resolveReferenceUrl(nodesById, meta.firstFrameReference) ||
     // relay 时首帧要等抽帧填，绝不 fallback 到通用参考图（否则又冒充）。只从**图片**参考兜底（视频已分流）。
@@ -241,8 +256,8 @@ export function resolveGenerationReferences(
     undefined
   const lastFrameUrl =
     lastFrameFromEdge ||
-    asUrl(meta.lastFrameUrl) ||
-    asUrl(meta.last_frame_url) ||
+    genericMetaUrl(meta.lastFrameUrl) ||
+    genericMetaUrl(meta.last_frame_url) ||
     resolveReferenceUrl(nodesById, meta.lastFrameRef) ||
     resolveReferenceUrl(nodesById, meta.lastFrameReference) ||
     undefined

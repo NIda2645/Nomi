@@ -33,6 +33,17 @@ const imageGraph: ComfyGraph = {
   '4': { class_type: 'SaveImage', inputs: { images: ['3', 0], filename_prefix: 'dual' } },
 }
 const builtImages = buildImportedWorkflow(imageGraph, analyzeComfyWorkflow(imageGraph).suggested)
+const singleImageGraph: ComfyGraph = {
+  '1': { class_type: 'LoadImage', inputs: { image: 'reference.png' } },
+  '2': { class_type: 'SaveImage', inputs: { images: ['1', 0], filename_prefix: 'single' } },
+}
+const singleImageSuggested = analyzeComfyWorkflow(singleImageGraph).suggested
+const builtSingleImage = buildImportedWorkflow(singleImageGraph, {
+  ...singleImageSuggested,
+  images: [{
+    nodeId: '1', inputKey: 'image', paramKey: 'comfy_image_1', label: 'Reference image', mediaKind: 'image',
+  }],
+})
 function source(id: string, pending: boolean): GenerationCanvasNode {
   return { id, kind: 'video', title: id, position: { x: 0, y: 0 },
     ...(!pending ? { result: { id, type: 'video' as const, url: `https://fixture.test/${id}.mp4`, createdAt: 1 } } : {}) }
@@ -105,6 +116,53 @@ describe('multiple declared media inputs retain identity through the final wire 
     expect(buildCatalogTaskRequest(node, { references }).request.kind).toBe('image_edit')
   })
 
+  it('keeps a unique Comfy image upload keyed without reviving its legacy generic aliases', () => {
+    let meta = projectParameterReferenceSlots(
+      { modelKey: 'single-image', modelVendor: 'comfyui-local' },
+      { parameters: builtSingleImage.parameters },
+    )
+    const [slot] = readParameterReferenceSlots(meta)
+    meta = { ...meta, ...parameterReferenceMetaPatch(slot, [slot], 'https://upload.test/reference.png') }
+    const node: GenerationCanvasNode = {
+      id: 'single', kind: 'image', title: '', prompt: 'restyle', position: { x: 0, y: 0 }, meta,
+    }
+
+    const references = resolveGenerationReferences(node)
+
+    expect(meta.referenceImages).toEqual(['https://upload.test/reference.png'])
+    expect(references.parameterReferenceUrls).toEqual({ [slot.key]: 'https://upload.test/reference.png' })
+    expect(references.referenceImages).toEqual([])
+    expect(references.firstFrameUrl).toBeUndefined()
+    expect(buildCatalogTaskRequest(node, { references }).request.kind).toBe('image_edit')
+  })
+
+  it('keeps a live or pending keyed Comfy edge out of generic fallbacks', () => {
+    let meta = projectParameterReferenceSlots(
+      { modelKey: 'single-image', modelVendor: 'comfyui-local' },
+      { parameters: builtSingleImage.parameters },
+    )
+    const [slot] = readParameterReferenceSlots(meta)
+    meta = { ...meta, ...parameterReferenceMetaPatch(slot, [slot], 'https://stale.test/reference.png') }
+    const node: GenerationCanvasNode = {
+      id: 'single', kind: 'image', title: '', prompt: 'restyle', position: { x: 0, y: 0 }, meta,
+    }
+    const live: GenerationCanvasNode = {
+      id: 'source', kind: 'image', title: '', position: { x: 0, y: 0 },
+      result: { id: 'result', type: 'image', url: 'https://fresh.test/reference.png', createdAt: 1 },
+    }
+    const edges = [{ id: 'keyed', source: live.id, target: node.id, mode: 'reference' as const, targetParamKey: slot.key }]
+
+    const liveReferences = resolveGenerationReferences(node, { nodes: [node, live], edges })
+    expect(liveReferences.parameterReferenceUrls).toEqual({ [slot.key]: 'https://fresh.test/reference.png' })
+    expect(liveReferences.referenceImages).toEqual([])
+    expect(liveReferences.firstFrameUrl).toBeUndefined()
+
+    const pendingReferences = resolveGenerationReferences(node, { nodes: [node, { ...live, result: undefined }], edges })
+    expect(pendingReferences.parameterReferenceUrls).toEqual({ [slot.key]: null })
+    expect(pendingReferences.referenceImages).toEqual([])
+    expect(pendingReferences.firstFrameUrl).toBeUndefined()
+  })
+
   it('keeps a LoadVideo-only SaveVideo workflow in text_to_video', () => {
     const node: GenerationCanvasNode = {
       id: 'video-only', kind: 'video', title: '', prompt: '', position: { x: 0, y: 0 },
@@ -132,5 +190,24 @@ describe('multiple declared media inputs retain identity through the final wire 
     expect(buildCatalogTaskRequest(node, { references }).request.kind).toBe('text_to_image')
     expect(buildCatalogTaskRequest(node, { references: { ...references, referenceImages: ['https://ref.test/a.png'] } }).request.kind)
       .toBe('image_edit')
+  })
+
+  it('preserves unique-slot legacy aliases and dynamic image_edit for non-Comfy vendors', () => {
+    let meta = projectParameterReferenceSlots(
+      { modelKey: 'custom-single-image', modelVendor: 'custom' },
+      { parameters: builtSingleImage.parameters },
+    )
+    const [slot] = readParameterReferenceSlots(meta)
+    meta = { ...meta, ...parameterReferenceMetaPatch(slot, [slot], 'https://upload.test/custom.png') }
+    const node: GenerationCanvasNode = {
+      id: 'custom-single', kind: 'image', title: '', prompt: 'restyle', position: { x: 0, y: 0 }, meta,
+    }
+
+    const references = resolveGenerationReferences(node)
+
+    expect(references.parameterReferenceUrls).toEqual({ [slot.key]: 'https://upload.test/custom.png' })
+    expect(references.referenceImages).toEqual(['https://upload.test/custom.png'])
+    expect(references.firstFrameUrl).toBe('https://upload.test/custom.png')
+    expect(buildCatalogTaskRequest(node, { references }).request.kind).toBe('image_edit')
   })
 })

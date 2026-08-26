@@ -137,6 +137,21 @@ describe("taskTemplateParams — explicit media slots precede aggregate fallback
 });
 
 describe("hasImageEditReferences — L3 诚实护栏判定（图生图/图生视频是否真带了参考）", () => {
+  const declaredExtras = (
+    slots: Array<{ key: string; mediaKind?: "image" | "video" }>,
+    values: Record<string, unknown>,
+    vendorKey = "comfyui-local",
+  ) => ({
+    modelKey: "workflow",
+    modelVendor: vendorKey,
+    parameterReferenceSlots: {
+      modelKey: "workflow",
+      vendorKey,
+      slots: slots.map((slot) => ({ ...slot, label: slot.key, group: "reference" })),
+    },
+    ...values,
+  });
+
   it("空 extras → false", () => {
     expect(hasImageEditReferences({ extras: {} })).toBe(false);
     expect(hasImageEditReferences({})).toBe(false);
@@ -158,6 +173,56 @@ describe("hasImageEditReferences — L3 诚实护栏判定（图生图/图生视
   });
   it("firstFrameUrl 单图口径 → true", () => {
     expect(hasImageEditReferences({ extras: { firstFrameUrl: "https://cdn/f.png" } })).toBe(true);
+  });
+  it("Comfy 单个或多个已填 image 参数 → true，pending null 不计入", () => {
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: "https://cdn/single.png" },
+    ) })).toBe(true);
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_image_1" }, { key: "comfy_image_2", mediaKind: "image" }],
+      { comfy_image_1: null, comfy_image_2: "nomi-local://asset/p/second.png" },
+    ) })).toBe(true);
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: null },
+    ) })).toBe(false);
+  });
+  it("Comfy video 参数、失效声明和任意字符串参数都不冒充 image 参考", () => {
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_video_1", mediaKind: "video" }],
+      { comfy_video_1: "https://cdn/clip.mp4" },
+    ) })).toBe(false);
+    expect(hasImageEditReferences({ extras: {
+      ...declaredExtras([{ key: "comfy_image_1", mediaKind: "image" }], { comfy_image_1: "https://cdn/stale.png" }),
+      modelKey: "replacement-workflow",
+    } })).toBe(false);
+    expect(hasImageEditReferences({ extras: { comfy_image_1: "https://cdn/arbitrary.png" } })).toBe(false);
+  });
+  it("non-Comfy keyed declarations keep relying on their legacy generic alias", () => {
+    const extras = declaredExtras(
+      [{ key: "custom_image", mediaKind: "image" }],
+      { custom_image: "https://cdn/custom.png" },
+      "custom",
+    );
+    expect(hasImageEditReferences({ extras })).toBe(false);
+    expect(hasImageEditReferences({ extras: { ...extras, referenceImages: ["https://cdn/custom.png"] } })).toBe(true);
+  });
+
+  it("checks declared Comfy media against the exact body parameter without generic projection", () => {
+    const extras = declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: "https://cdn/reference.png" },
+    );
+    expect(unreachableReferenceLabels(
+      { extras },
+      { image: "{{request.params.comfy_image_1}}" },
+    )).toEqual([]);
+    expect(unreachableReferenceLabels(
+      { extras },
+      { image: "{{request.params.different_image_key}}" },
+    )).toEqual(["参考图"]);
+    expect(taskTemplateParams({ extras })).not.toHaveProperty("referenceImages");
   });
 });
 

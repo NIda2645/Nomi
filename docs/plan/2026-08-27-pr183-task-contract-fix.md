@@ -67,3 +67,18 @@ introduced, so rollback requires no data transformation.
 - Commit only scoped files, confirm the remote source branch is still at
   `8a46ee470f155ab6e2cc3ab2a56766c896042fc7`, then ordinary-push HEAD to
   `codex/comfyui-workflow-matrix-20260825` without force.
+
+## Review follow-up: unique-slot alias projection
+
+- Keep `parameterReferenceMetaPatch` legacy aliases intact for persisted and
+  non-Comfy compatibility.
+- For ComfyUI nodes with a valid parameter-slot declaration, keep uploaded and
+  connected slot media only in `parameterReferenceUrls`; do not duplicate those
+  exact URLs into generic image/frame fallbacks.
+- A pending keyed edge remains authoritative as `null` and cannot revive either
+  the stale per-key upload or its legacy alias.
+- TDD control: a non-Comfy unique slot must retain legacy alias projection and
+  dynamic `image_edit` selection.
+- Re-run targeted media-wire/reference tests, the three Comfy walkthroughs, and
+  full `pnpm run gates`; before the follow-up push, confirm the remote source
+  branch is still at `dc989687ffa8c17936409f9a8a69f95be42ef333`.
