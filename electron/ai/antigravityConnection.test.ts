@@ -92,6 +92,20 @@ describe("Antigravity connection state", () => {
     expect((await connection.status()).checks).toEqual([expect.objectContaining({ capability: "edit", state: "passed" })]);
     expect(connection.canEnable({ capability: "edit", modelId: "auto" })).toBe(true);
   });
+  it("authorizes only exact passed evidence for the probed version without a freshness window", async () => {
+    const { connection } = service();
+    connection.restore([
+      { capability: "image", modelId: "auto", state: "passed", version: "1.1.21", checkedAt: 1 },
+      { capability: "edit", modelId: "auto", state: "failed", version: "1.1.21", checkedAt: 2 },
+      { capability: "vision", modelId: discovery.models[0].id, state: "cancelled", version: "1.1.21", checkedAt: 3 },
+    ]);
+    await connection.status();
+    expect(connection.hasPassed({ capability: "image", modelId: "auto" }, "1.1.21")).toBe(true);
+    expect(connection.hasPassed({ capability: "image", modelId: "auto" }, "1.1.22")).toBe(false);
+    expect(connection.hasPassed({ capability: "edit", modelId: "auto" }, "1.1.21")).toBe(false);
+    expect(connection.hasPassed({ capability: "vision", modelId: discovery.models[0].id }, "1.1.21")).toBe(false);
+    expect(connection.hasPassed({ capability: "text", modelId: discovery.models[0].id }, "1.1.21")).toBe(false);
+  });
 });
 
 describe("official CLI model discovery TSV", () => {

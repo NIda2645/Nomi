@@ -22,7 +22,7 @@ import type {
 } from "./types";
 import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
-import { guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
+import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
 import { antigravityConnection } from "../ai/antigravityConnection";
 import { extractLegacyStages, normalizeLegacyMappings } from "./legacyMappingMigration";
 import {
@@ -634,6 +634,7 @@ function applyMappingUpsert(state: CatalogState, payload: unknown): Mapping {
     createdAt: existing?.createdAt || t,
     updatedAt: t,
   };
+  guardAntigravityMappingWrite(mapping, (request) => Boolean(request && antigravityConnection.hasPassed(request)));
   state.mappings = [mapping, ...state.mappings.filter((item) => item.id !== id)];
   return mapping;
 }

@@ -124,6 +124,11 @@ export class AntigravityConnection {
       && Date.now() - check.checkedAt < 600_000
       && (!request || (check.capability === request.capability && check.modelId === request.modelId)));
   }
+  /** Version-bound historical evidence. Unlike enable toggles, runtime/write authorization is not freshness-bound. */
+  hasPassed(request: AntigravityTestRequest, version = this.version): boolean {
+    return Boolean(version) && this.checks.some((check) => check.state === "passed" && check.version === version
+      && check.capability === request.capability && check.modelId === request.modelId);
+  }
   private replaceCheck(request: AntigravityTestRequest, check?: AntigravityCheck): void {
     this.checks = this.checks.filter((item) => item.capability !== request.capability || item.modelId !== request.modelId);
     if (check) this.checks.push(check);

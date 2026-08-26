@@ -37,23 +37,23 @@ export type { AntigravityConnectionStatus } from '../../electron/shared/antigrav
 
 ## Task 2：mapping 写入保留字守卫（TDD）
 
-- [ ] 在 `electron/catalog/antigravityWriteGuard.test.ts` 先写并观察 RED：其他 vendor 使用 `antigravity-cli-image` 时 enabled/disabled 均拒绝；canonical disabled mapping 无 proof 可写；canonical enabled mapping 无/错 capability proof 拒绝、exact image/edit historical proof 允许；复用同 id 的非 Antigravity enabled mapping 不得偷渡。
-- [ ] 在 catalog 临时目录集成测试先写并观察 RED：`upsertModelCatalogMapping` 与 `importModelCatalogPackage` 都拒绝 reserved parser 冒用，import 失败时 vendors/models/mappings 整体不落盘。
-- [ ] 在 `electron/catalog/antigravityWriteGuard.ts` 定义并导出单一 canonical validator。只允许 vendor `antigravity-cli`、model `generate_image`、taskKind `text_to_image|image_edit`，create/query 的 bin/parser/args 与 `antigravityCatalog` 单一 builder 一致，并拒绝额外 `build/fileParams/appendDownloadDir`。
-- [ ] 从 `electron/catalog/catalogStore.ts::applyMappingUpsert` 调守卫，direct upsert 与 package import 自动共用。canonical disabled 不需 proof；enabled 要求当前 CLI version 下对应 image/edit 的历史 passed evidence，不使用十分钟 `canEnable`；vendor/model false→true 仍保留现有 fresh `canEnable`。
-- [ ] 运行新增定向测试，确认 GREEN；再运行相关 catalog/Antigravity 回归。
+- [x] 在 `electron/catalog/antigravityWriteGuard.test.ts` 先写并观察 RED：其他 vendor 使用 `antigravity-cli-image` 时 enabled/disabled 均拒绝；canonical disabled mapping 无 proof 可写；canonical enabled mapping 无/错 capability proof 拒绝、exact image/edit historical proof 允许；复用同 id 的非 Antigravity enabled mapping 不得偷渡。
+- [x] 在 catalog 临时目录集成测试先写并观察 RED：`upsertModelCatalogMapping` 与 `importModelCatalogPackage` 都拒绝 reserved parser 冒用，import 失败时 vendors/models/mappings 整体不落盘。
+- [x] 在 `electron/catalog/antigravityWriteGuard.ts` 定义并导出单一 canonical validator。只允许 vendor `antigravity-cli`、model `generate_image`、taskKind `text_to_image|image_edit`，create/query 的 bin/parser/args 与 `antigravityCatalog` 单一 builder 一致，并拒绝额外 `build/fileParams/appendDownloadDir`。
+- [x] 从 `electron/catalog/catalogStore.ts::applyMappingUpsert` 调守卫，direct upsert 与 package import 自动共用。canonical disabled 不需 proof；enabled 要求当前 CLI version 下对应 image/edit 的历史 passed evidence，不使用十分钟 `canEnable`；vendor/model false→true 仍保留现有 fresh `canEnable`。
+- [x] 运行新增定向测试，确认 GREEN；再运行相关 catalog/Antigravity 回归（9 文件 / 137 测试通过）。
 
 ## Task 3：旧污染 catalog 的运行时纵深（TDD）
 
-- [ ] 在 `electron/catalog/processOperation.test.ts` 先写并观察 RED：任意其他 vendor/model 的 reserved parser 在 dispatch 前拒绝；canonical identity/process 仍调用 mock Antigravity task；畸形 args/危险 process 字段拒绝。
-- [ ] 在 `electron/ai/antigravityTask.test.ts` 先写并观察 RED：无 evidence、failed/cancelled、错 capability、错 CLI version 均不得启动用户任务；current-version historical passed 可运行；text 保持同模型 text 或 vision proof 均可，vision/image/edit 必须 exact。
-- [ ] 让 `electron/runtime.ts` 把 vendor/model/taskKind identity 传到 `executeProcessOperation`；该函数在 reserved parser 分派前复用 Task 2 的 canonical validator，拦截旧磁盘污染。
-- [ ] 为 `AntigravityConnection` 增加不含十分钟 freshness 的 version-bound historical proof 查询；`runAntigravityTask` 首次幂等 restore 主进程 evidence、probe CLI version 后再检查 proof。verification 流程继续直接调用 `runAntigravityProcess`，不得经用户任务 gate 自锁。
-- [ ] 运行新增定向测试，确认 GREEN；再运行 process/media/artifact/owner/cancel/IPC 全套回归。
+- [x] 在 `electron/catalog/processOperation.test.ts` 先写并观察 RED：任意其他 vendor/model 的 reserved parser 在 dispatch 前拒绝；canonical identity/process 仍调用 mock Antigravity task；畸形 args/危险 process 字段拒绝。
+- [x] 在 `electron/ai/antigravityTask.test.ts` 先写并观察 RED：无 evidence、failed/cancelled、错 capability、错 CLI version 均不得启动用户任务；current-version historical passed 可运行；text 保持同模型 text 或 vision proof 均可，vision/image/edit 必须 exact。
+- [x] 让 `electron/runtime.ts` 把 vendor/model/taskKind identity 传到 `executeProcessOperation`；该函数在 reserved parser 分派前复用 Task 2 的 canonical validator，拦截旧磁盘污染。
+- [x] 为 `AntigravityConnection` 增加不含十分钟 freshness 的 version-bound historical proof 查询；`runAntigravityTask` 首次幂等 restore 主进程 evidence、probe CLI version 后再检查 proof。verification 流程继续直接调用 `runAntigravityProcess`，不得经用户任务 gate 自锁。
+- [x] 运行新增定向测试，确认 GREEN；再运行 process/media/artifact/owner/cancel/IPC 全套回归（与 Task 2 合并定向回归 9 文件 / 137 测试通过）。
 
 ## Task 4：验证与交付
 
-- [ ] 运行 Electron 与 renderer typecheck、build，以及完整 `pnpm run gates`；读取完整输出并记录文件/测试计数。全程不设置 `NOMI_LIVE_ANTIGRAVITY`。
+- [x] 运行 Electron 与 renderer typecheck、build，以及完整 `pnpm run gates`；780 测试文件中 779 通过 / 1 跳过，7293 测试中 7292 通过 / 1 跳过；lint 0 错误 / 96 存量 warning；renderer 与 Electron build 通过。全程未设置 `NOMI_LIVE_ANTIGRAVITY`。
 - [ ] 检查 diff 只含 main integration、安全修复、测试与本 plan；提交 scoped security commit。
 - [ ] 再次确认 PR #188 远端 head 仍为起始 oid `2ff8517a131ec2a3f902fb0aef5c71da6b74aeaa`，普通 push `HEAD:codex/agnes-gemini-integration-20260826`，禁止 force。
 - [ ] 可将 PR 从 draft 标记 ready，等待远端 Quality Gate / Mac Package；未经用户明确要求不得 merge。
@@ -64,9 +64,10 @@ export type { AntigravityConnectionStatus } from '../../electron/shared/antigrav
 
 ## 验收记录
 
-工程整合已验证；安全复核发现的阻塞方案已经批准并进入本计划执行，尚未 push、未将 PR 标为 ready 或合入：
+工程整合与安全修复已验证，尚未 push、未将 PR 标为 ready 或合入：
 
 - `catalogStore.applyMappingUpsert` 接受通用映射的 `process.parser`；当前只对 Antigravity vendor/model 启用实施证明校验，没有映射层校验。
 - `processOperation.executeProcessOperation` 只凭 `antigravity-cli-image` parser 分派，不核对 vendor/model 身份。其他供应商映射因此可能调用已登录的 Antigravity CLI，绕过预期身份与试跑门槛。
-- 需在映射 upsert/import 与运行边界校验保留执行器的身份、结构和对应证明，并补拒绝路径回归。该生产行为修复使用独立 security commit，不混入 main integration merge commit。
+- 映射 upsert/import 与运行边界现均校验保留执行器的 canonical 身份、结构和对应 main-owned historical proof；导入继续保持全事务回滚，旧磁盘污染在 dispatch 前拒绝。该生产行为修复使用独立 security commit，不混入 main integration merge commit。
+- TDD 证据：catalog 组先观察 5 个预期失败 / 6 个既有通过；runtime/evidence 组先观察 5 个预期失败 / 53 个既有通过。实现后定向相关回归 9 文件 / 137 测试通过，完整 gates 亦通过。
 - 本地界面证据：`/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-model-discovery-asIiqP`。真实上游验证缺口与工程验证继续分开报告。

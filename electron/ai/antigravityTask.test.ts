@@ -1,12 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ run: vi.fn(), probe: vi.fn(), local: vi.fn(), fetch: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  run: vi.fn(), probe: vi.fn(), local: vi.fn(), fetch: vi.fn(),
+  restore: vi.fn(), hasPassed: vi.fn(), readEvidence: vi.fn(),
+}));
 vi.mock("./antigravityProcess", () => ({ runAntigravityProcess: mocks.run }));
-vi.mock("./antigravityConnection", () => ({ probeAntigravity: mocks.probe, antigravityEnvironment: async () => ({}) }));
+vi.mock("./antigravityConnection", () => ({
+  probeAntigravity: mocks.probe,
+  antigravityEnvironment: async () => ({}),
+  antigravityConnection: { restore: mocks.restore, hasPassed: mocks.hasPassed },
+}));
+vi.mock("./antigravityEvidenceStore", () => ({ readAntigravityEvidence: mocks.readEvidence }));
 vi.mock("../assets/localAssetFile", () => ({ readNomiLocalAsset: mocks.local }));
 vi.mock("../hardenedFetch", () => ({ hardenedFetch: mocks.fetch }));
 import { loadAntigravityImage, runAntigravityTask } from "./antigravityTask";
 describe("Antigravity task route", () => {
-  beforeEach(() => { vi.clearAllMocks(); mocks.probe.mockResolvedValue({ version: "1.1.21", models: [{ id: "real-model" }] }); mocks.run.mockResolvedValue({ text: "ok" }); });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.probe.mockResolvedValue({ version: "1.1.21", models: [{ id: "real-model" }] });
+    mocks.run.mockResolvedValue({ text: "ok" });
+    mocks.readEvidence.mockReturnValue([]);
+    mocks.hasPassed.mockReturnValue(true);
+  });
   it("validates the selected upstream identity before running", async () => {
     await expect(runAntigravityTask({ prompt: "hello", model: "invented" })).rejects.toThrow("MODEL_UNAVAILABLE");
     expect(mocks.run).not.toHaveBeenCalled();
@@ -31,5 +45,23 @@ describe("Antigravity task route", () => {
     const controller = new AbortController(); controller.abort();
     await expect(runAntigravityTask({ prompt: "hello", model: "auto", signal: controller.signal })).rejects.toHaveProperty("name", "AbortError");
     expect(mocks.probe).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["image", "auto"],
+    ["edit", "auto"],
+    ["vision", "real-model"],
+  ] as const)("requires exact current-version historical %s evidence", async (capability, model) => {
+    mocks.hasPassed.mockReturnValue(false);
+    await expect(runAntigravityTask({ prompt: "hello", model, capability })).rejects.toThrow("ANTIGRAVITY_TEST_REQUIRED");
+    expect(mocks.restore).toHaveBeenCalledWith([]);
+    expect(mocks.hasPassed).toHaveBeenCalledWith({ capability, modelId: model }, "1.1.21");
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+  it("accepts same-model vision evidence for a text task", async () => {
+    mocks.hasPassed.mockImplementation((request) => request.capability === "vision" && request.modelId === "real-model");
+    await runAntigravityTask({ prompt: "hello", model: "real-model", capability: "text" });
+    expect(mocks.hasPassed).toHaveBeenCalledWith({ capability: "text", modelId: "real-model" }, "1.1.21");
+    expect(mocks.hasPassed).toHaveBeenCalledWith({ capability: "vision", modelId: "real-model" }, "1.1.21");
+    expect(mocks.run).toHaveBeenCalledOnce();
   });
 });

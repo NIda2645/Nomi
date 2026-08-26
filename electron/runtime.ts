@@ -258,7 +258,7 @@ export async function executeProfileOperation(input: {
       process: input.operation.process,
       context,
       projectId: trim(input.request.extras?.projectId) || activeTaskProjectFallback(),
-      writeAsset, writeDeterministicAsset, signal: input.signal,
+      writeAsset, writeDeterministicAsset, signal: input.signal, identity: { vendorKey: input.vendor.key, modelKey: input.model.modelKey, taskKind: input.request.kind },
     });
   }
   // multipart transport（P4）：op 声明 multipart（/v1/images/edits 图生图文件上传）→ 全套分发在 multipartOperation

@@ -1,6 +1,7 @@
 import { readNomiLocalAsset } from "../assets/localAssetFile";
 import { hardenedFetch } from "../hardenedFetch";
-import { antigravityEnvironment, probeAntigravity } from "./antigravityConnection";
+import { antigravityConnection, antigravityEnvironment, probeAntigravity } from "./antigravityConnection";
+import { readAntigravityEvidence } from "./antigravityEvidenceStore";
 import { runAntigravityProcess, type AntigravityRunOptions } from "./antigravityProcess";
 import type { AntigravityImageInput } from "./antigravityMedia";
 
@@ -38,12 +39,21 @@ export async function runAntigravityTask(input: Omit<AntigravityRunOptions, "ima
   if ((input.imageUrls?.length ?? 0) > 4) throw new Error("ANTIGRAVITY_INVALID_IMAGES");
   const env = await antigravityEnvironment();
   const discovery = await probeAntigravity(input.signal, { env });
+  checkAbort(input.signal);
   if (input.model && input.model !== "auto" && !discovery.models.some((model) => model.id === input.model)) {
     throw new Error("ANTIGRAVITY_MODEL_UNAVAILABLE");
   }
   const images: AntigravityImageInput[] = [];
   for (const url of input.imageUrls ?? []) images.push(await loadAntigravityImage(url, input.signal));
   const capability = input.capability ?? (images.length ? "vision" : "text");
+  const modelId = input.model || "auto";
+  // Lazy, idempotent restart restore. The probed CLI version is the authority boundary;
+  // renderer/catalog metadata is never accepted as verification evidence.
+  antigravityConnection.restore(readAntigravityEvidence());
+  const passed = antigravityConnection.hasPassed({ capability, modelId }, discovery.version)
+    || (capability === "text"
+      && antigravityConnection.hasPassed({ capability: "vision", modelId }, discovery.version));
+  if (!passed) throw new Error("ANTIGRAVITY_TEST_REQUIRED");
   return runAntigravityProcess({ prompt: input.prompt, model: input.model, capability, images,
     signal: input.signal, onDelta: input.onDelta, cliVersion: discovery.version }, { env });
 }

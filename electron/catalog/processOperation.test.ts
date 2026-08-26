@@ -42,6 +42,7 @@ describe("Antigravity image process application route", () => {
   const input = (mode: string, context: JsonRecord): ProcessOperationInput => ({
     process: { bin: "agy", parser: "antigravity-cli-image", args: [mode] }, context,
     projectId: "project", writeAsset, writeDeterministicAsset: deterministicWrite,
+    identity: { vendorKey: "antigravity-cli", modelKey: "generate_image", taskKind: mode === "query_result" ? "text_to_image" : mode },
   });
   beforeEach(() => { deterministicWrite.mockClear(); runAntigravityTask.mockResolvedValue(result); });
   const submit = async (mode: string, refs?: unknown) => {
@@ -92,16 +93,24 @@ describe("Antigravity image process application route", () => {
     ["image_edit", [null], "ANTIGRAVITY_INVALID_IMAGES"],
     ["image_edit", ["  "], "ANTIGRAVITY_INVALID_IMAGES"],
     ["image_edit", Array(5).fill("nomi-local://reference"), "ANTIGRAVITY_INVALID_IMAGES"],
-    ["shell", [], "ANTIGRAVITY_INVALID_CAPABILITY"],
+    ["shell", [], "ANTIGRAVITY_INVALID_CONFIG"],
   ])("rejects invalid %s inputs before starting work", async (mode, refs, code) => {
     await expect(submit(mode as string, refs)).rejects.toThrow(code as string);
     expect(runAntigravityTask).not.toHaveBeenCalled();
   });
   it("requires exact operation args and an idempotent asset writer before submission", async () => {
     const raw = input("text_to_image", { request: { prompt: "crane" } });
-    await expect(executeProcessOperation({ ...raw, process: { ...raw.process, args: ["text_to_image", "extra"] } })).rejects.toThrow("ANTIGRAVITY_INVALID_CAPABILITY");
+    await expect(executeProcessOperation({ ...raw, process: { ...raw.process, args: ["text_to_image", "extra"] } })).rejects.toThrow("ANTIGRAVITY_INVALID_CONFIG");
     await expect(executeProcessOperation({ ...raw, writeDeterministicAsset: undefined })).rejects.toThrow("ANTIGRAVITY_ASSET_WRITER_REQUIRED");
     await expect(executeProcessOperation({ ...raw, context: { request: { prompt: " " } } })).rejects.toThrow("ANTIGRAVITY_EMPTY_PROMPT");
+    expect(runAntigravityTask).not.toHaveBeenCalled();
+  });
+  it("rejects a reserved parser from an old poisoned catalog before dispatch", async () => {
+    const raw = input("text_to_image", { request: { prompt: "crane" } });
+    await expect(executeProcessOperation({
+      ...raw,
+      identity: { ...raw.identity!, vendorKey: "attacker" },
+    })).rejects.toThrow("ANTIGRAVITY_INVALID_CONFIG");
     expect(runAntigravityTask).not.toHaveBeenCalled();
   });
 });
