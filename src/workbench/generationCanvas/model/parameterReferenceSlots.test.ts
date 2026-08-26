@@ -24,6 +24,29 @@ function edge(id: string, sourceId: string, key?: string, order?: number): Gener
 }
 
 describe('parameter reference assignment shared contract', () => {
+  it('keeps legacy key heuristics for non-Comfy text controls', () => {
+    const meta = projectParameterReferenceSlots(
+      { modelKey: 'legacy-custom', modelVendor: 'custom' },
+      { parameters: [{ key: 'input_image', label: 'Input image', type: 'text' }] },
+    )
+    expect(readParameterReferenceSlots(meta)).toEqual([
+      { key: 'input_image', label: 'Input image', group: 'reference' },
+    ])
+  })
+
+  it('uses only explicit media declarations for Comfy and keeps binding-derived image controls', () => {
+    const meta = { modelKey: 'workflow', modelVendor: 'comfyui-local' }
+    expect(readParameterReferenceSlots(projectParameterReferenceSlots(meta, {
+      parameters: [{ key: 'input_image', label: 'Caption', type: 'text' }],
+    }))).toEqual([])
+    expect(readParameterReferenceSlots(projectParameterReferenceSlots(meta, {
+      parameters: [{ key: 'opaque', label: 'Reference', type: 'text', mediaKind: 'image' }],
+    }))).toEqual([{ key: 'opaque', label: 'Reference', group: 'reference', mediaKind: 'image' }])
+    expect(readParameterReferenceSlots(projectParameterReferenceSlots(meta, {
+      parameters: [{ key: 'bound_media', label: 'Bound media', type: 'image-url' }],
+    }))).toEqual([{ key: 'bound_media', label: 'Bound media', group: 'reference' }])
+  })
+
   it('reserves explicit keys before ordered legacy edges, including pending sources', () => {
     const node = target()
     const pending = { ...source('pending'), result: undefined }

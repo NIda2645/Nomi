@@ -129,3 +129,23 @@ introduced, so rollback requires no data transformation.
 - TDD evidence: parser and final-wire tables first failed all seven malformed
   declaration cases (14 failures total); the atomic parser made the same 57
   focused assertions pass without changing either consumer.
+
+## Review follow-up: explicit Comfy media controls and strict slot fields
+
+- For a ComfyUI vendor or catalog entry carrying the explicit
+  `comfyWorkflowImport` marker, derive parameter media slots only from an
+  `image-url` type or a valid `image`/`video` `mediaKind`. Names such as
+  `input_image` remain ordinary text parameters and cannot change import or
+  renderer task kind.
+- Keep the historic name heuristic for non-Comfy catalog controls. Preserve
+  binding-derived `image-url` inputs and explicit media-kind declarations.
+- Share this explicit-vs-heuristic predicate across catalog projection, slot UI,
+  and scalar-control filtering so a parameter cannot be media in one consumer
+  and text in another.
+- Parse persisted slot `key`, `label`, and `group` without coercion. Non-string
+  fields, including `group: ['reference']`, invalidate the whole contract and
+  retain the legacy resolver/request path.
+- TDD evidence: the focused RED run failed five assertions across the parser
+  and final media wire, then the explicit-media control RED added two more
+  failures. The minimal shared predicate and strict parser made the expanded
+  focused set pass 99 assertions.

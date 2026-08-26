@@ -2,6 +2,7 @@ import { parseModelParameterControls, type ModelParameterControl } from '../../.
 import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from './generationCanvasTypes'
 import { getGenerationNodeDefinition, getGenerationNodeExecutionKind } from './generationNodeKinds'
 import { sortEdgesByOrder } from './graphOps'
+import { isComfyuiVendorKey } from './comfyuiVendor'
 import {
   parameterReferenceModelIdentity,
   readParameterReferenceSlotsContract,
@@ -23,14 +24,28 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 export function looksLikeImageUrlControl(control: ModelParameterControl): boolean {
+  if (control.mediaKind === 'image' || control.mediaKind === 'video') return true
   if (control.type === 'image-url') return true
   if (control.type !== 'text') return false
   const key = control.key.toLowerCase().replace(/[-_]/g, '')
   return IMAGE_KEYS.some((fragment) => key.includes(fragment))
 }
 
-export function buildImageUrlSlots(meta: unknown): ImageUrlSlot[] {
-  return parseModelParameterControls(meta).filter(looksLikeImageUrlControl).map((control): ImageUrlSlot => {
+export function usesExplicitParameterReferenceDeclarations(meta: unknown, vendorKey?: string | null): boolean {
+  return isComfyuiVendorKey(vendorKey)
+    || (Boolean(meta && typeof meta === 'object' && !Array.isArray(meta))
+      && 'comfyWorkflowImport' in (meta as Record<string, unknown>))
+}
+
+export function isParameterReferenceControl(control: ModelParameterControl, explicitOnly = false): boolean {
+  return explicitOnly
+    ? control.type === 'image-url' || control.mediaKind === 'image' || control.mediaKind === 'video'
+    : looksLikeImageUrlControl(control)
+}
+
+export function buildImageUrlSlots(meta: unknown, vendorKey?: string | null): ImageUrlSlot[] {
+  const explicitOnly = usesExplicitParameterReferenceDeclarations(meta, vendorKey)
+  return parseModelParameterControls(meta).filter((control) => isParameterReferenceControl(control, explicitOnly)).map((control): ImageUrlSlot => {
     const key = control.key.toLowerCase().replace(/[-_]/g, '')
     const mediaKind = control.mediaKind
     const group: ImageUrlGroup = mediaKind === 'video' ? 'reference'
@@ -45,7 +60,7 @@ export function projectParameterReferenceSlots(meta: Record<string, unknown>, ca
   const next = { ...meta }
   const previous = record(next[DECLARATION_KEY])
   const identity = parameterReferenceModelIdentity(next)
-  const slots = buildImageUrlSlots(catalogMeta)
+  const slots = buildImageUrlSlots(catalogMeta, identity.vendorKey)
   const slotsByKey = new Map(slots.map((slot) => [slot.key, slot]))
   const changedModel = previous.modelKey !== identity.modelKey || previous.vendorKey !== identity.vendorKey
   const previousSlots = (Array.isArray(previous.slots) ? previous.slots : []).map(record)

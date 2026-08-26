@@ -103,6 +103,14 @@ describe('multiple declared media inputs retain identity through the final wire 
       { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
       { key: 'bad-group', label: 'Bad', group: 'other', mediaKind: 'image' },
     ]],
+    ['array group', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      { key: 'bad-group', label: 'Bad', group: ['reference'], mediaKind: 'image' },
+    ]],
+    ['numeric label', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      { key: 'bad-label', label: 1, group: 'reference', mediaKind: 'image' },
+    ]],
     ['empty key', [
       { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
       { key: '   ', label: 'Bad', group: 'reference', mediaKind: 'image' },
@@ -146,6 +154,38 @@ describe('multiple declared media inputs retain identity through the final wire 
     const { request } = buildCatalogTaskRequest(node, { references })
     expect(request.kind).toBe('image_edit')
     expect(request.extras?.referenceImages).toEqual([legacyUrl])
+  })
+
+  it('does not promote an imported Comfy text parameter whose key merely looks like an image input', () => {
+    const textParameterGraph: ComfyGraph = {
+      '1': { class_type: 'AuthorMetadata', inputs: { input_image: 'caption only' } },
+      '2': { class_type: 'EmptyImage', inputs: { width: 64, height: 64, batch_size: 1 } },
+      '3': { class_type: 'SaveImage', inputs: { images: ['2', 0], filename_prefix: 'text-only' } },
+    }
+    const textOnly = buildImportedWorkflow(textParameterGraph, {
+      images: [],
+      params: [{
+        nodeId: '1', inputKey: 'input_image', paramKey: 'input_image', label: 'Input image caption',
+        type: 'text', default: 'caption only',
+      }],
+      outputNodeId: '3', outputKind: 'image',
+    })
+    const imported = buildComfyImportModelMapping(textOnly, { modelKey: 'text-key-workflow', labelZh: 'Text key workflow' })
+    expect(imported.mapping.taskKind).toBe('text_to_image')
+    expect(textOnly.parameters).toEqual([
+      { key: 'comfy_input_image', label: 'Input image caption', type: 'text', default: 'caption only' },
+    ])
+
+    const meta = projectParameterReferenceSlots(
+      { modelKey: 'text-key-workflow', modelVendor: 'comfyui-local' },
+      imported.model.meta,
+    )
+    expect(readParameterReferenceSlots(meta)).toEqual([])
+    const node: GenerationCanvasNode = {
+      id: 'text-key-workflow', kind: 'image', title: '', prompt: 'draw', position: { x: 0, y: 0 }, meta,
+    }
+    const references = resolveGenerationReferences(node)
+    expect(buildCatalogTaskRequest(node, { references }).request.kind).toBe('text_to_image')
   })
 
   it.each([false, true])('keeps reverse-selected video slots independent, including pending=%s', (pending) => {

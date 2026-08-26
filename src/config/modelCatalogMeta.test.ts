@@ -12,7 +12,7 @@ describe('parseModelParameterControls — 参数边界', () => {
     expect(controlFrom({ type: 'image-url', mediaKind: 'video' })).toMatchObject({ type: 'image-url', mediaKind: 'video' })
     expect(controlFrom({ type: 'image-url', mediaKind: 'image' })).toMatchObject({ mediaKind: 'image' })
     expect(controlFrom({ type: 'image-url', mediaKind: 'audio' })).not.toHaveProperty('mediaKind')
-    expect(controlFrom({ type: 'number', mediaKind: 'video' })).not.toHaveProperty('mediaKind')
+    expect(controlFrom({ type: 'number', mediaKind: 'video' })).toMatchObject({ type: 'number', mediaKind: 'video' })
     expect(controlFrom({ type: 'image-url' })).not.toHaveProperty('mediaKind')
   })
 

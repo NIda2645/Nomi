@@ -19,7 +19,10 @@ describe('readParameterReferenceContract', () => {
   it.each([
     ['non-object slot', [validSlot, null]],
     ['invalid group', [validSlot, { ...validSlot, key: 'bad-group', group: 'other' }]],
+    ['array group', [validSlot, { ...validSlot, key: 'bad-group', group: ['reference'] }]],
     ['empty key', [validSlot, { ...validSlot, key: '   ' }]],
+    ['numeric key', [validSlot, { ...validSlot, key: 1 }]],
+    ['numeric label', [validSlot, { ...validSlot, key: 'bad-label', label: 1 }]],
     ['duplicate key', [validSlot, { ...validSlot, label: 'Duplicate' }]],
     ['audio mediaKind', [validSlot, { ...validSlot, key: 'bad-media', mediaKind: 'audio' }]],
     ['null mediaKind', [validSlot, { ...validSlot, key: 'bad-media', mediaKind: null }]],

@@ -434,7 +434,7 @@ export default function NodeParameterControls({
   // ComfyUI 导入的工作流不再走特例：它把声明的每个媒体输入都以 type:'image-url' 写进 meta.parameters，
   // 于是这里的通用出槽器**按条出槽**——声明几个就长几个（2026-08-20，治「多参工作流只能连一张图」）。
   const modelImageUrlSlots = [
-    ...buildImageUrlSlots(selectedModelOption?.meta),
+    ...buildImageUrlSlots(selectedModelOption?.meta, selectedModelOption?.vendor),
     ...imageCatalogReferenceSlot(imageCatalogConfig),
   ].filter(
     (slot, index, slots) => slots.findIndex((item) => item.key === slot.key && item.group === slot.group) === index,

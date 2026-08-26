@@ -40,13 +40,14 @@ export function readParameterReferenceContract(meta: Record<string, unknown> | u
   for (const value of declaration.slots) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null
     const slot = value as Record<string, unknown>
-    const key = text(slot.key)
-    if (!key || seen.has(key) || !['reference', 'first_frame', 'last_frame'].includes(String(slot.group))) return null
+    if (typeof slot.key !== 'string' || typeof slot.label !== 'string' || typeof slot.group !== 'string') return null
+    const key = slot.key.trim()
+    if (!key || seen.has(key) || !['reference', 'first_frame', 'last_frame'].includes(slot.group)) return null
     if (slot.mediaKind !== undefined && slot.mediaKind !== 'image' && slot.mediaKind !== 'video') return null
     seen.add(key)
     slots.push({
       key,
-      label: text(slot.label) || key,
+      label: slot.label.trim() || key,
       group: slot.group as ParameterReferenceGroup,
       ...(slot.mediaKind === 'image' || slot.mediaKind === 'video' ? { mediaKind: slot.mediaKind } : {}),
     })

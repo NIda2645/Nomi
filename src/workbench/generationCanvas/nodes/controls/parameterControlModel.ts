@@ -17,7 +17,11 @@ import { isComfyuiVendorKey } from '../../model/comfyuiVendor'
 import { normalizeAspectRatioToWH } from '../aspectRatio'
 import { resultUrl } from '../../runner/referenceUrl'
 import type { GenerationCanvasNode } from '../../model/generationCanvasTypes'
-import { looksLikeImageUrlControl, type ImageUrlSlot } from '../../model/parameterReferenceSlots'
+import {
+  isParameterReferenceControl,
+  usesExplicitParameterReferenceDeclarations,
+  type ImageUrlSlot,
+} from '../../model/parameterReferenceSlots'
 import type { WorkbenchAssetDto } from '../../../api/assetUploadApi'
 
 export type SelectOption = string | {
@@ -428,11 +432,12 @@ export function buildDynamicControls(input: {
   videoCatalogConfig: VideoModelCatalogConfig | null
   isImageLike: boolean
   isVideoLike: boolean
+  explicitMediaParametersOnly?: boolean
 }): DynamicModelControl[] {
   const paramControls = dedupeParamControls(
     // image-url-like params render as reference boxes at the top (buildImageUrlSlots),
     // so they must NOT also appear in the bottom value row.
-    input.parameterControls.filter((c) => !looksLikeImageUrlControl(c) && !isEmptyInputControl(c)),
+    input.parameterControls.filter((c) => !isParameterReferenceControl(c, input.explicitMediaParametersOnly) && !isEmptyInputControl(c)),
   )
   const controls: DynamicModelControl[] = paramControls.map((control) => ({
     ...control,
@@ -618,5 +623,6 @@ export function buildModelControls(meta: unknown, isImageLike: boolean, isVideoL
     videoCatalogConfig: buildEffectiveVideoCatalogConfig(meta),
     isImageLike,
     isVideoLike,
+    explicitMediaParametersOnly: usesExplicitParameterReferenceDeclarations(meta),
   })
 }
