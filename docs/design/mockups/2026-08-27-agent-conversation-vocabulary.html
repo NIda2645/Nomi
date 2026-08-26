@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nomi Agent 对话词汇表 · 17 种形态样张（2026-08-27 拍板）</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --nomi-bg:oklch(0.985 0.003 90);--nomi-paper:#fff;
+  --ink:oklch(0.22 0.01 80);--ink80:oklch(0.32 0.01 80);--ink60:oklch(0.50 0.01 80);
+  --ink40:oklch(0.68 0.01 80);--ink30:oklch(0.78 0.01 80);--ink20:oklch(0.88 0.005 80);
+  --ink10:oklch(0.94 0.003 80);--ink05:oklch(0.97 0.003 80);
+  --line:oklch(0.91 0.004 80);--lineS:oklch(0.95 0.003 80);
+  --ac:oklch(0.55 0.13 250);--acS:oklch(0.955 0.018 250);
+  --warn:oklch(0.62 0.14 75);--ok:#248a3d;--okBg:rgba(52,199,89,.12);
+  --dg:#b3241c;--dgBg:rgba(255,59,48,.045);
+  --r-ctl:7px;--r-panel:10px;--r-lg:14px;
+  --t-tap:140ms;--t-enter:260ms;--t-settle:420ms;
+  --ease:cubic-bezier(.2,.7,.3,1);
+}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 20px 60px;background:var(--nomi-bg);color:var(--ink);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}
+.meta{font-size:12px;color:var(--ink40);margin:0 0 22px;line-height:1.7}
+.meta a{color:var(--ac)}
+.wrap{max-width:900px;margin:0 auto}
+.bar{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.bar .hint{font-size:11px;color:var(--ink40);flex:1}
+.sec{font-size:11px;color:var(--ink40);margin:26px 0 8px;letter-spacing:.03em}
+
+/* ── 控件规格：所有可点 = 28px ── */
+.ctl{height:28px;font-size:12px;font-family:inherit;display:inline-flex;align-items:center;
+  justify-content:center;gap:5px;cursor:pointer;box-sizing:border-box;white-space:nowrap;min-width:0;
+  transition:background var(--t-tap) var(--ease),border-color var(--t-tap) var(--ease),color var(--t-tap) var(--ease)}
+.btn{padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--lineS);background:var(--nomi-paper);color:var(--ink80);min-width:72px}
+.btn:hover{background:var(--ink05)}
+.btn.pri{border-color:transparent;background:var(--ink);color:#fff}
+.btn.pri:hover{background:var(--ac)}
+.btn.acc{color:var(--ac)}
+.btn.ico{width:28px;min-width:28px;padding:0}
+.pick{padding:0 8px 0 10px;border-radius:999px;border:1px solid var(--line);background:var(--nomi-paper);color:var(--ink80);gap:4px}
+.pick:hover{border-color:var(--ink20)}
+.pick.soft{background:var(--ink05);justify-content:space-between}
+.chip{padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--nomi-paper);color:var(--ink80)}
+.chip.on{border-color:var(--ac);background:var(--acS);color:var(--ac)}
+.grp{display:flex;gap:7px}
+.grp>.btn{flex:1}
+.lk{font-size:12px;color:var(--ink60);background:none;border:0;padding:0;font-family:inherit;cursor:pointer}
+.lk:hover{color:var(--ink);text-decoration:underline}
+.tag{font-size:11px;padding:1px 6px;border-radius:999px;line-height:1.5;white-space:nowrap}
+.tag.a{background:var(--acS);color:var(--ac)}
+.tag.n{background:var(--ink05);color:var(--ink60)}
+
+/* ── 标尺 ── */
+body.rule .ctl{outline:1px dashed var(--ac);outline-offset:1px}
+body.rule .lk{outline:1px dashed var(--warn);outline-offset:2px}
+body.rule .tag{outline:1px dotted var(--ink30);outline-offset:2px}
+
+/* ── 面板 ── */
+.g{display:grid;grid-template-columns:104px 1fr;gap:0 14px;align-items:start}
+.lb{font-size:11px;line-height:1.5;color:var(--ink40);text-align:right;padding:12px 0 0}
+.lb b{font-weight:500;color:var(--ink60);display:block}
+.c{background:var(--nomi-paper);padding:8px 13px;font-size:12px}
+.it{transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease)}
+.it.hid{opacity:0;transform:translateY(5px)}
+.row{display:flex;align-items:center;gap:8px}
+.mut{color:var(--ink40)}
+.card{border:1px solid var(--line);border-radius:var(--r-panel);padding:10px 11px}
+
+/* ── 动效 ── */
+.th{height:5px;background:var(--ink10);border-radius:999px;overflow:hidden;flex:1;position:relative}
+.tf{height:100%;background:var(--ac);width:0;border-radius:999px;transition:width .7s var(--ease)}
+.tf::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
+  background-size:38% 100%;background-repeat:no-repeat;animation:sweep 2.2s linear infinite}
+@keyframes sweep{0%{background-position:-42% 0}100%{background-position:142% 0}}
+.sq{aspect-ratio:16/10;background:var(--ink05);border:1px solid var(--lineS);border-radius:6px;
+  display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink40);
+  overflow:hidden;position:relative}
+.sq.w::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(0,0,0,.05),transparent);
+  background-size:45% 100%;background-repeat:no-repeat;animation:sweep 2.2s linear infinite}
+.sq.dv{filter:blur(7px);opacity:.5;transition:filter .9s ease-out,opacity .9s ease-out}
+.sq.dv.on{filter:blur(0);opacity:1}
+.sq .hv{position:absolute;inset:0;background:rgba(20,18,16,.42);display:flex;align-items:center;
+  justify-content:center;gap:5px;opacity:0;transition:opacity var(--t-tap) var(--ease)}
+.sq:hover .hv{opacity:1}
+.hb{width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.92);display:flex;
+  align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
+.n{font-variant-numeric:tabular-nums;display:inline-block;transition:transform .2s,opacity .2s}
+.n.tk{transform:translateY(-3px);opacity:0}
+.ckp{stroke-dasharray:22;stroke-dashoffset:22;animation:ckd var(--t-settle) var(--ease) forwards}
+@keyframes ckd{to{stroke-dashoffset:0}}
+.ph{transition:opacity .3s,transform .3s}
+.ph.o{opacity:0;transform:translateY(-3px)}
+svg.ic *{transform-box:fill-box}
+.L1{animation:lw 1.9s ease-in-out infinite}.L2{animation:lw 1.9s ease-in-out .25s infinite}.L3{animation:lw 1.9s ease-in-out .5s infinite}
+@keyframes lw{0%,100%{opacity:.3}40%{opacity:1}}
+.B1{animation:bx 2.1s var(--ease) infinite}.B2{animation:bx 2.1s var(--ease) .22s infinite}.B3{animation:bx 2.1s var(--ease) .44s infinite}
+@keyframes bx{0%{opacity:.25;transform:translateX(-3px)}30%,80%{opacity:1;transform:translateX(0)}100%{opacity:.25;transform:translateX(-3px)}}
+.FC{animation:fz 2.4s ease-in-out infinite;transform-origin:center}
+@keyframes fz{0%,100%{transform:scale(1)}50%{transform:scale(.84)}}
+.CL{animation:cp 1.9s cubic-bezier(.3,.9,.4,1) infinite;transform-origin:left bottom}
+@keyframes cp{0%,58%{transform:rotate(0)}68%{transform:rotate(-19deg)}78%,100%{transform:rotate(0)}}
+.T1{animation:tk 2s linear infinite}.T2{animation:tk 2s linear .5s infinite}.T3{animation:tk 2s linear 1s infinite}
+@keyframes tk{0%{transform:translateX(7px);opacity:0}18%,82%{opacity:1}100%{transform:translateX(-8px);opacity:0}}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::after{animation:none!important;transition:none!important}
+  .sq.dv{filter:none;opacity:1}
+}
+
+/* ── 规格速查 ── */
+.spec{background:var(--nomi-paper);border-radius:var(--r-panel);padding:11px 13px;margin-bottom:16px}
+.spec table{width:100%;border-collapse:collapse;font-size:11px;line-height:1.6}
+.spec td{padding:4px 8px 4px 0;vertical-align:middle;color:var(--ink60)}
+.spec td:first-child{width:104px;color:var(--ink80)}
+.spec b{font-weight:500;color:var(--ink)}
+.rules{background:var(--nomi-paper);border-radius:var(--r-panel);padding:11px 13px;font-size:12px;line-height:1.9;color:var(--ink80)}
+.rules b{font-weight:500;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Nomi Agent 对话词汇表 · 17 种形态</h1>
+<p class="meta">
+2026-08-27 用户逐轮拍板 · 规格与理由见 <a href="../nomi-agent-interaction.md">nomi-agent-interaction.md</a><br>
+样张为<strong>通用框</strong>（用户裁定不套真实面板布局，之后再调）· 参数条按 <code>InlineParameterBar</code> 源码规格绘制，<strong>未与真机比对</strong>，实现时按 R13 逐项对账。
+</p>
+
+<div class="bar">
+  <span class="hint">所有可点控件 = 28px；同排动作按钮等宽均分，主次只用颜色分</span>
+  <button class="ctl btn" id="rl"><i class="ti ti-ruler" style="font-size:16px"></i> 标尺</button>
+  <button class="ctl btn" id="rp"><i class="ti ti-refresh" style="font-size:16px"></i> 重播</button>
+</div>
+
+<div class="sec">控件规格速查（全部出自 nomi-design-system.md，本样张不发明尺寸）</div>
+<div class="spec"><table>
+<tr><td><button class="ctl btn pri">批准</button></td><td>主按钮 · h28 · px12 · 12px · <b>圆角 7</b> · ink 底 · 最小宽 72</td></tr>
+<tr><td><button class="ctl btn">改一下</button></td><td>次按钮 · 同尺寸 · 描边 line-soft</td></tr>
+<tr><td><button class="ctl btn ico" aria-label="重跑"><i class="ti ti-refresh" style="font-size:16px"></i></button></td><td>图标钮 · 28×28 · 图标 <b>16 / stroke-2</b></td></tr>
+<tr><td><button class="ctl pick" style="max-width:96px"><span style="overflow:hidden;text-overflow:ellipsis">wan-3.0</span><i class="ti ti-chevron-down mut" style="font-size:13px;margin-left:auto"></i></button></td><td>选择器 · h28 · <b>药丸</b>（选择器用药丸，按钮用 7px 方角，不互串）</td></tr>
+<tr><td><span class="ctl chip on">16:9</span></td><td>选项 chip · h28 · 药丸 · 按内容定宽（它是内容不是动作）</td></tr>
+<tr><td><button class="lk">改提示词</button></td><td>文字链 · <b>无高度</b> · <b>不与按钮同排</b></td></tr>
+<tr><td><span class="tag a">等你确认</span></td><td>状态徽标 · 无高度 · 11px · 不可点</td></tr>
+<tr><td><i class="ti ti-coin" style="font-size:18px;color:var(--ac)"></i></td><td>卡头语义图标 · <b>18</b></td></tr>
+<tr><td><i class="ti ti-file-text" style="font-size:13px;color:var(--ink40)"></i></td><td>行内小图标 · <b>13 / stroke-1.8</b></td></tr>
+</table></div>
+
+<div class="sec">一条真实任务从头跑到尾 · 自动播放</div>
+
+<div class="g">
+<div class="lb" style="padding-top:11px"><b>① 上下文</b>面板顶</div>
+<div class="c" style="border-radius:var(--r-panel) var(--r-panel) 0 0;border-bottom:1px solid var(--lineS);display:flex;align-items:center;gap:8px;padding:9px 13px">
+  <div style="width:19px;height:19px;border-radius:6px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px">N</div>
+  <span style="font-weight:500">Nomi</span><span style="flex:1"></span>
+  <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink40)"><span style="width:24px;height:4px;background:var(--ink10);border-radius:999px;overflow:hidden;display:inline-block"><span id="cb" style="display:block;height:100%;width:12%;background:var(--ink40);transition:width 1.1s ease-out"></span></span><span class="n" id="cn">12</span>%</span>
+  <button class="ctl btn ico" aria-label="更多"><i class="ti ti-dots" style="font-size:16px"></i></button></div>
+
+<div class="lb"><b>② 压缩线</b>诚实</div>
+<div class="c it" data-s="0" style="display:flex;align-items:center;gap:8px"><span style="flex:1;height:1px;background:var(--lineS)"></span><span style="font-size:11px;color:var(--ink40)">前面 24 轮已折叠</span><button class="lk" style="font-size:11px">展开</button><span style="flex:1;height:1px;background:var(--lineS)"></span></div>
+
+<div class="lb"><b>③ 用户</b>气泡</div>
+<div class="c it" data-s="1" style="display:flex;justify-content:flex-end"><div style="max-width:80%;background:var(--ink05);border-radius:10px 10px 3px 10px;padding:7px 10px;line-height:1.5">把第三章拆成镜头，先拍前 5 镜</div></div>
+
+<div class="lb"><b>④ 思考条</b>工序图示</div>
+<div class="c it" data-s="2"><div class="row"><span id="ti"></span><span class="ph" id="tt" style="color:var(--ink60)">正在通读第三章…</span><span style="flex:1"></span><span class="mut" style="font-size:11px">已等 <span id="te" style="font-variant-numeric:tabular-nums">0:03</span></span></div></div>
+
+<div class="lb"><b>⑤ 阶段线</b>一行</div>
+<div class="c it" data-s="3" style="display:flex;align-items:center;gap:8px"><span style="flex:1;height:1px;background:var(--lineS)"></span><span style="font-size:11px;color:var(--ink40);letter-spacing:.04em">进入 · 生产段</span><span style="flex:1;height:1px;background:var(--lineS)"></span></div>
+
+<div class="lb"><b>⑥ 工具条</b>一行</div>
+<div class="c it" data-s="4"><div class="row"><i class="ti ti-file-text mut" style="font-size:13px"></i><span style="color:var(--ink80)">读了剧本 <span class="mut">第三章 · 2400 字</span></span><span id="k1"></span></div></div>
+
+<div class="lb"><b>⑦ 回复</b>纯文本</div>
+<div class="c it" data-s="5" style="line-height:1.6">拆出 5 个镜头，第 2、4 镜是双人对峙，加了站位参考。</div>
+
+<div class="lb" style="padding-top:15px"><b>⑧ 计划卡</b>批级参数</div>
+<div class="c it" data-s="6"><div class="card">
+  <div class="row" style="margin-bottom:8px"><i class="ti ti-list-check" style="font-size:18px;color:var(--ac)"></i><span style="font-weight:500;flex:1">拆 5 个镜头</span><span class="tag a">等你确认</span></div>
+  <div style="font-size:11px;color:var(--ink40);margin-bottom:4px">这批用</div>
+  <div class="row" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--lineS)">
+    <button class="ctl pick" style="flex:1"><span style="overflow:hidden;text-overflow:ellipsis">wan-3.0</span><i class="ti ti-chevron-down mut" style="font-size:13px;margin-left:auto"></i></button>
+    <button class="ctl pick soft" style="width:150px;flex:none"><span style="overflow:hidden;text-overflow:ellipsis">16:9 · 5s · 720p</span><i class="ti ti-chevron-down mut" style="font-size:13px"></i></button></div>
+  <div id="rw"></div>
+  <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--lineS)">
+    <div style="font-size:11px;color:var(--ink40);margin-bottom:8px">已选 <b style="color:var(--ink80);font-weight:500">5</b> 镜 · 1 镜改过参数</div>
+    <div class="grp"><button class="ctl btn">改一下</button><button class="ctl btn pri">批准</button></div></div></div></div>
+
+<div class="lb" style="padding-top:15px"><b>⑨ 付费卡</b>在对话里</div>
+<div class="c it" data-s="7"><div class="card" style="border-color:var(--ac)">
+  <div class="row" style="margin-bottom:8px"><i class="ti ti-coin" style="font-size:18px;color:var(--ac)"></i><span style="font-weight:500">这一步要花钱</span></div>
+  <div style="font-size:11px;line-height:1.95;color:var(--ink60);border-top:1px solid var(--lineS);border-bottom:1px solid var(--lineS);padding:6px 0;margin-bottom:8px">
+    <div style="display:flex"><span style="flex:1">4 镜 × wan-3.0 · 5s · 720p</span><span style="color:var(--ink80)">¥ 10.00</span></div>
+    <div style="display:flex"><span style="flex:1">1 镜 × wan-3.0 · 10s · 720p</span><span style="color:var(--ink80)">¥ 5.00</span></div>
+    <div style="display:flex;color:var(--ink);font-weight:500;padding-top:2px;font-size:12px"><span style="flex:1">合计</span><span>¥ <span class="n" id="pr">0.00</span></span></div></div>
+  <div style="display:flex;gap:6px;font-size:11px;color:var(--warn);line-height:1.55;margin-bottom:9px"><i class="ti ti-lock" style="font-size:13px;margin-top:1px;flex:none"></i><span>过闸后不能再改：镜头数、模型、时长、清晰度。提示词仍可改。</span></div>
+  <div class="grp"><button class="ctl btn">先不跑</button><button class="ctl btn pri">确认花 ¥15.00</button></div></div></div>
+
+<div class="lb"><b>⑩ 写入回执</b>带撤销</div>
+<div class="c it" data-s="8"><div class="row"><span id="k2"></span><span style="color:var(--ink80);flex:1">已在画布加 5 个节点 <span class="mut">· 分镜 01–05</span></span><button class="ctl btn">撤销</button></div></div>
+
+<div class="lb"><b>⑪ 排队</b>一行</div>
+<div class="c it" data-s="9"><div class="row"><i class="ti ti-hourglass mut" style="font-size:13px"></i><span class="mut">排队中 · 前面还有 <span class="n" id="qn" style="color:var(--ink80)">3</span> 个</span></div></div>
+
+<div class="lb" style="padding-top:13px"><b>⑫ 进度</b>原位更新</div>
+<div class="c it" data-s="10"><div class="row"><span id="pi"></span><span style="white-space:nowrap;color:var(--ink80)">生成镜头</span><div class="th"><div class="tf" id="bar"></div></div><span class="mut" style="font-size:11px"><span class="n" id="pn">0</span>/5</span><button class="ctl btn">停止</button></div></div>
+
+<div class="lb" style="padding-top:14px"><b>⑬ 产物</b>模糊转清晰</div>
+<div class="c it" data-s="11"><div class="card" style="padding:8px 9px">
+  <div style="display:flex;gap:6px;margin-bottom:8px" id="tb"></div>
+  <div class="row"><span style="font-size:11px;color:var(--ink40);flex:1" id="tc">生成中…</span><button class="ctl btn acc" style="min-width:96px">去画布 <i class="ti ti-arrow-right" style="font-size:16px"></i></button></div></div></div>
+
+<div class="lb" style="padding-top:14px"><b>⑭ 多候选</b>并排 ≤3</div>
+<div class="c it" data-s="12"><div class="card" style="padding:8px 9px"><div style="font-size:11px;color:var(--ink40);margin-bottom:6px">分镜 04 出了 3 版</div><div style="display:flex;gap:6px" id="cd"></div></div></div>
+
+<div class="lb" style="padding-top:14px"><b>⑮ 失败条</b>三个等宽</div>
+<div class="c it" data-s="13"><div class="card" style="border-color:var(--dg);background:var(--dgBg)">
+  <div class="row" style="margin-bottom:4px"><i class="ti ti-alert-triangle" style="font-size:18px;color:var(--dg)"></i><span style="font-weight:500;color:var(--dg)">分镜 05 没生成出来</span></div>
+  <div style="line-height:1.6;color:var(--ink80);margin-bottom:3px">wan-3.0 说这张参考图里有它不接受的内容，退回了。<b style="font-weight:500">这次没有扣费。</b></div>
+  <div style="font-size:11px;color:var(--ink40);margin-bottom:9px">只有这一镜失败，另外 4 镜正常。</div>
+  <div class="grp"><button class="ctl btn pri">换模型重试</button><button class="ctl btn">改提示词</button><button class="ctl btn">看日志</button></div></div></div>
+
+<div class="lb" style="padding-top:14px"><b>⑯ 有出入</b>我们独有</div>
+<div class="c it" data-s="14"><div class="card" style="border-color:var(--warn)">
+  <div class="row" style="margin-bottom:4px"><i class="ti ti-git-compare" style="font-size:18px;color:var(--warn)"></i><span style="font-weight:500">做出来的和你批的不一样</span></div>
+  <div style="line-height:1.6;color:var(--ink80);margin-bottom:9px">你批的 5s，实际按 6s 跑 —— wan-3.0 最短 6s。</div>
+  <div class="grp"><button class="ctl btn pri">撤销这笔</button><button class="ctl btn">让 AI 修</button><button class="ctl btn">知道了</button></div></div></div>
+
+<div class="lb" style="padding-top:14px"><b>⑰ 反问</b>≤3 问合并</div>
+<div class="c it" data-s="15"><div class="card">
+  <div class="row" style="margin-bottom:8px"><i class="ti ti-help-circle" style="font-size:18px;color:var(--ac)"></i><span style="font-weight:500">两个问题，一起问了</span></div>
+  <div style="font-size:11px;color:var(--ink40);margin-bottom:5px">1 · 第 4 镜的机位</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" data-q><span class="ctl chip">仰拍</span><span class="ctl chip">平视</span><span class="ctl chip">俯拍</span></div>
+  <div style="font-size:11px;color:var(--ink40);margin-bottom:5px">2 · 整段调子</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap" data-q><span class="ctl chip">冷 · 压抑</span><span class="ctl chip">暖 · 怀旧</span></div></div></div>
+
+<div class="lb" style="padding-top:12px"><b>⑱ 指令队列</b>框上方</div>
+<div class="c it" data-s="16" style="padding-bottom:0"><div style="background:var(--ink05);border:1px solid var(--lineS);border-radius:8px;padding:6px 9px">
+  <div style="font-size:11px;color:var(--ink40);margin-bottom:4px">agent 忙着 · 这些排在后面</div><div id="qb"></div></div></div>
+
+<div class="lb" style="padding-top:11px"><b>底</b>输入框</div>
+<div class="c" style="border-radius:0 0 var(--r-panel) var(--r-panel);padding-top:8px"><div style="border:1px solid var(--line);border-radius:var(--r-panel);padding:7px 9px">
+  <div style="color:var(--ink40);margin-bottom:8px">再说点什么…</div>
+  <div class="row"><button class="ctl btn ico" aria-label="附件"><i class="ti ti-paperclip" style="font-size:16px"></i></button><button class="ctl btn ico" aria-label="引用"><i class="ti ti-at" style="font-size:16px"></i></button><span style="flex:1"></span><button class="ctl pick">Agent <i class="ti ti-chevron-down mut" style="font-size:13px"></i></button><button class="ctl btn pri ico" style="border-radius:999px" aria-label="发送"><i class="ti ti-arrow-up" style="font-size:16px"></i></button></div></div></div>
+</div>
+
+<div class="sec">同排按钮四条规则</div>
+<div class="rules">
+<div><b>1 ·</b> 同一排的动作按钮 <b>等宽均分</b>（flex:1），主次<b>只用颜色</b>分：深底=主，描边=次。层级不靠尺寸。</div>
+<div><b>2 ·</b> 一排最多 <b>3 个</b>；再多 → 主按钮 + 「更多」收起。</div>
+<div><b>3 ·</b> 文字链 <b>不与按钮同排</b> —— 要么单独一行，要么升级成按钮。</div>
+<div><b>4 ·</b> 选项 chip 例外：按内容定宽（它是<b>内容</b>不是动作），但同组高/圆角/字号必须一致。</div>
+<div style="color:var(--ink40);font-size:11px;margin-top:6px;line-height:1.7">派生纪律：<b>文案要为布局让步</b> —— 三等分时「换个模型重试」会挤，写「换模型重试」。实现时长文案撑破行 = 设计错误，不是内容问题。</div>
+</div>
+
+</div>
+
+<script>
+(function(){
+var D=document,T=[],tmr,pht;
+var SS='stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"';
+function ico(k){var c=' width="17" height="17" viewBox="0 0 24 24" class="ic" aria-hidden="true" style="flex:none;color:'+(k===3?'var(--ac)':'var(--ink60)')+'"';
+ if(k===0)return '<svg'+c+'><rect x="5" y="3" width="14" height="18" rx="2" '+SS+'/><path class="L1" d="M8.5 8h7" '+SS+'/><path class="L2" d="M8.5 12h7" '+SS+'/><path class="L3" d="M8.5 16h4" '+SS+'/></svg>';
+ if(k===1)return '<svg'+c+'><rect class="B1" x="4" y="4" width="16" height="4.2" rx="1.3" '+SS+'/><rect class="B2" x="4" y="9.9" width="16" height="4.2" rx="1.3" '+SS+'/><rect class="B3" x="4" y="15.8" width="16" height="4.2" rx="1.3" '+SS+'/></svg>';
+ if(k===2)return '<svg'+c+'><g class="FC"><path d="M4 9V5.8A1.8 1.8 0 0 1 5.8 4H9" '+SS+'/><path d="M15 4h3.2A1.8 1.8 0 0 1 20 5.8V9" '+SS+'/><path d="M20 15v3.2a1.8 1.8 0 0 1-1.8 1.8H15" '+SS+'/><path d="M9 20H5.8A1.8 1.8 0 0 1 4 18.2V15" '+SS+'/></g><circle cx="12" cy="12" r="2.4" '+SS+'/></svg>';
+ if(k===3)return '<svg'+c+'><rect x="3.5" y="9.5" width="17" height="10.5" rx="1.8" '+SS+'/><g class="CL"><rect x="3.5" y="4.6" width="17" height="4.9" rx="1.2" '+SS+'/><path d="M8.2 4.6 10.6 9.5M13 4.6 15.4 9.5" '+SS+'/></g></svg>';
+ return '<svg'+c+'><path d="M3 6.5h18M3 12h18M3 17.5h18" stroke="currentColor" stroke-width="1.4" opacity=".28" stroke-linecap="round"/><rect class="T1" x="9" y="4.7" width="6" height="3.6" rx="1.1" '+SS+'/><rect class="T2" x="9" y="10.2" width="6" height="3.6" rx="1.1" '+SS+'/><rect class="T3" x="9" y="15.7" width="6" height="3.6" rx="1.1" '+SS+'/></svg>'}
+function ck(){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#248a3d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="ckp" d="M4.5 12.5l5 5 10-10"/></svg>'}
+function $(s){return D.querySelector(s)}
+function at(m,f){T.push(setTimeout(f,m))}
+function tick(e,v){e.classList.add('tk');setTimeout(function(){e.textContent=v;e.classList.remove('tk')},190)}
+var PH=[["正在通读第三章","正在跟场记对本","正在圈重点"],["正在画分镜","正在排镜头顺序"],["正在架机位","正在调焦"],["正在打板","正在走位彩排","正在盯回放"],["正在压时间线"]];
+var SH=[['01','客栈外景 · 黄昏',1,0],['02','两人对峙 · 中景',1,0],['03','手部特写',0,0],['04','对峙反打',1,'10s'],['05','推门离开',0,0]];
+var q=['第 3 镜换成雨天','拆完排进时间轴'],pg=0,pi=0,sec=3;
+
+function dq(){$('#qb').innerHTML=q.length?q.map(function(t,i){return '<div style="display:flex;align-items:center;gap:7px;padding:2px 0;color:var(--ink80)"><span style="color:var(--ink40);font-size:11px">'+(i+1)+'</span><span style="flex:1">'+t+'</span><i class="ti ti-x" data-q="'+i+'" style="font-size:13px;color:var(--ink40);cursor:pointer"></i></div>'}).join(''):'<div style="color:var(--ink40);padding:2px 0">都做完了</div>'}
+
+function play(){
+ T.forEach(clearTimeout);T=[];clearInterval(tmr);clearInterval(pht);
+ D.querySelectorAll('.it').forEach(function(e){e.classList.add('hid')});
+ $('#rw').innerHTML='';$('#tb').innerHTML='';$('#bar').style.width='0';$('#pn').textContent='0';
+ $('#pr').textContent='0.00';$('#qn').textContent='3';$('#k1').innerHTML='';$('#k2').innerHTML='';
+ $('#cb').style.width='12%';$('#cn').textContent='12';$('#tc').textContent='生成中…';$('#te').textContent='0:03';
+ pg=0;pi=0;sec=3;
+ $('#ti').innerHTML=ico(0);$('#pi').innerHTML=ico(3);
+ var t=$('#tt');t.textContent=PH[0][0]+'…';t.style.color='var(--ink60)';
+ $('#cd').innerHTML=[1,2,3].map(function(n,i){return '<div class="sq cd" style="flex:1;cursor:pointer;border-color:'+(i===0?'var(--ac)':'var(--lineS)')+';border-width:'+(i===0?'2px':'1px')+'">v'+n+(i===0?' ·生效':'')+'</div>'}).join('');
+ dq();
+
+ tmr=setInterval(function(){sec++;$('#te').textContent='0:'+String(sec).padStart(2,'0')},1000);
+ pht=setInterval(function(){var e=$('#tt');e.classList.add('o');setTimeout(function(){pi=(pi+1)%PH[pg].length;e.textContent=PH[pg][pi]+'…';e.classList.remove('o')},300)},2500);
+
+ function sh(i,d){at(d,function(){var e=D.querySelector('[data-s="'+i+'"]');if(e)e.classList.remove('hid')})}
+ sh(0,100);sh(1,300);sh(2,700);
+ at(2100,function(){clearInterval(pht);var e=$('#tt');e.textContent='想了 4 秒 · 5 镜，2 镜要站位参考';e.style.color='var(--ink40)';$('#ti').innerHTML=ico(1)});
+ sh(3,2400);sh(4,2700);at(3400,function(){$('#k1').innerHTML=ck()});
+ sh(5,3700);sh(6,4100);
+ SH.forEach(function(s,i){at(4300+i*120,function(){
+   var d=D.createElement('div');
+   d.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0;opacity:0;transform:translateY(4px);transition:'+ '260ms var(--ease)';
+   d.innerHTML='<input type="checkbox" checked style="width:13px;height:13px;margin:0;accent-color:oklch(0.55 0.13 250)"><span style="color:var(--ink40);font-variant-numeric:tabular-nums">'+s[0]+'</span><span style="flex:1;color:var(--ink80);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s[1]+'</span>'+(s[2]?'<span class="tag a">站位参考</span>':'')+(s[3]?'<span class="tag a">已改 '+s[3]+'</span>':'<span style="font-size:11px;color:var(--ink40)">同上</span>')+'<i class="ti ti-chevron-down" style="font-size:13px;color:var(--ink40)"></i>';
+   $('#rw').appendChild(d);requestAnimationFrame(function(){d.style.opacity='1';d.style.transform='none'})})});
+ sh(7,5400);
+ for(var k=1;k<=15;k++){(function(k){at(5600+k*42,function(){$('#pr').textContent=(15*k/15).toFixed(2)})})(k)}
+ sh(8,6600);at(6800,function(){$('#k2').innerHTML=ck()});
+ sh(9,7200);at(7900,function(){tick($('#qn'),'2')});at(8500,function(){tick($('#qn'),'1')});
+ at(9100,function(){$('#ti').innerHTML=ico(3)});
+ sh(10,9200);sh(11,9400);
+ [0,1,2].forEach(function(i){at(9500+i*80,function(){var d=D.createElement('div');d.className='sq w';d.style.flex='1';d.textContent='分镜 0'+(i+1);$('#tb').appendChild(d)})});
+ [1,2,3,4,5].forEach(function(n,i){at(9600+i*850,function(){
+   $('#bar').style.width=Math.round(n/5*100)+'%';tick($('#pn'),String(n));
+   $('#cb').style.width=(12+n*9)+'%';$('#cn').textContent=String(12+n*9)})});
+ [0,1,2].forEach(function(i){at(10300+i*850,function(){var d=$('#tb').children[i];if(!d)return;
+   d.classList.remove('w');d.classList.add('dv');
+   d.style.background='oklch(0.9 0.03 '+(200+i*45)+')';d.style.color='oklch(0.4 0.06 '+(200+i*45)+')';
+   d.innerHTML='分镜 0'+(i+1)+'<div class="hv"><span class="hb" title="改这条"><i class="ti ti-pencil" style="font-size:14px"></i></span><span class="hb" title="重跑"><i class="ti ti-refresh" style="font-size:14px"></i></span></div>';
+   requestAnimationFrame(function(){d.classList.add('on')})})});
+ at(13100,function(){$('#tc').innerHTML='3 镜已出 · 1 镜失败 <span style="color:var(--ink20)">·</span> 悬停单张可改';clearInterval(tmr)});
+ sh(12,13300);sh(13,13700);sh(14,14100);sh(15,14500);sh(16,14900);
+}
+
+$('#qb').addEventListener('click',function(e){var i=e.target.getAttribute('data-q');if(i!=null){q.splice(+i,1);dq()}});
+$('#cd').addEventListener('click',function(e){var t=e.target.closest('.cd');if(!t)return;
+ D.querySelectorAll('#cd .cd').forEach(function(d,j){var on=d===t;d.style.borderColor=on?'var(--ac)':'var(--lineS)';d.style.borderWidth=on?'2px':'1px';d.textContent='v'+(j+1)+(on?' ·生效':'')})});
+D.querySelectorAll('[data-q]').forEach(function(g){g.addEventListener('click',function(e){if(!e.target.classList.contains('chip'))return;
+ g.querySelectorAll('.chip').forEach(function(c){c.classList.remove('on')});e.target.classList.add('on')})});
+$('#rl').addEventListener('click',function(){D.body.classList.toggle('rule')});
+$('#rp').addEventListener('click',play);
+play();
+})();
+</script>
+</body>
+</html>
