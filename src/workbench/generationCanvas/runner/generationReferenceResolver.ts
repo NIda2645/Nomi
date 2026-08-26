@@ -131,7 +131,14 @@ export function resolveGenerationReferences(
   const parameterAssignments = resolveIndexedParameterReferenceAssignments(node, parameterSlots, nodesById, edgesByTarget.get(node.id) || [])
   const slotByEdgeId = new Map(parameterAssignments.flatMap(({ slot, edge }) => edge ? [[edge.id, slot] as const] : []))
   const parameterReferenceUrls: Record<string, string | null> = Object.fromEntries(parameterAssignments
-    .flatMap(({ slot, edge }) => edge ? [[slot.key, findNodeResultUrl(nodesById, edge.source) || null]] : []))
+    .flatMap(({ slot, edge }) => {
+      // A keyed edge is authoritative even while pending: null masks the older
+      // upload instead of letting a stale per-key value come back. Without an
+      // edge, the independently uploaded value is the live value for this key.
+      if (edge) return [[slot.key, findNodeResultUrl(nodesById, edge.source) || null]]
+      const uploaded = asUrl(node.meta?.[slot.key])
+      return uploaded ? [[slot.key, uploaded]] : []
+    }))
 
   // **按 order 升序**遍历 → referenceImages（喂 buildArchetypeInputParams 的数组槽）顺序稳定，
   // 与显示侧 resolveReferenceSlots 同一口径，保住 character1..N（audit 2026-06-16 §1d「数组参考收口到有序边」）。

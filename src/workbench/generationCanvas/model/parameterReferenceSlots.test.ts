@@ -88,6 +88,7 @@ describe('parameter reference assignment shared contract', () => {
   it('reads current source results and a pending edge masks a stale local value', () => {
     const node = target()
     node.meta!.a = 'https://stale.test/a'
+    node.meta!.b = 'https://upload.test/b'
     const reference = source('one')
     const edges = [edge('input', 'one', 'a')]
     reference.result!.url = 'https://fresh.test/a'
@@ -95,6 +96,7 @@ describe('parameter reference assignment shared contract', () => {
     const pending = { ...reference, result: undefined }
     const references = resolveGenerationReferences(node, { nodes: [node, pending], edges })
     expect(buildCatalogTaskRequest(node, { references }).request.extras?.a).toBeNull()
+    expect(references.parameterReferenceUrls).toEqual({ a: null, b: 'https://upload.test/b' })
     expect(node.meta!.a).toBe('https://stale.test/a')
   })
 

@@ -13,6 +13,7 @@ import { COMFYUI_VENDOR_KEY, type HttpOperation } from "./types";
 import type { ComfyObjectInfoIndex } from "../comfyuiObjectInfo";
 import { normalizeWorkflowBinding } from "./comfyuiWorkflowBindingNormalize";
 import { comfyOutputCandidates, resolveComfyWorkflowOutput, suggestedComfyOutput } from "./comfyuiWorkflowOutput";
+import { resolveComfyWorkflowTaskKind } from "./comfyuiWorkflowTaskContract";
 
 export { inputKeyOf, roleBoundInputKeys } from "./comfyuiWorkflowBindingNormalize";
 export { normalizeWorkflowBinding };
@@ -571,18 +572,11 @@ export function buildImportedWorkflow(graph: ComfyGraph, binding: WorkflowBindin
     parameters.push({ key: paramKey, label: np.label || np.inputKey, type: resolvedType, default: defaultValue });
   }
   const { outputKind } = resolveComfyWorkflowOutput(graph, normalizedBinding);
-  // 只数**图**输入：视频输入不进 taskKind 的判据（原因见下方注释），所以过滤掉 mediaKind==='video'。
-  const hasFrameInput = (normalizedBinding.images ?? []).some((image) => image.mediaKind === "image");
   // 视频输入**不进** taskKind 的判据：ProfileKind 没有 video_to_video，而画布侧 resolveTaskKind
   // 只按「有没有图输入」分 image_to_video/text_to_video。这里硬造一个新枚举，会让画布算出的 kind
   // 与 mapping 登记的对不上 → 选不到 mapping → 直接报「没有可用模型」。所以视频走「参考视频」通道
   // （连一条视频边 → extras.referenceVideoUrls → electron 派生 source_video_url），kind 仍按图输入分桶。
-  const taskKind =
-    outputKind === "model3d"
-      ? hasFrameInput ? "image_to_3d" : "text_to_3d"   // 混元3D/Tripo/Rodin 多是「传一张图出模型」
-      : outputKind === "video"
-        ? hasFrameInput ? "image_to_video" : "text_to_video"
-        : hasFrameInput ? "image_edit" : "text_to_image";
+  const taskKind = resolveComfyWorkflowTaskKind(outputKind, normalizedBinding.images ?? []);
   return { templatedGraph: templated, parameters, kind: outputKind, taskKind };
 }
 

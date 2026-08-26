@@ -25,6 +25,8 @@ import {
 } from '../../../config/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
+import { readParameterReferenceSlots } from '../model/parameterReferenceSlots'
+import { resolveComfyWorkflowTaskKind } from '../../../../electron/catalog/comfyuiWorkflowTaskContract'
 import { loadUsableVendorKeys, remapArchetypeMode, resolveUsableModelForNode } from './usableVendorModel'
 
 export type CatalogTaskActionOptions = {
@@ -215,6 +217,11 @@ export function resolveTaskKind(node: GenerationCanvasNode, references: Partial<
   if (executionKind === 'video' || executionKind === 'image' || executionKind === 'audio') {
     const archetype = resolveTaskArchetype(meta)
     if (archetype) return currentArchetypeMode(archetype, meta).transportTaskKind ?? archetype.transportTaskKind
+  }
+  const parameterSlots = readParameterReferenceSlots(meta)
+  if (isComfyuiVendorKey(selectedVendor(node)) && parameterSlots.length
+    && (executionKind === 'image' || executionKind === 'video' || executionKind === 'model3d')) {
+    return resolveComfyWorkflowTaskKind(executionKind, parameterSlots)
   }
   if (executionKind === 'video') {
     const hasFrame = Boolean(
