@@ -9,6 +9,7 @@ import { streamText } from "ai";
 import { buildLanguageModelForVendor } from "./vendorLanguageModel";
 import { sanitizeForBroadCompat } from "./promptSanitize";
 import type { Model, Vendor } from "../catalog/types";
+import { readNomiLocalAsset } from "../assets/localAssetFile";
 
 export type StreamTextTaskInput = {
   vendor: Vendor;
@@ -36,7 +37,12 @@ const FIRST_TOKEN_TIMEOUT_MS = 30_000;
 const OVERALL_TIMEOUT_MS = 120_000;
 
 /** http(s) URL 走 URL 引用（不内联）；data:/base64 等原样作字符串传给 SDK。 */
-function toImagePart(imageUrl: string): { type: "image"; image: URL | string } {
+function toImagePart(imageUrl: string): { type: "image"; image: URL | string | Uint8Array; mimeType?: string } {
+  if (imageUrl.startsWith("nomi-local://")) {
+    const asset = readNomiLocalAsset(imageUrl);
+    if (!asset || !asset.contentType.startsWith("image/")) throw new Error("Local image attachment is missing or unreadable");
+    return { type: "image", image: asset.bytes, mimeType: asset.contentType };
+  }
   if (/^https?:\/\//i.test(imageUrl)) {
     try {
       return { type: "image", image: new URL(imageUrl) };

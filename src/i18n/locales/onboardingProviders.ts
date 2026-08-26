@@ -448,13 +448,13 @@ export const zhOnboardingProviders = {
       promoCta: '用我们的链接',
     },
     agnes: {
-      tagline: '全模态免费 · 一个 key 解锁文本/图片/视频',
+      tagline: '文本、图片与视频 · 可用模型以当前账户为准',
       credentialPlaceholder: '粘贴 Agnes API Key',
       credentialHint:
-        '免费：去 platform.agnes-ai.com 邮箱注册（不绑卡）→ 创建 API Key。免费层有速率上限（RPM 20），个人/原型够用。凭证本地加密存储。',
+        '在 Agnes 官方平台创建 API Key。部分模型需付费或单独开通；可用模型、价格和限额以当前账户为准。凭证本地加密存储。',
       promoText:
-        'Agnes AI（新加坡 Sapiens AI）把文本/图片/视频三模态 API 无限期免费开放，OpenAI 兼容。邮箱注册不绑卡即可拿 Key。',
-      promoCta: '去 Agnes 注册（免费）',
+        'Agnes AI 提供 OpenAI 兼容的文本、图片与视频 API。公开模型清单不代表当前套餐均可调用。',
+      promoCta: '打开 Agnes 平台',
     },
     kie: {
       tagline: '一个 key，解锁内置模型',
@@ -1620,13 +1620,13 @@ export const enOnboardingProviders = {
       promoCta: 'Use our link',
     },
     agnes: {
-      tagline: 'Free multimodal access · One key for text, image, and video',
+      tagline: 'Text, image and video · Availability depends on your account',
       credentialPlaceholder: 'Paste your Agnes API Key',
       credentialHint:
-        'Free: sign up with email at platform.agnes-ai.com without a card, then create an API Key. The free tier is rate-limited to 20 RPM, which is enough for personal projects and prototypes. Credentials are encrypted locally.',
+        'Create an API Key on the official Agnes platform. Some models require payment or separate access. Availability, pricing and limits depend on your account. Credentials are encrypted locally.',
       promoText:
-        'Agnes AI by Singapore-based Sapiens AI provides free OpenAI-compatible text, image, and video APIs. Sign up with email without a card to get a key.',
-      promoCta: 'Register with Agnes for free',
+        'Agnes AI provides OpenAI-compatible text, image and video APIs. The public model catalog does not guarantee access under your current plan.',
+      promoCta: 'Open Agnes platform',
     },
     kie: {
       tagline: 'One key unlocks built-in models',

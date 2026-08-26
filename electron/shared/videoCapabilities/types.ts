@@ -38,7 +38,8 @@ export type ArchetypeReferenceSlot = {
   kind: ArchetypeReferenceSlotKind;
   label: string;
   min: number;
-  max: number;
+  /** Absent when the provider has not published a reference count limit. */
+  max?: number;
   inputKey?: string;
   asArray?: boolean;
   characterIndexed?: boolean;
@@ -100,6 +101,8 @@ export type ArchetypeSource = {
 };
 
 export type ModelArchetype = {
+  /** Older shared profile IDs accepted only when model identity matches this profile. */
+  legacyIds?: string[];
   id: string;
   family: string;
   label: string;

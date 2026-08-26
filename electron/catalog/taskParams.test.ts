@@ -185,3 +185,17 @@ describe("projectReferencesOntoBodyKeys — headless 参考键形态投影（W1d
     expect(projectReferencesOntoBodyKeys(undefined, editBody)).toEqual({});
   });
 });
+
+
+describe("declared numeric and negative controls", () => {
+  it("preserves extras seed and negative_prompt when top-level request fields are absent", () => {
+    const params = taskTemplateParams({ extras: { seed: "123", negative_prompt: "blur" } });
+    expect(params.seed).toBe(123);
+    expect(params.negative_prompt).toBe("blur");
+  });
+  it("top-level request values win over extras, including seed zero", () => {
+    const params = taskTemplateParams({ seed: 0, negativePrompt: "noise", extras: { seed: "123", negative_prompt: "blur" } });
+    expect(params.seed).toBe(0);
+    expect(params.negative_prompt).toBe("noise");
+  });
+});

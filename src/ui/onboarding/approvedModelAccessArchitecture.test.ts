@@ -25,11 +25,11 @@ describe('approved model access architecture', () => {
 
   it('keeps the Dreamina membership entry available while its local status is loading', () => {
     const catalog = read('src/ui/onboarding/useOnboardingDrawerCatalog.ts')
-    const drawer = read('src/ui/onboarding/OnboardingDrawer.tsx')
+    const connections = read('src/ui/onboarding/onboardingDrawerConnections.ts')
 
     expect(catalog).toContain('DREAMINA_UNCHECKED_STATUS')
     expect(catalog).toContain('setDreaminaStatus((current) => current ?? DREAMINA_UNCHECKED_STATUS)')
-    const available = drawer.slice(drawer.indexOf('const availableHomeConnections'))
+    const available = connections.slice(connections.indexOf('const availableHomeConnections'))
     expect(available.indexOf('vendorKey: DREAMINA_CONNECTION_KEY')).toBeLessThan(available.indexOf('vendorKey: CODEX_LOCAL_VENDOR_KEY'))
   })
 

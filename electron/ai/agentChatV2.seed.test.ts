@@ -38,6 +38,18 @@ describe("bubblesToSeedTurns — 续聊重建规范化", () => {
 });
 
 describe("selectTextModelCandidates — 助手模型完整身份路由", () => {
+  it("excludes text-only transports and refuses explicit selection instead of paid fallback", () => {
+    const state = {
+      version: 8,
+      vendors: [{ key: "local", name: "Local", enabled: true, authType: "none", createdAt: "", updatedAt: "" }],
+      models: [
+        { vendorKey: "local", modelKey: "plain", labelZh: "Plain", kind: "text", enabled: true, meta: { supportsToolCalls: false }, createdAt: "", updatedAt: "" },
+        { vendorKey: "local", modelKey: "agent", labelZh: "Agent", kind: "text", enabled: true, createdAt: "", updatedAt: "" },
+      ], mappings: [], apiKeysByVendor: {},
+    } satisfies CatalogState;
+    expect(selectTextModelCandidates(state).map(({ model }) => model.modelKey)).toEqual(["agent"]);
+    expect(() => selectTextModelCandidates(state, { vendorKey: "local", modelKey: "plain" })).toThrow("tools");
+  });
   it("同名模型优先命中用户选中的供应商，而不是按目录顺序换家", () => {
     const state = {
       version: 8,

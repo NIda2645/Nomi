@@ -139,11 +139,11 @@ export function taskTemplateParams(request: TaskParamsInput): JsonRecord {
     n: Number(extras.n) || 1,
     width: request.width,
     height: request.height,
-    seed: request.seed,
+    seed: request.seed ?? numericWireParam(extras.seed),
     steps: request.steps,
     cfgScale: request.cfgScale,
     cfg_scale: request.cfgScale,
-    negative_prompt: request.negativePrompt,
+    negative_prompt: request.negativePrompt ?? extras.negative_prompt,
     duration,
     ...(speed !== undefined ? { speed } : {}),
     // 空→undefined（不是 ""）：body 的 `image: "{{request.params.image_url}}"` 整 token 渲染时，
@@ -185,7 +185,7 @@ const OBJECT_SHAPE_REF_KEY = /with_roles|_contents\b|_content\b/i;
 
 // 数组形态键：复数 URL 键（image_urls / video_urls / audio_urls / input_urls / reference_*_urls / *_images / *_paths）。
 // classifyReferenceKeyDetailed 的 multiImage 只覆盖 image 族的多图信号，video/audio 复数键靠此补齐 → 塞数组不塞单串。
-const ARRAY_SHAPE_REF_KEY = /_urls$|urls$|_images$|images$|_paths$|paths$/i;
+const ARRAY_SHAPE_REF_KEY = /_urls$|urls$|images$|audios$|videos$|_paths$|paths$/i;
 
 /** 往这个 body 参考键投影时该塞数组还是单串：多图键（multiImage）或复数 URL 键 → 数组；否则单串（首帧/单图聚合位）。 */
 function refKeyWantsArray(key: string, multiImage: boolean): boolean {

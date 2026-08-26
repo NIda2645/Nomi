@@ -312,12 +312,20 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   ],
   "agnes-image": [
     "agnes-image",
-    "agnes-image-2.0-flash",
+    "agnes-image-2.0-flash"
+  ],
+  "agnes-image-2.1": [
     "agnes-image-2.1-flash"
   ],
   "agnes-video": [
     "agnes-video",
     "agnes-video-v2.0",
     "agnes-video-v2"
+  ],
+  "agnes-video-2.5": [
+    "agnes-video-2.5"
+  ],
+  "agnes-video-2.5-flash": [
+    "agnes-video-2.5-flash"
   ]
 };
