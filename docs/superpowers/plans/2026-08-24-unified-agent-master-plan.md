@@ -28,7 +28,7 @@ L0 底座                  ProductionRun/合同/预算/outbox/reconcile/资产  
 采纳依据=harness 调研（该抄 10/该避 8/已有等价物 4）：
 
 1. **单一状态推进循环**：Electron 主进程/utility process；现役为 Vercel AI SDK，已批准通过 R0 后改用受控 pi AgentSession（BYO key，Nomi 显式模型/工具/上下文配置）。不保留双 Agent engine；非 Agent 文本任务不在本次替换范围。
-2. **事件溯源会话日志=唯一真相源**（dsh「model-visible means logged」）：追加式 JSONL 派生模型上下文/UI 回放/断点续跑/fork；与耐久 Run 统一而非并存。
+2. **会话事件与生产事实分层**（与交接手册 Part 5 的已决边界一致）：会话事件支持 UI 回放与任务关联；完整模型工作上下文由运行核快照恢复。以 runId/causeId/txnId/proposalId 关联耐久 Run，不物理合并两类日志，也不用 SDK 快照代替预算、批准或作品事实。
 3. **Thread→Turn→Item 事件流**（Codex App Server 形状、对齐 ACP）经 IPC 投影渲染层：每 Item 一个组件、`started→delta*→completed`；留外接 Claude Code/Gemini CLI 之门。
 4. **单一审批信道**：确认=事件流上的反向请求、turn 暂停等回答；「agent 只许提案不许花钱」是策略引擎 deny 规则（harness 强制，非 prompt）。
 5. **策略引擎单点化**：deny→ask→allow + 三档闸门（Block/Notify/Auto）+ 会话级信任推广。
@@ -42,7 +42,7 @@ L0 底座                  ProductionRun/合同/预算/outbox/reconcile/资产  
 
 ## 3. 内部各自为战的收敛（Track B 前置清理）
 
-体检结论：后端 loop 已统一（agentLoop.ts/agentChatV2/身份提示/会话存储可当地基），病灶在配置层。修复件按险：B1a 会话键工厂（低）｜B1b 清会话一致化（低）｜B1c systemPrompt 合成器（中，前缀缓存 byte 稳定）｜B1d 单次 vs 多轮显式声明（中）｜B2 工具动态注册表（高）｜B3 确认规范化三档（高，与 P4 S3 合流）。统一形态=agentLoop 外套「面板注册表」：面板只声明 `{sessionKeyContext, skillKey, tools, systemPromptLayer}`。
+2026-08-24 的体检基线是 `agentLoop.ts / agentChatV2`、身份提示和会话缓存共用，但 caller 配置和界面归属仍分裂。后来获批的 R1 会删除旧 loop/cache，由 pi 运行核和 Nomi `harness/context` 接替；实际目录与状态见 [harness 导览](../../../electron/harness/README.md) 和 [R1 实施卡](../../plan/2026-08-26-pi-r1-runtime-cutover.md)。B1a-d 的已有基础复用，R1 补后端单次任务与归属/取消合同；B2 全量工具注册、B3 统一确认政策仍按原阶段推进，不能依据旧“后端 loop 已统一”一句话宣布它们完成。
 
 ## 4. 交互层（Rev.2 重写：主栏 · 两轴 · 词汇表 · 三宿主）
 
@@ -54,7 +54,7 @@ L0 底座                  ProductionRun/合同/预算/outbox/reconcile/资产  
 
 - **模式强度**（小云雀实证三档并存不打架）：**重管线**（固定步骤+显式闸门+状态机，如短剧 Pack）｜**对话主驾**（多轮对话唯一入口）｜**单发直出**（一句话/表单直出）。强度档是 **Pack 合同的第一字段**。
 - **使用姿态**（谁领路）：**纯对话**（右栏全宽，新手全程不看舞台）｜**对话领路**（左舞台自动跟随当前步骤，可关；新手默认开）｜**舞台为主**（右栏收窄当副驾）。
-- 两轴正交：同一个短剧模式可用任一姿态跑。新手体验=「重管线 Pack × 对话领路」，**对话即向导**——不做独立向导 UI、不学 DramaClaw 的空间切分（它靠「写回」弥合两空间的代价我们不付；同一份状态无写回问题）。
+- 两轴正交：同一个短剧模式可用任一姿态跑。新手体验=「重管线 Pack × 对话领路」，**对话即向导**。这不否定文稿、画布、时间轴的专业多空间；核心是同一作品、对话与任务如何连续，不能把“用了多空间”本身当问题，也不能把不同专业对象强行同步成同一种内容。
 
 ### 4.3 对话词汇表 v2（该用什么用什么，不全是卡片）
 

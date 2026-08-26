@@ -15,7 +15,7 @@ export default tseslint.config(
       'dist/**',
       'dist-electron/**',
       'release/**',
-      // 独立 SDK 兼容实验的编译/打包产物；实验源码仍参加 lint。
+      // R0 历史兼容探针产物保留；正式 pi 源码在 electron/harness/runtime/pi 参加 lint。
       'experiments/pi-agent-runtime/dist/**',
       'experiments/pi-agent-runtime/release/**',
       'node_modules/**',
@@ -50,7 +50,17 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['tests/network/**/*.{cjs,mjs}'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    // The regression must enter through Electron CommonJS before loading the
+    // native pi ESM island; require is intentional here, not application style.
+    files: ['tests/network/**/*.cjs'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
+    files: ['**/*.{ts,tsx,mts,cts}'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

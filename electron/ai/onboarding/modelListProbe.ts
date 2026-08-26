@@ -11,6 +11,7 @@
 import type { AiSdkProviderKind } from "../../catalog/types";
 import { isJsonRecord, pickUpstreamMessage } from "../../jsonUtils";
 import { parseModelListResponse } from "./modelListResponse";
+import { appFetch } from "../../appFetch";
 
 export async function describeNetworkErrorLazy(error: unknown): Promise<string> {
   const { describeNetworkError } = await import("../../systemProxy");
@@ -91,7 +92,7 @@ export async function fetchModelList(
   let sawEmptyList = false;
   for (const url of candidates) {
     let res: Response;
-    try { res = await fetch(url, { method: "GET", headers, signal }); }
+    try { res = await appFetch(url, { method: "GET", headers, signal }); }
     catch (e) { lastErr = await describeNetworkErrorLazy(e); continue; }
     statuses.push(res.status);
     const text = await res.text().catch(() => "");

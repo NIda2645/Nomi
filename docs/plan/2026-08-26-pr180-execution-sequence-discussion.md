@@ -1,6 +1,6 @@
 # #180 后续推进顺序（讨论稿）
 
-> 状态：用户已批准按阶段实施；R0 隔离兼容实验本地验收通过，见 [验收记录](../audit/2026-08-26-pi-r0-verification.md)。产品运行链尚未切换，项目级统一 Agent 尚未交付；新增 UI 的具体样张仍待批准。
+> 状态：用户已批准按阶段实施；R0 隔离兼容实验本地验收通过，见 [验收记录](../audit/2026-08-26-pi-r0-verification.md)。R1 切换实施中，逐片测试与审查见 [R1 实施卡](2026-08-26-pi-r1-runtime-cutover.md)；尚未通过产品入口/正式包验收，项目级统一 Agent 尚未交付，新增 UI 的具体样张仍待批准。
 > 本文重排 #180 工作队列并记录已确认调整，不另建业务合同。实施前同步原方案中的技术选型与阶段边界，避免旧手册与新实现互相矛盾。
 > For agentic workers：按阶段细化实施和验证；执行使用 subagent-driven-development 或 executing-plans。确认 pi 与全局 Agent 方向不等于豁免兼容、样张和验证门。
 > 后续核对修正（2026-08-26）：运行层不必等待完整交互样张或 B2/B3 全量完成。先做 pi 兼容验证，再在现有 UI 接回六条业务分支，随后必须完成项目级会话/任务/宿主统一；见 [逐文件迁移方案](/Users/aoqimin/Desktop/Nomi-codex-execution-20260826/docs/plan/2026-08-26-pi-agent-loop-file-migration.md)。本文件管总排期，逐项实施证据以 [R0 实施卡](2026-08-26-pi-r0-compatibility.md) 和后续阶段报告为准。
@@ -11,7 +11,7 @@
 
 **Architecture:** 保留现有 ProductionRun、预算、资产、Proposal/Apply/Undo 的执行权。运行层先定义必要的入口、会话归属、工具结果、取消和权限透传合同，即可验证并接入 pi；完整跨空间交互设计并行，不作为运行层开工门。不另建第二套作品存储或付费账本。
 
-**Tech Stack:** 当前 Electron / React / Zustand / Vercel AI SDK 4；已确认选择受控 pi AgentSession 作为 Agent 运行核，兼容验证已通过，实际接入仍待 R1。非 Agent 的 AI SDK4 文本链保留。
+**Tech Stack:** Electron / React / Zustand；受控 pi AgentSession 作为内部 Agent 运行核，R0 兼容验证已通过、R1 实际接线实施中。非 Agent 的 AI SDK4 文本链保留。
 
 ## 1. 当前在哪里
 

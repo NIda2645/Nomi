@@ -1,6 +1,6 @@
 # pi 接入与统一 Agent：逐文件迁移方案
 
-> 状态：用户已批准实施；R0 隔离兼容验证本地通过（48/48、独立审查、真实 Electron/ASAR），进入 R1 实施准备。尚未替换产品运行链，项目级统一 Agent 尚未实现；新增 UI 样张门仍须通过。见 [R0 验收记录](../audit/2026-08-26-pi-r0-verification.md)。
+> 状态：用户已批准实施；R0 已验证并提交，R1 的职责提取、正式构建、运行端口与线程快照均已通过规格、质量独立审查。现有产品入口切换与旧链删除正在收尾测试，尚未通过正式产品验收；项目级统一 Agent 尚未实现，新增 UI 样张门仍须通过。见 [R0 验收记录](../audit/2026-08-26-pi-r0-verification.md)、[R1 实施卡](2026-08-26-pi-r1-runtime-cutover.md)与[当前目录导览](../../electron/harness/README.md)。
 > 核对日期：2026-08-26。代码基线：84abca8d012cc78cf8692f929351db65a314a985（#180 合入后的 origin/main 快照）。
 > 本稿是 #180 执行排期的运行层与统一 Agent 实施细化，不是另立一套总方案。下文记录本次确认的调整；实施前将改变的技术决策同步回原计划，旧手册不作为拒绝已确认 pi 方向的依据。
 > 研究口径：全文核对 electron/ai 的 22 个非测试文件、src/workbench/ai 的 26 个非测试文件；跟踪两面板、6 条业务分支与权威边界。阅读代码不等于测试通过。
@@ -89,22 +89,29 @@ ModelRuntime 显式设 modelsPath:null，避免读取默认 models.json；create
 
 如果兼容门失败：记录具体不兼容项和替代成本，不把实验接入产品。回到选型讨论，不保留产品内“pi 失败自动退 AI SDK”的双引擎。
 
-## 4. 目标目录：这是拟议归属，不是当前已经存在的文件
+## 4. 目标目录：R1 的实际落位
 
 ```text
 electron/
-  harness/                         # 对齐 #179；当前 main 尚无此目录
-    domain/                        # Nomi 合同；不重定义第二套 Thread/Turn/Item
+  harness/                         # 运行、能力与工作上下文；不复制领域业务
+    agentChatContracts.ts          # Nomi 请求/事件/结果，不重定义 Thread/Turn/Item
+    agentChatPolicy.ts             # 能力档、归属与精确目标
     runtime/
       runtimePort.ts               # Nomi 输入/输出端口，不泄漏 SDK 类型
-      piRuntime.ts                 # 唯一 AgentSession 生命周期
-      piModelAdapter.ts            # Nomi Catalog/凭证 -> pi 模型
-      piToolAdapter.ts             # descriptor -> 现有确认/执行结果桥
-      piEventAdapter.ts            # pi 事件 -> Nomi 流/用量/终态
-      piContextAdapter.ts          # 附件、旧会话导入、完整工作快照
+      pi/                          # 唯一受控 AgentSession，私有 NodeNext 小项目
+        nativeLoader.cts           # 延迟原生 import，不把主进程整体切成 ESM
+        run.mts                    # 一轮运行、活动/用量、稳定收尾
+        session.mts                # 受控资源与停止/释放
+        model.mts                  # Nomi Catalog/凭证 -> pi 模型
+        tools.mts                  # descriptor -> 现有确认/执行结果桥
+        observeStream.mts          # 单一事件转发与模型请求超时
+        ...                        # 附件、快照、旧气泡 codec、错误事实
     context/
-      agentContext.ts              # Nomi 身份/skill/项目记忆/能力档/步数策略
-      agentSessionStore.ts         # 项目内版本化工作缓存（从旧文件迁）
+      agentContext.ts              # Nomi 身份/Skill/项目记忆提示词
+      agentContextHost.ts          # 主进程唯一服务实例
+      contextService.ts            # 同绑定恢复、排队、运行、保存、清空
+      contextStore.ts              # 项目内版本化快照与旧档原件备份
+      ...                          # 绑定、路径、有限旧气泡导入
     tools/
       documentDescriptors.ts       # 文档工具的唯一描述/schema
       canvasDescriptors.ts         # 画布工具的唯一描述/schema
@@ -117,9 +124,9 @@ src/workbench/ai/                  # UI、会话投影、公共 client；不整�
 src/workbench/{creation,generationCanvas}/ # 真实文档/画布操作与现有确认
 ```
 
-- 现有 main 尚无 electron/harness；#179 有 domain 合同。落地前对齐该合同基线，不能擅自 merge #179，也不能复制一份相互冲突的合同。兼容 fixture 不需要等待 #179 合入。
-- SDK 类型只留在 runtime adapter 和其私有快照编码中。main/renderer 共享的 DTO 保持 Nomi 自有、纯数据、无 SDK/Node 执行依赖；旧 facade 只作重导出。
-- 这个树说明职责，不要求先空建所有目录。按第一条生产路径实际需要落文件；每个新实现对应删除旧实现。
+- 初始 main 没有 electron/harness；#179 的 domain 合同是另一个尚未合入的 PR。R1 不擅自合入 #179，也不复制 Thread/Turn/Item；已有运行端口与 DTO 服务本次切换，后续控制面继续对齐原合同。
+- SDK 类型只留在 runtime adapter 和其私有快照编码中。main/renderer 共享的 DTO 保持 Nomi 自有、纯数据、无 SDK/Node 执行依赖；薄 facade 只组装 Nomi 模型、上下文与业务钩子，不保留旧运行引擎。
+- 此树描述已实施的职责落位，不代表产品验收完成。完整文件阅读顺序和调用链以当前目录导览为准；每个新实现对应删除旧实现。
 - textBrainResolver 是共享模型选择，不是第二个 Agent；保留 ai@4 给非 Agent 的文本、编译、验证路径不违反“唯一 Agent engine”。
 
 ## 5. 后端 22 个文件：逐项动作

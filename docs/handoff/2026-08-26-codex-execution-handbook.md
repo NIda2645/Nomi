@@ -63,7 +63,7 @@ L0 底座             ProductionRun / 合同 / 预算 / outbox / 资产   [✅ �
 
 ## 1.4 统一 Harness 设计要点（B4 的图纸）
 
-1. **同步单循环**（OpenHands 异步总线是反面教材）：Electron 主进程/utility process；Vercel AI SDK 做多供应商抽象（BYO key）。
+1. **单一状态推进循环**：Electron 主进程/utility process；内部 Agent 按已批准的 R0 → R1 迁到受控 pi AgentSession，模型与凭据仍由 Nomi 目录提供（BYO key）。非 Agent 文本/编译/验证链保留 ai@4，不保留第二套 Agent engine。
 2. **事件溯源会话日志=唯一真相源**：追加式 JSONL 派生模型上下文 / UI 回放 / 断点续跑 / fork。
 3. **Thread→Turn→Item 事件流**（对齐 Codex App Server 形状与 ACP）经 IPC 投影渲染层：每 Item 一个组件，`started→delta*→completed`。
 4. **单一审批信道**：确认 = 事件流上的反向请求，turn 暂停等回答。**「agent 只许提案不许花钱」是策略引擎的 deny 规则（harness 强制，不是写在 prompt 里）。**
@@ -332,10 +332,12 @@ L0 底座             ProductionRun / 合同 / 预算 / outbox / 资产   [✅ �
 
 - **目标**：补齐 B1a/B1b/B1c/B1d，收敛 B2 工具注册与 B3 确认入口，**同 commit 删除旧 caller 配置层**。
 - **前置**：B4-0 契约已交付（`electron/harness/domain/`，674 行，零引用零生产影响）。
+- **基线说明**：这里的 B4-0 交付指原 #179 分支合同，不等于已进入当前主干或已有运行消费者；它不是后来获批的 pi R0/R1 开工门。不得为了满足这条旧前置擅自合并 #179 或重造第二套 Thread/Turn/Item。
 - **各件说明**：B1a 会话键工厂（低险）｜B1b 清会话一致化（低）｜B1c systemPrompt 合成器（中，前缀缓存 byte 稳定，**含项目偏好记忆层**）｜B1d 单次 vs 多轮显式声明（中）｜B2 工具动态注册表（高）｜B3 确认规范化三档（高）。
 - **统一形态**：agentLoop 外套「面板注册表」——面板只声明 `{sessionKeyContext, skillKey, tools, systemPromptLayer}`。
 - **重要提醒**：`origin/main` 上 B1a/B1b/B1d 已有实现，但**审计表仍记录旧 caller**。**不要把「残余调用点已清零」当成事实**——开工先用 `rg` + typecheck 找完整入口集。
 - **规模**：新增 250–450 行 / 删除 220–420 行。**超上限必须停下复盘，不得靠继续加代码掩盖范围漂移。**
+- **2026-08-26 先行包调整**：以上规模是原 B4-1 清理片的估计，不是后来获批的完整 pi 迁移预算。R0/R1 已另立 [逐文件范围](../plan/2026-08-26-pi-agent-loop-file-migration.md) 与 [实施验收卡](../plan/2026-08-26-pi-r1-runtime-cutover.md)；运行目录见 [harness 导览](../../electron/harness/README.md)。B1c 的合成器和项目偏好已经存在，须复用；R1 不冒充 B2/B3 全量、生产恢复或 R2-U1 共同宿主已经完成。
 - **验收**：每个被删旧路径都有对应新路径的测试；`gates` exit=0；涉 UI 的亲跑走查。
 - **回滚**：保留旧 key 字节快照 + 一次性回滚分支。
 
