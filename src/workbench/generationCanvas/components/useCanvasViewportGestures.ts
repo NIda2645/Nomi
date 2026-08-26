@@ -10,7 +10,7 @@
 import React from 'react'
 import { clampNumber, getWheelZoomFactor } from './generationCanvasGeometry'
 import { findScrollableAncestor } from './canvasScroll'
-import { resolveWheelIntent, useCanvasGestureScheme } from './canvasGesturePreference'
+import { resolveWheelIntent, useCanvasGestureScheme } from '../../../utils/canvasGesturePreference'
 import { setCanvasDragging } from './canvasDraggingFlag'
 import {
   createViewportAnimationCoordinator,

@@ -9,6 +9,8 @@ import { referenceInputParams } from "./archetypeInput";
 import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archetypeWireDefaults.generated";
 import { bodyReferencedParamKeys } from "./paramTranslate";
 import { bodyReferenceSupport, classifyReferenceKey, classifyReferenceKeyDetailed, type ReferenceFamily } from "./referenceReachability";
+import { readParameterReferenceContract } from "./parameterReferenceContract";
+import { isComfyuiVendor } from "./types";
 
 /** taskTemplateParams 实际用到的 TaskRequest 子集（结构化，避免与 runtime 的 TaskRequest 循环依赖）。 */
 export type TaskParamsInput = {
@@ -23,6 +25,9 @@ export type TaskParamsInput = {
 
 export function firstReferenceImage(request: TaskParamsInput): string {
   const extras = request.extras || {};
+  if (comfyReferenceContract(extras)) {
+    return declaredComfyReferences(extras).find((reference) => reference.family === "image")?.url || "";
+  }
   const referenceImages = Array.isArray(extras.referenceImages) ? extras.referenceImages : [];
   return firstString(
     extras.image_url,
@@ -215,6 +220,22 @@ function containsRefUrl(value: unknown): boolean {
   return false;
 }
 
+function comfyReferenceContract(extras: JsonRecord) {
+  const contract = readParameterReferenceContract(extras);
+  return contract && isComfyuiVendor({ key: contract.vendorKey }) ? contract : null;
+}
+
+function declaredComfyReferences(extras: JsonRecord): Array<{ key: string; family: 'image' | 'video'; url: string }> {
+  const contract = comfyReferenceContract(extras)
+  if (!contract) return []
+  return contract.slots.flatMap((slot) => {
+    const value = extras[slot.key]
+    const url = typeof value === 'string' ? value.trim() : ''
+    if (!url || !REF_URL_RE.test(url)) return []
+    return [{ key: slot.key, family: slot.mediaKind === 'video' ? 'video' as const : 'image' as const, url }]
+  })
+}
+
 /**
  * 图生图/图生视频请求里是否真的带了 ≥1 张参考素材（L3 诚实护栏，纯函数可测）。
  * 两路口径：① firstReferenceImage 单图聚合（image_url/firstFrameUrl/referenceImages[0]…）；
@@ -223,8 +244,11 @@ function containsRefUrl(value: unknown): boolean {
  * false = 用户意图「拿图改/拿图生」但一张图都递不出去 → 调用方拒发报人话，绝不静默退化纯文生。
  */
 export function hasImageEditReferences(request: TaskParamsInput): boolean {
-  if (firstReferenceImage(request)) return true;
   const extras = request.extras || {};
+  if (comfyReferenceContract(extras)) {
+    return declaredComfyReferences(extras).some((reference) => reference.family === 'image');
+  }
+  if (firstReferenceImage(request)) return true;
   // extras.image：headless/老调用方的裸键口径（部分 curated body 直读 {{request.params.image}}）。
   return containsRefUrl([extras.image, referenceInputParams(extras)]);
 }
@@ -275,8 +299,17 @@ function carriedReferences(extras: JsonRecord): Array<{ label: string; url: stri
     if (Array.isArray(value)) for (const item of value) walk(key, item);
     else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(k, v);
   };
-  // referenceInputParams 的插入顺序把首/尾帧排在前，故同一 URL 既是首帧又在 image_urls 里时取「首帧」。
-  for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  const exactComfyContract = comfyReferenceContract(extras);
+  // Valid Comfy contracts are exact-only, including an empty contract. Legacy aliases are not a second truth source.
+  if (!exactComfyContract) {
+    // referenceInputParams 的插入顺序把首/尾帧排在前，故同一 URL 既是首帧又在 image_urls 里时取「首帧」。
+    for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  }
+  for (const reference of declaredComfyReferences(extras)) {
+    if (seen.has(reference.url)) continue
+    seen.add(reference.url)
+    out.push({ label: referenceLabelForKey(reference.family), url: reference.url })
+  }
   return out;
 }
 
@@ -332,7 +365,11 @@ function carriedReferenceFamilies(extras: JsonRecord): Set<ReferenceFamily> {
     if (Array.isArray(value)) for (const item of value) walk(key, item);
     else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(k, v);
   };
-  for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  const exactComfyContract = comfyReferenceContract(extras);
+  if (!exactComfyContract) {
+    for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  }
+  for (const reference of declaredComfyReferences(extras)) families.add(reference.family)
   return families;
 }
 
@@ -394,7 +431,13 @@ function carriedReferenceUrlsByFamily(extras: JsonRecord): Record<ReferenceFamil
     if (Array.isArray(value)) for (const item of value) walk(key, item);
     else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(k, v);
   };
-  for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  const exactComfyContract = comfyReferenceContract(extras);
+  if (!exactComfyContract) {
+    for (const [key, value] of Object.entries(referenceInputParams(extras))) walk(key, value);
+  }
+  for (const reference of declaredComfyReferences(extras)) {
+    if (!out[reference.family].includes(reference.url)) out[reference.family].push(reference.url);
+  }
   return out;
 }
 

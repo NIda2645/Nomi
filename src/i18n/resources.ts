@@ -31,6 +31,8 @@ export const zhCN = {
     rendering: '正在渲染...',
     back: '返回',
     select: '选择',
+    searchOptions: '搜索选项',
+    noMatchingOptions: '没有匹配的选项',
     undo: '撤销',
   },
   media: {
@@ -399,6 +401,8 @@ export const en = {
     rendering: 'Rendering...',
     back: 'Back',
     select: 'Select',
+    searchOptions: 'Search options',
+    noMatchingOptions: 'No matching options',
     undo: 'Undo',
   },
   media: {

@@ -5,8 +5,8 @@
 // mapping body 再把它们映射到自己真正的 input 键（如 kie 的 `reference_video_urls ` 含尾随空格，
 // §2 坑1，只在 kieSeedance body 写一次 = M1 单源）。
 //
-// **M2 互斥**：只有非空值才进结果——渲染层 catalogTaskActions 已把非当前模式的残留键投影掉
-// （置 undefined），到这里它们就是空，自然不入 body。
+// **M2 互斥**：camelCase 只投影非空值；显式 snake 槽值原样保留（null 表示该槽空着）。
+// 渲染层 catalogTaskActions 已把非当前模式的残留键置 undefined，不会进入 body。
 import { firstString, isJsonRecord, type JsonRecord } from "../jsonUtils";
 
 function stringArray(value: unknown): string[] {
@@ -15,7 +15,7 @@ function stringArray(value: unknown): string[] {
 }
 
 /**
- * 从 extras 构建参考相关的 snake 参数。只放有值的键（M2：空 = 不进 body）。
+ * 从 extras 构建参考相关的 snake 参数：聚合兜底 < 显式槽值 < 档案投影。
  *
  * 认得档案的模型：renderer 已据当前模式把完整 snake input 打好放进 `extras.archetypeInput`
  * （含 per-mode enum + 互斥投影，见 archetypeMeta.buildArchetypeInputParams）——这里**原样采用**，
@@ -41,6 +41,14 @@ export function referenceInputParams(extras: JsonRecord): JsonRecord {
   if (audioUrls.length) out.reference_audio_urls = audioUrls;
 
   out.reference_images = Array.isArray(extras.referenceImages) ? extras.referenceImages : [];
+  // 已按声明槽分配的值不能被数组顺序覆盖；显式 null 也不能借用另一槽的素材。
+  // image_url 同样在此叠加，覆盖 taskTemplateParams 的单图聚合兜底。
+  for (const key of ["image_url", "first_frame_url", "last_frame_url", "source_video_url", "reference_images", "reference_image_urls", "reference_video_urls", "reference_audio_urls"]) {
+    const value = extras[key];
+    // 导入默认值里的空串不是显式清空；旧 camelCase 调用方仍可填它，只有 null 保留空槽意图。
+    if (Object.prototype.hasOwnProperty.call(extras, key) && value !== undefined
+      && (typeof value !== "string" || value.trim())) out[key] = value;
+  }
   // 档案投影**叠加**在标准键之上（同名键档案权威）——绝不替代整包。旧实现 archetypeInput 独占返回，
   // 标准键（reference_images/chat_image_parts 的原料/first_frame_url）被吞 → 通用中转模板拿不到参考：
   // multipart 改图空图被拒、chat 多模态丢图、i2v 首帧到不了 wire（2026-07-24 群反馈根因）。
