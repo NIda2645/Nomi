@@ -18,6 +18,8 @@ export type ModelParameterControl = {
   key: string;
   label: string;
   type: ModelParameterControlType;
+  /** Media-reference controls retain the declared asset kind; older controls default to image. */
+  mediaKind?: "image" | "video";
   options: ModelParameterControlOption[];
   defaultValue?: string | number | boolean;
   min?: number;

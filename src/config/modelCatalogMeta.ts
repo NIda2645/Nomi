@@ -201,6 +201,9 @@ function parseParameterControl(value: unknown): ModelParameterControl | null {
     key,
     label,
     type: type !== 'image-url' && options.length > 0 ? 'select' : type,
+    ...(type === 'image-url' && (value.mediaKind === 'image' || value.mediaKind === 'video')
+      ? { mediaKind: value.mediaKind }
+      : {}),
     options: dedupeByValue(options),
     ...(typeof defaultValue !== 'undefined' ? { defaultValue } : {}),
     ...(typeof min === 'number' ? { min } : {}),

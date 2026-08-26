@@ -10,6 +10,10 @@ import {
 import { type ModelParameterControl } from '../../../config/modelCatalogMeta'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import {
+  buildImageUrlSlots, edgeModeForGroup, parameterReferenceMetaPatch,
+  readParameterReferenceSlots, resolveParameterReferenceAssignments, type ImageUrlSlot,
+} from '../model/parameterReferenceSlots'
+import {
   getGenerationNodeExecutionKind,
   isAudioLikeGenerationNodeKind,
   isImageLikeGenerationNodeKind,
@@ -20,14 +24,10 @@ import { importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
 import { comfyWorkflowTakesPrompt } from '../runner/promptRequirement'
 import {
   type DynamicCatalogControl,
-  type ImageUrlSlot,
   assetUrl,
   buildEffectiveImageCatalogConfig,
-  buildImageUrlSlots,
   defaultPatchForCatalogControl,
   videoAspectDefaultPatch,
-  edgeModeForGroup,
-  getEdgeSourceForSlot,
   getSlotNodeRef,
   getSlotThumbUrl,
   imageCatalogReferenceSlot,
@@ -102,7 +102,6 @@ export default function NodeParameterControls({
   const nodes = useGenerationCanvasStore((state) => state.nodes)
   const edges = useGenerationCanvasStore((state) => state.edges)
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
-  const updateEdgeMode = useGenerationCanvasStore((state) => state.updateEdgeMode)
   const storeConnectNodes = useGenerationCanvasStore((state) => state.connectNodes)
   const storeDisconnectEdge = useGenerationCanvasStore((state) => state.disconnectEdge)
   const modelOptionsState = useGenerationModelOptionsState(node.kind)
@@ -374,71 +373,45 @@ export default function NodeParameterControls({
     }
   }
   const handleSlotAssignment = (slot: ImageUrlSlot, newSourceNodeId: string) => {
+    const state = useGenerationCanvasStore.getState()
+    const target = state.nodes.find((candidate) => candidate.id === node.id) || node
+    const existingEdge = resolveParameterReferenceAssignments(target, state.nodes, state.edges, imageUrlSlots)
+      .find((assignment) => assignment.slot.key === slot.key)?.edge
     const targetMode = edgeModeForGroup(slot.group)
     if (!newSourceNodeId) {
-      const existingEdge = edges.find((e) => e.target === node.id && e.mode === targetMode)
-      if (existingEdge) storeDisconnectEdge(existingEdge.id)
-      const clearPatch: Record<string, unknown> = { [slot.key]: null, [slot.key + '_nodeRef']: null }
-      if (slot.group === 'first_frame') {
-        clearPatch.firstFrameUrl = null
-        clearPatch.firstFrameRef = null
-      }
-      if (slot.group === 'last_frame') {
-        clearPatch.lastFrameUrl = null
-        clearPatch.lastFrameRef = null
-      }
-      if (slot.group === 'reference') {
-        clearPatch.referenceImages = []
-        clearPatch.referenceImageUrl = null
-        clearPatch.referenceImageRef = null
-      }
-      updateNode(node.id, { meta: { ...getLatestMeta(), ...clearPatch } })
+      if (existingEdge) storeDisconnectEdge(existingEdge.id, { scope: 'parameter' })
+      const clearPatch = parameterReferenceMetaPatch(slot, imageUrlSlots, null)
+      updateNode(node.id, { meta: { ...getLatestMeta(), ...clearPatch } }, { history: !existingEdge })
       setOpenSlotKey('')
       return
     }
-    const existingFromSource = edges.find((e) => e.source === newSourceNodeId && e.target === node.id)
-    if (existingFromSource) {
-      if (existingFromSource.mode !== targetMode) updateEdgeMode(existingFromSource.id, targetMode)
-    } else {
-      storeConnectNodes(newSourceNodeId, node.id, targetMode)
-    }
-    const conflictEdge = edges.find(
-      (e) => e.target === node.id && e.mode === targetMode && e.source !== newSourceNodeId,
-    )
-    if (conflictEdge) storeDisconnectEdge(conflictEdge.id)
+    const declared = readParameterReferenceSlots(target.meta).some((candidate) => candidate.key === slot.key)
+    if (existingEdge?.source === newSourceNodeId) { setOpenSlotKey(''); return }
+    if (existingEdge) storeDisconnectEdge(existingEdge.id, { scope: 'parameter' })
+    else state.captureHistory()
+    storeConnectNodes(newSourceNodeId, node.id, targetMode, declared ? slot.key : undefined)
     // S2 写收口：边即真相源——不再写 firstFrameUrl/firstFrameRef/referenceImages 等快照 meta。
     // 那份快照在连边时 resultPreviewUrl 还可能为空(源未生成)=陈旧,且与其它参数写入竞态(lost-update)；
-    // 所有读取方(resolver firstFrameFromEdge、显示 getEdgeSourceForSlot/resolveReferenceSlots)都已边优先，
+    // 所有读取方(resolver、显示 resolveParameterReferenceAssignments/resolveReferenceSlots)都已边优先，
     // 快照纯冗余。源生成后 url 由边实时解析,不需回写。
     setOpenSlotKey('')
   }
-  // 把单帧槽设成一个给定 URL（上传 / 选项目素材共用）：断开该组旧画布边(切到无源节点的 url)、写 flat meta。
+  // 上传 / 选项目素材只替换该槽来源；退出编组继承时其它槽保留为手工边。
   const setSingleFrameUrlMeta = (slot: ImageUrlSlot, url: string) => {
-    const targetMode = edgeModeForGroup(slot.group)
-    const existingEdge = edges.find((e) => e.target === node.id && e.mode === targetMode)
-    if (existingEdge) storeDisconnectEdge(existingEdge.id)
+    const state = useGenerationCanvasStore.getState()
+    const target = state.nodes.find((candidate) => candidate.id === node.id) || node
+    const existingEdge = resolveParameterReferenceAssignments(target, state.nodes, state.edges, imageUrlSlots)
+      .find((assignment) => assignment.slot.key === slot.key)?.edge
+    if (existingEdge) storeDisconnectEdge(existingEdge.id, { scope: 'parameter' })
     const latestMeta = getLatestMeta()
-    const patch: Record<string, unknown> = { [slot.key]: url, [slot.key + '_nodeRef']: null }
-    if (slot.group === 'first_frame') {
-      patch.firstFrameUrl = url
-      patch.firstFrameRef = null
-    }
-    if (slot.group === 'last_frame') {
-      patch.lastFrameUrl = url
-      patch.lastFrameRef = null
-    }
-    if (slot.group === 'reference') {
-      patch.referenceImages = [url]
-      patch.referenceImageUrl = url
-      patch.referenceImageRef = null
-    }
-    updateNode(node.id, { meta: { ...latestMeta, ...patch } })
+    const patch = parameterReferenceMetaPatch(slot, imageUrlSlots, url)
+    updateNode(node.id, { meta: { ...latestMeta, ...patch } }, { history: !existingEdge })
     setOpenSlotKey('')
   }
   const handleSlotUpload = async (slot: ImageUrlSlot, file: File | null | undefined) => {
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setUploadError(t('generationCommon.parameters.imageOnly'))
+    if (!file.type.startsWith(`${slot.mediaKind ?? 'image'}/`)) {
+      setUploadError(t(slot.mediaKind === 'video' ? 'generationCommon.parameters.videoOnly' : 'generationCommon.parameters.imageOnly'))
       return
     }
     setUploadingSlotKey(slot.key)
@@ -446,10 +419,10 @@ export default function NodeParameterControls({
     try {
       const uploaded = await importWorkbenchLocalAssetFile(file, file.name || slot.label, {
         ownerNodeId: node.id,
-        taskKind: 'image_edit',
+        ...(slot.mediaKind === 'video' ? {} : { taskKind: 'image_edit' }),
       })
       const url = assetUrl(uploaded)
-      if (!url) throw new Error(t('generationCommon.parameters.missingImageUrl'))
+      if (!url) throw new Error(t(slot.mediaKind === 'video' ? 'generationCommon.parameters.missingVideoUrl' : 'generationCommon.parameters.missingImageUrl'))
       setSingleFrameUrlMeta(slot, url)
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : String(error))
@@ -497,7 +470,7 @@ export default function NodeParameterControls({
         // 查不到即原样返回），**启发式路（通用中转/ComfyUI 导入）此前根本没翻** → 英文用户在这个槽
         // 上看到的是中文「参考图」。收在这里翻一次，两条路才真的一个口径。
         label: translateModelDisplayText(s.label),
-        accept: 'image',
+        accept: s.mediaKind ?? 'image',
         form: 'single',
         persistAsEdge: true,
         numbered: false,
@@ -559,15 +532,16 @@ export default function NodeParameterControls({
     }
   }
   const assetValuesByKey: Record<string, string | string[]> = {}
+  const parameterAssignments = resolveParameterReferenceAssignments(node, nodes, edges, imageUrlSlots)
   for (const s of imageUrlSlots) {
     if (archMode && resolvedFillUrlsByMetaKey.has(s.key)) {
       assetValuesByKey[s.key] = resolvedFillUrlsByMetaKey.get(s.key)![0] || ''
       continue
     }
-    const edgeSource = getEdgeSourceForSlot(s.group, edges, node.id)
+    const edgeSource = parameterAssignments.find((assignment) => assignment.slot.key === s.key)?.edge?.source
     const nodeRef = edgeSource || getSlotNodeRef(meta, s.key)
     const thumbNode = nodeRef ? nodes.find((n) => n.id === nodeRef) : undefined
-    assetValuesByKey[s.key] =
+    assetValuesByKey[s.key] = edgeSource ? resultPreviewUrl(thumbNode) :
       (thumbNode ? resultPreviewUrl(thumbNode) : null) ||
       getSlotThumbUrl(meta, s.key, nodes) ||
       readMeta(meta, s.key) ||

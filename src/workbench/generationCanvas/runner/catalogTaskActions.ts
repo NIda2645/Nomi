@@ -11,6 +11,10 @@ import type {
   GenerationNodeResult,
 } from '../model/generationCanvasTypes'
 import type { ResolvedGenerationReferences } from './generationReferenceResolver'
+import { resolveGenerationReferences } from './generationReferenceResolver'
+import { readParameterReferenceSlots } from '../model/parameterReferenceSlots'
+import { getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
+import { applyRelayFirstFrame } from './relayFrameResolver'
 import { narrateProgress, type GenerationProgressPhase, type ProgressNarrationContext } from '../../observability/narrate'
 import { buildArchetypeInputParams, currentArchetypeMode, orderedSentImageReferenceUrls } from '../nodes/controls/archetypeMeta'
 import { projectPromptForSend } from '../../assets/promptMentions'
@@ -136,6 +140,9 @@ function buildReferenceExtras(
   references: Partial<ResolvedGenerationReferences>,
 ): Record<string, unknown> {
   const meta = node.meta || {}
+  const parameterInputs = Object.fromEntries(readParameterReferenceSlots(meta)
+    .filter((slot) => Object.prototype.hasOwnProperty.call(references.parameterReferenceUrls ?? {}, slot.key))
+    .map((slot) => [slot.key, references.parameterReferenceUrls![slot.key]]))
   const referenceImages = uniqueStrings([
     ...readStringArray(meta.referenceImages),
     ...(references.referenceImages || []),
@@ -191,6 +198,7 @@ function buildReferenceExtras(
       ...(modeHasImageArray ? readStringArray(meta.referenceImageUrls) : []),
     ])
     return {
+      ...parameterInputs,
       ...(standardReferenceImages.length ? { referenceImages: standardReferenceImages } : {}),
       ...(firstFrameUrl ? { firstFrameUrl } : {}),
       ...(lastFrameUrl ? { lastFrameUrl } : {}),
@@ -208,6 +216,7 @@ function buildReferenceExtras(
   // 连了视频也永远收不到（electron 侧 referenceInputParams 据此派生 source_video_url）。
   const referenceVideoUrls = uniqueStrings(references.referenceVideos || [])
   return {
+    ...parameterInputs,
     ...(referenceImages.length ? { referenceImages } : {}),
     ...(referenceVideoUrls.length ? { referenceVideoUrls } : {}),
     ...(firstFrameUrl ? { firstFrameUrl } : {}),
@@ -395,7 +404,22 @@ export async function runCatalogGenerationTask(
     options.onProgress?.({ phase, message: narrateProgress(phase, ctx), ...(taskId ? { taskId } : {}) })
   report('resolving')
   const executableNode = await resolveExecutableNodeFromCatalog(node, options)
-  const { vendor, request } = buildCatalogTaskRequest(executableNode, options)
+  const currentOptions = options.referenceContext
+    ? { ...options, references: resolveGenerationReferences(executableNode, options.referenceContext) }
+    : options
+  // Resolve video relay only after the final catalog projection; no later graph refresh may replace the extracted frame.
+  const references = currentOptions.references
+  if (getGenerationNodeExecutionKind(executableNode.kind) === 'video' && references?.relayFromVideoUrl) {
+    const videoUrl = references.relayFromVideoUrl
+    await applyRelayFirstFrame(references)
+    for (const slot of readParameterReferenceSlots(executableNode.meta)) {
+      // Generic image parameters can inherit explicit first_frame edges; video parameters keep the original clip.
+      if (slot.mediaKind !== 'video' && references.parameterReferenceUrls?.[slot.key] === videoUrl) {
+        references.parameterReferenceUrls[slot.key] = references.firstFrameUrl || null
+      }
+    }
+  }
+  const { vendor, request } = buildCatalogTaskRequest(executableNode, currentOptions)
 
   // 文本任务 + 调用方要逐字 → 走流式通道:逐 token 回调 onTextDelta,终态直接返回
   // (文本无轮询,流 resolve 即 succeeded),不走下面的 runTask + 轮询。runTask 覆盖项

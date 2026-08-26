@@ -9,6 +9,7 @@ import { humanizeModelKey } from "./modelLabel";
 import { applyBuiltinSeeds } from "./seedBuiltins";
 import { migrateRelayImageEditProtocols } from "./relayImageEditMigration";
 import { migrateRelayVideoImageToVideo } from "./relayVideoI2vMigration";
+import { migrateComfyWorkflowOutputs } from "./comfyuiWorkflowOutputMigration";
 import { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayLegacyMigrations";
 import type {
   AiSdkProviderKind,
@@ -176,6 +177,11 @@ function migrateCatalogForward(state: CatalogState): CatalogState {
       return s;
     }
     s = migrated;
+    writeCatalog(s);
+  }
+
+  if (s.version === 9) {
+    s = { ...migrateComfyWorkflowOutputs(s), version: 10 };
     writeCatalog(s);
   }
 

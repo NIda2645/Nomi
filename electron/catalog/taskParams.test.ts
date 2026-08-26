@@ -102,6 +102,40 @@ describe("firstReferenceImage — 单图首选", () => {
   });
 });
 
+describe("taskTemplateParams — explicit media slots precede aggregate fallbacks", () => {
+  it.each(["image_url", "first_frame_url", "last_frame_url", "source_video_url", "reference_images", "reference_image_urls", "reference_video_urls", "reference_audio_urls"])("preserves an explicitly empty %s slot", (key) => {
+    const params = taskTemplateParams({ extras: {
+      [key]: null, firstFrameUrl: "first.png", lastFrameUrl: "last.png",
+      referenceImages: ["fallback.png"], referenceImageUrls: ["fallback.png"],
+      referenceVideoUrls: ["fallback.mp4"], referenceAudioUrls: ["fallback.mp3"],
+    } });
+    expect(params[key]).toBeNull();
+  });
+
+  it("keeps the archetype projection authoritative over explicit and aggregate values", () => {
+    expect(taskTemplateParams({ extras: {
+      first_frame_url: "explicit.png", firstFrameUrl: "fallback.png",
+      archetypeInput: { first_frame_url: null },
+    } }).first_frame_url).toBeNull();
+  });
+
+  it.each([
+    ["image_url", "first.png"], ["first_frame_url", "first.png"], ["last_frame_url", "last.png"],
+    ["source_video_url", "fallback.mp4"], ["reference_images", ["fallback.png"]],
+    ["reference_image_urls", ["fallback.png"]], ["reference_video_urls", ["fallback.mp4"]],
+    ["reference_audio_urls", ["fallback.mp3"]],
+  ] as const)("empty defaults do not mask populated legacy %s values", (key, expected) => {
+    for (const empty of ["", "   ", undefined]) {
+      const params = taskTemplateParams({ extras: {
+        [key]: empty, firstFrameUrl: "first.png", lastFrameUrl: "last.png",
+        referenceImages: ["fallback.png"], referenceImageUrls: ["fallback.png"],
+        referenceVideoUrls: ["fallback.mp4"], referenceAudioUrls: ["fallback.mp3"],
+      } });
+      expect(params[key]).toEqual(expected);
+    }
+  });
+});
+
 describe("hasImageEditReferences — L3 诚实护栏判定（图生图/图生视频是否真带了参考）", () => {
   it("空 extras → false", () => {
     expect(hasImageEditReferences({ extras: {} })).toBe(false);

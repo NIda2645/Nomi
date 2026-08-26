@@ -21,7 +21,7 @@ import {
   resolveArchetypeForModel,
   specializeArchetypeForVariant,
 } from '../../../../config/modelArchetypes'
-import type { ImageUrlSlot } from './parameterControlModel'
+import type { ImageUrlSlot } from '../../model/parameterReferenceSlots'
 import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
 import { DEFAULT_SLOT_INPUT_KEY, modeSlotReach, type SlotReach } from '../../../../../electron/catalog/referenceReachability'
 

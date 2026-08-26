@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CURRENT_CATALOG_VERSION } from "./types";
 
 const safeStorageState = vi.hoisted(() => ({ available: true }));
 let mockedUserDataRoot = "";
@@ -85,7 +86,7 @@ describe("custom-call custom config secure persistence", () => {
     const disk = fs.readFileSync(catalogFile(), "utf8");
     const record = state.apiKeysByVendor["signed-relay"];
 
-    expect(state.version).toBe(9);
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(disk).not.toContain(apiKey);
     expect(disk).not.toContain(signingKey);
     expect(disk).not.toContain("cn-beijing");
@@ -100,7 +101,7 @@ describe("custom-call custom config secure persistence", () => {
   });
 
   it("stores new values as ciphertext and returns only masked names to the renderer", async () => {
-    writeCatalog({ version: 9, vendors: [vendor()], models: [], mappings: [], apiKeysByVendor: {} });
+    writeCatalog({ version: CURRENT_CATALOG_VERSION, vendors: [vendor()], models: [], mappings: [], apiKeysByVendor: {} });
     const store = await import("./catalogStore");
     const secrets = await import("./secrets");
 
@@ -141,14 +142,14 @@ describe("custom-call custom config secure persistence", () => {
     expect(fs.readFileSync(catalogFile(), "utf8")).toContain("retry-secret-42");
 
     safeStorageState.available = true;
-    expect(store.readCatalog().version).toBe(9);
+    expect(store.readCatalog().version).toBe(CURRENT_CATALOG_VERSION);
     expect(fs.readFileSync(catalogFile(), "utf8")).not.toContain("retry-secret-42");
     expect(store.listModelCatalogCustomCallConfig("signed-relay")).toEqual([{ name: "signingKey", hasValue: true }]);
   });
 
   it("fails closed when safeStorage is unavailable and leaves the catalog unchanged", async () => {
     safeStorageState.available = false;
-    writeCatalog({ version: 9, vendors: [vendor()], models: [], mappings: [], apiKeysByVendor: {} });
+    writeCatalog({ version: CURRENT_CATALOG_VERSION, vendors: [vendor()], models: [], mappings: [], apiKeysByVendor: {} });
     const before = fs.readFileSync(catalogFile(), "utf8");
     const store = await import("./catalogStore");
 

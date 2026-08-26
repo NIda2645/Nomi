@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import type { ModelParameterControl } from '../../../../config/modelCatalogMeta'
 import {
-  buildImageUrlSlots,
   isImportedComfyWorkflowModel,
   parseControlInput,
   shouldUseVideoFrameSlotFallback,
   videoAspectDefaultPatch,
   type DynamicModelControl,
 } from './parameterControlModel'
+import { buildImageUrlSlots } from '../../model/parameterReferenceSlots'
 
 // parseControlInput 按控件类型回类型。关键修复（2026-06-16）：select 按选中 option 的声明类型回类型——
 // 数值 option（如 duration 离散枚举 4/8/12）回 number 整数，避免发字符串 "8" 被 vendor 400。
