@@ -102,6 +102,12 @@ export type { AntigravityConnectionStatus } from '../../electron/shared/antigrav
 - [x] 修复后仅与本次 selected vendor/model identity 匹配的有效 Comfy contract 可让 empty/null 权威；non-Comfy nonempty snake 保持合法，camel 聚合不被 empty default 吞；Antigravity 不再提前派生重复 `reference_images`。identity 贯穿 profile/process preflight、custom-call 与 audio 所有生产 `taskTemplateParams` 调用。原 3 项组合 RED + 2 项 contract RED 转绿，组合定向 32 文件 / 561 测试通过，typecheck 通过。
 - [x] 完整 `pnpm run gates` 退出码 0：802 个测试文件中 801 通过 / 1 跳过，7627 项测试中 7626 通过 / 1 跳过；lint 0 错误 / 96 个存量 warning，typecheck、测试类型门与 renderer/Electron build 均通过。提交 merge 前再次精确 guard `d43457bd64c66ff6f9f02e3529fd4a43d687f6c1`，普通 push PR source，不合并 PR。
 
+## Task 10：终审——text image selection 绑定（TDD）
+
+- [x] 先写并观察 direct/stream RED：selected non-Comfy 即使携带 stale valid Comfy exact contract，也必须使用真实 generic reference；真正 selected Comfy 的 pending empty contract 不得回退到 stale generic image。首轮 direct/stream 两项按预期失败、Comfy pending 两项通过。
+- [x] `executeTextTask` 调用 `firstReferenceImage` 时传入实际 `{ vendorKey, modelKey }`；审计所有 production identity-aware helper 调用点无遗漏。修复后新增 4 项全绿，组合定向 19 文件 / 383 测试通过。
+- [x] 运行 text/runtime 与组合定向回归，再运行完整 `pnpm run gates`；完整 gates 退出码 0：803 个测试文件中 802 通过 / 1 跳过，7631 项测试中 7630 通过 / 1 跳过；lint 0 错误 / 96 存量 warning，typecheck、测试类型门与 renderer/Electron build 均通过。提交 scoped fix，远端 head guard `3730d2651724fc8d5269ae5a38c47455420fd15c` 后普通 push，不合并 PR。
+
 ## 回滚
 
 未发布前保留隔离工作树和原 PR 头，不影响主线。发布后若需撤销，通过后续修复 PR 或明确批准的 revert，不 force push、不 reset 共享树。
