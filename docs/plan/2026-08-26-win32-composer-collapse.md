@@ -98,9 +98,13 @@ win32 只是恒定少 32px，离悬崖最近。
 
 结构保证（不靠自觉）：
 - `resolveComposerViewportGeometry` / `resolveComposerViewportPanDelta` 是纯函数，直接用 win32 实测几何写单测钉死。
-- 走查加一条**在 win32 等效 stage 几何（1040×631）下**的断言——**这条在 Linux CI 上就能红**，
+- 走查加一条**把窗口缩到下限**的断言（`composer-usable-at-min-window`）——**这条在 Linux CI 上就能红**，
   不再依赖有没有 Windows job。这是本轮最重要的一条：原断言 2026-08-17 就在，红了 9 天没人看见，
   根因是 CI 没有 Windows job，而**把复现条件做成平台无关**比补一个 2x 计费的 Windows job 更根治。
+
+  钉在 `BrowserWindow` 的 `minWidth`/`minHeight`（1100×720）而非硬编码 `1040×631`：
+  「我们承诺支持的最小窗口下 composer 必须可用」这个断言随 UI 演化仍然成立，
+  而硬编码的 stage 尺寸一旦外壳改动就会**悄悄不再复现**（假绿），比不写还危险。
 
 ## 6. 修后实测（mac，每档独立冷启动，避免继承上一档挣来的平移）
 
@@ -143,4 +147,48 @@ win32 只是恒定少 32px，离悬崖最近。
       同跑的 `reopen-project` / `export-mp4` 仍绿，说明红是这条里程碑挣来的，不是连带塌方。
 - [x] 新里程碑插入后 j5 其余里程碑不受影响：`modify-project` 3/3、`reopen-project` 4/4、
       `export-mp4` 3/3（真导出 MP4，ffprobe 读到 h264 1920×1080 2.0s）——窗口缩放后已还原，没漏给后续里程碑
-- [ ] Windows CI（`win-gate.yml`）转绿，截图人眼确认
+- [x] **Windows CI 实测：原 bug 已修**（run 32976642835）。`reopen-project` 4/4 通过，
+      stage 与原报告逐位一致（`{top:88, right:1100, bottom:719, left:60}`）：
+
+      | | cardHeight | promptVisH | actionInCard |
+      |---|---|---|---|
+      | 原报告 | 26 | 0 | false |
+      | 修后 win32 | **150** | **38** | **true** |
+
+      win32 实测 diag 同时坐实了 §3 的三条：`hasWindowbar: true`（自绘标题栏在）、
+      `timelineHandle.top: 673.5`（**先按 CSS 推的是 673**，实测 673.5；水平区间 491–669
+      与 composer 290–870 确实重叠）、`spaceAbove: 12`（**恰等于 VIEWPORT_MARGIN =
+      已推到极限**）、`cardHeight 150 = styleMaxHeight = styleMinHeight`（下限兜住）。
+      即 win32 走的正是「平移推满 + 下限兜底」这条路，与 §6 窗口下限那一档同构。
+
+- [x] **Windows CI 整条 job 转绿**（run 32977630678：`pass@1: 2/2 · infra 错误 0`，
+      j5 四条里程碑全过，含 `export-mp4` 真导出）。截图已人眼确认：composer 满高渲染，
+      模式行 / 提示词区 / 底栏深色圆形 ↑ 钮都在卡内。
+
+## 8. 首轮那条红其实是工装在骗人（已由 #182 独立进 main）
+
+首轮 win32 run 整体红，但红的是 `export-mp4`：
+`infra error: ENOENT ... nomi-export-*.partial.mp4`。这**不是导出坏了**，是走查自己的两个 bug 叠着：
+① ffmpeg 在写的临时文件命名为 `<final>.partial.mp4`，同样 `endsWith(".mp4")`，必被当成品捞进来；
+② `filter` 与 `sort` 各 stat 一次，ffmpeg 在这两次之间把它改名成最终名，第二次 stat 直接 ENOENT
+抛穿，被 harness 记成 infra error。属于「harness 的 catch 把自己的 bug 洗成产品结论」那一族。
+全平台都在，Windows 只是导出慢、正好把竞态窗口撞开。
+
+修法（排掉 `.partial.`、stat 只做一次随条目带走、容忍竞态中消失）本轮曾从侧分支 `d33d4660` 搬过来，
+但 2026-08-26 当天 **#182 已把它独立并进 main**，故本分支 rebase 后不再重复携带——
+`latestExport` 与 `win-gate.yml` 两处都与 main 逐字一致，本 PR 只留 composer 修复本身。
+
+## 9. 一条要说清的局限：新里程碑在 GH Windows runner 上是退化的
+
+`composer-usable-at-min-window` 在这次 win32 run 里量到的几何与 `reopen-project`**逐位相同**
+（composer top 均为 548.800048828125）。原因是 **GH windows-latest 上窗口本来就已经贴着下限**：
+`stage.bottom 719` 反推窗口内容高 ≈720 = `BrowserWindow.minHeight`，
+即 harness 的 `setBounds({1680,1050})` 早被 runner 的显示尺寸夹死，我再 setBounds(1100,720) 什么也没变。
+
+**这同时是「为什么只有 Windows 红」的更准确答案**：不只是那 32px 自绘标题栏——
+是 GH Windows runner 把窗口压到了下限，而 Linux 的 Xvfb 给足 1680×1050 从来碰不到悬崖；
+32px 标题栏只是让同样的 720 内容高在 win32 只剩 631 的 stage。
+
+所以这条里程碑**在 win32 CI 上不提供额外覆盖**（那台机器上它等价于 `reopen-project`），
+它的价值在 **Linux/mac**——那里它是唯一会把窗口真正缩到下限的入口，且已验它会红（§7）。
+两条合起来才覆盖住：win32 CI 天然在下限、Linux CI 由这条主动制造下限。
