@@ -36,18 +36,21 @@ export function readParameterReferenceContract(meta: Record<string, unknown> | u
   if (declaration.modelKey !== identity.modelKey || declaration.vendorKey !== identity.vendorKey) return null
   if (!Array.isArray(declaration.slots)) return null
   const seen = new Set<string>()
-  const slots = declaration.slots.flatMap((value): ParameterReferenceSlot[] => {
-    const slot = record(value)
+  const slots: ParameterReferenceSlot[] = []
+  for (const value of declaration.slots) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const slot = value as Record<string, unknown>
     const key = text(slot.key)
-    if (!key || seen.has(key) || !['reference', 'first_frame', 'last_frame'].includes(String(slot.group))) return []
+    if (!key || seen.has(key) || !['reference', 'first_frame', 'last_frame'].includes(String(slot.group))) return null
+    if (slot.mediaKind !== undefined && slot.mediaKind !== 'image' && slot.mediaKind !== 'video') return null
     seen.add(key)
-    return [{
+    slots.push({
       key,
       label: text(slot.label) || key,
       group: slot.group as ParameterReferenceGroup,
       ...(slot.mediaKind === 'image' || slot.mediaKind === 'video' ? { mediaKind: slot.mediaKind } : {}),
-    }]
-  })
+    })
+  }
   return { ...identity, slots }
 }
 

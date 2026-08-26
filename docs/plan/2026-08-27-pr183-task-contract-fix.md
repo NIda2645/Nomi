@@ -114,3 +114,18 @@ introduced, so rollback requires no data transformation.
   `lastFrameUrl` were refilled from meta, and `activeAssetUrls` became an array.
   The exact-only resolver boundary and final exact overlay made all 41 cases
   pass while retaining the non-Comfy controls.
+
+## Review follow-up: atomic parameter contract parsing
+
+- Parse `parameterReferenceSlots` as one fail-closed contract. A non-object
+  slot, invalid or empty key, invalid group, duplicate key, or explicit
+  `mediaKind` outside `image`/`video` invalidates the entire declaration.
+- Preserve the existing optional-media schema: an omitted `mediaKind` remains
+  image-compatible, while explicit `null`, numeric values, and `audio` are not
+  treated as omission.
+- An invalid declaration must not partially activate the Comfy exact-only
+  boundary. Resolver and final request assembly remain on the legacy path until
+  the complete declaration is valid; identity mismatches remain invalid.
+- TDD evidence: parser and final-wire tables first failed all seven malformed
+  declaration cases (14 failures total); the atomic parser made the same 57
+  focused assertions pass without changing either consumer.

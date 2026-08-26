@@ -94,6 +94,60 @@ function expectOnlyKeyedReference(
 }
 
 describe('multiple declared media inputs retain identity through the final wire template', () => {
+  it.each([
+    ['non-object slot', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      null,
+    ]],
+    ['invalid group', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      { key: 'bad-group', label: 'Bad', group: 'other', mediaKind: 'image' },
+    ]],
+    ['empty key', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      { key: '   ', label: 'Bad', group: 'reference', mediaKind: 'image' },
+    ]],
+    ['duplicate key', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      { key: 'comfy_image_1', label: 'Duplicate', group: 'reference', mediaKind: 'image' },
+    ]],
+    ['audio mediaKind', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      { key: 'bad-media', label: 'Bad', group: 'reference', mediaKind: 'audio' },
+    ]],
+    ['null mediaKind', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      { key: 'bad-media', label: 'Bad', group: 'reference', mediaKind: null },
+    ]],
+    ['numeric mediaKind', [
+      { key: 'comfy_image_1', label: 'Reference', group: 'reference', mediaKind: 'image' },
+      { key: 'bad-media', label: 'Bad', group: 'reference', mediaKind: 1 },
+    ]],
+  ])('keeps the legacy resolver and request path when the contract contains %s', (_name, slots) => {
+    const legacyUrl = 'https://legacy.test/reference.png'
+    const node: GenerationCanvasNode = {
+      id: 'invalid-contract', kind: 'image', title: '', prompt: 'restyle', position: { x: 0, y: 0 },
+      meta: {
+        modelKey: 'workflow',
+        modelVendor: 'comfyui-local',
+        parameterReferenceSlots: {
+          modelKey: 'workflow',
+          vendorKey: 'comfyui-local',
+          slots,
+        },
+        comfy_image_1: 'https://exact.test/should-not-activate.png',
+        referenceImages: [legacyUrl],
+      },
+    }
+
+    const references = resolveGenerationReferences(node)
+    expect(references.parameterReferenceUrls).toBeUndefined()
+    expect(references.referenceImages).toEqual([legacyUrl])
+    const { request } = buildCatalogTaskRequest(node, { references })
+    expect(request.kind).toBe('image_edit')
+    expect(request.extras?.referenceImages).toEqual([legacyUrl])
+  })
+
   it.each([false, true])('keeps reverse-selected video slots independent, including pending=%s', (pending) => {
     const node: GenerationCanvasNode = { id: 'target', kind: 'video', title: '', prompt: '', position: { x: 0, y: 0 },
       meta: projectParameterReferenceSlots({ modelKey: 'dual', modelVendor: 'comfyui-local' }, { parameters: built.parameters }) }
