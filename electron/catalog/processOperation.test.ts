@@ -39,10 +39,11 @@ describe("Antigravity image process application route", () => {
   const artifact = { bytes: Buffer.from("decoded image bytes"), filename: "crane.jpg", mimeType: "image/jpeg", width: 64, height: 64 };
   const result: AntigravityResult = { text: "done", conversationId: "conversation", usage: { inputTokens: 1, outputTokens: 2 }, artifacts: [artifact] };
   const deterministicWrite = vi.fn(() => ({ data: { url: "nomi-local://asset/project/crane.jpg" } }));
-  const input = (mode: string, context: JsonRecord): ProcessOperationInput => ({
+  const input = (mode: string, context: JsonRecord): ProcessOperationInput & { stage: "create" | "query" } => ({
     process: { bin: "agy", parser: "antigravity-cli-image", args: [mode] }, context,
     projectId: "project", writeAsset, writeDeterministicAsset: deterministicWrite,
     identity: { vendorKey: "antigravity-cli", modelKey: "generate_image", taskKind: mode === "query_result" ? "text_to_image" : mode },
+    stage: mode === "query_result" ? "query" : "create",
   });
   beforeEach(() => { deterministicWrite.mockClear(); runAntigravityTask.mockResolvedValue(result); });
   const submit = async (mode: string, refs?: unknown) => {
@@ -111,6 +112,14 @@ describe("Antigravity image process application route", () => {
       ...raw,
       identity: { ...raw.identity!, vendorKey: "attacker" },
     })).rejects.toThrow("ANTIGRAVITY_INVALID_CONFIG");
+    expect(runAntigravityTask).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["create", "query_result"],
+    ["query", "text_to_image"],
+  ] as const)("rejects a %s stage carrying the other stage's process", async (stage, mode) => {
+    const raw = input(mode, stage === "create" ? { request: { prompt: "crane" } } : { providerMeta: { task_id: "task" } });
+    await expect(executeProcessOperation({ ...raw, stage })).rejects.toThrow("ANTIGRAVITY_INVALID_CONFIG");
     expect(runAntigravityTask).not.toHaveBeenCalled();
   });
 });

@@ -17,7 +17,8 @@ import { materializeInputFiles } from "./dreaminaInputFiles";
 import type { JsonRecord } from "../jsonUtils";
 import { queryCodexImageOperation, startCodexImageOperation } from "./codexCli";
 import { executeAntigravityImageOperation } from "./antigravityImageOperation";
-import { assertCanonicalAntigravityProcessIdentity } from "./antigravityCatalog";
+import { assertCanonicalAntigravityOperation, assertCanonicalAntigravityProcessIdentity, type AntigravityProcessStage } from "./antigravityCatalog";
+export { assertCanonicalAntigravityOperation };
 
 /** runtime 注入的写资产原语（写本地字节进项目素材，返回含 data.url 的记录）。 */
 export type WriteAsset = (projectId: string, bytes: Buffer, fileName: string, contentType: string, meta: JsonRecord) => unknown;
@@ -35,6 +36,7 @@ export type ProcessOperationInput = {
   signal?: AbortSignal;
   /** Catalog identity carried across the runtime boundary; process declarations alone are not authority. */
   identity?: { vendorKey: string; modelKey?: string; taskKind: string };
+  stage?: AntigravityProcessStage;
 };
 
 /** 归一后的「类 HTTP 响应」形状。response_mapping/statusMapping 据此读取（见 dreaminaVideos.ts）。 */
@@ -51,8 +53,8 @@ export type ProcessResponse = {
 
 export async function executeProcessOperation(input: ProcessOperationInput): Promise<{ response: unknown; request: unknown }> {
   if (input.process.parser === "antigravity-cli-image") {
-    if (!input.identity) throw new Error("ANTIGRAVITY_INVALID_CONFIG");
-    assertCanonicalAntigravityProcessIdentity({ ...input.identity, process: input.process });
+    if (!input.identity || !input.stage) throw new Error("ANTIGRAVITY_INVALID_CONFIG");
+    assertCanonicalAntigravityProcessIdentity({ ...input.identity, stage: input.stage, process: input.process });
     return executeAntigravityImageOperation(input);
   }
   if (input.process.parser === "codex-cli-image") {

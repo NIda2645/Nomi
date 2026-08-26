@@ -58,6 +58,15 @@ export type { AntigravityConnectionStatus } from '../../electron/shared/antigrav
 - [ ] 再次确认 PR #188 远端 head 仍为起始 oid `2ff8517a131ec2a3f902fb0aef5c71da6b74aeaa`，普通 push `HEAD:codex/agnes-gemini-integration-20260826`，禁止 force。
 - [ ] 可将 PR 从 draft 标记 ready，等待远端 Quality Gate / Mac Package；未经用户明确要求不得 merge。
 
+## Task 5：规格审查二轮——operation envelope 与 stage 绑定（TDD）
+
+- [x] 先写并观察 RED：篡改 create body、create 新增 paramMap、query 新增 body、create 换成 `query_result`、query 换成 `text_to_image` 均拒绝；额外 operation 字段与错误 response_mapping 也拒绝。
+- [x] 将 canonical builder 提升为完整 create/query `HttpOperation` envelope 单一真相；比较覆盖所有字段且不依赖对象 key 顺序。
+- [x] 显式引入 `create|query` stage：`executeProfileOperation` 在持有完整 operation 的边界校验对应 canonical envelope，再将 stage + identity 传给 `executeProcessOperation`；process choke 复核该 stage 的 canonical process。
+- [x] 追踪生产 create/query 调用点（任务提交、任务轮询、catalog mapping 测试、adapter verification），显式传 stage；其他 vendor 的 HTTP/process transport 保持兼容，不接受 renderer 自报的 trusted flag。
+- [x] 定向回归 27 文件 / 325 测试、typecheck、build、完整 gates 全绿；完整测试 780 文件中 779 通过 / 1 跳过，7302 项中 7301 通过 / 1 跳过。
+- [ ] 提交独立 fix；确认远端仍为 `01c7a52f7c049f140dc98d2132bf33bf72833cff`，普通 push 同一 PR 源分支，不 force、不 merge。
+
 ## 回滚
 
 未发布前保留隔离工作树和原 PR 头，不影响主线。发布后若需撤销，通过后续修复 PR 或明确批准的 revert，不 force push、不 reset 共享树。

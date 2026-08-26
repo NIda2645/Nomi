@@ -17,7 +17,7 @@ import {
   authHeaders as buildAuthHeaders,
   extractTaskId as extractTaskIdShared,
 } from "./ai/requestPipeline";
-import { executeProcessOperation } from "./catalog/processOperation";
+import { assertCanonicalAntigravityOperation, executeProcessOperation } from "./catalog/processOperation";
 import { executeTextTask } from "./textTaskRunner";
 import { runAudioTask } from "./audioTaskRunner";
 import { firstString, isJsonRecord, trim, type JsonRecord } from "./jsonUtils";
@@ -241,12 +241,12 @@ export async function executeProfileOperation(input: {
   request: TaskRequest;
   operation: HttpOperation;
   providerMeta?: JsonRecord;
-  localAssetReader?: import("./catalog/assetLocalization").LocalAssetReader;
-  signal?: AbortSignal;
+  localAssetReader?: import("./catalog/assetLocalization").LocalAssetReader; signal?: AbortSignal; stage?: "create" | "query";
 }): Promise<{ response: unknown; request: unknown }> {
-  // 进程型 transport（P4 声明驱动）：op 声明 process（本地 CLI dreamina）→ spawn，不走 HTTP。
-  // 渲染/spawn/本地文件导入全在 processOperation（注入 writeAsset，避免 ↔ runtime 循环依赖）。
+  // 进程型 transport：op 声明 process → spawn；渲染/本地文件导入在 processOperation（注入 writeAsset 避免循环依赖）。
   if (input.operation.process) {
+    if (input.operation.process.parser === "antigravity-cli-image" && !input.stage) throw new Error("ANTIGRAVITY_INVALID_CONFIG");
+    if (input.operation.process.parser === "antigravity-cli-image") assertCanonicalAntigravityOperation({ vendorKey: input.vendor.key, modelKey: input.model.modelKey, taskKind: input.request.kind, stage: input.stage!, operation: input.operation });
     const context = templateContext(
       input.request,
       input.model,
@@ -258,7 +258,7 @@ export async function executeProfileOperation(input: {
       process: input.operation.process,
       context,
       projectId: trim(input.request.extras?.projectId) || activeTaskProjectFallback(),
-      writeAsset, writeDeterministicAsset, signal: input.signal, identity: { vendorKey: input.vendor.key, modelKey: input.model.modelKey, taskKind: input.request.kind },
+      writeAsset, writeDeterministicAsset, signal: input.signal, stage: input.stage, identity: { vendorKey: input.vendor.key, modelKey: input.model.modelKey, taskKind: input.request.kind },
     });
   }
   // multipart transport（P4）：op 声明 multipart（/v1/images/edits 图生图文件上传）→ 全套分发在 multipartOperation
@@ -411,12 +411,12 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
     let createOperation = mapping.create;
     let executed;
     try {
-      executed = await executeProfileOperation({ vendor, model, apiKey, request, operation: createOperation });
+      executed = await executeProfileOperation({ vendor, model, apiKey, request, operation: createOperation, stage: "create" });
     } catch (error) {
       const fallbackOp = chatImageFallbackOperation(error, createOperation, kind);
       if (!fallbackOp) throw error;
       createOperation = fallbackOp;
-      executed = await executeProfileOperation({ vendor, model, apiKey, request, operation: createOperation });
+      executed = await executeProfileOperation({ vendor, model, apiKey, request, operation: createOperation, stage: "create" });
     }
     const normalized = await buildProfileTaskResult({
       response: executed.response,
