@@ -177,15 +177,28 @@ describe('multiple declared media inputs retain identity through the final wire 
     ])
 
     const meta = projectParameterReferenceSlots(
-      { modelKey: 'text-key-workflow', modelVendor: 'comfyui-local' },
+      {
+        modelKey: 'text-key-workflow', modelVendor: 'comfyui-local',
+        referenceImages: ['https://stale.test/reference.png'],
+        firstFrameUrl: 'https://stale.test/first.png',
+      },
       imported.model.meta,
     )
+    expect(meta.parameterReferenceSlots).toEqual({
+      modelKey: 'text-key-workflow', vendorKey: 'comfyui-local', slots: [],
+    })
     expect(readParameterReferenceSlots(meta)).toEqual([])
+    const reloadedMeta = JSON.parse(JSON.stringify(meta)) as Record<string, unknown>
     const node: GenerationCanvasNode = {
-      id: 'text-key-workflow', kind: 'image', title: '', prompt: 'draw', position: { x: 0, y: 0 }, meta,
+      id: 'text-key-workflow', kind: 'image', title: '', prompt: 'draw', position: { x: 0, y: 0 }, meta: reloadedMeta,
     }
     const references = resolveGenerationReferences(node)
-    expect(buildCatalogTaskRequest(node, { references }).request.kind).toBe('text_to_image')
+    expect(references).toMatchObject({
+      parameterReferenceUrls: {}, referenceImages: [], referenceVideos: [], referenceAudios: [],
+    })
+    const request = buildCatalogTaskRequest(node, { references }).request
+    expect(request.kind).toBe('text_to_image')
+    for (const alias of genericReferenceAliases) expect(request.extras).not.toHaveProperty(alias)
   })
 
   it.each([false, true])('keeps reverse-selected video slots independent, including pending=%s', (pending) => {

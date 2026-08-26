@@ -162,3 +162,22 @@ introduced, so rollback requires no data transformation.
   the complete feedback walkthrough passed twice consecutively. The final full
   gate run passed 777 test files and 7,184 tests (one file/test skipped by the
   repository baseline).
+
+## Review follow-up: contract-first guards and explicit empty contracts
+
+- Treat a valid Comfy parameter contract as the media truth boundary before
+  inspecting any generic image/frame/archetype aliases. A pending or empty
+  declared image value cannot be revived by stale legacy metadata in
+  `firstReferenceImage`, image-edit guards, reachability, or headless reference
+  projection.
+- Persist `{ modelKey, vendorKey, slots: [] }` when a Comfy catalog entry has an
+  explicit parameter declaration but no media parameters. This distinguishes a
+  real text-only workflow from missing/invalid catalog metadata.
+- Activate resolver exact-only behavior, structural task-kind selection, and
+  request filtering from contract validity rather than `slots.length`.
+  Non-Comfy empty declarations and invalid identities remain on the legacy path.
+- TDD evidence: the focused RED run failed 19 assertions across the main-process
+  guard, first-reference/reachability paths, empty-contract projection, and the
+  import-to-final-request wire. The contract-first implementation made the
+  expanded focused set pass 154 assertions and passed renderer/electron
+  typechecking before main integration.

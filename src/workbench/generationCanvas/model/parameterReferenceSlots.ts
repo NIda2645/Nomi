@@ -37,6 +37,13 @@ export function usesExplicitParameterReferenceDeclarations(meta: unknown, vendor
       && 'comfyWorkflowImport' in (meta as Record<string, unknown>))
 }
 
+function hasCatalogParameterDeclaration(meta: unknown): boolean {
+  const catalog = record(meta)
+  return Array.isArray(catalog.parameters)
+    || Array.isArray(catalog.parameterControls)
+    || Object.prototype.hasOwnProperty.call(catalog, 'comfyWorkflowImport')
+}
+
 export function isParameterReferenceControl(control: ModelParameterControl, explicitOnly = false): boolean {
   return explicitOnly
     ? control.type === 'image-url' || control.mediaKind === 'image' || control.mediaKind === 'video'
@@ -83,7 +90,8 @@ export function projectParameterReferenceSlots(meta: Record<string, unknown>, ca
     }
   }
   delete next[DECLARATION_KEY]
-  if (slots.length && identity.modelKey) next[DECLARATION_KEY] = { ...identity, slots }
+  const explicitEmptyComfyContract = isComfyuiVendorKey(identity.vendorKey) && hasCatalogParameterDeclaration(catalogMeta)
+  if (identity.modelKey && (slots.length || explicitEmptyComfyContract)) next[DECLARATION_KEY] = { ...identity, slots }
   return next
 }
 

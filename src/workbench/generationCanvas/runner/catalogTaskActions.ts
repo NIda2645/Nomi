@@ -79,7 +79,7 @@ const COMFY_PARAMETER_GENERIC_REFERENCE_KEYS = new Set([
 
 function comfyParameterContract(meta: Record<string, unknown>) {
   const contract = readParameterReferenceContract(meta)
-  return contract?.slots.length && isComfyuiVendorKey(contract.vendorKey) ? contract : null
+  return contract && isComfyuiVendorKey(contract.vendorKey) ? contract : null
 }
 
 function parameterContractRequestMeta(meta: Record<string, unknown>): Record<string, unknown> {

@@ -25,8 +25,8 @@ import {
 } from '../../../config/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
-import { readParameterReferenceSlots } from '../model/parameterReferenceSlots'
 import { resolveComfyWorkflowTaskKind } from '../../../../electron/catalog/comfyuiWorkflowTaskContract'
+import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
 import { loadUsableVendorKeys, remapArchetypeMode, resolveUsableModelForNode } from './usableVendorModel'
 
 export type CatalogTaskActionOptions = {
@@ -218,10 +218,10 @@ export function resolveTaskKind(node: GenerationCanvasNode, references: Partial<
     const archetype = resolveTaskArchetype(meta)
     if (archetype) return currentArchetypeMode(archetype, meta).transportTaskKind ?? archetype.transportTaskKind
   }
-  const parameterSlots = readParameterReferenceSlots(meta)
-  if (isComfyuiVendorKey(selectedVendor(node)) && parameterSlots.length
+  const parameterContract = readParameterReferenceContract(meta)
+  if (isComfyuiVendorKey(selectedVendor(node)) && parameterContract && isComfyuiVendorKey(parameterContract.vendorKey)
     && (executionKind === 'image' || executionKind === 'video' || executionKind === 'model3d')) {
-    return resolveComfyWorkflowTaskKind(executionKind, parameterSlots)
+    return resolveComfyWorkflowTaskKind(executionKind, parameterContract.slots)
   }
   if (executionKind === 'video') {
     const hasFrame = Boolean(

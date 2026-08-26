@@ -47,6 +47,19 @@ describe('parameter reference assignment shared contract', () => {
     }))).toEqual([{ key: 'bound_media', label: 'Bound media', group: 'reference' }])
   })
 
+  it('persists an explicit empty Comfy media contract but not missing catalog metadata or non-Comfy emptiness', () => {
+    const comfy = { modelKey: 'text-only', modelVendor: 'comfyui-local' }
+    expect(projectParameterReferenceSlots(comfy, { parameters: [] }).parameterReferenceSlots).toEqual({
+      modelKey: 'text-only', vendorKey: 'comfyui-local', slots: [],
+    })
+    expect(projectParameterReferenceSlots(comfy, {}).parameterReferenceSlots).toBeUndefined()
+    expect(projectParameterReferenceSlots(comfy, undefined).parameterReferenceSlots).toBeUndefined()
+    expect(projectParameterReferenceSlots(
+      { modelKey: 'legacy', modelVendor: 'custom' },
+      { parameters: [] },
+    ).parameterReferenceSlots).toBeUndefined()
+  })
+
   it('reserves explicit keys before ordered legacy edges, including pending sources', () => {
     const node = target()
     const pending = { ...source('pending'), result: undefined }

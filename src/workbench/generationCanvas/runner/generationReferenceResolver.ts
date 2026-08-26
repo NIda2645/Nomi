@@ -131,7 +131,7 @@ export function resolveGenerationReferences(
   let stagingComposition = false
   const parameterContract = readParameterReferenceContract(node.meta)
   const parameterSlots = parameterContract?.slots ?? []
-  const usesComfyParameterContract = parameterSlots.length > 0 && isComfyuiVendorKey(parameterContract?.vendorKey)
+  const usesComfyParameterContract = Boolean(parameterContract && isComfyuiVendorKey(parameterContract.vendorKey))
   const parameterAssignments = resolveIndexedParameterReferenceAssignments(node, parameterSlots, nodesById, edgesByTarget.get(node.id) || [])
   const slotByEdgeId = new Map(parameterAssignments.flatMap(({ slot, edge }) => edge ? [[edge.id, slot] as const] : []))
   const parameterReferenceUrls: Record<string, string | null> = Object.fromEntries(parameterAssignments
