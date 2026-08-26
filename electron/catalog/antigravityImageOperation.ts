@@ -1,4 +1,4 @@
-import { runAntigravityTask } from "../ai/antigravityTask";
+import { runPreparedAntigravityTask } from "../ai/antigravityTask";
 import type { AntigravityResult } from "../ai/antigravityProtocol";
 import { LocalTaskJobs } from "../tasks/localTaskJobs";
 import type { ProcessOperationInput } from "./processOperation";
@@ -33,9 +33,11 @@ export async function executeAntigravityImageOperation(input: ProcessOperationIn
     || (mode === "image_edit" ? !imageUrls.length : imageUrls.length > 0)) throw new Error("ANTIGRAVITY_INVALID_IMAGES");
   const prompt = typeof request.prompt === "string" ? request.prompt : "";
   if (!prompt.trim()) throw new Error("ANTIGRAVITY_EMPTY_PROMPT");
+  if (input.antigravityPreflight.prompt !== prompt || input.antigravityPreflight.modelId !== "auto"
+    || input.antigravityPreflight.capability !== (mode === "image_edit" ? "edit" : "image")
+    || input.antigravityPreflight.images.length !== imageUrls.length) throw new Error("ANTIGRAVITY_PREFLIGHT_MISMATCH");
   const taskId = antigravityImageJobs.start(input.projectId, async (signal) => {
-    return runAntigravityTask({ prompt, model: "auto", capability: mode === "image_edit" ? "edit" : "image",
-      imageUrls: imageUrls as string[], signal }, { preflight: input.antigravityPreflight });
+    return runPreparedAntigravityTask(input.antigravityPreflight!, { signal });
   }, input.signal);
   return { response: { task_id: taskId, status: "queued", image_urls: [] },
     request: { transport: "antigravity-cli", operation: mode, referenceCount: imageUrls.length } };

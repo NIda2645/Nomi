@@ -9,7 +9,7 @@ vi.mock("./dreaminaCli", () => ({
   resolveDreaminaBin: () => resolveDreaminaBin(),
 }));
 const runAntigravityTask = vi.fn();
-vi.mock("../ai/antigravityTask", () => ({ runAntigravityTask: (...args: unknown[]) => runAntigravityTask(...args) }));
+vi.mock("../ai/antigravityTask", () => ({ runPreparedAntigravityTask: (...args: unknown[]) => runAntigravityTask(...args) }));
 
 import { executeProcessOperation } from "./processOperation";
 import { DREAMINA_CURATED_MAPPINGS } from "./dreaminaVideos";
@@ -49,7 +49,10 @@ describe("Antigravity image process application route", () => {
     projectId: "project", writeAsset, writeDeterministicAsset: deterministicWrite,
     identity: { vendorKey: "antigravity-cli", modelKey: "generate_image", taskKind: mode === "query_result" ? "text_to_image" : mode },
     stage: mode === "query_result" ? "query" : "create",
-    ...(mode === "query_result" ? {} : { antigravityPreflight: { ...preflight, capability: mode === "image_edit" ? "edit" as const : "image" as const } }),
+    ...(mode === "query_result" ? {} : { antigravityPreflight: { ...preflight,
+      prompt: String((context.request as JsonRecord)?.prompt ?? ""), model: "auto",
+      images: mode === "image_edit" ? [{ bytes: Buffer.from("prepared"), mimeType: "image/png" }] : [],
+      capability: mode === "image_edit" ? "edit" as const : "image" as const } }),
   });
   beforeEach(() => { deterministicWrite.mockClear(); runAntigravityTask.mockResolvedValue(result); });
   const submit = async (mode: string, refs?: unknown) => {
@@ -67,10 +70,9 @@ describe("Antigravity image process application route", () => {
   ])("routes %s to its exact CLI capability and imports the result once", async (mode, refs, capability, imageUrls) => {
     const { id, started } = await submit(mode as string, refs);
     expect(started.response).toMatchObject({ task_id: id, status: "queued", image_urls: [] });
-    expect(runAntigravityTask).toHaveBeenCalledExactlyOnceWith(
-      { prompt: "make a crane", model: "auto", capability, imageUrls, signal: expect.any(AbortSignal) },
-      { preflight: expect.objectContaining({ capability }) },
-    );
+    expect(runAntigravityTask).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ prompt: "make a crane", capability }),
+      { signal: expect.any(AbortSignal) });
+    expect(runAntigravityTask.mock.calls[0][0].images).toHaveLength(imageUrls.length);
     expect(deterministicWrite).not.toHaveBeenCalled();
     expect((await query(id)).response).toMatchObject({ status: "succeeded", image_urls: ["nomi-local://asset/project/crane.jpg"] });
     await query(id);
@@ -113,6 +115,14 @@ describe("Antigravity image process application route", () => {
     await expect(executeProcessOperation({ ...raw, process: { ...raw.process, args: ["text_to_image", "extra"] } })).rejects.toThrow("ANTIGRAVITY_INVALID_CONFIG");
     await expect(executeProcessOperation({ ...raw, writeDeterministicAsset: undefined })).rejects.toThrow("ANTIGRAVITY_ASSET_WRITER_REQUIRED");
     await expect(executeProcessOperation({ ...raw, context: { request: { prompt: " " } } })).rejects.toThrow("ANTIGRAVITY_EMPTY_PROMPT");
+    expect(runAntigravityTask).not.toHaveBeenCalled();
+  });
+  it("rejects a prepared task bound to different prompt or media before local admission", async () => {
+    const raw = input("image_edit", { request: { prompt: "crane", params: { reference_images: ["nomi-local://reference"] } } });
+    await expect(executeProcessOperation({ ...raw, antigravityPreflight: { ...raw.antigravityPreflight!, prompt: "other" } }))
+      .rejects.toThrow("ANTIGRAVITY_PREFLIGHT_MISMATCH");
+    await expect(executeProcessOperation({ ...raw, antigravityPreflight: { ...raw.antigravityPreflight!, images: [] } }))
+      .rejects.toThrow("ANTIGRAVITY_PREFLIGHT_MISMATCH");
     expect(runAntigravityTask).not.toHaveBeenCalled();
   });
   it("rejects a reserved parser from an old poisoned catalog before dispatch", async () => {

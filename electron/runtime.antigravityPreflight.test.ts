@@ -18,7 +18,7 @@ vi.mock("electron", () => ({
 }));
 vi.mock("./ai/antigravityTask", () => ({
   prepareAntigravityTask: (...args: unknown[]) => mocks.preflight(...args),
-  runAntigravityTask: (...args: unknown[]) => mocks.run(...args),
+  runPreparedAntigravityTask: (...args: unknown[]) => mocks.run(...args),
 }));
 vi.mock("./events/vendorCallTrace", () => ({
   traceVendorRequested: (...args: unknown[]) => mocks.requested(...args),
@@ -33,7 +33,7 @@ const prepared = {
   discovery: { version: "1.1.21", models: [{ id: "real-model", label: "Real" }] },
   invocation: { command: "/probe/A/agy", args: [] },
   identity: { realpath: "/probe/A/agy", dev: "1", ino: "2", size: "3", mtimeNs: "4", ctimeNs: "5" },
-  env: {}, capability: "image", modelId: "auto",
+  env: {}, capability: "image", modelId: "auto", prompt: "draw", model: "auto", images: [],
 };
 
 async function writeCatalog(mutate?: (mapping: Record<string, unknown>) => Record<string, unknown>) {
@@ -99,7 +99,7 @@ describe("runTask Antigravity create preflight", () => {
     await expect(request(grantId)).resolves.toMatchObject({ status: "queued" });
     expect(spend.__spendGrantCountForTests()).toBe(0);
     expect(mocks.preflight).toHaveBeenCalledOnce();
-    expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ capability: "image" }), { preflight: prepared });
+    expect(mocks.run).toHaveBeenCalledWith(prepared, { signal: expect.any(AbortSignal) });
     expect(mocks.admitted).toHaveBeenCalledOnce(); expect(mocks.requested).toHaveBeenCalledOnce();
   });
 });

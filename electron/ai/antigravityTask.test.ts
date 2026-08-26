@@ -14,6 +14,8 @@ vi.mock("./antigravityEvidenceStore", () => ({ readAntigravityEvidence: mocks.re
 vi.mock("../assets/localAssetFile", () => ({ readNomiLocalAsset: mocks.local }));
 vi.mock("../hardenedFetch", () => ({ hardenedFetch: mocks.fetch }));
 import { loadAntigravityImage, prepareAntigravityTask, runAntigravityTask } from "./antigravityTask";
+import { runPreparedAntigravityTask } from "./antigravityTask";
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5foAAAAASUVORK5CYII=", "base64");
 describe("Antigravity task route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -33,7 +35,7 @@ describe("Antigravity task route", () => {
     expect(mocks.run).not.toHaveBeenCalled();
   });
   it("routes local vision bytes with the exact model and cancellation", async () => {
-    const bytes = Buffer.from("test"); mocks.local.mockReturnValue({ bytes, contentType: "image/png" });
+    const bytes = png; mocks.local.mockReturnValue({ bytes, contentType: "image/png" });
     const signal = new AbortController().signal;
     await runAntigravityTask({ prompt: "describe", model: "real-model", imageUrls: ["nomi-local://asset"], signal });
     expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ capability: "vision", model: "real-model", images: [{ bytes, mimeType: "image/png" }], signal, cliVersion: "1.1.21" }), expect.anything());
@@ -59,7 +61,9 @@ describe("Antigravity task route", () => {
     ["vision", "real-model"],
   ] as const)("requires exact current-version historical %s evidence", async (capability, model) => {
     mocks.hasPassed.mockReturnValue(false);
-    await expect(runAntigravityTask({ prompt: "hello", model, capability })).rejects.toThrow("ANTIGRAVITY_TEST_REQUIRED");
+    if (capability !== "image") mocks.local.mockReturnValue({ bytes: png, contentType: "image/png" });
+    await expect(runAntigravityTask({ prompt: "hello", model, capability,
+      ...(capability === "image" ? {} : { imageUrls: ["nomi-local://asset"] }) })).rejects.toThrow("ANTIGRAVITY_TEST_REQUIRED");
     expect(mocks.restore).toHaveBeenCalledWith([]);
     expect(mocks.hasPassed).toHaveBeenCalledWith({ capability, modelId: model }, "1.1.21");
     expect(mocks.run).not.toHaveBeenCalled();
@@ -72,9 +76,9 @@ describe("Antigravity task route", () => {
     expect(mocks.run).toHaveBeenCalledOnce();
   });
   it("reuses the exact prepared invocation even if later discovery would resolve a different binary", async () => {
-    const preflight = await prepareAntigravityTask({ model: "real-model", capability: "text" });
+    const preflight = await prepareAntigravityTask({ prompt: "hello", model: "real-model", capability: "text" });
     mocks.prepare.mockRejectedValue(new Error("resolver switched to B"));
-    await runAntigravityTask({ prompt: "hello", model: "real-model", capability: "text" }, { preflight });
+    await runPreparedAntigravityTask(preflight);
     expect(mocks.prepare).toHaveBeenCalledOnce();
     expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ cliVersion: "1.1.21" }), {
       preparedInvocation: expect.objectContaining({ invocation: { command: "/probe/A/agy", args: [] } }),

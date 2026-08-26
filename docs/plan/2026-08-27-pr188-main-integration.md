@@ -77,6 +77,15 @@ export type { AntigravityConnectionStatus } from '../../electron/shared/antigrav
 - [x] Antigravity/process/runtime 定向 18 文件 249 测试、typecheck、build 与完整 gates 全绿；完整测试 781 文件中 780 通过 / 1 跳过，7310 项中 7309 通过 / 1 跳过。`runtime.ts` 保持 539 行基线，非 Antigravity transport 与缓存命中分支未改变。
 - [ ] 提交本轮 scoped fix；核对远端 PR head 仍为 `d9212f9070cc4c4492708f7a3c70999a11954ac3`，普通 push 同源分支，不 force、不 merge。
 
+## Task 7：规格审查四轮——media bytes 纳入付费前完整 preflight（TDD）
+
+- [x] 先扩充 runTask RED：`file://`、不存在的 `nomi-local://`、超过 4 张、非法 data URL、local reader 抛错均在 create 返回前拒绝，grant/local job/admission/vendor trace 保持零副作用；新增文件首跑 7/7 按预期失败。
+- [x] 先扩充 task/process RED：合法 local/data reference 在 preflight 只读取/解码一次，queued 后的 job 只消费内存中的 prepared bytes，不再次读 URL；prepared task 绑定 prompt/model/capability/images 与第三轮 exact CLI invocation。
+- [x] 将 input/media materialization 收进 cache miss 后、grant 前的 `prepareAntigravityCreateOperation`；返回完整 main-owned prepared task，经 runtime → process choke → local job 透传，runPrepared 阶段只复核 abort/identity 并执行。
+- [x] 保持敏感 bytes 仅存在内存，不写日志/持久目录；沿用单图 20 MiB、总计 40 MiB、最多 4 张、MIME/URL/redirect 与 decoded image 现有边界。
+- [x] 回归 verification、query、owner/cancel、cache-hit、grant 与非 Antigravity transport；定向 20 文件 261 测试通过，完整 gates 全绿：782 文件中 781 通过 / 1 跳过，7319 项中 7318 通过 / 1 跳过，typecheck 与 renderer/Electron build 通过。
+- [x] 提交 scoped fix；提交前核对远端 PR head 仍为 `de26baf58cf6defa83fc948a5b8a289a5d16406d`，普通 push 同源分支，不 force、不 merge。
+
 ## 回滚
 
 未发布前保留隔离工作树和原 PR 头，不影响主线。发布后若需撤销，通过后续修复 PR 或明确批准的 revert，不 force push、不 reset 共享树。

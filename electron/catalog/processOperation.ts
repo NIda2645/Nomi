@@ -17,7 +17,7 @@ import { materializeInputFiles } from "./dreaminaInputFiles";
 import type { JsonRecord } from "../jsonUtils";
 import { queryCodexImageOperation, startCodexImageOperation } from "./codexCli";
 import { executeAntigravityImageOperation } from "./antigravityImageOperation";
-import type { AntigravityTaskPreflight } from "../ai/antigravityTask";
+import type { PreparedAntigravityTask } from "../ai/antigravityTask";
 import { assertCanonicalAntigravityOperation, assertCanonicalAntigravityProcessIdentity, type AntigravityProcessStage } from "./antigravityCatalog";
 export { assertCanonicalAntigravityOperation };
 export { prepareAntigravityCreateOperation } from "./antigravityCreatePreflight";
@@ -40,7 +40,7 @@ export type ProcessOperationInput = {
   identity?: { vendorKey: string; modelKey?: string; taskKind: string };
   stage?: AntigravityProcessStage;
   /** Main-owned create preflight; renderer/catalog fields cannot construct it. */
-  antigravityPreflight?: AntigravityTaskPreflight;
+  antigravityPreflight?: PreparedAntigravityTask;
 };
 
 /** 归一后的「类 HTTP 响应」形状。response_mapping/statusMapping 据此读取（见 dreaminaVideos.ts）。 */

@@ -241,7 +241,7 @@ export async function executeProfileOperation(input: {
   request: TaskRequest;
   operation: HttpOperation;
   providerMeta?: JsonRecord;
-  localAssetReader?: import("./catalog/assetLocalization").LocalAssetReader; signal?: AbortSignal; stage?: "create" | "query"; antigravityPreflight?: import("./ai/antigravityTask").AntigravityTaskPreflight;
+  localAssetReader?: import("./catalog/assetLocalization").LocalAssetReader; signal?: AbortSignal; stage?: "create" | "query"; antigravityPreflight?: import("./ai/antigravityTask").PreparedAntigravityTask;
 }): Promise<{ response: unknown; request: unknown }> {
   // 进程型 transport：op 声明 process → spawn；渲染/本地文件导入在 processOperation（注入 writeAsset 避免循环依赖）。
   if (input.operation.process) {
@@ -404,7 +404,7 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
     const fingerprint = recipeFingerprint(recipe);
     const cachedHit = readCachedTaskResult({ projectId, fingerprint, nodeId, extras: request.extras });
     if (cachedHit) return cachedHit as TaskResult;
-    const antigravityPreflight = await prepareAntigravityCreateOperation({ vendorKey, modelKey: model.modelKey, taskKind: kind, operation: mapping.create });
+    const antigravityPreflight = await prepareAntigravityCreateOperation({ vendorKey, modelKey: model.modelKey, taskKind: kind, operation: mapping.create, request });
     assertAndConsumeSpendGrant(grantId, nodeId); // 付费守卫：缓存未命中=真发 vendor，发前校验消费令牌
     // 中转生图路由回退（y7api 403 定案）：OpenAI images 端点被「分组未开通」类确定性拒绝（403 命中
     // 窄短语 / 404/405，未创建任务未扣费）→ 换 chat/completions 多模态 op 重发一次；结果归一按

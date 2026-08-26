@@ -3,7 +3,7 @@ import { hardenedFetch } from "../hardenedFetch";
 import { antigravityConnection, prepareAntigravity, type PreparedAntigravity } from "./antigravityConnection";
 import { readAntigravityEvidence } from "./antigravityEvidenceStore";
 import { runAntigravityProcess, type AntigravityRunOptions } from "./antigravityProcess";
-import type { AntigravityImageInput } from "./antigravityMedia";
+import { assertAntigravityMediaInput, prepareAntigravityImageInput, type AntigravityImageInput } from "./antigravityMedia";
 import type { AntigravityCapability } from "../shared/antigravity";
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -35,19 +35,35 @@ export async function loadAntigravityImage(url: string, signal?: AbortSignal): P
   return { bytes, mimeType };
 }
 
-export type AntigravityTaskPreflight = PreparedAntigravity & {
+export type PreparedAntigravityTask = PreparedAntigravity & {
   capability: AntigravityCapability;
   modelId: string;
+  prompt: string;
+  model?: string;
+  images: AntigravityImageInput[];
 };
 
 export async function prepareAntigravityTask(input: {
+  prompt: string;
   model?: string;
   capability: AntigravityCapability;
+  imageUrls?: unknown[];
   signal?: AbortSignal;
-}): Promise<AntigravityTaskPreflight> {
+}): Promise<PreparedAntigravityTask> {
   checkAbort(input.signal);
+  if (!input.prompt.trim()) throw new Error("ANTIGRAVITY_EMPTY_PROMPT");
+  const imageUrls = input.imageUrls ?? [];
+  if (imageUrls.length > 4 || imageUrls.some((url) => typeof url !== "string" || !url.trim())
+    || ((input.capability === "vision" || input.capability === "edit") ? !imageUrls.length : imageUrls.length > 0)) {
+    throw new Error("ANTIGRAVITY_INVALID_IMAGES");
+  }
+  const images: AntigravityImageInput[] = [];
+  for (const url of imageUrls) {
+    images.push(await prepareAntigravityImageInput(await loadAntigravityImage(url as string, input.signal), input.signal));
+  }
   const prepared = await prepareAntigravity(input.signal);
   checkAbort(input.signal);
+  assertAntigravityMediaInput(input.capability, images, prepared.discovery.version);
   const modelId = input.model || "auto";
   if (modelId !== "auto" && !prepared.discovery.models.some((model) => model.id === modelId)) {
     throw new Error("ANTIGRAVITY_MODEL_UNAVAILABLE");
@@ -59,22 +75,20 @@ export async function prepareAntigravityTask(input: {
     || (input.capability === "text"
       && antigravityConnection.hasPassed({ capability: "vision", modelId }, prepared.discovery.version));
   if (!passed) throw new Error("ANTIGRAVITY_TEST_REQUIRED");
-  return { ...prepared, capability: input.capability, modelId };
+  return { ...prepared, capability: input.capability, modelId, prompt: input.prompt, model: input.model, images };
 }
 
-export async function runAntigravityTask(
-  input: Omit<AntigravityRunOptions, "images" | "cliVersion"> & { imageUrls?: string[] },
-  options: { preflight?: AntigravityTaskPreflight } = {},
-) {
-  checkAbort(input.signal);
-  if ((input.imageUrls?.length ?? 0) > 4) throw new Error("ANTIGRAVITY_INVALID_IMAGES");
+export function runPreparedAntigravityTask(prepared: PreparedAntigravityTask,
+  options: Pick<AntigravityRunOptions, "signal" | "onDelta"> = {}) {
+  checkAbort(options.signal);
+  return runAntigravityProcess({ prompt: prepared.prompt, model: prepared.model, capability: prepared.capability,
+    images: prepared.images, signal: options.signal, onDelta: options.onDelta, cliVersion: prepared.discovery.version },
+  { preparedInvocation: prepared });
+}
+
+export async function runAntigravityTask(input: Omit<AntigravityRunOptions, "images" | "cliVersion"> & { imageUrls?: string[] }) {
   const capability = input.capability ?? ((input.imageUrls?.length ?? 0) ? "vision" : "text");
-  const modelId = input.model || "auto";
-  const preflight = options.preflight ?? await prepareAntigravityTask({ model: input.model, capability, signal: input.signal });
-  if (preflight.capability !== capability || preflight.modelId !== modelId) throw new Error("ANTIGRAVITY_PREFLIGHT_MISMATCH");
-  const images: AntigravityImageInput[] = [];
-  for (const url of input.imageUrls ?? []) images.push(await loadAntigravityImage(url, input.signal));
-  return runAntigravityProcess({ prompt: input.prompt, model: input.model, capability, images,
-    signal: input.signal, onDelta: input.onDelta, cliVersion: preflight.discovery.version },
-  { preparedInvocation: preflight });
+  const prepared = await prepareAntigravityTask({ prompt: input.prompt, model: input.model, capability,
+    imageUrls: input.imageUrls, signal: input.signal });
+  return runPreparedAntigravityTask(prepared, { signal: input.signal, onDelta: input.onDelta });
 }
