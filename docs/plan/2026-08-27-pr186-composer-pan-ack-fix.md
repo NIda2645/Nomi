@@ -44,6 +44,12 @@
 - replacement animate、direct transform、scheduled offset 保持既有 ownership/rAF 断言，同时各自锁定 reporter exactly-once。
 - 测试注入 reporter，生产默认优先 `globalThis.reportError`，缺失环境沿用 renderer 的命名空间 `console.error` 策略；reporting 自身失败也不得打断视口命令。
 
+StrictMode 生命周期复核追加的红测：
+
+- 用真实 React `StrictMode` 挂载 `useCanvasViewportGestures` probe，覆盖开发态 effect 的 setup → cleanup → setup 重放。
+- 重放后 scheduled offset、direct transform、animated transform 都必须由当前 live coordinator 执行，而不是闭包引用已 disposed 的首代实例。
+- 最终 unmount 只 dispose 当代 coordinator，取消其 rAF 并 exactly-once 结算；旧代 cleanup 即使迟到也不得清掉或 dispose 新代实例。
+
 ## 回滚
 
 - 按修复 commit 回滚本计划涉及的生命周期/ACK改动即可；#186 原有高度与几何修复仍保留。

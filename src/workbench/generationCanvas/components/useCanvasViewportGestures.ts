@@ -121,8 +121,8 @@ export function useCanvasViewportGestures({
     setStagePanFlag('data-space-pan', false)
   }, [setStagePanFlag])
 
-  if (!animationCoordinatorRef.current) {
-    animationCoordinatorRef.current = createViewportAnimationCoordinator({
+  React.useEffect(() => {
+    const coordinator = createViewportAnimationCoordinator({
       requestFrame: (callback) => window.requestAnimationFrame(callback),
       cancelFrame: (frame) => window.cancelAnimationFrame(frame),
       readViewport: () => ({ zoom: zoomRef.current || 1, offset: { ...offsetRef.current } }),
@@ -139,11 +139,27 @@ export function useCanvasViewportGestures({
         pendingOffsetRef.current = null
       },
     })
-  }
-  const animationCoordinator = animationCoordinatorRef.current
+    animationCoordinatorRef.current = coordinator
+    return () => {
+      // StrictMode replays setup → cleanup → setup without another render. Only
+      // the generation being cleaned may clear shared scheduled-offset state;
+      // a late cleanup for an older generation must not tear down its successor.
+      if (animationCoordinatorRef.current === coordinator) {
+        animationCoordinatorRef.current = null
+        if (offsetFrameRef.current !== null) {
+          window.cancelAnimationFrame(offsetFrameRef.current)
+          offsetFrameRef.current = null
+        }
+        pendingOffsetRef.current = null
+      }
+      coordinator.dispose()
+    }
+  }, [offsetRef, setViewport, zoomRef])
 
   const scheduleOffset = React.useCallback((nextOffset: Offset) => {
     // 任何手动平移先取得最新命令所有权。若旧动画的取消回调同步重入了更新动画，本次手动命令让路。
+    const animationCoordinator = animationCoordinatorRef.current
+    if (!animationCoordinator) return
     if (!animationCoordinator.takeOwnershipAndCancel()) return
     offsetRef.current = nextOffset
     pendingOffsetRef.current = nextOffset
@@ -154,9 +170,11 @@ export function useCanvasViewportGestures({
       pendingOffsetRef.current = null
       if (pending) setViewport((current) => ({ ...current, offset: pending }))
     })
-  }, [animationCoordinator, offsetRef, setViewport])
+  }, [offsetRef, setViewport])
 
   const setViewportTransform = React.useCallback((nextZoom: number, nextOffset: Offset) => {
+    const animationCoordinator = animationCoordinatorRef.current
+    if (!animationCoordinator) return
     if (!animationCoordinator.takeOwnershipAndCancel()) return
     if (offsetFrameRef.current !== null) {
       window.cancelAnimationFrame(offsetFrameRef.current)
@@ -166,7 +184,7 @@ export function useCanvasViewportGestures({
     zoomRef.current = nextZoom
     offsetRef.current = nextOffset
     setViewport({ zoom: nextZoom, offset: nextOffset })
-  }, [animationCoordinator, offsetRef, setViewport, zoomRef])
+  }, [offsetRef, setViewport, zoomRef])
 
   // 离散跳转（适应视图 / 重置 / 聚焦节点）的平滑过渡：rAF 在 ~140ms（--nomi-transition-fast）
   // 内 easeOutCubic 插值 zoom+offset。连续控件（缩放条/捏合）不走这里，保持即时跟手。
@@ -176,8 +194,8 @@ export function useCanvasViewportGestures({
     duration = 140,
     onSettled?: (outcome: ViewportAnimationSettlementOutcome) => void,
   ) => {
-    animationCoordinator.animateTo(targetZoom, targetOffset, duration, onSettled)
-  }, [animationCoordinator])
+    animationCoordinatorRef.current?.animateTo(targetZoom, targetOffset, duration, onSettled)
+  }, [])
 
   const zoomAtStagePoint = React.useCallback((nextZoom: number, point: { x: number; y: number }) => {
     const currentZoom = zoomRef.current || 1
@@ -210,14 +228,6 @@ export function useCanvasViewportGestures({
       stage.releasePointerCapture(pointerId)
     }
   }, [resetPanState, setViewport, stageRef])
-
-  React.useEffect(() => () => {
-    if (offsetFrameRef.current !== null) {
-      window.cancelAnimationFrame(offsetFrameRef.current)
-      offsetFrameRef.current = null
-    }
-    animationCoordinator.dispose()
-  }, [animationCoordinator])
 
   React.useEffect(() => {
     const handlePointerUp = (event: PointerEvent) => {
