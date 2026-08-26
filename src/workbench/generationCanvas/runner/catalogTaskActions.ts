@@ -77,12 +77,30 @@ const COMFY_PARAMETER_GENERIC_REFERENCE_KEYS = new Set([
   'upstreamResultUrls', 'archetypeInput', 'activeAssetUrls',
 ])
 
-function parameterContractRequestMeta(meta: Record<string, unknown>): Record<string, unknown> {
+function comfyParameterContract(meta: Record<string, unknown>) {
   const contract = readParameterReferenceContract(meta)
-  if (!contract?.slots.length || !isComfyuiVendorKey(contract.vendorKey)) return meta
+  return contract?.slots.length && isComfyuiVendorKey(contract.vendorKey) ? contract : null
+}
+
+function parameterContractRequestMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  const contract = comfyParameterContract(meta)
+  if (!contract) return meta
   const declaredKeys = new Set(contract.slots.map((slot) => slot.key))
   return Object.fromEntries(Object.entries(meta).filter(([key]) =>
     declaredKeys.has(key) || !COMFY_PARAMETER_GENERIC_REFERENCE_KEYS.has(key)))
+}
+
+function parameterReferenceInputs(
+  meta: Record<string, unknown>,
+  references: Partial<ResolvedGenerationReferences>,
+): Record<string, string | null> {
+  return Object.fromEntries(readParameterReferenceSlots(meta)
+    .filter((slot) => Object.prototype.hasOwnProperty.call(references.parameterReferenceUrls ?? {}, slot.key))
+    .map((slot) => [slot.key, references.parameterReferenceUrls![slot.key]]))
+}
+
+function usesComfyParameterContract(meta: Record<string, unknown>): boolean {
+  return Boolean(comfyParameterContract(meta))
 }
 
 // 本地进程/队列后端：codex(`codex exec $imagegen`,官方 smoke 就 ~75s)、本地 ComfyUI 队列(可达数分钟)——
@@ -164,9 +182,8 @@ function buildReferenceExtras(
   meta: Record<string, unknown>,
   references: Partial<ResolvedGenerationReferences>,
 ): Record<string, unknown> {
-  const parameterInputs = Object.fromEntries(readParameterReferenceSlots(meta)
-    .filter((slot) => Object.prototype.hasOwnProperty.call(references.parameterReferenceUrls ?? {}, slot.key))
-    .map((slot) => [slot.key, references.parameterReferenceUrls![slot.key]]))
+  const parameterInputs = parameterReferenceInputs(meta, references)
+  const exactComfyParameters = usesComfyParameterContract(meta)
   const referenceImages = uniqueStrings([
     ...readStringArray(meta.referenceImages),
     ...(references.referenceImages || []),
@@ -221,8 +238,7 @@ function buildReferenceExtras(
       ...referenceImages,
       ...(modeHasImageArray ? readStringArray(meta.referenceImageUrls) : []),
     ])
-    return {
-      ...parameterInputs,
+    const derived = {
       ...(standardReferenceImages.length ? { referenceImages: standardReferenceImages } : {}),
       ...(firstFrameUrl ? { firstFrameUrl } : {}),
       ...(lastFrameUrl ? { lastFrameUrl } : {}),
@@ -231,6 +247,7 @@ function buildReferenceExtras(
       ...(characterReferenceImages.length ? { characterReferenceImages } : {}),
       ...(compositionReferenceImages.length ? { compositionReferenceImages } : {}),
     }
+    return exactComfyParameters ? { ...derived, ...parameterInputs } : { ...parameterInputs, ...derived }
   }
 
   const firstFrameUrl = asTrimmedString(references.firstFrameUrl) || asTrimmedString(meta.firstFrameUrl)
@@ -239,8 +256,7 @@ function buildReferenceExtras(
   // ComfyUI 导入的工作流正是无档案，于是「补帧 / 视频超分 / 视频去背景」这类图
   // 连了视频也永远收不到（electron 侧 referenceInputParams 据此派生 source_video_url）。
   const referenceVideoUrls = uniqueStrings(references.referenceVideos || [])
-  return {
-    ...parameterInputs,
+  const derived = {
     ...(referenceImages.length ? { referenceImages } : {}),
     ...(referenceVideoUrls.length ? { referenceVideoUrls } : {}),
     ...(firstFrameUrl ? { firstFrameUrl } : {}),
@@ -249,6 +265,7 @@ function buildReferenceExtras(
     ...(characterReferenceImages.length ? { characterReferenceImages } : {}),
     ...(compositionReferenceImages.length ? { compositionReferenceImages } : {}),
   }
+  return exactComfyParameters ? { ...derived, ...parameterInputs } : { ...parameterInputs, ...derived }
 }
 
 export function buildCatalogTaskRequest(
@@ -311,6 +328,9 @@ export function buildCatalogTaskRequest(
     ...referenceExtras,
   }
   const activeAssetUrls = Array.from(collectLocalAssetUrls(extras))
+  const exactParameterInputs = usesComfyParameterContract(meta)
+    ? parameterReferenceInputs(meta, references)
+    : {}
 
   return {
     vendor,
@@ -326,6 +346,7 @@ export function buildCatalogTaskRequest(
       extras: {
         ...extras,
         ...(activeAssetUrls.length ? { activeAssetUrls } : {}),
+        ...exactParameterInputs,
       },
     },
   }

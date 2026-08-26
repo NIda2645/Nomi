@@ -98,3 +98,19 @@ introduced, so rollback requires no data transformation.
   upload and pending requests contained `referenceImages`; after the request
   boundary fix, the focused test passed 9 of 9 and the expanded targeted set
   passed 353 of 353.
+
+## Review follow-up: exact-only Comfy media contract
+
+- For a valid ComfyUI parameter contract, the resolver's only media truth is the
+  declared per-key assignment map. Generic node references, upstream arrays,
+  image/video/audio arrays, frame aliases, and archetype projections stay out
+  even when their URLs differ from the exact slot URL.
+- Request assembly derives compatibility fields first, then overlays exact
+  parameter inputs last. A declared slot therefore keeps its string or pending
+  `null` value even when its key collides with a legacy alias or
+  `activeAssetUrls`.
+- TDD evidence: the focused media-wire test first failed four cases: stale
+  image/video/audio sources escaped the resolver, pending `firstFrameUrl` and
+  `lastFrameUrl` were refilled from meta, and `activeAssetUrls` became an array.
+  The exact-only resolver boundary and final exact overlay made all 41 cases
+  pass while retaining the non-Comfy controls.

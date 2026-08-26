@@ -50,12 +50,39 @@ function source(id: string, pending: boolean): GenerationCanvasNode {
 }
 
 const genericReferenceAliases = [
+  'image',
   'referenceImages', 'referenceImageUrl', 'referenceImageUrls', 'referenceImageRef',
+  'referenceImageRefs',
   'firstFrameUrl', 'firstFrameRef', 'firstFrameReference',
   'lastFrameUrl', 'lastFrameRef', 'lastFrameReference',
   'image_url', 'imageUrl', 'reference_images', 'reference_image_urls',
-  'archetypeInput',
+  'first_frame_url', 'last_frame_url',
+  'referenceVideoUrls', 'reference_video_urls', 'sourceVideoUrl', 'source_video_url', 'video_url',
+  'referenceAudioUrls', 'reference_audio_urls',
+  'styleReferenceImages', 'characterReferenceImages', 'compositionReferenceImages',
+  'upstreamResultUrls', 'archetypeInput', 'activeAssetUrls',
 ] as const
+
+function comfyNodeWithExactSlot(key: string, value: string): GenerationCanvasNode {
+  const modelKey = `collision-${key}`
+  return {
+    id: `node-${key}`,
+    kind: 'image',
+    title: '',
+    prompt: 'restyle',
+    position: { x: 0, y: 0 },
+    meta: {
+      modelKey,
+      modelVendor: 'comfyui-local',
+      parameterReferenceSlots: {
+        modelKey,
+        vendorKey: 'comfyui-local',
+        slots: [{ key, label: key, group: 'reference', mediaKind: 'image' }],
+      },
+      [key]: value,
+    },
+  }
+}
 
 function expectOnlyKeyedReference(
   extras: Record<string, unknown> | undefined,
@@ -191,6 +218,72 @@ describe('multiple declared media inputs retain identity through the final wire 
     expect(pendingReferences.referenceImages).toEqual([])
     expect(pendingReferences.firstFrameUrl).toBeUndefined()
     expectOnlyKeyedReference(buildCatalogTaskRequest(node, { references: pendingReferences }).request.extras, slot.key, null)
+  })
+
+  it('ignores every stale generic media source when a valid Comfy parameter contract exists', () => {
+    const exactUrl = 'https://exact.test/slot.png'
+    const image = { id: 'stale-image', kind: 'image' as const, title: '', position: { x: 0, y: 0 },
+      result: { id: 'image-result', type: 'image' as const, url: 'https://stale.test/node-image.png', createdAt: 1 } }
+    const video = { id: 'stale-video', kind: 'video' as const, title: '', position: { x: 0, y: 0 },
+      result: { id: 'video-result', type: 'video' as const, url: 'https://stale.test/node-video.mp4', createdAt: 1 } }
+    const audio = { id: 'stale-audio', kind: 'audio' as const, title: '', position: { x: 0, y: 0 },
+      result: { id: 'audio-result', type: 'audio' as const, url: 'https://stale.test/node-audio.mp3', createdAt: 1 } }
+    const node = comfyNodeWithExactSlot('comfy_image_1', exactUrl)
+    node.references = [image.id, video.id, audio.id, 'https://stale.test/direct-reference.png']
+    node.meta = {
+      ...node.meta,
+      referenceImages: ['https://stale.test/reference-images.png'],
+      referenceImageUrls: ['https://stale.test/reference-image-urls.png'],
+      upstreamResultUrls: ['https://stale.test/upstream.png'],
+      firstFrameUrl: 'https://stale.test/first-frame.png',
+      first_frame_url: 'https://stale.test/first-frame-snake.png',
+      firstFrameRef: image.id,
+      firstFrameReference: image.id,
+      lastFrameUrl: 'https://stale.test/last-frame.png',
+      last_frame_url: 'https://stale.test/last-frame-snake.png',
+      lastFrameRef: image.id,
+      lastFrameReference: image.id,
+      referenceVideoUrls: ['https://stale.test/meta-video.mp4'],
+      referenceAudioUrls: ['https://stale.test/meta-audio.mp3'],
+      styleReferenceImages: ['https://stale.test/style.png'],
+      characterReferenceImages: ['https://stale.test/character.png'],
+      compositionReferenceImages: ['https://stale.test/composition.png'],
+      archetypeInput: { reference_images: ['https://stale.test/archetype.png'] },
+    }
+
+    const references = resolveGenerationReferences(node, { nodes: [node, image, video, audio], edges: [] })
+    expect(references).toMatchObject({
+      parameterReferenceUrls: { comfy_image_1: exactUrl },
+      referenceImages: [],
+      referenceVideos: [],
+      referenceAudios: [],
+      styleReferenceImages: [],
+      characterReferenceImages: [],
+      compositionReferenceImages: [],
+    })
+    expect(references.firstFrameUrl).toBeUndefined()
+    expect(references.lastFrameUrl).toBeUndefined()
+    expect(JSON.stringify(buildCatalogTaskRequest(node, { references }).request.extras)).not.toContain('https://stale.test/')
+  })
+
+  it.each(genericReferenceAliases)('lets an exact Comfy slot named %s override the derived legacy alias', (key) => {
+    const exactUrl = key === 'activeAssetUrls'
+      ? 'nomi-local://asset/exact-active.png'
+      : `https://exact.test/${key}`
+    const node = comfyNodeWithExactSlot(key, exactUrl)
+    const uploaded = buildCatalogTaskRequest(node, { references: resolveGenerationReferences(node) }).request.extras
+    expect(uploaded?.[key]).toBe(exactUrl)
+    expect(typeof uploaded?.[key]).toBe('string')
+
+    const pendingSource: GenerationCanvasNode = {
+      id: 'pending', kind: 'image', title: '', position: { x: 0, y: 0 },
+    }
+    const pendingReferences = resolveGenerationReferences(node, {
+      nodes: [node, pendingSource],
+      edges: [{ id: `edge-${key}`, source: pendingSource.id, target: node.id, mode: 'reference', targetParamKey: key }],
+    })
+    const pending = buildCatalogTaskRequest(node, { references: pendingReferences }).request.extras
+    expect(pending).toHaveProperty(key, null)
   })
 
   it('keeps a LoadVideo-only SaveVideo workflow in text_to_video', () => {

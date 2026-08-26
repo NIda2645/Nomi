@@ -143,6 +143,17 @@ export function resolveGenerationReferences(
       const uploaded = asUrl(node.meta?.[slot.key])
       return uploaded ? [[slot.key, uploaded]] : []
     }))
+  if (usesComfyParameterContract) {
+    return {
+      parameterReferenceUrls,
+      referenceImages: [],
+      referenceVideos: [],
+      referenceAudios: [],
+      styleReferenceImages: [],
+      characterReferenceImages: [],
+      compositionReferenceImages: [],
+    }
+  }
   const parameterOwnedUrls = new Set(parameterAssignments.flatMap(({ slot, edge }) => [
     asUrl(node.meta?.[slot.key]),
     edge ? findNodeResultUrl(nodesById, edge.source) : '',
