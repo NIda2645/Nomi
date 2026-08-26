@@ -12,6 +12,10 @@ import type {
   GenerationNodeResult,
 } from '../model/generationCanvasTypes'
 import type { ResolvedGenerationReferences } from './generationReferenceResolver'
+import { resolveGenerationReferences } from './generationReferenceResolver'
+import { readParameterReferenceSlots } from '../model/parameterReferenceSlots'
+import { getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
+import { applyRelayFirstFrame } from './relayFrameResolver'
 import { narrateProgress, type GenerationProgressPhase, type ProgressNarrationContext } from '../../observability/narrate'
 import { buildArchetypeInputParams, currentArchetypeMode, orderedSentImageReferenceUrls } from '../nodes/controls/archetypeMeta'
 import { projectPromptForSend } from '../../assets/promptMentions'
@@ -41,6 +45,7 @@ import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSessi
 import { RecoverableTimeoutError } from './recoverableTimeout'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
 import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
+import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
 
 // 重导出：实现已拆到 catalogTaskResolve（节点→vendor/model/kind 选择）与
 // catalogTaskResultParse（raw/asset/failure/provenance 解析），但 catalogTaskActions
@@ -56,6 +61,48 @@ const POLL_FAILURE_GRACE_MS = 45000
 
 // 走流式文本通道的 kind(与 catalogTaskResultParse 的 TEXT_TASK_KINDS 同语义)。
 const TEXT_STREAM_KINDS = new Set<TaskKind>(['chat', 'prompt_refine', 'image_to_prompt'])
+
+// Imported Comfy media inputs are exact keyed parameters. Unique-slot uploads
+// still persist these generic aliases for old projects/non-Comfy consumers, but
+// none of them may cross the Comfy request boundary and become a second wire.
+// A declared slot key always wins even if it happens to share a legacy name.
+const COMFY_PARAMETER_GENERIC_REFERENCE_KEYS = new Set([
+  'image', 'image_url', 'imageUrl',
+  'referenceImages', 'referenceImageUrl', 'referenceImageUrls', 'referenceImageRef', 'referenceImageRefs',
+  'reference_images', 'reference_image_urls',
+  'firstFrameUrl', 'firstFrameRef', 'firstFrameReference', 'first_frame_url',
+  'lastFrameUrl', 'lastFrameRef', 'lastFrameReference', 'last_frame_url',
+  'referenceVideoUrls', 'reference_video_urls', 'sourceVideoUrl', 'source_video_url', 'video_url',
+  'referenceAudioUrls', 'reference_audio_urls',
+  'styleReferenceImages', 'characterReferenceImages', 'compositionReferenceImages',
+  'upstreamResultUrls', 'archetypeInput', 'activeAssetUrls',
+])
+
+function comfyParameterContract(meta: Record<string, unknown>) {
+  const contract = readParameterReferenceContract(meta)
+  return contract && isComfyuiVendorKey(contract.vendorKey) ? contract : null
+}
+
+function parameterContractRequestMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  const contract = comfyParameterContract(meta)
+  if (!contract) return meta
+  const declaredKeys = new Set(contract.slots.map((slot) => slot.key))
+  return Object.fromEntries(Object.entries(meta).filter(([key]) =>
+    declaredKeys.has(key) || !COMFY_PARAMETER_GENERIC_REFERENCE_KEYS.has(key)))
+}
+
+function parameterReferenceInputs(
+  meta: Record<string, unknown>,
+  references: Partial<ResolvedGenerationReferences>,
+): Record<string, string | null> {
+  return Object.fromEntries(readParameterReferenceSlots(meta)
+    .filter((slot) => Object.prototype.hasOwnProperty.call(references.parameterReferenceUrls ?? {}, slot.key))
+    .map((slot) => [slot.key, references.parameterReferenceUrls![slot.key]]))
+}
+
+function usesComfyParameterContract(meta: Record<string, unknown>): boolean {
+  return Boolean(comfyParameterContract(meta))
+}
 
 // 本地进程/队列后端：codex(`codex exec $imagegen`,官方 smoke 就 ~75s)、本地 ComfyUI 队列(可达数分钟)——
 // 都跑在用户机器上,时延本质是「秒级到分钟级」且方差大,不能和「秒级返回的云图像 API」共用 2min 硬超时:
@@ -133,10 +180,11 @@ export function isRateLimitedPollError(error: unknown): boolean {
 }
 
 function buildReferenceExtras(
-  node: GenerationCanvasNode,
+  meta: Record<string, unknown>,
   references: Partial<ResolvedGenerationReferences>,
 ): Record<string, unknown> {
-  const meta = node.meta || {}
+  const parameterInputs = parameterReferenceInputs(meta, references)
+  const exactComfyParameters = usesComfyParameterContract(meta)
   const referenceImages = uniqueStrings([
     ...readStringArray(meta.referenceImages),
     ...(references.referenceImages || []),
@@ -191,7 +239,7 @@ function buildReferenceExtras(
       ...referenceImages,
       ...(modeHasImageArray ? readStringArray(meta.referenceImageUrls) : []),
     ])
-    return {
+    const derived = {
       ...(standardReferenceImages.length ? { referenceImages: standardReferenceImages } : {}),
       ...(firstFrameUrl ? { firstFrameUrl } : {}),
       ...(lastFrameUrl ? { lastFrameUrl } : {}),
@@ -200,6 +248,7 @@ function buildReferenceExtras(
       ...(characterReferenceImages.length ? { characterReferenceImages } : {}),
       ...(compositionReferenceImages.length ? { compositionReferenceImages } : {}),
     }
+    return exactComfyParameters ? { ...derived, ...parameterInputs } : { ...parameterInputs, ...derived }
   }
 
   const firstFrameUrl = asTrimmedString(references.firstFrameUrl) || asTrimmedString(meta.firstFrameUrl)
@@ -208,7 +257,7 @@ function buildReferenceExtras(
   // ComfyUI 导入的工作流正是无档案，于是「补帧 / 视频超分 / 视频去背景」这类图
   // 连了视频也永远收不到（electron 侧 referenceInputParams 据此派生 source_video_url）。
   const referenceVideoUrls = uniqueStrings(references.referenceVideos || [])
-  return {
+  const derived = {
     ...(referenceImages.length ? { referenceImages } : {}),
     ...(referenceVideoUrls.length ? { referenceVideoUrls } : {}),
     ...(firstFrameUrl ? { firstFrameUrl } : {}),
@@ -217,6 +266,7 @@ function buildReferenceExtras(
     ...(characterReferenceImages.length ? { characterReferenceImages } : {}),
     ...(compositionReferenceImages.length ? { compositionReferenceImages } : {}),
   }
+  return exactComfyParameters ? { ...derived, ...parameterInputs } : { ...parameterInputs, ...derived }
 }
 
 export function buildCatalogTaskRequest(
@@ -234,7 +284,7 @@ export function buildCatalogTaskRequest(
 
   const references = options.references || {}
   const kind = resolveTaskKind(node, references)
-  const meta = node.meta || {}
+  const meta = parameterContractRequestMeta(node.meta || {})
   // @ 内联引用投影(R6 单源 · option 2):把 prompt 里的 @[asset:url] 标记转成 @imageN，
   // N = url 在「连线在前+上传」有序数组里的位置——**与实际发送的 reference_image 数组逐位一致**。此前只读
   // meta.referenceImageUrls，把连线进来的参考图当成「不在数组里」直接把 @ 标记删成空串（连线图 @ 不到/被
@@ -260,7 +310,7 @@ export function buildCatalogTaskRequest(
   const steps = asFiniteNumber(meta.steps)
   const cfgScale = asFiniteNumber(meta.cfgScale)
   const seed = asFiniteNumber(meta.seed)
-  const referenceExtras = buildReferenceExtras(node, references)
+  const referenceExtras = buildReferenceExtras(meta, references)
   const extras = {
     ...meta,
     modelKey,
@@ -279,6 +329,9 @@ export function buildCatalogTaskRequest(
     ...referenceExtras,
   }
   const activeAssetUrls = Array.from(collectLocalAssetUrls(extras))
+  const exactParameterInputs = usesComfyParameterContract(meta)
+    ? parameterReferenceInputs(meta, references)
+    : {}
 
   return {
     vendor,
@@ -294,6 +347,7 @@ export function buildCatalogTaskRequest(
       extras: {
         ...extras,
         ...(activeAssetUrls.length ? { activeAssetUrls } : {}),
+        ...exactParameterInputs,
       },
     },
   }
@@ -398,7 +452,22 @@ export async function runCatalogGenerationTask(
     options.onProgress?.({ phase, message: narrateProgress(phase, ctx), ...(taskId ? { taskId } : {}) })
   report('resolving')
   const executableNode = await resolveExecutableNodeFromCatalog(node, options)
-  const { vendor, request } = buildCatalogTaskRequest(executableNode, options)
+  const currentOptions = options.referenceContext
+    ? { ...options, references: resolveGenerationReferences(executableNode, options.referenceContext) }
+    : options
+  // Resolve video relay only after the final catalog projection; no later graph refresh may replace the extracted frame.
+  const references = currentOptions.references
+  if (getGenerationNodeExecutionKind(executableNode.kind) === 'video' && references?.relayFromVideoUrl) {
+    const videoUrl = references.relayFromVideoUrl
+    await applyRelayFirstFrame(references)
+    for (const slot of readParameterReferenceSlots(executableNode.meta)) {
+      // Generic image parameters can inherit explicit first_frame edges; video parameters keep the original clip.
+      if (slot.mediaKind !== 'video' && references.parameterReferenceUrls?.[slot.key] === videoUrl) {
+        references.parameterReferenceUrls[slot.key] = references.firstFrameUrl || null
+      }
+    }
+  }
+  const { vendor, request } = buildCatalogTaskRequest(executableNode, currentOptions)
 
   // 文本任务 + 调用方要逐字 → 走流式通道:逐 token 回调 onTextDelta,终态直接返回
   // (文本无轮询,流 resolve 即 succeeded),不走下面的 runTask + 轮询。runTask 覆盖项

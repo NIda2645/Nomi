@@ -14,7 +14,8 @@ export async function prepareAntigravityCreateOperation(input: {
 }): Promise<PreparedAntigravityTask | undefined> {
   if (input.operation.process?.parser !== "antigravity-cli-image") return undefined;
   assertCanonicalAntigravityOperation({ ...input, stage: "create" });
-  const references = taskTemplateParams(input.request).reference_images;
+  const selected = { vendorKey: input.vendorKey, modelKey: input.modelKey };
+  const references = taskTemplateParams(input.request, selected).reference_images;
   const imageUrls = Array.isArray(references) ? references : [];
   const capability = input.taskKind === "image_edit" ? "edit" : "image";
   const prepared = await prepareAntigravityTask({
@@ -23,7 +24,7 @@ export async function prepareAntigravityCreateOperation(input: {
     capability,
     imageUrls,
   });
-  const currentReferences = taskTemplateParams(input.request).reference_images;
+  const currentReferences = taskTemplateParams(input.request, selected).reference_images;
   assertPreparedAntigravityTaskMatches(prepared, { prompt: input.request.prompt, modelId: "auto", capability,
     imageUrls: Array.isArray(currentReferences) ? currentReferences as string[] : [] });
   return prepared;

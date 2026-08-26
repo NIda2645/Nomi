@@ -95,6 +95,13 @@ export type { AntigravityConnectionStatus } from '../../electron/shared/antigrav
 - [x] 保持 verification 的 raw image 路径、合法 local/data 单次读取/解码、owner/cancel/query/cache/non-Antigravity 语义；合入最新 main 后安全扩展回归 18 文件 / 271 测试通过；完整 gates 退出码 0：785 文件通过 / 1 跳过，7355 测试通过 / 1 跳过，typecheck、测试类型门与 renderer/Electron build 通过。
 - [ ] 提交 scoped fix；核对远端 PR head 仍为 `c991642fe7d796203789b647563846e1bb8ebe5e`，普通 push 同源分支，不 force、不 merge。
 
+## Task 9：合入 #183 后的最终组合验证
+
+- [x] fetch 后精确确认 `origin/main=4fd8d5b4e7c22bcf8fd06551af028194c2794876`，且 PR #188 source 与远端源分支仍为 `d43457bd64c66ff6f9f02e3529fd4a43d687f6c1`。
+- [x] 普通 merge `origin/main`，禁止 rebase/force；自动合并无文本冲突。组合测试发现语义冲突：#183 将 snake empty/null 权威泛化到 non-Comfy，并让 headless 派生 `reference_images` 成为第二真相源，导致 #188 media preflight 绕过。
+- [x] 修复后仅与本次 selected vendor/model identity 匹配的有效 Comfy contract 可让 empty/null 权威；non-Comfy nonempty snake 保持合法，camel 聚合不被 empty default 吞；Antigravity 不再提前派生重复 `reference_images`。identity 贯穿 profile/process preflight、custom-call 与 audio 所有生产 `taskTemplateParams` 调用。原 3 项组合 RED + 2 项 contract RED 转绿，组合定向 32 文件 / 561 测试通过，typecheck 通过。
+- [x] 完整 `pnpm run gates` 退出码 0：802 个测试文件中 801 通过 / 1 跳过，7627 项测试中 7626 通过 / 1 跳过；lint 0 错误 / 96 个存量 warning，typecheck、测试类型门与 renderer/Electron build 均通过。提交 merge 前再次精确 guard `d43457bd64c66ff6f9f02e3529fd4a43d687f6c1`，普通 push PR source，不合并 PR。
+
 ## 回滚
 
 未发布前保留隔离工作树和原 PR 头，不影响主线。发布后若需撤销，通过后续修复 PR 或明确批准的 revert，不 force push、不 reset 共享树。

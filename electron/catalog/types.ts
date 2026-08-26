@@ -471,8 +471,9 @@ export function billingKindForTaskKind(kind: ProfileKind): BillingModelKind {
  *  路径，已同 commit 修）。只碰非内置 vendor + /video/generations 形状。 */
 /*  v9 moves custom-call named configuration out of vendor.meta and into the
  *  existing safeStorage-backed vendor credential record. */
-export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-export const CURRENT_CATALOG_VERSION: CatalogVersion = 9;
+/* v10 corrects stored ComfyUI model/output/task contracts from the selected file output. */
+export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export const CURRENT_CATALOG_VERSION: CatalogVersion = 10;
 
 export type CatalogState = {
   version: CatalogVersion;
