@@ -19,6 +19,8 @@ vi.mock("electron", () => ({
 vi.mock("./ai/antigravityTask", () => ({
   prepareAntigravityTask: (...args: unknown[]) => mocks.preflight(...args),
   runPreparedAntigravityTask: (...args: unknown[]) => mocks.run(...args),
+  assertPreparedAntigravityTaskMatches: vi.fn(),
+  consumePreparedAntigravityTask: vi.fn(),
 }));
 vi.mock("./events/vendorCallTrace", () => ({
   traceVendorRequested: (...args: unknown[]) => mocks.requested(...args),

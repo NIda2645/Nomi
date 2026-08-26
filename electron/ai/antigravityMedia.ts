@@ -8,16 +8,21 @@ import { readAntigravityFile, recoverAntigravityArtifact, validateAntigravityIma
 
 export type AntigravityImageInput = { bytes: Uint8Array; mimeType: string };
 type AntigravityImageMetadata = { mimeType: string; extension: string; width: number; height: number };
-const preparedImageMetadata = new WeakMap<AntigravityImageInput, AntigravityImageMetadata>();
+declare const preparedImageBrand: unique symbol;
+export type PreparedAntigravityImageInput = { readonly [preparedImageBrand]: true };
+type PreparedImageRecord = { bytes: Buffer; mimeType: string; metadata: AntigravityImageMetadata };
+const preparedImages = new WeakMap<PreparedAntigravityImageInput, PreparedImageRecord>();
 export type AntigravityMediaContext = { policy: AntigravityMediaPolicy; plugin: string; system: string; tools: string[];
   snapshots: Array<{ bytes: Buffer; path: string }>; handshake: string };
 
 /** Snapshot and fully decode once before spend; the validation mark never leaves main-process memory. */
 export async function prepareAntigravityImageInput(input: AntigravityImageInput,
-  signal?: AbortSignal): Promise<AntigravityImageInput> {
-  const prepared = { bytes: Buffer.from(input.bytes), mimeType: input.mimeType };
-  preparedImageMetadata.set(prepared, await validateAntigravityImage(prepared.bytes, prepared.mimeType, signal));
-  return prepared;
+  signal?: AbortSignal): Promise<PreparedAntigravityImageInput> {
+  const bytes = Buffer.from(input.bytes); const mimeType = input.mimeType;
+  const metadata = await validateAntigravityImage(bytes, mimeType, signal);
+  const token = Object.freeze({}) as PreparedAntigravityImageInput;
+  preparedImages.set(token, { bytes, mimeType, metadata });
+  return token;
 }
 
 export function assertAntigravityMediaInput(capability: AntigravityCapability, images: AntigravityImageInput[], version?: string): void {
@@ -30,13 +35,24 @@ export function assertAntigravityMediaInput(capability: AntigravityCapability, i
   }
 }
 
+export function assertPreparedAntigravityMediaInput(capability: AntigravityCapability,
+  images: PreparedAntigravityImageInput[], version?: string): void {
+  const records = images.map((image) => preparedImages.get(image));
+  if (records.some((record) => !record)) throw new Error("ANTIGRAVITY_PREPARED_MEDIA_INVALID");
+  assertAntigravityMediaInput(capability, records as PreparedImageRecord[], version);
+}
+
 export async function prepareAntigravityMedia(cwd: string, capability: Exclude<AntigravityCapability, "text">,
-  images: AntigravityImageInput[], signal?: AbortSignal): Promise<AntigravityMediaContext> {
+  images: PreparedAntigravityImageInput[], _signal?: AbortSignal): Promise<AntigravityMediaContext> {
   const snapshots: Array<{ bytes: Buffer; mimeType: string; metadata: AntigravityImageMetadata }> = [];
-  for (const image of images) {
-    const prepared = preparedImageMetadata.get(image); preparedImageMetadata.delete(image);
-    snapshots.push({ bytes: Buffer.from(image.bytes), mimeType: image.mimeType,
-      metadata: prepared ?? await validateAntigravityImage(image.bytes, image.mimeType, signal) });
+  const unique = new Set(images);
+  const records = images.map((image) => preparedImages.get(image));
+  if (unique.size !== images.length || records.some((record) => !record)) {
+    throw new Error("ANTIGRAVITY_PREPARED_MEDIA_INVALID");
+  }
+  for (const image of images) preparedImages.delete(image);
+  for (const prepared of records as PreparedImageRecord[]) {
+    snapshots.push({ bytes: Buffer.from(prepared.bytes), mimeType: prepared.mimeType, metadata: prepared.metadata });
   }
   const plugin = path.join(cwd, "task-gate");
   await mkdir(plugin, { mode: 0o700 });

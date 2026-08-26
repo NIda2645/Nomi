@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { prepareAntigravityMedia, verifyAntigravityHook, stageAntigravityMedia } from "./antigravityMedia";
+import { prepareAntigravityImageInput, prepareAntigravityMedia, verifyAntigravityHook, stageAntigravityMedia } from "./antigravityMedia";
 import { readAntigravityFile, validateAntigravityImage } from "./antigravityArtifacts";
 
 const execute = promisify(execFile);
@@ -13,7 +13,8 @@ const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))); });
 async function fixture(capability: "image" | "edit" | "vision" = "image") {
   const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-agy-policy-"))); dirs.push(cwd);
-  const context = await prepareAntigravityMedia(cwd, capability, capability === "image" ? [] : [{ bytes: png, mimeType: "image/png" }]);
+  const images = capability === "image" ? [] : [await prepareAntigravityImageInput({ bytes: png, mimeType: "image/png" })];
+  const context = await prepareAntigravityMedia(cwd, capability, images);
   const hook = async (kind: "init" | "tool", event: unknown) => {
     // Shell command remains app-owned; stdin carries untrusted tool arguments.
     const hooks = JSON.parse(await readFile(path.join(context.plugin, "hooks.json"), "utf8"))["nomi-task-gate"];
@@ -42,9 +43,9 @@ describe("Antigravity trusted private plugin", () => {
   it("snapshots trusted input bytes before asynchronous staging", async () => {
     const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-agy-snapshot-"))); dirs.push(cwd);
     const mutable = Buffer.from(png);
-    const pending = prepareAntigravityMedia(cwd, "vision", [{bytes:mutable,mimeType:"image/png"}]);
+    const prepared = await prepareAntigravityImageInput({bytes:mutable,mimeType:"image/png"});
     mutable.fill(0);
-    const context = await pending;
+    const context = await prepareAntigravityMedia(cwd, "vision", [prepared]);
     expect(context.snapshots[0].bytes).toEqual(png);
     await expect(readFile(context.policy.images[0].path)).rejects.toMatchObject({code:"ENOENT"});
   });
@@ -84,6 +85,39 @@ describe("Antigravity trusted private plugin", () => {
 });
 
 describe("Antigravity copied image and file validation", () => {
+  it("stages the validated private snapshot even if the returned token is mutated", async () => {
+    const original = Buffer.from(png);
+    const prepared = await prepareAntigravityImageInput({ bytes: original, mimeType: "image/png" });
+    const exposed = prepared as unknown as { bytes?: Uint8Array; mimeType?: string };
+    exposed.bytes?.fill(0); Reflect.set(exposed, "mimeType", "image/jpeg"); original.fill(1);
+    const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-agy-private-snapshot-"))); dirs.push(cwd);
+    const context = await prepareAntigravityMedia(cwd, "vision", [prepared]);
+    expect(context.snapshots[0].bytes).toEqual(png);
+    expect(context.policy.images[0].path).toMatch(/\.png$/);
+  });
+  it("rejects forged or cloned prepared media tokens", async () => {
+    const prepared = await prepareAntigravityImageInput({ bytes: png, mimeType: "image/png" });
+    const clone = { ...(prepared as unknown as Record<string, unknown>) };
+    const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-agy-forged-token-"))); dirs.push(cwd);
+    await expect(prepareAntigravityMedia(cwd, "vision", [clone as never]))
+      .rejects.toThrow("ANTIGRAVITY_PREPARED_MEDIA_INVALID");
+  });
+  it("invalidates a prepared media token after exactly one consumption", async () => {
+    const prepared = await prepareAntigravityImageInput({ bytes: png, mimeType: "image/png" });
+    const first = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-agy-first-consume-"))); dirs.push(first);
+    const replay = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-agy-replay-"))); dirs.push(replay);
+    await expect(prepareAntigravityMedia(first, "vision", [prepared])).resolves.toBeDefined();
+    await expect(prepareAntigravityMedia(replay, "vision", [prepared]))
+      .rejects.toThrow("ANTIGRAVITY_PREPARED_MEDIA_INVALID");
+  });
+  it("rejects duplicate tokens atomically without consuming the valid token", async () => {
+    const prepared = await prepareAntigravityImageInput({ bytes: png, mimeType: "image/png" });
+    const duplicate = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-agy-duplicate-token-"))); dirs.push(duplicate);
+    const retry = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-agy-token-retry-"))); dirs.push(retry);
+    await expect(prepareAntigravityMedia(duplicate, "vision", [prepared, prepared]))
+      .rejects.toThrow("ANTIGRAVITY_PREPARED_MEDIA_INVALID");
+    await expect(prepareAntigravityMedia(retry, "vision", [prepared])).resolves.toBeDefined();
+  });
   it("fully decodes an image and verifies declared MIME", async () => {
     await expect(validateAntigravityImage(png, "image/png")).resolves.toMatchObject({ width:1,height:1,mimeType:"image/png" });
     await expect(validateAntigravityImage(png, "image/jpeg")).rejects.toThrow("IMAGE_INVALID");

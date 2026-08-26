@@ -125,6 +125,25 @@ describe("runTask Antigravity media preflight", () => {
   });
 
   it.each([
+    ["same-count replacement", ["nomi-local://asset/project/a.png", "nomi-local://asset/project/b.png"],
+      ["nomi-local://asset/project/a.png", "nomi-local://asset/project/c.png"]],
+    ["reordering", ["nomi-local://asset/project/a.png", "nomi-local://asset/project/b.png"],
+      ["nomi-local://asset/project/b.png", "nomi-local://asset/project/a.png"]],
+  ])("rejects %s after media preflight before spend, job, trace, admission, or queued response",
+    async (_name, initial, mutated) => {
+      const refs = [...initial];
+      mocks.prepareCli.mockImplementationOnce(async () => { refs.splice(0, refs.length, ...mutated); return preparedCli; });
+      const jobs = await import("./tasks/localTaskJobs");
+      const start = vi.spyOn(jobs.LocalTaskJobs.prototype, "start");
+      const spend = await import("./spendGrant");
+      const grantId = spend.mintSpendGrant({ nodeIds: ["node"], maxAttemptsPerNode: 1 });
+      await expect(request(grantId, refs)).rejects.toThrow("ANTIGRAVITY_PREFLIGHT_MISMATCH");
+      expect(spend.__spendGrantCountForTests()).toBe(1);
+      expect(start).not.toHaveBeenCalled(); expect(mocks.runProcess).not.toHaveBeenCalled();
+      expect(mocks.requested).not.toHaveBeenCalled(); expect(mocks.admitted).not.toHaveBeenCalled();
+    });
+
+  it.each([
     ["local", "nomi-local://asset/project/ref.png"],
     ["data", `data:image/png;base64,${png.toString("base64")}`],
   ])("materializes and validates one %s image before spend, then reuses its bytes in the job", async (source, url) => {
@@ -133,28 +152,28 @@ describe("runTask Antigravity media preflight", () => {
     const start = vi.spyOn(jobs.LocalTaskJobs.prototype, "start");
     const spend = await import("./spendGrant");
     let grantsAtRead = -1;
+    let stagedBytes: Buffer | undefined;
     mocks.readLocal.mockImplementation(() => {
       grantsAtRead = spend.__spendGrantCountForTests();
       return { bytes: png, contentType: "image/png" };
     });
-    mocks.runProcess.mockImplementationOnce(async (input: { capability: "edit"; images: Array<{ bytes: Uint8Array; mimeType: string }> }) => {
+    mocks.runProcess.mockImplementationOnce(async (input: { capability: "edit" }, options: { preparedImages: never[] }) => {
       const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-agy-prepared-media-"));
-      try { await prepareAntigravityMedia(cwd, input.capability, input.images); }
+      try { stagedBytes = (await prepareAntigravityMedia(cwd, input.capability, options.preparedImages)).snapshots[0].bytes; }
       finally { fs.rmSync(cwd, { recursive: true, force: true }); }
       return { text: "done", conversationId: "c", usage: {}, artifacts: [] };
     });
     const grantId = spend.mintSpendGrant({ nodeIds: ["node"], maxAttemptsPerNode: 1 });
     await expect(request(grantId, [url])).resolves.toMatchObject({ status: "queued" });
-    await vi.waitFor(() => expect(mocks.runProcess).toHaveBeenCalledOnce());
+    await vi.waitFor(() => { expect(mocks.runProcess).toHaveBeenCalledOnce(); expect(stagedBytes).toBeDefined(); });
     if (source === "local") {
       expect(mocks.readLocal).toHaveBeenCalledOnce(); expect(grantsAtRead).toBe(1);
       expect(mocks.readLocal.mock.invocationCallOrder[0]).toBeLessThan(start.mock.invocationCallOrder[0]);
     } else expect(mocks.readLocal).not.toHaveBeenCalled();
     expect(mocks.validateImage).toHaveBeenCalledOnce();
-    expect(mocks.runProcess).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: "edit once", capability: "edit", images: [expect.objectContaining({ bytes: png, mimeType: "image/png" })],
-    }), expect.anything());
-    if (source === "local") expect(mocks.runProcess.mock.calls[0][0].images[0].bytes).not.toBe(png);
+    expect(mocks.runProcess).toHaveBeenCalledWith(expect.objectContaining({ prompt: "edit once", capability: "edit" }),
+      expect.objectContaining({ preparedImages: [expect.any(Object)] }));
+    expect(stagedBytes).toEqual(png); expect(stagedBytes).not.toBe(png);
     expect(spend.__spendGrantCountForTests()).toBe(0);
     expect(start).toHaveBeenCalledOnce(); expect(mocks.requested).toHaveBeenCalledOnce(); expect(mocks.admitted).toHaveBeenCalledOnce();
   });

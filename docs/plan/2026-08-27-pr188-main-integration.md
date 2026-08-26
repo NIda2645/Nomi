@@ -86,6 +86,15 @@ export type { AntigravityConnectionStatus } from '../../electron/shared/antigrav
 - [x] 回归 verification、query、owner/cancel、cache-hit、grant 与非 Antigravity transport；定向 20 文件 261 测试通过，完整 gates 全绿：782 文件中 781 通过 / 1 跳过，7319 项中 7318 通过 / 1 跳过，typecheck 与 renderer/Electron build 通过。
 - [x] 提交 scoped fix；提交前核对远端 PR head 仍为 `de26baf58cf6defa83fc948a5b8a289a5d16406d`，普通 push 同源分支，不 force、不 merge。
 
+## Task 8：规格审查五轮——不可伪造的一次性 prepared media（TDD）
+
+- [x] 先写并观察 RED：合法媒体 prepare 后，即使公开返回值的 bytes/MIME 被突变，job 也只能使用验证时私有 snapshot 或直接拒绝；clone/伪造 token、重复消费和同 token 重复引用均拒绝。首轮 2 文件新增 6 项全部按预期失败，23 项既有通过。
+- [x] 将 prepared image 改成不暴露权威 bytes/MIME 的 main-owned opaque token；WeakMap 私有保存 defensive bytes snapshot + metadata，一次性消费先完整校验全组 token，再原子 invalidate，staging 只克隆私有 bytes。
+- [x] prepared task 的 prompt/model/capability/exact ordered image URLs、proof 与 exact invocation 同样由 main-owned record 提供；process choke 通过私有 record 比对请求，公开对象或 clone 不得改写执行语义。
+- [x] 补充审查 RED/GREEN：私有 task record 绑定 exact ordered image URLs，不再只比数量；同数量替换/重排必须在 grant/admission/trace 前拒绝；prepared task 在 grant 前认领、local job admission 前一次性消费，重复认领/消费/运行 fail closed。新增 5 项首跑按预期失败，修复后 4 文件 / 59 测试通过。
+- [x] 保持 verification 的 raw image 路径、合法 local/data 单次读取/解码、owner/cancel/query/cache/non-Antigravity 语义；合入最新 main 后安全扩展回归 18 文件 / 271 测试通过；完整 gates 退出码 0：785 文件通过 / 1 跳过，7355 测试通过 / 1 跳过，typecheck、测试类型门与 renderer/Electron build 通过。
+- [ ] 提交 scoped fix；核对远端 PR head 仍为 `c991642fe7d796203789b647563846e1bb8ebe5e`，普通 push 同源分支，不 force、不 merge。
+
 ## 回滚
 
 未发布前保留隔离工作树和原 PR 头，不影响主线。发布后若需撤销，通过后续修复 PR 或明确批准的 revert，不 force push、不 reset 共享树。

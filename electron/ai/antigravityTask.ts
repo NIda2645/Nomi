@@ -3,7 +3,8 @@ import { hardenedFetch } from "../hardenedFetch";
 import { antigravityConnection, prepareAntigravity, type PreparedAntigravity } from "./antigravityConnection";
 import { readAntigravityEvidence } from "./antigravityEvidenceStore";
 import { runAntigravityProcess, type AntigravityRunOptions } from "./antigravityProcess";
-import { assertAntigravityMediaInput, prepareAntigravityImageInput, type AntigravityImageInput } from "./antigravityMedia";
+import { assertPreparedAntigravityMediaInput, prepareAntigravityImageInput, type AntigravityImageInput,
+  type PreparedAntigravityImageInput } from "./antigravityMedia";
 import type { AntigravityCapability } from "../shared/antigravity";
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -40,8 +41,57 @@ export type PreparedAntigravityTask = PreparedAntigravity & {
   modelId: string;
   prompt: string;
   model?: string;
-  images: AntigravityImageInput[];
+  images: PreparedAntigravityImageInput[];
 };
+type PreparedTaskRecord = {
+  invocation: PreparedAntigravity;
+  capability: AntigravityCapability;
+  modelId: string;
+  prompt: string;
+  model?: string;
+  images: PreparedAntigravityImageInput[];
+  imageUrls: string[];
+  state: "prepared" | "claimed" | "consumed" | "running";
+};
+const preparedTasks = new WeakMap<PreparedAntigravityTask, PreparedTaskRecord>();
+
+function copyPreparedInvocation(prepared: PreparedAntigravity): PreparedAntigravity {
+  return { discovery: { version: prepared.discovery.version, models: prepared.discovery.models.map((model) => ({ ...model })) },
+    invocation: { command: prepared.invocation.command, args: [...prepared.invocation.args] },
+    identity: { ...prepared.identity }, env: { ...prepared.env } };
+}
+
+function preparedTaskRecord(prepared: PreparedAntigravityTask): PreparedTaskRecord {
+  const record = preparedTasks.get(prepared);
+  if (!record) throw new Error("ANTIGRAVITY_PREPARED_TASK_INVALID");
+  return record;
+}
+
+export function assertPreparedAntigravityTaskMatches(prepared: PreparedAntigravityTask, expected: {
+  prompt: string; modelId: string; capability: AntigravityCapability; imageUrls: string[];
+}): void {
+  const record = preparedTaskRecord(prepared);
+  if (record.state !== "prepared") throw new Error("ANTIGRAVITY_PREPARED_TASK_INVALID");
+  if (record.prompt !== expected.prompt || record.modelId !== expected.modelId
+    || record.capability !== expected.capability
+    || JSON.stringify(record.imageUrls) !== JSON.stringify(expected.imageUrls)) {
+    throw new Error("ANTIGRAVITY_PREFLIGHT_MISMATCH");
+  }
+  record.state = "claimed";
+}
+
+export function consumePreparedAntigravityTask(prepared: PreparedAntigravityTask, expected: {
+  prompt: string; modelId: string; capability: AntigravityCapability; imageUrls: string[];
+}): void {
+  const record = preparedTaskRecord(prepared);
+  if (record.state !== "claimed") throw new Error("ANTIGRAVITY_PREPARED_TASK_INVALID");
+  if (record.prompt !== expected.prompt || record.modelId !== expected.modelId
+    || record.capability !== expected.capability
+    || JSON.stringify(record.imageUrls) !== JSON.stringify(expected.imageUrls)) {
+    throw new Error("ANTIGRAVITY_PREFLIGHT_MISMATCH");
+  }
+  record.state = "consumed";
+}
 
 export async function prepareAntigravityTask(input: {
   prompt: string;
@@ -52,18 +102,18 @@ export async function prepareAntigravityTask(input: {
 }): Promise<PreparedAntigravityTask> {
   checkAbort(input.signal);
   if (!input.prompt.trim()) throw new Error("ANTIGRAVITY_EMPTY_PROMPT");
-  const imageUrls = input.imageUrls ?? [];
+  const imageUrls = [...(input.imageUrls ?? [])];
   if (imageUrls.length > 4 || imageUrls.some((url) => typeof url !== "string" || !url.trim())
     || ((input.capability === "vision" || input.capability === "edit") ? !imageUrls.length : imageUrls.length > 0)) {
     throw new Error("ANTIGRAVITY_INVALID_IMAGES");
   }
-  const images: AntigravityImageInput[] = [];
+  const images: PreparedAntigravityImageInput[] = [];
   for (const url of imageUrls) {
     images.push(await prepareAntigravityImageInput(await loadAntigravityImage(url as string, input.signal), input.signal));
   }
   const prepared = await prepareAntigravity(input.signal);
   checkAbort(input.signal);
-  assertAntigravityMediaInput(input.capability, images, prepared.discovery.version);
+  assertPreparedAntigravityMediaInput(input.capability, images, prepared.discovery.version);
   const modelId = input.model || "auto";
   if (modelId !== "auto" && !prepared.discovery.models.some((model) => model.id === modelId)) {
     throw new Error("ANTIGRAVITY_MODEL_UNAVAILABLE");
@@ -75,15 +125,26 @@ export async function prepareAntigravityTask(input: {
     || (input.capability === "text"
       && antigravityConnection.hasPassed({ capability: "vision", modelId }, prepared.discovery.version));
   if (!passed) throw new Error("ANTIGRAVITY_TEST_REQUIRED");
-  return { ...prepared, capability: input.capability, modelId, prompt: input.prompt, model: input.model, images };
+  const record: PreparedTaskRecord = { invocation: copyPreparedInvocation(prepared), capability: input.capability,
+    modelId, prompt: input.prompt, model: input.model, images: [...images], imageUrls: [...imageUrls] as string[],
+    state: "prepared" };
+  const result: PreparedAntigravityTask = { ...copyPreparedInvocation(prepared), capability: record.capability,
+    modelId: record.modelId, prompt: record.prompt, model: record.model, images: [...record.images] };
+  preparedTasks.set(result, record);
+  return result;
 }
 
 export function runPreparedAntigravityTask(prepared: PreparedAntigravityTask,
   options: Pick<AntigravityRunOptions, "signal" | "onDelta"> = {}) {
   checkAbort(options.signal);
-  return runAntigravityProcess({ prompt: prepared.prompt, model: prepared.model, capability: prepared.capability,
-    images: prepared.images, signal: options.signal, onDelta: options.onDelta, cliVersion: prepared.discovery.version },
-  { preparedInvocation: prepared });
+  const record = preparedTaskRecord(prepared);
+  if (record.state !== "prepared" && record.state !== "consumed") {
+    throw new Error("ANTIGRAVITY_PREPARED_TASK_INVALID");
+  }
+  record.state = "running";
+  return runAntigravityProcess({ prompt: record.prompt, model: record.model, capability: record.capability,
+    signal: options.signal, onDelta: options.onDelta, cliVersion: record.invocation.discovery.version },
+  { preparedInvocation: record.invocation, preparedImages: record.images });
 }
 
 export async function runAntigravityTask(input: Omit<AntigravityRunOptions, "images" | "cliVersion"> & { imageUrls?: string[] }) {

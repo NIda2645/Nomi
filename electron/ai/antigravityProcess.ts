@@ -8,7 +8,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { AntigravityProtocol, type AntigravityResult, type AntigravityToolStep } from "./antigravityProtocol";
 
 import type { AntigravityCapability } from "../shared/antigravity";
-import { assertAntigravityMediaInput, prepareAntigravityMedia, stageAntigravityMedia, finishAntigravityMedia, type AntigravityImageInput } from "./antigravityMedia";
+import { assertAntigravityMediaInput, assertPreparedAntigravityMediaInput, prepareAntigravityImageInput,
+  prepareAntigravityMedia, stageAntigravityMedia, finishAntigravityMedia, type AntigravityImageInput,
+  type PreparedAntigravityImageInput } from "./antigravityMedia";
 
 export type AntigravityInvocation = { command: string; args: string[] };
 export type AntigravityExecutableIdentity = {
@@ -34,6 +36,8 @@ type ProcessOptions = {
   invocation?: AntigravityInvocation;
   /** Exact main-process invocation returned by discovery/preflight. */
   preparedInvocation?: PreparedAntigravityInvocation;
+  /** Main-owned opaque media tokens returned by paid-operation preflight. */
+  preparedImages?: PreparedAntigravityImageInput[];
   initTimeoutMs?: number;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
@@ -138,12 +142,17 @@ export async function runAntigravityProcess(input: AntigravityRunOptions, option
   if (!input.prompt.trim()) throw new Error("ANTIGRAVITY_EMPTY_PROMPT");
   if (input.model && !/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/.test(input.model)) throw new Error("ANTIGRAVITY_INVALID_MODEL");
   const capability = input.capability ?? "text";
-  assertAntigravityMediaInput(capability, input.images ?? [], input.cliVersion);
+  if (options.preparedImages) {
+    if (input.images !== undefined) throw new Error("ANTIGRAVITY_PREPARED_MEDIA_INVALID");
+    assertPreparedAntigravityMediaInput(capability, options.preparedImages, input.cliVersion);
+  } else assertAntigravityMediaInput(capability, input.images ?? [], input.cliVersion);
   if (options.preparedInvocation) await assertPreparedAntigravityInvocation(options.preparedInvocation);
   const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-antigravity-")));
   const agentName = "nomi-" + capability + "-" + randomUUID();
   try {
-    const media = capability === "text" ? undefined : await prepareAntigravityMedia(cwd, capability, input.images ?? [], input.signal);
+    const preparedImages = options.preparedImages ?? await Promise.all((input.images ?? [])
+      .map((image) => prepareAntigravityImageInput(image, input.signal)));
+    const media = capability === "text" ? undefined : await prepareAntigravityMedia(cwd, capability, preparedImages, input.signal);
     const agentDir = path.join(cwd, ".agents", "agents", agentName);
     await mkdir(agentDir, { recursive: true });
     await writeFile(path.join(agentDir, "agent.md"), [
