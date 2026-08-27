@@ -44,3 +44,4 @@
 | [2026-08-27-marketing-github-hero.md](2026-08-27-marketing-github-hero.md) | Marketing GitHub Hero Implementation Plan | — |
 | [2026-08-27-quality-gate-single-run.md](2026-08-27-quality-gate-single-run.md) | Quality Gate Single-Run Implementation Plan | ✅ 已交付 |
 | [2026-08-27-release-media-pack-skill.md](2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan | 🚧 进行中 |
+| [2026-08-28-conversational-model-integration.md](2026-08-28-conversational-model-integration.md) | Conversational Model Integration Implementation Plan | 🚧 进行中 |
