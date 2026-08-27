@@ -4,7 +4,8 @@
 > 本索引仍有历史存量缺口；查不到时必须继续全量搜索。`check:docs-index` 保证缺口只减不增。
 > 跨阶段总纲另见 [`docs/superpowers/plans/`](../superpowers/plans/)；当前主文档是 [Nomi 统一 Agent 总体方案](../superpowers/plans/2026-08-24-unified-agent-master-plan.md)。
 > 新增 plan 时**顺手在本表对应主题下加一行**。
-> 状态图例：✅ 已落地 ｜ 🚧 进行中/待实施 ｜ 📋 方案待拍板 ｜ ⛔ 已撤销/废弃 ｜ 📎 交接/日志
+> 状态图例：✅ 已交付 ｜ 🚧 进行中 ｜ ⏳ 已拍板·未开工 ｜ 🧊 暂缓/远期 ｜ 📋 方案待拍板 ｜ ⛔ 已废弃 ｜ 📎 交接/日志
+> 📋/⏳/🚧 会进 [交付账本](../DELIVERY-LEDGER.md) 现役区并被每日提醒；🧊 列出但不催；无标记 = 未登记存量，不打扰。
 
 ## 模型接入 / Onboarding（最大簇）
 

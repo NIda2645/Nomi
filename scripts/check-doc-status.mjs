@@ -1,17 +1,22 @@
 #!/usr/bin/env node
 /**
- * 方案状态棘轮：文档开头必须使用既有五类状态标记；⛔ 必须指向替代文档。
+ * 方案状态棘轮：文档开头必须带状态标记；⛔ 必须指向替代文档。
+ *
+ * 状态即「登记制」：带 🚧/⏳/📋 的文档进 docs/DELIVERY-LEDGER.md 现役区并被每日提醒；
+ * ✅/⛔/📎 已结案；🧊 是分诊过的远期项，列出但不催；没有标记 = 未登记，留在存量区不打扰。
+ * 这样账本只盯真正在欠的债，而不是 400 篇历史文件。
  * baseline 保存具体文件路径，确保修掉一处旧债不能掩护另一处新增违规。
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { statusOf, collectPlanDocuments, STATUS_HEAD_LINES } from './doc-status-lib.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const docsRoot = path.join(repoRoot, 'docs')
 const baselinePath = path.join(repoRoot, 'scripts', 'doc-status-baseline.json')
 const planRoots = [path.join(docsRoot, 'plan'), path.join(docsRoot, 'superpowers', 'plans')]
-const openingLineLimit = 12
+const openingLineLimit = STATUS_HEAD_LINES
 
 function collectMarkdownFiles(root) {
   if (!fs.existsSync(root)) return []
@@ -44,12 +49,7 @@ function replacementTargets(lines, markerLine, file) {
     .filter((target) => target !== file && fs.existsSync(target) && fs.statSync(target).isFile())
 }
 
-function statusOf(line) {
-  const markerAtStart = /^\s*(?:>\s*)?(?:\*\*)?([✅🚧📋⛔📎])/u.exec(line)
-  if (markerAtStart) return markerAtStart[1]
-  const labelledMarker = /状态(?!图例)[^✅🚧📋⛔📎\n]{0,30}([✅🚧📋⛔📎])/u.exec(line)
-  return labelledMarker?.[1] ?? null
-}
+// statusOf / 文档收集 / 开头行数：唯一定义在 scripts/doc-status-lib.mjs，本文件不再各写一份。
 
 function scan(file) {
   const lines = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/).slice(0, openingLineLimit)
@@ -99,9 +99,7 @@ function writeBaseline(findings) {
 }
 
 // 同上：索引文件不是方案，不要求状态标记。
-const documents = planRoots.flatMap(collectMarkdownFiles)
-  .filter((file) => path.basename(file) !== 'INDEX.md')
-  .sort()
+const documents = collectPlanDocuments(repoRoot).map((rel) => path.join(repoRoot, rel))
 const findings = { missingStatus: [], deprecatedWithoutReplacement: [] }
 for (const file of documents) {
   const result = scan(file)
@@ -149,7 +147,7 @@ if (addedCount > 0) {
   if (added.missingStatus.length > 0) {
     console.error(`✖ 方案状态回归：${added.missingStatus.length} 篇新增文档在开头 ${openingLineLimit} 行内没有状态标记`)
     for (const file of added.missingStatus) console.error(`  ${file}`)
-    console.error('  → 沿用：✅ 已落地 ｜ 🚧 进行中/待实施 ｜ 📋 方案待拍板 ｜ ⛔ 已撤销/废弃 ｜ 📎 交接/日志')
+    console.error('  → 沿用：✅ 已交付 ｜ 🚧 进行中 ｜ ⏳ 已拍板·未开工 ｜ 🧊 暂缓/远期 ｜ 📋 方案待拍板 ｜ ⛔ 已废弃 ｜ 📎 交接/日志')
   }
   if (added.deprecatedWithoutReplacement.length > 0) {
     console.error(`✖ 废弃文档回归：${added.deprecatedWithoutReplacement.length} 篇新增 ⛔ 状态没有替代文档指向`)
