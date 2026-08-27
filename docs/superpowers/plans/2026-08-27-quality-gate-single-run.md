@@ -1,5 +1,7 @@
 # Quality Gate Single-Run Implementation Plan
 
+> ✅ 已交付（方案、CI 改动与契约测试随 PR #209 同批落地；状态标记由 `check:doc-status` 门岗要求）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ensure each pull-request HEAD produces one authoritative Quality Gate run, while preserving a separate post-merge main verification and fail-closed vocabulary baselines.
