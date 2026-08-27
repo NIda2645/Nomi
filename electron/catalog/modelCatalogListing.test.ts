@@ -125,6 +125,27 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
     expect(deriveModelListing(visible).map((entry) => entry.modelKey)).toEqual(["legacy", "active"]);
   });
 
+  it("keeps an enabled custom-call model visible while a failed adapter repair has no active revision", () => {
+    const customCall = state({
+      vendors: [vendor({ key: "relay", authType: "none" })],
+      models: [
+        model({
+          modelKey: "scripted",
+          vendorKey: "relay",
+          customCall: { script: "return { text: 'ok' }", updatedAt: "t" },
+          meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } },
+        }),
+        model({
+          modelKey: "failed-without-execution",
+          vendorKey: "relay",
+          meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } },
+        }),
+      ],
+    });
+
+    expect(deriveModelListing(customCall).map((entry) => entry.modelKey)).toEqual(["scripted"]);
+  });
+
   it("reports legacy plaintext credentials as needs_resave with a migration action", () => {
     const legacy = state({
       vendors: [vendor({ key: "relay", name: "Relay" })],

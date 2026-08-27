@@ -24,6 +24,8 @@ import {
   listModelCatalogVendors,
   normalizeProviderKind,
   resolveOnboardingAgentFromCatalog,
+  upsertModelCatalogModel,
+  upsertModelCatalogVendor,
 } from "./runtime";
 
 let mockedUserDataRoot = "";
@@ -252,6 +254,40 @@ describe("manual model entry — user journey", () => {
     });
     expect(listModelCatalogVendors()).toHaveLength(1);
     expect(listModelCatalogModels().map((m) => m.modelKey).sort()).toEqual(["first", "second"]);
+  });
+
+  it("keeps a published custom-call model and vendor enabled when its credential is re-saved", () => {
+    const baseUrl = "https://scripted.example.test/v1";
+    const vendorKey = deriveVendorKeyFromBaseUrl(baseUrl);
+    upsertModelCatalogVendor({
+      key: vendorKey,
+      name: "Scripted",
+      enabled: true,
+      baseUrlHint: baseUrl,
+      authType: "bearer",
+    });
+    upsertModelCatalogModel({
+      vendorKey,
+      modelKey: "scripted-image",
+      labelZh: "Scripted Image",
+      kind: "image",
+      enabled: true,
+      customCall: { script: "return { assets: ['https://example.test/image.png'] }", updatedAt: "t" },
+      meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } },
+    });
+
+    commitManualOpenAiCompatibleModels({
+      vendorName: "Scripted",
+      baseUrl,
+      apiKey: "sk-resaved",
+      models: [{ id: "scripted-image", kind: "image" }],
+    });
+
+    expect(listModelCatalogVendors().find((vendor) => vendor.key === vendorKey)?.enabled).toBe(true);
+    expect(listModelCatalogModels().find((model) => model.modelKey === "scripted-image")).toMatchObject({
+      enabled: true,
+      customCall: { script: expect.stringContaining("assets") },
+    });
   });
 });
 

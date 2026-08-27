@@ -3,7 +3,6 @@ import {
   listWorkbenchModelCatalogModels,
   listWorkbenchModelCatalogVendors,
   type ModelCatalogHealthDto,
-  type ModelCatalogModelDto,
 } from '../workbench/api/modelCatalogApi'
 import type { ModelOption, NodeKind } from './models'
 import {
@@ -14,6 +13,7 @@ import {
 } from './modelOptionResolvers'
 import { toCatalogModelOptions } from './modelOptionMappers'
 import { resolveCatalogKind } from './modelCatalogStatus'
+import { modelHasPublishedExecution } from '../../electron/shared/modelPublication'
 
 export const MODEL_REFRESH_EVENT = 'nomi-models-refresh'
 
@@ -28,18 +28,6 @@ let enabledVendorKeysPromise: Promise<Set<string>> | null = null
 let vendorNamesCache: Map<string, string> | null = null
 
 const HIDDEN_IMAGE_MODEL_ID_RE = /^(gemini-.*-image(?:-(?:landscape|portrait))?|imagen-.*-(?:landscape|portrait))$/i
-
-function modelIsPublishedForPicker(model: ModelCatalogModelDto): boolean {
-  const meta = model?.meta
-  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return true
-  const adapter = (meta as Record<string, unknown>).adapter
-  if (!adapter || typeof adapter !== 'object' || Array.isArray(adapter)) return true
-  const record = adapter as Record<string, unknown>
-  if (typeof record.activeRevision === 'string' && record.activeRevision.trim()) return true
-  const modes = Array.isArray(record.modes) ? record.modes : []
-  return modes.some((mode) =>
-    mode && typeof mode === 'object' && !Array.isArray(mode) && (mode as Record<string, unknown>).state === 'verified')
-}
 
 export function filterHiddenOptionsByKind(options: ModelOption[], kind?: NodeKind): ModelOption[] {
   if (kind !== 'image' && kind !== 'imageEdit') return options
@@ -129,7 +117,7 @@ async function getCatalogModelOptions(kind?: NodeKind): Promise<ModelOption[]> {
       const rows = await listWorkbenchModelCatalogModels({ kind: catalogKind, enabled: true })
       const enabledVendorKeys = await getEnabledVendorKeys()
       const filteredRows = (Array.isArray(rows) ? rows : []).filter((row) => {
-        if (!modelIsPublishedForPicker(row)) return false
+        if (!modelHasPublishedExecution(row)) return false
         const vendorKey = String(row?.vendorKey || '').trim().toLowerCase()
         if (!vendorKey) return false
         // 空集 = 「一家可用供应商都没有」，不是「随便放行」。此前在这里 return true，

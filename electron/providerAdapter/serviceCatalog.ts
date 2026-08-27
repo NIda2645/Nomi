@@ -5,8 +5,9 @@ import {
   readCatalog,
 } from "../catalog/catalogStore";
 import { apiKeyDecryptStatus, decryptApiKeyRecord } from "../catalog/secrets";
-import type { BillingModelKind, Mapping, Model, ProfileKind, Vendor } from "../catalog/types";
+import type { Model, ProfileKind, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
+import { modelHasPublishedExecution } from "../shared/modelPublication";
 import { adapterModelMetadataForPromotion } from "./promotionMeta";
 import type {
   ProviderAdapterDraft,
@@ -50,51 +51,16 @@ function modelOwnedByRun(model: Model, runId: string): boolean {
   return adapter.runId === runId;
 }
 
-const EXECUTABLE_TASKS_BY_KIND: Record<Exclude<BillingModelKind, "text">, readonly ProfileKind[]> = {
-  image: ["text_to_image", "image_edit"],
-  video: ["text_to_video", "image_to_video"],
-  audio: ["text_to_audio", "image_to_audio", "transcribe"],
-  model3d: ["text_to_3d", "image_to_3d"],
-};
-
-function hasExecutableMapping(
-  mappings: readonly Mapping[],
-  vendorKey: string,
-  modelKey: string,
-  kind: BillingModelKind,
-): boolean {
-  if (kind === "text") return true;
-  const taskKinds = EXECUTABLE_TASKS_BY_KIND[kind];
-  return mappings.some((mapping) =>
-    mapping.enabled &&
-    mapping.vendorKey === vendorKey &&
-    taskKinds.includes(mapping.taskKind) &&
-    (!mapping.modelKey || mapping.modelKey.trim() === modelKey));
-}
-
-function hasExecutableCustomCall(model: Model | undefined): boolean {
-  const customCall = model?.customCall;
-  if (customCall?.script?.trim()) return true;
-  return Object.values(customCall?.modes || {}).some((mode) => mode.script.trim());
-}
-
 function adapterMetadata(model: Model | undefined): Record<string, unknown> {
   return asRecord(asRecord(model?.meta).adapter);
 }
 
-function hasActiveAdapterRevision(model: Model | undefined): boolean {
-  const activeRevision = adapterMetadata(model).activeRevision;
-  return typeof activeRevision === "string" && Boolean(activeRevision.trim());
-}
-
 /** Existing published execution survives registration/repair; staged adapter rows do not become active by enabled alone. */
 function hasPublishedExecution(state: ReturnType<typeof readCatalog>, model: Model | undefined): boolean {
-  if (!model?.enabled) return false;
-  if (hasActiveAdapterRevision(model)) return true;
-  if (hasExecutableCustomCall(model)) return true;
-  if (hasExecutableMapping(state.mappings, model.vendorKey, model.modelKey, model.kind)) return true;
-  // Catalog rows predating adapter metadata have no revision ledger. Text executes directly through the AI SDK.
-  return model.kind === "text" && Object.keys(adapterMetadata(model)).length === 0;
+  return modelHasPublishedExecution(model, {
+    mappings: state.mappings,
+    legacyWithoutAdapter: "text-only",
+  });
 }
 
 function vendorHasPublishedExecution(state: ReturnType<typeof readCatalog>, vendorKey: string): boolean {

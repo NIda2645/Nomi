@@ -11,6 +11,7 @@ import { bodyReferenceSupport, type BodyReferenceSupport } from "./referenceReac
 import { bodyReferencedParamKeys } from "./paramTranslate";
 import type { ModelModeBody } from "./taskParams";
 import { billingKindForTaskKind, type BillingModelKind, type CatalogState, type Mapping, type ProfileKind } from "./types";
+import { modelHasPublishedExecution } from "../shared/modelPublication";
 
 /** 一个模型跨其所有 mapping 汇总出的参考承载力 + 是哪些模式（taskKind）带得动。 */
 export type ModelReferenceSupport = BodyReferenceSupport & {
@@ -59,17 +60,6 @@ function statusReasonFor(keyStatus: ApiKeyDecryptStatus, vendorName: string): st
     default:
       return `未配置 ${vendorName} 的 API Key；请先在 Nomi 应用的模型接入里填入`;
   }
-}
-
-function adapterModelIsPublished(meta: unknown): boolean {
-  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return true;
-  const adapter = (meta as Record<string, unknown>).adapter;
-  if (!adapter || typeof adapter !== "object" || Array.isArray(adapter)) return true;
-  const record = adapter as Record<string, unknown>;
-  if (typeof record.activeRevision === "string" && record.activeRevision.trim()) return true;
-  const modes = Array.isArray(record.modes) ? record.modes : [];
-  return modes.some((mode) =>
-    mode && typeof mode === "object" && !Array.isArray(mode) && (mode as Record<string, unknown>).state === "verified");
 }
 
 /**
@@ -181,7 +171,7 @@ export function deriveModelListing(
   // 本次调用内的 vendorKey → keyStatus 记忆（同 vendor 只探一次解密）。
   const keyStatusByVendor = new Map<string, ApiKeyDecryptStatus>();
   return state.models
-    .filter((model) => model.enabled && adapterModelIsPublished(model.meta))
+    .filter((model) => modelHasPublishedExecution(model, { mappings: state.mappings }))
     .map((model) => {
       const vendor = vendorByKey.get(model.vendorKey);
       const vendorName = vendor?.name || model.vendorKey;

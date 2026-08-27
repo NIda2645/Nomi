@@ -8,6 +8,7 @@ import { builtinVendorKeyForHostname } from "./builtinVendorSeeds";
 import { hardenedFetchText } from "../hardenedFetch";
 import type { AiSdkProviderKind, BillingModelKind, HttpOperation, Model, ProfileKind, Vendor } from "./types";
 import type { TaskRequest } from "../runtime";
+import { modelHasPublishedExecution } from "../shared/modelPublication";
 import {
   mutateCatalog,
   normalizeProviderKind,
@@ -188,27 +189,10 @@ export function commitOnboardedModelToCatalog(payload: {
   const existingModel = before.models.find(
     (candidate) => candidate.vendorKey === vendorKey && candidate.modelKey === modelKey,
   );
-  const adapter = isJsonRecord(existingModel?.meta) && isJsonRecord(existingModel.meta.adapter)
-    ? existingModel.meta.adapter
-    : null;
-  const existingModelIsPublished = Boolean(existingModel?.enabled) && (
-    !adapter ||
-    (typeof adapter.activeRevision === "string" && Boolean(adapter.activeRevision.trim())) ||
-    (Array.isArray(adapter.modes) && adapter.modes.some(
-      (mode) => isJsonRecord(mode) && mode.state === "verified",
-    ))
+  const existingModelIsPublished = modelHasPublishedExecution(existingModel, { mappings: before.mappings });
+  const vendorHasPublishedModel = before.models.some(
+    (candidate) => candidate.vendorKey === vendorKey && modelHasPublishedExecution(candidate, { mappings: before.mappings }),
   );
-  const vendorHasPublishedModel = before.models.some((candidate) => {
-    if (candidate.vendorKey !== vendorKey || !candidate.enabled) return false;
-    const candidateAdapter = isJsonRecord(candidate.meta) && isJsonRecord(candidate.meta.adapter)
-      ? candidate.meta.adapter
-      : null;
-    return !candidateAdapter ||
-      (typeof candidateAdapter.activeRevision === "string" && Boolean(candidateAdapter.activeRevision.trim())) ||
-      (Array.isArray(candidateAdapter.modes) && candidateAdapter.modes.some(
-        (mode) => isJsonRecord(mode) && mode.state === "verified",
-      ));
-  });
   const stagedAt = nowIso();
   const projectedMeta = {
     ...(isJsonRecord(existingModel?.meta) ? existingModel.meta : {}),
