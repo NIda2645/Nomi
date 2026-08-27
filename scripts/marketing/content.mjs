@@ -218,9 +218,9 @@ const zhCN = {
     windows: 'Windows x64',
     windowsHint: 'Windows 10 / 11 · .exe 安装包',
     macArm: 'Mac Apple 芯片',
-    macArmHint: 'M1 / M2 / M3 / M4 · .dmg 安装包',
+    macArmHint: 'macOS 12+ · M1 / M2 / M3 / M4 · .dmg 安装包',
     macIntel: 'Mac Intel 芯片',
-    macIntelHint: 'Intel 处理器 · .dmg 安装包',
+    macIntelHint: 'macOS 12+ · Intel 处理器 · .dmg 安装包',
     macGuideTitle: 'macOS 第一次打开',
     macGuideSummary: '当前 macOS 安装包未使用 Apple Developer ID 签名，也未经过 Apple 公证。请只使用本页或 Nomi GitHub 官方仓库的下载链接。',
     macSteps: [
@@ -444,9 +444,9 @@ const english = {
     windows: 'Windows x64',
     windowsHint: 'Windows 10 / 11 · .exe installer',
     macArm: 'Mac with Apple silicon',
-    macArmHint: 'M1 / M2 / M3 / M4 · .dmg installer',
+    macArmHint: 'macOS 12+ · M1 / M2 / M3 / M4 · .dmg installer',
     macIntel: 'Mac with Intel',
-    macIntelHint: 'Intel processor · .dmg installer',
+    macIntelHint: 'macOS 12+ · Intel processor · .dmg installer',
     macGuideTitle: 'First launch on macOS',
     macGuideSummary: 'The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.',
     macSteps: [
