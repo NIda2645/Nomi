@@ -1,6 +1,8 @@
 # docs/plan 索引地图
 
-> 71 篇方案/执行文档按**主题**分组的查找表。文件本身保持平铺（彼此有 50+ 处路径互链，移动会断链），本表负责「按主题/状态秒定位」。
+> 方案/执行文档按**主题**分组的查找表。文件本身保持平铺（彼此有大量路径互链，移动会断链），本表负责「按主题/状态秒定位」。
+> 本索引仍有历史存量缺口；查不到时必须继续全量搜索。`check:docs-index` 保证缺口只减不增。
+> 跨阶段总纲另见 [`docs/superpowers/plans/`](../superpowers/plans/)；当前主文档是 [Nomi 统一 Agent 总体方案](../superpowers/plans/2026-08-24-unified-agent-master-plan.md)。
 > 新增 plan 时**顺手在本表对应主题下加一行**。
 > 状态图例：✅ 已落地 ｜ 🚧 进行中/待实施 ｜ 📋 方案待拍板 ｜ ⛔ 已撤销/废弃 ｜ 📎 交接/日志
 
@@ -70,7 +72,7 @@
 | [agent-foundation.md](agent-foundation.md) | Agent 底座能力规格（Foundation Spec） | 📋 |
 | [2026-06-01-agent-system-review.md](2026-06-01-agent-system-review.md) | Agent 系统梳理 + 4 个问题处理 | 📎 |
 | [2026-06-06-unified-agent-merge.md](2026-06-06-unified-agent-merge.md) | 合并创作 agent 与画布 agent（草案） | 📋 |
-| [agent-merge-architecture.md](agent-merge-architecture.md) | 两个 Agent 合并：修幻影工具+架构对齐 | 🚧 |
+| [agent-merge-architecture.md](agent-merge-architecture.md) | 两个 Agent 合并：修幻影工具+架构对齐（历史架构，已由 pi SDK 运行时取代） | ⛔ |
 | [2026-06-07-assistant-consolidation-plan.md](2026-06-07-assistant-consolidation-plan.md) | 助手面板收敛（双面板→单上下文助手） | 🚧 |
 | [2026-06-07-assistant-mockup-implementation.md](2026-06-07-assistant-mockup-implementation.md) | 助手面板对齐样张（R8 实现规范） | 🚧 |
 | [2026-06-09-创作AI附件与对话体验.md](2026-06-09-创作AI附件与对话体验.md) | 创作 AI 助手：多格式附件+对话升级 | 📋 |
