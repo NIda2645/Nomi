@@ -11,7 +11,10 @@ import {
   type Viewport,
 } from '@xyflow/react'
 import { CanvasSelectionToolbar } from '../components/CanvasSelectionToolbar'
-import { GroupFrameList } from '../components/GroupFrame'
+import { CanvasGroupProjectionLayer } from '../components/CanvasGroupProjectionLayer'
+import type { CanvasGroupBox } from '../components/GroupFrame'
+import type { CollapsedGroupCardProjection } from '../model/canvasCardStackModel'
+import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import type { getSelectedBounds } from '../components/generationCanvasGeometry'
 import type { useCanvasProductionActions } from '../components/useCanvasProductionActions'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
@@ -42,11 +45,16 @@ type GenerationCanvasReactFlowViewportProps = {
   setLiveViewport: React.Dispatch<React.SetStateAction<Viewport>>
   activeCategoryId: string
   rememberCategoryViewport: (categoryId: string, viewport: { zoom: number; offset: { x: number; y: number } }) => void
-  groupBoxes: React.ComponentProps<typeof GroupFrameList>['boxes']
-  onGroupFramePointerDown: React.ComponentProps<typeof GroupFrameList>['onPointerDown']
+  groupBoxes: readonly CanvasGroupBox[]
+  collapsedGroupCards: readonly CollapsedGroupCardProjection[]
+  onGroupFramePointerDown: (event: React.PointerEvent<HTMLDivElement>, groupId: string, options?: { selectMembers?: boolean }) => void
   pendingConnection: boolean
-  pendingConnectionSide: React.ComponentProps<typeof GroupFrameList>['pendingConnectionSide']
-  onConnectToGroup: React.ComponentProps<typeof GroupFrameList>['onConnectToGroup']
+  pendingConnectionSourceId: string
+  pendingConnectionSourceKind: 'node' | 'group'
+  pendingConnectionSide: ConnectionAnchorSide
+  onConnectToGroup: (groupId: string) => void
+  onStartGroupConnection: (event: React.PointerEvent<HTMLElement>, groupId: string, side: ConnectionAnchorSide) => void
+  onSetGroupCollapsed: (groupId: string, collapsed: boolean) => void
   selectedBounds: ReturnType<typeof getSelectedBounds>
   selectedNodeIds: readonly string[]
   selectedGroupIds: readonly string[]
@@ -83,10 +91,15 @@ export function GenerationCanvasReactFlowViewport({
   activeCategoryId,
   rememberCategoryViewport,
   groupBoxes,
+  collapsedGroupCards,
   onGroupFramePointerDown,
   pendingConnection,
+  pendingConnectionSourceId,
+  pendingConnectionSourceKind,
   pendingConnectionSide,
   onConnectToGroup,
+  onStartGroupConnection,
+  onSetGroupCollapsed,
   selectedBounds,
   selectedNodeIds,
   selectedGroupIds,
@@ -144,13 +157,18 @@ export function GenerationCanvasReactFlowViewport({
       proOptions={{ hideAttribution: true }}
     >
       <ViewportPortal>
-        <GroupFrameList
+        <CanvasGroupProjectionLayer
           boxes={groupBoxes}
+          cards={collapsedGroupCards}
+          readOnly={readOnly}
           onPointerDown={onGroupFramePointerDown}
           pendingConnection={pendingConnection}
+          pendingConnectionSourceId={pendingConnectionSourceId}
+          pendingConnectionSourceKind={pendingConnectionSourceKind}
           pendingConnectionSide={pendingConnectionSide}
           onConnectToGroup={onConnectToGroup}
-          readOnly={readOnly}
+          onStartGroupConnection={onStartGroupConnection}
+          onSetCollapsed={onSetGroupCollapsed}
         />
       </ViewportPortal>
       <ViewportPortal>

@@ -37,6 +37,7 @@
     "test:agent-runtime": "tsc -p tests/agent-runtime/tsconfig.json && node --test --test-concurrency=1 .tmp/agent-runtime-tests/tests/agent-runtime/*.test.mjs",
     "test:build": "pnpm run build",
     "check:filesize": "node ./scripts/check-file-sizes.mjs",
+    "check:icons": "node ./scripts/check-app-icons.cjs",
     "check:tokens": "node ./scripts/check-design-tokens.mjs",
     "check:dangling-tokens": "node ./scripts/check-dangling-tokens.mjs",
     "check:archetype-defaults": "tsx scripts/gen-archetype-wire-defaults.ts --check",

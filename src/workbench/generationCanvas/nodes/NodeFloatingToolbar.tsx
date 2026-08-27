@@ -1,6 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconInfoCircle, IconChevronDown } from '@tabler/icons-react'
+import { IconInfoCircle, IconChevronDown, IconCopy } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 
@@ -186,6 +186,38 @@ export function ToolbarProvenanceButton({ onOpen }: { onOpen: () => void }): JSX
       ariaLabel={t('generationCommon.provenance.view')}
       onClick={onOpen}
     />
+  )
+}
+
+export function ToolbarDuplicateVariantButton({ nodeId }: { nodeId: string }): JSX.Element {
+  const { t } = useTranslation()
+  const duplicateAsVariant = useGenerationCanvasStore((state) => state.duplicateNodeForRegeneration)
+  return (
+    <ToolbarIconButton
+      icon={<IconCopy size={ICON.size} stroke={ICON.stroke} />}
+      title={t('generationCommon.node.duplicateVariant')}
+      ariaLabel={t('generationCommon.node.duplicateVariant')}
+      onClick={() => duplicateAsVariant(nodeId)}
+    />
+  )
+}
+
+export function ToolbarVariantProvenanceActions({ nodeId, onOpenProvenance }: { nodeId: string; onOpenProvenance: () => void }): JSX.Element {
+  return (
+    <>
+      <ToolbarDuplicateVariantButton nodeId={nodeId} />
+      <ToolbarProvenanceButton onOpen={onOpenProvenance} />
+    </>
+  )
+}
+
+export function EmptyNodeVariantToolbar({ nodeId, visible }: { nodeId: string; visible: boolean }): JSX.Element | null {
+  const { t } = useTranslation()
+  if (!visible) return null
+  return (
+    <FloatingToolbarShell ariaLabel={t('generationCommon.node.duplicateVariant')}>
+      <ToolbarDuplicateVariantButton nodeId={nodeId} />
+    </FloatingToolbarShell>
   )
 }
 

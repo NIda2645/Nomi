@@ -64,7 +64,12 @@ for (const label of ['新建空白项目', '开始一个项目']) {
   const el = win.locator('button', { hasText: label }).first()
   if (await el.count()) { await el.click({ timeout: 4000 }).catch(() => {}); break }
 }
-await win.waitForTimeout(2500)
+await win
+  .locator('div.fixed.inset-0')
+  .filter({ hasText: /开始生成/ })
+  .last()
+  .waitFor({ state: 'visible', timeout: 15_000 })
+  .catch(() => {})
 const genTab = win.locator('button', { hasText: /^生成$/ }).first()
 if (await genTab.count()) await genTab.click({ timeout: 5000 }).catch(() => {})
 await win.waitForTimeout(2500)
