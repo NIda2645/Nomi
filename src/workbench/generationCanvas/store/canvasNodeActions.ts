@@ -109,7 +109,9 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       if (shouldPersistCanvasMutation(options)) bumpPersistRevision(state)
     })
-    emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
+    if (shouldEmitCanvasMutation(options)) {
+      emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
+    }
   },
   updateNodes: (updates) => {
     const currentState = get()

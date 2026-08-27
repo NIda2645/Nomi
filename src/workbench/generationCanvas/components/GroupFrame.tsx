@@ -30,6 +30,7 @@ export type GroupFrameProps = {
   pendingConnection?: boolean
   pendingConnectionSide?: ConnectionAnchorSide
   onConnectToGroup?: (groupId: string) => void
+  readOnly?: boolean
 }
 
 // 这里**刻意不放「整组运行」按钮**（2026-08-02 加过又删）：点组框本来就会选中全部成员
@@ -54,10 +55,11 @@ export default function GroupFrame({
   pendingConnection,
   pendingConnectionSide,
   onConnectToGroup,
+  readOnly = false,
 }: GroupFrameProps): JSX.Element {
   const { t } = useTranslation()
   const groupColor = box.group.color || undefined
-  const connectable = Boolean(pendingConnection && onConnectToGroup && box.memberCount > 0)
+  const connectable = Boolean(!readOnly && pendingConnection && onConnectToGroup && box.memberCount > 0)
   const groupIsSource = connectable && pendingConnectionSide === 'left'
   const connectionLabel = groupIsSource
     ? t('generationCommon.canvas.group.connectFromHere', { name: box.group.name, count: box.memberCount })
@@ -66,13 +68,14 @@ export default function GroupFrame({
     <div
       className={cn(
         'generation-canvas-v2__group-box',
-        'absolute pointer-events-auto select-none rounded-nomi-lg',
+        'absolute select-none rounded-nomi-lg',
+        readOnly ? 'pointer-events-none' : 'pointer-events-auto',
         'border-[1.5px] border-[color-mix(in_srgb,var(--nomi-accent)_55%,transparent)]',
         'bg-[color-mix(in_srgb,var(--nomi-accent)_8%,transparent)]',
         'shadow-[inset_0_0_0_1px_var(--workbench-frame-ring),0_14px_34px_rgba(18,24,38,0.055)]',
         connectable
           ? 'cursor-copy border-dashed border-nomi-accent bg-[color-mix(in_srgb,var(--nomi-accent)_16%,transparent)]'
-          : 'cursor-grab active:cursor-grabbing',
+          : readOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing',
       )}
       style={{
         left: box.left,
@@ -81,21 +84,26 @@ export default function GroupFrame({
         height: box.height,
         ...(connectable ? {} : { borderColor: groupColor, backgroundColor: getHexAlphaColor(groupColor, '18') }),
       }}
-      role="button"
-      tabIndex={0}
+      role={readOnly ? undefined : 'button'}
+      tabIndex={readOnly ? undefined : 0}
       // 拖线松手时 useDragToConnect 靠这个属性在元素栈里认出组框（与 data-node-id 同一套命中法）。
       data-group-id={box.group.id}
       aria-label={
-        connectable
+        readOnly
+          ? undefined
+          : connectable
           ? connectionLabel
           : t('generationCommon.canvas.group.dragNamed', { name: box.group.name })
       }
       title={
-        connectable
+        readOnly
+          ? box.group.name
+          : connectable
           ? connectionLabel
           : t('generationCommon.canvas.group.drag')
       }
       onPointerDown={(event) => {
+        if (readOnly) return
         // 有线待连时组框是落点不是把手：照常走拖动会把整组拽走(用户以为在连线)。
         if (connectable) {
           event.preventDefault()
@@ -116,7 +124,7 @@ export default function GroupFrame({
           'absolute left-3 top-2 inline-flex min-h-[22px] max-w-[calc(100%-24px)] items-center gap-2',
           'rounded-full bg-nomi-accent px-[9px] py-[3px] text-micro font-[650] leading-[1.25] text-nomi-paper',
           'pointer-events-auto select-none shadow-[0_8px_18px_rgba(18,24,38,0.12)]',
-          connectable ? 'cursor-copy' : 'cursor-grab active:cursor-grabbing',
+          connectable ? 'cursor-copy' : readOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing',
         )}
         style={{ backgroundColor: groupColor }}
       >
@@ -135,6 +143,7 @@ export type GroupFrameListProps = {
   pendingConnection?: boolean
   pendingConnectionSide?: ConnectionAnchorSide
   onConnectToGroup?: (groupId: string) => void
+  readOnly?: boolean
 }
 
 export function GroupFrameList({
@@ -143,6 +152,7 @@ export function GroupFrameList({
   pendingConnection,
   pendingConnectionSide,
   onConnectToGroup,
+  readOnly,
 }: GroupFrameListProps): JSX.Element {
   return (
     <div className="generation-canvas-v2__group-boxes pointer-events-none absolute inset-0 z-0">
@@ -154,6 +164,7 @@ export function GroupFrameList({
           pendingConnection={pendingConnection}
           pendingConnectionSide={pendingConnectionSide}
           onConnectToGroup={onConnectToGroup}
+          readOnly={readOnly}
         />
       ))}
     </div>

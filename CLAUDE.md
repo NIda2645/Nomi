@@ -92,6 +92,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R19 | 解决状态必须可交付 | 侧分支只能称“已实现”；验证通过且提交已进入远端目标分支后才能称“已解决”（原 R17，2026-08-25 与「重活门岗」撞号后改号）|
 | R20 | 造轮子前先过 build-vs-buy 闸 | 写任何**通用能力**前三问：① 这是不是通用问题（不是 Nomi 独有）？② 同类产品/成熟方案怎么做的（Context7+web 实查，别凭记忆）？③ 自研它在不在我们护城河上？**不在护城河上又碰钱碰信任的**（标准协议、边界校验、生命周期语义）→ 用标准实现或至少**对齐标准语义**；在护城河上的（账本/预算/一致性/权限）→ 自研到底。已交学费：2026-08-25 全应用地基审计扫出手写 MCP 协议缺取消绑定/运行时校验/版本协商、IPC 缺来源绑定（`docs/audit/2026-08-25-app-wide-foundation-audit.md`）|
 | R21 | 高风险修复必须交根因合同 | 修 provider/媒体/workflow/task/runtime 等高风险路径前先读 `.agents/skills/root-cause-remediation/SKILL.md`，提交 `docs/fixes/*.root-cause.json`，证明类根因、入口集、不变量、迁移和变化中的回归测试；`check:root-cause-contracts` 硬拦只修症状或无证据修复 |
+| R22 | React Flow 生成画布单内核 | 生产生成画布只允许 `@xyflow/react`：`GenerationCanvas` 是唯一稳定入口，禁第二 renderer、engine flag、fallback、并行实现；Zustand/domain/project snapshot 是唯一业务与持久化真相源，React Flow state 只做渲染投影；连接必须走现有 graph actions；交互变化须补结构/adapter 测试与真实 Electron 走查。onboarding 静态只读工作流图不属此 renderer。|
 
 ## 决策自治
 

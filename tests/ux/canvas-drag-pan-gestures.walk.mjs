@@ -249,7 +249,7 @@ try {
       visibleOverlays: Array.from(
         document.querySelectorAll('.generation-canvas-v2-node__composer, [data-node-floating-toolbar="true"]'),
       ).filter((el) => getComputedStyle(el).visibility !== 'hidden').length,
-      marquee: document.querySelectorAll('.generation-canvas-v2__marquee').length,
+       marquee: document.querySelectorAll('.react-flow__selection').length,
     }
   })
   await snap('01-panning.png')
@@ -333,7 +333,7 @@ try {
   await getWin().mouse.down()
   await getWin().mouse.move(nodesBox.left - 40, marqueeStart.y > nodesBox.top ? nodesBox.top - 30 : nodesBox.bottom + 30, { steps: 16 })
   const marqueeVisible = await getWin().evaluate(
-    () => document.querySelectorAll('.generation-canvas-v2__marquee').length,
+    () => document.querySelectorAll('.react-flow__selection').length,
   )
   await snap('02-shift-marquee.png')
   await getWin().mouse.up()
@@ -430,7 +430,7 @@ try {
     (point) => {
       const hit = document.elementFromPoint(point.x, point.y)
       return {
-        magnetic: Boolean(hit?.closest('.generation-canvas-v2-node__magnetic-handle, .generation-canvas-v2-node__handle--output')),
+        magnetic: Boolean(hit?.closest('.generation-canvas-react-flow__handle, .generation-canvas-v2-node__magnetic-handle, .generation-canvas-v2-node__handle--output')),
         label: hit?.getAttribute('aria-label') || hit?.className?.toString().slice(0, 60) || hit?.tagName,
       }
     },
