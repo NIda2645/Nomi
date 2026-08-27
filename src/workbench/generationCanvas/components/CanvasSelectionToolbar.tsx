@@ -59,7 +59,7 @@ export function CanvasSelectionToolbar({
         {t('generationCommon.selection.count', { count: selectedCount })}
       </span>
       {executionGroups.map((group) => (
-        <CanvasBulkModelSelect key={group.executionKind} group={group} onApplyModel={onApplyModel} />
+        <CanvasBulkModelSelect key={`${group.executionKind}:${group.requiredMode}`} group={group} onApplyModel={onApplyModel} />
       ))}
       <button
         type="button"

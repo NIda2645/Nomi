@@ -7,6 +7,7 @@ import type { CanvasGenerationExecutionGroup } from './canvasProductionScope'
 
 export type CanvasApplyModelInput = {
   executionKind: string
+  requiredMode: CanvasGenerationExecutionGroup['requiredMode']
   value: string
   vendor?: string
   modelOptions: readonly ModelOption[]
@@ -33,12 +34,12 @@ export function CanvasBulkModelSelect({
   onApplyModel: (input: CanvasApplyModelInput) => void
 }): JSX.Element | null {
   const { t } = useTranslation()
-  const state = useGenerationModelOptionsState(group.representativeKind)
+  const state = useGenerationModelOptionsState(group.representativeKind, group.requiredMode)
   const handlePick = React.useCallback(
     (value: string, vendor?: string) => {
-      onApplyModel({ executionKind: group.executionKind, value, vendor, modelOptions: state.options })
+      onApplyModel({ executionKind: group.executionKind, requiredMode: group.requiredMode, value, vendor, modelOptions: state.options })
     },
-    [group.executionKind, onApplyModel, state.options],
+    [group.executionKind, group.requiredMode, onApplyModel, state.options],
   )
   const label = modelGroupLabel(group.executionKind, group.nodeIds.length, t)
   return (

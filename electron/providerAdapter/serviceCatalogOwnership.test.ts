@@ -72,14 +72,29 @@ const upsertMapping = vi.fn((payload: unknown): Mapping => {
   return structuredClone(next);
 });
 
+const upsertApiKey = vi.fn((key: string, payload: { apiKey?: string; enabled?: boolean }) => {
+  state.apiKeysByVendor[key] = {
+    vendorKey: key,
+    apiKey: String(payload.apiKey || ""),
+    enc: "safeStorage",
+    enabled: payload.enabled !== false,
+    createdAt: now,
+    updatedAt: now,
+  };
+});
+
+const deleteApiKey = vi.fn((key: string) => {
+  delete state.apiKeysByVendor[key];
+});
+
 vi.mock("../catalog/catalogStore", () => ({
   readCatalog: () => structuredClone(state),
   mutateCatalog: <T>(fn: (tx: unknown) => T): T => fn({
     upsertVendor,
     upsertModel,
     upsertMapping,
-    upsertApiKey: vi.fn(),
-    deleteApiKey: vi.fn(),
+    upsertApiKey,
+    deleteApiKey,
     deleteModelMappings: vi.fn(),
   }),
   extractVendorExtraHeaders: () => undefined,
@@ -191,5 +206,114 @@ describe("provider adapter catalog run ownership", () => {
 
     expect(state).toEqual(afterB);
     expect(state.mappings[0]?.create.path).toBe("/images/from-b");
+  });
+
+  it("keeps a shared published connection byte-identical when a replacement run fails", () => {
+    state = {
+      ...initialState(),
+      vendors: [{ ...initialState().vendors[0], enabled: true, baseUrlHint: "https://active.example.test/v1", authType: "bearer" }],
+      models: [
+        { ...initialState().models[0], enabled: true },
+        { ...initialState().models[0], modelKey: "video-sibling", labelZh: "Video sibling", kind: "video", enabled: true },
+      ],
+      mappings: [
+        { id: "active-image", vendorKey, modelKey, taskKind: "text_to_image", name: "active image", enabled: true, create: { method: "POST", path: "/active-image" }, createdAt: now, updatedAt: now },
+        { id: "active-video", vendorKey, modelKey: "video-sibling", taskKind: "text_to_video", name: "active video", enabled: true, create: { method: "POST", path: "/active-video" }, createdAt: now, updatedAt: now },
+      ],
+      apiKeysByVendor: { [vendorKey]: { vendorKey, apiKey: "encrypted-active", enc: "safeStorage", enabled: true, createdAt: now, updatedAt: now } },
+    };
+    const activeBefore = structuredClone(state);
+
+    const staged = defaultCatalog.stage({
+      catalogVendorKey: vendorKey,
+      vendorKey,
+      runId: "replacement-run",
+      vendorName: "Replacement",
+      baseUrl: "https://candidate.example.test/v2",
+      apiKey: "candidate-secret",
+      authType: "bearer",
+      providerKind: "openai-responses",
+      headers: { "X-Candidate": "yes" },
+      models: [{ modelKey, labelZh: "Candidate image", kind: "video" }],
+    });
+
+    expect(staged.vendor.key).not.toBe(vendorKey);
+    expect(state.vendors.find((vendor) => vendor.key === vendorKey)).toEqual(activeBefore.vendors[0]);
+    expect(state.models.filter((model) => model.vendorKey === vendorKey)).toEqual(activeBefore.models);
+    expect(state.mappings.filter((mapping) => mapping.vendorKey === vendorKey)).toEqual(activeBefore.mappings);
+    expect(state.apiKeysByVendor[vendorKey]).toEqual(activeBefore.apiKeysByVendor[vendorKey]);
+
+    defaultCatalog.fail({
+      ...run("replacement-run", "failed", "failed"),
+      vendorKey: staged.vendor.key,
+    });
+
+    expect(state.vendors.find((vendor) => vendor.key === vendorKey)).toEqual(activeBefore.vendors[0]);
+    expect(state.models.filter((model) => model.vendorKey === vendorKey)).toEqual(activeBefore.models);
+    expect(state.mappings.filter((mapping) => mapping.vendorKey === vendorKey)).toEqual(activeBefore.mappings);
+    expect(state.apiKeysByVendor[vendorKey]).toEqual(activeBefore.apiKeysByVendor[vendorKey]);
+  });
+
+  it("switches only the verified target to the candidate connection and leaves its published sibling active", () => {
+    state = {
+      ...initialState(),
+      vendors: [{ ...initialState().vendors[0], enabled: true, baseUrlHint: "https://active.example.test/v1", authType: "bearer" }],
+      models: [
+        { ...initialState().models[0], enabled: true },
+        { ...initialState().models[0], modelKey: "video-sibling", labelZh: "Video sibling", kind: "video", enabled: true },
+      ],
+      mappings: [
+        { id: "active-image", vendorKey, modelKey, taskKind: "text_to_image", name: "active image", enabled: true, create: { method: "POST", path: "/active-image" }, createdAt: now, updatedAt: now },
+        { id: "active-video", vendorKey, modelKey: "video-sibling", taskKind: "text_to_video", name: "active video", enabled: true, create: { method: "POST", path: "/active-video" }, createdAt: now, updatedAt: now },
+      ],
+      apiKeysByVendor: { [vendorKey]: { vendorKey, apiKey: "encrypted-active", enc: "safeStorage", enabled: true, createdAt: now, updatedAt: now } },
+    };
+    const staged = defaultCatalog.stage({
+      catalogVendorKey: vendorKey,
+      vendorKey,
+      runId: "replacement-run",
+      vendorName: "Replacement",
+      baseUrl: "https://candidate.example.test/v2",
+      apiKey: "candidate-secret",
+      authType: "bearer",
+      providerKind: "openai-responses",
+      models: [{ modelKey, labelZh: "Candidate image", kind: "image" }],
+    });
+    const candidateDraft: ProviderAdapterDraft = {
+      provider: { baseUrl: "https://candidate.example.test/v2", authType: "bearer", providerKind: "openai-responses" },
+      sources: [],
+      models: [{
+        modelKey,
+        labelZh: "Candidate image",
+        kind: "image",
+        modes: [{ taskKind: "text_to_image", create: { method: "POST", path: "/candidate-image" }, testParams: {}, sourceUrls: [] }],
+      }],
+    };
+    const completed = { ...run("replacement-run", "completed", "verified"), vendorKey: staged.vendor.key };
+
+    defaultCatalog.promote({
+      run: completed,
+      draft: candidateDraft,
+      revision: {
+        id: "replacement-revision",
+        vendorKey: staged.vendor.key,
+        digest: "replacement-digest",
+        draft: candidateDraft,
+        verifiedModes: [{ modelKey, taskKind: "text_to_image" }],
+        createdAt: now,
+      },
+      verifiedModes: [{ modelKey, taskKind: "text_to_image" }],
+    });
+
+    expect(state.models.find((model) => model.vendorKey === vendorKey && model.modelKey === modelKey)?.enabled).toBe(false);
+    expect(state.mappings.find((mapping) => mapping.id === "active-image")?.enabled).toBe(false);
+    expect(state.models.find((model) => model.vendorKey === vendorKey && model.modelKey === "video-sibling")?.enabled).toBe(true);
+    expect(state.mappings.find((mapping) => mapping.id === "active-video")).toMatchObject({ enabled: true, create: { path: "/active-video" } });
+    expect(state.vendors.find((vendor) => vendor.key === vendorKey)?.enabled).toBe(true);
+    expect(state.models.find((model) => model.vendorKey === staged.vendor.key && model.modelKey === modelKey)?.enabled).toBe(true);
+    expect(state.mappings.find((mapping) => mapping.vendorKey === staged.vendor.key && mapping.modelKey === modelKey)).toMatchObject({
+      enabled: true,
+      create: { path: "/candidate-image" },
+    });
   });
 });

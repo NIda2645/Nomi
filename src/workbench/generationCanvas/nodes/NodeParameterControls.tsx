@@ -5,6 +5,7 @@ import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import {
   deriveGenerationModelCatalogStatus,
   findModelOptionByIdentifier,
+  requiredModeForGenerationNode,
   useGenerationModelOptionsState,
 } from '../adapters/modelOptionsAdapter'
 import { type ModelParameterControl } from '../../../config/modelCatalogMeta'
@@ -104,9 +105,6 @@ export default function NodeParameterControls({
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
   const storeConnectNodes = useGenerationCanvasStore((state) => state.connectNodes)
   const storeDisconnectEdge = useGenerationCanvasStore((state) => state.disconnectEdge)
-  const modelOptionsState = useGenerationModelOptionsState(node.kind)
-  const modelOptions = modelOptionsState.options
-  const modelCatalogStatus = deriveGenerationModelCatalogStatus(node.kind, modelOptionsState)
   const meta = React.useMemo<Record<string, unknown>>(() => node.meta || {}, [node.meta])
   const [uploadingSlotKey, setUploadingSlotKey] = React.useState('')
   const [uploadError, setUploadError] = React.useState('')
@@ -120,6 +118,10 @@ export default function NodeParameterControls({
   // 声音节点同为可生成节点：要走模型自动选择(选到「声音」档案)→ ModeBar(配音/转写)+ 参数才显现。
   const isAudioLike = isAudioLikeGenerationNodeKind(node.kind)
   const isGenerationNode = isImageLike || isVideoLike || isTextLike || isAudioLike
+  const requiredMode = requiredModeForGenerationNode(node, { nodes, edges })
+  const modelOptionsState = useGenerationModelOptionsState(node.kind, requiredMode)
+  const modelOptions = modelOptionsState.options
+  const modelCatalogStatus = deriveGenerationModelCatalogStatus(node.kind, modelOptionsState)
 
   // 模型寻址链单源在 parameterControlModel.nodeSelectedModelAddress（报错卡自定义调用入口共用）。
   // 必须带上节点存的 vendor 寻址：两个中转站可提供同名 modelKey，裸身份匹配永远命中数组首条

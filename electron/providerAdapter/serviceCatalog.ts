@@ -8,6 +8,11 @@ import { apiKeyDecryptStatus, decryptApiKeyRecord } from "../catalog/secrets";
 import type { Model, ProfileKind, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
 import { modelHasPublishedExecution } from "../shared/modelPublication";
+import {
+  ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY,
+  candidateSourceVendorKey,
+  stagedVendorKey,
+} from "../catalog/stagedVendorIdentity";
 import { adapterModelMetadataForPromotion } from "./promotionMeta";
 import type {
   ProviderAdapterDraft,
@@ -63,14 +68,33 @@ function vendorHasPublishedExecution(state: ReturnType<typeof readCatalog>, vend
   return state.models.some((model) => model.vendorKey === vendorKey && hasPublishedExecution(state, model));
 }
 
+function candidateVendorKey(
+  state: ReturnType<typeof readCatalog>,
+  sourceVendorKey: string,
+  input: ProviderAdapterStartInput,
+): string {
+  if (!vendorHasPublishedExecution(state, sourceVendorKey)) return sourceVendorKey;
+  return stagedVendorKey(sourceVendorKey, {
+    baseUrl: input.baseUrl,
+    authType: input.authType,
+    authHeader: input.authHeader || null,
+    authQueryParam: input.authQueryParam || null,
+    providerKind: normalizeProviderKind(input.providerKind),
+    headers: input.headers || {},
+  });
+}
+
 export const defaultCatalog: ProviderAdapterCatalogPort = {
   register(input) {
     const before = readCatalog();
-    const existingVendor = before.vendors.find((vendor) => vendor.key === input.vendorKey);
+    const sourceVendorKey = input.vendorKey;
+    const targetVendorKey = candidateVendorKey(before, sourceVendorKey, input);
+    const existingVendor = before.vendors.find((vendor) => vendor.key === targetVendorKey);
+    const sourceVendor = before.vendors.find((vendor) => vendor.key === sourceVendorKey);
     const cleanHeaders = Object.fromEntries(
       Object.entries(input.headers || {}).filter(([key, value]) => key.trim() && value.trim()),
     );
-    const savedCredential = before.apiKeysByVendor[input.vendorKey];
+    const savedCredential = before.apiKeysByVendor[sourceVendorKey];
     if (input.authType !== "none" && input.preserveExistingCredential) {
       if (!savedCredential?.apiKey || savedCredential.enabled === false) {
         throw new Error("The saved connection credential is missing; enter the API key again");
@@ -79,11 +103,12 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         throw new Error("The saved connection credential needs to be saved again before authentication can continue");
       }
     }
-    const vendorEnabled = vendorHasPublishedExecution(before, input.vendorKey);
+    const isolatedCandidate = targetVendorKey !== sourceVendorKey;
+    const vendorEnabled = isolatedCandidate ? false : vendorHasPublishedExecution(before, sourceVendorKey);
     return mutateCatalog((tx) => {
       const vendor = tx.upsertVendor({
-        key: input.vendorKey,
-        name: input.vendorName || existingVendor?.name || input.vendorKey,
+        key: targetVendorKey,
+        name: input.vendorName || existingVendor?.name || sourceVendor?.name || targetVendorKey,
         enabled: vendorEnabled,
         baseUrlHint: input.baseUrl,
         authType: input.authType,
@@ -93,13 +118,17 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         meta: {
           ...asRecord(existingVendor?.meta),
           ...(Object.keys(cleanHeaders).length ? { extraHeaders: cleanHeaders } : {}),
+          ...(isolatedCandidate ? { [ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY]: sourceVendorKey } : {}),
         },
       });
-      if (input.authType === "none") tx.deleteApiKey(input.vendorKey);
-      else if (!input.preserveExistingCredential) tx.upsertApiKey(input.vendorKey, { apiKey: input.apiKey, enabled: true });
+      if (input.authType === "none") tx.deleteApiKey(targetVendorKey);
+      else if (!input.preserveExistingCredential) tx.upsertApiKey(targetVendorKey, { apiKey: input.apiKey, enabled: true });
+      else if (isolatedCandidate) {
+        tx.upsertApiKey(targetVendorKey, { apiKey: decryptApiKeyRecord(savedCredential), enabled: true });
+      }
       const models = input.models.map((selected) => {
         const existing = before.models.find(
-          (model) => model.vendorKey === input.vendorKey && model.modelKey === selected.modelKey,
+          (model) => model.vendorKey === targetVendorKey && model.modelKey === selected.modelKey,
         );
         const canExecute = hasPublishedExecution(before, existing);
         if (existing && canExecute) {
@@ -110,7 +139,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         }
         return tx.upsertModel({
           ...(existing || {}),
-          vendorKey: input.vendorKey,
+          vendorKey: targetVendorKey,
           modelKey: selected.modelKey,
           modelAlias: existing?.modelAlias || selected.modelKey,
           labelZh: selected.labelZh || existing?.labelZh || humanizeModelKey(selected.modelKey),
@@ -129,19 +158,23 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
 
   stage(input) {
     const before = readCatalog();
-    const existingVendor = before.vendors.find((vendor) => vendor.key === input.vendorKey);
+    const sourceVendorKey = input.vendorKey;
+    const targetVendorKey = candidateVendorKey(before, sourceVendorKey, input);
+    const existingVendor = before.vendors.find((vendor) => vendor.key === targetVendorKey);
+    const sourceVendor = before.vendors.find((vendor) => vendor.key === sourceVendorKey);
     const cleanHeaders = Object.fromEntries(
       Object.entries(input.headers || {}).filter(([key, value]) => key.trim() && value.trim()),
     );
-    const savedCredential = before.apiKeysByVendor[input.vendorKey];
+    const savedCredential = before.apiKeysByVendor[sourceVendorKey];
     if (input.authType !== "none" && input.catalogVendorKey && savedCredential?.apiKey && savedCredential.enc !== "safeStorage") {
       throw new Error("The saved connection credential needs to be saved again before authentication can continue");
     }
-    const vendorEnabled = vendorHasPublishedExecution(before, input.vendorKey);
+    const isolatedCandidate = targetVendorKey !== sourceVendorKey;
+    const vendorEnabled = isolatedCandidate ? false : vendorHasPublishedExecution(before, sourceVendorKey);
     return mutateCatalog((tx) => {
       const vendor = tx.upsertVendor({
-        key: input.vendorKey,
-        name: input.vendorName || existingVendor?.name || input.vendorKey,
+        key: targetVendorKey,
+        name: input.vendorName || existingVendor?.name || sourceVendor?.name || targetVendorKey,
         enabled: vendorEnabled,
         baseUrlHint: input.baseUrl,
         authType: input.authType,
@@ -151,18 +184,19 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         meta: {
           ...asRecord(existingVendor?.meta),
           ...(Object.keys(cleanHeaders).length ? { extraHeaders: cleanHeaders } : {}),
+          ...(isolatedCandidate ? { [ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY]: sourceVendorKey } : {}),
         },
       });
-      if (input.authType === "none") tx.deleteApiKey(input.vendorKey);
-      else tx.upsertApiKey(input.vendorKey, { apiKey: input.apiKey, enabled: true });
+      if (input.authType === "none") tx.deleteApiKey(targetVendorKey);
+      else tx.upsertApiKey(targetVendorKey, { apiKey: input.apiKey, enabled: true });
       const models = input.models.map((selected) => {
         const existing = before.models.find(
-          (model) => model.vendorKey === input.vendorKey && model.modelKey === selected.modelKey,
+          (model) => model.vendorKey === targetVendorKey && model.modelKey === selected.modelKey,
         );
         const published = hasPublishedExecution(before, existing);
         const activeContract = published && existing ? existing : undefined;
         return tx.upsertModel({
-          vendorKey: input.vendorKey,
+          vendorKey: targetVendorKey,
           modelKey: selected.modelKey,
           modelAlias: activeContract?.modelAlias || existing?.modelAlias || selected.modelKey,
           labelZh: activeContract?.labelZh || selected.labelZh || existing?.labelZh || humanizeModelKey(selected.modelKey),
@@ -216,10 +250,34 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
       if (hasPublishedExecution(before, model)) return true;
       return ownedModelKeys.has(model.modelKey) && input.verifiedModes.some((mode) => mode.modelKey === model.modelKey);
     });
+    const candidateVendor = before.vendors.find((vendor) => vendor.key === input.run.vendorKey);
+    const sourceVendorKey = candidateSourceVendorKey(candidateVendor?.meta);
+    const switchedModelKeys = new Set(
+      input.verifiedModes
+        .filter((mode) => ownedModelKeys.has(mode.modelKey))
+        .map((mode) => mode.modelKey),
+    );
     mutateCatalog((tx) => {
       const existingVendor = before.vendors.find((vendor) => vendor.key === input.run.vendorKey);
       if (!existingVendor) throw new Error(`Provider disappeared before adapter promotion: ${input.run.vendorKey}`);
       tx.upsertVendor({ ...existingVendor, enabled: vendorEnabled });
+      if (sourceVendorKey && switchedModelKeys.size > 0) {
+        for (const sourceModel of before.models) {
+          if (sourceModel.vendorKey !== sourceVendorKey || !switchedModelKeys.has(sourceModel.modelKey)) continue;
+          tx.upsertModel({ ...sourceModel, enabled: false });
+        }
+        for (const sourceMapping of before.mappings) {
+          if (sourceMapping.vendorKey !== sourceVendorKey || !sourceMapping.modelKey || !switchedModelKeys.has(sourceMapping.modelKey)) continue;
+          tx.upsertMapping({ ...sourceMapping, enabled: false });
+        }
+        const sourceVendor = before.vendors.find((vendor) => vendor.key === sourceVendorKey);
+        if (sourceVendor) {
+          const sourceStillPublished = before.models.some(
+            (model) => model.vendorKey === sourceVendorKey && !switchedModelKeys.has(model.modelKey) && hasPublishedExecution(before, model),
+          );
+          tx.upsertVendor({ ...sourceVendor, enabled: sourceStillPublished });
+        }
+      }
       for (const candidate of input.draft.models) {
         if (!ownedModelKeys.has(candidate.modelKey)) continue;
         const existing = before.models.find(

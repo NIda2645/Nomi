@@ -121,6 +121,27 @@ describe("manual model entry — user journey", () => {
     expect(resolveOnboardingAgentFromCatalog()).toBeNull();
   });
 
+  it("does not report a legacy plaintext credential as healthy or executable", () => {
+    commitManualOpenAiCompatibleModels({
+      vendorName: "Legacy",
+      baseUrl: "https://legacy.example.test/v1",
+      apiKey: "temporary-secure-write",
+      models: [{ id: "legacy-text", kind: "text" }],
+    });
+    const catalogFile = path.join(mockedUserDataRoot, "model-catalog.json");
+    const catalog = JSON.parse(fs.readFileSync(catalogFile, "utf8")) as {
+      apiKeysByVendor: Record<string, { apiKey: string; enc?: string; enabled: boolean }>;
+    };
+    catalog.apiKeysByVendor['legacy-example-test'] = {
+      ...catalog.apiKeysByVendor['legacy-example-test'],
+      apiKey: "sentinel-legacy-plain",
+      enc: "plain",
+    };
+    fs.writeFileSync(catalogFile, JSON.stringify(catalog, null, 2));
+
+    expect(listModelCatalogVendors().find((vendor) => vendor.key === 'legacy-example-test')?.hasApiKey).toBe(false);
+  });
+
   it("adds multiple models under one vendor in a single save", () => {
     const result = commitManualOpenAiCompatibleModels({
       vendorName: "我的中转站",
@@ -302,7 +323,7 @@ describe("manual model entry — user journey", () => {
     });
 
     expect(listModelCatalogVendors().find((vendor) => vendor.key === vendorKey)?.enabled).toBe(true);
-    expect(listModelCatalogModels().find((model) => model.modelKey === "scripted-image")).toMatchObject({
+    expect(listModelCatalogModels().find((model) => model.vendorKey === vendorKey && model.modelKey === "scripted-image")).toMatchObject({
       modelAlias: "published-alias",
       labelZh: "Published Scripted Image",
       kind: "image",
@@ -315,6 +336,72 @@ describe("manual model entry — user journey", () => {
       taskKind: "text_to_image",
       enabled: true,
       create: { path: "/published/images" },
+    });
+  });
+
+  it("stages a manual connection re-save without changing the shared active vendor, credential, or sibling model", () => {
+    const activeBaseUrl = "https://shared.example.test/v1";
+    const vendorKey = deriveVendorKeyFromBaseUrl(activeBaseUrl);
+    commitManualOpenAiCompatibleModels({
+      vendorName: "Shared",
+      baseUrl: activeBaseUrl,
+      apiKey: "active-key",
+      models: [{ id: "target", kind: "image" }, { id: "sibling", kind: "video" }],
+    });
+    upsertModelCatalogVendor({
+      key: vendorKey,
+      name: "Shared",
+      enabled: true,
+      baseUrlHint: activeBaseUrl,
+      authType: "bearer",
+      providerKind: "openai-compatible",
+      meta: { extraHeaders: { "X-Active": "yes" } },
+    });
+    for (const [modelKey, kind] of [["target", "image"], ["sibling", "video"]] as const) {
+      upsertModelCatalogModel({ vendorKey, modelKey, labelZh: modelKey, kind, enabled: true });
+      upsertModelCatalogMapping({
+        vendorKey,
+        modelKey,
+        taskKind: kind === "image" ? "text_to_image" : "text_to_video",
+        name: modelKey,
+        enabled: true,
+        create: { method: "POST", path: `/active-${modelKey}` },
+      });
+    }
+    const catalogFile = path.join(mockedUserDataRoot, "model-catalog.json");
+    const activeBefore = JSON.parse(fs.readFileSync(catalogFile, "utf8")) as {
+      vendors: Array<Record<string, unknown>>;
+      models: Array<Record<string, unknown>>;
+      mappings: Array<Record<string, unknown>>;
+      apiKeysByVendor: Record<string, unknown>;
+    };
+
+    const result = commitManualOpenAiCompatibleModels({
+      vendorName: "Candidate",
+      baseUrl: "https://shared.example.test/v2",
+      apiKey: "candidate-key",
+      providerKind: "openai-responses",
+      headers: { "X-Candidate": "yes" },
+      models: [{ id: "target", kind: "video" }],
+    });
+    const after = JSON.parse(fs.readFileSync(catalogFile, "utf8")) as typeof activeBefore;
+
+    expect(result.vendorKey).not.toBe(vendorKey);
+    expect(after.vendors.find((vendor) => vendor.key === vendorKey)).toEqual(
+      activeBefore.vendors.find((vendor) => vendor.key === vendorKey),
+    );
+    expect(after.apiKeysByVendor[vendorKey]).toEqual(activeBefore.apiKeysByVendor[vendorKey]);
+    expect(after.models.filter((model) => model.vendorKey === vendorKey)).toEqual(
+      activeBefore.models.filter((model) => model.vendorKey === vendorKey),
+    );
+    expect(after.mappings.filter((mapping) => mapping.vendorKey === vendorKey)).toEqual(
+      activeBefore.mappings.filter((mapping) => mapping.vendorKey === vendorKey),
+    );
+    expect(after.vendors.find((vendor) => vendor.key === result.vendorKey)).toMatchObject({
+      enabled: false,
+      baseUrlHint: "https://shared.example.test/v2",
+      providerKind: "openai-responses",
+      meta: expect.objectContaining({ adapterCandidateSourceVendorKey: vendorKey }),
     });
   });
 

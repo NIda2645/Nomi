@@ -4,7 +4,7 @@ import { findNonHeaderSafeChar, isJsonRecord, nowIso, type JsonRecord } from "..
 import { sanitizeName } from "../projects/repository";
 import { writeJsonFileAtomic } from "../jsonFile";
 import { CATALOG_FILE, getSettingsRoot, readJson } from "../runtimePaths";
-import { type ApiKeyRecord, decryptApiKeyRecord, makeApiKeyRecordFromPlain } from "./secrets";
+import { apiKeyDecryptStatus, type ApiKeyRecord, decryptApiKeyRecord, makeApiKeyRecordFromPlain } from "./secrets";
 import { humanizeModelKey } from "./modelLabel";
 import { applyBuiltinSeeds } from "./seedBuiltins";
 import { migrateRelayImageEditProtocols } from "./relayImageEditMigration";
@@ -73,7 +73,7 @@ export function readCatalog(): CatalogState {
     vendors: migrated.vendors.map((vendor) => ({
       ...vendor,
       providerKind: normalizeProviderKind(vendor.providerKind),
-      hasApiKey: Boolean(apiKeysByVendor[vendor.key]?.apiKey && apiKeysByVendor[vendor.key]?.enabled !== false),
+      hasApiKey: apiKeyDecryptStatus(apiKeysByVendor[vendor.key]) === "ok",
     })),
     apiKeysByVendor,
   };
@@ -444,7 +444,7 @@ export function upsertModelCatalogVendor(payload: unknown): Vendor {
   const state = readCatalog();
   const vendor = applyVendorUpsert(state, payload);
   writeCatalog(state);
-  return publicVendor({ ...vendor, hasApiKey: Boolean(state.apiKeysByVendor[vendor.key]?.apiKey) });
+  return publicVendor({ ...vendor, hasApiKey: apiKeyDecryptStatus(state.apiKeysByVendor[vendor.key]) === "ok" });
 }
 
 export function deleteModelCatalogVendor(key: string): void {

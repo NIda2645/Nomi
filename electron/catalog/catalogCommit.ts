@@ -9,6 +9,7 @@ import { hardenedFetchText } from "../hardenedFetch";
 import type { AiSdkProviderKind, BillingModelKind, HttpOperation, Model, ProfileKind, Vendor } from "./types";
 import type { TaskRequest } from "../runtime";
 import { modelHasPublishedExecution } from "../shared/modelPublication";
+import { ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY, stagedVendorKey } from "./stagedVendorIdentity";
 import {
   mutateCatalog,
   normalizeProviderKind,
@@ -108,8 +109,8 @@ function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType
   const draft = (outcome as JsonRecord).draft as JsonRecord | null;
   if (!draft) throw new Error("outcome.draft missing");
 
-  const vendorKey = String(draft.vendorKey || "").trim();
-  const vendorName = String(draft.vendorName || vendorKey).trim();
+  const sourceVendorKey = String(draft.vendorKey || "").trim();
+  const vendorName = String(draft.vendorName || sourceVendorKey).trim();
   const vendorBaseUrl = String(draft.vendorBaseUrl || "").trim();
   const modelKey = String(draft.modelKey || "").trim();
   // 显示名兜底不落裸 id（审计 A13）。
@@ -117,7 +118,7 @@ function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType
   const targetKind = String(draft.targetKind || "").trim();
   const userApiKey = String(payload.userApiKey || "").trim();
 
-  if (!vendorKey || !vendorBaseUrl || !modelKey) {
+  if (!sourceVendorKey || !vendorBaseUrl || !modelKey) {
     throw new Error("incomplete draft: vendorKey + vendorBaseUrl + modelKey are required");
   }
   if (!userApiKey) throw new Error("userApiKey required to commit a model");
@@ -127,6 +128,19 @@ function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType
 
   const auth = (draft.vendorAuth || {}) as JsonRecord;
   const authType = (auth.type as Vendor["authType"]) || "bearer";
+  const sourceHasPublishedModel = before.models.some(
+    (candidate) => candidate.vendorKey === sourceVendorKey && modelHasPublishedExecution(candidate, { mappings: before.mappings }),
+  );
+  const vendorKey = sourceHasPublishedModel
+    ? stagedVendorKey(sourceVendorKey, {
+        baseUrl: vendorBaseUrl,
+        authType,
+        authHeader: auth.headerName || null,
+        authQueryParam: auth.queryParam || null,
+        providerKind: draft.vendorProviderKind || "openai-compatible",
+        meta: draft.vendorMeta || {},
+      })
+    : sourceVendorKey;
 
   // onboarding evidence 快照 + meta.parameters 投影（纯计算，先备好，再进事务）。
   type OnboardingField = NonNullable<Model["onboarding"]>["fields"][number];
@@ -222,7 +236,12 @@ function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType
     authQueryParam: auth.queryParam || null,
     providerKind: draft.vendorProviderKind || "openai-compatible",
     enabled: vendorHasPublishedModel,
-    ...(draft.vendorMeta !== undefined ? { meta: draft.vendorMeta } : {}),
+    ...(draft.vendorMeta !== undefined || vendorKey !== sourceVendorKey
+      ? { meta: {
+          ...(isJsonRecord(draft.vendorMeta) ? draft.vendorMeta : {}),
+          ...(vendorKey !== sourceVendorKey ? { [ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY]: sourceVendorKey } : {}),
+        } }
+      : {}),
   };
 
   return {
@@ -589,9 +608,9 @@ export function commitManualOpenAiCompatibleModels(payload: {
     entries.push({ outcome, userApiKey: apiKey, addedVia: "manual" });
     return { modelKey: m.id, displayName };
   });
-  commitOnboardedModelsToCatalog({ entries });
+  const written = commitOnboardedModelsToCatalog({ entries });
 
-  return { vendorKey, committed };
+  return { vendorKey: written[0]?.vendorKey || vendorKey, committed };
 }
 
 export async function fetchModelCatalogDocs(payload: unknown): Promise<unknown> {
