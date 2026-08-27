@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -206,6 +207,18 @@ test('installer never mutates a shared node_modules or an already mismatched pac
     )
     assert.equal(installs, 0)
   }
+})
+
+test('Cloudflare Workers dependency install never launches the desktop Electron runtime', () => {
+  const result = spawnSync(process.execPath, [path.join(sourceRepoRoot, 'scripts', 'install-electron-runtime.mjs')], {
+    cwd: sourceRepoRoot,
+    env: { ...process.env, WORKERS_CI: '1' },
+    encoding: 'utf8',
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Skipping Electron desktop runtime install in Cloudflare Workers Builds/)
+  assert.doesNotMatch(result.stdout, /runtime installed and verified/)
 })
 
 test('all Electron entry points share the identity gate and install repair', () => {

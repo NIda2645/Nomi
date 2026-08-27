@@ -36,6 +36,10 @@
 
 根 `postinstall` 在依赖链接完成后运行安装器：若包版本正确但 Electron 运行时缺失，执行 Electron 43 自带的 `install.js`；随后用同一检查器验证四重身份。软链接 `node_modules` 或错误包版本直接拒绝，不尝试覆盖别的 worktree。
 
+唯一例外是 Cloudflare Workers Builds 的静态官网部署。Cloudflare 官方在构建环境固定注入 `WORKERS_CI=1`，而且会在部署前自动安装依赖；这个环境只发布 `marketing/` 静态资源，不开发、测试、打包或运行桌面端。因此根 `postinstall` 在且仅在该官方环境标记为 `1` 时跳过桌面运行时下载与可执行文件探针，避免 Web 构建依赖 Linux 桌面库或 Electron 下载。这个跳过不进入可复用的 `ensureElectronRuntime()`，也不改变 dev/start/build/dist/gates/MCP/Windows 门岗；即使有人手工伪造环境变量，任何桌面入口仍会重新执行身份闸门并对共享、逃逸或错版本安装 fail closed。
+
+参考：Cloudflare Workers Builds 默认环境变量文档明确列出 `WORKERS_CI=1`：<https://developers.cloudflare.com/changelog/post/2025-06-10-default-env-vars/>。
+
 ### 3. 使用前 fail closed
 
 `dev`、`start`、`build`、全部 `dist` 入口和完整 `gates` 在使用 Electron 前调用同一检查。Windows 门岗由“打印版本”改为“验证版本”。
@@ -64,5 +68,6 @@ pnpm 内容仓库仍复用下载和包内容，只隔离每个 worktree 的解�
 - Windows case-sensitive 双目录不会被误判成同一个 worktree；
 - 声明 43 / 包 31、声明 43 / dist 31、声明 43 / 可执行 31 均拒绝；
 - 缺少 `dist` 时安装阶段补齐，普通检查阶段拒绝；
+- `WORKERS_CI=1` 的 Web-only 依赖安装不下载、不探测 Electron；离开该环境后桌面入口仍会安装/验证；
 - 四者均为 43.4.1 时通过；
 - 完整 `pnpm run gates`、Windows workflow contract 和构建通过。

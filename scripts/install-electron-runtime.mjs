@@ -43,11 +43,15 @@ export function ensureElectronRuntime(options = {}) {
 
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === scriptPath
 if (invokedDirectly) {
-  try {
-    const identity = ensureElectronRuntime()
-    console.log(`✅ Electron ${identity.runtimeVersion} runtime installed and verified`)
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : error)
-    process.exitCode = 1
+  if (process.env.WORKERS_CI === '1') {
+    console.log('ℹ️  Skipping Electron desktop runtime install in Cloudflare Workers Builds')
+  } else {
+    try {
+      const identity = ensureElectronRuntime()
+      console.log(`✅ Electron ${identity.runtimeVersion} runtime installed and verified`)
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error)
+      process.exitCode = 1
+    }
   }
 }
