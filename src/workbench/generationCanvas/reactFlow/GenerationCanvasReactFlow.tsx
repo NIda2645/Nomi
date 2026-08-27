@@ -40,6 +40,8 @@ import { useCanvasBatchDockVisibility } from '../components/useCanvasBatchDockVi
 import { useCanvasFitSignal } from '../components/useCanvasFitSignal'
 import { useTidyCanvas } from '../components/useTidyCanvas'
 import { useAutoFitOnLoad } from '../components/useAutoFitOnLoad'
+import { useComposerVisibilityPan } from '../components/useComposerVisibilityPan'
+import type { ViewportAnimationSettlementOutcome } from '../components/viewportAnimationSettlement'
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
 import { buildCanvasMenuActions } from '../components/useCanvasMenuActions'
 import { getSelectedBounds } from '../components/generationCanvasGeometry'
@@ -325,6 +327,29 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     offsetRef,
   })
   useCanvasFitSignal(fitView)
+  // 「让位平移」：节点上下都塞不下 composer 时，useComposerViewportPlacement 会派
+  // ENSURE_COMPOSER_VISIBLE 事件请求把画布推开一点（见 docs/plan/2026-08-26-win32-composer-collapse.md §4.1）。
+  // 本次 React Flow 迁移掏空旧 GenerationCanvas 时，把它的监听（origin/main 该文件 :235）一并删了，
+  // 事件从此无人接收 → 画布不再让位 → composer 只能溢出 stage（j5 composer-usable-at-min-window
+  // 因此确定性变红：spaceAbove 140 / spaceBelow 132 都 < 150，卡片仍按 150 渲染，捅出底边 32px）。
+  // 复用原 hook 而不是在这里另写一份监听：事件契约、delta 校验和 onSettled 回执它都已经处理好（P1）。
+  const animateViewportTo = React.useCallback(
+    (
+      zoom: number,
+      offset: { x: number; y: number },
+      duration = 160,
+      onSettled?: (outcome: ViewportAnimationSettlementOutcome) => void,
+    ) => {
+      // React Flow 的 setViewport 用 Promise<boolean> 表达「动画是否跑完」，正好对上结算契约的
+      // completed / cancelled；被新动画打断时要回 cancelled，否则请求闩会一直不释放。
+      void flow
+        .setViewport({ x: offset.x, y: offset.y, zoom }, { duration })
+        .then((completed) => onSettled?.(completed ? 'completed' : 'cancelled'))
+        .catch(() => onSettled?.('cancelled'))
+    },
+    [flow],
+  )
+  useComposerVisibilityPan({ animateViewportTo, offsetRef, zoomRef })
   const { isTidying, tidy } = useTidyCanvas(activeCategoryId)
   const production = useCanvasProductionActions({ activeCategoryId, selectedNodeIds })
   const batchDock = useCanvasBatchDockVisibility({
