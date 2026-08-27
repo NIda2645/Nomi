@@ -11,9 +11,10 @@
 每次开发、构建、门岗和发版使用 Electron 前必须同时满足：
 
 1. worktree 顶层 `node_modules` 是自己的目录，不是软链接或 junction；
-2. `package.json` 声明版本等于已安装 `electron/package.json` 版本；
-3. `electron/dist/version` 等于声明版本；
-4. 实际 Electron 可执行文件运行 `--version` 也等于声明版本。
+2. `electron` 包、`dist` 与最终可执行文件的真实路径都留在该 worktree 的 `node_modules` 内，不能经中间 `.pnpm` 链接绕到其他 worktree；
+3. `package.json` 声明版本等于已安装 `electron/package.json` 版本；
+4. `electron/dist/version` 等于声明版本；
+5. 实际 Electron 可执行文件运行 `--version` 也等于声明版本。
 
 任一不满足都立即失败，并给出一条可执行修复路径。不能继续拿旧版本跑出“全绿”。
 
@@ -29,7 +30,7 @@
 
 ### 1. 可复用身份检查器
 
-新增纯检查模块，读取顶层依赖目录形态、声明版本、包版本、`dist/version` 和真实可执行文件版本。检查器不修改磁盘，便于开发、CI、构建和测试共用。
+新增统一检查模块，读取顶层依赖目录形态，并同时检查 `electron` 包、`dist`、最终可执行文件的真实路径没有逃出当前 worktree；之后再核对声明版本、包版本、`dist/version` 和真实可执行文件版本。macOS 在启动二进制探针前复用既有的静态 Gatekeeper 检查；仅在系统判定公证已撤销时先做本地 ad-hoc 重签，避免探针本身触发 XProtect 删除 Electron.app。其余检查不修改磁盘，开发、CI、构建和测试共用同一入口。
 
 ### 2. 安装阶段补齐运行时
 
@@ -37,7 +38,7 @@
 
 ### 3. 使用前 fail closed
 
-`dev`、`start`、`build`、`dist` 和完整 `gates` 在使用 Electron 前调用同一检查。Windows 门岗由“打印版本”改为“验证版本”。
+`dev`、`start`、`build`、全部 `dist` 入口和完整 `gates` 在使用 Electron 前调用同一检查。Windows 门岗由“打印版本”改为“验证版本”。
 
 ### 4. 工作流约束
 

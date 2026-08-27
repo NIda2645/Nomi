@@ -24,7 +24,8 @@ function createRepo(options = {}) {
   if (options.symlinkNodeModules) fs.symlinkSync(modulesRoot, path.join(root, 'node_modules'), 'junction')
 
   if (options.installed !== null) {
-    const electronRoot = options.externalElectronLink
+    const externalPackage = options.externalElectronLink || options.externalPnpmStore
+    const electronRoot = externalPackage
       ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-external-electron-')), 'electron')
       : path.join(modulesRoot, 'electron')
     fs.mkdirSync(electronRoot, { recursive: true })
@@ -38,6 +39,9 @@ function createRepo(options = {}) {
     }
     if (options.externalElectronLink) {
       fs.symlinkSync(electronRoot, path.join(modulesRoot, 'electron'), 'junction')
+    } else if (options.externalPnpmStore) {
+      fs.symlinkSync(path.dirname(electronRoot), path.join(modulesRoot, '.pnpm'), 'junction')
+      fs.symlinkSync(path.join(modulesRoot, '.pnpm', 'electron'), path.join(modulesRoot, 'electron'), 'junction')
     }
   }
   return { root, modulesRoot }
@@ -59,6 +63,12 @@ test('rejects a shared top-level node_modules link even when every version match
 
 test('rejects the observed pnpm link that detours through another worktree', () => {
   const { root } = createRepo({ externalElectronLink: true })
+  const identity = inspectElectronInstallIdentity(root, { probeRuntimeVersion: () => VERSION })
+  assert.deepEqual(problemCodes(identity), ['external-electron-package-link'])
+})
+
+test('rejects a lexical in-worktree package link whose intermediate pnpm store resolves outside', () => {
+  const { root } = createRepo({ externalPnpmStore: true })
   const identity = inspectElectronInstallIdentity(root, { probeRuntimeVersion: () => VERSION })
   assert.deepEqual(problemCodes(identity), ['external-electron-package-link'])
 })
@@ -130,6 +140,7 @@ test('installer repairs only a missing runtime and then validates the exact exec
 test('installer never mutates a shared node_modules or an already mismatched package', () => {
   for (const options of [
     { symlinkNodeModules: true, dist: null },
+    { externalPnpmStore: true, dist: null },
     { installed: '31.7.7', dist: null },
   ]) {
     const { root } = createRepo(options)
@@ -142,7 +153,7 @@ test('installer never mutates a shared node_modules or an already mismatched pac
             installs += 1
           },
         }),
-      /shared-node-modules|installed-version-mismatch/,
+      /shared-node-modules|external-electron-package-link|installed-version-mismatch/,
     )
     assert.equal(installs, 0)
   }
@@ -150,9 +161,14 @@ test('installer never mutates a shared node_modules or an already mismatched pac
 
 test('all Electron entry points share the identity gate and install repair', () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(sourceRepoRoot, 'package.json'), 'utf8'))
-  for (const script of ['build', 'dist', 'gates', 'test:e2e', 'test:mcp', 'test:journeys']) {
-    assert.match(packageJson.scripts[script], /check:electron-install/, `${script} must verify Electron`)
+  for (const script of ['build', 'dist', 'dist:mac:dir', 'test:e2e', 'test:mcp', 'test:journeys']) {
+    assert.match(
+      packageJson.scripts[script],
+      /^pnpm run check:electron-install && /,
+      `${script} must verify Electron before doing work`,
+    )
   }
+  assert.match(packageJson.scripts.gates, /^pnpm run check:gates-chain && pnpm run check:electron-install && /)
   assert.match(
     packageJson.scripts.postinstall,
     /^node \.\/scripts\/install-electron-runtime\.mjs && node \.\/scripts\/install-git-hooks\.cjs$/,
@@ -161,13 +177,28 @@ test('all Electron entry points share the identity gate and install repair', () 
   const devSource = fs.readFileSync(path.join(sourceRepoRoot, 'scripts', 'dev-electron.mjs'), 'utf8')
   const startSource = fs.readFileSync(path.join(sourceRepoRoot, 'scripts', 'start-electron.mjs'), 'utf8')
   const clientSource = fs.readFileSync(path.join(sourceRepoRoot, 'scripts', 'lib', 'nomiClient.mjs'), 'utf8')
-  assert.ok(
-    devSource.indexOf('assertElectronInstallIdentity(repoRoot)') < devSource.search(/require\(['"]electron['"]\)/),
-  )
-  assert.ok(
-    startSource.indexOf('assertElectronInstallIdentity(repoRoot)') < startSource.search(/require\(['"]electron['"]\)/),
-  )
-  assert.match(clientSource, /assertElectronInstallIdentity\(repoRoot\)/)
+  for (const [label, source] of [
+    ['dev', devSource],
+    ['start', startSource],
+  ]) {
+    const assertionIndex = source.indexOf('assertElectronInstallIdentity(repoRoot)')
+    const requireIndex = source.search(/require\(['"]electron['"]\)/)
+    assert.notEqual(assertionIndex, -1, `${label} must contain the identity assertion`)
+    assert.notEqual(requireIndex, -1, `${label} must contain the Electron require`)
+    assert.ok(assertionIndex < requireIndex, `${label} must assert before resolving Electron`)
+  }
+  const clientAssertionIndex = clientSource.indexOf('assertElectronInstallIdentity(repoRoot)')
+  const clientRequireIndex = clientSource.search(/require\(['"]electron['"]\)/)
+  assert.notEqual(clientAssertionIndex, -1, 'MCP host must contain the identity assertion')
+  assert.notEqual(clientRequireIndex, -1, 'MCP host must contain the Electron require')
+  assert.ok(clientAssertionIndex < clientRequireIndex, 'MCP host must assert before resolving Electron')
+
+  const identitySource = fs.readFileSync(path.join(sourceRepoRoot, 'scripts', 'electron-install-identity.mjs'), 'utf8')
+  const signatureIndex = identitySource.indexOf('ensureElectronSignature(executablePath)')
+  const probeIndex = identitySource.indexOf('spawnSync(executablePath, args')
+  assert.notEqual(signatureIndex, -1)
+  assert.notEqual(probeIndex, -1)
+  assert.ok(signatureIndex < probeIndex, 'macOS signature safety must precede the executable probe')
 
   const windowsGate = fs.readFileSync(path.join(sourceRepoRoot, '.github', 'workflows', 'win-gate.yml'), 'utf8')
   assert.match(windowsGate, /- name: Verify actual Electron identity\n\s+run: pnpm run check:electron-install/)

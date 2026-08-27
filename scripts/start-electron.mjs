@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { installChildProcessLifecycle } from "./child-process-lifecycle.mjs";
-import { ensureElectronSignature } from "./ensure-electron-signature.mjs";
 import { assertElectronBuildArtifacts } from "./electron-build-artifacts.mjs";
 import { assertElectronInstallIdentity } from "./electron-install-identity.mjs";
 
@@ -13,10 +12,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 assertElectronInstallIdentity(repoRoot);
 const electron = require("electron");
 assertElectronBuildArtifacts(repoRoot);
-
-// Match `pnpm dev`: launching a revoked dev Electron lets XProtect delete the
-// bundle, so repair its local signature before the first spawn.
-ensureElectronSignature(electron, { log: (msg) => console.log(msg) });
 
 // Auto-load the onboarding agent LLM (dm-fox gpt-5.5) from .secrets/agent.key so
 // model onboarding works without manual `export`s. Already-set env vars win.

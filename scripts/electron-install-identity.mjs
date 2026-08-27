@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { ensureElectronSignature } from './ensure-electron-signature.mjs'
 
 function readJson(filePath) {
   try {
@@ -44,20 +45,37 @@ function resolveRuntimeExecutable(electronRoot) {
   return fs.existsSync(executablePath) ? executablePath : null
 }
 
-function externalPackageLink(packagePath, allowedRoot) {
+function isPathInside(candidate, root) {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`)
+}
+
+function externalElectronPath(packagePath, allowedRoot, runtimeExecutable) {
   try {
-    if (!fs.lstatSync(packagePath).isSymbolicLink()) return null
-    const target = fs.readlinkSync(packagePath)
-    const resolvedTarget = path.resolve(path.dirname(packagePath), target)
     const normalizedRoot = path.resolve(allowedRoot)
-    const isInside = resolvedTarget === normalizedRoot || resolvedTarget.startsWith(`${normalizedRoot}${path.sep}`)
-    return isInside ? null : target
+    if (fs.lstatSync(packagePath).isSymbolicLink()) {
+      const target = fs.readlinkSync(packagePath)
+      const lexicalTarget = path.resolve(path.dirname(packagePath), target)
+      if (!isPathInside(lexicalTarget, normalizedRoot)) return `package link -> ${target}`
+    }
+
+    const realRoot = fs.realpathSync(allowedRoot)
+    for (const [label, candidate] of [
+      ['package', packagePath],
+      ['dist', path.join(packagePath, 'dist')],
+      ['executable', runtimeExecutable],
+    ]) {
+      if (!candidate || !fs.existsSync(candidate)) continue
+      const realCandidate = fs.realpathSync(candidate)
+      if (!isPathInside(realCandidate, realRoot)) return `${label} realpath -> ${realCandidate}`
+    }
+    return null
   } catch {
     return null
   }
 }
 
 function defaultProbeRuntimeVersion(executablePath) {
+  if (ensureElectronSignature(executablePath) === 'failed') return null
   const env = { ...process.env }
   delete env.ELECTRON_RUN_AS_NODE
   const args = ['--version', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])]
@@ -82,10 +100,10 @@ export function inspectElectronInstallIdentity(repoRoot, options = {}) {
   const nodeModulesPath = path.join(repoRoot, 'node_modules')
   const modulesKind = nodeModulesKind(nodeModulesPath)
   const electronRoot = path.join(nodeModulesPath, 'electron')
-  const externalElectronLink = externalPackageLink(electronRoot, nodeModulesPath)
   const installedVersion = normalizeVersion(readJson(path.join(electronRoot, 'package.json'))?.version)
   const distVersion = normalizeVersion(readText(path.join(electronRoot, 'dist', 'version')))
   const runtimeExecutable = resolveRuntimeExecutable(electronRoot)
+  const externalElectronLink = externalElectronPath(electronRoot, nodeModulesPath, runtimeExecutable)
   const runtimeVersion = runtimeExecutable ? normalizeVersion(probeRuntimeVersion(runtimeExecutable)) : null
   const problems = []
 
@@ -96,10 +114,7 @@ export function inspectElectronInstallIdentity(repoRoot, options = {}) {
   }
   if (externalElectronLink) {
     problems.push(
-      problem(
-        'external-electron-package-link',
-        `node_modules/electron points outside this worktree: ${externalElectronLink}`,
-      ),
+      problem('external-electron-package-link', `Electron installation escapes this worktree: ${externalElectronLink}`),
     )
   }
   if (!declaredVersion) {

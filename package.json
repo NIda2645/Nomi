@@ -79,7 +79,7 @@
     "eval:generate-quality": "node ./scripts/eval-review-images.mjs",
     "eval:journey": "node ./scripts/eval-journey.mjs",
     "dist": "pnpm run check:electron-install && electron-builder",
-    "dist:mac:dir": "electron-builder --mac dir --arm64 && node tests/ux/packaged-mcp-smoke.e2e.mjs release/mac-arm64/Nomi.app",
+    "dist:mac:dir": "pnpm run check:electron-install && electron-builder --mac dir --arm64 && node tests/ux/packaged-mcp-smoke.e2e.mjs release/mac-arm64/Nomi.app",
     "postinstall": "node ./scripts/install-electron-runtime.mjs && node ./scripts/install-git-hooks.cjs",
     "test:e2e": "pnpm run check:electron-install && node tests/ux/smoke.e2e.mjs",
     "test:mcp": "pnpm run check:electron-install && node tests/ux/mcp-journey.e2e.mjs",
