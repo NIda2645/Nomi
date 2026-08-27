@@ -23,6 +23,7 @@ import { DeferredNodeVideo } from './DeferredNodeMedia'
 import { useResultDownload } from './useResultDownload'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { reworkProductionShot } from '../../production/productionShotActions'
+import { historyVideoTimeFromPointer, nudgeHistoryVideoTime } from './historyVideoScrub'
 
 const INITIAL_VISIBLE_RESULTS = 12
 
@@ -38,29 +39,136 @@ function resultTitle(node: GenerationCanvasNode, index: number): string {
   return `${node.title || ''} · ${index + 1}`
 }
 
-function ResultThumb({
+function HistoryVideoThumb({
   result,
   title,
-  hoverActive,
+  active,
+  disabled,
+  onSelect,
 }: {
   result: GenerationNodeResult
   title: string
-  hoverActive: boolean
+  active: boolean
+  disabled: boolean
+  onSelect: () => void
+}): JSX.Element {
+  const { t } = useTranslation()
+  const hostRef = React.useRef<HTMLSpanElement | null>(null)
+  const draggingPointerRef = React.useRef<number | null>(null)
+  const [duration, setDuration] = React.useState(0)
+  const [currentTime, setCurrentTime] = React.useState(0)
+  const video = (): HTMLVideoElement | null => hostRef.current?.querySelector('video') ?? null
+  const seekFromPointer = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const media = video()
+    if (!media) return
+    const time = historyVideoTimeFromPointer(event.clientX, event.currentTarget.getBoundingClientRect(), media.duration)
+    if (time == null) return
+    media.currentTime = time
+    setCurrentTime(time)
+  }
+  const progress = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0
+
+  return (
+    <span ref={hostRef} className="absolute inset-0 block" data-history-video-active={active ? 'true' : undefined}>
+      <button
+        type="button"
+        className="absolute inset-0 block h-full w-full overflow-hidden border-0 bg-transparent p-0"
+        aria-label={title}
+        disabled={disabled}
+        onClick={onSelect}
+      >
+        {active && result.url ? (
+          <DeferredNodeVideo
+            src={result.url}
+            className="h-full w-full object-cover"
+            muted
+            loop
+            autoPlay
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={(event) => {
+              const nextDuration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0
+              setDuration(nextDuration)
+              setCurrentTime(event.currentTarget.currentTime)
+            }}
+            onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+          />
+        ) : result.thumbnailUrl ? (
+          <img src={result.thumbnailUrl} alt="" draggable={false} className="h-full w-full object-cover" />
+        ) : (
+          <span className="grid h-full w-full place-items-center bg-nomi-ink-05 text-nomi-ink-40" aria-hidden="true">
+            <IconMovie size={22} stroke={1.5} />
+          </span>
+        )}
+      </button>
+      <div
+        className={cn(
+          'absolute bottom-0 left-0 right-0 z-[3] h-4 cursor-ew-resize px-1.5 pb-1 pt-2 transition-opacity duration-150',
+          active ? 'opacity-100' : 'pointer-events-none opacity-0',
+          'focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-nomi-accent focus-visible:outline-offset-1',
+        )}
+        role="slider"
+        tabIndex={0}
+        aria-label={t('generationCommon.resultStack.videoProgress')}
+        aria-valuemin={0}
+        aria-valuemax={duration}
+        aria-valuenow={currentTime}
+        aria-valuetext={t('generationCommon.resultStack.videoProgressValue', {
+          current: Math.round(currentTime),
+          duration: Math.round(duration),
+        })}
+        onPointerDown={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          event.currentTarget.focus()
+          draggingPointerRef.current = event.pointerId
+          event.currentTarget.setPointerCapture?.(event.pointerId)
+          seekFromPointer(event)
+        }}
+        onPointerMove={(event) => {
+          if (draggingPointerRef.current !== event.pointerId) return
+          event.stopPropagation()
+          seekFromPointer(event)
+        }}
+        onPointerUp={(event) => {
+          if (draggingPointerRef.current !== event.pointerId) return
+          event.stopPropagation()
+          seekFromPointer(event)
+          draggingPointerRef.current = null
+          if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId)
+          }
+        }}
+        onPointerCancel={(event) => {
+          if (draggingPointerRef.current === event.pointerId) draggingPointerRef.current = null
+        }}
+        onKeyDown={(event) => {
+          const media = video()
+          if (!media) return
+          const time = nudgeHistoryVideoTime(media.currentTime, event.key, media.duration)
+          if (time == null) return
+          event.preventDefault()
+          event.stopPropagation()
+          media.currentTime = time
+          setCurrentTime(time)
+        }}
+      >
+        <span className="block h-1 overflow-hidden rounded-pill bg-nomi-paper/50 shadow-nomi-sm" aria-hidden="true">
+          <span className="block h-full rounded-pill bg-nomi-paper" style={{ width: `${progress * 100}%` }} />
+        </span>
+      </div>
+    </span>
+  )
+}
+
+function ResultThumb({
+  result,
+  title,
+}: {
+  result: GenerationNodeResult
+  title: string
 }): JSX.Element {
   const thumbnail = result.thumbnailUrl || (result.type === 'image' ? result.url : '')
-  if (result.type === 'video' && hoverActive && result.url) {
-    return (
-      <DeferredNodeVideo
-        src={result.url}
-        className="h-full w-full object-cover"
-        muted
-        loop
-        autoPlay
-        playsInline
-        preload="metadata"
-      />
-    )
-  }
   if (thumbnail) return <img src={thumbnail} alt={title} draggable={false} className="h-full w-full object-cover" />
   return (
     <span className="grid h-full w-full place-items-center bg-nomi-ink-05 text-nomi-ink-40" aria-hidden="true">
@@ -233,25 +341,57 @@ export function NodeResultStack({
                     data-result-stack-item={identity}
                     data-current={isCurrent ? 'true' : undefined}
                     onPointerEnter={() => setHoveredId(identity)}
-                    onPointerLeave={() => setHoveredId((current) => current === identity ? '' : current)}
+                    onPointerLeave={(event) => {
+                      if (event.currentTarget.contains(document.activeElement)) return
+                      setHoveredId((current) => current === identity ? '' : current)
+                    }}
+                    onFocusCapture={() => {
+                      if (entry.type === 'video') setHoveredId(identity)
+                    }}
+                    onBlurCapture={(event) => {
+                      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+                      setHoveredId((current) => current === identity ? '' : current)
+                    }}
                   >
-                    <button
-                      type="button"
+                    {entry.type === 'video' ? (
+                      <div
                       className={cn(
                         'relative size-14 shrink-0 overflow-hidden rounded-nomi-sm border bg-nomi-ink-05',
                         isCurrent ? 'border-nomi-accent' : 'border-nomi-line',
                       )}
-                      aria-label={isCurrent ? t('generationCommon.resultStack.current') : t('generationCommon.resultStack.setCurrent')}
-                      disabled={readOnly || isCurrent}
-                      onClick={() => switchTo(entry)}
                     >
-                      <ResultThumb result={entry} title={title} hoverActive={hoveredId === identity} />
+                      <HistoryVideoThumb
+                        result={entry}
+                        title={isCurrent ? t('generationCommon.resultStack.current') : t('generationCommon.resultStack.setCurrent')}
+                        active={hoveredId === identity}
+                        disabled={readOnly || isCurrent}
+                        onSelect={() => switchTo(entry)}
+                      />
                       {isCurrent ? (
                         <span className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-nomi-accent text-nomi-paper" aria-hidden="true">
                           <IconCheck size={10} stroke={2.5} />
                         </span>
                       ) : null}
-                    </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className={cn(
+                          'relative size-14 shrink-0 overflow-hidden rounded-nomi-sm border bg-nomi-ink-05',
+                          isCurrent ? 'border-nomi-accent' : 'border-nomi-line',
+                        )}
+                        aria-label={isCurrent ? t('generationCommon.resultStack.current') : t('generationCommon.resultStack.setCurrent')}
+                        disabled={readOnly || isCurrent}
+                        onClick={() => switchTo(entry)}
+                      >
+                        <ResultThumb result={entry} title={title} />
+                        {isCurrent ? (
+                          <span className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-nomi-accent text-nomi-paper" aria-hidden="true">
+                            <IconCheck size={10} stroke={2.5} />
+                          </span>
+                        ) : null}
+                      </button>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-caption font-medium text-nomi-ink">{t('generationCommon.resultStack.versionLabel', { index: index + 1 })}</div>
                       <div className="text-micro text-nomi-ink-50">

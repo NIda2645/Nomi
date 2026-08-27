@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { IconCheck, IconChevronDown, IconScissors } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
+import type { AggregateGroupEdgeProjection } from '../model/canvasCardStackModel'
 import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { availableEdgeModes } from './edgeModeMenu'
@@ -15,6 +16,7 @@ export type ActiveEdge = {
 type CanvasEdgeLayerProps = {
   edges: GenerationCanvasEdge[]
   nodeById: Map<string, GenerationCanvasNode>
+  aggregateEdges: ReadonlyMap<string, AggregateGroupEdgeProjection>
   /** 当前缩放：用于标签反缩放（scale(1/zoom)）保持恒定屏幕字号。 */
   zoom: number
   /** 视口裁剪：非空时只渲染两端任一在集内的边（虚拟化生效时由画布传入）；null = 渲染全部。 */
@@ -44,6 +46,7 @@ type CanvasEdgeLayerProps = {
 function CanvasEdgeLayer({
   edges,
   nodeById,
+  aggregateEdges,
   zoom,
   visibleNodeIds,
   lightweight = false,
@@ -96,7 +99,10 @@ function CanvasEdgeLayer({
     <svg className="generation-canvas-v2__edges" aria-label={t('generationCommon.canvas.edge.aria')}>
       {edgeGeoms.map(({ edge, source, target, endX, endY, midX, midY, path, mode }) => {
         // 视口裁剪：两端都在可见集外的边不渲染（大图性能，B3）
-        if (visibleNodeIds && !visibleNodeIds.has(edge.source) && !visibleNodeIds.has(edge.target)) return null
+        const aggregate = aggregateEdges.get(edge.id)
+        const visibleSourceId = aggregate?.direction === 'output' ? aggregate.groupId : edge.source
+        const visibleTargetId = aggregate?.direction === 'input' ? aggregate.groupId : edge.target
+        if (visibleNodeIds && !visibleNodeIds.has(visibleSourceId) && !visibleNodeIds.has(visibleTargetId)) return null
         const isActiveEdge = activeEdgeId === edge.id
         const isIncident = selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)
         const renderInteractiveEdge = !lightweight || isActiveEdge || isIncident
@@ -108,6 +114,7 @@ function CanvasEdgeLayer({
             data-edge-id={edge.id}
             data-active={isActiveEdge ? 'true' : undefined}
             data-incident={isIncident ? 'true' : undefined}
+            data-aggregate-group={aggregate?.groupId}
           >
             <path className="generation-canvas-v2__edge-path" d={path} />
             {renderInteractiveEdge ? (
@@ -162,14 +169,19 @@ function CanvasEdgeLayer({
     </svg>
     <div className="absolute inset-0 z-[4] overflow-visible pointer-events-none" aria-hidden={readOnly && !edgeGeoms.some((geom) => geom.isTyped) ? 'true' : undefined}>
       {edgeGeoms.map(({ edge, source, target, midX, midY, mode, isTyped }) => {
-        if (visibleNodeIds && !visibleNodeIds.has(edge.source) && !visibleNodeIds.has(edge.target)) return null
+        const aggregate = aggregateEdges.get(edge.id)
+        const visibleSourceId = aggregate?.direction === 'output' ? aggregate.groupId : edge.source
+        const visibleTargetId = aggregate?.direction === 'input' ? aggregate.groupId : edge.target
+        if (visibleNodeIds && !visibleNodeIds.has(visibleSourceId) && !visibleNodeIds.has(visibleTargetId)) return null
         const isActiveEdge = activeEdgeId === edge.id
         // 标签只给「选中节点的边」和「正在改模式的那条边」。没选中 = 一个标签都不画（也省掉整层的布局与合成）。
         const isIncident = selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)
-        if (!isActiveEdge && (!isIncident || !isTyped)) return null
-        const modeLabel = t(`generationCommon.canvas.edge.modes.${mode}`)
+        if (!isActiveEdge && (!isIncident || (!isTyped && !aggregate))) return null
+        const modeLabel = aggregate
+          ? t(`generationCommon.canvas.group.${aggregate.direction === 'input' ? 'aggregateInput' : 'aggregateOutput'}`)
+          : t(`generationCommon.canvas.edge.modes.${mode}`)
         const position = isActiveEdge && activeEdge?.position ? activeEdge.position : { x: midX, y: midY }
-        const selectableModes = isActiveEdge ? availableEdgeModes(source, target) : []
+        const selectableModes = isActiveEdge && !aggregate ? availableEdgeModes(source, target) : []
         const controlStyle: React.CSSProperties = {
           left: position.x,
           top: position.y,
@@ -195,6 +207,18 @@ function CanvasEdgeLayer({
           )
         }
         if (readOnly) return null
+        if (aggregate) {
+          return (
+            <div key={edge.id} className="generation-canvas-v2__edge-control absolute flex w-[184px] justify-center pointer-events-auto" style={controlStyle} data-edge-id={edge.id} data-active="true" data-aggregate-group={aggregate.groupId} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') onSetActiveEdge(null) }}>
+              <div className={cn('inline-flex min-h-8 items-center gap-2 rounded-nomi border border-nomi-line bg-nomi-paper px-2.5 shadow-nomi-md')}>
+                <span className="text-caption font-semibold text-nomi-accent">{modeLabel}</span>
+                <button type="button" className="grid size-7 place-items-center rounded-nomi-sm border-0 bg-transparent text-workbench-danger hover:bg-workbench-danger-soft" aria-label={t('generationCommon.canvas.group.disconnectAggregate')} onClick={(event) => { event.stopPropagation(); onDisconnectEdge(edge.id); onSetActiveEdge(null) }}>
+                  <IconScissors size={14} stroke={1.8} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          )
+        }
         return (
           <div key={edge.id} className="generation-canvas-v2__edge-control generation-canvas-v2__edge-mode-control absolute flex w-[184px] justify-center pointer-events-auto" style={controlStyle} data-edge-id={edge.id} data-active="true" onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') onSetActiveEdge(null) }}>
             <button type="button" className="generation-canvas-v2__edge-tag-pill inline-flex h-6 items-center gap-1 rounded-pill border border-nomi-accent/40 bg-nomi-paper px-2 text-caption font-semibold leading-none whitespace-nowrap text-nomi-accent shadow-nomi-sm cursor-pointer" aria-haspopup="menu" aria-expanded="true" aria-label={t('generationCommon.canvas.edge.changeMode', { mode: modeLabel })} onClick={(event) => { event.stopPropagation(); onSetActiveEdge(null) }}>

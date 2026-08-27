@@ -10,6 +10,8 @@ vi.mock('react-i18next', () => ({
       if (key.endsWith('collapsedAria')) return `${values?.name} · ${values?.count} 节点`
       if (key.endsWith('collapsedBadge')) return '编组'
       if (key.endsWith('dragWhole')) return '拖动整体'
+      if (key.endsWith('connectInput')) return '连接到整组'
+      if (key.endsWith('connectOutput')) return '从整组连接'
       return key
     },
   }),
@@ -21,14 +23,21 @@ describe('CollapsedGroupCard', () => {
       React.createElement(CollapsedGroupCard, {
         card: { groupId: 'group-1', name: '雨夜咖啡馆', memberCount: 8, position: { x: 120, y: 90 } },
         readOnly: false,
+        pendingConnection: false,
+        pendingConnectionSource: false,
         onPointerDown: () => undefined,
         onExpand: () => undefined,
+        onStartConnection: () => undefined,
+        onCompleteConnection: () => undefined,
       }),
     )
     expect(html).toContain('data-collapsed-group-id="group-1"')
+    expect(html).toContain('data-group-id="group-1"')
     expect(html).toContain('translate(120px, 90px)')
     expect(html).toContain('8 节点')
     expect(html.match(/data-card-stack-rear=/g)).toHaveLength(2)
     expect(html).not.toContain('8 版')
+    expect(html).toContain('aria-label="连接到整组"')
+    expect(html).toContain('aria-label="从整组连接"')
   })
 })

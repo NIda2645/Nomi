@@ -4,14 +4,20 @@ import { IconStack2 } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import type { CollapsedGroupCardProjection } from '../model/canvasCardStackModel'
 import { CardStackPeeks } from './CardStackPeeks'
-
-export const COLLAPSED_GROUP_CARD_SIZE = 224
+import { MagneticConnectionHandle } from '../nodes/NodeConnectionHandles'
+import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
+import { COLLAPSED_GROUP_CARD_SIZE } from '../model/canvasCardStackModel'
 
 type Props = {
   card: CollapsedGroupCardProjection
   readOnly: boolean
+  pendingConnection: boolean
+  pendingConnectionSource: boolean
+  pendingConnectionSide?: ConnectionAnchorSide
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>, groupId: string) => void
   onExpand: (groupId: string) => void
+  onStartConnection: (event: React.PointerEvent<HTMLElement>, groupId: string, side: ConnectionAnchorSide) => void
+  onCompleteConnection: (groupId: string) => void
 }
 
 function coverUrl(card: CollapsedGroupCardProjection): string {
@@ -21,7 +27,17 @@ function coverUrl(card: CollapsedGroupCardProjection): string {
   return ''
 }
 
-export function CollapsedGroupCard({ card, readOnly, onPointerDown, onExpand }: Props): JSX.Element {
+export function CollapsedGroupCard({
+  card,
+  readOnly,
+  pendingConnection,
+  pendingConnectionSource,
+  pendingConnectionSide,
+  onPointerDown,
+  onExpand,
+  onStartConnection,
+  onCompleteConnection,
+}: Props): JSX.Element {
   const { t } = useTranslation()
   const imageUrl = coverUrl(card)
   const countLabel = t('generationCommon.canvas.group.nodeStackCount', { count: card.memberCount })
@@ -30,12 +46,33 @@ export function CollapsedGroupCard({ card, readOnly, onPointerDown, onExpand }: 
     <article
       className="absolute isolate z-[3] select-none overflow-visible"
       data-collapsed-group-id={card.groupId}
+      data-group-id={card.groupId}
       style={{
         transform: `translate(${card.position.x}px, ${card.position.y}px)`,
         width: COLLAPSED_GROUP_CARD_SIZE,
         height: COLLAPSED_GROUP_CARD_SIZE,
       }}
     >
+      {!readOnly ? (
+        <>
+          <MagneticConnectionHandle
+            side="left"
+            active={pendingConnectionSource ? pendingConnectionSide === 'left' : pendingConnection}
+            pendingTarget={pendingConnection && !pendingConnectionSource}
+            ariaLabel={t('generationCommon.canvas.group.connectInput')}
+            onStart={(event, side) => onStartConnection(event, card.groupId, side)}
+            onComplete={() => onCompleteConnection(card.groupId)}
+          />
+          <MagneticConnectionHandle
+            side="right"
+            active={pendingConnectionSource ? pendingConnectionSide === 'right' : pendingConnection}
+            pendingTarget={pendingConnection && !pendingConnectionSource}
+            ariaLabel={t('generationCommon.canvas.group.connectOutput')}
+            onStart={(event, side) => onStartConnection(event, card.groupId, side)}
+            onComplete={() => onCompleteConnection(card.groupId)}
+          />
+        </>
+      ) : null}
       <CardStackPeeks
         count={card.memberCount}
         label={countLabel}

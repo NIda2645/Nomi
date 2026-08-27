@@ -20,7 +20,7 @@ const documentActions = {
   tidyCategory: true, deleteSelectedNodes: true, selectNode: false, selectNodes: false,
   clearSelection: false, selectAllNodes: false, selectNodesInRect: false,
   duplicateNodeForRegeneration: true, reassignNodeCategory: true, copyNodeToCategory: true, deleteNode: true,
-  startConnection: false, cancelConnection: false, connectToNode: true, connectNodes: true,
+  startConnection: false, startGroupConnection: false, cancelConnection: false, connectToNode: true, connectNodes: true,
   connectToGroup: true, updateEdgeMode: true, disconnectEdge: true, moveGroupNodes: true,
   createGroup: true, groupSelectedNodes: true, renameGroup: true, setGroupColor: true, setGroupCollapsed: true,
   ungroup: true, ungroupGroups: true, deleteGroup: true, moveNodeToGroup: true,

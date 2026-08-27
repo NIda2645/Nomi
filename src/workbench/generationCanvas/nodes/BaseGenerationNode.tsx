@@ -10,7 +10,7 @@ import { NodeCardBody } from './render/NodeCardBody'
 import ImageCropGridOverlay from './render/ImageCropGridOverlay'
 import NodeImageEditToolbar from './NodeImageEditToolbar'
 import { NodeResultStack } from './NodeResultStack'
-import { FloatingToolbarShell, TOOLBAR_ICON as TBI, ToolbarButton, ToolbarDivider, ToolbarProvenanceButton } from './NodeFloatingToolbar'
+import { EmptyNodeVariantToolbar, FloatingToolbarShell, TOOLBAR_ICON as TBI, ToolbarButton, ToolbarDivider, ToolbarVariantProvenanceActions } from './NodeFloatingToolbar'
 import { useNodeImageEditing } from './useNodeImageEditing'
 import { isLocalImageOpPending, isRemoveBackgroundPending } from './localImageOpPhase'
 import { useNodeDragResize } from './useNodeDragResize'
@@ -365,6 +365,7 @@ function BaseGenerationNodeImpl({
         )
       ) : null}
 
+      <EmptyNodeVariantToolbar nodeId={node.id} visible={selected && !isMultiSelectActive && !readOnly && !resultStackOpen && !hasResult} />
       {node.kind === 'panorama' && selected && !isMultiSelectActive && !readOnly && node.result?.url ? (
         <FloatingToolbarShell ariaLabel={t('generationCommon.node.panoramaActions')}>
           <ToolbarButton
@@ -388,7 +389,7 @@ function BaseGenerationNodeImpl({
             disabled={panoramaDownloading}
             onClick={downloadPanorama}
           />
-          <ToolbarProvenanceButton onOpen={() => setProvenanceOpen(true)} />
+          <ToolbarVariantProvenanceActions nodeId={node.id} onOpenProvenance={() => setProvenanceOpen(true)} />
           <input
             ref={panoramaUploadInputRef}
             className="hidden"
@@ -398,7 +399,6 @@ function BaseGenerationNodeImpl({
           />
         </FloatingToolbarShell>
       ) : null}
-
       {node.kind !== 'panorama' &&
       (node.kind === 'image' || isAssetKind || isImageLikeGenerationNodeKind(node.kind)) &&
       selected &&

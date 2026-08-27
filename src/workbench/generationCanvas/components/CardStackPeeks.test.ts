@@ -27,4 +27,12 @@ describe('CardStackPeeks', () => {
     )
     expect(html).toBe('')
   })
+
+  it('keeps the group corner above the centered connection hit area', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(CardStackPeeks, { count: 3, label: '3 节点', expanded: false, tone: 'group', onToggle: () => undefined }),
+    )
+    expect(html).toContain('top-0')
+    expect(html).not.toContain('top-4')
+  })
 })

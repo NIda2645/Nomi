@@ -9,10 +9,19 @@ export type CollapsedGroupCardProjection = {
   color?: string
 }
 
+export type AggregateGroupEdgeProjection = {
+  groupId: string
+  direction: 'input' | 'output'
+  memberEdgeIds: string[]
+}
+
+export const COLLAPSED_GROUP_CARD_SIZE = 224
+
 export type CollapsedCanvasProjection = {
   visibleNodes: GenerationCanvasNode[]
   visibleEdges: GenerationCanvasEdge[]
   edgeNodeById: Map<string, GenerationCanvasNode>
+  aggregateEdges: ReadonlyMap<string, AggregateGroupEdgeProjection>
   cards: readonly CollapsedGroupCardProjection[]
   collapsedNodeIds: ReadonlySet<string>
 }
@@ -42,6 +51,7 @@ export function projectCollapsedGroups(
       visibleNodes: [...nodes],
       visibleEdges: [...edges],
       edgeNodeById: baseNodeById,
+      aggregateEdges: new Map(),
       cards: [],
       collapsedNodeIds: new Set(),
     }
@@ -70,6 +80,15 @@ export function projectCollapsedGroups(
       ...(coverNode ? { coverNode } : {}),
       ...(group.color ? { color: group.color } : {}),
     })
+    projectedNodeById.set(group.id, {
+      id: group.id,
+      kind: 'image',
+      title: group.name,
+      categoryId: group.categoryId,
+      position,
+      size: { width: COLLAPSED_GROUP_CARD_SIZE, height: COLLAPSED_GROUP_CARD_SIZE },
+      status: 'idle',
+    })
     for (const member of members) {
       groupByMemberId.set(member.id, group.id)
       projectedNodeById.set(member.id, {
@@ -82,16 +101,49 @@ export function projectCollapsedGroups(
 
   const collapsedNodeIds = new Set(groupByMemberId.keys())
   const visibleNodes = nodes.filter((node) => !collapsedNodeIds.has(node.id))
-  const visibleEdges = edges.filter((edge) => {
+  const visibleEdges: GenerationCanvasEdge[] = []
+  const aggregateEdges = new Map<string, AggregateGroupEdgeProjection>()
+  const aggregateRepresentativeByRelation = new Map<string, string>()
+  const collapsedGroupById = new Map(collapsedGroups.map((group) => [group.id, group]))
+  for (const edge of edges) {
     const sourceGroupId = groupByMemberId.get(edge.source)
     const targetGroupId = groupByMemberId.get(edge.target)
-    return !sourceGroupId || !targetGroupId || sourceGroupId !== targetGroupId
-  })
+    if (sourceGroupId && targetGroupId && sourceGroupId === targetGroupId) continue
+
+    let aggregate: Omit<AggregateGroupEdgeProjection, 'memberEdgeIds'> | null = null
+    let relationKey = ''
+    const declaredGroup = edge.viaGroupId ? collapsedGroupById.get(edge.viaGroupId) : undefined
+    const outputLink = declaredGroup?.outputLinks?.find((link) => link.targetNodeId === edge.target)
+    const inputLink = declaredGroup?.inputLinks?.find((link) => (
+      link.sourceNodeId === edge.source && (link.mode == null || link.mode === edge.mode)
+    ))
+    if (declaredGroup && outputLink && sourceGroupId === declaredGroup.id) {
+      aggregate = { groupId: sourceGroupId, direction: 'output' }
+      relationKey = `${sourceGroupId}:output:${edge.target}`
+    } else if (declaredGroup && inputLink && targetGroupId === declaredGroup.id) {
+      aggregate = { groupId: targetGroupId, direction: 'input' }
+      relationKey = `${targetGroupId}:input:${edge.source}:${inputLink.mode || 'auto'}`
+    }
+
+    if (!aggregate) {
+      visibleEdges.push(edge)
+      continue
+    }
+    const representativeId = aggregateRepresentativeByRelation.get(relationKey)
+    if (representativeId) {
+      aggregateEdges.get(representativeId)?.memberEdgeIds.push(edge.id)
+      continue
+    }
+    aggregateRepresentativeByRelation.set(relationKey, edge.id)
+    aggregateEdges.set(edge.id, { ...aggregate, memberEdgeIds: [edge.id] })
+    visibleEdges.push(edge)
+  }
 
   return {
     visibleNodes,
     visibleEdges,
     edgeNodeById: projectedNodeById,
+    aggregateEdges,
     cards,
     collapsedNodeIds,
   }

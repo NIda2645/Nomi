@@ -73,4 +73,42 @@ describe('canvas card stack model', () => {
     expect(projection.visibleNodes).toEqual(nodes)
     expect(projection.visibleEdges).toEqual(edges)
   })
+
+  it('renders one aggregate edge for one collapsed group input declaration', () => {
+    const nodes = [node('source', 0, 90), node('a', 320, 40), node('b', 580, 140)]
+    const grouped = { ...group(true), nodeIds: ['a', 'b'], inputLinks: [{ sourceNodeId: 'source' }] }
+    const edges: GenerationCanvasEdge[] = [
+      { id: 'input-a', source: 'source', target: 'a', mode: 'reference', viaGroupId: grouped.id },
+      { id: 'input-b', source: 'source', target: 'b', mode: 'style_ref', viaGroupId: grouped.id },
+    ]
+
+    const projection = projectCollapsedGroups(nodes, edges, [grouped])
+
+    expect(projection.visibleEdges.map((edge) => edge.id)).toEqual(['input-a'])
+    expect(projection.aggregateEdges.get('input-a')).toEqual({
+      groupId: grouped.id,
+      direction: 'input',
+      memberEdgeIds: ['input-a', 'input-b'],
+    })
+  })
+
+  it('keeps unrelated manual member edges separate from a collapsed group output declaration', () => {
+    const nodes = [node('a', 0, 0), node('b', 260, 0), node('target', 680, 80), node('manual', 680, 360)]
+    const grouped = { ...group(true), nodeIds: ['a', 'b'], outputLinks: [{ targetNodeId: 'target' }] }
+    const edges: GenerationCanvasEdge[] = [
+      { id: 'output-a', source: 'a', target: 'target', mode: 'reference', viaGroupId: grouped.id },
+      { id: 'output-b', source: 'b', target: 'target', mode: 'reference', viaGroupId: grouped.id },
+      { id: 'manual', source: 'a', target: 'manual', mode: 'reference' },
+    ]
+
+    const projection = projectCollapsedGroups(nodes, edges, [grouped])
+
+    expect(projection.visibleEdges.map((edge) => edge.id)).toEqual(['output-a', 'manual'])
+    expect(projection.aggregateEdges.get('output-a')).toEqual({
+      groupId: grouped.id,
+      direction: 'output',
+      memberEdgeIds: ['output-a', 'output-b'],
+    })
+    expect(projection.aggregateEdges.has('manual')).toBe(false)
+  })
 })

@@ -39,6 +39,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   selectedNodeIds: [],
   pendingConnectionSourceId: '',
   pendingConnectionSourceSide: 'right',
+  pendingConnectionSourceKind: 'node',
   canvasZoom: 1,
   canvasOffset: { x: 0, y: 0 },
   generationAiDraft: '',

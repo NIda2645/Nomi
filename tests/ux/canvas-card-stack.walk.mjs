@@ -73,12 +73,14 @@ const nodes = [
   },
 ]
 const edges = [
-  { id: 'external-to-group', source: 'image-versions', target: 'group-character', mode: 'reference', order: 0 },
+  { id: 'group-input-character', source: 'image-versions', target: 'group-character', mode: 'reference', order: 0, viaGroupId: 'reference-group' },
+  { id: 'group-input-scene', source: 'image-versions', target: 'group-scene', mode: 'style_ref', order: 1, viaGroupId: 'reference-group' },
+  { id: 'group-input-style', source: 'image-versions', target: 'group-style', mode: 'reference', order: 2, viaGroupId: 'reference-group' },
   { id: 'group-internal', source: 'group-character', target: 'group-scene', mode: 'reference', order: 0 },
 ]
 const groups = [{
   id: 'reference-group', name: '雨夜参考组', categoryId: 'shots', nodeIds: ['group-character', 'group-scene', 'group-style'],
-  color: '#746ce8', collapsed: false, createdAt: 1, updatedAt: 1,
+  color: '#746ce8', collapsed: false, inputLinks: [{ sourceNodeId: 'image-versions' }], createdAt: 1, updatedAt: 1,
 }]
 const generationCanvas = { nodes, edges, groups, selectedNodeIds: [], canvasZoom: 0.86, canvasPan: { x: 30, y: 10 } }
 const payload = { workbenchDocument: null, timeline: null, generationCanvas, storyboardPlan: null, storyboardPlanCommitted: false }
@@ -150,6 +152,37 @@ try {
 
   await clickOrFail(imageNode.getByRole('button', { name: '3 版' }), '关闭结果版本托盘')
   await expectHidden(tray, '结果版本托盘应完成退场')
+  const nodeCountBeforeDuplicate = await win.locator('[data-node-id]').count()
+  await imageNode.click({ position: { x: 120, y: 120 } })
+  await clickOrFail(imageNode.getByRole('button', { name: '复制为变体' }), '复制当前节点为无结果的新变体')
+  await expect.poll(() => win.locator('[data-node-id]').count(), { message: '复制变体应新增一个节点' }).toBe(nodeCountBeforeDuplicate + 1)
+  check('复制变体新增一个节点', true)
+  await win.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
+  await expect.poll(() => win.locator('[data-node-id]').count(), { message: '撤销应同时移除复制节点和继承连线' }).toBe(nodeCountBeforeDuplicate)
+  check('复制变体可一次撤销', true)
+
+  await videoNode.getByRole('button', { name: '2 版' }).click()
+  const videoTray = videoNode.locator('[data-node-result-stack="video-versions"]')
+  const videoHistoryRow = videoTray.locator('[data-result-stack-item="video-v1"]')
+  await videoHistoryRow.hover()
+  const videoProgress = videoHistoryRow.getByRole('slider', { name: '视频进度' })
+  await expect.poll(async () => Number(await videoProgress.getAttribute('aria-valuemax')), { message: '历史视频应加载可拖动时长' }).toBeGreaterThan(0)
+  const progressBox = await videoProgress.boundingBox()
+  check('历史视频进度条可见', Boolean(progressBox))
+  if (!progressBox) throw new Error('历史视频进度条没有可交互边界')
+  await win.mouse.move(progressBox.x + progressBox.width * 0.2, progressBox.y + progressBox.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(progressBox.x + progressBox.width * 0.75, progressBox.y + progressBox.height / 2, { steps: 5 })
+  await win.mouse.up()
+  const draggedTime = Number(await videoProgress.getAttribute('aria-valuenow'))
+  check('拖动进度条连续跳转', draggedTime > 0, String(draggedTime))
+  await videoProgress.press('ArrowLeft')
+  const nudgedTime = Number(await videoProgress.getAttribute('aria-valuenow'))
+  check('键盘左键精确回退一秒', Math.abs(nudgedTime - Math.max(0, draggedTime - 1)) < 0.2, `${draggedTime} -> ${nudgedTime}`)
+  await screenshotSettled(win, { path: path.join(outputDir, '03-real-video-history-scrub-light.png') })
+  await videoNode.getByRole('button', { name: '2 版' }).click()
+  await expectHidden(videoTray, '视频版本托盘应完成退场')
+
   const collapse = win.getByRole('button', { name: '收起分组「雨夜参考组」' })
   await collapse.scrollIntoViewIfNeeded()
   await clickOrFail(collapse, '把雨夜参考组收成节点卡组')
@@ -160,24 +193,38 @@ try {
   await expectAbsent(groupMembers, { provenBy: groupMembersProof, message: '收起后组内三个成员节点不再各自占画布' })
   check('三位成员已从画布投影隐藏', true)
   check('编组显示节点语义', await collapsed.getByRole('button', { name: '3 节点' }).isVisible())
-  check('外部连线保留且内部连线隐藏', await win.locator('[data-edge-id]').count() >= 1)
-  await screenshotSettled(win, { path: path.join(outputDir, '03-real-collapsed-group-light.png') })
+  check('三条成员输入聚合为一条编组线', await win.locator('g[data-aggregate-group="reference-group"]').count() === 1)
+  const aggregateHit = win.locator('g[data-aggregate-group="reference-group"] path[role="button"]')
+  await clickOrFail(aggregateHit, '选中聚合后的编组输入线')
+  await expectVisible(win.getByText('编组输入', { exact: true }), '聚合线应显示编组关系而不是伪造成员模式')
+  await screenshotSettled(win, { path: path.join(outputDir, '04-real-collapsed-group-link-light.png') })
 
   await clickOrFail(collapsed.getByRole('button', { name: '3 节点' }), '展开雨夜参考组')
   await expectVisible(win.locator('[data-node-id="group-character"]'), '点击卡角后应恢复组内节点')
   check('点击卡角恢复组内节点', await win.locator('[data-node-id="group-character"]').isVisible())
+  check('展开后恢复三条真实成员输入线', await win.locator('g[data-edge-id^="group-input-"]').count() === 3)
 
   await clickOrFail(collapse, '再次收起雨夜参考组')
   await expectVisible(collapsed, '再次收起后应恢复编组卡')
   await applyColorSchemeForShot(win, 'dark')
-  await screenshotSettled(win, { path: path.join(outputDir, '04-real-collapsed-group-dark.png') })
+  await screenshotSettled(win, { path: path.join(outputDir, '05-real-collapsed-group-dark.png') })
+
+  await clickOrFail(win.locator('g[data-aggregate-group="reference-group"] path[role="button"]'), '重新选中编组输入线')
+  await clickOrFail(win.getByRole('button', { name: '断开整条编组连接' }), '一次断开完整编组关系')
+  await expectAbsent(win.locator('g[data-aggregate-group="reference-group"]'), {
+    provenBy: await proveProbe(collapsed, '断开后编组卡仍存在'),
+    message: '断开聚合线后不应残留成员关系线',
+  })
+  check('聚合线一次断开整组关系', true)
 
   await expect.poll(() => {
     const current = JSON.parse(fs.readFileSync(path.join(projectRoot, '.nomi', 'project.json'), 'utf8'))
     return current.payload.generationCanvas.groups.find((entry) => entry.id === 'reference-group')?.collapsed
   }, { message: '收起状态应持久化到项目文件' }).toBe(true)
   const persisted = JSON.parse(fs.readFileSync(path.join(projectRoot, '.nomi', 'project.json'), 'utf8'))
-  check('收起状态写入项目', persisted.payload.generationCanvas.groups.find((entry) => entry.id === 'reference-group')?.collapsed === true)
+  const persistedGroup = persisted.payload.generationCanvas.groups.find((entry) => entry.id === 'reference-group')
+  check('收起状态写入项目', persistedGroup?.collapsed === true)
+  check('断开的编组声明不再持久化', !persistedGroup?.inputLinks?.length)
   fs.writeFileSync(path.join(outputDir, 'walk-report.json'), JSON.stringify({ checks, projectRoot }, null, 2))
   console.log(JSON.stringify({ ok: true, checks }, null, 2))
 } finally {

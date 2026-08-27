@@ -28,6 +28,7 @@ import { useBatchPlanPreviewStore } from './batchPlanPreview'
 import { useCanvasGroupActions } from './useCanvasGroupActions'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { CanvasGroupProjectionLayer } from './CanvasGroupProjectionLayer'
+import { useCollapsedGroupConnectionSource } from './useCollapsedGroupConnectionSource'
 import { useAutoFitOnLoad } from './useAutoFitOnLoad'
 import { useCanvasShortcuts } from './useCanvasShortcuts'
 import { useCanvasPointerInteractions } from './useCanvasPointerInteractions'
@@ -124,8 +125,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
   const disconnectEdge = useGenerationCanvasStore((state) => state.disconnectEdge)
   const updateEdgeMode = useGenerationCanvasStore((state) => state.updateEdgeMode)
-  const pendingConnectionSourceId = useGenerationCanvasStore((state) => state.pendingConnectionSourceId)
-  const pendingConnectionSourceSide = useGenerationCanvasStore((state) => state.pendingConnectionSourceSide)
+  const { pendingConnectionSourceId, pendingConnectionSourceSide, projectionProps: collapsedGroupConnectionProps } = useCollapsedGroupConnectionSource(readOnly)
   const cancelConnection = useGenerationCanvasStore((state) => state.cancelConnection)
   const undo = useGenerationCanvasStore((state) => state.undo)
   const redo = useGenerationCanvasStore((state) => state.redo)
@@ -642,14 +642,14 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
               cards={collapsedProjection.cards}
               readOnly={readOnly}
               onPointerDown={handleGroupFramePointerDown}
-              pendingConnection={!readOnly && Boolean(pendingConnectionSourceId)}
-              pendingConnectionSide={pendingConnectionSourceSide}
+              {...collapsedGroupConnectionProps}
               onConnectToGroup={handleConnectToGroup}
               onSetCollapsed={setGroupCollapsed}
             />
             <CanvasEdgeLayer
               edges={edgesForRender}
               nodeById={collapsedProjection.edgeNodeById}
+              aggregateEdges={collapsedProjection.aggregateEdges}
               zoom={zoom}
               visibleNodeIds={edgeVisibleNodeIds}
               lightweight={lightweightNodeMode}

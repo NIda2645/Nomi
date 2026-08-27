@@ -58,7 +58,8 @@ export function CardStackPeeks({
       <button
         type="button"
         className={cn(
-          'pointer-events-auto absolute right-[-42px] top-4 z-[9] inline-flex min-h-7 items-center gap-1 rounded-full px-2.5',
+          'pointer-events-auto absolute right-[-42px] z-[9] inline-flex min-h-7 items-center gap-1 rounded-full px-2.5',
+          tone === 'group' ? 'top-0' : 'top-4',
           'border border-nomi-line bg-nomi-paper text-micro font-semibold tabular-nums text-nomi-ink shadow-nomi-md',
           'transition-[transform,background-color,border-color] duration-150 motion-reduce:transition-none',
           'hover:-translate-y-0.5 hover:border-nomi-ink-20 hover:bg-nomi-ink-05',
