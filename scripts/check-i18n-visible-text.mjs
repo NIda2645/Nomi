@@ -6,6 +6,7 @@ import ts from 'typescript'
 const ROOT = process.cwd()
 const SRC_ROOT = path.join(ROOT, 'src')
 const ELECTRON_ROOT = path.join(ROOT, 'electron')
+const MODEL_DISPLAY_TEXT_FILE = path.join(SRC_ROOT, 'i18n', 'locales', 'modelDisplayText.ts')
 const REPORT = process.argv.includes('--report')
 
 const VISIBLE_ATTRIBUTES = new Set([
@@ -223,10 +224,34 @@ function countFindings(findings) {
   return [...counts.values()].sort((a, b) => fingerprint(a).localeCompare(fingerprint(b), 'en'))
 }
 
+function collectUntranslatedModelLabels() {
+  const sourceRoots = [
+    path.join(SRC_ROOT, 'config', 'modelArchetypes'),
+    path.join(ELECTRON_ROOT, 'catalog'),
+  ]
+  const sourceLabels = new Set()
+  for (const root of sourceRoots) {
+    const files = ts.sys.readDirectory(root, ['.ts', '.tsx'], undefined, undefined)
+    for (const fileName of files) {
+      const sourceText = fs.readFileSync(fileName, 'utf8')
+      for (const match of sourceText.matchAll(/\blabel\s*:\s*["'`]([^"'`]*[\u3400-\u9fff][^"'`]*)["'`]/g)) {
+        sourceLabels.add(normalizeText(match[1]))
+      }
+    }
+  }
+  const translationSource = fs.readFileSync(MODEL_DISPLAY_TEXT_FILE, 'utf8')
+  const translatedLabels = new Set()
+  for (const match of translationSource.matchAll(/^\s*(?:'([^']+)'|"([^"]+)"|([\u3400-\u9fff][^:]*))\s*:/gm)) {
+    translatedLabels.add(normalizeText(match[1] || match[2] || match[3]))
+  }
+  return [...sourceLabels].filter((label) => !translatedLabels.has(label)).sort((a, b) => a.localeCompare(b, 'en'))
+}
+
 const files = [SRC_ROOT, ELECTRON_ROOT]
   .flatMap((root) => ts.sys.readDirectory(root, ['.ts', '.tsx'], undefined, undefined))
   .filter(isProductSource)
 const current = countFindings(files.flatMap(scanFile))
+const missingModelLabels = collectUntranslatedModelLabels()
 
 if (REPORT) {
   const counts = new Map()
@@ -234,14 +259,21 @@ if (REPORT) {
   for (const [file, count] of [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'en'))) {
     console.log(`${String(count).padStart(4)} ${file}`)
   }
+  if (missingModelLabels.length > 0) {
+    console.log(`Missing model-display translations: ${missingModelLabels.length}`)
+    for (const label of missingModelLabels) console.log(`- ${label}`)
+  }
   console.log(`Total: ${current.reduce((sum, entry) => sum + entry.count, 0)} occurrences in ${counts.size} files`)
   process.exit(0)
 }
 
-if (current.length > 0) {
-  console.error(`i18n visible-text gate requires zero literals; found ${current.reduce((sum, entry) => sum + entry.count, 0)}`)
+if (current.length > 0 || missingModelLabels.length > 0) {
+  console.error(`i18n visible-text gate requires zero untranslated literals; found ${current.reduce((sum, entry) => sum + entry.count, 0)} visible literals and ${missingModelLabels.length} model labels`)
   for (const entry of current.slice(0, 100)) {
     console.error(`- ${entry.file} [${entry.kind}] ${JSON.stringify(entry.text)} (x${entry.count})`)
+  }
+  for (const label of missingModelLabels.slice(0, 100)) {
+    console.error(`- missing model-display translation: ${JSON.stringify(label)}`)
   }
   process.exit(1)
 }
