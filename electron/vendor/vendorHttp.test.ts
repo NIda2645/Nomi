@@ -46,6 +46,62 @@ describe("requestJson 结构化错误(S4-0,修压扁根因)", () => {
     expect(String(error.message)).not.toContain("no detail from provider");
   });
 
+  it("redacts the exact opaque API credential from upstream message, structured detail, and encoded result", async () => {
+    const secret = "opaqueCredentialValue987654";
+    stubFetch(() => new Response(JSON.stringify({ message: `invalid credential ${secret}` }), { status: 400 }));
+
+    const error = await requestJson(
+      vendor,
+      secret,
+      "POST",
+      "https://api.kie.ai/v1/task",
+      { Authorization: `Bearer ${secret}` },
+      {},
+      {},
+    ).catch((e) => e);
+
+    assert(error instanceof VendorRequestError);
+    expect(error.structured).toMatchObject({ httpStatus: 400, category: "input" });
+    expect(`${error.message}${JSON.stringify(error.structured)}`).not.toContain(secret);
+  });
+
+  it("redacts an opaque custom auth header value echoed by an upstream 400 detail", async () => {
+    const customHeaderSecret = "opaqueCustomHeaderValue987654";
+    stubFetch(() => new Response(JSON.stringify({ errors: { detail: `bad x-workspace-auth ${customHeaderSecret}` } }), { status: 400 }));
+
+    const error = await requestJson(
+      { ...vendor, authType: "none" } as Vendor,
+      "",
+      "POST",
+      "https://api.kie.ai/v1/task",
+      { "X-Workspace-Auth": customHeaderSecret, "Content-Type": "application/json" },
+      {},
+      {},
+    ).catch((e) => e);
+
+    assert(error instanceof VendorRequestError);
+    expect(`${error.message}${JSON.stringify(error.structured)}`).not.toContain(customHeaderSecret);
+  });
+
+  it("redacts the actual query-auth value echoed by an upstream 500 message", async () => {
+    const querySecret = "opaqueQueryCredentialValue987654";
+    stubFetch(() => new Response(JSON.stringify({ message: `query api_key=${querySecret}` }), { status: 500 }));
+
+    const error = await requestJson(
+      { ...vendor, authType: "query", authQueryParam: "api_key" } as Vendor,
+      querySecret,
+      "GET",
+      "https://api.kie.ai/v1/task",
+      {},
+      {},
+      null,
+    ).catch((e) => e);
+
+    assert(error instanceof VendorRequestError);
+    expect(error.structured).toMatchObject({ httpStatus: 500, category: "server" });
+    expect(`${error.message}${JSON.stringify(error.structured)}`).not.toContain(querySecret);
+  });
+
   it("网络层抛错 → category network 可重试", async () => {
     stubFetch(() => Promise.reject(new TypeError("fetch failed")));
     const error = await requestJson(vendor, "k", "GET", "https://x", {}, {}, null).catch((e) => e);

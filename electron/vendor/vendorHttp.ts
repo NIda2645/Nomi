@@ -20,6 +20,7 @@ export type VendorErrorCategory = "auth" | "balance" | "quota" | "input" | "serv
 // 首调返 queued 后由 core.ts 轮询循环（240s/300s）接管，故这里只兜「单次请求别永久挂死」。
 // 可经 NOMI_VENDOR_HTTP_TIMEOUT_MS 调（大模型同步出图慢可调大）。
 const DEFAULT_VENDOR_HTTP_TIMEOUT_MS = 120_000;
+const EXACT_REDACTED = "«redacted»";
 
 function vendorHttpTimeoutMs(): number {
   const raw = Number(process.env.NOMI_VENDOR_HTTP_TIMEOUT_MS);
@@ -30,6 +31,13 @@ function callerCancellation(signal?: AbortSignal): Error | null {
   if (!signal?.aborted) return null;
   if (signal.reason instanceof Error) return signal.reason;
   return new Error("Provider request cancelled");
+}
+
+function redactShortExactSecrets(message: string, secrets: readonly string[]): string {
+  return secrets.filter((secret) => secret.length > 0 && secret.length < 4).reduce((redacted, secret) => {
+    const escaped = secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return redacted.replace(new RegExp(`(^|[^A-Za-z0-9])${escaped}(?=$|[^A-Za-z0-9])`, "g"), `$1${EXACT_REDACTED}`);
+  }, message);
 }
 
 export type VendorErrorStructured = {
@@ -104,10 +112,27 @@ async function requestVendor(
   bodyInit: BodyInit | undefined,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const finalUrl = appendQueryParams(url, { ...authQueryParams(vendor, apiKey), ...query });
+  const requestAuthQuery = authQueryParams(vendor, apiKey);
+  const finalUrl = appendQueryParams(url, { ...requestAuthQuery, ...query });
   const diagnosticUrl = safeNetworkUrl(url);
   const upperMethod = method.toUpperCase();
   const hasBody = bodyInit != null;
+  // Error payloads are untrusted: upstreams regularly echo credentials in
+  // message/detail fields. Exact values from this concrete request are the
+  // primary boundary; redactNetworkMessage's format/query regexes remain a
+  // defense-in-depth fallback. Redaction happens before any slice, throw, IPC,
+  // run persistence, or UI projection can observe the value.
+  const requestSecrets = [
+    apiKey,
+    ...Object.values(requestAuthQuery),
+    ...Object.values(headers),
+  ].filter(Boolean).sort((left, right) => right.length - left.length);
+  const redactRequestMessage = (message: string, maximumLength = 8_192) =>
+    redactNetworkMessage(
+      redactShortExactSecrets(message, requestSecrets),
+      requestSecrets.filter((secret) => secret.length >= 4),
+      maximumLength,
+    );
   // 发送前请求头守卫：fetch 遇到码点 > 255 的头值会同步抛 ByteString 错，被下面 catch
   // 误判成「网络超时」让用户白查网络（最常见来源=密钥混进中文/全角字符）。在这里先识别，
   // 抛 auth 类（不可重试）+ 说人话的 upstreamMsg，让错误卡指向「重新粘贴密钥」而非网络。
@@ -124,9 +149,9 @@ async function requestVendor(
     });
   }
   const timeoutMs = vendorHttpTimeoutMs();
-  const networkMessage = (error: unknown) => redactNetworkMessage(
+  const networkMessage = (error: unknown) => redactRequestMessage(
     networkFailureDetails(error)?.message ?? (error instanceof Error ? error.message : String(error)),
-    [apiKey, ...Object.values(headers)].filter(Boolean), 256,
+    256,
   );
   const controller = new AbortController();
   const relayAbort = () => controller.abort(signal?.reason);
@@ -199,7 +224,7 @@ async function requestVendor(
   const logicalCode = looksLikeLogicalError(record);
   if (!response.ok || logicalCode != null) {
     // 键优先级表住 jsonUtils.pickUpstreamMessage（全仓唯一，onboarding 拉模型/测连接同读一份）。
-    const rawUpstream = pickUpstreamMessage(record);
+    const rawUpstream = pickUpstreamMessage(record, redactRequestMessage);
     const statusLabel = logicalCode != null ? `code ${logicalCode}` : `HTTP ${response.status}`;
     // "No message available" is Spring's default placeholder — surface the URL
     // and status so the failure is diagnosable instead of opaque.

@@ -1,44 +1,35 @@
 import crypto from "node:crypto";
 import { derivePublishedExecution, modelHasPublishedExecution } from "../shared/modelPublication";
-import type { CatalogState, ProfileKind, Vendor } from "./types";
+import {
+  ADAPTER_CANDIDATE_MODEL_PREDECESSORS,
+  ADAPTER_CANDIDATE_PROMOTION_PREDECESSORS,
+  ADAPTER_CANDIDATE_REVISION_ID,
+  ADAPTER_CANDIDATE_ROOT_VENDOR_KEY,
+  ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY,
+  candidateModelPredecessors,
+  candidateRevisionId,
+  candidateSourceVendorKey,
+  isCandidateVendor,
+  resolvedVendorLineageRoot,
+  type CandidateModelPredecessors,
+} from "../shared/vendorLineage";
+import type { CatalogState, Vendor } from "./types";
 
-export const ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY = "adapterCandidateSourceVendorKey";
-export const ADAPTER_CANDIDATE_ROOT_VENDOR_KEY = "adapterCandidateRootVendorKey";
-export const ADAPTER_CANDIDATE_REVISION_ID = "adapterCandidateRevisionId";
-export const ADAPTER_CANDIDATE_MODEL_PREDECESSORS = "adapterCandidateModelPredecessors";
-export const ADAPTER_CANDIDATE_PROMOTION_PREDECESSORS = "adapterCandidatePromotionPredecessors";
-
-const PROFILE_KINDS = new Set<ProfileKind>([
-  "chat",
-  "prompt_refine",
-  "text_to_image",
-  "image_to_prompt",
-  "image_to_video",
-  "text_to_video",
-  "image_edit",
-  "text_to_audio",
-  "image_to_audio",
-  "transcribe",
-  "text_to_3d",
-  "image_to_3d",
-]);
-
-export type CandidateModelPredecessor = {
-  vendorKey: string;
-  publishedModes: ProfileKind[];
-};
-
-export type CandidateModelPredecessors = Record<string, CandidateModelPredecessor>;
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
+export {
+  ADAPTER_CANDIDATE_MODEL_PREDECESSORS,
+  ADAPTER_CANDIDATE_PROMOTION_PREDECESSORS,
+  ADAPTER_CANDIDATE_REVISION_ID,
+  ADAPTER_CANDIDATE_ROOT_VENDOR_KEY,
+  ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY,
+  candidateModelPredecessors,
+  candidatePromotionPredecessors,
+  candidateRevisionId,
+  candidateRootVendorKey,
+  candidateSourceVendorKey,
+  isCandidateVendor,
+  type CandidateModelPredecessor,
+  type CandidateModelPredecessors,
+} from "../shared/vendorLineage";
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -63,64 +54,8 @@ export function newCandidateRevisionId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-export function candidateSourceVendorKey(meta: unknown): string {
-  return text(record(meta)?.[ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY]);
-}
-
-export function candidateRootVendorKey(meta: unknown): string {
-  return text(record(meta)?.[ADAPTER_CANDIDATE_ROOT_VENDOR_KEY]);
-}
-
-export function candidateRevisionId(meta: unknown): string {
-  return text(record(meta)?.[ADAPTER_CANDIDATE_REVISION_ID]);
-}
-
-function parsePredecessors(value: unknown): CandidateModelPredecessors {
-  const raw = record(value);
-  if (!raw) return {};
-  const parsed: CandidateModelPredecessors = {};
-  for (const [modelKey, item] of Object.entries(raw)) {
-    const candidate = record(item);
-    const vendorKey = text(candidate?.vendorKey);
-    const publishedModes = Array.isArray(candidate?.publishedModes)
-      ? candidate.publishedModes.filter((mode): mode is ProfileKind => typeof mode === "string" && PROFILE_KINDS.has(mode as ProfileKind))
-      : [];
-    if (modelKey.trim() && vendorKey && publishedModes.length > 0) {
-      parsed[modelKey] = { vendorKey, publishedModes: [...new Set(publishedModes)] };
-    }
-  }
-  return parsed;
-}
-
-export function candidateModelPredecessors(meta: unknown): CandidateModelPredecessors {
-  return parsePredecessors(record(meta)?.[ADAPTER_CANDIDATE_MODEL_PREDECESSORS]);
-}
-
-export function candidatePromotionPredecessors(meta: unknown): CandidateModelPredecessors {
-  return parsePredecessors(record(meta)?.[ADAPTER_CANDIDATE_PROMOTION_PREDECESSORS]);
-}
-
-export function isCandidateVendor(vendor: Pick<Vendor, "meta"> | null | undefined): boolean {
-  return Boolean(candidateSourceVendorKey(vendor?.meta));
-}
-
-function lineageRoot(state: CatalogState, vendorKey: string): string {
-  let current = vendorKey;
-  const seen = new Set<string>();
-  while (current && !seen.has(current)) {
-    seen.add(current);
-    const vendor = state.vendors.find((item) => item.key === current);
-    const explicitRoot = candidateRootVendorKey(vendor?.meta);
-    if (explicitRoot) return explicitRoot;
-    const source = candidateSourceVendorKey(vendor?.meta);
-    if (!source) return current;
-    current = source;
-  }
-  return vendorKey;
-}
-
 export function resolvedCandidateRootVendorKey(state: CatalogState, vendorKey: string): string {
-  return lineageRoot(state, vendorKey);
+  return resolvedVendorLineageRoot(state.vendors, vendorKey);
 }
 
 function modelPublished(state: CatalogState, vendorKey: string, selected: ReadonlySet<string>): boolean {
@@ -137,7 +72,7 @@ function vendorPublished(state: CatalogState, vendorKey: string): boolean {
 
 function lineageVendors(state: CatalogState, rootVendorKey: string): Vendor[] {
   return state.vendors.filter((vendor) =>
-    vendor.key === rootVendorKey || lineageRoot(state, vendor.key) === rootVendorKey,
+    vendor.key === rootVendorKey || resolvedVendorLineageRoot(state.vendors, vendor.key) === rootVendorKey,
   );
 }
 
@@ -193,7 +128,7 @@ export function planStagedVendorIdentity(input: {
 }): StagedVendorIdentity {
   const sourceVendorKey = input.sourceVendorKey;
   const sourceVendor = input.state.vendors.find((vendor) => vendor.key === sourceVendorKey);
-  const rootVendorKey = lineageRoot(input.state, sourceVendorKey);
+  const rootVendorKey = resolvedVendorLineageRoot(input.state.vendors, sourceVendorKey);
   const selected = new Set(input.selectedModelKeys);
   const lineage = lineageVendors(input.state, rootVendorKey);
   const modelPredecessors = activeModelPredecessors(input.state, lineage, input.selectedModelKeys);

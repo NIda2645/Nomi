@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CatalogState, Mapping, Model, Vendor } from "../catalog/types";
-import { removeVendorLineage, restoreSourceAfterCandidateDeletion } from "../catalog/vendorLineageLifecycle";
+import { deleteVendorLineageAndRestore } from "../catalog/vendorLineageLifecycle";
 import type { ProviderAdapterDraft, ProviderAdapterRun } from "./types";
 
 const now = "2026-08-15T00:00:00.000Z";
@@ -594,8 +594,7 @@ describe("provider adapter catalog run ownership", () => {
     expect(state.models.find((model) => model.vendorKey === staged.vendor.key && model.modelKey === "video-b")?.enabled).toBe(false);
     expect(state.models.filter((model) => model.modelKey === modelKey && model.enabled)).toHaveLength(1);
 
-    restoreSourceAfterCandidateDeletion(state, staged.vendor.key);
-    removeVendorLineage(state, staged.vendor.key);
+    deleteVendorLineageAndRestore(state, staged.vendor.key);
 
     expect(state.vendors.some((vendor) => vendor.key === staged.vendor.key)).toBe(false);
     expect(state.apiKeysByVendor[staged.vendor.key]).toBeUndefined();

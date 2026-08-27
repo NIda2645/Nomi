@@ -18,6 +18,7 @@ vi.mock("electron", () => ({
 }));
 
 import { deleteModelCatalogVendor, readCatalog } from "./catalogStore";
+import { deriveModelListing } from "./modelCatalogListing";
 import { CURRENT_CATALOG_VERSION, type CatalogState, type Vendor } from "./types";
 
 const now = "2026-08-28T00:00:00.000Z";
@@ -214,5 +215,187 @@ describe("candidate vendor lineage deletion", () => {
     expect(state.mappings.find((mapping) => mapping.id === "source-edit")?.enabled).toBe(true);
     expect(state.vendors.map((item) => item.key)).toEqual([root]);
     expect(Object.keys(state.apiKeysByVendor)).toEqual([root]);
+  });
+
+  it("deleting a non-leaf predecessor follows per-model reverse dependencies across two sources and restores one executable contract", () => {
+    const root = "source";
+    const predecessor = "source--candidate-predecessor";
+    const successor = "source--candidate-successor";
+    writeState({
+      version: CURRENT_CATALOG_VERSION,
+      vendors: [
+        vendor(root),
+        vendor(predecessor, {
+          adapterCandidateSourceVendorKey: root,
+          adapterCandidateRootVendorKey: root,
+          adapterCandidateRevisionId: "predecessor",
+          adapterCandidatePromotionPredecessors: {
+            image: { vendorKey: root, publishedModes: ["text_to_image", "image_edit"] },
+          },
+        }),
+        vendor(successor, {
+          // The save started from root, but its models had different active predecessors.
+          adapterCandidateSourceVendorKey: root,
+          adapterCandidateRootVendorKey: root,
+          adapterCandidateRevisionId: "successor",
+          adapterCandidatePromotionPredecessors: {
+            image: { vendorKey: predecessor, publishedModes: ["text_to_image"] },
+            video: { vendorKey: root, publishedModes: ["text_to_video"] },
+          },
+        }),
+      ],
+      models: [
+        { vendorKey: root, modelKey: "image", labelZh: "Image", kind: "image", enabled: false, createdAt: now, updatedAt: now },
+        { vendorKey: root, modelKey: "video", labelZh: "Video", kind: "video", enabled: false, createdAt: now, updatedAt: now },
+        { vendorKey: predecessor, modelKey: "image", labelZh: "Image", kind: "image", enabled: false, createdAt: now, updatedAt: now },
+        { vendorKey: successor, modelKey: "image", labelZh: "Image", kind: "image", enabled: true, createdAt: now, updatedAt: now },
+        { vendorKey: successor, modelKey: "video", labelZh: "Video", kind: "video", enabled: true, createdAt: now, updatedAt: now },
+      ],
+      mappings: [
+        { id: "root-image-t2i", vendorKey: root, modelKey: "image", taskKind: "text_to_image", name: "root image", enabled: false, create: { method: "POST", path: "/root-image" }, createdAt: now, updatedAt: now },
+        { id: "root-image-edit", vendorKey: root, modelKey: "image", taskKind: "image_edit", name: "root edit", enabled: false, create: { method: "POST", path: "/root-edit" }, createdAt: now, updatedAt: now },
+        { id: "root-video", vendorKey: root, modelKey: "video", taskKind: "text_to_video", name: "root video", enabled: false, create: { method: "POST", path: "/root-video" }, createdAt: now, updatedAt: now },
+        { id: "predecessor-image", vendorKey: predecessor, modelKey: "image", taskKind: "text_to_image", name: "predecessor image", enabled: false, create: { method: "POST", path: "/predecessor" }, createdAt: now, updatedAt: now },
+        { id: "successor-image", vendorKey: successor, modelKey: "image", taskKind: "text_to_image", name: "successor image", enabled: true, create: { method: "POST", path: "/successor-image" }, createdAt: now, updatedAt: now },
+        { id: "successor-video", vendorKey: successor, modelKey: "video", taskKind: "text_to_video", name: "successor video", enabled: true, create: { method: "POST", path: "/successor-video" }, createdAt: now, updatedAt: now },
+      ],
+      apiKeysByVendor: Object.fromEntries([root, predecessor, successor].map((vendorKey) => [vendorKey, {
+        vendorKey,
+        apiKey: Buffer.from(`${vendorKey}-key`).toString("base64"),
+        enc: "safeStorage" as const,
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+      }])),
+    });
+
+    deleteModelCatalogVendor(predecessor);
+
+    const state = readCatalog();
+    expect(state.vendors.map((item) => item.key)).toEqual([root]);
+    expect(Object.keys(state.apiKeysByVendor)).toEqual([root]);
+    expect(state.models).toHaveLength(2);
+    expect(state.models.every((model) => model.vendorKey === root && model.enabled)).toBe(true);
+    expect(state.mappings.filter((mapping) => mapping.enabled).map((mapping) => mapping.id).sort()).toEqual([
+      "root-image-edit",
+      "root-image-t2i",
+      "root-video",
+    ]);
+    expect(deriveModelListing(state).map((model) => `${model.vendor}/${model.modelKey}`).sort()).toEqual([
+      "source/image",
+      "source/video",
+    ]);
+
+    const once = JSON.stringify(state);
+    deleteModelCatalogVendor(predecessor);
+    expect(JSON.stringify(readCatalog())).toBe(once);
+  });
+
+  it("walks multi-level and branched predecessor references even when sourceVendorKey points elsewhere", () => {
+    const root = "source";
+    const predecessor = "source--candidate-a";
+    const child = "source--candidate-b";
+    const branch = "source--candidate-c";
+    const candidateMeta = (revisionId: string, predecessorVendorKey: string) => ({
+      adapterCandidateSourceVendorKey: root,
+      adapterCandidateRootVendorKey: root,
+      adapterCandidateRevisionId: revisionId,
+      adapterCandidatePromotionPredecessors: {
+        image: { vendorKey: predecessorVendorKey, publishedModes: ["text_to_image"] },
+      },
+    });
+    writeState({
+      version: CURRENT_CATALOG_VERSION,
+      vendors: [
+        vendor(root),
+        vendor(predecessor, candidateMeta("a", root)),
+        vendor(child, candidateMeta("b", predecessor)),
+        vendor(branch, candidateMeta("c", predecessor)),
+      ],
+      models: [root, predecessor, child, branch].map((vendorKey) => ({
+        vendorKey,
+        modelKey: "image",
+        labelZh: "Image",
+        kind: "image" as const,
+        enabled: vendorKey === child || vendorKey === branch,
+        createdAt: now,
+        updatedAt: now,
+      })),
+      mappings: [root, predecessor, child, branch].map((vendorKey) => ({
+        id: `mapping-${vendorKey}`,
+        vendorKey,
+        modelKey: "image",
+        taskKind: "text_to_image" as const,
+        name: vendorKey,
+        enabled: vendorKey === child || vendorKey === branch,
+        create: { method: "POST", path: `/${vendorKey}` },
+        createdAt: now,
+        updatedAt: now,
+      })),
+      apiKeysByVendor: Object.fromEntries([root, predecessor, child, branch].map((vendorKey) => [vendorKey, {
+        vendorKey,
+        apiKey: Buffer.from(`${vendorKey}-key`).toString("base64"),
+        enc: "safeStorage" as const,
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+      }])),
+    });
+
+    deleteModelCatalogVendor(predecessor);
+
+    const state = readCatalog();
+    expect(state.vendors.map((item) => item.key)).toEqual([root]);
+    expect(state.models).toHaveLength(1);
+    expect(state.models[0]).toMatchObject({ vendorKey: root, modelKey: "image", enabled: true });
+    expect(state.mappings).toHaveLength(1);
+    expect(state.mappings[0]).toMatchObject({ vendorKey: root, modelKey: "image", enabled: true });
+    expect(Object.keys(state.apiKeysByVendor)).toEqual([root]);
+  });
+
+  it("does not restore a predecessor mode while a surviving published successor still replaces it", () => {
+    const root = "source";
+    const deleting = "source--candidate-deleting";
+    const survivor = "source--candidate-survivor";
+    const meta = (revisionId: string) => ({
+      adapterCandidateSourceVendorKey: root,
+      adapterCandidateRootVendorKey: root,
+      adapterCandidateRevisionId: revisionId,
+      adapterCandidatePromotionPredecessors: {
+        image: { vendorKey: root, publishedModes: ["text_to_image"] },
+      },
+    });
+    writeState({
+      version: CURRENT_CATALOG_VERSION,
+      vendors: [vendor(root), vendor(deleting, meta("deleting")), vendor(survivor, meta("survivor"))],
+      models: [
+        { vendorKey: root, modelKey: "image", labelZh: "Image", kind: "image", enabled: false, createdAt: now, updatedAt: now },
+        { vendorKey: deleting, modelKey: "image", labelZh: "Image", kind: "image", enabled: true, createdAt: now, updatedAt: now },
+        { vendorKey: survivor, modelKey: "image", labelZh: "Image", kind: "image", enabled: true, createdAt: now, updatedAt: now },
+      ],
+      mappings: [
+        { id: "root", vendorKey: root, modelKey: "image", taskKind: "text_to_image", name: "root", enabled: false, create: { method: "POST", path: "/root" }, createdAt: now, updatedAt: now },
+        { id: "deleting", vendorKey: deleting, modelKey: "image", taskKind: "text_to_image", name: "deleting", enabled: true, create: { method: "POST", path: "/deleting" }, createdAt: now, updatedAt: now },
+        { id: "survivor", vendorKey: survivor, modelKey: "image", taskKind: "text_to_image", name: "survivor", enabled: true, create: { method: "POST", path: "/survivor" }, createdAt: now, updatedAt: now },
+      ],
+      apiKeysByVendor: Object.fromEntries([root, deleting, survivor].map((vendorKey) => [vendorKey, {
+        vendorKey,
+        apiKey: Buffer.from(`${vendorKey}-key`).toString("base64"),
+        enc: "safeStorage" as const,
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+      }])),
+    });
+
+    deleteModelCatalogVendor(deleting);
+
+    const state = readCatalog();
+    expect(state.vendors.map((item) => item.key)).toEqual([root, survivor]);
+    expect(state.models.find((model) => model.vendorKey === root)?.enabled).toBe(false);
+    expect(state.mappings.find((mapping) => mapping.vendorKey === root)?.enabled).toBe(false);
+    expect(deriveModelListing(state).map((model) => `${model.vendor}/${model.modelKey}`)).toEqual([
+      `${survivor}/image`,
+    ]);
   });
 });

@@ -17,7 +17,7 @@ import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
 import { derivePublishedExecution } from "../shared/modelPublication";
 import { deriveModelCatalogHealth } from "./catalogHealth";
-import { removeVendorLineage, restoreSourceAfterCandidateDeletion } from "./vendorLineageLifecycle";
+import { deleteVendorLineageAndRestore, removeVendorLineage } from "./vendorLineageLifecycle";
 import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
 import { antigravityConnection } from "../ai/antigravityConnection";
 import { extractLegacyStages, normalizeLegacyMappings } from "./legacyMappingMigration";
@@ -397,8 +397,7 @@ export function upsertModelCatalogVendor(payload: unknown): Vendor {
 
 export function deleteModelCatalogVendor(key: string): void {
   const state = readCatalog();
-  restoreSourceAfterCandidateDeletion(state, key);
-  removeVendorLineage(state, key);
+  deleteVendorLineageAndRestore(state, key);
   writeCatalog(state);
 }
 
