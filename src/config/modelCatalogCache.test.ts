@@ -12,6 +12,7 @@ vi.mock('../workbench/api/modelCatalogApi', () => ({
 }))
 
 import { notifyModelOptionsRefresh, preloadModelOptions } from './modelCatalogCache'
+import { derivePublishedExecution } from '../../electron/shared/modelPublication'
 
 const row = (modelKey: string, publishedModes: string[] = ['text_to_image'], meta?: unknown) => ({
   modelKey,
@@ -66,5 +67,25 @@ describe('normal picker verified-only projection', () => {
     await expect(preloadModelOptions('imageEdit')).resolves.toMatchObject([{ value: 'edit-only' }])
     await expect(preloadModelOptions('video', 'text_to_video')).resolves.toMatchObject([{ value: 't2v-only' }])
     await expect(preloadModelOptions('video', 'image_to_video')).resolves.toMatchObject([{ value: 'i2v-only' }])
+  })
+
+  it('keeps generic custom-call DTO publication from crossing image/edit or t2v/i2v picker modes', async () => {
+    const dto = (kind: 'image' | 'video', modelKey: string) => {
+      const source = { ...row(modelKey), kind, customCall: { script: "return 'asset'" } }
+      const publication = derivePublishedExecution(source)
+      const { customCall: _privateExecutionContract, ...publicFields } = source
+      return { ...publicFields, ...publication }
+    }
+    mocks.listModels.mockImplementation(async ({ kind }: { kind: string }) => kind === 'image'
+      ? [dto('image', 'generic-image')]
+      : [dto('video', 'generic-video')])
+
+    await expect(preloadModelOptions('image')).resolves.toMatchObject([{ value: 'generic-image' }])
+    notifyModelOptionsRefresh()
+    await expect(preloadModelOptions('imageEdit')).resolves.toEqual([])
+    notifyModelOptionsRefresh()
+    await expect(preloadModelOptions('video', 'text_to_video')).resolves.toMatchObject([{ value: 'generic-video' }])
+    notifyModelOptionsRefresh()
+    await expect(preloadModelOptions('video', 'image_to_video')).resolves.toEqual([])
   })
 })

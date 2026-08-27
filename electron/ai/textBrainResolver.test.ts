@@ -83,9 +83,17 @@ describe("Nomi text brain resolver", () => {
   });
 
   it("selects the first usable credential after ranking and skips locked keys", () => {
+    safeStorageMocks.decryptString.mockImplementation((value: Buffer) => {
+      const decoded = value.toString("utf8");
+      if (decoded === "locked") throw new Error("test keychain locked");
+      return decoded;
+    });
     vi.mocked(readCatalog).mockReturnValue(catalog({
       vendors: [vendor("a"), vendor("b")], models: [model("a", "preferred"), model("b", "fallback")],
-      apiKeysByVendor: { a: key("a", "bG9ja2Vk", "safeStorage"), b: key("b", "test-usable-key") },
+      apiKeysByVendor: {
+        a: key("a", "bG9ja2Vk", "safeStorage"),
+        b: key("b", "dGVzdC11c2FibGUta2V5", "safeStorage"),
+      },
     }));
     expect(resolver.chooseTextModel("preferred", false, "a")).toMatchObject({ vendor: { key: "b" }, model: { modelKey: "fallback" }, apiKey: "test-usable-key" });
   });
@@ -118,8 +126,21 @@ describe("Nomi text brain resolver", () => {
     expect(safeStorageMocks.decryptString).not.toHaveBeenCalled();
   });
 
+  it("never selects or advertises a legacy plaintext credential as a usable text brain", () => {
+    const sentinel = "SENTINEL-LEGACY-TEXT-BRAIN";
+    vi.mocked(readCatalog).mockReturnValue(catalog({
+      vendors: [vendor("legacy")],
+      models: [model("legacy", "chat")],
+      apiKeysByVendor: { legacy: key("legacy", sentinel, "plain") },
+    }));
+    expect(() => resolver.chooseTextModel()).toThrow("Model is not configured: no usable text model");
+    expect(resolver.resolveTextBrainKeys()).toBeNull();
+    expect(resolver.resolveTextBrainStatus()).toEqual({ status: "missing" });
+    expect(safeStorageMocks.decryptString).not.toHaveBeenCalled();
+  });
+
   it("returns only public model keys from the reusable status API", () => {
-    vi.mocked(readCatalog).mockReturnValue(catalog({ vendors: [vendor("a")], models: [model("a", "chat")], apiKeysByVendor: { a: key("a", "test-secret") } }));
+    vi.mocked(readCatalog).mockReturnValue(catalog({ vendors: [vendor("a")], models: [model("a", "chat")], apiKeysByVendor: { a: key("a", "dGVzdC1zZWNyZXQ=", "safeStorage") } }));
     expect(resolver.resolveTextBrainKeys()).toEqual({ vendor: "a", modelKey: "chat" });
     expect(resolver.resolveTextBrainStatus()).toEqual({ status: "ok", brain: { vendor: "a", modelKey: "chat" } });
   });

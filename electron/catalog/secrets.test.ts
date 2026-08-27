@@ -35,9 +35,18 @@ describe("makeApiKeyRecordFromPlain + decryptApiKeyRecord round-trip", () => {
 });
 
 describe("decryptApiKeyRecord branches", () => {
-  it("returns plaintext for enc=plain and legacy (no enc) records", () => {
-    expect(decryptApiKeyRecord({ vendorKey: "v", apiKey: "raw", enc: "plain", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("raw");
-    expect(decryptApiKeyRecord({ vendorKey: "v", apiKey: "legacy", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("legacy");
+  it("recognizes legacy plaintext for migration status but never resolves it for execution", () => {
+    const sentinel = "SENTINEL-LEGACY-PLAIN-SECRET";
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    for (const enc of ["plain", undefined] as const) {
+      const record = { vendorKey: "v", apiKey: sentinel, enc, enabled: true, createdAt: "c", updatedAt: "u" };
+      expect(apiKeyDecryptStatus(record)).toBe("needs_resave");
+      expect(decryptApiKeyRecord(record)).toBe("");
+    }
+    expect(JSON.stringify([...errorSpy.mock.calls, ...warnSpy.mock.calls])).not.toContain(sentinel);
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it("returns '' for missing record or empty key", () => {

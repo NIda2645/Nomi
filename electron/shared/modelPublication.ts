@@ -1,3 +1,5 @@
+import { resolveCapabilityModeManifest } from "./capabilityModeManifest";
+
 export type PublishedExecutionModel = {
   enabled?: boolean;
   vendorKey?: string;
@@ -36,6 +38,14 @@ const EXECUTABLE_TASKS_BY_KIND: Record<string, readonly string[]> = {
   model3d: ["text_to_3d", "image_to_3d"],
 };
 
+const DEFAULT_CUSTOM_CALL_TASK_BY_KIND: Record<string, string> = {
+  text: "chat",
+  image: "text_to_image",
+  video: "text_to_video",
+  audio: "text_to_audio",
+  model3d: "text_to_3d",
+};
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -46,27 +56,35 @@ function nonEmptyScript(value: unknown): boolean {
   return typeof value === "string" && Boolean(value.trim());
 }
 
+function contractedCustomCallModes(
+  model: PublishedExecutionModel,
+  scriptedModeIds: ReadonlySet<string>,
+  supported: readonly string[],
+): string[] {
+  const manifest = resolveCapabilityModeManifest(model);
+  if (!manifest) return [];
+  return Object.entries(manifest.modes)
+    .filter(([modeId, taskKind]) => scriptedModeIds.has(modeId) && supported.includes(taskKind))
+    .map(([, taskKind]) => taskKind);
+}
+
 function customCallModes(model: PublishedExecutionModel, supported: readonly string[]): string[] {
   const customCall = model.customCall;
   if (!customCall) return [];
-  if (nonEmptyScript(customCall.script)) return [...supported];
+  const published = new Set<string>();
+  if (nonEmptyScript(customCall.script)) {
+    const defaultTask = DEFAULT_CUSTOM_CALL_TASK_BY_KIND[String(model.kind || "")];
+    if (defaultTask && supported.includes(defaultTask)) published.add(defaultTask);
+  }
   const scriptedModeIds = new Set(
     Object.entries(customCall.modes || {})
       .filter(([, mode]) => nonEmptyScript(mode?.script))
       .map(([modeId]) => modeId),
   );
-  if (scriptedModeIds.size === 0) return [];
+  if (scriptedModeIds.size === 0) return [...published];
 
-  const contract = record(record(model.meta)?.customCapabilityContract);
-  const modes = Array.isArray(contract?.modes) ? contract.modes : [];
-  const rootTaskKind = typeof contract?.transportTaskKind === "string" ? contract.transportTaskKind : "";
-  const declared = modes.flatMap((rawMode) => {
-    const mode = record(rawMode);
-    if (!mode || typeof mode.id !== "string" || !scriptedModeIds.has(mode.id)) return [];
-    const taskKind = typeof mode.transportTaskKind === "string" ? mode.transportTaskKind : rootTaskKind;
-    return supported.includes(taskKind) ? [taskKind] : [];
-  });
-  return declared.length > 0 ? declared : [...supported];
+  for (const taskKind of contractedCustomCallModes(model, scriptedModeIds, supported)) published.add(taskKind);
+  return [...published];
 }
 
 export function derivePublishedExecution(

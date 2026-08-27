@@ -43,7 +43,7 @@ export class TextModelCredentialError extends Error {
 }
 
 function configuredCredential(record: ApiKeyRecord | undefined): boolean {
-  return Boolean(record?.enabled && record.apiKey.trim());
+  return Boolean(record?.enabled && record.enc === "safeStorage" && record.apiKey.trim());
 }
 
 /**
@@ -116,7 +116,7 @@ export function chooseTextModel(
 
 /**
  * 解析默认文本大脑的 vendor/model 键（**不含 apiKey**）。这是只读的“已配置”探测：
- * enabled 的免鉴权 vendor，或 enabled/nonempty 的凭据记录即可；启动与首屏绝不为 readiness
+ * enabled 的免鉴权 vendor，或 enabled/nonempty 的 safeStorage 凭据记录即可；启动与首屏绝不为 readiness
  * 触碰系统钥匙串。真正执行文本请求时由 chooseTextModel 解密并验证凭据。
  */
 export function resolveTextBrainKeys(): { vendor: string; modelKey: string } | null {

@@ -37,4 +37,68 @@ describe("published execution contract", () => {
       meta: { adapter: { state: "testing", activeRevision: "revision-good", modes: [] } },
     }))).toEqual({ published: true, publishedModes: ["chat"] });
   });
+
+  it("publishes a legacy generic custom-call script only for the minimal default mode", () => {
+    expect(derivePublishedExecution(model("image", { customCall: { script: "return 'image'" } })))
+      .toEqual({ published: true, publishedModes: ["text_to_image"] });
+    expect(derivePublishedExecution(model("video", { customCall: { script: "return 'video'" } })))
+      .toEqual({ published: true, publishedModes: ["text_to_video"] });
+  });
+
+  it("requires taskKind or capability-contract evidence for mode-specific custom-call publication", () => {
+    expect(derivePublishedExecution(model("image", {
+      customCall: { modes: { mystery: { script: "return 'unknown'" } } },
+    }))).toEqual({ published: false, publishedModes: [] });
+    expect(derivePublishedExecution(model("image", {
+      customCall: { modes: { image_edit: { script: "return 'edited'" } } },
+    }))).toEqual({ published: false, publishedModes: [] });
+    expect(derivePublishedExecution(model("video", {
+      customCall: { modes: { create: { script: "return 'created'" }, reference: { script: "return 'reference'" } } },
+      meta: { customCapabilityContract: {
+        version: 1,
+        defaultModeId: "create",
+        transportTaskKind: "text_to_video",
+        modes: [
+          { id: "create" },
+          { id: "reference", transportTaskKind: "image_to_video" },
+        ],
+      } },
+    }))).toEqual({ published: true, publishedModes: ["text_to_video", "image_to_video"] });
+  });
+
+  it("combines the generic default with independently proven mode-specific scripts", () => {
+    expect(derivePublishedExecution(model("image", {
+      customCall: {
+        script: "return 'created'",
+        modes: { edit: { script: "return 'edited'" } },
+      },
+      meta: { customCapabilityContract: {
+        version: 1,
+        defaultModeId: "create",
+        transportTaskKind: "text_to_image",
+        modes: [
+          { id: "create" },
+          { id: "edit", transportTaskKind: "image_edit" },
+        ],
+      } },
+    }))).toEqual({ published: true, publishedModes: ["text_to_image", "image_edit"] });
+  });
+
+  it("does not publish mode scripts from a malformed capability contract the runtime cannot execute", () => {
+    expect(derivePublishedExecution(model("image", {
+      customCall: { modes: { edit: { script: "return 'edited'" } } },
+      meta: { customCapabilityContract: {
+        version: 1,
+        modes: [{ id: "edit", transportTaskKind: "image_edit" }],
+      } },
+    }))).toEqual({ published: false, publishedModes: [] });
+  });
+
+  it("publishes only the scripted taskKind proven by a built-in capability archetype", () => {
+    expect(derivePublishedExecution({
+      ...model("image"),
+      modelKey: "seedream",
+      customCall: { modes: { edit: { script: "return 'edited'" } } },
+    })).toEqual({ published: true, publishedModes: ["image_edit"] });
+  });
 });

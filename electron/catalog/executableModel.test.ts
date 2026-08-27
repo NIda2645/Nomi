@@ -68,6 +68,21 @@ describe("findExecutableModel — 诚实 key 错误（missing vs locked）", () 
     expect(resolved.model.modelKey).toBe("seedream");
   });
 
+  it("legacy plaintext stays a migration-only record and never becomes an executable credential", () => {
+    const sentinel = "SENTINEL-LEGACY-EXECUTABLE";
+    catalogState.apiKeysByVendor = {
+      volcengine: { vendorKey: "volcengine", apiKey: sentinel, enc: "plain", enabled: true, createdAt: "t", updatedAt: "t" },
+    };
+    let message = "";
+    try {
+      findExecutableModel("volcengine", "seedream", "image");
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("重新保存");
+    expect(message).not.toContain(sentinel);
+  });
+
   it("两条错误信息互不相同（missing / locked 是两句话，不是同一句）", () => {
     catalogState.apiKeysByVendor = {};
     const missingMsg = (() => { try { findExecutableModel("volcengine", "seedream", "image"); return ""; } catch (e) { return (e as Error).message; } })();

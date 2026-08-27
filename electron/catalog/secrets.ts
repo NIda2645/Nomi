@@ -123,21 +123,22 @@ export function decryptCustomConfigWithLegacy(
   return { ...legacy, ...decryptCustomConfigRecord(record) };
 }
 
-/** Decode an ApiKeyRecord to plaintext. Returns "" if a safeStorage-encoded value can't be decrypted. */
+/**
+ * Resolve an API credential for execution. Only safeStorage records are executable:
+ * legacy/plain records remain readable as catalog metadata for `needs_resave`, but
+ * their key material never crosses this boundary.
+ */
 export function decryptApiKeyRecord(rec: ApiKeyRecord | undefined): string {
   if (!rec || !rec.apiKey) return "";
-  if (rec.enc === "safeStorage") {
-    try {
-      return safeStorage.decryptString(Buffer.from(rec.apiKey, "base64"));
-    } catch (e) {
-      console.error(
-        `[catalog] failed to decrypt API key for vendor ${rec.vendorKey}: ${e instanceof Error ? e.message : e}`,
-      );
-      return "";
-    }
+  if (rec.enc !== "safeStorage") return "";
+  try {
+    return safeStorage.decryptString(Buffer.from(rec.apiKey, "base64"));
+  } catch (e) {
+    console.error(
+      `[catalog] failed to decrypt API key for vendor ${rec.vendorKey}: ${e instanceof Error ? e.message : e}`,
+    );
+    return "";
   }
-  // enc === "plain" or absent (legacy v1)
-  return rec.apiKey;
 }
 
 /**
