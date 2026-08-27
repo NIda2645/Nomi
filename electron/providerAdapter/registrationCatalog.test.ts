@@ -300,7 +300,7 @@ describe("provider adapter registration catalog", () => {
       },
     };
 
-    defaultCatalog.register({
+    const registered = defaultCatalog.register({
       vendorKey: "saved-gateway",
       vendorName: "Saved Gateway",
       baseUrl: "https://gateway.example.test/v1",
@@ -308,22 +308,27 @@ describe("provider adapter registration catalog", () => {
       authType: "bearer",
       providerKind: "openai-compatible",
       preserveExistingCredential: true,
-      models: state.models.map(({ modelKey, labelZh, kind }) => ({ modelKey, labelZh, kind })),
+      models: state.models.map(({ modelKey, labelZh, kind }) => modelKey === "revision-image"
+        ? { modelKey, labelZh: "Unverified replacement", kind: "video" as const }
+        : { modelKey, labelZh, kind }),
       savedAt: now,
     });
 
+    const returned = new Map(registered.models.map((model) => [model.modelKey, model]));
     const writes = new Map(upsertModel.mock.calls.map(([model]) => [model.modelKey, model]));
-    expect(writes.get("revision-image")).toMatchObject({
+    expect(returned.get("revision-image")).toMatchObject({
+      labelZh: "Revision image",
+      kind: "image",
       enabled: true,
       meta: { adapter: oldAdapter, parameters: [{ key: "size" }] },
       onboarding: { addedVia: "agent" },
     });
-    expect(writes.get("script-video")).toMatchObject({
+    expect(returned.get("script-video")).toMatchObject({
       enabled: true,
       customCall: { script: expect.stringContaining("assets") },
       meta: { adapter: { state: "failed" } },
     });
-    expect(writes.get("mapped-audio")).toMatchObject({
+    expect(returned.get("mapped-audio")).toMatchObject({
       enabled: true,
       meta: { adapter: { state: "partial" } },
     });

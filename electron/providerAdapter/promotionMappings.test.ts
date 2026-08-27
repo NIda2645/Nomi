@@ -206,6 +206,33 @@ describe("adapter media mapping promotion", () => {
     expect(upsertVendor).toHaveBeenCalledWith(expect.objectContaining({ key: vendor.key, enabled: true }));
   });
 
+  it("switches a staged replacement contract only when its candidate mode verifies", () => {
+    const original = structuredClone(models[0]);
+    models[0] = {
+      ...models[0],
+      labelZh: "Published image",
+      kind: "image",
+      enabled: true,
+      meta: { adapter: { state: "testing", runId: "run-mapping", activeRevision: "revision-old", modes: [], updatedAt: now } },
+      onboarding: { addedVia: "agent", addedAt: "old", fields: [] },
+    };
+    try {
+      promote(
+        [{ modelKey: "image-v1", labelZh: "Verified replacement video", kind: "video", modes: [modeFor("text_to_video", "/videos/new")] }],
+        [{ modelKey: "image-v1", taskKind: "text_to_video" }],
+      );
+    } finally {
+      models[0] = original;
+    }
+
+    expect(upsertModel).toHaveBeenCalledWith(expect.objectContaining({
+      modelKey: "image-v1",
+      labelZh: "Verified replacement video",
+      kind: "video",
+      enabled: true,
+    }));
+  });
+
   it("keeps failed text models on the AI SDK path without creating a mapping", () => {
     promote([{ modelKey: "text-v1", labelZh: "Text V1", kind: "text", modes: [modeFor("chat", "/chat/completions")] }]);
 

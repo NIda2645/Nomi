@@ -20,7 +20,17 @@ import { apiKeyDecryptStatus } from "./secrets";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 const vendor = (over: Partial<Vendor>): Vendor => ({ key: "v", name: "V", enabled: true, authType: "bearer", createdAt: "t", updatedAt: "t", ...over });
-const model = (over: Partial<Model>): Model => ({ modelKey: "m", vendorKey: "v", labelZh: "M", kind: "image", enabled: true, createdAt: "t", updatedAt: "t", ...over } as Model);
+const model = (over: Partial<Model>): Model => ({
+  modelKey: "m",
+  vendorKey: "v",
+  labelZh: "M",
+  kind: "image",
+  enabled: true,
+  customCall: { script: "return { assets: [] }", updatedAt: "t" },
+  createdAt: "t",
+  updatedAt: "t",
+  ...over,
+} as Model);
 const mapping = (over: Partial<Mapping>): Mapping => ({ id: "id", vendorKey: "v", taskKind: "text_to_image", name: "n", enabled: true, create: { method: "POST", path: "/x", body: {} }, createdAt: "t", updatedAt: "t", ...over } as Mapping);
 
 function state(over: Partial<CatalogState>): CatalogState {
@@ -101,28 +111,32 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
     const hidden = state({
       vendors: [vendor({ key: "relay", authType: "none" })],
       models: [
-        model({ modelKey: "staged", vendorKey: "relay", meta: { adapter: { state: "unverified", modes: [], updatedAt: "t" } } }),
-        model({ modelKey: "failed", vendorKey: "relay", meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } } }),
+        model({ modelKey: "staged", vendorKey: "relay", customCall: undefined, meta: { adapter: { state: "unverified", modes: [], updatedAt: "t" } } }),
+        model({ modelKey: "failed", vendorKey: "relay", customCall: undefined, meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } } }),
       ],
     });
 
     expect(deriveModelListing(hidden)).toEqual([]);
   });
 
-  it("keeps legacy enabled models and a failed repair with a preserved active revision visible", () => {
+  it("keeps only legacy text fallback plus a failed repair with a preserved active revision visible", () => {
     const visible = state({
       vendors: [vendor({ key: "relay", authType: "none" })],
       models: [
-        model({ modelKey: "legacy", vendorKey: "relay" }),
+        model({ modelKey: "legacy-text", vendorKey: "relay", kind: "text", customCall: undefined }),
+        model({ modelKey: "legacy-image", vendorKey: "relay", kind: "image", customCall: undefined }),
+        model({ modelKey: "legacy-video", vendorKey: "relay", kind: "video", customCall: undefined }),
+        model({ modelKey: "legacy-audio", vendorKey: "relay", kind: "audio", customCall: undefined }),
         model({
           modelKey: "active",
           vendorKey: "relay",
+          customCall: undefined,
           meta: { adapter: { state: "failed", activeRevision: "revision-good", modes: [], updatedAt: "t" } },
         }),
       ],
     });
 
-    expect(deriveModelListing(visible).map((entry) => entry.modelKey)).toEqual(["legacy", "active"]);
+    expect(deriveModelListing(visible).map((entry) => entry.modelKey)).toEqual(["legacy-text", "active"]);
   });
 
   it("keeps an enabled custom-call model visible while a failed adapter repair has no active revision", () => {
@@ -138,6 +152,7 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
         model({
           modelKey: "failed-without-execution",
           vendorKey: "relay",
+          customCall: undefined,
           meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } },
         }),
       ],

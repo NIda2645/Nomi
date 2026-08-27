@@ -13,7 +13,22 @@ import {
   mutateCatalog,
   normalizeProviderKind,
   readCatalog,
+  type CatalogMutation,
 } from "./catalogStore";
+
+export type OnboardedModelCommit = {
+  outcome: unknown;
+  userApiKey: string;
+  displayLabel?: string;
+  addedVia?: "agent" | "manual";
+};
+
+type PreparedOnboardedModel = {
+  vendorKey: string;
+  userApiKey: string;
+  vendorPayload: Record<string, unknown>;
+  applyModel: (tx: CatalogMutation) => Model;
+};
 
 /**
  * 目录 kind → 它的**主** taskKind（建 create mapping 用的那个通道）。
@@ -87,15 +102,7 @@ function mergeMissingParamsIntoBody(body: unknown, fieldKeys: string[]): unknown
  * Provider Adapter promotion is the sole verified publication boundary. An
  * already-published row keeps its active execution while a replacement is staged.
  */
-export function commitOnboardedModelToCatalog(payload: {
-  outcome: unknown;
-  userApiKey: string;
-  /** Optional display label override; otherwise we use draft.modelDisplayName. */
-  displayLabel?: string;
-  /** How this model was added. Defaults to "agent" (the doc-reader path). The
-   *  manual BaseURL entry passes "manual" so the catalog records provenance honestly. */
-  addedVia?: "agent" | "manual";
-}): Model {
+function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType<typeof readCatalog>): PreparedOnboardedModel {
   const outcome = payload?.outcome as JsonRecord | null;
   if (!outcome || typeof outcome !== "object") throw new Error("outcome required");
   const draft = (outcome as JsonRecord).draft as JsonRecord | null;
@@ -185,7 +192,6 @@ export function commitOnboardedModelToCatalog(payload: {
       : mappingCreate
     : undefined;
 
-  const before = readCatalog();
   const existingModel = before.models.find(
     (candidate) => candidate.vendorKey === vendorKey && candidate.modelKey === modelKey,
   );
@@ -207,93 +213,127 @@ export function commitOnboardedModelToCatalog(payload: {
       : {}),
   };
 
-  // 单次事务（P2·根治半截接入）：vendor + apiKey + model + mapping 在一份内存 state 上攒齐，
-  // 全部成功才一次性落盘；任一步抛错则整体不写，绝不留「vendor 写了 model 没写成」的不可用空壳。
-  // 与 importModelCatalogPackage 同构（共用 apply* 纯函数）。
-  const model = mutateCatalog((tx) => {
-    // 1. vendor — carry draft.vendorMeta through so the manual-entry form's custom
-    // request headers (vendorMeta.extraHeaders) persist and reach buildAiSdkModel.
-    tx.upsertVendor({
-      key: vendorKey,
-      name: vendorName,
-      baseUrlHint: vendorBaseUrl,
-      authType,
-      authHeader: auth.headerName || null,
-      authQueryParam: auth.queryParam || null,
-      providerKind: draft.vendorProviderKind || "openai-compatible",
-      enabled: vendorHasPublishedModel,
-      ...(draft.vendorMeta !== undefined ? { meta: draft.vendorMeta } : {}),
-    });
-    // 2. apiKey (auto-encrypted by upsert)
-    tx.upsertApiKey(vendorKey, { apiKey: userApiKey, enabled: true });
-    // 3. model + onboarding evidence snapshot
-    const committed = tx.upsertModel({
-      modelKey,
-      vendorKey,
-      modelAlias: modelKey,
-      labelZh: modelDisplayName,
-      kind: billingKind,
-      enabled: existingModelIsPublished,
-      // 只有真实存在 image_edit mapping 才声明参考图能力；协议随模型落库，避免 UI 展示能力却只能撞错端点。
-      meta: projectedMeta,
-      onboarding: {
-        addedVia: payload.addedVia ?? "agent",
-        trialId: String(outcome.trialId || ""),
-        docsUrl: String(outcome.docsUrl || ""),
-        addedAt: nowIso(),
-        fields: onboardingFields,
-      },
-    });
-    // 4. mapping（text_to_image / text_to_video / …）
-    if (reconciledCreate && !existingModelIsPublished) {
-      tx.upsertMapping({
-        vendorKey,
-        modelKey,
-        taskKind,
-        name: modelDisplayName,
-        enabled: false,
-        create: reconciledCreate,
-        ...(mappingQuery ? { query: mappingQuery } : {}),
-        ...(mappingStatus ? { statusMapping: mappingStatus } : {}),
-      });
-    }
-    // 4b. 图生图/改图 mapping（image_edit）：按 modelKey 精确绑定，同一 vendor 内允许不同协议并存。
-    // 不 reconcile：edit body 是协议刻意造型，不能把通用参数盲塞进去。
-    // 4c. 图生视频 mapping（image_to_video）：与文生视频同一条 wire（new-api 视频端点带可选 image 首帧），
-    // 但 runtime 按 taskKind 选通道，必须各注册一条。带上同一条轮询 query（视频是异步任务）。
-    // reconcile 与文生视频一致：body 缺的标准参数要补，否则时长/尺寸发不出去。
-    if (mappingImageToVideo && targetKind === "video" && !existingModelIsPublished) {
-      const reconciledI2v =
-        mappingImageToVideo.body !== undefined && reconcileKeys.length > 0
-          ? { ...mappingImageToVideo, body: mergeMissingParamsIntoBody(mappingImageToVideo.body, reconcileKeys) }
-          : mappingImageToVideo;
-      tx.upsertMapping({
-        vendorKey,
-        taskKind: "image_to_video",
-        modelKey,
-        name: `${modelDisplayName} · 图生视频`,
-        enabled: false,
-        create: reconciledI2v,
-        ...(mappingQuery ? { query: mappingQuery } : {}),
-        ...(mappingStatus ? { statusMapping: mappingStatus } : {}),
-      });
-    }
-    if (mappingEdit && targetKind === "image" && !existingModelIsPublished) {
-      tx.upsertMapping({
-        vendorKey,
-        taskKind: "image_edit",
-        // 改图协议是模型级能力：同一 vendor 可同时有 chat 多模态与 JSON /images/edits。
-        // 精确绑定后 selectTaskMapping 会优先命中本模型，不再被 vendor 级 generic mapping 误投。
-        modelKey,
-        name: `${modelDisplayName} · 改图`,
-        enabled: false,
-        create: mappingEdit,
-      });
-    }
-    return committed;
-  });
+  const vendorPayload = {
+    key: vendorKey,
+    name: vendorName,
+    baseUrlHint: vendorBaseUrl,
+    authType,
+    authHeader: auth.headerName || null,
+    authQueryParam: auth.queryParam || null,
+    providerKind: draft.vendorProviderKind || "openai-compatible",
+    enabled: vendorHasPublishedModel,
+    ...(draft.vendorMeta !== undefined ? { meta: draft.vendorMeta } : {}),
+  };
 
-  return model;
+  return {
+    vendorKey,
+    userApiKey,
+    vendorPayload,
+    applyModel(tx) {
+      // A credential re-save or unverified replacement is not a publication
+      // event. Keep every active contract field and its mappings byte-for-byte;
+      // Provider Adapter promotion is the only switch boundary.
+      if (existingModel && existingModelIsPublished) return existingModel;
+
+      const committed = tx.upsertModel({
+        modelKey,
+        vendorKey,
+        modelAlias: modelKey,
+        labelZh: modelDisplayName,
+        kind: billingKind,
+        enabled: existingModelIsPublished,
+        // 只有真实存在 image_edit mapping 才声明参考图能力；协议随模型落库，避免 UI 展示能力却只能撞错端点。
+        meta: projectedMeta,
+        onboarding: {
+          addedVia: payload.addedVia ?? "agent",
+          trialId: String(outcome.trialId || ""),
+          docsUrl: String(outcome.docsUrl || ""),
+          addedAt: nowIso(),
+          fields: onboardingFields,
+        },
+      });
+      // 4. mapping（text_to_image / text_to_video / …）
+      if (reconciledCreate) {
+        tx.upsertMapping({
+          vendorKey,
+          modelKey,
+          taskKind,
+          name: modelDisplayName,
+          enabled: false,
+          create: reconciledCreate,
+          ...(mappingQuery ? { query: mappingQuery } : {}),
+          ...(mappingStatus ? { statusMapping: mappingStatus } : {}),
+        });
+      }
+      // 4b. 图生图/改图 mapping（image_edit）：按 modelKey 精确绑定，同一 vendor 内允许不同协议并存。
+      // 不 reconcile：edit body 是协议刻意造型，不能把通用参数盲塞进去。
+      // 4c. 图生视频 mapping（image_to_video）：与文生视频同一条 wire（new-api 视频端点带可选 image 首帧），
+      // 但 runtime 按 taskKind 选通道，必须各注册一条。带上同一条轮询 query（视频是异步任务）。
+      // reconcile 与文生视频一致：body 缺的标准参数要补，否则时长/尺寸发不出去。
+      if (mappingImageToVideo && targetKind === "video") {
+        const reconciledI2v =
+          mappingImageToVideo.body !== undefined && reconcileKeys.length > 0
+            ? { ...mappingImageToVideo, body: mergeMissingParamsIntoBody(mappingImageToVideo.body, reconcileKeys) }
+            : mappingImageToVideo;
+        tx.upsertMapping({
+          vendorKey,
+          taskKind: "image_to_video",
+          modelKey,
+          name: `${modelDisplayName} · 图生视频`,
+          enabled: false,
+          create: reconciledI2v,
+          ...(mappingQuery ? { query: mappingQuery } : {}),
+          ...(mappingStatus ? { statusMapping: mappingStatus } : {}),
+        });
+      }
+      if (mappingEdit && targetKind === "image") {
+        tx.upsertMapping({
+          vendorKey,
+          taskKind: "image_edit",
+          // 改图协议是模型级能力：同一 vendor 可同时有 chat 多模态与 JSON /images/edits。
+          // 精确绑定后 selectTaskMapping 会优先命中本模型，不再被 vendor 级 generic mapping 误投。
+          modelKey,
+          name: `${modelDisplayName} · 改图`,
+          enabled: false,
+          create: mappingEdit,
+        });
+      }
+      return committed;
+    },
+  };
+}
+
+export function commitOnboardedModelsToCatalog(payload: { entries: OnboardedModelCommit[] }): Model[] {
+  const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+  if (entries.length === 0) throw new Error("at least one onboarding model is required");
+  const before = readCatalog();
+  // Validate and fully project every candidate before entering the sole write
+  // transaction. A bad Nth entry therefore cannot persist entries 1..N-1.
+  const prepared = entries.map((entry) => prepareOnboardedModel(entry, before));
+  const credentialByVendor = new Map<string, string>();
+  for (const item of prepared) {
+    const existing = credentialByVendor.get(item.vendorKey);
+    if (existing !== undefined && existing !== item.userApiKey) {
+      throw new Error(`conflicting credentials for onboarding vendor ${item.vendorKey}`);
+    }
+    credentialByVendor.set(item.vendorKey, item.userApiKey);
+  }
+
+  return mutateCatalog((tx) => {
+    const writtenVendors = new Set<string>();
+    for (const item of prepared) {
+      if (writtenVendors.has(item.vendorKey)) continue;
+      writtenVendors.add(item.vendorKey);
+      tx.upsertVendor(item.vendorPayload);
+      // Exactly one secure writer call per vendor/batch.
+      tx.upsertApiKey(item.vendorKey, { apiKey: item.userApiKey, enabled: true });
+    }
+    return prepared.map((item) => item.applyModel(tx));
+  });
+}
+
+export function commitOnboardedModelToCatalog(payload: OnboardedModelCommit): Model {
+  return commitOnboardedModelsToCatalog({ entries: [payload] })[0];
 }
 
 /**
@@ -518,8 +558,8 @@ export function commitManualOpenAiCompatibleModels(payload: {
     });
   if (cleanModels.length === 0) throw new Error("至少填写一个模型 id");
 
-  const committed: Array<{ modelKey: string; displayName: string }> = [];
-  for (const m of cleanModels) {
+  const entries: OnboardedModelCommit[] = [];
+  const committed = cleanModels.map((m) => {
     const displayName = m.displayName || humanizeModelKey(m.id);
     // 图片/视频走 new-api 标准传输模板（per-model kind）；文本不带 mapping（chat 直连）。
     const shape = draftShapeForKind(m.kind, m.id, m.imageEditProtocol, nativeWireProfileForArchetype(m.nativeWireArchetypeId));
@@ -546,9 +586,10 @@ export function commitManualOpenAiCompatibleModels(payload: {
         ...(shape.wireProfileId ? { wireProfileId: shape.wireProfileId } : {}),
       },
     };
-    commitOnboardedModelToCatalog({ outcome, userApiKey: apiKey, addedVia: "manual" });
-    committed.push({ modelKey: m.id, displayName });
-  }
+    entries.push({ outcome, userApiKey: apiKey, addedVia: "manual" });
+    return { modelKey: m.id, displayName };
+  });
+  commitOnboardedModelsToCatalog({ entries });
 
   return { vendorKey, committed };
 }

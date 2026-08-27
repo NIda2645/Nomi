@@ -20,6 +20,59 @@ function store(): ProviderAdapterStore {
 }
 
 describe("provider connection save-first registration", () => {
+  it("keeps an unverified replacement in registration staging while the catalog returns the active contract", () => {
+    const catalog: ProviderAdapterCatalogPort = {
+      register: vi.fn((input) => ({
+        vendor: {
+          key: input.vendorKey,
+          name: input.vendorName,
+          enabled: true,
+          authType: "none",
+          createdAt: now,
+          updatedAt: now,
+        },
+        models: [{
+          vendorKey: input.vendorKey,
+          modelKey: "same-model",
+          labelZh: "Published image",
+          kind: "image",
+          enabled: true,
+          createdAt: now,
+          updatedAt: now,
+        }],
+      })),
+      stage: vi.fn(() => { throw new Error("not used"); }),
+      load: vi.fn(() => null),
+      promote: vi.fn(),
+      fail: vi.fn(),
+    };
+
+    const registration = new ProviderAdapterService(store(), {
+      catalog,
+      schedule: vi.fn(),
+      discover: vi.fn(),
+      resolveLanguageModels: vi.fn(() => []),
+      compile: vi.fn(),
+      repair: vi.fn(),
+      verify: vi.fn(),
+      now: () => now,
+      id: vi.fn(),
+    }).register({
+      vendorName: "Relay",
+      baseUrl: "https://relay.example.test/v1",
+      apiKey: "",
+      authType: "none",
+      models: [{ modelKey: "same-model", labelZh: "Replacement video", kind: "video" }],
+    });
+
+    expect(registration.models).toEqual([{
+      modelKey: "same-model",
+      labelZh: "Replacement video",
+      kind: "video",
+      state: "unverified",
+    }]);
+  });
+
   it("persists a configured connection with no models and starts no background work", () => {
     const register = vi.fn((input: Parameters<ProviderAdapterCatalogPort["register"]>[0]) => ({
       vendor: {

@@ -3,6 +3,7 @@ import {
   listWorkbenchModelCatalogModels,
   listWorkbenchModelCatalogVendors,
   type ModelCatalogHealthDto,
+  type ProfileKind,
 } from '../workbench/api/modelCatalogApi'
 import type { ModelOption, NodeKind } from './models'
 import {
@@ -13,7 +14,6 @@ import {
 } from './modelOptionResolvers'
 import { toCatalogModelOptions } from './modelOptionMappers'
 import { resolveCatalogKind } from './modelCatalogStatus'
-import { modelHasPublishedExecution } from '../../electron/shared/modelPublication'
 
 export const MODEL_REFRESH_EVENT = 'nomi-models-refresh'
 
@@ -105,9 +105,18 @@ async function getEnabledVendorKeys(): Promise<Set<string>> {
   return enabledVendorKeysPromise
 }
 
-async function getCatalogModelOptions(kind?: NodeKind): Promise<ModelOption[]> {
+function defaultPublishedMode(kind?: NodeKind): ProfileKind {
+  if (kind === 'imageEdit') return 'image_edit'
+  if (kind === 'image') return 'text_to_image'
+  if (kind === 'video') return 'text_to_video'
+  if (kind === 'audio') return 'text_to_audio'
+  if (kind === 'model3d') return 'text_to_3d'
+  return 'chat'
+}
+
+async function getCatalogModelOptions(kind?: NodeKind, requiredMode = defaultPublishedMode(kind)): Promise<ModelOption[]> {
   const catalogKind = resolveCatalogKind(kind)
-  const cacheKey = catalogKind
+  const cacheKey = `${catalogKind}:${requiredMode}`
   const cached = catalogOptionsCache.get(cacheKey)
   if (cached) return cached
   const inflight = catalogPromiseCache.get(cacheKey)
@@ -117,7 +126,7 @@ async function getCatalogModelOptions(kind?: NodeKind): Promise<ModelOption[]> {
       const rows = await listWorkbenchModelCatalogModels({ kind: catalogKind, enabled: true })
       const enabledVendorKeys = await getEnabledVendorKeys()
       const filteredRows = (Array.isArray(rows) ? rows : []).filter((row) => {
-        if (!modelHasPublishedExecution(row)) return false
+        if (!row?.published || !Array.isArray(row.publishedModes) || !row.publishedModes.includes(requiredMode)) return false
         const vendorKey = String(row?.vendorKey || '').trim().toLowerCase()
         if (!vendorKey) return false
         // 空集 = 「一家可用供应商都没有」，不是「随便放行」。此前在这里 return true，
@@ -143,8 +152,8 @@ async function getCatalogModelOptions(kind?: NodeKind): Promise<ModelOption[]> {
   return promise
 }
 
-export async function preloadModelOptions(kind?: NodeKind): Promise<ModelOption[]> {
-  const catalogOptions = await getCatalogModelOptions(kind)
+export async function preloadModelOptions(kind?: NodeKind, requiredMode?: ProfileKind): Promise<ModelOption[]> {
+  const catalogOptions = await getCatalogModelOptions(kind, requiredMode)
   return filterHiddenOptionsByKind(catalogOptions, kind)
 }
 

@@ -15,6 +15,7 @@ import { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayL
 import type { AiSdkProviderKind, BillingModelKind, CatalogState, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./types";
 import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
+import { derivePublishedExecution } from "../shared/modelPublication";
 import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
 import { antigravityConnection } from "../ai/antigravityConnection";
 import { extractLegacyStages, normalizeLegacyMappings } from "./legacyMappingMigration";
@@ -249,11 +250,12 @@ function filterByParams<
 export function listModelCatalogVendors(): Vendor[] {
   return readCatalog().vendors.map(publicVendor);
 }
-
-export function listModelCatalogModels(params?: unknown): Model[] {
-  return filterByParams(readCatalog().models, params);
+export function listModelCatalogModels(params?: unknown): Array<Model & { published: boolean; publishedModes: ProfileKind[] }> {
+  const state = readCatalog();
+  return filterByParams(state.models, params).map((model) => ({
+    ...model, ...derivePublishedExecution(model, { mappings: state.mappings }),
+  })) as Array<Model & { published: boolean; publishedModes: ProfileKind[] }>;
 }
-
 export function listModelCatalogMappings(params?: unknown): Mapping[] {
   return filterByParams(readCatalog().mappings, params);
 }

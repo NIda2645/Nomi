@@ -51,10 +51,6 @@ function modelOwnedByRun(model: Model, runId: string): boolean {
   return adapter.runId === runId;
 }
 
-function adapterMetadata(model: Model | undefined): Record<string, unknown> {
-  return asRecord(asRecord(model?.meta).adapter);
-}
-
 /** Existing published execution survives registration/repair; staged adapter rows do not become active by enabled alone. */
 function hasPublishedExecution(state: ReturnType<typeof readCatalog>, model: Model | undefined): boolean {
   return modelHasPublishedExecution(model, {
@@ -105,9 +101,13 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         const existing = before.models.find(
           (model) => model.vendorKey === input.vendorKey && model.modelKey === selected.modelKey,
         );
-        const oldAdapter = adapterMetadata(existing);
         const canExecute = hasPublishedExecution(before, existing);
-        const preserveAdapter = Boolean(existing && canExecute && Object.keys(oldAdapter).length > 0);
+        if (existing && canExecute) {
+          // Registration is staging, not promotion. Re-saving credentials or
+          // selecting a replacement candidate must not mutate the active model
+          // contract before a mode verifies.
+          return existing;
+        }
         return tx.upsertModel({
           ...(existing || {}),
           vendorKey: input.vendorKey,
@@ -117,14 +117,10 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
           kind: selected.kind,
           enabled: Boolean(existing?.enabled && canExecute),
           onboarding: existing?.onboarding || { addedVia: "manual", addedAt: input.savedAt, fields: [] },
-          meta: canExecute && !preserveAdapter
-            ? existing?.meta
-            : {
-                ...asRecord(existing?.meta),
-                adapter: preserveAdapter
-                  ? oldAdapter
-                  : { state: "unverified", modes: [], updatedAt: input.savedAt },
-              },
+          meta: {
+            ...asRecord(existing?.meta),
+            adapter: { state: "unverified", modes: [], updatedAt: input.savedAt },
+          },
         });
       });
       return { vendor, models };
@@ -163,13 +159,17 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         const existing = before.models.find(
           (model) => model.vendorKey === input.vendorKey && model.modelKey === selected.modelKey,
         );
+        const published = hasPublishedExecution(before, existing);
+        const activeContract = published && existing ? existing : undefined;
         return tx.upsertModel({
           vendorKey: input.vendorKey,
           modelKey: selected.modelKey,
-          modelAlias: existing?.modelAlias || selected.modelKey,
-          labelZh: selected.labelZh || existing?.labelZh || humanizeModelKey(selected.modelKey),
-          kind: selected.kind,
-          enabled: hasPublishedExecution(before, existing),
+          modelAlias: activeContract?.modelAlias || existing?.modelAlias || selected.modelKey,
+          labelZh: activeContract?.labelZh || selected.labelZh || existing?.labelZh || humanizeModelKey(selected.modelKey),
+          kind: activeContract?.kind || selected.kind,
+          enabled: published,
+          onboarding: activeContract?.onboarding,
+          customCall: activeContract?.customCall,
           meta: {
             ...asRecord(existing?.meta),
             adapter: {
@@ -231,6 +231,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         const hasVerifiedMode = input.verifiedModes.some((mode) => mode.modelKey === candidate.modelKey);
         tx.upsertModel({
           ...existing,
+          ...(hasVerifiedMode ? { labelZh: candidate.labelZh, kind: candidate.kind } : {}),
           enabled: hasVerifiedMode || hasPublishedExecution(before, existing),
           meta: adapterModelMetadataForPromotion({
             oldMeta,

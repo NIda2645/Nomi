@@ -14,6 +14,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { commitOnboardedModelsToCatalog } from "./catalog/catalogCommit";
 import {
   commitManualOpenAiCompatibleModels,
   deriveVendorKeyFromBaseUrl,
@@ -25,11 +26,15 @@ import {
   normalizeProviderKind,
   resolveOnboardingAgentFromCatalog,
   upsertModelCatalogModel,
+  upsertModelCatalogMapping,
   upsertModelCatalogVendor,
 } from "./runtime";
 
 let mockedUserDataRoot = "";
 const tempRoots: string[] = [];
+const safeStorageTest = vi.hoisted(() => ({
+  encryptString: vi.fn((value: string) => Buffer.from(value)),
+}));
 
 vi.mock("electron", () => ({
   app: {
@@ -39,7 +44,7 @@ vi.mock("electron", () => ({
   // Provide a deterministic safeStorage round-trip for headless tests.
   safeStorage: {
     isEncryptionAvailable: () => true,
-    encryptString: (s: string) => Buffer.from(s),
+    encryptString: safeStorageTest.encryptString,
     decryptString: (b: Buffer) => b.toString(),
   },
 }));
@@ -52,6 +57,8 @@ function makeTempDir(prefix: string): string {
 
 beforeEach(() => {
   mockedUserDataRoot = makeTempDir("nomi-manual-onboarding-");
+  safeStorageTest.encryptString.mockReset();
+  safeStorageTest.encryptString.mockImplementation((value: string) => Buffer.from(value));
 });
 
 afterEach(() => {
@@ -269,25 +276,148 @@ describe("manual model entry — user journey", () => {
     upsertModelCatalogModel({
       vendorKey,
       modelKey: "scripted-image",
-      labelZh: "Scripted Image",
+      modelAlias: "published-alias",
+      labelZh: "Published Scripted Image",
       kind: "image",
       enabled: true,
       customCall: { script: "return { assets: ['https://example.test/image.png'] }", updatedAt: "t" },
-      meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } },
+      meta: { adapter: { state: "failed", modes: [], updatedAt: "t" }, contractMarker: "published" },
+      onboarding: { addedVia: "agent", addedAt: "old", fields: [] },
+    });
+    upsertModelCatalogMapping({
+      id: "scripted-image-t2i",
+      vendorKey,
+      modelKey: "scripted-image",
+      taskKind: "text_to_image",
+      name: "Published mapping",
+      enabled: true,
+      create: { method: "POST", path: "/published/images" },
     });
 
     commitManualOpenAiCompatibleModels({
       vendorName: "Scripted",
       baseUrl,
       apiKey: "sk-resaved",
-      models: [{ id: "scripted-image", kind: "image" }],
+      models: [{ id: "scripted-image", displayName: "Unverified replacement", kind: "video" }],
     });
 
     expect(listModelCatalogVendors().find((vendor) => vendor.key === vendorKey)?.enabled).toBe(true);
     expect(listModelCatalogModels().find((model) => model.modelKey === "scripted-image")).toMatchObject({
+      modelAlias: "published-alias",
+      labelZh: "Published Scripted Image",
+      kind: "image",
       enabled: true,
       customCall: { script: expect.stringContaining("assets") },
+      meta: { contractMarker: "published" },
+      onboarding: { addedVia: "agent", addedAt: "old" },
     });
+    expect(listModelCatalogMappings().find((mapping) => mapping.id === "scripted-image-t2i")).toMatchObject({
+      taskKind: "text_to_image",
+      enabled: true,
+      create: { path: "/published/images" },
+    });
+  });
+
+  it("commits every manual model in one transaction and publishes official per-mode DTO fields", () => {
+    commitManualOpenAiCompatibleModels({
+      vendorName: "Batch",
+      baseUrl: "https://batch.example.test/v1",
+      apiKey: "batch-key",
+      models: [{ id: "image-a", kind: "image" }, { id: "video-b", kind: "video" }],
+    });
+    const catalogFile = path.join(mockedUserDataRoot, "model-catalog.json");
+    const parsed = JSON.parse(fs.readFileSync(catalogFile, "utf8")) as { models: unknown[] };
+    expect(parsed.models).toHaveLength(2);
+
+    const rows = listModelCatalogModels() as Array<Record<string, unknown>>;
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ modelKey: "image-a", published: false, publishedModes: [] }),
+      expect.objectContaining({ modelKey: "video-b", published: false, publishedModes: [] }),
+    ]));
+    expect(safeStorageTest.encryptString).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the catalog byte-identical when a later candidate is invalid", () => {
+    commitManualOpenAiCompatibleModels({
+      vendorName: "Existing",
+      baseUrl: "https://existing.example.test/v1",
+      apiKey: "existing-key",
+      models: [{ id: "existing", kind: "text" }],
+    });
+    const catalogFile = path.join(mockedUserDataRoot, "model-catalog.json");
+    const before = fs.readFileSync(catalogFile);
+    const valid = {
+      status: "success",
+      trialId: "",
+      docsUrl: "",
+      draft: {
+        vendorKey: "atomic-relay",
+        vendorName: "Atomic",
+        vendorBaseUrl: "https://atomic.example.test/v1",
+        vendorAuth: { type: "bearer" },
+        modelKey: "first",
+        modelDisplayName: "First",
+        targetKind: "text",
+        modelFields: [],
+      },
+    };
+
+    expect(() => commitOnboardedModelsToCatalog({
+      entries: [
+        { outcome: valid, userApiKey: "atomic-key", addedVia: "manual" },
+        { outcome: { ...valid, draft: { ...valid.draft, vendorBaseUrl: "" } }, userApiKey: "atomic-key", addedVia: "manual" },
+      ],
+    })).toThrow(/incomplete draft/);
+    expect(fs.readFileSync(catalogFile)).toEqual(before);
+  });
+
+  it("leaves the catalog byte-identical when the single batch encryption fails without echoing the secret", () => {
+    commitManualOpenAiCompatibleModels({
+      vendorName: "Existing",
+      baseUrl: "https://existing.example.test/v1",
+      apiKey: "existing-key",
+      models: [{ id: "existing", kind: "text" }],
+    });
+    const catalogFile = path.join(mockedUserDataRoot, "model-catalog.json");
+    const before = fs.readFileSync(catalogFile);
+    const sentinel = "sentinel-batch-secret";
+    safeStorageTest.encryptString.mockImplementation(() => { throw new Error(`failed ${sentinel}`); });
+
+    let error: unknown;
+    try {
+      commitManualOpenAiCompatibleModels({
+        vendorName: "Atomic",
+        baseUrl: "https://atomic.example.test/v1",
+        apiKey: sentinel,
+        models: [{ id: "first", kind: "text" }, { id: "second", kind: "image" }],
+      });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).not.toContain(sentinel);
+    expect(fs.readFileSync(catalogFile)).toEqual(before);
+  });
+
+  it("serializes concurrent batches without losing either catalog update", async () => {
+    await Promise.all([
+      Promise.resolve().then(() => commitManualOpenAiCompatibleModels({
+        vendorName: "First",
+        baseUrl: "https://first.example.test/v1",
+        apiKey: "first-key",
+        models: [{ id: "first-a", kind: "text" }, { id: "first-b", kind: "image" }],
+      })),
+      Promise.resolve().then(() => commitManualOpenAiCompatibleModels({
+        vendorName: "Second",
+        baseUrl: "https://second.example.test/v1",
+        apiKey: "second-key",
+        models: [{ id: "second-a", kind: "text" }, { id: "second-b", kind: "video" }],
+      })),
+    ]);
+
+    expect(listModelCatalogModels().map((model) => model.modelKey).sort()).toEqual([
+      "first-a", "first-b", "second-a", "second-b",
+    ]);
   });
 });
 
