@@ -87,7 +87,11 @@ function writeBaseline(paths) {
   fs.writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`)
 }
 
-const documents = planRoots.flatMap(collectMarkdownFiles).map(relative).sort()
+// INDEX.md 是索引本身，不是被审的方案文档；否则新建一个目录索引会把自己判成违规。
+const documents = planRoots.flatMap(collectMarkdownFiles)
+  .filter((file) => path.basename(file) !== 'INDEX.md')
+  .map(relative)
+  .sort()
 const documentSet = new Set(documents)
 const indexFiles = [path.join(docsRoot, 'README.md'), ...collectMarkdownFiles(docsRoot).filter((file) => path.basename(file) === 'INDEX.md')]
 const indexed = new Set(indexFiles.flatMap(extractLinkTargets).filter((target) => documentSet.has(target)))

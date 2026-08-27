@@ -1,5 +1,7 @@
 # Nomi Release Media Pack Skill Implementation Plan
 
+> 🚧 进行中/待实施（状态标记由 `check:doc-status` 门岗要求；本行不改动原方案内容）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship a built-in Nomi playbook that turns verified desktop-release evidence into a story-first, bilingual release media package with bounded TikHub research and an honest Nomi-to-local-post handoff.

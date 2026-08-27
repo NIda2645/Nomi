@@ -98,7 +98,10 @@ function writeBaseline(findings) {
   fs.writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`)
 }
 
-const documents = planRoots.flatMap(collectMarkdownFiles).sort()
+// 同上：索引文件不是方案，不要求状态标记。
+const documents = planRoots.flatMap(collectMarkdownFiles)
+  .filter((file) => path.basename(file) !== 'INDEX.md')
+  .sort()
 const findings = { missingStatus: [], deprecatedWithoutReplacement: [] }
 for (const file of documents) {
   const result = scan(file)
