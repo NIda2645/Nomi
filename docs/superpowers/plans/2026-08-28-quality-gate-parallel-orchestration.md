@@ -1,6 +1,6 @@
 # Quality Gate Parallel Orchestration Implementation Plan
 
-> 🚧 实现完成，等待 PR 当前 HEAD 验证（2026-08-28）
+> ✅ 已交付：PR #212 current HEAD 五个 job 全绿，总墙钟 4m12s（2026-08-28）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -63,14 +63,15 @@
 **Files:**
 - Commit only the plan/spec, workflow, profile, package, and contract-test changes.
 
-- [ ] Commit the scoped implementation on `codex/quality-gate-parallel-20260828`.
-- [ ] Re-check live `main` and rebase or merge it into the branch if required without force-push.
-- [ ] Push the branch and open a PR with RED/GREEN and full-gate evidence.
-- [ ] Observe the PR job graph: Contracts, Unit, Desktop Linux, Mac Package, and final Quality Gate.
-- [ ] Verify all checks succeed and report real wall time; do not merge unless separately authorized.
+- [x] Commit the scoped implementation on `codex/quality-gate-parallel-20260828`.
+- [x] Re-check live `main` and merge exact `428849d6` into the branch without force-push.
+- [x] Deliver the branch and open PR #212 with RED/GREEN and full-gate evidence.
+- [x] Observe the PR job graph: Contracts 2m24s, Unit 3m21s, Desktop Linux 4m12s, Mac Package 4m04s, and final Quality Gate 2s.
+- [x] Verify all five jobs succeed in 4m12s total; the user separately authorized merging PR #212 after final HEAD checks.
 
 ## Plan self-review
 
 - Coverage: every command previously reached by `gates`, Electron smoke, CI journeys, Mac packaging, packaged MCP smoke, and codesign remains required.
 - Safety: no test deletion, no change-based skipping, no retry masking, no stale-result reuse, and no direct push to `main`.
 - Rollback: reverting the workflow/package/profile commit restores the single serial Ubuntu job without changing production code or persisted data.
+- Live evidence: GitHub Actions run `33109056273` started all four validation jobs together and completed through the fail-closed aggregator in 4m12s, versus the recent serial baseline of about 8m25s.
