@@ -53,6 +53,7 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   草图: 'Draft',
   尺寸: 'Size',
   批量: 'Batch size',
+  重绘幅度: 'Redraw strength',
   重绘强度: 'Redraw strength',
   纯文本生成: 'Generate from text only',
   '纯文字描述生成视频，无需参考图': 'Generate video from text only, with no reference image',
