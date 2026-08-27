@@ -52,6 +52,20 @@ export function isPathInside(candidate, root, pathApi = path) {
   )
 }
 
+export function isPhysicalPathInside(candidate, root, fsApi = fs, pathApi = path) {
+  const realRoot = fsApi.realpathSync(root)
+  const rootIdentity = fsApi.statSync(realRoot, { bigint: true })
+  let current = fsApi.realpathSync(candidate)
+
+  while (true) {
+    const currentIdentity = fsApi.statSync(current, { bigint: true })
+    if (currentIdentity.dev === rootIdentity.dev && currentIdentity.ino === rootIdentity.ino) return true
+    const parent = pathApi.dirname(current)
+    if (parent === current) return false
+    current = parent
+  }
+}
+
 function externalElectronPath(packagePath, allowedRoot, runtimeExecutable) {
   try {
     const normalizedRoot = path.resolve(allowedRoot)
@@ -61,7 +75,6 @@ function externalElectronPath(packagePath, allowedRoot, runtimeExecutable) {
       if (!isPathInside(lexicalTarget, normalizedRoot)) return `package link -> ${target}`
     }
 
-    const realRoot = fs.realpathSync(allowedRoot)
     for (const [label, candidate] of [
       ['package', packagePath],
       ['dist', path.join(packagePath, 'dist')],
@@ -69,7 +82,7 @@ function externalElectronPath(packagePath, allowedRoot, runtimeExecutable) {
     ]) {
       if (!candidate || !fs.existsSync(candidate)) continue
       const realCandidate = fs.realpathSync(candidate)
-      if (!isPathInside(realCandidate, realRoot)) return `${label} realpath -> ${realCandidate}`
+      if (!isPhysicalPathInside(candidate, allowedRoot)) return `${label} realpath -> ${realCandidate}`
     }
     return null
   } catch {

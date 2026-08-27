@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import {
   assertElectronInstallIdentity,
   inspectElectronInstallIdentity,
+  isPhysicalPathInside,
   isPathInside,
 } from './electron-install-identity.mjs'
 import { ensureElectronRuntime } from './install-electron-runtime.mjs'
@@ -59,6 +60,30 @@ test('path containment follows the host filesystem case semantics on Windows', (
   const root = 'C:\\Users\\A\\Nomi\\node_modules'
   assert.equal(isPathInside('c:\\users\\a\\nomi\\node_modules\\.pnpm\\electron', root, path.win32), true)
   assert.equal(isPathInside('C:\\Users\\A\\Nomi-other\\node_modules\\electron', root, path.win32), false)
+})
+
+test('physical containment rejects case-sensitive Windows twin worktrees', () => {
+  const root = 'C:\\Work\\Nomi\\node_modules'
+  const candidate = 'C:\\Work\\nomi\\node_modules\\.pnpm\\electron'
+  const identities = new Map([
+    [root, { dev: 1n, ino: 10n }],
+    [candidate, { dev: 1n, ino: 20n }],
+    [path.win32.dirname(candidate), { dev: 1n, ino: 21n }],
+    ['C:\\Work\\nomi\\node_modules', { dev: 1n, ino: 22n }],
+    ['C:\\Work\\nomi', { dev: 1n, ino: 23n }],
+    ['C:\\Work', { dev: 1n, ino: 30n }],
+    ['C:\\', { dev: 1n, ino: 31n }],
+  ])
+  const fsApi = {
+    realpathSync: (value) => value,
+    statSync: (value) => {
+      const identity = identities.get(value)
+      if (!identity) throw new Error(`missing fixture identity for ${value}`)
+      return identity
+    },
+  }
+
+  assert.equal(isPhysicalPathInside(candidate, root, fsApi, path.win32), false)
 })
 
 test('rejects a shared top-level node_modules link even when every version matches', () => {
