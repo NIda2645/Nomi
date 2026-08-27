@@ -133,7 +133,7 @@ environment/baseline failures must be documented separately rather than hidden.
 
 - `pnpm run build`: passed (renderer and Electron TypeScript build).
 - `pnpm run typecheck`: passed.
-- `pnpm run lint:ci`: passed with 96 warnings and 0 errors (repository limit: 98).
+- `pnpm run lint:ci`: passed with 86 warnings and 0 errors (repository limit: 98).
 - `pnpm run check:filesize`, `check:tokens`, `check:i18n`, and `check:heavy-path`: passed.
 - `check:dangling-tokens`, `check:test-waits`, `check:controls`,
   `check:e2e-launch`, and `check:test-types`: passed.
@@ -145,10 +145,12 @@ environment/baseline failures must be documented separately rather than hidden.
   engine flag symbols.
 - Focused React Flow/canvas tests: 33/33 passed, including the read-only
   node-selection guard added during final walkthrough.
-- Full Vitest: 6918 passed, 13 failed, 11 skipped. No migration-related test
-  failed; the 13 failures match the existing Windows/path, fixture, production
-  sample, onboarding/settings, MCP, and script baselines below.
-- `pnpm run build:renderer`, `pnpm run build`, `pnpm run lint:ci` (96 warnings,
+- Full Vitest on the rebased `0.21.0` main baseline: 7991 passed, 30 failed,
+  19 skipped. No migration-related test failed; all 30 failures are in files
+  outside this migration diff and match Windows/path, `/bin/sh`, symlink,
+  fixture, production sample, onboarding/settings, MCP/Antigravity, and script
+  baselines below. The separately invoked agent-runtime suite passed 151/151.
+- `pnpm run build:renderer`, `pnpm run build`, `pnpm run lint:ci` (86 warnings,
   0 errors), and `pnpm run typecheck`: passed.
 - Real Electron journeys passed: image preview/rename with reload persistence, batch production with retry and timeline, group baseline, group ports, group reference direction, read-only/reload, drag-pan/zoom/marquee, shortcuts, blank-canvas menu, and node context menu.
 - Final medium-canvas performance benchmark: all 14 scenarios executed with
@@ -190,6 +192,6 @@ environment/baseline failures must be documented separately rather than hidden.
 - `check:ipc-sender-binding`: Windows path construction resolves `C:\\C:\\...\\electron`.
 - `check:walkthroughs`: pre-existing ratchet counts for unrelated walkthroughs; migration-added absence assertions now use `proveProbe`/`expectAbsent`.
 - `check:site`: pre-existing stale marketing site output.
-- Full Vitest failures are limited to the known Windows path, secrets fixture, production sample, script syntax, onboarding/settings baseline, and MCP/asset path tests.
+- Full Vitest failures are limited to files outside this migration diff: Windows/path and symlink assumptions, `/bin/sh`-dependent Antigravity tests, secrets fixture, production sample, script syntax, onboarding/settings baseline, and MCP/asset path tests.
 
 These blockers are recorded rather than changed because they are outside the canvas migration boundary and modifying them would add unrelated behavior or baseline churn.

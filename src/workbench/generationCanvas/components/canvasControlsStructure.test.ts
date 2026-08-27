@@ -3,8 +3,12 @@ import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
+function readSource(path: string | URL): string {
+  return readFileSync(path instanceof URL ? fileURLToPath(path) : path, 'utf8')
+}
+
 function source(relativePath: string): string {
-  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+  return readSource(new URL(relativePath, import.meta.url))
 }
 
 function productionSources(directory: string): Array<[path: string, contents: string]> {
@@ -12,7 +16,7 @@ function productionSources(directory: string): Array<[path: string, contents: st
     const path = join(directory, entry.name)
     if (entry.isDirectory()) return productionSources(path)
     if (!/\.[cm]?[jt]sx?$/.test(entry.name) || entry.name.includes('.test.')) return []
-    return [[path, readFileSync(path, 'utf8')]]
+    return [[path, readSource(path)]]
   })
 }
 

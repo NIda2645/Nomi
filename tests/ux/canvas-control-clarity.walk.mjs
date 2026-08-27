@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { screenshotSettled } from './_assert.mjs'
+import { expectVisible, screenshotSettled } from './_assert.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/canvas-control-clarity')
@@ -143,6 +143,20 @@ async function ensureParameterPanel(composer) {
   return { trigger, panel }
 }
 
+async function selectRatio(panel, ratio) {
+  const segmented = panel.getByRole('radiogroup', { name: '比例', exact: true }).first()
+  if (await segmented.isVisible().catch(() => false)) {
+    await segmented.getByRole('radio', { name: ratio, exact: true }).click()
+    return
+  }
+  const select = panel.getByRole('button', { name: '比例', exact: true }).first()
+  await expectVisible(select, '长比例列表必须提供比例下拉')
+  await select.click()
+  const option = getWin().getByRole('option', { name: new RegExp(`^${ratio.replace(':', '\\:')}(?:\\s|$)`) }).first()
+  await expectVisible(option, `比例下拉必须包含 ${ratio}`)
+  await option.click()
+}
+
 const pageErrors = []
 getWin().on('pageerror', (error) => pageErrors.push(String(error)))
 
@@ -179,6 +193,7 @@ try {
   await dismissFirstRun()
   await resize(1600, 1000)
   await ensureGenerationWorkspace()
+  await expectVisible(getWin().locator('.react-flow').first(), '生产生成画布必须挂载 React Flow renderer')
 
   // ① 左侧栏：9 个入口直接可见，没有省略号，悬浮名称完整。
   const toolbar = getWin().locator('.generation-canvas-v2-toolbar').first()
@@ -213,15 +228,20 @@ try {
   await composer.waitFor({ timeout: 5000 })
   const { trigger, panel } = await ensureParameterPanel(composer)
   const ratioGroup = panel.getByRole('radiogroup', { name: '比例', exact: true }).first()
-  await ratioGroup.waitFor({ timeout: 5000 })
-
-  const automatic = ratioGroup.getByRole('radio', { name: '自动', exact: true }).first()
-  assert(await automatic.isVisible(), 'Auto 在中文界面显示为“自动”')
-  assert((await automatic.locator('svg').count()) === 1, '自动比例项上方有自适应画幅图标')
+  const segmentedRatioControl = await ratioGroup.isVisible().catch(() => false)
+  if (segmentedRatioControl) {
+    const automatic = ratioGroup.getByRole('radio', { name: '自动', exact: true }).first()
+    assert(await automatic.isVisible(), 'Auto 在中文界面显示为“自动”')
+    assert((await automatic.locator('svg').count()) === 1, '分段式自动比例项上方有自适应画幅图标')
+  } else {
+    const ratioSelect = panel.getByRole('button', { name: '比例', exact: true }).first()
+    await expectVisible(ratioSelect, '长比例列表切换为可搜索下拉')
+    assert((await ratioSelect.textContent())?.includes('自动'), '下拉式 Auto 在中文界面显示为“自动”')
+  }
 
   const geometries = []
   for (const ratio of ['1:1', '21:9', '9:16']) {
-    await ratioGroup.getByRole('radio', { name: ratio, exact: true }).click()
+    await selectRatio(panel, ratio)
     await getWin().waitForTimeout(220)
     const [nodeBox, composerBox, triggerBox, panelBox, nodeLayout] = await Promise.all([
       node.boundingBox(),
