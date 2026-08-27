@@ -29,6 +29,7 @@ import { GenerationFlowNodeScope } from './generationFlowNodeContext'
 
 export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationFlowNode>): JSX.Element {
   const node = data.generationNode
+  const collapsedGroupProxy = node.meta?.collapsedGroupProxy === true
   const NodeComponent = getGenerationNodeComponent(node.kind)
   const size = resolveNodeVisualSize(node)
   const bounds = getNodeSizeBounds(node.kind)
@@ -56,7 +57,8 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
   return (
     <div
       className="generation-canvas-react-flow__node-shell"
-      style={{ width: size.width, height: size.height }}
+      style={{ width: size.width, height: size.height, pointerEvents: collapsedGroupProxy ? 'none' : undefined }}
+      aria-hidden={collapsedGroupProxy || undefined}
     >
       <NodeResizer
         isVisible={selected && !data.readOnly}
@@ -93,18 +95,20 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
           <Handle id="target-right" type="target" position={Position.Right} data-side="right" className="generation-canvas-react-flow__handle" />
         </>
       ) : null}
-      <GenerationFlowNodeScope>
-        {shouldRenderFullNodeContent({ lightweightMode, selected: primarySelection, focusFlash: false }) ? (
-          <NodeComponent node={node} selected={selected} readOnly={data.readOnly} />
-        ) : (
-          <LightweightGenerationNode
-            node={node}
-            appear={false}
-            selected={selected}
-            readOnly={data.readOnly}
-          />
-        )}
-      </GenerationFlowNodeScope>
+      {!collapsedGroupProxy ? (
+        <GenerationFlowNodeScope>
+          {shouldRenderFullNodeContent({ lightweightMode, selected: primarySelection, focusFlash: false }) ? (
+            <NodeComponent node={node} selected={selected} readOnly={data.readOnly} />
+          ) : (
+            <LightweightGenerationNode
+              node={node}
+              appear={false}
+              selected={selected}
+              readOnly={data.readOnly}
+            />
+          )}
+        </GenerationFlowNodeScope>
+      ) : null}
       {!data.readOnly ? (
         <>
           <Handle id="source-left" type="source" position={Position.Left} data-side="left" className="generation-canvas-react-flow__handle" />
@@ -128,6 +132,9 @@ export function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY,
   const modes = source && target ? availableEdgeModes(source, target) : []
   const incident = Boolean(data?.incident)
   const mode = edge?.mode || 'reference'
+  const aggregateLabel = data?.aggregateDirection
+    ? t(`generationCommon.canvas.group.aggregate${data.aggregateDirection === 'input' ? 'Input' : 'Output'}`)
+    : null
   const showLabel = !readOnly && (menuOpen || (mode !== 'reference' && (incident || selected)))
 
   return (
@@ -135,6 +142,7 @@ export function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY,
       className="generation-canvas-v2__edge"
       data-mode={mode}
       data-edge-id={id}
+      data-aggregate-group={data?.aggregateGroupId}
       data-active={selected ? 'true' : undefined}
       data-incident={incident ? 'true' : undefined}
     >
@@ -194,7 +202,7 @@ export function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY,
                 setMenuOpen((open) => !open)
               }}
             >
-              {t(`generationCommon.canvas.edge.modes.${mode}`)}
+              {aggregateLabel || t(`generationCommon.canvas.edge.modes.${mode}`)}
             </button>
             {menuOpen ? (
               <div
@@ -220,11 +228,13 @@ export function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY,
                 <button
                   type="button"
                   className="generation-canvas-react-flow__edge-menu-delete"
-                  role="menuitem"
-                  aria-label={t('generationCommon.canvas.edge.disconnect', {
-                    source: source?.title || edge?.source || '',
-                    target: target?.title || edge?.target || '',
-                  })}
+                  role={data?.aggregateDirection ? 'button' : 'menuitem'}
+                  aria-label={data?.aggregateDirection
+                    ? t('generationCommon.canvas.group.disconnectAggregate')
+                    : t('generationCommon.canvas.edge.disconnect', {
+                      source: source?.title || edge?.source || '',
+                      target: target?.title || edge?.target || '',
+                    })}
                   onClick={(event) => {
                     event.stopPropagation()
                     if (edge) disconnectEdge(edge.id)

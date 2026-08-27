@@ -22,6 +22,8 @@ export type GenerationFlowEdgeData = {
   generationEdge: GenerationCanvasEdge
   sourceNode: GenerationCanvasNode
   targetNode: GenerationCanvasNode
+  aggregateGroupId?: string
+  aggregateDirection?: 'input' | 'output'
   incident: boolean
   readOnly: boolean
 }
@@ -101,6 +103,8 @@ export function toGenerationFlowEdge(
     readOnly?: boolean
     selected?: boolean
     incident?: boolean
+    aggregateGroupId?: string
+    aggregateDirection?: 'input' | 'output'
   } = {},
 ): GenerationFlowEdge {
   const source = nodeById.get(edge.source)
@@ -119,6 +123,8 @@ export function toGenerationFlowEdge(
       generationEdge: edge,
       sourceNode: source,
       targetNode: target,
+      ...(options.aggregateGroupId ? { aggregateGroupId: options.aggregateGroupId } : {}),
+      ...(options.aggregateDirection ? { aggregateDirection: options.aggregateDirection } : {}),
       incident: Boolean(options.incident),
       readOnly,
     },
@@ -138,6 +144,7 @@ export function toGenerationFlowEdges(
     readOnly?: boolean
     selectedEdgeId?: string | null
     selectedNodeIds?: ReadonlySet<string>
+    aggregateByEdgeId?: ReadonlyMap<string, { groupId: string; direction: 'input' | 'output' }>
     previousEdges?: readonly GenerationFlowEdge[]
   } = {},
 ): GenerationFlowEdge[] {
@@ -149,6 +156,7 @@ export function toGenerationFlowEdges(
       const sourceNode = nodeById.get(edge.source)!
       const targetNode = nodeById.get(edge.target)!
       const selected = !readOnly && edge.id === options.selectedEdgeId
+      const aggregate = options.aggregateByEdgeId?.get(edge.id)
       const incident = Boolean(
         options.selectedNodeIds?.size === 1
           && (options.selectedNodeIds.has(edge.source) || options.selectedNodeIds.has(edge.target)),
@@ -158,13 +166,21 @@ export function toGenerationFlowEdges(
         previous?.data?.generationEdge === edge &&
         previous.data.sourceNode === sourceNode &&
         previous.data.targetNode === targetNode &&
+        previous.data.aggregateGroupId === aggregate?.groupId &&
+        previous.data.aggregateDirection === aggregate?.direction &&
         previous.data.readOnly === readOnly &&
         previous.data.incident === incident &&
         Boolean(previous.selected) === selected
       ) {
         return previous
       }
-      return toGenerationFlowEdge(edge, nodeById, { readOnly, selected, incident })
+      return toGenerationFlowEdge(edge, nodeById, {
+        readOnly,
+        selected,
+        incident,
+        aggregateGroupId: aggregate?.groupId,
+        aggregateDirection: aggregate?.direction,
+      })
     })
   return options.previousEdges
     && nextEdges.length === options.previousEdges.length

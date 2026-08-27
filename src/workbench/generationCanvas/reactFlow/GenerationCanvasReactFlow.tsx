@@ -173,10 +173,30 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     }),
     [collapsedProjection],
   )
+  const aggregateByEdgeId = React.useMemo(
+    () => new Map(Array.from(collapsedProjection.aggregateEdges.entries()).map(([edgeId, aggregate]) => [edgeId, {
+      groupId: aggregate.groupId,
+      direction: aggregate.direction,
+    }])),
+    [collapsedProjection],
+  )
+  const flowProjectionNodes = React.useMemo(() => {
+    if (collapsedProjection.cards.length === 0) return collapsedProjection.visibleNodes
+    const proxyNodes = collapsedProjection.cards.flatMap((card) => {
+      const proxy = collapsedProjection.edgeNodeById.get(card.groupId)
+      if (!proxy) return []
+      return [{
+        ...proxy,
+        meta: { ...(proxy.meta || {}), collapsedGroupProxy: true },
+      }]
+    })
+    return [...collapsedProjection.visibleNodes, ...proxyNodes]
+  }, [collapsedProjection])
   const { selectedSet, nodeById, flowNodes, flowEdges } = useGenerationCanvasReactFlowProjection({
-    nodes: collapsedProjection.visibleNodes,
+    nodes: flowProjectionNodes,
     edges: projectedEdges,
     edgeNodeById: collapsedProjection.edgeNodeById,
+    aggregateByEdgeId,
     selectedNodeIds,
     selectedEdgeId,
     readOnly,
@@ -236,7 +256,10 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     const handleFocusNode = (event: Event) => {
       const nodeId = (event as CustomEvent<{ nodeId?: unknown }>).detail?.nodeId
       if (typeof nodeId !== 'string' || !nodeId) return
-      const target = allNodes.find((node) => node.id === nodeId)
+      // Read the store at event time. Actions can dispatch a focus event in the
+      // same turn as they add a node, before this component has rendered the
+      // updated `allNodes` snapshot.
+      const target = useGenerationCanvasStore.getState().nodes.find((node) => node.id === nodeId)
       if (!target) {
         toast(t('generationCommon.node.sourceNoLongerExists'), 'warning')
         return
@@ -247,7 +270,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     }
     window.addEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)
     return () => window.removeEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)
-  }, [allNodes, selectNode, setActiveCategoryId, t])
+  }, [selectNode, setActiveCategoryId, t])
 
   React.useEffect(() => {
     const nodeId = pendingFocusNodeRef.current

@@ -313,7 +313,18 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     if (!node) return null
     // 变体落点经同分类避让：默认贴在原卡右下 +40，被占则螺旋挪开，不压住原卡或邻卡。
     const dupSiblings = state.nodes.filter((candidate) => (candidate.categoryId || 'shots') === (node.categoryId || 'shots'))
-    const dupPosition = resolveInsertionPosition(node.kind, { x: node.position.x + 40, y: node.position.y + 40 }, dupSiblings)
+    const preferredDupPosition = { x: node.position.x + 40, y: node.position.y + 40 }
+    let dupPosition = resolveInsertionPosition(node.kind, preferredDupPosition, dupSiblings)
+    // Keep a duplicate in the usable canvas when the first free spiral slot
+    // happens to be above/left of the origin. The below-source fallback still
+    // goes through the shared collision resolver and preserves spacing.
+    if (dupPosition.x < 0 || dupPosition.y < 0) {
+      dupPosition = resolveInsertionPosition(
+        node.kind,
+        { x: node.position.x, y: node.position.y + getNodeSize(node).height + 48 },
+        dupSiblings,
+      )
+    }
     const nextNode = createGenerationNode({
       id: createNodeId(node.kind),
       kind: node.kind,

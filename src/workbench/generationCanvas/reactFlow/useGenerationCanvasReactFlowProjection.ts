@@ -12,6 +12,7 @@ type ProjectionOptions = {
   edges: readonly GenerationCanvasEdge[]
   /** Optional endpoint map for synthetic/collapsed group edge projections. */
   edgeNodeById?: ReadonlyMap<string, GenerationCanvasNode>
+  aggregateByEdgeId?: ReadonlyMap<string, { groupId: string; direction: 'input' | 'output' }>
   selectedNodeIds: readonly string[]
   selectedEdgeId: string | null
   readOnly: boolean
@@ -21,6 +22,7 @@ export function useGenerationCanvasReactFlowProjection({
   nodes,
   edges,
   edgeNodeById,
+  aggregateByEdgeId,
   selectedNodeIds,
   selectedEdgeId,
   readOnly,
@@ -45,11 +47,12 @@ export function useGenerationCanvasReactFlowProjection({
       readOnly,
       selectedEdgeId,
       selectedNodeIds: selectedSet,
+      aggregateByEdgeId,
       previousEdges: previousFlowEdgesRef.current,
     })
     previousFlowEdgesRef.current = next
     return next
-  }, [edgeNodes, edges, readOnly, selectedEdgeId, selectedSet])
+  }, [aggregateByEdgeId, edgeNodes, edges, readOnly, selectedEdgeId, selectedSet])
 
   return { selectedSet, nodeById, flowNodes, flowEdges }
 }
