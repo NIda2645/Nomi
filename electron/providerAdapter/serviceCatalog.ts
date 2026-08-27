@@ -4,7 +4,7 @@ import {
   normalizeProviderKind,
   readCatalog,
 } from "../catalog/catalogStore";
-import { decryptApiKeyRecord } from "../catalog/secrets";
+import { apiKeyDecryptStatus, decryptApiKeyRecord } from "../catalog/secrets";
 import type { BillingModelKind, Mapping, Model, ProfileKind, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
 import { adapterModelMetadataForPromotion } from "./promotionMeta";
@@ -78,6 +78,29 @@ function hasExecutableCustomCall(model: Model | undefined): boolean {
   return Object.values(customCall?.modes || {}).some((mode) => mode.script.trim());
 }
 
+function adapterMetadata(model: Model | undefined): Record<string, unknown> {
+  return asRecord(asRecord(model?.meta).adapter);
+}
+
+function hasActiveAdapterRevision(model: Model | undefined): boolean {
+  const activeRevision = adapterMetadata(model).activeRevision;
+  return typeof activeRevision === "string" && Boolean(activeRevision.trim());
+}
+
+/** Existing published execution survives registration/repair; staged adapter rows do not become active by enabled alone. */
+function hasPublishedExecution(state: ReturnType<typeof readCatalog>, model: Model | undefined): boolean {
+  if (!model?.enabled) return false;
+  if (hasActiveAdapterRevision(model)) return true;
+  if (hasExecutableCustomCall(model)) return true;
+  if (hasExecutableMapping(state.mappings, model.vendorKey, model.modelKey, model.kind)) return true;
+  // Catalog rows predating adapter metadata have no revision ledger. Text executes directly through the AI SDK.
+  return model.kind === "text" && Object.keys(adapterMetadata(model)).length === 0;
+}
+
+function vendorHasPublishedExecution(state: ReturnType<typeof readCatalog>, vendorKey: string): boolean {
+  return state.models.some((model) => model.vendorKey === vendorKey && hasPublishedExecution(state, model));
+}
+
 export const defaultCatalog: ProviderAdapterCatalogPort = {
   register(input) {
     const before = readCatalog();
@@ -85,18 +108,21 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
     const cleanHeaders = Object.fromEntries(
       Object.entries(input.headers || {}).filter(([key, value]) => key.trim() && value.trim()),
     );
-    if (
-      input.authType !== "none" &&
-      input.preserveExistingCredential &&
-      (!before.apiKeysByVendor[input.vendorKey]?.apiKey || before.apiKeysByVendor[input.vendorKey]?.enabled === false)
-    ) {
-      throw new Error("The saved connection credential is missing; enter the API key again");
+    const savedCredential = before.apiKeysByVendor[input.vendorKey];
+    if (input.authType !== "none" && input.preserveExistingCredential) {
+      if (!savedCredential?.apiKey || savedCredential.enabled === false) {
+        throw new Error("The saved connection credential is missing; enter the API key again");
+      }
+      if (savedCredential.enc !== "safeStorage") {
+        throw new Error("The saved connection credential needs to be saved again before authentication can continue");
+      }
     }
+    const vendorEnabled = vendorHasPublishedExecution(before, input.vendorKey);
     return mutateCatalog((tx) => {
       const vendor = tx.upsertVendor({
         key: input.vendorKey,
         name: input.vendorName || existingVendor?.name || input.vendorKey,
-        enabled: true,
+        enabled: vendorEnabled,
         baseUrlHint: input.baseUrl,
         authType: input.authType,
         authHeader: input.authHeader || null,
@@ -113,14 +139,8 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         const existing = before.models.find(
           (model) => model.vendorKey === input.vendorKey && model.modelKey === selected.modelKey,
         );
-        const oldAdapter = asRecord(asRecord(existing?.meta).adapter);
-        const hasActiveRevision = typeof oldAdapter.activeRevision === "string" && oldAdapter.activeRevision.trim();
-        const hasPersistedContract = Boolean(
-          hasActiveRevision ||
-          hasExecutableCustomCall(existing) ||
-          hasExecutableMapping(before.mappings, input.vendorKey, selected.modelKey, selected.kind),
-        );
-        const canExecute = selected.kind === "text" || hasPersistedContract;
+        const oldAdapter = adapterMetadata(existing);
+        const canExecute = hasPublishedExecution(before, existing);
         const preserveAdapter = Boolean(existing && canExecute && Object.keys(oldAdapter).length > 0);
         return tx.upsertModel({
           ...(existing || {}),
@@ -129,14 +149,16 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
           modelAlias: existing?.modelAlias || selected.modelKey,
           labelZh: selected.labelZh || existing?.labelZh || humanizeModelKey(selected.modelKey),
           kind: selected.kind,
-          enabled: existing ? existing.enabled && canExecute : selected.kind === "text",
+          enabled: Boolean(existing?.enabled && canExecute),
           onboarding: existing?.onboarding || { addedVia: "manual", addedAt: input.savedAt, fields: [] },
-          meta: {
-            ...asRecord(existing?.meta),
-            adapter: preserveAdapter
-              ? oldAdapter
-              : { state: "unverified", modes: [], updatedAt: input.savedAt },
-          },
+          meta: canExecute && !preserveAdapter
+            ? existing?.meta
+            : {
+                ...asRecord(existing?.meta),
+                adapter: preserveAdapter
+                  ? oldAdapter
+                  : { state: "unverified", modes: [], updatedAt: input.savedAt },
+              },
         });
       });
       return { vendor, models };
@@ -149,11 +171,16 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
     const cleanHeaders = Object.fromEntries(
       Object.entries(input.headers || {}).filter(([key, value]) => key.trim() && value.trim()),
     );
+    const savedCredential = before.apiKeysByVendor[input.vendorKey];
+    if (input.authType !== "none" && input.catalogVendorKey && savedCredential?.apiKey && savedCredential.enc !== "safeStorage") {
+      throw new Error("The saved connection credential needs to be saved again before authentication can continue");
+    }
+    const vendorEnabled = vendorHasPublishedExecution(before, input.vendorKey);
     return mutateCatalog((tx) => {
       const vendor = tx.upsertVendor({
         key: input.vendorKey,
         name: input.vendorName || existingVendor?.name || input.vendorKey,
-        enabled: existingVendor?.enabled ?? false,
+        enabled: vendorEnabled,
         baseUrlHint: input.baseUrl,
         authType: input.authType,
         authHeader: input.authHeader || null,
@@ -176,7 +203,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
           modelAlias: existing?.modelAlias || selected.modelKey,
           labelZh: selected.labelZh || existing?.labelZh || humanizeModelKey(selected.modelKey),
           kind: selected.kind,
-          enabled: existing?.enabled ?? false,
+          enabled: hasPublishedExecution(before, existing),
           meta: {
             ...asRecord(existing?.meta),
             adapter: {
@@ -197,8 +224,9 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
     const state = readCatalog();
     const vendor = state.vendors.find((item) => item.key === vendorKey);
     if (!vendor) return null;
-    const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendorKey]);
-    if (vendor.authType !== "none" && !apiKey) return null;
+    const credential = state.apiKeysByVendor[vendorKey];
+    if (vendor.authType !== "none" && apiKeyDecryptStatus(credential) !== "ok") return null;
+    const apiKey = decryptApiKeyRecord(credential);
     const selected = new Set(selectedModelKeys);
     const models = state.models.filter((model) => model.vendorKey === vendorKey && selected.has(model.modelKey));
     if (models.length !== selected.size) return null;
@@ -217,10 +245,15 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
     // the vendor or publish mappings from that obsolete result.
     if (ownedModelKeys.size === 0) return;
     const verified = new Set(input.verifiedModes.map((item) => `${item.modelKey}\0${item.taskKind}`));
+    const vendorEnabled = before.models.some((model) => {
+      if (model.vendorKey !== input.run.vendorKey) return false;
+      if (hasPublishedExecution(before, model)) return true;
+      return ownedModelKeys.has(model.modelKey) && input.verifiedModes.some((mode) => mode.modelKey === model.modelKey);
+    });
     mutateCatalog((tx) => {
       const existingVendor = before.vendors.find((vendor) => vendor.key === input.run.vendorKey);
       if (!existingVendor) throw new Error(`Provider disappeared before adapter promotion: ${input.run.vendorKey}`);
-      tx.upsertVendor({ ...existingVendor, enabled: true });
+      tx.upsertVendor({ ...existingVendor, enabled: vendorEnabled });
       for (const candidate of input.draft.models) {
         if (!ownedModelKeys.has(candidate.modelKey)) continue;
         const existing = before.models.find(
@@ -229,9 +262,10 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         if (!existing) continue;
         const modeResults = input.run.models.find((model) => model.modelKey === candidate.modelKey)?.modes || [];
         const oldMeta = asRecord(existing.meta);
+        const hasVerifiedMode = input.verifiedModes.some((mode) => mode.modelKey === candidate.modelKey);
         tx.upsertModel({
           ...existing,
-          enabled: true,
+          enabled: hasVerifiedMode || hasPublishedExecution(before, existing),
           meta: adapterModelMetadataForPromotion({
             oldMeta,
             candidate,
@@ -250,13 +284,14 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
               mapping.modelKey === candidate.modelKey &&
               mapping.taskKind === mode.taskKind,
           );
-          if (!passed && existingExact) continue;
+          if (!passed && existingExact && hasPublishedExecution(before, existing)) continue;
           tx.upsertMapping({
+            ...(existingExact || {}),
             vendorKey: input.run.vendorKey,
             modelKey: candidate.modelKey,
             taskKind: mode.taskKind,
             name: `${candidate.labelZh} · ${mode.taskKind}`,
-            enabled: true,
+            enabled: passed,
             create: mode.create,
             ...(mode.query ? { query: mode.query } : {}),
             ...(mode.statusMapping ? { statusMapping: mode.statusMapping } : {}),

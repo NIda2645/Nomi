@@ -96,6 +96,49 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
     });
     expect(deriveModelListing(withDisabled).map((e) => e.modelKey)).toEqual(["on"]);
   });
+
+  it("hides staged or failed adapter models without an active revision", () => {
+    const hidden = state({
+      vendors: [vendor({ key: "relay", authType: "none" })],
+      models: [
+        model({ modelKey: "staged", vendorKey: "relay", meta: { adapter: { state: "unverified", modes: [], updatedAt: "t" } } }),
+        model({ modelKey: "failed", vendorKey: "relay", meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } } }),
+      ],
+    });
+
+    expect(deriveModelListing(hidden)).toEqual([]);
+  });
+
+  it("keeps legacy enabled models and a failed repair with a preserved active revision visible", () => {
+    const visible = state({
+      vendors: [vendor({ key: "relay", authType: "none" })],
+      models: [
+        model({ modelKey: "legacy", vendorKey: "relay" }),
+        model({
+          modelKey: "active",
+          vendorKey: "relay",
+          meta: { adapter: { state: "failed", activeRevision: "revision-good", modes: [], updatedAt: "t" } },
+        }),
+      ],
+    });
+
+    expect(deriveModelListing(visible).map((entry) => entry.modelKey)).toEqual(["legacy", "active"]);
+  });
+
+  it("reports legacy plaintext credentials as needs_resave with a migration action", () => {
+    const legacy = state({
+      vendors: [vendor({ key: "relay", name: "Relay" })],
+      models: [model({ modelKey: "legacy", vendorKey: "relay" })],
+      apiKeysByVendor: {
+        relay: { vendorKey: "relay", apiKey: "sk-legacy", enc: "plain", enabled: true, createdAt: "t", updatedAt: "t" },
+      },
+    });
+
+    expect(deriveModelListing(legacy)[0]).toMatchObject({
+      keyStatus: "needs_resave",
+      statusReason: expect.stringContaining("重新保存"),
+    });
+  });
 });
 
 describe("deriveModelListing — 解密探测按 vendor 记忆化（单 vendor 多模型只探一次）", () => {

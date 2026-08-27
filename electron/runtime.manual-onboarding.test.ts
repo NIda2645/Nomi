@@ -4,12 +4,11 @@
  * before this change:
  *
  *   Clean install, ZERO models  →  user fills BaseURL + key + model(s)  →
- *   保存  →  models land in the catalog, are selectable, AND the doc-reading
- *   onboarding agent now has a text model to run with (bootstrap deadlock broken).
+ *   保存  →  models and credentials land in the catalog as non-executable
+ *   candidates until the certification path promotes verified modes.
  *
- * This is acceptance gates #2 (break deadlock) and #3 (multi-model at once)
- * from docs/plan/onboarding-baseurl-entry.md, expressed as code so it can't
- * silently regress.
+ * This guards the newer verified-only visibility boundary while retaining the
+ * multi-model transaction coverage from docs/plan/onboarding-baseurl-entry.md.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -35,9 +34,9 @@ vi.mock("electron", () => ({
     getPath: () => mockedUserDataRoot,
     getAppPath: () => process.cwd(),
   },
-  // Force the plaintext key path so the round-trip works headless (no OS keychain).
+  // Provide a deterministic safeStorage round-trip for headless tests.
   safeStorage: {
-    isEncryptionAvailable: () => false,
+    isEncryptionAvailable: () => true,
     encryptString: (s: string) => Buffer.from(s),
     decryptString: (b: Buffer) => b.toString(),
   },
@@ -83,7 +82,7 @@ describe("ensureBuiltinModelSeeds — 内置模型种子（启动时调一次）
 });
 
 describe("manual model entry — user journey", () => {
-  it("breaks the bootstrap deadlock: a fresh install with zero models can add its first text model and the doc-reader can then run", () => {
+  it("stages a fresh model without making an unverified connection executable", () => {
     // Precondition: clean install — nothing the doc-reading agent could use.
     expect(resolveOnboardingAgentFromCatalog()).toBeNull();
     expect(listModelCatalogModels()).toHaveLength(0);
@@ -99,20 +98,18 @@ describe("manual model entry — user journey", () => {
     expect(result.vendorKey).toBe("local-11434");
     expect(result.committed).toEqual([{ modelKey: "llama3.1", displayName: "Llama 3.1" }]);
 
-    // The model is in the catalog and selectable (kind text, enabled).
+    // Saving only stages the candidate. Certification owns the enabled transition.
     const models = listModelCatalogModels();
     expect(models).toHaveLength(1);
-    expect(models[0]).toMatchObject({ modelKey: "llama3.1", kind: "text", enabled: true });
-
-    // The deadlock is broken: the doc-reading agent now resolves a usable text model.
-    const agent = resolveOnboardingAgentFromCatalog();
-    expect(agent).not.toBeNull();
-    expect(agent).toMatchObject({
-      baseUrl: "http://localhost:11434/v1",
-      modelId: "llama3.1",
-      apiKey: "ollama",
-      providerKind: "openai-compatible",
+    expect(models[0]).toMatchObject({
+      modelKey: "llama3.1",
+      kind: "text",
+      enabled: false,
+      meta: { adapter: { state: "unverified", modes: [] } },
     });
+    expect(listModelCatalogVendors()[0]).toMatchObject({ key: "local-11434", enabled: false });
+
+    expect(resolveOnboardingAgentFromCatalog()).toBeNull();
   });
 
   it("adds multiple models under one vendor in a single save", () => {
@@ -191,14 +188,8 @@ describe("manual model entry — user journey", () => {
     expect(vendor.baseUrlHint).toBe("https://api.anthropic.com");
     expect(vendor.authType).toBe("x-api-key");
 
-    // The doc-reader resolves it with the anthropic provider kind.
-    const agent = resolveOnboardingAgentFromCatalog();
-    expect(agent).toMatchObject({
-      providerKind: "anthropic",
-      baseUrl: "https://api.anthropic.com",
-      modelId: "claude-3-5-sonnet-latest",
-      apiKey: "sk-ant-xxx",
-    });
+    // Saving provider metadata does not bypass certification.
+    expect(resolveOnboardingAgentFromCatalog()).toBeNull();
   });
 
   it("supports OpenAI Responses relays (foxcode codex shape): persists openai-responses + bearer, survives round-trip", () => {
@@ -223,14 +214,7 @@ describe("manual model entry — user journey", () => {
     expect(vendor.baseUrlHint).toBe("https://api.fox-code.com/v1");
     expect(vendor.authType).toBe("bearer");
 
-    // 文档阅读 agent 也按 openai-responses 解析回来（runtime 读 catalog 时归一化）。
-    const agent = resolveOnboardingAgentFromCatalog();
-    expect(agent).toMatchObject({
-      providerKind: "openai-responses",
-      baseUrl: "https://api.fox-code.com/v1",
-      modelId: "gpt-5-codex",
-      apiKey: "sk-fox-xxx",
-    });
+    expect(resolveOnboardingAgentFromCatalog()).toBeNull();
   });
 
   it("persists custom request headers on the vendor and surfaces them to the agent", () => {
@@ -249,12 +233,8 @@ describe("manual model entry — user journey", () => {
       "X-Title": "Nomi",
     });
 
-    // The doc-reader carries the same headers so it reaches the same gateway.
-    const agent = resolveOnboardingAgentFromCatalog();
-    expect(agent?.extraHeaders).toEqual({
-      "HTTP-Referer": "https://nomi.app",
-      "X-Title": "Nomi",
-    });
+    // Header persistence is independent from executable visibility.
+    expect(resolveOnboardingAgentFromCatalog()).toBeNull();
   });
 
   it("re-adding under the same endpoint reuses the vendor and appends models (upsert)", () => {
@@ -303,7 +283,7 @@ describe("manual entry — per-model kind（Issue #8 中转图片/视频接入�
       models: [{ id: "dall-e-3", kind: "image" }],
     });
     const model = listModelCatalogModels().find((m) => m.modelKey === "dall-e-3");
-    expect(model).toMatchObject({ kind: "image", enabled: true });
+    expect(model).toMatchObject({ kind: "image", enabled: false });
     const meta = model?.meta as { parameters?: Array<{ key: string }>; imageOptions?: { supportsReferenceImages?: boolean } } | undefined;
     // 分辨率放开：比例 + 清晰度（治「只能出 1K」），不再是写死的像素 size。
     expect((meta?.parameters || []).map((p) => p.key)).toEqual(expect.arrayContaining(["aspect_ratio", "resolution", "quality"]));
@@ -312,10 +292,12 @@ describe("manual entry — per-model kind（Issue #8 中转图片/视频接入�
     const vk = deriveVendorKeyFromBaseUrl("https://relay.example.com");
     const t2i = listModelCatalogMappings().find((x) => x.vendorKey === vk && x.taskKind === "text_to_image");
     expect(t2i?.create.path).toBe("/v1/images/generations");
+    expect(t2i?.enabled).toBe(false);
     expect(t2i?.query).toBeUndefined();
     // 图生图 mapping：chat/completions 多模态。
     const edit = listModelCatalogMappings().find((x) => x.vendorKey === vk && x.taskKind === "image_edit");
     expect(edit?.create.path).toBe("/v1/chat/completions");
+    expect(edit?.enabled).toBe(false);
   });
 
   it("同一中转的 Nano Banana 与 Grok：image_edit mapping 按模型精确分流，不再共用错误端点", () => {
@@ -342,9 +324,10 @@ describe("manual entry — per-model kind（Issue #8 中转图片/视频接入�
       apiKey: "sk-x",
       models: [{ id: "kling-v1", kind: "video" }],
     });
-    expect(listModelCatalogModels().find((m) => m.modelKey === "kling-v1")).toMatchObject({ kind: "video", enabled: true });
+    expect(listModelCatalogModels().find((m) => m.modelKey === "kling-v1")).toMatchObject({ kind: "video", enabled: false });
     const mp = listModelCatalogMappings().find((x) => x.taskKind === "text_to_video" && x.create.path === "/v1/video/generations");
     expect(mp).toBeTruthy();
+    expect(mp?.enabled).toBe(false);
     expect(mp?.query?.path).toBe("/v1/video/generations/{{providerMeta.task_id}}");
   });
 

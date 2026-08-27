@@ -61,7 +61,7 @@ describe("decryptApiKeyRecord branches", () => {
   });
 });
 
-describe("apiKeyDecryptStatus — 三态健康度（ok / missing / locked，单一真相源）", () => {
+describe("apiKeyDecryptStatus — credential readiness（ok / missing / locked / needs_resave）", () => {
   it("无记录 / 空 key 材料 → missing", () => {
     expect(apiKeyDecryptStatus(undefined)).toBe("missing");
     expect(apiKeyDecryptStatus({ vendorKey: "v", apiKey: "", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("missing");
@@ -83,8 +83,8 @@ describe("apiKeyDecryptStatus — 三态健康度（ok / missing / locked，单�
     expect(apiKeyDecryptStatus(locked)).toBe("locked");
     spy.mockRestore();
   });
-  it("plain / legacy 非空明文 → ok", () => {
-    expect(apiKeyDecryptStatus({ vendorKey: "v", apiKey: "raw", enc: "plain", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("ok");
-    expect(apiKeyDecryptStatus({ vendorKey: "v", apiKey: "legacy", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("ok");
+  it("plain / legacy 非空明文 → needs_resave，而不是可用于新认证的 ok", () => {
+    expect(apiKeyDecryptStatus({ vendorKey: "v", apiKey: "raw", enc: "plain", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("needs_resave");
+    expect(apiKeyDecryptStatus({ vendorKey: "v", apiKey: "legacy", enabled: true, createdAt: "c", updatedAt: "u" })).toBe("needs_resave");
   });
 });

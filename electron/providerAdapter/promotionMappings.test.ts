@@ -89,18 +89,18 @@ describe("adapter media mapping promotion", () => {
     upsertVendor.mockClear();
   });
 
-  it("publishes executable mappings for brand-new image and video candidates even when probes fail", () => {
+  it("stores failed candidate mappings disabled instead of publishing them", () => {
     promote([
       { modelKey: "image-v1", labelZh: "Image V1", kind: "image", modes: [modeFor("text_to_image", "/images/new")] },
       { modelKey: "video-v1", labelZh: "Video V1", kind: "video", modes: [modeFor("text_to_video", "/videos/new")] },
     ]);
 
     expect(upsertMapping).toHaveBeenCalledTimes(2);
-    expect(upsertMapping).toHaveBeenCalledWith(expect.objectContaining({ modelKey: "image-v1", taskKind: "text_to_image", enabled: true }));
-    expect(upsertMapping).toHaveBeenCalledWith(expect.objectContaining({ modelKey: "video-v1", taskKind: "text_to_video", enabled: true }));
+    expect(upsertMapping).toHaveBeenCalledWith(expect.objectContaining({ modelKey: "image-v1", taskKind: "text_to_image", enabled: false }));
+    expect(upsertMapping).toHaveBeenCalledWith(expect.objectContaining({ modelKey: "video-v1", taskKind: "text_to_video", enabled: false }));
   });
 
-  it("preserves an existing exact mapping when a retry candidate fails", () => {
+  it("disables an existing exact mapping when it has no active verified revision", () => {
     catalogMappings = [{
       id: "mapping-good",
       vendorKey: vendor.key,
@@ -114,6 +114,44 @@ describe("adapter media mapping promotion", () => {
     }];
 
     promote([{ modelKey: "image-v1", labelZh: "Image V1", kind: "image", modes: [modeFor("text_to_image", "/images/failed-draft")] }]);
+
+    expect(upsertMapping).toHaveBeenCalledWith(expect.objectContaining({
+      id: "mapping-good",
+      enabled: false,
+    }));
+  });
+
+  it("preserves an existing exact mapping when a failed repair has an active revision", () => {
+    catalogMappings = [{
+      id: "mapping-good",
+      vendorKey: vendor.key,
+      modelKey: "image-v1",
+      taskKind: "text_to_image",
+      name: "Last known good",
+      enabled: true,
+      create: { method: "POST", path: "/images/good" },
+      createdAt: now,
+      updatedAt: now,
+    }];
+    const originalMeta = models[0].meta;
+    const originalEnabled = models[0].enabled;
+    models[0].enabled = true;
+    models[0].meta = {
+      adapter: {
+        state: "testing",
+        runId: "run-mapping",
+        activeRevision: "revision-good",
+        modes: [],
+        updatedAt: now,
+      },
+    };
+
+    try {
+      promote([{ modelKey: "image-v1", labelZh: "Image V1", kind: "image", modes: [modeFor("text_to_image", "/images/failed-draft")] }]);
+    } finally {
+      models[0].meta = originalMeta;
+      models[0].enabled = originalEnabled;
+    }
 
     expect(upsertMapping).not.toHaveBeenCalled();
   });
@@ -141,6 +179,31 @@ describe("adapter media mapping promotion", () => {
       taskKind: "text_to_image",
       create: expect.objectContaining({ path: "/images/verified" }),
     }));
+  });
+
+  it("enables only the verified mode during partial promotion", () => {
+    promote(
+      [{
+        modelKey: "image-v1",
+        labelZh: "Image V1",
+        kind: "image",
+        modes: [modeFor("text_to_image", "/images/verified"), modeFor("image_edit", "/images/failed")],
+      }],
+      [{ modelKey: "image-v1", taskKind: "text_to_image" }],
+    );
+
+    expect(upsertMapping).toHaveBeenCalledWith(expect.objectContaining({
+      modelKey: "image-v1",
+      taskKind: "text_to_image",
+      enabled: true,
+    }));
+    expect(upsertMapping).toHaveBeenCalledWith(expect.objectContaining({
+      modelKey: "image-v1",
+      taskKind: "image_edit",
+      enabled: false,
+    }));
+    expect(upsertModel).toHaveBeenCalledWith(expect.objectContaining({ modelKey: "image-v1", enabled: true }));
+    expect(upsertVendor).toHaveBeenCalledWith(expect.objectContaining({ key: vendor.key, enabled: true }));
   });
 
   it("keeps failed text models on the AI SDK path without creating a mapping", () => {

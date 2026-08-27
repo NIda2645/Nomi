@@ -62,7 +62,7 @@ describe("provider adapter registration catalog", () => {
 
     expect(upsertVendor).toHaveBeenCalledWith(expect.objectContaining({
       key: "saved-gateway",
-      enabled: true,
+      enabled: false,
     }));
     expect(upsertApiKey).toHaveBeenCalledWith("saved-gateway", {
       apiKey: "sk-encrypt-me",
@@ -71,7 +71,7 @@ describe("provider adapter registration catalog", () => {
     expect(upsertModel).not.toHaveBeenCalled();
   });
 
-  it("enables only new text models and marks every new model as manually added and unverified", () => {
+  it("keeps every newly registered model disabled and marks it unverified", () => {
     const kinds = ["text", "image", "video", "audio", "model3d"] as const;
     const models = Array.from({ length: 20 }, (_, index) => ({
       modelKey: `model-${index + 1}`,
@@ -92,7 +92,7 @@ describe("provider adapter registration catalog", () => {
 
     expect(upsertVendor).toHaveBeenCalledWith(expect.objectContaining({
       key: "generic-gateway",
-      enabled: true,
+      enabled: false,
     }));
     expect(upsertApiKey).toHaveBeenCalledWith("generic-gateway", {
       apiKey: "sk-encrypt-me",
@@ -101,7 +101,7 @@ describe("provider adapter registration catalog", () => {
     expect(upsertModel).toHaveBeenCalledTimes(20);
     for (const [written] of upsertModel.mock.calls) {
       expect(written).toMatchObject({
-        enabled: written.kind === "text",
+        enabled: false,
         onboarding: { addedVia: "manual", addedAt: now, fields: [] },
         meta: {
           adapter: {
@@ -162,6 +162,55 @@ describe("provider adapter registration catalog", () => {
         adapter: expect.objectContaining({ state: "unverified" }),
       }),
     }));
+  });
+
+  it("rejects preserving a legacy plaintext credential and never echoes it", () => {
+    const sentinel = "sk-legacy-sentinel";
+    state = {
+      ...emptyState(),
+      vendors: [{
+        key: "saved-gateway",
+        name: "Saved Gateway",
+        enabled: true,
+        baseUrlHint: "https://gateway.example.test/v1",
+        authType: "bearer",
+        createdAt: now,
+        updatedAt: now,
+      }],
+      apiKeysByVendor: {
+        "saved-gateway": {
+          vendorKey: "saved-gateway",
+          apiKey: sentinel,
+          enc: "plain",
+          enabled: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+    };
+
+    let error: unknown;
+    try {
+      defaultCatalog.register({
+        vendorKey: "saved-gateway",
+        vendorName: "Saved Gateway",
+        baseUrl: "https://gateway.example.test/v1",
+        apiKey: "",
+        authType: "bearer",
+        providerKind: "openai-compatible",
+        preserveExistingCredential: true,
+        models: [{ modelKey: "new-image", kind: "image" }],
+        savedAt: now,
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain("save");
+    expect(String(error)).not.toContain(sentinel);
+    expect(upsertVendor).not.toHaveBeenCalled();
+    expect(upsertApiKey).not.toHaveBeenCalled();
   });
 
   it("preserves executable existing models and their adapter, mapping, and custom-call capability", () => {

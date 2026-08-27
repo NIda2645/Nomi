@@ -79,12 +79,12 @@ function mergeMissingParamsIntoBody(body: unknown, fieldKeys: string[]): unknown
 }
 
 /**
- * Commit a successful onboarding trial into the local catalog as a real entry:
+ * Persist an onboarding candidate atomically:
  * vendor + encrypted apiKey + model (with evidence) + create/query mappings.
  *
- * Designed to be called from the renderer once a TrialOutcome arrives with
- * status === "success". Returns the persisted Model so the caller can light up
- * the success UI.
+ * This legacy writer is staging-only. New rows and mappings remain disabled;
+ * Provider Adapter promotion is the sole verified publication boundary. An
+ * already-published row keeps its active execution while a replacement is staged.
  */
 export function commitOnboardedModelToCatalog(payload: {
   outcome: unknown;
@@ -147,7 +147,7 @@ export function commitOnboardedModelToCatalog(payload: {
     ...(f.default !== undefined ? { default: f.default } : {}),
   }));
 
-  // mapping: one row per (vendor, taskKind), carrying both stages.
+  // mapping: one candidate row per (vendor, model, taskKind), carrying both stages.
   // Reconcile: the agent only templatizes params it saw in the curl example,
   // so spec-derived params (resolution, duration, ...) the user can now select
   // on the node have no {{request.params.*}} slot in the body and would send
@@ -184,6 +184,45 @@ export function commitOnboardedModelToCatalog(payload: {
       : mappingCreate
     : undefined;
 
+  const before = readCatalog();
+  const existingModel = before.models.find(
+    (candidate) => candidate.vendorKey === vendorKey && candidate.modelKey === modelKey,
+  );
+  const adapter = isJsonRecord(existingModel?.meta) && isJsonRecord(existingModel.meta.adapter)
+    ? existingModel.meta.adapter
+    : null;
+  const existingModelIsPublished = Boolean(existingModel?.enabled) && (
+    !adapter ||
+    (typeof adapter.activeRevision === "string" && Boolean(adapter.activeRevision.trim())) ||
+    (Array.isArray(adapter.modes) && adapter.modes.some(
+      (mode) => isJsonRecord(mode) && mode.state === "verified",
+    ))
+  );
+  const vendorHasPublishedModel = before.models.some((candidate) => {
+    if (candidate.vendorKey !== vendorKey || !candidate.enabled) return false;
+    const candidateAdapter = isJsonRecord(candidate.meta) && isJsonRecord(candidate.meta.adapter)
+      ? candidate.meta.adapter
+      : null;
+    return !candidateAdapter ||
+      (typeof candidateAdapter.activeRevision === "string" && Boolean(candidateAdapter.activeRevision.trim())) ||
+      (Array.isArray(candidateAdapter.modes) && candidateAdapter.modes.some(
+        (mode) => isJsonRecord(mode) && mode.state === "verified",
+      ));
+  });
+  const stagedAt = nowIso();
+  const projectedMeta = {
+    ...(isJsonRecord(existingModel?.meta) ? existingModel.meta : {}),
+    parameters: metaParameters,
+    ...(wireProfileId ? { wireProfile: wireProfileId, archetypeId: wireProfileId } : {}),
+    ...(billingKind === "image" ? { imageOptions: {
+      supportsReferenceImages: Boolean(mappingEdit),
+      ...(imageEditProtocol ? { imageEditProtocol } : {}),
+    } } : {}),
+    ...(!existingModelIsPublished
+      ? { adapter: { state: "unverified", modes: [], updatedAt: stagedAt } }
+      : {}),
+  };
+
   // 单次事务（P2·根治半截接入）：vendor + apiKey + model + mapping 在一份内存 state 上攒齐，
   // 全部成功才一次性落盘；任一步抛错则整体不写，绝不留「vendor 写了 model 没写成」的不可用空壳。
   // 与 importModelCatalogPackage 同构（共用 apply* 纯函数）。
@@ -198,7 +237,7 @@ export function commitOnboardedModelToCatalog(payload: {
       authHeader: auth.headerName || null,
       authQueryParam: auth.queryParam || null,
       providerKind: draft.vendorProviderKind || "openai-compatible",
-      enabled: true,
+      enabled: vendorHasPublishedModel,
       ...(draft.vendorMeta !== undefined ? { meta: draft.vendorMeta } : {}),
     });
     // 2. apiKey (auto-encrypted by upsert)
@@ -210,18 +249,9 @@ export function commitOnboardedModelToCatalog(payload: {
       modelAlias: modelKey,
       labelZh: modelDisplayName,
       kind: billingKind,
-      enabled: true,
+      enabled: existingModelIsPublished,
       // 只有真实存在 image_edit mapping 才声明参考图能力；协议随模型落库，避免 UI 展示能力却只能撞错端点。
-      meta: {
-        parameters: metaParameters,
-        // 走原生报文 = 这个模型确实就是那个档案：标上 archetypeId，headless/MCP 缺参才有档案默认可兜
-        // （UI 路本来就由档案驱动、不受影响）。wireProfile 则记「这条 wire 是哪套」，供护栏与排障读。
-        ...(wireProfileId ? { wireProfile: wireProfileId, archetypeId: wireProfileId } : {}),
-        ...(billingKind === "image" ? { imageOptions: {
-          supportsReferenceImages: Boolean(mappingEdit),
-          ...(imageEditProtocol ? { imageEditProtocol } : {}),
-        } } : {}),
-      },
+      meta: projectedMeta,
       onboarding: {
         addedVia: payload.addedVia ?? "agent",
         trialId: String(outcome.trialId || ""),
@@ -231,12 +261,13 @@ export function commitOnboardedModelToCatalog(payload: {
       },
     });
     // 4. mapping（text_to_image / text_to_video / …）
-    if (reconciledCreate) {
+    if (reconciledCreate && !existingModelIsPublished) {
       tx.upsertMapping({
         vendorKey,
+        modelKey,
         taskKind,
         name: modelDisplayName,
-        enabled: true,
+        enabled: false,
         create: reconciledCreate,
         ...(mappingQuery ? { query: mappingQuery } : {}),
         ...(mappingStatus ? { statusMapping: mappingStatus } : {}),
@@ -247,7 +278,7 @@ export function commitOnboardedModelToCatalog(payload: {
     // 4c. 图生视频 mapping（image_to_video）：与文生视频同一条 wire（new-api 视频端点带可选 image 首帧），
     // 但 runtime 按 taskKind 选通道，必须各注册一条。带上同一条轮询 query（视频是异步任务）。
     // reconcile 与文生视频一致：body 缺的标准参数要补，否则时长/尺寸发不出去。
-    if (mappingImageToVideo && targetKind === "video") {
+    if (mappingImageToVideo && targetKind === "video" && !existingModelIsPublished) {
       const reconciledI2v =
         mappingImageToVideo.body !== undefined && reconcileKeys.length > 0
           ? { ...mappingImageToVideo, body: mergeMissingParamsIntoBody(mappingImageToVideo.body, reconcileKeys) }
@@ -257,13 +288,13 @@ export function commitOnboardedModelToCatalog(payload: {
         taskKind: "image_to_video",
         modelKey,
         name: `${modelDisplayName} · 图生视频`,
-        enabled: true,
+        enabled: false,
         create: reconciledI2v,
         ...(mappingQuery ? { query: mappingQuery } : {}),
         ...(mappingStatus ? { statusMapping: mappingStatus } : {}),
       });
     }
-    if (mappingEdit && targetKind === "image") {
+    if (mappingEdit && targetKind === "image" && !existingModelIsPublished) {
       tx.upsertMapping({
         vendorKey,
         taskKind: "image_edit",
@@ -271,7 +302,7 @@ export function commitOnboardedModelToCatalog(payload: {
         // 精确绑定后 selectTaskMapping 会优先命中本模型，不再被 vendor 级 generic mapping 误投。
         modelKey,
         name: `${modelDisplayName} · 改图`,
-        enabled: true,
+        enabled: false,
         create: mappingEdit,
       });
     }
