@@ -45,8 +45,11 @@ function resolveRuntimeExecutable(electronRoot) {
   return fs.existsSync(executablePath) ? executablePath : null
 }
 
-function isPathInside(candidate, root) {
-  return candidate === root || candidate.startsWith(`${root}${path.sep}`)
+export function isPathInside(candidate, root, pathApi = path) {
+  const relative = pathApi.relative(root, candidate)
+  return (
+    relative === '' || (relative !== '..' && !relative.startsWith(`..${pathApi.sep}`) && !pathApi.isAbsolute(relative))
+  )
 }
 
 function externalElectronPath(packagePath, allowedRoot, runtimeExecutable) {
@@ -104,7 +107,9 @@ export function inspectElectronInstallIdentity(repoRoot, options = {}) {
   const distVersion = normalizeVersion(readText(path.join(electronRoot, 'dist', 'version')))
   const runtimeExecutable = resolveRuntimeExecutable(electronRoot)
   const externalElectronLink = externalElectronPath(electronRoot, nodeModulesPath, runtimeExecutable)
-  const runtimeVersion = runtimeExecutable ? normalizeVersion(probeRuntimeVersion(runtimeExecutable)) : null
+  const mayProbeRuntime = modulesKind === 'directory' && !externalElectronLink
+  const runtimeVersion =
+    mayProbeRuntime && runtimeExecutable ? normalizeVersion(probeRuntimeVersion(runtimeExecutable)) : null
   const problems = []
 
   if (modulesKind === 'symlink') {
@@ -139,15 +144,17 @@ export function inspectElectronInstallIdentity(repoRoot, options = {}) {
         problem('dist-version-mismatch', `package.json declares ${declaredVersion}, downloaded dist is ${distVersion}`),
       )
     }
-    if (!runtimeVersion) {
-      problems.push(problem('runtime-probe-failed', 'Electron executable did not report a version'))
-    } else if (declaredVersion && runtimeVersion !== declaredVersion) {
-      problems.push(
-        problem(
-          'runtime-version-mismatch',
-          `package.json declares ${declaredVersion}, executable reports ${runtimeVersion}`,
-        ),
-      )
+    if (mayProbeRuntime) {
+      if (!runtimeVersion) {
+        problems.push(problem('runtime-probe-failed', 'Electron executable did not report a version'))
+      } else if (declaredVersion && runtimeVersion !== declaredVersion) {
+        problems.push(
+          problem(
+            'runtime-version-mismatch',
+            `package.json declares ${declaredVersion}, executable reports ${runtimeVersion}`,
+          ),
+        )
+      }
     }
   }
 

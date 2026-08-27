@@ -4,7 +4,11 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { assertElectronInstallIdentity, inspectElectronInstallIdentity } from './electron-install-identity.mjs'
+import {
+  assertElectronInstallIdentity,
+  inspectElectronInstallIdentity,
+  isPathInside,
+} from './electron-install-identity.mjs'
 import { ensureElectronRuntime } from './install-electron-runtime.mjs'
 
 const VERSION = '43.4.1'
@@ -51,10 +55,23 @@ function problemCodes(identity) {
   return identity.problems.map((problem) => problem.code)
 }
 
+test('path containment follows the host filesystem case semantics on Windows', () => {
+  const root = 'C:\\Users\\A\\Nomi\\node_modules'
+  assert.equal(isPathInside('c:\\users\\a\\nomi\\node_modules\\.pnpm\\electron', root, path.win32), true)
+  assert.equal(isPathInside('C:\\Users\\A\\Nomi-other\\node_modules\\electron', root, path.win32), false)
+})
+
 test('rejects a shared top-level node_modules link even when every version matches', () => {
   const { root } = createRepo({ symlinkNodeModules: true })
-  const identity = inspectElectronInstallIdentity(root, { probeRuntimeVersion: () => VERSION })
+  let probeCalls = 0
+  const identity = inspectElectronInstallIdentity(root, {
+    probeRuntimeVersion: () => {
+      probeCalls += 1
+      return VERSION
+    },
+  })
   assert.deepEqual(problemCodes(identity), ['shared-node-modules'])
+  assert.equal(probeCalls, 0, 'shared dependency structures must be rejected before executing their runtime')
   assert.throws(
     () => assertElectronInstallIdentity(root, { probeRuntimeVersion: () => VERSION }),
     /shared-node-modules/,
@@ -69,8 +86,15 @@ test('rejects the observed pnpm link that detours through another worktree', () 
 
 test('rejects a lexical in-worktree package link whose intermediate pnpm store resolves outside', () => {
   const { root } = createRepo({ externalPnpmStore: true })
-  const identity = inspectElectronInstallIdentity(root, { probeRuntimeVersion: () => VERSION })
+  let probeCalls = 0
+  const identity = inspectElectronInstallIdentity(root, {
+    probeRuntimeVersion: () => {
+      probeCalls += 1
+      return VERSION
+    },
+  })
   assert.deepEqual(problemCodes(identity), ['external-electron-package-link'])
+  assert.equal(probeCalls, 0, 'an escaped runtime must never be executed while reporting its structural error')
 })
 
 test('rejects an installed Electron package from an older worktree', () => {
