@@ -38,6 +38,8 @@
 
 唯一例外是 Cloudflare Workers Builds 的静态官网部署。Cloudflare 官方在构建环境固定注入 `WORKERS_CI=1`，而且会在部署前自动安装依赖；这个环境只发布 `marketing/` 静态资源，不开发、测试、打包或运行桌面端。因此根 `postinstall` 在且仅在该官方环境标记为 `1` 时跳过桌面运行时下载与可执行文件探针，避免 Web 构建依赖 Linux 桌面库或 Electron 下载。这个跳过不进入可复用的 `ensureElectronRuntime()`，也不改变 dev/start/build/dist/gates/MCP/Windows 门岗；即使有人手工伪造环境变量，任何桌面入口仍会重新执行身份闸门并对共享、逃逸或错版本安装 fail closed。
 
+Cloudflare 的仓库构建配置必须同时保持 Web-only：Build command 为 `pnpm run build:site`，部署命令继续使用仓库现有的 Wrangler 静态资源入口。不能把桌面 `pnpm run build` 配给 Workers；否则依赖安装虽然会正确跳过 Electron，构建阶段仍会主动进入桌面身份闸门并按设计失败。验收以新提交对应的 Build settings 快照和完整构建日志为准，不以尚未持久化的设置页输入框为准。
+
 参考：Cloudflare Workers Builds 默认环境变量文档明确列出 `WORKERS_CI=1`：<https://developers.cloudflare.com/changelog/post/2025-06-10-default-env-vars/>。
 
 ### 3. 使用前 fail closed
@@ -69,5 +71,6 @@ pnpm 内容仓库仍复用下载和包内容，只隔离每个 worktree 的解�
 - 声明 43 / 包 31、声明 43 / dist 31、声明 43 / 可执行 31 均拒绝；
 - 缺少 `dist` 时安装阶段补齐，普通检查阶段拒绝；
 - `WORKERS_CI=1` 的 Web-only 依赖安装不下载、不探测 Electron；离开该环境后桌面入口仍会安装/验证；
+- Cloudflare 新提交的构建快照使用 `pnpm run build:site`，不会从静态官网部署反向进入桌面构建；
 - 四者均为 43.4.1 时通过；
 - 完整 `pnpm run gates`、Windows workflow contract 和构建通过。
