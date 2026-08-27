@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -6,7 +7,37 @@ function source(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 }
 
+function productionSources(directory: string): Array<[path: string, contents: string]> {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) return productionSources(path)
+    if (!/\.[cm]?[jt]sx?$/.test(entry.name) || entry.name.includes('.test.')) return []
+    return [[path, readFileSync(path, 'utf8')]]
+  })
+}
+
 describe('generation canvas control structure', () => {
+  it('keeps React Flow as the only production generation-canvas renderer', () => {
+    const entry = source('./GenerationCanvas.tsx')
+    const renderer = source('../reactFlow/GenerationCanvasReactFlowViewport.tsx')
+    const generationCanvasRoot = fileURLToPath(new URL('../', import.meta.url))
+    const forbiddenLegacySymbols = [
+      'CanvasEdgeLayer',
+      'generationCanvasEngineFlag',
+      'isReactFlowCanvasEnabled',
+      'LegacyGenerationCanvas',
+    ]
+
+    expect(entry.match(/\.\.\/reactFlow\/GenerationCanvasReactFlow/g)).toHaveLength(1)
+    expect(renderer).toContain("from '@xyflow/react'")
+    expect(renderer).toContain('<ReactFlow')
+    for (const [path, contents] of productionSources(generationCanvasRoot)) {
+      for (const symbol of forbiddenLegacySymbols) {
+        expect(contents, `${relative(generationCanvasRoot, path)} must not restore ${symbol}`).not.toContain(symbol)
+      }
+    }
+  })
+
   it('keeps viewport panning independent from connection cancellation', () => {
     const viewportGestures = source('./useCanvasViewportGestures.ts')
 
@@ -30,14 +61,16 @@ describe('generation canvas control structure', () => {
 
   it('cleans both pan and marquee state on pointer cancellation', () => {
     const pointerInteractions = source('./useCanvasPointerInteractions.ts')
-    const generationCanvas = source('./GenerationCanvas.tsx')
+    const generationCanvas = source('../reactFlow/GenerationCanvasReactFlowViewport.tsx')
 
     expect(pointerInteractions).toContain('onPointerCancel')
-    expect(generationCanvas).toContain('onPointerCancel={pointer.onPointerCancel}')
+    expect(generationCanvas).toContain('onMoveStart={() => {')
+    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, true)')
+    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, false)')
   })
 
   it('replaces the persistent hint with one contextual help entry', () => {
-    const generationCanvas = source('./GenerationCanvas.tsx')
+    const generationCanvas = source('../reactFlow/GenerationCanvasReactFlow.tsx')
     const navigationStack = source('./CanvasNavigationStack.tsx')
     const onboardingState = source('../../onboarding/onboardingState.ts')
     const canvasStyles = source('../styles/generationCanvas.css')
@@ -71,7 +104,7 @@ describe('generation canvas control structure', () => {
   })
 
   it('defers the blank-canvas menu without swallowing native menus inside controls', () => {
-    const generationCanvas = source('./GenerationCanvas.tsx')
+    const generationCanvas = source('../reactFlow/GenerationCanvasReactFlow.tsx')
     const contextMenu = source('./useCanvasContextNodeMenu.ts')
 
     expect(contextMenu).toContain('isCanvasContextMenuPointer(event.button, event.ctrlKey, navigator.platform)')
@@ -90,9 +123,8 @@ describe('generation canvas control structure', () => {
     expect(contextMenu).toContain('active.suppressContextMenu = true')
     expect(contextMenu).toContain('!active?.suppressContextMenu')
     expect(contextMenu).toContain('event.preventDefault()')
-    expect(generationCanvas).toContain(
-      'finishContextMenuPointerUp(event, event.button === 2 && pointer.shouldSuppressContextMenu())',
-    )
+    expect(generationCanvas).toContain('onPaneContextMenu={handlePaneContextMenu}')
+    expect(generationCanvas).toContain("if (event.key === 'Escape') closeMenus()")
   })
 
   it('cancels marquee when an explicit pan chord takes ownership after primary down', () => {
@@ -124,26 +156,31 @@ describe('generation canvas control structure', () => {
   })
 
   it('keeps panning off the React store hot path', () => {
-    const generationCanvas = source('./GenerationCanvas.tsx')
+    const generationCanvas = source('../reactFlow/GenerationCanvasReactFlowViewport.tsx')
 
-    expect(generationCanvas).toContain('will-change-transform')
-    expect(generationCanvas).toContain('useCanvasTransformStoreSync(zoom, offset)')
+    const flowStyles = source('../reactFlow/generationCanvasReactFlow.css')
+    expect(flowStyles).toContain('will-change')
+    expect(generationCanvas).toContain('onMoveEnd')
+    expect(generationCanvas).toContain('rememberCategoryViewport')
     expect(generationCanvas).not.toContain('setCanvasTransform(zoom, offset)')
   })
 
-  it('gates edge labels on selection instead of density plus hover', () => {
-    const edgeLayer = source('./CanvasEdgeLayer.tsx')
+  it('keeps React Flow edge labels explicit and accessible', () => {
+    const edgeRenderer = source('../reactFlow/GenerationCanvasReactFlowNodes.tsx')
 
-    expect(edgeLayer).toContain('selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)')
-    expect(edgeLayer).not.toContain('EDGE_TAG_DENSE_THRESHOLD')
-    expect(edgeLayer).not.toContain('hoveredEdgeId')
+    expect(edgeRenderer).toContain('const showLabel = !readOnly && (menuOpen || (mode !== \'reference\' && (incident || selected)))')
+    expect(edgeRenderer).toContain('{!readOnly ? (')
+    expect(edgeRenderer).toContain("aria-label={t('generationCommon.canvas.edge.modeMenu')}")
+    expect(edgeRenderer).toContain("aria-label={t('generationCommon.canvas.edge.changeMode'")
+    expect(edgeRenderer).not.toContain('EDGE_TAG_DENSE_THRESHOLD')
+    expect(edgeRenderer).not.toContain('hoveredEdgeId')
   })
 
   it('hides every node overlay from one canvas-level dragging flag', () => {
     const dragResize = source('../nodes/useNodeDragResize.ts')
     const selectionDrag = source('./useCanvasSelectionDrag.ts')
     const viewportGestures = source('./useCanvasViewportGestures.ts')
-    const generationCanvas = source('./GenerationCanvas.tsx')
+    const generationCanvas = source('../reactFlow/GenerationCanvasReactFlow.tsx')
     const composer = source('../nodes/NodeGenerationComposer.tsx')
     const floatingToolbar = source('../nodes/NodeFloatingToolbar.tsx')
     const imageStack = source('../nodes/ImageResultStack.tsx')
@@ -153,7 +190,7 @@ describe('generation canvas control structure', () => {
     expect(dragResize).toContain('setCanvasDragging(event.currentTarget, true)')
     expect(selectionDrag).toContain('setCanvasDragging(null, true)')
     expect(viewportGestures).toContain('setCanvasDragging(stageRef.current, true)')
-    expect(generationCanvas).toContain("'group/canvas'")
+    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, true)')
     for (const overlay of [composer, floatingToolbar, imageStack]) {
       expect(overlay).toContain('group-data-[dragging=true]/canvas:invisible')
     }

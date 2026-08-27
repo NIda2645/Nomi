@@ -2,6 +2,10 @@
   --xy-node-border-radius: 0;
 }
 
+.generation-canvas-react-flow:active {
+  cursor: grabbing !important;
+}
+
 .generation-canvas-react-flow .react-flow {
   width: 100%;
   height: 100%;
@@ -13,6 +17,27 @@
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.generation-canvas-react-flow .react-flow__node.selected {
+  z-index: 5 !important;
+}
+
+.generation-canvas-react-flow .react-flow__selection {
+  border: 1px solid var(--nomi-accent);
+  background: color-mix(in srgb, var(--nomi-accent) 10%, transparent);
+}
+
+.generation-canvas-react-flow .react-flow__resize-control {
+  z-index: 7;
+}
+
+.generation-canvas-react-flow .react-flow__viewport {
+  will-change: transform;
+}
+
+.generation-canvas-react-flow .react-flow__nodes {
+  z-index: 2;
 }
 
 .generation-canvas-react-flow .generation-canvas-react-flow__node-shell {
@@ -38,14 +63,23 @@
 }
 
 .generation-canvas-react-flow .generation-canvas-react-flow__handle {
-  width: 12px;
-  height: 12px;
+  width: 24px;
+  height: 24px;
   border: 0;
   border-radius: 999px;
-  background: var(--nomi-accent);
+  background: transparent;
   opacity: 0;
+  pointer-events: all;
   transition: opacity 120ms ease;
-  z-index: 6;
+  z-index: 8;
+}
+
+.generation-canvas-react-flow .generation-canvas-react-flow__handle::after {
+  position: absolute;
+  inset: 25%;
+  border-radius: inherit;
+  background: var(--nomi-accent);
+  content: '';
 }
 
 .generation-canvas-react-flow .generation-canvas-react-flow__node-shell:hover .generation-canvas-react-flow__handle,
@@ -65,6 +99,7 @@
 
 .generation-canvas-react-flow__edge-label {
   position: absolute;
+  z-index: 10;
   border: 1px solid var(--workbench-border);
   border-radius: 999px;
   background: var(--nomi-paper);

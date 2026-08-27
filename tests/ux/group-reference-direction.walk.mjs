@@ -126,7 +126,7 @@ try {
   await win.waitForTimeout(900)
   await screenshotSettled(win, { path: path.join(shotsDir, '01-before.png') })
 
-  const handle = win.locator('[data-node-id="target"] [data-side="left"]').first()
+  const handle = win.locator('.react-flow__node[data-id="target"] .generation-canvas-react-flow__handle[data-side="left"]').last()
   const handleBox = await handle.boundingBox()
   const groupBox = await win.locator('[data-group-id="reference-group"]').first().boundingBox()
   check('目标左输入端和编组框均可见', Boolean(handleBox && groupBox))
@@ -177,7 +177,9 @@ try {
 
   const targetNode = win.locator('[data-node-id="target"]').first()
   const referenceImages = targetNode.locator('.generation-canvas-v2-node__ref-section img')
-  check('目标顶部真实显示两张参考缩略图', await referenceImages.count() === 2, String(await referenceImages.count()))
+  await referenceImages.nth(1).waitFor({ state: 'visible', timeout: 10_000 })
+  const referenceImageCount = await referenceImages.count()
+  check('目标顶部真实显示两张参考缩略图', referenceImageCount === 2, String(referenceImageCount))
   const activeMode = await targetNode.locator('[aria-label="生成方式"] [data-active="true"]').first().textContent().catch(() => '')
   check('界面模式同步显示“改图”', /改图/.test(activeMode || ''), activeMode || '')
   await screenshotSettled(win, { path: path.join(shotsDir, '03-after-connected.png') })
@@ -243,7 +245,9 @@ try {
   })
   check('断开编组连接会撤掉全部展开边', disconnected.edgeCount === 0, JSON.stringify(disconnected))
   check('断开同时清掉编组声明，不会后续复活', disconnected.outputLinks == null, JSON.stringify(disconnected.outputLinks))
-  check('目标顶部参考图随断开实时清空', await referenceImages.count() === 0, String(await referenceImages.count()))
+  await referenceImages.first().waitFor({ state: 'detached', timeout: 10_000 })
+  const disconnectedReferenceImageCount = await referenceImages.count()
+  check('目标顶部参考图随断开实时清空', disconnectedReferenceImageCount === 0, String(disconnectedReferenceImageCount))
   await screenshotSettled(win, { path: path.join(shotsDir, '05-after-disconnected.png') })
 } catch (error) {
   failures.push(String(error))

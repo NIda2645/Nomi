@@ -180,12 +180,13 @@ try {
   await resize(1600, 1000)
   await ensureGenerationWorkspace()
 
-  // ① 左侧栏：8 个入口直接可见，没有省略号，悬浮名称完整。
+  // ① 左侧栏：9 个入口直接可见，没有省略号，悬浮名称完整。
   const toolbar = getWin().locator('.generation-canvas-v2-toolbar').first()
   const expectedTools = [
     ['text', '文本节点'],
     ['image', '图片节点'],
     ['video', '视频节点'],
+    ['clip', '剪辑节点'],
     ['audio', '声音节点'],
     ['model3d', '3D 模型节点'],
     ['whiteboard', '画板节点'],
@@ -193,7 +194,7 @@ try {
     ['scene3d', '3D 场景节点'],
   ]
   const toolButtons = toolbar.locator('[data-node-kind]')
-  assert((await toolButtons.count()) === expectedTools.length, '左侧 8 个节点入口全部直接可见')
+  assert((await toolButtons.count()) === expectedTools.length, '左侧 9 个节点入口全部直接可见')
   assert((await toolbar.locator('[aria-label*="更多"], [aria-label*="省略"]').count()) === 0, '左侧栏没有省略号创建入口')
   for (const [kind, tooltipText] of expectedTools) {
     const button = toolbar.locator(`[data-node-kind="${kind}"]`)

@@ -13,12 +13,17 @@ import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 export type GenerationFlowNodeData = {
   generationNode: GenerationCanvasNode
   readOnly: boolean
+  primarySelection: boolean
 }
 
 export type GenerationFlowNode = FlowNode<GenerationFlowNodeData, 'generation'>
 
 export type GenerationFlowEdgeData = {
   generationEdge: GenerationCanvasEdge
+  sourceNode: GenerationCanvasNode
+  targetNode: GenerationCanvasNode
+  incident: boolean
+  readOnly: boolean
 }
 
 export type GenerationFlowEdge = FlowEdge<GenerationFlowEdgeData, 'generation'>
@@ -44,18 +49,19 @@ export function toGenerationFlowNode(
   node: GenerationCanvasNode,
   selected: boolean,
   readOnly: boolean,
+  primarySelection = selected,
 ): GenerationFlowNode {
   const size = resolveNodeVisualSize(node)
   return {
     id: node.id,
     type: 'generation',
     position: { ...node.position },
-    data: { generationNode: node, readOnly },
+    data: { generationNode: node, readOnly, primarySelection },
     selected,
     draggable: !readOnly,
-    selectable: true,
+    selectable: !readOnly,
     connectable: !readOnly,
-    focusable: true,
+    focusable: !readOnly,
     style: { width: size.width, height: size.height },
     className: 'generation-canvas-react-flow__node',
   }
@@ -65,20 +71,43 @@ export function toGenerationFlowNodes(
   nodes: readonly GenerationCanvasNode[],
   selectedNodeIds: ReadonlySet<string>,
   readOnly: boolean,
+  previousNodes: readonly GenerationFlowNode[] = [],
 ): GenerationFlowNode[] {
-  return nodes.map((node) => toGenerationFlowNode(node, selectedNodeIds.has(node.id), readOnly))
+  const previousById = new Map(previousNodes.map((node) => [node.id, node]))
+  const nextNodes = nodes.map((node) => {
+    const selected = selectedNodeIds.has(node.id)
+    const primarySelection = selected && selectedNodeIds.size === 1
+    const previous = previousById.get(node.id)
+    if (
+      previous?.data.generationNode === node &&
+      previous.data.readOnly === readOnly &&
+      previous.data.primarySelection === primarySelection &&
+      Boolean(previous.selected) === selected
+    ) {
+      return previous
+    }
+    return toGenerationFlowNode(node, selected, readOnly, primarySelection)
+  })
+  return nextNodes.length === previousNodes.length
+    && nextNodes.every((node, index) => node === previousNodes[index])
+    ? previousNodes as GenerationFlowNode[]
+    : nextNodes
 }
 
 export function toGenerationFlowEdge(
   edge: GenerationCanvasEdge,
   nodeById: ReadonlyMap<string, GenerationCanvasNode>,
+  options: {
+    readOnly?: boolean
+    selected?: boolean
+    incident?: boolean
+  } = {},
 ): GenerationFlowEdge {
   const source = nodeById.get(edge.source)
   const target = nodeById.get(edge.target)
-  const handles = source && target ? resolveHandleIds(source, target) : {
-    sourceHandle: FLOW_SOURCE_RIGHT,
-    targetHandle: FLOW_TARGET_LEFT,
-  }
+  if (!source || !target) throw new Error(`Cannot project dangling canvas edge ${edge.id}`)
+  const readOnly = Boolean(options.readOnly)
+  const handles = resolveHandleIds(source, target)
   return {
     id: edge.id,
     type: 'generation',
@@ -86,9 +115,16 @@ export function toGenerationFlowEdge(
     target: edge.target,
     sourceHandle: handles.sourceHandle,
     targetHandle: handles.targetHandle,
-    data: { generationEdge: edge },
-    selectable: true,
-    focusable: true,
+    data: {
+      generationEdge: edge,
+      sourceNode: source,
+      targetNode: target,
+      incident: Boolean(options.incident),
+      readOnly,
+    },
+    selected: Boolean(options.selected),
+    selectable: !readOnly,
+    focusable: !readOnly,
     reconnectable: false,
     interactionWidth: 30,
     className: 'generation-canvas-react-flow__edge',
@@ -98,10 +134,43 @@ export function toGenerationFlowEdge(
 export function toGenerationFlowEdges(
   edges: readonly GenerationCanvasEdge[],
   nodeById: ReadonlyMap<string, GenerationCanvasNode>,
+  options: {
+    readOnly?: boolean
+    selectedEdgeId?: string | null
+    selectedNodeIds?: ReadonlySet<string>
+    previousEdges?: readonly GenerationFlowEdge[]
+  } = {},
 ): GenerationFlowEdge[] {
-  return edges
+  const readOnly = Boolean(options.readOnly)
+  const previousById = new Map((options.previousEdges || []).map((edge) => [edge.id, edge]))
+  const nextEdges = edges
     .filter((edge) => nodeById.has(edge.source) && nodeById.has(edge.target))
-    .map((edge) => toGenerationFlowEdge(edge, nodeById))
+    .map((edge) => {
+      const sourceNode = nodeById.get(edge.source)!
+      const targetNode = nodeById.get(edge.target)!
+      const selected = !readOnly && edge.id === options.selectedEdgeId
+      const incident = Boolean(
+        options.selectedNodeIds?.size === 1
+          && (options.selectedNodeIds.has(edge.source) || options.selectedNodeIds.has(edge.target)),
+      )
+      const previous = previousById.get(edge.id)
+      if (
+        previous?.data?.generationEdge === edge &&
+        previous.data.sourceNode === sourceNode &&
+        previous.data.targetNode === targetNode &&
+        previous.data.readOnly === readOnly &&
+        previous.data.incident === incident &&
+        Boolean(previous.selected) === selected
+      ) {
+        return previous
+      }
+      return toGenerationFlowEdge(edge, nodeById, { readOnly, selected, incident })
+    })
+  return options.previousEdges
+    && nextEdges.length === options.previousEdges.length
+    && nextEdges.every((edge, index) => edge === options.previousEdges?.[index])
+    ? options.previousEdges as GenerationFlowEdge[]
+    : nextEdges
 }
 
 export function collectFlowPositionChanges(

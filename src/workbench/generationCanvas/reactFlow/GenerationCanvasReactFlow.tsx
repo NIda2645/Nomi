@@ -1,22 +1,12 @@
 import React from 'react'
 import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  Handle,
-  NodeResizer,
-  Position,
-  ReactFlow,
   ReactFlowProvider,
-  ViewportPortal,
-  getBezierPath,
   useReactFlow,
-  type EdgeProps,
   type OnNodeDrag,
   type OnEdgesDelete,
   type OnConnectStart,
   type OnConnectEnd,
   type OnNodesChange,
-  type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './generationCanvasReactFlow.css'
@@ -32,13 +22,15 @@ import {
 import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
 import { ASSET_LIBRARY_DRAG_MIME } from '../../assets/assetLibraryDrag'
 import { useWorkbenchStore } from '../../workbenchStore'
+import { clientXToFrame } from '../../timeline/timelineEdit'
+import { adoptGenerationNode } from '../../adoption/adoptGenerationNode'
+import { reportAdoptionOutcome } from '../../adoption/adoptionReceipt'
+import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { getGenerationNodeComponent } from '../nodes/renderRegistry'
-import { getNodeSizeBounds, resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { findTimelineDropTarget, resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { getCanvasGroupBoxes } from '../components/generationCanvasGeometry'
-import { GroupFrameList } from '../components/GroupFrame'
 import { useCanvasSelectionDrag } from '../components/useCanvasSelectionDrag'
 import { useCanvasGroupActions } from '../components/useCanvasGroupActions'
 import { useCanvasShortcuts } from '../components/useCanvasShortcuts'
@@ -48,22 +40,14 @@ import { useCanvasBatchDockVisibility } from '../components/useCanvasBatchDockVi
 import { useCanvasFitSignal } from '../components/useCanvasFitSignal'
 import { useTidyCanvas } from '../components/useTidyCanvas'
 import { useAutoFitOnLoad } from '../components/useAutoFitOnLoad'
-import { CanvasNavigationStack } from '../components/CanvasNavigationStack'
-import { CanvasSelectionToolbar } from '../components/CanvasSelectionToolbar'
-import { CanvasBatchGenerateDock } from '../components/CanvasBatchGenerateDock'
-import { SelectionPromptSaveController } from '../components/SelectionPromptSaveController'
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
-import NodeContextMenu from '../components/NodeContextMenu'
-import { NodeAddMenu } from '../components/CanvasToolbar'
 import { buildCanvasMenuActions } from '../components/useCanvasMenuActions'
-import { hasClipboardContent } from '../store/canvasClipboard'
 import { getSelectedBounds } from '../components/generationCanvasGeometry'
 import { FOCUS_GENERATION_NODE_EVENT } from '../nodes/nodeSizing'
-import { availableEdgeModes } from '../components/edgeModeMenu'
 import { hasPendingScene3DCameraMoveCapture, hasPendingScene3DStagingCapture } from '../components/scene3dCaptureHostActivation'
 import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
-import { CanvasEmptyState } from '../components/CanvasEmptyState'
 import CanvasToolbar from '../components/CanvasToolbar'
+import { setCanvasDragging } from '../components/canvasDraggingFlag'
 import {
   BROWSER_ASSET_DRAG_MIME,
   LEGACY_BROWSER_ASSET_DRAG_MIME,
@@ -71,15 +55,16 @@ import {
   importBrowserAssetsToGenerationCanvas,
 } from '../components/canvasStageDrop'
 import {
-  canvasViewportFromFlow,
   collectFlowPositionChanges,
+  collectFlowSelectionChanges,
   flowViewportFromCanvas,
-  toGenerationFlowEdges,
-  toGenerationFlowNodes,
   type GenerationFlowEdge,
   type GenerationFlowNode,
 } from './generationCanvasReactFlowAdapter'
-import { GenerationFlowNodeScope } from './generationFlowNodeContext'
+import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOverlays'
+import { GenerationCanvasReactFlowViewport } from './GenerationCanvasReactFlowViewport'
+import { useGenerationCanvasReactFlowPointer } from './useGenerationCanvasReactFlowPointer'
+import { useGenerationCanvasReactFlowProjection } from './useGenerationCanvasReactFlowProjection'
 
 const StagingCaptureHost = lazyWithChunkBoundary('3D 站位捕获', () =>
   import('../nodes/scene3d/StagingCaptureHost').then((module) => ({ default: module.StagingCaptureHost })),
@@ -87,146 +72,14 @@ const StagingCaptureHost = lazyWithChunkBoundary('3D 站位捕获', () =>
 const CameraMoveCaptureHost = lazyWithChunkBoundary('3D 运镜捕获', () =>
   import('../nodes/scene3d/CameraMoveCaptureHost').then((module) => ({ default: module.CameraMoveCaptureHost })),
 )
-const BatchPlanOverlay = lazyWithChunkBoundary('批量生成面板', () =>
-  import('../components/BatchPlanOverlay').then((module) => ({ default: module.BatchPlanOverlay })),
-)
-
 type GenerationCanvasReactFlowProps = { readOnly?: boolean }
-
-function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationFlowNode>): JSX.Element {
-  const node = data.generationNode
-  const NodeComponent = getGenerationNodeComponent(node.kind)
-  const size = resolveNodeVisualSize(node)
-  const bounds = getNodeSizeBounds(node.kind)
-  const updateNode = useGenerationCanvasStore((state) => state.updateNode)
-  const captureHistory = useGenerationCanvasStore((state) => state.captureHistory)
-  const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
-  return (
-    <div className="generation-canvas-react-flow__node-shell" style={{ width: size.width, height: size.height }}>
-      <NodeResizer
-        isVisible={selected && !data.readOnly}
-        minWidth={bounds.minWidth}
-        minHeight={bounds.minHeight}
-        maxWidth={bounds.maxWidth}
-        maxHeight={bounds.maxHeight}
-        color="var(--nomi-accent)"
-        onResizeStart={() => captureHistory()}
-        onResize={(_event, params) => {
-          updateNode(node.id, {
-            position: { x: params.x, y: params.y },
-            size: { width: params.width, height: params.height },
-            meta: { ...(node.meta || {}), userResized: true, previewHeight: params.height },
-          }, { persist: false, emit: false, history: false })
-        }}
-        onResizeEnd={() => {
-          const latest = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === node.id)
-          if (latest) {
-            emitCanvasGesture([{
-              type: 'canvas.node.updated',
-              payload: {
-                nodeId: node.id,
-                patch: { position: latest.position, size: latest.size, meta: latest.meta },
-              },
-            }])
-          }
-          commitPersistedChange()
-        }}
-      />
-      <Handle id="target-left" type="target" position={Position.Left} className="generation-canvas-react-flow__handle" />
-      <Handle id="target-right" type="target" position={Position.Right} className="generation-canvas-react-flow__handle" />
-      <GenerationFlowNodeScope>
-        <NodeComponent node={node} selected={selected} readOnly={data.readOnly} />
-      </GenerationFlowNodeScope>
-      <Handle id="source-left" type="source" position={Position.Left} className="generation-canvas-react-flow__handle" />
-      <Handle id="source-right" type="source" position={Position.Right} className="generation-canvas-react-flow__handle" />
-    </div>
-  )
-}
-
-function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<GenerationFlowEdge>): JSX.Element {
-  const { t } = useTranslation()
-  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
-  const edge = data?.generationEdge
-  const [menuOpen, setMenuOpen] = React.useState(false)
-  const updateEdgeMode = useGenerationCanvasStore((state) => state.updateEdgeMode)
-  const disconnectEdge = useGenerationCanvasStore((state) => state.disconnectEdge)
-  const nodes = useGenerationCanvasStore((state) => state.nodes)
-  const source = edge ? nodes.find((node) => node.id === edge.source) : undefined
-  const target = edge ? nodes.find((node) => node.id === edge.target) : undefined
-  const modes = source && target ? availableEdgeModes(source, target) : []
-  return (
-    <>
-      <BaseEdge
-        id={id}
-        path={path}
-        interactionWidth={30}
-        className={cn(selected ? 'generation-canvas-react-flow__edge--selected' : undefined)}
-      />
-      {edge?.mode && edge.mode !== 'reference' ? (
-        <EdgeLabelRenderer>
-          <div
-            className="generation-canvas-react-flow__edge-label"
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-          >
-            <button
-              type="button"
-              className="generation-canvas-react-flow__edge-label-button"
-              aria-haspopup="menu"
-              aria-expanded={selected && menuOpen}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation()
-                if (selected) setMenuOpen((open) => !open)
-              }}
-            >
-              {t(`generationCommon.canvas.edge.modes.${edge.mode}`)}
-            </button>
-            {selected && menuOpen ? (
-              <div className="generation-canvas-react-flow__edge-menu" role="menu">
-                {modes.map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={mode === edge.mode}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      updateEdgeMode(edge.id, mode)
-                      setMenuOpen(false)
-                    }}
-                  >
-                    {t(`generationCommon.canvas.edge.modes.${mode}`)}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="generation-canvas-react-flow__edge-menu-delete"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    disconnectEdge(edge.id)
-                    setMenuOpen(false)
-                  }}
-                >
-                  {t('generationCommon.canvas.edge.disconnectAction')}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </EdgeLabelRenderer>
-      ) : null}
-    </>
-  )
-}
-
-const nodeTypes = { generation: GenerationFlowNodeView }
-const edgeTypes = { generation: GenerationFlowEdgeView }
 
 function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasReactFlowProps): JSX.Element {
   const { t } = useTranslation()
   const flow = useReactFlow<GenerationFlowNode, GenerationFlowEdge>()
   const hostRef = React.useRef<HTMLDivElement>(null)
-  const didMountSelectionRef = React.useRef(false)
   const draggingRef = React.useRef(false)
+  const dragStartPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map())
   const connectionStartRef = React.useRef<{ nodeId: string; side: 'left' | 'right' } | null>(null)
   const pendingFocusNodeRef = React.useRef<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null)
@@ -296,16 +149,13 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     () => groups.filter((group) => group.categoryId === activeCategoryId),
     [activeCategoryId, groups],
   )
-  const selectedSet = React.useMemo(() => new Set(selectedNodeIds), [selectedNodeIds])
-  const nodeById = React.useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
-  const flowNodes = React.useMemo(
-    () => toGenerationFlowNodes(nodes, selectedSet, readOnly),
-    [nodes, readOnly, selectedSet],
-  )
-  const flowEdges = React.useMemo(
-    () => toGenerationFlowEdges(edges, nodeById).map((edge) => ({ ...edge, selected: edge.id === selectedEdgeId })),
-    [edges, nodeById, selectedEdgeId],
-  )
+  const { selectedSet, nodeById, flowNodes, flowEdges } = useGenerationCanvasReactFlowProjection({
+    nodes,
+    edges,
+    selectedNodeIds,
+    selectedEdgeId,
+    readOnly,
+  })
   const groupBoxes = React.useMemo(() => getCanvasGroupBoxes(visibleGroups, nodes), [nodes, visibleGroups])
   const selectedGroupIds = React.useMemo(() => {
     return visibleGroups
@@ -320,10 +170,38 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     () => flowViewportFromCanvas(categoryViewports[activeCategoryId] || { zoom: 1, offset: { x: 0, y: 0 } }),
     [activeCategoryId, categoryViewports],
   )
-  const zoomRef = React.useRef(viewport.zoom)
-  const offsetRef = React.useRef({ x: viewport.x, y: viewport.y })
-  zoomRef.current = viewport.zoom
-  offsetRef.current = { x: viewport.x, y: viewport.y }
+  const [liveViewport, setLiveViewport] = React.useState(viewport)
+  const zoomRef = React.useRef(liveViewport.zoom)
+  const offsetRef = React.useRef({ x: liveViewport.x, y: liveViewport.y })
+  const appliedViewportKeyRef = React.useRef(`${activeCategoryId}:${viewport.x}:${viewport.y}:${viewport.zoom}`)
+  zoomRef.current = liveViewport.zoom
+  offsetRef.current = { x: liveViewport.x, y: liveViewport.y }
+
+  React.useEffect(() => {
+    const nextKey = `${activeCategoryId}:${viewport.x}:${viewport.y}:${viewport.zoom}`
+    if (appliedViewportKeyRef.current === nextKey) return
+    appliedViewportKeyRef.current = nextKey
+    setLiveViewport(viewport)
+    void flow.setViewport(viewport, { duration: 0 })
+  }, [activeCategoryId, flow, viewport])
+
+  const {
+    canvasPanMovedRef,
+    canvasPointerStartRef,
+    handleCanvasPointerDown,
+    handleCanvasPointerDownCapture,
+    handleCanvasPointerMove,
+    handleCanvasPointerEnd,
+    handleCanvasContextMenuCapture,
+  } = useGenerationCanvasReactFlowPointer({
+    readOnly,
+    hostRef,
+    flow,
+    activeCategoryId,
+    rememberCategoryViewport,
+    setLiveViewport,
+  })
+
 
   React.useEffect(() => {
     const handleFocusNode = (event: Event) => {
@@ -372,6 +250,25 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     markReady()
   }, [markReady])
 
+  // Keep the canvas DOM contract used by node overlays and walkthroughs while
+  // React Flow owns the actual viewport transform and edge rendering layers.
+  React.useEffect(() => {
+    const host = hostRef.current
+    if (!host) return undefined
+    const aliases: Array<[string, string]> = [
+      ['.react-flow__viewport', 'generation-canvas-v2__canvas'],
+      ['.react-flow__edges', 'generation-canvas-v2__edges'],
+      ['.react-flow__nodes', 'generation-canvas-v2__nodes'],
+    ]
+    const applyAliases = () => {
+      for (const [selector, className] of aliases) host.querySelector(selector)?.classList.add(className)
+    }
+    applyAliases()
+    const observer = new MutationObserver(applyAliases)
+    observer.observe(host, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
+
   const { handleGroupFramePointerDown } = useCanvasSelectionDrag({
     readOnly,
     selectedNodeCount: selectedNodeIds.length,
@@ -393,11 +290,15 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     selectedGroupIds,
     selectedNodeIds,
   })
+  const handleConnectToGroupFromFlow = React.useCallback((groupId: string) => {
+    handleConnectToGroup(groupId)
+    setConnectionCreateMenu(null)
+  }, [handleConnectToGroup])
 
   const getInsertionPosition = React.useCallback(() => {
     const rect = hostRef.current?.getBoundingClientRect()
     if (!rect) return { x: 240, y: 240 }
-    return flow.screenToFlowPosition({ x: rect.left + rect.width * 0.4, y: rect.top + rect.height * 0.3 })
+    return flow.screenToFlowPosition({ x: rect.left + rect.width * 0.38, y: rect.top + rect.height * 0.28 })
   }, [flow])
   const fitView = React.useCallback((animate = false) => {
     if (!nodes.length) return
@@ -521,6 +422,10 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     }
   }, [cancelConnection, connectionCreateMenu, contextNodeMenu])
 
+  React.useEffect(() => {
+    if (connectionCreateMenu && !pendingConnectionSourceId) setConnectionCreateMenu(null)
+  }, [connectionCreateMenu, pendingConnectionSourceId])
+
   const { handleAddContextNode, handleNodeContextAction, handleAddConnectedNode } = buildCanvasMenuActions({
     activeCategoryId,
     contextNodeMenu,
@@ -540,20 +445,37 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     for (const change of collectFlowPositionChanges(changes)) {
       moveNode(change.nodeId, change.position, { persist: false, emit: false })
     }
-  }, [moveNode])
 
-  const handleSelectionChange = React.useCallback(({ nodes: nextNodes, edges: nextEdges }: { nodes: GenerationFlowNode[]; edges: GenerationFlowEdge[] }) => {
-    if (!didMountSelectionRef.current) {
-      didMountSelectionRef.current = true
-      return
+    const selectionChanges = collectFlowSelectionChanges(changes)
+    if (selectionChanges.length === 0) return
+    const selected = new Set(useGenerationCanvasStore.getState().selectedNodeIds)
+    for (const change of selectionChanges) {
+      if (change.selected) selected.add(change.nodeId)
+      else selected.delete(change.nodeId)
     }
-    selectNodes(nextNodes.map((node) => node.id))
-    setSelectedEdgeId(nextEdges[0]?.id ?? null)
-  }, [selectNodes])
+    const nextSelection = [...selected]
+    const currentSelection = useGenerationCanvasStore.getState().selectedNodeIds
+    if (
+      nextSelection.length === currentSelection.length &&
+      nextSelection.every((nodeId, index) => nodeId === currentSelection[index])
+    ) return
+    selectNodes(nextSelection)
+  }, [moveNode, selectNodes])
+
+  // React Flow's selection store is internal while the persisted selection lives
+  // in Zustand. Syncing on every internal selection notification causes a
+  // feedback loop when controlled node props are replaced after insertion.
+  // Clicks are handled explicitly above; marquee selection is committed once at
+  // the end of the gesture.
+  const handleSelectionEnd = React.useCallback(() => {
+    if (readOnly) return
+    selectNodes(flow.getNodes().filter((node) => node.selected).map((node) => node.id))
+  }, [flow, readOnly, selectNodes])
 
   const handleEdgeClick = React.useCallback((_event: React.MouseEvent, edge: GenerationFlowEdge) => {
+    if (readOnly) return
     setSelectedEdgeId(edge.id)
-  }, [])
+  }, [readOnly])
 
   const handleEdgesDelete: OnEdgesDelete<GenerationFlowEdge> = React.useCallback((deletedEdges) => {
     if (readOnly) return
@@ -567,15 +489,45 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     setSelectedEdgeId(null)
   }, [disconnectEdge, readOnly, selectedEdgeId])
 
-  const handleNodeDragStart = React.useCallback(() => {
+  const handleNodeDragStart: OnNodeDrag<GenerationFlowNode> = React.useCallback((_event, draggedNode) => {
     if (readOnly) return
     draggingRef.current = true
+    setCanvasDragging(hostRef.current, true)
     captureHistory()
-  }, [captureHistory, readOnly])
+    const state = useGenerationCanvasStore.getState()
+    const draggedIds = selectedSet.has(draggedNode.id) ? selectedNodeIds : [draggedNode.id]
+    dragStartPositionsRef.current = new Map(
+      draggedIds.flatMap((nodeId) => {
+        const node = state.nodes.find((candidate) => candidate.id === nodeId)
+        return node ? [[nodeId, { ...node.position }] as const] : []
+      }),
+    )
+  }, [captureHistory, readOnly, selectedNodeIds, selectedSet])
 
-  const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((_event, _node, draggedNodes) => {
+  const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode, draggedNodes) => {
     if (readOnly || !draggingRef.current) return
     draggingRef.current = false
+    setCanvasDragging(hostRef.current, false)
+    const pointer = 'changedTouches' in event ? event.changedTouches[0] : event
+    const timelineDropTarget = pointer ? findTimelineDropTarget(pointer.clientX, pointer.clientY) : null
+    if (timelineDropTarget) {
+      const liveNode = useGenerationCanvasStore.getState().nodes.find((node) => node.id === draggedNode.id)
+      if (liveNode?.result?.url) {
+        const timeline = useWorkbenchStore.getState().timeline
+        const rect = timelineDropTarget.getBoundingClientRect()
+        const startFrame = clientXToFrame(pointer.clientX, rect.left, timeline.scale)
+        for (const [nodeId, originalPosition] of dragStartPositionsRef.current) {
+          moveNode(nodeId, originalPosition, { persist: false, emit: false })
+        }
+        commitPersistedChange()
+        void adoptGenerationNode(liveNode, { placement: { kind: 'frame', startFrame } }).then((outcome) => {
+          reportAdoptionOutcome(outcome, { revealTimeline: false })
+        })
+        dragStartPositionsRef.current.clear()
+        return
+      }
+      toast(t('generationCommon.node.generateBeforeTimeline'), 'info')
+    }
     const state = useGenerationCanvasStore.getState()
     const movedEvents = draggedNodes
       .map((flowNode) => state.nodes.find((node) => node.id === flowNode.id))
@@ -583,7 +535,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       .map((node) => ({ type: 'canvas.node.moved' as const, payload: { nodeId: node.id, position: node.position } }))
     if (movedEvents.length) emitCanvasGesture(movedEvents)
     commitPersistedChange()
-  }, [commitPersistedChange, readOnly])
+    dragStartPositionsRef.current.clear()
+  }, [commitPersistedChange, moveNode, readOnly, t])
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return
@@ -593,8 +546,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [connectToNode, readOnly, startConnection])
 
   const handleConnectStart: OnConnectStart = React.useCallback((_event, params) => {
-    if (readOnly || !params.nodeId || params.handleType !== 'source') return
-    const side = params.handleId === 'source-left' ? 'left' : 'right'
+    if (readOnly || !params.nodeId || !params.handleType) return
+    const side = params.handleId?.endsWith('-left') ? 'left' : 'right'
     connectionStartRef.current = { nodeId: params.nodeId, side }
     startConnection(params.nodeId, side)
   }, [readOnly, startConnection])
@@ -616,6 +569,20 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       cancelConnection()
       return
     }
+    const targetNodeId = document.elementsFromPoint(point.clientX, point.clientY)
+      .map((element) => element.closest<HTMLElement>('[data-node-id]')?.dataset.nodeId || null)
+      .find((nodeId): nodeId is string => Boolean(nodeId && nodeId !== started.nodeId && nodeById.has(nodeId)))
+    if (targetNodeId) {
+      completeNodeConnection(targetNodeId)
+      return
+    }
+    const targetGroupId = document.elementsFromPoint(point.clientX, point.clientY)
+      .map((element) => element.closest<HTMLElement>('[data-group-id]')?.dataset.groupId || null)
+      .find((groupId): groupId is string => Boolean(groupId && visibleGroups.some((group) => group.id === groupId)))
+    if (targetGroupId) {
+      handleConnectToGroup(targetGroupId)
+      return
+    }
     const rect = hostRef.current?.getBoundingClientRect()
     if (!rect) {
       cancelConnection()
@@ -632,7 +599,30 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       canvasX: Math.round(canvasPoint.x),
       canvasY: Math.round(canvasPoint.y),
     })
-  }, [cancelConnection, getCanvasPointFromClientPoint, nodeById, readOnly])
+  }, [cancelConnection, getCanvasPointFromClientPoint, handleConnectToGroup, nodeById, readOnly, visibleGroups])
+
+  const handlePendingGroupPointerUp = React.useCallback((event: React.PointerEvent<HTMLElement> | React.MouseEvent<HTMLElement> | PointerEvent | MouseEvent) => {
+    if (readOnly || !pendingConnectionSourceId) return
+    const groupId = document.elementsFromPoint(event.clientX, event.clientY)
+      .map((element) => element.closest<HTMLElement>('[data-group-id]')?.dataset.groupId || null)
+      .find((candidate): candidate is string => Boolean(candidate && visibleGroups.some((group) => group.id === candidate)))
+    if (!groupId) return
+    event.preventDefault()
+    event.stopPropagation()
+    connectionStartRef.current = null
+    handleConnectToGroup(groupId)
+  }, [handleConnectToGroup, pendingConnectionSourceId, readOnly, visibleGroups])
+
+  React.useEffect(() => {
+    const handleNativePointerUp = (event: PointerEvent) => handlePendingGroupPointerUp(event)
+    const handleNativeMouseUp = (event: MouseEvent) => handlePendingGroupPointerUp(event)
+    window.addEventListener('pointerup', handleNativePointerUp)
+    window.addEventListener('mouseup', handleNativeMouseUp)
+    return () => {
+      window.removeEventListener('pointerup', handleNativePointerUp)
+      window.removeEventListener('mouseup', handleNativeMouseUp)
+    }
+  }, [handlePendingGroupPointerUp])
 
   const handlePaneClick = React.useCallback(() => {
     if (!readOnly) clearSelection()
@@ -675,22 +665,31 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [readOnly])
 
   const handleDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    const currentViewport = flow.getViewport()
     handleCanvasStageDrop(event, {
       readOnly,
-      offset: { x: viewport.x, y: viewport.y },
-      zoom: viewport.zoom,
+      offset: { x: currentViewport.x, y: currentViewport.y },
+      zoom: currentViewport.zoom,
       activeCategoryId,
     })
-  }, [activeCategoryId, readOnly, viewport.x, viewport.y, viewport.zoom])
+  }, [activeCategoryId, flow, readOnly])
 
   return (
     <section
       ref={hostRef}
-      className={cn('generation-canvas-react-flow', 'relative w-full h-full min-w-0 min-h-0 bg-workbench-bg text-workbench-ink')}
+      className={cn('generation-canvas-react-flow', 'generation-canvas-v2__stage', 'group/canvas', 'relative w-full h-full min-w-0 min-h-0 bg-workbench-bg text-workbench-ink')}
       aria-label={t('generationCommon.canvas.aria')}
       data-ready={isReady ? 'true' : undefined}
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
+      onPointerDownCapture={handleCanvasPointerDownCapture}
+      onPointerUpCapture={handlePendingGroupPointerUp}
+      onMouseUpCapture={handlePendingGroupPointerUp}
+      onContextMenuCapture={handleCanvasContextMenuCapture}
+      onPointerDown={handleCanvasPointerDown}
+      onPointerMove={handleCanvasPointerMove}
+      onPointerUp={handleCanvasPointerEnd}
+      onPointerCancel={handleCanvasPointerEnd}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
@@ -701,23 +700,15 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         </React.Suspense>
       ) : null}
       {!readOnly ? <CanvasToolbar getInsertionPosition={getInsertionPosition} categoryId={activeCategoryId} /> : null}
-      <ReactFlow
-        nodes={flowNodes}
-        edges={flowEdges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+      <GenerationCanvasReactFlowViewport
+        flowNodes={flowNodes}
+        flowEdges={flowEdges}
         viewport={viewport}
-        nodesDraggable={!readOnly}
-        nodesConnectable={!readOnly}
-        elementsSelectable
-        panOnDrag={[1, 2]}
-        selectionOnDrag
-        deleteKeyCode={null}
-        fitView={false}
+        readOnly={readOnly}
         onNodesChange={handleNodesChange}
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
-        onSelectionChange={handleSelectionChange}
+        onSelectionEnd={handleSelectionEnd}
         onEdgeClick={handleEdgeClick}
         onEdgesDelete={handleEdgesDelete}
         onNodeContextMenu={handleNodeContextMenu}
@@ -726,89 +717,56 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         onConnect={handleConnect}
         onConnectStart={handleConnectStart}
         onConnectEnd={handleConnectEnd}
-        onMoveEnd={(_event, nextViewport) => rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(nextViewport))}
-        proOptions={{ hideAttribution: true }}
-      >
-        <ViewportPortal>
-          <GroupFrameList
-            boxes={groupBoxes}
-            onPointerDown={handleGroupFramePointerDown}
-            pendingConnection={Boolean(pendingConnectionSourceId)}
-            pendingConnectionSide={pendingConnectionSourceSide}
-            onConnectToGroup={handleConnectToGroup}
-          />
-        </ViewportPortal>
-        <ViewportPortal>
-          {selectedBounds && selectedNodeIds.length > 1 && !readOnly ? (
-            <CanvasSelectionToolbar
-              selectedCount={selectedNodeIds.length}
-              selectedGroupCount={selectedGroupIds.length}
-              transform={`translate(${Math.round(selectedBounds.minX + selectedBounds.width / 2)}px, ${Math.round(selectedBounds.minY - 16 - 58)}px) translateX(-50%)`}
-              eligibleCount={production.eligibleIds.length}
-              executionGroups={production.executionGroups}
-              concurrency={production.concurrency}
-              contactSheetCount={contactSheetCount}
-              onConcurrencyChange={production.setConcurrency}
-              onGenerate={production.generate}
-              onApplyModel={production.applyModel}
-              onGroupSelectedNodes={handleGroupSelectedNodes}
-              onUngroupSelectedNodes={handleUngroupSelectedNodes}
-              onBuildContactSheet={handleBuildContactSheet}
-              onClearSelection={clearSelection}
-            />
-          ) : null}
-        </ViewportPortal>
-      </ReactFlow>
-      {screenshotOverlay}
-      {nodes.length === 0 ? (
-        <CanvasEmptyState
-          activeCategoryId={activeCategoryId}
-          onCreate={() => useGenerationCanvasStore.getState().addNode({ kind: 'image', position: { x: 240, y: 240 }, categoryId: activeCategoryId, select: true })}
-        />
-      ) : null}
-      {contextNodeMenu?.nodeId ? (
-        <NodeContextMenu
-          className="generation-canvas-react-flow__node-context-menu z-[20]"
-          style={{ left: contextNodeMenu.stageX, top: contextNodeMenu.stageY }}
-          canPaste={hasClipboardContent()}
-          canGroup={selectedNodeIds.length >= 2}
-          onPointerDown={(event) => event.stopPropagation()}
-          onContextMenu={(event) => event.preventDefault()}
-          onAction={handleNodeContextAction}
-        />
-      ) : contextNodeMenu ? (
-        <NodeAddMenu
-          className="generation-canvas-react-flow__context-node-menu z-[20]"
-          style={{ left: contextNodeMenu.stageX, top: contextNodeMenu.stageY }}
-          onPointerDown={(event) => event.stopPropagation()}
-          onContextMenu={(event) => event.preventDefault()}
-          onAddNode={handleAddContextNode}
-        />
-      ) : null}
-      {connectionCreateMenu ? (
-        <NodeAddMenu
-          className="generation-canvas-react-flow__connection-create-menu z-[20] left-auto w-[132px]"
-          style={{ left: connectionCreateMenu.stageX, top: connectionCreateMenu.stageY }}
-          kinds={['image', 'video']}
-          onPointerDown={(event) => event.stopPropagation()}
-          onContextMenu={(event) => event.preventDefault()}
-          onAddNode={handleAddConnectedNode}
-        />
-      ) : null}
-      {batchDock.visible ? (
-        <CanvasBatchGenerateDock
-          {...production}
-          timelineCollapsed={timelineCollapsed}
-          onDismiss={batchDock.dismiss}
-        />
-      ) : null}
-      <CanvasNavigationStack
+        canvasPointerStartRef={canvasPointerStartRef}
+        canvasPanMovedRef={canvasPanMovedRef}
+        setCanvasDragging={setCanvasDragging}
+        hostRef={hostRef}
+        setLiveViewport={setLiveViewport}
+        activeCategoryId={activeCategoryId}
+        rememberCategoryViewport={rememberCategoryViewport}
+        groupBoxes={groupBoxes}
+        onGroupFramePointerDown={handleGroupFramePointerDown}
+        pendingConnection={Boolean(pendingConnectionSourceId)}
+        pendingConnectionSide={pendingConnectionSourceSide}
+        onConnectToGroup={handleConnectToGroupFromFlow}
+        selectedBounds={selectedBounds}
+        selectedNodeIds={selectedNodeIds}
+        selectedGroupIds={selectedGroupIds}
+        production={production}
+        contactSheetCount={contactSheetCount}
+        onGroupSelectedNodes={handleGroupSelectedNodes}
+        onUngroupSelectedNodes={handleUngroupSelectedNodes}
+        onBuildContactSheet={handleBuildContactSheet}
+        onClearSelection={clearSelection}
+      />
+      <GenerationCanvasReactFlowOverlays
         readOnly={readOnly}
+        activeCategoryId={activeCategoryId}
         nodes={nodes}
-        selectedIds={selectedSet}
-        zoom={viewport.zoom}
-        zoomPercent={Math.round(viewport.zoom * 100)}
-        offset={{ x: viewport.x, y: viewport.y }}
+        allNodes={allNodes}
+        selectedNodeIds={selectedNodeIds}
+        selectedSet={selectedSet}
+        screenshotOverlay={screenshotOverlay}
+        contextNodeMenu={contextNodeMenu}
+        connectionCreateMenu={connectionCreateMenu}
+        onCreateEmpty={() =>
+          useGenerationCanvasStore.getState().addNode({
+            kind: 'image',
+            position: { x: 240, y: 240 },
+            categoryId: activeCategoryId,
+            select: true,
+          })
+        }
+        onNodeContextAction={handleNodeContextAction}
+        onAddContextNode={handleAddContextNode}
+        onAddConnectedNode={handleAddConnectedNode}
+        batchDock={batchDock}
+        production={production}
+        timelineCollapsed={timelineCollapsed}
+        hasBatchPlanPreview={hasBatchPlanPreview}
+        zoom={liveViewport.zoom}
+        zoomPercent={Math.round(liveViewport.zoom * 100)}
+        offset={{ x: liveViewport.x, y: liveViewport.y }}
         stageSize={stageSize}
         minimapVisible={minimapVisible}
         onToggleMinimap={() => setMinimapVisible((visible) => !visible)}
@@ -817,15 +775,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         onResetView={() => void flow.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 200 })}
         onTidy={() => tidy(stageSize.width / Math.max(1, stageSize.height))}
         onZoomTo={zoomTo}
-        batchPlanOverlay={
-          hasBatchPlanPreview ? (
-            <React.Suspense fallback={null}>
-              <BatchPlanOverlay />
-            </React.Suspense>
-          ) : null
-        }
       />
-      <SelectionPromptSaveController nodes={allNodes} disabled={readOnly} />
     </section>
   )
 }
