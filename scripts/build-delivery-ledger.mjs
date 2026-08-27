@@ -77,6 +77,17 @@ function section(title, rows, emptyNote) {
   return lines
 }
 
+function monthBuckets(documents) {
+  // 只做「按月计数」，不倾倒 400 行清单——目的是给一个分批分诊的抓手。
+  const counts = new Map()
+  for (const doc of documents) {
+    const match = /(\d{4})-(\d{2})-\d{2}/.exec(path.basename(doc.relativePath))
+    const key = match ? `${match[1]}-${match[2]}` : '无日期'
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  return [...counts.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+}
+
 function render(documents) {
   const byStatus = (list) => documents
     .filter((doc) => list.includes(doc.status))
@@ -115,6 +126,17 @@ function render(documents) {
     `- **未登记存量**：${unregistered.length} 篇。这些是历史文件，**有意不进现役区**——其中很多离得很远、或已经不需要做。`,
     '  想分诊就挑一篇加状态标记；不分诊也不会有人催。`check:doc-status` 只拦**新增**文档缺标记，不逼你清存量。',
     '',
+    ...(unregistered.length === 0 ? [] : [
+      '<details>',
+      `<summary>按月份看这 ${unregistered.length} 篇存量（点开，便于分批分诊）</summary>`,
+      '',
+      '| 月份 | 篇数 |',
+      '|---|---:|',
+      ...monthBuckets(unregistered).map(([month, count]) => `| ${month} | ${count} |`),
+      '',
+      '</details>',
+      '',
+    ]),
     `- 合计扫描：${documents.length} 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）`,
     '',
     '---',
