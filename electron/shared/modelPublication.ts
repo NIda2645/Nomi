@@ -99,6 +99,7 @@ export function derivePublishedExecution(
       }
     }
   }
+  if (activeRevision && model.kind === "text") modes.add("chat");
 
   if (!adapter && model.kind === "text") modes.add("chat");
   const publishedModes = supported.filter((taskKind) => modes.has(taskKind));

@@ -31,4 +31,10 @@ describe("published execution contract", () => {
       meta: { adapter: { state: "failed", activeRevision: "revision-good", modes: [] } },
     }))).toEqual({ published: true, publishedModes: [] });
   });
+
+  it("keeps an active text revision on its direct chat path while repair modes are temporarily empty", () => {
+    expect(derivePublishedExecution(model("text", {
+      meta: { adapter: { state: "testing", activeRevision: "revision-good", modes: [] } },
+    }))).toEqual({ published: true, publishedModes: ["chat"] });
+  });
 });
