@@ -1,5 +1,6 @@
 import { ARCHETYPE_MODE_MANIFEST } from "../catalog/archetypeModes.generated";
 import { archetypeIdForModel } from "../catalog/archetypeIdentity";
+import { parseCustomCapabilityContract } from "./customCapabilityContract";
 import type { BillingModelKind, ProfileKind } from "../catalog/types";
 
 export type CapabilityModeModel = {
@@ -20,7 +21,6 @@ export type CapabilityModeResolution =
   | { state: "absent" }
   | { state: "invalid-explicit" };
 
-const CONTRACT_KINDS = new Set<BillingModelKind>(["image", "video", "audio", "model3d"]);
 const TASK_KINDS_BY_MODEL_KIND: Record<Exclude<BillingModelKind, "text">, ReadonlySet<ProfileKind>> = {
   image: new Set(["text_to_image", "image_edit"]),
   video: new Set(["text_to_video", "image_to_video"]),
@@ -45,11 +45,6 @@ function trim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function validModeId(value: string): boolean {
-  return value.length <= 64 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value) &&
-    !value.split(".").some((segment) => ["__proto__", "prototype", "constructor"].includes(segment.toLowerCase()));
-}
-
 function explicitArchetypeId(meta: unknown): string {
   const metadata = record(meta);
   if (!metadata) return "";
@@ -64,36 +59,17 @@ function hasExplicitContract(model: CapabilityModeModel): boolean {
 }
 
 function customCapabilityModeManifest(model: CapabilityModeModel): CapabilityModeManifest | null {
-  const contract = record(record(model.meta)?.customCapabilityContract);
-  if (!contract || contract.version !== 1 || !Array.isArray(contract.modes)) return null;
-  const modelKind = trim(model.kind) as BillingModelKind;
-  const contractKind = trim(contract.kind) as BillingModelKind;
-  if (!CONTRACT_KINDS.has(modelKind) || contractKind !== modelKind) return null;
-  const allowedTaskKinds = TASK_KINDS_BY_MODEL_KIND[modelKind as Exclude<BillingModelKind, "text">];
-  const defaultModeId = trim(contract.defaultModeId);
-  const rootTaskKind = trim(contract.transportTaskKind) as ProfileKind;
+  const contract = parseCustomCapabilityContract(model.meta);
+  if (!contract || contract.kind !== trim(model.kind)) return null;
   const identifier = trim(model.modelKey) || trim(model.modelAlias);
-  if (
-    !validModeId(defaultModeId) ||
-    !allowedTaskKinds.has(rootTaskKind) ||
-    !identifier ||
-    contract.modes.length === 0 ||
-    contract.modes.length > 16
-  ) return null;
-
-  const modes: Record<string, ProfileKind> = {};
-  for (const rawMode of contract.modes) {
-    const mode = record(rawMode);
-    if (!mode) return null;
-    const modeId = trim(mode.id);
-    const taskKind = (trim(mode.transportTaskKind) || rootTaskKind) as ProfileKind;
-    if (!validModeId(modeId) || !allowedTaskKinds.has(taskKind) || Object.prototype.hasOwnProperty.call(modes, modeId)) return null;
-    modes[modeId] = taskKind;
-  }
-  if (!Object.prototype.hasOwnProperty.call(modes, defaultModeId) || modes[defaultModeId] !== rootTaskKind) return null;
+  if (!identifier) return null;
+  const modes = Object.fromEntries(contract.modes.map((mode) => [
+    mode.id,
+    mode.transportTaskKind ?? contract.transportTaskKind,
+  ])) as Record<string, ProfileKind>;
   return {
     archetypeId: `custom-capability:${encodeURIComponent(identifier)}`,
-    defaultModeId,
+    defaultModeId: contract.defaultModeId,
     modes,
   };
 }

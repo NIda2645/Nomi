@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseCustomCapabilityContract } from "./customCapabilityContract";
 import { derivePublishedExecution } from "./modelPublication";
 
 const model = (kind: string, extra: Record<string, unknown> = {}) => ({
@@ -15,8 +16,25 @@ const imageContract = (overrides: Record<string, unknown> = {}) => ({
   defaultModeId: "create",
   transportTaskKind: "text_to_image",
   modes: [
-    { id: "create" },
-    { id: "edit", transportTaskKind: "image_edit" },
+    {
+      id: "create",
+      intent: "text",
+      vendorTerm: "Create",
+      hint: "Create an image from text",
+      promptRequired: true,
+      slots: [],
+      params: [],
+    },
+    {
+      id: "edit",
+      intent: "edit",
+      vendorTerm: "Edit",
+      hint: "Edit an existing image",
+      promptRequired: true,
+      transportTaskKind: "image_edit",
+      slots: [],
+      params: [],
+    },
   ],
   ...overrides,
 });
@@ -72,8 +90,25 @@ describe("published execution contract", () => {
         defaultModeId: "create",
         transportTaskKind: "text_to_video",
         modes: [
-          { id: "create" },
-          { id: "reference", transportTaskKind: "image_to_video" },
+          {
+            id: "create",
+            intent: "text",
+            vendorTerm: "Create",
+            hint: "Create a video from text",
+            promptRequired: true,
+            slots: [],
+            params: [],
+          },
+          {
+            id: "reference",
+            intent: "single",
+            vendorTerm: "Reference",
+            hint: "Animate a reference image",
+            promptRequired: true,
+            transportTaskKind: "image_to_video",
+            slots: [],
+            params: [],
+          },
         ],
       } },
     }))).toEqual({ published: true, publishedModes: ["text_to_video", "image_to_video"] });
@@ -91,8 +126,25 @@ describe("published execution contract", () => {
         defaultModeId: "create",
         transportTaskKind: "text_to_image",
         modes: [
-          { id: "create" },
-          { id: "edit", transportTaskKind: "image_edit" },
+          {
+            id: "create",
+            intent: "text",
+            vendorTerm: "Create",
+            hint: "Create an image from text",
+            promptRequired: true,
+            slots: [],
+            params: [],
+          },
+          {
+            id: "edit",
+            intent: "edit",
+            vendorTerm: "Edit",
+            hint: "Edit an existing image",
+            promptRequired: true,
+            transportTaskKind: "image_edit",
+            slots: [],
+            params: [],
+          },
         ],
       } },
     }))).toEqual({ published: true, publishedModes: ["image_edit"] });
@@ -106,6 +158,31 @@ describe("published execution contract", () => {
         kind: "image",
         modes: [{ id: "edit", transportTaskKind: "image_edit" }],
       } },
+    }))).toEqual({ published: false, publishedModes: [] });
+  });
+
+  it("rejects a contract that passes the legacy id/task validator but fails the formal V1 parser", () => {
+    const malformedContract = {
+      ...imageContract(),
+      modes: [
+        {
+          id: "create",
+          intent: "text",
+          vendorTerm: "Create",
+          hint: "Create an image from text",
+          promptRequired: true,
+          slots: [],
+          params: [],
+        },
+        { id: "edit", transportTaskKind: "image_edit" },
+      ],
+    };
+    const meta = { customCapabilityContract: malformedContract };
+
+    expect(parseCustomCapabilityContract(meta)).toBeNull();
+    expect(derivePublishedExecution(model("image", {
+      customCall: { modes: { edit: { script: "return 'edited'" } } },
+      meta,
     }))).toEqual({ published: false, publishedModes: [] });
   });
 
