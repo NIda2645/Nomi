@@ -1,5 +1,7 @@
 # React Flow Canvas Complete Migration
 
+> ✅ 已交付（React Flow 单内核迁移已随本 PR 落地，配套不变量测试同批提交；状态标记由 `check:doc-status` 门岗要求）
+
 ## Objective
 
 Replace the generation canvas renderer with React Flow as the only renderer while
