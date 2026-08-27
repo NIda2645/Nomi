@@ -34,7 +34,7 @@ PR #205 暴露了第二层问题：GitHub 的“更新分支”使用 rebase 改
 - PR 使用 `github.event.pull_request.base.sha` 作为词表基线。
 - `main` push 使用 `github.event.before`；受保护主线是快进/合并历史，该 SHA 仍为主线祖先。
 - workflow 级 concurrency 对同一 PR 使用 PR 编号，对主线使用 `github.ref`，并取消过期 run。
-- `workflow_dispatch` 只作为显式恢复入口；调用者必须选择精确 ref，词表基线默认使用 `main`，也可显式传入另一条可取得的基线 ref。
+- `workflow_dispatch` 只作为显式恢复入口；调用者必须选择精确 ref，词表基线默认使用 checkout 后可达的 `origin/main`，也可显式传入另一条可取得的基线 ref。
 
 代价是尚未创建 PR 的远端 `feat/**`、`fix/**` 分支不再自动运行完整远端门禁；开发者仍可运行本地 `pnpm run gates`。创建 PR 后完整验证立即恢复。
 
@@ -52,7 +52,7 @@ PR merged -> main push
   └─ 对落地主线运行一套 Quality Gate + Mac Package
 
 自动事件漏发 / Git transport 暂时不可用
-  └─ workflow_dispatch(ref=当前 PR HEAD, base_ref=main)
+  └─ workflow_dispatch(ref=当前 PR HEAD, base_ref=origin/main)
       └─ 对同一 HEAD 补跑完整 Quality Gate + Mac Package
 ```
 
@@ -76,7 +76,7 @@ PR merged -> main push
 
 - PR 基线缺失时继续 fail closed；不静默改用别的提交。
 - `main` push 的 `before` 不可用时继续 fail closed，暴露受保护主线的异常历史改写。
-- 手动恢复只接受调用者显式选择的 ref；`base_ref` 默认 `main`，解析失败仍 fail closed。
+- 手动恢复只接受调用者显式选择的 ref；`base_ref` 默认 `origin/main`，解析失败仍 fail closed。这里不用裸 `main`，因为 detached checkout 不保证创建同名本地分支。
 - 新提交到达时只取消同一 PR 的过期 run，不影响其他 PR 或主线 run。
 
 ## 验证

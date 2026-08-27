@@ -10,7 +10,7 @@ on:
       base_ref:
         description: Reachable vocabulary baseline for a manual current-HEAD recovery run
         required: false
-        default: main
+        default: origin/main
         type: string
 
 concurrency:

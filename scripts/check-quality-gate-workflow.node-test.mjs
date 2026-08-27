@@ -18,7 +18,7 @@ test('quality gate runs for pull requests and main pushes without feature-branch
         base_ref: {
           description: 'Reachable vocabulary baseline for a manual current-HEAD recovery run',
           required: false,
-          default: 'main',
+          default: 'origin/main',
           type: 'string',
         },
       },
