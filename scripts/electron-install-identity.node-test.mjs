@@ -230,9 +230,10 @@ test('all Electron entry points share the identity gate and install repair', () 
       `${script} must verify Electron before doing work`,
     )
   }
-  assert.match(packageJson.scripts.gates, /^pnpm run check:gates-chain && /)
-  const gatesIdentityIndex = packageJson.scripts.gates.indexOf('pnpm run check:electron-install')
-  const gatesWorkIndex = packageJson.scripts.gates.indexOf('pnpm run check:filesize')
+  assert.match(packageJson.scripts.gates, /^pnpm run gates:contracts && /)
+  assert.match(packageJson.scripts['gates:contracts'], /^pnpm run check:gates-chain && /)
+  const gatesIdentityIndex = packageJson.scripts['gates:contracts'].indexOf('pnpm run check:electron-install')
+  const gatesWorkIndex = packageJson.scripts['gates:contracts'].indexOf('pnpm run check:filesize')
   assert.notEqual(gatesIdentityIndex, -1, 'full gates must contain the Electron identity check')
   assert.notEqual(gatesWorkIndex, -1, 'full gates must contain its first repository work gate')
   assert.ok(gatesIdentityIndex < gatesWorkIndex, 'full gates must verify Electron before repository work begins')
