@@ -136,7 +136,14 @@ check('生成动作全屏只有一个（就是选择浮条那个）', generateAf
 
 // ② 走浮条那条路跑整组：应当进现成的批量确认卡，张数 = 组成员数。
 await win.locator('[data-storyboard-run-all]').first().click({ timeout: 5000 })
-await win.waitForTimeout(2500)
+// 等真实条件（确认卡出现），不是盲等固定毫秒：机器慢一点 sleep 就不够，读到空却报绿。
+// 超时不抛——下面的 check 仍要把「读到什么」打出来，保留这条走查的失败可读性。
+await win
+  .locator('div.fixed.inset-0')
+  .filter({ hasText: /开始生成/ })
+  .last()
+  .waitFor({ state: 'visible', timeout: 15_000 })
+  .catch(() => {})
 await snap(win, 'after-run-group')
 const confirmCard = await win.evaluate(() => {
   const veil = Array.from(document.querySelectorAll('.fixed.inset-0')).find((element) => element.textContent?.includes('开始生成'))
