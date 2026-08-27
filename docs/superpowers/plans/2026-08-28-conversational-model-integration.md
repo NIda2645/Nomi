@@ -268,12 +268,14 @@
 
 1. Build the desktop app and run J0 from empty directories with Codex and Claude Code; run a standards-compatible generic WorkBuddy harness. If a real WorkBuddy host is unavailable, mark that exact host verification unverified rather than calling the harness proof.
 2. Check only whether a BananaRouter credential is securely configured; never print/decrypt it. If available, use the official model list, choose account-available text/image/video, confirm test spend in Nomi, and run J1. If unavailable, keep deterministic mock coverage green and record the external credential blocker without fabricating a live pass.
-3. Probe the configured ComfyUI instance. Run J2 with one UI workflow and one API workflow, including two media inputs and the VHS `frame_rate` regression.
-4. Run security/fault J3: plaintext unavailable, origin rebind, DNS/redirect, HTML/XML media, oversize media, duplicate start, unknown submission, concurrent cancel, corrupt journal, and crash at prepared promotion.
-5. Run fresh-process readback with a separate same-identity Electron main process and zero network create. Assert the original idempotency key produced exactly one create.
-6. Run packaged stop→restart/upgrade E2E with test credentials: restore the same session without re-entering the key; call one verified HTTP mode and one ComfyUI workflow through the normal production entry; materialize and decode outputs.
-7. Run focused suites, then `pnpm run gates`. Run the required real-user walkthrough and inspect screenshots manually.
-8. Use `requesting-code-review`; fix all P0/P1 and repeat review. Use `verification-before-completion`, then `finishing-a-development-branch`.
-9. Push `codex/model-onboarding-20260828`, open a PR, and report branch, commit(s), PR URL, live-vs-mock evidence, spend, and any honestly unverified external-host evidence.
+3. Run a second blind-provider challenge against a real API origin and official documentation that do not occur anywhere in the repository, Skill, fixtures, or prior provider-specific code. Start from an empty directory with Nomi source access denied. The Agent must paginate the complete remote model list, present capability-grouped choices, and integrate as many account-available models as practical without adding provider/model special cases. Real certification must cover every available capability family and multiple models per family when the account exposes them; unsupported, unaffordable, rate-limited, or credential-blocked entries must be reported individually rather than silently skipped.
+4. Probe the configured ComfyUI instance. Run J2 with one ordinary UI-saved workflow and one API workflow, including distinct fixtures in two or more media inputs and the VHS `frame_rate` regression.
+5. Run security/fault J3: plaintext unavailable, origin rebind, DNS/redirect, HTML/XML media, oversize media, duplicate start, unknown submission, concurrent cancel, corrupt journal, and crash at prepared promotion.
+6. Run fresh-process readback with a separate same-identity Electron main process and zero network create. Assert the original idempotency key produced exactly one create.
+7. Run packaged stop→restart/upgrade E2E with test credentials: restore the same session without re-entering the key; call verified modes from BananaRouter and the blind provider plus one ComfyUI workflow through the normal production entry; materialize and decode outputs.
+8. Preserve a redacted manifest of the discovered model count, pagination completeness, selected models, per-capability live results, failure reason codes, request counts, and spend. A single successful model, a saved configuration, or mocked traffic never counts as provider completion.
+9. Run focused suites, then `pnpm run gates`. Run the required real-user walkthrough and inspect screenshots manually.
+10. Use `requesting-code-review`; fix all P0/P1 and repeat review. Use `verification-before-completion`, then `finishing-a-development-branch`.
+11. Push `codex/model-onboarding-20260828`, open a PR, and report branch, commit(s), PR URL, live-vs-mock evidence, spend, discovered/certified model counts, and any honestly unverified external-host evidence.
 
 **Final commit:** `test(onboarding): prove conversational integration journeys`
