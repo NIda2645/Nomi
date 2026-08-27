@@ -41,6 +41,7 @@
 | [2026-08-25-comfyui-workflow-matrix.md](2026-08-25-comfyui-workflow-matrix.md) | ComfyUI 通用工作流矩阵验证 Implementation Plan | — |
 | [2026-08-25-foundation-replacement-plan.md](2026-08-25-foundation-replacement-plan.md) | Foundation Replacement and Isolation Plan | — |
 | [2026-08-25-video-node-audio-playback.md](2026-08-25-video-node-audio-playback.md) | Video Node Audio Playback Implementation Plan | — |
+| [2026-08-27-electron-install-identity.md](2026-08-27-electron-install-identity.md) | Electron 安装身份执行计划 | ✅ 已交付 |
 | [2026-08-27-marketing-github-hero.md](2026-08-27-marketing-github-hero.md) | Marketing GitHub Hero Implementation Plan | — |
 | [2026-08-27-quality-gate-single-run.md](2026-08-27-quality-gate-single-run.md) | Quality Gate Single-Run Implementation Plan | ✅ 已交付 |
 | [2026-08-27-release-media-pack-skill.md](2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan | 🚧 进行中 |

@@ -13,6 +13,16 @@ test('quality gate runs for pull requests and main pushes without feature-branch
   assert.deepEqual(workflow.on, {
     push: { branches: ['main'] },
     pull_request: null,
+    workflow_dispatch: {
+      inputs: {
+        base_ref: {
+          description: 'Reachable vocabulary baseline for a manual current-HEAD recovery run',
+          required: false,
+          default: 'origin/main',
+          type: 'string',
+        },
+      },
+    },
   })
 })
 
@@ -23,6 +33,6 @@ test('quality gate cancels only obsolete runs in the same PR or main lane', () =
   })
   assert.equal(
     workflow.jobs.quality.env.VOCAB_BASE_REF,
-    '${{ github.event.pull_request.base.sha || github.event.before }}',
+    '${{ github.event.pull_request.base.sha || github.event.before || inputs.base_ref }}',
   )
 })
