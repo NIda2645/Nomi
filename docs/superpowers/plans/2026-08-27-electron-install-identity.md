@@ -1,0 +1,12 @@
+# Electron 安装身份执行计划
+
+1. 先写身份检查器的失败测试，覆盖共享依赖、包版本、dist 版本、真实二进制版本和健康安装。
+2. 实现只读身份检查器与命令行错误报告，使定向测试转绿。
+3. 写安装修复测试，证明缺失运行时会调用 Electron 自带安装器，错误包和共享依赖不会被修改。
+4. 实现安装修复脚本并接入根 `postinstall`。
+5. 把同一检查接入 dev/start/build/dist/gates 和 Windows 门岗，更新 worktree 文档与过时注释。
+6. 在独立 worktree 执行真实 `pnpm install --frozen-lockfile --prefer-offline`，核对三份版本与 `electron --version`。
+7. 运行定向测试、完整 gates、diff 审查和独立代码审查。
+8. 从最新远端 main 更新，普通 push、开 PR；等待必需检查后正常合并。
+
+回滚：撤销本 PR 即恢复旧安装流程；不修改用户数据、项目文件或发布产物。

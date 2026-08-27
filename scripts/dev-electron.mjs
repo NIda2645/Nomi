@@ -7,9 +7,11 @@ import { fileURLToPath } from "node:url";
 import { installChildProcessLifecycle } from "./child-process-lifecycle.mjs";
 import { resolveDevStoragePaths } from "./dev-storage.mjs";
 import { ensureElectronSignature } from "./ensure-electron-signature.mjs";
+import { assertElectronInstallIdentity } from "./electron-install-identity.mjs";
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+assertElectronInstallIdentity(repoRoot);
 const buildTailwindScript = path.join(repoRoot, "scripts", "build-tailwind.mjs");
 const buildElectronScript = path.join(repoRoot, "scripts", "build-electron.mjs");
 const childProcessLifecycle = installChildProcessLifecycle();

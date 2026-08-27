@@ -6,10 +6,12 @@ import { fileURLToPath } from "node:url";
 import { installChildProcessLifecycle } from "./child-process-lifecycle.mjs";
 import { ensureElectronSignature } from "./ensure-electron-signature.mjs";
 import { assertElectronBuildArtifacts } from "./electron-build-artifacts.mjs";
+import { assertElectronInstallIdentity } from "./electron-install-identity.mjs";
 
 const require = createRequire(import.meta.url);
-const electron = require("electron");
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+assertElectronInstallIdentity(repoRoot);
+const electron = require("electron");
 assertElectronBuildArtifacts(repoRoot);
 
 // Match `pnpm dev`: launching a revoked dev Electron lets XProtect delete the
