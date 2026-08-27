@@ -111,6 +111,8 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   魔搭极速文生图: 'ModelScope fast text-to-image',
   魔搭图像: 'ModelScope Image',
   魔搭: 'ModelScope',
+  魔搭社区: 'ModelScope',
+  '本地 ComfyUI': 'Local ComfyUI',
   目标面数: 'Target polygon count',
   '排除的元素…': 'Elements to exclude…',
   配音生成: 'Voice generation',
