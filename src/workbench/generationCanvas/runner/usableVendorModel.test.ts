@@ -8,7 +8,8 @@ function vendor(key: string, patch: Partial<ModelCatalogVendorDto> = {}): ModelC
 
 function model(modelKey: string, vendorKey: string, archetypeId?: string, kind: ModelCatalogModelDto['kind'] = 'image'): ModelCatalogModelDto {
   return {
-    modelKey, vendorKey, labelZh: modelKey, kind, enabled: true, createdAt: '', updatedAt: '',
+    modelKey, vendorKey, labelZh: modelKey, kind, enabled: true, published: true,
+    publishedModes: kind === 'video' ? ['text_to_video'] : ['text_to_image'], createdAt: '', updatedAt: '',
     ...(archetypeId ? { meta: { archetypeId } } : {}),
   }
 }

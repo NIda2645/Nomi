@@ -305,7 +305,8 @@ export class ProviderAdapterService {
       headers: connection.headers,
     });
     if (fingerprint !== initial.connectionFingerprint) {
-      this.store.markStaleIfConnectionChanged(id, fingerprint);
+      const stale = this.store.markStaleIfConnectionChanged(id, fingerprint);
+      if (stale?.stage === "stale") this.dependencies.catalog.fail(stale);
       return;
     }
 
@@ -766,7 +767,7 @@ export class ProviderAdapterService {
     const latest = this.store.latestRun(run.vendorKey);
     if (!latest || latest.id === run.id) return false;
     const staleAt = this.dependencies.now();
-    this.store.updateRun(run.id, (current) => ({
+    const stale = this.store.updateRun(run.id, (current) => ({
       ...current,
       stage: "stale",
       error: "A newer verification run replaced this result",
@@ -775,6 +776,7 @@ export class ProviderAdapterService {
       lastProgressAt: staleAt,
       updatedAt: staleAt,
     }));
+    this.dependencies.catalog.fail(stale);
     return true;
   }
 

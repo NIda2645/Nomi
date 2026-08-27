@@ -9,7 +9,11 @@ import { hardenedFetchText } from "../hardenedFetch";
 import type { AiSdkProviderKind, BillingModelKind, HttpOperation, Model, ProfileKind, Vendor } from "./types";
 import type { TaskRequest } from "../runtime";
 import { modelHasPublishedExecution } from "../shared/modelPublication";
-import { ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY, stagedVendorKey } from "./stagedVendorIdentity";
+import {
+  candidateLineageMeta,
+  newCandidateRevisionId,
+  planStagedVendorIdentity,
+} from "./stagedVendorIdentity";
 import {
   mutateCatalog,
   normalizeProviderKind,
@@ -28,6 +32,7 @@ type PreparedOnboardedModel = {
   vendorKey: string;
   userApiKey: string;
   vendorPayload: Record<string, unknown>;
+  supersededVendorKeys: string[];
   applyModel: (tx: CatalogMutation) => Model;
 };
 
@@ -103,7 +108,11 @@ function mergeMissingParamsIntoBody(body: unknown, fieldKeys: string[]): unknown
  * Provider Adapter promotion is the sole verified publication boundary. An
  * already-published row keeps its active execution while a replacement is staged.
  */
-function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType<typeof readCatalog>): PreparedOnboardedModel {
+function prepareOnboardedModel(
+  payload: OnboardedModelCommit,
+  before: ReturnType<typeof readCatalog>,
+  revisionId: string,
+): PreparedOnboardedModel {
   const outcome = payload?.outcome as JsonRecord | null;
   if (!outcome || typeof outcome !== "object") throw new Error("outcome required");
   const draft = (outcome as JsonRecord).draft as JsonRecord | null;
@@ -128,19 +137,22 @@ function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType
 
   const auth = (draft.vendorAuth || {}) as JsonRecord;
   const authType = (auth.type as Vendor["authType"]) || "bearer";
-  const sourceHasPublishedModel = before.models.some(
-    (candidate) => candidate.vendorKey === sourceVendorKey && modelHasPublishedExecution(candidate, { mappings: before.mappings }),
-  );
-  const vendorKey = sourceHasPublishedModel
-    ? stagedVendorKey(sourceVendorKey, {
-        baseUrl: vendorBaseUrl,
-        authType,
-        authHeader: auth.headerName || null,
-        authQueryParam: auth.queryParam || null,
-        providerKind: draft.vendorProviderKind || "openai-compatible",
-        meta: draft.vendorMeta || {},
-      })
-    : sourceVendorKey;
+  const identity = planStagedVendorIdentity({
+    state: before,
+    sourceVendorKey,
+    connection: {
+      baseUrl: vendorBaseUrl,
+      authType,
+      authHeader: auth.headerName || null,
+      authQueryParam: auth.queryParam || null,
+      providerKind: draft.vendorProviderKind || "openai-compatible",
+      meta: draft.vendorMeta || {},
+    },
+    revisionId,
+    selectedModelKeys: [modelKey],
+    reuseUnpublishedCandidate: false,
+  });
+  const vendorKey = identity.vendorKey;
 
   // onboarding evidence 快照 + meta.parameters 投影（纯计算，先备好，再进事务）。
   type OnboardingField = NonNullable<Model["onboarding"]>["fields"][number];
@@ -239,7 +251,7 @@ function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType
     ...(draft.vendorMeta !== undefined || vendorKey !== sourceVendorKey
       ? { meta: {
           ...(isJsonRecord(draft.vendorMeta) ? draft.vendorMeta : {}),
-          ...(vendorKey !== sourceVendorKey ? { [ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY]: sourceVendorKey } : {}),
+          ...candidateLineageMeta(identity),
         } }
       : {}),
   };
@@ -248,6 +260,7 @@ function prepareOnboardedModel(payload: OnboardedModelCommit, before: ReturnType
     vendorKey,
     userApiKey,
     vendorPayload,
+    supersededVendorKeys: identity.supersededVendorKeys,
     applyModel(tx) {
       // A credential re-save or unverified replacement is not a publication
       // event. Keep every active contract field and its mappings byte-for-byte;
@@ -328,7 +341,8 @@ export function commitOnboardedModelsToCatalog(payload: { entries: OnboardedMode
   const before = readCatalog();
   // Validate and fully project every candidate before entering the sole write
   // transaction. A bad Nth entry therefore cannot persist entries 1..N-1.
-  const prepared = entries.map((entry) => prepareOnboardedModel(entry, before));
+  const revisionId = newCandidateRevisionId("manual-onboarding");
+  const prepared = entries.map((entry) => prepareOnboardedModel(entry, before, revisionId));
   const credentialByVendor = new Map<string, string>();
   for (const item of prepared) {
     const existing = credentialByVendor.get(item.vendorKey);
@@ -339,6 +353,9 @@ export function commitOnboardedModelsToCatalog(payload: { entries: OnboardedMode
   }
 
   return mutateCatalog((tx) => {
+    for (const superseded of new Set(prepared.flatMap((item) => item.supersededVendorKeys))) {
+      tx.deleteVendor(superseded);
+    }
     const writtenVendors = new Set<string>();
     for (const item of prepared) {
       if (writtenVendors.has(item.vendorKey)) continue;
@@ -362,15 +379,14 @@ export function commitOnboardedModelToCatalog(payload: OnboardedModelCommit): Mo
  * collide as one "localhost" vendor.
  */
 export function deriveVendorKeyFromBaseUrl(baseUrl: string): string {
-  let host = "";
-  let port = "";
+  let parsed: URL;
   try {
-    const u = new URL(baseUrl);
-    host = u.hostname;
-    port = u.port;
+    parsed = new URL(baseUrl);
   } catch {
     return "";
   }
+  const host = parsed.hostname;
+  const port = parsed.port;
   // 内置认得的 host → 直接复用内置 vendorKey，别再按 hostname 另造一个。
   // 不这么做的话，走向导接入火山方舟会造出 `ark-cn-beijing-volces-com`，与内置种子的 `volcengine`
   // 各占一个柜子：向导那半个一条内置 mapping 都拿不到，Seedream/Seedance 全退回通用最小模板

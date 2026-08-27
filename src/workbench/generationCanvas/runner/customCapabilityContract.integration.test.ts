@@ -162,6 +162,8 @@ describe('custom capability contract catalog -> canvas -> request', () => {
       labelZh: 'Future Video V1',
       kind: 'video',
       enabled: true,
+      published: true,
+      publishedModes: ['image_to_video'],
       meta: { customCapabilityContract: contract },
       createdAt: '',
       updatedAt: '',

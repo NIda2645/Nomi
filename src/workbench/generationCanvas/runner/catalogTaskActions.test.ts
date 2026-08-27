@@ -313,7 +313,7 @@ describe('buildCatalogTaskRequest — 标准参考面与档案投影并存（中
 // apimart 的同款模型，而不是抛 `API key missing: kie`。
 describe('runCatalogGenerationTask — 断开 kie 后老节点自动迁移到已连接供应商', () => {
   const vendorDto = (key: string, hasApiKey: boolean): ModelCatalogVendorDto => ({ key, name: key, enabled: true, hasApiKey, createdAt: '', updatedAt: '' })
-  const apimartSeedream: ModelCatalogModelDto = { modelKey: 'doubao-seedream-4.5', vendorKey: 'apimart', labelZh: 'Seedream 4.5', kind: 'image', enabled: true, meta: { archetypeId: 'seedream' }, createdAt: '', updatedAt: '' }
+  const apimartSeedream: ModelCatalogModelDto = { modelKey: 'doubao-seedream-4.5', vendorKey: 'apimart', labelZh: 'Seedream 4.5', kind: 'image', enabled: true, published: true, publishedModes: ['text_to_image'], meta: { archetypeId: 'seedream' }, createdAt: '', updatedAt: '' }
 
   const staleKieNode: GenerationCanvasNode = {
     id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫',
@@ -340,6 +340,31 @@ describe('runCatalogGenerationTask — 断开 kie 后老节点自动迁移到已
     expect(calls[0].vendor).toBe('apimart')
     expect(calls[0].request.extras?.modelKey).toBe('doubao-seedream-4.5')
     expect(result.url).toBe('https://x/out.png')
+  })
+
+  it('source vendor 被兄弟模型保活但精确旧模型已停用时，继续迁移到已发布 candidate', async () => {
+    const calls: Array<{ vendor: string; request: TaskRequestDto }> = []
+    const candidate = {
+      ...apimartSeedream,
+      vendorKey: 'kie--candidate-revision-2',
+    }
+
+    await runCatalogGenerationTask(staleKieNode, {
+      listCatalogVendors: async () => [
+        vendorDto('kie', true),
+        vendorDto('kie--candidate-revision-2', true),
+      ],
+      // enabled:true 的真实 DTO 不含已停用 source model；source vendor 仍因另一个兄弟模型可执行。
+      listCatalogModels: async () => [candidate],
+      runTask: async (vendor: string, request: TaskRequestDto) => {
+        calls.push({ vendor, request })
+        return { id: 't-candidate', kind: request.kind, status: 'succeeded', assets: [{ type: 'image', url: 'https://x/candidate.png' }], raw: {} }
+      },
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].vendor).toBe('kie--candidate-revision-2')
+    expect(calls[0].request.extras?.modelKey).toBe('doubao-seedream-4.5')
   })
 
   it('没有任何已连接供应商提供该款 → 抛清晰可行动错误，而非 cryptic key missing', async () => {

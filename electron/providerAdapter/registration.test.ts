@@ -22,12 +22,12 @@ function store(): ProviderAdapterStore {
 describe("provider connection save-first registration", () => {
   it("keeps an unverified replacement in registration staging while the catalog returns the active contract", () => {
     const catalog: ProviderAdapterCatalogPort = {
-      register: vi.fn((input) => ({
+      register: vi.fn((input: Parameters<ProviderAdapterCatalogPort["register"]>[0]) => ({
         vendor: {
           key: input.vendorKey,
           name: input.vendorName,
           enabled: true,
-          authType: "none",
+          authType: "none" as const,
           createdAt: now,
           updatedAt: now,
         },
@@ -35,7 +35,7 @@ describe("provider connection save-first registration", () => {
           vendorKey: input.vendorKey,
           modelKey: "same-model",
           labelZh: "Published image",
-          kind: "image",
+          kind: "image" as const,
           enabled: true,
           createdAt: now,
           updatedAt: now,

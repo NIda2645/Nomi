@@ -9,9 +9,10 @@ import type { Model, ProfileKind, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
 import { modelHasPublishedExecution } from "../shared/modelPublication";
 import {
-  ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY,
+  candidateLineageMeta,
   candidateSourceVendorKey,
-  stagedVendorKey,
+  newCandidateRevisionId,
+  planStagedVendorIdentity,
 } from "../catalog/stagedVendorIdentity";
 import { adapterModelMetadataForPromotion } from "./promotionMeta";
 import type {
@@ -68,33 +69,37 @@ function vendorHasPublishedExecution(state: ReturnType<typeof readCatalog>, vend
   return state.models.some((model) => model.vendorKey === vendorKey && hasPublishedExecution(state, model));
 }
 
-function candidateVendorKey(
-  state: ReturnType<typeof readCatalog>,
-  sourceVendorKey: string,
-  input: ProviderAdapterStartInput,
-): string {
-  if (!vendorHasPublishedExecution(state, sourceVendorKey)) return sourceVendorKey;
-  return stagedVendorKey(sourceVendorKey, {
+function connectionIdentity(input: ProviderAdapterStartInput): Record<string, unknown> {
+  return {
     baseUrl: input.baseUrl,
     authType: input.authType,
     authHeader: input.authHeader || null,
     authQueryParam: input.authQueryParam || null,
     providerKind: normalizeProviderKind(input.providerKind),
     headers: input.headers || {},
-  });
+  };
 }
 
 export const defaultCatalog: ProviderAdapterCatalogPort = {
   register(input) {
     const before = readCatalog();
     const sourceVendorKey = input.vendorKey;
-    const targetVendorKey = candidateVendorKey(before, sourceVendorKey, input);
+    const identity = planStagedVendorIdentity({
+      state: before,
+      sourceVendorKey,
+      connection: connectionIdentity(input),
+      revisionId: newCandidateRevisionId("registration"),
+      selectedModelKeys: input.models.map((model) => model.modelKey),
+      reuseUnpublishedCandidate: false,
+    });
+    const targetVendorKey = identity.vendorKey;
     const existingVendor = before.vendors.find((vendor) => vendor.key === targetVendorKey);
-    const sourceVendor = before.vendors.find((vendor) => vendor.key === sourceVendorKey);
+    const sourceVendor = before.vendors.find((vendor) => vendor.key === identity.sourceVendorKey)
+      || before.vendors.find((vendor) => vendor.key === sourceVendorKey);
     const cleanHeaders = Object.fromEntries(
       Object.entries(input.headers || {}).filter(([key, value]) => key.trim() && value.trim()),
     );
-    const savedCredential = before.apiKeysByVendor[sourceVendorKey];
+    const savedCredential = before.apiKeysByVendor[identity.sourceVendorKey] || before.apiKeysByVendor[sourceVendorKey];
     if (input.authType !== "none" && input.preserveExistingCredential) {
       if (!savedCredential?.apiKey || savedCredential.enabled === false) {
         throw new Error("The saved connection credential is missing; enter the API key again");
@@ -103,9 +108,10 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         throw new Error("The saved connection credential needs to be saved again before authentication can continue");
       }
     }
-    const isolatedCandidate = targetVendorKey !== sourceVendorKey;
+    const isolatedCandidate = identity.isolated;
     const vendorEnabled = isolatedCandidate ? false : vendorHasPublishedExecution(before, sourceVendorKey);
     return mutateCatalog((tx) => {
+      for (const superseded of identity.supersededVendorKeys) tx.deleteVendor(superseded);
       const vendor = tx.upsertVendor({
         key: targetVendorKey,
         name: input.vendorName || existingVendor?.name || sourceVendor?.name || targetVendorKey,
@@ -118,7 +124,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         meta: {
           ...asRecord(existingVendor?.meta),
           ...(Object.keys(cleanHeaders).length ? { extraHeaders: cleanHeaders } : {}),
-          ...(isolatedCandidate ? { [ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY]: sourceVendorKey } : {}),
+          ...candidateLineageMeta(identity),
         },
       });
       if (input.authType === "none") tx.deleteApiKey(targetVendorKey);
@@ -159,9 +165,18 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
   stage(input) {
     const before = readCatalog();
     const sourceVendorKey = input.vendorKey;
-    const targetVendorKey = candidateVendorKey(before, sourceVendorKey, input);
+    const identity = planStagedVendorIdentity({
+      state: before,
+      sourceVendorKey,
+      connection: connectionIdentity(input),
+      revisionId: input.runId,
+      selectedModelKeys: input.models.map((model) => model.modelKey),
+      reuseUnpublishedCandidate: true,
+    });
+    const targetVendorKey = identity.vendorKey;
     const existingVendor = before.vendors.find((vendor) => vendor.key === targetVendorKey);
-    const sourceVendor = before.vendors.find((vendor) => vendor.key === sourceVendorKey);
+    const sourceVendor = before.vendors.find((vendor) => vendor.key === identity.sourceVendorKey)
+      || before.vendors.find((vendor) => vendor.key === sourceVendorKey);
     const cleanHeaders = Object.fromEntries(
       Object.entries(input.headers || {}).filter(([key, value]) => key.trim() && value.trim()),
     );
@@ -169,9 +184,10 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
     if (input.authType !== "none" && input.catalogVendorKey && savedCredential?.apiKey && savedCredential.enc !== "safeStorage") {
       throw new Error("The saved connection credential needs to be saved again before authentication can continue");
     }
-    const isolatedCandidate = targetVendorKey !== sourceVendorKey;
+    const isolatedCandidate = identity.isolated;
     const vendorEnabled = isolatedCandidate ? false : vendorHasPublishedExecution(before, sourceVendorKey);
     return mutateCatalog((tx) => {
+      for (const superseded of identity.supersededVendorKeys) tx.deleteVendor(superseded);
       const vendor = tx.upsertVendor({
         key: targetVendorKey,
         name: input.vendorName || existingVendor?.name || sourceVendor?.name || targetVendorKey,
@@ -184,7 +200,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         meta: {
           ...asRecord(existingVendor?.meta),
           ...(Object.keys(cleanHeaders).length ? { extraHeaders: cleanHeaders } : {}),
-          ...(isolatedCandidate ? { [ADAPTER_CANDIDATE_SOURCE_VENDOR_KEY]: sourceVendorKey } : {}),
+          ...candidateLineageMeta(identity),
         },
       });
       if (input.authType === "none") tx.deleteApiKey(targetVendorKey);
@@ -358,6 +374,11 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
       return existing ? modelOwnedByRun(existing, run.id) : false;
     });
     if (ownedResults.length === 0) return;
+    const failedVendor = before.vendors.find((vendor) => vendor.key === run.vendorKey);
+    if (candidateSourceVendorKey(failedVendor?.meta) && !vendorHasPublishedExecution(before, run.vendorKey)) {
+      mutateCatalog((tx) => tx.deleteVendor(run.vendorKey));
+      return;
+    }
     mutateCatalog((tx) => {
       for (const resultModel of ownedResults) {
         const existing = before.models.find(

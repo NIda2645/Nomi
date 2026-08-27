@@ -11,6 +11,8 @@ export type ModelCatalogHealthIssueCode =
   | 'catalog_empty'
   | 'vendor_disabled'
   | 'vendor_api_key_missing'
+  | 'vendor_api_key_locked'
+  | 'vendor_api_key_needs_resave'
   | 'model_mapping_missing'
 
 export type ModelCatalogHealthIssueDto = {

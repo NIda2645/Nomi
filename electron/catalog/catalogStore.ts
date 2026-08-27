@@ -16,6 +16,8 @@ import type { AiSdkProviderKind, BillingModelKind, CatalogState, HttpOperation, 
 import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
 import { derivePublishedExecution } from "../shared/modelPublication";
+import { deriveModelCatalogHealth } from "./catalogHealth";
+import { removeVendorLineage, restoreSourceAfterCandidateDeletion } from "./vendorLineageLifecycle";
 import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
 import { antigravityConnection } from "../ai/antigravityConnection";
 import { extractLegacyStages, normalizeLegacyMappings } from "./legacyMappingMigration";
@@ -321,61 +323,7 @@ export function resolveOnboardingAgentFromCatalog(): OnboardingAgent | null {
 }
 
 export function getModelCatalogHealth(): unknown {
-  const state = readCatalog();
-  const enabledVendors = state.vendors.filter((vendor) => vendor.enabled);
-  const enabledModels = state.models.filter((model) => model.enabled);
-  const enabledApiKeys = Object.values(state.apiKeysByVendor).filter((key) => key.enabled && key.apiKey).length;
-  const executableModels = enabledModels.filter((model) => {
-    const vendor = state.vendors.find((item) => item.key === model.vendorKey);
-    const apiKey = state.apiKeysByVendor[model.vendorKey];
-    return Boolean(vendor?.enabled && (vendor.authType === "none" || (apiKey?.enabled && apiKey.apiKey)));
-  });
-  const byKind = (["text", "image", "video", "audio"] as BillingModelKind[]).map((kind) => ({
-    kind,
-    enabledModels: enabledModels.filter((model) => model.kind === kind).length,
-    executableModels: executableModels.filter((model) => model.kind === kind).length,
-  }));
-  const issues = [];
-  if (state.vendors.length === 0 || state.models.length === 0) {
-    issues.push({ code: "catalog_empty", severity: "error", message: "Local model catalog is empty" });
-  }
-  for (const model of enabledModels) {
-    const vendor = state.vendors.find((item) => item.key === model.vendorKey);
-    const apiKey = state.apiKeysByVendor[model.vendorKey];
-    if (!vendor?.enabled) {
-      issues.push({
-        code: "vendor_disabled",
-        severity: "error",
-        message: `Vendor disabled: ${model.vendorKey}`,
-        vendorKey: model.vendorKey,
-        modelKey: model.modelKey,
-        kind: model.kind,
-      });
-    } else if (vendor.authType !== "none" && !apiKey?.apiKey) {
-      issues.push({
-        code: "vendor_api_key_missing",
-        severity: "error",
-        message: `API key missing: ${model.vendorKey}`,
-        vendorKey: model.vendorKey,
-        modelKey: model.modelKey,
-        kind: model.kind,
-      });
-    }
-  }
-  return {
-    ok: issues.every((issue) => issue.severity !== "error"),
-    counts: {
-      vendors: state.vendors.length,
-      enabledVendors: enabledVendors.length,
-      models: state.models.length,
-      enabledModels: enabledModels.length,
-      mappings: state.mappings.length,
-      enabledMappings: state.mappings.filter((mapping) => mapping.enabled).length,
-      enabledApiKeys,
-    },
-    byKind,
-    issues,
-  };
+  return deriveModelCatalogHealth(readCatalog());
 }
 
 /**
@@ -449,10 +397,8 @@ export function upsertModelCatalogVendor(payload: unknown): Vendor {
 
 export function deleteModelCatalogVendor(key: string): void {
   const state = readCatalog();
-  state.vendors = state.vendors.filter((vendor) => vendor.key !== key);
-  state.models = state.models.filter((model) => model.vendorKey !== key);
-  state.mappings = state.mappings.filter((mapping) => mapping.vendorKey !== key);
-  delete state.apiKeysByVendor[key];
+  restoreSourceAfterCandidateDeletion(state, key);
+  removeVendorLineage(state, key);
   writeCatalog(state);
 }
 
@@ -747,6 +693,7 @@ export type CatalogMutation = {
   upsertVendor: (payload: unknown) => Vendor;
   upsertApiKey: (vendorKey: string, payload: unknown) => void;
   deleteApiKey: (vendorKey: string) => void;
+  deleteVendor: (vendorKey: string) => void;
   upsertModel: (payload: unknown) => Model;
   upsertMapping: (payload: unknown) => Mapping;
   deleteModelMappings: (vendorKey: string, modelKey: string) => void;
@@ -766,6 +713,7 @@ export function mutateCatalog<T>(fn: (tx: CatalogMutation) => T): T {
     deleteApiKey: (vendorKey) => {
       delete state.apiKeysByVendor[String(vendorKey || "").trim()];
     },
+    deleteVendor: (vendorKey) => removeVendorLineage(state, String(vendorKey || "").trim()),
     upsertModel: (payload) => applyModelUpsert(state, payload),
     upsertMapping: (payload) => applyMappingUpsert(state, payload),
     deleteModelMappings: (vendorKey, modelKey) => {

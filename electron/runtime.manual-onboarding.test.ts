@@ -403,6 +403,26 @@ describe("manual model entry — user journey", () => {
       providerKind: "openai-responses",
       meta: expect.objectContaining({ adapterCandidateSourceVendorKey: vendorKey }),
     });
+
+    const replacement = commitManualOpenAiCompatibleModels({
+      vendorName: "Candidate retry",
+      baseUrl: "https://shared.example.test/v2",
+      apiKey: "candidate-key-retry",
+      providerKind: "openai-responses",
+      headers: { "X-Candidate": "yes" },
+      models: [{ id: "target", kind: "video" }],
+    });
+    const afterRetry = JSON.parse(fs.readFileSync(catalogFile, "utf8")) as typeof activeBefore;
+    expect(replacement.vendorKey).not.toBe(result.vendorKey);
+    expect(afterRetry.vendors.some((vendor) => vendor.key === result.vendorKey)).toBe(false);
+    expect(afterRetry.models.some((model) => model.vendorKey === result.vendorKey)).toBe(false);
+    expect(afterRetry.mappings.some((mapping) => mapping.vendorKey === result.vendorKey)).toBe(false);
+    expect(afterRetry.apiKeysByVendor[result.vendorKey]).toBeUndefined();
+    expect(afterRetry.vendors.find((vendor) => vendor.key === replacement.vendorKey)?.meta).toMatchObject({
+      adapterCandidateSourceVendorKey: vendorKey,
+      adapterCandidateRootVendorKey: vendorKey,
+      adapterCandidateRevisionId: expect.stringMatching(/^manual-onboarding-/),
+    });
   });
 
   it("commits every manual model in one transaction and publishes official per-mode DTO fields", () => {

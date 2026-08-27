@@ -87,6 +87,13 @@ const deleteApiKey = vi.fn((key: string) => {
   delete state.apiKeysByVendor[key];
 });
 
+const deleteVendor = vi.fn((key: string) => {
+  state.vendors = state.vendors.filter((vendor) => vendor.key !== key);
+  state.models = state.models.filter((model) => model.vendorKey !== key);
+  state.mappings = state.mappings.filter((mapping) => mapping.vendorKey !== key);
+  delete state.apiKeysByVendor[key];
+});
+
 vi.mock("../catalog/catalogStore", () => ({
   readCatalog: () => structuredClone(state),
   mutateCatalog: <T>(fn: (tx: unknown) => T): T => fn({
@@ -95,6 +102,7 @@ vi.mock("../catalog/catalogStore", () => ({
     upsertMapping,
     upsertApiKey,
     deleteApiKey,
+    deleteVendor,
     deleteModelMappings: vi.fn(),
   }),
   extractVendorExtraHeaders: () => undefined,
@@ -252,6 +260,10 @@ describe("provider adapter catalog run ownership", () => {
     expect(state.models.filter((model) => model.vendorKey === vendorKey)).toEqual(activeBefore.models);
     expect(state.mappings.filter((mapping) => mapping.vendorKey === vendorKey)).toEqual(activeBefore.mappings);
     expect(state.apiKeysByVendor[vendorKey]).toEqual(activeBefore.apiKeysByVendor[vendorKey]);
+    expect(state.vendors.some((vendor) => vendor.key === staged.vendor.key)).toBe(false);
+    expect(state.models.some((model) => model.vendorKey === staged.vendor.key)).toBe(false);
+    expect(state.mappings.some((mapping) => mapping.vendorKey === staged.vendor.key)).toBe(false);
+    expect(state.apiKeysByVendor[staged.vendor.key]).toBeUndefined();
   });
 
   it("switches only the verified target to the candidate connection and leaves its published sibling active", () => {
@@ -315,5 +327,171 @@ describe("provider adapter catalog run ownership", () => {
       enabled: true,
       create: { path: "/candidate-image" },
     });
+  });
+
+  it("allocates a fresh revision for the same promoted connection when only the API key changes", () => {
+    state = {
+      ...initialState(),
+      vendors: [{ ...initialState().vendors[0], enabled: true, authType: "bearer" }],
+      models: [{ ...initialState().models[0], enabled: true }],
+      mappings: [{
+        id: "active-image",
+        vendorKey,
+        modelKey,
+        taskKind: "text_to_image",
+        name: "active image",
+        enabled: true,
+        create: { method: "POST", path: "/active-image" },
+        createdAt: now,
+        updatedAt: now,
+      }],
+      apiKeysByVendor: { [vendorKey]: { vendorKey, apiKey: "encrypted-root", enc: "safeStorage", enabled: true, createdAt: now, updatedAt: now } },
+    };
+    const first = defaultCatalog.stage({
+      catalogVendorKey: vendorKey,
+      vendorKey,
+      runId: "run-first",
+      vendorName: "Shared Provider",
+      baseUrl: "http://127.0.0.1:9000/v1",
+      apiKey: "first-key",
+      authType: "bearer",
+      providerKind: "openai-compatible",
+      models: [{ modelKey, labelZh: "Image V1", kind: "image" }],
+    });
+    const firstDraft = draft("/first-candidate");
+    const firstRun = { ...run("run-first", "completed", "verified"), vendorKey: first.vendor.key };
+    defaultCatalog.promote({
+      run: firstRun,
+      draft: firstDraft,
+      revision: {
+        id: "revision-first",
+        vendorKey: first.vendor.key,
+        digest: "digest-first",
+        draft: firstDraft,
+        verifiedModes: [{ modelKey, taskKind: "text_to_image" }],
+        createdAt: now,
+      },
+      verifiedModes: [{ modelKey, taskKind: "text_to_image" }],
+    });
+    const promotedBefore = structuredClone(state);
+
+    const second = defaultCatalog.stage({
+      catalogVendorKey: vendorKey,
+      vendorKey,
+      runId: "run-second",
+      vendorName: "Shared Provider",
+      baseUrl: "http://127.0.0.1:9000/v1",
+      apiKey: "second-key",
+      authType: "bearer",
+      providerKind: "openai-compatible",
+      models: [{ modelKey, labelZh: "Image V1", kind: "image" }],
+    });
+
+    expect(second.vendor.key).not.toBe(first.vendor.key);
+    expect(second.vendor.key.match(/--candidate-/g)).toHaveLength(1);
+    expect(second.vendor.meta).toMatchObject({
+      adapterCandidateSourceVendorKey: first.vendor.key,
+      adapterCandidateRootVendorKey: vendorKey,
+      adapterCandidateRevisionId: "run-second",
+    });
+    expect(state.apiKeysByVendor[first.vendor.key]).toEqual(promotedBefore.apiKeysByVendor[first.vendor.key]);
+    expect(state.vendors.find((vendor) => vendor.key === first.vendor.key)).toEqual(
+      promotedBefore.vendors.find((vendor) => vendor.key === first.vendor.key),
+    );
+
+    defaultCatalog.fail({ ...run("run-second", "failed", "failed"), vendorKey: second.vendor.key });
+
+    expect(state.apiKeysByVendor[first.vendor.key]).toEqual(promotedBefore.apiKeysByVendor[first.vendor.key]);
+    expect(state.models.find((model) => model.vendorKey === first.vendor.key && model.modelKey === modelKey)?.enabled).toBe(true);
+    expect(state.vendors.some((vendor) => vendor.key === second.vendor.key)).toBe(false);
+  });
+
+  it.each(["failed", "cancelled", "timed_out", "stale"] as const)(
+    "removes the whole unpublished candidate lineage when a run becomes %s",
+    (terminalStage) => {
+      state = {
+        ...initialState(),
+        vendors: [{ ...initialState().vendors[0], enabled: true }],
+        models: [{ ...initialState().models[0], enabled: true }],
+        mappings: [{ id: "active-image", vendorKey, modelKey, taskKind: "text_to_image", name: "active", enabled: true, create: { method: "POST", path: "/active" }, createdAt: now, updatedAt: now }],
+      };
+      const staged = defaultCatalog.stage({
+        vendorKey,
+        runId: `run-${terminalStage}`,
+        vendorName: "Candidate",
+        baseUrl: "https://candidate.example.test/v1",
+        apiKey: "candidate-key",
+        authType: "bearer",
+        providerKind: "openai-compatible",
+        models: [{ modelKey, labelZh: "Image V1", kind: "image" }],
+      });
+      state.mappings.push({ id: `staged-${terminalStage}`, vendorKey: staged.vendor.key, modelKey, taskKind: "text_to_image", name: "staged", enabled: false, create: { method: "POST", path: "/staged" }, createdAt: now, updatedAt: now });
+
+      defaultCatalog.fail({ ...run(`run-${terminalStage}`, terminalStage, "failed"), vendorKey: staged.vendor.key });
+
+      expect(state.vendors.some((vendor) => vendor.key === staged.vendor.key)).toBe(false);
+      expect(state.models.some((model) => model.vendorKey === staged.vendor.key)).toBe(false);
+      expect(state.mappings.some((mapping) => mapping.vendorKey === staged.vendor.key)).toBe(false);
+      expect(state.apiKeysByVendor[staged.vendor.key]).toBeUndefined();
+    },
+  );
+
+  it("deletes an older unpublished candidate when a newer run supersedes the same lineage", () => {
+    state = {
+      ...initialState(),
+      vendors: [{ ...initialState().vendors[0], enabled: true }],
+      models: [{ ...initialState().models[0], enabled: true }],
+      mappings: [{ id: "active-image", vendorKey, modelKey, taskKind: "text_to_image", name: "active", enabled: true, create: { method: "POST", path: "/active" }, createdAt: now, updatedAt: now }],
+    };
+    const first = defaultCatalog.stage({
+      vendorKey,
+      runId: "run-old",
+      vendorName: "Candidate",
+      baseUrl: "https://candidate.example.test/v1",
+      apiKey: "old-key",
+      authType: "bearer",
+      providerKind: "openai-compatible",
+      models: [{ modelKey, labelZh: "Image V1", kind: "image" }],
+    });
+    const second = defaultCatalog.stage({
+      vendorKey,
+      runId: "run-new",
+      vendorName: "Candidate",
+      baseUrl: "https://candidate.example.test/v1",
+      apiKey: "new-key",
+      authType: "bearer",
+      providerKind: "openai-compatible",
+      models: [{ modelKey, labelZh: "Image V1", kind: "image" }],
+    });
+
+    expect(second.vendor.key).not.toBe(first.vendor.key);
+    expect(state.vendors.some((vendor) => vendor.key === first.vendor.key)).toBe(false);
+    expect(state.models.some((model) => model.vendorKey === first.vendor.key)).toBe(false);
+    expect(state.apiKeysByVendor[first.vendor.key]).toBeUndefined();
+  });
+
+  it("idempotently reuses the unpublished candidate for the same run id", () => {
+    state = {
+      ...initialState(),
+      vendors: [{ ...initialState().vendors[0], enabled: true }],
+      models: [{ ...initialState().models[0], enabled: true }],
+      mappings: [{ id: "active-image", vendorKey, modelKey, taskKind: "text_to_image", name: "active", enabled: true, create: { method: "POST", path: "/active" }, createdAt: now, updatedAt: now }],
+    };
+    const input = {
+      vendorKey,
+      runId: "same-run",
+      vendorName: "Candidate",
+      baseUrl: "https://candidate.example.test/v1",
+      apiKey: "same-key",
+      authType: "bearer" as const,
+      providerKind: "openai-compatible" as const,
+      models: [{ modelKey, labelZh: "Image V1", kind: "image" as const }],
+    };
+
+    const first = defaultCatalog.stage(input);
+    const second = defaultCatalog.stage(input);
+
+    expect(second.vendor.key).toBe(first.vendor.key);
+    expect(state.vendors.filter((vendor) => vendor.key.includes("--candidate-"))).toHaveLength(1);
   });
 });

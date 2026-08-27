@@ -7,7 +7,7 @@ import * as resolver from "./textBrainResolver";
 
 const FORBIDDEN_OWNER_IMPORT = /(?:from|import\s*\()\s*["'](?:ai|@ai-sdk\/[^"']*|@mariozechner\/[^"']*|@earendil-works\/pi-[^"']*|[^"']*(?:agentChatV2|agentLoop|agentSession|agentStream))['"]/;
 const safeStorageMocks = vi.hoisted(() => ({
-  decryptString: vi.fn((): string => { throw new Error("test keychain locked"); }),
+  decryptString: vi.fn((_value: Buffer): string => { throw new Error("test keychain locked"); }),
 }));
 
 vi.mock("../catalog/catalogStore", () => ({ readCatalog: vi.fn() }));
@@ -20,7 +20,7 @@ const catalog = (overrides: Partial<CatalogState> = {}): CatalogState => ({ vers
 
 describe("Nomi text brain resolver", () => {
   beforeEach(() => {
-    safeStorageMocks.decryptString.mockReset().mockImplementation((): string => { throw new Error("test keychain locked"); });
+    safeStorageMocks.decryptString.mockReset().mockImplementation((_value: Buffer): string => { throw new Error("test keychain locked"); });
     vi.mocked(readCatalog).mockReturnValue(catalog());
     vi.spyOn(console, "error").mockImplementation(() => {});
   });

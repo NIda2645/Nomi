@@ -79,7 +79,9 @@ export type UsableModelQuery = {
  * 返回命中的 catalog 行；无解返回 null（调用方据此抛清晰错误，而非 cryptic key missing）。
  */
 export function resolveUsableModelForNode(query: UsableModelQuery): ModelCatalogModelDto | null {
-  const candidates = query.models.filter((model) => model.enabled && query.usable.has(String(model.vendorKey || '').trim()))
+  const candidates = query.models.filter((model) =>
+    model.enabled && model.published && query.usable.has(String(model.vendorKey || '').trim()),
+  )
   if (!candidates.length) return null
 
   // 1. 精确 modelKey（含别名）

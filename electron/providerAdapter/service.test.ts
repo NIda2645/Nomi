@@ -872,5 +872,6 @@ describe("ProviderAdapterService", () => {
     expect(service.getRun(older.id)).toMatchObject({ stage: "stale" });
     expect(service.getRun(newer.id)).toMatchObject({ stage: "completed" });
     expect(catalog.promoted).toHaveLength(1);
+    expect(catalog.failed).toContain(older.id);
   });
 });
