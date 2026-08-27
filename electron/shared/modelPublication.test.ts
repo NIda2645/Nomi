@@ -62,6 +62,40 @@ describe("published execution contract", () => {
     }))).toEqual({ published: true, publishedModes: [] });
   });
 
+  it("treats an explicit current publication mask as authoritative over historical active-revision modes and mappings", () => {
+    expect(derivePublishedExecution(model("image", {
+      meta: { adapter: {
+        state: "verified",
+        activeRevision: "revision-old",
+        publicationModes: ["image_edit"],
+        modes: [
+          { taskKind: "text_to_image", state: "verified" },
+          { taskKind: "image_edit", state: "verified" },
+        ],
+      } },
+    }), {
+      mappings: [
+        { vendorKey: "relay", modelKey: "image-model", taskKind: "text_to_image", enabled: true },
+        { vendorKey: "relay", modelKey: "image-model", taskKind: "image_edit", enabled: true },
+      ],
+    })).toEqual({ published: true, publishedModes: ["image_edit"] });
+
+    expect(derivePublishedExecution(model("image", {
+      meta: { adapter: {
+        state: "verified",
+        activeRevision: "revision-old",
+        publicationModes: [],
+        modes: [{ taskKind: "text_to_image", state: "verified" }],
+      } },
+    }))).toEqual({ published: false, publishedModes: [] });
+  });
+
+  it("uses a current mask as publication evidence for restored mapping-less text execution", () => {
+    expect(derivePublishedExecution(model("text", {
+      meta: { adapter: { publicationModes: ["chat"] } },
+    }))).toEqual({ published: true, publishedModes: ["chat"] });
+  });
+
   it("keeps an active text revision on its direct chat path while repair modes are temporarily empty", () => {
     expect(derivePublishedExecution(model("text", {
       meta: { adapter: { state: "testing", activeRevision: "revision-good", modes: [] } },

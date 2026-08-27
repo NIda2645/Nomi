@@ -7,7 +7,11 @@ import {
 import { apiKeyDecryptStatus, decryptApiKeyRecord } from "../catalog/secrets";
 import type { Model, ProfileKind, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
-import { modelHasPublishedExecution } from "../shared/modelPublication";
+import {
+  adapterPublicationModeMask,
+  modelHasPublishedExecution,
+  withAdapterPublicationModeMask,
+} from "../shared/modelPublication";
 import {
   candidateLineageMeta,
   candidateModelPredecessors,
@@ -237,6 +241,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
           meta: {
             ...asRecord(existing?.meta),
             adapter: {
+              ...asRecord(asRecord(existing?.meta).adapter),
               state: "testing",
               runId: input.runId,
               activeRevision: asRecord(asRecord(existing?.meta).adapter).activeRevision,
@@ -321,7 +326,11 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
       for (const [sourceVendorKey, sourceModelKeys] of switchedBySource) {
         for (const sourceModel of before.models) {
           if (sourceModel.vendorKey !== sourceVendorKey || !sourceModelKeys.has(sourceModel.modelKey)) continue;
-          tx.upsertModel({ ...sourceModel, enabled: false });
+          tx.upsertModel({
+            ...sourceModel,
+            enabled: false,
+            meta: withAdapterPublicationModeMask(sourceModel.meta, []),
+          });
         }
         for (const sourceMapping of before.mappings) {
           if (!sourceMapping.modelKey) continue;
@@ -350,18 +359,27 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         const modeResults = input.run.models.find((model) => model.modelKey === candidate.modelKey)?.modes || [];
         const oldMeta = asRecord(existing.meta);
         const hasVerifiedMode = committedModes.some((mode) => mode.modelKey === candidate.modelKey);
+        const promotedMeta = adapterModelMetadataForPromotion({
+          oldMeta,
+          candidate,
+          modeResults,
+          runId: input.run.id,
+          revisionId: input.revision.id,
+          updatedAt: input.run.updatedAt,
+        });
+        const oldPublicationMask = adapterPublicationModeMask(oldMeta);
+        const publicationModes = committedModes
+          .filter((mode) => mode.modelKey === candidate.modelKey)
+          .map((mode) => mode.taskKind);
         tx.upsertModel({
           ...existing,
           ...(hasVerifiedMode ? { labelZh: candidate.labelZh, kind: candidate.kind } : {}),
           enabled: hasVerifiedMode || hasPublishedExecution(before, existing),
-          meta: adapterModelMetadataForPromotion({
-            oldMeta,
-            candidate,
-            modeResults,
-            runId: input.run.id,
-            revisionId: input.revision.id,
-            updatedAt: input.run.updatedAt,
-          }),
+          meta: hasVerifiedMode
+            ? withAdapterPublicationModeMask(promotedMeta, publicationModes)
+            : oldPublicationMask.present
+              ? withAdapterPublicationModeMask(promotedMeta, oldPublicationMask.modes)
+              : promotedMeta,
         });
         for (const mode of candidate.modes) {
           if (candidate.kind === "text") continue;
@@ -400,6 +418,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
           meta: {
             ...oldMeta,
             adapter: {
+              ...asRecord(oldMeta.adapter),
               state: "failed",
               runId: input.run.id,
               activeRevision: asRecord(oldMeta.adapter).activeRevision,
@@ -440,6 +459,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
           meta: {
             ...oldMeta,
             adapter: {
+              ...oldAdapter,
               state: "failed",
               runId: run.id,
               ...(typeof oldAdapter.activeRevision === "string"

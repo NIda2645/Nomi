@@ -31,6 +31,13 @@ export type PublishedExecution = {
   publishedModes: ProfileKind[];
 };
 
+export const ADAPTER_PUBLICATION_MODES = "publicationModes";
+
+export type AdapterPublicationModeMask = {
+  present: boolean;
+  modes: ProfileKind[];
+};
+
 const EXECUTABLE_TASKS_BY_KIND: Record<BillingModelKind, readonly ProfileKind[]> = {
   text: ["chat", "prompt_refine"],
   image: ["text_to_image", "image_edit"],
@@ -43,6 +50,31 @@ function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+/** A present mask is authoritative; malformed values fail closed to zero modes. */
+export function adapterPublicationModeMask(meta: unknown): AdapterPublicationModeMask {
+  const adapter = record(record(meta)?.adapter);
+  if (!adapter || !Object.prototype.hasOwnProperty.call(adapter, ADAPTER_PUBLICATION_MODES)) {
+    return { present: false, modes: [] };
+  }
+  const raw = adapter[ADAPTER_PUBLICATION_MODES];
+  if (!Array.isArray(raw)) return { present: true, modes: [] };
+  return {
+    present: true,
+    modes: [...new Set(raw.filter((mode): mode is ProfileKind => typeof mode === "string"))],
+  };
+}
+
+export function withAdapterPublicationModeMask(meta: unknown, modes: readonly ProfileKind[]): Record<string, unknown> {
+  const currentMeta = record(meta) || {};
+  return {
+    ...currentMeta,
+    adapter: {
+      ...(record(currentMeta.adapter) || {}),
+      [ADAPTER_PUBLICATION_MODES]: [...new Set(modes)],
+    },
+  };
 }
 
 function nonEmptyScript(value: unknown): boolean {
@@ -103,6 +135,7 @@ export function derivePublishedExecution(
   for (const taskKind of customCallModes(model, supported)) modes.add(taskKind);
 
   const adapter = record(record(model.meta)?.adapter);
+  const publicationMask = adapterPublicationModeMask(model.meta);
   const activeRevision = typeof adapter?.activeRevision === "string" && Boolean(adapter.activeRevision.trim());
   if (activeRevision && Array.isArray(adapter?.modes)) {
     for (const rawMode of adapter.modes) {
@@ -116,8 +149,17 @@ export function derivePublishedExecution(
   if (activeRevision && model.kind === "text") modes.add("chat");
 
   if (!adapter && model.kind === "text") modes.add("chat");
-  const publishedModes = supported.filter((taskKind) => modes.has(taskKind));
-  return { published: activeRevision || publishedModes.length > 0, publishedModes };
+  if (publicationMask.present) {
+    for (const taskKind of publicationMask.modes) {
+      if (supported.includes(taskKind)) modes.add(taskKind);
+    }
+  }
+  const allowed = publicationMask.present ? new Set(publicationMask.modes) : null;
+  const publishedModes = supported.filter((taskKind) => modes.has(taskKind) && (!allowed || allowed.has(taskKind)));
+  return {
+    published: publicationMask.present ? publishedModes.length > 0 : activeRevision || publishedModes.length > 0,
+    publishedModes,
+  };
 }
 
 export function modelHasPublishedExecution(

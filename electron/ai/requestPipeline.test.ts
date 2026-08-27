@@ -250,6 +250,33 @@ describe("buildHttpRequest — vendor extraHeaders (relay/proxy gateway auth)", 
     expect(built.headers["X-Title"]).toBe("from-mapping");
   });
 
+  it("redacts custom auth headers and encoded query secrets from the returned preview only", () => {
+    const secret = "opaque+Credential/Value=987654%";
+    const secretContext = buildTemplateContext({ request: {}, params: {}, model: {}, modelKey: "m", apiKey: secret });
+    const built = buildHttpRequest({
+      baseUrl: "https://relay",
+      authType: "query",
+      authHeaderName: "X-Workspace-Auth",
+      apiKey: secret,
+      context: secretContext,
+      operation: {
+        method: "GET",
+        path: "/p",
+        headers: { "X-Workspace-Auth": "{{user_api_key}}", "X-Ordinary": "ordinary-marker" },
+        query: { credential: "{{user_api_key}}", ordinary: "ordinary-marker" },
+      },
+      extraHeaders: { "X-Relay-Token": secret },
+    });
+
+    const preview = JSON.stringify(built.preview);
+    expect(built.headers["X-Workspace-Auth"]).toBe(secret);
+    expect(built.query.credential).toBe(secret);
+    expect(preview).toContain("ordinary-marker");
+    expect(preview).not.toContain(secret);
+    expect(preview).not.toContain(encodeURIComponent(secret));
+    expect(preview).not.toContain(new URLSearchParams({ credential: secret }).toString().slice("credential=".length));
+  });
+
   it("no extraHeaders → headers unchanged (zero-cost when none set)", () => {
     const built = buildHttpRequest({
       baseUrl: "https://relay",

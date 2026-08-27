@@ -102,6 +102,33 @@ describe("requestJson 结构化错误(S4-0,修压扁根因)", () => {
     expect(`${error.message}${JSON.stringify(error.structured)}`).not.toContain(querySecret);
   });
 
+  it("redacts encoded outbound query credentials without deleting ordinary upstream detail", async () => {
+    const secret = "opaque+Credential/Value=987654%";
+    const encoded = encodeURIComponent(secret);
+    const wireEncoded = new URLSearchParams({ api_key: secret }).toString().slice("api_key=".length);
+    const doubleEncoded = encodeURIComponent(wireEncoded);
+    stubFetch(() => new Response(JSON.stringify({
+      message: `ordinary-validation-marker rejected ${encoded} ${wireEncoded} ${doubleEncoded}`,
+    }), { status: 500 }));
+
+    const error = await requestJson(
+      { ...vendor, authType: "query", authQueryParam: "api_key" } as Vendor,
+      secret,
+      "GET",
+      "https://api.kie.ai/v1/task",
+      {},
+      {},
+      null,
+    ).catch((e) => e);
+
+    assert(error instanceof VendorRequestError);
+    const exposed = `${error.message}${JSON.stringify(error.structured)}`;
+    expect(exposed).toContain("ordinary-validation-marker");
+    for (const variant of [secret, encoded, wireEncoded, doubleEncoded]) {
+      expect(exposed).not.toContain(variant);
+    }
+  });
+
   it("网络层抛错 → category network 可重试", async () => {
     stubFetch(() => Promise.reject(new TypeError("fetch failed")));
     const error = await requestJson(vendor, "k", "GET", "https://x", {}, {}, null).catch((e) => e);

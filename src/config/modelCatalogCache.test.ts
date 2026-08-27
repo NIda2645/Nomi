@@ -88,4 +88,38 @@ describe('normal picker verified-only projection', () => {
     notifyModelOptionsRefresh()
     await expect(preloadModelOptions('video', 'image_to_video')).resolves.toEqual([])
   })
+
+  it('honors the shared current publication mask through the real DTO-to-picker projection', async () => {
+    const source = {
+      ...row('shared-image'),
+      vendorKey: 'source',
+      meta: { adapter: {
+        state: 'verified',
+        activeRevision: 'revision-old',
+        publicationModes: ['image_edit'],
+        modes: [
+          { taskKind: 'text_to_image', state: 'verified' },
+          { taskKind: 'image_edit', state: 'verified' },
+        ],
+      } },
+    }
+    const sourceDto = { ...source, ...derivePublishedExecution(source, {
+      mappings: [
+        { vendorKey: 'source', modelKey: 'shared-image', taskKind: 'text_to_image', enabled: true },
+        { vendorKey: 'source', modelKey: 'shared-image', taskKind: 'image_edit', enabled: true },
+      ],
+    }) }
+    mocks.listModels.mockResolvedValue([
+      sourceDto,
+      { ...row('shared-image', ['text_to_image']), vendorKey: 'survivor' },
+    ])
+    mocks.listVendors.mockResolvedValue([
+      { key: 'source', name: 'Source', enabled: true, authType: 'none' },
+      { key: 'survivor', name: 'Survivor', enabled: true, authType: 'none' },
+    ])
+
+    await expect(preloadModelOptions('image')).resolves.toMatchObject([{ value: 'shared-image', vendor: 'survivor' }])
+    notifyModelOptionsRefresh()
+    await expect(preloadModelOptions('imageEdit')).resolves.toMatchObject([{ value: 'shared-image', vendor: 'source' }])
+  })
 })

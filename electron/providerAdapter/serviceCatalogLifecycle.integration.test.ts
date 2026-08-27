@@ -285,6 +285,13 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
       expect.objectContaining({ taskKind: "text_to_image", enabled: true }),
       expect.objectContaining({ taskKind: "image_edit", enabled: false }),
     ]));
+    expect(listModelCatalogModels({ vendorKey: started.vendorKey })[0]).toMatchObject({
+      published: true,
+      publishedModes: ["text_to_image"],
+      meta: { adapter: { publicationModes: ["text_to_image"] } },
+    });
+    expect(listModelCatalogModels({ vendorKey: rootVendorKey }).find((model) => model.modelKey === targetModelKey))
+      .toMatchObject({ enabled: false, published: false, publishedModes: [], meta: { adapter: { publicationModes: [] } } });
 
     deleteModelCatalogVendor(started.vendorKey);
 
@@ -292,6 +299,8 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
       expect.objectContaining({ taskKind: "text_to_image", enabled: true, create: { path: "/source-image", method: "POST" } }),
       expect.objectContaining({ taskKind: "image_edit", enabled: true, create: { path: "/source-edit", method: "POST" } }),
     ]));
+    expect(listModelCatalogModels({ vendorKey: rootVendorKey }).find((model) => model.modelKey === targetModelKey))
+      .toMatchObject({ enabled: true, published: true, publishedModes: ["text_to_image", "image_edit"] });
     const oldNode: GenerationCanvasNode = {
       id: "old-image-node",
       kind: "image",

@@ -5,7 +5,11 @@ import {
   candidateSourceVendorKey,
   modelSuccessorDepth,
 } from "../shared/vendorLineage";
-import { derivePublishedExecution } from "../shared/modelPublication";
+import {
+  adapterPublicationModeMask,
+  derivePublishedExecution,
+  withAdapterPublicationModeMask,
+} from "../shared/modelPublication";
 import type { CatalogState, ProfileKind } from "./types";
 
 function predecessorVendorKeys(meta: unknown): Set<string> {
@@ -91,22 +95,35 @@ function survivingPublishedModes(
 function restoreExternalPredecessors(state: CatalogState, targets: readonly RestorationTarget[]): void {
   const restoredAt = nowIso();
   const restoredVendorKeys = new Set<string>();
-  const modesByModel = new Map<string, Set<ProfileKind>>();
+  const modesByModel = new Map<string, { restorable: Set<ProfileKind>; publication: Set<ProfileKind> }>();
   for (const target of targets) {
     const replacingModes = survivingPublishedModes(state, target);
     const restorableModes = new Set([...target.publishedModes].filter((mode) => !replacingModes.has(mode)));
     if (restorableModes.size === 0) continue;
-    modesByModel.set(`${target.vendorKey}\0${target.modelKey}`, restorableModes);
+    const sourceModel = state.models.find((model) =>
+      model.vendorKey === target.vendorKey && model.modelKey === target.modelKey);
+    const existingMask = adapterPublicationModeMask(sourceModel?.meta);
+    const publication = new Set<ProfileKind>([
+      ...(existingMask.present ? existingMask.modes : []),
+      ...restorableModes,
+    ].filter((mode) => !replacingModes.has(mode)));
+    modesByModel.set(`${target.vendorKey}\0${target.modelKey}`, { restorable: restorableModes, publication });
   }
   state.models = state.models.map((model) => {
-    if (!modesByModel.has(`${model.vendorKey}\0${model.modelKey}`)) return model;
+    const restoration = modesByModel.get(`${model.vendorKey}\0${model.modelKey}`);
+    if (!restoration) return model;
     restoredVendorKeys.add(model.vendorKey);
-    return { ...model, enabled: true, updatedAt: restoredAt };
+    return {
+      ...model,
+      enabled: restoration.publication.size > 0,
+      meta: withAdapterPublicationModeMask(model.meta, [...restoration.publication]),
+      updatedAt: restoredAt,
+    };
   });
   state.mappings = state.mappings.map((mapping) => {
     if (!mapping.modelKey) return mapping;
-    const modes = modesByModel.get(`${mapping.vendorKey}\0${mapping.modelKey}`);
-    if (!modes?.has(mapping.taskKind)) return mapping;
+    const restoration = modesByModel.get(`${mapping.vendorKey}\0${mapping.modelKey}`);
+    if (!restoration?.restorable.has(mapping.taskKind)) return mapping;
     return { ...mapping, enabled: true, updatedAt: restoredAt };
   });
   if (restoredVendorKeys.size > 0) {

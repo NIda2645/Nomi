@@ -17,9 +17,9 @@ vi.mock("electron", () => ({
   },
 }));
 
-import { deleteModelCatalogVendor, readCatalog } from "./catalogStore";
+import { deleteModelCatalogVendor, listModelCatalogModels, readCatalog } from "./catalogStore";
 import { deriveModelListing } from "./modelCatalogListing";
-import { CURRENT_CATALOG_VERSION, type CatalogState, type Vendor } from "./types";
+import { CURRENT_CATALOG_VERSION, selectTaskMapping, type CatalogState, type Vendor } from "./types";
 
 const now = "2026-08-28T00:00:00.000Z";
 
@@ -397,5 +397,85 @@ describe("candidate vendor lineage deletion", () => {
     expect(deriveModelListing(state).map((model) => `${model.vendor}/${model.modelKey}`)).toEqual([
       `${survivor}/image`,
     ]);
+  });
+
+  it("restores only unoccupied predecessor modes in DTO, picker evidence, and runtime mappings, then restores the final mode", () => {
+    const root = "source";
+    const survivor = "source--candidate-t2i";
+    const sibling = "source--candidate-edit";
+    const predecessorMeta = (revisionId: string, mode: "text_to_image" | "image_edit") => ({
+      adapterCandidateSourceVendorKey: root,
+      adapterCandidateRootVendorKey: root,
+      adapterCandidateRevisionId: revisionId,
+      adapterCandidatePromotionPredecessors: {
+        image: { vendorKey: root, publishedModes: [mode] },
+      },
+    });
+    writeState({
+      version: CURRENT_CATALOG_VERSION,
+      vendors: [vendor(root), vendor(survivor, predecessorMeta("t2i", "text_to_image")), vendor(sibling, predecessorMeta("edit", "image_edit"))],
+      models: [
+        {
+          vendorKey: root,
+          modelKey: "image",
+          labelZh: "Image",
+          kind: "image",
+          enabled: false,
+          meta: { adapter: {
+            state: "verified",
+            activeRevision: "root-revision",
+            publicationModes: [],
+            modes: [
+              { taskKind: "text_to_image", state: "verified" },
+              { taskKind: "image_edit", state: "verified" },
+            ],
+          } },
+          createdAt: now,
+          updatedAt: now,
+        },
+        { vendorKey: survivor, modelKey: "image", labelZh: "Image", kind: "image", enabled: true, createdAt: now, updatedAt: now },
+        { vendorKey: sibling, modelKey: "image", labelZh: "Image", kind: "image", enabled: true, createdAt: now, updatedAt: now },
+      ],
+      mappings: [
+        { id: "root-t2i", vendorKey: root, modelKey: "image", taskKind: "text_to_image", name: "root t2i", enabled: false, create: { method: "POST", path: "/root-t2i" }, createdAt: now, updatedAt: now },
+        { id: "root-edit", vendorKey: root, modelKey: "image", taskKind: "image_edit", name: "root edit", enabled: false, create: { method: "POST", path: "/root-edit" }, createdAt: now, updatedAt: now },
+        { id: "survivor-t2i", vendorKey: survivor, modelKey: "image", taskKind: "text_to_image", name: "survivor t2i", enabled: true, create: { method: "POST", path: "/survivor-t2i" }, createdAt: now, updatedAt: now },
+        { id: "sibling-edit", vendorKey: sibling, modelKey: "image", taskKind: "image_edit", name: "sibling edit", enabled: true, create: { method: "POST", path: "/sibling-edit" }, createdAt: now, updatedAt: now },
+      ],
+      apiKeysByVendor: Object.fromEntries([root, survivor, sibling].map((vendorKey) => [vendorKey, {
+        vendorKey,
+        apiKey: Buffer.from(`${vendorKey}-key`).toString("base64"),
+        enc: "safeStorage" as const,
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+      }])),
+    });
+
+    deleteModelCatalogVendor(sibling);
+
+    let state = readCatalog();
+    const sourceDto = listModelCatalogModels({ vendorKey: root })[0];
+    expect(sourceDto).toMatchObject({ enabled: true, published: true, publishedModes: ["image_edit"] });
+    expect((sourceDto.meta as { adapter: { publicationModes: string[] } }).adapter.publicationModes).toEqual(["image_edit"]);
+    expect(selectTaskMapping(state.mappings, root, "text_to_image", "image")).toBeNull();
+    expect(selectTaskMapping(state.mappings, root, "image_edit", "image")?.id).toBe("root-edit");
+    expect(listModelCatalogModels({ kind: "image", enabled: true }).filter((model) => model.publishedModes.includes("text_to_image")))
+      .toMatchObject([{ vendorKey: survivor }]);
+
+    deleteModelCatalogVendor(survivor);
+
+    state = readCatalog();
+    expect(listModelCatalogModels({ vendorKey: root })[0]).toMatchObject({
+      enabled: true,
+      published: true,
+      publishedModes: ["text_to_image", "image_edit"],
+    });
+    expect(selectTaskMapping(state.mappings, root, "text_to_image", "image")?.id).toBe("root-t2i");
+    expect(selectTaskMapping(state.mappings, root, "image_edit", "image")?.id).toBe("root-edit");
+
+    const once = JSON.stringify(state);
+    deleteModelCatalogVendor(survivor);
+    expect(JSON.stringify(readCatalog())).toBe(once);
   });
 });

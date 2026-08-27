@@ -6,7 +6,9 @@ import {
   type AuthType,
   appendQueryParams,
   authQueryParams as buildAuthQueryParams,
+  collectRequestSecretValues,
   looksLikeLogicalError,
+  redactRequestSecrets,
 } from "../ai/requestPipeline";
 import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamMessage } from "../jsonUtils";
 import { fetchVendorWithBaseFallback } from "./vendorBaseFallback";
@@ -20,7 +22,6 @@ export type VendorErrorCategory = "auth" | "balance" | "quota" | "input" | "serv
 // 首调返 queued 后由 core.ts 轮询循环（240s/300s）接管，故这里只兜「单次请求别永久挂死」。
 // 可经 NOMI_VENDOR_HTTP_TIMEOUT_MS 调（大模型同步出图慢可调大）。
 const DEFAULT_VENDOR_HTTP_TIMEOUT_MS = 120_000;
-const EXACT_REDACTED = "«redacted»";
 
 function vendorHttpTimeoutMs(): number {
   const raw = Number(process.env.NOMI_VENDOR_HTTP_TIMEOUT_MS);
@@ -31,13 +32,6 @@ function callerCancellation(signal?: AbortSignal): Error | null {
   if (!signal?.aborted) return null;
   if (signal.reason instanceof Error) return signal.reason;
   return new Error("Provider request cancelled");
-}
-
-function redactShortExactSecrets(message: string, secrets: readonly string[]): string {
-  return secrets.filter((secret) => secret.length > 0 && secret.length < 4).reduce((redacted, secret) => {
-    const escaped = secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return redacted.replace(new RegExp(`(^|[^A-Za-z0-9])${escaped}(?=$|[^A-Za-z0-9])`, "g"), `$1${EXACT_REDACTED}`);
-  }, message);
 }
 
 export type VendorErrorStructured = {
@@ -122,15 +116,11 @@ async function requestVendor(
   // primary boundary; redactNetworkMessage's format/query regexes remain a
   // defense-in-depth fallback. Redaction happens before any slice, throw, IPC,
   // run persistence, or UI projection can observe the value.
-  const requestSecrets = [
-    apiKey,
-    ...Object.values(requestAuthQuery),
-    ...Object.values(headers),
-  ].filter(Boolean).sort((left, right) => right.length - left.length);
+  const requestSecrets = collectRequestSecretValues({ apiKey, headers, authQuery: requestAuthQuery, query });
   const redactRequestMessage = (message: string, maximumLength = 8_192) =>
     redactNetworkMessage(
-      redactShortExactSecrets(message, requestSecrets),
-      requestSecrets.filter((secret) => secret.length >= 4),
+      redactRequestSecrets(message, requestSecrets),
+      [],
       maximumLength,
     );
   // 发送前请求头守卫：fetch 遇到码点 > 255 的头值会同步抛 ByteString 错，被下面 catch
