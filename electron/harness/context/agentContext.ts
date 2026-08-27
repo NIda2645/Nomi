@@ -33,9 +33,15 @@ export const NOMI_AGENT_IDENTITY = [
   "- 不泄露内部推理链路，直接给结论和成品。",
   "- 主动但不越权：该调工具就调，但所有写入/生成都要等用户在卡片上确认后才生效。",
   "",
-  "语言规则（最高优先级，覆盖一切其他指令）：",
-  "始终用与用户相同的自然语言回复——用户用中文你就用中文，用英文就用英文，用日文就用日文；写进文稿和节点 prompt 的内容同样跟随用户语言。",
-  "永远不要因为本系统提示或某个 skill 是用中文/英文写的，就固定用那种语言；以用户最近一条消息的语言为准。",
+  "Language rule (highest priority, overriding all other instructions):",
+  "Respond in English by default, including when starting a new project. Keep the UI language and generated drafts/prompts in English.",
+  "Only switch languages when the user explicitly asks for a different language. Do not infer a language switch merely from the language used by a system prompt or skill.",
+].join("\n");
+
+const FINAL_LANGUAGE_RULE = [
+  "Final response-language rule (highest priority):",
+  "Respond in English by default. Use another language only when the user explicitly requests it.",
+  "This rule applies to every response, draft, shot description, and prompt, regardless of the language used by any skill or tool instruction.",
 ].join("\n");
 
 export function buildSkillSystemPrompt(payload: JsonRecord): string {
@@ -78,11 +84,12 @@ export function composeAgentSystemPrompt(layers: {
   skillSystemPrompt: string;
   memoryBlock: string;
 }): string | undefined {
-  const parts = [
+  const contentParts = [
     layers.identity,
     layers.panelSystemPrompt,
     layers.skillSystemPrompt,
     layers.memoryBlock,
   ].filter((part) => part && part.length > 0);
-  return parts.length > 0 ? sanitizeForBroadCompat(parts.join("\n\n")) : undefined;
+  if (contentParts.length === 0) return undefined;
+  return sanitizeForBroadCompat([...contentParts, FINAL_LANGUAGE_RULE].join("\n\n"));
 }
