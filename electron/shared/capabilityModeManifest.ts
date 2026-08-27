@@ -1,16 +1,38 @@
 import { ARCHETYPE_MODE_MANIFEST } from "../catalog/archetypeModes.generated";
 import { archetypeIdForModel } from "../catalog/archetypeIdentity";
+import type { BillingModelKind, ProfileKind } from "../catalog/types";
 
 export type CapabilityModeModel = {
   modelKey?: string;
   modelAlias?: string | null;
+  kind?: string;
   meta?: unknown;
 };
 
 export type CapabilityModeManifest = {
   archetypeId: string;
   defaultModeId: string;
-  modes: Record<string, string>;
+  modes: Record<string, ProfileKind>;
+};
+
+export type CapabilityModeResolution =
+  | { state: "resolved"; source: "explicit" | "built-in"; manifest: CapabilityModeManifest }
+  | { state: "absent" }
+  | { state: "invalid-explicit" };
+
+const CONTRACT_KINDS = new Set<BillingModelKind>(["image", "video", "audio", "model3d"]);
+const TASK_KINDS_BY_MODEL_KIND: Record<Exclude<BillingModelKind, "text">, ReadonlySet<ProfileKind>> = {
+  image: new Set(["text_to_image", "image_edit"]),
+  video: new Set(["text_to_video", "image_to_video"]),
+  audio: new Set(["text_to_audio", "transcribe"]),
+  model3d: new Set(["text_to_3d", "image_to_3d"]),
+};
+const DEFAULT_CUSTOM_CALL_TASK_BY_KIND: Record<BillingModelKind, ProfileKind> = {
+  text: "chat",
+  image: "text_to_image",
+  video: "text_to_video",
+  audio: "text_to_audio",
+  model3d: "text_to_3d",
 };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -23,8 +45,9 @@ function trim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function validModeStorageKey(value: string): boolean {
-  return Boolean(value) && value !== "__proto__" && value !== "prototype" && value !== "constructor";
+function validModeId(value: string): boolean {
+  return value.length <= 64 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value) &&
+    !value.split(".").some((segment) => ["__proto__", "prototype", "constructor"].includes(segment.toLowerCase()));
 }
 
 function explicitArchetypeId(meta: unknown): string {
@@ -35,24 +58,39 @@ function explicitArchetypeId(meta: unknown): string {
   return trim(record(metadata.archetype)?.id);
 }
 
+function hasExplicitContract(model: CapabilityModeModel): boolean {
+  const metadata = record(model.meta);
+  return Boolean(metadata && Object.prototype.hasOwnProperty.call(metadata, "customCapabilityContract"));
+}
+
 function customCapabilityModeManifest(model: CapabilityModeModel): CapabilityModeManifest | null {
   const contract = record(record(model.meta)?.customCapabilityContract);
   if (!contract || contract.version !== 1 || !Array.isArray(contract.modes)) return null;
+  const modelKind = trim(model.kind) as BillingModelKind;
+  const contractKind = trim(contract.kind) as BillingModelKind;
+  if (!CONTRACT_KINDS.has(modelKind) || contractKind !== modelKind) return null;
+  const allowedTaskKinds = TASK_KINDS_BY_MODEL_KIND[modelKind as Exclude<BillingModelKind, "text">];
   const defaultModeId = trim(contract.defaultModeId);
-  const rootTaskKind = trim(contract.transportTaskKind);
+  const rootTaskKind = trim(contract.transportTaskKind) as ProfileKind;
   const identifier = trim(model.modelKey) || trim(model.modelAlias);
-  if (!defaultModeId || !rootTaskKind || !identifier || contract.modes.length === 0 || contract.modes.length > 16) return null;
+  if (
+    !validModeId(defaultModeId) ||
+    !allowedTaskKinds.has(rootTaskKind) ||
+    !identifier ||
+    contract.modes.length === 0 ||
+    contract.modes.length > 16
+  ) return null;
 
-  const modes: Record<string, string> = {};
+  const modes: Record<string, ProfileKind> = {};
   for (const rawMode of contract.modes) {
     const mode = record(rawMode);
     if (!mode) return null;
     const modeId = trim(mode.id);
-    const taskKind = trim(mode.transportTaskKind) || rootTaskKind;
-    if (!validModeStorageKey(modeId) || !taskKind || Object.prototype.hasOwnProperty.call(modes, modeId)) return null;
+    const taskKind = (trim(mode.transportTaskKind) || rootTaskKind) as ProfileKind;
+    if (!validModeId(modeId) || !allowedTaskKinds.has(taskKind) || Object.prototype.hasOwnProperty.call(modes, modeId)) return null;
     modes[modeId] = taskKind;
   }
-  if (!Object.prototype.hasOwnProperty.call(modes, defaultModeId)) return null;
+  if (!Object.prototype.hasOwnProperty.call(modes, defaultModeId) || modes[defaultModeId] !== rootTaskKind) return null;
   return {
     archetypeId: `custom-capability:${encodeURIComponent(identifier)}`,
     defaultModeId,
@@ -66,10 +104,42 @@ function builtInModeManifest(model: CapabilityModeModel): CapabilityModeManifest
   const archetypeId = explicitId && ARCHETYPE_MODE_MANIFEST[explicitId] ? explicitId : inferredId;
   if (!archetypeId) return null;
   const manifest = ARCHETYPE_MODE_MANIFEST[archetypeId];
-  return manifest ? { archetypeId, ...manifest } : null;
+  const modelKind = trim(model.kind) as Exclude<BillingModelKind, "text">;
+  const allowedTaskKinds = TASK_KINDS_BY_MODEL_KIND[modelKind];
+  if (!manifest || !allowedTaskKinds) return null;
+  const modes = Object.fromEntries(
+    Object.entries(manifest.modes).filter((entry): entry is [string, ProfileKind] => allowedTaskKinds.has(entry[1] as ProfileKind)),
+  );
+  if (
+    Object.keys(modes).length !== Object.keys(manifest.modes).length ||
+    !Object.prototype.hasOwnProperty.call(modes, manifest.defaultModeId)
+  ) return null;
+  return { archetypeId, defaultModeId: manifest.defaultModeId, modes };
 }
 
-/** Exact mode identity used by both custom-call dispatch and publication. */
+export function defaultCustomCallTaskKind(kind: unknown): ProfileKind | null {
+  return DEFAULT_CUSTOM_CALL_TASK_BY_KIND[trim(kind) as BillingModelKind] || null;
+}
+
+/**
+ * Exact mode identity used by both custom-call dispatch and publication.
+ * An explicit contract is authoritative: malformed input is terminal and can never fall
+ * through to identity-based built-ins or a legacy generic script.
+ */
+export function resolveCapabilityModeEvidence(model: CapabilityModeModel): CapabilityModeResolution {
+  if (hasExplicitContract(model)) {
+    const manifest = customCapabilityModeManifest(model);
+    return manifest
+      ? { state: "resolved", source: "explicit", manifest }
+      : { state: "invalid-explicit" };
+  }
+  const manifest = builtInModeManifest(model);
+  return manifest
+    ? { state: "resolved", source: "built-in", manifest }
+    : { state: "absent" };
+}
+
 export function resolveCapabilityModeManifest(model: CapabilityModeModel): CapabilityModeManifest | null {
-  return customCapabilityModeManifest(model) || builtInModeManifest(model);
+  const resolution = resolveCapabilityModeEvidence(model);
+  return resolution.state === "resolved" ? resolution.manifest : null;
 }

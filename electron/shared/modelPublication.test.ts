@@ -9,6 +9,18 @@ const model = (kind: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+const imageContract = (overrides: Record<string, unknown> = {}) => ({
+  version: 1,
+  kind: "image",
+  defaultModeId: "create",
+  transportTaskKind: "text_to_image",
+  modes: [
+    { id: "create" },
+    { id: "edit", transportTaskKind: "image_edit" },
+  ],
+  ...overrides,
+});
+
 describe("published execution contract", () => {
   it("keeps the adapter-less legacy fallback text-only", () => {
     expect(derivePublishedExecution(model("text"))).toEqual({ published: true, publishedModes: ["chat"] });
@@ -56,6 +68,7 @@ describe("published execution contract", () => {
       customCall: { modes: { create: { script: "return 'created'" }, reference: { script: "return 'reference'" } } },
       meta: { customCapabilityContract: {
         version: 1,
+        kind: "video",
         defaultModeId: "create",
         transportTaskKind: "text_to_video",
         modes: [
@@ -74,6 +87,7 @@ describe("published execution contract", () => {
       },
       meta: { customCapabilityContract: {
         version: 1,
+        kind: "image",
         defaultModeId: "create",
         transportTaskKind: "text_to_image",
         modes: [
@@ -81,7 +95,7 @@ describe("published execution contract", () => {
           { id: "edit", transportTaskKind: "image_edit" },
         ],
       } },
-    }))).toEqual({ published: true, publishedModes: ["text_to_image", "image_edit"] });
+    }))).toEqual({ published: true, publishedModes: ["image_edit"] });
   });
 
   it("does not publish mode scripts from a malformed capability contract the runtime cannot execute", () => {
@@ -89,6 +103,7 @@ describe("published execution contract", () => {
       customCall: { modes: { edit: { script: "return 'edited'" } } },
       meta: { customCapabilityContract: {
         version: 1,
+        kind: "image",
         modes: [{ id: "edit", transportTaskKind: "image_edit" }],
       } },
     }))).toEqual({ published: false, publishedModes: [] });
@@ -100,5 +115,49 @@ describe("published execution contract", () => {
       modelKey: "seedream",
       customCall: { modes: { edit: { script: "return 'edited'" } } },
     })).toEqual({ published: true, publishedModes: ["image_edit"] });
+  });
+
+  it("rejects an explicit contract whose kind conflicts with the catalog model kind", () => {
+    expect(derivePublishedExecution(model("image", {
+      customCall: { modes: { edit: { script: "return 'edited'" } } },
+      meta: { customCapabilityContract: imageContract({ kind: "video" }) },
+    }))).toEqual({ published: false, publishedModes: [] });
+  });
+
+  it("does not fall back to seedream archetype when an explicit contract has non-array modes", () => {
+    expect(derivePublishedExecution({
+      ...model("image"),
+      modelKey: "seedream",
+      customCall: { modes: { edit: { script: "return 'edited'" } } },
+      meta: { customCapabilityContract: imageContract({ modes: "not-an-array" }) },
+    })).toEqual({ published: false, publishedModes: [] });
+  });
+
+  it.each([
+    ["version", imageContract({ version: 2 })],
+    ["missing default", imageContract({ defaultModeId: "missing" })],
+    ["duplicate mode", imageContract({ modes: [{ id: "edit", transportTaskKind: "image_edit" }, { id: "edit", transportTaskKind: "image_edit" }] })],
+    ["invalid mode id", imageContract({ defaultModeId: "prototype", modes: [{ id: "prototype", transportTaskKind: "image_edit" }] })],
+    ["root task mismatch", imageContract({ transportTaskKind: "text_to_video" })],
+    ["default task mismatch", imageContract({ modes: [{ id: "create", transportTaskKind: "image_edit" }, { id: "edit", transportTaskKind: "image_edit" }] })],
+    ["mode task mismatch", imageContract({ modes: [{ id: "create" }, { id: "edit", transportTaskKind: "image_to_video" }] })],
+    ["null contract", null],
+  ])("treats malformed explicit %s contracts as terminal instead of using identity fallback", (_name, contract) => {
+    expect(derivePublishedExecution({
+      ...model("image"),
+      modelKey: "seedream",
+      customCall: {
+        script: "return 'generic'",
+        modes: { edit: { script: "return 'edited'" } },
+      },
+      meta: { customCapabilityContract: contract },
+    })).toEqual({ published: false, publishedModes: [] });
+  });
+
+  it("does not treat a model-level generic script as legacy fallback when an explicit contract exists", () => {
+    expect(derivePublishedExecution(model("image", {
+      customCall: { script: "return 'generic'" },
+      meta: { customCapabilityContract: imageContract() },
+    }))).toEqual({ published: false, publishedModes: [] });
   });
 });

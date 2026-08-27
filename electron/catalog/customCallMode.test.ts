@@ -59,26 +59,19 @@ describe("resolveCustomCallExecution", () => {
     expect(resolveCustomCallExecution(model(), request("firstlast"), mapping())?.script).toContain("firstlast");
   });
 
-  it("falls back to the legacy model script when a valid mode has no override", () => {
-    expect(resolveCustomCallExecution(model(), request("omni"), mapping())).toEqual({
-      script: "return 'fallback'",
-      source: "model",
-      taskKind: "image_to_video",
-      modeId: "omni",
-    });
-  });
-
-  it("does not trust an unknown or task-kind-incompatible mode id", () => {
-    expect(resolveCustomCallExecution(model(), request("made-up"), mapping())).toMatchObject({
-      script: "return 'fallback'",
-      source: "model",
-      taskKind: "image_to_video",
-    });
-    expect(resolveCustomCallExecution(model(), request("first", "text_to_video"), mapping("text_to_video"))).toEqual({
+  it("allows the legacy model script only for the kind minimum default task", () => {
+    expect(resolveCustomCallExecution(model(), request("t2v", "text_to_video"), mapping("text_to_video"))).toEqual({
       script: "return 'fallback'",
       source: "model",
       taskKind: "text_to_video",
+      modeId: "t2v",
     });
+    expect(resolveCustomCallExecution(model(), request("omni"), mapping())).toBeNull();
+  });
+
+  it("does not trust an unknown or task-kind-incompatible mode id", () => {
+    expect(resolveCustomCallExecution(model(), request("made-up"), mapping())).toBeNull();
+    expect(resolveCustomCallExecution(model(), request("first", "text_to_video"), mapping("text_to_video"))).toBeNull();
   });
 
   it("derives mode identity from the model archetype, independent of provider names", () => {
@@ -128,7 +121,37 @@ describe("resolveCustomCallExecution", () => {
       .toMatchObject({ source: "mode", modeId: "references", script: "return 'references'" });
   });
 
-  it("keeps an invalid custom contract inert instead of trusting its mode id", () => {
+  it("does not dispatch a built-in seedream mode when an explicit contract is malformed", () => {
+    const custom = model("future-relay");
+    custom.modelKey = "seedream";
+    custom.kind = "image";
+    custom.meta = {
+      customCapabilityContract: {
+        version: 1,
+        kind: "image",
+        defaultModeId: "create",
+        transportTaskKind: "text_to_image",
+        modes: "not-an-array",
+      },
+    };
+    custom.customCall = {
+      modes: { edit: { script: "return 'edited'", updatedAt: "2026-08-15T00:00:00.000Z" } },
+      updatedAt: "2026-08-15T00:00:00.000Z",
+    };
+    const editRequest: TaskRequest = {
+      kind: "image_edit",
+      prompt: "edit",
+      extras: { modelKey: "seedream", archetype: { id: "seedream", modeId: "edit" } },
+    };
+
+    expect(resolveCustomCallExecution(custom, editRequest, {
+      ...mapping("image_edit"),
+      vendorKey: custom.vendorKey,
+      modelKey: custom.modelKey,
+    })).toBeNull();
+  });
+
+  it("blocks an invalid explicit contract instead of falling back to the generic script", () => {
     const custom = model();
     custom.modelKey = "unknown-future-model";
     custom.meta = {
@@ -151,10 +174,6 @@ describe("resolveCustomCallExecution", () => {
       },
     };
 
-    expect(resolveCustomCallExecution(custom, customRequest, mapping())).toEqual({
-      script: "return 'fallback'",
-      source: "model",
-      taskKind: "image_to_video",
-    });
+    expect(resolveCustomCallExecution(custom, customRequest, mapping())).toBeNull();
   });
 });

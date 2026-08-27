@@ -1,5 +1,6 @@
 import { isJsonRecord, nowIso, trim } from "../jsonUtils";
-import { resolveCapabilityModeManifest } from "../shared/capabilityModeManifest";
+import { defaultCustomCallTaskKind, resolveCapabilityModeEvidence } from "../shared/capabilityModeManifest";
+import type { CapabilityModeManifest } from "../shared/capabilityModeManifest";
 import type { TaskRequest } from "../runtime";
 import type { Mapping, Model, ProfileKind } from "./types";
 
@@ -68,8 +69,7 @@ function requestArchetypeSelection(request: TaskRequest): { archetypeId: string;
  * 只从模型档案 / 显式能力契约确认 modeId。供应商名、modelKey 关键词和“有没有参考图”都不能发明模式。
  * mapping 只提供已由 selectTaskMapping 选中的 transport taskKind；模式身份仍由 archetype 验证。
  */
-function validatedModeId(model: Model, request: TaskRequest, taskKind: ProfileKind): string | undefined {
-  const manifest = resolveCapabilityModeManifest(model);
+function validatedModeId(manifest: CapabilityModeManifest | null, request: TaskRequest, taskKind: ProfileKind): string | undefined {
   if (!manifest) return undefined;
 
   const selected = requestArchetypeSelection(request);
@@ -87,11 +87,16 @@ export function resolveCustomCallExecution(
   const customCall = model.customCall;
   if (!customCall) return null;
   const taskKind = mapping?.taskKind || request.kind;
-  const modeId = validatedModeId(model, request, taskKind);
+  const resolution = resolveCapabilityModeEvidence(model);
+  if (resolution.state === "invalid-explicit") return null;
+  const manifest = resolution.state === "resolved" ? resolution.manifest : null;
+  const selected = requestArchetypeSelection(request);
+  const modeId = validatedModeId(manifest, request, taskKind);
+  if ((selected.archetypeId || selected.modeId) && !modeId) return null;
   const modeScript = modeId ? trim(customCall.modes?.[modeId]?.script) : "";
   if (modeScript) return { script: modeScript, source: "mode", taskKind, modeId };
   const modelScript = trim(customCall.script);
-  return modelScript
+  return modelScript && taskKind === defaultCustomCallTaskKind(model.kind)
     ? { script: modelScript, source: "model", taskKind, ...(modeId ? { modeId } : {}) }
     : null;
 }

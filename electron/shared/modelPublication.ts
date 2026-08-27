@@ -1,4 +1,5 @@
-import { resolveCapabilityModeManifest } from "./capabilityModeManifest";
+import { defaultCustomCallTaskKind, resolveCapabilityModeEvidence } from "./capabilityModeManifest";
+import type { BillingModelKind, ProfileKind } from "../catalog/types";
 
 export type PublishedExecutionModel = {
   enabled?: boolean;
@@ -27,23 +28,15 @@ export type PublishedExecutionEvidence = {
 
 export type PublishedExecution = {
   published: boolean;
-  publishedModes: string[];
+  publishedModes: ProfileKind[];
 };
 
-const EXECUTABLE_TASKS_BY_KIND: Record<string, readonly string[]> = {
+const EXECUTABLE_TASKS_BY_KIND: Record<BillingModelKind, readonly ProfileKind[]> = {
   text: ["chat", "prompt_refine"],
   image: ["text_to_image", "image_edit"],
   video: ["text_to_video", "image_to_video"],
   audio: ["text_to_audio", "image_to_audio", "transcribe"],
   model3d: ["text_to_3d", "image_to_3d"],
-};
-
-const DEFAULT_CUSTOM_CALL_TASK_BY_KIND: Record<string, string> = {
-  text: "chat",
-  image: "text_to_image",
-  video: "text_to_video",
-  audio: "text_to_audio",
-  model3d: "text_to_3d",
 };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -57,24 +50,24 @@ function nonEmptyScript(value: unknown): boolean {
 }
 
 function contractedCustomCallModes(
-  model: PublishedExecutionModel,
+  manifest: { modes: Record<string, ProfileKind> },
   scriptedModeIds: ReadonlySet<string>,
-  supported: readonly string[],
-): string[] {
-  const manifest = resolveCapabilityModeManifest(model);
-  if (!manifest) return [];
+  supported: readonly ProfileKind[],
+): ProfileKind[] {
   return Object.entries(manifest.modes)
     .filter(([modeId, taskKind]) => scriptedModeIds.has(modeId) && supported.includes(taskKind))
     .map(([, taskKind]) => taskKind);
 }
 
-function customCallModes(model: PublishedExecutionModel, supported: readonly string[]): string[] {
+function customCallModes(model: PublishedExecutionModel, supported: readonly ProfileKind[]): ProfileKind[] {
   const customCall = model.customCall;
   if (!customCall) return [];
-  const published = new Set<string>();
-  if (nonEmptyScript(customCall.script)) {
-    const defaultTask = DEFAULT_CUSTOM_CALL_TASK_BY_KIND[String(model.kind || "")];
-    if (defaultTask && supported.includes(defaultTask)) published.add(defaultTask);
+  const resolution = resolveCapabilityModeEvidence(model);
+  if (resolution.state === "invalid-explicit") return [];
+  const published = new Set<ProfileKind>();
+  if (resolution.state !== "resolved" || resolution.source !== "explicit") {
+    const defaultTask = defaultCustomCallTaskKind(model.kind);
+    if (nonEmptyScript(customCall.script) && defaultTask && supported.includes(defaultTask)) published.add(defaultTask);
   }
   const scriptedModeIds = new Set(
     Object.entries(customCall.modes || {})
@@ -83,7 +76,9 @@ function customCallModes(model: PublishedExecutionModel, supported: readonly str
   );
   if (scriptedModeIds.size === 0) return [...published];
 
-  for (const taskKind of contractedCustomCallModes(model, scriptedModeIds, supported)) published.add(taskKind);
+  if (resolution.state === "resolved") {
+    for (const taskKind of contractedCustomCallModes(resolution.manifest, scriptedModeIds, supported)) published.add(taskKind);
+  }
   return [...published];
 }
 
@@ -92,17 +87,17 @@ export function derivePublishedExecution(
   evidence: PublishedExecutionEvidence = {},
 ): PublishedExecution {
   if (!model?.enabled) return { published: false, publishedModes: [] };
-  const supported = EXECUTABLE_TASKS_BY_KIND[String(model.kind || "")] || [];
-  const modes = new Set<string>();
+  const supported = EXECUTABLE_TASKS_BY_KIND[model.kind as BillingModelKind] || [];
+  const modes = new Set<ProfileKind>();
 
   for (const mapping of evidence.mappings || []) {
     if (
       mapping.enabled === true &&
       mapping.vendorKey === model.vendorKey &&
-      supported.includes(String(mapping.taskKind || "")) &&
+      supported.includes(mapping.taskKind as ProfileKind) &&
       (!mapping.modelKey || mapping.modelKey.trim() === model.modelKey)
     ) {
-      modes.add(String(mapping.taskKind));
+      modes.add(mapping.taskKind as ProfileKind);
     }
   }
   for (const taskKind of customCallModes(model, supported)) modes.add(taskKind);
@@ -112,8 +107,9 @@ export function derivePublishedExecution(
   if (activeRevision && Array.isArray(adapter?.modes)) {
     for (const rawMode of adapter.modes) {
       const mode = record(rawMode);
-      if (mode?.state === "verified" && typeof mode.taskKind === "string" && supported.includes(mode.taskKind)) {
-        modes.add(mode.taskKind);
+      const taskKind = mode?.taskKind as ProfileKind;
+      if (mode?.state === "verified" && typeof mode.taskKind === "string" && supported.includes(taskKind)) {
+        modes.add(taskKind);
       }
     }
   }
