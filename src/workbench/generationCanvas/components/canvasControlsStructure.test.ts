@@ -53,6 +53,21 @@ describe('generation canvas control structure', () => {
     expect(baseNode).toContain('selected && !readOnly && !flowManagedLayout')
   })
 
+  it('routes every duplicated variant through the shared focus recovery contract', () => {
+    const runner = source('../runner/generationRunController.ts')
+    const toolbar = source('../nodes/NodeFloatingToolbar.tsx')
+    const focusEffects = source('../reactFlow/useGenerationCanvasReactFlowEffects.ts')
+
+    expect(runner).toMatch(
+      /duplicateNodeForRegeneration\(nodeId\)[\s\S]{0,320}FOCUS_GENERATION_NODE_EVENT[\s\S]{0,120}nodeId: dup\.id/,
+    )
+    expect(toolbar).toMatch(
+      /const duplicate = duplicateAsVariant\(nodeId\)[\s\S]{0,260}FOCUS_GENERATION_NODE_EVENT[\s\S]{0,120}nodeId: duplicate\.id/,
+    )
+    expect(focusEffects).toContain('window.addEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)')
+    expect(focusEffects).toContain('resolvePendingCanvasFocus(')
+  })
+
   it('keeps viewport panning independent from connection cancellation', () => {
     const viewportGestures = source('./useCanvasViewportGestures.ts')
 
@@ -231,10 +246,11 @@ describe('generation canvas control structure', () => {
 
     expect(segmented).toContain("density?: 'compact' | 'default'")
     expect(segmented).toContain("density === 'compact' ? 28 : 32")
-    expect(modeBar).toContain('density="compact"')
+    expect(modeBar).toContain('min-h-7 rounded-nomi-sm px-3 py-1 text-caption')
     expect(parameterBar).toContain('style={{ height: 28 }}')
     expect(parameterBar).toContain('density="compact"')
-    expect(composer).toContain('NomiSegmented')
+    expect(composer).toContain('min-h-7 rounded-nomi-sm px-2.5 py-1 text-caption')
+    expect(composer).not.toContain('NomiSegmented')
     expect(composer).not.toContain('h-[22px]')
   })
 

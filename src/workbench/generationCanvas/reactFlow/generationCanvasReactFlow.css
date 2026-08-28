@@ -100,8 +100,13 @@
   position: absolute;
   inset: 25%;
   border-radius: inherit;
-  background: var(--nomi-accent);
+  background: var(--workbench-muted-soft);
   content: '';
+}
+
+.generation-canvas-react-flow .generation-canvas-react-flow__handle:hover::after,
+.generation-canvas-react-flow .generation-canvas-react-flow__handle.connecting::after {
+  background: var(--workbench-accent);
 }
 
 .generation-canvas-react-flow .generation-canvas-react-flow__node-shell:hover .generation-canvas-react-flow__handle,

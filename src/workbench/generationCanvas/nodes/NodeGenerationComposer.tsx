@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { IconFileText } from '../../../vendor/tablerIcons'
-import { NomiLoadingMark, NomiSegmented, NomiSelect } from '../../../design'
+import { NomiLoadingMark, NomiSelect } from '../../../design'
 import { cn } from '../../../utils/cn'
 import { fetchUserPrompts, type PromptMediaType, type PromptReferenceImage } from '../../api/promptLibraryApi'
 import PromptEditor from '../../assets/PromptEditor'
@@ -615,21 +615,32 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
         <div className={cn('h-px bg-nomi-line-soft')} />
       ) : null}
       {isTextKind ? (
-        <div onPointerDown={(event) => event.stopPropagation()}>
-          <NomiSegmented
-            value={textGenMode}
-            options={TEXT_GEN_MODES.map((option) => ({
-              value: option.value,
-              label: t(`generationCommon.${option.labelKey}`),
-              title: t(`generationCommon.${option.labelKey}`),
-            }))}
-            onChange={(value) => {
-              updateNode(node.id, { meta: { ...(node.meta || {}), textGenMode: value as TextGenMode } })
-            }}
-            ariaLabel={t('generationCommon.composer.generationMode')}
-            density="compact"
-            className="w-fit rounded-nomi-sm p-0.5"
-          />
+        <div
+          className={cn('flex items-center gap-1')}
+          role="group"
+          aria-label={t('generationCommon.composer.generationMode')}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {TEXT_GEN_MODES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={textGenMode === option.value}
+              data-active={textGenMode === option.value ? 'true' : 'false'}
+              title={t(`generationCommon.${option.labelKey}`)}
+              onClick={(event) => {
+                event.stopPropagation()
+                updateNode(node.id, { meta: { ...(node.meta || {}), textGenMode: option.value } })
+              }}
+              className={cn(
+                'min-h-7 rounded-nomi-sm px-2.5 py-1 text-caption font-medium leading-none',
+                'text-nomi-ink-60 hover:bg-nomi-ink-05',
+                'data-[active=true]:bg-nomi-paper data-[active=true]:text-nomi-ink data-[active=true]:shadow-nomi-sm',
+              )}
+            >
+              {t(`generationCommon.${option.labelKey}`)}
+            </button>
+          ))}
         </div>
       ) : null}
       {/* 长 prompt 在编辑器内部滚动/换行；底栏永远贴底（卡宽确定，提示词在卡宽内自然换行，不撑爆）。 */}
