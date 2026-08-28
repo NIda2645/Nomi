@@ -156,7 +156,7 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 
 完成一个有意义的、验证通过的改动就自己 commit + push，不用等用户催。
 
-**验证门槛**：`pnpm build` 绿 + `npx vitest run` 不回归（重大改动按速览「Push 前必须全过」走五门）。
+**验证门槛**：按 R22 选择 `fast` 或 `full`。普通隔离 PR 改动通过 contracts + focused 即可提交；高风险路径、最终交付、`main` 与发布边界必须通过 full。连续小修先在本地收敛，定向验证通过后只 push 一次，禁止每修一个微小点就触发一轮完整远端 CI。
 
 **commit 规范**：
 - 一个逻辑改动一个 commit
@@ -482,3 +482,27 @@ git status --short --branch
 5. `pnpm run check:root-cause-contracts` 是权威门禁；本地 Agent hook 只做提前提醒，缺失也不能绕过 CI。
 
 根因合同字段与完整方法只在技能和 schema 检查器维护，本节不复制，避免规则再次分叉。
+
+## R22 验证分层与测试预算
+
+> 2026-08-29 用户拍板固化。目标不是少测，而是把反馈成本花在真正可能受影响的地方：小改动尽快反馈，高风险和交付边界绝不降级。
+
+### 两档验证
+
+| 档位 | 触发 | 必跑 | 不跑 |
+|---|---|---|---|
+| `fast` | 普通 PR 中的文档或隔离 renderer/source 改动 | `test:system:contracts` + changed/sibling/related tests | 全仓 Vitest、Desktop journey、macOS package |
+| `full` | Electron；模型、凭据、网络、ComfyUI、provider、catalog、bridge；依赖/构建/CI/测试系统；删除/重命名；最终交付、`main` push、手动发布验证 | contracts + 全量 unit + build/E2E/journeys + macOS package CI | 无 |
+
+权威实现是 `scripts/select-quality-gate-profile.mjs`、`scripts/test-focused.mjs` 和 `.github/workflows/quality-gate.yml`。分类器异常、空 diff 或无法解析 diff 时必须 fail-closed 到 `full`；fast 只能被升级，不能把高风险改动降级。`Quality Gate` 仍是唯一聚合门，主线与发布永远 full。
+
+### 测试取舍
+
+1. **必须保留**：凭据不出主进程、SSRF/重定向/私网边界、认证与发布状态机、幂等/并发/取消、崩溃恢复与升级持久化、迁移与 unknown reconcile、媒体验真、真实入口 round-trip、安装包身份和签名。这些测试即使慢或相似，也不能按数量删除。
+2. **可以 focused**：普通源文件的同目录 sibling test；没有 sibling 时由 Vitest import graph 找 related tests；直接改动的 Vitest/Node test。docs-only 没有可执行 target 时仍必须通过 contracts。
+3. **可以简化**：重复的 fixture、临时目录、启动器和断言 helper；过大的测试文件应按行为域拆分。先证明行为覆盖等价，再合并装配代码，不用“删测试”换速度。
+4. **不能假装自动化**：真实供应商 key、真实 ComfyUI、外部宿主和跨版本升级没有资源时必须记为 unverified，不能用 mock 绿灯替代 live 证据。
+
+### 执行节奏
+
+一个逻辑批次先完成实现、审计、规则和测试，再跑一次定向验证；全部本地问题收敛后只跑一次 full 并统一 push。小阻塞不得打断主流程反复重启全套测试；只有会改变安全边界、产品方向或需要用户独有资源的阻塞才停下。

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "2026-08-29-cross-platform-image-decoder-selection",
+  "problem_type": "cross-platform image decoder command regression",
+  "symptom": "A valid static VP8 WebP passed local macOS tests with bundled FFmpeg 4.4 but was rejected as ANTIGRAVITY_IMAGE_INVALID and media_corrupt by the Linux CI bundle using FFmpeg 4.1.",
+  "direct_cause": "The image validation boundary sent WebP bytes through FFmpeg's generic image2pipe demuxer, whose WebP probing behavior differs between the bundled FFmpeg 4.1 and 4.4 builds.",
+  "class_root": "Nomi verified image MIME from magic bytes but did not carry that trusted format identity into demuxer selection, so the same valid WebP bytes could be interpreted differently by bundled FFmpeg versions.",
+  "affected_population": [
+    "Linux users or CI runs using the bundled FFmpeg 4.1 image decoder",
+    "Users certifying provider image output or recovering Antigravity image artifacts in PNG, JPEG, or WebP format"
+  ],
+  "scope_paths": [
+    "electron/ai/antigravityArtifacts.ts"
+  ],
+  "entry_points": [
+    "Antigravity generated-image artifact recovery through validateAntigravityImage",
+    "Provider Adapter image certification through certifyMediaArtifact and the shared validateAntigravityImage boundary"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/FFmpeg/FFmpeg/blob/n4.1/libavformat/img2dec.c",
+      "checked_at": "2026-08-29",
+      "purpose": "Confirm the FFmpeg 4.1 image2 pipe demuxer and format-specific probe behavior used by the Linux bundle."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/FFmpeg/FFmpeg/blob/n4.4/libavformat/img2dec.c",
+      "checked_at": "2026-08-29",
+      "purpose": "Compare the image2 pipe boundary used by the passing macOS FFmpeg bundle."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://ffmpeg.org/ffmpeg.html",
+      "checked_at": "2026-08-29",
+      "purpose": "Verify that the -f option placed before an input selects its demuxer instead of relying on format probing."
+    }
+  ],
+  "invariants": [
+    "Image bytes are accepted only after PNG, JPEG, or WebP magic and declared MIME agree at the shared boundary.",
+    "Verified WebP bytes use FFmpeg's explicit webp_pipe demuxer; verified PNG and JPEG bytes retain the generic image2pipe transport that is stable across the bundled versions.",
+    "Provider certification and Antigravity artifact recovery use the same decoder command contract with the same pixel, timeout, output, cancellation, and process-tree limits.",
+    "Decoder stderr, local paths, and raw payloads remain outside persisted certification evidence and user-visible errors."
+  ],
+  "regression_tests": [
+    "electron/ai/antigravityMedia.test.ts",
+    "electron/providerAdapter/certificationMedia.test.ts"
+  ],
+  "migration": "No stored data changes. Existing artifacts and certification records remain readable; future validation runs use the explicit decoder command contract for the same supported MIME set.",
+  "residual_risks": [
+    "The exact Linux FFmpeg 4.1 executable cannot run natively on the arm64 macOS development host, so the real VP8 WebP fixture must also pass the Linux Quality Gate before merge."
+  ]
+}

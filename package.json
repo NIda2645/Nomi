@@ -104,6 +104,7 @@
     "test:system:ci": "node scripts/test-system.mjs ci",
     "test:system:contracts": "node scripts/test-system.mjs ci-contracts",
     "test:system:unit": "node scripts/test-system.mjs ci-unit",
+    "test:system:focused": "node scripts/test-focused.mjs",
     "test:system:desktop": "node scripts/test-system.mjs ci-desktop",
     "test:system:full": "node scripts/test-system.mjs full-local",
     "test:system:release": "node scripts/test-system.mjs release",
@@ -113,7 +114,7 @@
     "check:batch-machines": "node ./scripts/check-batch-machines.mjs",
     "check:test-types": "node ./scripts/check-test-types.mjs",
     "check:gates-chain": "node ./scripts/check-gates-chain.mjs",
-    "check:quality-gate-workflow": "node --test ./scripts/check-quality-gate-workflow.node-test.mjs"
+    "check:quality-gate-workflow": "node --test ./scripts/check-quality-gate-workflow.node-test.mjs ./scripts/test-focused.node-test.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",

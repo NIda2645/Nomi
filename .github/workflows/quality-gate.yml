@@ -12,6 +12,13 @@ on:
         required: false
         default: origin/main
         type: string
+      validation_mode:
+        description: Manual runs are always full; keep this explicit for auditability
+        required: false
+        default: full
+        type: choice
+        options:
+          - full
 
 concurrency:
   group: quality-gate-${{ github.event.pull_request.number || github.ref }}
@@ -21,6 +28,26 @@ permissions:
   contents: read
 
 jobs:
+  scope:
+    name: Validation Scope
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.profile.outputs.mode }}
+      reason: ${{ steps.profile.outputs.reason }}
+      changed_count: ${{ steps.profile.outputs.changed_count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select fail-closed validation profile
+        id: profile
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          NOMI_VALIDATION_MODE: ${{ inputs.validation_mode || '' }}
+          NOMI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          NOMI_HEAD_SHA: ${{ github.sha }}
+        run: node scripts/select-quality-gate-profile.mjs
+
   contracts:
     name: Contracts
     runs-on: ubuntu-latest
@@ -46,6 +73,7 @@ jobs:
 
   unit:
     name: Unit
+    needs: scope
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -62,11 +90,20 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Unit and agent runtime tests
+      - name: Unit and agent runtime tests (full lane)
+        if: needs.scope.outputs.mode == 'full'
         run: pnpm run test:system:unit
+      - name: Changed and related tests (fast lane)
+        if: needs.scope.outputs.mode == 'fast'
+        env:
+          NOMI_CHANGED_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
+          NOMI_CHANGED_HEAD: ${{ github.sha }}
+        run: pnpm run test:system:focused
 
   desktop-linux:
     name: Desktop Linux
+    needs: scope
+    if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -101,6 +138,8 @@ jobs:
           retention-days: 7
   mac-package:
     name: Mac Package
+    needs: scope
+    if: needs.scope.outputs.mode == 'full'
     runs-on: macos-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -124,13 +163,16 @@ jobs:
 
   quality:
     name: Quality Gate
-    needs: [contracts, unit, desktop-linux, mac-package]
+    needs: [scope, contracts, unit, desktop-linux, mac-package]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation surface
         run: |
+          test "${{ needs.scope.result }}" = "success"
           test "${{ needs.contracts.result }}" = "success"
           test "${{ needs.unit.result }}" = "success"
-          test "${{ needs['desktop-linux'].result }}" = "success"
-          test "${{ needs['mac-package'].result }}" = "success"
+          if [ "${{ needs.scope.outputs.mode }}" = "full" ]; then
+            test "${{ needs['desktop-linux'].result }}" = "success"
+            test "${{ needs['mac-package'].result }}" = "success"
+          fi

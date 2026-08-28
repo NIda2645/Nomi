@@ -124,7 +124,7 @@ describe("Antigravity copied image and file validation", () => {
     const corrupt = Buffer.from(png); corrupt.fill(0, 42, 53);
     await expect(validateAntigravityImage(corrupt)).rejects.toThrow("IMAGE_INVALID");
   });
-  it("fully decodes a static WebP through the explicit WebP pipe demuxer", async () => {
+  it("fully decodes a static VP8 WebP through the explicit WebP pipe demuxer", async () => {
     const webp = await readFile(path.join(__dirname, "../providerAdapter/__fixtures__/certification-media/valid.webp"));
     await expect(validateAntigravityImage(webp, "image/webp")).resolves.toMatchObject({ width: 960, height: 720, mimeType: "image/webp" });
   });
