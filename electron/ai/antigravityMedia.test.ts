@@ -5,7 +5,7 @@ import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/pro
 import os from "node:os";
 import path from "node:path";
 import { prepareAntigravityImageInput, prepareAntigravityMedia, verifyAntigravityHook, stageAntigravityMedia } from "./antigravityMedia";
-import { readAntigravityFile, validateAntigravityImage } from "./antigravityArtifacts";
+import { imageDecoderInputArgs, readAntigravityFile, validateAntigravityImage } from "./antigravityArtifacts";
 
 const execute = promisify(execFile);
 const dirs: string[] = [];
@@ -123,6 +123,11 @@ describe("Antigravity copied image and file validation", () => {
     await expect(validateAntigravityImage(png, "image/jpeg")).rejects.toThrow("IMAGE_INVALID");
     const corrupt = Buffer.from(png); corrupt.fill(0, 42, 53);
     await expect(validateAntigravityImage(corrupt)).rejects.toThrow("IMAGE_INVALID");
+  });
+  it("binds the verified image format and complete byte length to the decoder input", () => {
+    expect(imageDecoderInputArgs("image/png", 123)).toEqual(["-f", "image2pipe", "-frame_size", "123"]);
+    expect(imageDecoderInputArgs("image/jpeg", 456)).toEqual(["-f", "image2pipe", "-frame_size", "456"]);
+    expect(imageDecoderInputArgs("image/webp", 19_352)).toEqual(["-f", "webp_pipe", "-frame_size", "19352"]);
   });
   it("fully decodes a static VP8 WebP through the explicit WebP pipe demuxer", async () => {
     const webp = await readFile(path.join(__dirname, "../providerAdapter/__fixtures__/certification-media/valid.webp"));

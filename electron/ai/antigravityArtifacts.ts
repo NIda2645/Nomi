@@ -8,6 +8,11 @@ import type { AntigravityArtifact, AntigravityToolStep } from "./antigravityProt
 export const ANTIGRAVITY_IMAGE_LIMIT = 20 * 1024 * 1024;
 const MAX_PIXELS = 16_777_216;
 
+export function imageDecoderInputArgs(mimeType: string, byteLength: number): string[] {
+  const inputDemuxer = mimeType === "image/webp" ? "webp_pipe" : "image2pipe";
+  return ["-f", inputDemuxer, "-frame_size", String(byteLength)];
+}
+
 /** No directory enumeration, symlinks, devices, FIFOs, or unbounded reads. */
 export async function readAntigravityFile(root: string, relative: string, limit: number): Promise<Buffer> {
   try {
@@ -63,13 +68,13 @@ export async function validateAntigravityImage(bytes: Uint8Array, declaredMime?:
   }
   // Existing bundled decoder; strict error mode validates pixels, not merely headers. It shares the
   // certification process runner so timeout/cancel kills the complete process tree and waits for reap.
-  // Older bundled ffmpeg builds do not reliably auto-detect WebP through image2pipe. The MIME has
-  // already been established from magic bytes above, so select its explicit pipe demuxer.
-  const inputDemuxer = mimeType === "image/webp" ? "webp_pipe" : "image2pipe";
+  // FFmpeg 4.1 otherwise splits piped WebP into 4096-byte packets. Bind the trusted MIME and exact
+  // bounded byte count so every bundled version sends one complete image container to the decoder.
   const decodedResult = await runBoundedProcess(
     resolveFfmpegPath(),
     ["-hide_banner", "-v", "error", "-xerror", "-err_detect", "explode",
-      "-max_pixels", String(MAX_PIXELS), "-f", inputDemuxer, "-i", "pipe:0", "-frames:v", "1", "-f", "framehash", "pipe:1"],
+      "-max_pixels", String(MAX_PIXELS), ...imageDecoderInputArgs(mimeType, data.length),
+      "-i", "pipe:0", "-frames:v", "1", "-f", "framehash", "pipe:1"],
     { signal, timeoutMs: 10_000, maxStdoutBytes: 16_384, maxStderrBytes: 4_096, input: data },
   );
   if (decodedResult.code !== 0 || decodedResult.stderr.trim()) throw new Error("ANTIGRAVITY_IMAGE_INVALID");
