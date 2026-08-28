@@ -84,10 +84,33 @@ describe("Nomi agent context ownership", () => {
     expect(findSkillRecord).toHaveBeenCalledWith("", "Story");
   });
 
-  it("composes four layers in order with memory last, then the language rule", () => {
+  it("composes four layers in order with memory last, wrapped by the language rule", () => {
     const composed = context.composeAgentSystemPrompt({ identity: "Identity", panelSystemPrompt: "Panel", skillSystemPrompt: "Skill", memoryBlock: "Memory" });
-    // 四层顺序不变、无多余分隔；语言规则殿后单独一段。
-    expect(composed).toMatch(/^Identity\n\nPanel\n\nSkill\n\nMemory\n\n[^\n]/);
+    // 四层顺序不变、无多余分隔；语言规则首尾各一段（primacy/recency，见合成器注释）。
+    expect(composed).toMatch(/Identity\n\nPanel\n\nSkill\n\nMemory/);
+  });
+
+  // 回归闸：提示词主体几乎全是中文，模型会照着提示词的语言说话。只在末尾放一句英文规则时，
+  // 英文界面下会退化成中英混答（2026-08-28 用户实测）。规则必须首尾各出现一次。
+  it("states the language rule at both ends, not just the tail", async () => {
+    const { setDesktopLocale } = await import("../../desktopLocale");
+    setDesktopLocale("en");
+    const composed = context.composeAgentSystemPrompt({
+      identity: "Identity", panelSystemPrompt: "Panel", skillSystemPrompt: "Skill", memoryBlock: "Memory",
+    }) ?? "";
+    const occurrences = composed.split("Response-language rule (highest priority):").length - 1;
+    expect(occurrences).toBe(2);
+    expect(composed.startsWith("Response-language rule (highest priority):")).toBe(true);
+    expect(composed.trimEnd().endsWith("still answer in English.")).toBe(true);
+  });
+
+  // 中英混答的直接原因：提示词是中文，模型跟着提示词的语言走。必须点破「提示词语言 ≠ 输出语言」。
+  it("tells the model the Chinese prompt body is not a language signal", async () => {
+    const { setDesktopLocale } = await import("../../desktopLocale");
+    setDesktopLocale("en");
+    const composed = context.composeAgentSystemPrompt({ identity: "身份", panelSystemPrompt: "", skillSystemPrompt: "", memoryBlock: "" }) ?? "";
+    expect(composed).toContain("written in Chinese");
+    expect(composed).toContain("still answer in English");
   });
 
   // 语言规则跟界面语言走(不是写死英文)。中文界面下曾拿到一个用英文回话的助手——
@@ -98,8 +121,8 @@ describe("Nomi agent context ownership", () => {
 
     setDesktopLocale("en");
     const en = context.composeAgentSystemPrompt(layers) ?? "";
-    expect(en).toContain("Final response-language rule (highest priority):");
-    expect(en).toContain("Respond in English by default.");
+    expect(en).toContain("Response-language rule (highest priority):");
+    expect(en).toContain("Respond in English.");
 
     setDesktopLocale("zh-CN");
     const zh = context.composeAgentSystemPrompt(layers) ?? "";

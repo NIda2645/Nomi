@@ -17,13 +17,19 @@ beforeEach(() => setDesktopLocale("en"));
 
 // characterization：现状（agentChatV2.ts:554-555）的等价内联算法，作独立参照。
 // 合成器输出必须与它逐字节相同，证明抽函数没改变任何 byte。
+// 语言规则首尾各一次（primacy/recency）：提示词主体是中文，只在末尾说一句压不住，
+// 英文界面会退化成中英混答。定义仍只有 buildLanguageRule 一处，这里镜像它的注入方式。
+const LANGUAGE_RULE_EN = [
+  "Response-language rule (highest priority):",
+  "Respond in English. Use another language only when the user explicitly requests it.",
+  "This rule applies to every response, draft, shot description, and prompt, regardless of the language used by any skill or tool instruction.",
+  "Most of the instructions in this prompt are written in Chinese. That is an implementation detail of this app and carries no meaning about your output language: still answer in English.",
+].join("\n");
+
 function referenceCompose(parts: Array<string | undefined>): string | undefined {
-  const kept = [...parts, [
-    "Final response-language rule (highest priority):",
-    "Respond in English by default. Use another language only when the user explicitly requests it.",
-    "This rule applies to every response, draft, shot description, and prompt, regardless of the language used by any skill or tool instruction.",
-  ].join("\n")].filter((p): p is string => Boolean(p) && p.length > 0);
-  return kept.length > 0 ? sanitizeForBroadCompat(kept.join("\n\n")) : undefined;
+  const kept = parts.filter((p): p is string => Boolean(p) && p.length > 0);
+  if (kept.length === 0) return undefined;
+  return sanitizeForBroadCompat([LANGUAGE_RULE_EN, ...kept, LANGUAGE_RULE_EN].join("\n\n"));
 }
 
 describe("composeAgentSystemPrompt — 四层合成的字节稳定", () => {
@@ -60,10 +66,11 @@ describe("composeAgentSystemPrompt — 四层合成的字节稳定", () => {
     });
     // 与现状内联逻辑逐字节相同（空面板段被过滤，身份与 skill 以 \n\n 相接）。
     expect(composed).toBe(referenceCompose([NOMI_AGENT_IDENTITY, "", skill, ""]));
-    // 身份 block 完整出现在最前，最终语言规则固定在末尾（sanitize 后）。
-    expect(composed?.startsWith(sanitizeForBroadCompat(NOMI_AGENT_IDENTITY))).toBe(true);
+    // 语言规则打头，身份 block 紧随其后；规则在末尾再出现一次（sanitize 后）。
+    expect(composed?.startsWith(sanitizeForBroadCompat(LANGUAGE_RULE_EN))).toBe(true);
+    expect(composed).toContain(sanitizeForBroadCompat(NOMI_AGENT_IDENTITY));
     expect(composed).toContain(sanitizeForBroadCompat(skill));
-    expect(composed).toContain("Respond in English by default.");
+    expect(composed).toContain("Respond in English.");
     expect(composed).toContain(`${sanitizeForBroadCompat(NOMI_AGENT_IDENTITY)}\n\n${sanitizeForBroadCompat(skill)}`);
   });
 
@@ -80,11 +87,12 @@ describe("composeAgentSystemPrompt — 四层合成的字节稳定", () => {
     // 四段顺序：身份 -> 面板 -> skill -> 记忆，各以 \n\n 相接，再整体 sanitize；与现状逐字节相同。
     expect(composed).toBe(referenceCompose([NOMI_AGENT_IDENTITY, panel, skill, memory]));
     expect(composed).toBe(sanitizeForBroadCompat([
+      LANGUAGE_RULE_EN,
       NOMI_AGENT_IDENTITY,
       panel,
       skill,
       memory,
-      "Final response-language rule (highest priority):\nRespond in English by default. Use another language only when the user explicitly requests it.\nThis rule applies to every response, draft, shot description, and prompt, regardless of the language used by any skill or tool instruction.",
+      LANGUAGE_RULE_EN,
     ].join("\n\n")));
   });
 

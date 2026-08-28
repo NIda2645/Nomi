@@ -48,9 +48,12 @@ export const NOMI_AGENT_IDENTITY = [
 function buildLanguageRule(): string {
   return getDesktopLocale() === "en"
     ? [
-        "Final response-language rule (highest priority):",
-        "Respond in English by default. Use another language only when the user explicitly requests it.",
+        "Response-language rule (highest priority):",
+        "Respond in English. Use another language only when the user explicitly requests it.",
         "This rule applies to every response, draft, shot description, and prompt, regardless of the language used by any skill or tool instruction.",
+        // 关键一句:身份层/skill/工具说明大部分是中文,模型会**照着提示词的语言说话**。
+        // 不点破「提示词的语言 ≠ 输出的语言」,它就会中英混着答(2026-08-28 用户实测:半中半英)。
+        "Most of the instructions in this prompt are written in Chinese. That is an implementation detail of this app and carries no meaning about your output language: still answer in English.",
       ].join("\n")
     : [
         "回复语言铁律（最高优先级）：",
@@ -106,7 +109,13 @@ export function composeAgentSystemPrompt(layers: {
     layers.memoryBlock,
   ].filter((part) => part && part.length > 0);
   if (contentParts.length === 0) return undefined;
-  // 语言规则殿后追加。它对**同一 locale** 仍是逐字节固定的，只有用户真的切了界面语言才变——
-  // 那一刻本来就该换一套系统提示，前缀缓存被击穿是正确代价，不算漂移。
-  return sanitizeForBroadCompat([...contentParts, buildLanguageRule()].join("\n\n"));
+  // 语言规则**首尾各放一次**（同一份定义，P1 仍是一个家）。
+  //
+  // 为什么要两处：这套提示词的主体（身份层 295 个汉字 / skill / 工具说明）几乎全是中文，模型会照着
+  // 提示词的语言说话。旧实现正是靠身份层尾部 + 合成器末尾**两处**英文规则把它压住的；我先前按
+  // 「一条规则一个家」把身份层那份删了，只剩末尾一句，英文界面下当场退化成中英混答（用户实测）。
+  // P1 反对的是**两份各自维护的定义**，不是同一份定义在长提示词里首尾各强调一次——那是 primacy/recency，
+  // 是这段提示词在做的实事。所以：定义仍只有 buildLanguageRule 一处，注入两次。
+  const languageRule = buildLanguageRule();
+  return sanitizeForBroadCompat([languageRule, ...contentParts, languageRule].join("\n\n"));
 }
