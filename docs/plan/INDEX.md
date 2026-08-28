@@ -65,6 +65,8 @@
 | 文件 | 一句话 | 状态 |
 |---|---|---|
 | [2026-08-29-cla-signature-ledger.md](2026-08-29-cla-signature-ledger.md) | CLA 签名账本与受保护主分支解耦 | ✅ |
+| [2026-08-29-creative-capability-catalog-and-prompt-system.md](2026-08-29-creative-capability-catalog-and-prompt-system.md) | 浏览器、素材、Prompt、Skill 与 Pi 生态的统一创作能力目录方案 | 📎 |
+| [2026-08-29-capability-system-mockup-and-baseline.md](2026-08-29-capability-system-mockup-and-baseline.md) | 能力目录、Agent 预检、素材权利交互样张与 J1-J10 基线 | 📎 |
 | [2026-08-28-reference-media-mentions.md](2026-08-28-reference-media-mentions.md) | 图片/视频/音频 @ 引用统一：候选、真实参考槽、编辑器与发送投影 | ✅ |
 | [2026-08-27-root-cause-remediation-and-media-boundary-fixes.md](2026-08-27-root-cause-remediation-and-media-boundary-fixes.md) | Comfy/custom-call 媒体契约根因修复 + 可执行根因合同门禁 | ✅ |
 | [2026-08-27-single-source-semantics-gate.md](2026-08-27-single-source-semantics-gate.md) | ProjectAgent 统一前置：AST 语义词表门岗 + R14.1 单一 owner 审计 | ✅ |
