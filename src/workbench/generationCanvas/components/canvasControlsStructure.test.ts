@@ -153,7 +153,11 @@ describe('generation canvas control structure', () => {
     expect(contextMenu).toContain('active.suppressContextMenu = true')
     expect(contextMenu).toContain('!active?.suppressContextMenu')
     expect(contextMenu).toContain('event.preventDefault()')
-    expect(generationCanvas).toContain('onPaneContextMenu={handlePaneContextMenu}')
+    expect(generationCanvas).toContain('useCanvasContextNodeMenu({')
+    expect(generationCanvas).toContain('if (prepareContextMenuPointerDown(event))')
+    expect(generationCanvas).toContain('finishContextMenuPointerUp(event, suppressContextMenu)')
+    expect(generationCanvas).toContain('onContextMenu={handleStageContextMenu}')
+    expect(generationCanvas).toContain('onPaneContextMenu={handleFlowContextMenu}')
     expect(generationCanvas).toContain("if (event.key === 'Escape') closeMenus()")
   })
 
@@ -197,6 +201,7 @@ describe('generation canvas control structure', () => {
 
   it('keeps post-zoom panning incremental and maps React Flow states to Nomi visuals', () => {
     const pointer = source('../reactFlow/useGenerationCanvasReactFlowPointer.ts')
+    const takeover = source('../reactFlow/panZoomTakeoverReconciler.ts')
     const viewport = source('../reactFlow/GenerationCanvasReactFlowViewport.tsx')
     const flowStyles = source('../reactFlow/generationCanvasReactFlow.css')
     const groupFrame = source('./GroupFrame.tsx')
@@ -206,8 +211,10 @@ describe('generation canvas control structure', () => {
     const marqueeRule = flowStyles.match(/\.generation-canvas-react-flow \.react-flow__selection\s*\{([^}]*)\}/)?.[1] ?? ''
 
     expect(pointer).toContain('takeoverAfterWheel')
-    expect(pointer).toContain('x: current.x + deltaX')
-    expect(pointer).toContain('y: current.y + deltaY')
+    expect(pointer).toContain('nativePanReconciler.queueDelta({ x: deltaX, y: deltaY })')
+    expect(pointer).toContain('nativePanReconciler.flush() ?? flow.getViewport()')
+    expect(takeover).toContain('const current = pendingViewport ?? readViewport()')
+    expect(takeover).toContain('frameId = requestFrame')
     expect(viewport).toContain('resolveSelectionToolbarPlacement')
     expect(viewport).not.toMatch(/<ViewportPortal>[\s\S]{0,160}<CanvasSelectionToolbar/)
     expect(marqueeRule).toContain('var(--nomi-ink)')

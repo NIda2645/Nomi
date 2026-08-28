@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
-import { expectAbsent, proveProbe, screenshotSettled } from './_assert.mjs'
+import { expect, expectAbsent, proveProbe, screenshotSettled } from './_assert.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/react-flow-read-only')
@@ -19,21 +19,55 @@ function check(label, condition, detail = '') {
   if (!condition) failures.push(`${label}${detail ? ` — ${detail}` : ''}`)
 }
 
-const vite = spawn('node', ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port)], {
+const vite = spawn('node', ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
   cwd: repoRoot,
   stdio: ['ignore', 'pipe', 'pipe'],
 })
+const viteOutput = []
+const keepViteOutput = (chunk) => {
+  viteOutput.push(...String(chunk).split('\n').filter((line) => line.trim()))
+  if (viteOutput.length > 40) viteOutput.splice(0, viteOutput.length - 40)
+}
+vite.stdout.on('data', keepViteOutput)
+vite.stderr.on('data', keepViteOutput)
+
+const viteFailure = new Promise((_, reject) => {
+  vite.once('error', (error) => reject(error))
+  vite.once('exit', (code, signal) => {
+    reject(new Error(`Vite exited before the harness was ready (code=${code}, signal=${signal})`))
+  })
+})
+let launched
 let app
 try {
-  for await (const chunk of vite.stdout) {
-    if (String(chunk).includes(`:${port}/`)) break
+  try {
+    await Promise.race([
+      expect.poll(async () => {
+        try {
+          const response = await fetch(harnessUrl, { signal: AbortSignal.timeout(1_500) })
+          await response.arrayBuffer()
+          return response.ok
+        } catch {
+          return false
+        }
+      }, {
+        message: `Vite harness did not become ready at ${harnessUrl}`,
+        timeout: 45_000,
+        intervals: [100, 250, 500, 1_000],
+      }).toBe(true),
+      viteFailure,
+    ])
+  } catch (error) {
+    throw new Error(`${String(error)}\nVite output:\n${viteOutput.join('\n') || '(none)'}`)
   }
+  console.log('  ✓ 只读走查 Vite harness 已就绪')
   let win
-  ;({ app, win } = await launchNomiApp({
+  launched = await launchNomiApp({
     name: 'react-flow-read-only',
     env: { NOMI_DESKTOP_DEV: '1', VITE_DEV_SERVER_URL: harnessUrl },
     settleMs: 0,
-  }))
+  })
+  ;({ app, win } = launched)
   win.on('console', (message) => {
     if (message.type() === 'error' || message.type() === 'warning') {
       rendererDiagnostics.push({ type: `console.${message.type()}`, text: message.text() })
@@ -148,8 +182,8 @@ try {
     console.error(JSON.stringify({ failureState, rendererDiagnostics }, null, 2))
   }
 } finally {
-  await app?.close().catch(() => {})
-  vite.kill('SIGTERM')
+  await launched?.close().catch(() => {})
+  if (vite.exitCode === null && vite.signalCode === null) vite.kill('SIGTERM')
 }
 
 console.log(failures.length ? `\n❌ ${failures.length} 项失败:\n - ${failures.join('\n - ')}` : '\n✅ React Flow 只读与刷新走查通过')

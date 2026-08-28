@@ -21,7 +21,12 @@ import { hasUsableSliderStep, isCompleteNumericDraft } from './controls/numericD
 import { commonRatioSortKey } from './aspectRatio'
 import { resolveArchetypeForOption } from './nodeModelArchetype'
 import { useDedupedModelSelect } from '../../common/useDedupedModelSelect'
-import { localizeAutoOption, parameterOptionLayout } from './parameterOptionPresentation'
+import {
+  localizeAutoOption,
+  parameterOptionLayout,
+  resolveParameterOptionPurpose,
+  type ParameterOptionPurpose,
+} from './parameterOptionPresentation'
 
 type InlineParameterBarProps = {
   modelOptions: readonly ModelOption[]
@@ -297,7 +302,9 @@ export default function InlineParameterBar({
     value: string,
     rawOptions: { value: string; text: string }[],
     onChange: (value: string) => void,
+    requestedPurpose: ParameterOptionPurpose = 'generic',
   ): JSX.Element => {
+    const purpose = resolveParameterOptionPurpose(rawOptions, requestedPurpose)
     let entries = rawOptions.map((option) => {
       const localized = localizeAutoOption(
         option.value,
@@ -306,10 +313,12 @@ export default function InlineParameterBar({
       )
       return {
         ...localized,
-        shape: ratioShape(localized.isAuto, localized.value, localized.text),
+        shape: purpose === 'aspect-ratio'
+          ? ratioShape(localized.isAuto, localized.value, localized.text)
+          : null,
       }
     })
-    if (parameterOptionLayout(entries) === 'select') {
+    if (parameterOptionLayout(entries, purpose) === 'select') {
       return (
         <NomiSelect
           ariaLabel={label}
@@ -522,6 +531,7 @@ export default function InlineParameterBar({
                         modelSelect.providerValue,
                         modelSelect.providerOptions.map((o) => ({ value: o.value, text: o.label })),
                         modelSelect.onProviderPick,
+                        'provider',
                       )}
                     </div>
                   ) : null}

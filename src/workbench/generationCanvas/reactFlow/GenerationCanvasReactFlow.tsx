@@ -26,7 +26,6 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { findTimelineDropTarget } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { getCanvasGroupBoxes } from '../components/generationCanvasGeometry'
-import { CanvasGroupProjectionLayer } from '../components/CanvasGroupProjectionLayer'
 import { useCollapsedGroupConnectionSource } from '../components/useCollapsedGroupConnectionSource'
 import { projectCollapsedGroups } from '../model/canvasCardStackModel'
 import { useCanvasSelectionDrag } from '../components/useCanvasSelectionDrag'
@@ -39,6 +38,7 @@ import { useCanvasFitSignal } from '../components/useCanvasFitSignal'
 import { useTidyCanvas } from '../components/useTidyCanvas'
 import { useAutoFitOnLoad } from '../components/useAutoFitOnLoad'
 import { useComposerVisibilityPan } from '../components/useComposerVisibilityPan'
+import { useCanvasContextNodeMenu } from '../components/useCanvasContextNodeMenu'
 import type { ViewportAnimationSettlementOutcome } from '../components/viewportAnimationSettlement'
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
 import { buildCanvasMenuActions } from '../components/useCanvasMenuActions'
@@ -86,13 +86,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null)
   const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 })
   const [minimapVisible, setMinimapVisible] = React.useState(true)
-  const [contextNodeMenu, setContextNodeMenu] = React.useState<{
-    stageX: number
-    stageY: number
-    canvasX: number
-    canvasY: number
-    nodeId: string | null
-  } | null>(null)
   const [connectionCreateMenu, setConnectionCreateMenu] = React.useState<{
     sourceNodeId: string
     sourceSide: 'left' | 'right'
@@ -114,7 +107,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const selectedNodeIds = useGenerationCanvasStore((state) => state.selectedNodeIds)
   const isReady = useGenerationCanvasStore((state) => state.isReady)
   const selectNodes = useGenerationCanvasStore((state) => state.selectNodes)
-  const selectNode = useGenerationCanvasStore((state) => state.selectNode)
   const addNode = useGenerationCanvasStore((state) => state.addNode)
   const clearSelection = useGenerationCanvasStore((state) => state.clearSelection)
   const moveNode = useGenerationCanvasStore((state) => state.moveNode)
@@ -237,7 +229,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     handleCanvasWheelCapture,
     handleCanvasPointerMove,
     handleCanvasPointerEnd,
-    handleCanvasContextMenuCapture,
+    shouldSuppressContextMenu,
   } = useGenerationCanvasReactFlowPointer({
     readOnly,
     hostRef,
@@ -245,6 +237,26 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     activeCategoryId,
     rememberCategoryViewport,
     setLiveViewport,
+  })
+  const ensureContextNodeSelected = React.useCallback((nodeId: string) => {
+    const state = useGenerationCanvasStore.getState()
+    if (!state.selectedNodeIds.includes(nodeId)) state.selectNode(nodeId)
+  }, [])
+  const {
+    contextNodeMenu,
+    setContextNodeMenu,
+    prepareContextMenuPointerDown,
+    handleContextMenuPointerMove,
+    finishContextMenuPointerUp,
+    handleStageContextMenu,
+  } = useCanvasContextNodeMenu({
+    readOnly,
+    stageRef: hostRef,
+    offsetRef,
+    zoomRef,
+    pendingConnectionSourceId,
+    clearSelection,
+    ensureNodeSelected: ensureContextNodeSelected,
   })
   useGenerationCanvasReactFlowHostEffects({
     activeCategoryId,
@@ -360,35 +372,28 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     zoomTo(current * (direction > 0 ? 1.1 : 1 / 1.1))
   }, [flow, zoomTo])
 
-  const createContextMenu = React.useCallback((event: MouseEvent | React.MouseEvent, nodeId: string | null) => {
-    if (readOnly) return
-    event.preventDefault()
-    event.stopPropagation()
-    const rect = hostRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const stageX = event.clientX - rect.left
-    const stageY = event.clientY - rect.top
-    const point = getCanvasPointFromClientPoint(event.clientX, event.clientY)
-    setContextNodeMenu({
-      nodeId,
-      stageX: Math.max(8, Math.min(rect.width - 156, stageX)),
-      stageY: Math.max(8, Math.min(rect.height - (nodeId ? 210 : 340), stageY)),
-      canvasX: Math.round(point.x),
-      canvasY: Math.round(point.y),
-    })
-  }, [getCanvasPointFromClientPoint, readOnly])
+  const handleFlowContextMenu = React.useCallback((event: MouseEvent | React.MouseEvent) => {
+    handleStageContextMenu(event as React.MouseEvent<HTMLDivElement>)
+  }, [handleStageContextMenu])
 
-  const handleNodeContextMenu = React.useCallback((event: React.MouseEvent, node: GenerationFlowNode) => {
-    if (readOnly) return
-    if (!selectedSet.has(node.id)) selectNode(node.id)
-    createContextMenu(event, node.id)
-  }, [createContextMenu, readOnly, selectNode, selectedSet])
+  const handleStagePointerDownCapture = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (prepareContextMenuPointerDown(event)) {
+      event.stopPropagation()
+      return
+    }
+    handleCanvasPointerDownCapture(event)
+  }, [handleCanvasPointerDownCapture, prepareContextMenuPointerDown])
 
-  const handlePaneContextMenu = React.useCallback((event: MouseEvent | React.MouseEvent) => {
-    if (readOnly) return
-    clearSelection()
-    createContextMenu(event, null)
-  }, [clearSelection, createContextMenu, readOnly])
+  const handleStagePointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    handleContextMenuPointerMove(event)
+    handleCanvasPointerMove(event)
+  }, [handleCanvasPointerMove, handleContextMenuPointerMove])
+
+  const handleStagePointerEnd = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const suppressContextMenu = event.button === 2 && shouldSuppressContextMenu()
+    handleCanvasPointerEnd()
+    finishContextMenuPointerUp(event, suppressContextMenu)
+  }, [finishContextMenuPointerUp, handleCanvasPointerEnd, shouldSuppressContextMenu])
 
   React.useEffect(() => {
     if (!contextNodeMenu && !connectionCreateMenu) return undefined
@@ -406,7 +411,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       window.removeEventListener('pointerdown', closeMenus)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [cancelConnection, connectionCreateMenu, contextNodeMenu])
+  }, [cancelConnection, connectionCreateMenu, contextNodeMenu, setContextNodeMenu])
 
   React.useEffect(() => {
     if (connectionCreateMenu && !pendingConnectionSourceId) setConnectionCreateMenu(null)
@@ -668,16 +673,16 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       data-ready={isReady ? 'true' : undefined}
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
-      onPointerDownCapture={handleCanvasPointerDownCapture}
+      onPointerDownCapture={handleStagePointerDownCapture}
       onPointerMoveCapture={handleCanvasPointerMoveCapture}
       onWheelCapture={handleCanvasWheelCapture}
       onPointerUpCapture={handlePendingGroupPointerUp}
       onMouseUpCapture={handlePendingGroupPointerUp}
-      onContextMenuCapture={handleCanvasContextMenuCapture}
       onPointerDown={handleCanvasPointerDown}
-      onPointerMove={handleCanvasPointerMove}
-      onPointerUp={handleCanvasPointerEnd}
+      onPointerMove={handleStagePointerMove}
+      onPointerUp={handleStagePointerEnd}
       onPointerCancel={handleCanvasPointerEnd}
+      onContextMenu={handleStageContextMenu}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
@@ -700,8 +705,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         onSelectionEnd={handleSelectionEnd}
         onEdgeClick={handleEdgeClick}
         onEdgesDelete={handleEdgesDelete}
-        onNodeContextMenu={handleNodeContextMenu}
-        onPaneContextMenu={handlePaneContextMenu}
+        onNodeContextMenu={handleFlowContextMenu}
+        onPaneContextMenu={handleFlowContextMenu}
         onPaneClick={handlePaneClick}
         onConnect={handleConnect}
         onConnectStart={handleConnectStart}

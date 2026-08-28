@@ -4,6 +4,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+export const DEFAULT_CANVAS_SCENARIO_TIMEOUT_MS = 8 * 60_000
+export const PERFORMANCE_CANVAS_SCENARIO_TIMEOUT_MS = 20 * 60_000
 
 export const CRITICAL_CANVAS_SCENARIOS = [
   { id: 'gestures', script: 'tests/ux/canvas-drag-pan-gestures.walk.mjs' },
@@ -27,6 +29,7 @@ export const FULL_CANVAS_SCENARIOS = [
     id: 'medium-canvas-performance',
     script: 'tests/ux/canvas-performance-benchmark.e2e.mjs',
     args: ['pr216-acceptance', '--scale', 'M', '--runs', '1'],
+    timeoutMs: PERFORMANCE_CANVAS_SCENARIO_TIMEOUT_MS,
   },
 ]
 
@@ -36,6 +39,36 @@ export function scenariosForProfile(profile) {
   throw new Error(`unknown canvas suite profile: ${profile}`)
 }
 
+export function runCanvasScenario(scenario, {
+  cwd = repoRoot,
+  env = process.env,
+  spawnProcess = spawnSync,
+  timeoutMs,
+} = {}) {
+  const resolvedTimeoutMs = timeoutMs ?? scenario.timeoutMs ?? DEFAULT_CANVAS_SCENARIO_TIMEOUT_MS
+  const startedAt = Date.now()
+  const child = spawnProcess(process.execPath, [scenario.script, ...(scenario.args || [])], {
+    cwd,
+    env,
+    stdio: 'inherit',
+    timeout: resolvedTimeoutMs,
+    killSignal: 'SIGKILL',
+  })
+  const timedOut = child.error?.code === 'ETIMEDOUT'
+  if (timedOut) console.error(`[canvas] ${scenario.id} exceeded ${resolvedTimeoutMs}ms and was terminated`)
+  return {
+    id: scenario.id,
+    script: scenario.script,
+    args: scenario.args || [],
+    exitCode: child.status ?? 1,
+    signal: child.signal,
+    timedOut,
+    timeoutMs: resolvedTimeoutMs,
+    error: child.error ? String(child.error.message || child.error) : null,
+    durationMs: Date.now() - startedAt,
+  }
+}
+
 export function runCanvasSuite(profile, { cwd = repoRoot, env = process.env } = {}) {
   const outputDir = path.join(cwd, 'outputs', 'canvas-acceptance', profile)
   fs.rmSync(outputDir, { recursive: true, force: true })
@@ -43,22 +76,8 @@ export function runCanvasSuite(profile, { cwd = repoRoot, env = process.env } = 
   const results = []
 
   for (const scenario of scenariosForProfile(profile)) {
-    const startedAt = Date.now()
     console.log(`\n[canvas:${profile}] ${scenario.id}`)
-    const child = spawnSync(process.execPath, [scenario.script, ...(scenario.args || [])], {
-      cwd,
-      env,
-      stdio: 'inherit',
-    })
-    const exitCode = child.status ?? 1
-    results.push({
-      id: scenario.id,
-      script: scenario.script,
-      args: scenario.args || [],
-      exitCode,
-      signal: child.signal,
-      durationMs: Date.now() - startedAt,
-    })
+    results.push(runCanvasScenario(scenario, { cwd, env }))
   }
 
   const summary = {

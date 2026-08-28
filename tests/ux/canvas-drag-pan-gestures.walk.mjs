@@ -118,21 +118,45 @@ function canvasPointAt(transform, screen, origin) {
   }
 }
 
-// 从一串候选点里挑第一个「真·空白」（框选起手点必须落在空白，否则会被节点/底部坞抢走）。
-async function firstBlankOf(candidates) {
-  return getWin().evaluate((points) => {
+// 适应视图后，从包围节点的四个方向寻找完整落在 stage 内的框选手势。
+async function findMarqueeGesture() {
+  return getWin().evaluate(() => {
     const stage = document.querySelector('.generation-canvas-v2__stage')
-    const rect = stage.getBoundingClientRect()
-    for (const point of points) {
-      if (point.x < rect.left + 8 || point.x > rect.right - 8) continue
-      if (point.y < rect.top + 8 || point.y > rect.bottom - 8) continue
-      const hit = document.elementFromPoint(point.x, point.y)
-      if (!hit || !stage.contains(hit)) continue
-      if (hit.closest('.generation-canvas-v2-node, .generation-canvas-v2-toolbar, .generation-canvas-v2__zoom-bar, .generation-canvas-v2__selection-bounds, .generation-canvas-v2__selection-toolbar, button, input, textarea, [role="menu"], [role="toolbar"], .generation-canvas-v2__edge-hit, .generation-canvas-v2__minimap, .generation-canvas-v2__navigation-stack')) continue
-      return { x: Math.round(point.x), y: Math.round(point.y) }
+    const nodes = Array.from(document.querySelectorAll('.generation-canvas-v2-node'))
+    if (!stage || nodes.length === 0) return null
+    const stageRect = stage.getBoundingClientRect()
+    const nodeRects = nodes.map((node) => node.getBoundingClientRect())
+    const bounds = {
+      left: Math.min(...nodeRects.map((rect) => rect.left)),
+      top: Math.min(...nodeRects.map((rect) => rect.top)),
+      right: Math.max(...nodeRects.map((rect) => rect.right)),
+      bottom: Math.max(...nodeRects.map((rect) => rect.bottom)),
+    }
+    const insideStage = (point) =>
+      point.x >= stageRect.left + 8 && point.x <= stageRect.right - 8 &&
+      point.y >= stageRect.top + 8 && point.y <= stageRect.bottom - 8
+    const excluded = '.generation-canvas-v2-node, .generation-canvas-v2-toolbar, .generation-canvas-v2__zoom-bar, .generation-canvas-v2__selection-bounds, .generation-canvas-v2__selection-toolbar, button, input, textarea, [role="menu"], [role="toolbar"], .generation-canvas-v2__edge-hit, .generation-canvas-v2__minimap, .generation-canvas-v2__navigation-stack'
+
+    for (const gap of [24, 40, 64, 80]) {
+      const gestures = [
+        { start: { x: bounds.right + gap, y: bounds.bottom + gap }, end: { x: bounds.left - gap, y: bounds.top - gap } },
+        { start: { x: bounds.right + gap, y: bounds.top - gap }, end: { x: bounds.left - gap, y: bounds.bottom + gap } },
+        { start: { x: bounds.left - gap, y: bounds.bottom + gap }, end: { x: bounds.right + gap, y: bounds.top - gap } },
+        { start: { x: bounds.left - gap, y: bounds.top - gap }, end: { x: bounds.right + gap, y: bounds.bottom + gap } },
+      ]
+      for (const gesture of gestures) {
+        if (!insideStage(gesture.start) || !insideStage(gesture.end)) continue
+        const hit = document.elementFromPoint(gesture.start.x, gesture.start.y)
+        if (!hit || !stage.contains(hit)) continue
+        if (hit.closest(excluded)) continue
+        return {
+          start: { x: Math.round(gesture.start.x), y: Math.round(gesture.start.y) },
+          end: { x: Math.round(gesture.end.x), y: Math.round(gesture.end.y) },
+        }
+      }
     }
     return null
-  }, candidates)
+  })
 }
 
 // 数一段操作里「连线层 / 标签层 / 画布外壳」到底被写了多少次 DOM。
@@ -249,7 +273,7 @@ try {
       visibleOverlays: Array.from(
         document.querySelectorAll('.generation-canvas-v2-node__composer, [data-node-floating-toolbar="true"]'),
       ).filter((el) => getComputedStyle(el).visibility !== 'hidden').length,
-       marquee: document.querySelectorAll('.react-flow__selection').length,
+      marquee: document.querySelectorAll('.react-flow__selection').length,
     }
   })
   await snap('01-panning.png')
@@ -310,28 +334,15 @@ try {
     JSON.stringify(idleClick),
   )
 
-  // Shift 框选：从空白起手，拉过两个节点。
-  const nodesBox = await getWin().evaluate(() => {
-    const rects = Array.from(document.querySelectorAll('.generation-canvas-v2-node')).map((node) =>
-      node.getBoundingClientRect(),
-    )
-    const left = Math.min(...rects.map((r) => r.left))
-    const top = Math.min(...rects.map((r) => r.top))
-    const right = Math.max(...rects.map((r) => r.right))
-    const bottom = Math.max(...rects.map((r) => r.bottom))
-    return { left, top, right, bottom }
-  })
-  const marqueeStart = await firstBlankOf([
-    { x: nodesBox.right + 70, y: nodesBox.bottom + 40 },
-    { x: nodesBox.right + 70, y: nodesBox.top - 40 },
-    { x: nodesBox.right + 130, y: nodesBox.bottom - 20 },
-    { x: nodesBox.right + 40, y: nodesBox.top - 60 },
-  ])
-  assert(Boolean(marqueeStart), '框选起手点落在空白处', JSON.stringify(marqueeStart))
+  // Shift 框选：先用真实「适应视图」收回所有节点，再从空白角落包围它们。
+  await getWin().locator('.generation-canvas-v2__zoom-bar button').first().click()
+  await getWin().waitForTimeout(420)
+  const marqueeGesture = await findMarqueeGesture()
+  assert(Boolean(marqueeGesture), '框选起手点与终点完整落在画布空白处', JSON.stringify(marqueeGesture))
   await getWin().keyboard.down('Shift')
-  await getWin().mouse.move(marqueeStart.x, marqueeStart.y)
+  await getWin().mouse.move(marqueeGesture.start.x, marqueeGesture.start.y)
   await getWin().mouse.down()
-  await getWin().mouse.move(nodesBox.left - 40, marqueeStart.y > nodesBox.top ? nodesBox.top - 30 : nodesBox.bottom + 30, { steps: 16 })
+  await getWin().mouse.move(marqueeGesture.end.x, marqueeGesture.end.y, { steps: 16 })
   const marqueeVisual = await getWin().evaluate(() => {
     const marquee = document.querySelector('.react-flow__selection')
     const host = document.querySelector('.generation-canvas-react-flow')
@@ -361,6 +372,10 @@ try {
     JSON.stringify(marqueeVisual),
   )
   assert(marqueeSelected.length >= 2, '框选把框内节点都选上了', `${marqueeSelected.length} 个`)
+
+  // 适应视图可能在宽屏把两个节点放大到接近上限；重置视图后，后面两轮滚轮都有缩放余量。
+  await getWin().locator('.generation-canvas-v2__zoom-bar button').nth(1).click()
+  await getWin().waitForTimeout(420)
 
   // ── ① 滚轮以光标为锚缩放 ───────────────────────────────────────────────
   const anchor = await findBlankPoint()

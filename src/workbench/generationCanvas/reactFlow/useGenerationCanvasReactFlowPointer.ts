@@ -1,6 +1,7 @@
 import React from 'react'
 import type { Viewport } from '@xyflow/react'
 import { canvasViewportFromFlow } from './generationCanvasReactFlowAdapter'
+import { createPanZoomTakeoverReconciler } from './panZoomTakeoverReconciler'
 import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
 
 type CanvasStoredViewport = { zoom: number; offset: { x: number; y: number } }
@@ -42,7 +43,17 @@ export function useGenerationCanvasReactFlowPointer({
     lastY: number
     takeoverAfterWheel: boolean
   } | null>(null)
-  const suppressContextMenuRef = React.useRef(false)
+  const nativePanReconciler = React.useMemo(() => createPanZoomTakeoverReconciler({
+    requestFrame: (callback) => window.requestAnimationFrame(callback),
+    cancelFrame: (frameId) => window.cancelAnimationFrame(frameId),
+    readViewport: () => flow.getViewport(),
+    writeViewport: (next) => {
+      void flow.setViewport(next, { duration: 0 })
+      setLiveViewport(next)
+    },
+  }), [flow, setLiveViewport])
+
+  React.useEffect(() => () => nativePanReconciler.cancel(), [nativePanReconciler])
 
   const handleCanvasPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (readOnly || !(event.target instanceof Element) || !event.target.closest('.react-flow__pane')) return
@@ -82,7 +93,6 @@ export function useGenerationCanvasReactFlowPointer({
       button: event.button as 1 | 2,
       moved: false,
     }
-    suppressContextMenuRef.current = false
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {
@@ -103,11 +113,10 @@ export function useGenerationCanvasReactFlowPointer({
     if (deltaX === 0 && deltaY === 0) return
     canvasPanMovedRef.current = true
     setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowPan)
-    const current = flow.getViewport()
-    const next = { x: current.x + deltaX, y: current.y + deltaY, zoom: current.zoom }
-    void flow.setViewport(next, { duration: 0 })
-    setLiveViewport(next)
-  }, [flow, hostRef, setLiveViewport])
+    // React Flow's native drag listener may still apply this move after capture.
+    // Reconcile once on the next frame so the delta has one final owner.
+    nativePanReconciler.queueDelta({ x: deltaX, y: deltaY })
+  }, [hostRef, nativePanReconciler])
 
   const handleCanvasWheelCapture = React.useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const nativeLeftPan = nativeLeftPanRef.current
@@ -129,7 +138,6 @@ export function useGenerationCanvasReactFlowPointer({
       if (!auxiliaryPan.moved && distance >= 2) {
         auxiliaryPan.moved = true
         setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowPan)
-        if (auxiliaryPan.button === 2) suppressContextMenuRef.current = true
       }
       if (deltaX === 0 && deltaY === 0) return
       const current = flow.getViewport()
@@ -149,7 +157,7 @@ export function useGenerationCanvasReactFlowPointer({
     nativeLeftPanRef.current = null
     if (nativeLeftPan?.takeoverAfterWheel) {
       setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowPan)
-      const current = flow.getViewport()
+      const current = nativePanReconciler.flush() ?? flow.getViewport()
       setLiveViewport(current)
       rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(current))
     }
@@ -167,13 +175,11 @@ export function useGenerationCanvasReactFlowPointer({
       }
     }
     canvasPointerStartRef.current = null
-  }, [activeCategoryId, flow, hostRef, rememberCategoryViewport, setLiveViewport])
+  }, [activeCategoryId, flow, hostRef, nativePanReconciler, rememberCategoryViewport, setLiveViewport])
 
-  const handleCanvasContextMenuCapture = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!suppressContextMenuRef.current) return
-    suppressContextMenuRef.current = false
-    event.preventDefault()
-    event.stopPropagation()
+  const shouldSuppressContextMenu = React.useCallback(() => {
+    const auxiliaryPan = auxiliaryPanRef.current
+    return Boolean(auxiliaryPan?.button === 2 && auxiliaryPan.moved)
   }, [])
 
   React.useEffect(() => {
@@ -213,6 +219,6 @@ export function useGenerationCanvasReactFlowPointer({
     handleCanvasWheelCapture,
     handleCanvasPointerMove,
     handleCanvasPointerEnd,
-    handleCanvasContextMenuCapture,
+    shouldSuppressContextMenu,
   }
 }

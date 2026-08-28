@@ -1,4 +1,6 @@
 import React from 'react'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NomiSelectProps } from '../../../design/NomiSelect'
@@ -46,5 +48,19 @@ describe('InlineParameterBar catalog variant control', () => {
     expect(captured.selects[1].disabled).toBe(true)
     expect(captured.selects[1].options.map(option => option.label)).toEqual(['High'])
     expect(html).toContain('High')
+  })
+})
+
+describe('InlineParameterBar semantic option presentation wiring', () => {
+  const source = readFileSync(fileURLToPath(new URL('./InlineParameterBar.tsx', import.meta.url)), 'utf8')
+
+  it('passes supplier semantics through the shared option renderer', () => {
+    expect(source).toMatch(
+      /renderOptions\([\s\S]*?modelSelect\.providerOptions\.map\([\s\S]*?modelSelect\.onProviderPick,[\s\S]*?'provider',[\s\S]*?\)/,
+    )
+  })
+
+  it('resolves semantic purpose before choosing shapes or a searchable list', () => {
+    expect(source).toContain('resolveParameterOptionPurpose(rawOptions, requestedPurpose)')
   })
 })
