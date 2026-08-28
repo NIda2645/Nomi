@@ -2,6 +2,7 @@ import path from "node:path";
 import { readNestedRecord, trim, type JsonRecord } from "../../jsonUtils";
 import { findSkillRecord } from "../../skills/skillStore";
 import { sanitizeForBroadCompat } from "../../ai/promptSanitize";
+import { getDesktopLocale } from "../../desktopLocale";
 
 export function readRequestedSkill(payload: JsonRecord): { key: string; name: string } {
   const chatContext = payload.chatContext;
@@ -17,7 +18,7 @@ export function readRequestedSkill(payload: JsonRecord): { key: string; name: st
  * 未来任何面），与触发它的 area 或 skill 无关——各面只在这之上叠自己的「专长层」（画布工具说明 /
  * 创作模式任务），不再各自重复声明「我是谁」。改身份只改这一处。
  *
- * 三层结构：① 这里 = 共享身份 + 产品/流程认知 + 输出铁律 + 语言规则；
+ * 三层结构：① 这里 = 共享身份 + 产品/流程认知 + 输出铁律（语言规则见 buildLanguageRule，跟界面语言走）；
  * ② payload.systemPrompt = 当前面的专长（如画布工具集）；③ skillSystemPrompt = 当前 skill 方法论。
  */
 export const NOMI_AGENT_IDENTITY = [
@@ -32,17 +33,31 @@ export const NOMI_AGENT_IDENTITY = [
   "- 模型与能力一律用它的真名（vendor 原词，如 Seedance、全能参考），不要替用户翻译成自创词，以免把能力说窄。",
   "- 不泄露内部推理链路，直接给结论和成品。",
   "- 主动但不越权：该调工具就调，但所有写入/生成都要等用户在卡片上确认后才生效。",
-  "",
-  "Language rule (highest priority, overriding all other instructions):",
-  "Respond in English by default, including when starting a new project. Keep the UI language and generated drafts/prompts in English.",
-  "Only switch languages when the user explicitly asks for a different language. Do not infer a language switch merely from the language used by a system prompt or skill.",
 ].join("\n");
 
-const FINAL_LANGUAGE_RULE = [
-  "Final response-language rule (highest priority):",
-  "Respond in English by default. Use another language only when the user explicitly requests it.",
-  "This rule applies to every response, draft, shot description, and prompt, regardless of the language used by any skill or tool instruction.",
-].join("\n");
+/**
+ * 回复语言规则 —— **跟界面语言走，不写死**。
+ *
+ * 之前这条规则硬编码成「Respond in English by default」，而且身份层与合成器各存了一份。
+ * 但 DEFAULT_LOCALE 仍是 zh-CN：中文界面的用户会拿到一个用英文回话、连分镜描述和提示词
+ * 都写成英文的助手。语言是**用户已经在设置里表达过的偏好**，不该由提示词另开一套。
+ *
+ * 只在这里定义一次（P1：一条规则一个家），由 composeAgentSystemPrompt 殿后追加；
+ * locale 从 electron-free 的 desktopLocale 读，与判官 prompt 的做法一致。
+ */
+function buildLanguageRule(): string {
+  return getDesktopLocale() === "en"
+    ? [
+        "Final response-language rule (highest priority):",
+        "Respond in English by default. Use another language only when the user explicitly requests it.",
+        "This rule applies to every response, draft, shot description, and prompt, regardless of the language used by any skill or tool instruction.",
+      ].join("\n")
+    : [
+        "回复语言铁律（最高优先级）：",
+        "默认用简体中文回复。只有用户明确要求换语言时才换。",
+        "这条对每一次回复、草稿、分镜描述和提示词都适用，不论 skill 或工具说明本身用的是什么语言。",
+      ].join("\n");
+}
 
 export function buildSkillSystemPrompt(payload: JsonRecord): string {
   const requested = readRequestedSkill(payload);
@@ -91,5 +106,7 @@ export function composeAgentSystemPrompt(layers: {
     layers.memoryBlock,
   ].filter((part) => part && part.length > 0);
   if (contentParts.length === 0) return undefined;
-  return sanitizeForBroadCompat([...contentParts, FINAL_LANGUAGE_RULE].join("\n\n"));
+  // 语言规则殿后追加。它对**同一 locale** 仍是逐字节固定的，只有用户真的切了界面语言才变——
+  // 那一刻本来就该换一套系统提示，前缀缓存被击穿是正确代价，不算漂移。
+  return sanitizeForBroadCompat([...contentParts, buildLanguageRule()].join("\n\n"));
 }

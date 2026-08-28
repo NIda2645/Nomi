@@ -1,9 +1,15 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("electron", () => ({ app: { getPath: () => "/tmp", getAppPath: () => process.cwd() } }));
 
 import { composeAgentSystemPrompt, NOMI_AGENT_IDENTITY } from "../harness/context/agentContext";
+import { setDesktopLocale } from "../desktopLocale";
 import { sanitizeForBroadCompat } from "./promptSanitize";
+
+// 语言规则跟界面语言走,所以字节稳定的口径是「**同一 locale 下**逐字节固定」——
+// 这里把 locale 钉在 en,让下面的参照算法有确定的尾段可比。切语言时系统提示本来就该换一套,
+// 那一刻击穿 vendor 前缀缓存是正确代价,不是漂移。
+beforeEach(() => setDesktopLocale("en"));
 
 // B1c 字节稳定门：systemPrompt 合成器把「身份 + 面板专长 + skill 方法论 + 项目记忆」四层
 // 收成单一 filter+join("\n\n")+sanitize 的纯函数。vendor 前缀缓存依赖 byte 稳定——
@@ -33,12 +39,15 @@ describe("composeAgentSystemPrompt — 四层合成的字节稳定", () => {
       - 密度优先、少即是多：克制利落，不堆套话、不复述用户的话、不写「希望对你有帮助」这类填充。
       - 模型与能力一律用它的真名（vendor 原词，如 Seedance、全能参考），不要替用户翻译成自创词，以免把能力说窄。
       - 不泄露内部推理链路，直接给结论和成品。
-      - 主动但不越权：该调工具就调，但所有写入/生成都要等用户在卡片上确认后才生效。
-
-      Language rule (highest priority, overriding all other instructions):
-      Respond in English by default, including when starting a new project. Keep the UI language and generated drafts/prompts in English.
-      Only switch languages when the user explicitly asks for a different language. Do not infer a language switch merely from the language used by a system prompt or skill."
+      - 主动但不越权：该调工具就调，但所有写入/生成都要等用户在卡片上确认后才生效。"
     `);
+  });
+
+  // 身份层里**不再**带语言规则:它跟界面语言走,由 buildLanguageRule 殿后单独追加(P1 一条规则一个家)。
+  // 之前身份层与合成器各存一份、且都写死英文,中文界面的用户会拿到用英文回话的助手。
+  it("身份层不含语言规则（跟界面语言走，另起一段殿后）", () => {
+    expect(NOMI_AGENT_IDENTITY).not.toMatch(/language rule/i);
+    expect(NOMI_AGENT_IDENTITY).not.toContain("Respond in English");
   });
 
   it("创作区形态（无面板专长层）：身份 + skill 方法论，与参照逐字节相同", () => {

@@ -84,8 +84,33 @@ describe("Nomi agent context ownership", () => {
     expect(findSkillRecord).toHaveBeenCalledWith("", "Story");
   });
 
-  it("composes four layers in order with memory last and no extra separators", () => {
-    expect(context.composeAgentSystemPrompt({ identity: "Identity", panelSystemPrompt: "Panel", skillSystemPrompt: "Skill", memoryBlock: "Memory" }))
-      .toBe("Identity\n\nPanel\n\nSkill\n\nMemory");
+  it("composes four layers in order with memory last, then the language rule", () => {
+    const composed = context.composeAgentSystemPrompt({ identity: "Identity", panelSystemPrompt: "Panel", skillSystemPrompt: "Skill", memoryBlock: "Memory" });
+    // 四层顺序不变、无多余分隔；语言规则殿后单独一段。
+    expect(composed).toMatch(/^Identity\n\nPanel\n\nSkill\n\nMemory\n\n[^\n]/);
+  });
+
+  // 语言规则跟界面语言走(不是写死英文)。中文界面下曾拿到一个用英文回话的助手——
+  // DEFAULT_LOCALE 还是 zh-CN,那等于让绝大多数用户对着英文提示词工作。
+  it("language rule follows the desktop locale", async () => {
+    const { setDesktopLocale } = await import("../../desktopLocale");
+    const layers = { identity: "Identity", panelSystemPrompt: "", skillSystemPrompt: "", memoryBlock: "" };
+
+    setDesktopLocale("en");
+    const en = context.composeAgentSystemPrompt(layers) ?? "";
+    expect(en).toContain("Final response-language rule (highest priority):");
+    expect(en).toContain("Respond in English by default.");
+
+    setDesktopLocale("zh-CN");
+    const zh = context.composeAgentSystemPrompt(layers) ?? "";
+    expect(zh).toContain("回复语言铁律（最高优先级）：");
+    expect(zh).toContain("默认用简体中文回复。");
+    expect(zh).not.toContain("Respond in English by default.");
+  });
+
+  // 一条规则只有一个家(P1):身份层不得再自带一份语言规则,否则两份会互相打架且改一处漏一处。
+  it("keeps exactly one language rule, not a copy inside the identity layer", () => {
+    expect(context.NOMI_AGENT_IDENTITY).not.toMatch(/language rule/i);
+    expect(context.NOMI_AGENT_IDENTITY).not.toContain("回复语言铁律");
   });
 });
