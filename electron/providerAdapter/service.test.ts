@@ -19,6 +19,10 @@ import {
   type ProviderAdapterCatalogPort,
   type ProviderAdapterServiceDependencies,
 } from "./service";
+import {
+  runCanonicalReservationRace,
+  runCanonicalReservationTimeout,
+} from "./tests/serviceReservationRaceFixture";
 
 type VerifyInput = Parameters<ProviderAdapterServiceDependencies["verify"]>[0];
 
@@ -1530,5 +1534,26 @@ describe("ProviderAdapterService", () => {
     expect(service.getRun(newer.id)).toMatchObject({ stage: "completed" });
     expect(catalog.promoted).toHaveLength(1);
     expect(catalog.failed).toContain(older.id);
+  });
+
+  it("materializes one canonical run when a duplicate arrives after reservation", async () => {
+    const result = await runCanonicalReservationRace();
+
+    expect(result.duplicateRunId).toBe(result.canonicalRunId);
+    expect(result.canonicalRunId).toBe("run-canonical");
+    expect(result.stageCount).toBe(1);
+    expect(result.scheduleCount).toBe(1);
+    expect(result.createCount).toBe(1);
+    expect(result.storedRunIds).toEqual(["run-canonical"]);
+  }, 30_000);
+
+  it("fails closed when the canonical reservation owner never materializes", () => {
+    const result = runCanonicalReservationTimeout();
+
+    expect(result.duplicateError).toBeInstanceOf(Error);
+    expect(String(result.duplicateError)).toMatch(/timed out waiting for canonical run materialization/i);
+    expect(result.stageCount).toBe(0);
+    expect(result.scheduleCount).toBe(0);
+    expect(result.createCount).toBe(0);
   });
 });

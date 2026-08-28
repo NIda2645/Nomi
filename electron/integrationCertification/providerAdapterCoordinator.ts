@@ -43,6 +43,9 @@ export type CertificationStartCheckpoint =
   | "after_catalog_checkpoint"
   | "after_commit";
 
+const DEFAULT_CANONICAL_START_WAIT_MS = 3_000;
+const CANONICAL_START_POLL_MS = 10;
+
 function sha(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
@@ -120,17 +123,25 @@ function settledResultFromVerification(result: AdapterVerificationResult): Certi
 export class ProviderAdapterCertificationCoordinator {
   readonly ledger: OperationLedger;
   private readonly journal: PromotionJournal;
+  private readonly canonicalStartWaitMs: number;
 
   constructor(
     private readonly store: ProviderAdapterStore,
     private readonly catalog: ProviderAdapterCatalogPort,
     private readonly now: () => string,
-    dependencies: { operationLedger?: OperationLedger; promotionJournal?: PromotionJournal } = {},
+    dependencies: {
+      operationLedger?: OperationLedger;
+      promotionJournal?: PromotionJournal;
+      canonicalStartWaitMs?: number;
+    } = {},
   ) {
     this.ledger = dependencies.operationLedger
       || new OperationLedger(store.integrationCertificationPath("operations.json"));
     this.journal = dependencies.promotionJournal
       || new PromotionJournal(store.integrationCertificationPath("promotion-journal.json"));
+    this.canonicalStartWaitMs = Math.max(0, Math.min(10_000, Math.trunc(
+      dependencies.canonicalStartWaitMs ?? DEFAULT_CANONICAL_START_WAIT_MS,
+    )));
   }
 
   prepareStart(input: ProviderAdapterConnectionInput, runId: string, lineageRoot: string): {
@@ -170,12 +181,36 @@ export class ProviderAdapterCertificationCoordinator {
       now,
     });
     if (begun.status === "duplicate") {
-      const original = this.store.getRun(begun.canonicalRunId);
-      if (!original) throw new Error("Certification canonical run is missing and requires restart recovery");
+      const original = this.readMaterializingCanonicalRun(begun.canonicalRunId, begun.operation);
       return { duplicate: original, operation: begun.operation, runId: original.id, idempotencyKey, ...identity };
     }
     const operation = begun.operation!;
     return { operation, runId: operation.runId, idempotencyKey, ...identity };
+  }
+
+  private readMaterializingCanonicalRun(
+    canonicalRunId: string,
+    reservedOperation: CertificationOperationRecord | undefined,
+  ): ProviderAdapterRun {
+    let run = this.store.getRun(canonicalRunId);
+    if (run) return run;
+    let operation = reservedOperation || this.ledger.getByRunId(canonicalRunId);
+    if (!operation) throw new Error("Certification canonical binding is missing its active start transaction");
+    const expiresAt = process.hrtime.bigint() + BigInt(this.canonicalStartWaitMs) * 1_000_000n;
+    const sleeper = new Int32Array(new SharedArrayBuffer(4));
+    while (operation.startTransaction.state === "intent" && process.hrtime.bigint() < expiresAt) {
+      Atomics.wait(sleeper, 0, 0, CANONICAL_START_POLL_MS);
+      run = this.store.getRun(canonicalRunId);
+      if (run) return run;
+      operation = this.ledger.getByRunId(canonicalRunId);
+      if (!operation) throw new Error("Certification canonical start transaction disappeared during materialization");
+    }
+    run = this.store.getRun(canonicalRunId);
+    if (run) return run;
+    if (operation.startTransaction.state !== "intent") {
+      throw new Error(`Certification canonical run is missing after start transaction reached ${operation.startTransaction.state}; restart recovery is required`);
+    }
+    throw new Error("Timed out waiting for canonical run materialization; retry this idempotent start or run restart recovery");
   }
 
   checkpointStart(runId: string, input: {

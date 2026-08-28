@@ -113,6 +113,7 @@ export type ProviderAdapterServiceDependencies = {
   compileTimeoutMs?: number;
   repairTimeoutMs?: number;
   verifyTimeoutMs?: number;
+  canonicalStartWaitMs?: number;
   certificationCheckpoint?: (checkpoint: CertificationStartCheckpoint) => void;
 };
 
@@ -148,7 +149,11 @@ export class ProviderAdapterService {
       this.store,
       this.dependencies.catalog,
       this.dependencies.now,
-      { operationLedger: dependencies.operationLedger, promotionJournal: dependencies.promotionJournal },
+      {
+        operationLedger: dependencies.operationLedger,
+        promotionJournal: dependencies.promotionJournal,
+        canonicalStartWaitMs: dependencies.canonicalStartWaitMs,
+      },
     );
   }
 
