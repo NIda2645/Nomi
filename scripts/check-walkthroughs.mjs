@@ -13,7 +13,6 @@ import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BASELINE_FILE = path.join(repoRoot, 'scripts/walkthrough-baseline.json')
-const repoRelative = (file) => path.relative(repoRoot, file).split(path.sep).join('/')
 
 function repoRelative(file) {
   return path.relative(repoRoot, file).split(path.sep).join('/')
