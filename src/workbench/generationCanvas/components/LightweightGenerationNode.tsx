@@ -2,7 +2,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { getNodeSize } from './generationCanvasGeometry'
+import { getCanvasNodeVisualSize } from './generationCanvasGeometry'
 import { resolveLightweightNodePreview } from './canvasNodeLevelOfDetail'
 import { DeferredNodeImage, DeferredNodeVideo } from '../nodes/DeferredNodeMedia'
 
@@ -20,7 +20,7 @@ export function LightweightGenerationNode({
   onSelect: (nodeId: string, additive: boolean) => void
 }): JSX.Element {
   const { t } = useTranslation()
-  const size = getNodeSize(node)
+  const size = getCanvasNodeVisualSize(node)
   const preview = resolveLightweightNodePreview(node)
   const status = node.status || 'idle'
   const statusLabel =

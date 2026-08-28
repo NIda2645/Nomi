@@ -44,7 +44,7 @@ import {
   centerNodeOffset,
   clampNumber,
   getCanvasGroupBoxes,
-  getNodeSize,
+  getCanvasNodeVisualSize,
   getSelectedBounds,
 } from './generationCanvasGeometry'
 import { useCanvasViewport } from './useCanvasViewport'
@@ -540,8 +540,8 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
     const padding = 80
     const minX = Math.min(...nodes.map((n) => n.position.x))
     const minY = Math.min(...nodes.map((n) => n.position.y))
-    const maxX = Math.max(...nodes.map((n) => n.position.x + getNodeSize(n).width))
-    const maxY = Math.max(...nodes.map((n) => n.position.y + getNodeSize(n).height))
+    const maxX = Math.max(...nodes.map((n) => n.position.x + getCanvasNodeVisualSize(n).width))
+    const maxY = Math.max(...nodes.map((n) => n.position.y + getCanvasNodeVisualSize(n).height))
     const contentW = maxX - minX + padding * 2
     const contentH = maxY - minY + padding * 2
     const nextZoom = Math.min(1.2, Math.min(rect.width / contentW, rect.height / contentH))

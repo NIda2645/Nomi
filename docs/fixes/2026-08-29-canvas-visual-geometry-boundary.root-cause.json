@@ -1,0 +1,162 @@
+{
+  "schema_version": 2,
+  "id": "2026-08-29-canvas-visual-geometry-boundary",
+  "problem_type": "canvas viewport geometry diverges from rendered node geometry",
+  "symptom": "At the supported minimum window size, J5's loaded image node remained selected and visible but its click target was moved under the Nomi app bar, so the user journey could not reopen the composer before export.",
+  "direct_cause": "Viewport fitting and related canvas geometry read the node's persisted size while BaseGenerationNode rendered the same node from media-derived preview height; the selected composer's visibility pan then operated on a viewport fitted to a smaller, stale box.",
+  "class_root": "Canvas screen-space consumers did not converge on the existing visual-size resolver, so persisted layout size and actual rendered size formed competing geometry contracts across fit, focus, visibility, virtualization, minimap, and lightweight rendering.",
+  "affected_population": [
+    "Users reopening generated image or video nodes whose media-derived preview dimensions differ from stored size",
+    "Users fitting, focusing, selecting, or navigating canvases at constrained window sizes",
+    "Large canvases where virtualization decides whether a visually intersecting node is mounted"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/components/generationCanvasGeometry.ts",
+    "src/workbench/generationCanvas/components/GenerationCanvas.tsx",
+    "src/workbench/generationCanvas/components/useAutoFitOnLoad.ts",
+    "src/workbench/generationCanvas/components/useCanvasViewport.ts",
+    "src/workbench/generationCanvas/components/CanvasMinimap.tsx",
+    "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+    "src/workbench/generationCanvas/components/CanvasEdgeLayer.tsx",
+    "src/workbench/generationCanvas/model/generationNodeKinds.ts",
+    "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+    "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+    "src/workbench/generationCanvas/fixation/buildFixationNode.ts",
+    "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+    "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
+    "src/workbench/generationCanvas/textEdit/buildTextEditNode.ts"
+  ],
+  "entry_points": [
+    "The fit-view toolbar command computes a viewport for all active-category nodes",
+    "Focus navigation centers a requested node",
+    "Auto-fit decides whether restored viewport state contains any visible node",
+    "Large-canvas virtualization and the minimap compute node screen footprints",
+    "Lightweight node rendering draws the low-detail representation at the expected footprint",
+    "Selection and derived-node placement calculate against the rendered node edge"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "This is an internal invariant between Nomi's persisted node model, visual renderer, and canvas viewport consumers. Repository code and deterministic geometry tests, not an external API, decide the correct boundary.",
+  "invariants": [
+    "Every canvas screen-space consumer uses the same visual width and height as BaseGenerationNode for the same node state.",
+    "Media-derived previewHeight, card render kinds, aspect-ratio-derived sizes, and clip sizing are reflected before fit, focus, visibility, virtualization, minimap, or lightweight geometry is calculated.",
+    "A loaded node that visually intersects the buffered viewport cannot be rejected because an older persisted box does not intersect it."
+  ],
+  "generality_proof": "The full renderer and non-component interaction or placement paths converge on resolveNodeVisualSize, while active-canvas component consumers converge through getCanvasNodeVisualSize. The ambiguous getNodeSize export is removed and its remaining base-only semantics are explicitly named getNodeBaseSize. The regression matrix exercises centering, restored-viewport visibility, buffered virtualization, selection, and two derived placements with stale media height and card-width variants rather than only the J5 node identifier.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+      "symbol": "resolveNodeVisualSize",
+      "responsibility": "Resolve the same visual width and height used by full node renderers from base size, render kind, media metadata, aspect ratio, result state, and clip rules."
+    },
+    {
+      "path": "src/workbench/generationCanvas/model/generationNodeKinds.ts",
+      "symbol": "getNodeBaseSize",
+      "responsibility": "Expose persisted or registry fallback dimensions under an explicitly base-only name so rendered geometry cannot accidentally import an ambiguous size API."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/generationCanvasGeometry.ts",
+      "symbol": "getCanvasNodeVisualSize",
+      "responsibility": "Expose one renderer-aligned node footprint to every canvas screen-space consumer and prevent direct persisted-size reads in that layer."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/GenerationCanvas.tsx",
+      "entry_point": "fitView and focused-node centering",
+      "disposition": "enforced",
+      "evidence": "Both viewport commands import their node footprint from generationCanvasGeometry."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/useAutoFitOnLoad.ts",
+      "entry_point": "anyNodeVisibleInViewport",
+      "disposition": "enforced",
+      "evidence": "Restored-viewport self-healing uses the same visual footprint, with a class test for media-derived height."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasViewport.ts",
+      "entry_point": "getVisibleCanvasNodesForRender",
+      "disposition": "enforced",
+      "evidence": "Virtualization uses the shared visual footprint, with a buffered-boundary class regression."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/CanvasMinimap.tsx",
+      "entry_point": "minimap content bounds and node rectangles",
+      "disposition": "enforced",
+      "evidence": "Both minimap calculations use the shared visual footprint instead of persisted size."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "entry_point": "low-detail node shell",
+      "disposition": "enforced",
+      "evidence": "The lightweight shell uses the same dimensions as the full BaseGenerationNode renderer."
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "entry_point": "selectNodesInRect",
+      "disposition": "enforced",
+      "evidence": "Selection hit testing resolves the rendered footprint, with a regression where only the media-derived tail intersects the marquee."
+    },
+    {
+      "path": "src/workbench/generationCanvas/fixation/buildFixationNode.ts",
+      "entry_point": "buildFixationNodeSpec derived placement",
+      "disposition": "enforced",
+      "evidence": "The new node is placed from a character card's fixed visual edge, with a class test distinguishing it from nominal width."
+    },
+    {
+      "path": "src/workbench/generationCanvas/textEdit/buildTextEditNode.ts",
+      "entry_point": "buildTextEditNodeSpec derived placement",
+      "disposition": "enforced",
+      "evidence": "The new node is placed from a category-derived card's visual edge, covering renderKind inference as a second derived entry."
+    }
+  ],
+  "prevention": {
+    "kind": "type-system",
+    "enforcement_path": "src/workbench/generationCanvas/model/generationNodeKinds.ts",
+    "invariant": "Base model size and rendered visual size have distinct APIs, and every existing-node geometry caller selects the renderer-aligned contract.",
+    "failure_mode": "Imports of the removed ambiguous getNodeSize symbol fail type checking; the class regression matrix fails if a caller deliberately substitutes getNodeBaseSize for the visual resolver.",
+    "exception_policy": "none"
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/components/generationCanvasGeometry.test.ts",
+    "src/workbench/generationCanvas/components/useAutoFitOnLoad.test.ts",
+    "src/workbench/generationCanvas/components/useCanvasViewport.test.ts",
+    "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
+    "src/workbench/generationCanvas/fixation/buildFixationNode.test.ts",
+    "src/workbench/generationCanvas/textEdit/buildTextEditNode.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/components/generationCanvasGeometry.test.ts",
+    "src/workbench/generationCanvas/components/useAutoFitOnLoad.test.ts",
+    "src/workbench/generationCanvas/components/useCanvasViewport.test.ts",
+    "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
+    "src/workbench/generationCanvas/fixation/buildFixationNode.test.ts",
+    "src/workbench/generationCanvas/textEdit/buildTextEditNode.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/components/generationCanvasGeometry.ts",
+      "src/workbench/generationCanvas/components/GenerationCanvas.tsx",
+      "src/workbench/generationCanvas/components/useAutoFitOnLoad.ts",
+      "src/workbench/generationCanvas/components/useCanvasViewport.ts",
+      "src/workbench/generationCanvas/components/CanvasMinimap.tsx",
+      "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "src/workbench/generationCanvas/model/generationNodeKinds.ts",
+      "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "src/workbench/generationCanvas/fixation/buildFixationNode.ts",
+      "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+      "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
+      "src/workbench/generationCanvas/textEdit/buildTextEditNode.ts"
+    ],
+    "rationale": "Direct component-layer reads of the persisted/default node size are removed from every active canvas screen-space consumer in this change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The mismatch is entirely within Nomi's pure geometry and renderer contracts; no third-party dependency version controls the invariant.",
+    "exit_criteria": []
+  },
+  "migration": "No stored project rewrite is required. Existing projects retain their model data and immediately receive correct geometry because visual size is resolved at read time from size, renderKind, categoryId, meta, and result.",
+  "residual_risks": [
+    "DOM-only overlays such as the selected-node composer are intentionally outside the node footprint; J5 remains the integration proof that composer avoidance and the corrected node viewport cooperate at minimum window size."
+  ]
+}

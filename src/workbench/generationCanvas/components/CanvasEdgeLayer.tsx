@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { IconCheck, IconChevronDown, IconScissors } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { getCanvasNodeVisualSize } from './generationCanvasGeometry'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { availableEdgeModes } from './edgeModeMenu'
 
@@ -73,8 +73,8 @@ function CanvasEdgeLayer({
           if (!source || !target) return null
           // 锚点必须用「真实渲染尺寸」（卡片类固定宽 200/320…），不能用名义 node.size——否则
           // 起笔/落点会偏到节点框外（character-card 名义 300 实渲 200 → 连线飘在右侧 100px 外的根因）。
-          const sourceSize = resolveNodeVisualSize(source)
-          const targetSize = resolveNodeVisualSize(target)
+          const sourceSize = getCanvasNodeVisualSize(source)
+          const targetSize = getCanvasNodeVisualSize(target)
           const targetIsLeft = target.position.x + targetSize.width / 2 < source.position.x + sourceSize.width / 2
           const startX = targetIsLeft ? source.position.x : source.position.x + sourceSize.width
           const startY = source.position.y + sourceSize.height / 2
@@ -144,7 +144,7 @@ function CanvasEdgeLayer({
         if (!pendingConnectionSourceId || !pendingCursorPos) return null
         const sourceNode = nodeById.get(pendingConnectionSourceId)
         if (!sourceNode) return null
-        const sourceSize = resolveNodeVisualSize(sourceNode)
+        const sourceSize = getCanvasNodeVisualSize(sourceNode)
         const startX =
           pendingConnectionSourceSide === 'left' ? sourceNode.position.x : sourceNode.position.x + sourceSize.width
         const startY = sourceNode.position.y + sourceSize.height / 2
