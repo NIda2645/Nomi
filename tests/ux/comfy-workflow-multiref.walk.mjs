@@ -262,6 +262,10 @@ try {
   for (const reference of references) await expect(restoredComposer.getByRole('button', { name: `移除${reference.label}`, exact: true })).toBeVisible()
   expect(readProject().edges.filter((edge) => edge.target === 'target')).toEqual(edges)
   await snap('03-three-restored-light')
+  // The certification request populated `submitted` earlier in this same walk.
+  // Clear that old response so the production assertion cannot pass before the
+  // post-restart upload sequence and its new /prompt request complete.
+  submitted = undefined
   await clickOrFail(win.getByRole('button', { name: '生成素材', exact: true }), '冷启动后三图真实发送')
   await expect.poll(() => submitted, { timeout: 20_000 }).toBeTruthy()
   expect(uploads.map((upload) => upload.referenceIndex).sort()).toEqual(withVideo ? [0, 1, 2, 3] : [0, 1, 2])

@@ -291,8 +291,11 @@ export function listOnboardingAgentCandidates(): OnboardingAgent[] {
     if (model.kind !== "text" || !modelHasPublishedExecution(model, { mappings: state.mappings })) continue;
     const vendor = state.vendors.find((v) => v.key === model.vendorKey && v.enabled);
     if (!vendor || !vendor.baseUrlHint) continue;
-    const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);
-    if (!apiKey) continue;
+    // Auth-free local gateways are executable without a credential. Do not
+    // probe or require a stale/legacy key record for them; credentialed
+    // providers remain fail-closed and must have a decryptable safeStorage key.
+    const apiKey = vendor.authType === "none" ? "" : decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);
+    if (vendor.authType !== "none" && !apiKey) continue;
     const extraHeaders = extractVendorExtraHeaders(vendor);
     out.push({
       providerKind: normalizeProviderKind(vendor.providerKind),

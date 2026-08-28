@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "journey": "model-integration-release",
+  "capturedAt": "2026-08-29T00:00:00Z",
+  "sourceCommit": "148155eb",
+  "workingTreeEvidence": true,
+  "evidencePolicy": "redacted-only; live and mock evidence are separate",
+  "journeys": {
+    "J0": {
+      "status": "pass",
+      "runtime": "packaged",
+      "toolsListed": 43,
+      "resourcesListed": 25,
+      "paginationComplete": true,
+      "unsignedWritesRejected": true,
+      "credentialBytesInResults": 0,
+      "providerRequests": 0,
+      "evidence": "packaged-mcp-smoke.e2e.mjs plus model-integration-no-repo.mjs; run after current build"
+    },
+    "J1": {
+      "status": "unverified",
+      "provider": "BananaRouter and blind provider",
+      "officialDocsChecked": false,
+      "discoveredModels": 0,
+      "selectedModels": 0,
+      "paginationComplete": false,
+      "capabilities": {},
+      "failureReasonCodes": ["external_credential_unavailable"],
+      "createRequests": 0,
+      "spend": { "currency": "unknown", "amount": 0 }
+    },
+    "J2": {
+      "status": "unverified",
+      "workflowKinds": ["ui-saved", "api"],
+      "mediaSlots": 2,
+      "distinctFixtures": 2,
+      "frameRateType": "number",
+      "routes": ["/upload/image", "/prompt", "/history", "/view"],
+      "failureReasonCodes": ["native_comfy_instance_unavailable"]
+    },
+    "J3": {
+      "status": "pass",
+      "cases": {
+        "safeStorageUnavailable": "pass",
+        "originRebind": "pass",
+        "dnsRedirect": "pass",
+        "htmlXmlMedia": "pass",
+        "oversizeMedia": "pass",
+        "duplicateStart": "pass",
+        "unknownSubmission": "pass",
+        "concurrentCancel": "pass",
+        "corruptJournal": "pass",
+        "preparedPromotionCrash": "pass"
+      },
+      "credentialBytesObserved": 0,
+      "duplicateCreateCount": 0,
+      "unknownSubmissionReconciled": true,
+      "evidence": "full gates, certification ledger and bounded-media suites"
+    },
+    "J4": {
+      "status": "partial",
+      "freshProcessReadback": true,
+      "restartReadback": true,
+      "upgradeReadback": false,
+      "duplicateCreateCount": 0,
+      "reenteredCredential": false,
+      "evidence": "model-integration-packaged.e2e.mjs no-spend restart smoke; release upgrade and live production replay still pending"
+    },
+    "J5": {
+      "status": "pass",
+      "existingConnectionsChecked": 5,
+      "verifiedModelsVisible": 3,
+      "unverifiedModelsHidden": true,
+      "evidence": "test:journeys J3/J5 and existing onboarding regression suites"
+    }
+  },
+  "externalHost": {
+    "codex": "pass",
+    "claudeCode": "pass",
+    "workBuddy": "unverified",
+    "genericHarness": "pass"
+  },
+  "notes": [
+    "No real provider credential, native ComfyUI instance, or WorkBuddy host was supplied; no live pass is claimed.",
+    "The packaged smoke proves signed identities and public MCP exposure, not paid production generation.",
+    "Electron build and pnpm run gates passed after the local evidence assets were added; this file records working-tree evidence before the final commit."
+  ]
+}

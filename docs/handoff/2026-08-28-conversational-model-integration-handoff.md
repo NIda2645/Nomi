@@ -204,9 +204,9 @@ git diff --stat
 | Task 3 幂等 ledger、CAS、崩溃恢复、非阻塞重复等待 | 完成 | 是，至 `27134024` | spec compliant + quality approved | 已实现且已验证 |
 | Task 4 HTTP canonical facade 与旧 UI 迁移 | 已实现，待交付提交 | 主体 `2b90a60d`；复审修复在工作树 | 10 项复审修复已覆盖；全量 gates/typecheck/build 通过 | 自动化已验证，尚未完成安装包发布门 |
 | Task 5 ComfyUI 全面迁移 | 已实现，自动化已验证 | 复审修复在工作树 | API/UI 转换、显式 binding、媒体生命周期与恢复测试通过 | 尚缺真实 ComfyUI J2 |
-| Task 6 持久化会话、handoff queue、MCP tools | 已实现，自动化已验证 | 复审修复在工作树 | MCP/session/handoff/CAS/幂等/失败收敛测试通过；最新 arm64 安装包 MCP smoke 通过 | 尚缺完整无仓库 J0（含 generic/unsigned 写入拒绝） |
+| Task 6 持久化会话、handoff queue、MCP tools | 已实现，自动化已验证 | 复审修复在工作树 | MCP/session/handoff/CAS/幂等/失败收敛测试通过；最新 arm64 安装包 MCP smoke 和 no-repo J0 通过 | 尚缺真实 WorkBuddy 宿主证据 |
 | Task 7 trusted UI handoff 与状态呈现 | 已实现，自动化已验证 | 复审修复在工作树 | UI intent key、reasonCode、renderer mutation 与 IPC 门禁通过 | 尚缺真实双语明暗截图走查 |
-| Task 8 内置 Skill、客户端配置、README、无仓库 harness | Skill/文档已实现 | 复审修复在工作树 | Skill 资源真 stdio 测试通过；README/指南已更新；最新安装包空目录 MCP smoke 通过 | 尚缺 WorkBuddy 真宿主证据 |
+| Task 8 内置 Skill、客户端配置、README、无仓库 harness | Skill/文档已实现 | 复审修复在工作树 | Skill 资源真 stdio 测试通过；README/指南已更新；最新安装包空目录 MCP smoke 和 no-repo harness 通过 | 尚缺 WorkBuddy 真宿主证据 |
 | Task 9 真实 provider/Comfy/重启升级/交付 | 进行中，尚未完成 | 否 | 自动化与安装包/J0 部分门岗通过；真实外部验收未执行 | 不可声称完成 |
 
 ### 4.1 Task 1 已完成内容
@@ -681,6 +681,6 @@ git push -u origin codex/model-onboarding-20260828
 
 ## 14. 当前最后结论
 
-这项工作**仍未完成发布验收**，但 Tasks 1–8 的主要代码已在独立工作树实现。最新自动化证据为：全量 `879` 个 Vitest 文件、`8436` 项通过（1 skipped），agent-runtime `151` 项通过，typecheck、build、全量 `pnpm run gates` 均通过；`mcp-skills-integration.e2e.mjs` 通过 10 项，`ipc-split-smoke.e2e.mjs` 通过 6 项，`newapi-relay.e2e.mjs` 通过 8 项；最新 arm64 `.app` 已生成并通过 packaged MCP smoke（43 tools、25 resources、Claude/Codex/Cursor 三身份；空目录 generic/unsigned 仍可读公开目录但 integration begin、凭据 handoff 和认证 start 均被拒绝）。ComfyUI 多媒体走查在允许本机临时端口后真实启动，但旧 fixture 在新私网/认证边界下以 `provider_failed` + `submission_unknown` 结束，未发布未验证模型，不能计为 J2 通过，也不能通过放宽安全门来“修绿”。当前阻断项集中在 Task 9：BananaRouter/盲 provider J1、真实 ComfyUI J2、J3 完整故障矩阵、fresh-process readback 与重启/升级后的正式生产调用，以及之后的提交/推送/PR 交付。此前记录的 `model-onboarding.walk.mjs` Playwright `Process failed to launch` 已不再复现；Electron 单实例诊断已补充，正式 userData 被已安装 Nomi 占用时应使用隔离 profile 或先关闭已有实例。真实 WorkBuddy 宿主与外部供应商凭据/ComfyUI 实例当前均未提供，不能伪造 live pass。没有这些证据，不能把当前自动化绿灯说成整体完成。
+这项工作**仍未完成发布验收**，但 Tasks 1–8 的主要代码已在独立工作树实现。最新自动化证据为：全量 `880` 个 Vitest 文件、`8440` 项通过（1 skipped），agent-runtime `151` 项通过，typecheck、build、全量 `pnpm run gates` 均通过；新增 `model-integration-no-repo.mjs` 验证 43 tools/25 resources、签名 Codex draft、unsigned generic 写入拒绝和零 provider 请求；新增 `model-integration-packaged.e2e.mjs` 验证同 session/revision 的停止后重启读回和零重复 create；`mcp-skills-integration.e2e.mjs`、`ipc-split-smoke.e2e.mjs`、`newapi-relay.e2e.mjs` 仍分别通过既有断言；最新 arm64 `.app` 已通过 packaged MCP smoke（43 tools、25 resources、Claude/Codex/Cursor 三身份）。ComfyUI 多媒体走查在允许本机临时端口后真实启动，但旧 fixture 在新私网/认证边界下以 `provider_failed` + `submission_unknown` 结束，未发布未验证模型，不能计为 J2 通过，也不能通过放宽安全门来“修绿”。当前阻断项集中在 Task 9：BananaRouter/盲 provider J1、真实 ComfyUI J2、J3 完整发布级故障矩阵、升级后的正式生产调用，以及之后的提交/推送/PR 交付。此前记录的 `model-onboarding.walk.mjs` Playwright `Process failed to launch` 已不再复现；Electron 单实例诊断已补充，正式 userData 被已安装 Nomi 占用时应使用隔离 profile 或先关闭已有实例。真实 WorkBuddy 宿主与外部供应商凭据/ComfyUI 实例当前均未提供，不能伪造 live pass。没有这些证据，不能把当前自动化绿灯说成整体完成。
 
 不要让后续实现重新变成“某供应商能保存就算接好”。这次工程的核心资产就是：**任何入口、任何供应商、任何模型，只有经过同一个可恢复、可审计、真实生产认证边界，才对用户宣称可用。**
