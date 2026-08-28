@@ -15,6 +15,9 @@
     "electron/integrationCertification/operationLedger.ts",
     "electron/integrationCertification/providerAdapterCoordinator.ts",
     "electron/integrationCertification/promotionJournal.ts",
+    "electron/providerAdapter/existingConnection.ts",
+    "electron/providerAdapter/ipc.ts",
+    "electron/providerAdapter/liveHarness.ts",
     "electron/providerAdapter/service.ts",
     "electron/providerAdapter/serviceLanguageModels.ts",
     "electron/providerAdapter/serviceVerificationResults.ts",
@@ -30,12 +33,14 @@
     "Provider Adapter cancel, restart resume, same-lineage supersede, and Catalog promotion",
     "Fresh-process promotion journal replay",
     "Concurrent ProviderAdapterService instances and separate Electron processes sharing provider-adapters.json",
+    "Electron IPC, saved-connection actions, and the live harness awaiting the canonical asynchronous start contract",
     "Ledger and promotion-journal compaction/reopen after more than one thousand terminal operations"
   ],
   "internal_only_reason": "The defect is Nomi's local operation ordering and persistence contract. A provider can advertise remote idempotency or expose a remote task id, but external documentation cannot make Nomi's local duplicate-start, crash checkpoint, Catalog CAS, or journal replay behavior correct.",
   "invariants": [
     "One idempotency key is permanently bound to one immutable effective contract digest and returns the original canonical run on every duplicate start.",
     "OperationLedger.begin explicitly returns created or duplicate plus canonicalRunId; ProviderAdapterService exits the duplicate path before Catalog stage, store mutation, scheduling, cleanup, or provider create.",
+    "A duplicate waiting for its canonical run uses bounded asynchronous timer polling with fresh store and ledger reads; it never blocks the Electron event loop with Atomics.wait or a busy spin, and every IPC/manual/live caller awaits the same Promise-only start contract.",
     "ProviderAdapterStore serializes every mutation under one cross-process lock, fresh-reads inside the lock, verifies the persisted revision before atomic replacement, and merges only the addressed run or revision record.",
     "Mode identity is a versioned canonical tuple of modelKey and taskKind, never a delimiter split; operationKey is opaque and the index records the latest attempt and operation key.",
     "Restart recovery always follows the indexed latest attempt. A settled, failed, submitted, or unknown attempt 2 can never cause attempt 1 to be recreated.",
@@ -55,6 +60,8 @@
   "regression_tests": [
     "electron/integrationCertification/operationLedger.test.ts",
     "electron/integrationCertification/promotionJournal.test.ts",
+    "electron/providerAdapter/existingConnection.test.ts",
+    "electron/providerAdapter/ipc.test.ts",
     "electron/providerAdapter/service.test.ts",
     "electron/providerAdapter/serviceCatalogLifecycle.integration.test.ts"
   ],

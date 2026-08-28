@@ -74,7 +74,7 @@ export async function runLiveProviderAdapterHarnessFromEnv(service: ProviderAdap
     const catalog = readCatalog();
     const sourceKey = decryptApiKeyRecord(catalog.apiKeysByVendor[config.sourceVendorKey]);
     if (!sourceKey) throw new Error("The configured source vendor has no usable encrypted API key");
-    const run = service.start({
+    const run = await service.start({
       vendorName: config.vendorName,
       baseUrl: config.baseUrl,
       apiKey: sourceKey,

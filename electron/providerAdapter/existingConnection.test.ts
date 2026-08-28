@@ -62,7 +62,7 @@ function harness(state = catalog()) {
     models: ["already-there", "new-video"],
     statuses: [200],
   }));
-  const startAdapter = vi.fn<ExistingConnectionActionsDependencies["startAdapter"]>((input: ExistingConnectionAdapterStartInput) => ({
+  const startAdapter = vi.fn<ExistingConnectionActionsDependencies["startAdapter"]>(async (input: ExistingConnectionAdapterStartInput) => ({
     id: "run-1",
     vendorKey: input.vendorKey,
     vendorName: input.vendorName,
@@ -153,7 +153,7 @@ describe("existing connection model discovery", () => {
       decryptApiKey: () => "",
       fetchModels,
       registerAdapter: vi.fn(),
-      startAdapter: vi.fn(),
+      startAdapter: vi.fn(async () => { throw new Error("startAdapter must not run"); }),
       getAdapterRun: () => undefined,
     });
 
@@ -277,7 +277,7 @@ describe("existing connection adapter start", () => {
 
   it("redacts a credential if an adapter error unexpectedly echoes it", async () => {
     const { actions, startAdapter } = harness();
-    startAdapter.mockImplementationOnce((input) => ({
+    startAdapter.mockImplementationOnce(async (input) => ({
       id: "run-secret-echo",
       vendorKey: input.vendorKey,
       vendorName: input.vendorName,
@@ -414,7 +414,7 @@ describe("persisted provider adapter retry", () => {
 
   it("rejects an active task before reading its saved credential", async () => {
     const decryptApiKey = vi.fn(() => SECRET);
-    const startAdapter = vi.fn();
+    const startAdapter = vi.fn(async () => { throw new Error("startAdapter must not run"); });
     const actions = createExistingConnectionActions({
       readCatalog: () => catalog(),
       decryptApiKey,
@@ -432,7 +432,7 @@ describe("persisted provider adapter retry", () => {
   });
 
   it("rejects an unknown task without consulting renderer-supplied connection data", async () => {
-    const startAdapter = vi.fn();
+    const startAdapter = vi.fn(async () => { throw new Error("startAdapter must not run"); });
     const actions = createExistingConnectionActions({
       readCatalog: () => catalog(),
       decryptApiKey: () => SECRET,

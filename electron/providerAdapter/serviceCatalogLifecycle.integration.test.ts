@@ -112,8 +112,8 @@ function serviceDependencies(overrides: Partial<ProviderAdapterServiceDependenci
   };
 }
 
-function startCandidate(service: ProviderAdapterService) {
-  const run = service.start({
+async function startCandidate(service: ProviderAdapterService) {
+  const run = await service.start({
     catalogVendorKey: rootVendorKey,
     vendorName: "Candidate Provider",
     baseUrl: "https://candidate.example.test/v2",
@@ -161,7 +161,7 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
       new ProviderAdapterStore(path.join(userDataRoot, "provider-adapters.json")),
       serviceDependencies(),
     );
-    const started = startCandidate(service);
+    const started = await startCandidate(service);
 
     await service.executeRun(started.id);
 
@@ -179,7 +179,7 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
         id: () => "run-real-timeout",
       }),
     );
-    const started = startCandidate(service);
+    const started = await startCandidate(service);
 
     await service.executeRun(started.id);
 
@@ -191,13 +191,13 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
     expect(listModelCatalogMappings({ vendorKey: started.vendorKey }).every((mapping) => mapping.enabled === false)).toBe(true);
   });
 
-  it("cancels and cleans a staged candidate idempotently before provider execution", () => {
+  it("cancels and cleans a staged candidate idempotently before provider execution", async () => {
     const sourceBefore = readCatalog();
     const service = new ProviderAdapterService(
       new ProviderAdapterStore(path.join(userDataRoot, "provider-adapters.json")),
       serviceDependencies({ id: () => "run-real-cancel" }),
     );
-    const started = startCandidate(service);
+    const started = await startCandidate(service);
 
     expect(service.cancel(started.id)?.stage).toBe("cancelled");
     expect(service.cancel(started.id)?.stage).toBe("cancelled");
@@ -221,11 +221,11 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
         verifyTimeoutMs: 60_000,
       }),
     );
-    const older = startCandidate(service);
+    const older = await startCandidate(service);
     const olderWork = service.executeRun(older.id);
     await vi.waitFor(() => expect(oldVerifySignal).toBeDefined());
 
-    expect(() => service.start({
+    await expect(service.start({
       catalogVendorKey: rootVendorKey,
       vendorName: "New candidate",
       baseUrl: "https://candidate.example.test/v2",
@@ -233,7 +233,7 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
       authType: "bearer",
       providerKind: "openai-compatible",
       models: [{ modelKey: targetModelKey, labelZh: "Image V1 candidate", kind: "image" }],
-    })).toThrowError(/unresolved remote submission/i);
+    })).rejects.toThrowError(/unresolved remote submission/i);
 
     expect(providerCreates).toBe(1);
     expect(oldVerifySignal?.aborted).toBe(false);
@@ -283,7 +283,7 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
           : { ok: false, taskKind: mode.taskKind, stage: "create", error: "edit rejected" },
       }),
     );
-    const started = startCandidate(service);
+    const started = await startCandidate(service);
 
     await service.executeRun(started.id);
 

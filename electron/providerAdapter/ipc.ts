@@ -66,7 +66,7 @@ export function registerProviderAdapterIpc(service: ProviderAdapterService = get
   ipcMain.handle("nomi:provider-adapter:start", async (event, payload: unknown) => {
     assertTrustedSender(event);
     try {
-      return { ok: true, run: publicRun(service.start(adapterStartInput(payload))) };
+      return { ok: true, run: publicRun(await service.start(adapterStartInput(payload))) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }

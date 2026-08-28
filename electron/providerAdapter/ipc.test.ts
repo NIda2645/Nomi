@@ -69,7 +69,7 @@ describe("registerProviderAdapterIpc", () => {
     };
     const service = {
       register: vi.fn(() => registration),
-      start: vi.fn(() => run),
+      start: vi.fn(async () => run),
       getRun: vi.fn(() => run),
       latestRun: vi.fn(() => run),
       cancel: vi.fn(() => ({ ...run, stage: "cancelled" })),

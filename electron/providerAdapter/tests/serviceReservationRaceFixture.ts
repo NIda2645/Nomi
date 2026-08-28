@@ -87,6 +87,14 @@ function startCanonicalWorker(root: string, filePath: string, children: ChildPro
     const [root, filePath] = process.argv.slice(2);
     const fixedNow = ${JSON.stringify(fixedNow)};
     const observedPath = path.join(root, "duplicate-observed");
+    const allowMaterializePath = path.join(root, "allow-materialize");
+    const waitForFile = async (filePath: string, error: string) => {
+      for (let attempt = 0; attempt < 6_000; attempt += 1) {
+        if (fs.existsSync(filePath)) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error(error);
+    };
     const marker = (name: string) => fs.appendFileSync(path.join(root, \`\${name}.log\`), "1\\n");
     const vendor = {
       key: "race-example", name: "Race Example", enabled: false,
@@ -111,19 +119,14 @@ function startCanonicalWorker(root: string, filePath: string, children: ChildPro
       now: () => fixedNow,
       schedule: (runId: string) => { marker("schedule"); scheduled.push(runId); },
       verify: async ({ mode }: any) => { marker("create"); return { ok: true as const, taskKind: mode.taskKind }; },
-      certificationCheckpoint: (checkpoint: string) => {
+      certificationCheckpoint: async (checkpoint: string) => {
         if (checkpoint !== "after_intent") return;
         process.stdout.write("RESERVED\\n");
-        const sleeper = new Int32Array(new SharedArrayBuffer(4));
-        let observed = false;
-        for (let attempt = 0; attempt < 6_000; attempt += 1) {
-          if (fs.existsSync(observedPath)) { observed = true; break; }
-          Atomics.wait(sleeper, 0, 0, 10);
-        }
-        if (!observed) throw new Error("duplicate never observed the reserved canonical start");
+        await waitForFile(observedPath, "duplicate never observed the reserved canonical start");
+        await waitForFile(allowMaterializePath, "event loop never released canonical materialization");
       },
     });
-    const run = service.start(${JSON.stringify(input)});
+    const run = await service.start(${JSON.stringify(input)});
     for (const runId of scheduled) await service.executeRun(runId);
     process.stdout.write(\`RESULT:\${run.id}\\n\`);
     }
@@ -170,6 +173,7 @@ export async function runCanonicalReservationRace(): Promise<{
   scheduleCount: number;
   createCount: number;
   storedRunIds: string[];
+  eventLoopResponsiveDuringWait: boolean;
 }> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-canonical-reservation-race-"));
   const children: ChildProcess[] = [];
@@ -182,6 +186,7 @@ export async function runCanonicalReservationRace(): Promise<{
       catalog: catalog(root),
       id: () => "run-duplicate",
       now: () => fixedNow,
+      canonicalStartWaitMs: 200,
       schedule: () => marker(root, "schedule"),
       verify: async ({ mode }) => {
         marker(root, "create");
@@ -190,11 +195,23 @@ export async function runCanonicalReservationRace(): Promise<{
     });
     let duplicate: ProviderAdapterRun | undefined;
     let duplicateError: unknown;
+    let duplicateSettled = false;
+    let eventLoopResponsiveDuringWait = false;
+    const responsiveness = new Promise<void>((resolve) => {
+      setImmediate(() => {
+        eventLoopResponsiveDuringWait = !duplicateSettled;
+        fs.writeFileSync(path.join(root, "allow-materialize"), "1");
+        resolve();
+      });
+    });
     try {
-      duplicate = duplicateService.start(input);
+      duplicate = await duplicateService.start(input);
     } catch (error) {
       duplicateError = error;
+    } finally {
+      duplicateSettled = true;
     }
+    await responsiveness;
     const canonicalRunId = await worker.completed;
     if (duplicateError) throw duplicateError;
     return {
@@ -204,6 +221,7 @@ export async function runCanonicalReservationRace(): Promise<{
       scheduleCount: markerCount(root, "schedule"),
       createCount: markerCount(root, "create"),
       storedRunIds: new ProviderAdapterStore(filePath).snapshot().runs.map((run) => run.id),
+      eventLoopResponsiveDuringWait,
     };
   } finally {
     for (const child of children) {
@@ -213,12 +231,12 @@ export async function runCanonicalReservationRace(): Promise<{
   }
 }
 
-export function runCanonicalReservationTimeout(): {
+export async function runCanonicalReservationTimeout(): Promise<{
   duplicateError: unknown;
   stageCount: number;
   scheduleCount: number;
   createCount: number;
-} {
+}> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-canonical-reservation-timeout-"));
   try {
     const filePath = path.join(root, "provider-adapters.json");
@@ -231,7 +249,7 @@ export function runCanonicalReservationTimeout(): {
       },
     });
     try {
-      owner.start(input);
+      await owner.start(input);
     } catch {
       // The canonical reservation intentionally survives the simulated owner crash.
     }
@@ -245,7 +263,7 @@ export function runCanonicalReservationTimeout(): {
     });
     let duplicateError: unknown;
     try {
-      duplicate.start(input);
+      await duplicate.start(input);
     } catch (error) {
       duplicateError = error;
     }

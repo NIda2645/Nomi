@@ -114,7 +114,7 @@ export type ProviderAdapterServiceDependencies = {
   repairTimeoutMs?: number;
   verifyTimeoutMs?: number;
   canonicalStartWaitMs?: number;
-  certificationCheckpoint?: (checkpoint: CertificationStartCheckpoint) => void;
+  certificationCheckpoint?: (checkpoint: CertificationStartCheckpoint) => void | Promise<void>;
 };
 
 const defaultDependencies: ProviderAdapterServiceDependencies = {
@@ -165,16 +165,16 @@ export class ProviderAdapterService {
     });
   }
 
-  start(rawInput: ProviderAdapterStartInput): ProviderAdapterRun {
+  async start(rawInput: ProviderAdapterStartInput): Promise<ProviderAdapterRun> {
     const input = normalizeProviderAdapterInput(rawInput, "verify");
     const vendorKey = String(input.catalogVendorKey || "").trim() || deriveVendorKeyFromBaseUrl(input.baseUrl);
     if (!vendorKey) throw new Error("Unable to derive a provider id from the API base URL");
     const id = this.dependencies.id();
-    const prepared = this.certification.prepareStart(input, id, vendorKey);
+    const prepared = await this.certification.prepareStart(input, id, vendorKey);
     if (prepared.duplicate) return prepared.duplicate;
     const timestamp = this.dependencies.now();
     if (!prepared.operation) throw new Error("Certification start reservation is missing");
-    const { run, staged } = this.certification.completePreparedStart({
+    const { run, staged } = await this.certification.completePreparedStart({
       connection: input,
       operation: prepared.operation,
       sourceVendorKey: vendorKey,

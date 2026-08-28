@@ -144,7 +144,7 @@ export class ProviderAdapterCertificationCoordinator {
     )));
   }
 
-  prepareStart(input: ProviderAdapterConnectionInput, runId: string, lineageRoot: string): {
+  async prepareStart(input: ProviderAdapterConnectionInput, runId: string, lineageRoot: string): Promise<{
     duplicate?: ProviderAdapterRun;
     operation?: CertificationOperationRecord;
     runId: string;
@@ -153,7 +153,7 @@ export class ProviderAdapterCertificationCoordinator {
     credentialFingerprint: string;
     catalogIdentityFingerprint: string;
     customHeaderIdentityFingerprint: string;
-  } {
+  }> {
     const binding = input.certification;
     const idempotencyKey = binding?.idempotencyKey || `legacy-${runId}`;
     const identity = contractIdentity(input, lineageRoot, binding);
@@ -181,25 +181,24 @@ export class ProviderAdapterCertificationCoordinator {
       now,
     });
     if (begun.status === "duplicate") {
-      const original = this.readMaterializingCanonicalRun(begun.canonicalRunId, begun.operation);
+      const original = await this.readMaterializingCanonicalRun(begun.canonicalRunId, begun.operation);
       return { duplicate: original, operation: begun.operation, runId: original.id, idempotencyKey, ...identity };
     }
     const operation = begun.operation!;
     return { operation, runId: operation.runId, idempotencyKey, ...identity };
   }
 
-  private readMaterializingCanonicalRun(
+  private async readMaterializingCanonicalRun(
     canonicalRunId: string,
     reservedOperation: CertificationOperationRecord | undefined,
-  ): ProviderAdapterRun {
+  ): Promise<ProviderAdapterRun> {
     let run = this.store.getRun(canonicalRunId);
     if (run) return run;
     let operation = reservedOperation || this.ledger.getByRunId(canonicalRunId);
     if (!operation) throw new Error("Certification canonical binding is missing its active start transaction");
     const expiresAt = process.hrtime.bigint() + BigInt(this.canonicalStartWaitMs) * 1_000_000n;
-    const sleeper = new Int32Array(new SharedArrayBuffer(4));
     while (operation.startTransaction.state === "intent" && process.hrtime.bigint() < expiresAt) {
-      Atomics.wait(sleeper, 0, 0, CANONICAL_START_POLL_MS);
+      await new Promise<void>((resolve) => setTimeout(resolve, CANONICAL_START_POLL_MS));
       run = this.store.getRun(canonicalRunId);
       if (run) return run;
       operation = this.ledger.getByRunId(canonicalRunId);
@@ -228,16 +227,16 @@ export class ProviderAdapterCertificationCoordinator {
     });
   }
 
-  completePreparedStart(input: {
+  async completePreparedStart(input: {
     connection: ProviderAdapterConnectionInput;
     operation: CertificationOperationRecord;
     sourceVendorKey: string;
     connectionFingerprint: string;
     deadlineAt: string;
-    checkpoint?: (checkpoint: CertificationStartCheckpoint) => void;
-  }): { run: ProviderAdapterRun; staged: StagedProviderAdapterCatalog } {
+    checkpoint?: (checkpoint: CertificationStartCheckpoint) => void | Promise<void>;
+  }): Promise<{ run: ProviderAdapterRun; staged: StagedProviderAdapterCatalog }> {
     let operation = input.operation;
-    input.checkpoint?.("after_intent");
+    if (input.checkpoint) await input.checkpoint("after_intent");
     const timestamp = this.now();
     let run = this.store.getRun(operation.runId);
     if (!run) {
@@ -266,14 +265,14 @@ export class ProviderAdapterCertificationCoordinator {
         updatedAt: timestamp,
       };
       this.store.upsertRun(run);
-      input.checkpoint?.("after_run_write");
+      if (input.checkpoint) await input.checkpoint("after_run_write");
     }
     if (operation.startTransaction.state === "intent") {
       operation = this.checkpointStart(operation.runId, { state: "run_persisted" });
     }
-    input.checkpoint?.("after_run_checkpoint");
+    if (input.checkpoint) await input.checkpoint("after_run_checkpoint");
     const staged = this.catalog.stage({ ...input.connection, vendorKey: input.sourceVendorKey, runId: operation.runId });
-    input.checkpoint?.("after_catalog_stage");
+    if (input.checkpoint) await input.checkpoint("after_catalog_stage");
     run = this.store.upsertRun({
       ...run,
       vendorKey: staged.vendor.key,
@@ -288,11 +287,11 @@ export class ProviderAdapterCertificationCoordinator {
         lineageRootVendorKey: staged.lineageRootVendorKey,
       });
     }
-    input.checkpoint?.("after_catalog_checkpoint");
+    if (input.checkpoint) await input.checkpoint("after_catalog_checkpoint");
     if (operation.startTransaction.state === "catalog_staged") {
       this.checkpointStart(operation.runId, { state: "committed", stagedVendorKey: staged.vendor.key });
     }
-    input.checkpoint?.("after_commit");
+    if (input.checkpoint) await input.checkpoint("after_commit");
     return { run, staged };
   }
 

@@ -104,7 +104,7 @@ export type ExistingConnectionActionsDependencies = {
   }) => Promise<ModelListResult>;
   startAdapter: (
     input: ExistingConnectionAdapterStartInput,
-  ) => ProviderAdapterRun | Promise<ProviderAdapterRun>;
+  ) => Promise<ProviderAdapterRun>;
   registerAdapter: (
     input: ExistingConnectionAdapterRegisterInput,
   ) => ProviderAdapterRegistration | Promise<ProviderAdapterRegistration>;
