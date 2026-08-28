@@ -247,7 +247,7 @@ export function ComfyuiLocalCard({ vendorKey, instanceName, enabled, baseUrl, mo
     <FoldableModelCard
       glyph={<IconServerBolt size={16} stroke={1.6} />}
       glyphTone="ink"
-      name={instanceName || t('onboardingProviders.comfyLocal.cardName')}
+      name={translateModelDisplayText(instanceName || t('onboardingProviders.comfyLocal.cardName'))}
       subtitle={t('onboardingProviders.comfyLocal.cloudSubtitle')}
       status={cardStatus}
       statusLabel={statusLabel}
