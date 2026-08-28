@@ -271,7 +271,9 @@ function collectUntranslatedModelLabels() {
   ]
   const sourceLabels = new Set()
   for (const root of sourceRoots) {
-    const files = ts.sys.readDirectory(root, ['.ts', '.tsx'], undefined, undefined)
+    // 与主扫描同一套 isProductSource 过滤:测试夹具里的 `label: "图"` 不是真档案标签,
+    // 要求给它一份英文译名毫无意义(2026-08-28:main 新增的 catalogMigrateV11.test.ts 就这么把门岗弄红了)。
+    const files = ts.sys.readDirectory(root, ['.ts', '.tsx'], undefined, undefined).filter(isProductSource)
     for (const fileName of files) {
       const sourceText = fs.readFileSync(fileName, 'utf8')
       for (const match of sourceText.matchAll(/\blabel\s*:\s*["'`]([^"'`]*[\u3400-\u9fff][^"'`]*)["'`]/g)) {
