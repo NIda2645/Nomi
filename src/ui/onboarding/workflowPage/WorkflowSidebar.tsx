@@ -40,6 +40,7 @@ export type WorkflowRow = {
   fieldCount: number
   /** 缺件对账结果；null = 还没对完 / 这台没开。 */
   missing: { nodes: number; files: number } | null
+  missingFileNames: string[]
   offline: boolean
   /** 内置文生图没有原始 JSON，改不了绑定——列出来但标明白。 */
   builtin: boolean
@@ -266,7 +267,10 @@ function WorkflowItem({
               <IconAlertTriangle size={11} stroke={1.9} aria-hidden="true" />
               {missing.nodes > 0
                 ? t('comfyuiWorkflowPage.workflows.missingNodes', { count: missing.nodes })
-                : t('comfyuiWorkflowPage.workflows.missingFiles', { count: missing.files })}
+                : t('comfyuiWorkflowPage.workflows.missingFiles', {
+                    count: missing.files,
+                    names: workflow.missingFileNames.join(', '),
+                  })}
             </span>
           ) : (
             <span className="inline-flex min-w-0 items-center gap-0.5 truncate text-[var(--nomi-track-video)]">
