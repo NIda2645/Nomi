@@ -242,6 +242,7 @@ export default defineConfig(async ({ command, mode }: ConfigEnv): Promise<UserCo
         '@tiptap/react',
         '@tiptap/starter-kit',
         '@tiptap/suggestion',
+        '@xmldom/xmldom',
         'clsx',
         'framer-motion',
         'i18next',
