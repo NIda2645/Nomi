@@ -1,9 +1,9 @@
 # Nomi 工程纪律 — 详细规则（L2 · 触发才查）
 
-> 这是 `CLAUDE.md` 的「按需查阅」层。`CLAUDE.md`（always 加载）= 精简核心：项目事实 + P1–P5 + D1–D5 + 规则索引 + 三闸。本文件存**触发某条规则后才查的细节**：R1–R21 详解、工作流框架、技能库映射、固化的工作纪律。
+> 这是 `CLAUDE.md` 的「按需查阅」层。`CLAUDE.md`（always 加载）= 精简核心：项目事实 + P1–P5 + D1–D5 + 规则索引 + 三闸。本文件存**触发某条规则后才查的细节**：R1–R22 详解、工作流框架、技能库映射、固化的工作纪律。
 > 真相源仍单一：`CLAUDE.md` 的规则索引指明每条住哪；冲突一律以 `CLAUDE.md` 的 P1–P5 / D1–D5 为准。改触发清单同步 `.claude/hooks/self-check.sh`，规则细节只改本文件。
 
-# 详细规则 R1–R21
+# 详细规则 R1–R22
 
 > `CLAUDE.md` 的规则索引触发某个编号后，到这里查它的细节。
 
@@ -471,17 +471,13 @@ git status --short --branch
 
 **与既有规则的关系**：R5 管「用第三方库时先查官方文档」，R6 管「做方案前先读顶尖开源」，**R20 管更早的一步：先判断该不该自己写**。P2 的「通用性判定」是修 bug 侧的同一思维（这类还会从别的入口出现吗），R20 是造东西侧。
 
-## R21 高风险修复必须交根因合同
+## R21 修复必须走根因流程；高风险交 v2 合同
 
-**触发**：缺陷或回归涉及 provider、媒体、工作流绑定、任务派发、runtime、资产边界等高风险生产路径。
+**触发**：所有 bug、回归、CI/平台失败、flaky、性能/安全问题和 review/audit 发现，不按目录或改动大小豁免。
 
-1. 先读 `.agents/skills/root-cause-remediation/SKILL.md`，按症状 → 直接原因 → 类根因 → 入口集 → 不变量推进。
-2. 生产代码前新建或更新 `docs/fixes/*.root-cause.json`；外部行为必须带核验日期的官方文档/源码，纯内部问题必须写 `internal_only_reason`。
-3. 报告的精确案例与类边界都要有先红后绿的测试；合同里的 `regression_tests` 必须在同一 diff 真实变化。
-4. 修在最早可统一约束的边界，不能因报错来自某模型/供应商就默认加专用分支。
-5. `pnpm run check:root-cause-contracts` 是权威门禁；本地 Agent hook 只做提前提醒，缺失也不能绕过 CI。
+统一方法只住在 `.agents/skills/root-cause-remediation/SKILL.md`。高风险生产路径在改代码前必须提交 schema-v2 `docs/fixes/*.root-cause.json`；`pnpm run check:root-cause-contracts` 会交叉核验共享边界、至少两个同类入口、预防机制、变化中的类级测试、旧路径处置和依赖生命周期。schema v1 是内容哈希锁定的历史记录，修改时必须迁移到 v2，禁止新建 v1。
 
-根因合同字段与完整方法只在技能和 schema 检查器维护，本节不复制，避免规则再次分叉。
+本地 Agent hook 只负责提前提醒，可能不存在；已提交的 `CLAUDE.md`、生成的 `AGENTS.md`、skill 和 CI 才是跨 Agent 的执行链。合同字段和完整步骤不在本节重复，避免规则再次膨胀和分叉。
 
 ## R22 验证分层与测试预算
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateRootCauseChange } from "./root-cause-contracts.mjs";
+import { validateRootCauseChange, validateRootCauseHistory } from "./root-cause-contracts.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -55,9 +56,11 @@ const contractFiles = fs.existsSync(fixesDir)
 const contracts = contractFiles.map((file) => {
   const absolutePath = path.join(fixesDir, file);
   try {
+    const raw = fs.readFileSync(absolutePath, "utf8");
     return {
-      ...JSON.parse(fs.readFileSync(absolutePath, "utf8")),
+      ...JSON.parse(raw),
       __file: path.relative(repoRoot, absolutePath).replaceAll(path.sep, "/"),
+      __contentHash: createHash("sha256").update(raw).digest("hex"),
     };
   } catch (error) {
     console.error(`✖ 无法解析根因合同 ${path.relative(repoRoot, absolutePath)}：${error instanceof Error ? error.message : String(error)}`);
@@ -65,7 +68,23 @@ const contracts = contractFiles.map((file) => {
   }
 });
 
-const result = validateRootCauseChange({ changedFiles: [...changedFiles], contracts, existingFiles });
+const legacyBaselinePath = path.join(repoRoot, "scripts", "root-cause-contract-v1-baseline.json");
+let legacyV1Hashes;
+try {
+  legacyV1Hashes = new Map(Object.entries(JSON.parse(fs.readFileSync(legacyBaselinePath, "utf8"))));
+} catch (error) {
+  console.error(`✖ 无法读取根因合同 v1 只读基线：${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
+
+const history = validateRootCauseHistory({ contracts, legacyV1Hashes });
+if (!history.ok) {
+  console.error("✖ 根因合同历史门禁失败");
+  for (const error of history.errors) console.error(`  - ${error}`);
+  process.exit(1);
+}
+
+const result = validateRootCauseChange({ changedFiles: [...changedFiles], contracts, existingFiles, legacyV1Hashes });
 if (!result.ok) {
   console.error(`✖ 根因合同门禁失败（触发 ${result.triggeredFiles.length} 个高风险生产文件）`);
   for (const error of result.errors) console.error(`  - ${error}`);

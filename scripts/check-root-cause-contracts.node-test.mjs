@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isHighRiskProductionFile, validateRootCauseChange } from "./root-cause-contracts.mjs";
+import { isHighRiskProductionFile, validateRootCauseChange, validateRootCauseHistory } from "./root-cause-contracts.mjs";
 
 const completeContract = {
   __file: "docs/fixes/fixture-media-boundary.root-cause.json",
-  schema_version: 1,
+  schema_version: 2,
   id: "fixture-media-boundary",
   problem_type: "provider_media_boundary",
   symptom: "The provider receives an invalid image URL.",
@@ -18,6 +18,46 @@ const completeContract = {
   ],
   invariants: ["HTML is never sent as an image."],
   regression_tests: ["electron/catalog/assetLocalization.test.ts"],
+  generality_proof: "Every local and inline provider image converges on one byte-verification boundary before upload.",
+  shared_boundaries: [
+    {
+      path: "electron/catalog/assetLocalization.ts",
+      symbol: "localizeAssetsForVendor",
+      responsibility: "Reject declared images whose bounded bytes do not match the media contract before any provider request.",
+    },
+  ],
+  same_class_entry_points: [
+    {
+      path: "electron/catalog/assetLocalization.ts",
+      entry_point: "localize local-file image",
+      disposition: "enforced",
+      evidence: "Local files pass through localizeAssetsForVendor.",
+    },
+    {
+      path: "electron/catalog/assetLocalization.ts",
+      entry_point: "localize inline image",
+      disposition: "enforced",
+      evidence: "Inline data payloads pass through the same byte verification.",
+    },
+  ],
+  prevention: {
+    kind: "centralized-boundary",
+    enforcement_path: "electron/catalog/assetLocalization.ts",
+    invariant: "Unverified bytes never reach an upload strategy.",
+    failure_mode: "The shared boundary rejects before network activity.",
+    exception_policy: "none",
+  },
+  class_regression_tests: ["electron/catalog/assetLocalization.test.ts"],
+  legacy_paths: {
+    status: "not-applicable",
+    removed_paths: [],
+    rationale: "The defect was a missing invariant at the existing shared boundary, not a parallel legacy implementation.",
+  },
+  dependency_lifecycle: {
+    decision: "not-applicable",
+    rationale: "No third-party runtime or protocol version controls this internal byte boundary.",
+    exit_criteria: [],
+  },
   migration: "Existing stored values are validated on their next upload.",
   residual_risks: ["Provider-owned URLs outside the upload boundary are not re-fetched."],
 };
@@ -46,6 +86,75 @@ test("match: incomplete contracts cannot satisfy the gate", () => {
   assert.match(result.errors.join("\n"), /class_root|external_sources|regression_tests/);
 });
 
+test("match: patch-shaped contracts without a shared class boundary are rejected", () => {
+  const result = validateRootCauseChange({
+    changedFiles: [
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      completeContract.__file,
+    ],
+    contracts: [{
+      ...completeContract,
+      shared_boundaries: [],
+      same_class_entry_points: [completeContract.same_class_entry_points[0]],
+      class_regression_tests: [],
+    }],
+    existingFiles: new Set([
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      completeContract.__file,
+    ]),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /shared_boundaries|two independently checked|class_regression_tests/);
+});
+
+test("match: retaining an aging dependency without target and exit criteria is rejected", () => {
+  const result = validateRootCauseChange({
+    changedFiles: [
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      completeContract.__file,
+    ],
+    contracts: [{
+      ...completeContract,
+      dependency_lifecycle: {
+        decision: "retain-with-exit",
+        current: "decoder@1",
+        rationale: "A compatibility option fixes the immediate fixture.",
+        exit_criteria: [],
+      },
+    }],
+    existingFiles: new Set([
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      completeContract.__file,
+    ]),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /requires current and target|requires explicit exit_criteria/);
+});
+
+test("match: a contract cannot claim an unchanged boundary or mark every entry unaffected", () => {
+  const result = validateRootCauseChange({
+    changedFiles: ["electron/catalog/assetLocalization.test.ts", completeContract.__file],
+    contracts: [{
+      ...completeContract,
+      same_class_entry_points: completeContract.same_class_entry_points.map((entry) => ({
+        ...entry,
+        disposition: "not-affected",
+      })),
+    }],
+    existingFiles: new Set([
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      completeContract.__file,
+    ]),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /at least one enforced entry|enforcement_path was not changed/);
+});
+
 test("not_match: docs-only changes do not require a contract", () => {
   const result = validateRootCauseChange({
     changedFiles: ["docs/plan/example.md"],
@@ -53,6 +162,21 @@ test("not_match: docs-only changes do not require a contract", () => {
     existingFiles: new Set(["docs/plan/example.md"]),
   });
   assert.deepEqual(result, { ok: true, errors: [], triggeredFiles: [] });
+});
+
+test("match: every changed schema v2 contract is validated even without a high-risk production path", () => {
+  const result = validateRootCauseChange({
+    changedFiles: [completeContract.__file, "electron/catalog/assetLocalization.test.ts"],
+    contracts: [{ ...completeContract, shared_boundaries: [] }],
+    existingFiles: new Set([
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      completeContract.__file,
+    ]),
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.triggeredFiles, []);
+  assert.match(result.errors.join("\n"), /shared_boundaries/);
 });
 
 test("match: a complete contract covers changed production and test files", () => {
@@ -138,6 +262,7 @@ test("high-risk matcher covers provider, media, network, IPC, and persistence bo
   for (const file of [
     "electron/vendor/vendorHttp.ts",
     "electron/image/decomposeLayers.ts",
+    "electron/ai/antigravityArtifacts.ts",
     "electron/hardenedFetch.ts",
     "electron/providerAdapter/ipc.ts",
     "electron/workspace/workspaceRepository.ts",
@@ -146,7 +271,32 @@ test("high-risk matcher covers provider, media, network, IPC, and persistence bo
   ]) assert.equal(isHighRiskProductionFile(file), true, file);
   for (const file of [
     "electron/vendor/vendorHttp.test.ts",
+    "scripts/check-root-cause-contracts.node-test.mjs",
     "docs/plan/example.md",
     "src/components/Button.tsx",
   ]) assert.equal(isHighRiskProductionFile(file), false, file);
+});
+
+test("schema v1 history is immutable and new v1 contracts are rejected", () => {
+  const legacy = {
+    ...completeContract,
+    schema_version: 1,
+    __file: "docs/fixes/legacy.root-cause.json",
+    __contentHash: "known-hash",
+  };
+  assert.deepEqual(
+    validateRootCauseHistory({ contracts: [legacy], legacyV1Hashes: new Map([[legacy.__file, "known-hash"]]) }),
+    { ok: true, errors: [] },
+  );
+
+  const changed = validateRootCauseHistory({
+    contracts: [{ ...legacy, __contentHash: "changed-hash" }],
+    legacyV1Hashes: new Map([[legacy.__file, "known-hash"]]),
+  });
+  assert.equal(changed.ok, false);
+  assert.match(changed.errors.join("\n"), /history changed/i);
+
+  const added = validateRootCauseHistory({ contracts: [legacy], legacyV1Hashes: new Map() });
+  assert.equal(added.ok, false);
+  assert.match(added.errors.join("\n"), /new schema v1 contract is forbidden/i);
 });
