@@ -1,9 +1,12 @@
 import crypto from "node:crypto";
 import type { LanguageModelV1 } from "ai";
-import { buildLanguageModelForVendor } from "../ai/vendorLanguageModel";
-import { readCatalog } from "../catalog/catalogStore";
+import type { OperationLedger } from "../integrationCertification/operationLedger";
+import type { PromotionJournal } from "../integrationCertification/promotionJournal";
+import {
+  AdapterReconciliationRequiredError,
+  ProviderAdapterCertificationCoordinator,
+} from "../integrationCertification/providerAdapterCoordinator";
 import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
-import { decryptApiKeyRecord } from "../catalog/secrets";
 import type { BillingModelKind, Model, Vendor } from "../catalog/types";
 import { humanizeModelKey } from "../catalog/modelLabel";
 import { AdapterNeedsAiError, compileProviderAdapter, repairProviderAdapter } from "./compiler";
@@ -17,7 +20,6 @@ import {
 } from "./store";
 import type {
   AdapterAuthType,
-  AdapterModeResult,
   ProviderAdapterConnectionInput,
   ProviderAdapterCompilation,
   ProviderAdapterCompileFailure,
@@ -33,7 +35,6 @@ import { AdapterWaitError, awaitAdapterStep, deadlineExpired, deadlineFrom } fro
 import {
   completedModelCount,
   genericCompilation,
-  primaryTaskKind,
   withTextModels,
 } from "./serviceFallback";
 import { compileMediaModels } from "./serviceCompilation";
@@ -47,7 +48,12 @@ import {
   staleAdapterRun,
   type ModeResultWithModel,
 } from "./serviceRunLifecycle";
-import { prioritizeCompilerCandidates } from "./compilerCandidatePriority";
+import { defaultResolveLanguageModels } from "./serviceLanguageModels";
+import {
+  initialVerificationState,
+  modeResultFromVerification,
+  persistedModeResult,
+} from "./serviceVerificationResults";
 
 export { adapterModelMetadataForPromotion } from "./promotionMeta";
 export { prioritizeCompilerCandidates } from "./compilerCandidatePriority";
@@ -86,6 +92,16 @@ export type ProviderAdapterServiceDependencies = {
     mode: ProviderAdapterDraft["models"][number]["modes"][number];
     signal?: AbortSignal;
   }) => Promise<AdapterVerificationResult>;
+  reconcile?: (input: {
+    vendor: Vendor;
+    model: Model;
+    apiKey: string;
+    mode: ProviderAdapterDraft["models"][number]["modes"][number];
+    remoteTaskId: string;
+    signal?: AbortSignal;
+  }) => Promise<AdapterVerificationResult>;
+  operationLedger?: OperationLedger;
+  promotionJournal?: PromotionJournal;
   now: () => string;
   id: () => string;
   maxRepairs?: number;
@@ -95,41 +111,6 @@ export type ProviderAdapterServiceDependencies = {
   repairTimeoutMs?: number;
   verifyTimeoutMs?: number;
 };
-
-function defaultResolveLanguageModels(connection: LoadedConnection): LanguageModelV1[] {
-  const state = readCatalog();
-  const candidates: Array<{ vendorKey: string; modelKey: string; languageModel: LanguageModelV1 }> = [];
-  for (const model of state.models) {
-    if (model.kind !== "text" || !model.enabled) continue;
-    const vendor = state.vendors.find((item) => item.key === model.vendorKey && item.enabled && item.baseUrlHint);
-    if (!vendor || (vendor.authType && vendor.authType !== "none" && vendor.authType !== "bearer")) continue;
-    const apiKey = vendor.authType === "none" ? "" : decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);
-    if (vendor.authType !== "none" && !apiKey) continue;
-    candidates.push({
-      vendorKey: vendor.key,
-      modelKey: model.modelKey,
-      languageModel: buildLanguageModelForVendor(vendor, model, apiKey),
-    });
-  }
-  const selectedText = connection.models.find((model) => model.kind === "text");
-  if (selectedText) {
-    candidates.push({
-      vendorKey: connection.vendor.key,
-      modelKey: selectedText.modelKey,
-      languageModel: buildLanguageModelForVendor(connection.vendor, selectedText, connection.apiKey),
-    });
-  }
-  const seen = new Set<string>();
-  return prioritizeCompilerCandidates(candidates, connection.vendor.key)
-    .filter((candidate) => {
-      const key = `${candidate.vendorKey}\0${candidate.modelKey}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 4)
-    .map((candidate) => candidate.languageModel);
-}
 
 const defaultDependencies: ProviderAdapterServiceDependencies = {
   catalog: defaultCatalog,
@@ -152,12 +133,19 @@ export class ProviderAdapterService {
   private readonly dependencies: ProviderAdapterServiceDependencies;
   private readonly active = new Map<string, Promise<void>>();
   private readonly controllers = new Map<string, AbortController>();
+  private readonly certification: ProviderAdapterCertificationCoordinator;
 
   constructor(
     private readonly store = new ProviderAdapterStore(),
     dependencies: Partial<ProviderAdapterServiceDependencies> = {},
   ) {
     this.dependencies = { ...defaultDependencies, ...dependencies };
+    this.certification = new ProviderAdapterCertificationCoordinator(
+      this.store,
+      this.dependencies.catalog,
+      this.dependencies.now,
+      { operationLedger: dependencies.operationLedger, promotionJournal: dependencies.promotionJournal },
+    );
   }
 
   register(rawInput: ProviderAdapterRegisterInput): ProviderAdapterRegistration {
@@ -173,8 +161,18 @@ export class ProviderAdapterService {
     const vendorKey = String(input.catalogVendorKey || "").trim() || deriveVendorKeyFromBaseUrl(input.baseUrl);
     if (!vendorKey) throw new Error("Unable to derive a provider id from the API base URL");
     const id = this.dependencies.id();
+    const prepared = this.certification.prepareStart(input, id, vendorKey);
+    if (prepared.duplicate) return prepared.duplicate;
     const staged = this.dependencies.catalog.stage({ ...input, vendorKey, runId: id });
     const timestamp = this.dependencies.now();
+    this.certification.begin({
+      runId: id,
+      contractDigest: prepared.contractDigest,
+      idempotencyKey: prepared.idempotencyKey,
+      lineageRootVendorKey: staged.lineageRootVendorKey,
+      remoteIdempotency: input.certification?.remoteIdempotency,
+      now: timestamp,
+    });
     this.supersedeActiveLineageRuns(
       id,
       staged.lineageRootVendorKey,
@@ -231,23 +229,25 @@ export class ProviderAdapterService {
   cancel(id: string): ProviderAdapterRun | undefined {
     const current = this.store.getRun(id);
     if (!current || isTerminalAdapterStage(current.stage)) return current;
+    if (!this.certification.cancelBeforeRemoteSettlement(id)) {
+      this.controllers.get(id)?.abort();
+      return this.store.getRun(id);
+    }
     const run = this.finishTerminal(id, "cancelled", "Adapter verification cancelled by user");
     this.controllers.get(id)?.abort();
     return run;
   }
 
   resumeInterrupted(): void {
+    this.certification.replayPromotions();
     for (const run of recoverableAdapterRuns(this.store.snapshot().runs)) {
+      if (this.certification.resumeDisposition(run, Boolean(this.dependencies.reconcile)) === "wait") continue;
       const deadlineAt = run.deadlineAt || deadlineFrom(run.createdAt, this.dependencies.batchTimeoutMs ?? 5 * 60_000);
       if (deadlineExpired(deadlineAt, this.dependencies.now())) {
         this.finishTerminal(run.id, "timed_out", "Adapter run deadline expired before it could resume");
         continue;
       }
-      this.finishWithError(
-        run.id,
-        "failed",
-        "Adapter verification was interrupted by an app restart. Review the saved connection and retry explicitly.",
-      );
+      this.schedule(run.id);
     }
   }
 
@@ -466,6 +466,10 @@ export class ProviderAdapterService {
       if (error instanceof AdapterWaitError) {
         if (error.reason === "cancelled" || error.reason === "terminal") return;
         this.finishTerminal(id, "timed_out", error.message);
+      } else if (error instanceof AdapterReconciliationRequiredError) {
+        // The durable ledger is the authority. Keep the candidate staged and wait
+        // for an explicit remote reconciliation; never turn uncertainty into retry.
+        return;
       } else if (error instanceof AdapterNeedsAiError) this.finishWithError(id, "needs_ai", error.message);
       else this.finishWithError(id, "failed", error instanceof Error ? error.message : String(error));
     }
@@ -478,51 +482,20 @@ export class ProviderAdapterService {
     attempt: number,
     compileFailures: readonly ProviderAdapterCompileFailure[] = [],
   ): Promise<{ results: ModeResultWithModel[]; deadlineError?: string }> {
-    const candidates = new Map(draft.models.map((model) => [model.modelKey, model]));
-    const failures = new Map(compileFailures.map((failure) => [failure.modelKey, failure]));
-    const emptyModels = connection.models.map((model) => {
-      const candidate = candidates.get(model.modelKey);
-      const failure = failures.get(model.modelKey);
-      return {
-        modelKey: model.modelKey,
-        labelZh: candidate?.labelZh || model.labelZh,
-        kind: model.kind,
-        modes: candidate
-          ? candidate.modes.map((mode) => ({ taskKind: mode.taskKind, state: "queued" as const, attempts: attempt }))
-          : failure
-            ? [{
-                taskKind: primaryTaskKind(model.kind),
-                state: "failed" as const,
-                attempts: 1,
-                stage: "compile" as const,
-                error: failure.error,
-              }]
-            : [],
-      };
-    });
+    const initial = initialVerificationState({ connection, draft, compileFailures, attempt });
     const testingAt = this.dependencies.now();
     this.updateRunIfActive(id, (run) => ({
       ...run,
       stage: "testing",
       currentModelKey: undefined,
-      models: emptyModels,
-      completedCount: completedModelCount(emptyModels),
+      models: initial.models,
+      completedCount: completedModelCount(initial.models),
       totalCount: connection.models.length,
       stageStartedAt: testingAt,
       lastProgressAt: testingAt,
       updatedAt: testingAt,
     }));
-    const results: ModeResultWithModel[] = compileFailures.map((failure) => {
-      const model = connection.models.find((item) => item.modelKey === failure.modelKey);
-      return {
-        modelKey: failure.modelKey,
-        taskKind: primaryTaskKind(model?.kind || "text"),
-        state: "failed",
-        attempts: 1,
-        stage: "compile",
-        error: failure.error,
-      };
-    });
+    const results = initial.results;
     let deadlineError: string | undefined;
     for (const candidateModel of draft.models) {
       const model = connection.models.find((item) => item.modelKey === candidateModel.modelKey);
@@ -546,10 +519,70 @@ export class ProviderAdapterService {
         }));
         let verified: AdapterVerificationResult;
         try {
-          verified = await this.awaitStep(id, "Model verification", this.dependencies.verifyTimeoutMs ?? 90_000, (signal) =>
-            this.dependencies.verify({ vendor: connection.vendor, model, apiKey: connection.apiKey, mode, signal }),
-          );
+          const operationKey = `${candidateModel.modelKey}/${mode.taskKind}/${attempt}`;
+          verified = await this.certification.executeSubmission({
+            runId: id,
+            operationKey,
+            beforeSubmit: () => {
+              const beforeCreate = this.store.getRun(id);
+              if (!beforeCreate || isTerminalAdapterStage(beforeCreate.stage)) {
+                throw new AdapterWaitError("terminal", "Model verification", "Model verification ignored because the run is terminal");
+              }
+              if (deadlineExpired(beforeCreate.deadlineAt, this.dependencies.now())) {
+                throw new AdapterWaitError(
+                  "deadline",
+                  "Model verification",
+                  "Model verification stopped because the adapter run deadline was reached",
+                );
+              }
+            },
+            execute: () => this.awaitStep(id, "Model verification", this.dependencies.verifyTimeoutMs ?? 90_000, (signal) =>
+              this.dependencies.verify({ vendor: connection.vendor, model, apiKey: connection.apiKey, mode, signal }),
+            ),
+            ...(this.dependencies.reconcile
+              ? { reconcile: (remoteTaskId: string) => this.awaitStep(
+                  id,
+                  "Model submission reconciliation",
+                  this.dependencies.verifyTimeoutMs ?? 90_000,
+                  (signal) => this.dependencies.reconcile!({
+                    vendor: connection.vendor,
+                    model,
+                    apiKey: connection.apiKey,
+                    mode,
+                    remoteTaskId,
+                    signal,
+                  }),
+                ) }
+              : {}),
+            reuse: (operation) => {
+              const persisted = this.store.getRun(id)?.models
+                .find((item) => item.modelKey === candidateModel.modelKey)?.modes
+                .find((item) => item.taskKind === mode.taskKind);
+              return persisted?.state === "failed"
+                ? {
+                    ok: false as const,
+                    taskKind: mode.taskKind,
+                    stage: persisted.stage === "localize_reference" || persisted.stage === "poll" || persisted.stage === "verify_asset"
+                      ? persisted.stage
+                      : "create" as const,
+                    error: persisted.error || "Provider verification failed",
+                    errorCategory: persisted.errorCategory,
+                    httpStatus: persisted.httpStatus,
+                    submissionState: "settled" as const,
+                  }
+                : {
+                    ok: true as const,
+                    taskKind: mode.taskKind,
+                    mediaEvidence: operation.artifactEvidence,
+                    remoteTaskId: operation.remoteTaskId,
+                    submissionState: "settled" as const,
+                  };
+            },
+            isUncertainError: (error) => error instanceof AdapterWaitError
+              && error.reason !== "cancelled" && error.reason !== "terminal",
+          });
         } catch (error) {
+          if (error instanceof AdapterReconciliationRequiredError) throw error;
           if (!(error instanceof AdapterWaitError)) throw error;
           if (error.reason === "cancelled" || error.reason === "terminal") throw error;
           if (error.reason === "deadline") deadlineError = error.message;
@@ -561,43 +594,18 @@ export class ProviderAdapterService {
             errorCategory: "network",
           };
         }
-        const modeResult: ModeResultWithModel = verified.ok
-          ? {
-              modelKey: candidateModel.modelKey,
-              taskKind: mode.taskKind,
-              state: "verified",
-              attempts: attempt,
-              verifiedAt: this.dependencies.now(),
-              ...(verified.mediaEvidence ? { mediaEvidence: verified.mediaEvidence } : {}),
-            }
-          : {
-              modelKey: candidateModel.modelKey,
-              taskKind: mode.taskKind,
-              state: "failed",
-              attempts: attempt,
-              stage: verified.stage,
-              error: verified.error,
-              // 归类原样透传（抛出点已查表定好），别让渲染层再去猜。
-              ...(verified.errorCategory ? { errorCategory: verified.errorCategory } : {}),
-              ...(verified.httpStatus ? { httpStatus: verified.httpStatus } : {}),
-              ...(verified.reasonCode ? { reasonCode: verified.reasonCode } : {}), ...(verified.errorParams ? { errorParams: verified.errorParams } : {}),
-            };
+        const modeResult = modeResultFromVerification({
+          modelKey: candidateModel.modelKey,
+          attempt,
+          verifiedAt: this.dependencies.now(),
+          verification: verified,
+        });
         results.push(modeResult);
-        const persistedModeResult: AdapterModeResult = {
-          taskKind: modeResult.taskKind,
-          state: modeResult.state,
-          attempts: modeResult.attempts,
-          ...(modeResult.stage ? { stage: modeResult.stage } : {}),
-          ...(modeResult.error ? { error: modeResult.error } : {}),
-          ...(modeResult.errorCategory ? { errorCategory: modeResult.errorCategory } : {}),
-          ...(modeResult.httpStatus ? { httpStatus: modeResult.httpStatus } : {}),
-          ...(modeResult.verifiedAt ? { verifiedAt: modeResult.verifiedAt } : {}),
-          ...(modeResult.mediaEvidence ? { mediaEvidence: modeResult.mediaEvidence } : {}), ...(modeResult.reasonCode ? { reasonCode: modeResult.reasonCode } : {}), ...(modeResult.errorParams ? { errorParams: modeResult.errorParams } : {}),
-        };
+        const persisted = persistedModeResult(modeResult);
         this.updateRunIfActive(id, (run) => {
           const models = run.models.map((item) =>
             item.modelKey === candidateModel.modelKey
-              ? { ...item, modes: item.modes.map((state) => (state.taskKind === mode.taskKind ? persistedModeResult : state)) }
+              ? { ...item, modes: item.modes.map((state) => (state.taskKind === mode.taskKind ? persisted : state)) }
               : item);
           const progressAt = this.dependencies.now();
           return {
@@ -635,26 +643,16 @@ export class ProviderAdapterService {
     if (verifiedModes.length === 0) {
       this.dependencies.catalog.fail(completedRun);
       this.store.upsertRun(completedRun);
+      this.certification.finishWithoutPromotion(completedRun);
       return;
     }
-
-    // The catalog is the user-visible result. A lease miss means a newer lineage
-    // revision already superseded this run; never turn that no-op into completed.
-    const promotion = this.dependencies.catalog.promote({ run: completedRun, draft, revision, verifiedModes });
-    if (promotion.status === "no-lease") {
-      const staleRun: ProviderAdapterRun = {
-        ...completedRun,
-        stage: "stale",
-        activeRevision: current.activeRevision,
-        error: "A newer verification run replaced this result before promotion committed",
-      };
-      this.dependencies.catalog.fail(staleRun);
-      this.store.upsertRun(staleRun);
-      return;
-    }
-    const committedRevision = { ...revision, verifiedModes: promotion.committedModes };
-    this.store.upsertRun({ ...completedRun, activeRevision: committedRevision.id });
-    this.store.upsertRevision(committedRevision);
+    this.certification.commitPromotion({
+      current,
+      completedRun,
+      draft,
+      revision,
+      verifiedModes,
+    });
   }
 
   private setStage(

@@ -6,6 +6,7 @@ import type { LanguageModelV1 } from "ai";
 import type { Model, Vendor } from "../catalog/types";
 import type { ProviderAdapterDraft } from "./types";
 import { ProviderAdapterStore } from "./store";
+import type { AdapterVerificationResult } from "./verifier";
 import {
   ProviderAdapterService,
   adapterModelMetadataForPromotion,
@@ -169,6 +170,168 @@ const startInput = {
 };
 
 describe("ProviderAdapterService", () => {
+  it("creates one canonical run for duplicate starts with the same immutable contract and idempotency key", () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    let sequence = 0;
+    deps.id = () => `run-${++sequence}`;
+    deps.schedule = vi.fn();
+    const service = new ProviderAdapterService(store(), deps);
+    const certification = {
+      contractDigest: "a".repeat(64),
+      idempotencyKey: "confirm-example-models-1",
+      remoteIdempotency: "unsupported" as const,
+    };
+
+    const first = service.start({ ...startInput, certification });
+    const duplicate = service.start({ ...startInput, certification });
+
+    expect(duplicate.id).toBe(first.id);
+    expect(catalog.staged).toHaveLength(1);
+    expect(deps.schedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the cancelled original run when start races with cancel for the same idempotency key", () => {
+    const catalog = fakeCatalog();
+    const service = new ProviderAdapterService(store(), { ...dependencies(catalog), schedule: () => {} });
+    const certification = {
+      contractDigest: "a".repeat(64),
+      idempotencyKey: "confirm-cancel-race-1",
+      remoteIdempotency: "unsupported" as const,
+    };
+    const first = service.start({ ...startInput, certification });
+
+    service.cancel(first.id);
+    const duplicate = service.start({ ...startInput, certification });
+
+    expect(duplicate).toMatchObject({ id: first.id, stage: "cancelled" });
+    expect(catalog.staged).toHaveLength(1);
+  });
+
+  it("reconciles a remotely accepted create after response loss and never creates twice", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    const adapterStore = store();
+    let creates = 0;
+    deps.compile = async () => ({
+      draft: {
+        ...draft(),
+        models: [{ ...draft().models[1], modes: [draft().models[1].modes[0]] }],
+      },
+      failures: [],
+    });
+    deps.verify = vi.fn(async ({ mode }) => {
+      creates += 1;
+      return {
+        ok: false,
+        taskKind: mode.taskKind,
+        stage: "create",
+        error: "connection closed before response",
+        errorCategory: "network",
+        submissionState: "unknown",
+        remoteTaskId: "remote-task-accepted-1",
+      } satisfies AdapterVerificationResult;
+    });
+    deps.reconcile = vi.fn(async ({ mode, remoteTaskId }) => ({
+      ok: true,
+      taskKind: mode.taskKind,
+      remoteTaskId,
+      submissionState: "settled",
+    } satisfies AdapterVerificationResult));
+    const first = new ProviderAdapterService(adapterStore, { ...deps, schedule: () => {} });
+    const started = first.start({
+      ...startInput,
+      models: [startInput.models[1]],
+      certification: {
+        contractDigest: "b".repeat(64),
+        idempotencyKey: "confirm-response-loss-1",
+        remoteIdempotency: "unsupported",
+      },
+    });
+
+    await first.executeRun(started.id);
+    expect(first.getRun(started.id)?.stage).toBe("reconciling");
+
+    const restarted = new ProviderAdapterService(adapterStore, { ...deps, schedule: () => {} });
+    restarted.resumeInterrupted();
+    await restarted.executeRun(started.id);
+
+    expect(creates).toBe(1);
+    expect(deps.reconcile).toHaveBeenCalledWith(expect.objectContaining({ remoteTaskId: "remote-task-accepted-1" }));
+    expect(restarted.getRun(started.id)?.stage).toBe("completed");
+  });
+
+  it("keeps an unknown submission fail-closed with a structured action when it cannot reconcile", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.verify = vi.fn(async ({ mode }) => ({
+      ok: false,
+      taskKind: mode.taskKind,
+      stage: "create",
+      error: "socket closed",
+      errorCategory: "network",
+      submissionState: "unknown",
+    } satisfies AdapterVerificationResult));
+    const adapterStore = store();
+    const service = new ProviderAdapterService(adapterStore, { ...deps, schedule: () => {} });
+    const started = service.start({
+      ...startInput,
+      models: [startInput.models[1]],
+      certification: {
+        contractDigest: "c".repeat(64),
+        idempotencyKey: "confirm-unknown-no-id-1",
+        remoteIdempotency: "unsupported",
+      },
+    });
+
+    await service.executeRun(started.id);
+    service.resumeInterrupted();
+
+    expect(deps.verify).toHaveBeenCalledTimes(1);
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "reconciling",
+      recovery: { reasonCode: "submission_reconcile_unavailable", userAction: "reconcile_or_contact_provider" },
+    });
+  });
+
+  it("blocks a competing session in the same lineage while a remote submission is unresolved", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    let sequence = 0;
+    deps.id = () => `run-lineage-${++sequence}`;
+    deps.verify = vi.fn(async ({ mode }) => ({
+      ok: false,
+      taskKind: mode.taskKind,
+      stage: "create",
+      error: "response lost",
+      errorCategory: "network",
+      submissionState: "unknown",
+    } satisfies AdapterVerificationResult));
+    const service = new ProviderAdapterService(store(), { ...deps, schedule: () => {} });
+    const first = service.start({
+      ...startInput,
+      models: [startInput.models[1]],
+      certification: {
+        contractDigest: "d".repeat(64),
+        idempotencyKey: "lineage-first",
+        remoteIdempotency: "supported",
+      },
+    });
+    await service.executeRun(first.id);
+
+    expect(() => service.start({
+      ...startInput,
+      models: [startInput.models[1]],
+      certification: {
+        contractDigest: "e".repeat(64),
+        idempotencyKey: "lineage-second",
+        remoteIdempotency: "supported",
+      },
+    })).toThrowError(/unresolved remote submission/i);
+    expect(deps.verify).toHaveBeenCalledTimes(1);
+    expect(catalog.staged).toHaveLength(1);
+  });
+
   it("keeps the catalog identity when adding models to an existing connection", () => {
     const catalog = fakeCatalog();
     const originalStage = catalog.stage.bind(catalog);
@@ -529,7 +692,7 @@ describe("ProviderAdapterService", () => {
     expect(service.getRun(started.id)?.stage).toBe("completed");
   });
 
-  it("requires an explicit retry after restart instead of replaying non-idempotent provider calls", () => {
+  it("resumes pre-submission work after restart because no provider create can be duplicated", () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
     const schedule = vi.fn();
@@ -541,12 +704,11 @@ describe("ProviderAdapterService", () => {
     const restarted = new ProviderAdapterService(adapterStore, deps);
     restarted.resumeInterrupted();
 
-    expect(schedule).not.toHaveBeenCalled();
+    expect(schedule).toHaveBeenCalledWith(started.id);
     expect(restarted.getRun(started.id)).toMatchObject({
-      stage: "failed",
-      error: expect.stringContaining("restart"),
+      stage: "queued",
     });
-    expect(catalog.failed).toEqual([started.id]);
+    expect(catalog.failed).toEqual([]);
   });
 
   it("persists bounded lifecycle progress when a run starts", () => {
@@ -602,7 +764,7 @@ describe("ProviderAdapterService", () => {
     });
   });
 
-  it("records a verification deadline as timed_out when no mode finished", async () => {
+  it("treats an in-flight verification deadline as unknown instead of retrying create", async () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
     deps.batchTimeoutMs = 5;
@@ -616,17 +778,17 @@ describe("ProviderAdapterService", () => {
     await service.executeRun(started.id);
 
     expect(service.getRun(started.id)).toMatchObject({
-      stage: "timed_out",
-      currentModelKey: undefined,
-      error: expect.stringContaining("deadline"),
+      stage: "reconciling",
+      error: expect.stringContaining("will not create another task"),
+      recovery: { reasonCode: "submission_reconcile_unavailable" },
       models: [expect.objectContaining({
         modes: expect.arrayContaining([
-          expect.objectContaining({ state: "failed", error: expect.stringContaining("deadline") }),
+          expect.objectContaining({ state: "testing" }),
         ]),
       })],
     });
     expect(catalog.promoted).toEqual([]);
-    expect(catalog.failed).toEqual([started.id]);
+    expect(catalog.failed).toEqual([]);
   });
 
   it("times out one model compilation, falls it back, and continues compiling later models", async () => {
@@ -809,7 +971,7 @@ describe("ProviderAdapterService", () => {
     expect(deps.compile).not.toHaveBeenCalled();
   });
 
-  it("marks one verification timeout failed and continues with the remaining mode", async () => {
+  it("pauses the batch after one verification timeout instead of spending on the remaining mode", async () => {
     const catalog = fakeCatalog();
     const deps = dependencies(catalog);
     deps.compile = async () => ({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
@@ -825,15 +987,16 @@ describe("ProviderAdapterService", () => {
 
     await service.executeRun(started.id);
 
-    expect(deps.verify).toHaveBeenCalledTimes(2);
+    expect(deps.verify).toHaveBeenCalledTimes(1);
     expect(service.getRun(started.id)).toMatchObject({
-      stage: "partial",
-      completedCount: 1,
+      stage: "reconciling",
+      completedCount: 0,
       totalCount: 1,
+      recovery: { reasonCode: "submission_reconcile_unavailable" },
       models: [expect.objectContaining({
         modes: expect.arrayContaining([
-          expect.objectContaining({ taskKind: "text_to_image", state: "failed", error: expect.stringContaining("timed out") }),
-          expect.objectContaining({ taskKind: "image_edit", state: "verified" }),
+          expect.objectContaining({ taskKind: "text_to_image", state: "testing" }),
+          expect.objectContaining({ taskKind: "image_edit", state: "queued" }),
         ]),
       })],
     });

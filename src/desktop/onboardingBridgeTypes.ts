@@ -1,6 +1,7 @@
 import type { ProviderKind } from './providerKind'
 import type { AntigravityConnectionStatus, AntigravityTestRequest } from '../../electron/shared/antigravity'
 import type { ModelListFailureKind } from '../../electron/ai/onboarding/modelListResponse'
+import type { AdapterRunStage } from '../../electron/shared/providerAdapterContract'
 export type { AntigravityConnectionStatus } from '../../electron/shared/antigravity'
 
 export type DesktopAdapterModeResult = {
@@ -23,7 +24,7 @@ export type DesktopProviderAdapterRun = {
   vendorKey: string
   vendorName: string
   selectedModelKeys: string[]
-  stage: 'queued' | 'discovering_docs' | 'compiling' | 'testing' | 'repairing' | 'completed' | 'partial' | 'failed' | 'needs_ai' | 'cancelled' | 'timed_out' | 'stale'
+  stage: AdapterRunStage
   currentModelKey?: string
   completedCount?: number
   totalCount?: number
@@ -35,6 +36,10 @@ export type DesktopProviderAdapterRun = {
   sourceUrls: string[]
   activeRevision?: string
   error?: string
+  recovery?: {
+    reasonCode: 'submission_unknown' | 'submission_reconcile_unavailable'
+    userAction: 'reconcile_or_contact_provider'
+  }
   createdAt: string
   updatedAt: string
 }

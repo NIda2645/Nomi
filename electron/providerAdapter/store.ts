@@ -126,6 +126,10 @@ export class ProviderAdapterStore {
     this.state = loadState(filePath);
   }
 
+  integrationCertificationPath(fileName: string): string {
+    return path.join(path.dirname(this.filePath), "integration-certification", fileName);
+  }
+
   snapshot(): ProviderAdapterStoreState {
     return clone(this.state);
   }
@@ -181,6 +185,12 @@ export class ProviderAdapterStore {
     return found ? clone(found) : undefined;
   }
 
+  deleteRevision(id: string): void {
+    const next = this.state.revisions.filter((revision) => revision.id !== id);
+    if (next.length === this.state.revisions.length) return;
+    this.persistState({ ...this.state, revisions: next });
+  }
+
   markStaleIfConnectionChanged(id: string, currentFingerprint: string): ProviderAdapterRun | undefined {
     const run = this.getRun(id);
     if (!run || isTerminalAdapterStage(run.stage) || run.connectionFingerprint === currentFingerprint) return run;
@@ -194,6 +204,11 @@ export class ProviderAdapterStore {
 
   private persist(): void {
     writeJsonFileAtomic(this.filePath, this.state);
+  }
+
+  private persistState(next: ProviderAdapterStoreState): void {
+    writeJsonFileAtomic(this.filePath, next);
+    this.state = clone(next);
   }
 }
 

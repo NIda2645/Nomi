@@ -9,6 +9,8 @@ import type {
   CertificationMediaEvidence,
   CertificationMediaReasonCode,
 } from "./certificationMedia";
+import type { CertificationContractBinding, CertificationSubmissionState } from "../integrationCertification/types";
+import type { AdapterRunStage as SharedAdapterRunStage } from "../shared/providerAdapterContract";
 
 export type AdapterAuthType = "none" | "bearer" | "x-api-key" | "query";
 
@@ -30,6 +32,8 @@ export type ProviderAdapterConnectionInput = {
   authQueryParam?: string;
   headers?: Record<string, string>;
   models: ProviderAdapterModelSelection[];
+  /** Frozen by the trusted confirmation boundary. Legacy UI calls omit this until Task 4 migrates them. */
+  certification?: CertificationContractBinding;
 };
 
 export type ProviderAdapterRegisterInput = ProviderAdapterConnectionInput & {
@@ -102,19 +106,7 @@ export type ProviderAdapterCompilation = {
   failures: ProviderAdapterCompileFailure[];
 };
 
-export type AdapterRunStage =
-  | "queued"
-  | "discovering_docs"
-  | "compiling"
-  | "testing"
-  | "repairing"
-  | "completed"
-  | "partial"
-  | "failed"
-  | "needs_ai"
-  | "cancelled"
-  | "timed_out"
-  | "stale";
+export type AdapterRunStage = SharedAdapterRunStage;
 
 export type AdapterModeState = "queued" | "testing" | "repairing" | "verified" | "failed";
 
@@ -136,6 +128,7 @@ export type AdapterModeResult = {
   mediaEvidence?: CertificationMediaEvidence[];
   reasonCode?: CertificationMediaReasonCode;
   errorParams?: CertificationMediaErrorParams;
+  submissionState?: Extract<CertificationSubmissionState, "unknown">;
 };
 
 export type AdapterModelResult = {
@@ -165,6 +158,10 @@ export type ProviderAdapterRun = {
   sourceUrls: string[];
   activeRevision?: string;
   error?: string;
+  recovery?: {
+    reasonCode: "submission_unknown" | "submission_reconcile_unavailable";
+    userAction: "reconcile_or_contact_provider";
+  };
   createdAt: string;
   updatedAt: string;
 };

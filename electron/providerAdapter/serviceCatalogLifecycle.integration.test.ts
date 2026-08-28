@@ -169,8 +169,7 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
     expectOnlyActiveSourceRemains(sourceBefore, started.vendorKey);
   });
 
-  it("cleans a zero-mode verification timeout through the same real service terminal path", async () => {
-    const sourceBefore = readCatalog();
+  it("keeps a timed-out in-flight candidate disabled for reconciliation instead of deleting uncertain work", async () => {
     const service = new ProviderAdapterService(
       new ProviderAdapterStore(path.join(userDataRoot, "provider-adapters.json")),
       serviceDependencies({
@@ -184,8 +183,12 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
 
     await service.executeRun(started.id);
 
-    expect(service.getRun(started.id)?.stage).toBe("timed_out");
-    expectOnlyActiveSourceRemains(sourceBefore, started.vendorKey);
+    expect(service.getRun(started.id)).toMatchObject({
+      stage: "reconciling",
+      recovery: { reasonCode: "submission_reconcile_unavailable" },
+    });
+    expect(readCatalog().vendors.find((vendor) => vendor.key === started.vendorKey)).toMatchObject({ enabled: false });
+    expect(listModelCatalogMappings({ vendorKey: started.vendorKey }).every((mapping) => mapping.enabled === false)).toBe(true);
   });
 
   it("cancels and cleans a staged candidate idempotently before provider execution", () => {
@@ -202,7 +205,7 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
     expectOnlyActiveSourceRemains(sourceBefore, started.vendorKey);
   });
 
-  it("supersedes and aborts an older run across candidate vendor revisions before another provider create", async () => {
+  it("blocks a competing lineage revision after provider create may have been accepted", async () => {
     let sequence = 0;
     let oldVerifySignal: AbortSignal | undefined;
     let providerCreates = 0;
@@ -222,7 +225,7 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
     const olderWork = service.executeRun(older.id);
     await vi.waitFor(() => expect(oldVerifySignal).toBeDefined());
 
-    const newer = service.start({
+    expect(() => service.start({
       catalogVendorKey: rootVendorKey,
       vendorName: "New candidate",
       baseUrl: "https://candidate.example.test/v2",
@@ -230,16 +233,20 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
       authType: "bearer",
       providerKind: "openai-compatible",
       models: [{ modelKey: targetModelKey, labelZh: "Image V1 candidate", kind: "image" }],
-    });
+    })).toThrowError(/unresolved remote submission/i);
 
-    expect(newer.vendorKey).not.toBe(older.vendorKey);
+    expect(providerCreates).toBe(1);
+    expect(oldVerifySignal?.aborted).toBe(false);
+    expect(service.cancel(older.id)).toMatchObject({
+      stage: "reconciling",
+      recovery: { reasonCode: "submission_unknown" },
+    });
     expect(oldVerifySignal?.aborted).toBe(true);
     await olderWork;
     expect(providerCreates).toBe(1);
-    expect(service.getRun(older.id)?.stage).toBe("stale");
+    expect(service.getRun(older.id)?.stage).toBe("reconciling");
     expect(service.getRun(older.id)?.stage).not.toBe("completed");
-    expect(service.getRun(newer.id)?.stage).toBe("queued");
-    expect(readCatalog().vendors.some((vendor) => vendor.key === older.vendorKey)).toBe(false);
+    expect(readCatalog().vendors.some((vendor) => vendor.key === older.vendorKey)).toBe(true);
     expect(service.listRuns().filter((run) => run.activeRevision)).toEqual([]);
   });
 

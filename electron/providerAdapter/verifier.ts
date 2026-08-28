@@ -18,6 +18,7 @@ import {
   type CertificationMediaEvidence,
   type CertificationMediaReasonCode,
 } from "./certificationMedia";
+import type { CertificationSubmissionState } from "../integrationCertification/types";
 
 // 文本探测的额度上限。**上限不是花费**——模型答完 "ready" 就停，实际只出几十 token，
 // 设大不多花一分钱；设小却会把整类思考型模型判死：DeepSeek V4 / R1 / o 系默认先思考，
@@ -39,6 +40,8 @@ export type AdapterVerificationResult =
       taskKind: AdapterModeDraft["taskKind"];
       requestSummary?: unknown;
       mediaEvidence?: CertificationMediaEvidence[];
+      remoteTaskId?: string;
+      submissionState?: Extract<CertificationSubmissionState, "settled">;
     }
   | {
       ok: false;
@@ -57,6 +60,8 @@ export type AdapterVerificationResult =
       reasonCode?: CertificationMediaReasonCode;
       errorParams?: Readonly<Record<string, string | number | boolean>>;
       requestSummary?: unknown;
+      remoteTaskId?: string;
+      submissionState?: Extract<CertificationSubmissionState, "unknown" | "settled">;
     };
 
 type ExecuteInput = Parameters<typeof executeProfileOperation>[0];
@@ -181,6 +186,7 @@ export async function verifyAdapterMode(
     ? "localize_reference"
     : "create";
   let requestSummary: unknown;
+  let remoteTaskId: string | undefined;
 
   try {
     if (input.model.kind === "text") {
@@ -238,6 +244,7 @@ export async function verifyAdapterMode(
       vendor: input.vendor,
       model: input.model,
     });
+    remoteTaskId = normalized.result.id;
 
     if (normalized.result.status === "failed") throw new Error(normalized.result.error || "Provider returned a failed task");
     if (normalized.result.status !== "succeeded") {
@@ -268,6 +275,7 @@ export async function verifyAdapterMode(
           vendor: input.vendor,
           model: input.model,
         });
+        remoteTaskId = normalized.result.id;
         if (normalized.result.status === "failed") throw new Error(normalized.result.error || "Provider returned a failed task");
       }
       if (normalized.result.status !== "succeeded") throw new Error("Provider verification timed out while polling");
@@ -286,12 +294,14 @@ export async function verifyAdapterMode(
         ...(input.signal ? { signal: input.signal } : {}),
       }));
     }
-    return { ok: true, taskKind: input.mode.taskKind, requestSummary, mediaEvidence };
+    return { ok: true, taskKind: input.mode.taskKind, requestSummary, mediaEvidence, remoteTaskId, submissionState: "settled" };
   } catch (error) {
     const message = errorMessage(error);
     if (stage === "localize_reference" && !/素材|asset|upload|local|上传/i.test(message)) stage = "create";
     // 归类不在这里判——原样取抛出点已经查表定好的那个（见 errorCategory 注释）。
     const structured = error instanceof VendorRequestError ? error.structured : undefined;
+    const submissionUnknown = (stage === "create" || stage === "poll")
+      && (structured?.category === "network" || structured?.category === "timeout");
     return {
       ok: false,
       taskKind: input.mode.taskKind,
@@ -303,6 +313,8 @@ export async function verifyAdapterMode(
         ? { reasonCode: error.reasonCode, errorParams: error.params }
         : {}),
       requestSummary,
+      ...(remoteTaskId ? { remoteTaskId } : {}),
+      ...(submissionUnknown ? { submissionState: "unknown" as const } : { submissionState: "settled" as const }),
     };
   }
 }

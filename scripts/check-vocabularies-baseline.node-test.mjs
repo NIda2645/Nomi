@@ -65,10 +65,6 @@ test('cross-process exact copies stay debt until a neutral runtime contract exis
       'src/desktop/onboardingBridgeTypes.ts::type:DesktopAdapterModeResult/property:state/type-union',
     ],
     [
-      'electron/providerAdapter/types.ts::type:AdapterRunStage/type-union',
-      'src/desktop/onboardingBridgeTypes.ts::type:DesktopProviderAdapterRun/property:stage/type-union',
-    ],
-    [
       'electron/providerAdapter/types.ts::type:AdapterModelMeta/property:state/type-union',
       'src/ui/onboarding/ModelChipGroups.tsx::type:ChipModel/property:adapterState/type-union',
       'src/ui/onboarding/modelSettingsCatalogProjection.ts::variable:ADAPTER_STATES/set',
@@ -96,6 +92,11 @@ test('cross-process exact copies stay debt until a neutral runtime contract exis
       assert.match(reason, /main.*preload.*renderer/i, site)
     }
   }
+  assert.equal(
+    registeredSites.has('electron/shared/providerAdapterContract.ts::variable:ADAPTER_RUN_STAGES/as-const'),
+    true,
+    'Provider Adapter run stages have converged on the neutral shared contract',
+  )
 })
 
 test('repository exact-set owners are upstream and every local projection stays in debt', () => {
