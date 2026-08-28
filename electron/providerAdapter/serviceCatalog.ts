@@ -23,12 +23,12 @@ import {
 } from "../catalog/stagedVendorIdentity";
 import { adapterModelMetadataForPromotion } from "./promotionMeta";
 import type {
+  ProviderAdapterConnectionInput,
   ProviderAdapterDraft,
   ProviderAdapterRegisterInput,
   ProviderAdapterRevision,
   ProviderAdapterRun,
 } from "./types";
-import type { ProviderAdapterStartInput } from "./service";
 
 export type LoadedConnection = {
   vendor: Vendor;
@@ -50,7 +50,7 @@ export type StagedProviderAdapterCatalog = {
 
 export type ProviderAdapterCatalogPort = {
   register(input: ProviderAdapterRegisterInput & { vendorKey: string; savedAt: string }): { vendor: Vendor; models: Model[] };
-  stage(input: ProviderAdapterStartInput & { vendorKey: string; runId: string }): StagedProviderAdapterCatalog;
+  stage(input: ProviderAdapterConnectionInput & { vendorKey: string; runId: string }): StagedProviderAdapterCatalog;
   findStagedRun?(runId: string): { vendorKey: string; lineageRootVendorKey: string } | null;
   load(vendorKey: string, selectedModelKeys: readonly string[]): LoadedConnection | null;
   promote(input: {
@@ -88,7 +88,7 @@ function vendorHasPublishedExecution(state: ReturnType<typeof readCatalog>, vend
   return state.models.some((model) => model.vendorKey === vendorKey && hasPublishedExecution(state, model));
 }
 
-function connectionIdentity(input: ProviderAdapterStartInput): Record<string, unknown> {
+function connectionIdentity(input: ProviderAdapterConnectionInput): Record<string, unknown> {
   return {
     baseUrl: input.baseUrl,
     authType: input.authType,

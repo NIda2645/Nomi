@@ -6,6 +6,7 @@ import { adapterRunLineageRoot } from "../providerAdapter/serviceRunLifecycle";
 import type { ProviderAdapterCatalogPort, ProviderAdapterPromotionResult, StagedProviderAdapterCatalog } from "../providerAdapter/serviceCatalog";
 import type { ProviderAdapterStore } from "../providerAdapter/store";
 import type {
+  ProviderAdapterCertificationInput,
   ProviderAdapterConnectionInput,
   ProviderAdapterDraft,
   ProviderAdapterRevision,
@@ -64,7 +65,7 @@ function normalizedHeaderIdentity(headers: Record<string, string> | undefined): 
   return [...normalized.entries()].sort(([left], [right]) => left.localeCompare(right));
 }
 
-function contractIdentity(input: ProviderAdapterConnectionInput, lineageRoot: string, binding?: CertificationContractBinding): {
+function contractIdentity(input: ProviderAdapterConnectionInput, lineageRoot: string, binding: CertificationContractBinding): {
   contractDigest: string;
   credentialFingerprint: string;
   catalogIdentityFingerprint: string;
@@ -95,7 +96,6 @@ function contractIdentity(input: ProviderAdapterConnectionInput, lineageRoot: st
     models: input.models.map((model) => ({ modelKey: model.modelKey, kind: model.kind })).sort((a, b) => a.modelKey.localeCompare(b.modelKey)),
   };
   const actualDigest = sha(JSON.stringify(normalized));
-  if (!binding) return { contractDigest: actualDigest, credentialFingerprint, catalogIdentityFingerprint, customHeaderIdentityFingerprint };
   if (!/^[a-f0-9]{64}$/.test(binding.contractDigest)) throw new Error("Certification contract digest must be a SHA-256 digest");
   if (!binding.idempotencyKey.trim() || binding.idempotencyKey.length > 256 || /[\r\n]/.test(binding.idempotencyKey)) {
     throw new Error("Certification idempotency key is invalid");
@@ -144,7 +144,7 @@ export class ProviderAdapterCertificationCoordinator {
     )));
   }
 
-  async prepareStart(input: ProviderAdapterConnectionInput, runId: string, lineageRoot: string): Promise<{
+  async prepareStart(input: ProviderAdapterCertificationInput, runId: string, lineageRoot: string): Promise<{
     duplicate?: ProviderAdapterRun;
     operation?: CertificationOperationRecord;
     runId: string;
@@ -155,7 +155,8 @@ export class ProviderAdapterCertificationCoordinator {
     customHeaderIdentityFingerprint: string;
   }> {
     const binding = input.certification;
-    const idempotencyKey = binding?.idempotencyKey || `legacy-${runId}`;
+    if (!binding) throw new Error("Canonical certification contract is required");
+    const idempotencyKey = binding.idempotencyKey;
     const identity = contractIdentity(input, lineageRoot, binding);
     const { contractDigest } = identity;
     const now = this.now();
@@ -174,7 +175,7 @@ export class ProviderAdapterCertificationCoordinator {
       leaseToken: crypto.randomUUID(),
       attempt: 1,
       childRunRef: { runId, revisionDigest: contractDigest },
-      providerIdempotency: binding?.remoteIdempotency || "unknown",
+      providerIdempotency: binding.remoteIdempotency || "unknown",
       credentialFingerprint: identity.credentialFingerprint,
       catalogIdentityFingerprint: identity.catalogIdentityFingerprint,
       customHeaderIdentityFingerprint: identity.customHeaderIdentityFingerprint,
@@ -186,6 +187,10 @@ export class ProviderAdapterCertificationCoordinator {
     }
     const operation = begun.operation!;
     return { operation, runId: operation.runId, idempotencyKey, ...identity };
+  }
+
+  childRunRef(runId: string): CertificationOperationRecord["childRunRef"] | undefined {
+    return this.ledger.childRunRefForRunId(runId);
   }
 
   private async readMaterializingCanonicalRun(
@@ -228,7 +233,7 @@ export class ProviderAdapterCertificationCoordinator {
   }
 
   async completePreparedStart(input: {
-    connection: ProviderAdapterConnectionInput;
+    connection: ProviderAdapterCertificationInput;
     operation: CertificationOperationRecord;
     sourceVendorKey: string;
     connectionFingerprint: string;

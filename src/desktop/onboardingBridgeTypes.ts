@@ -44,6 +44,12 @@ export type DesktopProviderAdapterRun = {
   updatedAt: string
 }
 
+export type DesktopHttpCertificationRun = DesktopProviderAdapterRun & {
+  schemaVersion: 1
+  kind: 'http-api-provider'
+  childRunRef: { runId: string; revisionDigest: string }
+}
+
 export type DesktopProviderRegistration = {
   vendorKey: string
   vendorName: string
@@ -58,8 +64,8 @@ export type DesktopProviderRegistration = {
   savedAt: string
 }
 
-type AdapterResponse = Promise<{ ok: boolean; run?: DesktopProviderAdapterRun; error?: string }>
-type AdapterListResponse = Promise<{ ok: boolean; runs?: DesktopProviderAdapterRun[]; error?: string }>
+type AdapterResponse = Promise<{ ok: boolean; run?: DesktopHttpCertificationRun; error?: string }>
+type AdapterListResponse = Promise<{ ok: boolean; runs?: DesktopHttpCertificationRun[]; error?: string }>
 type AdapterRegistrationResponse = Promise<{
   ok: boolean
   registration?: DesktopProviderRegistration
@@ -82,13 +88,11 @@ type ExistingConnectionErrorCode =
   | 'BASE_URL_MISSING'
   | 'CREDENTIAL_MISSING'
   | 'MODEL_LIST_UNAVAILABLE'
-  | 'NO_NEW_MODELS'
   | 'NO_MODELS_SELECTED'
   | 'RUN_NOT_FOUND'
   | 'RUN_ACTIVE'
   | 'RUN_MODELS_MISSING'
   | 'START_FAILED'
-  | 'REGISTER_FAILED'
 
 type ExistingConnectionFailure = {
   ok: false
@@ -103,7 +107,7 @@ export type DesktopOnboardingBridge = {
   antigravityStatus: () => Promise<AntigravityConnectionStatus>
   antigravityTest: (request?: AntigravityTestRequest) => Promise<AntigravityConnectionStatus>
   antigravityCancel: () => Promise<AntigravityConnectionStatus | undefined>
-  adapterRegister: (payload: {
+  httpConnectionConfigure: (payload: {
     vendorName: string
     baseUrl: string
     apiKey: string
@@ -112,7 +116,9 @@ export type DesktopOnboardingBridge = {
     headers?: Record<string, string>
     models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
   }) => AdapterRegistrationResponse
-  adapterStart: (payload: {
+  httpCertificationStart: (payload: {
+    entryPoint: 'manual-ui'
+    idempotencyKey: string
     vendorName: string
     baseUrl: string
     apiKey: string
@@ -121,28 +127,21 @@ export type DesktopOnboardingBridge = {
     headers?: Record<string, string>
     models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
   }) => AdapterResponse
-  adapterGet: (payload: { runId: string }) => AdapterResponse
-  adapterLatest: (payload: { vendorKey: string }) => AdapterResponse
-  adapterCancel: (payload: { runId: string }) => AdapterResponse
-  adapterList: (payload?: { vendorKey?: string; activeOnly?: boolean; limit?: number }) => AdapterListResponse
-  existingConnectionListModels: (payload: { vendorKey: string }) => Promise<
+  certificationGet: (payload: { runId: string }) => AdapterResponse
+  certificationCancel: (payload: { runId: string }) => AdapterResponse
+  certificationList: (payload?: { vendorKey?: string; activeOnly?: boolean; limit?: number }) => AdapterListResponse
+  httpConnectionListModels: (payload: { vendorKey: string }) => Promise<
     | { ok: true; connection: DesktopExistingConnectionSummary; models: string[]; partial?: boolean }
     | ExistingConnectionFailure
   >
-  adapterRegisterExisting: (payload: {
+  httpCertificationStartExisting: (payload: {
+    entryPoint: 'manual-ui'
+    idempotencyKey: string
     vendorKey: string
     models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
-  }) => Promise<{ ok: true; registration: DesktopProviderRegistration } | ExistingConnectionFailure>
-  adapterStartExisting: (payload: {
-    vendorKey: string
-    models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
-  }) => Promise<{ ok: true; run: DesktopProviderAdapterRun } | ExistingConnectionFailure>
-  adapterAdaptExisting: (payload: {
-    vendorKey: string
-    models: Array<{ modelKey: string; labelZh?: string; kind: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
-  }) => Promise<{ ok: true; run: DesktopProviderAdapterRun } | ExistingConnectionFailure>
-  adapterRetry: (payload: { runId: string; modelKey?: string }) => Promise<
-    { ok: true; run: DesktopProviderAdapterRun } | ExistingConnectionFailure
+  }) => Promise<{ ok: true; run: DesktopHttpCertificationRun } | ExistingConnectionFailure>
+  httpCertificationRetry: (payload: { runId: string; modelKey?: string; idempotencyKey: string }) => Promise<
+    { ok: true; run: DesktopHttpCertificationRun } | ExistingConnectionFailure
   >
   manualCommit: (payload: {
     vendorName: string

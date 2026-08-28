@@ -121,6 +121,11 @@ async function startCandidate(service: ProviderAdapterService) {
     authType: "bearer",
     providerKind: "openai-compatible",
     models: [{ modelKey: targetModelKey, labelZh: "Image V1 candidate", kind: "image" }],
+    certification: {
+      contractDigest: "a".repeat(64),
+      idempotencyKey: "catalog-lifecycle-candidate",
+      remoteIdempotency: "unknown",
+    },
   });
   upsertModelCatalogMapping({
     vendorKey: run.vendorKey,
@@ -233,6 +238,11 @@ describe("ProviderAdapterService real catalog candidate lifecycle", () => {
       authType: "bearer",
       providerKind: "openai-compatible",
       models: [{ modelKey: targetModelKey, labelZh: "Image V1 candidate", kind: "image" }],
+      certification: {
+        contractDigest: "b".repeat(64),
+        idempotencyKey: "catalog-lifecycle-competing-candidate",
+        remoteIdempotency: "unknown",
+      },
     })).rejects.toThrowError(/unresolved remote submission/i);
 
     expect(providerCreates).toBe(1);

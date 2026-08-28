@@ -10,7 +10,11 @@ import { DesignButton, DesignModal, DesignTextInput, DesignSwitch } from '../../
 import { ModelPickerScreen } from './ModelPickerScreen'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { CustomCallDraftIdentity } from '../../desktop/modelCatalogBridgeTypes'
-import type { DesktopExistingConnectionSummary, DesktopProviderRegistration } from '../../desktop/onboardingBridgeTypes'
+import type {
+  DesktopExistingConnectionSummary,
+  DesktopHttpCertificationRun,
+  DesktopProviderRegistration,
+} from '../../desktop/onboardingBridgeTypes'
 import type { ProviderKind } from '../../desktop/providerKind'
 import { PROVIDER_PRESETS } from './providerPresets'
 import { Field } from './onboardingWizardSupport'
@@ -41,8 +45,8 @@ function asModelKind(value: unknown): ModelKind {
 export function OnboardingWizard({
   opened,
   onClose,
-  onCommitted,
-  onConnectionSaved,
+  onCertificationStarted,
+  onConnectionConfigured,
   initialPreset,
   existingVendorKey,
   existingConnection,
@@ -52,10 +56,10 @@ export function OnboardingWizard({
 }: {
   opened: boolean
   onClose: () => void
-  /** Called once a model is committed to the catalog. */
-  onCommitted?: (registration: DesktopProviderRegistration) => void
-  /** Connection-only save completed; parent refreshes the catalog without navigating away. */
-  onConnectionSaved?: (registration: DesktopProviderRegistration) => void
+  /** Model confirmation has started the canonical certification run. */
+  onCertificationStarted?: (run: DesktopHttpCertificationRun) => void
+  /** Connection-only credentials are securely configured but remain unverified. */
+  onConnectionConfigured?: (registration: DesktopProviderRegistration) => void
   /** 打开时预选的预设（如面板「接入你的中转站」卡传 'newapi'，直接进中转拉取流，Issue #8）。 */
   initialPreset?: string
   /** 已有连接追加模型：主进程自取加密凭据，renderer 不再收集或读取 Key。 */
@@ -146,11 +150,15 @@ export function OnboardingWizard({
   }, [headerRows])
 
   const loadModels = React.useCallback(async () => {
+    const savedVendorKey = existingVendorKey ?? savedConnection?.vendorKey
+    if (savedVendorKey && bridge?.onboarding?.httpConnectionListModels) {
+      return bridge.onboarding.httpConnectionListModels({ vendorKey: savedVendorKey })
+    }
     if (!bridge?.onboarding?.listModels) return { ok: false, error: t('modelSetup.desktopUnavailable') }
     return bridge.onboarding.listModels({
       baseUrl: effectiveBaseUrl, apiKey: requestAuth.apiKey, providerKind, headers: buildHeadersObject(),
     })
-  }, [bridge, effectiveBaseUrl, requestAuth.apiKey, providerKind, buildHeadersObject, t])
+  }, [bridge, existingVendorKey, savedConnection, effectiveBaseUrl, requestAuth.apiKey, providerKind, buildHeadersObject, t])
   const discoveryScope = JSON.stringify([effectiveBaseUrl, requestAuth.apiKey, providerKind, headerRows])
   const {
     candidates: candidateModels, fetching: fetchingModels, fetchAttempted,
@@ -198,11 +206,11 @@ export function OnboardingWizard({
     [bridge],
   )
 
-  const registerModels = React.useCallback(
+  const startCertification = React.useCallback(
     async (picked: Array<{ id: string; kind: string }>) => {
       const savedVendorKey = savedConnection?.vendorKey
       const targetVendorKey = existingVendorKey ?? savedVendorKey
-      if (!bridge?.onboarding?.adapterRegister || (targetVendorKey && !bridge.onboarding.adapterRegisterExisting)) {
+      if (!targetVendorKey || !bridge?.onboarding?.httpCertificationStartExisting) {
         setErrorReason(t('modelSetup.desktopUnavailable'))
         setPhase('error')
         return
@@ -214,25 +222,20 @@ export function OnboardingWizard({
       setSaving(true)
       try {
         const selected = cleanModels.map((model) => ({ modelKey: model.id, labelZh: model.id, kind: model.kind }))
-        const res = targetVendorKey
-          ? await bridge.onboarding.adapterRegisterExisting({ vendorKey: targetVendorKey, models: selected })
-          : await bridge.onboarding.adapterRegister({
-              vendorName: vendorName.trim(),
-              baseUrl: effectiveBaseUrl,
-              apiKey: requestAuth.apiKey,
-              authType: requestAuth.authType,
-              providerKind,
-              headers: buildHeadersObject(),
-              models: selected,
-            })
-        if (!res.ok || !res.registration) {
+        const res = await bridge.onboarding.httpCertificationStartExisting({
+          entryPoint: 'manual-ui',
+          idempotencyKey: crypto.randomUUID(),
+          vendorKey: targetVendorKey,
+          models: selected,
+        })
+        if (!res.ok || !res.run) {
           setErrorReason(t('modelSetup.saveFailed'))
           const rawError = 'error' in res && typeof res.error === 'string' ? res.error : ''
           setErrorHint(rawError || t('modelSetup.saveFailedHint'))
           setPhase('error')
           return
         }
-        if (onCommitted) onCommitted(res.registration)
+        if (onCertificationStarted) onCertificationStarted(res.run)
         else onClose()
       } catch (error) {
         setErrorReason(t('modelSetup.saveFailed'))
@@ -246,27 +249,21 @@ export function OnboardingWizard({
       bridge,
       existingVendorKey,
       savedConnection,
-      vendorName,
-      effectiveBaseUrl,
-      requestAuth.apiKey,
-      requestAuth.authType,
-      providerKind,
-      buildHeadersObject,
       t,
-      onCommitted,
+      onCertificationStarted,
       onClose,
     ],
   )
 
   const saveConnection = React.useCallback(async () => {
-    if (!bridge?.onboarding?.adapterRegister) {
+    if (!bridge?.onboarding?.httpConnectionConfigure) {
       setConnectionSaveError(t('modelSetup.desktopUnavailable'))
       return
     }
     setSaving(true)
     setConnectionSaveError('')
     try {
-      const res = await bridge.onboarding.adapterRegister({
+      const res = await bridge.onboarding.httpConnectionConfigure({
         vendorName: vendorName.trim(),
         baseUrl: effectiveBaseUrl,
         apiKey: requestAuth.apiKey,
@@ -280,7 +277,7 @@ export function OnboardingWizard({
         return
       }
       setSavedConnection(res.registration)
-      onConnectionSaved?.(res.registration)
+      onConnectionConfigured?.(res.registration)
     } catch (error) {
       setConnectionSaveError(error instanceof Error ? error.message : t('modelSetup.saveFailedHint'))
     } finally {
@@ -294,16 +291,16 @@ export function OnboardingWizard({
     requestAuth.authType,
     providerKind,
     buildHeadersObject,
-    onConnectionSaved,
+    onConnectionConfigured,
     t,
   ])
 
-  // 第二屏只保存连接和模型。文档发现、AI 编译和真实请求是模型详情里的独立、显式动作。
+  // 第二屏确认后直接进入唯一 canonical certification run；未验证模型不会进入生产列表。
   const handleConfirmPicked = React.useCallback(
     (picked: Array<{ id: string; kind: string }>) => {
-      void registerModels(picked)
+      void startCertification(picked)
     },
-    [registerModels],
+    [startCertification],
   )
 
   // Explicit discovery only. The shared loader preserves candidates on failure and ignores stale replies.

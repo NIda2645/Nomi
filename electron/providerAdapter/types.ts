@@ -36,8 +36,11 @@ export type ProviderAdapterConnectionInput = {
   authQueryParam?: string;
   headers?: Record<string, string>;
   models: ProviderAdapterModelSelection[];
-  /** Frozen by the trusted confirmation boundary. Legacy UI calls omit this until Task 4 migrates them. */
-  certification?: CertificationContractBinding;
+};
+
+/** Start-only contract minted by the canonical certification boundary. */
+export type ProviderAdapterCertificationInput = ProviderAdapterConnectionInput & {
+  certification: CertificationContractBinding;
 };
 
 export type ProviderAdapterRegisterInput = ProviderAdapterConnectionInput & {

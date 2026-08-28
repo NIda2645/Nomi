@@ -20,15 +20,16 @@ function ledger(dependencies: { write?: OperationLedgerWrite } = {}) {
 }
 
 function beginInput(overrides: Record<string, unknown> = {}) {
+  const runId = typeof overrides.runId === "string" ? overrides.runId : "run-1";
   return {
-    runId: "run-1",
+    runId,
     contractDigest: "a".repeat(64),
     idempotencyKey: "integration-user-confirmation-1",
     lineageRootVendorKey: "api-example-com",
     leaseOwner: "run-1",
     leaseToken: "lease-1",
     attempt: 1,
-    childRunRef: { runId: "run-1", revisionDigest: "b".repeat(64) },
+    childRunRef: { runId, revisionDigest: "b".repeat(64) },
     now: "2026-08-28T00:00:00.000Z",
     ...overrides,
   } as const;
@@ -45,6 +46,14 @@ afterEach(() => {
 });
 
 describe("OperationLedger", () => {
+  it("rejects a child reference that points at a different canonical run", () => {
+    const { ledger: store } = ledger();
+    expect(() => store.begin(beginInput({
+      runId: "run-canonical",
+      childRunRef: { runId: "run-other", revisionDigest: "b".repeat(64) },
+    }))).toThrowError(/child run reference must match/i);
+  });
+
   it("returns an explicit created or duplicate disposition with the canonical run id", () => {
     const { ledger: store } = ledger();
     const created = store.begin(beginInput()) as unknown as {
@@ -633,6 +642,10 @@ describe("OperationLedger", () => {
     expect(raw).not.toContain("artifactEvidence");
     expect((new OperationLedger(filePath) as unknown as { canonicalRunForIdempotencyKey: (key: string) => string })
       .canonicalRunForIdempotencyKey("confirmation-0")).toBe("run-0");
+    expect(new OperationLedger(filePath).childRunRefForRunId("run-0")).toEqual({
+      runId: "run-0",
+      revisionDigest: "b".repeat(64),
+    });
   });
 
   it("reopens after more than 1000 compactions with a bounded archive head and permanent idempotency history", () => {
@@ -667,6 +680,7 @@ describe("OperationLedger", () => {
     const reopened = new OperationLedger(filePath);
     expect(reopened.canonicalRunForIdempotencyKey("confirmation-0")).toBe("run-0");
     expect(reopened.canonicalRunForIdempotencyKey("confirmation-1004")).toBe("run-1004");
+    expect(reopened.childRunRefForRunId("run-0")).toEqual({ runId: "run-0", revisionDigest: "b".repeat(64) });
   }, 60_000);
 
   it("keeps the prior ledger intact across compaction crash and rejects oversized/versioned archives", () => {

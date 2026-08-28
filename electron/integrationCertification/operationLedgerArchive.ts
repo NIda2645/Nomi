@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { CertificationArchiveRef, CertificationOperationTombstone } from "./types";
+import { CertificationPersistenceError } from "./certificationPersistence";
+import type {
+  CertificationArchiveRef,
+  CertificationOperationLedgerState,
+  CertificationOperationTombstone,
+} from "./types";
 
 type ArchiveFailure = (reason: "corrupt" | "unsupported_version" | "oversized" | "invalid_state", message: string) => Error;
 
@@ -21,6 +26,11 @@ export class CertificationOperationArchive {
   find(idempotencyHash: string, refs: readonly CertificationArchiveRef[]): CertificationOperationTombstone | undefined {
     this.ensureIndex(refs);
     return this.index!.get(idempotencyHash);
+  }
+
+  findByRunId(runId: string, refs: readonly CertificationArchiveRef[]): CertificationOperationTombstone | undefined {
+    this.ensureIndex(refs);
+    return [...this.index!.values()].find((item) => item.canonicalRunId === runId);
   }
 
   append(tombstones: CertificationOperationTombstone[], priorRefs: CertificationArchiveRef[]): CertificationArchiveRef {
@@ -86,4 +96,52 @@ export class CertificationOperationArchive {
     this.indexHead = head;
     this.index = index;
   }
+}
+
+export const TERMINAL_CERTIFICATION_CHECKPOINTS = new Set(["finalized", "cancelled", "superseded"]);
+
+export function compactOperationLedgerState(input: {
+  state: CertificationOperationLedgerState;
+  archive: CertificationOperationArchive;
+  maxActiveOperations: number;
+  maxInlineTombstones: number;
+  maxFileBytes: number;
+  maxOperations: number;
+}): CertificationOperationLedgerState {
+  let next = structuredClone(input.state);
+  const needsCompaction = next.operations.length > input.maxActiveOperations
+    || Buffer.byteLength(JSON.stringify(next)) > Math.floor(input.maxFileBytes * 0.8)
+    || (next.operations.some((item) => TERMINAL_CERTIFICATION_CHECKPOINTS.has(item.checkpoint))
+      && (next.tombstones.length > 0 || next.archives.length > 0));
+  if (needsCompaction) {
+    const terminal = next.operations.filter((item) => TERMINAL_CERTIFICATION_CHECKPOINTS.has(item.checkpoint));
+    if (terminal.length) {
+      next = {
+        ...next,
+        operations: next.operations.filter((item) => !TERMINAL_CERTIFICATION_CHECKPOINTS.has(item.checkpoint)),
+        tombstones: [...next.tombstones, ...terminal.map((item): CertificationOperationTombstone => ({
+          version: 1,
+          idempotencyHash: item.idempotencyHash,
+          contractDigest: item.contractDigest,
+          canonicalRunId: item.runId,
+          childRunRef: item.childRunRef,
+          terminalSummary: item.checkpoint as CertificationOperationTombstone["terminalSummary"],
+          terminalAt: item.updatedAt,
+        }))],
+      };
+    }
+  }
+  if (next.tombstones.length > input.maxInlineTombstones) {
+    const archived = next.tombstones.slice(0, next.tombstones.length - input.maxInlineTombstones);
+    const ref = input.archive.append(archived, next.archives);
+    next = {
+      ...next,
+      tombstones: input.maxInlineTombstones ? next.tombstones.slice(-input.maxInlineTombstones) : [],
+      archives: [ref],
+    };
+  }
+  if (next.operations.length > input.maxOperations) {
+    throw new CertificationPersistenceError("oversized", "Too many active certification operations");
+  }
+  return next;
 }

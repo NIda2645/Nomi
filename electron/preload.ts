@@ -461,28 +461,22 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     antigravityStatus: () => ipcRenderer.invoke("nomi:antigravity:status"),
     antigravityTest: (payload?: unknown) => ipcRenderer.invoke("nomi:antigravity:test", payload),
     antigravityCancel: () => ipcRenderer.invoke("nomi:antigravity:cancel"),
-    adapterRegister: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:register", payload),
-    adapterStart: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:start", payload),
-    adapterGet: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:get", payload),
-    adapterLatest: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:latest", payload),
-    adapterCancel: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:cancel", payload),
-    adapterList: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:list", payload),
-    existingConnectionListModels: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:existing:list-models", payload),
-    adapterRegisterExisting: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:existing:register", payload),
-    adapterStartExisting: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:existing:start", payload),
-    adapterAdaptExisting: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:existing:adapt", payload),
-    adapterRetry: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:retry", payload),
+    httpConnectionConfigure: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:configure", payload),
+    httpCertificationStart: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:start", payload),
+    certificationGet: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:get", payload),
+    certificationCancel: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:cancel", payload),
+    certificationList: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:list", payload),
+    httpConnectionListModels: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:existing:list-models", payload),
+    httpCertificationStartExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:existing:start", payload),
+    httpCertificationRetry: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:retry", payload),
     manualCommit: (payload: unknown) =>
       ipcRenderer.invoke("nomi:onboarding:manual-commit", payload) as Promise<{
         ok: boolean;

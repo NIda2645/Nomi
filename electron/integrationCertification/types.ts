@@ -113,6 +113,7 @@ export type CertificationOperationTombstone = {
   idempotencyHash: string;
   contractDigest: string;
   canonicalRunId: string;
+  childRunRef?: CertificationChildRunRef;
   terminalSummary: "finalized" | "cancelled" | "superseded";
   terminalAt: string;
 };

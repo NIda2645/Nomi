@@ -671,8 +671,8 @@ export const zhOnboardingProviders = {
     manualPlaceholder: '没列出来的，输入模型 id 回车添加',
     add: '添加',
     saveModelsDisclosure:
-      '保存后为“已配置、未验证”；本步骤只写入本地，不读文档、不调用 AI、不做真实测试。需要时可在模型详情单独启动“后台自动适配”，它可能读取公开文档、调用文本 AI，并通过真实请求消耗上游额度。',
-    addModels: '保存 {{count}} 个模型',
+      '确认后会立即进入认证：可能读取公开文档、调用文本 AI，并通过真实请求消耗上游额度。认证完成前，这些模型不会出现在普通模型选择器中。',
+    addModels: '验证 {{count}} 个模型',
   },
   adapterVerification: {
     title: {
@@ -1855,8 +1855,8 @@ export const enOnboardingProviders = {
     manualPlaceholder: 'Enter an unlisted model ID and press Enter',
     add: 'Add',
     saveModelsDisclosure:
-      'Models are saved as configured and unverified. This step only writes locally: it does not read docs, call AI, or run a real test. You can explicitly start Background auto-adaptation later from model details; it may read public docs, call a text AI, and use upstream credit through real requests.',
-    addModels: 'Save {{count}} models',
+      'Confirmation starts certification immediately. It may read public docs, call a text AI, and use upstream credit through real requests. These models stay out of normal pickers until certification passes.',
+    addModels: 'Verify {{count}} models',
   },
   adapterVerification: {
     title: {

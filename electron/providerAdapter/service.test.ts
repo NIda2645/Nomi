@@ -181,9 +181,22 @@ const startInput = {
     { modelKey: "text-v1", labelZh: "Text V1", kind: "text" as const },
     { modelKey: "paint-v2", labelZh: "Paint V2", kind: "image" as const },
   ],
+  certification: {
+    contractDigest: "0".repeat(64),
+    idempotencyKey: "default-provider-adapter-test",
+    remoteIdempotency: "unknown" as const,
+  },
 };
 
 describe("ProviderAdapterService", () => {
+  it("rejects direct starts that bypass the canonical certification contract", async () => {
+    const service = new ProviderAdapterService(store(), dependencies(fakeCatalog()));
+    const uncertified = { ...startInput } as Partial<typeof startInput>;
+    delete uncertified.certification;
+
+    await expect(service.start(uncertified as never)).rejects.toThrowError(/certification contract is required/i);
+  });
+
   it("deduplicates across two real service instances before stage, store mutation, schedule, or provider create", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-adapter-two-services-"));
     dirs.push(root);
@@ -1527,8 +1540,14 @@ describe("ProviderAdapterService", () => {
     let sequence = 0;
     deps.id = () => `run-${++sequence}`;
     const service = new ProviderAdapterService(store(), deps);
-    const older = await service.start(startInput);
-    const newer = await service.start(startInput);
+    const older = await service.start({
+      ...startInput,
+      certification: { ...startInput.certification, idempotencyKey: "stale-older" },
+    });
+    const newer = await service.start({
+      ...startInput,
+      certification: { ...startInput.certification, idempotencyKey: "stale-newer" },
+    });
 
     await service.executeRun(older.id);
     await service.executeRun(newer.id);

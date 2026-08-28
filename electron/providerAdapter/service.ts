@@ -22,7 +22,7 @@ import {
 } from "./store";
 import type {
   AdapterAuthType,
-  ProviderAdapterConnectionInput,
+  ProviderAdapterCertificationInput,
   ProviderAdapterCompilation,
   ProviderAdapterCompileFailure,
   ProviderAdapterDraft,
@@ -62,7 +62,7 @@ export { prioritizeCompilerCandidates } from "./compilerCandidatePriority";
 export { defaultCatalog } from "./serviceCatalog";
 export type { ProviderAdapterCatalogPort } from "./serviceCatalog";
 
-export type ProviderAdapterStartInput = ProviderAdapterConnectionInput;
+export type ProviderAdapterStartInput = ProviderAdapterCertificationInput;
 export type { ProviderAdapterRegisterInput, ProviderAdapterRegistration } from "./types";
 
 export type ProviderAdapterServiceDependencies = {
@@ -200,6 +200,10 @@ export class ProviderAdapterService {
 
   getRun(id: string): ProviderAdapterRun | undefined {
     return this.store.getRun(id);
+  }
+
+  certificationChildRunRef(id: string) {
+    return this.certification.childRunRef(id);
   }
 
   latestRun(vendorKey: string): ProviderAdapterRun | undefined {

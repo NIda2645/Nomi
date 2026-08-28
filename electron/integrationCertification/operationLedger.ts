@@ -16,7 +16,11 @@ import {
   type RemoteIdempotencyCapability,
 } from "./types";
 import { certificationModeIdentity, isCertificationOperationKey } from "./modeIdentity";
-import { CertificationOperationArchive } from "./operationLedgerArchive";
+import {
+  CertificationOperationArchive,
+  TERMINAL_CERTIFICATION_CHECKPOINTS,
+  compactOperationLedgerState,
+} from "./operationLedgerArchive";
 import { CertificationPersistenceError, writeCertificationJsonAtomic } from "./certificationPersistence";
 import { migrateV2Operation } from "./operationLedgerMigration";
 export { CertificationPersistenceError, writeCertificationJsonAtomic } from "./certificationPersistence";
@@ -43,7 +47,6 @@ const EVIDENCE_METADATA_NUMBERS = new Set([
 ]);
 const EVIDENCE_METADATA_STRINGS = new Set(["videoCodec", "audioCodec"]);
 const SUBMISSION_CHECKPOINTS = new Set(["prepared", "submitting", "submitted", "submission_unknown", "settled"]);
-const TERMINAL_CHECKPOINTS = new Set(["finalized", "cancelled", "superseded"]);
 export type OperationLedgerWrite = (filePath: string, state: CertificationOperationLedgerState) => void;
 export type OperationArchiveWrite = (filePath: string, state: unknown) => void;
 type OperationLedgerDependencies = {
@@ -353,12 +356,18 @@ function validateOperation(raw: unknown): CertificationOperationRecord {
 }
 
 function validateTombstone(raw: unknown): CertificationOperationTombstone {
-  if (!isRecord(raw) || raw.version !== 1 || !TERMINAL_CHECKPOINTS.has(String(raw.terminalSummary))) throw new CertificationPersistenceError("invalid_state", "Invalid operation tombstone");
+  if (!isRecord(raw) || raw.version !== 1 || !TERMINAL_CERTIFICATION_CHECKPOINTS.has(String(raw.terminalSummary))) throw new CertificationPersistenceError("invalid_state", "Invalid operation tombstone");
   return {
     version: 1,
     idempotencyHash: digest(raw.idempotencyHash, "tombstone idempotency hash"),
     contractDigest: digest(raw.contractDigest, "tombstone contract digest"),
     canonicalRunId: safeToken(raw.canonicalRunId, "canonical run id"),
+    ...(isRecord(raw.childRunRef) ? {
+      childRunRef: {
+        runId: safeToken(raw.childRunRef.runId, "tombstone child run id"),
+        revisionDigest: digest(raw.childRunRef.revisionDigest, "tombstone child revision digest"),
+      },
+    } : {}),
     terminalSummary: raw.terminalSummary as CertificationOperationTombstone["terminalSummary"],
     terminalAt: iso(raw.terminalAt, "terminal at"),
   };
@@ -465,6 +474,16 @@ export class OperationLedger {
     return found ? clone(found) : undefined;
   }
 
+  childRunRefForRunId(runId: string): CertificationOperationRecord["childRunRef"] | undefined {
+    const state = this.refresh();
+    const active = state.operations.find((item) => item.runId === runId);
+    if (active) return clone(active.childRunRef);
+    const terminal = state.tombstones.find((item) => item.canonicalRunId === runId)
+      || this.archive.findByRunId(runId, state.archives);
+    if (!terminal) return undefined;
+    return clone(terminal.childRunRef || { runId: terminal.canonicalRunId, revisionDigest: terminal.contractDigest });
+  }
+
   getByIdempotencyKey(idempotencyKey: string): CertificationOperationRecord | undefined {
     const idempotencyHash = hash(idempotencyKey);
     const found = this.refresh().operations.find((item) => item.idempotencyHash === idempotencyHash);
@@ -520,6 +539,9 @@ export class OperationLedger {
       if (tombstone) {
         if (tombstone.contractDigest !== input.contractDigest) throw new Error("The idempotency key is already bound to a different contract");
         return { state, result: { status: "duplicate", canonicalRunId: tombstone.canonicalRunId } as OperationLedgerBeginResult };
+      }
+      if (input.childRunRef.runId !== input.runId) {
+        throw new CertificationPersistenceError("invalid_state", "Certification child run reference must match its canonical run");
       }
       const unresolved = state.operations.find((item) => item.lineageRootVendorKey === input.lineageRootVendorKey
         && Object.values(item.modeOperations).some((mode) => ["submitting", "submitted", "unknown"].includes(mode.submissionState))
@@ -746,7 +768,14 @@ export class OperationLedger {
     try {
       const fresh = readState(this.filePath);
       const mutation = fn(fresh);
-      const compacted = this.compact(mutation.state);
+      const compacted = compactOperationLedgerState({
+        state: mutation.state,
+        archive: this.archive,
+        maxActiveOperations: this.maxActiveOperations,
+        maxInlineTombstones: this.maxInlineTombstones,
+        maxFileBytes: MAX_FILE_BYTES,
+        maxOperations: MAX_OPERATIONS,
+      });
       this.lock.assertOwned(lease);
       this.write(this.filePath, compacted);
       this.state = clone(compacted);
@@ -754,42 +783,6 @@ export class OperationLedger {
     } finally {
       try { this.lock.release(lease); } catch { /* lease loss must not mask mutation result */ }
     }
-  }
-
-  private compact(state: CertificationOperationLedgerState): CertificationOperationLedgerState {
-    let next = clone(state);
-    const needsCompaction = next.operations.length > this.maxActiveOperations
-      || Buffer.byteLength(JSON.stringify(next)) > Math.floor(MAX_FILE_BYTES * 0.8)
-      || (next.operations.some((item) => TERMINAL_CHECKPOINTS.has(item.checkpoint))
-        && (next.tombstones.length > 0 || next.archives.length > 0));
-    if (needsCompaction) {
-      const terminal = next.operations.filter((item) => TERMINAL_CHECKPOINTS.has(item.checkpoint));
-      if (terminal.length) {
-        next = {
-          ...next,
-          operations: next.operations.filter((item) => !TERMINAL_CHECKPOINTS.has(item.checkpoint)),
-          tombstones: [...next.tombstones, ...terminal.map((item): CertificationOperationTombstone => ({
-            version: 1,
-            idempotencyHash: item.idempotencyHash,
-            contractDigest: item.contractDigest,
-            canonicalRunId: item.runId,
-            terminalSummary: item.checkpoint as CertificationOperationTombstone["terminalSummary"],
-            terminalAt: item.updatedAt,
-          }))],
-        };
-      }
-    }
-    if (next.tombstones.length > this.maxInlineTombstones) {
-      const archived = next.tombstones.slice(0, next.tombstones.length - this.maxInlineTombstones);
-      const ref = this.archive.append(archived, next.archives);
-      next = {
-        ...next,
-        tombstones: this.maxInlineTombstones ? next.tombstones.slice(-this.maxInlineTombstones) : [],
-        archives: [ref],
-      };
-    }
-    if (next.operations.length > MAX_OPERATIONS) throw new CertificationPersistenceError("oversized", "Too many active certification operations");
-    return next;
   }
 
   private refresh(): CertificationOperationLedgerState {

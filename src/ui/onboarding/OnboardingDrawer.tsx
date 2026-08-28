@@ -20,7 +20,7 @@ import { getAntigravityModelVariant } from '../../../electron/shared/antigravity
 import { ANTIGRAVITY_VENDOR_KEY } from '../../../electron/shared/antigravity'
 import { projectOnboardingConnections } from './onboardingDrawerConnections'
 import { getDesktopBridge } from '../../desktop/bridge'
-import type { DesktopProviderRegistration } from '../../desktop/onboardingBridgeTypes'
+import type { DesktopHttpCertificationRun } from '../../desktop/onboardingBridgeTypes'
 import { alertDialog, confirmDialog } from '../../design'
 import {
   ConnectionWorkspacePage,
@@ -104,11 +104,6 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
   )
   const [customCallTarget, setCustomCallTarget] = React.useState<CustomCallTarget | null>(null)
   const [enableAfterCapability, setEnableAfterCapability] = React.useState<string | null>(null)
-  const [registrationHandoff, setRegistrationHandoff] = React.useState<{
-    vendorKey: string
-    modelKeys: string[]
-    initiallyReadyModelKeys: string[]
-  } | null>(null)
   const closeModelDialog = React.useCallback(() => {
     setCustomCallTarget(null)
     setEnableAfterCapability(null)
@@ -172,7 +167,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       openPage({ type: 'verification', runId: alreadyRunning.id })
       return
     }
-    const adapt = getDesktopBridge()?.onboarding?.adapterAdaptExisting
+    const adapt = getDesktopBridge()?.onboarding?.httpCertificationStartExisting
     if (!adapt) {
       void alertDialog({
         title: t('onboardingProviders.workspace.adapter.startFailedTitle'),
@@ -190,6 +185,8 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     setAdaptStartingModel(identity)
     try {
       const result = await adapt({
+        entryPoint: 'manual-ui',
+        idempotencyKey: crypto.randomUUID(),
         vendorKey: model.vendorKey,
         models: [{
           modelKey: model.modelKey,
@@ -323,29 +320,12 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       />
     )
   }
-  const handleRegistrationCommitted = React.useCallback((registration: DesktopProviderRegistration): void => {
+  const handleCertificationStarted = React.useCallback((run: DesktopHttpCertificationRun): void => {
     refresh()
     setCustomCallTarget(null)
-    if (registration.selectedModelKeys.length === 1) {
-      setRegistrationHandoff(null)
-      setNavigation((current) => openModelSettingsDialog(current, {
-        vendorKey: registration.vendorKey,
-        modelKey: registration.selectedModelKeys[0],
-      }))
-      return
-    }
-    setRegistrationHandoff({
-      vendorKey: registration.vendorKey,
-      modelKeys: registration.selectedModelKeys,
-      initiallyReadyModelKeys: registration.models
-        .filter((model) => model.kind === 'text')
-        .map((model) => model.modelKey),
-    })
-    setNavigation((current) => replaceModelSettingsPage(current, {
-      type: 'connection',
-      vendorKey: registration.vendorKey,
-    }))
-  }, [refresh])
+    recordAdapterRun(run)
+    setNavigation((current) => openModelSettingsPage(current, { type: 'verification', runId: run.id }))
+  }, [recordAdapterRun, refresh])
 
   if (page.type === 'platformConnect') {
     const card = knownCards.find((candidate) => candidate.directory.vendorKey === page.vendorKey)
@@ -419,23 +399,6 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     vendorKey: string,
     focus?: Extract<ModelSettingsPage, { type: 'connection' }>['focus'],
   ): JSX.Element => {
-    const activeHandoff = registrationHandoff?.vendorKey === vendorKey ? registrationHandoff : null
-    const initiallyReady = new Set(activeHandoff?.initiallyReadyModelKeys ?? [])
-    const pendingModelKeys = activeHandoff?.modelKeys.filter((modelKey) => {
-      const model = models.find((item) => item.vendorKey === vendorKey && item.modelKey === modelKey)
-      return !(model?.enabled ?? initiallyReady.has(modelKey))
-    }) ?? []
-    const handoff = activeHandoff ? {
-      total: activeHandoff.modelKeys.length,
-      ready: activeHandoff.modelKeys.length - pendingModelKeys.length,
-      pending: pendingModelKeys.length,
-      ...(pendingModelKeys[0] ? {
-        onContinue: () => setNavigation((current) => openModelSettingsDialog(current, {
-          vendorKey,
-          modelKey: pendingModelKeys[0],
-        })),
-      } : {}),
-    } : undefined
     return (
       <ConnectionWorkspacePage
       vendorKey={vendorKey}
@@ -443,11 +406,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       details={renderConnectionDetails(vendorKey, focus)}
       canAddModels={canAddModelsToConnection(vendorKey, vendorMeta)}
       onAddModels={() => openWizard(undefined, vendorKey)}
-      onBack={() => {
-        if (registrationHandoff?.vendorKey === vendorKey) setRegistrationHandoff(null)
-        goBack()
-      }}
-      handoff={handoff}
+      onBack={goBack}
       />
     )
   }
@@ -474,8 +433,8 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         opened
         presentation="page"
         onClose={closeWizard}
-        onCommitted={handleRegistrationCommitted}
-        onConnectionSaved={() => refresh()}
+        onCertificationStarted={handleCertificationStarted}
+        onConnectionConfigured={() => refresh()}
         initialPreset={page.preset}
         initialScreen={page.initialScreen}
         existingVendorKey={page.existingVendorKey}
