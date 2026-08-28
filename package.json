@@ -45,7 +45,7 @@
     "check:symlinks": "node ./scripts/check-no-machine-symlinks.mjs",
     "check:controls": "node ./scripts/check-control-contract.mjs",
     "check:e2e-launch": "node ./scripts/check-e2e-launch.mjs",
-    "check:i18n": "node ./scripts/check-i18n-visible-text.mjs",
+    "check:i18n": "node ./scripts/check-i18n-visible-text.mjs && tsx ./scripts/check-i18n-key-parity.ts",
     "check:test-waits": "node ./scripts/check-test-waits.mjs",
     "check:ipc-sender-binding": "node ./scripts/check-ipc-sender-binding.mjs",
     "check:agents-sync": "node ./scripts/gen-agents-md.mjs --check",

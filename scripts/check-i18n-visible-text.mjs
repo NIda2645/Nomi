@@ -57,11 +57,15 @@ const EXCLUDED_FILES = new Set([
   'src/config/knownVendors.ts', // getLocalizedKnownVendors translates every displayed field
   'src/config/models.ts', // curated model labels use the model display-text boundary
   'src/ui/onboarding/providerPresets.ts', // legacy endpoint metadata; not rendered
+  'src/ui/onboarding/customCallTestFixture.ts', // connectivity-test prompts sent to the model, not UI copy
   'src/workbench/creation/creationAiModes.ts', // UI uses creationAi.mode keys; source labels feed AI prompts
+  'src/workbench/generationCanvas/agent/shotVerify.ts', // stable source strings; ReconcileDeviationCard translates them at the display boundary
   'src/workbench/generationCanvas/agent/applyCanvasToolCall.ts', // agent tool protocol/result prose
   'src/workbench/generationCanvas/agent/generationCanvasTools.ts', // agent tool result prose
   'src/workbench/generationCanvas/agent/runStoryboardPlanner.ts', // agent-only instruction
   'src/workbench/generationCanvas/nodes/controls/parameterControlModel.ts', // translated in nodeModelArchetype/archetypeMeta
+  'src/workbench/generationCanvas/nodes/scene3d/attachCameraMoveToTarget.ts', // camera-move directive appended to the model prompt (and matched back by includes('镜头运动：')), not UI copy
+  'src/workbench/generationCanvas/nodes/scene3d/poseMetrics.ts', // posecode report feeds the VLM prompt and loop logs, not UI
   'src/workbench/generationCanvas/nodes/scene3d/scene3dConstants.ts', // translated by scene3dInspector mappings
   'src/workbench/generationCanvas/nodes/scene3d/scene3dPropSpecs.ts', // stable object defaults; toolbar uses scene3d keys
   'src/workbench/library/projectTemplates.ts', // getProjectTemplate selects localized template data
@@ -118,7 +122,14 @@ function collectExpressionLiterals(node, emit) {
     collectExpressionLiterals(node.whenFalse, emit)
     return
   }
-  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+  // `a || '中文'` / `a ?? '中文'` 的兜底串也是要显示的文案——只descend `+` 的话,
+  // 「取不到就显这句中文」这个最常见的漏译写法从门岗底下整个漏过去(shotVerify 的兜底理由就是这么漏的)。
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.PlusToken ||
+      node.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+  ) {
     collectExpressionLiterals(node.left, emit)
     collectExpressionLiterals(node.right, emit)
   }
@@ -128,6 +139,26 @@ function callName(expression) {
   if (ts.isIdentifier(expression)) return expression.text
   if (ts.isPropertyAccessExpression(expression)) return expression.name.text
   return ''
+}
+
+// 「渲染邻接层」= 组件与它们直接依赖的展示辅助模块。这些目录里的返回串基本等同于屏幕上的字;
+// agent/prompt 那些目录不在内(那里的中文是喂模型的提示词,不是给人看的)。
+const RENDER_ADJACENT_PREFIXES = [
+  'src/ui/',
+  'src/workbench/',
+  'src/design/',
+]
+const RENDER_ADJACENT_EXCEPT = [
+  'src/workbench/generationCanvas/agent/', // 提示词与 agent 协议文本
+  'src/workbench/generationCanvas/fixation/', // 定妆提示词模板
+  'src/workbench/creation/creationAiModes.ts', // 源标签喂 AI 提示词,显示走 creationAi.mode 键
+]
+
+function isRenderAdjacent(relative) {
+  return (
+    RENDER_ADJACENT_PREFIXES.some((prefix) => relative.startsWith(prefix)) &&
+    !RENDER_ADJACENT_EXCEPT.some((prefix) => relative.startsWith(prefix))
+  )
 }
 
 function isNonVisibleJsxContainer(node) {
@@ -202,6 +233,15 @@ function scanFile(fileName) {
       }
     }
 
+    // 渲染层里 `return '中文'`:这类模块的导出**直接**被 .tsx 拿去显示(时间线步骤标题就是这么来的),
+    // 返回值即用户所见。属性名/JSX 属性那几条规则一条都盖不到它——toolCallSummary 整份中文、
+    // check:i18n 却是绿的,漏的就是这个形状。
+    if (ts.isReturnStatement(node) && node.expression && isRenderAdjacent(relative)) {
+      collectExpressionLiterals(node.expression, (text) => {
+        if (hasHan(text)) add('return-literal', text)
+      })
+    }
+
     ts.forEachChild(node, visit)
   }
 
@@ -250,8 +290,36 @@ function collectUntranslatedModelLabels() {
 const files = [SRC_ROOT, ELECTRON_ROOT]
   .flatMap((root) => ts.sys.readDirectory(root, ['.ts', '.tsx'], undefined, undefined))
   .filter(isProductSource)
-const current = countFindings(files.flatMap(scanFile))
+const allFindings = countFindings(files.flatMap(scanFile))
 const missingModelLabels = collectUntranslatedModelLabels()
+
+// 原有那几条规则维持**硬零**(它们早清干净了,别放松);2026-08-28 新加的两条(return-literal、
+// `||`/`??` 兜底串)第一次开灯就照出 ~50 处存量,故只对新规则挂棘轮基线:存量记账、只减不增,
+// 新增当场报红。基线清空后把这套连同 baseline 文件一起删掉,别留着当逃生口(P1)。
+const BASELINE_FILE = path.join(ROOT, 'scripts', 'i18n-visible-text-baseline.json')
+const baseline = fs.existsSync(BASELINE_FILE)
+  ? JSON.parse(fs.readFileSync(BASELINE_FILE, 'utf8'))
+  : { entries: [] }
+const BASELINE_KEYS = new Set(baseline.entries.map((e) => [e.file, e.kind, e.text].join(String.fromCharCode(0))))
+
+if (process.argv.includes('--update-baseline')) {
+  // 只允许**收缩**:重写基线时丢掉已修好的条目,但拒绝接纳新条目——否则棘轮就成了逃生口。
+  const added = allFindings.filter((f) => !BASELINE_KEYS.has(fingerprint(f)))
+  if (BASELINE_KEYS.size > 0 && added.length > 0) {
+    console.error(`refusing to grow the i18n baseline; fix these ${added.length} new literals instead:`)
+    for (const entry of added) console.error(`- ${entry.file} [${entry.kind}] ${JSON.stringify(entry.text)}`)
+    process.exit(1)
+  }
+  const entries = allFindings
+    .filter((f) => BASELINE_KEYS.size === 0 || BASELINE_KEYS.has(fingerprint(f)))
+    .map(({ file, kind, text, count }) => ({ file, kind, text, count }))
+  fs.writeFileSync(BASELINE_FILE, `${JSON.stringify({ entries }, null, 2)}\n`, 'utf8')
+  console.log(`i18n baseline written: ${entries.length} legacy entries`)
+  process.exit(0)
+}
+
+// 基线里的存量放行(只减不增);其余一律硬零——原有那几条规则早清干净了,不因为加了新规则就放松。
+const current = allFindings.filter((f) => !BASELINE_KEYS.has(fingerprint(f)))
 
 if (REPORT) {
   const counts = new Map()
