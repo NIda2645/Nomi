@@ -12,6 +12,7 @@ import type {
   ProviderAdapterRun,
 } from "../providerAdapter/types";
 import { OperationLedger } from "./operationLedger";
+import { certificationModeIdentity } from "./modeIdentity";
 import { PromotionJournal } from "./promotionJournal";
 import type {
   CertificationContractBinding,
@@ -146,29 +147,8 @@ export class ProviderAdapterCertificationCoordinator {
     const idempotencyKey = binding?.idempotencyKey || `legacy-${runId}`;
     const identity = contractIdentity(input, lineageRoot, binding);
     const { contractDigest } = identity;
-    const priorBinding = this.ledger.bindingForIdempotencyKey(idempotencyKey);
-    if (priorBinding) {
-      if (priorBinding.contractDigest !== contractDigest) throw new Error("The idempotency key is already bound to a different contract");
-      const original = this.store.getRun(priorBinding.canonicalRunId);
-      const active = this.ledger.getByRunId(priorBinding.canonicalRunId);
-      if (!active) {
-        if (!original) throw new Error("Compacted certification references a missing canonical run");
-        return { duplicate: original, runId: original.id, idempotencyKey, ...identity };
-      }
-      if (active.startTransaction.state === "committed" || active.startTransaction.state === "rolled_back") {
-        if (!original) throw new Error("Certification ledger references a missing canonical run");
-        return { duplicate: original, operation: active, runId: original.id, idempotencyKey, ...identity };
-      }
-      return { operation: active, runId: active.runId, idempotencyKey, ...identity };
-    }
-    const unresolved = this.ledger.snapshot().operations.find((operation) =>
-      operation.lineageRootVendorKey === lineageRoot
-      && Object.values(operation.modeOperations).some((mode) => ["submitting", "submitted", "unknown"].includes(mode.submissionState))
-      && !["finalized", "cancelled", "superseded"].includes(operation.checkpoint),
-    );
-    if (unresolved) throw new Error("This provider already has an unresolved remote submission; reconcile it before starting another certification");
     const now = this.now();
-    const operation = this.ledger.begin({
+    const begun = this.ledger.begin({
       runId,
       contractDigest,
       idempotencyKey,
@@ -189,6 +169,12 @@ export class ProviderAdapterCertificationCoordinator {
       customHeaderIdentityFingerprint: identity.customHeaderIdentityFingerprint,
       now,
     });
+    if (begun.status === "duplicate") {
+      const original = this.store.getRun(begun.canonicalRunId);
+      if (!original) throw new Error("Certification canonical run is missing and requires restart recovery");
+      return { duplicate: original, operation: begun.operation, runId: original.id, idempotencyKey, ...identity };
+    }
+    const operation = begun.operation!;
     return { operation, runId: operation.runId, idempotencyKey, ...identity };
   }
 
@@ -277,8 +263,32 @@ export class ProviderAdapterCertificationCoordinator {
 
   recoverPreparedStarts(): void {
     for (let operation of this.ledger.snapshot().operations) {
-      if (["committed", "rolled_back"].includes(operation.startTransaction.state)) continue;
       let run = this.store.getRun(operation.runId);
+      if (operation.startTransaction.state === "rolled_back") continue;
+      if (operation.startTransaction.state === "committed") {
+        if (!run) {
+          const at = this.now();
+          this.store.upsertRun({
+            id: operation.runId,
+            vendorKey: operation.startTransaction.stagedVendorKey || operation.startTransaction.sourceVendorKey,
+            lineageRootVendorKey: operation.lineageRootVendorKey,
+            vendorName: operation.startTransaction.stagedVendorKey || operation.startTransaction.sourceVendorKey,
+            connectionFingerprint: operation.credentialFingerprint || operation.contractDigest,
+            selectedModelKeys: operation.startTransaction.selectedModels.map((model) => model.modelKey),
+            stage: "failed",
+            completedCount: 0,
+            totalCount: operation.startTransaction.selectedModels.length,
+            repairAttempt: 0,
+            models: operation.startTransaction.selectedModels.map((model) => ({ ...model, modes: [] })),
+            sourceUrls: [],
+            error: "Committed certification lost its canonical run record and was recovered fail-closed.",
+            recovery: { reasonCode: "certification_start_rolled_back", userAction: "restart_certification" },
+            createdAt: operation.createdAt,
+            updatedAt: at,
+          });
+        }
+        continue;
+      }
       const staged = operation.startTransaction.state === "catalog_staged"
         ? { vendorKey: operation.startTransaction.stagedVendorKey!, lineageRootVendorKey: operation.lineageRootVendorKey }
         : this.catalog.findStagedRun?.(operation.runId) || null;
@@ -365,6 +375,9 @@ export class ProviderAdapterCertificationCoordinator {
   async executeSubmission(input: {
     runId: string;
     operationKey: string;
+    modelKey: string;
+    taskKind: CertificationModeOperation["taskKind"];
+    attempt: number;
     beforeSubmit?: () => void;
     execute: (onRemoteTaskAccepted: (remoteTaskId: string) => void) => Promise<AdapterVerificationResult>;
     reconcile?: (remoteTaskId: string) => Promise<AdapterVerificationResult>;
@@ -373,10 +386,9 @@ export class ProviderAdapterCertificationCoordinator {
   }): Promise<AdapterVerificationResult> {
     let operation = this.ledger.getByRunId(input.runId);
     if (!operation) throw new Error("Certification operation ledger entry is missing");
-    const [modelKey, taskKind] = input.operationKey.split("/");
-    const modeIdentity = `${modelKey}/${taskKind}`;
-    const existingKey = operation.modeOperationKeys[modeIdentity];
-    let mode = existingKey ? operation.modeOperations[existingKey] : undefined;
+    const modeIdentity = certificationModeIdentity(input.modelKey, input.taskKind);
+    const existingIndex = operation.modeOperationKeys[modeIdentity];
+    let mode = existingIndex ? operation.modeOperations[existingIndex.operationKey] : undefined;
     try {
       let result: AdapterVerificationResult;
       if (mode?.submissionState === "unknown" || mode?.submissionState === "submitted") {
@@ -394,14 +406,15 @@ export class ProviderAdapterCertificationCoordinator {
           mode = operation.modeOperations[mode.operationKey];
         }
         result = await input.reconcile(mode.remoteTaskId!);
-      } else if (mode?.submissionState === "settled" && mode.operationKey === input.operationKey) {
+      } else if (mode?.submissionState === "settled" && input.attempt <= mode.attempt) {
         result = input.reuse(mode);
       } else {
         input.beforeSubmit?.();
         operation = this.ledger.markSubmitting(input.runId, {
           operationKey: input.operationKey,
-          modelKey,
-          taskKind: taskKind as CertificationModeOperation["taskKind"],
+          modelKey: input.modelKey,
+          taskKind: input.taskKind,
+          attempt: input.attempt,
           providerIdempotency: operation.providerIdempotency,
           expectedRevision: operation.revision,
           now: this.now(),
@@ -422,7 +435,7 @@ export class ProviderAdapterCertificationCoordinator {
         });
       }
       operation = this.ledger.getByRunId(input.runId)!;
-      mode = operation.modeOperations[input.operationKey] || operation.modeOperations[operation.modeOperationKeys[modeIdentity]];
+      mode = operation.modeOperations[input.operationKey] || operation.modeOperations[operation.modeOperationKeys[modeIdentity]?.operationKey];
       if (!mode) throw new Error("Certification mode operation is missing after verification");
       const unknown = result.submissionState === "unknown"
         || (!result.ok && (result.stage === "create" || result.stage === "poll")
@@ -465,7 +478,7 @@ export class ProviderAdapterCertificationCoordinator {
       if (error instanceof AdapterReconciliationRequiredError) throw error;
       const inFlight = this.ledger.getByRunId(input.runId);
       const inFlightMode = inFlight?.modeOperations[input.operationKey]
-        || (inFlight ? inFlight.modeOperations[inFlight.modeOperationKeys[modeIdentity]] : undefined);
+        || (inFlight ? inFlight.modeOperations[inFlight.modeOperationKeys[modeIdentity]?.operationKey] : undefined);
       if (input.isUncertainError(error) && inFlight && inFlightMode
         && (inFlightMode.submissionState === "submitting" || inFlightMode.submissionState === "submitted")) {
         const unknown = this.ledger.markUnknown(input.runId, {
@@ -485,10 +498,10 @@ export class ProviderAdapterCertificationCoordinator {
 
   private syncRunOperationState(runId: string, operation: CertificationOperationRecord): void {
     if (!this.store.getRun(runId)) return;
-    const certificationOperations = Object.fromEntries(Object.entries(operation.modeOperationKeys).map(([identity, operationKey]) => {
-      const mode = operation.modeOperations[operationKey];
+    const certificationOperations = Object.fromEntries(Object.entries(operation.modeOperationKeys).map(([identity, index]) => {
+      const mode = operation.modeOperations[index.operationKey];
       return [identity, {
-        operationKey,
+        operationKey: index.operationKey,
         submissionState: mode.submissionState,
         ...(mode.settledResult ? { settledResult: mode.settledResult } : {}),
       }];

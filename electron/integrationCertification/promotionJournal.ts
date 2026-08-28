@@ -53,7 +53,7 @@ function rejectUnknownKeys(raw: Record<string, unknown>, allowed: readonly strin
 }
 
 function safe(value: unknown, name: string, max = 256): string {
-  if (typeof value !== "string" || !value || value.length > max || /[\u0000-\u001f\u007f]/.test(value) || /:\/\//.test(value)) {
+  if (typeof value !== "string" || !value || value.length > max || value.split("").some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127) || /:\/\//.test(value)) {
     throw new CertificationPersistenceError("invalid_state", `Invalid ${name}`);
   }
   return value;
@@ -171,6 +171,8 @@ export class PromotionJournal {
   private readonly maxEntries: number;
   private readonly maxInlineTombstones: number;
   private readonly archiveDir: string;
+  private archiveIndexHead?: string;
+  private archiveIndex?: Map<string, PromotionTombstone>;
   private activeLease?: ReturnType<ProductionRunLock["acquire"]>;
 
   constructor(private readonly filePath: string, dependencies: PromotionJournalDependencies = {}) {
@@ -199,7 +201,7 @@ export class PromotionJournal {
     const state = this.refresh();
     if (state.entries.some((entry) => entry.journalId === journalId && Boolean(entry.runFinalizedAt))) return true;
     if (state.tombstones.some((entry) => entry.journalId === journalId)) return true;
-    return this.readArchiveTombstones().some((entry) => entry.journalId === journalId);
+    return Boolean(this.findArchiveTombstone(journalId, state.archives));
   }
 
   pendingEntries(): PromotionJournalEntry[] {
@@ -213,7 +215,8 @@ export class PromotionJournal {
         if (existing.contractDigest !== input.contractDigest || existing.proposedRevisionId !== input.proposedRevisionId) throw new Error("Promotion journal id is already bound to a different revision");
         return { state, result: existing };
       }
-      if ([...state.tombstones, ...this.readArchiveTombstones()].some((entry) => entry.journalId === input.journalId)) throw new Error("Promotion journal is already finalized");
+      if (state.tombstones.some((entry) => entry.journalId === input.journalId)
+        || this.findArchiveTombstone(input.journalId, state.archives)) throw new Error("Promotion journal is already finalized");
       const { now, ...durableInput } = input;
       const entry = validateEntry({ ...durableInput, version: 2, revision: 1, state: "prepared", createdAt: now, updatedAt: now });
       return { state: { ...state, entries: [...state.entries, entry] }, result: entry };
@@ -341,34 +344,80 @@ export class PromotionJournal {
     }
     if (next.tombstones.length > this.maxInlineTombstones) {
       const archived = next.tombstones.slice(0, next.tombstones.length - this.maxInlineTombstones);
-      const payload = { version: 1, tombstones: archived };
-      const sha256 = hash(JSON.stringify(payload));
-      const fileName = `segment-${sha256}.json`;
-      fs.mkdirSync(this.archiveDir, { recursive: true, mode: 0o700 });
-      const target = path.join(this.archiveDir, fileName);
-      if (!fs.existsSync(target)) this.writeArchive(target, payload);
-      const ref: CertificationArchiveRef = { version: 1, fileName, sha256, count: archived.length };
+      const ref = this.appendArchive(archived, next.archives);
       next = {
         ...next,
-        tombstones: next.tombstones.slice(-this.maxInlineTombstones),
-        archives: next.archives.some((item) => item.fileName === fileName) ? next.archives : [...next.archives, ref],
+        tombstones: this.maxInlineTombstones ? next.tombstones.slice(-this.maxInlineTombstones) : [],
+        archives: [ref],
       };
     }
     return next;
   }
 
-  private readArchiveTombstones(): PromotionTombstone[] {
-    if (!fs.existsSync(this.archiveDir)) return [];
-    const result: PromotionTombstone[] = [];
-    for (const name of fs.readdirSync(this.archiveDir).filter((item) => /^segment-[a-f0-9]{64}\.json$/.test(item))) {
-      const target = path.join(this.archiveDir, name);
+  private appendArchive(tombstones: PromotionTombstone[], priorRefs: CertificationArchiveRef[]): CertificationArchiveRef {
+    if (priorRefs.length <= 1) {
+      this.ensureArchiveIndex(priorRefs);
+      const ref = this.writeArchiveSegment(tombstones, priorRefs[0]);
+      for (const tombstone of tombstones) this.archiveIndex!.set(tombstone.journalId, tombstone);
+      this.archiveIndexHead = ref.fileName;
+      return ref;
+    }
+    let previous: CertificationArchiveRef | undefined;
+    const all = [...this.readArchiveTombstones(priorRefs), ...tombstones];
+    for (let index = 0; index < all.length; index += 250) previous = this.writeArchiveSegment(all.slice(index, index + 250), previous);
+    return previous!;
+  }
+
+  private writeArchiveSegment(tombstones: PromotionTombstone[], previous?: CertificationArchiveRef): CertificationArchiveRef {
+    const payload = { version: 2, tombstones, ...(previous ? { previous } : {}) };
+    const sha256 = hash(JSON.stringify(payload));
+    const fileName = `segment-${sha256}.json`;
+    fs.mkdirSync(this.archiveDir, { recursive: true, mode: 0o700 });
+    const target = path.join(this.archiveDir, fileName);
+    if (!fs.existsSync(target)) this.writeArchive(target, payload);
+    return { version: 1, fileName, sha256, count: tombstones.length };
+  }
+
+  private readArchiveTombstones(refs: readonly CertificationArchiveRef[]): PromotionTombstone[] {
+    this.ensureArchiveIndex(refs);
+    return [...this.archiveIndex!.values()];
+  }
+
+  private findArchiveTombstone(journalId: string, refs: readonly CertificationArchiveRef[]): PromotionTombstone | undefined {
+    this.ensureArchiveIndex(refs);
+    return this.archiveIndex!.get(journalId);
+  }
+
+  private ensureArchiveIndex(refs: readonly CertificationArchiveRef[]): void {
+    const head = refs.length === 1 ? refs[0].fileName : refs.map((ref) => ref.fileName).join(":");
+    if (this.archiveIndexHead === head && this.archiveIndex) return;
+    const index = new Map<string, PromotionTombstone>();
+    if (!refs.length) {
+      this.archiveIndexHead = head;
+      this.archiveIndex = index;
+      return;
+    }
+    const pending = [...refs];
+    const visited = new Set<string>();
+    while (pending.length) {
+      const ref = pending.pop()!;
+      if (visited.has(ref.fileName)) throw new CertificationPersistenceError("invalid_state", "Promotion archive chain contains a cycle");
+      if (visited.size >= 100_000) throw new CertificationPersistenceError("oversized", "Promotion archive chain is too deep");
+      visited.add(ref.fileName);
+      const target = path.join(this.archiveDir, ref.fileName);
       if (fs.statSync(target).size > MAX_FILE_BYTES) throw new CertificationPersistenceError("oversized", "Promotion archive exceeds size limit");
       let parsed: unknown;
       try { parsed = JSON.parse(fs.readFileSync(target, "utf8")); } catch { throw new CertificationPersistenceError("corrupt", "Promotion archive is corrupt"); }
-      if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.tombstones)) throw new CertificationPersistenceError("unsupported_version", "Unsupported promotion archive version");
-      result.push(...parsed.tombstones.map(validateTombstone));
+      if (!isRecord(parsed) || ![1, 2].includes(Number(parsed.version)) || !Array.isArray(parsed.tombstones)) throw new CertificationPersistenceError("unsupported_version", "Unsupported promotion archive version");
+      if (hash(JSON.stringify(parsed)) !== ref.sha256 || parsed.tombstones.length !== ref.count) throw new CertificationPersistenceError("corrupt", "Promotion archive digest mismatch");
+      for (const value of parsed.tombstones) {
+        const tombstone = validateTombstone(value);
+        index.set(tombstone.journalId, tombstone);
+      }
+      if (parsed.version === 2 && parsed.previous !== undefined) pending.push(validateArchive(parsed.previous));
     }
-    return result;
+    this.archiveIndexHead = head;
+    this.archiveIndex = index;
   }
 
   private withLock<T>(fn: () => T): T {

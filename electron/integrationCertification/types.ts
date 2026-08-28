@@ -2,7 +2,7 @@ import type { ProfileKind } from "../catalog/types";
 import type { CertificationMediaEvidence } from "../providerAdapter/certificationMedia";
 import type { AdapterVerificationResult } from "../providerAdapter/verifier";
 
-export const CERTIFICATION_LEDGER_VERSION = 2 as const;
+export const CERTIFICATION_LEDGER_VERSION = 3 as const;
 export const PROMOTION_JOURNAL_VERSION = 2 as const;
 export const CERTIFICATION_SUBMISSION_STATES = ["idle", "submitting", "submitted", "unknown", "settled"] as const;
 export const CERTIFICATION_START_TRANSACTION_STATES = ["intent", "run_persisted", "catalog_staged", "committed", "rolled_back"] as const;
@@ -65,8 +65,16 @@ export type CertificationModeOperation = {
   updatedAt: string;
 };
 
+export type CertificationModeIndex = {
+  version: 1;
+  modelKey: string;
+  taskKind: ProfileKind;
+  latestAttempt: number;
+  operationKey: string;
+};
+
 export type CertificationOperationRecord = {
-  version: 2;
+  version: 3;
   revision: number;
   runId: string;
   contractDigest: string;
@@ -84,7 +92,7 @@ export type CertificationOperationRecord = {
   remoteTaskId?: string;
   artifactEvidence: CertificationMediaEvidence[];
   settledResult?: CertificationSettledResult;
-  modeOperationKeys: Record<string, string>;
+  modeOperationKeys: Record<string, CertificationModeIndex>;
   modeOperations: Record<string, CertificationModeOperation>;
   childRunRef: CertificationChildRunRef;
   startTransaction: {
@@ -117,7 +125,7 @@ export type CertificationArchiveRef = {
 };
 
 export type CertificationOperationLedgerState = {
-  version: 2;
+  version: 3;
   operations: CertificationOperationRecord[];
   tombstones: CertificationOperationTombstone[];
   archives: CertificationArchiveRef[];

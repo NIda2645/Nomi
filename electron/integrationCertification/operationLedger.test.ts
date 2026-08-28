@@ -8,6 +8,7 @@ import {
   type OperationLedgerWrite,
 } from "./operationLedger";
 import { ProductionRunLockBusyError } from "../productionRun/productionRunLock";
+import { certificationModeOperationKey } from "./modeIdentity";
 
 const roots: string[] = [];
 
@@ -33,16 +34,180 @@ function beginInput(overrides: Record<string, unknown> = {}) {
   } as const;
 }
 
+function created(result: ReturnType<OperationLedger["begin"]>) {
+  if (!result.operation) throw new Error("Expected an active certification operation");
+  return result.operation;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
 describe("OperationLedger", () => {
+  it("returns an explicit created or duplicate disposition with the canonical run id", () => {
+    const { ledger: store } = ledger();
+    const created = store.begin(beginInput()) as unknown as {
+      status: string;
+      canonicalRunId: string;
+      operation: { runId: string };
+    };
+    const duplicate = store.begin({ ...beginInput(), runId: "run-2" }) as unknown as {
+      status: string;
+      canonicalRunId: string;
+      operation?: { runId: string };
+    };
+
+    expect(created).toMatchObject({ status: "created", canonicalRunId: "run-1", operation: { runId: "run-1" } });
+    expect(duplicate).toMatchObject({ status: "duplicate", canonicalRunId: "run-1", operation: { runId: "run-1" } });
+  });
+
+  it("uses structured mode identity for model keys containing slashes and opaque operation keys", () => {
+    const { ledger: store, filePath } = ledger();
+    const begun = store.begin(beginInput()) as unknown as { revision?: number; operation?: { revision: number } };
+    const operationKey = "c".repeat(64);
+    store.markSubmitting("run-1", {
+      operationKey,
+      modelKey: "bytedance/seedance-2",
+      taskKind: "text_to_video",
+      attempt: 1,
+      providerIdempotency: "unsupported",
+      expectedRevision: begun.operation?.revision ?? begun.revision!,
+      now: "2026-08-28T00:00:01.000Z",
+    } as never);
+
+    const recovered = new OperationLedger(filePath).getByRunId("run-1") as unknown as {
+      modeOperationKeys: Record<string, { version: number; modelKey: string; taskKind: string; latestAttempt: number; operationKey: string }>;
+      modeOperations: Record<string, { modelKey: string; taskKind: string; attempt: number }>;
+    };
+    const indexes = Object.values(recovered.modeOperationKeys);
+    expect(indexes).toEqual([{
+      version: 1,
+      modelKey: "bytedance/seedance-2",
+      taskKind: "text_to_video",
+      latestAttempt: 1,
+      operationKey,
+    }]);
+    expect(recovered.modeOperations[operationKey]).toMatchObject({ modelKey: "bytedance/seedance-2", taskKind: "text_to_video", attempt: 1 });
+  });
+
+  it("migrates v2 slash identities to the structured latest-attempt index", () => {
+    const { ledger: store, filePath } = ledger();
+    const first = store.begin(beginInput()) as unknown as { revision?: number; operation?: { revision: number } };
+    store.markSubmitting("run-1", {
+      operationKey: "d".repeat(64),
+      modelKey: "bytedance/seedance-2",
+      taskKind: "text_to_video",
+      attempt: 2,
+      providerIdempotency: "unsupported",
+      expectedRevision: first.operation?.revision ?? first.revision!,
+      now: "2026-08-28T00:00:01.000Z",
+    } as never);
+    const legacy = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+      version: number;
+      operations: Array<Record<string, unknown>>;
+    };
+    legacy.version = 2;
+    const operation = legacy.operations[0];
+    operation.version = 2;
+    const legacyKey = "bytedance/seedance-2/text_to_video/2";
+    const mode = Object.values(operation.modeOperations as Record<string, Record<string, unknown>>)[0];
+    mode.operationKey = legacyKey;
+    operation.operationKey = legacyKey;
+    operation.modeOperations = { [legacyKey]: mode };
+    operation.modeOperationKeys = { "bytedance/seedance-2/text_to_video": legacyKey };
+    fs.writeFileSync(filePath, JSON.stringify(legacy));
+
+    const reopened = new OperationLedger(filePath).snapshot() as unknown as {
+      version: number;
+      operations: Array<{ modeOperationKeys: Record<string, { latestAttempt: number; modelKey: string }> }>;
+    };
+    expect(reopened.version).toBe(3);
+    expect(Object.values(reopened.operations[0].modeOperationKeys)).toEqual([
+      expect.objectContaining({ latestAttempt: 2, modelKey: "bytedance/seedance-2" }),
+    ]);
+  });
+
+  it.each(["settled", "failed", "unknown"] as const)("recovers the latest attempt when attempt 2 is %s", (outcome) => {
+    const { ledger: store, filePath } = ledger();
+    const first = store.begin(beginInput()) as unknown as { revision?: number; operation?: { revision: number } };
+    let current = store.markSubmitting("run-1", {
+      operationKey: "a".repeat(64), modelKey: "bytedance/seedance-2", taskKind: "text_to_video", attempt: 1,
+      providerIdempotency: "unsupported", expectedRevision: first.operation?.revision ?? first.revision!, now: "2026-08-28T00:00:01.000Z",
+    } as never);
+    current = store.markSettled("run-1", {
+      operationKey: "a".repeat(64), expectedRevision: current.revision,
+      result: { ok: false, taskKind: "text_to_video", stage: "create", errorCategory: "input" }, now: "2026-08-28T00:00:02.000Z",
+    });
+    current = store.markSubmitting("run-1", {
+      operationKey: "b".repeat(64), modelKey: "bytedance/seedance-2", taskKind: "text_to_video", attempt: 2,
+      providerIdempotency: "unsupported", expectedRevision: current.revision, now: "2026-08-28T00:00:03.000Z",
+    } as never);
+    if (outcome === "unknown") {
+      store.markUnknown("run-1", {
+        operationKey: "b".repeat(64), expectedRevision: current.revision,
+        userAction: "reconcile_or_contact_provider", remoteTaskId: "remote-attempt-2", now: "2026-08-28T00:00:04.000Z",
+      });
+    } else {
+      store.markSettled("run-1", {
+        operationKey: "b".repeat(64), expectedRevision: current.revision,
+        result: { ok: outcome === "settled", taskKind: "text_to_video", ...(outcome === "failed" ? { stage: "create" as const, errorCategory: "input" as const } : {}) },
+        now: "2026-08-28T00:00:04.000Z",
+      });
+    }
+
+    const reopened = new OperationLedger(filePath).getByRunId("run-1") as unknown as {
+      modeOperationKeys: Record<string, { latestAttempt: number; operationKey: string }>;
+      modeOperations: Record<string, { attempt: number; submissionState: string; settledResult?: { ok: boolean } }>;
+    };
+    const latest = Object.values(reopened.modeOperationKeys)[0];
+    expect(latest).toMatchObject({ latestAttempt: 2, operationKey: "b".repeat(64) });
+    expect(reopened.modeOperations[latest.operationKey]).toMatchObject({ attempt: 2 });
+    expect(Object.values(reopened.modeOperations)).toHaveLength(1);
+  });
+
+  it("fails closed when the mode index and children are not a bijection", () => {
+    const { ledger: store, filePath } = ledger();
+    store.begin(beginInput());
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as { operations: Array<Record<string, unknown>> };
+    const operation = raw.operations[0];
+    operation.modeOperations = {
+      ["a".repeat(64)]: {
+        operationKey: "a".repeat(64), modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
+        checkpoint: "submitting", providerIdempotency: "unsupported", submissionState: "submitting",
+        artifactEvidence: [], createdAt: "2026-08-28T00:00:00.000Z", updatedAt: "2026-08-28T00:00:00.000Z",
+      },
+    };
+    operation.modeOperationKeys = {};
+    fs.writeFileSync(filePath, JSON.stringify(raw));
+
+    expect(() => new OperationLedger(filePath)).toThrowError(/orphan|bijection|index/i);
+  });
+
+  it.each(["dangling", "duplicate", "mismatch", "latest-attempt"] as const)("quarantines a %s mode index contradiction", (kind) => {
+    const { ledger: store, filePath } = ledger();
+    const operation = created(store.begin(beginInput()));
+    store.markSubmitting("run-1", {
+      operationKey: "f".repeat(64), modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
+      providerIdempotency: "unsupported", expectedRevision: operation.revision, now: "2026-08-28T00:00:01.000Z",
+    });
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as { operations: Array<Record<string, unknown>> };
+    const indexes = raw.operations[0].modeOperationKeys as Record<string, Record<string, unknown>>;
+    const [identity, index] = Object.entries(indexes)[0];
+    if (kind === "dangling") index.operationKey = "e".repeat(64);
+    if (kind === "latest-attempt") index.latestAttempt = 2;
+    if (kind === "mismatch") index.modelKey = "paint-v3";
+    if (kind === "duplicate") indexes["0".repeat(64)] = { ...index, operationKey: "f".repeat(64) };
+    raw.operations[0].modeOperationKeys = { ...indexes, [identity]: index };
+    fs.writeFileSync(filePath, JSON.stringify(raw));
+
+    expect(() => new OperationLedger(filePath)).toThrowError(/mode|index|orphan|multiply|mismatch/i);
+  });
+
   it("serializes two real ledger instances and gives only one process the create lease", () => {
     const { ledger: first, filePath } = ledger();
     const second = new OperationLedger(filePath);
-    const canonical = first.begin(beginInput());
+    const canonical = created(first.begin(beginInput()));
     const duplicate = second.begin({
       ...beginInput(),
       runId: "run-2",
@@ -50,15 +215,21 @@ describe("OperationLedger", () => {
       leaseToken: "lease-2",
     });
 
-    expect(duplicate.runId).toBe(canonical.runId);
+    expect(duplicate.canonicalRunId).toBe(canonical.runId);
     const firstLease = first.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2",
+      taskKind: "text_to_image",
+      attempt: 1,
       providerIdempotency: "unsupported",
       expectedRevision: canonical.revision,
       now: "2026-08-28T00:00:01.000Z",
     });
     expect(() => second.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2",
+      taskKind: "text_to_image",
+      attempt: 1,
       providerIdempotency: "unsupported",
       expectedRevision: canonical.revision,
       now: "2026-08-28T00:00:01.000Z",
@@ -74,54 +245,56 @@ describe("OperationLedger", () => {
     expect(persisted).not.toContain("integration-user-confirmation-1");
     expect((store.getByRunId("run-1") as unknown as { idempotencyHash?: string }).idempotencyHash)
       .toMatch(/^[a-f0-9]{64}$/);
-    expect(store.begin({ ...beginInput(), runId: "run-2" }).runId).toBe("run-1");
+    expect(store.begin({ ...beginInput(), runId: "run-2" }).canonicalRunId).toBe("run-1");
   });
 
   it("persists independent mode operations and their exact settled outcomes", () => {
     const { ledger: store, filePath } = ledger();
-    const run = store.begin(beginInput());
+    const run = created(store.begin(beginInput()));
     store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
       modelKey: "paint-v2",
       taskKind: "text_to_image",
+      attempt: 1,
       providerIdempotency: "unsupported",
       expectedRevision: run.revision,
       now: "2026-08-28T00:00:01.000Z",
     });
     let current = new OperationLedger(filePath).getByRunId("run-1")!;
     store.markSettled("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
       expectedRevision: current.revision,
       result: { ok: true, taskKind: "text_to_image" },
       now: "2026-08-28T00:00:02.000Z",
     });
     current = new OperationLedger(filePath).getByRunId("run-1")!;
     store.markSubmitting("run-1", {
-      operationKey: "paint-v2/image_edit/1",
+      operationKey: certificationModeOperationKey("paint-v2", "image_edit", 1),
       modelKey: "paint-v2",
       taskKind: "image_edit",
+      attempt: 1,
       providerIdempotency: "unsupported",
       expectedRevision: current.revision,
       now: "2026-08-28T00:00:03.000Z",
     });
     current = new OperationLedger(filePath).getByRunId("run-1")!;
     store.markSettled("run-1", {
-      operationKey: "paint-v2/image_edit/1",
+      operationKey: certificationModeOperationKey("paint-v2", "image_edit", 1),
       expectedRevision: current.revision,
       result: { ok: false, taskKind: "image_edit", stage: "create", errorCategory: "input" },
       now: "2026-08-28T00:00:04.000Z",
     });
 
     const recovered = new OperationLedger(filePath).getByRunId("run-1") as unknown as {
-      modeOperationKeys: Record<string, string>;
+      modeOperationKeys: Record<string, { operationKey: string; modelKey: string; taskKind: string }>;
       modeOperations: Record<string, { settledResult?: { ok: boolean } }>;
     };
-    expect(recovered.modeOperationKeys).toEqual({
-      "paint-v2/text_to_image": "paint-v2/text_to_image/1",
-      "paint-v2/image_edit": "paint-v2/image_edit/1",
-    });
-    expect(recovered.modeOperations[recovered.modeOperationKeys["paint-v2/text_to_image"]].settledResult?.ok).toBe(true);
-    expect(recovered.modeOperations[recovered.modeOperationKeys["paint-v2/image_edit"]].settledResult?.ok).toBe(false);
+    const indexes = Object.values(recovered.modeOperationKeys);
+    const textToImage = indexes.find((index) => index.taskKind === "text_to_image")!;
+    const imageEdit = indexes.find((index) => index.taskKind === "image_edit")!;
+    expect(textToImage.modelKey).toBe("paint-v2");
+    expect(recovered.modeOperations[textToImage.operationKey].settledResult?.ok).toBe(true);
+    expect(recovered.modeOperations[imageEdit.operationKey].settledResult?.ok).toBe(false);
   });
 
   it("returns the original operation for a duplicate idempotency key and rejects contract drift", () => {
@@ -129,7 +302,8 @@ describe("OperationLedger", () => {
     const first = store.begin(beginInput());
     const duplicate = store.begin({ ...beginInput(), runId: "run-2", leaseOwner: "run-2", leaseToken: "lease-2" });
 
-    expect(duplicate).toEqual(first);
+    expect(first.status).toBe("created");
+    expect(duplicate).toMatchObject({ status: "duplicate", canonicalRunId: "run-1", operation: first.operation });
     expect(store.snapshot().operations).toHaveLength(1);
     expect(() => store.begin({ ...beginInput(), contractDigest: "c".repeat(64) }))
       .toThrowError(/idempotency.*different contract/i);
@@ -139,7 +313,8 @@ describe("OperationLedger", () => {
     const { ledger: store, filePath } = ledger();
     store.begin(beginInput());
     store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
       providerIdempotency: "unsupported",
       expectedRevision: 1,
       now: "2026-08-28T00:00:01.000Z",
@@ -171,7 +346,8 @@ describe("OperationLedger", () => {
       userAction: "reconcile_or_contact_provider",
     });
     expect(() => store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
       providerIdempotency: "unsupported",
       expectedRevision: 4,
       now: "2026-08-28T00:00:03.000Z",
@@ -202,9 +378,10 @@ describe("OperationLedger", () => {
 
   it("recovers each post-submission and promotion checkpoint after a fresh process", () => {
     const { ledger: store, filePath } = ledger();
-    let current = store.begin(beginInput());
+    let current = created(store.begin(beginInput()));
     current = store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
       providerIdempotency: "supported",
       expectedRevision: current.revision,
       now: "2026-08-28T00:00:01.000Z",
@@ -229,7 +406,8 @@ describe("OperationLedger", () => {
     store.cancel("run-1", { expectedRevision: 1, leaseToken: "lease-1", now: "2026-08-28T00:00:10.000Z" });
 
     expect(() => store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
       providerIdempotency: "supported",
       expectedRevision: 1,
       now: "2026-08-27T00:00:00.000Z",
@@ -297,7 +475,8 @@ describe("OperationLedger", () => {
     fail = true;
 
     expect(() => store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
       providerIdempotency: "unknown",
       expectedRevision: 1,
       now: "2026-08-28T00:00:01.000Z",
@@ -322,9 +501,10 @@ describe("OperationLedger", () => {
 
   it("rejects URL-shaped remote task ids instead of persisting signed provider URLs", () => {
     const { ledger: store } = ledger();
-    let current = store.begin(beginInput());
+    let current = created(store.begin(beginInput()));
     current = store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
       providerIdempotency: "unknown",
       expectedRevision: current.revision,
       now: "2026-08-28T00:00:01.000Z",
@@ -346,9 +526,10 @@ describe("OperationLedger", () => {
     "x".repeat(129),
   ])("rejects non-opaque remote task id %j", (remoteTaskId) => {
     const { ledger: store } = ledger();
-    let current = store.begin(beginInput());
+    let current = created(store.begin(beginInput()));
     current = store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
       providerIdempotency: "unknown",
       expectedRevision: current.revision,
       now: "2026-08-28T00:00:01.000Z",
@@ -362,9 +543,10 @@ describe("OperationLedger", () => {
 
   it("rejects unknown or sensitive artifact evidence fields instead of silently filtering them", () => {
     const { ledger: store } = ledger();
-    let current = store.begin(beginInput());
+    let current = created(store.begin(beginInput()));
     current = store.markSubmitting("run-1", {
-      operationKey: "paint-v2/text_to_image/1",
+      operationKey: certificationModeOperationKey("paint-v2", "text_to_image", 1),
+      modelKey: "paint-v2", taskKind: "text_to_image", attempt: 1,
       providerIdempotency: "unknown",
       expectedRevision: current.revision,
       now: "2026-08-28T00:00:01.000Z",
@@ -434,12 +616,12 @@ describe("OperationLedger", () => {
     const compacting = new OperationLedger(filePath, { maxActiveOperations: 3, maxInlineTombstones: 2 } as never);
     for (let index = 0; index < 8; index += 1) {
       const runId = `run-${index}`;
-      const record = compacting.begin(beginInput({
+      const record = created(compacting.begin(beginInput({
         runId,
         idempotencyKey: `confirmation-${index}`,
         leaseOwner: runId,
         leaseToken: `lease-${index}`,
-      }));
+      })));
       compacting.markCheckpoint(runId, {
         checkpoint: "finalized",
         expectedRevision: record.revision,
@@ -453,6 +635,40 @@ describe("OperationLedger", () => {
       .canonicalRunForIdempotencyKey("confirmation-0")).toBe("run-0");
   });
 
+  it("reopens after more than 1000 compactions with a bounded archive head and permanent idempotency history", () => {
+    const { filePath } = ledger();
+    const fastWrite = (target: string, state: unknown) => {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, JSON.stringify(state));
+    };
+    const compacting = new OperationLedger(filePath, {
+      maxActiveOperations: 0,
+      maxInlineTombstones: 0,
+      write: fastWrite,
+      writeArchive: fastWrite,
+    } as never);
+    for (let index = 0; index < 1_005; index += 1) {
+      const runId = `run-${index}`;
+      const begun = compacting.begin(beginInput({
+        runId,
+        idempotencyKey: `confirmation-${index}`,
+        leaseOwner: runId,
+        leaseToken: `lease-${index}`,
+      })) as unknown as { revision?: number; operation?: { revision: number } };
+      compacting.markCheckpoint(runId, {
+        checkpoint: "finalized",
+        expectedRevision: begun.operation?.revision ?? begun.revision!,
+        now: "2026-08-28T00:00:10.000Z",
+      });
+    }
+
+    const persisted = JSON.parse(fs.readFileSync(filePath, "utf8")) as { archives: unknown[] };
+    expect(persisted.archives.length).toBeLessThanOrEqual(1);
+    const reopened = new OperationLedger(filePath);
+    expect(reopened.canonicalRunForIdempotencyKey("confirmation-0")).toBe("run-0");
+    expect(reopened.canonicalRunForIdempotencyKey("confirmation-1004")).toBe("run-1004");
+  }, 60_000);
+
   it("keeps the prior ledger intact across compaction crash and rejects oversized/versioned archives", () => {
     const { filePath } = ledger();
     const crashing = new OperationLedger(filePath, {
@@ -460,14 +676,14 @@ describe("OperationLedger", () => {
       maxInlineTombstones: 0,
       writeArchive: () => { throw new Error("simulated compaction crash"); },
     } as never);
-    const first = crashing.begin(beginInput());
+    const first = created(crashing.begin(beginInput()));
     crashing.markCheckpoint(first.runId, { checkpoint: "finalized", expectedRevision: first.revision, now: "2026-08-28T00:00:10.000Z" });
     expect(() => crashing.begin(beginInput({ runId: "run-2", idempotencyKey: "confirmation-2", leaseOwner: "run-2", leaseToken: "lease-2" })))
       .toThrowError(/compaction crash/);
     expect(new OperationLedger(filePath).canonicalRunForIdempotencyKey(beginInput().idempotencyKey)).toBe("run-1");
 
     const compacting = new OperationLedger(filePath, { maxActiveOperations: 1, maxInlineTombstones: 1 } as never);
-    const second = compacting.begin(beginInput({ runId: "run-2", idempotencyKey: "confirmation-2", leaseOwner: "run-2", leaseToken: "lease-2" }));
+    const second = created(compacting.begin(beginInput({ runId: "run-2", idempotencyKey: "confirmation-2", leaseOwner: "run-2", leaseToken: "lease-2" })));
     compacting.markCheckpoint(second.runId, { checkpoint: "finalized", expectedRevision: second.revision, now: "2026-08-28T00:00:11.000Z" });
     compacting.begin(beginInput({ runId: "run-3", idempotencyKey: "confirmation-3", leaseOwner: "run-3", leaseToken: "lease-3" }));
     const archiveDir = `${filePath}.archive`;

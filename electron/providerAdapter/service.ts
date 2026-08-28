@@ -8,6 +8,7 @@ import {
   ProviderAdapterCertificationCoordinator,
   type CertificationStartCheckpoint,
 } from "../integrationCertification/providerAdapterCoordinator";
+import { certificationModeOperationKey } from "../integrationCertification/modeIdentity";
 import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
 import type { BillingModelKind, Model, Vendor } from "../catalog/types";
 import { AdapterNeedsAiError, compileProviderAdapter, repairProviderAdapter } from "./compiler";
@@ -503,10 +504,13 @@ export class ProviderAdapterService {
         }));
         let verified: AdapterVerificationResult;
         try {
-          const operationKey = `${candidateModel.modelKey}/${mode.taskKind}/${attempt}`;
+          const operationKey = certificationModeOperationKey(candidateModel.modelKey, mode.taskKind, attempt);
           verified = await this.certification.executeSubmission({
             runId: id,
             operationKey,
+            modelKey: candidateModel.modelKey,
+            taskKind: mode.taskKind,
+            attempt,
             beforeSubmit: () => {
               const beforeCreate = this.store.getRun(id);
               if (!beforeCreate || isTerminalAdapterStage(beforeCreate.stage)) {

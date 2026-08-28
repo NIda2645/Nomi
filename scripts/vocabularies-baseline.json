@@ -113,6 +113,11 @@
       "reason": "Pi runtime 端口/快照协议的结果词表（aborted / error / length / stop / toolUse），描述 turn、tool 或 stop reason 的协议语义。"
     },
     {
+      "site": "electron/integrationCertification/operationLedger.ts::type:OperationLedgerBeginResult/property:status/type-union",
+      "members": ["created", "duplicate"],
+      "reason": "OperationLedgerBeginResult.status 是认证启动在跨进程锁内完成幂等占位后的唯一权威结果：created 表示本次调用取得 canonical run 和 create lease，duplicate 表示 idempotency hash 已绑定且调用方必须直接返回既有 canonical run；它决定是否允许 stage、schedule 和远端 create，不能复用展示态或提交状态。"
+    },
+    {
       "site": "electron/integrationCertification/types.ts::variable:CERTIFICATION_START_TRANSACTION_STATES/as-const",
       "members": ["catalog_staged", "committed", "intent", "rolled_back", "run_persisted"],
       "reason": "CERTIFICATION_START_TRANSACTION_STATES 是认证启动跨文件事务的耐久状态机：intent 先占 canonical id，run_persisted 记录本地 run，catalog_staged 记录现有 Catalog writer 已完成候选 staging，committed 才允许调度，rolled_back 保留 canonical tombstone 并要求重新认证；它用于崩溃恢复而非远端提交状态。"

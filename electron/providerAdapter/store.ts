@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { writeJsonFileAtomic } from "../jsonFile";
+import {
+  ProductionRunLockBusyError,
+  createProductionRunLock,
+  type ProductionRunLock,
+} from "../productionRun/productionRunLock";
 import { getSettingsRoot } from "../runtimePaths";
 import type {
   AdapterModeResult,
@@ -11,7 +16,7 @@ import type {
 } from "./types";
 import type { PromotionTerminalStage } from "../integrationCertification/types";
 
-const EMPTY_STATE: ProviderAdapterStoreState = { version: 1, runs: [], revisions: [] };
+const EMPTY_STATE: ProviderAdapterStoreState = { version: 1, revision: 0, runs: [], revisions: [] };
 export const TERMINAL_ADAPTER_STAGES = new Set<ProviderAdapterRun["stage"]>([
   "completed",
   "partial",
@@ -96,6 +101,8 @@ function sanitizeMode(mode: AdapterModeResult): AdapterModeResult {
 function sanitizeRun(run: ProviderAdapterRun): ProviderAdapterRun {
   return {
     ...run,
+    currentModelKey: run.currentModelKey,
+    recovery: run.recovery,
     models: Array.isArray(run.models)
       ? run.models.map((model) => ({ ...model, modes: Array.isArray(model.modes) ? model.modes.map(sanitizeMode) : [] }))
       : [],
@@ -108,6 +115,7 @@ function loadState(filePath: string): ProviderAdapterStoreState {
     if (parsed.version !== 1 || !Array.isArray(parsed.runs) || !Array.isArray(parsed.revisions)) return clone(EMPTY_STATE);
     return {
       version: 1,
+      revision: Number.isSafeInteger(parsed.revision) && Number(parsed.revision) >= 0 ? Number(parsed.revision) : 0,
       runs: (parsed.runs as ProviderAdapterRun[]).map(sanitizeRun),
       revisions: parsed.revisions as ProviderAdapterRevision[],
     };
@@ -122,9 +130,17 @@ export function providerAdapterStorePath(settingsRoot = getSettingsRoot()): stri
 
 export class ProviderAdapterStore {
   private state: ProviderAdapterStoreState;
+  private readonly lock: ProductionRunLock;
 
   constructor(private readonly filePath = providerAdapterStorePath()) {
     this.state = loadState(filePath);
+    this.lock = createProductionRunLock({
+      filePath: `${filePath}.lock`,
+      epochPath: `${filePath}.lock.epoch`,
+      ownerId: `provider-adapter-store-${process.pid}-${crypto.randomUUID()}`,
+      pid: process.pid,
+      leaseMs: 30_000,
+    });
   }
 
   integrationCertificationPath(fileName: string): string {
@@ -132,22 +148,22 @@ export class ProviderAdapterStore {
   }
 
   snapshot(): ProviderAdapterStoreState {
-    return clone(this.state);
+    return clone(this.refresh());
   }
 
   getRun(id: string): ProviderAdapterRun | undefined {
-    const found = this.state.runs.find((run) => run.id === id);
+    const found = this.refresh().runs.find((run) => run.id === id);
     return found ? clone(found) : undefined;
   }
 
   latestRun(vendorKey: string): ProviderAdapterRun | undefined {
-    const found = [...this.state.runs].reverse().find((run) => run.vendorKey === vendorKey);
+    const found = [...this.refresh().runs].reverse().find((run) => run.vendorKey === vendorKey);
     return found ? clone(found) : undefined;
   }
 
   listRuns(options: { vendorKey?: string; activeOnly?: boolean; limit?: number } = {}): ProviderAdapterRun[] {
     const limit = Math.max(1, Math.min(200, Math.trunc(options.limit || 50)));
-    return this.state.runs
+    return this.refresh().runs
       .filter((run) => !options.vendorKey || run.vendorKey === options.vendorKey)
       .filter((run) => !options.activeOnly || !isTerminalAdapterStage(run.stage))
       .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
@@ -157,39 +173,46 @@ export class ProviderAdapterStore {
 
   upsertRun(run: ProviderAdapterRun): ProviderAdapterRun {
     const next = clone(sanitizeRun(run));
-    const index = this.state.runs.findIndex((item) => item.id === run.id);
-    if (index >= 0) this.state.runs[index] = next;
-    else this.state.runs.push(next);
-    this.persist();
-    return clone(next);
+    return this.mutate((fresh) => {
+      const runs = [...fresh.runs];
+      const index = runs.findIndex((item) => item.id === run.id);
+      if (index >= 0) runs[index] = next;
+      else runs.push(next);
+      return { state: { ...fresh, runs }, result: next };
+    });
   }
 
   updateRun(id: string, update: (current: ProviderAdapterRun) => ProviderAdapterRun): ProviderAdapterRun {
-    const index = this.state.runs.findIndex((item) => item.id === id);
-    if (index < 0) throw new Error(`Provider adapter run not found: ${id}`);
-    const next = sanitizeRun(update(clone(this.state.runs[index])));
-    this.state.runs[index] = clone(next);
-    this.persist();
-    return clone(next);
+    return this.mutate((fresh) => {
+      const runs = [...fresh.runs];
+      const index = runs.findIndex((item) => item.id === id);
+      if (index < 0) throw new Error(`Provider adapter run not found: ${id}`);
+      const next = sanitizeRun(update(clone(runs[index])));
+      runs[index] = clone(next);
+      return { state: { ...fresh, runs }, result: next };
+    });
   }
 
   upsertRevision(revision: ProviderAdapterRevision): ProviderAdapterRevision {
-    const index = this.state.revisions.findIndex((item) => item.id === revision.id);
-    if (index >= 0) this.state.revisions[index] = clone(revision);
-    else this.state.revisions.push(clone(revision));
-    this.persist();
-    return clone(revision);
+    return this.mutate((fresh) => {
+      const revisions = [...fresh.revisions];
+      const index = revisions.findIndex((item) => item.id === revision.id);
+      if (index >= 0) revisions[index] = clone(revision);
+      else revisions.push(clone(revision));
+      return { state: { ...fresh, revisions }, result: revision };
+    });
   }
 
   getRevision(id: string): ProviderAdapterRevision | undefined {
-    const found = this.state.revisions.find((revision) => revision.id === id);
+    const found = this.refresh().revisions.find((revision) => revision.id === id);
     return found ? clone(found) : undefined;
   }
 
   deleteRevision(id: string): void {
-    const next = this.state.revisions.filter((revision) => revision.id !== id);
-    if (next.length === this.state.revisions.length) return;
-    this.persistState({ ...this.state, revisions: next });
+    this.mutate((fresh) => ({
+      state: { ...fresh, revisions: fresh.revisions.filter((revision) => revision.id !== id) },
+      result: undefined,
+    }));
   }
 
   finalizePromotion(input: {
@@ -200,36 +223,24 @@ export class ProviderAdapterStore {
     terminalStage: PromotionTerminalStage;
     finalizedAt: string;
   }): ProviderAdapterRun {
-    const fresh = loadState(this.filePath);
-    const runIndex = fresh.runs.findIndex((run) => run.id === input.runId);
-    if (runIndex < 0) throw new Error(`Provider adapter run not found: ${input.runId}`);
-    const current = fresh.runs[runIndex];
-    if (current.activeRevision === input.revision.id && isTerminalAdapterStage(current.stage)) {
-      this.state = fresh;
-      return clone(current);
-    }
-    if (current.activeRevision !== input.expectedActiveRevision) {
-      throw new Error("Provider adapter promotion revision conflict");
-    }
-    const finalized = sanitizeRun({
-      ...current,
-      stage: input.terminalStage,
-      currentModelKey: undefined,
-      completedCount: current.totalCount ?? current.selectedModelKeys.length,
-      activeRevision: input.revision.id,
-      recovery: undefined,
-      stageStartedAt: input.finalizedAt,
-      lastProgressAt: input.finalizedAt,
-      updatedAt: input.finalizedAt,
+    return this.mutate((fresh) => {
+      const runs = [...fresh.runs];
+      const revisions = [...fresh.revisions];
+      const runIndex = runs.findIndex((run) => run.id === input.runId);
+      if (runIndex < 0) throw new Error(`Provider adapter run not found: ${input.runId}`);
+      const current = runs[runIndex];
+      if (current.activeRevision === input.revision.id && isTerminalAdapterStage(current.stage)) return { state: fresh, result: current };
+      if (current.activeRevision !== input.expectedActiveRevision) throw new Error("Provider adapter promotion revision conflict");
+      const finalized = sanitizeRun({ ...current, stage: input.terminalStage, currentModelKey: undefined,
+        completedCount: current.totalCount ?? current.selectedModelKeys.length, activeRevision: input.revision.id,
+        recovery: undefined, stageStartedAt: input.finalizedAt, lastProgressAt: input.finalizedAt, updatedAt: input.finalizedAt });
+      runs[runIndex] = finalized;
+      const revision = { ...input.revision, verifiedModes: input.verifiedModes };
+      const revisionIndex = revisions.findIndex((item) => item.id === revision.id);
+      if (revisionIndex >= 0) revisions[revisionIndex] = revision;
+      else revisions.push(revision);
+      return { state: { ...fresh, runs, revisions }, result: finalized };
     });
-    fresh.runs[runIndex] = finalized;
-    const revision = { ...input.revision, verifiedModes: input.verifiedModes };
-    const revisionIndex = fresh.revisions.findIndex((item) => item.id === revision.id);
-    if (revisionIndex >= 0) fresh.revisions[revisionIndex] = revision;
-    else fresh.revisions.push(revision);
-    writeJsonFileAtomic(this.filePath, fresh);
-    this.state = clone(fresh);
-    return clone(finalized);
   }
 
   markStaleIfConnectionChanged(id: string, currentFingerprint: string): ProviderAdapterRun | undefined {
@@ -243,13 +254,34 @@ export class ProviderAdapterStore {
     }));
   }
 
-  private persist(): void {
-    writeJsonFileAtomic(this.filePath, this.state);
+  private mutate<T>(update: (fresh: ProviderAdapterStoreState) => { state: ProviderAdapterStoreState; result: T }): T {
+    const deadline = Date.now() + 3_000;
+    const spin = new Int32Array(new SharedArrayBuffer(4));
+    let lease: ReturnType<ProductionRunLock["acquire"]> | undefined;
+    while (!lease) {
+      try { lease = this.lock.acquire(); } catch (error) {
+        if (!(error instanceof ProductionRunLockBusyError)) throw error;
+        if (Date.now() >= deadline) throw Object.assign(new Error("Provider adapter store lock timed out"), { cause: error });
+        Atomics.wait(spin, 0, 0, 10);
+      }
+    }
+    try {
+      const fresh = loadState(this.filePath);
+      const mutation = update(clone(fresh));
+      this.lock.assertOwned(lease);
+      if (loadState(this.filePath).revision !== fresh.revision) throw new Error("Provider adapter store revision conflict");
+      const next = { ...mutation.state, version: 1 as const, revision: fresh.revision + 1 };
+      writeJsonFileAtomic(this.filePath, next);
+      this.state = clone(next);
+      return clone(mutation.result);
+    } finally {
+      try { this.lock.release(lease); } catch { /* preserve mutation result */ }
+    }
   }
 
-  private persistState(next: ProviderAdapterStoreState): void {
-    writeJsonFileAtomic(this.filePath, next);
-    this.state = clone(next);
+  private refresh(): ProviderAdapterStoreState {
+    this.state = loadState(this.filePath);
+    return this.state;
   }
 }
 

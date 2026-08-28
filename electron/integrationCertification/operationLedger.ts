@@ -1,18 +1,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { fsyncIfDurable, isDurable } from "../durability";
-import { renameSyncWithRetry } from "../jsonFile";
-import {
-  ProductionRunLockBusyError,
-  createProductionRunLock,
-  type ProductionRunLock,
-} from "../productionRun/productionRunLock";
+import { ProductionRunLockBusyError, createProductionRunLock, type ProductionRunLock } from "../productionRun/productionRunLock";
 import type { CertificationMediaEvidence } from "../providerAdapter/certificationMedia";
 import {
   CERTIFICATION_LEDGER_VERSION,
   CERTIFICATION_SUBMISSION_STATES,
   type CertificationArchiveRef,
+  type CertificationModeIndex,
   type CertificationModeOperation,
   type CertificationOperationLedgerState,
   type CertificationOperationRecord,
@@ -20,6 +15,11 @@ import {
   type CertificationSettledResult,
   type RemoteIdempotencyCapability,
 } from "./types";
+import { certificationModeIdentity, isCertificationOperationKey } from "./modeIdentity";
+import { CertificationOperationArchive } from "./operationLedgerArchive";
+import { CertificationPersistenceError, writeCertificationJsonAtomic } from "./certificationPersistence";
+import { migrateV2Operation } from "./operationLedgerMigration";
+export { CertificationPersistenceError, writeCertificationJsonAtomic } from "./certificationPersistence";
 const MAX_FILE_BYTES = 1_048_576;
 const MAX_OPERATIONS = 1_000;
 const MAX_EVIDENCE = 32;
@@ -32,6 +32,11 @@ const EMPTY_STATE: CertificationOperationLedgerState = {
   tombstones: [],
   archives: [],
 };
+export type OperationLedgerBeginResult = {
+  status: "created" | "duplicate";
+  canonicalRunId: string;
+  operation?: CertificationOperationRecord;
+};
 const EVIDENCE_KEYS = new Set(["kind", "contentType", "byteLength", "sha256", "metadata"]);
 const EVIDENCE_METADATA_NUMBERS = new Set([
   "width", "height", "durationSeconds", "fps", "sampleRate", "channels", "streamCount",
@@ -39,15 +44,6 @@ const EVIDENCE_METADATA_NUMBERS = new Set([
 const EVIDENCE_METADATA_STRINGS = new Set(["videoCodec", "audioCodec"]);
 const SUBMISSION_CHECKPOINTS = new Set(["prepared", "submitting", "submitted", "submission_unknown", "settled"]);
 const TERMINAL_CHECKPOINTS = new Set(["finalized", "cancelled", "superseded"]);
-export class CertificationPersistenceError extends Error {
-  constructor(
-    readonly reason: "corrupt" | "unsupported_version" | "oversized" | "invalid_state" | "lock_timeout",
-    message: string,
-  ) {
-    super(message);
-    this.name = "CertificationPersistenceError";
-  }
-}
 export type OperationLedgerWrite = (filePath: string, state: CertificationOperationLedgerState) => void;
 export type OperationArchiveWrite = (filePath: string, state: unknown) => void;
 type OperationLedgerDependencies = {
@@ -68,7 +64,7 @@ function hash(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 function safeToken(value: unknown, name: string, max = 256): string {
-  if (typeof value !== "string" || !value || value.length > max || /[\u0000-\u001f\u007f]/.test(value) || /:\/\//.test(value)) {
+  if (typeof value !== "string" || !value || value.length > max || value.split("").some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127) || /:\/\//.test(value)) {
     throw new CertificationPersistenceError("invalid_state", `Invalid ${name}`);
   }
   return value;
@@ -185,10 +181,13 @@ function assertSubmissionSemantics(input: {
   }
 }
 
-function validateMode(raw: unknown): CertificationModeOperation {
+function validateMode(raw: unknown, allowLegacyOperationKey = false): CertificationModeOperation {
   if (!isRecord(raw)) throw new CertificationPersistenceError("invalid_state", "Invalid mode operation");
   rejectUnknownKeys(raw, new Set(["operationKey", "modelKey", "taskKind", "attempt", "checkpoint", "providerIdempotency", "submissionState", "remoteTaskId", "artifactEvidence", "settledResult", "userAction", "createdAt", "updatedAt"]), "mode operation");
   const operationKey = safeToken(raw.operationKey, "operation key", 512);
+  if (!allowLegacyOperationKey && !isCertificationOperationKey(operationKey)) {
+    throw new CertificationPersistenceError("invalid_state", "Mode operation key must be opaque");
+  }
   const modelKey = safeToken(raw.modelKey, "model key");
   const taskKind = safeToken(raw.taskKind, "task kind") as CertificationModeOperation["taskKind"];
   const artifactEvidence = sanitizeEvidence(Array.isArray(raw.artifactEvidence) ? raw.artifactEvidence as CertificationMediaEvidence[] : []);
@@ -246,8 +245,26 @@ function validateStartTransaction(raw: unknown): CertificationOperationRecord["s
   return result;
 }
 
+function validateModeIndex(identity: string, raw: unknown): CertificationModeIndex {
+  if (!isRecord(raw)) throw new CertificationPersistenceError("invalid_state", "Invalid mode index");
+  rejectUnknownKeys(raw, new Set(["version", "modelKey", "taskKind", "latestAttempt", "operationKey"]), "mode index");
+  const index: CertificationModeIndex = {
+    version: 1,
+    modelKey: safeToken(raw.modelKey, "indexed model key"),
+    taskKind: safeToken(raw.taskKind, "indexed task kind") as CertificationModeIndex["taskKind"],
+    latestAttempt: Number(raw.latestAttempt),
+    operationKey: safeToken(raw.operationKey, "indexed operation key", 64),
+  };
+  if (raw.version !== 1 || !Number.isSafeInteger(index.latestAttempt) || index.latestAttempt < 1
+    || !isCertificationOperationKey(index.operationKey)
+    || identity !== certificationModeIdentity(index.modelKey, index.taskKind)) {
+    throw new CertificationPersistenceError("invalid_state", "Mode index identity mismatch");
+  }
+  return index;
+}
+
 function validateOperation(raw: unknown): CertificationOperationRecord {
-  if (!isRecord(raw) || raw.version !== 2 || !Number.isSafeInteger(raw.revision) || Number(raw.revision) < 1 || !isRecord(raw.lease) || !isRecord(raw.childRunRef)) {
+  if (!isRecord(raw) || raw.version !== 3 || !Number.isSafeInteger(raw.revision) || Number(raw.revision) < 1 || !isRecord(raw.lease) || !isRecord(raw.childRunRef)) {
     throw new CertificationPersistenceError("invalid_state", "Invalid certification operation");
   }
   rejectUnknownKeys(raw, new Set(["version", "revision", "runId", "contractDigest", "idempotencyHash", "credentialFingerprint", "catalogIdentityFingerprint", "customHeaderIdentityFingerprint", "lineageRootVendorKey", "lease", "attempt", "checkpoint", "operationKey", "providerIdempotency", "submissionState", "remoteTaskId", "artifactEvidence", "settledResult", "modeOperationKeys", "modeOperations", "childRunRef", "startTransaction", "userAction", "createdAt", "updatedAt"]), "certification operation");
@@ -261,15 +278,25 @@ function validateOperation(raw: unknown): CertificationOperationRecord {
       }))
     : {};
   const modeOperationKeys = isRecord(raw.modeOperationKeys)
-    ? Object.fromEntries(Object.entries(raw.modeOperationKeys).map(([key, value]) => [safeToken(key, "mode identity", 512), safeToken(value, "mode operation reference", 512)]))
+    ? Object.fromEntries(Object.entries(raw.modeOperationKeys).map(([key, value]) => {
+        const identity = digest(key, "mode identity");
+        return [identity, validateModeIndex(identity, value)];
+      }))
     : {};
-  for (const [identity, key] of Object.entries(modeOperationKeys)) {
-    const mode = modeOperations[key];
-    if (!mode || identity !== `${mode.modelKey}/${mode.taskKind}`) throw new CertificationPersistenceError("invalid_state", "Mode operation reference mismatch");
+  const references = new Map<string, number>();
+  for (const index of Object.values(modeOperationKeys)) {
+    const mode = modeOperations[index.operationKey];
+    if (!mode || mode.modelKey !== index.modelKey || mode.taskKind !== index.taskKind || mode.attempt !== index.latestAttempt) {
+      throw new CertificationPersistenceError("invalid_state", "Mode operation index mismatch");
+    }
+    references.set(index.operationKey, (references.get(index.operationKey) || 0) + 1);
+  }
+  for (const key of Object.keys(modeOperations)) {
+    if (references.get(key) !== 1) throw new CertificationPersistenceError("invalid_state", "Mode operation child is orphaned or multiply indexed");
   }
   const artifactEvidence = sanitizeEvidence(Array.isArray(raw.artifactEvidence) ? raw.artifactEvidence as CertificationMediaEvidence[] : []);
   const operation: CertificationOperationRecord = {
-    version: 2,
+    version: 3,
     revision: Number(raw.revision),
     runId: safeToken(raw.runId, "run id"),
     contractDigest: digest(raw.contractDigest, "contract digest"),
@@ -293,7 +320,10 @@ function validateOperation(raw: unknown): CertificationOperationRecord {
   };
   if (!Number.isSafeInteger(operation.attempt) || operation.attempt < 1 || operation.attempt > 100) throw new CertificationPersistenceError("invalid_state", "Invalid attempt");
   if (!["supported", "unsupported", "unknown"].includes(operation.providerIdempotency)) throw new CertificationPersistenceError("invalid_state", "Invalid idempotency capability");
-  if (raw.operationKey !== undefined) operation.operationKey = safeToken(raw.operationKey, "operation key", 512);
+  if (raw.operationKey !== undefined) {
+    operation.operationKey = safeToken(raw.operationKey, "operation key", 64);
+    if (!isCertificationOperationKey(operation.operationKey)) throw new CertificationPersistenceError("invalid_state", "Operation key must be opaque");
+  }
   if (raw.remoteTaskId !== undefined) operation.remoteTaskId = opaqueRemoteTaskId(raw.remoteTaskId);
   if (raw.settledResult !== undefined) operation.settledResult = validateSettledResult(raw.settledResult);
   if (raw.userAction === "reconcile_or_contact_provider" || raw.userAction === "review_newer_certification") operation.userAction = raw.userAction;
@@ -361,7 +391,7 @@ function readState(filePath: string): CertificationOperationLedgerState {
   try { parsed = JSON.parse(fs.readFileSync(filePath, "utf8")); } catch {
     throw new CertificationPersistenceError("corrupt", "Certification ledger is corrupt or truncated");
   }
-  if (!isRecord(parsed) || parsed.version !== 2) {
+  if (!isRecord(parsed) || (parsed.version !== 2 && parsed.version !== 3)) {
     throw new CertificationPersistenceError(isRecord(parsed) && typeof parsed.version === "number" ? "unsupported_version" : "corrupt", "Unsupported certification ledger version");
   }
   if (!Array.isArray(parsed.operations) || !Array.isArray(parsed.tombstones) || !Array.isArray(parsed.archives)
@@ -369,8 +399,10 @@ function readState(filePath: string): CertificationOperationLedgerState {
     throw new CertificationPersistenceError("invalid_state", "Invalid certification ledger entries");
   }
   const state: CertificationOperationLedgerState = {
-    version: 2,
-    operations: parsed.operations.map(validateOperation),
+    version: 3,
+    operations: parsed.operations.map((operation) => validateOperation(
+      parsed.version === 2 ? migrateV2Operation(operation, isRecord, (value) => validateMode(value, true)) : operation,
+    )),
     tombstones: parsed.tombstones.map(validateTombstone),
     archives: parsed.archives.map(validateArchiveRef),
   };
@@ -389,40 +421,6 @@ function readState(filePath: string): CertificationOperationLedgerState {
   return state;
 }
 
-export function writeCertificationJsonAtomic(filePath: string, state: unknown): void {
-  const serialized = `${JSON.stringify(state, null, 2)}\n`;
-  if (Buffer.byteLength(serialized) > MAX_FILE_BYTES) throw new CertificationPersistenceError("oversized", "Certification persistence exceeds size limit");
-  const dir = path.dirname(filePath);
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  fs.chmodSync(dir, 0o700);
-  const tempPath = path.join(dir, `.${path.basename(filePath)}.${crypto.randomUUID()}.tmp`);
-  let renamed = false;
-  try {
-    const fd = fs.openSync(tempPath, "wx", 0o600);
-    try {
-      fs.writeFileSync(fd, serialized, "utf8");
-      fsyncIfDurable(fd);
-    } finally {
-      fs.closeSync(fd);
-    }
-    renameSyncWithRetry(tempPath, filePath);
-    renamed = true;
-    fs.chmodSync(filePath, 0o600);
-    if (isDurable()) {
-      try {
-        const dirFd = fs.openSync(dir, "r");
-        try { fsyncIfDurable(dirFd); } finally { fs.closeSync(dirFd); }
-      } catch (error) {
-        if (process.platform !== "win32") throw error;
-      }
-    }
-  } finally {
-    if (!renamed) {
-      try { fs.rmSync(tempPath, { force: true }); } catch { /* preserve original failure */ }
-    }
-  }
-}
-
 export class OperationLedger {
   private state: CertificationOperationLedgerState;
   private readonly write: OperationLedgerWrite;
@@ -431,7 +429,7 @@ export class OperationLedger {
   private readonly lockTimeoutMs: number;
   private readonly maxActiveOperations: number;
   private readonly maxInlineTombstones: number;
-  private readonly archiveDir: string;
+  private readonly archive: CertificationOperationArchive;
 
   constructor(private readonly filePath: string, dependencies: OperationLedgerDependencies = {}) {
     cleanupStaleTemps(filePath);
@@ -441,7 +439,14 @@ export class OperationLedger {
     this.lockTimeoutMs = dependencies.lockTimeoutMs ?? 3_000;
     this.maxActiveOperations = dependencies.maxActiveOperations ?? DEFAULT_MAX_ACTIVE;
     this.maxInlineTombstones = dependencies.maxInlineTombstones ?? DEFAULT_MAX_INLINE_TOMBSTONES;
-    this.archiveDir = path.join(path.dirname(filePath), `${path.basename(filePath)}.archive`);
+    this.archive = new CertificationOperationArchive(
+      path.join(path.dirname(filePath), `${path.basename(filePath)}.archive`),
+      MAX_FILE_BYTES,
+      this.writeArchive,
+      validateTombstone,
+      validateArchiveRef,
+      (reason, message) => new CertificationPersistenceError(reason, message),
+    );
     this.lock = dependencies.lock || createProductionRunLock({
       filePath: `${filePath}.lock`,
       epochPath: `${filePath}.lock.epoch`,
@@ -473,7 +478,7 @@ export class OperationLedger {
     if (active) return active.runId;
     const inline = state.tombstones.find((item) => item.idempotencyHash === idempotencyHash);
     if (inline) return inline.canonicalRunId;
-    return this.readArchiveTombstones().find((item) => item.idempotencyHash === idempotencyHash)?.canonicalRunId;
+    return this.archive.find(idempotencyHash, state.archives)?.canonicalRunId;
   }
 
   bindingForIdempotencyKey(idempotencyKey: string): { canonicalRunId: string; contractDigest: string } | undefined {
@@ -481,7 +486,8 @@ export class OperationLedger {
     const state = this.refresh();
     const active = state.operations.find((item) => item.idempotencyHash === idempotencyHash);
     if (active) return { canonicalRunId: active.runId, contractDigest: active.contractDigest };
-    const terminal = [...state.tombstones, ...this.readArchiveTombstones()].find((item) => item.idempotencyHash === idempotencyHash);
+    const terminal = state.tombstones.find((item) => item.idempotencyHash === idempotencyHash)
+      || this.archive.find(idempotencyHash, state.archives);
     return terminal ? { canonicalRunId: terminal.canonicalRunId, contractDigest: terminal.contractDigest } : undefined;
   }
 
@@ -501,22 +507,26 @@ export class OperationLedger {
     sourceVendorKey?: string;
     selectedModels?: CertificationOperationRecord["startTransaction"]["selectedModels"];
     now: string;
-  }): CertificationOperationRecord {
+  }): OperationLedgerBeginResult {
     return this.mutate((state) => {
       const idempotencyHash = hash(input.idempotencyKey);
       const existing = state.operations.find((item) => item.idempotencyHash === idempotencyHash);
       if (existing) {
         if (existing.contractDigest !== input.contractDigest) throw new Error("The idempotency key is already bound to a different contract");
-        return { state, result: existing };
+        return { state, result: { status: "duplicate", canonicalRunId: existing.runId, operation: existing } as OperationLedgerBeginResult };
       }
-      const tombstone = [...state.tombstones, ...this.readArchiveTombstones()]
-        .find((item) => item.idempotencyHash === idempotencyHash);
+      const tombstone = state.tombstones.find((item) => item.idempotencyHash === idempotencyHash)
+        || this.archive.find(idempotencyHash, state.archives);
       if (tombstone) {
         if (tombstone.contractDigest !== input.contractDigest) throw new Error("The idempotency key is already bound to a different contract");
-        throw new Error(`Certification duplicate was compacted; canonical run is ${tombstone.canonicalRunId}`);
+        return { state, result: { status: "duplicate", canonicalRunId: tombstone.canonicalRunId } as OperationLedgerBeginResult };
       }
+      const unresolved = state.operations.find((item) => item.lineageRootVendorKey === input.lineageRootVendorKey
+        && Object.values(item.modeOperations).some((mode) => ["submitting", "submitted", "unknown"].includes(mode.submissionState))
+        && !["finalized", "cancelled", "superseded"].includes(item.checkpoint));
+      if (unresolved) throw new Error("This provider already has an unresolved remote submission; reconcile it before starting another certification");
       const operation = validateOperation({
-        version: 2,
+        version: 3,
         revision: 1,
         runId: input.runId,
         contractDigest: input.contractDigest,
@@ -544,7 +554,10 @@ export class OperationLedger {
         createdAt: input.now,
         updatedAt: input.now,
       });
-      return { state: { ...state, operations: [...state.operations, operation] }, result: operation };
+      return {
+        state: { ...state, operations: [...state.operations, operation] },
+        result: { status: "created", canonicalRunId: operation.runId, operation } as OperationLedgerBeginResult,
+      };
     });
   }
 
@@ -577,31 +590,30 @@ export class OperationLedger {
 
   markSubmitting(runId: string, input: {
     operationKey: string;
-    modelKey?: string;
-    taskKind?: CertificationModeOperation["taskKind"];
+    modelKey: string;
+    taskKind: CertificationModeOperation["taskKind"];
+    attempt: number;
     providerIdempotency: RemoteIdempotencyCapability;
     expectedRevision: number;
     now: string;
   }): CertificationOperationRecord {
     return this.update(runId, input.expectedRevision, (current) => {
       if (["cancelled", "superseded"].includes(current.checkpoint)) throw new Error("Certification is cancelled");
-      const parsed = input.operationKey.split("/");
-      const modelKey = input.modelKey || parsed[0];
-      const taskKind = input.taskKind || parsed[1] as CertificationModeOperation["taskKind"];
-      const attempt = Number(parsed[2] || current.attempt);
-      const priorKey = current.modeOperationKeys[`${modelKey}/${taskKind}`];
-      const prior = priorKey ? current.modeOperations[priorKey] : undefined;
+      const identity = certificationModeIdentity(input.modelKey, input.taskKind);
+      const priorIndex = current.modeOperationKeys[identity];
+      const prior = priorIndex ? current.modeOperations[priorIndex.operationKey] : undefined;
       if (prior && ["submitting", "submitted", "unknown"].includes(prior.submissionState)) throw new Error("Unknown or submitted work must reconcile before another create");
+      if (prior && input.attempt <= prior.attempt) throw new Error("Certification attempt must advance the latest mode attempt");
       const mode = validateMode({
         operationKey: input.operationKey,
-        modelKey,
-        taskKind,
-        attempt,
+        modelKey: input.modelKey,
+        taskKind: input.taskKind,
+        attempt: input.attempt,
         checkpoint: "submitting",
         providerIdempotency: input.providerIdempotency,
         submissionState: "submitting",
         artifactEvidence: [],
-        createdAt: prior?.createdAt || input.now,
+        createdAt: input.now,
         updatedAt: input.now,
       });
       return this.withModeProjection(current, mode);
@@ -678,7 +690,7 @@ export class OperationLedger {
       if (index < 0) throw new Error(`Certification operation not found: ${runId}`);
       const current = state.operations[index];
       if (current.revision !== expectedRevision) throw new Error("Certification operation revision conflict");
-      const next = validateOperation({ ...update(clone(current)), version: 2, revision: current.revision + 1 });
+      const next = validateOperation({ ...update(clone(current)), version: 3, revision: current.revision + 1 });
       const operations = [...state.operations];
       operations[index] = next;
       return { state: { ...state, operations }, result: next };
@@ -696,6 +708,10 @@ export class OperationLedger {
   }
 
   private withModeProjection(current: CertificationOperationRecord, mode: CertificationModeOperation): CertificationOperationRecord {
+    const identity = certificationModeIdentity(mode.modelKey, mode.taskKind);
+    const prior = current.modeOperationKeys[identity];
+    const modeOperations = { ...current.modeOperations, [mode.operationKey]: mode };
+    if (prior && prior.operationKey !== mode.operationKey) delete modeOperations[prior.operationKey];
     return {
       ...current,
       operationKey: mode.operationKey,
@@ -707,8 +723,11 @@ export class OperationLedger {
       settledResult: mode.settledResult,
       userAction: mode.userAction,
       attempt: mode.attempt,
-      modeOperationKeys: { ...current.modeOperationKeys, [`${mode.modelKey}/${mode.taskKind}`]: mode.operationKey },
-      modeOperations: { ...current.modeOperations, [mode.operationKey]: mode },
+      modeOperationKeys: {
+        ...current.modeOperationKeys,
+        [identity]: { version: 1, modelKey: mode.modelKey, taskKind: mode.taskKind, latestAttempt: mode.attempt, operationKey: mode.operationKey },
+      },
+      modeOperations,
       updatedAt: mode.updatedAt,
     };
   }
@@ -762,35 +781,15 @@ export class OperationLedger {
     }
     if (next.tombstones.length > this.maxInlineTombstones) {
       const archived = next.tombstones.slice(0, next.tombstones.length - this.maxInlineTombstones);
-      const payload = { version: 1, tombstones: archived };
-      const sha256 = hash(JSON.stringify(payload));
-      const fileName = `segment-${sha256}.json`;
-      fs.mkdirSync(this.archiveDir, { recursive: true, mode: 0o700 });
-      const archivePath = path.join(this.archiveDir, fileName);
-      if (!fs.existsSync(archivePath)) this.writeArchive(archivePath, payload);
-      const ref: CertificationArchiveRef = { version: 1, fileName, sha256, count: archived.length };
+      const ref = this.archive.append(archived, next.archives);
       next = {
         ...next,
-        tombstones: next.tombstones.slice(-this.maxInlineTombstones),
-        archives: next.archives.some((item) => item.fileName === fileName) ? next.archives : [...next.archives, ref],
+        tombstones: this.maxInlineTombstones ? next.tombstones.slice(-this.maxInlineTombstones) : [],
+        archives: [ref],
       };
     }
     if (next.operations.length > MAX_OPERATIONS) throw new CertificationPersistenceError("oversized", "Too many active certification operations");
     return next;
-  }
-
-  private readArchiveTombstones(): CertificationOperationTombstone[] {
-    if (!fs.existsSync(this.archiveDir)) return [];
-    const result: CertificationOperationTombstone[] = [];
-    for (const name of fs.readdirSync(this.archiveDir).filter((item) => /^segment-[a-f0-9]{64}\.json$/.test(item)).sort()) {
-      const filePath = path.join(this.archiveDir, name);
-      if (fs.statSync(filePath).size > MAX_FILE_BYTES) throw new CertificationPersistenceError("oversized", "Certification archive exceeds size limit");
-      let parsed: unknown;
-      try { parsed = JSON.parse(fs.readFileSync(filePath, "utf8")); } catch { throw new CertificationPersistenceError("corrupt", "Certification archive is corrupt"); }
-      if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.tombstones)) throw new CertificationPersistenceError("unsupported_version", "Unsupported certification archive version");
-      result.push(...parsed.tombstones.map(validateTombstone));
-    }
-    return result;
   }
 
   private refresh(): CertificationOperationLedgerState {

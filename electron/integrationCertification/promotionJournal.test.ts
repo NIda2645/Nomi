@@ -158,6 +158,40 @@ describe("PromotionJournal", () => {
     expect(() => new PromotionJournal(filePath).wasFinalized("promotion-run-0")).toThrowError(/version/i);
   });
 
+  it("reopens after more than 1000 compactions with one bounded archive head and full replay history", () => {
+    const { filePath } = createJournal();
+    const fastWrite = (target: string, state: unknown) => {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, JSON.stringify(state));
+    };
+    const journal = new PromotionJournal(filePath, {
+      maxEntries: 0,
+      maxInlineTombstones: 0,
+      write: fastWrite,
+      writeArchive: fastWrite,
+    } as never);
+    for (let index = 0; index < 1_005; index += 1) {
+      const input = {
+        ...preparedInput(),
+        journalId: `promotion-many-${index}`,
+        runId: `run-many-${index}`,
+        proposedRevisionId: `adapter-revision-many-${index}`,
+      };
+      journal.prepare(input);
+      journal.replay({
+        commitCatalog: () => ({ status: "committed", committedModes: input.verifiedModes }),
+        finalizeRun: () => {},
+        now: () => "2026-08-28T00:00:01.000Z",
+      });
+    }
+
+    const persisted = JSON.parse(fs.readFileSync(filePath, "utf8")) as { archives: unknown[] };
+    expect(persisted.archives.length).toBeLessThanOrEqual(1);
+    const reopened = new PromotionJournal(filePath);
+    expect(reopened.wasFinalized("promotion-many-0")).toBe(true);
+    expect(reopened.wasFinalized("promotion-many-1004")).toBe(true);
+  }, 60_000);
+
   it("aborts on lease/CAS loss and preserves the previous active revision", () => {
     const { journal } = createJournal();
     journal.prepare(preparedInput());

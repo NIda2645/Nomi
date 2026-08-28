@@ -186,6 +186,7 @@ export type ProviderAdapterRevision = {
 
 export type ProviderAdapterStoreState = {
   version: 1;
+  revision: number;
   runs: ProviderAdapterRun[];
   revisions: ProviderAdapterRevision[];
 };
