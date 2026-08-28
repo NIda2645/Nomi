@@ -99,6 +99,7 @@ export type ExistingConnectionActionsDependencies = {
     input: ExistingConnectionAdapterStartInput,
   ) => Promise<ProviderAdapterRun>;
   getAdapterRun: (runId: string) => ProviderAdapterRun | undefined;
+  getCertificationSourceVendorKey?: (runId: string) => string | undefined;
   listTimeoutMs?: number;
 };
 
@@ -156,26 +157,9 @@ function scrubCredential<T>(value: T, credential: string): T {
 }
 
 function publicRun(run: ProviderAdapterRun, credential: string): PublicProviderAdapterRun {
-  return scrubCredential({
-    id: run.id,
-    vendorKey: run.vendorKey,
-    vendorName: run.vendorName,
-    selectedModelKeys: [...run.selectedModelKeys],
-    stage: run.stage,
-    ...(run.currentModelKey ? { currentModelKey: run.currentModelKey } : {}),
-    ...(run.completedCount !== undefined ? { completedCount: run.completedCount } : {}),
-    ...(run.totalCount !== undefined ? { totalCount: run.totalCount } : {}),
-    ...(run.lastProgressAt ? { lastProgressAt: run.lastProgressAt } : {}),
-    ...(run.stageStartedAt ? { stageStartedAt: run.stageStartedAt } : {}),
-    ...(run.deadlineAt ? { deadlineAt: run.deadlineAt } : {}),
-    repairAttempt: run.repairAttempt,
-    models: structuredClone(run.models),
-    sourceUrls: [...run.sourceUrls],
-    ...(run.activeRevision ? { activeRevision: run.activeRevision } : {}),
-    ...(run.error ? { error: run.error } : {}),
-    createdAt: run.createdAt,
-    updatedAt: run.updatedAt,
-  }, credential);
+  const projected = structuredClone(run) as Partial<ProviderAdapterRun>;
+  delete projected.connectionFingerprint;
+  return scrubCredential(projected as PublicProviderAdapterRun, credential);
 }
 
 function resolveConnection(
@@ -375,7 +359,10 @@ export function createExistingConnectionActions(
           error: "This verification task is still running and cannot be retried yet",
         };
       }
-      const connection = resolveConnection(previous.vendorKey, dependencies);
+      const sourceVendorKey = previous.lineageRootVendorKey
+        || dependencies.getCertificationSourceVendorKey?.(previous.id)
+        || previous.vendorKey;
+      const connection = resolveConnection(sourceVendorKey, dependencies);
       if ("ok" in connection) return connection;
       const requestedModelKey = String(modelKey || "").trim() || undefined;
       const models = persistedRetryModels(previous, connection.summary, requestedModelKey);

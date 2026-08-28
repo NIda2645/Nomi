@@ -88,7 +88,6 @@ describe('model settings workspace structure', () => {
     expect(tasks).toContain('certificationList')
     expect(tasks).toContain('certificationCancel')
     expect(tasks).toContain('httpCertificationRetry')
-    expect(tasks).toContain('idempotencyKey: crypto.randomUUID()')
     expect(tasks).toContain('recordRun(result.run)')
     expect(tasks).toContain('setInterval')
     expect(drawer).toContain('<AdapterTaskList')

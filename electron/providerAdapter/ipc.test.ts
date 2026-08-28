@@ -134,4 +134,21 @@ describe("registerProviderAdapterIpc", () => {
       "nomi:provider-adapter:list",
     ]) expect(handlers.has(legacy)).toBe(false);
   });
+
+  it("returns stable codes without leaking raw main-process certification errors", async () => {
+    const service = {
+      configureHttpConnection: vi.fn(() => { throw new Error("upstream sk-secret exploded"); }),
+      startHttp: vi.fn(async () => { throw new Error("provider English raw detail"); }),
+      get: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []), resumeInterrupted: vi.fn(),
+    };
+    registerProviderAdapterIpc(service as never);
+    const configured = await handlers.get("nomi:integration-certification:http:configure")?.(trustedEvent(), {});
+    const started = await handlers.get("nomi:integration-certification:http:start")?.(trustedEvent(), { idempotencyKey: "same" });
+    const missing = await handlers.get("nomi:integration-certification:get")?.(trustedEvent(), { runId: "missing" });
+
+    expect(configured).toEqual({ ok: false, code: "START_FAILED", error: "Connection configuration failed" });
+    expect(started).toEqual({ ok: false, code: "START_FAILED", error: "Certification start failed" });
+    expect(missing).toEqual({ ok: false, code: "RUN_NOT_FOUND", error: "Certification run not found" });
+    expect(JSON.stringify([configured, started, missing])).not.toMatch(/sk-secret|provider English/);
+  });
 });

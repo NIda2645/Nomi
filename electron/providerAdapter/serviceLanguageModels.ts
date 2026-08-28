@@ -4,12 +4,13 @@ import { readCatalog } from "../catalog/catalogStore";
 import { decryptApiKeyRecord } from "../catalog/secrets";
 import { prioritizeCompilerCandidates } from "./compilerCandidatePriority";
 import type { LoadedConnection } from "./serviceCatalog";
+import { modelHasPublishedExecution } from "../shared/modelPublication";
 
 export function defaultResolveLanguageModels(connection: LoadedConnection): LanguageModelV1[] {
   const state = readCatalog();
   const candidates: Array<{ vendorKey: string; modelKey: string; languageModel: LanguageModelV1 }> = [];
   for (const model of state.models) {
-    if (model.kind !== "text" || !model.enabled) continue;
+    if (model.kind !== "text" || !modelHasPublishedExecution(model, { mappings: state.mappings })) continue;
     const vendor = state.vendors.find((item) => item.key === model.vendorKey && item.enabled && item.baseUrlHint);
     if (!vendor || (vendor.authType && vendor.authType !== "none" && vendor.authType !== "bearer")) continue;
     const apiKey = vendor.authType === "none" ? "" : decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);

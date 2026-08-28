@@ -1,5 +1,6 @@
 import { apiKeyDecryptStatus } from "./secrets";
 import type { BillingModelKind, CatalogState } from "./types";
+import { modelHasPublishedExecution } from "../shared/modelPublication";
 
 export function deriveModelCatalogHealth(state: CatalogState): unknown {
   const enabledVendors = state.vendors.filter((vendor) => vendor.enabled);
@@ -13,7 +14,7 @@ export function deriveModelCatalogHealth(state: CatalogState): unknown {
   const executableModels = enabledModels.filter((model) => {
     const vendor = state.vendors.find((item) => item.key === model.vendorKey);
     const apiKey = state.apiKeysByVendor[model.vendorKey];
-    return Boolean(vendor?.enabled && (
+    return Boolean(modelHasPublishedExecution(model, { mappings: state.mappings }) && vendor?.enabled && (
       vendor.authType === "none" || (apiKey?.enabled && credentialStatus.get(model.vendorKey) === "ok")
     ));
   });

@@ -36,6 +36,19 @@ describe("Comfy candidate test lifecycle", () => {
     expect(lifecycle.fail).not.toHaveBeenCalled();
   });
 
+  it("reports the remote task id before polling so the ledger can reconcile a crash", async () => {
+    lifecycle.active.mockReset().mockReturnValueOnce(null).mockReturnValue({ vendorKey: "candidate-vendor", modelKey: "workflow-1" });
+    const onSubmitted = vi.fn();
+    await expect(runComfyCandidateTest(payload, {
+      runTask: vi.fn().mockResolvedValue({
+        id: "prompt-accepted-1", kind: "text_to_video", status: "succeeded", assets: [{ type: "video", url: "local" }], raw: {},
+      } satisfies TaskResult),
+      fetchTaskResult: vi.fn(),
+      onSubmitted,
+    })).resolves.toMatchObject({ ok: true, remoteTaskId: "prompt-accepted-1" });
+    expect(onSubmitted).toHaveBeenCalledWith("prompt-accepted-1");
+  });
+
   it("returns an idempotent success after the same revision already promoted", async () => {
     lifecycle.active.mockReset().mockReturnValue({ vendorKey: "candidate-vendor", modelKey: "workflow-1" });
     const runTask = vi.fn();

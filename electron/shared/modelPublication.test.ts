@@ -56,10 +56,10 @@ describe("published execution contract", () => {
     })).toEqual({ published: true, publishedModes: ["text_to_image"] });
   });
 
-  it("publishes an active revision without inventing failed modes", () => {
+  it("does not publish an active revision when it has no verified mode", () => {
     expect(derivePublishedExecution(model("video", {
       meta: { adapter: { state: "failed", activeRevision: "revision-good", modes: [] } },
-    }))).toEqual({ published: true, publishedModes: [] });
+    }))).toEqual({ published: false, publishedModes: [] });
   });
 
   it("treats an explicit current publication mask as authoritative over historical active-revision modes and mappings", () => {

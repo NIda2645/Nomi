@@ -19,7 +19,7 @@ import type { CertificationChildRunRef, CertificationContractBinding } from "./t
 
 export type HttpConnectorPrimitives = Pick<
   ProviderAdapterService,
-  "register" | "start" | "getRun" | "latestRun" | "cancel" | "listRuns" | "resumeInterrupted" | "certificationChildRunRef"
+  "register" | "start" | "getRun" | "latestRun" | "cancel" | "listRuns" | "resumeInterrupted" | "certificationChildRunRef" | "certificationSourceVendorKey"
 >;
 
 export type HttpExistingCertificationStart = {
@@ -59,6 +59,7 @@ function defaultExistingActions(service: HttpConnectorPrimitives): ExistingConne
     },
     startAdapter: ({ vendorKey, ...input }) => service.start({ ...input, catalogVendorKey: vendorKey }),
     getAdapterRun: (runId) => service.getRun(runId),
+    getCertificationSourceVendorKey: (runId) => service.certificationSourceVendorKey(runId),
   });
 }
 

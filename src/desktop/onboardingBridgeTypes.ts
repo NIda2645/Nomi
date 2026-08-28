@@ -2,6 +2,7 @@ import type { ProviderKind } from './providerKind'
 import type { AntigravityConnectionStatus, AntigravityTestRequest } from '../../electron/shared/antigravity'
 import type { ModelListFailureKind } from '../../electron/ai/onboarding/modelListResponse'
 import type { AdapterRunStage } from '../../electron/shared/providerAdapterContract'
+import type { CertificationSubmissionState } from '../../electron/integrationCertification/types'
 export type { AntigravityConnectionStatus } from '../../electron/shared/antigravity'
 
 export type DesktopAdapterModeResult = {
@@ -22,6 +23,7 @@ export type DesktopAdapterModeResult = {
 export type DesktopProviderAdapterRun = {
   id: string
   vendorKey: string
+  lineageRootVendorKey?: string
   vendorName: string
   selectedModelKeys: string[]
   stage: AdapterRunStage
@@ -37,9 +39,14 @@ export type DesktopProviderAdapterRun = {
   activeRevision?: string
   error?: string
   recovery?: {
-    reasonCode: 'submission_unknown' | 'submission_reconcile_unavailable'
-    userAction: 'reconcile_or_contact_provider'
+    reasonCode: 'submission_unknown' | 'submission_reconcile_unavailable' | 'promotion_commit_unknown' | 'certification_start_rolled_back'
+    userAction: 'reconcile_or_contact_provider' | 'restart_certification'
   }
+  certificationOperations?: Record<string, {
+    operationKey: string
+    submissionState: CertificationSubmissionState
+    settledResult?: unknown
+  }>
   createdAt: string
   updatedAt: string
 }
@@ -64,7 +71,10 @@ export type DesktopProviderRegistration = {
   savedAt: string
 }
 
-type AdapterResponse = Promise<{ ok: boolean; run?: DesktopHttpCertificationRun; error?: string }>
+type AdapterResponse = Promise<
+  | { ok: true; run: DesktopHttpCertificationRun }
+  | { ok: false; code: ExistingConnectionErrorCode; error?: string }
+>
 type AdapterListResponse = Promise<{ ok: boolean; runs?: DesktopHttpCertificationRun[]; error?: string }>
 type AdapterRegistrationResponse = Promise<{
   ok: boolean
@@ -83,7 +93,7 @@ export type DesktopExistingConnectionSummary = {
   }>
 }
 
-type ExistingConnectionErrorCode =
+export type ExistingConnectionErrorCode =
   | 'CONNECTION_NOT_FOUND'
   | 'BASE_URL_MISSING'
   | 'CREDENTIAL_MISSING'
@@ -104,6 +114,29 @@ type ExistingConnectionFailure = {
 }
 
 export type DesktopOnboardingBridge = {
+  integrationHandoffList?: () => Promise<Array<{
+    requestId: string
+    target: 'credential' | 'connection' | 'workflow' | 'verification'
+    sessionId: string
+    revision: number
+    ownerClientId: string
+    createdAt: string
+    display?: { name?: string; origin?: string; authType?: string; runId?: string; challengeId?: string }
+  }>>
+  integrationHandoffSubscribe?: (callback: (entry: unknown) => void) => () => void
+  integrationHandoffAck?: (requestId: string) => Promise<{ ok: boolean }>
+  integrationSessionSaveCredential?: (payload: { sessionId: string; expectedRevision: number; apiKey: string }) => Promise<unknown>
+  integrationSessionPrepareComfy?: (payload: {
+    vendorKey: string
+    name: string
+    workflow: string
+    binding: unknown
+    modelKey?: string
+    enumOptions?: unknown
+    uiWorkflow?: string
+  }) => Promise<unknown>
+  integrationSessionConfirm?: (payload: { sessionId: string; expectedRevision: number; challengeId: string }) => Promise<unknown>
+  integrationSessionGet?: (sessionId: string) => Promise<unknown>
   antigravityStatus: () => Promise<AntigravityConnectionStatus>
   antigravityTest: (request?: AntigravityTestRequest) => Promise<AntigravityConnectionStatus>
   antigravityCancel: () => Promise<AntigravityConnectionStatus | undefined>
@@ -143,19 +176,6 @@ export type DesktopOnboardingBridge = {
   httpCertificationRetry: (payload: { runId: string; modelKey?: string; idempotencyKey: string }) => Promise<
     { ok: true; run: DesktopHttpCertificationRun } | ExistingConnectionFailure
   >
-  manualCommit: (payload: {
-    vendorName: string
-    baseUrl: string
-    apiKey: string
-    providerKind?: ProviderKind
-    headers?: Record<string, string>
-    models: Array<{ id: string; displayName?: string; kind?: 'text' | 'image' | 'video' | 'audio' | 'model3d' }>
-  }) => Promise<{
-    ok: boolean
-    vendorKey?: string
-    committed?: Array<{ modelKey: string; displayName: string }>
-    error?: string
-  }>
   testConnection: (payload: {
     baseUrl: string
     apiKey: string

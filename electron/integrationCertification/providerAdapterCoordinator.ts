@@ -193,6 +193,10 @@ export class ProviderAdapterCertificationCoordinator {
     return this.ledger.childRunRefForRunId(runId);
   }
 
+  sourceVendorKey(runId: string): string | undefined {
+    return this.ledger.getByRunId(runId)?.startTransaction.sourceVendorKey;
+  }
+
   private async readMaterializingCanonicalRun(
     canonicalRunId: string,
     reservedOperation: CertificationOperationRecord | undefined,

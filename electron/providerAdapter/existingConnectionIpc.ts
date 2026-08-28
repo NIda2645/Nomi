@@ -40,22 +40,30 @@ export function registerExistingConnectionIpc(
   ipcMain.handle("nomi:integration-certification:http:existing:start", async (event, payload: unknown) => {
     assertTrustedSender(event);
     const raw = (payload || {}) as Record<string, unknown>;
-    return service.startExistingHttp({
-      entryPoint: "manual-ui",
-      idempotencyKey: String(raw.idempotencyKey || "").trim(),
-      vendorKey: String(raw.vendorKey || "").trim(),
-      models: selectedModels(payload),
-    });
+    try {
+      return await service.startExistingHttp({
+        entryPoint: "manual-ui",
+        idempotencyKey: String(raw.idempotencyKey || "").trim(),
+        vendorKey: String(raw.vendorKey || "").trim(),
+        models: selectedModels(payload),
+      });
+    } catch {
+      return { ok: false, code: "START_FAILED", error: "Certification start failed" };
+    }
   });
   ipcMain.handle("nomi:integration-certification:http:retry", async (event, payload: unknown) => {
     assertTrustedSender(event);
     const raw = (payload || {}) as Record<string, unknown>;
     const runId = String(raw.runId || "").trim();
     const modelKey = String(raw.modelKey || "").trim();
-    return service.retryHttp({
-      runId,
-      ...(modelKey ? { modelKey } : {}),
-      idempotencyKey: String(raw.idempotencyKey || "").trim(),
-    });
+    try {
+      return await service.retryHttp({
+        runId,
+        ...(modelKey ? { modelKey } : {}),
+        idempotencyKey: String(raw.idempotencyKey || "").trim(),
+      });
+    } catch {
+      return { ok: false, code: "START_FAILED", error: "Certification retry failed" };
+    }
   });
 }

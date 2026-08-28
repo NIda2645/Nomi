@@ -53,7 +53,8 @@ export function registerProviderAdapterIpc(service: ConnectionCertificationServi
     try {
       return { ok: true, registration: service.configureHttpConnection(adapterConnectionInput(payload)) };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      void error;
+      return { ok: false, code: "START_FAILED", error: "Connection configuration failed" };
     }
   });
   ipcMain.handle("nomi:integration-certification:http:start", async (event, payload: unknown) => {
@@ -69,20 +70,21 @@ export function registerProviderAdapterIpc(service: ConnectionCertificationServi
         }),
       };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      void error;
+      return { ok: false, code: "START_FAILED", error: "Certification start failed" };
     }
   });
   ipcMain.handle("nomi:integration-certification:get", async (event, payload: unknown) => {
     assertTrustedSender(event);
     const runId = String((payload as { runId?: unknown } | null)?.runId || "").trim();
     const run = runId ? service.get(runId) : undefined;
-    return run ? { ok: true, run } : { ok: false, error: "Provider adapter run not found" };
+    return run ? { ok: true, run } : { ok: false, code: "RUN_NOT_FOUND", error: "Certification run not found" };
   });
   ipcMain.handle("nomi:integration-certification:cancel", async (event, payload: unknown) => {
     assertTrustedSender(event);
     const runId = String((payload as { runId?: unknown } | null)?.runId || "").trim();
     const run = runId ? service.cancel(runId) : undefined;
-    return run ? { ok: true, run } : { ok: false, error: "Provider adapter run not found" };
+    return run ? { ok: true, run } : { ok: false, code: "RUN_NOT_FOUND", error: "Certification run not found" };
   });
   ipcMain.handle("nomi:integration-certification:list", async (event, payload: unknown) => {
     assertTrustedSender(event);

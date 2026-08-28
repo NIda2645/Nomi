@@ -14,6 +14,7 @@
 // 试跑只验「图能不能跑通 + 参数有没有接对」；界面上已明说这一点，不假装带了。
 import { cancelComfyCandidateTestRevision, mintSpendGrant, runComfyCandidateTestByVendor, type ComfyCandidateTestResultDto, type TaskKind } from '../../../workbench/api/taskApi'
 import { workflowMediaBindings, type WorkflowBinding } from '../comfyuiWorkflowBinding'
+import { buildComfyCertificationFixtureParams } from '../../../../electron/shared/comfyCertificationFixtures'
 
 export type TestRunResult = ComfyCandidateTestResultDto
 
@@ -48,6 +49,15 @@ export async function runTestGeneration(input: {
   // 给一个带前缀的独立 id，别去撞画布节点的 id 空间。
   const nodeId = `comfy-workflow-test-${input.revisionId}`
   const taskKind = taskKindOf(input.binding)
+  const certificationMedia = buildComfyCertificationFixtureParams({
+    vendorKey: input.candidateVendorKey,
+    modelKey: input.modelKey,
+    slots: workflowMediaBindings(input.binding).map((slot) => ({
+      paramKey: slot.paramKey,
+      label: slot.label,
+      mediaKind: slot.mediaKind,
+    })),
+  })
   const candidate = { revisionId: input.revisionId, modelKey: input.modelKey, taskKind }
   try {
     // 付费守卫（electron/spendGrant.ts）硬拦所有未授权的 vendor 出口，试跑也不例外——
@@ -64,6 +74,7 @@ export async function runTestGeneration(input: {
         prompt: input.prompt,
         extras: {
           ...input.extras,
+          ...certificationMedia,
           modelKey: input.modelKey,
           modelAlias: input.modelKey,
           nodeId,

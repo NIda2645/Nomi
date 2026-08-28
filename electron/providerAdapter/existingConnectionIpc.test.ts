@@ -138,4 +138,18 @@ describe("registerExistingConnectionIpc", () => {
     });
     expect(result).toEqual({ ok: true, run: { id: "run-new" } });
   });
+
+  it("converts thrown start and retry failures to stable redacted codes", async () => {
+    const service = {
+      listExistingHttpModels: vi.fn(),
+      startExistingHttp: vi.fn(async () => { throw new Error("raw provider English sk-secret"); }),
+      retryHttp: vi.fn(async () => { throw new Error("raw retry detail sk-secret"); }),
+    };
+    registerExistingConnectionIpc(service as never);
+    const start = await handlers.get("nomi:integration-certification:http:existing:start")?.(trustedEvent(), {});
+    const retry = await handlers.get("nomi:integration-certification:http:retry")?.(trustedEvent(), {});
+    expect(start).toEqual({ ok: false, code: "START_FAILED", error: "Certification start failed" });
+    expect(retry).toEqual({ ok: false, code: "START_FAILED", error: "Certification retry failed" });
+    expect(JSON.stringify([start, retry])).not.toContain("sk-secret");
+  });
 });

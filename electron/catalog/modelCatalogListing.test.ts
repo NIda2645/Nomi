@@ -107,12 +107,16 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
     expect(deriveModelListing(withDisabled).map((e) => e.modelKey)).toEqual(["on"]);
   });
 
-  it("hides staged or failed adapter models without an active revision", () => {
+  it("hides staged or failed adapter models without an active revision even when raw mappings are enabled", () => {
     const hidden = state({
       vendors: [vendor({ key: "relay", authType: "none" })],
       models: [
         model({ modelKey: "staged", vendorKey: "relay", customCall: undefined, meta: { adapter: { state: "unverified", modes: [], updatedAt: "t" } } }),
         model({ modelKey: "failed", vendorKey: "relay", customCall: undefined, meta: { adapter: { state: "failed", modes: [], updatedAt: "t" } } }),
+      ],
+      mappings: [
+        mapping({ id: "staged-map", vendorKey: "relay", modelKey: "staged", enabled: true }),
+        mapping({ id: "failed-map", vendorKey: "relay", modelKey: "failed", enabled: true }),
       ],
     });
 
@@ -131,7 +135,7 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
           modelKey: "active",
           vendorKey: "relay",
           customCall: undefined,
-          meta: { adapter: { state: "failed", activeRevision: "revision-good", modes: [], updatedAt: "t" } },
+          meta: { adapter: { state: "failed", activeRevision: "revision-good", modes: [{ taskKind: "text_to_image", state: "verified" }], updatedAt: "t" } },
         }),
       ],
     });
@@ -139,7 +143,7 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
     expect(deriveModelListing(visible).map((entry) => entry.modelKey)).toEqual(["legacy-text", "active"]);
   });
 
-  it("keeps an enabled custom-call model visible while a failed adapter repair has no active revision", () => {
+  it("does not let a raw custom-call script publish an adapter model without a certified active revision", () => {
     const customCall = state({
       vendors: [vendor({ key: "relay", authType: "none" })],
       models: [
@@ -158,7 +162,7 @@ describe("deriveModelListing — keyStatus 三态（ok / missing / locked）", (
       ],
     });
 
-    expect(deriveModelListing(customCall).map((entry) => entry.modelKey)).toEqual(["scripted"]);
+    expect(deriveModelListing(customCall).map((entry) => entry.modelKey)).toEqual([]);
   });
 
   it("reports legacy plaintext credentials as needs_resave with a migration action", () => {

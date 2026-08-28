@@ -57,7 +57,10 @@ describe("model catalog health credential readiness", () => {
         createdAt: now,
         updatedAt: now,
       })),
-      mappings: [],
+      mappings: vendorKeys.map((vendorKey) => ({
+        id: `${vendorKey}-mapping`, vendorKey, modelKey: `${vendorKey}-image`, taskKind: "text_to_image",
+        name: vendorKey, enabled: true, create: { method: "POST", path: "/images" }, createdAt: now, updatedAt: now,
+      })),
       apiKeysByVendor: {
         secure: { vendorKey: "secure", apiKey: Buffer.from("SAFE").toString("base64"), enc: "safeStorage", enabled: true, createdAt: now, updatedAt: now },
         legacy: { vendorKey: "legacy", apiKey: "SENTINEL-PLAIN", enc: "plain", enabled: true, createdAt: now, updatedAt: now },

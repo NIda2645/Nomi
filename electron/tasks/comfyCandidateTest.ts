@@ -8,7 +8,7 @@ import { CertificationMediaError } from "../providerAdapter/certificationMedia";
 import type { TaskResult } from "../runtime";
 
 export type ComfyCandidateTestResult =
-  | { ok: true; revisionId: string; active: { vendorKey: string; modelKey: string } }
+  | { ok: true; revisionId: string; active: { vendorKey: string; modelKey: string }; remoteTaskId?: string }
   | { ok: false; revisionId: string; reasonCode: string; params: Readonly<Record<string, string | number | boolean>> };
 
 type CandidatePayload = {
@@ -22,6 +22,10 @@ type CandidateEnvelope = { revisionId: string; modelKey: string; taskKind: Profi
 type CandidateTestDependencies = {
   runTask: (payload: unknown) => Promise<TaskResult>;
   fetchTaskResult: (payload: unknown) => Promise<{ vendor: string; result: TaskResult }>;
+  /** Called immediately after the production create response yields its
+   * remote prompt/task id, before any poll. A canonical run owner persists
+   * this id so a crash can reconcile without another create. */
+  onSubmitted?: (remoteTaskId: string) => void | Promise<void>;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   pollIntervalMs?: number;
   timeoutMs?: number;
@@ -107,6 +111,14 @@ async function executeCandidate(
   }, dependencies.timeoutMs ?? 300_000);
   try {
     let result = await awaitWithAbort(dependencies.runTask(intent.payload), controller.signal);
+    // For ComfyUI the task result id is the remote prompt id (the mapping's
+    // response_mapping reads prompt_id). Preserve it as soon as the create
+    // response crosses the runtime boundary; callers can persist it before
+    // polling and therefore reconcile instead of issuing a second /prompt.
+    const remoteTaskId = result.status !== "failed" && typeof result.id === "string" && result.id.trim()
+      ? result.id.trim()
+      : undefined;
+    if (remoteTaskId) await dependencies.onSubmitted?.(remoteTaskId);
     while (result.status === "queued" || result.status === "running") {
       await (dependencies.sleep || wait)(dependencies.pollIntervalMs ?? 1_000, controller.signal);
       result = (await awaitWithAbort(dependencies.fetchTaskResult({
@@ -114,13 +126,15 @@ async function executeCandidate(
         vendor: intent.payload.vendor,
         taskKind: intent.taskKind,
         modelKey: intent.modelKey,
+        comfyCertificationRevisionId: intent.revisionId,
+        certifyOutput: true,
         projectId: intent.payload.request.extras?.projectId,
       }), controller.signal)).result;
     }
     if (result.status !== "succeeded" || !result.assets.length) throw new Error("Provider candidate failed");
     const active = activeComfyCandidateRevision(intent.revisionId);
     if (!active) throw new Error("Candidate completed without atomic promotion");
-    return { ok: true, revisionId: intent.revisionId, active };
+    return { ok: true, revisionId: intent.revisionId, active, ...(remoteTaskId ? { remoteTaskId } : {}) };
   } catch (error) {
     failComfyCandidateRevision({
       revisionId: intent.revisionId,

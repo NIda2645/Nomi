@@ -113,7 +113,8 @@ export function videoBodyKeysForModel(
   vendorKey: string,
   modelKey: string,
 ): string[] {
-  const model = state.models.find((m) => m.vendorKey === vendorKey && m.modelKey === modelKey && m.enabled);
+  const model = state.models.find((m) => m.vendorKey === vendorKey && m.modelKey === modelKey
+    && modelHasPublishedExecution(m, { mappings: state.mappings }));
   const modelMappings = mappingsForModel(state.mappings, vendorKey, modelKey, model?.modelAlias);
   const keys = new Set<string>();
   for (const mapping of modelMappings) {
@@ -143,7 +144,8 @@ export function referenceModeForIntent(
   modelKey: string,
   intent: BillingModelKind,
 ): ProfileKind | null {
-  const model = state.models.find((m) => m.vendorKey === vendorKey && m.modelKey === modelKey && m.enabled);
+  const model = state.models.find((m) => m.vendorKey === vendorKey && m.modelKey === modelKey
+    && modelHasPublishedExecution(m, { mappings: state.mappings }));
   const modelMappings = mappingsForModel(state.mappings, vendorKey, modelKey, model?.modelAlias);
   const referenceModes = referenceSupportForModel(modelMappings).referenceModes;
   const matching = referenceModes.filter((taskKind) => billingKindForTaskKind(taskKind) === intent);

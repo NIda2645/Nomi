@@ -3,6 +3,8 @@ import type { DesktopHttpCertificationRun } from '../../desktop/onboardingBridge
 import { getDesktopBridge } from '../../desktop/bridge'
 import { isAdapterRunTerminal } from './adapterVerificationViewModel'
 import { mergeAdapterRuns, visibleAdapterRuns } from './adapterTaskVisibility'
+import { CertificationIntentKey } from './certificationIntentKey'
+import { CertificationUiError } from './certificationFailureMessage'
 
 export function useProviderAdapterTasks(): {
   runs: DesktopHttpCertificationRun[]
@@ -12,6 +14,7 @@ export function useProviderAdapterTasks(): {
   retryRun: (run: DesktopHttpCertificationRun, modelKey?: string) => Promise<DesktopHttpCertificationRun>
 } {
   const [runs, setRuns] = React.useState<DesktopHttpCertificationRun[]>([])
+  const retryIntentKey = React.useRef(new CertificationIntentKey())
 
   const recordRun = React.useCallback((run: DesktopHttpCertificationRun) => {
     setRuns((current) => mergeAdapterRuns(current, [run]))
@@ -43,14 +46,18 @@ export function useProviderAdapterTasks(): {
 
   const retryRun = React.useCallback(async (run: DesktopHttpCertificationRun, modelKey?: string) => {
     const retryCertification = getDesktopBridge()?.onboarding?.httpCertificationRetry
-    if (!retryCertification) throw new Error('Adapter retry is unavailable')
-    if (!isAdapterRunTerminal(run.stage)) throw new Error('An active adapter run cannot be retried')
+    if (!retryCertification) throw new CertificationUiError('START_FAILED')
+    if (!isAdapterRunTerminal(run.stage)) throw new CertificationUiError('RUN_ACTIVE')
     const result = await retryCertification({
       runId: run.id,
       ...(modelKey ? { modelKey } : {}),
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: retryIntentKey.current.for({ action: 'retry', runId: run.id, modelKey }),
     })
-    if (!result.ok) throw new Error(result.error || 'Adapter retry failed')
+    if (!result.ok) {
+      retryIntentKey.current.rotate()
+      throw new CertificationUiError(result.code)
+    }
+    retryIntentKey.current.rotate()
     recordRun(result.run)
     return result.run
   }, [recordRun])

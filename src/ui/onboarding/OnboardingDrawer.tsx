@@ -60,10 +60,25 @@ import {
   type ModelSettingsPage,
 } from './modelSettingsNavigation'
 import { useModelPageRequest, type ModelPageRequest } from './useModelPageRequest'
+import { CertificationIntentKey } from './certificationIntentKey'
+import { CertificationUiError, certificationFailureMessage } from './certificationFailureMessage'
+import { IntegrationConfirmationPanel, type IntegrationVerificationHandoff } from './IntegrationConfirmationPanel'
+
+type IntegrationHandoff = {
+  requestId: string
+  target: 'credential' | 'connection' | 'workflow' | 'verification'
+  sessionId: string
+  revision: number
+  ownerClientId: string
+  display?: { name?: string; origin?: string; authType?: string; runId?: string; challengeId?: string }
+}
 
 export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPageRequest } = {}): JSX.Element {
   const { t } = useTranslation()
+  const adaptationIntentKey = React.useRef(new CertificationIntentKey())
   const [navigation, setNavigation] = React.useState(createModelSettingsNavigation)
+  const [integrationHandoffs, setIntegrationHandoffs] = React.useState<IntegrationHandoff[]>([])
+  const openedIntegrationHandoff = React.useRef<string | null>(null)
   const page = currentModelSettingsPage(navigation)
   const detailDialogOwner = modelSettingsDialogOwner(navigation)
   const openPage = React.useCallback((next: Exclude<ModelSettingsPage, { type: 'home' }>) => {
@@ -72,14 +87,17 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
   useModelPageRequest(pageRequest, openPage)
   const goBack = React.useCallback(() => setNavigation((current) => backModelSettingsPage(current)), [])
   useModelSettingsPageFocus(page, goBack)
-  const openWizard = React.useCallback((preset?: string, existingVendorKey?: string, initialScreen?: 'form' | 'scriptDraft') => {
-    openPage({
-      type: 'add',
-      ...(preset ? { preset } : {}),
-      ...(existingVendorKey ? { existingVendorKey } : {}),
-      ...(initialScreen ? { initialScreen } : {}),
-    })
-  }, [openPage])
+  const openWizard = React.useCallback(
+    (preset?: string, existingVendorKey?: string, initialScreen?: 'form' | 'scriptDraft') => {
+      openPage({
+        type: 'add',
+        ...(preset ? { preset } : {}),
+        ...(existingVendorKey ? { existingVendorKey } : {}),
+        ...(initialScreen ? { initialScreen } : {}),
+      })
+    },
+    [openPage],
+  )
   const {
     models,
     mappings,
@@ -91,15 +109,58 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     reloadFromError,
     refresh,
   } = useOnboardingDrawerCatalog()
+  const reloadIntegrationHandoffs = React.useCallback(async () => {
+    const list = getDesktopBridge()?.onboarding?.integrationHandoffList
+    if (!list) return
+    try {
+      setIntegrationHandoffs((await list()) as IntegrationHandoff[])
+    } catch { /* bridge retry state handles unavailable main */ }
+  }, [])
+  const openVerificationHandoff = React.useCallback(() => {
+    // The workflow importer has already persisted the handoff before invoking
+    // this callback. Move to the stable home surface so the durable request is
+    // visible even when the user started from a connection detail page.
+    setNavigation({ stack: [{ type: 'home' }] })
+    void reloadIntegrationHandoffs()
+  }, [reloadIntegrationHandoffs])
+  React.useEffect(() => {
+    if (!loaded) return
+    void reloadIntegrationHandoffs()
+    const subscribe = getDesktopBridge()?.onboarding?.integrationHandoffSubscribe
+    const unsubscribe = subscribe?.(() => { void reloadIntegrationHandoffs() })
+    const timer = window.setInterval(() => void reloadIntegrationHandoffs(), 1000)
+    return () => { unsubscribe?.(); window.clearInterval(timer) }
+  }, [loaded, reloadIntegrationHandoffs])
+  React.useEffect(() => {
+    if (!loaded || currentModelSettingsPage(navigation).type !== 'home') return
+    const credential = integrationHandoffs.find((item) => item.target === 'credential')
+    if (!credential || openedIntegrationHandoff.current === credential.requestId) return
+    openedIntegrationHandoff.current = credential.requestId
+    setNavigation((current) =>
+      openModelSettingsPage(current, {
+        type: 'add',
+        integrationSessionId: credential.sessionId,
+      }),
+    )
+  }, [loaded, integrationHandoffs, navigation])
   const [selectedVariants, setSelectedVariants] = React.useState<Record<string, string>>({})
-  const antigravitySession = useAntigravitySettings('vendorKey' in page && page.vendorKey === ANTIGRAVITY_VENDOR_KEY, refresh,
-    page.type === 'model' && page.vendorKey === ANTIGRAVITY_VENDOR_KEY ? page.modelKey : undefined)
+  const antigravitySession = useAntigravitySettings(
+    'vendorKey' in page && page.vendorKey === ANTIGRAVITY_VENDOR_KEY,
+    refresh,
+    page.type === 'model' && page.vendorKey === ANTIGRAVITY_VENDOR_KEY ? page.modelKey : undefined,
+  )
   const antigravityWorkspace = useAntigravityModelWorkspace(
-    page.type === 'model' ? models.find((model) => model.vendorKey === page.vendorKey && model.modelKey === page.modelKey) : undefined,
-    models, antigravitySession, (modelKey) => {
+    page.type === 'model'
+      ? models.find((model) => model.vendorKey === page.vendorKey && model.modelKey === page.modelKey)
+      : undefined,
+    models,
+    antigravitySession,
+    (modelKey) => {
       const familyKey = getAntigravityModelVariant(modelKey)?.familyKey ?? modelKey
       setSelectedVariants((current) => ({ ...current, [familyKey]: modelKey }))
-      setNavigation((current) => replaceModelSettingsPage(current, { type: 'model', vendorKey: ANTIGRAVITY_VENDOR_KEY, modelKey }))
+      setNavigation((current) =>
+        replaceModelSettingsPage(current, { type: 'model', vendorKey: ANTIGRAVITY_VENDOR_KEY, modelKey }),
+      )
     },
   )
   const [customCallTarget, setCustomCallTarget] = React.useState<CustomCallTarget | null>(null)
@@ -130,11 +191,9 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         script: customCallScripts.get(`${vendorKey}/${modelKey}`) || '',
         draft: model?.customCallDraft,
       })
-      setNavigation((current) => openModelSettingsDialogPage(
-        current,
-        { vendorKey, modelKey },
-        { type: 'script', vendorKey, modelKey },
-      ))
+      setNavigation((current) =>
+        openModelSettingsDialogPage(current, { vendorKey, modelKey }, { type: 'script', vendorKey, modelKey }),
+      )
     },
     [models, customCallScripts],
   )
@@ -157,106 +216,155 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     if (terminalRuns.length > 0) refresh()
   }, [adapterRuns, refresh])
 
-  const startModelAdaptation = React.useCallback(async (model: ChipModel): Promise<void> => {
-    const alreadyRunning = adapterRuns.find((run) =>
-      run.vendorKey === model.vendorKey &&
-      run.selectedModelKeys.includes(model.modelKey) &&
-      !isAdapterRunTerminal(run.stage),
-    )
-    if (alreadyRunning) {
-      openPage({ type: 'verification', runId: alreadyRunning.id })
-      return
-    }
-    const adapt = getDesktopBridge()?.onboarding?.httpCertificationStartExisting
-    if (!adapt) {
-      void alertDialog({
-        title: t('onboardingProviders.workspace.adapter.startFailedTitle'),
-        message: t('onboardingProviders.workspace.adapter.unavailable'),
-      })
-      return
-    }
-    const confirmed = await confirmDialog({
-      title: t('onboardingProviders.workspace.adapter.consentTitle'),
-      message: t('onboardingProviders.workspace.adapter.consentMessage'),
-      confirmLabel: t('onboardingProviders.workspace.adapter.consentConfirm'),
-    })
-    if (!confirmed) return
-    const identity = `${model.vendorKey}/${model.modelKey}`
-    setAdaptStartingModel(identity)
-    try {
-      const result = await adapt({
-        entryPoint: 'manual-ui',
-        idempotencyKey: crypto.randomUUID(),
-        vendorKey: model.vendorKey,
-        models: [{
-          modelKey: model.modelKey,
-          labelZh: model.labelZh,
-          kind: model.kind,
-        }],
-      })
-      if (!result.ok) throw new Error(result.error || t('onboardingProviders.workspace.adapter.startFailedBody'))
-      recordAdapterRun(result.run)
-      refresh()
-      openPage({ type: 'verification', runId: result.run.id })
-    } catch (error) {
-      void alertDialog({
-        title: t('onboardingProviders.workspace.adapter.startFailedTitle'),
-        message: error instanceof Error ? error.message : String(error),
-      })
-    } finally {
-      setAdaptStartingModel((current) => current === identity ? null : current)
-    }
-  }, [adapterRuns, openPage, recordAdapterRun, refresh, t])
-
-  const handleDelete = React.useCallback(async (rows: ChipModel[]) => {
-    const bridge = getDesktopBridge()
-    if (!bridge || rows.length === 0) return
-    const single = rows.length === 1
-    const ok = await confirmDialog({
-      title: single ? t('onboardingProviders.drawer.deleteModel') : t('onboardingProviders.drawer.deleteModels', { count: rows.length }),
-      message: single
-        ? t('onboardingProviders.drawer.deleteSingleMessage', { name: rows[0].labelZh })
-        : t('onboardingProviders.drawer.deleteMultipleMessage', { count: rows.length }),
-      confirmLabel: t('common.delete'),
-      danger: true,
-    })
-    if (!ok) return
-    try {
-      bridge.modelCatalog.deleteModels(rows.map((r) => ({ vendorKey: r.vendorKey, modelKey: r.modelKey })))
-      refresh()
-    } catch (e) {
-      void alertDialog({ title: t('onboardingProviders.drawer.deleteFailed'), message: e instanceof Error ? e.message : String(e) })
-    }
-  }, [refresh, t])
-
-  const handleSetEnabled = React.useCallback((rows: ChipModel[], enabled: boolean) => {
-    const bridge = getDesktopBridge()
-    if (!bridge || rows.length === 0) return
-    try {
-      for (const row of rows) {
-        bridge.modelCatalog.upsertModel({ vendorKey: row.vendorKey, modelKey: row.modelKey, enabled })
+  const startModelAdaptation = React.useCallback(
+    async (model: ChipModel): Promise<void> => {
+      const alreadyRunning = adapterRuns.find(
+        (run) =>
+          run.vendorKey === model.vendorKey &&
+          run.selectedModelKeys.includes(model.modelKey) &&
+          !isAdapterRunTerminal(run.stage),
+      )
+      if (alreadyRunning) {
+        openPage({ type: 'verification', runId: alreadyRunning.id })
+        return
       }
-      refresh()
-    } catch (e) {
-      void alertDialog({ title: t('onboardingProviders.drawer.operationFailed'), message: e instanceof Error ? e.message : String(e) })
-    }
-  }, [refresh, t])
+      const adapt = getDesktopBridge()?.onboarding?.httpCertificationStartExisting
+      if (!adapt) {
+        void alertDialog({
+          title: t('onboardingProviders.workspace.adapter.startFailedTitle'),
+          message: t('onboardingProviders.workspace.adapter.unavailable'),
+        })
+        return
+      }
+      const confirmed = await confirmDialog({
+        title: t('onboardingProviders.workspace.adapter.consentTitle'),
+        message: t('onboardingProviders.workspace.adapter.consentMessage'),
+        confirmLabel: t('onboardingProviders.workspace.adapter.consentConfirm'),
+      })
+      if (!confirmed) return
+      const identity = `${model.vendorKey}/${model.modelKey}`
+      setAdaptStartingModel(identity)
+      try {
+        const result = await adapt({
+          entryPoint: 'manual-ui',
+          idempotencyKey: adaptationIntentKey.current.for({
+            action: 'start',
+            vendorKey: model.vendorKey,
+            models: [{ modelKey: model.modelKey, kind: model.kind }],
+          }),
+          vendorKey: model.vendorKey,
+          models: [
+            {
+              modelKey: model.modelKey,
+              labelZh: model.labelZh,
+              kind: model.kind,
+            },
+          ],
+        })
+        if (!result.ok) {
+          adaptationIntentKey.current.rotate()
+          throw new CertificationUiError(result.code)
+        }
+        adaptationIntentKey.current.rotate()
+        recordAdapterRun(result.run)
+        refresh()
+        openPage({ type: 'verification', runId: result.run.id })
+      } catch (error) {
+        void alertDialog({
+          title: t('onboardingProviders.workspace.adapter.startFailedTitle'),
+          message:
+            error instanceof CertificationUiError
+              ? certificationFailureMessage(t, error.code)
+              : t('modelSetup.saveFailedHint'),
+        })
+      } finally {
+        setAdaptStartingModel((current) => (current === identity ? null : current))
+      }
+    },
+    [adapterRuns, openPage, recordAdapterRun, refresh, t],
+  )
 
-  const handleRetype = React.useCallback((row: ChipModel, kind: string) => {
-    const bridge = getDesktopBridge()
-    const retype = bridge?.modelCatalog.retypeModel
-    if (!retype) return
-    try {
-      retype({ vendorKey: row.vendorKey, modelKey: row.modelKey, kind })
-      refresh()
-    } catch (e) {
-      void alertDialog({ title: t('onboardingProviders.drawer.operationFailed'), message: e instanceof Error ? e.message : String(e) })
-    }
-  }, [refresh, t])
+  const handleDelete = React.useCallback(
+    async (rows: ChipModel[]) => {
+      const bridge = getDesktopBridge()
+      if (!bridge || rows.length === 0) return
+      const single = rows.length === 1
+      const ok = await confirmDialog({
+        title: single
+          ? t('onboardingProviders.drawer.deleteModel')
+          : t('onboardingProviders.drawer.deleteModels', { count: rows.length }),
+        message: single
+          ? t('onboardingProviders.drawer.deleteSingleMessage', { name: rows[0].labelZh })
+          : t('onboardingProviders.drawer.deleteMultipleMessage', { count: rows.length }),
+        confirmLabel: t('common.delete'),
+        danger: true,
+      })
+      if (!ok) return
+      try {
+        bridge.modelCatalog.deleteModels(rows.map((r) => ({ vendorKey: r.vendorKey, modelKey: r.modelKey })))
+        refresh()
+      } catch (e) {
+        void alertDialog({
+          title: t('onboardingProviders.drawer.deleteFailed'),
+          message: e instanceof Error ? e.message : String(e),
+        })
+      }
+    },
+    [refresh, t],
+  )
 
-  const { knownCards, otherVendorGroups, comfyuiInstances, comfyuiConnected, codexImageEnabled, antigravityEnabled,
-    connectionTitle, homeConnections, availableHomeConnections } = projectOnboardingConnections({
-    models, vendorMeta, dreaminaStatus, openPage,
+  const handleSetEnabled = React.useCallback(
+    (rows: ChipModel[], enabled: boolean) => {
+      const bridge = getDesktopBridge()
+      if (!bridge || rows.length === 0) return
+      try {
+        for (const row of rows) {
+          bridge.modelCatalog.upsertModel({ vendorKey: row.vendorKey, modelKey: row.modelKey, enabled })
+        }
+        refresh()
+      } catch (e) {
+        void alertDialog({
+          title: t('onboardingProviders.drawer.operationFailed'),
+          message: e instanceof Error ? e.message : String(e),
+        })
+      }
+    },
+    [refresh, t],
+  )
+
+  const handleRetype = React.useCallback(
+    (row: ChipModel, kind: string) => {
+      const bridge = getDesktopBridge()
+      const retype = bridge?.modelCatalog.retypeModel
+      if (!retype) return
+      try {
+        retype({ vendorKey: row.vendorKey, modelKey: row.modelKey, kind })
+        refresh()
+      } catch (e) {
+        void alertDialog({
+          title: t('onboardingProviders.drawer.operationFailed'),
+          message: e instanceof Error ? e.message : String(e),
+        })
+      }
+    },
+    [refresh, t],
+  )
+
+  const {
+    knownCards,
+    otherVendorGroups,
+    comfyuiInstances,
+    comfyuiConnected,
+    codexImageEnabled,
+    antigravityEnabled,
+    connectionTitle,
+    homeConnections,
+    availableHomeConnections,
+  } = projectOnboardingConnections({
+    models,
+    vendorMeta,
+    dreaminaStatus,
+    openPage,
     localNames: {
       dreamina: t('onboardingProviders.dreamina.name'),
       codex: t('onboardingProviders.codexImage.name'),
@@ -265,7 +373,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
   })
   const kindGuessGap = resolveKindGuessGap(models, vendorMeta)
   const renderVendorCard = (
-    card: typeof knownCards[number],
+    card: (typeof knownCards)[number],
     detailMode = false,
     focus?: Extract<ModelSettingsPage, { type: 'connection' }>['focus'],
   ) => (
@@ -281,7 +389,10 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       detailMode={detailMode}
       focus={focus}
       {...(detailMode
-        ? { onOpenModel: (model: ChipModel) => openPage({ type: 'model', vendorKey: model.vendorKey, modelKey: model.modelKey }) }
+        ? {
+            onOpenModel: (model: ChipModel) =>
+              openPage({ type: 'model', vendorKey: model.vendorKey, modelKey: model.modelKey }),
+          }
         : {})}
       {...(!detailMode
         ? { onOpenDetails: () => openPage({ type: 'connection', vendorKey: card.directory.vendorKey }) }
@@ -312,31 +423,29 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         detailMode={detailMode}
         focus={focus}
         {...(detailMode
-          ? { onOpenModel: (model: ChipModel) => openPage({ type: 'model', vendorKey: model.vendorKey, modelKey: model.modelKey }) }
+          ? {
+              onOpenModel: (model: ChipModel) =>
+                openPage({ type: 'model', vendorKey: model.vendorKey, modelKey: model.modelKey }),
+            }
           : {})}
-        {...(!detailMode
-          ? { onOpenDetails: () => openPage({ type: 'connection', vendorKey: group.vendorKey }) }
-          : {})}
+        {...(!detailMode ? { onOpenDetails: () => openPage({ type: 'connection', vendorKey: group.vendorKey }) } : {})}
       />
     )
   }
-  const handleCertificationStarted = React.useCallback((run: DesktopHttpCertificationRun): void => {
-    refresh()
-    setCustomCallTarget(null)
-    recordAdapterRun(run)
-    setNavigation((current) => openModelSettingsPage(current, { type: 'verification', runId: run.id }))
-  }, [recordAdapterRun, refresh])
+  const handleCertificationStarted = React.useCallback(
+    (run: DesktopHttpCertificationRun): void => {
+      refresh()
+      setCustomCallTarget(null)
+      recordAdapterRun(run)
+      setNavigation((current) => openModelSettingsPage(current, { type: 'verification', runId: run.id }))
+    },
+    [recordAdapterRun, refresh],
+  )
 
   if (page.type === 'platformConnect') {
     const card = knownCards.find((candidate) => candidate.directory.vendorKey === page.vendorKey)
     if (!card) {
-      return (
-        <ModelWorkspaceRecovery
-          vendorName={page.vendorKey}
-          modelKey=""
-          onBack={goBack}
-        />
-      )
+      return <ModelWorkspaceRecovery vendorName={page.vendorKey} modelKey="" onBack={goBack} />
     }
     return (
       <KnownVendorKeyConnectPage
@@ -345,7 +454,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         modelCount={card.vendorModels.length}
         onBack={goBack}
         onSaved={refresh}
-        onFinished={goBack}
+        onContinueVerification={() => openWizard(undefined, card.directory.vendorKey)}
       />
     )
   }
@@ -369,6 +478,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
           models={comfy.models}
           mappings={mappings}
           onChanged={refresh}
+          onVerificationRequested={openVerificationHandoff}
           detailMode
         />
       )
@@ -380,20 +490,22 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       return <CodexLocalImageCard enabled={codexImageEnabled} onChanged={refresh} detailMode />
     }
     if (vendorKey === ANTIGRAVITY_VENDOR_KEY) {
-      return <AntigravityConnectionCard enabled={antigravityEnabled}
-        models={models.filter((model) => model.vendorKey === ANTIGRAVITY_VENDOR_KEY)}
-        selectedVariants={selectedVariants} session={antigravitySession} onChanged={refresh}
-        onOpenModel={(model) => openPage({ type: 'model', vendorKey: model.vendorKey, modelKey: model.modelKey })} />
+      return (
+        <AntigravityConnectionCard
+          enabled={antigravityEnabled}
+          models={models.filter((model) => model.vendorKey === ANTIGRAVITY_VENDOR_KEY)}
+          selectedVariants={selectedVariants}
+          session={antigravitySession}
+          onChanged={refresh}
+          onOpenModel={(model) => openPage({ type: 'model', vendorKey: model.vendorKey, modelKey: model.modelKey })}
+        />
+      )
     }
     return null
   }
 
-  const existingConnectionSummary = (vendorKey?: string) => buildExistingConnectionSummary(
-    vendorKey,
-    vendorKey ? connectionTitle(vendorKey) : '',
-    models,
-    vendorMeta,
-  )
+  const existingConnectionSummary = (vendorKey?: string) =>
+    buildExistingConnectionSummary(vendorKey, vendorKey ? connectionTitle(vendorKey) : '', models, vendorMeta)
 
   const renderConnectionWorkspace = (
     vendorKey: string,
@@ -401,12 +513,12 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
   ): JSX.Element => {
     return (
       <ConnectionWorkspacePage
-      vendorKey={vendorKey}
-      title={connectionTitle(vendorKey)}
-      details={renderConnectionDetails(vendorKey, focus)}
-      canAddModels={canAddModelsToConnection(vendorKey, vendorMeta)}
-      onAddModels={() => openWizard(undefined, vendorKey)}
-      onBack={goBack}
+        vendorKey={vendorKey}
+        title={connectionTitle(vendorKey)}
+        details={renderConnectionDetails(vendorKey, focus)}
+        canAddModels={canAddModelsToConnection(vendorKey, vendorMeta)}
+        onAddModels={() => openWizard(undefined, vendorKey)}
+        onBack={goBack}
       />
     )
   }
@@ -438,14 +550,31 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         initialPreset={page.preset}
         initialScreen={page.initialScreen}
         existingVendorKey={page.existingVendorKey}
+        integrationSessionId={page.integrationSessionId}
+        integrationHandoffRequestId={
+          integrationHandoffs.find(
+            (item) => item.sessionId === page.integrationSessionId && item.target === 'credential',
+          )?.requestId
+        }
         existingConnection={existingConnectionSummary(page.existingVendorKey)}
         onDirectScriptDraftCreated={(identity) => {
           setCustomCallTarget({ ...identity, script: '', draft: true })
-          setNavigation((current) => openModelSettingsDialogPage(
-            current,
-            identity,
-            { type: 'script', vendorKey: identity.vendorKey, modelKey: identity.modelKey },
-          ))
+          setNavigation((current) =>
+            openModelSettingsDialogPage(current, identity, { type: 'script', vendorKey: identity.vendorKey, modelKey: identity.modelKey }),
+          )
+          refresh()
+        }}
+      />
+    )
+  }
+
+  const verificationHandoff = integrationHandoffs.find((item) => item.target === 'verification')
+  if (page.type === 'home' && verificationHandoff) {
+    return (
+      <IntegrationConfirmationPanel
+        handoff={verificationHandoff as IntegrationVerificationHandoff}
+        onDone={() => {
+          void reloadIntegrationHandoffs()
           refresh()
         }}
       />
@@ -458,28 +587,44 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       <AdapterTaskWorkspace
         run={run}
         onBack={goBack}
-        onCancel={() => { if (run) void cancelAdapterRun(run) }}
+        onCancel={() => {
+          if (run) void cancelAdapterRun(run)
+        }}
         onRetry={(modelKey) => {
           if (!run) return
-          void retryAdapterRun(run, modelKey).then((nextRun) => {
-            setNavigation((current) => replaceModelSettingsPage(current, { type: 'verification', runId: nextRun.id }))
-          }).catch((error) => void alertDialog({ title: t('onboardingProviders.drawer.operationFailed'), message: error instanceof Error ? error.message : String(error) }))
+          void retryAdapterRun(run, modelKey)
+            .then((nextRun) => {
+              setNavigation((current) => replaceModelSettingsPage(current, { type: 'verification', runId: nextRun.id }))
+            })
+            .catch(
+              (error) =>
+                void alertDialog({ title: t('onboardingProviders.drawer.operationFailed'),
+                  message:
+                    error instanceof CertificationUiError
+                      ? certificationFailureMessage(t, error.code)
+                      : t('modelSetup.saveFailedHint'),
+                }),
+            )
         }}
         onSelfConnect={(modelKey) => {
           if (!run) return
           setCustomCallTarget(null)
-          setNavigation((current) => openModelSettingsDialog(current, {
-            vendorKey: run.vendorKey,
-            modelKey,
-          }))
+          setNavigation((current) =>
+            openModelSettingsDialog(current, {
+              vendorKey: run.vendorKey,
+              modelKey,
+            }),
+          )
         }}
         onRecoverConnection={(target) => {
           if (!run) return
           connectionRecoveryRequestRef.current += 1
-          setNavigation((current) => openModelSettingsConnectionPage(current, run.vendorKey, {
-            target,
-            requestId: connectionRecoveryRequestRef.current,
-          }))
+          setNavigation((current) =>
+            openModelSettingsConnectionPage(current, run.vendorKey, {
+              target,
+              requestId: connectionRecoveryRequestRef.current,
+            }),
+          )
         }}
       />,
     )
@@ -489,9 +634,12 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     const target = customCallTarget ?? {
       vendorKey: page.vendorKey,
       modelKey: page.modelKey,
-      label: models.find((model) => model.vendorKey === page.vendorKey && model.modelKey === page.modelKey)?.labelZh || page.modelKey,
+      label:
+        models.find((model) => model.vendorKey === page.vendorKey && model.modelKey === page.modelKey)?.labelZh ||
+        page.modelKey,
       script: customCallScripts.get(`${page.vendorKey}/${page.modelKey}`) || '',
-      draft: models.find((model) => model.vendorKey === page.vendorKey && model.modelKey === page.modelKey)?.customCallDraft,
+      draft: models.find((model) => model.vendorKey === page.vendorKey && model.modelKey === page.modelKey)
+        ?.customCallDraft,
     }
     return renderInModelDialog(
       <CustomCallEditor
@@ -505,11 +653,13 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         onContinueCapability={() => {
           setCustomCallTarget(null)
           setEnableAfterCapability(`${page.vendorKey}/${page.modelKey}`)
-          setNavigation((current) => replaceModelSettingsPage(current, {
-            type: 'capability',
-            vendorKey: page.vendorKey,
-            modelKey: page.modelKey,
-          }))
+          setNavigation((current) =>
+            replaceModelSettingsPage(current, {
+              type: 'capability',
+              vendorKey: page.vendorKey,
+              modelKey: page.modelKey,
+            }),
+          )
         }}
       />,
     )
@@ -542,16 +692,17 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     const model = models.find((item) => item.vendorKey === page.vendorKey && item.modelKey === page.modelKey)
     const canUseScript = canConfigureModelRequestScript(model)
     const activeRun = model
-      ? adapterRuns.find((run) =>
-          run.vendorKey === model.vendorKey &&
-          run.selectedModelKeys.includes(model.modelKey) &&
-          !isAdapterRunTerminal(run.stage),
+      ? adapterRuns.find(
+          (run) =>
+            run.vendorKey === model.vendorKey &&
+            run.selectedModelKeys.includes(model.modelKey) &&
+            !isAdapterRunTerminal(run.stage),
         )
       : undefined
     const modelRun = model
-      ? activeRun ?? adapterRuns.find((run) => run.id === model.adapterRunId) ?? adapterRuns.find((run) =>
-          run.vendorKey === model.vendorKey && run.selectedModelKeys.includes(model.modelKey),
-        )
+      ? (activeRun ??
+        adapterRuns.find((run) => run.id === model.adapterRunId) ??
+        adapterRuns.find((run) => run.vendorKey === model.vendorKey && run.selectedModelKeys.includes(model.modelKey)))
       : undefined
     const vendor = vendorMeta.get(page.vendorKey)
     const canAutoAdapt = Boolean(
@@ -564,18 +715,9 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       page.vendorKey !== ANTIGRAVITY_VENDOR_KEY,
     )
     const vendorName = connectionTitle(page.vendorKey)
-    const recovery = (
-      <ModelWorkspaceRecovery
-        vendorName={vendorName}
-        modelKey={page.modelKey}
-        onBack={goBack}
-      />
-    )
+    const recovery = <ModelWorkspaceRecovery vendorName={vendorName} modelKey={page.modelKey} onBack={goBack} />
     return renderInModelDialog(
-      <ModelSettingsDetailBoundary
-        key={`${page.vendorKey}/${page.modelKey}`}
-        fallback={recovery}
-      >
+      <ModelSettingsDetailBoundary key={`${page.vendorKey}/${page.modelKey}`} fallback={recovery}>
         <ModelWorkspacePage
           model={model}
           connection={antigravityWorkspace}
@@ -589,15 +731,23 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
           enabledLocked={Boolean(model?.customCallDraft || activeRun)}
           mappings={mappings}
           onOpenScript={() => openCustomCall(page.vendorKey, page.modelKey)}
-          onStartAdapt={() => { if (model) void startModelAdaptation(model) }}
+          onStartAdapt={() => {
+            if (model) void startModelAdaptation(model)
+          }}
           onOpenTask={() => {
             if (!modelRun) return
             openPage({ type: 'verification', runId: modelRun.id })
           }}
           onOpenCapability={() => openPage({ type: 'capability', vendorKey: page.vendorKey, modelKey: page.modelKey })}
-          onSetEnabled={(enabled) => { if (model && !model.customCallDraft) handleSetEnabled([model], enabled) }}
-          onRetype={(kind) => { if (model) handleRetype(model, kind) }}
-          onDelete={() => { if (model) void handleDelete([model]) }}
+          onSetEnabled={(enabled) => {
+            if (model && !model.customCallDraft) handleSetEnabled([model], enabled)
+          }}
+          onRetype={(kind) => {
+            if (model) handleRetype(model, kind)
+          }}
+          onDelete={() => {
+            if (model) void handleDelete([model])
+          }}
           onBack={goBack}
         />
       </ModelSettingsDetailBoundary>,
@@ -612,28 +762,34 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       loaded={loaded}
       bridgeMissing={bridgeMissing}
       taskCount={visibleAdapterTaskRuns.length}
-      taskContent={(
+      taskContent={
         <AdapterTaskList
           runs={visibleAdapterTaskRuns}
           onOpen={(run) => openPage({ type: 'verification', runId: run.id })}
-          onCancel={(run) => { void cancelAdapterRun(run) }}
+          onCancel={(run) => {
+            void cancelAdapterRun(run)
+          }}
         />
-      )}
-      diagnostic={kindGuessGap ? (
-        <div data-drawer-kind-gap className="border-l-2 border-nomi-warning bg-nomi-ink-05 px-3 py-2">
-          <div className="text-caption font-medium text-nomi-ink">
-            {t('onboardingProviders.drawer.kindGapTitle', {
-              kinds: kindGuessGap.missing.map((key) => t(key)).join(' / '),
-            })}
+      }
+      diagnostic={
+        kindGuessGap ? (
+          <div data-drawer-kind-gap className="border-l-2 border-nomi-warning bg-nomi-ink-05 px-3 py-2">
+            <div className="text-caption font-medium text-nomi-ink">
+              {t('onboardingProviders.drawer.kindGapTitle', {
+                kinds: kindGuessGap.missing.map((key) => t(key)).join(' / '),
+              })}
+            </div>
+            <div className="mt-0.5 text-micro leading-relaxed text-nomi-ink-60">
+              {t('onboardingProviders.drawer.kindGapBody', {
+                count: kindGuessGap.count,
+                kind: t(
+                  `onboardingProviders.modelControls.kind.${kindGuessGap.dominantKind}` as 'onboardingProviders.modelControls.kind.text',
+                ),
+              })}
+            </div>
           </div>
-          <div className="mt-0.5 text-micro leading-relaxed text-nomi-ink-60">
-            {t('onboardingProviders.drawer.kindGapBody', {
-              count: kindGuessGap.count,
-              kind: t(`onboardingProviders.modelControls.kind.${kindGuessGap.dominantKind}` as 'onboardingProviders.modelControls.kind.text'),
-            })}
-          </div>
-        </div>
-      ) : undefined}
+        ) : undefined
+      }
       networkContent={<NetworkSection />}
       availableFooter={comfyuiConnected.length > 0 ? <AddComfyuiInstanceButton onAdded={refresh} /> : undefined}
       onReload={reloadFromError}

@@ -1,7 +1,6 @@
 import type { ProfileKind } from "../catalog/types";
 import type { CertificationMediaEvidence } from "../providerAdapter/certificationMedia";
 import type { AdapterVerificationResult } from "../providerAdapter/verifier";
-
 export const CERTIFICATION_LEDGER_VERSION = 3 as const;
 export const PROMOTION_JOURNAL_VERSION = 2 as const;
 export const CERTIFICATION_SUBMISSION_STATES = ["idle", "submitting", "submitted", "unknown", "settled"] as const;

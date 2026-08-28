@@ -226,7 +226,14 @@ describe("importComfyWorkflowToCatalog（S3 落库）", () => {
       .find((mapping) => mapping.modelKey === modelKey);
     expect(stagedModel).toBeTruthy();
     expect(stagedMapping).toBeTruthy();
-    upsertModelCatalogModel({ ...stagedModel, enabled: true });
+    upsertModelCatalogModel({
+      ...stagedModel,
+      enabled: true,
+      meta: {
+        ...((stagedModel?.meta as Record<string, unknown>) || {}),
+        adapter: { state: "verified", activeRevision: "comfy-active", modes: [{ taskKind: "image_to_video", state: "verified" }] },
+      },
+    });
     upsertModelCatalogMapping({ ...stagedMapping, enabled: true });
     expect(listModelCatalogMappings({ vendorKey: initial.vendorKey }) as Array<{ taskKind: string; modelKey?: string }>)
       .toContainEqual(expect.objectContaining({ modelKey, taskKind: "image_to_video" }));

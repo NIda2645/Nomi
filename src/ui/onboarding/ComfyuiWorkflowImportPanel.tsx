@@ -20,10 +20,8 @@ import { cn } from '../../utils/cn'
 import { NomiSelect } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { toast } from '../toast'
+import { cancelComfyCandidateTestRevision, type TaskKind } from '../../workbench/api/taskApi'
 import { paramCandidates } from './comfyuiParamCandidates'
-import { runTestGeneration } from './workflowPage/runTestGeneration'
-import { cancelComfyCandidateTestRevision } from '../../workbench/api/taskApi'
-import { candidateFailureText, candidateFromWorkflowMutation, settleCandidateUiRun, type ComfyCandidateUiState } from './comfyCandidateUiFlow'
 // 类型与参数塑形规则的单一真相源——整页（工作流设置）与这条导入路共用同一份，
 // 抄第二份必然漂（那正是「提示词被参数占位覆盖」反复复发的形状）。
 import {
@@ -54,6 +52,9 @@ type Reconcile = {
 }
 type ComfyuiWorkflowImportPanelProps = {
   onImported: () => void
+  /** The canonical integration session has been staged and is awaiting the
+   * trusted verification handoff. The owner surface decides where to show it. */
+  onVerificationRequested?: () => void
   /** 多实例：这张面板属于**哪一台** ComfyUI（对账打它的 /object_info、工作流落它名下）。缺省=第一台。 */
   vendorKey?: string
 }
@@ -111,7 +112,7 @@ const PARAM_PRESETS: ParamPreset[] = [
   },
 ]
 
-export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWorkflowImportPanelProps): JSX.Element {
+export function ComfyuiWorkflowImportPanel({ onImported, onVerificationRequested, vendorKey }: ComfyuiWorkflowImportPanelProps): JSX.Element {
   const { t } = useTranslation()
   const catalog = getDesktopBridge()?.modelCatalog
   const [open, setOpen] = React.useState(false)
@@ -123,29 +124,19 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
   const [busy, setBusy] = React.useState(false)
   const [reconcile, setReconcile] = React.useState<Reconcile | null>(null)
   const [uiWorkflowText, setUiWorkflowText] = React.useState('')
-  const [candidate, setCandidate] = React.useState<ComfyCandidateUiState | null>(null)
-  const candidateRef = React.useRef<ComfyCandidateUiState | null>(null)
   const reconcileSeq = React.useRef(0)
-
-  const cancelCandidate = React.useCallback((target = candidateRef.current) => {
-    if (!target) return
-    void cancelComfyCandidateTestRevision(target).catch(() => undefined)
-    if (candidateRef.current?.revisionId === target.revisionId) {
-      candidateRef.current = null
-      setCandidate(null)
-    }
-  }, [])
-  const replaceCandidate = React.useCallback((next: ComfyCandidateUiState) => {
+  const candidateRef = React.useRef<{ revisionId: string; modelKey: string; taskKind: TaskKind } | null>(null)
+  const replaceCandidate = React.useCallback((candidate: { revisionId: string; modelKey: string; taskKind: TaskKind } | null) => {
     const previous = candidateRef.current
-    if (previous && previous.revisionId !== next.revisionId) {
+    candidateRef.current = candidate
+    if (previous && previous.revisionId !== candidate?.revisionId) {
       void cancelComfyCandidateTestRevision(previous).catch(() => undefined)
     }
-    candidateRef.current = next
-    setCandidate(next)
   }, [])
   React.useEffect(() => () => {
-    const current = candidateRef.current
-    if (current) void cancelComfyCandidateTestRevision(current).catch(() => undefined)
+    const candidate = candidateRef.current
+    candidateRef.current = null
+    if (candidate) void cancelComfyCandidateTestRevision(candidate).catch(() => undefined)
   }, [])
 
   // 缺件对账（异步，不阻塞绑定 UI）：分析成功后问本机 /object_info，缺节点/缺模型在导入前就说清。
@@ -161,8 +152,9 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
   }, [vendorKey])
 
   const reset = React.useCallback(() => {
+    replaceCandidate(null)
     setText(''); setAnalysis(null); setBinding(null); setLabelZh(''); setError(''); setReconcile(null); setUiWorkflowText('')
-  }, [])
+  }, [replaceCandidate])
 
   /**
    * 分析：贴什么格式都吃（T1）。先走 smart（界面格式会借 ComfyUI 自己的前端自动转成 API），
@@ -209,46 +201,32 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
     return ''
   }, [binding, t])
 
-  React.useEffect(() => { candidateRef.current = candidate }, [candidate])
-
   const doImport = React.useCallback(async () => {
-    if (!binding || !catalog?.importComfyWorkflow) return
+    if (!binding) return
+    const prepare = getDesktopBridge()?.onboarding?.integrationSessionPrepareComfy
+    if (!prepare) { setError(t('onboardingProviders.comfyWorkflow.unsupported')); return }
     if (paramKeyError) { setError(paramKeyError); return }
     setBusy(true)
     try {
       const name = labelZh.trim() || t('onboardingProviders.comfyWorkflow.defaultName')
-      // enumOptions（reconcile 带出）随导入烤进参数控件——combo 参数在画布变成真实文件下拉。
       const enumOptions = reconcile && reconcile.enumOptions?.length ? reconcile.enumOptions : undefined
-      const r = catalog.importComfyWorkflow({ text, binding, labelZh: name, enumOptions, vendorKey, ...(uiWorkflowText ? { uiWorkflowText } : {}) })
-      if (!r.ok) { setError(r.error); return }
-      const staged = candidateFromWorkflowMutation(r)
-      if (!staged) { setError('candidate_stage_failed'); return }
-      replaceCandidate(staged)
-      const testResult = await runTestGeneration({
-        vendorKey: vendorKey || staged.vendorKey,
-        candidateVendorKey: staged.vendorKey,
-        revisionId: staged.revisionId,
-        modelKey: staged.modelKey,
+      await prepare({
+        vendorKey: vendorKey || 'comfyui-local',
+        name,
+        workflow: text,
         binding,
-        prompt: 'Nomi ComfyUI workflow certification',
-        extras: Object.fromEntries((binding.params ?? []).map((param) => [param.paramKey, param.default])),
+        ...(enumOptions ? { enumOptions } : {}),
+        ...(uiWorkflowText ? { uiWorkflow: uiWorkflowText } : {}),
       })
-      const settled = settleCandidateUiRun(candidateRef.current, testResult)
-      if (!settled.applied) return
-      candidateRef.current = settled.candidate
-      setCandidate(settled.candidate)
-      if (!testResult.ok) { setError(candidateFailureText(testResult)); return }
-      const kindLabel = r.kind === 'video'
-        ? t('onboardingProviders.comfyWorkflow.video')
-        : r.kind === 'model3d'
-          ? t('onboardingProviders.comfyWorkflow.model3d')
-          : t('onboardingProviders.comfyWorkflow.image')
-      toast(t('onboardingProviders.comfyWorkflow.imported', { name, kind: kindLabel }), 'success')
+      toast(t('onboardingProviders.comfyWorkflow.awaitingVerification', { name }), 'success')
       reset()
       setOpen(false)
       onImported()
+      onVerificationRequested?.()
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value))
     } finally { setBusy(false) }
-  }, [binding, catalog, text, labelZh, reset, onImported, paramKeyError, reconcile, vendorKey, uiWorkflowText, replaceCandidate, t])
+  }, [binding, text, labelZh, reset, onImported, onVerificationRequested, paramKeyError, reconcile, vendorKey, uiWorkflowText, t])
 
   if (!open) {
     return (
@@ -378,7 +356,7 @@ export function ComfyuiWorkflowImportPanel({ onImported, vendorKey }: ComfyuiWor
         <span className="text-body-sm font-semibold text-nomi-ink flex-1">{t('onboardingProviders.comfyWorkflow.title')}</span>
         <button
           type="button"
-          onClick={() => { cancelCandidate(); reset(); setOpen(false) }}
+          onClick={() => { reset(); setOpen(false) }}
           className="h-6 w-6 grid place-items-center rounded-nomi-sm text-nomi-ink-40 hover:bg-nomi-ink-05"
           aria-label={t('onboardingProviders.comfyWorkflow.collapse')}
         >

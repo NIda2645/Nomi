@@ -53,6 +53,7 @@ const graph = {
   } : {}),
 }
 const uploads = []
+const certificationUploads = []
 let submitted
 let downloaded = 0
 const server = http.createServer(async (req, res) => {
@@ -71,16 +72,27 @@ const server = http.createServer(async (req, res) => {
         if (!(file instanceof Blob)) throw new Error('Expected multipart image file')
         const bytes = Buffer.from(await file.arrayBuffer())
         const referenceIndex = references.findIndex((reference) => reference.bytes.equals(bytes))
-        if (referenceIndex < 0) throw new Error('Uploaded file is not one of the declared source assets')
+        if (referenceIndex < 0) {
+          // The certification run deliberately uses Nomi-owned deterministic
+          // fixtures, while the later canvas run must use the declared project
+          // assets byte-for-byte. Keep those two assertions separate.
+          const isPng = bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+          const isMp4 = bytes.subarray(4, 8).toString('ascii') === 'ftyp'
+          if (!isPng && !isMp4) throw new Error('Uploaded file is not a declared source or certification asset')
+          const name = `certification-reference-${certificationUploads.length + 1}.${isMp4 ? 'mp4' : 'png'}`
+          certificationUploads.push({ name, bytes: bytes.length, isMp4 })
+          return res.end(JSON.stringify({ name, subfolder: '', type: 'input' }))
+        }
         const name = `uploaded-reference-${referenceIndex + 1}.${referenceIndex === 3 ? 'mp4' : 'png'}`
         uploads.push({ referenceIndex, name, bytes: bytes.length })
         return res.end(JSON.stringify({ name, subfolder: '', type: 'input' }))
       }
       submitted = JSON.parse(body.toString())
+      console.log('Fixture /prompt', JSON.stringify(submitted).slice(0, 1200))
       return res.end(JSON.stringify({ prompt_id: submitted.prompt_id || 'three-refs-prompt' }))
     }
-    if (url.pathname.startsWith('/history/')) return res.end(JSON.stringify({ [url.pathname.split('/').at(-1)]: { status: { status_str: 'success', completed: true }, outputs: { '5': { videos: [{ filename: 'fixture.mp4', subfolder: '', type: 'output' }] } } } }))
-    if (url.pathname === '/view') { downloaded += 1; res.setHeader('Content-Type', 'video/mp4'); return res.end(videoBytes) }
+    if (url.pathname.startsWith('/history/')) { console.log('Fixture /history', url.pathname); return res.end(JSON.stringify({ [url.pathname.split('/').at(-1)]: { status: { status_str: 'success', completed: true }, outputs: { '5': { videos: [{ filename: 'fixture.mp4', subfolder: '', type: 'output' }] } } } })) }
+    if (url.pathname === '/view') { downloaded += 1; console.log('Fixture /view', url.search); res.setHeader('Content-Type', 'video/mp4'); return res.end(videoBytes) }
     res.statusCode = 404
     res.end('{}')
   } catch (error) {
@@ -165,6 +177,14 @@ try {
   await settings.getByPlaceholder('给它起个名（如：本地 WAN 图生视频）', { exact: true }).fill(workflowName)
   await snap('01-three-input-import-dark')
   await clickOrFail(settings.getByRole('button', { name: '导入', exact: true }), '保存全部三路输入')
+  // Import is staging only. The durable integration handoff must be confirmed
+  // before the candidate can be promoted into the selectable catalog.
+  await expect(settings.getByRole('heading', { name: '确认接入并开始验证', exact: true })).toBeVisible()
+  await clickOrFail(settings.getByRole('button', { name: '确认并开始验证', exact: true }), '确认 ComfyUI 真实验证')
+  // The trusted handoff returns to the settings home after the canonical run.
+  // Re-enter the instance details before asserting the promoted workflow row;
+  // completion must never depend on leaving a stale detail surface mounted.
+  await clickOrFail(settings.getByRole('button', { name: /本地 ComfyUI/ }).last(), '查看已验证的 ComfyUI 连接')
   await expect(settings.getByRole('button', { name: `打开「${workflowName}」的工作流设置`, exact: true })).toContainText('视频 · ComfyUI 工作流')
   const imported = readCatalog().models.find((model) => model.labelZh === workflowName)
   expect(imported.meta.comfyWorkflowImport.binding.images).toHaveLength(references.length)

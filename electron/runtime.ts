@@ -94,7 +94,6 @@ export {
 export {
   commitOnboardedModelToCatalog,
   deriveVendorKeyFromBaseUrl,
-  commitManualOpenAiCompatibleModels,
   fetchModelCatalogDocs,
   testModelCatalogMapping,
 } from "./catalog/catalogCommit";

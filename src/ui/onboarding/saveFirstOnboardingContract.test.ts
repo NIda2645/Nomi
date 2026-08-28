@@ -20,7 +20,6 @@ describe('save-first gateway onboarding contract', () => {
 
     expect(wizard).toContain('bridge.onboarding.httpCertificationStartExisting({')
     expect(wizard).toContain("entryPoint: 'manual-ui'")
-    expect(wizard).toContain('idempotencyKey: crypto.randomUUID()')
     expect(wizard).toContain('onCertificationStarted(res.run)')
     expect(wizard).not.toContain('adapterRegisterExisting(')
     expect(wizard).not.toContain('adapterAdaptExisting(')
@@ -103,5 +102,21 @@ describe('save-first gateway onboarding contract', () => {
     expect(scripts).not.toContain('existingConnectionListModels')
     expect(scripts).not.toMatch(/保存 \d+ 个模型/)
     expect(scripts).not.toContain('Saving models made an unexpected upstream request')
+  })
+
+  it('routes manual ComfyUI import, edit, and test through the persistent integration session', () => {
+    const importPanel = source('ComfyuiWorkflowImportPanel.tsx')
+    const settingsPage = fs.readFileSync(
+      path.join(process.cwd(), 'src/ui/onboarding/workflowPage/ComfyuiWorkflowSettingsPage.tsx'),
+      'utf8',
+    )
+    const productionSurfaces = `${importPanel}\n${settingsPage}`
+
+    expect(importPanel).toContain('integrationSessionPrepareComfy')
+    expect(settingsPage).toContain('integrationSessionPrepareComfy')
+    expect(productionSurfaces).not.toContain('runTestGeneration')
+    expect(productionSurfaces).not.toContain('importComfyWorkflow(')
+    expect(productionSurfaces).not.toContain('updateComfyWorkflow(')
+    expect(productionSurfaces).not.toContain('mintSpendGrant')
   })
 })

@@ -4,6 +4,7 @@ import { readCatalog } from "./catalogStore";
 import { apiKeyDecryptStatus, decryptApiKeyRecord, decryptCustomConfigWithLegacy } from "./secrets";
 import { selectExecutableModel, type BillingModelKind } from "./types";
 import type { Model, Vendor } from "./types";
+import { modelHasPublishedExecution } from "../shared/modelPublication";
 
 export function findExecutableModel(
   vendorKey: string,
@@ -31,6 +32,9 @@ export function findExecutableModel(
       throw new Error(`Model kind mismatch: ${modelKey} (registered=${registered.kind}, requested=${kind})`);
     }
     throw new Error(`Model is not enabled: ${modelKey}`);
+  }
+  if (!modelHasPublishedExecution(model, { mappings: state.mappings })) {
+    throw new Error(`Model is not published: ${modelKey}`);
   }
   const keyRecord = state.apiKeysByVendor[vendorKey];
   const apiKey = decryptApiKeyRecord(keyRecord);
@@ -62,7 +66,8 @@ export function findExecutableModelForTask(
 ): { vendor: Vendor; model: Model; apiKey: string; customConfig: Record<string, string> } {
   if (modelKey) return findExecutableModel(vendorKey, modelKey, kind);
   const state = readCatalog();
-  const model = state.models.find((item) => item.vendorKey === vendorKey && item.enabled && item.kind === kind);
+  const model = state.models.find((item) => item.vendorKey === vendorKey && item.enabled && item.kind === kind
+    && modelHasPublishedExecution(item, { mappings: state.mappings }));
   if (!model) throw new Error(`No enabled ${kind} model for vendor: ${vendorKey}`);
   return findExecutableModel(vendorKey, model.modelKey, kind);
 }

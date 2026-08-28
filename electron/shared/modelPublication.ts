@@ -121,43 +121,59 @@ export function derivePublishedExecution(
   if (!model?.enabled) return { published: false, publishedModes: [] };
   const supported = EXECUTABLE_TASKS_BY_KIND[model.kind as BillingModelKind] || [];
   const modes = new Set<ProfileKind>();
-
-  for (const mapping of evidence.mappings || []) {
-    if (
-      mapping.enabled === true &&
-      mapping.vendorKey === model.vendorKey &&
-      supported.includes(mapping.taskKind as ProfileKind) &&
-      (!mapping.modelKey || mapping.modelKey.trim() === model.modelKey)
-    ) {
-      modes.add(mapping.taskKind as ProfileKind);
-    }
-  }
-  for (const taskKind of customCallModes(model, supported)) modes.add(taskKind);
-
   const adapter = record(record(model.meta)?.adapter);
   const publicationMask = adapterPublicationModeMask(model.meta);
   const activeRevision = typeof adapter?.activeRevision === "string" && Boolean(adapter.activeRevision.trim());
-  if (activeRevision && Array.isArray(adapter?.modes)) {
-    for (const rawMode of adapter.modes) {
-      const mode = record(rawMode);
-      const taskKind = mode?.taskKind as ProfileKind;
-      if (mode?.state === "verified" && typeof mode.taskKind === "string" && supported.includes(taskKind)) {
-        modes.add(taskKind);
+  const restoredPredecessorPublication = Boolean(adapter)
+    && publicationMask.present
+    && !Object.keys(adapter || {}).some((key) => key !== ADAPTER_PUBLICATION_MODES);
+
+  // Adapter metadata means this row belongs to the certification domain. Raw
+  // enabled mappings or scripts are staging declarations, never publication
+  // evidence. Only a certified active revision may contribute executable modes.
+  if (!adapter) {
+    for (const mapping of evidence.mappings || []) {
+      if (
+        mapping.enabled === true &&
+        mapping.vendorKey === model.vendorKey &&
+        supported.includes(mapping.taskKind as ProfileKind) &&
+        (!mapping.modelKey || mapping.modelKey.trim() === model.modelKey)
+      ) {
+        modes.add(mapping.taskKind as ProfileKind);
       }
     }
+    for (const taskKind of customCallModes(model, supported)) modes.add(taskKind);
+  } else if (activeRevision) {
+    if (Array.isArray(adapter.modes)) {
+      for (const rawMode of adapter.modes) {
+        const mode = record(rawMode);
+        const taskKind = mode?.taskKind as ProfileKind;
+        if (mode?.state === "verified" && typeof mode.taskKind === "string" && supported.includes(taskKind)) {
+          modes.add(taskKind);
+        }
+      }
+    }
+    for (const taskKind of customCallModes(model, supported)) modes.add(taskKind);
+    if (model.kind === "text") modes.add("chat");
+  } else if (restoredPredecessorPublication) {
+    // Candidate deletion is a certification-domain command. It restores the
+    // predecessor by writing a publication-only adapter mask, while the old
+    // executable mappings/scripts remain the concrete evidence. Renderer raw
+    // writes cannot create this marker (rendererCatalogMutation strips it).
+    for (const mapping of evidence.mappings || []) {
+      if (mapping.enabled === true && mapping.vendorKey === model.vendorKey
+        && (!mapping.modelKey || mapping.modelKey === model.modelKey)
+        && supported.includes(mapping.taskKind as ProfileKind)) modes.add(mapping.taskKind as ProfileKind);
+    }
+    for (const taskKind of customCallModes(model, supported)) modes.add(taskKind);
+    if (model.kind === "text") modes.add("chat");
   }
-  if (activeRevision && model.kind === "text") modes.add("chat");
 
   if (!adapter && model.kind === "text") modes.add("chat");
-  if (publicationMask.present) {
-    for (const taskKind of publicationMask.modes) {
-      if (supported.includes(taskKind)) modes.add(taskKind);
-    }
-  }
   const allowed = publicationMask.present ? new Set(publicationMask.modes) : null;
   const publishedModes = supported.filter((taskKind) => modes.has(taskKind) && (!allowed || allowed.has(taskKind)));
   return {
-    published: publicationMask.present ? publishedModes.length > 0 : activeRevision || publishedModes.length > 0,
+    published: publishedModes.length > 0,
     publishedModes,
   };
 }

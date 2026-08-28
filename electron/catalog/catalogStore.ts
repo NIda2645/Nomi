@@ -15,7 +15,7 @@ import { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayL
 import type { AiSdkProviderKind, BillingModelKind, CatalogState, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./types";
 import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
-import { derivePublishedExecution } from "../shared/modelPublication";
+import { derivePublishedExecution, modelHasPublishedExecution } from "../shared/modelPublication";
 import { deriveModelCatalogHealth } from "./catalogHealth";
 import { deleteVendorLineageAndRestore, removeVendorLineage } from "./vendorLineageLifecycle";
 import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
@@ -288,7 +288,7 @@ export function listOnboardingAgentCandidates(): OnboardingAgent[] {
   const state = readCatalog();
   const out: OnboardingAgent[] = [];
   for (const model of state.models) {
-    if (model.kind !== "text" || !model.enabled) continue;
+    if (model.kind !== "text" || !modelHasPublishedExecution(model, { mappings: state.mappings })) continue;
     const vendor = state.vendors.find((v) => v.key === model.vendorKey && v.enabled);
     if (!vendor || !vendor.baseUrlHint) continue;
     const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);

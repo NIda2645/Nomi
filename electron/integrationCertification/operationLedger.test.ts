@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CertificationPersistenceError,
@@ -29,7 +30,7 @@ function beginInput(overrides: Record<string, unknown> = {}) {
     leaseOwner: "run-1",
     leaseToken: "lease-1",
     attempt: 1,
-    childRunRef: { runId, revisionDigest: "b".repeat(64) },
+    childRunRef: { runId, revisionDigest: "a".repeat(64) },
     now: "2026-08-28T00:00:00.000Z",
     ...overrides,
   } as const;
@@ -52,6 +53,72 @@ describe("OperationLedger", () => {
       runId: "run-canonical",
       childRunRef: { runId: "run-other", revisionDigest: "b".repeat(64) },
     }))).toThrowError(/child run reference must match/i);
+  });
+
+  it("rejects a child reference whose revision digest differs from the immutable contract", () => {
+    const { ledger: store } = ledger();
+    expect(() => store.begin(beginInput({
+      childRunRef: { runId: "run-1", revisionDigest: "b".repeat(64) },
+    }))).toThrowError(/child.*digest|revision.*contract/i);
+  });
+
+  it("fails closed when an active or tombstoned child reference is corrupted on reopen", () => {
+    const active = ledger();
+    active.ledger.begin(beginInput());
+    const activeRaw = JSON.parse(fs.readFileSync(active.filePath, "utf8")) as { operations: Array<Record<string, unknown>> };
+    (activeRaw.operations[0].childRunRef as Record<string, unknown>).revisionDigest = "b".repeat(64);
+    fs.writeFileSync(active.filePath, JSON.stringify(activeRaw));
+    expect(() => new OperationLedger(active.filePath)).toThrowError(/child.*digest|revision.*contract/i);
+
+    const terminal = ledger();
+    const operation = created(terminal.ledger.begin(beginInput()));
+    terminal.ledger.markCheckpoint("run-1", {
+      checkpoint: "finalized",
+      expectedRevision: operation.revision,
+      now: "2026-08-28T00:00:01.000Z",
+    });
+    const terminalRaw = JSON.parse(fs.readFileSync(terminal.filePath, "utf8")) as { operations: Array<Record<string, unknown>>; tombstones: Array<Record<string, unknown>> };
+    const source = terminalRaw.operations[0];
+    terminalRaw.operations = [];
+    terminalRaw.tombstones = [{
+      version: 1,
+      idempotencyHash: source.idempotencyHash,
+      contractDigest: source.contractDigest,
+      canonicalRunId: source.runId,
+      childRunRef: { runId: source.runId, revisionDigest: "b".repeat(64) },
+      terminalSummary: "finalized",
+      terminalAt: source.updatedAt,
+    }];
+    fs.writeFileSync(terminal.filePath, JSON.stringify(terminalRaw));
+    expect(() => new OperationLedger(terminal.filePath)).toThrowError(/child.*digest|revision.*contract/i);
+  });
+
+  it("fails closed when an archived child reference contradicts its canonical contract", () => {
+    const { filePath } = ledger();
+    const compacting = new OperationLedger(filePath, { maxActiveOperations: 0, maxInlineTombstones: 0 } as never);
+    const operation = created(compacting.begin(beginInput()));
+    compacting.markCheckpoint(operation.runId, {
+      checkpoint: "finalized",
+      expectedRevision: operation.revision,
+      now: "2026-08-28T00:00:01.000Z",
+    });
+    const state = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+      archives: Array<{ fileName: string; sha256: string; count: number }>;
+    };
+    const oldRef = state.archives[0];
+    const archiveDir = path.join(path.dirname(filePath), `${path.basename(filePath)}.archive`);
+    const oldPath = path.join(archiveDir, oldRef.fileName);
+    const segment = JSON.parse(fs.readFileSync(oldPath, "utf8")) as { tombstones: Array<{ childRunRef: { revisionDigest: string } }> };
+    segment.tombstones[0].childRunRef.revisionDigest = "b".repeat(64);
+    const serialized = JSON.stringify(segment);
+    const sha256 = crypto.createHash("sha256").update(serialized).digest("hex");
+    const fileName = `segment-${sha256}.json`;
+    fs.writeFileSync(path.join(archiveDir, fileName), serialized);
+    state.archives[0] = { ...oldRef, fileName, sha256 };
+    fs.writeFileSync(filePath, JSON.stringify(state));
+
+    const reopened = new OperationLedger(filePath);
+    expect(() => reopened.childRunRefForRunId(operation.runId)).toThrowError(/child.*digest|revision.*contract/i);
   });
 
   it("returns an explicit created or duplicate disposition with the canonical run id", () => {
@@ -644,7 +711,7 @@ describe("OperationLedger", () => {
       .canonicalRunForIdempotencyKey("confirmation-0")).toBe("run-0");
     expect(new OperationLedger(filePath).childRunRefForRunId("run-0")).toEqual({
       runId: "run-0",
-      revisionDigest: "b".repeat(64),
+      revisionDigest: "a".repeat(64),
     });
   });
 
@@ -680,7 +747,7 @@ describe("OperationLedger", () => {
     const reopened = new OperationLedger(filePath);
     expect(reopened.canonicalRunForIdempotencyKey("confirmation-0")).toBe("run-0");
     expect(reopened.canonicalRunForIdempotencyKey("confirmation-1004")).toBe("run-1004");
-    expect(reopened.childRunRefForRunId("run-0")).toEqual({ runId: "run-0", revisionDigest: "b".repeat(64) });
+    expect(reopened.childRunRefForRunId("run-0")).toEqual({ runId: "run-0", revisionDigest: "a".repeat(64) });
   }, 60_000);
 
   it("keeps the prior ledger intact across compaction crash and rejects oversized/versioned archives", () => {

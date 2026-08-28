@@ -19,9 +19,10 @@ import { IconAlertTriangle, IconArrowLeft, IconTrash, IconX } from '@tabler/icon
 import { cn } from '../../../utils/cn'
 import { alertDialog, confirmDialog, NOMI_OVERLAY_Z_INDEX } from '../../../design'
 import { getDesktopBridge } from '../../../desktop/bridge'
+import { cancelComfyCandidateTestRevision, type TaskKind } from '../../../workbench/api/taskApi'
 import { toast } from '../../toast'
 import { buildWorkflowGraphView, type GraphInput } from '../comfyuiWorkflowGraphView'
-import { buildCanvasPreview, previewValuesToExtras } from '../comfyuiCanvasPreview'
+import { buildCanvasPreview } from '../comfyuiCanvasPreview'
 import {
   assignRole,
   clearRole,
@@ -40,9 +41,6 @@ import { WorkflowSidebar, type BackendRow } from './WorkflowSidebar'
 import { WorkflowGraphCanvas } from './WorkflowGraphCanvas'
 import { WorkflowCanvasPreview } from './WorkflowCanvasPreview'
 import { useWorkflowCatalog } from './useWorkflowCatalog'
-import { runTestGeneration } from './runTestGeneration'
-import { cancelComfyCandidateTestRevision } from '../../../workbench/api/taskApi'
-import { candidateFailureText, candidateFromWorkflowMutation, settleCandidateUiRun, type ComfyCandidateUiState } from '../comfyCandidateUiFlow'
 
 type ComfyuiWorkflowSettingsPageProps = {
   /** 从哪台 ComfyUI 进来的。 */
@@ -76,32 +74,31 @@ export function ComfyuiWorkflowSettingsPage({
   const [busy, setBusy] = React.useState(false)
   const [running, setRunning] = React.useState(false)
   const [previewValues, setPreviewValues] = React.useState<Record<string, string>>({})
-  const [candidate, setCandidate] = React.useState<ComfyCandidateUiState | null>(null)
-  const candidateRef = React.useRef<ComfyCandidateUiState | null>(null)
-  React.useEffect(() => { candidateRef.current = candidate }, [candidate])
-  const cancelCandidate = React.useCallback((target = candidateRef.current) => {
-    if (!target) return
-    void cancelComfyCandidateTestRevision(target).catch(() => undefined)
-    if (candidateRef.current?.revisionId === target.revisionId) {
-      candidateRef.current = null
-      setCandidate(null)
-    }
-  }, [])
-  const replaceCandidate = React.useCallback((next: ComfyCandidateUiState) => {
+  const [verificationPending, setVerificationPending] = React.useState(false)
+  const candidateRef = React.useRef<{ revisionId: string; modelKey: string; taskKind: TaskKind } | null>(null)
+  const replaceCandidate = React.useCallback((candidate: { revisionId: string; modelKey: string; taskKind: TaskKind } | null) => {
     const previous = candidateRef.current
-    if (previous && previous.revisionId !== next.revisionId) {
+    candidateRef.current = candidate
+    if (previous && previous.revisionId !== candidate?.revisionId) {
       void cancelComfyCandidateTestRevision(previous).catch(() => undefined)
     }
-    candidateRef.current = next
-    setCandidate(next)
   }, [])
   React.useEffect(() => () => {
-    const current = candidateRef.current
-    if (current) void cancelComfyCandidateTestRevision(current).catch(() => undefined)
+    const candidate = candidateRef.current
+    candidateRef.current = null
+    if (candidate) void cancelComfyCandidateTestRevision(candidate).catch(() => undefined)
   }, [])
-  const closePage = React.useCallback(() => { cancelCandidate(); onClose() }, [cancelCandidate, onClose])
-  const selectVendor = React.useCallback((next: string) => { cancelCandidate(); setVendorKey(next) }, [cancelCandidate])
-  const selectWorkflow = React.useCallback((next: string) => { cancelCandidate(); setSelectedModelKey(next) }, [cancelCandidate])
+  const closePage = React.useCallback(() => { onClose() }, [onClose])
+  const selectVendor = React.useCallback((next: string) => {
+    replaceCandidate(null)
+    setVerificationPending(false)
+    setVendorKey(next)
+  }, [replaceCandidate])
+  const selectWorkflow = React.useCallback((next: string) => {
+    replaceCandidate(null)
+    setVerificationPending(false)
+    setSelectedModelKey(next)
+  }, [replaceCandidate])
 
   const bumpAll = React.useCallback(() => {
     setRefreshToken((v) => v + 1)
@@ -217,36 +214,37 @@ export function ComfyuiWorkflowSettingsPage({
     patchBinding((current) => toggleField(current, candidate))
   }, [patchBinding])
 
-  const save = React.useCallback((): ComfyCandidateUiState | null => {
-    if (!selectedModelKey || !binding) return null
-    const update = getDesktopBridge()?.modelCatalog?.updateComfyWorkflow
-    if (!update) { setError(t('comfyuiWorkflowPage.errors.unsupported')); return null }
+  const save = React.useCallback(async (): Promise<boolean> => {
+    if (!selectedModelKey || !binding) return false
+    if (verificationPending && !dirty) return true
+    const prepare = getDesktopBridge()?.onboarding?.integrationSessionPrepareComfy
+    if (!prepare) { setError(t('comfyuiWorkflowPage.errors.unsupported')); return false }
     const label = name.trim() || labelOf(selectedModelKey)
     setBusy(true)
     try {
-      const result = update({
-        modelKey: selectedModelKey,
-        text: graphText,
-        binding,
-        labelZh: label,
-        // enumOptions 随保存烤回参数控件——combo 参数在画布才是真实文件下拉（与导入同口径）。
-        ...(reconcile?.enumOptions?.length ? { enumOptions: reconcile.enumOptions } : {}),
+      await prepare({
         vendorKey,
-        ...(uiWorkflowText ? { uiWorkflowText } : {}),
+        name: label,
+        modelKey: selectedModelKey,
+        workflow: graphText,
+        binding,
+        ...(reconcile?.enumOptions?.length ? { enumOptions: reconcile.enumOptions } : {}),
+        ...(uiWorkflowText ? { uiWorkflow: uiWorkflowText } : {}),
       })
-      if (!result.ok) { setError(t('comfyuiWorkflowPage.errors.saveFailed', { error: result.error })); return null }
-      const staged = candidateFromWorkflowMutation(result)
-      if (!staged) return null
-      replaceCandidate(staged)
       setDirty(false)
+      setVerificationPending(true)
       setError('')
-      toast(t('comfyuiWorkflowPage.header.saved', { name: label }), 'success')
-      bumpAll()
-      return staged
+      toast(t('onboardingProviders.comfyWorkflow.awaitingVerification', { name: label }), 'success')
+      return true
+    } catch (value) {
+      setError(t('comfyuiWorkflowPage.errors.saveFailed', {
+        error: value instanceof Error ? value.message : String(value),
+      }))
+      return false
     } finally {
       setBusy(false)
     }
-  }, [selectedModelKey, binding, name, graphText, reconcile?.enumOptions, vendorKey, uiWorkflowText, labelOf, bumpAll, replaceCandidate, t])
+  }, [selectedModelKey, binding, verificationPending, dirty, name, labelOf, vendorKey, graphText, reconcile?.enumOptions, uiWorkflowText, t])
 
   const remove = React.useCallback(async () => {
     if (!selectedModelKey) return
@@ -322,38 +320,13 @@ export function ComfyuiWorkflowSettingsPage({
 
   const runTest = React.useCallback(async () => {
     if (!selectedModelKey || !binding) return
-    // 没有精确 staged revision 时先隔离保存；绝不回落到旧 active mapping。
-    const staged = dirty || !candidate ? save() : candidate
-    if (!staged) { setError(t('comfyuiWorkflowPage.preview.runNeedsSave')); return }
     setRunning(true)
     try {
-      const result = await runTestGeneration({
-        vendorKey,
-        candidateVendorKey: staged.vendorKey,
-        revisionId: staged.revisionId,
-        modelKey: staged.modelKey,
-        binding,
-        prompt: previewValues.prompt ?? '',
-        extras: previewValuesToExtras(preview.fields, previewValues),
-      })
-      const settled = settleCandidateUiRun(candidateRef.current, result)
-      if (!settled.applied) return
-      candidateRef.current = settled.candidate
-      setCandidate(settled.candidate)
-      if (result.ok && settled.active) {
-        setVendorKey(settled.active.vendorKey)
-        setSelectedModelKey(settled.active.modelKey)
-        bumpAll()
-        toast(t('comfyuiWorkflowPage.preview.runStarted'), 'success')
-      } else if (!result.ok) {
-        const failure = candidateFailureText(result)
-        setError(failure)
-        toast(t('comfyuiWorkflowPage.preview.runFailed', { error: failure }), 'error')
-      }
+      if (!(await save())) setError(t('comfyuiWorkflowPage.preview.runNeedsSave'))
     } finally {
       setRunning(false)
     }
-  }, [selectedModelKey, binding, dirty, candidate, save, vendorKey, previewValues, preview.fields, bumpAll, t])
+  }, [selectedModelKey, binding, save, t])
 
   const nodeCount = view.nodes.length
 
@@ -456,7 +429,7 @@ export function ComfyuiWorkflowSettingsPage({
               >
                 <button
                   type="button"
-                  onClick={() => { save() }}
+                  onClick={() => { void save() }}
                   disabled={!selectedModelKey || !binding || busy || !binding.outputNodeId}
                   data-workflow-save
                   className="inline-flex h-7 items-center rounded-nomi-sm bg-nomi-ink px-3 text-micro font-semibold text-nomi-paper hover:bg-nomi-accent disabled:opacity-45"

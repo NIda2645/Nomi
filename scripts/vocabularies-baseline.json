@@ -512,6 +512,21 @@
       "site": "src/workbench/taskCenter/taskCenterProjection.ts::type:TaskCenterOutcome/type-union",
       "members": ["cancelled", "error", "success"],
       "reason": "TaskCenterOutcome 是 TaskCenter 终局徽标的合法 view model：success、error、cancelled 由各上游任务状态通过各自 mapper 产生，跨 generation 与 ProductionRun 共用展示语义但不反向成为业务真相源。"
+    },
+    {
+      "site": "electron/shared/integrationContract.ts::variable:INTEGRATION_CREDENTIAL_STATUSES/as-const",
+      "members": ["missing", "needs_resave", "ready", "unavailable"],
+      "reason": "INTEGRATION_CREDENTIAL_STATUSES 是模型接入会话的凭据持久化状态唯一合同；主进程 session、trusted UI projection 和跨进程恢复都从该 tuple 派生，避免把安全存储失败误报成可用。"
+    },
+    {
+      "site": "electron/shared/integrationContract.ts::variable:INTEGRATION_STAGES/as-const",
+      "members": ["cancelled", "certifying", "committing", "completed", "discovering", "draft", "failed", "needs_credential", "needs_input", "needs_selection", "needs_spend_confirmation", "partial"],
+      "reason": "INTEGRATION_STAGES 是模型/ComfyUI 接入会话生命周期唯一合同；MCP、trusted UI、持久化恢复和下一步映射都从同一 tuple 派生。"
+    },
+    {
+      "site": "electron/shared/integrationContract.ts::variable:INTEGRATION_START_RECEIPT_STATUSES/as-const",
+      "members": ["consumed", "pending"],
+      "reason": "INTEGRATION_START_RECEIPT_STATUSES 是接入认证 receipt 的两阶段持久化窗口；pending 先落 intent、consumed 才允许执行，保证崩溃恢复不重复花费。"
     }
   ],
   "debt": [

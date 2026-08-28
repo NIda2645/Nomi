@@ -90,7 +90,7 @@ Windows 安装包未使用 Authenticode 签名。SmartScreen 弹窗选择“更�
 
 > **利益披露**：预置供应商中有一家（APImart）的注册链接带推广码。你始终用自己的密钥、按供应商原价直接付给他们——Nomi 不代理、不转售任何推理服务，任何一家供应商都可以换成你自己的接口。
 
-详细说明：[使用指南](docs/user-guide.md) · [模型接入](docs/provider-integration.md) · [CLI + MCP 指南](docs/guide/capability-core-cli-mcp.md)
+详细说明：[使用指南](docs/user-guide.md) · [模型接入](docs/provider-integration.md) · [对话式模型接入](docs/guide/conversational-model-integration.md) · [CLI + MCP 指南](docs/guide/capability-core-cli-mcp.md)
 
 ## 团队服务
 

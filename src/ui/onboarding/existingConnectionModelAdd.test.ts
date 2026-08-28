@@ -13,7 +13,6 @@ describe('existing connection model add UI contract', () => {
     expect(wizard).toContain("screen === 'form' && !existingVendorKey")
     expect(wizard).toContain('<ExistingConnectionModelPicker')
     expect(wizard).toContain('bridge.onboarding.httpCertificationStartExisting({')
-    expect(wizard).toContain('idempotencyKey: crypto.randomUUID()')
     expect(drawer).toContain('existingVendorKey={page.existingVendorKey}')
     expect(drawer).not.toContain('updateWizardVerificationRoute')
     expect(drawer).not.toContain('onAdapterRunChange=')

@@ -206,6 +206,10 @@ export class ProviderAdapterService {
     return this.certification.childRunRef(id);
   }
 
+  certificationSourceVendorKey(id: string) {
+    return this.certification.sourceVendorKey(id);
+  }
+
   latestRun(vendorKey: string): ProviderAdapterRun | undefined {
     return this.store.latestRun(vendorKey);
   }
@@ -213,7 +217,6 @@ export class ProviderAdapterService {
   listRuns(options: { vendorKey?: string; activeOnly?: boolean; limit?: number } = {}): ProviderAdapterRun[] {
     return this.store.listRuns(options);
   }
-
   cancel(id: string): ProviderAdapterRun | undefined {
     const current = this.store.getRun(id);
     if (!current || isTerminalAdapterStage(current.stage)) return current;
@@ -225,7 +228,6 @@ export class ProviderAdapterService {
     this.controllers.get(id)?.abort();
     return run;
   }
-
   resumeInterrupted(): void {
     this.certification.recoverPreparedStarts();
     try {
@@ -788,7 +790,6 @@ export class ProviderAdapterService {
       this.controllers.get(current.id)?.abort();
     }
   }
-
 }
 
 let singleton: ProviderAdapterService | null = null;

@@ -26,6 +26,9 @@ function connector() {
       savedAt: "2026-08-28T00:00:00.000Z",
     })),
     start: vi.fn(async (_input: unknown) => providerRun),
+    startExisting: vi.fn(async (_input: unknown) => ({ ok: true as const, run: providerRun })),
+    retryExisting: vi.fn(),
+    listExistingModels: vi.fn(),
     get: vi.fn(() => providerRun),
     latest: vi.fn(() => providerRun),
     cancel: vi.fn(() => ({ ...providerRun, stage: "cancelled" as const })),
@@ -72,6 +75,61 @@ describe("ConnectionCertificationService", () => {
     const secondStart = http.start.mock.calls[1]![0] as { certification: unknown };
     expect(firstStart.certification).toEqual(secondStart.certification);
     expect(firstStart).not.toHaveProperty("entryPoint");
+  });
+
+  it("binds the real manual-existing and programmatic-new entry points to one immutable contract and canonical run", async () => {
+    const http = connector();
+    const byKey = new Map<string, typeof providerRun>();
+    http.start.mockImplementation(async (input: unknown) => {
+      const key = (input as { certification: CertificationContractBinding }).certification.idempotencyKey;
+      const found = byKey.get(key) || providerRun;
+      byKey.set(key, found);
+      return found;
+    });
+    http.startExisting.mockImplementation(async (input: unknown) => {
+      const key = (input as { certification: CertificationContractBinding }).certification.idempotencyKey;
+      const found = byKey.get(key) || providerRun;
+      byKey.set(key, found);
+      return { ok: true as const, run: found };
+    });
+    const service = new ConnectionCertificationService({ http: http as never });
+
+    const manual = await service.startExistingHttp({
+      entryPoint: "manual-ui",
+      idempotencyKey: "same-user-confirmation",
+      vendorKey: "example",
+      models: connection.models,
+    });
+    const programmatic = await service.startHttp({
+      entryPoint: "programmatic-session",
+      idempotencyKey: "same-user-confirmation",
+      connection: { ...connection, catalogVendorKey: "example" },
+    });
+
+    expect(manual).toMatchObject({ ok: true, run: { id: providerRun.id } });
+    expect(programmatic.id).toBe(providerRun.id);
+    expect((http.startExisting.mock.calls[0]![0] as { certification: CertificationContractBinding }).certification)
+      .toEqual((http.start.mock.calls[0]![0] as { certification: CertificationContractBinding }).certification);
+  });
+
+  it("preserves lineage, recovery and per-mode certification operations in the public run", () => {
+    const completeRun = {
+      ...providerRun,
+      lineageRootVendorKey: "example-root",
+      recovery: { reasonCode: "submission_unknown" as const, userAction: "reconcile_or_contact_provider" as const },
+      certificationOperations: {
+        mode: { operationKey: "a".repeat(64), submissionState: "unknown" as const },
+      },
+    };
+    const http = connector();
+    http.get.mockReturnValue(completeRun);
+    const service = new ConnectionCertificationService({ http: http as never });
+
+    expect(service.get(providerRun.id)).toMatchObject({
+      lineageRootVendorKey: "example-root",
+      recovery: { reasonCode: "submission_unknown" },
+      certificationOperations: { mode: { submissionState: "unknown" } },
+    });
   });
 
   it("binds execution-equivalent base URLs and model order to one idempotent contract", async () => {

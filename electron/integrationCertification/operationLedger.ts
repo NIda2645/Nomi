@@ -321,6 +321,9 @@ function validateOperation(raw: unknown): CertificationOperationRecord {
     createdAt: iso(raw.createdAt, "created at"),
     updatedAt: iso(raw.updatedAt, "updated at"),
   };
+  if (operation.childRunRef.runId !== operation.runId || operation.childRunRef.revisionDigest !== operation.contractDigest) {
+    throw new CertificationPersistenceError("invalid_state", "Certification child run reference must match its canonical run and contract digest");
+  }
   if (!Number.isSafeInteger(operation.attempt) || operation.attempt < 1 || operation.attempt > 100) throw new CertificationPersistenceError("invalid_state", "Invalid attempt");
   if (!["supported", "unsupported", "unknown"].includes(operation.providerIdempotency)) throw new CertificationPersistenceError("invalid_state", "Invalid idempotency capability");
   if (raw.operationKey !== undefined) {
@@ -357,7 +360,7 @@ function validateOperation(raw: unknown): CertificationOperationRecord {
 
 function validateTombstone(raw: unknown): CertificationOperationTombstone {
   if (!isRecord(raw) || raw.version !== 1 || !TERMINAL_CERTIFICATION_CHECKPOINTS.has(String(raw.terminalSummary))) throw new CertificationPersistenceError("invalid_state", "Invalid operation tombstone");
-  return {
+  const tombstone: CertificationOperationTombstone = {
     version: 1,
     idempotencyHash: digest(raw.idempotencyHash, "tombstone idempotency hash"),
     contractDigest: digest(raw.contractDigest, "tombstone contract digest"),
@@ -371,6 +374,11 @@ function validateTombstone(raw: unknown): CertificationOperationTombstone {
     terminalSummary: raw.terminalSummary as CertificationOperationTombstone["terminalSummary"],
     terminalAt: iso(raw.terminalAt, "terminal at"),
   };
+  if (tombstone.childRunRef && (tombstone.childRunRef.runId !== tombstone.canonicalRunId
+    || tombstone.childRunRef.revisionDigest !== tombstone.contractDigest)) {
+    throw new CertificationPersistenceError("invalid_state", "Certification tombstone child run reference must match its canonical run and contract digest");
+  }
+  return tombstone;
 }
 
 function validateArchiveRef(raw: unknown): CertificationArchiveRef {
@@ -540,8 +548,8 @@ export class OperationLedger {
         if (tombstone.contractDigest !== input.contractDigest) throw new Error("The idempotency key is already bound to a different contract");
         return { state, result: { status: "duplicate", canonicalRunId: tombstone.canonicalRunId } as OperationLedgerBeginResult };
       }
-      if (input.childRunRef.runId !== input.runId) {
-        throw new CertificationPersistenceError("invalid_state", "Certification child run reference must match its canonical run");
+      if (input.childRunRef.runId !== input.runId || input.childRunRef.revisionDigest !== input.contractDigest) {
+        throw new CertificationPersistenceError("invalid_state", "Certification child run reference must match its canonical run and contract digest");
       }
       const unresolved = state.operations.find((item) => item.lineageRootVendorKey === input.lineageRootVendorKey
         && Object.values(item.modeOperations).some((mode) => ["submitting", "submitted", "unknown"].includes(mode.submissionState))

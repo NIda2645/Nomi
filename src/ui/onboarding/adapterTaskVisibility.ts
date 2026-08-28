@@ -19,7 +19,7 @@ export function adapterRunsRequiringCatalogRefresh<T extends DesktopProviderAdap
   const previousById = new Map(previous.map((run) => [run.id, run]))
   return current.filter((run) => {
     const before = previousById.get(run.id)
-    return isAdapterRunTerminal(run.stage) && (!before || !isAdapterRunTerminal(before.stage))
+    return Boolean(before) && isAdapterRunTerminal(run.stage) && !isAdapterRunTerminal(before!.stage)
   })
 }
 

@@ -88,7 +88,7 @@ export type FetchWorkbenchTaskResultResponseDto = {
 }
 
 export type ComfyCandidateTestResultDto =
-  | { ok: true; revisionId: string; active: { vendorKey: string; modelKey: string } }
+  | { ok: true; revisionId: string; active: { vendorKey: string; modelKey: string }; remoteTaskId?: string }
   | { ok: false; revisionId: string; reasonCode: string; params: Record<string, string | number | boolean> }
 
 function requireDesktopRuntime(feature: string): DesktopBridge {
