@@ -20,7 +20,7 @@
 | J0 安装版 MCP | PASS（本地安装包） | `tests/ux/packaged-mcp-smoke.e2e.mjs`：43 tools、25 resources；Codex/Claude/Cursor 签名身份；未签名 generic host 写入被拒 |
 | J0 无仓库 harness | PASS（本地安装包） | `tests/ux/model-integration-no-repo.mjs`：isolated cwd；签名 Codex 可建 draft；unsigned generic 只能读、写入被拒；provider requests=0 |
 | J4 停止/重启读回 | PASS（无花费重启 smoke） | `tests/ux/model-integration-packaged.e2e.mjs`：同 session/revision 读回、凭据仍 missing、零重复 create；升级后真实生产调用仍待外部门 |
-| J3 故障矩阵 | PASS（自动化） | ledger、bounded media、safeStorage、origin/redirect 与恢复测试 |
+| J3 故障矩阵 | PASS（本地自动化） | `pnpm run test:model-integration:fault-matrix`：8 个聚焦 suite，覆盖 ledger、bounded media、safeStorage、origin/redirect 与恢复 |
 | J5 既有接入回归 | PASS（自动化） | `pnpm run test:journeys` J3/J5 为 2/2，加现有 provider/catalog suites |
 
 ## 外部验收状态

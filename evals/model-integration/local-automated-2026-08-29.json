@@ -55,7 +55,7 @@
       "credentialBytesObserved": 0,
       "duplicateCreateCount": 0,
       "unknownSubmissionReconciled": true,
-      "evidence": "full gates, certification ledger and bounded-media suites"
+      "evidence": "test:model-integration:fault-matrix; 8 focused fail-closed suites; zero provider requests"
     },
     "J4": {
       "status": "partial",

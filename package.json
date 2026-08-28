@@ -90,6 +90,7 @@
     "test:mcp": "node tests/ux/mcp-journey.e2e.mjs",
     "test:model-integration:no-repo": "node tests/ux/model-integration-no-repo.mjs",
     "test:model-integration:packaged": "node tests/ux/model-integration-packaged.e2e.mjs",
+    "test:model-integration:fault-matrix": "node tests/ux/model-integration-fault-matrix.e2e.mjs",
     "test:canvas-perf": "node tests/ux/canvas-performance-benchmark.e2e.mjs",
     "test:canvas-perf:compare": "node tests/ux/canvas-performance-compare.mjs",
     "test:canvas-perf:fixture": "node tests/ux/fixtures/gen-canvas-performance-fixture.mjs",
