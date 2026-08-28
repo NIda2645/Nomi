@@ -263,7 +263,10 @@ function WorkflowItem({
           ) : missing === null ? (
             <span className="min-w-0 truncate text-nomi-ink-30">{t('comfyuiWorkflowPage.backends.checking')}</span>
           ) : hasMissing ? (
-            <span className="inline-flex min-w-0 items-center gap-0.5 truncate text-nomi-danger">
+            <span
+              className="inline-flex min-w-0 items-start gap-0.5 whitespace-normal break-all text-nomi-danger"
+              title={workflow.missingFileNames.join(', ')}
+            >
               <IconAlertTriangle size={11} stroke={1.9} aria-hidden="true" />
               {missing.nodes > 0
                 ? t('comfyuiWorkflowPage.workflows.missingNodes', { count: missing.nodes })
