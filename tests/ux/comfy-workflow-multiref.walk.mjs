@@ -194,6 +194,10 @@ try {
   expect(new Set(imported.meta.comfyWorkflowImport.binding.images.map((input) => input.paramKey)).size).toBe(references.length)
   await clickOrFail(settings.getByRole('button', { name: '关闭', exact: true }), '返回画布连接三张图')
   const composer = win.locator('.generation-canvas-v2-node__composer')
+  // The imported graph declares an image-to-video mode. Select that explicit
+  // mode before opening the model list so the selector queries the same
+  // published mode rather than the default text-to-video bucket.
+  await clickOrFail(composer.getByRole('button', { name: '图生视频', exact: true }), '切换到图生视频模式')
   await clickOrFail(composer.getByRole('button', { name: '模型', exact: true }), '选取刚导入的工作流')
   await clickOrFail(win.getByRole('option').filter({ hasText: workflowName }), '使用三输入视频工作流')
   const pick = async (slotIndex, sourceIndex) => {

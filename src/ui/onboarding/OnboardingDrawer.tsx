@@ -79,6 +79,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
   const [navigation, setNavigation] = React.useState(createModelSettingsNavigation)
   const [integrationHandoffs, setIntegrationHandoffs] = React.useState<IntegrationHandoff[]>([])
   const openedIntegrationHandoff = React.useRef<string | null>(null)
+  const verificationRefreshTimer = React.useRef<number | null>(null)
   const page = currentModelSettingsPage(navigation)
   const detailDialogOwner = modelSettingsDialogOwner(navigation)
   const openPage = React.useCallback((next: Exclude<ModelSettingsPage, { type: 'home' }>) => {
@@ -123,6 +124,24 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     setNavigation({ stack: [{ type: 'home' }] })
     void reloadIntegrationHandoffs()
   }, [reloadIntegrationHandoffs])
+  const refreshAfterIntegrationVerification = React.useCallback(() => {
+    if (verificationRefreshTimer.current !== null) {
+      window.clearTimeout(verificationRefreshTimer.current)
+      verificationRefreshTimer.current = null
+    }
+    refresh()
+    let attempts = 0
+    const tick = () => {
+      refresh()
+      attempts += 1
+      if (attempts < 60) verificationRefreshTimer.current = window.setTimeout(tick, 500)
+      else verificationRefreshTimer.current = null
+    }
+    verificationRefreshTimer.current = window.setTimeout(tick, 500)
+  }, [refresh])
+  React.useEffect(() => () => {
+    if (verificationRefreshTimer.current !== null) window.clearTimeout(verificationRefreshTimer.current)
+  }, [])
   React.useEffect(() => {
     if (!loaded) return
     void reloadIntegrationHandoffs()
@@ -575,7 +594,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         handoff={verificationHandoff as IntegrationVerificationHandoff}
         onDone={() => {
           void reloadIntegrationHandoffs()
-          refresh()
+          refreshAfterIntegrationVerification()
         }}
       />
     )
