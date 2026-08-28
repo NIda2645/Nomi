@@ -20,6 +20,7 @@ import {
   IconX,
 } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
+import { translateModelDisplayText } from '../../../i18n/modelDisplayText'
 import { AddComfyuiInstanceButton } from '../AddComfyuiInstanceButton'
 
 export type BackendRow = {
@@ -185,7 +186,7 @@ function BackendItem({
         <IconServerBolt size={14} stroke={1.7} className="shrink-0 text-nomi-ink-40" aria-hidden="true" />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1">
-            <span className="min-w-0 truncate text-caption text-nomi-ink">{backend.name}</span>
+            <span className="min-w-0 truncate text-caption text-nomi-ink">{translateModelDisplayText(backend.name)}</span>
             <span
               className={cn('size-1.5 shrink-0 rounded-full', backend.reachable === null
                 ? 'bg-nomi-ink-30'
@@ -248,7 +249,7 @@ function WorkflowItem({
       <Icon size={14} stroke={1.7} className="mt-0.5 shrink-0 text-nomi-ink-40" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1">
-          <span className="min-w-0 truncate text-caption text-nomi-ink">{workflow.labelZh}</span>
+          <span className="min-w-0 truncate text-caption text-nomi-ink">{translateModelDisplayText(workflow.labelZh)}</span>
           {workflow.builtin ? (
             <span className="shrink-0 rounded-full bg-nomi-ink-05 px-1.5 text-micro text-nomi-ink-40">
               {t('comfyuiWorkflowPage.workflows.builtin')}
