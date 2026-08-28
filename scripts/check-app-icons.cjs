@@ -4,7 +4,7 @@ const path = require('node:path')
 const zlib = require('node:zlib')
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
-const REQUIRED_ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
+const REQUIRED_ICO_SIZES = [16, 24, 32, 48, 64, 96, 128, 256]
 const MAX_TRANSPARENT_CORNER_ALPHA = 2
 
 function paeth(left, above, upperLeft) {

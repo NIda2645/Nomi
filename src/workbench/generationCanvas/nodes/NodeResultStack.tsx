@@ -55,9 +55,26 @@ function HistoryVideoThumb({
   const { t } = useTranslation()
   const hostRef = React.useRef<HTMLSpanElement | null>(null)
   const draggingPointerRef = React.useRef<number | null>(null)
+  const [videoMounted, setVideoMounted] = React.useState(false)
   const [duration, setDuration] = React.useState(0)
   const [currentTime, setCurrentTime] = React.useState(0)
   const video = (): HTMLVideoElement | null => hostRef.current?.querySelector('video') ?? null
+
+  React.useEffect(() => {
+    if (active) setVideoMounted(true)
+  }, [active])
+
+  React.useEffect(() => {
+    const media = video()
+    if (!media) return
+    if (active) {
+      void media.play().catch(() => undefined)
+      return
+    }
+    media.pause()
+    media.currentTime = 0
+    setCurrentTime(0)
+  }, [active, videoMounted])
   const seekFromPointer = (event: React.PointerEvent<HTMLDivElement>): void => {
     const media = video()
     if (!media) return
@@ -77,15 +94,16 @@ function HistoryVideoThumb({
         disabled={disabled}
         onClick={onSelect}
       >
-        {active && result.url ? (
+        {videoMounted && result.url ? (
           <DeferredNodeVideo
             src={result.url}
-            className="h-full w-full object-cover"
+            className={cn('h-full w-full object-cover', !active && 'hidden')}
             muted
             loop
-            autoPlay
+            autoPlay={active}
             playsInline
             preload="metadata"
+            aria-hidden={!active}
             onLoadedMetadata={(event) => {
               const nextDuration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0
               setDuration(nextDuration)

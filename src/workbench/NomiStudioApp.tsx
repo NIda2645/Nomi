@@ -348,6 +348,9 @@ export default function NomiStudioApp(): JSX.Element {
         const prevProjectId = activeProjectIdRef.current ?? null
         if (prevProjectId !== hydrated.id) {
           // 先冲刷旧项目的落盘(取消挂起防抖,防把新项目内容写进旧文件)。
+          // Reset at the project-open boundary so a remounted sidebar cannot
+          // inherit the previous project's expanded state.
+          useWorkbenchStore.getState().setSidebarCollapsed(true)
           flushConversationsNow(prevProjectId)
           useWorkbenchStore.getState().swapCreationAiProject(prevProjectId, hydrated.id)
           swapGenerationAiProject(prevProjectId, hydrated.id)

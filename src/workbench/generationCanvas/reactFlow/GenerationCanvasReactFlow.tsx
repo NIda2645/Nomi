@@ -14,11 +14,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from '../../../ui/toast'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import { cn } from '../../../utils/cn'
-import { getDesktopBridge } from '../../../desktop/bridge'
-import {
-  subscribeBrowserAssetsImportToCanvas,
-  type BrowserAssetCanvasImportItem,
-} from '../../../ui/browser/overlay/globalAssetPopoverEvents'
 import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
 import { ASSET_LIBRARY_DRAG_MIME } from '../../assets/assetLibraryDrag'
 import { useWorkbenchStore } from '../../workbenchStore'
@@ -28,7 +23,7 @@ import { reportAdoptionOutcome } from '../../adoption/adoptionReceipt'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { findTimelineDropTarget, resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { findTimelineDropTarget } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { getCanvasGroupBoxes } from '../components/generationCanvasGeometry'
 import { CanvasGroupProjectionLayer } from '../components/CanvasGroupProjectionLayer'
@@ -48,7 +43,6 @@ import type { ViewportAnimationSettlementOutcome } from '../components/viewportA
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
 import { buildCanvasMenuActions } from '../components/useCanvasMenuActions'
 import { getSelectedBounds } from '../components/generationCanvasGeometry'
-import { FOCUS_GENERATION_NODE_EVENT } from '../nodes/nodeSizing'
 import { hasPendingScene3DCameraMoveCapture, hasPendingScene3DStagingCapture } from '../components/scene3dCaptureHostActivation'
 import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import CanvasToolbar from '../components/CanvasToolbar'
@@ -57,7 +51,6 @@ import {
   BROWSER_ASSET_DRAG_MIME,
   LEGACY_BROWSER_ASSET_DRAG_MIME,
   handleCanvasStageDrop,
-  importBrowserAssetsToGenerationCanvas,
 } from '../components/canvasStageDrop'
 import {
   collectFlowPositionChanges,
@@ -70,6 +63,10 @@ import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOv
 import { GenerationCanvasReactFlowViewport } from './GenerationCanvasReactFlowViewport'
 import { useGenerationCanvasReactFlowPointer } from './useGenerationCanvasReactFlowPointer'
 import { useGenerationCanvasReactFlowProjection } from './useGenerationCanvasReactFlowProjection'
+import {
+  useBrowserAssetImportEffects,
+  useGenerationCanvasReactFlowHostEffects,
+} from './useGenerationCanvasReactFlowEffects'
 
 const StagingCaptureHost = lazyWithChunkBoundary('3D 站位捕获', () =>
   import('../nodes/scene3d/StagingCaptureHost').then((module) => ({ default: module.StagingCaptureHost })),
@@ -86,7 +83,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const draggingRef = React.useRef(false)
   const dragStartPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map())
   const connectionStartRef = React.useRef<{ nodeId: string; side: 'left' | 'right' } | null>(null)
-  const pendingFocusNodeRef = React.useRef<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null)
   const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 })
   const [minimapVisible, setMinimapVisible] = React.useState(true)
@@ -106,7 +102,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     canvasY: number
   } | null>(null)
   const activeCategoryId = useWorkbenchStore((state) => state.activeCategoryId)
-  const setActiveCategoryId = useWorkbenchStore((state) => state.setActiveCategoryId)
   const categoryViewports = useWorkbenchStore((state) => state.categoryViewports)
   const rememberCategoryViewport = useWorkbenchStore((state) => state.rememberCategoryViewport)
   const timelineCollapsed = useWorkbenchStore((state) => state.timelinePanelCollapsed)
@@ -118,7 +113,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const hasBatchPlanPreview = useBatchPlanPreviewStore((state) => Boolean(state.plan))
   const selectedNodeIds = useGenerationCanvasStore((state) => state.selectedNodeIds)
   const isReady = useGenerationCanvasStore((state) => state.isReady)
-  const markReady = useGenerationCanvasStore((state) => state.markReady)
   const selectNodes = useGenerationCanvasStore((state) => state.selectNodes)
   const selectNode = useGenerationCanvasStore((state) => state.selectNode)
   const addNode = useGenerationCanvasStore((state) => state.addNode)
@@ -250,76 +244,14 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     rememberCategoryViewport,
     setLiveViewport,
   })
-
-
-  React.useEffect(() => {
-    const handleFocusNode = (event: Event) => {
-      const nodeId = (event as CustomEvent<{ nodeId?: unknown }>).detail?.nodeId
-      if (typeof nodeId !== 'string' || !nodeId) return
-      // Read the store at event time. Actions can dispatch a focus event in the
-      // same turn as they add a node, before this component has rendered the
-      // updated `allNodes` snapshot.
-      const target = useGenerationCanvasStore.getState().nodes.find((node) => node.id === nodeId)
-      if (!target) {
-        toast(t('generationCommon.node.sourceNoLongerExists'), 'warning')
-        return
-      }
-      pendingFocusNodeRef.current = nodeId
-      setActiveCategoryId(target.categoryId || 'shots')
-      selectNode(nodeId)
-    }
-    window.addEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)
-    return () => window.removeEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)
-  }, [selectNode, setActiveCategoryId, t])
-
-  React.useEffect(() => {
-    const nodeId = pendingFocusNodeRef.current
-    if (!nodeId) return
-    const target = nodes.find((node) => node.id === nodeId)
-    if (!target) return
-    const size = resolveNodeVisualSize(target)
-    pendingFocusNodeRef.current = null
-    void flow.setCenter(target.position.x + size.width / 2, target.position.y + size.height / 2, {
-      zoom: zoomRef.current,
-      duration: 220,
-    })
-  }, [activeCategoryId, flow, nodes, zoomRef])
-
-  React.useEffect(() => {
-    const host = hostRef.current
-    if (!host) return undefined
-    const updateSize = () => {
-      const rect = host.getBoundingClientRect()
-      setStageSize({ width: rect.width, height: rect.height })
-    }
-    updateSize()
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateSize)
-    observer?.observe(host)
-    return () => observer?.disconnect()
-  }, [])
-
-  React.useEffect(() => {
-    markReady()
-  }, [markReady])
-
-  // Keep the canvas DOM contract used by node overlays and walkthroughs while
-  // React Flow owns the actual viewport transform and edge rendering layers.
-  React.useEffect(() => {
-    const host = hostRef.current
-    if (!host) return undefined
-    const aliases: Array<[string, string]> = [
-      ['.react-flow__viewport', 'generation-canvas-v2__canvas'],
-      ['.react-flow__edges', 'generation-canvas-v2__edges'],
-      ['.react-flow__nodes', 'generation-canvas-v2__nodes'],
-    ]
-    const applyAliases = () => {
-      for (const [selector, className] of aliases) host.querySelector(selector)?.classList.add(className)
-    }
-    applyAliases()
-    const observer = new MutationObserver(applyAliases)
-    observer.observe(host, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [])
+  useGenerationCanvasReactFlowHostEffects({
+    activeCategoryId,
+    flow,
+    hostRef,
+    nodes,
+    setStageSize,
+    zoomRef,
+  })
 
   const { handleGroupFramePointerDown } = useCanvasSelectionDrag({
     readOnly,
@@ -417,37 +349,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     getInsertPosition: getInsertionPosition,
     categoryId: activeCategoryId,
   })
-  const handleBrowserAssetsImportToCanvas = React.useCallback((assets: readonly BrowserAssetCanvasImportItem[]) => {
-    if (readOnly) return
-    const result = importBrowserAssetsToGenerationCanvas(assets, {
-      basePosition: getInsertionPosition(),
-      categoryId: activeCategoryId,
-    })
-    if (result.createdCount === 0) {
-      toast(t('generationCommon.canvas.noImportableAssets'), 'info')
-      return
-    }
-    toast(
-      result.createdCount === 1
-        ? t('generationCommon.canvas.importedOne')
-        : t('generationCommon.canvas.importedMany', { count: result.createdCount }),
-      'success',
-    )
-  }, [activeCategoryId, getInsertionPosition, readOnly, t])
-
-  React.useEffect(
-    () => subscribeBrowserAssetsImportToCanvas((assets) => handleBrowserAssetsImportToCanvas(assets)),
-    [handleBrowserAssetsImportToCanvas],
-  )
-
-  React.useEffect(() => {
-    const bridge = getDesktopBridge()?.browser?.assetOverlay
-    if (!bridge?.onImportToCanvas) return undefined
-    return bridge.onImportToCanvas((payload) => {
-      const assets = Array.isArray(payload?.assets) ? payload.assets as BrowserAssetCanvasImportItem[] : []
-      handleBrowserAssetsImportToCanvas(assets)
-    })
-  }, [handleBrowserAssetsImportToCanvas])
+  useBrowserAssetImportEffects({ activeCategoryId, getInsertionPosition, readOnly })
 
   const handleZoomByStep = React.useCallback((direction: -1 | 1) => {
     const current = flow.getViewport().zoom
