@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-cross-model-parameter-presentation",
   "problem_type": "cross-model generation parameter interaction inconsistency",
   "symptom": "In the same generation-parameter panel, aspect ratio and supplier choices rendered as the approved visible segmented buttons for some models but changed into a searchable dropdown for models with more choices or longer supplier labels.",
@@ -33,6 +33,22 @@
     "src/workbench/generationCanvas/nodes/InlineParameterBar.test.ts",
     "tests/ux/canvas-control-clarity.walk.mjs"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every model or supplier catalog with a different option count or label width could reach the same semantic-control downgrade, so the failure could recur whenever catalogs changed.",
+    "same_class_scan": [
+      "Scanned every parameterOptionLayout caller and confirmed InlineParameterBar is the shared option-presentation boundary.",
+      "Scanned catalog-derived providerOptions and archetype option groups for domains whose semantics must override generic overflow.",
+      "Exercised fifteen ratios, multiple suppliers, pixel-bucket wire values, automatic resolution values, and a legitimate long generic enumeration."
+    ]
+  },
+  "prevention": {
+    "strategy": "Classify the shared option group by semantic purpose before applying the generic option-count and label-width fallback.",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/parameterOptionPresentation.ts",
+      "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx"
+    ]
+  },
   "migration": "No project, node, catalog, or parameter-value migration is required. Existing stored values remain unchanged; only the transient control used to choose them is corrected.",
   "residual_risks": [
     "A user-defined supplier name can wrap inside its equal-width segment, but selection remains visible and consistent.",

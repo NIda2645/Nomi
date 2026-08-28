@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-28-clipboard-file-uri-boundary",
   "problem_type": "cross-platform clipboard path parsing regression",
   "symptom": "Pasting a local file from a Windows clipboard can produce a malformed path when a file URI is decoded on a Windows host, while POSIX file URIs must remain valid on every host.",
@@ -40,6 +40,21 @@
   "regression_tests": [
     "electron/assets/clipboardFilePaths.test.ts"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every Windows, POSIX, URI-list, or native clipboard paste can reach the same protocol-to-host path boundary, so host-dependent parsing could repeatedly corrupt equivalent payloads.",
+    "same_class_scan": [
+      "Scanned all parseClipboardFilePaths callers and clipboard format branches for URI, FileNameW, FileName, and plain-text path inputs.",
+      "Scanned downstream asset import guards to confirm path existence and media validation remain owned after protocol normalization.",
+      "Exercised Windows drive, UNC authority, localhost, POSIX absolute, multi-string, malformed URI, and duplicate payload boundaries."
+    ]
+  },
+  "prevention": {
+    "strategy": "Normalize clipboard payloads by protocol form before applying host-specific separators or passing paths to the asset pipeline.",
+    "artifacts": [
+      "electron/assets/clipboardFilePaths.ts"
+    ]
+  },
   "migration": "Clipboard payloads are transient and have no stored schema. Existing imported assets retain their persisted local path; the corrected parser applies to the next paste without rewriting stored assets.",
   "residual_risks": [
     "A clipboard producer that emits a malformed URI remains rejected rather than repaired heuristically.",

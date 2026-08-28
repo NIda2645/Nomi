@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-react-flow-context-menu-lifecycle",
   "problem_type": "React Flow canvas context-menu gesture lifecycle regression",
   "symptom": "A secondary-button click on blank canvas or on a node no longer opened the add-node or node-action menu in the real macOS Electron build, while the same secondary button still needed to support drag-to-pan.",
@@ -31,10 +31,24 @@
   ],
   "regression_tests": [
     "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
-    "tests/ux/canvas-shortcuts.walk.mjs",
-    "tests/ux/canvas-node-context-menu.walk.mjs",
     "tests/ux/canvas-context-menu-click.walk.mjs"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every pane or node secondary-click shares the active renderer lifecycle, and future renderer rewiring could again leave the gesture hook dormant while menus still render.",
+    "same_class_scan": [
+      "Scanned every onContextMenu, onPaneContextMenu, and onNodeContextMenu binding in the generation-canvas renderer.",
+      "Scanned the shared context-menu hook entry points for pane clicks, node clicks, Control-click, secondary drag, and multi-selection preservation.",
+      "Ran the blank-menu, node-menu, keyboard shortcut, and secondary-button pan Electron journeys against the active React Flow renderer."
+    ]
+  },
+  "prevention": {
+    "strategy": "Make the active React Flow host consume the shared deferred pointer lifecycle and keep menu suppression coupled to the same pan gesture state.",
+    "artifacts": [
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts"
+    ]
+  },
   "migration": "No project or canvas schema migration is required. The change restores transient pointer and menu state only.",
   "residual_risks": [
     "Non-pointer keyboard context-menu invocation remains browser-owned because the shared lifecycle intentionally requires a pointer candidate.",

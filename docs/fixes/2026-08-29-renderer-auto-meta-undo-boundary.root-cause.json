@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-renderer-auto-meta-undo-boundary",
   "problem_type": "renderer lifecycle writes split a canvas undo transaction",
   "symptom": "A multi-shot materialization correctly created four nodes and one group as a single transaction in the store, but after the real React renderer mounted those nodes, one Cmd+Z left all four nodes and the group on the canvas.",
@@ -33,6 +33,22 @@
     "src/workbench/capability/multiShotCanvasLanding.test.ts",
     "tests/ux/p4-s5-canvas-landing.e2e.mjs"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every generation card mount, legacy-node heal, supplier disconnect, or reference-driven normalization could create a new history barrier after an unrelated user action.",
+    "same_class_scan": [
+      "Scanned generation-node mount effects and updateNode meta writes for automatic model, supplier, variant, archetype, and aspect normalization.",
+      "Separated automatic normalization callers from explicit model, supplier, prompt, title, and parameter edit handlers.",
+      "Exercised a four-node materialization with real mounted generation cards and result attachment before the first Undo."
+    ]
+  },
+  "prevention": {
+    "strategy": "Declare history intent at every shared automatic normalization write while leaving persistence and event journaling enabled.",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx"
+    ]
+  },
   "migration": "No project migration is required. Existing metadata remains valid; only the history intent attached to future automatic normalization writes changes.",
   "residual_risks": [
     "A future renderer effect that writes prompt, title, or meta without history: false can reintroduce the same class of bug; the real Electron transaction walkthrough remains the end-to-end guard.",

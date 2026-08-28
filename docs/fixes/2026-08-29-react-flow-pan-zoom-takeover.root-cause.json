@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-react-flow-pan-zoom-takeover",
   "problem_type": "React Flow mid-pan wheel takeover double translation",
   "symptom": "After holding the primary mouse button to pan, zooming with the wheel, and moving the pointer another 10 pixels, the canvas translated 20 pixels instead of continuing from the zoomed viewport by exactly 10 pixels.",
@@ -32,6 +32,22 @@
     "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
     "tests/ux/canvas-drag-pan-gestures.walk.mjs"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every primary-button pan that receives a wheel zoom before pointer-up can activate both viewport writers, so the displacement error recurs across gestures and platforms with the same event ordering.",
+    "same_class_scan": [
+      "Scanned all flow.setViewport calls in React Flow pointer and viewport ownership code for competing per-frame writers.",
+      "Exercised native continuation, stale native baseline, multiple queued deltas, pointer-up flush, and unmount cancellation in the reconciler tests.",
+      "Ran the real pan-zoom-mix Electron journey and verified one ten-pixel pointer delta produces one ten-pixel viewport translation."
+    ]
+  },
+  "prevention": {
+    "strategy": "Assign one queued target viewport to each post-wheel animation frame and flush that target before persistence at pointer end.",
+    "artifacts": [
+      "src/workbench/generationCanvas/reactFlow/panZoomTakeoverReconciler.ts",
+      "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts"
+    ]
+  },
   "migration": "No project or viewport schema migration is required. Pending takeover targets exist only for the active pointer gesture and are flushed or cancelled before teardown.",
   "residual_risks": [
     "A browser that applies an additional native pan after requestAnimationFrame would require disabling the native listener explicitly; the supported Electron build applies native movement during the pointer event and is covered by the real journey.",

@@ -15,6 +15,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const BASELINE_FILE = path.join(repoRoot, 'scripts/walkthrough-baseline.json')
 const repoRelative = (file) => path.relative(repoRoot, file).split(path.sep).join('/')
 
+function repoRelative(file) {
+  return path.relative(repoRoot, file).split(path.sep).join('/')
+}
+
 /** 只扫「跑得起来的走查/e2e」和「扫源码的结构测试」这两片。 */
 function collect() {
   const files = []

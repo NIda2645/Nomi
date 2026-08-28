@@ -219,6 +219,8 @@ export async function applyCanvasToolCall(
   args: unknown,
   gesture?: CanvasGestureContext,
   canWrite?: () => boolean,
+  documentId?: string,
+  storyboardId?: string,
 ): Promise<unknown> {
   const assertWritable = () => { if (canWrite) assertTurnCanWrite(canWrite) }
   assertWritable()
@@ -252,10 +254,35 @@ export async function applyCanvasToolCall(
     // 校验失败 throw → 调用方映射成 tool error,回喂 LLM 自我修正(与 gate deny 同语义)。
     const plan = parseStoryboardPlan(record)
     const store = useWorkbenchStore.getState()
-    store.setStoryboardPlan(plan)
-    store.setStoryboardEditorOpen(true) // 拆完自动打开编辑器(沿用「立刻看到方案」);卡片同时进对话流。
-    store.setWorkspaceMode('creation')
-    return `已生成分镜方案「${plan.title || '未命名'}」：${plan.anchors.length} 个锚 · ${plan.shots.length} 个镜头，已放到创作区，待你审阅/修改后确认落画布。`
+    // P4:按 documentId 存方案。documentId 由调用方在发起拆镜头时捕获，异步期间切文档不串稿。
+    // 缺 documentId（如旧调用方）回退 activeDocumentId，保证至少落到当前激活文档。
+    const targetDocumentId = documentId ?? store.activeDocumentId
+    if (!store.workbenchDocuments.some((document) => document.id === targetDocumentId)) {
+      return {
+        status: 'obsolete',
+        documentId: targetDocumentId,
+        ...(storyboardId ? { storyboardDesignId: storyboardId } : {}),
+        message: '目标原稿已不存在，未应用迟到的规划结果。',
+      } satisfies StoryboardPlanApplicationResult
+    }
+    const design = store.setStoryboardPlan(plan, targetDocumentId, storyboardId, true, !storyboardId)
+    if (!design) {
+      return {
+        status: 'obsolete',
+        documentId: targetDocumentId,
+        ...(storyboardId ? { storyboardDesignId: storyboardId } : {}),
+        message: '目标分镜已不存在，未应用迟到的规划结果。',
+      } satisfies StoryboardPlanApplicationResult
+    }
+    if (store.workspaceMode === 'creation' || store.workspaceMode === 'storyboard') {
+      store.setWorkspaceMode('creation')
+    }
+    return {
+      status: 'applied',
+      documentId: targetDocumentId,
+      storyboardDesignId: design.id,
+      message: `已生成分镜方案「${plan.title || '未命名'}」：${plan.anchors.length} 个锚 · ${plan.shots.length} 个镜头，已放到创作页，待你审阅/修改后确认落画布。`,
+    } satisfies StoryboardPlanApplicationResult
   }
 
   if (toolName === 'create_canvas_nodes') {
@@ -606,6 +633,7 @@ export async function applyCanvasToolCall(
       ? record.nodeIds.map((id) => resolveNodeId(String(id || '').trim())).filter(Boolean)
       : undefined
     const result = await arrangeStoryboardToTimeline({ ...(rawIds && rawIds.length ? { nodeIds: rawIds } : {}), assertCanApply: assertWritable })
+    if (result.scopeError) throw new Error(result.scopeError)
     if (!result.ok && result.total === 0) {
       throw new Error('没有可排片的镜头:画布上还没有生成好的视频或可占位的关键帧')
     }
@@ -635,4 +663,13 @@ export async function applyCanvasToolCall(
   }
 
   throw new Error(`unknown tool ${toolName}`)
+}
+export const STORYBOARD_PLAN_APPLICATION_STATUSES = ['applied', 'obsolete'] as const
+export type StoryboardPlanApplicationStatus = typeof STORYBOARD_PLAN_APPLICATION_STATUSES[number]
+
+export type StoryboardPlanApplicationResult = {
+  status: StoryboardPlanApplicationStatus
+  documentId: string
+  storyboardDesignId?: string
+  message: string
 }

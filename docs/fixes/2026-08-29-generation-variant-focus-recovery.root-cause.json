@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-generation-variant-focus-recovery",
   "problem_type": "duplicated generation variant focus regression",
   "symptom": "Creating a generation variant through the confirmed rerun path could place the duplicate outside the visible canvas without selecting or centering it, even though the equivalent floating-toolbar action focused its duplicate.",
@@ -30,6 +30,22 @@
     "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
     "src/workbench/generationCanvas/reactFlow/focusViewportRecovery.test.ts"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every successful variant duplication can create an off-screen node, and equivalent commands could repeatedly omit selection and viewport recovery if focus remains entry-point-specific.",
+    "same_class_scan": [
+      "Scanned every duplicateNodeForRegeneration caller and every FOCUS_GENERATION_NODE_EVENT dispatch in generation-canvas code.",
+      "Scanned React Flow focus recovery across category switching, virtualization delay, duplicate removal, and undo viewport restoration.",
+      "Exercised both confirmed rerun and toolbar duplication entry points plus pending-focus mount and immediate-undo boundaries."
+    ]
+  },
+  "prevention": {
+    "strategy": "Route every successful variant duplication through the shared focus event and reconcile pending focus against projected React Flow nodes before centering.",
+    "artifacts": [
+      "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "src/workbench/generationCanvas/reactFlow/focusViewportRecovery.ts"
+    ]
+  },
   "migration": "Generation nodes and viewport focus requests require no stored-schema migration. Existing projects keep their node ids and positions; the shared focus event applies only to newly created variants, and pending focus state remains transient.",
   "residual_risks": [
     "A future duplication entry point can regress if it bypasses both duplicateNodeForRegeneration callers covered by the structural contract.",
