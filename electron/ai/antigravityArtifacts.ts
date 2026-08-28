@@ -63,10 +63,13 @@ export async function validateAntigravityImage(bytes: Uint8Array, declaredMime?:
   }
   // Existing bundled decoder; strict error mode validates pixels, not merely headers. It shares the
   // certification process runner so timeout/cancel kills the complete process tree and waits for reap.
+  // Older bundled ffmpeg builds do not reliably auto-detect WebP through image2pipe. The MIME has
+  // already been established from magic bytes above, so select its explicit pipe demuxer.
+  const inputDemuxer = mimeType === "image/webp" ? "webp_pipe" : "image2pipe";
   const decodedResult = await runBoundedProcess(
     resolveFfmpegPath(),
     ["-hide_banner", "-v", "error", "-xerror", "-err_detect", "explode",
-      "-max_pixels", String(MAX_PIXELS), "-f", "image2pipe", "-i", "pipe:0", "-frames:v", "1", "-f", "framehash", "pipe:1"],
+      "-max_pixels", String(MAX_PIXELS), "-f", inputDemuxer, "-i", "pipe:0", "-frames:v", "1", "-f", "framehash", "pipe:1"],
     { signal, timeoutMs: 10_000, maxStdoutBytes: 16_384, maxStderrBytes: 4_096, input: data },
   );
   if (decodedResult.code !== 0 || decodedResult.stderr.trim()) throw new Error("ANTIGRAVITY_IMAGE_INVALID");
