@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CatalogState, Mapping, Model, Vendor } from "./types";
 
 const state = vi.hoisted(() => ({ catalog: null as CatalogState | null }));
@@ -27,10 +27,15 @@ vi.mock("../runtime", async () => {
 });
 
 import { testModelCatalogMapping } from "./catalogCommit";
+import { buildProfileHttpRequest } from "./profileHttpRequest";
+import { requestJson } from "../vendor/vendorHttp";
 
 describe("testModelCatalogMapping request redaction", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
-    const secret = "opaque+Credential/Value=987654%";
+    const customHeaderSecret = "SENTINEL-CUSTOM-HEADER-SECRET";
+    const randomHeaderSecret = "RANDOM-NAMED-HEADER-SECRET";
     const vendor = {
       key: "relay",
       name: "Relay",
@@ -38,7 +43,12 @@ describe("testModelCatalogMapping request redaction", () => {
       authType: "query",
       authQueryParam: "access_token",
       baseUrlHint: "https://relay.example/v1",
-      meta: { extraHeaders: { "X-Workspace-Auth": secret } },
+      meta: {
+        extraHeaders: {
+          "X-Workspace": customHeaderSecret,
+          "X-Random-Gateway-Field": randomHeaderSecret,
+        },
+      },
       createdAt: "",
       updatedAt: "",
     } satisfies Vendor;
@@ -72,12 +82,42 @@ describe("testModelCatalogMapping request redaction", () => {
 
   it("never returns raw or outbound-encoded header/query credentials in the mapping test DTO", async () => {
     const secret = "opaque+Credential/Value=987654%";
+    const customHeaderSecret = "SENTINEL-CUSTOM-HEADER-SECRET";
+    const randomHeaderSecret = "RANDOM-NAMED-HEADER-SECRET";
     const result = await testModelCatalogMapping("relay:image-model:text_to_image", { execute: false });
     const serialized = JSON.stringify(result);
 
     expect(serialized).toContain("ordinary-marker");
-    expect(serialized).not.toContain(secret);
-    expect(serialized).not.toContain(encodeURIComponent(secret));
-    expect(serialized).not.toContain(new URLSearchParams({ credential: secret }).toString().slice("credential=".length));
+    for (const value of [secret, customHeaderSecret, randomHeaderSecret]) {
+      expect(serialized).not.toContain(value);
+      expect(serialized).not.toContain(encodeURIComponent(value));
+      expect(serialized).not.toContain(new URLSearchParams({ credential: value }).toString().slice("credential=".length));
+    }
+  });
+
+  it("keeps the custom auth query name identical in the actual request and redacted preview", async () => {
+    const vendor = state.catalog!.vendors[0];
+    const model = state.catalog!.models[0];
+    const operation = state.catalog!.mappings[0].create;
+    const secret = "opaque+Credential/Value=987654%";
+    const built = buildProfileHttpRequest({
+      vendor,
+      model,
+      apiKey: secret,
+      request: { kind: "text_to_image", prompt: "test", extras: {} } as never,
+      operation,
+    });
+
+    const preview = built.preview as { url: string };
+    expect(preview.url).toContain("access_token=");
+    expect(preview.url).not.toContain(secret);
+    expect(preview.url).not.toContain(encodeURIComponent(secret));
+
+    const fetchSpy = vi.fn(async (_input: string | URL | Request) => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    await requestJson(vendor, secret, built.method, built.url, built.headers, built.query, built.body);
+    const actualUrl = new URL(String(fetchSpy.mock.calls[0]?.[0]));
+    expect(actualUrl.searchParams.get("access_token")).toBe(secret);
+    expect(actualUrl.searchParams.get("api_key")).toBeNull();
   });
 });

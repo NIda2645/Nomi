@@ -267,9 +267,34 @@ function stringifyHeaders(headers: unknown): Record<string, string> {
 /** Redact secret-bearing header values for logging/preview. */
 const REQUEST_REDACTED = "«redacted»";
 const SENSITIVE_REQUEST_FIELD = /(?:^|[-_])(?:authorization|auth|api[-_]?key|access[-_]?token|token|secret|password|credential|signature|sig)(?:$|[-_])/i;
+const PUBLIC_REQUEST_HEADERS = new Set(["accept", "content-type", "user-agent"]);
+const publicSystemHeadersByRequest = new WeakMap<Record<string, string>, ReadonlySet<string>>();
 
 export function isSensitiveRequestField(name: string): boolean {
   return SENSITIVE_REQUEST_FIELD.test(name);
+}
+
+/**
+ * Header names are not a credential contract: gateways accept secrets under
+ * arbitrary names. Only explicitly public, system-generated representation
+ * headers may remain visible in diagnostics and request previews.
+ */
+export function markPublicSystemRequestHeaders<T extends Record<string, string>>(headers: T, names: readonly string[]): T {
+  const publicNames = new Set(
+    names.map((name) => name.trim().toLowerCase()).filter((name) => PUBLIC_REQUEST_HEADERS.has(name)),
+  );
+  if (publicNames.size > 0) publicSystemHeadersByRequest.set(headers, publicNames);
+  return headers;
+}
+
+function isPublicSystemRequestHeader(headers: Record<string, string>, name: string): boolean {
+  return publicSystemHeadersByRequest.get(headers)?.has(name.trim().toLowerCase()) ?? false;
+}
+
+export function sensitiveRequestHeaderValues(headers: Record<string, string>): string[] {
+  return Object.entries(headers)
+    .filter(([name, value]) => Boolean(value) && !isPublicSystemRequestHeader(headers, name))
+    .map(([, value]) => value);
 }
 
 function stringValues(value: unknown): string[] {
@@ -288,9 +313,7 @@ export function collectRequestSecretValues(input: {
   const apiKey = input.apiKey?.trim() ?? "";
   const values = new Set<string>();
   if (apiKey) values.add(apiKey);
-  for (const [name, value] of Object.entries(input.headers || {})) {
-    if (isSensitiveRequestField(name) || (apiKey && value.includes(apiKey))) values.add(value);
-  }
+  for (const value of sensitiveRequestHeaderValues(input.headers || {})) values.add(value);
   for (const value of Object.values(input.authQuery || {})) {
     for (const item of stringValues(value)) if (item) values.add(item);
   }
@@ -355,7 +378,7 @@ export function redactRequestValue<T>(value: T, secrets: readonly string[]): T {
 export function redactHeaders(headers: Record<string, string>, secrets: readonly string[] = []): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
-    out[key] = isSensitiveRequestField(key) ? "[redacted]" : redactRequestSecrets(value, secrets);
+    out[key] = isPublicSystemRequestHeader(headers, key) ? redactRequestSecrets(value, secrets) : "[redacted]";
   }
   return out;
 }
@@ -414,6 +437,7 @@ export function buildHttpRequest(input: {
   const body = renderTemplateValue(operation.body, context);
   if (method !== "GET" && method !== "HEAD" && body != null && !Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) {
     headers["Content-Type"] = "application/json";
+    markPublicSystemRequestHeaders(headers, ["Content-Type"]);
   }
 
   const query = isRecord(renderTemplateValue(operation.query, context))

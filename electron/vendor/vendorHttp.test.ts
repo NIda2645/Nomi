@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { VendorRequestError, categorizeVendorFailure, requestJson } from "./vendorHttp";
 import type { Vendor } from "../catalog/types";
+import { buildHttpRequest, buildTemplateContext } from "../ai/requestPipeline";
 
 const vendor = { key: "kie", authType: "bearer", baseUrlHint: "https://api.kie.ai" } as unknown as Vendor;
 
@@ -81,6 +82,43 @@ describe("requestJson 结构化错误(S4-0,修压扁根因)", () => {
 
     assert(error instanceof VendorRequestError);
     expect(`${error.message}${JSON.stringify(error.structured)}`).not.toContain(customHeaderSecret);
+  });
+
+  it("redacts arbitrary gateway header values and encoded variants while preserving public header detail", async () => {
+    const workspaceSecret = "SENTINEL-CUSTOM-HEADER-SECRET";
+    const randomNameSecret = "opaque+Credential/Value=987654%";
+    const encodedRandomSecret = encodeURIComponent(randomNameSecret);
+    stubFetch(() => new Response(JSON.stringify({
+      message: `ordinary-validation-marker content-type=application/json workspace=${workspaceSecret} random=${encodedRandomSecret}`,
+    }), { status: 500 }));
+
+    const built = buildHttpRequest({
+      baseUrl: "https://api.kie.ai",
+      authType: "none",
+      apiKey: "",
+      context: buildTemplateContext({ request: {}, params: {}, model: {}, modelKey: "m", apiKey: "" }),
+      operation: { method: "POST", path: "/v1/task", body: {} },
+      extraHeaders: {
+        "X-Workspace": workspaceSecret,
+        "X-Random-Gateway-Field": randomNameSecret,
+      },
+    });
+
+    const error = await requestJson(
+      { ...vendor, authType: "none" } as Vendor,
+      "",
+      built.method,
+      built.url,
+      built.headers,
+      built.query,
+      built.body,
+    ).catch((caught) => caught);
+
+    assert(error instanceof VendorRequestError);
+    const exposed = `${error.message}${JSON.stringify(error.structured)}`;
+    expect(exposed).toContain("ordinary-validation-marker");
+    expect(exposed).toContain("content-type=application/json");
+    for (const secret of [workspaceSecret, randomNameSecret, encodedRandomSecret]) expect(exposed).not.toContain(secret);
   });
 
   it("redacts the actual query-auth value echoed by an upstream 500 message", async () => {
