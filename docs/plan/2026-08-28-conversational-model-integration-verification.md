@@ -22,6 +22,7 @@
 | J4 停止/重启读回 | PASS（无花费重启 smoke） | `tests/ux/model-integration-packaged.e2e.mjs`：同 session/revision 读回、凭据仍 missing、零重复 create；升级后真实生产调用仍待外部门 |
 | J3 故障矩阵 | PASS（本地自动化） | `pnpm run test:model-integration:fault-matrix`：8 个聚焦 suite，覆盖 ledger、bounded media、safeStorage、origin/redirect 与恢复 |
 | J5 既有接入回归 | PASS（自动化） | `pnpm run test:journeys` J3/J5 为 2/2，加现有 provider/catalog suites |
+| 模型设置页 UI 走查 | PASS（真实 Electron） | `node tests/ux/model-onboarding.walk.mjs`：默认分层、连接页、亮色、暗色 4 张截图；亮/暗主题实际生效且相邻截图均有可见变化 |
 
 ## 外部验收状态
 
@@ -42,7 +43,7 @@
 - [ ] 用真实 provider 账号完成 J1，并登记发现总数、分页完整性、逐模型/逐 mode 结果、请求次数和实际花费。
 - [ ] 用原生 ComfyUI 完成 UI workflow + API workflow，两个以上不同媒体槽，重启后再次从正式入口执行。
 - [ ] 完成安装包 stop/restart/upgrade 真实生产调用和 fresh-process 零重复 create 证明。
-- [ ] 运行 J3 完整故障矩阵和双语/明暗 UI handoff 截图走查。
+- [ ] 运行 J3 完整发布级故障矩阵，并完成双语/明暗 handoff 页面截图走查（模型设置页亮/暗已通过，handoff 页面仍待走查）。
 - [ ] 整理当前未提交修改，刷新远端基线，提交任务分支并更新 PR；不直接 push 默认分支。
 
 ## 运行命令
