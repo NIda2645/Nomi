@@ -7,6 +7,8 @@ import type { Model, Vendor } from "../catalog/types";
 import type { ProviderAdapterDraft } from "./types";
 import { ProviderAdapterStore } from "./store";
 import type { AdapterVerificationResult } from "./verifier";
+import { writeCertificationJsonAtomic } from "../integrationCertification/operationLedger";
+import { PromotionJournal } from "../integrationCertification/promotionJournal";
 import {
   ProviderAdapterService,
   adapterModelMetadataForPromotion,
@@ -191,6 +193,135 @@ describe("ProviderAdapterService", () => {
     expect(deps.schedule).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    "after_intent",
+    "after_run_write",
+    "after_run_checkpoint",
+    "after_catalog_stage",
+    "after_catalog_checkpoint",
+    "after_commit",
+  ] as const)("replays the prepared start transaction after a crash at %s", (crashAt) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-adapter-start-tx-"));
+    dirs.push(root);
+    const filePath = path.join(root, "provider-adapters.json");
+    const catalog = fakeCatalog();
+    let sequence = 0;
+    const deps = dependencies(catalog);
+    deps.id = () => `run-${++sequence}`;
+    deps.schedule = vi.fn();
+    deps.certificationCheckpoint = (checkpoint) => {
+      if (checkpoint === crashAt) throw new Error(`simulated crash at ${checkpoint}`);
+    };
+    const certification = {
+      contractDigest: "c".repeat(64),
+      idempotencyKey: `start-transaction-${crashAt}`,
+      remoteIdempotency: "unsupported" as const,
+    };
+
+    expect(() => new ProviderAdapterService(new ProviderAdapterStore(filePath), deps)
+      .start({ ...startInput, certification })).toThrowError(/simulated crash/);
+    delete deps.certificationCheckpoint;
+    const restarted = new ProviderAdapterService(new ProviderAdapterStore(filePath), deps);
+    const recovered = restarted.start({ ...startInput, certification });
+    const state = new ProviderAdapterStore(filePath).snapshot();
+    const ledgerText = fs.readFileSync(path.join(root, "integration-certification", "operations.json"), "utf8");
+    const ledgerState = JSON.parse(ledgerText) as { operations: Array<{ startTransaction: { state: string } }> };
+
+    expect(recovered.id).toBe("run-1");
+    expect(state.runs.map((run) => run.id)).toEqual(["run-1"]);
+    expect(ledgerState.operations[0].startTransaction.state).toBe("committed");
+    expect(ledgerText).not.toContain(certification.idempotencyKey);
+  });
+
+  it("rolls back a pre-stage intent on restart without leaving an orphan canonical id", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-adapter-start-rollback-"));
+    dirs.push(root);
+    const filePath = path.join(root, "provider-adapters.json");
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.certificationCheckpoint = (checkpoint) => {
+      if (checkpoint === "after_intent") throw new Error("crash after intent");
+    };
+    const certification = { contractDigest: "d".repeat(64), idempotencyKey: "rollback-intent", remoteIdempotency: "unknown" as const };
+    expect(() => new ProviderAdapterService(new ProviderAdapterStore(filePath), deps).start({ ...startInput, certification }))
+      .toThrowError(/crash/);
+
+    const schedule = vi.fn();
+    const restarted = new ProviderAdapterService(new ProviderAdapterStore(filePath), { ...deps, certificationCheckpoint: undefined, schedule });
+    restarted.resumeInterrupted();
+
+    expect(restarted.getRun("run-test")).toMatchObject({
+      stage: "failed",
+      recovery: { reasonCode: "certification_start_rolled_back", userAction: "restart_certification" },
+    });
+    expect(schedule).not.toHaveBeenCalled();
+    const ledgerState = JSON.parse(fs.readFileSync(path.join(root, "integration-certification", "operations.json"), "utf8"));
+    expect(ledgerState.operations[0].startTransaction.state).toBe("rolled_back");
+  });
+
+  it("discovers an already-staged candidate after restart and commits the prepared transaction", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-adapter-start-stage-recovery-"));
+    dirs.push(root);
+    const filePath = path.join(root, "provider-adapters.json");
+    const catalog = fakeCatalog();
+    catalog.findStagedRun = () => catalog.staged.length
+      ? { vendorKey: "api-example-com", lineageRootVendorKey: "api-example-com" }
+      : null;
+    const deps = dependencies(catalog);
+    deps.certificationCheckpoint = (checkpoint) => {
+      if (checkpoint === "after_catalog_stage") throw new Error("crash after catalog stage");
+    };
+    expect(() => new ProviderAdapterService(new ProviderAdapterStore(filePath), deps).start(startInput)).toThrowError(/crash/);
+
+    const schedule = vi.fn();
+    const restarted = new ProviderAdapterService(new ProviderAdapterStore(filePath), { ...deps, certificationCheckpoint: undefined, schedule });
+    restarted.resumeInterrupted();
+
+    expect(restarted.getRun("run-test")?.stage).toBe("queued");
+    expect(schedule).toHaveBeenCalledWith("run-test");
+    const ledgerState = JSON.parse(fs.readFileSync(path.join(root, "integration-certification", "operations.json"), "utf8"));
+    expect(ledgerState.operations[0].startTransaction.state).toBe("committed");
+  });
+
+  it("binds idempotency to the credential, catalog lineage, and normalized custom-header identity", () => {
+    const catalog = fakeCatalog();
+    const service = new ProviderAdapterService(store(), { ...dependencies(catalog), schedule: () => {} });
+    const certification = {
+      contractDigest: "f".repeat(64),
+      idempotencyKey: "credential-bound-confirmation",
+      remoteIdempotency: "supported" as const,
+    };
+    const first = service.start({
+      ...startInput,
+      apiKey: "account-key-a",
+      catalogVendorKey: "stable-lineage",
+      headers: { "X-Account": "tenant-a", "X-Region": "cn" },
+      certification,
+    });
+
+    expect(service.start({
+      ...startInput,
+      apiKey: "account-key-a",
+      catalogVendorKey: "stable-lineage",
+      headers: { "x-region": "cn", "x-account": "tenant-a" },
+      certification,
+    }).id).toBe(first.id);
+    expect(() => service.start({
+      ...startInput,
+      apiKey: "account-key-b",
+      catalogVendorKey: "stable-lineage",
+      headers: { "X-Account": "tenant-a", "X-Region": "cn" },
+      certification,
+    })).toThrowError(/idempotency.*different contract|contract drift/i);
+    expect(() => service.start({
+      ...startInput,
+      apiKey: "account-key-a",
+      catalogVendorKey: "stable-lineage",
+      headers: { "X-Account": "tenant-b", "X-Region": "cn" },
+      certification,
+    })).toThrowError(/idempotency.*different contract|contract drift/i);
+  });
+
   it("returns the cancelled original run when start races with cancel for the same idempotency key", () => {
     const catalog = fakeCatalog();
     const service = new ProviderAdapterService(store(), { ...dependencies(catalog), schedule: () => {} });
@@ -259,6 +390,102 @@ describe("ProviderAdapterService", () => {
     expect(creates).toBe(1);
     expect(deps.reconcile).toHaveBeenCalledWith(expect.objectContaining({ remoteTaskId: "remote-task-accepted-1" }));
     expect(restarted.getRun(started.id)?.stage).toBe("completed");
+  });
+
+  it("checkpoints a parsed remote task id before polling so a crash resumes with zero new create", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    const adapterStore = store();
+    let creates = 0;
+    deps.maxRepairs = 0;
+    deps.verifyTimeoutMs = 5;
+    deps.compile = async () => ({
+      draft: { ...draft(), models: [{ ...draft().models[1], modes: [draft().models[1].modes[0]] }] },
+      failures: [],
+    });
+    deps.verify = vi.fn(async (input: any) => {
+      creates += 1;
+      await input.onRemoteTaskAccepted("remote-before-poll-1");
+      return new Promise<AdapterVerificationResult>(() => {});
+    });
+    deps.reconcile = vi.fn(async ({ mode, remoteTaskId }) => ({
+      ok: true,
+      taskKind: mode.taskKind,
+      remoteTaskId,
+      submissionState: "settled",
+    } satisfies AdapterVerificationResult));
+    const first = new ProviderAdapterService(adapterStore, { ...deps, schedule: () => {} });
+    const started = first.start({
+      ...startInput,
+      models: [startInput.models[1]],
+      certification: {
+        contractDigest: "1".repeat(64),
+        idempotencyKey: "remote-id-before-poll",
+        remoteIdempotency: "unsupported",
+      },
+    });
+
+    await first.executeRun(started.id);
+    const restarted = new ProviderAdapterService(adapterStore, { ...deps, schedule: () => {} });
+    restarted.resumeInterrupted();
+    await restarted.executeRun(started.id);
+
+    expect(creates).toBe(1);
+    expect(deps.reconcile).toHaveBeenCalledWith(expect.objectContaining({ remoteTaskId: "remote-before-poll-1" }));
+    expect(restarted.getRun(started.id)?.stage).toBe("completed");
+  });
+
+  it("resumes only the unsettled mode after a multi-mode crash and preserves failed outcomes", async () => {
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    const adapterStore = store();
+    const creates: string[] = [];
+    deps.maxRepairs = 0;
+    deps.verifyTimeoutMs = 5;
+    deps.compile = async () => ({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    deps.verify = vi.fn(async (input: any) => {
+      creates.push(input.mode.taskKind);
+      if (input.mode.taskKind === "text_to_image") {
+        return { ok: true, taskKind: input.mode.taskKind } satisfies AdapterVerificationResult;
+      }
+      await input.onRemoteTaskAccepted("remote-image-edit-1");
+      return new Promise<AdapterVerificationResult>(() => {});
+    });
+    deps.reconcile = vi.fn(async ({ mode, remoteTaskId }) => ({
+      ok: false,
+      taskKind: mode.taskKind,
+      stage: "create",
+      error: "invalid reference shape",
+      errorCategory: "input",
+      remoteTaskId,
+      submissionState: "settled",
+    } satisfies AdapterVerificationResult));
+    const first = new ProviderAdapterService(adapterStore, { ...deps, schedule: () => {} });
+    const started = first.start({
+      ...startInput,
+      models: [startInput.models[1]],
+      certification: {
+        contractDigest: "2".repeat(64),
+        idempotencyKey: "multi-mode-crash",
+        remoteIdempotency: "unsupported",
+      },
+    });
+    await first.executeRun(started.id);
+
+    const restarted = new ProviderAdapterService(adapterStore, { ...deps, schedule: () => {} });
+    restarted.resumeInterrupted();
+    await restarted.executeRun(started.id);
+
+    expect(creates).toEqual(["text_to_image", "image_edit"]);
+    expect(deps.reconcile).toHaveBeenCalledTimes(1);
+    expect(deps.reconcile).toHaveBeenCalledWith(expect.objectContaining({
+      mode: expect.objectContaining({ taskKind: "image_edit" }),
+      remoteTaskId: "remote-image-edit-1",
+    }));
+    expect(restarted.getRun(started.id)?.models[0].modes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ taskKind: "text_to_image", state: "verified" }),
+      expect.objectContaining({ taskKind: "image_edit", state: "failed", errorCategory: "input" }),
+    ]));
   });
 
   it("keeps an unknown submission fail-closed with a structured action when it cannot reconcile", async () => {
@@ -557,6 +784,46 @@ describe("ProviderAdapterService", () => {
       error: "catalog write failed",
     });
     expect(catalog.failed).toEqual([started.id]);
+  });
+
+  it("keeps post-catalog journal failure in dedicated recovery and finalizes by fresh replay", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-adapter-promotion-recovery-"));
+    dirs.push(root);
+    const filePath = path.join(root, "provider-adapters.json");
+    const journalPath = path.join(root, "integration-certification", "promotion-journal.json");
+    const catalog = fakeCatalog();
+    const deps = dependencies(catalog);
+    deps.compile = async () => ({ draft: { ...draft(), models: [draft().models[1]] }, failures: [] });
+    deps.maxRepairs = 0;
+    let failedAfterCatalog = false;
+    const journal = new PromotionJournal(journalPath, {
+      write: (target, state) => {
+        if (!failedAfterCatalog && state.entries.some((entry) => entry.state === "catalog_committed")) {
+          failedAfterCatalog = true;
+          throw new Error("simulated post-catalog journal fsync failure");
+        }
+        writeCertificationJsonAtomic(target, state);
+      },
+    });
+    const first = new ProviderAdapterService(new ProviderAdapterStore(filePath), { ...deps, promotionJournal: journal });
+    const started = first.start({ ...startInput, models: [startInput.models[1]] });
+
+    await first.executeRun(started.id);
+
+    expect(first.getRun(started.id)).toMatchObject({
+      stage: "reconciling",
+      recovery: { reasonCode: "promotion_commit_unknown" },
+    });
+    expect(catalog.failed).toEqual([]);
+    expect(catalog.promoted).toHaveLength(1);
+
+    const restarted = new ProviderAdapterService(new ProviderAdapterStore(filePath), deps);
+    restarted.resumeInterrupted();
+    restarted.resumeInterrupted();
+
+    expect(restarted.getRun(started.id)).toMatchObject({ stage: "completed", recovery: undefined });
+    expect(catalog.failed).toEqual([]);
+    expect(catalog.promoted).toHaveLength(2);
   });
 
   it("does not write completed state or a revision when promotion reports no lease", async () => {

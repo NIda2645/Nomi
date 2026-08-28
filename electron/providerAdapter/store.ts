@@ -9,6 +9,7 @@ import type {
   ProviderAdapterRun,
   ProviderAdapterStoreState,
 } from "./types";
+import type { PromotionTerminalStage } from "../integrationCertification/types";
 
 const EMPTY_STATE: ProviderAdapterStoreState = { version: 1, runs: [], revisions: [] };
 export const TERMINAL_ADAPTER_STAGES = new Set<ProviderAdapterRun["stage"]>([
@@ -189,6 +190,46 @@ export class ProviderAdapterStore {
     const next = this.state.revisions.filter((revision) => revision.id !== id);
     if (next.length === this.state.revisions.length) return;
     this.persistState({ ...this.state, revisions: next });
+  }
+
+  finalizePromotion(input: {
+    runId: string;
+    expectedActiveRevision?: string;
+    revision: ProviderAdapterRevision;
+    verifiedModes: ProviderAdapterRevision["verifiedModes"];
+    terminalStage: PromotionTerminalStage;
+    finalizedAt: string;
+  }): ProviderAdapterRun {
+    const fresh = loadState(this.filePath);
+    const runIndex = fresh.runs.findIndex((run) => run.id === input.runId);
+    if (runIndex < 0) throw new Error(`Provider adapter run not found: ${input.runId}`);
+    const current = fresh.runs[runIndex];
+    if (current.activeRevision === input.revision.id && isTerminalAdapterStage(current.stage)) {
+      this.state = fresh;
+      return clone(current);
+    }
+    if (current.activeRevision !== input.expectedActiveRevision) {
+      throw new Error("Provider adapter promotion revision conflict");
+    }
+    const finalized = sanitizeRun({
+      ...current,
+      stage: input.terminalStage,
+      currentModelKey: undefined,
+      completedCount: current.totalCount ?? current.selectedModelKeys.length,
+      activeRevision: input.revision.id,
+      recovery: undefined,
+      stageStartedAt: input.finalizedAt,
+      lastProgressAt: input.finalizedAt,
+      updatedAt: input.finalizedAt,
+    });
+    fresh.runs[runIndex] = finalized;
+    const revision = { ...input.revision, verifiedModes: input.verifiedModes };
+    const revisionIndex = fresh.revisions.findIndex((item) => item.id === revision.id);
+    if (revisionIndex >= 0) fresh.revisions[revisionIndex] = revision;
+    else fresh.revisions.push(revision);
+    writeJsonFileAtomic(this.filePath, fresh);
+    this.state = clone(fresh);
+    return clone(finalized);
   }
 
   markStaleIfConnectionChanged(id: string, currentFingerprint: string): ProviderAdapterRun | undefined {

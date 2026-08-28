@@ -3,12 +3,13 @@ import type { LanguageModelV1 } from "ai";
 import type { OperationLedger } from "../integrationCertification/operationLedger";
 import type { PromotionJournal } from "../integrationCertification/promotionJournal";
 import {
+  AdapterPromotionRecoveryRequiredError,
   AdapterReconciliationRequiredError,
   ProviderAdapterCertificationCoordinator,
+  type CertificationStartCheckpoint,
 } from "../integrationCertification/providerAdapterCoordinator";
 import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
 import type { BillingModelKind, Model, Vendor } from "../catalog/types";
-import { humanizeModelKey } from "../catalog/modelLabel";
 import { AdapterNeedsAiError, compileProviderAdapter, repairProviderAdapter } from "./compiler";
 import { discoverProviderDocs, type DiscoveredDocs } from "./docsDiscovery";
 import { builtinDraftForUndocumentedEndpoint } from "./builtinOpenAiCompatibleDraft";
@@ -90,6 +91,7 @@ export type ProviderAdapterServiceDependencies = {
     model: Model;
     apiKey: string;
     mode: ProviderAdapterDraft["models"][number]["modes"][number];
+    onRemoteTaskAccepted?: (remoteTaskId: string) => void;
     signal?: AbortSignal;
   }) => Promise<AdapterVerificationResult>;
   reconcile?: (input: {
@@ -110,6 +112,7 @@ export type ProviderAdapterServiceDependencies = {
   compileTimeoutMs?: number;
   repairTimeoutMs?: number;
   verifyTimeoutMs?: number;
+  certificationCheckpoint?: (checkpoint: CertificationStartCheckpoint) => void;
 };
 
 const defaultDependencies: ProviderAdapterServiceDependencies = {
@@ -163,27 +166,12 @@ export class ProviderAdapterService {
     const id = this.dependencies.id();
     const prepared = this.certification.prepareStart(input, id, vendorKey);
     if (prepared.duplicate) return prepared.duplicate;
-    const staged = this.dependencies.catalog.stage({ ...input, vendorKey, runId: id });
     const timestamp = this.dependencies.now();
-    this.certification.begin({
-      runId: id,
-      contractDigest: prepared.contractDigest,
-      idempotencyKey: prepared.idempotencyKey,
-      lineageRootVendorKey: staged.lineageRootVendorKey,
-      remoteIdempotency: input.certification?.remoteIdempotency,
-      now: timestamp,
-    });
-    this.supersedeActiveLineageRuns(
-      id,
-      staged.lineageRootVendorKey,
-      new Set(staged.supersededVendorKeys),
-      timestamp,
-    );
-    const run: ProviderAdapterRun = {
-      id,
-      vendorKey: staged.vendor.key,
-      lineageRootVendorKey: staged.lineageRootVendorKey,
-      vendorName: staged.vendor.name,
+    if (!prepared.operation) throw new Error("Certification start reservation is missing");
+    const { run, staged } = this.certification.completePreparedStart({
+      connection: input,
+      operation: prepared.operation,
+      sourceVendorKey: vendorKey,
       connectionFingerprint: connectionFingerprint({
         baseUrl: input.baseUrl,
         authType: input.authType,
@@ -191,26 +179,16 @@ export class ProviderAdapterService {
         selectedModelKeys: input.models.map((model) => model.modelKey),
         headers: input.headers,
       }),
-      selectedModelKeys: input.models.map((model) => model.modelKey),
-      stage: "queued",
-      completedCount: 0,
-      totalCount: input.models.length,
-      lastProgressAt: timestamp,
-      stageStartedAt: timestamp,
       deadlineAt: deadlineFrom(timestamp, this.dependencies.batchTimeoutMs ?? 5 * 60_000),
-      repairAttempt: 0,
-      models: input.models.map((model) => ({
-        modelKey: model.modelKey,
-        labelZh: model.labelZh || humanizeModelKey(model.modelKey),
-        kind: model.kind,
-        modes: [],
-      })),
-      sourceUrls: [],
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
-    this.store.upsertRun(run);
-    this.schedule(id);
+      checkpoint: this.dependencies.certificationCheckpoint,
+    });
+    this.supersedeActiveLineageRuns(
+      run.id,
+      staged.lineageRootVendorKey,
+      new Set(staged.supersededVendorKeys),
+      timestamp,
+    );
+    this.schedule(run.id);
     return run;
   }
 
@@ -239,8 +217,14 @@ export class ProviderAdapterService {
   }
 
   resumeInterrupted(): void {
-    this.certification.replayPromotions();
+    this.certification.recoverPreparedStarts();
+    try {
+      this.certification.replayPromotions();
+    } catch (error) {
+      if (!(error instanceof AdapterPromotionRecoveryRequiredError)) throw error;
+    }
     for (const run of recoverableAdapterRuns(this.store.snapshot().runs)) {
+      if (run.recovery?.reasonCode === "promotion_commit_unknown") continue;
       if (this.certification.resumeDisposition(run, Boolean(this.dependencies.reconcile)) === "wait") continue;
       const deadlineAt = run.deadlineAt || deadlineFrom(run.createdAt, this.dependencies.batchTimeoutMs ?? 5 * 60_000);
       if (deadlineExpired(deadlineAt, this.dependencies.now())) {
@@ -466,7 +450,7 @@ export class ProviderAdapterService {
       if (error instanceof AdapterWaitError) {
         if (error.reason === "cancelled" || error.reason === "terminal") return;
         this.finishTerminal(id, "timed_out", error.message);
-      } else if (error instanceof AdapterReconciliationRequiredError) {
+      } else if (error instanceof AdapterReconciliationRequiredError || error instanceof AdapterPromotionRecoveryRequiredError) {
         // The durable ledger is the authority. Keep the candidate staged and wait
         // for an explicit remote reconciliation; never turn uncertainty into retry.
         return;
@@ -536,8 +520,8 @@ export class ProviderAdapterService {
                 );
               }
             },
-            execute: () => this.awaitStep(id, "Model verification", this.dependencies.verifyTimeoutMs ?? 90_000, (signal) =>
-              this.dependencies.verify({ vendor: connection.vendor, model, apiKey: connection.apiKey, mode, signal }),
+            execute: (onRemoteTaskAccepted) => this.awaitStep(id, "Model verification", this.dependencies.verifyTimeoutMs ?? 90_000, (signal) =>
+              this.dependencies.verify({ vendor: connection.vendor, model, apiKey: connection.apiKey, mode, signal, onRemoteTaskAccepted }),
             ),
             ...(this.dependencies.reconcile
               ? { reconcile: (remoteTaskId: string) => this.awaitStep(
@@ -558,16 +542,20 @@ export class ProviderAdapterService {
               const persisted = this.store.getRun(id)?.models
                 .find((item) => item.modelKey === candidateModel.modelKey)?.modes
                 .find((item) => item.taskKind === mode.taskKind);
-              return persisted?.state === "failed"
+              return operation.settledResult?.ok === false || persisted?.state === "failed"
                 ? {
                     ok: false as const,
                     taskKind: mode.taskKind,
-                    stage: persisted.stage === "localize_reference" || persisted.stage === "poll" || persisted.stage === "verify_asset"
+                    stage: persisted?.stage === "localize_reference" || persisted?.stage === "poll" || persisted?.stage === "verify_asset"
                       ? persisted.stage
+                      : operation.settledResult?.stage === "localize_reference"
+                        || operation.settledResult?.stage === "poll"
+                        || operation.settledResult?.stage === "verify_asset"
+                        ? operation.settledResult.stage
                       : "create" as const,
-                    error: persisted.error || "Provider verification failed",
-                    errorCategory: persisted.errorCategory,
-                    httpStatus: persisted.httpStatus,
+                    error: persisted?.error || "Provider verification failed",
+                    errorCategory: persisted?.errorCategory || operation.settledResult?.errorCategory,
+                    httpStatus: persisted?.httpStatus,
                     submissionState: "settled" as const,
                   }
                 : {

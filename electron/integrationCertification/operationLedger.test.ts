@@ -7,6 +7,7 @@ import {
   OperationLedger,
   type OperationLedgerWrite,
 } from "./operationLedger";
+import { ProductionRunLockBusyError } from "../productionRun/productionRunLock";
 
 const roots: string[] = [];
 
@@ -38,6 +39,91 @@ afterEach(() => {
 });
 
 describe("OperationLedger", () => {
+  it("serializes two real ledger instances and gives only one process the create lease", () => {
+    const { ledger: first, filePath } = ledger();
+    const second = new OperationLedger(filePath);
+    const canonical = first.begin(beginInput());
+    const duplicate = second.begin({
+      ...beginInput(),
+      runId: "run-2",
+      leaseOwner: "worker-2",
+      leaseToken: "lease-2",
+    });
+
+    expect(duplicate.runId).toBe(canonical.runId);
+    const firstLease = first.markSubmitting("run-1", {
+      operationKey: "paint-v2/text_to_image/1",
+      providerIdempotency: "unsupported",
+      expectedRevision: canonical.revision,
+      now: "2026-08-28T00:00:01.000Z",
+    });
+    expect(() => second.markSubmitting("run-1", {
+      operationKey: "paint-v2/text_to_image/1",
+      providerIdempotency: "unsupported",
+      expectedRevision: canonical.revision,
+      now: "2026-08-28T00:00:01.000Z",
+    })).toThrowError(/revision|submitting|lease/i);
+    expect(new OperationLedger(filePath).getByRunId("run-1")?.revision).toBe(firstLease.revision);
+  });
+
+  it("stores only an idempotency hash and keeps the same key stable", () => {
+    const { ledger: store, filePath } = ledger();
+    store.begin(beginInput());
+    const persisted = fs.readFileSync(filePath, "utf8");
+
+    expect(persisted).not.toContain("integration-user-confirmation-1");
+    expect((store.getByRunId("run-1") as unknown as { idempotencyHash?: string }).idempotencyHash)
+      .toMatch(/^[a-f0-9]{64}$/);
+    expect(store.begin({ ...beginInput(), runId: "run-2" }).runId).toBe("run-1");
+  });
+
+  it("persists independent mode operations and their exact settled outcomes", () => {
+    const { ledger: store, filePath } = ledger();
+    const run = store.begin(beginInput());
+    store.markSubmitting("run-1", {
+      operationKey: "paint-v2/text_to_image/1",
+      modelKey: "paint-v2",
+      taskKind: "text_to_image",
+      providerIdempotency: "unsupported",
+      expectedRevision: run.revision,
+      now: "2026-08-28T00:00:01.000Z",
+    });
+    let current = new OperationLedger(filePath).getByRunId("run-1")!;
+    store.markSettled("run-1", {
+      operationKey: "paint-v2/text_to_image/1",
+      expectedRevision: current.revision,
+      result: { ok: true, taskKind: "text_to_image" },
+      now: "2026-08-28T00:00:02.000Z",
+    });
+    current = new OperationLedger(filePath).getByRunId("run-1")!;
+    store.markSubmitting("run-1", {
+      operationKey: "paint-v2/image_edit/1",
+      modelKey: "paint-v2",
+      taskKind: "image_edit",
+      providerIdempotency: "unsupported",
+      expectedRevision: current.revision,
+      now: "2026-08-28T00:00:03.000Z",
+    });
+    current = new OperationLedger(filePath).getByRunId("run-1")!;
+    store.markSettled("run-1", {
+      operationKey: "paint-v2/image_edit/1",
+      expectedRevision: current.revision,
+      result: { ok: false, taskKind: "image_edit", stage: "create", errorCategory: "input" },
+      now: "2026-08-28T00:00:04.000Z",
+    });
+
+    const recovered = new OperationLedger(filePath).getByRunId("run-1") as unknown as {
+      modeOperationKeys: Record<string, string>;
+      modeOperations: Record<string, { settledResult?: { ok: boolean } }>;
+    };
+    expect(recovered.modeOperationKeys).toEqual({
+      "paint-v2/text_to_image": "paint-v2/text_to_image/1",
+      "paint-v2/image_edit": "paint-v2/image_edit/1",
+    });
+    expect(recovered.modeOperations[recovered.modeOperationKeys["paint-v2/text_to_image"]].settledResult?.ok).toBe(true);
+    expect(recovered.modeOperations[recovered.modeOperationKeys["paint-v2/image_edit"]].settledResult?.ok).toBe(false);
+  });
+
   it("returns the original operation for a duplicate idempotency key and rejects contract drift", () => {
     const { ledger: store } = ledger();
     const first = store.begin(beginInput());
@@ -155,6 +241,25 @@ describe("OperationLedger", () => {
     })).toThrowError(/lease/i);
   });
 
+  it("times out on a live foreign owner and rejects a lost lock before publishing", () => {
+    const busy = {
+      acquire: () => { throw new ProductionRunLockBusyError(); },
+      assertOwned: () => undefined,
+      release: () => undefined,
+    };
+    const { filePath } = ledger();
+    expect(() => new OperationLedger(filePath, { lock: busy, lockTimeoutMs: 1 } as never).begin(beginInput()))
+      .toThrowError(/lock timed out/i);
+
+    const lost = {
+      acquire: () => ({ ownerId: "lost-owner" }),
+      assertOwned: () => { throw new Error("lease lost"); },
+      release: () => undefined,
+    };
+    expect(() => new OperationLedger(filePath, { lock: lost } as never).begin(beginInput())).toThrowError(/lease lost/i);
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
+
   it("fails closed for corrupt, truncated, oversized, and future-version ledgers", () => {
     const { filePath } = ledger();
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -162,6 +267,21 @@ describe("OperationLedger", () => {
       fs.writeFileSync(filePath, payload, "utf8");
       expect(() => new OperationLedger(filePath)).toThrowError(CertificationPersistenceError);
     }
+  });
+
+  it("rejects sensitive or contradictory fields anywhere in a recovered operation", () => {
+    const { ledger: store, filePath } = ledger();
+    store.begin(beginInput());
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as { operations: Array<Record<string, unknown>> };
+    raw.operations[0].apiKey = "SENTINEL-SECRET";
+    fs.writeFileSync(filePath, JSON.stringify(raw));
+    expect(() => new OperationLedger(filePath)).toThrowError(/apiKey|field/i);
+
+    delete raw.operations[0].apiKey;
+    const transaction = raw.operations[0].startTransaction as Record<string, unknown>;
+    transaction.stagedVendorKey = "candidate-provider";
+    fs.writeFileSync(filePath, JSON.stringify(raw));
+    expect(() => new OperationLedger(filePath)).toThrowError(/unstaged|transaction/i);
   });
 
   it("keeps the previous in-memory and on-disk state when fsync or rename fails", () => {
@@ -214,6 +334,153 @@ describe("OperationLedger", () => {
       expectedRevision: current.revision,
       now: "2026-08-28T00:00:02.000Z",
     })).toThrowError(/remote task id/i);
+  });
+
+  it.each([
+    "folder/task-1",
+    "task?token=secret",
+    "task#fragment",
+    "task%2Fchild",
+    "//cdn.invalid/task",
+    "task\u0000id",
+    "x".repeat(129),
+  ])("rejects non-opaque remote task id %j", (remoteTaskId) => {
+    const { ledger: store } = ledger();
+    let current = store.begin(beginInput());
+    current = store.markSubmitting("run-1", {
+      operationKey: "paint-v2/text_to_image/1",
+      providerIdempotency: "unknown",
+      expectedRevision: current.revision,
+      now: "2026-08-28T00:00:01.000Z",
+    });
+    expect(() => store.markSubmitted("run-1", {
+      remoteTaskId,
+      expectedRevision: current.revision,
+      now: "2026-08-28T00:00:02.000Z",
+    })).toThrowError(/remote task id/i);
+  });
+
+  it("rejects unknown or sensitive artifact evidence fields instead of silently filtering them", () => {
+    const { ledger: store } = ledger();
+    let current = store.begin(beginInput());
+    current = store.markSubmitting("run-1", {
+      operationKey: "paint-v2/text_to_image/1",
+      providerIdempotency: "unknown",
+      expectedRevision: current.revision,
+      now: "2026-08-28T00:00:01.000Z",
+    });
+    expect(() => store.markSettled("run-1", {
+      expectedRevision: current.revision,
+      artifactEvidence: [{
+        kind: "image",
+        contentType: "image/png",
+        byteLength: 93,
+        sha256: "d".repeat(64),
+        metadata: { width: 2, token: "secret", localPath: "/tmp/private.png" },
+      } as never],
+      now: "2026-08-28T00:00:02.000Z",
+    })).toThrowError(/metadata|sensitive|field/i);
+  });
+
+  it.each([
+    { checkpoint: "prepared", submissionState: "settled", remoteTaskId: undefined, evidence: [] },
+    { checkpoint: "submitting", submissionState: "submitting", remoteTaskId: "remote-1", evidence: [] },
+    { checkpoint: "submitted", submissionState: "submitted", remoteTaskId: undefined, evidence: [] },
+    { checkpoint: "submission_unknown", submissionState: "unknown", remoteTaskId: undefined, evidence: [{ kind: "image" }] },
+    { checkpoint: "settled", submissionState: "settled", remoteTaskId: undefined, evidence: [] },
+  ])("fails closed on contradictory semantic state %#", (invalid) => {
+    const { ledger: store, filePath } = ledger();
+    store.begin(beginInput());
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as { operations: Array<Record<string, unknown>> };
+    Object.assign(raw.operations[0], {
+      checkpoint: invalid.checkpoint,
+      submissionState: invalid.submissionState,
+      ...(invalid.remoteTaskId ? { remoteTaskId: invalid.remoteTaskId } : {}),
+      artifactEvidence: invalid.evidence,
+    });
+    fs.writeFileSync(filePath, JSON.stringify(raw));
+    expect(() => new OperationLedger(filePath)).toThrowError(CertificationPersistenceError);
+  });
+
+  it("cleans failed atomic temp files and only removes stale startup temps", () => {
+    const { filePath } = ledger();
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const stale = path.join(path.dirname(filePath), `.${path.basename(filePath)}.stale.tmp`);
+    const active = path.join(path.dirname(filePath), `.${path.basename(filePath)}.active.tmp`);
+    fs.writeFileSync(stale, "stale");
+    fs.writeFileSync(active, "active");
+    const old = new Date(Date.now() - 60 * 60_000);
+    fs.utimesSync(stale, old, old);
+
+    new OperationLedger(filePath);
+    expect(fs.existsSync(stale)).toBe(false);
+    expect(fs.existsSync(active)).toBe(true);
+
+    const original = fs.writeFileSync;
+    vi.spyOn(fs, "writeFileSync").mockImplementation((target, ...args) => {
+      if (typeof target === "number") throw new Error("simulated write failure");
+      return (original as (...values: unknown[]) => unknown)(target, ...args) as never;
+    });
+    expect(() => new OperationLedger(filePath).begin(beginInput())).toThrowError(/write failure/);
+    expect(fs.readdirSync(path.dirname(filePath)).filter((name) =>
+      name.startsWith(`.${path.basename(filePath)}.`) && !name.includes(".lock.") && name.endsWith(".tmp"),
+    )).toEqual([
+      path.basename(active),
+    ]);
+  });
+
+  it("compacts terminal details into permanent bounded tombstones before size limits", () => {
+    const { filePath } = ledger();
+    const compacting = new OperationLedger(filePath, { maxActiveOperations: 3, maxInlineTombstones: 2 } as never);
+    for (let index = 0; index < 8; index += 1) {
+      const runId = `run-${index}`;
+      const record = compacting.begin(beginInput({
+        runId,
+        idempotencyKey: `confirmation-${index}`,
+        leaseOwner: runId,
+        leaseToken: `lease-${index}`,
+      }));
+      compacting.markCheckpoint(runId, {
+        checkpoint: "finalized",
+        expectedRevision: record.revision,
+        now: "2026-08-28T00:00:10.000Z",
+      });
+    }
+    const raw = fs.readFileSync(filePath, "utf8");
+    expect(Buffer.byteLength(raw)).toBeLessThan(1_048_576);
+    expect(raw).not.toContain("artifactEvidence");
+    expect((new OperationLedger(filePath) as unknown as { canonicalRunForIdempotencyKey: (key: string) => string })
+      .canonicalRunForIdempotencyKey("confirmation-0")).toBe("run-0");
+  });
+
+  it("keeps the prior ledger intact across compaction crash and rejects oversized/versioned archives", () => {
+    const { filePath } = ledger();
+    const crashing = new OperationLedger(filePath, {
+      maxActiveOperations: 1,
+      maxInlineTombstones: 0,
+      writeArchive: () => { throw new Error("simulated compaction crash"); },
+    } as never);
+    const first = crashing.begin(beginInput());
+    crashing.markCheckpoint(first.runId, { checkpoint: "finalized", expectedRevision: first.revision, now: "2026-08-28T00:00:10.000Z" });
+    expect(() => crashing.begin(beginInput({ runId: "run-2", idempotencyKey: "confirmation-2", leaseOwner: "run-2", leaseToken: "lease-2" })))
+      .toThrowError(/compaction crash/);
+    expect(new OperationLedger(filePath).canonicalRunForIdempotencyKey(beginInput().idempotencyKey)).toBe("run-1");
+
+    const compacting = new OperationLedger(filePath, { maxActiveOperations: 1, maxInlineTombstones: 1 } as never);
+    const second = compacting.begin(beginInput({ runId: "run-2", idempotencyKey: "confirmation-2", leaseOwner: "run-2", leaseToken: "lease-2" }));
+    compacting.markCheckpoint(second.runId, { checkpoint: "finalized", expectedRevision: second.revision, now: "2026-08-28T00:00:11.000Z" });
+    compacting.begin(beginInput({ runId: "run-3", idempotencyKey: "confirmation-3", leaseOwner: "run-3", leaseToken: "lease-3" }));
+    const archiveDir = `${filePath}.archive`;
+    const compactedState = JSON.parse(fs.readFileSync(filePath, "utf8")) as { archives: Array<{ fileName: string }> };
+    const archivePath = path.join(archiveDir, compactedState.archives[0].fileName);
+    const archive = JSON.parse(fs.readFileSync(archivePath, "utf8")) as Record<string, unknown>;
+    archive.version = 99;
+    fs.writeFileSync(archivePath, JSON.stringify(archive));
+    expect(() => new OperationLedger(filePath).canonicalRunForIdempotencyKey(beginInput().idempotencyKey))
+      .toThrowError(/version/i);
+
+    fs.writeFileSync(filePath, JSON.stringify({ version: 2, operations: Array.from({ length: 1_001 }, () => ({})), tombstones: [], archives: [] }));
+    expect(() => new OperationLedger(filePath)).toThrowError(/entries|invalid|too many/i);
   });
 
   it("creates private directories/files and persists no secret, header, URL, body, or local path", () => {

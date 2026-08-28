@@ -113,14 +113,19 @@
       "reason": "Pi runtime 端口/快照协议的结果词表（aborted / error / length / stop / toolUse），描述 turn、tool 或 stop reason 的协议语义。"
     },
     {
+      "site": "electron/integrationCertification/types.ts::variable:CERTIFICATION_START_TRANSACTION_STATES/as-const",
+      "members": ["catalog_staged", "committed", "intent", "rolled_back", "run_persisted"],
+      "reason": "CERTIFICATION_START_TRANSACTION_STATES 是认证启动跨文件事务的耐久状态机：intent 先占 canonical id，run_persisted 记录本地 run，catalog_staged 记录现有 Catalog writer 已完成候选 staging，committed 才允许调度，rolled_back 保留 canonical tombstone 并要求重新认证；它用于崩溃恢复而非远端提交状态。"
+    },
+    {
       "site": "electron/integrationCertification/types.ts::variable:CERTIFICATION_SUBMISSION_STATES/as-const",
       "members": ["idle", "settled", "submitted", "submitting", "unknown"],
       "reason": "CERTIFICATION_SUBMISSION_STATES 是付费认证单次远端提交的耐久状态机：idle 尚未提交，submitting 已在 create 前落盘，submitted 已取得远端任务标识，unknown 表示受理结果不确定且只准 reconcile，settled 表示该提交已得到确定结果；它是本地防重复花费边界，不等同于 Provider Adapter 展示阶段。"
     },
     {
       "site": "electron/integrationCertification/types.ts::variable:PROMOTION_JOURNAL_STATES/as-const",
-      "members": ["aborted", "catalog_committed", "committed", "prepared"],
-      "reason": "PROMOTION_JOURNAL_STATES 是认证发布 journal 的耐久协调状态：prepared 先记录发布意图，catalog_committed 记录 Catalog CAS 已提交，committed 允许终态 run 收敛，aborted 表示 lease/CAS 丢失；与 ProductionRun intent log 不同，它必须区分 Catalog 提交 checkpoint 才能安全重放模型发布。"
+      "members": ["aborted", "catalog_committed", "catalog_committing", "committed", "prepared"],
+      "reason": "PROMOTION_JOURNAL_STATES 是认证发布 journal 的耐久协调状态：prepared 记录发布意图，catalog_committing 在外部 Catalog 写前 fail-closed，catalog_committed 记录 CAS 已提交，committed 允许终态 run 收敛，aborted 表示 lease/CAS 丢失；它必须区分可能已提交但响应丢失的窗口才能安全重放。"
     },
     {
       "site": "electron/integrationCertification/types.ts::variable:PROMOTION_TERMINAL_STAGES/as-const",

@@ -160,7 +160,14 @@ function originOf(baseUrlHint: string | null | undefined): string | null {
 }
 
 export async function verifyAdapterMode(
-  input: { vendor: Vendor; model: Model; apiKey: string; mode: AdapterModeDraft; signal?: AbortSignal },
+  input: {
+    vendor: Vendor;
+    model: Model;
+    apiKey: string;
+    mode: AdapterModeDraft;
+    signal?: AbortSignal;
+    onRemoteTaskAccepted?: (remoteTaskId: string) => void;
+  },
   dependencies: AdapterVerifierDependencies = {},
 ): Promise<AdapterVerificationResult> {
   const execute = dependencies.execute || executeProfileOperation;
@@ -245,6 +252,7 @@ export async function verifyAdapterMode(
       model: input.model,
     });
     remoteTaskId = normalized.result.id;
+    input.onRemoteTaskAccepted?.(remoteTaskId);
 
     if (normalized.result.status === "failed") throw new Error(normalized.result.error || "Provider returned a failed task");
     if (normalized.result.status !== "succeeded") {

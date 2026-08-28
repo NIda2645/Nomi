@@ -9,7 +9,11 @@ import type {
   CertificationMediaEvidence,
   CertificationMediaReasonCode,
 } from "./certificationMedia";
-import type { CertificationContractBinding, CertificationSubmissionState } from "../integrationCertification/types";
+import type {
+  CertificationContractBinding,
+  CertificationSettledResult,
+  CertificationSubmissionState,
+} from "../integrationCertification/types";
 import type { AdapterRunStage as SharedAdapterRunStage } from "../shared/providerAdapterContract";
 
 export type AdapterAuthType = "none" | "bearer" | "x-api-key" | "query";
@@ -159,9 +163,14 @@ export type ProviderAdapterRun = {
   activeRevision?: string;
   error?: string;
   recovery?: {
-    reasonCode: "submission_unknown" | "submission_reconcile_unavailable";
-    userAction: "reconcile_or_contact_provider";
+    reasonCode: "submission_unknown" | "submission_reconcile_unavailable" | "promotion_commit_unknown" | "certification_start_rolled_back";
+    userAction: "reconcile_or_contact_provider" | "restart_certification";
   };
+  certificationOperations?: Record<string, {
+    operationKey: string;
+    submissionState: CertificationSubmissionState;
+    settledResult?: CertificationSettledResult;
+  }>;
   createdAt: string;
   updatedAt: string;
 };

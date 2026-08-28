@@ -51,6 +51,7 @@ export type StagedProviderAdapterCatalog = {
 export type ProviderAdapterCatalogPort = {
   register(input: ProviderAdapterRegisterInput & { vendorKey: string; savedAt: string }): { vendor: Vendor; models: Model[] };
   stage(input: ProviderAdapterStartInput & { vendorKey: string; runId: string }): StagedProviderAdapterCatalog;
+  findStagedRun?(runId: string): { vendorKey: string; lineageRootVendorKey: string } | null;
   load(vendorKey: string, selectedModelKeys: readonly string[]): LoadedConnection | null;
   promote(input: {
     run: ProviderAdapterRun;
@@ -258,6 +259,18 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         supersededVendorKeys: identity.supersededVendorKeys,
       };
     });
+  },
+
+  findStagedRun(runId) {
+    const state = readCatalog();
+    const model = state.models.find((item) => asRecord(asRecord(item.meta).adapter).runId === runId);
+    if (!model) return null;
+    const vendor = state.vendors.find((item) => item.key === model.vendorKey);
+    if (!vendor) return null;
+    return {
+      vendorKey: vendor.key,
+      lineageRootVendorKey: candidateSourceVendorKey(vendor.meta) || vendor.key,
+    };
   },
 
   load(vendorKey, selectedModelKeys) {
