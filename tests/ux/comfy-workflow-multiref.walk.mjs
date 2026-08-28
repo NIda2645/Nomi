@@ -181,12 +181,15 @@ try {
   // before the candidate can be promoted into the selectable catalog.
   await expect(settings.getByRole('heading', { name: '确认接入并开始验证', exact: true })).toBeVisible()
   await clickOrFail(settings.getByRole('button', { name: '确认并开始验证', exact: true }), '确认 ComfyUI 真实验证')
-  // The trusted handoff returns to the settings home after the canonical run.
-  // Re-enter the instance details before asserting the promoted workflow row;
-  // completion must never depend on leaving a stale detail surface mounted.
-  await clickOrFail(settings.getByRole('button', { name: /本地 ComfyUI/ }).last(), '查看已验证的 ComfyUI 连接')
-  await expect(settings.getByRole('button', { name: `打开「${workflowName}」的工作流设置`, exact: true })).toContainText('视频 · ComfyUI 工作流')
   const imported = readCatalog().models.find((model) => model.labelZh === workflowName)
+  await expect.poll(() => {
+    const current = readCatalog().models.find((model) => model.labelZh === workflowName)
+    const mapping = current && readCatalog().mappings.find((candidate) => candidate.modelKey === current.modelKey)
+    return Boolean(current?.enabled && mapping?.enabled && current.meta?.adapter?.state === 'verified')
+  }, { timeout: 30_000 }).toBe(true)
+  const promoted = readCatalog().models.find((model) => model.labelZh === workflowName)
+  expect(promoted?.enabled).toBe(true)
+  expect(readCatalog().mappings.find((mapping) => mapping.modelKey === promoted?.modelKey)?.enabled).toBe(true)
   expect(imported.meta.comfyWorkflowImport.binding.images).toHaveLength(references.length)
   expect(new Set(imported.meta.comfyWorkflowImport.binding.images.map((input) => input.paramKey)).size).toBe(references.length)
   await clickOrFail(settings.getByRole('button', { name: '关闭', exact: true }), '返回画布连接三张图')
