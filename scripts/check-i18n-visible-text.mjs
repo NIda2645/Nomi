@@ -293,33 +293,11 @@ const files = [SRC_ROOT, ELECTRON_ROOT]
 const allFindings = countFindings(files.flatMap(scanFile))
 const missingModelLabels = collectUntranslatedModelLabels()
 
-// 原有那几条规则维持**硬零**(它们早清干净了,别放松);2026-08-28 新加的两条(return-literal、
-// `||`/`??` 兜底串)第一次开灯就照出 ~50 处存量,故只对新规则挂棘轮基线:存量记账、只减不增,
-// 新增当场报红。基线清空后把这套连同 baseline 文件一起删掉,别留着当逃生口(P1)。
-const BASELINE_FILE = path.join(ROOT, 'scripts', 'i18n-visible-text-baseline.json')
-const baseline = fs.existsSync(BASELINE_FILE)
-  ? JSON.parse(fs.readFileSync(BASELINE_FILE, 'utf8'))
-  : { entries: [] }
-const BASELINE_KEYS = new Set(baseline.entries.map((e) => [e.file, e.kind, e.text].join(String.fromCharCode(0))))
-
-if (process.argv.includes('--update-baseline')) {
-  // 只允许**收缩**:重写基线时丢掉已修好的条目,但拒绝接纳新条目——否则棘轮就成了逃生口。
-  const added = allFindings.filter((f) => !BASELINE_KEYS.has(fingerprint(f)))
-  if (BASELINE_KEYS.size > 0 && added.length > 0) {
-    console.error(`refusing to grow the i18n baseline; fix these ${added.length} new literals instead:`)
-    for (const entry of added) console.error(`- ${entry.file} [${entry.kind}] ${JSON.stringify(entry.text)}`)
-    process.exit(1)
-  }
-  const entries = allFindings
-    .filter((f) => BASELINE_KEYS.size === 0 || BASELINE_KEYS.has(fingerprint(f)))
-    .map(({ file, kind, text, count }) => ({ file, kind, text, count }))
-  fs.writeFileSync(BASELINE_FILE, `${JSON.stringify({ entries }, null, 2)}\n`, 'utf8')
-  console.log(`i18n baseline written: ${entries.length} legacy entries`)
-  process.exit(0)
-}
-
-// 基线里的存量放行(只减不增);其余一律硬零——原有那几条规则早清干净了,不因为加了新规则就放松。
-const current = allFindings.filter((f) => !BASELINE_KEYS.has(fingerprint(f)))
+// **硬零**,没有基线、没有豁免名单。
+// 2026-08-28 新加的两条规则(return-literal、`||`/`??` 兜底串)第一次开灯照出 ~50 处存量,期间挂过一份
+// shrink-only 基线记账;同批清零后基线连同 `--update-baseline` 一并删除——留着一份空基线等于留一个
+// 逃生口,下次漏译会被顺手记进去而不是修掉(P1)。真需要长期豁免的走 EXCLUDED_FILES,每条写明理由。
+const current = allFindings
 
 if (REPORT) {
   const counts = new Map()
