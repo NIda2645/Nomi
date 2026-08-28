@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Viewport } from '@xyflow/react'
 import { canvasViewportFromFlow } from './generationCanvasReactFlowAdapter'
-import { setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
 
 type CanvasStoredViewport = { zoom: number; offset: { x: number; y: number } }
 type FlowViewportApi = {
@@ -36,6 +36,12 @@ export function useGenerationCanvasReactFlowPointer({
     button: 1 | 2
     moved: boolean
   } | null>(null)
+  const nativeLeftPanRef = React.useRef<{
+    pointerId: number
+    lastX: number
+    lastY: number
+    takeoverAfterWheel: boolean
+  } | null>(null)
   const suppressContextMenuRef = React.useRef(false)
 
   const handleCanvasPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -46,6 +52,25 @@ export function useGenerationCanvasReactFlowPointer({
 
   const handleCanvasPointerDownCapture = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (readOnly || event.pointerType === 'touch') return
+    const isBlankPrimaryPan =
+      event.button === 0 &&
+      event.isPrimary &&
+      !event.shiftKey &&
+      !spaceHeldRef.current &&
+      event.target instanceof Element &&
+      Boolean(event.target.closest('.react-flow__pane'))
+    if (isBlankPrimaryPan) {
+      // React Flow owns the ordinary left-drag until a wheel zoom interrupts it.
+      // Its drag baseline is invalid after that zoom, so the host takes over the
+      // remainder of this pointer gesture using the current viewport incrementally.
+      nativeLeftPanRef.current = {
+        pointerId: event.pointerId,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        takeoverAfterWheel: false,
+      }
+      return
+    }
     const isAuxiliaryPan = event.button === 1 || event.button === 2 || (event.button === 0 && spaceHeldRef.current)
     if (!isAuxiliaryPan || !event.isPrimary) return
     event.preventDefault()
@@ -65,6 +90,33 @@ export function useGenerationCanvasReactFlowPointer({
     }
   }, [readOnly])
 
+  const handleCanvasPointerMoveCapture = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const nativeLeftPan = nativeLeftPanRef.current
+    if (!nativeLeftPan || nativeLeftPan.pointerId !== event.pointerId) return
+    const deltaX = event.clientX - nativeLeftPan.lastX
+    const deltaY = event.clientY - nativeLeftPan.lastY
+    nativeLeftPan.lastX = event.clientX
+    nativeLeftPan.lastY = event.clientY
+    if (!nativeLeftPan.takeoverAfterWheel) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (deltaX === 0 && deltaY === 0) return
+    canvasPanMovedRef.current = true
+    setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowPan)
+    const current = flow.getViewport()
+    const next = { x: current.x + deltaX, y: current.y + deltaY, zoom: current.zoom }
+    void flow.setViewport(next, { duration: 0 })
+    setLiveViewport(next)
+  }, [flow, hostRef, setLiveViewport])
+
+  const handleCanvasWheelCapture = React.useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const nativeLeftPan = nativeLeftPanRef.current
+    if (!nativeLeftPan) return
+    nativeLeftPan.lastX = event.clientX
+    nativeLeftPan.lastY = event.clientY
+    nativeLeftPan.takeoverAfterWheel = true
+  }, [])
+
   const handleCanvasPointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const auxiliaryPan = auxiliaryPanRef.current
     if (auxiliaryPan && auxiliaryPan.pointerId === event.pointerId) {
@@ -76,7 +128,7 @@ export function useGenerationCanvasReactFlowPointer({
       auxiliaryPan.lastY = event.clientY
       if (!auxiliaryPan.moved && distance >= 2) {
         auxiliaryPan.moved = true
-        setCanvasDragging(hostRef.current, true)
+        setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowPan)
         if (auxiliaryPan.button === 2) suppressContextMenuRef.current = true
       }
       if (deltaX === 0 && deltaY === 0) return
@@ -93,10 +145,18 @@ export function useGenerationCanvasReactFlowPointer({
   }, [flow, hostRef, setLiveViewport])
 
   const handleCanvasPointerEnd = React.useCallback(() => {
+    const nativeLeftPan = nativeLeftPanRef.current
+    nativeLeftPanRef.current = null
+    if (nativeLeftPan?.takeoverAfterWheel) {
+      setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowPan)
+      const current = flow.getViewport()
+      setLiveViewport(current)
+      rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(current))
+    }
     const auxiliaryPan = auxiliaryPanRef.current
     if (auxiliaryPan) {
       auxiliaryPanRef.current = null
-      setCanvasDragging(hostRef.current, false)
+      setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowPan)
       const current = flow.getViewport()
       setLiveViewport(current)
       rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(current))
@@ -149,6 +209,8 @@ export function useGenerationCanvasReactFlowPointer({
     canvasPointerStartRef,
     handleCanvasPointerDown,
     handleCanvasPointerDownCapture,
+    handleCanvasPointerMoveCapture,
+    handleCanvasWheelCapture,
     handleCanvasPointerMove,
     handleCanvasPointerEnd,
     handleCanvasContextMenuCapture,

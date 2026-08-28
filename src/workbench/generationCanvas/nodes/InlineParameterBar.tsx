@@ -89,7 +89,7 @@ function ParameterTextInput({
       className={cn(
         'flex items-center gap-2 px-2.5 rounded-nomi border border-nomi-line min-w-0 focus-within:border-nomi-accent',
       )}
-      style={{ height: 30 }}
+      style={{ height: 28 }}
     >
       <input
         className={cn(
@@ -338,6 +338,7 @@ export default function InlineParameterBar({
         value={value}
         options={options}
         // 双行组无需再撑最小高：每项都带 18px 图形槽（含空占位）→ 内容自然等高。
+        density="compact"
         onChange={onChange}
       />
     )

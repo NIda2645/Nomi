@@ -11,6 +11,7 @@ type CanvasSelectionToolbarProps = {
   selectedCount: number
   selectedGroupCount: number
   transform: string
+  maxWidth?: number
   eligibleCount: number
   executionGroups: CanvasGenerationExecutionGroup[]
   concurrency: number
@@ -29,6 +30,7 @@ export function CanvasSelectionToolbar({
   selectedCount,
   selectedGroupCount,
   transform,
+  maxWidth,
   eligibleCount,
   executionGroups,
   concurrency,
@@ -51,7 +53,7 @@ export function CanvasSelectionToolbar({
         'border border-nomi-line rounded-full',
         'bg-nomi-paper/[0.96] shadow-nomi-md pointer-events-auto',
       )}
-      style={{ transform }}
+      style={{ transform, maxWidth }}
       aria-label={t('generationCommon.selection.aria')}
       onPointerDown={(event) => event.stopPropagation()}
     >

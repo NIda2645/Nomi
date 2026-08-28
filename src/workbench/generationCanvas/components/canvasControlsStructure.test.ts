@@ -42,6 +42,17 @@ describe('generation canvas control structure', () => {
     }
   })
 
+  it('lets React Flow exclusively own mounted node placement and interaction controls', () => {
+    const baseNode = source('../nodes/BaseGenerationNode.tsx')
+    const dragResize = source('../nodes/useNodeDragResize.ts')
+
+    expect(dragResize).toContain('return { flowManagedDrag, handlePointerDown')
+    expect(baseNode).toContain("flowManagedLayout ? 'relative' : 'absolute'")
+    expect(baseNode).toContain('transform: flowManagedLayout ? undefined : `translate(')
+    expect(baseNode).toContain("!flowManagedLayout && !readOnly && node.kind !== 'panorama'")
+    expect(baseNode).toContain('selected && !readOnly && !flowManagedLayout')
+  })
+
   it('keeps viewport panning independent from connection cancellation', () => {
     const viewportGestures = source('./useCanvasViewportGestures.ts')
 
@@ -69,8 +80,8 @@ describe('generation canvas control structure', () => {
 
     expect(pointerInteractions).toContain('onPointerCancel')
     expect(generationCanvas).toContain('onMoveStart={() => {')
-    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, true)')
-    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, false)')
+    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowViewport)')
+    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowViewport)')
   })
 
   it('replaces the persistent hint with one contextual help entry', () => {
@@ -169,6 +180,38 @@ describe('generation canvas control structure', () => {
     expect(generationCanvas).not.toContain('setCanvasTransform(zoom, offset)')
   })
 
+  it('keeps post-zoom panning incremental and maps React Flow states to Nomi visuals', () => {
+    const pointer = source('../reactFlow/useGenerationCanvasReactFlowPointer.ts')
+    const viewport = source('../reactFlow/GenerationCanvasReactFlowViewport.tsx')
+    const flowStyles = source('../reactFlow/generationCanvasReactFlow.css')
+    const groupFrame = source('./GroupFrame.tsx')
+    const groupContract = source('./groupVisualContract.ts')
+    const collapsedGroup = source('./CollapsedGroupCard.tsx')
+    const stackPeeks = source('./CardStackPeeks.tsx')
+    const marqueeRule = flowStyles.match(/\.generation-canvas-react-flow \.react-flow__selection\s*\{([^}]*)\}/)?.[1] ?? ''
+
+    expect(pointer).toContain('takeoverAfterWheel')
+    expect(pointer).toContain('x: current.x + deltaX')
+    expect(pointer).toContain('y: current.y + deltaY')
+    expect(viewport).toContain('resolveSelectionToolbarPlacement')
+    expect(viewport).not.toMatch(/<ViewportPortal>[\s\S]{0,160}<CanvasSelectionToolbar/)
+    expect(marqueeRule).toContain('var(--nomi-ink)')
+    expect(marqueeRule).not.toContain('var(--nomi-accent)')
+    expect(flowStyles).toContain('.react-flow__nodesselection-rect')
+    expect(flowStyles).toContain('color-mix(in oklch, var(--nomi-ink) 32%, transparent)')
+    expect(flowStyles).toContain('--xy-connectionline-stroke: var(--nomi-accent)')
+    expect(groupFrame).toContain('GROUP_VISUAL_CLASS.frame')
+    expect(groupFrame).toContain('GROUP_VISUAL_CLASS.label')
+    expect(groupFrame).not.toContain('groupColor')
+    expect(groupFrame).not.toContain('box.group.color')
+    expect(collapsedGroup).toContain('GROUP_VISUAL_CLASS.collapsedCard')
+    expect(collapsedGroup).not.toContain('card.color')
+    expect(stackPeeks).toContain('GROUP_VISUAL_CLASS.stackRear')
+    expect(stackPeeks).not.toContain('border-nomi-accent/50')
+    expect(groupContract).toContain('Persistent group chrome is deliberately neutral')
+    expect(groupContract).not.toContain('nomi-accent')
+  })
+
   it('keeps React Flow edge labels explicit and accessible', () => {
     const edgeRenderer = source('../reactFlow/GenerationCanvasReactFlowNodes.tsx')
 
@@ -178,6 +221,21 @@ describe('generation canvas control structure', () => {
     expect(edgeRenderer).toContain("aria-label={t('generationCommon.canvas.edge.changeMode'")
     expect(edgeRenderer).not.toContain('EDGE_TAG_DENSE_THRESHOLD')
     expect(edgeRenderer).not.toContain('hoveredEdgeId')
+  })
+
+  it('uses one compact geometry contract for canvas segmented controls and inputs', () => {
+    const segmented = source('../../../design/NomiSegmented.tsx')
+    const modeBar = source('../nodes/controls/ModeBar.tsx')
+    const parameterBar = source('../nodes/InlineParameterBar.tsx')
+    const composer = source('../nodes/NodeGenerationComposer.tsx')
+
+    expect(segmented).toContain("density?: 'compact' | 'default'")
+    expect(segmented).toContain("density === 'compact' ? 28 : 32")
+    expect(modeBar).toContain('density="compact"')
+    expect(parameterBar).toContain('style={{ height: 28 }}')
+    expect(parameterBar).toContain('density="compact"')
+    expect(composer).toContain('NomiSegmented')
+    expect(composer).not.toContain('h-[22px]')
   })
 
   it('hides every node overlay from one canvas-level dragging flag', () => {
@@ -191,15 +249,15 @@ describe('generation canvas control structure', () => {
 
     // 四条拖动路径（单节点 / 选区框 / 组框 / 画布平移）升同一个画布级标志，浮层各自声明隐身——
     // 不再是「只有被拖的那张卡收起来」（2026-08-09 用户：拖 B 的时候 A 的面板也不该杵着；平移同理）。
-    expect(dragResize).toContain('setCanvasDragging(event.currentTarget, true)')
-    expect(selectionDrag).toContain('setCanvasDragging(null, true)')
-    expect(viewportGestures).toContain('setCanvasDragging(stageRef.current, true)')
-    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, true)')
+    expect(dragResize).toContain('setCanvasDragging(event.currentTarget, true, CANVAS_DRAGGING_OWNER.node)')
+    expect(selectionDrag).toContain('setCanvasDragging(null, true, CANVAS_DRAGGING_OWNER.group)')
+    expect(viewportGestures).toContain('setCanvasDragging(stageRef.current, true, CANVAS_DRAGGING_OWNER.viewport)')
+    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowNode)')
     for (const overlay of [composer, floatingToolbar, resultStack]) {
       expect(overlay).toContain('group-data-[dragging=true]/canvas:invisible')
     }
     // 平移那条必须在**跨过阈值之后**才升：按下就升 = 点一下空白也白写两次属性（08-08 的坑）。
-    expect(viewportGestures).toMatch(/start\.moved = true[\s\S]{0,220}setCanvasDragging\(stageRef\.current, true\)/)
+    expect(viewportGestures).toMatch(/start\.moved = true[\s\S]{0,260}setCanvasDragging\(stageRef\.current, true, CANVAS_DRAGGING_OWNER\.viewport\)/)
     // 旧的按节点作用域已删干净（P1：不留并行版）
     expect(composer).not.toContain('/node:invisible')
     expect(dragResize).not.toContain('setDragging(')

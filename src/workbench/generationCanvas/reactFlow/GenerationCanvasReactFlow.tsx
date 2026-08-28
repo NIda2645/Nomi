@@ -46,7 +46,7 @@ import { getSelectedBounds } from '../components/generationCanvasGeometry'
 import { hasPendingScene3DCameraMoveCapture, hasPendingScene3DStagingCapture } from '../components/scene3dCaptureHostActivation'
 import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import CanvasToolbar from '../components/CanvasToolbar'
-import { setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
 import {
   BROWSER_ASSET_DRAG_MIME,
   LEGACY_BROWSER_ASSET_DRAG_MIME,
@@ -233,6 +233,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     canvasPointerStartRef,
     handleCanvasPointerDown,
     handleCanvasPointerDownCapture,
+    handleCanvasPointerMoveCapture,
+    handleCanvasWheelCapture,
     handleCanvasPointerMove,
     handleCanvasPointerEnd,
     handleCanvasContextMenuCapture,
@@ -249,7 +251,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     flow,
     hostRef,
     nodes,
+    allNodes,
     setStageSize,
+    setLiveViewport,
     zoomRef,
   })
 
@@ -474,7 +478,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const handleNodeDragStart: OnNodeDrag<GenerationFlowNode> = React.useCallback((_event, draggedNode) => {
     if (readOnly) return
     draggingRef.current = true
-    setCanvasDragging(hostRef.current, true)
+    setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowNode)
     captureHistory()
     const state = useGenerationCanvasStore.getState()
     const draggedIds = selectedSet.has(draggedNode.id) ? selectedNodeIds : [draggedNode.id]
@@ -489,7 +493,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode, draggedNodes) => {
     if (readOnly || !draggingRef.current) return
     draggingRef.current = false
-    setCanvasDragging(hostRef.current, false)
+    setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowNode)
     const pointer = 'changedTouches' in event ? event.changedTouches[0] : event
     const timelineDropTarget = pointer ? findTimelineDropTarget(pointer.clientX, pointer.clientY) : null
     if (timelineDropTarget) {
@@ -607,8 +611,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [handlePendingGroupPointerUp])
 
   const handlePaneClick = React.useCallback(() => {
-    if (!readOnly) clearSelection()
-  }, [clearSelection, readOnly])
+    if (!readOnly && !canvasPanMovedRef.current) clearSelection()
+  }, [canvasPanMovedRef, clearSelection, readOnly])
 
   useCanvasShortcuts({
     readOnly,
@@ -665,6 +669,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
       onPointerDownCapture={handleCanvasPointerDownCapture}
+      onPointerMoveCapture={handleCanvasPointerMoveCapture}
+      onWheelCapture={handleCanvasWheelCapture}
       onPointerUpCapture={handlePendingGroupPointerUp}
       onMouseUpCapture={handlePendingGroupPointerUp}
       onContextMenuCapture={handleCanvasContextMenuCapture}
@@ -685,7 +691,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       <GenerationCanvasReactFlowViewport
         flowNodes={flowNodes}
         flowEdges={flowEdges}
-        viewport={viewport}
+        viewport={liveViewport}
+        stageSize={stageSize}
         readOnly={readOnly}
         onNodesChange={handleNodesChange}
         onNodeDragStart={handleNodeDragStart}
@@ -701,7 +708,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         onConnectEnd={handleConnectEnd}
         canvasPointerStartRef={canvasPointerStartRef}
         canvasPanMovedRef={canvasPanMovedRef}
-        setCanvasDragging={setCanvasDragging}
         hostRef={hostRef}
         setLiveViewport={setLiveViewport}
         activeCategoryId={activeCategoryId}

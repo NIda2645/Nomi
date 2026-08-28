@@ -13,6 +13,7 @@ fs.rmSync(shotsDir, { recursive: true, force: true })
 fs.mkdirSync(shotsDir, { recursive: true })
 
 const failures = []
+const rendererDiagnostics = []
 function check(label, condition, detail = '') {
   console.log(`  ${condition ? '✓' : '✗'} ${label}${detail ? ` — ${detail}` : ''}`)
   if (!condition) failures.push(`${label}${detail ? ` — ${detail}` : ''}`)
@@ -33,6 +34,12 @@ try {
     env: { NOMI_DESKTOP_DEV: '1', VITE_DEV_SERVER_URL: harnessUrl },
     settleMs: 0,
   }))
+  win.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      rendererDiagnostics.push({ type: `console.${message.type()}`, text: message.text() })
+    }
+  })
+  win.on('pageerror', (error) => rendererDiagnostics.push({ type: 'pageerror', text: String(error) }))
   const source = win.locator('.react-flow__node[data-id="readonly-source"]')
   const target = win.locator('.react-flow__node[data-id="readonly-target"]')
   const group = win.locator('[data-group-id="readonly-group"]')
@@ -125,6 +132,21 @@ try {
 } catch (error) {
   failures.push(String(error))
   console.error(error)
+  const liveWindow = app?.windows().find((candidate) => !candidate.isClosed())
+  if (liveWindow) {
+    const failureState = await liveWindow.evaluate(() => ({
+      url: location.href,
+      title: document.title,
+      bodyText: document.body?.innerText?.slice(0, 2_000) || '',
+      bodyHtml: document.body?.innerHTML?.slice(0, 4_000) || '',
+    })).catch((stateError) => ({ stateError: String(stateError) }))
+    fs.writeFileSync(
+      path.join(shotsDir, '99-failure.json'),
+      `${JSON.stringify({ error: String(error), failureState, rendererDiagnostics }, null, 2)}\n`,
+    )
+    await liveWindow.screenshot({ path: path.join(shotsDir, '99-failure.png') }).catch(() => {})
+    console.error(JSON.stringify({ failureState, rendererDiagnostics }, null, 2))
+  }
 } finally {
   await app?.close().catch(() => {})
   vite.kill('SIGTERM')

@@ -1,5 +1,10 @@
 .generation-canvas-react-flow {
   --xy-node-border-radius: 0;
+  --xy-connectionline-stroke: var(--nomi-accent);
+  --xy-connectionline-stroke-width: 2;
+  --xy-edge-stroke-selected: var(--nomi-accent);
+  --xy-handle-background-color: transparent;
+  --xy-handle-border-color: transparent;
 }
 
 .generation-canvas-react-flow:active {
@@ -24,12 +29,29 @@
 }
 
 .generation-canvas-react-flow .react-flow__selection {
-  border: 1px solid var(--nomi-accent);
-  background: color-mix(in srgb, var(--nomi-accent) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--nomi-ink) 36%, transparent);
+  background: color-mix(in oklch, var(--nomi-ink) 7%, transparent);
+}
+
+/* A completed selection is a stable canvas object, not an in-progress action.
+ * Keep the old neutral Nomi treatment instead of React Flow's blue default. */
+.generation-canvas-react-flow .react-flow__nodesselection-rect {
+  box-sizing: border-box;
+  border: 1px solid color-mix(in oklch, var(--nomi-ink) 32%, transparent);
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--nomi-paper) 5%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--nomi-paper) 22%, transparent) inset,
+    0 14px 34px color-mix(in oklch, var(--nomi-ink) 10%, transparent);
 }
 
 .generation-canvas-react-flow .react-flow__resize-control {
   z-index: 7;
+}
+
+.generation-canvas-react-flow .react-flow__resize-control.handle {
+  min-width: 7px;
+  min-height: 7px;
 }
 
 .generation-canvas-react-flow .react-flow__viewport {

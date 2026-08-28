@@ -20,11 +20,14 @@ import type { useCanvasProductionActions } from '../components/useCanvasProducti
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 import { canvasViewportFromFlow } from './generationCanvasReactFlowAdapter'
 import { edgeTypes, nodeTypes } from './GenerationCanvasReactFlowNodes'
+import { resolveSelectionToolbarPlacement } from './selectionToolbarPlacement'
+import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
 
 type GenerationCanvasReactFlowViewportProps = {
   flowNodes: GenerationFlowNode[]
   flowEdges: GenerationFlowEdge[]
   viewport: Viewport
+  stageSize: { width: number; height: number }
   readOnly: boolean
   onNodesChange: OnNodesChange<GenerationFlowNode>
   onNodeDragStart: OnNodeDrag<GenerationFlowNode>
@@ -40,7 +43,6 @@ type GenerationCanvasReactFlowViewportProps = {
   onConnectEnd: OnConnectEnd
   canvasPointerStartRef: React.MutableRefObject<{ x: number; y: number } | null>
   canvasPanMovedRef: React.MutableRefObject<boolean>
-  setCanvasDragging: (element: HTMLElement | null, dragging: boolean) => void
   hostRef: React.RefObject<HTMLDivElement>
   setLiveViewport: React.Dispatch<React.SetStateAction<Viewport>>
   activeCategoryId: string
@@ -70,6 +72,7 @@ export function GenerationCanvasReactFlowViewport({
   flowNodes,
   flowEdges,
   viewport,
+  stageSize,
   readOnly,
   onNodesChange,
   onNodeDragStart,
@@ -85,7 +88,6 @@ export function GenerationCanvasReactFlowViewport({
   onConnectEnd,
   canvasPointerStartRef,
   canvasPanMovedRef,
-  setCanvasDragging,
   hostRef,
   setLiveViewport,
   activeCategoryId,
@@ -110,6 +112,9 @@ export function GenerationCanvasReactFlowViewport({
   onBuildContactSheet,
   onClearSelection,
 }: GenerationCanvasReactFlowViewportProps): JSX.Element {
+  const selectionToolbarPlacement = selectedBounds
+    ? resolveSelectionToolbarPlacement(selectedBounds, viewport, stageSize)
+    : null
   return (
     <ReactFlow
       nodes={flowNodes}
@@ -146,10 +151,12 @@ export function GenerationCanvasReactFlowViewport({
       }}
       onMove={() => {
         if (!canvasPanMovedRef.current) return
-        setCanvasDragging(hostRef.current, true)
+        setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowViewport)
       }}
       onMoveEnd={(_event, nextViewport) => {
-        if (canvasPanMovedRef.current) setCanvasDragging(hostRef.current, false)
+        if (canvasPanMovedRef.current) {
+          setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowViewport)
+        }
         canvasPanMovedRef.current = false
         setLiveViewport(nextViewport)
         rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(nextViewport))
@@ -171,26 +178,25 @@ export function GenerationCanvasReactFlowViewport({
           onSetCollapsed={onSetGroupCollapsed}
         />
       </ViewportPortal>
-      <ViewportPortal>
-        {selectedBounds && selectedNodeIds.length > 1 && !readOnly ? (
-          <CanvasSelectionToolbar
-            selectedCount={selectedNodeIds.length}
-            selectedGroupCount={selectedGroupIds.length}
-            transform={`translate(${Math.round(selectedBounds.minX + selectedBounds.width / 2)}px, ${Math.round(selectedBounds.minY - 16 - 58)}px) translateX(-50%)`}
-            eligibleCount={production.eligibleIds.length}
-            executionGroups={production.executionGroups}
-            concurrency={production.concurrency}
-            contactSheetCount={contactSheetCount}
-            onConcurrencyChange={production.setConcurrency}
-            onGenerate={production.generate}
-            onApplyModel={production.applyModel}
-            onGroupSelectedNodes={onGroupSelectedNodes}
-            onUngroupSelectedNodes={onUngroupSelectedNodes}
-            onBuildContactSheet={onBuildContactSheet}
-            onClearSelection={onClearSelection}
-          />
-        ) : null}
-      </ViewportPortal>
+      {selectionToolbarPlacement && selectedNodeIds.length > 1 && !readOnly ? (
+        <CanvasSelectionToolbar
+          selectedCount={selectedNodeIds.length}
+          selectedGroupCount={selectedGroupIds.length}
+          transform={selectionToolbarPlacement.transform}
+          maxWidth={selectionToolbarPlacement.maxWidth}
+          eligibleCount={production.eligibleIds.length}
+          executionGroups={production.executionGroups}
+          concurrency={production.concurrency}
+          contactSheetCount={contactSheetCount}
+          onConcurrencyChange={production.setConcurrency}
+          onGenerate={production.generate}
+          onApplyModel={production.applyModel}
+          onGroupSelectedNodes={onGroupSelectedNodes}
+          onUngroupSelectedNodes={onUngroupSelectedNodes}
+          onBuildContactSheet={onBuildContactSheet}
+          onClearSelection={onClearSelection}
+        />
+      ) : null}
     </ReactFlow>
   )
 }

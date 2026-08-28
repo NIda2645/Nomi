@@ -66,7 +66,15 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
         minHeight={bounds.minHeight}
         maxWidth={bounds.maxWidth}
         maxHeight={bounds.maxHeight}
-        color="var(--nomi-accent)"
+        lineStyle={{ borderColor: 'color-mix(in oklch, var(--nomi-ink) 36%, transparent)' }}
+        handleStyle={{
+          width: 7,
+          height: 7,
+          border: '1px solid color-mix(in oklch, var(--nomi-ink) 42%, transparent)',
+          borderRadius: 999,
+          background: 'var(--nomi-paper)',
+          boxShadow: 'var(--nomi-shadow-sm)',
+        }}
         onResizeStart={() => captureHistory()}
         onResize={(_event, params) => {
           updateNode(node.id, {

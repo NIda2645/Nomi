@@ -7,6 +7,7 @@ import { CardStackPeeks } from './CardStackPeeks'
 import { MagneticConnectionHandle } from '../nodes/NodeConnectionHandles'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { COLLAPSED_GROUP_CARD_SIZE } from '../model/canvasCardStackModel'
+import { GROUP_VISUAL_CLASS } from './groupVisualContract'
 
 type Props = {
   card: CollapsedGroupCardProjection
@@ -83,10 +84,9 @@ export function CollapsedGroupCard({
       />
       <div
         className={cn(
-          'absolute inset-0 z-[2] flex cursor-grab flex-col overflow-hidden rounded-nomi-lg border bg-nomi-paper shadow-nomi-lg active:cursor-grabbing',
-          'border-nomi-accent/50',
+          'absolute inset-0 z-[2] flex cursor-grab flex-col overflow-hidden rounded-nomi-lg border active:cursor-grabbing',
+          GROUP_VISUAL_CLASS.collapsedCard,
         )}
-        style={card.color ? { borderColor: card.color } : undefined}
         role="group"
         aria-label={t('generationCommon.canvas.group.collapsedAria', { name: card.name, count: card.memberCount })}
         onPointerDown={(event) => onPointerDown(event, card.groupId)}
@@ -95,7 +95,7 @@ export function CollapsedGroupCard({
           {imageUrl ? (
             <img src={imageUrl} alt="" draggable={false} className="h-full w-full object-cover" />
           ) : (
-            <span className="grid size-14 place-items-center rounded-nomi-lg bg-nomi-accent text-nomi-paper shadow-nomi-md" aria-hidden="true">
+            <span className={cn('grid size-14 place-items-center rounded-nomi-lg', GROUP_VISUAL_CLASS.emptyIcon)} aria-hidden="true">
               <IconStack2 size={28} stroke={1.7} />
             </span>
           )}

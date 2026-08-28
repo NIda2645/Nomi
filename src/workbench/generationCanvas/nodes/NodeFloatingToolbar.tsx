@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { IconInfoCircle, IconChevronDown, IconCopy } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import { FOCUS_GENERATION_NODE_EVENT } from './nodeSizing'
 
 // 节点浮动工具栏的**单一共享实现**（P1 收口）：图片编辑 / 视频抽帧 / 全景 / 下载三+条以前是三份
 // 几乎一字不差的拷贝、且各自带一堆 token 违规（rgba 硬编码 / gap-[7px] / 图标 16/1.8…）。这里一次性
@@ -197,7 +198,12 @@ export function ToolbarDuplicateVariantButton({ nodeId }: { nodeId: string }): J
       icon={<IconCopy size={ICON.size} stroke={ICON.stroke} />}
       title={t('generationCommon.node.duplicateVariant')}
       ariaLabel={t('generationCommon.node.duplicateVariant')}
-      onClick={() => duplicateAsVariant(nodeId)}
+      onClick={() => {
+        const duplicate = duplicateAsVariant(nodeId)
+        if (duplicate && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent(FOCUS_GENERATION_NODE_EVENT, { detail: { nodeId: duplicate.id } }))
+        }
+      }}
     />
   )
 }

@@ -13,13 +13,16 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { FOCUS_GENERATION_NODE_EVENT, resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
+import { resolvePendingCanvasFocus, type PendingCanvasFocus } from './focusViewportRecovery'
 
 type HostEffectsArgs = {
   activeCategoryId: string
   flow: ReactFlowInstance<GenerationFlowNode, GenerationFlowEdge>
   hostRef: React.RefObject<HTMLDivElement>
   nodes: GenerationCanvasNode[]
+  allNodes: GenerationCanvasNode[]
   setStageSize: React.Dispatch<React.SetStateAction<{ width: number; height: number }>>
+  setLiveViewport: React.Dispatch<React.SetStateAction<{ x: number; y: number; zoom: number }>>
   zoomRef: React.MutableRefObject<number>
 }
 
@@ -28,14 +31,17 @@ export function useGenerationCanvasReactFlowHostEffects({
   flow,
   hostRef,
   nodes,
+  allNodes,
   setStageSize,
+  setLiveViewport,
   zoomRef,
 }: HostEffectsArgs): void {
   const { t } = useTranslation()
   const setActiveCategoryId = useWorkbenchStore((state) => state.setActiveCategoryId)
   const selectNode = useGenerationCanvasStore((state) => state.selectNode)
   const markReady = useGenerationCanvasStore((state) => state.markReady)
-  const pendingFocusNodeRef = React.useRef<string | null>(null)
+  const pendingFocusRef = React.useRef<PendingCanvasFocus | null>(null)
+  const focusedRecoveryRef = React.useRef<PendingCanvasFocus | null>(null)
 
   React.useEffect(() => {
     const handleFocusNode = (event: Event) => {
@@ -46,26 +52,55 @@ export function useGenerationCanvasReactFlowHostEffects({
         toast(t('generationCommon.node.sourceNoLongerExists'), 'warning')
         return
       }
-      pendingFocusNodeRef.current = nodeId
+      const viewport = flow.getViewport()
+      const focus: PendingCanvasFocus = {
+        nodeId,
+        categoryId: target.categoryId || 'shots',
+        viewport: { x: viewport.x, y: viewport.y, zoom: viewport.zoom },
+      }
+      pendingFocusRef.current = focus
+      focusedRecoveryRef.current = focus
       setActiveCategoryId(target.categoryId || 'shots')
       selectNode(nodeId)
     }
     window.addEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)
     return () => window.removeEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)
-  }, [selectNode, setActiveCategoryId, t])
+  }, [flow, selectNode, setActiveCategoryId, t])
 
   React.useEffect(() => {
-    const nodeId = pendingFocusNodeRef.current
-    if (!nodeId) return
-    const target = nodes.find((node) => node.id === nodeId)
-    if (!target) return
-    const size = resolveNodeVisualSize(target)
-    pendingFocusNodeRef.current = null
-    void flow.setCenter(target.position.x + size.width / 2, target.position.y + size.height / 2, {
+    const pending = pendingFocusRef.current
+    const decision = resolvePendingCanvasFocus(
+      pending,
+      activeCategoryId,
+      nodes,
+      allNodes,
+    )
+    if (decision.type === 'wait') return
+    pendingFocusRef.current = null
+    if (decision.type === 'restore') {
+      setLiveViewport(decision.viewport)
+      // duration=0 cancels an in-flight setCenter animation from the focus request.
+      void flow.setViewport(decision.viewport, { duration: 0 })
+      return
+    }
+    const size = resolveNodeVisualSize(decision.node)
+    void flow.setCenter(decision.node.position.x + size.width / 2, decision.node.position.y + size.height / 2, {
       zoom: zoomRef.current,
       duration: 220,
     })
-  }, [activeCategoryId, flow, nodes, zoomRef])
+    // Keep the pre-focus viewport until the focused node is confirmed to be gone.
+    // This covers Cmd/Ctrl+Z immediately after duplicating a variant.
+    return
+  }, [activeCategoryId, allNodes, flow, nodes, setLiveViewport, zoomRef])
+
+  React.useEffect(() => {
+    const focused = focusedRecoveryRef.current
+    if (!focused || focused.categoryId !== activeCategoryId) return
+    if (allNodes.some((node) => node.id === focused.nodeId)) return
+    focusedRecoveryRef.current = null
+    setLiveViewport(focused.viewport)
+    void flow.setViewport(focused.viewport, { duration: 0 })
+  }, [activeCategoryId, allNodes, flow, nodes, setLiveViewport])
 
   React.useEffect(() => {
     const host = hostRef.current

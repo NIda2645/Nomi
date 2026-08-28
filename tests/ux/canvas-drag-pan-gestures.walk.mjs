@@ -332,16 +332,34 @@ try {
   await getWin().mouse.move(marqueeStart.x, marqueeStart.y)
   await getWin().mouse.down()
   await getWin().mouse.move(nodesBox.left - 40, marqueeStart.y > nodesBox.top ? nodesBox.top - 30 : nodesBox.bottom + 30, { steps: 16 })
-  const marqueeVisible = await getWin().evaluate(
-    () => document.querySelectorAll('.react-flow__selection').length,
-  )
+  const marqueeVisual = await getWin().evaluate(() => {
+    const marquee = document.querySelector('.react-flow__selection')
+    const host = document.querySelector('.generation-canvas-react-flow')
+    if (!marquee || !host) return null
+    const accentProbe = document.createElement('span')
+    accentProbe.style.border = '1px solid var(--nomi-accent)'
+    host.appendChild(accentProbe)
+    const accentBorderColor = getComputedStyle(accentProbe).borderTopColor
+    accentProbe.remove()
+    const style = getComputedStyle(marquee)
+    return {
+      borderColor: style.borderTopColor,
+      backgroundColor: style.backgroundColor,
+      accentBorderColor,
+    }
+  })
   await snap('02-shift-marquee.png')
   await getWin().mouse.up()
   await getWin().keyboard.up('Shift')
   await getWin().waitForTimeout(300)
   const marqueeSelected = await selectedNodeIds()
 
-  assert(marqueeVisible === 1, 'Shift+左键拖会画出框选矩形')
+  assert(Boolean(marqueeVisual), 'Shift+左键拖会画出框选矩形')
+  assert(
+    marqueeVisual.borderColor !== marqueeVisual.accentBorderColor,
+    '实时框选使用 Nomi 中性色，不被 React Flow 蓝色或 accent 覆盖',
+    JSON.stringify(marqueeVisual),
+  )
   assert(marqueeSelected.length >= 2, '框选把框内节点都选上了', `${marqueeSelected.length} 个`)
 
   // ── ① 滚轮以光标为锚缩放 ───────────────────────────────────────────────
@@ -514,7 +532,18 @@ try {
   // 用户 2026-08-09 的场景：选中 A（面板展开）后去拖 B —— A 的面板不能杵在原地。
   // 按下 B 会把选中切给 B，所以判据是「拖动期间画布上一个可见浮层都没有」。
   const otherBox = await imageNode.boundingBox()
-  await getWin().mouse.move(otherBox.x + otherBox.width / 2, otherBox.y + 12)
+  const otherDragPoint = { x: otherBox.x + otherBox.width / 2, y: otherBox.y + 12 }
+  const otherDragProbe = await getWin().evaluate(({ x, y }) => {
+    const hit = document.elementFromPoint(x, y)
+    const node = hit?.closest('.react-flow__node')
+    return {
+      hit: hit?.className?.toString().slice(0, 160) || hit?.tagName || null,
+      nodeId: hit?.closest('[data-node-id]')?.getAttribute('data-node-id') || null,
+      flowNodeId: node?.getAttribute('data-id') || null,
+      transform: node ? getComputedStyle(node).transform : null,
+    }
+  }, otherDragPoint)
+  await getWin().mouse.move(otherDragPoint.x, otherDragPoint.y)
   await getWin().mouse.down()
   await getWin().mouse.move(otherBox.x + otherBox.width / 2 - 80, otherBox.y + 70, { steps: 12 })
   const crossDrag = await getWin().evaluate(() => ({
@@ -525,11 +554,31 @@ try {
     visible: Array.from(
       document.querySelectorAll('.generation-canvas-v2-node__composer, [data-node-floating-toolbar="true"]'),
     ).filter((el) => getComputedStyle(el).visibility !== 'hidden').length,
+    selected: Array.from(document.querySelectorAll('.react-flow__node.selected')).map((node) => ({
+      id: node.getAttribute('data-id'),
+      transform: getComputedStyle(node).transform,
+    })),
   }))
+  const draggedImage = crossDrag.selected.find((node) => node.id === otherDragProbe.flowNodeId)
+  const transformNumbers = (value) => {
+    const match = String(value || '').match(/^matrix\([^,]+, [^,]+, [^,]+, [^,]+, ([^,]+), ([^)]+)\)$/)
+    return match ? { x: Number(match[1]), y: Number(match[2]) } : null
+  }
+  const beforeImageTransform = transformNumbers(otherDragProbe.transform)
+  const afterImageTransform = transformNumbers(draggedImage?.transform)
+  const imageMoveDistance = beforeImageTransform && afterImageTransform
+    ? Math.hypot(afterImageTransform.x - beforeImageTransform.x, afterImageTransform.y - beforeImageTransform.y)
+    : 0
   await snap('06-drag-other-node.png')
   await getWin().mouse.up()
   await getWin().waitForTimeout(300)
-  assert(crossDrag.dragging === 'true', '拖另一个节点时画布同样进入拖动态')
+  assert(
+    crossDrag.dragging === 'true',
+    '拖另一个节点时画布同样进入拖动态',
+    JSON.stringify({ probe: otherDragProbe, crossDrag, imageMoveDistance }),
+  )
+  assert(crossDrag.selected.some((node) => node.id === otherDragProbe.flowNodeId), '直接拖动未选中节点后，该节点成为当前选中节点')
+  assert(imageMoveDistance >= 10, '直接拖动未选中节点时节点确实发生位移', `位移 ${imageMoveDistance.toFixed(1)}px`)
   assert(
     crossDrag.overlays > 0 && crossDrag.visible === 0,
     '拖另一个节点时，画布上挂着的浮层一个都不显示',

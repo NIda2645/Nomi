@@ -11,6 +11,7 @@ import { IconStack2 } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import type { NodeGroup } from '../model/generationCanvasTypes'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
+import { GROUP_VISUAL_CLASS } from './groupVisualContract'
 
 export type CanvasGroupBox = {
   group: NodeGroup
@@ -40,17 +41,6 @@ export type GroupFrameProps = {
 // 整组运行早就有了。在标签上再放一个 ▶ 等于同屏两个一模一样的动作（实测两者相距约 600px 同时可见），
 // 是并行版（违 P1）。要改整组运行的行为，改选择浮条那一条路径。
 
-function getHexAlphaColor(color: string | undefined, alphaHex: string): string | undefined {
-  const normalized = color?.trim()
-  if (!normalized) return undefined
-  if (/^#[0-9a-fA-F]{6}$/.test(normalized)) return `${normalized}${alphaHex}`
-  if (/^#[0-9a-fA-F]{3}$/.test(normalized)) {
-    const [, r, g, b] = normalized
-    return `#${r}${r}${g}${g}${b}${b}${alphaHex}`
-  }
-  return undefined
-}
-
 export default function GroupFrame({
   box,
   onPointerDown,
@@ -61,7 +51,6 @@ export default function GroupFrame({
   onCollapse,
 }: GroupFrameProps): JSX.Element {
   const { t } = useTranslation()
-  const groupColor = box.group.color || undefined
   const connectable = Boolean(!readOnly && pendingConnection && onConnectToGroup && box.memberCount > 0)
   const groupIsSource = connectable && pendingConnectionSide === 'left'
   const connectionLabel = groupIsSource
@@ -73,11 +62,9 @@ export default function GroupFrame({
         'generation-canvas-v2__group-box',
         'absolute select-none rounded-nomi-lg',
         readOnly ? 'pointer-events-none' : 'pointer-events-auto',
-        'border-[1.5px] border-[color-mix(in_srgb,var(--nomi-accent)_55%,transparent)]',
-        'bg-[color-mix(in_srgb,var(--nomi-accent)_8%,transparent)]',
-        'shadow-[inset_0_0_0_1px_var(--workbench-frame-ring),0_14px_34px_rgba(18,24,38,0.055)]',
+        GROUP_VISUAL_CLASS.frame,
         connectable
-          ? 'cursor-copy border-dashed border-nomi-accent bg-[color-mix(in_srgb,var(--nomi-accent)_16%,transparent)]'
+          ? cn('cursor-copy', GROUP_VISUAL_CLASS.dropTarget)
           : readOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing',
       )}
       style={{
@@ -85,7 +72,6 @@ export default function GroupFrame({
         top: box.top,
         width: box.width,
         height: box.height,
-        ...(connectable ? {} : { borderColor: groupColor, backgroundColor: getHexAlphaColor(groupColor, '18') }),
       }}
       role={readOnly ? undefined : 'button'}
       tabIndex={readOnly ? undefined : 0}
@@ -125,20 +111,24 @@ export default function GroupFrame({
         className={cn(
           'generation-canvas-v2__group-box-label',
           'absolute left-3 top-2 z-[4] inline-flex min-h-[22px] max-w-[calc(100%-24px)] items-center gap-2',
-          'rounded-full bg-nomi-accent px-[9px] py-[3px] text-micro font-[650] leading-[1.25] text-nomi-paper',
-          'pointer-events-auto select-none shadow-[0_8px_18px_rgba(18,24,38,0.12)]',
+          'rounded-full border px-[9px] py-[3px] text-micro font-[650] leading-[1.25]',
+          'pointer-events-auto select-none',
+          GROUP_VISUAL_CLASS.label,
           connectable ? 'cursor-copy' : readOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing',
         )}
-        style={{ backgroundColor: groupColor }}
       >
+        <span
+          className={cn('size-2 shrink-0 rounded-full border', GROUP_VISUAL_CLASS.marker)}
+          aria-hidden="true"
+        />
         <span className="min-w-0 truncate">{box.group.name}</span>
-        <span className="inline-grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[var(--workbench-veil-chip)] px-[5px] text-micro">
+        <span className={cn('inline-grid h-[18px] min-w-[18px] place-items-center rounded-full px-[5px] text-micro', GROUP_VISUAL_CLASS.count)}>
           {box.memberCount}
         </span>
         {onCollapse && !connectable ? (
           <button
             type="button"
-            className="grid size-[18px] place-items-center rounded-full border-0 bg-[var(--workbench-veil-chip)] text-current hover:bg-nomi-paper/25 focus-visible:outline-2 focus-visible:outline-nomi-paper"
+            className="grid size-[18px] place-items-center rounded-full border-0 bg-nomi-ink-05 text-nomi-ink-60 hover:bg-nomi-ink-10 hover:text-nomi-ink"
             aria-label={t('generationCommon.canvas.group.collapseNamed', { name: box.group.name })}
             title={t('generationCommon.canvas.group.collapse')}
             onPointerDown={(event) => {

@@ -92,6 +92,8 @@
     "postinstall": "node ./scripts/install-electron-runtime.mjs && node ./scripts/install-git-hooks.cjs",
     "test:e2e": "pnpm run check:electron-install && node tests/ux/smoke.e2e.mjs",
     "test:mcp": "pnpm run check:electron-install && node tests/ux/mcp-journey.e2e.mjs",
+    "test:canvas:critical": "node tests/ux/canvas-real-suite.mjs critical",
+    "test:canvas:acceptance": "node tests/ux/canvas-real-suite.mjs full",
     "test:canvas-perf": "node tests/ux/canvas-performance-benchmark.e2e.mjs",
     "test:canvas-perf:compare": "node tests/ux/canvas-performance-compare.mjs",
     "test:canvas-perf:fixture": "node tests/ux/fixtures/gen-canvas-performance-fixture.mjs",
