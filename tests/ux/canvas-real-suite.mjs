@@ -26,10 +26,13 @@ export const FULL_CANVAS_SCENARIOS = [
   { id: 'group-reference-direction', script: 'tests/ux/group-reference-direction.walk.mjs' },
   { id: 'canvas-landing', script: 'tests/ux/p4-s5-canvas-landing.e2e.mjs' },
   { id: 'canvas-reconcile', script: 'tests/ux/p4-s5-canvas-reconcile.e2e.mjs' },
+]
+
+export const PERFORMANCE_CANVAS_SCENARIOS = [
   {
     id: 'medium-canvas-performance',
     script: 'tests/ux/canvas-performance-benchmark.e2e.mjs',
-    args: ['pr216-acceptance', '--scale', 'M', '--runs', '1'],
+    args: ['validation-gate', '--scale', 'M', '--runs', '1'],
     timeoutMs: PERFORMANCE_CANVAS_SCENARIO_TIMEOUT_MS,
   },
 ]
@@ -37,6 +40,7 @@ export const FULL_CANVAS_SCENARIOS = [
 export function scenariosForProfile(profile) {
   if (profile === 'critical') return CRITICAL_CANVAS_SCENARIOS
   if (profile === 'full') return FULL_CANVAS_SCENARIOS
+  if (profile === 'performance') return PERFORMANCE_CANVAS_SCENARIOS
   throw new Error(`unknown canvas suite profile: ${profile}`)
 }
 

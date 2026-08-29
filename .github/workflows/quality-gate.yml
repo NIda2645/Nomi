@@ -32,7 +32,14 @@ jobs:
     name: Validation Scope
     runs-on: ubuntu-latest
     outputs:
-      mode: ${{ steps.profile.outputs.mode }}
+      unit: ${{ steps.profile.outputs.unit }}
+      desktop: ${{ steps.profile.outputs.desktop }}
+      journeys: ${{ steps.profile.outputs.journeys }}
+      canvas: ${{ steps.profile.outputs.canvas }}
+      performance: ${{ steps.profile.outputs.performance }}
+      package: ${{ steps.profile.outputs.package }}
+      release: ${{ steps.profile.outputs.release }}
+      fail_closed: ${{ steps.profile.outputs.fail_closed }}
       reason: ${{ steps.profile.outputs.reason }}
       changed_count: ${{ steps.profile.outputs.changed_count }}
     steps:
@@ -91,10 +98,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Unit and agent runtime tests (full lane)
-        if: needs.scope.outputs.mode == 'full'
+        if: needs.scope.outputs.unit == 'full'
         run: pnpm run test:system:unit
       - name: Changed and related tests (fast lane)
-        if: needs.scope.outputs.mode == 'fast'
+        if: needs.scope.outputs.unit == 'focused'
         env:
           NOMI_CHANGED_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
           NOMI_CHANGED_HEAD: ${{ github.sha }}
@@ -103,7 +110,11 @@ jobs:
   desktop-linux:
     name: Desktop Linux
     needs: scope
-    if: needs.scope.outputs.mode == 'full'
+    if: >-
+      needs.scope.outputs.desktop == 'true' ||
+      needs.scope.outputs.journeys == 'true' ||
+      needs.scope.outputs.canvas != 'none' ||
+      needs.scope.outputs.performance == 'true'
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -120,8 +131,23 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build and run desktop journeys
-        run: xvfb-run -a pnpm run test:system:desktop
+      - name: Build selected desktop surfaces once
+        run: pnpm run build
+      - name: Electron smoke
+        if: needs.scope.outputs.desktop == 'true'
+        run: xvfb-run -a pnpm run test:e2e
+      - name: CI-safe user journeys
+        if: needs.scope.outputs.journeys == 'true'
+        run: xvfb-run -a pnpm run test:journeys
+      - name: Critical canvas acceptance
+        if: needs.scope.outputs.canvas == 'critical'
+        run: xvfb-run -a pnpm run test:canvas:critical
+      - name: Full functional canvas acceptance
+        if: needs.scope.outputs.canvas == 'full'
+        run: xvfb-run -a pnpm run test:canvas:acceptance
+      - name: Canvas performance budget
+        if: needs.scope.outputs.performance == 'true'
+        run: xvfb-run -a pnpm run test:canvas:performance
 
       # 走查证据（截图 + output.jsonl）。win-gate.yml 一直有这步，本 job 却没有——
       # 结果是 ubuntu 这边走查一红就只剩一行「✗ 某某检查」，几何类失败隔着 CI 根本判不了因
@@ -142,12 +168,13 @@ jobs:
             tests/ux/shots/canvas-drag-pan-gestures/**
             tests/ux/shots/group-ports/**
             tests/ux/shots/react-flow-read-only/**
+            tests/ux/perf-results/canvas-*.json
           if-no-files-found: warn
           retention-days: 7
   mac-package:
     name: Mac Package
     needs: scope
-    if: needs.scope.outputs.mode == 'full'
+    if: needs.scope.outputs.package == 'true'
     runs-on: macos-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -180,7 +207,12 @@ jobs:
           test "${{ needs.scope.result }}" = "success"
           test "${{ needs.contracts.result }}" = "success"
           test "${{ needs.unit.result }}" = "success"
-          if [ "${{ needs.scope.outputs.mode }}" = "full" ]; then
+          if [ "${{ needs.scope.outputs.desktop }}" = "true" ] || \
+             [ "${{ needs.scope.outputs.journeys }}" = "true" ] || \
+             [ "${{ needs.scope.outputs.canvas }}" != "none" ] || \
+             [ "${{ needs.scope.outputs.performance }}" = "true" ]; then
             test "${{ needs['desktop-linux'].result }}" = "success"
+          fi
+          if [ "${{ needs.scope.outputs.package }}" = "true" ]; then
             test "${{ needs['mac-package'].result }}" = "success"
           fi

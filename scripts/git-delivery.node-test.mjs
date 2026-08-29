@@ -10,8 +10,11 @@ import {
   assertMergedState,
   assertPreflightState,
   classifyIdentity,
+  evaluateRequiredChecks,
   inspectDeliveryState,
+  listCommitCheckRuns,
   parseCli,
+  parseGitHubRepository,
   preflightDelivery,
   runBoundedCommand,
   verifyMergedDelivery,
@@ -88,6 +91,8 @@ test('documented pnpm argument separator is transparent to delivery commands', (
       'upstream',
       '--base',
       'trunk',
+      '--ci-timeout-ms',
+      '120000',
     ]),
     {
       command: 'verify-merged',
@@ -95,6 +100,7 @@ test('documented pnpm argument separator is transparent to delivery commands', (
         expectedSha: '0123456789abcdef0123456789abcdef01234567',
         remote: 'upstream',
         base: 'trunk',
+        ciTimeoutMs: 120000,
       },
     },
   )
@@ -164,103 +170,175 @@ test('merged verification accepts only the exact fetched main commit, not an equ
   assert.throws(() => assertMergedState(taskState, { expectedSha }), /HEAD is not the expected merged commit/)
 })
 
-test('merged full validation writes one common-dir receipt and reuses it for the same SHA', async (t) => {
+function checkRun(name, conclusion, overrides = {}) {
+  return {
+    id: overrides.id ?? name.length,
+    name,
+    status: overrides.status ?? 'completed',
+    conclusion,
+    started_at: overrides.startedAt ?? '2026-08-30T00:00:00Z',
+    completed_at: overrides.completedAt ?? '2026-08-30T00:01:00Z',
+    details_url: `https://github.com/example/nomi/actions/runs/${overrides.id ?? name.length}`,
+    app: { slug: 'github-actions' },
+  }
+}
+
+const passedChecks = () => [checkRun('Quality Gate', 'success'), checkRun('Mac Package', 'skipped')]
+
+test('GitHub repository parsing accepts canonical HTTPS and SSH remotes only', () => {
+  assert.equal(parseGitHubRepository('https://github.com/aqm857886159/Nomi.git'), 'aqm857886159/Nomi')
+  assert.equal(parseGitHubRepository('git@github.com:aqm857886159/Nomi.git'), 'aqm857886159/Nomi')
+  assert.equal(parseGitHubRepository('ssh://git@github.com/aqm857886159/Nomi.git'), 'aqm857886159/Nomi')
+  assert.throws(() => parseGitHubRepository('/tmp/local.git'), /Cannot derive a GitHub repository/)
+})
+
+test('required-check evaluation accepts success, skipped, and neutral but not pending or failure', () => {
+  assert.equal(evaluateRequiredChecks(passedChecks()).state, 'passed')
+  assert.equal(
+    evaluateRequiredChecks([checkRun('Quality Gate', 'neutral'), checkRun('Mac Package', 'success')]).state,
+    'passed',
+  )
+  assert.equal(
+    evaluateRequiredChecks([checkRun('Quality Gate', null, { status: 'in_progress' }), checkRun('Mac Package', 'skipped')])
+      .state,
+    'pending',
+  )
+  assert.equal(evaluateRequiredChecks([checkRun('Quality Gate', 'failure'), checkRun('Mac Package', 'success')]).state, 'failed')
+  assert.deepEqual(evaluateRequiredChecks([checkRun('Quality Gate', 'success')]).missing, ['Mac Package'])
+  assert.equal(
+    evaluateRequiredChecks([
+      checkRun('Quality Gate', 'success', { id: 1, startedAt: '2026-08-30T00:00:00Z' }),
+      checkRun('Quality Gate', 'failure', { id: 2, startedAt: '2026-08-30T00:02:00Z' }),
+      checkRun('Mac Package', 'success'),
+    ]).state,
+    'failed',
+  )
+})
+
+test('check-run loader queries the exact commit endpoint and rejects malformed evidence', async () => {
+  let invocation
+  const runCommand = async (...args) => {
+    invocation = args
+    return { stdout: JSON.stringify({ check_runs: passedChecks() }) }
+  }
+  const checks = await listCommitCheckRuns({
+    repository: 'example/nomi',
+    commitSha: '0123456789abcdef0123456789abcdef01234567',
+    runCommand,
+  })
+  assert.equal(checks.length, 2)
+  assert.match(invocation[1].at(-1), /commits\/0123456789abcdef0123456789abcdef01234567\/check-runs/)
+  await assert.rejects(
+    listCommitCheckRuns({
+      repository: 'example/nomi',
+      commitSha: '0123456789abcdef0123456789abcdef01234567',
+      runCommand: async () => ({ stdout: '{}' }),
+    }),
+    (error) => error instanceof DeliveryError && error.code === 'invalid_check_response',
+  )
+})
+
+test('merged verification records exact-SHA CI evidence once and reuses its receipt', async (t) => {
   const f = fixture()
   t.after(f.cleanup)
   const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
   git(f.work, ['switch', '--detach', expectedSha])
 
-  let runs = 0
-  const runFullProfile = () => {
-    runs += 1
-    return {
-      profile: 'full-local',
-      summary: { ok: true, passed: 5, selected: 5, failed: 0, skipped: 0, unsupported: 0, discovered: 5 },
-      stages: [{ id: 'journeys-ci', status: 'passed', exitCode: 0, durationMs: 1 }],
-      runDir: path.join(f.work, 'tests/system/runs/fake-full-local'),
-    }
+  let queries = 0
+  const listCheckRuns = async ({ commitSha }) => {
+    queries += 1
+    assert.equal(commitSha, expectedSha)
+    return passedChecks()
   }
-
-  const first = await verifyMergedDelivery({
+  const options = {
     cwd: f.work,
     expectedSha,
+    repository: 'example/nomi',
     fetchRemote: async () => {},
-    runFullProfile,
-  })
-  const second = await verifyMergedDelivery({
-    cwd: f.work,
-    expectedSha,
-    fetchRemote: async () => {},
-    runFullProfile,
-  })
+    listCheckRuns,
+  }
+  const first = await verifyMergedDelivery(options)
+  const second = await verifyMergedDelivery(options)
 
   assert.equal(first.reused, false)
   assert.equal(second.reused, true)
-  assert.equal(runs, 1)
+  assert.equal(queries, 1)
+  assert.equal(first.receipt.kind, 'exact-sha-ci-evidence')
   assert.equal(first.receipt.commitSha, expectedSha)
   assert.equal(first.receipt.treeSha, git(f.work, ['rev-parse', `${expectedSha}^{tree}`]))
-  assert.equal(first.receipt.attempts.length, 1)
-  assert.equal(second.receipt.attempts.length, 1)
-  assert.match(first.receiptPath, /nomi-delivery.*full-local\.json$/)
+  assert.deepEqual(first.receipt.checks.map(({ name, conclusion }) => ({ name, conclusion })), [
+    { name: 'Quality Gate', conclusion: 'success' },
+    { name: 'Mac Package', conclusion: 'skipped' },
+  ])
+  assert.match(first.receiptPath, /nomi-delivery.*ci-evidence\.json$/)
 })
 
-test('merged validation lock prevents concurrent full runs for the same SHA', async (t) => {
+test('merged verification waits for missing checks and never converts a failed check into a receipt', async (t) => {
+  const f = fixture()
+  t.after(f.cleanup)
+  const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
+  git(f.work, ['switch', '--detach', expectedSha])
+
+  let query = 0
+  const waiting = await verifyMergedDelivery({
+    cwd: f.work,
+    expectedSha,
+    repository: 'example/nomi',
+    fetchRemote: async () => {},
+    listCheckRuns: async () => (++query === 1 ? [checkRun('Quality Gate', 'success')] : passedChecks()),
+    sleep: async () => {},
+    pollIntervalMs: 1,
+  })
+  assert.equal(waiting.receipt.checks.length, 2)
+  fs.rmSync(waiting.receiptPath)
+
+  await assert.rejects(
+    verifyMergedDelivery({
+      cwd: f.work,
+      expectedSha,
+      repository: 'example/nomi',
+      fetchRemote: async () => {},
+      listCheckRuns: async () => [checkRun('Quality Gate', 'failure'), checkRun('Mac Package', 'success')],
+    }),
+    (error) => error instanceof DeliveryError && error.code === 'required_checks_failed',
+  )
+  assert.equal(fs.existsSync(waiting.receiptPath), false)
+})
+
+test('evidence lock prevents concurrent collectors for one merged SHA', async (t) => {
   const f = fixture()
   t.after(f.cleanup)
   const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
   git(f.work, ['switch', '--detach', expectedSha])
 
   let releaseFirst
-  let runs = 0
-  const firstRun = new Promise((resolve) => {
+  const firstQuery = new Promise((resolve) => {
     releaseFirst = resolve
   })
-  const runFullProfile = async () => {
-    runs += 1
-    await firstRun
-    return {
-      summary: { ok: true, passed: 1, selected: 1 },
-      stages: [],
-      runDir: path.join(f.work, 'tests/system/runs/concurrent'),
-    }
+  const options = {
+    cwd: f.work,
+    expectedSha,
+    repository: 'example/nomi',
+    fetchRemote: async () => {},
+    listCheckRuns: async () => {
+      await firstQuery
+      return passedChecks()
+    },
   }
-  const first = verifyMergedDelivery({ cwd: f.work, expectedSha, fetchRemote: async () => {}, runFullProfile })
+  const first = verifyMergedDelivery(options)
   await new Promise((resolve) => setImmediate(resolve))
-
   await assert.rejects(
-    verifyMergedDelivery({ cwd: f.work, expectedSha, fetchRemote: async () => {}, runFullProfile }),
-    (error) => error instanceof DeliveryError && error.code === 'validation_in_progress',
+    verifyMergedDelivery(options),
+    (error) => error instanceof DeliveryError && error.code === 'evidence_in_progress',
   )
-  assert.equal(runs, 1)
   releaseFirst()
   await first
 })
 
-test('failed merged validation is receipted and never retried implicitly', async (t) => {
-  const f = fixture()
-  t.after(f.cleanup)
-  const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
-  git(f.work, ['switch', '--detach', expectedSha])
-
-  let runs = 0
-  const runFullProfile = () => {
-    runs += 1
-    return { summary: { ok: false, passed: 0, selected: 1, failed: 1 }, stages: [], runDir: null }
-  }
-  await assert.rejects(
-    verifyMergedDelivery({ cwd: f.work, expectedSha, fetchRemote: async () => {}, runFullProfile }),
-    (error) => error instanceof DeliveryError && error.code === 'full_validation_failed',
-  )
-  await assert.rejects(
-    verifyMergedDelivery({ cwd: f.work, expectedSha, fetchRemote: async () => {}, runFullProfile }),
-    (error) => error instanceof DeliveryError && error.code === 'validation_already_failed',
-  )
-  assert.equal(runs, 1)
-})
-
 test('canonical delivery source has no REST object reconstruction escape path', () => {
   const source = fs.readFileSync(path.join(repoRoot, 'scripts/git-delivery.mjs'), 'utf8')
-  assert.doesNotMatch(source, /api\.github\.com|\/compare\/|hash-object[^\n]*commit|commit-tree/)
+  assert.doesNotMatch(source, /api\.github\.com|\/compare\/|hash-object[^\n]*commit|commit-tree|runProfile|full-local/)
+  assert.match(source, /commits\/\$\{commitSha\}\/check-runs/)
 
   const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
   assert.equal(pkg.scripts['delivery:preflight'], 'node scripts/git-delivery.mjs preflight')

@@ -98,6 +98,7 @@
     "test:model-integration:fault-matrix": "node tests/ux/model-integration-fault-matrix.e2e.mjs",
     "test:canvas:critical": "node tests/ux/canvas-real-suite.mjs critical",
     "test:canvas:acceptance": "node tests/ux/canvas-real-suite.mjs full",
+    "test:canvas:performance": "node tests/ux/canvas-real-suite.mjs performance",
     "test:canvas-perf": "node tests/ux/canvas-performance-benchmark.e2e.mjs",
     "test:canvas-perf:compare": "node tests/ux/canvas-performance-compare.mjs",
     "test:canvas-perf:fixture": "node tests/ux/fixtures/gen-canvas-performance-fixture.mjs",
@@ -111,6 +112,10 @@
     "test:system:unit": "node scripts/test-system.mjs ci-unit",
     "test:system:focused": "node scripts/test-focused.mjs",
     "test:system:desktop": "node scripts/test-system.mjs ci-desktop",
+    "test:system:journeys": "node scripts/test-system.mjs ci-journeys",
+    "test:system:canvas:critical": "node scripts/test-system.mjs ci-canvas-critical",
+    "test:system:canvas:full": "node scripts/test-system.mjs ci-canvas-full",
+    "test:system:performance": "node scripts/test-system.mjs ci-performance",
     "test:system:full": "node scripts/test-system.mjs full-local",
     "test:system:release": "node scripts/test-system.mjs release",
     "delivery:preflight": "node scripts/git-delivery.mjs preflight",
@@ -121,7 +126,7 @@
     "check:batch-machines": "node ./scripts/check-batch-machines.mjs",
     "check:test-types": "node ./scripts/check-test-types.mjs",
     "check:gates-chain": "node ./scripts/check-gates-chain.mjs",
-    "check:quality-gate-workflow": "node --test ./scripts/check-quality-gate-workflow.node-test.mjs ./scripts/test-focused.node-test.mjs",
+    "check:quality-gate-workflow": "node --test ./scripts/validation-policy.node-test.mjs ./scripts/check-quality-gate-workflow.node-test.mjs ./scripts/test-focused.node-test.mjs",
     "check:cla-workflow": "node --test ./scripts/check-cla-workflow.node-test.mjs"
   },
   "dependencies": {
