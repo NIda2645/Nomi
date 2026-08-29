@@ -158,7 +158,7 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 
 **开始闸**：在独立 sibling worktree 的任务分支先运行 `pnpm run delivery:preflight`。它只做一次有超时的非交互 fetch，并拒绝受保护分支、脏工作树和未包含最新远端基线的任务分支；失败后不自动重试、不用 REST API 重建 Git 对象。
 
-**验证门槛**：按 R22 选择 `fast` 或 `full`。普通隔离 PR 改动通过 contracts + focused 即可提交；高风险路径、最终交付、`main` 与发布边界必须通过 full。连续小修先在本地收敛，定向验证通过后只 push 一次，禁止每修一个微小点就触发一轮完整远端 CI。
+**验证门槛**：按 R22 的共享 policy 选择受影响风险面。contracts 始终运行；unit 可 focused/full，Electron、journey、canvas、performance 与 package 各自独立触发。连续小修先在本地收敛，定向验证通过后只 push 一次，禁止每修一个微小点就触发一轮完整远端 CI。
 
 **commit 规范**：
 - 一个逻辑改动一个 commit
@@ -483,16 +483,21 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 
 ## R22 验证分层与测试预算
 
-> 2026-08-29 用户拍板固化。目标不是少测，而是把反馈成本花在真正可能受影响的地方：小改动尽快反馈，高风险和交付边界绝不降级。
+> 2026-08-29 用户拍板建立测试预算；2026-08-30 从 `fast/full` 两档升级为独立风险面。目标不是少测，而是把反馈成本花在真正可能受影响的地方：小改动尽快反馈，高风险绝不降级，也不把无关性能或打包成本强加给每个 PR。
 
-### 两档验证
+### 风险面
 
-| 档位 | 触发 | 必跑 | 不跑 |
-|---|---|---|---|
-| `fast` | 普通 PR 中的文档或隔离 renderer/source 改动 | `test:system:contracts` + changed/sibling/related tests | 全仓 Vitest、Desktop journey、macOS package |
-| `full` | Electron；模型、凭据、网络、ComfyUI、provider、catalog、bridge；依赖/构建/CI/测试系统；删除/重命名；最终交付、`main` push、手动发布验证 | contracts + 全量 unit + build/E2E/journeys + macOS package CI | 无 |
+| 风险面 | 触发 | 验证 |
+|---|---|---|
+| contracts | 所有 PR 与 `main` push | 静态合同、lint、typecheck 和结构门岗 |
+| unit | 普通隔离改动用 `focused`；Electron、模型执行、画布和基础设施用 `full` | changed/sibling/related 或全量 Vitest/agent runtime |
+| desktop | Electron 与桌面运行边界 | 一次 build + Electron smoke |
+| journeys | Agent、模型执行和真实工作流边界 | CI-safe J3/J5 真实用户旅程 |
+| canvas | 生成画布为 `critical`；React Flow 内核/验收基础设施为 `full` | 功能画布验收，不含性能 benchmark |
+| performance | React Flow viewport、节点媒体渲染/调度和性能基准自身 | 独立性能预算；JSON 永久留证，`pass:false` 必须非零退出 |
+| package | 依赖/构建配置、Electron main/preload/runtime identity 与 release 边界 | macOS build、目录打包和 codesign |
 
-权威实现是 `scripts/select-quality-gate-profile.mjs`、`scripts/test-focused.mjs` 和 `.github/workflows/quality-gate.yml`。分类器异常、空 diff 或无法解析 diff 时必须 fail-closed 到 `full`；fast 只能被升级，不能把高风险改动降级。`Quality Gate` 仍是唯一聚合门，主线与发布永远 full。
+权威实现是 `scripts/validation-policy.mjs`；`scripts/select-quality-gate-profile.mjs` 只负责从 Git diff/事件取输入，`.github/workflows/quality-gate.yml` 和 `tests/system/profiles.mjs` 只消费输出。PR 和 `main` push 都按真实 Git changed entries 分类；`main` 不因事件名自动 full。删除/重命名、空或不可解析 diff、分类器/工作流/测试系统自身和手动发布验证必须 fail-closed 到所有风险面。`Quality Gate` 仍是唯一聚合门，只允许策略未选择的 optional job 为 skipped。
 
 ### 测试取舍
 
@@ -503,9 +508,9 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 
 ### 执行节奏
 
-一个逻辑批次先完成实现、审计、规则和测试，再跑一次定向验证；全部本地问题收敛后只跑一次 full 并统一 push。小阻塞不得打断主流程反复重启全套测试；只有会改变安全边界、产品方向或需要用户独有资源的阻塞才停下。
+一个逻辑批次先完成实现、审计、规则和测试，再跑一次定向验证；全部本地问题收敛后按共享 policy 统一 push。只有测试基础设施自身、删除/重命名、无法分类或手动 release 才跑显式全维度；小阻塞不得打断主流程反复重启全套测试。
 
-最终交付不再手工拼多条命令：在真实 merged-main SHA 上运行一次 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`。它复用 `full-local`（已含 canvas acceptance 与 CI-safe J3/J5）并把结果写成 Git common dir 的 per-SHA 收据；同一 SHA 再调用直接复用成功收据，失败也不自动重跑，只有显式 `--rerun` 才新增一次尝试。
+最终交付不再本地跑第三遍：在真实 merged-main SHA 上运行 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`。命令仍用有界 Git fetch 证明 `HEAD`、远端主线和 expected SHA/tree 身份，然后等待该 exact SHA 的 `Quality Gate` 与 `Mac Package` check run。GitHub required-check 语义中的 success/skipped/neutral 可写入 Git common dir 的 per-SHA `ci-evidence.json`；missing、pending、failure 或错误 SHA 都不能生成成功收据。同一 SHA 再调用直接复用收据，不启动 repository tests。
 
 ## R23 React Flow 生成画布单内核与迁移等价
 

@@ -28,9 +28,9 @@ Nomi：本地优先 AI 视频创作工作台。
 | `pnpm build` | Vite 构建 + electron tsc |
 | `pnpm run test` | Vitest 单测 |
 | `pnpm run test:system:focused` | 普通 PR 的 changed/sibling/related tests；仍须配合 contracts |
-| `pnpm run test:system:full` | 高风险、主线与发布边界的完整本地验证 |
+| `pnpm run test:system:full` | 测试基础设施或手动发布边界的显式全量本地验证 |
 | `pnpm run delivery:preflight` | 任务开始前有界刷新远端基线并验证独立干净分支 |
-| `pnpm run delivery:verify-merged -- --expected-sha <SHA>` | 在真实 merged-main 上只跑一次完整系统与 J3/J5 验收 |
+| `pnpm run delivery:verify-merged -- --expected-sha <SHA>` | 在真实 merged-main 上记录 exact-SHA CI checks 收据，不本地重跑 |
 | `pnpm run test:e2e` | Playwright smoke（零额度，CI-ready） |
 | `pnpm run lint:ci` | Lint + max-warnings=98 棘轮（新增 1 个 warning 即红）|
 | `pnpm run typecheck` | TypeScript 双向类型检查 |
@@ -42,7 +42,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | `pnpm run check:audit` | 审计节奏提醒（≥25 commit 提示） |
 | `npx skills experimental_install` | 从 `skills-lock.json` 还原 `.Codex/skills/`（换机/协作者用） |
 
-**Push 前按风险分层（R22）**：普通隔离 PR 改动跑 `test:system:contracts` + `test:system:focused`；Electron、模型/凭据/网络/ComfyUI、依赖/构建/CI、测试系统、删除/重命名，以及最终交付、`main`、发布边界跑 `test:system:full`。连续小修先在本地收敛，再一次性验证和 push，不让每个微提交反复触发全套 CI。
+**Push 前按风险面分层（R22）**：contracts 始终跑；unit 独立选 focused/full；Electron、真实旅程、React Flow 画布、性能和 macOS package 各按受影响路径独立触发，`main` push 也按真实 `before..after` 分类，不因事件名自动全量。删除/重命名、空 diff、测试/CI 分类器自身和手动发布边界 fail-closed 到全维度。连续小修先在本地收敛，再一次性验证和 push，不让每个微提交反复触发全套 CI。
 
 **交付身份只走统一命令**：任务开始先跑 `delivery:preflight`；PR 合并后只在 Git fetch 得到的真实 merge SHA 上跑 `delivery:verify-merged`。任务 commit、PR head、merge commit 与 tree 分开报告；禁止用 REST compare 文件列表重建 Git tree/commit，禁止把 `same-tree-different-commit` 叫成代码不匹配。
 
@@ -60,7 +60,7 @@ Nomi：本地优先 AI 视频创作工作台。
 
 ## 动手前/报完成前/push 前的三闸
 
-每轮由 hook（`self-check.sh`，L0）自动顶在眼前，不在此复述。一句话：**动手写码前**想清楚(P5)——用户可见先读设计系统+出可体验样张+拍板(R8，**改/扩现有 UI 先看它真实样子=读完整外壳组件或真实截图，样张是真实布局+改动、不是脑补**)、**加/挪任何控件先过设计系统 §1.5 控件层级规则**（判 L1 常驻还是 L2/L3/L4·查这个面常驻预算还剩几个·确认这动作别处是不是已经有家了=一功能一个家；手法优先级 **先分组→再去重→再归位→最后才收纳**，别一上来就往 ▾ 里塞；动作不许压在内容上）、碰三方库/选型·引入新框架先 Context7+web 查最新现役框架(R5)、多文件先 `docs/plan`(R4)、取舍给对比表(R3)；**报完成/交付给用户看前**全绿≠完成(P3)——和样张对账+真机走查(R13，**眼见链：截图自己亲眼 Read 过才算，验证物=用户所见物——同构建/同入口/同平台分支，改哪面验哪面**)+ **功能交付另建「真实用户任务」端到端测试系统、带真实任务跑通使用闭环、把过程中冒出的体验/设计/UI/UX/产品/功能问题全修掉才算真完成(R16)**；**push 前**按 R22 选择 focused/full 验证并按 R11 交付。贯穿：根因不症状(P2)、加新删旧无并行版(P1)、derive 不 hardcode、分层≤800 行(R9)。细节查 `docs/engineering-rules.md`。
+每轮由 hook（`self-check.sh`，L0）自动顶在眼前，不在此复述。一句话：**动手写码前**想清楚(P5)——用户可见先读设计系统+出可体验样张+拍板(R8，**改/扩现有 UI 先看它真实样子=读完整外壳组件或真实截图，样张是真实布局+改动、不是脑补**)、**加/挪任何控件先过设计系统 §1.5 控件层级规则**（判 L1 常驻还是 L2/L3/L4·查这个面常驻预算还剩几个·确认这动作别处是不是已经有家了=一功能一个家；手法优先级 **先分组→再去重→再归位→最后才收纳**，别一上来就往 ▾ 里塞；动作不许压在内容上）、碰三方库/选型·引入新框架先 Context7+web 查最新现役框架(R5)、多文件先 `docs/plan`(R4)、取舍给对比表(R3)；**报完成/交付给用户看前**全绿≠完成(P3)——和样张对账+真机走查(R13，**眼见链：截图自己亲眼 Read 过才算，验证物=用户所见物——同构建/同入口/同平台分支，改哪面验哪面**)+ **功能交付另建「真实用户任务」端到端测试系统、带真实任务跑通使用闭环、把过程中冒出的体验/设计/UI/UX/产品/功能问题全修掉才算真完成(R16)**；**push 前**按 R22 选择受影响风险面并按 R11 交付。贯穿：根因不症状(P2)、加新删旧无并行版(P1)、derive 不 hardcode、分层≤800 行(R9)。细节查 `docs/engineering-rules.md`。
 
 ## 每日雷达（每 session 第一条消息自动 · 两条）
 
@@ -99,7 +99,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R19 | 解决状态必须可交付 | 侧分支只能称“已实现”；验证通过且提交已进入远端目标分支后才能称“已解决”（原 R17，2026-08-25 与「重活门岗」撞号后改号）|
 | R20 | 造轮子前先过 build-vs-buy 闸 | 写任何**通用能力**前三问：① 这是不是通用问题（不是 Nomi 独有）？② 同类产品/成熟方案怎么做的（Context7+web 实查，别凭记忆）？③ 自研它在不在我们护城河上？**不在护城河上又碰钱碰信任的**（标准协议、边界校验、生命周期语义）→ 用标准实现或至少**对齐标准语义**；在护城河上的（账本/预算/一致性/权限）→ 自研到底。已交学费：2026-08-25 全应用地基审计扫出手写 MCP 协议缺取消绑定/运行时校验/版本协商、IPC 缺来源绑定（`docs/audit/2026-08-25-app-wide-foundation-audit.md`）|
 | R21 | 修复必须走根因流程；可复发/高风险交 v3 合同 | 所有纠正性改动强制走 `root-cause-remediation`；`recurring` 或高风险生产路径提交 schema-v3 `docs/fixes/*.root-cause.json`，旧 v1/v2 只读；`check:root-cause-contracts` 核验共享边界、结构预防、同类入口、类级测试、旧路径和依赖生命周期 |
-| R22 | 验证分层与测试预算 | 普通 PR 跑 contracts + focused；高风险、最终交付、主线和发布跑 full；不删安全/持久化/认证边界覆盖 |
+| R22 | 验证分层与测试预算 | contracts 常跑；unit/desktop/journey/canvas/performance/package 按真实风险独立触发；不删安全/持久化/认证边界覆盖 |
 | R23 | React Flow 生成画布单内核与迁移等价 | 生产画布只允许 React Flow 一个交互/变换内核，Zustand 是业务与持久化真相源；迁移必须逐项保留既有几何、交互、视觉和反馈，并用 adapter/结构测试 + 真实 Electron 走查证明 |
 
 ## 决策自治

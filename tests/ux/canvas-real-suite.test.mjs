@@ -6,6 +6,7 @@ import {
   CRITICAL_CANVAS_SCENARIOS,
   DEFAULT_CANVAS_SCENARIO_TIMEOUT_MS,
   FULL_CANVAS_SCENARIOS,
+  PERFORMANCE_CANVAS_SCENARIOS,
   PERFORMANCE_CANVAS_SCENARIO_TIMEOUT_MS,
   runCanvasScenario,
   scenariosForProfile,
@@ -22,7 +23,7 @@ describe('real canvas acceptance suite', () => {
   })
 
   it('references executable repository test files', () => {
-    for (const scenario of FULL_CANVAS_SCENARIOS) {
+    for (const scenario of [...FULL_CANVAS_SCENARIOS, ...PERFORMANCE_CANVAS_SCENARIOS]) {
       expect(fs.existsSync(path.resolve(scenario.script)), scenario.script).toBe(true)
     }
   })
@@ -31,8 +32,11 @@ describe('real canvas acceptance suite', () => {
     expect(() => scenariosForProfile('typo')).toThrow('unknown canvas suite profile')
   })
 
-  it('keeps the full performance matrix bounded without using the short journey budget', () => {
-    const performance = FULL_CANVAS_SCENARIOS.find((scenario) => scenario.id === 'medium-canvas-performance')
+  it('keeps performance separate from functional full acceptance with its own bounded budget', () => {
+    expect(FULL_CANVAS_SCENARIOS.map((scenario) => scenario.id)).not.toContain('medium-canvas-performance')
+    expect(scenariosForProfile('performance')).toBe(PERFORMANCE_CANVAS_SCENARIOS)
+    const performance = PERFORMANCE_CANVAS_SCENARIOS.find((scenario) => scenario.id === 'medium-canvas-performance')
+    expect(performance?.args?.[0]).toBe('validation-gate')
     expect(performance?.timeoutMs).toBe(PERFORMANCE_CANVAS_SCENARIO_TIMEOUT_MS)
     expect(PERFORMANCE_CANVAS_SCENARIO_TIMEOUT_MS).toBeGreaterThan(DEFAULT_CANVAS_SCENARIO_TIMEOUT_MS)
   })

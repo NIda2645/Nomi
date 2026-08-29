@@ -1,7 +1,7 @@
 # Git 交付身份与单次主线验收
 
 日期：2026-08-29
-状态：✅ 实现完成；待 PR 门禁与 merged-main 单次验收
+状态：✅ Git 身份与有界 fetch 仍生效；其中本地 `full-local` 收据已由 [2026-08-30-risk-scoped-validation-evidence.md](2026-08-30-risk-scoped-validation-evidence.md) 的 exact-SHA CI evidence 收据取代
 
 ## 用户价值
 

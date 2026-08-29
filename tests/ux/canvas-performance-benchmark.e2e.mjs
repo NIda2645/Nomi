@@ -17,6 +17,7 @@ import {
   createCanvasPerformanceFixture,
   defaultPerfTempRoot,
 } from './fixtures/canvas-performance-fixture.mjs'
+import { applyPerformanceVerdict } from '../../scripts/canvas-performance-verdict.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const outputDir = path.join(repoRoot, 'tests/ux/perf-results')
@@ -1214,6 +1215,7 @@ try {
   const outputPath = writeResults(results, label)
   console.log(`\n✅ 画布性能 benchmark 完成：${outputPath}`)
   if (results.warmupFailures.length) console.log(`⚠ warmup 失败 ${results.warmupFailures.length} 次，结果标记为不可靠`)
+  if (!applyPerformanceVerdict(results)) console.error('❌ 画布性能 benchmark 未通过预算或可靠性门槛')
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true })
 }
