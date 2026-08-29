@@ -5,7 +5,7 @@
 > **怎么读这份文件（3 层，按访问频率分，每层只活一次，别重复 —— 这套分层本身是为了「文件再长注意力也不消散」）**：
 > - **L0 每轮** = `.Codex/hooks/self-check.sh`（hook，每条消息自动注入「三闸 + 核心原则 + 近期坑」）——salience 层，本文件**不再复述它**。
 > - **L1 always 加载** = 本文件：项目事实 + 命令 + **P1–P5** + **D1–D5** + 规则索引。**每次 session 读完再动手。**保持精简（一屏左右）。
-> - **L2 触发才查** = `docs/engineering-rules.md`：R1–R22 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
+> - **L2 触发才查** = `docs/engineering-rules.md`：R1–R23 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
 > - **查现状（动手前）** = `docs/ARCHITECTURE-NOW.md`：每个子系统**现在真正跑的是什么**（带 file:line）+「常见误解」列。**读任何 `docs/plan/` 之前先过一眼**——方案文档会过期且不带过期标记。搜不到东西时查 `docs/GLOSSARY.md`（同一个东西的多个叫法：自动剪辑=AI 剪辑=EditPlan=E2…）。（2026-08-27 加：有人把 6 月的 agent 方案当现状，整份调研建立在「引擎是 `runAgentChatV2`」这个已被 pi SDK 取代的前提上；同一轮还因搜「自动剪辑」搜不到而重新发明了已批准的 E1/E2/E3 总纲。）
 >
 > **维护纪律（防它再胖回来 —— 治本）**：本文件是**策展的，不是 append 的**。新踩的坑/教训**默认进记忆**（`memory/`，按相关性召回）或 hook 的 `violations.log`，**不塞这里**；只有「反复出现 + 永远相关」的原则才提升进 L1、细节进 L2；每隔一阵压实一次。**加规则前先问「这条非得 always 加载吗」——不是，就别进 L1。**
@@ -15,7 +15,7 @@
 ## 项目概览
 
 Nomi：本地优先 AI 视频创作工作台。
-**技术栈**：Electron + React 18 + Tailwind 3 + Zustand + Vercel AI SDK。
+**技术栈**：Electron + React 18 + Tailwind 3 + Zustand + React Flow (`@xyflow/react`) + Vercel AI SDK。
 **主要模块**：项目库 → 创作（文本）→ 生成画布（节点系统）→ 时间轴预览 → 导出 MP4。
 **设计系统**：`Design.md` + `src/design/`，token-only，光/暗双模式（默认按本地时间「天黑自动暗」·手动切一次后记住·token 翻转），密度优先。
 **主仓库**：`/Users/aoqimin/Desktop/Nomi/`。所有改动从最新 `origin/main` 创建独立任务分支/worktree，通过 PR 交付；禁止直接 push `main`。
@@ -46,7 +46,7 @@ Nomi：本地优先 AI 视频创作工作台。
 
 **P1 加新必删旧** — 引入新实现时同 commit 删旧实现，无并行版、无 fallback、无逃生口。CSS 同理：新样式只写组件 `className`，迁 Tailwind 即删旧 CSS；全局 CSS 只可减不可增。
 
-**P2 修根因不修症状** — 任何 bug、回归、CI/平台失败、性能/安全问题或审计发现，动生产代码前必须执行 `.agents/skills/root-cause-remediation/SKILL.md`：分清症状/直接原因/类根因，实扫同类入口，修在共享边界，用类级测试和结构门禁防复发，并明确第三方依赖升或不升。自检：「同类问题还能从另一个调用者、供应商、版本、平台或旧数据回来吗？」答不出“不能” = 没解决。高风险路径另受 R21 schema-v2 合同硬拦。
+**P2 修根因不修症状** — 任何 bug、回归、CI/平台失败、性能/安全问题或审计发现，动生产代码前必须执行 `.agents/skills/root-cause-remediation/SKILL.md`。详细流程只住在该 skill；L1 只保留判断闸：分清症状/直接原因/类根因，判断 `one_off`/`recurring`，实扫同类入口，修在最早共享边界。自检：「同类问题还能从另一个调用者、供应商、版本、平台或旧数据回来吗？」答不出“不能” = 没解决。`recurring` 与高风险路径另受 R21 schema-v3 合同硬拦。
 
 **P3 全绿 ≠ 完成** — CI 五门只证代码健康，证不了体验对不对。用户可见改动报完成前：① 和获批样张逐项并排对账；② 真体感走查（Playwright 截图人眼判断，不是 expect 断言）。缺一不算完成。**功能交付（尤其用户可见/体感）另过 R16：建几条「真实用户任务」端到端测试系统、带着真实任务跑通整个使用闭环、把过程中冒出的体验/设计/UI/UX/产品感/功能问题全修掉——才算真完成（2026-08-01 用户拍板：不留半成品）。**
 
@@ -94,8 +94,9 @@ Nomi：本地优先 AI 视频创作工作台。
 | R18 | 测试等待门岗 | 测试禁私有墙钟 waitFor / `Date.now()` 截止轮询（单跑绿、并行翻红一族）：`check:test-waits` 硬零；等编排链用 `waitForProduction` |
 | R19 | 解决状态必须可交付 | 侧分支只能称“已实现”；验证通过且提交已进入远端目标分支后才能称“已解决”（原 R17，2026-08-25 与「重活门岗」撞号后改号）|
 | R20 | 造轮子前先过 build-vs-buy 闸 | 写任何**通用能力**前三问：① 这是不是通用问题（不是 Nomi 独有）？② 同类产品/成熟方案怎么做的（Context7+web 实查，别凭记忆）？③ 自研它在不在我们护城河上？**不在护城河上又碰钱碰信任的**（标准协议、边界校验、生命周期语义）→ 用标准实现或至少**对齐标准语义**；在护城河上的（账本/预算/一致性/权限）→ 自研到底。已交学费：2026-08-25 全应用地基审计扫出手写 MCP 协议缺取消绑定/运行时校验/版本协商、IPC 缺来源绑定（`docs/audit/2026-08-25-app-wide-foundation-audit.md`）|
-| R21 | 修复必须走根因流程；高风险交 v2 合同 | 所有纠正性改动强制走 `root-cause-remediation`；高风险生产路径提交 schema-v2 `docs/fixes/*.root-cause.json`，由 `check:root-cause-contracts` 核验共享边界、同类入口、类级测试、旧路径和依赖生命周期 |
+| R21 | 修复必须走根因流程；可复发/高风险交 v3 合同 | 所有纠正性改动强制走 `root-cause-remediation`；`recurring` 或高风险生产路径提交 schema-v3 `docs/fixes/*.root-cause.json`，旧 v1/v2 只读；`check:root-cause-contracts` 核验共享边界、结构预防、同类入口、类级测试、旧路径和依赖生命周期 |
 | R22 | 验证分层与测试预算 | 普通 PR 跑 contracts + focused；高风险、最终交付、主线和发布跑 full；不删安全/持久化/认证边界覆盖 |
+| R23 | React Flow 生成画布单内核与迁移等价 | 生产画布只允许 React Flow 一个交互/变换内核，Zustand 是业务与持久化真相源；迁移必须逐项保留既有几何、交互、视觉和反馈，并用 adapter/结构测试 + 真实 Electron 走查证明 |
 
 ## 决策自治
 

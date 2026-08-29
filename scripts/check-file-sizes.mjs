@@ -36,7 +36,7 @@ const ALLOWLIST = {
   // projection alongside the legacy model settings pages. Keep this reviewed
   // baseline until the planned settings-surface extraction. (2026-08-29)
   "src/ui/onboarding/OnboardingDrawer.tsx": 819,
-  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 731, // …→ 733（2026-08-16 移除死属性）→ 732（2026-08-24 失败卡加收起钮，压平 onRetry 箭头体抵回）→ 731（2026-08-25 P4 S6：多镜叠加合一 ProductionShotOverlays + onRetry 抽 useProductionNodeRetry，净减 1）
+  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 713, // …→ 731（2026-08-25 P4 S6：多镜叠加合一 ProductionShotOverlays）→ 713（2026-08-29 React Flow 单内核：移除旧布局与缩放分支）
   // PR#21 白板节点引入（2026-06-25）：WhiteboardDrawingTool（1032）与 WhiteboardLeaferCanvas（3406）两巨壳
   // 已按 Rule 9 全部拆完、双双出白名单。LeaferCanvas → whiteboardCanvasTypes/Export/NodeOps/Geometry 四纯模块
   // + whiteboardSceneRender（渲染树）+ useWhiteboardDrawing/BoxSelection/SelectionActions/SceneSync 四交互 hook，

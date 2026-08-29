@@ -1,25 +1,32 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "2026-08-29-canvas-visual-geometry-boundary",
-  "problem_type": "canvas viewport geometry diverges from rendered node geometry",
-  "symptom": "At the supported minimum window size, J5's loaded image node remained selected and visible but its click target was moved under the Nomi app bar, so the user journey could not reopen the composer before export.",
-  "direct_cause": "Viewport fitting and related canvas geometry read the node's persisted size while BaseGenerationNode rendered the same node from media-derived preview height; the selected composer's visibility pan then operated on a viewport fitted to a smaller, stale box.",
-  "class_root": "Canvas screen-space consumers did not converge on the existing visual-size resolver, so persisted layout size and actual rendered size formed competing geometry contracts across fit, focus, visibility, virtualization, minimap, and lightweight rendering.",
+  "problem_type": "canvas renderer migration geometry and interaction parity drift",
+  "symptom": "After React Flow became the active canvas renderer, loaded-node fitting could use stale persisted geometry, selected image-like nodes lost the previous left and right magnetic plus affordances, connection endpoints appeared detached from cards, React Flow resize dots became visible, and edge colors or menus no longer matched the established Nomi interaction.",
+  "direct_cause": "The migration moved node transforms, handles, resizing, edges, and viewport focus to React Flow but initially projected only persistent node data and accepted library-default handle, resize, and edge presentation. The previous renderer's transient appear/focus state and visual-size contract were not carried through one explicit adapter boundary.",
+  "class_root": "Renderer replacement had no class-wide parity contract joining the Zustand model truth, rendered node geometry, transient visual state, connection affordances, endpoint geometry, resize presentation, and edge feedback, so individually working React Flow primitives could silently delete existing user interactions.",
   "affected_population": [
-    "Users reopening generated image or video nodes whose media-derived preview dimensions differ from stored size",
-    "Users fitting, focusing, selecting, or navigating canvases at constrained window sizes",
-    "Large canvases where virtualization decides whether a visually intersecting node is mounted"
+    "Users fitting, focusing, selecting, connecting, resizing, or navigating image, video, asset, card, clip, and generated-result nodes",
+    "Users reopening media nodes whose rendered preview dimensions differ from their stored base size",
+    "Users of constrained windows and large canvases where viewport fitting, virtualization, and edge endpoints depend on exact rendered bounds"
   ],
   "scope_paths": [
-    "src/workbench/generationCanvas/components/generationCanvasGeometry.ts",
     "src/workbench/generationCanvas/components/GenerationCanvas.tsx",
+    "src/workbench/generationCanvas/components/generationCanvasGeometry.ts",
     "src/workbench/generationCanvas/components/useAutoFitOnLoad.ts",
     "src/workbench/generationCanvas/components/useCanvasViewport.ts",
     "src/workbench/generationCanvas/components/CanvasMinimap.tsx",
+    "src/workbench/generationCanvas/components/CollapsedGroupCard.tsx",
     "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
-    "src/workbench/generationCanvas/components/CanvasEdgeLayer.tsx",
     "src/workbench/generationCanvas/model/generationNodeKinds.ts",
     "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+    "src/workbench/generationCanvas/nodes/NodeConnectionHandles.tsx",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css",
+    "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowEffects.ts",
+    "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowProjection.ts",
     "src/workbench/generationCanvas/store/canvasNodeActions.ts",
     "src/workbench/generationCanvas/fixation/buildFixationNode.ts",
     "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
@@ -27,94 +34,96 @@
     "src/workbench/generationCanvas/textEdit/buildTextEditNode.ts"
   ],
   "entry_points": [
-    "The fit-view toolbar command computes a viewport for all active-category nodes",
-    "Focus navigation centers a requested node",
-    "Auto-fit decides whether restored viewport state contains any visible node",
-    "Large-canvas virtualization and the minimap compute node screen footprints",
-    "Lightweight node rendering draws the low-detail representation at the expected footprint",
-    "Selection and derived-node placement calculate against the rendered node edge"
+    "Zustand nodes and edges projected into the active React Flow renderer",
+    "Fit, focus, restored-viewport visibility, minimap, virtualization, selection, and derived-node placement geometry",
+    "Selected image-like node connection drag from either magnetic plus affordance",
+    "Connection endpoint selection, resize controls, edge selection, and edge-mode menu feedback",
+    "New-node appearance and focused-variant flash state"
   ],
   "external_sources": [],
-  "internal_only_reason": "This is an internal invariant between Nomi's persisted node model, visual renderer, and canvas viewport consumers. Repository code and deterministic geometry tests, not an external API, decide the correct boundary.",
+  "internal_only_reason": "React Flow supplies rendering primitives, but Nomi's established affordances, palette, geometry, transient feedback, and Zustand ownership are product invariants defined by repository code and real Electron journeys. An upstream version cannot decide or restore those application-specific contracts.",
   "invariants": [
-    "Every canvas screen-space consumer uses the same visual width and height as BaseGenerationNode for the same node state.",
-    "Media-derived previewHeight, card render kinds, aspect-ratio-derived sizes, and clip sizing are reflected before fit, focus, visibility, virtualization, minimap, or lightweight geometry is calculated.",
-    "A loaded node that visually intersects the buffered viewport cannot be rejected because an older persisted box does not intersect it."
+    "React Flow is the only canvas interaction and transform kernel while Zustand remains the business and persistence source of truth.",
+    "Every screen-space consumer and React Flow node or edge projection uses resolveNodeVisualSize for the same node state.",
+    "The adapter projects appear and focusFlash without copying business ownership into React Flow, and only nodes whose visual state changes receive a new projection object.",
+    "A singly selected image-like node exposes left and right 29px magnetic plus affordances; ordinary nodes retain compact dots, hidden target handles contribute geometry without visible duplicate balls, and React Flow compatibility styles do not suppress the existing left and right magnetic plus affordances on collapsed group cards.",
+    "Completed edges terminate on the rendered left or right card boundary, use the Nomi accent palette, and retain the established 12px edge label plus Chevron, Check, and Scissors feedback.",
+    "React Flow resize controls retain their hit areas but do not introduce visible library-default dots or borders."
   ],
-  "generality_proof": "The full renderer and non-component interaction or placement paths converge on resolveNodeVisualSize, while active-canvas component consumers converge through getCanvasNodeVisualSize. The ambiguous getNodeSize export is removed and its remaining base-only semantics are explicitly named getNodeBaseSize. The regression matrix exercises centering, restored-viewport visibility, buffered virtualization, selection, and two derived placements with stale media height and card-width variants rather than only the J5 node identifier.",
+  "generality_proof": "All active nodes and edges enter through toGenerationFlowNodes and toGenerationFlowEdges before React Flow renders them. Those projections resolve visual size, side-specific handles, incident state, and transient state for every node kind; GenerationFlowNodeView and GenerationFlowEdgeView then own the active-node handle, resize, edge, and menu implementation, while collapsed group projections retain their existing shared MagneticConnectionHandle surface outside the React Flow node shell. The geometry matrix covers fit, focus, visibility, virtualization, selection, and derived placement; the structure contract prevents compatibility CSS from escaping the node shell; and real Electron journeys check active-node and collapsed-group magnetic sides, hidden resize visuals, sub-two-pixel endpoint attachment, palette, label size, and icons rather than one fixture or node id.",
   "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "symbol": "toGenerationFlowNodes and toGenerationFlowEdges",
+      "responsibility": "Project Zustand-owned nodes and edges into one React Flow view model with renderer-aligned size, handle side, selection, incident, and transient visual state."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "GenerationFlowNodeView and GenerationFlowEdgeView",
+      "responsibility": "Render the only active connection, resize, edge, label, and edge-menu interaction surfaces from the adapter contract."
+    },
     {
       "path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
       "symbol": "resolveNodeVisualSize",
-      "responsibility": "Resolve the same visual width and height used by full node renderers from base size, render kind, media metadata, aspect ratio, result state, and clip rules."
-    },
-    {
-      "path": "src/workbench/generationCanvas/model/generationNodeKinds.ts",
-      "symbol": "getNodeBaseSize",
-      "responsibility": "Expose persisted or registry fallback dimensions under an explicitly base-only name so rendered geometry cannot accidentally import an ambiguous size API."
-    },
-    {
-      "path": "src/workbench/generationCanvas/components/generationCanvasGeometry.ts",
-      "symbol": "getCanvasNodeVisualSize",
-      "responsibility": "Expose one renderer-aligned node footprint to every canvas screen-space consumer and prevent direct persisted-size reads in that layer."
+      "responsibility": "Resolve the renderer-aligned footprint shared by full nodes, React Flow projections, viewport commands, hit testing, and derived placement."
     }
   ],
   "same_class_entry_points": [
     {
-      "path": "src/workbench/generationCanvas/components/GenerationCanvas.tsx",
-      "entry_point": "fitView and focused-node centering",
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "entry_point": "toGenerationFlowNode and resolveHandleIds",
       "disposition": "enforced",
-      "evidence": "Both viewport commands import their node footprint from generationCanvasGeometry."
+      "evidence": "Every active React Flow node receives resolveNodeVisualSize, and every edge chooses source and target sides from the same visual centers."
     },
     {
-      "path": "src/workbench/generationCanvas/components/useAutoFitOnLoad.ts",
-      "entry_point": "anyNodeVisibleInViewport",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowEffects.ts",
+      "entry_point": "focused-node centering and focus flash",
       "disposition": "enforced",
-      "evidence": "Restored-viewport self-healing uses the same visual footprint, with a class test for media-derived height."
+      "evidence": "Focus recovery centers from resolveNodeVisualSize and projects the restored 1400ms focus feedback through adapter visual state."
     },
     {
       "path": "src/workbench/generationCanvas/components/useCanvasViewport.ts",
       "entry_point": "getVisibleCanvasNodesForRender",
       "disposition": "enforced",
-      "evidence": "Virtualization uses the shared visual footprint, with a buffered-boundary class regression."
-    },
-    {
-      "path": "src/workbench/generationCanvas/components/CanvasMinimap.tsx",
-      "entry_point": "minimap content bounds and node rectangles",
-      "disposition": "enforced",
-      "evidence": "Both minimap calculations use the shared visual footprint instead of persisted size."
-    },
-    {
-      "path": "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
-      "entry_point": "low-detail node shell",
-      "disposition": "enforced",
-      "evidence": "The lightweight shell uses the same dimensions as the full BaseGenerationNode renderer."
+      "evidence": "Large-canvas virtualization uses the same visual footprint, including media-derived height at the buffered viewport boundary."
     },
     {
       "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
-      "entry_point": "selectNodesInRect",
+      "entry_point": "selectNodesInRect and duplicate placement",
       "disposition": "enforced",
-      "evidence": "Selection hit testing resolves the rendered footprint, with a regression where only the media-derived tail intersects the marquee."
+      "evidence": "Selection and placement resolve the rendered footprint instead of reading stale persisted dimensions."
     },
     {
-      "path": "src/workbench/generationCanvas/fixation/buildFixationNode.ts",
-      "entry_point": "buildFixationNodeSpec derived placement",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "entry_point": "GenerationFlowConnectionHandle and GenerationFlowEdgeView",
       "disposition": "enforced",
-      "evidence": "The new node is placed from a character card's fixed visual edge, with a class test distinguishing it from nominal width."
-    },
-    {
-      "path": "src/workbench/generationCanvas/textEdit/buildTextEditNode.ts",
-      "entry_point": "buildTextEditNodeSpec derived placement",
-      "disposition": "enforced",
-      "evidence": "The new node is placed from a category-derived card's visual edge, covering renderKind inference as a second derived entry."
+      "evidence": "Both connection sides, target geometry, resize hit areas, edge palette, and menu icons are rendered in one active kernel and exercised by the real journey."
     }
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every renderer migration or new node kind can preserve data while dropping transient state, geometry, or interaction feedback; without one parity boundary the same regression can recur independently in fit, focus, handles, resize, edges, or menus.",
+    "same_class_scan": [
+      "Scanned every generation-canvas size read, fit/focus consumer, React Flow node and edge projection, handle implementation, resize implementation, and legacy edge layer.",
+      "Compared the active React Flow renderer with the previous magnetic-handle, appearance, focus, edge palette, label, and menu behavior instead of checking only component presence.",
+      "Exercised image and video nodes through real selection, two-sided affordance inspection, connection creation, endpoint geometry, deselection, incident labels, and node dragging in the production Electron build."
+    ]
+  },
   "prevention": {
-    "kind": "type-system",
-    "enforcement_path": "src/workbench/generationCanvas/model/generationNodeKinds.ts",
-    "invariant": "Base model size and rendered visual size have distinct APIs, and every existing-node geometry caller selects the renderer-aligned contract.",
-    "failure_mode": "Imports of the removed ambiguous getNodeSize symbol fail type checking; the class regression matrix fails if a caller deliberately substitutes getNodeBaseSize for the visual resolver.",
-    "exception_policy": "none"
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+    "invariant": "Every active canvas node and edge is derived from Zustand state through one renderer projection that carries renderer-aligned geometry and all transient visual state required by the single React Flow kernel.",
+    "failure_mode": "Adapter and visual-contract tests fail on omitted geometry or transient fields, TypeScript fails on incompatible projection data, and the real Electron journey fails when visible affordances, endpoint attachment, resize presentation, palette, or menu feedback diverge.",
+    "exception_policy": "none",
+    "strategy": "Keep persistent state in Zustand, centralize React Flow view projection and connection-affordance decisions, render one handle/resize/edge surface, and bind migration parity to both class-level tests and rendered geometry evidence.",
+    "artifacts": [
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css",
+      "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowEffects.ts",
+      "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowProjection.ts"
+    ]
   },
   "regression_tests": [
     "src/workbench/generationCanvas/components/generationCanvasGeometry.test.ts",
@@ -122,7 +131,12 @@
     "src/workbench/generationCanvas/components/useCanvasViewport.test.ts",
     "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
     "src/workbench/generationCanvas/fixation/buildFixationNode.test.ts",
-    "src/workbench/generationCanvas/textEdit/buildTextEditNode.test.ts"
+    "src/workbench/generationCanvas/textEdit/buildTextEditNode.test.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.test.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts",
+    "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
+    "tests/ux/canvas-card-stack.walk.mjs",
+    "tests/ux/canvas-drag-pan-gestures.walk.mjs"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/components/generationCanvasGeometry.test.ts",
@@ -130,33 +144,26 @@
     "src/workbench/generationCanvas/components/useCanvasViewport.test.ts",
     "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
     "src/workbench/generationCanvas/fixation/buildFixationNode.test.ts",
-    "src/workbench/generationCanvas/textEdit/buildTextEditNode.test.ts"
+    "src/workbench/generationCanvas/textEdit/buildTextEditNode.test.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.test.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts",
+    "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
+    "tests/ux/canvas-card-stack.walk.mjs",
+    "tests/ux/canvas-drag-pan-gestures.walk.mjs"
   ],
   "legacy_paths": {
-    "status": "removed",
-    "removed_paths": [
-      "src/workbench/generationCanvas/components/generationCanvasGeometry.ts",
-      "src/workbench/generationCanvas/components/GenerationCanvas.tsx",
-      "src/workbench/generationCanvas/components/useAutoFitOnLoad.ts",
-      "src/workbench/generationCanvas/components/useCanvasViewport.ts",
-      "src/workbench/generationCanvas/components/CanvasMinimap.tsx",
-      "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
-      "src/workbench/generationCanvas/model/generationNodeKinds.ts",
-      "src/workbench/generationCanvas/store/canvasNodeActions.ts",
-      "src/workbench/generationCanvas/fixation/buildFixationNode.ts",
-      "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
-      "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
-      "src/workbench/generationCanvas/textEdit/buildTextEditNode.ts"
-    ],
-    "rationale": "Direct component-layer reads of the persisted/default node size are removed from every active canvas screen-space consumer in this change."
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The target main branch had already removed the legacy canvas kernel and CanvasEdgeLayer before this merge. This change migrates the PR's geometry work into the existing React Flow adapter and restores renderer parity without adding or retaining a second callable renderer path."
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
-    "rationale": "The mismatch is entirely within Nomi's pure geometry and renderer contracts; no third-party dependency version controls the invariant.",
+    "rationale": "The installed @xyflow/react 12.11.5 already exposes the required node, edge, handle, resize, and viewport APIs. The failures were omissions in Nomi's migration adapter and styling contract; upgrading the library would not define Nomi's magnetic affordance, palette, or Zustand ownership and would add unrelated risk.",
     "exit_criteria": []
   },
-  "migration": "No stored project rewrite is required. Existing projects retain their model data and immediately receive correct geometry because visual size is resolved at read time from size, renderKind, categoryId, meta, and result.",
+  "migration": "No project-data rewrite is required. Existing nodes and edges remain in the Zustand schema and are projected at read time through the React Flow adapter. The previous renderer kernel and edge layer are removed; transient appearance and focus state are recomputed in memory, and existing persisted sizes are interpreted through resolveNodeVisualSize.",
   "residual_risks": [
-    "DOM-only overlays such as the selected-node composer are intentionally outside the node footprint; J5 remains the integration proof that composer avoidance and the corrected node viewport cooperate at minimum window size."
+    "DOM overlays outside node bounds still require separate viewport-collision tests because they are intentionally not part of the persisted node footprint.",
+    "Touch-only connection gestures and platform-specific accessibility zoom are not covered by the current mouse-based Electron journey and remain candidates for dedicated journeys when those inputs are supported."
   ]
 }

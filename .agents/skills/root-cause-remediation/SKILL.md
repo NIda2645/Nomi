@@ -1,6 +1,6 @@
 ---
 name: root-cause-remediation
-description: "Mandatory for every Nomi corrective change: user-reported bugs, regressions, CI-only failures, flaky tests, performance or security defects, review/audit findings, and compatibility failures in any production path. Use even when the fix looks small. Requires a class-level schema-v2 root-cause contract, shared enforcement boundary, same-class entry scan, dependency lifecycle decision, and changed regression evidence before a fix is complete."
+description: "Mandatory for every Nomi corrective change: user-reported bugs, regressions, CI-only failures, flaky tests, performance or security defects, review/audit findings, and compatibility failures in any production path. Classify one_off versus recurring before implementation. Recurring and high-risk repairs require a schema-v3 contract, shared enforcement boundary, structural prevention, dependency lifecycle decision, and changed regression evidence."
 ---
 
 # Root Cause Remediation
@@ -30,13 +30,14 @@ A remediation is complete only when evidence connects all of these:
 1. Reproduce the symptom with the smallest deterministic fixture. Preserve the failing output before editing production code.
 2. Trace the complete path from user input through parsing, state/persistence, shared services, and the final request/write/decode boundary.
 3. Separate `symptom`, `direct_cause`, and `class_root`. The class root is the missing invariant that explains why equivalent inputs or callers can fail, not the line that happened to throw.
-4. Search the repository by data shape, contract, producer, and consumer. Record at least two independently checked same-class entry points; do not search only for the reported provider, version, model, or fixture name.
-5. Identify the earliest shared boundary that can own the invariant. If callers do not converge, first consolidate ownership or define multiple explicit shared boundaries.
-6. For third-party behavior, inspect current official documentation, source, installed versions, and platform/package drift. Choose `upgrade-now`, `retain-with-exit`, or `not-applicable`; retention requires a target and testable exit criteria.
-7. Read `references/contract-v2.template.json`, then create or update a schema-v2 `docs/fixes/*.root-cause.json` before the production fix. Preserve the template's exact field names, object shapes, and enums; every changed high-risk production file must be covered by `scope_paths`.
-8. Add the failing reported-case test and at least one class-level test. Run only this red slice before implementation.
-9. Enforce the invariant at the shared boundary. Delete the obsolete behavior in the same change; do not keep a fallback that can silently restore the old semantics.
-10. Run the changed class tests and `pnpm run check:root-cause-contracts`. After the logical batch is stable, run the risk-selected repository validation once.
+4. Classify recurrence before implementation: `one_off` requires repository-wide evidence that no other user, input, entry, machine, or future run can reach the mechanism and no reusable invariant can prevent it; observed once is not evidence. Otherwise classify `recurring`.
+5. Search the repository by data shape, contract, producer, and consumer. Record at least two independently checked same-class entry points; do not search only for the reported provider, version, model, or fixture name.
+6. Identify the earliest shared boundary that can own the invariant. If callers do not converge, first consolidate ownership or define multiple explicit shared boundaries.
+7. For third-party behavior, inspect current official documentation, source, installed versions, and platform/package drift. Choose `upgrade-now`, `retain-with-exit`, or `not-applicable`; retention requires a target and testable exit criteria.
+8. Read `references/contract-v3.template.json`, then create or update a schema-v3 `docs/fixes/*.root-cause.json` before a recurring or high-risk production fix. Preserve the template's exact field names, object shapes, and enums; every changed high-risk production file must be covered by `scope_paths`.
+9. Add the failing reported-case test and at least one class-level test. Run only this red slice before implementation.
+10. For recurring repairs, enforce the invariant at the shared boundary and list changed structural code in `prevention.artifacts`. Delete obsolete behavior in the same change; tests, documentation, and fallback paths are not structural prevention.
+11. Run the changed class tests and `pnpm run check:root-cause-contracts`. After the logical batch is stable, run the risk-selected repository validation once.
 
 ## Decision Rules
 
@@ -56,21 +57,22 @@ A remediation is complete only when evidence connects all of these:
 - Calling a dependency old but neither upgrading it nor recording a target-aware exit plan.
 - Listing vague entry points, nonexistent paths, unchanged tests, or prose that cannot be tied back to code.
 
-## Contract v2 Review
+## Contract v3 Review
 
 Before implementation, confirm the contract contains:
 
 - `generality_proof` explaining why the solution spans the class;
 - `shared_boundaries` with real path, symbol, and responsibility;
 - `same_class_entry_points` with path, entry, disposition, and evidence;
-- `prevention` with a supported mechanism, shared enforcement path, invariant, fail behavior, and no exception policy;
+- `recurrence` with `one_off`/`recurring`, reason, and concrete repository scan evidence;
+- recurring `prevention` with a supported mechanism, shared enforcement path, invariant, fail behavior, no exception policy, strategy, and changed structural artifacts;
 - `class_regression_tests` that are also changed `regression_tests`;
 - `legacy_paths` as `removed` or justified `not-applicable`;
 - `dependency_lifecycle` as `not-applicable`, `upgrade-now`, or `retain-with-exit`.
 
-The exact machine contract is `references/contract-v2.template.json`. In particular, use `same_class_entry_points[].entry_point`, disposition `enforced` or `not-affected`, the exact `prevention` keys, and an object-shaped `legacy_paths`; do not paraphrase schema keys in a contract outline. `prevention.kind` is one of `centralized-boundary`, `schema-validation`, `type-system`, `runtime-assertion`, `static-gate`, `migration`, or `dependency-upgrade`. Each external source is `{kind: official-doc|source-code, url, checked_at: YYYY-MM-DD, purpose}`; otherwise use a truthful `internal_only_reason`. Run the checker immediately after drafting so field-shape errors are resolved before production work.
+The exact machine contract is `references/contract-v3.template.json`. In particular, use `same_class_entry_points[].entry_point`, disposition `enforced` or `not-affected`, the exact `recurrence` and `prevention` keys, and an object-shaped `legacy_paths`; do not paraphrase schema keys in a contract outline. `prevention.kind` is one of `centralized-boundary`, `schema-validation`, `type-system`, `runtime-assertion`, `static-gate`, `migration`, or `dependency-upgrade`. Each external source is `{kind: official-doc|source-code, url, checked_at: YYYY-MM-DD, purpose}`; otherwise use a truthful `internal_only_reason`. Run the checker immediately after drafting so field-shape errors are resolved before production work.
 
-Schema v1 contracts are immutable history. Any modification must migrate that contract to v2; new v1 contracts fail CI.
+Schema v1 and v2 contracts are immutable history. Any modification must migrate that contract to v3; new legacy contracts fail CI.
 
 ## Final Review
 
@@ -87,4 +89,4 @@ Unknowns belong in `residual_risks`; they are not permission to claim completion
 
 ## Reference
 
-- `references/contract-v2.template.json` - exact schema-v2 authoring template; always read it before drafting a contract.
+- `references/contract-v3.template.json` - exact schema-v3 authoring template; always read it before drafting a contract.

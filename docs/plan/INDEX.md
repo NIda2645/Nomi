@@ -45,6 +45,9 @@
 | [2026-06-06-HANDOFF.md](2026-06-06-HANDOFF.md) | 生成节点「通用化」项目交接 | 📎 |
 | [2026-06-06-P0-P1-execution-log.md](2026-06-06-P0-P1-execution-log.md) | 通用素材系统 P0+P1 执行日志 | 📎 |
 | [2026-06-06-reference-at-and-sources.md](2026-06-06-reference-at-and-sources.md) | 通用「素材引用」系统（非 Seedance 专用） | 🚧 |
+| [2026-08-27-react-flow-canvas-complete-migration.md](2026-08-27-react-flow-canvas-complete-migration.md) | **生成画布迁至 React Flow 单内核**（R21）：删旧 renderer、无并行版/无 fallback；配套不变量测试 | ✅ |
+| [2026-08-27-canvas-card-stack.md](2026-08-27-canvas-card-stack.md) | **画布结果卡组与编组交互**：多版本堆叠、复制变体、收起/展开编组与关系线 | ✅ |
+| [2026-08-28-pr216-real-canvas-merge-gate.md](2026-08-28-pr216-real-canvas-merge-gate.md) | **PR 216 合入闸**：生产入口几何修复 + 真实 Electron 画布分层验收 + CI 证据 | 🚧 |
 | [2026-08-08-canvas-drag-pan-and-quiet-render.md](2026-08-08-canvas-drag-pan-and-quiet-render.md) | **画布手势现行契约**：拖=平移 / Shift=框选 / 滚轮锚光标；平移零重绘、边标签按选中显示、拖节点收浮层（推翻 08-07 selection-first）| ✅ |
 | [2026-08-09-prompt-paste-node-duplication.md](2026-08-09-prompt-paste-node-duplication.md) | 外部提示词粘贴进编辑器时不再误触画布节点粘贴兜底 | ✅ |
 | [2026-08-09-windows-drag-floating-surfaces.md](2026-08-09-windows-drag-floating-surfaces.md) | Windows 顶部浮层避开自绘窗口栏与功能顶栏拖拽区 | ✅ |
@@ -65,6 +68,7 @@
 
 | 文件 | 一句话 | 状态 |
 |---|---|---|
+| [2026-08-29-cla-signature-ledger.md](2026-08-29-cla-signature-ledger.md) | CLA 签名账本与受保护主分支解耦 | ✅ |
 | [2026-08-28-reference-media-mentions.md](2026-08-28-reference-media-mentions.md) | 图片/视频/音频 @ 引用统一：候选、真实参考槽、编辑器与发送投影 | ✅ |
 | [2026-08-27-root-cause-remediation-and-media-boundary-fixes.md](2026-08-27-root-cause-remediation-and-media-boundary-fixes.md) | Comfy/custom-call 媒体契约根因修复 + 可执行根因合同门禁 | ✅ |
 | [2026-08-27-single-source-semantics-gate.md](2026-08-27-single-source-semantics-gate.md) | ProjectAgent 统一前置：AST 语义词表门岗 + R14.1 单一 owner 审计 | ✅ |

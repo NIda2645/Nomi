@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  inheritLegacyV1Hashes,
+  inheritLegacyContractHashes,
   isHighRiskProductionFile,
   validateRootCauseChange,
   validateRootCauseHistory,
@@ -9,7 +9,7 @@ import {
 
 const completeContract = {
   __file: "docs/fixes/fixture-media-boundary.root-cause.json",
-  schema_version: 2,
+  schema_version: 3,
   id: "fixture-media-boundary",
   problem_type: "provider_media_boundary",
   symptom: "The provider receives an invalid image URL.",
@@ -45,12 +45,19 @@ const completeContract = {
       evidence: "Inline data payloads pass through the same byte verification.",
     },
   ],
+  recurrence: {
+    classification: "recurring",
+    reason: "Every equivalent upload can cross the same unchecked byte boundary.",
+    same_class_scan: ["Scanned local files and inline media entering the provider upload boundary."],
+  },
   prevention: {
     kind: "centralized-boundary",
     enforcement_path: "electron/catalog/assetLocalization.ts",
     invariant: "Unverified bytes never reach an upload strategy.",
     failure_mode: "The shared boundary rejects before network activity.",
     exception_policy: "none",
+    strategy: "Enforce verified bytes at the shared upload boundary.",
+    artifacts: ["electron/catalog/assetLocalization.ts", "electron/catalog/assetLocalization.test.ts"],
   },
   class_regression_tests: ["electron/catalog/assetLocalization.test.ts"],
   legacy_paths: {
@@ -169,7 +176,7 @@ test("not_match: docs-only changes do not require a contract", () => {
   assert.deepEqual(result, { ok: true, errors: [], triggeredFiles: [] });
 });
 
-test("match: every changed schema v2 contract is validated even without a high-risk production path", () => {
+test("match: every changed schema v3 contract is validated even without a high-risk production path", () => {
   const result = validateRootCauseChange({
     changedFiles: [completeContract.__file, "electron/catalog/assetLocalization.test.ts"],
     contracts: [{ ...completeContract, shared_boundaries: [] }],
@@ -263,8 +270,59 @@ test("match: a new complete contract may supersede a relevant historical contrac
   assert.equal(result.ok, true);
 });
 
-test("high-risk matcher covers provider, media, network, IPC, and persistence boundaries", () => {
+test("match: changed contracts require an explicit recurrence classification", () => {
+  const contract = { ...completeContract, recurrence: undefined };
+  const files = [
+    "electron/catalog/assetLocalization.ts",
+    "electron/catalog/assetLocalization.test.ts",
+    contract.__file,
+  ];
+  const result = validateRootCauseChange({ changedFiles: files, contracts: [contract], existingFiles: new Set(files) });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /recurrence/);
+});
+
+test("match: recurring repairs require changed structural prevention", () => {
+  const contract = {
+    ...completeContract,
+    prevention: {
+      ...completeContract.prevention,
+      enforcement_path: "electron/catalog/assetLocalization.test.ts",
+      artifacts: ["electron/catalog/assetLocalization.test.ts"],
+    },
+  };
+  const files = [
+    "electron/catalog/assetLocalization.ts",
+    "electron/catalog/assetLocalization.test.ts",
+    contract.__file,
+  ];
+  const result = validateRootCauseChange({ changedFiles: files, contracts: [contract], existingFiles: new Set(files) });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /structural prevention|shared_boundaries/);
+});
+
+test("not_match: a proven one-off does not manufacture a reusable boundary", () => {
+  const contract = {
+    ...completeContract,
+    recurrence: {
+      classification: "one_off",
+      reason: "The malformed fixture is not produced by any repository path.",
+      same_class_scan: ["Scanned every fixture producer and found no equivalent writer."],
+    },
+    prevention: undefined,
+  };
+  const files = [
+    "electron/catalog/assetLocalization.ts",
+    "electron/catalog/assetLocalization.test.ts",
+    contract.__file,
+  ];
+  const result = validateRootCauseChange({ changedFiles: files, contracts: [contract], existingFiles: new Set(files) });
+  assert.equal(result.ok, true);
+});
+
+test("high-risk matcher covers workflows, providers, media, network, IPC, and persistence boundaries", () => {
   for (const file of [
+    ".github/workflows/cla.yml",
     "electron/vendor/vendorHttp.ts",
     "electron/image/decomposeLayers.ts",
     "electron/ai/antigravityArtifacts.ts",
@@ -273,6 +331,7 @@ test("high-risk matcher covers provider, media, network, IPC, and persistence bo
     "electron/workspace/workspaceRepository.ts",
     "electron/workspace/workspaceRegistry.ts",
     "electron/comfyui/capabilityStore.ts",
+    "scripts/root-cause-contracts.mjs",
   ]) assert.equal(isHighRiskProductionFile(file), true, file);
   for (const file of [
     "electron/vendor/vendorHttp.test.ts",
@@ -282,7 +341,7 @@ test("high-risk matcher covers provider, media, network, IPC, and persistence bo
   ]) assert.equal(isHighRiskProductionFile(file), false, file);
 });
 
-test("schema v1 history is immutable and new v1 contracts are rejected", () => {
+test("legacy schema history is immutable and new legacy contracts are rejected", () => {
   const legacy = {
     ...completeContract,
     schema_version: 1,
@@ -290,39 +349,45 @@ test("schema v1 history is immutable and new v1 contracts are rejected", () => {
     __contentHash: "known-hash",
   };
   assert.deepEqual(
-    validateRootCauseHistory({ contracts: [legacy], legacyV1Hashes: new Map([[legacy.__file, "known-hash"]]) }),
+    validateRootCauseHistory({ contracts: [legacy], legacyHashes: new Map([[legacy.__file, "known-hash"]]) }),
     { ok: true, errors: [] },
   );
 
   const changed = validateRootCauseHistory({
     contracts: [{ ...legacy, __contentHash: "changed-hash" }],
-    legacyV1Hashes: new Map([[legacy.__file, "known-hash"]]),
+    legacyHashes: new Map([[legacy.__file, "known-hash"]]),
   });
   assert.equal(changed.ok, false);
   assert.match(changed.errors.join("\n"), /history changed/i);
 
-  const added = validateRootCauseHistory({ contracts: [legacy], legacyV1Hashes: new Map() });
+  const added = validateRootCauseHistory({ contracts: [legacy], legacyHashes: new Map() });
   assert.equal(added.ok, false);
-  assert.match(added.errors.join("\n"), /new schema v1 contract is forbidden/i);
+  assert.match(added.errors.join("\n"), /new legacy contract is forbidden/i);
 });
 
-test("schema v1 contracts already present on the trusted base become immutable inherited history", () => {
+test("schema v1 and v2 contracts on the trusted base become immutable inherited history", () => {
   const inherited = {
     ...completeContract,
     schema_version: 1,
     __file: "docs/fixes/concurrent-main-history.root-cause.json",
     __contentHash: "base-hash",
   };
-  const hashes = inheritLegacyV1Hashes(new Map(), [inherited]);
+  const inheritedV2 = {
+    ...inherited,
+    schema_version: 2,
+    __file: "docs/fixes/concurrent-main-v2.root-cause.json",
+    __contentHash: "base-v2-hash",
+  };
+  const hashes = inheritLegacyContractHashes(new Map(), [inherited, inheritedV2]);
 
   assert.deepEqual(
-    validateRootCauseHistory({ contracts: [inherited], legacyV1Hashes: hashes }),
+    validateRootCauseHistory({ contracts: [inherited, inheritedV2], legacyHashes: hashes }),
     { ok: true, errors: [] },
   );
 
   const modified = validateRootCauseHistory({
-    contracts: [{ ...inherited, __contentHash: "branch-hash" }],
-    legacyV1Hashes: hashes,
+    contracts: [{ ...inherited, __contentHash: "branch-hash" }, inheritedV2],
+    legacyHashes: hashes,
   });
   assert.equal(modified.ok, false);
   assert.match(modified.errors.join("\n"), /history changed/i);
@@ -331,7 +396,49 @@ test("schema v1 contracts already present on the trusted base become immutable i
     ...inherited,
     __file: "docs/fixes/branch-only-v1.root-cause.json",
   };
-  const added = validateRootCauseHistory({ contracts: [inherited, branchOnly], legacyV1Hashes: hashes });
+  const added = validateRootCauseHistory({ contracts: [inherited, inheritedV2, branchOnly], legacyHashes: hashes });
   assert.equal(added.ok, false);
-  assert.match(added.errors.join("\n"), /new schema v1 contract is forbidden/i);
+  assert.match(added.errors.join("\n"), /new legacy contract is forbidden/i);
+});
+
+test("an exact bootstrap legacy hash covers its original diff without becoming a future bypass", () => {
+  const legacy = {
+    ...completeContract,
+    schema_version: 2,
+    recurrence: undefined,
+    __contentHash: "trusted-v2-hash",
+  };
+  const result = validateRootCauseChange({
+    changedFiles: [
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      legacy.__file,
+    ],
+    contracts: [legacy],
+    existingFiles: new Set([
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      legacy.__file,
+    ]),
+    legacyHashes: new Map([[legacy.__file, legacy.__contentHash]]),
+  });
+
+  assert.equal(result.ok, true);
+  assert.doesNotMatch(result.errors.join("\n"), /recurrence|schema_version/);
+
+  const future = validateRootCauseChange({
+    changedFiles: [
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+    ],
+    contracts: [legacy],
+    existingFiles: new Set([
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      legacy.__file,
+    ]),
+    legacyHashes: new Map([[legacy.__file, legacy.__contentHash]]),
+  });
+  assert.equal(future.ok, false);
+  assert.match(future.errors.join("\n"), /not covered/i);
 });

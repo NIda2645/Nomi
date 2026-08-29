@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export const ROOT_CAUSE_CONTRACT_SCHEMA_VERSION = 2;
+export const ROOT_CAUSE_CONTRACT_SCHEMA_VERSION = 3;
 
 const PREVENTION_KINDS = new Set([
   "centralized-boundary",
@@ -13,8 +13,10 @@ const PREVENTION_KINDS = new Set([
 ]);
 const ENTRY_POINT_DISPOSITIONS = new Set(["enforced", "not-affected"]);
 const DEPENDENCY_DECISIONS = new Set(["not-applicable", "upgrade-now", "retain-with-exit"]);
+const RECURRENCE_CLASSIFICATIONS = new Set(["one_off", "recurring"]);
 
 const HIGH_RISK_PREFIXES = [
+  ".github/workflows/",
   "electron/catalog/",
   "electron/assets/",
   "electron/comfyui/",
@@ -32,6 +34,8 @@ const HIGH_RISK_EXACT = new Set([
   "electron/hardenedFetch.ts",
   "electron/ipcSenderGuard.ts",
   "electron/workspace/workspaceRegistry.ts",
+  "scripts/check-root-cause-contracts.mjs",
+  "scripts/root-cause-contracts.mjs",
 ]);
 
 function normalized(file) {
@@ -84,7 +88,14 @@ function pathIsInScope(file, scopePaths) {
   return scopePaths.some((scope) => scopeCovers(scope, file));
 }
 
-function validateV2Contract(contract, changed, existingFiles, label) {
+function isStructuralPreventionArtifact(file) {
+  const name = normalized(file);
+  return !isTestFile(name)
+    && !name.endsWith(".md")
+    && !/^docs\/fixes\/.*\.root-cause\.json$/i.test(name);
+}
+
+function validateRecurringContract(contract, changed, existingFiles, label) {
   const errors = [];
   const scopePaths = Array.isArray(contract?.scope_paths) ? contract.scope_paths : [];
   const regressionTests = Array.isArray(contract?.regression_tests) ? contract.regression_tests : [];
@@ -131,8 +142,9 @@ function validateV2Contract(contract, changed, existingFiles, label) {
   const prevention = contract?.prevention;
   if (!record(prevention) || !PREVENTION_KINDS.has(prevention.kind) ||
     !nonEmptyText(prevention.enforcement_path) || !nonEmptyText(prevention.invariant) ||
-    !nonEmptyText(prevention.failure_mode) || prevention.exception_policy !== "none") {
-    errors.push(`${label}: prevention requires a supported kind, enforcement_path, invariant, failure_mode, and exception_policy "none"`);
+    !nonEmptyText(prevention.failure_mode) || prevention.exception_policy !== "none" ||
+    !nonEmptyText(prevention.strategy) || !nonEmptyTextArray(prevention.artifacts)) {
+    errors.push(`${label}: recurring prevention requires kind, enforcement_path, invariant, failure_mode, exception_policy "none", strategy, and artifacts`);
   } else {
     if (!pathExists(prevention.enforcement_path, existingFiles)) {
       errors.push(`${label}: prevention enforcement_path does not exist: ${prevention.enforcement_path}`);
@@ -142,6 +154,16 @@ function validateV2Contract(contract, changed, existingFiles, label) {
     }
     if (!boundaries.some((boundary) => record(boundary) && normalized(boundary.path) === normalized(prevention.enforcement_path))) {
       errors.push(`${label}: prevention enforcement_path must be one of shared_boundaries`);
+    }
+    const artifacts = prevention.artifacts.map(normalized);
+    for (const artifact of artifacts) {
+      if (!changed.has(artifact)) errors.push(`${label}: prevention artifact was not changed in this diff: ${artifact}`);
+    }
+    if (!artifacts.includes(normalized(prevention.enforcement_path))) {
+      errors.push(`${label}: prevention artifacts must include enforcement_path`);
+    }
+    if (!artifacts.some(isStructuralPreventionArtifact)) {
+      errors.push(`${label}: recurring repairs require changed structural prevention, not only tests or documentation`);
     }
   }
 
@@ -189,18 +211,13 @@ function validateV2Contract(contract, changed, existingFiles, label) {
   return errors;
 }
 
-function validateContract(contract, changed, existingFiles, index, legacyV1Hashes) {
+function validateContract(contract, changed, existingFiles, index) {
   const label = nonEmptyText(contract?.id) ? contract.id : `contract #${index + 1}`;
   const errors = [];
   if (nonEmptyText(contract?.__file) && !changed.has(normalized(contract.__file))) {
     errors.push(`${label}: contract file was not changed in this diff: ${contract.__file}`);
   }
-  if (contract?.schema_version === 1) {
-    const expectedHash = legacyV1Hashes.get(normalized(contract?.__file));
-    if (!expectedHash || expectedHash !== contract?.__contentHash) {
-      errors.push(`${label}: changed or new schema v1 contracts must migrate to schema_version ${ROOT_CAUSE_CONTRACT_SCHEMA_VERSION}`);
-    }
-  } else if (contract?.schema_version !== ROOT_CAUSE_CONTRACT_SCHEMA_VERSION) {
+  if (contract?.schema_version !== ROOT_CAUSE_CONTRACT_SCHEMA_VERSION) {
     errors.push(`${label}: schema_version must be ${ROOT_CAUSE_CONTRACT_SCHEMA_VERSION}`);
   }
   for (const field of ["id", "problem_type", "symptom", "direct_cause", "class_root", "migration"]) {
@@ -208,6 +225,12 @@ function validateContract(contract, changed, existingFiles, index, legacyV1Hashe
   }
   for (const field of ["affected_population", "scope_paths", "entry_points", "invariants", "regression_tests", "residual_risks"]) {
     if (!nonEmptyTextArray(contract?.[field])) errors.push(`${label}: ${field} must be a non-empty string array`);
+  }
+
+  const recurrence = contract?.recurrence;
+  if (!record(recurrence) || !RECURRENCE_CLASSIFICATIONS.has(recurrence.classification) ||
+    !nonEmptyText(recurrence.reason) || !nonEmptyTextArray(recurrence.same_class_scan)) {
+    errors.push(`${label}: recurrence requires one_off/recurring classification, reason, and same_class_scan`);
   }
 
   const sources = Array.isArray(contract?.external_sources) ? contract.external_sources : [];
@@ -232,37 +255,42 @@ function validateContract(contract, changed, existingFiles, index, legacyV1Hashe
     if (!changed.has(clean)) errors.push(`${label}: regression test was not changed in this diff: ${testFile}`);
   }
   if (contract?.schema_version === ROOT_CAUSE_CONTRACT_SCHEMA_VERSION) {
-    errors.push(...validateV2Contract(contract, changed, existingFiles, label));
+    if (recurrence?.classification === "recurring") {
+      errors.push(...validateRecurringContract(contract, changed, existingFiles, label));
+    } else if (recurrence?.classification === "one_off" && contract.prevention !== undefined) {
+      errors.push(`${label}: proven one_off contracts must omit prevention rather than inventing a reusable boundary`);
+    }
   }
   return errors;
 }
 
-export function validateRootCauseHistory({ contracts, legacyV1Hashes = new Map() }) {
+export function validateRootCauseHistory({ contracts, legacyHashes = new Map() }) {
   const errors = [];
   const contractsByFile = new Map(contracts.map((contract) => [normalized(contract?.__file), contract]));
   for (const contract of contracts) {
-    if (contract?.schema_version !== 1) continue;
+    if (!Number.isInteger(contract?.schema_version) || contract.schema_version >= ROOT_CAUSE_CONTRACT_SCHEMA_VERSION) continue;
     const file = normalized(contract?.__file);
-    const expectedHash = legacyV1Hashes.get(file);
-    if (!expectedHash) errors.push(`${file || contract?.id || "contract"}: new schema v1 contract is forbidden; use schema_version 2`);
-    else if (expectedHash !== contract?.__contentHash) errors.push(`${file}: schema v1 history changed; migrate this contract to schema_version 2`);
+    const expectedHash = legacyHashes.get(file);
+    if (!expectedHash) errors.push(`${file || contract?.id || "contract"}: new legacy contract is forbidden; use schema_version ${ROOT_CAUSE_CONTRACT_SCHEMA_VERSION}`);
+    else if (expectedHash !== contract?.__contentHash) errors.push(`${file}: legacy history changed; migrate this contract to schema_version ${ROOT_CAUSE_CONTRACT_SCHEMA_VERSION}`);
   }
-  for (const file of legacyV1Hashes.keys()) {
-    if (!contractsByFile.has(normalized(file))) errors.push(`${file}: schema v1 history baseline points to a missing contract`);
+  for (const file of legacyHashes.keys()) {
+    if (!contractsByFile.has(normalized(file))) errors.push(`${file}: legacy history baseline points to a missing contract`);
   }
   return { ok: errors.length === 0, errors };
 }
 
-export function inheritLegacyV1Hashes(legacyV1Hashes, baseContracts) {
-  const inherited = new Map(legacyV1Hashes);
+export function inheritLegacyContractHashes(legacyHashes, baseContracts) {
+  const inherited = new Map(legacyHashes);
   for (const contract of baseContracts) {
-    if (contract?.schema_version !== 1 || !nonEmptyText(contract?.__file) || !nonEmptyText(contract?.__contentHash)) continue;
+    if (!Number.isInteger(contract?.schema_version) || contract.schema_version >= ROOT_CAUSE_CONTRACT_SCHEMA_VERSION ||
+      !nonEmptyText(contract?.__file) || !nonEmptyText(contract?.__contentHash)) continue;
     inherited.set(normalized(contract.__file), contract.__contentHash);
   }
   return inherited;
 }
 
-export function validateRootCauseChange({ changedFiles, contracts, existingFiles, legacyV1Hashes = new Map() }) {
+export function validateRootCauseChange({ changedFiles, contracts, existingFiles, legacyHashes = new Map() }) {
   const changed = new Set(changedFiles.map(normalized));
   const existing = new Set([...existingFiles].map(normalized));
   const triggeredFiles = [...changed].filter(isHighRiskProductionFile).sort();
@@ -270,20 +298,22 @@ export function validateRootCauseChange({ changedFiles, contracts, existingFiles
   // 重写的永久枷锁；每个高风险文件只需至少一份“本次变化且完整”的合同覆盖。
   const changedContracts = contracts.filter((contract) =>
     nonEmptyText(contract?.__file) && changed.has(normalized(contract.__file)));
-  const validatedContracts = new Set();
+  const changedCurrentContracts = changedContracts.filter((contract) =>
+    contract?.schema_version === ROOT_CAUSE_CONTRACT_SCHEMA_VERSION);
   const errors = [];
-  for (const [index, contract] of changedContracts.entries()) {
-    if (contract?.schema_version !== ROOT_CAUSE_CONTRACT_SCHEMA_VERSION) continue;
-    errors.push(...validateContract(contract, changed, existing, index, legacyV1Hashes));
-    validatedContracts.add(contract);
+  for (const [index, contract] of changedCurrentContracts.entries()) {
+    errors.push(...validateContract(contract, changed, existing, index));
   }
   if (triggeredFiles.length === 0) return { ok: errors.length === 0, errors, triggeredFiles: [] };
 
-  const relevantContracts = changedContracts.filter((contract) =>
-    Array.isArray(contract?.scope_paths) && triggeredFiles.some((file) =>
-      contract.scope_paths.some((scope) => scopeCovers(scope, file))));
-  relevantContracts.forEach((contract, index) => {
-    if (!validatedContracts.has(contract)) errors.push(...validateContract(contract, changed, existing, index, legacyV1Hashes));
+  const relevantContracts = changedContracts.filter((contract) => {
+    const file = normalized(contract?.__file);
+    const current = contract?.schema_version === ROOT_CAUSE_CONTRACT_SCHEMA_VERSION;
+    const trustedLegacy = Number.isInteger(contract?.schema_version)
+      && contract.schema_version < ROOT_CAUSE_CONTRACT_SCHEMA_VERSION
+      && legacyHashes.get(file) === contract?.__contentHash;
+    return (current || trustedLegacy) && Array.isArray(contract?.scope_paths) && triggeredFiles.some((file) =>
+      contract.scope_paths.some((scope) => scopeCovers(scope, file)));
   });
   for (const file of triggeredFiles) {
     const covered = relevantContracts.some((contract) =>

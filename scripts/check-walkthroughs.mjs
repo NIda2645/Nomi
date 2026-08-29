@@ -43,7 +43,7 @@ function collect() {
 }
 
 function stripComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  return source.replace(/\r\n?/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }
 
 /**
@@ -261,7 +261,7 @@ if (writeBaseline) {
 }
 
 if (!fs.existsSync(BASELINE_FILE)) {
-  console.error(`缺基线文件 ${path.relative(repoRoot, BASELINE_FILE)}，先跑：node scripts/check-walkthroughs.mjs --update-baseline`)
+  console.error(`缺基线文件 ${repoRelative(BASELINE_FILE)}，先跑：node scripts/check-walkthroughs.mjs --update-baseline`)
   process.exit(1)
 }
 const baseline = JSON.parse(fs.readFileSync(BASELINE_FILE, 'utf8'))
@@ -277,7 +277,7 @@ for (const rule of RULES) {
     console.error(`  基线 ${was} → 现在 ${now}（新增 ${now - was} 处，棘轮只减不增）`)
     // 只列前 8 处，够定位就行
     for (const hit of found[rule.id].slice(0, 8)) {
-      console.error(`    ${path.relative(repoRoot, hit.file)}:${hit.line}  ${hit.text}`)
+      console.error(`    ${repoRelative(hit.file)}:${hit.line}  ${hit.text}`)
     }
     if (rule.id === 'absence-without-baseline') {
       console.error('  → 改用 tests/ux/_assert.mjs 的 expectAbsent(locator, { provenBy })：')

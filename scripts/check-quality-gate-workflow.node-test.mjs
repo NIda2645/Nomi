@@ -57,11 +57,18 @@ test('quality gate cancels only obsolete runs in the same PR or main lane', () =
 test('parallel CI profiles preserve the complete legacy Ubuntu coverage set', () => {
   assert.deepEqual(PROFILES['ci-contracts'], ['contracts'])
   assert.deepEqual(PROFILES['ci-unit'], ['unit'])
-  assert.deepEqual(PROFILES['ci-desktop'], ['build', 'e2e', 'journeys-ci'])
+  assert.deepEqual(PROFILES['ci-desktop'], ['build', 'e2e', 'canvas-critical', 'journeys-ci'])
 
   const stageUnion = new Set([...PROFILES['ci-contracts'], ...PROFILES['ci-unit'], ...PROFILES['ci-desktop']])
-  assert.deepEqual([...stageUnion].sort(), ['build', 'contracts', 'e2e', 'journeys-ci', 'unit'])
+  assert.deepEqual(
+    [...stageUnion].sort(),
+    ['build', 'canvas-critical', 'contracts', 'e2e', 'journeys-ci', 'unit'],
+  )
   assert.deepEqual([STAGES.contracts.command, ...STAGES.contracts.args], ['pnpm', 'run', 'gates:contracts'])
+  assert.deepEqual(
+    [STAGES['canvas-critical'].command, ...STAGES['canvas-critical'].args],
+    ['pnpm', 'run', 'test:canvas:critical'],
+  )
 })
 
 test('package scripts keep local gates whole while exposing canonical CI profiles', () => {
@@ -152,6 +159,12 @@ test('desktop evidence and the complete Mac package path remain required', () =>
   assert.equal(evidence.with.name, 'linux-walkthrough-evidence')
   assert.match(evidence.with.path, /evals\/runs\/\*\*\/screenshots\/\*\*/)
   assert.match(evidence.with.path, /evals\/runs\/\*\*\/output\.jsonl/)
+  assert.match(evidence.with.path, /outputs\/canvas-acceptance\/\*\*/)
+  assert.match(evidence.with.path, /outputs\/canvas-smoke\/\*\*/)
+  assert.match(evidence.with.path, /outputs\/canvas-card-stack-20260827\/\*\*/)
+  assert.match(evidence.with.path, /tests\/ux\/shots\/canvas-drag-pan-gestures\/\*\*/)
+  assert.match(evidence.with.path, /tests\/ux\/shots\/group-ports\/\*\*/)
+  assert.match(evidence.with.path, /tests\/ux\/shots\/react-flow-read-only\/\*\*/)
 
   const macPackage = workflow.jobs['mac-package']
   assert.equal(macPackage.needs, 'scope')

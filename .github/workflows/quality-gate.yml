@@ -134,6 +134,12 @@ jobs:
           path: |
             evals/runs/**/screenshots/**
             evals/runs/**/output.jsonl
+            outputs/canvas-acceptance/**
+            outputs/canvas-smoke/**
+            outputs/canvas-card-stack-20260827/**
+            tests/ux/shots/canvas-drag-pan-gestures/**
+            tests/ux/shots/group-ports/**
+            tests/ux/shots/react-flow-read-only/**
           if-no-files-found: warn
           retention-days: 7
   mac-package:

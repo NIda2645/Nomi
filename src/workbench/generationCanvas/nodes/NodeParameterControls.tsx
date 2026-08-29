@@ -21,6 +21,7 @@ import {
   isVideoLikeGenerationNodeKind,
 } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import type { CanvasMutationOptions } from '../store/canvasGuards'
 import { importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
 import { comfyWorkflowTakesPrompt } from '../runner/promptRequirement'
 import {
@@ -160,10 +161,10 @@ export default function NodeParameterControls({
   const getLatestMeta = (): Record<string, unknown> =>
     useGenerationCanvasStore.getState().nodes.find((n) => n.id === node.id)?.meta || {}
 
-  const updateMeta = (patch: Record<string, unknown>) => {
+  const updateMeta = (patch: Record<string, unknown>, options?: CanvasMutationOptions) => {
     updateNode(node.id, {
       meta: { ...getLatestMeta(), ...patch },
-    })
+    }, options)
   }
 
   const updateAspectRatioMeta = (patch: Record<string, unknown>, targetRatio: number | null) => {
@@ -224,7 +225,7 @@ export default function NodeParameterControls({
     })()
     if (current === preferred) return
     const patch = videoAspectDefaultPatch(renderedControls, preferred)
-    if (Object.keys(patch).length > 0) updateMeta(patch)
+    if (Object.keys(patch).length > 0) updateMeta(patch, { history: false })
     // renderedControls/updateMeta 每渲染重建，入 deps 会令 effect 每次 meta 写都重跑；
     // 触发时机只需「输入边集合 / 模型」变化，语义由下面两个签名精确表达。
     // eslint-disable-next-line react-hooks/exhaustive-deps

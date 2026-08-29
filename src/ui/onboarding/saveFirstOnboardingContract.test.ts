@@ -57,7 +57,7 @@ describe('save-first gateway onboarding contract', () => {
 
     expect(wizard).toContain('data-model-connection-diagnostics')
     expect(wizard).toContain("t('modelSetup.diagnostics')")
-    expect(wizard).toContain('variant="light"\n                    onClick={handleTestConnection}')
+    expect(wizard).toMatch(/variant="light"\s+onClick=\{handleTestConnection\}/)
     expect(wizard).toMatch(/variant="light"\s+onClick=\{\(\) => setScreen\('select'\)\}/)
     expect(wizard).toMatch(/variant="filled"\s+onClick=\{handleFetchModels\}/)
   })

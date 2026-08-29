@@ -13,6 +13,8 @@ export const STAGES = {
   gates: stage("gates", "pnpm", ["run", "gates"]),
   build: stage("build", "pnpm", ["run", "build"]),
   e2e: stage("e2e", "pnpm", ["run", "test:e2e"]),
+  "canvas-critical": stage("canvas-critical", "pnpm", ["run", "test:canvas:critical"]),
+  "canvas-full": stage("canvas-full", "pnpm", ["run", "test:canvas:acceptance"]),
   "journeys-ci": stage("journeys-ci", "pnpm", ["run", "test:journeys"]),
   "journeys-all": stage("journeys-all", "pnpm", ["eval:journey"]),
   "real-generation": stage("real-generation", "node", ["tests/ux/camera-move-render-e2e.mjs"], {
@@ -25,8 +27,8 @@ export const PROFILES = {
   ci: ["matrix", "unit", "build", "e2e", "journeys-ci"],
   "ci-contracts": ["contracts"],
   "ci-unit": ["unit"],
-  "ci-desktop": ["build", "e2e", "journeys-ci"],
-  "full-local": ["matrix", "gates", "e2e", "journeys-ci"],
+  "ci-desktop": ["build", "e2e", "canvas-critical", "journeys-ci"],
+  "full-local": ["matrix", "gates", "e2e", "canvas-full", "journeys-ci"],
   "real-generation": ["real-generation"],
-  release: ["matrix", "gates", "e2e", "journeys-all", "real-generation"],
+  release: ["matrix", "gates", "e2e", "canvas-full", "journeys-all", "real-generation"],
 };

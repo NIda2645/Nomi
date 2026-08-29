@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "2026-08-29-cross-platform-image-decoder-selection",
   "problem_type": "cross-platform image decoder command regression",
   "symptom": "A valid static VP8 WebP passed local macOS tests with bundled FFmpeg 4.4 but was rejected as ANTIGRAVITY_IMAGE_INVALID and media_corrupt by the Linux CI bundle using FFmpeg 4.1.",
@@ -64,12 +64,26 @@
       "evidence": "Provider image certification calls the same validateAntigravityImage boundary after bounded artifact acquisition."
     }
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every supported image format and every caller using a pipe decoder can otherwise fall back to decoder-version packet inference when the complete byte length is omitted.",
+    "same_class_scan": [
+      "Scanned Antigravity recovery and Provider Adapter certification callers of validateAntigravityImage.",
+      "Exercised PNG, JPEG, and WebP MIME/magic agreement and exact frame-size command construction across both callers."
+    ]
+  },
   "prevention": {
     "kind": "centralized-boundary",
     "enforcement_path": "electron/ai/antigravityArtifacts.ts",
     "invariant": "Every supported image decoder invocation receives trusted format identity and the exact already-bounded complete byte length before pipe input.",
     "failure_mode": "Unsupported MIME, MIME/magic disagreement, invalid length, or decoder failure rejects before certification or artifact staging; callers cannot opt into implicit packet probing.",
-    "exception_policy": "none"
+    "exception_policy": "none",
+    "strategy": "Bind verified format identity and the exact bounded byte length at the single decoder boundary shared by all image certification callers.",
+    "artifacts": [
+      "electron/ai/antigravityArtifacts.ts",
+      "electron/ai/antigravityMedia.test.ts",
+      "electron/providerAdapter/certificationMedia.test.ts"
+    ]
   },
   "regression_tests": [
     "electron/ai/antigravityMedia.test.ts",

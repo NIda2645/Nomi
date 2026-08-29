@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { inheritLegacyV1Hashes, validateRootCauseChange, validateRootCauseHistory } from "./root-cause-contracts.mjs";
+import { inheritLegacyContractHashes, validateRootCauseChange, validateRootCauseHistory } from "./root-cause-contracts.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -13,7 +13,11 @@ function git(args) {
 }
 
 function gitRaw(args) {
-  return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" });
+  return execFileSync("git", args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 }
 
 function lines(value) {
@@ -74,7 +78,7 @@ const contracts = contractFiles.map((file) => {
 
 const legacyBaselineRelativePath = "scripts/root-cause-contract-v1-baseline.json";
 const legacyBaselinePath = path.join(repoRoot, legacyBaselineRelativePath);
-let legacyV1Hashes;
+let legacyHashes;
 try {
   let baselineRaw;
   try {
@@ -83,7 +87,7 @@ try {
     // Bootstrap only: before schema v2 reaches main, the trusted base has no baseline file yet.
     baselineRaw = fs.readFileSync(legacyBaselinePath, "utf8");
   }
-  legacyV1Hashes = new Map(Object.entries(JSON.parse(baselineRaw)));
+  legacyHashes = new Map(Object.entries(JSON.parse(baselineRaw)));
 
   const baseContractFiles = lines(git(["ls-tree", "-r", "--name-only", baseRef, "--", "docs/fixes"]))
     .filter((file) => file.endsWith(".root-cause.json"));
@@ -95,20 +99,20 @@ try {
       __contentHash: createHash("sha256").update(raw).digest("hex"),
     };
   });
-  legacyV1Hashes = inheritLegacyV1Hashes(legacyV1Hashes, baseContracts);
+  legacyHashes = inheritLegacyContractHashes(legacyHashes, baseContracts);
 } catch (error) {
   console.error(`✖ 无法读取根因合同 v1 只读基线或可信 base 历史：${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }
 
-const history = validateRootCauseHistory({ contracts, legacyV1Hashes });
+const history = validateRootCauseHistory({ contracts, legacyHashes });
 if (!history.ok) {
   console.error("✖ 根因合同历史门禁失败");
   for (const error of history.errors) console.error(`  - ${error}`);
   process.exit(1);
 }
 
-const result = validateRootCauseChange({ changedFiles: [...changedFiles], contracts, existingFiles, legacyV1Hashes });
+const result = validateRootCauseChange({ changedFiles: [...changedFiles], contracts, existingFiles, legacyHashes });
 if (!result.ok) {
   console.error(`✖ 根因合同门禁失败（触发 ${result.triggeredFiles.length} 个高风险生产文件）`);
   for (const error of result.errors) console.error(`  - ${error}`);
