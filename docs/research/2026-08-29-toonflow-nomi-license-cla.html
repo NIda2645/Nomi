@@ -107,7 +107,7 @@
     </header>
 
     <nav aria-label="页面导航">
-      <a href="#what">它是什么</a><a href="#arch">架构</a><a href="#agents">三层 Agent</a><a href="#data">数据流</a><a href="#nomi">对 Nomi 的启示</a><a href="#license">协议与 CLA</a><a href="#sources">来源</a>
+      <a href="#what">它是什么</a><a href="#arch">架构</a><a href="#agents">三层 Agent</a><a href="#data">数据流</a><a href="#nomi">对 Nomi 的启示</a><a href="#license">协议与当前政策</a><a href="#sources">来源</a>
     </nav>
 
     <section id="what" class="section">
@@ -175,17 +175,17 @@
     </section>
 
     <section id="license" class="section">
-      <div class="section-head"><h2>协议、补充条款与 CLA</h2><small>先区分标准许可证，再看项目声明</small></div>
+      <div class="section-head"><h2>协议、补充条款与 Nomi 当前政策</h2><small>先区分标准许可证，再看项目声明</small></div>
       <div class="grid">
         <article class="card wide"><h3>Toonflow：Apache-2.0 + 项目补充商业协议</h3><p>仓库许可证页面标记 Apache-2.0。Apache 2.0 通常提供较宽的使用、修改、分发和专利许可，只需保留版权、许可证和 NOTICE 等要求。</p><p>README 另写了补充商业安排：以产品形式向 2 个及以上独立第三方分发需要书面商业授权；不超过 5 个法人联合内部使用，README 声称不需要授权；不得删除或修改 Toonflow 标识、版权信息；v1.0.8 之前基于 AGPL-3.0 使用的用户继续按 AGPL-3.0。后面这些不是 Apache-2.0 标准文本本身，能否构成可执行的附加条件，要以仓库 LICENSE 原文、贡献历史和律师意见为准。</p></article>
-        <article class="card"><h3>Nomi：为何是 AGPL</h3><p>Nomi 当前 <code>AGPL-3.0-only</code>，同时通过 CLA 支持商业授权。AGPL 让修改后的分发版本和网络交互服务承担更强的源代码提供义务，避免“改完闭源、通过 SaaS 提供”把社区无法获得的改进锁在服务端。</p><p>这也是 Nomi 选择双轨的原因：社区版本保持自由协作，企业闭源集成、商业贴牌和不想承担 AGPL 义务的服务可以购买商业授权。</p></article>
+        <article class="card"><h3>Nomi：AGPL-only，不要求 CLA</h3><p>Nomi 当前 <code>AGPL-3.0-only</code>，只发布这一种开源版本，不要求贡献者签署 CLA。AGPL 让修改后的分发版本和网络交互服务承担更强的源代码提供义务，避免改进被锁在闭源服务端。</p><p>团队可以收费提供遵守 AGPL 的定制开发、集成、部署、培训和持续迭代，但 Nomi 不提供只交安装包、不提供对应源代码的闭源版本。</p></article>
       </div>
       <div class="diagram" style="margin-top:14px"><table><thead><tr><th>场景</th><th>Toonflow README 需要核对</th><th>Nomi 工程动作</th></tr></thead><tbody>
         <tr><td>内部使用 / 私人 fork</td><td>Apache 许可允许范围较宽；补充商业条款仍需看原文</td><td>按依赖和品牌要求保留 notices，不把内部使用误报成公开发布</td></tr>
-        <tr><td>向多个客户分发产品</td><td>README 声称触发书面商业授权</td><td>若基于 Nomi 闭源集成，先走商业许可，不用 CLA 代替商业合同</td></tr>
+        <tr><td>向多个客户分发产品</td><td>README 声称触发书面商业授权</td><td>若基于 Nomi 分发，按 AGPL 提供对应源代码和许可证说明；服务费可以来自定制开发、部署和维护</td></tr>
         <tr><td>复制代码到 Nomi</td><td>需保留 Apache notices，且要确认 AGPL / 自定义条款兼容性</td><td>登记依赖、版权和来源；只借设计不等于可以复制实现</td></tr>
       </tbody></table></div>
-      <details><summary>Nomi CLA 签的是什么</summary><p><code>CLA.md</code> 规定贡献者保留版权，同时授予维护者永久、全球、免版税、可再许可、可转让的版权和专利许可，包含未来商业再许可；贡献者需保证有权提交。机器人签署语句为：</p><p><code>I have read the CLA Document and I hereby sign the CLA</code></p><p>CLA 是贡献授权，不是把所有权交给维护者，也不是自动授予第三方使用 Nomi 的商业权利。</p></details>
+      <details><summary>Nomi 为什么不再要求 CLA</summary><p>旧版 Nomi 曾用 CLA 为商业再许可准备授权，但现行政策是 AGPL-only。CLA 不是 AGPL 的强制要求，现已移除签字机器人和签名账本；<code>CLA.md</code> 仅保留为旧链接的说明页，贡献者无需回复或签署。</p></details>
       <div class="callout orange" style="margin-top:10px"><strong>边界声明：</strong>这是基于官方仓库页面、README、Nomi 仓库文件的工程研究，不构成法律意见。Apache / AGPL、补充商业条款、商标、依赖和静态 / 动态链接的组合，必须按实际发行方式让律师复核。</div>
     </section>
 
@@ -195,7 +195,7 @@
         <li><a href="https://github.com/HBAI-Ltd/Toonflow-app" rel="noreferrer">Toonflow-app GitHub 仓库</a>：README、目录、提交、语言与许可证页面。</li>
         <li><a href="https://github.com/HBAI-Ltd/Toonflow-app/blob/master/README.md" rel="noreferrer">Toonflow README</a>：能力、Agent 分层、部署与补充商业条款声明。</li>
         <li><a href="https://github.com/aqm857886159/Nomi/blob/main/package.json" rel="noreferrer">Nomi package.json</a>：React / Electron 项目版本与许可证字段。</li>
-        <li><a href="https://github.com/aqm857886159/Nomi/blob/main/CLA.md" rel="noreferrer">Nomi CLA.md</a>：贡献者授权范围与签署方式。</li>
+        <li><a href="https://github.com/aqm857886159/Nomi/blob/main/CLA.md" rel="noreferrer">Nomi 贡献政策说明</a>：AGPL-only 与不要求 CLA 的现行规则。</li>
         <li><a href="https://github.com/aqm857886159/Nomi/blob/main/docs/plan/2026-08-28-editing-engine-review.md" rel="noreferrer">Nomi 剪辑引擎评审</a>：Agent、时间线、OpenMontage 与外部项目的本地决策依据。</li>
       </ul></div>
     </section>

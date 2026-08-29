@@ -115,7 +115,7 @@
     </header>
 
     <nav aria-label="页面导航">
-      <a href="#what">它是什么</a><a href="#flow">工作流</a><a href="#arch">架构</a><a href="#nomi">对 Nomi 的启示</a><a href="#license">协议与 CLA</a><a href="#sources">来源</a>
+      <a href="#what">它是什么</a><a href="#flow">工作流</a><a href="#arch">架构</a><a href="#nomi">对 Nomi 的启示</a><a href="#license">协议与当前政策</a><a href="#sources">来源</a>
     </nav>
 
     <section id="what" class="section">
@@ -175,17 +175,17 @@
     </section>
 
     <section id="license" class="section">
-      <div class="section-head"><h2>协议、CLA 与实际含义</h2><small>工程判断不等于法律意见</small></div>
+      <div class="section-head"><h2>协议与 Nomi 当前政策</h2><small>工程判断不等于法律意见</small></div>
       <div class="grid">
         <article class="card wide"><h3>OpenMontage：AGPL-3.0</h3><p>AGPL 允许运行、研究、修改和再分发，但对“向他人提供修改后的程序”有更强的源代码提供义务；网络交互场景也不能简单当作只在本机运行。合并 OpenMontage 代码或形成基于它的派生服务前，应保留版权与许可证通知，提供对应源代码，并逐项审计依赖。</p><p>“参考架构”与“复制代码”是两件事：前者通常不触发代码许可义务，后者必须按实际复制范围、链接方式和分发方式做合规判断。</p></article>
-        <article class="card"><h3>Nomi：AGPL + 商业授权</h3><p>Nomi 当前 <code>package.json</code> 标记为 <code>AGPL-3.0-only</code>，并通过 CLA 保留未来商业再许可能力。个人使用、内部使用和普通 fork 不会自动要求公开项目；修改后分发或提供网络服务时，需要按 AGPL 履行义务，闭源集成和商业贴牌应走商业授权。</p></article>
+        <article class="card"><h3>Nomi：AGPL-only，不要求 CLA</h3><p>Nomi 当前 <code>package.json</code> 标记为 <code>AGPL-3.0-only</code>，项目只发布这一种开源版本，不要求贡献者签署 CLA。个人使用、内部使用和普通 fork 可按 AGPL 使用；修改后分发或提供网络服务时，应按 AGPL 提供对应源代码和许可证说明。团队可以收费提供合规的定制开发、集成、部署、培训和持续迭代，但不承诺隐瞒对应源代码的闭源 Nomi 版本。</p></article>
       </div>
       <div class="diagram" style="margin-top:14px"><table><thead><tr><th>行为</th><th>通常要关注什么</th><th>工程建议</th></tr></thead><tbody>
         <tr><td>只读 OpenMontage 的公开文档</td><td>没有代码复制</td><td>保留来源链接与核验日期</td></tr>
         <tr><td>复制代码或 schema</td><td>版权、NOTICE、对应源代码、网络交互条款</td><td>在依赖清单和发行审计中登记，不用“只复制几行”规避</td></tr>
-        <tr><td>Nomi 接受外部贡献</td><td>贡献者是否有权提交、未来能否商业再许可</td><td>按 <code>CLA.md</code> 的原文签署；签 CLA 不等于转让版权</td></tr>
+        <tr><td>Nomi 接受外部贡献</td><td>贡献者是否有权提交、来源与依赖许可证是否清楚</td><td>不需要签 CLA；按 <code>AGPL-3.0-only</code> 接受贡献并保留必要的版权、许可证和来源说明</td></tr>
       </tbody></table></div>
-      <details><summary>CLA 的核心逻辑</summary><p>贡献者保留版权，同时授予维护者永久、全球、免版税、可再许可和可转让的版权许可，并授予相应专利许可。这样 Nomi 可以继续以 AGPL 开源，也能在需要时对企业闭源集成提供商业授权。仓库的机器人签署语句是：</p><p><code>I have read the CLA Document and I hereby sign the CLA</code></p></details>
+      <details><summary>Nomi 为什么不再要求 CLA</summary><p>旧版仓库曾用 CLA 为“AGPL 开源 + 商业授权”双轨准备贡献授权，但现行决策是只发布 AGPL-3.0-only。继续要求签字只会增加贡献摩擦，并不是 AGPL 的要求，因此已移除 CLA 机器人和签名账本；<code>CLA.md</code> 仅保留为旧链接的说明页。</p></details>
       <div class="callout coral" style="margin-top:10px"><strong>边界声明：</strong>这里是基于仓库文件和官方页面的工程调研，不构成法律意见。具体分发、网络服务、静态/动态链接、商标和第三方依赖组合，应让熟悉适用法域的律师复核。</div>
     </section>
 
@@ -195,7 +195,7 @@
         <li><a href="https://github.com/calesthio/OpenMontage" rel="noreferrer">OpenMontage GitHub 仓库</a>：代码、README、许可证、提交与目录结构。</li>
         <li><a href="https://www.openmontage.video/" rel="noreferrer">OpenMontage 官方站点</a>：产品定位、Studio、工作流和输出说明。</li>
         <li><a href="https://github.com/aqm857886159/Nomi/blob/main/package.json" rel="noreferrer">Nomi package.json</a>：版本、Node 引擎和许可证字段。</li>
-        <li><a href="https://github.com/aqm857886159/Nomi/blob/main/CLA.md" rel="noreferrer">Nomi CLA.md</a>：贡献者授权范围与签署方式。</li>
+        <li><a href="https://github.com/aqm857886159/Nomi/blob/main/CLA.md" rel="noreferrer">Nomi 贡献政策说明</a>：AGPL-only 与不要求 CLA 的现行规则。</li>
         <li><a href="https://github.com/aqm857886159/Nomi/blob/main/docs/plan/2026-08-28-editing-engine-review.md" rel="noreferrer">Nomi 剪辑引擎 build-vs-buy 评审</a>：OpenMontage 与时间线边界的本地决策依据。</li>
       </ul></div>
     </section>

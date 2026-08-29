@@ -32,8 +32,8 @@ Your projects, prompts, and API keys stay on your machine. No account. No teleme
 </p>
 
 <p align="center">
-  If the group QR expires, or for custom builds, integrations, white-label delivery, and ongoing iteration, add <strong>TZ857886159</strong>.<br />
-  群码失效，或沟通定制开发、系统集成、贴牌交付与持续迭代，请添加作者微信 <strong>TZ857886159</strong>。
+  If the group QR expires, or for AGPL-compliant custom development, integrations, deployment, and ongoing iteration, add <strong>TZ857886159</strong>.<br />
+  群码失效，或沟通遵守 AGPL 的定制开发、系统集成、部署与持续迭代，请添加作者微信 <strong>TZ857886159</strong>。
 </p>
 
 International community: [GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) · Project inquiry: [Business Inquiry](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml)
@@ -97,7 +97,7 @@ Use [GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) to as
 
 ## For Teams
 
-Nomi is open source for creators. We also provide **Custom builds**, **Integrations**, **White-label / commercial licenses**, and **Ongoing iteration** for teams that need Nomi adapted to a real delivery workflow.
+Nomi is open source for creators. We also provide **Custom builds**, **Integrations**, **AGPL-compliant deployment**, and **Ongoing iteration** for teams that need Nomi adapted to a real delivery workflow.
 
 [Discuss a project](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml). The form is public: share only a non-confidential summary and never post credentials, private contact details, budget details, or NDA-protected information.
 
@@ -129,7 +129,7 @@ pnpm run gates
 
 ## Contributing
 
-Bug reports, feature proposals, documentation, and code contributions are welcome. External contributors sign the one-time [Contributor License Agreement](CLA.md) when a pull request is opened.
+Bug reports, feature proposals, documentation, and code contributions are welcome. Contributors do not need to sign a CLA; contributions are accepted under AGPL-3.0-only.
 
 - [Report a bug](https://github.com/aqm857886159/Nomi/issues/new?template=bug_report.yml)
 - [Request a feature](https://github.com/aqm857886159/Nomi/issues/new?template=feature_request.yml)
@@ -139,4 +139,4 @@ Bug reports, feature proposals, documentation, and code contributions are welcom
 
 Current releases are licensed under AGPL-3.0-only; historical releases published under Apache-2.0 keep their original license.
 
-See [LICENSE](LICENSE). Contact the maintainer through the [Business inquiry](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml) for a commercial license covering closed-source integration or white-label distribution.
+See [LICENSE](LICENSE). Paid services can include AGPL-compliant custom development, integration, deployment, training, and ongoing iteration. Nomi does not offer a closed-source distribution that withholds the corresponding source code.
