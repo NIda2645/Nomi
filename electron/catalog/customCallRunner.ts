@@ -36,6 +36,12 @@ export type CustomCallScriptResult = {
 const PREVIEW_LIMIT = 2000;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
+function customCallTimeoutReason(timeoutMs: number): Error {
+  const error = new Error(`自定义调用脚本超时（${Math.round(timeoutMs / 1000)}s）`);
+  error.name = "TimeoutError";
+  return error;
+}
+
 function preview(value: unknown, redact: (s: string) => string): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text: string;
@@ -171,7 +177,7 @@ export async function runCustomCallScript(input: {
   const controller = new AbortController();
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const deadlineAt = Date.now() + timeoutMs;
-  const timer = setTimeout(() => controller.abort(new Error(`自定义调用脚本超时（${Math.round(timeoutMs / 1000)}s）`)), timeoutMs);
+  const timer = setTimeout(() => controller.abort(customCallTimeoutReason(timeoutMs)), timeoutMs);
   const relayAbort = () => controller.abort(input.signal?.reason);
   if (input.signal) {
     if (input.signal.aborted) relayAbort();
