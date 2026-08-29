@@ -1,334 +1,410 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nomi Agent 对话词汇表 · 17 种形态样张（2026-08-27 拍板）</title>
+<title>Nomi Agent 画布协作样张</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
 <style>
 :root{
-  --nomi-bg:oklch(0.985 0.003 90);--nomi-paper:#fff;
-  --ink:oklch(0.22 0.01 80);--ink80:oklch(0.32 0.01 80);--ink60:oklch(0.50 0.01 80);
-  --ink40:oklch(0.68 0.01 80);--ink30:oklch(0.78 0.01 80);--ink20:oklch(0.88 0.005 80);
-  --ink10:oklch(0.94 0.003 80);--ink05:oklch(0.97 0.003 80);
-  --line:oklch(0.91 0.004 80);--lineS:oklch(0.95 0.003 80);
-  --ac:oklch(0.55 0.13 250);--acS:oklch(0.955 0.018 250);
-  --warn:oklch(0.62 0.14 75);--ok:#248a3d;--okBg:rgba(52,199,89,.12);
-  --dg:#b3241c;--dgBg:rgba(255,59,48,.045);
-  --r-ctl:7px;--r-panel:10px;--r-lg:14px;
-  --t-tap:140ms;--t-enter:260ms;--t-settle:420ms;
-  --ease:cubic-bezier(.2,.7,.3,1);
+  color-scheme:light;
+  --bg:oklch(0.985 0.003 90);--paper:oklch(1 0 0);--surface:oklch(0.97 0.003 80);--surface2:oklch(0.94 0.003 80);
+  --ink:oklch(0.22 0.01 80);--ink80:oklch(0.32 0.01 80);--ink60:oklch(0.50 0.01 80);--ink40:oklch(0.68 0.01 80);
+  --line:oklch(0.91 0.004 80);--line2:oklch(0.95 0.003 80);--accent:oklch(0.55 0.13 250);
+  --accent-soft:color-mix(in srgb,var(--accent) 12%,var(--paper));--success:oklch(0.62 0.16 150);
+  --warn:oklch(0.62 0.14 75);--danger:oklch(0.55 0.20 27);
+  --shadow:0 2px 4px oklch(0 0 0/.04),0 8px 24px oklch(0 0 0/.06);
+  --r-sm:6px;--r:10px;--r-ctl:7px;--tap:140ms;--enter:260ms;--ease:cubic-bezier(.2,.7,.3,1);
 }
-*{box-sizing:border-box}
-body{margin:0;padding:28px 20px 60px;background:var(--nomi-bg);color:var(--ink);
-  font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
-h1{font-size:20px;font-weight:500;margin:0 0 4px}
-.meta{font-size:12px;color:var(--ink40);margin:0 0 22px;line-height:1.7}
-.meta a{color:var(--ac)}
-.wrap{max-width:900px;margin:0 auto}
-.bar{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-.bar .hint{font-size:11px;color:var(--ink40);flex:1}
-.sec{font-size:11px;color:var(--ink40);margin:26px 0 8px;letter-spacing:.03em}
-
-/* ── 控件规格：所有可点 = 28px ── */
-.ctl{height:28px;font-size:12px;font-family:inherit;display:inline-flex;align-items:center;
-  justify-content:center;gap:5px;cursor:pointer;box-sizing:border-box;white-space:nowrap;min-width:0;
-  transition:background var(--t-tap) var(--ease),border-color var(--t-tap) var(--ease),color var(--t-tap) var(--ease)}
-.btn{padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--lineS);background:var(--nomi-paper);color:var(--ink80);min-width:72px}
-.btn:hover{background:var(--ink05)}
-.btn.pri{border-color:transparent;background:var(--ink);color:#fff}
-.btn.pri:hover{background:var(--ac)}
-.btn.acc{color:var(--ac)}
-.btn.ico{width:28px;min-width:28px;padding:0}
-.pick{padding:0 8px 0 10px;border-radius:999px;border:1px solid var(--line);background:var(--nomi-paper);color:var(--ink80);gap:4px}
-.pick:hover{border-color:var(--ink20)}
-.pick.soft{background:var(--ink05);justify-content:space-between}
-.chip{padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--nomi-paper);color:var(--ink80)}
-.chip.on{border-color:var(--ac);background:var(--acS);color:var(--ac)}
-.grp{display:flex;gap:7px}
-.grp>.btn{flex:1}
-.lk{font-size:12px;color:var(--ink60);background:none;border:0;padding:0;font-family:inherit;cursor:pointer}
-.lk:hover{color:var(--ink);text-decoration:underline}
-.tag{font-size:11px;padding:1px 6px;border-radius:999px;line-height:1.5;white-space:nowrap}
-.tag.a{background:var(--acS);color:var(--ac)}
-.tag.n{background:var(--ink05);color:var(--ink60)}
-
-/* ── 标尺 ── */
-body.rule .ctl{outline:1px dashed var(--ac);outline-offset:1px}
-body.rule .lk{outline:1px dashed var(--warn);outline-offset:2px}
-body.rule .tag{outline:1px dotted var(--ink30);outline-offset:2px}
-
-/* ── 面板 ── */
-.g{display:grid;grid-template-columns:104px 1fr;gap:0 14px;align-items:start}
-.lb{font-size:11px;line-height:1.5;color:var(--ink40);text-align:right;padding:12px 0 0}
-.lb b{font-weight:500;color:var(--ink60);display:block}
-.c{background:var(--nomi-paper);padding:8px 13px;font-size:12px}
-.it{transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease)}
-.it.hid{opacity:0;transform:translateY(5px)}
-.row{display:flex;align-items:center;gap:8px}
-.mut{color:var(--ink40)}
-.card{border:1px solid var(--line);border-radius:var(--r-panel);padding:10px 11px}
-
-/* ── 动效 ── */
-.th{height:5px;background:var(--ink10);border-radius:999px;overflow:hidden;flex:1;position:relative}
-.tf{height:100%;background:var(--ac);width:0;border-radius:999px;transition:width .7s var(--ease)}
-.tf::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
-  background-size:38% 100%;background-repeat:no-repeat;animation:sweep 2.2s linear infinite}
-@keyframes sweep{0%{background-position:-42% 0}100%{background-position:142% 0}}
-.sq{aspect-ratio:16/10;background:var(--ink05);border:1px solid var(--lineS);border-radius:6px;
-  display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink40);
-  overflow:hidden;position:relative}
-.sq.w::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(0,0,0,.05),transparent);
-  background-size:45% 100%;background-repeat:no-repeat;animation:sweep 2.2s linear infinite}
-.sq.dv{filter:blur(7px);opacity:.5;transition:filter .9s ease-out,opacity .9s ease-out}
-.sq.dv.on{filter:blur(0);opacity:1}
-.sq .hv{position:absolute;inset:0;background:rgba(20,18,16,.42);display:flex;align-items:center;
-  justify-content:center;gap:5px;opacity:0;transition:opacity var(--t-tap) var(--ease)}
-.sq:hover .hv{opacity:1}
-.hb{width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.92);display:flex;
-  align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
-.n{font-variant-numeric:tabular-nums;display:inline-block;transition:transform .2s,opacity .2s}
-.n.tk{transform:translateY(-3px);opacity:0}
-.ckp{stroke-dasharray:22;stroke-dashoffset:22;animation:ckd var(--t-settle) var(--ease) forwards}
-@keyframes ckd{to{stroke-dashoffset:0}}
-.ph{transition:opacity .3s,transform .3s}
-.ph.o{opacity:0;transform:translateY(-3px)}
-svg.ic *{transform-box:fill-box}
-.L1{animation:lw 1.9s ease-in-out infinite}.L2{animation:lw 1.9s ease-in-out .25s infinite}.L3{animation:lw 1.9s ease-in-out .5s infinite}
-@keyframes lw{0%,100%{opacity:.3}40%{opacity:1}}
-.B1{animation:bx 2.1s var(--ease) infinite}.B2{animation:bx 2.1s var(--ease) .22s infinite}.B3{animation:bx 2.1s var(--ease) .44s infinite}
-@keyframes bx{0%{opacity:.25;transform:translateX(-3px)}30%,80%{opacity:1;transform:translateX(0)}100%{opacity:.25;transform:translateX(-3px)}}
-.FC{animation:fz 2.4s ease-in-out infinite;transform-origin:center}
-@keyframes fz{0%,100%{transform:scale(1)}50%{transform:scale(.84)}}
-.CL{animation:cp 1.9s cubic-bezier(.3,.9,.4,1) infinite;transform-origin:left bottom}
-@keyframes cp{0%,58%{transform:rotate(0)}68%{transform:rotate(-19deg)}78%,100%{transform:rotate(0)}}
-.T1{animation:tk 2s linear infinite}.T2{animation:tk 2s linear .5s infinite}.T3{animation:tk 2s linear 1s infinite}
-@keyframes tk{0%{transform:translateX(7px);opacity:0}18%,82%{opacity:1}100%{transform:translateX(-8px);opacity:0}}
-
-@media (prefers-reduced-motion:reduce){
-  *,*::after{animation:none!important;transition:none!important}
-  .sq.dv{filter:none;opacity:1}
+body.dark{
+  color-scheme:dark;
+  --bg:oklch(0.18 0.006 80);--paper:oklch(0.235 0.007 80);--surface:oklch(0.30 0.006 85);--surface2:oklch(0.34 0.006 85);
+  --ink:oklch(0.93 0.006 85);--ink80:oklch(0.84 0.006 85);--ink60:oklch(0.70 0.006 85);--ink40:oklch(0.62 0.006 85);
+  --line:oklch(0.36 0.007 80);--line2:oklch(0.31 0.007 80);--accent:oklch(0.70 0.13 250);
+  --accent-soft:color-mix(in srgb,var(--accent) 26%,var(--paper));--success:oklch(0.72 0.14 150);
+  --warn:oklch(0.78 0.13 75);--danger:oklch(0.72 0.16 25);
+  --shadow:0 2px 5px oklch(0 0 0/.30),0 14px 34px oklch(0 0 0/.32);
 }
-
-/* ── 规格速查 ── */
-.spec{background:var(--nomi-paper);border-radius:var(--r-panel);padding:11px 13px;margin-bottom:16px}
-.spec table{width:100%;border-collapse:collapse;font-size:11px;line-height:1.6}
-.spec td{padding:4px 8px 4px 0;vertical-align:middle;color:var(--ink60)}
-.spec td:first-child{width:104px;color:var(--ink80)}
-.spec b{font-weight:500;color:var(--ink)}
-.rules{background:var(--nomi-paper);border-radius:var(--r-panel);padding:11px 13px;font-size:12px;line-height:1.9;color:var(--ink80)}
-.rules b{font-weight:500;color:var(--ink)}
+*{box-sizing:border-box;letter-spacing:0}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
+body{font:13px/1.45 "Inter Variable",Inter,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;padding:16px}
+button,textarea,select{font:inherit;color:inherit}
+button,select{height:28px}
+button{cursor:pointer}
+button:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{max-width:1440px;margin:0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.topbar{height:48px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line2);background:var(--paper)}
+.brand{width:26px;height:26px;border-radius:var(--r-sm);background:var(--ink);color:var(--paper);display:grid;place-items:center;font:600 15px Georgia,serif}
+.crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink60)}
+.top-spacer{flex:1}
+.status{font-size:11px;color:var(--success);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.icon-btn,.text-btn,.select,.seg button{border:1px solid var(--line);background:var(--paper);border-radius:var(--r-ctl)}
+.icon-btn{width:28px;padding:0;display:grid;place-items:center;font-size:16px}
+.icon-btn:hover,.text-btn:hover,.seg button:hover{background:var(--surface)}
+.text-btn{padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
+.primary{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.primary:hover{background:var(--accent);border-color:var(--accent)}
+.workspace{height:min(820px,calc(100vh - 82px));min-height:660px;display:grid;grid-template-columns:minmax(0,1fr) 410px}
+.canvas{position:relative;overflow:auto;background:var(--surface);border-right:1px solid var(--line2)}
+.canvas-head{height:42px;position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:7px;padding:0 12px;background:color-mix(in srgb,var(--surface) 94%,transparent);border-bottom:1px solid var(--line2);backdrop-filter:blur(8px)}
+.canvas-head strong{font-size:12px;font-weight:600}
+.canvas-head span{font-size:11px;color:var(--ink40)}
+.canvas-stage{position:relative;min-width:720px;min-height:760px;padding:40px}
+.node{position:absolute;width:240px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);transition:border-color var(--tap),box-shadow var(--tap),transform var(--tap)}
+.node:hover{border-color:var(--ink40)}
+.node.selected{border:2px solid var(--accent);box-shadow:0 0 0 3px var(--accent-soft),var(--shadow)}
+.node.located{animation:locate 900ms var(--ease)}
+.n-image{left:58px;top:72px}.n-video{left:370px;top:122px}.n-audio{left:98px;top:438px;width:290px}.n-3d{left:470px;top:448px;width:280px}
+.node-head{height:34px;display:flex;align-items:center;gap:7px;padding:0 9px;border-bottom:1px solid var(--line2)}
+.node-head strong{font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kind{font-size:11px;color:var(--ink40)}
+.media{display:block;width:100%;height:160px;object-fit:cover;background:var(--surface2)}
+.n-video .media{height:140px}.n-3d .media{height:154px}
+.node-meta{display:flex;align-items:center;gap:7px;padding:8px 9px;color:var(--ink60);font-size:11px}
+.node-meta span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wave{height:68px;padding:14px 12px;display:flex;align-items:center;gap:3px;background:var(--surface)}
+.wave i,.mini-wave i{display:block;width:3px;border-radius:2px;background:var(--accent)}
+.wave i:nth-child(1){height:10px}.wave i:nth-child(2){height:22px}.wave i:nth-child(3){height:34px}.wave i:nth-child(4){height:18px}.wave i:nth-child(5){height:28px}.wave i:nth-child(6){height:40px}.wave i:nth-child(7){height:24px}.wave i:nth-child(8){height:14px}.wave i:nth-child(9){height:32px}.wave i:nth-child(10){height:20px}.wave i:nth-child(11){height:38px}.wave i:nth-child(12){height:16px}.wave i:nth-child(13){height:26px}.wave i:nth-child(14){height:12px}.wave i:nth-child(15){height:30px}.wave i:nth-child(16){height:18px}.wave i:nth-child(17){height:36px}.wave i:nth-child(18){height:13px}
+.agent{min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--paper)}
+.agent-head{height:42px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--line2)}
+.agent-head strong{font-size:12px}.agent-head .usage{margin-left:auto;font-size:11px;color:var(--ink40)}
+.usage-bar{width:42px;height:4px;border-radius:3px;background:var(--surface2);overflow:hidden}.usage-bar span{display:block;width:31%;height:100%;background:var(--ink40)}
+.conversation{position:relative;min-height:0;flex:1;overflow:auto;padding:14px 12px 18px;scroll-behavior:smooth}
+.message{margin:0 0 14px;max-width:94%}
+.message.user{margin-left:auto;background:var(--surface);border-radius:var(--r) var(--r) 4px var(--r);padding:8px 10px}
+.message.agent{color:var(--ink80)}
+.snapshot{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.snap{font-size:11px;color:var(--ink60);background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:2px 7px}
+.snap.changed{color:var(--warn)}
+.process{display:flex;align-items:center;gap:8px;color:var(--ink60);font-size:11px;padding:7px 0;border-bottom:1px solid var(--line2)}
+.process i{font-size:14px;color:var(--accent)}
+.process span:first-of-type{flex:1}
+.plan{margin-top:10px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.plan-head{padding:8px 9px;display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--line2)}
+.plan-head strong{font-size:12px;flex:1}.badge{font-size:10px;color:var(--warn);background:var(--surface);border-radius:999px;padding:2px 6px}
+.model-row{display:grid;grid-template-columns:50px 1fr auto;gap:7px;padding:7px 9px;border-bottom:1px solid var(--line2);font-size:11px;align-items:center}
+.model-row span:first-child{color:var(--ink40)}.model-row b{font-weight:500}.model-row em{font-style:normal;color:var(--ink60)}
+.plan-actions,.result-actions{display:flex;gap:7px;padding:8px 9px}
+.plan-actions button,.result-actions button{flex:1;min-width:0}
+.results{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.result{border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;min-width:0}
+.result-title{height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:11px}
+.result-title strong{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.result-title span{color:var(--ink40)}
+.result-media{width:100%;height:96px;object-fit:cover;display:block;background:var(--surface2)}
+.result .result-actions{padding:6px}.result .text-btn{padding:0 7px;min-width:0}
+.audio-preview{height:72px;background:var(--surface);display:flex;align-items:center;padding:12px;gap:10px}
+.mini-wave{display:flex;align-items:center;gap:2px;flex:1;height:34px}.mini-wave i{width:2px}.mini-wave i:nth-child(odd){height:12px}.mini-wave i:nth-child(even){height:26px}.audio-preview span{font-size:11px;color:var(--ink60)}
+.queue{border-top:1px solid var(--line2);background:var(--surface);padding:7px 9px}
+.queue-top{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink60);margin-bottom:5px}.queue-top strong{font-weight:600;color:var(--ink80);flex:1}
+.queue-list{display:grid;gap:4px}
+.queue-item{min-height:34px;background:var(--paper);border:1px solid var(--line2);border-radius:var(--r-sm);padding:5px 6px;display:flex;align-items:center;gap:5px}
+.queue-num{width:18px;text-align:center;color:var(--ink40);font-variant-numeric:tabular-nums}
+.queue-copy{min-width:0;flex:1}.queue-copy b{font-size:11px;font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.queue-copy span{font-size:10px;color:var(--ink40)}
+.queue-item .icon-btn{width:24px;height:24px;border:0;background:transparent;font-size:13px}
+.composer{position:relative;border-top:1px solid var(--line);padding:8px;background:var(--paper)}
+.context-shelf,.attachment-shelf{display:flex;gap:8px;overflow:auto;padding-bottom:6px}
+.context-chip{height:28px;flex:none;display:flex;align-items:center;gap:5px;padding:0 7px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:11px;max-width:220px}
+.context-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.context-chip i:first-child{color:var(--accent)}
+.context-chip button{width:18px;height:18px;border:0;background:transparent;color:var(--ink40);padding:0}
+.attachment-chip{height:48px;max-width:184px;flex:none;display:flex;align-items:center;gap:8px;padding:0 4px 0 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface)}
+.attachment-glyph{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:var(--r-sm);background:var(--surface2);color:var(--ink60);font-size:16px}
+.attachment-label{min-width:0;display:flex;flex-direction:column}.attachment-label b{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attachment-label small{font-size:10px;color:var(--ink60)}
+.attachment-chip button{width:24px;height:24px;border:0;background:transparent;color:var(--ink40);padding:0}
+.attachment-image{position:relative;width:48px;height:48px;flex:none;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;background:var(--surface2)}
+.attachment-image img{width:100%;height:100%;object-fit:cover}.attachment-image button{position:absolute;right:1px;top:1px;width:18px;height:18px;border:1px solid var(--paper);border-radius:50%;padding:0;background:var(--ink);color:var(--paper);display:grid;place-items:center}
+.input-shell{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--paper)}
+textarea{display:block;width:100%;min-height:54px;max-height:120px;resize:vertical;border:0;background:transparent;padding:8px 9px;outline:0;line-height:1.45}
+.mode-row{display:flex;gap:6px;align-items:center;padding:6px 7px;border-top:1px solid var(--line2);flex-wrap:wrap}
+.seg{display:flex;gap:4px;padding:4px;border:0;border-radius:var(--r);background:var(--surface)}
+.seg button{height:32px;min-width:56px;border:0;border-radius:var(--r-sm);padding:0 8px;background:transparent;font-size:11px}.seg button.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 2px oklch(0 0 0/.08);font-weight:600}
+.select{max-width:132px;padding:0 23px 0 10px;font-size:11px;border-radius:999px}
+.send{margin-left:auto;border-radius:50%;min-width:28px;padding:0}
+.menu{display:none;position:absolute;bottom:100%;left:8px;width:min(290px,calc(100vw - 36px));background:var(--paper);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:5px;z-index:10;margin-bottom:4px}
+.menu.open{display:block}
+.menu button{width:100%;border:0;background:transparent;border-radius:var(--r-sm);padding:0 8px;display:flex;align-items:center;gap:8px;text-align:left}
+.menu button:hover{background:var(--surface)}.menu button span{flex:1}.menu button small{color:var(--ink40)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,16px);opacity:0;background:var(--ink);color:var(--paper);border-radius:var(--r-ctl);padding:7px 11px;z-index:20;pointer-events:none;transition:opacity var(--enter),transform var(--enter)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@keyframes locate{0%,100%{transform:scale(1)}45%{transform:scale(1.025);box-shadow:0 0 0 6px var(--accent-soft),var(--shadow)}}
+@media(max-width:760px){
+  body{padding:0}.app{border:0;border-radius:0;box-shadow:none}.topbar{position:sticky;top:0;z-index:20}
+  .status{display:none}.workspace{height:auto;min-height:0;display:block}.canvas{height:44vh;min-height:360px;border-right:0;border-bottom:1px solid var(--line2)}
+  .canvas-stage{transform:scale(.76);transform-origin:top left;min-height:800px}.agent{height:720px}.results{grid-template-columns:1fr 1fr}
+}
+@media(max-width:389px){
+  .crumb{max-width:130px}.topbar .text-btn{display:none}.agent{height:780px}.results{grid-template-columns:1fr}
+  .mode-row{display:grid;grid-template-columns:auto 1fr auto}.seg{grid-column:1/-1}.seg button{flex:1}.select{max-width:none;width:100%}.send{margin-left:0}
+  .queue-item .move-down,.queue-item .move-up{display:none}.canvas-stage{transform:scale(.66)}.context-chip{max-width:175px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
+<main class="app">
+  <header class="topbar">
+    <div class="brand" aria-label="Nomi">N</div>
+    <div class="crumb">雨夜便利店 · 生成画布</div>
+    <div class="top-spacer"></div>
+    <span class="status">本地已保存</span>
+    <button class="text-btn" id="vocab"><i class="ti ti-list-details"></i>词汇表 21</button>
+    <button class="icon-btn" id="theme" aria-label="切换明暗模式" title="切换明暗模式"><i class="ti ti-moon"></i></button>
+  </header>
 
-<h1>Nomi Agent 对话词汇表 · 17 种形态</h1>
-<p class="meta">
-2026-08-27 用户逐轮拍板 · 规格与理由见 <a href="../nomi-agent-interaction.md">nomi-agent-interaction.md</a><br>
-样张为<strong>通用框</strong>（用户裁定不套真实面板布局，之后再调）· 参数条按 <code>InlineParameterBar</code> 源码规格绘制，<strong>未与真机比对</strong>，实现时按 R13 逐项对账。
-</p>
+  <div class="workspace">
+    <section class="canvas" aria-label="生成画布">
+      <div class="canvas-head">
+        <strong>画布</strong>
+        <span id="canvasStatus">已选 1 项 · 点击对象后问 Nomi</span>
+        <div class="top-spacer"></div>
+        <button class="icon-btn" aria-label="适应画布" title="适应画布"><i class="ti ti-focus-centered"></i></button>
+      </div>
+      <div class="canvas-stage">
+        <article class="node n-image selected" tabindex="0" role="button" data-id="image-01" data-kind="image" data-title="角色定妆 · 阿青" data-sub="主体 · 局部裁剪 24%" aria-label="图片节点 角色定妆 阿青">
+          <div class="node-head"><i class="ti ti-photo"></i><strong>角色定妆 · 阿青</strong><span class="kind">图片</span></div>
+          <img class="media" src="../../audit/2026-08-20-l3-f1-full-journey/07-image-1787216859736.jpg" alt="角色阿青定妆照">
+          <div class="node-meta"><span>2048 × 3072 · v3</span><span>主体</span></div>
+        </article>
 
-<div class="bar">
-  <span class="hint">所有可点控件 = 28px；同排动作按钮等宽均分，主次只用颜色分</span>
-  <button class="ctl btn" id="rl"><i class="ti ti-ruler" style="font-size:16px"></i> 标尺</button>
-  <button class="ctl btn" id="rp"><i class="ti ti-refresh" style="font-size:16px"></i> 重播</button>
-</div>
+        <article class="node n-video" tabindex="0" role="button" data-id="video-03" data-kind="video" data-title="便利店门口 · 镜头 03" data-sub="动作 · 02:10–02:14" aria-label="视频节点 便利店门口 镜头 03">
+          <div class="node-head"><i class="ti ti-video"></i><strong>便利店门口 · 镜头 03</strong><span class="kind">视频</span></div>
+          <img class="media" src="../../research/2026-08-02-3d-director-stage/nomi/05-back-on-canvas.png" alt="便利店镜头视频封面">
+          <div class="node-meta"><span>00:04 / 00:08 · 16:9</span><button class="icon-btn" aria-label="播放视频" title="播放视频"><i class="ti ti-player-play"></i></button></div>
+        </article>
 
-<div class="sec">控件规格速查（全部出自 nomi-design-system.md，本样张不发明尺寸）</div>
-<div class="spec"><table>
-<tr><td><button class="ctl btn pri">批准</button></td><td>主按钮 · h28 · px12 · 12px · <b>圆角 7</b> · ink 底 · 最小宽 72</td></tr>
-<tr><td><button class="ctl btn">改一下</button></td><td>次按钮 · 同尺寸 · 描边 line-soft</td></tr>
-<tr><td><button class="ctl btn ico" aria-label="重跑"><i class="ti ti-refresh" style="font-size:16px"></i></button></td><td>图标钮 · 28×28 · 图标 <b>16 / stroke-2</b></td></tr>
-<tr><td><button class="ctl pick" style="max-width:96px"><span style="overflow:hidden;text-overflow:ellipsis">wan-3.0</span><i class="ti ti-chevron-down mut" style="font-size:13px;margin-left:auto"></i></button></td><td>选择器 · h28 · <b>药丸</b>（选择器用药丸，按钮用 7px 方角，不互串）</td></tr>
-<tr><td><span class="ctl chip on">16:9</span></td><td>选项 chip · h28 · 药丸 · 按内容定宽（它是内容不是动作）</td></tr>
-<tr><td><button class="lk">改提示词</button></td><td>文字链 · <b>无高度</b> · <b>不与按钮同排</b></td></tr>
-<tr><td><span class="tag a">等你确认</span></td><td>状态徽标 · 无高度 · 11px · 不可点</td></tr>
-<tr><td><i class="ti ti-coin" style="font-size:18px;color:var(--ac)"></i></td><td>卡头语义图标 · <b>18</b></td></tr>
-<tr><td><i class="ti ti-file-text" style="font-size:13px;color:var(--ink40)"></i></td><td>行内小图标 · <b>13 / stroke-1.8</b></td></tr>
-</table></div>
+        <article class="node n-audio" tabindex="0" role="button" data-id="audio-02" data-kind="audio" data-title="雨声环境 · 夜" data-sub="声音 · 00:12–00:28" aria-label="音频节点 雨声环境 夜">
+          <div class="node-head"><i class="ti ti-wave-sine"></i><strong>雨声环境 · 夜</strong><span class="kind">音频</span></div>
+          <div class="wave" aria-label="音频波形"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="node-meta"><span>00:16 · 48kHz</span><button class="icon-btn" aria-label="播放音频" title="播放音频"><i class="ti ti-player-play"></i></button></div>
+        </article>
 
-<div class="sec">一条真实任务从头跑到尾 · 自动播放</div>
+        <article class="node n-3d" tabindex="0" role="button" data-id="scene-3d" data-kind="model3d" data-title="便利店站位 · 相机 B" data-sub="视角 · 低机位 35mm" aria-label="3D 节点 便利店站位 相机 B">
+          <div class="node-head"><i class="ti ti-cube"></i><strong>便利店站位 · 相机 B</strong><span class="kind">3D</span></div>
+          <img class="media" src="../../research/2026-08-02-3d-director-stage/nomi/01-default-editor.png" alt="3D 导演台相机 B 低机位截图">
+          <div class="node-meta"><span>相机 B · 低机位 · 35mm</span><span>v5</span></div>
+        </article>
+      </div>
+    </section>
 
-<div class="g">
-<div class="lb" style="padding-top:11px"><b>① 上下文</b>面板顶</div>
-<div class="c" style="border-radius:var(--r-panel) var(--r-panel) 0 0;border-bottom:1px solid var(--lineS);display:flex;align-items:center;gap:8px;padding:9px 13px">
-  <div style="width:19px;height:19px;border-radius:6px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px">N</div>
-  <span style="font-weight:500">Nomi</span><span style="flex:1"></span>
-  <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink40)"><span style="width:24px;height:4px;background:var(--ink10);border-radius:999px;overflow:hidden;display:inline-block"><span id="cb" style="display:block;height:100%;width:12%;background:var(--ink40);transition:width 1.1s ease-out"></span></span><span class="n" id="cn">12</span>%</span>
-  <button class="ctl btn ico" aria-label="更多"><i class="ti ti-dots" style="font-size:16px"></i></button></div>
+    <aside class="agent" aria-label="Nomi Agent">
+      <div class="agent-head">
+        <div class="brand" style="width:21px;height:21px;font-size:12px">N</div>
+        <strong>Nomi</strong>
+        <span class="usage">上下文 31%</span>
+        <span class="usage-bar" aria-hidden="true"><span></span></span>
+        <button class="icon-btn" aria-label="会话历史" title="会话历史"><i class="ti ti-history"></i></button>
+      </div>
 
-<div class="lb"><b>② 压缩线</b>诚实</div>
-<div class="c it" data-s="0" style="display:flex;align-items:center;gap:8px"><span style="flex:1;height:1px;background:var(--lineS)"></span><span style="font-size:11px;color:var(--ink40)">前面 24 轮已折叠</span><button class="lk" style="font-size:11px">展开</button><span style="flex:1;height:1px;background:var(--lineS)"></span></div>
+      <div class="conversation" id="conversation" role="log" aria-live="polite">
+        <div class="message user">
+          用阿青的定妆和相机 B，把门口这一段改成压迫感更强的低机位；雨声只用 00:12–00:28。
+          <div class="snapshot">
+            <span class="snap">3 个引用</span><span class="snap">编辑选中</span><span class="snap">逐步确认</span>
+            <span class="snap changed"><i class="ti ti-history-toggle"></i> 1 个引用后已变化</span>
+          </div>
+        </div>
+        <div class="message agent">
+          <div class="process"><i class="ti ti-focus-2"></i><span>正在按相机 B 重排站位</span><span>0:18</span></div>
+          <div class="process"><i class="ti ti-check"></i><span>读了 3 个画布引用 · 版本已冻结</span><span>完成</span></div>
+          <div class="plan">
+            <div class="plan-head"><i class="ti ti-list-check"></i><strong>重做镜头 03 并补环境声</strong><span class="badge">等你确认</span></div>
+            <div class="model-row"><span>视频</span><b>Wan 3.0 · 低机位运镜</b><em>¥4.80</em></div>
+            <div class="model-row"><span>音频</span><b>Foley Rain · 16s</b><em>¥0.30</em></div>
+            <div class="model-row"><span>Agent</span><b>Claude Sonnet 4.6</b><em>只负责规划</em></div>
+            <div class="plan-actions"><button class="text-btn">改参数</button><button class="text-btn primary">确认花 ¥5.10</button></div>
+          </div>
+          <div class="results">
+            <article class="result">
+              <div class="result-title"><i class="ti ti-video"></i><strong>镜头 03 · v4</strong><span>00:08</span></div>
+              <img class="result-media" src="../../research/2026-08-02-3d-director-stage/nomi/05-back-on-canvas.png" alt="镜头 03 视频回执封面">
+              <div class="result-actions"><button class="text-btn"><i class="ti ti-refresh"></i>重跑</button><button class="text-btn go" data-target="video-03"><i class="ti ti-current-location"></i>去画布</button></div>
+            </article>
+            <article class="result">
+              <div class="result-title"><i class="ti ti-cube"></i><strong>相机 B · v5</strong><span>35mm</span></div>
+              <img class="result-media" src="../../research/2026-08-02-3d-director-stage/nomi/01-default-editor.png" alt="相机 B 三维视角回执">
+              <div class="result-actions"><button class="text-btn">换视角</button><button class="text-btn go" data-target="scene-3d"><i class="ti ti-current-location"></i>去画布</button></div>
+            </article>
+            <article class="result">
+              <div class="result-title"><i class="ti ti-wave-sine"></i><strong>雨声环境 · v2</strong><span>00:16</span></div>
+              <div class="audio-preview"><button class="icon-btn" aria-label="播放雨声"><i class="ti ti-player-play"></i></button><div class="mini-wave" aria-label="雨声音频波形"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span>00:16</span></div>
+              <div class="result-actions"><button class="text-btn">替换</button><button class="text-btn go" data-target="audio-02"><i class="ti ti-current-location"></i>去画布</button></div>
+            </article>
+            <article class="result">
+              <div class="result-title"><i class="ti ti-photo"></i><strong>角色参考 · v3</strong><span>裁剪 24%</span></div>
+              <img class="result-media" src="../../audit/2026-08-20-l3-f1-full-journey/07-image-1787216859736.jpg" alt="角色定妆图片回执">
+              <div class="result-actions"><button class="text-btn">改角色</button><button class="text-btn go" data-target="image-01"><i class="ti ti-current-location"></i>去画布</button></div>
+            </article>
+          </div>
+        </div>
+      </div>
 
-<div class="lb"><b>③ 用户</b>气泡</div>
-<div class="c it" data-s="1" style="display:flex;justify-content:flex-end"><div style="max-width:80%;background:var(--ink05);border-radius:10px 10px 3px 10px;padding:7px 10px;line-height:1.5">把第三章拆成镜头，先拍前 5 镜</div></div>
+      <section class="queue" aria-label="指令队列">
+        <div class="queue-top"><i class="ti ti-list"></i><strong>接下来 2 条</strong><span id="queueState">继续执行</span><button class="icon-btn" id="pauseQueue" aria-label="暂停队列" title="暂停队列"><i class="ti ti-player-pause"></i></button></div>
+        <div class="queue-list" id="queueList"></div>
+      </section>
 
-<div class="lb"><b>④ 思考条</b>工序图示</div>
-<div class="c it" data-s="2"><div class="row"><span id="ti"></span><span class="ph" id="tt" style="color:var(--ink60)">正在通读第三章…</span><span style="flex:1"></span><span class="mut" style="font-size:11px">已等 <span id="te" style="font-variant-numeric:tabular-nums">0:03</span></span></div></div>
+      <div class="composer">
+        <div class="context-shelf" id="contextShelf" aria-label="本轮画布上下文"></div>
+        <div class="attachment-shelf" id="attachmentShelf" aria-label="本轮附件"></div>
+        <div class="input-shell">
+          <textarea id="prompt" placeholder="继续告诉 Nomi 要做什么…" aria-label="给 Nomi 的指令"></textarea>
+          <div class="mode-row">
+            <button class="icon-btn menu-trigger" data-menu="attachmentMenu" aria-label="添加附件" title="添加附件"><i class="ti ti-paperclip"></i></button>
+            <button class="icon-btn menu-trigger" data-menu="mentionMenu" aria-label="引用画布或网页" title="引用画布或网页"><i class="ti ti-at"></i></button>
+            <div class="seg" role="group" aria-label="工作方式">
+              <button data-mode="Ask">Ask</button><button class="on" data-mode="编辑选中">编辑选中</button><button data-mode="Agent">Agent</button>
+            </div>
+            <select class="select" id="approval" aria-label="批准策略">
+              <option>逐步确认</option><option>自动批准安全动作</option><option>完全允许（本项目）</option>
+            </select>
+            <select class="select" id="agentModel" aria-label="Agent 模型" title="Agent 模型：Claude Sonnet 4.6">
+              <option value="Claude Sonnet 4.6">Sonnet 4.6</option><option>GPT-5.4</option><option>Gemini 3.1 Pro</option><option>自定义 Agent 模型</option>
+            </select>
+            <button class="icon-btn primary send" id="send" aria-label="发送或加入队列" title="发送或加入队列"><i class="ti ti-arrow-up"></i></button>
+          </div>
+        </div>
 
-<div class="lb"><b>⑤ 阶段线</b>一行</div>
-<div class="c it" data-s="3" style="display:flex;align-items:center;gap:8px"><span style="flex:1;height:1px;background:var(--lineS)"></span><span style="font-size:11px;color:var(--ink40);letter-spacing:.04em">进入 · 生产段</span><span style="flex:1;height:1px;background:var(--lineS)"></span></div>
-
-<div class="lb"><b>⑥ 工具条</b>一行</div>
-<div class="c it" data-s="4"><div class="row"><i class="ti ti-file-text mut" style="font-size:13px"></i><span style="color:var(--ink80)">读了剧本 <span class="mut">第三章 · 2400 字</span></span><span id="k1"></span></div></div>
-
-<div class="lb"><b>⑦ 回复</b>纯文本</div>
-<div class="c it" data-s="5" style="line-height:1.6">拆出 5 个镜头，第 2、4 镜是双人对峙，加了站位参考。</div>
-
-<div class="lb" style="padding-top:15px"><b>⑧ 计划卡</b>批级参数</div>
-<div class="c it" data-s="6"><div class="card">
-  <div class="row" style="margin-bottom:8px"><i class="ti ti-list-check" style="font-size:18px;color:var(--ac)"></i><span style="font-weight:500;flex:1">拆 5 个镜头</span><span class="tag a">等你确认</span></div>
-  <div style="font-size:11px;color:var(--ink40);margin-bottom:4px">这批用</div>
-  <div class="row" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--lineS)">
-    <button class="ctl pick" style="flex:1"><span style="overflow:hidden;text-overflow:ellipsis">wan-3.0</span><i class="ti ti-chevron-down mut" style="font-size:13px;margin-left:auto"></i></button>
-    <button class="ctl pick soft" style="width:150px;flex:none"><span style="overflow:hidden;text-overflow:ellipsis">16:9 · 5s · 720p</span><i class="ti ti-chevron-down mut" style="font-size:13px"></i></button></div>
-  <div id="rw"></div>
-  <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--lineS)">
-    <div style="font-size:11px;color:var(--ink40);margin-bottom:8px">已选 <b style="color:var(--ink80);font-weight:500">5</b> 镜 · 1 镜改过参数</div>
-    <div class="grp"><button class="ctl btn">改一下</button><button class="ctl btn pri">批准</button></div></div></div></div>
-
-<div class="lb" style="padding-top:15px"><b>⑨ 付费卡</b>在对话里</div>
-<div class="c it" data-s="7"><div class="card" style="border-color:var(--ac)">
-  <div class="row" style="margin-bottom:8px"><i class="ti ti-coin" style="font-size:18px;color:var(--ac)"></i><span style="font-weight:500">这一步要花钱</span></div>
-  <div style="font-size:11px;line-height:1.95;color:var(--ink60);border-top:1px solid var(--lineS);border-bottom:1px solid var(--lineS);padding:6px 0;margin-bottom:8px">
-    <div style="display:flex"><span style="flex:1">4 镜 × wan-3.0 · 5s · 720p</span><span style="color:var(--ink80)">¥ 10.00</span></div>
-    <div style="display:flex"><span style="flex:1">1 镜 × wan-3.0 · 10s · 720p</span><span style="color:var(--ink80)">¥ 5.00</span></div>
-    <div style="display:flex;color:var(--ink);font-weight:500;padding-top:2px;font-size:12px"><span style="flex:1">合计</span><span>¥ <span class="n" id="pr">0.00</span></span></div></div>
-  <div style="display:flex;gap:6px;font-size:11px;color:var(--warn);line-height:1.55;margin-bottom:9px"><i class="ti ti-lock" style="font-size:13px;margin-top:1px;flex:none"></i><span>过闸后不能再改：镜头数、模型、时长、清晰度。提示词仍可改。</span></div>
-  <div class="grp"><button class="ctl btn">先不跑</button><button class="ctl btn pri">确认花 ¥15.00</button></div></div></div>
-
-<div class="lb"><b>⑩ 写入回执</b>带撤销</div>
-<div class="c it" data-s="8"><div class="row"><span id="k2"></span><span style="color:var(--ink80);flex:1">已在画布加 5 个节点 <span class="mut">· 分镜 01–05</span></span><button class="ctl btn">撤销</button></div></div>
-
-<div class="lb"><b>⑪ 排队</b>一行</div>
-<div class="c it" data-s="9"><div class="row"><i class="ti ti-hourglass mut" style="font-size:13px"></i><span class="mut">排队中 · 前面还有 <span class="n" id="qn" style="color:var(--ink80)">3</span> 个</span></div></div>
-
-<div class="lb" style="padding-top:13px"><b>⑫ 进度</b>原位更新</div>
-<div class="c it" data-s="10"><div class="row"><span id="pi"></span><span style="white-space:nowrap;color:var(--ink80)">生成镜头</span><div class="th"><div class="tf" id="bar"></div></div><span class="mut" style="font-size:11px"><span class="n" id="pn">0</span>/5</span><button class="ctl btn">停止</button></div></div>
-
-<div class="lb" style="padding-top:14px"><b>⑬ 产物</b>模糊转清晰</div>
-<div class="c it" data-s="11"><div class="card" style="padding:8px 9px">
-  <div style="display:flex;gap:6px;margin-bottom:8px" id="tb"></div>
-  <div class="row"><span style="font-size:11px;color:var(--ink40);flex:1" id="tc">生成中…</span><button class="ctl btn acc" style="min-width:96px">去画布 <i class="ti ti-arrow-right" style="font-size:16px"></i></button></div></div></div>
-
-<div class="lb" style="padding-top:14px"><b>⑭ 多候选</b>并排 ≤3</div>
-<div class="c it" data-s="12"><div class="card" style="padding:8px 9px"><div style="font-size:11px;color:var(--ink40);margin-bottom:6px">分镜 04 出了 3 版</div><div style="display:flex;gap:6px" id="cd"></div></div></div>
-
-<div class="lb" style="padding-top:14px"><b>⑮ 失败条</b>三个等宽</div>
-<div class="c it" data-s="13"><div class="card" style="border-color:var(--dg);background:var(--dgBg)">
-  <div class="row" style="margin-bottom:4px"><i class="ti ti-alert-triangle" style="font-size:18px;color:var(--dg)"></i><span style="font-weight:500;color:var(--dg)">分镜 05 没生成出来</span></div>
-  <div style="line-height:1.6;color:var(--ink80);margin-bottom:3px">wan-3.0 说这张参考图里有它不接受的内容，退回了。<b style="font-weight:500">这次没有扣费。</b></div>
-  <div style="font-size:11px;color:var(--ink40);margin-bottom:9px">只有这一镜失败，另外 4 镜正常。</div>
-  <div class="grp"><button class="ctl btn pri">换模型重试</button><button class="ctl btn">改提示词</button><button class="ctl btn">看日志</button></div></div></div>
-
-<div class="lb" style="padding-top:14px"><b>⑯ 有出入</b>我们独有</div>
-<div class="c it" data-s="14"><div class="card" style="border-color:var(--warn)">
-  <div class="row" style="margin-bottom:4px"><i class="ti ti-git-compare" style="font-size:18px;color:var(--warn)"></i><span style="font-weight:500">做出来的和你批的不一样</span></div>
-  <div style="line-height:1.6;color:var(--ink80);margin-bottom:9px">你批的 5s，实际按 6s 跑 —— wan-3.0 最短 6s。</div>
-  <div class="grp"><button class="ctl btn pri">撤销这笔</button><button class="ctl btn">让 AI 修</button><button class="ctl btn">知道了</button></div></div></div>
-
-<div class="lb" style="padding-top:14px"><b>⑰ 反问</b>≤3 问合并</div>
-<div class="c it" data-s="15"><div class="card">
-  <div class="row" style="margin-bottom:8px"><i class="ti ti-help-circle" style="font-size:18px;color:var(--ac)"></i><span style="font-weight:500">两个问题，一起问了</span></div>
-  <div style="font-size:11px;color:var(--ink40);margin-bottom:5px">1 · 第 4 镜的机位</div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" data-q><span class="ctl chip">仰拍</span><span class="ctl chip">平视</span><span class="ctl chip">俯拍</span></div>
-  <div style="font-size:11px;color:var(--ink40);margin-bottom:5px">2 · 整段调子</div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap" data-q><span class="ctl chip">冷 · 压抑</span><span class="ctl chip">暖 · 怀旧</span></div></div></div>
-
-<div class="lb" style="padding-top:12px"><b>⑱ 指令队列</b>框上方</div>
-<div class="c it" data-s="16" style="padding-bottom:0"><div style="background:var(--ink05);border:1px solid var(--lineS);border-radius:8px;padding:6px 9px">
-  <div style="font-size:11px;color:var(--ink40);margin-bottom:4px">agent 忙着 · 这些排在后面</div><div id="qb"></div></div></div>
-
-<div class="lb" style="padding-top:11px"><b>底</b>输入框</div>
-<div class="c" style="border-radius:0 0 var(--r-panel) var(--r-panel);padding-top:8px"><div style="border:1px solid var(--line);border-radius:var(--r-panel);padding:7px 9px">
-  <div style="color:var(--ink40);margin-bottom:8px">再说点什么…</div>
-  <div class="row"><button class="ctl btn ico" aria-label="附件"><i class="ti ti-paperclip" style="font-size:16px"></i></button><button class="ctl btn ico" aria-label="引用"><i class="ti ti-at" style="font-size:16px"></i></button><span style="flex:1"></span><button class="ctl pick">Agent <i class="ti ti-chevron-down mut" style="font-size:13px"></i></button><button class="ctl btn pri ico" style="border-radius:999px" aria-label="发送"><i class="ti ti-arrow-up" style="font-size:16px"></i></button></div></div></div>
-</div>
-
-<div class="sec">同排按钮四条规则</div>
-<div class="rules">
-<div><b>1 ·</b> 同一排的动作按钮 <b>等宽均分</b>（flex:1），主次<b>只用颜色</b>分：深底=主，描边=次。层级不靠尺寸。</div>
-<div><b>2 ·</b> 一排最多 <b>3 个</b>；再多 → 主按钮 + 「更多」收起。</div>
-<div><b>3 ·</b> 文字链 <b>不与按钮同排</b> —— 要么单独一行，要么升级成按钮。</div>
-<div><b>4 ·</b> 选项 chip 例外：按内容定宽（它是<b>内容</b>不是动作），但同组高/圆角/字号必须一致。</div>
-<div style="color:var(--ink40);font-size:11px;margin-top:6px;line-height:1.7">派生纪律：<b>文案要为布局让步</b> —— 三等分时「换个模型重试」会挤，写「换模型重试」。实现时长文案撑破行 = 设计错误，不是内容问题。</div>
-</div>
-
-</div>
+        <div class="menu" id="attachmentMenu" role="menu">
+          <button data-kind="image" data-attach="character-ref.png"><i class="ti ti-photo"></i><span>图片</span><small>PNG / JPG / WebP</small></button>
+          <button data-kind="video" data-attach="reference-take.mp4"><i class="ti ti-video"></i><span>视频</span><small>MP4 / MOV / WebM</small></button>
+          <button data-kind="audio" data-attach="temp-voice.wav"><i class="ti ti-wave-sine"></i><span>音频</span><small>WAV / MP3 / M4A</small></button>
+          <button data-kind="document" data-attach="shot-notes.pdf"><i class="ti ti-file-text"></i><span>文档</span><small>PDF / DOCX / TXT</small></button>
+        </div>
+        <div class="menu" id="mentionMenu" role="menu">
+          <button data-ref="image-01"><i class="ti ti-photo"></i><span>角色定妆 · 阿青</span><small>图片裁剪</small></button>
+          <button data-ref="video-03"><i class="ti ti-video"></i><span>镜头 03 · 02:10–02:14</span><small>时间段</small></button>
+          <button data-ref="scene-3d"><i class="ti ti-cube"></i><span>相机 B · 低机位</span><small>3D 视角</small></button>
+          <button data-custom="web"><i class="ti ti-world"></i><span>当前网页选区</span><small>来源已记录</small></button>
+          <button data-custom="skill"><i class="ti ti-sparkles"></i><span>镜头语言与摄影技法</span><small>Skill</small></button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</main>
+<div class="toast" id="toast" role="status"></div>
 
 <script>
-(function(){
-var D=document,T=[],tmr,pht;
-var SS='stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"';
-function ico(k){var c=' width="17" height="17" viewBox="0 0 24 24" class="ic" aria-hidden="true" style="flex:none;color:'+(k===3?'var(--ac)':'var(--ink60)')+'"';
- if(k===0)return '<svg'+c+'><rect x="5" y="3" width="14" height="18" rx="2" '+SS+'/><path class="L1" d="M8.5 8h7" '+SS+'/><path class="L2" d="M8.5 12h7" '+SS+'/><path class="L3" d="M8.5 16h4" '+SS+'/></svg>';
- if(k===1)return '<svg'+c+'><rect class="B1" x="4" y="4" width="16" height="4.2" rx="1.3" '+SS+'/><rect class="B2" x="4" y="9.9" width="16" height="4.2" rx="1.3" '+SS+'/><rect class="B3" x="4" y="15.8" width="16" height="4.2" rx="1.3" '+SS+'/></svg>';
- if(k===2)return '<svg'+c+'><g class="FC"><path d="M4 9V5.8A1.8 1.8 0 0 1 5.8 4H9" '+SS+'/><path d="M15 4h3.2A1.8 1.8 0 0 1 20 5.8V9" '+SS+'/><path d="M20 15v3.2a1.8 1.8 0 0 1-1.8 1.8H15" '+SS+'/><path d="M9 20H5.8A1.8 1.8 0 0 1 4 18.2V15" '+SS+'/></g><circle cx="12" cy="12" r="2.4" '+SS+'/></svg>';
- if(k===3)return '<svg'+c+'><rect x="3.5" y="9.5" width="17" height="10.5" rx="1.8" '+SS+'/><g class="CL"><rect x="3.5" y="4.6" width="17" height="4.9" rx="1.2" '+SS+'/><path d="M8.2 4.6 10.6 9.5M13 4.6 15.4 9.5" '+SS+'/></g></svg>';
- return '<svg'+c+'><path d="M3 6.5h18M3 12h18M3 17.5h18" stroke="currentColor" stroke-width="1.4" opacity=".28" stroke-linecap="round"/><rect class="T1" x="9" y="4.7" width="6" height="3.6" rx="1.1" '+SS+'/><rect class="T2" x="9" y="10.2" width="6" height="3.6" rx="1.1" '+SS+'/><rect class="T3" x="9" y="15.7" width="6" height="3.6" rx="1.1" '+SS+'/></svg>'}
-function ck(){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#248a3d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="ckp" d="M4.5 12.5l5 5 10-10"/></svg>'}
-function $(s){return D.querySelector(s)}
-function at(m,f){T.push(setTimeout(f,m))}
-function tick(e,v){e.classList.add('tk');setTimeout(function(){e.textContent=v;e.classList.remove('tk')},190)}
-var PH=[["正在通读第三章","正在跟场记对本","正在圈重点"],["正在画分镜","正在排镜头顺序"],["正在架机位","正在调焦"],["正在打板","正在走位彩排","正在盯回放"],["正在压时间线"]];
-var SH=[['01','客栈外景 · 黄昏',1,0],['02','两人对峙 · 中景',1,0],['03','手部特写',0,0],['04','对峙反打',1,'10s'],['05','推门离开',0,0]];
-var q=['第 3 镜换成雨天','拆完排进时间轴'],pg=0,pi=0,sec=3;
+(() => {
+  const D=document;
+  const nodes=[...D.querySelectorAll('.node')];
+  const selected=new Set(['image-01']);
+  const attachments=[];
+  const extraRefs=[];
+  let mode='编辑选中';
+  let paused=false;
+  let queue=[
+    {id:1,text:'第 3 镜结束后接门铃声',meta:'2 引用 · 编辑选中 · 逐步确认'},
+    {id:2,text:'再给我一版更克制的运镜',meta:'3 引用 · Agent · 自动批准安全动作'}
+  ];
+  const $=s=>D.querySelector(s);
+  const icon={image:'photo',video:'video',audio:'wave-sine',model3d:'cube'};
+  const byId=id=>nodes.find(n=>n.dataset.id===id);
 
-function dq(){$('#qb').innerHTML=q.length?q.map(function(t,i){return '<div style="display:flex;align-items:center;gap:7px;padding:2px 0;color:var(--ink80)"><span style="color:var(--ink40);font-size:11px">'+(i+1)+'</span><span style="flex:1">'+t+'</span><i class="ti ti-x" data-q="'+i+'" style="font-size:13px;color:var(--ink40);cursor:pointer"></i></div>'}).join(''):'<div style="color:var(--ink40);padding:2px 0">都做完了</div>'}
+  function toast(text){
+    const t=$('#toast');t.textContent=text;t.classList.add('show');
+    clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),1800);
+  }
+  function closeMenus(){D.querySelectorAll('.menu').forEach(m=>m.classList.remove('open'))}
+  function refFor(node){
+    return {id:node.dataset.id,kind:node.dataset.kind,title:node.dataset.title,sub:node.dataset.sub};
+  }
+  function renderContext(){
+    const refs=[...new Map(
+      [...selected].map(id=>refFor(byId(id))).concat(extraRefs).map(ref=>[ref.id,ref])
+    ).values()];
+    $('#contextShelf').innerHTML=refs.map(r=>`
+      <div class="context-chip" title="${r.sub||''}">
+        <i class="ti ti-${icon[r.kind]||'at'}"></i><span>${r.title}<small> · ${r.sub||'引用'}</small></span>
+        <button data-remove-ref="${r.id}" aria-label="移除 ${r.title}"><i class="ti ti-x"></i></button>
+      </div>`).join('');
+    $('#canvasStatus').textContent=`已选 ${selected.size} 项 · 点击对象后问 Nomi`;
+  }
+  function renderAttachments(){
+    const glyph={video:'video',audio:'wave-sine',document:'file-text'};
+    const type={video:'视频',audio:'音频',document:'文档'};
+    $('#attachmentShelf').innerHTML=attachments.map((a,i)=>a.kind==='image'?`
+      <div class="attachment-image" title="${a.label}"><img src="../../audit/2026-08-20-l3-f1-full-journey/07-image-1787216859736.jpg" alt="${a.label}">
+      <button data-remove-attach="${i}" aria-label="移除附件 ${a.label}"><i class="ti ti-x"></i></button></div>`:`
+      <div class="attachment-chip"><span class="attachment-glyph"><i class="ti ti-${glyph[a.kind]}"></i></span>
+      <span class="attachment-label"><b>${a.label}</b><small>${type[a.kind]} · 2.4 MB</small></span>
+      <button data-remove-attach="${i}" aria-label="移除附件 ${a.label}"><i class="ti ti-x"></i></button></div>`).join('');
+  }
+  function renderQueue(){
+    $('#queueList').innerHTML=queue.map((q,i)=>`
+      <div class="queue-item">
+        <span class="queue-num">${i+1}</span>
+        <div class="queue-copy"><b>${q.text}</b><span>${q.meta}</span></div>
+        <button class="icon-btn move-up" data-up="${i}" aria-label="上移" title="上移" ${i===0?'disabled':''}><i class="ti ti-arrow-up"></i></button>
+        <button class="icon-btn move-down" data-down="${i}" aria-label="下移" title="下移" ${i===queue.length-1?'disabled':''}><i class="ti ti-arrow-down"></i></button>
+        <button class="icon-btn" data-edit="${i}" aria-label="编辑" title="编辑"><i class="ti ti-pencil"></i></button>
+        <button class="icon-btn" data-delete="${i}" aria-label="删除" title="删除"><i class="ti ti-x"></i></button>
+      </div>`).join('');
+    $('.queue-top strong').textContent=`接下来 ${queue.length} 条`;
+  }
+  function setSelection(id,multi=false){
+    if(!multi)selected.clear();
+    if(multi&&selected.has(id))selected.delete(id);else selected.add(id);
+    nodes.forEach(n=>n.classList.toggle('selected',selected.has(n.dataset.id)));
+    renderContext();
+  }
+  function locate(id){
+    const node=byId(id);if(!node)return;
+    setSelection(id);
+    node.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});
+    node.classList.remove('located');void node.offsetWidth;node.classList.add('located');
+    toast(`已定位 · ${node.dataset.title}`);
+  }
+  function addRef(id){
+    if(selected.has(id)||extraRefs.some(r=>r.id===id)){toast('这个引用已经在本轮上下文里');return}
+    const node=byId(id);extraRefs.push(refFor(node));renderContext();toast(`已引用 · ${node.dataset.title}`);
+  }
 
-function play(){
- T.forEach(clearTimeout);T=[];clearInterval(tmr);clearInterval(pht);
- D.querySelectorAll('.it').forEach(function(e){e.classList.add('hid')});
- $('#rw').innerHTML='';$('#tb').innerHTML='';$('#bar').style.width='0';$('#pn').textContent='0';
- $('#pr').textContent='0.00';$('#qn').textContent='3';$('#k1').innerHTML='';$('#k2').innerHTML='';
- $('#cb').style.width='12%';$('#cn').textContent='12';$('#tc').textContent='生成中…';$('#te').textContent='0:03';
- pg=0;pi=0;sec=3;
- $('#ti').innerHTML=ico(0);$('#pi').innerHTML=ico(3);
- var t=$('#tt');t.textContent=PH[0][0]+'…';t.style.color='var(--ink60)';
- $('#cd').innerHTML=[1,2,3].map(function(n,i){return '<div class="sq cd" style="flex:1;cursor:pointer;border-color:'+(i===0?'var(--ac)':'var(--lineS)')+';border-width:'+(i===0?'2px':'1px')+'">v'+n+(i===0?' ·生效':'')+'</div>'}).join('');
- dq();
-
- tmr=setInterval(function(){sec++;$('#te').textContent='0:'+String(sec).padStart(2,'0')},1000);
- pht=setInterval(function(){var e=$('#tt');e.classList.add('o');setTimeout(function(){pi=(pi+1)%PH[pg].length;e.textContent=PH[pg][pi]+'…';e.classList.remove('o')},300)},2500);
-
- function sh(i,d){at(d,function(){var e=D.querySelector('[data-s="'+i+'"]');if(e)e.classList.remove('hid')})}
- sh(0,100);sh(1,300);sh(2,700);
- at(2100,function(){clearInterval(pht);var e=$('#tt');e.textContent='想了 4 秒 · 5 镜，2 镜要站位参考';e.style.color='var(--ink40)';$('#ti').innerHTML=ico(1)});
- sh(3,2400);sh(4,2700);at(3400,function(){$('#k1').innerHTML=ck()});
- sh(5,3700);sh(6,4100);
- SH.forEach(function(s,i){at(4300+i*120,function(){
-   var d=D.createElement('div');
-   d.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0;opacity:0;transform:translateY(4px);transition:'+ '260ms var(--ease)';
-   d.innerHTML='<input type="checkbox" checked style="width:13px;height:13px;margin:0;accent-color:oklch(0.55 0.13 250)"><span style="color:var(--ink40);font-variant-numeric:tabular-nums">'+s[0]+'</span><span style="flex:1;color:var(--ink80);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s[1]+'</span>'+(s[2]?'<span class="tag a">站位参考</span>':'')+(s[3]?'<span class="tag a">已改 '+s[3]+'</span>':'<span style="font-size:11px;color:var(--ink40)">同上</span>')+'<i class="ti ti-chevron-down" style="font-size:13px;color:var(--ink40)"></i>';
-   $('#rw').appendChild(d);requestAnimationFrame(function(){d.style.opacity='1';d.style.transform='none'})})});
- sh(7,5400);
- for(var k=1;k<=15;k++){(function(k){at(5600+k*42,function(){$('#pr').textContent=(15*k/15).toFixed(2)})})(k)}
- sh(8,6600);at(6800,function(){$('#k2').innerHTML=ck()});
- sh(9,7200);at(7900,function(){tick($('#qn'),'2')});at(8500,function(){tick($('#qn'),'1')});
- at(9100,function(){$('#ti').innerHTML=ico(3)});
- sh(10,9200);sh(11,9400);
- [0,1,2].forEach(function(i){at(9500+i*80,function(){var d=D.createElement('div');d.className='sq w';d.style.flex='1';d.textContent='分镜 0'+(i+1);$('#tb').appendChild(d)})});
- [1,2,3,4,5].forEach(function(n,i){at(9600+i*850,function(){
-   $('#bar').style.width=Math.round(n/5*100)+'%';tick($('#pn'),String(n));
-   $('#cb').style.width=(12+n*9)+'%';$('#cn').textContent=String(12+n*9)})});
- [0,1,2].forEach(function(i){at(10300+i*850,function(){var d=$('#tb').children[i];if(!d)return;
-   d.classList.remove('w');d.classList.add('dv');
-   d.style.background='oklch(0.9 0.03 '+(200+i*45)+')';d.style.color='oklch(0.4 0.06 '+(200+i*45)+')';
-   d.innerHTML='分镜 0'+(i+1)+'<div class="hv"><span class="hb" title="改这条"><i class="ti ti-pencil" style="font-size:14px"></i></span><span class="hb" title="重跑"><i class="ti ti-refresh" style="font-size:14px"></i></span></div>';
-   requestAnimationFrame(function(){d.classList.add('on')})})});
- at(13100,function(){$('#tc').innerHTML='3 镜已出 · 1 镜失败 <span style="color:var(--ink20)">·</span> 悬停单张可改';clearInterval(tmr)});
- sh(12,13300);sh(13,13700);sh(14,14100);sh(15,14500);sh(16,14900);
-}
-
-$('#qb').addEventListener('click',function(e){var i=e.target.getAttribute('data-q');if(i!=null){q.splice(+i,1);dq()}});
-$('#cd').addEventListener('click',function(e){var t=e.target.closest('.cd');if(!t)return;
- D.querySelectorAll('#cd .cd').forEach(function(d,j){var on=d===t;d.style.borderColor=on?'var(--ac)':'var(--lineS)';d.style.borderWidth=on?'2px':'1px';d.textContent='v'+(j+1)+(on?' ·生效':'')})});
-D.querySelectorAll('[data-q]').forEach(function(g){g.addEventListener('click',function(e){if(!e.target.classList.contains('chip'))return;
- g.querySelectorAll('.chip').forEach(function(c){c.classList.remove('on')});e.target.classList.add('on')})});
-$('#rl').addEventListener('click',function(){D.body.classList.toggle('rule')});
-$('#rp').addEventListener('click',play);
-play();
+  nodes.forEach(n=>{
+    n.addEventListener('click',e=>{if(e.target.closest('button'))return;setSelection(n.dataset.id,e.shiftKey)});
+    n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelection(n.dataset.id,e.shiftKey)}});
+  });
+  D.addEventListener('click',e=>{
+    const trigger=e.target.closest('.menu-trigger');
+    if(trigger){const menu=$('#'+trigger.dataset.menu);const was=menu.classList.contains('open');closeMenus();if(!was)menu.classList.add('open');e.stopPropagation();return}
+    if(!e.target.closest('.menu'))closeMenus();
+    const go=e.target.closest('.go');if(go)locate(go.dataset.target);
+    const modeBtn=e.target.closest('[data-mode]');if(modeBtn){mode=modeBtn.dataset.mode;D.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('on',b===modeBtn))}
+    const att=e.target.closest('[data-attach]');if(att){attachments.push({kind:att.dataset.kind,label:att.dataset.attach});renderAttachments();closeMenus();toast('附件已加入本轮草稿')}
+    const ref=e.target.closest('[data-ref]');if(ref){addRef(ref.dataset.ref);closeMenus()}
+    const custom=e.target.closest('[data-custom]');if(custom){
+      const item=custom.dataset.custom==='web'
+        ?{id:'web-selection',kind:'web',title:'网页选区 · 雨夜摄影参考',sub:'来源 · example.org'}
+        :{id:'skill-cinematography',kind:'skill',title:'镜头语言与摄影技法',sub:'Skill · storyboard'};
+      if(!extraRefs.some(r=>r.id===item.id))extraRefs.push(item);renderContext();closeMenus();toast('引用已加入本轮草稿');
+    }
+    const rr=e.target.closest('[data-remove-ref]');if(rr){
+      const id=rr.dataset.removeRef;selected.delete(id);const i=extraRefs.findIndex(r=>r.id===id);if(i>=0)extraRefs.splice(i,1);
+      nodes.forEach(n=>n.classList.toggle('selected',selected.has(n.dataset.id)));renderContext();
+    }
+    const ra=e.target.closest('[data-remove-attach]');if(ra){attachments.splice(+ra.dataset.removeAttach,1);renderAttachments()}
+    const del=e.target.closest('[data-delete]');if(del){queue.splice(+del.dataset.delete,1);renderQueue()}
+    const up=e.target.closest('[data-up]');if(up&&!up.disabled){const i=+up.dataset.up;[queue[i-1],queue[i]]=[queue[i],queue[i-1]];renderQueue()}
+    const down=e.target.closest('[data-down]');if(down&&!down.disabled){const i=+down.dataset.down;[queue[i+1],queue[i]]=[queue[i],queue[i+1]];renderQueue()}
+    const edit=e.target.closest('[data-edit]');if(edit){const i=+edit.dataset.edit;$('#prompt').value=queue[i].text;queue.splice(i,1);renderQueue();$('#prompt').focus();toast('已放回输入框，可修改后重新排队')}
+  });
+  $('#send').addEventListener('click',()=>{
+    const input=$('#prompt');const text=input.value.trim();if(!text){toast('先写下要做什么');input.focus();return}
+    const count=selected.size+extraRefs.length;
+    queue.push({id:Date.now(),text,meta:`${count} 引用 · ${attachments.length} 附件 · ${mode} · ${$('#approval').value}`});
+    input.value='';attachments.splice(0);renderAttachments();renderQueue();toast('Agent 正在忙，完整草稿已加入队列');
+  });
+  $('#prompt').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){$('#send').click()}});
+  $('#pauseQueue').addEventListener('click',()=>{
+    paused=!paused;$('#queueState').textContent=paused?'已暂停':'继续执行';
+    $('#pauseQueue').innerHTML=`<i class="ti ti-player-${paused?'play':'pause'}"></i>`;
+    $('#pauseQueue').setAttribute('aria-label',paused?'继续队列':'暂停队列');toast(paused?'队列已暂停':'队列将继续执行');
+  });
+  $('#theme').addEventListener('click',()=>{D.body.classList.toggle('dark');$('#theme i').className=`ti ti-${D.body.classList.contains('dark')?'sun':'moon'}`});
+  $('#vocab').addEventListener('click',()=>toast('21 种对话形态共用同一状态与控件规格'));
+  D.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenus()});
+  renderContext();renderAttachments();renderQueue();
 })();
 </script>
 </body>
