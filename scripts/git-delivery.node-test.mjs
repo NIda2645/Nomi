@@ -11,6 +11,7 @@ import {
   assertPreflightState,
   classifyIdentity,
   inspectDeliveryState,
+  parseCli,
   preflightDelivery,
   runBoundedCommand,
   verifyMergedDelivery,
@@ -73,6 +74,29 @@ test('identity classification keeps commit identity separate from tree identity'
   assert.equal(
     classifyIdentity({ headCommit: 'a', headTree: 't1', remoteCommit: 'b', remoteTree: 't2' }),
     'different-tree',
+  )
+})
+
+test('documented pnpm argument separator is transparent to delivery commands', () => {
+  assert.deepEqual(
+    parseCli([
+      'verify-merged',
+      '--',
+      '--expected-sha',
+      '0123456789abcdef0123456789abcdef01234567',
+      '--remote',
+      'upstream',
+      '--base',
+      'trunk',
+    ]),
+    {
+      command: 'verify-merged',
+      options: {
+        expectedSha: '0123456789abcdef0123456789abcdef01234567',
+        remote: 'upstream',
+        base: 'trunk',
+      },
+    },
   )
 })
 
