@@ -7,6 +7,18 @@ const FULL_POLICY = Object.freeze({
   package: true,
 })
 
+// Validation infrastructure changes exercise the gate itself. They still run
+// the full functional lanes, but performance and packaging are separate risk
+// surfaces and must not turn runner variance into an unrelated merge blocker.
+const VALIDATION_INFRASTRUCTURE_POLICY = Object.freeze({
+  unit: 'full',
+  desktop: true,
+  journeys: true,
+  canvas: 'full',
+  performance: false,
+  package: false,
+})
+
 const VALIDATION_INFRASTRUCTURE_PATTERNS = [
   /^\.github\/(?:actions|workflows)\//,
   /^scripts\/(?:validation-policy|select-quality-gate-profile|check-quality-gate-workflow|test-system|test-focused|git-delivery|canvas-performance-verdict|eval-journey|.*walkthrough)(?:\.|$)/,
@@ -98,7 +110,14 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
     matchesAny(entry.path, VALIDATION_INFRASTRUCTURE_PATTERNS),
   )
   if (validationInfrastructure) {
-    return failClosed(files, `validation_infrastructure:${validationInfrastructure.path}`)
+    return {
+      ...VALIDATION_INFRASTRUCTURE_POLICY,
+      release: false,
+      failClosed: true,
+      reason: `validation_infrastructure:${validationInfrastructure.path}`,
+      reasons: [`validation_infrastructure:${validationInfrastructure.path}`],
+      files,
+    }
   }
 
   const policy = {

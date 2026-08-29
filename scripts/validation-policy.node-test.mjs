@@ -106,13 +106,11 @@ test('main pushes reuse changed-file risk instead of becoming full only because 
   )
 })
 
-test('empty, delete, rename, validation infrastructure, and explicit full requests fail closed', () => {
+test('empty, delete, rename, and explicit full requests fail closed across every surface', () => {
   const cases = [
     classifyValidationPolicy([]),
     classifyValidationPolicy([{ status: 'D', path: 'src/workbench/foo.ts' }]),
     classifyValidationPolicy([{ status: 'R100', path: 'src/workbench/renamed.ts' }]),
-    classifyValidationPolicy(['scripts/validation-policy.mjs']),
-    classifyValidationPolicy(['eslint.config.mjs']),
     classifyValidationPolicy(['README.md'], { requestedMode: 'full' }),
     classifyValidationPolicy(['README.md'], { eventName: 'workflow_dispatch' }),
   ]
@@ -125,6 +123,21 @@ test('empty, delete, rename, validation infrastructure, and explicit full reques
       performance: true,
       package: true,
       release: result.reason === 'explicit_full_validation' || result.reason === 'workflow_dispatch_release_boundary',
+      failClosed: true,
+    })
+  }
+})
+
+test('validation infrastructure changes exercise functional coverage without unrelated performance or packaging gates', () => {
+  for (const files of [['scripts/validation-policy.mjs'], ['.github/workflows/quality-gate.yml'], ['eslint.config.mjs']]) {
+    assert.deepEqual(surfaces(classifyValidationPolicy(files)), {
+      unit: 'full',
+      desktop: true,
+      journeys: true,
+      canvas: 'full',
+      performance: false,
+      package: false,
+      release: false,
       failClosed: true,
     })
   }

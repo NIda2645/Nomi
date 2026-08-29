@@ -23,6 +23,11 @@
 | `package` | boolean | macOS 安装目录、运行时身份和签名 |
 | `failClosed` | boolean | 无法安全缩小范围时全维度执行 |
 
+验证基础设施本身（`.github/workflows/**`、质量门脚本、测试框架配置和走查/性能测试协议）使用一个受控的 fail-closed
+变体：仍执行完整单元、桌面、journey 和功能画布验收，但不自动执行性能或 macOS 打包。性能与打包属于独立风险面，只有
+实际修改 React Flow/媒体渲染或打包边界时才启用。这样修改测试系统不会把 Linux runner 的帧调度抖动误报为产品回退，
+同时测试系统的功能覆盖仍然保持 fail-closed。
+
 具体规则：
 
 - Contracts 永远执行。

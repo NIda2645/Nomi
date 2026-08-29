@@ -2,9 +2,9 @@
   "schema_version": 3,
   "id": "2026-08-30-risk-scoped-validation-evidence",
   "problem_type": "Validation scope, CI orchestration, and merged-main evidence divergence",
-  "symptom": "Unrelated pull requests and every main push could trigger full unit, desktop, canvas performance, and macOS package validation, while delivery verification ran the same full-local profile a third time after merge and CI runtime warnings depended on a maintainer noticing logs manually.",
-  "direct_cause": "The classifier exposed only fast/full, treated every push as a release boundary, CI bound independent validation surfaces to full, canvas acceptance embedded the performance benchmark, and merged delivery owned a separate hard-coded full-local decision instead of consuming exact-SHA CI evidence.",
-  "class_root": "The repository lacked one executable risk policy and evidence contract shared by changed-file classification, CI job selection, system-test profiles, runtime annotations, and merged-main delivery.",
+  "symptom": "Unrelated pull requests and every main push could trigger full unit, desktop, canvas performance, and macOS package validation, while validation-system changes also treated Linux runner frame-timing variance as a product regression. Delivery verification ran the same full-local profile a third time after merge and CI runtime warnings depended on a maintainer noticing logs manually.",
+  "direct_cause": "The classifier exposed only fast/full, treated every push as a release boundary, used one all-surfaces fail-closed policy for both product ambiguity and validation-infrastructure changes, CI bound independent validation surfaces to full, canvas acceptance embedded the performance benchmark, and merged delivery owned a separate hard-coded full-local decision instead of consuming exact-SHA CI evidence.",
+  "class_root": "The repository lacked one executable risk policy and evidence contract shared by changed-file classification, CI job selection, system-test profiles, runtime annotations, and merged-main delivery; its fail-closed fallback also had no distinction between functional coverage and machine-sensitive performance/package evidence.",
   "affected_population": [
     "Maintainers and agents delivering documentation, renderer, Electron, canvas, performance, packaging, and test-infrastructure changes",
     "Pull-request and main-push GitHub Actions runs for every future commit",
@@ -60,12 +60,13 @@
   "invariants": [
     "PR and main-push classification use the same deterministic risk policy over Git name-status entries.",
     "Contracts always run, while unit, desktop, journeys, canvas, performance, and package are independently selected.",
-    "Unknown, empty, deleted, renamed, manual full, and validation-infrastructure changes fail closed to every validation surface.",
+    "Unknown, empty, deleted, renamed, and manual full changes fail closed to every validation surface.",
+    "Validation-infrastructure changes fail closed to full functional unit, desktop, journey, and canvas coverage while leaving performance and packaging disabled as independent risk surfaces.",
     "Functional canvas acceptance never implicitly runs the performance benchmark.",
     "Merged verification accepts only exact fetched main identity and exact-SHA required-check evidence; it never launches a third local full suite.",
     "Unexpected CI warning/failure annotations, expired exceptions, and annotation API failures block Quality Gate with machine-readable evidence; source lint warnings remain visible but are delegated to a non-growing lint:ci budget."
   ],
-  "generality_proof": "Every PR and main-push diff converges on validation-policy before workflow jobs are selected, every local profile uses the same separated stage vocabulary, and every final delivery converges on git-delivery's exact-commit evidence boundary. This covers documentation, renderer, Electron, journey, React Flow, performance, packaging, deletion/rename, infrastructure, and manual release populations without an event-specific fallback.",
+  "generality_proof": "Every PR and main-push diff converges on validation-policy before workflow jobs are selected, every local profile uses the same separated stage vocabulary, and every final delivery converges on git-delivery's exact-commit evidence boundary. Product risk paths select their owned functional/performance/package surfaces; validation-infrastructure paths select full functional coverage without machine-sensitive unrelated gates; deletion/rename, empty, unknown, and manual release populations still fail closed to every surface.",
   "shared_boundaries": [
     {
       "path": "scripts/validation-policy.mjs",
@@ -116,10 +117,10 @@
   "prevention": {
     "kind": "centralized-boundary",
     "enforcement_path": "scripts/validation-policy.mjs",
-    "invariant": "All changed-file validation callers receive one complete, fail-closed set of independent validation surfaces from the same policy.",
+    "invariant": "All changed-file validation callers receive one complete, fail-closed set of independent validation surfaces from the same policy; validation infrastructure keeps full functional coverage but does not inherit unrelated performance or package surfaces.",
     "failure_mode": "Unclassifiable input selects every surface; unexpected CI annotations or annotation API failures block Quality Gate; source lint warnings cannot exceed the tightened lint:ci budget; missing, pending, or failed exact-SHA required checks prevent a merged receipt.",
     "exception_policy": "none",
-    "strategy": "Replace the fast/full switch and hard-coded merged full-local run with one policy vocabulary, conditional jobs, separated system stages, structured annotation hygiene, and exact-SHA evidence verification.",
+    "strategy": "Replace the fast/full switch and hard-coded merged full-local run with one policy vocabulary, a functional-only validation-infrastructure fallback, conditional jobs, separated system stages, structured annotation hygiene, and exact-SHA evidence verification.",
     "artifacts": [
       "scripts/validation-policy.mjs",
       "scripts/select-quality-gate-profile.mjs",
@@ -166,7 +167,7 @@
   },
   "migration": "Existing fast/full callers move atomically to the multi-dimensional policy outputs. Old per-SHA full-local receipts remain inert historical files in the Git common dir; new merged SHAs receive CI-evidence receipts and no product or user data changes.",
   "residual_risks": [
-    "Path policy cannot infer runtime impact outside declared ownership patterns; ambiguous infrastructure, delete/rename, and empty cases therefore deliberately run every surface.",
+    "Path policy cannot infer runtime impact outside declared ownership patterns; ambiguous product paths, delete/rename, and empty cases therefore deliberately run every surface. Validation-infrastructure paths are the explicit exception: they run all functional lanes while performance and packaging remain opt-in risk surfaces.",
     "GitHub or local authentication outages can delay evidence collection even after checks finish; delivery fails visibly without rerunning tests."
   ]
 }
