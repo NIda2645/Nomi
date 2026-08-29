@@ -4,12 +4,16 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateRootCauseChange, validateRootCauseHistory } from "./root-cause-contracts.mjs";
+import { inheritLegacyV1Hashes, validateRootCauseChange, validateRootCauseHistory } from "./root-cause-contracts.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function git(args) {
   return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
+}
+
+function gitRaw(args) {
+  return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" });
 }
 
 function lines(value) {
@@ -68,12 +72,32 @@ const contracts = contractFiles.map((file) => {
   }
 });
 
-const legacyBaselinePath = path.join(repoRoot, "scripts", "root-cause-contract-v1-baseline.json");
+const legacyBaselineRelativePath = "scripts/root-cause-contract-v1-baseline.json";
+const legacyBaselinePath = path.join(repoRoot, legacyBaselineRelativePath);
 let legacyV1Hashes;
 try {
-  legacyV1Hashes = new Map(Object.entries(JSON.parse(fs.readFileSync(legacyBaselinePath, "utf8"))));
+  let baselineRaw;
+  try {
+    baselineRaw = gitRaw(["show", `${baseRef}:${legacyBaselineRelativePath}`]);
+  } catch {
+    // Bootstrap only: before schema v2 reaches main, the trusted base has no baseline file yet.
+    baselineRaw = fs.readFileSync(legacyBaselinePath, "utf8");
+  }
+  legacyV1Hashes = new Map(Object.entries(JSON.parse(baselineRaw)));
+
+  const baseContractFiles = lines(git(["ls-tree", "-r", "--name-only", baseRef, "--", "docs/fixes"]))
+    .filter((file) => file.endsWith(".root-cause.json"));
+  const baseContracts = baseContractFiles.map((file) => {
+    const raw = gitRaw(["show", `${baseRef}:${file}`]);
+    return {
+      ...JSON.parse(raw),
+      __file: file,
+      __contentHash: createHash("sha256").update(raw).digest("hex"),
+    };
+  });
+  legacyV1Hashes = inheritLegacyV1Hashes(legacyV1Hashes, baseContracts);
 } catch (error) {
-  console.error(`✖ 无法读取根因合同 v1 只读基线：${error instanceof Error ? error.message : String(error)}`);
+  console.error(`✖ 无法读取根因合同 v1 只读基线或可信 base 历史：${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }
 

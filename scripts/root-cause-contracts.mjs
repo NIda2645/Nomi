@@ -253,6 +253,15 @@ export function validateRootCauseHistory({ contracts, legacyV1Hashes = new Map()
   return { ok: errors.length === 0, errors };
 }
 
+export function inheritLegacyV1Hashes(legacyV1Hashes, baseContracts) {
+  const inherited = new Map(legacyV1Hashes);
+  for (const contract of baseContracts) {
+    if (contract?.schema_version !== 1 || !nonEmptyText(contract?.__file) || !nonEmptyText(contract?.__contentHash)) continue;
+    inherited.set(normalized(contract.__file), contract.__contentHash);
+  }
+  return inherited;
+}
+
 export function validateRootCauseChange({ changedFiles, contracts, existingFiles, legacyV1Hashes = new Map() }) {
   const changed = new Set(changedFiles.map(normalized));
   const existing = new Set([...existingFiles].map(normalized));

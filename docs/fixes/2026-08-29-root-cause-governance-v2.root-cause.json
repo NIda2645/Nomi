@@ -31,7 +31,7 @@
     "P2 and R21 remain the only always-loaded root-cause rule identifiers; detailed procedure lives once in the repository skill.",
     "AGENTS.md is generated from CLAUDE.md, so Claude and Codex cannot drift into separately maintained remediation rules.",
     "Every new or modified contract uses schema v2 and identifies real shared boundaries, at least two checked same-class entries, prevention semantics, changed class tests, legacy-path disposition, and dependency lifecycle.",
-    "Historical schema v1 contracts remain readable only while their byte content matches the committed hash baseline; editing or adding v1 fails CI.",
+    "Historical schema v1 contracts remain readable only while their byte content matches either the committed bootstrap hash baseline or the trusted target-base snapshot; editing or adding v1 relative to that base fails CI.",
     "The committed contract gate, not a machine-local hook, is the merge authority."
   ],
   "generality_proof": "The trigger is phrased by corrective intent rather than one product directory, and the same skill is referenced from both generated agent instruction surfaces. For mechanically high-risk paths, one checker validates every changed contract and covered file regardless of which agent, provider, platform, or defect produced the diff.",
@@ -39,7 +39,7 @@
     {
       "path": "scripts/root-cause-contracts.mjs",
       "symbol": "validateRootCauseChange and validateRootCauseHistory",
-      "responsibility": "Reject unproven schema-v2 remediation evidence and any new, deleted, or modified schema-v1 history before a high-risk change can pass contracts."
+      "responsibility": "Reject unproven schema-v2 remediation evidence and any schema-v1 history that is new, deleted, or modified relative to the trusted target base before a high-risk change can pass contracts."
     }
   ],
   "same_class_entry_points": [
@@ -59,7 +59,7 @@
       "path": "scripts/check-root-cause-contracts.mjs",
       "entry_point": "local and CI contracts gate",
       "disposition": "enforced",
-      "evidence": "The checker hashes every contract, validates immutable v1 history, and runs the v2 cross-field validator on the repository diff."
+      "evidence": "The checker hashes every contract, inherits immutable v1 history from ROOT_CAUSE_BASE_REF, and runs the v2 cross-field validator on the repository diff."
     }
   ],
   "prevention": {
@@ -88,7 +88,7 @@
     "rationale": "The checker uses Node built-ins and repository JSON; no third-party runtime or package version controls this enforcement contract.",
     "exit_criteria": []
   },
-  "migration": "Existing schema-v1 contracts are recorded in scripts/root-cause-contract-v1-baseline.json by exact SHA-256. They remain readable as immutable incident history. Any future edit must migrate the touched contract to v2, and any new v1 file fails the history gate.",
+  "migration": "Existing schema-v1 contracts are recorded in scripts/root-cause-contract-v1-baseline.json by exact SHA-256 for bootstrap and inherited from the trusted ROOT_CAUSE_BASE_REF snapshot for concurrent target-branch history. They remain readable as immutable incident history. Any edit or PR-local v1 addition must migrate to v2.",
   "residual_risks": [
     "No static checker can prove an agent's private reasoning or detect a deliberately false statement. The gate instead makes evidence falsifiable by tying claims to repository paths and changed tests.",
     "Low-risk corrective paths are governed by the mandatory P2/skill trigger but are not all mechanically classified; expanding mechanical coverage should follow observed misses rather than forcing root-cause contracts onto unrelated feature work."

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isHighRiskProductionFile, validateRootCauseChange, validateRootCauseHistory } from "./root-cause-contracts.mjs";
+import {
+  inheritLegacyV1Hashes,
+  isHighRiskProductionFile,
+  validateRootCauseChange,
+  validateRootCauseHistory,
+} from "./root-cause-contracts.mjs";
 
 const completeContract = {
   __file: "docs/fixes/fixture-media-boundary.root-cause.json",
@@ -297,6 +302,36 @@ test("schema v1 history is immutable and new v1 contracts are rejected", () => {
   assert.match(changed.errors.join("\n"), /history changed/i);
 
   const added = validateRootCauseHistory({ contracts: [legacy], legacyV1Hashes: new Map() });
+  assert.equal(added.ok, false);
+  assert.match(added.errors.join("\n"), /new schema v1 contract is forbidden/i);
+});
+
+test("schema v1 contracts already present on the trusted base become immutable inherited history", () => {
+  const inherited = {
+    ...completeContract,
+    schema_version: 1,
+    __file: "docs/fixes/concurrent-main-history.root-cause.json",
+    __contentHash: "base-hash",
+  };
+  const hashes = inheritLegacyV1Hashes(new Map(), [inherited]);
+
+  assert.deepEqual(
+    validateRootCauseHistory({ contracts: [inherited], legacyV1Hashes: hashes }),
+    { ok: true, errors: [] },
+  );
+
+  const modified = validateRootCauseHistory({
+    contracts: [{ ...inherited, __contentHash: "branch-hash" }],
+    legacyV1Hashes: hashes,
+  });
+  assert.equal(modified.ok, false);
+  assert.match(modified.errors.join("\n"), /history changed/i);
+
+  const branchOnly = {
+    ...inherited,
+    __file: "docs/fixes/branch-only-v1.root-cause.json",
+  };
+  const added = validateRootCauseHistory({ contracts: [inherited, branchOnly], legacyV1Hashes: hashes });
   assert.equal(added.ok, false);
   assert.match(added.errors.join("\n"), /new schema v1 contract is forbidden/i);
 });
