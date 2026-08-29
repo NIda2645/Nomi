@@ -137,6 +137,8 @@ jobs:
             outputs/canvas-acceptance/**
             outputs/canvas-smoke/**
             outputs/canvas-card-stack-20260827/**
+            tests/system/runs/**/report.md
+            tests/system/runs/**/summary.json
             tests/ux/shots/canvas-drag-pan-gestures/**
             tests/ux/shots/group-ports/**
             tests/ux/shots/react-flow-read-only/**

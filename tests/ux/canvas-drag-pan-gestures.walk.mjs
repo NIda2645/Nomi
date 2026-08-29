@@ -31,6 +31,7 @@ const { app, win: _initialWin } = await launchNomiApp({
   projectsDir,
   args: ['--no-proxy-server'],
   settleMs: 0,
+  syntheticCredentialStorage: true,
 })
 
 let passed = 0

@@ -1,10 +1,14 @@
 // 钉住启动器的核心不变量（替掉原 helpers/electronFixture.test.mjs，2026-08-11 收敛）。
 // 这条不变量就是本次修复的根因：漏掉这两个 env，窗口起不来且**毫无提示**，只会干等到超时。
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import {
   buildNomiLaunchEnv,
   diagnoseLaunchFailure,
+  repoRoot,
   withLinuxNoSandbox,
+  withLinuxSyntheticCredentialStorage,
   withPackagedPlaywrightOrigin,
 } from './_launchApp.mjs'
 
@@ -54,6 +58,39 @@ describe('withLinuxNoSandbox', () => {
   test('non-Linux spawns keep their original arguments', () => {
     expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'darwin')).toEqual(['.', '--disable-gpu'])
     expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'win32')).toEqual(['.', '--disable-gpu'])
+  })
+})
+
+describe('withLinuxSyntheticCredentialStorage', () => {
+  test('isolated synthetic fixtures get a deterministic Linux backend exactly once', () => {
+    expect(withLinuxSyntheticCredentialStorage(['.'], true, 'linux'))
+      .toEqual(['.', '--password-store=basic'])
+    expect(withLinuxSyntheticCredentialStorage(['.', '--password-store=basic'], true, 'linux'))
+      .toEqual(['.', '--password-store=basic'])
+  })
+
+  test('real credential journeys and non-Linux hosts keep their storage backend', () => {
+    expect(withLinuxSyntheticCredentialStorage(['.'], false, 'linux')).toEqual(['.'])
+    expect(withLinuxSyntheticCredentialStorage(['.'], true, 'darwin')).toEqual(['.'])
+    expect(() => withLinuxSyntheticCredentialStorage(['.', '--password-store=gnome-libsecret'], true, 'linux'))
+      .toThrow('synthetic credential storage conflicts')
+  })
+
+  test('every literal fixture credential explicitly opts into isolated synthetic storage', () => {
+    const sources = ['tests/ux', 'scripts'].flatMap((directory) =>
+      fs.readdirSync(path.join(repoRoot, directory), { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.mjs'))
+        .map((entry) => path.join(entry.parentPath, entry.name)),
+    )
+    const offenders = sources
+      .filter((file) => {
+        const source = fs.readFileSync(file, 'utf8')
+        return source.includes('upsertVendorApiKey') && /apiKey:\s*['"]/.test(source) &&
+          !/syntheticCredentialStorage:\s*true/.test(source)
+      })
+      .map((file) => path.relative(repoRoot, file))
+
+    expect(offenders).toEqual([])
   })
 })
 

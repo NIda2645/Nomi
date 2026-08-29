@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -68,5 +69,36 @@ describe('real canvas acceptance suite', () => {
       timedOut: true,
       timeoutMs: DEFAULT_CANVAS_SCENARIO_TIMEOUT_MS,
     })
+  })
+
+  it('persists each child transcript and an actionable failure summary', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-canvas-suite-'))
+    const outputDir = path.join(cwd, 'outputs/canvas-acceptance/critical')
+    const stdout = { write: () => true }
+    const stderr = { write: () => true }
+    const result = runCanvasScenario(
+      { id: 'gestures', script: 'tests/ux/canvas-drag-pan-gestures.walk.mjs' },
+      {
+        cwd,
+        outputDir,
+        stdoutWriter: stdout,
+        stderrWriter: stderr,
+        spawnProcess: () => ({
+          status: 1,
+          signal: null,
+          stdout: 'fixture setup started\n',
+          stderr: 'Error: System secure storage is unavailable\n  at fixture setup\n',
+        }),
+      },
+    )
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      logPath: 'outputs/canvas-acceptance/critical/gestures.log',
+    })
+    expect(result.failureSummary).toContain('System secure storage is unavailable')
+    const transcript = fs.readFileSync(path.join(cwd, result.logPath), 'utf8')
+    expect(transcript).toContain('[stdout]\nfixture setup started')
+    expect(transcript).toContain('[stderr]\nError: System secure storage is unavailable')
   })
 })

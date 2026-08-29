@@ -162,6 +162,8 @@ test('desktop evidence and the complete Mac package path remain required', () =>
   assert.match(evidence.with.path, /outputs\/canvas-acceptance\/\*\*/)
   assert.match(evidence.with.path, /outputs\/canvas-smoke\/\*\*/)
   assert.match(evidence.with.path, /outputs\/canvas-card-stack-20260827\/\*\*/)
+  assert.match(evidence.with.path, /tests\/system\/runs\/\*\*\/report\.md/)
+  assert.match(evidence.with.path, /tests\/system\/runs\/\*\*\/summary\.json/)
   assert.match(evidence.with.path, /tests\/ux\/shots\/canvas-drag-pan-gestures\/\*\*/)
   assert.match(evidence.with.path, /tests\/ux\/shots\/group-ports\/\*\*/)
   assert.match(evidence.with.path, /tests\/ux\/shots\/react-flow-read-only\/\*\*/)
