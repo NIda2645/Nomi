@@ -12,7 +12,7 @@ const VALIDATION_INFRASTRUCTURE_PATTERNS = [
   /^scripts\/(?:validation-policy|select-quality-gate-profile|check-quality-gate-workflow|test-system|test-focused|git-delivery|canvas-performance-verdict|eval-journey|.*walkthrough)(?:\.|$)/,
   /^tests\/system(?:\/|$)/,
   /^tests\/ux\/(?:canvas-real-suite|canvas-performance-(?:benchmark|verdict))(?:\.|$)/,
-  /^(?:playwright|vitest)\.config\.(?:ts|mts|cts|js|mjs|cjs)$/,
+  /^(?:eslint|playwright|vitest)\.config\.(?:ts|mts|cts|js|mjs|cjs)$/,
 ]
 
 const PACKAGE_PATTERNS = [

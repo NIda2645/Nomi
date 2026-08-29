@@ -112,6 +112,7 @@ test('empty, delete, rename, validation infrastructure, and explicit full reques
     classifyValidationPolicy([{ status: 'D', path: 'src/workbench/foo.ts' }]),
     classifyValidationPolicy([{ status: 'R100', path: 'src/workbench/renamed.ts' }]),
     classifyValidationPolicy(['scripts/validation-policy.mjs']),
+    classifyValidationPolicy(['eslint.config.mjs']),
     classifyValidationPolicy(['README.md'], { requestedMode: 'full' }),
     classifyValidationPolicy(['README.md'], { eventName: 'workflow_dispatch' }),
   ]

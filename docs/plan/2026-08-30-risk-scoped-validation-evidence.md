@@ -41,6 +41,7 @@
 4. `Mac Package` 只在 package 被选中时启动；未选中时保留 GitHub 的 skipped check，`Quality Gate` 聚合器只要求被策略选中的 job 成功。
 5. 画布 functional full 与 performance 是不同 stage；性能结果始终写 JSON 并上传，`pass:false` 必须以非零退出码阻止合并。
 6. 合并后 `delivery:verify-merged` 继续只相信 Git fetch 得到的 exact merge SHA/tree，但不再本地第三次运行 `full-local`。它等待并记录该 SHA 上 `Quality Gate` 与 `Mac Package` 的成功/skipped/neutral check run，生成一次性证据收据。
+7. 最终 `Quality Gate` 读取同一 workflow run 中已完成 job 的 GitHub annotations。未登记的 warning/failure、过期例外或 API 取证失败都会阻止合并，并始终上传 `ci-annotations.json`；Contracts 源码 lint warning 明确委托给 `lint:ci` 的 82 条棘轮管理，其余例外必须写明原因和到期日。
 
 ## 不动项
 
@@ -56,6 +57,7 @@
 3. canvas full 不含性能 benchmark，performance profile 独立且失败返回非零。
 4. exact merge SHA 的成功与 skipped required checks 可生成收据；missing、pending、failure、错误 SHA 都不能伪装完成。
 5. 定向 Node/Vitest、根因合同、规则同步和完整高风险 CI 全绿后合并。
+6. CI annotations 默认为零容忍；Node runtime 弃用等日志告警不能只靠人工发现或强制运行时垫片隐藏。现有 ESLint warning 上限从 98 收紧到真实值 82，委托不等于允许增长。
 
 ## 回滚
 

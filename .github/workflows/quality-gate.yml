@@ -25,6 +25,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
+  checks: read
   contents: read
 
 jobs:
@@ -195,8 +197,28 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Audit CI annotations
+        id: ci-hygiene
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci-annotation-hygiene.mjs
+      - name: Upload CI hygiene evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-hygiene-evidence
+          path: outputs/ci-hygiene/ci-annotations.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Require every validation surface
+        if: ${{ always() }}
         run: |
+          test "${{ steps.ci-hygiene.outcome }}" = "success"
           test "${{ needs.scope.result }}" = "success"
           test "${{ needs.contracts.result }}" = "success"
           test "${{ needs.unit.result }}" = "success"

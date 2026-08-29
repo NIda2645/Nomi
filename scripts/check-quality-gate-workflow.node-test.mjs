@@ -38,6 +38,7 @@ test('quality gate runs for pull requests and real main before/after pushes', ()
     group: 'quality-gate-${{ github.event.pull_request.number || github.ref }}',
     'cancel-in-progress': true,
   })
+  assert.deepEqual(workflow.permissions, { actions: 'read', checks: 'read', contents: 'read' })
 
   const scopeEnvironment = workflow.jobs.scope.steps.find((step) => step.id === 'profile').env
   assert.equal(scopeEnvironment.NOMI_BASE_SHA, "${{ github.event.pull_request.base.sha || github.event.before || '' }}")
@@ -65,9 +66,9 @@ test('quality gate uses Node 24-native actions without a forced runtime shim', (
     (job) => job.steps?.flatMap((step) => (typeof step.uses === 'string' ? [step.uses] : [])) ?? [],
   )
 
-  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 5)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 6)
   assert.equal(actionUses.filter((uses) => uses === 'pnpm/action-setup@v6').length, 4)
-  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 4)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 5)
   assert.ok(actionUses.includes('actions/upload-artifact@v7'))
   assert.ok(actionUses.every((uses) => !/@v4$/.test(uses)))
   for (const job of Object.values(workflow.jobs)) {
@@ -167,6 +168,7 @@ test('package scripts expose canonical separated profiles and classifier contrac
   assert.equal(scripts['test:system:canvas:full'], 'node scripts/test-system.mjs ci-canvas-full')
   assert.equal(scripts['test:system:performance'], 'node scripts/test-system.mjs ci-performance')
   assert.equal(scripts['test:canvas:performance'], 'node tests/ux/canvas-real-suite.mjs performance')
+  assert.equal(scripts['lint:ci'], 'eslint . --max-warnings=82')
   assert.match(scripts['check:quality-gate-workflow'], /validation-policy\.node-test\.mjs/)
 })
 
@@ -176,7 +178,17 @@ test('Quality Gate requires mandatory jobs and every risk-selected optional surf
   assert.equal(quality.if, '${{ always() }}')
   assert.equal(quality.name, 'Quality Gate')
 
+  const hygiene = quality.steps.find((step) => step.id === 'ci-hygiene')
+  assert.equal(hygiene.run, 'node scripts/ci-annotation-hygiene.mjs')
+  assert.equal(hygiene['continue-on-error'], true)
+  assert.equal(hygiene.env.GITHUB_TOKEN, '${{ github.token }}')
+  const evidence = quality.steps.find((step) => step.name === 'Upload CI hygiene evidence')
+  assert.equal(evidence.uses, 'actions/upload-artifact@v7')
+  assert.equal(evidence.with.path, 'outputs/ci-hygiene/ci-annotations.json')
+  assert.equal(evidence.with['if-no-files-found'], 'error')
+
   const command = runCommands(quality).join('\n')
+  assert.match(command, /steps\.ci-hygiene\.outcome/)
   for (const jobId of ['scope', 'contracts', 'unit']) {
     assert.match(command, new RegExp(`needs\\.${jobId}\\.result`))
   }

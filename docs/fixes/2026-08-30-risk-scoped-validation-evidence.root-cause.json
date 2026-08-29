@@ -2,9 +2,9 @@
   "schema_version": 3,
   "id": "2026-08-30-risk-scoped-validation-evidence",
   "problem_type": "Validation scope, CI orchestration, and merged-main evidence divergence",
-  "symptom": "Unrelated pull requests and every main push could trigger full unit, desktop, canvas performance, and macOS package validation, while delivery verification ran the same full-local profile a third time after merge.",
+  "symptom": "Unrelated pull requests and every main push could trigger full unit, desktop, canvas performance, and macOS package validation, while delivery verification ran the same full-local profile a third time after merge and CI runtime warnings depended on a maintainer noticing logs manually.",
   "direct_cause": "The classifier exposed only fast/full, treated every push as a release boundary, CI bound independent validation surfaces to full, canvas acceptance embedded the performance benchmark, and merged delivery owned a separate hard-coded full-local decision instead of consuming exact-SHA CI evidence.",
-  "class_root": "The repository lacked one executable risk policy and evidence contract shared by changed-file classification, CI job selection, system-test profiles, and merged-main delivery.",
+  "class_root": "The repository lacked one executable risk policy and evidence contract shared by changed-file classification, CI job selection, system-test profiles, runtime annotations, and merged-main delivery.",
   "affected_population": [
     "Maintainers and agents delivering documentation, renderer, Electron, canvas, performance, packaging, and test-infrastructure changes",
     "Pull-request and main-push GitHub Actions runs for every future commit",
@@ -16,7 +16,8 @@
     ".github/workflows/quality-gate.yml",
     "tests/system/profiles.mjs",
     "tests/ux/canvas-real-suite.mjs",
-    "scripts/git-delivery.mjs"
+    "scripts/git-delivery.mjs",
+    "scripts/ci-annotation-hygiene.mjs"
   ],
   "entry_points": [
     "Pull-request changed-file validation scope",
@@ -30,6 +31,12 @@
       "url": "https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#list-check-runs-for-a-git-reference",
       "checked_at": "2026-08-30",
       "purpose": "Verified that check runs can be queried for an exact commit SHA and expose status, conclusion, timestamps, and details URLs for durable evidence."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#list-check-run-annotations",
+      "checked_at": "2026-08-30",
+      "purpose": "Verified that completed workflow jobs expose structured annotations so unexpected runtime warnings can be enforced instead of relying on manual log review."
     },
     {
       "kind": "official-doc",
@@ -55,7 +62,8 @@
     "Contracts always run, while unit, desktop, journeys, canvas, performance, and package are independently selected.",
     "Unknown, empty, deleted, renamed, manual full, and validation-infrastructure changes fail closed to every validation surface.",
     "Functional canvas acceptance never implicitly runs the performance benchmark.",
-    "Merged verification accepts only exact fetched main identity and exact-SHA required-check evidence; it never launches a third local full suite."
+    "Merged verification accepts only exact fetched main identity and exact-SHA required-check evidence; it never launches a third local full suite.",
+    "Unexpected CI warning/failure annotations, expired exceptions, and annotation API failures block Quality Gate with machine-readable evidence; source lint warnings remain visible but are delegated to a non-growing lint:ci budget."
   ],
   "generality_proof": "Every PR and main-push diff converges on validation-policy before workflow jobs are selected, every local profile uses the same separated stage vocabulary, and every final delivery converges on git-delivery's exact-commit evidence boundary. This covers documentation, renderer, Electron, journey, React Flow, performance, packaging, deletion/rename, infrastructure, and manual release populations without an event-specific fallback.",
   "shared_boundaries": [
@@ -68,6 +76,11 @@
       "path": "scripts/git-delivery.mjs",
       "symbol": "verifyMergedDelivery",
       "responsibility": "Own exact fetched merge identity and durable required-check evidence without rerunning repository validation."
+    },
+    {
+      "path": "scripts/ci-annotation-hygiene.mjs",
+      "symbol": "auditCiAnnotations",
+      "responsibility": "Own fail-closed collection, allowlisting, and evidence for structured CI runtime annotations."
     }
   ],
   "same_class_entry_points": [
@@ -104,21 +117,24 @@
     "kind": "centralized-boundary",
     "enforcement_path": "scripts/validation-policy.mjs",
     "invariant": "All changed-file validation callers receive one complete, fail-closed set of independent validation surfaces from the same policy.",
-    "failure_mode": "Unclassifiable input selects every surface; missing, pending, or failed exact-SHA required checks prevent a merged receipt.",
+    "failure_mode": "Unclassifiable input selects every surface; unexpected CI annotations or annotation API failures block Quality Gate; source lint warnings cannot exceed the tightened lint:ci budget; missing, pending, or failed exact-SHA required checks prevent a merged receipt.",
     "exception_policy": "none",
-    "strategy": "Replace the fast/full switch and hard-coded merged full-local run with one policy vocabulary, conditional jobs, separated system stages, and exact-SHA evidence verification.",
+    "strategy": "Replace the fast/full switch and hard-coded merged full-local run with one policy vocabulary, conditional jobs, separated system stages, structured annotation hygiene, and exact-SHA evidence verification.",
     "artifacts": [
       "scripts/validation-policy.mjs",
       "scripts/select-quality-gate-profile.mjs",
       ".github/workflows/quality-gate.yml",
       "tests/system/profiles.mjs",
       "tests/ux/canvas-real-suite.mjs",
-      "scripts/git-delivery.mjs"
+      "scripts/git-delivery.mjs",
+      "scripts/ci-annotation-hygiene.mjs",
+      "scripts/ci-annotation-allowlist.json"
     ]
   },
   "regression_tests": [
     "scripts/validation-policy.node-test.mjs",
     "scripts/check-quality-gate-workflow.node-test.mjs",
+    "scripts/ci-annotation-hygiene.node-test.mjs",
     "scripts/git-delivery.node-test.mjs",
     "scripts/test-system.test.mjs",
     "tests/ux/canvas-real-suite.test.mjs"
@@ -126,6 +142,7 @@
   "class_regression_tests": [
     "scripts/validation-policy.node-test.mjs",
     "scripts/check-quality-gate-workflow.node-test.mjs",
+    "scripts/ci-annotation-hygiene.node-test.mjs",
     "scripts/git-delivery.node-test.mjs"
   ],
   "legacy_paths": {
@@ -138,9 +155,14 @@
     "rationale": "The event-wide full switch, embedded canvas performance scenario, and local full-local merged verification are removed from their existing files rather than retained as fallbacks."
   },
   "dependency_lifecycle": {
-    "decision": "not-applicable",
-    "rationale": "No third-party version controls this repository-owned classification and evidence invariant; GitHub and Vitest documented semantics are consumed without a dependency change.",
-    "exit_criteria": []
+    "decision": "upgrade-now",
+    "current": "actions/checkout@v4, actions/setup-node@v4, pnpm/action-setup@v4, and actions/upload-artifact@v4 with FORCE_JAVASCRIPT_ACTIONS_TO_NODE24",
+    "target": "actions/checkout@v7, actions/setup-node@v7, pnpm/action-setup@v6, and actions/upload-artifact@v7 with native Node 24 runtimes",
+    "rationale": "Quality Gate moved checkout to v7, setup-node to v7, pnpm/action-setup to v6, and upload-artifact to v7 so every JavaScript action declares a native Node 24 runtime instead of relying on FORCE_JAVASCRIPT_ACTIONS_TO_NODE24.",
+    "exit_criteria": [
+      "Every JavaScript action used by Quality Gate declares a Node 24 runtime.",
+      "The workflow contract rejects legacy @v4 action references and the forced Node runtime shim."
+    ]
   },
   "migration": "Existing fast/full callers move atomically to the multi-dimensional policy outputs. Old per-SHA full-local receipts remain inert historical files in the Git common dir; new merged SHAs receive CI-evidence receipts and no product or user data changes.",
   "residual_risks": [
