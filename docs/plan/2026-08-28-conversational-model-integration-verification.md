@@ -16,7 +16,7 @@
 
 | 项目 | 当前结果 | 证据 |
 |---|---|---|
-| 完整系统门禁 | PASS | `pnpm run test:system:full`：5/5；Vitest 912 files passed、1 skipped，8649 tests passed、1 skipped；React Flow canvas 14/14；J3/J5 2/2；typecheck、lint、renderer/Electron build 通过 |
+| 完整系统门禁 | PASS | `pnpm run test:system:full`：5/5；Vitest 913 files passed、1 skipped，8656 tests passed、1 skipped；React Flow canvas 14/14；J3/J5 2/2；typecheck、lint、renderer/Electron build 通过 |
 | J0 安装版 MCP | PASS（本地安装包） | `tests/ux/packaged-mcp-smoke.e2e.mjs`：43 tools、25 resources；签名身份可写，未签名 generic host 写入被拒 |
 | J0 无仓库 harness | PASS | `pnpm run test:model-integration:no-repo`：isolated cwd；43 tools、25 resources；unsigned write rejected；provider requests=0；credential bytes=0 |
 | J3 故障矩阵 | PASS（本地自动化） | `pnpm run test:model-integration:fault-matrix`：8 个聚焦 fail-closed suite；provider requests=0 |

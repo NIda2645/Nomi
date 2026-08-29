@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "2026-08-29-canvas-batch-mode-label-disambiguation",
   "problem_type": "canvas batch model picker execution-mode ambiguity",
   "symptom": "After a dependency edge split one image batch into text-to-image and reference-image-edit groups, both model pickers were rendered as '图片 ×1', so users and the Electron acceptance journey could not tell which nodes each picker would change.",
@@ -64,17 +64,14 @@
     "kind": "centralized-boundary",
     "enforcement_path": "src/workbench/generationCanvas/components/canvasBatchModelLabel.ts",
     "invariant": "Same-kind peer actions with different requiredMode values cannot receive the same label key.",
-    "failure_mode": "Unit and source-structure tests fail if mode-aware label resolution or peer-group propagation is removed from either batch entry point.",
+    "failure_mode": "Callers that omit the peer-group context fail TypeScript validation, and same-kind groups with different requiredMode values always resolve to different mode-qualified label keys.",
     "exception_policy": "none",
     "strategy": "Resolve label identity once in the shared picker and require every caller to supply the peer set used to detect ambiguity.",
     "artifacts": [
       "src/workbench/generationCanvas/components/canvasBatchModelLabel.ts",
       "src/workbench/generationCanvas/components/CanvasBulkModelSelect.tsx",
       "src/workbench/generationCanvas/components/CanvasSelectionToolbar.tsx",
-      "src/workbench/generationCanvas/components/CanvasBatchGenerateDock.tsx",
-      "src/i18n/locales/generationCommon.ts",
-      "src/workbench/generationCanvas/components/canvasBatchModelLabel.test.ts",
-      "src/workbench/common/modelSelectStructure.test.ts"
+      "src/workbench/generationCanvas/components/CanvasBatchGenerateDock.tsx"
     ]
   },
   "regression_tests": [

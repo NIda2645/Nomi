@@ -19,7 +19,7 @@ function modelGroupLabel(
   peerGroups: readonly CanvasGenerationExecutionGroup[],
   t: ReturnType<typeof useTranslation>['t'],
 ): string {
-  return t(resolveCanvasBulkModelLabelKey(group, peerGroups) as 'generationCommon.production.modelGroup.image', {
+  return t(resolveCanvasBulkModelLabelKey(group, peerGroups), {
     count: group.nodeIds.length,
   })
 }
