@@ -78,7 +78,7 @@ function imageMapping(modelKey, taskKind) {
     create: {
       method: 'POST',
       path: '/v1/images/generations',
-      headers: { Authorization: 'Bearer {{user_api_key}}', 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: {
         model: '{{model.modelKey}}',
         prompt: '{{request.prompt}}',
@@ -96,6 +96,26 @@ function imageMapping(modelKey, taskKind) {
   }
 }
 
+function videoMapping(modelKey) {
+  return {
+    id: `${modelKey}-text_to_video`,
+    vendorKey: VENDOR,
+    taskKind: 'text_to_video',
+    modelKey,
+    name: `${modelKey} text_to_video`,
+    enabled: true,
+    create: {
+      method: 'POST',
+      path: '/v1/videos/generations',
+      headers: { 'Content-Type': 'application/json' },
+      body: { model: '{{model.modelKey}}', prompt: '{{request.prompt}}' },
+      response_mapping: { video_url: 'data.0.url' },
+    },
+    createdAt: NOW,
+    updatedAt: NOW,
+  }
+}
+
 fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
   version: 8,
   vendors: [{
@@ -107,7 +127,7 @@ fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
     // keeps the real runtime from falling back to public anonymous upload
     // hosts during the dependency-wave assertion.
     assetIngestion: { strategy: 'inline-base64', accepts: ['image'] },
-    authType: 'bearer',
+    authType: 'none',
     authHeader: null,
     authQueryParam: null,
     providerKind: 'openai-compatible',
@@ -120,13 +140,15 @@ fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
     { modelKey: VIDEO_A, vendorKey: VENDOR, labelZh: '批量视频 A', kind: 'video', enabled: true, createdAt: NOW, updatedAt: NOW },
     { modelKey: VIDEO_B, vendorKey: VENDOR, labelZh: '批量视频 B', kind: 'video', enabled: true, createdAt: NOW, updatedAt: NOW },
   ],
-  mappings: [IMAGE_A, IMAGE_B].flatMap((modelKey) => [
-    imageMapping(modelKey, 'text_to_image'),
-    imageMapping(modelKey, 'image_edit'),
-  ]),
-  apiKeysByVendor: {
-    [VENDOR]: { apiKey: 'sk-batch-mock', vendorKey: VENDOR, enabled: true, enc: 'plain', createdAt: NOW, updatedAt: NOW },
-  },
+  mappings: [
+    ...[IMAGE_A, IMAGE_B].flatMap((modelKey) => [
+      imageMapping(modelKey, 'text_to_image'),
+      imageMapping(modelKey, 'image_edit'),
+    ]),
+    videoMapping(VIDEO_A),
+    videoMapping(VIDEO_B),
+  ],
+  apiKeysByVendor: {},
 }, null, 2))
 
 let shotIndex = 0
@@ -279,7 +301,8 @@ try {
   await generateAll.waitFor({ timeout: 5000 })
   const generateAllProbe = await proveProbe(generateAll, '待生成节点存在时显示批量生成入口')
   check((await generateAll.textContent())?.includes('2'), '无选择入口显示两个待生成节点')
-  await chooseSelectOption(win, '图片 ×2', '批量图片 B')
+  await chooseSelectOption(win, '文生图 ×1', '批量图片 B')
+  await chooseSelectOption(win, '参考图改图 ×1', '批量图片 B')
   await win.waitForTimeout(1200)
   const allScopeProjectFile = findProjectJson(projectsDir)
   check(Boolean(allScopeProjectFile), '未框选时批量模型更新已触发项目持久化')
@@ -327,7 +350,8 @@ try {
   const selectedGenerate = win.locator('[data-batch-scope="selection"]')
   await selectedGenerate.waitFor({ timeout: 5000 })
   check((await selectedGenerate.textContent())?.includes('2'), '混合选择只统计两个待生成节点')
-  await chooseSelectOption(win, '图片 ×3', '批量图片 B')
+  await chooseSelectOption(win, '文生图 ×2', '批量图片 B')
+  await chooseSelectOption(win, '参考图改图 ×1', '批量图片 B')
   await chooseSelectOption(win, '视频 ×1', '批量视频 B')
   await win.waitForTimeout(1200)
   const projectFile = findProjectJson(projectsDir)
