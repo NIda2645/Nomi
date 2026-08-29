@@ -450,11 +450,12 @@ export async function verifyMergedDelivery({
   }
 }
 
-function parseCli(argv) {
+export function parseCli(argv) {
   const [command, ...args] = argv
   const options = {}
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
+    if (arg === '--') continue
     if (arg === '--rerun') options.rerun = true
     else if (arg === '--expected-sha') options.expectedSha = args[++index]
     else if (arg === '--remote') options.remote = args[++index]

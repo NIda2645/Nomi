@@ -43,6 +43,10 @@
 
 本地先跑上述聚焦测试、根因合同、规则同步和 diff 检查；PR CI 负责高风险完整验证。PR 合并后，使用真实 `origin/main` merge SHA 调用 `verify-merged` 一次，现有 `full-local` 会覆盖完整系统门禁、canvas acceptance 与 CI-safe J3/J5。
 
+### merged-main 首次调用发现
+
+PR #227 合并后的真实调用在进入 fetch 和测试前失败：pnpm 把命令行分隔符 `--` 原样传给脚本，而解析器误把它当成未知 delivery 参数。该次没有启动 `full-local`、没有写收据，因此不构成重复完整测试。修复落在共享 `parseCli` 边界，并以文档中的完整 argv 形状补回归测试；pnpm 与直接 Node 调用现在解析成同一组选项。
+
 ## 不动项
 
 - 不修改 ReactFlow 产品交互；PR #221 已恢复的连接点、连线与画布行为保持不变。
