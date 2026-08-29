@@ -2,9 +2,21 @@
 
 日期：2026-08-28  
 交接对象：下一位 Codex / Claude Code / WorkBuddy 工程 Agent  
-状态：**Tasks 1–8 的主要实现已写入工作树并通过当前自动化验证；Task 9 真实安装版/供应商验收与最终交付仍未完成。**
+状态：**Tasks 1–8 已实现并通过完整本地门禁；Task 9 已补真实 ModelScope 最小切片和 fresh-process 幂等读回，原生 ComfyUI、真实 WorkBuddy、完整多供应商与升级矩阵仍是外部发布验收项。**
 
 > 这份文档用于在没有本轮聊天上下文的情况下继续执行。不要仅凭某次“全绿”宣布完成；本文严格区分“已实现”“已验证”“已提交”“已推送”。
+
+## 2026-08-29 PR #221 最终交付事实（优先于下方历史恢复记录）
+
+- PR #221 已合并：`origin/main@69fce09e`；原 head 为 `codex/model-onboarding-20260828`。
+- 生产生成画布保持只有 `@xyflow/react` 单内核，Zustand/domain/project snapshot 仍是业务与持久化真相源。
+- `pnpm run test:system:full` 已通过 5/5；React Flow canvas 14/14；J3/J5 2/2。
+- 模型接入 J0/J3/J4 专项已在最终代码上通过：43 tools、25 resources、8 组 fail-closed、打包重启读回、provider requests=0、credential bytes=0。
+- 真实 ModelScope 最小切片已通过：远端发现 47 个模型，选择 1 个文本模型，`chat` 1 次验证完成；重启后同一幂等键仍返回同一 completed run，attempts 保持 1。
+- 真实测试只使用临时 profile 中复制的加密 Catalog，没有读取或输出密钥，没有修改正式 Catalog；临时 profile 已删除。
+- 原生 ComfyUI 当前没有运行实例；真实 WorkBuddy 与安装包 upgrade replay 未验证，继续标 `unverified`。
+
+下方 §0-§13 是实现过程的历史恢复记录，路径、HEAD 和“未提交”描述已经过期；继续后续工作时以本节、实时 Git 状态和验收记录为准。
 
 ---
 

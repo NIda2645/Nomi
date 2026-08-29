@@ -10,11 +10,36 @@ const repoRoot = process.cwd()
 const port = 5287
 const baseUrl = `http://127.0.0.1:${port}`
 const tempRoot = path.join(repoRoot, '.tmp', 'nomi-group-reference-direction')
+const settingsDir = path.join(tempRoot, 'settings')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/group-reference-direction')
-for (const dir of [tempRoot, shotsDir]) {
+for (const dir of [tempRoot, settingsDir, shotsDir]) {
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(dir, { recursive: true })
 }
+const catalogNow = '2026-08-29T00:00:00.000Z'
+fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
+  version: 8,
+  vendors: [{
+    key: 'ux-local', name: 'UX Local', enabled: true, authType: 'none', providerKind: 'openai-compatible',
+    createdAt: catalogNow, updatedAt: catalogNow,
+  }],
+  models: [{
+    vendorKey: 'ux-local', modelKey: 'nano-banana', labelZh: 'Nano Banana', kind: 'image', enabled: true,
+    createdAt: catalogNow, updatedAt: catalogNow,
+    meta: {
+      archetypeId: 'nano-banana',
+      adapter: {
+        state: 'verified', activeRevision: 'ux-revision', publicationModes: ['text_to_image', 'image_edit'],
+        modes: [
+          { taskKind: 'text_to_image', state: 'verified' },
+          { taskKind: 'image_edit', state: 'verified' },
+        ],
+      },
+    },
+  }],
+  mappings: [],
+  apiKeysByVendor: {},
+}, null, 2))
 
 const failures = []
 const check = (name, ok, detail = '') => {
@@ -43,7 +68,7 @@ try {
   ;({ app, win } = await launchNomiApp({
     name: 'group-reference-direction',
     userDataDir: path.join(tempRoot, 'user-data'),
-    settingsDir: path.join(tempRoot, 'settings'),
+    settingsDir,
     projectsDir: path.join(tempRoot, 'projects'),
     env: {
       NOMI_DESKTOP_DEV: '1',
@@ -80,11 +105,11 @@ try {
   const catalogSeeded = await win.evaluate(async () => {
     const desktop = window.nomiDesktop
     if (!desktop?.modelCatalog) return { error: '模型目录 bridge 不存在' }
-    desktop.modelCatalog.upsertVendor({ key: 'ux-local', name: 'UX Local', enabled: true, authType: 'none' })
-    desktop.modelCatalog.upsertModel({
-      vendorKey: 'ux-local', modelKey: 'nano-banana', labelZh: 'Nano Banana', kind: 'image', enabled: true,
-      meta: { archetypeId: 'nano-banana' },
-    })
+    const model = desktop.modelCatalog.listModels({ vendorKey: 'ux-local' })
+      .find((candidate) => candidate.modelKey === 'nano-banana')
+    if (!model?.publishedModes?.includes('text_to_image') || !model.publishedModes.includes('image_edit')) {
+      return { error: `验证发布模式不完整：${JSON.stringify(model?.publishedModes || [])}` }
+    }
     const { notifyModelOptionsRefresh } = await import('/src/config/modelCatalogCache.ts')
     notifyModelOptionsRefresh('all')
     return { ok: true }

@@ -59,7 +59,12 @@ export function CanvasSelectionToolbar({
         {t('generationCommon.selection.count', { count: selectedCount })}
       </span>
       {executionGroups.map((group) => (
-        <CanvasBulkModelSelect key={`${group.executionKind}:${group.requiredMode}`} group={group} onApplyModel={onApplyModel} />
+        <CanvasBulkModelSelect
+          key={`${group.executionKind}:${group.requiredMode}`}
+          group={group}
+          peerGroups={executionGroups}
+          onApplyModel={onApplyModel}
+        />
       ))}
       <CanvasProductionRunButton scope="selection" count={eligibleCount} onClick={onGenerate} />
       <CanvasProductionConcurrencySelect value={concurrency} onChange={onConcurrencyChange} />

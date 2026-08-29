@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { ModelOption } from '../../../config/models'
 import BulkModelPicker from '../../common/BulkModelPicker'
 import { useGenerationModelOptionsState } from '../adapters/modelOptionsAdapter'
+import { resolveCanvasBulkModelLabelKey } from './canvasBatchModelLabel'
 import type { CanvasGenerationExecutionGroup } from './canvasProductionScope'
 
 export type CanvasApplyModelInput = {
@@ -13,11 +14,14 @@ export type CanvasApplyModelInput = {
   modelOptions: readonly ModelOption[]
 }
 
-function modelGroupLabel(executionKind: string, count: number, t: ReturnType<typeof useTranslation>['t']): string {
-  return t(
-    `generationCommon.production.modelGroup.${executionKind}` as 'generationCommon.production.modelGroup.image',
-    { count },
-  )
+function modelGroupLabel(
+  group: CanvasGenerationExecutionGroup,
+  peerGroups: readonly CanvasGenerationExecutionGroup[],
+  t: ReturnType<typeof useTranslation>['t'],
+): string {
+  return t(resolveCanvasBulkModelLabelKey(group, peerGroups), {
+    count: group.nodeIds.length,
+  })
 }
 
 /**
@@ -28,9 +32,11 @@ function modelGroupLabel(executionKind: string, count: number, t: ReturnType<typ
  */
 export function CanvasBulkModelSelect({
   group,
+  peerGroups,
   onApplyModel,
 }: {
   group: CanvasGenerationExecutionGroup
+  peerGroups: readonly CanvasGenerationExecutionGroup[]
   onApplyModel: (input: CanvasApplyModelInput) => void
 }): JSX.Element | null {
   const { t } = useTranslation()
@@ -41,7 +47,7 @@ export function CanvasBulkModelSelect({
     },
     [group.executionKind, group.requiredMode, onApplyModel, state.options],
   )
-  const label = modelGroupLabel(group.executionKind, group.nodeIds.length, t)
+  const label = modelGroupLabel(group, peerGroups, t)
   return (
     <BulkModelPicker
       modelOptions={state.options}

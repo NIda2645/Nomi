@@ -32,7 +32,12 @@ export function CanvasBatchGenerateDock(props: {
       onPointerDown={(event) => event.stopPropagation()}
     >
       {props.executionGroups.map((group) => (
-        <CanvasBulkModelSelect key={`${group.executionKind}:${group.requiredMode}`} group={group} onApplyModel={props.applyModel} />
+        <CanvasBulkModelSelect
+          key={`${group.executionKind}:${group.requiredMode}`}
+          group={group}
+          peerGroups={props.executionGroups}
+          onApplyModel={props.applyModel}
+        />
       ))}
       <CanvasProductionRunButton scope="all" count={eligibleCount} onClick={props.generate} />
       <CanvasProductionConcurrencySelect value={props.concurrency} onChange={props.setConcurrency} />
