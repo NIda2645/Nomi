@@ -93,6 +93,18 @@ export function withLinuxSyntheticCredentialStorage(args, enabled, platform = pr
   return normalized
 }
 
+export async function configureSyntheticCredentialStorage(app, enabled, platform = process.platform) {
+  if (!enabled || platform !== 'linux') return false
+  const available = await app.evaluate(({ safeStorage }) => {
+    safeStorage.setUsePlainTextEncryption(true)
+    return safeStorage.isEncryptionAvailable()
+  })
+  if (!available) {
+    throw new Error('Linux synthetic credential storage could not initialize an in-memory safeStorage key')
+  }
+  return true
+}
+
 /** Electron 43's packaged Chromium rejects Playwright's DevTools WebSocket
  * Origin unless it is explicitly allowed. This flag exists only in this E2E
  * launcher (which already forces NOMI_E2E=1); normal product launches never
@@ -216,6 +228,13 @@ export async function launchNomiApp(options = {}) {
     }
     await win.waitForLoadState('domcontentloaded')
     if (settleMs > 0) await win.waitForTimeout(settleMs)
+  }
+
+  try {
+    await configureSyntheticCredentialStorage(app, syntheticCredentialStorage)
+  } catch (error) {
+    await app.close().catch(() => undefined)
+    throw error
   }
 
   return {

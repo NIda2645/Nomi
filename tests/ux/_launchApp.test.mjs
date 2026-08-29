@@ -5,6 +5,7 @@ import path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import {
   buildNomiLaunchEnv,
+  configureSyntheticCredentialStorage,
   diagnoseLaunchFailure,
   repoRoot,
   withLinuxNoSandbox,
@@ -74,6 +75,37 @@ describe('withLinuxSyntheticCredentialStorage', () => {
     expect(withLinuxSyntheticCredentialStorage(['.'], true, 'darwin')).toEqual(['.'])
     expect(() => withLinuxSyntheticCredentialStorage(['.', '--password-store=gnome-libsecret'], true, 'linux'))
       .toThrow('synthetic credential storage conflicts')
+  })
+
+  test('activates and verifies Electron safeStorage only for opted-in Linux fixtures', async () => {
+    const calls = []
+    const app = {
+      evaluate: async (callback) => callback({
+        safeStorage: {
+          setUsePlainTextEncryption: (enabled) => calls.push(enabled),
+          isEncryptionAvailable: () => true,
+        },
+      }),
+    }
+
+    await expect(configureSyntheticCredentialStorage(app, true, 'linux')).resolves.toBe(true)
+    await expect(configureSyntheticCredentialStorage(app, false, 'linux')).resolves.toBe(false)
+    await expect(configureSyntheticCredentialStorage(app, true, 'darwin')).resolves.toBe(false)
+    expect(calls).toEqual([true])
+  })
+
+  test('fails at the launcher boundary when the Linux fallback is still unavailable', async () => {
+    const app = {
+      evaluate: async (callback) => callback({
+        safeStorage: {
+          setUsePlainTextEncryption: () => undefined,
+          isEncryptionAvailable: () => false,
+        },
+      }),
+    }
+
+    await expect(configureSyntheticCredentialStorage(app, true, 'linux'))
+      .rejects.toThrow('could not initialize an in-memory safeStorage key')
   })
 
   test('every literal fixture credential explicitly opts into isolated synthetic storage', () => {
