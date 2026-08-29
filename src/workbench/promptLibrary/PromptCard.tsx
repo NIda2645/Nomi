@@ -44,7 +44,7 @@ export const PromptCard = React.memo(function PromptCard({ prompt, onSelect }: P
             ) : (
               <img
                 src={prompt.mediaUrl}
-                alt={prompt.title}
+                alt={promptDisplayTitle(prompt)}
                 loading="lazy"
                 className={cn('absolute inset-0 w-full h-full object-cover')}
                 onError={() => setBroken(true)}

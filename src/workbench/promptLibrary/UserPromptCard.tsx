@@ -63,7 +63,7 @@ export const UserPromptCard = React.memo(function UserPromptCard({
           </p>
 
           {prompt.title && !isUntitled ? (
-            <span className={cn('block mt-1.5 text-micro text-nomi-ink-40 truncate')}>{prompt.title}</span>
+            <span className={cn('block mt-1.5 text-micro text-nomi-ink-40 truncate')}>{promptDisplayTitle(prompt)}</span>
           ) : null}
 
           <div

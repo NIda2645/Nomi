@@ -63,7 +63,6 @@ import { useModelPageRequest, type ModelPageRequest } from './useModelPageReques
  import { CertificationIntentKey } from './certificationIntentKey'
 import { CertificationUiError, certificationFailureMessage } from './certificationFailureMessage'
 import { IntegrationConfirmationPanel, type IntegrationVerificationHandoff } from './IntegrationConfirmationPanel'
-
  type IntegrationHandoff = {
   requestId: string
   target: 'credential' | 'connection' | 'workflow' | 'verification'
