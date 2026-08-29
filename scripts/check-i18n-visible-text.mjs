@@ -6,6 +6,7 @@ import ts from 'typescript'
 const ROOT = process.cwd()
 const SRC_ROOT = path.join(ROOT, 'src')
 const ELECTRON_ROOT = path.join(ROOT, 'electron')
+const MODEL_DISPLAY_TEXT_FILE = path.join(SRC_ROOT, 'i18n', 'locales', 'modelDisplayText.ts')
 const REPORT = process.argv.includes('--report')
 
 const VISIBLE_ATTRIBUTES = new Set([
