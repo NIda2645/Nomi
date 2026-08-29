@@ -129,7 +129,11 @@ test('empty, delete, rename, and explicit full requests fail closed across every
 })
 
 test('validation infrastructure changes exercise functional coverage without unrelated performance or packaging gates', () => {
-  for (const files of [['scripts/validation-policy.mjs'], ['.github/workflows/quality-gate.yml'], ['eslint.config.mjs']]) {
+  for (const files of [
+    ['scripts/validation-policy.mjs'],
+    ['.github/workflows/quality-gate.yml'],
+    [{ status: 'R100', path: 'eslint.config.mjs' }],
+  ]) {
     assert.deepEqual(surfaces(classifyValidationPolicy(files)), {
       unit: 'full',
       desktop: true,
@@ -141,6 +145,37 @@ test('validation infrastructure changes exercise functional coverage without unr
       failClosed: true,
     })
   }
+})
+
+test('validation infrastructure composes monotonically with real product and package risks', () => {
+  assert.deepEqual(
+    surfaces(
+      classifyValidationPolicy([
+        '.github/workflows/quality-gate.yml',
+        'src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx',
+      ]),
+    ),
+    {
+      unit: 'full',
+      desktop: true,
+      journeys: true,
+      canvas: 'full',
+      performance: true,
+      package: false,
+      release: false,
+      failClosed: true,
+    },
+  )
+  assert.deepEqual(surfaces(classifyValidationPolicy(['scripts/validation-policy.mjs', 'package.json'])), {
+    unit: 'full',
+    desktop: true,
+    journeys: true,
+    canvas: 'full',
+    performance: false,
+    package: true,
+    release: false,
+    failClosed: true,
+  })
 })
 
 test('mixed changes merge risks monotonically and preserve normalized Git entries', () => {

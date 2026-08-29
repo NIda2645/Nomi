@@ -21,12 +21,13 @@
 | `canvas` | `none` / `critical` / `full` | React Flow 画布功能合同 |
 | `performance` | boolean | 画布性能预算与稳定性 |
 | `package` | boolean | macOS 安装目录、运行时身份和签名 |
-| `failClosed` | boolean | 无法安全缩小范围时全维度执行 |
+| `failClosed` | boolean | 无法安全缩小范围时启用保守兜底策略 |
 
 验证基础设施本身（`.github/workflows/**`、质量门脚本、测试框架配置和走查/性能测试协议）使用一个受控的 fail-closed
 变体：仍执行完整单元、桌面、journey 和功能画布验收，但不自动执行性能或 macOS 打包。性能与打包属于独立风险面，只有
-实际修改 React Flow/媒体渲染或打包边界时才启用。这样修改测试系统不会把 Linux runner 的帧调度抖动误报为产品回退，
-同时测试系统的功能覆盖仍然保持 fail-closed。
+实际修改 React Flow/媒体渲染或打包边界时才启用。基础设施重命名也使用这个变体；若同一 diff 混入真实产品或打包风险，
+策略会继续逐维追加对应门禁，不会因先命中基础设施而提前返回。这样修改测试系统不会把 Linux runner 的帧调度抖动误报为
+产品回退，同时测试系统的功能覆盖仍然保持 fail-closed。
 
 具体规则：
 
@@ -35,7 +36,7 @@
 - 任意 Electron 改动至少升级为 full unit + desktop，但不会自动触发 canvas、performance 或 package。
 - 生成画布功能改动触发 canvas；React Flow 内核、viewport、节点媒体渲染与调度等性能敏感路径另外触发 performance。
 - 打包配置、依赖锁、Electron 启动/preload/runtime path 和 release 边界触发 package。
-- 删除/重命名、空 diff、分类器/工作流/测试系统自身改动、无法解析的 diff 和手动 full 验证全部 fail closed。
+- 产品文件删除/重命名、空 diff、无法解析的 diff 和手动 full 验证执行全维度 fail closed；分类器/工作流/测试系统自身改动执行上述功能型 fail-closed 变体。
 - `main` push 使用 webhook 的真实 `before..after` 重新分类，不再仅因为事件是 push 就升级为全量。
 
 ## 编排

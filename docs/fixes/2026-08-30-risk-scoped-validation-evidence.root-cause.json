@@ -3,7 +3,7 @@
   "id": "2026-08-30-risk-scoped-validation-evidence",
   "problem_type": "Validation scope, CI orchestration, and merged-main evidence divergence",
   "symptom": "Unrelated pull requests and every main push could trigger full unit, desktop, canvas performance, and macOS package validation, while validation-system changes also treated Linux runner frame-timing variance as a product regression. Delivery verification ran the same full-local profile a third time after merge and CI runtime warnings depended on a maintainer noticing logs manually.",
-  "direct_cause": "The classifier exposed only fast/full, treated every push as a release boundary, used one all-surfaces fail-closed policy for both product ambiguity and validation-infrastructure changes, CI bound independent validation surfaces to full, canvas acceptance embedded the performance benchmark, and merged delivery owned a separate hard-coded full-local decision instead of consuming exact-SHA CI evidence.",
+  "direct_cause": "The classifier exposed only fast/full, treated every push as a release boundary, used one all-surfaces fail-closed policy for both product ambiguity and validation-infrastructure changes, and checked generic rename before infrastructure ownership. Its infrastructure branch also returned early instead of composing later product risks. CI bound independent validation surfaces to full, canvas acceptance embedded the performance benchmark, and merged delivery owned a separate hard-coded full-local decision instead of consuming exact-SHA CI evidence.",
   "class_root": "The repository lacked one executable risk policy and evidence contract shared by changed-file classification, CI job selection, system-test profiles, runtime annotations, and merged-main delivery; its fail-closed fallback also had no distinction between functional coverage and machine-sensitive performance/package evidence.",
   "affected_population": [
     "Maintainers and agents delivering documentation, renderer, Electron, canvas, performance, packaging, and test-infrastructure changes",
@@ -61,7 +61,8 @@
     "PR and main-push classification use the same deterministic risk policy over Git name-status entries.",
     "Contracts always run, while unit, desktop, journeys, canvas, performance, and package are independently selected.",
     "Unknown, empty, deleted, renamed, and manual full changes fail closed to every validation surface.",
-    "Validation-infrastructure changes fail closed to full functional unit, desktop, journey, and canvas coverage while leaving performance and packaging disabled as independent risk surfaces.",
+    "Validation-infrastructure changes, including owned renames, fail closed to full functional unit, desktop, journey, and canvas coverage while leaving performance and packaging disabled as independent risk surfaces.",
+    "Infrastructure coverage composes monotonically with non-infrastructure paths in the same diff, so real React Flow, media-rendering, or package changes still add their owned gates.",
     "Functional canvas acceptance never implicitly runs the performance benchmark.",
     "Merged verification accepts only exact fetched main identity and exact-SHA required-check evidence; it never launches a third local full suite.",
     "Unexpected CI warning/failure annotations, expired exceptions, and annotation API failures block Quality Gate with machine-readable evidence; source lint warnings remain visible but are delegated to a non-growing lint:ci budget."

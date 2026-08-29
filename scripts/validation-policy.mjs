@@ -103,38 +103,42 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
     return failClosed(files, 'workflow_dispatch_release_boundary', { release: true })
   }
   if (files.length === 0) return failClosed(files, 'empty_diff_fail_closed')
-  if (files.some((entry) => entry.status.startsWith('D') || entry.status.startsWith('R'))) {
-    return failClosed(files, 'deletion_or_rename_fail_closed')
-  }
-  const validationInfrastructure = files.find((entry) =>
+  const validationInfrastructure = files.filter((entry) =>
     matchesAny(entry.path, VALIDATION_INFRASTRUCTURE_PATTERNS),
   )
-  if (validationInfrastructure) {
-    return {
-      ...VALIDATION_INFRASTRUCTURE_POLICY,
-      release: false,
-      failClosed: true,
-      reason: `validation_infrastructure:${validationInfrastructure.path}`,
-      reasons: [`validation_infrastructure:${validationInfrastructure.path}`],
-      files,
-    }
+  const ambiguousStructuralChange = files.find(
+    (entry) =>
+      (entry.status.startsWith('D') || entry.status.startsWith('R')) &&
+      !matchesAny(entry.path, VALIDATION_INFRASTRUCTURE_PATTERNS),
+  )
+  if (ambiguousStructuralChange) {
+    return failClosed(files, 'deletion_or_rename_fail_closed')
   }
-
-  const policy = {
-    unit: 'focused',
-    desktop: false,
-    journeys: false,
-    canvas: 'none',
-    performance: false,
-    package: false,
-    release: false,
-    failClosed: false,
-    reason: 'isolated_change',
-    reasons: [],
-    files,
-  }
+  const policy = validationInfrastructure.length > 0
+    ? {
+        ...VALIDATION_INFRASTRUCTURE_POLICY,
+        release: false,
+        failClosed: true,
+        reason: `validation_infrastructure:${validationInfrastructure[0].path}`,
+        reasons: [`validation_infrastructure:${validationInfrastructure[0].path}`],
+        files,
+      }
+    : {
+        unit: 'focused',
+        desktop: false,
+        journeys: false,
+        canvas: 'none',
+        performance: false,
+        package: false,
+        release: false,
+        failClosed: false,
+        reason: 'isolated_change',
+        reasons: [],
+        files,
+      }
 
   for (const { path } of files) {
+    if (matchesAny(path, VALIDATION_INFRASTRUCTURE_PATTERNS)) continue
     if (path.startsWith('electron/')) {
       policy.unit = 'full'
       policy.desktop = true
