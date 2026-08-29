@@ -27,6 +27,8 @@ Nomi：本地优先 AI 视频创作工作台。
 | `pnpm run test` | Vitest 单测 |
 | `pnpm run test:system:focused` | 普通 PR 的 changed/sibling/related tests；仍须配合 contracts |
 | `pnpm run test:system:full` | 高风险、主线与发布边界的完整本地验证 |
+| `pnpm run delivery:preflight` | 任务开始前有界刷新远端基线并验证独立干净分支 |
+| `pnpm run delivery:verify-merged -- --expected-sha <SHA>` | 在真实 merged-main 上只跑一次完整系统与 J3/J5 验收 |
 | `pnpm run test:e2e` | Playwright smoke（零额度，CI-ready） |
 | `pnpm run lint:ci` | Lint + max-warnings=98 棘轮（新增 1 个 warning 即红）|
 | `pnpm run typecheck` | TypeScript 双向类型检查 |
@@ -39,6 +41,8 @@ Nomi：本地优先 AI 视频创作工作台。
 | `npx skills experimental_install` | 从 `skills-lock.json` 还原 `.claude/skills/`（换机/协作者用） |
 
 **Push 前按风险分层（R22）**：普通隔离 PR 改动跑 `test:system:contracts` + `test:system:focused`；Electron、模型/凭据/网络/ComfyUI、依赖/构建/CI、测试系统、删除/重命名，以及最终交付、`main`、发布边界跑 `test:system:full`。连续小修先在本地收敛，再一次性验证和 push，不让每个微提交反复触发全套 CI。
+
+**交付身份只走统一命令**：任务开始先跑 `delivery:preflight`；PR 合并后只在 Git fetch 得到的真实 merge SHA 上跑 `delivery:verify-merged`。任务 commit、PR head、merge commit 与 tree 分开报告；禁止用 REST compare 文件列表重建 Git tree/commit，禁止把 `same-tree-different-commit` 叫成代码不匹配。
 
 ## 五条核心原则
 
@@ -128,6 +132,6 @@ Nomi：本地优先 AI 视频创作工作台。
 
 主仓库：`/Users/aoqimin/Desktop/Nomi/`。操作文件用绝对路径；新建 worktree 放仓库目录**同级**（非嵌套），分支从最新 `origin/main` 创建。
 
-**并行纪律（这台机器常有 20+ worktree）**：① 动任何 git 第一步 `git branch --show-current`；② 不在共享主仓里切分支、commit 或解决任务冲突，使用独立 sibling worktree；③ push 前 fetch 最新 `origin/main` 并在任务分支上整合，完整门禁通过后只 push 任务分支并创建 PR；④ 不 force-push `main`，不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
+**并行纪律（这台机器常有 20+ worktree）**：① 在独立 sibling worktree 的干净任务分支运行 `pnpm run delivery:preflight` 后再动手；② 不在共享主仓里切分支、commit 或解决任务冲突；③ push 前在任务分支整合最新 `origin/main`，按 R22 验证后只 push 任务分支并创建 PR；④ 不 force-push `main`，不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
 
 ---

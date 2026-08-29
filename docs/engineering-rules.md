@@ -156,6 +156,8 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 
 完成一个有意义的、验证通过的改动就自己 commit + push，不用等用户催。
 
+**开始闸**：在独立 sibling worktree 的任务分支先运行 `pnpm run delivery:preflight`。它只做一次有超时的非交互 fetch，并拒绝受保护分支、脏工作树和未包含最新远端基线的任务分支；失败后不自动重试、不用 REST API 重建 Git 对象。
+
 **验证门槛**：按 R22 选择 `fast` 或 `full`。普通隔离 PR 改动通过 contracts + focused 即可提交；高风险路径、最终交付、`main` 与发布边界必须通过 full。连续小修先在本地收敛，定向验证通过后只 push 一次，禁止每修一个微小点就触发一轮完整远端 CI。
 
 **commit 规范**：
@@ -435,15 +437,15 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 3. **已合入、待验证**：目标分支已包含提交，但目标分支门禁或真实用户任务尚未通过。只能称“已合入”。
 4. **已解决**：修复提交已进入用户指定的远端目标分支，并且该目标分支上的必需门禁与真实用户任务都通过。
 
-**机械证据（报“已解决”前必做）**：
+**机械证据（报“已解决”前必做）**：拿到 GitHub 返回的 merge commit SHA 后，在 Git fetch 得到的该提交工作树运行：
 
 ```bash
-git fetch origin
-git merge-base --is-ancestor <fix-commit> origin/<target-branch>
-git status --short --branch
+pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 ```
 
-- 第一条祖先检查失败：状态必须降级为“已推送、待合入”，当轮继续完成合入，不能把尾巴留给用户。
+- 命令要求 `HEAD`、远端目标分支与 expected SHA 完全一致，并记录 commit/tree 两种身份；PR head 与 merge commit 不相等是正常阶段变化，tree 相同但 commit 不同也不能误报成代码不一致。
+- 身份检查失败：状态必须降级为“已推送、待合入”或“已合入、待验证”，当轮继续收口，不能把尾巴留给用户。
+- 禁止用 REST compare 文件列表、commit message 重放或低层 Git 对象合成来伪造远端 commit/tree；远端对象只从有界 Git fetch 获取。
 - 未推送提交不允许被引用为团队现状；需要保留就先推到明确命名的远端分支。
 - 删除分支前先逐提交审计；目标分支未包含的有效提交必须先合入或明确归档，不能靠删分支消失。
 - 完成报告必须同时给出目标分支、远端 commit、验证结果；不再只给一个侧分支 hash 让用户自行判断。
@@ -502,6 +504,8 @@ git status --short --branch
 ### 执行节奏
 
 一个逻辑批次先完成实现、审计、规则和测试，再跑一次定向验证；全部本地问题收敛后只跑一次 full 并统一 push。小阻塞不得打断主流程反复重启全套测试；只有会改变安全边界、产品方向或需要用户独有资源的阻塞才停下。
+
+最终交付不再手工拼多条命令：在真实 merged-main SHA 上运行一次 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`。它复用 `full-local`（已含 canvas acceptance 与 CI-safe J3/J5）并把结果写成 Git common dir 的 per-SHA 收据；同一 SHA 再调用直接复用成功收据，失败也不自动重跑，只有显式 `--rerun` 才新增一次尝试。
 
 ## R23 React Flow 生成画布单内核与迁移等价
 
