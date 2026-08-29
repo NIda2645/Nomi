@@ -119,16 +119,16 @@ export function summarizeToolCall(toolName: string, args: unknown): string {
       ? record.resolution
       : '1080p'
     const quality = record.quality === 'small'
-      ? '小体积'
+      ? tt('exportQualitySmall')
       : record.quality === 'high'
-        ? '高质量'
-        : '标准质量'
+        ? tt('exportQualityHigh')
+        : tt('exportQualityStandard')
     const outputName = typeof record.outputName === 'string' ? record.outputName.trim() : ''
-    return `导出时间线（${resolution} · ${quality}）${outputName ? `：${outputName}` : ''}`
+    return tt('exportTimeline', { resolution, quality, suffix: outputName ? tt('exportOutputName', { name: outputName }) : '' })
   }
-  if (toolName === 'inspect_export_job') return '查看导出进度'
-  if (toolName === 'verify_render') return '验证导出结果'
-  if (toolName === 'cancel_export_job') return '取消导出任务'
+  if (toolName === 'inspect_export_job') return tt('inspectExportJob')
+  if (toolName === 'verify_render') return tt('verifyRender')
+  if (toolName === 'cancel_export_job') return tt('cancelExportJob')
   return toolName
 }
 
