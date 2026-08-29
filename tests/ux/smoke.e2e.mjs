@@ -88,6 +88,13 @@ try {
   await win.locator('button[aria-label="添加图片节点"]').first().click();
   const flowNode = win.locator('.react-flow__node[data-id]').last();
   await flowNode.waitFor({ timeout: 5000 });
+  const flowNodeId = await flowNode.getAttribute('data-id');
+  await win.waitForFunction((nodeId) => {
+    const outer = Array.from(document.querySelectorAll('.react-flow__node[data-id]'))
+      .find((candidate) => candidate.getAttribute('data-id') === nodeId);
+    const card = outer?.querySelector('.generation-canvas-v2-node');
+    return Boolean(card && !card.hasAttribute('data-appear'));
+  }, flowNodeId, { timeout: 2000 });
   const nodeGeometry = await flowNode.evaluate((outer) => {
     const inner = outer.querySelector('.generation-canvas-v2-node');
     const outerRect = outer.getBoundingClientRect();
@@ -103,7 +110,7 @@ try {
     Math.abs(nodeGeometry.inner.left - nodeGeometry.outer.left) < 2 &&
       Math.abs(nodeGeometry.inner.top - nodeGeometry.outer.top) < 2 &&
       !nodeGeometry.innerInlineTransform,
-    "React Flow 节点只定位一次（业务卡片与外层左上角对齐）",
+    "React Flow 节点弹入结束后只定位一次（业务卡片与外层左上角对齐）",
   );
   const composer = win.locator(".generation-canvas-v2-node__composer-card").first();
   await composer.waitFor({ timeout: 5000 });

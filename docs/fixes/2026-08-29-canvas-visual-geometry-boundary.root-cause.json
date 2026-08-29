@@ -46,6 +46,7 @@
     "React Flow is the only canvas interaction and transform kernel while Zustand remains the business and persistence source of truth.",
     "Every screen-space consumer and React Flow node or edge projection uses resolveNodeVisualSize for the same node state.",
     "The adapter projects appear and focusFlash without copying business ownership into React Flow, and only nodes whose visual state changes receive a new projection object.",
+    "Geometry assertions that require stable card bounds wait for the finite appear lifecycle to finish; they do not misclassify the intentional 340ms scale animation as persistent double positioning.",
     "A singly selected image-like node exposes left and right 29px magnetic plus affordances; ordinary nodes retain compact dots, hidden target handles contribute geometry without visible duplicate balls, and React Flow compatibility styles do not suppress the existing left and right magnetic plus affordances on collapsed group cards.",
     "Completed edges terminate on the rendered left or right card boundary, use the Nomi accent palette, and retain the established 12px edge label plus Chevron, Check, and Scissors feedback.",
     "React Flow resize controls retain their hit areas but do not introduce visible library-default dots or borders."
@@ -136,7 +137,8 @@
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts",
     "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
     "tests/ux/canvas-card-stack.walk.mjs",
-    "tests/ux/canvas-drag-pan-gestures.walk.mjs"
+    "tests/ux/canvas-drag-pan-gestures.walk.mjs",
+    "tests/ux/smoke.e2e.mjs"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/components/generationCanvasGeometry.test.ts",
@@ -149,7 +151,8 @@
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts",
     "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
     "tests/ux/canvas-card-stack.walk.mjs",
-    "tests/ux/canvas-drag-pan-gestures.walk.mjs"
+    "tests/ux/canvas-drag-pan-gestures.walk.mjs",
+    "tests/ux/smoke.e2e.mjs"
   ],
   "legacy_paths": {
     "status": "not-applicable",
