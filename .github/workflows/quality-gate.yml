@@ -43,7 +43,7 @@ jobs:
       reason: ${{ steps.profile.outputs.reason }}
       changed_count: ${{ steps.profile.outputs.changed_count }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Select fail-closed validation profile
@@ -59,17 +59,16 @@ jobs:
     name: Contracts
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       VOCAB_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || inputs.base_ref }}
       ROOT_CAUSE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || inputs.base_ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.8.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -82,16 +81,14 @@ jobs:
     name: Unit
     needs: scope
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.8.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -116,16 +113,14 @@ jobs:
       needs.scope.outputs.canvas != 'none' ||
       needs.scope.outputs.performance == 'true'
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.8.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -154,7 +149,7 @@ jobs:
       # （2026-08-26 实际卡在这：只知道 withinStage=false，拿不到矩形数就没法定位）。
       - name: Upload walkthrough evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-walkthrough-evidence
           path: |
@@ -176,14 +171,12 @@ jobs:
     needs: scope
     if: needs.scope.outputs.package == 'true'
     runs-on: macos-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.8.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm

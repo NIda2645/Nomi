@@ -60,6 +60,21 @@ test('scope exposes every independent validation surface from the shared classif
   assert.match(runCommands(workflow.jobs.scope).join('\n'), /select-quality-gate-profile\.mjs/)
 })
 
+test('quality gate uses Node 24-native actions without a forced runtime shim', () => {
+  const actionUses = Object.values(workflow.jobs).flatMap(
+    (job) => job.steps?.flatMap((step) => (typeof step.uses === 'string' ? [step.uses] : [])) ?? [],
+  )
+
+  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 5)
+  assert.equal(actionUses.filter((uses) => uses === 'pnpm/action-setup@v6').length, 4)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 4)
+  assert.ok(actionUses.includes('actions/upload-artifact@v7'))
+  assert.ok(actionUses.every((uses) => !/@v4$/.test(uses)))
+  for (const job of Object.values(workflow.jobs)) {
+    assert.equal(job.env?.FORCE_JAVASCRIPT_ACTIONS_TO_NODE24, undefined)
+  }
+})
+
 test('contracts always run and unit alone chooses focused or full coverage', () => {
   const contracts = workflow.jobs.contracts
   assert.equal(contracts.needs, undefined)
@@ -107,7 +122,7 @@ test('Linux builds once and runs only selected desktop, journey, canvas, and per
   )
   assert.equal(runCommands(desktop).filter((command) => command === 'pnpm run build').length, 1)
 
-  const evidence = desktop.steps.find((step) => step.uses === 'actions/upload-artifact@v4')
+  const evidence = desktop.steps.find((step) => step.uses === 'actions/upload-artifact@v7')
   assert.equal(evidence.if, 'always()')
   assert.match(evidence.with.path, /outputs\/canvas-acceptance\/\*\*/)
   assert.match(evidence.with.path, /tests\/ux\/perf-results\/canvas-\*\.json/)
