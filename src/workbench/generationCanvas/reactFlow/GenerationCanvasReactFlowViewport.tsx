@@ -128,6 +128,7 @@ export function GenerationCanvasReactFlowViewport({
       elevateNodesOnSelect={false}
       panOnDrag={[0, 1]}
       autoPanOnConnect={false}
+      connectOnClick={false}
       selectionKeyCode="Shift"
       multiSelectionKeyCode="Shift"
       noPanClassName="generation-canvas-react-flow__no-pan"

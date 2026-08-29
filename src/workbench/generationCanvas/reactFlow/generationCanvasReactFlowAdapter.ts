@@ -14,6 +14,8 @@ export type GenerationFlowNodeData = {
   generationNode: GenerationCanvasNode
   readOnly: boolean
   primarySelection: boolean
+  appear: boolean
+  focusFlash: boolean
 }
 
 export type GenerationFlowNode = FlowNode<GenerationFlowNodeData, 'generation'>
@@ -52,13 +54,20 @@ export function toGenerationFlowNode(
   selected: boolean,
   readOnly: boolean,
   primarySelection = selected,
+  visualState: { appear?: boolean; focusFlash?: boolean } = {},
 ): GenerationFlowNode {
   const size = resolveNodeVisualSize(node)
   return {
     id: node.id,
     type: 'generation',
     position: { ...node.position },
-    data: { generationNode: node, readOnly, primarySelection },
+    data: {
+      generationNode: node,
+      readOnly,
+      primarySelection,
+      appear: Boolean(visualState.appear),
+      focusFlash: Boolean(visualState.focusFlash),
+    },
     selected,
     draggable: !readOnly,
     selectable: !readOnly,
@@ -74,21 +83,29 @@ export function toGenerationFlowNodes(
   selectedNodeIds: ReadonlySet<string>,
   readOnly: boolean,
   previousNodes: readonly GenerationFlowNode[] = [],
+  visualState: {
+    appearingNodeIds?: ReadonlySet<string>
+    focusFlashNodeId?: string | null
+  } = {},
 ): GenerationFlowNode[] {
   const previousById = new Map(previousNodes.map((node) => [node.id, node]))
   const nextNodes = nodes.map((node) => {
     const selected = selectedNodeIds.has(node.id)
     const primarySelection = selected && selectedNodeIds.size === 1
+    const appear = Boolean(visualState.appearingNodeIds?.has(node.id))
+    const focusFlash = visualState.focusFlashNodeId === node.id
     const previous = previousById.get(node.id)
     if (
       previous?.data.generationNode === node &&
       previous.data.readOnly === readOnly &&
       previous.data.primarySelection === primarySelection &&
+      previous.data.appear === appear &&
+      previous.data.focusFlash === focusFlash &&
       Boolean(previous.selected) === selected
     ) {
       return previous
     }
-    return toGenerationFlowNode(node, selected, readOnly, primarySelection)
+    return toGenerationFlowNode(node, selected, readOnly, primarySelection, { appear, focusFlash })
   })
   return nextNodes.length === previousNodes.length
     && nextNodes.every((node, index) => node === previousNodes[index])

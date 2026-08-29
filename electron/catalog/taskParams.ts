@@ -229,8 +229,12 @@ function declaredComfyReferences(extras: JsonRecord, selected?: ParameterReferen
   if (!contract) return []
   return contract.slots.flatMap((slot) => {
     const value = extras[slot.key]
+    // A native ComfyUI slot is first a data/nomi-local URL and then, after
+    // the mandatory /upload/image step, an input-directory filename. The
+    // exact contract is the authority for this latter non-URL form; generic
+    // fields still require URL-shaped values and cannot bypass the guard.
     const url = typeof value === 'string' ? value.trim() : ''
-    if (!url || !REF_URL_RE.test(url)) return []
+    if (!url || url.includes('\0')) return []
     return [{ key: slot.key, family: slot.mediaKind === 'video' ? 'video' as const : 'image' as const, url }]
   })
 }

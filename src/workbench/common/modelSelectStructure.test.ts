@@ -112,6 +112,8 @@ describe('model select structure — 选了模型就必须选得了供应商', (
 
     // 画布共享封装把 (value, vendor) 一起回抛给 onApplyModel（vendor 丢了 = 又锁不了家）。
     const sharedCanvasPicker = readCode('src/workbench/generationCanvas/components/CanvasBulkModelSelect.tsx')
-    expect(sharedCanvasPicker).toContain('onApplyModel({ executionKind: group.executionKind, value, vendor')
+    expect(sharedCanvasPicker).toContain(
+      'onApplyModel({ executionKind: group.executionKind, requiredMode: group.requiredMode, value, vendor',
+    )
   })
 })

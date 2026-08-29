@@ -31,6 +31,7 @@ const { app, win: _initialWin } = await launchNomiApp({
   projectsDir,
   args: ['--no-proxy-server'],
   settleMs: 0,
+  syntheticCredentialStorage: true,
 })
 
 let passed = 0
@@ -456,6 +457,59 @@ try {
 
   await imageNode.click({ position: { x: 20, y: 10 } })
   await getWin().waitForTimeout(450)
+  const selectedImageAffordances = await getWin().evaluate(() => {
+    const image = document.querySelector('.generation-canvas-v2-node[data-kind="image"]')
+    const flowNode = image?.closest('.react-flow__node')
+    const handles = Array.from(
+      flowNode?.querySelectorAll('.generation-canvas-react-flow__handle[data-affordance="magnetic"]') || [],
+    )
+    const resizeControls = Array.from(flowNode?.querySelectorAll('.react-flow__resize-control') || [])
+    return {
+      handles: handles.map((handle) => {
+        const icon = handle.querySelector('.generation-canvas-react-flow__handle-icon')
+        const rect = icon?.getBoundingClientRect()
+        const style = icon ? getComputedStyle(icon) : null
+        return {
+          side: handle.getAttribute('data-side'),
+          hasPlus: Boolean(icon?.querySelector('svg')),
+          cssWidth: style?.width || null,
+          cssHeight: style?.height || null,
+          screenWidth: rect?.width || 0,
+          screenHeight: rect?.height || 0,
+          opacity: style?.opacity || null,
+        }
+      }),
+      resizeControls: resizeControls.map((control) => {
+        const style = getComputedStyle(control)
+        return {
+          backgroundColor: style.backgroundColor,
+          borderTopWidth: style.borderTopWidth,
+          borderTopColor: style.borderTopColor,
+          boxShadow: style.boxShadow,
+        }
+      }),
+    }
+  })
+  assert(
+      selectedImageAffordances.handles.length === 2 &&
+      selectedImageAffordances.handles.map((handle) => handle.side).sort().join(',') === 'left,right' &&
+      selectedImageAffordances.handles.every(
+        (handle) => handle.hasPlus && handle.cssWidth === '29px' && handle.cssHeight === '29px' && Number(handle.opacity) >= 0.8,
+      ),
+    '选中图片节点恢复左右两个 29px 磁吸 +',
+    JSON.stringify(selectedImageAffordances.handles),
+  )
+  assert(
+    selectedImageAffordances.resizeControls.length > 0 &&
+      selectedImageAffordances.resizeControls.every(
+        (control) =>
+          control.backgroundColor === 'rgba(0, 0, 0, 0)' &&
+          (control.borderTopWidth === '0px' || control.borderTopColor === 'rgba(0, 0, 0, 0)') &&
+          control.boxShadow === 'none',
+      ),
+    '缩放命中区保留但不显示 React Flow 小球',
+    JSON.stringify(selectedImageAffordances.resizeControls),
+  )
   const imageBox = await imageNode.boundingBox()
   const videoBox = await videoNode.boundingBox()
   const handlePoint = { x: Math.round(imageBox.x + imageBox.width + 10), y: Math.round(imageBox.y + imageBox.height / 2) }
@@ -481,6 +535,48 @@ try {
   await getWin().waitForTimeout(700)
   const edgeCount = await getWin().evaluate(() => document.querySelectorAll('.generation-canvas-v2__edge').length)
   assert(edgeCount >= 1, '图片节点连到了视频节点', `${edgeCount} 条边`)
+  const connectedEdgeVisual = await getWin().evaluate(() => {
+    const image = document.querySelector('.generation-canvas-v2-node[data-kind="image"]')
+    const video = document.querySelector('.generation-canvas-v2-node[data-kind="video"]')
+    const path = document.querySelector('.generation-canvas-v2__edge-path')
+    if (!image || !video || !(path instanceof SVGPathElement)) return null
+    const imageRect = image.getBoundingClientRect()
+    const videoRect = video.getBoundingClientRect()
+    const matrix = path.getScreenCTM()
+    if (!matrix) return null
+    const toScreen = (point) => new DOMPoint(point.x, point.y).matrixTransform(matrix)
+    const start = toScreen(path.getPointAtLength(0))
+    const end = toScreen(path.getPointAtLength(path.getTotalLength()))
+    const boundaryError = (point, rect) => Math.min(
+      Math.abs(point.x - rect.left),
+      Math.abs(point.x - rect.right),
+    )
+    const accentProbe = document.createElement('span')
+    accentProbe.style.color = 'var(--nomi-accent)'
+    document.body.appendChild(accentProbe)
+    const accent = getComputedStyle(accentProbe).color
+    accentProbe.remove()
+    return {
+      sourceBoundaryError: boundaryError(start, imageRect),
+      targetBoundaryError: boundaryError(end, videoRect),
+      sourceWithinHeight: start.y >= imageRect.top - 1 && start.y <= imageRect.bottom + 1,
+      targetWithinHeight: end.y >= videoRect.top - 1 && end.y <= videoRect.bottom + 1,
+      stroke: getComputedStyle(path).stroke,
+      accent,
+    }
+  })
+  assert(
+    connectedEdgeVisual &&
+      connectedEdgeVisual.sourceBoundaryError <= 2 && connectedEdgeVisual.targetBoundaryError <= 2 &&
+      connectedEdgeVisual.sourceWithinHeight && connectedEdgeVisual.targetWithinHeight,
+    '连线起终点真实贴在两个节点的渲染边界',
+    JSON.stringify(connectedEdgeVisual),
+  )
+  assert(
+    connectedEdgeVisual?.stroke === connectedEdgeVisual?.accent,
+    '连线恢复主题 accent 色',
+    JSON.stringify(connectedEdgeVisual),
+  )
 
   const blankForDeselect = await findBlankPoint()
   await getWin().mouse.click(blankForDeselect.x, blankForDeselect.y)
@@ -493,13 +589,31 @@ try {
 
   await videoNode.click({ position: { x: 20, y: 10 } })
   await getWin().waitForTimeout(400)
-  const selectedEdgeState = await getWin().evaluate(() => ({
-    labels: document.querySelectorAll('.generation-canvas-v2__edge-tag-pill').length,
-    incident: document.querySelectorAll('.generation-canvas-v2__edge[data-incident="true"]').length,
-  }))
+  const selectedEdgeState = await getWin().evaluate(() => {
+    const label = document.querySelector('.generation-canvas-v2__edge-tag-pill')
+    const accentProbe = document.createElement('span')
+    accentProbe.style.color = 'var(--nomi-accent)'
+    document.body.appendChild(accentProbe)
+    const accent = getComputedStyle(accentProbe).color
+    accentProbe.remove()
+    const labelStyle = label ? getComputedStyle(label) : null
+    return {
+      labels: document.querySelectorAll('.generation-canvas-v2__edge-tag-pill').length,
+      incident: document.querySelectorAll('.generation-canvas-v2__edge[data-incident="true"]').length,
+      fontSize: labelStyle?.fontSize || null,
+      color: labelStyle?.color || null,
+      accent,
+      hasChevron: Boolean(label?.querySelector('svg')),
+    }
+  })
   await snap('04-edge-labels-on-selection.png')
   assert(selectedEdgeState.incident >= 1, '选中节点后其关联边点亮（data-incident）')
   assert(selectedEdgeState.labels >= 1, '选中节点后其关联边的类型标签浮出', JSON.stringify(selectedEdgeState))
+  assert(
+    selectedEdgeState.fontSize === '12px' && selectedEdgeState.color === selectedEdgeState.accent && selectedEdgeState.hasChevron,
+    '连线标签恢复 12px accent 文字与下拉图标',
+    JSON.stringify(selectedEdgeState),
+  )
 
   // ── ④ 拖动节点：浮条 / 提示词面板隐身，松手回来 ─────────────────────────
   const composerBefore = await getWin().evaluate(() => {

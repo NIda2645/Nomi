@@ -92,6 +92,9 @@
     "postinstall": "node ./scripts/install-electron-runtime.mjs && node ./scripts/install-git-hooks.cjs",
     "test:e2e": "pnpm run check:electron-install && node tests/ux/smoke.e2e.mjs",
     "test:mcp": "pnpm run check:electron-install && node tests/ux/mcp-journey.e2e.mjs",
+    "test:model-integration:no-repo": "node tests/ux/model-integration-no-repo.mjs",
+    "test:model-integration:packaged": "node tests/ux/model-integration-packaged.e2e.mjs",
+    "test:model-integration:fault-matrix": "node tests/ux/model-integration-fault-matrix.e2e.mjs",
     "test:canvas:critical": "node tests/ux/canvas-real-suite.mjs critical",
     "test:canvas:acceptance": "node tests/ux/canvas-real-suite.mjs full",
     "test:canvas-perf": "node tests/ux/canvas-performance-benchmark.e2e.mjs",
@@ -105,6 +108,7 @@
     "test:system:ci": "node scripts/test-system.mjs ci",
     "test:system:contracts": "node scripts/test-system.mjs ci-contracts",
     "test:system:unit": "node scripts/test-system.mjs ci-unit",
+    "test:system:focused": "node scripts/test-focused.mjs",
     "test:system:desktop": "node scripts/test-system.mjs ci-desktop",
     "test:system:full": "node scripts/test-system.mjs full-local",
     "test:system:release": "node scripts/test-system.mjs release",
@@ -114,7 +118,7 @@
     "check:batch-machines": "node ./scripts/check-batch-machines.mjs",
     "check:test-types": "node ./scripts/check-test-types.mjs",
     "check:gates-chain": "node ./scripts/check-gates-chain.mjs",
-    "check:quality-gate-workflow": "node --test ./scripts/check-quality-gate-workflow.node-test.mjs",
+    "check:quality-gate-workflow": "node --test ./scripts/check-quality-gate-workflow.node-test.mjs ./scripts/test-focused.node-test.mjs",
     "check:cla-workflow": "node --test ./scripts/check-cla-workflow.node-test.mjs"
   },
   "dependencies": {

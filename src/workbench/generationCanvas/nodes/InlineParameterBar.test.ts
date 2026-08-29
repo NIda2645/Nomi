@@ -21,7 +21,7 @@ describe('InlineParameterBar catalog variant control', () => {
   function render(tiers: string[], selected: string) {
     const modelOptions = toCatalogModelOptions(tiers.map(tier => ({
       modelKey: `gemini-3.7-flash-${tier}`, vendorKey: 'antigravity-cli', labelZh: `Gemini 3.7 Flash ${tier}`,
-      kind: 'text', enabled: true, createdAt: '', updatedAt: '',
+      kind: 'text', enabled: true, published: true, publishedModes: ['chat' as const], createdAt: '', updatedAt: '',
     })))
     const onModelChange = vi.fn()
     const html = renderToStaticMarkup(React.createElement(InlineParameterBar, {

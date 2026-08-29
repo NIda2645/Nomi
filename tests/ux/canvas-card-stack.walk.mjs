@@ -279,6 +279,23 @@ try {
   await expectAbsent(groupMembers, { provenBy: groupMembersProof, message: '收起后组内三个成员节点不再各自占画布' })
   check('三位成员已从画布投影隐藏', true)
   check('编组显示节点语义', await collapsed.getByRole('button', { name: '3 节点' }).isVisible())
+  const collapsedMagneticHandles = collapsed.locator('.generation-canvas-v2-node__magnetic-handle')
+  await expectCount(collapsedMagneticHandles, 2, '收起编组应保留左右两个磁性连接句柄')
+  const collapsedHandleStates = await collapsedMagneticHandles.evaluateAll((handles) => handles.map((handle) => {
+    const style = window.getComputedStyle(handle)
+    const bounds = handle.getBoundingClientRect()
+    return {
+      side: handle.getAttribute('data-side'),
+      rendered: style.display !== 'none' && style.visibility !== 'hidden' && bounds.width > 0 && bounds.height > 0,
+      hasPlusIcon: Boolean(handle.querySelector('.generation-canvas-v2-node__magnetic-handle-icon svg')),
+    }
+  }))
+  check(
+    '收起编组保留可交互的左右悬浮加号',
+    collapsedHandleStates.map(({ side }) => side).sort().join(',') === 'left,right'
+      && collapsedHandleStates.every(({ rendered, hasPlusIcon }) => rendered && hasPlusIcon),
+    JSON.stringify(collapsedHandleStates),
+  )
   check('三条成员输入聚合为一条编组线', await win.locator('g[data-aggregate-group="reference-group"]').count() === 1)
   const aggregateHit = win.locator('g[data-aggregate-group="reference-group"] path[role="button"]')
   await clickOrFail(aggregateHit, '选中聚合后的编组输入线')

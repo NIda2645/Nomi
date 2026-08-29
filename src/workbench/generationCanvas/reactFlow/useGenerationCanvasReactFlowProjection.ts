@@ -16,6 +16,8 @@ type ProjectionOptions = {
   selectedNodeIds: readonly string[]
   selectedEdgeId: string | null
   readOnly: boolean
+  appearingNodeIds?: ReadonlySet<string>
+  focusFlashNodeId?: string | null
 }
 
 export function useGenerationCanvasReactFlowProjection({
@@ -26,6 +28,8 @@ export function useGenerationCanvasReactFlowProjection({
   selectedNodeIds,
   selectedEdgeId,
   readOnly,
+  appearingNodeIds,
+  focusFlashNodeId,
 }: ProjectionOptions): {
   selectedSet: Set<string>
   nodeById: Map<string, GenerationCanvasNode>
@@ -37,10 +41,13 @@ export function useGenerationCanvasReactFlowProjection({
   const edgeNodes = edgeNodeById ?? nodeById
   const previousFlowNodesRef = React.useRef<GenerationFlowNode[]>([])
   const flowNodes = React.useMemo(() => {
-    const next = toGenerationFlowNodes(nodes, selectedSet, readOnly, previousFlowNodesRef.current)
+    const next = toGenerationFlowNodes(nodes, selectedSet, readOnly, previousFlowNodesRef.current, {
+      appearingNodeIds,
+      focusFlashNodeId,
+    })
     previousFlowNodesRef.current = next
     return next
-  }, [nodes, readOnly, selectedSet])
+  }, [appearingNodeIds, focusFlashNodeId, nodes, readOnly, selectedSet])
   const previousFlowEdgesRef = React.useRef<GenerationFlowEdge[]>([])
   const flowEdges = React.useMemo(() => {
     const next = toGenerationFlowEdges(edges, edgeNodes, {

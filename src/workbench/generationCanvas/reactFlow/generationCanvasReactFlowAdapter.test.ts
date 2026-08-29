@@ -157,6 +157,25 @@ describe('generation canvas React Flow adapter', () => {
     })).toBe(multiSelectedEdges)
   })
 
+  it('updates only nodes whose transient visual state changed', () => {
+    const a = node('a', 0)
+    const b = node('b', 300)
+    const first = toGenerationFlowNodes([a, b], new Set(), false)
+    const appearing = toGenerationFlowNodes([a, b], new Set(), false, first, {
+      appearingNodeIds: new Set(['b']),
+    })
+
+    expect(appearing[0]).toBe(first[0])
+    expect(appearing[1]).not.toBe(first[1])
+    expect(appearing[1].data).toMatchObject({ appear: true, focusFlash: false })
+
+    const focused = toGenerationFlowNodes([a, b], new Set(['a']), false, appearing, {
+      focusFlashNodeId: 'a',
+    })
+    expect(focused[0].data).toMatchObject({ appear: false, focusFlash: true })
+    expect(focused[1].data).toMatchObject({ appear: false, focusFlash: false })
+  })
+
   it('extracts position and selection changes while ignoring unrelated changes', () => {
     const changes = [
       { type: 'position', id: 'a', position: { x: 14, y: 22 }, dragging: true },

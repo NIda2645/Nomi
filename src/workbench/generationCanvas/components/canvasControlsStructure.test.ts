@@ -45,12 +45,19 @@ describe('generation canvas control structure', () => {
   it('lets React Flow exclusively own mounted node placement and interaction controls', () => {
     const baseNode = source('../nodes/BaseGenerationNode.tsx')
     const dragResize = source('../nodes/useNodeDragResize.ts')
+    const flowStyles = source('../reactFlow/generationCanvasReactFlow.css')
 
     expect(dragResize).toContain('return { flowManagedDrag, handlePointerDown')
     expect(baseNode).toContain("flowManagedLayout ? 'relative' : 'absolute'")
     expect(baseNode).toContain('transform: flowManagedLayout ? undefined : `translate(')
     expect(baseNode).toContain("!flowManagedLayout && !readOnly && node.kind !== 'panorama'")
     expect(baseNode).toContain('selected && !readOnly && !flowManagedLayout')
+    expect(flowStyles).toContain(
+      '.generation-canvas-react-flow__node-shell .generation-canvas-v2-node__magnetic-handle',
+    )
+    expect(flowStyles).not.toMatch(
+      /\.generation-canvas-react-flow \.generation-canvas-v2-node__magnetic-handle[,{]/,
+    )
   })
 
   it('routes every duplicated variant through the shared focus recovery contract', () => {

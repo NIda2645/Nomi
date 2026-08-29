@@ -12,6 +12,7 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import { useTranslation } from 'react-i18next'
+import { IconCheck, IconChevronDown, IconPlus, IconScissors } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { getGenerationNodeComponent } from '../nodes/renderRegistry'
@@ -26,8 +27,95 @@ import {
 } from '../components/canvasNodeLevelOfDetail'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 import { GenerationFlowNodeScope } from './generationFlowNodeContext'
+import { resolveGenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
+
+const MAGNETIC_HANDLE_ICON_RADIUS = 14.5
+
+function clampMagneticHandlePosition(value: number, max: number): number {
+  return Math.min(
+    Math.max(value, MAGNETIC_HANDLE_ICON_RADIUS),
+    Math.max(MAGNETIC_HANDLE_ICON_RADIUS, max - MAGNETIC_HANDLE_ICON_RADIUS),
+  )
+}
+
+function updateMagneticHandlePosition(event: React.PointerEvent<HTMLSpanElement>): void {
+  const hitArea = event.currentTarget
+  const rect = hitArea.getBoundingClientRect()
+  const localWidth = hitArea.offsetWidth || rect.width || 1
+  const localHeight = hitArea.offsetHeight || rect.height || 1
+  const localX = rect.width > 0 ? (event.clientX - rect.left) * (localWidth / rect.width) : localWidth / 2
+  const localY = rect.height > 0 ? (event.clientY - rect.top) * (localHeight / rect.height) : localHeight / 2
+  hitArea.style.setProperty('--connection-handle-x', `${clampMagneticHandlePosition(localX, localWidth)}px`)
+  hitArea.style.setProperty('--connection-handle-y', `${clampMagneticHandlePosition(localY, localHeight)}px`)
+  hitArea.dataset.following = 'true'
+}
+
+function resetMagneticHandlePosition(event: React.PointerEvent<HTMLSpanElement>): void {
+  const hitArea = event.currentTarget
+  hitArea.style.setProperty('--connection-handle-x', hitArea.dataset.homeX || '50%')
+  hitArea.style.setProperty('--connection-handle-y', '50%')
+  hitArea.removeAttribute('data-following')
+}
+
+type GenerationFlowConnectionHandleProps = {
+  side: 'left' | 'right'
+  type: 'source' | 'target'
+  affordance: 'dot' | 'magnetic' | 'hidden'
+  active: boolean
+  label: string
+}
+
+function GenerationFlowConnectionHandle({
+  side,
+  type,
+  affordance,
+  active,
+  label,
+}: GenerationFlowConnectionHandleProps): JSX.Element {
+  const position = side === 'left' ? Position.Left : Position.Right
+  const id = `${type}-${side}`
+  const homeX = side === 'left' ? 'calc(100% - 28px)' : '28px'
+  return (
+    <Handle
+      id={id}
+      type={type}
+      position={position}
+      isConnectableStart={type === 'source'}
+      isConnectableEnd={type === 'target'}
+      aria-label={label}
+      data-side={side}
+      data-affordance={type === 'source' ? affordance : 'target'}
+      data-active={active ? 'true' : undefined}
+      className={cn(
+        'generation-canvas-react-flow__handle',
+        `generation-canvas-react-flow__handle--${type}`,
+        type === 'source' && `generation-canvas-react-flow__handle--${affordance}`,
+      )}
+    >
+      {type === 'source' && affordance !== 'hidden' ? (
+        <span
+          className="generation-canvas-react-flow__handle-hit"
+          data-home-x={homeX}
+          data-side={side}
+          style={affordance === 'magnetic' ? {
+            '--connection-handle-x': homeX,
+            '--connection-handle-y': '50%',
+          } as React.CSSProperties : undefined}
+          onPointerMove={affordance === 'magnetic' ? updateMagneticHandlePosition : undefined}
+          onPointerLeave={affordance === 'magnetic' ? resetMagneticHandlePosition : undefined}
+          onPointerCancel={affordance === 'magnetic' ? resetMagneticHandlePosition : undefined}
+        >
+          <span className="generation-canvas-react-flow__handle-icon" aria-hidden="true">
+            {affordance === 'magnetic' ? <IconPlus size={18} stroke={1.8} /> : null}
+          </span>
+        </span>
+      ) : null}
+    </Handle>
+  )
+}
 
 export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationFlowNode>): JSX.Element {
+  const { t } = useTranslation()
   const node = data.generationNode
   const collapsedGroupProxy = node.meta?.collapsedGroupProxy === true
   const NodeComponent = getGenerationNodeComponent(node.kind)
@@ -37,6 +125,7 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
   const captureHistory = useGenerationCanvasStore((state) => state.captureHistory)
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
   const nodeCount = useGenerationCanvasStore((state) => state.nodes.length)
+  const pendingConnectionSourceId = useGenerationCanvasStore((state) => state.pendingConnectionSourceId)
   const multiSelectionActive = useStore((state) => state.multiSelectionActive && data.primarySelection)
   const { zoom } = useViewport()
   const primarySelection = data.primarySelection && !multiSelectionActive
@@ -53,11 +142,23 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
     selected,
     primarySelection,
   })
+  const connectionAffordance = collapsedGroupProxy
+    ? 'hidden'
+    : resolveGenerationFlowConnectionAffordance(node, primarySelection, pendingConnectionSourceId)
+  const isPendingConnectionSource = pendingConnectionSourceId === node.id
+  const isPendingConnectionTarget = Boolean(pendingConnectionSourceId && !isPendingConnectionSource)
+  const startConnectionLabel = t('generationCommon.node.startConnection')
+  const targetConnectionLabel = t('generationCommon.node.connectHere')
 
   return (
     <div
       className="generation-canvas-react-flow__node-shell"
-      style={{ width: size.width, height: size.height, pointerEvents: collapsedGroupProxy ? 'none' : undefined }}
+      style={{
+        width: size.width,
+        height: size.height,
+        pointerEvents: collapsedGroupProxy ? 'none' : undefined,
+        '--generation-flow-node-height': `${size.height}px`,
+      } as React.CSSProperties}
       aria-hidden={collapsedGroupProxy || undefined}
     >
       <NodeResizer
@@ -66,14 +167,14 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
         minHeight={bounds.minHeight}
         maxWidth={bounds.maxWidth}
         maxHeight={bounds.maxHeight}
-        lineStyle={{ borderColor: 'color-mix(in oklch, var(--nomi-ink) 36%, transparent)' }}
+        lineStyle={{ borderColor: 'transparent' }}
         handleStyle={{
-          width: 7,
-          height: 7,
-          border: '1px solid color-mix(in oklch, var(--nomi-ink) 42%, transparent)',
-          borderRadius: 999,
-          background: 'var(--nomi-paper)',
-          boxShadow: 'var(--nomi-shadow-sm)',
+          width: 16,
+          height: 16,
+          border: 0,
+          borderRadius: 0,
+          background: 'transparent',
+          boxShadow: 'none',
         }}
         onResizeStart={() => captureHistory()}
         onResize={(_event, params) => {
@@ -99,18 +200,24 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
       />
       {!data.readOnly ? (
         <>
-          <Handle id="target-left" type="target" position={Position.Left} data-side="left" className="generation-canvas-react-flow__handle" />
-          <Handle id="target-right" type="target" position={Position.Right} data-side="right" className="generation-canvas-react-flow__handle" />
+          <GenerationFlowConnectionHandle side="left" type="target" affordance="hidden" active={isPendingConnectionTarget} label={targetConnectionLabel} />
+          <GenerationFlowConnectionHandle side="right" type="target" affordance="hidden" active={isPendingConnectionTarget} label={targetConnectionLabel} />
         </>
       ) : null}
       {!collapsedGroupProxy ? (
         <GenerationFlowNodeScope>
-          {shouldRenderFullNodeContent({ lightweightMode, selected: primarySelection, focusFlash: false }) ? (
-            <NodeComponent node={node} selected={selected} readOnly={data.readOnly} />
+          {shouldRenderFullNodeContent({ lightweightMode, selected: primarySelection, focusFlash: data.focusFlash }) ? (
+            <NodeComponent
+              node={node}
+              selected={selected}
+              readOnly={data.readOnly}
+              focusFlash={data.focusFlash}
+              appear={data.appear}
+            />
           ) : (
             <LightweightGenerationNode
               node={node}
-              appear={false}
+              appear={data.appear}
               selected={selected}
               readOnly={data.readOnly}
             />
@@ -119,8 +226,8 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
       ) : null}
       {!data.readOnly ? (
         <>
-          <Handle id="source-left" type="source" position={Position.Left} data-side="left" className="generation-canvas-react-flow__handle" />
-          <Handle id="source-right" type="source" position={Position.Right} data-side="right" className="generation-canvas-react-flow__handle" />
+          <GenerationFlowConnectionHandle side="left" type="source" affordance={connectionAffordance} active={isPendingConnectionSource} label={startConnectionLabel} />
+          <GenerationFlowConnectionHandle side="right" type="source" affordance={connectionAffordance} active={isPendingConnectionSource} label={startConnectionLabel} />
         </>
       ) : null}
     </div>
@@ -210,7 +317,8 @@ export function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY,
                 setMenuOpen((open) => !open)
               }}
             >
-              {aggregateLabel || t(`generationCommon.canvas.edge.modes.${mode}`)}
+              <span>{aggregateLabel || t(`generationCommon.canvas.edge.modes.${mode}`)}</span>
+              <IconChevronDown size={12} stroke={1.8} className={menuOpen ? 'rotate-180' : undefined} aria-hidden="true" />
             </button>
             {menuOpen ? (
               <div
@@ -230,7 +338,8 @@ export function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY,
                       setMenuOpen(false)
                     }}
                   >
-                    {t(`generationCommon.canvas.edge.modes.${mode}`)}
+                    <span>{t(`generationCommon.canvas.edge.modes.${mode}`)}</span>
+                    {mode === edge?.mode ? <IconCheck size={14} stroke={2} aria-hidden="true" /> : null}
                   </button>
                 ))}
                 <button
@@ -249,7 +358,8 @@ export function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY,
                     setMenuOpen(false)
                   }}
                 >
-                  {t('generationCommon.canvas.edge.disconnectAction')}
+                  <IconScissors size={14} stroke={1.8} aria-hidden="true" />
+                  <span>{t('generationCommon.canvas.edge.disconnectAction')}</span>
                 </button>
               </div>
             ) : null}

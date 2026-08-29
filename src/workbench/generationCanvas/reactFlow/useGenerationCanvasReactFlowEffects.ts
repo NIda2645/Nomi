@@ -23,6 +23,7 @@ type HostEffectsArgs = {
   allNodes: GenerationCanvasNode[]
   setStageSize: React.Dispatch<React.SetStateAction<{ width: number; height: number }>>
   setLiveViewport: React.Dispatch<React.SetStateAction<{ x: number; y: number; zoom: number }>>
+  setFocusFlashNodeId: React.Dispatch<React.SetStateAction<string | null>>
   zoomRef: React.MutableRefObject<number>
 }
 
@@ -34,6 +35,7 @@ export function useGenerationCanvasReactFlowHostEffects({
   allNodes,
   setStageSize,
   setLiveViewport,
+  setFocusFlashNodeId,
   zoomRef,
 }: HostEffectsArgs): void {
   const { t } = useTranslation()
@@ -42,6 +44,7 @@ export function useGenerationCanvasReactFlowHostEffects({
   const markReady = useGenerationCanvasStore((state) => state.markReady)
   const pendingFocusRef = React.useRef<PendingCanvasFocus | null>(null)
   const focusedRecoveryRef = React.useRef<PendingCanvasFocus | null>(null)
+  const focusFlashTimerRef = React.useRef<number | null>(null)
 
   React.useEffect(() => {
     const handleFocusNode = (event: Event) => {
@@ -84,6 +87,12 @@ export function useGenerationCanvasReactFlowHostEffects({
       return
     }
     const size = resolveNodeVisualSize(decision.node)
+    setFocusFlashNodeId(decision.node.id)
+    if (focusFlashTimerRef.current !== null) window.clearTimeout(focusFlashTimerRef.current)
+    focusFlashTimerRef.current = window.setTimeout(() => {
+      setFocusFlashNodeId((current) => current === decision.node.id ? null : current)
+      focusFlashTimerRef.current = null
+    }, 1_400)
     void flow.setCenter(decision.node.position.x + size.width / 2, decision.node.position.y + size.height / 2, {
       zoom: zoomRef.current,
       duration: 220,
@@ -91,7 +100,11 @@ export function useGenerationCanvasReactFlowHostEffects({
     // Keep the pre-focus viewport until the focused node is confirmed to be gone.
     // This covers Cmd/Ctrl+Z immediately after duplicating a variant.
     return
-  }, [activeCategoryId, allNodes, flow, nodes, setLiveViewport, zoomRef])
+  }, [activeCategoryId, allNodes, flow, nodes, setFocusFlashNodeId, setLiveViewport, zoomRef])
+
+  React.useEffect(() => () => {
+    if (focusFlashTimerRef.current !== null) window.clearTimeout(focusFlashTimerRef.current)
+  }, [])
 
   React.useEffect(() => {
     const focused = focusedRecoveryRef.current

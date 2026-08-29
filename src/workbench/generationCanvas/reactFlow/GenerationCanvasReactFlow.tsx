@@ -36,6 +36,7 @@ import { useCanvasProductionActions } from '../components/useCanvasProductionAct
 import { useCanvasBatchDockVisibility } from '../components/useCanvasBatchDockVisibility'
 import { useCanvasFitSignal } from '../components/useCanvasFitSignal'
 import { useTidyCanvas } from '../components/useTidyCanvas'
+import { useNodeAppearTracking } from '../components/useNodeAppearTracking'
 import { useAutoFitOnLoad } from '../components/useAutoFitOnLoad'
 import { useComposerVisibilityPan } from '../components/useComposerVisibilityPan'
 import { useCanvasContextNodeMenu } from '../components/useCanvasContextNodeMenu'
@@ -84,6 +85,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const dragStartPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map())
   const connectionStartRef = React.useRef<{ nodeId: string; side: 'left' | 'right' } | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null)
+  const [focusFlashNodeId, setFocusFlashNodeId] = React.useState<string | null>(null)
   const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 })
   const [minimapVisible, setMinimapVisible] = React.useState(true)
   const [connectionCreateMenu, setConnectionCreateMenu] = React.useState<{
@@ -127,6 +129,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const pasteNodes = useGenerationCanvasStore((state) => state.pasteNodes)
   const undo = useGenerationCanvasStore((state) => state.undo)
   const redo = useGenerationCanvasStore((state) => state.redo)
+  const appearingNodeIds = useNodeAppearTracking(allNodes)
 
   const nodes = React.useMemo(
     () => allNodes.filter((node) => (node.categoryId || 'shots') === activeCategoryId),
@@ -186,6 +189,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     selectedNodeIds,
     selectedEdgeId,
     readOnly,
+    appearingNodeIds,
+    focusFlashNodeId,
   })
   const groupBoxes = React.useMemo(
     () => getCanvasGroupBoxes(visibleGroups.filter((group) => !group.collapsed), collapsedProjection.visibleNodes),
@@ -266,6 +271,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     allNodes,
     setStageSize,
     setLiveViewport,
+    setFocusFlashNodeId,
     zoomRef,
   })
 
@@ -537,7 +543,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [connectToNode, readOnly, startConnection])
 
   const handleConnectStart: OnConnectStart = React.useCallback((_event, params) => {
-    if (readOnly || !params.nodeId || !params.handleType) return
+    if (readOnly || !params.nodeId || params.handleType !== 'source') return
     const side = params.handleId?.endsWith('-left') ? 'left' : 'right'
     connectionStartRef.current = { nodeId: params.nodeId, side }
     startConnection(params.nodeId, side)
@@ -546,7 +552,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const handleConnectEnd: OnConnectEnd = React.useCallback((event, connectionState) => {
     const started = connectionStartRef.current
     connectionStartRef.current = null
-    if (readOnly || !started || connectionState.toNode) return
+    if (readOnly || !started || (connectionState.isValid && connectionState.toNode)) return
     const sourceNode = nodeById.get(started.nodeId)
     const canCreateMedia = sourceNode?.kind === 'text' || sourceNode?.kind === 'image' || Boolean(sourceNode && isImageLikeGenerationNodeKind(sourceNode.kind))
     if (!canCreateMedia) {

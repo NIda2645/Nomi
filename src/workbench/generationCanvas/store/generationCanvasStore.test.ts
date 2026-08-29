@@ -732,6 +732,23 @@ describe('selectNodesInRect (框选 AABB)', () => {
     useGenerationCanvasStore.getState().selectNodesInRect({ x1: -10, y1: -10, x2: 110, y2: 110 }, 'shots', true)
     expect([...useGenerationCanvasStore.getState().selectedNodeIds].sort()).toEqual(['a', 'b'])
   })
+
+  it('按真实媒体预览框选，不因持久化高度过期漏掉可见节点', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [{
+        ...sized('loaded-image', 'shots', 0, -400),
+        size: { width: 360, height: 280 },
+        meta: { previewHeight: 432 },
+        result: { id: 'result-1', type: 'image', url: 'nomi-local://asset/image.jpg', createdAt: 1 },
+      }],
+      edges: [],
+      selectedNodeIds: [],
+      groups: [],
+    })
+
+    useGenerationCanvasStore.getState().selectNodesInRect({ x1: 0, y1: 0, x2: 40, y2: 20 }, 'shots')
+    expect(useGenerationCanvasStore.getState().selectedNodeIds).toEqual(['loaded-image'])
+  })
 })
 
 describe('updateNodes', () => {

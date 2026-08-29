@@ -3,7 +3,7 @@ import { normalizeParameterEdges } from '../model/parameterReferenceSlots'
 import { resolveInsertionPosition } from './resolveInsertionPosition'
 import { tidyCanvasLayout } from './tidyCanvasLayout'
 import { getDefaultCategoryForNodeKind, type GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { getNodeSize } from '../model/generationNodeKinds'
+import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { isShotNumberedNode, nextShotIndex } from '../model/shotNumbering'
 import { buildCanvasNode } from '../../../../electron/capabilityCore/canvasNodeFactory'
 import { RENDERER_NODE_FACTORY_DEPS } from './rendererNodeFactoryDeps'
@@ -294,7 +294,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     set((state) => {
       const hits = state.nodes.filter((node) => {
         if (categoryId && (node.categoryId || 'shots') !== categoryId) return false
-        const { width: w, height: h } = getNodeSize(node)
+        const { width: w, height: h } = resolveNodeVisualSize(node)
         return node.position.x + w >= left && node.position.x <= right &&
           node.position.y + h >= top && node.position.y <= bottom
       }).map((node) => node.id)
@@ -321,7 +321,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     if (dupPosition.x < 0 || dupPosition.y < 0) {
       dupPosition = resolveInsertionPosition(
         node.kind,
-        { x: node.position.x, y: node.position.y + getNodeSize(node).height + 48 },
+        { x: node.position.x, y: node.position.y + resolveNodeVisualSize(node).height + 48 },
         dupSiblings,
       )
     }
