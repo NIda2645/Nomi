@@ -10,8 +10,17 @@ describe("system test profiles", () => {
     expect(expandProfile("ci").map((stage) => stage.id)).toContain("journeys-ci");
   });
 
+  test("desktop CI requires the critical real-canvas suite", () => {
+    expect(expandProfile("ci-desktop").map((stage) => stage.id)).toEqual([
+      "build",
+      "e2e",
+      "canvas-critical",
+      "journeys-ci",
+    ]);
+  });
+
   test("release contains local, real-generation, and repository gates", () => {
-    expect(expandProfile("release").map((stage) => stage.id)).toEqual(expect.arrayContaining(["gates", "e2e", "journeys-all", "real-generation"]));
+    expect(expandProfile("release").map((stage) => stage.id)).toEqual(expect.arrayContaining(["gates", "e2e", "canvas-full", "journeys-all", "real-generation"]));
     expect(expandProfile("release").find((stage) => stage.id === "real-generation")).toMatchObject({
       args: ["tests/ux/camera-move-render-e2e.mjs"],
       env: { NOMI_SPEND_OK: "1" },

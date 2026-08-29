@@ -244,6 +244,7 @@ export default defineConfig(async ({ command, mode }) => {
         '@mantine/core',
         '@mantine/modals',
         '@mantine/notifications',
+        '@xmldom/xmldom',
         '@react-three/drei',
         '@react-three/fiber',
         '@react-three/fiber > react-reconciler',

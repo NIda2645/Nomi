@@ -48,7 +48,7 @@ export function CanvasBulkModelSelect({
       ariaLabel={label}
       leadingLabel={label}
       placeholder={t('generationCommon.production.unifyModel')}
-      size="xs"
+      size="sm"
       triggerMaxWidth={140}
     />
   )

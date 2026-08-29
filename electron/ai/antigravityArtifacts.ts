@@ -11,10 +11,12 @@ const MAX_PIXELS = 16_777_216;
 /** No directory enumeration, symlinks, devices, FIFOs, or unbounded reads. */
 export async function readAntigravityFile(root: string, relative: string, limit: number): Promise<Buffer> {
   try {
-    if (path.isAbsolute(relative) || relative.split(path.sep).some((part) => !part || part === "." || part === "..")) throw new Error();
+    const parts = relative.split(/[\\/]+/);
+    if (path.posix.isAbsolute(relative) || path.win32.isAbsolute(relative)
+      || parts.some((part) => !part || part === "." || part === "..")) throw new Error();
     let current = root;
     const directories: Array<{ path: string; dev: number; ino: number }> = [];
-    for (const part of ["", ...relative.split(path.sep).slice(0, -1)]) {
+    for (const part of ["", ...parts.slice(0, -1)]) {
       if (part) current = path.join(current, part);
       const info = await lstat(current);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error();
@@ -30,7 +32,13 @@ export async function readAntigravityFile(root: string, relative: string, limit:
         if (!now.isDirectory() || now.isSymbolicLink() || now.dev !== directory.dev || now.ino !== directory.ino) throw new Error();
       }
       const named = await lstat(path.join(root, relative));
-      if (named.isSymbolicLink() || named.dev !== info.dev || named.ino !== info.ino) throw new Error();
+      // libuv reports different `dev` values for an open handle and lstat on
+      // Windows, while the file index (`ino`) remains stable. Keep the
+      // identity race check strict on POSIX and use the stable Windows index.
+      const identityChanged = process.platform === "win32"
+        ? named.ino !== info.ino
+        : named.dev !== info.dev || named.ino !== info.ino;
+      if (named.isSymbolicLink() || identityChanged) throw new Error();
       const bytes = Buffer.alloc(Math.min(info.size + 1, limit + 1));
       let offset = 0;
       while (offset < bytes.length) {

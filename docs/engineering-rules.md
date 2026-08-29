@@ -483,3 +483,22 @@ git status --short --branch
 6. `pnpm run check:root-cause-contracts` 是权威门禁；任何主动提交的合同都会校验，高风险路径则强制必须有合同。本地 Agent hook 只做提前提醒，缺失也不能绕过 CI。
 
 根因合同字段与完整方法只在技能和 schema 检查器维护，本节不复制，避免规则再次分叉。
+## R22 React Flow 生成画布单内核
+
+**触发**：修改 `src/workbench/generationCanvas/` 的渲染、节点/边、连接、选择、viewport、手势、拖拽、框选、缩放、分组或只读行为。
+
+**生产内核只有一个**
+- 生产生成画布只允许使用 `@xyflow/react`；`components/GenerationCanvas.tsx` 是对业务调用方稳定的唯一入口。
+- 禁止重新引入自研节点/边/viewport/selection/gesture renderer，禁止第二 renderer、engine flag、fallback 或并行实现。替换必须遵守 P1/R1：新旧不共存。
+- `src/ui/onboarding/workflowPage/WorkflowGraphCanvas.tsx` 是独立的静态只读 onboarding 工作流示意图，不属于生成画布 renderer；不要为了统一名字误迁移或把它接入生成画布状态。
+
+**真相源边界**
+- Zustand store、domain model 与 project snapshot 是业务状态和持久化的唯一真相源。
+- React Flow nodes/edges/viewport/selection 只能是渲染投影或瞬时交互状态，不得成为第二份业务模型，不得写入项目快照格式。
+- 连接创建、删除、模式变更仍必须通过现有 graph actions/domain operations；禁止直接用 React Flow `addEdge` 修改业务图。
+
+**变更验收**
+- 画布架构或交互变化必须补 adapter/结构回归测试，机械拦截第二 renderer、旧 flag/fallback 与状态边界回流。
+- 用户可见或体感变化必须运行真实 Electron 走查，覆盖受影响的节点、边、连接、selection、viewport、只读及持久化路径；只跑 jsdom/单测不算完成（R13/R16）。
+
+**已交的学费**（2026-08-27 React Flow 完整迁移）：PoC 阶段保留旧 renderer、engine flag 与 fallback 会让两套交互语义长期并行，测试和修复落在不同内核，无法证明生产路径。完整迁移因此删除旧 renderer 和开关，并以结构测试守住单内核不变量。

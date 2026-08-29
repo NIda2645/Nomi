@@ -6,7 +6,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { screenshotSettled } from './_assert.mjs'
+import { expectAbsent, proveProbe, screenshotSettled } from './_assert.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/canvas-batch-production')
@@ -103,6 +103,10 @@ fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
     name: 'Batch Mock',
     enabled: true,
     baseUrlHint: `http://127.0.0.1:${port}`,
+    // The loopback fixture accepts the upstream image inline. Declaring this
+    // keeps the real runtime from falling back to public anonymous upload
+    // hosts during the dependency-wave assertion.
+    assetIngestion: { strategy: 'inline-base64', accepts: ['image'] },
     authType: 'bearer',
     authHeader: null,
     authQueryParam: null,
@@ -163,9 +167,9 @@ async function addNodeWithPrompt(win, kind, prompt) {
   const target = nodes.last()
   await target.waitFor({ timeout: 5000 })
   const id = await target.getAttribute('data-node-id')
-  const editor = win.locator('div[contenteditable="true"]').last()
+  const editor = win.locator(`[data-node-id="${id}"] div[contenteditable="true"]`).last()
   await editor.click({ timeout: 5000 })
-  await win.keyboard.insertText(prompt)
+  await editor.fill(prompt)
   await win.waitForTimeout(500)
   return id
 }
@@ -239,7 +243,7 @@ try {
   //  并撤掉了旧的按能力上色的 chip / 连通小绿点 UI）。这里只作为前置：确认种子进去的 Batch Mock
   //  供应商已在设置里出现（= 可被批量模型选择器选到），能力 chip 的配色是设置面板的事、与本走查无关。
   await win.getByRole('button', { name: /打开模型设置/ }).first().click({ timeout: 5000 })
-  const modelPanel = win.getByRole('dialog', { name: '设置' })
+  const modelPanel = win.locator('[data-settings-dialog]').first()
   await modelPanel.waitFor({ state: 'visible', timeout: 5000 })
   await win.waitForTimeout(900)
   const batchMockRow = modelPanel.locator('button').filter({ hasText: 'Batch Mock' }).first()
@@ -255,11 +259,11 @@ try {
   await win.waitForTimeout(1400)
   await clearSelection(win)
 
-  const source = win.locator(`[data-node-id="${sourceId}"]`)
+  const source = win.locator(`.react-flow__node[data-id="${sourceId}"]`)
   await source.click({ position: { x: 36, y: 36 } })
   await win.waitForTimeout(500)
-  const target = win.locator(`[data-node-id="${targetId}"]`)
-  const handleBox = await source.locator('[data-side="right"]').boundingBox()
+  const target = win.locator(`.react-flow__node[data-id="${targetId}"]`)
+  const handleBox = await source.locator('.generation-canvas-react-flow__handle[data-side="right"]').last().boundingBox()
   const targetBox = await target.boundingBox()
   check(Boolean(handleBox && targetBox), '连接点和目标节点都有可点击区域')
   await win.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
@@ -273,6 +277,7 @@ try {
 
   const generateAll = win.locator('[data-batch-scope="all"]')
   await generateAll.waitFor({ timeout: 5000 })
+  const generateAllProbe = await proveProbe(generateAll, '待生成节点存在时显示批量生成入口')
   check((await generateAll.textContent())?.includes('2'), '无选择入口显示两个待生成节点')
   await chooseSelectOption(win, '图片 ×2', '批量图片 B')
   await win.waitForTimeout(1200)
@@ -299,8 +304,10 @@ try {
   await dialog.getByRole('button', { name: '生成', exact: true }).click()
   await win.waitForFunction(() => document.querySelectorAll('[data-kind="image"][data-status="success"]').length >= 2, null, { timeout: 30000 })
   await snap(win, 'generate-all-completed')
-  await win.waitForTimeout(400)
-  check(await generateAll.count() === 0, '全部节点完成后批量生成底栏退出，不显示“生成全部 0 个”')
+  await expectAbsent(generateAll, {
+    provenBy: generateAllProbe,
+    message: '全部节点完成后批量生成底栏退出，不显示“生成全部 0 个”',
+  })
   const sourceCall = wireCalls.find((call) => call.prompt.includes('源图'))
   const targetCall = wireCalls.find((call) => call.prompt.includes('下游图'))
   check(Boolean(sourceCall && targetCall), '依赖波次两个请求都完成')
@@ -352,7 +359,14 @@ try {
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect()).map(({ x, width }) => ({ x, width })))
   check(modelNotificationBoxes.length > 0, '模型切换反馈通知仍然可见')
   check(
-    Boolean(modelPanelBox && modelNotificationBoxes.every((box) => box.x + box.width <= modelPanelBox.x - 8)),
+    Boolean(
+      modelPanelBox &&
+        modelNotificationBoxes.every(
+          (box) =>
+            box.x + box.width <= modelPanelBox.x - 8 ||
+            box.x >= modelPanelBox.x + modelPanelBox.width + 8,
+        ),
+    ),
     '模型面板打开时通知不会遮挡面板',
     JSON.stringify({ modelPanelBox, modelNotificationBoxes })
   )
@@ -368,8 +382,8 @@ try {
   check(wireCalls.length === callsBeforeSelectedCancel, '混合选中生成取消后 vendor 零新增调用')
 
   await win.locator('button[aria-label="清除选择"]').click()
-  await win.locator(`[data-node-id="${retryImageId}"]`).click({ position: { x: 40, y: 40 } })
-  await win.locator(`[data-node-id="${sourceId}"]`).click({ position: { x: 40, y: 40 }, modifiers: ['Shift'] })
+  await win.locator(`.react-flow__node[data-id="${retryImageId}"]`).click()
+  await win.locator(`.react-flow__node[data-id="${sourceId}"]`).click({ modifiers: ['Shift'] })
   await win.waitForTimeout(800)
   const retrySelectionGenerate = win.locator('[data-batch-scope="selection"]')
   check((await retrySelectionGenerate.textContent())?.includes('1'), '选中批量只生成一个失败待测节点')

@@ -615,20 +615,27 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
         <div className={cn('h-px bg-nomi-line-soft')} />
       ) : null}
       {isTextKind ? (
-        <div className={cn('flex items-center gap-1')} role="group" aria-label={t('generationCommon.composer.generationMode')}>
+        <div
+          className={cn('flex items-center gap-1')}
+          role="group"
+          aria-label={t('generationCommon.composer.generationMode')}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           {TEXT_GEN_MODES.map((option) => (
             <button
               key={option.value}
               type="button"
+              aria-pressed={textGenMode === option.value}
               data-active={textGenMode === option.value ? 'true' : 'false'}
+              title={t(`generationCommon.${option.labelKey}`)}
               onClick={(event) => {
                 event.stopPropagation()
                 updateNode(node.id, { meta: { ...(node.meta || {}), textGenMode: option.value } })
               }}
               className={cn(
-                'h-[22px] rounded-full px-2.5 text-micro font-medium',
+                'min-h-7 rounded-nomi-sm px-2.5 py-1 text-caption font-medium leading-none',
                 'text-nomi-ink-60 hover:bg-nomi-ink-05',
-                'data-[active=true]:bg-nomi-accent-soft data-[active=true]:text-nomi-accent',
+                'data-[active=true]:bg-nomi-paper data-[active=true]:text-nomi-ink data-[active=true]:shadow-nomi-sm',
               )}
             >
               {t(`generationCommon.${option.labelKey}`)}
