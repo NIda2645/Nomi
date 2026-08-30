@@ -73,6 +73,7 @@ export type CanvasNodeActions = {
   deleteNode: (nodeId: string) => void
   saveSelectedAsWorkflowTemplate: (name?: string) => CanvasWorkflowTemplate | null
   instantiateWorkflowTemplate: (templateId: string, position: { x: number; y: number }) => GenerationCanvasNode[]
+  instantiateWorkflowTemplateSnapshot: (template: CanvasWorkflowTemplate, position: { x: number; y: number }) => GenerationCanvasNode[]
 }
 
 export type CanvasGraphActions = {

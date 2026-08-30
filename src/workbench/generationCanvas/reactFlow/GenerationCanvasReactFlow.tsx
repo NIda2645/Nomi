@@ -12,6 +12,7 @@ import '@xyflow/react/dist/style.css'
 import './generationCanvasReactFlow.css'
 import { useTranslation } from 'react-i18next'
 import { toast } from '../../../ui/toast'
+import { saveWorkflowFromCurrentProject } from '../../library/workflowLibrary'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import { cn } from '../../../utils/cn'
 import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
@@ -131,10 +132,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const redo = useGenerationCanvasStore((state) => state.redo)
   const saveSelectedAsWorkflowTemplate = useGenerationCanvasStore((state) => state.saveSelectedAsWorkflowTemplate)
   const appearingNodeIds = useNodeAppearTracking(allNodes)
-
   const handleSaveWorkflow = React.useCallback(() => {
-    const template = saveSelectedAsWorkflowTemplate(t('generationCommon.selection.defaultWorkflowName', { count: selectedNodeIds.length }))
-    if (template) toast(t('generationCommon.selection.workflowSaved', { name: template.name }), 'success')
+    const template = saveSelectedAsWorkflowTemplate(t('generationCommon.selection.defaultWorkflowName', { count: selectedNodeIds.length })); if (!template) return
+    saveWorkflowFromCurrentProject(template); toast(t('generationCommon.selection.workflowSaved', { name: template.name }), 'success')
   }, [saveSelectedAsWorkflowTemplate, selectedNodeIds.length, t])
 
   const nodes = React.useMemo(

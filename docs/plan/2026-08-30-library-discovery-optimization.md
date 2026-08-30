@@ -1,7 +1,7 @@
 # Nomi 资源库发现与检索统一方案
 
 日期：2026-08-30
-状态：📋 方案待拍板（基于当前代码基线，生产实现待评审）
+状态：🚧 进行中（第一阶段工作流库生产闭环已落地，其他资源库按风险分层推进）
 范围：项目库、提示词库、技能库、素材库，以及已确认的跨项目工作流库
 
 ## 1. 先定结论
@@ -76,7 +76,7 @@ Nomi 不做一个把项目、提示词、技能、素材和工作流混成一张
 
 设计上的关键是：保存流程时，分组要随工作流快照一起复制，而不是把它当成独立可搜索条目。`NodeGroup` 当前已包含 `name / categoryId / nodeIds / frameBounds / collapsed / inputLinks / outputLinks` 等结构信息（`src/workbench/generationCanvas/model/generationCanvasTypes.ts:186-213`），并且分组的创建、移动、折叠、解组和成员迁移都已经是文档写入（`src/workbench/generationCanvas/events/canvasWriteBoundary.ts:23-29`），有撤销和持久化边界。
 
-现有工作流模板还没有兑现这一点：`CanvasWorkflowTemplate` 目前只有节点和内部边（`src/workbench/generationCanvas/plugins/canvasWorkflowTemplates.ts:3-16`），捕获逻辑没有记录 `groups`、分组布局或素材 bundle（`.../canvasWorkflowTemplates.ts:36-62`），实例化也只重映射节点和边（`.../canvasWorkflowTemplates.ts:65-87`）。因此生产实现必须先扩展模板合同，再接 UI；不能把当前“保存为流程”按钮直接当成跨项目完整复制已经完成。
+第一阶段已经兑现了其中的分组部分：`CanvasWorkflowTemplate` 现在记录完整选中分组、成员关系和相对 frame bounds，实例化时只重建新 id 并把写入交给统一 store action。跨项目素材 bundle 仍未宣称完成：当前 app-level 索引保存的是受校验的画布快照和素材引用，真正的素材物化必须继续沿用主进程资产所有权边界，不能把路径直接交给 renderer。
 
 部分选区的行为需要在实现前锁定：推荐默认只保存用户实际选中的节点及内部边；只有当一个组的全部成员被选中时才携带该组的组框、折叠状态和组端口声明。这样不会因为误选一两个节点就复制出一个残缺分组，同时仍支持用户框选整组后原样复用。若产品希望“选中一个成员也自动带整组”，这是另一条明确的交互合同，不应隐式发生。
 
@@ -214,6 +214,6 @@ Nomi 不做一个把项目、提示词、技能、素材和工作流混成一张
 | --- | --- | --- |
 | 方案 / ADR | 用户为什么需要、数据和所有权合同是什么、哪些事情明确不做 | `docs/superpowers/specs/2026-08-30-canvas-workflow-plugin-adr.md`、本文和代码盘点报告 |
 | 原型 | 用户能否看懂入口、搜索、预览、复制和编辑资料；布局是否符合设计系统 | `docs/prototypes/library-discovery.html`，只读、可点击、可切换三种布局 |
-| 生产实现 | 真实数据是否经过现有 React Flow/store/bridge、能否保存恢复和撤销 | 尚未开始；需在方案确认后按第 7 节落点实现并补真实任务测试 |
+| 生产实现 | 真实数据是否经过现有 React Flow/store/bridge、能否保存恢复和撤销 | 第一阶段已开始：工作流库通过左侧侧栏接入，保存写入项目快照与 app-level 本地索引，复制调用统一 store action 并携带分组；素材 bundle 与其他库 adapter 尚未开始 |
 
-因此当前浏览器里看到的页面只证明交互方向，不代表“分组原样复制”或“跨项目素材 bundle”已经可用；这些必须等生产代码和端到端验收完成后才可宣称。
+因此当前浏览器里看到的页面只证明交互方向。第一阶段生产切片已把工作流库接入真实左侧栏、全局本地索引、资料编辑和 React Flow 的分组/撤销复制；跨项目素材 bundle、其他资源库的统一索引和端到端真机旅程仍需按本文边界继续验收，不能提前宣称已完成。

@@ -497,6 +497,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       currentState.selectedNodeIds,
       name || '',
       `workflow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      currentState.groups,
     )
     if (!template) return null
     set((state) => {
@@ -506,15 +507,19 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     return template
   },
   instantiateWorkflowTemplate: (templateId, position) => {
-    const currentState = get()
-    const template = currentState.workflowTemplates.find((candidate) => candidate.id === templateId)
+    const template = get().workflowTemplates.find((candidate) => candidate.id === templateId)
     if (!template) return []
+    return get().instantiateWorkflowTemplateSnapshot(template, position)
+  },
+  instantiateWorkflowTemplateSnapshot: (template, position) => {
+    const currentState = get()
     const instantiated = instantiateCanvasWorkflowTemplate(template, position, createNodeId, createEdgeId)
     if (!instantiated.nodes.length) return []
     pushUndoSnapshot(currentState)
     set((state) => {
       state.nodes = [...state.nodes, ...instantiated.nodes]
       state.edges = [...state.edges, ...instantiated.edges]
+      state.groups = [...state.groups, ...instantiated.groups]
       state.selectedNodeIds = instantiated.nodes.map((node) => node.id)
       state.pendingConnectionSourceId = ''
       state.pendingConnectionSourceSide = 'right'
@@ -524,6 +529,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     emitCanvasGesture([
       ...instantiated.nodes.map((node) => ({ type: 'canvas.node.added' as const, payload: { node } })),
       ...instantiated.edges.map((edge) => ({ type: 'canvas.edge.added' as const, payload: { edge } })),
+      ...instantiated.groups.map((group) => ({ type: 'canvas.group.created' as const, payload: { group } })),
     ])
     return instantiated.nodes
   },

@@ -27,6 +27,35 @@ describe('canvas workflow store boundary', () => {
     expect(useGenerationCanvasStore.getState().nodes).toHaveLength(4)
   })
 
+  it('copies selected groups and restores them through the same undo boundary', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [
+        { id: 'source', kind: 'text', title: '提示', position: { x: 40, y: 40 } },
+        { id: 'shot', kind: 'image', title: '镜头', position: { x: 300, y: 40 } },
+      ],
+      edges: [{ id: 'edge', source: 'source', target: 'shot', mode: 'reference' }],
+      groups: [{
+        id: 'source-group', name: '流程组', categoryId: 'shots', nodeIds: ['source', 'shot'],
+        frameBounds: { x: 20, y: 20, w: 560, h: 220 }, createdAt: 1, updatedAt: 1,
+      }],
+    })
+    const store = useGenerationCanvasStore.getState()
+    store.selectNodes(['source', 'shot'])
+    const template = store.saveSelectedAsWorkflowTemplate('带分组流程')!
+    expect(template.groups).toHaveLength(1)
+
+    const created = useGenerationCanvasStore.getState().instantiateWorkflowTemplateSnapshot(template, { x: 700, y: 100 })
+    expect(created).toHaveLength(2)
+    const copiedGroup = useGenerationCanvasStore.getState().groups.find((group) => group.id !== 'source-group')
+    expect(copiedGroup?.nodeIds).toHaveLength(2)
+    expect(useGenerationCanvasStore.getState().groups).toHaveLength(2)
+
+    useGenerationCanvasStore.getState().undo()
+    expect(useGenerationCanvasStore.getState().groups).toHaveLength(1)
+    useGenerationCanvasStore.getState().redo()
+    expect(useGenerationCanvasStore.getState().groups).toHaveLength(2)
+  })
+
   it('restores the template library and plugin envelope after a close and reopen', () => {
     const store = useGenerationCanvasStore.getState()
     store.selectNodes(['source', 'shot'])
