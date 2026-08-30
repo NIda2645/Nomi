@@ -125,6 +125,70 @@ function dedupe(entries: RadarEntry[]): RadarEntry[] {
   });
 }
 
+const MARKDOWN_LINK_RE = /\]\((https?:\/\/[^)]+)\)/g;
+const MAX_INDEX_DEPTH = 4;
+const MAX_INDEX_DOCUMENTS = 16;
+
+function delegatedIndexUrls(text: string): string[] {
+  const urls: string[] = [];
+  for (const match of text.matchAll(MARKDOWN_LINK_RE)) {
+    const url = new URL(match[1]);
+    const pathname = url.pathname.toLowerCase();
+    if (pathname.includes("/_llms/") || /\/llms(?:-[^/]*)?\.txt$/.test(pathname)) urls.push(url.toString());
+  }
+  return [...new Set(urls)];
+}
+
+export type LoadVendorIndexOptions = {
+  vendor: string;
+  indexUrl: string;
+  parse: (text: string) => RadarEntry[];
+  fetchText: (url: string) => Promise<string>;
+  maxDepth?: number;
+  maxDocuments?: number;
+};
+
+/**
+ * Expand a vendor's direct or delegated Markdown index before normalization.
+ * Documentation generators may replace a large root llms.txt with a pointer to
+ * a locale/category index. Traversal stays same-origin and bounded so a vendor
+ * document cannot turn this deterministic radar into an arbitrary web crawler.
+ */
+export async function loadVendorIndex(options: LoadVendorIndexOptions): Promise<RadarEntry[]> {
+  const root = new URL(options.indexUrl);
+  const maxDepth = options.maxDepth ?? MAX_INDEX_DEPTH;
+  const maxDocuments = options.maxDocuments ?? MAX_INDEX_DOCUMENTS;
+  const visited = new Set<string>();
+  const active = new Set<string>();
+  const entries: RadarEntry[] = [];
+
+  async function visit(rawUrl: string, depth: number): Promise<void> {
+    const url = new URL(rawUrl).toString();
+    if (active.has(url)) throw new Error(`${options.vendor}: 委托索引出现循环：${url}`);
+    if (visited.has(url)) return;
+    if (depth > maxDepth) throw new Error(`${options.vendor}: 委托索引超过最大深度 ${maxDepth}`);
+    if (visited.size >= maxDocuments) throw new Error(`${options.vendor}: 委托索引超过最大文档数 ${maxDocuments}`);
+    const current = new URL(url);
+    if (current.origin !== root.origin) throw new Error(`${options.vendor}: 委托索引跨站，已拒绝：${url}`);
+
+    active.add(url);
+    const text = await options.fetchText(url);
+    entries.push(...options.parse(text));
+    for (const delegated of delegatedIndexUrls(text)) {
+      const target = new URL(delegated);
+      if (target.origin !== root.origin) throw new Error(`${options.vendor}: 委托索引跨站，已拒绝：${delegated}`);
+      await visit(target.toString(), depth + 1);
+    }
+    active.delete(url);
+    visited.add(url);
+  }
+
+  await visit(root.toString(), 0);
+  const normalized = dedupe(entries);
+  if (normalized.length === 0) throw new Error(`${options.vendor}: 解析出 0 条模型——索引结构可能变了，别当成「没新模型」`);
+  return normalized;
+}
+
 export const VENDORS: Record<string, { indexUrl: string; parse: (text: string) => RadarEntry[] }> = {
   kie: { indexUrl: "https://docs.kie.ai/llms.txt", parse: parseKie },
   apimart: { indexUrl: "https://docs.apimart.ai/llms.txt", parse: parseApimart },
@@ -256,8 +320,21 @@ async function fetchIndex(url: string): Promise<string> {
   const res = await fetch(url, { ...(dispatcher ? { dispatcher } : {}) } as RequestInit);
   if (!res.ok) throw new Error(`抓取失败 ${url} → HTTP ${res.status}`);
   const text = await res.text();
-  if (text.trim().length < 200) throw new Error(`抓到的索引异常短（${text.length} 字节），疑似被拦截：${url}`);
+  if (!text.trim()) throw new Error(`抓到空索引，疑似被拦截：${url}`);
   return text;
+}
+
+function offlineIndexReader(offlineDir: string, vendor: string, indexUrl: string): (url: string) => Promise<string> {
+  const rootUrl = new URL(indexUrl).toString();
+  const vendorDir = path.resolve(offlineDir, vendor);
+  return async (url: string) => {
+    if (new URL(url).toString() === rootUrl) return fs.readFileSync(path.join(offlineDir, `${vendor}.txt`), "utf8");
+    const relative = decodeURIComponent(new URL(url).pathname).replace(/^\/+/, "");
+    const file = path.resolve(vendorDir, relative);
+    if (!file.startsWith(`${vendorDir}${path.sep}`)) throw new Error(`${vendor}: 离线委托索引路径越界：${url}`);
+    if (!fs.existsSync(file)) throw new Error(`${vendor}: 缺少离线委托索引 ${path.relative(offlineDir, file)}`);
+    return fs.readFileSync(file, "utf8");
+  };
 }
 
 // CLI 包在 async 函数里：tsx 走 cjs 输出，顶层 await 不支持。
@@ -269,11 +346,12 @@ async function main(): Promise<void> {
 
   const diffs: RadarDiff[] = [];
   for (const [vendor, cfg] of Object.entries(VENDORS)) {
-    const text = offlineDir
-      ? fs.readFileSync(path.join(offlineDir, `${vendor}.txt`), "utf8")
-      : await fetchIndex(cfg.indexUrl);
-    const current = cfg.parse(text);
-    if (current.length === 0) throw new Error(`${vendor}: 解析出 0 条模型——索引结构可能变了，别当成「没新模型」`);
+    const current = await loadVendorIndex({
+      vendor,
+      indexUrl: cfg.indexUrl,
+      parse: cfg.parse,
+      fetchText: offlineDir ? offlineIndexReader(offlineDir, vendor, cfg.indexUrl) : fetchIndex,
+    });
     diffs.push(diffVendor(vendor, current, readSnapshot(vendor), coverageTokens(vendor)));
     if (updateBaseline) writeSnapshot(vendor, current);
   }

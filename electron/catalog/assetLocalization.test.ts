@@ -157,6 +157,39 @@ describe("resolveLocalAsset (per strategy)", () => {
     expect(String((post.mock.calls[0][2] as Record<string, string>).b64).startsWith("data:")).toBe(false);
   });
 
+  it("upload-presigned uses the vendor's own init + signed multipart upload without forwarding the API key", async () => {
+    const ingestion: AssetIngestion = {
+      strategy: "upload-presigned",
+      endpoint: "https://api.dev.runwayml.com/v1/uploads",
+      uploadUrlPath: "uploadUrl",
+      uriPath: "runwayUri",
+      initFields: { type: "ephemeral" },
+      accepts: ["image", "video", "audio"],
+    };
+    const postJson = vi.fn().mockResolvedValue({
+      uploadUrl: "https://signed.upload.test/put",
+      fields: { key: "uploads/a.png", policy: "signed-policy" },
+      runwayUri: "runway://uploads/a.png",
+    });
+    const postMultipart = vi.fn().mockResolvedValue({ ok: true });
+    const out = await resolveLocalAsset(localUrl("a.png"), ingestion, "runway-secret", read, postJson, postMultipart);
+    expect(out).toBe("runway://uploads/a.png");
+    expect(postJson).toHaveBeenCalledWith(
+      "https://api.dev.runwayml.com/v1/uploads",
+      { "Content-Type": "application/json", Authorization: "Bearer runway-secret" },
+      { type: "ephemeral", filename: "a.png" },
+    );
+    expect(postMultipart).toHaveBeenCalledWith(
+      "https://signed.upload.test/put",
+      {},
+      expect.any(Buffer),
+      "a.png",
+      "image/png",
+      { key: "uploads/a.png", policy: "signed-policy" },
+      "file",
+    );
+  });
+
   it("upload-url throws when response lacks the url path", async () => {
     const ingestion: AssetIngestion = { strategy: "upload-url", endpoint: "https://up/x", base64Field: "b", urlPath: "data.downloadUrl" };
     const post = vi.fn().mockResolvedValue({ code: 500, msg: "boom" });

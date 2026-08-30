@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffVendor, isCovered, normalizeToken, parseApimart, parseKie, stripLocale } from "./model-radar";
+import { diffVendor, isCovered, loadVendorIndex, normalizeToken, parseApimart, parseKie, stripLocale } from "./model-radar";
 import type { RadarEntry } from "./model-radar";
 
 // 全部用内联样本，**不打网络**：雷达的解析逻辑要能在 CI 里回归，
@@ -89,6 +89,63 @@ describe("apimart 索引解析", () => {
   it("texts / tasks / 首页不进", () => {
     expect(slugs.some((s) => s.includes("models"))).toBe(false);
     expect(slugs.some((s) => s.includes("status"))).toBe(false);
+  });
+});
+
+describe("供应商委托索引加载", () => {
+  const rootUrl = "https://docs.apimart.ai/llms.txt";
+  const delegatedUrl = "https://docs.apimart.ai/_llms/en/api-manual.md";
+
+  it("展开同站委托索引，只返回终端模型页", async () => {
+    const documents = new Map([
+      [rootUrl, `# APIMart\n- [API manual](${delegatedUrl}): complete API index`],
+      [delegatedUrl, APIMART_SAMPLE],
+    ]);
+
+    const entries = await loadVendorIndex({
+      vendor: "apimart",
+      indexUrl: rootUrl,
+      parse: parseApimart,
+      fetchText: async (url) => documents.get(url) ?? "",
+    });
+
+    expect(entries.map((entry) => entry.slug)).toEqual([
+      "gemini-3.1-flash",
+      "wan3.0-video",
+      "elevenlabs-tts",
+    ]);
+  });
+
+  it("委托索引成环时显式失败，不把它报告成零新增", async () => {
+    const documents = new Map([
+      [rootUrl, `- [API manual](${delegatedUrl})`],
+      [delegatedUrl, `- [Back to root](${rootUrl})`],
+    ]);
+
+    await expect(loadVendorIndex({
+      vendor: "apimart",
+      indexUrl: rootUrl,
+      parse: parseApimart,
+      fetchText: async (url) => documents.get(url) ?? "",
+    })).rejects.toThrow(/循环/);
+  });
+
+  it("委托链没有任何模型时显式失败", async () => {
+    await expect(loadVendorIndex({
+      vendor: "apimart",
+      indexUrl: rootUrl,
+      parse: parseApimart,
+      fetchText: async () => "# no model pages here",
+    })).rejects.toThrow(/0 条模型/);
+  });
+
+  it("拒绝跨站委托，避免供应商索引把雷达带到任意主机", async () => {
+    await expect(loadVendorIndex({
+      vendor: "apimart",
+      indexUrl: rootUrl,
+      parse: parseApimart,
+      fetchText: async () => "- [external index](https://attacker.example/_llms/index.md)",
+    })).rejects.toThrow(/跨站/);
   });
 });
 

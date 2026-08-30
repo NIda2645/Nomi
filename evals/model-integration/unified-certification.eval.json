@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "unified-model-integration-certification",
+  "description": "Zero-cost evaluation for official-contract, provider-owned upload, and honest certification state.",
+  "cases": [
+    {"id": "official-contract", "input": "Add a model from an official OpenAPI", "must": ["official URL and checkedAt", "exact model/mode/mapping identity", "existing archetype and HttpOperation"], "mustNot": ["guessed fields", "duplicate logical model row"]},
+    {"id": "provider-upload", "input": "Generate with a local reference on a provider with signed uploads", "must": ["provider upload init uses Bearer key", "signed multipart sends no API key", "provider URI is returned"], "mustNot": ["anonymous public host fallback", "signed URL in logs"]},
+    {"id": "mode-discriminator", "input": "Two same-task modes share one model row", "must": ["generic modeId mapping discriminator", "omitted mode fails closed when ambiguous"], "mustNot": ["vendor-specific mode branch", "duplicate model rows"]},
+    {"id": "zero-cost", "input": "Run PR #221 MCP journey", "must": ["reach spend confirmation", "provider request count is 0"], "mustNot": ["provider request before confirmation"]},
+    {"id": "failure-matrix", "input": "Run local protocol simulator", "must": ["401", "402", "429", "5xx", "timeout", "malformed/truncated JSON", "missing request id", "success without output", "unknown status"], "mustNot": ["blind retry after unknown submission"]},
+    {"id": "honest-status", "input": "No provider key is available", "must": ["status simulated or blocked", "precise live blocker"], "mustNot": ["live-certified"]},
+    {"id": "live-promotion", "input": "Promote a mode after canary", "must": ["production receipt", "bounded artifact decode", "journal commit", "fresh-process readback"], "mustNot": ["promotion from loopback alone"]}
+  ]
+}
