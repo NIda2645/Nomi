@@ -244,7 +244,7 @@ async function requestVendor(
   const contentType = String(response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
   const looksJson = contentType === "application/json"
     || contentType.endsWith("+json")
-    || /^[\s]*[\[{]/.test(bytes.subarray(0, 64).toString("utf8"));
+    || /^[\s]*(?:\[|\{)/.test(bytes.subarray(0, 64).toString("utf8"));
   const mustInspectText = responseKind === "json" || !response.ok || looksJson;
   const text = mustInspectText ? bytes.toString("utf8") : "";
   let json: unknown = null;

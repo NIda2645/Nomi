@@ -1,5 +1,6 @@
 import { IconBox, IconPlugConnected } from '@tabler/icons-react'
 import { cn } from '../utils/cn'
+import { hideBrokenIdentityImage } from './identityIconUtils'
 
 export type NomiIdentityIconSource = Readonly<{
   src?: string
@@ -11,10 +12,6 @@ type NomiIdentityIconProps = {
   icon: NomiIdentityIconSource
   size?: 'sm' | 'md'
   className?: string
-}
-
-export function hideBrokenIdentityImage(image: HTMLImageElement): void {
-  image.hidden = true
 }
 
 /** Local-only identity mark used by compact selectors. The text/icon fallback stays behind the image. */

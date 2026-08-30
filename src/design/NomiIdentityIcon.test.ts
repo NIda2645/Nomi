@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hideBrokenIdentityImage } from './NomiIdentityIcon'
+import { hideBrokenIdentityImage } from './identityIconUtils'
 
 describe('NomiIdentityIcon image fallback', () => {
   it('reveals the local fallback when a bundled brand asset cannot load', () => {

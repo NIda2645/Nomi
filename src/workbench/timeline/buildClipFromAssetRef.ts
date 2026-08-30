@@ -1,4 +1,4 @@
-import type { AssetKind, AssetRef } from '../assets/assetTypes'
+import type { AssetRef } from '../assets/assetTypes'
 import type { TimelineClip, TimelineTrackType } from './timelineTypes'
 import i18n from '../../i18n'
 
