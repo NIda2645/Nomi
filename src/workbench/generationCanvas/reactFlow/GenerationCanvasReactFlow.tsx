@@ -129,7 +129,13 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const pasteNodes = useGenerationCanvasStore((state) => state.pasteNodes)
   const undo = useGenerationCanvasStore((state) => state.undo)
   const redo = useGenerationCanvasStore((state) => state.redo)
+  const saveSelectedAsWorkflowTemplate = useGenerationCanvasStore((state) => state.saveSelectedAsWorkflowTemplate)
   const appearingNodeIds = useNodeAppearTracking(allNodes)
+
+  const handleSaveWorkflow = React.useCallback(() => {
+    const template = saveSelectedAsWorkflowTemplate(t('generationCommon.selection.defaultWorkflowName', { count: selectedNodeIds.length }))
+    if (template) toast(t('generationCommon.selection.workflowSaved', { name: template.name }), 'success')
+  }, [saveSelectedAsWorkflowTemplate, selectedNodeIds.length, t])
 
   const nodes = React.useMemo(
     () => allNodes.filter((node) => (node.categoryId || 'shots') === activeCategoryId),
@@ -741,6 +747,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         onGroupSelectedNodes={handleGroupSelectedNodes}
         onUngroupSelectedNodes={handleUngroupSelectedNodes}
         onBuildContactSheet={handleBuildContactSheet}
+        onSaveWorkflow={handleSaveWorkflow}
         onClearSelection={clearSelection}
       />
       <GenerationCanvasReactFlowOverlays

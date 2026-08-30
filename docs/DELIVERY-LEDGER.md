@@ -9,7 +9,7 @@
 
 ---
 
-## 现役欠账（7）
+## 现役欠账（8）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
@@ -20,6 +20,7 @@
 | 🚧 进行中 | [2026-08-30-issue-237-onboarding.md](plan/2026-08-30-issue-237-onboarding.md) | Issue #237: 接入请求与英文上手入口 |
 | 🚧 进行中 | [2026-08-27-release-media-pack-skill.md](superpowers/plans/2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan |
 | 🚧 进行中 | [2026-08-28-conversational-model-integration.md](superpowers/plans/2026-08-28-conversational-model-integration.md) | Conversational Model Integration Implementation Plan |
+| 🚧 进行中 | [2026-08-30-canvas-workflow-plugin.md](superpowers/plans/2026-08-30-canvas-workflow-plugin.md) | Nomi 固定流程与原生画布插件计划 |
 
 ## 远期 / 暂缓（0）
 
@@ -44,7 +45,7 @@ _没有标记为远期的方案。_
 
 </details>
 
-- 合计扫描：454 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：455 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 

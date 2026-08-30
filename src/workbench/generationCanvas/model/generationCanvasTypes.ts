@@ -1,5 +1,7 @@
 import type { GenerationNodeKind } from './generationNodeKinds'
 import type { NodeRenderKind } from '../../project/projectCategories'
+import type { CanvasPluginNodeState } from '../plugins/canvasPluginTypes'
+import type { CanvasWorkflowTemplate } from '../plugins/canvasWorkflowTemplates'
 
 export type { GenerationNodeKind } from './generationNodeKinds'
 
@@ -125,6 +127,9 @@ export type TiptapDocJson = { type: 'doc'; content?: unknown[] }
 export type GenerationCanvasNode = {
   id: string
   kind: GenerationNodeKind
+  /** Optional host-owned plugin renderer identity; `kind` remains the closed semantic kind. */
+  typeId?: string
+  pluginState?: CanvasPluginNodeState
   title: string
   position: { x: number; y: number }
   size?: { width: number; height: number }
@@ -244,4 +249,6 @@ export type GenerationCanvasSnapshot = {
   /** S5-b-0:选区是会话态——工具视图(readSnapshot)带,持久化视图(readDocumentSnapshot)不带。 */
   selectedNodeIds?: string[]
   groups: NodeGroup[]
+  /** User-authored local workflow templates; optional for pre-plugin projects. */
+  workflowTemplates?: CanvasWorkflowTemplate[]
 }
