@@ -15,6 +15,7 @@ import {
   TMPFILES_INGESTION,
   ANON_UPLOAD_CHAIN,
   assertLocalAssetMediaBytes,
+  nomiAssetRelayCandidateFromEnvironment,
   type LocalAsset,
 } from "./assetLocalization";
 import type { AssetIngestion } from "./types";
@@ -108,6 +109,39 @@ describe("resolveLocalAsset (per strategy)", () => {
 
   it("none throws a clear error", async () => {
     await expect(resolveLocalAsset(localUrl("a.png"), { strategy: "none" }, "k", read, noPost, noMultipart)).rejects.toThrow(/不支持本地素材/);
+  });
+
+  it("fal initiate + signed PUT sends the provider key only to initialization", async () => {
+    const post = vi.fn().mockResolvedValue({ upload_url: "https://signed.example/put", file_url: "https://cdn.fal.example/a.png" });
+    const put = vi.fn().mockResolvedValue({});
+    const out = await resolveLocalAsset(
+      localUrl("a.png"),
+      { strategy: "upload-initiate-put", endpoint: "https://rest.fal.example/init", uploadUrlPath: "upload_url", urlPath: "file_url", authType: "key", accepts: ["image"] },
+      "fal-secret",
+      read,
+      post,
+      noMultipart,
+      put,
+    );
+    expect(out).toBe("https://cdn.fal.example/a.png");
+    expect(post).toHaveBeenCalledWith("https://rest.fal.example/init", { "Content-Type": "application/json", Authorization: "Key fal-secret" }, { file_name: "a.png", content_type: "image/png" });
+    expect(put).toHaveBeenCalledWith("https://signed.example/put", { "Content-Type": "image/png" }, expect.any(Buffer), "image/png");
+  });
+
+  it("Runway initiate + multipart returns its provider-only URI", async () => {
+    const post = vi.fn().mockResolvedValue({ uploadUrl: "https://signed.runway.example/form", fields: { Policy: "p", key: "k" }, runwayUri: "runway://asset/123" });
+    const upload = vi.fn().mockResolvedValue({});
+    const out = await resolveLocalAsset(
+      localUrl("clip.mp4"),
+      { strategy: "upload-initiate-multipart", endpoint: "https://api.runway.example/v1/uploads", uploadUrlPath: "uploadUrl", fieldsPath: "fields", uriPath: "runwayUri", authType: "bearer", accepts: ["video"] },
+      "runway-secret",
+      () => ({ bytes: MP4_BYTES, contentType: "video/mp4", fileName: "clip.mp4" }),
+      post,
+      upload,
+    );
+    expect(out).toBe("runway://asset/123");
+    expect(post).toHaveBeenCalledWith("https://api.runway.example/v1/uploads", { "Content-Type": "application/json", Authorization: "Bearer runway-secret" }, { filename: "clip.mp4", type: "ephemeral" });
+    expect(upload).toHaveBeenCalledWith("https://signed.runway.example/form", {}, expect.any(Buffer), "clip.mp4", "video/mp4", { Policy: "p", key: "k" }, "file");
   });
 
   it("does not call an upload endpoint when image bytes are actually an HTML page", async () => {
@@ -515,6 +549,28 @@ const firstIngestion = (...args: Parameters<typeof resolveAssetIngestionWithFall
 describe("resolveAssetIngestionWithFallback (跨 vendor 上传优先级链)", () => {
   // getApiKey 工厂：用一组「已配置 key 的 vendor」构造查询函数
   const keysOf = (...vendorKeys: string[]) => (k: string) => (vendorKeys.includes(k) ? `key-${k}` : null);
+
+  it("配置 Nomi relay 时，它先于目标供应商和匿名链", () => {
+    const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
+    const beforeToken = process.env.NOMI_ASSET_RELAY_TOKEN;
+    process.env.NOMI_ASSET_RELAY_URL = "https://assets.nomi.example/v1/assets";
+    process.env.NOMI_ASSET_RELAY_TOKEN = "relay-secret";
+    try {
+      const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
+      expect(out?.vendorKey).toBe("nomi-relay");
+      expect(out?.uploadApiKey).toBe("relay-secret");
+    } finally {
+      if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl;
+      if (beforeToken === undefined) delete process.env.NOMI_ASSET_RELAY_TOKEN; else process.env.NOMI_ASSET_RELAY_TOKEN = beforeToken;
+    }
+  });
+
+  it("invalid or absent Nomi relay config is not advertised as a candidate", () => {
+    const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
+    process.env.NOMI_ASSET_RELAY_URL = "http://public.example/assets";
+    try { expect(nomiAssetRelayCandidateFromEnvironment()).toBeNull(); }
+    finally { if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl; }
+  });
 
   it("① 目标 vendor 自己有上传能力 → 用目标 + 目标的 key", () => {
     const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"));

@@ -195,6 +195,34 @@ export const KNOWN_VENDORS: readonly KnownVendor[] = [
       url: 'https://replicate.com/account/api-tokens',
     },
   },
+  {
+    // fal.ai：配置一个 Key 后，fal CDN 可直接接收本地图片/视频/音频；模型仍按用户自己的 endpoint 接入。
+    vendorKey: 'fal',
+    glyph: 'f',
+    tagline: '海外常用 · CDN 上传图片、视频和音频',
+    credentialPlaceholder: '粘贴 fal.ai Key',
+    credentialHint:
+      '在 fal.ai Dashboard 创建 Key。上传走 fal CDN，URL 有生命周期；模型额度、可用区域和价格以当前账户为准。凭证本地加密存储。',
+    promo: {
+      text: 'fal.ai 提供模型 API 与 CDN 文件上传。配置一个 Key 后，Nomi 可以把本地参考素材交给 fal 或其他支持公网 URL 的模型。',
+      ctaLabel: '去 fal.ai 创建 Key',
+      url: 'https://fal.ai/dashboard/keys',
+    },
+  },
+  {
+    // Runway：ephemeral upload 返回 runway://，只交给 Runway 自己，不当成通用图床。
+    vendorKey: 'runway',
+    glyph: 'R',
+    tagline: '海外视频 · 临时素材上传（需账户额度）',
+    credentialPlaceholder: '粘贴 Runway API Key',
+    credentialHint:
+      '在 Runway Developer 控制台创建 API Key。临时上传最多 200MB、有效期约 24 小时，并要求账户有可用 credits。凭证本地加密存储。',
+    promo: {
+      text: 'Runway 的 ephemeral upload 直接返回 Runway 专用 URI，适合 Runway 自己的图像/视频生成链路；上传不等于模型额度免费。',
+      ctaLabel: '去 Runway Developer',
+      url: 'https://dev.runwayml.com',
+    },
+  },
 ] as const
 
 const KNOWN_VENDOR_BY_KEY = new Map<string, KnownVendor>(KNOWN_VENDORS.map((vendor) => [vendor.vendorKey, vendor]))

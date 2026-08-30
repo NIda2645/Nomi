@@ -199,7 +199,7 @@ export function AiModelsSection({
                 >
                   <span className="w-8 shrink-0 text-nomi-ink-60">{t(`settings.ai.upload.channel.kind.${channel.kind}`)}</span>
                   <span className="min-w-28 text-nomi-ink">{channelHostLabel(channel, vendorNameOf, t)}</span>
-                  {channel.visibility === 'public-anonymous' ? (
+                  {channel.visibility === 'public-anonymous' || channel.visibility === 'public-provider' ? (
                     <span className="inline-flex items-center gap-1 rounded-nomi-sm bg-[color-mix(in_oklch,var(--nomi-warning)_12%,var(--nomi-paper))] px-1.5 py-0.5 text-[color:var(--nomi-warning)]">
                       <IconAlertTriangle size={12} stroke={2} aria-hidden="true" />
                       {t('settings.ai.upload.channel.publicLease', { lease: leaseLabel(channel.ttlSeconds, t) })}

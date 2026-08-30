@@ -8,8 +8,8 @@ import { describe, expect, it } from "vitest";
 import { describeAssetTransportChannels } from "./assetTransportDescribe";
 
 const noVendors: Array<{ key?: string }> = [];
-const describeWith = (keys: Record<string, string>) =>
-  describeAssetTransportChannels({ vendors: noVendors, getApiKey: (key) => keys[key] ?? null });
+const describeWith = (keys: Record<string, string>, vendors: Array<{ key?: string }> = noVendors) =>
+  describeAssetTransportChannels({ vendors, getApiKey: (key) => keys[key] ?? null });
 
 const byKind = (rows: ReturnType<typeof describeAssetTransportChannels>, kind: string) =>
   rows.find((row) => row.kind === kind);
@@ -51,7 +51,14 @@ describe("describeAssetTransportChannels", () => {
     expect(video?.ttlSeconds).toBe(24 * 60 * 60);
   });
 
-  it("只描述 image / video 两类：音频与视频同路，多列一行只会让卡片更长而不更有信息", () => {
-    expect(describeWith({}).map((row) => row.kind)).toEqual(["image", "video"]);
+  it("configured fal upload is shown as provider-public, not anonymous", () => {
+    const rows = describeWith({ fal: "key-fal" }, [{ key: "fal" }]);
+    const image = byKind(rows, "image");
+    expect(image?.vendorKey).toBe("fal");
+    expect(image?.visibility).toBe("public-provider");
+  });
+
+  it("描述 image / video / audio 三类，避免音频上传能力被错误归入视频", () => {
+    expect(describeWith({}).map((row) => row.kind)).toEqual(["image", "video", "audio"]);
   });
 });
