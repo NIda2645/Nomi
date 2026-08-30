@@ -96,7 +96,7 @@ React Flow 的 `nodeTypes` 仍由 Nomi 的 viewport 提供。宿主注册表先�
 
 ## Agent / MCP / Skill 所有权边界
 
-画布插件拥有节点呈现和受控的用户交互；画布 store/能力核拥有写入、撤销、持久化和准入；Agent/MCP/Skill 拥有任务编排和工具协议。按本轮 `gh pr view 223 --json ...` CLI 检查（2026-08-30），#223 仍为 OPEN/Draft，最新 head 为 `0e9b6e16`，状态为 `mergeStateStatus=DIRTY` / `mergeable=CONFLICTING`；近期提交仍在修改 Project Agent Host、canvas read/write transport/admission 和能力合同。因此第一阶段不注册新的 Agent tool、不复制旁路协议。等 #223 合并后的最终接口稳定，再让 Agent 通过现有通用画布读写看到插件 envelope；是否允许创建/调用插件节点需另开合同与准入评审。
+画布插件拥有节点呈现和受控的用户交互；画布 store/能力核拥有写入、撤销、持久化和准入；Agent/MCP/Skill 拥有任务编排和工具协议。按本轮 `gh pr view 223 --json ...` CLI 检查（2026-08-31），#223 仍为 OPEN/Draft，最新 head 为 `2780d86`，状态为 `mergeStateStatus=BLOCKED` / `mergeable=MERGEABLE`；其 PR 描述仍列出第二条 `canvas.read` 执行路径、性能阈值、最终 gates/build/package 尚未完成等 blocker，Project Agent Host、canvas read/write transport/admission 和能力合同仍未定稿。因此第一阶段不注册新的 Agent tool、不复制旁路协议。等 #223 合并后的最终接口稳定，再让 Agent 通过现有通用画布读写看到插件 envelope；是否允许创建/调用插件节点需另开合同与准入评审。
 
 ## 开源实现对账
 
