@@ -14,11 +14,15 @@
   "scope_paths": [
     "electron/catalog/types.ts",
     "electron/catalog/assetLocalization.ts",
+    "electron/catalog/assetRelayRuntimeConfig.ts",
     "electron/catalog/assetIngestionRegistry.ts",
     "electron/assets/localAssetFile.ts",
     "electron/catalog/assetTransportPolicy.ts",
     "electron/catalog/assetTransportDescribe.ts",
     "electron/runtime.ts",
+    "electron/settings/assetRelaySettings.ts",
+    "electron/settings/assetRelaySettingsIpc.ts",
+    "electron/settings/registerSettingsIpc.ts",
     "electron/catalog/customCallDispatch.ts",
     "electron/image/decomposeLayers.ts",
     "electron/catalog/runninghub3d.ts",
@@ -28,9 +32,11 @@
     "electron/catalog/builtinVendorSeeds.ts",
     "src/config/knownVendors.ts",
     "src/desktop/bridge.ts",
+    "src/desktop/settingsBridge.ts",
     "src/workbench/settings/AiModelsSection.tsx",
     "src/i18n/locales/onboardingProviders.ts",
     "src/workbench/settings/settingsDialogStructure.test.ts",
+    "tests/asset-relay/worker.node-test.mjs",
     "workers/nomi-asset-relay/wrangler.toml",
     "workers/nomi-asset-relay/src/index.mjs"
   ],
@@ -90,9 +96,12 @@
     "artifacts": [
       "electron/catalog/types.ts",
       "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetRelayRuntimeConfig.ts",
       "electron/catalog/assetIngestionRegistry.ts",
       "electron/assets/localAssetFile.ts",
-      "workers/nomi-asset-relay/src/index.mjs"
+      "workers/nomi-asset-relay/src/index.mjs",
+      "electron/settings/assetRelaySettings.ts",
+      "electron/settings/assetRelaySettingsIpc.ts"
     ]
   },
   "regression_tests": [

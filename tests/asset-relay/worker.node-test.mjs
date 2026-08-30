@@ -35,6 +35,28 @@ test("rejects unauthenticated or unsupported uploads before R2", async () => {
   assert.equal(e.ASSETS.values.size, 0);
 });
 
+test("allows the desktop fallback without exposing the private relay token when public mode is enabled", async () => {
+  const e = env();
+  e.PUBLIC_UPLOAD_ENABLED = "true";
+  const form = new FormData();
+  form.append("file", new File(["hello"], "hello.wav", { type: "audio/wav" }));
+  const response = await handler.fetch(new Request("https://assets.example/v1/assets", { method: "POST", body: form }), e);
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).channel, "public");
+});
+
+test("fails closed when the public rate limiter is unavailable", async () => {
+  const e = env();
+  e.PUBLIC_UPLOAD_ENABLED = "true";
+  e.PUBLIC_UPLOAD_LIMITER = { limit: async () => { throw new Error("rate limiter unavailable"); } };
+  const form = new FormData();
+  form.append("file", new File(["hello"], "hello.wav", { type: "audio/wav" }));
+  const response = await handler.fetch(new Request("https://assets.example/v1/assets", { method: "POST", body: form }), e);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "public_upload_unavailable");
+  assert.equal(e.ASSETS.values.size, 0);
+});
+
 test("stores an allowed file and serves it until its lifecycle expiry", async () => {
   const e = env();
   const form = new FormData();

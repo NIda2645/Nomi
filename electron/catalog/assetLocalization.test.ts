@@ -16,6 +16,7 @@ import {
   ANON_UPLOAD_CHAIN,
   assertLocalAssetMediaBytes,
   nomiAssetRelayCandidateFromEnvironment,
+  nomiPublicAssetRelayCandidate,
   type LocalAsset,
 } from "./assetLocalization";
 import type { AssetIngestion } from "./types";
@@ -572,19 +573,22 @@ describe("resolveAssetIngestionWithFallback (跨 vendor 上传优先级链)", ()
     }
   });
 
-  it("invalid or absent Nomi relay config is not advertised as a candidate", () => {
+  it("invalid custom Nomi relay config is not advertised as a candidate", () => {
     const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
     process.env.NOMI_ASSET_RELAY_URL = "http://public.example/assets";
     try { expect(nomiAssetRelayCandidateFromEnvironment()).toBeNull(); }
     finally { if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl; }
   });
 
-  it("Nomi relay URL without a token is not advertised as a candidate", () => {
+  it("Nomi public relay does not require a client token", () => {
     const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
     const beforeToken = process.env.NOMI_ASSET_RELAY_TOKEN;
     process.env.NOMI_ASSET_RELAY_URL = "https://assets.nomi.example/v1/assets";
     delete process.env.NOMI_ASSET_RELAY_TOKEN;
-    try { expect(nomiAssetRelayCandidateFromEnvironment()).toBeNull(); }
+    try {
+      expect(nomiAssetRelayCandidateFromEnvironment()?.uploadApiKey).toBe("");
+      expect(nomiPublicAssetRelayCandidate()?.uploadApiKey).toBe("");
+    }
     finally {
       if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl;
       if (beforeToken === undefined) delete process.env.NOMI_ASSET_RELAY_TOKEN; else process.env.NOMI_ASSET_RELAY_TOKEN = beforeToken;
@@ -624,21 +628,21 @@ describe("resolveAssetIngestionWithFallback (跨 vendor 上传优先级链)", ()
   it("inline-base64 的 vendor 不算「有上传能力」，不被选作中转 → 落到匿名链零配置兜底", () => {
     const inlineVendor = { key: "inliner", assetIngestion: { strategy: "inline-base64" } as AssetIngestion };
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, inlineVendor], keysOf("openai", "inliner"));
-    // 没有真正能产出公网 URL 的供应商通道 → 匿名链（零配置）接住
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    // 没有供应商上传通道 → Nomi 公共 Relay 接住，匿名链仍是最后一跳
+    expect(out?.vendorKey).toBe("nomi-relay");
     expect(out?.uploadApiKey).toBe("");
   });
 
   it("⑤ 无任何供应商上传通道 → 匿名链零配置兜底（不再返回 null）", () => {
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }], keysOf("openai"));
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
     expect(out?.uploadApiKey).toBe("");
   });
 
   it("配了 KIE 但没填 key → 不选 KIE，落到匿名链（key 缺失视为不可用）", () => {
     // vendor 列表里有 kie，但 getApiKey('kie') 返回 null
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, { key: "kie" }], keysOf("openai"));
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
   });
 });
 
@@ -653,7 +657,7 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
 
   it("video asset + only apimart configured → anon chain (apimart image-only, zero-config fallback)", () => {
     const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
     expect(out?.uploadApiKey).toBe("");
   });
 
@@ -679,20 +683,13 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
     const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
     expect(out).not.toBeNull();
     expect(out?.uploadApiKey).toBe(""); // anonymous, no key needed
-    if (out?.ingestion.strategy === "anon-chain") {
-      // 链头是 litterbox，链尾是 tmpfiles —— 两个免 key host
-      const heads = out.ingestion.chain.map((h) => (h.strategy === "upload-multipart" ? h.endpoint : ""));
-      expect(heads[0]).toBe("https://litterbox.catbox.moe/resources/internals/api.php");
-      expect(heads[1]).toBe("https://tmpfiles.org/api/v1/upload");
-    } else {
-      throw new Error("expected anon-chain");
-    }
+    expect(out?.vendorKey).toBe("nomi-relay");
   });
 
   it("video asset + nothing configured at all → still anon chain (zero user config)", () => {
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }], keysOf("openai"), "video");
     expect(out?.uploadApiKey).toBe("");
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
   });
 
   it("video asset + KIE present → KIE wins over anon chain (upgrade when key available)", () => {
@@ -711,7 +708,7 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
   it("rejects a custom base64/upload-url declaration for video", () => {
     const unsafe = { key: "custom", assetIngestion: { strategy: "upload-url", endpoint: "https://c/up", base64Field: "b", urlPath: "url", accepts: ["video"] } as AssetIngestion };
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, unsafe], keysOf("openai", "custom"), "video");
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
   });
 });
 

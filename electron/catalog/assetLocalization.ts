@@ -28,6 +28,7 @@ import {
   resolveAssetIngestionForKind,
   ANON_UPLOAD_CHAIN,
 } from "./assetIngestionRegistry";
+import { readAssetRelayRuntimeConfig, readDefaultAssetRelayRuntimeConfig } from "./assetRelayRuntimeConfig";
 
 export {
   ingestionAccepts,
@@ -597,12 +598,9 @@ export async function localizeAssetsForVendor(
  * 可选的 Nomi-owned relay。R2 credential 只放在 Worker，Electron 只拿部署者显式注入的
  * endpoint/token；未配置时返回 null，设置页不会谎报「Nomi relay 已启用」。
  */
-export function nomiAssetRelayCandidateFromEnvironment(): IngestionCandidate | null {
-  const endpoint = typeof process !== "undefined" ? String(process.env.NOMI_ASSET_RELAY_URL || "").trim() : "";
-  const uploadApiKey = typeof process !== "undefined" ? String(process.env.NOMI_ASSET_RELAY_TOKEN || "").trim() : "";
-  // URL alone is not an enabled relay. Avoid a known 401 attempt that would
-  // only add latency before falling through to the user's configured vendor.
-  if (!endpoint || !uploadApiKey) return null;
+function relayCandidate(config: { endpoint: string; token: string }): IngestionCandidate | null {
+  const endpoint = config.endpoint;
+  const uploadApiKey = config.token;
   try {
     const url = new URL(endpoint);
     if (url.protocol !== "https:" && !(url.hostname === "127.0.0.1" || url.hostname === "localhost")) return null;
@@ -619,10 +617,22 @@ export function nomiAssetRelayCandidateFromEnvironment(): IngestionCandidate | n
       accepts: ["image", "video", "audio"],
       visibility: "public-provider",
       ttlSeconds: 24 * 60 * 60,
+      ...(uploadApiKey ? { authType: "bearer" as const } : {}),
     },
     uploadApiKey,
     vendorKey: "nomi-relay",
   };
+}
+
+/** 自定义/自部署 Relay：环境变量或设置页配置；没有自定义配置时返回 null。 */
+export function nomiAssetRelayCandidateFromEnvironment(): IngestionCandidate | null {
+  const config = readAssetRelayRuntimeConfig();
+  return config.source === "default" ? null : relayCandidate(config);
+}
+
+/** Nomi 官方受限公共 Relay：桌面端内置地址，不需要把 R2 Secret 发给用户。 */
+export function nomiPublicAssetRelayCandidate(): IngestionCandidate | null {
+  return relayCandidate(readDefaultAssetRelayRuntimeConfig());
 }
 
 /**
@@ -690,10 +700,14 @@ export function resolveAssetIngestionWithFallback(
     const apimartKey = getApiKey("apimart");
     if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey, "apimart");
   }
-  // 4. Nomi relay：仅在 endpoint + token 都配置时出现，作为受控兜底。
+  // 4. Nomi relay：用户自己的 Relay 优先于 Nomi 公共 Relay，二者均只作为受控兜底。
   const nomiRelay = nomiAssetRelayCandidateFromEnvironment();
   if (nomiRelay && ingestionAccepts(nomiRelay.ingestion, mediaKind)) {
     push(nomiRelay.ingestion, nomiRelay.uploadApiKey, nomiRelay.vendorKey);
+  }
+  const nomiPublicRelay = nomiPublicAssetRelayCandidate();
+  if (nomiPublicRelay && ingestionAccepts(nomiPublicRelay.ingestion, mediaKind)) {
+    push(nomiPublicRelay.ingestion, nomiPublicRelay.uploadApiKey, nomiPublicRelay.vendorKey);
   }
   // 5. 匿名上传链：零配置兜底（无 key、收任意文件 → 临时公网直链）。多 host 有序 fallback
   //    (litterbox → tmpfiles)，单 host 限速/宕机时自动切下一个。走到这里说明上面更优的通道都没命中

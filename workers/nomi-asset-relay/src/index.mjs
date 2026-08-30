@@ -24,6 +24,21 @@ function authorized(request, env) {
   return Boolean(env.RELAY_TOKEN) && bearer(request) === env.RELAY_TOKEN;
 }
 
+async function canUpload(request, env) {
+  if (authorized(request, env)) return { ok: true, mode: "private" };
+  if (String(env.PUBLIC_UPLOAD_ENABLED || "").toLowerCase() !== "true") return { ok: false, mode: "disabled" };
+  if (env.PUBLIC_UPLOAD_LIMITER) {
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    try {
+      const result = await env.PUBLIC_UPLOAD_LIMITER.limit({ key: `public-upload:${ip}` });
+      if (!result.success) return { ok: false, mode: "rate-limited" };
+    } catch {
+      return { ok: false, mode: "limiter-unavailable" };
+    }
+  }
+  return { ok: true, mode: "public" };
+}
+
 function maxUploadBytes(env) {
   const value = Number(env.MAX_UPLOAD_BYTES || DEFAULT_MAX_BYTES);
   return Number.isSafeInteger(value) && value > 0 ? value : DEFAULT_MAX_BYTES;
@@ -132,7 +147,12 @@ async function enforceStorageBudget(env, incomingBytes) {
 }
 
 async function upload(request, env) {
-  if (!authorized(request, env)) return json({ error: "unauthorized" }, 401);
+  const access = await canUpload(request, env);
+  if (!access.ok) {
+    if (access.mode === "rate-limited") return json({ error: "rate_limited" }, 429);
+    if (access.mode === "limiter-unavailable") return json({ error: "public_upload_unavailable" }, 503);
+    return json({ error: "unauthorized" }, 401);
+  }
   const contentLength = Number(request.headers.get("Content-Length") || 0);
   if (contentLength > maxUploadBytes(env)) return json({ error: "file_too_large" }, 413);
   let form;
@@ -159,7 +179,7 @@ async function upload(request, env) {
     httpMetadata: { contentType: file.type || "application/octet-stream", cacheControl: "private, max-age=300" },
     customMetadata: { expiresAt, originalName: safeFileName(file.name) },
   });
-  return json({ url: `${publicBaseUrl(request, env)}/v1/assets/${encodeURIComponent(key)}`, expiresAt }, 201);
+  return json({ url: `${publicBaseUrl(request, env)}/v1/assets/${encodeURIComponent(key)}`, expiresAt, channel: access.mode }, 201);
 }
 
 async function read(request, env) {
