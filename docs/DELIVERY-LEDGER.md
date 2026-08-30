@@ -9,7 +9,7 @@
 
 ---
 
-## 现役欠账（6）
+## 现役欠账（7）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
@@ -17,6 +17,7 @@
 | 🚧 进行中 | [2026-08-28-conversational-model-integration-verification.md](plan/2026-08-28-conversational-model-integration-verification.md) | 对话式模型接入与认证闭环验收记录 |
 | 🚧 进行中 | [2026-08-28-editing-engine-uplift.md](plan/2026-08-28-editing-engine-uplift.md) | Nomi Editing Engine Uplift |
 | 🚧 进行中 | [2026-08-29-root-cause-contract-v2.md](plan/2026-08-29-root-cause-contract-v2.md) | 根因合同 v2 与规则收敛 |
+| 🚧 进行中 | [2026-08-30-issue-237-onboarding.md](plan/2026-08-30-issue-237-onboarding.md) | Issue #237: 接入请求与英文上手入口 |
 | 🚧 进行中 | [2026-08-27-release-media-pack-skill.md](superpowers/plans/2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan |
 | 🚧 进行中 | [2026-08-28-conversational-model-integration.md](superpowers/plans/2026-08-28-conversational-model-integration.md) | Conversational Model Integration Implementation Plan |
 
@@ -43,7 +44,7 @@ _没有标记为远期的方案。_
 
 </details>
 
-- 合计扫描：453 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：454 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 
