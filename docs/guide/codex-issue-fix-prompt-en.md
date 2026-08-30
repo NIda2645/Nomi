@@ -60,7 +60,7 @@ Treat these as separate hypotheses and prove or disprove each one:
 1. Add a failing regression test for every confirmed code bug.
 2. Implement the smallest root-cause fix.
 3. Add or update the English model-connection tutorial so a new user can enter a provider name, base URL, key, model ID, model kind, mode, and reference-image path without guessing. Include troubleshooting for empty `size`, route mismatch, and anonymous upload failures.
-4. Link the tutorial from the English README. Keep social links factual: use only URLs explicitly supplied by the maintainer; do not invent Reddit/YouTube accounts or publish a personal mailbox as a support address.
+4. Link the tutorial from the English README. Keep contact links factual: use only URLs and contact addresses explicitly supplied or authorized by the maintainer; do not invent Reddit/YouTube accounts. The maintainer-authorized public support contacts are `2373272608@qq.com` and https://x.com/sdf297417627618.
 5. If a provider contract is still unknown, document the missing evidence and leave a precise follow-up request instead of guessing.
 
 ## Verification
