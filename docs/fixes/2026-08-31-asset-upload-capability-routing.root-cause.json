@@ -30,6 +30,7 @@
     "src/desktop/bridge.ts",
     "src/workbench/settings/AiModelsSection.tsx",
     "src/i18n/locales/onboardingProviders.ts",
+    "src/workbench/settings/settingsDialogStructure.test.ts",
     "workers/nomi-asset-relay/wrangler.toml",
     "workers/nomi-asset-relay/src/index.mjs"
   ],
@@ -97,11 +98,13 @@
   "regression_tests": [
     "electron/catalog/assetLocalization.test.ts",
     "electron/catalog/assetTransportDescribe.test.ts",
-    "tests/asset-relay/worker.test.mjs"
+    "tests/asset-relay/worker.node-test.mjs",
+    "src/workbench/settings/settingsDialogStructure.test.ts"
   ],
   "class_regression_tests": [
     "electron/catalog/assetLocalization.test.ts",
-    "tests/asset-relay/worker.test.mjs"
+    "tests/asset-relay/worker.node-test.mjs",
+    "src/workbench/settings/settingsDialogStructure.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
