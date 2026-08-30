@@ -18,7 +18,7 @@ function bucket() {
       return { body: new Response(item.bytes).body, customMetadata: item.customMetadata, writeHttpMetadata(headers) { headers.set("Content-Type", item.httpMetadata.contentType); } };
     },
     async delete(key) { values.delete(key); },
-    async list() { return { truncated: false, objects: [...values.entries()].map(([key, value]) => ({ key, customMetadata: value.customMetadata })) }; },
+    async list() { return { truncated: false, objects: [...values.entries()].map(([key, value]) => ({ key, size: value.bytes.length, customMetadata: value.customMetadata })) }; },
   };
 }
 
@@ -47,6 +47,23 @@ test("stores an allowed file and serves it until its lifecycle expiry", async ()
   assert.equal(fetched.status, 200);
   assert.equal(await fetched.text(), "hello");
   assert.equal(fetched.headers.get("Content-Type"), "audio/wav");
+  const usage = await handler.fetch(new Request("https://assets.example/v1/usage", { headers: { Authorization: "Bearer secret" } }), e);
+  assert.equal(usage.status, 200);
+  const usagePayload = await usage.json();
+  assert.equal(usagePayload.objectCount, 1);
+  assert.equal(usagePayload.storageBytes, 5);
+  assert.equal(usagePayload.estimatedMonthlyStorageUsd, 0);
+});
+
+test("blocks an upload that would exceed the configured storage guard", async () => {
+  const e = env();
+  e.MAX_STORAGE_BYTES = "4";
+  const form = new FormData();
+  form.append("file", new File(["hello"], "hello.wav", { type: "audio/wav" }));
+  const response = await handler.fetch(new Request("https://assets.example/v1/assets", { method: "POST", headers: { Authorization: "Bearer secret" }, body: form }), e);
+  assert.equal(response.status, 507);
+  assert.equal((await response.json()).error, "storage_limit_reached");
+  assert.equal(e.ASSETS.values.size, 0);
 });
 
 test("cleanup removes expired objects and leaves live objects", async () => {

@@ -1,6 +1,6 @@
 # Nomi asset relay
 
-This Worker is the optional Nomi-owned first upload channel. It keeps R2 credentials server-side, accepts authenticated multipart uploads at `POST /v1/assets`, serves short-lived model-readable URLs at `GET /v1/assets/:key`, and removes expired objects from its hourly scheduled cleanup.
+This Worker is an optional Nomi-owned fallback upload channel. Configured provider upload APIs are tried first; this relay is used only when those channels are unavailable or fail. It keeps R2 credentials server-side, accepts authenticated multipart uploads at `POST /v1/assets`, serves short-lived model-readable URLs at `GET /v1/assets/:key`, and removes expired objects from its hourly scheduled cleanup.
 
 ## Deploy
 
@@ -22,4 +22,16 @@ pnpm dev
 
 The token is read only by Electron main-process code. Never put it in renderer code, a public `.env`, or a provider request body. `r2.dev` is intended for development; use a custom domain or Worker route for production.
 
-The repository cannot run `wrangler deploy` without the target Cloudflare account. Before deployment, `wrangler whoami` must succeed and the placeholder public base URL must be replaced.
+## Cost guard and usage
+
+The relay defaults to `MAX_STORAGE_BYTES=8000000000` and `MAX_MONTHLY_BUDGET_USD=0`. That keeps this bucket below the R2 free storage tier and refuses an upload that would create billable storage. Set both values explicitly if paid storage is intended; the per-file guard remains `MAX_UPLOAD_BYTES`.
+
+Query the relay's current storage estimate with the same bearer token:
+
+```sh
+curl -H "Authorization: Bearer <RELAY_TOKEN>" https://<your-worker-or-custom-domain>/v1/usage
+```
+
+The response includes object count, bytes, free-tier headroom, configured budget, and estimated monthly storage cost. It intentionally labels itself `storage_estimate_only`: Cloudflare's R2 Billing Dashboard is the source of truth for Class A/Class B operation counts and the actual account bill. Keep the dashboard's budget alert enabled as a second notification layer; the Worker guard is the hard upload stop for this relay bucket.
+
+The current account has a live dashboard deployment. For another account, replace the placeholder public base URL, bind its own R2 bucket, set `RELAY_TOKEN` as a Worker secret, and deploy through Wrangler or the Cloudflare dashboard.

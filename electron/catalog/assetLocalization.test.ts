@@ -550,15 +550,22 @@ describe("resolveAssetIngestionWithFallback (跨 vendor 上传优先级链)", ()
   // getApiKey 工厂：用一组「已配置 key 的 vendor」构造查询函数
   const keysOf = (...vendorKeys: string[]) => (k: string) => (vendorKeys.includes(k) ? `key-${k}` : null);
 
-  it("配置 Nomi relay 时，它先于目标供应商和匿名链", () => {
+  it("配置 Nomi relay 时，它排在已配置供应商之后、匿名链之前", () => {
     const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
     const beforeToken = process.env.NOMI_ASSET_RELAY_TOKEN;
     process.env.NOMI_ASSET_RELAY_URL = "https://assets.nomi.example/v1/assets";
     process.env.NOMI_ASSET_RELAY_TOKEN = "relay-secret";
     try {
-      const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
-      expect(out?.vendorKey).toBe("nomi-relay");
-      expect(out?.uploadApiKey).toBe("relay-secret");
+      const out = resolveAssetIngestionWithFallback(
+        { key: "openai" },
+        [{ key: "openai" }, { key: "kie" }],
+        keysOf("kie"),
+        "video",
+      );
+      expect(out[0]?.vendorKey).toBe("kie");
+      expect(out.findIndex((candidate) => candidate.vendorKey === "nomi-relay")).toBe(1);
+      expect(out.at(-1)?.ingestion.strategy).toBe("anon-chain");
+      expect(out.find((candidate) => candidate.vendorKey === "nomi-relay")?.uploadApiKey).toBe("relay-secret");
     } finally {
       if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl;
       if (beforeToken === undefined) delete process.env.NOMI_ASSET_RELAY_TOKEN; else process.env.NOMI_ASSET_RELAY_TOKEN = beforeToken;
@@ -570,6 +577,18 @@ describe("resolveAssetIngestionWithFallback (跨 vendor 上传优先级链)", ()
     process.env.NOMI_ASSET_RELAY_URL = "http://public.example/assets";
     try { expect(nomiAssetRelayCandidateFromEnvironment()).toBeNull(); }
     finally { if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl; }
+  });
+
+  it("Nomi relay URL without a token is not advertised as a candidate", () => {
+    const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
+    const beforeToken = process.env.NOMI_ASSET_RELAY_TOKEN;
+    process.env.NOMI_ASSET_RELAY_URL = "https://assets.nomi.example/v1/assets";
+    delete process.env.NOMI_ASSET_RELAY_TOKEN;
+    try { expect(nomiAssetRelayCandidateFromEnvironment()).toBeNull(); }
+    finally {
+      if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl;
+      if (beforeToken === undefined) delete process.env.NOMI_ASSET_RELAY_TOKEN; else process.env.NOMI_ASSET_RELAY_TOKEN = beforeToken;
+    }
   });
 
   it("① 目标 vendor 自己有上传能力 → 用目标 + 目标的 key", () => {

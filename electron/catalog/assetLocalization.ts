@@ -330,7 +330,8 @@ export async function resolveLocalAsset(
 
   if (ingestion.strategy === "upload-multipart") {
     // multipart/form-data 上传（如 apimart POST /v1/uploads/images；litterbox 匿名临时托管）
-    // apiKey 为空时不发 Authorization（litterbox 匿名、nomi-relay 无鉴权中转端点）
+    // apiKey 为空时不发 Authorization（litterbox/tmpfiles 匿名）；Nomi relay
+    // 只有 token 配置完整时才会进入候选列表。
     const headers = authorizationHeaders(ingestion, apiKey);
     const response = await postMultipart(
       ingestion.endpoint,
@@ -598,7 +599,10 @@ export async function localizeAssetsForVendor(
  */
 export function nomiAssetRelayCandidateFromEnvironment(): IngestionCandidate | null {
   const endpoint = typeof process !== "undefined" ? String(process.env.NOMI_ASSET_RELAY_URL || "").trim() : "";
-  if (!endpoint) return null;
+  const uploadApiKey = typeof process !== "undefined" ? String(process.env.NOMI_ASSET_RELAY_TOKEN || "").trim() : "";
+  // URL alone is not an enabled relay. Avoid a known 401 attempt that would
+  // only add latency before falling through to the user's configured vendor.
+  if (!endpoint || !uploadApiKey) return null;
   try {
     const url = new URL(endpoint);
     if (url.protocol !== "https:" && !(url.hostname === "127.0.0.1" || url.hostname === "localhost")) return null;
@@ -616,7 +620,7 @@ export function nomiAssetRelayCandidateFromEnvironment(): IngestionCandidate | n
       visibility: "public-provider",
       ttlSeconds: 24 * 60 * 60,
     },
-    uploadApiKey: String(process.env.NOMI_ASSET_RELAY_TOKEN || "").trim(),
+    uploadApiKey,
     vendorKey: "nomi-relay",
   };
 }
@@ -624,8 +628,8 @@ export function nomiAssetRelayCandidateFromEnvironment(): IngestionCandidate | n
 /**
  * 通用素材上传策略解析（带跨供应商 fallback + 内容类型感知）。
  *
- * 返回**按优先级排好的候选通道列表**（不是单个）：目标 vendor 自身 → KIE（免费,通用文件托管,接图/
- * 视频/音频）→ apimart（免费 72h,仅图片）→ 其他接受该类型且有上传能力的供应商 → 匿名链（零配置兜底）。
+ * 返回**按优先级排好的候选通道列表**（不是单个）：目标 vendor 自身 → 其他已配置供应商的上传 API
+ *（包括 KIE/APIMart）→ Nomi relay（受控兜底）→ 匿名链（零配置兜底）。
  * 调用方从头试，一条挂了换下一条。
  *
  * 为什么必须是列表（2026-08-20 用户报 HTTP 413）：此前只返回**第一条**，那条一失败整个生成就死。
@@ -664,26 +668,14 @@ export function resolveAssetIngestionWithFallback(
     const base = String(targetVendor?.baseUrlHint || "http://127.0.0.1:8188").replace(/\/+$/, "");
     return [{ ingestion: { strategy: "comfyui-upload", endpoint: `${base}/upload/image`, accepts: ["image", "video"] }, uploadApiKey: "", vendorKey: targetVendor?.key ?? null }];
   }
-  // 1. Nomi relay（若部署者配置）→ 先把文件收进自己的 R2，避免依赖任一供应商的文件接口。
-  const nomiRelay = nomiAssetRelayCandidateFromEnvironment();
-  if (nomiRelay && ingestionAccepts(nomiRelay.ingestion, mediaKind)) {
-    push(nomiRelay.ingestion, nomiRelay.uploadApiKey, nomiRelay.vendorKey);
-  }
-  // 2. 目标供应商自己接受该类型 → 直接用（apiKey 也是目标供应商的）
+  // 1. 目标供应商自己接受该类型 → 直接用（apiKey 也是目标供应商的）
   const targetIngestion = resolveAssetIngestionForKind(targetVendor, mediaKind);
   if (targetIngestion && targetIngestion.strategy !== "none") {
     const key = targetVendor?.key ? (getApiKey(targetVendor.key) ?? "") : "";
     push(targetIngestion, key, targetVendor?.key ?? null);
   }
-  // 3. KIE：免费上传，通用文件托管（图/视频/音频），返回公网 URL，所有供应商均可用该 URL
-  const kieKey = getApiKey("kie");
-  if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey, "kie");
-  // 4. apimart：免费上传（72h，仅图片），目标不是 apimart 本身时才用（避免 key 二选一歧义）
-  if (targetVendor?.key !== "apimart") {
-    const apimartKey = getApiKey("apimart");
-    if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey, "apimart");
-  }
-  // 5. 其他任意接受该类型且有上传能力（非 inline-base64）的已配供应商
+  // 2. 其他已配置供应商的上传 API。catalog 顺序是既有供应商选择顺序，
+  // 不因部署了 Nomi relay 而把所有素材先写入我们的 R2。
   for (const vendor of allVendors) {
     if (!vendor.key || vendor.key === targetVendor?.key) continue;
     const ing = resolveAssetIngestionForKind(vendor, mediaKind);
@@ -691,7 +683,19 @@ export function resolveAssetIngestionWithFallback(
     const key = getApiKey(vendor.key);
     if (key) push(ing, key, vendor.key);
   }
-  // 6. 匿名上传链：零配置兜底（无 key、收任意文件 → 临时公网直链）。多 host 有序 fallback
+  // 3. KIE/APIMart 可能未出现在旧存量 catalog；已配置时补入，push 去重。
+  const kieKey = getApiKey("kie");
+  if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey, "kie");
+  if (targetVendor?.key !== "apimart") {
+    const apimartKey = getApiKey("apimart");
+    if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey, "apimart");
+  }
+  // 4. Nomi relay：仅在 endpoint + token 都配置时出现，作为受控兜底。
+  const nomiRelay = nomiAssetRelayCandidateFromEnvironment();
+  if (nomiRelay && ingestionAccepts(nomiRelay.ingestion, mediaKind)) {
+    push(nomiRelay.ingestion, nomiRelay.uploadApiKey, nomiRelay.vendorKey);
+  }
+  // 5. 匿名上传链：零配置兜底（无 key、收任意文件 → 临时公网直链）。多 host 有序 fallback
   //    (litterbox → tmpfiles)，单 host 限速/宕机时自动切下一个。走到这里说明上面更优的通道都没命中
   //    （图片几乎总有 apimart；视频缺 KIE 时此处接住）。NET：上传零配置"开箱即用"，诚实错误
   //    只在链里**所有** host 都不可达时才触发。

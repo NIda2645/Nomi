@@ -7,6 +7,11 @@ compatibility_date = "2026-08-31"
 PUBLIC_BASE_URL = "https://assets.example.invalid"
 ASSET_TTL_SECONDS = "86400"
 MAX_UPLOAD_BYTES = "209715200"
+# Keep the relay below Cloudflare's 10 GB free storage tier by default.
+MAX_STORAGE_BYTES = "8000000000"
+# 0 means this relay refuses uploads that would create billable storage.
+MAX_MONTHLY_BUDGET_USD = "0"
+R2_DASHBOARD_URL = "https://dash.cloudflare.com/"
 
 [[r2_buckets]]
 binding = "ASSETS"
