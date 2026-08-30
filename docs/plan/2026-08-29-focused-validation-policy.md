@@ -1,6 +1,6 @@
 # Focused Validation Policy
 
-> 状态：✅ 已完成
+> 状态：📎 历史基线；`fast/full` 两档已由 [2026-08-30-risk-scoped-validation-evidence.md](2026-08-30-risk-scoped-validation-evidence.md) 的独立风险面取代
 
 ## Goal
 

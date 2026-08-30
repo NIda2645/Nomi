@@ -10,7 +10,9 @@ Nomi is an open-source desktop workbench for AI video. Connect any OpenAI-compat
 
 Your projects, prompts, and API keys stay on your machine. No account. No telemetry.
 
-[简体中文](README.zh-CN.md) · [Website](https://nomiaqm.com/en/) · [Download](#download) · [Community](https://github.com/aqm857886159/Nomi/discussions) · [For Teams](https://nomiaqm.com/en/#teams) · [Watch the 60s film](https://nomiaqm.com/assets/video/launch-film-en.mp4) · [Documentation](docs/user-guide.md)
+[简体中文](README.zh-CN.md) · [Website](https://nomiaqm.com/en/) · [Download](#download) · [Tutorial](docs/guide/model-connection-en.md) · [Community](https://github.com/aqm857886159/Nomi/discussions) · [Follow on X](https://x.com/sdf297417627618) · [For Teams](https://nomiaqm.com/en/#teams) · [Watch the 60s film](https://nomiaqm.com/assets/video/launch-film-en.mp4) · [Documentation](docs/user-guide.md)
+
+Workflow support: **2373272608@qq.com** · [X/Twitter](https://x.com/sdf297417627618)
 
 ## WeChat / 微信联系
 
@@ -89,11 +91,11 @@ The installer has no Authenticode signature. In the SmartScreen prompt, choose *
 
 > **Disclosure:** one curated provider (APImart) is linked with a referral code. You always pay providers directly with your own key at their price — Nomi never proxies or resells inference, and every provider can be replaced by your own endpoint.
 
-Read the [user guide](docs/user-guide.md), [provider guide](docs/provider-integration.md), [conversational model integration guide](docs/guide/conversational-model-integration.md), or [CLI + MCP guide](docs/guide/capability-core-cli-mcp.md).
+Read the [English model connection tutorial](docs/guide/model-connection-en.md), [urgent Codex / Claude Code provider-setup prompt](docs/guide/model-integration-prompt-en.md), [copy-paste Codex issue-fix prompt](docs/guide/codex-issue-fix-prompt-en.md), [user guide](docs/user-guide.md), [provider guide](docs/provider-integration.md), [conversational model integration guide](docs/guide/conversational-model-integration.md), or [CLI + MCP guide](docs/guide/capability-core-cli-mcp.md).
 
 ## Community
 
-Use [GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) to ask questions, share workflows, and follow what is being built next, and [GitHub Issues](https://github.com/aqm857886159/Nomi/issues) to report bugs and request features. WeChat users can use the group and maintainer QR codes at the top of this README; the [Chinese README](README.zh-CN.md#用户群) contains the full Chinese guide.
+Use [GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) to ask questions, share workflows, and follow what is being built next, and [GitHub Issues](https://github.com/aqm857886159/Nomi/issues) to report bugs and request features. Follow the project on [X / Twitter](https://x.com/sdf297417627618) for release notes and short demos; workflow support is available at **2373272608@qq.com**. WeChat users can use the group and maintainer QR codes at the top of this README; the [Chinese README](README.zh-CN.md#用户群) contains the full Chinese guide.
 
 ## For Teams
 

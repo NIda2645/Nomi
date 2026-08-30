@@ -37,6 +37,8 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 
 [参与 GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) · [提交商务咨询](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml)
 
+工作流接入支持：**2373272608@qq.com** · [X/Twitter](https://x.com/sdf297417627618)
+
 [![最新版本](https://img.shields.io/github/v/release/aqm857886159/Nomi?label=release)](https://github.com/aqm857886159/Nomi/releases/latest)
 ![平台](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-1a1816)
 [![许可证](https://img.shields.io/badge/license-AGPL--3.0--only-1a1816)](LICENSE)
@@ -90,7 +92,7 @@ Windows 安装包未使用 Authenticode 签名。SmartScreen 弹窗选择“更�
 
 > **利益披露**：预置供应商中有一家（APImart）的注册链接带推广码。你始终用自己的密钥、按供应商原价直接付给他们——Nomi 不代理、不转售任何推理服务，任何一家供应商都可以换成你自己的接口。
 
-详细说明：[使用指南](docs/user-guide.md) · [模型接入](docs/provider-integration.md) · [对话式模型接入](docs/guide/conversational-model-integration.md) · [CLI + MCP 指南](docs/guide/capability-core-cli-mcp.md)
+详细说明：[使用指南](docs/user-guide.md) · [模型接入](docs/provider-integration.md) · [英文 Codex / Claude Code 接入提示词](docs/guide/model-integration-prompt-en.md) · [对话式模型接入](docs/guide/conversational-model-integration.md) · [CLI + MCP 指南](docs/guide/capability-core-cli-mcp.md)
 
 ## 团队服务
 

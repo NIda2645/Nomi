@@ -139,7 +139,11 @@ export function taskTemplateParams(request: TaskParamsInput, selected?: Paramete
   const jsonEditInput = jsonImageEditInput(refInput.reference_images);
   return {
     ...extras,
-    size,
+    // An unset size must stay undefined so exact template fields are omitted.
+    // Sending the empty alias (the persisted value for the gpt-image-2
+    // `Auto` aspect-ratio choice) makes OpenAI-compatible endpoints reject the
+    // request with `Invalid size ""` instead of applying their default.
+    size: size || undefined,
     // n 强制数字（OpenAI images 要 int；UI number 参数可能存成字符串 "1"，整 token 会原样发 → 严格端点 400）。
     n: Number(extras.n) || 1,
     width: request.width,

@@ -4,9 +4,11 @@ import path from 'node:path'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { runProfile } from './test-system.mjs'
-
 export const DEFAULT_FETCH_TIMEOUT_MS = 45_000
+export const DEFAULT_CI_EVIDENCE_TIMEOUT_MS = 30 * 60_000
+export const DEFAULT_CI_POLL_INTERVAL_MS = 10_000
+export const REQUIRED_MERGED_CHECKS = Object.freeze(['Quality Gate', 'Mac Package'])
+const ACCEPTED_CHECK_CONCLUSIONS = new Set(['success', 'skipped', 'neutral'])
 const MAX_TRANSPORT_OUTPUT_CHARS = 256 * 1024
 const SHA_PATTERN = /^[0-9a-f]{40}$/i
 
@@ -96,7 +98,7 @@ export function runBoundedCommand(
         reject(
           new DeliveryError(
             'transport_timeout',
-            `Remote refresh exceeded ${timeoutMs}ms and was terminated after one attempt`,
+            `Command exceeded ${timeoutMs}ms and was terminated after one attempt`,
             details,
           ),
         )
@@ -106,7 +108,7 @@ export function runBoundedCommand(
         reject(
           new DeliveryError(
             'transport_failed',
-            `Remote refresh failed once with exit code ${exitCode}; no automatic retry or API fallback was used`,
+            `Command failed once with exit code ${exitCode}; no automatic retry was used`,
             details,
           ),
         )
@@ -281,15 +283,144 @@ export async function preflightDelivery({
   return assertPreflightState(inspectDeliveryState({ cwd, remote, base }))
 }
 
+export function parseGitHubRepository(remoteUrl) {
+  const value = String(remoteUrl || '').trim().replace(/\.git$/, '')
+  const match = value.match(/^(?:https?:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+\/[^/]+)$/i)
+  if (!match) {
+    throw new DeliveryError('unsupported_remote', `Cannot derive a GitHub repository from remote URL: ${remoteUrl}`)
+  }
+  return match[1]
+}
+
+function checkValue(check, snakeName, camelName) {
+  return check?.[snakeName] ?? check?.[camelName] ?? null
+}
+
+function checkOrder(check) {
+  return Date.parse(
+    checkValue(check, 'started_at', 'startedAt') ||
+      checkValue(check, 'completed_at', 'completedAt') ||
+      '1970-01-01T00:00:00.000Z',
+  )
+}
+
+function receiptCheck(check) {
+  return {
+    id: check.id ?? null,
+    name: check.name,
+    status: check.status,
+    conclusion: check.conclusion ?? null,
+    startedAt: checkValue(check, 'started_at', 'startedAt'),
+    completedAt: checkValue(check, 'completed_at', 'completedAt'),
+    detailsUrl: checkValue(check, 'details_url', 'detailsUrl'),
+    htmlUrl: checkValue(check, 'html_url', 'htmlUrl'),
+    app: check.app?.slug ?? check.app ?? null,
+  }
+}
+
+export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGED_CHECKS) {
+  const checks = []
+  const missing = []
+  const pending = []
+  const failed = []
+  for (const name of requiredNames) {
+    const candidates = checkRuns.filter((check) => check?.name === name).sort((left, right) => checkOrder(right) - checkOrder(left))
+    const check = candidates[0]
+    if (!check) {
+      missing.push(name)
+      continue
+    }
+    const projected = receiptCheck(check)
+    checks.push(projected)
+    if (check.status !== 'completed') pending.push(projected)
+    else if (!ACCEPTED_CHECK_CONCLUSIONS.has(check.conclusion)) failed.push(projected)
+  }
+  return {
+    state: failed.length > 0 ? 'failed' : missing.length > 0 || pending.length > 0 ? 'pending' : 'passed',
+    checks,
+    missing,
+    pending,
+    failed,
+  }
+}
+
+export async function listCommitCheckRuns({
+  repository,
+  commitSha,
+  timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+  runCommand = runBoundedCommand,
+} = {}) {
+  const response = await runCommand(
+    'gh',
+    [
+      'api',
+      '--method',
+      'GET',
+      '-H',
+      'Accept: application/vnd.github+json',
+      '-H',
+      'X-GitHub-Api-Version: 2022-11-28',
+      `/repos/${repository}/commits/${commitSha}/check-runs?per_page=100`,
+    ],
+    { timeoutMs, env: { ...process.env, GH_PROMPT_DISABLED: '1' } },
+  )
+  let payload
+  try {
+    payload = JSON.parse(response.stdout)
+  } catch (error) {
+    throw new DeliveryError('invalid_check_response', `Cannot parse GitHub check-runs response: ${error.message}`)
+  }
+  if (!Array.isArray(payload?.check_runs)) {
+    throw new DeliveryError('invalid_check_response', 'GitHub check-runs response did not contain check_runs')
+  }
+  return payload.check_runs
+}
+
+export async function waitForRequiredChecks({
+  repository,
+  commitSha,
+  timeoutMs = DEFAULT_CI_EVIDENCE_TIMEOUT_MS,
+  requestTimeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+  pollIntervalMs = DEFAULT_CI_POLL_INTERVAL_MS,
+  requiredNames = REQUIRED_MERGED_CHECKS,
+  listCheckRuns = listCommitCheckRuns,
+  nowMs = () => Date.now(),
+  sleep = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs)),
+} = {}) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || !Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+    throw new DeliveryError('invalid_ci_timeout', 'CI evidence timeout and poll interval must be positive')
+  }
+  const deadline = nowMs() + timeoutMs
+  while (true) {
+    const checkRuns = await listCheckRuns({ repository, commitSha, timeoutMs: requestTimeoutMs })
+    const evaluation = evaluateRequiredChecks(checkRuns, requiredNames)
+    if (evaluation.state === 'passed') return evaluation
+    if (evaluation.state === 'failed') {
+      throw new DeliveryError('required_checks_failed', `Required checks failed for ${commitSha}`, evaluation)
+    }
+    const remainingMs = deadline - nowMs()
+    if (remainingMs <= 0) {
+      throw new DeliveryError(
+        'required_checks_timeout',
+        `Required checks did not complete for ${commitSha} within ${timeoutMs}ms`,
+        evaluation,
+      )
+    }
+    await sleep(Math.min(pollIntervalMs, remainingMs))
+  }
+}
+
 function receiptPathFor(state) {
-  return path.join(state.commonDir, 'nomi-delivery', 'merged-main', state.headCommit, 'full-local.json')
+  return path.join(state.commonDir, 'nomi-delivery', 'merged-main', state.headCommit, 'ci-evidence.json')
 }
 
 function readReceipt(receiptPath) {
   if (!fs.existsSync(receiptPath)) return null
   try {
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'))
-    return receipt?.schemaVersion === 1 && Array.isArray(receipt.attempts) ? receipt : null
+    return receipt?.schemaVersion === 2 && receipt?.kind === 'exact-sha-ci-evidence' && Array.isArray(receipt.checks)
+      ? receipt
+      : null
   } catch (error) {
     throw new DeliveryError('invalid_receipt', `Cannot read validation receipt ${receiptPath}: ${error.message}`, {
       receiptPath,
@@ -314,11 +445,10 @@ function processIsAlive(pid) {
   }
 }
 
-function acquireValidationLock(receiptPath, startedAt) {
+function acquireEvidenceLock(receiptPath, startedAt) {
   const lockPath = `${receiptPath}.lock`
   fs.mkdirSync(path.dirname(lockPath), { recursive: true })
   const lock = { pid: process.pid, hostname: os.hostname(), startedAt }
-
   const create = () => {
     const descriptor = fs.openSync(lockPath, 'wx')
     try {
@@ -327,7 +457,6 @@ function acquireValidationLock(receiptPath, startedAt) {
       fs.closeSync(descriptor)
     }
   }
-
   try {
     create()
   } catch (error) {
@@ -340,53 +469,15 @@ function acquireValidationLock(receiptPath, startedAt) {
     }
     const staleLocalLock = existing?.hostname === os.hostname() && !processIsAlive(existing?.pid)
     if (!staleLocalLock) {
-      throw new DeliveryError(
-        'validation_in_progress',
-        `Full validation is already running for this merged SHA: ${lockPath}`,
-        { lockPath, lock: existing },
-      )
+      throw new DeliveryError('evidence_in_progress', `CI evidence collection is already running: ${lockPath}`, {
+        lockPath,
+        lock: existing,
+      })
     }
     fs.rmSync(lockPath)
     create()
   }
-
-  return {
-    lockPath,
-    release: () => fs.rmSync(lockPath, { force: true }),
-  }
-}
-
-function resultAttempt(result, startedAt, completedAt) {
-  const summary = result?.summary ?? { ok: false }
-  return {
-    startedAt,
-    completedAt,
-    status: summary.ok === true ? 'passed' : 'failed',
-    summary,
-    reportPath: result?.runDir ? path.join(result.runDir, 'report.md') : null,
-    stages: Array.isArray(result?.stages)
-      ? result.stages.map(({ id, status, exitCode, durationMs, timedOut }) => ({
-          id,
-          status,
-          exitCode,
-          durationMs,
-          timedOut,
-        }))
-      : [],
-    error: null,
-  }
-}
-
-function errorAttempt(error, startedAt, completedAt) {
-  return {
-    startedAt,
-    completedAt,
-    status: 'failed',
-    summary: { ok: false },
-    reportPath: null,
-    stages: [],
-    error: error instanceof Error ? error.message : String(error),
-  }
+  return { release: () => fs.rmSync(lockPath, { force: true }) }
 }
 
 export async function verifyMergedDelivery({
@@ -395,58 +486,49 @@ export async function verifyMergedDelivery({
   remote = 'origin',
   base = 'main',
   timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
-  rerun = false,
-  env = process.env,
+  ciTimeoutMs = DEFAULT_CI_EVIDENCE_TIMEOUT_MS,
+  pollIntervalMs = DEFAULT_CI_POLL_INTERVAL_MS,
+  repository,
   now = () => new Date(),
   fetchRemote = fetchRemoteBase,
-  runFullProfile = (profile) => runProfile(profile, { root: cwd, env }),
+  listCheckRuns = listCommitCheckRuns,
+  sleep,
 } = {}) {
   await fetchRemote({ cwd, remote, base, timeoutMs })
   const state = assertMergedState(inspectDeliveryState({ cwd, remote, base }), { expectedSha })
   const receiptPath = receiptPathFor(state)
   const existing = readReceipt(receiptPath)
-  const passedAttempt = existing?.attempts.find((attempt) => attempt.status === 'passed')
-  if (passedAttempt && !rerun) {
+  if (existing && evaluateRequiredChecks(existing.checks).state === 'passed') {
     return { state, receiptPath, receipt: existing, reused: true }
   }
-  if (existing && !rerun) {
-    throw new DeliveryError(
-      'validation_already_failed',
-      `Full validation already failed for ${expectedSha}; use a new merged SHA or pass --rerun explicitly`,
-      { receiptPath, receipt: existing },
-    )
-  }
 
-  const startedAt = now().toISOString()
-  const validationLock = acquireValidationLock(receiptPath, startedAt)
+  const evidenceLock = acquireEvidenceLock(receiptPath, now().toISOString())
   try {
-    let attempt
-    try {
-      const result = await runFullProfile('full-local')
-      attempt = resultAttempt(result, startedAt, now().toISOString())
-    } catch (error) {
-      attempt = errorAttempt(error, startedAt, now().toISOString())
-    }
-
+    const resolvedRepository = repository || parseGitHubRepository(gitOutput(cwd, ['remote', 'get-url', remote]))
+    const evidence = await waitForRequiredChecks({
+      repository: resolvedRepository,
+      commitSha: expectedSha,
+      timeoutMs: ciTimeoutMs,
+      requestTimeoutMs: timeoutMs,
+      pollIntervalMs,
+      listCheckRuns,
+      ...(sleep ? { sleep } : {}),
+    })
     const receipt = {
-      schemaVersion: 1,
-      profile: 'full-local',
+      schemaVersion: 2,
+      kind: 'exact-sha-ci-evidence',
       commitSha: state.headCommit,
       treeSha: state.headTree,
       remoteRef: state.remoteRef,
-      attempts: [...(existing?.attempts ?? []), attempt],
+      repository: resolvedRepository,
+      observedAt: now().toISOString(),
+      requiredChecks: [...REQUIRED_MERGED_CHECKS],
+      checks: evidence.checks,
     }
     writeReceipt(receiptPath, receipt)
-    if (attempt.status !== 'passed') {
-      throw new DeliveryError(
-        'full_validation_failed',
-        `Full merged-main validation failed for ${expectedSha}; receipt: ${receiptPath}`,
-        { receiptPath, receipt },
-      )
-    }
     return { state, receiptPath, receipt, reused: false }
   } finally {
-    validationLock.release()
+    evidenceLock.release()
   }
 }
 
@@ -456,11 +538,11 @@ export function parseCli(argv) {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
     if (arg === '--') continue
-    if (arg === '--rerun') options.rerun = true
-    else if (arg === '--expected-sha') options.expectedSha = args[++index]
+    if (arg === '--expected-sha') options.expectedSha = args[++index]
     else if (arg === '--remote') options.remote = args[++index]
     else if (arg === '--base') options.base = args[++index]
     else if (arg === '--timeout-ms') options.timeoutMs = Number(args[++index])
+    else if (arg === '--ci-timeout-ms') options.ciTimeoutMs = Number(args[++index])
     else throw new DeliveryError('unknown_argument', `Unknown delivery argument: ${arg}`)
   }
   return { command, options }
@@ -498,7 +580,7 @@ export async function runDeliveryCommand(argv = process.argv.slice(2), { cwd = p
   }
   throw new DeliveryError(
     'unknown_command',
-    'Usage: pnpm run delivery:preflight OR pnpm run delivery:verify-merged -- --expected-sha <40-char-sha> [--rerun]',
+    'Usage: pnpm run delivery:preflight OR pnpm run delivery:verify-merged -- --expected-sha <40-char-sha> [--ci-timeout-ms <milliseconds>]',
   )
 }
 
