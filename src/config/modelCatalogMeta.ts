@@ -1,28 +1,19 @@
 import { normalizeOrientation, type Orientation } from '../utils/orientation'
 import { normalizeVideoResolution } from '../utils/videoGenerationSpec'
 import i18n from '../i18n'
+import type {
+  ModelParameterControl,
+  ModelParameterControlOption,
+  ModelParameterControlType,
+} from '../../electron/shared/videoCapabilities/types'
+
+export type {
+  ModelParameterControl,
+  ModelParameterControlOption,
+  ModelParameterControlType,
+} from '../../electron/shared/videoCapabilities/types'
 
 type UnknownRecord = Record<string, unknown>
-
-export type ModelParameterControlType = 'select' | 'number' | 'text' | 'boolean' | 'image-url'
-
-export type ModelParameterControlOption = {
-  value: string | number | boolean
-  label: string
-  priceLabel?: string
-}
-
-export type ModelParameterControl = {
-  key: string
-  label: string
-  type: ModelParameterControlType
-  options: ModelParameterControlOption[]
-  defaultValue?: string | number | boolean
-  min?: number
-  max?: number
-  step?: number
-  placeholder?: string
-}
 
 export type VideoModelDurationOption = {
   value: number
@@ -157,7 +148,7 @@ function normalizeCompactString(value: unknown): string {
   return asTrimmedString(value).replace(/\s+/g, '')
 }
 
-function parseParameterControlType(value: unknown): ModelParameterControlType {
+function parseExplicitParameterControlType(value: unknown): ModelParameterControlType | null {
   const raw = asTrimmedString(value).toLowerCase()
   if (raw === 'number' || raw === 'integer' || raw === 'float') return 'number'
   if (raw === 'boolean' || raw === 'bool' || raw === 'switch' || raw === 'checkbox') return 'boolean'
@@ -170,7 +161,12 @@ function parseParameterControlType(value: unknown): ModelParameterControlType {
     raw === 'image-reference'
   )
     return 'image-url'
-  return 'select'
+  if (raw === 'select') return 'select'
+  return null
+}
+
+function parseParameterControlType(value: unknown): ModelParameterControlType {
+  return parseExplicitParameterControlType(value) ?? 'select'
 }
 
 function parseParameterControlOption(value: unknown): ModelParameterControlOption | null {
@@ -210,6 +206,9 @@ function parseParameterControl(value: unknown): ModelParameterControl | null {
     key,
     label,
     type: type !== 'image-url' && options.length > 0 ? 'select' : type,
+    ...((value.mediaKind === 'image' || value.mediaKind === 'video')
+      ? { mediaKind: value.mediaKind }
+      : {}),
     options: dedupeByValue(options),
     ...(typeof defaultValue !== 'undefined' ? { defaultValue } : {}),
     ...(typeof min === 'number' ? { min } : {}),
@@ -232,6 +231,33 @@ export function parseModelParameterControls(meta: unknown): ModelParameterContro
       .filter((item): item is ModelParameterControl => item !== null)
       .map((item) => ({ ...item, value: item.key })),
   ).map(({ value: _value, ...item }) => item)
+}
+
+/**
+ * Contract consumers must not infer a complete declaration from the lenient
+ * catalog reader above. A declaration is atomic: exactly one source field is
+ * present, every entry parses, and normalized keys are unique.
+ */
+export function parseModelParameterControlsAtomic(meta: unknown): ModelParameterControl[] | null {
+  if (!isRecord(meta)) return null
+  const hasParameterControls = Object.prototype.hasOwnProperty.call(meta, 'parameterControls')
+  const hasParameters = Object.prototype.hasOwnProperty.call(meta, 'parameters')
+  if (hasParameterControls === hasParameters) return null
+  const source = hasParameterControls ? meta.parameterControls : meta.parameters
+  if (!Array.isArray(source)) return null
+  const controls: ModelParameterControl[] = []
+  const keys = new Set<string>()
+  for (const value of source) {
+    if (!isRecord(value)) return null
+    if (Object.prototype.hasOwnProperty.call(value, 'type') && parseExplicitParameterControlType(value.type) === null) return null
+    if (Object.prototype.hasOwnProperty.call(value, 'mediaKind')
+      && value.mediaKind !== 'image' && value.mediaKind !== 'video') return null
+    const control = parseParameterControl(value)
+    if (!control || keys.has(control.key)) return null
+    keys.add(control.key)
+    controls.push(control)
+  }
+  return controls
 }
 
 function parseImageAspectRatioOption(value: unknown): ImageModelAspectRatioOption | null {

@@ -3,8 +3,13 @@ import { app, ipcMain } from "electron";
 // locale 归一是纯逻辑，住在 electron-free 的 desktopLocale.ts（打包裸 Node launcher 也要 require 它，
 // 不能碰 electron）。本地引来给 setDesktopLocale 用，再原样导出——保持 i18n 对既有消费者的公开面不变
 //（P1：函数只此一处定义，i18n 只是转口）。
-import { normalizeDesktopLocale, type DesktopLocale } from "./desktopLocale";
-export { normalizeDesktopLocale, type DesktopLocale };
+import {
+  normalizeDesktopLocale,
+  getDesktopLocale,
+  setDesktopLocale,
+  type DesktopLocale,
+} from "./desktopLocale";
+export { normalizeDesktopLocale, getDesktopLocale, setDesktopLocale, type DesktopLocale };
 
 const translations = {
   "zh-CN": {
@@ -36,12 +41,46 @@ const translations = {
     // ⚠️ 长度纪律：错误卡大标题走 classifyError.truncateLine，**超 100 字会被截尾**（那正是
     // 「该怎么办」那半句）。这两条 key 因此写得短，完整上下文留在 raw / 上游原话里。
     "tasks.noQueryOperation": "这个模型没有配置「查询结果」接口，而本次创建也没有返回任何产物——没有第二次查询可发，已按失败处理。请检查该模型的接入配置。",
+    "tasks.completedWithoutOutput": "供应商报告任务完成，但没有返回可用产物；已按失败处理。请检查该模型的结果接口。",
+    "tasks.missingTaskId": "供应商没有返回任务编号，无法安全查询结果；已按失败处理。请检查该模型的创建接口。",
     "tasks.upstreamSaid": "（上游原话：{{detail}}）",
     "updater.devUnavailable": "开发模式下不可用，请在安装版中检查更新",
     "agent.confirmTimeout": "工具确认超时（长时间无响应，已自动跳过）",
     "agent.sessionCancelled": "会话已取消",
     "browser.promptCategory.image": "图片提示词",
     "browser.promptCategory.video": "视频提示词",
+    "export.missingWebmInput": "导出失败：缺少 WebM 输入数据",
+    "export.missingProjectId": "导出失败：缺少项目 ID",
+    "export.projectNotFound": "导出失败：找不到项目",
+    "export.reveal.missingProjectId": "打开导出位置失败：缺少项目 ID",
+    "export.reveal.missingPath": "打开导出位置失败：缺少导出文件路径",
+    "export.reveal.outsideExports": "打开导出位置失败：只能打开当前项目 exports 文件夹内的文件",
+    "export.reveal.fileMissing": "打开导出位置失败：导出文件不存在",
+    "export.codecMissing": "导出失败：MP4 编码组件缺失，请重新安装 Nomi。你不需要单独安装 FFmpeg。",
+    "export.inputMissing": "导出失败：输入视频不存在",
+    "export.inputEmpty": "导出失败：输入视频为空",
+    "export.detail": "导出失败：{{detail}}",
+    "export.mp4NotProduced": "导出失败：MP4 文件未生成",
+    "export.mp4Empty": "导出失败：MP4 文件为空",
+    "production.reconcile.noTaskId": "供应商任务标识尚未收到，不能自动对账",
+    "production.export.mustBeRelative": "导出必须返回项目目录内的相对路径",
+    "production.export.escapesProject": "导出路径不能离开项目目录",
+    "production.export.fileMissing": "导出文件不存在",
+    "production.export.notAFile": "导出结果不是文件",
+    "production.resume.noTaskId": "尚未收到供应商任务标识，不能自动恢复；请保持暂停并联系供应商核对",
+    "production.approve.roughCutFirst": "请先完成粗剪审看，再单独批准导出",
+    "dubbing.diskWriteFailed": "配音生成失败：音频落盘异常",
+    "dubbing.noText": "配音生成失败：没有台词文本",
+    "dubbing.noVoice": "配音生成失败：未选择音色",
+    "dubbing.networkError": "配音生成失败（{{vendor}} 网络错误）：{{detail}}",
+    "dubbing.httpError": "配音生成失败（{{vendor}} HTTP {{status}}）：{{detail}}",
+    "dubbing.emptyAudio": "配音生成失败：供应商返回空音频",
+    "transcribe.noAudio": "转写失败：未提供音频（请先连接或上传一个音频）",
+    "transcribe.networkError": "转写失败（{{vendor}} 网络错误）：{{detail}}",
+    "transcribe.httpError": "转写失败（{{vendor}} HTTP {{status}}）：{{detail}}",
+    "transcribe.noText": "转写失败：供应商未返回文本",
+    "transcribe.unreachable": "转写失败：音频地址无法访问",
+    "common.noDetail": "(无详情)",
   },
   en: {
     "workspace.selectTitle": "Choose a Nomi project folder",
@@ -70,30 +109,53 @@ const translations = {
     "tasks.unrecognizedStatus": "The provider returned an unrecognized task status: “{{status}}”. It stayed that way for {{polls}} polls over {{seconds}}s, so Nomi is treating the task as failed. It may still be running on the provider side — check your provider dashboard.",
     "tasks.pollTimedOut": "Timed out waiting for the result (waited {{seconds}}s, last status: {{status}}). The task may still be running on the provider side — check your provider dashboard or fetch the result again later.",
     "tasks.noQueryOperation": "This model has no result-query operation and the create call returned nothing. Check its setup.",
+    "tasks.completedWithoutOutput": "The provider reported completion but returned no usable output. Check this model's result endpoint.",
+    "tasks.missingTaskId": "The provider did not return a task ID, so Nomi cannot safely query the result. Check this model's create endpoint.",
     "tasks.upstreamSaid": " (Upstream said: {{detail}})",
     "updater.devUnavailable": "Updates are unavailable in development mode. Check for updates in an installed build.",
     "agent.confirmTimeout": "Tool confirmation timed out and the action was skipped",
     "agent.sessionCancelled": "The session was cancelled",
     "browser.promptCategory.image": "Image prompts",
     "browser.promptCategory.video": "Video prompts",
+    "export.missingWebmInput": "Export failed: missing WebM input data",
+    "export.missingProjectId": "Export failed: missing project ID",
+    "export.projectNotFound": "Export failed: project not found",
+    "export.reveal.missingProjectId": "Could not open export location: missing project ID",
+    "export.reveal.missingPath": "Could not open export location: missing export file path",
+    "export.reveal.outsideExports": "Could not open export location: only files inside this project's exports folder can be opened",
+    "export.reveal.fileMissing": "Could not open export location: the export file does not exist",
+    "export.codecMissing": "Export failed: the MP4 encoder is missing. Reinstall Nomi — you do not need to install FFmpeg separately.",
+    "export.inputMissing": "Export failed: the input video does not exist",
+    "export.inputEmpty": "Export failed: the input video is empty",
+    "export.detail": "Export failed: {{detail}}",
+    "export.mp4NotProduced": "Export failed: no MP4 file was produced",
+    "export.mp4Empty": "Export failed: the MP4 file is empty",
+    "production.reconcile.noTaskId": "The provider task ID has not arrived yet, so automatic reconciliation is not possible",
+    "production.export.mustBeRelative": "Export must return a path relative to the project directory",
+    "production.export.escapesProject": "The export path cannot leave the project directory",
+    "production.export.fileMissing": "The export file does not exist",
+    "production.export.notAFile": "The export result is not a file",
+    "production.resume.noTaskId": "The provider task ID has not arrived yet, so automatic resume is not possible. Keep it paused and check with the provider.",
+    "production.approve.roughCutFirst": "Finish reviewing the rough cut first, then approve the export separately",
+    "dubbing.diskWriteFailed": "Voiceover failed: could not write the audio to disk",
+    "dubbing.noText": "Voiceover failed: no dialogue text",
+    "dubbing.noVoice": "Voiceover failed: no voice selected",
+    "dubbing.networkError": "Voiceover failed ({{vendor}} network error): {{detail}}",
+    "dubbing.httpError": "Voiceover failed ({{vendor}} HTTP {{status}}): {{detail}}",
+    "dubbing.emptyAudio": "Voiceover failed: the provider returned empty audio",
+    "transcribe.noAudio": "Transcription failed: no audio provided (connect or upload an audio clip first)",
+    "transcribe.networkError": "Transcription failed ({{vendor}} network error): {{detail}}",
+    "transcribe.httpError": "Transcription failed ({{vendor}} HTTP {{status}}): {{detail}}",
+    "transcribe.noText": "Transcription failed: the provider returned no text",
+    "transcribe.unreachable": "Transcription failed: the audio URL is unreachable",
+    "common.noDetail": "(no details)",
   },
 } as const;
 
 type DesktopTranslationKey = keyof (typeof translations)["zh-CN"];
 
-let currentLocale: DesktopLocale = "zh-CN";
-
-export function setDesktopLocale(value: unknown): void {
-  currentLocale = normalizeDesktopLocale(value);
-}
-
-/** 当前桌面 locale（供 MCP 结果文案跟随 App/系统语言；GUI 路已被 setDesktopLocale 从渲染层语言开关同步）。 */
-export function getDesktopLocale(): DesktopLocale {
-  return currentLocale;
-}
-
 export function desktopT(key: DesktopTranslationKey, values: Record<string, string | number> = {}): string {
-  let text: string = translations[currentLocale][key];
+  let text: string = translations[getDesktopLocale()][key];
   for (const [name, value] of Object.entries(values)) {
     text = text.replace(new RegExp(`\\{\\{${name}\\}\\}`, 'g'), String(value));
   }

@@ -303,6 +303,9 @@ export type StoryboardPlanToArgsOptions = {
   defaultVideoModeId?: string
   /** Stable id used to make a production materialization retry converge on existing nodes. */
   materializationOperationId?: string
+  /** Creation resource provenance used to trace canvas nodes back to their source. */
+  creationDocumentId?: string
+  storyboardDesignId?: string
 }
 
 const VISUAL_KINDS: ReadonlySet<PlanAnchorKind> = new Set(['character', 'scene', 'prop'])
@@ -343,8 +346,12 @@ function storyboardShotMetadata(
   shot: PlanShot,
   materializationOperationId?: string,
   materializationClientId?: string,
+  creationDocumentId?: string,
+  storyboardDesignId?: string,
 ): Record<string, unknown> {
   const metadata: Record<string, unknown> = { shotId: stableShotId(shot) }
+  if (creationDocumentId) metadata.creationDocumentId = creationDocumentId
+  if (storyboardDesignId) metadata.storyboardDesignId = storyboardDesignId
   if (materializationOperationId && materializationClientId) {
     metadata.materializationOperationId = materializationOperationId
     metadata.materializationClientId = materializationClientId
@@ -397,30 +404,30 @@ export function buildAnchorSheetPrompt(anchor: PlanAnchor): string {
   const desc = anchorIdentityBody(anchor)
   const variantLine =
     anchor.variants && anchor.variants.length
-      ? `\n变体行：${anchor.variants.map((v) => v.trim()).filter(Boolean).join('、')}（每个变体各占一格并在格下标注）。`
+      ? `\nVariants: ${anchor.variants.map((v) => v.trim()).filter(Boolean).join(', ')} (show each variant in its own labeled panel).`
       : ''
   if (anchor.kind === 'scene') {
     return [
-      '场景参考卡（environment reference sheet）。横向版面、分格清晰、每格下方小标签，统一色调与光源。',
-      `同一地点「${name}」：${desc}`,
-      '角度：①远景 establishing ②近景细节 ③俯视 overhead ④四分之三视。' + variantLine,
-      '要求：跨格保持同一地点与风格一致；避免人物入镜、避免风格漂移、避免格子合并。',
+      'Environment reference sheet. Landscape layout, clearly separated panels, small labels below each panel, consistent color palette and lighting.',
+      `The same location "${name}": ${desc}`,
+      'Views: 1) distant establishing view 2) close-up detail 3) overhead view 4) three-quarter view.' + variantLine,
+      'Requirements: keep the same location and visual style consistent across panels; avoid people, style drift, and merged panels.',
     ].join('\n')
   }
   if (anchor.kind === 'prop') {
     return [
-      '道具参考卡。白色中性背景、平光、分格清晰、每格下方小标签。',
-      `同一物件「${name}」：${desc}`,
-      '视图：①正面 ②侧面 ③细节特写。' + variantLine,
-      '要求：跨格保持同一物件一致；避免场景化背景、避免风格漂移、避免格子合并。',
+      'Prop reference sheet. White neutral background, flat lighting, clearly separated panels, small labels below each panel.',
+      `The same object "${name}": ${desc}`,
+      'Views: 1) front 2) side 3) close-up detail.' + variantLine,
+      'Requirements: keep the same object consistent across panels; avoid scene backgrounds, style drift, and merged panels.',
     ].join('\n')
   }
   // character（默认）
   return [
-    '角色定妆参考卡（character reference sheet）。白色中性背景、平光、横向版面、分格清晰、每格下方小标签。',
-    `同一角色「${name}」，跨所有格保持脸型、发型、服装、标志物完全一致：${desc}`,
-    '视图：①正面全身 A-Pose ②侧面 ③背面 ④四分之三侧 ⑤表情行（中性 / 微笑 / 愤怒）。' + variantLine,
-    '要求：跨格五官与服装一致；避免格子合并、避免跨格漂移、避免场景化背景。',
+    'Character reference sheet. White neutral background, flat lighting, landscape layout, clearly separated panels, small labels below each panel.',
+    `The same character "${name}" must keep the same face shape, hairstyle, clothing, and identifying features across all panels: ${desc}`,
+    'Views: 1) full-body front A-pose 2) side 3) back 4) three-quarter side 5) expression row (neutral / smiling / angry).' + variantLine,
+    'Requirements: keep facial features and clothing consistent across panels; avoid merged panels, cross-panel drift, and scene backgrounds.',
   ].join('\n')
 }
 
@@ -482,10 +489,14 @@ export function storyboardPlanToCreateNodesArgs(
       // description 仍拼进 prompt（buildAnchorSheetPrompt），二者并存不矛盾（static/dynamic 是 description 的结构化细化）。
       ...(anchor.staticFeatures && anchor.staticFeatures.trim() ? { staticFeatures: anchor.staticFeatures.trim() } : {}),
       ...(anchor.dynamicFeatures && anchor.dynamicFeatures.trim() ? { dynamicFeatures: anchor.dynamicFeatures.trim() } : {}),
-      ...(options.materializationOperationId ? {
+      ...(options.materializationOperationId || options.creationDocumentId || options.storyboardDesignId ? {
         metadata: {
-          materializationOperationId: options.materializationOperationId,
-          materializationClientId: anchor.id,
+          ...(options.materializationOperationId ? {
+            materializationOperationId: options.materializationOperationId,
+            materializationClientId: anchor.id,
+          } : {}),
+          ...(options.creationDocumentId ? { creationDocumentId: options.creationDocumentId } : {}),
+          ...(options.storyboardDesignId ? { storyboardDesignId: options.storyboardDesignId } : {}),
         },
       } : {}),
       ...(options.defaultImageModelKey ? { modelKey: options.defaultImageModelKey } : {}),
@@ -531,7 +542,14 @@ export function storyboardPlanToCreateNodesArgs(
         ...(keyframeModelKey ? { modelKey: keyframeModelKey } : {}),
         ...(keyframeModeId ? { modeId: keyframeModeId } : {}),
         ...(shot.keyframe?.params ? { params: shot.keyframe.params } : {}),
-        metadata: storyboardShotMetadata(plan, shot, options.materializationOperationId, referenceTargetId),
+        metadata: storyboardShotMetadata(
+          plan,
+          shot,
+          options.materializationOperationId,
+          referenceTargetId,
+          options.creationDocumentId,
+          options.storyboardDesignId,
+        ),
       })
     }
     nodes.push({
@@ -547,7 +565,14 @@ export function storyboardPlanToCreateNodesArgs(
         ...(shot.params || {}),
         ...(!isImageShot && Number.isFinite(shot.durationSec) ? { duration: shot.durationSec } : {}),
       },
-      metadata: storyboardShotMetadata(plan, shot, options.materializationOperationId, id),
+      metadata: storyboardShotMetadata(
+        plan,
+        shot,
+        options.materializationOperationId,
+        id,
+        options.creationDocumentId,
+        options.storyboardDesignId,
+      ),
     })
     // 定妆卡 → 这一镜参考边（角色 character_ref / 场景·风格 style_ref / 道具 reference）。图片/视频镜头都连。
     for (const anchorId of visualAnchorIds) {

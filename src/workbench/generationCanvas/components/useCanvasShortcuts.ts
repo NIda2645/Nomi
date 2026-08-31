@@ -1,8 +1,11 @@
 import React from 'react'
 import {
   pasteClipboardMediaToGenerationCanvas,
+  extractClipboardMediaFiles,
+  extractClipboardMediaUrl,
   showClipboardMediaPasteNotes,
 } from '../adapters/clipboardImagePaste'
+import { hasClipboardContent } from '../store/canvasClipboard'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { showUndoToast } from '../../../utils/showUndoToast'
 import i18n from '../../../i18n'
@@ -43,6 +46,24 @@ export function canvasZoomShortcutDirection(input: CanvasZoomShortcutInput): -1 
 }
 
 /**
+ * Decide which clipboard owns a canvas paste before any remote-media work starts.
+ * Nomi's node clipboard is intentionally in-memory, so the OS clipboard can still
+ * contain a URL copied from a browser. Only unambiguous external media may preempt
+ * an existing in-app node clipboard; an ordinary URL or unknown text must not start
+ * a download as a side effect of pasting a node.
+ */
+export function shouldPreferCanvasClipboard(
+  data: DataTransfer | null | undefined,
+  internalClipboardAvailable = hasClipboardContent(),
+): boolean {
+  if (!internalClipboardAvailable) return false
+  if (extractClipboardMediaFiles(data).length > 0) return false
+  const candidate = extractClipboardMediaUrl(data)
+  if (!candidate) return true
+  return candidate.source !== 'html' && candidate.source !== 'uri-list' && !candidate.trustAsMedia
+}
+
+/**
  * 画布全局快捷键（从 GenerationCanvas 抽出，R9 防巨壳）。
  *
  * 三道前置守卫（缺一即出「快捷键被画布吞」类 bug，2026-06-12 用户复现）：
@@ -59,6 +80,7 @@ export function useCanvasShortcuts(opts: {
   activeCategoryId: string
   /** 只用于清空（Escape）；签名收窄到 null 以兼容任意 ActiveEdge setState。 */
   setActiveEdge: (edge: null) => void
+  deleteActiveEdge?: () => void
   cancelConnection: () => void
   deleteSelectedNodes: () => void
   groupSelectedNodes: () => void
@@ -78,6 +100,7 @@ export function useCanvasShortcuts(opts: {
     selectedGroupCount,
     activeCategoryId,
     setActiveEdge,
+    deleteActiveEdge,
     cancelConnection,
     deleteSelectedNodes,
     groupSelectedNodes,
@@ -118,7 +141,13 @@ export function useCanvasShortcuts(opts: {
         return
       }
       if (event.key === 'Backspace' || event.key === 'Delete') {
-        if (!selectedNodeCount) return
+        if (!selectedNodeCount) {
+          if (deleteActiveEdge) {
+            event.preventDefault()
+            deleteActiveEdge()
+          }
+          return
+        }
         event.preventDefault()
         const removedCount = selectedNodeCount
         deleteSelectedNodes()
@@ -196,8 +225,13 @@ export function useCanvasShortcuts(opts: {
       // fallback before the editing guard so stale canvas clipboard nodes cannot appear later.
       clearPasteFallback()
       if (shouldIgnoreCanvasShortcut(event.target)) return
-      event.preventDefault()
       const pastePosition = getPastePosition()
+      if (shouldPreferCanvasClipboard(event.clipboardData)) {
+        event.preventDefault()
+        pasteNodes(pastePosition)
+        return
+      }
+      event.preventDefault()
       void pasteClipboardMediaToGenerationCanvas({
         clipboardData: event.clipboardData,
         basePosition: pastePosition,
@@ -230,6 +264,7 @@ export function useCanvasShortcuts(opts: {
     copySelectedNodes,
     cutSelectedNodes,
     deleteSelectedNodes,
+    deleteActiveEdge,
     getPastePosition,
     groupSelectedNodes,
     pasteNodes,

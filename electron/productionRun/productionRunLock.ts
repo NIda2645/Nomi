@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fsyncIfDurable, isDurable } from "../durability";
 import { writeJsonFileAtomic } from "../jsonFile";
 
 export const PRODUCTION_RUN_LOCK_SCHEMA_VERSION = 1;
@@ -24,6 +25,8 @@ export type ProductionRunLockDeps = {
   leaseMs?: number;
   now?: () => string;
   randomId?: () => string;
+  /** Repository mutation locks are short-lived mutexes; the Run lock remains the durable fence. */
+  durability?: "durable" | "ephemeral";
 };
 
 export class ProductionRunLockBusyError extends Error {
@@ -44,15 +47,19 @@ export class ProductionRunLockLostError extends Error {
   }
 }
 
+// 注：`deps.durability` 决定「这把锁要不要durable 围栏语义」；下面两个 helper 里的
+// `fsyncIfDurable`/`isDurable` 是另一回事——全局落盘屏障开关（测试里整体关掉，见
+// `electron/durability.ts`）。两者独立，别合并。
 function fsyncFile(fd: number): void {
   try {
-    fs.fsyncSync(fd);
+    fsyncIfDurable(fd);
   } catch {
     // Some filesystems do not expose fsync for a just-created lock file.
   }
 }
 
 function fsyncDirectory(filePath: string): void {
+  if (!isDurable()) return; // 连开目录 fd 都省掉——它存在的唯一目的就是被 fsync。
   try {
     const fd = fs.openSync(path.dirname(filePath), "r");
     try {
@@ -107,6 +114,7 @@ export function createProductionRunLock(deps: ProductionRunLockDeps) {
   const leaseMs = deps.leaseMs ?? 30_000;
   const now = deps.now ?? (() => new Date().toISOString());
   const randomId = deps.randomId ?? (() => crypto.randomUUID());
+  const durable = deps.durability !== "ephemeral";
   const epochPath = deps.epochPath ?? `${deps.filePath}.epoch`;
 
   if (!Number.isInteger(leaseMs) || leaseMs <= 0) throw new Error("Production run lock leaseMs must be positive");
@@ -130,7 +138,7 @@ export function createProductionRunLock(deps: ProductionRunLockDeps) {
     fs.mkdirSync(path.dirname(deps.filePath), { recursive: true });
     const existing = parseLease(deps.filePath);
     if (existing) reclaimExpired(existing);
-    const fencingEpoch = parseEpoch(epochPath) + 1;
+    const fencingEpoch = durable ? parseEpoch(epochPath) + 1 : 1;
     const lease: ProductionRunLockLease = {
       schemaVersion: PRODUCTION_RUN_LOCK_SCHEMA_VERSION,
       ownerId,
@@ -149,20 +157,22 @@ export function createProductionRunLock(deps: ProductionRunLockDeps) {
     }
     try {
       fs.writeSync(fd, `${JSON.stringify(lease)}\n`, undefined, "utf8");
-      fsyncFile(fd);
+      if (durable) fsyncFile(fd);
     } catch (error) {
       try { fs.rmSync(deps.filePath, { force: true }); } catch { /* preserve original error */ }
       throw error;
     } finally {
       fs.closeSync(fd);
     }
-    try {
-      writeJsonFileAtomic(epochPath, { schemaVersion: 1, fencingEpoch });
-    } catch (error) {
-      try { fs.rmSync(deps.filePath, { force: true }); } catch { /* preserve original error */ }
-      throw error;
+    if (durable) {
+      try {
+        writeJsonFileAtomic(epochPath, { schemaVersion: 1, fencingEpoch });
+      } catch (error) {
+        try { fs.rmSync(deps.filePath, { force: true }); } catch { /* preserve original error */ }
+        throw error;
+      }
     }
-    fsyncDirectory(deps.filePath);
+    if (durable) fsyncDirectory(deps.filePath);
     return lease;
   }
 
@@ -181,14 +191,14 @@ export function createProductionRunLock(deps: ProductionRunLockDeps) {
     // Heartbeats must not expose a partially written lock to a reclaiming
     // process; use the same temp+rename primitive as other durable metadata.
     writeJsonFileAtomic(deps.filePath, renewed);
-    fsyncDirectory(deps.filePath);
+    if (durable) fsyncDirectory(deps.filePath);
     return renewed;
   }
 
   function release(lease: ProductionRunLockLease): void {
     assertOwned(lease);
     fs.rmSync(deps.filePath, { force: true });
-    fsyncDirectory(deps.filePath);
+    if (durable) fsyncDirectory(deps.filePath);
   }
 
   async function withLock<T>(callback: (lease: ProductionRunLockLease) => Promise<T> | T): Promise<T> {

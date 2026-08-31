@@ -69,6 +69,14 @@ export const generationNodeRunRecordSchema = z.object({
 export const generationCanvasNodeSchema = z.object({
   id: z.string().min(1),
   kind: generationNodeKindSchema,
+  typeId: z.string().min(1).optional(),
+  pluginState: z.object({
+    pluginId: z.string().min(1),
+    pluginVersion: z.string().min(1),
+    typeId: z.string().min(1),
+    schemaVersion: z.number().int().positive(),
+    state: z.record(z.unknown()),
+  }).optional(),
   title: z.string(),
   position: z.object({
     x: z.number(),
@@ -141,6 +149,7 @@ export const generationCanvasEdgeSchema = z.object({
   source: z.string().min(1),
   target: z.string().min(1),
   mode: generationCanvasEdgeModeSchema.optional(),
+  targetParamKey: z.string().min(1).optional(),
   // 落入同一 target 的放入顺序（数组参考 character1..N 的真相源；旧快照无 → undefined，排序退化为原序）。
   order: z.number().optional(),
   // 溯源：由哪个组的输入/输出声明物化而来（只用于撤边时不误伤手工边）。

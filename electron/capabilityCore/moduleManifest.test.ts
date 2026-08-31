@@ -35,9 +35,28 @@ describe("moduleManifestSchema", () => {
     expect(parseModuleManifest(imageManifest)).toEqual(imageManifest);
   });
 
+  it("accepts the optional provider-owned materialization capability", () => {
+    const manifest = structuredClone(imageManifest);
+    manifest.providers[0].models[0].capabilities.materialize = true;
+    expect(parseModuleManifest(manifest).providers[0].models[0].capabilities.materialize).toBe(true);
+  });
+
   it("rejects a provider profile without recovery capabilities", () => {
     const malformed = structuredClone(imageManifest);
     delete (malformed.providers[0].models[0] as { capabilities?: unknown }).capabilities;
     expect(() => parseModuleManifest(malformed)).toThrow(ModuleManifestValidationError);
+  });
+
+  it("accepts primitive enum values for discrete numeric and boolean controls", () => {
+    const manifest = structuredClone(imageManifest);
+    manifest.parameterSchema = {
+      ...manifest.parameterSchema,
+      duration: { type: "number", enum: [6, 10] },
+      audio: { type: "boolean", enum: [true, false] },
+    };
+    expect(parseModuleManifest(manifest).parameterSchema).toMatchObject({
+      duration: { type: "number", enum: [6, 10] },
+      audio: { type: "boolean", enum: [true, false] },
+    });
   });
 });

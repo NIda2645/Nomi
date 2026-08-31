@@ -17,12 +17,12 @@ const expectMobileSafeConversion = (document, heading, boundary, language) => {
   const boundaryIndex = document.indexOf(boundary)
   expect(startIndex >= 0 && boundaryIndex > startIndex, `${language} conversion block is bounded`)
   const conversion = document.slice(startIndex, boundaryIndex)
-  const groupImage = conversion.match(/<img src="docs\/media\/nomi-canvas-group-wechat-2026-08-17\.jpg"[^>]*>/)?.[0]
+  const groupImage = conversion.match(/<img src="docs\/media\/nomi-canvas-group-wechat-2026-09-01\.jpg"[^>]*>/)?.[0]
   expect(groupImage && /width="2\d{2}"/.test(groupImage), `${language} group QR remains prominent on mobile`)
   expect(!conversion.includes('|:---'), `${language} conversion avoids a shrinking Markdown table`)
   expectBefore(
     conversion,
-    'docs/media/nomi-canvas-group-wechat-2026-08-17.jpg',
+    'docs/media/nomi-canvas-group-wechat-2026-09-01.jpg',
     'docs/media/qingyang-wechat.jpg',
     `${language} puts the user-group QR before maintainer contact`,
   )
@@ -35,6 +35,7 @@ const headers = read('marketing/_headers')
 const readmeEn = read('README.md')
 const readmeZh = read('README.zh-CN.md')
 const quickstart = read('marketing/quickstart.html')
+const releaseVersion = JSON.parse(read('package.json')).version
 const files = [
   'marketing/assets/video/launch-film-en.mp4',
   'marketing/assets/video/launch-film-zh.vtt',
@@ -43,14 +44,14 @@ const files = [
   'marketing/assets/demo.mp4',
   'marketing/assets/social-preview-zh.jpg',
   'marketing/assets/social-preview-en.jpg',
-  'marketing/assets/group-wechat-2026-08-17.jpg',
+  'marketing/assets/group-wechat-2026-09-01.jpg',
   'marketing/assets/qingyang-wechat.jpg',
   'marketing/assets/screen-script-2026-08-17.png',
   'marketing/assets/screen-canvas-2026-08-17.png',
   'marketing/assets/screen-timeline-2026-08-17.png',
   'marketing/assets/screen-3d-2026-08-17.png',
   'marketing/assets/screen-agentic-2026-08-17.png',
-  'docs/media/nomi-canvas-group-wechat-2026-08-17.jpg',
+  'docs/media/nomi-canvas-group-wechat-2026-09-01.jpg',
   'docs/media/qingyang-wechat.jpg',
   '.github/ISSUE_TEMPLATE/business_inquiry.yml',
   'marketing/quickstart.html',
@@ -74,8 +75,20 @@ for (const html of [zh, en]) {
     'tab panels are associated',
   )
   expect(
-    html.includes('<dialog id="launch-film"') && html.includes('<track kind="captions"'),
-    'localized film dialog and captions',
+    html.includes('class="hero-actions"'),
+    'hero actions remain present',
+  )
+  expect(html.includes('data-github-hero'), 'hero GitHub CTA is marked for verification')
+  expect(html.includes('https://github.com/aqm857886159/Nomi'), 'hero GitHub CTA uses the canonical repository')
+  expect(html.includes('target="_blank" rel="noreferrer"'), 'hero GitHub CTA opens an external repository safely')
+  expect(!html.includes('data-open-dialog="launch-film"'), 'hero no longer opens the 60-second workflow dialog')
+  expect(
+    !html.includes('观看 60 秒工作流') && !html.includes('Watch the 60s workflow'),
+    '60-second hero copy is removed',
+  )
+  expect(
+    !html.includes('OPEN-SOURCE · LOCAL-FIRST · AI VIDEO WORKBENCH'),
+    'hero-only generic English float label is removed',
   )
   expect(html.includes('<dialog id="author-dialog"'), 'maintainer contact dialog exists')
   expect(html.includes('<dialog id="download-dialog"'), 'ambiguous platforms get an in-page download chooser')
@@ -108,7 +121,7 @@ for (const html of [zh, en]) {
     expect(html.includes(`/releases/latest/download/${installer}`), `${installer} direct link exists`)
   }
   expect(html.includes('business_inquiry.yml'), 'business CTA destination exists')
-  expect(html.includes('/assets/group-wechat-2026-08-17.jpg'), 'new group QR is used')
+  expect(html.includes('/assets/group-wechat-2026-09-01.jpg'), 'new group QR is used')
   expect(
     html.includes('<figure class="community-qr" id="community-qr"><img'),
     'group QR is directly rendered in the page',
@@ -116,7 +129,8 @@ for (const html of [zh, en]) {
   expect(!html.includes('data-open-dialog="group'), 'group QR does not require a dialog trigger')
   expect(html.includes('/assets/qingyang-wechat.jpg'), 'maintainer QR destination exists')
   expect(html.includes('/assets/nomi-logo.svg'), 'official Nomi mark is used')
-expect(html.includes('"softwareVersion":"0.20.1"'), 'structured data matches the release version')
+  expect(html.includes('macOS 12+'), 'macOS minimum version is explicit')
+  expect(html.includes(`"softwareVersion":"${releaseVersion}"`), 'structured data matches the release version')
   expect(
     html.includes('navigator.languages') && html.includes('find(Boolean)'),
     'browser locale priority logic is embedded',
@@ -171,8 +185,8 @@ for (const html of [zh, en]) {
 for (const relativePath of files) expect(fs.existsSync(path.join(root, relativePath)), `${relativePath} exists`)
 expect(
   fs
-    .readFileSync(path.join(root, 'marketing/assets/group-wechat-2026-08-17.jpg'))
-    .equals(fs.readFileSync(path.join(root, 'docs/media/nomi-canvas-group-wechat-2026-08-17.jpg'))),
+    .readFileSync(path.join(root, 'marketing/assets/group-wechat-2026-09-01.jpg'))
+    .equals(fs.readFileSync(path.join(root, 'docs/media/nomi-canvas-group-wechat-2026-09-01.jpg'))),
   'website and README publish the identical current group QR',
 )
 expect(
@@ -198,7 +212,7 @@ for (const label of ['加入用户群', '团队合作', '夸克网盘镜像', 'T
   expect(readmeZh.includes(label), `Chinese README conversion survives: ${label}`)
 }
 expect(
-  readmeZh.includes('docs/media/nomi-canvas-group-wechat-2026-08-17.jpg'),
+  readmeZh.includes('docs/media/nomi-canvas-group-wechat-2026-09-01.jpg'),
   'Chinese README uses the current group QR',
 )
 expect(readmeZh.includes('docs/media/qingyang-wechat.jpg'), 'Chinese README keeps maintainer QR')
@@ -208,13 +222,13 @@ for (const label of [
   'For Teams',
   'Custom builds',
   'Integrations',
-  'White-label / commercial licenses',
+  'AGPL-compliant deployment',
   'Ongoing iteration',
 ]) {
   expect(readmeEn.includes(label), `English README conversion survives: ${label}`)
 }
 expect(
-  readmeEn.includes('docs/media/nomi-canvas-group-wechat-2026-08-17.jpg'),
+  readmeEn.includes('docs/media/nomi-canvas-group-wechat-2026-09-01.jpg'),
   'English README uses the current group QR',
 )
 expect(readmeEn.includes('github.com/aqm857886159/Nomi/issues'), 'English README keeps GitHub Issues')
@@ -237,13 +251,14 @@ expect(
   readmeEn.includes('Linux, Windows arm64, and macOS universal installers are not currently published'),
   'English README scopes supported release targets',
 )
-expect(quickstart.includes('data-latest-version>v0.20.1<'), 'quickstart fallback version matches the release')
-expect(!quickstart.includes('data-latest-version>v0.19.0<'), 'quickstart has no stale release fallback')
+expect(quickstart.includes(`data-latest-version>v${releaseVersion}<`), 'quickstart fallback version matches the release')
+expect(quickstart.includes(`"softwareVersion":"${releaseVersion}"`), 'quickstart structured data matches the release version')
+expect(quickstart.includes('macOS 12+'), 'quickstart states the macOS minimum version')
 
 const readmeHero = '[![Nomi director workflow]'
 const readmeZhHero = '[![Nomi 导演工作流]'
 for (const [token, label] of [
-  ['<img src="docs/media/nomi-canvas-group-wechat-2026-08-17.jpg"', 'group QR'],
+  ['<img src="docs/media/nomi-canvas-group-wechat-2026-09-01.jpg"', 'group QR'],
   ['<img src="docs/media/qingyang-wechat.jpg"', 'maintainer QR'],
   ['TZ857886159', 'textual WeChat fallback'],
 ]) {

@@ -1,9 +1,9 @@
 # Nomi 工程纪律 — 详细规则（L2 · 触发才查）
 
-> 这是 `CLAUDE.md` 的「按需查阅」层。`CLAUDE.md`（always 加载）= 精简核心：项目事实 + P1–P5 + D1–D5 + 规则索引 + 三闸。本文件存**触发某条规则后才查的细节**：R1–R16 详解、工作流框架、技能库映射、固化的工作纪律。
+> 这是 `CLAUDE.md` 的「按需查阅」层。`CLAUDE.md`（always 加载）= 精简核心：项目事实 + P1–P5 + D1–D5 + 规则索引 + 三闸。本文件存**触发某条规则后才查的细节**：R1–R25 详解、工作流框架、技能库映射、固化的工作纪律。
 > 真相源仍单一：`CLAUDE.md` 的规则索引指明每条住哪；冲突一律以 `CLAUDE.md` 的 P1–P5 / D1–D5 为准。改触发清单同步 `.claude/hooks/self-check.sh`，规则细节只改本文件。
 
-# 详细规则 R1–R16
+# 详细规则 R1–R25
 
 > `CLAUDE.md` 的规则索引触发某个编号后，到这里查它的细节。
 
@@ -89,12 +89,21 @@
 
 **选型 / 引入新框架时实查最新现役框架（2026-06-21 用户要求 · 已挂 hook）**：每次出方案**可能引入新框架 / 新技术栈元素**（agent 框架、eval 框架、状态库、构建工具…）时，**动手前必须 Context7 + web 实查当前最核心、最现役的框架与技术栈**——不准凭记忆判断某框架的能力、新旧、是否已被取代。栽过（本会话）：凭记忆把 Mastra（现役 TS agent 框架）当「并行版」一刀切挡回，实查后改口它正好对口 eval/编排层。流程：① 列出方案要引入的框架/技术点 → ② 逐个 `resolve-library-id` + `query-docs` 拉最新文档（含版本/发布日期）→ ③ web 扫一眼有无更对路的现役框架 → ④ 给用户对比表（R3）。**已挂 PreToolUse hook（写 `docs/plan/*.md` 或动 `package.json` 时顶提醒）+ self-check.sh 闸① 每轮提醒**——别等想起来。
 
-## R6 读顶尖开源代码
+## R6 近邻开源优先，读真实代码
 
-做任何项目方案前，先去 GitHub 找 1~N 个顶尖开源项目读真实代码（不是扫 README），产出：
-- 它们怎么做的（具体到文件/代码位置）
+做任何项目方案前，先建立对标候选池，**按与 Nomi 的任务距离排序，不按名气、资料丰富度或单个控件的精致程度排序**：
+
+1. **开源近邻优先**：目标用户、要完成的创作任务、处理的媒介、主要交互载体中至少三项相同。例如研究 Nomi 的 Agent 画布，先看开源 AI 创作画布、视觉编辑器和音视频工作台，不能先拿通用代码 Agent 代替。
+2. **闭源直接竞品补产品上限**：当开源近邻没有覆盖某段完整体验，再读直接竞品的官方文档、真实界面或官方演示。它能证明产品选择，不能证明内部实现。
+3. **跨领域类比只补原语**：Cursor、Cline、Claude Code 等只可补权限、引用、队列等仍未覆盖的交互原语，不能单独支撑 Nomi 整体创作流程的结论。
+
+候选筛选先写清 `同用户任务 / 同媒介 / 同载体 / 开源可读` 四项，找不到近邻时记录实际检索过的方向并明确说没有，不得静默降级成通用案例。研究结论按来源标出：**它能证明什么、不能证明什么**；避免把开源 demo 当成熟产品，也避免把闭源界面猜成实现事实。
+
+入选的开源项目必须读真实代码（不是只扫 README），产出：
+- 它们怎么做的（具体到固定版本的文件/代码位置）
 - 我们能直接借鉴什么
 - 哪里不适用、为什么
+- 该项目覆盖的是完整用户旅程，还是仅一个局部原语
 
 参考池（非穷尽，按专题选，别拿这串当唯一清单——做某专题就去查那个专题真正的顶尖项目）：
 - coding agent / 通用：Cline / OpenHands / Aider / Continue / Cherry Studio / LobeChat
@@ -156,7 +165,9 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 
 完成一个有意义的、验证通过的改动就自己 commit + push，不用等用户催。
 
-**验证门槛**：`pnpm build` 绿 + `npx vitest run` 不回归（重大改动按速览「Push 前必须全过」走五门）。
+**开始闸**：在独立 sibling worktree 的任务分支先运行 `pnpm run delivery:preflight`。它只做一次有超时的非交互 fetch，并拒绝受保护分支、脏工作树和未包含最新远端基线的任务分支；失败后不自动重试、不用 REST API 重建 Git 对象。
+
+**验证门槛**：按 R22 的共享 policy 选择受影响风险面。contracts 始终运行；unit 可 focused/full，Electron、journey、canvas、performance 与 package 各自独立触发。连续小修先在本地收敛，定向验证通过后只 push 一次，禁止每修一个微小点就触发一轮完整远端 CI。
 
 **commit 规范**：
 - 一个逻辑改动一个 commit
@@ -254,8 +265,45 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 **执行**：
 1. 多维 subagent 深审真实代码（R7 6 角色 + 技术栈/架构/测试/产品多维度）
 2. Playwright 走查（R13）
-3. 落 `docs/audit/<date>-*.md`：现状 + 分级问题（带 file:line）+ 立即/中期/长期路线
-4. 清掉 P0，方案级取舍留用户拍板（R3）；关键论断亲自实跑核实
+3. 做 R14.1「同一语义有几份定义」横扫
+4. 落 `docs/audit/<date>-*.md`：现状 + 分级问题（带 file:line）+ 立即/中期/长期路线
+5. 清掉 P0，方案级取舍留用户拍板（R3）；关键论断亲自实跑核实
+
+### R14.1 固定维度：同一语义有几份定义
+
+**为什么单列**：重复实现通常不是因为开发者明知第一套还硬造第二套，而是写新代码时根本没有检索到第一套。这是检索失败，单靠 P1「加新必删旧」拦不住。任何 PR 只要新增或修改下表中的合同，动手前就先用 `rg` 横扫两端/多入口的现有 owner，评审时把复用点或确需独立的理由写清楚；周期审计再全仓复盘一次。
+
+**机器能守的部分**：`pnpm run check:vocabularies` 已进入 `gates`。它用 TypeScript AST 扫 `src/`、`electron/` 的 TS/TSX/MTS/CTS，识别字符串 union、`z.enum([...])`、`as const` 数组和 `Set([...])`。每套词表按稳定的「文件 + 声明路径」登记 owner；第二个完全相同 owner、新增词表、成员漂移、owner 移位、陈旧 baseline、空/TODO reason 或 debt 超上限都会红。baseline 两桶：
+
+- `registered`：确实是独立领域合同，reason 必须说明为什么不能复用。
+- `debt`：已知重复/待收敛 owner；`debtCap` 只减不增，等量换一个 owner 也不算减少。
+
+`--update-baseline` 只生成带 `TODO` 的待解释条目，写完仍然红；它是检索助手，不是自动放行按钮。
+
+**机器查不到、每次计划/评审与周期审计必须人工横扫的七维**：
+
+| 维度 | 必问的问题 | 典型风险 |
+|---|---|---|
+| 工具面 | 同一个操作，内嵌 Agent / MCP / 其它入口各叫什么、是否走同一 executor？ | `nomi_add_nodes` 与 `create_canvas_nodes` 同事两名 |
+| 可见性/过滤口径 | 同一批能力，多个消费方是否各写了一套过滤？ | list 过滤了，read 仍能绕过 |
+| 标识符 | 同一个对象只有一个主键吗？ | `directoryName` 与 `skillKey` 撞运气匹配 |
+| 格式契约 | 是否自造了生态已有的信封/协议？ | 私有 manifest 与标准 `SKILL.md` 并存 |
+| 字段取值来源 | 同一个展示/业务字段是否只有一条取值链？ | store 算对了，IPC 又从另一来源重算 |
+| 确认/权限面 | 「要不要放行」是否只有一个真相源？ | MCP policy 与内部 gate 各判一遍 |
+| 规则的路径覆盖 | 规则的每条对偶路径都落到了吗？ | 只挡展示层，不挡真实数据入口 |
+
+#### R14.1.a 最难查的一族：只做了一半，而做完的半边看起来很完整
+
+审查任何规则、字段或能力时都必须再问一句：
+
+> 它的对偶路径是什么？那条路径上也使用同一个 owner 吗？
+
+- 加了「列」的过滤 → 「读」是否复用同一判定？
+- 加了「写」的校验 → 「改/删」是否复用同一判定？
+- 加了「导入」的合同 → 「导出」是否同构？
+- 加了内部工具 → 外部 MCP 是否投影同一能力定义与 executor？
+
+这类缺口不一定有第二份代码，静态词表门岗无法发现；所以不能因为 `check:vocabularies` 绿，就跳过七维 owner 审计和对偶路径走查。
 
 ## R15 可见文字国际化
 
@@ -290,33 +338,6 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 **与其它规则的关系**：R16 用 R13 的走查方法 + P3 的样张对账，但把标准拔高成「**多条真实任务测试系统 + 闭环 + 修全发现的问题**」；与 R14（周期审计）区别 = R14 是攒够 commit/发版前的定期体检，R16 是**每个功能交付自带**的完成门。
 
 **适用范围**：功能类交付（尤其用户可见 / 体感功能）必走；纯内部重构 / 文案 / 脚本类改动按 P3 常规走查即可，不强求建多条任务测试系统。
-
-## R17 解决状态必须可交付
-
-> 2026-08-15 用户要求固化。根因不是“忘了合分支”，而是把侧分支里的实现状态误报成了用户拿得到的解决状态。以后状态名称与 Git 证据绑定，不靠口头判断。
-
-**状态词只有以下四种，禁止混用**：
-
-1. **已实现、未推送**：改动只在本地工作区或本地提交。必须给出工作树、分支和提交；不能称为“已解决”。
-2. **已推送、待合入**：远端侧分支能找到提交，但目标分支不包含它。必须给出远端分支/PR；不能称为“已解决”。
-3. **已合入、待验证**：目标分支已包含提交，但目标分支门禁或真实用户任务尚未通过。只能称“已合入”。
-4. **已解决**：修复提交已进入用户指定的远端目标分支，并且该目标分支上的必需门禁与真实用户任务都通过。
-
-**机械证据（报“已解决”前必做）**：
-
-```bash
-git fetch origin
-git merge-base --is-ancestor <fix-commit> origin/<target-branch>
-git status --short --branch
-```
-
-- 第一条祖先检查失败：状态必须降级为“已推送、待合入”，当轮继续完成合入，不能把尾巴留给用户。
-- 未推送提交不允许被引用为团队现状；需要保留就先推到明确命名的远端分支。
-- 删除分支前先逐提交审计；目标分支未包含的有效提交必须先合入或明确归档，不能靠删分支消失。
-- 完成报告必须同时给出目标分支、远端 commit、验证结果；不再只给一个侧分支 hash 让用户自行判断。
-- 若用户明确要求验收后再合入，只能报告“待验收修复”，直到用户批准并实际合入；不能提前写“已解决”。
-
----
 
 ## 工作流框架（阶段 × agent 编排）
 
@@ -375,17 +396,25 @@ git status --short --branch
 
 ## R17 重活门岗（用户体感「卡死」的一族）
 
-**门岗**：`pnpm run check:heavy-path`（`scripts/check-heavy-path.mjs` + `scripts/heavy-path-baseline.json`），三条规则各自棘轮，只减不增。已进 `gates` 链。
+**门岗**：`pnpm run check:heavy-path`（`scripts/check-heavy-path.mjs` + `scripts/heavy-path-baseline.json`），每条规则各自棘轮，只减不增。已进 `gates` 链。（规则条数别写死在文档里——以脚本里的 `RULES` 为准。）
 
-**它抓什么、为什么这三条是一族**（2026-08-20「九宫格切图卡死半小时」挖到底的产物）：
+**它抓什么、为什么这些是一族**（2026-08-20「九宫格切图卡死半小时」挖到底的产物）：
 
 | 规则 | 写法 | 后果 |
 |---|---|---|
 | `sync-image-encode` | `canvas.toDataURL()` | 同步 PNG 编码，编码期间整个界面冻住。9 张 4K 切片 = 701ms 纯阻塞。改用 `convertToBlob()`/`toBlob()`（异步、编码不占主线程）|
 | `base64-into-store` | `updateNode({ result: { url: dataUrl } })` | base64 进 store → 每次写入被 `emitCanvasGesture` 整段 JSON 深拷贝、压进撤销日志、IPC 发去事件日志、随每次保存全量序列化。改用 `persistNodeImageBlob()` 落盘换 `nomi-local://`，store 只存门牌号、只写一次 |
 | `duplicate-node-size-bounds` | 在 `nodeSizing` 外重新声明 `MIN/MAX_NODE_WIDTH/HEIGHT` | 布局算一套尺寸、渲染算另一套 → 必然错位（切图九张按 129px 步距摆、卡片各渲染 240 宽，互相压掉 110px）。尺寸只有一个真相源：常量从 `nodeSizing` 导入，「卡片实际渲染多大」问 `resolveNodeVisualSize()` |
+| `node-stream-into-response` | `new Response(createReadStream(...))` / `Readable.toWeb(...)` | 把 Node 流交给 undici / Node 适配器管生命周期。小文件、不 seek 时完全正常；大视频一拖进度条就从 microtask 抛出 `ERR_INVALID_STATE`，call site 的 try/catch 一律接不住。改用 `createOwnedFileStream()`（`electron/protocol/fileResponseStream.ts`）自己拥有流 |
+| `unguarded-fsync` | 在 `electron/durability.ts` 之外直接 `fs.fsyncSync(fd)` | 绕过全仓唯一的落盘屏障 → 那条写路径在测试里关不掉，productionRun 的 flake 长回来一角（屏障关掉前该子集 98.7s、最重的几个文件贴着 5000ms `testTimeout`）。而**本地单跑照样全绿**，只有 CI 磁盘队列深的那一刻才红。文件 fd 用 `fsyncIfDurable(fd)` |
 
-**为什么必须是门岗而不是文档**：这三种写法**当场看不出毛病**——小图上跑得飞快，大图才冻死；而写代码的人手里多半是小图。靠自觉记不住，只能靠机器每次拦。
+**`unguarded-fsync` 的判据是「有没有过闸」，不是「在哪个文件」**（所以基线是 0，不是「现存 2 处」）：
+
+- 正道 `fsyncIfDurable(fd)` 本就匹配不到；
+- 合法例外只有一种形态——**只为 fsync 而开的目录 fd**（`productionRunIntentLog.ts` / `productionRunLock.ts` 各一处）。它连 `openSync` 都要省掉，没法用 `fsyncIfDurable` 表达，于是在开 fd 之前先 `if (!isDurable()) return`；门岗按「本顶层声明里有没有这道闸」认它，屏障一样被尊重。
+- **为什么不把那 2 处收进基线**：基线在本仓的语义是「待清零的存量债」。那 2 处是永远正确的写法，收进去等于把正确代码标成永远清不掉的债；更要命的是留了个洞——删掉一处合法的、同时新增一处违规的，计数不变、门岗照样绿。按闸判则两种情况都当场报红，且将来新写的合规目录 fsync 不用抬基线（抬基线正是棘轮被磨平的方式）。
+
+**为什么必须是门岗而不是文档**：这些写法**当场看不出毛病**——小图上跑得飞快，大图才冻死；本地磁盘闲，CI 忙起来才超时。而写代码的人手里多半是小图、跑的多半是本地。靠自觉记不住，只能靠机器每次拦。`electron/durability.ts` 里那句「除本模块外不要直接调 `fs.fsyncSync`」当了一阵子纯注释、没有任何东西执行它，本规则就是来给它上闸的。
 
 **基线里还留着的（存量，只减不增）**：`sync-image-encode = 5`。其中 `electron/browser/media/browserMediaVisualCapture.ts` 那处跑在注入页面的脚本里，返回值必须可 JSON 序列化，base64 是被迫的——它是这条规则的合法例外，清零时最后处理。
 
@@ -393,4 +422,138 @@ git status --short --branch
 - `electron/events/eventLogRepository.ts` 的 `MAX_FIELD_BYTES = 256KB`：超限字符串在脱敏/哈希/落 sidecar **之前**就换成体积标记。事件日志是旁路观察，绝不许因为一个大字段把主进程拖死。
 - 走查断言：`tests/ux/image-grid-split-freeze.walk.mjs` 量主线程最长阻塞、零 `toDataURL`、零 `data:` URL。
 
+**加新规则的姿势**（P2 通用性判定的落地路径）：修完一个 bug → 判断是不是通用 → 全仓实扫拿 file:line → 能 grep 的加进本门岗的 `RULES`（写清 label + hint，hint 必须给出替代写法）→ `node scripts/check-heavy-path.mjs --update-baseline` 把存量收进基线 → 存量后续慢慢清零。**先问一句「存量是债还是本来就对」**：是债才进基线；本来就对的写法应该在 `scan()` 里判成合规（例：`unguarded-fsync` 认 `isDurable()` 闸），否则等于把正确代码标成永远清不掉的债，还会被「删一处合法的 + 加一处违规的」凑出假绿。
+
+**加规则前必须验一次它会红**（2026-08-25）：临时在 `electron/` 塞一处违规写法 → 跑门岗确认报红且 file:line 点得对 → 删掉。**只验过绿的门岗不算门岗**——绿有可能是正则根本没匹配上。对有「合法例外」的规则还要补一发反向控制：把真实合法处的豁免条件（如那道 `isDurable()` 闸）临时去掉，确认它当场变红——这才证明扫描器真的走到了那几行，而不是碰巧漏过。
+
+**`stripComments()` 必须逐行等高**：抹注释不许改变总行数，否则报出来的 `file:line` 点开是别的地方。两个坑都踩过并已修（2026-08-25）：① 块注释整段删会把后面的行整体上移；② 行注释正则写 `^\s*//` 时 `\s` **含换行**，「空行 + `//` 注释」会被吞掉一行。修之前全仓 2015 个被扫文件里 **1053 个行号是错的，最差的一个偏 995 行**。
 **加新规则的姿势**（P2 通用性判定的落地路径）：修完一个 bug → 判断是不是通用 → 全仓实扫拿 file:line → 能 grep 的加进本门岗的 `RULES`（写清 label + hint，hint 必须给出替代写法）→ `node scripts/check-heavy-path.mjs --update-baseline` 把存量收进基线 → 存量后续慢慢清零。
+## R18 测试等待门岗（并行才炸的私有墙钟等待）
+**门岗**：`pnpm run check:test-waits`（`scripts/check-test-waits.mjs`，硬零无基线）。已进 `gates` 链。
+**它抓什么**：测试文件里的私有 `waitFor` 定义与 `Date.now()` 截止时间轮询。起因（2026-08-25）：electron/productionRun 十一个测试文件各自复制/手写墙钟等待（硬闹钟 500ms~5s），赛跑「每条命令 3 次真 fsync」的 ProductionRunService 编排链——单跑永远绿，vitest 并行满载时 fsync 排队放大 → 干净 main 上 5 跑 4 挂。flake 的两条腿分两处修：**耗时腿**在 `electron/durability.ts`（单测 ephemeral 不 fsync，测试 20× 提速，PR #139）；**赛跑腿**在本门岗——就算测试再快，复制粘贴的私有闹钟也是下一次事故的年轮，机器拦住不许再长。
+**正确姿势**：等 detached driver（`void driveGeneration(...)` 这类）一律用 `productionRunTestHelpers.waitForProduction`（全仓唯一等待实现，统一预算、超时信息带 `check.toString()` 直接定位卡在哪步）。不许在测试里再写 `function waitFor` 或 `Date.now()` 截止轮询——第 11 个复制品（`productionStoryboardBinding` 的匿名内联循环，连名字都不叫 waitFor）就是靠本门岗的模式扫描抓出来的。来龙去脉：`docs/plan/2026-08-25-production-run-test-flake-fsync.md`（耗时腿）+ `docs/plan/2026-08-25-fix-flaky-production-run-tests.md`（赛跑腿与门岗）。
+
+## R19 解决状态必须可交付
+
+> 2026-08-15 用户要求固化。根因不是“忘了合分支”，而是把侧分支里的实现状态误报成了用户拿得到的解决状态。以后状态名称与 Git 证据绑定，不靠口头判断。
+>
+> **原为 R17，2026-08-25 改号为 R19**：本条当初只写进了 `AGENTS.md` 一侧的规则索引，`CLAUDE.md` 那侧从未见过它，于是 08-20 加「重活门岗」时把 R17 号又占了一次，本文件一度出现两个 `## R17`。因本条全仓零引用、而「重活门岗」被代码注释与 4 篇计划文档引用，故改本条。旧文中提到的「R17 解决状态」即此条。
+
+**状态词只有以下四种，禁止混用**：
+
+1. **已实现、未推送**：改动只在本地工作区或本地提交。必须给出工作树、分支和提交；不能称为“已解决”。
+2. **已推送、待合入**：远端侧分支能找到提交，但目标分支不包含它。必须给出远端分支/PR；不能称为“已解决”。
+3. **已合入、待验证**：目标分支已包含提交，但目标分支门禁或真实用户任务尚未通过。只能称“已合入”。
+4. **已解决**：修复提交已进入用户指定的远端目标分支，并且该目标分支上的必需门禁与真实用户任务都通过。
+
+**机械证据（报“已解决”前必做）**：拿到 GitHub 返回的 merge commit SHA 后，在 Git fetch 得到的该提交工作树运行：
+
+```bash
+pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
+```
+
+- 命令要求 `HEAD`、远端目标分支与 expected SHA 完全一致，并记录 commit/tree 两种身份；PR head 与 merge commit 不相等是正常阶段变化，tree 相同但 commit 不同也不能误报成代码不一致。
+- 身份检查失败：状态必须降级为“已推送、待合入”或“已合入、待验证”，当轮继续收口，不能把尾巴留给用户。
+- 禁止用 REST compare 文件列表、commit message 重放或低层 Git 对象合成来伪造远端 commit/tree；远端对象只从有界 Git fetch 获取。
+- 未推送提交不允许被引用为团队现状；需要保留就先推到明确命名的远端分支。
+- 删除分支前先逐提交审计；目标分支未包含的有效提交必须先合入或明确归档，不能靠删分支消失。
+- 完成报告必须同时给出目标分支、远端 commit、验证结果；不再只给一个侧分支 hash 让用户自行判断。
+- 若用户明确要求验收后再合入，只能报告“待验收修复”，直到用户批准并实际合入；不能提前写“已解决”。
+
+## R20 造轮子前先过 build-vs-buy 闸
+
+**触发**：你正准备写一段「通用能力」的代码——协议处理、状态/渲染调度、手势、虚拟列表、校验框架、任务队列、编辑器内核等等（不是 Nomi 业务语义）。
+
+**三问（缺一不许动手）**
+1. **这是不是通用问题？** 别人也会遇到 = 通用。只有 Nomi 会遇到（分镜锚一致性、生成预算账本）= 业务。
+2. **同类产品/成熟方案怎么做的？** Context7 查官方文档 + web 查现役方案 + 读顶尖开源真实代码（R5/R6）。**禁止凭记忆判断「有没有成熟方案」「哪个更现役」**。
+3. **自研它在不在护城河上？** 在 = 自研到底；不在 = 用标准实现，或至少**行为对齐标准语义**（将来才可能平滑换过去）。
+
+**判据速查**
+
+| 类型 | 例子 | 处置 |
+|---|---|---|
+| 护城河（自研到底） | ProductionRun 账本、预算/收据/幂等、锚一致性、Proposal 撤销、能力核权限 | 没有现成品，且是差异化本身 |
+| 标准协议/边界（用标准或对齐标准） | MCP JSON-RPC、Electron IPC 合同、schema 校验、请求生命周期 | 自研不产生差异化，**出事代价极大** |
+| 通用交互内核（先隔离再评估） | 画布 viewport/手势、时间轴播放时钟 | 先把瞬时状态与领域状态分离，再谈换不换 |
+| 已用成熟库（别迁移，修用法） | R3F/Three、Tiptap、Leafer、TanStack Virtual | 查渲染模式、缓存、dispose、订阅粒度 |
+
+**已交的学费**（2026-08-25 全应用地基审计 PR #171）：手写 MCP 协议缺 `notifications/cancelled` 与在飞操作的绑定（客户端断开后付费生成仍在后台跑）、tools/call 参数直接 cast 无运行时校验、协议版本原样回显无交集协商、IPC apply reply 只按 id 路由不绑 sender/origin。这些**都不是业务复杂度，是标准语义没补齐**——正是这条闸要拦住的东西。
+
+**与既有规则的关系**：R5 管「用第三方库时先查官方文档」，R6 管「做方案前先读顶尖开源」，**R20 管更早的一步：先判断该不该自己写**。P2 的「通用性判定」是修 bug 侧的同一思维（这类还会从别的入口出现吗），R20 是造东西侧。
+
+## R21 修复必须走根因流程；可复发/高风险交 v3 合同
+
+**触发**：所有 bug、回归、CI/平台失败、flaky、性能/安全问题和 review/audit 发现，不按目录或改动大小豁免。
+
+统一方法只住在 `.agents/skills/root-cause-remediation/SKILL.md`。`recurring` 或高风险生产路径在改代码前必须提交 schema-v3 `docs/fixes/*.root-cause.json`；`pnpm run check:root-cause-contracts` 会交叉核验真实共享边界、至少两个同类入口、变化中的结构预防与类级测试、旧路径处置和依赖生命周期。schema v1/v2 是内容哈希锁定的历史记录，修改时必须迁移到 v3，禁止新增旧 schema。
+
+本地 Agent hook 只负责提前提醒，可能不存在；已提交的 `CLAUDE.md`、生成的 `AGENTS.md`、skill 和 CI 才是跨 Agent 的执行链。合同字段和完整步骤不在本节重复，避免规则再次膨胀和分叉。
+
+## R22 验证分层与测试预算
+
+> 2026-08-29 用户拍板建立测试预算；2026-08-30 从 `fast/full` 两档升级为独立风险面。目标不是少测，而是把反馈成本花在真正可能受影响的地方：小改动尽快反馈，高风险绝不降级，也不把无关性能或打包成本强加给每个 PR。
+
+### 风险面
+
+| 风险面 | 触发 | 验证 |
+|---|---|---|
+| contracts | 所有 PR 与 `main` push | 静态合同、lint、typecheck 和结构门岗 |
+| unit | 普通隔离改动用 `focused`；Electron、模型执行、画布和基础设施用 `full` | changed/sibling/related 或全量 Vitest/agent runtime |
+| desktop | Electron 与桌面运行边界 | 一次 build + Electron smoke |
+| journeys | Agent、模型执行和真实工作流边界 | CI-safe J3/J5 真实用户旅程 |
+| canvas | 生成画布为 `critical`；React Flow 内核/验收基础设施为 `full` | 功能画布验收，不含性能 benchmark |
+| performance | React Flow viewport、节点媒体渲染/调度和性能基准自身 | 独立性能预算；JSON 永久留证，`pass:false` 必须非零退出 |
+| package | 依赖/构建配置、Electron main/preload/runtime identity 与 release 边界 | macOS build、目录打包和 codesign |
+
+权威实现是 `scripts/validation-policy.mjs`；`scripts/select-quality-gate-profile.mjs` 只负责从 Git diff/事件取输入，`.github/workflows/quality-gate.yml` 和 `tests/system/profiles.mjs` 只消费输出。PR 和 `main` push 都按真实 Git changed entries 分类；`main` 不因事件名自动 full。删除/重命名、空或不可解析 diff、分类器/工作流/测试系统自身和手动发布验证必须 fail-closed 到所有风险面。`Quality Gate` 仍是唯一聚合门，只允许策略未选择的 optional job 为 skipped。
+
+### 测试取舍
+
+1. **必须保留**：凭据不出主进程、SSRF/重定向/私网边界、认证与发布状态机、幂等/并发/取消、崩溃恢复与升级持久化、迁移与 unknown reconcile、媒体验真、真实入口 round-trip、安装包身份和签名。这些测试即使慢或相似，也不能按数量删除。
+2. **可以 focused**：普通源文件的同目录 sibling test；没有 sibling 时由 Vitest import graph 找 related tests；直接改动的 Vitest/Node test。docs-only 没有可执行 target 时仍必须通过 contracts。
+3. **可以简化**：重复的 fixture、临时目录、启动器和断言 helper；过大的测试文件应按行为域拆分。先证明行为覆盖等价，再合并装配代码，不用“删测试”换速度。
+4. **不能假装自动化**：真实供应商 key、真实 ComfyUI、外部宿主和跨版本升级没有资源时必须记为 unverified，不能用 mock 绿灯替代 live 证据。
+
+### 执行节奏
+
+一个逻辑批次先完成实现、审计、规则和测试，再跑一次定向验证；全部本地问题收敛后按共享 policy 统一 push。只有测试基础设施自身、删除/重命名、无法分类或手动 release 才跑显式全维度；小阻塞不得打断主流程反复重启全套测试。
+
+最终交付不再本地跑第三遍：在真实 merged-main SHA 上运行 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`。命令仍用有界 Git fetch 证明 `HEAD`、远端主线和 expected SHA/tree 身份，然后等待该 exact SHA 的 `Quality Gate` 与 `Mac Package` check run。GitHub required-check 语义中的 success/skipped/neutral 可写入 Git common dir 的 per-SHA `ci-evidence.json`；missing、pending、failure 或错误 SHA 都不能生成成功收据。同一 SHA 再调用直接复用收据，不启动 repository tests。
+
+## R23 React Flow 生成画布单内核与迁移等价
+
+**边界**：生产生成画布只允许 `@xyflow/react` 一个交互、选择、平移缩放、连接、缩放节点和边渲染内核。`GenerationCanvas` 是稳定入口；禁止第二 renderer、engine flag、fallback 或并行实现。onboarding 的静态只读工作流图不属于生产生成画布 renderer。
+
+**状态所有权**：Zustand/domain/project snapshot 是业务与持久化唯一真相源；React Flow state 只是一层可丢弃的渲染投影。节点、边、选择和连接写入必须回到现有 graph actions，不能把 React Flow 内部 store 变成第二份业务状态。
+
+**迁移等价清单**：换内核不是重新设计。迁移或升级 React Flow 时，逐项盘点并保留旧画布的节点真实尺寸、fit/focus/虚拟化几何、连接入口与端点贴边、磁吸/hover/selection affordance、resize 命中区与可见反馈、边颜色/粗细/标签/菜单、出现与聚焦动画、拖动期间浮层、右键/键盘/触控协议；删除旧实现前必须证明新内核覆盖对应能力。产品明确要求改变的项目另走 R8，不得借迁移顺手改掉。
+
+**证据**：纯映射与状态复用写 adapter/contract 测试；旧内核不存在、入口唯一和写边界写结构门禁；用户能看到或操作的项目进入现有真实 Electron 旅程，用计算样式、SVG/DOM 几何和截图共同验证。不得以“React Flow 默认如此”替代 Nomi 的产品合同，也不得只查元素存在而不验证用户实际看见和点到的状态。
+
+> 规则编号说明：R24 由 PR #223 的能力完整性合同保留；本分支不定义或复制 R24，避免与 Agent/Project Agent Host 规则形成第二套旁路。
+
+## R25 提交/推送前 Ponytail 评审
+
+**触发**：任何 `git commit` 或 `git push`，包括文档、配置和脚本的小改动。目标是让过度工程化评审发生在变更离开工作树前，而不是把它误当成正确性、安全或 CI 评审的替代品。
+
+### 合规流程
+
+1. 版本化 `pre-commit` / `pre-push` hook 自动调用 `scripts/ponytail-review-hook.mjs`。Codex 适配器以 `--ask-for-approval never --ignore-rules --sandbox read-only` 启动只读、临时会话，并触发 `@ponytail-review`（宿主 slash 名是 `/ponytail-review`）。
+2. `pre-commit` 只把 `git diff --cached` 交给评审；`pre-push` 解析 Git 传入的四列 ref-update，逐个评审实际 outgoing range。新建远端 ref 没有旧 SHA 时，以远端 HEAD 的 merge-base 为基线，拒绝退化成整仓 diff；无法确定基线就 fail closed。不会把无关的未暂存改动或其他分支混进上下文。
+3. 评审只看过度工程化（delete/stdlib/native/yagni/shrink）。有发现时 hook 只报告状态和字节数摘要，不替用户判断功能正确性；需要逐条意见时另行运行 `@ponytail-review`。没有合法结果、Codex 缺失、插件未启用、异常或超时都 fail closed，必须处理环境后重试。
+4. 运行器固定为只读、临时、限时调用，报告写入系统临时目录，不进项目和 Git index；评审结束后立即删除唯一临时目录，清理失败也 fail closed。hook/返回值只保留状态、diff hash 和 report/stdout/stderr 字节数，绝不把报告正文或进程输出复制到终端、CI 日志或错误对象。报告读取上限为 256 KB；`pre-commit` 先执行既有敏感数据扫描，避免把明显凭据送入模型；`pre-push` 只审 outgoing diff。单次送审 diff 上限为 1.5 MB、push ref-update 上限为 32 条，超限直接 fail closed。
+5. 只接受 `--output-last-message` 报告的严格、报告-only 合同：适配器形式要求唯一一条 `net: -N lines possible.` 后紧跟唯一最终行 `PONYTAIL_REVIEW: PASS|FINDINGS`；同时兼容 Ponytail 原生的精确 clean 行 `Lean already. Ship.` 和以 `net: -N lines possible.` 收尾的 findings 报告。stdout/stderr、prompt 回显、重复 marker 和不完整报告一律不算通过。
+
+### 为什么不把它做成收据或第二套 Agent
+
+`/ponytail-review` 是宿主 Agent skill，不是可移植的 shell 可执行文件；因此仓库只保留一个版本化 Codex 适配器，不再另设“手工 ACK 收据”旁路，也不接入 Nomi 的 Agent/Canvas 能力链。hook 内不执行修改、测试、commit 或 push，避免递归和工作树污染。
+
+`--no-verify`、GitHub 网页/API 和未安装 hook 的环境仍可绕过本地 Git hook；若要对所有入口强制，需在 CI/分支保护中复用同一只读评审合同。不得把本地 hook 通过写成“代码正确”或“已经合入”。
+
+### 环境与并行 worktree
+
+- `scripts/install-git-hooks.cjs` 由 `postinstall` 调用，保留既有 `commit-msg` 和敏感数据扫描顺序，并新增 `pre-push`。普通 worktree 使用 configured hooks 路径；linked worktree 只有在 Git `extensions.worktreeConfig=true` 时才写入专属目录，无法隔离则跳过并警告，避免一个分支改坏并行 worktree。
+- `PONYTAIL_REVIEW_CODEX_BIN` 可在本机明确指定 Codex 可执行文件；`PONYTAIL_REVIEW_REPORT_DIR` 仅用于调试报告目录。缺失配置不会放行。
+
+**验证**：`scripts/ponytail-review-hook.node-test.mjs` 覆盖 hook 生成顺序、staged/outgoing diff 范围、结果分类、Codex 失败/超时、真实 fake-runner 调用和 linked-worktree 隔离；改动本规则或 hook 时必须运行该测试与 contracts gate。

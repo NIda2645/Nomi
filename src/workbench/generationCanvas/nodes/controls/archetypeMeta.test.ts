@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getArchetypeById, specializeArchetypeForVariant, type ModelArchetype } from '../../../../config/modelArchetypes'
-import { archetypeModeModelEnum } from './archetypeMeta'
+import { archetypeModeModelEnum, type ResolvedReferenceValues } from './archetypeMeta'
 import {
   type ArchetypeArraySlot,
   appendArchetypeArrayValue,
@@ -19,6 +19,7 @@ import {
   modeHasCharacterSlot,
   normalizeArchetypeVariantMeta,
   orderedSentImageReferenceUrls,
+  orderedSentMediaReferenceUrls,
 } from './archetypeMeta'
 
 // C2b：模式分段切换 + 命名空间 meta + flat 帧键投影（M2 互斥）的核心逻辑钉死。
@@ -102,6 +103,37 @@ describe('applyArchetypeModeSwitch — 只改 modeId，参考值全局保留', (
     expect(meta.lastFrameUrl).toBe('L.png')
     expect(meta.lastFrameRef).toBe('n2')
   })
+
+  // 2026-08-26 走查实测到的真 bug：模式收窄了 select 的**选项**，却没收窄**已存的值**。
+  // 火山 Seedance 2.5 的首帧/首尾帧模式官方硬约束 ratio 只能 adaptive（违反 = 任务已创建才异步报
+  // InvalidParameter.TaskTypeConstraint，额度已排队）。从文生视频带着 16:9 切过去时，UI 上一个选中项
+  // 都没有，而 meta 里的 16:9 照发。变体路径（applyArchetypeVariantSwitch）一直有夹值，模式路径漏了。
+  // 通用坑：任何「某模式收窄某 select」的档案都会中招，不是 Seedance 专属。
+  it('切到收窄了选项的模式时，把越界的存量值夹回该模式默认（不留下发得出去的幽灵值）', () => {
+    const V25 = getArchetypeById('volcengine-seedance-2-5')!
+    const ratioOptionsOf = (modeId: string) =>
+      V25.modes.find((m) => m.id === modeId)!.params.find((p) => p.key === 'ratio')!.options.map((o) => o.value)
+    // 前提坐实：t2v 宽、first 只剩 adaptive。前提不成立的话这条测试就测了个寂寞。
+    expect(ratioOptionsOf('t2v').length).toBeGreaterThan(1)
+    expect(ratioOptionsOf('first')).toEqual(['adaptive'])
+
+    let meta: Record<string, unknown> = ensureArchetypeNodeMeta({}, V25)!
+    meta = applyArchetypeModeSwitch(meta, V25, 't2v')
+    meta = { ...meta, ratio: '16:9' } // 用户在文生视频里选了 16:9
+    expect(meta.ratio).toBe('16:9')
+
+    meta = applyArchetypeModeSwitch(meta, V25, 'first')
+    expect((meta.archetype as { modeId: string }).modeId).toBe('first')
+    // 关键断言：16:9 不许活到首帧模式里。
+    expect(meta.ratio).toBe('adaptive')
+
+    // 反向：模式没收窄的参数不受影响（别夹过头把用户的正常选择也清了）。
+    let keep: Record<string, unknown> = ensureArchetypeNodeMeta({}, V25)!
+    keep = applyArchetypeModeSwitch(keep, V25, 't2v')
+    keep = { ...keep, resolution: '1080p' }
+    keep = applyArchetypeModeSwitch(keep, V25, 'first')
+    expect(keep.resolution).toBe('1080p')
+  })
 })
 
 describe('buildArchetypeInputParams — M2 互斥发生在档案驱动的 input 构建（snake 键）', () => {
@@ -134,7 +166,8 @@ describe('buildArchetypeInputParams — M2 互斥发生在档案驱动的 input 
   // 「不冒充首帧」不变量：首帧槽连的是视频（尾帧接力）时，抽帧前**不能**把视频 URL 当首帧发出去。
   it('relayFromVideoUrl 永不上线当首帧（抽帧由 relayFrameResolver 在提交前填 firstFrameUrl）', () => {
     const meta = { archetype: { id: 'seedance-2', modeId: 'first' } }
-    const out = buildArchetypeInputParams(meta, SEEDANCE, { relayFromVideoUrl: 'https://cdn/prev.mp4' })
+    const refs: ResolvedReferenceValues = { relayFromVideoUrl: 'https://cdn/prev.mp4' }
+    const out = buildArchetypeInputParams(meta, SEEDANCE, refs)
     expect(out.first_frame_url).toBeUndefined()
   })
 })
@@ -296,6 +329,27 @@ describe('option 2 单源 — 「有序参考图」连线在前、上传在后�
   it('当前模式无 image 数组槽（首帧模式）→ []（@ 投影回退 no-op）', () => {
     const meta = { archetype: { id: 'seedance-2', modeId: 'first' }, firstFrameUrl: 'F.png' }
     expect(orderedSentImageReferenceUrls(meta, SEEDANCE, ['e1.png'])).toEqual([])
+  })
+
+  it('omni 的图/视频/音频分别按各自槽顺序编号，顺序与发送输入一致', () => {
+    const meta = {
+      archetype: { id: 'seedance-2', modeId: 'omni' },
+      referenceImageUrls: ['u-image.png'],
+      referenceVideoUrls: ['u-video.mp4'],
+      referenceAudioUrls: ['u-audio.mp3'],
+    }
+    expect(orderedSentMediaReferenceUrls(meta, SEEDANCE, {
+      image: ['e-image.png'],
+      video: ['e-video.mp4'],
+      audio: ['e-audio.mp3'],
+    })).toEqual([
+      { url: 'e-image.png', kind: 'image', index: 1 },
+      { url: 'u-image.png', kind: 'image', index: 2 },
+      { url: 'e-video.mp4', kind: 'video', index: 1 },
+      { url: 'u-video.mp4', kind: 'video', index: 2 },
+      { url: 'e-audio.mp3', kind: 'audio', index: 1 },
+      { url: 'u-audio.mp3', kind: 'audio', index: 2 },
+    ])
   })
 })
 
@@ -737,9 +791,11 @@ describe('火山方舟 Seedance — 档案投影', () => {
       volcengine_first_image_content: { type: 'image_url', image_url: { url: 'F.png' }, role: 'first_frame' },
       model: 'doubao-seedance-2-0-260128',
     })
-    // seed 在官方字段表里、同族 apimart 档案也有——参数由模型身份决定与渠道无关，
-    // 换个渠道少一个控件就是 bug（2026-07-31 拿到交付文档对账时补齐）。
-    expect(VOLC.modes[0].params.map((p) => p.key)).toEqual(['ratio', 'resolution', 'duration', 'seed', 'generate_audio'])
+    // **刻意没有 seed**：2026-08-26 照官方一手文档（doc 1520757 参数表）逐项对账，seed / camera_fixed
+    // 的支持列只有 1.5 pro / 1.0 pro / 1.0 pro fast，2.0 系列与 2.5 都不支持。
+    // 这条推翻了 2026-07-31 那次「补齐 seed」——那次对的是**中转的交付文档**，它把全 family 的字段
+    // 并成了一张表，看不出逐模型差异。一手出处才算数（R5）。
+    expect(VOLC.modes[0].params.map((p) => p.key)).toEqual(['ratio', 'resolution', 'duration', 'generate_audio'])
   })
 
   it('fast 变体：out.model 发 fast Model ID', () => {

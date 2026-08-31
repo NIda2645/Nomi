@@ -30,9 +30,9 @@ beforeAll(() => {
   fs.mkdirSync(path.dirname(assetPath), { recursive: true });
   fs.writeFileSync(assetPath, Buffer.from("0123456789"));
   fs.writeFileSync(path.join(projectRoot, "assets", "generated", "clip.bin"), Buffer.concat([
-    Buffer.from([0, 0, 0, 0x20]),
+    Buffer.from([0, 0, 0, 0x10]),
     Buffer.from("ftypisom", "ascii"),
-    Buffer.alloc(16),
+    Buffer.alloc(4),
   ]));
 });
 
@@ -45,6 +45,18 @@ function assetUrl(relativePath = "assets/generated/clip.mp4"): string {
 }
 
 describe("handleNomiLocalRequest", () => {
+  // 这条原先钉的是「`Readable.toWeb` 被调用过」——那是钉实现、不是钉契约，
+  // 换个等价实现就会假红。它真正要守的是：**别把裸 Node 流交给 protocol.handle**
+  // （Chromium 的媒体请求会挂住）。现在直接钉那个契约本身。
+  // 至于「流的关闭权在我们手里」，由 fileResponseStream.test.ts 覆盖。
+  it("hands Electron a Web ReadableStream, never a raw Node stream", async () => {
+    const response = await handleNomiLocalRequest(new Request(assetUrl()));
+
+    expect(response.body).toBeInstanceOf(ReadableStream);
+    expect(response.body).not.toHaveProperty("pipe"); // Node Readable 的特征方法
+    expect(await response.text()).toBe("0123456789");
+  });
+
   it("serves full files without reopening an undici response stream", async () => {
     const fetchMock = vi.mocked((await import("electron")).net.fetch);
     fetchMock.mockRejectedValueOnce(new Error("net.fetch must not serve local files"));

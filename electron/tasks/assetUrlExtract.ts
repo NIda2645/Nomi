@@ -1,4 +1,25 @@
 import { firstString, isJsonRecord, type JsonRecord } from "../jsonUtils";
+import { contentTypeFromMagicBytes } from "../assets/mediaTypes";
+export { certifyTaskOutputUrls } from "./taskResultCertification";
+
+/**
+ * `b64_json` → data URL，**类型取自字节而非写死 image/png**。
+ *
+ * 为什么（2026-08-26）：厂商回的 b64_json 常是 JPEG（火山方舟 / kie 均如此）。写死
+ * `data:image/png;base64,` 会让这段 JPEG 一路顶着 image/png 的假身份走到落盘层，
+ * 于是产物被命名成 `.png`。这里解头几个字节按魔数说实话；认不出才回退 image/png。
+ */
+function base64ImageDataUrl(b64Json: unknown): string {
+  const data = typeof b64Json === "string" ? b64Json.trim() : "";
+  if (!data) return "";
+  let sniffed: string | null = null;
+  try {
+    sniffed = contentTypeFromMagicBytes(Buffer.from(data.slice(0, 32), "base64"));
+  } catch {
+    // 非法 base64：交给下游按 image/png 兜底，不在抽取层抛。
+  }
+  return `data:${sniffed || "image/png"};base64,${data}`;
+}
 
 /**
  * 从原始响应里尽力取出第一个资产 URL（试 ~12 种常见路径：url/video_url/image_url/model_url/
@@ -12,15 +33,17 @@ export function extractAssetUrl(raw: unknown): string {
     record.url,
     record.video_url,
     record.image_url,
+    record.audio_url,
     record.model_url,
     record.output,
     (record.data as JsonRecord[] | undefined)?.[0]?.url,
-    (record.data as JsonRecord[] | undefined)?.[0]?.b64_json ? `data:image/png;base64,${(record.data as JsonRecord[])[0].b64_json}` : "",
+    base64ImageDataUrl((record.data as JsonRecord[] | undefined)?.[0]?.b64_json),
     (record.images as JsonRecord[] | undefined)?.[0]?.url,
     (record.videos as JsonRecord[] | undefined)?.[0]?.url,
     (record.result as JsonRecord | undefined)?.url,
     (record.result as JsonRecord | undefined)?.video_url,
     (record.result as JsonRecord | undefined)?.image_url,
+    (record.result as JsonRecord | undefined)?.audio_url,
     // chat/completions 多模态图片返回（gemini/nano-banana 系图生图走这条：图在 choices[0].message 里，
     // 不是 OpenAI images 端点的顶层 data[0]）。放最后兜底，不影响上面既有 images 端点口径。
     extractChatImageUrl(record),
@@ -45,7 +68,7 @@ export function extractChatImageUrl(raw: JsonRecord): string {
   if (Array.isArray(message.images)) {
     for (const img of message.images) {
       if (!isJsonRecord(img)) continue;
-      const u = firstString(img.url, img.image_url, img.b64_json ? `data:image/png;base64,${img.b64_json}` : "");
+      const u = firstString(img.url, img.image_url, base64ImageDataUrl(img.b64_json));
       if (u) return u;
     }
   }
@@ -58,7 +81,7 @@ export function extractChatImageUrl(raw: JsonRecord): string {
       const u = firstString(
         typeof imageUrl === "string" ? imageUrl : isJsonRecord(imageUrl) ? imageUrl.url : "",
         part.url,
-        part.b64_json ? `data:image/png;base64,${part.b64_json}` : "",
+        base64ImageDataUrl(part.b64_json),
       );
       if (u) return u;
     }

@@ -14,6 +14,21 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
     state: plan.state,
     ...(plan.contract ? { contract: structuredClone(plan.contract) } : {}),
     ...(plan.approvedReceiptId ? { approvedReceiptId: plan.approvedReceiptId } : {}),
+    // P4 S4: project the multi-shot entries so the MCP gate can build the real display.shots. A
+    // single-shot plan has no shots[] → this is omitted and the flat single-shot path is unchanged.
+    ...(plan.shots && plan.shots.length > 0
+      ? {
+          shots: plan.shots.map((shot) => ({
+            shotId: shot.shotId,
+            ...(shot.role ? { role: shot.role } : {}),
+            ...(shot.included !== undefined ? { included: shot.included } : {}),
+            candidate: structuredClone(shot.candidate),
+            ...(shot.contract ? { contract: structuredClone(shot.contract) } : {}),
+          })),
+          ...(plan.planHash ? { planHash: plan.planHash } : {}),
+          planVersion: run.planVersion,
+        }
+      : {}),
     updatedAt: plan.updatedAt,
   };
 }
@@ -27,11 +42,27 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
   };
   return {
     create(input) {
+      // P4 S6.5: a multi-shot draft scopes its policy to the UNION of every shot's provider/model (anchor
+      // image model + video shot models differ). Without this the Run policy would reject the video shot's
+      // model at submit (它不在白名单). A single-shot draft's union is just the one candidate (unchanged).
+      const providers = new Set<string>([input.candidate.providerId]);
+      const models = new Set<string>([input.candidate.modelId]);
+      for (const shot of input.shots ?? []) { providers.add(shot.candidate.providerId); models.add(shot.candidate.modelId); }
       const run = owner.createGenerationDraft({
         operationId: input.operationId,
         projectId: input.projectId,
-        origin: { host: "semantic-mcp" },
+        origin: input.origin ?? { host: "semantic-mcp" },
+        // A semantic draft is scoped to the verified transport and the exact
+        // candidate the user approved.  This is not a provider bypass: the
+        // receipt gate still authorizes the single submit, while the Run's
+        // policy prevents a later command from changing host/provider/model.
+        policy: {
+          trustedHosts: [input.origin?.host ?? "semantic-mcp"],
+          allowedProviders: [...providers],
+          allowedModels: [...models],
+        },
         candidate: input.candidate,
+        ...(input.shots && input.shots.length > 0 ? { shots: input.shots } : {}),
       });
       const operation = operationFromRun(run);
       if (!operation) throw new Error("Production Run did not persist a generation plan");
@@ -51,13 +82,20 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
       if (!operation) throw new Error("Production Run lost its generation plan");
       return operation;
     },
-    async seal(projectId, operationId, contract: ExecutionContractV1, now) {
+    async seal(projectId, operationId, contract: ExecutionContractV1, now, multiShot) {
       read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
-        commandId: `generation.seal:${operationId}:${contract.contractHash}`,
+        // P4 S6.5: a multi-shot seal keys its commandId on the plan hash (covers the whole batch); a
+        // single-shot seal keeps the contract-hash key (unchanged). This keeps re-seal idempotent per scope.
+        commandId: `generation.seal:${operationId}:${multiShot?.planHash ?? contract.contractHash}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.seal",
-        payload: { contract },
+        // P4 S6.5: forward the per-shot sub-contracts + planHash + derived shotPrices so the reducer
+        // freezes the batch and enforces the seal-time hard cap (reducer generation.seal already consumes
+        // shots/planHash/shotPrices). Single-shot seal sends only { contract } (byte-identical to today).
+        payload: multiShot
+          ? { contract, shots: multiShot.shots, planHash: multiShot.planHash, ...(multiShot.shotPrices ? { shotPrices: multiShot.shotPrices } : {}) }
+          : { contract },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);
@@ -79,11 +117,29 @@ export function createProductionGenerationOperationStore(owner: GenerationRunOwn
     },
     async approve(projectId, operationId, receiptId, now, options) {
       const current = read(projectId, operationId);
+      // P4 S6.5: a multi-shot receipt is keyed on the plan hash (covers the whole batch, reducer L446);
+      // a single-shot receipt is keyed on the one sealed contract hash. Send whichever this plan uses,
+      // else the reducer rejects the approval ("does not match the sealed contract").
+      const approvalHash = current.shots && current.shots.length > 0 ? current.planHash : current.contract?.contractHash;
       const result = await owner.command(projectId, operationId, {
         commandId: `generation.approve:${operationId}:${receiptId}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.approve",
-        payload: { receiptId, contractHash: current.contract?.contractHash, ...(options?.attempt === undefined ? {} : { attempt: options.attempt }) },
+        payload: { receiptId, contractHash: approvalHash, ...(options?.attempt === undefined ? {} : { attempt: options.attempt }) },
+        issuedAt: now,
+      });
+      const operation = operationFromRun(result.run);
+      if (!operation) throw new Error("Production Run lost its generation plan");
+      return operation;
+    },
+    async trialNarrow(projectId, operationId, planHash, now) {
+      read(projectId, operationId);
+      const result = await owner.command(projectId, operationId, {
+        // commandId includes the target planHash so a retry is idempotent (same narrow → same result).
+        commandId: `generation.trial_narrow:${operationId}:${planHash}`,
+        expectedRevision: owner.readFull(projectId, operationId).revision,
+        type: "generation.trial_narrow",
+        payload: { planHash },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);

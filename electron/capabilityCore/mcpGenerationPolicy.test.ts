@@ -83,6 +83,30 @@ describe('MCP generation policy', () => {
     expect(policy.snapshot().phase).toBe('e0_zero_credit')
   })
 
+  it('derives the desktop runtime rollout from explicit flags without enabling paid generation by default', async () => {
+    const { createRuntimeMcpGenerationPolicy } = await import('./mcpGenerationPolicy')
+
+    expect(createRuntimeMcpGenerationPolicy({}).snapshot()).toMatchObject({
+      flagEnabled: false,
+      phase: 'schema_only',
+    })
+    expect(createRuntimeMcpGenerationPolicy({ NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1' }).snapshot()).toMatchObject({
+      flagEnabled: true,
+      phase: 'e0_zero_credit',
+    })
+    expect(createRuntimeMcpGenerationPolicy({
+      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
+      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
+    }).snapshot()).toMatchObject({
+      flagEnabled: true,
+      phase: 'e1_paid',
+    })
+    expect(createRuntimeMcpGenerationPolicy({ NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1' }).snapshot()).toMatchObject({
+      flagEnabled: false,
+      phase: 'schema_only',
+    })
+  })
+
   it('returns a fully frozen snapshot so rollout state cannot be mutated by a caller', async () => {
     const { createMcpGenerationPolicy } = await import('./mcpGenerationPolicy')
     const snapshot = createMcpGenerationPolicy({

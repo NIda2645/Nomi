@@ -109,7 +109,6 @@ export function ModelSettingsDetailDialog({
       closeOnClickOutside
       returnFocus
       classNames={{
-        root: 'workbench-shell',
         inner: 'p-2 sm:p-6',
         content: 'flex h-[calc(100svh-16px)] max-h-[calc(100svh-16px)] w-full flex-col overflow-hidden rounded-nomi-lg shadow-nomi-lg sm:h-[min(640px,calc(100svh-48px))]',
         header: 'sr-only',

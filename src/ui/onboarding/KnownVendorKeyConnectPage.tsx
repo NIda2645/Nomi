@@ -14,14 +14,14 @@ export function KnownVendorKeyConnectPage({
   modelCount,
   onBack,
   onSaved,
-  onFinished,
+  onContinueVerification,
 }: {
   directory: KnownVendor
   vendorName: string
   modelCount: number
   onBack: () => void
   onSaved: () => void
-  onFinished: () => void
+  onContinueVerification: () => void
 }): JSX.Element {
   const { t } = useTranslation()
   const [apiKey, setApiKey] = React.useState('')
@@ -46,7 +46,10 @@ export function KnownVendorKeyConnectPage({
     setBusy(true)
     setError('')
     try {
-      catalog.upsertVendorApiKey(directory.vendorKey, { apiKey: cleanKey, enabled: true })
+      // A credential edit invalidates the active certification. Keep the
+      // seeded vendor disabled until the canonical run promotes verified modes.
+      catalog.upsertVendor({ key: directory.vendorKey, enabled: false })
+      catalog.upsertVendorApiKey(directory.vendorKey, { apiKey: cleanKey, enabled: false })
       setSaved(true)
       setApiKey('')
       onSaved()
@@ -103,6 +106,9 @@ export function KnownVendorKeyConnectPage({
             type="password"
             value={saved ? 'saved-key' : apiKey}
             autoFocus={!saved}
+            // 光有 autoFocus 不够：页面级焦点管理在 rAF 里会把焦点收回「返回」键，晚于它执行。
+            // 这个标记就是告诉那一层「这页有更该聚焦的东西」（见 useModelSettingsPageFocus）。
+            data-model-settings-autofocus={saved ? undefined : ''}
             disabled={busy || saved}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
@@ -160,8 +166,8 @@ export function KnownVendorKeyConnectPage({
               </div>
             </div>
             <div className="mt-4 flex justify-end">
-              <DesignButton variant="filled" onClick={onFinished}>
-                {t('modelSetup.done')}
+              <DesignButton variant="filled" onClick={onContinueVerification}>
+                {t('onboardingProviders.keyOnly.save')}
               </DesignButton>
             </div>
           </div>

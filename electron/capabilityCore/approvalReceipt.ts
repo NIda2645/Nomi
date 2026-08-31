@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 import { writeJsonFileAtomic } from "../jsonFile";
 import type { ProductionRunLock } from "../productionRun/productionRunLock";
+import type { MultiShotGateProjection } from "../productionRun/shotPricing";
 
 export const HUMAN_APPROVAL_VERSION = 1 as const;
 export const HUMAN_APPROVAL_ALGORITHM = "HMAC-SHA256" as const;
@@ -13,6 +14,12 @@ export type HumanApprovalDisplay = {
   shotSummary?: string;
   model: string;
   referenceCount?: number;
+  /**
+   * P4 S3a — optional multi-shot projection. When present the confirmation surface renders the
+   * multi-shot card (per-shot list + fixed footer); when absent the single-shot flat card is shown.
+   * It rides inside the MAC-signed challenge, so the per-shot prices/rows the user sees are tamper-proof.
+   */
+  shots?: MultiShotGateProjection;
 };
 
 export type HumanApprovalChallengeInput = {
@@ -294,6 +301,17 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
     return challenge;
   }
 
+  /** Resolve a challenge handle for the trusted Nomi UI without exposing the
+   * signed token to MCP clients or persisting it in the handoff queue. */
+  function resolveChallengeToken(challengeId: string): string {
+    const normalized = typeof challengeId === "string" ? challengeId.trim() : "";
+    if (!normalized) throw new ReceiptScopeError("Challenge id is required");
+    const record = readState().challenges[normalized];
+    if (!record) throw new ReceiptScopeError("Challenge is not registered");
+    verifyChallenge(record.token);
+    return record.token;
+  }
+
   function requestChallenge(input: HumanApprovalChallengeInput): { input: HumanApprovalChallengeInput; token: string; challenge: HumanApprovalChallengeV1 } {
     return mutate<{ input: HumanApprovalChallengeInput; token: string; challenge: HumanApprovalChallengeV1 }>((state) => {
       const existing = Object.values(state.challenges).find((record) => record.input.challengeKey === input.challengeKey);
@@ -466,6 +484,7 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
     filePath: deps.filePath,
     requestChallenge,
     verifyChallenge,
+    resolveChallengeToken,
     createMainProcessGestureAttestation,
     mintReceipt,
     verifyReceipt,

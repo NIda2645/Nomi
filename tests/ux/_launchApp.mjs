@@ -23,6 +23,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { ensureElectronSignature } from '../../scripts/ensure-electron-signature.mjs'
+import { assertElectronBuildArtifacts } from '../../scripts/electron-build-artifacts.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -36,7 +37,7 @@ const DEFAULT_WINDOW_TIMEOUT_MS = 60_000
  * 拼一套「窗口一定能起来」的 env。抽成纯函数是为了让那条不变量能被单测钉住
  * （见 _launchApp.test.mjs）：**必需 env 排在 extraEnv 之后，调用方覆盖不掉**。
  */
-export function buildNomiLaunchEnv({ extraEnv = {}, userDataDir, settingsDir, projectsDir, baseEnv = process.env }) {
+export function buildNomiLaunchEnv({ extraEnv = {}, userDataDir, settingsDir, projectsDir, capabilityDir, baseEnv = process.env }) {
   const env = {
     ...baseEnv,
     ...extraEnv,
@@ -50,6 +51,7 @@ export function buildNomiLaunchEnv({ extraEnv = {}, userDataDir, settingsDir, pr
     ...(userDataDir ? { NOMI_ELECTRON_USER_DATA_DIR: userDataDir } : {}),
     ...(settingsDir ? { NOMI_SETTINGS_DIR: settingsDir } : {}),
     ...(projectsDir ? { NOMI_PROJECTS_DIR: projectsDir } : {}),
+    ...(capabilityDir ? { NOMI_CAPABILITY_DIR: capabilityDir } : {}),
   }
   // ELECTRON_RUN_AS_NODE=1 会让 electron 退化成纯 node：不开窗、不起渲染层，于是又是一次
   // 「干等到超时」。它常被别的工具链顺手塞进环境里（我们自己 spawn MCP 子进程时也会用），
@@ -58,24 +60,60 @@ export function buildNomiLaunchEnv({ extraEnv = {}, userDataDir, settingsDir, pr
   return env
 }
 
-/** Linux CI 没有可用的 setuid chrome-sandbox；所有测试进程统一显式关闭 Chromium sandbox。 */
+/**
+ * Linux CI 没有可用的 setuid chrome-sandbox；所有测试进程统一显式关闭 Chromium sandbox。
+ * 另：Chromium ≥139 移除了 SwiftShader 软件 WebGL 自动回退（安全策略，
+ * https://chromestatus.com/feature/5166674414927872），xvfb 无 GPU 环境下 WebGL 上下文
+ * 直接创建失败 → scene3d/轨迹面板不挂载（Electron 43 升级时 smoke 在 CI 死于此，macOS 本地全绿）。
+ * headless 测试正是官方点名保留的 opt-in 场景 → Linux 测试进程统一带 --enable-unsafe-swiftshader。
+ * 只影响测试启动器；生产桌面端有真 GPU，不带此旗标。
+ */
 export function withLinuxNoSandbox(args, platform = process.platform) {
   const normalized = [...args]
   if (platform === 'linux' && !normalized.includes('--no-sandbox')) normalized.push('--no-sandbox')
+  if (platform === 'linux' && !normalized.includes('--enable-unsafe-swiftshader')) normalized.push('--enable-unsafe-swiftshader')
   return normalized
 }
 
-/** 起飞前先确认构建产物在不在——没 build 就直接说，别让人等满超时才发现。 */
-function assertBuilt() {
-  // 入口从 package.json 的 main 派生，不 hardcode 路径（改打包布局时这里自动跟着走）。
-  const mainEntry = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).main
-  const entryPath = path.join(repoRoot, mainEntry)
-  if (!fs.existsSync(entryPath)) {
-    throw new Error(
-      `Electron 主进程入口不存在：${mainEntry}\n` +
-        `→ 走查脚本跑的是构建产物，先执行：pnpm run build`,
-    )
+/**
+ * Synthetic credentials used by isolated UI fixtures are deliberately not
+ * secrets. Linux CI has no desktop keyring, so Electron's normal safeStorage
+ * backend is unavailable there. Opted-in fixtures use Chromium's basic test
+ * backend; real-profile and real-provider journeys never receive this flag.
+ */
+export function withLinuxSyntheticCredentialStorage(args, enabled, platform = process.platform) {
+  const normalized = [...args]
+  if (!enabled || platform !== 'linux') return normalized
+
+  const configuredBackend = normalized.find((arg) => arg.startsWith('--password-store='))
+  if (configuredBackend && configuredBackend !== '--password-store=basic') {
+    throw new Error(`synthetic credential storage conflicts with ${configuredBackend}`)
   }
+  if (!configuredBackend) normalized.push('--password-store=basic')
+  return normalized
+}
+
+export async function configureSyntheticCredentialStorage(app, enabled, platform = process.platform) {
+  if (!enabled || platform !== 'linux') return false
+  const available = await app.evaluate(({ safeStorage }) => {
+    safeStorage.setUsePlainTextEncryption(true)
+    return safeStorage.isEncryptionAvailable()
+  })
+  if (!available) {
+    throw new Error('Linux synthetic credential storage could not initialize an in-memory safeStorage key')
+  }
+  return true
+}
+
+/** Electron 43's packaged Chromium rejects Playwright's DevTools WebSocket
+ * Origin unless it is explicitly allowed. This flag exists only in this E2E
+ * launcher (which already forces NOMI_E2E=1); normal product launches never
+ * receive a remote-debugging port or this allow-list. */
+export function withPackagedPlaywrightOrigin(args, isPackaged) {
+  const normalized = [...args]
+  const allowOrigin = '--remote-allow-origins=*'
+  if (isPackaged && !normalized.includes(allowOrigin)) normalized.push(allowOrigin)
+  return normalized
 }
 
 /**
@@ -89,8 +127,10 @@ function assertBuilt() {
  * @param {string} [options.userDataDir]    单独指定（默认 <tempRoot>/user-data）
  * @param {string} [options.settingsDir]    单独指定（默认 <tempRoot>/settings）
  * @param {string} [options.projectsDir]    单独指定（默认 <tempRoot>/projects）
+ * @param {string} [options.capabilityDir]  单独指定（默认 <tempRoot>/capability）
  * @param {number} [options.timeout]        等窗口上限（ms）
  * @param {number} [options.settleMs=1500]  domcontentloaded 后再等一会儿（渲染层挂载）
+ * @param {boolean} [options.syntheticCredentialStorage=false]  仅供隔离目录里的非秘密测试凭据；Linux CI 使用 basic 后端
  * @returns {Promise<{app: import('playwright').ElectronApplication, win: import('playwright').Page,
  *   tempRoot: string, userDataDir: string, settingsDir: string, projectsDir: string, close: () => Promise<void>}>}
  */
@@ -104,13 +144,19 @@ export async function launchNomiApp(options = {}) {
     // 默认起开发构建；打包产物走查（如 mcp-client-activation）传装好的 .app 二进制。
     executablePath = require('electron'),
     waitForWindow = true,
+    syntheticCredentialStorage = false,
   } = options
+
+  const isolate = options.isolate !== false
+  if (syntheticCredentialStorage && !isolate) {
+    throw new Error('syntheticCredentialStorage requires an isolated Nomi profile')
+  }
 
   // 开发 electron 二进制要靠 `.` 指到仓库根去加载 dist-electron；**打包好的 .app 自带产物**，
   // 再塞个 `.` 反而会被当成「要打开的路径」参数。所以这两件事都跟着「是不是开发构建」走。
   const isDevElectron = executablePath === require('electron')
   if (isDevElectron) {
-    assertBuilt()
+    assertElectronBuildArtifacts(repoRoot)
     // Apple 会在首次启动时直接删除已吊销公证的 Electron.app。走查必须在 spawn 前复用
     // dev 启动器的静态探测与重签，否则表现为 60s 超时且一张截图也产不出来。
     ensureElectronSignature(executablePath)
@@ -119,26 +165,29 @@ export async function launchNomiApp(options = {}) {
   // isolate:false = 用用户**真实** profile 起（交互式 dev driver ui-driver.mjs 才这么用：
   // 它要能打开已有/示例项目，这是它注释里写明的既定设计，不是漏配）。此时不传 --user-data-dir、
   // 不覆盖三个目录 env，等价于「裸起一个 Nomi」；NOMI_E2E 那两条仍然强制。
-  const isolate = options.isolate !== false
   const tempRoot = isolate ? (options.tempRoot ?? fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`))) : null
   const userDataDir = isolate ? (options.userDataDir ?? path.join(tempRoot, 'user-data')) : null
   const settingsDir = isolate ? (options.settingsDir ?? path.join(tempRoot, 'settings')) : null
   const projectsDir = isolate ? (options.projectsDir ?? path.join(tempRoot, 'projects')) : null
+  const capabilityDir = isolate ? (options.capabilityDir ?? path.join(tempRoot, 'capability')) : null
 
   // 只建目录，**绝不清空**：不少走查会在起飞前往 projectsDir/settingsDir 里预埋工程或 catalog
   //（如 toolbar-order.walk.mjs 先写好 project.json 再启动）。启动器擅自 rm 会把它们的前置条件擦掉。
   // 想要干净 profile 的脚本自己在调用前 rmSync——语义留在看得见的地方。
-  if (isolate) for (const dir of [userDataDir, settingsDir, projectsDir]) fs.mkdirSync(dir, { recursive: true })
+  if (isolate) for (const dir of [userDataDir, settingsDir, projectsDir, capabilityDir]) fs.mkdirSync(dir, { recursive: true })
 
   const launchOptions = {
     executablePath,
-    args: withLinuxNoSandbox([
-      ...(isDevElectron ? ['.'] : []),
-      ...(userDataDir ? [`--user-data-dir=${userDataDir}`] : []),
-      ...extraArgs,
-    ]),
+    args: withLinuxNoSandbox(withLinuxSyntheticCredentialStorage(
+      withPackagedPlaywrightOrigin([
+        ...(isDevElectron ? ['.'] : []),
+        ...(userDataDir ? [`--user-data-dir=${userDataDir}`] : []),
+        ...extraArgs,
+      ], !isDevElectron),
+      syntheticCredentialStorage,
+    )),
     cwd: repoRoot,
-    env: buildNomiLaunchEnv({ extraEnv, userDataDir, settingsDir, projectsDir }),
+    env: buildNomiLaunchEnv({ extraEnv, userDataDir, settingsDir, projectsDir, capabilityDir }),
     timeout,
   }
 
@@ -155,7 +204,7 @@ export async function launchNomiApp(options = {}) {
   try {
     app = await electron.launch(launchOptions)
   } catch (error) {
-    throw new Error(diagnose(`Electron 起不来（electron.launch 失败/超时，${timeout}ms）`, name, error, logTail))
+    throw new Error(diagnoseLaunchFailure(`Electron 起不来（electron.launch 失败/超时，${timeout}ms）`, name, error, logTail))
   }
 
   try {
@@ -175,10 +224,17 @@ export async function launchNomiApp(options = {}) {
       // 两种失败形状都落这儿：等超时，以及 app 提前退出导致的 TargetClosedError
       //（单实例锁没抢到就是后者——主进程自己 quit 了）。诊断是同一套。
       await app.close().catch(() => undefined)
-      throw new Error(diagnose(`等了 ${timeout}ms 没等到窗口`, name, error, logTail))
+      throw new Error(diagnoseLaunchFailure(`等了 ${timeout}ms 没等到窗口`, name, error, logTail))
     }
     await win.waitForLoadState('domcontentloaded')
     if (settleMs > 0) await win.waitForTimeout(settleMs)
+  }
+
+  try {
+    await configureSyntheticCredentialStorage(app, syntheticCredentialStorage)
+  } catch (error) {
+    await app.close().catch(() => undefined)
+    throw error
   }
 
   return {
@@ -188,6 +244,7 @@ export async function launchNomiApp(options = {}) {
     userDataDir,
     settingsDir,
     projectsDir,
+    capabilityDir,
     close: () => closeNomiApp(app),
   }
 }
@@ -198,20 +255,28 @@ export async function launchNomiApp(options = {}) {
  * 注意排序：单实例锁那条**已经被启动器强制解掉了**，所以它不再是首要嫌疑——
  * 把它排第一会把人往错方向带。真实剩下的头号原因是构建产物过期。
  */
-function diagnose(headline, name, error, logTail) {
-  // Playwright 的 "Call log:" 段与其上的 "Browser logs:" 完全重复；先切掉，
-  // 否则下面捞 stderr 会把每行捞两遍。
-  const raw = String(error?.message || error || '').split(/\nCall log:/)[0].trim()
+export function diagnoseLaunchFailure(headline, name, error, logTail) {
+  const fullError = String(error?.message || error || '')
+  // 用 Call log 作子进程输出的真源：electron.launch resolve 之前我们还拿不到
+  // app.process()，此时 Playwright 只会把 stderr 收在这一段。原始错误摘要仍去掉
+  // Call log，避免与下面已清洗的主进程尾巴重复。
+  const callLogMarker = '\nCall log:'
+  const callLogIndex = fullError.indexOf(callLogMarker)
+  const raw = (callLogIndex >= 0 ? fullError.slice(0, callLogIndex) : fullError).trim()
+  const playwrightProcessOutput = callLogIndex >= 0
+    ? fullError.slice(callLogIndex + callLogMarker.length)
+    : fullError
   // launch 本身就失败时我们还没拿到子进程句柄，logTail 是空的；但 Playwright 自己把主进程
   // stderr 收进了错误文本（`[pid=123][err] ...`）——从那儿捞出来，别对着空手说「没有输出」。
-  const tail = logTail.length
+  const observedOutput = logTail.length
     ? logTail
-    : raw
+    : playwrightProcessOutput
         .split('\n')
         .filter((line) => /^\s*-?\s*\[pid=\d+\]\[err\]/.test(line))
         .map((line) => line.replace(/^\s*-?\s*\[pid=\d+\]\[err\]\s?/, ''))
-        .filter((line) => line.trim() && !/Debugger (listening|attached)|inspector|DevTools listening|Waiting for the debugger/.test(line))
-        .slice(-20)
+  const tail = observedOutput
+    .filter((line) => line.trim() && !/Debugger (listening|attached)|inspector|DevTools listening|Waiting for the debugger/i.test(line))
+    .slice(-20)
 
   const lines = [
     '',
@@ -228,7 +293,7 @@ function diagnose(headline, name, error, logTail) {
   if (tail.length) {
     lines.push('主进程最后几行输出：', ...tail.map((l) => `  │ ${l}`), '')
   } else {
-    lines.push('（没抓到任何主进程输出——通常意味着它压根没起来。)', '')
+    lines.push('（启动器未捕获到主进程输出；这不能证明进程未启动，仍需结合系统进程或采样确认。）', '')
   }
   lines.push(`原始错误：${raw}`)
   return lines.join('\n')

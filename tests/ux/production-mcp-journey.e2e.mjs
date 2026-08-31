@@ -148,7 +148,18 @@ try {
   mcp = spawnMcpStdioClient({ ...mcpDirs, clientInfo: mcpClientInfo, capabilities: mcpCapabilities, env: mcpEnv })
   await initializeMcp()
   const tools = (await mcp.rpc('tools/list', {}, 20_000)).result?.tools || []
-  check(tools.length === 22, 'real MCP stdio exposes the exact 22-tool catalog')
+  // 期望清单从目录源 derive（mcpToolCatalog = 自身条目 + spread 进来的 mcpGenerationTools 条目），
+  // 断言集合相等：漏播/多播都抓得住，目录再长这里也不会烂成过期死数。
+  const catalogNames = ['mcpToolCatalog.ts', 'mcpGenerationTools.ts', 'mcpIntegrationTools.ts']
+    .flatMap((file) => [...fs.readFileSync(path.join(repoRoot, 'electron/capabilityCore', file), 'utf8').matchAll(/\bname:\s*["'](nomi_[a-z0-9_]+)["']/g)]
+      .map((match) => match[1]))
+  const stdioNames = tools.map((tool) => tool.name)
+  const missing = catalogNames.filter((name) => !stdioNames.includes(name))
+  const extra = stdioNames.filter((name) => !catalogNames.includes(name))
+  check(
+    catalogNames.length > 0 && missing.length === 0 && extra.length === 0,
+    `real MCP stdio exposes the exact ${catalogNames.length}-tool catalog (missing: ${missing.join(', ') || 'none'}; extra: ${extra.join(', ') || 'none'})`,
+  )
   for (const name of [
     'nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact',
     'nomi_read_artifact', 'nomi_review_artifact', 'nomi_materialize_storyboard',

@@ -3,21 +3,31 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const settingsSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/SettingsDialog.tsx'), 'utf8')
-const aiModelsSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/AiModelsSection.tsx'), 'utf8')
-const taskCenterSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/taskCenter/TaskCenterPanel.tsx'), 'utf8')
-const studioSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/NomiStudioApp.tsx'), 'utf8')
-const controllerSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/useSettingsDialogController.ts'), 'utf8')
+// Structural assertions inspect code, not examples of the old implementation in comments.
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+const readCode = (file: string): string => stripComments(fs.readFileSync(file, 'utf8'))
+const settingsSource = readCode(path.join(process.cwd(), 'src/workbench/settings/SettingsDialog.tsx'))
+const aiModelsSource = readCode(path.join(process.cwd(), 'src/workbench/settings/AiModelsSection.tsx'))
+const taskCenterSource = readCode(path.join(process.cwd(), 'src/workbench/taskCenter/TaskCenterPanel.tsx'))
+const studioSource = readCode(path.join(process.cwd(), 'src/workbench/NomiStudioApp.tsx'))
+const controllerSource = readCode(path.join(process.cwd(), 'src/workbench/settings/useSettingsDialogController.ts'))
 const settingsDirectory = path.join(process.cwd(), 'src/workbench/settings')
 
 // 这张表锁的是「别无意间改动了这几块」。**有意的、已拍板的改动就该更新基线**，
 // 并在下面补一条正向断言说明改了什么——只挪哈希不加断言，等于把锁降级成橡皮图章。
 // 2026-08-21：AiModelsSection 增加上传边界说明（KIE 视频优先、公共托管先提醒），故更新其哈希。
+// 2026-08-25：同一块从「推销 KIE」改成「逐媒体类型说出当前真实通道 + 配置直达」，再次更新哈希；
+//             对应正向断言见下面 reports the live upload channel per media kind 那条。
+// 2026-08-26：CanvasGestureSection 仅将 import 改为共享 utils 模块；下方锁定设置与两个画布同源。
+// 2026-08-31：上传通道可见性同步覆盖 Nomi relay 的 public-provider 标记，更新 AiModelsSection 基线；
+//             对应正向断言仍锁定实际渲染条件，避免只挪哈希掩盖配置入口变化。
 const MAIN_NON_MODEL_SECTION_SHA256 = {
   'ProjectLocationSection.tsx': 'ad37c2f07c403b60cf42385f4d93fce8e2ff494c934467c670a7ae4b8c8d5523',
-  'AiModelsSection.tsx': 'cd197e0548a2bb0fbe80aa93b5c1fa8f3c56ee7995dd83cb3ae9cc9fdd816410',
+  'AiModelsSection.tsx': '50e253177108dfda44128f7b002d22d5d769fbc4ac12eeeb3e376fc0757e64b7',
   'AutomationPermissionsSection.tsx': 'a0ea704afb1a31c33ffa3e00821658d8696cc15d5069e6361032b194e638b352',
-  'CanvasGestureSection.tsx': '51c9806c303e5a02a09c9184a38835b4d2d8cad3cd6bb3f56a2408c96264c571',
+  'CanvasGestureSection.tsx': '3cf19ee35f686e76b54497ff668bb91245b00a6593bc5d5d6162a0d30c476c95',
   'AboutSection.tsx': '7fb3e4bee88cf77f6df1217424a4b6130e27581b97de3c58f3c2e7b5bf4a545b',
 } as const
 
@@ -32,7 +42,7 @@ describe('settings dialog structure', () => {
       expect(settingsSource).toContain(`id: ${id}`)
     }
     // 模型的家 = 直接渲染既有 OnboardingDrawer，不为设置另写一份模型列表（P1 无并行实现）。
-    expect(settingsSource).toContain('<OnboardingDrawer />')
+    expect(settingsSource).toContain('<OnboardingDrawer pageRequest={modelPageRequest} />')
     expect(settingsSource).toContain('<AiModelsSection')
     expect(settingsSource).toContain('<AutomationPermissionsSection')
     expect(settingsSource).toContain('sm:flex-row')
@@ -54,7 +64,12 @@ describe('settings dialog structure', () => {
     expect(studioSource).not.toContain('modelCatalogOpened')
     expect(controllerSource).toContain("window.addEventListener('nomi-open-model-catalog'")
     expect(controllerSource).toContain("openSettings({ tab: 'models' })")
-    expect(settingsSource).toContain("onOpenModelCatalog={() => selectTab('models')}")
+    // 2026-08-25：从「只切到模型 tab」升级成「可带 vendorKey 直达那家的 Key 输入页」。
+    // 原样式为什么不再成立：用户点设置里的「去配置 KIE」后被丢在模型列表页，Kie.ai 那行当时
+    // 连「上传」二字都不提，于是得出「Nomi 没配置 KIE 上传」——入口断在这里。
+    expect(settingsSource).toContain('onOpenModelCatalog={(vendorKey) => {')
+    expect(settingsSource).toContain("selectTab('models')")
+    expect(settingsSource).toContain('setModelPageRequest((current) => ({ vendorKey, token: (current?.token ?? 0) + 1 }))')
   })
 
   it('keeps the origin/main frame and sidebar for every settings tab', () => {
@@ -88,18 +103,50 @@ describe('settings dialog structure', () => {
       .toBeLessThan(aiModelsSource.indexOf("data-settings-section=\"production-policy\""))
   })
 
-  it('exposes the free KIE video-upload guidance and public-host reminder in the AI policy section', () => {
+  // 2026-08-25 用户拍板：这块从「推销 KIE」改成「说出现在实际走哪条通道」。
+  // 旧形态（标题「视频参考上传：推荐 KIE（免费）」）为什么不再成立：它只是一句推荐，
+  // 用户看完仍答不出「我配了没有 / 我的素材现在往哪传」——本次改动的起因就是用户据此
+  // 误判成「Nomi 根本没接 KIE 上传」，而代码里早接好了，缺的只是他的 key 和这块可见性。
+  it('reports the live upload channel per media kind instead of just recommending KIE', () => {
     expect(aiModelsSource).toContain('data-settings-upload-guidance')
-    expect(aiModelsSource).toContain("settings.ai.upload.kieTitle")
-    expect(aiModelsSource).toContain("settings.ai.upload.kieConfigure")
+    expect(aiModelsSource).toContain('data-upload-channel={channel.kind}')
+    expect(aiModelsSource).toContain("settings.ai.upload.channel.title")
+    expect(aiModelsSource).toContain("settings.ai.upload.channel.configure")
     expect(aiModelsSource).toContain("settings.ai.upload.anonymousPrompt")
+    // 现状必须来自 main 的真解析器；渲染层一旦自己排优先级，这张卡迟早开始说谎。
+    expect(aiModelsSource).toContain('assetTransport?.describeChannels()')
+    // 「已接入」按它是否真的在收文件判，不按 key 存不存在判——否则徽章和下面的通道行会互相打架。
+    expect(aiModelsSource).toContain("channels.some((channel) => channel.vendorKey === 'kie')")
+    // 公开可访问的通道必须走警示样式，不能和私有链接长一样。
+    expect(aiModelsSource).toContain(
+      "channel.visibility === 'public-anonymous' || channel.visibility === 'public-provider'",
+    )
+    expect(aiModelsSource).not.toContain('settings.ai.upload.kieTitle')
   })
 
   it('keeps all five non-model sections byte-for-byte at the origin/main baseline', () => {
     for (const [fileName, expectedHash] of Object.entries(MAIN_NON_MODEL_SECTION_SHA256)) {
-      const source = fs.readFileSync(path.join(settingsDirectory, fileName))
+      const source = fs.readFileSync(path.join(settingsDirectory, fileName), 'utf8').replaceAll('\r\n', '\n')
       expect(createHash('sha256').update(source).digest('hex'), fileName).toBe(expectedHash)
     }
+  })
+
+  it('shares one gesture preference between settings and both canvases', () => {
+    const sharedModule = path.join(process.cwd(), 'src/utils/canvasGesturePreference.ts')
+    const consumers = [
+      'src/workbench/settings/CanvasGestureSection.tsx',
+      'src/ui/onboarding/workflowPage/WorkflowGraphCanvas.tsx',
+      'src/workbench/generationCanvas/components/useCanvasViewportGestures.ts',
+    ]
+    for (const consumer of consumers) {
+      const file = path.join(process.cwd(), consumer)
+      const source = readCode(file)
+      const preferenceImport = source.match(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]*canvasGesturePreference)['"]/)
+      expect(preferenceImport?.[1], consumer).toContain('useCanvasGestureScheme')
+      expect(path.resolve(path.dirname(file), `${preferenceImport?.[2]}.ts`), consumer).toBe(sharedModule)
+    }
+    expect(fs.existsSync(sharedModule)).toBe(true)
+    expect(fs.existsSync(path.join(process.cwd(), 'src/workbench/generationCanvas/components/canvasGesturePreference.ts'))).toBe(false)
   })
 
   it('lets model subpages own their header without colliding with the dialog close action', () => {
@@ -115,6 +162,6 @@ describe('settings dialog structure', () => {
     expect(settingsSource).toContain("hidden={tab !== 'models'}")
     expect(settingsSource).toContain("style={{ display: tab !== 'models' ? 'none' : undefined }}")
     expect(settingsSource).toContain('<React.Suspense')
-    expect(settingsSource).toContain('<OnboardingDrawer />')
+    expect(settingsSource).toContain('<OnboardingDrawer pageRequest={modelPageRequest} />')
   })
 })

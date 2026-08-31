@@ -10,6 +10,7 @@ import { compileFfmpegFiltergraph, type FfmpegFiltergraphPlan, type FfmpegTextOv
 import { probeMediaMetadata } from "./mediaProbe";
 import { appendExportTempInputChunk, finishExportTempInput as finishExportTempInputFile, removeExportTempInput } from "./exportTempInput";
 import { ensureProjectFolders, projectDirById, resolveProjectRelativePath } from "../projects/repository";
+import { desktopT } from "../i18n";
 
 type TimelineMp4ExportRequest = {
   projectId?: string;
@@ -43,7 +44,7 @@ function bufferFromExportBytes(input: TimelineMp4ExportRequest["webmBytes"]): Bu
   if (input instanceof ArrayBuffer) return Buffer.from(input);
   if (ArrayBuffer.isView(input)) return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   if (Array.isArray(input)) return Buffer.from(input);
-  throw new Error("导出失败：缺少 WebM 输入数据");
+  throw new Error(desktopT("export.missingWebmInput"));
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -180,15 +181,23 @@ async function tryBuildFiltergraphExport(
       durationFrames,
       range: { startFrame: 0, endFrame: durationFrames },
       tracks: rawTimeline.tracks as NomiRenderManifestV1["timeline"]["tracks"],
+      ...(Array.isArray(rawTimeline.transitions)
+        ? { transitions: rawTimeline.transitions as NomiRenderManifestV1["timeline"]["transitions"] }
+        : {}),
     },
     profile,
     assets: resolvedAssets,
   };
 
+  assertValidManifest(manifest);
   try {
-    assertValidManifest(manifest);
     const textOverlays = writeTextOverlayFiles(rawManifest, jobDir);
     const plan = compileFfmpegFiltergraph({ manifest, textOverlays });
+    if (plan.warnings.length > 0) {
+      manifest.diagnostics = {
+        warnings: [...(manifest.diagnostics?.warnings ?? []), ...plan.warnings],
+      };
+    }
     return { manifest, plan };
   } catch {
     return null; // 校验/编译失败 → 回退 WebM
@@ -211,15 +220,10 @@ export async function startExportJob(payload: unknown): Promise<{ jobId: string;
 
   // 前置决定后端：尝试编译 filtergraph 计划（解析资产 + ffprobe + 编译）。成功 → 主路径，renderer 不录 WebM。
   let backend: "filtergraph" | "webm" = "webm";
-  try {
-    const prepared = await tryBuildFiltergraphExport(raw.manifest, projectId, job.jobDir);
-    if (prepared) {
-      preparedFiltergraphExports.set(job.id, prepared);
-      backend = "filtergraph";
-    }
-  } catch {
-    // 编译期异常（探测/校验失败）→ 退回 WebM 降级，不阻断导出。
-    backend = "webm";
+  const prepared = await tryBuildFiltergraphExport(raw.manifest, projectId, job.jobDir);
+  if (prepared) {
+    preparedFiltergraphExports.set(job.id, prepared);
+    backend = "filtergraph";
   }
 
   exportJobManager.updateJob(job.id, {
@@ -409,9 +413,9 @@ export function subscribeExportJobEvents(listener: (event: ExportJobEvent) => vo
 export async function startTimelineMp4Export(payload: unknown): Promise<unknown> {
   const raw = (payload || {}) as TimelineMp4ExportRequest;
   const projectId = String(raw.projectId || "").trim();
-  if (!projectId) throw new Error("导出失败：缺少项目 ID");
+  if (!projectId) throw new Error(desktopT("export.missingProjectId"));
   const projectDir = projectDirById(projectId);
-  if (!projectDir) throw new Error("导出失败：Project not found");
+  if (!projectDir) throw new Error(desktopT("export.projectNotFound"));
   ensureProjectFolders(projectDir);
   return transcodeWebmToMp4({
     projectDir,
@@ -428,16 +432,16 @@ export function showExportInFolder(payload: unknown): { ok: true } {
   const raw = (payload || {}) as ShowExportInFolderRequest;
   const projectId = String(raw.projectId || "").trim();
   const relativePath = String(raw.relativePath || "").trim();
-  if (!projectId) throw new Error("打开导出位置失败：缺少项目 ID");
-  if (!relativePath) throw new Error("打开导出位置失败：缺少导出文件路径");
+  if (!projectId) throw new Error(desktopT("export.reveal.missingProjectId"));
+  if (!relativePath) throw new Error(desktopT("export.reveal.missingPath"));
   let normalized: string;
   try {
     normalized = assertProjectExportRelativePath(relativePath);
   } catch {
-    throw new Error("打开导出位置失败：只能打开当前项目 exports 文件夹内的文件");
+    throw new Error(desktopT("export.reveal.outsideExports"));
   }
   const resolved = resolveProjectRelativePath(projectId, normalized);
-  if (!fs.existsSync(resolved)) throw new Error("打开导出位置失败：导出文件不存在");
+  if (!fs.existsSync(resolved)) throw new Error(desktopT("export.reveal.fileMissing"));
   // Lazy require keeps runtime.ts usable in tests that do not initialize Electron shell.
   const { shell } = require("electron") as typeof import("electron");
   shell.showItemInFolder(resolved);

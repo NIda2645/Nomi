@@ -17,7 +17,15 @@ Tasks 1–7 are implemented on `codex/p0-runtime-foundation-20260822`:
 - `3615758a`: shared recovery projection in MCP text, desktop notifications and MCP Apps widget.
 - `tests/ux/mcp-generation-provider-degradation.e2e.mjs`: 8-check, zero-credit matrix covering observe-only/submit-only providers and editable model/mode/parameters/references.
 
-Task 8 remains the final gate: full checks, same-build UX review, evidence update and isolated branch push.
+Task 8 final gate completed on 2026-08-24: focused/full checks, same-build UX review, evidence update and isolated branch delivery are now recorded below. The remaining P1→P3 work is the separate semantic single-shot GUI fallback/materialization slice, not another provider capability decision.
+
+## Final gate record (2026-08-24)
+
+- Focused provider/runtime matrix: 6 files / 31 tests passed; the provider-degradation journey passed 8 checks with zero credits and zero network provider calls.
+- Full verification: 699 test files passed, 1 skipped; 6178 tests passed, 1 skipped; lint 0 errors / 95 existing warnings; typecheck, build, filesize, tokens, i18n and archetype-source gates passed.
+- Same-build UX review: the existing confirmation screenshots continue to show one primary action and no second Nomi card for client-side elicitation. The degradation projection matrix separately verifies “可能已经提交 / 核对 / 停止等待” and never exposes automatic retry.
+- No new paid provider request was required for this gate; the earlier isolated APIMart GUI smoke remains the only newly charged low-spec run and produced one provider task with no duplicate submission.
+- The branch is intentionally kept isolated; delivery is a task branch update, not a merge into the protected default branch.
 
 ---
 

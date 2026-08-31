@@ -30,9 +30,11 @@ for (const f of fs.readdirSync(DIR)) fs.rmSync(path.join(DIR, f), { force: true 
 const isolateUserData = process.env.NOMI_UI_USER_DATA || process.env.NOMI_UI_USERDATA;
 // 未设隔离路径时走 isolate:false = 系统默认 userData（保住上面那条「能开已有/示例项目」的设计，
 // 且不把 macOS 路径写死——各平台交给 Electron 自己解析）。
+const uiExecutable = process.env.NOMI_UI_EXECUTABLE; // 可选：用打包版二进制走查（验证物=用户所见物）
+const extraLaunch = uiExecutable ? { executablePath: uiExecutable } : {};
 const { app, win: _win } = isolateUserData
-  ? await launchNomiApp({ name: "ui-driver", userDataDir: isolateUserData, settleMs: 0 })
-  : await launchNomiApp({ name: "ui-driver", isolate: false, settleMs: 0 });
+  ? await launchNomiApp({ name: "ui-driver", userDataDir: isolateUserData, settleMs: 0, ...extraLaunch })
+  : await launchNomiApp({ name: "ui-driver", isolate: false, settleMs: 0, ...extraLaunch });
 const ERRLOG = path.join(DIR, "errors.log");
 const logErr = (kind, msg) => { try { fs.appendFileSync(ERRLOG, `[${kind}] ${msg}\n`); } catch { /* ignore */ } };
 // 多窗口（v0.10.13+）：打开项目会新开一个 studio 窗口、关掉起始窗口。固定 firstWindow 引用会失效。

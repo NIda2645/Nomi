@@ -1,5 +1,6 @@
 import type { DesktopExistingConnectionSummary } from '../../desktop/onboardingBridgeTypes'
-import { isComfyuiVendorKey } from '../../workbench/generationCanvas/runner/comfyuiTaskControl'
+import { ANTIGRAVITY_VENDOR_KEY } from '../../../electron/shared/antigravity'
+import { isComfyuiVendorKey } from '../../workbench/generationCanvas/model/comfyuiVendor'
 import type { ChipModel } from './ModelChipGroups'
 import { CODEX_LOCAL_VENDOR_KEY } from './codexLocalProvider'
 import { KIND_CAPS } from './onboardingDrawerConstants'
@@ -96,6 +97,7 @@ export function canAddModelsToConnection(
   return Boolean(
     (meta?.hasApiKey || meta?.authType === 'none') &&
     !isComfyuiVendorKey(vendorKey) &&
-    vendorKey !== CODEX_LOCAL_VENDOR_KEY,
+    vendorKey !== CODEX_LOCAL_VENDOR_KEY &&
+    vendorKey !== ANTIGRAVITY_VENDOR_KEY,
   )
 }

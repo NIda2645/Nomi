@@ -198,7 +198,7 @@ describe('clipboardImagePaste', () => {
   })
 
   it('downloads a pasted web image url and imports it as a local asset when possible', async () => {
-    const uploadFile = vi.fn(async () => uploadResult('nomi-local://asset/project/web.webp'))
+    const uploadFile = vi.fn(async (_file: File) => uploadResult('nomi-local://asset/project/web.webp'))
     const fetchMedia = vi.fn(async () => new Response(new Blob([new Uint8Array([1])], { type: 'image/webp' }), {
       status: 200,
       headers: { 'content-type': 'image/webp' },
@@ -328,9 +328,11 @@ describe('clipboardImagePaste', () => {
   })
 
   it('creates a running placeholder node before a remote image download finishes', async () => {
-    let resolveImport: ((asset: ReturnType<typeof uploadResult>) => void) | null = null
+    // 用 ref 容器而不是 let：TS 的控制流分析看不见 Promise executor 里的赋值，
+    // 会把 let 收窄回 null，导致下面的调用点报「不可调用」。属性赋值不受收窄影响。
+    const importLatch: { resolve: ((asset: ReturnType<typeof uploadResult>) => void) | null } = { resolve: null }
     const importRemoteUrl = vi.fn(() => new Promise<ReturnType<typeof uploadResult>>((resolve) => {
-      resolveImport = resolve
+      importLatch.resolve = resolve
     }))
     const promise = pasteClipboardMediaToGenerationCanvas({
       clipboardData: fakeClipboardData({ plain: 'https://cdn.example.com/pending.png' }),
@@ -359,7 +361,7 @@ describe('clipboardImagePaste', () => {
     })
     expect(pendingNode.result).toBeUndefined()
 
-    resolveImport?.(uploadResult('nomi-local://asset/project/pending.png', 'image/png'))
+    importLatch.resolve?.(uploadResult('nomi-local://asset/project/pending.png', 'image/png'))
     const result = await promise
     const doneNode = useGenerationCanvasStore.getState().nodes[0]
     expect(result.importedCount).toBe(1)

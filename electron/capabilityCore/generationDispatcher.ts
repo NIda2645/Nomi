@@ -114,6 +114,22 @@ function leaseScopeForCapability(capability: McpGenerationCapability): string {
   }
 }
 
+/**
+ * A trusted current-project bootstrap may silently grant the non-submit scopes
+ * that the active rollout exposes.  This keeps the first user journey to one
+ * session-open call instead of making the client obtain a second opaque handle.
+ * The submit scope is intentionally omitted: gate_decide upgrades the lease
+ * only after a verified human receipt exists.
+ */
+function bootstrapLeaseScopes(policy: McpGenerationPolicy): string[] {
+  const scopes = new Set<string>()
+  for (const capability of policy.snapshot().effectiveScope) {
+    if (capability === 'start') continue
+    scopes.add(leaseScopeForCapability(capability))
+  }
+  return [...scopes]
+}
+
 function assertOnlyFields(params: Record<string, unknown>, allowed: Set<string>): void {
   const unexpected = Object.keys(params).find((key) => !allowed.has(key))
   if (unexpected) throw new RpcError(`Production field is not allowed: ${unexpected}`, 400)
@@ -278,7 +294,7 @@ function openProjectLease(
         canonicalRootDigest: current.canonicalRootDigest,
         manifestDigest: current.manifestDigest,
         revocationEpoch: current.revocationEpoch,
-        scopeSet: ['context:read'],
+        scopeSet: bootstrapLeaseScopes(policy),
       })
       handleToken = issuedHandle.token
       session = current
@@ -363,7 +379,7 @@ async function dispatchSemanticStub(
       return ctx.requestGenerationGate({ params: leased.params, lease: leased.lease })
     }
     if (typeof ctx.generationPlanning === 'function') {
-      const planned = await ctx.generationPlanning({ capability: route.capability, params: leased.params, lease: leased.lease })
+      const planned = await ctx.generationPlanning({ capability: route.capability, params: leased.params, lease: leased.lease, origin: ctx.origin })
       const value = planned && typeof planned === 'object' && !Array.isArray(planned)
         ? planned as Record<string, unknown>
         : null
@@ -397,6 +413,9 @@ async function dispatchSemanticStub(
           model,
           shotSummary: typeof value?.shotSummary === 'string' ? value.shotSummary : undefined,
           referenceCount: typeof value?.referenceCount === 'number' ? value.referenceCount : undefined,
+          // P4 S4: thread the multi-shot projection into the MAC-signed challenge so the per-shot rows the
+          // user sees are tamper-proof. Present only for a multi-shot gate_request; single-shot omits it.
+          ...(value?.shots && typeof value.shots === 'object' && !Array.isArray(value.shots) ? { shots: value.shots as never } : {}),
         },
       })
       return {
@@ -454,6 +473,7 @@ async function dispatchSemanticStub(
         capability: route.capability,
         params: { ...leased.params, leaseHandle: upgraded.token, receiptId: receipt.receiptId, receiptToken },
         lease: upgraded.lease,
+        origin: ctx.origin,
       })
       if (receiptToken) ctx.approvalReceiptAuthority?.consumeReceipt(receiptToken)
       return result && typeof result === 'object' && !Array.isArray(result)
@@ -465,7 +485,7 @@ async function dispatchSemanticStub(
   if (typeof ctx.generationPlanning === 'function'
     && route.capability !== 'gate_request'
     && route.capability !== 'gate_decide') {
-    return ctx.generationPlanning({ capability: route.capability, params: leased.params, lease: leased.lease })
+    return ctx.generationPlanning({ capability: route.capability, params: leased.params, lease: leased.lease, origin: ctx.origin })
   }
   throw unavailableSemanticRoute(policy, route.capability)
 }

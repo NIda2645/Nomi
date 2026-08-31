@@ -9,6 +9,7 @@ import {
   replaceCustomCapabilityContractMeta,
 } from '../../../config/modelArchetypes'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
+import { projectParameterReferenceSlots } from '../model/parameterReferenceSlots'
 import { buildModelControls, defaultPatchForControls, readMeta } from './controls/parameterControlModel'
 import {
   applyArchetypeModeSwitch,
@@ -18,6 +19,7 @@ import {
 } from './controls/archetypeMeta'
 import { resolveModeForConnectedReferences } from '../agent/referenceEdgeCapability'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import type { CanvasMutationOptions } from '../store/canvasGuards'
 import { remapArchetypeMode } from '../runner/usableVendorModel'
 import { showInfoToast } from '../../../utils/showInfoToast'
 import { chooseDefaultModelOption, resolveArchetypeForOption } from './nodeModelArchetype'
@@ -43,7 +45,7 @@ type UseNodeModelAutoSelectArgs = {
   isGenerationNode: boolean
   isImageLike: boolean
   isVideoLike: boolean
-  updateNode: (nodeId: string, patch: Partial<GenerationCanvasNode>) => void
+  updateNode: (nodeId: string, patch: Partial<GenerationCanvasNode>, options?: CanvasMutationOptions) => void
 }
 
 export function useNodeModelAutoSelect({
@@ -88,7 +90,7 @@ export function useNodeModelAutoSelect({
     const defaultPatch = defaultPatchForControls(buildModelControls(firstOption.meta, isImageLike, isVideoLike))
     const modelMeta = replaceCustomCapabilityContractMeta(node.meta || {}, firstOption.meta)
     updateNode(node.id, {
-      meta: {
+      meta: projectParameterReferenceSlots({
         ...modelMeta,
         modelKey: firstOption.modelKey || firstOption.value,
         modelAlias: firstOption.modelAlias || firstOption.value,
@@ -99,8 +101,8 @@ export function useNodeModelAutoSelect({
         ...(isVideoLike
           ? { videoModel: firstOption.value, videoModelVendor: firstOption.vendor || null }
           : { imageModel: firstOption.value, imageModelVendor: firstOption.vendor || null }),
-      },
-    })
+      }, firstOption.meta),
+    }, { history: false })
   }, [defaultsReady, isGenerationNode, isImageLike, isVideoLike, modelOptions, node.id, node.meta, selectedModelValue, updateNode])
 
   React.useEffect(() => {
@@ -113,21 +115,21 @@ export function useNodeModelAutoSelect({
     if (!optionVendor) return
     const contractChanged = JSON.stringify(parseCustomCapabilityContract(node.meta))
       !== JSON.stringify(parseCustomCapabilityContract(selectedModelOption.meta))
-    if (currentVendor === optionVendor && !contractChanged) return
     const modelMeta = replaceCustomCapabilityContractMeta(node.meta || {}, selectedModelOption.meta)
-    updateNode(node.id, {
-      meta: {
-        ...modelMeta,
-        modelKey: selectedModelOption.modelKey || selectedModelOption.value,
-        modelAlias: selectedModelOption.modelAlias || selectedModelOption.value,
-        modelVendor: optionVendor,
-        vendor: optionVendor,
-        modelLabel: selectedModelOption.label,
-        ...(isVideoLike
-          ? { videoModel: selectedModelOption.value, videoModelVendor: optionVendor }
-          : { imageModel: selectedModelOption.value, imageModelVendor: optionVendor }),
-      },
-    })
+    const nextMeta = projectParameterReferenceSlots({
+      ...modelMeta,
+      modelKey: selectedModelOption.modelKey || selectedModelOption.value,
+      modelAlias: selectedModelOption.modelAlias || selectedModelOption.value,
+      modelVendor: optionVendor,
+      vendor: optionVendor,
+      modelLabel: selectedModelOption.label,
+      ...(isVideoLike
+        ? { videoModel: selectedModelOption.value, videoModelVendor: optionVendor }
+        : { imageModel: selectedModelOption.value, imageModelVendor: optionVendor }),
+    }, selectedModelOption.meta)
+    const declarationsChanged = JSON.stringify(node.meta?.parameterReferenceSlots) !== JSON.stringify(nextMeta.parameterReferenceSlots)
+    if (currentVendor === optionVendor && !contractChanged && !declarationsChanged) return
+    updateNode(node.id, { meta: nextMeta }, { history: false })
   }, [isGenerationNode, isVideoLike, meta, node.id, node.meta, selectedModelOption, updateNode])
 
   // ★变体合并迁移（2026-06-16，最大风险点）：旧项目 node.meta.modelKey 钉的是具体变体串
@@ -154,7 +156,7 @@ export function useNodeModelAutoSelect({
         modelAlias: patch.modelKey,
         ...(isVideoLike ? { videoModel: patch.modelKey } : { imageModel: patch.modelKey }),
       },
-    })
+    }, { history: false })
   }, [isGenerationNode, isVideoLike, meta, node.id, node.meta, selectedModelValue, updateNode])
 
   // 供应商断开后，节点钉死的旧模型已从下拉移除（selectedModelOption===null，但 selectedModelValue 仍在）。
@@ -195,7 +197,7 @@ export function useNodeModelAutoSelect({
           ? { videoModel: target.value, videoModelVendor: optionVendor }
           : { imageModel: target.value, imageModelVendor: optionVendor }),
       },
-    })
+    }, { history: false })
     showInfoToast(t('generationCommon.node.providerDisconnectedSwitched', { model: target.label }))
   }, [
     isGenerationNode,
@@ -222,6 +224,10 @@ export function useNodeModelAutoSelect({
     if (!patch) return
     const state = useGenerationCanvasStore.getState()
     const promotedModeId = resolveModeForConnectedReferences({ ...node, meta: patch }, state.nodes, state.edges)
-    updateNode(node.id, { meta: promotedModeId ? applyArchetypeModeSwitch(patch, archetype, promotedModeId) : patch })
+    updateNode(
+      node.id,
+      { meta: promotedModeId ? applyArchetypeModeSwitch(patch, archetype, promotedModeId) : patch },
+      { history: false },
+    )
   }, [isGenerationNode, archetype, node, node.id, node.meta, updateNode])
 }

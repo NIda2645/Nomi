@@ -5,10 +5,15 @@ import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import {
   deriveGenerationModelCatalogStatus,
   findModelOptionByIdentifier,
+  requiredModeForGenerationNode,
   useGenerationModelOptionsState,
 } from '../adapters/modelOptionsAdapter'
 import { type ModelParameterControl } from '../../../config/modelCatalogMeta'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
+import {
+  buildImageUrlSlots, edgeModeForGroup, parameterReferenceMetaPatch,
+  readParameterReferenceSlots, resolveParameterReferenceAssignments, type ImageUrlSlot,
+} from '../model/parameterReferenceSlots'
 import {
   getGenerationNodeExecutionKind,
   isAudioLikeGenerationNodeKind,
@@ -16,18 +21,15 @@ import {
   isVideoLikeGenerationNodeKind,
 } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import type { CanvasMutationOptions } from '../store/canvasGuards'
 import { importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
 import { comfyWorkflowTakesPrompt } from '../runner/promptRequirement'
 import {
   type DynamicCatalogControl,
-  type ImageUrlSlot,
   assetUrl,
   buildEffectiveImageCatalogConfig,
-  buildImageUrlSlots,
   defaultPatchForCatalogControl,
   videoAspectDefaultPatch,
-  edgeModeForGroup,
-  getEdgeSourceForSlot,
   getSlotNodeRef,
   getSlotThumbUrl,
   imageCatalogReferenceSlot,
@@ -102,12 +104,8 @@ export default function NodeParameterControls({
   const nodes = useGenerationCanvasStore((state) => state.nodes)
   const edges = useGenerationCanvasStore((state) => state.edges)
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
-  const updateEdgeMode = useGenerationCanvasStore((state) => state.updateEdgeMode)
   const storeConnectNodes = useGenerationCanvasStore((state) => state.connectNodes)
   const storeDisconnectEdge = useGenerationCanvasStore((state) => state.disconnectEdge)
-  const modelOptionsState = useGenerationModelOptionsState(node.kind)
-  const modelOptions = modelOptionsState.options
-  const modelCatalogStatus = deriveGenerationModelCatalogStatus(node.kind, modelOptionsState)
   const meta = React.useMemo<Record<string, unknown>>(() => node.meta || {}, [node.meta])
   const [uploadingSlotKey, setUploadingSlotKey] = React.useState('')
   const [uploadError, setUploadError] = React.useState('')
@@ -121,6 +119,10 @@ export default function NodeParameterControls({
   // 声音节点同为可生成节点：要走模型自动选择(选到「声音」档案)→ ModeBar(配音/转写)+ 参数才显现。
   const isAudioLike = isAudioLikeGenerationNodeKind(node.kind)
   const isGenerationNode = isImageLike || isVideoLike || isTextLike || isAudioLike
+  const requiredMode = requiredModeForGenerationNode(node, { nodes, edges })
+  const modelOptionsState = useGenerationModelOptionsState(node.kind, requiredMode)
+  const modelOptions = modelOptionsState.options
+  const modelCatalogStatus = deriveGenerationModelCatalogStatus(node.kind, modelOptionsState)
 
   // 模型寻址链单源在 parameterControlModel.nodeSelectedModelAddress（报错卡自定义调用入口共用）。
   // 必须带上节点存的 vendor 寻址：两个中转站可提供同名 modelKey，裸身份匹配永远命中数组首条
@@ -159,10 +161,10 @@ export default function NodeParameterControls({
   const getLatestMeta = (): Record<string, unknown> =>
     useGenerationCanvasStore.getState().nodes.find((n) => n.id === node.id)?.meta || {}
 
-  const updateMeta = (patch: Record<string, unknown>) => {
+  const updateMeta = (patch: Record<string, unknown>, options?: CanvasMutationOptions) => {
     updateNode(node.id, {
       meta: { ...getLatestMeta(), ...patch },
-    })
+    }, options)
   }
 
   const updateAspectRatioMeta = (patch: Record<string, unknown>, targetRatio: number | null) => {
@@ -223,7 +225,7 @@ export default function NodeParameterControls({
     })()
     if (current === preferred) return
     const patch = videoAspectDefaultPatch(renderedControls, preferred)
-    if (Object.keys(patch).length > 0) updateMeta(patch)
+    if (Object.keys(patch).length > 0) updateMeta(patch, { history: false })
     // renderedControls/updateMeta 每渲染重建，入 deps 会令 effect 每次 meta 写都重跑；
     // 触发时机只需「输入边集合 / 模型」变化，语义由下面两个签名精确表达。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,7 +286,7 @@ export default function NodeParameterControls({
     const occupied = resolveReferenceSlots(node, nodes, edges).find(
       (rs) => referenceSlotStorage({ kind: rs.slotKind })?.metaKey === slot.metaKey,
     )?.fills.length
-    if (occupied != null && occupied >= slot.max) {
+    if (occupied != null && slot.max !== undefined && occupied >= slot.max) {
       showInfoToast(t('generationCommon.parameters.referenceFull', { max: slot.max }))
       return
     }
@@ -374,71 +376,45 @@ export default function NodeParameterControls({
     }
   }
   const handleSlotAssignment = (slot: ImageUrlSlot, newSourceNodeId: string) => {
+    const state = useGenerationCanvasStore.getState()
+    const target = state.nodes.find((candidate) => candidate.id === node.id) || node
+    const existingEdge = resolveParameterReferenceAssignments(target, state.nodes, state.edges, imageUrlSlots)
+      .find((assignment) => assignment.slot.key === slot.key)?.edge
     const targetMode = edgeModeForGroup(slot.group)
     if (!newSourceNodeId) {
-      const existingEdge = edges.find((e) => e.target === node.id && e.mode === targetMode)
-      if (existingEdge) storeDisconnectEdge(existingEdge.id)
-      const clearPatch: Record<string, unknown> = { [slot.key]: null, [slot.key + '_nodeRef']: null }
-      if (slot.group === 'first_frame') {
-        clearPatch.firstFrameUrl = null
-        clearPatch.firstFrameRef = null
-      }
-      if (slot.group === 'last_frame') {
-        clearPatch.lastFrameUrl = null
-        clearPatch.lastFrameRef = null
-      }
-      if (slot.group === 'reference') {
-        clearPatch.referenceImages = []
-        clearPatch.referenceImageUrl = null
-        clearPatch.referenceImageRef = null
-      }
-      updateNode(node.id, { meta: { ...getLatestMeta(), ...clearPatch } })
+      if (existingEdge) storeDisconnectEdge(existingEdge.id, { scope: 'parameter' })
+      const clearPatch = parameterReferenceMetaPatch(slot, imageUrlSlots, null)
+      updateNode(node.id, { meta: { ...getLatestMeta(), ...clearPatch } }, { history: !existingEdge })
       setOpenSlotKey('')
       return
     }
-    const existingFromSource = edges.find((e) => e.source === newSourceNodeId && e.target === node.id)
-    if (existingFromSource) {
-      if (existingFromSource.mode !== targetMode) updateEdgeMode(existingFromSource.id, targetMode)
-    } else {
-      storeConnectNodes(newSourceNodeId, node.id, targetMode)
-    }
-    const conflictEdge = edges.find(
-      (e) => e.target === node.id && e.mode === targetMode && e.source !== newSourceNodeId,
-    )
-    if (conflictEdge) storeDisconnectEdge(conflictEdge.id)
+    const declared = readParameterReferenceSlots(target.meta).some((candidate) => candidate.key === slot.key)
+    if (existingEdge?.source === newSourceNodeId) { setOpenSlotKey(''); return }
+    if (existingEdge) storeDisconnectEdge(existingEdge.id, { scope: 'parameter' })
+    else state.captureHistory()
+    storeConnectNodes(newSourceNodeId, node.id, targetMode, declared ? slot.key : undefined)
     // S2 写收口：边即真相源——不再写 firstFrameUrl/firstFrameRef/referenceImages 等快照 meta。
     // 那份快照在连边时 resultPreviewUrl 还可能为空(源未生成)=陈旧,且与其它参数写入竞态(lost-update)；
-    // 所有读取方(resolver firstFrameFromEdge、显示 getEdgeSourceForSlot/resolveReferenceSlots)都已边优先，
+    // 所有读取方(resolver、显示 resolveParameterReferenceAssignments/resolveReferenceSlots)都已边优先，
     // 快照纯冗余。源生成后 url 由边实时解析,不需回写。
     setOpenSlotKey('')
   }
-  // 把单帧槽设成一个给定 URL（上传 / 选项目素材共用）：断开该组旧画布边(切到无源节点的 url)、写 flat meta。
+  // 上传 / 选项目素材只替换该槽来源；退出编组继承时其它槽保留为手工边。
   const setSingleFrameUrlMeta = (slot: ImageUrlSlot, url: string) => {
-    const targetMode = edgeModeForGroup(slot.group)
-    const existingEdge = edges.find((e) => e.target === node.id && e.mode === targetMode)
-    if (existingEdge) storeDisconnectEdge(existingEdge.id)
+    const state = useGenerationCanvasStore.getState()
+    const target = state.nodes.find((candidate) => candidate.id === node.id) || node
+    const existingEdge = resolveParameterReferenceAssignments(target, state.nodes, state.edges, imageUrlSlots)
+      .find((assignment) => assignment.slot.key === slot.key)?.edge
+    if (existingEdge) storeDisconnectEdge(existingEdge.id, { scope: 'parameter' })
     const latestMeta = getLatestMeta()
-    const patch: Record<string, unknown> = { [slot.key]: url, [slot.key + '_nodeRef']: null }
-    if (slot.group === 'first_frame') {
-      patch.firstFrameUrl = url
-      patch.firstFrameRef = null
-    }
-    if (slot.group === 'last_frame') {
-      patch.lastFrameUrl = url
-      patch.lastFrameRef = null
-    }
-    if (slot.group === 'reference') {
-      patch.referenceImages = [url]
-      patch.referenceImageUrl = url
-      patch.referenceImageRef = null
-    }
-    updateNode(node.id, { meta: { ...latestMeta, ...patch } })
+    const patch = parameterReferenceMetaPatch(slot, imageUrlSlots, url)
+    updateNode(node.id, { meta: { ...latestMeta, ...patch } }, { history: !existingEdge })
     setOpenSlotKey('')
   }
   const handleSlotUpload = async (slot: ImageUrlSlot, file: File | null | undefined) => {
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setUploadError(t('generationCommon.parameters.imageOnly'))
+    if (!file.type.startsWith(`${slot.mediaKind ?? 'image'}/`)) {
+      setUploadError(t(slot.mediaKind === 'video' ? 'generationCommon.parameters.videoOnly' : 'generationCommon.parameters.imageOnly'))
       return
     }
     setUploadingSlotKey(slot.key)
@@ -446,10 +422,10 @@ export default function NodeParameterControls({
     try {
       const uploaded = await importWorkbenchLocalAssetFile(file, file.name || slot.label, {
         ownerNodeId: node.id,
-        taskKind: 'image_edit',
+        ...(slot.mediaKind === 'video' ? {} : { taskKind: 'image_edit' }),
       })
       const url = assetUrl(uploaded)
-      if (!url) throw new Error(t('generationCommon.parameters.missingImageUrl'))
+      if (!url) throw new Error(t(slot.mediaKind === 'video' ? 'generationCommon.parameters.missingVideoUrl' : 'generationCommon.parameters.missingImageUrl'))
       setSingleFrameUrlMeta(slot, url)
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : String(error))
@@ -461,7 +437,7 @@ export default function NodeParameterControls({
   // ComfyUI 导入的工作流不再走特例：它把声明的每个媒体输入都以 type:'image-url' 写进 meta.parameters，
   // 于是这里的通用出槽器**按条出槽**——声明几个就长几个（2026-08-20，治「多参工作流只能连一张图」）。
   const modelImageUrlSlots = [
-    ...buildImageUrlSlots(selectedModelOption?.meta),
+    ...buildImageUrlSlots(selectedModelOption?.meta, selectedModelOption?.vendor),
     ...imageCatalogReferenceSlot(imageCatalogConfig),
   ].filter(
     (slot, index, slots) => slots.findIndex((item) => item.key === slot.key && item.group === slot.group) === index,
@@ -497,7 +473,7 @@ export default function NodeParameterControls({
         // 查不到即原样返回），**启发式路（通用中转/ComfyUI 导入）此前根本没翻** → 英文用户在这个槽
         // 上看到的是中文「参考图」。收在这里翻一次，两条路才真的一个口径。
         label: translateModelDisplayText(s.label),
-        accept: 'image',
+        accept: s.mediaKind ?? 'image',
         form: 'single',
         persistAsEdge: true,
         numbered: false,
@@ -507,7 +483,7 @@ export default function NodeParameterControls({
     ...arraySlots.map(
       (s): AssetSlot => ({
         key: s.metaKey,
-        label: s.label,
+        label: translateModelDisplayText(s.label),
         accept: s.accept,
         form: 'array',
         persistAsEdge: false,
@@ -520,7 +496,7 @@ export default function NodeParameterControls({
       ? [
           {
             key: sourceVideoSlot.metaKey,
-            label: sourceVideoSlot.label,
+            label: translateModelDisplayText(sourceVideoSlot.label),
             accept: 'video',
             form: 'single',
             persistAsEdge: false,
@@ -534,7 +510,7 @@ export default function NodeParameterControls({
     .filter((slot) => slotReachByKey[slot.key] !== 'none')
     // 只挤得进单图聚合位的槽：如实收成 1 张并说明白，别让用户放了 9 张以为都发得出去。
     .map((slot) =>
-      slotReachByKey[slot.key] === 'single' && slot.max > 1
+      slotReachByKey[slot.key] === 'single' && (slot.max === undefined || slot.max > 1)
         ? { ...slot, max: 1, caption: t('generationCommon.parameters.channelSingleReferenceOnly') }
         : slot,
     )
@@ -559,15 +535,16 @@ export default function NodeParameterControls({
     }
   }
   const assetValuesByKey: Record<string, string | string[]> = {}
+  const parameterAssignments = resolveParameterReferenceAssignments(node, nodes, edges, imageUrlSlots)
   for (const s of imageUrlSlots) {
     if (archMode && resolvedFillUrlsByMetaKey.has(s.key)) {
       assetValuesByKey[s.key] = resolvedFillUrlsByMetaKey.get(s.key)![0] || ''
       continue
     }
-    const edgeSource = getEdgeSourceForSlot(s.group, edges, node.id)
+    const edgeSource = parameterAssignments.find((assignment) => assignment.slot.key === s.key)?.edge?.source
     const nodeRef = edgeSource || getSlotNodeRef(meta, s.key)
     const thumbNode = nodeRef ? nodes.find((n) => n.id === nodeRef) : undefined
-    assetValuesByKey[s.key] =
+    assetValuesByKey[s.key] = edgeSource ? resultPreviewUrl(thumbNode) :
       (thumbNode ? resultPreviewUrl(thumbNode) : null) ||
       getSlotThumbUrl(meta, s.key, nodes) ||
       readMeta(meta, s.key) ||

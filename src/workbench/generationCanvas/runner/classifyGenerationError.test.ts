@@ -5,8 +5,21 @@ import { parseVendorErrorFromMessage, stripVendorErrorMarker } from './vendorErr
 import { desktopT } from '../../../../electron/i18n'
 import { describeAgentError } from '../../../../electron/ai/agentError'
 import { vendorStallError } from '../../../../electron/ai/aiSdkVendorError'
+import { tagNomiError, stripNomiErrorCode } from '../../../../electron/shared/nomiErrorCodes'
+import i18n from '../../../i18n'
 
 describe('classifyGenerationError — 已知分类', () => {
+  it('localizes the local missing-reference guard in English', async () => {
+    await i18n.changeLanguage('en')
+    try {
+      const r = classifyGenerationError('图生图缺少参考图：这次请求里没有任何图片可以发给模型。')
+      expect(r.reason).toBe('Image-to-image requires a reference image. Connect an image node, add a reference, or switch back to text-to-image')
+      expect(r.reason).not.toMatch(/图生图|参考图/)
+    } finally {
+      await i18n.changeLanguage('zh-CN')
+    }
+  })
+
   it('API Key 无效', () => {
     const r = classifyGenerationError('Error: 401 Unauthorized — invalid api key')
     expect(r.reason).toBe('API Key 无效')
@@ -243,6 +256,40 @@ describe('classifyGenerationError — 已知分类', () => {
     expect(summarized.raw).toMatch(/180\.0MB/)
   })
 
+  // 行为等价:root-cause 后主判据是 NOMI_ERR:: 码,不再靠中文人话子串。带码的新错误必须归到同一类,
+  // 且**不依赖那句中文**——把人话整段换成英文（模拟将来 i18n 化）后,分类结果不变。
+  it('素材超上限:带 NOMI_ERR 码的新错误归到 asset-too-large（与旧文案路径行为等价）', () => {
+    const coded = classifyGenerationError(
+      tagNomiError('asset-too-large', '视频「clip.mp4（180.0MB）」超过了所有可用上传通道的大小上限，传不上去。'),
+    )
+    expect(coded.kind).toBe('asset-too-large')
+    expect(coded.hint).toMatch(/压缩|裁短/)
+    // 码标记是给分类器读的机器信号,绝不能漏进用户可见的 raw/reason/hint。
+    expect(coded.raw).not.toMatch(/NOMI_ERR/)
+    expect(coded.reason).not.toMatch(/NOMI_ERR/)
+    expect(coded.raw).toMatch(/clip\.mp4/)
+
+    // 关键:人话换成英文后,分类**仍**成立（证明不再脆弱地绑在中文串上）。
+    const translated = classifyGenerationError(
+      tagNomiError('asset-too-large', 'The video “clip.mp4 (180.0MB)” exceeds the size limit of every available upload channel.'),
+    )
+    expect(translated.kind).toBe('asset-too-large')
+    expect(translated.raw).not.toMatch(/NOMI_ERR/)
+  })
+
+  it('素材上传失败（非 413）:带 NOMI_ERR 码同样归到 asset-upload-failed，且英文人话不影响分类', () => {
+    const coded = classifyGenerationError(tagNomiError('asset-upload-failed', '素材上传失败：所有上传通道都没成功。'))
+    expect(coded.kind).toBe('asset-upload-failed')
+    const translated = classifyGenerationError(tagNomiError('asset-upload-failed', 'Asset upload failed: none of the upload channels succeeded.'))
+    expect(translated.kind).toBe('asset-upload-failed')
+    expect(translated.raw).not.toMatch(/NOMI_ERR/)
+  })
+
+  it('stripNomiErrorCode:剥掉码标记后只留人话（展示端不泄露机器信号）', () => {
+    expect(stripNomiErrorCode(tagNomiError('asset-too-large', '文件太大了'))).toBe('文件太大了')
+    expect(stripNomiErrorCode('没有标记的普通错误')).toBe('没有标记的普通错误')
+  })
+
   // 直连通道（KIE/apimart）抛的裸上传失败，不带匿名链那句包装 → 此前也会落 unknown 甩锅服务商。
   it('直连通道的上传失败（非 413）也归到「没送到服务商」，不落 unknown', () => {
     const r = classifyGenerationError(
@@ -306,6 +353,14 @@ describe('classifyGenerationError — 未识别兜底（方案 B 改进）', () 
 describe('structured 路径(S4-2:VendorRequestError 经 IPC 标记穿透)', () => {
   const encode = (structured: Record<string, unknown>, tail = 'Provider request failed (code 402) at kie POST https://x: 余额不足') =>
     `Error invoking remote method 'nomi:tasks:run': Error: NOMI_VENDOR_ERR_B64::${Buffer.from(JSON.stringify(structured), 'utf8').toString('base64')}:: ${tail}`
+
+  it('uses the stable timeout category without depending on English timeout keywords', () => {
+    const result = classifyGenerationError(encode(
+      { category: 'timeout', reasonCode: 'response_timeout', upstreamMsg: '读取响应超时（120s）' },
+      'Provider request failed: 读取响应超时（120s）',
+    ))
+    expect(result.reason).toBe('连不上服务商')
+  })
 
   it('balance 类别直读 structured,不靠正则;raw 剥掉标记段', () => {
     const r = classifyGenerationError(encode({ category: 'balance', upstreamMsg: '余额不足', vendorKey: 'kie' }))

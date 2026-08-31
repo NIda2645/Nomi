@@ -2,11 +2,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fsyncIfDurable } from "../durability";
 import { writeJsonFileAtomic } from "../jsonFile";
 import { getWorkspaceRepositoryDeps } from "../runtimePaths";
 import { resolveWorkspaceProjectDir } from "../workspace/workspaceRepository";
 import { initialPlaybookStages, requireProductionPlaybook } from "./productionPlaybooks";
 import { productionRunPaths, productionRunsRoot } from "./productionRunPaths";
+import { createProductionRunLock } from "./productionRunLock";
 import { applyProductionCommand, type ProductionCommandEffect } from "./productionRunReducer";
 import { assertProductionPolicyReady } from "./productionPolicyReadiness";
 import {
@@ -21,6 +23,7 @@ import {
   type Approval,
   type AutomationPolicy,
   type CreateProductionRunInput,
+  type ProductionGenerationShot,
   type ProductionRun,
   type ProductionRunSummary,
   type RunCommand,
@@ -89,7 +92,7 @@ function appendDurableJsonLine(filePath: string, value: unknown): void {
   const fd = fs.openSync(filePath, "a");
   try {
     fs.writeSync(fd, `${JSON.stringify(value)}\n`, undefined, "utf8");
-    fs.fsyncSync(fd);
+    fsyncIfDurable(fd);
   } finally {
     fs.closeSync(fd);
   }
@@ -164,6 +167,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()));
   const now = deps.now ?? (() => new Date().toISOString());
   const randomId = deps.randomId ?? (() => crypto.randomUUID());
+  const repositoryOwnerId = `production-repository-${process.pid}-${randomId()}`;
 
   function projectDir(projectId: string): string {
     const dir = resolveProjectDir(String(projectId || "").trim());
@@ -288,6 +292,13 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     candidate: PlanCandidate;
     currency?: string;
     policy?: Partial<AutomationPolicy>;
+    /**
+     * P4 S6.5 生产入口: a multi-shot draft seeds its per-shot entries (anchor + video shots) here at
+     * create time so patch/preview can shot-address them (S1 `generation.patch` reads plan.shots) and
+     * gate_request can seal them into sub-contracts. Draft shots carry candidate/role/included only —
+     * their sealed sub-contract is compiled at seal. Absent → single-shot draft (byte-identical to today).
+     */
+    shots?: ReadonlyArray<Pick<ProductionGenerationShot, "shotId" | "role" | "included" | "candidate">>;
   }): ProductionRun {
     const projectId = String(input.projectId || "").trim();
     const operationId = String(input.operationId || "").trim();
@@ -313,7 +324,17 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       gates: [],
       jobs: [],
       artifacts: [],
-      generationPlan: { operationId, state: "draft", candidate: structuredClone(input.candidate), updatedAt: timestamp },
+      generationPlan: {
+        operationId,
+        state: "draft",
+        candidate: structuredClone(input.candidate),
+        // P4 S6.5: seed draft shots (candidate/role/included; no sub-contract until seal). Single-shot
+        // drafts omit shots entirely — the read path stays on the top-level candidate (老 Run 零迁移).
+        ...(input.shots && input.shots.length > 0
+          ? { shots: input.shots.map((shot) => ({ shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), ...(shot.included !== undefined ? { included: shot.included } : {}), candidate: structuredClone(shot.candidate), updatedAt: timestamp })) }
+          : {}),
+        updatedAt: timestamp,
+      },
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -336,7 +357,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     return run;
   }
 
-  function execute(projectId: string, runId: string, command: RunCommand): RunCommandResult {
+  function executeUnlocked(projectId: string, runId: string, command: RunCommand): RunCommandResult {
     const dir = projectDir(projectId);
     const paths = productionRunPaths(dir, runId);
     const allEvents = readJsonLines<RunEvent>(paths.events);
@@ -381,7 +402,12 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       const gate = current.gates.find((item) => item.gateId === gateId);
       if (!gate) throw new Error(`Production gate not found: ${gateId}`);
       if (Date.parse(timestamp) >= Date.parse(gate.expiresAt)) throw new Error("Production gate has expired");
-      if (gate.jobIds.length > 0) {
+      // The budget authorization + policy-readiness check is ONLY for a spend gate (budget_envelope).
+      // P4 S4 adds anchor_checkpoint gates that carry the anchor jobIds for reference but authorize NO
+      // budget — the checkpoint asks "does the face look right?", not "may Nomi spend?" (the receipt
+      // already covered the batch at confirmation). Firing this branch for it would (a) demand
+      // policy.maxSpend be set and (b) re-authorize the ledger — neither is correct for a free checkpoint.
+      if (gate.scope === "budget_envelope" && gate.jobIds.length > 0) {
         const jobs = gate.jobIds.map((jobId) => {
           const job = current.jobs.find((item) => item.jobId === jobId);
           if (!job) throw new Error(`Production job not found: ${jobId}`);
@@ -453,6 +479,25 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     appendDurableJsonLine(paths.commands, record);
     writeJsonFileAtomic(paths.snapshot, envelopeFor(next));
     return { run: next, events: [event] };
+  }
+
+  function execute(projectId: string, runId: string, command: RunCommand): RunCommandResult {
+    const dir = projectDir(projectId);
+    const paths = productionRunPaths(dir, runId);
+    const lock = createProductionRunLock({
+      filePath: paths.repositoryLock,
+      epochPath: paths.repositoryLockEpoch,
+      ownerId: repositoryOwnerId,
+      now,
+      randomId,
+      durability: "ephemeral",
+    });
+    const lease = lock.acquire();
+    try {
+      return executeUnlocked(projectId, runId, command);
+    } finally {
+      try { lock.release(lease); } catch { /* preserve the command result or original failure */ }
+    }
   }
 
   function list(projectId: string): ProductionRunSummary[] {

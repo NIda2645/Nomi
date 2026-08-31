@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>形象确认卡（锚检查点渲染层）· 获批样张存档 2026-08-25</title>
+<!--
+  归档说明：这是 2026-08-25 用户拍板（原话「可以的」）的「形象确认卡」样张的单文件重建，供实现逐项对账。
+  规格来源见 docs/plan/2026-08-25-p4-anchor-checkpoint-card.md「获批样张规格」。
+  token 值取自 src/theme/nomi-tokens.css（光/暗双套），可切。定妆照缩略图用占位渐变代表 nomi-local 资产真实图。
+-->
+<style>
+  :root {
+    --nomi-bg: oklch(0.985 0.003 90);
+    --nomi-paper: oklch(1 0 0);
+    --nomi-ink: oklch(0.22 0.01 80);
+    --nomi-ink-80: oklch(0.32 0.01 80);
+    --nomi-ink-60: oklch(0.50 0.01 80);
+    --nomi-ink-40: oklch(0.68 0.01 80);
+    --nomi-ink-30: oklch(0.78 0.01 80);
+    --nomi-ink-20: oklch(0.88 0.005 80);
+    --nomi-ink-10: oklch(0.94 0.003 80);
+    --nomi-ink-05: oklch(0.97 0.003 80);
+    --nomi-line: oklch(0.91 0.004 80);
+    --nomi-line-soft: oklch(0.95 0.003 80);
+    --nomi-accent: oklch(0.55 0.13 250);
+    --nomi-accent-soft: color-mix(in srgb, var(--nomi-accent) 12%, var(--nomi-paper));
+    --nomi-shadow-md: 0 2px 4px oklch(0 0 0 / 0.04), 0 8px 24px oklch(0 0 0 / 0.06);
+    --nomi-radius-sm: 6px;
+    --nomi-radius: 10px;
+    --nomi-radius-lg: 16px;
+    --nomi-font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+    --nomi-font-display: "Fraunces Variable", Fraunces, "Inter Variable", Inter, serif;
+  }
+  html[data-theme="dark"] {
+    --nomi-bg: oklch(0.18 0.006 80);
+    --nomi-paper: oklch(0.235 0.007 80);
+    --nomi-ink: oklch(0.93 0.006 85);
+    --nomi-ink-80: oklch(0.84 0.006 85);
+    --nomi-ink-60: oklch(0.70 0.006 85);
+    --nomi-ink-40: oklch(0.62 0.006 85);
+    --nomi-ink-30: oklch(0.50 0.006 85);
+    --nomi-ink-20: oklch(0.42 0.006 85);
+    --nomi-ink-10: oklch(0.34 0.006 85);
+    --nomi-ink-05: oklch(0.30 0.006 85);
+    --nomi-line: oklch(0.36 0.007 80);
+    --nomi-line-soft: oklch(0.31 0.007 80);
+    --nomi-accent: oklch(0.70 0.13 250);
+    --nomi-accent-soft: color-mix(in srgb, var(--nomi-accent) 26%, var(--nomi-paper));
+    --nomi-shadow-md: 0 2px 5px oklch(0 0 0 / 0.30), 0 14px 34px oklch(0 0 0 / 0.32);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    gap: 20px;
+    padding: 40px 16px;
+    background: var(--nomi-bg);
+    color: var(--nomi-ink);
+    font-family: var(--nomi-font-sans);
+    font-size: 14px;
+    transition: background 140ms;
+  }
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .toolbar button {
+    font: inherit; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--nomi-line); background: var(--nomi-paper); color: var(--nomi-ink);
+    border-radius: 999px; padding: 6px 14px;
+  }
+  .toolbar span { font-size: 12px; color: var(--nomi-ink-60); }
+
+  /* ── 对话框外壳（家族同款：~560px、modal 圆角、paper 底、line 边、md 阴影）── */
+  .dialog {
+    width: 560px; max-width: 92vw;
+    background: var(--nomi-paper);
+    border: 1px solid var(--nomi-line);
+    border-radius: var(--nomi-radius-lg);
+    box-shadow: var(--nomi-shadow-md);
+    display: flex; flex-direction: column;
+    max-height: 88vh;
+    overflow: hidden;
+  }
+  /* 滚动内容区 */
+  .body { padding: 16px 16px 4px; overflow-y: auto; }
+
+  .head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+  .head .icon {
+    flex: none; width: 32px; height: 32px; border-radius: var(--nomi-radius);
+    background: var(--nomi-accent-soft); color: var(--nomi-accent);
+    display: inline-grid; place-items: center;
+  }
+  .head .title { font-size: 16px; font-weight: 500; line-height: 1.3; }
+  .head .subtitle { font-size: 11px; color: var(--nomi-ink-60); margin-top: 2px; line-height: 1.4; }
+
+  /* 形象卡 2 列网格 */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .anchor {
+    border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius);
+    overflow: hidden; background: var(--nomi-bg);
+    display: flex; flex-direction: column;
+  }
+  .anchor.selected { border-color: var(--nomi-accent); box-shadow: 0 0 0 1px var(--nomi-accent); }
+  .thumb {
+    aspect-ratio: 4 / 3; width: 100%; cursor: zoom-in; border: 0; padding: 0; display: block;
+    background-size: cover; background-position: center;
+  }
+  /* 占位定妆照（代表 nomi-local 真实图）*/
+  .thumb.a { background-image: linear-gradient(135deg, oklch(0.72 0.09 250), oklch(0.55 0.12 300)); }
+  .thumb.b { background-image: linear-gradient(135deg, oklch(0.75 0.10 150), oklch(0.60 0.11 200)); }
+  .thumb.c { background-image: linear-gradient(135deg, oklch(0.78 0.10 60), oklch(0.62 0.12 30)); }
+
+  .foot { display: flex; align-items: center; gap: 6px; padding: 8px 10px; flex-wrap: wrap; }
+  .name { font-size: 13px; font-weight: 600; color: var(--nomi-ink); min-width: 0; }
+  .name .role { color: var(--nomi-ink-60); font-weight: 500; }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  }
+  .badge.new { background: var(--nomi-accent-soft); color: var(--nomi-accent); }
+  .badge.reuse { background: var(--nomi-ink-05); color: var(--nomi-ink-60); }
+  .rework {
+    margin-left: auto; font: inherit; font-size: 11px; cursor: pointer;
+    border: 1px dashed var(--nomi-line); background: transparent; color: var(--nomi-ink-60);
+    border-radius: 999px; padding: 3px 10px;
+  }
+  .anchor.selected .rework { border-style: solid; border-color: var(--nomi-accent); color: var(--nomi-accent); }
+
+  .note { font-size: 12px; color: var(--nomi-ink-60); line-height: 1.55; margin: 0 0 16px; }
+  .note strong { color: var(--nomi-ink-80); font-weight: 600; }
+
+  /* 固定 footer */
+  .actions {
+    border-top: 1px solid var(--nomi-line);
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .footnote { font-size: 11px; color: var(--nomi-ink-40); line-height: 1.4; }
+  .footnote a { color: var(--nomi-ink-60); text-underline-offset: 2px; }
+  .spacer { flex: 1; }
+  .btn { font: inherit; font-size: 13px; cursor: pointer; border-radius: 999px; padding: 7px 16px; height: 32px; }
+  .btn.secondary { background: transparent; border: 1px solid var(--nomi-line); color: var(--nomi-ink); }
+  .btn.primary { background: var(--nomi-ink); border: 1px solid var(--nomi-ink); color: var(--nomi-paper); font-weight: 500; }
+
+  .caption { font-size: 12px; color: var(--nomi-ink-60); margin-top: 4px; }
+</style>
+</head>
+<body data-theme-host>
+  <div class="toolbar">
+    <button id="toggle-theme" type="button">切换 光/暗</button>
+    <button id="toggle-select" type="button">切换 重拍选中态</button>
+    <span>获批样张存档 · 2026-08-25 · 形象确认卡（锚检查点渲染层）</span>
+  </div>
+
+  <!-- 默认态：无选中，主按钮=「形象都对，开拍 6 镜」 -->
+  <div class="dialog" role="dialog" aria-label="主角形象确认">
+    <div class="body">
+      <div class="head">
+        <span class="icon" aria-hidden>
+          <!-- IconUsers 占位（实现用 @tabler IconUsers/IconSparkles，18/stroke 默认）-->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7a3 3 0 1 0 0-2"/><circle cx="9" cy="7" r="3"/><path d="M15 11a3 3 0 1 0 0-6"/><path d="M4 21v-1a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v1"/><path d="M16 16a4 4 0 0 1 4 4v1"/></svg>
+        </span>
+        <div>
+          <div class="title">主角形象出片了——过目后开拍</div>
+          <div class="subtitle" id="subtitle">雨夜便利店 · 3 张形象卡就绪：2 张新拍 · 1 张复用上集</div>
+        </div>
+      </div>
+
+      <div class="grid" id="grid">
+        <div class="anchor" data-anchor="0">
+          <button class="thumb a" type="button" aria-label="查看大图：阿澈"></button>
+          <div class="foot">
+            <span class="name"><span class="role">男生 · </span>阿澈</span>
+            <span class="badge new">新拍</span>
+            <button class="rework" type="button">重拍这张</button>
+          </div>
+        </div>
+        <div class="anchor" data-anchor="1">
+          <button class="thumb b" type="button" aria-label="查看大图：小满"></button>
+          <div class="foot">
+            <span class="name"><span class="role">女生 · </span>小满</span>
+            <span class="badge new">新拍</span>
+            <button class="rework" type="button">重拍这张</button>
+          </div>
+        </div>
+        <div class="anchor" data-anchor="2">
+          <button class="thumb c" type="button" aria-label="查看大图：店内场景"></button>
+          <div class="foot">
+            <span class="name"><span class="role">场景 · </span>便利店</span>
+            <span class="badge reuse">复用上集</span>
+            <button class="rework" type="button">重拍这张</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="note">
+        确认后按已批准的 <strong>¥18.00</strong> 预算开拍 <strong>6</strong> 镜——<strong>这一步不新增花费</strong>。
+        不满意哪张就重拍哪张，只花那一张的钱。
+      </p>
+    </div>
+
+    <div class="actions">
+      <!-- 自动放行脚注：生产默认不设 anchorAutoReleaseMs → 默认不显示。此处留空占位（仅配了自动放行才出）。 -->
+      <span class="footnote" id="footnote"></span>
+      <span class="spacer"></span>
+      <button class="btn secondary" type="button">先不拍</button>
+      <button class="btn primary" type="button" id="primary">形象都对，开拍 6 镜</button>
+    </div>
+  </div>
+
+  <div class="caption">
+    交互说明：点缩略图看大图；点「重拍这张」进入选中态（可多张切换），选中≥1 时主按钮变
+    「先重拍选中的，再回来过目」；「先不拍」不 decide、门保持等待、可从任务中心重开。
+  </div>
+
+<script>
+  const html = document.documentElement;
+  // 天黑自动暗（与 App 一致的默认；此处仅样张演示，手动可切）
+  const hour = new Date().getHours();
+  html.setAttribute('data-theme', (hour >= 18 || hour < 7) ? 'dark' : 'light');
+  document.getElementById('toggle-theme').addEventListener('click', () => {
+    html.setAttribute('data-theme', html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  // 演示：切换选中态 → 主按钮变形
+  let selecting = false;
+  const primary = document.getElementById('primary');
+  const grid = document.getElementById('grid');
+  function refresh() {
+    const n = grid.querySelectorAll('.anchor.selected').length;
+    primary.textContent = n > 0 ? '先重拍选中的，再回来过目' : '形象都对，开拍 6 镜';
+  }
+  document.getElementById('toggle-select').addEventListener('click', () => {
+    selecting = !selecting;
+    grid.querySelector('[data-anchor="0"]').classList.toggle('selected', selecting);
+    refresh();
+  });
+  grid.querySelectorAll('.rework').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.currentTarget.closest('.anchor').classList.toggle('selected');
+      refresh();
+    });
+  });
+</script>
+</body>
+</html>

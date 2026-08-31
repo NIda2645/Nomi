@@ -9,7 +9,9 @@ function context() {
     readEvents: vi.fn(async () => ({ events: [], nextCursor: 4 })),
     readArtifactProjection: vi.fn(async () => ({ artifactId: 'artifact-1', kind: 'storyboard' })),
     materializeStoryboard: vi.fn(async (input: unknown) => ({ materialized: true, input })),
-    readFull: vi.fn(() => null),
+    // 返回类型放宽到 unknown：各用例 mockReturnValueOnce 塞形状各异的 run 片段（ctx 整体 as never 进 dispatch，
+    // 不靠这里的推断）——推成 () => null 会让每个 mockReturnValueOnce 都吃 TS2345（test-types 门岗抓）。
+    readFull: vi.fn<() => unknown>(() => null),
     command: vi.fn(async () => ({ run: {}, events: [] })),
   }
   return {
@@ -131,6 +133,8 @@ describe('production run capability methods', () => {
     ['gate-shot-v1-job', 'job_set'],
     ['gate-export-v1', 'export'],
     ['gate-publish-v1', 'publish'],
+    // scope 伪造成 anchor_checkpoint 但 id 不是检查点前缀 → 谓词两条都要满足，照拒。
+    ['gate-mystery-v1', 'anchor_checkpoint'],
   ] as const)('keeps %s decisions inside Nomi', async (gateId, scope) => {
     const { ctx, productionRuns } = context()
     productionRuns.readFull.mockReturnValueOnce({
@@ -141,6 +145,21 @@ describe('production run capability methods', () => {
       projectId: 'project-1', runId: 'run-1', gateId, decision: 'approved',
     }, ctx as never)).rejects.toMatchObject({ httpStatus: 403 })
     expect(productionRuns.command).not.toHaveBeenCalled()
+  })
+
+  // P4 §3.2：锚定妆照检查点是免费质量门（不授权预算）→ 与创意门同权可在此表态；批准/否决都放行。
+  it.each(['approved', 'rejected'] as const)('allows an anchor checkpoint %s through the guarded dispatcher path', async (decision) => {
+    const { ctx, productionRuns } = context()
+    productionRuns.readFull.mockReturnValueOnce({
+      revision: 5,
+      gates: [{ gateId: 'gate-anchor-checkpoint-run-1', scope: 'anchor_checkpoint', status: 'waiting' }],
+    })
+    await dispatch('production.decide-gate', {
+      projectId: 'project-1', runId: 'run-1', gateId: 'gate-anchor-checkpoint-run-1', decision,
+    }, ctx as never)
+    expect(productionRuns.command).toHaveBeenCalledWith('project-1', 'run-1', expect.objectContaining({
+      type: 'gate.decide', payload: { gateId: 'gate-anchor-checkpoint-run-1', status: decision },
+    }))
   })
 
   it('allows a reversible sample decision through the guarded dispatcher path', async () => {

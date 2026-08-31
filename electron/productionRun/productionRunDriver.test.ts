@@ -1,19 +1,15 @@
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
-import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 
 function makeRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-production-driver-'))
-}
-
-async function waitFor(check: () => boolean, timeoutMs = 500): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
 }
 
 describe('ProductionRunService driver round 1', () => {
@@ -101,6 +97,29 @@ describe('ProductionRunService driver round 1', () => {
     })
     expect(approved.run.status).toBe('running')
     await approveLatestScript(service, 'project-1', 'run-driver-2')
+    const proposed = service.readFull('project-1', 'run-driver-2')
+    const proposedStoryboard = proposed.artifacts.find((item) => item.kind === 'storyboard')!
+    const persistedStoryboard = JSON.parse(fs.readFileSync(path.join(root, proposedStoryboard.projectRelativePath!), 'utf8')) as {
+      planHash: string
+      plan: unknown
+    }
+    const recalculatedPlanHash = crypto.createHash('sha256').update(JSON.stringify(persistedStoryboard.plan)).digest('hex')
+    expect(proposedStoryboard.contentHash).toBe(recalculatedPlanHash)
+    expect(persistedStoryboard.planHash).toBe(recalculatedPlanHash)
+    const legacyRepository = {
+      ...repository,
+      read: (projectId: string, runId: string) => {
+        const stored = repository.read(projectId, runId)
+        return stored ? {
+          ...stored,
+          artifacts: stored.artifacts.map((artifact) => artifact.kind === 'storyboard'
+            ? { ...artifact, contentHash: undefined }
+            : artifact),
+        } : null
+      },
+    }
+    const legacyReader = createProductionRunService({ repository: legacyRepository, projectRootResolver: () => root })
+    expect(legacyReader.readFull('project-1', 'run-driver-2').artifacts.find((item) => item.kind === 'storyboard')?.contentHash).toBe(recalculatedPlanHash)
     await approveLatestStoryboard(service, 'project-1', 'run-driver-2')
     const planned = service.readFull('project-1', 'run-driver-2')
     expect(planned.status).toBe('awaiting_storyboard_review')
@@ -156,13 +175,16 @@ describe('ProductionRunService driver round 1', () => {
     fs.writeFileSync(path.join(root, 'assets/generated/shot.mp4'), 'video', 'utf8')
     fs.mkdirSync(path.join(root, 'exports'), { recursive: true })
     const calls: string[] = []
-    const requestRenderer = async (op: string) => {
+    const requestRenderer = async (op: string, payload: unknown) => {
       calls.push(op)
       if (op === 'production.plan-directions') return { candidates: [{ key: 'a', title: '方向一', oneLiner: 'x' }, { key: 'b', title: '方向二', oneLiner: 'y' }] }
       if (op === 'production.plan-script') return { text: 'Nomi promo script' }
       if (op === 'production.plan-storyboard') return { plan: { title: 'Nomi promo', anchors: [], shots: [{ index: 1, shotKind: 'video', prompt: 'show Nomi' }] } }
       if (op === 'production.generate-node') return { assets: [{ type: 'video', url: 'nomi-local://asset/project-1/assets/generated/shot.mp4' }] }
-      if (op === 'production.arrange') return { arranged: 1, total: 1 }
+      if (op === 'production.arrange') {
+        expect((payload as Record<string, unknown>)?.shotNodeIds).toEqual(['shot-1'])
+        return { arranged: 1, total: 1 }
+      }
       if (op === 'production.export') {
         fs.writeFileSync(path.join(root, 'exports/nomi-run-driver-3.mp4'), 'mp4', 'utf8')
         return { relativePath: 'exports/nomi-run-driver-3.mp4', size: 3 }
@@ -267,7 +289,7 @@ describe('ProductionRunService driver round 1', () => {
     expect(atFreeze.budget.actual).toBe(0)
     // 冻结确认走创意门 seam（视觉确认），批准 → 重踢 driver → 首镜提交。
     await service.command('project-1', 'run-freeze', { commandId: 'freeze-f', expectedRevision: atFreeze.revision, type: 'gate.decide', payload: { gateId: 'gate-freeze-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
-    await waitFor(() => service.readFull('project-1', 'run-freeze').jobs.some((job) => job.status === 'adopted' || job.status === 'submitting'), 1_000)
+    await waitFor(() => service.readFull('project-1', 'run-freeze').jobs.some((job) => job.status === 'adopted' || job.status === 'submitting'))
     expect(calls).toContain('production.generate-node') // 冻结放行后才提交
     // 冻结桥只在放行前问一次（放行后 hasApprovedFreezeGate 短路）。
     expect(calls.filter((op) => op === 'production.check-frozen')).toHaveLength(1)
@@ -309,7 +331,7 @@ describe('ProductionRunService driver round 1', () => {
     })
     await service.command('project-1', 'run-frozen-ok', { commandId: 'contract-ok', expectedRevision: attached.run.revision, type: 'gate.decide', payload: { gateId: 'gate-contract-v1', status: 'approved' }, issuedAt: new Date().toISOString() })
     // 全冻结 → 无冻结门、直接进首镜（会停在样片门，证明已越过冻结门）。
-    await waitFor(() => service.readFull('project-1', 'run-frozen-ok').gates.some((gate) => gate.gateId === 'gate-sample-v1' && gate.status === 'waiting'), 1_000)
+    await waitFor(() => service.readFull('project-1', 'run-frozen-ok').gates.some((gate) => gate.gateId === 'gate-sample-v1' && gate.status === 'waiting'))
     const state = service.readFull('project-1', 'run-frozen-ok')
     expect(state.gates.some((gate) => gate.gateId === 'gate-freeze-v1')).toBe(false)
     expect(calls).toContain('production.generate-node')

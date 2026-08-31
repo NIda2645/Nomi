@@ -10,6 +10,7 @@ import {
   type GenerationErrorKind,
 } from './narrate'
 import { parseVendorErrorFromMessage, stripVendorErrorMarker } from '../generationCanvas/runner/vendorErrorIpc'
+import { matchNomiErrorCode, stripNomiErrorCode } from '../../../electron/shared/nomiErrorCodes'
 import i18n from '../../i18n'
 
 export type GenerationErrorReport = {
@@ -85,10 +86,11 @@ function jsonErrorMessage(source: string): string | null {
  * message/error 字段，否则取第一行非空文本并截断。抠不出可读内容才返回 ''。
  */
 function extractReadableErrorLine(raw: string): string {
-  const source = String(raw || '')
-    .trim()
-    .replace(IPC_WRAPPER_PREFIX, '')
-    .trim()
+  const source = stripNomiErrorCode(
+    String(raw || '')
+      .trim()
+      .replace(IPC_WRAPPER_PREFIX, ''),
+  ).trim()
   if (!source) return ''
   // 1) provider 常把报错塞进 JSON（与 pickProviderMessage 共用同一个剥壳器，两处不许各写一份）
   const fromJson = jsonErrorMessage(source)
@@ -120,6 +122,30 @@ function truncateLine(value: string): string {
  * Common cases: API key 无效、模型未配置、配额/限流、网络/超时、内容拦截。
  */
 const STRUCTURED_KINDS: readonly GenerationErrorKind[] = ['auth', 'balance', 'quota', 'network', 'server', 'input']
+
+function detectMissingImageReference(raw: string): 'image_edit' | 'image_to_video' | null {
+  if (raw.includes('图生图缺少参考图')) return 'image_edit'
+  if (raw.includes('图生视频缺少参考图')) return 'image_to_video'
+  return null
+}
+
+function reportForMissingImageReference(
+  kind: 'image_edit' | 'image_to_video',
+  raw: string,
+): GenerationErrorReport {
+  const reason = i18n.t(
+    kind === 'image_edit'
+      ? 'generationCommon.composer.imageConnectionRequired'
+      : 'generationCommon.composer.videoFirstFrameRequired',
+  )
+  return {
+    kind: 'input',
+    reason,
+    hint: '',
+    raw,
+    ...narrateGenerationErrorActions('input'),
+  }
+}
 
 /** legacy 字符串 → 类别(老项目持久化的 node.error / 非 vendor 错误的兜底识别;文案不在这里)。 */
 function detectLegacyErrorKind(raw: string): GenerationErrorKind | null {
@@ -311,6 +337,7 @@ function detectAssetUploadFailed(raw: string): boolean {
   // ① 匿名链包出来的；② 逐条候选通道都挂的汇总；③ 某条通道直接抛的裸 `素材上传失败(HTTP 4xx)`。
   // 只认 ① 的时候，直连通道（KIE/apimart）抛的 413 落进 unknown → 用户看到「可能是服务商临时故障
   // 或额度问题，建议稍等重试」（2026-08-20 用户截图逐字如此），于是不停重试一个必然再撞的上限。
+  if (matchNomiErrorCode(raw) === 'asset-upload-failed') return true
   return (
     raw.includes('所有免配置上传 host 都失败') ||
     raw.includes('的所有上传通道都没成功') ||
@@ -318,8 +345,16 @@ function detectAssetUploadFailed(raw: string): boolean {
   )
 }
 
-/** 素材大到所有上传通道都装不下（HTTP 413）——重试永远不会成，得让用户去压缩，不能说「稍等重试」。 */
+/**
+ * 素材大到所有上传通道都装不下（HTTP 413）——重试永远不会成，得让用户去压缩，不能说「稍等重试」。
+ *
+ * 2026-09-01 root-cause:主判据改成**机器码**（assetLocalization 通过 tagNomiError('asset-too-large')
+ * 附的 NOMI_ERR:: 标记），不再靠 include 那句中文人话——人话将来 i18n 化/改词都不影响分类。
+ * 保留两条 legacy 兜底:① `HTTP 413`(英文、非 CJK,直连通道抛的裸 413);② 那句中文串——为的是
+ * 认出**本次改动前**已经 persist 进 node.error 的旧错误(它们没有码标记)。两条都不脆弱地依赖新文案。
+ */
 function detectAssetTooLarge(raw: string): boolean {
+  if (matchNomiErrorCode(raw) === 'asset-too-large') return true
   return raw.includes('超过了所有可用上传通道的大小上限') || raw.includes('HTTP 413')
 }
 
@@ -372,6 +407,21 @@ function detectModelKindMismatch(raw: string): { model: string; registered: stri
 }
 
 /**
+ * 「没有可用文本大脑」——创作助手/拆镜头缺可用 text 模型时 agentChatV2 抛的**内部**签名
+ * （新：`Model is not configured: no usable text model`；旧散句：`No local text model is configured`）。
+ *
+ * 为什么单列一类、且必须 upstream='' 处理（2026-08-25 走查 F5）：这是我们**自己**这侧的信号，
+ * 服务商根本没被请求到。旧行为里它落进 unknown（下面 legacy 的 'not configured' 抓不到字面
+ * "is configured"），reason 直接取英文原串——用户看到「服务器：…No local text model is configured…」
+ * 半中半英。归 model-config 报人话之外，还要**不**把这句英文塞进「服务商说：」框（那是纯栽赃，
+ * 同 model-kind-mismatch 的处理）。短语取窄，只认这两条我们自己的签名。
+ */
+function detectNoTextBrain(raw: string): boolean {
+  const lower = raw.toLowerCase()
+  return lower.includes('no usable text model') || lower.includes('no local text model')
+}
+
+/**
  * kind → 完整 report（文案 + 动作 + 上游原话）。收口原先重复 7 遍的四行样板：
  * 每处都得记着调 narrate、算 providerMessage、带 raw——漏一样就是一处失语。
  * `upstream` 给 undefined = 从 raw 里抠可读首行。
@@ -384,7 +434,8 @@ function reportFor(
 ): GenerationErrorReport {
   const { reason, hint } = narrateGenerationError(kind, params)
   const providerMessage = pickProviderMessage(upstream ?? extractReadableErrorLine(raw), reason)
-  return { kind, reason, hint, raw, ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
+  // 存进技术详情的 raw 也把 NOMI_ERR:: 码标记剥掉——那是给分类器读的机器标记,不是给人看的。
+  return { kind, reason, hint, raw: stripNomiErrorCode(raw), ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
 }
 
 export function classifyGenerationError(message: string): GenerationErrorReport {
@@ -395,6 +446,8 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
     stripVendorErrorMarker(String(message || ''))
       .split('\n→')[0]
       .trim() || i18n.t('generationCommon.observability.error.unknown.reason')
+  const missingImageReference = detectMissingImageReference(cleanRaw)
+  if (missingImageReference) return reportForMissingImageReference(missingImageReference, cleanRaw)
   // 已退役下线**最先**判：判据是 electron 抛的专用签名（确定性事实），不该被任何猜文案的检测抢走。
   if (detectModelRetired(cleanRaw)) return reportFor('model-retired', cleanRaw, undefined)
   // 类型不符同理是专用签名，同层最先判。upstream 显式给 ''：这是**我们自己**的内部信号，
@@ -415,6 +468,9 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       },
     }
   }
+  // 缺可用文本大脑同样是**我们自己**的内部签名（服务商没被请求到）——归 model-config 报人话，
+  // upstream='' 抑制「服务商说：」框，别把那句英文散句栽赃给上游（2026-08-25 走查 F5）。
+  if (detectNoTextBrain(cleanRaw)) return reportFor('model-config', cleanRaw, '')
   // 账号档位闸（会员/企业 Key/网页授权）先判——它的关键词（会员/授权/开通即梦会员）比
   // model-not-open 更具体；反过来放后面会被宽词抢走（即梦 CLI 兜底文案曾被判成「模型未开通」
   // 并给出火山 Ark 指引，2026-07-06 真机走查抓出）。reason 出自 narrate，服务商原话单独提到可见区。
@@ -451,6 +507,9 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   }
   if (structured?.category && (STRUCTURED_KINDS as readonly string[]).includes(structured.category)) {
     return reportFor(structured.category as GenerationErrorKind, stripVendorErrorMarker(message), structured.upstreamMsg)
+  }
+  if (structured?.category === 'timeout') {
+    return reportFor('network', stripVendorErrorMarker(message), structured.upstreamMsg)
   }
   // Strip any legacy "\n→ hint" tail that older builds baked into node.error.
   const raw =

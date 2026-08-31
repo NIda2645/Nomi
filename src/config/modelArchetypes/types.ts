@@ -10,20 +10,20 @@
 // 现有层只有按 key 名猜的 image-url，表达不了 character1..N / 视频 / 音频）。
 
 import type { ModelParameterControl } from "../modelCatalogMeta";
+import type {
+  ArchetypeExpressionChannel as SharedArchetypeExpressionChannel,
+  ArchetypeReferenceSlotKind as SharedArchetypeReferenceSlotKind,
+  ArchetypeSource as SharedArchetypeSource,
+} from "../../../electron/shared/videoCapabilities/types";
 
-export type ArchetypeReferenceSlotKind =
-  | "first_frame"
-  | "last_frame"
-  | "image_ref" // 多图，按序对应 prompt 里的 character1..N
-  | "video_ref"
-  | "audio_ref"
-  | "source_video";
+export type ArchetypeReferenceSlotKind = SharedArchetypeReferenceSlotKind;
 
 export type ArchetypeReferenceSlot = {
   kind: ArchetypeReferenceSlotKind;
   label: string;
   min: number;
-  max: number;
+  /** Absent when the provider has not published a reference count limit. */
+  max?: number;
   /**
    * 该模型 API 的输入参数名（模型契约，供应商无关）。缺省时由 kind 推断（见 archetypeMeta
    * SLOT_DEFAULTS）。例：Seedance 全能参考的角色图 = `reference_image_urls`；HappyHorse 角色参考
@@ -61,6 +61,17 @@ export type ArchetypeReferenceSlot = {
   roleName?: string;
 };
 
+/**
+ * A source-backed way in which a mode can express a user signal.
+ *
+ * This deliberately does not define a universal camera-control enum. Some models
+ * express camera motion only in prompt text, some accept a reference video, and
+ * a few expose a structured control that is valid only for a particular task.
+ * `status` distinguishes documented support from a documented rejection and from
+ * an area that has not been verified yet.
+ */
+export type ArchetypeExpressionChannel = SharedArchetypeExpressionChannel;
+
 /** 跨模型统一的「意图」——UI 主标签按它走（角色参考/单图首帧/首尾帧/文生/视频编辑）。 */
 export type ArchetypeIntent = "text" | "single" | "firstlast" | "character" | "edit";
 
@@ -79,6 +90,12 @@ export type ArchetypeMode = {
   vendorTerm: string;
   hint: string;
   slots: ArchetypeReferenceSlot[];
+  /**
+   * How this mode can express documented user signals. This is model-contract
+   * data, not a universal assumption: different models expose different
+   * channels and scopes.
+   */
+  expressionChannels?: ArchetypeExpressionChannel[];
   /** 标量参数：复用现有控件类型（规则 1，不另造）。供应商无关的**缺省**集；某供应商字段枚举不同时用 vendorParams 覆盖。 */
   params: ModelParameterControl[];
   /**
@@ -155,18 +172,11 @@ export type ModelArchetypeVariant = {
  * 门岗检查、被聚合成索引、让复核的人一眼知道去哪查。**改契约数字必须同步 checkedAt。**
  * 门岗：`pnpm run check:archetype-sources`（棘轮，只减不增）。
  */
-export type ArchetypeSource = {
-  /** 供应商**官方**文档 URL（不是第三方转述——转述会漏会错，栽过）。 */
-  url: string;
-  /** 最后一次逐项对账的日期，ISO `YYYY-MM-DD`。 */
-  checkedAt: string;
-  /** 该文档属于哪个供应商；模型级、跨供应商通用的可省略。 */
-  vendorKey?: string;
-  /** 一句话：这份文档覆盖了什么（如「参考通道字段名与上限」）。 */
-  covers?: string;
-};
+export type ArchetypeSource = SharedArchetypeSource;
 
 export type ModelArchetype = {
+  /** Older shared profile IDs accepted only when model identity matches this profile. */
+  legacyIds?: string[];
   id: string; // 'seedance-2'
   family: string; // 'seedance'
   label: string; // 'Seedance 2.0'

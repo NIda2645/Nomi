@@ -1,3 +1,4 @@
+import { enAntigravity, zhAntigravity } from './locales/antigravity'
 import { enModelSetup, zhModelSetup } from './locales/modelSetup'
 import { enBrowserAssets, zhBrowserAssets } from './locales/browserAssets'
 import { enTimelinePreview, zhTimelinePreview } from './locales/timelinePreview'
@@ -31,6 +32,8 @@ export const zhCN = {
     rendering: '正在渲染...',
     back: '返回',
     select: '选择',
+    searchOptions: '搜索选项',
+    noMatchingOptions: '没有匹配的选项',
     undo: '撤销',
   },
   media: {
@@ -172,7 +175,9 @@ export const zhCN = {
     creation: '创作区',
     generation: '生成区',
     preview: '预览区',
+    storyboard: '分镜',
     creationTab: '创作',
+    storyboardTab: '分镜',
     generationTab: '生成',
     previewTab: '预览',
     switchLabel: '工作区切换',
@@ -219,12 +224,15 @@ export const zhCN = {
     startProject: '开始一个项目',
     watchHow: '看 Nomi 怎么出片',
     modelStatus: '模型状态',
-    textModelMissing: '文本模型未接入',
-    textModelMissingHint: '写故事、拆镜头都需要它；图片 / 视频模型可以等到生成前再接。',
-    connectTextModel: '接入文本模型',
+    textModelMissing: '创作助手尚未连接模型',
+    textModelMissingHint: '写故事、拆镜头的助手与画布生成模型分别配置。',
+    connectTextModel: '连接助手模型',
     sourceFilter: '筛选项目来源',
     noMatchNamed: '没有匹配「{{query}}」的项目',
-    noProjectsInCategory: '这个分类下还没有项目',
+    // 首次空库（无搜索、来源=全部、零项目）：给行动指引，别用系统腔（2026-08-25 走查 F1）。
+    firstEmpty: '还没有项目——从上方「新建空白项目」开始',
+    // 有项目、但当前来源筛选下为空：措辞跟「来源」走，不叫「分类」（首屏没有分类概念）。
+    noProjectsInSource: '这个来源下还没有项目',
     clearSearch: '清除搜索',
     deleteNamedProject: '删除项目 {{name}}',
     folderUnavailable: '文件夹暂不可用',
@@ -359,6 +367,7 @@ export const zhCN = {
   assetLibrary: zhAssetLibrary,
   settings: zhSettings,
   onboardingProviders: zhOnboardingProviders,
+  antigravity: zhAntigravity,
   comfyuiWorkflowPage: zhComfyuiWorkflowPage,
   libraries: zhLibraries,
   scene3d: {
@@ -396,6 +405,8 @@ export const en = {
     rendering: 'Rendering...',
     back: 'Back',
     select: 'Select',
+    searchOptions: 'Search options',
+    noMatchingOptions: 'No matching options',
     undo: 'Undo',
   },
   media: {
@@ -538,7 +549,9 @@ export const en = {
     creation: 'Create',
     generation: 'Generate',
     preview: 'Preview',
+    storyboard: 'Storyboard',
     creationTab: 'Create',
+    storyboardTab: 'Storyboard',
     generationTab: 'Generate',
     previewTab: 'Preview',
     switchLabel: 'Switch workspace',
@@ -585,13 +598,14 @@ export const en = {
     startProject: 'Start a project',
     watchHow: 'See how Nomi creates a video',
     modelStatus: 'Model status',
-    textModelMissing: 'No text model connected',
+    textModelMissing: 'No model connected to the creative assistant',
     textModelMissingHint:
-      'Writing stories and planning shots require one. Image and video models can be connected before generation.',
-    connectTextModel: 'Connect text model',
+      'The assistant for stories and shot planning is configured separately from canvas generation models.',
+    connectTextModel: 'Connect assistant model',
     sourceFilter: 'Filter project sources',
     noMatchNamed: 'No projects match “{{query}}”',
-    noProjectsInCategory: 'No projects in this category yet',
+    firstEmpty: 'No projects yet — start with “New blank project” above',
+    noProjectsInSource: 'No projects from this source yet',
     clearSearch: 'Clear search',
     deleteNamedProject: 'Delete project {{name}}',
     folderUnavailable: 'Folder unavailable',
@@ -731,6 +745,7 @@ export const en = {
   assetLibrary: enAssetLibrary,
   settings: enSettings,
   onboardingProviders: enOnboardingProviders,
+  antigravity: enAntigravity,
   comfyuiWorkflowPage: enComfyuiWorkflowPage,
   libraries: enLibraries,
   scene3d: {

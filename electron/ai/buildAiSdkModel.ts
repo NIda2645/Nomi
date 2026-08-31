@@ -17,6 +17,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { LanguageModelV1 } from "ai";
 import { applyProfileToRequestBody, getModelProfile } from "./modelProfiles";
+import { appFetch } from "../appFetch";
 // 单一真相源：provider-kind 联合定义在 catalog/types，这里只 re-export，避免并行定义漂移（规则 1）。
 import type { AiSdkProviderKind, Vendor } from "../catalog/types";
 export type { AiSdkProviderKind };
@@ -37,7 +38,7 @@ export interface BuildAiSdkModelInput {
 }
 
 /**
- * Wrap the global fetch so each request body gets profile-driven adjustments
+ * Wrap the app transport so each request body gets profile-driven adjustments
  * (forced temperature, default max_tokens, extra body fields).
  *
  * Optional debug: set LAB_DEBUG_REQUESTS=1 to dump each request body to /tmp.
@@ -67,7 +68,7 @@ function buildProfiledFetch(modelId: string): typeof fetch {
     // 见 docs/workflow/2026-06-06-real-generation-e2e-loop.md「主进程埋点」）。成功不打，避免噪音。
     const urlStr = typeof url === "string" ? url : ((url as { url?: string })?.url || String(url));
     try {
-      const res = await fetch(url as any, init);
+      const res = await appFetch(url as any, init);
       if (!res.ok) {
         let snippet = "";
         try { snippet = (await res.clone().text()).replace(/\s+/g, " ").slice(0, 300); } catch { /* body unreadable */ }
@@ -98,6 +99,25 @@ function sanitizeHeaders(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * Anthropic base URLs must carry the version segment: `@ai-sdk/anthropic` defaults to
+ * `https://api.anthropic.com/v1` and only appends `/messages` after that base.
+ *
+ * We persist a host root instead — onboarding probing (onboardingIpc.probeOneProtocol) strips a
+ * trailing `/v1` (to avoid double-joining its own `/v1/messages`), so the stored baseUrl is
+ * `https://api.anthropic.com`. The two paths hold opposite conventions for the same stored value:
+ * the probe side treats it as a root and adds `/v1`; the runtime side needs `/v1` already present.
+ *
+ * Without this, the runtime POSTs to `{root}/messages` → 404 Not Found, while onboarding probing
+ * still succeeds — surfacing as "connection passes, canvas 404s" (2026-08-28: connecting Claude
+ * made the agent HTTP 404 on every request). Normalizing on read (not in storage) rescues both
+ * legacy libraries already stored as roots and new connections.
+ */
+export function anthropicBaseUrl(baseURL: string): string {
+  const trimmed = baseURL.trim().replace(/\/+$/, "");
+  return /\/v\d+$/i.test(trimmed) ? trimmed : `${trimmed}/v1`;
+}
+
 export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   const apiKey = (input.apiKey || "").trim();
   const unauthenticated = input.authType === "none";
@@ -115,7 +135,8 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
     if (unauthenticated) throw new Error("buildAiSdkModel: authType none requires an openai-compatible provider");
     const provider = createAnthropic({
       apiKey,
-      ...(baseURL ? { baseURL } : {}),
+      fetch: appFetch,
+      ...(baseURL ? { baseURL: anthropicBaseUrl(baseURL) } : {}),
       ...(headers ? { headers } : {}),
     });
     return provider.languageModel(modelId);

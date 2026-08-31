@@ -73,7 +73,7 @@ describe('templateGroupSegments（场景树按模板组折叠）', () => {
     ])
   })
   it('无组时单段透传', () => {
-    const items = [{ id: 'a' }, { id: 'b' }]
+    const items: Array<{ id: string; templateGroup?: string }> = [{ id: 'a' }, { id: 'b' }]
     expect(templateGroupSegments(items)).toEqual([{ group: null, items }])
   })
 })

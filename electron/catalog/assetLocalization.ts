@@ -1,8 +1,11 @@
-// R1 通用解析器：把 request 里的本地素材(nomi-local://)在发送前变成 vendor 够得着的值。
+// R1 通用解析器：把 request 里的本地素材在发送前变成 vendor 够得着的值。
+// 「本地素材」= `nomi-local://`（项目内文件）**与** `data:`（内联字节）——形态判定住 assetValueScheme，
+// 两者共用同一条物化/上传链，于是每个 vendor 收到的永远是公网 URL，不再「这家收 data: 那家 500」。
 // **通用第一**：本模块与任何具体供应商无关——它只认「一份 AssetIngestion 声明」,按 strategy 分叉。
 // KIE 等具体供应商的端点/字段/响应路径只住在各自的声明里(单源),由 curatedAssetIngestion 提供。
 // 全部依赖注入(读本地字节 read / POST 上传 postJson),故可零网络零额度单测。
 
+import { DOMParser } from "@xmldom/xmldom";
 import { isComfyuiVendor, type AssetIngestion, type AssetMediaKind } from "./types";
 import {
   anonymousConsentFromUnknown,
@@ -11,8 +14,31 @@ import {
   ingestionVisibility,
   type AnonymousAssetConsent,
 } from "./assetTransportPolicy";
+import {
+  classifyAssetValue,
+  describeAssetValue,
+  humanSize,
+  isLocalizableAssetValue,
+  parseInlineDataAsset,
+  unreachableAssetValueError,
+} from "./assetValueScheme";
+import { contentTypeFromMagicBytes } from "../assets/mediaTypes";
+import { tagNomiError } from "../shared/nomiErrorCodes";
+import {
+  ingestionAccepts,
+  resolveAssetIngestionForKind,
+  ANON_UPLOAD_CHAIN,
+} from "./assetIngestionRegistry";
+import { readAssetRelayRuntimeConfig, readDefaultAssetRelayRuntimeConfig } from "./assetRelayRuntimeConfig";
 
-const NOMI_LOCAL_PREFIX = "nomi-local://";
+export {
+  ingestionAccepts,
+  resolveAssetIngestion,
+  resolveAssetIngestionForKind,
+  LITTERBOX_INGESTION,
+  TMPFILES_INGESTION,
+  ANON_UPLOAD_CHAIN,
+} from "./assetIngestionRegistry";
 
 export type LocalAsset = {
   bytes: Buffer;
@@ -69,9 +95,19 @@ export type HttpPostMultipart = (
   extraFields?: Record<string, string>,
   fileField?: string,
 ) => Promise<unknown>;
+export type HttpPutBinary = (
+  url: string,
+  headers: Record<string, string>,
+  file: Buffer,
+  contentType: string,
+) => Promise<unknown>;
 
+/**
+ * 「这个值发送前必须先本地化」——即 `nomi-local://`（读盘）**或** `data:` 内联字节（就地解码）。
+ * 形态判定住 assetValueScheme（单一真相源），本函数只是本模块的门面。
+ */
 export function isLocalAssetUrl(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith(NOMI_LOCAL_PREFIX);
+  return isLocalizableAssetValue(value);
 }
 
 /** contentType → 媒体类型(image/video/audio)。未知一律按 image(今天的通道都面向图片)。 */
@@ -82,17 +118,7 @@ export function mediaKindFromContentType(contentType: string | undefined): Asset
   return "image";
 }
 
-/** 该通道接受哪些媒体类型;缺省视为 ['image']（今天的通道都面向图片）。none 通道不接受任何。 */
-export function ingestionAccepts(ingestion: AssetIngestion, kind: AssetMediaKind): boolean {
-  if (ingestion.strategy === "none") return false;
-  // 只有图片允许 base64 JSON；视频/音频必须走二进制 multipart/stream，避免把一个
-  // 几十 MB 的视频膨胀成 1.33× JSON 再撞上 413。
-  if (kind !== "image" && (ingestion.strategy === "inline-base64" || ingestion.strategy === "upload-url")) return false;
-  const accepts = ingestion.accepts ?? (["image"] as ReadonlyArray<AssetMediaKind>);
-  return accepts.includes(kind);
-}
-
-/** 递归收集任意 JSON 结构里所有 nomi-local URL(去重)。标量/数组元素/对象值都认。 */
+/** 递归收集任意 JSON 结构里所有待本地化素材值(nomi-local:// / data:,去重)。标量/数组元素/对象值都认。 */
 export function collectLocalAssetUrls(value: unknown, out: Set<string> = new Set()): Set<string> {
   if (isLocalAssetUrl(value)) out.add(value);
   else if (Array.isArray(value)) for (const item of value) collectLocalAssetUrls(item, out);
@@ -100,7 +126,64 @@ export function collectLocalAssetUrls(value: unknown, out: Set<string> = new Set
   return out;
 }
 
-/** 递归把结构里的 nomi-local URL 按映射替换(返回新结构,不改原对象)。 */
+/** 递归收集所有「谁都够不着」的素材值(blob:/file:)——判定与理由见 assetValueScheme.classifyAssetValue。 */
+export function collectUnreachableAssetValues(value: unknown, out: Set<string> = new Set()): Set<string> {
+  if (classifyAssetValue(value) === "unreachable") out.add(value as string);
+  else if (Array.isArray(value)) for (const item of value) collectUnreachableAssetValues(item, out);
+  else if (value && typeof value === "object") for (const item of Object.values(value)) collectUnreachableAssetValues(item, out);
+  return out;
+}
+
+/** 出站前拦住 blob:/file:：它们进 body 必错(vendor 拉不到),而这一步在付费守卫之前,失败零花费。 */
+function assertNoUnreachableAssetValues(value: unknown): void {
+  for (const unreachable of collectUnreachableAssetValues(value)) throw unreachableAssetValueError(unreachable);
+}
+
+/**
+ * 素材值 → 字节。`data:` 就地解码（零 IO，与 vendor 无关），其余交给注入的读盘器。
+ * 这是「本地素材只有 nomi-local:// 一种」那个假设的收口点：新增一种本地形态只改这里。
+ */
+function readLocalizableAsset(url: string, read: LocalAssetReader): LocalAsset | null {
+  if (classifyAssetValue(url) === "inline-data") return parseInlineDataAsset(url);
+  return read(url);
+}
+
+/** 上传前按全局媒体表核对本地图片字节；SVG 单独验证文本结构，其余格式必须命中对应魔数。 */
+export function assertLocalAssetMediaBytes(asset: LocalAsset, mediaKind = mediaKindFromContentType(asset.contentType)): void {
+  if (mediaKind !== "image") return;
+  const declared = asset.contentType.toLowerCase().split(";")[0].trim();
+  const sniffed = contentTypeFromMagicBytes(asset.bytes);
+  if (sniffed && !sniffed.startsWith("image/")) {
+    throw new Error(`图片素材「${asset.fileName}」的真实文件头是 ${sniffed}，不能作为图片上传。`);
+  }
+  if (declared === "image/svg+xml") {
+    const svg = asset.bytes.toString("utf8").trim();
+    try {
+      // SVG 素材只需结构验证，不需要 DTD；显式拒绝实体声明，避免外部实体与实体展开入口。
+      if (/<!DOCTYPE\b|<!ENTITY\b/i.test(svg)) throw new Error("DTD/entity is not allowed");
+      const document = new DOMParser({ onError: (_level, message) => { throw new Error(message); } })
+        .parseFromString(svg, "image/svg+xml");
+      if (document.documentElement?.localName?.toLowerCase() !== "svg"
+        || document.documentElement.namespaceURI !== "http://www.w3.org/2000/svg") throw new Error("root is not svg");
+      return;
+    } catch {
+      throw new Error(`图片素材「${asset.fileName}」声明为 SVG，但内容不是完整且安全的 SVG 文档。`);
+    }
+  }
+  const prefix = asset.bytes.subarray(0, 2048).toString("utf8");
+  if (/<!doctype\s+html|<html\b|<\?xml\b|<svg\b/i.test(prefix)) {
+    throw new Error(`图片素材「${asset.fileName}」的内容实际是 HTML/XML/SVG 文本，不是可用于视频生成的栅格图片。请重新导入原图。`);
+  }
+  const knownRasterTypes = new Set([
+    "image/png", "image/jpeg", "image/webp", "image/gif", "image/avif",
+    "image/bmp", "image/x-icon", "image/tiff", "image/heic",
+  ]);
+  if (knownRasterTypes.has(declared) && sniffed !== declared) {
+    throw new Error(`图片素材「${asset.fileName}」声明为 ${declared}，但文件头识别为 ${sniffed || "未知/损坏"}。请重新导入原图。`);
+  }
+}
+
+/** 递归把结构里的待本地化素材值按映射替换(返回新结构,不改原对象)。 */
 export function replaceLocalAssetUrls<T>(value: T, urlMap: Map<string, string>): T {
   if (isLocalAssetUrl(value)) return (urlMap.get(value) ?? value) as unknown as T;
   if (Array.isArray(value)) return value.map((item) => replaceLocalAssetUrls(item, urlMap)) as unknown as T;
@@ -126,12 +209,14 @@ export function assertLocalAssetTransportReady(
   const effectiveValue = options.minimizeUploads && options.activeAssetUrls
     ? pruneInactiveLocalAssets(value, new Set(options.activeAssetUrls))
     : value;
+  assertNoUnreachableAssetValues(effectiveValue);
   for (const url of collectLocalAssetUrls(effectiveValue)) {
-    const asset = read(url);
-    if (!asset) throw new Error(`参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${url}。请重新生成该节点或重新导入这张素材。`);
+    const asset = readLocalizableAsset(url, read);
+    if (!asset) throw new Error(`参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${describeAssetValue(url)}。请重新生成该节点或重新导入这张素材。`);
     if (!asset.contentType || asset.contentType.toLowerCase().split(";")[0].trim() === "application/octet-stream") {
-      throw new Error(`无法识别本地素材「${asset.fileName || url}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`);
+      throw new Error(`无法识别本地素材「${asset.fileName || describeAssetValue(url)}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`);
     }
+    assertLocalAssetMediaBytes(asset);
     if (trustedOriginalUrl(asset)) continue;
     const mediaKind = mediaKindFromContentType(asset.contentType);
     const candidates = resolveIngestion(mediaKind);
@@ -181,6 +266,12 @@ function hostLabel(ingestion: AssetIngestion): string {
   }
 }
 
+function authorizationHeaders(ingestion: AssetIngestion, apiKey: string): Record<string, string> {
+  if (!apiKey) return {};
+  const scheme = "authType" in ingestion && ingestion.authType === "key" ? "Key" : "Bearer";
+  return { Authorization: `${scheme} ${apiKey}` };
+}
+
 /** 把一个本地素材按 vendor 声明的策略解析成可达值(data:URI 或上传后的公网 URL)。 */
 export async function resolveLocalAsset(
   localUrl: string,
@@ -189,6 +280,7 @@ export async function resolveLocalAsset(
   read: LocalAssetReader,
   postJson: HttpPostJson,
   postMultipart: HttpPostMultipart,
+  putBinary: HttpPutBinary = async () => { throw new Error("当前上传通道需要 raw PUT 执行器"); },
 ): Promise<string> {
   if (ingestion.strategy === "none") {
     throw new Error("当前供应商不支持本地素材上传，请改用公网图片 URL(或为该供应商声明 assetIngestion)");
@@ -198,7 +290,7 @@ export async function resolveLocalAsset(
     const errors: string[] = [];
     for (const host of ingestion.chain) {
       try {
-        const url = await resolveLocalAsset(localUrl, host, "", read, postJson, postMultipart);
+        const url = await resolveLocalAsset(localUrl, host, "", read, postJson, postMultipart, putBinary);
         if (/^https?:\/\//i.test(url)) return url;
         errors.push(`${hostLabel(host)}: 返回非 http URL`);
       } catch (err) {
@@ -207,8 +299,9 @@ export async function resolveLocalAsset(
     }
     throw new Error(`所有免配置上传 host 都失败：${errors.join("；") || "(链为空)"}`);
   }
-  const asset = read(localUrl);
-  if (!asset) throw new Error(`参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${localUrl}。请重新生成该节点或重新导入这张素材。`);
+  const asset = readLocalizableAsset(localUrl, read);
+  if (!asset) throw new Error(`参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${describeAssetValue(localUrl)}。请重新生成该节点或重新导入这张素材。`);
+  assertLocalAssetMediaBytes(asset);
   // 本地 ComfyUI：LoadImage 只认上传回的 input 目录文件名（非公网 URL），故**跳过下面的 trustedOriginalUrl
   // 公网 URL 快路**，恒把本地字节 POST 到 /upload/image 换文件名（field 名 "image"、type=input、overwrite 避重名堆积）。
   if (ingestion.strategy === "comfyui-upload") {
@@ -235,13 +328,53 @@ export async function resolveLocalAsset(
   // multipart / stream 上传（视频走的就是这两条）白白在主进程上同步造一个 1.33× 文件大小的字符串
   // ——一段 200MB 的 mp4 = 267MB 字符串 + 一次同步 CPU 峰值，整个 app 当场卡住（R17 卡死一族同款）。
   const base64Of = () => asset.bytes.toString("base64");
-
   if (ingestion.strategy === "inline-base64") return `data:${asset.contentType};base64,${base64Of()}`;
+
+  if (ingestion.strategy === "upload-presigned") {
+    // Vendor-owned two-step upload (Runway Dev): initialize with the API key,
+    // then send the bytes to the returned signed URL without forwarding the
+    // key. The resulting runway:// URI stays private to the vendor and avoids
+    // the anonymous-host fallback entirely.
+    const initHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(ingestion.initHeaders || {}),
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    };
+    const initBody: Record<string, unknown> = {
+      ...(ingestion.initFields || {}),
+      [ingestion.filenameField || "filename"]: asset.fileName,
+      [ingestion.typeField || "type"]: "ephemeral",
+    };
+    const initialized = await postJson(ingestion.endpoint, initHeaders, initBody);
+    const uploadUrl = readNestedPath(initialized, ingestion.uploadUrlPath);
+    const uri = readNestedPath(initialized, ingestion.uriPath);
+    if (typeof uploadUrl !== "string" || !uploadUrl) {
+      throw new Error(`供应商上传初始化缺少 uploadUrl（期望路径 ${ingestion.uploadUrlPath}）`);
+    }
+    if (typeof uri !== "string" || !uri) {
+      throw new Error(`供应商上传初始化缺少资源 URI（期望路径 ${ingestion.uriPath}）`);
+    }
+    const rawFields = readNestedPath(initialized, ingestion.fieldsPath || "fields");
+    const fields = rawFields && typeof rawFields === "object"
+      ? Object.fromEntries(Object.entries(rawFields).map(([key, value]) => [key, String(value)]))
+      : undefined;
+    await postMultipart(
+      uploadUrl,
+      {}, // uploadUrl is signed; never forward the provider API key.
+      asset.bytes,
+      asset.fileName,
+      asset.contentType,
+      fields,
+      ingestion.uploadFileField || "file",
+    );
+    return uri;
+  }
 
   if (ingestion.strategy === "upload-multipart") {
     // multipart/form-data 上传（如 apimart POST /v1/uploads/images；litterbox 匿名临时托管）
-    // apiKey 为空时不发 Authorization（litterbox 匿名、nomi-relay 无鉴权中转端点）
-    const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+    // apiKey 为空时不发 Authorization（litterbox/tmpfiles 匿名）；Nomi relay
+    // 只有 token 配置完整时才会进入候选列表。
+    const headers = authorizationHeaders(ingestion, apiKey);
     const response = await postMultipart(
       ingestion.endpoint,
       headers,
@@ -273,7 +406,7 @@ export async function resolveLocalAsset(
   if (ingestion.strategy === "upload-stream") {
     // multipart 流式上传二进制(大文件高效,如 KIE file-stream-upload 收 mp4)。
     // file=二进制 + uploadPath(目录) + fileName,响应公网 URL 在 urlPath。
-    const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+    const headers = authorizationHeaders(ingestion, apiKey);
     const extraFields: Record<string, string> = {
       [ingestion.uploadPathField ?? "uploadPath"]: ingestion.uploadPath ?? "uploads",
       [ingestion.fileNameField ?? "fileName"]: asset.fileName,
@@ -286,6 +419,49 @@ export async function resolveLocalAsset(
     return url;
   }
 
+  if (ingestion.strategy === "upload-initiate-put") {
+    const initBody = {
+      [ingestion.initFileNameField ?? "file_name"]: asset.fileName,
+      [ingestion.initContentTypeField ?? "content_type"]: asset.contentType,
+    };
+    const response = await postJson(
+      ingestion.endpoint,
+      { "Content-Type": "application/json", ...authorizationHeaders(ingestion, apiKey) },
+      initBody,
+    );
+    const uploadUrl = readNestedPath(response, ingestion.uploadUrlPath);
+    const fileUrl = readNestedPath(response, ingestion.urlPath);
+    if (typeof uploadUrl !== "string" || !uploadUrl || typeof fileUrl !== "string" || !fileUrl) {
+      throw new Error(`上传初始化响应缺少 signed URL 或文件 URL(期望 ${ingestion.uploadUrlPath} / ${ingestion.urlPath})`);
+    }
+    await putBinary(uploadUrl, { "Content-Type": asset.contentType }, asset.bytes, asset.contentType);
+    return fileUrl;
+  }
+
+  if (ingestion.strategy === "upload-initiate-multipart") {
+    const response = await postJson(
+      ingestion.endpoint,
+      { "Content-Type": "application/json", ...authorizationHeaders(ingestion, apiKey) },
+      {
+        [ingestion.initFileNameField ?? "filename"]: asset.fileName,
+        [ingestion.initTypeField ?? "type"]: ingestion.initType ?? "ephemeral",
+      },
+    );
+    const uploadUrl = readNestedPath(response, ingestion.uploadUrlPath);
+    const fields = readNestedPath(response, ingestion.fieldsPath);
+    const uri = readNestedPath(response, ingestion.uriPath);
+    if (typeof uploadUrl !== "string" || !uploadUrl || !fields || typeof fields !== "object" || typeof uri !== "string" || !uri) {
+      throw new Error(`上传初始化响应缺少 signed 表单或 provider URI(期望 ${ingestion.uploadUrlPath} / ${ingestion.fieldsPath} / ${ingestion.uriPath})`);
+    }
+    const extraFields: Record<string, string> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (typeof value !== "string") throw new Error(`上传初始化字段 ${key} 不是字符串`);
+      extraFields[key] = value;
+    }
+    await postMultipart(uploadUrl, {}, asset.bytes, asset.fileName, asset.contentType, extraFields, ingestion.fileField ?? "file");
+    return uri;
+  }
+
   // upload-url（base64 JSON，如 KIE）
   const base64 = base64Of();
   const body: Record<string, unknown> = {
@@ -293,7 +469,7 @@ export async function resolveLocalAsset(
   };
   if (ingestion.uploadPathField) body[ingestion.uploadPathField] = ingestion.uploadPath ?? "uploads";
   if (ingestion.fileNameField) body[ingestion.fileNameField] = asset.fileName;
-  const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...authorizationHeaders(ingestion, apiKey) };
   const response = await postJson(ingestion.endpoint, headers, body);
   const url = readNestedPath(response, ingestion.urlPath);
   if (typeof url !== "string" || !url) {
@@ -305,7 +481,15 @@ export async function resolveLocalAsset(
 /** 按某素材的媒体类型选出**按优先级排好的**上传通道候选(+ 各自的 apiKey);无可用通道返回空数组。 */
 export type IngestionResolver = (
   mediaKind: AssetMediaKind,
-) => Array<{ ingestion: AssetIngestion; uploadApiKey: string }>;
+) => Array<IngestionCandidate>;
+
+/** 一条上传通道候选。`vendorKey` 是这条通道属于哪家(匿名公共托管为 null)——
+ *  上传本身用不到它,设置页的「现在走哪条」要靠它说出托管方名字(靠 endpoint 反猜 host 太脆)。 */
+export type IngestionCandidate = {
+  ingestion: AssetIngestion;
+  uploadApiKey: string;
+  vendorKey: string | null;
+};
 
 export type LocalizeAssetsOptions = {
   anonymousConsent?: AnonymousAssetConsent;
@@ -314,6 +498,10 @@ export type LocalizeAssetsOptions = {
 };
 
 function pruneInactiveLocalAssets(value: unknown, active: ReadonlySet<string>): unknown {
+  // 内联字节永远算「活的」：它是本次请求**当场带进来**的，不可能是画布上早已过期的残留引用
+  // （剪枝要解决的是那个）。若按 activeAssetUrls 名单剪，调用方自己拼名单时漏了它 = 参考被
+  // 静默丢掉照样出图照样扣费——这是本次修复最不该复制的失败形状。
+  if (classifyAssetValue(value) === "inline-data") return value;
   if (isLocalAssetUrl(value)) return active.has(value) ? value : undefined;
   if (Array.isArray(value)) return value.map((item) => pruneInactiveLocalAssets(item, active)).filter((item) => item !== undefined);
   if (value && typeof value === "object") {
@@ -341,13 +529,6 @@ function stripTransportHints(value: unknown): unknown {
   return value;
 }
 
-/** 人话文件大小（错误里要告诉用户「多大」，否则他没法判断该压到多少）。 */
-function humanSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`;
-  return `${bytes}B`;
-}
-
 const MEDIA_LABEL: Record<AssetMediaKind, string> = { image: "图片", video: "视频", audio: "音频" };
 
 /**
@@ -360,13 +541,18 @@ const MEDIA_LABEL: Record<AssetMediaKind, string> = { image: "图片", video: "�
 function allChannelsFailedError(asset: LocalAsset | null, mediaKind: AssetMediaKind, failures: string[]): Error {
   const what = asset ? `${asset.fileName}（${humanSize(asset.bytes.length)}）` : "这个素材";
   const detail = failures.join("；") || "(无候选通道)";
+  // 码标记(NOMI_ERR::)让渲染层 classifyError 按**码**归类,而不是 include 这句中文人话——
+  // 人话将来 i18n 化/改词都不影响分类(root-cause,替换脆弱的按文案匹配)。
   if (failures.some((line) => line.includes("HTTP 413"))) {
     return new Error(
-      `${MEDIA_LABEL[mediaKind]}「${what}」超过了所有可用上传通道的大小上限，传不上去。` +
-        `请把它压缩 / 裁短后再放进来，或在「模型接入」配置一个上传上限更高的通道。详情：${detail}`,
+      tagNomiError(
+        "asset-too-large",
+        `${MEDIA_LABEL[mediaKind]}「${what}」超过了所有可用上传通道的大小上限，传不上去。` +
+          `请把它压缩 / 裁短后再放进来，或在「模型接入」配置一个上传上限更高的通道。详情：${detail}`,
+      ),
     );
   }
-  return new Error(`素材上传失败：${what} 的所有上传通道都没成功。详情：${detail}`);
+  return new Error(tagNomiError("asset-upload-failed", `素材上传失败：${what} 的所有上传通道都没成功。详情：${detail}`));
 }
 
 /**
@@ -384,21 +570,24 @@ export async function localizeAssetsForVendor(
   postJson: HttpPostJson,
   postMultipart: HttpPostMultipart,
   options: LocalizeAssetsOptions = {},
+  putBinary: HttpPutBinary = async () => { throw new Error("当前上传通道需要 raw PUT 执行器"); },
 ): Promise<{ value: unknown; uploaded: number }> {
   const effectiveValue = options.minimizeUploads && options.activeAssetUrls
     ? pruneInactiveLocalAssets(value, new Set(options.activeAssetUrls))
     : value;
+  assertNoUnreachableAssetValues(effectiveValue);
   const urls = Array.from(collectLocalAssetUrls(effectiveValue));
   if (urls.length === 0) {
     return { value: effectiveValue === value ? value : stripTransportHints(effectiveValue), uploaded: 0 };
   }
   const urlMap = new Map<string, string>();
   for (const url of urls) {
-    const asset = read(url);
+    const asset = readLocalizableAsset(url, read);
     if (asset && (!asset.contentType || asset.contentType.toLowerCase().split(";")[0].trim() === "application/octet-stream")) {
-      throw new Error(`无法识别本地素材「${asset.fileName || url}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`);
+      throw new Error(`无法识别本地素材「${asset.fileName || describeAssetValue(url)}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`);
     }
     const mediaKind = mediaKindFromContentType(asset?.contentType);
+    if (asset) assertLocalAssetMediaBytes(asset, mediaKind);
     const candidates = resolveIngestion(mediaKind);
     // 本地 ComfyUI（comfyui-upload）：公网 URL 用不了，必须传到它自己的 input 目录换文件名 → 跳过 trusted 快路，恒上传。
     const skipTrusted = candidates[0]?.ingestion.strategy === "comfyui-upload";
@@ -436,14 +625,19 @@ export async function localizeAssetsForVendor(
         continue;
       }
       try {
-        resolvedValue = await resolveLocalAsset(url, candidate.ingestion, candidate.uploadApiKey, read, postJson, postMultipart);
+        resolvedValue = await resolveLocalAsset(url, candidate.ingestion, candidate.uploadApiKey, read, postJson, postMultipart, putBinary);
         break;
       } catch (error) {
         failures.push(`${hostLabel(candidate.ingestion)}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     if (resolvedValue === null) {
-      if (consentRequired) throw new AnonymousAssetConsentRequiredError();
+      // Do not hide a failed provider-owned upload behind the anonymous-hosting
+      // consent prompt.  That turned a concrete Runway/KIE 4xx into a generic
+      // privacy dialog, leaving users unable to repair the actual contract.
+      const privateFailures = failures.filter((line) => !line.includes("需要先确认公共临时托管"));
+      if (consentRequired && privateFailures.length === 0) throw new AnonymousAssetConsentRequiredError();
+      if (consentRequired && privateFailures.length > 0) throw allChannelsFailedError(asset, mediaKind, privateFailures);
       throw allChannelsFailedError(asset, mediaKind, failures);
     }
     urlMap.set(url, resolvedValue);
@@ -452,139 +646,51 @@ export async function localizeAssetsForVendor(
 }
 
 /**
- * Curated 供应商的吞入策略注册表(代码级单源,不依赖持久化目录——curated 传输塑形本就住代码,
- * 见 kieSeedance.ts)。onboarding 自接的 vendor 走 Vendor.assetIngestion(持久化)。
+ * 可选的 Nomi-owned relay。R2 credential 只放在 Worker，Electron 只拿部署者显式注入的
+ * endpoint/token；未配置时返回 null，设置页不会谎报「Nomi relay 已启用」。
  */
-const CURATED_ASSET_INGESTION: Record<string, AssetIngestion> = {
-  // KIE:免费通用文件托管 → 临时公网 URL(文件 ~3天,够一次生成)。docs.kie.ai/file-upload-api
-  // 图片走 base64(file-base64-upload);视频/音频走 stream(见 CURATED_VIDEO_INGESTION,base64 对 mp4 低效)。
-  kie: {
-    strategy: "upload-url",
-    endpoint: "https://kieai.redpandaai.co/api/file-base64-upload",
-    base64Field: "base64Data",
-    dataUrlPrefix: true,
-    uploadPathField: "uploadPath",
-    uploadPath: "images/nomi",
-    fileNameField: "fileName",
-    urlPath: "data.downloadUrl",
-    accepts: ["image"],
-    visibility: "provider-private",
-    ttlSeconds: 24 * 60 * 60,
-  },
-  // apimart:POST /v1/uploads/images（multipart/form-data），返回有效 72h 公网 URL（field: url）。
-  // 仅图片：该端点是 image-only（jpeg/png/webp/gif,20MB），收 mp4 会 HTTP 400。视频走 KIE/relay。
-  apimart: { strategy: "upload-multipart", endpoint: "https://api.apimart.ai/v1/uploads/images", urlPath: "url", accepts: ["image"], visibility: "provider-private", ttlSeconds: 72 * 60 * 60 },
-  // 魔搭：改图（Qwen-Image-Edit）的 image_url 直收 data URL（真实 E2E 验证 2026-06-19），无需上传端点。仅图片。
-  modelscope: { strategy: "inline-base64", accepts: ["image"] },
-};
-
-// 视频/音频专用上传通道(按 vendor)。KIE file-stream-upload:multipart 流式二进制,大文件高效(~33%),
-// 返回公网 downloadUrl。docs.kie.ai/file-upload-api/upload-file-stream
-const CURATED_VIDEO_INGESTION: Record<string, AssetIngestion> = {
-  kie: {
-    strategy: "upload-stream",
-    endpoint: "https://kieai.redpandaai.co/api/file-stream-upload",
-    uploadPathField: "uploadPath",
-    uploadPath: "videos/nomi",
-    fileNameField: "fileName",
-    urlPath: "data.downloadUrl",
-    accepts: ["image", "video", "audio"],
-    visibility: "provider-private",
-    ttlSeconds: 24 * 60 * 60,
-  },
-};
-
-/**
- * litterbox（catbox.moe 匿名临时文件托管）：零配置兜底通道——无 key、无账号、收任意文件。
- * POST https://litterbox.catbox.moe/resources/internals/api.php，multipart：
- *   reqtype=fileupload, time=<有效期>, fileToUpload=<二进制>。无 Authorization（匿名）。
- * 响应体是**纯文本直链**（非 JSON），如 "https://litter.catbox.moe/abc123.mp4"。
- * accepts 全媒体类型（它收任何文件）。用作视频上传的零配置兜底：目标 vendor 与 KIE 都没有
- * 视频通道时仍能"开箱即用"。
- *
- * `time` 官方允许 1h / 12h / 24h / 72h（litterbox.catbox.moe/tools.php 2026-07-31 核）。
- * **取 24h 而非最短的 1h**：厂商要求「URL 有效期覆盖完整的素材预处理和视频生成周期」，而视频
- * 排队 + 生成 + 我们这侧的轮询窗（慢道硬超时 20min）叠起来，1h 会在长队列里中途过期 —— 表现为
- * 提交成功、生成到一半厂商拉不到图。取 24h 不取 72h 是因为匿名上传**没有删除 API**（只能等过期），
- * 用户的参考图（常是角色定妆照）在公网多躺一天就多一分暴露，够用即止。
- */
-export const LITTERBOX_INGESTION: AssetIngestion = {
-  strategy: "upload-multipart",
-  endpoint: "https://litterbox.catbox.moe/resources/internals/api.php",
-  responseIsPlainTextUrl: true,
-  fileField: "fileToUpload",
-  extraFields: { reqtype: "fileupload", time: "24h" },
-  accepts: ["image", "video", "audio"],
-  visibility: "public-anonymous",
-  ttlSeconds: 24 * 60 * 60,
-  requiresConsent: true,
-};
-
-/**
- * tmpfiles.org：第二个零配置兜底 host——无 key、无账号、收任意文件。
- * POST https://tmpfiles.org/api/v1/upload，multipart：file=<二进制>。无 Authorization（匿名）。
- * 响应 JSON：{"status":"success","data":{"url":"https://tmpfiles.org/<id>/<name>"}}。
- * ⚠️ data.url 是**页面 URL**；vendor 必须 fetch 的是**直链**——host 后插 "/dl/"
- * (tmpfiles.org/<id>/<name> → tmpfiles.org/dl/<id>/<name>)。故 urlTransform 做这次替换。
- * accepts 全媒体类型（收任何文件）。
- */
-export const TMPFILES_INGESTION: AssetIngestion = {
-  strategy: "upload-multipart",
-  endpoint: "https://tmpfiles.org/api/v1/upload",
-  fileField: "file",
-  urlPath: "data.url",
-  urlTransform: { search: "tmpfiles.org/", replace: "tmpfiles.org/dl/" },
-  accepts: ["image", "video", "audio"],
-  visibility: "public-anonymous",
-  ttlSeconds: 60 * 60,
-  requiresConsent: true,
-};
-
-/**
- * 匿名上传 fallback 链(有序)：bake-in 的免 key 免账号公共托管。逐个试,谁先成功用谁。
- * litterbox(catbox)优先 → tmpfiles.org 兜底。单 host 限速/宕机/封禁时自动切下一个,
- * 全失败才抛诚实错误。两者都无 key、收任意文件(全媒体类型),故"开箱即用"永不要求用户配 key。
- */
-export const ANON_UPLOAD_CHAIN: AssetIngestion = {
-  strategy: "anon-chain",
-  chain: [LITTERBOX_INGESTION, TMPFILES_INGESTION],
-  accepts: ["image", "video", "audio"],
-  visibility: "public-anonymous",
-  ttlSeconds: 60 * 60,
-  requiresConsent: true,
-};
-
-/** 取某 vendor 的吞入策略:优先持久化声明,回退 curated 注册表。 */
-export function resolveAssetIngestion(vendor: { key?: string; assetIngestion?: AssetIngestion } | null | undefined): AssetIngestion | null {
-  if (!vendor) return null;
-  if (vendor.assetIngestion) return vendor.assetIngestion;
-  if (vendor.key && CURATED_ASSET_INGESTION[vendor.key]) return CURATED_ASSET_INGESTION[vendor.key];
-  return null;
+function relayCandidate(config: { endpoint: string; token: string }): IngestionCandidate | null {
+  const endpoint = config.endpoint;
+  const uploadApiKey = config.token;
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:" && !(url.hostname === "127.0.0.1" || url.hostname === "localhost")) return null;
+  } catch {
+    return null;
+  }
+  return {
+    ingestion: {
+      strategy: "upload-multipart",
+      endpoint,
+      fileField: "file",
+      urlPath: "url",
+      authType: "bearer",
+      accepts: ["image", "video", "audio"],
+      visibility: "public-provider",
+      ttlSeconds: 24 * 60 * 60,
+      ...(uploadApiKey ? { authType: "bearer" as const } : {}),
+    },
+    uploadApiKey,
+    vendorKey: "nomi-relay",
+  };
 }
 
-/**
- * 取某 vendor 接受给定媒体类型的吞入策略。图片走主声明;视频/音频优先取该 vendor 的专用视频通道
- * (如 KIE stream),再回退主声明(若它本身 accepts 该类型)。该类型无任何可接受通道时返回 null。
- */
-export function resolveAssetIngestionForKind(
-  vendor: { key?: string; assetIngestion?: AssetIngestion } | null | undefined,
-  kind: AssetMediaKind,
-): AssetIngestion | null {
-  if (!vendor) return null;
-  if (kind !== "image" && vendor.key && CURATED_VIDEO_INGESTION[vendor.key]) {
-    const video = CURATED_VIDEO_INGESTION[vendor.key];
-    if (ingestionAccepts(video, kind)) return video;
-  }
-  const primary = resolveAssetIngestion(vendor);
-  if (primary && ingestionAccepts(primary, kind)) return primary;
-  return null;
+/** 自定义/自部署 Relay：环境变量或设置页配置；没有自定义配置时返回 null。 */
+export function nomiAssetRelayCandidateFromEnvironment(): IngestionCandidate | null {
+  const config = readAssetRelayRuntimeConfig();
+  return config.source === "default" ? null : relayCandidate(config);
+}
+
+/** Nomi 官方受限公共 Relay：桌面端内置地址，不需要把 R2 Secret 发给用户。 */
+export function nomiPublicAssetRelayCandidate(): IngestionCandidate | null {
+  return relayCandidate(readDefaultAssetRelayRuntimeConfig());
 }
 
 /**
  * 通用素材上传策略解析（带跨供应商 fallback + 内容类型感知）。
  *
- * 返回**按优先级排好的候选通道列表**（不是单个）：目标 vendor 自身 → KIE（免费,通用文件托管,接图/
- * 视频/音频）→ apimart（免费 72h,仅图片）→ 其他接受该类型且有上传能力的供应商 → 匿名链（零配置兜底）。
+ * 返回**按优先级排好的候选通道列表**（不是单个）：目标 vendor 自身 → 其他已配置供应商的上传 API
+ *（包括 KIE/APIMart）→ Nomi relay（受控兜底）→ 匿名链（零配置兜底）。
  * 调用方从头试，一条挂了换下一条。
  *
  * 为什么必须是列表（2026-08-20 用户报 HTTP 413）：此前只返回**第一条**，那条一失败整个生成就死。
@@ -602,16 +708,16 @@ export function resolveAssetIngestionWithFallback(
   allVendors: Array<{ key?: string; assetIngestion?: AssetIngestion }>,
   getApiKey: (vendorKey: string) => string | null,
   mediaKind: AssetMediaKind = "image",
-): Array<{ ingestion: AssetIngestion; uploadApiKey: string }> {
-  const candidates: Array<{ ingestion: AssetIngestion; uploadApiKey: string }> = [];
+): Array<IngestionCandidate> {
+  const candidates: Array<IngestionCandidate> = [];
   const seen = new Set<string>();
   // 同一个物理端点只试一次（目标 vendor 恰好就是 KIE 时会被推两遍）。
-  const push = (ingestion: AssetIngestion | null | undefined, uploadApiKey: string) => {
+  const push = (ingestion: AssetIngestion | null | undefined, uploadApiKey: string, vendorKey: string | null) => {
     if (!ingestion || ingestion.strategy === "none") return;
     const id = ingestion.strategy === "anon-chain" ? "anon-chain" : `${ingestion.strategy}:${hostLabel(ingestion)}`;
     if (seen.has(id)) return;
     seen.add(id);
-    candidates.push({ ingestion, uploadApiKey });
+    candidates.push({ ingestion, uploadApiKey, vendorKey });
   };
   // 本地 ComfyUI：素材必须传到它自己的 /upload/image 换本地文件名（LoadImage/LoadVideo 都不认公网 URL），
   // 不走 KIE/apimart 中转（那给公网 URL）。端点从 vendor baseUrl 动态派生（用户可改地址）。
@@ -621,34 +727,43 @@ export function resolveAssetIngestionWithFallback(
   // 它是**唯一**候选，不给 fallback：公网 URL 对 LoadImage 没用，换通道等于换成一个必错的值。
   if (isComfyuiVendor(targetVendor) && (mediaKind === "image" || mediaKind === "video")) {
     const base = String(targetVendor?.baseUrlHint || "http://127.0.0.1:8188").replace(/\/+$/, "");
-    return [{ ingestion: { strategy: "comfyui-upload", endpoint: `${base}/upload/image`, accepts: ["image", "video"] }, uploadApiKey: "" }];
+    return [{ ingestion: { strategy: "comfyui-upload", endpoint: `${base}/upload/image`, accepts: ["image", "video"] }, uploadApiKey: "", vendorKey: targetVendor?.key ?? null }];
   }
   // 1. 目标供应商自己接受该类型 → 直接用（apiKey 也是目标供应商的）
   const targetIngestion = resolveAssetIngestionForKind(targetVendor, mediaKind);
   if (targetIngestion && targetIngestion.strategy !== "none") {
     const key = targetVendor?.key ? (getApiKey(targetVendor.key) ?? "") : "";
-    push(targetIngestion, key);
+    push(targetIngestion, key, targetVendor?.key ?? null);
   }
-  // 2. KIE：免费上传，通用文件托管（图/视频/音频），返回公网 URL，所有供应商均可用该 URL
-  const kieKey = getApiKey("kie");
-  if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey);
-  // 3. apimart：免费上传（72h，仅图片），目标不是 apimart 本身时才用（避免 key 二选一歧义）
-  if (targetVendor?.key !== "apimart") {
-    const apimartKey = getApiKey("apimart");
-    if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey);
-  }
-  // 4. 其他任意接受该类型且有上传能力（非 inline-base64）的已配供应商
+  // 2. 其他已配置供应商的上传 API。catalog 顺序是既有供应商选择顺序，
+  // 不因部署了 Nomi relay 而把所有素材先写入我们的 R2。
   for (const vendor of allVendors) {
     if (!vendor.key || vendor.key === targetVendor?.key) continue;
     const ing = resolveAssetIngestionForKind(vendor, mediaKind);
     if (!ing || ing.strategy === "none" || ing.strategy === "inline-base64") continue;
     const key = getApiKey(vendor.key);
-    if (key) push(ing, key);
+    if (key) push(ing, key, vendor.key);
+  }
+  // 3. KIE/APIMart 可能未出现在旧存量 catalog；已配置时补入，push 去重。
+  const kieKey = getApiKey("kie");
+  if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey, "kie");
+  if (targetVendor?.key !== "apimart") {
+    const apimartKey = getApiKey("apimart");
+    if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey, "apimart");
+  }
+  // 4. Nomi relay：用户自己的 Relay 优先于 Nomi 公共 Relay，二者均只作为受控兜底。
+  const nomiRelay = nomiAssetRelayCandidateFromEnvironment();
+  if (nomiRelay && ingestionAccepts(nomiRelay.ingestion, mediaKind)) {
+    push(nomiRelay.ingestion, nomiRelay.uploadApiKey, nomiRelay.vendorKey);
+  }
+  const nomiPublicRelay = nomiPublicAssetRelayCandidate();
+  if (nomiPublicRelay && ingestionAccepts(nomiPublicRelay.ingestion, mediaKind)) {
+    push(nomiPublicRelay.ingestion, nomiPublicRelay.uploadApiKey, nomiPublicRelay.vendorKey);
   }
   // 5. 匿名上传链：零配置兜底（无 key、收任意文件 → 临时公网直链）。多 host 有序 fallback
   //    (litterbox → tmpfiles)，单 host 限速/宕机时自动切下一个。走到这里说明上面更优的通道都没命中
   //    （图片几乎总有 apimart；视频缺 KIE 时此处接住）。NET：上传零配置"开箱即用"，诚实错误
   //    只在链里**所有** host 都不可达时才触发。
-  if (ingestionAccepts(ANON_UPLOAD_CHAIN, mediaKind)) push(ANON_UPLOAD_CHAIN, "");
+  if (ingestionAccepts(ANON_UPLOAD_CHAIN, mediaKind)) push(ANON_UPLOAD_CHAIN, "", null);
   return candidates;
 }

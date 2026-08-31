@@ -143,12 +143,17 @@ export function isChecklistExpired(now: number): boolean {
   return now - firstShown >= CHECKLIST_TTL_MS
 }
 
-/** 清单折叠态（跨会话记住用户上次是否收起；默认展开）。 */
+/**
+ * 清单折叠态（跨会话记住用户上次是否收起）。**默认收起**（2026-08-25 走查 F4）：
+ * 清单是被动进度指示，开屏就摊开的 fixed 覆盖层会盖住创作区右侧 AI 面板的工作按钮
+ *（如「拆成镜头·落画布」）并吞掉点击。入口 pill（N/4）仍常驻顶栏可见，想看点开即可。
+ * 只有用户**显式点开过**（写入 '0'）才恢复展开；absent / '1' 一律收起。
+ */
 export function readChecklistCollapsed(): boolean {
   try {
-    return window.localStorage.getItem(CHECKLIST_COLLAPSED_KEY) === '1'
+    return window.localStorage.getItem(CHECKLIST_COLLAPSED_KEY) !== '0'
   } catch {
-    return false
+    return true
   }
 }
 

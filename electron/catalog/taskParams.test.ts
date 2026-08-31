@@ -100,9 +100,85 @@ describe("firstReferenceImage — 单图首选", () => {
     expect(firstReferenceImage({ extras: { referenceImages: ["r.png"] } })).toBe("r.png");
     expect(firstReferenceImage({ extras: {} })).toBe("");
   });
+
+  it("valid Comfy exact contract ignores stale aggregate aliases", () => {
+    const exactPending = {
+      modelKey: "workflow", modelVendor: "comfyui-local",
+      parameterReferenceSlots: {
+        modelKey: "workflow", vendorKey: "comfyui-local",
+        slots: [{ key: "comfy_image_1", label: "Reference", group: "reference", mediaKind: "image" }],
+      },
+      comfy_image_1: null,
+      firstFrameUrl: "https://stale.test/frame.png",
+      referenceImages: ["https://stale.test/reference.png"],
+    };
+    expect(firstReferenceImage({ extras: exactPending })).toBe("");
+    expect(firstReferenceImage({ extras: {
+      ...exactPending,
+      comfy_image_1: "https://exact.test/reference.png",
+    } })).toBe("https://exact.test/reference.png");
+  });
+});
+
+describe("taskTemplateParams — explicit media slots precede aggregate fallbacks", () => {
+  it("keeps the archetype projection authoritative over explicit and aggregate values", () => {
+    expect(taskTemplateParams({ extras: {
+      first_frame_url: "explicit.png", firstFrameUrl: "fallback.png",
+      archetypeInput: { first_frame_url: null },
+    } }).first_frame_url).toBeNull();
+  });
+
+  it.each([null, []] as const)("binds exact Comfy %j authority to the actually selected vendor and model", (pending) => {
+    const extras = {
+      modelKey: "workflow", modelVendor: "comfyui-local",
+      parameterReferenceSlots: {
+        modelKey: "workflow", vendorKey: "comfyui-local",
+        slots: [{ key: "reference_images", label: "Reference", group: "reference", mediaKind: "image" }],
+      },
+      reference_images: pending,
+      referenceImages: ["nomi-local://asset/project/fallback.png"],
+    };
+    expect(taskTemplateParams({ extras }, { vendorKey: "comfyui-local", modelKey: "workflow" }).reference_images)
+      .toEqual(pending);
+    expect(taskTemplateParams({ extras }, { vendorKey: "antigravity-cli", modelKey: "generate_image" }).reference_images)
+      .toEqual(["nomi-local://asset/project/fallback.png"]);
+    expect(firstReferenceImage({ extras }, { vendorKey: "antigravity-cli", modelKey: "generate_image" }))
+      .toBe("nomi-local://asset/project/fallback.png");
+  });
+
+  it.each([
+    ["image_url", "first.png"], ["first_frame_url", "first.png"], ["last_frame_url", "last.png"],
+    ["source_video_url", "fallback.mp4"], ["reference_images", ["fallback.png"]],
+    ["reference_image_urls", ["fallback.png"]], ["reference_video_urls", ["fallback.mp4"]],
+    ["reference_audio_urls", ["fallback.mp3"]],
+  ] as const)("empty defaults do not mask populated legacy %s values", (key, expected) => {
+    for (const empty of ["", "   ", undefined]) {
+      const params = taskTemplateParams({ extras: {
+        [key]: empty, firstFrameUrl: "first.png", lastFrameUrl: "last.png",
+        referenceImages: ["fallback.png"], referenceImageUrls: ["fallback.png"],
+        referenceVideoUrls: ["fallback.mp4"], referenceAudioUrls: ["fallback.mp3"],
+      } });
+      expect(params[key]).toEqual(expected);
+    }
+  });
 });
 
 describe("hasImageEditReferences — L3 诚实护栏判定（图生图/图生视频是否真带了参考）", () => {
+  const declaredExtras = (
+    slots: Array<{ key: string; mediaKind?: "image" | "video" }>,
+    values: Record<string, unknown>,
+    vendorKey = "comfyui-local",
+  ) => ({
+    modelKey: "workflow",
+    modelVendor: vendorKey,
+    parameterReferenceSlots: {
+      modelKey: "workflow",
+      vendorKey,
+      slots: slots.map((slot) => ({ ...slot, label: slot.key, group: "reference" })),
+    },
+    ...values,
+  });
+
   it("空 extras → false", () => {
     expect(hasImageEditReferences({ extras: {} })).toBe(false);
     expect(hasImageEditReferences({})).toBe(false);
@@ -124,6 +200,132 @@ describe("hasImageEditReferences — L3 诚实护栏判定（图生图/图生视
   });
   it("firstFrameUrl 单图口径 → true", () => {
     expect(hasImageEditReferences({ extras: { firstFrameUrl: "https://cdn/f.png" } })).toBe(true);
+  });
+  it("Comfy 单个或多个已填 image 参数 → true，pending null 不计入", () => {
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: "https://cdn/single.png" },
+    ) })).toBe(true);
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_image_1" }, { key: "comfy_image_2", mediaKind: "image" }],
+      { comfy_image_1: null, comfy_image_2: "nomi-local://asset/p/second.png" },
+    ) })).toBe(true);
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: null },
+    ) })).toBe(false);
+  });
+  const staleGenericReferences: Array<[string, Record<string, unknown>]> = [
+    ["image", { image: "https://stale.test/image.png" }],
+    ["image_url", { image_url: "https://stale.test/image.png" }],
+    ["imageUrl", { imageUrl: "https://stale.test/image.png" }],
+    ["referenceImages", { referenceImages: ["https://stale.test/image.png"] }],
+    ["referenceImageUrl", { referenceImageUrl: "https://stale.test/image.png" }],
+    ["referenceImageUrls", { referenceImageUrls: ["https://stale.test/image.png"] }],
+    ["reference_images", { reference_images: ["https://stale.test/image.png"] }],
+    ["reference_image_urls", { reference_image_urls: ["https://stale.test/image.png"] }],
+    ["firstFrameUrl", { firstFrameUrl: "https://stale.test/first.png" }],
+    ["first_frame_url", { first_frame_url: "https://stale.test/first.png" }],
+    ["lastFrameUrl", { lastFrameUrl: "https://stale.test/last.png" }],
+    ["last_frame_url", { last_frame_url: "https://stale.test/last.png" }],
+    ["referenceVideoUrls", { referenceVideoUrls: ["https://stale.test/video.mp4"] }],
+    ["sourceVideoUrl", { sourceVideoUrl: "https://stale.test/video.mp4" }],
+    ["referenceAudioUrls", { referenceAudioUrls: ["https://stale.test/audio.mp3"] }],
+    ["styleReferenceImages", { styleReferenceImages: ["https://stale.test/style.png"] }],
+    ["characterReferenceImages", { characterReferenceImages: ["https://stale.test/character.png"] }],
+    ["compositionReferenceImages", { compositionReferenceImages: ["https://stale.test/composition.png"] }],
+    ["upstreamResultUrls", { upstreamResultUrls: ["https://stale.test/upstream.png"] }],
+    ["activeAssetUrls", { activeAssetUrls: ["https://stale.test/active.png"] }],
+    ["archetypeInput", { archetypeInput: { input_urls: ["https://stale.test/archetype.png"] } }],
+  ];
+  it.each(staleGenericReferences)("valid Comfy pending image contract ignores stale generic %s", (_name, stale) => {
+    const extras = declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: null, ...stale },
+    );
+    expect(hasImageEditReferences({ extras })).toBe(false);
+  });
+  it("valid Comfy contract uses only exact structural image inputs", () => {
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: "https://exact.test/reference.png", referenceImages: ["https://stale.test/reference.png"] },
+    ) })).toBe(true);
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_video_1", mediaKind: "video" }],
+      { comfy_video_1: "https://exact.test/video.mp4", referenceImages: ["https://stale.test/reference.png"] },
+    ) })).toBe(false);
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [],
+      { comfy_input_image: "https://not-media.test/text", referenceImages: ["https://stale.test/reference.png"] },
+    ) })).toBe(false);
+  });
+  it("invalid Comfy and non-Comfy declarations retain the legacy generic guard", () => {
+    const invalid = declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: null, referenceImages: ["https://legacy.test/reference.png"] },
+    );
+    invalid.parameterReferenceSlots.vendorKey = "other";
+    expect(hasImageEditReferences({ extras: invalid })).toBe(true);
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [],
+      { referenceImages: ["https://legacy.test/reference.png"] },
+      "custom",
+    ) })).toBe(true);
+  });
+  it("reachability and headless projection also ignore stale generics behind a pending exact contract", () => {
+    const extras = declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: null, referenceImages: ["https://stale.test/reference.png"] },
+    );
+    const body = { image: "{{request.params.comfy_image_1}}" };
+    expect(unreachableReferenceLabels({ extras }, body)).toEqual([]);
+    expect(projectReferencesOntoBodyKeys(extras, { image_urls: "{{request.params.image_urls}}" })).toEqual({});
+  });
+  it("Comfy video 参数、失效声明和任意字符串参数都不冒充 image 参考", () => {
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_video_1", mediaKind: "video" }],
+      { comfy_video_1: "https://cdn/clip.mp4" },
+    ) })).toBe(false);
+    expect(hasImageEditReferences({ extras: {
+      ...declaredExtras([{ key: "comfy_image_1", mediaKind: "image" }], { comfy_image_1: "https://cdn/stale.png" }),
+      modelKey: "replacement-workflow",
+    } })).toBe(false);
+    expect(hasImageEditReferences({ extras: { comfy_image_1: "https://cdn/arbitrary.png" } })).toBe(false);
+  });
+  it("允许精确 Comfy 槽在上传后使用 input 文件名继续通过媒体护栏", () => {
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: "certification-reference-1.png" },
+    ) })).toBe(true);
+    expect(hasImageEditReferences({ extras: declaredExtras(
+      [{ key: "comfy_video_1", mediaKind: "video" }],
+      { comfy_video_1: "certification-reference-1.mp4" },
+    ) })).toBe(false);
+  });
+  it("non-Comfy keyed declarations keep relying on their legacy generic alias", () => {
+    const extras = declaredExtras(
+      [{ key: "custom_image", mediaKind: "image" }],
+      { custom_image: "https://cdn/custom.png" },
+      "custom",
+    );
+    expect(hasImageEditReferences({ extras })).toBe(false);
+    expect(hasImageEditReferences({ extras: { ...extras, referenceImages: ["https://cdn/custom.png"] } })).toBe(true);
+  });
+
+  it("checks declared Comfy media against the exact body parameter without generic projection", () => {
+    const extras = declaredExtras(
+      [{ key: "comfy_image_1", mediaKind: "image" }],
+      { comfy_image_1: "https://cdn/reference.png" },
+    );
+    expect(unreachableReferenceLabels(
+      { extras },
+      { image: "{{request.params.comfy_image_1}}" },
+    )).toEqual([]);
+    expect(unreachableReferenceLabels(
+      { extras },
+      { image: "{{request.params.different_image_key}}" },
+    )).toEqual(["参考图"]);
+    expect(taskTemplateParams({ extras })).not.toHaveProperty("referenceImages");
   });
 });
 
@@ -183,5 +385,135 @@ describe("projectReferencesOntoBodyKeys — headless 参考键形态投影（W1d
   it("无任何携带参考 → 空对象（零开销）", () => {
     expect(projectReferencesOntoBodyKeys({}, editBody)).toEqual({});
     expect(projectReferencesOntoBodyKeys(undefined, editBody)).toEqual({});
+  });
+});
+
+describe("declared numeric and negative controls", () => {
+  it("preserves extras seed and negative_prompt when top-level request fields are absent", () => {
+    const params = taskTemplateParams({ extras: { seed: "123", negative_prompt: "blur" } });
+    expect(params.seed).toBe(123);
+    expect(params.negative_prompt).toBe("blur");
+  });
+  it("top-level request values win over extras, including seed zero", () => {
+    const params = taskTemplateParams({ seed: 0, negativePrompt: "noise", extras: { seed: "123", negative_prompt: "blur" } });
+    expect(params.seed).toBe(0);
+    expect(params.negative_prompt).toBe("noise");
+  });
+});
+
+describe("projectReferencesOntoBodyKeys — 帧意图优先（2026-08-27 真机 422 的回归）", () => {
+  // Wan 3.0（kie）真实 seed body：**同时**声明帧键与参考数组键，而官方规定两族硬互斥。
+  const wan30Body = {
+    model: "{{request.params.model}}",
+    input: {
+      prompt: "{{request.prompt}}",
+      first_frame_url: "{{request.params.first_frame_url}}",
+      last_frame_url: "{{request.params.last_frame_url}}",
+      reference_image_urls: "{{request.params.reference_image_urls}}",
+      reference_video_urls: "{{request.params.reference_video_urls}}",
+      reference_audio_urls: "{{request.params.reference_audio_urls}}",
+    },
+  };
+  const FIRST = "https://x/first.png";
+  const LAST = "https://x/last.png";
+
+  // 病史：扁平 firstFrameUrl 被「每族优先数组键」的启发式塞进 reference_image_urls，
+  // 而标准键 firstFrameUrl 又原样留着 → 渲染出的 body 两族键同时出现 → kie HTTP 422
+  // "first_frame_url / last_frame_url and reference_*_urls are mutually exclusive"。
+  // 只有渲染层（按选中模式构造 archetypeInput）躲过了，headless/MCP/agent 提交全中。
+  it("扁平 firstFrameUrl 只落帧键，**绝不**同时填参考数组键", () => {
+    const overlay = projectReferencesOntoBodyKeys({ firstFrameUrl: FIRST }, wan30Body);
+    expect(overlay).toEqual({ first_frame_url: FIRST });
+    // 负例对照：数组键一旦回来就红——这正是 422 的直接成因。
+    expect(overlay).not.toHaveProperty("reference_image_urls");
+    expect(Object.keys(overlay)).toHaveLength(1);
+  });
+
+  it("首尾帧各归各位，仍不碰参考数组", () => {
+    const overlay = projectReferencesOntoBodyKeys({ firstFrameUrl: FIRST, lastFrameUrl: LAST }, wan30Body);
+    expect(overlay).toEqual({ first_frame_url: FIRST, last_frame_url: LAST });
+    expect(overlay).not.toHaveProperty("reference_image_urls");
+  });
+
+  it("只给参考图列表时照旧走数组键（没把这条路修死）", () => {
+    const overlay = projectReferencesOntoBodyKeys({ referenceImageUrls: ["https://x/a.png", "https://x/b.png"] }, wan30Body);
+    expect(overlay).toEqual({ reference_image_urls: ["https://x/a.png", "https://x/b.png"] });
+  });
+
+  it("调用方**自己**同时给了首帧与参考图 → 各归各位（这个组合是他要的，不是我们造的）", () => {
+    // 我们只保证不**发明**互斥组合；调用方显式要的组合照发，由上游按自己的规则裁决。
+    const overlay = projectReferencesOntoBodyKeys({ firstFrameUrl: FIRST, referenceImageUrls: ["https://x/a.png"] }, wan30Body);
+    expect(overlay).toEqual({ first_frame_url: FIRST, reference_image_urls: ["https://x/a.png"] });
+  });
+
+  it("UI 路逐字节 no-op（archetypeInput 权威，短路投影）", () => {
+    const overlay = projectReferencesOntoBodyKeys(
+      { firstFrameUrl: FIRST, archetypeInput: { first_frame_url: FIRST } },
+      wan30Body,
+    );
+    expect(overlay).toEqual({});
+  });
+
+  it("body **没有**帧键时，首帧照旧落进数组键（Wan 2.7 / HappyHorse 用 image_urls 兼作首帧位）", () => {
+    // 这条守的是「别把修复做过头」：帧意图优先只在 body 真有帧键时生效。
+    const wan27Body = { model: "m", image_urls: "{{request.params.image_urls}}" };
+    expect(projectReferencesOntoBodyKeys({ firstFrameUrl: FIRST }, wan27Body)).toEqual({ image_urls: [FIRST] });
+  });
+
+  it("控制开关键不是帧载体：return_last_frame 不许接走首帧", () => {
+    // seedance 的 return_last_frame（返回尾帧图的布尔开关）名字里有 frame，但它是开关不是载体。
+    // 误判会让首帧落到一个布尔位上，真正的图一张都发不出去。
+    const body = { image_urls: "{{request.params.image_urls}}", return_last_frame: "{{request.params.return_last_frame}}" };
+    const overlay = projectReferencesOntoBodyKeys({ firstFrameUrl: FIRST }, body);
+    expect(overlay).toEqual({ image_urls: [FIRST] });
+    expect(overlay).not.toHaveProperty("return_last_frame");
+  });
+});
+
+describe("投影不变量：全体内置 mapping 都不许同时发出帧键与同族参考数组键（P2 类级门岗）", () => {
+  // 要求是「修在根上，让**任何**同时带帧槽与参考槽的档案都安全，而不只是 Wan 3.0」。
+  // 故这条不针对某个模型，而是遍历**全部**内置 mapping：只要一条 body 同时声明了真帧键与
+  // 图族数组键，就断言「只给首帧」时投影绝不会两个都填。新增档案落进这个形状会被自动覆盖。
+  it("遍历全部内置 mapping", async () => {
+    const [{ applyBuiltinSeeds }, { bodyReferencedParamKeys }, { classifyReferenceKeyDetailed }] = await Promise.all([
+      import("./seedBuiltins"),
+      import("./paramTranslate"),
+      import("./referenceReachability"),
+    ]);
+    const state = applyBuiltinSeeds(
+      { version: 4, vendors: [], models: [], mappings: [], apiKeysByVendor: {} },
+      "2026-01-01T00:00:00.000Z",
+    ).state;
+
+    const FRAME_URL = "https://x/frame.png";
+    const violations: string[] = [];
+    let covered = 0;
+
+    for (const mapping of state.mappings) {
+      const body = mapping.create?.body;
+      if (!body) continue;
+      const keys = bodyReferencedParamKeys(body);
+      // 真帧键：名字命中 first/last_frame **且**被分类器认作参考载体（排除 return_last_frame 这类开关）。
+      const frameKeys = keys.filter(
+        (k) => /first_frame|last_frame/i.test(k) && !/with_roles|_contents?\b/i.test(k) && classifyReferenceKeyDetailed(k),
+      );
+      const arrayKeys = keys.filter((k) => /^(reference_)?image_urls$|^input_urls$|^reference_images$/i.test(k));
+      if (frameKeys.length === 0 || arrayKeys.length === 0) continue;
+      covered += 1;
+
+      const overlay = projectReferencesOntoBodyKeys({ firstFrameUrl: FRAME_URL }, body);
+      const filledFrame = frameKeys.filter((k) => overlay[k] !== undefined);
+      const filledArray = arrayKeys.filter((k) => overlay[k] !== undefined);
+      if (filledFrame.length > 0 && filledArray.length > 0) {
+        violations.push(`${mapping.vendorKey}/${mapping.modelKey ?? mapping.id}: 同时填了 ${filledFrame} 与 ${filledArray}`);
+      }
+      if (filledArray.length > 0 && filledFrame.length === 0) {
+        violations.push(`${mapping.vendorKey}/${mapping.modelKey ?? mapping.id}: 首帧被投进数组键 ${filledArray}（帧键 ${frameKeys} 空着）`);
+      }
+    }
+
+    // 前提坐实：真有这个形状的 mapping 存在，否则这条测试等于没测（空跑绿）。
+    expect(covered).toBeGreaterThan(0);
+    expect(violations).toEqual([]);
   });
 });

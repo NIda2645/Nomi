@@ -5,7 +5,8 @@ import { getProductionRunService } from "./productionRunRuntime";
 import type { ProductionRunService } from "./productionRunService";
 import type { CreateProductionRunInput, RunCommand } from "./productionRunTypes";
 
-const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "artifact.review", "plan.attach", "policy.refresh", "job.reconcile"]);
+import { assertTrustedSender } from "../ipcSenderGuard";
+const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "artifact.review", "plan.attach", "policy.refresh", "job.reconcile", "plan.detach-shot-nodes"]);
 
 function identifier(value: unknown, label: string): string {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -101,6 +102,14 @@ function rendererCommandPayload(type: string, value: unknown): Record<string, un
     if (!["pause", "resume", "cancel"].includes(action)) throw new Error("Invalid production control action");
     return { action };
   }
+  // P4 S5：用户把这些占位节点从画布删掉（整批 Cmd+Z / 手动删）→ Run 记 detached（撤销事实优先，恢复不复活）。
+  // 渲染层发起是合法的（这是「用户删了画布节点」的忠实映射）；只收 nodeId 数组，形状受限、上限防滥用。
+  if (type === "plan.detach-shot-nodes") {
+    const rawNodeIds = Array.isArray(raw.nodeIds) ? raw.nodeIds : [];
+    if (rawNodeIds.length > 256) throw new Error("Too many detached nodes");
+    const nodeIds = rawNodeIds.map((value, index) => identifier(value, `node ${index}`));
+    return { nodeIds };
+  }
   if (type === "artifact.adopt") return { artifactId: identifier(raw.artifactId, "artifact") };
   if (type === "artifact.review") {
     const decision = typeof raw.decision === "string" ? raw.decision.trim() : "";
@@ -182,19 +191,24 @@ export function registerProductionRunIpc(
   const repository: ProductionRunRepository | null = service ? null : (repositoryOrService as ProductionRunRepository || createProductionRunRepository());
   const read = (projectId: string, runId: string) => service ? service.readFull(projectId, runId) : repository!.read(projectId, runId);
   const list = (projectId: string) => repository ? repository.list(projectId) : service!.listFull(projectId);
-  ipcMain.handle("nomi:production-runs:list", async (_event, payload: unknown) => {
+  ipcMain.handle("nomi:production-runs:list", async (event, payload: unknown) => {
+    assertTrustedSender(event);
     const raw = objectValue(payload, "production run list request");
     return list(identifier(raw.projectId, "project"));
   });
-  ipcMain.handle("nomi:production-runs:read", async (_event, payload: unknown) => {
+  ipcMain.handle("nomi:production-runs:read", async (event, payload: unknown) => {
+    assertTrustedSender(event);
     const { projectId, runId } = projectRunPayload(payload);
     const run = read(projectId, runId);
     if (run && run.projectId !== projectId) throw new Error("Production run project mismatch");
     return run;
   });
-  ipcMain.handle("nomi:production-runs:create-draft", async (_event, payload: unknown) =>
-    service ? service.createDraft(createDraftInput(payload)) : repository!.create(createDraftInput(payload)));
-  ipcMain.handle("nomi:production-runs:command", async (_event, payload: unknown) => {
+  ipcMain.handle("nomi:production-runs:create-draft", async (event, payload: unknown) => {
+    assertTrustedSender(event);
+    return service ? service.createDraft(createDraftInput(payload)) : repository!.create(createDraftInput(payload));
+  });
+  ipcMain.handle("nomi:production-runs:command", async (event, payload: unknown) => {
+    assertTrustedSender(event);
     const { projectId, runId, raw } = projectRunPayload(payload);
     if (service) {
       if (!read(projectId, runId)) throw new Error(`Production run not found: ${runId}`);
@@ -203,7 +217,8 @@ export function registerProductionRunIpc(
     assertProjectRun(repository!, projectId, runId);
     return repository!.execute(projectId, runId, rendererCommand(raw.command));
   });
-  ipcMain.handle("nomi:production-runs:materialize-storyboard", async (_event, payload: unknown) => {
+  ipcMain.handle("nomi:production-runs:materialize-storyboard", async (event, payload: unknown) => {
+    assertTrustedSender(event);
     const { projectId, runId, raw } = projectRunPayload(payload);
     if (!read(projectId, runId)) throw new Error(`Production run not found: ${runId}`);
     const artifactId = identifier(raw.artifactId, "artifact");
@@ -212,7 +227,8 @@ export function registerProductionRunIpc(
     if (!service) throw new Error("Storyboard materialization requires the production service");
     return service.materializeStoryboard({ projectId, runId, artifactId, expectedVersion });
   });
-  ipcMain.handle("nomi:production-runs:events", async (_event, payload: unknown) => {
+  ipcMain.handle("nomi:production-runs:events", async (event, payload: unknown) => {
+    assertTrustedSender(event);
     const { projectId, runId, raw } = projectRunPayload(payload);
     if (!read(projectId, runId)) throw new Error(`Production run not found: ${runId}`);
     const cursor = raw.afterCursor === undefined ? 0 : Number(raw.afterCursor);

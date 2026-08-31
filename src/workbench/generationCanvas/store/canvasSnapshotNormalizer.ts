@@ -2,6 +2,7 @@
 // 注意：这是 store 专用的深度归一化（过滤未知 kind、position 兜底、groups 走 zod、edges 校验端点），
 // 与 workbenchPersistence.ts 的轻量直通版 normalizeGenerationCanvasSnapshot 行为不同，故改名 normalizeStoreSnapshot。
 import { isGenerationNodeKind } from '../model/generationNodeKinds'
+import { normalizeParameterEdges } from '../model/parameterReferenceSlots'
 import { nodeGroupSchema } from '../model/generationCanvasSchema'
 import { isCategoryId } from './canvasGuards'
 import { createDefaultGenerationCanvasSnapshot } from './generationCanvasDefaults'
@@ -15,6 +16,7 @@ import type {
   GenerationNodeStatus,
   NodeGroup,
 } from '../model/generationCanvasTypes'
+import { isCanvasWorkflowTemplate } from '../plugins/canvasWorkflowTemplates'
 
 /**
  * 重启收敛：磁盘里 status 仍是 running/queued 的节点 = 上次退出时正在生成（没活着的轮询循环了）。
@@ -105,10 +107,14 @@ export function normalizeStoreSnapshot(input: unknown): GenerationCanvasSnapshot
         }]
       })
     : []
+  const workflowTemplates = Array.isArray(raw.workflowTemplates)
+    ? raw.workflowTemplates.filter(isCanvasWorkflowTemplate)
+    : []
   return {
     nodes,
-    edges,
+    edges: normalizeParameterEdges(nodes, edges),
     groups,
     selectedNodeIds,
+    workflowTemplates,
   }
 }

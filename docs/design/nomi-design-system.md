@@ -55,7 +55,7 @@
 | 层 | 文件 | 前缀 | 你该不该直接用 |
 |---|---|---|---|
 | ① 规范底层（**唯一该新增的地方**）| `src/theme/nomi-tokens.css` | `--nomi-*` | ✅ 优先。新颜色/圆角/阴影只在这里加 |
-| ② 工作区语义映射 | `src/workbench/workbench.css` | `--workbench-*` | ✅ 工作区内语义色（success/danger/video/hover…）用这层；它们 alias 到 ①，少数语义色是 hex 落在这里（§2.1.4）|
+| ② 工作区语义映射 | `tailwind.config.ts` addBase `:root`（光/暗两块，与 ① 同机制；2026-08-24 从 workbench.css 收口） | `--workbench-*` | ✅ 工作区语义色（success/danger/video/hover…）用这层；多数 alias 到 ①，少数是 hex（§2.1.4）。**定义必须留在 :root**——写进类作用域，portal/库页浮层就解析不到（check:tokens 第 6 类当场拦）|
 | ③ 遗留并行命名 ⚠️ | `src/styles/globals.css` | `--tc-*` / `--handle-color-*` | ❌ **不要再用、不要再加**。这是早期暗色主题残留，绝大多数已死，详见 §14 漂移 |
 
 **铁律：新增 token 只进 ①（`nomi-tokens.css`）。** 看到 `--tc-*` 当它是历史包袱，别扩散。
@@ -69,8 +69,9 @@
 | 画布上的浮层/组框/工具栏 | `src/workbench/generationCanvas/components/` | 同目录 |
 | Sidebar 行 / 分类 | `src/workbench/sidebar/` | 同目录 |
 | 助手 composer（输入框/附件）| `src/workbench/ai/composer/` | 同目录 |
+| **agent 对话流里的任何东西**（工具条/计划卡/付费卡/进度/失败/反问/等待指示器…）| 规格看 **[nomi-agent-interaction.md](nomi-agent-interaction.md)**（Agent 专章：17 种形态 + 统一状态词表 + 动效 + 控件尺寸/等宽规则）| 同文档 §11 拆迁清单指定 |
 | Logo / 字标 / 加载标 / 步骤器 | `../../design`（全部出自 `src/design/identity.tsx`，§3.9）| **不新增**，复用 |
-| 图标 | `@tabler/icons-react`（§6）| 不自带 svg |
+| 图标 | `@tabler/icons-react`（§6）| 不自带 svg；**例外**：agent「工序指示器」是受管动效资产，见 agent 专章 §5.1 |
 
 ### 字号/间距/圆角 token 真相源
 
@@ -214,7 +215,7 @@ DaVinci Resolve 确实有「选中跟随播放头」，但它是 **opt-in 且默
 | 层级 | 文件 | 内容 | Tailwind 暴露 |
 |---|---|---|---|
 | 底层颜色（OKLCH）| `src/theme/nomi-tokens.css` | `--nomi-bg` / `--nomi-paper` / `--nomi-ink*` / `--nomi-line*` / `--nomi-accent*` / `--nomi-shadow-*` / `--nomi-radius-*` / `--nomi-font-*` | `nomi-*` 颜色类、`rounded-nomi` |
-| 工作区映射 | `src/workbench/workbench.css` | `--workbench-*`（基于 nomi 但提供工作区语义命名）| `workbench-*` 颜色类 |
+| 工作区映射 | `tailwind.config.ts` addBase `:root`（光/暗两块）| `--workbench-*`（基于 nomi 但提供工作区语义命名）| `workbench-*` 颜色类 |
 | 几何/排版（TS）| `src/theme/nomiTheme.ts` 中的 `nomiDesignTokens` | `radius` / `spacing` / `fontSize` / `lineHeight` / `shadow` | Tailwind config 引用 |
 
 ### 2.1 颜色 token 全表
@@ -261,9 +262,9 @@ DaVinci Resolve 确实有「选中跟随播放头」，但它是 **opt-in 且默
 | `--nomi-snap-tag` | `oklch(0.45 0.18 30)` | 深橙 | 吸附标签 |
 | `--workbench-text` | `oklch(0.56 0.17 305)` | 紫 | 预览时间轴文字轨（字幕/标题卡），与图片轨蓝、视频轨青区分 |
 
-#### 2.1.4 工作区语义色（定义在 workbench.css，⚠️ 这几个是 hex/rgba 落在 ② 层）
+#### 2.1.4 工作区语义色（定义在 tailwind.config.ts addBase `:root`，⚠️ 这几个是 hex/rgba 落在 ② 层）
 
-> 注：这层语义色在 `workbench.css` 里是 **hex/rgba 直写**（历史原因），不是 oklch token。消费方**只用类名**（`text-workbench-danger` 等），不要把这些 hex 抄进组件。理想态应回收进 ① 层 oklch，见 §14 漂移。
+> 注：这层语义色是 **hex/rgba 直写**（历史原因），不是 oklch token。消费方**只用类名**（`text-workbench-danger` 等），不要把这些 hex 抄进组件。理想态应回收进 ① 层 oklch，见 §14 漂移。定义在 `:root` 而非 `.workbench-shell` 作用域——CSS 变量沿 DOM 继承，作用域定义会让 portal / 库页浮层静默退灰（2026-08-24 收口，docs/plan/2026-08-24-workbench-token-root-scope.md）。
 
 | Token | 实际值 | 用途 |
 |---|---|---|
@@ -446,12 +447,18 @@ Tailwind 标准 spacing 已经是 4 的倍数（`p-1` = 4px、`gap-3` = 12px）�
 
 **破坏性操作确认**：一律用 `confirmDialog / alertDialog / promptDialog`（promise 风格，`src/design/confirmDialog.tsx`，宿主 `ConfirmDialogHost` 已挂 App 根部）。**禁用原生 `window.confirm/alert/prompt`**——脱设计系统、E2E 驱动自动 dismiss 测不到、Electron/macOS 有焦点丢失史（2026-06-13 审计 A7）。危险动作传 `danger: true`。
 
-**付费生成确认 `SpendConfirmDialog`**（`src/workbench/generationCanvas/spend/SpendConfirmDialog.tsx`，挂一次于工作区根）：全仓**唯一**的付费确认 UI，三种来源共用这一个对话框（不另造并行卡，P1）：
-- **用户直发**（`light`）：金币图标（`IconCoin`），多一个「本会话不再提示」。
-- **agent 受理**：金币图标，每次必确认（不可 light 抑制）。
-- **外部 AI 助手（MCP）驱动**（`source: 'agent'`）：机器人图标（`IconRobot`）+ 副标「经 AI 助手（MCP）驱动」+ 明细行（节点/模型/产物）+ **60s 倒计时**（进度条 + 「N 秒后自动忽略」，到点自动按未确认返回——外部调用方那头在等，不死等）。
+**付费生成确认**：语义单一收口在 `SpendConfirmRequest`（`spend/spendConfirm.ts`），但**宿主按「用户此刻人在哪」分两个**（2026-08-27 用户裁定，解 master plan §4.4 与本节旧文「全仓唯一弹窗」的冲突）：
+
+| 用户此刻在哪 | 确认长在哪 | 状态 |
+|---|---|---|
+| 正在跟内嵌 agent 对话 | **对话流内的付费富卡**，对话暂停等回答（不弹居中窗——弹窗会打断「对话主驾」心流） | 🚧 待建，随 B5 落；规格见 [nomi-agent-interaction.md](nomi-agent-interaction.md) |
+| 画布上自己点生成（`light`） | `SpendConfirmDialog` 居中弹窗，金币图标 + 「本会话不再提示」 | ✅ 现役 |
+| 人不在 Nomi，外部 MCP 驱动（`source: 'agent'`） | `SpendConfirmDialog` 居中弹窗 —— 这是唯一该「召唤注意力」的场景 | ✅ 现役 |
+
+`SpendConfirmDialog`（`src/workbench/generationCanvas/spend/SpendConfirmDialog.tsx`，挂一次于工作区根）= **非对话场景**的唯一付费确认 UI：
+- 外部 MCP 驱动额外带：机器人图标（`IconRobot`）+ 副标「经 AI 助手（MCP）驱动」+ 明细行（节点/模型/产物）+ **60s 倒计时**（进度条 + 「N 秒后自动忽略」，到点按未确认返回——外部调用方那头在等，不死等）。
 - 视觉：`w-[380px] rounded-nomi-lg border-nomi-line bg-nomi-paper shadow-nomi-md`；图标位 `w-8 h-8 rounded-nomi`（agent=`bg-nomi-ink text-nomi-paper`，user=`bg-nomi-accent-soft text-nomi-accent`）；明细行 `border-nomi-line-soft divide-y`；倒计时条 `bg-nomi-ink-05`，剩 ≤10s 转 `bg-nomi-accent`。
-- 新增确认来源/字段走 `SpendConfirmRequest`（`spend/spendConfirm.ts`，单一收口），不在别处复制确认弹窗。
+- 两个宿主**共用同一个 `SpendConfirmRequest` 与同一份明细内容组件**（一语义两投影，不是两套逻辑）。新增确认来源/字段只改 `spendConfirm.ts`，不在别处复制确认 UI。
 
 ### 3.6 导航 navigation
 
@@ -580,9 +587,11 @@ mark 是 **28×28 viewBox 的圆角方块**：深色底（`oklch(0.22 0.01 80)` 
 
 规格：
 
-- 边框颜色：`box.group.color`（用户自定义，默认 `#d8c3a5`）
-- 背景：基于 color 的 18% alpha（`getHexAlphaColor` 派生）
-- Label 背景：原 color
+- 普通态只有一套共享视觉契约：`components/groupVisualContract.ts`
+- 展开组框：`border-nomi-line` + 半透明 `bg-nomi-paper`；label 同样使用 `nomi-line / nomi-paper / nomi-ink`
+- 折叠卡、后层卡片、标签圆点、空态图标与侧栏组标识共用同一组暖中性 token，不用 `nomi-accent` 或项目自定义色标识编组
+- `NodeGroup.color` 仅为旧项目兼容保留，不再进入渲染层；侧栏不再提供无效的“改颜色”入口
+- 强调色只允许出现在共享的瞬时交互反馈（键盘焦点、连接握把），不能成为编组常驻底色或描边
 - 可拖动整组
 
 ### 4.5 Notification / `showUndoToast`
@@ -741,6 +750,7 @@ showUndoToast({
 |---|---|---|
 | 付费 / 消耗额度（用户直发或 agent 受理）| `IconCoin` | `SpendConfirmDialog`（§3.5）|
 | 外部 AI 助手 / MCP 驱动（agent 身份）| `IconRobot` | `SpendConfirmDialog` 的 `source: 'agent'` 头部（§3.5）|
+| 主角形象确认（锚定妆照检查点·免费质量门）| `IconUser` | `SpendConfirmDialog` 的 `kind: 'anchorCheckpoint'` 头部（§3.5，与 cast 分类同图标）|
 
 ### 选图规则
 
@@ -903,7 +913,7 @@ import IconX from '@/assets/some-svg.svg'
 | 高层原则 | `Design.md`（根目录） |
 | 颜色 token | `src/theme/nomi-tokens.css` |
 | 几何/排版 token | `src/theme/nomiTheme.ts` |
-| 工作区 token | `src/workbench/workbench.css` |
+| 工作区 token | `tailwind.config.ts`（addBase `:root` ② 层，2026-08-24 从 workbench.css 收口）|
 | 组件库入口 | `src/design/index.ts` |
 | 组件库说明 | `src/design/README.md` |
 | Tailwind 扩展 | `tailwind.config.*` |
@@ -929,7 +939,7 @@ import IconX from '@/assets/some-svg.svg'
 | ~~S2~~ ✅ 已清 | `color-scheme: light dark` | 与 light-only 矛盾 | 已改 `color-scheme: light` |
 | ~~S3~~ ✅ 已清 | Inter / Fraunces 未打包 | 品牌字干净机器回退 | 已装 `@fontsource-variable/{inter,fraunces}` 自托管，字栈首位置 `"Inter Variable"`/`"Fraunces Variable"`（§2.6）|
 | ~~S4~~ ✅ 已清 | `--handle-color-*` 0 消费点死 token | 死代码 | 已随 S1 删除（连线另有取色路径，确认 0 悬空引用）|
-| S5 | 语义色 `--workbench-success/danger/video` 等是 hex/rgba（workbench.css），非 oklch | 与「颜色只在 nomi-tokens.css 写 oklch」不齐（§2.1.4）| 回收进 `--nomi-*` oklch 体系（**未做**，留 backlog）|
+| S5 | 语义色 `--workbench-success/danger/video` 等是 hex/rgba（② 层，tailwind.config.ts addBase；2026-08-24 已收口到 `:root` 并入 check:tokens 第 6 类），非 oklch | 与「颜色只写 oklch」不齐（§2.1.4）| 回收进 `--nomi-*` oklch 体系（**未做**，留 backlog；值本身未动）|
 
 ### 14.2 组件级（用户可见面 vs 文档不一致，2026-06-21 审计）
 

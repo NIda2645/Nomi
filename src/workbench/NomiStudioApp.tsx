@@ -28,7 +28,7 @@ import { initReviewEventBridge } from './generationCanvas/reviewEventBridge'
 import { initComfyuiProgressBridge } from './generationCanvas/comfyuiProgressBridge'
 import { initResultUrlRelocalizeBridge } from './generationCanvas/resultUrlRelocalizeBridge'
 import { setCanvasEventProjectIdProvider } from './generationCanvas/events/canvasEventEmitter'
-import { registerCapabilityApplyHandler } from './capability/capabilityApplyHandler'
+import { handleCapabilityApply, registerCapabilityApplyHandler } from './capability/capabilityApplyHandler'
 import { cn } from '../utils/cn'
 import { toast } from '../ui/toast'
 import { setDesktopActiveProjectId } from '../desktop/activeProject'
@@ -43,6 +43,7 @@ import { releaseWorkbenchProjectRuntimeState } from './project/releaseWorkbenchP
 import { useSpendConfirmStore } from './generationCanvas/spend/spendConfirm'
 import { runAssetSurfaceMigrations } from './assets/assetSurfaceMigration'
 import { useProductionRunStore } from './production/productionRunStore'
+import { ProductionCanvasLandingHost } from './production/ProductionCanvasLandingHost'
 
 type AppView = 'library' | 'studio'
 
@@ -235,6 +236,40 @@ export default function NomiStudioApp(): JSX.Element {
   // 能力核 A 模式实时桥:注册处理器,接主进程转发来的外部 MCP 画布读/写/付费确认(所见即所得)。
   React.useEffect(() => registerCapabilityApplyHandler(), [])
 
+  // E2E 专用桥（同 TaskCenterButton/CameraMoveCaptureHost 既有写法）：仅当 localStorage['__nomiE2E']==='1'
+  // 时把**真实**能力处理器挂到 window，供 R13 走查在页面上下文里以真 payload 驱动同一条渲染管线
+  // （generation.gate.confirm → confirmGenerationGateForAgent → buildMultiShotContractView → requestConfirm →
+  // SpendConfirmDialog）取证多镜确认卡。生产从不置该标志 → 永不暴露；不是并行实现，就是那一个真 handler。
+  React.useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage?.getItem('__nomiE2E') === '1') {
+        ;(window as unknown as { __nomiCapabilityApply?: unknown }).__nomiCapabilityApply = handleCapabilityApply
+        ;(window as unknown as { __nomiSpendConfirmE2E?: (request: Record<string, unknown>) => Promise<boolean> }).__nomiSpendConfirmE2E = async (request) => {
+          const rememberHosting = request.rememberHosting === true
+          const { rememberHosting: _rememberHosting, ...pendingRequest } = request
+          if (pendingRequest.hostingDisclosure && typeof pendingRequest.hostingDisclosure === 'object') {
+            const disclosure = pendingRequest.hostingDisclosure as Record<string, unknown>
+            pendingRequest.hostingDisclosure = {
+              ...disclosure,
+              onRemember: rememberHosting
+                ? async () => {
+                    const policy = getDesktopBridge()?.settings?.automationPolicy
+                    if (!policy) return
+                    const current = await policy.get()
+                    await policy.set({ ...current, anonymousAssetHosting: 'allow' })
+                    ;(window as unknown as { __nomiSpendRemembered?: boolean }).__nomiSpendRemembered = true
+                  }
+                : undefined,
+            }
+          }
+          return useSpendConfirmStore.getState().requestConfirm(pendingRequest as never)
+        }
+      }
+    } catch {
+      // localStorage 不可用 → 跳过
+    }
+  }, [])
+
   React.useEffect(() => {
     const handleHardReloadShortcut = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase()
@@ -313,6 +348,9 @@ export default function NomiStudioApp(): JSX.Element {
         const prevProjectId = activeProjectIdRef.current ?? null
         if (prevProjectId !== hydrated.id) {
           // 先冲刷旧项目的落盘(取消挂起防抖,防把新项目内容写进旧文件)。
+          // Reset at the project-open boundary so a remounted sidebar cannot
+          // inherit the previous project's expanded state.
+          useWorkbenchStore.getState().setSidebarCollapsed(true)
           flushConversationsNow(prevProjectId)
           useWorkbenchStore.getState().swapCreationAiProject(prevProjectId, hydrated.id)
           swapGenerationAiProject(prevProjectId, hydrated.id)
@@ -691,6 +729,8 @@ export default function NomiStudioApp(): JSX.Element {
               {/* relative 包一层:S2b 计划 overlay 与画布同坐标系,且不喂巨壳 */}
               <div className={cn('relative w-full h-full')}>
                 <GenerationCanvas />
+                {/* P4 S5 画布落地 host（跟着画布常驻）：poll 活跃多镜 Run 喂占位三态 + 进度通知 + 删节点上报 detach。 */}
+                <ProductionCanvasLandingHost projectId={activeProject?.id ?? null} />
               </div>
             </React.Suspense>
           }

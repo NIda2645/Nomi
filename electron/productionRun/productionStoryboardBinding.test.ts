@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
-import { approveLatestStoryboard } from './productionRunTestHelpers'
+import { approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 
 function makeRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-production-storyboard-binding-'))
@@ -47,16 +47,11 @@ async function plannedRun(root: string) {
   })
   let run = service.readFull('project-1', 'run-storyboard-binding')
   const script = run.artifacts.find((artifact) => artifact.kind === 'script')!
-  const reviewed = await service.command('project-1', run.runId, {
+  await service.command('project-1', run.runId, {
     commandId: 'script-approved', expectedRevision: run.revision, type: 'script.review',
     payload: { artifactId: script.artifactId, decision: 'approved' }, issuedAt: new Date().toISOString(),
   })
-  run = reviewed.run
-  const deadline = Date.now() + 500
-  while (!run.artifacts.some((artifact) => artifact.kind === 'storyboard') && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 5))
-    run = service.readFull('project-1', 'run-storyboard-binding')
-  }
+  await waitFor(() => service.readFull('project-1', 'run-storyboard-binding').artifacts.some((artifact) => artifact.kind === 'storyboard'))
   await approveLatestStoryboard(service, 'project-1', 'run-storyboard-binding')
   run = service.readFull('project-1', 'run-storyboard-binding')
   return { service, run }

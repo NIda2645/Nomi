@@ -1,5 +1,6 @@
 import type {
   CreateProductionRunInput,
+  ProductionActionResult,
   ProductionRun,
   ProductionRunSummary,
   RunCommand,
@@ -17,4 +18,7 @@ export type DesktopProductionRunBridge = {
   command: (projectId: string, runId: string, command: RunCommand) => Promise<RunCommandResult>;
   materializeStoryboard: (projectId: string, runId: string, artifactId: string, expectedVersion: number) => Promise<MaterializeStoryboardResult>;
   events: (projectId: string, runId: string, afterCursor: number) => Promise<RunEvent[]>;
+  // P4 S6：返工一镜 / 续拍已停批次。回结构化结果（渲染层 t() 翻译 code；绝不含密钥）。
+  rework: (projectId: string, runId: string, shotId?: string) => Promise<ProductionActionResult>;
+  resumeBatch: (projectId: string, runId: string, reason: "budget" | "manual") => Promise<ProductionActionResult>;
 };

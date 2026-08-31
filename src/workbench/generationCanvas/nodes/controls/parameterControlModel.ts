@@ -13,9 +13,15 @@ import {
   type VideoModelControlBinding,
 } from '../../../../config/modelCatalogMeta'
 import { normalizeOrientation, type Orientation } from '../../../../utils/orientation'
+import { isComfyuiVendorKey } from '../../model/comfyuiVendor'
 import { normalizeAspectRatioToWH } from '../aspectRatio'
 import { resultUrl } from '../../runner/referenceUrl'
-import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from '../../model/generationCanvasTypes'
+import type { GenerationCanvasNode } from '../../model/generationCanvasTypes'
+import {
+  isParameterReferenceControl,
+  usesExplicitParameterReferenceDeclarations,
+  type ImageUrlSlot,
+} from '../../model/parameterReferenceSlots'
 import type { WorkbenchAssetDto } from '../../../api/assetUploadApi'
 
 export type SelectOption = string | {
@@ -47,69 +53,9 @@ export type DynamicParameterControl = ModelParameterControl & {
 
 export type DynamicModelControl = DynamicParameterControl | DynamicCatalogControl
 
-export type ImageUrlGroup = 'first_frame' | 'last_frame' | 'reference'
-
-export type ImageUrlSlot = {
-  key: string
-  label: string
-  group: ImageUrlGroup
-}
-
 export type FrameSlotLabels = {
   firstFrame: string
   lastFrame: string
-}
-
-const FIRST_FRAME_KEY_FRAGMENTS = ['firstframe', 'firstimage', 'startframe', 'startimage', 'initialframe']
-const LAST_FRAME_KEY_FRAGMENTS = ['lastframe', 'lastimage', 'endframe', 'endimage', 'finalframe']
-
-function inferImageUrlGroup(key: string): ImageUrlGroup {
-  const lower = key.toLowerCase().replace(/[-_]/g, '')
-  if (FIRST_FRAME_KEY_FRAGMENTS.some((f) => lower.includes(f))) return 'first_frame'
-  if (LAST_FRAME_KEY_FRAGMENTS.some((f) => lower.includes(f))) return 'last_frame'
-  return 'reference'
-}
-
-// A param is an image-reference input if onboarding tagged it 'image-url',
-// OR its key name clearly names an image URL (onboarding sometimes mis-tags
-// these as plain text). Both buildImageUrlSlots (top reference boxes) and
-// buildDynamicControls (bottom param row) use THIS predicate, so any given
-// param lands in exactly one place — and it works for any model, not just the
-// ones whose type was tagged correctly during onboarding.
-const IMAGE_URL_KEY_FRAGMENTS = [
-  'imageurl', 'imgurl', 'imageurls', 'inputurl', 'inputurls', 'inputimage', 'inputimg', 'imageinput',
-  'referenceimage', 'refimage', 'initimage', 'sourceimage', 'sourceimg',
-  'startimage', 'endimage', 'firstframe', 'lastframe', 'frameurl', 'photourl',
-]
-export function looksLikeImageUrlControl(control: ModelParameterControl): boolean {
-  if (control.type === 'image-url') return true
-  // Only ever promote a free-text param; never a select/number/boolean (those
-  // are real value pickers, not image inputs).
-  if (control.type !== 'text') return false
-  const lower = control.key.toLowerCase().replace(/[-_]/g, '')
-  return IMAGE_URL_KEY_FRAGMENTS.some((f) => lower.includes(f))
-}
-
-export function edgeModeForGroup(group: ImageUrlGroup): GenerationCanvasEdgeMode {
-  if (group === 'first_frame') return 'first_frame'
-  if (group === 'last_frame') return 'last_frame'
-  return 'reference'
-}
-
-export function getEdgeSourceForSlot(
-  group: ImageUrlGroup,
-  edges: GenerationCanvasEdge[],
-  targetNodeId: string,
-): string {
-  const mode = edgeModeForGroup(group)
-  return edges.find((e) => e.target === targetNodeId && e.mode === mode)?.source || ''
-}
-
-export function buildImageUrlSlots(meta: unknown): ImageUrlSlot[] {
-  const controls = parseModelParameterControls(meta)
-  return controls
-    .filter(looksLikeImageUrlControl)
-    .map((c) => ({ key: c.key, label: c.label, group: inferImageUrlGroup(c.key) }))
 }
 
 /**
@@ -133,7 +79,11 @@ export function shouldUseVideoFrameSlotFallback(input: {
   // ComfyUI imported workflows are graph-defined: 媒体输入已作为 image-url 参数逐条声明，
   // 由上面的通用 buildImageUrlSlots 出槽。没声明就是真的没有——
   // 猜首/尾帧只会造出无效请求（ComfyUI 侧根本没有「首帧/尾帧」这两个概念）。
-  if (String(input.vendor || '').trim() === 'comfyui-local') return false
+  // 判据走前缀（isComfyuiVendorKey），不能写字面量 === 'comfyui-local'：第 2+ 台实例的 key 是
+  // `comfyui-local-{slug}`，字面量只保得住第一台 —— 第二台起的**文生视频**工作流会在这里被判成
+  // 「不是 ComfyUI」→ 凭空补出首/尾帧参考槽 → 用户被诱导连一张图 → 提交时 runtime 以「没有图生视频通道」
+  // 拒发，正好把 2026-08-24 那条死锁在第二台机器上原样复活。
+  if (isComfyuiVendorKey(input.vendor)) return false
   return true
 }
 
@@ -482,11 +432,12 @@ export function buildDynamicControls(input: {
   videoCatalogConfig: VideoModelCatalogConfig | null
   isImageLike: boolean
   isVideoLike: boolean
+  explicitMediaParametersOnly?: boolean
 }): DynamicModelControl[] {
   const paramControls = dedupeParamControls(
     // image-url-like params render as reference boxes at the top (buildImageUrlSlots),
     // so they must NOT also appear in the bottom value row.
-    input.parameterControls.filter((c) => !looksLikeImageUrlControl(c) && !isEmptyInputControl(c)),
+    input.parameterControls.filter((c) => !isParameterReferenceControl(c, input.explicitMediaParametersOnly) && !isEmptyInputControl(c)),
   )
   const controls: DynamicModelControl[] = paramControls.map((control) => ({
     ...control,
@@ -672,5 +623,6 @@ export function buildModelControls(meta: unknown, isImageLike: boolean, isVideoL
     videoCatalogConfig: buildEffectiveVideoCatalogConfig(meta),
     isImageLike,
     isVideoLike,
+    explicitMediaParametersOnly: usesExplicitParameterReferenceDeclarations(meta),
   })
 }

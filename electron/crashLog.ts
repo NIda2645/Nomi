@@ -151,3 +151,75 @@ export function installCrashHandlers(
   // 再写一次会让崩溃处理器递归触发。
   target.on("uncaughtExceptionMonitor", (error, origin) => record(origin, error));
 }
+
+/**
+ * 「响应流拆除竞态」——undici（Node 内置 fetch 的实现）在拆除响应流时，把**已经关掉的**
+ * controller 再关一次，抛出 ERR_INVALID_STATE。
+ *
+ * 为什么必须在这一层认它，而不是去 call site 修：这个抛发生在 undici 内部的 microtask 里，
+ * 那时 promise 早已 settle、'error' 监听也已摘掉 —— **call site 的 try/catch 根本抓不到**
+ * （nodejs/undici#1564、#5586；Next.js/Hono/Remix 都撞过同一条）。我们主进程这边所有 fetch
+ * 都已经规规矩矩地消费完 body、带 AbortSignal（2026-08-24 全量走查过一遍），改不出这个毛病来。
+ * 真正的根治是升 Electron（换掉捆绑的 undici），那是另一件事，不该塞进一个用户反馈修复里。
+ *
+ * 判据刻意收得很窄，只认「全栈都在 Node 内部的流拆除」：
+ *   ① code === ERR_INVALID_STATE；② 栈里出现 webstreams/undici；
+ *   ③ **每一帧都是 node: 内建模块**——只要出现一帧我们自己的代码，就说明是**我们**把流关了两次，
+ *      那是真 bug，必须照旧弹框给我们看，绝不能被这条顺手吞掉。
+ *      注意不能写成 `node:internal/`：真实栈里混着 `node:async_hooks` 这种**没有 internal 段**的内建模块
+ *      （用户那条栈第 4 帧就是），写窄了会把要认的那一条漏掉——单测里钉的就是逐字照抄的那份栈。
+ */
+const NODE_BUILTIN_FRAME = /(?:\(node:|^at node:)/;
+
+export function isUpstreamStreamTeardownError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if ((error as NodeJS.ErrnoException).code !== "ERR_INVALID_STATE") return false;
+  const frames = (error.stack || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("at "));
+  if (frames.length === 0) return false;
+  if (!frames.some((f) => f.includes("node:internal/webstreams/") || f.includes("undici"))) return false;
+  return frames.every((f) => NODE_BUILTIN_FRAME.test(f));
+}
+
+export type UncaughtExceptionTarget = {
+  on(event: "uncaughtException", listener: (error: Error, origin: string) => void): unknown;
+  removeListener(event: "uncaughtException", listener: (error: Error, origin: string) => void): unknown;
+  emit(event: "uncaughtException", error: Error, origin: string): unknown;
+};
+
+/**
+ * 把上面那一类上游噪音挡在崩溃弹框之外 —— **只挡弹框，不改存活语义**。
+ *
+ * 先说清今天真实发生了什么（查过 Electron v31.7.7 lib/browser/init.ts 才敢写）：主进程未捕获异常
+ * 走的是 Electron 自带的 uncaughtException 处理器，它 `dialog.showErrorBox` 弹一个
+ * 「A JavaScript error occurred in the main process」，**然后不调用 process.exit()**——进程接着跑。
+ * 所以这类异常**从来就不是致命的**，用户原话也印证：「确定后，可以正常用」。唯一的伤害就是那个吓人的模态框，
+ * 而它挡在一个后台排队探针的库内部竞态前面，用户既看不懂也无从下手。
+ *
+ * 于是这里只做一件事：认得的那一类 → 落盘留证、不弹框；**其余一律原样交回 Electron 的默认路径**
+ * （照弹、照记、照跑），行为与今天逐字一致。之所以是「摘掉自己再 emit」而不是自己弹一个框：
+ * Electron 的处理器开头有 `if (process.listenerCount('uncaughtException') > 1) return`——只要我们挂着，
+ * 它就不弹了。摘掉后 emit，计数回到 1，弹的是**它自己那个框**，我们不复制第二份弹框逻辑（P1 无并行版）。
+ * 那个 listenerCount 判定在处理器入口同步跑完，所以 emit 之后立刻把自己装回来是安全的，下一次照守。
+ */
+export function installUncaughtExceptionNoiseFilter(
+  target: UncaughtExceptionTarget = process,
+  record: CrashRecorder = recordCrash,
+): void {
+  const handler = (error: Error, origin: string): void => {
+    if (isUpstreamStreamTeardownError(error)) {
+      // 留证：不弹框不等于当没发生过。它要是变多了，得能在 nomi-crash.log 里看出来。
+      record("uncaughtException:upstream-stream-teardown", error);
+      return;
+    }
+    target.removeListener("uncaughtException", handler);
+    try {
+      target.emit("uncaughtException", error, origin);
+    } finally {
+      target.on("uncaughtException", handler);
+    }
+  };
+  target.on("uncaughtException", handler);
+}

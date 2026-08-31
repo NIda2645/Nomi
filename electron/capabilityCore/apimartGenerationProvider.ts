@@ -1,8 +1,8 @@
-import type { ResolvedTaskRequestV1, GenerationProvider } from "./generationRuntimeAdapter";
+import type { GenerationProvider, GenerationProviderOutput, ResolvedTaskRequestV1 } from "./generationRuntimeAdapter";
+import { appFetch } from "../appFetch";
 
 export type ApimartGenerationProviderOptions = {
-  apiKey: string;
-  baseUrl?: string;
+  resolveConnection: () => { apiKey: string; baseUrl?: string } | null;
   fetchImpl?: typeof fetch;
 };
 
@@ -62,15 +62,77 @@ function providerMessage(payload: JsonRecord): string {
   return String(error?.message ?? data?.error ?? payload.message ?? payload.msg ?? "request rejected").slice(0, 256);
 }
 
+/** First non-empty string in a string-or-string-array field (real Seedance video payloads deliver
+ * `videos[].url` as an ARRAY of strings — observed live 2026-08-25, task_01M0VPQMBEN24HA665TM0KQZTS;
+ * the docs-implied plain string also occurs, so accept both). */
+function firstUrlString(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (typeof entry === "string" && entry.trim()) return entry.trim();
+    }
+  }
+  return null;
+}
+
+function outputUrl(value: unknown): string | null {
+  const direct = firstUrlString(value);
+  if (direct) return direct;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as JsonRecord;
+  for (const key of ["url", "video_url", "image_url", "audio_url"]) {
+    const nested = firstUrlString(item[key]);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function extractMaterializationOutputs(raw: unknown): GenerationProviderOutput[] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  const payload = raw as JsonRecord;
+  const data = payload.data && typeof payload.data === "object" && !Array.isArray(payload.data) ? payload.data as JsonRecord : payload;
+  const result = data.result && typeof data.result === "object" && !Array.isArray(data.result) ? data.result as JsonRecord : data;
+  const outputs: GenerationProviderOutput[] = [];
+  for (const [key, kind] of [["images", "image"], ["videos", "video"], ["audios", "audio"]] as const) {
+    const values = Array.isArray(result[key]) ? result[key] : [];
+    for (const [index, value] of values.entries()) {
+      const url = outputUrl(value);
+      if (url) {
+        const providerOutputId = value && typeof value === "object" && !Array.isArray(value) && typeof (value as JsonRecord).id === "string"
+          ? (value as JsonRecord).id as string
+          : `${kind}-${index + 1}`;
+        outputs.push({ kind, url, providerOutputId });
+      }
+    }
+  }
+  const directKind = typeof result.video_url === "string" ? "video" : typeof result.audio_url === "string" ? "audio" : typeof result.url === "string" ? "image" : null;
+  const directUrl = outputUrl(result);
+  if (directKind && directUrl && !outputs.some((output) => output.url === directUrl)) outputs.push({ kind: directKind, url: directUrl });
+  return outputs;
+}
+
 export function createApimartGenerationProvider(options: ApimartGenerationProviderOptions): GenerationProvider {
-  const apiKey = options.apiKey.trim();
-  const root = baseUrl(options.baseUrl);
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const request = async (url: string, init: RequestInit, context: string): Promise<JsonRecord> => {
-    if (!apiKey) throw new ApimartGenerationProviderError("APIMart credential is missing");
+  const fetchImpl = options.fetchImpl ?? appFetch;
+  const request = async (path: string, init: RequestInit, context: string): Promise<JsonRecord> => {
+    let connection: { apiKey: string; baseUrl?: string } | null = null;
+    try {
+      connection = options.resolveConnection();
+    } catch {
+      // Credential resolution is deliberately deferred to a real network action.
+      // Keep OS/keychain details private while preserving a structured provider error.
+    }
+    const apiKey = typeof connection?.apiKey === "string" ? connection.apiKey.trim() : "";
+    if (!apiKey) throw new ApimartGenerationProviderError("APIMart connection is disabled, missing, or locked");
+    const url = `${baseUrl(connection?.baseUrl)}${path}`;
     let response: Response;
     try {
-      response = await fetchImpl(url, init);
+      response = await fetchImpl(url, {
+        ...init,
+        headers: {
+          ...(init.headers as Record<string, string> | undefined),
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
     } catch (error) {
       throw new ApimartGenerationProviderError(`APIMart ${context} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -84,9 +146,8 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
   const queryTask = async (providerTaskId: string) => {
     const taskId = providerTaskId.trim();
     if (!taskId) throw new ApimartGenerationProviderError("APIMart task id is missing");
-    const payload = await request(`${root}/v1/tasks/${encodeURIComponent(taskId)}`, {
+    const payload = await request(`/v1/tasks/${encodeURIComponent(taskId)}`, {
       method: "GET",
-      headers: { Authorization: `Bearer ${apiKey}` },
     }, "task query");
     const data = record(payload.data, "task query");
     const status = typeof data.status === "string" ? data.status : "unknown";
@@ -94,12 +155,12 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
   };
   return {
     providerId: "apimart",
-    capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false },
+    capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false, materialize: true },
     buildRequest: buildImageRequest,
     async submit(providerRequest) {
-      const payload = await request(`${root}/v1/images/generations`, {
+      const payload = await request("/v1/images/generations", {
         method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(record(providerRequest, "submit")),
       }, "image submission");
       const first = Array.isArray(payload.data) ? payload.data[0] : undefined;
@@ -108,10 +169,13 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
       return { providerTaskId: taskId.trim(), raw: payload };
     },
     query: queryTask,
+    async materialize(input) {
+      return { outputs: extractMaterializationOutputs(input.raw), raw: input.raw };
+    },
     async reconcile(input) {
-      if (!input.providerTaskId?.trim()) return { found: false };
+      if (!input.providerTaskId?.trim()) return { disposition: "indeterminate" };
       const result = await queryTask(input.providerTaskId);
-      return { found: Boolean(result), providerTaskId: input.providerTaskId, raw: result?.raw };
+      return { disposition: "found", providerTaskId: input.providerTaskId, raw: result.raw };
     },
   };
 }

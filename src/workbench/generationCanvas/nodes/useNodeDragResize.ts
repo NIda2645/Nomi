@@ -10,12 +10,13 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { clientXToFrame } from '../../timeline/timelineEdit'
-import { getTrackTypeForClipType } from '../../timeline/timelineTypes'
-import { buildGenerationNodeTimelineClip } from '../../timeline/buildGenerationNodeTimelineClip'
+import { adoptGenerationNode } from '../../adoption/adoptGenerationNode'
+import { reportAdoptionOutcome } from '../../adoption/adoptionReceipt'
 import { toast } from '../../../ui/toast'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
-import { setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
 import i18n from '../../../i18n'
+import { useGenerationFlowNodeManagedDrag } from '../reactFlow/generationFlowNodeContext'
 import {
   clampNumber,
   findTimelineDropTarget,
@@ -62,6 +63,7 @@ export function useNodeDragResize({
   updateNode,
   commitPersistedChange,
 }: UseNodeDragResizeArgs) {
+  const flowManagedDrag = useGenerationFlowNodeManagedDrag()
   const dragStartRef = React.useRef<{
     pointerX: number
     pointerY: number
@@ -161,6 +163,10 @@ export function useNodeDragResize({
   )
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    // In the React Flow PoC the outer node wrapper owns drag/selection. Leave
+    // the event bubbling so React Flow can process it; the default canvas path
+    // keeps the existing custom gesture implementation.
+    if (flowManagedDrag) return
     const target = event.target as HTMLElement
     // C5 安全坑：放行 contenteditable / ProseMirror，否则点正文会被当成拖拽、吞掉光标。
     if (target.closest('button, input, textarea, select, [contenteditable="true"], .ProseMirror')) return
@@ -193,6 +199,7 @@ export function useNodeDragResize({
   }
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (flowManagedDrag) return
     const resizeStart = resizeStartRef.current
     if (resizeStart) {
       const effectiveZoom = useGenerationCanvasStore.getState().canvasZoom || 1
@@ -277,7 +284,7 @@ export function useNodeDragResize({
     // 否则节点会无按键跟着光标跑。
     if (event.buttons === 0) {
       dragStartRef.current = null
-      setCanvasDragging(event.currentTarget, false)
+      setCanvasDragging(event.currentTarget, false, CANVAS_DRAGGING_OWNER.node)
       return
     }
     const effectiveZoom = useGenerationCanvasStore.getState().canvasZoom || 1
@@ -286,7 +293,7 @@ export function useNodeDragResize({
     if (!dragStart.dragging) {
       if (Math.abs(deltaX) < 2 && Math.abs(deltaY) < 2) return
       dragStart.dragging = true
-      setCanvasDragging(event.currentTarget, true) // 真开拖：全画布的浮条/提示词面板一起收起
+      setCanvasDragging(event.currentTarget, true, CANVAS_DRAGGING_OWNER.node) // 真开拖：全画布的浮条/提示词面板一起收起
 
       // 真开拖这一刻才抢 capture：从此 move/up 稳定送达外壳（可拖出画布），且 click 会被
       // 重定向到外壳=拖完不会误触子元素（label 不弹文件框）。短按（阈值内）永远不 capture，
@@ -313,6 +320,7 @@ export function useNodeDragResize({
   }
 
   const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (flowManagedDrag) return
     flushScheduledMove()
     const dragStart = dragStartRef.current
     const hadResize = Boolean(resizeStartRef.current)
@@ -327,9 +335,10 @@ export function useNodeDragResize({
       const liveNode = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === node.id) || node
       const rect = timelineDropTarget.getBoundingClientRect()
       const startFrame = clientXToFrame(event.clientX, rect.left, timeline.scale)
-      void buildGenerationNodeTimelineClip(liveNode, { fps: timeline.fps, startFrame }).then((clip) => {
-        if (!clip) return
-        useWorkbenchStore.getState().addTimelineClipAtFrame(clip, getTrackTypeForClipType(clip.type), startFrame)
+      // P5 E1：拖到自选位置也走采纳桥（不再直写轴）。落点语义由 placement 带过去，
+      // 幂等 / 新鲜度 / 原子写 / 一步撤销统一由桥负责。拖拽时用户已经在看着轴，回执不再展开面板。
+      void adoptGenerationNode(liveNode, { placement: { kind: 'frame', startFrame } }).then((outcome) => {
+        reportAdoptionOutcome(outcome, { revealTimeline: false })
         if (!dragStart?.multi) {
           moveNode(
             node.id,
@@ -351,7 +360,7 @@ export function useNodeDragResize({
     }
     dragStartRef.current = null
     resizeStartRef.current = null
-    if (dragStart?.dragging) setCanvasDragging(event.currentTarget, false)
+    if (dragStart?.dragging) setCanvasDragging(event.currentTarget, false, CANVAS_DRAGGING_OWNER.node)
     if (
       typeof event.currentTarget.hasPointerCapture === 'function' &&
       typeof event.currentTarget.releasePointerCapture === 'function' &&
@@ -362,6 +371,7 @@ export function useNodeDragResize({
   }
 
   const handleResizePointerDown = (direction: ResizeDirection) => (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (flowManagedDrag) return
     event.preventDefault()
     event.stopPropagation()
     if (readOnly) return
@@ -379,5 +389,5 @@ export function useNodeDragResize({
       event.currentTarget.setPointerCapture(event.pointerId)
     }
   }
-  return { handlePointerDown, handlePointerMove, handlePointerUp, handleResizePointerDown }
+  return { flowManagedDrag, handlePointerDown, handlePointerMove, handlePointerUp, handleResizePointerDown }
 }
