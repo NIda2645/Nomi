@@ -1,7 +1,7 @@
 # 现在真正跑的是什么
 
 > 状态：🚧 长期维护（这份文件不描述计划，只描述**当下 main 上真实运行的东西**）
-> 最后核对：2026-08-27 · 核对基线：`origin/main` @ `8f9365ae`
+> 最后核对：2026-08-31 · 核对基线：`origin/main` @ `62361d96`
 
 ## 这份文件为什么存在
 
@@ -44,6 +44,7 @@
 | **步数上限** | `storyboard`=24 步，其余=8 步，`single-shot`=1 步且零工具 | `electron/ai/agentChatV2.ts:102` | — |
 | **非 Agent 文本链** | 仍是 `ai@4` 的 `streamText`（**没有**跟着换 pi） | `electron/ai/streamTextTask.ts:8`、`package.json:132` | ❌ 以为换芯是全局的 |
 | **生成画布 renderer** | `@xyflow/react` 单内核，`GenerationCanvas` 是唯一稳定入口 | R21 · `src/workbench/generationCanvas/` | ❌ 以为还有第二 renderer / engine flag / fallback |
+| **资源库发现层** | 项目、提示词、技能、素材仍各自使用原有 store/API；renderer 仅通过 `libraryDiscovery.ts`/`libraryAdapters.ts` 统一多词搜索、确定性筛选与最近使用排序，不保存资源正文、不提供 Agent 入口 | `src/workbench/library/libraryDiscovery.ts`、`src/workbench/library/libraryAdapters.ts`、各库 `*Library*` 组件 | ❌ 以为这会新增一个“概览/超级资源库”或替换 #223 Agent 能力边界 |
 | **时间轴数据模型** | 固定 **3 轨**（image/video/audio）+ 独立 `textClips[]` + `transitions[]`。video/audio clip 可选带 `audio`（-60..0 dB、mute、帧级 fade-in/out）；无任意图层、无变速 | `src/workbench/timeline/timelineTypes.ts`、`src/workbench/timeline/clipAudio.ts` | ❌ 以为片段音量只有预览全局滑杆——clip 音频参数已经落盘并进入导出 |
 | **分镜 → 时间轴** | `planStoryboardTimeline` 只按 `shotIndex` 排序选片；**落轴归采纳桥** `adoptStoryboardBatch`（整批一次写定、一层撤销、带 Proposal 幂等键 replay/stale/needs_attention） | `storyboardTimelinePlan.ts:58`、`adoptStoryboardBatch.ts` | ❌ 只读 planner 就断言「意图被丢掉了」——**字幕和转场是在采纳桥里落的**，planner 里看不到 |
 | **字幕/转场落轴** | **已实现**：`node.meta.subtitle\|dialogue` → `textClips`；`node.meta.transition` → `transitions[]` | `adoptStoryboardBatch.ts:79`（caption）、`:88`（transition）、`:199`、`:217` | ❌ 以为字幕只能手打 |

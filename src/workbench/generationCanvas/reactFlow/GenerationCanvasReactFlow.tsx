@@ -17,6 +17,7 @@ import { cn } from '../../../utils/cn'
 import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
 import { ASSET_LIBRARY_DRAG_MIME } from '../../assets/assetLibraryDrag'
 import { useWorkbenchStore } from '../../workbenchStore'
+import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { clientXToFrame } from '../../timeline/timelineEdit'
 import { adoptGenerationNode } from '../../adoption/adoptGenerationNode'
 import { reportAdoptionOutcome } from '../../adoption/adoptionReceipt'
@@ -665,6 +666,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     const currentViewport = flow.getViewport()
     handleCanvasStageDrop(event, {
       readOnly,
+      activeProjectId: getActiveWorkbenchProjectId(),
       offset: { x: currentViewport.x, y: currentViewport.y },
       zoom: currentViewport.zoom,
       activeCategoryId,
