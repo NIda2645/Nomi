@@ -12,7 +12,13 @@ import type { AddressInfo } from 'node:net'
 
 import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { RpcError } from './dispatcher'
-import { createDiskGateway, createHybridGateway, createRendererGateway, withPreApprovedSpend, type ProjectGateway } from './gateway'
+import {
+  createDiskGateway,
+  createHybridGateway,
+  createRendererGateway,
+  withPreApprovedSpend,
+  type ProjectGateway,
+} from './gateway'
 import { isRendererAvailable } from './rendererBridge'
 import { resolveMcpOrigin, verifyToken } from './security'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
@@ -26,6 +32,7 @@ import { rpcErrorWirePayload } from './mcpRpcError'
 import type { ProjectLeaseAuthority } from './projectLease'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import type { McpGenerationPolicy } from './mcpGenerationPolicy'
+import type { IntegrationSessionService } from '../integrationCertification/integrationSession'
 
 export type RpcServerOptions = {
   /** 真实生成入口（runtime.runTask）。注入式：headless host 与 app 各自传同一份。 */
@@ -35,6 +42,7 @@ export type RpcServerOptions = {
   /** 该 projectId 是否正在某个 app 窗口里打开（命中则拒绝直写图变更）。headless: ()=>false。 */
   isProjectOpen?: (projectId: string) => boolean
   productionRuns?: ReturnType<typeof getProductionRunService>
+  integrationSessions?: IntegrationSessionService
   /** Optional main-process lease/receipt authorities. Omitted callers remain fail-closed for semantic routes. */
   projectLeaseAuthority?: ProjectLeaseAuthority
   resolveCurrentProject?: import('./dispatcher').DispatchContext['resolveCurrentProject']
@@ -75,7 +83,7 @@ function bearerToken(req: http.IncomingMessage): string {
 }
 
 function firstHeader(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? '' : value ?? ''
+  return Array.isArray(value) ? (value[0] ?? '') : (value ?? '')
 }
 
 export type RpcServerHandle = {
@@ -96,7 +104,9 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
     return isProjectOpen(projectId) ? createRendererGateway(projectId) : createHybridGateway(projectId)
   }
   // 交付④：同一预览 server 兼解 canvas-asset token（生成结果缩略图给非 Electron 宿主）。
-  const previewService = withAssetPreview(productionRuns, (projectId) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()))
+  const previewService = withAssetPreview(productionRuns, (projectId) =>
+    resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()),
+  )
 
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -117,16 +127,21 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           throw new RpcError('请求体非合法 JSON', 400)
         }
         const method = String(parsed.method || '')
-        const params = (parsed.params && typeof parsed.params === 'object' ? parsed.params : {}) as Record<string, unknown>
+        const params = (parsed.params && typeof parsed.params === 'object' ? parsed.params : {}) as Record<
+          string,
+          unknown
+        >
         const origin = resolveMcpOrigin(
           firstHeader(req.headers['x-nomi-mcp-client']),
           firstHeader(req.headers['x-nomi-mcp-client-proof']),
         )
         if (method === 'nomi_confirm_generation_gate') {
-          if (origin === 'external' || origin === 'nomi') throw new RpcError('Registered MCP client proof is required', 403)
+          if (origin === 'external' || origin === 'nomi')
+            throw new RpcError('Registered MCP client proof is required', 403)
           const challengeToken = typeof params.challengeToken === 'string' ? params.challengeToken.trim() : ''
           if (!challengeToken) throw new RpcError('Generation challenge is required', 400)
-          if (typeof options.confirmGenerationInNomi !== 'function') throw new RpcError('Nomi confirmation is unavailable', 501)
+          if (typeof options.confirmGenerationInNomi !== 'function')
+            throw new RpcError('Nomi confirmation is unavailable', 501)
           const result = await options.confirmGenerationInNomi({ challengeToken })
           send(200, { ok: true, result })
           return
@@ -151,8 +166,11 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         const result = await dispatchAndEnrich(method, params, {
           runTask: options.runTask,
           fetchTaskResult: options.fetchTaskResult,
-          makeGateway: preApprovedSpend ? (projectId: string) => withPreApprovedSpend(makeGateway(projectId)) : makeGateway,
+          makeGateway: preApprovedSpend
+            ? (projectId: string) => withPreApprovedSpend(makeGateway(projectId))
+            : makeGateway,
           productionRuns,
+          integrationSessions: options.integrationSessions,
           origin: { host: origin },
           generationPolicy: options.generationPolicy,
           generationContext: options.generationContext,

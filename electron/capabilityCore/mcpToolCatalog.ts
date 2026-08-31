@@ -8,10 +8,12 @@
 import { listProductionPlaybookNames } from '../productionRun/productionPlaybooks'
 import { buildGenerateParams } from './mcpGenerateParams'
 import { MCP_GENERATION_TOOL_CATALOG } from './mcpGenerationTools'
+import { MCP_INTEGRATION_TOOL_CATALOG } from './mcpIntegrationTools'
 
 // 工具定义：name → { description, inputSchema(JSON Schema), method(能力核方法), build(args→params) }。
 export const MCP_TOOL_CATALOG = [
   ...MCP_GENERATION_TOOL_CATALOG,
+  ...MCP_INTEGRATION_TOOL_CATALOG,
   {
     name: 'nomi_list_projects',
     description: '列出本机 Nomi 的所有项目（id / 名称 / 更新时间）。',

@@ -1,9 +1,9 @@
 # Nomi 工程纪律 — 详细规则（L2 · 触发才查）
 
-> 这是 `CLAUDE.md` 的「按需查阅」层。`CLAUDE.md`（always 加载）= 精简核心：项目事实 + P1–P5 + D1–D5 + 规则索引 + 三闸。本文件存**触发某条规则后才查的细节**：R1–R21 详解、工作流框架、技能库映射、固化的工作纪律。
+> 这是 `CLAUDE.md` 的「按需查阅」层。`CLAUDE.md`（always 加载）= 精简核心：项目事实 + P1–P5 + D1–D5 + 规则索引 + 三闸。本文件存**触发某条规则后才查的细节**：R1–R23 详解、工作流框架、技能库映射、固化的工作纪律。
 > 真相源仍单一：`CLAUDE.md` 的规则索引指明每条住哪；冲突一律以 `CLAUDE.md` 的 P1–P5 / D1–D5 为准。改触发清单同步 `.claude/hooks/self-check.sh`，规则细节只改本文件。
 
-# 详细规则 R1–R21
+# 详细规则 R1–R23
 
 > `CLAUDE.md` 的规则索引触发某个编号后，到这里查它的细节。
 
@@ -89,12 +89,21 @@
 
 **选型 / 引入新框架时实查最新现役框架（2026-06-21 用户要求 · 已挂 hook）**：每次出方案**可能引入新框架 / 新技术栈元素**（agent 框架、eval 框架、状态库、构建工具…）时，**动手前必须 Context7 + web 实查当前最核心、最现役的框架与技术栈**——不准凭记忆判断某框架的能力、新旧、是否已被取代。栽过（本会话）：凭记忆把 Mastra（现役 TS agent 框架）当「并行版」一刀切挡回，实查后改口它正好对口 eval/编排层。流程：① 列出方案要引入的框架/技术点 → ② 逐个 `resolve-library-id` + `query-docs` 拉最新文档（含版本/发布日期）→ ③ web 扫一眼有无更对路的现役框架 → ④ 给用户对比表（R3）。**已挂 PreToolUse hook（写 `docs/plan/*.md` 或动 `package.json` 时顶提醒）+ self-check.sh 闸① 每轮提醒**——别等想起来。
 
-## R6 读顶尖开源代码
+## R6 近邻开源优先，读真实代码
 
-做任何项目方案前，先去 GitHub 找 1~N 个顶尖开源项目读真实代码（不是扫 README），产出：
-- 它们怎么做的（具体到文件/代码位置）
+做任何项目方案前，先建立对标候选池，**按与 Nomi 的任务距离排序，不按名气、资料丰富度或单个控件的精致程度排序**：
+
+1. **开源近邻优先**：目标用户、要完成的创作任务、处理的媒介、主要交互载体中至少三项相同。例如研究 Nomi 的 Agent 画布，先看开源 AI 创作画布、视觉编辑器和音视频工作台，不能先拿通用代码 Agent 代替。
+2. **闭源直接竞品补产品上限**：当开源近邻没有覆盖某段完整体验，再读直接竞品的官方文档、真实界面或官方演示。它能证明产品选择，不能证明内部实现。
+3. **跨领域类比只补原语**：Cursor、Cline、Claude Code 等只可补权限、引用、队列等仍未覆盖的交互原语，不能单独支撑 Nomi 整体创作流程的结论。
+
+候选筛选先写清 `同用户任务 / 同媒介 / 同载体 / 开源可读` 四项，找不到近邻时记录实际检索过的方向并明确说没有，不得静默降级成通用案例。研究结论按来源标出：**它能证明什么、不能证明什么**；避免把开源 demo 当成熟产品，也避免把闭源界面猜成实现事实。
+
+入选的开源项目必须读真实代码（不是只扫 README），产出：
+- 它们怎么做的（具体到固定版本的文件/代码位置）
 - 我们能直接借鉴什么
 - 哪里不适用、为什么
+- 该项目覆盖的是完整用户旅程，还是仅一个局部原语
 
 参考池（非穷尽，按专题选，别拿这串当唯一清单——做某专题就去查那个专题真正的顶尖项目）：
 - coding agent / 通用：Cline / OpenHands / Aider / Continue / Cherry Studio / LobeChat
@@ -156,7 +165,9 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 
 完成一个有意义的、验证通过的改动就自己 commit + push，不用等用户催。
 
-**验证门槛**：`pnpm build` 绿 + `npx vitest run` 不回归（重大改动按速览「Push 前必须全过」走五门）。
+**开始闸**：在独立 sibling worktree 的任务分支先运行 `pnpm run delivery:preflight`。它只做一次有超时的非交互 fetch，并拒绝受保护分支、脏工作树和未包含最新远端基线的任务分支；失败后不自动重试、不用 REST API 重建 Git 对象。
+
+**验证门槛**：按 R22 的共享 policy 选择受影响风险面。contracts 始终运行；unit 可 focused/full，Electron、journey、canvas、performance 与 package 各自独立触发。连续小修先在本地收敛，定向验证通过后只 push 一次，禁止每修一个微小点就触发一轮完整远端 CI。
 
 **commit 规范**：
 - 一个逻辑改动一个 commit
@@ -435,15 +446,15 @@ CSS 文件分工与「只可减不可增」规则详见 R1 最后一节。
 3. **已合入、待验证**：目标分支已包含提交，但目标分支门禁或真实用户任务尚未通过。只能称“已合入”。
 4. **已解决**：修复提交已进入用户指定的远端目标分支，并且该目标分支上的必需门禁与真实用户任务都通过。
 
-**机械证据（报“已解决”前必做）**：
+**机械证据（报“已解决”前必做）**：拿到 GitHub 返回的 merge commit SHA 后，在 Git fetch 得到的该提交工作树运行：
 
 ```bash
-git fetch origin
-git merge-base --is-ancestor <fix-commit> origin/<target-branch>
-git status --short --branch
+pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 ```
 
-- 第一条祖先检查失败：状态必须降级为“已推送、待合入”，当轮继续完成合入，不能把尾巴留给用户。
+- 命令要求 `HEAD`、远端目标分支与 expected SHA 完全一致，并记录 commit/tree 两种身份；PR head 与 merge commit 不相等是正常阶段变化，tree 相同但 commit 不同也不能误报成代码不一致。
+- 身份检查失败：状态必须降级为“已推送、待合入”或“已合入、待验证”，当轮继续收口，不能把尾巴留给用户。
+- 禁止用 REST compare 文件列表、commit message 重放或低层 Git 对象合成来伪造远端 commit/tree；远端对象只从有界 Git fetch 获取。
 - 未推送提交不允许被引用为团队现状；需要保留就先推到明确命名的远端分支。
 - 删除分支前先逐提交审计；目标分支未包含的有效提交必须先合入或明确归档，不能靠删分支消失。
 - 完成报告必须同时给出目标分支、远端 commit、验证结果；不再只给一个侧分支 hash 让用户自行判断。
@@ -471,15 +482,51 @@ git status --short --branch
 
 **与既有规则的关系**：R5 管「用第三方库时先查官方文档」，R6 管「做方案前先读顶尖开源」，**R20 管更早的一步：先判断该不该自己写**。P2 的「通用性判定」是修 bug 侧的同一思维（这类还会从别的入口出现吗），R20 是造东西侧。
 
-## R21 可复发/高风险修复必须交根因合同
+## R21 修复必须走根因流程；可复发/高风险交 v3 合同
 
-**触发**：任何缺陷/回归先做复发性判定；判为 `recurring`，或涉及 provider、媒体、工作流绑定、任务派发、runtime、资产边界等高风险生产路径时，必须交根因合同。
+**触发**：所有 bug、回归、CI/平台失败、flaky、性能/安全问题和 review/audit 发现，不按目录或改动大小豁免。
 
-1. 先读 `.agents/skills/root-cause-remediation/SKILL.md`，按症状 → 直接原因 → 类根因 → 入口集 → `one_off`/`recurring` 推进；“只出现一次”不是 `one_off` 的证据。
-2. `one_off` 必须给出全仓同类扫描和仓库无法结构性预防的证据；否则一律按 `recurring`。
-3. `recurring` 和所有高风险修复在生产代码前新建或更新 `docs/fixes/*.root-cause.json`；外部行为必须带核验日期的官方文档/源码，纯内部问题必须写 `internal_only_reason`。
-4. 报告的精确案例与类边界都要有先红后绿的测试；`recurring` 还必须提交变化中的结构防护产物，不能只补测试、重试、跳过或人工步骤。
-5. 修在最早可统一约束的边界，不能因报错来自某模型/供应商就默认加专用分支。
-6. `pnpm run check:root-cause-contracts` 是权威门禁；任何主动提交的合同都会校验，高风险路径则强制必须有合同。本地 Agent hook 只做提前提醒，缺失也不能绕过 CI。
+统一方法只住在 `.agents/skills/root-cause-remediation/SKILL.md`。`recurring` 或高风险生产路径在改代码前必须提交 schema-v3 `docs/fixes/*.root-cause.json`；`pnpm run check:root-cause-contracts` 会交叉核验真实共享边界、至少两个同类入口、变化中的结构预防与类级测试、旧路径处置和依赖生命周期。schema v1/v2 是内容哈希锁定的历史记录，修改时必须迁移到 v3，禁止新增旧 schema。
 
-根因合同字段与完整方法只在技能和 schema 检查器维护，本节不复制，避免规则再次分叉。
+本地 Agent hook 只负责提前提醒，可能不存在；已提交的 `CLAUDE.md`、生成的 `AGENTS.md`、skill 和 CI 才是跨 Agent 的执行链。合同字段和完整步骤不在本节重复，避免规则再次膨胀和分叉。
+
+## R22 验证分层与测试预算
+
+> 2026-08-29 用户拍板建立测试预算；2026-08-30 从 `fast/full` 两档升级为独立风险面。目标不是少测，而是把反馈成本花在真正可能受影响的地方：小改动尽快反馈，高风险绝不降级，也不把无关性能或打包成本强加给每个 PR。
+
+### 风险面
+
+| 风险面 | 触发 | 验证 |
+|---|---|---|
+| contracts | 所有 PR 与 `main` push | 静态合同、lint、typecheck 和结构门岗 |
+| unit | 普通隔离改动用 `focused`；Electron、模型执行、画布和基础设施用 `full` | changed/sibling/related 或全量 Vitest/agent runtime |
+| desktop | Electron 与桌面运行边界 | 一次 build + Electron smoke |
+| journeys | Agent、模型执行和真实工作流边界 | CI-safe J3/J5 真实用户旅程 |
+| canvas | 生成画布为 `critical`；React Flow 内核/验收基础设施为 `full` | 功能画布验收，不含性能 benchmark |
+| performance | React Flow viewport、节点媒体渲染/调度和性能基准自身 | 独立性能预算；JSON 永久留证，`pass:false` 必须非零退出 |
+| package | 依赖/构建配置、Electron main/preload/runtime identity 与 release 边界 | macOS build、目录打包和 codesign |
+
+权威实现是 `scripts/validation-policy.mjs`；`scripts/select-quality-gate-profile.mjs` 只负责从 Git diff/事件取输入，`.github/workflows/quality-gate.yml` 和 `tests/system/profiles.mjs` 只消费输出。PR 和 `main` push 都按真实 Git changed entries 分类；`main` 不因事件名自动 full。删除/重命名、空或不可解析 diff、分类器/工作流/测试系统自身和手动发布验证必须 fail-closed 到所有风险面。`Quality Gate` 仍是唯一聚合门，只允许策略未选择的 optional job 为 skipped。
+
+### 测试取舍
+
+1. **必须保留**：凭据不出主进程、SSRF/重定向/私网边界、认证与发布状态机、幂等/并发/取消、崩溃恢复与升级持久化、迁移与 unknown reconcile、媒体验真、真实入口 round-trip、安装包身份和签名。这些测试即使慢或相似，也不能按数量删除。
+2. **可以 focused**：普通源文件的同目录 sibling test；没有 sibling 时由 Vitest import graph 找 related tests；直接改动的 Vitest/Node test。docs-only 没有可执行 target 时仍必须通过 contracts。
+3. **可以简化**：重复的 fixture、临时目录、启动器和断言 helper；过大的测试文件应按行为域拆分。先证明行为覆盖等价，再合并装配代码，不用“删测试”换速度。
+4. **不能假装自动化**：真实供应商 key、真实 ComfyUI、外部宿主和跨版本升级没有资源时必须记为 unverified，不能用 mock 绿灯替代 live 证据。
+
+### 执行节奏
+
+一个逻辑批次先完成实现、审计、规则和测试，再跑一次定向验证；全部本地问题收敛后按共享 policy 统一 push。只有测试基础设施自身、删除/重命名、无法分类或手动 release 才跑显式全维度；小阻塞不得打断主流程反复重启全套测试。
+
+最终交付不再本地跑第三遍：在真实 merged-main SHA 上运行 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`。命令仍用有界 Git fetch 证明 `HEAD`、远端主线和 expected SHA/tree 身份，然后等待该 exact SHA 的 `Quality Gate` 与 `Mac Package` check run。GitHub required-check 语义中的 success/skipped/neutral 可写入 Git common dir 的 per-SHA `ci-evidence.json`；missing、pending、failure 或错误 SHA 都不能生成成功收据。同一 SHA 再调用直接复用收据，不启动 repository tests。
+
+## R23 React Flow 生成画布单内核与迁移等价
+
+**边界**：生产生成画布只允许 `@xyflow/react` 一个交互、选择、平移缩放、连接、缩放节点和边渲染内核。`GenerationCanvas` 是稳定入口；禁止第二 renderer、engine flag、fallback 或并行实现。onboarding 的静态只读工作流图不属于生产生成画布 renderer。
+
+**状态所有权**：Zustand/domain/project snapshot 是业务与持久化唯一真相源；React Flow state 只是一层可丢弃的渲染投影。节点、边、选择和连接写入必须回到现有 graph actions，不能把 React Flow 内部 store 变成第二份业务状态。
+
+**迁移等价清单**：换内核不是重新设计。迁移或升级 React Flow 时，逐项盘点并保留旧画布的节点真实尺寸、fit/focus/虚拟化几何、连接入口与端点贴边、磁吸/hover/selection affordance、resize 命中区与可见反馈、边颜色/粗细/标签/菜单、出现与聚焦动画、拖动期间浮层、右键/键盘/触控协议；删除旧实现前必须证明新内核覆盖对应能力。产品明确要求改变的项目另走 R8，不得借迁移顺手改掉。
+
+**证据**：纯映射与状态复用写 adapter/contract 测试；旧内核不存在、入口唯一和写边界写结构门禁；用户能看到或操作的项目进入现有真实 Electron 旅程，用计算样式、SVG/DOM 几何和截图共同验证。不得以“React Flow 默认如此”替代 Nomi 的产品合同，也不得只查元素存在而不验证用户实际看见和点到的状态。
