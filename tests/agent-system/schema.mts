@@ -120,38 +120,220 @@ export const agentSystemCaseSchema = z
   })
   .strict()
 
-export const agentSystemAuthorityAdapterOwners = [
+const agentSystemLedgerStatusSchema = z.enum(['pending', 'consumed', 'missing', 'skipped'])
+const agentSystemOutcomeSchema = z.enum(['success', 'unknown', 'reconcile'])
+const agentSystemSeamStatusSchema = z.enum(['current', 'planned'])
+const agentSystemSeamKindSchema = z.enum(['production-seam', 'test-double'])
+
+const agentSystemContractBaseSchema = z
+  .object({
+    version: versionSchema,
+    runId: z.string().min(1),
+    caseId: z.string().min(1),
+    trusted: z.boolean(),
+  })
+  .strict()
+
+export const agentSystemStateContractSchema = agentSystemContractBaseSchema
+  .extend({
+    phase: z.enum(['plan', 'approval', 'effect', 'settle']),
+    outcome: agentSystemOutcomeSchema,
+    status: agentSystemLedgerStatusSchema,
+    effectCount: z.number().int().nonnegative(),
+    billingCount: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export const agentSystemToolContractSchema = agentSystemContractBaseSchema
+  .extend({
+    toolName: z.string().min(1),
+    input: z.record(z.unknown()).default({}),
+    outcome: agentSystemOutcomeSchema,
+    status: agentSystemLedgerStatusSchema,
+    note: z.string().min(1).optional(),
+  })
+  .strict()
+
+export const agentSystemSkillContractSchema = agentSystemContractBaseSchema
+  .extend({
+    name: z.string().min(1),
+    directoryName: z.string().min(1),
+    description: z.string().min(1),
+    body: z.string().min(1).optional(),
+    permissions: textListSchema,
+    outcome: agentSystemOutcomeSchema,
+    status: agentSystemLedgerStatusSchema,
+  })
+  .strict()
+
+export const agentSystemMcpContractSchema = agentSystemContractBaseSchema
+  .extend({
+    clientId: z.string().min(1),
+    host: z.string().min(1),
+    capabilities: textListSchema,
+    outcome: agentSystemOutcomeSchema,
+    status: agentSystemLedgerStatusSchema,
+  })
+  .strict()
+
+export const agentSystemContextContractSchema = agentSystemContractBaseSchema
+  .extend({
+    providerId: z.string().min(1),
+    modelId: z.string().min(1),
+    budget: agentSystemBudgetSchema,
+    environment: agentSystemEnvironmentSchema,
+    surface: textListSchema,
+    outcome: agentSystemOutcomeSchema,
+    status: agentSystemLedgerStatusSchema,
+  })
+  .strict()
+
+export const agentSystemArchitectureSeamSchema = z
+  .object({
+    status: agentSystemSeamStatusSchema,
+    kind: agentSystemSeamKindSchema,
+    surface: z.string().min(1),
+    owner: z.string().min(1),
+    note: z.string().min(1).optional(),
+  })
+  .strict()
+
+export const agentSystemReceiptContractSchema = agentSystemContractBaseSchema
+  .extend({
+    receiptId: z.string().min(1),
+    decision: agentSystemOutcomeSchema,
+    providerTaskId: z.string().min(1).optional(),
+    effectCount: z.number().int().nonnegative(),
+    billingCount: z.number().int().nonnegative(),
+    status: agentSystemLedgerStatusSchema,
+  })
+  .strict()
+
+export const agentSystemAuthorityAdapterOwners: z.infer<typeof agentSystemArchitectureSeamSchema>[] = [
   {
-    authority: 'creation.agent',
-    adapter: 'pi-sdk-runtime',
-    owner: 'electron/harness/runtime/pi/*.mts',
-    source: 'docs/ARCHITECTURE-NOW.md',
+    status: 'current',
+    kind: 'production-seam',
+    surface: 'creation.agent',
+    owner: 'electron/harness/runtime/pi/session.mts',
   },
   {
-    authority: 'creation.agent',
-    adapter: 'tool-selection-policy',
-    owner: 'electron/harness/agentChatPolicy.ts',
-    source: 'docs/ARCHITECTURE-NOW.md',
+    status: 'current',
+    kind: 'production-seam',
+    surface: 'creation.agent',
+    owner: 'electron/harness/runtime/pi/run.mts',
   },
   {
-    authority: 'creation.agent',
-    adapter: 'session-ownership',
-    owner: 'src/workbench/ai/agentSessionKey.ts',
-    source: 'docs/ARCHITECTURE-NOW.md',
+    status: 'current',
+    kind: 'production-seam',
+    surface: 'creation.agent',
+    owner: 'electron/harness/context/contextService.ts',
   },
   {
-    authority: 'mcp.transport',
-    adapter: 'tool-catalog',
-    owner: 'electron/capabilityCore/mcpToolCatalog.ts',
-    source: 'docs/ARCHITECTURE-NOW.md',
+    status: 'current',
+    kind: 'production-seam',
+    surface: 'creation.agent',
+    owner: 'electron/productionRun/productionRunRuntime.ts',
   },
   {
-    authority: 'timeline.preview',
-    adapter: 'timeline-planner',
-    owner: 'src/workbench/generationCanvas/agent/storyboardTimelinePlan.ts',
-    source: 'docs/ARCHITECTURE-NOW.md',
+    status: 'current',
+    kind: 'production-seam',
+    surface: 'capabilityCore',
+    owner: 'electron/capabilityCore/rendererBridge.ts',
+  },
+  {
+    status: 'current',
+    kind: 'production-seam',
+    surface: 'skills',
+    owner: 'electron/skills/skillStore.ts',
+  },
+  {
+    status: 'planned',
+    kind: 'test-double',
+    surface: 'tests/agent-system/harness',
+    owner: 'tests/agent-system/harness/',
+    note: 'Future harness doubles live here; this is not a current production seam.',
   },
 ] as const
+
+function serializeContract<T>(schema: z.ZodType<T>, value: unknown) {
+  return JSON.stringify(schema.parse(value))
+}
+
+function deserializeContract<T>(schema: z.ZodType<T>, value: string | unknown) {
+  return schema.parse(typeof value === 'string' ? JSON.parse(value) : value)
+}
+
+export function parseAgentSystemStateContract(input: unknown) {
+  return agentSystemStateContractSchema.parse(input)
+}
+
+export function serializeAgentSystemStateContract(value: unknown) {
+  return serializeContract(agentSystemStateContractSchema, value)
+}
+
+export function deserializeAgentSystemStateContract(value: string | unknown) {
+  return deserializeContract(agentSystemStateContractSchema, value)
+}
+
+export function parseAgentSystemToolContract(input: unknown) {
+  return agentSystemToolContractSchema.parse(input)
+}
+
+export function serializeAgentSystemToolContract(value: unknown) {
+  return serializeContract(agentSystemToolContractSchema, value)
+}
+
+export function deserializeAgentSystemToolContract(value: string | unknown) {
+  return deserializeContract(agentSystemToolContractSchema, value)
+}
+
+export function parseAgentSystemSkillContract(input: unknown) {
+  return agentSystemSkillContractSchema.parse(input)
+}
+
+export function serializeAgentSystemSkillContract(value: unknown) {
+  return serializeContract(agentSystemSkillContractSchema, value)
+}
+
+export function deserializeAgentSystemSkillContract(value: string | unknown) {
+  return deserializeContract(agentSystemSkillContractSchema, value)
+}
+
+export function parseAgentSystemMcpContract(input: unknown) {
+  return agentSystemMcpContractSchema.parse(input)
+}
+
+export function serializeAgentSystemMcpContract(value: unknown) {
+  return serializeContract(agentSystemMcpContractSchema, value)
+}
+
+export function deserializeAgentSystemMcpContract(value: string | unknown) {
+  return deserializeContract(agentSystemMcpContractSchema, value)
+}
+
+export function parseAgentSystemContextContract(input: unknown) {
+  return agentSystemContextContractSchema.parse(input)
+}
+
+export function serializeAgentSystemContextContract(value: unknown) {
+  return serializeContract(agentSystemContextContractSchema, value)
+}
+
+export function deserializeAgentSystemContextContract(value: string | unknown) {
+  return deserializeContract(agentSystemContextContractSchema, value)
+}
+
+export function parseAgentSystemReceiptContract(input: unknown) {
+  return agentSystemReceiptContractSchema.parse(input)
+}
+
+export function serializeAgentSystemReceiptContract(value: unknown) {
+  return serializeContract(agentSystemReceiptContractSchema, value)
+}
+
+export function deserializeAgentSystemReceiptContract(value: string | unknown) {
+  return deserializeContract(agentSystemReceiptContractSchema, value)
+}
 
 export const CREATOR_RUBRIC: z.infer<typeof agentSystemRubricCriterionSchema>[] = [
   { id: 'goal-fidelity', criterion: '目标/受众/平台保持一致', hardGate: true },

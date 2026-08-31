@@ -3,6 +3,8 @@ import { test } from 'node:test'
 import {
   AGENT_SYSTEM_CASES,
   AGENT_SYSTEM_SCHEMA_VERSION,
+  agentSystemArchitectureSeamSchema,
+  agentSystemAuthorityAdapterOwners,
   agentSystemCaseSchema,
   agentSystemEvidenceSchema,
   agentSystemTraceSchema,
@@ -107,6 +109,43 @@ test('version mismatches fail closed', () => {
         findings: [],
       }),
     /expected 1/,
+  )
+})
+
+test('stable production seams are separate from planned test doubles and include the real current owners', () => {
+  const surfaces = agentSystemAuthorityAdapterOwners.map((seam) => seam.owner)
+  assert.deepEqual(
+    surfaces.filter((owner) => owner.startsWith('electron/')),
+    [
+      'electron/harness/runtime/pi/session.mts',
+      'electron/harness/runtime/pi/run.mts',
+      'electron/harness/context/contextService.ts',
+      'electron/productionRun/productionRunRuntime.ts',
+      'electron/capabilityCore/rendererBridge.ts',
+      'electron/skills/skillStore.ts',
+    ],
+  )
+  assert.deepEqual(
+    agentSystemAuthorityAdapterOwners.filter((seam) => seam.status === 'planned').map((seam) => seam.kind),
+    ['test-double'],
+  )
+  assert.equal(
+    agentSystemArchitectureSeamSchema.safeParse({
+      status: 'planned',
+      kind: 'test-double',
+      surface: 'tests/agent-system/harness',
+      owner: 'tests/agent-system/harness/',
+    }).success,
+    true,
+  )
+  assert.equal(
+    agentSystemArchitectureSeamSchema.safeParse({
+      status: 'current',
+      kind: 'production-seam',
+      surface: 'creation.agent',
+      owner: 'electron/harness/runtime/pi/session.mts',
+    }).success,
+    true,
   )
 })
 
