@@ -68,7 +68,7 @@ export type { ProviderAdapterRegisterInput, ProviderAdapterRegistration } from "
 export type ProviderAdapterServiceDependencies = {
   catalog: ProviderAdapterCatalogPort;
   schedule?: (runId: string) => void;
-  discover: (input: { baseUrl: string; modelKeys: readonly string[]; signal?: AbortSignal }) => Promise<DiscoveredDocs>;
+  discover: (input: { baseUrl: string; modelKeys: readonly string[]; proxyUrl?: string; signal?: AbortSignal }) => Promise<DiscoveredDocs>;
   resolveLanguageModels: (connection: LoadedConnection) => readonly LanguageModelV1[];
   compile: (input: {
     languageModels: readonly LanguageModelV1[];
@@ -119,7 +119,7 @@ export type ProviderAdapterServiceDependencies = {
 
 const defaultDependencies: ProviderAdapterServiceDependencies = {
   catalog: defaultCatalog,
-  discover: ({ baseUrl, modelKeys, signal }) => discoverProviderDocs({ baseUrl, modelKeys, signal }),
+  discover: ({ baseUrl, modelKeys, proxyUrl, signal }) => discoverProviderDocs({ baseUrl, modelKeys, proxyUrl, signal }),
   resolveLanguageModels: defaultResolveLanguageModels,
   compile: (input) => compileProviderAdapter(input),
   repair: (input) => repairProviderAdapter(input),
@@ -184,6 +184,7 @@ export class ProviderAdapterService {
         apiKey: input.apiKey,
         selectedModelKeys: input.models.map((model) => model.modelKey),
         headers: input.headers,
+        proxyUrl: input.proxyUrl,
       }),
       deadlineAt: deadlineFrom(timestamp, this.dependencies.batchTimeoutMs ?? 5 * 60_000),
       checkpoint: this.dependencies.certificationCheckpoint,
@@ -198,22 +199,19 @@ export class ProviderAdapterService {
     return run;
   }
 
+  // Pure pass-through delegators to store/certification (grouped tightly).
   getRun(id: string): ProviderAdapterRun | undefined {
     return this.store.getRun(id);
   }
-
   certificationChildRunRef(id: string) {
     return this.certification.childRunRef(id);
   }
-
   certificationSourceVendorKey(id: string) {
     return this.certification.sourceVendorKey(id);
   }
-
   latestRun(vendorKey: string): ProviderAdapterRun | undefined {
     return this.store.latestRun(vendorKey);
   }
-
   listRuns(options: { vendorKey?: string; activeOnly?: boolean; limit?: number } = {}): ProviderAdapterRun[] {
     return this.store.listRuns(options);
   }
@@ -290,6 +288,7 @@ export class ProviderAdapterService {
       apiKey: connection.apiKey,
       selectedModelKeys: initial.selectedModelKeys,
       headers: connection.headers,
+      proxyUrl: connection.vendor.network?.proxyUrl,
     });
     if (fingerprint !== initial.connectionFingerprint) {
       const staleAt = this.dependencies.now();
@@ -342,6 +341,7 @@ export class ProviderAdapterService {
             this.dependencies.discover({
               baseUrl: String(connection.vendor.baseUrlHint || ""),
               modelKeys: mediaModels.map((model) => model.modelKey),
+              proxyUrl: connection.vendor.network?.proxyUrl,
               signal,
             }),
           );
