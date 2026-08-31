@@ -32,6 +32,10 @@ export const GEMINI_OMNI_11_CREATE_OP: HttpOperation = {
   },
   response_mapping: { task_id: "data.taskId" },
   provider_meta_mapping: { task_id: "data.taskId" },
+  // KIE's documented enum is numeric-looking but the API validator requires a JSON string
+  // (live response: `duration it must be a string`). Keep the UI's numeric option and
+  // stringify only at this mapping boundary; other vendors retain their native numeric wire type.
+  paramMap: { rules: [{ wire: "duration", fromMany: ["duration"], transform: "toString" }] },
 };
 
 const GEMINI_OMNI_11_QUERY_OP: HttpOperation = {

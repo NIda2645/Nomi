@@ -4,7 +4,11 @@ import type { HttpOperation, ProfileKind } from "./types";
 export const MINIMAX_VENDOR_SEED = {
   key: "minimax",
   name: "MiniMax",
-  baseUrl: "https://api.minimax.io",
+  // The key supplied by the MiniMax Open Platform is scoped to the .com
+  // endpoint. Keep the host in the seed aligned with the official Chinese
+  // API contract; using api.minimax.io returns 401 for that same key.
+  baseUrl: "https://api.minimaxi.com",
+  legacyBaseUrls: ["https://api.minimax.io"],
   authType: "bearer" as const,
   authHeader: "Authorization",
   assetIngestion: { strategy: "inline-base64" as const, accepts: ["image" as const] },
@@ -187,3 +191,15 @@ export const MINIMAX_OFFICIAL_MODELS: MinimaxOfficialModel[] = [
     }],
   })),
 ];
+
+/** Stable mapping identity manifest consumed by the zero-cost certification gate. */
+export const MINIMAX_OFFICIAL_MAPPING_IDS = [
+  "seed-minimax-h3-text_to_video",
+  "seed-minimax-h3-image_to_video",
+  "seed-minimax-speech-2.8-hd-text_to_audio",
+  "seed-minimax-speech-2.8-turbo-text_to_audio",
+] as const;
+
+if (new Set(MINIMAX_OFFICIAL_MODELS.flatMap((model) => model.mappings.map((mapping) => mapping.id))).size !== MINIMAX_OFFICIAL_MAPPING_IDS.length) {
+  throw new Error("MiniMax mapping identity manifest drift");
+}

@@ -13,6 +13,8 @@ const AUDIO_PARAMS: ModelParameterControl[] = [
   { key: "speech_rate", label: "语速变化", type: "number", options: [], min: -50, max: 100, defaultValue: 0 },
   { key: "loudness_rate", label: "响度变化", type: "number", options: [], min: -50, max: 100, defaultValue: 0 },
   { key: "pitch_rate", label: "音高变化", type: "number", options: [], min: -12, max: 12, defaultValue: 0 },
+  { key: "duration_seconds", label: "时长(秒)", type: "number", options: [], min: 0.5, max: 30, defaultValue: 5 },
+  { key: "loop", label: "无缝循环", type: "boolean", options: [], defaultValue: false },
 ];
 
 export const RUNWAY_AUDIO_ARCHETYPE: ModelArchetype = {
@@ -22,7 +24,7 @@ export const RUNWAY_AUDIO_ARCHETYPE: ModelArchetype = {
   kind: "audio",
   defaultModeId: "sfx",
   transportTaskKind: "text_to_audio",
-  identifierPatterns: ["seed_audio", "runway-audio"],
+  identifierPatterns: ["seed_audio", "eleven_text_to_sound_v2", "eleven_multilingual_v2", "eleven_v3", "runway-audio"],
   sources: [
     {
       url: "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json",

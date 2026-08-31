@@ -85,6 +85,9 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "runway-video-t2v": [
     "happyhorse_1_0"
   ],
+  "runway-image-reference": [
+    "gen4_image_turbo"
+  ],
   "runway-image": [
     "muse_image",
     "grok_imagine_image_2",
@@ -99,6 +102,9 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   ],
   "runway-audio": [
     "seed_audio",
+    "eleven_text_to_sound_v2",
+    "eleven_multilingual_v2",
+    "eleven_v3",
     "runway-audio"
   ],
   "happyhorse": [

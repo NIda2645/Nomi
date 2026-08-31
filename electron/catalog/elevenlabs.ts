@@ -105,6 +105,18 @@ export const ELEVENLABS_MODELS: ElevenLabsModel[] = [
   { modelKey: "scribe_v2", labelZh: "Scribe v2", kind: "audio", archetypeId: "eleven-scribe-v2", mappings: [{ id: "seed-elevenlabs-scribe-v2", taskKind: "transcribe", name: "Scribe v2 · 转写", create: SCRIBE_V2_CREATE }] },
 ];
 
+/** Stable mapping identity manifest consumed by the zero-cost certification gate. */
+export const ELEVENLABS_MAPPING_IDS = [
+  "seed-elevenlabs-eleven-v3-tts",
+  "seed-elevenlabs-music-v2",
+  "seed-elevenlabs-sfx-v2",
+  "seed-elevenlabs-scribe-v2",
+] as const;
+
+if (new Set(ELEVENLABS_MODELS.flatMap((model) => model.mappings.map((mapping) => mapping.id))).size !== ELEVENLABS_MAPPING_IDS.length) {
+  throw new Error("ElevenLabs mapping identity manifest drift");
+}
+
 export const ELEVENLABS_OPERATIONS = {
   elevenV3: ELEVEN_V3_CREATE,
   musicV2: MUSIC_V2_CREATE,

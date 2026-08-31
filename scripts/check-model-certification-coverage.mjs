@@ -96,6 +96,30 @@ if (falSource && !/FAL_OFFICIAL_ENDPOINT_COUNT\s*=\s*[^;]+/.test(falSource)) err
 const falCount = (falSource.match(/mapping\(/g) || []).length;
 if (falSource && falCount < 17) errors.push(`fal official source declares fewer than 17 mappings (${falCount})`);
 
+// Every literal curated mapping identity must appear in the ledger (directly or
+// through coveredMappingIds). This catches the dangerous state where a model is
+// visible in the catalog but has no certification record. Dynamic mapping tables
+// (MiniMax) expose a checked-in identity manifest; the manifest is itself kept in
+// sync with the runtime table by the catalog unit test.
+const curatedContracts = [
+  ["minimax", "electron/catalog/minimaxOfficial.ts"],
+  ["elevenlabs", "electron/catalog/elevenlabs.ts"],
+  ["runway", "electron/catalog/runwayOfficial.ts"],
+  ["kie", "electron/catalog/kieGeminiOmni11.ts"],
+];
+for (const [vendorKey, contractPath] of curatedContracts) {
+  const source = read(contractPath);
+  const declared = new Set([...source.matchAll(/["'`](seed-[A-Za-z0-9_.-]+)["'`]/g)].map((match) => match[1]));
+  const covered = new Set(
+    (ledger.entries || [])
+      .filter((entry) => entry.vendorKey === vendorKey)
+      .flatMap((entry) => [entry.mappingId, ...(Array.isArray(entry.coveredMappingIds) ? entry.coveredMappingIds : [])]),
+  );
+  for (const mappingId of declared) {
+    if (!covered.has(mappingId)) errors.push(`${vendorKey}: curated mapping ${mappingId} has no certification ledger entry`);
+  }
+}
+
 for (const generated of [
   "electron/catalog/archetypeIdentifiers.generated.ts",
   "electron/catalog/archetypeModes.generated.ts",

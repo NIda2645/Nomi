@@ -140,15 +140,24 @@ describe("2026-08 flagship media contracts", () => {
       "wan3", "grok_imagine_1_5", "hailuo3", "veo3.1", "veo3.1_fast", "happyhorse_1_0", "gemini_omni_flash",
       "muse_image", "grok_imagine_image_2", "seedream5_pro", "seedream5_lite", "gen4_image", "gen4_image_turbo",
       "gemini_image3_pro", "gemini_image3.1_flash", "gpt_image_2", "gemini_2.5_flash",
-      "seed_audio",
+      "seed_audio", "eleven_text_to_sound_v2", "eleven_multilingual_v2", "eleven_v3",
     ]));
     expect(runwayMappings.length).toBeGreaterThanOrEqual(3);
     expect(RUNWAY_OFFICIAL_ENDPOINTS).toEqual([
       "POST /v1/text_to_video",
       "POST /v1/image_to_video",
+      "POST /v1/video_to_video",
       "POST /v1/text_to_image",
+      "POST /v1/image_upscale",
+      "POST /v1/video_upscale",
+      "POST /v1/video_to_hdr",
+      "POST /v1/avatar_videos",
+      "POST /v1/character_performance",
       "POST /v1/sound_effect",
       "POST /v1/text_to_speech",
+      "POST /v1/speech_to_speech",
+      "POST /v1/voice_dubbing",
+      "POST /v1/voice_isolation",
       "GET /v1/tasks/{id}",
       "POST /v1/uploads",
       "POST signed upload",
@@ -157,6 +166,11 @@ describe("2026-08 flagship media contracts", () => {
     const t2v = selectTaskMapping(state.mappings, "runway", "text_to_video", "gen4.5", "t2v");
     const i2v = selectTaskMapping(state.mappings, "runway", "image_to_video", "gen4.5", "i2v");
     const turbo = selectTaskMapping(state.mappings, "runway", "image_to_video", "gen4_turbo", "i2v");
+    const imageTurbo = state.models.find((item) => item.vendorKey === "runway" && item.modelKey === "gen4_image_turbo");
+    const imageTurboMapping = selectTaskMapping(state.mappings, "runway", "image_edit", "gen4_image_turbo", "i2i");
+    expect(imageTurbo).toMatchObject({ meta: { archetypeId: "runway-image-reference" } });
+    expect(imageTurboMapping?.create.body).toMatchObject({ model: "gen4_image_turbo", reference_image_urls: "{{request.params.reference_image_urls}}" });
+    expect(selectTaskMapping(state.mappings, "runway", "text_to_image", "gen4_image_turbo", "t2i")).toBeNull();
     expect(t2v?.create).toMatchObject({ method: "POST", path: "/v1/text_to_video", body: { model: "gen4.5" } });
     expect(i2v?.create).toMatchObject({ method: "POST", path: "/v1/image_to_video", body: { model: "gen4.5", promptImage: "{{request.params.image_url}}" } });
     expect(turbo?.create).toMatchObject({ method: "POST", path: "/v1/image_to_video", body: { model: "gen4_turbo", promptImage: "{{request.params.image_url}}" } });
@@ -171,12 +185,21 @@ describe("2026-08 flagship media contracts", () => {
     const seedance = state.mappings.filter((item) => item.vendorKey === "runway" && item.modelKey === "seedance2_5");
     expect(seedance.map((item) => item.modeId).sort()).toEqual(["first", "firstlast", "omni", "t2v"]);
     expect(seedance.find((item) => item.modeId === "omni")?.create.request_transform).toBe("runway-seedance2-5");
-    const audio = state.mappings.filter((item) => item.vendorKey === "runway" && item.modelKey === "seed_audio");
-    expect(audio.map((item) => item.modeId).sort()).toEqual(["sfx", "speech"]);
+    const audio = state.mappings.filter((item) => item.vendorKey === "runway" && ["seed_audio", "eleven_text_to_sound_v2", "eleven_multilingual_v2", "eleven_v3"].includes(item.modelKey || ""));
+    expect(audio.map((item) => item.modeId).sort()).toEqual(["sfx", "sfx", "speech", "speech", "speech"]);
     expect(audio.every((item) => item.query?.path === "/v1/tasks/{{providerMeta.task_id}}" && item.result?.response_mapping?.assets === "output")).toBe(true);
+    expect(selectTaskMapping(state.mappings, "runway", "text_to_audio", "seed_audio")).toBeNull();
+    expect(selectTaskMapping(state.mappings, "runway", "text_to_audio", "seed_audio", "sfx")?.id).toBe("seed-runway-seed-audio-sfx");
     expect(RUNWAY_OFFICIAL_BLOCKERS).toEqual(expect.arrayContaining([
       expect.objectContaining({ modelKey: "aleph2" }),
       expect.objectContaining({ modelKey: "act_two" }),
+      expect.objectContaining({ modelKey: "gwm1_avatars" }),
+      expect.objectContaining({ modelKey: "magnific_precision_upscaler_v2" }),
+      expect.objectContaining({ modelKey: "magnific_video_upscaler_creative" }),
+      expect.objectContaining({ modelKey: "ruby" }),
+      expect.objectContaining({ modelKey: "eleven_voice_isolation" }),
+      expect.objectContaining({ modelKey: "eleven_voice_dubbing" }),
+      expect.objectContaining({ modelKey: "eleven_multilingual_sts_v2" }),
     ]));
   });
 
@@ -214,7 +237,7 @@ describe("2026-08 flagship media contracts", () => {
     }, { baseUrl: "https://api.dev.runwayml.com" });
     expect(transformed).toMatchObject({
       model: "seedance2",
-      promptImage: [{ uri: "runway://character" }, { uri: "runway://set" }],
+      promptImage: ["runway://character", "runway://set"],
       references: [{ uri: "runway://character" }, { uri: "runway://set" }],
     });
     expect(transformed).not.toHaveProperty("reference_image_urls");
@@ -225,5 +248,36 @@ describe("2026-08 flagship media contracts", () => {
       uriPath: "runwayUri",
       visibility: "provider-private",
     });
+  });
+
+  it("normalizes shared Runway controls to each official discriminator before spend", async () => {
+    const state = applyBuiltinSeeds(emptyCatalog(), "2026-08-30T00:00:00.000Z").state;
+    const runway = state.mappings.filter((item) => item.vendorKey === "runway");
+    const grok = runway.find((item) => item.id === "seed-runway-grok_imagine_1_5-t2v");
+    const veo = runway.find((item) => item.id === "seed-runway-veo3-1-t2v");
+    const happyhorse = runway.find((item) => item.id === "seed-runway-happyhorse_1_0-t2v");
+    expect(grok?.create.request_transform).toBe("runway-video-contract");
+    expect(await applyRequestTransform(grok?.create.request_transform, {
+      model: "grok_imagine_1_5", promptText: "test", ratio: "1280:720", duration: 5,
+      reference_image_urls: ["runway://ref"], reference_video_urls: ["runway://unsupported"],
+    }, { baseUrl: RUNWAY_VENDOR_SEED.baseUrl })).toMatchObject({
+      model: "grok_imagine_1_5", ratio: "16:9", references: [{ uri: "runway://ref" }],
+    });
+    const veoBody = await applyRequestTransform(veo?.create.request_transform, {
+      model: "veo3.1", promptText: "test", ratio: "16:9", duration: 5,
+    }, { baseUrl: RUNWAY_VENDOR_SEED.baseUrl });
+    expect(veoBody).toMatchObject({ ratio: "1280:720", duration: 4 });
+    expect(happyhorse?.create.request_transform).toBe("runway-video-contract");
+    const hhBody = await applyRequestTransform(happyhorse?.create.request_transform, {
+      model: "happyhorse_1_0", promptText: "test", ratio: "16:9", duration: 5,
+    }, { baseUrl: RUNWAY_VENDOR_SEED.baseUrl });
+    expect(hhBody).toMatchObject({ model: "happyhorse_1_0", ratio: "1280:720" });
+    const happyhorseI2v = runway.find((item) => item.id === "seed-runway-happyhorse_1_0-i2v");
+    expect(happyhorseI2v?.create.body).toMatchObject({ model: "happyhorse_1_0", promptImage: "{{request.params.image_url}}" });
+    expect(happyhorseI2v?.create.paramMap?.drops).toEqual(expect.arrayContaining(["generate_audio", "aspect_ratio"]));
+    const hhI2vBody = await applyRequestTransform(happyhorseI2v?.create.request_transform, {
+      model: "happyhorse_1_0", promptImage: "runway://image", ratio: "16:9", duration: 5,
+    }, { baseUrl: RUNWAY_VENDOR_SEED.baseUrl });
+    expect(hhI2vBody).not.toHaveProperty("ratio");
   });
 });

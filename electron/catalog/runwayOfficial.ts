@@ -136,10 +136,91 @@ registerRequestTransform("runway-video-references", normalizeRunwaySeedance25Bod
   normalizeRunwaySeedance25Body(body);
 });
 
+/**
+ * The Runway endpoint is a discriminated union, not one loose "video" body.
+ * Keep the shared archetype controls, but translate the small set of values
+ * that are not legal for a particular discriminator before the request can
+ * reach a billable create call.  This is deliberately model-generic: no UI
+ * branch or provider-specific mode is introduced.
+ */
+function normalizeRunwayVideoContract(body: unknown, _context?: RequestTransformContext): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Runway 视频请求体必须是 JSON 对象");
+  const input = body as Record<string, unknown>;
+  const model = String(input.model || "");
+  const hasPromptImage = Object.prototype.hasOwnProperty.call(input, "promptImage");
+
+  // The current shared ratio defaults are intentionally friendly strings;
+  // map them to the official discriminator enums at the transport boundary.
+  const ratio = String(input.ratio || "").trim();
+  const ratioFamilies: Record<string, readonly string[]> = {
+    seedance: ["992:432", "864:496", "752:560", "640:640", "560:752", "496:864", "1470:630", "1280:720", "1112:834", "960:960", "834:1112", "720:1280", "2206:946", "1920:1080", "1664:1248", "1440:1440", "1248:1664", "1080:1920", "3840:1646", "3840:2160", "3840:2880", "3840:3840", "2880:3840", "2160:3840"],
+    wan: ["832:480", "640:480", "480:480", "480:640", "480:832", "1280:720", "960:720", "720:720", "720:960", "720:1280", "1920:1080", "1440:1080", "1080:1080", "1080:1440", "1080:1920", "auto_480p", "auto_720p", "auto_1080p"],
+    hailuo: ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+    grok: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+    veo: ["1280:720", "720:1280", "1080:1920", "1920:1080"],
+    happyhorse: ["1280:720", "720:1280", "960:960", "1108:832", "832:1108", "1920:1080", "1080:1920", "1440:1440", "1662:1248", "1248:1662"],
+    gemini: ["1280:720", "720:1280"],
+  };
+  const family = model.startsWith("seedance2") ? "seedance"
+    : model === "wan3" ? "wan"
+      : model === "hailuo3" ? "hailuo"
+        : model === "grok_imagine_1_5" ? "grok"
+          : model.startsWith("veo3.1") ? "veo"
+            : model === "happyhorse_1_0" ? "happyhorse"
+              : model === "gemini_omni_flash" ? "gemini"
+                : null;
+  if (family && ratio && !ratioFamilies[family].includes(ratio)) {
+    const normalized = ratio === "16:9" || (ratio === "1280:720" && (family === "hailuo" || family === "grok"))
+      ? (family === "hailuo" || family === "grok" ? "16:9" : "1280:720")
+      : ratio === "9:16" || (ratio === "720:1280" && (family === "hailuo" || family === "grok"))
+        ? (family === "hailuo" || family === "grok" ? "9:16" : "720:1280")
+        : undefined;
+    if (normalized) input.ratio = normalized;
+    else delete input.ratio;
+  }
+
+  // Veo only accepts 4/6/8 seconds; choose the cheapest valid duration for
+  // the shared control's default instead of sending a guaranteed 400.
+  if (family === "veo" && input.duration !== undefined) {
+    const duration = Number(input.duration);
+    input.duration = [4, 6, 8].includes(duration) ? duration : 4;
+  }
+  // HappyHorse image-to-video has no ratio property in the official schema.
+  if (family === "happyhorse" && hasPromptImage) delete input.ratio;
+
+  // Reference arrays are supported only by the discriminators that publish
+  // them.  The UI supplies URL arrays; translate them into Runway's typed
+  // reference objects without allowing unsupported video/audio fields to
+  // leak into a different model variant.
+  const imageRefs = uriArray(input.reference_image_urls);
+  const videoRefs = uriArray(input.reference_video_urls);
+  const audioRefs = uriArray(input.reference_audio_urls);
+  delete input.reference_image_urls;
+  delete input.reference_video_urls;
+  delete input.reference_audio_urls;
+  const allowsImage = family === "seedance" || family === "wan" || family === "hailuo" || family === "grok";
+  const allowsVideo = family === "seedance" || family === "wan" || family === "hailuo";
+  const allowsAudio = allowsImage;
+  if (allowsImage && imageRefs.length) input.references = imageRefs.map((uri) => ({ uri }));
+  if (allowsVideo && videoRefs.length) input.referenceVideos = videoRefs.map((uri) => ({ type: "video", uri }));
+  if (allowsAudio && audioRefs.length) input.referenceAudio = audioRefs.map((uri) => ({ type: "audio", uri }));
+  if (!allowsImage) delete input.references;
+  if (!allowsVideo) delete input.referenceVideos;
+  if (!allowsAudio) delete input.referenceAudio;
+  return input;
+}
+
+registerRequestTransform("runway-video-contract", normalizeRunwayVideoContract, (body) => {
+  normalizeRunwayVideoContract(body);
+});
+
 function normalizeRunwayImageReferences(body: unknown): unknown {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Runway 图像请求体必须是 JSON 对象");
   const input = body as Record<string, unknown>;
   const images = uriArray(input.reference_image_urls);
+  if (input.model === "gen4_image_turbo" && images.length === 0) {
+    throw new Error("Runway Gen-4 Image Turbo 必须提供至少一张参考图");
+  }
   if (images.length > 3) throw new Error("Runway 图像模型最多 3 张参考图");
   delete input.reference_image_urls;
   if (images.length) input.referenceImages = images.map((uri) => ({ uri }));
@@ -251,6 +332,36 @@ const RUNWAY_AUDIO_TTS_CREATE: HttpOperation = {
   provider_meta_mapping: { task_id: "id" },
 };
 
+const RUNWAY_ELEVEN_SFX_CREATE: HttpOperation = {
+  method: "POST",
+  path: "/v1/sound_effect",
+  headers: HEADERS,
+  body: {
+    model: "eleven_text_to_sound_v2",
+    promptText: "{{request.prompt}}",
+    duration: "{{request.params.duration_seconds}}",
+    loop: "{{request.params.loop}}",
+  },
+  response_mapping: { task_id: "id" },
+  provider_meta_mapping: { task_id: "id" },
+};
+
+const RUNWAY_ELEVEN_TTS_CREATE = (model: "eleven_multilingual_v2" | "eleven_v3"): HttpOperation => ({
+  method: "POST",
+  path: "/v1/text_to_speech",
+  headers: HEADERS,
+  body: {
+    model,
+    promptText: "{{request.prompt}}",
+    // Runway's public contract requires a voice object for these variants.
+    // Maya is an official preset; the generic audio archetype keeps this
+    // default stable until a voice-picker control is added to the shared UI.
+    voice: { type: "runway-preset", presetId: "Maya" },
+  },
+  response_mapping: { task_id: "id" },
+  provider_meta_mapping: { task_id: "id" },
+});
+
 const RUNWAY_AUDIO_MODEL: RunwayModel = {
   modelKey: "seed_audio",
   labelZh: "Runway Seed Audio",
@@ -261,6 +372,23 @@ const RUNWAY_AUDIO_MODEL: RunwayModel = {
     { id: RUNWAY_AUDIO_TTS_ID, modeId: "speech", taskKind: "text_to_audio", name: "Runway Seed Audio · 配音", create: RUNWAY_AUDIO_TTS_CREATE, query: audioPoll, result: audioResult, statusMapping: STATUS },
   ],
 };
+
+const RUNWAY_ELEVEN_AUDIO_MODELS: RunwayModel[] = [
+  {
+    modelKey: "eleven_text_to_sound_v2",
+    labelZh: "Runway Eleven Sound Effects v2",
+    kind: "audio",
+    archetypeId: "runway-audio",
+    mappings: [{ id: "seed-runway-eleven_text_to_sound_v2-sfx", modeId: "sfx", taskKind: "text_to_audio", name: "Runway Eleven Sound Effects v2 · 音效", create: RUNWAY_ELEVEN_SFX_CREATE, query: audioPoll, result: audioResult, statusMapping: STATUS }],
+  },
+  ...(["eleven_multilingual_v2", "eleven_v3"] as const).map((modelKey) => ({
+    modelKey,
+    labelZh: `Runway ${modelKey}`,
+    kind: "audio" as const,
+    archetypeId: "runway-audio",
+    mappings: [{ id: `seed-runway-${modelKey}-speech`, modeId: "speech", taskKind: "text_to_audio" as const, name: `Runway ${modelKey} · 配音`, create: RUNWAY_ELEVEN_TTS_CREATE(modelKey), query: audioPoll, result: audioResult, statusMapping: STATUS }],
+  })),
+];
 
 const mapping = (id: string, modeId: string, taskKind: ProfileKind, name: string, createOp: HttpOperation) => ({
   id,
@@ -343,11 +471,17 @@ export const RUNWAY_IMAGE_MAPPING_IDS = [
   "seed-runway-seedream5_pro-t2i", "seed-runway-seedream5_pro-i2i",
   "seed-runway-seedream5_lite-t2i", "seed-runway-seedream5_lite-i2i",
   "seed-runway-gen4_image-t2i",
-  "seed-runway-gen4_image_turbo-t2i",
+  "seed-runway-gen4_image_turbo-i2i",
   "seed-runway-gemini_image3_pro-t2i", "seed-runway-gemini_image3_pro-i2i",
   "seed-runway-gemini_image3-1_flash-t2i", "seed-runway-gemini_image3-1_flash-i2i",
   "seed-runway-gpt_image_2-t2i", "seed-runway-gpt_image_2-i2i",
   "seed-runway-gemini_2-5_flash-t2i", "seed-runway-gemini_2-5_flash-i2i",
+] as const;
+
+export const RUNWAY_AUDIO_MAPPING_IDS = [
+  "seed-runway-seed-audio-sfx", "seed-runway-seed-audio-tts",
+  "seed-runway-eleven_text_to_sound_v2-sfx",
+  "seed-runway-eleven_multilingual_v2-speech", "seed-runway-eleven_v3-speech",
 ] as const;
 
 const RUNWAY_VIDEO_SPECS: RunwayVideoSpec[] = [
@@ -359,7 +493,7 @@ const RUNWAY_VIDEO_SPECS: RunwayVideoSpec[] = [
   { modelKey: "hailuo3", labelZh: "Runway Hailuo 3", archetypeId: "runway-video", fields: "hailuo" },
   { modelKey: "veo3.1", labelZh: "Runway Veo 3.1", archetypeId: "runway-video", fields: "veo" },
   { modelKey: "veo3.1_fast", labelZh: "Runway Veo 3.1 Fast", archetypeId: "runway-video", fields: "veo" },
-  { modelKey: "happyhorse_1_0", labelZh: "Runway HappyHorse 1.0", archetypeId: "runway-video-t2v", fields: "happyhorse", modes: ["t2v"] },
+  { modelKey: "happyhorse_1_0", labelZh: "Runway HappyHorse 1.0", archetypeId: "runway-video", fields: "happyhorse", modes: ["t2v", "i2v"] },
   { modelKey: "gemini_omni_flash", labelZh: "Runway Gemini Omni Flash", archetypeId: "runway-video", fields: "gemini" },
 ];
 
@@ -370,15 +504,26 @@ function runwayVideoCreate(spec: RunwayVideoSpec, withImage: boolean, withRefere
     model: spec.modelKey,
   };
   if (spec.fields === "seedance") Object.assign(body, { audio: "{{request.params.generate_audio}}", duration: "{{request.params.duration}}", ratio: "{{request.params.aspect_ratio}}" });
-  if (spec.fields === "wan") Object.assign(body, { audio: "{{request.params.generate_audio}}", duration: "{{request.params.duration}}", ratio: "{{request.params.aspect_ratio}}", ...(withImage ? {} : { references: "{{request.params.reference_image_urls}}", referenceVideos: "{{request.params.reference_video_urls}}", referenceAudio: "{{request.params.reference_audio_urls}}" }) });
+  if (spec.fields === "wan") Object.assign(body, { audio: "{{request.params.generate_audio}}", duration: "{{request.params.duration}}", ratio: "{{request.params.aspect_ratio}}" });
+  if (spec.fields === "hailuo") Object.assign(body, { duration: "{{request.params.duration}}", resolution: "{{request.params.resolution}}", ratio: "{{request.params.aspect_ratio}}" });
   if (spec.fields === "grok") Object.assign(body, { duration: "{{request.params.duration}}", resolution: "{{request.params.resolution}}" });
-  if (spec.fields === "hailuo") Object.assign(body, { duration: "{{request.params.duration}}", resolution: "{{request.params.resolution}}", ratio: "{{request.params.aspect_ratio}}", ...(withImage ? {} : { references: "{{request.params.reference_image_urls}}", referenceVideos: "{{request.params.reference_video_urls}}", referenceAudio: "{{request.params.reference_audio_urls}}" }) });
   if (spec.fields === "veo") Object.assign(body, { audio: "{{request.params.generate_audio}}", duration: "{{request.params.duration}}", ratio: "{{request.params.aspect_ratio}}" });
-  if (spec.fields === "happyhorse") Object.assign(body, { duration: "{{request.params.duration}}", ratio: "{{request.params.aspect_ratio}}" });
+  if (spec.fields === "happyhorse") Object.assign(body, { duration: "{{request.params.duration}}", ...(withImage ? {} : { ratio: "{{request.params.aspect_ratio}}" }) });
   if (spec.fields === "gemini") Object.assign(body, { ratio: "{{request.params.aspect_ratio}}", duration: "{{request.params.duration}}" });
+  if (withReferences) {
+    if (spec.fields === "seedance" || spec.fields === "wan" || spec.fields === "hailuo" || spec.fields === "grok") {
+      Object.assign(body, {
+        reference_image_urls: "{{request.params.reference_image_urls}}",
+        ...(spec.fields === "seedance" || spec.fields === "wan" || spec.fields === "hailuo" ? { reference_video_urls: "{{request.params.reference_video_urls}}" } : {}),
+        reference_audio_urls: "{{request.params.reference_audio_urls}}",
+      });
+    }
+  }
   const drops = spec.fields === "grok"
     ? ["aspect_ratio", "generate_audio"]
-    : spec.fields === "hailuo" || spec.fields === "happyhorse" || spec.fields === "gemini"
+    : spec.fields === "happyhorse" && withImage
+      ? ["generate_audio", "aspect_ratio"]
+      : spec.fields === "hailuo" || spec.fields === "happyhorse" || spec.fields === "gemini"
       ? ["generate_audio"]
       : [];
   return {
@@ -386,7 +531,7 @@ function runwayVideoCreate(spec: RunwayVideoSpec, withImage: boolean, withRefere
     path: withImage ? "/v1/image_to_video" : "/v1/text_to_video",
     headers: HEADERS,
     body,
-    ...(withReferences ? { request_transform: "runway-video-references" } : {}),
+    request_transform: "runway-video-contract",
     ...(drops.length ? { paramMap: { drops, rules: [] } } : {}),
     response_mapping: { task_id: "id" },
     provider_meta_mapping: { task_id: "id" },
@@ -409,14 +554,14 @@ function runwayVideoModel(spec: RunwayVideoSpec): RunwayModel {
   };
 }
 
-type RunwayImageSpec = { modelKey: string; labelZh: string; allowReferences?: boolean; outputCount?: boolean };
+type RunwayImageSpec = { modelKey: string; labelZh: string; allowReferences?: boolean; outputCount?: boolean; requiresReferences?: boolean };
 const RUNWAY_IMAGE_SPECS: RunwayImageSpec[] = [
   { modelKey: "muse_image", labelZh: "Runway Muse Image", allowReferences: true, outputCount: true },
   { modelKey: "grok_imagine_image_2", labelZh: "Runway Grok Imagine Image 2", allowReferences: true, outputCount: true },
   { modelKey: "seedream5_pro", labelZh: "Runway Seedream 5 Pro", allowReferences: true, outputCount: true },
   { modelKey: "seedream5_lite", labelZh: "Runway Seedream 5 Lite", allowReferences: true, outputCount: true },
   { modelKey: "gen4_image", labelZh: "Runway Gen-4 Image", allowReferences: false },
-  { modelKey: "gen4_image_turbo", labelZh: "Runway Gen-4 Image Turbo", allowReferences: false },
+  { modelKey: "gen4_image_turbo", labelZh: "Runway Gen-4 Image Turbo", allowReferences: true, requiresReferences: true },
   { modelKey: "gemini_image3_pro", labelZh: "Runway Gemini Image 3 Pro", allowReferences: true },
   { modelKey: "gemini_image3.1_flash", labelZh: "Runway Gemini Image 3.1 Flash", allowReferences: true },
   { modelKey: "gpt_image_2", labelZh: "Runway GPT Image 2", allowReferences: true },
@@ -432,25 +577,28 @@ function runwayImageModel(spec: RunwayImageSpec): RunwayModel {
       promptText: "{{request.prompt}}",
       ratio: "{{request.params.aspect_ratio}}",
       ...(spec.outputCount ? { outputCount: "{{request.params.output_count}}" } : {}),
-      ...(withReferences ? { reference_image_urls: "{{request.params.reference_image_urls}}" } : {}),
+      ...(withReferences || spec.requiresReferences ? { reference_image_urls: "{{request.params.reference_image_urls}}" } : {}),
       model: spec.modelKey,
     },
-    ...(withReferences ? { request_transform: "runway-image-references" } : {}),
+    ...((withReferences || spec.requiresReferences) ? { request_transform: "runway-image-references" } : {}),
     ...(!spec.outputCount ? { paramMap: { drops: ["output_count"], rules: [] } } : {}),
     response_mapping: { task_id: "id" },
     provider_meta_mapping: { task_id: "id" },
   });
-  const t2i = mapping(`seed-runway-${spec.modelKey.replace(/\./g, "-")}-t2i`, "t2i", "text_to_image", `${spec.labelZh} · 文生图`, operation(false));
-  t2i.query = imagePoll;
-  t2i.result = imageResult;
-  const mappings: RunwayModel["mappings"] = [t2i];
+  const mappings: RunwayModel["mappings"] = [];
+  if (!spec.requiresReferences) {
+    const t2i = mapping(`seed-runway-${spec.modelKey.replace(/\./g, "-")}-t2i`, "t2i", "text_to_image", `${spec.labelZh} · 文生图`, operation(false));
+    t2i.query = imagePoll;
+    t2i.result = imageResult;
+    mappings.push(t2i);
+  }
   if (spec.allowReferences) {
     const i2i = mapping(`seed-runway-${spec.modelKey.replace(/\./g, "-")}-i2i`, "i2i", "image_edit", `${spec.labelZh} · 参考/改图`, operation(true));
     i2i.query = imagePoll;
     i2i.result = imageResult;
     mappings.push(i2i);
   }
-  return { modelKey: spec.modelKey, labelZh: spec.labelZh, kind: "image", archetypeId: "runway-image", mappings } as RunwayModel;
+  return { modelKey: spec.modelKey, labelZh: spec.labelZh, kind: "image", archetypeId: spec.requiresReferences ? "runway-image-reference" : "runway-image", mappings } as RunwayModel;
 }
 
 export const RUNWAY_OFFICIAL_MODELS: RunwayModel[] = [
@@ -484,11 +632,30 @@ export const RUNWAY_OFFICIAL_MODELS: RunwayModel[] = [
     ],
   },
   RUNWAY_AUDIO_MODEL,
+  ...RUNWAY_ELEVEN_AUDIO_MODELS,
   ...RUNWAY_VIDEO_SPECS.map(runwayVideoModel),
   ...RUNWAY_IMAGE_SPECS.map(runwayImageModel),
 ];
 
-export const RUNWAY_OFFICIAL_ENDPOINTS = ["POST /v1/text_to_video", "POST /v1/image_to_video", "POST /v1/text_to_image", "POST /v1/sound_effect", "POST /v1/text_to_speech", "GET /v1/tasks/{id}", "POST /v1/uploads", "POST signed upload"] as const;
+export const RUNWAY_OFFICIAL_ENDPOINTS = [
+  "POST /v1/text_to_video",
+  "POST /v1/image_to_video",
+  "POST /v1/video_to_video",
+  "POST /v1/text_to_image",
+  "POST /v1/image_upscale",
+  "POST /v1/video_upscale",
+  "POST /v1/video_to_hdr",
+  "POST /v1/avatar_videos",
+  "POST /v1/character_performance",
+  "POST /v1/sound_effect",
+  "POST /v1/text_to_speech",
+  "POST /v1/speech_to_speech",
+  "POST /v1/voice_dubbing",
+  "POST /v1/voice_isolation",
+  "GET /v1/tasks/{id}",
+  "POST /v1/uploads",
+  "POST signed upload",
+] as const;
 
 /**
  * Official catalog entries that are intentionally not published as mappings.
@@ -500,4 +667,11 @@ export const RUNWAY_OFFICIAL_ENDPOINTS = ["POST /v1/text_to_video", "POST /v1/im
 export const RUNWAY_OFFICIAL_BLOCKERS = [
   { modelKey: "aleph2", reason: "video_to_video_only_profile_kind_missing" },
   { modelKey: "act_two", reason: "specialized_character_performance_schema_missing" },
+  { modelKey: "gwm1_avatars", reason: "realtime_avatar_profile_kind_missing" },
+  { modelKey: "magnific_precision_upscaler_v2", reason: "image_upscale_profile_kind_missing" },
+  { modelKey: "magnific_video_upscaler_creative", reason: "video_upscale_profile_kind_missing" },
+  { modelKey: "ruby", reason: "video_to_hdr_profile_kind_missing" },
+  { modelKey: "eleven_voice_isolation", reason: "audio_to_audio_profile_kind_missing" },
+  { modelKey: "eleven_voice_dubbing", reason: "audio_to_audio_profile_kind_missing" },
+  { modelKey: "eleven_multilingual_sts_v2", reason: "audio_to_audio_profile_kind_missing" },
 ] as const;

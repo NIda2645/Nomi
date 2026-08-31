@@ -134,6 +134,12 @@ export function toUpperCase(values: Array<string | undefined>): string | undefin
   return value ? value.toUpperCase() : undefined;
 }
 
+/** Strict providers that declare a numeric-looking enum as a JSON string (KIE Gemini duration). */
+export function toString(values: Array<string | undefined>): string | undefined {
+  const value = values[0];
+  return value === undefined ? undefined : String(value);
+}
+
 /** Canonical sound type is a readable one-shot/loop enum; KIE's wire field is boolean. */
 export function soundTypeToLoop(values: Array<string | undefined>): boolean | undefined {
   const value = values[0]?.trim().toLowerCase();
@@ -156,6 +162,7 @@ export const PARAM_TRANSFORMS: Record<string, (values: Array<string | undefined>
   ratioResToOpenAiSize,
   toLowerCase,
   toUpperCase,
+  toString,
   agnesVideoWidth,
   agnesVideoHeight,
   agnesVideoNumFrames,

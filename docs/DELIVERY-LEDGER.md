@@ -9,7 +9,7 @@
 
 ---
 
-## 现役欠账（8）
+## 现役欠账（9）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
@@ -21,6 +21,7 @@
 | 🚧 进行中 | [2026-08-30-unified-model-integration-certification.md](plan/2026-08-30-unified-model-integration-certification.md) | Unified Provider And Model Integration Certification |
 | 🚧 进行中 | [2026-08-27-release-media-pack-skill.md](superpowers/plans/2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan |
 | 🚧 进行中 | [2026-08-28-conversational-model-integration.md](superpowers/plans/2026-08-28-conversational-model-integration.md) | Conversational Model Integration Implementation Plan |
+| 🚧 进行中 | [2026-08-31-provider-model-expansion-certification.md](superpowers/plans/2026-08-31-provider-model-expansion-certification.md) | Provider and Flagship Model Expansion Certification Implementation Plan |
 
 ## 远期 / 暂缓（0）
 
@@ -45,7 +46,7 @@ _没有标记为远期的方案。_
 
 </details>
 
-- 合计扫描：456 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：457 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 

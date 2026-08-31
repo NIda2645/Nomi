@@ -2,7 +2,7 @@
 // 单一真相：缓存命中与无状态重建共用同一段 query。与 runtime 是调用时（函数体内）的循环依赖——
 // ESM/CJS 都按 live binding 在调用时取值，加载期不触碰，安全。
 import { trim, type JsonRecord } from "../jsonUtils";
-import type { Mapping, Model, ProfileKind } from "../catalog/types";
+import type { Model, ProfileKind } from "../catalog/types";
 import { readCatalog } from "../catalog/catalogStore";
 import { desktopT } from "../i18n";
 import { classifyTaskCacheMiss, wasTaskAdmitted } from "./taskAdmission";
@@ -320,11 +320,13 @@ export async function fetchTaskResult(payload: unknown): Promise<{ vendor: strin
   // 缓存 miss：先试无状态重建（重启/驱逐后仍能续查的治本点）。重建得了就走同一段 query。
   const rebuilt = rebuildCachedTaskFromPayload(taskId, raw);
   if (rebuilt) {
-    try {
-      return await executeTaskQuery(taskId, rebuilt);
-    } catch {
-      // 重建后查询失败(网络/上游) → 落回诚实诊断，别把可重试当未知 id。
-    }
+    // Never turn a real provider/retrieval error into task_tracking_lost. The
+    // renderer treats a thrown query error as recoverable and can retry it for
+    // free; converting it to a terminal cache-miss result made a valid task
+    // unrecoverable after restart (especially when localization hit a transient
+    // CDN/proxy failure). Only an actually unreconstructable task reaches the
+    // cache-miss classifier below.
+    return executeTaskQuery(taskId, rebuilt);
   }
 
   // 区分两种 miss：曾受理但被驱逐/过期(可能 vendor 侧已完成) vs 真·未知 id（修 P1）。

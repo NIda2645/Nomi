@@ -361,10 +361,19 @@ function pruneRetiredMappings(mappings: Mapping[], retiredIds: readonly string[]
   return changed;
 }
 
-/** 供应商种子（裸 baseUrl + bearer）。存在即跳过（用户配置不覆盖）。返回是否变更。
+/** 供应商种子（裸 baseUrl + bearer）。存在即跳过（用户配置不覆盖）；仅对账代码声明的旧官方 host。
  *  多数种子默认 enabled:true；无鉴权本地后端（ComfyUI）带 `enabled:false` → 默认关、用户显式启用（污染防护）。 */
 function seedVendor(vendors: Vendor[], seed: VendorSeed, now: string): boolean {
-  if (vendors.some((v) => v.key === seed.key)) return false;
+  const existingIndex = vendors.findIndex((v) => v.key === seed.key);
+  if (existingIndex >= 0) {
+    const existing = vendors[existingIndex];
+    // 只迁移仍指向我们旧默认值的记录。用户改成自建中转/代理时，绝不能因为升级而覆盖。
+    if (seed.legacyBaseUrls?.includes(String(existing.baseUrlHint ?? ""))) {
+      vendors[existingIndex] = { ...existing, baseUrlHint: seed.baseUrl, updatedAt: now };
+      return true;
+    }
+    return false;
+  }
   const enabled = seed.enabled === false ? false : true;
   vendors.push({
     key: seed.key, name: seed.name, enabled,

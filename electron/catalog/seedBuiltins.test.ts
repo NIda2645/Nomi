@@ -91,6 +91,31 @@ describe("applyBuiltinSeeds", () => {
       .toMatchObject({ model_url: "model_urls.glb" });
   });
 
+  it("只迁移 MiniMax 的旧官方 host，不覆盖用户自定义中转地址", () => {
+    const stale = emptyCatalog();
+    stale.vendors.push({
+      key: "minimax", name: "MiniMax", enabled: true,
+      baseUrlHint: "https://api.minimax.io", authType: "bearer", authHeader: "Authorization",
+      createdAt: "old", updatedAt: "old",
+    });
+    const migrated = applyBuiltinSeeds(stale, "2026-08-31T00:00:00.000Z");
+    expect(migrated.changed).toBe(true);
+    expect(migrated.state.vendors.find((vendor) => vendor.key === "minimax")).toMatchObject({
+      baseUrlHint: "https://api.minimaxi.com", updatedAt: "2026-08-31T00:00:00.000Z",
+    });
+
+    const custom = emptyCatalog();
+    custom.vendors.push({
+      key: "minimax", name: "我的中转", enabled: false,
+      baseUrlHint: "https://minimax.example.invalid/v1", authType: "bearer", authHeader: "Authorization",
+      createdAt: "old", updatedAt: "old",
+    });
+    const preserved = applyBuiltinSeeds(custom, "2026-08-31T00:00:00.000Z");
+    expect(preserved.state.vendors.find((vendor) => vendor.key === "minimax")).toMatchObject({
+      name: "我的中转", enabled: false, baseUrlHint: "https://minimax.example.invalid/v1", updatedAt: "old",
+    });
+  });
+
   it("re-sync：旧装机里早先种的 Seedance mapping 缺 omni 字段 → 刷新到当前代码（含 reference_image_urls + generate_audio）", () => {
     // 模拟：老版本种下的 (kie, image_to_video) mapping，body 只有首帧字段（无 omni 参考数组）。
     const stale = applyBuiltinSeeds(emptyCatalog(), NOW).state;

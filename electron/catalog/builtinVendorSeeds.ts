@@ -26,6 +26,8 @@ export type VendorSeed = {
   key: string;
   name: string;
   baseUrl: string;
+  /** 官方 host 迁移时仅修复仍指向旧内置 host 的存量记录；用户自定义 relay 永不覆盖。 */
+  legacyBaseUrls?: readonly string[];
   authType: Vendor["authType"];
   authHeader?: string | null;
   enabled?: boolean;

@@ -52,3 +52,21 @@ export const RUNWAY_IMAGE_ARCHETYPE: ModelArchetype = {
     },
   ],
 };
+
+/** Gen-4 Image Turbo is reference-required in Runway's current discriminator. */
+export const RUNWAY_IMAGE_REFERENCE_ARCHETYPE: ModelArchetype = {
+  ...RUNWAY_IMAGE_ARCHETYPE,
+  id: "runway-image-reference",
+  label: "Runway 参考图模型",
+  defaultModeId: "i2i",
+  identifierPatterns: ["gen4_image_turbo"],
+  sources: [
+    {
+      url: "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json",
+      checkedAt: "2026-08-31",
+      vendorKey: "runway",
+      covers: "gen4_image_turbo discriminator requires referenceImages on /v1/text_to_image",
+    },
+  ],
+  modes: [RUNWAY_IMAGE_ARCHETYPE.modes[1]],
+};

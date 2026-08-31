@@ -67,6 +67,8 @@ export const ARCHETYPE_WIRE_DEFAULTS_AUDIO: Record<string, Record<string, Record
         "speech_rate": 0,
         "loudness_rate": 0,
         "pitch_rate": 0,
+        "duration_seconds": 5,
+        "loop": false,
         "model": "seed_audio"
       }
     }

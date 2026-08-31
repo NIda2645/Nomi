@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-30",
+  "generatedAt": "2026-08-31",
   "statusVocabulary": ["documented", "simulated", "live-certified", "blocked"],
   "entries": [
     {
@@ -14,7 +14,7 @@
       "archetypePath": "src/config/modelArchetypes/elevenAudio.ts",
       "official": [{"url": "https://elevenlabs.io/docs/api-reference/music/compose", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "ElevenLabs API key is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "ElevenLabs credential probe and the minimum TTS canary were rejected with HTTP 401 (the key lacks the required user_read/generation permission); no provider task or charge was observed."},
       "status": "simulated"
     },
     {
@@ -28,7 +28,35 @@
       "archetypePath": "src/config/modelArchetypes/elevenAudio.ts",
       "official": [{"url": "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "ElevenLabs API key is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "ElevenLabs credential probe and the minimum TTS canary were rejected with HTTP 401 (the key lacks the required user_read/generation permission); no provider task or charge was observed."},
+      "status": "simulated"
+    },
+    {
+      "id": "elevenlabs/eleven-v3/tts",
+      "vendorKey": "elevenlabs",
+      "modelKey": "eleven_v3",
+      "archetypeId": "eleven-v3",
+      "modeId": "tts",
+      "mappingId": "seed-elevenlabs-eleven-v3-tts",
+      "contractPath": "electron/catalog/elevenlabs.ts",
+      "archetypePath": "src/config/modelArchetypes/elevenAudio.ts",
+      "official": [{"url": "https://elevenlabs.io/docs/api-reference/text-to-speech/convert", "checkedAt": "2026-08-31"}],
+      "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
+      "live": {"status": "blocked", "blocker": "ElevenLabs production TTS canary was rejected with HTTP 401 (the supplied key lacks the required user_read/generation permission); no provider task or charge was observed."},
+      "status": "simulated"
+    },
+    {
+      "id": "elevenlabs/scribe-v2/transcribe",
+      "vendorKey": "elevenlabs",
+      "modelKey": "scribe_v2",
+      "archetypeId": "eleven-scribe-v2",
+      "modeId": "transcribe",
+      "mappingId": "seed-elevenlabs-scribe-v2",
+      "contractPath": "electron/catalog/elevenlabs.ts",
+      "archetypePath": "src/config/modelArchetypes/elevenAudio.ts",
+      "official": [{"url": "https://elevenlabs.io/docs/api-reference/speech-to-text/convert", "checkedAt": "2026-08-31"}],
+      "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
+      "live": {"status": "blocked", "blocker": "The supplied ElevenLabs key failed the production TTS permission probe with HTTP 401; Scribe v2 was not retried with the same credential because no provider task or charge could be produced until generation permission is fixed."},
       "status": "simulated"
     },
     {
@@ -43,8 +71,12 @@
       "official": [{"url": "https://docs.kie.ai/market/google/gemini-omni-flash-1-1", "checkedAt": "2026-08-30"}, {"url": "https://docs.kie.ai/market/common/get-task-detail", "checkedAt": "2026-08-30"}],
       "capabilityBlockers": ["Typed UI controls for audio_ids, video_list, and character_ids are not exposed; headless contract accepts them."],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "KIE API key is not configured; no paid canary was attempted."},
-      "status": "simulated"
+      "live": {
+        "status": "blocked",
+        "providerReceipt": "KIE createTask accepted a 4-second 360p text-to-video request on 2026-08-31; result polling reached the provider task.",
+        "blocker": "KIE returned a result URL whose DNS resolves to the local proxy's RFC 2544 address (198.18.0.0/15); Nomi's safe asset fetch refused to localize it. Re-run in a public-DNS environment before live certification."
+      },
+      "status": "blocked"
     },
     {
       "id": "kie/gemini-omni-1.1/firstlast",
@@ -58,7 +90,7 @@
       "official": [{"url": "https://docs.kie.ai/market/google/gemini-omni-flash-1-1", "checkedAt": "2026-08-30"}, {"url": "https://docs.kie.ai/market/common/get-task-detail", "checkedAt": "2026-08-30"}],
       "capabilityBlockers": ["Typed UI controls for audio_ids, video_list, and character_ids are not exposed; headless contract accepts them."],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "KIE API key is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "KIE key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -73,7 +105,7 @@
       "official": [{"url": "https://docs.kie.ai/market/google/gemini-omni-flash-1-1", "checkedAt": "2026-08-30"}, {"url": "https://docs.kie.ai/market/common/get-task-detail", "checkedAt": "2026-08-30"}],
       "capabilityBlockers": ["Typed UI controls for audio_ids, video_list, and character_ids are not exposed; headless contract accepts them."],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "KIE API key is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "KIE key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -129,7 +161,7 @@
       "archetypePath": "src/config/modelArchetypes/sunoAudio.ts",
       "official": [{"url": "https://docs.kie.ai/suno-api/generate-sounds", "checkedAt": "2026-08-30"}, {"url": "https://docs.kie.ai/suno-api/get-music-details", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "KIE API key is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "KIE key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -171,7 +203,35 @@
       "archetypePath": "src/config/modelArchetypes/minimaxH3.ts",
       "official": [{"url": "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-create", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "MiniMax API key is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "MiniMax credential probe authenticated against api.minimaxi.com /v1/models (HTTP 200). The minimum speech transport canary ended with ECONNRESET before task creation, so H3 was not retried blindly; no provider task or charge was observed."},
+      "status": "simulated"
+    },
+    {
+      "id": "minimax/speech-2.8-hd/tts",
+      "vendorKey": "minimax",
+      "modelKey": "speech-2.8-hd",
+      "archetypeId": "minimax-speech-2.8",
+      "modeId": "tts",
+      "mappingId": "seed-minimax-speech-2.8-hd-text_to_audio",
+      "contractPath": "electron/catalog/minimaxOfficial.ts",
+      "archetypePath": "src/config/modelArchetypes/minimaxSpeech28.ts",
+      "official": [{"url": "https://platform.minimax.io/docs/api-reference/speech-t2a-http", "checkedAt": "2026-08-31"}],
+      "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
+      "live": {"status": "blocked", "blocker": "MiniMax credential probe authenticated against api.minimaxi.com /v1/models (HTTP 200). The minimum speech transport canary ended with ECONNRESET before task creation, so H3 was not retried blindly; no provider task or charge was observed."},
+      "status": "simulated"
+    },
+    {
+      "id": "minimax/speech-2.8-turbo/tts",
+      "vendorKey": "minimax",
+      "modelKey": "speech-2.8-turbo",
+      "archetypeId": "minimax-speech-2.8",
+      "modeId": "tts",
+      "mappingId": "seed-minimax-speech-2.8-turbo-text_to_audio",
+      "contractPath": "electron/catalog/minimaxOfficial.ts",
+      "archetypePath": "src/config/modelArchetypes/minimaxSpeech28.ts",
+      "official": [{"url": "https://platform.minimax.io/docs/api-reference/speech-t2a-http", "checkedAt": "2026-08-31"}],
+      "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
+      "live": {"status": "blocked", "blocker": "MiniMax key authenticated against api.minimaxi.com /v1/models (HTTP 200), but the production speech canary reached no task: POST /v1/t2a_v2 ended with ECONNRESET during TLS; no provider task or charge was observed."},
       "status": "simulated"
     },
     {
@@ -185,7 +245,7 @@
       "archetypePath": "src/config/modelArchetypes/minimaxH3Max.ts",
       "official": [{"url": "https://fal.ai/models/minimax/h3-max/text-to-video/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -199,7 +259,7 @@
       "archetypePath": "src/config/modelArchetypes/minimaxH3Max.ts",
       "official": [{"url": "https://fal.ai/models/minimax/h3-max/image-to-video/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -213,8 +273,12 @@
       "archetypePath": "src/config/modelArchetypes/nanoBanana2.ts",
       "official": [{"url": "https://fal.ai/models/fal-ai/nano-banana-2/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
-      "status": "simulated"
+      "live": {
+        "status": "blocked",
+        "providerReceipt": "fal queue accepted request 01a0545c-6794-76e0-85c8-9f77c76a723b on 2026-08-31; direct provider status was COMPLETED and returned images[*].",
+        "blocker": "fal returned a result URL on v3b.fal.media, but this machine's proxy resolves that public hostname to RFC 2544 address 198.18.0.93; Nomi's safe asset fetch refused to localize the managed artifact. Re-run in a public-DNS environment before live certification."
+      },
+      "status": "blocked"
     },
     {
       "id": "fal/image/edit",
@@ -227,7 +291,7 @@
       "archetypePath": "src/config/modelArchetypes/nanoBanana2.ts",
       "official": [{"url": "https://fal.ai/models/fal-ai/nano-banana-2/edit/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -241,7 +305,7 @@
       "archetypePath": "src/config/modelArchetypes/gptImage2.ts",
       "official": [{"url": "https://fal.ai/models/openai/gpt-image-2/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -255,7 +319,7 @@
       "archetypePath": "src/config/modelArchetypes/gptImage2.ts",
       "official": [{"url": "https://fal.ai/models/openai/gpt-image-2/edit/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -269,7 +333,7 @@
       "archetypePath": "src/config/modelArchetypes/seedream5Pro.ts",
       "official": [{"url": "https://fal.ai/models/bytedance/seedream/v5/pro/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -283,7 +347,7 @@
       "archetypePath": "src/config/modelArchetypes/seedream5Pro.ts",
       "official": [{"url": "https://fal.ai/models/bytedance/seedream/v5/pro/edit/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -297,7 +361,7 @@
       "archetypePath": "src/config/modelArchetypes/seedance25Apimart.ts",
       "official": [{"url": "https://fal.ai/models/bytedance/seedance-2.5/text-to-video/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -311,7 +375,7 @@
       "archetypePath": "src/config/modelArchetypes/seedance25Apimart.ts",
       "official": [{"url": "https://fal.ai/models/bytedance/seedance-2.5/image-to-video/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -325,7 +389,7 @@
       "archetypePath": "src/config/modelArchetypes/kling.ts",
       "official": [{"url": "https://fal.ai/models/fal-ai/kling-video/v3/pro/text-to-video/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -339,7 +403,7 @@
       "archetypePath": "src/config/modelArchetypes/kling.ts",
       "official": [{"url": "https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -353,7 +417,7 @@
       "archetypePath": "src/config/modelArchetypes/geminiOmni11.ts",
       "official": [{"url": "https://fal.ai/models/google/gemini-omni-flash/v1.1/text-to-video/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -367,7 +431,7 @@
       "archetypePath": "src/config/modelArchetypes/geminiOmni11.ts",
       "official": [{"url": "https://fal.ai/models/google/gemini-omni-flash/v1.1/reference-to-video/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -381,7 +445,7 @@
       "archetypePath": "src/config/modelArchetypes/minimaxMusic3.ts",
       "official": [{"url": "https://fal.ai/models/minimax/music-3/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -395,7 +459,7 @@
       "archetypePath": "src/config/modelArchetypes/elevenAudio.ts",
       "official": [{"url": "https://fal.ai/models/fal-ai/elevenlabs/sound-effects/v2/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -409,7 +473,7 @@
       "archetypePath": "src/config/modelArchetypes/hitem3d.ts",
       "official": [{"url": "https://fal.ai/models/hitem3d/hi3d/v3.0/image-to-3d/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "FAL_KEY is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "FAL key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -423,8 +487,14 @@
       "archetypePath": "src/config/modelArchetypes/audioArchetype.ts",
       "official": [{"url": "https://docs.apimart.ai/en/api-reference/audios/tts", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "APIMart API key is not configured; no paid canary was attempted."},
-      "status": "simulated"
+      "live": {
+        "status": "live-certified",
+        "productionReceipt": "Nomi tasks.run returned task-c68b83f9-c518-4108-8455-f95ea1aa44c8 with status=succeeded on 2026-08-31.",
+        "managedArtifact": "The task produced one managed audio asset in isolated project workspace-b7b7bba2-5c29-46b1-b346-4f3a24a5f200.",
+        "freshProcessReadback": "A fresh Electron process listed the same project and found one persisted .wav asset.",
+        "costNote": "APIMart balance endpoint reported unlimited_quota=true; provider balance/credits were not decremented in a billable unit."
+      },
+      "status": "live-certified"
     },
     {
       "id": "apimart/audio/whisper",
@@ -437,7 +507,7 @@
       "archetypePath": "src/config/modelArchetypes/audioArchetype.ts",
       "official": [{"url": "https://docs.apimart.ai/en/api-reference/audios/whisper-1", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "APIMart API key is not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "APIMart key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -481,8 +551,8 @@
       "archetypePath": "src/config/modelArchetypes/runwayGen45.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}, {"url": "https://docs.dev.runwayml.com/guides/using-the-api/", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
-      "status": "simulated"
+      "live": {"status": "live-certified", "productionReceipt": "Nomi production executor accepted Runway Gen-4.5 text-to-video task 79595da1-4dfe-4b09-9fb8-5333e10a2dd3; polling reached succeeded; result validation passed (video/mp4, 1280x720, 2.042s, H.264).", "managedArtifact": "Managed asset journal committed a nomi-local video artifact through localizeTaskAsset; provider CDN was fetched through the committed app proxy route without fake-IP rejection.", "freshProcessReadback": "A fresh Nomi process read the committed project asset and returned status=succeeded with the same video artifact on 2026-08-31.", "accountDelta": "Provider debit amount is not exposed by Runway; exact USD attribution is unknown."},
+      "status": "live-certified"
     },
     {
       "id": "runway/gen4.5/i2v",
@@ -495,7 +565,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayGen45.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}, {"url": "https://docs.dev.runwayml.com/guides/using-the-api/", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "The minimum canary covered Gen-4.5 text-to-video and Gen-4 image text-to-image; this image-to-video mapping was not selected to avoid another paid task."},
       "status": "simulated"
     },
     {
@@ -509,7 +579,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayGen4Turbo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}, {"url": "https://docs.dev.runwayml.com/guides/models/", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "The minimum canary covered Gen-4.5 text-to-video and Gen-4 image text-to-image; this Gen-4 Turbo image-to-video mapping was not selected to avoid another paid task."},
       "status": "simulated"
     },
     {
@@ -524,7 +594,7 @@
       "archetypePath": "src/config/modelArchetypes/seedance25.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}, {"url": "https://docs.dev.runwayml.com/guides/models/", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -539,7 +609,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -554,7 +624,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -569,7 +639,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -584,7 +654,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -599,7 +669,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -614,7 +684,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -629,7 +699,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -644,7 +714,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -658,7 +728,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -673,7 +743,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayVideo.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -688,7 +758,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -703,7 +773,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -718,7 +788,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -733,7 +803,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -747,21 +817,26 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
-      "status": "simulated"
+      "live": {
+        "status": "blocked",
+        "providerReceipt": "Runway text_to_image accepted task e4940841-5f4f-4241-8ba2-900cb1f05df6 with ratio=1024:1024 on 2026-08-31.",
+        "uploadReceipt": "POST /v1/uploads initialization returned 200 and signed multipart upload returned 204; runway:// URI was issued for the ephemeral asset.",
+        "blocker": "Runway result localization was refused because the generated URL resolves to a private/loopback address under this machine's proxy. The provider-owned upload path itself is live-verified; re-run generation in a public-DNS environment for managed-artifact certification."
+      },
+      "status": "blocked"
     },
     {
       "id": "runway/image-catalog/gen4-image-turbo",
       "vendorKey": "runway",
       "modelKey": "gen4_image_turbo",
-      "archetypeId": "runway-image",
-      "modeId": "t2i",
-      "mappingId": "seed-runway-gen4_image_turbo-t2i",
+      "archetypeId": "runway-image-reference",
+      "modeId": "i2i",
+      "mappingId": "seed-runway-gen4_image_turbo-i2i",
       "contractPath": "electron/catalog/runwayOfficial.ts",
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -776,7 +851,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -791,7 +866,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -806,7 +881,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -821,7 +896,7 @@
       "archetypePath": "src/config/modelArchetypes/runwayImage.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     },
     {
@@ -836,7 +911,49 @@
       "archetypePath": "src/config/modelArchetypes/runwayAudio.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}, {"url": "https://docs.dev.runwayml.com/guides/models/", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "Runway API key and credits are not configured; no paid canary was attempted."},
+      "live": {"status": "live-certified", "productionReceipt": "Nomi production executor accepted Runway seed_audio sound-effect task e73ed8db-f459-4a90-a139-fb9ba147fcf8; polling reached succeeded and result validation passed.", "managedArtifact": "Managed asset journal committed a nomi-local audio artifact through localizeTaskAsset; provider CDN was fetched through the committed app proxy route without fake-IP rejection.", "freshProcessReadback": "A fresh Nomi process read the committed project asset and returned status=succeeded with the same audio artifact on 2026-08-31.", "accountDelta": "Provider debit amount is not exposed by Runway; exact USD attribution is unknown."},
+      "status": "live-certified"
+    },
+    {
+      "id": "runway/eleven-sfx-v2/sfx",
+      "vendorKey": "runway",
+      "modelKey": "eleven_text_to_sound_v2",
+      "archetypeId": "runway-audio",
+      "modeId": "sfx",
+      "mappingId": "seed-runway-eleven_text_to_sound_v2-sfx",
+      "contractPath": "electron/catalog/runwayOfficial.ts",
+      "archetypePath": "src/config/modelArchetypes/runwayAudio.ts",
+      "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-31"}],
+      "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
+      "status": "simulated"
+    },
+    {
+      "id": "runway/eleven-multilingual-v2/speech",
+      "vendorKey": "runway",
+      "modelKey": "eleven_multilingual_v2",
+      "archetypeId": "runway-audio",
+      "modeId": "speech",
+      "mappingId": "seed-runway-eleven_multilingual_v2-speech",
+      "contractPath": "electron/catalog/runwayOfficial.ts",
+      "archetypePath": "src/config/modelArchetypes/runwayAudio.ts",
+      "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-31"}],
+      "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
+      "status": "simulated"
+    },
+    {
+      "id": "runway/eleven-v3/speech",
+      "vendorKey": "runway",
+      "modelKey": "eleven_v3",
+      "archetypeId": "runway-audio",
+      "modeId": "speech",
+      "mappingId": "seed-runway-eleven_v3-speech",
+      "contractPath": "electron/catalog/runwayOfficial.ts",
+      "archetypePath": "src/config/modelArchetypes/runwayAudio.ts",
+      "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-31"}],
+      "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
+      "live": {"status": "blocked", "blocker": "Runway key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
     }
   ]
