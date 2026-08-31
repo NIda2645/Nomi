@@ -1,5 +1,7 @@
 # Canvas card stacks and friction fixes implementation plan
 
+> 状态：✅ 已交付
+
 ## Scope
 
 Replace parallel result-history UIs with one card stack, make group collapse and group-level connections real, and close the F1-F9 friction report on Nomi v0.21.0.

@@ -70,6 +70,8 @@ export type ModelCatalogModelDto = {
   labelZh: string
   kind: BillingModelKind
   enabled: boolean
+  published: boolean
+  publishedModes: ProfileKind[]
   meta?: unknown
   pricing?: {
     cost: number
@@ -183,7 +185,7 @@ export type ModelCatalogDocsFetchResultDto = {
 export type ModelCatalogMappingTestRequestDto = {
   modelKey?: string
   prompt?: string
-  stage?: 'create' | 'query' | string
+  stage?: 'create' | 'query' | 'result' | string
   execute?: boolean
 }
 

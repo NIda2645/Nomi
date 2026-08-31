@@ -1,6 +1,7 @@
 import React from 'react'
 import { cn } from '../../../utils/cn'
 import { getCardStackRearLayerCount } from '../model/canvasCardStackModel'
+import { GROUP_VISUAL_CLASS } from './groupVisualContract'
 
 export type CardStackPeeksProps = {
   count: number
@@ -47,9 +48,9 @@ export function CardStackPeeks({
           key={index}
           data-card-stack-rear={index + 1}
           className={cn(
-            'absolute inset-0 origin-left rounded-nomi-lg border bg-nomi-paper shadow-nomi-md',
+            'absolute inset-0 origin-left rounded-nomi-lg border',
             'transition-transform duration-200 ease-out motion-reduce:transition-none',
-            tone === 'group' ? 'border-nomi-accent/50' : 'border-nomi-line',
+            GROUP_VISUAL_CLASS.stackRear,
           )}
           style={{ transform: fanned ? FANNED_TRANSFORMS[index] : RESTING_TRANSFORMS[index] }}
           aria-hidden="true"
@@ -60,11 +61,10 @@ export function CardStackPeeks({
         className={cn(
           'pointer-events-auto absolute right-[-42px] z-[9] inline-flex min-h-7 items-center gap-1 rounded-full px-2.5',
           tone === 'group' ? 'top-0' : 'top-4',
-          'border border-nomi-line bg-nomi-paper text-micro font-semibold tabular-nums text-nomi-ink shadow-nomi-md',
+          'border text-micro font-semibold tabular-nums',
+          GROUP_VISUAL_CLASS.stackTrigger,
           'transition-[transform,background-color,border-color] duration-150 motion-reduce:transition-none',
           'hover:-translate-y-0.5 hover:border-nomi-ink-20 hover:bg-nomi-ink-05',
-          'focus-visible:outline-2 focus-visible:outline-nomi-accent focus-visible:outline-offset-2',
-          tone === 'group' && 'border-nomi-accent/50',
           disabled && 'cursor-not-allowed opacity-50',
         )}
         aria-label={label}

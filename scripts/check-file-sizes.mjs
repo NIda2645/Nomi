@@ -25,8 +25,18 @@ const SCAN_DIRS = ["src", "electron"];
 // 现存巨壳的基线行数（棘轮上限）。清空此表 = 巨壳债还清。
 // 改小某个数 = 你成功瘦身后锁定的新上限。新增条目应经人工评审。
 const ALLOWLIST = {
-  "electron/runtime.ts": 531, // …→ 539（2026-08-15）→ 531（2026-08-27 pi 运行切换移除旧 Agent 再导出）
-  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 713, // 2026-08-27：图片/视频/多镜版本 UI 合并为 NodeResultStack，删除两套旧叠加层。
+  "electron/runtime.ts": 526, // …→ 539（2026-08-15）→ 531（2026-08-27 pi 运行切换移除旧 Agent 再导出）→ 530（2026-08-28 onboarding facade cleanup）→ 526（2026-08-30 runtime lifecycle cleanup）
+  // Conversational model integration boundary: the session service keeps the
+  // state machine, receipt contract, canonical certification and recovery
+  // transitions together. It is reviewed as one security boundary and must
+  // be split only along a stable ownership seam, not by moving methods into
+  // a second writer. (2026-08-29)
+  "electron/integrationCertification/integrationSession.ts": 1696,
+  // Existing SettingsDialog shell now owns the durable integration handoff
+  // projection alongside the legacy model settings pages. Keep this reviewed
+  // baseline until the planned settings-surface extraction. (2026-08-29)
+  "src/ui/onboarding/OnboardingDrawer.tsx": 819,
+  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 713, // …→ 731（2026-08-25 P4 S6：多镜叠加合一 ProductionShotOverlays）→ 713（2026-08-29 React Flow 单内核：移除旧布局与缩放分支）
   // PR#21 白板节点引入（2026-06-25）：WhiteboardDrawingTool（1032）与 WhiteboardLeaferCanvas（3406）两巨壳
   // 已按 Rule 9 全部拆完、双双出白名单。LeaferCanvas → whiteboardCanvasTypes/Export/NodeOps/Geometry 四纯模块
   // + whiteboardSceneRender（渲染树）+ useWhiteboardDrawing/BoxSelection/SelectionActions/SceneSync 四交互 hook，

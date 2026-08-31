@@ -21,9 +21,13 @@ const settingsDir = path.join(root, 'settings')
 const projectsDir = path.join(root, 'projects')
 const projectId = 'canvas-card-stack-walk'
 const projectRoot = path.join(projectsDir, projectId)
+const secondProjectId = 'canvas-card-stack-walk-second'
+const secondProjectRoot = path.join(projectsDir, secondProjectId)
 const outputDir = path.resolve('outputs/canvas-card-stack-20260827')
 fs.mkdirSync(path.join(projectRoot, '.nomi'), { recursive: true })
 fs.mkdirSync(path.join(projectRoot, 'assets', 'generated'), { recursive: true })
+fs.mkdirSync(path.join(secondProjectRoot, '.nomi'), { recursive: true })
+fs.mkdirSync(path.join(secondProjectRoot, 'assets', 'generated'), { recursive: true })
 fs.mkdirSync(outputDir, { recursive: true })
 
 const imageSvg = (label, start, end) => `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800">
@@ -42,6 +46,10 @@ for (const [name, label, start, end] of [
   ['style.svg', '风格参考', '#7f77c9', '#323247'],
 ]) fs.writeFileSync(path.join(projectRoot, 'assets', 'generated', name), imageSvg(label, start, end))
 fs.copyFileSync(path.resolve('marketing/assets/demo.mp4'), path.join(projectRoot, 'assets', 'generated', 'demo.mp4'))
+for (const name of ['rain-1.svg', 'rain-2.svg', 'rain-3.svg', 'character.svg', 'scene.svg', 'style.svg']) {
+  fs.copyFileSync(path.join(projectRoot, 'assets', 'generated', name), path.join(secondProjectRoot, 'assets', 'generated', name))
+}
+fs.copyFileSync(path.resolve('marketing/assets/demo.mp4'), path.join(secondProjectRoot, 'assets', 'generated', 'demo.mp4'))
 
 const assetUrl = (name) => `nomi-local://asset/${encodeURIComponent(projectId)}/assets/generated/${name}`
 const imageResult = (id, name, createdAt) => ({ id, type: 'image', url: assetUrl(name), thumbnailUrl: assetUrl(name), createdAt })
@@ -91,6 +99,13 @@ const project = {
 for (const target of [path.join(projectRoot, 'project.json'), path.join(projectRoot, '.nomi', 'project.json')]) {
   fs.writeFileSync(target, JSON.stringify(project, null, 2))
 }
+const secondProject = JSON.parse(JSON.stringify(project).replaceAll(projectId, secondProjectId))
+secondProject.id = secondProjectId
+secondProject.name = '第二个项目 · F8 切换验收'
+secondProject.lastKnownRootPath = secondProjectRoot
+for (const target of [path.join(secondProjectRoot, 'project.json'), path.join(secondProjectRoot, '.nomi', 'project.json')]) {
+  fs.writeFileSync(target, JSON.stringify(secondProject, null, 2))
+}
 
 const checks = []
 const check = (name, ok, detail = '') => {
@@ -108,11 +123,10 @@ async function dismissOnboarding() {
   await win.keyboard.press('Escape').catch(() => undefined)
 }
 
-async function openCanvas() {
+async function openProjectCanvas(name) {
   await dismissOnboarding()
-  await win.reload()
-  await win.waitForTimeout(800)
-  const projectCard = win.locator('[data-project-card]', { hasText: '卡片堆叠体验验收' }).first()
+  const projectCard = win.locator('[data-project-card]', { hasText: name }).first()
+  await projectCard.waitFor({ state: 'visible', timeout: 10_000 })
   if (await projectCard.isVisible().catch(() => false)) {
     await projectCard.hover()
     const continueButton = projectCard.getByText('继续创作', { exact: false }).first()
@@ -123,6 +137,18 @@ async function openCanvas() {
   const generationButton = win.getByRole('button', { name: '生成', exact: true }).first()
   if (await generationButton.isVisible().catch(() => false)) await generationButton.click()
   await win.locator('[data-node-id="image-versions"]').waitFor({ state: 'visible', timeout: 10_000 })
+}
+
+async function openCanvas() {
+  await dismissOnboarding()
+  await win.reload()
+  await win.waitForTimeout(800)
+  await openProjectCanvas('卡片堆叠体验验收')
+}
+
+async function backToLibrary() {
+  await clickOrFail(win.getByRole('button', { name: '返回项目库' }), '返回项目库')
+  await win.locator('[data-project-card]').first().waitFor({ state: 'visible', timeout: 10_000 })
 }
 
 try {
@@ -150,23 +176,69 @@ try {
   check('切换当前版不重排历史', afterOrder.join(',') === beforeOrder.join(','), afterOrder.join(','))
   check('第一版成为当前', await tray.locator('[data-result-stack-item="image-v1"]').getAttribute('data-current') === 'true')
 
-  await clickOrFail(imageNode.getByRole('button', { name: '3 版' }), '关闭结果版本托盘')
+  const imagePreviewButton = tray.locator('[data-result-stack-item="image-v2"] button[aria-label="预览"]')
+  await clickOrFail(imagePreviewButton, '打开历史图片预览')
+  const imagePreview = win.locator('[role="dialog"][aria-label*="雨夜入场"]').first()
+  await expectVisible(imagePreview, '历史图片预览弹层应可见')
+  check('历史图片预览载入原图', await imagePreview.locator('img[alt="雨夜入场"]').count() === 1)
+  const imagePreviewProof = await proveProbe(imagePreview, '历史图片预览弹层确实可被探针找到')
+  await clickOrFail(imagePreview.getByRole('button', { name: '关闭预览' }), '关闭历史图片预览')
+  await expectAbsent(imagePreview, { provenBy: imagePreviewProof, message: '关闭后历史图片预览应从画布移除' })
+
+  const downloadPath = path.join(root, 'downloads', '雨夜入场.png')
+  await launched.app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath })
+  }, downloadPath)
+  const imageDownloadButton = tray.locator('[data-result-stack-item="image-v1"] button[aria-label="下载这一版"]')
+  check('历史图片提供下载入口', await imageDownloadButton.isEnabled())
+  await clickOrFail(imageDownloadButton, '下载历史图片')
+  await expect.poll(() => fs.existsSync(downloadPath), { message: '下载桥接应写出历史图片文件', timeout: 10_000 }).toBe(true)
+  check('历史图片下载文件非空', fs.statSync(downloadPath).size > 0)
+
+  const deleteRow = tray.locator('[data-result-stack-item="image-v2"]')
+  const deleteRowProof = await proveProbe(deleteRow, '待删除历史图片结果确实在托盘中')
+  await clickOrFail(deleteRow.locator('button[aria-label="删除"]'), '删除历史图片结果')
+  const confirmDialog = win.locator('[data-confirm-dialog-surface="confirm"]')
+  await expectVisible(confirmDialog, '删除历史结果应显示确认弹窗')
+  await clickOrFail(win.locator('[data-confirm-dialog-confirm]'), '确认删除历史图片结果')
+  await expectAbsent(deleteRow, { provenBy: deleteRowProof, message: '确认后历史图片结果应从托盘移除' })
+  check('删除历史结果后其他版本保留', await tray.locator('[data-result-stack-item]').count() === 2)
+
+  await clickOrFail(imageNode.getByRole('button', { name: '2 版' }), '关闭结果版本托盘')
   await expectHidden(tray, '结果版本托盘应完成退场')
-  const nodeCountBeforeDuplicate = await win.locator('[data-node-id]').count()
   await imageNode.click({ position: { x: 120, y: 120 } })
   await clickOrFail(imageNode.getByRole('button', { name: '复制为变体' }), '复制当前节点为无结果的新变体')
-  await expect.poll(() => win.locator('[data-node-id]').count(), { message: '复制变体应新增一个节点' }).toBe(nodeCountBeforeDuplicate + 1)
-  check('复制变体新增一个节点', true)
+  const selectedNode = win.locator('.generation-canvas-v2-node[data-selected="true"]').first()
+  await expect.poll(() => selectedNode.getAttribute('data-node-id'), { message: '复制变体应选中新节点' }).toMatch(/^gen-v2-/)
+  const duplicateId = await selectedNode.getAttribute('data-node-id')
+  const duplicateFlowNode = win.locator(`.react-flow__node[data-id="${duplicateId}"]`)
+  await expectVisible(duplicateFlowNode, '复制出的变体应自动进入视口并可见')
+  const duplicateProbe = await proveProbe(duplicateFlowNode, '复制出的变体已真实渲染')
+  check('复制变体新增一个节点且用户立即看得到', true)
   await win.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
-  await expect.poll(() => win.locator('[data-node-id]').count(), { message: '撤销应同时移除复制节点和继承连线' }).toBe(nodeCountBeforeDuplicate)
+  await expectAbsent(duplicateFlowNode, { provenBy: duplicateProbe, message: '撤销应同时移除复制节点和继承连线' })
   check('复制变体可一次撤销', true)
 
   await videoNode.getByRole('button', { name: '2 版' }).click()
   const videoTray = videoNode.locator('[data-node-result-stack="video-versions"]')
+  await videoTray.waitFor({ state: 'visible', timeout: 10_000 })
+  await expect.poll(() => videoTray.evaluate((tray) => {
+    const stage = tray.closest('.generation-canvas-v2__stage')
+    if (!stage) return false
+    const trayRect = tray.getBoundingClientRect()
+    const stageRect = stage.getBoundingClientRect()
+    return trayRect.left >= stageRect.left && trayRect.right <= stageRect.right
+  }), { message: '版本托盘应完整位于画布可交互视口', timeout: 5_000 }).toBe(true)
+  const videoTrayPlacement = await videoTray.getAttribute('data-placement')
+  check('版本托盘避开画布视口边缘', true, videoTrayPlacement || '')
   const videoHistoryRow = videoTray.locator('[data-result-stack-item="video-v1"]')
-  await videoHistoryRow.hover()
+  const historyVideo = videoHistoryRow.locator('video').first()
+  await videoHistoryRow.locator('button').first().hover()
+  await historyVideo.waitFor({ state: 'visible', timeout: 10_000 })
+  check('悬停历史视频真实播放元素可见', true)
+  check('历史视频默认静音', await historyVideo.evaluate((video) => video.muted === true))
   const videoProgress = videoHistoryRow.getByRole('slider', { name: '视频进度' })
-  await expect.poll(async () => Number(await videoProgress.getAttribute('aria-valuemax')), { message: '历史视频应加载可拖动时长' }).toBeGreaterThan(0)
+  await expect.poll(async () => Number(await videoProgress.getAttribute('aria-valuemax')), { message: '历史视频应加载可拖动时长', timeout: 10_000 }).toBeGreaterThan(0)
   const progressBox = await videoProgress.boundingBox()
   check('历史视频进度条可见', Boolean(progressBox))
   if (!progressBox) throw new Error('历史视频进度条没有可交互边界')
@@ -180,6 +252,20 @@ try {
   const nudgedTime = Number(await videoProgress.getAttribute('aria-valuenow'))
   check('键盘左键精确回退一秒', Math.abs(nudgedTime - Math.max(0, draggedTime - 1)) < 0.2, `${draggedTime} -> ${nudgedTime}`)
   await screenshotSettled(win, { path: path.join(outputDir, '03-real-video-history-scrub-light.png') })
+  await videoProgress.blur()
+  await win.mouse.move(12, 12)
+  await win.waitForTimeout(250)
+  check('离开历史视频后播放暂停并回到起点', await historyVideo.evaluate((video) => video.paused && video.currentTime < 0.2))
+  await clickOrFail(videoHistoryRow.locator('button[aria-label="预览"]'), '打开历史视频预览')
+  const videoPreview = win.locator('[role="dialog"][aria-label*="推镜进入咖啡馆"]').first()
+  await expectVisible(videoPreview, '历史视频预览弹层应可见')
+  const previewVideo = videoPreview.locator('video').first()
+  await previewVideo.waitFor({ state: 'attached', timeout: 10_000 })
+  check('历史视频预览挂载视频元素', await previewVideo.count() === 1)
+  check('历史视频预览提供原生控制条', await previewVideo.getAttribute('controls') !== null)
+  const videoPreviewProof = await proveProbe(videoPreview, '历史视频预览弹层确实可被探针找到')
+  await clickOrFail(videoPreview.getByRole('button', { name: '关闭预览' }), '关闭历史视频预览')
+  await expectAbsent(videoPreview, { provenBy: videoPreviewProof, message: '关闭后历史视频预览应从画布移除' })
   await videoNode.getByRole('button', { name: '2 版' }).click()
   await expectHidden(videoTray, '视频版本托盘应完成退场')
 
@@ -193,11 +279,47 @@ try {
   await expectAbsent(groupMembers, { provenBy: groupMembersProof, message: '收起后组内三个成员节点不再各自占画布' })
   check('三位成员已从画布投影隐藏', true)
   check('编组显示节点语义', await collapsed.getByRole('button', { name: '3 节点' }).isVisible())
+  const collapsedMagneticHandles = collapsed.locator('.generation-canvas-v2-node__magnetic-handle')
+  await expectCount(collapsedMagneticHandles, 2, '收起编组应保留左右两个磁性连接句柄')
+  const collapsedHandleStates = await collapsedMagneticHandles.evaluateAll((handles) => handles.map((handle) => {
+    const style = window.getComputedStyle(handle)
+    const bounds = handle.getBoundingClientRect()
+    return {
+      side: handle.getAttribute('data-side'),
+      rendered: style.display !== 'none' && style.visibility !== 'hidden' && bounds.width > 0 && bounds.height > 0,
+      hasPlusIcon: Boolean(handle.querySelector('.generation-canvas-v2-node__magnetic-handle-icon svg')),
+    }
+  }))
+  check(
+    '收起编组保留可交互的左右悬浮加号',
+    collapsedHandleStates.map(({ side }) => side).sort().join(',') === 'left,right'
+      && collapsedHandleStates.every(({ rendered, hasPlusIcon }) => rendered && hasPlusIcon),
+    JSON.stringify(collapsedHandleStates),
+  )
   check('三条成员输入聚合为一条编组线', await win.locator('g[data-aggregate-group="reference-group"]').count() === 1)
   const aggregateHit = win.locator('g[data-aggregate-group="reference-group"] path[role="button"]')
   await clickOrFail(aggregateHit, '选中聚合后的编组输入线')
   await expectVisible(win.getByText('编组输入', { exact: true }), '聚合线应显示编组关系而不是伪造成员模式')
   await screenshotSettled(win, { path: path.join(outputDir, '04-real-collapsed-group-link-light.png') })
+
+  await expect.poll(() => {
+    const current = JSON.parse(fs.readFileSync(path.join(projectRoot, '.nomi', 'project.json'), 'utf8'))
+    return current.payload.generationCanvas.groups.find((entry) => entry.id === 'reference-group')?.collapsed
+  }, { message: '重开前收起状态应已持久化' }).toBe(true)
+  await backToLibrary()
+  check('返回项目库仍能看到两个项目', await win.locator('[data-project-card]').count() === 2)
+  await openProjectCanvas('卡片堆叠体验验收')
+  const reopenedImageNode = win.locator('[data-node-id="image-versions"]')
+  const reopenedGroupMembers = win.locator('[data-node-id="group-character"], [data-node-id="group-scene"], [data-node-id="group-style"]')
+  const reopenedCollapsed = win.locator('[data-collapsed-group-id="reference-group"]')
+  await expectVisible(reopenedCollapsed, '重新打开项目后编组仍应保持收起')
+  await expectAbsent(reopenedGroupMembers, { provenBy: groupMembersProof, message: '重新打开项目后组成员仍应隐藏' })
+  check('重新打开后节点与聚合连接仍在', await win.locator('g[data-aggregate-group="reference-group"]').count() === 1)
+  await clickOrFail(reopenedImageNode.getByRole('button', { name: '2 版' }), '打开重开项目的历史结果托盘')
+  const reopenedTray = reopenedImageNode.locator('[data-node-result-stack="image-versions"]')
+  await expectVisible(reopenedTray, '重新打开后历史结果托盘可用')
+  check('重新打开后历史结果仍保留', await reopenedTray.locator('[data-result-stack-item]').count() === 2)
+  await clickOrFail(reopenedImageNode.getByRole('button', { name: '2 版' }), '关闭重开项目的历史结果托盘')
 
   await clickOrFail(collapsed.getByRole('button', { name: '3 节点' }), '展开雨夜参考组')
   await expectVisible(win.locator('[data-node-id="group-character"]'), '点击卡角后应恢复组内节点')
@@ -225,6 +347,22 @@ try {
   const persistedGroup = persisted.payload.generationCanvas.groups.find((entry) => entry.id === 'reference-group')
   check('收起状态写入项目', persistedGroup?.collapsed === true)
   check('断开的编组声明不再持久化', !persistedGroup?.inputLinks?.length)
+
+  const sidebar = win.locator('aside[aria-label="项目资源管理器"]')
+  const expandSidebar = sidebar.getByRole('button', { name: '展开侧栏' })
+  if (await expandSidebar.isVisible().catch(() => false)) await expandSidebar.click()
+  await expect.poll(() => sidebar.getAttribute('data-collapsed'), { message: '素材库操作前左侧栏应展开' }).toBe('false')
+  const assetLibraryTab = sidebar.getByRole('button', { name: '素材库' }).first()
+  if (await assetLibraryTab.getAttribute('aria-pressed') !== 'true') await clickOrFail(assetLibraryTab, '切换到左侧素材库')
+  await expect.poll(() => assetLibraryTab.getAttribute('aria-pressed'), { message: '素材库标签应成为当前侧栏面板' }).toBe('true')
+  const assetLibraryPanel = sidebar.locator('section[aria-label="素材库"]')
+  await expectVisible(assetLibraryPanel, '切换标签后素材库面板应完成渲染')
+  check('展开后素材库面板可见', true)
+  await backToLibrary()
+  await openProjectCanvas('第二个项目 · F8 切换验收')
+  const secondSidebar = win.locator('aside[aria-label="项目资源管理器"]')
+  check('切换项目后左侧栏自动收起', await secondSidebar.getAttribute('data-collapsed') === 'true')
+  await screenshotSettled(win, { path: path.join(outputDir, '06-real-project-switch-sidebar-collapsed.png') })
   fs.writeFileSync(path.join(outputDir, 'walk-report.json'), JSON.stringify({ checks, projectRoot }, null, 2))
   console.log(JSON.stringify({ ok: true, checks }, null, 2))
 } finally {

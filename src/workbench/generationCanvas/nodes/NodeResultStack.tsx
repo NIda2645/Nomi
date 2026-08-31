@@ -24,6 +24,7 @@ import { useResultDownload } from './useResultDownload'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { reworkProductionShot } from '../../production/productionShotActions'
 import { historyVideoTimeFromPointer, nudgeHistoryVideoTime } from './historyVideoScrub'
+import { resolveResultStackPlacement, type ResultStackPlacement } from './nodeResultStackPlacement'
 
 const INITIAL_VISIBLE_RESULTS = 12
 
@@ -55,9 +56,26 @@ function HistoryVideoThumb({
   const { t } = useTranslation()
   const hostRef = React.useRef<HTMLSpanElement | null>(null)
   const draggingPointerRef = React.useRef<number | null>(null)
+  const [videoMounted, setVideoMounted] = React.useState(false)
   const [duration, setDuration] = React.useState(0)
   const [currentTime, setCurrentTime] = React.useState(0)
   const video = (): HTMLVideoElement | null => hostRef.current?.querySelector('video') ?? null
+
+  React.useEffect(() => {
+    if (active) setVideoMounted(true)
+  }, [active])
+
+  React.useEffect(() => {
+    const media = video()
+    if (!media) return
+    if (active) {
+      void media.play().catch(() => undefined)
+      return
+    }
+    media.pause()
+    media.currentTime = 0
+    setCurrentTime(0)
+  }, [active, videoMounted])
   const seekFromPointer = (event: React.PointerEvent<HTMLDivElement>): void => {
     const media = video()
     if (!media) return
@@ -77,15 +95,16 @@ function HistoryVideoThumb({
         disabled={disabled}
         onClick={onSelect}
       >
-        {active && result.url ? (
+        {videoMounted && result.url ? (
           <DeferredNodeVideo
             src={result.url}
-            className="h-full w-full object-cover"
+            className={cn('h-full w-full object-cover', !active && 'hidden')}
             muted
             loop
-            autoPlay
+            autoPlay={active}
             playsInline
             preload="metadata"
+            aria-hidden={!active}
             onLoadedMetadata={(event) => {
               const nextDuration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0
               setDuration(nextDuration)
@@ -215,6 +234,8 @@ export function NodeResultStack({
   const [hoveredId, setHoveredId] = React.useState('')
   const [preview, setPreview] = React.useState<GenerationNodeResult | null>(null)
   const [rerunBusy, setRerunBusy] = React.useState(false)
+  const [placement, setPlacement] = React.useState<ResultStackPlacement>('right')
+  const trayRef = React.useRef<HTMLElement | null>(null)
   const entries = React.useMemo(() => listStableNodeMediaResults(node), [node])
   const currentId = node.result ? resultIdentity(node.result) : ''
   const production = productionMetaOf(node)
@@ -236,6 +257,27 @@ export function NodeResultStack({
       setVisibleCount(INITIAL_VISIBLE_RESULTS)
     }
   }, [open])
+
+  React.useLayoutEffect(() => {
+    if (!open) return
+    const tray = trayRef.current
+    const nodeHost = tray?.closest<HTMLElement>('.generation-canvas-v2-node')
+    const stage = tray?.closest<HTMLElement>('.generation-canvas-v2__stage')
+    if (!tray || !nodeHost || !stage) return
+
+    const trayRect = tray.getBoundingClientRect()
+    const nodeRect = nodeHost.getBoundingClientRect()
+    const stageRect = stage.getBoundingClientRect()
+    const currentGap = placement === 'right'
+      ? trayRect.left - nodeRect.right
+      : nodeRect.left - trayRect.right
+    const edgePadding = 12
+    setPlacement(resolveResultStackPlacement({
+      leftSpace: nodeRect.left - stageRect.left - edgePadding,
+      rightSpace: stageRect.right - nodeRect.right - edgePadding,
+      requiredSpace: trayRect.width + Math.max(0, currentGap),
+    }))
+  }, [node.id, open, placement])
 
   if (!showStack) return null
 
@@ -295,16 +337,19 @@ export function NodeResultStack({
       <AnimatePresence initial={false}>
         {open ? (
           <motion.section
+            ref={trayRef}
             className={cn(
-              'pointer-events-auto absolute left-[calc(100%+50px)] top-0 z-[14] flex w-[320px] max-h-[420px] flex-col overflow-hidden rounded-nomi-lg',
+              'pointer-events-auto absolute top-0 z-[14] flex w-[320px] max-h-[420px] flex-col overflow-hidden rounded-nomi-lg',
+              placement === 'right' ? 'left-[calc(100%+50px)]' : 'right-[calc(100%+50px)]',
               'border border-nomi-line bg-nomi-paper shadow-nomi-lg',
               'group-data-[dragging=true]/canvas:invisible',
             )}
             data-node-result-stack={node.id}
+            data-placement={placement}
             aria-label={t('generationCommon.resultStack.trayAria', { count: entries.length })}
-            initial={{ opacity: 0, x: -8, scale: 0.98 }}
+            initial={{ opacity: 0, x: placement === 'right' ? -8 : 8, scale: 0.98 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: -8, scale: 0.98 }}
+            exit={{ opacity: 0, x: placement === 'right' ? -8 : 8, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.2, 0.75, 0.25, 1] }}
             onPointerDown={(event) => event.stopPropagation()}
           >

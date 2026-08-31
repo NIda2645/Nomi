@@ -39,5 +39,7 @@ describe('CollapsedGroupCard', () => {
     expect(html).not.toContain('8 版')
     expect(html).toContain('aria-label="连接到整组"')
     expect(html).toContain('aria-label="从整组连接"')
+    expect(html).not.toContain('border-nomi-accent')
+    expect(html).not.toContain('style="border-color')
   })
 })

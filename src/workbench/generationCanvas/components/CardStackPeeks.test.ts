@@ -34,5 +34,6 @@ describe('CardStackPeeks', () => {
     )
     expect(html).toContain('top-0')
     expect(html).not.toContain('top-4')
+    expect(html).not.toContain('nomi-accent')
   })
 })

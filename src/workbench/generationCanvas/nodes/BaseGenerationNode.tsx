@@ -198,7 +198,7 @@ function BaseGenerationNodeImpl({
   // fitView 与本外壳共用同一函数，避免名义 size 与渲染尺寸两套真相源（连线起笔飘在节点外的根因）。
   const visualSize = resolveNodeVisualSize(node)
   const previewHeight = visualSize.height
-  const { handlePointerDown, handlePointerMove, handlePointerUp, handleResizePointerDown } = useNodeDragResize({
+  const { flowManagedDrag: flowManagedLayout, handlePointerDown, handlePointerMove, handlePointerUp, handleResizePointerDown } = useNodeDragResize({
     node,
     selected,
     readOnly,
@@ -269,7 +269,7 @@ function BaseGenerationNodeImpl({
     <article
       className={cn(
         'generation-canvas-v2-node',
-        'absolute p-0 border-0 rounded-none bg-transparent shadow-none',
+        flowManagedLayout ? 'relative' : 'absolute', 'p-0 border-0 rounded-none bg-transparent shadow-none',
         'cursor-grab select-none touch-none overflow-visible',
         'data-[selected=true]:z-[5]',
         'block isolate group/node',
@@ -281,7 +281,7 @@ function BaseGenerationNodeImpl({
       data-appear={appear ? 'true' : undefined}
       data-status={status}
       style={{
-        transform: `translate(${node.position.x}px, ${node.position.y}px)`,
+        transform: flowManagedLayout ? undefined : `translate(${node.position.x}px, ${node.position.y}px)`,
         width: visualSize.width,
         height: visualSize.height,
         gridTemplateRows: `${previewHeight}px`,
@@ -292,7 +292,7 @@ function BaseGenerationNodeImpl({
       onPointerEnter={handleVideoNodePointerEnter}
       onPointerLeave={handleVideoNodePointerLeave}
     >
-      {!readOnly && node.kind !== 'panorama' ? (
+      {!flowManagedLayout && !readOnly && node.kind !== 'panorama' ? (
         selected && useMagneticConnectionHandles && !isPendingConnectionSource ? (
           <>
             <MagneticConnectionHandle
@@ -665,7 +665,7 @@ function BaseGenerationNodeImpl({
           <NodeGenerationComposer node={node} visualSize={visualSize} />
         </React.Suspense>
       ) : null}
-      {selected && !readOnly
+      {selected && !readOnly && !flowManagedLayout
         ? RESIZE_DIRECTIONS.map((direction) => (
             <WorkbenchButton
               key={direction}

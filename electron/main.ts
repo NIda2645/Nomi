@@ -14,15 +14,11 @@ import {
   ensureBuiltinModelSeeds,
   exportModelCatalogPackage,
   getModelCatalogHealth,
-  importModelCatalogPackage,
   listModelCatalogMappings,
   listModelCatalogModels,
   listModelCatalogVendors,
-  upsertModelCatalogMapping,
-  upsertModelCatalogModel,
-  upsertModelCatalogVendor,
-  upsertModelCatalogVendorApiKey,
 } from "./catalog/catalogStore";
+import { importRendererCatalogPackage, upsertRendererCatalogMapping, upsertRendererCatalogModel, upsertRendererCatalogVendor, upsertRendererCatalogVendorApiKey } from "./catalog/rendererCatalogMutation";
 import { registerAssetTransportIpc } from "./assetTransportIpc";
 import { retypeModelCatalogModel } from "./catalog/modelRetype";
 import { registerTaskIpcHandlers } from "./tasks/taskIpcHandlers";
@@ -56,9 +52,12 @@ import { installMainWindowInteractions } from "./mainWindowInteractions";
 import { getMainWindow, setMainWindow } from "./mainWindowRegistry";
 import { createMainWindowGuard } from "./mainWindowPresence";
 import { assertTrustedSender } from "./ipcSenderGuard";
+import { registerTrustedSyncIpc } from "./trustedSyncIpc";
 import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
 import { desktopT, registerI18nIpc, setDesktopLocale } from "./i18n";
 import { registerSettingsIpc } from "./settings/registerSettingsIpc";
+import { registerIntegrationHandoffIpc } from "./integrationCertification/handoffQueue";
+import { registerIntegrationSessionIpc } from "./integrationCertification/integrationSessionIpc";
 import { registerProductionRunIpc } from "./productionRun/productionRunIpc";
 import { registerProductionActionIpc } from "./productionRun/productionActionIpc";
 import { installProductionRunDesktopLifecycle } from "./productionRun/productionRunDesktopLifecycle";
@@ -76,6 +75,10 @@ if (configuredUserDataDir) {
 // 它会被判第二实例而自杀；也不开窗、不起 IPC，只跑进程内 stdio JSON-RPC（下方 GUI whenReady 由
 // hasSingleInstanceLock=false 自动跳过）。
 const isMcpStdio = process.env.NOMI_MCP_STDIO === "1";
+// Dev/test MCP may load dist-electron/main.js directly, so Electron cannot read
+// package.json and otherwise identifies as "Electron". Match the GUI identity
+// before app ready or safeStorage ciphertext written by Nomi cannot be opened.
+if (isMcpStdio && process.env.NOMI_APP_NAME) app.setName(process.env.NOMI_APP_NAME);
 const allowE2eMultiInstance = process.env.NOMI_E2E_ALLOW_MULTI_INSTANCE === "1";
 const hasSingleInstanceLock = isMcpStdio ? false : allowE2eMultiInstance ? true : app.requestSingleInstanceLock();
 const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({ isMcpStdio, allowE2eMultiInstance, hasSingleInstanceLock, ensureMainWindow: () => ensureMainWindow() });
@@ -390,20 +393,13 @@ function registerSyncIpc<TArgs extends unknown[], TResult>(
   channel: string,
   handler: (...args: TArgs) => TResult,
 ): void {
-  ipcMain.on(channel, (event, ...args: TArgs) => {
-    try {
-      event.returnValue = { ok: true, value: handler(...args) };
-    } catch (error) {
-      event.returnValue = {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  });
+  registerTrustedSyncIpc(ipcMain, channel, handler);
 }
 function registerIpc(): void {
   const selectedWorkspaceRoots = new Set<string>();
   registerI18nIpc();
+  registerIntegrationHandoffIpc();
+  registerIntegrationSessionIpc();
   // 渲染层崩溃（RootErrorBoundary）也落到同一崩溃日志（P0-8）。
   ipcMain.on("nomi:log:renderer-crash", (_event, message: unknown) => logCrash("renderer", String(message)));
   // 窗口控制（Windows 自绘标题栏）：只注册一次，作用于发起请求的那个窗口（fromWebContents），
@@ -443,20 +439,20 @@ function registerIpc(): void {
   });
   registerSyncIpc("nomi:model-catalog:mappings:list", listModelCatalogMappings);
   registerSyncIpc("nomi:model-catalog:health", getModelCatalogHealth);
-  registerSyncIpc("nomi:model-catalog:vendor:upsert", upsertModelCatalogVendor);
+  registerSyncIpc("nomi:model-catalog:vendor:upsert", upsertRendererCatalogVendor);
   registerSyncIpc("nomi:model-catalog:vendor:delete", deleteModelCatalogVendor);
-  registerSyncIpc("nomi:model-catalog:vendor-api-key:upsert", upsertModelCatalogVendorApiKey);
+  registerSyncIpc("nomi:model-catalog:vendor-api-key:upsert", upsertRendererCatalogVendorApiKey);
   registerSyncIpc("nomi:model-catalog:vendor-api-key:clear", clearModelCatalogVendorApiKey);
-  registerSyncIpc("nomi:model-catalog:model:upsert", upsertModelCatalogModel);
+  registerSyncIpc("nomi:model-catalog:model:upsert", upsertRendererCatalogModel);
   // 改类型是**领域操作**不是字段 upsert：改 kind 的同时要按新 kind 重建调用通道，否则只是把
   // 「类型错」换成「没有通道」（见 catalog/modelRetype.ts 文件头）。故走自己的 IPC，不复用 upsert。
   registerSyncIpc("nomi:model-catalog:model:retype", retypeModelCatalogModel);
   registerSyncIpc("nomi:model-catalog:model:delete", deleteModelCatalogModel);
   registerSyncIpc("nomi:model-catalog:models:delete", deleteModelCatalogModels);
-  registerSyncIpc("nomi:model-catalog:mapping:upsert", upsertModelCatalogMapping);
+  registerSyncIpc("nomi:model-catalog:mapping:upsert", upsertRendererCatalogMapping);
   registerSyncIpc("nomi:model-catalog:mapping:delete", deleteModelCatalogMapping);
   registerSyncIpc("nomi:model-catalog:export", exportModelCatalogPackage);
-  registerSyncIpc("nomi:model-catalog:import", importModelCatalogPackage);
+  registerSyncIpc("nomi:model-catalog:import", importRendererCatalogPackage);
   // 域 IPC 各住各的模块（给 main.ts 800 行门腾空间；新通道加到对应模块，别回填这里）。comfy 那棵树重 → 惰性 require；素材通道薄 → 顶部静态 import。
   (require("./comfyuiIpc") as typeof import("./comfyuiIpc")).registerComfyuiIpc(registerSyncIpc);
   registerAssetTransportIpc(registerSyncIpc);
@@ -734,6 +730,7 @@ if (hasSingleInstanceLock)
         // Registration is best-effort in dev and on platforms that disallow it.
       }
       registerLocalProtocol();
+      void import("./providerAdapter/certificationMedia").then((m) => m.recoverCertificationMediaStorage()).catch(() => undefined);
       installContentSecurityPolicy(session.defaultSession);
       // Start before exposing IPC/window. Painting is not blocked; appFetch
       // waits for this configuration instead of silently sending early direct.

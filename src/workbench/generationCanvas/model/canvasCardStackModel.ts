@@ -6,7 +6,6 @@ export type CollapsedGroupCardProjection = {
   memberCount: number
   position: { x: number; y: number }
   coverNode?: GenerationCanvasNode
-  color?: string
 }
 
 export type AggregateGroupEdgeProjection = {
@@ -78,7 +77,6 @@ export function projectCollapsedGroups(
       memberCount: members.length,
       position,
       ...(coverNode ? { coverNode } : {}),
-      ...(group.color ? { color: group.color } : {}),
     })
     projectedNodeById.set(group.id, {
       id: group.id,
