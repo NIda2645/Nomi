@@ -28,6 +28,7 @@
 | 手动下载绕过统一代理边界 | `electron/assets/downloadAsset.ts` | 自动流程能拿结果，手动下载失败 |
 | 私有上传失败后错误地退回匿名图床 | `electron/catalog/assetLocalization.ts` | 用户被迫同意不可靠的第三方临时图床 |
 | Runway 初始化缺少版本头；签名 S3 multipart 字段顺序错误；XML 错误被吞掉 | `electron/catalog/runwayOfficial.ts`、`electron/assets/localAssetFile.ts` | Runway 自有上传返回 4xx/5xx，且错误信息无法判断 |
+| 最新 main 的 asset-relay 供应商卡与本任务卡片重复注册 `fal`/`runway` | `src/config/knownVendors.ts`、`src/config/knownVendors.test.ts` | 展示目录出现 15 项但只有 13 个唯一 `vendorKey`，Map 后写覆盖前写 |
 
 根因合同位于 [`docs/fixes/2026-08-31-generation-result-retrieval-boundary.root-cause.json`](/Users/aoqimin/Desktop/Nomi-provider-model-expansion-20260830/docs/fixes/2026-08-31-generation-result-retrieval-boundary.root-cause.json)。对应回归测试覆盖代理、上传顺序、MP4 校验、任务查询错误和资产读回。
 
@@ -85,6 +86,8 @@ Gemini Omni 的 `audio_ids`、`video_list`、`character_ids` 已进入 headless 
 - Electron smoke：16 条断言；ARM64 packaged MCP smoke 通过。
 - renderer/electron build、ARM64 directory package 通过。
 
+合并后全量测试曾先捕获上述重复键回归；删除重复展示卡、保留单一 canonical entry 后，聚焦测试和全量测试均恢复通过。
+
 真实 canary 的供应商扣费金额由 KIE、fal、Runway API 隐藏，账本只记录“已使用最小 canary、精确扣费不可见”。零费用路径没有向供应商发送请求。任何日志、提交和文档均不保存 API Key、签名 URL 或完整供应商凭证。
 
 ## 5. 最新 `origin/main` 合并状态
@@ -103,7 +106,7 @@ Gemini Omni 的 `audio_ids`、`video_list`、`character_ids` 已进入 headless 
 - `knownVendors.test.ts` 保留单一 `BUILTIN_VENDOR_SEEDS` 来源。
 - 交接、交付账本和计划索引保留双方新增内容。
 
-当前索引状态是“冲突已解决、仍在合并”，尚未创建 merge commit。合并后的长门禁在 `check:test-types` 阶段被停止，因此合并后必须重新验证，不能把合并前的绿灯当成最终绿灯。
+当前索引状态已通过 merge commit `a2fe4967` 推送；该提交的 main 父提交为当时的 `ae158ee2`。推送后远端 `origin/main` 又前进到 `3a97cffc`，因此 PR 可能再次显示冲突，必须以最新远端基线重新做一次非破坏性合并和验证。合并后的长门禁、全量测试和 build 已在 `a2fe4967` 的树上通过，不能把它们直接当成包含 `3a97cffc` 的最终绿灯。
 
 ## 6. 接手者完成标准
 
