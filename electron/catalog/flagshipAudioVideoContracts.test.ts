@@ -244,6 +244,7 @@ describe("2026-08 flagship media contracts", () => {
     expect(RUNWAY_VENDOR_SEED.assetIngestion).toMatchObject({
       strategy: "upload-presigned",
       endpoint: "https://api.dev.runwayml.com/v1/uploads",
+      initHeaders: { "X-Runway-Version": "2024-11-06" },
       uploadUrlPath: "uploadUrl",
       uriPath: "runwayUri",
       visibility: "provider-private",

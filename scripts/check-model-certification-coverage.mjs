@@ -106,6 +106,7 @@ const curatedContracts = [
   ["elevenlabs", "electron/catalog/elevenlabs.ts"],
   ["runway", "electron/catalog/runwayOfficial.ts"],
   ["kie", "electron/catalog/kieGeminiOmni11.ts"],
+  ["kie", "electron/catalog/kieSeedance.ts"],
 ];
 for (const [vendorKey, contractPath] of curatedContracts) {
   const source = read(contractPath);

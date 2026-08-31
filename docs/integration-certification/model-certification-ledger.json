@@ -72,11 +72,13 @@
       "capabilityBlockers": ["Typed UI controls for audio_ids, video_list, and character_ids are not exposed; headless contract accepts them."],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
       "live": {
-        "status": "blocked",
-        "providerReceipt": "KIE createTask accepted a 4-second 360p text-to-video request on 2026-08-31; result polling reached the provider task.",
-        "blocker": "This canary ran before the application-proxy route fix and was refused when the result URL resolved to the proxy's RFC 2544 address (198.18.0.0/15). The fix is now covered by hardenedFetch and Runway live certification; this KIE mapping was not rerun post-fix under the minimum-spend budget."
+        "status": "live-certified",
+        "productionReceipt": "Nomi production executor accepted KIE Gemini Omni 1.1 text-to-video task (receipt prefix 0961753c, suffix 0052; full provider id retained only in local ignored evidence) on 2026-08-31; recordInfo polling reached succeeded and result validation returned a video asset.",
+        "managedArtifact": "The generation result was materialized through the managed asset journal as a nomi-local video asset.",
+        "freshProcessReadback": "A fresh Nomi process read the same project and returned status=succeeded with the video asset.",
+        "accountDelta": "KIE billing is credit-based; the exact debit for this minimum canary was not exposed by the API."
       },
-      "status": "blocked"
+      "status": "live-certified"
     },
     {
       "id": "kie/gemini-omni-1.1/firstlast",
@@ -107,6 +109,27 @@
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
       "live": {"status": "blocked", "blocker": "KIE key was available for this run; this mapping was not selected for live canary under the minimum-spend budget."},
       "status": "simulated"
+    },
+    {
+      "id": "kie/seedance-2/all-modes",
+      "vendorKey": "kie",
+      "modelKey": "bytedance/seedance-2",
+      "archetypeId": "seedance-2",
+      "modeId": "t2v",
+      "mappingId": "seed-kie-seedance2-text_to_video",
+      "coveredMappingIds": ["seed-kie-seedance2-image_to_video"],
+      "contractPath": "electron/catalog/kieSeedance.ts",
+      "archetypePath": "src/config/modelArchetypes/seedance.ts",
+      "official": [{"url": "https://docs.kie.ai/32356532e0", "checkedAt": "2026-08-31"}, {"url": "https://docs.kie.ai/file-upload-api/quickstart", "checkedAt": "2026-08-31"}],
+      "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
+      "live": {
+        "status": "live-certified",
+        "productionReceipt": "Nomi production executor accepted KIE Seedance 2.0 image-to-video task (receipt prefix c81ab347, suffix 38f3; full provider id retained only in local ignored evidence) on 2026-08-31; recordInfo polling reached succeeded and result validation returned a video asset.",
+        "managedArtifact": "A provider-owned KIE upload URL was created through the free file upload API, then the result was materialized through the managed asset journal as a nomi-local video asset.",
+        "freshProcessReadback": "A fresh Nomi process read the same project and returned status=succeeded with the same video asset.",
+        "accountDelta": "KIE billing is credit-based; the exact debit for this minimum canary was not exposed by the API."
+      },
+      "status": "live-certified"
     },
     {
       "id": "kie/suno-v5.5/music",
@@ -274,11 +297,13 @@
       "official": [{"url": "https://fal.ai/models/fal-ai/nano-banana-2/api", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
       "live": {
-        "status": "blocked",
-        "providerReceipt": "fal queue accepted request 01a0545c-6794-76e0-85c8-9f77c76a723b on 2026-08-31; direct provider status was COMPLETED and returned images[*].",
-        "blocker": "This canary ran before the application-proxy route fix and was refused when v3b.fal.media resolved to RFC 2544 address 198.18.0.93. The fix is now covered by hardenedFetch and Runway live certification; this fal mapping was not rerun post-fix under the minimum-spend budget."
+        "status": "live-certified",
+        "productionReceipt": "Nomi production executor accepted fal Nano Banana 2 text-to-image task 01a0576f-16c2-7ae0-b73a-e359c39f9c32 on 2026-08-31; queue polling reached COMPLETED and result validation returned an image asset.",
+        "managedArtifact": "The generation result was materialized through the managed asset journal as a nomi-local image asset.",
+        "freshProcessReadback": "A fresh Nomi process read the same project and returned status=succeeded with the image asset.",
+        "accountDelta": "fal billing is account-based; the exact USD debit for this minimum canary was not exposed by the API."
       },
-      "status": "blocked"
+      "status": "live-certified"
     },
     {
       "id": "fal/image/edit",
@@ -565,8 +590,8 @@
       "archetypePath": "src/config/modelArchetypes/runwayGen45.ts",
       "official": [{"url": "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", "checkedAt": "2026-08-30"}, {"url": "https://docs.dev.runwayml.com/guides/using-the-api/", "checkedAt": "2026-08-30"}],
       "evidence": {"static": "passed", "loopback": "passed", "failureMatrix": "passed", "mcpDryRun": "passed"},
-      "live": {"status": "blocked", "blocker": "The minimum canary covered Gen-4.5 text-to-video and Gen-4 image text-to-image; this image-to-video mapping was not selected to avoid another paid task."},
-      "status": "simulated"
+      "live": {"status": "live-certified", "productionReceipt": "Nomi production executor accepted Runway Gen-4.5 image-to-video task (receipt suffix 5b63; full provider id retained only in local ignored evidence) on 2026-08-31; the local reference used Runway's own two-step ephemeral upload, polling reached succeeded, and result validation returned a video asset.", "managedArtifact": "The result was materialized through the managed asset journal as a nomi-local video asset.", "freshProcessReadback": "A fresh Nomi process read the same project and returned status=succeeded with the video asset.", "accountDelta": "Provider debit amount is not exposed by Runway; exact USD attribution is unknown."},
+      "status": "live-certified"
     },
     {
       "id": "runway/gen4-turbo/i2v",

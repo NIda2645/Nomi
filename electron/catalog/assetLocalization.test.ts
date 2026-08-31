@@ -164,6 +164,7 @@ describe("resolveLocalAsset (per strategy)", () => {
       uploadUrlPath: "uploadUrl",
       uriPath: "runwayUri",
       initFields: { type: "ephemeral" },
+      initHeaders: { "X-Runway-Version": "2024-11-06" },
       accepts: ["image", "video", "audio"],
     };
     const postJson = vi.fn().mockResolvedValue({
@@ -176,7 +177,7 @@ describe("resolveLocalAsset (per strategy)", () => {
     expect(out).toBe("runway://uploads/a.png");
     expect(postJson).toHaveBeenCalledWith(
       "https://api.dev.runwayml.com/v1/uploads",
-      { "Content-Type": "application/json", Authorization: "Bearer runway-secret" },
+      { "Content-Type": "application/json", "X-Runway-Version": "2024-11-06", Authorization: "Bearer runway-secret" },
       { type: "ephemeral", filename: "a.png" },
     );
     expect(postMultipart).toHaveBeenCalledWith(
@@ -537,6 +538,21 @@ describe("localizeAssetsForVendor — 上传失败换下一条通道（413 类�
     );
     await expect(run).rejects.toThrow(/small\.example.*401/s);
     await expect(run).rejects.toThrow(/roomy\.example.*fetch failed/s);
+  });
+
+  it("私有供应商上传失败时，不被匿名托管 consent 提示遮住根因", async () => {
+    const privateUpload: AssetIngestion = { strategy: "upload-multipart", endpoint: "https://runway.example/v1/uploads", urlPath: "url", accepts: ["video"] };
+    const anonymous: AssetIngestion = { strategy: "anon-chain", chain: [], accepts: ["video"], visibility: "public-anonymous", requiresConsent: true, ttlSeconds: 60 * 60 };
+    const run = localizeAssetsForVendor(
+      { referenceVideoUrls: [localUrl("clip.mp4")] },
+      () => [{ vendorKey: "runway", ingestion: privateUpload, uploadApiKey: "key" }, { vendorKey: null, ingestion: anonymous, uploadApiKey: "" }],
+      () => ({ bytes: Buffer.from("video"), contentType: "video/mp4", fileName: "clip.mp4" }),
+      vi.fn(),
+      vi.fn().mockRejectedValue(new Error("素材上传失败(HTTP 400)：X-Runway-Version missing")),
+      { anonymousConsent: "ask" },
+    );
+    await expect(run).rejects.toThrow(/runway\.example.*X-Runway-Version missing/s);
+    await expect(run).rejects.not.toThrow(/参考素材需要上传到公共临时托管/);
   });
 });
 

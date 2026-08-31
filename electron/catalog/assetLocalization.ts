@@ -318,6 +318,7 @@ export async function resolveLocalAsset(
     // the anonymous-host fallback entirely.
     const initHeaders: Record<string, string> = {
       "Content-Type": "application/json",
+      ...(ingestion.initHeaders || {}),
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     };
     const initBody: Record<string, unknown> = {
@@ -562,7 +563,12 @@ export async function localizeAssetsForVendor(
       }
     }
     if (resolvedValue === null) {
-      if (consentRequired) throw new AnonymousAssetConsentRequiredError();
+      // Do not hide a failed provider-owned upload behind the anonymous-hosting
+      // consent prompt.  That turned a concrete Runway/KIE 4xx into a generic
+      // privacy dialog, leaving users unable to repair the actual contract.
+      const privateFailures = failures.filter((line) => !line.includes("需要先确认公共临时托管"));
+      if (consentRequired && privateFailures.length === 0) throw new AnonymousAssetConsentRequiredError();
+      if (consentRequired && privateFailures.length > 0) throw allChannelsFailedError(asset, mediaKind, privateFailures);
       throw allChannelsFailedError(asset, mediaKind, failures);
     }
     urlMap.set(url, resolvedValue);

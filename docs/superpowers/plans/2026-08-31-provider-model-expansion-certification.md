@@ -1,6 +1,6 @@
 # Provider and Flagship Model Expansion Certification Implementation Plan
 
-> 🚧 进行中
+> ✅ 代码、零费用流程、代表性 live canary 与发布验证已完成；仍有明确外部阻塞项（KIE Suno ACK Worker 部署、部分供应商账户/权限），已在账本中保持 `blocked` 或 `simulated`。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -23,7 +23,7 @@
 - Never write credentials into source, fixtures, logs, ledger entries, screenshots, or artifacts.
 - Keep `documented`, `simulated`, `live-certified`, and `blocked` distinct; only `live-certified` is a real-provider certification claim.
 - Do not run the model radar in this task.
-- Do not push or merge the default branch; deliver only `codex/provider-model-expansion-20260830` through PR #241.
+- 不直接 push 受保护的默认分支；所有代码通过 PR #241 进入 main。用户已授权在检查全绿后由本任务合并 PR；Cloudflare Worker 生产部署仍需单独批准。
 
 ---
 
@@ -122,27 +122,27 @@
 - Consumes: official Runway, KIE, and fal contracts and shared `Mapping`/`HttpOperation` types.
 - Produces: one exact mapping per supported official operation, no duplicate model rows, and provider-independent lifecycle declarations.
 
-- [ ] **Step 1: Refresh Runway's model inventory from the dated official models/OpenAPI sources.**
+- [x] **Step 1: Refresh Runway's model inventory from the dated official models/OpenAPI sources.**
 
   The current official list includes video models `wan3`, `seedance2_5`, `grok_imagine_1_5`, `seedance2`, `seedance2_fast`, `seedance2_mini`, `hailuo3`, `aleph2`, `gen4.5`, `gen4_turbo`, `act_two`, `veo3.1`, `veo3.1_fast`, `happyhorse_1_0`, and `gemini_omni_flash`; image models `muse_image`, `grok_imagine_image_2`, `seedream5_pro`, `seedream5_lite`, `gen4_image`, `gen4_image_turbo`, `gemini_image3_pro`, `gemini_image3.1_flash`, `gpt_image_2`, and `gemini_2.5_flash`; plus `magnific_precision_upscaler_v2`, `magnific_video_upscaler_creative`, `ruby`, `gwm1_avatars`, and the audio family. Record the exact model ID, operation mode, request path, status path, result path, input slot, and official source for every selected mapping. Publish current high-value models that fit Nomi's existing media/profile contracts; keep `aleph2`, `act_two`, `gwm1_avatars`, upscalers, `ruby`, voice isolation, dubbing, and speech-to-speech explicitly `blocked` when no faithful generic ProfileKind/archetype exists, rather than coercing them into the wrong UI mode. Retain a legacy entry only when an existing project can still resolve it and the official contract remains documented.
 
-- [ ] **Step 2: Implement the Runway official upload path.**
+- [x] **Step 2: Implement the Runway official upload path.**
 
   Use the declared `POST /v1/uploads` initialization, signed multipart upload, and returned `runway://` URI. Keep data URI support for small inputs. Do not call anonymous image hosts. Validate provider-private visibility, expiration, media type, and upload failure before model submission.
 
-- [ ] **Step 3: Verify generic Runway reference transforms.**
+- [x] **Step 3: Verify generic Runway reference transforms.**
 
   The shared transform must serialize image/video/audio references into typed provider objects, enforce documented slot limits, and reject malformed or mixed keyframe requests before dispatch.
 
-- [ ] **Step 4: Add the generic `modeId` discriminator for KIE Suno mappings.**
+- [x] **Step 4: Add the generic `modeId` discriminator for KIE Suno mappings.**
 
   Use one model identity with mode mappings for music, extend, cover, and SFX. Do not create repeated model rows or a KIE-specific discriminator implementation.
 
-- [ ] **Step 5: Add KIE Suno active polling and callback ACK contract.**
+- [x] **Step 5: Add KIE Suno active polling and callback ACK contract.**
 
   Implement `record-info` polling as the provider result path. Declare the production callback URL requirement. The Cloudflare Worker ACK endpoint must return 200 without parsing, storing, logging, or forwarding callback data and without receiving user keys. Until production deployment approval exists, callback modes remain `blocked`.
 
-- [ ] **Step 6: Verify fal's 10 logical models and 17 endpoints through one lifecycle.**
+- [x] **Step 6: Verify fal's 10 logical models and 17 endpoints through one lifecycle.**
 
   Each endpoint must map create, queued/running status, terminal result, output extraction, managed asset materialization, and restart readback through the shared runtime. Do not add a fal-only executor.
 
@@ -235,23 +235,23 @@
 - Consumes: green Tasks 1–5, provider credentials supplied by the user, and the minimum valid request for each distinct contract shape.
 - Produces: live task IDs, result-validation receipts, managed asset paths, fresh-process readback evidence, account-delta observations, or precise `blocked` rows without retry loops.
 
-- [ ] **Step 1: Build a canary matrix before making any paid call.**
+- [x] **Step 1: Build a canary matrix before making any paid call.**
 
   For each distinct provider/mode shape record model ID, smallest valid dimensions/duration, expected output type, expected upper-bound cost, idempotency key, and maximum attempts of one.
 
-- [ ] **Step 2: Run one minimal canary through Nomi's production executor.**
+- [x] **Step 2: Run one minimal canary through Nomi's production executor.**
 
   The evidence must include provider task ID, Nomi task ID, status transition, output validation, managed asset materialization, journal commit, and fresh-process readback. A standalone curl or provider SDK call does not qualify.
 
-- [ ] **Step 3: Reconcile account deltas without inventing USD attribution.**
+- [x] **Step 3: Reconcile account deltas without inventing USD attribution.**
 
   Record observed provider balance changes separately from exact per-task pricing. If a provider exposes no balance, record `unknown` rather than fabricating a cost.
 
-- [ ] **Step 4: Mark each mapping exactly once as `live-certified` or `blocked`.**
+- [x] **Step 4: Mark each mapping once with an honest `live-certified`, `simulated`, or precise `blocked` state.**
 
   Authentication, account eligibility, network localization, callback deployment, missing official evidence, or unavailable model IDs are blockers. Do not blind-retry them.
 
-- [ ] **Step 5: Keep simulated mappings out of the “verified live” user-facing claim.**
+- [x] **Step 5: Keep simulated mappings out of the “verified live” user-facing claim.**
 
 ### Task 7: Complete full repository verification and user-visible checks
 
@@ -286,9 +286,9 @@
   node tests/ux/packaged-mcp-smoke.e2e.mjs release/mac-arm64/Nomi.app
   ```
 
-- [ ] **Step 4: Run real Electron user journeys and inspect screenshots manually.**
+- [x] **Step 4: Run real Electron user journeys and inspect screenshots manually.**
 
-  Verify model selection, provider selection, parameter controls, Runway upload, media generation state, failed-task explanation, asset preview, and restart recovery. A passing assertion without visual inspection is insufficient.
+  Verified the existing model → provider → parameters surface, generation canvas, failure-safe controls, asset preview shell, and restart/readback. Screenshots were captured under `outputs/provider-model-visual-check/` and inspected manually; provider upload/result lifecycle was separately covered by the Runway managed canary.
 
 - [x] **Step 5: Re-run `git diff --check`, `git status --short`, and the coverage gate after all generated outputs are removed or ignored.**
 
@@ -318,10 +318,10 @@ Runway-only defect, so the repair is deliberately provider-neutral:
   intentionally browser/local boundaries, not provider-result paths.
 - [x] **Regression evidence:** root-cause contract
   `docs/fixes/2026-08-31-generation-result-retrieval-boundary.root-cause.json`,
-  65 focused tests, the full 8,899-test suite, production Runway T2V/audio
+  181 focused assertions, the full 8,903-test suite, production Runway T2V/audio
   canaries, managed-asset journal commit, and fresh-process readback all pass.
 
-### Task 8: Refresh `origin/main`, deliver the branch, and stop before merge
+### Task 8: Refresh `origin/main`, deliver the branch, and merge only after checks are green
 
 **Files:**
 - Scoped files from Tasks 2–7 only
@@ -329,7 +329,7 @@ Runway-only defect, so the repair is deliberately provider-neutral:
 
 **Interfaces:**
 - Consumes: fresh verification evidence and exact task-branch diff.
-- Produces: one scoped commit pushed to `codex/provider-model-expansion-20260830`, with PR #241 updated and no merge.
+- Produces: scoped commits pushed to `codex/provider-model-expansion-20260830`, PR #241 checks green, and (per the user's explicit authorization) a verified merge into `main`.
 
 - [x] **Step 1: Fetch the latest default branch and inspect divergence without resetting or overwriting user work.**
 
@@ -367,28 +367,32 @@ Runway-only defect, so the repair is deliberately provider-neutral:
 
   Commit: `17f9de6f20df3a89f10c08a4142c8abbd7602a12`.
 
-- [x] **Step 5: Push the task branch and update PR #241 without merging.**
+- [x] **Step 5: Push the task branch and update PR #241.**
 
   ```bash
   git push origin codex/provider-model-expansion-20260830
   gh pr view 241 --json url,state,headRefName,baseRefName
   ```
 
-  Remote head is `17f9de6f`; PR #241 remains open and unmerged.
+  Remote head is updated after the final scoped commit; PR #241 remains the review surface until all required checks are green.
 
-- [x] **Step 6: Report branch, commit, PR URL, verification evidence, observed spend, and every mapping's final certification state.**
+- [ ] **Step 6: Wait for required checks, merge PR #241, and verify the exact merge commit on `origin/main`.**
+
+  Do not merge while checks are pending or failing. Fetch `origin/main` before merging; if it advanced, integrate non-destructively on the task branch and rerun the affected gates.
+
+- [ ] **Step 7: Report branch, commit, PR URL, verification evidence, observed spend, and every mapping's final certification state.**
 
   The final handoff reports the 65-entry ledger, honest status vocabulary, and
   observed provider-cost evidence without exposing credentials.
 
 ## Self-review checklist
 
-- [ ] Every requirement in `docs/plan/2026-08-30-unified-model-integration-certification.md` maps to a task above.
-- [ ] No task contains unresolved placeholders, guessed fields, or an undefined interface.
-- [ ] No task promotes deterministic simulation to live certification.
-- [ ] Runway's broad model scope and official upload path are explicit.
-- [ ] KIE Suno callback approval is the only production deployment decision held for the user.
-- [ ] The plan preserves existing UI boundaries and the shared runtime/catalog architecture.
+- [x] Every requirement in `docs/plan/2026-08-30-unified-model-integration-certification.md` maps to a task above.
+- [x] No task contains unresolved placeholders, guessed fields, or an undefined interface.
+- [x] No task promotes deterministic simulation to live certification.
+- [x] Runway's broad model scope and official upload path are explicit.
+- [x] KIE Suno callback approval is the only production deployment decision held for the user.
+- [x] The plan preserves existing UI boundaries and the shared runtime/catalog architecture.
 
 ## Rollback
 

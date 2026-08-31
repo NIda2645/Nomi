@@ -60,6 +60,8 @@ export type AssetIngestion =
       fieldsPath?: string;
       /** 初始化请求的固定字段（动态文件名/type 会由解析器补上）。 */
       initFields?: Record<string, string>;
+      /** 初始化请求的固定协议头（例如 Runway 的 X-Runway-Version）。 */
+      initHeaders?: Record<string, string>;
       filenameField?: string;
       typeField?: string;
       uploadFileField?: string;

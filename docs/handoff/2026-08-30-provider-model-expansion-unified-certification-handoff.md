@@ -1,6 +1,6 @@
 # Nomi 供应商、旗舰模型与统一认证流程交接
 
-> 状态：进行中，尚未提交、推送或创建 PR
+> 状态：代码与验证已完成，PR #241 等待最终检查后合并；外部阻塞项仍按账本诚实保留
 >
 > 交接日期：2026-08-30
 >
@@ -8,9 +8,18 @@
 >
 > 当前分支：`codex/provider-model-expansion-20260830`
 >
-> 当前 HEAD：`491d670a`
+> 当前任务分支：`codex/provider-model-expansion-20260830`（最终提交以合并前推送为准）
 >
-> 远端基线：`origin/main @ c3979927`，当前分支落后 6 个提交
+> 远端基线：已在本轮复核 `origin/main`；PR：`https://github.com/aqm857886159/Nomi/pull/241`
+
+## 0.1 2026-08-31 续接结果
+
+- 认证账本现为 66 条：7 条 `live-certified`、其余按证据保持 `simulated` 或精确 `blocked`；不把未跑 canary 的模型写成 live。
+- 代表性最小 canary 已通过 Nomi `ProductionRun`/结果校验/managed asset journal/新进程读回：KIE Gemini Omni 1.1、KIE Seedance 2.0、fal Nano Banana 2、Runway Gen-4.5 文生/图生视频；账本中的 provider receipt 已脱敏，完整 ID 只留本地忽略证据。
+- Runway 上传根因已修复：初始化请求固定 `X-Runway-Version`，签名 S3 multipart 字段先于文件；XML 错误只保留短 Code/Message，不泄露签名 URL。
+- 零费用验证：J0/J3、MCP spend confirmation（provider quota=0）、packaged restart/readback、trusted-audio、fault matrix、Electron smoke、ARM64 packaged MCP smoke 均通过；全量单测 932 文件/8,903 项通过。
+- `electron-builder` 的 x64 目标在本机因 Electron runtime 下载连接挂起而有界中止；ARM64 dir 打包和 packaged smoke 已通过。该网络阻塞不影响源码或 ARM64 产物。
+- KIE Suno music/extend/cover 仍因生产 ACK Worker 部署批准为 `blocked`；MiniMax/ElevenLabs/Meshy/APIMart 的账户、权限或官方合同缺口按账本保留，不做盲重试。
 
 ## 0. 给接手 AI 的第一条指令
 
@@ -827,4 +836,3 @@ sed -n '1,420p' docs/handoff/2026-08-30-provider-model-expansion-unified-certifi
 10. 最新 `origin/main` 已非破坏性整合并复验。
 11. 任务分支已 commit、push，PR 已创建。
 12. 未直接修改或推送默认分支，未替用户 merge PR。
-

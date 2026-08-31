@@ -15,6 +15,7 @@ export const RUNWAY_VENDOR_SEED = {
   assetIngestion: {
     strategy: "upload-presigned" as const,
     endpoint: "https://api.dev.runwayml.com/v1/uploads",
+    initHeaders: { "X-Runway-Version": "2024-11-06" },
     uploadUrlPath: "uploadUrl",
     uriPath: "runwayUri",
     fieldsPath: "fields",
