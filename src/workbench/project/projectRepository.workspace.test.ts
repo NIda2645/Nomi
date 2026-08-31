@@ -54,6 +54,16 @@ describe('projectRepository workspace project creation', () => {
     expect('rootPath' in record).toBe(false)
   })
 
+  it('same project title still creates independent project records', () => {
+    mockedGetDesktopBridge.mockReturnValue(null)
+
+    const first = createLocalProject('Storyboard')
+    const second = createLocalProject('Storyboard')
+
+    expect(second.id).not.toBe(first.id)
+    expect(second.name).toBe(first.name)
+  })
+
   it('stamps seedKey onto programmatically seeded projects (idempotent example seeding, audit A8)', () => {
     // seedKey 是播种身份：程序化播种用它判断「这个示例已播过」。名字不是身份——
     // 此前以 projectName 重复 createLocalProject 堆出几十个重名示例项目。
@@ -170,7 +180,7 @@ describe('projectRepository workspace project creation', () => {
     const record = readLocalProject('ws-1')
 
     expect(record).toMatchObject({ id: 'ws-1', name: 'Workspace Project', version: 1 })
-    expect(record?.payload.workbenchDocument.version).toBe(1)
+    expect(record?.payload.workbenchDocuments![0].version).toBe(1)
     // 三轨：旧 2 轨工程加载时 normalizeTimeline 自动补音频轨（migration，幂等）。
     expect(record?.payload.timeline.tracks).toHaveLength(3)
     expect(record?.payload.timeline.tracks.map((t) => t.type)).toEqual(['image', 'video', 'audio'])
@@ -198,7 +208,7 @@ describe('projectRepository workspace project creation', () => {
     const record = readLocalProject('ws-music')
 
     expect(record).toMatchObject({ id: 'ws-music', name: 'Music', version: 1 })
-    expect(record?.payload.workbenchDocument.version).toBe(1)
+    expect(record?.payload.workbenchDocuments![0].version).toBe(1)
     expect(record?.payload.timeline.tracks.length).toBeGreaterThan(0)
     expect(Array.isArray(record?.payload.generationCanvas.nodes)).toBe(true)
   })

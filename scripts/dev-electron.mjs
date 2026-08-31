@@ -6,11 +6,13 @@ import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { installChildProcessLifecycle } from "./child-process-lifecycle.mjs";
 import { resolveDevStoragePaths } from "./dev-storage.mjs";
-import { ensureElectronSignature } from "./ensure-electron-signature.mjs";
+import { assertElectronInstallIdentity } from "./electron-install-identity.mjs";
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+assertElectronInstallIdentity(repoRoot);
 const buildTailwindScript = path.join(repoRoot, "scripts", "build-tailwind.mjs");
+const buildElectronScript = path.join(repoRoot, "scripts", "build-electron.mjs");
 const childProcessLifecycle = installChildProcessLifecycle();
 
 function configureWindowsConsoleEncoding() {
@@ -52,14 +54,9 @@ function loadOnboardingAgentEnv() {
   return out;
 }
 const electron = require("electron");
-// macOS: if Apple revoked this dev Electron's notarization, re-sign it before we
-// ever spawn it — launching a revoked binary makes macOS SIGKILL and delete it.
-ensureElectronSignature(electron, { log: (msg) => console.log(msg) });
 const vitePackagePath = require.resolve("vite/package.json");
 const vitePackageDir = path.dirname(vitePackagePath);
 const viteBin = path.join(vitePackageDir, "bin", "vite.js");
-const tscPackagePath = require.resolve("typescript/package.json");
-const tscBin = path.join(path.dirname(tscPackagePath), "bin", "tsc");
 function electronEnv(extra = {}) {
   const env = { ...process.env, ...extra };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -67,12 +64,14 @@ function electronEnv(extra = {}) {
 }
 
 function compileElectronMain() {
-  const result = spawnSync(process.execPath, [tscBin, "-p", "electron/tsconfig.json"], {
+  const result = spawnSync(process.execPath, [buildElectronScript], {
+    cwd: repoRoot,
     stdio: "inherit",
     env: electronEnv(),
   });
+  if (result.error) throw result.error;
   if (result.signal) process.kill(process.pid, result.signal);
-  if (typeof result.status === "number" && result.status !== 0) process.exit(result.status);
+  if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
 function compileTailwindStyles() {

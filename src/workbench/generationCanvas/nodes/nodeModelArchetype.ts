@@ -17,6 +17,7 @@ import {
 } from './controls/archetypeMeta'
 import { translateModelDisplayText } from '../../../i18n/modelDisplayText'
 import { isModelRecentlyAiling } from '../runner/modelHealthMemory'
+import { usesExplicitParameterReferenceDeclarations } from '../model/parameterReferenceSlots'
 
 export function chooseDefaultModelOption(
   options: readonly ModelOption[],
@@ -90,6 +91,7 @@ export function resolveRenderedControls(
       videoCatalogConfig: buildEffectiveVideoCatalogConfig(option?.meta),
       isImageLike,
       isVideoLike,
+      explicitMediaParametersOnly: usesExplicitParameterReferenceDeclarations(option?.meta, option?.vendor),
     }),
   )
 }

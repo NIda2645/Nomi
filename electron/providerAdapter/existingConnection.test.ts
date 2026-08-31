@@ -2,11 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { CatalogState, Model, Vendor } from "../catalog/types";
 import {
   createExistingConnectionActions,
-  type ExistingConnectionAdapterRegisterInput,
+  type ExistingConnectionActionsDependencies,
   type ExistingConnectionAdapterStartInput,
 } from "./existingConnection";
 
 const SECRET = "sk-never-leaves-main";
+const CERTIFICATION = {
+  contractDigest: "a".repeat(64),
+  idempotencyKey: "manual-confirm-1",
+  remoteIdempotency: "unknown" as const,
+};
 
 function vendor(patch: Partial<Vendor> = {}): Vendor {
   return {
@@ -56,12 +61,12 @@ function catalog(patch: Partial<CatalogState> = {}): CatalogState {
 }
 
 function harness(state = catalog()) {
-  const fetchModels = vi.fn(async () => ({
+  const fetchModels = vi.fn<ExistingConnectionActionsDependencies["fetchModels"]>(async () => ({
     ok: true as const,
     models: ["already-there", "new-video"],
     statuses: [200],
   }));
-  const startAdapter = vi.fn((input: ExistingConnectionAdapterStartInput) => ({
+  const startAdapter = vi.fn<ExistingConnectionActionsDependencies["startAdapter"]>(async (input: ExistingConnectionAdapterStartInput) => ({
     id: "run-1",
     vendorKey: input.vendorKey,
     vendorName: input.vendorName,
@@ -74,26 +79,14 @@ function harness(state = catalog()) {
     updatedAt: "2026-08-15T00:00:00.000Z",
     connectionFingerprint: "fingerprint",
   }));
-  const registerAdapter = vi.fn((input: ExistingConnectionAdapterRegisterInput) => ({
-    vendorKey: input.vendorKey,
-    vendorName: input.vendorName,
-    state: "configured" as const,
-    selectedModelKeys: input.models.map((item: { modelKey: string }) => item.modelKey),
-    models: input.models.map((item: { modelKey: string; labelZh?: string; kind: Model["kind"] }) => ({
-      ...item,
-      state: "unverified" as const,
-    })),
-    savedAt: "2026-08-15T00:00:00.000Z",
-  }));
   const actions = createExistingConnectionActions({
     readCatalog: () => state,
     decryptApiKey: () => SECRET,
     fetchModels,
-    registerAdapter,
     startAdapter,
     getAdapterRun: () => undefined,
   });
-  return { actions, fetchModels, registerAdapter, startAdapter };
+  return { actions, fetchModels, startAdapter };
 }
 
 describe("existing connection model discovery", () => {
@@ -151,8 +144,7 @@ describe("existing connection model discovery", () => {
       readCatalog: () => catalog(),
       decryptApiKey: () => "",
       fetchModels,
-      registerAdapter: vi.fn(),
-      startAdapter: vi.fn(),
+      startAdapter: vi.fn(async () => { throw new Error("startAdapter must not run"); }),
       getAdapterRun: () => undefined,
     });
 
@@ -161,44 +153,43 @@ describe("existing connection model discovery", () => {
     expect(result).toMatchObject({ ok: false, code: "CREDENTIAL_MISSING" });
     expect(fetchModels).not.toHaveBeenCalled();
   });
-});
 
-describe("existing connection save-first registration", () => {
-  it("adds only new models without exposing or passing the saved credential", async () => {
-    const { actions, registerAdapter, startAdapter } = harness();
-
-    const result = await actions.register({
-      vendorKey: "my-private-relay",
-      models: [
-        { modelKey: "already-there", kind: "image" },
-        { modelKey: "new-video", labelZh: "New video", kind: "video" },
-      ],
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      registration: {
-        vendorKey: "my-private-relay",
-        state: "configured",
-        selectedModelKeys: ["new-video"],
-        models: [{ modelKey: "new-video", state: "unverified" }],
-      },
-    });
-    expect(registerAdapter).toHaveBeenCalledWith(expect.objectContaining({
-      vendorKey: "my-private-relay",
-      models: [{ modelKey: "new-video", labelZh: "New video", kind: "video" }],
-    }));
-    expect(registerAdapter.mock.calls[0]?.[0]).not.toHaveProperty("apiKey");
-    expect(startAdapter).not.toHaveBeenCalled();
-    expect(JSON.stringify(result)).not.toContain(SECRET);
+  it("forwards discovery failure classification and real HTTP status to the renderer", async () => {
+    const { actions, fetchModels } = harness();
+    fetchModels.mockResolvedValueOnce({ ok: false, error: "expired key", status: 200, statuses: [200], failureKind: "auth" });
+    expect(await actions.listModels({ vendorKey: "my-private-relay" }))
+      .toMatchObject({ ok: false, code: "MODEL_LIST_UNAVAILABLE", failureKind: "auth", status: 200, error: "expired key" });
   });
 
-  it("starts explicit adaptation for saved models using catalog-owned model metadata", async () => {
+  it("forwards partial success rather than presenting a budget-limited list as complete", async () => {
+    const { actions, fetchModels } = harness();
+    fetchModels.mockResolvedValueOnce({ ok: true, models: ["new-video"], statuses: [200], partial: true });
+    expect(await actions.listModels({ vendorKey: "my-private-relay" }))
+      .toMatchObject({ ok: true, models: ["new-video"], partial: true });
+  });
+
+  it("keeps base/query/header credentials in main even when a rejected fetch echoes them", async () => {
+    const baseUrl = "https://gateway.example.test/v1?tenant_secret=base-secret";
+    const { actions, fetchModels } = harness(catalog({
+      vendors: [vendor({ baseUrlHint: baseUrl, meta: { extraHeaders: { "X-Private": "header-secret" } } })],
+    }));
+    fetchModels.mockRejectedValueOnce(new Error(`${baseUrl} ${SECRET} header-secret base-secret`));
+    const result = await actions.listModels({ vendorKey: "my-private-relay" });
+    expect(fetchModels).toHaveBeenCalledWith(expect.objectContaining({ baseUrl }));
+    expect(result).toMatchObject({ ok: false, failureKind: "network" });
+    const output = JSON.stringify(result);
+    for (const secret of [SECRET, "header-secret", "base-secret", "tenant_secret="]) expect(output).not.toContain(secret);
+  });
+});
+
+describe("existing connection canonical certification", () => {
+  it("certifies saved models using catalog-owned model metadata", async () => {
     const { actions, startAdapter } = harness();
 
-    const result = await actions.adapt({
+    const result = await actions.start({
       vendorKey: "my-private-relay",
       models: [{ modelKey: "already-there", labelZh: "Renderer override", kind: "text" }],
+      certification: CERTIFICATION,
     });
 
     expect(result).toMatchObject({ ok: true, run: { selectedModelKeys: ["already-there"] } });
@@ -206,13 +197,14 @@ describe("existing connection save-first registration", () => {
       vendorKey: "my-private-relay",
       apiKey: SECRET,
       models: [{ modelKey: "already-there", labelZh: "already-there", kind: "image" }],
+      certification: CERTIFICATION,
     }));
     expect(JSON.stringify(result)).not.toContain(SECRET);
   });
 });
 
 describe("existing connection adapter start", () => {
-  it("preserves an arbitrary catalog vendor key and starts only newly selected models", async () => {
+  it("preserves an arbitrary catalog vendor key and certifies every selected model", async () => {
     const { actions, startAdapter } = harness();
 
     const result = await actions.start({
@@ -221,35 +213,41 @@ describe("existing connection adapter start", () => {
         { modelKey: "already-there", labelZh: "Existing", kind: "image" },
         { modelKey: "new-video", labelZh: "New video", kind: "video" },
       ],
+      certification: CERTIFICATION,
     });
 
     expect(result).toMatchObject({
       ok: true,
-      run: { vendorKey: "my-private-relay", selectedModelKeys: ["new-video"] },
+      run: { vendorKey: "my-private-relay", selectedModelKeys: ["already-there", "new-video"] },
     });
     expect(startAdapter).toHaveBeenCalledWith(expect.objectContaining({
       vendorKey: "my-private-relay",
       apiKey: SECRET,
-      models: [{ modelKey: "new-video", labelZh: "New video", kind: "video" }],
+      models: [
+        { modelKey: "already-there", labelZh: "already-there", kind: "image" },
+        { modelKey: "new-video", labelZh: "New video", kind: "video" },
+      ],
+      certification: CERTIFICATION,
     }));
     expect(JSON.stringify(result)).not.toContain(SECRET);
   });
 
-  it("does not reconfigure the connection when every selection already exists", async () => {
+  it("allows recertifying a model that already exists in the catalog", async () => {
     const { actions, startAdapter } = harness();
 
     const result = await actions.start({
       vendorKey: "my-private-relay",
       models: [{ modelKey: "already-there", kind: "image" }],
+      certification: CERTIFICATION,
     });
 
-    expect(result).toMatchObject({ ok: false, code: "NO_NEW_MODELS" });
-    expect(startAdapter).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: true, run: { selectedModelKeys: ["already-there"] } });
+    expect(startAdapter).toHaveBeenCalledTimes(1);
   });
 
   it("redacts a credential if an adapter error unexpectedly echoes it", async () => {
     const { actions, startAdapter } = harness();
-    startAdapter.mockImplementationOnce((input) => ({
+    startAdapter.mockImplementationOnce(async (input) => ({
       id: "run-secret-echo",
       vendorKey: input.vendorKey,
       vendorName: input.vendorName,
@@ -267,6 +265,7 @@ describe("existing connection adapter start", () => {
     const result = await actions.start({
       vendorKey: "my-private-relay",
       models: [{ modelKey: "new-video", kind: "video" }],
+      certification: CERTIFICATION,
     });
 
     expect(JSON.stringify(result)).not.toContain(SECRET);
@@ -284,6 +283,7 @@ describe("existing connection adapter start", () => {
     const result = await actions.start({
       vendorKey: "my-private-relay",
       models: [{ modelKey: "local-model", kind: "text" }],
+      certification: CERTIFICATION,
     });
 
     expect(result.ok).toBe(true);
@@ -318,12 +318,11 @@ describe("persisted provider adapter retry", () => {
         readCatalog: () => catalog(),
         decryptApiKey: () => SECRET,
         fetchModels: vi.fn(),
-        registerAdapter: vi.fn(),
         startAdapter,
         getAdapterRun: () => ({ ...previousRun, stage }),
       });
 
-      const result = await actions.retry({ runId: previousRun.id });
+      const result = await actions.retry({ runId: previousRun.id, certification: CERTIFICATION });
 
       expect(result).toMatchObject({
         ok: true,
@@ -339,6 +338,7 @@ describe("persisted provider adapter retry", () => {
           { modelKey: "already-there", labelZh: "Existing image", kind: "image" },
           { modelKey: "missing-from-catalog", labelZh: "Recovered video", kind: "video" },
         ],
+        certification: CERTIFICATION,
       }));
       expect(JSON.stringify(result)).not.toContain(SECRET);
       expect(JSON.stringify(result)).not.toContain("connectionFingerprint");
@@ -351,12 +351,15 @@ describe("persisted provider adapter retry", () => {
       readCatalog: () => catalog(),
       decryptApiKey: () => SECRET,
       fetchModels: vi.fn(),
-      registerAdapter: vi.fn(),
       startAdapter,
       getAdapterRun: () => previousRun,
     });
 
-    const result = await actions.retry({ runId: previousRun.id, modelKey: "missing-from-catalog" });
+    const result = await actions.retry({
+      runId: previousRun.id,
+      modelKey: "missing-from-catalog",
+      certification: CERTIFICATION,
+    });
 
     expect(result).toMatchObject({
       ok: true,
@@ -373,12 +376,15 @@ describe("persisted provider adapter retry", () => {
       readCatalog: () => catalog(),
       decryptApiKey: () => SECRET,
       fetchModels: vi.fn(),
-      registerAdapter: vi.fn(),
       startAdapter,
       getAdapterRun: () => previousRun,
     });
 
-    const result = await actions.retry({ runId: previousRun.id, modelKey: "renderer-injected-model" });
+    const result = await actions.retry({
+      runId: previousRun.id,
+      modelKey: "renderer-injected-model",
+      certification: CERTIFICATION,
+    });
 
     expect(result).toMatchObject({ ok: false, code: "RUN_MODELS_MISSING" });
     expect(startAdapter).not.toHaveBeenCalled();
@@ -386,17 +392,16 @@ describe("persisted provider adapter retry", () => {
 
   it("rejects an active task before reading its saved credential", async () => {
     const decryptApiKey = vi.fn(() => SECRET);
-    const startAdapter = vi.fn();
+    const startAdapter = vi.fn(async () => { throw new Error("startAdapter must not run"); });
     const actions = createExistingConnectionActions({
       readCatalog: () => catalog(),
       decryptApiKey,
       fetchModels: vi.fn(),
-      registerAdapter: vi.fn(),
       startAdapter,
       getAdapterRun: () => ({ ...previousRun, stage: "testing" }),
     });
 
-    const result = await actions.retry({ runId: previousRun.id });
+    const result = await actions.retry({ runId: previousRun.id, certification: CERTIFICATION });
 
     expect(result).toMatchObject({ ok: false, code: "RUN_ACTIVE" });
     expect(decryptApiKey).not.toHaveBeenCalled();
@@ -404,17 +409,16 @@ describe("persisted provider adapter retry", () => {
   });
 
   it("rejects an unknown task without consulting renderer-supplied connection data", async () => {
-    const startAdapter = vi.fn();
+    const startAdapter = vi.fn(async () => { throw new Error("startAdapter must not run"); });
     const actions = createExistingConnectionActions({
       readCatalog: () => catalog(),
       decryptApiKey: () => SECRET,
       fetchModels: vi.fn(),
-      registerAdapter: vi.fn(),
       startAdapter,
       getAdapterRun: () => undefined,
     });
 
-    const result = await actions.retry({ runId: "missing" });
+    const result = await actions.retry({ runId: "missing", certification: CERTIFICATION });
 
     expect(result).toMatchObject({ ok: false, code: "RUN_NOT_FOUND" });
     expect(startAdapter).not.toHaveBeenCalled();

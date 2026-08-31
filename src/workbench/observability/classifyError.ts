@@ -10,6 +10,7 @@ import {
   type GenerationErrorKind,
 } from './narrate'
 import { parseVendorErrorFromMessage, stripVendorErrorMarker } from '../generationCanvas/runner/vendorErrorIpc'
+import { matchNomiErrorCode, stripNomiErrorCode } from '../../../electron/shared/nomiErrorCodes'
 import i18n from '../../i18n'
 
 export type GenerationErrorReport = {
@@ -85,10 +86,11 @@ function jsonErrorMessage(source: string): string | null {
  * message/error 字段，否则取第一行非空文本并截断。抠不出可读内容才返回 ''。
  */
 function extractReadableErrorLine(raw: string): string {
-  const source = String(raw || '')
-    .trim()
-    .replace(IPC_WRAPPER_PREFIX, '')
-    .trim()
+  const source = stripNomiErrorCode(
+    String(raw || '')
+      .trim()
+      .replace(IPC_WRAPPER_PREFIX, ''),
+  ).trim()
   if (!source) return ''
   // 1) provider 常把报错塞进 JSON（与 pickProviderMessage 共用同一个剥壳器，两处不许各写一份）
   const fromJson = jsonErrorMessage(source)
@@ -120,6 +122,30 @@ function truncateLine(value: string): string {
  * Common cases: API key 无效、模型未配置、配额/限流、网络/超时、内容拦截。
  */
 const STRUCTURED_KINDS: readonly GenerationErrorKind[] = ['auth', 'balance', 'quota', 'network', 'server', 'input']
+
+function detectMissingImageReference(raw: string): 'image_edit' | 'image_to_video' | null {
+  if (raw.includes('图生图缺少参考图')) return 'image_edit'
+  if (raw.includes('图生视频缺少参考图')) return 'image_to_video'
+  return null
+}
+
+function reportForMissingImageReference(
+  kind: 'image_edit' | 'image_to_video',
+  raw: string,
+): GenerationErrorReport {
+  const reason = i18n.t(
+    kind === 'image_edit'
+      ? 'generationCommon.composer.imageConnectionRequired'
+      : 'generationCommon.composer.videoFirstFrameRequired',
+  )
+  return {
+    kind: 'input',
+    reason,
+    hint: '',
+    raw,
+    ...narrateGenerationErrorActions('input'),
+  }
+}
 
 /** legacy 字符串 → 类别(老项目持久化的 node.error / 非 vendor 错误的兜底识别;文案不在这里)。 */
 function detectLegacyErrorKind(raw: string): GenerationErrorKind | null {
@@ -311,6 +337,7 @@ function detectAssetUploadFailed(raw: string): boolean {
   // ① 匿名链包出来的；② 逐条候选通道都挂的汇总；③ 某条通道直接抛的裸 `素材上传失败(HTTP 4xx)`。
   // 只认 ① 的时候，直连通道（KIE/apimart）抛的 413 落进 unknown → 用户看到「可能是服务商临时故障
   // 或额度问题，建议稍等重试」（2026-08-20 用户截图逐字如此），于是不停重试一个必然再撞的上限。
+  if (matchNomiErrorCode(raw) === 'asset-upload-failed') return true
   return (
     raw.includes('所有免配置上传 host 都失败') ||
     raw.includes('的所有上传通道都没成功') ||
@@ -318,8 +345,16 @@ function detectAssetUploadFailed(raw: string): boolean {
   )
 }
 
-/** 素材大到所有上传通道都装不下（HTTP 413）——重试永远不会成，得让用户去压缩，不能说「稍等重试」。 */
+/**
+ * 素材大到所有上传通道都装不下（HTTP 413）——重试永远不会成，得让用户去压缩，不能说「稍等重试」。
+ *
+ * 2026-09-01 root-cause:主判据改成**机器码**（assetLocalization 通过 tagNomiError('asset-too-large')
+ * 附的 NOMI_ERR:: 标记），不再靠 include 那句中文人话——人话将来 i18n 化/改词都不影响分类。
+ * 保留两条 legacy 兜底:① `HTTP 413`(英文、非 CJK,直连通道抛的裸 413);② 那句中文串——为的是
+ * 认出**本次改动前**已经 persist 进 node.error 的旧错误(它们没有码标记)。两条都不脆弱地依赖新文案。
+ */
 function detectAssetTooLarge(raw: string): boolean {
+  if (matchNomiErrorCode(raw) === 'asset-too-large') return true
   return raw.includes('超过了所有可用上传通道的大小上限') || raw.includes('HTTP 413')
 }
 
@@ -399,7 +434,8 @@ function reportFor(
 ): GenerationErrorReport {
   const { reason, hint } = narrateGenerationError(kind, params)
   const providerMessage = pickProviderMessage(upstream ?? extractReadableErrorLine(raw), reason)
-  return { kind, reason, hint, raw, ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
+  // 存进技术详情的 raw 也把 NOMI_ERR:: 码标记剥掉——那是给分类器读的机器标记,不是给人看的。
+  return { kind, reason, hint, raw: stripNomiErrorCode(raw), ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
 }
 
 export function classifyGenerationError(message: string): GenerationErrorReport {
@@ -410,6 +446,8 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
     stripVendorErrorMarker(String(message || ''))
       .split('\n→')[0]
       .trim() || i18n.t('generationCommon.observability.error.unknown.reason')
+  const missingImageReference = detectMissingImageReference(cleanRaw)
+  if (missingImageReference) return reportForMissingImageReference(missingImageReference, cleanRaw)
   // 已退役下线**最先**判：判据是 electron 抛的专用签名（确定性事实），不该被任何猜文案的检测抢走。
   if (detectModelRetired(cleanRaw)) return reportFor('model-retired', cleanRaw, undefined)
   // 类型不符同理是专用签名，同层最先判。upstream 显式给 ''：这是**我们自己**的内部信号，
@@ -469,6 +507,9 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   }
   if (structured?.category && (STRUCTURED_KINDS as readonly string[]).includes(structured.category)) {
     return reportFor(structured.category as GenerationErrorKind, stripVendorErrorMarker(message), structured.upstreamMsg)
+  }
+  if (structured?.category === 'timeout') {
+    return reportFor('network', stripVendorErrorMarker(message), structured.upstreamMsg)
   }
   // Strip any legacy "\n→ hint" tail that older builds baked into node.error.
   const raw =

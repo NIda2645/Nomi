@@ -435,9 +435,9 @@ export const zhOnboardingProviders = {
     keyPlaceholder: '粘贴平台 API Key',
     keyRequired: '请先填写 API Key',
     managedHint: '平台地址、模型目录和请求方式由 Nomi 维护，不需要填写 URL、模型 ID 或接口文档。',
-    save: '保存并接入预置模型',
-    savedTitle: '{{name}} 已接入',
-    savedHint: '可用的预置模型已加入模型列表，以后仍可从连接详情增删。连通性会在后台检查，不会阻塞保存。',
+    save: '安全保存并继续验证',
+    savedTitle: '{{name}} 密钥已安全保存，尚未验证',
+    savedHint: '密钥已加密保存，但 Nomi 还没有通过真实生产请求验证任何模型。继续验证后，只有通过的模型才会出现在可用模型列表。',
     unavailable: '暂时连不上 Nomi 后台，请重启应用后再试。',
     saveFailed: '保存失败：{{message}}',
   },
@@ -471,6 +471,24 @@ export const zhOnboardingProviders = {
       promoText: '火山方舟（字节跳动）官方。需先在 Ark 控制台「开通管理」激活模型（Seedream/Seedance），再拿 API Key。',
       promoCta: '去火山方舟',
     },
+    minimax: {
+      tagline: '官方原生 · M3 文本、H3 视频与 Speech 2.8',
+      credentialPlaceholder: '粘贴 MiniMax API Key',
+      promoText: 'MiniMax 官方 API，提供 M3 文本与 Agent、H3 多模态视频和 Speech 2.8 高保真配音。',
+      promoCta: '打开 MiniMax 平台',
+    },
+    elevenlabs: {
+      tagline: '官方原生 · 配音、音乐、音效与转写',
+      credentialPlaceholder: '粘贴 ElevenLabs API Key',
+      promoText: 'ElevenLabs 官方 API，覆盖 Eleven v3、Music v2、Sound Effects v2 与 Scribe v2。',
+      promoCta: '打开 ElevenLabs',
+    },
+    meshy: {
+      tagline: '官方原生 · Meshy 7 单图生成带纹理 3D',
+      credentialPlaceholder: '粘贴 Meshy API Key',
+      promoText: 'Meshy 官方 API，可从单张物体图生成带 PBR 材质的 GLB 资产。',
+      promoCta: '打开 Meshy 控制台',
+    },
     runninghub: {
       tagline: '一个 key，解锁 355+ 标准模型（Seedance / 可灵 / 混元3D / Meshy…）',
       credentialPlaceholder: '粘贴 RunningHub API Key（32 位）',
@@ -499,6 +517,20 @@ export const zhOnboardingProviders = {
       promoText:
         'Replicate 托管 qwen-image-layered（开源 Apache 2.0），把一张图拆成前景/背景/元素多个可编辑图层。注册后在 Account 里拿 API token，按量付费。',
       promoCta: '去 Replicate 拿 token',
+    },
+    fal: {
+      tagline: '海外常用 · CDN 上传图片、视频和音频',
+      credentialPlaceholder: '粘贴 fal.ai Key',
+      credentialHint: '在 fal.ai Dashboard 创建 Key。上传走 fal CDN，URL 有生命周期；模型额度、可用区域和价格以当前账户为准。凭证本地加密存储。',
+      promoText: 'fal.ai 提供模型 API 与 CDN 文件上传。配置一个 Key 后，Nomi 可以把本地参考素材交给 fal 或其他支持公网 URL 的模型。',
+      promoCta: '去 fal.ai 创建 Key',
+    },
+    runway: {
+      tagline: '海外视频 · 临时素材上传（需账户额度）',
+      credentialPlaceholder: '粘贴 Runway API Key',
+      credentialHint: '在 Runway Developer 控制台创建 API Key。临时上传最多 200MB、有效期约 24 小时，并要求账户有可用 credits。凭证本地加密存储。',
+      promoText: 'Runway 的 ephemeral upload 直接返回 Runway 专用 URI，适合 Runway 自己的图像/视频生成链路；上传不等于模型额度免费。',
+      promoCta: '去 Runway Developer',
     },
   },
   vendorCard: {
@@ -671,8 +703,8 @@ export const zhOnboardingProviders = {
     manualPlaceholder: '没列出来的，输入模型 id 回车添加',
     add: '添加',
     saveModelsDisclosure:
-      '保存后为“已配置、未验证”；本步骤只写入本地，不读文档、不调用 AI、不做真实测试。需要时可在模型详情单独启动“后台自动适配”，它可能读取公开文档、调用文本 AI，并通过真实请求消耗上游额度。',
-    addModels: '保存 {{count}} 个模型',
+      '确认后会立即进入认证：可能读取公开文档、调用文本 AI，并通过真实请求消耗上游额度。认证完成前，这些模型不会出现在普通模型选择器中。',
+    addModels: '验证 {{count}} 个模型',
   },
   adapterVerification: {
     title: {
@@ -808,6 +840,7 @@ export const zhOnboardingProviders = {
     defaultName: '本地 ComfyUI 工作流',
     defaultShortName: '本地工作流',
     imported: '已导入「{{name}}」·{{kind}}',
+    awaitingVerification: '已提交「{{name}}」，请在 Nomi 中确认后开始真实验证',
     saved: '已保存「{{name}}」·{{kind}}',
     unsupportedEdit: '当前版本不支持编辑',
     importCustom: '导入自定义工作流（文生视频 / 图生视频…）',
@@ -835,6 +868,8 @@ export const zhOnboardingProviders = {
     sourceVideoNode: '源视频接哪个节点',
     sourceVideoNodeAria: '源视频节点',
     noSourceVideo: '无（不吃视频）',
+    mediaInputs: '媒体输入（按声明逐个绑定）',
+    model3d: '3D 模型',
     outputNode: '成品输出节点',
     outputNodeAria: '输出节点',
     adjustableParams: '可调参数：{{params}}',
@@ -1607,9 +1642,9 @@ export const enOnboardingProviders = {
     keyPlaceholder: 'Paste the platform API key',
     keyRequired: 'Enter an API key first',
     managedHint: 'Nomi maintains the platform URL, model catalog, and request behavior. You do not need to enter a URL, model ID, or API docs.',
-    save: 'Save and connect preset models',
-    savedTitle: '{{name}} connected',
-    savedHint: 'Preset models are now in your model list and can be added or removed later. Connectivity is checked in the background and never blocks saving.',
+    save: 'Securely save and continue verification',
+    savedTitle: '{{name}} key saved securely; not verified yet',
+    savedHint: 'The key is encrypted locally, but no model has passed a real production request yet. Continue verification; only verified models will appear in the available model list.',
     unavailable: 'The Nomi backend is unavailable. Restart the app and try again.',
     saveFailed: 'Could not save: {{message}}',
   },
@@ -1645,6 +1680,24 @@ export const enOnboardingProviders = {
         'Volcengine Ark is ByteDance’s official platform. Activate Seedream or Seedance in the Ark console before creating an API Key.',
       promoCta: 'Open Volcengine Ark',
     },
+    minimax: {
+      tagline: 'Official access · M3 text, H3 video, and Speech 2.8',
+      credentialPlaceholder: 'Paste your MiniMax API Key',
+      promoText: 'MiniMax official APIs for M3 text and agents, H3 multimodal video, and high-fidelity Speech 2.8 voice generation.',
+      promoCta: 'Open MiniMax platform',
+    },
+    elevenlabs: {
+      tagline: 'Official access · Voice, music, sound effects, and transcription',
+      credentialPlaceholder: 'Paste your ElevenLabs API Key',
+      promoText: 'ElevenLabs official APIs for Eleven v3, Music v2, Sound Effects v2, and Scribe v2.',
+      promoCta: 'Open ElevenLabs',
+    },
+    meshy: {
+      tagline: 'Official access · Meshy 7 textured 3D from one image',
+      credentialPlaceholder: 'Paste your Meshy API Key',
+      promoText: 'Meshy official API turns a single object image into a textured GLB asset with PBR materials.',
+      promoCta: 'Open Meshy console',
+    },
     runninghub: {
       tagline: 'One key unlocks 355+ models, including Seedance, Kling, Hunyuan 3D, and Meshy',
       credentialPlaceholder: 'Paste a 32-character RunningHub API Key',
@@ -1677,6 +1730,20 @@ export const enOnboardingProviders = {
       promoText:
         'Replicate hosts the Apache 2.0 qwen-image-layered model, which separates an image into editable foreground, background, and element layers. Get a pay-as-you-go token from Account.',
       promoCta: 'Get a Replicate token',
+    },
+    fal: {
+      tagline: 'Common overseas route · CDN upload for image, video, and audio',
+      credentialPlaceholder: 'Paste your fal.ai Key',
+      credentialHint: 'Create a Key in the fal.ai Dashboard. Uploads use fal CDN and have a lifecycle; model access, regions, and pricing depend on your account. Credentials are encrypted locally.',
+      promoText: 'fal.ai provides model APIs and CDN file uploads. With one Key, Nomi can make local reference media reachable to fal or another model that accepts public URLs.',
+      promoCta: 'Create a fal.ai Key',
+    },
+    runway: {
+      tagline: 'Overseas video · Ephemeral asset upload (credits required)',
+      credentialPlaceholder: 'Paste your Runway API Key',
+      credentialHint: 'Create an API Key in the Runway Developer console. Ephemeral uploads are limited to 200MB, last about 24 hours, and require available credits. Credentials are encrypted locally.',
+      promoText: 'Runway ephemeral uploads return a Runway-only URI for Runway image/video workflows; upload access does not make model generation free.',
+      promoCta: 'Open Runway Developer',
     },
   },
   vendorCard: {
@@ -1853,8 +1920,8 @@ export const enOnboardingProviders = {
     manualPlaceholder: 'Enter an unlisted model ID and press Enter',
     add: 'Add',
     saveModelsDisclosure:
-      'Models are saved as configured and unverified. This step only writes locally: it does not read docs, call AI, or run a real test. You can explicitly start Background auto-adaptation later from model details; it may read public docs, call a text AI, and use upstream credit through real requests.',
-    addModels: 'Save {{count}} models',
+      'Confirmation starts certification immediately. It may read public docs, call a text AI, and use upstream credit through real requests. These models stay out of normal pickers until certification passes.',
+    addModels: 'Verify {{count}} models',
   },
   adapterVerification: {
     title: {
@@ -1998,6 +2065,7 @@ export const enOnboardingProviders = {
     defaultName: 'Local ComfyUI workflow',
     defaultShortName: 'Local workflow',
     imported: 'Imported “{{name}}” · {{kind}}',
+    awaitingVerification: '“{{name}}” is ready. Confirm in Nomi to start production verification.',
     saved: 'Saved “{{name}}” · {{kind}}',
     unsupportedEdit: 'Editing is unavailable in this version',
     importCustom: 'Import custom workflow (text-to-video / image-to-video…)',
@@ -2025,6 +2093,8 @@ export const enOnboardingProviders = {
     sourceVideoNode: 'Source video input node',
     sourceVideoNodeAria: 'Source video node',
     noSourceVideo: 'None (takes no video)',
+    mediaInputs: 'Media inputs (one row per declared input)',
+    model3d: '3D model',
     outputNode: 'Final output node',
     outputNodeAria: 'Output node',
     adjustableParams: 'Adjustable parameters: {{params}}',

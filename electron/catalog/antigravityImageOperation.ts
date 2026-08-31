@@ -1,4 +1,4 @@
-import { runAntigravityTask } from "../ai/antigravityTask";
+import { consumePreparedAntigravityTask, runPreparedAntigravityTask } from "../ai/antigravityTask";
 import type { AntigravityResult } from "../ai/antigravityProtocol";
 import { LocalTaskJobs } from "../tasks/localTaskJobs";
 import type { ProcessOperationInput } from "./processOperation";
@@ -26,15 +26,17 @@ export async function executeAntigravityImageOperation(input: ProcessOperationIn
   }
   const mode = input.process.args[0];
   if (mode !== "text_to_image" && mode !== "image_edit") throw new Error("ANTIGRAVITY_INVALID_CAPABILITY");
+  if (!input.antigravityPreflight) throw new Error("ANTIGRAVITY_PREFLIGHT_REQUIRED");
   const refs = params.reference_images;
   const imageUrls = refs == null ? [] : typeof refs === "string" ? [refs] : Array.isArray(refs) ? refs : [null];
   if (imageUrls.some((url) => typeof url !== "string" || !url.trim()) || imageUrls.length > 4
     || (mode === "image_edit" ? !imageUrls.length : imageUrls.length > 0)) throw new Error("ANTIGRAVITY_INVALID_IMAGES");
   const prompt = typeof request.prompt === "string" ? request.prompt : "";
   if (!prompt.trim()) throw new Error("ANTIGRAVITY_EMPTY_PROMPT");
+  consumePreparedAntigravityTask(input.antigravityPreflight, { prompt, modelId: "auto",
+    capability: mode === "image_edit" ? "edit" : "image", imageUrls: imageUrls as string[] });
   const taskId = antigravityImageJobs.start(input.projectId, async (signal) => {
-    return runAntigravityTask({ prompt, model: "auto", capability: mode === "image_edit" ? "edit" : "image",
-      imageUrls: imageUrls as string[], signal });
+    return runPreparedAntigravityTask(input.antigravityPreflight!, { signal });
   }, input.signal);
   return { response: { task_id: taskId, status: "queued", image_urls: [] },
     request: { transport: "antigravity-cli", operation: mode, referenceCount: imageUrls.length } };

@@ -62,11 +62,16 @@ describe('asset timeline actions', () => {
   })
 
   it('accepts only the matching target track and reports the expected track', () => {
-    expect(resolveAssetDrop(payload('video'), 'video')).toMatchObject({ status: 'accept' })
-    expect(resolveAssetDrop(payload('video'), 'image')).toEqual({
+    expect(resolveAssetDrop(payload('video'), 'video', 'project-a')).toMatchObject({ status: 'accept' })
+    expect(resolveAssetDrop(payload('video'), 'image', 'project-a')).toEqual({
       status: 'reject',
       expectedTrack: 'video',
     })
+  })
+
+  it('rejects a project asset from another project before timeline write', () => {
+    expect(resolveAssetDrop(payload('video'), 'video', 'project-b')).toEqual({ status: 'reject-external' })
+    expect(resolveAssetDrop(payload('video'), 'video')).toEqual({ status: 'reject-external' })
   })
 
   it('finds the matching track end for click-to-append', () => {
@@ -98,5 +103,18 @@ describe('asset timeline actions', () => {
     expect(audio?.frameCount).toBe(360)
     expect(readVideoDuration).toHaveBeenCalledTimes(1)
     expect(readAudioDuration).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not materialize 3D assets as timeline clips', async () => {
+    const asset = {
+      id: 'mesh',
+      kind: 'model3d',
+      name: 'mesh.glb',
+      renderUrl: 'nomi-local://asset/project-a/assets/mesh.glb',
+      source: 'project',
+      origin: { source: 'project', projectId: 'project-a', relativePath: 'assets/mesh.glb' },
+    } as const
+
+    expect(await buildAssetTimelineClip(asset, { fps: 30, startFrame: 0 })).toBeNull()
   })
 })

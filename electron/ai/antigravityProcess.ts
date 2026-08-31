@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { constants, existsSync } from "node:fs";
-import { mkdtemp, mkdir, open, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, open, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -8,9 +8,19 @@ import { setTimeout as delay } from "node:timers/promises";
 import { AntigravityProtocol, type AntigravityResult, type AntigravityToolStep } from "./antigravityProtocol";
 
 import type { AntigravityCapability } from "../shared/antigravity";
-import { assertAntigravityMediaInput, prepareAntigravityMedia, stageAntigravityMedia, finishAntigravityMedia, type AntigravityImageInput } from "./antigravityMedia";
+import { assertAntigravityMediaInput, assertPreparedAntigravityMediaInput, prepareAntigravityImageInput,
+  prepareAntigravityMedia, stageAntigravityMedia, finishAntigravityMedia, type AntigravityImageInput,
+  type PreparedAntigravityImageInput } from "./antigravityMedia";
 
-type Invocation = { command: string; args: string[] };
+export type AntigravityInvocation = { command: string; args: string[] };
+export type AntigravityExecutableIdentity = {
+  realpath: string; dev: string; ino: string; size: string; mtimeNs: string; ctimeNs: string;
+};
+export type PreparedAntigravityInvocation = {
+  invocation: AntigravityInvocation;
+  identity: AntigravityExecutableIdentity;
+  env: NodeJS.ProcessEnv;
+};
 export type AntigravityRunOptions = {
   capability?: AntigravityCapability;
   images?: AntigravityImageInput[];
@@ -23,7 +33,11 @@ export type AntigravityRunOptions = {
 };
 type ProcessOptions = {
   /** Main-process test seam, never supplied by the renderer. */
-  invocation?: Invocation;
+  invocation?: AntigravityInvocation;
+  /** Exact main-process invocation returned by discovery/preflight. */
+  preparedInvocation?: PreparedAntigravityInvocation;
+  /** Main-owned opaque media tokens returned by paid-operation preflight. */
+  preparedImages?: PreparedAntigravityImageInput[];
   initTimeoutMs?: number;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
@@ -58,6 +72,52 @@ export function resolveAntigravityBin(): string {
   return candidates.find((candidate) => path.isAbsolute(candidate) && existsSync(candidate)) || name;
 }
 
+async function executableIdentity(command: string, env: NodeJS.ProcessEnv): Promise<AntigravityExecutableIdentity> {
+  try {
+    let resolved = "";
+    const hasPath = path.isAbsolute(command) || command.includes("/") || command.includes("\\");
+    if (hasPath) resolved = await realpath(command);
+    else {
+      const extensions = process.platform === "win32"
+        ? (env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";").flatMap((extension) => ["", extension.toLowerCase(), extension.toUpperCase()])
+        : [""];
+      for (const directory of (env.PATH || "").split(path.delimiter).filter(Boolean)) {
+        for (const extension of extensions) {
+          try { resolved = await realpath(path.join(directory, command + extension)); break; } catch { /* keep searching */ }
+        }
+        if (resolved) break;
+      }
+      if (!resolved) throw Object.assign(new Error("ANTIGRAVITY_NOT_INSTALLED"), { code: "ENOENT" });
+    }
+    const info = await stat(resolved, { bigint: true });
+    if (!info.isFile()) throw new Error("ANTIGRAVITY_EXECUTABLE_INVALID");
+    return { realpath: resolved, dev: String(info.dev), ino: String(info.ino), size: String(info.size),
+      mtimeNs: String(info.mtimeNs), ctimeNs: String(info.ctimeNs) };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("ANTIGRAVITY_")) throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    throw Object.assign(new Error(code === "ENOENT" ? "ANTIGRAVITY_NOT_INSTALLED" : "ANTIGRAVITY_EXECUTABLE_INVALID"), { cause: error });
+  }
+}
+
+export async function prepareAntigravityInvocation(input: {
+  invocation?: AntigravityInvocation; env?: NodeJS.ProcessEnv;
+} = {}): Promise<PreparedAntigravityInvocation> {
+  const env = input.env ?? buildAntigravityEnv();
+  const invocation = input.invocation ?? { command: resolveAntigravityBin(), args: [] };
+  const identity = await executableIdentity(invocation.command, env);
+  return { invocation: { command: identity.realpath, args: [...invocation.args] }, identity,
+    env };
+}
+
+export async function assertPreparedAntigravityInvocation(prepared: PreparedAntigravityInvocation): Promise<void> {
+  const current = await executableIdentity(prepared.invocation.command, prepared.env);
+  if (Object.keys(prepared.identity).some((key) => current[key as keyof AntigravityExecutableIdentity]
+    !== prepared.identity[key as keyof AntigravityExecutableIdentity])) {
+    throw new Error("ANTIGRAVITY_EXECUTABLE_CHANGED");
+  }
+}
+
 /** Preserve CLI login locations, not arbitrary app/API secrets. No token file reads. */
 export function buildAntigravityEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const allowed = ["HOME", "USERPROFILE", "PATH", "SystemRoot", "WINDIR", "APPDATA", "LOCALAPPDATA",
@@ -77,16 +137,26 @@ function failureFromExit(stderr: string): Error {
 export async function runAntigravityProcess(input: AntigravityRunOptions, options: ProcessOptions = {}): Promise<AntigravityResult> {
   // Windows needs a Job Object to own descendants even after the CLI exits.
   // Do not advertise bounded cancellation there until that boundary exists.
-  if (process.platform === "win32" && !options.invocation) throw new Error("ANTIGRAVITY_PLATFORM_UNVERIFIED");
+  // A prepared invocation is the authenticated result of main-process discovery
+  // and is safe to use on Windows just like the explicit test seam invocation.
+  if (process.platform === "win32" && !options.invocation && !options.preparedInvocation) {
+    throw new Error("ANTIGRAVITY_PLATFORM_UNVERIFIED");
+  }
   if (input.signal?.aborted) throw abortError();
   if (!input.prompt.trim()) throw new Error("ANTIGRAVITY_EMPTY_PROMPT");
   if (input.model && !/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/.test(input.model)) throw new Error("ANTIGRAVITY_INVALID_MODEL");
   const capability = input.capability ?? "text";
-  assertAntigravityMediaInput(capability, input.images ?? [], input.cliVersion);
+  if (options.preparedImages) {
+    if (input.images !== undefined) throw new Error("ANTIGRAVITY_PREPARED_MEDIA_INVALID");
+    assertPreparedAntigravityMediaInput(capability, options.preparedImages, input.cliVersion);
+  } else assertAntigravityMediaInput(capability, input.images ?? [], input.cliVersion);
+  if (options.preparedInvocation) await assertPreparedAntigravityInvocation(options.preparedInvocation);
   const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), "nomi-antigravity-")));
   const agentName = "nomi-" + capability + "-" + randomUUID();
   try {
-    const media = capability === "text" ? undefined : await prepareAntigravityMedia(cwd, capability, input.images ?? [], input.signal);
+    const preparedImages = options.preparedImages ?? await Promise.all((input.images ?? [])
+      .map((image) => prepareAntigravityImageInput(image, input.signal)));
+    const media = capability === "text" ? undefined : await prepareAntigravityMedia(cwd, capability, preparedImages, input.signal);
     const agentDir = path.join(cwd, ".agents", "agents", agentName);
     await mkdir(agentDir, { recursive: true });
     await writeFile(path.join(agentDir, "agent.md"), [
@@ -97,13 +167,14 @@ export async function runAntigravityProcess(input: AntigravityRunOptions, option
       media?.system ?? "Return only the requested text. Do not use tools or access files.",
     ].join("\n"), { mode: 0o600 });
     if (input.signal?.aborted) throw abortError();
-    const invocation = options.invocation || { command: resolveAntigravityBin(), args: [] };
+    const invocation = options.preparedInvocation?.invocation || options.invocation || { command: resolveAntigravityBin(), args: [] };
     const logPath = path.join(cwd, "cli.log");
     const args = [...invocation.args, "--add-dir", cwd, "--log-file", logPath, "--agent", agentName, "--input-format", "stream-json",
       "--output-format", "stream-json", "--disable-slash-commands", "--sandbox",
       "--print-timeout", media ? "240s" : "120s", ...(input.model && input.model !== "auto" ? ["--model", input.model] : [])];
-    const environment = options.env ?? buildAntigravityEnv();
+    const environment = options.preparedInvocation?.env ?? options.env ?? buildAntigravityEnv();
     const home = media ? await realpath(environment.HOME ?? os.homedir()) : undefined;
+    if (options.preparedInvocation) await assertPreparedAntigravityInvocation(options.preparedInvocation);
     let toolSteps: AntigravityToolStep[] = [];
     const result = await new Promise<AntigravityResult>((resolve, reject) => {
       const child = spawn(invocation.command, args, { cwd, env: home ? { ...environment, HOME: home } : environment, shell: false,
@@ -160,7 +231,9 @@ export async function runAntigravityProcess(input: AntigravityRunOptions, option
       const initTimer = setTimeout(() => stop(new Error("ANTIGRAVITY_INIT_TIMEOUT")), options.initTimeoutMs ?? 30_000);
       const overallTimer = setTimeout(() => stop(new Error("ANTIGRAVITY_TIMEOUT")), options.timeoutMs ?? (media ? 245_000 : 125_000));
       const parser = new AntigravityProtocol(() => {
-        readiness = verifyProfileSelection(logPath).then(() => {
+        readiness = (options.preparedInvocation
+          ? assertPreparedAntigravityInvocation(options.preparedInvocation)
+          : Promise.resolve()).then(() => verifyProfileSelection(logPath)).then(() => {
           clearTimeout(initTimer);
           if (!failure && !closed && !input.signal?.aborted) {
             // EOF ends the session after this single turn. No global --continue.

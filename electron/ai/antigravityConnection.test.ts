@@ -55,6 +55,20 @@ describe("Antigravity connection state", () => {
     expect(connection.canEnable({ ...request, capability: "vision" })).toBe(false);
     expect(connection.canEnable({ capability: "text", modelId: "auto" })).toBe(false);
   });
+  it("passes the exact discovery preparation into capability verification", async () => {
+    const prepared = {
+      discovery, invocation: { command: "/prepared/agy", args: ["--profile", "tested"] }, env: {},
+      identity: { realpath: "/prepared/agy", dev: "1", ino: "2", size: "3", mtimeNs: "4", ctimeNs: "5" },
+    };
+    const run = vi.fn().mockResolvedValue(result);
+    const connection = new AntigravityConnection({
+      probe: vi.fn().mockRejectedValue(new Error("must not rediscover")),
+      prepare: vi.fn().mockResolvedValue(prepared), run, bin: () => "/test/agy",
+    });
+    await expect(connection.test()).resolves.toMatchObject({ state: "ready" });
+    expect(run).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal),
+      { capability: "text", modelId: "auto" }, discovery.version, prepared);
+  });
   it("refuses fabricated model IDs before running a paid test", async () => {
     const { connection, run } = service();
     const status = await connection.test({ capability: "text", modelId: "made-up-model" });
@@ -91,6 +105,20 @@ describe("Antigravity connection state", () => {
     expect(connection.canEnable()).toBe(false);
     expect((await connection.status()).checks).toEqual([expect.objectContaining({ capability: "edit", state: "passed" })]);
     expect(connection.canEnable({ capability: "edit", modelId: "auto" })).toBe(true);
+  });
+  it("authorizes only exact passed evidence for the probed version without a freshness window", async () => {
+    const { connection } = service();
+    connection.restore([
+      { capability: "image", modelId: "auto", state: "passed", version: "1.1.21", checkedAt: 1 },
+      { capability: "edit", modelId: "auto", state: "failed", version: "1.1.21", checkedAt: 2 },
+      { capability: "vision", modelId: discovery.models[0].id, state: "cancelled", version: "1.1.21", checkedAt: 3 },
+    ]);
+    await connection.status();
+    expect(connection.hasPassed({ capability: "image", modelId: "auto" }, "1.1.21")).toBe(true);
+    expect(connection.hasPassed({ capability: "image", modelId: "auto" }, "1.1.22")).toBe(false);
+    expect(connection.hasPassed({ capability: "edit", modelId: "auto" }, "1.1.21")).toBe(false);
+    expect(connection.hasPassed({ capability: "vision", modelId: discovery.models[0].id }, "1.1.21")).toBe(false);
+    expect(connection.hasPassed({ capability: "text", modelId: discovery.models[0].id }, "1.1.21")).toBe(false);
   });
 });
 

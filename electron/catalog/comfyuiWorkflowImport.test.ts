@@ -265,6 +265,33 @@ describe("normalizeWorkflowBinding", () => {
     expect(buildImportedWorkflow(textOnlyGraph, normalized).parameters.filter((p) => p.type === "image-url")).toEqual([]);
   });
 
+  it("提示词与媒体误指同一个输入时，媒体绑定被拒绝，避免媒体占位覆盖 prompt", () => {
+    const graph: ComfyGraph = {
+      "1": { class_type: "InlinePromptImage", inputs: { prompt: "hello", image: "a.png" } },
+      "2": { class_type: "SaveImage", inputs: { images: ["1", 0] } },
+    };
+    const normalized = normalizeWorkflowBinding({
+      promptNodeId: "1", promptInputKey: "prompt",
+      images: [{ nodeId: "1", inputKey: "prompt", paramKey: "comfy_bad", label: "坏绑定", mediaKind: "image" }],
+      outputNodeId: "2", outputKind: "image", params: [],
+    }, graph);
+    expect(normalized.images).toEqual([]);
+    const built = buildImportedWorkflow(graph, normalized);
+    expect(built.templatedGraph["1"].inputs?.prompt).toBe("{{request.prompt}}");
+  });
+
+  it("显式 images: [] 优先于旧首尾字段，不会被迁移逻辑复活", () => {
+    const graph: ComfyGraph = {
+      "1": { class_type: "LoadImage", inputs: { image: "a.png" } },
+      "2": { class_type: "SaveImage", inputs: { images: ["1", 0] } },
+    };
+    const normalized = normalizeWorkflowBinding({
+      images: [], firstFrameNodeId: "1", firstFrameInputKey: "image", outputNodeId: "2", outputKind: "image",
+    }, graph);
+    expect(normalized.images).toEqual([]);
+    expect(buildImportedWorkflow(graph, normalized).parameters.filter((p) => p.type === "image-url")).toEqual([]);
+  });
+
   it("params 缺失时迁移 legacy numeric，缺省值可从原图安全补齐且不再保留 numeric", () => {
     const normalized = normalizeWorkflowBinding({
       outputNodeId: "9",
@@ -414,6 +441,7 @@ describe("buildComfyImportModelMapping", () => {
     const { model, mapping } = buildComfyImportModelMapping(built, { modelKey: "comfy-wan-i2v", labelZh: "本地 WAN 图生视频" });
     expect(model.vendorKey).toBe("comfyui-local");
     expect(model.kind).toBe("video");
+    expect(model.enabled).toBe(false);
     expect((model.meta as { parameters: unknown[] }).parameters.length).toBeGreaterThan(0);
     expect(mapping.taskKind).toBe("image_to_video");
     const query = mapping.query as { response_transform: string; response_mapping: Record<string, string> };

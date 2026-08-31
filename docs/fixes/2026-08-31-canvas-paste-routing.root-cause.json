@@ -1,0 +1,99 @@
+{
+  "schema_version": 3,
+  "id": "2026-08-31-canvas-paste-routing",
+  "problem_type": "内部画布剪贴板与系统媒体剪贴板的粘贴路由混淆",
+  "symptom": "复制画布中的图片或视频节点后再粘贴，错误显示网页媒体下载失败并尝试下载旧网页 URL。",
+  "direct_cause": "键盘 paste 事件无条件先调用 pasteClipboardMediaToGenerationCanvas；Nomi 节点复制只写内存剪贴板，系统剪贴板可能仍保存上一次网页 URL。",
+  "class_root": "缺少共享粘贴路由不变量：明确的外部媒体数据才进入网页媒体导入，否则已有 Nomi 画布剪贴板必须优先。",
+  "affected_population": [
+    "在画布复制或剪切节点后使用键盘粘贴的用户",
+    "图片、视频以及尚未生成结果的节点",
+    "系统剪贴板残留普通网页 URL、URI 或非媒体文本的环境"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+    "src/workbench/generationCanvas/components/useCanvasShortcuts.test.ts"
+  ],
+  "entry_points": [
+    "画布键盘 Cmd/Ctrl+V paste 事件",
+    "画布右键菜单的显式节点粘贴",
+    "外部网页媒体导入适配器"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是 Nomi 内部画布剪贴板与系统剪贴板之间的应用路由不变量，不由第三方协议或依赖版本决定。",
+  "invariants": [
+    "存在 Nomi 内部画布剪贴板且系统数据不是明确外部媒体时，键盘粘贴只调用 pasteNodes，不调用网页媒体下载。",
+    "系统剪贴板包含文件或明确 HTML/URI 媒体时，外部媒体导入优先，保留原有导入行为。",
+    "没有 Nomi 内部剪贴板时，明确外部媒体仍按原适配器导入。"
+  ],
+  "generality_proof": "所有键盘粘贴都在 useCanvasShortcuts 的单一 window paste 监听器汇合；在该边界按数据是否明确为外部媒体作一次路由决策，覆盖图片、视频、文件和 HTML 媒体，而不依赖供应商、模型、文件名或单个 URL。右键菜单显式节点粘贴已直接调用 pasteNodes，不经过网页下载边界。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "symbol": "handlePaste",
+      "responsibility": "在调用外部媒体导入前，统一决定当前 paste 手势属于明确外部媒体还是 Nomi 内部节点剪贴板。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "entry_point": "handlePaste",
+      "disposition": "enforced",
+      "evidence": "这是唯一生产 window paste 监听器；它同时接收节点粘贴和系统剪贴板粘贴，并调用路由边界。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+      "entry_point": "handleNodeContextAction paste",
+      "disposition": "not-affected",
+      "evidence": "右键菜单的 paste 明确调用 pasteNodes，不读取 DataTransfer，也不会进入网页媒体下载。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "entry_point": "pasteClipboardMediaToGenerationCanvas",
+      "disposition": "not-affected",
+      "evidence": "这是外部媒体解析/导入领域函数；它由键盘边界按明确媒体条件调用，直接单测调用代表外部媒体导入合同。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "内部剪贴板与系统剪贴板天然可处于不同状态；任何复制节点后系统剪贴板残留 URL 的用户都能复现，且图片和视频共用同一监听器。",
+    "same_class_scan": [
+      "搜索 pasteClipboardMediaToGenerationCanvas：生产调用收敛到 useCanvasShortcuts.handlePaste。",
+      "搜索 copySelectedNodes、cutSelectedNodes、pasteNodes：内部节点剪贴板由 canvasClipboard/store 维护，右键 paste 直接走 pasteNodes。",
+      "搜索 BROWSER_ASSET_DRAG_MIME、ASSET_LIBRARY_DRAG_MIME 与 handleCanvasStageDrop：拖入链不使用 window paste，属于不受影响的显式来源。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+    "invariant": "只有文件或明确 HTML/URI 媒体才可抢占已有 Nomi 内部剪贴板；普通/不明确 URL 不得触发网页媒体下载。",
+    "failure_mode": "不明确的系统剪贴板数据回退为 Nomi 节点粘贴；没有任一可用来源时保持原 no-op/fallback 行为。",
+    "exception_policy": "none",
+    "strategy": "在唯一 window paste 监听器中先完成来源判定，再调用一个且仅一个领域动作，避免在图片/视频或供应商分支中复制条件。",
+    "artifacts": [
+      "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "src/workbench/generationCanvas/components/useCanvasShortcuts.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/components/useCanvasShortcuts.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/components/useCanvasShortcuts.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有迁移旧持久化数据或保留旧生产入口；修复的是现有唯一键盘粘贴路由的判定。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不依赖第三方库行为；修复位于 Nomi 自己的事件路由和内存剪贴板边界。",
+    "exit_criteria": []
+  },
+  "migration": "无需迁移；canvasClipboard 仍保持现有内存生命周期，只有 paste 事件的来源优先级改变。",
+  "residual_risks": [
+    "纯 text/plain 的直接媒体 URL 在已有 Nomi 内部剪贴板时按内部节点优先；用户可先完成节点粘贴，再重新粘贴外部 URL，避免把普通 URL 误判成媒体。",
+    "本合同不覆盖系统级剪贴板权限或浏览器防盗链本身。"
+  ]
+}

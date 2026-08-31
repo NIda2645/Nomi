@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
+import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { hardenedFetch } from "../hardenedFetch";
 import { isJsonRecord, nowIso, type JsonRecord } from "../jsonUtils";
 import { projectDirById, sanitizeName } from "../projects/repository";
@@ -18,7 +20,11 @@ import {
   sanitizeAssetMetaForKind,
   stableAssetId,
 } from "./assetPaths";
-import { contentTypeFromMagicBytes, resolveContentType } from "./mediaTypes";
+import { contentTypeFromMagicBytes, isCertifiableMediaContentType, resolveContentType } from "./mediaTypes";
+import { validateGlbStructure } from "./model3dValidation";
+import { resolveFfmpegPath } from "../export/ffmpegRunner";
+import { MEDIA_DECODER_PROTOCOL_WHITELIST } from "../export/mediaProbe";
+import type { CertificationMediaEvidence } from "../providerAdapter/certificationMedia";
 
 type LocalAssetRecord = {
   id: string;
@@ -87,11 +93,93 @@ function contentTypeFromStoredFile(absolutePath: string): string {
  */
 function effectiveContentType(fileName: string, declared: string, bytes?: Uint8Array): string {
   const normalized = String(declared || "").toLowerCase().split(";")[0].trim();
+  if (normalized.startsWith("model/") && normalized !== "model/gltf-binary") {
+    throw new Error("Unsupported 3D asset content type");
+  }
   // 声明本身没信息量（空 / octet-stream）：交给 resolveContentType（先文件头、再扩展名）。
   if (!normalized || normalized === "application/octet-stream") return resolveContentType(fileName, bytes);
   const sniffed = bytes ? contentTypeFromMagicBytes(bytes) : null;
   if (sniffed && sniffed !== normalized && sniffed.split("/")[0] === normalized.split("/")[0]) return sniffed;
   return normalized;
+}
+
+function validateStructuredAsset(contentType: string, bytes: Uint8Array): void {
+  if (contentType === "model/gltf-binary") validateGlbStructure(bytes);
+}
+
+function generatedMediaKind(contentType: string): "image" | "video" | "audio" | "model3d" | null {
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("video/")) return "video";
+  if (contentType.startsWith("audio/")) return "audio";
+  return contentType === "model/gltf-binary" ? "model3d" : null;
+}
+
+/** Generated outputs are executable evidence, not ordinary user imports: fail closed before disk. */
+function validatedGeneratedMeta(meta: JsonRecord, declaredRaw: string, bytes: Uint8Array, sourcePath?: string): JsonRecord {
+  if (String(meta.kind || "").toLowerCase() !== "generated") return meta;
+  const prefix = Buffer.from(bytes.subarray(0, 4096)).toString("utf8").trimStart();
+  if (/^(?:<!doctype\s+html|<html\b|<\?xml\b|<svg\b|<(?:error|response|message)\b)/i.test(prefix)) {
+    throw new Error("Generated media validation failed (markup_masquerade)");
+  }
+  const detected = bytes.byteLength >= 12 && Buffer.from(bytes.subarray(0, 4)).toString("ascii") === "glTF"
+    ? "model/gltf-binary"
+    : contentTypeFromMagicBytes(bytes);
+  const normalizedDeclared = String(declaredRaw || "").toLowerCase().split(";", 1)[0].trim();
+  const declared = !normalizedDeclared || normalizedDeclared === "application/octet-stream"
+    ? detected || normalizedDeclared
+    : normalizedDeclared;
+  const expectedKind = generatedMediaKind(declared);
+  if (!expectedKind) return meta;
+  if (!detected) throw new Error("Generated media validation failed (unknown_bytes)");
+  const detectedKind = generatedMediaKind(detected);
+  const ambiguousAudioContainer = expectedKind === "audio"
+    && (declared === "audio/mp4" && detected === "video/mp4"
+      || declared === "audio/webm" && detected === "video/webm");
+  if (!detectedKind || (detectedKind !== expectedKind && !ambiguousAudioContainer)) {
+    throw new Error("Generated media validation failed (kind_mismatch)");
+  }
+  if (!isCertifiableMediaContentType(detected) && !ambiguousAudioContainer) {
+    throw new Error("Generated media validation failed (unsupported_format)");
+  }
+  const claimed = meta.certificationEvidence && typeof meta.certificationEvidence === "object"
+    ? meta.certificationEvidence as Partial<CertificationMediaEvidence>
+    : undefined;
+  const cleanMeta = { ...meta };
+  delete cleanMeta.certificationEvidence;
+  if (claimed) {
+    const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+    if (claimed.sha256 !== digest || claimed.byteLength !== bytes.byteLength || claimed.kind !== expectedKind
+      || claimed.contentType !== declared) throw new Error("Generated media validation failed (evidence_mismatch)");
+    return cleanMeta;
+  }
+  if (expectedKind === "model3d") {
+    validateGlbStructure(bytes);
+    return cleanMeta;
+  }
+  const map = expectedKind === "audio" ? "0:a:0" : "0:v:0";
+  const decodeLimit = expectedKind === "video" ? ["-frames:v", "1"] : expectedKind === "audio" ? ["-t", "1"] : ["-frames:v", "1"];
+  // MP4/MOV commonly stores its index (moov atom) at the end of the file.
+  // Feeding such a container through stdin makes ffmpeg report "partial file"
+  // because a pipe cannot seek. Validate the exact bytes from a 0600 temporary
+  // file when the caller has not already got a Nomi-owned path.
+  let validationPath = sourcePath;
+  let validationDir = "";
+  if (!validationPath || !fs.existsSync(validationPath)) {
+    validationDir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-generated-validation-"));
+    validationPath = path.join(validationDir, "artifact.media");
+    fs.writeFileSync(validationPath, Buffer.from(bytes), { mode: 0o600, flag: "wx" });
+  }
+  try {
+    const result = spawnSync(resolveFfmpegPath(), [
+      "-hide_banner", "-v", "error", "-xerror", "-err_detect", "explode",
+      "-protocol_whitelist", MEDIA_DECODER_PROTOCOL_WHITELIST,
+      "-i", validationPath, "-map", map, ...decodeLimit, "-f", "null", "-",
+    ], { timeout: 12_000, maxBuffer: 64 * 1024, windowsHide: true });
+    if (result.error || result.status !== 0) throw new Error("Generated media validation failed (decode_failed)");
+    return cleanMeta;
+  } finally {
+    if (validationDir) fs.rmSync(validationDir, { recursive: true, force: true });
+  }
 }
 
 async function writeAssetSidecarMetaAsync(absolutePath: string, meta: JsonRecord): Promise<void> {
@@ -152,8 +240,9 @@ export function writeAsset(
   rawMeta: JsonRecord,
 ): unknown {
   // 唯一 sidecar 写入者之一：capture 族 originalUrl 恒 null 的不变量在此收口（见 assetPaths）。
-  const meta = sanitizeAssetMetaForKind(rawMeta);
+  const meta = validatedGeneratedMeta(sanitizeAssetMetaForKind(rawMeta), contentType, bytes);
   const actualContentType = effectiveContentType(fileName, contentType, bytes);
+  validateStructuredAsset(actualContentType, bytes);
   const storageFileName = canonicalAssetFileName(fileName, actualContentType);
   const { absolutePath, relativePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
   fs.writeFileSync(absolutePath, bytes);
@@ -191,8 +280,9 @@ export function writeDeterministicAsset(
   rawMeta: JsonRecord,
   materializationKey: string,
 ): unknown {
-  const meta = sanitizeAssetMetaForKind(rawMeta);
+  const meta = validatedGeneratedMeta(sanitizeAssetMetaForKind(rawMeta), contentType, bytes);
   const actualContentType = effectiveContentType(fileName, contentType, bytes);
+  validateStructuredAsset(actualContentType, bytes);
   const storageFileName = canonicalAssetFileName(fileName, actualContentType);
   const parsed = path.parse(sanitizeName(storageFileName, "asset"));
   const keyHash = crypto.createHash("sha256").update(materializationKey).digest("hex").slice(0, 24);
@@ -241,7 +331,7 @@ export async function copyAssetFile(
   contentType: string,
   rawMeta: JsonRecord,
 ): Promise<unknown> {
-  const meta = sanitizeAssetMetaForKind(rawMeta);
+  let meta = sanitizeAssetMetaForKind(rawMeta);
   // 文件头无条件读：声明对不对要靠字节验，只在 octet-stream 时读等于「只在声明已经认输时才查证」。
   const header = await (async () => {
     const handle = await fs.promises.open(sourcePath, "r");
@@ -254,6 +344,8 @@ export async function copyAssetFile(
     }
   })();
   const actualContentType = effectiveContentType(fileName, contentType, header);
+  if (String(meta.kind || "").toLowerCase() === "generated") meta = validatedGeneratedMeta(meta, contentType, await fs.promises.readFile(sourcePath), sourcePath);
+  if (actualContentType === "model/gltf-binary") validateStructuredAsset(actualContentType, await fs.promises.readFile(sourcePath));
   const storageFileName = canonicalAssetFileName(fileName, actualContentType);
   const { absolutePath, relativePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
   await fs.promises.copyFile(sourcePath, absolutePath);
@@ -280,6 +372,50 @@ export async function copyAssetFile(
   };
 }
 
+/**
+ * Copy an already stored project asset by project id + relative path.
+ *
+ * This is deliberately narrower than copy-files: renderer code never submits
+ * an arbitrary native path. The source project directory and realpath are
+ * checked in main before the existing media validation/copy boundary runs.
+ */
+export async function copyProjectAsset(input: {
+  sourceProjectId: string
+  targetProjectId: string
+  relativePath: string
+}): Promise<unknown> {
+  const sourceProjectId = String(input.sourceProjectId || '').trim()
+  const targetProjectId = String(input.targetProjectId || '').trim()
+  const relativePath = String(input.relativePath || '').replace(/\\/g, '/').trim()
+  if (!sourceProjectId || !targetProjectId || !relativePath) throw new Error('sourceProjectId, targetProjectId and relativePath are required')
+  if (path.posix.isAbsolute(relativePath) || relativePath.split('/').some((segment) => segment === '..')) {
+    throw new Error('asset relativePath is unsafe')
+  }
+  const sourceRoot = projectDirById(sourceProjectId)
+  if (!sourceRoot) throw new Error('Source project not found')
+  const targetRoot = projectDirById(targetProjectId)
+  if (!targetRoot) throw new Error('Target project not found')
+  const resolvedRoot = path.resolve(sourceRoot)
+  const sourcePath = path.resolve(resolvedRoot, relativePath)
+  if (sourcePath !== resolvedRoot && !sourcePath.startsWith(`${resolvedRoot}${path.sep}`)) {
+    throw new Error('asset path escapes source project')
+  }
+  const realRoot = await fs.promises.realpath(resolvedRoot)
+  const realSourcePath = await fs.promises.realpath(sourcePath)
+  if (realSourcePath !== realRoot && !realSourcePath.startsWith(`${realRoot}${path.sep}`)) {
+    throw new Error('asset path escapes source project')
+  }
+  const stat = await fs.promises.stat(realSourcePath)
+  if (!stat.isFile()) throw new Error('source asset is not a file')
+  return copyAssetFile(
+    targetProjectId,
+    realSourcePath,
+    path.basename(relativePath),
+    contentTypeFromStoredFile(realSourcePath),
+    readAssetSidecarMeta(realSourcePath),
+  )
+}
+
 export function moveAssetFile(
   projectId: string,
   sourcePath: string,
@@ -288,7 +424,7 @@ export function moveAssetFile(
   rawMeta: JsonRecord,
 ): unknown {
   // 唯一 sidecar 写入者之二：与 writeAsset 同一道 capture 族隐私收口。
-  const meta = sanitizeAssetMetaForKind(rawMeta);
+  let meta = sanitizeAssetMetaForKind(rawMeta);
   // 同 copyAssetFile：无条件读文件头，否则撒谎的声明永远没人查证。
   const header = (() => {
     const handle = fs.openSync(sourcePath, "r");
@@ -301,6 +437,8 @@ export function moveAssetFile(
     }
   })();
   const actualContentType = effectiveContentType(fileName, contentType, header);
+  if (String(meta.kind || "").toLowerCase() === "generated") meta = validatedGeneratedMeta(meta, contentType, fs.readFileSync(sourcePath), sourcePath);
+  if (actualContentType === "model/gltf-binary") validateStructuredAsset(actualContentType, fs.readFileSync(sourcePath));
   const storageFileName = canonicalAssetFileName(fileName, actualContentType);
   const { absolutePath, relativePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
   try {
@@ -336,6 +474,7 @@ export function moveAssetFile(
 type RemoteAssetImportOptions = {
   /** 仅供 main 进程内部已配置的本地生成服务使用；renderer IPC 无法注入第二参数。 */
   trustedPrivateOrigin?: string;
+  certificationEvidence?: CertificationMediaEvidence;
 };
 
 export async function importRemoteAsset(payload: unknown, options: RemoteAssetImportOptions = {}): Promise<unknown> {
@@ -362,8 +501,8 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
       projectId,
       parsed.bytes,
       String(raw.fileName || `asset-${Date.now()}.${ext}`),
-      parsed.contentType,
-      { kind: raw.kind || "generated", originalUrl: null },
+      options.certificationEvidence?.contentType || parsed.contentType,
+      { kind: raw.kind || "generated", originalUrl: null, ...(options.certificationEvidence ? { certificationEvidence: options.certificationEvidence } : {}) },
     );
   }
   if (!/^https?:\/\//i.test(url)) throw new Error("Only http(s), data, and nomi-local assets are supported");
@@ -376,15 +515,16 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
   const bytes = fetched.bytes;
   const hintedContentType = fetched.contentType || "application/octet-stream";
   const rawFileName = String(raw.fileName || path.basename(new URL(url).pathname) || "").trim();
-  const contentType = hintedContentType.toLowerCase().split(";")[0] === "application/octet-stream"
+  const contentType = options.certificationEvidence?.contentType || (hintedContentType.toLowerCase().split(";")[0] === "application/octet-stream"
     ? resolveContentType(rawFileName || url, bytes)
-    : hintedContentType;
+    : hintedContentType);
   const ext = extensionFromMime(contentType, extensionFromUrl(url));
   const fileName = rawFileName || `asset-${Date.now()}.${ext}`;
   return writeAsset(projectId, bytes, fileName.includes(".") ? fileName : `${fileName}.${ext}`, contentType, {
     kind: raw.kind || "generated",
     originalUrl: url,
     ownerNodeId: raw.ownerNodeId || null,
+    ...(options.certificationEvidence ? { certificationEvidence: options.certificationEvidence } : {}),
   });
 }
 

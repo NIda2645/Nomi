@@ -21,7 +21,7 @@ import {
   resolveArchetypeForModel,
   specializeArchetypeForVariant,
 } from '../../../../config/modelArchetypes'
-import type { ImageUrlSlot } from './parameterControlModel'
+import type { ImageUrlSlot } from '../../model/parameterReferenceSlots'
 import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
 import { DEFAULT_SLOT_INPUT_KEY, modeSlotReach, type SlotReach } from '../../../../../electron/catalog/referenceReachability'
 
@@ -652,6 +652,33 @@ export function orderedSentImageReferenceUrls(
   const route = slot ? ARRAY_SLOT_ROUTE[slot.kind] : undefined
   if (!slot || !route) return []
   return mergeOrderedReferenceImageUrls(edgeImageUrls, readArchetypeArray(meta, route.metaKey), slot.max)
+}
+
+/** 当前模式所有数组媒体参考的发送顺序 + 类型编号，供 @imageN/@videoN/@audioN 共用。 */
+export function orderedSentMediaReferenceUrls(
+  meta: Record<string, unknown>,
+  archetype: ModelArchetype,
+  edgeReferences: {
+    image?: readonly string[]
+    video?: readonly string[]
+    audio?: readonly string[]
+  },
+): Array<{ url: string; kind: 'image' | 'video' | 'audio'; index: number }> {
+  const mode = currentArchetypeMode(archetype, meta)
+  const counts: Record<'image' | 'video' | 'audio', number> = { image: 0, video: 0, audio: 0 }
+  const out: Array<{ url: string; kind: 'image' | 'video' | 'audio'; index: number }> = []
+  for (const slot of mode.slots) {
+    const route = ARRAY_SLOT_ROUTE[slot.kind]
+    if (!route) continue
+    const kind = route.accept
+    const edgeUrls = edgeReferences[kind] ?? []
+    const urls = mergeOrderedReferenceImageUrls(edgeUrls, readArchetypeArray(meta, route.metaKey), slot.max)
+    for (const url of urls) {
+      counts[kind] += 1
+      out.push({ url, kind, index: counts[kind] })
+    }
+  }
+  return out
 }
 
 /**

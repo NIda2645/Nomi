@@ -33,6 +33,7 @@ function run(
   params: Record<string, unknown> = {},
   timeoutMs?: number,
   customConfig: Record<string, string> = {},
+  signal?: AbortSignal,
 ) {
   return runCustomCallScript({
     vendor,
@@ -45,6 +46,7 @@ function run(
     taskKind: "image_to_video",
     modeId: "firstlast",
     timeoutMs,
+    signal,
   });
 }
 
@@ -119,6 +121,13 @@ describe("references 便捷视图（键名对齐 archetypeInput 标准键）", (
   it("reference_images 兜底 images（非档案模型的老键）", () => {
     expect(referencesViewFromParams({ reference_images: ["https://a/1.png"] }).images).toEqual(["https://a/1.png"]);
   });
+  it("两张普通参考图保持原角色、顺序和数量，不隐式产生首帧", () => {
+    const view = referencesViewFromParams({
+      reference_image_urls: ["https://a/1.png", "https://a/2.png"],
+    });
+    expect(view.firstFrame).toBeUndefined();
+    expect(view.images).toEqual(["https://a/1.png", "https://a/2.png"]);
+  });
 });
 
 describe("失败姿态", () => {
@@ -151,4 +160,10 @@ describe("失败姿态", () => {
     const err = await run("await sleep(60000)\nreturn 'x'", {}, 120).catch((e) => e);
     expect(String(err.message)).toMatch(/超时/);
   }, 10000);
+  it("标准 TimeoutError 信号不依赖墙钟越界也归类为超时", async () => {
+    const controller = new AbortController();
+    controller.abort(new DOMException("deadline", "TimeoutError"));
+    const err = await run("return 'x'", {}, 60_000, {}, controller.signal).catch((e) => e);
+    expect(String(err.message)).toMatch(/超时/);
+  });
 });

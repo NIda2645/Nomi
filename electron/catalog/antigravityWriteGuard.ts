@@ -1,6 +1,8 @@
 import { ANTIGRAVITY_VENDOR_KEY, ANTIGRAVITY_IMAGE_MODEL_KEY, type AntigravityTestRequest } from "../shared/antigravity";
 import { isJsonRecord } from "../jsonUtils";
 import type { Model, Vendor } from "./types";
+import type { Mapping } from "./types";
+import { assertCanonicalAntigravityImageMapping, usesAntigravityImageParser } from "./antigravityCatalog";
 type Proof = (request?: AntigravityTestRequest) => boolean;
 export function guardAntigravityVendorWrite(raw: Record<string, unknown>, existing: Vendor | undefined, proof: Proof): void {
   if (String(raw.key ?? "").trim() !== ANTIGRAVITY_VENDOR_KEY) return;
@@ -21,4 +23,13 @@ export function guardAntigravityModelWrite(raw: Record<string, unknown>, existin
       : proof({ capability: "text", modelId }) || proof({ capability: "vision", modelId });
     if (!ready) throw new Error("ANTIGRAVITY_TEST_REQUIRED");
   }
+}
+
+export function guardAntigravityMappingWrite(mapping: Mapping, proof: Proof): void {
+  const reserved = usesAntigravityImageParser(mapping);
+  if (!reserved && mapping.vendorKey !== ANTIGRAVITY_VENDOR_KEY) return;
+  assertCanonicalAntigravityImageMapping(mapping);
+  if (!mapping.enabled) return;
+  const capability = mapping.taskKind === "image_edit" ? "edit" : "image";
+  if (!proof({ capability, modelId: "auto" })) throw new Error("ANTIGRAVITY_TEST_REQUIRED");
 }

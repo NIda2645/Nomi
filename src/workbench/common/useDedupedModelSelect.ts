@@ -10,6 +10,8 @@ import type { NomiSelectOption } from '../../design'
 import i18n from '../../i18n'
 import { dedupeModelOptions, resolveBestProvider, type DedupedModel } from '../../config/modelIdentity'
 import { isModelRecentlyAiling } from '../generationCanvas/runner/modelHealthMemory'
+import { translateModelDisplayText } from '../../i18n/modelDisplayText'
+import { modelIdentityIcon, providerIdentityIcon } from '../../config/modelProviderIdentity'
 
 import type { ModelProviderRef } from '../../config/modelIdentity'
 
@@ -30,12 +32,12 @@ const VENDOR_LABELS: Record<string, string> = {
 /** 厂商显示名：内置短名映射（下拉附注要短）> option.vendorName（自定义中转的真名）> key 原样。
  *  短名优先：catalog 里内置家的 name 是接入卡全称（如「即梦会员（本地 CLI）」），当 trailing 太啰嗦。 */
 function providerLabel(provider?: ModelProviderRef | null): string {
-  if (!provider) return '默认'
+  if (!provider) return translateModelDisplayText('默认')
   const short = provider.vendor ? VENDOR_LABELS[provider.vendor.toLowerCase()] : undefined
-  if (short) return short
+  if (short) return translateModelDisplayText(short)
   const fromCatalog = provider.option.vendorName?.trim()
-  if (fromCatalog) return fromCatalog
-  return provider.vendor || '默认'
+  if (fromCatalog) return translateModelDisplayText(fromCatalog)
+  return translateModelDisplayText(provider.vendor || '默认')
 }
 
 /** 该模型是否「病」了：**每一家**供应商都在避让期才算。注入判据便于纯函数单测。 */
@@ -59,10 +61,11 @@ export function buildModelSelectOptions(deduped: readonly DedupedModel[], isAili
     // 厂商标注（用户 2026-07-17：模型来自哪家要看得见）：多家=「N 家」，单家=厂商短名。
     const providerCount = new Set(m.providers.map((p) => p.vendor || p.option.value)).size
     const origin = providerCount > 1 ? `${providerCount} 家` : providerLabel(m.providers[0])
-    if (!isModelAiling(m, isAiling)) return { value: m.canonicalId, label: m.label, trailing: origin }
+    if (!isModelAiling(m, isAiling)) return { value: m.canonicalId, label: m.label, icon: modelIdentityIcon(m), trailing: origin }
     return {
       value: m.canonicalId,
       label: m.label,
+      icon: modelIdentityIcon(m),
       trailing: i18n.t('generationCommon.parameters.recentlyFailing'),
       trailingTone: 'danger',
       dimmed: true,
@@ -121,7 +124,7 @@ export function buildVendorExplicitModelOptions(
               trailingTone: 'danger',
               dimmed: true,
             }
-          : { value, label: model.label, trailing: providerLabel(representative) },
+          : { value, label: model.label, icon: modelIdentityIcon(model), trailing: providerLabel(representative) },
       })
     }
   }
@@ -167,7 +170,12 @@ export function buildProviderSelectOptions(model: DedupedModel | null): Array<No
   const byVendor = new Map<string, NomiSelectOption & { vendor?: string }>()
   for (const p of model.providers) {
     const key = p.vendor || p.option.value
-    if (!byVendor.has(key)) byVendor.set(key, { value: providerAddress(p), label: providerLabel(p), vendor: p.vendor })
+    if (!byVendor.has(key)) byVendor.set(key, {
+      value: providerAddress(p),
+      label: providerLabel(p),
+      icon: providerIdentityIcon(p.vendor, p.option.vendorName),
+      vendor: p.vendor,
+    })
   }
   return byVendor.size > 1 ? [...byVendor.values()] : []
 }

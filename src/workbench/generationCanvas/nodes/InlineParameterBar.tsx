@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Slider } from '@mantine/core'
 import { IconAspectRatio, IconChevronDown } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
-import { DesignSwitch, NomiSegmented, NomiSelect, type NomiSegmentedOption } from '../../../design'
+import { DesignSwitch, NomiIdentityIcon, NomiSegmented, NomiSelect, type NomiIdentityIconSource, type NomiSegmentedOption } from '../../../design'
 import { formatVideoOptionLabel, type ModelParameterControl } from '../../../config/modelCatalogMeta'
 import type { ModelOption } from '../../../config/models'
 import {
@@ -21,7 +21,13 @@ import { hasUsableSliderStep, isCompleteNumericDraft } from './controls/numericD
 import { commonRatioSortKey } from './aspectRatio'
 import { resolveArchetypeForOption } from './nodeModelArchetype'
 import { useDedupedModelSelect } from '../../common/useDedupedModelSelect'
-import { localizeAutoOption } from './parameterOptionPresentation'
+import {
+  localizeAutoOption,
+  parameterOptionLayout,
+  resolveParameterOptionPurpose,
+  type ParameterOptionPurpose,
+} from './parameterOptionPresentation'
+import { translateModelDisplayText } from '../../../i18n/modelDisplayText'
 
 type InlineParameterBarProps = {
   modelOptions: readonly ModelOption[]
@@ -72,6 +78,7 @@ function ParameterTextInput({
   value: string
   onCommit: (value: string) => void
 }): JSX.Element {
+  const label = translateModelDisplayText(control.label)
   const isNumeric = control.type === 'number'
   const [draft, setDraft] = React.useState<string | null>(null)
 
@@ -89,13 +96,13 @@ function ParameterTextInput({
       className={cn(
         'flex items-center gap-2 px-2.5 rounded-nomi border border-nomi-line min-w-0 focus-within:border-nomi-accent',
       )}
-      style={{ height: 30 }}
+      style={{ height: 28 }}
     >
       <input
         className={cn(
           'flex-1 appearance-none bg-transparent border-0 outline-0 text-caption text-nomi-ink-80 min-w-0',
         )}
-        aria-label={control.label}
+        aria-label={label}
         type={isNumeric ? 'number' : 'text'}
         value={draft ?? value}
         min={control.min}
@@ -160,7 +167,9 @@ function summaryPart(control: DynamicModelControl, meta: Record<string, unknown>
     return localizeAutoOption(value, label, autoLabel).text
   }
   if (control.type === 'boolean') {
-    return (controlInitialValue(control, meta) || 'false') === 'true' ? control.label : ''
+    return (controlInitialValue(control, meta) || 'false') === 'true'
+      ? translateModelDisplayText(control.label)
+      : ''
   }
   const value = controlInitialValue(control, meta)
   if (!value) return ''
@@ -250,6 +259,8 @@ export default function InlineParameterBar({
     }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
+      // Let the inner combobox consume Escape first; the next Escape closes this panel.
+      if (event.target instanceof Element && event.target.closest('[data-nomi-select-dropdown], [data-mantine-stop-propagation="true"]')) return
       event.stopPropagation()
       closePanel()
     }
@@ -290,23 +301,41 @@ export default function InlineParameterBar({
   // 分段组（组级图形对齐）：先解析每项图形，任一有 → 整组统一双行等高（无图形项留空占位），
   // 全无 → 纯文字单行。修「有/无图形混排项目高低参差」（2026-07-17 用户截图）。
   // 比例组按常用序重排（16:9、9:16 领头，auto 类恒最前，未知保声明序殿后——用户拍板）。
-  const renderSegmented = (
+  const renderOptions = (
     label: string,
     value: string,
-    rawOptions: { value: string; text: string }[],
+    rawOptions: { value: string; text: string; icon?: NomiIdentityIconSource }[],
     onChange: (value: string) => void,
+    requestedPurpose: ParameterOptionPurpose = 'generic',
   ): JSX.Element => {
+    const purpose = resolveParameterOptionPurpose(rawOptions, requestedPurpose)
     let entries = rawOptions.map((option) => {
       const localized = localizeAutoOption(
         option.value,
-        option.text,
+        translateModelDisplayText(option.text),
         t('generationCommon.parameters.auto'),
       )
       return {
         ...localized,
-        shape: ratioShape(localized.isAuto, localized.value, localized.text),
+        ...(option.icon ? { icon: option.icon } : {}),
+        shape: purpose === 'aspect-ratio'
+          ? ratioShape(localized.isAuto, localized.value, localized.text)
+          : null,
       }
     })
+    if (parameterOptionLayout(entries, purpose) === 'select') {
+      return (
+        <NomiSelect
+          ariaLabel={label}
+          value={value}
+          options={entries.map((entry) => ({ value: entry.value, label: entry.text, icon: entry.icon }))}
+          onChange={onChange}
+          searchable
+          portalTarget={panelRef}
+          className="w-full justify-between"
+        />
+      )
+    }
     const anyShape = entries.some((e) => e.shape)
     if (anyShape) {
       // Array.sort 稳定：同键项保持声明相对序。
@@ -314,7 +343,9 @@ export default function InlineParameterBar({
     }
     const options: NomiSegmentedOption[] = entries.map((o) => ({
       value: o.value,
-      label: anyShape ? shapedGroupLabel(o.text, o.shape) : o.text,
+      label: o.icon
+        ? <span className="inline-flex items-center gap-1.5"><NomiIdentityIcon icon={o.icon} />{o.text}</span>
+        : anyShape ? shapedGroupLabel(o.text, o.shape) : o.text,
       title: o.text,
     }))
     return (
@@ -323,23 +354,25 @@ export default function InlineParameterBar({
         value={value}
         options={options}
         // 双行组无需再撑最小高：每项都带 18px 图形槽（含空占位）→ 内容自然等高。
+        density="compact"
         onChange={onChange}
       />
     )
   }
 
-  // 面板参数组：候选项 → 分段；boolean → Switch；数值带 min/max → 滑杆；其余自由数值/文本 → 输入行。
+  // 面板参数组：少量短候选 → 分段；长/多候选 → 搜索列表；其余控件保持原交互。
   const renderPanelGroup = (control: DynamicModelControl): JSX.Element => {
+    const label = translateModelDisplayText(control.label)
     // boolean → Switch 行（label 左、开关右，2026-07-17 用户拍板）；组标题即行标题，不再另起。
     if (isParameterControl(control) && control.type === 'boolean') {
       const on = (controlInitialValue(control, meta) || 'false') === 'true'
       return (
         <div key={control.key} className="flex items-center justify-between gap-2" style={{ minHeight: 26 }}>
-          <div className="text-micro font-semibold leading-none text-nomi-ink-40">{control.label}</div>
+          <div className="text-micro font-semibold leading-none text-nomi-ink-40">{label}</div>
           <DesignSwitch
             size="sm"
             color="var(--nomi-accent)"
-            aria-label={control.label}
+            aria-label={label}
             checked={on}
             onChange={(e) => onParameterControlChange(control, e.currentTarget.checked ? 'true' : 'false')}
           />
@@ -348,16 +381,16 @@ export default function InlineParameterBar({
     }
     const body = ((): JSX.Element => {
       if (!isParameterControl(control)) {
-        return renderSegmented(
-          control.label,
+        return renderOptions(
+          label,
           catalogControlInitialValue(control, meta),
           control.options.map((o) => ({ value: optionValue(o), text: optionLabel(o) })),
           (v) => onCatalogControlChange(control, v),
         )
       }
       if (control.options.length > 0) {
-        return renderSegmented(
-          control.label,
+        return renderOptions(
+          label,
           controlInitialValue(control, meta),
           control.options.map((o) => ({
             value: controlValueToString(o.value),
@@ -380,7 +413,7 @@ export default function InlineParameterBar({
           <div className="flex items-center gap-3 min-w-0">
             <Slider
               className="flex-1 min-w-0"
-              aria-label={control.label}
+              aria-label={label}
               value={value}
               min={control.min}
               max={control.max}
@@ -410,7 +443,7 @@ export default function InlineParameterBar({
     })()
     return (
       <div key={control.key} className="flex flex-col gap-1.5">
-        <div className="text-micro font-semibold leading-none text-nomi-ink-40">{control.label}</div>
+        <div className="text-micro font-semibold leading-none text-nomi-ink-40">{label}</div>
         {body}
       </div>
     )
@@ -484,30 +517,33 @@ export default function InlineParameterBar({
                   aria-label={t('generationCommon.parameters.panel')}
                   // zIndex/尺寸全走 inline：z-[600] 这类新任意值类在 dev 的 tailwind 缓存里可能不存在
                   // → z 失效面板被透明层截胡「点击不了」（2026-07-17 用户 dev 实况，与图形隐身同根）。
-                  className="fixed flex flex-col gap-3 overflow-y-auto rounded-nomi-lg border border-nomi-line bg-nomi-paper p-3"
+                  className="fixed rounded-nomi-lg border border-nomi-line bg-nomi-paper"
                   style={{
                     zIndex: 600,
                     left: panelInit.left,
                     ...(panelInit.side === 'above' ? { bottom: panelInit.top } : { top: panelInit.top }),
                     width: PANEL_W,
-                    maxHeight: panelInit.maxHeight,
                     boxShadow: 'var(--workbench-shadow-pop)',
                   }}
                 >
+                  {/* Nested select portals attach to the outer panel, outside its scrolling content. */}
+                  <div className="flex flex-col gap-3 overflow-y-auto rounded-nomi-lg p-3" style={{ maxHeight: panelInit.maxHeight }}>
                   {renderedControls.map((control) => renderPanelGroup(control))}
                   {hasProvider ? (
                     <div className="flex flex-col gap-1.5">
                       <div className="text-micro font-semibold leading-none text-nomi-ink-40">
                         {t('generationCommon.parameters.provider')}
                       </div>
-                      <NomiSegmented
-                        ariaLabel={t('generationCommon.parameters.provider')}
-                        value={modelSelect.providerValue}
-                        options={modelSelect.providerOptions.map((o) => ({ value: o.value, label: o.label }))}
-                        onChange={modelSelect.onProviderPick}
-                      />
+                      {renderOptions(
+                        t('generationCommon.parameters.provider'),
+                        modelSelect.providerValue,
+                        modelSelect.providerOptions.map((o) => ({ value: o.value, text: o.label, icon: o.icon })),
+                        modelSelect.onProviderPick,
+                        'provider',
+                      )}
                     </div>
                   ) : null}
+                  </div>
                 </div>,
                 document.body,
               )

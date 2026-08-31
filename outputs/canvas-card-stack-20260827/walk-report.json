@@ -1,0 +1,110 @@
+{
+  "checks": [
+    {
+      "name": "图片版本卡角可见",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "视频版本卡角可见",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "图片卡角最多两层",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "视频两版只有一层后卡",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "托盘列出三版",
+      "ok": true,
+      "detail": "image-v3,image-v2,image-v1"
+    },
+    {
+      "name": "切换当前版不重排历史",
+      "ok": true,
+      "detail": "image-v3,image-v2,image-v1"
+    },
+    {
+      "name": "第一版成为当前",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "复制变体新增一个节点",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "复制变体可一次撤销",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "历史视频进度条可见",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "拖动进度条连续跳转",
+      "ok": true,
+      "detail": "45.071999999999996"
+    },
+    {
+      "name": "键盘左键精确回退一秒",
+      "ok": true,
+      "detail": "45.071999999999996 -> 44.073891"
+    },
+    {
+      "name": "收起后只剩一个组卡",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "三位成员已从画布投影隐藏",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "编组显示节点语义",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "三条成员输入聚合为一条编组线",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "点击卡角恢复组内节点",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "展开后恢复三条真实成员输入线",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "聚合线一次断开整组关系",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "收起状态写入项目",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "断开的编组声明不再持久化",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "projectRoot": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-card-stack-walk-LH3GJz/projects/canvas-card-stack-walk"
+}

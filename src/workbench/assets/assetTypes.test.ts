@@ -1,7 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import type { WorkspaceFileNode } from '../../../electron/workspace/workspaceFileIndex'
-import { canvasNodeToAssetRefs, workspaceNodeToAssetRef, flattenWorkspaceFiles, filterAssets, moveArrayItem } from './assetTypes'
+import {
+  assetAspectRatio,
+  assetAspectRatioFromMetadata,
+  assetDimensionsFromMetadata,
+  canvasNodeToAssetRefs,
+  workspaceNodeToAssetRef,
+  flattenWorkspaceFiles,
+  filterAssets,
+  moveArrayItem,
+} from './assetTypes'
 import type { AssetRef } from './assetTypes'
 
 const canvasNode = (overrides: Partial<GenerationCanvasNode>): GenerationCanvasNode =>
@@ -46,6 +55,27 @@ describe('canvasNodeToAssetRefs', () => {
     const refs = canvasNodeToAssetRefs(canvasNode({ result: first, history: [first, second] }))
     expect(refs.map((ref) => ref.ownerResultId)).toEqual(['r1', 'r2'])
   })
+
+  it('carries bounded intrinsic dimensions from existing node metadata', () => {
+    const refs = canvasNodeToAssetRefs(canvasNode({
+      result: { id: 'r1', type: 'image', url: 'image.png' } as never,
+      meta: { imageWidth: 800, imageHeight: 1200 },
+    }))
+    expect(refs[0]).toMatchObject({
+      dimensions: { width: 800, height: 1200 },
+      aspectRatio: 800 / 1200,
+    })
+  })
+
+  it.each(['audio', 'model3d'] as const)('maps canvas %s results into the shared asset pool', (kind) => {
+    const ref = canvasNodeToAssetRefs(canvasNode({
+      id: `node-${kind}`,
+      title: kind,
+      result: { id: `result-${kind}`, type: kind, url: `nomi-local://asset/p/result.${kind === 'audio' ? 'mp3' : 'glb'}` } as never,
+    }))[0]
+
+    expect(ref).toMatchObject({ kind, source: 'canvas', ownerNodeId: `node-${kind}` })
+  })
 })
 
 describe('workspaceNodeToAssetRef', () => {
@@ -65,6 +95,17 @@ describe('workspaceNodeToAssetRef', () => {
   it('keeps audio and video', () => {
     expect(workspaceNodeToAssetRef(wsNode({ relativePath: 'a.mp3', kind: 'audio' }), 'p')?.kind).toBe('audio')
     expect(workspaceNodeToAssetRef(wsNode({ relativePath: 'a.mp4', kind: 'video' }), 'p')?.kind).toBe('video')
+  })
+
+  it('recognizes a GLB workspace file from its MIME contract', () => {
+    const ref = workspaceNodeToAssetRef(wsNode({
+      name: 'mesh.glb',
+      relativePath: 'assets/generated/mesh.glb',
+      kind: 'file',
+      contentType: 'model/gltf-binary',
+    }), 'p')
+
+    expect(ref).toMatchObject({ kind: 'model3d', name: 'mesh.glb', source: 'project' })
   })
 })
 
@@ -91,8 +132,32 @@ describe('filterAssets', () => {
     expect(filterAssets(pool, { query: '日落' }).map((a) => a.id)).toEqual(['1'])
   })
 
+  it('does not search the kind or project path when matching a name', () => {
+    expect(filterAssets(pool, { query: 'video' })).toEqual([])
+    expect(filterAssets([
+      ref({ id: 'path-only', name: 'frame.png', kind: 'image', origin: { source: 'project', projectId: 'p', relativePath: 'video/frame.png' } }),
+    ], { query: 'video' })).toEqual([])
+  })
+
   it('combines accept + query', () => {
     expect(filterAssets(pool, { accept: ['audio'], query: 'mp' }).map((a) => a.id)).toEqual(['3'])
+  })
+})
+
+describe('asset display metadata', () => {
+  it('accepts image/video metadata and rejects non-finite or unbounded dimensions', () => {
+    expect(assetDimensionsFromMetadata({ imageWidth: '1200', imageHeight: 800 }, 'image')).toEqual({ width: 1200, height: 800 })
+    expect(assetDimensionsFromMetadata({ videoWidth: 1920, videoHeight: 1080 }, 'video')).toEqual({ width: 1920, height: 1080 })
+    expect(assetDimensionsFromMetadata({ width: Infinity, height: 10 }, 'image')).toBeUndefined()
+    expect(assetDimensionsFromMetadata({ width: 100001, height: 10 }, 'image')).toBeUndefined()
+    expect(assetDimensionsFromMetadata({ width: 0.1, height: 10 }, 'image')).toBeUndefined()
+  })
+
+  it('uses an existing ratio when only ratio metadata is available', () => {
+    expect(assetAspectRatioFromMetadata({ videoAspectRatio: 16 / 9 }, 'video')).toBeCloseTo(16 / 9)
+    expect(assetAspectRatioFromMetadata({ imageAspectRatio: 0 }, 'image')).toBeUndefined()
+    expect(assetAspectRatio({ dimensions: { width: 2, height: 3 } })).toBeCloseTo(2 / 3)
+    expect(assetAspectRatio({ dimensions: { width: 1, height: 0 }, aspectRatio: 4 / 3 })).toBeCloseTo(4 / 3)
   })
 })
 
