@@ -23,7 +23,9 @@ export async function executeTextTask(input: {
   onDelta?: (delta: string) => void;
   abortSignal?: AbortSignal;
 }): Promise<TaskResult> {
-  const imageUrl = input.kind === "image_to_prompt" ? firstReferenceImage(input.request) : "";
+  const imageUrl = input.kind === "image_to_prompt"
+    ? firstReferenceImage(input.request, { vendorKey: input.vendor.key, modelKey: input.model.modelKey })
+    : "";
   const maxTokensValue = Number(input.request.extras?.maxTokens ?? input.request.extras?.max_tokens);
   const temperatureValue = Number(input.request.extras?.temperature);
   const { raw } = await streamTextTask(

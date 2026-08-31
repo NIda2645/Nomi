@@ -68,4 +68,50 @@ describe("customCall upsert 三态", () => {
     upsertModelCatalogModel({ vendorKey: "custom-r", modelKey: "m2", customCall: { script: "   " } });
     expect(readBack("custom-r", "m2")?.customCall).toBeUndefined();
   });
+
+  it("模式脚本按 modeId 局部更新，保留通用 fallback 和其他模式", () => {
+    upsertModelCatalogVendor({ key: "custom-r", name: "R", baseUrlHint: "https://r.example/v1", authType: "bearer" });
+    upsertModelCatalogModel({
+      vendorKey: "custom-r",
+      modelKey: "m3",
+      kind: "video",
+      customCall: {
+        script: "return 'fallback'",
+        modes: { first: { script: "return 'first'" } },
+      },
+    });
+    upsertModelCatalogModel({
+      vendorKey: "custom-r",
+      modelKey: "m3",
+      customCall: { modes: { firstlast: { script: "return 'firstlast'" } } },
+    });
+
+    const saved = readBack("custom-r", "m3")?.customCall;
+    expect(saved?.script).toBe("return 'fallback'");
+    expect(saved?.modes?.first?.script).toBe("return 'first'");
+    expect(saved?.modes?.firstlast?.script).toBe("return 'firstlast'");
+  });
+
+  it("删除一个模式不删除其他模式；删除 fallback 也不删除模式脚本", () => {
+    upsertModelCatalogVendor({ key: "custom-r", name: "R", baseUrlHint: "https://r.example/v1", authType: "bearer" });
+    upsertModelCatalogModel({
+      vendorKey: "custom-r",
+      modelKey: "m4",
+      kind: "video",
+      customCall: {
+        script: "return 'fallback'",
+        modes: {
+          first: { script: "return 'first'" },
+          firstlast: { script: "return 'firstlast'" },
+        },
+      },
+    });
+    upsertModelCatalogModel({ vendorKey: "custom-r", modelKey: "m4", customCall: { modes: { first: null } } });
+    upsertModelCatalogModel({ vendorKey: "custom-r", modelKey: "m4", customCall: { script: "   " } });
+
+    const saved = readBack("custom-r", "m4")?.customCall;
+    expect(saved?.script).toBeUndefined();
+    expect(saved?.modes?.first).toBeUndefined();
+    expect(saved?.modes?.firstlast?.script).toContain("firstlast");
+  });
 });

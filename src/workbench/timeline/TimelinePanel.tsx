@@ -17,9 +17,8 @@ import {
 } from '@tabler/icons-react'
 import { useWorkbenchStore } from '../workbenchStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
-import { planStoryboardTimeline } from '../generationCanvas/agent/storyboardTimelinePlan'
-import { WorkbenchIconButton } from '../../design/workbenchActions'
-import { WorkbenchButton } from '../../design'
+import { planActiveStoryboardTimeline } from '../generationCanvas/agent/storyboardTimelinePlan'
+import { WorkbenchButton, WorkbenchIconButton } from '../../design'
 import { cn } from '../../utils/cn'
 import { computeTimelineDuration, timelineHasVisualClips } from './timelineMath'
 import TimelineTrack from './TimelineTrack'
@@ -28,6 +27,9 @@ import { TimelineSecondaryAddRow } from './TimelineSecondaryAddRow'
 import { frameToPixel, pixelToFrame, TIMELINE_MIN_SCALE, TIMELINE_MAX_SCALE } from './timelineEdit'
 import { buildSnapPoints, resolveSnap, pixelThresholdToFrames } from './snapping'
 import { toast } from '../../ui/toast'
+import { reportAdoptionOutcome } from '../adoption/adoptionReceipt'
+import { dispatchTimelineShortcut } from './timelineShortcuts'
+import { groupTimelineTransitionFeedbackByTrack } from './timelineVisualFeedback'
 
 const WHEEL_ZOOM_FACTOR = 1.24
 
@@ -103,6 +105,7 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
   // 单片工具（分割/复制/微调）作用于"最后选中"的 primary
   const primaryClipId = selectedClipIds.length > 0 ? selectedClipIds[selectedClipIds.length - 1] : ''
   const hasSelection = selectedClipIds.length > 0
+  const activeStoryboardId = useWorkbenchStore((state) => state.activeStoryboardId)
   // 选中单个媒体 clip（有源节点）→ 可「就地重生成」。文字 clip 在 textClips、不在 tracks，天然不命中。
   const primaryMediaClip = React.useMemo(() => {
     if (selectedClipIds.length !== 1 || !primaryClipId) return null
@@ -117,22 +120,42 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
   // 用户测的主线诉求——点一下出初剪，手动重排/trim 是之后的微调。
   const handleAiArrange = React.useCallback(() => {
     void import('../generationCanvas/agent/sendStoryboardToTimeline').then(({ arrangeStoryboardToTimeline }) => {
-      const result = arrangeStoryboardToTimeline()
-      if (result.sent.length > 0) toast(t('timelineEditor.arranged', { count: result.sent.length }), 'success')
-      else if (result.total === 0) toast(t('timelineEditor.noShots'), 'info')
-      else toast(t('timelineEditor.alreadyArranged'), 'info')
+      void arrangeStoryboardToTimeline(activeStoryboardId ? { storyboardDesignId: activeStoryboardId } : {}).then((result) => {
+        if (result.scopeError) {
+          toast(t('timelineEditor.storyboardScopeRequired'), 'info')
+          return
+        }
+        if (result.total === 0) {
+          toast(t('timelineEditor.noShots'), 'info')
+          return
+        }
+        reportAdoptionOutcome(result.outcome, {
+          successMessage: result.sent.length > 0
+            ? t('timelineEditor.arranged', { count: result.sent.length })
+            : undefined,
+        })
+      })
     })
-  }, [t])
+  }, [activeStoryboardId, t])
   // 空态「一键拼成初稿」入口的镜头数：取自与拼片同源的纯规划器（planStoryboardTimeline），
   // 与 handleAiArrange 实际会排的单位一致；选择器只返回数字 → 数字不变不触发重渲。
-  const arrangeableShotCount = useGenerationCanvasStore(
-    (state) => planStoryboardTimeline(state.nodes, state.edges).units.length,
+  const arrangePlanSummary = useGenerationCanvasStore(
+    (state) => {
+      const plan = planActiveStoryboardTimeline(state.nodes, state.edges, activeStoryboardId)
+      return plan.scopeError ?? plan.units.length
+    },
   )
+  const arrangeableShotCount = typeof arrangePlanSummary === 'number' ? arrangePlanSummary : 0
+  const needsStoryboardScope = typeof arrangePlanSummary === 'string'
   const setTimelinePlayhead = useWorkbenchStore((state) => state.setTimelinePlayhead)
   const splitTimelineClip = useWorkbenchStore((state) => state.splitTimelineClip)
   const durationFrame = computeTimelineDuration(timeline)
+  const transitionFeedbackByTrack = React.useMemo(
+    () => groupTimelineTransitionFeedbackByTrack(timeline.tracks, timeline.transitions),
+    [timeline.tracks, timeline.transitions],
+  )
   // 画面轨还空着 + 画布已有可拼镜头 → 显示空态提示行（纯增益，有画面片段后自动隐去）。
-  const showArrangeCta = !timelineHasVisualClips(timeline) && arrangeableShotCount > 0
+  const showArrangeCta = !timelineHasVisualClips(timeline) && (arrangeableShotCount > 0 || needsStoryboardScope)
   const rulerEndFrame = React.useMemo(
     () => resolveTimelineRulerEndFrame({
       durationFrame,
@@ -152,59 +175,24 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
       // 预览(full)与生成(compact)两个 TimelinePanel 因 keep-alive 同时挂载，各注册一个 window keydown。
       // 不去重会双触发（⌘Z 撤销两步、方向键 playhead 走两帧、Delete 删两次）。本处理的每条分支都会
       // preventDefault，故第二个监听器见 defaultPrevented 即跳过 → 单一真相、零重复（不动 keep-alive 架构）。
-      if (event.defaultPrevented) return
-      const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, [contenteditable="true"]')) return
-      // 撤销时间轴编辑（⌘Z / Ctrl+Z）
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
-        event.preventDefault()
-        useWorkbenchStore.getState().undoTimeline()
-        return
-      }
-      // 重做（⇧⌘Z / ⇧Ctrl+Z）
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && event.shiftKey) {
-        event.preventDefault()
-        useWorkbenchStore.getState().redoTimeline()
-        return
-      }
-      // Esc 退出剪刀模式
-      if (event.key === 'Escape' && useWorkbenchStore.getState().timelineSplitMode) {
-        event.preventDefault()
-        useWorkbenchStore.getState().setTimelineSplitMode(false)
-        return
-      }
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        event.preventDefault()
-        setTimelinePlayhead(timeline.playheadFrame + (event.key === 'ArrowLeft' ? -1 : 1))
-        return
-      }
-      // 文字 clip 选中时的删除（与媒体 clip 选择互斥）
-      if (selectedTextClipId && (event.key === 'Backspace' || event.key === 'Delete')) {
-        event.preventDefault()
-        removeTimelineTextClip(selectedTextClipId)
-        return
-      }
-      if (!hasSelection) return
-      if (event.key === 'Backspace' || event.key === 'Delete') {
-        event.preventDefault()
-        removeSelectedTimelineClips() // 批量删除所有选中
-        return
-      }
-      if (!primaryClipId) return
-      if (event.key.toLowerCase() === 's') {
-        event.preventDefault()
-        splitTimelineClip(primaryClipId, timeline.playheadFrame)
-        return
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
-        event.preventDefault()
-        duplicateTimelineClip(primaryClipId)
-        return
-      }
-      if (event.shiftKey && (event.key === '<' || event.key === '>')) {
-        event.preventDefault()
-        nudgeTimelineClip(primaryClipId, event.key === '<' ? -1 : 1)
-      }
+      dispatchTimelineShortcut(event, {
+        hasSelection,
+        hasPrimaryClip: Boolean(primaryClipId),
+        hasSelectedTextClip: Boolean(selectedTextClipId),
+        splitMode,
+      }, (action) => {
+        switch (action.type) {
+          case 'undo': useWorkbenchStore.getState().undoTimeline(); break
+          case 'redo': useWorkbenchStore.getState().redoTimeline(); break
+          case 'exit-split-mode': setTimelineSplitMode(false); break
+          case 'nudge-playhead': setTimelinePlayhead(timeline.playheadFrame + action.delta); break
+          case 'remove-text-selection': if (selectedTextClipId) removeTimelineTextClip(selectedTextClipId); break
+          case 'remove-selection': removeSelectedTimelineClips(); break
+          case 'split-primary': if (primaryClipId) splitTimelineClip(primaryClipId, timeline.playheadFrame); break
+          case 'duplicate-primary': if (primaryClipId) duplicateTimelineClip(primaryClipId); break
+          case 'nudge-primary': if (primaryClipId) nudgeTimelineClip(primaryClipId, action.delta); break
+        }
+      })
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -216,7 +204,9 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
     removeSelectedTimelineClips,
     removeTimelineTextClip,
     selectedTextClipId,
+    setTimelineSplitMode,
     setTimelinePlayhead,
+    splitMode,
     splitTimelineClip,
     timeline.playheadFrame,
   ])
@@ -445,7 +435,9 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
               <span className="inline-flex items-center gap-2 min-w-0">
                 <IconSparkles size={15} className="flex-none text-[var(--workbench-accent)]" />
                 <span className="min-w-0 truncate text-xs text-[var(--workbench-ink)]">
-                  {t('timelineEditor.arrangeCta.message', { count: arrangeableShotCount })}
+                  {needsStoryboardScope
+                    ? t('timelineEditor.arrangeCta.chooseStoryboard')
+                    : t('timelineEditor.arrangeCta.message', { count: arrangeableShotCount })}
                 </span>
               </span>
               <WorkbenchButton variant="primary" size="sm" className="flex-none" onClick={handleAiArrange}>
@@ -510,7 +502,7 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
         </div>
         {/* 主次分层(方案 B)：画面(图/视频)主轨;配乐/字幕降副轨,空时收成「+配乐/+字幕」窄条。 */}
         {timeline.tracks.filter((t) => t.type !== 'audio').map((track) => (
-          <TimelineTrack key={track.id} track={track} variant="primary" />
+          <TimelineTrack key={track.id} track={track} transitionFeedback={transitionFeedbackByTrack.get(track.id)} variant="primary" />
         ))}
         {(() => {
           const audioTrack = timeline.tracks.find((t) => t.type === 'audio')
@@ -520,7 +512,7 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
           const showTextChip = showTextTrack && !textHasClips
           return (
             <>
-              {audioTrack && audioHasClips ? <TimelineTrack key={audioTrack.id} track={audioTrack} variant="secondary" /> : null}
+              {audioTrack && audioHasClips ? <TimelineTrack key={audioTrack.id} track={audioTrack} transitionFeedback={transitionFeedbackByTrack.get(audioTrack.id)} variant="secondary" /> : null}
               {showTextTrack && textHasClips ? <TimelineTextTrack /> : null}
               {showAudioChip || showTextChip ? <TimelineSecondaryAddRow showAudio={showAudioChip} showText={showTextChip} /> : null}
             </>

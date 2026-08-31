@@ -295,6 +295,21 @@ describe('generationCanvasStore sidebar grouping actions', () => {
     expect(groupState?.color).toBe('#ffcc00')
   })
 
+  it('P4 S5: createGroup 带 materializationOperationId 章 + 明确成员 id（分镜组落地用）', () => {
+    // 补两个 shots 分类节点（beforeEach 只有 shot-1）。
+    useGenerationCanvasStore.getState().addNode({ kind: 'video', title: 'shot-a', categoryId: 'shots', exactPosition: true, position: { x: 0, y: 0 } })
+    useGenerationCanvasStore.getState().addNode({ kind: 'video', title: 'shot-b', categoryId: 'shots', exactPosition: true, position: { x: 200, y: 0 } })
+    const ids = useGenerationCanvasStore.getState().nodes.filter((n) => n.categoryId === 'shots' && n.id !== 'shot-1').map((n) => n.id)
+    expect(ids.length).toBe(2)
+    const created = useGenerationCanvasStore.getState().createGroup('shots', '分镜组·计划名', { materializationOperationId: 'canvas-landing:run-1', nodeIds: ids })
+    expect(created?.materializationOperationId).toBe('canvas-landing:run-1')
+    // 明确成员被收进组，且节点 groupId 指向它。
+    expect(created?.nodeIds.slice().sort()).toEqual(ids.slice().sort())
+    for (const id of ids) {
+      expect(useGenerationCanvasStore.getState().nodes.find((n) => n.id === id)?.groupId).toBe(created?.id)
+    }
+  })
+
   it('ungroups without deleting member nodes', () => {
     useGenerationCanvasStore.getState().ungroup('cast-group')
 
@@ -330,6 +345,73 @@ describe('generationCanvasStore sidebar grouping actions', () => {
     expect(duplicateState?.groupId).toBe('cast-group')
     expect(duplicateState?.derivedFrom).toBe('cast-1')
     expect(state.groups.find((candidate) => candidate.id === 'cast-group')?.nodeIds).toContain(duplicated?.id)
+  })
+
+  it('duplicates a clean variant with every incoming edge and no prior output state', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [
+        node('reference', 'cast'),
+        node('first-frame', 'cast'),
+        {
+          ...node('target', 'cast', 'cast-group'),
+          status: 'success',
+          result: imageResult('current', 'nomi-local://current.png'),
+          history: [imageResult('old', 'nomi-local://old.png')],
+          runs: [{ id: 'run-1', status: 'success', startedAt: 1 }],
+          progress: { percent: 100, message: 'done' },
+          error: 'old error',
+          references: [{ id: 'ref-1', kind: 'image', url: 'nomi-local://ref.png' }],
+          meta: { nested: { strength: 0.8 } },
+        },
+        node('downstream', 'cast'),
+      ],
+      edges: [
+        { id: 'incoming-reference', source: 'reference', target: 'target', mode: 'reference', targetParamKey: 'image_ref', order: 2 },
+        { id: 'incoming-first', source: 'first-frame', target: 'target', mode: 'first_frame', order: 5 },
+        { id: 'outgoing', source: 'target', target: 'downstream', mode: 'reference', order: 0 },
+      ],
+      selectedNodeIds: ['target'],
+      groups: [group('cast-group', 'cast', ['target'])],
+    })
+
+    const duplicated = useGenerationCanvasStore.getState().duplicateNodeForRegeneration('target')
+    expect(duplicated).toBeTruthy()
+
+    const state = useGenerationCanvasStore.getState()
+    const copy = state.nodes.find((candidate) => candidate.id === duplicated?.id)
+    expect(copy).toMatchObject({
+      status: 'idle',
+      history: [],
+      derivedFrom: 'target',
+      groupId: 'cast-group',
+    })
+    expect(copy?.result).toBeUndefined()
+    expect(copy?.runs).toEqual([])
+    expect(copy?.progress).toBeUndefined()
+    expect(copy?.error).toBeUndefined()
+    expect(copy?.references).toEqual([{ id: 'ref-1', kind: 'image', url: 'nomi-local://ref.png' }])
+    expect(copy?.references).not.toBe(state.nodes.find((candidate) => candidate.id === 'target')?.references)
+    expect(copy?.meta).toEqual({ nested: { strength: 0.8 } })
+    expect((copy?.meta?.nested as object | undefined)).not.toBe(
+      (state.nodes.find((candidate) => candidate.id === 'target')?.meta?.nested as object | undefined),
+    )
+
+    const clonedIncoming = state.edges.filter((edge) => edge.target === duplicated?.id)
+    expect(clonedIncoming).toHaveLength(2)
+    expect(clonedIncoming.map(({ id: _id, target: _target, ...edge }) => edge)).toEqual([
+      { source: 'reference', mode: 'reference', targetParamKey: 'image_ref', order: 2 },
+      { source: 'first-frame', mode: 'first_frame', order: 5 },
+    ])
+    expect(clonedIncoming.every((edge) => edge.id !== 'incoming-reference' && edge.id !== 'incoming-first')).toBe(true)
+    expect(state.edges.some((edge) => edge.source === duplicated?.id && edge.target === 'downstream')).toBe(false)
+  })
+
+  it('persists group collapse as one undoable state change', () => {
+    useGenerationCanvasStore.getState().setGroupCollapsed('cast-group', true)
+    expect(useGenerationCanvasStore.getState().groups.find((candidate) => candidate.id === 'cast-group')?.collapsed).toBe(true)
+
+    useGenerationCanvasStore.getState().undo()
+    expect(useGenerationCanvasStore.getState().groups.find((candidate) => candidate.id === 'cast-group')?.collapsed).not.toBe(true)
   })
 
   it('groups selected nodes in the active category and removes prior group membership', () => {
@@ -475,6 +557,53 @@ describe('generationCanvasStore clipboard paste placement', () => {
   })
 })
 
+// 2026-08-24 用户反馈：「下面是生了视频的，有这个报错窗口在，就一直看不了原本的视频」。
+// 失败卡是 absolute inset-0 铺满正文的遮罩，节点的 result 一直在它下面好端端躺着——所以「关掉」
+// 不能删数据，只能把节点放回它本来的样子：有产物 → success（片子露出来），没有 → idle。
+describe('dismissNodeError — 收起失败卡', () => {
+  it('节点有旧产物 → 回 success，产物原样保留（这正是用户要看的那条片子）', () => {
+    const kept = imageResult('r-1', 'https://cdn/keep.png')
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [{ ...node('n1', 'shots'), result: kept, status: 'error', error: '模型「H3文生视频」没有「图生视频」通道' }],
+      edges: [], selectedNodeIds: [], groups: [],
+    })
+
+    useGenerationCanvasStore.getState().dismissNodeError('n1')
+
+    const stateNode = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === 'n1')
+    expect(stateNode?.status).toBe('success')
+    expect(stateNode?.error).toBeUndefined()
+    expect(stateNode?.result?.id).toBe('r-1')
+  })
+
+  it('节点没有产物 → 回 idle（空卡，可以直接重新生成）', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [{ ...node('n1', 'shots'), status: 'error', error: 'boom' }],
+      edges: [], selectedNodeIds: [], groups: [],
+    })
+
+    useGenerationCanvasStore.getState().dismissNodeError('n1')
+
+    const stateNode = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === 'n1')
+    expect(stateNode?.status).toBe('idle')
+    expect(stateNode?.error).toBeUndefined()
+  })
+
+  it('不是失败态就不动它——别把正在跑的任务顺手掐了', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [node('n1', 'shots')],
+      edges: [], selectedNodeIds: [], groups: [],
+    })
+    // 必须走 setNodeStatus 而不是塞进 snapshot：restoreSnapshot 会把 running 归一成 idle
+    // （重启后不留僵尸 running，是刻意的），直接塞进去测不到「跑着的时候别动它」这件事。
+    useGenerationCanvasStore.getState().setNodeStatus('n1', 'running')
+
+    useGenerationCanvasStore.getState().dismissNodeError('n1')
+
+    expect(useGenerationCanvasStore.getState().nodes.find((c) => c.id === 'n1')?.status).toBe('running')
+  })
+})
+
 describe('generationCanvasStore result history', () => {
   it('keeps the previous main image when a new result is added', () => {
     const first = imageResult('r-old', 'https://cdn/old.png')
@@ -602,6 +731,23 @@ describe('selectNodesInRect (框选 AABB)', () => {
     useGenerationCanvasStore.getState().selectNode('b')
     useGenerationCanvasStore.getState().selectNodesInRect({ x1: -10, y1: -10, x2: 110, y2: 110 }, 'shots', true)
     expect([...useGenerationCanvasStore.getState().selectedNodeIds].sort()).toEqual(['a', 'b'])
+  })
+
+  it('按真实媒体预览框选，不因持久化高度过期漏掉可见节点', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [{
+        ...sized('loaded-image', 'shots', 0, -400),
+        size: { width: 360, height: 280 },
+        meta: { previewHeight: 432 },
+        result: { id: 'result-1', type: 'image', url: 'nomi-local://asset/image.jpg', createdAt: 1 },
+      }],
+      edges: [],
+      selectedNodeIds: [],
+      groups: [],
+    })
+
+    useGenerationCanvasStore.getState().selectNodesInRect({ x1: 0, y1: 0, x2: 40, y2: 20 }, 'shots')
+    expect(useGenerationCanvasStore.getState().selectedNodeIds).toEqual(['loaded-image'])
   })
 })
 

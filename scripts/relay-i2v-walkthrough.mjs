@@ -14,15 +14,13 @@
 //   ③ 假中转断言收到的 body 里 image = 我们给的首帧 URL（不是空、不是模板串）；
 //   ④ 轮询到 succeeded，拿回视频地址。
 // 用法：node scripts/relay-i2v-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.relay-i2v-walk')
 mkdirSync(outDir, { recursive: true })
@@ -95,22 +93,13 @@ writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
 }, null, 2), 'utf8')
 console.log('  🌱 种下 v7 存量目录：video 模型 + 只有 text_to_video（无图生视频通道）')
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'relay-i2v',
+  settingsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 2500,
 })
 try {
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(2500)
 
   // ① 迁移自愈：v7 → v8，长出 image_to_video 通道
   const mappings = await win.evaluate(async () => {

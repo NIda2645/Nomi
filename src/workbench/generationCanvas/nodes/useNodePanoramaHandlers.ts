@@ -1,7 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '../../../ui/toast'
-import { persistNodeImageFile } from '../adapters/persistNodeImage'
+import { persistNodeImageBlob, persistNodeImageFile } from '../adapters/persistNodeImage'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { PanoramaScreenshot } from './PanoramaViewer'
@@ -29,14 +29,8 @@ export function useNodePanoramaHandlers(
       event.currentTarget.value = ''
       if (!file) return
       const createdAt = Date.now()
-      // 即时 base64 预览（短命）→ 落盘换 nomi-local 替换，避免全景大图 base64 永久驻留。
-      const reader = new FileReader()
-      reader.onload = (loadEvent) => {
-        const dataUrl = loadEvent.target?.result
-        if (typeof dataUrl !== 'string') return
-        updateNode(node.id, { result: { id: `panorama-${createdAt}`, type: 'image', url: dataUrl, createdAt } })
-      }
-      reader.readAsDataURL(file)
+      // 先落盘再写 store：全景是 8K 级大图，base64 进 store 会被逐次 JSON 深拷贝 + 随每次保存全量序列化。
+      // （旧写法「先塞 base64 给即时预览、落盘后再换掉」正是「九宫格卡死」那条病的同款入口。）
       void persistNodeImageFile(file, node.id).then((localUrl) => {
         if (!localUrl) return
         updateNode(node.id, { result: { id: `panorama-asset-${createdAt}`, type: 'image', url: localUrl, createdAt } })
@@ -46,8 +40,8 @@ export function useNodePanoramaHandlers(
   )
 
   const handlePanoramaScreenshot = React.useCallback(
-    (screenshot: PanoramaScreenshot) => {
-      const { dataUrl, dimensions } = screenshot
+    async (screenshot: PanoramaScreenshot) => {
+      const { blob, dimensions } = screenshot
       const createdAt = Date.now()
       const screenshotNode = addNode({
         kind: 'asset',
@@ -58,10 +52,18 @@ export function useNodePanoramaHandlers(
           y: Math.round(node.position.y),
         },
       })
+      // 落盘换 nomi-local:// 之后才写 store —— 截图这条路以前把整张 base64 留在 store 里**永不替换**，
+      // 全景 8K 图一张就是十几 MB，随每次保存全量序列化（同「九宫格卡死」的病根）。
+      const stored = await persistNodeImageBlob(blob, screenshotNode.id, `panorama-shot-${createdAt}.png`).catch(() => null)
+      if (!stored) {
+        updateNode(screenshotNode.id, { status: 'error', error: t('generationCommon.panorama.captureFailed') })
+        toast(t('generationCommon.panorama.captureFailed'), 'error')
+        return
+      }
       const result = {
         id: `panorama-shot-${screenshotNode.id}-${createdAt}`,
         type: 'image' as const,
-        url: dataUrl,
+        url: stored.url,
         createdAt,
       }
       const screenshotSize = mediaNodeSize(dimensions.width, dimensions.height)
@@ -81,7 +83,8 @@ export function useNodePanoramaHandlers(
           ...(screenshotNode.meta || {}),
           source: screenshot.source || 'panorama-screenshot',
           sourceNodeId: node.id,
-          localOnly: true,
+          localOnly: stored.localOnly,
+          ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }),
           imageWidth: dimensions.width,
           imageHeight: dimensions.height,
           imageAspectRatio: dimensions.width / Math.max(1, dimensions.height),

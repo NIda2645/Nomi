@@ -16,7 +16,7 @@ const SECRET_QUERY_PARAM_PATTERN =
 function redactString(value: string, secrets: readonly string[]): string {
   let out = value;
   for (const secret of secrets) {
-    if (secret.length >= 8) out = out.split(secret).join(REDACTED);
+    if (secret.length > 0) out = out.split(secret).join(REDACTED);
   }
   return out.replace(SECRET_QUERY_PARAM_PATTERN, `$1${REDACTED}`).replace(SECRET_VALUE_PATTERN, REDACTED);
 }

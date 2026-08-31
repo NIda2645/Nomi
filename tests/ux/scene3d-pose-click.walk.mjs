@@ -2,26 +2,24 @@
 // ② 已出缩略图的 3D 节点，整图悬浮「打开 3D 编辑器」按钮能不能点开编辑器（本次 click 修复）。
 // 零额度：纯本地 3D 渲染，不碰任何生成 API。隔离 userData + 项目目录，不污染真实数据。
 // 用法：pnpm run build && node tests/ux/scene3d-pose-click.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.pose-lab')
 mkdirSync(outDir, { recursive: true })
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-pose-walk-'))
 const projectsDir = path.join(tmp, 'projects')
 mkdirSync(projectsDir, { recursive: true })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-pose-click',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const errors = []
@@ -29,11 +27,8 @@ const log = (m) => console.log(m)
 let pass = { editorOpen: false, sitRendered: false, thumbnailMade: false, filledClickOpens: false }
 
 try {
-  const win = await app.firstWindow()
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   // 关掉可能挡路的引导/spotlight
   await win.keyboard.press('Escape').catch(() => {})
@@ -62,7 +57,7 @@ try {
     if ((await cube.count()) > 0) { await cube.first().click(); added = true }
   }
   await win.waitForTimeout(2000)
-  await win.screenshot({ path: path.join(outDir, 'walk-01-node-added.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'walk-01-node-added.png') })
   log(`  ✓ 3D 节点已添加 (added=${added})`)
 
   // —— 验证 ①：点空态 body「打开 3D 编辑器」→ 编辑器开 ——
@@ -71,7 +66,7 @@ try {
   await win.waitForTimeout(4000)
   const editor = win.locator('[aria-label="3D 场景编辑器"]')
   pass.editorOpen = (await editor.count()) > 0
-  await win.screenshot({ path: path.join(outDir, 'walk-02-editor-open.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'walk-02-editor-open.png') })
   log(`  ${pass.editorOpen ? '✓' : '✗'} 空态点击 → 编辑器打开`)
 
   // 加第二个假人（场景里默认已有一个；为还原「两人」再加一个）
@@ -89,7 +84,7 @@ try {
     if ((await btn.count()) > 0) {
       await btn.first().click()
       await win.waitForTimeout(1500)
-      await win.screenshot({ path: path.join(outDir, `walk-03-${label}-in-editor.png`) })
+      await screenshotSettled(win, { path: path.join(outDir, `walk-03-${label}-in-editor.png`) })
       if (label === '坐姿') pass.sitRendered = true
       log(`  ✓ 真编辑器套用「${label}」并渲染`)
     } else {
@@ -116,7 +111,7 @@ try {
   await close.click()
   await editor.waitFor({ state: 'hidden', timeout: 5000 })
   await win.waitForTimeout(2000)
-  await win.screenshot({ path: path.join(outDir, 'walk-04-back-on-canvas.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'walk-04-back-on-canvas.png') })
 
   // —— 验证 ②：已出缩略图的节点，悬浮整图 → 点居中「打开 3D 编辑器」按钮 → 编辑器重开 ——
   // 此前编辑器关掉了，aria-label="3D 场景编辑器" 应消失
@@ -126,7 +121,7 @@ try {
   const node3d = win.locator('[data-kind="scene3d"]').first()
   if ((await node3d.count()) > 0) await node3d.hover().catch(() => {})
   await win.waitForTimeout(600)
-  await win.screenshot({ path: path.join(outDir, 'walk-05-hover-thumbnail.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'walk-05-hover-thumbnail.png') })
   // pill 有可见文字「打开 3D 编辑器」；getByText 命中它（角落钮无文字）
   const pill = win.getByText('打开 3D 编辑器', { exact: true }).first()
   const pillCount = await pill.count()
@@ -134,7 +129,7 @@ try {
   await win.waitForTimeout(4000)
   const editorAgain = await win.locator('[aria-label="3D 场景编辑器"]').count()
   pass.filledClickOpens = editorGoneCount === 0 && editorAgain > 0
-  await win.screenshot({ path: path.join(outDir, 'walk-06-filled-click-reopened.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'walk-06-filled-click-reopened.png') })
   log(`  ${pass.filledClickOpens ? '✓' : '✗'} 已出图态：悬浮 pill(count=${pillCount}) 点击 → 编辑器重开 (gone=${editorGoneCount}→again=${editorAgain})`)
 
   log('\n═══ 结果 ═══')

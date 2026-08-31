@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Combobox, useCombobox } from '@mantine/core'
 import { IconCheck, IconChevronDown } from '@tabler/icons-react'
 import { cn } from '../utils/cn'
+import { NOMI_OVERLAY_Z_INDEX } from './overlayLayers'
+import { NomiIdentityIcon, type NomiIdentityIconSource } from './NomiIdentityIcon'
 
 /**
  * NomiSelect —— 全仓统一的「选择面板」通用组件（规则 1/5：一个来源，别散落原生 <select>）。
@@ -20,6 +22,8 @@ export type NomiSelectTone = 'accent' | 'muted' | 'danger'
 export type NomiSelectOption = {
   value: string
   label: string
+  /** Local model-brand or provider-route mark. Never fetches a remote favicon. */
+  icon?: NomiIdentityIconSource
   /** 选项右侧附加文字（如价格、模板/通用），在对勾左边。 */
   trailing?: string
   trailingTone?: NomiSelectTone
@@ -46,11 +50,13 @@ export type NomiSelectProps = {
   disabled?: boolean
   title?: string
   className?: string
+  /** Long/model-file enums use a searchable, wrapping list; short selectors keep their compact layout. */
+  searchable?: boolean
+  /** Nested floating panels own their portal so outside-click handling and scrolling stay correct. */
+  portalTarget?: React.RefObject<HTMLElement | null>
 }
 
 const SURFACE_SHADOW = 'var(--workbench-shadow-pop)'
-const DROPDOWN_Z_INDEX = 4500
-
 function toneClass(tone: NomiSelectTone | undefined, kind: 'badge' | 'trailing'): string {
   if (tone === 'accent') return 'bg-nomi-accent-soft text-nomi-accent'
   if (tone === 'danger') return 'text-workbench-danger'
@@ -71,24 +77,45 @@ export function NomiSelect({
   disabled,
   title,
   className,
+  searchable = false,
+  portalTarget,
 }: NomiSelectProps): JSX.Element {
   const { t } = useTranslation()
-  const combobox = useCombobox({ onDropdownClose: () => combobox.resetSelectedOption() })
+  const [search, setSearch] = React.useState('')
+  const combobox = useCombobox({
+    onDropdownClose: () => {
+      combobox.resetSelectedOption()
+      setSearch('')
+    },
+  })
+  const wasOpen = React.useRef(false)
+  React.useLayoutEffect(() => {
+    // Closing removes the focused search input. Restore only orphaned focus; a clicked field owns its focus.
+    // No deferred focusTarget timer: that would steal focus after the user's next click.
+    if (searchable && wasOpen.current && !combobox.dropdownOpened && document.activeElement === document.body) {
+      combobox.targetRef.current?.focus()
+    }
+    wasOpen.current = combobox.dropdownOpened
+  }, [combobox.dropdownOpened, combobox.targetRef, searchable])
   const selected = options.find((option) => option.value === value)
-  const triggerText = selected?.label ?? placeholder ?? t('common.select')
+  const triggerText = selected?.label ?? (value || placeholder || t('common.select'))
   const heightClass = size === 'xs' ? 'h-6' : 'h-7'
+  const query = search.trim().toLocaleLowerCase()
+  const visibleOptions = searchable && query ? options.filter((option) => option.label.toLocaleLowerCase().includes(query)) : options
 
   return (
     <Combobox
       store={combobox}
       withinPortal
+      keepMounted={!searchable}
+      portalProps={{ target: portalTarget?.current ?? undefined }}
       // 宽度内容驱动：默认 Mantine 把下拉宽锁成触发 pill 的宽（如「比例」pill 仅 ~67px），
       // 选项标签（auto/1:1/16:9…）被 truncate 成空 → 看着「点开是空白」。改 max-content 后
       // 下拉跟着最长选项自然撑开；超长模型名由 maxWidth + 选项内 truncate 兜底，不会撑成怪物。
       width="max-content"
       position="bottom-start"
       offset={6}
-      zIndex={DROPDOWN_Z_INDEX}
+      zIndex={NOMI_OVERLAY_Z_INDEX.popover}
       middlewares={{ flip: true, shift: true }}
       onOptionSubmit={(val) => {
         onChange(val)
@@ -118,11 +145,11 @@ export function NomiSelect({
         <button
           type="button"
           aria-label={ariaLabel}
-          title={title}
+          title={title ?? selected?.label ?? (value || undefined)}
           disabled={disabled}
           onClick={() => combobox.toggleDropdown()}
           className={cn(
-            'inline-flex items-center gap-1 pl-2.5 pr-2 rounded-pill border border-nomi-line bg-nomi-paper',
+            'inline-flex min-w-0 items-center gap-1 pl-2.5 pr-2 rounded-pill border border-nomi-line bg-nomi-paper',
             'cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
             'focus:outline-none focus-visible:border-nomi-accent hover:border-nomi-ink-20',
             heightClass,
@@ -132,6 +159,7 @@ export function NomiSelect({
           {leadingLabel ? (
             <span className="shrink-0 text-micro leading-none text-nomi-ink-40">{leadingLabel}</span>
           ) : null}
+          {selected?.icon ? <NomiIdentityIcon icon={selected.icon} /> : null}
           <span
             className="min-w-0 truncate text-caption text-nomi-ink-80"
             style={triggerMaxWidth ? { maxWidth: triggerMaxWidth } : undefined}
@@ -147,16 +175,33 @@ export function NomiSelect({
         </button>
       </Combobox.Target>
 
-      <Combobox.Dropdown>
+      <Combobox.Dropdown data-nomi-select-dropdown>
+        {searchable ? (
+          <Combobox.Search
+            // Focus after the visible search input mounts, including nested-portal reparenting.
+            autoFocus
+            onKeyDown={(event) => { if (event.key === 'Escape') event.stopPropagation() }}
+            value={search}
+            onChange={(event) => {
+              setSearch(event.currentTarget.value)
+              combobox.updateSelectedOptionIndex()
+            }}
+            aria-label={t('common.searchOptions')}
+            placeholder={t('common.searchOptions')}
+            classNames={{ input: 'text-caption bg-nomi-paper text-nomi-ink border-nomi-line' }}
+          />
+        ) : null}
         <Combobox.Options className="max-h-[240px] overflow-auto">
-          {options.map((option) => {
+          {visibleOptions.length === 0 ? <Combobox.Empty>{t('common.noMatchingOptions')}</Combobox.Empty> : null}
+          {visibleOptions.map((option) => {
             const isSel = option.value === value
             return (
-              <Combobox.Option value={option.value} key={option.value} disabled={option.disabled} active={isSel}>
+              <Combobox.Option value={option.value} key={option.value} disabled={option.disabled} active={isSel} title={option.label}>
                 {/* dimmed：整行减淡但仍可点（「能选、眼下不建议」）。不用 disabled——那是"点不了"，
                     两种语义别混（近期连败的模型仍允许手动选，是拍板过的原则）。 */}
-                <span className={cn('flex items-center gap-2 w-full', option.dimmed ? 'opacity-45' : '')}>
-                  <span className={cn('min-w-0 truncate text-caption', isSel ? 'text-nomi-ink font-semibold' : 'text-nomi-ink-80')}>
+                <span className={cn('flex min-w-0 items-center gap-2 w-full', option.dimmed ? 'opacity-45' : '')}>
+                  {option.icon ? <NomiIdentityIcon icon={option.icon} size="md" /> : null}
+                  <span className={cn('min-w-0 text-caption', searchable ? 'whitespace-normal break-all py-1' : 'truncate', isSel ? 'text-nomi-ink font-semibold' : 'text-nomi-ink-80')}>
                     {option.label}
                   </span>
                   {option.trailing ? (

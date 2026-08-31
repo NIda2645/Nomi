@@ -4,16 +4,25 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let homeDir = ''
+let isPackaged = false
 
 vi.mock('electron', () => ({
-  app: { getAppPath: () => '/fake/repo', getPath: () => homeDir, isPackaged: false },
+  app: { getAppPath: () => '/fake/repo', getPath: () => homeDir, get isPackaged() { return isPackaged } },
 }))
 vi.mock('node:os', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:os')>()
   return { ...actual, default: { ...actual, homedir: () => homeDir }, homedir: () => homeDir }
 })
 
-import { installMcp, readMcpInfo, uninstallMcp } from './mcpConfig'
+import {
+  MCP_CONFIG_KIND_ENV,
+  MCP_CONFIG_VERSION,
+  MCP_CONFIG_VERSION_ENV,
+  installMcp,
+  packagedMcpLauncherAvailable,
+  readMcpInfo,
+  uninstallMcp,
+} from './mcpConfig'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
@@ -33,6 +42,7 @@ function claudeJson(): string {
 
 beforeEach(() => {
   homeDir = tempHome()
+  isPackaged = false
   ensureToken()
 })
 afterEach(() => {
@@ -40,6 +50,28 @@ afterEach(() => {
 })
 
 describe('capabilityCore/mcpConfig', () => {
+  it('does not treat an older installed app without the v3 Helper script as reusable', () => {
+    const appRoot = path.join(homeDir, 'Old Nomi.app')
+    const appCommand = process.platform === 'darwin'
+      ? path.join(appRoot, 'Contents', 'MacOS', 'Nomi')
+      : path.join(appRoot, process.platform === 'win32' ? 'Nomi.exe' : 'Nomi')
+    const runtime = process.platform === 'darwin'
+      ? path.join(appRoot, 'Contents', 'Frameworks', 'Nomi Helper.app', 'Contents', 'MacOS', 'Nomi Helper')
+      : appCommand
+    const launcher = process.platform === 'darwin'
+      ? path.join(appRoot, 'Contents', 'Resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+      : path.join(appRoot, 'resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+    fs.mkdirSync(path.dirname(appCommand), { recursive: true })
+    fs.mkdirSync(path.dirname(runtime), { recursive: true })
+    fs.writeFileSync(appCommand, '')
+    if (runtime !== appCommand) fs.writeFileSync(runtime, '')
+
+    expect(packagedMcpLauncherAvailable(appCommand)).toBe(false)
+    fs.mkdirSync(path.dirname(launcher), { recursive: true })
+    fs.writeFileSync(launcher, '')
+    expect(packagedMcpLauncherAvailable(appCommand)).toBe(true)
+  })
+
   it('install 合并进已有 mcpServers——保留 cocos-creator，不覆盖整个文件', () => {
     fs.writeFileSync(
       claudeJson(),
@@ -53,15 +85,20 @@ describe('capabilityCore/mcpConfig', () => {
     const after = JSON.parse(fs.readFileSync(claudeJson(), 'utf8'))
     expect(after.theme).toBe('dark') // 其它字段原样保留
     expect(after.mcpServers['cocos-creator']).toEqual({ command: 'x' }) // 别人的 server 没被动
-    // 启动条目 = app 自身二进制 + env NOMI_MCP_STDIO=1（不再是 node + asar 里的脚本）。
+    // 启动条目 = Electron 自带 Node runtime + 纯 Node MCP 桥；不注册第二个 NSApplication。
     expect(after.mcpServers.nomi.command).toBe(process.execPath)
+    expect(after.mcpServers.nomi.env.ELECTRON_RUN_AS_NODE).toBe('1')
     expect(after.mcpServers.nomi.env.NOMI_MCP_STDIO).toBe('1')
+    expect(after.mcpServers.nomi.env.NOMI_MCP_APP_COMMAND).toBe(process.execPath)
+    expect(JSON.parse(after.mcpServers.nomi.env.NOMI_MCP_APP_ARGS)).toEqual(['/fake/repo'])
+    expect(after.mcpServers.nomi.env[MCP_CONFIG_VERSION_ENV]).toBe(MCP_CONFIG_VERSION)
+    expect(after.mcpServers.nomi.env[MCP_CONFIG_KIND_ENV]).toBe('development')
     expect(after.mcpServers.nomi.env[MCP_CLIENT_ENV]).toBe('claude')
     expect(verifyMcpClient(
       after.mcpServers.nomi.env[MCP_CLIENT_ENV],
       after.mcpServers.nomi.env[MCP_CLIENT_PROOF_ENV],
     )).toBe('claude')
-    expect(after.mcpServers.nomi.args[0]).toBe('/fake/repo') // dev（isPackaged=false）下指明 app 路径
+    expect(after.mcpServers.nomi.args[0]).toBe('/fake/repo/dist-electron/capabilityCore/mcpNodeLauncher.js')
   })
 
   it('install 在 ~/.claude.json 不存在时也能建出来', () => {
@@ -182,5 +219,128 @@ describe('capabilityCore/mcpConfig', () => {
     const entry = JSON.parse(fs.readFileSync(cursorPath, 'utf8')).mcpServers.nomi
     expect(verifyMcpClient('cursor', entry.env[MCP_CLIENT_PROOF_ENV])).toBe('cursor')
     expect(verifyMcpClient('codex', entry.env[MCP_CLIENT_PROOF_ENV])).toBeNull()
+  })
+
+  it('known legacy Claude entry auto-upgrades with backup and preserves unrelated configuration', () => {
+    isPackaged = true
+    fs.writeFileSync(claudeJson(), JSON.stringify({
+      theme: 'dark',
+      mcpServers: {
+        other: { command: 'other-server' },
+        nomi: { command: 'node', args: ['/old/Nomi/scripts/nomi-mcp.mjs'], env: {} },
+      },
+    }, null, 2))
+
+    const info = readMcpInfo(0)
+    expect(info.clients.claude).toMatchObject({
+      installed: true,
+      configState: 'current',
+      launcherKind: 'packaged',
+      migration: 'upgraded',
+    })
+    expect(info.clients.claude.backupPath).toBe(`${claudeJson()}.nomi-backup`)
+    const backup = JSON.parse(fs.readFileSync(`${claudeJson()}.nomi-backup`, 'utf8'))
+    expect(backup.mcpServers.nomi.args[0]).toContain('scripts/nomi-mcp.mjs')
+    const after = JSON.parse(fs.readFileSync(claudeJson(), 'utf8'))
+    expect(after.theme).toBe('dark')
+    expect(after.mcpServers.other).toEqual({ command: 'other-server' })
+    expect(after.mcpServers.nomi.env[MCP_CONFIG_VERSION_ENV]).toBe(MCP_CONFIG_VERSION)
+    expect(readMcpInfo(0).clients.claude.migration).toBe('none')
+  })
+
+  it('auto-upgrades the direct packaged launcher written by the previous Nomi release', () => {
+    isPackaged = true
+    fs.writeFileSync(claudeJson(), JSON.stringify({
+      mcpServers: {
+        nomi: {
+          command: '/Applications/Nomi.app/Contents/MacOS/Nomi',
+          args: [],
+          env: {
+            NOMI_MCP_STDIO: '1',
+            [MCP_CLIENT_ENV]: 'claude',
+            [MCP_CLIENT_PROOF_ENV]: 'previous-release-proof',
+          },
+        },
+      },
+    }, null, 2))
+
+    const info = readMcpInfo(0)
+    expect(info.clients.claude).toMatchObject({ configState: 'current', migration: 'upgraded' })
+    const after = JSON.parse(fs.readFileSync(claudeJson(), 'utf8')).mcpServers.nomi
+    expect(after.command).toBe(info.server.command)
+    expect(after.args).toEqual(info.server.args)
+    expect(after.args[0]).toContain('mcpNodeLauncher.js')
+  })
+
+  it('known legacy Codex entry auto-upgrades only the nomi table family', () => {
+    isPackaged = true
+    const target = path.join(homeDir, '.codex', 'config.toml')
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, [
+      '[mcp_servers.other]',
+      'command = "keep-me"',
+      '',
+      '[mcp_servers.nomi]',
+      'command = "node"',
+      'args = ["/old/Nomi/scripts/nomi-mcp.mjs"]',
+      '',
+    ].join('\n'))
+
+    const info = readMcpInfo(0)
+    expect(info.clients.codex).toMatchObject({ configState: 'current', migration: 'upgraded' })
+    const after = fs.readFileSync(target, 'utf8')
+    expect(after).toContain('[mcp_servers.other]\ncommand = "keep-me"')
+    expect(after).toContain(`${MCP_CONFIG_VERSION_ENV} = "${MCP_CONFIG_VERSION}"`)
+    expect(fs.readFileSync(`${target}.nomi-backup`, 'utf8')).toContain('/old/Nomi/scripts/nomi-mcp.mjs')
+  })
+
+  it('auto-upgrades a previous packaged Codex entry that uses an env subtable', () => {
+    isPackaged = true
+    const target = path.join(homeDir, '.codex', 'config.toml')
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, [
+      '[mcp_servers.nomi]',
+      'command = "/Applications/Nomi.app/Contents/MacOS/Nomi"',
+      'args = []',
+      '',
+      '[mcp_servers.nomi.env]',
+      'NOMI_MCP_STDIO = "1"',
+      '',
+      '[projects."/Users/example"]',
+      'trust_level = "trusted"',
+      '',
+    ].join('\n'))
+
+    const info = readMcpInfo(0)
+    expect(info.clients.codex).toMatchObject({ configState: 'current', migration: 'upgraded' })
+    const after = fs.readFileSync(target, 'utf8')
+    expect(after).not.toContain('[mcp_servers.nomi.env]')
+    expect(after).toContain('[projects."/Users/example"]\ntrust_level = "trusted"')
+    expect(after).toContain('NOMI_MCP_CONFIG_VERSION = "3"')
+  })
+
+  it('unknown custom nomi entry is classified but never silently overwritten', () => {
+    isPackaged = true
+    const original = JSON.stringify({ mcpServers: { nomi: { command: 'custom-nomi-proxy', args: ['serve'] } } }, null, 2)
+    fs.writeFileSync(claudeJson(), original)
+
+    const info = readMcpInfo(0)
+    expect(info.clients.claude).toMatchObject({ installed: true, configState: 'custom', migration: 'none' })
+    expect(fs.readFileSync(claudeJson(), 'utf8')).toBe(original)
+    expect(fs.existsSync(`${claudeJson()}.nomi-backup`)).toBe(false)
+  })
+
+  it('does not claim a custom proxy merely because it forwards the old Nomi env marker', () => {
+    isPackaged = true
+    const original = JSON.stringify({
+      mcpServers: {
+        nomi: { command: 'custom-nomi-proxy', args: ['serve'], env: { NOMI_MCP_STDIO: '1' } },
+      },
+    }, null, 2)
+    fs.writeFileSync(claudeJson(), original)
+
+    const info = readMcpInfo(0)
+    expect(info.clients.claude).toMatchObject({ configState: 'custom', migration: 'none' })
+    expect(fs.readFileSync(claudeJson(), 'utf8')).toBe(original)
   })
 })

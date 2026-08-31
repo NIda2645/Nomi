@@ -2,32 +2,22 @@
 // 修复=键盘 del 删多个节点后弹「已删除 N 个 · 撤销」toast，点撤销复用画布 undo 恢复。
 // 验证链：加 2 节点 → 全选 → Delete → ① 撤销 toast 出现 + 节点删空 → 点撤销 → ② 节点恢复。
 // 用法：node scripts/canvas-delete-undo-walkthrough.mjs（需先 pnpm build）
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from '../tests/ux/_launchApp.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.canvas-delete-undo-walk')
 fs.mkdirSync(outDir, { recursive: true })
 const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'del-undo-settings-'))
 const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'del-undo-projects-'))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: projectsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'canvas-delete-undo',
+  settingsDir,
+  projectsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 1800,
 })
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
 const errors = []
@@ -44,13 +34,10 @@ async function addImageNode(win) {
 }
 
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2200)

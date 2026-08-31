@@ -3,13 +3,11 @@
 //    + 场景背景真的变成全景 + 面板出现常驻「可能拉伸」提示；
 // ② 移除后导入标准 2:1 图 → success toast 可见。
 // 用法：pnpm run build && node scripts/scene3d-panorama-import-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.scene3d-panorama-lab')
 fs.rmSync(outDir, { recursive: true, force: true })
@@ -55,18 +53,16 @@ async function assertToastOnTop(win, textSnippet, label) {
   return probe.found && probe.onTop
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(base, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1', NOMI_PROJECTS_DIR: projectsDir, NOMI_SETTINGS_DIR: settingsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-panorama',
+  settingsDir,
+  projectsDir,
+  userDataDir: path.join(base, 'udata'),
 })
 try {
-  const win = await app.firstWindow()
   const shot = async (name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     window.__nomiE2E = true
     for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1']) window.localStorage.setItem(k, 'seen')

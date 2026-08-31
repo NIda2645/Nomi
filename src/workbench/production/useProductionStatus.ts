@@ -5,17 +5,19 @@ import { alertDialog, confirmDialog } from '../../design'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
 import { buildProductionContractView } from '../generationCanvas/spend/productionContractView'
+import { buildAnchorCheckpointCard } from '../generationCanvas/spend/anchorCheckpointView'
 import { useWorkbenchStore } from '../workbenchStore'
 import { productionRunApi } from './productionRunApi'
 import { executeProductionRunCommand } from './productionRunCommands'
 import { buildProductionPolicySettingsTarget, isProductionPolicyError } from './productionPolicyRecovery'
 import { useProductionRunStore } from './productionRunStore'
-import { buildProductionRunView, type ProductionRunPrimaryAction } from './productionRunView'
+import { buildProductionRunView, gateKindOf, type ProductionRunPrimaryAction } from './productionRunView'
 import { useActiveProductionRun } from './useActiveProductionRun'
 
 function localizedGateCopy(
+  run: NonNullable<ReturnType<typeof useActiveProductionRun>['run']>,
   gate: NonNullable<ReturnType<typeof useActiveProductionRun>['run']>['gates'][number],
-  translate: (key: string) => string,
+  translate: (key: string, params?: Record<string, unknown>) => string,
 ): { title: string; message: string } {
   if (gate.scope === 'export') {
     return {
@@ -30,17 +32,40 @@ function localizedGateCopy(
     }
   }
   if (gate.scope === 'stage' && gate.gateId.startsWith('gate-direction-')) {
+    // B1：有候选 → 用「选方向」文案（配单选行）；没候选（LLM 关着的兜底）→ 保持原「确认创作方向」。
+    const hasCandidates = (gate.directionCandidates?.length ?? 0) > 0
     return {
-      title: translate('generationCommon.production.gate.directionTitle'),
-      message: translate('generationCommon.production.gate.directionSummary'),
+      title: translate(hasCandidates ? 'generationCommon.production.gate.directionPickTitle' : 'generationCommon.production.gate.directionTitle'),
+      message: translate(hasCandidates ? 'generationCommon.production.gate.directionPickSummary' : 'generationCommon.production.gate.directionSummary'),
+    }
+  }
+  if (gate.scope === 'stage' && gate.gateId.startsWith('gate-sample-')) {
+    // B2：样片门——先看首镜再批量。批准=满意继续；取消=换风格重来（会暂停）。
+    return {
+      title: translate('generationCommon.production.gate.sampleTitle'),
+      message: translate('generationCommon.production.gate.sampleSummary'),
+    }
+  }
+  if (gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-')) {
+    const job = run.jobs.find((candidate) => candidate.jobId === gate.jobIds[0])
+    const index = job ? run.jobs.findIndex((candidate) => candidate.jobId === job.jobId) + 1 : 0
+    const params = {
+      index,
+      node: job?.nodeId || job?.jobId || gate.jobIds[0] || '-',
+      provider: job?.provider || '-',
+      model: job?.model || '-',
+    }
+    return {
+      title: translate('generationCommon.production.gate.shotTitle', params),
+      message: translate('generationCommon.production.gate.shotSummary', params),
     }
   }
   return { title: gate.title, message: gate.summary }
 }
 
-export function useProductionStatus() {
+export function useProductionStatus(options: { enabled?: boolean } = {}) {
   const { t } = useTranslation()
-  const production = useActiveProductionRun()
+  const production = useActiveProductionRun(undefined, options)
   const actionInFlightRef = React.useRef(false)
   const view = React.useMemo(() => (production.run ? buildProductionRunView(production.run) : null), [production.run])
   const executeCommand = React.useCallback(
@@ -63,7 +88,7 @@ export function useProductionStatus() {
           run.jobs.find((job) => job.jobId === view?.targetId) ??
           [...run.jobs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
 
-        if (action === 'review-storyboard') {
+        if (action === 'review-script' || action === 'review-storyboard') {
           useWorkbenchStore.getState().setWorkspaceMode('creation')
           return
         }
@@ -101,6 +126,25 @@ export function useProductionStatus() {
         }
         if (action === 'open-export') {
           useWorkbenchStore.getState().setWorkspaceMode('preview')
+          return
+        }
+        if (action === 'resume-run') {
+          // A4：从断点继续（run.control 与 MCP 侧同一命令收口）。
+          try {
+            await executeCommand(run.projectId, run.runId, {
+              commandId: globalThis.crypto.randomUUID(),
+              expectedRevision: run.revision,
+              type: 'run.control',
+              payload: { action: 'resume' },
+              issuedAt: new Date().toISOString(),
+            })
+            await useProductionRunStore.getState().loadRun(run.projectId, run.runId)
+          } catch (error) {
+            await alertDialog({
+              title: t('generationCommon.production.control.failed'),
+              message: error instanceof Error ? error.message : String(error),
+            })
+          }
           return
         }
         if (action === 'reconcile') {
@@ -149,6 +193,66 @@ export function useProductionStatus() {
           activeRun.gates.find((item) => item.gateId === view?.targetId && item.status === 'waiting') ??
           run.gates.find((item) => item.status === 'waiting')
         if (!gate) return
+
+        // P4 §3.2 形象确认卡（anchor_checkpoint 免费质量门）：与花钱确认卡同一条对话框轨道，但决议语义不同——
+        //   开拍 = decide approved → service 钩子自动续踢镜批（不用手动踢）；
+        //   先不拍 = 不 decide、门保持 waiting（任务中心卡持续显示「查看」可重开）；
+        //   重拍选中 = decide rejected + 对选中 shotId 走 S6 返工链（reworkShot），新 attempt 完成后门重新武装、卡再弹。
+        if (gateKindOf(gate) === 'checkpoint') {
+          const model = buildAnchorCheckpointCard(activeRun, gate)
+          if (!model) return
+          const reworkShotIds: string[] = []
+          const approved = await useSpendConfirmStore.getState().requestConfirm({
+            title: t('generationCommon.production.checkpoint.title'),
+            message: '', // 形象卡自带副标题 + 承诺行，不用通用 message
+            kind: 'anchorCheckpoint',
+            anchorCheckpoint: model,
+            source: activeRun.origin.host === 'nomi' ? 'user' : 'agent',
+            onRework: (shotIds) => { reworkShotIds.push(...shotIds) },
+          })
+          // 重拍：decide rejected（停批、不扣费）+ 逐个 reworkShot（S6 返工链，新 attempt 完成后门重新武装）。
+          if (reworkShotIds.length > 0) {
+            try {
+              await executeCommand(activeRun.projectId, activeRun.runId, {
+                commandId: globalThis.crypto.randomUUID(),
+                expectedRevision: activeRun.revision,
+                type: 'gate.decide',
+                payload: { gateId: gate.gateId, status: 'rejected' },
+                issuedAt: new Date().toISOString(),
+              })
+              for (const shotId of reworkShotIds) {
+                await productionRunApi.rework(activeRun.projectId, activeRun.runId, shotId)
+              }
+              await useProductionRunStore.getState().loadRun(activeRun.projectId, activeRun.runId)
+            } catch (error) {
+              await alertDialog({
+                title: t('generationCommon.production.gate.failed'),
+                message: error instanceof Error ? error.message : String(error),
+              })
+            }
+            return
+          }
+          // 先不拍：不 decide，门保持 waiting（重开路径 = 任务中心 run 卡的「查看」主动作）。
+          if (!approved) return
+          // 开拍：decide approved → 钩子自动续踢镜批。
+          try {
+            await executeCommand(activeRun.projectId, activeRun.runId, {
+              commandId: globalThis.crypto.randomUUID(),
+              expectedRevision: activeRun.revision,
+              type: 'gate.decide',
+              payload: { gateId: gate.gateId, status: 'approved' },
+              issuedAt: new Date().toISOString(),
+            })
+            await useProductionRunStore.getState().loadRun(activeRun.projectId, activeRun.runId)
+          } catch (error) {
+            await alertDialog({
+              title: t('generationCommon.production.gate.failed'),
+              message: error instanceof Error ? error.message : String(error),
+            })
+          }
+          return
+        }
+
         if (gate.scope === 'budget_envelope') {
           try {
             const refreshed = await executeCommand(activeRun.projectId, activeRun.runId, {
@@ -169,16 +273,44 @@ export function useProductionStatus() {
             return
           }
         }
-        const gateCopy = localizedGateCopy(gate, (key) => t(key))
-        const contract = gate.scope === 'stage' ? undefined : buildProductionContractView(activeRun, gate)
+        const gateCopy = localizedGateCopy(activeRun, gate, (key, params) => t(key, params))
+        const contract = ['budget_envelope', 'export', 'publish'].includes(gate.scope)
+          ? buildProductionContractView(activeRun, gate)
+          : undefined
+        // B1：方向门候选（driver 拟好后挂在 gate 上）。有候选 → 弹单选，捕获选中 key 带进决议留痕。
+        const isDirectionGate = gate.scope === 'stage' && gate.gateId.startsWith('gate-direction-')
+        const isSampleGateApproval = gate.scope === 'stage' && gate.gateId.startsWith('gate-sample-')
+        const isShotGate = gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-')
+        const shotJob = isShotGate ? activeRun.jobs.find((candidate) => candidate.jobId === gate?.jobIds[0]) : undefined
+        const shotIndex = shotJob ? activeRun.jobs.findIndex((candidate) => candidate.jobId === shotJob.jobId) + 1 : 0
+        const directionCandidates = isDirectionGate ? (gate.directionCandidates ?? []) : []
+        let directionChoiceKey: string | null = directionCandidates[0]?.key ?? null
         let openingPolicySettings = false
         const approved = await useSpendConfirmStore.getState().requestConfirm({
           title: gateCopy.title,
           message: gateCopy.message,
-          confirmLabel: t('generationCommon.production.gate.approve'),
+          // B2：样片门批准=「满意，批量生成」；其余门=「批准并继续」。
+          confirmLabel: t(isSampleGateApproval
+            ? 'generationCommon.production.gate.sampleApprove'
+            : isShotGate
+              ? 'generationCommon.production.gate.shotApprove'
+              : 'generationCommon.production.gate.approve'),
+          ...(isSampleGateApproval || isShotGate ? {
+            cancelLabel: t(isShotGate ? 'generationCommon.production.gate.shotReject' : 'generationCommon.production.gate.sampleReject'),
+          } : {}),
           source: activeRun.origin.host === 'nomi' ? 'user' : 'agent',
-          kind: gate.scope === 'stage' ? 'plan' : 'contract',
+          kind: gate.scope === 'stage' ? 'plan' : isShotGate ? 'generation' : 'contract',
           ...(contract ? { contract } : {}),
+          ...(isShotGate && shotJob ? {
+            details: [
+              { label: t('generationCommon.production.gate.shotLabel'), value: `${shotIndex} · ${shotJob.nodeId || shotJob.jobId}` },
+              { label: t('generationCommon.production.gate.providerModelLabel'), value: `${shotJob.provider} · ${shotJob.model}` },
+            ],
+          } : {}),
+          ...(directionCandidates.length ? {
+            directionCandidates: directionCandidates.map((candidate) => ({ key: candidate.key, title: candidate.title, oneLiner: candidate.oneLiner })),
+            onDirectionDecision: (key: string | null) => { directionChoiceKey = key },
+          } : {}),
           ...(gate.scope === 'budget_envelope' && contract && !contract.policy.ready ? {
             onOpenPolicySettings: () => {
               openingPolicySettings = true
@@ -188,9 +320,11 @@ export function useProductionStatus() {
             },
           } : {}),
         })
+        const isSampleGate = gate.scope === 'stage' && gate.gateId.startsWith('gate-sample-')
         if (!approved) {
           if (openingPolicySettings) return
-          if (gate.scope !== 'budget_envelope') return
+          // 预算门否决=撤销制作；样片门否决=换风格重来（service 会把它变成暂停）。其余门（方向/plan）取消=不表态。
+          if (gate.scope !== 'budget_envelope' && !isSampleGate && !isShotGate) return
           try {
             await executeCommand(activeRun.projectId, activeRun.runId, {
               commandId: globalThis.crypto.randomUUID(),
@@ -213,7 +347,7 @@ export function useProductionStatus() {
             commandId: globalThis.crypto.randomUUID(),
             expectedRevision: activeRun.revision,
             type: 'gate.decide',
-            payload: { gateId: gate.gateId, status: 'approved' },
+            payload: { gateId: gate.gateId, status: 'approved', ...(directionChoiceKey ? { choiceKey: directionChoiceKey } : {}) },
             issuedAt: new Date().toISOString(),
           })
           await useProductionRunStore.getState().loadRun(activeRun.projectId, activeRun.runId)
@@ -247,6 +381,43 @@ export function useProductionStatus() {
     [executeCommand, production.run, t, view?.targetId],
   )
 
+  // A4 情境控制：暂停直接执行；取消是破坏性动作先 confirmDialog（§3.5）。两者与 MCP 同走 run.control。
+  const onControl = React.useCallback(
+    async (action: 'pause' | 'cancel') => {
+      const run = production.run
+      if (!run || actionInFlightRef.current) return
+      actionInFlightRef.current = true
+      try {
+        if (action === 'cancel') {
+          const confirmed = await confirmDialog({
+            title: t('generationCommon.production.control.cancelTitle'),
+            message: t('generationCommon.production.control.cancelMessage'),
+            confirmLabel: t('generationCommon.production.control.cancelConfirm'),
+            cancelLabel: t('common.cancel'),
+            danger: true,
+          })
+          if (!confirmed) return
+        }
+        await executeCommand(run.projectId, run.runId, {
+          commandId: globalThis.crypto.randomUUID(),
+          expectedRevision: run.revision,
+          type: 'run.control',
+          payload: { action },
+          issuedAt: new Date().toISOString(),
+        })
+        await useProductionRunStore.getState().loadRun(run.projectId, run.runId)
+      } catch (error) {
+        await alertDialog({
+          title: t('generationCommon.production.control.failed'),
+          message: error instanceof Error ? error.message : String(error),
+        })
+      } finally {
+        actionInFlightRef.current = false
+      }
+    },
+    [executeCommand, production.run, t],
+  )
+
   const navigationTarget = production.navigationTarget
   const focusedArtifactId =
     navigationTarget &&
@@ -255,5 +426,5 @@ export function useProductionStatus() {
       ? (navigationTarget.artifactId ?? null)
       : null
 
-  return { production, view, focusedArtifactId, onPrimaryAction }
+  return { production, view, focusedArtifactId, onPrimaryAction, onControl }
 }

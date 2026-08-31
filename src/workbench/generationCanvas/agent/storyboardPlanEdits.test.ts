@@ -3,13 +3,21 @@ import type { StoryboardPlan } from './storyboardPlan'
 import {
   addAnchor,
   addShot,
+  applyDurationToAll,
+  applyModelToAll,
+  applyShotKindToAll,
   changeAnchorKind,
   danglingAnchorIdsForShot,
   defaultCarrierForKind,
+  deriveBulkDuration,
+  deriveBulkModelKey,
+  deriveBulkShotKind,
   makeAnchorId,
   moveShot,
   removeAnchor,
   removeShotAt,
+  shotKindPatch,
+  shotTypeOf,
   toggleShotAnchor,
   validatePlan,
 } from './storyboardPlanEdits'
@@ -115,5 +123,164 @@ describe('storyboardPlanEdits — 校验', () => {
   it('文本锚无名不拦（不建卡，无需标题）', () => {
     const textNoName = { ...base(), anchors: [{ id: 'anchor-2', kind: 'style', name: '', description: 's', carrier: 'text' } as const], shots: [{ index: 1, durationSec: 5, anchorIds: [], prompt: 'p' }] }
     expect(validatePlan(textNoName).some((i) => i.kind === 'anchor-no-name')).toBe(false)
+  })
+})
+
+// ── 「全部镜头」批量条的领域逻辑（样张 A）：档位换算 / 改档补丁 / 整片应用 / 混合判定 ──
+
+const planOf = (shots: StoryboardPlan['shots']): StoryboardPlan => ({ ...base(), shots })
+
+describe('storyboardPlanEdits — 镜头类型档位', () => {
+  it('shotTypeOf 三档：image / video / image-video（shotKind 缺省按 video 兜底）', () => {
+    expect(shotTypeOf({ index: 1, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'p' })).toBe('image')
+    expect(shotTypeOf({ index: 1, shotKind: 'video', durationSec: 5, anchorIds: [], prompt: 'p' })).toBe('video')
+    expect(shotTypeOf({ index: 1, durationSec: 5, anchorIds: [], prompt: 'p' })).toBe('video')
+    expect(
+      shotTypeOf({ index: 1, shotKind: 'video', durationSec: 5, keyframe: { enabled: true }, anchorIds: [], prompt: 'p' }),
+    ).toBe('image-video')
+    // keyframe 存在但没 enabled ≠ image-video
+    expect(
+      shotTypeOf({ index: 1, shotKind: 'video', durationSec: 5, keyframe: { prompt: 'k' }, anchorIds: [], prompt: 'p' }),
+    ).toBe('video')
+  })
+
+  it('image→video：时长兜底 5s + 清模型/模式/参数 + 不带 keyframe', () => {
+    const shot = { index: 1, shotKind: 'image' as const, durationSec: 0, anchorIds: [], prompt: 'p', modelKey: 'm', modeId: 'md', params: { a: 1 } }
+    const patch = shotKindPatch(shot, 'video')
+    expect(patch).toMatchObject({ shotKind: 'video', durationSec: 5 })
+    expect(patch.modelKey).toBeUndefined()
+    expect(patch.modeId).toBeUndefined()
+    expect(patch.params).toBeUndefined()
+    expect(patch.keyframe).toBeUndefined()
+  })
+
+  it('video→image：清 keyframe + 清模型三件套，不留时长（图片镜无时长）', () => {
+    const shot = { index: 1, shotKind: 'video' as const, durationSec: 8, keyframe: { enabled: true, prompt: 'k' }, anchorIds: [], prompt: 'p', modelKey: 'm' }
+    const patch = shotKindPatch(shot, 'image')
+    expect(patch).toMatchObject({ shotKind: 'image' })
+    expect(patch.keyframe).toBeUndefined()
+    expect(patch.modelKey).toBeUndefined()
+    expect(patch).not.toHaveProperty('durationSec')
+  })
+
+  it('→image-video：置 keyframe.enabled 并保留已写的首帧提示词；已有时长不被覆盖', () => {
+    const shot = { index: 1, shotKind: 'video' as const, durationSec: 8, keyframe: { prompt: 'k' }, anchorIds: [], prompt: 'p' }
+    expect(shotKindPatch(shot, 'image-video')).toMatchObject({
+      shotKind: 'video',
+      durationSec: 8,
+      keyframe: { enabled: true, prompt: 'k' },
+    })
+    // 从图片镜过来：时长兜底 5、首帧提示词为空串
+    const img = { index: 1, shotKind: 'image' as const, durationSec: 0, anchorIds: [], prompt: 'p' }
+    expect(shotKindPatch(img, 'image-video')).toMatchObject({ durationSec: 5, keyframe: { enabled: true, prompt: '' } })
+  })
+})
+
+describe('storyboardPlanEdits — 整片批量应用', () => {
+  it('applyShotKindToAll 把全镜改成同一档，逐镜等价于 shotKindPatch', () => {
+    const plan = planOf([
+      { index: 1, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'a', modelKey: 'img-m' },
+      { index: 2, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'b' },
+    ])
+    const next = applyShotKindToAll(plan, 'video')
+    expect(next.shots.map(shotTypeOf)).toEqual(['video', 'video'])
+    expect(next.shots.every((s) => s.durationSec === 5)).toBe(true)
+    expect(next.shots[0].modelKey).toBeUndefined()
+    // 与逐镜改同构
+    expect(next.shots[0]).toEqual({ ...plan.shots[0], ...shotKindPatch(plan.shots[0], 'video') })
+  })
+
+  it('applyShotKindToAll 对已是目标档的镜头原样返回（同一引用，不无谓清参数）', () => {
+    const plan = planOf([
+      { index: 1, shotKind: 'video', durationSec: 8, anchorIds: [], prompt: 'a', modelKey: 'keep' },
+      { index: 2, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'b' },
+    ])
+    const next = applyShotKindToAll(plan, 'video')
+    expect(next.shots[0]).toBe(plan.shots[0])
+    expect(next.shots[0].modelKey).toBe('keep')
+    expect(shotTypeOf(next.shots[1])).toBe('video')
+  })
+
+  it('applyModelToAll 写 modelKey 并清 modeId/params；空串 = 回默认模型', () => {
+    const plan = planOf([
+      { index: 1, durationSec: 5, anchorIds: [], prompt: 'a', modelKey: 'x', modeId: 'mx', params: { a: 1 } },
+      { index: 2, durationSec: 5, anchorIds: [], prompt: 'b' },
+    ])
+    const next = applyModelToAll(plan, 'seedance')
+    expect(next.shots.map((s) => s.modelKey)).toEqual(['seedance', 'seedance'])
+    expect(next.shots.every((s) => s.modeId === undefined && s.params === undefined)).toBe(true)
+    expect(applyModelToAll(next, '').shots.every((s) => s.modelKey === undefined)).toBe(true)
+  })
+
+  it('applyDurationToAll 只改视频镜，图片镜不动；非法值原样返回', () => {
+    const plan = planOf([
+      { index: 1, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'a' },
+      { index: 2, shotKind: 'video', durationSec: 5, anchorIds: [], prompt: 'b' },
+    ])
+    const next = applyDurationToAll(plan, 10)
+    expect(next.shots.map((s) => s.durationSec)).toEqual([0, 10])
+    expect(applyDurationToAll(plan, 0)).toBe(plan)
+    expect(applyDurationToAll(plan, Number.NaN)).toBe(plan)
+  })
+})
+
+describe('storyboardPlanEdits — 批量条当前值（混合判定）', () => {
+  it('deriveBulkShotKind：全同 → 该档；不同 → null（显「混合」）；无镜 → null', () => {
+    expect(deriveBulkShotKind(planOf([
+      { index: 1, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'a' },
+      { index: 2, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'b' },
+    ]))).toBe('image')
+    expect(deriveBulkShotKind(planOf([
+      { index: 1, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'a' },
+      { index: 2, shotKind: 'video', durationSec: 5, anchorIds: [], prompt: 'b' },
+    ]))).toBeNull()
+    // video vs image-video 也算不一致
+    expect(deriveBulkShotKind(planOf([
+      { index: 1, shotKind: 'video', durationSec: 5, anchorIds: [], prompt: 'a' },
+      { index: 2, shotKind: 'video', durationSec: 5, keyframe: { enabled: true }, anchorIds: [], prompt: 'b' },
+    ]))).toBeNull()
+    expect(deriveBulkShotKind(planOf([]))).toBeNull()
+  })
+
+  it('deriveBulkModelKey：都没选 → 空串（默认模型）；一选一没选 → null', () => {
+    expect(deriveBulkModelKey(planOf([
+      { index: 1, durationSec: 5, anchorIds: [], prompt: 'a' },
+      { index: 2, durationSec: 5, anchorIds: [], prompt: 'b' },
+    ]))).toBe('')
+    expect(deriveBulkModelKey(planOf([
+      { index: 1, durationSec: 5, anchorIds: [], prompt: 'a', modelKey: 'x' },
+      { index: 2, durationSec: 5, anchorIds: [], prompt: 'b', modelKey: 'x' },
+    ]))).toBe('x')
+    expect(deriveBulkModelKey(planOf([
+      { index: 1, durationSec: 5, anchorIds: [], prompt: 'a', modelKey: 'x' },
+      { index: 2, durationSec: 5, anchorIds: [], prompt: 'b' },
+    ]))).toBeNull()
+  })
+
+  it('deriveBulkDuration：只看视频镜；全图片镜 → null；视频镜时长不同 → null', () => {
+    expect(deriveBulkDuration(planOf([
+      { index: 1, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'a' },
+      { index: 2, shotKind: 'video', durationSec: 8, anchorIds: [], prompt: 'b' },
+      { index: 3, shotKind: 'video', durationSec: 8, anchorIds: [], prompt: 'c' },
+    ]))).toBe(8)
+    expect(deriveBulkDuration(planOf([
+      { index: 1, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'a' },
+    ]))).toBeNull()
+    expect(deriveBulkDuration(planOf([
+      { index: 1, shotKind: 'video', durationSec: 5, anchorIds: [], prompt: 'a' },
+      { index: 2, shotKind: 'video', durationSec: 8, anchorIds: [], prompt: 'b' },
+    ]))).toBeNull()
+  })
+
+  it('批量改完 → derive 回同一个值（往返一致，批量条不会改完还显「混合」）', () => {
+    const mixed = planOf([
+      { index: 1, shotKind: 'image', durationSec: 0, anchorIds: [], prompt: 'a' },
+      { index: 2, shotKind: 'video', durationSec: 8, anchorIds: [], prompt: 'b', modelKey: 'x' },
+    ])
+    expect(deriveBulkShotKind(mixed)).toBeNull()
+    const unified = applyShotKindToAll(mixed, 'image-video')
+    expect(deriveBulkShotKind(unified)).toBe('image-video')
+    expect(deriveBulkModelKey(unified)).toBe('')
+    expect(deriveBulkDuration(applyDurationToAll(unified, 6))).toBe(6)
   })
 })

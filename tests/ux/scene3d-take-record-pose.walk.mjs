@@ -4,15 +4,12 @@
 // ② 离屏捕获 + ffmpeg 真出 .mp4——证明带 poseTrack 的场景能被现有离屏管线渲染出片（不掉帧/不崩）。
 // 零额度：纯本地 3D 离屏渲染 + 本地 ffmpeg，不碰生成 API。
 // 用法：pnpm run build && node tests/ux/scene3d-take-record-pose.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync, readdirSync, statSync, readFileSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.take-record-lab')
 mkdirSync(outDir, { recursive: true })
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-take-pose-walk-'))
@@ -46,11 +43,12 @@ function poseTrackPersisted() {
   return { file: null, ok: false }
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-take-record-pose',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const errors = []
@@ -58,11 +56,8 @@ const log = (m) => console.log(m)
 const pass = { editorOpen: false, possessed: false, recStarted: false, posed: false, recStopped: false, poseTrack: false, mp4Made: false }
 
 try {
-  const win = await app.firstWindow()
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   // 关开屏介绍（全新 userData → splash 必出，会拦点击）。
   const splashSkip = win.locator('[data-splash-skip="true"]').first()
   if ((await splashSkip.count()) > 0) await splashSkip.click().catch(() => {})
@@ -113,11 +108,11 @@ try {
   await win.keyboard.down('KeyW'); await win.waitForTimeout(1300); await win.keyboard.up('KeyW')
   const squat = win.getByRole('button', { name: '下蹲', exact: false }).first()
   if ((await squat.count()) > 0) { await squat.click(); await win.waitForTimeout(300) }
-  await win.screenshot({ path: path.join(outDir, 'trp-01-recording-squat.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'trp-01-recording-squat.png') })
   await win.keyboard.down('KeyW'); await win.waitForTimeout(1200); await win.keyboard.up('KeyW')
   const wave = win.getByRole('button', { name: '挥手', exact: false }).first()
   if ((await wave.count()) > 0) { await wave.click(); await win.waitForTimeout(300) }
-  await win.screenshot({ path: path.join(outDir, 'trp-02-recording-wave.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'trp-02-recording-wave.png') })
   pass.posed = (await squat.count()) > 0 && (await wave.count()) > 0
   log(`  ${pass.posed ? '✓' : '✗'} 录制中切了下蹲 + 挥手`)
 
@@ -136,7 +131,7 @@ try {
   }
   pass.poseTrack = persisted.ok
   pass.mp4Made = mp4s.length > 0
-  await win.screenshot({ path: path.join(outDir, 'trp-03-after-capture.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'trp-03-after-capture.png') })
   log(`  ${pass.poseTrack ? '✓' : '✗'} 录制场景持久化含 poseTrack(squat+wave)${persisted.file ? ' → ' + path.basename(persisted.file) : ''}`)
   log(`  ${pass.mp4Made ? '✓' : '✗'} 端到端出 mp4（${mp4s.length} 个）${mp4s[0] ? ' → ' + path.basename(mp4s[0]) : ''}`)
 

@@ -11,6 +11,39 @@
 // 本 widget = 「Nomi 活生成」：把外部 agent 驱动的这次生成，在宿主对话里内嵌一张 Nomi 风格活面板——
 // 标题 + 逐镜缩略图（带状态徽标）+「在 Nomi 中打开」。宿主不支持该扩展时 tool 仍回文本兜底（不裸奔）。
 // 纯字符串（无 electron/DOM 依赖）→ 可裸 node 单测 serving，也可独立浏览器渲染截图验。
+import { projectGenerationRecovery, type GenerationRecoveryProjection } from './generationRecoveryProjection'
+
+/**
+ * widget `<img src>` 用的安全图 URL 校验器——**run 路与生成路共用的唯一一把**（0b 关闭校验不对称）。
+ *
+ * 收的三类：① `nomi-local://`（Electron 内可解，外部宿主 onerror 优雅降级为占位）；② 签名短 TTL 预览链
+ *（`http://127.0.0.1/production-preview?preview=…`，run 路 artifact 预览与生成路 _nomiPreviewUrl 同形）；
+ * ③ 一般良构 `https?://` 图链（供应商 CDN 直链——生成结果的 assets[0].url 常是它）。
+ * 拒的：`javascript:` / `file:` / `blob:` / `data:` 等危险或会灌爆终端的 scheme、以及畸形串。
+ * 为什么 run 路一起用它却不被放松：artifact 预览在服务侧只会产出①②两形，一般 https 根本不出现在那条路，
+ * 故对 run 路是惰性放行（不削弱它「只认签名/本地」的安全姿态），却让生成路的直链也走同一把尺子。
+ */
+export function safeWidgetImageUrl(candidate: unknown): string | undefined {
+  if (typeof candidate !== 'string') return undefined
+  const url = candidate.trim()
+  if (!url) return undefined
+  if (url.startsWith('nomi-local://')) return url
+  try {
+    const parsed = new URL(url)
+    // 签名预览位（127.0.0.1/production-preview?preview=）——run 路 artifact 与生成路 _nomiPreviewUrl 同形。
+    if (parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.pathname === '/production-preview' && parsed.searchParams.has('preview')) return url
+    // 一般良构图链（供应商 CDN 直链）；只放 http/https，挡掉 javascript:/file:/blob:/data: 等。
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return url
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 工程级深链严格形（`nomi://project/{id}`，段字符受限）——与 run 路 run 级深链正则同族的等价严格校验（0b）。 */
+const PROJECT_DEEP_LINK_RE = /^nomi:\/\/project\/[A-Za-z0-9._-]+$/
+/** run 级深链严格形（`nomi://project/{id}/run/{id}[?artifact={id}]`）——run 路与生成路采信上游 openInNomi 时共用。 */
+const RUN_DEEP_LINK_RE = /^nomi:\/\/project\/[A-Za-z0-9._-]+\/run\/[A-Za-z0-9._-]+(?:\?artifact=[A-Za-z0-9._-]+)?$/
 
 /** widget 资源的 ui:// uri（预声明；tool 的 _meta.ui.resourceUri 指向它）。 */
 export const NOMI_LIVE_DRAFT_UI_URI = 'ui://nomi/live-draft.html'
@@ -32,6 +65,17 @@ export type NomiDraftShot = {
   /** 缩略图 URL（可能被宿主 CSP 拦；widget onerror 优雅降级为占位）。 */
   thumbnailUrl?: string
 }
+/**
+ * B6 · 等待中的门（widget gate 卡）。direction=方向门（候选单选，卡内可批）｜sample=样片门（上方缩略图
+ * 即样片，卡内可批）｜contract/export=钱与导出（卡内只读——金额确认走弹窗/对话双路，不给一键批钱）。
+ */
+export type NomiDraftGate = {
+  gateId: string
+  kind: 'direction' | 'sample' | 'contract' | 'export' | 'stage'
+  title?: string
+  summary?: string
+  candidates?: Array<{ key: string; title: string; oneLiner?: string }>
+}
 export type NomiDraftState = {
   kind?: 'generation' | 'reference' | 'plan' | 'production'
   title?: string
@@ -43,6 +87,10 @@ export type NomiDraftState = {
   /** 深链：宿主支持 ui/open-link 时「在 Nomi 中打开」跳这里。 */
   deepLink?: string
   runId?: string
+  /** 第一个 waiting 门；卡内渲染确认区（样张桌面形态贰/肆幕）。 */
+  gate?: NomiDraftGate
+  /** Shared degraded-provider recovery projection; the widget only explains it, never retries. */
+  recovery?: GenerationRecoveryProjection
 }
 
 /** Convert a safe MCP production projection into the same compact widget state used by generation. */
@@ -71,18 +119,20 @@ export function buildNomiRunFromProjection(args: {
   const runId = typeof value.runId === 'string' ? value.runId : args.runId
   const playbook = value.playbook && typeof value.playbook === 'object' ? value.playbook as Record<string, unknown> : {}
   const artifacts = Array.isArray(value.artifacts) ? value.artifacts as Array<Record<string, unknown>> : []
-  const safePreviewUrl = (candidate: unknown): string | undefined => {
-    if (typeof candidate !== 'string') return undefined
-    if (candidate.startsWith('nomi-local://')) return candidate
-    try {
-      const parsed = new URL(candidate)
-      return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.pathname === '/production-preview' && parsed.searchParams.has('preview')
-        ? candidate
-        : undefined
-    } catch {
-      return undefined
-    }
-  }
+  const jobs = Array.isArray(value.jobs) ? value.jobs as Array<Record<string, unknown>> : []
+  const unknownJob = jobs.find((job) => job.status === 'submission_unknown')
+  const cancelRequestedJob = jobs.find((job) => job.status === 'cancel_requested')
+  const recoveryProfile = value.providerCapabilityProfile === 'full_recovery' || value.providerCapabilityProfile === 'observe_only'
+    ? value.providerCapabilityProfile
+    : 'submit_only'
+  const recovery = unknownJob
+    ? projectGenerationRecovery({ state: 'submission_unknown', profile: recoveryProfile })
+    : cancelRequestedJob
+      ? projectGenerationRecovery({ state: 'cancel_requested', profile: recoveryProfile })
+      : undefined
+  // run 路预览 URL 走共用校验器（0b）：artifact 预览在服务侧只出①nomi-local②签名 127.0.0.1 两形，行为与旧
+  // 内联版一致（一般 https 不会出现在这条路），但改用同一把尺子后生成路也能复用、两路不再各写一份。
+  const safePreviewUrl = safeWidgetImageUrl
   const previewArtifacts = artifacts
     .filter((artifact) => {
       const preview = artifact.preview && typeof artifact.preview === 'object' ? artifact.preview as Record<string, unknown> : {}
@@ -106,16 +156,46 @@ export function buildNomiRunFromProjection(args: {
     const previewUrl = safePreviewUrl(ownPreview.url)
     if (previewUrl) shots.push({ index: 1, title: String(value.kind), status: value.status === 'ready' || value.status === 'adopted' ? 'success' as const : 'queued' as const, kind: value.kind === 'video' ? 'video' as const : 'image' as const, thumbnailUrl: previewUrl })
   }
+  // B6：第一个 waiting 门 → widget gate 卡（候选文本已经过 service 投影的 sanitizer）。
+  const gatesRaw = Array.isArray(value.gates) ? value.gates as Array<Record<string, unknown>> : []
+  const waitingGate = gatesRaw.find((candidate) => candidate.status === 'waiting')
+  let gate: NomiDraftGate | undefined
+  if (waitingGate) {
+    const gateId = String(waitingGate.gateId || '')
+    const rawCandidates = Array.isArray(waitingGate.directionCandidates)
+      ? (waitingGate.directionCandidates as Array<Record<string, unknown>>)
+          .filter((candidate) => typeof candidate.key === 'string' && typeof candidate.title === 'string')
+          .map((candidate) => ({
+            key: String(candidate.key),
+            title: String(candidate.title),
+            ...(typeof candidate.oneLiner === 'string' ? { oneLiner: candidate.oneLiner } : {}),
+          }))
+      : []
+    const gateKind: NomiDraftGate['kind'] = rawCandidates.length
+      ? 'direction'
+      : gateId.startsWith('gate-sample-')
+        ? 'sample'
+        : waitingGate.scope === 'budget_envelope'
+          ? 'contract'
+          : waitingGate.scope === 'export' ? 'export' : 'stage'
+    gate = {
+      gateId,
+      kind: gateKind,
+      ...(typeof waitingGate.title === 'string' && waitingGate.title ? { title: waitingGate.title } : {}),
+      ...(typeof waitingGate.summary === 'string' && waitingGate.summary ? { summary: waitingGate.summary } : {}),
+      ...(rawCandidates.length ? { candidates: rawCandidates } : {}),
+    }
+  }
   const latestEvent = Array.isArray(value.events) ? (value.events as Array<Record<string, unknown>>).at(-1) : undefined
   const candidateDeepLink = typeof value.openInNomi === 'string' ? value.openInNomi : ''
-  const deepLink = /^nomi:\/\/project\/[A-Za-z0-9._-]+\/run\/[A-Za-z0-9._-]+(?:\?artifact=[A-Za-z0-9._-]+)?$/.test(candidateDeepLink)
+  const deepLink = RUN_DEEP_LINK_RE.test(candidateDeepLink)
     ? candidateDeepLink
     : (projectId && runId ? `nomi://project/${encodeURIComponent(projectId)}/run/${encodeURIComponent(runId)}` : undefined)
-  const fallbackMessage = status === 'unknown'
+  const fallbackMessage = recovery?.message || (status === 'unknown'
     ? '已查询 Nomi，当前结果未提供运行状态。'
     : status === 'available'
       ? 'Nomi 已准备好当前结果，未自动批准付费或导出。'
-      : undefined
+      : undefined)
   return {
     kind: 'production',
     title: `Nomi · ${typeof playbook.name === 'string' ? playbook.name : '制作 Run'}`,
@@ -127,6 +207,8 @@ export function buildNomiRunFromProjection(args: {
     ...(projectId ? { projectId } : {}),
     ...(runId ? { runId } : {}),
     ...(deepLink ? { deepLink } : {}),
+    ...(gate ? { gate } : {}),
+    ...(recovery ? { recovery } : {}),
   }
 }
 
@@ -146,9 +228,21 @@ export function buildNomiDraftFromGenerate(args: {
   const rawStatus = String(r.status || '')
   const status: NomiDraftState['status'] = rawStatus === 'succeeded' ? 'succeeded' : rawStatus === 'failed' ? 'failed' : 'running'
   const assets = Array.isArray(r.assets) ? (r.assets as Array<Record<string, unknown>>) : []
-  const firstUrl = (assets[0]?.url as string) || (r.url as string) || ((r.result as Record<string, unknown>)?.url as string) || undefined
+  const rawUrl = (assets[0]?.url as string) || (r.url as string) || ((r.result as Record<string, unknown>)?.url as string) || undefined
+  // 交付④：优先用 App 侧铸好的签名 HTTP 预览（_nomiPreviewUrl，非 Electron 宿主能加载）；缺则回退原始本地/直链。
+  // 0b：两者都过共用的 safeWidgetImageUrl（与 run 路同一把尺子）——危险 scheme/畸形串一律不进 <img src>，
+  // 签名位不合法则自然回退到合法的原始资产链（免检漏洞在此堵死）。
+  const signedPreview = safeWidgetImageUrl(r._nomiPreviewUrl)
+  const thumbnailUrl = signedPreview || safeWidgetImageUrl(rawUrl)
   const isVideo = String(args.intent || assets[0]?.type || '') === 'video'
   const title = (args.prompt || '').trim().slice(0, 40) || (isVideo ? '一段视频' : '一张画面')
+  // 交付③：工程级深链（无 runId）——widget 的「在 Nomi 打开」据此可跳。上游给了更具体的链且**形状合法**才采信
+  //（run 级严格正则，与 run 路同族）；否则回退工程级严格链（0b：项目级深链也走等价严格校验，不再松放）。
+  const candidateDeep = typeof r.openInNomi === 'string' ? r.openInNomi : ''
+  const projectDeep = args.projectId ? `nomi://project/${encodeURIComponent(args.projectId)}` : undefined
+  const deepLink = RUN_DEEP_LINK_RE.test(candidateDeep) || PROJECT_DEEP_LINK_RE.test(candidateDeep)
+    ? candidateDeep
+    : (projectDeep && PROJECT_DEEP_LINK_RE.test(projectDeep) ? projectDeep : undefined)
   return {
     kind: 'generation',
     title: `Nomi · ${title}`,
@@ -160,10 +254,11 @@ export function buildNomiDraftFromGenerate(args: {
         title,
         status: status === 'succeeded' ? 'success' : status === 'failed' ? 'error' : 'running',
         kind: isVideo ? 'video' : 'image',
-        ...(firstUrl ? { thumbnailUrl: firstUrl } : {}),
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
       },
     ],
     ...(args.projectId ? { projectId: args.projectId } : {}),
+    ...(deepLink ? { deepLink } : {}),
   }
 }
 
@@ -251,6 +346,17 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
   .cap { padding: 5px 7px; font-size: 11px; color: var(--ink-60); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .msg { margin: 0 0 10px; font-size: 12px; color: var(--ink-60); line-height: 1.5; }
   .empty { padding: 20px 12px; text-align: center; color: var(--ink-40); font-size: 12px; }
+  .gate { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 10px; background: var(--accent-soft); margin: 0 0 10px; display: grid; gap: 8px; }
+  .gate[hidden] { display: none; }
+  .gate-head { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .gate-sum { font-size: 11px; color: var(--ink-60); line-height: 1.5; }
+  .cand { font: inherit; text-align: left; display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); cursor: pointer; }
+  .cand:hover { border-color: var(--accent); }
+  .cand.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--paper)); }
+  .cand-t { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .cand-o { font-size: 11px; color: var(--ink-60); }
+  .gate-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .gate-hint { font-size: 11px; color: var(--ink-40); }
   .foot { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
   .btn { font: inherit; font-size: 12px; cursor: pointer; border-radius: 8px; padding: 6px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-80); }
   .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -268,6 +374,7 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
   <div class="body" id="bodyWrap">
   <div class="empty" id="empty">等待 Nomi 传入生成或制作 Run…</div>
     <p class="msg" id="msg" hidden></p>
+    <div class="gate" id="gate" hidden></div>
     <div class="grid" id="grid"></div>
   </div>
   <div class="foot" id="foot" hidden>
@@ -280,8 +387,20 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
   "use strict";
   var STATUS_LABEL = { running: "进行中", succeeded: "已完成", failed: "需要处理", available: "可查看", unknown: "状态未知" };
   var SHOT_LABEL = { queued: "排队", running: "生成中", success: "已出", error: "失败" };
+  // B6 gate 卡：direction/sample 卡内可批（tools/call 代理，SEP-1865）；钱与导出只读——不给一键批钱。
+  var GATE_HINT = {
+    direction: "选一个方向；批准前不会调用付费模型。",
+    sample: "上方就是样片；满意就继续批量，不满意去 Nomi 调整。",
+    contract: "预算确认在 Nomi 弹窗或对话里完成（金额不做卡内一键批）。",
+    export: "导出确认在 Nomi 或对话里完成。",
+    stage: "这一步确认在 Nomi 或对话里完成。"
+  };
   var state = null;
   var rpcId = 0;
+  var selectedKey = null;
+  var decideInFlight = false;
+  var decideFailed = false;
+  var decideReqId = null;
 
   function post(msg) { try { window.parent.postMessage(msg, "*"); } catch (e) {} }
   function notify(method, params) { post({ jsonrpc: "2.0", method: method, params: params || {} }); }
@@ -315,7 +434,9 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
     var st = state.status || "unknown";
     badge.textContent = STATUS_LABEL[st] || st;
     badge.className = "badge " + st;
+    if (state.gate) { badge.textContent = "等你确认"; badge.className = "badge running"; }
     if (state.message) { msg.hidden = false; msg.textContent = state.message; } else { msg.hidden = true; }
+    renderGate();
     var shots = Array.isArray(state.shots) ? state.shots : [];
     grid.innerHTML = shots.map(function (s) {
       var sst = s.status || "queued";
@@ -332,6 +453,55 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
     reportSize();
   }
 
+  function renderGate() {
+    var wrap = document.getElementById("gate");
+    if (!state || !state.gate) { wrap.hidden = true; wrap.innerHTML = ""; selectedKey = null; decideFailed = false; return; }
+    var g = state.gate;
+    var cands = Array.isArray(g.candidates) ? g.candidates : [];
+    if (selectedKey === null && cands.length) selectedKey = cands[0].key;
+    var canDecide = (g.kind === "direction" || g.kind === "sample") && state.projectId && state.runId;
+    var html = '<div class="gate-head">' + esc(g.title || "等你确认") + "</div>";
+    if (g.summary) html += '<div class="gate-sum">' + esc(g.summary) + "</div>";
+    html += cands.map(function (c) {
+      var sel = c.key === selectedKey;
+      return '<button type="button" class="cand' + (sel ? " sel" : "") + '" data-key="' + esc(c.key) + '" aria-pressed="' + (sel ? "true" : "false") + '">'
+        + '<span class="cand-t">' + esc(c.title) + "</span>"
+        + (c.oneLiner ? '<span class="cand-o">' + esc(c.oneLiner) + "</span>" : "")
+        + "</button>";
+    }).join("");
+    // 可批的门（direction/sample）summary 已把话说清 → 不再重复 kind 提示（R2）；钱/导出门的只读边界恒显。
+    var hintText = decideFailed
+      ? "这个宿主暂不支持卡内确认——去 Nomi 或在对话里说即可。"
+      : (canDecide && g.summary ? "" : (GATE_HINT[g.kind] || GATE_HINT.stage));
+    html += '<div class="gate-foot">'
+      + (canDecide ? '<button type="button" class="btn primary" id="decideBtn"' + (decideInFlight ? " disabled" : "") + ">"
+          + (decideInFlight ? "提交中…" : g.kind === "sample" ? "满意，继续批量" : "批准并继续") + "</button>" : "")
+      + (hintText ? '<span class="gate-hint">' + esc(hintText) + "</span>" : "") + "</div>";
+    wrap.innerHTML = html;
+    wrap.hidden = false;
+    Array.prototype.forEach.call(wrap.querySelectorAll(".cand"), function (el) {
+      el.addEventListener("click", function () { selectedKey = el.getAttribute("data-key"); renderGate(); });
+    });
+    var decideBtn = document.getElementById("decideBtn");
+    if (decideBtn) decideBtn.addEventListener("click", decideGate);
+    reportSize();
+  }
+
+  function decideGate() {
+    if (!state || !state.gate || decideInFlight) return;
+    var g = state.gate;
+    var args = { projectId: state.projectId, runId: state.runId, gateId: g.gateId, decision: "approved" };
+    if (g.kind === "direction" && selectedKey) args.choiceKey = selectedKey;
+    decideInFlight = true;
+    decideFailed = false;
+    rpcId += 1;
+    decideReqId = "view-" + rpcId;
+    post({ jsonrpc: "2.0", id: decideReqId, method: "tools/call", params: { name: "nomi_decide_gate", arguments: args } });
+    renderGate();
+    // 宿主不支持 tools/call 代理时不会回帧：8s 后按失败降级（按钮复活 + 指路 Nomi/对话）。
+    setTimeout(function () { if (decideInFlight) { decideInFlight = false; decideFailed = true; renderGate(); } }, 8000);
+  }
+
   function ingest(sc) {
     // 宿主注入的 tool result / tool input：生成读 nomiDraft，Production Run 读 nomiRun。
     if (sc && typeof sc === "object") {
@@ -343,6 +513,15 @@ export const NOMI_LIVE_DRAFT_WIDGET_HTML = `<!DOCTYPE html>
   window.addEventListener("message", function (ev) {
     var m = ev && ev.data;
     if (!m || typeof m !== "object") return;
+    // B6：卡内决议（tools/call nomi_decide_gate）的响应——成功即收起门等宿主推新状态；失败降级指路。
+    if (m.id && m.id === decideReqId && m.method === undefined) {
+      decideInFlight = false;
+      decideReqId = null;
+      if (m.error || (m.result && m.result.isError)) { decideFailed = true; }
+      else if (state) { state.gate = undefined; state.message = "已提交决定，等待 Nomi 状态刷新…"; }
+      render();
+      return;
+    }
     switch (m.method) {
       case "ui/notifications/tool-result":
       case "ui/notifications/tool-input":

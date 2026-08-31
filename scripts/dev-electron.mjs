@@ -5,11 +5,14 @@ import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { installChildProcessLifecycle } from "./child-process-lifecycle.mjs";
-import { ensureElectronSignature } from "./ensure-electron-signature.mjs";
+import { resolveDevStoragePaths } from "./dev-storage.mjs";
+import { assertElectronInstallIdentity } from "./electron-install-identity.mjs";
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+assertElectronInstallIdentity(repoRoot);
 const buildTailwindScript = path.join(repoRoot, "scripts", "build-tailwind.mjs");
+const buildElectronScript = path.join(repoRoot, "scripts", "build-electron.mjs");
 const childProcessLifecycle = installChildProcessLifecycle();
 
 function configureWindowsConsoleEncoding() {
@@ -51,14 +54,9 @@ function loadOnboardingAgentEnv() {
   return out;
 }
 const electron = require("electron");
-// macOS: if Apple revoked this dev Electron's notarization, re-sign it before we
-// ever spawn it — launching a revoked binary makes macOS SIGKILL and delete it.
-ensureElectronSignature(electron, { log: (msg) => console.log(msg) });
 const vitePackagePath = require.resolve("vite/package.json");
 const vitePackageDir = path.dirname(vitePackagePath);
 const viteBin = path.join(vitePackageDir, "bin", "vite.js");
-const tscPackagePath = require.resolve("typescript/package.json");
-const tscBin = path.join(path.dirname(tscPackagePath), "bin", "tsc");
 function electronEnv(extra = {}) {
   const env = { ...process.env, ...extra };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -66,12 +64,14 @@ function electronEnv(extra = {}) {
 }
 
 function compileElectronMain() {
-  const result = spawnSync(process.execPath, [tscBin, "-p", "electron/tsconfig.json"], {
+  const result = spawnSync(process.execPath, [buildElectronScript], {
+    cwd: repoRoot,
     stdio: "inherit",
     env: electronEnv(),
   });
+  if (result.error) throw result.error;
   if (result.signal) process.kill(process.pid, result.signal);
-  if (typeof result.status === "number" && result.status !== 0) process.exit(result.status);
+  if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
 function compileTailwindStyles() {
@@ -451,6 +451,7 @@ function startRendererServer(port) {
 
 const rendererPort = await findRendererPort(readPositiveIntegerEnv("NOMI_RENDERER_PORT", 5273));
 const rendererUrl = `http://127.0.0.1:${rendererPort}`;
+const devStorage = resolveDevStoragePaths({ repoRoot, rendererPort });
 const electronRendererUrl =
   process.env.NOMI_RENDERER_URL || `${rendererUrl}/index.html#/studio`;
 compileTailwindStyles();
@@ -469,7 +470,8 @@ const app = startElectron({
   env: electronEnv({
     NOMI_DESKTOP_DEV: "1",
     ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-    NOMI_ELECTRON_USER_DATA_DIR: path.join(repoRoot, ".tmp", "electron-user-data", `dev-${rendererPort}`),
+    NOMI_ELECTRON_USER_DATA_DIR: devStorage.userDataDir,
+    NOMI_PROJECTS_DIR: devStorage.projectsDir,
     VITE_DEV_SERVER_URL: electronRendererUrl,
     NOMI_RENDERER_URL: electronRendererUrl,
     ...loadOnboardingAgentEnv(),

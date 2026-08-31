@@ -11,13 +11,28 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 import type { FetchTaskResultFn, RunTaskFn } from './core'
-import { dispatch, RpcError } from './dispatcher'
-import { createDiskGateway, createHybridGateway, createRendererGateway, type ProjectGateway } from './gateway'
+import { RpcError } from './dispatcher'
+import {
+  createDiskGateway,
+  createHybridGateway,
+  createRendererGateway,
+  withPreApprovedSpend,
+  type ProjectGateway,
+} from './gateway'
 import { isRendererAvailable } from './rendererBridge'
 import { resolveMcpOrigin, verifyToken } from './security'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
-import { handleArtifactPreviewHttpRequest } from '../productionRun/artifactPreviewHttpServer'
+import { handleArtifactPreviewHttpRequest, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
 import { setArtifactPreviewHttpOrigin } from '../productionRun/artifactProjection'
+import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
+import { getWorkspaceRepositoryDeps } from '../runtimePaths'
+import { dispatchAndEnrich } from './mcpResultEnrichLive'
+import { makeShotVerifyDeps } from './shotVerifyDeps'
+import { rpcErrorWirePayload } from './mcpRpcError'
+import type { ProjectLeaseAuthority } from './projectLease'
+import type { ApprovalReceiptAuthority } from './approvalReceipt'
+import type { McpGenerationPolicy } from './mcpGenerationPolicy'
+import type { IntegrationSessionService } from '../integrationCertification/integrationSession'
 
 export type RpcServerOptions = {
   /** 真实生成入口（runtime.runTask）。注入式：headless host 与 app 各自传同一份。 */
@@ -27,6 +42,19 @@ export type RpcServerOptions = {
   /** 该 projectId 是否正在某个 app 窗口里打开（命中则拒绝直写图变更）。headless: ()=>false。 */
   isProjectOpen?: (projectId: string) => boolean
   productionRuns?: ReturnType<typeof getProductionRunService>
+  integrationSessions?: IntegrationSessionService
+  /** Optional main-process lease/receipt authorities. Omitted callers remain fail-closed for semantic routes. */
+  projectLeaseAuthority?: ProjectLeaseAuthority
+  resolveCurrentProject?: import('./dispatcher').DispatchContext['resolveCurrentProject']
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
+  requestGenerationGate?: import('./dispatcher').DispatchContext['requestGenerationGate']
+  authorizeGeneration?: import('./dispatcher').DispatchContext['authorizeGeneration']
+  /** Internal client→GUI fallback. The callback must verify the challenge before prompting. */
+  confirmGenerationInNomi?: (input: { challengeToken: string }) => Promise<unknown>
+  generationPolicy?: McpGenerationPolicy
+  generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  generationPlanning?: import('./dispatcher').DispatchContext['generationPlanning']
+  projectRevisionResolver?: (projectId: string) => number | undefined
 }
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -55,7 +83,7 @@ function bearerToken(req: http.IncomingMessage): string {
 }
 
 function firstHeader(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? '' : value ?? ''
+  return Array.isArray(value) ? (value[0] ?? '') : (value ?? '')
 }
 
 export type RpcServerHandle = {
@@ -75,6 +103,10 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
     if (!projectId || !isRendererAvailable()) return createDiskGateway(projectId)
     return isProjectOpen(projectId) ? createRendererGateway(projectId) : createHybridGateway(projectId)
   }
+  // 交付④：同一预览 server 兼解 canvas-asset token（生成结果缩略图给非 Electron 宿主）。
+  const previewService = withAssetPreview(productionRuns, (projectId) =>
+    resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()),
+  )
 
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -84,33 +116,88 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         res.end(body)
       }
       try {
-        if (await handleArtifactPreviewHttpRequest(req, res, productionRuns)) return
+        if (await handleArtifactPreviewHttpRequest(req, res, previewService)) return
         if (req.method !== 'POST' || req.url !== '/rpc') throw new RpcError('仅支持 POST /rpc', 404)
         if (!verifyToken(bearerToken(req))) throw new RpcError('鉴权失败：token 无效', 401)
         const raw = await readBody(req)
-        let parsed: { method?: unknown; params?: unknown }
+        let parsed: { method?: unknown; params?: unknown; planConfirmed?: unknown; spendConfirmed?: unknown }
         try {
           parsed = JSON.parse(raw || '{}')
         } catch {
           throw new RpcError('请求体非合法 JSON', 400)
         }
         const method = String(parsed.method || '')
-        const params = (parsed.params && typeof parsed.params === 'object' ? parsed.params : {}) as Record<string, unknown>
+        const params = (parsed.params && typeof parsed.params === 'object' ? parsed.params : {}) as Record<
+          string,
+          unknown
+        >
         const origin = resolveMcpOrigin(
           firstHeader(req.headers['x-nomi-mcp-client']),
           firstHeader(req.headers['x-nomi-mcp-client-proof']),
         )
-        const result = await dispatch(method, params, {
+        if (method === 'nomi_confirm_generation_gate') {
+          if (origin === 'external' || origin === 'nomi')
+            throw new RpcError('Registered MCP client proof is required', 403)
+          const challengeToken = typeof params.challengeToken === 'string' ? params.challengeToken.trim() : ''
+          if (!challengeToken) throw new RpcError('Generation challenge is required', 400)
+          if (typeof options.confirmGenerationInNomi !== 'function')
+            throw new RpcError('Nomi confirmation is unavailable', 501)
+          const result = await options.confirmGenerationInNomi({ challengeToken })
+          send(200, { ok: true, result })
+          return
+        }
+        // 付费已在**调用方客户端**经 elicitation 被真人确认（协议层 mcpProtocol.ts 只在收到
+        // `action:'accept' + confirm:true` 后才置位）→ 预批准付费门，App 不再弹第二张确认卡。
+        //
+        // 这条曾**刻意不过线**，注释写着「永远不预批 confirmSpend」。2026-08-18 用户拍板放开，理由与代价：
+        // · 为什么放开——旧判据是「Nomi 窗口开着没」，它跟「用户注意力在不在 Nomi」没有因果关系（桌面上常年
+        //   挂着 Nomi）。结果：人在 Claude 里驱动生成，却被赶回 Nomi 点一下。若信号不过线，协议层弹完
+        //   elicitation 这边照样弹卡 → 变成点两次，比原来更糟。
+        // · 为什么仍守得住 spendGrant.ts 写死的威胁模型（「Nomi 的 AI 触发不了未确认的付费生成」）——模型只能
+        //   吐 tool-call/文本，伪造不了客户端写进 server stdin 的 elicitation 响应帧；且 App 关着时这条一模一样的
+        //   信任链早已在用（makeConfirmedGateway）。
+        // · 代价（已知并接受）——能读 `~/.nomi/capability-core/token` 的本地进程可借此静默烧额度；此前它触发生成
+        //   会弹卡、用户看得见能拒。这是把「防本地攻击者」这层纵深换成「少跑一趟」，不是「防 AI」那道红线松了。
+        // ⚠️ 边界仅放宽到付费确认这一处：令牌仍只在主进程铸、assertAndConsumeSpendGrant 仍逐次硬校验、
+        // 导出等其余硬边界一律不得复制本模式（那些是抗伪造红线，客户端一个 flag 不足以过）。
+        const preApprovedSpend = parsed.spendConfirmed === true
+        // 交付②④：dispatch + 生成结果富化收口在 dispatchAndEnrich（0a）——传输里没有 bare dispatch 可调，
+        // 缩略图 base64 / 签名预览链的富化在结构上不可能被忘（此进程有 nativeImage，launcher bare node 做不了）。
+        const result = await dispatchAndEnrich(method, params, {
           runTask: options.runTask,
           fetchTaskResult: options.fetchTaskResult,
-          makeGateway,
+          makeGateway: preApprovedSpend
+            ? (projectId: string) => withPreApprovedSpend(makeGateway(projectId))
+            : makeGateway,
           productionRuns,
+          integrationSessions: options.integrationSessions,
           origin: { host: origin },
+          generationPolicy: options.generationPolicy,
+          generationContext: options.generationContext,
+          generationPlanning: options.generationPlanning,
+          projectRevisionResolver: options.projectRevisionResolver,
+          projectLeaseAuthority: options.projectLeaseAuthority,
+          resolveCurrentProject: options.resolveCurrentProject,
+          approvalReceiptAuthority: options.approvalReceiptAuthority,
+          requestGenerationGate: options.requestGenerationGate,
+          authorizeGeneration: options.authorizeGeneration,
+          // 审片环（W1）：GUI-开着的 RPC 路复用同一份主进程 deps（judge/抽帧/重试都在主进程跑，与 headless 同实现，
+          // 无并行版 P1）。生成在主进程 core、判分也在主进程，路径①两条传输吃同一 makeShotVerifyDeps。
+          makeVerifyDeps: (verifyCtx) => makeShotVerifyDeps(verifyCtx),
+          // 画布方案已在聊天里确认（协议层 elicitation-first）→ addNodes 预批准方案门、渲染层不再弹卡（免双问）。
+          //
+          // 为什么这里敢信客户端传的 planConfirmed（对比 origin「never trust」的硬边界）：方案门守的是
+          // 「模型的决定要过真人」这道软闸，不是抗伪造令牌的红线——加节点免费、可撤销，且持有本 RPC token
+          // 的进程在 headless 下 confirmPlan 本就恒 true，客户端「预批」拿不到它本来拿不到的权限。协议层也只
+          // 在真人 accept 之后才置这个位。
+          ...(parsed.planConfirmed === true ? { planConfirmed: true } : {}),
         })
         send(200, { ok: true, result })
       } catch (error) {
         const status = error instanceof RpcError ? error.httpStatus : 500
-        send(status, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        // Keep ordinary errors as legacy strings; policy errors preserve their
+        // typed recovery contract for local RPC clients.
+        send(status, { ok: false, error: rpcErrorWirePayload(error) })
       }
     })()
   })

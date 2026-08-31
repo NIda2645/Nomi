@@ -9,6 +9,9 @@ import { streamText } from "ai";
 import { buildLanguageModelForVendor } from "./vendorLanguageModel";
 import { sanitizeForBroadCompat } from "./promptSanitize";
 import type { Model, Vendor } from "../catalog/types";
+import { readNomiLocalAsset } from "../assets/localAssetFile";
+import { ANTIGRAVITY_VENDOR_KEY } from "../shared/antigravity";
+import { runAntigravityTask } from "./antigravityTask";
 
 export type StreamTextTaskInput = {
   vendor: Vendor;
@@ -36,7 +39,12 @@ const FIRST_TOKEN_TIMEOUT_MS = 30_000;
 const OVERALL_TIMEOUT_MS = 120_000;
 
 /** http(s) URL 走 URL 引用（不内联）；data:/base64 等原样作字符串传给 SDK。 */
-function toImagePart(imageUrl: string): { type: "image"; image: URL | string } {
+function toImagePart(imageUrl: string): { type: "image"; image: URL | string | Uint8Array; mimeType?: string } {
+  if (imageUrl.startsWith("nomi-local://")) {
+    const asset = readNomiLocalAsset(imageUrl);
+    if (!asset || !asset.contentType.startsWith("image/")) throw new Error("Local image attachment is missing or unreadable");
+    return { type: "image", image: asset.bytes, mimeType: asset.contentType };
+  }
   if (/^https?:\/\//i.test(imageUrl)) {
     try {
       return { type: "image", image: new URL(imageUrl) };
@@ -50,11 +58,22 @@ function toImagePart(imageUrl: string): { type: "image"; image: URL | string } {
 /**
  * 流式跑一个文本任务。返回 { text, raw }——raw 合成成 OpenAI choices 形状，
  * 让渲染层既有的 extractTextFromChatRaw 零改动继续可用。
+ *
+ * 另附 finishReason / reasoning（2026-08-12 加）：思考型模型（DeepSeek V4、R1、o 系…）
+ * 会先吐 reasoning_content 再吐正文，而 textStream **只含正文**。额度不够时正文为空、
+ * finishReason='length'——这时「没拿到文字」是我们自己截断的，不是模型不行。
+ * 调用方要能分清这两种空，才不会把好模型判死（见 providerAdapter/verifier 探测）。
  */
 export async function streamTextTask(
   input: StreamTextTaskInput,
   opts: StreamTextTaskOptions = {},
-): Promise<{ text: string; raw: unknown }> {
+): Promise<{ text: string; raw: unknown; finishReason?: string; reasoning?: string }> {
+  if (input.vendor.key === ANTIGRAVITY_VENDOR_KEY) {
+    const result = await runAntigravityTask({ prompt: input.prompt, model: input.model.modelKey,
+      imageUrls: input.imageUrl ? [input.imageUrl] : [], signal: opts.abortSignal, onDelta: opts.onDelta });
+    return { text: result.text, raw: { choices: [{ message: { role: "assistant", content: result.text } }],
+      usage: result.usage }, finishReason: "stop" };
+  }
   const model = buildLanguageModelForVendor(input.vendor, input.model, input.apiKey);
   // 收口 sanitize（P0-6）：与原文本分支同语义，prompt 统一 ASCII 可移植化。
   const promptText = sanitizeForBroadCompat(input.prompt);
@@ -111,5 +130,15 @@ export async function streamTextTask(
   // abort 导致的静默结束在这里兜：是我们的超时 abort 就抛错（落 node error 可重试），
   // 不能把空/残文本当成功返回。外部取消(timeoutReason 为空)则由渲染层的取消路径收尾。
   if (timeoutReason) throw timeoutError();
-  return { text, raw: { choices: [{ message: { role: "assistant", content: text } }] } };
+  // 流已跑完，这两个 promise 立即可解；individual provider 不给就当没有，绝不因此让整个任务失败。
+  const [finishReason, reasoning] = await Promise.all([
+    result.finishReason.catch(() => undefined),
+    result.reasoning.catch(() => undefined),
+  ]);
+  return {
+    text,
+    raw: { choices: [{ message: { role: "assistant", content: text } }] },
+    ...(finishReason ? { finishReason } : {}),
+    ...(reasoning ? { reasoning } : {}),
+  };
 }

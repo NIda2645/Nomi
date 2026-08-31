@@ -15,6 +15,7 @@ import readline from 'node:readline'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
+import { withLinuxNoSandbox } from './_launchApp.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -28,9 +29,39 @@ const ok = (c, l) => { if (!c) throw new Error(`FAIL: ${l}`); passed += 1; conso
 const UI_EXT = 'io.modelcontextprotocol/ui'
 const MIME = 'text/html;profile=mcp-app'
 
-const child = spawn(require('electron'), [repoRoot, '--disable-gpu'], {
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_MCP_STDIO: '1', NOMI_SETTINGS_DIR: tmp, NOMI_ELECTRON_USER_DATA_DIR: tmp, NOMI_PROJECTS_DIR: path.join(tmp, 'projects'), NOMI_CAPABILITY_DIR: path.join(tmp, 'cap') },
+const appBundle = process.env.NOMI_APP_PATH || path.join(repoRoot, 'release', 'mac-arm64', 'Nomi.app')
+const packaged = process.platform === 'darwin' && fs.existsSync(path.join(appBundle, 'Contents', 'MacOS', 'Nomi'))
+const appExecutable = packaged ? path.join(appBundle, 'Contents', 'MacOS', 'Nomi') : require('electron')
+const appArgs = packaged ? [] : withLinuxNoSandbox([repoRoot, '--disable-gpu'])
+// 打包版 MCP 入口必须经过同 bundle 的 bare-Node launcher。直接执行 Electron 主进程会
+// 启动 GUI/单实例路径而不是把 stdio 接口交给宿主；发布冒烟使用同一条已验证路径。
+const launcherScript = packaged
+  ? path.join(appBundle, 'Contents', 'Resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+  : null
+const spawnCommand = packaged
+  ? path.join(appBundle, 'Contents', 'Frameworks', 'Nomi Helper.app', 'Contents', 'MacOS', 'Nomi Helper')
+  : appExecutable
+const spawnArgs = packaged ? [launcherScript] : appArgs
+
+const child = spawn(spawnCommand, spawnArgs, {
+  cwd: packaged ? tmp : repoRoot,
+  env: {
+    ...process.env,
+    NOMI_E2E: '1',
+    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
+    NOMI_MCP_STDIO: '1',
+    NOMI_SETTINGS_DIR: tmp,
+    NOMI_ELECTRON_USER_DATA_DIR: tmp,
+    NOMI_PROJECTS_DIR: path.join(tmp, 'projects'),
+    NOMI_CAPABILITY_DIR: path.join(tmp, 'cap'),
+    ...(packaged
+      ? {
+          ELECTRON_RUN_AS_NODE: '1',
+          NOMI_MCP_APP_COMMAND: appExecutable,
+          NOMI_MCP_APP_ARGS: '[]',
+        }
+      : {}),
+  },
   stdio: ['pipe', 'pipe', 'inherit'],
 })
 const pending = new Map()
@@ -50,7 +81,9 @@ try {
   // 1) initialize —— 声明 UI 扩展（像一个真 MCP Apps 宿主）。
   let init = null
   for (let i = 0; i < 20 && !init; i++) {
-    try { init = await rpc('initialize', { protocolVersion: '2026-01-26', capabilities: { extensions: { [UI_EXT]: { mimeTypes: [MIME] } } } }, 4000) } catch { await new Promise((r) => setTimeout(r, 1000)) }
+    // MCP Apps 的 UI 扩展独立于核心协议版本协商；Nomi 当前支持的核心版本是
+    // 2025-11-25，不能把扩展规范日期误当成 initialize.protocolVersion。
+    try { init = await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: { extensions: { [UI_EXT]: { mimeTypes: [MIME] } } } }, 4000) } catch { await new Promise((r) => setTimeout(r, 1000)) }
   }
   ok(init?.result, '真 Nomi stdio server 起来了（app 二进制 NOMI_MCP_STDIO）')
 
@@ -109,6 +142,78 @@ try {
     await page.close()
     return evidence
   }
+  // B6 gate 卡：direction 候选点选 + 卡内决议（tools/call 代理）在真 server 吐的 widget 里走通。
+  async function renderGateCard(colorScheme, data, name) {
+    const page = await browser.newPage({ colorScheme, viewport: { width: 460, height: 680 } })
+    await page.setContent('<div id="host" style="padding:12px"></div>')
+    await page.evaluate(({ html, payload }) => {
+      window.__toolCalls = []
+      const f = document.createElement('iframe')
+      f.style.cssText = 'width:420px;height:640px;border:0'
+      window.addEventListener('message', (e) => {
+        const m = e.data
+        if (!m || typeof m !== 'object') return
+        if (m.method === 'ui/initialize' || m.method === 'ui/notifications/initialized') {
+          f.contentWindow.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { structuredContent: { nomiRun: payload } } }, '*')
+        }
+        if (m.method === 'tools/call' && m.id) {
+          window.__toolCalls.push(m.params)
+          f.contentWindow.postMessage({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: 'ok' }] } }, '*')
+        }
+      })
+      f.srcdoc = html
+      document.getElementById('host').appendChild(f)
+    }, { html: widgetHtml, payload: data })
+    await page.waitForTimeout(700)
+    const frame = page.frames().find((candidate) => candidate !== page.mainFrame())
+    const shoot = async (shotName) => { await page.screenshot({ path: path.join(shotsDir, shotName) }); console.log(`  · shot ${shotName}`) }
+    if (name) await shoot(name)
+    return { page, frame, shoot }
+  }
+  const directionRun = {
+    kind: 'production', title: 'Nomi · brand.promo', status: 'available',
+    projectId: 'project-demo', runId: 'run-demo', deepLink: 'nomi://project/project-demo/run/run-demo', shots: [],
+    gate: { gateId: 'gate-direction-v1', kind: 'direction', title: '确认创意方向', summary: '选一个方向，我再据此拟分镜；批准前不会调用付费模型。', candidates: [
+      { key: 'doc', title: '纪实暖调', oneLiner: '真实创作者与真实桌面' },
+      { key: 'kinetic', title: '动感产品剪', oneLiner: '节拍卡点的画布与时间轴' },
+      { key: 'minimal', title: '极简棚拍', oneLiner: '干净大光比的 UI 特写' },
+    ] },
+  }
+  const gateCtx = await renderGateCard('light', directionRun, null)
+  const gateEvidence = await gateCtx.frame.evaluate(() => ({
+    candCount: document.querySelectorAll('.cand').length,
+    badge: document.querySelector('#badge')?.textContent || '',
+    firstSelected: document.querySelector('.cand.sel .cand-t')?.textContent || '',
+  }))
+  ok(gateEvidence.candCount === 3, 'gate 卡渲染三个方向候选（真 server widget）')
+  ok(gateEvidence.badge === '等你确认', '门等待时徽章显「等你确认」')
+  ok(gateEvidence.firstSelected === '纪实暖调', '默认选中第一个候选')
+  await gateCtx.frame.click('.cand[data-key="kinetic"]')
+  const afterPick = await gateCtx.frame.evaluate(() => document.querySelector('.cand.sel .cand-t')?.textContent || '')
+  ok(afterPick === '动感产品剪', '点选第二个候选后选中态跟随')
+  await gateCtx.shoot('host-gate-direction-light.png')
+  await gateCtx.frame.click('#decideBtn')
+  await gateCtx.page.waitForTimeout(400)
+  const toolCalls = await gateCtx.page.evaluate(() => window.__toolCalls)
+  ok(toolCalls.length === 1 && toolCalls[0].name === 'nomi_decide_gate', '卡内批准发出 tools/call nomi_decide_gate（SEP-1865 代理）')
+  ok(toolCalls[0].arguments.choiceKey === 'kinetic' && toolCalls[0].arguments.decision === 'approved', '决议参数带选中的 choiceKey')
+  const afterDecide = await gateCtx.frame.evaluate(() => ({
+    gateHidden: document.querySelector('#gate')?.hidden === true,
+    msg: document.querySelector('#msg')?.textContent || '',
+  }))
+  ok(afterDecide.gateHidden && afterDecide.msg.includes('已提交决定'), '决议成功后门收起并提示等待状态刷新')
+  await gateCtx.shoot('host-gate-decided-light.png')
+  await gateCtx.page.close()
+  const sampleRun = {
+    ...directionRun,
+    gate: { gateId: 'gate-sample-v1', kind: 'sample', title: '样片等你过目', summary: '上方就是首镜样片；满意就继续批量。' },
+    shots: [{ index: 1, title: 'video', status: 'success', kind: 'video', thumbnailUrl: thumb }],
+  }
+  const sampleCtx = await renderGateCard('light', sampleRun, 'host-gate-sample-light.png')
+  const sampleEvidence = await sampleCtx.frame.evaluate(() => document.querySelector('#decideBtn')?.textContent || '')
+  ok(sampleEvidence === '满意，继续批量', '样片门卡内按钮文案正确（图在卡内、批准即续批）')
+  await sampleCtx.page.close()
+
   const rendered = await render('light', 'host-render-light.png')
   await render('dark', 'host-render-dark.png')
   ok(rendered?.previewCount === 1, 'canonical nomiRun 只渲染一个最新预览')

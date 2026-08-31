@@ -1,4 +1,4 @@
-// 任务中心面板（右上浮卡，照 OnboardingFloatingPanel 模式：不遮画布、不 dim、ESC/点外关）。
+// 任务中心面板（右上浮卡：不遮画布、不 dim、ESC/点外关）。
 // 方案：docs/plan/2026-08-02-task-center-queue.md，样张 2026-08-02 拍板。
 //
 // 只负责画；分组/排序/可取消性判定全在纯函数 taskCenterEntries.ts（可单测）。
@@ -8,7 +8,7 @@ import { Portal } from '@mantine/core'
 import { IconAlertTriangle, IconCheck, IconClock, IconProgress, IconLoader2, IconLock, IconX } from '@tabler/icons-react'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useGenerationQueueStore } from '../generationCanvas/runner/generationQueueStore'
-import { requestComfyuiCancel } from '../generationCanvas/runner/comfyuiTaskControl'
+import { requestTaskCancel } from '../generationCanvas/runner/localTaskControl'
 // 重试复用既有链路（单发 confirmAndRunNode / 批量 confirmAndRunPlan），不另起一套付费路径。
 import { confirmAndRunNode } from '../generationCanvas/runner/generationRunController'
 import { confirmAndRunPlan } from '../generationCanvas/components/batchPlanPreview'
@@ -18,9 +18,10 @@ import { currentWorkbenchFloatingTopOffset } from '../../ui/app-shell/windowChro
 import type { ProductionRunSummary } from '../../../electron/productionRun/productionRunTypes'
 import type { TaskCenterProjection } from './taskCenterProjection'
 import { buildProductionRunTaskRows } from './productionRunTaskCenter'
+import { ProductionRunTaskCard } from '../production/ProductionRunTaskCard'
+import { useProductionStatus } from '../production/useProductionStatus'
 
 const PANEL_WIDTH = 380
-const TOP_OFFSET = currentWorkbenchFloatingTopOffset()
 const RIGHT_OFFSET = 12
 /** 进行中的已跑时长要走字，1s 一跳就够（别 rAF，白烧 CPU）。 */
 const TICK_MS = 1000
@@ -37,10 +38,16 @@ type Props = {
 export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProductionRun, onRevealNode }: Props): JSX.Element | null {
   const { t } = useTranslation()
   const panelRef = React.useRef<HTMLDivElement>(null)
+  // 渲染时现算，别提到模块作用域：模块常量在 import 那一刻定死，拿不到 platform 就悄悄
+  // 回落成 mac 的 64px，Windows 上浮卡上移 32px 贴进自绘窗口栏（issue #58 同因）。
+  const topOffset = currentWorkbenchFloatingTopOffset()
   const entries = useGenerationQueueStore((state) => state.entries)
   const batches = useGenerationQueueStore((state) => state.batches)
   const nodes = useGenerationCanvasStore((state) => state.nodes)
   const [now, setNow] = React.useState(() => Date.now())
+  // N1：制作任务的家搬到这里（原先在画布助手面板里，见 plan 2026-08-11-nomi-side-viewer-and-fallback）。
+  // 只在面板打开时加载/轮询完整 run——关着时徽标由 TaskCenterButton 的 summary 轮询维持。
+  const production = useProductionStatus({ enabled: opened })
 
   React.useEffect(() => {
     if (!opened) return
@@ -83,6 +90,7 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
     statuses: {
       draft: t('taskCenter.productionRun.statuses.draft'),
       awaiting_direction: t('taskCenter.productionRun.statuses.awaitingDirection'),
+      awaiting_script_review: t('taskCenter.productionRun.statuses.awaitingScriptReview'),
       awaiting_storyboard_review: t('taskCenter.productionRun.statuses.awaitingStoryboardReview'),
       awaiting_contract: t('taskCenter.productionRun.statuses.awaitingContract'),
       ready: t('taskCenter.productionRun.statuses.ready'),
@@ -117,7 +125,7 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
   const cancelQueued = (row: TaskCenterRow) => useGenerationQueueStore.getState().cancelEntry(row.batchId, row.nodeId)
   const interruptRunning = (row: TaskCenterRow) => {
     const node = nodes.find((candidate) => candidate.id === row.nodeId)
-    if (node) requestComfyuiCancel(node)
+    if (node) requestTaskCancel(node)
   }
   const cancelAllQueued = () => {
     const batchIds = new Set(queued.filter((row): row is TaskCenterRow => row.kind === 'generation').map((row) => row.batchId))
@@ -144,6 +152,31 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
       onRevealProductionRun?.(row.projectId, row.runId)
     }
   }
+  /**
+   * 制作任务在这里长成完整卡（看片台 + 兜底）；其余任务仍是紧凑行。
+   * 只有 store 已载入的那个 run 出卡——其它 run 拿不到完整数据（gates/artifacts），保持行不撒谎。
+   */
+  const renderRow = (row: TaskCenterProjection): JSX.Element => {
+    if (row.kind === 'production_run' && production.view && production.production.run?.runId === row.runId) {
+      const run = production.production.run
+      return (
+        <div key={row.id} className="px-2.5 pb-1.5">
+          <ProductionRunTaskCard
+            projectId={run.projectId}
+            view={production.view}
+            playbookName={run.playbook.name}
+            artifacts={run.artifacts}
+            focusedArtifactId={production.focusedArtifactId}
+            onPrimaryAction={(action) => { void production.onPrimaryAction(action) }}
+            onControl={(action) => { void production.onControl(action) }}
+            onOpenPreview={() => reveal(row)}
+          />
+        </div>
+      )
+    }
+    return <TaskRow key={row.id} row={row} onReveal={reveal} onAction={() => void runAction(row)} />
+  }
+
   const runAction = async (row: TaskCenterProjection): Promise<void> => {
     const action = row.action
     if (!action) return
@@ -159,13 +192,15 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
         role="dialog"
         aria-label={t('taskCenter.title')}
         data-nomi-right-panel="tasks"
-        className="flex flex-col overflow-hidden bg-nomi-paper border border-nomi-line shadow-nomi-lg"
+        // app-no-drag：与模型设置浮卡同因同治（issue #58）——Portal 到 body 的浮层不是窗口栏后代，
+        // 拿不到窗口栏内的拖拽豁免，压在 Windows 自绘拖拽带上的按钮点击会被系统当拖窗口吞掉。
+        className="app-no-drag flex flex-col overflow-hidden bg-nomi-paper border border-nomi-line shadow-nomi-lg"
         style={{
           position: 'fixed',
-          top: TOP_OFFSET,
+          top: topOffset,
           right: RIGHT_OFFSET,
           width: `min(${PANEL_WIDTH}px, calc(100vw - 24px))`,
-          maxHeight: `calc(100vh - ${TOP_OFFSET + 16}px)`,
+          maxHeight: `calc(100vh - ${topOffset + 16}px)`,
           borderRadius: 'var(--nomi-radius-lg)',
           zIndex: 4000,
           animation: 'nomi-panel-pop 140ms cubic-bezier(.2, .7, .3, 1)',
@@ -199,9 +234,7 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
           {running.length > 0 ? (
             <SectionHeader icon={<IconLoader2 size={13} stroke={1.8} />} label={t('taskCenter.sections.running', { count: running.length })} />
           ) : null}
-          {running.map((row) => (
-            <TaskRow key={row.id} row={row} onReveal={reveal} onAction={() => void runAction(row)} />
-          ))}
+          {running.map((row) => renderRow(row))}
 
           {queued.length > 0 ? (
             <SectionHeader
@@ -210,21 +243,12 @@ export function TaskCenterPanel({ opened, onClose, productionRuns, onRevealProdu
               note={t('taskCenter.freeToCancel')}
             />
           ) : null}
-          {queued.map((row) => (
-            <TaskRow key={row.id} row={row} onReveal={reveal} onAction={() => void runAction(row)} />
-          ))}
+          {queued.map((row) => renderRow(row))}
 
           {done.length > 0 ? (
             <SectionHeader icon={<IconCheck size={13} stroke={1.8} />} label={t('taskCenter.sections.done', { count: done.length })} />
           ) : null}
-          {done.map((row) => (
-            <TaskRow
-              key={row.id}
-              row={row}
-              onReveal={reveal}
-              onAction={() => void runAction(row)}
-            />
-          ))}
+          {done.map((row) => renderRow(row))}
 
           {rows.length === 0 ? (
             <div className="px-3.5 py-9 text-center text-caption text-nomi-ink-40 leading-relaxed">

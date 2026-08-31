@@ -5,13 +5,12 @@
 //
 // 队列状态经 window.__nomiQueueStore（仅 localStorage.__nomiE2E==='1' 暴露）用**真 store 的真 action**摆出来，
 // 渲染的是真组件读真状态；「runner 会不会把状态填成这样」由 generationQueue.test.ts 那几条不变量单测把关。
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/task-center')
 fs.rmSync(shotsDir, { recursive: true, force: true })
@@ -24,26 +23,24 @@ let n = 0
 async function snap(win, name) {
   n += 1
   const tag = `${String(n).padStart(2, '0')}-${name}`
-  await win.screenshot({ path: path.join(shotsDir, `${tag}.png`) })
+  await screenshotSettled(win, { path: path.join(shotsDir, `${tag}.png`) })
   console.log(`  · shot ${tag}`)
   // 面板开着时再裁一张只含面板的：整窗图缩太小，字看不清就等于没人眼验过（R13 眼见链）。
   const box = await win.locator('[role="dialog"][aria-label="任务"]').first().boundingBox().catch(() => null)
   if (box) {
-    await win.screenshot({
+    await screenshotSettled(win, {
       path: path.join(shotsDir, `${tag}--panel.png`),
       clip: { x: Math.max(0, box.x - 4), y: Math.max(0, box.y - 4), width: box.width + 8, height: box.height + 8 },
     })
   }
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${userData}`, '--no-proxy-server'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
+const { app, win } = await launchNomiApp({
+  name: 'task-center',
+  userDataDir: userData,
+  args: ['--no-proxy-server'],
+  settleMs: 0,
 })
-const win = await app.firstWindow()
-await win.waitForLoadState('domcontentloaded')
 
 // 压掉首启 splash / 引导旅途 / 手势提示，并开 E2E 桥，然后 reload 让它们生效。
 await win.evaluate(() => {
@@ -128,7 +125,7 @@ await snap(win, 'topbar-busy-badge')
 {
   const bar = await win.locator('.nomi-appbar__right').first().boundingBox().catch(() => null)
   if (bar) {
-    await win.screenshot({
+    await screenshotSettled(win, {
       path: path.join(shotsDir, '04b-topbar-right-zoom.png'),
       clip: { x: Math.max(0, bar.x - 8), y: Math.max(0, bar.y - 8), width: bar.width + 16, height: bar.height + 16 },
     })
@@ -144,7 +141,7 @@ await snap(win, 'topbar-busy-badge')
     if (box && box.y > 90 && box.y < 620) { badge = box; break }
   }
   if (badge) {
-    await win.screenshot({
+    await screenshotSettled(win, {
       path: path.join(shotsDir, '04c-canvas-queued-node.png'),
       clip: { x: Math.max(0, badge.x - 14), y: Math.max(0, badge.y - 14), width: 300, height: 190 },
     })

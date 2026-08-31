@@ -1,7 +1,8 @@
-import { net, protocol } from "electron";
+import { protocol } from "electron";
 import fs from "node:fs";
-import { pathToFileURL } from "node:url";
+import { createOwnedFileStream } from "./fileResponseStream";
 import { contentTypeFromPath } from "../assets/assetPaths";
+import { resolveContentType } from "../assets/mediaTypes";
 import { resolveProjectRelativePath } from "../projects/repository";
 import { getArtifactPreviewSecret, verifyArtifactPreviewHandle } from "../productionRun/artifactProjection";
 
@@ -65,6 +66,22 @@ function assetPathFromUrl(rawUrl: string): string | null {
   return parseLocalAssetUrl(rawUrl)?.filePath ?? null;
 }
 
+function contentTypeForFile(filePath: string): string {
+  const extensionType = contentTypeFromPath(filePath);
+  if (extensionType !== "application/octet-stream") return extensionType;
+  let descriptor: number | null = null;
+  try {
+    descriptor = fs.openSync(filePath, "r");
+    const header = Buffer.alloc(4096);
+    const bytesRead = fs.readSync(descriptor, header, 0, header.length, 0);
+    return resolveContentType(filePath, header.subarray(0, bytesRead));
+  } catch {
+    return extensionType;
+  } finally {
+    if (descriptor !== null) fs.closeSync(descriptor);
+  }
+}
+
 type ByteRange = { start: number; end: number };
 
 function parseRangeHeader(rangeHeader: string, size: number): ByteRange | null {
@@ -88,12 +105,12 @@ function parseRangeHeader(rangeHeader: string, size: number): ByteRange | null {
 function streamRange(filePath: string, range: ByteRange, size: number, method: string): Response {
   const contentLength = range.end - range.start + 1;
   const headers = withLocalAssetHeaders({
-    "Content-Type": contentTypeFromPath(filePath),
+    "Content-Type": contentTypeForFile(filePath),
     "Content-Length": String(contentLength),
     "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
   });
-  const body = method === "HEAD" ? null : fs.createReadStream(filePath, { start: range.start, end: range.end });
-  return new Response(body as BodyInit | null, { status: 206, headers });
+  const body = method === "HEAD" ? null : createOwnedFileStream(filePath, { start: range.start, end: range.end });
+  return new Response(body, { status: 206, headers });
 }
 
 function rangeNotSatisfiable(size: number): Response {
@@ -116,9 +133,21 @@ export async function handleNomiLocalRequest(request: Request): Promise<Response
       if (!range) return rangeNotSatisfiable(stat.size);
       return streamRange(filePath, range, stat.size, request.method);
     }
-    const fileResponse = await net.fetch(pathToFileURL(filePath).toString());
-    const corsHeaders = withLocalAssetHeaders(fileResponse.headers);
-    return new Response(request.method === "HEAD" ? null : fileResponse.body, { status: fileResponse.status, headers: corsHeaders });
+    const stat = fs.statSync(filePath);
+    const headers = withLocalAssetHeaders({
+      "Content-Type": contentTypeForFile(filePath),
+      "Content-Length": String(stat.size),
+    });
+    // 这里踩过三条路，**全都抛同一个 ERR_INVALID_STATE**（不可捕获，直接弹主进程崩溃框）。
+    // 判据不是「用哪个 API」，而是「**流的关闭权在不在我们手里**」：
+    //   ① 包 net.fetch 的响应流 → Electron 关一次、原始 Response 再关一次；
+    //   ② `new Response(nodeStream)` → 关闭权交给 undici 的 ReadableStreamFrom，
+    //      它在 queueMicrotask 里裸调 close()、cancel() 又不置标记（2026-08-24 用户报的就是这条）；
+    //   ③ `Readable.toWeb(nodeStream)` → 换成 Node 自己的适配器，同族竞态 nodejs/node#64529
+    //      至今 OPEN、修复 PR 未合（本仓 v0.20.1 的 fileBody() 曾走这条，已在本轮删除）。
+    // 三条都得避开：用我们自己拥有、自带关闭闸的流。见 ./fileResponseStream.ts。
+    const body = request.method === "HEAD" ? null : createOwnedFileStream(filePath);
+    return new Response(body, { status: 200, headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : "local asset not found";
     return new Response(message, { status: 404 });

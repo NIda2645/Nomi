@@ -4,7 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // (本测试的 case 不带 modelKey,真实代码路径也不会调它)。
 vi.mock('./availableModels', () => ({ listAvailableModelsForAgent: vi.fn(async () => []) }))
 
-import { applyCanvasToolCall, parseCameraMoveSpec, parseStagingSpec, resetClientIdRegistry, resolveCanvasToolNodeId } from './applyCanvasToolCall'
+import {
+  applyCanvasToolCall,
+  parseCameraMoveSpec,
+  parseStagingSpec,
+  resetClientIdRegistry,
+  resolveCanvasToolNodeId,
+} from './applyCanvasToolCall'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useWorkbenchStore } from '../../workbenchStore'
 import type { StoryboardPlan } from './storyboardPlan'
@@ -17,7 +23,39 @@ function resetCanvas() {
 // 回归锁(评测 sb-001 抓出):agent 用 clientId(n1/n2)连边,渲染层曾不翻译直接
 // 入 store → 落盘 "n1→n2" 吊边(指向不存在节点,连线静默丢失)。
 describe('applyCanvasToolCall clientId 翻译', () => {
-  beforeEach(resetCanvas)
+  beforeEach(() => {
+    resetCanvas()
+    useWorkbenchStore.setState({ activeCategoryId: 'shots', canvasFitNonce: 0, canvasFitCategoryId: null })
+  })
+
+  it('批量创建节点后请求一次适应视图，单节点不打断当前视口', async () => {
+    await applyCanvasToolCall('create_canvas_nodes', {
+      nodes: [{ clientId: 'solo', kind: 'image', title: '单节点', prompt: 'p' }],
+    })
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(0)
+
+    await applyCanvasToolCall('create_canvas_nodes', {
+      nodes: [
+        { clientId: 'batch-1', kind: 'image', title: '批量 1', prompt: 'p1' },
+        { clientId: 'batch-2', kind: 'video', title: '批量 2', prompt: 'p2' },
+      ],
+    })
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(1)
+    expect(useWorkbenchStore.getState().canvasFitCategoryId).toBe('shots')
+  })
+
+  it('批量节点不在当前分类时切到包含新节点的主分类再 fit', async () => {
+    useWorkbenchStore.getState().setActiveCategoryId('audio')
+    await applyCanvasToolCall('create_canvas_nodes', {
+      nodes: [
+        { clientId: 'cast-1', kind: 'character', title: '角色', prompt: 'p1' },
+        { clientId: 'shot-1', kind: 'video', title: '镜头', prompt: 'p2' },
+      ],
+    })
+    expect(useWorkbenchStore.getState().activeCategoryId).toBe('shots')
+    expect(useWorkbenchStore.getState().canvasFitCategoryId).toBe('shots')
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(1)
+  })
 
   it('resetClientIdRegistry 清表后旧 clientId 不再解析到旧项目节点(P1 治跨项目串台)', async () => {
     const created = (await applyCanvasToolCall('create_canvas_nodes', {
@@ -133,7 +171,9 @@ describe('applyCanvasToolCall clientId 翻译', () => {
     await applyCanvasToolCall('set_node_prompt', { nodeId: 'n9', prompt: 'new prompt' })
     expect(useGenerationCanvasStore.getState().nodes.find((n) => n.id === realId)?.prompt).toBe('new prompt')
 
-    const deleted = (await applyCanvasToolCall('delete_canvas_nodes', { nodeIds: ['n9'] })) as { deletedNodeIds: string[] }
+    const deleted = (await applyCanvasToolCall('delete_canvas_nodes', { nodeIds: ['n9'] })) as {
+      deletedNodeIds: string[]
+    }
     expect(deleted.deletedNodeIds).toEqual([realId])
   })
 })
@@ -175,6 +215,27 @@ describe('applyCanvasToolCall 图片+视频分镜镜号', () => {
 })
 
 // S2:propose_storyboard_plan 不碰画布——把结构化方案落创作 store 并切回创作区(规划免费可改)。
+describe('applyCanvasToolCall timeline storyboard scope', () => {
+  beforeEach(() => {
+    resetCanvas()
+    resetClientIdRegistry()
+  })
+
+  it('rejects Agent node ids that cross two storyboard designs before mutating the timeline', async () => {
+    const canvas = useGenerationCanvasStore.getState()
+    const first = canvas.addNode({ kind: 'video', title: 'A1', categoryId: 'shots' })
+    const second = canvas.addNode({ kind: 'video', title: 'B1', categoryId: 'shots' })
+    canvas.updateNode(first.id, { meta: { storyboardDesignId: 'design-a' } })
+    canvas.updateNode(second.id, { meta: { storyboardDesignId: 'design-b' } })
+    const timelineBefore = useWorkbenchStore.getState().timeline
+
+    await expect(applyCanvasToolCall('arrange_storyboard_to_timeline', {
+      nodeIds: [first.id, second.id],
+    })).rejects.toThrow('mixed_storyboard_scope')
+    expect(useWorkbenchStore.getState().timeline).toBe(timelineBefore)
+  })
+})
+
 describe('applyCanvasToolCall propose_storyboard_plan', () => {
   const PLAN: StoryboardPlan = {
     title: '雨夜追凶',
@@ -187,34 +248,77 @@ describe('applyCanvasToolCall propose_storyboard_plan', () => {
 
   beforeEach(() => {
     resetCanvas()
-    useWorkbenchStore.getState().setStoryboardPlan(null)
-    useWorkbenchStore.getState().setWorkspaceMode('generation')
+    useWorkbenchStore.getState().hydrateWorkbenchDocuments(
+      [{ id: 'doc-1', version: 1, title: '', contentJson: { type: 'doc', content: [] }, updatedAt: 1 }],
+      'doc-1',
+    )
+    useWorkbenchStore.getState().hydrateStoryboardPlans({})
+    useWorkbenchStore.getState().setWorkspaceMode('creation')
   })
 
-  it('合法方案 → 落创作 store + 切回创作区 + 不动画布,回执含计数', async () => {
-    const ack = (await applyCanvasToolCall('propose_storyboard_plan', PLAN)) as string
+  it('合法方案 → 落统一创作页 + 不动画布,回执含计数', async () => {
+    const ack = await applyCanvasToolCall('propose_storyboard_plan', PLAN)
     const ws = useWorkbenchStore.getState()
-    expect(ws.storyboardPlan).toEqual(PLAN)
+    expect(ws.storyboardPlans['doc-1'].plan).toEqual(PLAN)
     expect(ws.workspaceMode).toBe('creation')
     expect(useGenerationCanvasStore.getState().nodes).toHaveLength(0) // 规划不碰画布
-    expect(ack).toContain('1 个锚')
-    expect(ack).toContain('2 个镜头')
+    expect(ack).toMatchObject({ status: 'applied', documentId: 'doc-1', storyboardDesignId: expect.any(String) })
+    expect((ack as { message: string }).message).toContain('1 个锚')
+    expect((ack as { message: string }).message).toContain('2 个镜头')
   })
 
   it('畸形方案 → throw,不落 store(调用方映射成 tool error 回喂 LLM)', async () => {
     await expect(
       applyCanvasToolCall('propose_storyboard_plan', { title: 't', anchors: [{ id: 'x', kind: 'bad' }], shots: [] }),
     ).rejects.toThrow()
-    expect(useWorkbenchStore.getState().storyboardPlan).toBeNull()
+    expect(useWorkbenchStore.getState().storyboardPlans['doc-1']).toBeUndefined()
+  })
+
+  it('规划期间用户切走后不抢回工作区，结果仍落原文稿', async () => {
+    useWorkbenchStore.getState().setWorkspaceMode('generation')
+    await applyCanvasToolCall('propose_storyboard_plan', PLAN, undefined, undefined, 'doc-1')
+    const ws = useWorkbenchStore.getState()
+    expect(ws.workspaceMode).toBe('generation')
+    expect(ws.storyboardDesignsByDocumentId['doc-1'][0].plan).toEqual(PLAN)
+  })
+
+  it('全新拆镜不会覆盖当前已确认的分镜设计', async () => {
+    await applyCanvasToolCall('propose_storyboard_plan', PLAN, undefined, undefined, 'doc-1')
+    const firstId = useWorkbenchStore.getState().activeStoryboardId!
+    useWorkbenchStore.getState().commitStoryboardPlan('doc-1', firstId)
+
+    const nextPlan = { ...PLAN, title: '另一版' }
+    const result = await applyCanvasToolCall('propose_storyboard_plan', nextPlan, undefined, undefined, 'doc-1')
+    const ws = useWorkbenchStore.getState()
+
+    expect(result).toMatchObject({ status: 'applied', storyboardDesignId: expect.any(String) })
+    expect((result as { storyboardDesignId: string }).storyboardDesignId).not.toBe(firstId)
+    expect(ws.storyboardDesignsByDocumentId['doc-1']).toHaveLength(2)
+    expect(ws.storyboardDesignsByDocumentId['doc-1'].find((design) => design.id === firstId)?.committed).toBe(true)
+  })
+
+  it('生成期间原稿被删除时不留下孤儿分镜', async () => {
+    useWorkbenchStore.getState().addWorkbenchDocument()
+    const deletedDocumentId = useWorkbenchStore.getState().activeDocumentId
+    useWorkbenchStore.getState().deleteWorkbenchDocument(deletedDocumentId)
+
+    const result = await applyCanvasToolCall('propose_storyboard_plan', PLAN, undefined, undefined, deletedDocumentId)
+
+    expect(result).toMatchObject({ status: 'obsolete', documentId: deletedDocumentId })
+    expect(useWorkbenchStore.getState().storyboardDesignsByDocumentId[deletedDocumentId]).toBeUndefined()
   })
 })
 
 // S4 运镜参考解析器：容错提取，非法/缺省由 builder 兜默认（与 parseStagingSpec 同例）。
 describe('parseCameraMoveSpec — 容错解析运镜参数', () => {
   it('完整参数原样落 spec', () => {
-    expect(
-      parseCameraMoveSpec({ move: 'orbit_left', speed: 'slow', shot: 'wide', subjectPose: 'walk' }),
-    ).toEqual({ move: 'orbit_left', speed: 'slow', shot: 'wide', subjectPose: 'walk', customMove: undefined })
+    expect(parseCameraMoveSpec({ move: 'orbit_left', speed: 'slow', shot: 'wide', subjectPose: 'walk' })).toEqual({
+      move: 'orbit_left',
+      speed: 'slow',
+      shot: 'wide',
+      subjectPose: 'walk',
+      customMove: undefined,
+    })
   })
 
   it('缺 move/customMove → 全 undefined（执行器据此判 词表内/外/缺一）', () => {
@@ -234,6 +338,13 @@ describe('parseCameraMoveSpec — 容错解析运镜参数', () => {
       shot: undefined,
       subjectPose: undefined,
       customMove: '希区柯克式眩晕变焦',
+    })
+  })
+
+  it('customMove 会清掉模型从上一轮残留的 move enum', () => {
+    expect(parseCameraMoveSpec({ move: 'push_in', customMove: '快速甩镜到窗外街景' })).toMatchObject({
+      move: undefined,
+      customMove: '快速甩镜到窗外街景',
     })
   })
 
@@ -273,10 +384,7 @@ describe('parseStagingSpec — 灰模布景字段', () => {
     const spec = parseStagingSpec({
       characters: [{ pose: 'standing' }],
       sceneTemplate: 'street',
-      props: [
-        { kind: 'car', position: [3, -1], rotationY: 90, scale: 1.2 },
-        { kind: 'tree' },
-      ],
+      props: [{ kind: 'car', position: [3, -1], rotationY: 90, scale: 1.2 }, { kind: 'tree' }],
     })
     expect(spec.sceneTemplate).toBe('street')
     expect(spec.props).toEqual([
@@ -349,9 +457,12 @@ describe('applyCanvasToolCall create_camera_move 执行', () => {
     expect((target?.meta as Record<string, unknown>)?.cameraMovePromptApplied).toBe('快速甩镜到窗外街景（whip pan）')
 
     // 幂等：同指令再来一次不重复追加
-    await applyCanvasToolCall('create_camera_move', { shotClientId: 'v9', customMove: '快速甩镜到窗外街景（whip pan）' })
+    await applyCanvasToolCall('create_camera_move', {
+      shotClientId: 'v9',
+      customMove: '快速甩镜到窗外街景（whip pan）',
+    })
     const after = useGenerationCanvasStore.getState().nodes.find((n) => n.id === targetId)
-    expect((after?.prompt.match(/快速甩镜/g) || []).length).toBe(1)
+    expect(((after?.prompt ?? '').match(/快速甩镜/g) || []).length).toBe(1)
   })
 
   it('move 与 customMove 都缺 → 抛错（不静默兜 push_in 硬塞运镜）', async () => {
@@ -362,13 +473,20 @@ describe('applyCanvasToolCall create_camera_move 执行', () => {
     await expect(applyCanvasToolCall('create_camera_move', { shotClientId: 'v8' })).rejects.toThrow()
   })
 
-  it('move 与 customMove 同时存在 → 拒绝歧义请求（不静默优先错误 enum）', async () => {
-    await applyCanvasToolCall('create_canvas_nodes', {
+  it('move 与 customMove 同时存在 → customMove 优先，不执行残留 enum', async () => {
+    const created = (await applyCanvasToolCall('create_canvas_nodes', {
       nodes: [{ clientId: 'v10', kind: 'video', title: '镜头', prompt: 'p' }],
-    })
-    await expect(applyCanvasToolCall('create_camera_move', {
-      shotClientId: 'v10', move: 'push_in', customMove: '快速甩镜',
-    })).rejects.toThrow(/互斥/)
+    })) as { clientIdToNodeId: Record<string, string> }
+    const result = (await applyCanvasToolCall('create_camera_move', {
+      shotClientId: 'v10',
+      move: 'push_in',
+      customMove: '快速甩镜',
+    })) as { cameraMoveNodeId: string | null; degraded?: boolean }
+
+    expect(result).toMatchObject({ cameraMoveNodeId: null, degraded: true })
+    const state = useGenerationCanvasStore.getState()
+    expect(state.nodes.filter((node) => node.kind === 'scene3d')).toHaveLength(0)
+    expect(state.nodes.find((node) => node.id === created.clientIdToNodeId.v10)?.prompt).toContain('快速甩镜')
   })
 })
 

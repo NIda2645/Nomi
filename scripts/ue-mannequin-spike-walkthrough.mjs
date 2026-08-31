@@ -1,14 +1,12 @@
 // UE 素体 spike 走查（评估用，不落 main）：__nomiUeSpike=<poseId> 时假人换 UE GLB + 他们的姿势。
 // 每个姿势独立一程：开项目→3D 编辑器→加假人→截图。产出 4 张真图供人眼评估「直接用他们的模型+姿势」。
 // 用法：pnpm build 后 node scripts/ue-mannequin-spike-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, rmSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.ue-spike-walk')
 mkdirSync(outDir, { recursive: true })
@@ -20,24 +18,15 @@ rmSync(isolatedSettings, { recursive: true, force: true })
 rmSync(isolatedProjects, { recursive: true, force: true })
 
 for (const pose of POSES) {
-  const app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.'],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_SETTINGS_DIR: isolatedSettings,
-      NOMI_PROJECTS_DIR: isolatedProjects,
-    },
+  const { app, win } = await launchNomiApp({
+    name: 'ue-mannequin',
+    settingsDir: isolatedSettings,
+    projectsDir: isolatedProjects,
   })
   try {
-    const win = await app.firstWindow()
     win.on('console', (m) => { if (m.text().includes('[ueSpike')) console.log('  ', m.text()) })
     const bw = await app.browserWindow(win)
     await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-    await win.waitForLoadState('domcontentloaded')
     await win.evaluate((p) => {
       window.localStorage.setItem('__nomiE2E', '1')
       window.localStorage.setItem('nomi.onboarding.scene3dCoach.v1', '1')

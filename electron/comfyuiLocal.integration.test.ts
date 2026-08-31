@@ -31,18 +31,22 @@ import { executeProfileOperation, buildProfileTaskResult, createProject, listPro
 import { COMFYUI_CURATED_MAPPINGS, COMFYUI_CURATED_MODELS } from "./catalog/comfyuiLocal";
 import { applyWireDefaults } from "./catalog/taskParams";
 
-// 1×1 PNG（/view 返回的假图）。
-const PNG_1x1 = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-  "base64",
-);
+// 真实可解码 PNG：集成链必须经过与生产一致的 decoder certification。
+const PNG_1x1 = fs.readFileSync(path.join(__dirname, "providerAdapter/__fixtures__/certification-media/valid.png"));
 
 let server: http.Server;
 let baseUrl = "";
 let historyHits = 0;
 let viewHits = 0;
 let objectInfoHits = 0;
-let lastPromptBody: { prompt: Record<string, { inputs: Record<string, unknown> }>; client_id?: string } | null = null;
+const REQUEST_PROMPT_ID = "123e4567-e89b-42d3-a456-426614174000";
+let lastPromptBody: {
+  prompt: Record<string, { inputs: Record<string, unknown> }>;
+  client_id?: string;
+  prompt_id?: string;
+  extra_data?: unknown;
+  trace_context?: unknown;
+} | null = null;
 
 beforeAll(async () => {
   mockedUserDataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "comfyui-e2e-"));
@@ -54,11 +58,11 @@ beforeAll(async () => {
       req.on("end", () => {
         lastPromptBody = JSON.parse(raw || "{}");
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ prompt_id: "e2e-abc", number: 1 }));
+        res.end(JSON.stringify({ prompt_id: lastPromptBody?.prompt_id || "e2e-abc", number: 1 }));
       });
       return;
     }
-    if (req.method === "GET" && url.pathname === "/history/e2e-abc") {
+    if (req.method === "GET" && url.pathname === `/history/${REQUEST_PROMPT_ID}`) {
       historyHits += 1;
       res.writeHead(200, { "Content-Type": "application/json" });
       // 第一拍：还没跑完（空 {}）→ 证 runtime 会继续轮询；第二拍：出图。
@@ -66,7 +70,7 @@ beforeAll(async () => {
         historyHits < 2
           ? JSON.stringify({})
           : JSON.stringify({
-              "e2e-abc": {
+              [REQUEST_PROMPT_ID]: {
                 status: { status_str: "success", completed: true },
                 outputs: { "9": { images: [{ filename: "Nomi_00001_.png", subfolder: "", type: "output" }] } },
               },
@@ -105,7 +109,33 @@ describe("本地 ComfyUI 传输链（真 HTTP 端到端）", () => {
   it("提交→轮询→变换→/view 下载落盘→succeeded", async () => {
     const projectRoot = fs.mkdtempSync(path.join(mockedUserDataRoot, "project-"));
     const project = createProject({ rootPath: projectRoot, name: "ComfyUI 回收验证", payload: {} });
-    const mapping = COMFYUI_CURATED_MAPPINGS[0];
+    const baseMapping = COMFYUI_CURATED_MAPPINGS[0];
+    const baseBody = baseMapping.create.body as { prompt: Record<string, { class_type: string; inputs: Record<string, unknown> }> };
+    const uiWorkflow = { nodes: [{ id: 9, type: "SaveImage" }] };
+    const mapping = {
+      ...baseMapping,
+      create: {
+        ...baseMapping.create,
+        body: {
+          ...baseBody,
+          prompt: {
+            ...baseBody.prompt,
+            "10": {
+              class_type: "CommunityLastFrameLoader",
+              inputs: { custom_path: "{{request.params.last_frame_url}}" },
+              _meta: { nomi_bound_media_input: "custom_path" },
+            },
+            "11": {
+              class_type: "OptionalMediaConsumer",
+              inputs: { last_frame: ["10", 0], soundtrack: ["12", 0], required: ["6", 0] },
+            },
+            "12": { class_type: "LoadAudio", inputs: { audio: "{{request.params.source_audio_url}}" } },
+          },
+          extra_data: { extra_pnginfo: { workflow: uiWorkflow } },
+          trace_context: { source: "integration-test" },
+        },
+      },
+    };
     const vendor = {
       key: "comfyui-local", name: "本地 ComfyUI", enabled: true,
       baseUrlHint: baseUrl, authType: "none" as const, authHeader: null,
@@ -118,7 +148,7 @@ describe("本地 ComfyUI 传输链（真 HTTP 端到端）", () => {
       createdAt: "", updatedAt: "",
     };
     const extras = applyWireDefaults({}, mapping.create.defaultParams) as Record<string, unknown>;
-    const request = { prompt: "a red cube on green grass", extras } as never;
+    const request = { prompt: "a red cube on green grass", extras: { ...extras, comfyPromptId: REQUEST_PROMPT_ID } } as never;
 
     // ── 1) 提交 POST /prompt ──
     const created = await executeProfileOperation({ vendor, model, apiKey: "", request, operation: mapping.create });
@@ -128,15 +158,21 @@ describe("本地 ComfyUI 传输链（真 HTTP 端到端）", () => {
     });
     // prompt_id → result.id（response_mapping.task_id="prompt_id"）。真轮询路从缓存键(=result.id)回填
     // providerMeta.task_id（taskResultQuery.ts:70-71），故 id 落在 result.id 而非 providerMeta。
-    expect(createNorm.result.id).toBe("e2e-abc");
+    expect(createNorm.result.id).toBe(REQUEST_PROMPT_ID);
     // ComfyUI 真收到的是 API 格式工作流图（不是 UI json），提示词注入 + 数字是真数字
     expect(lastPromptBody?.prompt?.["6"]?.inputs?.text).toBe("a red cube on green grass");
     // ckpt 默认留空 → "comfyui-prompt" 请求变换真跑了一趟 /object_info 并 derive 出本机第一个 checkpoint
     expect(objectInfoHits).toBeGreaterThanOrEqual(1);
     expect(lastPromptBody?.prompt?.["4"]?.inputs?.ckpt_name).toBe("local-sd15.safetensors");
+    expect(lastPromptBody?.prompt?.["10"]).toBeUndefined();
+    expect(lastPromptBody?.prompt?.["12"]).toBeUndefined();
+    expect(lastPromptBody?.prompt?.["11"]?.inputs).toEqual({ required: ["6", 0] });
     expect(lastPromptBody?.prompt?.["3"]?.inputs?.seed).toBe(156680208700286);
     expect(typeof lastPromptBody?.prompt?.["5"]?.inputs?.width).toBe("number");
-    expect(lastPromptBody?.client_id).toBe("nomi");
+    expect(lastPromptBody?.client_id).toMatch(/^nomi-[0-9a-f-]{36}$/);
+    expect(lastPromptBody?.prompt_id).toBe(REQUEST_PROMPT_ID);
+    expect(lastPromptBody?.extra_data).toEqual({ extra_pnginfo: { workflow: uiWorkflow } });
+    expect(lastPromptBody?.trace_context).toEqual({ source: "integration-test" });
 
     // ── 2) 轮询 GET /history/{id} 直到成功 ──
     // 镜像真轮询路（taskResultQuery.ts）：providerMeta.task_id/query_id 从缓存键(=create result.id)回填。
@@ -149,7 +185,7 @@ describe("本地 ComfyUI 传输链（真 HTTP 端到端）", () => {
       const polled = await executeProfileOperation({ vendor, model, apiKey: "", request, operation: mapping.query, providerMeta });
       const norm = await buildProfileTaskResult({
         response: polled.response, mapping, operation: mapping.query, request,
-        taskIdFallback: "e2e-abc", wantedKind: "image", projectId: project.id, vendor, model,
+        taskIdFallback: REQUEST_PROMPT_ID, wantedKind: "image", projectId: project.id, vendor, model,
       });
       status = norm.result.status;
       assetUrl = norm.result.assets[0]?.url || "";

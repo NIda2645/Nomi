@@ -4,14 +4,12 @@
 // 验：① 模板库列出几百个 + 分类 chip ② 点开一条 → 当场对账缺件（本机空 models 目录 → 应报缺）
 //     ③ 贴一张**界面格式**工作流 → 自动转换 → 识别出绑定（此前会被拒）
 // 用法：pnpm build && node scripts/comfyui-template-library-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.comfyui-template-walk')
 mkdirSync(outDir, { recursive: true })
@@ -33,22 +31,16 @@ console.log(`  真 ComfyUI 模板总数：${total}`)
 const uiWorkflowText = await (await fetch(`${BASE}/templates/default.json`)).text()
 console.log(`  取到界面格式模板 default.json（${uiWorkflowText.length} 字节，含 nodes[]）`)
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: mkdtempSync(path.join(os.tmpdir(), 'comfyui-template-proj-')),
-  },
+const projectsDir = mkdtempSync(path.join(os.tmpdir(), 'comfyui-template-proj-'))
+const { app, win } = await launchNomiApp({
+  name: 'comfyui-template-library',
+  settingsDir,
+  projectsDir,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 1800,
 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1440, height: 1040 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
@@ -57,12 +49,9 @@ try {
   // 生产侧已在 comfyuiGraphConvert 注入 no-op 覆盖，这里是走查侧的双保险。
   win.on('dialog', (d) => { console.log('  (自动关掉对话框: ' + d.type() + ')'); void d.dismiss().catch(() => {}) })
   app.on('window', (w) => { w.on('dialog', (d) => void d.dismiss().catch(() => {})) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
-
   await win.getByRole('button', { name: '接入模型', exact: false }).first().click()
   await win.waitForTimeout(1200)
-  await win.getByText('ComfyUI · 本地', { exact: false }).first().click()
+  await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(3000) // 等模板库拉清单
 
   // ── ① 模板库列出来了吗 ──
@@ -81,8 +70,18 @@ try {
     await win.waitForTimeout(20000) // 转换要加载 ComfyUI 前端（首次几秒~十几秒）+ 对账
     await shot(win, '02-template-detail-missing.png')
     const detailText = await win.evaluate(() => document.body.innerText)
-    const gated = detailText.includes('缺文件时不给启用') || detailText.includes('这条在你机器上能跑') || detailText.includes('缺节点')
-    console.log('  点开当场对账（缺件闸/就绪）: ' + (gated ? '✓' : '✗'))
+    // 2026-08-11：缺件不再是死门，所以判据是「对账结果说清楚了」而不是「按钮被锁了」。
+    const reconciled = detailText.includes('缺文件只提示') || detailText.includes('这条在你机器上能跑') || detailText.includes('缺节点')
+    console.log('  点开当场对账（缺件提示/就绪）: ' + (reconciled ? '✓' : '✗'))
+    // 非阻断实证：缺件时按钮必须是可点的「仍要启用」，不是置灰。
+    const anyway = win.getByRole('button', { name: '仍要启用', exact: true }).first()
+    if (await anyway.count()) {
+      if (await anyway.isDisabled()) throw new Error('缺件时模板库按钮仍被置灰——非阻断口径没生效')
+      await anyway.click()
+      await win.waitForTimeout(400)
+      await shot(win, '02b-template-armed-risk.png') // 验：风险话术 + 按钮变「确认启用」
+      console.log('  缺件时按钮可点（仍要启用 → 确认启用）: ✓')
+    }
   } else {
     console.log('  ⚠️ 没找到 Image to Video 模板行')
   }
@@ -90,7 +89,7 @@ try {
   // ── ③ 贴界面格式 → 自动转换（此前会被直接拒）──
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(uiWorkflowText)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(uiWorkflowText)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(25000) // 借前端转换
   await shot(win, '03-ui-format-auto-converted.png')

@@ -11,15 +11,15 @@ const JOB_TRANSITIONS: Record<ProductionJobStatus, readonly ProductionJobStatus[
   authorized: ["submit_intent_persisted"],
   submit_intent_persisted: ["submitting"],
   submitting: ["provider_accepted", "submission_unknown"],
-  provider_accepted: ["polling", "cancel_requested"],
-  polling: ["downloading", "retry_wait", "needs_attention", "cancel_requested"],
+  provider_accepted: ["polling", "ready", "needs_attention", "cancel_requested"],
+  polling: ["downloading", "ready", "retry_wait", "needs_attention", "cancel_requested"],
   retry_wait: ["polling", "needs_attention", "cancel_requested"],
   downloading: ["validating_technical", "needs_attention"],
   validating_technical: ["validating_content", "needs_attention"],
   validating_content: ["ready", "needs_attention"],
   ready: ["adopted"],
   adopted: [],
-  submission_unknown: ["reconciling", "needs_attention", "cancel_requested"],
+  submission_unknown: ["reconciling", "needs_attention", "cancel_requested", "submit_intent_persisted"],
   reconciling: ["provider_accepted", "needs_attention", "cancel_requested"],
   needs_attention: ["reconciling", "cancel_requested"],
   cancel_requested: ["cancelled_remote", "detached", "too_late"],
@@ -29,12 +29,17 @@ const JOB_TRANSITIONS: Record<ProductionJobStatus, readonly ProductionJobStatus[
 };
 
 const RUN_TRANSITIONS: Record<ProductionRunStatus, readonly ProductionRunStatus[]> = {
-  draft: ["awaiting_direction", "awaiting_contract", "cancelled"],
+  // P4 S4 adds `draft → running`: a semantic multi-shot batch (playbook `generation.single-shot`) has a
+  // minimal lifecycle — it stays `draft` while the plan is edited/sealed, then the batch scheduler drives
+  // it. To reuse Run pause/cancel (§3.3), the run must be `running` while the batch generates (pause
+  // requires `running`). Single-shot runs never call the scheduler, so they never take this edge.
+  draft: ["awaiting_direction", "awaiting_contract", "running", "cancelled"],
   awaiting_direction: ["running", "cancelled"],
-  awaiting_storyboard_review: ["awaiting_contract", "cancelled"],
+  awaiting_script_review: ["running", "cancelled"],
+  awaiting_storyboard_review: ["awaiting_script_review", "awaiting_contract", "cancelled"],
   awaiting_contract: ["ready", "cancelled"],
   ready: ["running", "cancelled"],
-  running: ["pausing", "needs_attention", "awaiting_storyboard_review", "awaiting_rough_cut_review", "awaiting_export", "cancelled"],
+  running: ["pausing", "needs_attention", "awaiting_script_review", "awaiting_storyboard_review", "awaiting_rough_cut_review", "awaiting_export", "cancelled"],
   pausing: ["paused", "needs_attention"],
   paused: ["running", "cancelled"],
   needs_attention: ["running", "paused", "cancelled"],

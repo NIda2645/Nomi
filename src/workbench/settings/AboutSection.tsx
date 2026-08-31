@@ -110,6 +110,10 @@ function UpdateBody({ updater }: { updater: ReturnType<typeof useUpdater> }): JS
   const { t } = useTranslation()
   const { phase } = updater
 
+  if (!updater.canCheckUpdates) {
+    return <p className="text-body-sm text-nomi-ink-60">{t('about.previewUpdatesDisabled')}</p>
+  }
+
   if (phase === 'checking') {
     return (
       <div className="flex min-h-8 items-center gap-2 text-body-sm text-nomi-ink-80">
@@ -140,7 +144,7 @@ function UpdateBody({ updater }: { updater: ReturnType<typeof useUpdater> }): JS
             {updater.canAutoInstall ? (
               <WorkbenchButton variant="primary" onClick={updater.download}>{t('about.downloadUpdate')}</WorkbenchButton>
             ) : (
-              <WorkbenchButton variant="primary" onClick={updater.openRelease}>{t('about.openDownload')}</WorkbenchButton>
+              <WorkbenchButton variant="primary" onClick={updater.openDownload}>{t('about.openDownload')}</WorkbenchButton>
             )}
           </div>
         </div>

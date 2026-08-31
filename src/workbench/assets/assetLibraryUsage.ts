@@ -2,7 +2,7 @@ import type { AssetLibraryDragPayload } from './assetLibraryDrag'
 import type { AssetRef } from './assetTypes'
 
 export type AssetLibraryUsageContext = 'canvas' | 'timeline'
-export type AssetLibrarySourceFilter = 'all' | 'project' | 'smart'
+export type AssetLibrarySourceFilter = 'all' | 'project'
 export type AssetLibraryItemAction = 'preview' | 'select' | 'append'
 export type AssetGridActivationEvent = {
   metaKey: boolean
@@ -17,12 +17,11 @@ export const ASSET_LIBRARY_SOURCE_OPTIONS: Array<{
 }> = [
   { value: 'all', labelKey: 'assetLibrary.allAssets' },
   { value: 'project', labelKey: 'assetLibrary.projectAssets' },
-  { value: 'smart', labelKey: 'assetLibrary.smartGroups' },
 ]
 
 export function resolveAssetLibraryItemAction(
   usage: AssetLibraryUsageContext,
-  source: Exclude<AssetLibrarySourceFilter, 'smart'>,
+  source: AssetLibrarySourceFilter,
 ): AssetLibraryItemAction {
   if (usage === 'timeline') return 'append'
   return source === 'project' ? 'select' : 'preview'
@@ -40,13 +39,14 @@ export function isAssetGridActivationKey(key: string): boolean {
   return key === 'Enter' || key === ' '
 }
 
-export function sourceFiltersForUsage(usage: AssetLibraryUsageContext): AssetLibrarySourceFilter[] {
-  return usage === 'timeline' ? ['all', 'project'] : ['all', 'project', 'smart']
+export function sourceOptionsForUsage(_usage: AssetLibraryUsageContext): typeof ASSET_LIBRARY_SOURCE_OPTIONS {
+  return ASSET_LIBRARY_SOURCE_OPTIONS
 }
 
-export function sourceOptionsForUsage(usage: AssetLibraryUsageContext): typeof ASSET_LIBRARY_SOURCE_OPTIONS {
-  const allowed = new Set(sourceFiltersForUsage(usage))
-  return ASSET_LIBRARY_SOURCE_OPTIONS.filter((option) => allowed.has(option.value))
+/** A canvas result belongs to the active canvas; project files must match the active project. */
+export function assetBelongsToProject(asset: Pick<AssetRef, 'origin'>, projectId: string | null): boolean {
+  if (asset.origin.source === 'canvas') return true
+  return Boolean(projectId && asset.origin.projectId === projectId)
 }
 
 export function assetToDragPayload(

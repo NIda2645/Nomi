@@ -141,6 +141,40 @@ export function OnboardingChecklist(): JSX.Element | null {
     return () => window.removeEventListener('pointerdown', onDown, true)
   }, [open])
 
+  // 用户一开始工作（编辑器聚焦 / 输入 / 选中文字）→ 让开覆盖层（2026-08-25 走查 F4 根因：
+  // 面板盖住创作区右侧「拆成镜头·落画布」按钮并吞掉点击）。这正是「用户照引导去点按钮」那一刻，
+  // 把 fixed 覆盖层收起，动作按钮才点得着。收起=写折叠态，跨会话记住。判据宽松（聚焦可编辑元素 /
+  // 敲字 / 产生非空选区任一），因为目标就是「只要用户去操作创作区就别挡路」。
+  React.useEffect(() => {
+    if (!open) return
+    const collapse = () => {
+      setOpen(false)
+      writeChecklistCollapsed(true)
+    }
+    const isEditable = (node: EventTarget | null): boolean => {
+      const el = node as HTMLElement | null
+      if (!el || typeof el.closest !== 'function') return false
+      // 别把清单/顶栏自己的控件误判成「开始工作」——点清单里的按钮不该把清单收起。
+      if (el.closest('[data-onboarding-checklist-root]')) return false
+      return Boolean(
+        el.closest('input, textarea, [contenteditable="true"], [contenteditable=""], .ProseMirror'),
+      )
+    }
+    const onFocusIn = (e: FocusEvent) => {
+      if (isEditable(e.target)) collapse()
+    }
+    const onSelectionChange = () => {
+      const sel = window.getSelection?.()
+      if (sel && !sel.isCollapsed && String(sel).trim().length > 0) collapse()
+    }
+    window.addEventListener('focusin', onFocusIn, true)
+    document.addEventListener('selectionchange', onSelectionChange)
+    return () => {
+      window.removeEventListener('focusin', onFocusIn, true)
+      document.removeEventListener('selectionchange', onSelectionChange)
+    }
+  }, [open])
+
   const toggleOpen = React.useCallback(() => {
     setOpen((prev) => {
       const next = !prev
@@ -183,7 +217,7 @@ export function OnboardingChecklist(): JSX.Element | null {
         )}
       >
         <IconListCheck size={18} stroke={1.8} aria-hidden="true" />
-        <span className="max-[700px]:hidden">{t('onboarding.trigger')}</span>
+        <span className="max-[1600px]:hidden">{t('onboarding.trigger')}</span>
         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-nomi-accent-soft text-nomi-accent text-micro font-semibold tabular-nums">
           {doneCount}/{ALL_KEYS.length}
         </span>

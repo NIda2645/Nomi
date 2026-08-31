@@ -2,14 +2,13 @@
 // 断言角色全程留在画面内（不再走出框 / 不再空地板）。证据 = 多帧截图 + 角色质心屏幕坐标始终居中带内。
 // 零额度：纯本地 3D，无生成 API。
 // 用法：pnpm run build && node tests/ux/scene3d-camera-follow.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from './_launchApp.mjs'
 import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.camera-follow-lab')
 mkdirSync(outDir, { recursive: true })
@@ -17,11 +16,12 @@ const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-follow-walk-'))
 const projectsDir = path.join(tmp, 'projects')
 mkdirSync(projectsDir, { recursive: true })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-camera-follow',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const errors = []
@@ -35,11 +35,8 @@ const pass = { editorOpen: false, possessed: false, recStarted: false, inFrameAl
 // 落进画布矩形，判是否在画面内（更确定、不靠像素）。桥见 window.__NOMI_SCENE3D_E2E（下方注入）。
 
 try {
-  const win = await app.firstWindow()
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   await win.keyboard.press('Escape').catch(() => {})
 
   const card = win.locator('[data-project-card]').first()
@@ -87,7 +84,7 @@ try {
   // 有真内容；2D canvas drawImage(HTMLImageElement) 可正常 getImageData）。算红色假人主色块质心，
   // 归一到 (-1..1) NDC（画布矩形内：中心 0,0、±1 边缘）。无红像素 → found=false。
   async function characterNdc() {
-    const buf = await canvas.screenshot()
+    const buf = await screenshotSettled(canvas)
     const dataUrl = 'data:image/png;base64,' + buf.toString('base64')
     return win.evaluate(async (url) => {
       const img = new Image()
@@ -136,11 +133,11 @@ try {
     await win.waitForTimeout(200)
     const ndc = await characterNdc()
     ndcSamples.push(ndc)
-    await win.screenshot({ path: path.join(outDir, `cf-step-${i}.png`) })
+    await screenshotSettled(win, { path: path.join(outDir, `cf-step-${i}.png`) })
   }
   await win.keyboard.up('KeyW')
   await win.waitForTimeout(300)
-  await win.screenshot({ path: path.join(outDir, 'cf-final.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cf-final.png') })
 
   const valid = ndcSamples.filter((s) => s && s.found)
   const inFrame = valid.filter((s) => Math.abs(s.x) < 0.9 && Math.abs(s.y) < 0.95)

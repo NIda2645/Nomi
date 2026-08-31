@@ -1,10 +1,10 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconBrush, IconCrop, IconDownload, IconFlipHorizontal, IconFlipVertical, IconGrid3x3, IconGridDots, IconLayersSubtract, IconLayoutGrid, IconMaximize, IconRotate2, IconRotateClockwise2, IconScissors, IconSparkles, IconTransform, IconTypography, IconWand } from '@tabler/icons-react'
+import { IconBrush, IconCheck, IconCrop, IconDownload, IconFlipHorizontal, IconFlipVertical, IconGrid3x3, IconGridDots, IconLayersSubtract, IconLayoutGrid, IconMaximize, IconRotate2, IconRotateClockwise2, IconScissors, IconSparkles, IconTransform, IconTypography, IconWand } from '@tabler/icons-react'
 import { type ImageGridSize, type ImageTransformOp } from './useNodeImageEditing'
 import type { CropGridSize } from './render/ImageCropGridOverlay'
 import { useResultDownload } from './useResultDownload'
-import { FloatingToolbarShell, TOOLBAR_ICON as I, ToolbarButton, ToolbarDivider, ToolbarIconButton, ToolbarMenu, ToolbarProvenanceButton } from './NodeFloatingToolbar'
+import { FloatingToolbarShell, TOOLBAR_ICON as I, ToolbarButton, ToolbarDivider, ToolbarDuplicateVariantButton, ToolbarIconButton, ToolbarMenu, ToolbarProvenanceButton } from './NodeFloatingToolbar'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import WhiteboardModal from './whiteboard/WhiteboardModal'
 import { inferWhiteboardAspectRatio, readWhiteboardState } from './whiteboard/whiteboardState'
@@ -32,11 +32,17 @@ type Props = {
   onPreview: () => void
   /** 打开生成记录（原先住卡片右上角，常驻压在图上；2026-08-04 迁来这条浮条）。 */
   onOpenProvenance: () => void
-  /** Tier1「定妆」：基于当前图建一个预填身份板提示词的新节点（不自动生成）。缺省不渲染该按钮。 */
+  /** Tier1「建参考卡」：基于当前图建一个预填身份板提示词的新节点（不自动生成）。缺省不渲染该按钮。 */
   onMakeup?: () => void
+  /** 这张卡本身是不是「视觉锚」（角色/场景/道具参考卡）。是 → 最左出「定妆」而非「建参考卡」。 */
+  isAnchor?: boolean
+  /** 该锚是否已定妆（形象已确认）。isAnchor 时驱动「定妆 / 已定妆✓」两态。 */
+  frozen?: boolean
+  /** 定妆开关（写/删 meta.frozen）。isAnchor 时点最左动作触发。 */
+  onToggleFreeze?: () => void
 }
 
-export default function NodeImageEditToolbar({ node, editGrid, imageOpBusy, onGridSplit, onCrop, onTransform, onRemoveBackground, removeBackgroundBusy = false, onPreview, onOpenProvenance, onMakeup }: Props): JSX.Element {
+export default function NodeImageEditToolbar({ node, editGrid, imageOpBusy, onGridSplit, onCrop, onTransform, onRemoveBackground, removeBackgroundBusy = false, onPreview, onOpenProvenance, onMakeup, isAnchor = false, frozen = false, onToggleFreeze }: Props): JSX.Element {
   const { t } = useTranslation()
   const { downloading, download } = useResultDownload(node)
   const [whiteboardOpen, setWhiteboardOpen] = React.useState(false)
@@ -50,7 +56,17 @@ export default function NodeImageEditToolbar({ node, editGrid, imageOpBusy, onGr
   return (
     <>
       <FloatingToolbarShell ariaLabel={t('generationCommon.imageToolbar.aria')}>
-        {onMakeup ? (
+        {/* 锚卡（角色/场景/道具参考卡）：最左是「定妆」= 确认形象、放行下游镜头（F15 装上的操作者）。
+            一功能一个家——锚卡不再显示「建参考卡」（对着参考卡再建参考卡冗余）。 */}
+        {isAnchor && onToggleFreeze ? (
+          <ToolbarButton
+            icon={frozen ? <IconCheck size={I.size} stroke={I.stroke} /> : <IconSparkles size={I.size} stroke={I.stroke} />}
+            label={frozen ? t('generationCommon.imageToolbar.frozen') : t('generationCommon.imageToolbar.freeze')}
+            accent={!frozen}
+            title={frozen ? t('generationCommon.imageToolbar.frozenHint') : t('generationCommon.imageToolbar.freezeHint')}
+            onClick={onToggleFreeze}
+          />
+        ) : onMakeup ? (
           <ToolbarButton
             icon={<IconSparkles size={I.size} stroke={I.stroke} />}
             label={t('generationCommon.imageToolbar.makeup')}
@@ -69,6 +85,7 @@ export default function NodeImageEditToolbar({ node, editGrid, imageOpBusy, onGr
           ]}
         />
         <ToolbarDivider />
+        <ToolbarDuplicateVariantButton nodeId={node.id} />
         <ToolbarButton
           icon={<IconCrop size={I.size} stroke={I.stroke} />}
           label={t('generationCommon.imageToolbar.crop')}

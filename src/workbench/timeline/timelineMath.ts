@@ -1,13 +1,16 @@
 import {
   TIMELINE_TRACK_DEFINITIONS,
   type TimelineClip,
+  type TimelineClipAudio,
   type TimelineState,
   type TimelineTextClip,
   type TimelineTextStyle,
   type TimelineTrack,
   type TimelineTrackType,
+  type TimelineTransition,
 } from './timelineTypes'
 import { resolveClipFraming, type ClipFraming } from './clipFraming'
+import { resolveClipAudio } from './clipAudio'
 
 const DEFAULT_TIMELINE_SCALE = 1
 const DEFAULT_TIMELINE_FPS = 30
@@ -64,6 +67,9 @@ function normalizeClip(input: unknown, fallbackType: TimelineTrackType): Timelin
     offsetEndFrame: toFiniteNonNegativeInteger(raw.offsetEndFrame, 0),
     ...(normalizeString(raw.url) ? { url: normalizeString(raw.url) } : {}),
     ...(normalizeString(raw.thumbnailUrl) ? { thumbnailUrl: normalizeString(raw.thumbnailUrl) } : {}),
+    ...(type !== 'image' && raw.audio && typeof raw.audio === 'object' && !Array.isArray(raw.audio)
+      ? { audio: resolveClipAudio(raw.audio as TimelineClipAudio, endFrame - startFrame) }
+      : {}),
     // 取景随时间轴落盘：present 才挂（清洗成合法 framing），缺省则不挂 → 切项目/重载不蒸发。
     ...(raw.framing && typeof raw.framing === 'object'
       ? { framing: resolveClipFraming({ framing: raw.framing as Partial<ClipFraming> }) }
@@ -87,6 +93,7 @@ function normalizeTextClip(input: unknown): TimelineTextClip | null {
   const endFrame = Math.max(startFrame + 1, toFiniteNonNegativeInteger(raw.endFrame, startFrame + 1))
   const clip: TimelineTextClip = {
     id,
+    ...(typeof raw.sourceNodeId === 'string' && raw.sourceNodeId.trim() ? { sourceNodeId: raw.sourceNodeId.trim() } : {}),
     text: typeof raw.text === 'string' ? raw.text : '',
     style,
     startFrame,
@@ -164,6 +171,20 @@ export function normalizeTimeline(input: unknown): TimelineState {
     })
     .sort((left, right) => left.startFrame - right.startFrame)
 
+  const transitions = (Array.isArray(raw.transitions) ? raw.transitions : [])
+    .map((value): TimelineTransition | null => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+      const record = value as Record<string, unknown>
+      const fromClipId = typeof record.fromClipId === 'string' ? record.fromClipId.trim() : ''
+      const toClipId = typeof record.toClipId === 'string' ? record.toClipId.trim() : ''
+      const type = record.type
+      if (!fromClipId || !toClipId || !['cut', 'dissolve', 'fade', 'match_cut', 'whip_pan'].includes(String(type))) return null
+      const rawDuration = record.durationFrames
+      const durationFrames = Number.isInteger(rawDuration) && Number(rawDuration) > 0 ? Number(rawDuration) : undefined
+      return { fromClipId, toClipId, type: type as TimelineTransition['type'], ...(durationFrames ? { durationFrames } : {}) }
+    })
+    .filter((value): value is TimelineTransition => Boolean(value))
+
   return {
     version: 1,
     fps: normalizeFps(raw.fps),
@@ -171,6 +192,7 @@ export function normalizeTimeline(input: unknown): TimelineState {
     playheadFrame: toFiniteNonNegativeInteger(raw.playheadFrame, 0),
     tracks,
     textClips,
+    ...(transitions.length ? { transitions } : {}),
   }
 }
 

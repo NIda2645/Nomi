@@ -1,0 +1,7 @@
+{
+  "sync-image-encode": 5,
+  "base64-into-store": 0,
+  "duplicate-node-size-bounds": 0,
+  "node-stream-into-response": 0,
+  "unguarded-fsync": 0
+}

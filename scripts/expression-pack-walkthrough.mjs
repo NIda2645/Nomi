@@ -3,14 +3,12 @@
 // 是关键验证面：预设图打包在 dist/prompt-media/，走 `electron .` 即生产同路径）→
 // 搜「愤怒」命中 5 条 → 点开「怒目而视」预览 → 送上画布 → 画布节点带完整提示词。
 // 截图进 .expr-walk/ 人眼判断。用法：pnpm build 后 node scripts/expression-pack-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.expr-walk')
 mkdirSync(outDir, { recursive: true })
@@ -22,28 +20,19 @@ const isolatedProjects = path.join(os.tmpdir(), 'nomi-expr-walk-projects')
 mkdirSync(isolatedSettings, { recursive: true })
 mkdirSync(isolatedProjects, { recursive: true })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_SETTINGS_DIR: isolatedSettings,
-    NOMI_PROJECTS_DIR: isolatedProjects,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'expression-pack',
+  settingsDir: isolatedSettings,
+  projectsDir: isolatedProjects,
+  settleMs: 1800,
 })
 const errors = []
 let failed = false
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)

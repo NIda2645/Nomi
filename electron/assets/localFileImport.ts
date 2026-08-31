@@ -1,10 +1,12 @@
 // 本地文件 → 项目素材的导入（从 runtime.ts 抽出：它是素材 IO，不是任务执行，放这更内聚，
 // 也给 runtime 这个已知巨壳腾出空间）。writeAsset 仍在 runtime（单向依赖，无循环）。
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-import { writeAsset } from "../runtime";
+import { copyAssetFile, writeAsset } from "../runtime";
 import { extensionFromMime } from "./assetPaths";
+import { resolveContentType } from "./mediaTypes";
 import { parseLocalAssetUrl } from "../protocol/localProtocol";
 import {
   ensurePlayableVideoBytes,
@@ -20,14 +22,72 @@ function bytesFromPayload(value: unknown): Buffer {
   throw new Error("bytes must be an ArrayBuffer");
 }
 
-export async function importLocalFile(payload: unknown): Promise<unknown> {
+type ImportLocalFileOptions = { allowSourcePath?: boolean };
+
+async function importNativeSourcePath(
+  raw: JsonRecord,
+  sourcePath: string,
+  projectId: string,
+  fileName: string,
+  contentType: string,
+): Promise<unknown> {
+  const stat = await fs.promises.stat(sourcePath);
+  if (!stat.isFile()) throw new Error("source file is unavailable");
+  let effectiveContentType = contentType;
+  if (contentType.toLowerCase().split(";")[0] === "application/octet-stream" && (!path.extname(fileName) || path.extname(fileName).toLowerCase() === ".bin")) {
+    const handle = await fs.promises.open(sourcePath, "r");
+    try {
+      const header = Buffer.alloc(4096);
+      const { bytesRead } = await handle.read(header, 0, header.length, 0);
+      effectiveContentType = resolveContentType(fileName, header.subarray(0, bytesRead));
+    } finally {
+      await handle.close();
+    }
+  }
+  const baseMeta = { kind: raw.kind || "upload", originalName: raw.fileName || null };
+  if (!effectiveContentType.startsWith("video/")) {
+    return copyAssetFile(projectId, sourcePath, fileName, effectiveContentType, baseMeta);
+  }
+
+  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "nomi-video-native-import-"));
+  try {
+    try {
+      const transcoded = await transcodeFileToPlayableMp4IfNeeded(sourcePath, fileName, tempDir);
+      if (transcoded) {
+        return await copyAssetFile(projectId, transcoded.outputPath, playableMp4FileName(fileName), "video/mp4", {
+          ...baseMeta,
+          playbackNormalizedFrom: transcoded.reason,
+        });
+      }
+    } catch (error) {
+      console.warn(
+        "[nomi-video-import] native playability normalize failed, importing original file:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+    return await copyAssetFile(projectId, sourcePath, fileName, effectiveContentType, baseMeta);
+  } finally {
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+export async function importLocalFile(payload: unknown, options: ImportLocalFileOptions = {}): Promise<unknown> {
   const raw = payload as JsonRecord;
   const projectId = String(raw.projectId || "").trim();
   if (!projectId) throw new Error("projectId is required");
+  const hintedContentType = String(raw.contentType || "application/octet-stream");
+  const sourcePath = options.allowSourcePath ? String(raw.sourcePath || "").trim() : "";
+  if (sourcePath) {
+    const rawName = String(raw.fileName || path.basename(sourcePath) || `asset-${Date.now()}.bin`);
+    return importNativeSourcePath(raw, sourcePath, projectId, rawName, hintedContentType);
+  }
   const bytes = bytesFromPayload(raw.bytes);
-  const contentType = String(raw.contentType || "application/octet-stream");
+  const rawFileName = String(raw.fileName || "").trim();
+  const contentType = hintedContentType.toLowerCase().split(";")[0] === "application/octet-stream" && (!path.extname(rawFileName) || path.extname(rawFileName).toLowerCase() === ".bin")
+    ? resolveContentType(rawFileName, bytes)
+    : hintedContentType;
   const ext = extensionFromMime(contentType, "bin");
-  const fileName = String(raw.fileName || `asset-${Date.now()}.${ext}`);
+  const fileName = rawFileName || `asset-${Date.now()}.${ext}`;
   // 视频先过可播放归一化（HEVC/AVI 等 Chromium 解不了的转 H.264 MP4；失败回退原字节不挡导入）。
   const normalized = contentType.startsWith("video/")
     ? await ensurePlayableVideoBytes(bytes, fileName, contentType)

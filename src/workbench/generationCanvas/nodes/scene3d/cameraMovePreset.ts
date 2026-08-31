@@ -7,7 +7,7 @@ import {
   createScene3DTrajectoryId,
   createScene3DTrajectoryPointId,
   createScene3DTrajectoryBindingId,
-} from './scene3dSerializer'
+} from './scene3dBindingIds'
 import { ROLE_COLOR_SEQUENCE } from './scene3dConstants'
 import { CAMERA_MOVE_LABEL, type CameraMove } from './cameraMoveVocab'
 import { syncSceneTimelineDuration } from './scene3dTimeline'

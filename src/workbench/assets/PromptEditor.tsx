@@ -6,12 +6,12 @@ import { cn } from '../../utils/cn'
 import { AssetMention } from './AssetMentionNode'
 import { createAssetMentionSuggestion } from './AssetMentionSuggestion'
 import type { MentionSuggestionItem } from './AssetMentionSuggestionList'
-import { promptToContent } from './promptEditorContent'
+import { promptToContent, shouldApplyExternalPromptSync } from './promptEditorContent'
 import { encodeMention } from './promptMentions'
 
-// 生成节点的描述框(规范 §4):Tiptap 编辑器替换原 textarea —— 句中可放 18px 缩略图 chip(@ 内联引用),
+// 生成节点的描述框(规范 §4):Tiptap 编辑器替换原 textarea —— 句中可放 18px 缩略图 chip(@ 内联媒体引用),
 // 内容与 node.prompt 字符串双向同步(持久化用 @[asset:url] 标记,见 promptMentions)。
-// 纯文字 prompt 完全等价于以前的 textarea 体验;只有插入 chip 时才出现内联图。
+// 纯文字 prompt 完全等价于以前的 textarea 体验;只有插入 chip 时才出现内联媒体块。
 
 // Tiptap doc → node.prompt 字符串(assetMention → @[asset:url] 标记;段落 → \n)。
 function contentToPrompt(editor: Editor): string {
@@ -31,10 +31,12 @@ type PromptEditorProps = {
   /** 暴露 editor 实例,供「点 tile 插入 chip」等外部命令(insertAssetMention)。 */
   onReady?: (editor: Editor) => void
   /**
-   * **有序参考 url 列表**（= 发送时 `@imageN` 的那一份）。只管 chip 编号：初次渲染定编号 + 参考顺序变了实时重编。
+   * **有序图片参考 url 列表**（= 发送时 `@imageN` 的那一份）。只管兼容旧图片 chip 编号：初次渲染定编号 + 参考顺序变了实时重编。
    * 与下面的 @ 候选是两件事：候选可以来自素材库/画布（还没成为参考），编号只认已经在槽里的。
    */
   mentionCandidates?: string[]
+  /** All media references used to keep chip labels type-aware. */
+  mentionReferences?: { url: string; kind: 'image' | 'video' | 'audio'; index: number }[]
   /** 打 @ 时按 query 给候选（当前参考 / 画布 / 素材库三组）。缺省 = 不开 @ 面板。 */
   mentionSearch?: (query: string) => MentionSuggestionItem[]
   /** 选中候选：负责真的建立引用（建边/落上传槽），返回最终 chip 编号；返回 null = 没插成。 */
@@ -43,7 +45,7 @@ type PromptEditorProps = {
   editable?: boolean
 }
 
-export default function PromptEditor({ value, onChange, placeholder, className, onBlur, onReady, mentionCandidates, mentionSearch, onMentionSelect, editable }: PromptEditorProps): JSX.Element {
+export default function PromptEditor({ value, onChange, placeholder, className, onBlur, onReady, mentionCandidates, mentionReferences, mentionSearch, onMentionSelect, editable }: PromptEditorProps): JSX.Element {
   const onChangeRef = React.useRef(onChange)
   React.useEffect(() => { onChangeRef.current = onChange }, [onChange])
   // 有序参考 url 也留一份 ref：外部 value 变化时 setContent 要用它给 chip 编号（那个 effect 不该依赖它重跑）。
@@ -54,6 +56,11 @@ export default function PromptEditor({ value, onChange, placeholder, className, 
   React.useEffect(() => { searchRef.current = mentionSearch }, [mentionSearch])
   const selectRef = React.useRef(onMentionSelect)
   React.useEffect(() => { selectRef.current = onMentionSelect }, [onMentionSelect])
+  // placeholder 同理走 ref：扩展只在 editor 创建时配一次，直接把 prop 传进 configure 的话，
+  // 调用方**后来**改的 placeholder 永远不生效——「已有参考图才提示打 @」正是这种后来才成立的条件。
+  // 官方类型允许传函数（PlaceholderOptions.placeholder: ((props) => string) | string），
+  // 函数在每次装饰重算时被调用，于是 ref 一更新就能读到最新值。
+  const placeholderRef = React.useRef(placeholder ?? '')
   const suggestionExt = React.useMemo(
     () => createAssetMentionSuggestion({
       getCandidates: (query) => searchRef.current?.(query) ?? [],
@@ -63,20 +70,23 @@ export default function PromptEditor({ value, onChange, placeholder, className, 
   )
   // 防控制内容回灌死循环:记下编辑器自身最后产出的字符串,外部 value 等于它就不重设。
   const lastStringRef = React.useRef(value)
+  const latestValueRef = React.useRef(value)
+  latestValueRef.current = value
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: false, bulletList: false, orderedList: false, blockquote: false, codeBlock: false, horizontalRule: false }),
-      Placeholder.configure({ placeholder: placeholder ?? '' }),
+      Placeholder.configure({ placeholder: () => placeholderRef.current }),
       AssetMention,
       suggestionExt,
     ],
-    content: promptToContent(value, mentionCandidates),
+    content: promptToContent(value, mentionReferences ?? mentionCandidates),
     editable: editable !== false,
     editorProps: { attributes: { class: 'generation-canvas-v2-node__prompt-input outline-0' } },
     onUpdate: ({ editor: current }) => {
       const next = contentToPrompt(current)
       lastStringRef.current = next
+      latestValueRef.current = next
       onChangeRef.current(next)
     },
   })
@@ -84,6 +94,18 @@ export default function PromptEditor({ value, onChange, placeholder, className, 
   React.useEffect(() => {
     if (editor && onReady) onReady(editor)
   }, [editor, onReady])
+
+  // placeholder 变了要**主动重画一次**：装饰只在有事务时重算，而「加了一张参考图」这类外部变化
+  // 不会在编辑器里产生任何事务，光更新 ref 是看不到的。
+  // 空事务安全：core 的 dispatchTransaction 里 `!transactions.some(tr => tr.docChanged)` 直接 return，
+  // 不会触发 onUpdate，也就不会把 prompt 误标成用户改过（index.js:5193）。
+  React.useEffect(() => {
+    const next = placeholder ?? ''
+    if (placeholderRef.current === next) return
+    placeholderRef.current = next
+    if (!editor || editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr)
+  }, [editor, placeholder])
 
   // 锁切换时同步只读态(官方 setEditable;emitUpdate=false,只读切换不产出内容变更)。
   React.useEffect(() => {
@@ -95,29 +117,35 @@ export default function PromptEditor({ value, onChange, placeholder, className, 
   // 外部 value 变化(切节点 / AI 写入)→ 同步进编辑器,跳过自身刚产出的那次。
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return
-    if (value === lastStringRef.current) return
+    if (!shouldApplyExternalPromptSync(value, latestValueRef.current, lastStringRef.current)) return
     lastStringRef.current = value
-    editor.commands.setContent(promptToContent(value, orderedUrlsRef.current))
-  }, [editor, value])
+    editor.commands.setContent(promptToContent(value, mentionReferences ?? orderedUrlsRef.current), { emitUpdate: false })
+  }, [editor, mentionReferences, value])
 
-  // 参考图拖拽重排后，prompt 字符串仍是同一批 url，但 chip 的「图片N」必须按最新列表立即刷新。
+  // 参考拖拽重排后，prompt 字符串仍是同一批 url，但 chip 的媒体编号必须按最新列表立即刷新。
   // 只改易失的 index 属性，不改持久化内容、不重建编辑器，也不打断当前光标。
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return
-    const orderedUrls = mentionCandidates || []
+    const orderedUrls = mentionReferences ?? mentionCandidates ?? []
     let transaction = editor.state.tr
     let changed = false
     editor.state.doc.descendants((docNode, pos) => {
       if (docNode.type.name !== 'assetMention') return
       const url = String(docNode.attrs.url || '')
-      const orderedIndex = orderedUrls.indexOf(url)
-      const nextIndex = orderedIndex >= 0 ? orderedIndex + 1 : null
-      if (docNode.attrs.index === nextIndex) return
-      transaction = transaction.setNodeMarkup(pos, undefined, { ...docNode.attrs, index: nextIndex })
+      const reference = typeof orderedUrls[0] === 'string'
+        ? (() => {
+          const orderedIndex = (orderedUrls as string[]).indexOf(url)
+          return orderedIndex >= 0 ? { kind: 'image' as const, index: orderedIndex + 1 } : null
+        })()
+        : (orderedUrls as { url: string; kind: 'image' | 'video' | 'audio'; index: number }[]).find((candidate) => candidate.url === url) ?? null
+      const nextIndex = reference?.index ?? null
+      const nextKind = reference?.kind ?? 'image'
+      if (docNode.attrs.index === nextIndex && docNode.attrs.kind === nextKind) return
+      transaction = transaction.setNodeMarkup(pos, undefined, { ...docNode.attrs, index: nextIndex, kind: nextKind })
       changed = true
     })
     if (changed) editor.view.dispatch(transaction)
-  }, [editor, mentionCandidates])
+  }, [editor, mentionCandidates, mentionReferences])
 
   return (
     <EditorContent

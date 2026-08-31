@@ -1,57 +1,16 @@
-import { IconFolderMinus, IconFolderPlus, IconLayoutGrid, IconPlayerPlay, IconX } from '@tabler/icons-react'
-import React from 'react'
+import { IconFolderMinus, IconFolderPlus, IconLayoutGrid, IconRoute, IconX } from '../../../vendor/tablerIcons'
 import { useTranslation } from 'react-i18next'
-import type { ModelOption } from '../../../config/models'
-import { NomiSelect, WorkbenchIconButton } from '../../../design'
+import { WorkbenchIconButton } from '../../../design'
 import { cn } from '../../../utils/cn'
-import { useDedupedModelSelect } from '../../common/useDedupedModelSelect'
-import { useGenerationModelOptionsState } from '../adapters/modelOptionsAdapter'
+import { CanvasBulkModelSelect, type CanvasApplyModelInput } from './CanvasBulkModelSelect'
 import type { CanvasGenerationExecutionGroup } from './canvasProductionScope'
-
-const CONCURRENCY_OPTIONS = [1, 2, 4, 6, 8].map((value) => ({ value: String(value), label: String(value) }))
-
-function modelGroupLabel(executionKind: string, count: number, t: ReturnType<typeof useTranslation>['t']): string {
-  return t(`generationCommon.production.modelGroup.${executionKind}` as 'generationCommon.production.modelGroup.image', { count })
-}
-
-function BulkModelSelect({
-  group,
-  onApplyModel,
-}: {
-  group: CanvasGenerationExecutionGroup
-  onApplyModel: (input: {
-    executionKind: string
-    value: string
-    vendor?: string
-    modelOptions: readonly ModelOption[]
-  }) => void
-}): JSX.Element | null {
-  const { t } = useTranslation()
-  const state = useGenerationModelOptionsState(group.representativeKind)
-  const handleChange = React.useCallback((value: string, vendor?: string) => {
-    onApplyModel({ executionKind: group.executionKind, value, vendor, modelOptions: state.options })
-  }, [group.executionKind, onApplyModel, state.options])
-  const modelSelect = useDedupedModelSelect(state.options, '', handleChange)
-  if (modelSelect.modelOptions.length === 0) return null
-  const label = modelGroupLabel(group.executionKind, group.nodeIds.length, t)
-  return (
-    <NomiSelect
-      ariaLabel={label}
-      leadingLabel={label}
-      placeholder={t('generationCommon.production.unifyModel')}
-      value=""
-      options={modelSelect.modelOptions}
-      onChange={modelSelect.onModelPick}
-      size="xs"
-      triggerMaxWidth={140}
-    />
-  )
-}
+import { CanvasProductionConcurrencySelect, CanvasProductionRunButton } from './CanvasProductionControls'
 
 type CanvasSelectionToolbarProps = {
   selectedCount: number
   selectedGroupCount: number
   transform: string
+  maxWidth?: number
   eligibleCount: number
   executionGroups: CanvasGenerationExecutionGroup[]
   concurrency: number
@@ -59,15 +18,11 @@ type CanvasSelectionToolbarProps = {
   contactSheetCount: number
   onConcurrencyChange: (value: number) => void
   onGenerate: () => void
-  onApplyModel: (input: {
-    executionKind: string
-    value: string
-    vendor?: string
-    modelOptions: readonly ModelOption[]
-  }) => void
+  onApplyModel: (input: CanvasApplyModelInput) => void
   onGroupSelectedNodes: () => void
   onUngroupSelectedNodes: () => void
   onBuildContactSheet: () => void
+  onSaveWorkflow: () => void
   onClearSelection: () => void
 }
 
@@ -75,6 +30,7 @@ export function CanvasSelectionToolbar({
   selectedCount,
   selectedGroupCount,
   transform,
+  maxWidth,
   eligibleCount,
   executionGroups,
   concurrency,
@@ -85,10 +41,10 @@ export function CanvasSelectionToolbar({
   onGroupSelectedNodes,
   onUngroupSelectedNodes,
   onBuildContactSheet,
+  onSaveWorkflow,
   onClearSelection,
 }: CanvasSelectionToolbarProps): JSX.Element {
   const { t } = useTranslation()
-  const generateLabel = t('generationCommon.production.generateSelected', { count: eligibleCount })
   return (
     <div
       className={cn(
@@ -97,7 +53,7 @@ export function CanvasSelectionToolbar({
         'border border-nomi-line rounded-full',
         'bg-nomi-paper/[0.96] shadow-nomi-md pointer-events-auto',
       )}
-      style={{ transform }}
+      style={{ transform, maxWidth }}
       aria-label={t('generationCommon.selection.aria')}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -105,37 +61,21 @@ export function CanvasSelectionToolbar({
         {t('generationCommon.selection.count', { count: selectedCount })}
       </span>
       {executionGroups.map((group) => (
-        <BulkModelSelect key={group.executionKind} group={group} onApplyModel={onApplyModel} />
+        <CanvasBulkModelSelect
+          key={`${group.executionKind}:${group.requiredMode}`}
+          group={group}
+          peerGroups={executionGroups}
+          onApplyModel={onApplyModel}
+        />
       ))}
-      <button
-        type="button"
-        data-storyboard-run-all="true"
-        data-batch-scope="selection"
-        className={cn(
-          'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border-0 px-4 text-body font-medium',
-          'bg-nomi-ink text-nomi-paper',
-          'transition-colors duration-[var(--nomi-transition-fast)]',
-          eligibleCount > 0 ? 'cursor-pointer hover:bg-nomi-accent' : 'cursor-not-allowed opacity-45',
-        )}
-        disabled={eligibleCount === 0}
-        title={eligibleCount === 0 ? t('generationCommon.production.noPending') : t('generationCommon.selection.generateHint')}
-        onClick={onGenerate}
-      >
-        <IconPlayerPlay size={16} stroke={1.6} aria-hidden />
-        {generateLabel}
-      </button>
-      <NomiSelect
-        ariaLabel={t('generationCommon.production.concurrency')}
-        leadingLabel={t('generationCommon.production.concurrency')}
-        value={String(concurrency)}
-        options={CONCURRENCY_OPTIONS}
-        size="xs"
-        onChange={(value) => onConcurrencyChange(Number(value))}
-      />
+      <CanvasProductionRunButton scope="selection" count={eligibleCount} onClick={onGenerate} />
+      <CanvasProductionConcurrencySelect value={concurrency} onChange={onConcurrencyChange} />
       <span className={cn('w-px h-4 bg-nomi-line')} />
       {contactSheetCount >= 2 ? (
         <WorkbenchIconButton
           data-contact-sheet="true"
+          size="sm"
+          className="shrink-0"
           label={t('generationCommon.contactSheet.action', { count: contactSheetCount })}
           icon={<IconLayoutGrid size={16} />}
           onClick={onBuildContactSheet}
@@ -143,18 +83,31 @@ export function CanvasSelectionToolbar({
       ) : null}
       {selectedGroupCount > 0 ? (
         <WorkbenchIconButton
+          size="sm"
+          className="shrink-0"
           label={t('generationCommon.selection.ungroup')}
           icon={<IconFolderMinus size={16} />}
           onClick={onUngroupSelectedNodes}
         />
       ) : (
         <WorkbenchIconButton
+          size="sm"
+          className="shrink-0"
           label={t('generationCommon.selection.group')}
           icon={<IconFolderPlus size={16} />}
           onClick={onGroupSelectedNodes}
         />
       )}
       <WorkbenchIconButton
+        size="sm"
+        className="shrink-0"
+        label={t('generationCommon.selection.saveWorkflow')}
+        icon={<IconRoute size={16} />}
+        onClick={onSaveWorkflow}
+      />
+      <WorkbenchIconButton
+        size="sm"
+        className="shrink-0"
         label={t('generationCommon.selection.clear')}
         icon={<IconX size={16} />}
         onClick={onClearSelection}

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   SHOT_VERIFY_DIMENSIONS,
+  SHOT_VERIFY_NOT_ASSESSABLE,
   SHOT_VERIFY_PASS_THRESHOLD,
   activeDimensions,
   buildShotVerifyPrompt,
@@ -73,11 +74,17 @@ describe('parseShotVerifyVerdict', () => {
     expect(v.scores.continuity).toBe(1) // 缺省维度兜底为最低档(由调用方按 active 过滤)
   })
 
-  it('夹取 1-5 并四舍五入；越界与非数值落 1', () => {
-    const v = parseShotVerifyVerdict('{"scores":{"identity":9,"composition":0,"continuity":"x"}}')
+  it('夹取 1-5 并四舍五入；超上界落 5、负数与非数值落 1', () => {
+    const v = parseShotVerifyVerdict('{"scores":{"identity":9,"composition":-3,"continuity":"x"}}')
     expect(v.scores.identity).toBe(5)
-    expect(v.scores.composition).toBe(1)
+    expect(v.scores.composition).toBe(1) // 负数仍按最保守的 1（判不出别放行）
     expect(v.scores.continuity).toBe(1)
+  })
+
+  it('0 是「无法判定」哨兵，原样保留——不再被夹成 1（L3 实测：把「看不到」当「不像」会误报+白重试）', () => {
+    const v = parseShotVerifyVerdict('{"scores":{"identity":0,"composition":4,"continuity":5}}')
+    expect(v.scores.identity).toBe(SHOT_VERIFY_NOT_ASSESSABLE)
+    expect(v.scores.composition).toBe(4) // 其余轴照旧
   })
 
   it('容忍尾逗号畸形', () => {
@@ -150,5 +157,30 @@ describe('normalizeShotScore + 常量', () => {
   it('阈值与三轴定义稳定', () => {
     expect(SHOT_VERIFY_PASS_THRESHOLD).toBe(3)
     expect(SHOT_VERIFY_DIMENSIONS.map((d) => d.key)).toEqual(['identity', 'composition', 'continuity'])
+  })
+})
+
+// 判官 reason 的语言闸(R15):英文界面下,对账卡上那句理由不能是中文。
+// rubric 本身保持中文——它是调过的提示词工程,翻译它等于换一套判官行为;只把「reason 用什么语言写」切掉。
+describe('buildShotVerifyPrompt — reason 语言', () => {
+  it('英文界面追加「reason 用英文写」的指令', () => {
+    const p = buildShotVerifyPrompt(baseCtx({ reasonLanguage: 'en' }))
+    expect(p).toContain('reason 必须用**英文**写')
+  })
+
+  it('中文界面不追加,且与不传该字段逐字节相同', () => {
+    const omitted = buildShotVerifyPrompt(baseCtx())
+    const explicit = buildShotVerifyPrompt(baseCtx({ reasonLanguage: 'zh-CN' }))
+    expect(explicit).toBe(omitted)
+    expect(explicit).not.toContain('必须用**英文**写')
+  })
+
+  it('只改 reason 那一句,rubric 与打分铁律原样保留', () => {
+    const zh = buildShotVerifyPrompt(baseCtx())
+    const en = buildShotVerifyPrompt(baseCtx({ reasonLanguage: 'en' }))
+    for (const anchor of ['<Rubric 逐维度 1-5 档>', '打分铁律', '身份', '构图']) {
+      expect(zh).toContain(anchor)
+      expect(en).toContain(anchor)
+    }
   })
 })

@@ -22,6 +22,11 @@ export type SpendConfirmInfo = {
   vendor: string
   modelKey: string
   prompt: string
+  /**
+   * 这次确认同时会换来「本会话该项目后续生成免问」（MCP 付费会话级信任，见 mcpSpendTrust.ts）。
+   * 卡上必须据它多写一句授权范围——用户以为批的是「这一张」，不写明就是骗同意（D4）。
+   */
+  grantsSessionTrust?: boolean
 }
 
 /** 方案门（Phase B）：外部 agent 要往画布落一套节点方案时，弹应用内卡让用户一眼看懂 AI 要建什么。 */
@@ -46,6 +51,45 @@ export interface ProjectGateway {
    * 与付费门不同：付费门无 UI 时拒发，方案门无 UI 时放行——按「可逆性/是否花钱」分级，见 core.addProjectNodes）。
    */
   confirmPlan(info: PlanConfirmInfo): Promise<boolean>
+}
+
+/**
+ * 方案已在别处确认（协议层 elicitation-first 拿到真人 accept）→ 包一层让 confirmPlan 直接放行，
+ * 其余读写/付费确认原样透传。用于 A 模式（App 开着）：真人已在聊天里批准这批节点，就不该再弹渲染层方案卡
+ * （免双问）。付费门不受影响——confirmSpend 仍走原网关（钱路最终决定权留在 App，与 spendConfirmed 对称）。
+ * 「为什么信客户端传的 planConfirmed、且禁止把本模式复制到 spend/export 硬边界」的完整信任边界论据见
+ * rpcServer.ts 读 body.planConfirmed 处（该 flag 的 RPC 入口）。
+ */
+export function withPreApprovedPlan(gateway: ProjectGateway): ProjectGateway {
+  return {
+    readDoc: gateway.readDoc,
+    apply: gateway.apply,
+    confirmSpend: gateway.confirmSpend,
+    confirmPlan: async () => true,
+  }
+}
+
+/**
+ * 付费已在**调用方客户端**经 elicitation 得到真人确认 → 包一层直铸令牌，不再弹应用内确认卡（免双问）。
+ * 其余读写/方案确认原样透传。
+ *
+ * 为什么确认可以不发生在 Nomi 窗口里：判据是「谁能替我们问到真人」。请求经 MCP 进来说明人在调用方那头，
+ * 客户端声明 elicitation 就是它能弹真对话框；窗口开着 ≠ 用户注意力在 Nomi。协议层只在收到客户端
+ * `action:'accept' + confirm:true` 后才置这个位（mcpProtocol.ts），模型自己伪造不了那一帧
+ * ——spendGrant.ts 写死的威胁模型（「Nomi 的 AI 触发不了未确认的付费生成」）不破。
+ *
+ * ⚠️ 代价说清楚（2026-08-18 用户拍板接受）：本模式经 loopback RPC 过线后，能读 `~/.nomi/capability-core/token`
+ * 的本地进程可借它静默烧额度——此前那条路会弹卡、用户看得见能拒。换来的是「Claude 里点一次就行，
+ * 不必为了确认跑去 Nomi」。**边界仅放宽到这里**：令牌仍只在主进程铸、`assertAndConsumeSpendGrant` 仍逐次硬校验，
+ * 且导出等其余硬边界一律不得复制本模式。
+ */
+export function withPreApprovedSpend(gateway: ProjectGateway): ProjectGateway {
+  return {
+    readDoc: gateway.readDoc,
+    apply: gateway.apply,
+    confirmSpend: async (info) => mintSpendGrant({ nodeIds: [info.nodeId] }),
+    confirmPlan: gateway.confirmPlan,
+  }
 }
 
 function readDiskSnapshot(projectId: string): CanvasSnapshot {

@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import type { BillingModelKind } from '../../../api/desktopClient'
+import type { CanvasPluginHost } from '../plugins/canvasPluginTypes'
 
 export type GenerationNodeRenderProps<TNode = unknown> = {
   node: TNode
@@ -8,6 +9,8 @@ export type GenerationNodeRenderProps<TNode = unknown> = {
   focusFlash?: boolean
   /** 新落点（add/paste/Agent）一次性弹入动画；开项目已有节点不传（不齐闪）。 */
   appear?: boolean
+  /** Present only for host-registered plugin nodes; core nodes ignore it. */
+  host?: CanvasPluginHost
 }
 
 export type GenerationNodeComponent = ComponentType<GenerationNodeRenderProps<unknown>>
@@ -26,6 +29,7 @@ export type GenerationNodeIconKey =
   | 'model3d'
   | 'whiteboard'
   | 'audio'
+  | 'clip'
 
 export type GenerationNodePluginDefinition<TKind extends string = string> = {
   kind: TKind
@@ -157,6 +161,19 @@ export const GENERATION_NODE_PLUGINS = defineGenerationNodePlugins([
     quickAdd: true,
     agentCreatable: true,
     promptPlaceholder: 'Enter dialogue or narration...',
+  },
+  {
+    kind: 'clip',
+    label: 'Clip',
+    menuLabel: 'Clip',
+    component: () => import('./ClipNode'),
+    icon: 'clip',
+    defaultTitle: '剪辑',
+    defaultSize: { width: 760, height: 132 },
+    catalogKind: 'video',
+    quickAdd: true,
+    agentCreatable: false,
+    promptPlaceholder: 'Add media to edit...',
   },
   {
     kind: 'shot',

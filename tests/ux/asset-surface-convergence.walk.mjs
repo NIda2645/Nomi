@@ -7,13 +7,11 @@
 //   ⑤ 软删解散：旧「软删」素材在素材库照常可见（文件本就没删，属预期）
 // 用法: pnpm build && node tests/ux/asset-surface-convergence.walk.mjs
 // 判据=断言 + 截图（tests/ux/shots/asset-surface-convergence/）人眼过。
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/asset-surface-convergence')
 fs.rmSync(shotsDir, { recursive: true, force: true })
@@ -74,23 +72,15 @@ async function snap(page, name) {
   console.log(`  [shot] ${name}`)
 }
 
-let app
+let app, win
 try {
-  app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.', `--user-data-dir=${path.join(base, 'udata')}`],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_SMOKE: '1',
-      NOMI_PROJECTS_DIR: projectsDir,
-      NOMI_SETTINGS_DIR: settingsDir,
-    },
-  })
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
+  ;({ app, win } = await launchNomiApp({
+    name: 'asset-surface-convergence',
+    userDataDir: path.join(base, 'udata'),
+    settingsDir,
+    projectsDir,
+    env: { NOMI_E2E_SMOKE: '1' },
+  }))
   await win.evaluate(({ bucketKey, bucketValue }) => {
     for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) window.localStorage.setItem(k, 'seen')
     window.localStorage.setItem('__nomiE2E', '1')
@@ -152,7 +142,15 @@ try {
   if (await allTab.count()) await allTab.click({ timeout: 2000 }).catch(() => {})
   await win.waitForTimeout(900)
   // compact 侧栏格子不渲染文件名（tooltip 才有）,数瓦片：3 张落盘图（含「曾被软删.png」）全在=软删层解散。
-  const allTileCount = await win.locator('section[aria-label="素材库"] [aria-selected]').count()
+  //
+  // 2026-08-18 修假绿：这里原本数的是 `[aria-selected]`——那个属性在**来源 tab**（role=tab）和
+  // **种类过滤项**（role=option）身上都有，而瓦片的 aria-selected 是 `selectable ? selected : undefined`，
+  // 侧栏里根本不渲染这个属性。也就是说它**从来没数到过素材**：以前恰好有 3 个来源 tab
+  // （全部/项目/智能分组）让 `>= 3` 蒙混通过，智能分组一删就只剩 2 个、当场露馅。
+  // 改数瓦片自己的图片元素（每张素材渲染一个带 alt 的 img），这才是「素材可见」的真判据。
+  const tiles = win.locator('section[aria-label="素材库"] img[alt]')
+  await tiles.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {})
+  const allTileCount = await tiles.count()
   check('三张落盘素材全部可见（含曾软删,软删层解散预期）', allTileCount >= 3, `tiles=${allTileCount}`)
   await snap(win, '05-asset-library-all-assets')
 

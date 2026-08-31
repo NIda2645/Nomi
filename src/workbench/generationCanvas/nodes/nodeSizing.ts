@@ -31,6 +31,8 @@ export const TEXT_MIN_WIDTH = 280;
 export const TEXT_MAX_WIDTH = 680;
 export const TEXT_MIN_HEIGHT = 200;
 export const TEXT_MAX_HEIGHT = 800;
+export const CLIP_NODE_MIN_WIDTH = 560;
+export const CLIP_NODE_MAX_WIDTH = 960;
 export type NodeSizeBounds = {
     minWidth: number;
     maxWidth: number;
@@ -112,6 +114,14 @@ export function shouldAllowComposerAttachmentRecompute(input: {
 // 非媒体节点（含 text）自由缩放时的 min/max。媒体（图/视频）走比例锁定分支，
 // 仍用上面的 MIN/MAX_NODE_*，故此处只为「自由拉伸」路径按 kind 取边界。
 export function getNodeSizeBounds(kind: GenerationCanvasNode["kind"]): NodeSizeBounds {
+    if (kind === "clip") {
+        return {
+            minWidth: CLIP_NODE_MIN_WIDTH,
+            maxWidth: CLIP_NODE_MAX_WIDTH,
+            minHeight: 120,
+            maxHeight: 180,
+        };
+    }
     if (kind === "text") {
         return {
             minWidth: TEXT_MIN_WIDTH,
@@ -130,6 +140,19 @@ export function getNodeSizeBounds(kind: GenerationCanvasNode["kind"]): NodeSizeB
 export const TIMELINE_TRACK_CLIPS_SELECTOR = ".workbench-timeline-track__clips";
 
 export const FOCUS_GENERATION_NODE_EVENT = "nomi-focus-generation-node";
+export const ENSURE_COMPOSER_VISIBLE_EVENT = "nomi-ensure-composer-visible";
+
+/**
+ * composer 的「最小可用高度」：提示词 3 行(72) + 底栏 + 内边距/间距。
+ *
+ * 低于它卡片虽然还在，但提示词区被压到 0、底栏被 `overflow-hidden` 裁到卡外——
+ * 看着像还有个控件，其实一个也点不到（2026-08-26 win32 走查塌陷即此，卡片只剩 26px =
+ * padding 12+12 + border 1+1，content box 归零）。
+ *
+ * 因此它同时是三处的**单一真相源**：卡片 CSS 的 min-height、「这一侧装不装得下」的判定下限、
+ * 以及 maxHeight 的兜底下限。改这里三处一起动，别再各写各的魔数。
+ */
+export const COMPOSER_MIN_USABLE_HEIGHT = 150;
 
 export function clampNumber(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
@@ -364,6 +387,13 @@ export function resolveNodeVisualSize(
     node: Pick<GenerationCanvasNode, "kind" | "size" | "renderKind" | "categoryId" | "meta" | "result">,
 ): { width: number; height: number } {
     const size = node.size || DEFAULT_VISUAL_SIZE;
+    if (node.kind === "clip") {
+        const bounds = getNodeSizeBounds("clip");
+        return {
+            width: clampNumber(size.width, bounds.minWidth, bounds.maxWidth),
+            height: 132,
+        };
+    }
     const renderKind = resolveNodeRenderKind(node);
     const isCardKind = isCardRenderKind(renderKind);
     const bounds = getNodeSizeBounds(node.kind);

@@ -1,17 +1,20 @@
 // Real built Electron + real MCP stdio Production Run journey. No provider calls: the fixture is
 // double-gated and disabled in packaged builds. This test owns all four GUI approvals and proves
 // durable restart recovery, safe MCP projections, preview authorization, and a valid final MP4.
-import { execFileSync, spawn } from 'node:child_process'
+//
+// Transport framing (spawn / initialize / rpc / callTool / terminate) lives in the ONE shared module
+// _mcpJourney.mjs — this sibling and J-MCP1 (mcp-journey.e2e.mjs) both drive it, so there is a single
+// spawn/JSON-RPC implementation (P1: no copy-paste). Differences from J-MCP1 are passed as options:
+// the io.modelcontextprotocol/ui client capability + Codex clientInfo, and the production fixture env.
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import readline from 'node:readline'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
+import { repoRoot, spawnMcpStdioClient } from './_mcpJourney.mjs'
 
 const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-production-mcp-e2e-'))
 const userDataDir = path.join(tempRoot, 'user-data')
 const projectsDir = path.join(tempRoot, 'projects')
@@ -20,15 +23,22 @@ const shotsDir = path.join(repoRoot, 'tests/ux/shots/production-mcp')
 fs.mkdirSync(projectsDir, { recursive: true })
 fs.mkdirSync(shotsDir, { recursive: true })
 
-const sharedEnv = {
-  ...process.env,
-  NOMI_E2E: '1',
-  NOMI_E2E_PRODUCTION_FIXTURE: '1',
-  NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-  NOMI_ELECTRON_USER_DATA_DIR: userDataDir,
-  NOMI_SETTINGS_DIR: userDataDir,
-  NOMI_PROJECTS_DIR: projectsDir,
-  NOMI_CAPABILITY_DIR: capabilityDir,
+// Isolation env + client identity the shared spawner needs to reproduce this sibling's transport exactly:
+// the production fixture flag (double-gated, never calls a provider) and Codex's UI-extension capability.
+const mcpDirs = { settingsDir: userDataDir, userDataDir, projectsDir, capabilityDir }
+const mcpEnv = { NOMI_E2E_PRODUCTION_FIXTURE: '1' }
+const mcpClientInfo = { name: 'OpenAI Codex', version: 'e2e' }
+const mcpCapabilities = { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } }
+
+const launchGuiOptions = {
+  name: 'production-mcp-journey',
+  userDataDir,
+  settingsDir: userDataDir,
+  projectsDir,
+  env: {
+    NOMI_E2E_PRODUCTION_FIXTURE: '1',
+    NOMI_CAPABILITY_DIR: capabilityDir,
+  },
 }
 
 let passed = 0
@@ -40,112 +50,71 @@ function check(condition, label) {
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function terminateOwnedChild(child, graceMs = 2_000) {
-  if (!child || child.exitCode !== null) return
-  try { child.kill('SIGTERM') } catch {}
-  await Promise.race([
-    new Promise((resolve) => child.once('exit', resolve)),
-    delay(graceMs),
-  ])
-  if (child.exitCode === null) {
-    try { child.kill('SIGKILL') } catch {}
-  }
-}
-
 async function launchGui() {
-  const app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.', `--user-data-dir=${userDataDir}`],
-    cwd: repoRoot,
-    env: sharedEnv,
-  })
-  const window = await app.firstWindow()
-  await window.waitForLoadState('domcontentloaded')
+  const { app, win: window } = await launchNomiApp(launchGuiOptions)
   await window.setViewportSize({ width: 1440, height: 900 })
-  await window.waitForTimeout(1_500)
   return { app, window }
 }
 
-function spawnMcp() {
-  const child = spawn(require('electron'), [repoRoot, '--disable-gpu'], {
-    cwd: repoRoot,
-    env: { ...sharedEnv, NOMI_MCP_STDIO: '1' },
-    stdio: ['pipe', 'pipe', 'inherit'],
-  })
-  const pending = new Map()
-  let sequence = 0
-  readline.createInterface({ input: child.stdout }).on('line', (line) => {
-    const text = line.trim()
-    if (!text.startsWith('{')) return
-    let message
-    try { message = JSON.parse(text) } catch { return }
-    const entry = pending.get(message.id)
-    if (!entry) return
-    clearTimeout(entry.timer)
-    pending.delete(message.id)
-    entry.resolve(message)
-  })
-  const rpc = (method, params = {}, timeoutMs = 20_000) => new Promise((resolve, reject) => {
-    const id = ++sequence
-    const timer = setTimeout(() => {
-      pending.delete(id)
-      reject(new Error(`MCP RPC timeout: ${method}`))
-    }, timeoutMs)
-    pending.set(id, { resolve, reject, timer })
-    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`)
-  })
-  return { child, rpc }
-}
-
-async function initializeMcp(rpc) {
+async function initializeMcp() {
   let response = null
   for (let attempt = 0; attempt < 20 && !response; attempt += 1) {
-    try {
-      response = await rpc('initialize', {
-        protocolVersion: '2025-11-25',
-        capabilities: { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } },
-        clientInfo: { name: 'OpenAI Codex', version: 'e2e' },
-      }, 4_000)
-    } catch {
-      await delay(500)
-    }
+    try { response = await mcp.initialize(4_000) } catch { await delay(500) }
   }
   check(Boolean(response?.result), 'real MCP stdio initialize handshake succeeds')
 }
 
-async function callTool(rpc, name, args) {
-  const response = await rpc('tools/call', { name, arguments: args }, 40_000)
-  if (response.error) throw new Error(response.error.message || `MCP ${name} failed`)
-  if (response.result?.isError) throw new Error(response.result.content?.[0]?.text || `MCP ${name} failed`)
-  return response.result
-}
+// Tool calls in this journey use the strict shape (throw on JSON-RPC OR tool-level isError) with the
+// sibling's original 40s ceiling, so any failure aborts rather than flowing a bad result forward.
+const callTool = (name, args) => mcp.callToolOrThrow(name, args, { timeoutMs: 40_000 })
 
-async function getRunData(rpc, projectId, runId) {
-  const result = await callTool(rpc, 'nomi_get_run', { projectId, runId })
+async function getRunData(projectId, runId) {
+  const result = await callTool('nomi_get_run', { projectId, runId })
   return result.structuredContent?.nomiRunData
 }
 
-async function waitForRunStatus(rpc, projectId, runId, expected, timeoutMs = 20_000) {
+async function waitForRunStatus(projectId, runId, expected, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs
   let run = null
   while (Date.now() < deadline) {
-    run = await getRunData(rpc, projectId, runId)
+    run = await getRunData(projectId, runId)
     if (run?.status === expected) return run
     await delay(250)
   }
-  throw new Error(`Run ${runId} did not reach ${expected}; last=${run?.status || 'missing'}`)
+  throw new Error(`Run ${runId} did not reach ${expected}; last=${JSON.stringify({ status: run?.status, stageId: run?.stageId, stages: run?.stages?.map((stage) => [stage.stageId, stage.status]), jobs: run?.jobs?.map((job) => [job.jobId, job.status]), gates: run?.gates?.map((gate) => [gate.gateId, gate.status]) })}`)
 }
 
-async function openRunFromTaskCenter(window) {
-  await window.locator('[data-task-center-trigger="true"]').click()
-  const row = window.locator('[data-nomi-right-panel="tasks"]', { hasText: 'brand.promo' }).locator('[role="button"]', { hasText: 'brand.promo' }).first()
-  await row.waitFor({ timeout: 10_000 })
-  await row.click()
+async function waitForWaitingGate(projectId, runId, gateIdPrefix, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const run = await getRunData(projectId, runId)
+    if (run?.gates?.some((gate) => gate.gateId.startsWith(gateIdPrefix) && gate.status === 'waiting')) return run
+    await delay(250)
+  }
+  throw new Error(`Run ${runId} did not raise a waiting gate ${gateIdPrefix}*`)
+}
+
+/**
+ * 制作任务的家 = 任务中心（不再跳去画布助手面板）。打开顶栏任务 → 卡就地长在里面。
+ * 走查证据：shotName 传了就截图，人眼判断卡的状态/产物/指路是否成立（R13）。
+ */
+async function openRunFromTaskCenter(window, shotName) {
+  const panel = window.locator('[data-nomi-right-panel="tasks"]')
+  if (!(await panel.isVisible().catch(() => false))) {
+    await window.locator('[data-task-center-trigger="true"]').click()
+  }
+  await window.locator('[data-production-task-card]').waitFor({ timeout: 10_000 })
   await window.locator('[data-production-status-title]').waitFor({ timeout: 10_000 })
+  // 面板有 140ms pop 动画：不等落定就截图会拍到半透明重影，证据不可读。
+  if (shotName) {
+    await window.waitForTimeout(260)
+    await window.screenshot({ path: path.join(shotsDir, shotName) })
+  }
 }
 
 async function approveCurrentProductionGate(window) {
-  await window.locator('[data-production-primary-action]').click()
+  await openRunFromTaskCenter(window)
+  await window.locator('[data-production-primary-action]').first().click()
   const overlay = window.locator('.fixed.inset-0').filter({ has: window.locator('button') }).last()
   await overlay.waitFor({ timeout: 5_000 })
   await overlay.locator('button').last().click()
@@ -176,22 +145,38 @@ try {
   const projectId = await window.evaluate(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('projectId'))
   check(Boolean(projectId), 'isolated local project opens in built Nomi')
 
-  mcp = spawnMcp()
-  await initializeMcp(mcp.rpc)
-  const tools = (await mcp.rpc('tools/list')).result?.tools || []
-  for (const name of ['nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
+  mcp = spawnMcpStdioClient({ ...mcpDirs, clientInfo: mcpClientInfo, capabilities: mcpCapabilities, env: mcpEnv })
+  await initializeMcp()
+  const tools = (await mcp.rpc('tools/list', {}, 20_000)).result?.tools || []
+  // 期望清单从目录源 derive（mcpToolCatalog = 自身条目 + spread 进来的 mcpGenerationTools 条目），
+  // 断言集合相等：漏播/多播都抓得住，目录再长这里也不会烂成过期死数。
+  const catalogNames = ['mcpToolCatalog.ts', 'mcpGenerationTools.ts', 'mcpIntegrationTools.ts']
+    .flatMap((file) => [...fs.readFileSync(path.join(repoRoot, 'electron/capabilityCore', file), 'utf8').matchAll(/\bname:\s*["'](nomi_[a-z0-9_]+)["']/g)]
+      .map((match) => match[1]))
+  const stdioNames = tools.map((tool) => tool.name)
+  const missing = catalogNames.filter((name) => !stdioNames.includes(name))
+  const extra = stdioNames.filter((name) => !catalogNames.includes(name))
+  check(
+    catalogNames.length > 0 && missing.length === 0 && extra.length === 0,
+    `real MCP stdio exposes the exact ${catalogNames.length}-tool catalog (missing: ${missing.join(', ') || 'none'}; extra: ${extra.join(', ') || 'none'})`,
+  )
+  for (const name of [
+    'nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact',
+    'nomi_read_artifact', 'nomi_review_artifact', 'nomi_materialize_storyboard',
+  ]) {
     check(tools.some((tool) => tool.name === name), `${name} is registered over real stdio`)
   }
 
-  const resources = (await mcp.rpc('resources/list')).result?.resources || []
+  const resources = (await mcp.rpc('resources/list', {}, 20_000)).result?.resources || []
   const directorResource = resources.find((resource) => resource.uri === 'nomi-skill://director-cinematography')
   check(Boolean(directorResource), 'director cinematography skill is discoverable through MCP resources')
-  const director = (await mcp.rpc('resources/read', { uri: directorResource.uri })).result?.contents?.[0]?.text || ''
+  const director = (await mcp.rpc('resources/read', { uri: directorResource.uri }, 20_000)).result?.contents?.[0]?.text || ''
   check(director.includes('镜头语言') && director.length > 1_000, 'director skill body can be loaded progressively over MCP')
 
-  const started = await callTool(mcp.rpc, 'nomi_start_playbook', {
+  const started = await callTool('nomi_start_playbook', {
     projectId,
     playbook: 'brand.promo',
+    trustLevel: 'confirm_all',
     brief: {
       goal: 'Create a truthful local-first Nomi product promo fixture.',
       audience: 'AI creators',
@@ -204,62 +189,139 @@ try {
   check(Boolean(runId), 'MCP creates a durable Production Run without approving spend')
   check(started.structuredContent.nomiRunData.budget.authorized === 0, 'draft has zero authorized spend')
 
-  await openRunFromTaskCenter(window)
-  check((await window.locator('[data-production-status-title]').textContent())?.length > 0, 'Task Center reopens the exact Run and expands the assistant')
+  await openRunFromTaskCenter(window, '00-task-center.png')
+  check((await window.locator('[data-production-status-title]').textContent())?.length > 0, 'Task Center hosts the run card itself (no hop to the assistant panel)')
+  check(await window.locator('[data-nomi-right-panel="tasks"] [data-production-task-card]').count() === 1, 'the production card lives inside the Task Center panel')
+  check(await window.locator('.generation-canvas-v2-assistant [data-production-task-card]').count() === 0, 'the canvas assistant panel no longer hosts production controls')
   await window.screenshot({ path: path.join(shotsDir, '01-direction-gate.png') })
 
-  await approveCurrentProductionGate(window)
-  let run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_storyboard_review')
-  check(run.artifacts.some((artifact) => artifact.kind === 'script') && run.artifacts.some((artifact) => artifact.kind === 'storyboard'), 'direction approval produces durable script and storyboard artifacts')
-  const events = await callTool(mcp.rpc, 'nomi_subscribe_run', { projectId, runId, afterCursor: 0, waitMs: 0 })
+  // B1/B5 方向门三选一（获批样张贰幕）：MCP 投影带候选 → GUI 渲染可点 → 选中留痕。
+  const atDirection = (await callTool('nomi_get_run', { projectId, runId })).structuredContent.nomiRunData
+  const directionGate = atDirection.gates.find((gate) => gate.gateId === 'gate-direction-v1')
+  check(directionGate?.directionCandidates?.length === 3, 'direction gate projects three LLM-planned candidates over MCP')
+  check(directionGate.directionCandidates.some((candidate) => candidate.key === 'kinetic'), 'candidate keys survive the safe projection')
+  await window.locator('[data-production-primary-action]').click()
+  const candidateRows = window.locator('[data-direction-candidate]')
+  await candidateRows.first().waitFor({ timeout: 5_000 })
+  check(await candidateRows.count() === 3, 'direction dialog renders all three candidates')
+  await window.locator('[data-direction-candidate="kinetic"]').click()
+  check(await window.locator('[data-direction-candidate="kinetic"]').getAttribute('data-direction-selected') === 'true', 'clicking a candidate selects it')
+  // 选择稳定性：600ms 后选中不得被任何重渲染/轮询重置回默认（验收抓到的视觉回落疑点）。
+  await window.waitForTimeout(600)
+  check(await window.locator('[data-direction-candidate="kinetic"]').getAttribute('data-direction-selected') === 'true', 'selection survives re-renders (no reset to first candidate)')
+  await window.screenshot({ path: path.join(shotsDir, '01a-direction-candidates.png') })
+  const directionOverlay = window.locator('.fixed.inset-0').filter({ has: window.locator('button') }).last()
+  await directionOverlay.locator('button').last().click()
+  let run = await waitForRunStatus(projectId, runId, 'awaiting_script_review')
+  const decidedDirection = run.gates.find((gate) => gate.gateId === 'gate-direction-v1')
+  check(decidedDirection?.decidedChoiceKey === 'kinetic', 'approval records the chosen direction as decidedChoiceKey')
+  const scriptArtifact = run.artifacts.find((artifact) => artifact.kind === 'script')
+  check(Boolean(scriptArtifact) && !run.artifacts.some((artifact) => artifact.kind === 'storyboard'), 'direction approval produces a durable script candidate before any storyboard')
+  await callTool('nomi_review_artifact', {
+    projectId,
+    runId,
+    artifactId: scriptArtifact.artifactId,
+    expectedVersion: scriptArtifact.version || 1,
+    decision: 'approved',
+  })
+  run = await waitForRunStatus(projectId, runId, 'awaiting_storyboard_review')
+  check(run.artifacts.some((artifact) => artifact.kind === 'storyboard'), 'script approval produces the durable storyboard candidate')
+  const events = await callTool('nomi_subscribe_run', { projectId, runId, afterCursor: 0, waitMs: 0 })
   check(events.structuredContent?.nomiRunData?.events?.some((event) => event.type === 'skill.loaded'), 'MCP event stream exposes durable skill evidence')
 
-  const attached = await window.evaluate(async ({ projectId: pid, runId: rid }) => {
-    const bridge = window.nomiDesktop?.productionRuns
-    const current = await bridge.read(pid, rid)
-    const storyboard = current.artifacts.find((artifact) => artifact.kind === 'storyboard')
-    return bridge.command(pid, rid, {
-      commandId: crypto.randomUUID(),
-      expectedRevision: current.revision,
-      type: 'plan.attach',
-      payload: {
-        artifactId: storyboard.artifactId,
-        bindings: [{ nodeId: 'shot-1', provider: 'nomi-e2e-fixture', model: 'nomi-e2e-fixture-video', stageId: 'generate' }],
-      },
-      issuedAt: new Date().toISOString(),
-    })
+  const storyboardArtifact = run.artifacts.find((artifact) => artifact.kind === 'storyboard')
+  await callTool('nomi_review_artifact', {
+    projectId,
+    runId,
+    artifactId: storyboardArtifact.artifactId,
+    expectedVersion: storyboardArtifact.version || 1,
+    decision: 'approved',
+  })
+  const materialized = await callTool('nomi_materialize_storyboard', {
+    projectId,
+    runId,
+    artifactId: storyboardArtifact.artifactId,
+    expectedVersion: storyboardArtifact.version || 1,
+  })
+  const attached = materialized.structuredContent?.nomiOutcome
+  check(attached?.kind === 'storyboard_materialized' && Number(attached?.bindingCount) === 8, 'approved storyboard materializes through the external MCP seam with eight planned jobs')
+  const materializedRun = await window.evaluate(async ({ projectId: pid, runId: rid }) => {
+    return window.nomiDesktop?.productionRuns?.read(pid, rid)
   }, { projectId, runId })
-  check(attached.run.jobs.length === 1 && attached.run.status === 'awaiting_contract', 'storyboard binding crosses the real renderer IPC with one planned job')
-  await window.screenshot({ path: path.join(shotsDir, '02-contract-before-restart.png') })
+  check(materializedRun.jobs[0]?.metadata?.subtitle === '1', 'external materialize preserves storyboard subtitle metadata on the first job')
+  check(materializedRun.jobs[0]?.metadata?.transition?.type === 'dissolve' && materializedRun.jobs[0]?.metadata?.transition?.durationFrames === 12, 'external materialize preserves authored transition metadata')
+  await window.screenshot({ path: path.join(shotsDir, '02-contract.png') })
 
+  // 钱门必须在 Nomi 批准；confirm_all 随后在第一次供应商提交前创建逐镜头门。
+  await approveCurrentProductionGate(window)
+  await waitForWaitingGate(projectId, runId, 'gate-shot-', 30_000)
+  let atShot = await getRunData(projectId, runId)
+  check(atShot.jobs.every((job) => job.status === 'authorized'), 'first shot gate stops before every provider submission')
+  await openRunFromTaskCenter(window, '02a-shot-1-gate.png')
+
+  // 在逐镜头门等待时重启真实 Nomi；门与零提交状态必须从磁盘恢复。
   await gui.app.close()
   gui = await launchGui()
   await gui.window.locator('[data-project-card="true"]').first().click()
   await gui.window.waitForFunction(() => window.location.hash.includes('projectId='), undefined, { timeout: 10_000 })
   await openRunFromTaskCenter(gui.window)
-  run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_contract')
-  check(run.jobs.length === 1 && run.budget.authorized === 0, 'restart recovers the waiting contract without submitting or spending')
-
+  atShot = await waitForWaitingGate(projectId, runId, 'gate-shot-')
+  check(atShot.jobs.every((job) => job.status === 'authorized'), 'restart recovers the waiting shot gate without submitting or spending')
   await approveCurrentProductionGate(gui.window)
-  run = await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_rough_cut_review', 30_000)
-  check(run.jobs[0]?.status === 'adopted', 'approved fixture generation reaches adopted exactly once')
+
+  // 首镜获批并生成后停样片门；看过样片后，第二镜仍要单独确认。
+  await waitForWaitingGate(projectId, runId, 'gate-sample-', 30_000)
+  const atSample = await getRunData(projectId, runId)
+  check(atSample.status === 'running' && atSample.jobs.filter((job) => job.status === 'adopted').length === 1, 'one approved shot submits exactly once before the sample gate')
+  // 截图要拍到卡本身（拍在开面板之前只会拍到空画布，等于没证据）。
+  await openRunFromTaskCenter(gui.window, '03a-sample-gate.png')
+  await approveCurrentProductionGate(gui.window)
+
+  await waitForWaitingGate(projectId, runId, 'gate-shot-', 30_000)
+  const beforeShotTwo = await getRunData(projectId, runId)
+  const waitingShotGates = beforeShotTwo.gates.filter((gate) => gate.gateId.startsWith('gate-shot-') && gate.status === 'waiting')
+  check(waitingShotGates.length === 1 && waitingShotGates[0].jobIds.length === 1, 'second shot receives its own durable one-job gate')
+  check(beforeShotTwo.jobs.filter((job) => job.status === 'adopted').length === 1, 'second shot is still unsubmitted before approval')
+  await openRunFromTaskCenter(gui.window, '03b-shot-2-gate.png')
+  await approveCurrentProductionGate(gui.window)
+
+  // The approved storyboard is eight shots. In confirm_all mode every remaining
+  // shot gets the same durable one-job gate; walk them rather than silently
+  // assuming that approving shot two authorizes the whole batch.
+  for (let shotNumber = 3; shotNumber <= 8; shotNumber += 1) {
+    await waitForWaitingGate(projectId, runId, 'gate-shot-', 30_000)
+    const waiting = await getRunData(projectId, runId)
+    const waitingGate = waiting.gates.find((gate) => gate.gateId.startsWith('gate-shot-') && gate.status === 'waiting')
+    check(waitingGate?.jobIds?.length === 1, `shot ${shotNumber} receives one explicit approval gate`)
+    await approveCurrentProductionGate(gui.window)
+  }
+
+  run = await waitForRunStatus(projectId, runId, 'awaiting_rough_cut_review', 30_000)
+  check(run.jobs.length === 8 && run.jobs.every((job) => job.status === 'adopted'), 'each approved fixture shot reaches adopted exactly once')
   check(run.artifacts.some((artifact) => artifact.kind === 'video') && run.artifacts.some((artifact) => artifact.kind === 'timeline'), 'generation and assembly produce local video and timeline artifacts')
+  await openRunFromTaskCenter(gui.window)
+  // 获批样张：视频先出封面 + 播放键（原生 controls chrome 在窄卡里又挤又脏），点了才进播放态。
+  check(await gui.window.locator('[data-production-preview] video').count() === 0, 'rough-cut preview starts as a cover, not a raw player')
+  await gui.window.locator('[data-production-preview-open]').click()
+  const roughCutVideo = gui.window.locator('[data-production-preview] video')
+  await roughCutVideo.waitFor({ timeout: 5_000 })
+  check(await roughCutVideo.count() === 1, 'clicking the cover reveals exactly one playable video in Nomi')
   await gui.window.screenshot({ path: path.join(shotsDir, '03-rough-cut-player.png') })
-  check(await gui.window.locator('[data-production-preview] video').count() === 1, 'rough-cut Run shows one playable video in Nomi')
 
   await gui.window.locator('[data-production-primary-action]').click()
   const roughCutConfirm = gui.window.locator('[data-confirm-dialog-confirm="true"]:visible')
   await roughCutConfirm.waitFor({ timeout: 5_000 })
   await roughCutConfirm.click()
-  await waitForRunStatus(mcp.rpc, projectId, runId, 'awaiting_export')
+  await waitForRunStatus(projectId, runId, 'awaiting_export')
   await openRunFromTaskCenter(gui.window)
   await approveCurrentProductionGate(gui.window)
-  run = await waitForRunStatus(mcp.rpc, projectId, runId, 'completed', 30_000)
+  run = await waitForRunStatus(projectId, runId, 'completed', 30_000)
   check(run.budget.actual === 0 && run.budget.unsettled === 0, 'fixture completes with truthful zero actual and unsettled spend')
+  check(run.stages.length === 9 && run.stages.every((stage) => stage.status === 'completed'), 'completed Run reports all 9 production stages complete')
   const exportArtifact = run.artifacts.find((artifact) => artifact.kind === 'export')
   check(Boolean(exportArtifact?.artifactId), 'completed Run exposes a scoped export artifact identity')
 
-  const artifactResult = await callTool(mcp.rpc, 'nomi_get_artifact', { projectId, runId, artifactId: exportArtifact.artifactId })
+  const artifactResult = await callTool('nomi_get_artifact', { projectId, runId, artifactId: exportArtifact.artifactId })
   const serializedArtifact = JSON.stringify(artifactResult)
   const artifactData = artifactResult.structuredContent?.nomiRunData
   check(artifactData.nomiUri === `nomi://project/${projectId}/run/${runId}/artifact/${exportArtifact.artifactId}`, 'MCP returns a scoped nomiUri for the final export')
@@ -277,8 +339,14 @@ try {
   check(probe.streams?.some((stream) => stream.codec_type === 'video' && stream.codec_name === 'h264'), 'final MP4 contains H.264 video')
   check(probe.streams?.some((stream) => stream.codec_type === 'audio' && stream.codec_name === 'aac'), 'final MP4 contains AAC audio')
 
+  // 窄窗（900×700）下的完成态：卡必须仍然装得下（380px 浮层 + 产物预览不挤爆）。
   await gui.window.setViewportSize({ width: 900, height: 700 })
+  await openRunFromTaskCenter(gui.window)
+  await gui.window.locator('[data-production-tone="success"]').waitFor({ timeout: 10_000 })
+  await gui.window.waitForFunction(() => document.querySelector('[data-production-task-card]')?.textContent?.includes('9 / 9'), undefined, { timeout: 10_000 })
+  check(await gui.window.getByText(/进行中 1|1 进行中/).count() === 0, 'completed task center does not retain a running summary')
   await gui.window.screenshot({ path: path.join(shotsDir, '04-completed-900x700.png') })
+  check((await gui.window.locator('[data-production-task-card]').textContent())?.includes('9 / 9'), 'completed task card shows 9 / 9 stages')
   console.log(`\nPRODUCTION MCP JOURNEY PASS: ${passed} assertions`)
   console.log(`  Run: ${runId}`)
   console.log(`  MP4: ${exportPath}`)
@@ -288,9 +356,14 @@ try {
   exitCode = 1
 } finally {
   const guiChild = gui?.app?.process?.()
-  try { mcp?.child?.stdin?.end() } catch {}
-  await terminateOwnedChild(mcp?.child)
+  // mcp.terminate() ends stdin then SIGTERM→SIGKILL the stdio server (shared module). The Playwright GUI
+  // app process is NOT owned by that module, so it gets its own SIGTERM→SIGKILL sweep here.
+  await mcp?.terminate().catch(() => undefined)
   if (gui?.app) await Promise.race([gui.app.close().catch(() => undefined), delay(3_000)])
-  await terminateOwnedChild(guiChild)
+  if (guiChild && guiChild.exitCode === null) {
+    try { guiChild.kill('SIGTERM') } catch {}
+    await Promise.race([new Promise((resolve) => guiChild.once('exit', resolve)), delay(2_000)])
+    if (guiChild.exitCode === null) { try { guiChild.kill('SIGKILL') } catch {} }
+  }
   process.exitCode = exitCode
 }

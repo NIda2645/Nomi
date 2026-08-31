@@ -1,0 +1,110 @@
+{
+  "ranAt": "2026-08-19T17:00:51.090Z",
+  "spendConfirms": 2,
+  "audit": [
+    {
+      "label": "锚·定妆照",
+      "model": "code-newcli-com/gpt-image-2",
+      "isError": true,
+      "verify": null,
+      "text": "✗ Provider request failed (HTTP 400) at code-newcli-com POST https://code.newcli.com/codex/v1/images/generations: (no detail from provider)\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    },
+    {
+      "label": "锚·定妆照",
+      "model": "apimart/doubao-seedream-4.5",
+      "status": "succeeded",
+      "isError": false,
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 4,
+          "composition": 5
+        },
+        "flagged": [],
+        "suggestion": null
+      },
+      "text": "✓ 已生成一张画面\n  apimart · doubao-seedream-4.5 · image · 「年轻女性便利店收银员小周：短发、圆脸、左眉一颗痣，深蓝色工装…」\n审片：一次通过（身份/构图/连贯达标）\n{\n  \"nodeId\": \"node-e814aeb1-1\",\n  \"status\": \"succeeded\",\n  \"assets\": [\n    {\n      \"type\": \"image\",\n      \"url\": \"nomi-local://asset/workspace-6e26a829-cba2-440b-b6b9-115fac7393af/assets/generated/2026-08-19/image-1787158598473.jpg\",\n      \"thumbnailUrl\": \"nomi-local://asset/workspace-6e26a82"
+    },
+    {
+      "label": "好镜",
+      "model": "code-newcli-com/gpt-image-2",
+      "isError": true,
+      "verify": null,
+      "text": "✗ Provider request failed (HTTP 400) at code-newcli-com POST https://code.newcli.com/codex/v1/images/edits: (no detail from provider)\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    },
+    {
+      "label": "好镜",
+      "model": "apimart/doubao-seedream-4.5",
+      "status": "succeeded",
+      "isError": false,
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 5,
+          "composition": 5
+        },
+        "flagged": [],
+        "suggestion": null
+      },
+      "text": "✓ 已生成一张画面\n  apimart · doubao-seedream-4.5 · image · 「小周站在便利店冰柜前微笑，短发圆脸左眉痣清晰可见，深蓝工装，…」\n审片：一次通过（身份/构图/连贯达标）\n{\n  \"nodeId\": \"node-283221d4-2\",\n  \"status\": \"succeeded\",\n  \"assets\": [\n    {\n      \"type\": \"image\",\n      \"url\": \"nomi-local://asset/workspace-6e26a829-cba2-440b-b6b9-115fac7393af/assets/generated/2026-08-19/image-1787158633643.jpg\",\n      \"thumbnailUrl\": \"nomi-local://asset/workspace-6e26a82"
+    },
+    {
+      "label": "坏镜(身份矛盾)",
+      "model": "code-newcli-com/gpt-image-2",
+      "isError": true,
+      "verify": null,
+      "text": "✗ Provider request failed (HTTP 400) at code-newcli-com POST https://code.newcli.com/codex/v1/images/edits: (no detail from provider)\n已完成的内容安全；确认模型服务与 API Key 后可重试。"
+    },
+    {
+      "label": "坏镜(身份矛盾)",
+      "model": "apimart/doubao-seedream-4.5",
+      "status": "succeeded",
+      "isError": false,
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": false,
+        "retries": 1,
+        "scores": {
+          "identity": 1,
+          "composition": 5
+        },
+        "flagged": [
+          {
+            "dimension": "identity",
+            "dimensionName": "身份",
+            "score": 1,
+            "reason": "人物与设定锚不符，构图符合风暴之夜船长驾驶舱的描述。"
+          }
+        ],
+        "suggestion": "1 个维度仍未达标（身份），建议在 Nomi 里重滚这一镜或调整提示词"
+      },
+      "text": "✓ 已生成一张画面\n  apimart · doubao-seedream-4.5 · image · 「满脸皱纹的白发老年男性船长在海上驾驶舱的特写，风暴之夜」\n⚠️ 审片：1 次定向重试后仍有 1 个维度不达标（已标红，不藏）\n  ⚠️ 身份第 1 档，低于阈值——人物与设定锚不符，构图符合风暴之夜船长驾驶舱的描述。\n  建议：1 个维度仍未达标（身份），建议在 Nomi 里重滚这一镜或调整提示词\n{\n  \"nodeId\": \"node-a05d948b-4\",\n  \"status\": \"succeeded\",\n  \"assets\": [\n    {\n      \"type\": \"image\",\n      \"url\": \"nomi-local://asset/workspace-6e26a829-cba2-440b-b6b9-115fac7393af/assets/generated"
+    },
+    {
+      "label": "视频镜",
+      "model": "apimart/doubao-seedance-2.0",
+      "status": "succeeded",
+      "isError": false,
+      "verify": {
+        "skipped": false,
+        "reason": null,
+        "passed": true,
+        "retries": 0,
+        "scores": {
+          "identity": 3,
+          "composition": 5
+        },
+        "flagged": [],
+        "suggestion": null
+      },
+      "text": "✓ 已生成一段视频\n  apimart · doubao-seedance-2.0 · video · 「小周在便利店里缓缓抬头看向墙上时钟，固定机位，冷白灯光」\n审片：一次通过（身份/构图/连贯达标）\n{\n  \"nodeId\": \"node-f5fc9af5-6\",\n  \"status\": \"succeeded\",\n  \"assets\": [\n    {\n      \"type\": \"video\",\n      \"url\": \"nomi-local://asset/workspace-6e26a829-cba2-440b-b6b9-115fac7393af/assets/generated/2026-08-19/video-1787158832028.mp4\",\n      \"thumbnailUrl\": null,\n      \"assetId\": \"asset-b1219241-09"
+    }
+  ]
+}

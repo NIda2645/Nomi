@@ -2,14 +2,13 @@
 // 验证：磁盘里 status=running+taskId 的「卡住」视频节点，被真实加载路径 normalizeStoreSnapshot 收敛成
 // recoverable → 渲染真 NodeRecoverableReport（生产 CSS，人眼判断：中性纸底非红色、品牌图标、按钮可点）。
 // 用法: node tests/ux/timeout-recover.walk.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/recover')
 fs.mkdirSync(shotsDir, { recursive: true })
@@ -47,14 +46,12 @@ const rootPath = path.join(projectsDir, 'ZZ-recover-fixture')
 fs.mkdirSync(path.join(rootPath, '.nomi'), { recursive: true })
 fs.writeFileSync(path.join(rootPath, '.nomi', 'project.json'), JSON.stringify({ ...record, lastKnownRootPath: rootPath }, null, 1))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${userData}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'timeout-recover',
+  userDataDir: userData,
+  projectsDir: projectsDir,
+  settleMs: 0,
 })
-const win = await app.firstWindow()
-await win.waitForLoadState('domcontentloaded')
 await win.evaluate(() => {
   for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) window.localStorage.setItem(k, 'seen')
 })
@@ -63,7 +60,7 @@ await win.waitForTimeout(1800)
 let n = 0
 async function snap(name) {
   n += 1
-  await win.screenshot({ path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`) })
+  await screenshotSettled(win, { path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`) })
   console.log(`  · shot ${String(n).padStart(2, '0')}-${name}`)
 }
 

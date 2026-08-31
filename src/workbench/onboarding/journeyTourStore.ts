@@ -72,7 +72,6 @@ export const useJourneyTourStore = create<JourneyTourState>((set) => {
     }
 
     // ── 创作区：打字回放 ──
-    ws().setStoryboardEditorOpen(false)
     ws().setStoryboardPlan(null)
     ws().setWorkspaceMode('creation')
     await settle()
@@ -90,7 +89,7 @@ export const useJourneyTourStore = create<JourneyTourState>((set) => {
     // ── 创作区：AI 拆分镜（预置方案直接展示）──
     const plan = buildDemoStoryboardPlan()
     ws().setStoryboardPlan(plan)
-    ws().setStoryboardEditorOpen(true)
+    ws().setWorkspaceMode('creation')
     cinematic('split')
     await delay(2600)
     if (aborted()) return
@@ -100,7 +99,6 @@ export const useJourneyTourStore = create<JourneyTourState>((set) => {
     const result = (await applyCanvasToolCall('create_canvas_nodes', args)) as CreateNodesResult
     ws().commitStoryboardPlan()
     ws().setWorkspaceMode('generation')
-    ws().requestCanvasFit()
     const map = result?.clientIdToNodeId ?? {}
     // 注入预置成图：示例画布即显成片(status=success),像一个做完的示例项目(诚实——这就是示例项目)。
     // 图先由主进程落成本项目的真实资产再拿 URL——节点结果会持久化,只有 nomi-local 这种稳定地址

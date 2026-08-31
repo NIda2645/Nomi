@@ -1,12 +1,11 @@
 // R13 走查 —— 自动 API 适配器在现有模型设置卡中的亮/暗模式状态。
 // 用法: NOMI_ADAPTER_UI_USERDATA=/tmp/nomi-provider-adapter-live.xxxxxx node tests/ux/provider-adapter-doctor.walk.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const userData = process.env.NOMI_ADAPTER_UI_USERDATA
 if (!userData || !fs.existsSync(path.join(userData, 'provider-adapters.json'))) {
@@ -21,16 +20,14 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures.push(name)
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', '--disable-gpu', `--user-data-dir=${userData}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
+const { app, win } = await launchNomiApp({
+  name: 'provider-adapter-doctor',
+  userDataDir: userData,
+  args: ['--disable-gpu'],
+  settleMs: 0,
 })
 
 try {
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     window.localStorage.setItem('__nomiE2E', '1')
     window.localStorage.setItem('nomi-color-scheme', 'light')
@@ -58,7 +55,7 @@ try {
   const panelText = await panel.innerText()
   check('卡片显示部分可用', panelText.includes('部分可用'), panelText.match(/部分可用/)?.[0] || '')
   check('卡片显示真实启用数 2 / 3', /2\s*\/\s*3\s*个模型已启用/.test(panelText))
-  await panel.screenshot({ path: path.join(shotsDir, '01-light-partial-card.png') })
+  await screenshotSettled(panel, { path: path.join(shotsDir, '01-light-partial-card.png') })
 
   await providerCard.click({ timeout: 3_000 })
   await win.waitForTimeout(500)
@@ -70,7 +67,7 @@ try {
   check('未验证视频模型开关被锁定', (await failedToggle.count()) > 0 && await failedToggle.isDisabled())
   await failedToggle.scrollIntoViewIfNeeded()
   await win.waitForTimeout(250)
-  await panel.screenshot({ path: path.join(shotsDir, '02-light-expanded-models.png') })
+  await screenshotSettled(panel, { path: path.join(shotsDir, '02-light-expanded-models.png') })
 
   await win.evaluate(() => window.localStorage.setItem('nomi-color-scheme', 'dark'))
   await win.reload()
@@ -82,7 +79,7 @@ try {
   await win.waitForTimeout(900)
   const theme = await win.evaluate(() => document.documentElement.dataset.theme)
   check('暗色 token 已生效', theme === 'dark', String(theme))
-  await darkPanel.screenshot({ path: path.join(shotsDir, '03-dark-partial-card.png') })
+  await screenshotSettled(darkPanel, { path: path.join(shotsDir, '03-dark-partial-card.png') })
 } finally {
   await app.close().catch(() => undefined)
 }

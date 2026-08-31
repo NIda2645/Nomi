@@ -1,4 +1,12 @@
 import type { WorkbenchDocument } from '../workbenchTypes'
+import { ASSET_MASTER_PROMPT } from './assetMasterPrompt'
+import {
+  getCustomSystemPrompts,
+  getSystemPromptOverrides,
+  readOverride,
+  resolveEffectivePrompt,
+} from './systemPromptOverrides'
+import type { CustomSystemPrompt } from '../../../electron/settings/systemPromptsContract'
 
 export type CreationAiModeId =
   | 'general'
@@ -10,7 +18,12 @@ export type CreationAiModeId =
   | 'review'
 
 export type CreationAiMode = {
-  id: CreationAiModeId
+  /**
+   * 内置的是 CreationAiModeId 那 7 个字面量；自定义的是运行时生成的 `custom:<uuid>`。
+   * 所以这里是 string 而不是联合类型——自定义 id 是**数据**，不该进类型联合。
+   * 「内置清单和设置契约的 id 不许漂移」由 creationAiModes.test.ts 的对拍测试保证。
+   */
+  id: string
   label: string
   shortLabel: string
   title: string
@@ -23,6 +36,14 @@ export type CreationAiMode = {
   prompt: string
   /** 纯问答模式：不套创作任务框定、不注入 documentTools 写文档协议。 */
   chatOnly?: boolean
+  /**
+   * 专职模式：用户已经明确选了这条路（素材规划/文字稿/提示词/审校），本轮**不许**被
+   * 跨面板意图路由劫走。自由写作的模式（通用/故事/剧本）才留着路由，因为那里「拆镜头」
+   * 确实是个真实的跨面板跳转意图。
+   */
+  dedicatedJob?: boolean
+  /** 用户自建的（不是内置 7 个之一）：没有「恢复默认」，改的是改名/删除。 */
+  custom?: boolean
 }
 
 export const CREATION_AI_MODES: CreationAiMode[] = [
@@ -65,12 +86,10 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
     shortLabel: '素材',
     title: '角色/场景/道具',
     description: '拆出角色、场景、道具，并生成生图提示词。',
-    prompt: [
-      '本轮任务：素材规划。基于故事或剧本拆分视觉资产。',
-      '按角色 C01-C99、场景 S01-S99、道具 P01-P99 编号。',
-      '每个资产输出名称、用途、视觉标记、生成提示词。所有提示词保持同一视觉风格前缀。',
-      '角色必须有可区分的颜色、轮廓或配件标记。',
-    ].join('\n'),
+    // 领域规范住 assetMasterPrompt.ts（全资产大师 V3.0，用户 2026-08-12 提供）：
+    // 场景七层递进 / 角色概念表 / 道具小资产卡，各带必填字段与自检清单。
+    prompt: ASSET_MASTER_PROMPT,
+    dedicatedJob: true,
   },
   {
     // 名字要和「拆成镜头·落画布」区分开：这个模式只在文稿里写文字稿，不落画布、不生成。
@@ -86,6 +105,7 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
       '15秒分镜按 0-3秒、3-6秒、6-9秒、9-12秒、12-15秒 拆分。',
       '每段写清楚主体、动作、镜头运动、情绪、光线、转场和声音。',
     ].join('\n'),
+    dedicatedJob: true,
   },
   {
     id: 'seedance',
@@ -100,6 +120,7 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
       '如果是续集，保留“将@视频1延长15s”的开头，并说明 @图片/@视频 引用用途。',
       '避免过长堆砌，优先清晰可执行。',
     ].join('\n'),
+    dedicatedJob: true,
   },
   {
     id: 'review',
@@ -112,11 +133,71 @@ export const CREATION_AI_MODES: CreationAiMode[] = [
       '重点检查：资产引用是否对应、15秒时间轴是否完整、剧集尾帧和下一集开场是否连续、镜头语言是否具体、情绪弧是否成立、提示词是否过长或可能触发敏感风险。',
       '先列问题，再给修订版。不要输出泛泛建议。',
     ].join('\n'),
+    dedicatedJob: true,
   },
 ]
 
+/** 内置默认提示词（不含用户覆盖）——「恢复默认」和「是否已自定义」的比对基准。 */
+export function defaultCreationAiPrompt(modeId: unknown): string | undefined {
+  return CREATION_AI_MODES.find((mode) => mode.id === modeId)?.prompt
+}
+
+/**
+ * 取模式定义，并把用户在设置里改过的系统提示词**盖在 prompt 上**。
+ *
+ * 为什么覆盖发生在这里而不是各调用点：这是全仓拿模式的唯一入口（渲染期的 activeMode、
+ * 发送路径的 buildCreationAiPrompt、popover 的 autoPrompt 全都经过它），盖在这一层
+ * 等于「一处生效、处处生效」，不会漏掉某个调用点拿到旧默认值（P2 修根因）。
+ * 覆盖值来自模块级同步快照（systemPromptOverrides.ts），所以本函数仍是同步的。
+ */
+/**
+ * 用户自建的提示词长成一个 CreationAiMode，和内置的平起平坐（用户 2026-08-18 拍板）。
+ *
+ * 两条能力声明是**定死的**，不给用户多一个开关（他要的是「存一段提示词」，不是配权限）：
+ *  · chatOnly 不设 → 能写文稿，仍走既有待批卡确认；
+ *  · dedicatedJob: true → 他明确选了这条路，不被拆分镜意图路由劫走（承接 08-17 D 项）。
+ */
+function customToMode(custom: CustomSystemPrompt): CreationAiMode {
+  return {
+    id: custom.id,
+    label: custom.name,
+    shortLabel: custom.name,
+    title: custom.name,
+    description: '',
+    prompt: custom.prompt,
+    dedicatedJob: true,
+    custom: true,
+  }
+}
+
+/**
+ * 「本轮能选哪些提示词」的**唯一真相源**：内置 7 个（已盖上用户覆盖）+ 用户自建 N 个。
+ *
+ * 根因备忘（2026-08-18）：选择器过去手写条目、还把模式名硬编码成 `onModeChange('assets')`，
+ * 于是 7 个内置模式里有 5 个在 UI 上根本不存在——提示词写了、设置里能编辑、就是调不起来。
+ * 改成所有选择面都从这里 derive 之后，新增模式自动出现在列表里，不会再有「搁浅的模式」。
+ * 结构测试钉死这条（见 creationAiModes.test.ts）。
+ */
+export function listCreationAiModes(): CreationAiMode[] {
+  const overrides = getSystemPromptOverrides()
+  const builtin = CREATION_AI_MODES.map((mode) => {
+    const prompt = resolveEffectivePrompt(mode.prompt, readOverride(overrides, mode.id))
+    return prompt === mode.prompt ? mode : { ...mode, prompt }
+  })
+  return [...builtin, ...getCustomSystemPrompts().map(customToMode)]
+}
+
+/**
+ * 取模式定义，并把用户在设置里改过的系统提示词盖在 prompt 上。自定义 id 也认。
+ * 认不出的 id（比如选中的自定义提示词刚被删掉）→ 回退第一个内置模式，绝不返回空提示词。
+ */
 export function getCreationAiMode(modeId: unknown): CreationAiMode {
-  return CREATION_AI_MODES.find((mode) => mode.id === modeId) || CREATION_AI_MODES[0]
+  const custom = getCustomSystemPrompts().find((item) => item.id === modeId)
+  if (custom) return customToMode(custom)
+  const mode = CREATION_AI_MODES.find((item) => item.id === modeId) || CREATION_AI_MODES[0]
+  const override = readOverride(getSystemPromptOverrides(), mode.id)
+  const prompt = resolveEffectivePrompt(mode.prompt, override)
+  return prompt === mode.prompt ? mode : { ...mode, prompt }
 }
 
 /**
@@ -126,6 +207,18 @@ export function getCreationAiMode(modeId: unknown): CreationAiMode {
  */
 export function modeAllowsWriteTools(mode: CreationAiMode): boolean {
   return !mode.chatOnly
+}
+
+/**
+ * 「本轮能不能被跨面板意图路由劫走」的单一判定源（同 modeAllowsWriteTools 的能力声明范式）。
+ *
+ * 根因备忘（2026-08-17）：旧写法把模式名硬编码成 `activeMode.id === 'storyboard'`，
+ * 于是「素材规划」这种同样是用户明确选择的专职模式漏在守卫外——用户选了素材规划、
+ * 说一句带「画面/镜头/场景」的话，就被 routeCreationIntent 劫持去拆分镜。
+ * 改成读模式自己的能力声明后，新增专职模式只要打 dedicatedJob 就自动受保护，不会再漏。
+ */
+export function modeAllowsIntentRouting(mode: CreationAiMode): boolean {
+  return !mode.dedicatedJob
 }
 
 export function extractWorkbenchDocumentText(document: WorkbenchDocument | null | undefined): string {

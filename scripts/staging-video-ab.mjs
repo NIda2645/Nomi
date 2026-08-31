@@ -1,14 +1,12 @@
 // 视频层验证：把「staging 引导出的写实关键帧」喂 apimart doubao-seedance-2.0 (i2v)，
 // 出视频后抽首/尾帧比对——验证站位/动作从头到尾不崩（staging→关键帧→视频链的最后一环）。
 // 真实视频额度。需 apimart key。用法：pnpm run build && APIMART_E2E=1 node scripts/staging-video-ab.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.pose-lab')
 mkdirSync(outDir, { recursive: true })
@@ -19,11 +17,9 @@ const CASES = [
   { label: 'three', frame: 'ab-three-poses-B.png', prompt: '镜头缓慢横移，三个人保持各自姿势——左边的人坐着、中间站立、右边单膝跪地，人物自然轻微活动。' },
 ]
 
-const app = await electron.launch({ executablePath: require('electron'), args: ['.'], cwd: repoRoot, env: { ...process.env } })
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'staging-video-ab', isolate: false })
 try {
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
   if (process.env.APIMART_API_KEY) await win.evaluate((k) => window.nomiDesktop.modelCatalog.upsertVendorApiKey('apimart', { apiKey: k, enabled: true }), process.env.APIMART_API_KEY)
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(3500)

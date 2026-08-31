@@ -10,20 +10,20 @@
 // 现有层只有按 key 名猜的 image-url，表达不了 character1..N / 视频 / 音频）。
 
 import type { ModelParameterControl } from "../modelCatalogMeta";
+import type {
+  ArchetypeExpressionChannel as SharedArchetypeExpressionChannel,
+  ArchetypeReferenceSlotKind as SharedArchetypeReferenceSlotKind,
+  ArchetypeSource as SharedArchetypeSource,
+} from "../../../electron/shared/videoCapabilities/types";
 
-export type ArchetypeReferenceSlotKind =
-  | "first_frame"
-  | "last_frame"
-  | "image_ref" // 多图，按序对应 prompt 里的 character1..N
-  | "video_ref"
-  | "audio_ref"
-  | "source_video";
+export type ArchetypeReferenceSlotKind = SharedArchetypeReferenceSlotKind;
 
 export type ArchetypeReferenceSlot = {
   kind: ArchetypeReferenceSlotKind;
   label: string;
   min: number;
-  max: number;
+  /** Absent when the provider has not published a reference count limit. */
+  max?: number;
   /**
    * 该模型 API 的输入参数名（模型契约，供应商无关）。缺省时由 kind 推断（见 archetypeMeta
    * SLOT_DEFAULTS）。例：Seedance 全能参考的角色图 = `reference_image_urls`；HappyHorse 角色参考
@@ -38,6 +38,21 @@ export type ArchetypeReferenceSlot = {
    *  仅角色槽为 true（Seedance 全能参考、HappyHorse 角色参考）；普通参考图（如 video-edit 的参考图）为 false。 */
   characterIndexed?: boolean;
   /**
+   * **跨槽依赖**（模型级契约，供应商无关）：本槽有值时，这里列出的 kind 的槽**至少一个**也必须有值，
+   * 否则该模型不受理。缺省 = 无依赖，本槽可单独使用（绝大多数槽如此）。
+   *
+   * 首例：Seedance 2.0 的参考音频不能单独用（火山方舟「不支持"文本+音频"、"纯音频" 输入」/
+   * APIMart "Must be used together with reference images or reference videos"）→
+   * `audio_ref` 声明 `requiresAnyOf: ['image_ref', 'video_ref']`。**Seedance 2.5 已解除此限**
+   * （方舟「新增支持纯音频参考生成视频」）→ 2.5 不声明。正因为同族两代不同，才必须是**声明**而非写死的 if。
+   *
+   * 语义是**析取**（任一即可），因为三家原文都是「图片**或**视频」。判定见 archetypeMeta 的
+   * `unmetReferenceDependency`；它同时喂 canRunGenerationNode 与 composer 的置灰文案（单一真相源）。
+   * 注意这是**依赖**不是**容量**：容量（max）满了就该在放入那一刻拦，依赖不满足只该拦生成 ——
+   * 用户先拖音频再拖图片是合理顺序，在第一步拦死等于惩罚操作顺序。
+   */
+  requiresAnyOf?: ArchetypeReferenceSlotKind[];
+  /**
    * **角色数组合并用**（配合 mode.combineSlotsInto）：该槽在合并出的对象数组里的 `role` 字段值。
    * **缺省由 kind 派生**（first_frame→first_frame、last_frame→last_frame、image_ref→reference_image，
    * 见 archetypeMeta DEFAULT_ROLE_FOR_KIND）——故绝大多数情况不写，避免 role 与 kind 两条平行真相源（P1）。
@@ -45,6 +60,17 @@ export type ArchetypeReferenceSlot = {
    */
   roleName?: string;
 };
+
+/**
+ * A source-backed way in which a mode can express a user signal.
+ *
+ * This deliberately does not define a universal camera-control enum. Some models
+ * express camera motion only in prompt text, some accept a reference video, and
+ * a few expose a structured control that is valid only for a particular task.
+ * `status` distinguishes documented support from a documented rejection and from
+ * an area that has not been verified yet.
+ */
+export type ArchetypeExpressionChannel = SharedArchetypeExpressionChannel;
 
 /** 跨模型统一的「意图」——UI 主标签按它走（角色参考/单图首帧/首尾帧/文生/视频编辑）。 */
 export type ArchetypeIntent = "text" | "single" | "firstlast" | "character" | "edit";
@@ -64,6 +90,12 @@ export type ArchetypeMode = {
   vendorTerm: string;
   hint: string;
   slots: ArchetypeReferenceSlot[];
+  /**
+   * How this mode can express documented user signals. This is model-contract
+   * data, not a universal assumption: different models expose different
+   * channels and scopes.
+   */
+  expressionChannels?: ArchetypeExpressionChannel[];
   /** 标量参数：复用现有控件类型（规则 1，不另造）。供应商无关的**缺省**集；某供应商字段枚举不同时用 vendorParams 覆盖。 */
   params: ModelParameterControl[];
   /**
@@ -133,11 +165,24 @@ export type ModelArchetypeVariant = {
   paramOverrides?: Record<string, (params: ModelParameterControl[]) => ModelParameterControl[]>;
 };
 
+/**
+ * 契约出处。**结构化字段，不是注释** —— 2026-08-12 的教训：Seedance 2.5 档案里 4 个契约数字
+ * （参考图/视频/音频上限、比例默认值）全是我们自己填的，而文件头注释白纸黑字写着
+ * 「契约逐项对账自 kie 官方文档」。注释是自由文本，写什么都行、没人能反证；落成字段才能被
+ * 门岗检查、被聚合成索引、让复核的人一眼知道去哪查。**改契约数字必须同步 checkedAt。**
+ * 门岗：`pnpm run check:archetype-sources`（棘轮，只减不增）。
+ */
+export type ArchetypeSource = SharedArchetypeSource;
+
 export type ModelArchetype = {
+  /** Older shared profile IDs accepted only when model identity matches this profile. */
+  legacyIds?: string[];
   id: string; // 'seedance-2'
   family: string; // 'seedance'
   label: string; // 'Seedance 2.0'
   kind: "video" | "image" | "audio" | "model3d";
+  /** 契约出处（见 ArchetypeSource）。**新增档案必填**；存量未补的在门岗白名单里，只减不增。 */
+  sources?: ArchetypeSource[];
   modes: ArchetypeMode[];
   defaultModeId: string;
   /**

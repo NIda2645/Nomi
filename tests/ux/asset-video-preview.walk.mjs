@@ -6,13 +6,14 @@
 //
 // 用法：pnpm run build && node tests/ux/asset-video-preview.walk.mjs
 // 产出：tests/ux/shots/asset-video-preview/*.png
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from './_launchApp.mjs'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+import { screenshotSettled } from './_assert.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -97,27 +98,22 @@ function check(name, ok, detail = '') {
 
 let app
 try {
-  app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.', `--user-data-dir=${settingsDir}`, '--no-proxy-server'],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_ELECTRON_USER_DATA_DIR: settingsDir,
-      NOMI_SETTINGS_DIR: settingsDir,
-      NOMI_PROJECTS_DIR: projectsDir,
-    },
-  })
-  let win = await app.firstWindow()
+  let win
+  ;({ app, win } = await launchNomiApp({
+    name: 'asset-video-preview',
+    userDataDir: settingsDir,
+    settingsDir,
+    projectsDir,
+    args: ['--no-proxy-server'],
+    settleMs: 1800,
+  }))
   const getWin = () => {
     const live = app.windows().filter((page) => !page.isClosed())
     win = live.find((page) => /projectId=/.test(page.url())) || live[live.length - 1] || win
     return win
   }
   const screenshot = async (name) => {
-    await getWin().screenshot({ path: path.join(shotsDir, name) })
+    await screenshotSettled(getWin(), { path: path.join(shotsDir, name) })
     console.log(`  · 截图 ${name}`)
   }
   const findAssetCard = (name) => getWin().getByRole('button', { name, exact: true }).first()
@@ -141,8 +137,6 @@ try {
     })
   }
 
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   await win.evaluate(() => {
     localStorage.setItem('nomi-color-scheme', 'dark')
     for (const key of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) {

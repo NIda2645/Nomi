@@ -1,25 +1,23 @@
 // 复现白屏：开编辑器(默认1假人)→加第2个假人→看画布是否还在渲染 + 抓全部 console/page 错误。
 // 用法：pnpm run build && node tests/ux/scene3d-whitescreen-repro.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.scene3d-whitescreen-lab')
 mkdirSync(outDir, { recursive: true })
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-white-walk-'))
 const projectsDir = path.join(tmp, 'projects')
 mkdirSync(projectsDir, { recursive: true })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-whitescreen-repro',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const log = (m) => console.log(m)
@@ -28,11 +26,8 @@ const pageErrors = []
 let ok = false
 
 try {
-  const win = await app.firstWindow()
   win.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()) })
   win.on('pageerror', (e) => pageErrors.push(String(e?.stack || e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   const splashSkip = win.locator('[data-splash-skip="true"]').first()
   if ((await splashSkip.count()) > 0) await splashSkip.click().catch(() => {})
@@ -64,7 +59,7 @@ try {
   const canvasGone = async () => (await editor.locator('canvas').count()) === 0
   const initialCanvasGone = await canvasGone()
   log(`  默认(1假人) canvas 不见? ${initialCanvasGone}  err=${consoleErrors.length}/${pageErrors.length}`)
-  await win.screenshot({ path: path.join(outDir, 'w-01-default.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'w-01-default.png') })
 
   // 加第 2 个假人：旧条直接点「假人」按钮；新条点「添加」→「假人」→「单个假人」
   const addToggle = win.getByRole('button', { name: '添加', exact: true }).first()
@@ -84,7 +79,7 @@ try {
 
   const twoMannequinCanvasGone = await canvasGone()
   log(`  加第2假人后 canvas 不见? ${twoMannequinCanvasGone}  err=${consoleErrors.length}/${pageErrors.length}`)
-  await win.screenshot({ path: path.join(outDir, 'w-02-two-mannequins.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'w-02-two-mannequins.png') })
 
   // 关编辑器 → 重开（走「从磁盘恢复已存场景」路径，跟用户的 2 假人场景一致）
   const closeBtn = editor.locator('[title="退出 3D 场景"]').first()
@@ -101,7 +96,7 @@ try {
   await win.waitForTimeout(4500)
   const reopenedCanvasGone = await canvasGone()
   log(`  重开编辑器后 canvas 不见? ${reopenedCanvasGone}  err=${consoleErrors.length}/${pageErrors.length}`)
-  await win.screenshot({ path: path.join(outDir, 'w-03-reopened.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'w-03-reopened.png') })
 
   log('\n=== console errors ===')
   consoleErrors.slice(0, 20).forEach((e) => log('  • ' + e.slice(0, 300)))

@@ -6,6 +6,7 @@ import { cn } from '../../utils/cn'
 import { AssetThumb } from './AssetTile'
 import { useAssetPool } from './useAssetPool'
 import { filterAssets, type AssetKind, type AssetRef } from './assetTypes'
+import { droppedAssetFile, isAssetPickerInteractionLocked } from './assetPickerUpload'
 
 // 统一选择器(P0.3,样张 v4 态④)。定位 = **快速取**(搜索 + 最近),不是全量浏览器。
 // 三来源一套:画布行 + 项目素材最近网格(可滚) + 上传;另说明拖入/连线两条画布捷径。
@@ -25,19 +26,21 @@ type AssetPickerProps = {
   className?: string
 }
 
-const ACCEPT_ATTR: Record<AssetKind, string> = { image: 'image/*', video: 'video/*', audio: 'audio/*' }
+const ACCEPT_ATTR: Record<AssetKind, string> = { image: 'image/*', video: 'video/*', audio: 'audio/*', model3d: '.glb' }
 
-function PickerItem({ asset, onPick, dimmed }: { asset: AssetRef; onPick: (asset: AssetRef) => void; dimmed?: boolean }): JSX.Element {
+function PickerItem({ asset, onPick, dimmed, disabled }: { asset: AssetRef; onPick: (asset: AssetRef) => void; dimmed?: boolean; disabled?: boolean }): JSX.Element {
   const { t } = useTranslation()
   return (
     <button
       type="button"
       aria-label={asset.name}
-      onClick={() => onPick(asset)}
+      disabled={disabled}
+      onClick={() => { if (!disabled) onPick(asset) }}
       title={dimmed ? t('assetLibrary.picker.typeLimitReached') : undefined}
       className={cn(
         'relative w-12 h-12 rounded-nomi-sm overflow-hidden border border-nomi-line bg-nomi-ink-05 flex items-center justify-center cursor-pointer hover:outline hover:outline-2 hover:outline-offset-1 hover:outline-nomi-accent',
         dimmed && 'opacity-40',
+        disabled && 'cursor-not-allowed opacity-50',
       )}
     >
       <AssetThumb asset={asset} playSize={18} />
@@ -48,6 +51,7 @@ function PickerItem({ asset, onPick, dimmed }: { asset: AssetRef; onPick: (asset
 export default function AssetPicker({ projectId, accept, onPick, onUpload, onBrowseAll, atLimitKinds, uploading, className }: AssetPickerProps): JSX.Element {
   const { t } = useTranslation()
   const isDimmed = (kind: AssetKind) => Boolean(atLimitKinds?.includes(kind))
+  const interactionLocked = isAssetPickerInteractionLocked(Boolean(uploading))
   const { assets, loading } = useAssetPool(projectId)
   const [query, setQuery] = React.useState('')
 
@@ -67,9 +71,7 @@ export default function AssetPicker({ projectId, accept, onPick, onUpload, onBro
       // 而不是填进当前节点的输入槽（提示语已写「或把文件拖进来」却无 onDrop = bug）。
       onDragOver={(event) => { event.preventDefault(); event.stopPropagation() }}
       onDrop={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        const file = event.dataTransfer.files?.[0]
+        const file = droppedAssetFile(event, Boolean(uploading))
         if (file) onUpload(file)
       }}
     >
@@ -90,7 +92,7 @@ export default function AssetPicker({ projectId, accept, onPick, onUpload, onBro
           <span className={cn('text-nomi-ink-40 text-micro')}>{t('assetLibrary.picker.canvas')}</span>
           {/* 画布:单行横滚(样张 .pkRow),不换行——否则几十张图堆叠把 picker 撑到溢出视口 */}
           <div className={cn('flex gap-[6px] overflow-x-auto pb-[2px]')}>
-            {canvasAssets.map((asset) => <div key={asset.id} className={cn('shrink-0')}><PickerItem asset={asset} onPick={onPick} dimmed={isDimmed(asset.kind)} /></div>)}
+            {canvasAssets.map((asset) => <div key={asset.id} className={cn('shrink-0')}><PickerItem asset={asset} onPick={onPick} dimmed={isDimmed(asset.kind)} disabled={interactionLocked} /></div>)}
           </div>
         </div>
       ) : null}
@@ -104,7 +106,7 @@ export default function AssetPicker({ projectId, accept, onPick, onUpload, onBro
             ) : null}
           </div>
           <div className={cn('grid grid-cols-[repeat(5,48px)] gap-[6px] max-h-[108px] overflow-auto pb-[2px]')}>
-            {projectAssets.map((asset) => <PickerItem key={asset.id} asset={asset} onPick={onPick} dimmed={isDimmed(asset.kind)} />)}
+            {projectAssets.map((asset) => <PickerItem key={asset.id} asset={asset} onPick={onPick} dimmed={isDimmed(asset.kind)} disabled={interactionLocked} />)}
           </div>
         </div>
       ) : null}

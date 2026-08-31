@@ -1,4 +1,9 @@
-import { installCrashHandlers } from "./crashLog";
+import {
+  installCrashHandlers,
+  installProcessGoneHandlers,
+  installUncaughtExceptionNoiseFilter,
+  startNativeCrashCapture,
+} from "./crashLog";
 import { installParentProcessWatchdog } from "./parentProcessWatchdog";
 import { installProcessStdioErrorGuards } from "./processStdio";
 
@@ -11,6 +16,9 @@ type ElectronAppLifecycle = {
 type MainProcessLifecycleDependencies = {
   env?: NodeJS.ProcessEnv;
   installCrashHandlers?: typeof installCrashHandlers;
+  installUncaughtExceptionNoiseFilter?: typeof installUncaughtExceptionNoiseFilter;
+  installProcessGoneHandlers?: typeof installProcessGoneHandlers;
+  startNativeCrashCapture?: typeof startNativeCrashCapture;
   installParentProcessWatchdog?: typeof installParentProcessWatchdog;
   installProcessStdioErrorGuards?: typeof installProcessStdioErrorGuards;
 };
@@ -29,8 +37,21 @@ export function installMainProcessLifecycle(
     dependencies.installParentProcessWatchdog ?? installParentProcessWatchdog;
   const stdioGuardInstaller =
     dependencies.installProcessStdioErrorGuards ?? installProcessStdioErrorGuards;
+  const processGoneInstaller =
+    dependencies.installProcessGoneHandlers ?? installProcessGoneHandlers;
+  const nativeCrashCaptureStarter =
+    dependencies.startNativeCrashCapture ?? startNativeCrashCapture;
+  const noiseFilterInstaller =
+    dependencies.installUncaughtExceptionNoiseFilter ?? installUncaughtExceptionNoiseFilter;
   stdioGuardInstaller();
   crashHandlerInstaller();
+  // 装在 crashHandlerInstaller 之后：uncaughtExceptionMonitor 与 uncaughtException 是两条独立通道，
+  // monitor 永远先跑、永远落盘（留证不受影响），这条只决定「要不要弹那个原生崩溃框」。
+  noiseFilterInstaller();
+  // Crashpad 必须在 app ready 前装（本函数由 main.ts 顶层调用），否则原生崩溃拿不到 minidump。
+  nativeCrashCaptureStarter();
+  // 不传 target：进程死亡事件挂在 Electron 的 app 上（覆盖所有窗口，含辅助窗），由 crashLog 自己绑。
+  processGoneInstaller();
   const stopParentProcessWatchdog = watchdogInstaller({
     // 正装由操作系统管理；只有开发/测试实例应跟随临时启动器退出。
     enabled: !app.isPackaged,

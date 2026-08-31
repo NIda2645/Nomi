@@ -4,6 +4,31 @@ import type { ClipFraming } from './clipFraming'
 export type TimelineTrackType = 'image' | 'video' | 'audio'
 export type TimelineClipType = 'image' | 'video' | 'audio'
 
+/**
+ * `cut` is deliberately explicit metadata, even though it has no blend
+ * effect.  A normal hard cut is a valid editorial transition; the contract
+ * must distinguish an authored cut from an omitted transition so an Agent
+ * cannot claim that arbitrary clip boundaries were planned.
+ */
+export type TimelineTransitionType = 'cut' | 'dissolve' | 'fade' | 'match_cut' | 'whip_pan'
+
+/** Explicit visual transition metadata between adjacent media clips. */
+export type TimelineTransition = {
+  fromClipId: string
+  toClipId: string
+  type: TimelineTransitionType
+  durationFrames?: number
+}
+
+/** Clip-local audio processing. Missing means unity gain, audible, and no fades. */
+export type TimelineClipAudio = {
+  /** Attenuation in decibels. Positive boost is intentionally unsupported until preview uses Web Audio. */
+  gainDb?: number
+  muted?: boolean
+  fadeInFrames?: number
+  fadeOutFrames?: number
+}
+
 export type TimelineClip = {
   id: string
   type: TimelineClipType
@@ -17,6 +42,8 @@ export type TimelineClip = {
   text?: string
   url?: string
   thumbnailUrl?: string
+  /** Valid for audio clips and the source audio carried by video clips. */
+  audio?: TimelineClipAudio
   // 取景（适应/填充 + 缩放 + 平移）。缺省 = DEFAULT_CLIP_FRAMING（contain/1/0/0）。
   // 这是 P0-5「所见即所得」的关键：取景从预览局部 state 提升为时间轴数据，导出据此复现构图。
   framing?: ClipFraming
@@ -34,6 +61,8 @@ export type TimelineTextStyle = 'caption' | 'title'
 
 export type TimelineTextClip = {
   id: string
+  /** Optional provenance for captions materialized from a storyboard shot. */
+  sourceNodeId?: string
   text: string
   style: TimelineTextStyle
   startFrame: number
@@ -56,6 +85,8 @@ export type TimelineState = {
   tracks: TimelineTrack[]
   // 文字轨（字幕/标题卡）。独立层，不挂 tracks[]（它没有媒体 clip 心智）。
   textClips: TimelineTextClip[]
+  /** Optional for old projects; production export requires explicit non-cut entries. */
+  transitions?: TimelineTransition[]
 }
 
 // 三轨对称命名。audio 自 2026-06-25 起独立成「音频轨」（配乐/BGM，不再跟视频抢位）。

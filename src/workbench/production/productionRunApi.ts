@@ -1,5 +1,7 @@
 import { getDesktopBridge } from '../../desktop/bridge'
-import type { RunCommand } from '../../../electron/productionRun/productionRunTypes'
+import type { ProductionActionResult, RunCommand } from '../../../electron/productionRun/productionRunTypes'
+
+export type { ProductionActionResult }
 
 function bridge() {
   const value = getDesktopBridge()?.productionRuns
@@ -12,5 +14,9 @@ export const productionRunApi = {
   read: (projectId: string, runId: string) => bridge().read(projectId, runId),
   createDraft: (input: Parameters<ReturnType<typeof bridge>['createDraft']>[0]) => bridge().createDraft(input),
   command: (projectId: string, runId: string, command: RunCommand) => bridge().command(projectId, runId, command),
+  materializeStoryboard: (projectId: string, runId: string, artifactId: string, expectedVersion: number) => bridge().materializeStoryboard(projectId, runId, artifactId, expectedVersion),
   events: (projectId: string, runId: string, afterCursor: number) => bridge().events(projectId, runId, afterCursor),
+  // P4 S6：返工一镜（同 Run 新 Job + 单镜确认 + 派发）；续拍已停批次。回结构化 { ok, code, message? }（渲染层 t() 翻译 code）。
+  rework: (projectId: string, runId: string, shotId?: string): Promise<ProductionActionResult> => bridge().rework(projectId, runId, shotId) as Promise<ProductionActionResult>,
+  resumeBatch: (projectId: string, runId: string, reason: 'budget' | 'manual'): Promise<ProductionActionResult> => bridge().resumeBatch(projectId, runId, reason) as Promise<ProductionActionResult>,
 }

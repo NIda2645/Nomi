@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   __resetDeferredNodeMediaQueueForTests,
   __setDeferredNodeMediaLimitForTests,
+  isDeferredVideoFrameReady,
   observeDeferredNodeMediaVisibility,
   requestDeferredNodeMediaSlot,
 } from './deferredNodeMediaQueue'
@@ -9,7 +10,14 @@ import {
 describe('deferred node media queue', () => {
   afterEach(() => {
     __resetDeferredNodeMediaQueueForTests()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
+  })
+
+  it('reveals video only after the browser has decoded current-frame data', () => {
+    expect(isDeferredVideoFrameReady(1)).toBe(false)
+    expect(isDeferredVideoFrameReady(2)).toBe(true)
+    expect(isDeferredVideoFrameReady(4)).toBe(true)
   })
 
   it('limits image activation until an active slot is released', () => {
@@ -64,6 +72,58 @@ describe('deferred node media queue', () => {
     expect(activated).toEqual(['active', 'priority'])
   })
 
+  it('reprioritizes media that is already waiting in the queue', () => {
+    __setDeferredNodeMediaLimitForTests('image', 1)
+    const activated: string[] = []
+    let releaseActive = () => {}
+
+    requestDeferredNodeMediaSlot('image', (release) => {
+      activated.push('active')
+      releaseActive = release
+    })
+    requestDeferredNodeMediaSlot('image', () => {
+      activated.push('normal-first')
+    })
+    const promoted = requestDeferredNodeMediaSlot('image', () => {
+      activated.push('promoted')
+    })
+
+    promoted.setPriority(true)
+    releaseActive()
+
+    expect(activated).toEqual(['active', 'promoted'])
+  })
+
+  it('cancels active offscreen media and immediately releases its slot', () => {
+    __setDeferredNodeMediaLimitForTests('video', 1)
+    const activated: string[] = []
+
+    const offscreen = requestDeferredNodeMediaSlot('video', () => {
+      activated.push('offscreen')
+    })
+    requestDeferredNodeMediaSlot('video', () => {
+      activated.push('visible')
+    })
+
+    offscreen.cancel()
+
+    expect(activated).toEqual(['offscreen', 'visible'])
+  })
+
+  it('turns the active-slot watchdog into an observable timeout', () => {
+    vi.useFakeTimers()
+    const onTimeout = vi.fn()
+    const activated: string[] = []
+
+    __setDeferredNodeMediaLimitForTests('image', 1)
+    requestDeferredNodeMediaSlot('image', () => activated.push('timed-out'), false, onTimeout)
+    requestDeferredNodeMediaSlot('image', () => activated.push('next'))
+    vi.advanceTimersByTime(8000)
+
+    expect(onTimeout).toHaveBeenCalledTimes(1)
+    expect(activated).toEqual(['timed-out', 'next'])
+  })
+
   it('keeps video activation on its own lower concurrency lane', () => {
     __setDeferredNodeMediaLimitForTests('image', 2)
     __setDeferredNodeMediaLimitForTests('video', 1)
@@ -82,46 +142,56 @@ describe('deferred node media queue', () => {
     expect(activated).toEqual(['video-1', 'image-1'])
   })
 
-  it('waits for IntersectionObserver visibility before activating media', () => {
-    let observerCallback: IntersectionObserverCallback | null = null
+  it('tracks IntersectionObserver visibility until cleanup', () => {
+    const cb = { current: null as IntersectionObserverCallback | null }
     const disconnect = vi.fn()
     const observe = vi.fn()
     class FakeIntersectionObserver {
       constructor(callback: IntersectionObserverCallback) {
-        observerCallback = callback
+        cb.current = callback
       }
 
       observe = observe
       disconnect = disconnect
     }
     vi.stubGlobal('window', { IntersectionObserver: FakeIntersectionObserver })
-    const onVisible = vi.fn()
+    const onVisibilityChange = vi.fn()
     const element = {} as Element
 
-    const cleanup = observeDeferredNodeMediaVisibility(element, onVisible)
+    const cleanup = observeDeferredNodeMediaVisibility(element, onVisibilityChange)
 
     expect(observe).toHaveBeenCalledWith(element)
-    expect(onVisible).not.toHaveBeenCalled()
+    expect(onVisibilityChange).not.toHaveBeenCalled()
 
-    observerCallback?.([{ isIntersecting: false, intersectionRatio: 0 } as IntersectionObserverEntry], {} as IntersectionObserver)
-    expect(onVisible).not.toHaveBeenCalled()
+    cb.current?.(
+      [{ isIntersecting: false, intersectionRatio: 0 } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    )
+    expect(onVisibilityChange).toHaveBeenLastCalledWith(false)
 
-    observerCallback?.([{ isIntersecting: true, intersectionRatio: 0 } as IntersectionObserverEntry], {} as IntersectionObserver)
-    expect(onVisible).toHaveBeenCalledTimes(1)
-    expect(disconnect).toHaveBeenCalledTimes(1)
+    cb.current?.(
+      [{ isIntersecting: true, intersectionRatio: 0 } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    )
+    expect(onVisibilityChange).toHaveBeenLastCalledWith(true)
+    expect(disconnect).not.toHaveBeenCalled()
 
-    observerCallback?.([{ isIntersecting: true, intersectionRatio: 1 } as IntersectionObserverEntry], {} as IntersectionObserver)
-    expect(onVisible).toHaveBeenCalledTimes(1)
+    cb.current?.(
+      [{ isIntersecting: false, intersectionRatio: 0 } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    )
+    expect(onVisibilityChange).toHaveBeenLastCalledWith(false)
 
     cleanup()
+    expect(disconnect).toHaveBeenCalledTimes(1)
   })
 
   it('falls back to immediate activation when IntersectionObserver is unavailable', () => {
     vi.stubGlobal('window', {})
-    const onVisible = vi.fn()
+    const onVisibilityChange = vi.fn()
 
-    observeDeferredNodeMediaVisibility({} as Element, onVisible)
+    observeDeferredNodeMediaVisibility({} as Element, onVisibilityChange)
 
-    expect(onVisible).toHaveBeenCalledTimes(1)
+    expect(onVisibilityChange).toHaveBeenCalledWith(true)
   })
 })

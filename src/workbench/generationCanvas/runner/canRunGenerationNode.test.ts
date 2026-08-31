@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { canRunGenerationNode } from './generationRunController'
 import { MODEL_ARCHETYPES } from '../../../config/modelArchetypes'
+import { SLOT_ACCEPTS } from '../agent/referenceEdgeCapability'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 // 回归：Seedance omni 视频节点放了参考数组就该「可生成」。修复前 canRunGenerationNode 只看
@@ -25,6 +26,17 @@ describe('canRunGenerationNode — 视频节点参考判定', () => {
     const node = videoNode('omni', { referenceVideoUrls: ['nomi-local://asset/p/v.mp4'] })
     expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
   })
+  it('omni 只连了一段视频（画布边，非 meta 上传）→ 可生成（用户反馈 2026-08-20：↑ 按钮点不了）', () => {
+    // 复现用户截图：素材库拖进来一段 mp4（kind='asset' + result.type='video'）连到 omni 镜头，
+    // 提示词写好了，composer 也把它显示成已填的「参考视频」槽 —— 但 ↑ 按钮灰着点不动。
+    const source = {
+      id: 's1', kind: 'asset', title: 'v', position: { x: 0, y: 0 }, prompt: '',
+      result: { id: 'r1', type: 'video', url: 'nomi-local://asset/p/clip.mp4' },
+    } as unknown as GenerationCanvasNode
+    const node = videoNode('omni')
+    const edges = [{ id: 'e1', source: 's1', target: 'v1', mode: 'reference' } as never]
+    expect(canRunGenerationNode(node, { nodes: [node, source], edges })).toBe(true)
+  })
   it('首帧模式：有 firstFrameUrl → 可生成；空 → 不可', () => {
     expect(canRunGenerationNode(videoNode('first', { firstFrameUrl: 'https://cdn/f.png' }), { nodes: [], edges: [] })).toBe(true)
     expect(canRunGenerationNode(videoNode('first'), { nodes: [], edges: [] })).toBe(false)
@@ -45,6 +57,34 @@ describe('canRunGenerationNode — 视频节点参考判定', () => {
     const node = {
       id: 'v1', kind: 'video', title: 'v', position: { x: 0, y: 0 }, prompt: '一只猫跳下沙发',
       meta: { modelKey: 'bytedance/seedance-2.0-global', archetype: { id: 'runninghub-seedance', modeId: 'text' } },
+    } as GenerationCanvasNode
+    expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
+  })
+
+  // 回归（2026-08-24 用户反馈）：「Comfyui 我配置的文生视频工作流，但是提交必须输入图片才能发出」。
+  // 死锁链：本判定原本「无档案 → 必须先有参考才放行」，而 ComfyUI 导入图**从不带档案**
+  // （resolveTaskArchetype 对 comfy vendor 直接返回 null）→ 纯文生视频的图里没有图输入、UI 也不显示参考框，
+  // 按钮却非要一张参考才亮 → 用户只能连张图去喂它 → runtime 又以「模型没有『图生视频』通道，参考图发不出去」
+  // 拒发 → 两头堵死，这类工作流整个发不出去。判据改回「模型自己声明要什么」：无档案一律放行，
+  // 由 runtime 的诚实闸兜底（与 image/audio 两支同口径）。
+  it('ComfyUI 文生视频工作流（无档案）无参考也可生成', () => {
+    const node = {
+      id: 'v1', kind: 'video', title: 'v', position: { x: 0, y: 0 }, prompt: '日出前，面包师打开木质百叶窗',
+      meta: { modelKey: 'h3-t2v', modelVendor: 'comfyui-local', vendor: 'comfyui-local' },
+    } as GenerationCanvasNode
+    expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
+  })
+  it('第 2+ 台 ComfyUI 实例（comfyui-local-xxx 前缀）同样放行，不能只保得住第一台', () => {
+    const node = {
+      id: 'v1', kind: 'video', title: 'v', position: { x: 0, y: 0 }, prompt: '一只猫跳下沙发',
+      meta: { modelKey: 'h3-t2v', modelVendor: 'comfyui-local-rtx4090', vendor: 'comfyui-local-rtx4090' },
+    } as GenerationCanvasNode
+    expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
+  })
+  it('自定义接入的无档案视频模型同样放行（判据是「模型声明了什么」，不是「手上有没有参考」）', () => {
+    const node = {
+      id: 'v1', kind: 'video', title: 'v', position: { x: 0, y: 0 }, prompt: '一只猫跳下沙发',
+      meta: { modelKey: 'some-custom-t2v', modelVendor: 'my-relay', vendor: 'my-relay' },
     } as GenerationCanvasNode
     expect(canRunGenerationNode(node, { nodes: [node], edges: [] })).toBe(true)
   })
@@ -104,4 +144,44 @@ describe('不变量：video 可生成判定 ⟺ 当前模式无参考槽（防 t
       })
     }
   }
+})
+
+// 不变量 2（2026-08-20）：把「连线放了参考、按钮还是灰的」从「修了 omni 视频这一处」升级成「整类不再复发」。
+// 规则：**有参考槽的模式，连一条该模式收得下的参考边，就必须可生成** —— 不管那条边送的是图还是视频，
+// 也不管它落的是数组槽（image_ref/video_ref）还是首帧槽。
+// 根因是判定与发送两套口径：发送侧按槽的 accept 去 referenceImages/referenceVideos/referenceAudios 取值，
+// 判定侧只读 meta 手动上传 → 连线来的视频在发送侧看得见、判定侧看不见。现在两侧共用
+// edgeListForArraySlotAccept，这里逐档案逐模式钉住，新档案/新槽种漏接当场红。
+describe('不变量：有参考槽的模式，连一条它收得下的参考边就必须可生成（防「连了线按钮还是灰的」复发）', () => {
+  const videoArchetypes = MODEL_ARCHETYPES.filter((a) => a.kind === 'video')
+  for (const archetype of videoArchetypes) {
+    for (const mode of archetype.modes || []) {
+      const slots = mode.slots || []
+      if (slots.length === 0) continue // 无槽 = t2v，由不变量 1 覆盖
+      // 边只送得出 image / video（SLOT_ACCEPTS.audio_ref = []：今天没有音频源节点种类）。
+      // **每种资产各测一条**，不能「模式收图就只喂图」——原 bug 正是「omni 收图也收视频，只连视频时点不动」：
+      // 喂图那条恒绿，会把它盖过去。一次只放一条边 = 逐个槽单独验，漏接哪个槽哪条红。
+      const kinds = (['image', 'video'] as const).filter((kind) =>
+        slots.some((s) => SLOT_ACCEPTS[s.kind].includes(kind)),
+      )
+      if (kinds.length === 0) continue // 只有音频槽 → 边进不来，见下面的前提断言
+      for (const assetType of kinds) {
+      it(`${archetype.id}/${mode.id}：只连一条${assetType === 'image' ? '图片' : '视频'}参考边 → 可生成`, () => {
+        const source = {
+          id: 'src', kind: 'asset', title: 's', position: { x: 0, y: 0 }, prompt: '',
+          result: { id: 'r', type: assetType, url: `nomi-local://asset/p/ref.${assetType === 'image' ? 'png' : 'mp4'}` },
+        } as unknown as GenerationCanvasNode
+        const node = {
+          id: 'inv2', kind: 'video', title: 'v', position: { x: 0, y: 0 }, prompt: '一只猫跳下沙发',
+          meta: { modelKey: archetype.identifierPatterns?.[0] || archetype.id, archetype: { id: archetype.id, modeId: mode.id } },
+        } as GenerationCanvasNode
+        const edges = [{ id: 'e', source: 'src', target: 'inv2', mode: 'reference' } as never]
+        expect(canRunGenerationNode(node, { nodes: [node, source], edges })).toBe(true)
+      })
+      }
+    }
+  }
+  it('前提仍成立：音频参考槽收不到画布边（有了音频源节点种类就来补上面的覆盖）', () => {
+    expect(SLOT_ACCEPTS.audio_ref).toEqual([])
+  })
 })

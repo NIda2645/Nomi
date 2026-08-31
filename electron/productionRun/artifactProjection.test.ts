@@ -39,7 +39,7 @@ afterEach(() => {
 })
 
 describe('production artifact projection', () => {
-  it('returns safe metadata, a scoped expiring preview, and no local path/provider URL', () => {
+  it('returns safe metadata, a scoped expiring preview, and a project-relative path but never an absolute one', () => {
     const { root, run, artifact } = fixture()
     const projection = createArtifactProjection({
       projectRoot: root,
@@ -59,6 +59,8 @@ describe('production artifact projection', () => {
       openInNomi: 'nomi://project/project-1/run/run-1?artifact=artifact-1',
       nomiUri: 'nomi://project/project-1/run/run-1/artifact/artifact-1',
     })
+    // 项目内相对路径外发（本机 agent 据此 ffprobe 验产物）；绝对路径/项目根仍然一个字都不出去。
+    expect(projection.projectRelativePath).toBe('assets/frame.png')
     expect(projection.preview?.url).toMatch(/^nomi-local:\/\/production-preview\/project-1\/run-1\/artifact-1\/assets\/frame\.png\?preview=/)
     expect(projection.preview?.nomiUrl).toBe(projection.preview?.url)
     expect(projection.preview?.expiresAt).toBe('2026-08-08T10:01:00.000Z')
@@ -76,6 +78,22 @@ describe('production artifact projection', () => {
       secret: 'test-preview-secret',
       nowMs: Date.parse('2026-08-08T10:01:00.001Z'),
     })).toThrow(/expired/i)
+  })
+
+  it('never emits the thumbnail path, which stays a render-side intermediate', () => {
+    const { root, run, artifact } = fixture()
+    fs.writeFileSync(path.join(root, 'assets', 'thumb.png'), 'thumb-bytes')
+    const projection = createArtifactProjection({
+      projectRoot: root,
+      run,
+      artifact: { ...artifact, thumbnailRelativePath: 'assets/thumb.png' },
+      secret: 'test-preview-secret',
+      nowMs: 1,
+    })
+    // 预览走缩略图那条，外发的产物路径必须仍是产物自己那条——两条不能串。
+    expect(projection.projectRelativePath).toBe('assets/frame.png')
+    expect(projection).not.toHaveProperty('thumbnailRelativePath')
+    expect(projection.preview?.url).toContain('assets/thumb.png')
   })
 
   it('scopes identical artifact ids to their project and run', () => {

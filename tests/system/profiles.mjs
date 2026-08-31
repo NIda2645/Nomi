@@ -8,10 +8,14 @@ const stage = (id, command, args = [], options = {}) => ({
 
 export const STAGES = {
   matrix: stage("matrix", "node", ["scripts/test-capability-matrix.mjs"]),
+  contracts: stage("contracts", "pnpm", ["run", "gates:contracts"]),
   unit: stage("unit", "pnpm", ["run", "test"]),
   gates: stage("gates", "pnpm", ["run", "gates"]),
   build: stage("build", "pnpm", ["run", "build"]),
   e2e: stage("e2e", "pnpm", ["run", "test:e2e"]),
+  "canvas-critical": stage("canvas-critical", "pnpm", ["run", "test:canvas:critical"]),
+  "canvas-full": stage("canvas-full", "pnpm", ["run", "test:canvas:acceptance"]),
+  "canvas-performance": stage("canvas-performance", "pnpm", ["run", "test:canvas:performance"]),
   "journeys-ci": stage("journeys-ci", "pnpm", ["run", "test:journeys"]),
   "journeys-all": stage("journeys-all", "pnpm", ["eval:journey"]),
   "real-generation": stage("real-generation", "node", ["tests/ux/camera-move-render-e2e.mjs"], {
@@ -22,7 +26,14 @@ export const STAGES = {
 export const PROFILES = {
   quick: ["matrix", "unit"],
   ci: ["matrix", "unit", "build", "e2e", "journeys-ci"],
-  "full-local": ["matrix", "gates", "e2e", "journeys-ci"],
+  "ci-contracts": ["contracts"],
+  "ci-unit": ["unit"],
+  "ci-desktop": ["build", "e2e"],
+  "ci-journeys": ["journeys-ci"],
+  "ci-canvas-critical": ["canvas-critical"],
+  "ci-canvas-full": ["canvas-full"],
+  "ci-performance": ["canvas-performance"],
+  "full-local": ["matrix", "gates", "e2e", "canvas-full", "canvas-performance", "journeys-ci"],
   "real-generation": ["real-generation"],
-  release: ["matrix", "gates", "e2e", "journeys-all", "real-generation"],
+  release: ["matrix", "gates", "e2e", "canvas-full", "canvas-performance", "journeys-all", "real-generation"],
 };

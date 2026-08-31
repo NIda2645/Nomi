@@ -6,14 +6,13 @@
 // DEV 模式：起 vite(127.0.0.1:5273) → electron 连 dev（真 import /src 才能注入 store 造图片节点，
 //   绕开「普通图片节点只能生成不能上传」）。
 // 用法: REPLICATE_API_TOKEN=r8_... node tests/ux/decompose-ui.walk.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import http from 'node:http'
-import { createRequire } from 'node:module'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = process.cwd()
 const TOKEN = process.env.REPLICATE_API_TOKEN || ''
 const FIXTURE = path.join(repoRoot, '.tmp', 'decompose-fixture.jpg')
@@ -46,14 +45,14 @@ const vite = spawn('node', ['node_modules/vite/bin/vite.js', '--host', '127.0.0.
 await waitForUrl('http://127.0.0.1:5273', 60000).catch((e) => console.error('vite 启动失败', e))
 
 const consoleErrors = []
-// NOMI_E2E=1：关 COOP/COEP 跨源隔离，否则卡死 Playwright CDP 握手 → launch timeout。
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${userData}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_DESKTOP_DEV: '1', VITE_DEV_SERVER_URL: 'http://127.0.0.1:5273', NOMI_PROJECTS_DIR: projectsDir, NOMI_E2E: '1' },
+const { app, win: _initialWin } = await launchNomiApp({
+  name: 'decompose-ui',
+  userDataDir: userData,
+  projectsDir,
+  settleMs: 0,
+  env: { NOMI_DESKTOP_DEV: '1', VITE_DEV_SERVER_URL: 'http://127.0.0.1:5273' },
 })
-let win = await app.firstWindow()
+let win = _initialWin
 const getWin = () => {
   const live = app.windows().filter((w) => { try { return !w.isClosed() && !w.url().startsWith('devtools://') } catch { return false } })
   win = live.find((w) => { try { return /projectId=/.test(w.url()) } catch { return false } }) || live[live.length - 1] || win
@@ -72,7 +71,7 @@ const failedUrls = []
 const onFail = (r) => { const u = r.url(); if (!URL_NOISE.test(u)) failedUrls.push(`${r.failure()?.errorText || '?'} ${u.slice(0, 80)}`) }
 app.on('window', (w) => w.on('requestfailed', onFail))
 win.on('requestfailed', onFail)
-async function snap(name) { n += 1; try { await getWin().screenshot({ path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`) }) } catch { /* */ } }
+async function snap(name) { n += 1; try { await screenshotSettled(getWin(), { path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`) }) } catch { /* */ } }
 async function dismiss() {
   for (let i = 0; i < 6; i++) {
     const skip = getWin().locator('button, [role="button"], a', { hasText: /跳过|完成|知道了|开始创作|稍后|关闭/ }).first()
@@ -118,7 +117,7 @@ try {
   await snap('node-injected')
   const hasToolbar = (await getWin().locator('[aria-label="AI 编辑"]').count()) > 0
   if (!hasToolbar) { // 节点可能未选中，点一下卡片图
-    await getWin().locator('.react-flow__node img').first().click({ timeout: 2000 }).catch(() => {})
+    await getWin().locator('[data-node-id] img').first().click({ timeout: 2000 }).catch(() => {})
     await getWin().waitForTimeout(500)
   }
   check('出现 AI 编辑工具条', (await getWin().locator('[aria-label="AI 编辑"]').count()) > 0)
@@ -145,7 +144,7 @@ try {
     await getWin().evaluate((key) => window.nomiDesktop.modelCatalog.upsertVendorApiKey('replicate', { apiKey: key, enabled: true }), TOKEN)
     await getWin().waitForTimeout(500)
     // 重新选中节点
-    await getWin().locator('.react-flow__node img').first().click({ timeout: 3000 }).catch(() => {})
+    await getWin().locator('[data-node-id] img').first().click({ timeout: 3000 }).catch(() => {})
     await getWin().waitForTimeout(400)
     await clickDecompose()
     const spendConfirm = getWin().locator('button', { hasText: /^拆解$/ }).first()

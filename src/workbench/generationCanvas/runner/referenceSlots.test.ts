@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as referenceCapabilities from '../agent/referenceEdgeCapability'
 import { resolveReferenceSlots, decideArrayReferenceRemoval, findOrphanArrayReferences } from './referenceSlots'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
 
@@ -14,13 +15,11 @@ function node(
     kind: kind as GenerationCanvasNode['kind'],
     title: id,
     prompt: '',
-    x: 0,
-    y: 0,
-    width: 100,
-    height: 100,
+    position: { x: 0, y: 0 },
+    size: { width: 100, height: 100 },
     meta,
-    ...(opts.url ? { result: { type: kind === 'video' ? 'video' : 'image', url: opts.url } } : {}),
-  } as GenerationCanvasNode
+    ...(opts.url ? { result: { id: `r-${id}`, type: kind === 'video' ? 'video' : 'image', url: opts.url, createdAt: 0 } } : {}),
+  }
 }
 
 function target(kind: string, archetypeId: string, modeId: string, meta?: Record<string, unknown>) {
@@ -28,6 +27,22 @@ function target(kind: string, archetypeId: string, modeId: string, meta?: Record
 }
 
 describe('resolveReferenceSlots — 能力驱动单一真相源', () => {
+  it('preserves connected and uploaded references when the provider has not published a cap', () => {
+    const urls = Array.from({ length: 20 }, (_, i) => `https://cdn/ref-${i}.png`)
+    const tgt = target('video', 'sora-2', 'i2v', { referenceImageUrls: urls.slice(1) })
+    const archetype = referenceCapabilities.archetypeForNode(tgt)!
+    const spy = vi.spyOn(referenceCapabilities, 'archetypeForNode').mockReturnValue({
+      ...archetype,
+      modes: archetype.modes.map(mode => ({ ...mode, slots: mode.slots.map(slot => ({ ...slot, max: undefined })) })),
+    })
+    try {
+      const image = node('source', 'image', { url: urls[0] })
+      const slots = resolveReferenceSlots(tgt, [image, tgt], [{ id: 'edge', source: image.id, target: tgt.id }])
+      expect(slots[0].max).toBeUndefined()
+      expect(slots[0].fills.map(fill => fill.url)).toEqual(urls)
+    } finally { spy.mockRestore() }
+  })
+
   it('Sora i2v：image 源经 first_frame 边、源已生成 → image_ref 槽显示该参考（这正是「连线没用」要修的）', () => {
     const img = node('img1', 'image', { url: 'https://cdn/a.png' })
     const tgt = target('video', 'sora-2', 'i2v')

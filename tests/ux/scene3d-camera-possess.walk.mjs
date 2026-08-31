@@ -4,26 +4,24 @@
 // 证据 = 多帧截图 + 飞行前后画面差异（相机移动则像素大幅变化）+ 操控的是「镜头工具栏」不是「角色动作库」。
 // 零额度：纯本地 3D 离屏，无生成 API。
 // 用法：pnpm run build && node tests/ux/scene3d-camera-possess.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.camera-possess-lab')
 mkdirSync(outDir, { recursive: true })
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-cam-possess-'))
 const projectsDir = path.join(tmp, 'projects')
 mkdirSync(projectsDir, { recursive: true })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-camera-possess',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const errors = []
@@ -42,7 +40,7 @@ const pass = {
 // 相机飞行 → 假人在画面里平移/缩放 → 质心坐标 + 红像素数大幅变化。
 // 注意：必须在 frameloop=always（录制态）下测——demand 模式静止时 WebGL 截图陈旧（读到上一帧）。
 async function redCentroid(win) {
-  const buf = await win.screenshot()
+  const buf = await screenshotSettled(win)
   const dataUrl = 'data:image/png;base64,' + buf.toString('base64')
   return win.evaluate(async (url) => {
     const img = new Image()
@@ -74,11 +72,8 @@ function centroidDelta(a, b) {
 }
 
 try {
-  const win = await app.firstWindow()
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   await win.keyboard.press('Escape').catch(() => {})
 
   const card = win.locator('[data-project-card]').first()
@@ -103,7 +98,7 @@ try {
   await win.waitForTimeout(4000)
   pass.editorOpen = (await win.locator('[aria-label="3D 场景编辑器"]').count()) > 0
   log(`  ${pass.editorOpen ? '✓' : '✗'} 编辑器打开`)
-  await win.screenshot({ path: path.join(outDir, 'cp-0-editor.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cp-0-editor.png') })
 
   // 选相机：左侧场景节点列表里点「相机1」。
   const cameraItem = win.getByText('相机1', { exact: true }).first()
@@ -111,7 +106,7 @@ try {
   // 相机被选中 → 出现相机预览浮窗（标题含「相机1」）。
   pass.cameraSelected = (await win.getByText('相机1 · 16:9', { exact: false }).count()) > 0
   log(`  ${pass.cameraSelected ? '✓' : '✗'} 选中相机`)
-  await win.screenshot({ path: path.join(outDir, 'cp-1-camera-selected.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cp-1-camera-selected.png') })
 
   // 点「操控」进相机运镜操控态。
   const possessBtn = win.getByRole('button', { name: '操控', exact: false }).first()
@@ -120,7 +115,7 @@ try {
   // 反向校验：不该误入「角色操控动作库」（那是 WASD 给角色）。
   const characterBar = (await win.locator('[aria-label="角色操控动作库"]').count()) > 0
   log(`  ${pass.possessed ? '✓' : '✗'} 进入镜头操控态（角色动作库出现=${characterBar ? '是(错!)' : '否(对)'}）`)
-  await win.screenshot({ path: path.join(outDir, 'cp-2-possessed.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cp-2-possessed.png') })
 
   const canvas = win.locator('[aria-label="3D 场景编辑器"] canvas').first()
   const box = await canvas.boundingBox()
@@ -137,23 +132,23 @@ try {
 
   // WASD 飞相机：录制态下记录飞行前质心，按住 W 飞一段，再记录飞行后质心。相机在飞 → 假人在画面里大幅平移。
   const before = await redCentroid(win)
-  await win.screenshot({ path: path.join(outDir, 'cp-3-before-fly.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cp-3-before-fly.png') })
   await win.keyboard.down('KeyW')
   for (let i = 0; i < 5; i += 1) {
     await win.waitForTimeout(420)
-    await win.screenshot({ path: path.join(outDir, `cp-fly-${i}.png`) })
+    await screenshotSettled(win, { path: path.join(outDir, `cp-fly-${i}.png`) })
   }
   await win.keyboard.up('KeyW')
   await win.waitForTimeout(400)
   const after = await redCentroid(win)
-  await win.screenshot({ path: path.join(outDir, 'cp-4-after-fly.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cp-4-after-fly.png') })
   const delta = centroidDelta(before, after)
   pass.cameraFlew = delta > 60 // 相机平移 → 假人质心/像素数大幅变；静止则~0
   log(`  ${pass.cameraFlew ? '✓' : '✗'} WASD 飞相机（假人质心前=${before.found ? `(${before.x},${before.y})n${before.n}` : '无'} 后=${after.found ? `(${after.x},${after.y})n${after.n}` : '无'}，delta=${delta.toFixed(1)}）`)
 
   // 停止录制 → 应建「录制走位参考」节点（运镜 mp4 链路）。
   if ((await stopBtn.count()) > 0) { await stopBtn.first().click(); await win.waitForTimeout(2500) }
-  await win.screenshot({ path: path.join(outDir, 'cp-5-after-stop.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cp-5-after-stop.png') })
 
   // 出片是异步的；关编辑器后画布上应多出一个「录制走位参考」3D 节点（运镜 take 已落节点 = mp4 链路已起）。
   // 计 3D 节点入口数：原 1 个 → 录完应为 2 个（buildRecordedCameraTakeScene 返回非 null 才会建节点）。
@@ -168,7 +163,7 @@ try {
   const titleSeen = (await win.getByText('录制走位参考', { exact: false }).count()) > 0
   pass.recordedNode = node3dCount >= 2 || titleSeen
   log(`  ${pass.recordedNode ? '✓' : '✗'} 录运镜落「录制走位参考」节点（3D 节点数 ${node3dCount}，标题可见=${titleSeen}）`)
-  await win.screenshot({ path: path.join(outDir, 'cp-6-recorded-node.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cp-6-recorded-node.png') })
 
   // 离屏出片是真渲染：等节点徽标从「参考视频生成中…」走到「参考视频已生成 ✓」
   // = 这段运镜真的被离屏管线渲成了 mp4（cameraWithPlaybackPosition 按录下的位置+aim 轨迹逐帧出片）。
@@ -177,7 +172,7 @@ try {
     await win.waitForTimeout(1000)
   }
   log(`  ${pass.videoRendered ? '✓' : '✗'} 离屏出片完成「参考视频已生成 ✓」（运镜真渲成 mp4）`)
-  await win.screenshot({ path: path.join(outDir, 'cp-7-video-rendered.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'cp-7-video-rendered.png') })
 
   log('\n═══ 结果 ═══')
   log(`  编辑器可开:       ${pass.editorOpen ? '✓' : '✗'}`)

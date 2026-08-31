@@ -14,7 +14,7 @@ describe('buildTextEditNodeSpec', () => {
 
   it('源节点有改图模型 → 照搬源模型 meta（含供应商）', () => {
     const spec = buildTextEditNodeSpec(node({
-      result: { type: 'image', url: 'https://x/poster.png' },
+      result: { id: 'r1', type: 'image', url: 'https://x/poster.png', createdAt: 0 },
       meta: { modelKey: 'seedream', modelVendor: 'apimart', vendor: 'apimart', modelLabel: 'Seedream' },
     }))
     expect(spec?.meta.modelKey).toBe('seedream')
@@ -23,18 +23,28 @@ describe('buildTextEditNodeSpec', () => {
   })
 
   it('源节点无模型 → 回退到 nano-banana 改图档案，不钉死供应商', () => {
-    const spec = buildTextEditNodeSpec(node({ result: { type: 'image', url: 'https://x/up.png' } }))
+    const spec = buildTextEditNodeSpec(node({ result: { id: 'r2', type: 'image', url: 'https://x/up.png', createdAt: 0 } }))
     expect(spec).not.toBeNull()
     expect(spec?.meta.vendor).toBeUndefined()
     expect(spec?.meta.modelVendor).toBeUndefined()
-    expect(resolveArchetypeForModel({ modelKey: spec?.meta.modelKey as string })?.id).toBe('nano-banana')
+    expect(resolveArchetypeForModel({ modelKey: spec?.meta.modelKey as string, vendorKey: null })?.id).toBe('nano-banana')
     expect((spec?.meta.archetype as { modeId?: string })?.modeId).toBe('i2i')
   })
 
   it('标题派生 + 位置在源节点右侧', () => {
-    const spec = buildTextEditNodeSpec(node({ title: '促销海报', result: { type: 'image', url: 'https://x/a.png' } }))
+    const spec = buildTextEditNodeSpec(node({ title: '促销海报', result: { id: 'r3', type: 'image', url: 'https://x/a.png', createdAt: 0 } }))
     expect(spec?.title).toBe('促销海报·改字')
     expect(spec?.position.x).toBeGreaterThan(10)
+  })
+
+  it('派生节点从分类卡片的真实右边缘落点，不使用名义宽度', () => {
+    const spec = buildTextEditNodeSpec(node({
+      categoryId: 'cast',
+      size: { width: 360, height: 280 },
+      result: { id: 'r4', type: 'image', url: 'https://x/cast.png', createdAt: 0 },
+    }))
+
+    expect(spec?.position.x).toBe(274)
   })
 
   it('提示词模板含原文/新文字占位 + 保字体约束', () => {

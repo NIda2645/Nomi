@@ -1,12 +1,10 @@
 // R13 真机走查：小说片段 → 拆镜头(默认图片分镜) → 方案编辑器 → 落画布 → 真生成一张 →
 // 转视频 → 整理画布。截图人眼判断。用法：node scripts/shot-mode-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.shot-mode-walk')
 mkdirSync(outDir, { recursive: true })
@@ -14,21 +12,14 @@ const shot = async (win, name) => { await win.screenshot({ path: path.join(outDi
 
 const STORY = '叶林握紧了口袋里那张皱巴巴的缴费单。深夜的便利店里只有他一个店员，白炽灯把货架照得惨白。玻璃门外，一个穿深色西装的中年男人站在雨里，隔着玻璃朝他微笑。叶林认得那张脸——三天前在地下诊所走廊里见过。男人推门进来，把一份文件放在收银台上："考虑得怎么样？一个肾，够你妹妹两年的药钱。"'
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
-})
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'shot-mode', isolate: false, settleMs: 1800 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   // 新建空白项目（避免残留节点污染判定）
   await win.getByText('新建空白项目', { exact: false }).first().click()

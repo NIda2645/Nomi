@@ -10,6 +10,7 @@ import {
   PRODUCTION_E2E_FIXTURE_PROVIDER,
 } from './productionRunE2eFixture'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
+import { createProductionNotificationsListener } from './productionNotificationsDesktop'
 
 let shared: ProductionRunService | null = null
 
@@ -22,6 +23,7 @@ export function getProductionRunService(): ProductionRunService {
       const recoverIncompletePolicy = process.env.NOMI_E2E_PRODUCTION_MISSING_POLICY === '1'
       shared = createProductionRunService({
         projectRootResolver,
+        onEvents: createProductionNotificationsListener(),
         requestRenderer: createProductionRunE2eRenderer({ projectRootResolver }),
         policyResolver: () => {
           if (recoverIncompletePolicy) {
@@ -48,7 +50,7 @@ export function getProductionRunService(): ProductionRunService {
         },
       })
     } else {
-      shared = createProductionRunService()
+      shared = createProductionRunService({ onEvents: createProductionNotificationsListener() })
     }
   }
   return shared

@@ -1,35 +1,30 @@
 // 验 WebGL 上下文丢失恢复：开编辑器→强制 loseContext()(画布应变空)→restoreContext()
 // (demand 模式靠我们的 invalidate 重绘→假人应回来)。人眼看三张截图。
 // 用法：pnpm run build && node tests/ux/scene3d-context-loss-recovery.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.scene3d-ctxloss-lab')
 mkdirSync(outDir, { recursive: true })
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-ctxloss-walk-'))
 const projectsDir = path.join(tmp, 'projects')
 mkdirSync(projectsDir, { recursive: true })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-context-loss-recovery',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const log = (m) => console.log(m)
 const pass = { editorOpen: false, lostBlank: false, recovered: false }
 
 try {
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   const splashSkip = win.locator('[data-splash-skip="true"]').first()
   if ((await splashSkip.count()) > 0) await splashSkip.click().catch(() => {})
   await win.keyboard.press('Escape').catch(() => {})
@@ -52,7 +47,7 @@ try {
   if ((await openEmpty.count()) > 0) await openEmpty.first().click()
   await win.waitForTimeout(4500)
   pass.editorOpen = (await win.locator('[aria-label="3D 场景编辑器"] canvas').count()) > 0
-  await win.screenshot({ path: path.join(outDir, 'c-01-before.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'c-01-before.png') })
   log(`  ${pass.editorOpen ? '✓' : '✗'} 编辑器打开`)
 
   // 强制丢失上下文
@@ -67,7 +62,7 @@ try {
     return true
   })
   await win.waitForTimeout(1200)
-  await win.screenshot({ path: path.join(outDir, 'c-02-lost.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'c-02-lost.png') })
   log(`  loseContext 调用 ${lostOk ? '成功' : '失败'} → 看 c-02 是否变空`)
 
   // 恢复上下文（真机里浏览器自动补发；测试用扩展手动触发 restored）
@@ -76,7 +71,7 @@ try {
     if (ext) ext.restoreContext()
   })
   await win.waitForTimeout(2500)
-  await win.screenshot({ path: path.join(outDir, 'c-03-recovered.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'c-03-recovered.png') })
   log('  restoreContext 调用 → 看 c-03 假人是否回来')
 } catch (e) {
   log(`✗ 异常：${String(e)}`)

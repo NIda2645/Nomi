@@ -60,6 +60,20 @@ describe("workspace file index", () => {
     expect(byName["loop.ogg"]).toMatchObject({ kind: "audio", contentType: "audio/ogg" });
   });
 
+  it("classifies a legacy .bin video by its file header", () => {
+    const root = makeTempDir();
+    const target = path.join(root, "assets", "imported", "clip.bin");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, Buffer.concat([
+      Buffer.from([0, 0, 0, 0x10]),
+      Buffer.from("ftypisom", "ascii"),
+      Buffer.alloc(4),
+    ]));
+
+    const clip = listWorkspaceFiles({ rootPath: root }).items[0]?.children?.[0]?.children?.[0];
+    expect(clip).toMatchObject({ name: "clip.bin", kind: "video", contentType: "video/mp4" });
+  });
+
   it("skips .git node_modules .nomi/cache and hidden folders by default", () => {
     const root = makeTempDir();
     write(root, ".git/config");

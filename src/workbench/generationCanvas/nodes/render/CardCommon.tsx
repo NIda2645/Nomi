@@ -280,7 +280,8 @@ export function RemoveBackgroundPendingPlaceholder({
   )
 }
 
-export function RemoveBackgroundPendingOverlay({
+/** 本地图片操作（抠图 / 切图 / 裁剪）进行中的读屏播报。视觉那一层是图本身的模糊呼吸。 */
+export function LocalImageOpPendingStatus({
   message,
   progress,
 }: {
@@ -291,7 +292,7 @@ export function RemoveBackgroundPendingOverlay({
   const percent = clampProgressPercent(progress)
   const statusMessage = message || t('generationCommon.card.removingBackground')
   return (
-    <span className="sr-only" role="status" aria-label={t('generationCommon.card.removingBackground')} aria-busy="true">
+    <span className="sr-only" role="status" aria-label={statusMessage} aria-busy="true">
       {percent !== null && percent > 0 ? `${statusMessage} ${percent}%` : statusMessage}
     </span>
   )
@@ -350,7 +351,7 @@ export function GeneratingOverlay({
         {onCancel ? (
           <button
             type="button"
-            aria-label={t('generationCommon.card.comfyCancelAria')}
+            aria-label={t('generationCommon.card.generationCancelAria')}
             onClick={(event) => {
               event.stopPropagation()
               onCancel()
@@ -362,7 +363,7 @@ export function GeneratingOverlay({
             )}
           >
             <IconPlayerStop size={13} stroke={1.8} />
-            {t('generationCommon.card.comfyCancel')}
+            {t('generationCommon.card.generationCancel')}
           </button>
         ) : null}
       </div>

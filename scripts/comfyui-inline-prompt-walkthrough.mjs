@@ -3,15 +3,13 @@
 // 这类图占语料失败的 73%，修前面板会显示「未识别到提示词节点」，修后应自动绑上。
 // 同图还含 LoadVideo（视频输入）与 PreviewImage（输出），一次覆盖三根因。
 // 用法：pnpm build && node scripts/comfyui-inline-prompt-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.comfyui-inline-prompt-walk')
 mkdirSync(outDir, { recursive: true })
@@ -45,43 +43,34 @@ const mock = http.createServer((req, res) => {
 })
 await new Promise((r) => mock.listen(8188, '127.0.0.1', r))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: mkdtempSync(path.join(os.tmpdir(), 'comfyui-inline-proj-')),
-  },
+const { app, win } = await launchNomiApp({
+  name: 'comfyui-inline-prompt',
+  settingsDir,
+  projectsDir: mkdtempSync(path.join(os.tmpdir(), 'comfyui-inline-proj-')),
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 1800,
 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1440, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   await win.getByRole('button', { name: '接入模型', exact: false }).first().click()
   await win.waitForTimeout(1000)
   await win.getByText('有本地 ComfyUI', { exact: false }).first().click()
   await win.waitForTimeout(500)
-  await win.getByText('ComfyUI · 本地', { exact: false }).first().click()
+  await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(400)
   await win.getByRole('button', { name: '启用 ComfyUI', exact: false }).first().click()
   await win.waitForTimeout(2200)
-  await win.getByText('ComfyUI · 本地', { exact: false }).first().click()
+  await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(600)
 
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(CLOUD_NODE_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(CLOUD_NODE_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(1500)
   await win.getByText('提示词接哪个节点', { exact: false }).first().scrollIntoViewIfNeeded()

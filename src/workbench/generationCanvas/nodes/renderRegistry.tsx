@@ -12,6 +12,8 @@ import {
   IconVideo,
   IconWaveSine,
   IconWriting,
+  IconScissors,
+  type IconProps,
 } from '@tabler/icons-react'
 import {
   GENERATION_NODE_PLUGIN_BY_KIND,
@@ -21,13 +23,23 @@ import {
   type GenerationNodeKind,
   type GenerationNodePlugin,
 } from './registry'
+import type { GenerationNodeRenderProps } from './registry'
 import i18n from '../../../i18n'
+import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
+import { canvasPluginRegistry } from '../plugins/defaultCanvasPluginRegistry'
+import { MissingCanvasPluginNode } from '../plugins/MissingCanvasPluginNode'
 
 export type { GenerationNodeRenderProps, GenerationNodeComponent } from './registry'
 
-export type GenerationNodeIcon = React.ComponentType<any>
+export type GenerationNodeIcon = React.ComponentType<IconProps>
 
-export type GenerationNodeRenderPlugin = Omit<GenerationNodePlugin, 'component' | 'icon'> & {
+export type GenerationNodeRenderPlugin = Omit<
+  GenerationNodePlugin,
+  'component' | 'icon' | 'label' | 'menuLabel' | 'defaultTitle'
+> & {
+  label: string
+  menuLabel: string
+  defaultTitle?: string
   icon: GenerationNodeIcon
   component: React.LazyExoticComponent<GenerationNodeComponent>
   promptPlaceholder?: string
@@ -47,6 +59,7 @@ const NODE_ICONS: Record<GenerationNodeIconKey, GenerationNodeIcon> = {
   model3d: Icon3dCubeSphere,
   whiteboard: IconBrush,
   audio: IconWaveSine,
+  clip: IconScissors,
 }
 
 const lazyComponents = new Map<GenerationNodeKind, React.LazyExoticComponent<GenerationNodeComponent>>()
@@ -76,6 +89,24 @@ export function getGenerationNodePlugin(kind: GenerationNodeKind): GenerationNod
 
 export function getGenerationNodeComponent(kind: GenerationNodeKind): GenerationNodeRenderPlugin['component'] {
   return getGenerationNodePlugin(kind).component
+}
+
+/** Resolve the node renderer through the host registry without changing React Flow's nodeTypes contract. */
+export function getGenerationNodeComponentForNode(node: GenerationCanvasNode): React.ComponentType<GenerationNodeRenderProps<GenerationCanvasNode>> {
+  if (!node.typeId) return getGenerationNodeComponent(node.kind) as React.ComponentType<GenerationNodeRenderProps<GenerationCanvasNode>>
+  const plugin = canvasPluginRegistry.resolve(node.typeId)
+  const pluginState = node.pluginState
+  const manifest = pluginState ? canvasPluginRegistry.getManifest(pluginState.pluginId) : undefined
+  const manifestNode = manifest?.nodes.find((candidate) => candidate.typeId === node.typeId)
+  if (
+    !plugin ||
+    plugin.typeId !== pluginState?.typeId ||
+    pluginState.pluginId !== manifest?.id ||
+    !manifestNode ||
+    pluginState.schemaVersion !== manifestNode.schemaVersion ||
+    plugin.schemaVersion !== manifestNode.schemaVersion
+  ) return MissingCanvasPluginNode
+  return plugin.component as unknown as React.ComponentType<GenerationNodeRenderProps<GenerationCanvasNode>>
 }
 
 export function getQuickAddGenerationNodePlugins(): GenerationNodeRenderPlugin[] {

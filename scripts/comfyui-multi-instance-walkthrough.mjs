@@ -5,15 +5,13 @@
 // ③ 在工作站导入一个工作流 → 只落在工作站名下，本机那张卡看不到它
 // ④ 移除工作站 → 它的工作流一起走，本机完好
 // 用法：pnpm build && node scripts/comfyui-multi-instance-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.comfyui-multi-walk')
 mkdirSync(outDir, { recursive: true })
@@ -73,29 +71,20 @@ const WAN_GRAPH = JSON.stringify({
   9: { class_type: 'SaveImage', inputs: { filename_prefix: 'ws', images: ['5', 0] } },
 })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: mkdtempSync(path.join(os.tmpdir(), 'comfyui-multi-proj-')),
-  },
+const { app, win } = await launchNomiApp({
+  name: 'comfyui-multi-instance',
+  settingsDir,
+  projectsDir: mkdtempSync(path.join(os.tmpdir(), 'comfyui-multi-proj-')),
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 1800,
 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1440, height: 1040 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('dialog', (d) => void d.dismiss().catch(() => {}))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   await win.getByRole('button', { name: '接入模型', exact: false }).first().click()
   await win.waitForTimeout(2500)
@@ -119,7 +108,7 @@ try {
   // ── ③ 在工作站导入 → 只落工作站名下 ──
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(WAN_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(WAN_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(2500)
   await win.getByPlaceholder('给它起个名', { exact: false }).fill('工作站专属图')

@@ -53,6 +53,7 @@ describe('resolveTimelinePlaybackUrls', () => {
   it('returns an export-safe timeline without mutating the original clip url', () => {
     const providerUrl = node().result!.providerUrl!
     const timeline: TimelineState = {
+      version: 1,
       fps: 30,
       scale: 1,
       playheadFrame: 0,

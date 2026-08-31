@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   comfyuiHistoryTransform,
   fillEmptyCheckpoint,
+  pruneEmptyMediaLoaders,
   COMFYUI_VENDOR_SEED,
   COMFYUI_CURATED_MODELS,
   COMFYUI_CURATED_MAPPINGS,
@@ -10,6 +11,8 @@ import { applyBuiltinSeeds } from "./seedBuiltins";
 import { buildTemplateContext, renderTemplateValue } from "../ai/requestPipeline";
 import { taskTemplateParams, applyWireDefaults } from "./taskParams";
 import type { CatalogState } from "./types";
+import { applyRequestTransform } from "../tasks/requestTransforms";
+import { buildProfileHttpRequest } from "./profileHttpRequest";
 
 const ctx = { baseUrl: "http://127.0.0.1:8188" };
 
@@ -394,6 +397,82 @@ describe("fillEmptyCheckpoint（ckpt_name 留空 → 本机第一个 checkpoint�
     const input = { "1": { class_type: "MyCustomLoader", inputs: { ckpt_name: "" } } };
     const out = fillEmptyCheckpoint(input, ["a.safetensors"]) as typeof input;
     expect(out["1"].inputs.ckpt_name).toBe("");
+  });
+});
+
+describe("pruneEmptyMediaLoaders（缺失可选媒体不阻塞整张工作流）", () => {
+  it.each([
+    ["LoadImage", "image"],
+    ["LoadVideo", "file"],
+    ["VHS_LoadVideo", "video"],
+    ["LoadAudio", "audio"],
+    ["VHS_LoadAudio", "file"],
+  ])("清理空的标准 %s loader 及直接下游连线", (classType, inputKey) => {
+    const input = {
+      "10": { class_type: classType, inputs: { [inputKey]: "  " } },
+      "20": { class_type: "Consumer", inputs: { optional_media: ["10", 0], keep: ["30", 0] } },
+      "30": { class_type: "Other", inputs: { value: 1 } },
+    };
+    const out = pruneEmptyMediaLoaders(input) as typeof input;
+    expect(out["10"]).toBeUndefined();
+    expect(out["20"].inputs.optional_media).toBeUndefined();
+    expect(out["20"].inputs.keep).toEqual(["30", 0]);
+    expect(input["10"]).toBeDefined();
+    expect(input["20"].inputs.optional_media).toEqual(["10", 0]);
+  });
+
+  it("清理 Nomi 标记的未知社区 loader，且兼容数字来源节点 ID", () => {
+    const out = pruneEmptyMediaLoaders({
+      "10": {
+        class_type: "CommunityMediaLoader",
+        inputs: { custom_path: null, unrelated: "keep" },
+        _meta: { nomi_bound_media_input: "custom_path" },
+      },
+      "20": { class_type: "Consumer", inputs: { media: [10, 0], strength: 0.8 } },
+    }) as Record<string, { inputs?: Record<string, unknown> }>;
+    expect(out["10"]).toBeUndefined();
+    expect(out["20"].inputs).toEqual({ strength: 0.8 });
+  });
+
+  it("保留有值 loader、非空作者示例和未标记的未知社区 loader", () => {
+    const input = {
+      "1": { class_type: "LoadImage", inputs: { image: "uploaded.png" } },
+      "2": { class_type: "LoadVideo", inputs: { file: "author-example.mp4" } },
+      "3": { class_type: "CommunityMediaLoader", inputs: { custom_path: "" } },
+      "4": {
+        class_type: "CommunityMediaLoader",
+        inputs: { custom_path: "bound.mov" },
+        _meta: { nomi_bound_media_input: "custom_path" },
+      },
+    };
+    expect(pruneEmptyMediaLoaders(input)).toBe(input);
+  });
+});
+
+describe("comfyui-prompt 会话封装", () => {
+  it("覆盖固定 client_id、采用预生成 prompt UUID，并保留 extra_pnginfo", async () => {
+    const promptId = "123e4567-e89b-42d3-a456-426614174000";
+    const workflow = { nodes: [{ id: 1, type: "SaveImage" }] };
+    const body = await applyRequestTransform("comfyui-prompt", {
+      prompt: { "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "m.safetensors" } } },
+      client_id: "nomi",
+      extra_data: { extra_pnginfo: { workflow } },
+    }, { baseUrl: "http://127.0.0.1:8188", promptId }) as Record<string, unknown>;
+    expect(body.client_id).toMatch(/^nomi-[0-9a-f-]{36}$/);
+    expect(body.client_id).not.toBe("nomi");
+    expect(body.prompt_id).toBe(promptId);
+    expect(body.extra_data).toEqual({ extra_pnginfo: { workflow } });
+  });
+
+  it("生产 profile 请求对裸 host 补 http 协议", () => {
+    const built = buildProfileHttpRequest({
+      vendor: { ...COMFYUI_VENDOR_SEED, baseUrlHint: "127.0.0.1:8188/" },
+      model: COMFYUI_CURATED_MODELS[0],
+      apiKey: "",
+      request: { kind: "text_to_image", prompt: "test", extras: {} } as never,
+      operation: COMFYUI_CURATED_MAPPINGS[0].create,
+    });
+    expect(built.url).toBe("http://127.0.0.1:8188/prompt");
   });
 });
 

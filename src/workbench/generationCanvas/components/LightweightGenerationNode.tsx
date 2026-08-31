@@ -2,23 +2,28 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { getNodeSize } from './generationCanvasGeometry'
+import { getCanvasNodeVisualSize } from './generationCanvasGeometry'
+import { resolveLightweightNodePreview } from './canvasNodeLevelOfDetail'
+import { DeferredNodeImage, DeferredNodeVideo } from '../nodes/DeferredNodeMedia'
 
 /**
- * 画布远景/超载时的轻量节点占位（LOD 低档）：只画标题 + 状态条，不挂任何
- * 生成 body / 媒体 / 工具条。从 GenerationCanvas.tsx 抽出（R9 防巨壳），渲染逻辑逐字不动。
+ * 画布远景/超载时的轻量节点占位（LOD 低档）：保留结果媒体缩略图，
+ * 不挂生成 body 或工具条。从 GenerationCanvas.tsx 抽出（R9 防巨壳）。
  */
 export function LightweightGenerationNode({
   node,
   appear,
-  onSelect,
+  selected = false,
+  readOnly = false,
 }: {
   node: GenerationCanvasNode
   appear: boolean
-  onSelect: (nodeId: string, additive: boolean) => void
+  selected?: boolean
+  readOnly?: boolean
 }): JSX.Element {
   const { t } = useTranslation()
-  const size = getNodeSize(node)
+  const size = getCanvasNodeVisualSize(node)
+  const preview = resolveLightweightNodePreview(node)
   const status = node.status || 'idle'
   const statusLabel =
     status === 'queued'
@@ -35,11 +40,13 @@ export function LightweightGenerationNode({
       className={cn(
         'generation-canvas-v2-node',
         'absolute p-0 border-0 rounded-none bg-transparent shadow-none',
-        'cursor-pointer select-none touch-none overflow-visible',
+        readOnly ? 'cursor-default' : 'cursor-pointer',
+        'select-none touch-none overflow-visible',
         'block',
       )}
       data-node-id={node.id}
       data-kind={node.kind}
+      data-selected={selected ? 'true' : 'false'}
       data-render-mode="lightweight"
       data-appear={appear ? 'true' : undefined}
       style={{
@@ -47,15 +54,11 @@ export function LightweightGenerationNode({
         width: size.width,
         height: size.height,
       }}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return
-        event.stopPropagation()
-        onSelect(node.id, event.shiftKey || event.metaKey || event.ctrlKey)
-      }}
     >
       <div
         className={cn(
-          'w-full h-full overflow-hidden rounded-nomi border border-nomi-line',
+          'w-full h-full overflow-hidden rounded-nomi border',
+          selected ? 'border-nomi-accent ring-2 ring-nomi-accent' : 'border-nomi-line',
           'bg-nomi-paper/90 shadow-nomi-sm',
           'grid grid-rows-[4px_minmax(0,1fr)]',
         )}
@@ -72,12 +75,31 @@ export function LightweightGenerationNode({
                   : 'bg-nomi-ink-20',
           )}
         />
-        <div className="min-w-0 min-h-0 p-3 flex flex-col justify-between gap-2">
-          <div className="min-w-0 truncate text-body-sm font-medium text-nomi-ink">
-            {node.title || t('generationCommon.lightweightNode.untitled')}
-          </div>
-          <div className="min-w-0 truncate text-micro text-nomi-ink-50">
-            {statusLabel}
+        <div className="relative min-w-0 min-h-0 overflow-hidden bg-nomi-ink-05">
+          {preview?.kind === 'image' ? (
+            <DeferredNodeImage
+              src={preview.src}
+              alt=""
+              className="absolute inset-0 size-full object-cover pointer-events-none"
+            />
+          ) : preview?.kind === 'video' ? (
+            <DeferredNodeVideo
+              src={preview.src}
+              className="absolute inset-0 size-full object-cover pointer-events-none"
+              crossOrigin="use-credentials"
+              muted
+              playsInline
+              preload="metadata"
+              controls={false}
+            />
+          ) : null}
+          <div className="absolute inset-x-0 bottom-0 flex min-w-0 flex-col gap-1 bg-nomi-paper/90 p-3">
+            <div className="min-w-0 truncate text-body-sm font-medium text-nomi-ink">
+              {node.title || t('generationCommon.lightweightNode.untitled')}
+            </div>
+            <div className="min-w-0 truncate text-micro text-nomi-ink-50">
+              {statusLabel}
+            </div>
           </div>
         </div>
       </div>

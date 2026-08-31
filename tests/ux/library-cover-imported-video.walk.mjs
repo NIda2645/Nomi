@@ -7,15 +7,13 @@
 //   ② 图片项目：封面 <img> 正常加载（回归不坏）
 //   ③ 整个项目库页面没有任何「加载失败」字样
 // 用法：pnpm run build && node tests/ux/library-cover-imported-video.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from './_launchApp.mjs'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-
-const require = createRequire(import.meta.url)
+import { screenshotSettled } from './_assert.mjs'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-cover-walk-'))
 const settingsDir = path.join(root, 'settings')
@@ -106,24 +104,16 @@ seedProject({
   }],
 })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${settingsDir}`, '--no-proxy-server'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_ELECTRON_USER_DATA_DIR: settingsDir,
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: projectsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'library-cover-imported-video',
+  userDataDir: settingsDir,
+  settingsDir,
+  projectsDir,
+  args: ['--no-proxy-server'],
+  settleMs: 2500,
 })
 
 try {
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(2500)
 
   // 首启开屏会盖住项目库（截图=用户所见，必须先关掉它再验封面）
   const skipSplash = win.getByText('跳过', { exact: false }).first()
@@ -165,7 +155,7 @@ try {
   const failedCount = await win.getByText('加载失败', { exact: false }).count()
   assert(failedCount === 0, '项目库页面没有任何「加载失败」字样')
 
-  await win.screenshot({ path: path.join(outDir, '1-library-covers.png') })
+  await screenshotSettled(win, { path: path.join(outDir, '1-library-covers.png') })
   console.log(`\n✅ 项目库封面走查通过（${passed} 项断言）\n   截图：${outDir}`)
 } finally {
   await app.close().catch(() => {})

@@ -8,14 +8,12 @@
 // 都复现不稳定；而**我改的是分类器 + 文案**，错误字符串照抄用户截图里的原话即可保真。
 //
 // 用法：pnpm build 后 node scripts/error-card-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.error-card-walk')
 mkdirSync(outDir, { recursive: true })
@@ -47,30 +45,17 @@ const isolatedProjects = path.join(os.tmpdir(), 'nomi-errcard-walk-projects')
 mkdirSync(isolatedSettings, { recursive: true })
 mkdirSync(isolatedProjects, { recursive: true })
 
-const launch = () =>
-  electron.launch({
-    executablePath: require('electron'),
-    args: ['.'],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_SETTINGS_DIR: isolatedSettings,
-      NOMI_PROJECTS_DIR: isolatedProjects,
-    },
-  })
+const launch = (settleMs) =>
+  launchNomiApp({ name: 'error-card', settingsDir: isolatedSettings, projectsDir: isolatedProjects, settleMs })
 
 let failed = false
 
 // ── 第 1 程：建项目 + 两个节点，让 App 自己把 schema 写盘 ──────────────────────
 {
-  const app = await launch()
-  const win = await app.firstWindow()
+  const { app, win } = await launch()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
+
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)
   await win.locator('[aria-label="工作区切换"]').getByText('生成', { exact: true }).click()
@@ -112,13 +97,10 @@ if (!projectFile) {
 
 // ── 第 2 程：重开，看用户真正看到什么 ──────────────────────────────────────
 {
-  const app = await launch()
+  const { app, win } = await launch(2000)
   try {
-    const win = await app.firstWindow()
     const bw = await app.browserWindow(win)
     await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-    await win.waitForLoadState('domcontentloaded')
-    await win.waitForTimeout(2000)
     // 开屏停在项目库：最近项目卡上的「继续创作」进去。
     const recent = win.getByText('继续创作', { exact: true }).first()
     if (await recent.isVisible().catch(() => false)) {

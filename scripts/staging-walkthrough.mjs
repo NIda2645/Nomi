@@ -1,34 +1,29 @@
 // 真实用户走查：打包 App 里在生成助手对话发一个需要锁站位的镜头请求 → 批准 →
 // 看画布是否出现 站位参考(scene3d) 节点 + 自动截的参考图 + composition_ref 边。
 // 需 apimart 文本 key（用 app 已配的）。用法：pnpm run build && APIMART_E2E=1 node scripts/staging-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.pose-lab')
 mkdirSync(outDir, { recursive: true })
 
 const PROMPT = '在画布上做一个镜头：男主角单膝跪地向女主角求婚，女主角站在他正前方，低机位仰拍中景。请把两人的站位、动作和机位锁定好。'
 
-const app = await electron.launch({ executablePath: require('electron'), args: ['.'], cwd: repoRoot, env: { ...process.env } })
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'staging', isolate: false, settleMs: 500 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForTimeout(500)
   win.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text())
     const t = m.text()
     if (t.includes('[staging')) console.log('  · ' + t)
   })
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
 
   // 始终新建空白项目，避免复用已有项目累积的残留节点污染判定。
   await win.getByText('新建空白项目', { exact: false }).first().click()

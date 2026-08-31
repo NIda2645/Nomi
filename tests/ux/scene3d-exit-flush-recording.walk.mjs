@@ -6,15 +6,12 @@
 // ② 端到端 mp4 落盘（证明整条离屏出片管线走通，不是空节点）。
 // 零额度：纯本地 3D 离屏渲染 + 本地 ffmpeg。
 // 用法：pnpm run build && node tests/ux/scene3d-exit-flush-recording.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync, readdirSync, statSync, readFileSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.scene3d-exit-flush-lab')
 mkdirSync(outDir, { recursive: true })
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-exit-flush-walk-'))
@@ -57,11 +54,12 @@ function takeNodePersisted() {
   return { file: null, ok: false, pointCount: 0 }
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-exit-flush-recording',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const errors = []
@@ -72,11 +70,8 @@ const pass = {
 }
 
 try {
-  const win = await app.firstWindow()
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   const splashSkip = win.locator('[data-splash-skip="true"]').first()
   if ((await splashSkip.count()) > 0) await splashSkip.click().catch(() => {})
   await win.keyboard.press('Escape').catch(() => {})
@@ -116,7 +111,7 @@ try {
   pass.possessed = (await win.locator('[aria-label="角色操控动作库"]').count()) > 0
   log(`  ${pass.possessed ? '✓' : '✗'} 进入操控态`)
 
-  await win.screenshot({ path: path.join(outDir, 'ef-01-possessed.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'ef-01-possessed.png') })
 
   const recBtn = win.locator('[title^="录 take"]').first()
   if ((await recBtn.count()) > 0) { await recBtn.click(); await win.locator('[title="停止录制并生成参考视频"]').first().waitFor({ timeout: 8000 }).catch(() => {}); await win.waitForTimeout(200) }
@@ -129,7 +124,7 @@ try {
   await win.waitForTimeout(1200)
   await win.keyboard.up('KeyW')
   await win.waitForTimeout(150)
-  await win.screenshot({ path: path.join(outDir, 'ef-02-recording-after-walk.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'ef-02-recording-after-walk.png') })
   pass.movedWhileRecording = pass.recStarted // 走了 1.2s，视为已产生位移（后续持久化校验会验证真非退化）
 
   const exitBtn = win.locator('[aria-label="角色操控动作库"] [title="退出操控"]').first()
@@ -140,7 +135,7 @@ try {
 
   pass.exitedUI = (await win.locator('[aria-label="角色操控动作库"]').count()) === 0
   log(`  ${pass.exitedUI ? '✓' : '✗'} 退出操控后 UI 回到编排态（动作库消失）`)
-  await win.screenshot({ path: path.join(outDir, 'ef-03-after-exit.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'ef-03-after-exit.png') })
 
   // 轮询：持久化的 take 节点 + 端到端 mp4。
   let persisted = { ok: false, file: null, pointCount: 0 }
@@ -155,7 +150,7 @@ try {
   pass.mp4Made = mp4s.length > 0
   log(`  ${pass.takePersisted ? '✓' : '✗'} 退出后仍生成「录制走位参考」take 节点（${persisted.pointCount} 个轨迹点）${persisted.file ? ' → ' + path.basename(persisted.file) : ''}`)
   log(`  ${pass.mp4Made ? '✓' : '✗'} 端到端出 mp4（${mp4s.length} 个）${mp4s[0] ? ' → ' + path.basename(mp4s[0]) : ''}`)
-  await win.screenshot({ path: path.join(outDir, 'ef-04-final.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'ef-04-final.png') })
 
   log('\n═══ 结果 ═══')
   for (const [k, v] of Object.entries(pass)) log(`  ${k.padEnd(22)}: ${v ? '✓' : '✗'}`)

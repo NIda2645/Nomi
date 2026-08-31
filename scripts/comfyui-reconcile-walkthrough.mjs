@@ -3,15 +3,13 @@
 //       ② 贴全齐的图 → 分析 → 零警示；
 //       ③ 把地址改到没服务的端口 → 分析 → 「未连接已跳过检查」一行说明（不阻断导入）。
 // 截图人眼判断。用法：pnpm build && node scripts/comfyui-reconcile-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.comfyui-reconcile-walk')
 mkdirSync(outDir, { recursive: true })
@@ -62,44 +60,35 @@ const mock = http.createServer((req, res) => {
 })
 await new Promise((r) => mock.listen(8188, '127.0.0.1', r))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: mkdtempSync(path.join(os.tmpdir(), 'comfyui-reconcile-proj-')),
-  },
+const { app, win } = await launchNomiApp({
+  name: 'comfyui-reconcile',
+  settingsDir,
+  projectsDir: mkdtempSync(path.join(os.tmpdir(), 'comfyui-reconcile-proj-')),
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 1800,
 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1440, height: 1000 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
 
   await win.getByRole('button', { name: '接入模型', exact: false }).first().click()
   await win.waitForTimeout(1000)
   await win.getByText('有本地 ComfyUI', { exact: false }).first().click()
   await win.waitForTimeout(500)
-  await win.getByText('ComfyUI · 本地', { exact: false }).first().click()
+  await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(400)
   await win.getByRole('button', { name: '启用 ComfyUI', exact: false }).first().click()
   await win.waitForTimeout(2200)
-  await win.getByText('ComfyUI · 本地', { exact: false }).first().click()
+  await win.getByText('本地 ComfyUI', { exact: true }).first().click()
   await win.waitForTimeout(600)
 
   // ── 场景①：缺节点 + 缺模型 → 两条红警示 ──
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(MISSING_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(MISSING_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(1500) // 等异步 reconcile 回来
   await win.getByText('本机 ComfyUI 缺', { exact: false }).first().scrollIntoViewIfNeeded()
@@ -109,7 +98,7 @@ try {
   await shot(win, '01b-missing-files-box.png') // 验：缺文件红框（CheckpointLoaderSimple.ckpt_name="wan-author-only…"）
 
   // ── 场景②：全齐 → 零警示 ──
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(CLEAN_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(CLEAN_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(1500)
   await shot(win, '02-clean-no-warnings.png') // 验：绑定区正常、无红框无「未连接」行
@@ -122,7 +111,7 @@ try {
   await win.getByRole('button', { name: '保存地址', exact: true }).click()
   await win.waitForTimeout(800)
   // 尾随空格：与场景②内容不同才会触发 onChange 重置分析态（同值 fill 不触发 React onChange）
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(CLEAN_GRAPH + ' ')
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(CLEAN_GRAPH + ' ')
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(1500)
   await win.getByText('已跳过缺节点', { exact: false }).first().scrollIntoViewIfNeeded()

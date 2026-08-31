@@ -9,7 +9,7 @@ vi.mock("electron", () => ({
     fetch: vi.fn(async (url: string) => {
       const filePath = new URL(url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
       const bytes = fs.readFileSync(decodeURIComponent(filePath));
-      return new Response(bytes, { headers: { "Content-Type": "video/mp4" } });
+      return new Response(bytes, { headers: { "Content-Type": filePath.endsWith(".bin") ? "application/octet-stream" : "video/mp4" } });
     }),
   },
 }));
@@ -29,6 +29,11 @@ beforeAll(() => {
   assetPath = path.join(projectRoot, "assets", "generated", "clip.mp4");
   fs.mkdirSync(path.dirname(assetPath), { recursive: true });
   fs.writeFileSync(assetPath, Buffer.from("0123456789"));
+  fs.writeFileSync(path.join(projectRoot, "assets", "generated", "clip.bin"), Buffer.concat([
+    Buffer.from([0, 0, 0, 0x10]),
+    Buffer.from("ftypisom", "ascii"),
+    Buffer.alloc(4),
+  ]));
 });
 
 afterAll(() => {
@@ -40,6 +45,28 @@ function assetUrl(relativePath = "assets/generated/clip.mp4"): string {
 }
 
 describe("handleNomiLocalRequest", () => {
+  // 这条原先钉的是「`Readable.toWeb` 被调用过」——那是钉实现、不是钉契约，
+  // 换个等价实现就会假红。它真正要守的是：**别把裸 Node 流交给 protocol.handle**
+  // （Chromium 的媒体请求会挂住）。现在直接钉那个契约本身。
+  // 至于「流的关闭权在我们手里」，由 fileResponseStream.test.ts 覆盖。
+  it("hands Electron a Web ReadableStream, never a raw Node stream", async () => {
+    const response = await handleNomiLocalRequest(new Request(assetUrl()));
+
+    expect(response.body).toBeInstanceOf(ReadableStream);
+    expect(response.body).not.toHaveProperty("pipe"); // Node Readable 的特征方法
+    expect(await response.text()).toBe("0123456789");
+  });
+
+  it("serves full files without reopening an undici response stream", async () => {
+    const fetchMock = vi.mocked((await import("electron")).net.fetch);
+    fetchMock.mockRejectedValueOnce(new Error("net.fetch must not serve local files"));
+
+    const response = await handleNomiLocalRequest(new Request(assetUrl()));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("0123456789");
+  });
+
   it("serves byte ranges for video playback", async () => {
     const response = await handleNomiLocalRequest(new Request(assetUrl(), { headers: { Range: "bytes=0-0" } }));
 
@@ -48,6 +75,21 @@ describe("handleNomiLocalRequest", () => {
     expect(response.headers.get("Content-Range")).toBe("bytes 0-0/10");
     expect(response.headers.get("Content-Length")).toBe("1");
     expect(await response.text()).toBe("0");
+  });
+
+  it("sniffs a legacy .bin video for ranged playback", async () => {
+    const response = await handleNomiLocalRequest(new Request(assetUrl("assets/generated/clip.bin"), { headers: { Range: "bytes=0-0" } }));
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Type")).toBe("video/mp4");
+  });
+
+  it("sniffs a legacy .bin video for full-file playback", async () => {
+    const response = await handleNomiLocalRequest(new Request(assetUrl("assets/generated/clip.bin")));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("video/mp4");
+    await response.arrayBuffer();
   });
 
   it("serves suffix ranges", async () => {
@@ -85,6 +127,7 @@ describe("handleNomiLocalRequest", () => {
     });
     const valid = await handleNomiLocalRequest(new Request(projection.preview!.nomiUrl));
     expect(valid.status).toBe(200);
+    await valid.arrayBuffer();
     const tampered = await handleNomiLocalRequest(new Request(`${projection.preview!.nomiUrl.slice(0, -1)}x`));
     expect(tampered.status).toBe(404);
   });

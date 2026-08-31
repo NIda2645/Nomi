@@ -5,15 +5,11 @@
 //   ① 从 label 上长按拖动 → 节点必须真的移动，且不得弹 filechooser；
 //   ② 短按 label → filechooser 必须弹 → 喂测试图 → 卡片必须出图。
 // 用法：pnpm build 后 node scripts/character-card-upload-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.charcard-upload-walk')
 mkdirSync(outDir, { recursive: true })
 const shot = async (win, name) => {
@@ -36,20 +32,12 @@ const RED_PNG = Buffer.from(
 const testImagePath = path.join(outDir, 'test-face.png')
 writeFileSync(testImagePath, RED_PNG)
 
-const launch = () =>
-  electron.launch({
-    executablePath: require('electron'),
-    args: ['.'],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-      NOMI_SETTINGS_DIR: isolatedSettings,
-      NOMI_PROJECTS_DIR: isolatedProjects,
-    },
-  })
+const launchOptions = {
+  name: 'character-card-upload',
+  settingsDir: isolatedSettings,
+  projectsDir: isolatedProjects,
+  env: { NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+}
 
 const errors = []
 let failed = false
@@ -60,12 +48,9 @@ const fail = (msg) => {
 
 // ── 第 1 程：UI 建项目 + 1 个图片节点，存盘 ────────────────────────────────
 {
-  const app = await launch()
-  const win = await app.firstWindow()
+  const { app, win } = await launchNomiApp({ ...launchOptions, settleMs: 1800 })
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   const skip = win.getByText('跳过', { exact: true }).first()
   if (await skip.isVisible().catch(() => false)) await skip.click()
   await win.getByText('新建空白项目', { exact: false }).first().click()
@@ -113,17 +98,14 @@ if (!projectFile) {
 
 // ── 第 2 程：点「+ 上传角色图」，验证 filechooser + 图显示 ─────────────────
 {
-  const app = await launch()
+  const { app, win } = await launchNomiApp({ ...launchOptions, settleMs: 2000 })
   try {
-    const win = await app.firstWindow()
     const bw = await app.browserWindow(win)
     await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })).catch(() => {})
     win.on('pageerror', (e) => errors.push(String(e)))
     win.on('console', (m) => {
       if (m.type() === 'error') errors.push(m.text())
     })
-    await win.waitForLoadState('domcontentloaded')
-    await win.waitForTimeout(2000)
     const skip = win.getByText('跳过', { exact: true }).first()
     if (await skip.isVisible().catch(() => false)) await skip.click()
     const recent = win.getByText('继续创作', { exact: true }).first()

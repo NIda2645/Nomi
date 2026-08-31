@@ -14,6 +14,7 @@ import { cn } from '../../utils/cn'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { toast } from '../toast'
 import { COMFYUI_VENDOR_KEY } from './ComfyuiLocalCard'
+import { normalizeComfyuiAddressInput } from './comfyuiAddress'
 
 /** 名字 → key 片段：ASCII 保底（中文名回落时间戳，key 只是身份、用户看到的是 name）。 */
 function slugFromName(name: string): string {
@@ -39,7 +40,9 @@ export function AddComfyuiInstanceButton({ onAdded }: { onAdded: () => void }): 
       const existing = (bridge.listVendors() as Array<{ key?: unknown }>).map((v) => String(v.key))
       let key = `${COMFYUI_VENDOR_KEY}-${slugFromName(trimmedName)}`
       while (existing.includes(key)) key = `${key}-2` // 重名不覆盖既有那台（宁可多一台也不丢用户配置）
-      bridge.upsertVendor({ key, name: trimmedName, baseUrlHint: trimmedAddr, authType: 'none', enabled: true })
+      // Adding an instance only creates a disabled candidate. Native route
+      // detection, workflow binding and the canonical run must promote it.
+      bridge.upsertVendor({ key, name: trimmedName, baseUrlHint: normalizeComfyuiAddressInput(trimmedAddr), authType: 'none', enabled: false })
       toast(t('onboardingProviders.comfyInstance.added', { name: trimmedName }), 'success')
       setOpen(false)
       setName('')

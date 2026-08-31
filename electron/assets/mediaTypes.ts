@@ -44,6 +44,7 @@ export const MEDIA_TYPES: readonly MediaTypeEntry[] = [
   { ext: '.m4v', contentType: 'video/x-m4v', kind: 'video' },
   { ext: '.ogv', contentType: 'video/ogg', kind: 'video' },
   { ext: '.avi', contentType: 'video/x-msvideo', kind: 'video' },
+  { ext: '.mkv', contentType: 'video/x-matroska', kind: 'video' },
   { ext: '.mpeg', contentType: 'video/mpeg', kind: 'video' },
   // audio
   { ext: '.mp3', contentType: 'audio/mpeg', kind: 'audio' },
@@ -101,6 +102,118 @@ export function extensionFromContentType(contentType: string): string | null {
 /** 某 kind 的全部扩展名(不含点),如 audio → ['mp3','wav',...]。 */
 export function extensionsForKind(kind: MediaKind): string[] {
   return MEDIA_TYPES.filter((e) => e.kind === kind).map((e) => e.ext.replace(/^\./, ''))
+}
+
+/**
+ * **文件头魔数 → contentType**；认不出返回 null。
+ *
+ * 为什么需要它（2026-08-20 用户报「素材上传失败(HTTP 413)」，那还是段 2 秒的视频）：
+ * 上传前判「这是图/视频/音频」全靠**文件名的扩展名**，而扩展名认不出时
+ * `mediaKindFromContentType` 会**一律当图片**（它的兜底就是 return 'image'）。于是
+ * `.mkv` / `.bin`（落盘时扩展名缺失的兜底）/ 没扩展名的文件里的视频，会被当图片送进
+ * 图片通道 —— KIE 的 file-base64-upload 是把整个文件 base64 塞进 JSON body 的，
+ * 一段几 MB 的视频就能把请求体顶爆 → 反代直接 413。文件多小都没用，路走错了。
+ *
+ * 文件名是人和服务商起的，字节是事实。扩展名认不出时就读头几个字节，别猜。
+ */
+const MAX_FTYP_BOX_BYTES = 4096
+
+function isoBmffContentType(bytes: Uint8Array): string | null {
+  const ascii = (start: number, length = 4) => String.fromCharCode(...bytes.subarray(start, start + length))
+  const uint32 = (start: number) => ((bytes[start] * 0x1000000) + (bytes[start + 1] << 16)
+    + (bytes[start + 2] << 8) + bytes[start + 3]) >>> 0
+  if (bytes.length < 16 || ascii(4) !== 'ftyp') return null
+  const size32 = uint32(0)
+  let boxSize = size32
+  let majorOffset = 8
+  if (size32 === 1) {
+    if (bytes.length < 24) return null
+    boxSize = uint32(8) * 0x100000000 + uint32(12)
+    majorOffset = 16
+  } else if (size32 === 0) boxSize = bytes.length
+  if (!Number.isSafeInteger(boxSize) || boxSize < majorOffset + 8 || boxSize > bytes.length
+    || boxSize > MAX_FTYP_BOX_BYTES || (boxSize - majorOffset) % 4 !== 0) return null
+  const major = ascii(majorOffset)
+  let avif = major === 'avif' || major === 'avis'
+  let heic = ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis'].includes(major)
+  for (let offset = majorOffset + 8; offset + 4 <= boxSize && !(avif && heic); offset += 4) {
+    const brand = ascii(offset)
+    avif ||= brand === 'avif' || brand === 'avis'
+    heic ||= ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis'].includes(brand)
+  }
+  if (avif) return 'image/avif'
+  if (heic) return 'image/heic'
+  if (major === 'M4A ' || major === 'M4B ') return 'audio/mp4'
+  if (major === 'M4V ' || major === 'M4VH' || major === 'M4VP') return 'video/x-m4v'
+  return major === 'qt  ' ? 'video/quicktime' : 'video/mp4'
+}
+
+export function contentTypeFromMagicBytes(bytes: Uint8Array): string | null {
+  const at = (i: number) => bytes[i]
+  const ascii = (start: number, text: string) =>
+    [...text].every((ch, i) => at(start + i) === ch.charCodeAt(0))
+  if (bytes.length < 12) return null
+  // ISO-BMFF：AVIF/HEIC 与 mp4/mov 共用 ftyp；major 与 compatible brands 都是格式声明。
+  if (ascii(4, 'ftyp')) {
+    return isoBmffContentType(bytes)
+  }
+  // Matroska / WebM 共用 EBML 头；认证边界必须按 DocType 区分，不能把 MKV 伪装成 WebM。
+  if (at(0) === 0x1a && at(1) === 0x45 && at(2) === 0xdf && at(3) === 0xa3) {
+    const docTypeWindow = new TextDecoder('latin1').decode(bytes.subarray(0, Math.min(bytes.length, 4096))).toLowerCase()
+    if (docTypeWindow.includes('matroska')) return 'video/x-matroska'
+    return 'video/webm'
+  }
+  // RIFF 容器：第 8 字节起的 form type 决定是 avi / wav / webp。
+  if (ascii(0, 'RIFF')) {
+    if (ascii(8, 'AVI ')) return 'video/x-msvideo'
+    if (ascii(8, 'WAVE')) return 'audio/wav'
+    if (ascii(8, 'WEBP')) return 'image/webp'
+  }
+  if (ascii(0, 'OggS')) {
+    const window = new TextDecoder('latin1').decode(bytes.subarray(0, Math.min(bytes.length, 64 * 1024)))
+    if (window.includes('OpusHead')) return 'audio/opus'
+    if (window.toLowerCase().includes('theora')) return 'video/ogg'
+    return 'audio/ogg'
+  }
+  if (ascii(0, 'fLaC')) return 'audio/flac'
+  if (ascii(0, 'ID3')) return 'audio/mpeg'
+  // MPEG-1/2 program streams are recognized so certification can return a stable
+  // unsupported-format result; this build does not claim them as certifiable.
+  if (at(0) === 0x00 && at(1) === 0x00 && at(2) === 0x01 && (at(3) === 0xba || at(3) === 0xb3)) return 'video/mpeg'
+  if (at(0) === 0xff && (at(1) & 0xf6) === 0xf0) return 'audio/aac' // ADTS AAC
+  if (at(0) === 0xff && (at(1) & 0xe0) === 0xe0) return 'audio/mpeg' // 裸 MPEG 音频帧同步字
+  if (at(0) === 0x89 && ascii(1, 'PNG')) return 'image/png'
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return 'image/jpeg'
+  if (ascii(0, 'GIF8')) return 'image/gif'
+  if (ascii(0, 'BM')) return 'image/bmp'
+  if ((ascii(0, 'II') && at(2) === 0x2a && at(3) === 0x00)
+    || (ascii(0, 'MM') && at(2) === 0x00 && at(3) === 0x2a)) return 'image/tiff'
+  if (at(0) === 0x00 && at(1) === 0x00 && at(2) === 0x01 && at(3) === 0x00) return 'image/x-icon'
+  return null
+}
+
+/** 与项目当前真实 decoder/probe 边界一致；识别到但不在此集合中的格式必须报 unsupported。 */
+export const CERTIFIABLE_MEDIA_CONTENT_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/webp',
+  'video/mp4', 'video/x-m4v', 'video/quicktime', 'video/webm', 'video/x-matroska',
+  'video/ogg', 'video/x-msvideo',
+  'audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/opus',
+  'audio/webm', 'audio/flac',
+  'model/gltf-binary',
+]);
+
+export function isCertifiableMediaContentType(contentType: string): boolean {
+  return CERTIFIABLE_MEDIA_CONTENT_TYPES.has(String(contentType || '').toLowerCase().split(';', 1)[0].trim())
+}
+
+/**
+ * 素材真实 contentType 的**唯一判定顺序**：有字节时先信文件头（字节事实优先于错误扩展名），
+ * 文件头认不出再用扩展名，最后才 octet-stream。没有字节时走扩展名快路。
+ */
+export function resolveContentType(fileNameOrPath: string, bytes?: Uint8Array): string {
+  const byExt = contentTypeFromExtension(fileNameOrPath)
+  const bySniff = bytes ? contentTypeFromMagicBytes(bytes) : null
+  return bySniff ?? byExt ?? 'application/octet-stream'
 }
 
 /**

@@ -5,12 +5,11 @@
 //  ④ 右键已绘对象 → 右键菜单出现（useWhiteboardSelectionActions）
 //  贯穿：全程零 console error / 零 pageerror（hook 接线错会在交互时抛）
 // 用法: node tests/ux/whiteboard-refactor.walk.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
-import { createRequire } from 'node:module'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = process.cwd()
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/whiteboard-refactor')
 fs.mkdirSync(shotsDir, { recursive: true })
@@ -24,8 +23,8 @@ let n = 0
 function check(name, ok, detail) { results.push({ name, ok }); console.log(`  ${ok ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`) }
 
 const consoleErrors = []
-const app = await electron.launch({ executablePath: require('electron'), args: ['.', `--user-data-dir=${userData}`], cwd: repoRoot, env: { ...process.env, NOMI_PROJECTS_DIR: projectsDir } })
-let win = await app.firstWindow()
+const { app, win: _win } = await launchNomiApp({ name: 'whiteboard-refactor', userDataDir: userData, projectsDir, settleMs: 0 })
+let win = _win
 const getWin = () => {
   const live = app.windows().filter((w) => !w.isClosed())
   win = live.find((w) => { try { return /projectId=/.test(w.url()) } catch { return false } }) || live[live.length - 1] || win
@@ -37,7 +36,7 @@ function wire(w) {
 }
 wire(win)
 app.on('window', wire)
-async function snap(name) { n += 1; try { await getWin().screenshot({ path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`) }) } catch { /* */ } }
+async function snap(name) { n += 1; try { await screenshotSettled(getWin(), { path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`) }) } catch { /* */ } }
 async function dismiss() {
   for (let i = 0; i < 6; i++) {
     const skip = getWin().locator('button, [role="button"], a', { hasText: /跳过|完成|知道了|开始创作|稍后|关闭/ }).first()

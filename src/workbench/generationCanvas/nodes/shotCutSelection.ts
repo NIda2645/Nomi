@@ -19,11 +19,69 @@ export const SHOT_SENSITIVITY_MAX = 0.7
 export const SHOT_SENSITIVITY_DEFAULT = 0.3
 export const SHOT_SENSITIVITY_STEP = 0.05
 
-/** 按灵敏度过滤，保住原始下标。 */
+/**
+ * 「同一刀的余震」合并窗口（秒）。ffmpeg 会把一个真切点连报两帧——实测某导入短片
+ * `5.400/0.576` 紧跟着 `5.433/0.341`，差整整一帧，是同一刀。不合并就会在联系表里出现成对的重影格子。
+ * 0.2s 只够吃掉紧邻的余震，吃不到真实快剪（最短的快剪镜头也在 0.3s 以上）。
+ */
+export const SHOT_CUT_MERGE_SECONDS = 0.2
+
+/**
+ * 按灵敏度过滤 + 合并余震，保住原始下标。
+ *
+ * 两件事必须一起做、且只有这一个出口：漏了过滤会把运镜当切点，漏了合并会把一刀数成两刀。
+ * 合并保留簇里**分数最高**的那帧——它才是真正的切点位置，余震那帧画面已经切完了。
+ */
 export function filterShotCuts(cuts: readonly ShotCut[], threshold: number): ShotCutCandidate[] {
-  return cuts
+  const passed = cuts
     .map((cut, index) => ({ ...cut, index }))
     .filter((cut) => cut.score >= threshold)
+
+  const merged: ShotCutCandidate[] = []
+  for (const cut of passed) {
+    const prev = merged[merged.length - 1]
+    if (prev && cut.seconds - prev.seconds < SHOT_CUT_MERGE_SECONDS) {
+      if (cut.score > prev.score) merged[merged.length - 1] = cut
+      continue
+    }
+    merged.push(cut)
+  }
+  return merged
+}
+
+/**
+ * 默认灵敏度**从这条视频自己的分数分布 derive**，不写死。
+ *
+ * 为什么：0.3 是照「硬切成片」调的，但很多片子最强的切点也只有 0.16（实测 `nomi-clip-01` = 0.161）。
+ * 写死 0.3 的后果是「打开即空」——标题数的是过滤后的 0，空态判的是过滤前的非 0，
+ * 于是面板显示「检测到 0 个镜头」+ 滑杆 + 一片空白 + 连一句解释都没有，用户只能关掉。
+ *
+ * 规则：0.3 能看到切点就用 0.3（常见片子行为不变），看不到就退到**能看到的最高档**。
+ * 检测全集本身就是 `> 0.1` 的产物，故退到 MIN 必然非空 —— 面板不可能再打开就是空的。
+ */
+export function pickDefaultSensitivity(cuts: readonly ShotCut[]): number {
+  if (!cuts.length) return SHOT_SENSITIVITY_DEFAULT
+  const max = cuts.reduce((best, cut) => (cut.score > best ? cut.score : best), 0)
+  if (max >= SHOT_SENSITIVITY_DEFAULT) return SHOT_SENSITIVITY_DEFAULT
+  const steps = Math.floor((max - SHOT_SENSITIVITY_MIN) / SHOT_SENSITIVITY_STEP)
+  const relaxed = SHOT_SENSITIVITY_MIN + Math.max(0, steps) * SHOT_SENSITIVITY_STEP
+  // 浮点：0.1 + 3*0.05 会得到 0.25000000000000006，滑杆的 value 比对会当成越界。
+  return Math.min(SHOT_SENSITIVITY_DEFAULT, Math.round(relaxed * 100) / 100)
+}
+
+/** 一镜到底时用几帧：约每 2.5 秒一帧，夹在 3–8 之间。5s 片段 → 3 帧，10s → 4 帧，28s → 8 帧。 */
+export function evenFrameCount(durationSeconds: number): number {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return 3
+  return Math.min(8, Math.max(3, Math.round(durationSeconds / 2.5)))
+}
+
+/**
+ * 一镜到底时的替代取法：按时长均匀取 N 个时间点。
+ * **避开首尾**——抽首帧/抽尾帧在视频工具栏已经有家了，这里再给一遍就是同一功能两个家。
+ */
+export function evenFrameSeconds(durationSeconds: number, count: number): number[] {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || count <= 0) return []
+  return Array.from({ length: count }, (_, i) => Math.round(((durationSeconds * (i + 1)) / (count + 1)) * 1000) / 1000)
 }
 
 /**

@@ -15,6 +15,7 @@ let openProjectId = ''
 // 模拟渲染层在线 + 付费确认应答（测 hybrid 网关：窗口活着但项目没在前台）。
 let rendererUp = false
 let spendReply: { confirmed?: boolean } = { confirmed: true }
+let planReply: { confirmed?: boolean } = { confirmed: true }
 let rendererOps: string[] = []
 // 捕获最后一次 runTask 请求,断言 grantId 是否随请求下传(=付费确认是否真路由+铸令牌)。
 let lastRunTaskReq: { extras?: Record<string, unknown> } | null = null
@@ -31,6 +32,7 @@ vi.mock('./rendererBridge', () => ({
   requestRenderer: async (op: string) => {
     rendererOps.push(op)
     if (op === 'spend.confirm') return spendReply
+    if (op === 'plan.confirm') return planReply
     // hybrid 网关读写应走盘,绝不该把 canvas.* 转给渲染层——命中即测试失败。
     throw new Error(`hybrid 不应调用渲染层 op: ${op}`)
   },
@@ -59,6 +61,16 @@ async function rpc(
     },
     body: JSON.stringify({ method, params }),
   })
+  return { status: res.status, body: (await res.json()) as { ok: boolean; result?: unknown; error?: unknown } }
+}
+
+/** 发原始请求体：用于测顶层旁路标志（planConfirmed / spendConfirmed），它们不在 params 里。 */
+async function rpcRaw(body: Record<string, unknown>) {
+  const res = await fetch(`http://127.0.0.1:${server!.port}/rpc`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  })
   return { status: res.status, body: (await res.json()) as { ok: boolean; result?: unknown; error?: string } }
 }
 
@@ -69,6 +81,7 @@ beforeEach(async () => {
   openProjectId = ''
   rendererUp = false
   spendReply = { confirmed: true }
+  planReply = { confirmed: true }
   rendererOps = []
   lastRunTaskReq = null
   token = ensureToken()
@@ -176,6 +189,40 @@ describe('capabilityCore/rpcServer', () => {
     expect(lastRunTaskReq?.extras?.grantId).toBeTruthy()
   })
 
+  it('spendConfirmed 过线：已在调用方客户端确认过 → App 不再弹第二张卡，直接铸令牌下传', async () => {
+    // 2026-08-18 修双问：协议层已在 Claude/Codex 侧经 elicitation 拿到真人 accept。若这个信号不过 RPC 线，
+    // 渲染层会再弹一次 spend.confirm → 用户点两次（比修之前更糟）。锁死：不弹卡 + 仍有令牌。
+    rendererUp = true
+    spendReply = { confirmed: false } // 卡真被弹到就会拒 → grantId 缺失,双重保险坐实「没走弹卡这条」
+    const created = await rpc('project.create', { name: '已在客户端确认' })
+    const projectId = (created.body.result as { id: string }).id
+    const gen = await rpcRaw({
+      method: 'generate',
+      params: { projectId, intent: 'image', prompt: 'robot', vendor: 'v', modelKey: 'm' },
+      spendConfirmed: true,
+    })
+    expect(gen.body.ok).toBe(true)
+    expect(rendererOps).not.toContain('spend.confirm')
+    // 付费硬闸不松：仍必须有令牌随请求下传,runTask 侧 assertAndConsumeSpendGrant 照常逐次核验。
+    expect(lastRunTaskReq?.extras?.grantId).toBeTruthy()
+  })
+
+  it('安全：spendConfirmed 只预批付费,不顺手预批方案门(confirmPlan 仍要真人)', async () => {
+    // 防「一个 flag 顺走一串权限」：预批范围必须恰好是付费确认本身。
+    rendererUp = true
+    openProjectId = ''
+    const created = await rpc('project.create', { name: '预批范围' })
+    const projectId = (created.body.result as { id: string }).id
+    const added = await rpcRaw({
+      method: 'canvas.addNodes',
+      params: { projectId, nodes: [{ kind: 'text', prompt: 'a' }, { kind: 'text', prompt: 'b' }] },
+      spendConfirmed: true,
+    })
+    expect(added.body.ok).toBe(true)
+    // hybrid 网关的 confirmPlan 仍走渲染层问真人——没被 spendConfirmed 带着一起放行。
+    expect(rendererOps).toContain('plan.confirm')
+  })
+
   it('安全：付费确认被拒(confirmed:false) → 不铸令牌,请求不带 grantId(runTask 硬闸会拦)', async () => {
     rendererUp = true
     spendReply = { confirmed: false }
@@ -189,5 +236,32 @@ describe('capabilityCore/rpcServer', () => {
   it('未知方法 → 404', async () => {
     const res = await rpc('nope')
     expect(res.status).toBe(404)
+  })
+
+  it('keeps typed generation policy details in the local RPC error payload', async () => {
+    const res = await rpc('nomi_operation_create', {})
+    expect(res.status).toBe(403)
+    expect(res.body.error).toMatchObject({
+      code: 'feature_disabled', nextAction: expect.any(String), phase: 'schema_only', capability: 'create',
+    })
+  })
+
+  it('allows only a signed MCP client to request the GUI fallback for one challenge', async () => {
+    await server!.close()
+    const confirmGenerationInNomi = vi.fn(async (input: { challengeToken: string }) => ({
+      confirmed: true,
+      challengeToken: input.challengeToken,
+      receiptId: 'receipt-1',
+    }))
+    server = await startRpcServer({
+      runTask: async () => ({ id: 't', status: 'succeeded', assets: [] }),
+      confirmGenerationInNomi,
+    })
+    const proof = signMcpClient('codex')!
+    const accepted = await rpc('nomi_confirm_generation_gate', { challengeToken: 'signed-challenge-token' }, token, { client: 'codex', proof })
+    expect(accepted.body).toMatchObject({ ok: true, result: { confirmed: true, receiptId: 'receipt-1' } })
+    const forged = await rpc('nomi_confirm_generation_gate', { challengeToken: 'signed-challenge-token' })
+    expect(forged.status).toBe(403)
+    expect(confirmGenerationInNomi).toHaveBeenCalledTimes(1)
   })
 })

@@ -16,6 +16,16 @@ export type CustomCallVariableDoc = {
 export const CUSTOM_CALL_VARIABLES: CustomCallVariableDoc[] = [
   { name: "prompt", type: "string", desc: "the user's prompt text" },
   {
+    name: "taskKind",
+    type: "string",
+    desc: "read-only transport task kind selected by Nomi (for example image_to_video or text_to_audio); never infer it from the provider name",
+  },
+  {
+    name: "modeId",
+    type: "string | undefined",
+    desc: "read-only mode id validated against the model capability contract; undefined when this model has no explicit/compatible mode",
+  },
+  {
     name: "params",
     type: "Record<string, unknown>",
     desc: "all generation params the UI collected (same table wire templates read): size, duration, n, seed, plus reference keys like first_frame_url / reference_image_urls",
@@ -23,11 +33,16 @@ export const CUSTOM_CALL_VARIABLES: CustomCallVariableDoc[] = [
   {
     name: "references",
     type: "{ firstFrame?: string; lastFrame?: string; images: string[]; videos: string[]; audios: string[] }",
-    desc: "convenience view over params reference keys; values are vendor-reachable URLs (already uploaded/localized by Nomi)",
+    desc: "convenience view over params reference keys; values are vendor-reachable URLs already uploaded/localized by Nomi. Roles are explicit and disjoint: never infer firstFrame/lastFrame from images, and preserve images order/cardinality",
   },
   { name: "model", type: "string", desc: "model id to send upstream (alias if configured, else key)" },
   { name: "baseUrl", type: "string", desc: "vendor base URL exactly as configured (may already end with /v1)" },
   { name: "apiKey", type: "string", desc: "vendor API key (add your own auth header when using `request`)" },
+  {
+    name: "config",
+    type: "Record<string, string>",
+    desc: "user-defined key/value pairs from this provider's custom config panel. The escape hatch for anything Nomi does not model: a second secret (AK/SK signing), region, api-version header, tenant id, account id. Read as config.<name>",
+  },
   {
     name: "http",
     type: "{ post(path, body?, opts?): Promise<any>; get(path, opts?): Promise<any>; url(path): string }",
@@ -43,6 +58,11 @@ export const CUSTOM_CALL_VARIABLES: CustomCallVariableDoc[] = [
     type: "(fn: () => Promise<T>, extract: (v: T) => R | null | undefined | false, opts?: { intervalMs?: number; timeoutMs?: number }) => Promise<R>",
     desc: "repeat fn until extract returns a truthy value; default interval 2.5s, timeout 10min",
   },
+  {
+    name: "saveFile",
+    type: "(bytes: Buffer | ArrayBuffer | Uint8Array, ext: string, contentType?: string) => Promise<string>",
+    desc: "write raw bytes into the project as a local asset and get back a usable URL. Use this when the upstream returns a binary body instead of a URL (do NOT build a giant data: URL for video)",
+  },
   { name: "sleep", type: "(ms: number) => Promise<void>", desc: "delay helper (abort-aware)" },
   { name: "signal", type: "AbortSignal", desc: "cancellation signal; http/request already honor it" },
 ];
@@ -53,6 +73,8 @@ export const CUSTOM_CALL_INJECTED_KEYS = CUSTOM_CALL_VARIABLES.map((v) => v.name
 export const CUSTOM_CALL_RETURN_CONTRACT =
   "The script body must `return` the final result: an asset URL string (or data URL), an array of them, " +
   "or an object like { url } / { urls: [...] } / { video_url } / { image_url } / { b64_json }. " +
+  "For a TEXT model, return { text: \"...\" } instead. " +
+  "If the upstream hands you raw bytes rather than a URL, call saveFile(bytes, 'mp4') and return what it gives you. " +
   "For async upstreams, poll inside the script until done and return the final asset. Throw an Error with the upstream message on failure.";
 
 export type CustomCallTemplate = { id: string; script: string };
@@ -118,16 +140,18 @@ export function buildCustomCallAiInstruction(input: {
   material: string;
   currentScript?: string;
   lastError?: string;
+  taskKind?: string;
+  modeId?: string;
 }): string {
   const vars = CUSTOM_CALL_VARIABLES.map((v) => `- ${v.name}: ${v.type} — ${v.desc}`).join("\n");
   const repair = input.currentScript
     ? `\n\nCurrent script (it failed — fix it, keep working parts):\n${input.currentScript}\n\nError / transcript from the failed test run:\n${input.lastError || "(none)"}`
     : "";
   return [
-    `You are writing the body of an async JavaScript function that calls a generation API for the model "${input.modelKey}" (capability: ${input.kind}; base URL: ${input.baseUrl}).`,
+    `You are writing the body of an async JavaScript function that calls a generation API for the model "${input.modelKey}" (capability: ${input.kind}; task kind: ${input.taskKind || "selected at runtime"}; mode: ${input.modeId || "selected at runtime or undefined"}; base URL: ${input.baseUrl}).`,
     `Available variables (already in scope — do NOT redeclare them):\n${vars}`,
     CUSTOM_CALL_RETURN_CONTRACT,
-    `Rules: output ONLY the raw function body statements — no markdown fences, no function wrapper, no explanations. Use await directly. Prefer \`http\` for Bearer-auth JSON APIs; use \`request\` when auth or content type is non-standard. Never invent endpoints not present in the material; if the material is insufficient, still produce the best guess and put open questions in a leading // comment.`,
-    `API material provided by the user:\n${input.material || "(none — fall back to the most common OpenAI-compatible shape for this capability)"}`,
+    `Rules: output ONLY the raw function body statements — no markdown fences, no function wrapper, no explanations. Use await directly. Prefer \`http\` for Bearer-auth JSON APIs; use \`request\` when auth or content type is non-standard. Never promote references.images[0] (or any generic image) to references.firstFrame/lastFrame; preserve generic image order and count. Never invent endpoints not present in the material. If the material is insufficient, return a script that throws a clear missing-documentation Error before any request instead of guessing an endpoint or field.`,
+    `API material provided by the user:\n${input.material || "(none — do not guess; emit a clear missing-documentation Error)"}`,
   ].join("\n\n") + repair;
 }

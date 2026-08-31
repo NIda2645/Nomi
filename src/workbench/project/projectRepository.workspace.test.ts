@@ -2,12 +2,34 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createLocalProject, readLocalProject } from './projectRepository'
 import { migrateProjectRecord } from './projectCategoryMigration'
 import { getDesktopBridge } from '../../desktop/bridge'
+import type { DesktopBridge } from '../../desktop/bridge'
 
 vi.mock('../../desktop/bridge', () => ({
   getDesktopBridge: vi.fn(),
 }))
 
 const mockedGetDesktopBridge = vi.mocked(getDesktopBridge)
+
+// 只实现 projects.create，其余口子留空桩。逐字段 as 是刻意的（"这个口子本测试不用"），
+// 但整体不加 as DesktopBridge——那样会把「少实现了一个必填口子」也一并盖住。
+function stubBridge(projectsOverride: Partial<DesktopBridge['projects']>): DesktopBridge {
+  return {
+    platform: 'darwin',
+    video: {} as DesktopBridge['video'],
+    screenshot: {} as DesktopBridge['screenshot'],
+    image: {} as DesktopBridge['image'],
+    scene3d: {} as DesktopBridge['scene3d'],
+    onboarding: {} as DesktopBridge['onboarding'],
+    skill: {} as DesktopBridge['skill'],
+    workspace: {} as DesktopBridge['workspace'],
+    projects: projectsOverride as DesktopBridge['projects'],
+    assets: {} as DesktopBridge['assets'],
+    exports: {} as DesktopBridge['exports'],
+    tasks: {} as DesktopBridge['tasks'],
+    agents: {} as DesktopBridge['agents'],
+    modelCatalog: {} as DesktopBridge['modelCatalog'],
+  }
+}
 
 describe('projectRepository workspace project creation', () => {
   beforeEach(() => {
@@ -16,17 +38,7 @@ describe('projectRepository workspace project creation', () => {
 
   it('desktop createLocalProject does not pass arbitrary rootPath through projects.create', () => {
     const create = vi.fn((record: unknown) => ({ ...(record as object), id: 'desktop-id' }))
-    mockedGetDesktopBridge.mockReturnValue({
-      platform: 'darwin',
-      workspace: {} as never,
-      projects: { create } as never,
-      cost: {} as never,
-      assets: {} as never,
-      exports: {} as never,
-      tasks: {} as never,
-      agents: {} as never,
-      modelCatalog: {} as never,
-    })
+    mockedGetDesktopBridge.mockReturnValue(stubBridge({ create }))
 
     createLocalProject('Desktop Project', undefined, { rootPath: '/Users/me/Work/Nomi Project' })
 
@@ -42,21 +54,21 @@ describe('projectRepository workspace project creation', () => {
     expect('rootPath' in record).toBe(false)
   })
 
+  it('same project title still creates independent project records', () => {
+    mockedGetDesktopBridge.mockReturnValue(null)
+
+    const first = createLocalProject('Storyboard')
+    const second = createLocalProject('Storyboard')
+
+    expect(second.id).not.toBe(first.id)
+    expect(second.name).toBe(first.name)
+  })
+
   it('stamps seedKey onto programmatically seeded projects (idempotent example seeding, audit A8)', () => {
     // seedKey 是播种身份：程序化播种用它判断「这个示例已播过」。名字不是身份——
     // 此前以 projectName 重复 createLocalProject 堆出几十个重名示例项目。
     const create = vi.fn((record: unknown) => record)
-    mockedGetDesktopBridge.mockReturnValue({
-      platform: 'darwin',
-      workspace: {} as never,
-      projects: { create } as never,
-      cost: {} as never,
-      assets: {} as never,
-      exports: {} as never,
-      tasks: {} as never,
-      agents: {} as never,
-      modelCatalog: {} as never,
-    })
+    mockedGetDesktopBridge.mockReturnValue(stubBridge({ create }))
 
     createLocalProject('示例：30 秒产品介绍', undefined, { seedKey: 'example:product-demo' })
 
@@ -70,17 +82,7 @@ describe('projectRepository workspace project creation', () => {
   it('stamps draft:true on a freshly created blank project (no seedKey, no rootPath)', () => {
     // 草稿态：新建空白零编辑会被启动 GC 回收。example（有 seedKey）/打开文件夹（有 rootPath）不打标记。
     const create = vi.fn((record: unknown) => record)
-    mockedGetDesktopBridge.mockReturnValue({
-      platform: 'darwin',
-      workspace: {} as never,
-      projects: { create } as never,
-      cost: {} as never,
-      assets: {} as never,
-      exports: {} as never,
-      tasks: {} as never,
-      agents: {} as never,
-      modelCatalog: {} as never,
-    })
+    mockedGetDesktopBridge.mockReturnValue(stubBridge({ create }))
 
     createLocalProject('新建空白')
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ draft: true }))
@@ -109,7 +111,7 @@ describe('projectRepository workspace project creation', () => {
 
       expect(record.draft).toBe(true)
       expect('seedKey' in record).toBe(false)
-      expect(record.payload.categories.length).toBeGreaterThan(0)
+      expect(record.payload.categories!.length).toBeGreaterThan(0)
       // 新建空白项目默认空画布（用户拍板 2026-06-15：删了「剧本片段 + 关键画面」预设两卡）。
       // 进画布即空 → CanvasEmptyState 引导；主链路靠创作区拆镜头灌节点。
       expect(record.payload.generationCanvas.nodes).toHaveLength(0)
@@ -173,22 +175,12 @@ describe('projectRepository workspace project creation', () => {
       },
     }
     const read = vi.fn(() => v2Record)
-    mockedGetDesktopBridge.mockReturnValue({
-      platform: 'darwin',
-      workspace: {} as never,
-      projects: { read } as never,
-      cost: {} as never,
-      assets: {} as never,
-      exports: {} as never,
-      tasks: {} as never,
-      agents: {} as never,
-      modelCatalog: {} as never,
-    })
+    mockedGetDesktopBridge.mockReturnValue(stubBridge({ read }))
 
     const record = readLocalProject('ws-1')
 
     expect(record).toMatchObject({ id: 'ws-1', name: 'Workspace Project', version: 1 })
-    expect(record?.payload.workbenchDocument.version).toBe(1)
+    expect(record?.payload.workbenchDocuments![0].version).toBe(1)
     // 三轨：旧 2 轨工程加载时 normalizeTimeline 自动补音频轨（migration，幂等）。
     expect(record?.payload.timeline.tracks).toHaveLength(3)
     expect(record?.payload.timeline.tracks.map((t) => t.type)).toEqual(['image', 'video', 'audio'])
@@ -211,22 +203,12 @@ describe('projectRepository workspace project creation', () => {
       payload: { rootPath: '/Users/me/Music' },
     }
     const read = vi.fn(() => emptyManifest)
-    mockedGetDesktopBridge.mockReturnValue({
-      platform: 'darwin',
-      workspace: {} as never,
-      projects: { read } as never,
-      cost: {} as never,
-      assets: {} as never,
-      exports: {} as never,
-      tasks: {} as never,
-      agents: {} as never,
-      modelCatalog: {} as never,
-    })
+    mockedGetDesktopBridge.mockReturnValue(stubBridge({ read }))
 
     const record = readLocalProject('ws-music')
 
     expect(record).toMatchObject({ id: 'ws-music', name: 'Music', version: 1 })
-    expect(record?.payload.workbenchDocument.version).toBe(1)
+    expect(record?.payload.workbenchDocuments![0].version).toBe(1)
     expect(record?.payload.timeline.tracks.length).toBeGreaterThan(0)
     expect(Array.isArray(record?.payload.generationCanvas.nodes)).toBe(true)
   })

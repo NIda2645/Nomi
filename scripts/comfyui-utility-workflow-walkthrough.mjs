@@ -8,14 +8,12 @@
 //   ③ 画布上选中它 → 出现「这条工作流不吃提示词」的诚实说明
 //   ④ 一个字都不打，直接点生成 → **不再弹 prompt is required**，真跑出图
 // 用法：pnpm build && node scripts/comfyui-utility-workflow-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.comfyui-utility-walk')
 mkdirSync(outDir, { recursive: true })
@@ -41,30 +39,21 @@ writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
   models: [], mappings: [], apiKeysByVendor: {},
 }))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_LOOP_SPEND_OK: '1',
-    NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html'),
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: mkdtempSync(path.join(os.tmpdir(), 'comfyui-utility-proj-')),
-  },
+const projectsDir = mkdtempSync(path.join(os.tmpdir(), 'comfyui-utility-proj-'))
+const { app, win } = await launchNomiApp({
+  name: 'comfyui-utility-workflow',
+  settingsDir,
+  projectsDir,
+  env: { NOMI_LOOP_SPEND_OK: '1', NOMI_RENDERER_URL: 'file://' + path.join(repoRoot, 'dist', 'index.html') },
+  settleMs: 2000,
 })
 const errors = []
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1500, height: 1060 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('dialog', (d) => void d.dismiss().catch(() => {}))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(2000)
   // 首启开屏会盖住库页（记忆里的坑）——先跳过
   const skip = win.getByRole('button', { name: '跳过', exact: false }).first()
   if (await skip.isVisible().catch(() => false)) { await skip.click(); await win.waitForTimeout(800) }
@@ -78,7 +67,7 @@ try {
   await shot(win, '00-card-expanded.png')
   await win.getByRole('button', { name: '导入自定义工作流', exact: false }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('textbox', { name: 'workflow_api.json 粘贴框' }).fill(UTILITY_GRAPH)
+  await win.getByRole('textbox', { name: 'ComfyUI 工作流 JSON' }).fill(UTILITY_GRAPH)
   await win.getByRole('button', { name: '分析工作流', exact: true }).click()
   await win.waitForTimeout(3000)
   await shot(win, '01-analyzed-no-prompt.png')

@@ -124,6 +124,31 @@ describe("compileFfmpegFiltergraph", () => {
     expect(plan.filterComplex).toContain("[vstack0][clip_clip_top_fitted]overlay");
   });
 
+  it("splits repeated visual inputs before branching the filtergraph", () => {
+    const plan = compileFfmpegFiltergraph({
+      manifest: manifest({
+        assets: { video1: { id: "video1", kind: "video", absolutePath: "/media/source.mp4" } },
+        timeline: {
+          fps: 30,
+          durationFrames: 120,
+          range: { startFrame: 0, endFrame: 120 },
+          tracks: [{
+            id: "visual-1",
+            kind: "visual",
+            clips: [
+              { id: "clip-first", assetId: "video1", startFrame: 0, endFrame: 60 },
+              { id: "clip-second", assetId: "video1", startFrame: 60, endFrame: 120 },
+            ],
+          }],
+        },
+      }),
+    });
+
+    expect(plan.filterComplex).toContain("[0:v]split=2[clip_clip_first_video_source][clip_clip_second_video_source]");
+    expect(plan.filterComplex).toContain("[clip_clip_first_video_source]trim=start=0:end=2");
+    expect(plan.filterComplex).toContain("[clip_clip_second_video_source]trim=start=0:end=2");
+  });
+
   it("emits white background and shifts non-zero-start visual clips into timeline PTS", () => {
     const plan = compileFfmpegFiltergraph({
       manifest: manifest({
@@ -206,7 +231,58 @@ describe("compileFfmpegFiltergraph", () => {
     expect(plan.filterComplex).not.toContain("amix");
   });
 
-  it("多个音频源 → amix（normalize=0 防 1/N 衰减）", () => {
+  it("applies clip gain and frame-based fades before timeline delay", () => {
+    const plan = compileFfmpegFiltergraph({
+      manifest: manifest({
+        profile: { ...profile, audioCodec: "aac", audioMode: "mixdown" },
+        assets: { a1: { id: "a1", kind: "audio", absolutePath: "/media/a1.wav", durationSeconds: 10 } },
+        timeline: {
+          fps: 30,
+          durationFrames: 300,
+          range: { startFrame: 0, endFrame: 300 },
+          tracks: [{
+            id: "audio-1",
+            kind: "audio",
+            clips: [{
+              id: "a-clip-1",
+              assetId: "a1",
+              startFrame: 30,
+              endFrame: 180,
+              audio: { gainDb: -6, muted: false, fadeInFrames: 15, fadeOutFrames: 30 },
+            }],
+          }],
+        },
+      }),
+    });
+
+    expect(plan.filterComplex).toContain(
+      "[0:a]atrim=start=0:end=5,asetpts=PTS-STARTPTS," +
+      "volume=0.501187,afade=t=in:st=0:d=0.5,afade=t=out:st=4:d=1," +
+      "adelay=1000|1000[aout]",
+    );
+  });
+
+  it("uses zero volume for clip mute and keeps explicit defaults byte-for-byte compatible", () => {
+    const makeAudioPlan = (audio: { gainDb: number; muted: boolean; fadeInFrames: number; fadeOutFrames: number }) => compileFfmpegFiltergraph({
+      manifest: manifest({
+        profile: { ...profile, audioCodec: "aac", audioMode: "mixdown" },
+        assets: { a1: { id: "a1", kind: "audio", absolutePath: "/media/a1.wav", durationSeconds: 10 } },
+        timeline: {
+          fps: 30,
+          durationFrames: 150,
+          range: { startFrame: 0, endFrame: 150 },
+          tracks: [{ id: "audio-1", kind: "audio", clips: [{ id: "clip", assetId: "a1", startFrame: 0, endFrame: 150, audio }] }],
+        },
+      }),
+    });
+
+    expect(makeAudioPlan({ gainDb: -6, muted: true, fadeInFrames: 0, fadeOutFrames: 0 }).filterComplex)
+      .toContain("asetpts=PTS-STARTPTS,volume=0,adelay=0|0[aout]");
+    expect(makeAudioPlan({ gainDb: 0, muted: false, fadeInFrames: 0, fadeOutFrames: 0 }).filterComplex)
+      .toContain("[0:a]atrim=start=0:end=5,asetpts=PTS-STARTPTS,adelay=0|0[aout]");
+  });
+
+  it("多个音频源 → 等长 amix 后恢复未归一化音量", () => {
     const plan = compileFfmpegFiltergraph({
       manifest: manifest({
         profile: { ...profile, audioCodec: "aac", audioMode: "mixdown" },
@@ -224,7 +300,10 @@ describe("compileFfmpegFiltergraph", () => {
       }),
     });
     expect(plan.audioOutputLabel).toBe("[aout]");
-    expect(plan.filterComplex).toContain("amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]");
+    expect(plan.filterComplex).toContain("adelay=0|0,apad,atrim=end=10[clip_a_clip_1_audio0]");
+    expect(plan.filterComplex).toContain("adelay=1000|1000,apad,atrim=end=10[clip_a_clip_2_audio1]");
+    expect(plan.filterComplex).toContain("amix=inputs=2:duration=longest:dropout_transition=0,volume=2[aout]");
+    expect(plan.filterComplex).not.toContain("normalize=");
   });
 
   it("从自带音轨的 video clip 提取源音轨（hasAudio）", () => {
@@ -245,6 +324,32 @@ describe("compileFfmpegFiltergraph", () => {
     // 同一输入的音轨被提取到 [aout]
     expect(plan.audioOutputLabel).toBe("[aout]");
     expect(plan.filterComplex).toContain("[0:a]atrim=start=1:end=3,asetpts=PTS-STARTPTS,adelay=0|0[aout]");
+  });
+
+  it("asplits repeated video audio inputs before mixing", () => {
+    const plan = compileFfmpegFiltergraph({
+      manifest: manifest({
+        profile: { ...profile, audioCodec: "aac", audioMode: "mixdown" },
+        assets: { video1: { id: "video1", kind: "video", absolutePath: "/media/clip.mp4", hasAudio: true } },
+        timeline: {
+          fps: 30,
+          durationFrames: 120,
+          range: { startFrame: 0, endFrame: 120 },
+          tracks: [{
+            id: "visual-1",
+            kind: "visual",
+            clips: [
+              { id: "clip-first", assetId: "video1", startFrame: 0, endFrame: 60 },
+              { id: "clip-second", assetId: "video1", startFrame: 60, endFrame: 120 },
+            ],
+          }],
+        },
+      }),
+    });
+
+    expect(plan.filterComplex).toContain("[0:a]asplit=2[clip_clip_first_audio_source][clip_clip_second_audio_source]");
+    expect(plan.filterComplex).toContain("[clip_clip_first_audio_source]atrim=start=0:end=2");
+    expect(plan.filterComplex).toContain("[clip_clip_second_audio_source]atrim=start=0:end=2");
   });
 
   it("video clip 无音轨（hasAudio 未设）→ 不产出音频", () => {
@@ -306,5 +411,71 @@ describe("compileFfmpegFiltergraph", () => {
     expect(plan.videoOutputLabel).toBe("[vout]");
     expect(plan.filterComplex).not.toContain("text_overlay");
     expect(plan.inputs).toHaveLength(1);
+  });
+
+  it("renders an authored dissolve between contiguous visual clips with xfade", () => {
+    const plan = compileFfmpegFiltergraph({
+      manifest: manifest({
+        assets: {
+          first: { id: "first", kind: "image", absolutePath: "/media/first.png" },
+          second: { id: "second", kind: "image", absolutePath: "/media/second.png" },
+        },
+        timeline: {
+          fps: 30,
+          durationFrames: 60,
+          range: { startFrame: 0, endFrame: 60 },
+          tracks: [{
+            id: "visual-1",
+            kind: "visual",
+            clips: [
+              { id: "clip-first", assetId: "first", startFrame: 0, endFrame: 30 },
+              { id: "clip-second", assetId: "second", startFrame: 30, endFrame: 60 },
+            ],
+          }],
+          transitions: [{ fromClipId: "clip-first", toClipId: "clip-second", type: "dissolve", durationFrames: 6 }],
+        },
+      }),
+    });
+
+    expect(plan.filterComplex).toContain("blend=all_expr='A*(1-max(0\\,min(1\\,(T-1)/0.2)))+B*max(0\\,min(1\\,(T-1)/0.2))':eof_action=repeat:shortest=0");
+    expect(plan.filterComplex).toContain("tpad=stop_mode=clone:stop_duration=1");
+    expect(plan.filterComplex).toContain("tpad=start_mode=clone:start_duration=1");
+    expect(plan.filterComplex).toContain("overlay=0:0:shortest=0:eof_action=pass:enable='gte(t,0)*lt(t,2)'");
+    expect(plan.warnings).toEqual([]);
+  });
+
+  it("uses a bounded default fade duration and reports unsupported transition types", () => {
+    const plan = compileFfmpegFiltergraph({
+      manifest: manifest({
+        assets: {
+          first: { id: "first", kind: "image", absolutePath: "/media/first.png" },
+          second: { id: "second", kind: "image", absolutePath: "/media/second.png" },
+          third: { id: "third", kind: "image", absolutePath: "/media/third.png" },
+        },
+        timeline: {
+          fps: 30,
+          durationFrames: 90,
+          range: { startFrame: 0, endFrame: 90 },
+          tracks: [{
+            id: "visual-1",
+            kind: "visual",
+            clips: [
+              { id: "clip-first", assetId: "first", startFrame: 0, endFrame: 30 },
+              { id: "clip-second", assetId: "second", startFrame: 30, endFrame: 60 },
+              { id: "clip-third", assetId: "third", startFrame: 60, endFrame: 90 },
+            ],
+          }],
+          transitions: [
+            { fromClipId: "clip-first", toClipId: "clip-second", type: "fade" },
+            { fromClipId: "clip-second", toClipId: "clip-third", type: "whip_pan", durationFrames: 6 },
+          ],
+        },
+      }),
+    });
+
+    expect(plan.filterComplex).toContain("blend=all_expr='if(lt(max(0\\,min(1\\,(T-1)/0.5))\\,0.5)\\,A*(1-2*max(0\\,min(1\\,(T-1)/0.5)))\\,B*(2*max(0\\,min(1\\,(T-1)/0.5))-1))':eof_action=repeat:shortest=0");
+    expect(plan.warnings).toEqual([
+      expect.stringContaining("clip-second->clip-third"),
+    ]);
   });
 });

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assetBelongsToProject,
   canManageAssetFolders,
   resolveAssetLibraryItemAction,
   shouldRunAssetItemAction,
-  sourceFiltersForUsage,
+  sourceOptionsForUsage,
 } from './assetLibraryUsage'
 
 describe('asset library usage context', () => {
@@ -19,14 +20,20 @@ describe('asset library usage context', () => {
     expect(canManageAssetFolders('timeline')).toBe(false)
   })
 
-  it('does not expose the canvas-only smart grouping manager in Preview', () => {
-    expect(sourceFiltersForUsage('canvas')).toEqual(['all', 'project', 'smart'])
-    expect(sourceFiltersForUsage('timeline')).toEqual(['all', 'project'])
+  it('offers the same asset source tabs in canvas and Preview', () => {
+    expect(sourceOptionsForUsage('canvas').map((option) => option.value)).toEqual(['all', 'project'])
+    expect(sourceOptionsForUsage('timeline').map((option) => option.value)).toEqual(['all', 'project'])
   })
 
   it('ignores the second click emitted by a timeline double-click', () => {
     expect(shouldRunAssetItemAction('append', 1)).toBe(true)
     expect(shouldRunAssetItemAction('append', 2)).toBe(false)
     expect(shouldRunAssetItemAction('select', 2)).toBe(true)
+  })
+
+  it('keeps external project files out of current-project writes', () => {
+    expect(assetBelongsToProject({ origin: { source: 'project', projectId: 'current', relativePath: 'a.png' } }, 'current')).toBe(true)
+    expect(assetBelongsToProject({ origin: { source: 'project', projectId: 'other', relativePath: 'a.png' } }, 'current')).toBe(false)
+    expect(assetBelongsToProject({ origin: { source: 'canvas', nodeId: 'n1' } }, 'current')).toBe(true)
   })
 })

@@ -9,8 +9,9 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconSearch, IconTrash, IconCheck, IconCode } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
+import { NomiSelect } from '../../design'
 import type { ChipModel } from './ModelChipGroups'
-import { groupModelsByKind, MODEL_CHIP_KIND_LABEL } from './modelChipGrouping'
+import { groupModelsByKind, isKnownModelChipKind, MODEL_CHIP_KINDS } from './modelChipGrouping'
 import { bulkToggleTargets, enabledCount, filterModelsByQuery, modelRowKey, selectedModelRows } from './modelEnableEditing'
 import { isAdapterModelLocked } from './adapterVerificationViewModel'
 
@@ -22,11 +23,20 @@ type ModelEnableEditorProps = {
   onDelete: (rows: ChipModel[]) => void
   /** 传入则每行显示「自定义调用」动作（仅中转/自定义家用；已设脚本=图标点亮+角标）。 */
   onCustomCall?: (row: ChipModel) => void
+  /**
+   * 传入则可改类型的行上出现类型选择器（改 kind + 重建调用通道，父层包 IPC）。
+   * 为什么这个控件必须**常驻可见**而不是收进 hover/二级：接入时的类型是猜的、必然有猜错的，
+   * 而猜错之后模型不是报错、是**从对应下拉里消失**——用户永远不会想到「去某个二级菜单改类型」。
+   * 把它摆在行上，「这条被登记成什么」和「原来能改」才同时可见（这正是此前唯一缺失的信息）。
+   */
+  onRetype?: (row: ChipModel, kind: string) => void
+  /** 连接详情页使用：点击模型名进入同一右侧区域的模型详情。 */
+  onOpenModel?: (row: ChipModel) => void
 }
 
 const PILL = 'h-6 px-2.5 rounded-full border text-micro inline-flex items-center gap-1'
 
-export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall }: ModelEnableEditorProps): JSX.Element {
+export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall, onRetype, onOpenModel }: ModelEnableEditorProps): JSX.Element {
   const { t } = useTranslation()
   const [query, setQuery] = React.useState('')
   const [selectMode, setSelectMode] = React.useState(false)
@@ -148,7 +158,7 @@ export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall }: 
           {groups.map((g) => (
             <div key={g.kind}>
               <div className="text-micro font-semibold text-nomi-ink-60 mt-2 mb-1 px-1">
-                {g.kind in MODEL_CHIP_KIND_LABEL ? t(`onboardingProviders.modelControls.kind.${g.kind}` as 'onboardingProviders.modelControls.kind.text') : g.kind}{' '}
+                {isKnownModelChipKind(g.kind) ? t(`onboardingProviders.modelControls.kind.${g.kind}` as 'onboardingProviders.modelControls.kind.text') : g.kind}{' '}
                 <span className="font-normal text-nomi-ink-40">{enabledCount(g.models)}/{g.models.length}</span>
               </div>
               {g.models.map((m) => {
@@ -213,25 +223,53 @@ export function ModelEnableEditor({ models, onToggle, onDelete, onCustomCall }: 
                     </button>
                     <button
                       type="button"
-                      disabled={adapterLocked}
-                      onClick={() => onToggle([m], !m.enabled)}
+                      disabled={!onOpenModel && adapterLocked}
+                      onClick={() => {
+                        if (onOpenModel) onOpenModel(m)
+                        else onToggle([m], !m.enabled)
+                      }}
                       className={cn(
                         'flex-1 min-w-0 text-left text-body-sm truncate',
-                        adapterLocked ? 'cursor-not-allowed text-nomi-ink-40' : m.enabled ? 'text-nomi-ink' : 'text-nomi-ink-60',
+                        !onOpenModel && adapterLocked ? 'cursor-not-allowed text-nomi-ink-40' : m.enabled ? 'text-nomi-ink' : 'text-nomi-ink-60',
                       )}
                     >
                       {m.labelZh}
                     </button>
+                    {m.customCallDraft ? (
+                      <span className="shrink-0 rounded-nomi-sm bg-nomi-accent-soft px-1.5 py-0.5 text-micro text-nomi-accent">
+                        {t('onboardingProviders.customCall.directDraft.badge')}
+                      </span>
+                    ) : null}
+                    {onRetype && m.canRetype ? (
+                      <NomiSelect
+                        value={m.kind}
+                        options={MODEL_CHIP_KINDS.map((k) => ({
+                          value: k,
+                          label: t(`onboardingProviders.modelControls.kind.${k}` as 'onboardingProviders.modelControls.kind.text'),
+                        }))}
+                        onChange={(next) => { if (next !== m.kind) onRetype(m, next) }}
+                        ariaLabel={t('onboardingProviders.modelControls.retypeAria', { name: m.labelZh })}
+                        title={t('onboardingProviders.modelControls.retypeTitle')}
+                        size="xs"
+                        className="shrink-0"
+                      />
+                    ) : null}
                     {onCustomCall ? (
                       <button
                         type="button"
                         aria-label={t(
-                          m.hasCustomCall
+                          m.customCallDraft
+                            ? 'onboardingProviders.customCall.directDraft.rowAria'
+                            : m.hasCustomCall
                             ? 'onboardingProviders.customCall.rowSetAria'
                             : 'onboardingProviders.customCall.rowAria',
                           { name: m.labelZh },
                         )}
-                        title={t(m.hasCustomCall ? 'onboardingProviders.customCall.rowSetTitle' : 'onboardingProviders.customCall.rowTitle')}
+                        title={t(m.customCallDraft
+                          ? 'onboardingProviders.customCall.directDraft.rowTitle'
+                          : m.hasCustomCall
+                            ? 'onboardingProviders.customCall.rowSetTitle'
+                            : 'onboardingProviders.customCall.rowTitle')}
                         onClick={() => onCustomCall(m)}
                         className={cn(
                           'relative shrink-0 p-1',

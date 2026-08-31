@@ -6,13 +6,14 @@
 //   ② 选中一个片段后，那组亮起并**写出片段名**（改之前界面完全不写作用对象）
 //   ③ 控制条分成 4 组、每组有名字（改之前 15 个横铺一行、只有 5 道看不见的分隔线）
 // 断言用属性/几何，不靠人眼——人眼看静态截图恰恰看不出「作用域跟着谁走」。
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { screenshotSettled } from './_assert.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -33,21 +34,16 @@ const stills = ['0x2E6E6B', '0xE8A33D'].map((color, i) => {
   return out
 })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${settingsDir}`, '--no-proxy-server'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_ELECTRON_USER_DATA_DIR: settingsDir,
-    NOMI_SETTINGS_DIR: settingsDir,
-    NOMI_PROJECTS_DIR: projectsDir,
-  },
+const { app, win: _win } = await launchNomiApp({
+  name: 'preview-control-scope',
+  userDataDir: settingsDir,
+  settingsDir,
+  projectsDir,
+  args: ['--no-proxy-server'],
+  settleMs: 0,
 })
 
-let win = await app.firstWindow()
+let win = _win
 const getWin = () => {
   const live = app.windows().filter((w) => !w.isClosed())
   win = live.find((w) => { try { return /projectId=/.test(w.url()) } catch { return false } }) || live[live.length - 1] || win
@@ -60,7 +56,7 @@ const resize = async () => {
 }
 const snap = async (name) => {
   const p = path.join(outDir, name)
-  await getWin().screenshot({ path: p })
+  await screenshotSettled(getWin(), { path: p })
   console.log(`  · 截图 ${name} — ${(fs.statSync(p).size / 1024).toFixed(0)}KB`)
 }
 /** 只截控制条那一条（组名/禁用态在整屏图上看不清）。 */
@@ -72,7 +68,7 @@ const snapBar = async (name) => {
     return { x: Math.max(0, r.x - 20), y: Math.max(0, r.y - 20), width: Math.min(1680, r.width + 40), height: r.height + 40 }
   })
   if (!box) { console.log(`  · ${name} 跳过：没找到控制条`); return }
-  await getWin().screenshot({ path: path.join(outDir, name), clip: box })
+  await screenshotSettled(getWin(), { path: path.join(outDir, name), clip: box })
   console.log(`  · 截图 ${name}`)
 }
 /** 读控制条各组的名字 / 作用域 / 禁用态 / 是否给了原因。 */
@@ -184,12 +180,16 @@ try {
     await tiles.nth(i).click({ timeout: 3000 }).catch(() => {})
     await getWin().waitForTimeout(900)
   }
-  const clipCount = await getWin().locator('[data-testid="timeline-clip"]').count()
-  console.log(`  · 源面板缩略图 ${tileCount} 个 / 时间轴片段 ${clipCount} 个`)
+  // 只认**真实渲染**那份：时间轴挂着两套 TimelinePanel 实例，另一份宽高为 0（同 readClipTools 的过滤）。
+  // 不加 :visible 时 .first() 会落在那份零宽的隐身 clip 上，Playwright 等它可交互直到超时——
+  // 点击**根本没落下**，于是「点了没选中」看起来像产品 bug，实则一次都没点到。
+  const visibleClips = getWin().locator('[data-testid="timeline-clip"]:visible')
+  const clipCount = await visibleClips.count()
+  console.log(`  · 源面板缩略图 ${tileCount} 个 / 时间轴片段 ${clipCount} 个（可见）`)
 
 
   // ========== ② 选中一个片段：组亮起 + 写出片段名 ==========
-  await getWin().locator('[data-testid="timeline-clip"]').first().click({ timeout: 5000 }).catch(() => {})
+  await visibleClips.first().click({ timeout: 5000 })
   await getWin().waitForTimeout(900)
   const selected = await readGroups()
   console.log('  · 选中后各组：', JSON.stringify(selected))
@@ -197,8 +197,8 @@ try {
   // 不数 DOM：时间轴有两套 TimelinePanel 实例，同一个 clip 会渲染两遍、data-selected 也翻倍（仓库旧坑）。
   // 真正的证据是下面那条——resolveFramingTarget 要求**恰好选中 1 个**才给目标，
   // 组名能写出片段名，就等于证明了选中数 === 1。
-  const selectedNodes = await getWin().locator('[data-testid="timeline-clip"][data-selected="true"]').count()
-  check('点击后时间轴出现选中态', selectedNodes >= 1, `data-selected 元素 ${selectedNodes} 个（含重复实例）`)
+  const selectedNodes = await getWin().locator('[data-testid="timeline-clip"][data-selected="true"]:visible').count()
+  check('点击后时间轴出现选中态', selectedNodes >= 1, `data-selected 元素 ${selectedNodes} 个（可见实例）`)
   check('选中后「这一段」组解禁', Boolean(clipGroupSel) && clipGroupSel.disabledCount === 0,
     clipGroupSel ? `${clipGroupSel.disabledCount}/${clipGroupSel.controls} 禁用` : '没找到该组')
   check('组名写出了当前片段（作用对象可见）', Boolean(clipGroupSel?.label) && clipGroupSel.label !== '这一段' && clipGroupSel.label.includes('·'),

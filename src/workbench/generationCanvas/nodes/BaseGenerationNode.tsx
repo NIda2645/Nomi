@@ -1,6 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconCheck, IconCopy, IconDownload, IconMaximize, IconUpload } from '@tabler/icons-react'
+import { IconCopy, IconDownload, IconMaximize, IconUpload } from '@tabler/icons-react'
 import ProvenancePanel from './ProvenancePanel'
 import { ShotPreviewOverlays } from './ConvertShotToVideoButton'
 import { resolveNodeRenderKind, isCardRenderKind } from './resolveRenderKind'
@@ -9,15 +9,16 @@ import { getBuiltinCategoryById } from '../../project/projectCategories'
 import { NodeCardBody } from './render/NodeCardBody'
 import ImageCropGridOverlay from './render/ImageCropGridOverlay'
 import NodeImageEditToolbar from './NodeImageEditToolbar'
-import { ImageResultStackControls } from './ImageResultStack'
-import { FloatingToolbarShell, TOOLBAR_ICON as TBI, ToolbarButton, ToolbarDivider, ToolbarProvenanceButton } from './NodeFloatingToolbar'
+import { NodeResultStack } from './NodeResultStack'
+import { EmptyNodeVariantToolbar, FloatingToolbarShell, TOOLBAR_ICON as TBI, ToolbarButton, ToolbarDivider, ToolbarVariantProvenanceActions } from './NodeFloatingToolbar'
 import { useNodeImageEditing } from './useNodeImageEditing'
+import { isLocalImageOpPending, isRemoveBackgroundPending } from './localImageOpPhase'
 import { useNodeDragResize } from './useNodeDragResize'
 import { useHasFrameSourceEdge, useShotIndex, useMountedCards } from '../hooks/useNodeRelationships'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import {
   PendingGenerationPlaceholder,
-  RemoveBackgroundPendingOverlay,
+  LocalImageOpPendingStatus,
   RemoveBackgroundPendingPlaceholder,
   Scene3DEditorLoading,
   STRIPED_BG_CLASS,
@@ -31,10 +32,11 @@ import { NodeVideoPlaybackGuard } from './NodeVideoPlaybackGuard'
 import { useNodePanoramaHandlers } from './useNodePanoramaHandlers'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
-import { useWorkbenchStore } from '../../workbenchStore'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { NodeGeneratingOverlay } from './NodeGeneratingOverlay'
 import { NodeQueuedBadge } from './NodeQueuedBadge'
+import { ProductionShotOverlays } from './ProductionShotOverlays'
+import { useProductionNodeRetry } from './useProductionNodeRetry'
 import { selectIsNodeQueued, useGenerationQueueStore } from '../runner/generationQueueStore'
 import { encodeTimelineGenerationNodeDragPayload, TIMELINE_GENERATION_NODE_DRAG_MIME } from '../../timeline/timelineDragPayload'
 import { addGenerationNodeToTimelineEnd } from '../../timeline/addNodeToTimelineEnd'
@@ -45,9 +47,8 @@ import { NodeRecoverableReport } from './NodeRecoverableReport'
 import { dismissRecoverableNode, recoverNodeResult } from '../runner/recoverTaskActions'
 import { WorkbenchButton } from '../../../design'
 import { completeNodeConnection } from './completeNodeConnection'
-import { buildVideoPlaybackUrl } from '../../../media/videoPlaybackUrl'
 import { getGenerationNodeExecutionKind, isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
-import { applyFixationMakeup } from '../fixation/buildFixationNode'
+import { anchorFreezeToolbarProps } from '../fixation/freezeAnchor'
 import { TechnicalReviewBadge } from './TechnicalReviewBadge'
 import { canDragGenerationNodeToTimeline } from '../model/timelineDragAffordance'
 import { useResultDownload } from './useResultDownload'
@@ -89,6 +90,7 @@ function BaseGenerationNodeImpl({
   appear = false,
 }: BaseGenerationNodeProps): JSX.Element {
   const { t } = useTranslation()
+  const productionRetry = useProductionNodeRetry(node) // P4 S6：多镜节点失败→返工链；非多镜/项目没开→null 退回本地重跑（回归门）
   const selectNode = useGenerationCanvasStore((state) => state.selectNode)
   const captureHistory = useGenerationCanvasStore((state) => state.captureHistory)
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
@@ -119,11 +121,8 @@ function BaseGenerationNodeImpl({
   const panoramaFullscreenRef = React.useRef<(() => void) | null>(null)
   const panoramaUploadInputRef = React.useRef<HTMLInputElement | null>(null)
   const [provenanceOpen, setProvenanceOpen] = React.useState(false)
-  const [imageStackOpen, setImageStackOpen] = React.useState(false)
-  const { openMediaPreview, mediaPreviewControls, mediaPreviewDoubleClick } = useNodeMediaPreview(node, selected && !isMultiSelectActive && !imageStackOpen, () => setProvenanceOpen(true))
-  const handleImageStackOpenChange = React.useCallback((nextOpen: boolean) => {
-    setImageStackOpen(nextOpen)
-  }, [])
+  const [resultStackOpen, setResultStackOpen] = React.useState(false)
+  const { openMediaPreview, mediaPreviewControls, mediaPreviewDoubleClick } = useNodeMediaPreview(node, selected && !isMultiSelectActive && !resultStackOpen, () => setProvenanceOpen(true))
   const sizeBounds = getNodeSizeBounds(node.kind)
 
   const handleTimelineDragStart = (event: React.DragEvent<HTMLElement>) => {
@@ -160,7 +159,7 @@ function BaseGenerationNodeImpl({
       height,
       durationSeconds,
     })
-    if (patch) updateNode(node.id, patch)
+    if (patch) updateNode(node.id, patch, { history: false }) // 加载完才量得到的派生尺寸不是用户编辑，别自成一个撤销点（否则刚建的一批节点按 Cmd+Z，撤掉的是「某张图量了尺寸」）
   }
 
   const { handleVideoNodePointerEnter, handleVideoNodePointerLeave } = useNodeVideoHoverPreview(node.result?.type)
@@ -194,13 +193,12 @@ function BaseGenerationNodeImpl({
     : ''
   const canOpenImagePreview = Boolean(imagePreviewUrl)
   const mediaPreviewPriority = selected || focusFlash
-  const isRemoveBackgroundPending =
-    (node.status === 'queued' || node.status === 'running') && node.progress?.phase === 'remove-background'
+  const localImageOpPending = isLocalImageOpPending(node)
   // 可视尺寸（卡片固定宽 / 动态高）的单一真相源 resolveNodeVisualSize——连线锚点 / 最小地图 /
   // fitView 与本外壳共用同一函数，避免名义 size 与渲染尺寸两套真相源（连线起笔飘在节点外的根因）。
   const visualSize = resolveNodeVisualSize(node)
   const previewHeight = visualSize.height
-  const { handlePointerDown, handlePointerMove, handlePointerUp, handleResizePointerDown } = useNodeDragResize({
+  const { flowManagedDrag: flowManagedLayout, handlePointerDown, handlePointerMove, handlePointerUp, handleResizePointerDown } = useNodeDragResize({
     node,
     selected,
     readOnly,
@@ -215,8 +213,8 @@ function BaseGenerationNodeImpl({
     commitPersistedChange,
   })
   const isGenerating = status === 'queued' || status === 'running'
-  // 「已排队但还没轮到」的真相在队列 store（与 node.status 零重叠，见 generationQueueStore 头注释）。
-  // 在此之前后续波次的节点 status 还是 idle，画布上看着像压根没被选中——用户以为漏点了。
+  // 「已排队但还没轮到」的真相在队列 store（与 node.status 零重叠，见 generationQueueStore 头注释）：在此之前
+  // 后续波次的节点 status 还是 idle，画布上看着像压根没被选中——用户以为漏点了。
   const isQueued = useGenerationQueueStore((state) => selectIsNodeQueued(state, node.id))
   const canGenerate =
     useGenerationCanvasStore((state) =>
@@ -225,17 +223,14 @@ function BaseGenerationNodeImpl({
         edges: state.edges,
       }),
     ) && !isGenerating
-  const canSendToTimeline = canDragGenerationNodeToTimeline(node, {
-    readOnly,
-  })
+  const canSendToTimeline = canDragGenerationNodeToTimeline(node, { readOnly })
   const showTimelineNotch =
     canSendToTimeline &&
     node.kind !== 'scene3d' &&
     (node.result?.type === 'image' || node.result?.type === 'video') &&
-    !imageStackOpen
+    !resultStackOpen
   const showSideTimelineDrag = canSendToTimeline && node.kind !== 'scene3d' && !showTimelineNotch
-  // 失败态不再显示文字徽标——错误信息已铺满节点正文（NodeErrorReport），
-  // 顶部再写一遍「生成失败」是重复噪音（2026-06-03 6 角色评审）。
+  // 失败态不显文字徽标——错误已铺满节点正文（NodeErrorReport），顶部再写「生成失败」是重复噪音（2026-06-03 评审）。
   const showStatusBadge = status === 'queued' || status === 'running'
 
   const sourceNodeLabel =
@@ -261,13 +256,12 @@ function BaseGenerationNodeImpl({
   // 图片类与素材类共用；编辑产物进入当前节点历史堆叠，并切换为主图。
   const imageEditing = useNodeImageEditing(node, visualSize)
   const { downloading: panoramaDownloading, download: downloadPanorama } = useResultDownload(node)
-  const showImageResultStack =
+  const showNodeResultStack =
     !isCardKind &&
     !isTextKind &&
     node.kind !== 'panorama' &&
-    node.result?.type === 'image' &&
-    Boolean(node.result.url) &&
-    (node.kind === 'image' || isAssetKind || isImageLikeGenerationNodeKind(node.kind))
+    (node.result?.type === 'image' || node.result?.type === 'video') &&
+    Boolean(node.result.url)
   const useMagneticConnectionHandles =
     node.kind !== 'panorama' && (node.kind === 'image' || isAssetKind || isImageLikeGenerationNodeKind(node.kind))
 
@@ -275,10 +269,10 @@ function BaseGenerationNodeImpl({
     <article
       className={cn(
         'generation-canvas-v2-node',
-        'absolute p-0 border-0 rounded-none bg-transparent shadow-none',
+        flowManagedLayout ? 'relative' : 'absolute', 'p-0 border-0 rounded-none bg-transparent shadow-none',
         'cursor-grab select-none touch-none overflow-visible',
         'data-[selected=true]:z-[5]',
-        'block group/node',
+        'block isolate group/node',
       )}
       data-node-id={node.id}
       data-kind={node.kind}
@@ -287,7 +281,7 @@ function BaseGenerationNodeImpl({
       data-appear={appear ? 'true' : undefined}
       data-status={status}
       style={{
-        transform: `translate(${node.position.x}px, ${node.position.y}px)`,
+        transform: flowManagedLayout ? undefined : `translate(${node.position.x}px, ${node.position.y}px)`,
         width: visualSize.width,
         height: visualSize.height,
         gridTemplateRows: `${previewHeight}px`,
@@ -298,7 +292,7 @@ function BaseGenerationNodeImpl({
       onPointerEnter={handleVideoNodePointerEnter}
       onPointerLeave={handleVideoNodePointerLeave}
     >
-      {!readOnly && node.kind !== 'panorama' ? (
+      {!flowManagedLayout && !readOnly && node.kind !== 'panorama' ? (
         selected && useMagneticConnectionHandles && !isPendingConnectionSource ? (
           <>
             <MagneticConnectionHandle
@@ -327,7 +321,7 @@ function BaseGenerationNodeImpl({
             <WorkbenchButton
               className={cn(
                 'generation-canvas-v2-node__handle generation-canvas-v2-node__handle--input',
-                'absolute top-1/2 left-[-14px] inline-grid w-7 h-7 place-items-center p-0',
+                'absolute top-1/2 left-[-14px] z-[7] inline-grid w-7 h-7 place-items-center p-0',
                 'border-0 rounded-full bg-transparent -translate-y-1/2 cursor-crosshair',
                 'opacity-80 transition-opacity duration-150 hover:opacity-100',
                 'data-[active=true]:opacity-100',
@@ -356,7 +350,7 @@ function BaseGenerationNodeImpl({
             <WorkbenchButton
               className={cn(
                 'generation-canvas-v2-node__handle generation-canvas-v2-node__handle--output',
-                'absolute top-1/2 right-[-14px] inline-grid w-7 h-7 place-items-center p-0',
+                'absolute top-1/2 right-[-14px] z-[7] inline-grid w-7 h-7 place-items-center p-0',
                 'border-0 rounded-full bg-transparent -translate-y-1/2 cursor-crosshair',
                 'opacity-80 transition-opacity duration-150 hover:opacity-100',
                 'data-[active=true]:opacity-100',
@@ -371,6 +365,7 @@ function BaseGenerationNodeImpl({
         )
       ) : null}
 
+      <EmptyNodeVariantToolbar nodeId={node.id} visible={selected && !isMultiSelectActive && !readOnly && !resultStackOpen && !hasResult} />
       {node.kind === 'panorama' && selected && !isMultiSelectActive && !readOnly && node.result?.url ? (
         <FloatingToolbarShell ariaLabel={t('generationCommon.node.panoramaActions')}>
           <ToolbarButton
@@ -394,7 +389,7 @@ function BaseGenerationNodeImpl({
             disabled={panoramaDownloading}
             onClick={downloadPanorama}
           />
-          <ToolbarProvenanceButton onOpen={() => setProvenanceOpen(true)} />
+          <ToolbarVariantProvenanceActions nodeId={node.id} onOpenProvenance={() => setProvenanceOpen(true)} />
           <input
             ref={panoramaUploadInputRef}
             className="hidden"
@@ -404,25 +399,24 @@ function BaseGenerationNodeImpl({
           />
         </FloatingToolbarShell>
       ) : null}
-
       {node.kind !== 'panorama' &&
       (node.kind === 'image' || isAssetKind || isImageLikeGenerationNodeKind(node.kind)) &&
       selected &&
       !isMultiSelectActive &&
       !readOnly &&
-      !imageStackOpen &&
+      !resultStackOpen &&
       node.result?.type === 'image' &&
       node.result.url ? (
         <NodeImageEditToolbar
           node={node}
           editGrid={imageEditing.editGrid}
           imageOpBusy={imageEditing.imageOpBusy}
-          onMakeup={() => applyFixationMakeup(node)}
+          {...anchorFreezeToolbarProps(node)}
           onGridSplit={(g) => imageEditing.openEdit(g)}
           onCrop={() => imageEditing.openEdit(1)}
           onTransform={(op) => void imageEditing.handleImageTransform(op)}
           onRemoveBackground={() => void imageEditing.handleRemoveBackground()}
-          removeBackgroundBusy={isRemoveBackgroundPending}
+          removeBackgroundBusy={isRemoveBackgroundPending(node)}
           onPreview={openMediaPreview}
           onOpenProvenance={() => setProvenanceOpen(true)}
         />
@@ -486,14 +480,14 @@ function BaseGenerationNodeImpl({
       {status === 'error' && node.error ? (
         <NodeErrorReport
           message={node.error} meta={node.meta}
+          onDismiss={() => useGenerationCanvasStore.getState().dismissNodeError(node.id)}
           onRetry={
             isAssetKind && node.meta?.source === 'clipboard-url'
               ? undefined
-              : () => {
-                  void (node.meta?.retryableImport === true
-                    ? retryLocalAssetImport(node.id)
-                    : confirmAndRunNode(node.id))
-                }
+              // P4 S6：多镜物化节点走返工链（一功能一个家 §3.E）；否则本地重跑/素材重导入（单镜/普通节点不变=回归门）。
+              : productionRetry ?? (() => {
+                  void (node.meta?.retryableImport === true ? retryLocalAssetImport(node.id) : confirmAndRunNode(node.id))
+                })
           }
         />
       ) : null}
@@ -525,7 +519,7 @@ function BaseGenerationNodeImpl({
       <div
         className={cn(
           'generation-canvas-v2-node__preview',
-          'relative w-full h-full min-h-0 overflow-hidden',
+          'relative z-[2] w-full h-full min-h-0 overflow-hidden',
           // ring=中性细描边（box-shadow，零布局位移）：缩小/密集时卡片有边界、不糊进浅色画布（②）。
           'rounded-nomi shadow-nomi-md cursor-grab touch-none ring-1 ring-inset ring-nomi-line',
           // 棋盘格占位底纹只在「未生成」态出现；有结果后节点尺寸已贴合图片比例，
@@ -575,9 +569,8 @@ function BaseGenerationNodeImpl({
               priority={mediaPreviewPriority}
               crossOrigin="use-credentials"
               controls
-              muted
               playsInline
-              preload="metadata"
+              preload="auto"
               draggable={false}
               onLoadedMetadata={(event) => {
                 updateMediaDimensions(
@@ -592,8 +585,8 @@ function BaseGenerationNodeImpl({
               className={cn(
                 'w-full h-full min-h-0 object-contain pointer-events-none',
                 'select-none',
-                isRemoveBackgroundPending && 'blur-sm scale-[1.02] transition-[filter,opacity]',
-                isRemoveBackgroundPending && '[animation:_remove-bg-pulse_1.5s_ease-in-out_infinite]',
+                localImageOpPending && 'blur-sm scale-[1.02] transition-[filter,opacity]',
+                localImageOpPending && '[animation:_remove-bg-pulse_1.5s_ease-in-out_infinite]',
               )}
               src={node.result.url}
               priority={mediaPreviewPriority}
@@ -603,7 +596,7 @@ function BaseGenerationNodeImpl({
               }}
             />
           )
-        ) : isRemoveBackgroundPending ? (
+        ) : localImageOpPending ? (
           <RemoveBackgroundPendingPlaceholder title={node.title} progress={node.progress?.percent} />
         ) : (
           <PendingGenerationPlaceholder
@@ -615,8 +608,8 @@ function BaseGenerationNodeImpl({
             prompt={displayPrompt}
           />
         )}
-        <ShotPreviewOverlays node={node} selected={selected} readOnly={readOnly} shotIndex={shotIndex} hasResult={hasResult} isGenerating={isGenerating} />
-        {canOpenImagePreview && !isCardKind && !readOnly && !imageStackOpen && imageEditing.editGrid === null ? (
+        <ShotPreviewOverlays selected={selected} shotIndex={shotIndex} hasResult={hasResult} />
+        {canOpenImagePreview && !isCardKind && !readOnly && !resultStackOpen && imageEditing.editGrid === null ? (
           <NodeInlineImageTitle nodeId={node.id} value={node.title || ''} selected={selected} />
         ) : null}
         {imageEditing.editGrid !== null &&
@@ -632,31 +625,17 @@ function BaseGenerationNodeImpl({
             onCancel={() => imageEditing.cancelEdit()}
           />
         ) : null}
-        {isRemoveBackgroundPending && hasResult ? (
-          <RemoveBackgroundPendingOverlay message={node.progress?.message} progress={node.progress?.percent} />
+        {localImageOpPending && hasResult ? (
+          <LocalImageOpPendingStatus message={node.progress?.message} progress={node.progress?.percent} />
         ) : null}
       </div>
-      {showImageResultStack ? (
-        <ImageResultStackControls
+      {showNodeResultStack ? (
+        <NodeResultStack
           node={node}
           readOnly={readOnly}
           selected={selected && !isMultiSelectActive}
-          visualWidth={visualSize.width}
-          visualHeight={visualSize.height}
-          onOpenChange={handleImageStackOpenChange}
+          onOpenChange={setResultStackOpen}
         />
-      ) : null}
-
-      {imageStackOpen && showImageResultStack ? (
-        <span
-          className={cn(
-            'pointer-events-none absolute right-2 top-2 z-[9] inline-flex h-7 items-center gap-1 rounded-full px-2',
-            'border-0 bg-nomi-ink text-micro font-medium text-nomi-paper shadow-nomi-sm',
-          )}
-        >
-          <IconCheck size={13} stroke={2.2} />
-          {t('generationCommon.node.primaryImage')}
-        </span>
       ) : null}
 
       {showTimelineNotch ? (
@@ -666,18 +645,18 @@ function BaseGenerationNodeImpl({
         />
       ) : null}
 
-      {isGenerating && !isRemoveBackgroundPending ? <NodeGeneratingOverlay node={node} /> : null}
+      {isGenerating && !localImageOpPending ? <NodeGeneratingOverlay node={node} /> : null}
       {isQueued && !isGenerating ? <NodeQueuedBadge /> : null}
+      <ProductionShotOverlays node={node} selected={selected && !isMultiSelectActive} />{/* P4 S5+S6 多镜叠加：占位三态 + 版本条（非多镜早退零开销） */}
       {showSideTimelineDrag ? (
         <SideTimelineDragHandle onAddAtPlayhead={handleAddToTimelineAtPlayhead} onDragStart={handleTimelineDragStart} />
       ) : null}
-
       {/* composer：生成类节点 + **单选**时浮出。多选(框选)一律不挂——否则每个选中节点都弹自己的
           大 composer 层叠糊成一片(用户反馈 bug，根因收口此唯一挂载入口)。批量生成走选中浮条。 */}
       {selected &&
       !isMultiSelectActive &&
       !readOnly &&
-      !imageStackOpen &&
+      !resultStackOpen &&
       node.kind !== 'panorama' &&
       node.kind !== 'scene3d' &&
       node.kind !== 'whiteboard' &&
@@ -686,7 +665,7 @@ function BaseGenerationNodeImpl({
           <NodeGenerationComposer node={node} visualSize={visualSize} />
         </React.Suspense>
       ) : null}
-      {selected && !readOnly
+      {selected && !readOnly && !flowManagedLayout
         ? RESIZE_DIRECTIONS.map((direction) => (
             <WorkbenchButton
               key={direction}

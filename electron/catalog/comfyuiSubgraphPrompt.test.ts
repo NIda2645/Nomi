@@ -10,7 +10,9 @@
 // 子图 "Image to Video (MiniMax H3)" 内含 MiniMaxH3ImageToVideo / BasicGuider / BasicScheduler /
 // UNETLoader / CLIPLoader / CreateVideo …），不自己编——本轮栽过「编错 fixture 把自己骗过去」。
 import { describe, expect, it } from "vitest";
-import { analyzeComfyWorkflow, type ComfyGraph } from "./comfyuiWorkflowImport";
+import {
+  analyzeComfyWorkflow, buildImportedWorkflow, inputKeyOf, roleBoundInputKeys, type ComfyGraph,
+} from "./comfyuiWorkflowImport";
 
 const PROMPT_TEXT =
   "Realistic live-action cinematic look, action movie trailer: practical film photography style, a post-rain dusk metropolis, anamorphic lens, shallow depth of field.";
@@ -63,9 +65,42 @@ describe("ComfyUI 0.30 子图工作流（MiniMax H3 官方模板形态）", () =
     expect(analysis.suggested.outputKind).toBe("video");
   });
 
-  it("提示词不再混进「生成时可用参数」列表（用户看到的正是它跑到了那里）", () => {
+  it("提示词不会出现在「生成时可用参数」候选里（用户看到的正是它跑到了那里）", () => {
     const analysis = analyzeComfyWorkflow(h3Graph("inline"));
-    const inParams = analysis.widgetInputs.some((w) => String(w.value ?? "").includes("action movie trailer"));
-    expect(inParams).toBe(false);
+    // 候选池 = 全量标量 widget 减掉当前绑定占用的（渲染层同款推导，见 src/ui/onboarding/comfyuiParamCandidates.ts）。
+    const bound = roleBoundInputKeys(analysis.suggested);
+    const offered = analysis.widgetInputs.filter((w) => !bound.has(inputKeyOf(w.nodeId, w.inputKey)));
+    expect(offered.some((w) => String(w.value ?? "").includes("action movie trailer"))).toBe(false);
+  });
+
+  // ── 下面两条是 2026-08-11 复发时挖到的真根因（比「跑进参数列表」严重：它会静默吃掉提示词）──
+
+  it("提示词输入被同时当成可调参数时，{{request.prompt}} 不许被参数占位覆盖", () => {
+    const graph = h3Graph("inline");
+    const analysis = analyzeComfyWorkflow(graph);
+    const promptNodeId = String(analysis.suggested.promptNodeId);
+    const promptInputKey = String(analysis.suggested.promptInputKey);
+    // 模拟旧草稿/旧版本留下的形态：同一个输入既是提示词、又被列进 params。
+    const built = buildImportedWorkflow(graph, {
+      ...analysis.suggested,
+      params: [{
+        nodeId: promptNodeId, inputKey: promptInputKey,
+        paramKey: "comfy_prompt", label: "提示词", type: "text", default: "占位默认值",
+      }],
+    });
+    // 参数循环在角色之后跑，不拦就是「用户输入框里打的字根本没送进 ComfyUI」，且界面上看不出异常。
+    expect(built.templatedGraph[promptNodeId]?.inputs?.[promptInputKey]).toBe("{{request.prompt}}");
+    expect(built.parameters.some((p) => p.key === "comfy_prompt")).toBe(false);
+  });
+
+  it("角色占用是按当前绑定算的：改了提示词节点，参数候选跟着变（不钉死在自动建议上）", () => {
+    const graph = h3Graph("linked"); // 130=PrimitiveStringMultiline.value 与 124.prompt 都可当提示词
+    const analysis = analyzeComfyWorkflow(graph);
+    const suggested = roleBoundInputKeys(analysis.suggested);
+    expect(suggested.has(inputKeyOf("130", "value"))).toBe(true);
+    // 用户改绑到别处 → 130 必须重新可选为参数，新选中的那个才被占用。
+    const moved = roleBoundInputKeys({ ...analysis.suggested, promptNodeId: "115", promptInputKey: "aspect" });
+    expect(moved.has(inputKeyOf("130", "value"))).toBe(false);
+    expect(moved.has(inputKeyOf("115", "aspect"))).toBe(true);
   });
 });

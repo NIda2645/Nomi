@@ -22,6 +22,7 @@ import { COMFYUI_VENDOR_KEY, type HttpOperation } from "./types";
 import { registerResponseTransform, type ResponseTransformFn } from "../tasks/responseTransforms";
 import { registerRequestTransform } from "../tasks/requestTransforms";
 import { fetchComfyuiCheckpoints } from "../comfyuiObjectInfo";
+import { getComfyuiClientId, resolveComfyuiPromptId } from "../comfyui/clientSession";
 
 function isRec(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -322,14 +323,75 @@ export function fillEmptyCheckpoint(prompt: Record<string, unknown>, checkpoints
   return out;
 }
 
+const STANDARD_MEDIA_LOADER_INPUTS = new Map<string, readonly string[]>([
+  ["LoadImage", ["image"]],
+  ["LoadVideo", ["file", "video"]],
+  ["VHS_LoadVideo", ["file", "video"]],
+  ["LoadAudio", ["audio", "file"]],
+  ["VHS_LoadAudio", ["audio", "file"]],
+]);
+
+function hasMediaInput(inputs: Record<string, unknown>, inputKeys: readonly string[]): boolean {
+  return inputKeys.some((inputKey) => {
+    const value = inputs[inputKey];
+    return typeof value === "string" ? value.trim().length > 0 : value !== undefined && value !== null;
+  });
+}
+
+/**
+ * 删除本次请求没有文件的媒体 loader，并断开对这些 loader 的直接引用。
+ *
+ * 带 `nomi_bound_media_input` 的节点表示文件槽由 Nomi 本次请求负责；未标记节点只识别
+ * ComfyUI/常见套件的标准 loader。未知社区节点没有标记时保持原样，避免猜错它的输入语义。
+ */
+export function pruneEmptyMediaLoaders(prompt: Record<string, unknown>): Record<string, unknown> {
+  const emptyLoaderIds = new Set<string>();
+  for (const [nodeId, node] of Object.entries(prompt)) {
+    if (!isRec(node) || !isRec(node.inputs)) continue;
+    const boundInputKey = isRec(node._meta) && typeof node._meta.nomi_bound_media_input === "string"
+      ? node._meta.nomi_bound_media_input.trim()
+      : "";
+    const standardInputKeys = STANDARD_MEDIA_LOADER_INPUTS.get(String(node.class_type ?? ""));
+    const inputKeys = boundInputKey ? [boundInputKey] : standardInputKeys;
+    if (!inputKeys || hasMediaInput(node.inputs, inputKeys)) continue;
+    emptyLoaderIds.add(nodeId);
+  }
+  if (emptyLoaderIds.size === 0) return prompt;
+
+  const out: Record<string, unknown> = {};
+  for (const [nodeId, node] of Object.entries(prompt)) {
+    if (emptyLoaderIds.has(nodeId)) continue;
+    if (!isRec(node) || !isRec(node.inputs)) {
+      out[nodeId] = node;
+      continue;
+    }
+    let nextInputs: Record<string, unknown> | undefined;
+    for (const [inputKey, value] of Object.entries(node.inputs)) {
+      const sourceNodeId = Array.isArray(value) && value.length === 2 ? value[0] : undefined;
+      if ((typeof sourceNodeId !== "string" && typeof sourceNodeId !== "number") || !emptyLoaderIds.has(String(sourceNodeId))) continue;
+      nextInputs ??= { ...node.inputs };
+      delete nextInputs[inputKey];
+    }
+    out[nodeId] = nextInputs ? { ...node, inputs: nextInputs } : node;
+  }
+  return out;
+}
+
 // "comfyui-prompt" 请求变换：ckpt_name 留空时按本机实况补全（derive 不 hardcode）。
 // 只抛「面向用户的确定性错误」（连不上 / 没有任何 checkpoint —— 两者提交出去也必失败，fail fast 更省一轮）。
-registerRequestTransform("comfyui-prompt", async (body, { baseUrl }) => {
+registerRequestTransform("comfyui-prompt", async (body, { baseUrl, promptId }) => {
   if (!isRec(body) || !isRec(body.prompt)) return body;
-  const needsFill = Object.values(body.prompt).some(
+  const prompt = pruneEmptyMediaLoaders(body.prompt);
+  const sessionBody = {
+    ...body,
+    ...(prompt === body.prompt ? {} : { prompt }),
+    client_id: getComfyuiClientId(),
+    prompt_id: resolveComfyuiPromptId(promptId),
+  };
+  const needsFill = Object.values(prompt).some(
     (node) => isRec(node) && node.class_type === "CheckpointLoaderSimple" && isRec(node.inputs) && String(node.inputs.ckpt_name ?? "").trim() === "",
   );
-  if (!needsFill) return body;
+  if (!needsFill) return sessionBody;
   const checkpoints = await fetchComfyuiCheckpoints(baseUrl);
   if (checkpoints === null) {
     throw new Error(`没连上 ComfyUI（${baseUrl || "http://127.0.0.1:8188"}）——确认 ComfyUI 已启动，或在参数里手填 checkpoint 文件名`);
@@ -337,7 +399,7 @@ registerRequestTransform("comfyui-prompt", async (body, { baseUrl }) => {
   if (checkpoints.length === 0) {
     throw new Error("ComfyUI 的 models/checkpoints 目录里没有任何模型文件——先放一个 checkpoint（.safetensors）再生成");
   }
-  return { ...body, prompt: fillEmptyCheckpoint(body.prompt, checkpoints) };
+  return { ...sessionBody, prompt: fillEmptyCheckpoint(prompt, checkpoints) };
 });
 
 const TXT2IMG_QUERY_OP: HttpOperation = {

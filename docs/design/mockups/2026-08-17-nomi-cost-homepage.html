@@ -1,0 +1,1473 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nomi — 把 AI 视频的成本打下来</title>
+    <meta
+      name="description"
+      content="开源、本地优先的 AI 视频工作台。用你已有的即梦会员、任意 API 或本地 ComfyUI，从脚本、分镜、生成到剪辑，减少平台溢价、重复订阅、无效生成和重复劳动。"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/svg+xml" href="/marketing/assets/nomi-logo.svg" />
+    <style>
+      :root {
+        --paper: #f4f2ec;
+        --surface: #fbfaf7;
+        --ink: #171715;
+        --ink-soft: #4f4d48;
+        --muted: #86827a;
+        --rule: #cfcbc2;
+        --coral: #ef6a49;
+        --coral-dark: #b83c24;
+        --green: #178b5b;
+        --blue: #2768d8;
+        --white: #ffffff;
+        --shadow: 0 24px 70px rgba(23, 23, 21, 0.15);
+        --page: min(1320px, calc(100vw - 64px));
+        --nav-h: 72px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        background: var(--paper);
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--paper);
+        font-family: 'Manrope', 'Noto Sans SC', system-ui, sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      body.modal-open {
+        overflow: hidden;
+      }
+      a {
+        color: inherit;
+      }
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+      button {
+        font: inherit;
+      }
+      img,
+      video {
+        display: block;
+        max-width: 100%;
+      }
+      ::selection {
+        color: var(--white);
+        background: var(--coral);
+      }
+      section[id] {
+        scroll-margin-top: calc(var(--nav-h) + 12px);
+      }
+
+      .skip-link {
+        position: fixed;
+        left: 16px;
+        top: -80px;
+        z-index: 200;
+        padding: 10px 14px;
+        color: var(--white);
+        background: var(--ink);
+      }
+      .skip-link:focus {
+        top: 16px;
+      }
+      :focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 3px;
+      }
+      .wrap {
+        width: var(--page);
+        margin: 0 auto;
+      }
+      .eyebrow {
+        margin: 0 0 18px;
+        color: var(--coral-dark);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 80;
+        border-bottom: 1px solid color-mix(in srgb, var(--rule) 82%, transparent);
+        background: color-mix(in srgb, var(--paper) 92%, transparent);
+        backdrop-filter: blur(14px);
+      }
+      .nav {
+        width: var(--page);
+        min-height: var(--nav-h);
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 28px;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 11px;
+        font-size: 21px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+      .brand img {
+        width: 30px;
+        height: 30px;
+      }
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 28px;
+      }
+      .nav-links a {
+        color: var(--ink-soft);
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .nav-links a:hover {
+        color: var(--ink);
+      }
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .locale {
+        padding: 10px;
+        border: 0;
+        background: transparent;
+        color: var(--ink-soft);
+        text-decoration: none;
+        font-size: 13px;
+      }
+      .menu-toggle {
+        display: none;
+        min-width: 52px;
+        min-height: 44px;
+        border: 1px solid var(--ink);
+        background: transparent;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .button {
+        min-height: 46px;
+        padding: 0 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: 1px solid var(--ink);
+        border-radius: 5px;
+        color: var(--ink);
+        background: transparent;
+        font-size: 14px;
+        font-weight: 800;
+        text-decoration: none;
+        cursor: pointer;
+        transition:
+          transform 180ms ease,
+          color 180ms ease,
+          background 180ms ease;
+      }
+      .button:hover {
+        transform: translateY(-2px);
+      }
+      .button:active {
+        transform: translateY(0);
+      }
+      .button.primary {
+        color: var(--white);
+        background: var(--ink);
+      }
+      .button.primary:hover {
+        background: var(--coral-dark);
+      }
+      .button.light {
+        color: var(--ink);
+        background: var(--white);
+        border-color: var(--white);
+      }
+      .button.coral {
+        color: var(--ink);
+        background: var(--coral);
+        border-color: var(--coral);
+      }
+
+      .hero {
+        min-height: calc(100vh - var(--nav-h));
+        padding: 72px 0 0;
+        overflow: hidden;
+      }
+      .hero-copy {
+        max-width: 1120px;
+        text-align: center;
+        margin: 0 auto;
+        animation: hero-enter 520ms ease both;
+      }
+      .hero h1 {
+        max-width: 1050px;
+        margin: 0 auto;
+        font-size: 88px;
+        line-height: 1.04;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+      .hero h1 .line {
+        display: block;
+      }
+      .hero h1 .hit {
+        position: relative;
+        color: var(--coral-dark);
+      }
+      .hero h1 .hit::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 2px;
+        height: 7px;
+        background: var(--coral);
+        transform: rotate(-1.5deg);
+        z-index: -1;
+      }
+      .hero-lede {
+        max-width: 770px;
+        margin: 28px auto 0;
+        color: var(--ink-soft);
+        font-size: 19px;
+        line-height: 1.7;
+      }
+      .hero-actions {
+        margin-top: 28px;
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .truth-note {
+        margin: 18px auto 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .hero-product {
+        width: min(1480px, calc(100vw - 40px));
+        margin: 56px auto 0;
+        position: relative;
+      }
+      .cost-ribbon {
+        position: relative;
+        z-index: 2;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        background: var(--coral);
+        border: 1px solid var(--ink);
+      }
+      .cost-ribbon span {
+        padding: 12px 18px;
+        border-right: 1px solid var(--ink);
+        font-size: 13px;
+        font-weight: 800;
+        text-align: center;
+        text-decoration: line-through 2px var(--ink);
+      }
+      .cost-ribbon span:last-child {
+        border-right: 0;
+      }
+      .product-shot {
+        margin-top: -1px;
+        border: 1px solid var(--ink);
+        border-radius: 0 0 6px 6px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        background: var(--white);
+      }
+      .product-shot img {
+        width: 100%;
+        aspect-ratio: 16 / 8.8;
+        object-fit: cover;
+        object-position: top center;
+      }
+
+      .cost-section {
+        margin-top: 108px;
+        padding: 112px 0;
+        color: var(--white);
+        background: var(--ink);
+      }
+      .cost-heading {
+        display: grid;
+        grid-template-columns: 1.1fr 0.7fr;
+        align-items: end;
+        gap: 64px;
+      }
+      .cost-heading h2,
+      .workflow h2,
+      .stack h2,
+      .open-source h2,
+      .start h2,
+      .community h2,
+      .closing h2 {
+        margin: 0;
+        font-size: 58px;
+        line-height: 1.08;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+      .cost-heading p {
+        margin: 0;
+        color: #b9b6ad;
+        font-size: 17px;
+      }
+      .cost-tabs {
+        margin-top: 58px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border-block: 1px solid #3d3c38;
+      }
+      .cost-tab {
+        min-height: 70px;
+        border: 0;
+        border-right: 1px solid #3d3c38;
+        color: #aaa79f;
+        background: transparent;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .cost-tab:last-child {
+        border-right: 0;
+      }
+      .cost-tab[aria-selected='true'] {
+        color: var(--white);
+        background: var(--coral-dark);
+      }
+      .cost-panel {
+        min-height: 630px;
+        padding-top: 62px;
+        display: grid;
+        grid-template-columns: 0.7fr 1.3fr;
+        gap: 64px;
+        align-items: center;
+      }
+      .cost-panel-copy {
+        align-self: stretch;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .cost-index {
+        color: var(--coral);
+        font-size: 15px;
+        font-weight: 800;
+      }
+      .cost-panel h3 {
+        margin: 28px 0 20px;
+        font-size: 42px;
+        line-height: 1.14;
+      }
+      .cost-panel p {
+        margin: 0;
+        color: #c7c4bb;
+        font-size: 17px;
+      }
+      .cost-proof {
+        padding-top: 28px;
+        border-top: 1px solid #3d3c38;
+        color: var(--white);
+        font-weight: 700;
+      }
+      .cost-evidence {
+        min-height: 480px;
+        display: flex;
+        align-items: center;
+      }
+      .cost-evidence img {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        border: 1px solid #4b4944;
+        border-radius: 6px;
+      }
+
+      .stack {
+        padding: 124px 0;
+      }
+      .stack-head {
+        max-width: 900px;
+      }
+      .stack-head p {
+        max-width: 690px;
+        margin: 24px 0 0;
+        color: var(--ink-soft);
+        font-size: 18px;
+      }
+      .stack-map {
+        margin-top: 72px;
+        border-block: 1px solid var(--ink);
+      }
+      .stack-row {
+        display: grid;
+        grid-template-columns: 190px 1fr 56px 1fr;
+        align-items: center;
+        min-height: 118px;
+        border-bottom: 1px solid var(--rule);
+      }
+      .stack-row:last-child {
+        border-bottom: 0;
+      }
+      .stack-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .stack-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 24px;
+        font-size: 20px;
+        font-weight: 750;
+      }
+      .stack-arrow {
+        color: var(--coral-dark);
+        font-size: 26px;
+        font-weight: 800;
+        text-align: center;
+      }
+      .stack-result {
+        font-size: 20px;
+        font-weight: 750;
+      }
+
+      .workflow {
+        padding: 120px 0;
+        background: var(--surface);
+        border-block: 1px solid var(--rule);
+      }
+      .workflow-grid {
+        margin-top: 64px;
+        display: grid;
+        grid-template-columns: 330px 1fr;
+        gap: 48px;
+        align-items: start;
+      }
+      .workflow-tabs {
+        border-top: 1px solid var(--ink);
+      }
+      .workflow-tab {
+        width: 100%;
+        min-height: 84px;
+        padding: 16px 8px;
+        display: grid;
+        grid-template-columns: 44px 1fr;
+        gap: 12px;
+        align-items: center;
+        border: 0;
+        border-bottom: 1px solid var(--rule);
+        background: transparent;
+        color: var(--muted);
+        text-align: left;
+        cursor: pointer;
+      }
+      .workflow-tab[aria-selected='true'] {
+        color: var(--ink);
+      }
+      .workflow-tab span:first-child {
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .workflow-tab strong {
+        font-size: 18px;
+      }
+      .workflow-visual {
+        min-width: 0;
+      }
+      .workflow-visual img {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        object-position: top;
+        border: 1px solid var(--ink);
+        border-radius: 6px;
+        background: var(--white);
+      }
+      .workflow-caption {
+        min-height: 66px;
+        margin: 18px 0 0;
+        color: var(--ink-soft);
+        font-size: 16px;
+      }
+
+      .agent-band {
+        color: var(--white);
+        background: #242c29;
+      }
+      .agent-grid {
+        width: var(--page);
+        margin: 0 auto;
+        min-height: 680px;
+        padding: 88px 0;
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        align-items: center;
+        gap: 70px;
+      }
+      .agent-copy h2 {
+        margin: 0;
+        font-size: 56px;
+        line-height: 1.08;
+      }
+      .agent-copy p {
+        margin: 24px 0 0;
+        color: #c2c8c4;
+        font-size: 17px;
+      }
+      .agent-list {
+        margin: 34px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .agent-list li {
+        padding: 13px 0;
+        border-bottom: 1px solid #48514d;
+        font-weight: 700;
+      }
+      .agent-list li::before {
+        content: '✓';
+        margin-right: 12px;
+        color: #58d598;
+      }
+      .agent-image img {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        border: 1px solid #5c6661;
+        border-radius: 6px;
+      }
+
+      .open-source {
+        padding: 118px 0;
+        background: var(--coral);
+      }
+      .open-grid {
+        display: grid;
+        grid-template-columns: 1fr 0.72fr;
+        gap: 100px;
+        align-items: end;
+      }
+      .open-source h2 {
+        max-width: 810px;
+      }
+      .open-facts {
+        border-top: 1px solid var(--ink);
+      }
+      .open-fact {
+        padding: 17px 0;
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        border-bottom: 1px solid color-mix(in srgb, var(--ink) 55%, transparent);
+        font-weight: 700;
+      }
+      .open-fact span:last-child {
+        text-align: right;
+      }
+      .open-actions {
+        margin-top: 32px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .start {
+        padding: 120px 0;
+      }
+      .start-grid {
+        margin-top: 58px;
+        border-top: 1px solid var(--ink);
+      }
+      .start-row {
+        min-height: 120px;
+        display: grid;
+        grid-template-columns: 80px 1fr 1fr;
+        gap: 34px;
+        align-items: center;
+        border-bottom: 1px solid var(--rule);
+      }
+      .start-number {
+        color: var(--coral-dark);
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .start-row h3 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .start-row p {
+        margin: 0;
+        color: var(--ink-soft);
+      }
+      .manual-links {
+        margin-top: 34px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .community {
+        padding: 118px 0;
+        background: var(--white);
+        border-top: 1px solid var(--rule);
+      }
+      .community-head {
+        max-width: 900px;
+      }
+      .community-head p {
+        max-width: 680px;
+        margin: 22px 0 0;
+        color: var(--ink-soft);
+      }
+      .community-grid {
+        margin-top: 54px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .community-card {
+        min-height: 330px;
+        padding: 34px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        border: 1px solid var(--ink);
+        border-radius: 6px;
+        background: var(--paper);
+      }
+      .community-card.user-community {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 172px;
+        gap: 28px;
+        align-items: stretch;
+      }
+      .community-card.dark {
+        color: var(--white);
+        background: var(--ink);
+      }
+      .community-card h3 {
+        margin: 0;
+        max-width: 480px;
+        font-size: 32px;
+        line-height: 1.16;
+      }
+      .community-card p {
+        max-width: 520px;
+        margin: 18px 0 0;
+        color: var(--ink-soft);
+      }
+      .community-card.dark p {
+        color: #bab7ae;
+      }
+      .card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .community-copy {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 28px;
+      }
+      .community-qr {
+        margin: 0;
+        padding: 14px;
+        align-self: center;
+        border: 1px solid var(--rule);
+        border-radius: 5px;
+        background: var(--white);
+        scroll-margin-top: calc(var(--nav-h) + 24px);
+      }
+      .community-qr img {
+        width: 140px;
+        height: 210px;
+        object-fit: contain;
+      }
+      .community-qr figcaption {
+        margin-top: 10px;
+        color: var(--ink-soft);
+        font-size: 12px;
+        font-weight: 700;
+        text-align: center;
+      }
+
+      .closing {
+        padding: 110px 0 70px;
+        color: var(--white);
+        background: var(--ink);
+        text-align: center;
+      }
+      .closing h2 {
+        max-width: 920px;
+        margin: 0 auto;
+        font-size: 68px;
+      }
+      .closing p {
+        max-width: 680px;
+        margin: 24px auto 0;
+        color: #bdbab1;
+      }
+      .closing .hero-actions {
+        margin-top: 34px;
+      }
+      .footer {
+        margin-top: 80px;
+        padding-top: 28px;
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        border-top: 1px solid #3d3c38;
+        color: #8f8c84;
+        font-size: 12px;
+        text-align: left;
+      }
+
+      dialog {
+        width: min(900px, calc(100vw - 36px));
+        max-height: calc(100vh - 36px);
+        padding: 0;
+        border: 1px solid var(--ink);
+        border-radius: 6px;
+        background: var(--paper);
+        color: var(--ink);
+      }
+      dialog::backdrop {
+        background: rgba(0, 0, 0, 0.72);
+      }
+      .dialog-head {
+        min-height: 62px;
+        padding: 0 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        border-bottom: 1px solid var(--rule);
+      }
+      .dialog-head strong {
+        font-size: 16px;
+      }
+      .dialog-close {
+        width: 44px;
+        height: 44px;
+        border: 0;
+        background: transparent;
+        font-size: 25px;
+        cursor: pointer;
+      }
+      .dialog-body {
+        padding: 22px;
+      }
+      .dialog-body video {
+        width: 100%;
+        background: #000;
+      }
+      .qr-content {
+        max-width: 360px;
+        margin: 0 auto;
+        text-align: center;
+      }
+      .qr-content img {
+        width: min(300px, 100%);
+        margin: 0 auto;
+        border: 1px solid var(--rule);
+      }
+      .qr-content p {
+        margin: 16px 0 0;
+        color: var(--ink-soft);
+      }
+
+      @keyframes hero-enter {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      @media (max-width: 1050px) {
+        .hero h1 {
+          font-size: 66px;
+        }
+        .cost-heading h2,
+        .workflow h2,
+        .stack h2,
+        .open-source h2,
+        .start h2,
+        .community h2 {
+          font-size: 48px;
+        }
+        .nav-links {
+          display: none;
+        }
+        .workflow-grid {
+          grid-template-columns: 260px 1fr;
+        }
+        .agent-grid {
+          grid-template-columns: 1fr;
+          min-height: 0;
+        }
+        .open-grid {
+          gap: 48px;
+        }
+      }
+
+      @media (max-width: 760px) {
+        :root {
+          --page: calc(100vw - 32px);
+          --nav-h: 64px;
+        }
+        .nav-actions .locale,
+        .nav-actions > .button {
+          display: none;
+        }
+        .menu-toggle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .nav-links.open {
+          position: fixed;
+          inset: var(--nav-h) 0 auto;
+          padding: 20px 16px;
+          display: grid;
+          gap: 0;
+          background: var(--paper);
+          border-bottom: 1px solid var(--ink);
+        }
+        .nav-links.open a {
+          min-height: 48px;
+          display: flex;
+          align-items: center;
+          border-bottom: 1px solid var(--rule);
+        }
+        .hero {
+          padding-top: 54px;
+        }
+        .hero h1 {
+          font-size: 45px;
+          line-height: 1.08;
+        }
+        .hero-lede {
+          font-size: 16px;
+        }
+        .hero-actions .button {
+          width: 100%;
+        }
+        .cost-ribbon {
+          grid-template-columns: 1fr 1fr;
+        }
+        .cost-ribbon span {
+          border-bottom: 1px solid var(--ink);
+        }
+        .cost-ribbon span:nth-child(2) {
+          border-right: 0;
+        }
+        .cost-ribbon span:nth-child(n + 3) {
+          border-bottom: 0;
+        }
+        .product-shot img {
+          aspect-ratio: 1.15 / 1;
+          object-position: 52% top;
+        }
+        .cost-section {
+          margin-top: 72px;
+          padding: 82px 0;
+        }
+        .cost-heading,
+        .cost-panel,
+        .open-grid {
+          grid-template-columns: 1fr;
+        }
+        .cost-heading {
+          gap: 24px;
+        }
+        .cost-heading h2,
+        .workflow h2,
+        .stack h2,
+        .open-source h2,
+        .start h2,
+        .community h2 {
+          font-size: 38px;
+        }
+        .cost-tabs {
+          grid-template-columns: 1fr 1fr;
+        }
+        .cost-tab {
+          border-bottom: 1px solid #3d3c38;
+        }
+        .cost-tab:nth-child(2) {
+          border-right: 0;
+        }
+        .cost-tab:nth-child(n + 3) {
+          border-bottom: 0;
+        }
+        .cost-panel {
+          min-height: 0;
+          gap: 36px;
+        }
+        .cost-panel-copy {
+          gap: 34px;
+        }
+        .cost-panel h3 {
+          font-size: 32px;
+        }
+        .cost-evidence {
+          min-height: 0;
+        }
+        .stack,
+        .workflow,
+        .open-source,
+        .start,
+        .community {
+          padding: 82px 0;
+        }
+        .stack-row {
+          padding: 24px 0;
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        .stack-arrow {
+          text-align: left;
+          transform: rotate(90deg);
+          width: 24px;
+        }
+        .workflow-grid {
+          grid-template-columns: 1fr;
+          gap: 28px;
+        }
+        .workflow-tabs {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+        }
+        .workflow-tab {
+          grid-template-columns: 30px 1fr;
+          min-height: 72px;
+          padding-right: 12px;
+        }
+        .agent-grid {
+          width: var(--page);
+          padding: 82px 0;
+          gap: 42px;
+        }
+        .agent-copy h2 {
+          font-size: 40px;
+        }
+        .open-grid {
+          gap: 48px;
+        }
+        .start-row {
+          padding: 24px 0;
+          grid-template-columns: 44px 1fr;
+          gap: 12px;
+        }
+        .start-row p {
+          grid-column: 2;
+        }
+        .community-grid {
+          grid-template-columns: 1fr;
+        }
+        .community-card {
+          min-height: 310px;
+          padding: 26px;
+        }
+        .community-card.user-community {
+          grid-template-columns: 1fr;
+          gap: 28px;
+        }
+        .community-qr {
+          justify-self: center;
+        }
+        .closing {
+          padding-top: 82px;
+        }
+        .closing h2 {
+          font-size: 44px;
+        }
+        .footer {
+          flex-direction: column;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          transition-duration: 1ms !important;
+        }
+        .hero-copy {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="site-header">
+      <nav class="nav" aria-label="主导航">
+        <a class="brand" href="#top"><img src="/marketing/assets/nomi-logo.svg" alt="" />Nomi</a>
+        <div class="nav-links" id="nav-links">
+          <a href="#cost">为什么省</a>
+          <a href="#workflow">怎么做片</a>
+          <a href="#open">开源</a>
+          <a href="#start">用户手册</a>
+          <a href="#community">社群与项目</a>
+        </div>
+        <div class="nav-actions">
+          <a class="locale" href="#" aria-label="查看英文方案">EN</a>
+          <a class="button primary" href="https://github.com/aqm857886159/Nomi/releases/latest">下载 Nomi</a>
+          <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">菜单</button>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="wrap hero-copy" data-reveal>
+          <p class="eyebrow">OPEN-SOURCE · LOCAL-FIRST · AI VIDEO WORKBENCH</p>
+          <h1><span class="line">把 AI 视频的成本，</span><span class="line hit">打下来。</span></h1>
+          <p class="hero-lede">
+            模型、会员、API、ComfyUI，都用你自己的。Nomi 把脚本、分镜、生成、剪辑和 AI
+            助手放进一个开源工作台，不再为平台套餐、重复工具和低效试错多付一遍。
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://github.com/aqm857886159/Nomi/releases/latest">下载 Nomi</a>
+            <button class="button" type="button" data-open-dialog="film-dialog">观看 60 秒工作流</button>
+          </div>
+          <p class="truth-note">生成仍会消耗你所选服务的额度；Nomi 减少平台溢价、重复订阅、无效生成和重复劳动。</p>
+        </div>
+        <figure class="hero-product">
+          <div class="cost-ribbon" aria-label="Nomi 重点减少的成本">
+            <span>平台溢价</span><span>重复订阅</span><span>无效抽卡</span><span>重复劳动</span>
+          </div>
+          <div class="product-shot">
+            <img
+              src="/marketing/assets/screen-canvas-2026-08-17.png"
+              alt="Nomi 将角色参考、场景、生成画布和视频时间线放在同一个项目中"
+            />
+          </div>
+        </figure>
+      </section>
+
+      <section class="cost-section" id="cost">
+        <div class="wrap">
+          <div class="cost-heading" data-reveal>
+            <div>
+              <p class="eyebrow">WHY IT COSTS LESS</p>
+              <h2>贵，不只贵在模型。</h2>
+            </div>
+            <p>真正烧钱的是同一种能力买两遍、没有参考地反复抽卡、在十个工具间搬运，以及每条片都从零重做。</p>
+          </div>
+          <div class="cost-tabs" role="tablist" aria-label="成本维度" data-reveal>
+            <button class="cost-tab" role="tab" aria-selected="true" data-cost="generation">生成成本</button>
+            <button class="cost-tab" role="tab" aria-selected="false" data-cost="trial">试错成本</button>
+            <button class="cost-tab" role="tab" aria-selected="false" data-cost="labor">人力成本</button>
+            <button class="cost-tab" role="tab" aria-selected="false" data-cost="lockin">迁移成本</button>
+          </div>
+          <div class="cost-panel" role="tabpanel" aria-live="polite" data-reveal>
+            <div class="cost-panel-copy">
+              <div>
+                <div class="cost-index" id="cost-index">01 / GENERATION</div>
+                <h3 id="cost-title">已有的能力，不用再买一遍。</h3>
+                <p id="cost-copy">
+                  即梦高级会员、你熟悉的云端 API、本机 ComfyUI，都可以继续使用。哪个模型更合适，就把这一镜交给哪个模型。
+                </p>
+              </div>
+              <div class="cost-proof" id="cost-proof">结果：不再为了换工作台，重新购买同一类生成能力。</div>
+            </div>
+            <div class="cost-evidence">
+              <img
+                id="cost-image"
+                src="/marketing/assets/screen-canvas-2026-08-17.png"
+                alt="Nomi 生成画布和模型接入工作流"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stack" aria-labelledby="stack-title">
+        <div class="wrap">
+          <div class="stack-head" data-reveal>
+            <p class="eyebrow">BRING YOUR OWN STACK</p>
+            <h2 id="stack-title">不是再买一个模型。<br />是把你已有的能力接起来。</h2>
+            <p>
+              Nomi 不和即梦、ComfyUI 或模型 API 竞争。它负责把这些生成能力组织成一条能编辑、能恢复、能交付的视频工作流。
+            </p>
+          </div>
+          <div class="stack-map" data-reveal>
+            <div class="stack-row">
+              <div class="stack-label">生成引擎</div>
+              <div class="stack-items"><span>即梦会员</span><span>任意 API</span><span>本地 ComfyUI</span></div>
+              <div class="stack-arrow">→</div>
+              <div class="stack-result">图片、视频、文本与声音</div>
+            </div>
+            <div class="stack-row">
+              <div class="stack-label">生产工作台</div>
+              <div class="stack-items"><span>Nomi 画布</span><span>视觉锚点</span><span>真实时间线</span></div>
+              <div class="stack-arrow">→</div>
+              <div class="stack-result">一版可以继续修改的初稿</div>
+            </div>
+            <div class="stack-row">
+              <div class="stack-label">AI 助手</div>
+              <div class="stack-items"><span>Codex</span><span>Claude Code</span><span>Cursor</span></div>
+              <div class="stack-arrow">→</div>
+              <div class="stack-result">通过 MCP + Skills 真正开工</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workflow" id="workflow">
+        <div class="wrap">
+          <p class="eyebrow" data-reveal>ONE PROJECT · ONE CONTEXT</p>
+          <h2 data-reveal>从一句话，到一条能改的片。</h2>
+          <div class="workflow-grid" data-reveal>
+            <div class="workflow-tabs" role="tablist" aria-label="Nomi 工作流">
+              <button class="workflow-tab" role="tab" aria-selected="true" data-step="story">
+                <span>01</span><strong>写与拆</strong>
+              </button>
+              <button class="workflow-tab" role="tab" aria-selected="false" data-step="anchor">
+                <span>02</span><strong>锁参考</strong>
+              </button>
+              <button class="workflow-tab" role="tab" aria-selected="false" data-step="generate">
+                <span>03</span><strong>跑生成</strong>
+              </button>
+              <button class="workflow-tab" role="tab" aria-selected="false" data-step="edit">
+                <span>04</span><strong>剪与交付</strong>
+              </button>
+            </div>
+            <div class="workflow-visual" role="tabpanel" aria-live="polite">
+              <img
+                id="workflow-image"
+                src="/marketing/assets/screen-script-2026-08-17.png"
+                alt="Nomi 故事与分镜工作区"
+              />
+              <p class="workflow-caption" id="workflow-caption">
+                故事、角色和镜头规划留在同一个项目里，后面的每一步都知道前面发生了什么。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="agent-band" aria-labelledby="agent-title">
+        <div class="agent-grid">
+          <div class="agent-copy" data-reveal>
+            <p class="eyebrow">MCP + SKILLS</p>
+            <h2 id="agent-title">让 AI 助手动手，<br />不是只给建议。</h2>
+            <p>Codex、Claude Code、Cursor 可以在 Nomi 里建立项目、拆分镜、连接参考、调用你配置的模型并推进初稿。</p>
+            <ul class="agent-list">
+              <li>生成前看清模型和支出后果</li>
+              <li>预算、采用和导出仍由你批准</li>
+              <li>任务中断后可以恢复，不重复下单</li>
+            </ul>
+          </div>
+          <div class="agent-image" data-reveal>
+            <img
+              src="/marketing/assets/screen-agentic-2026-08-17.png"
+              alt="Nomi 自动化与权限设置中的 Claude Code、Codex 和 Cursor 接入入口"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section class="open-source" id="open">
+        <div class="wrap open-grid">
+          <div data-reveal>
+            <p class="eyebrow">OPEN SOURCE IS THE BUSINESS MODEL</p>
+            <h2>源码在手里，成本才真的由你决定。</h2>
+            <div class="open-actions">
+              <a class="button primary" href="https://github.com/aqm857886159/Nomi">查看 GitHub</a
+              ><a class="button" href="https://github.com/aqm857886159/Nomi/blob/main/LICENSE">查看许可证</a>
+            </div>
+          </div>
+          <div class="open-facts" data-reveal>
+            <div class="open-fact"><span>工作台</span><span>AGPL-3.0 开源</span></div>
+            <div class="open-fact"><span>项目与素材</span><span>保存在本机</span></div>
+            <div class="open-fact"><span>模型与密钥</span><span>由你选择和持有</span></div>
+            <div class="open-fact"><span>闭源集成 / 贴牌</span><span>可沟通商业授权</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="start" id="start">
+        <div class="wrap">
+          <p class="eyebrow" data-reveal>START WITH WHAT YOU HAVE</p>
+          <h2 data-reveal>三步，先跑出第一条片。</h2>
+          <div class="start-grid" data-reveal>
+            <div class="start-row">
+              <span class="start-number">01</span>
+              <h3>下载桌面版</h3>
+              <p>Windows 和 macOS 都有安装包，不需要 Docker 或数据库。</p>
+            </div>
+            <div class="start-row">
+              <span class="start-number">02</span>
+              <h3>接入已有能力</h3>
+              <p>使用自己的 API、即梦高级会员或本地 ComfyUI，不必重新购买一套。</p>
+            </div>
+            <div class="start-row">
+              <span class="start-number">03</span>
+              <h3>做一条 3–6 镜短片</h3>
+              <p>先跑通故事、分镜、参考、生成、时间线和 MP4 导出的完整闭环。</p>
+            </div>
+          </div>
+          <div class="manual-links" data-reveal>
+            <a class="button primary" href="/marketing/quickstart.html">打开新手指南</a
+            ><a class="button" href="/marketing/handbook.html">一页上手</a
+            ><a
+              class="button"
+              href="https://github.com/aqm857886159/Nomi/blob/main/docs/guide/capability-core-cli-mcp.md"
+              >MCP 指南</a
+            >
+          </div>
+        </div>
+      </section>
+
+      <section class="community" id="community">
+        <div class="wrap">
+          <div class="community-head" data-reveal>
+            <p class="eyebrow">BUILD IN PUBLIC</p>
+            <h2>你遇到的摩擦，直接进入下一轮迭代。</h2>
+            <p>先让更多真实创作者用起来，再根据真实项目修产品。用户群负责反馈与交流；项目合作单独沟通，不混在一起。</p>
+          </div>
+          <div class="community-grid">
+            <article class="community-card user-community" data-reveal>
+              <div class="community-copy">
+                <div>
+                  <p class="eyebrow">USER COMMUNITY</p>
+                  <h3>加入 Nomi 用户群，一起把成本继续打下来。</h3>
+                  <p>交流工作流、反馈问题、获取版本动态。群码失效时可以直接添加作者微信。</p>
+                </div>
+                <div class="card-actions">
+                  <a class="button" href="https://github.com/aqm857886159/Nomi/discussions">GitHub 讨论</a>
+                </div>
+              </div>
+              <figure class="community-qr" id="community-qr">
+                <img
+                  src="/marketing/assets/group-wechat-2026-08-17.jpg"
+                  alt="Nomi 用户群微信二维码"
+                  width="140"
+                  height="210"
+                />
+                <figcaption>扫码加入 Nomi 用户群</figcaption>
+              </figure>
+            </article>
+            <article class="community-card dark" data-reveal>
+              <div>
+                <p class="eyebrow">FOR REAL PROJECTS</p>
+                <h3>有真实项目，直接聊清楚怎么落地。</h3>
+                <p>内部 AI 视频工作台、系统与模型集成、垂直流程、贴牌交付和持续迭代。</p>
+              </div>
+              <div class="card-actions">
+                <button class="button light" type="button" data-open-dialog="author-dialog">添加作者微信</button
+                ><a
+                  class="button coral"
+                  href="https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml"
+                  >提交项目需求</a
+                >
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing">
+        <div class="wrap">
+          <p class="eyebrow" data-reveal>NOMI / OPEN-SOURCE AI VIDEO WORKBENCH</p>
+          <h2 data-reveal>把 AI 视频的成本，打下来。</h2>
+          <p data-reveal>用你自己的模型和工作流，完成一条属于你、留在你电脑里、还能继续修改的片。</p>
+          <div class="hero-actions" data-reveal>
+            <a class="button light" href="https://github.com/aqm857886159/Nomi/releases/latest">下载 Nomi</a
+            ><a class="button coral" href="#community-qr">加入用户群</a>
+          </div>
+          <footer class="footer">
+            <span>Nomi · 本地优先 AI 视频工作台</span><span>开源不等于所有推理离线 · 外部模型仍按其服务规则收费</span>
+          </footer>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="film-dialog">
+      <div class="dialog-head">
+        <strong>Nomi 真实工作流</strong><button class="dialog-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <video controls preload="metadata" poster="/marketing/assets/video/hero-poster.jpg">
+          <source src="/marketing/assets/demo.mp4" type="video/mp4" />
+          <track
+            kind="captions"
+            srclang="zh-CN"
+            src="/marketing/assets/video/launch-film-zh.vtt"
+            label="简体中文字幕"
+            default
+          />
+        </video>
+      </div>
+    </dialog>
+    <dialog id="author-dialog">
+      <div class="dialog-head">
+        <strong>添加作者微信</strong><button class="dialog-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body qr-content">
+        <img src="/marketing/assets/qingyang-wechat.jpg" alt="Nomi 作者青阳微信二维码" />
+        <p>微信号：TZ857886159。请简单说明项目、当前流程和最想降低的成本。</p>
+      </div>
+    </dialog>
+
+    <script>
+      const costData = {
+        generation: {
+          index: '01 / GENERATION',
+          title: '已有的能力，不用再买一遍。',
+          copy: '即梦高级会员、你熟悉的云端 API、本机 ComfyUI，都可以继续使用。哪个模型更合适，就把这一镜交给哪个模型。',
+          proof: '结果：不再为了换工作台，重新购买同一类生成能力。',
+          image: '/marketing/assets/screen-canvas-2026-08-17.png',
+          alt: 'Nomi 生成画布和模型接入工作流',
+        },
+        trial: {
+          index: '02 / ITERATION',
+          title: '少抽几次，就是少烧一次钱。',
+          copy: '角色、场景、道具、构图和风格作为视觉锚点留在项目里。后面的镜头继承同一组证据，而不是每次重新赌提示词。',
+          proof: '结果：减少身份漂移、空间漂移和没有参考的无效生成。',
+          image: '/marketing/assets/screen-3d-2026-08-17.png',
+          alt: 'Nomi 3D 导演台中的人物与镜头参考',
+        },
+        labor: {
+          index: '03 / LABOR',
+          title: '让 AI 助手做重复工作。',
+          copy: 'Codex、Claude Code、Cursor 通过 MCP 与 Skills 建项目、拆分镜、连参考、调用模型并推进初稿，你只在方向、预算和采用节点做决定。',
+          proof: '结果：把时间留给判断与创作，而不是机械操作和素材搬运。',
+          image: '/marketing/assets/screen-agentic-2026-08-17.png',
+          alt: 'Nomi 自动化与权限设置中的 AI 助手接入入口',
+        },
+        lockin: {
+          index: '04 / OWNERSHIP',
+          title: '换模型，不用换家。',
+          copy: '项目、素材、提示词和密钥保存在自己的电脑上。供应商价格或效果变化时，替换生成能力，不需要抛弃整个项目。',
+          proof: '结果：工作流留在手里，平台变化不再等于从零开始。',
+          image: '/marketing/assets/screen-timeline-2026-08-17.png',
+          alt: '保存在本地的 Nomi 项目与时间线',
+        },
+      }
+      const workflowData = {
+        story: {
+          image: '/marketing/assets/screen-script-2026-08-17.png',
+          alt: 'Nomi 故事与分镜工作区',
+          caption: '故事、角色和镜头规划留在同一个项目里，后面的每一步都知道前面发生了什么。',
+        },
+        anchor: {
+          image: '/marketing/assets/screen-3d-2026-08-17.png',
+          alt: 'Nomi 3D 导演台与视觉参考',
+          caption: '先锁定人物、场景、道具、机位和风格，再让后续镜头继承同一组视觉证据。',
+        },
+        generate: {
+          image: '/marketing/assets/screen-canvas-2026-08-17.png',
+          alt: 'Nomi 生成画布',
+          caption: '把提示词、参考、生成结果和下一镜头放在同一张画布上，按任务选择不同模型。',
+        },
+        edit: {
+          image: '/marketing/assets/screen-timeline-2026-08-17.png',
+          alt: 'Nomi 视频时间线',
+          caption: '把满意结果放进真实时间线继续剪辑、预览和导出 MP4，而不是停在一堆散落素材。',
+        },
+      }
+
+      document.querySelectorAll('[data-cost]').forEach((tab) =>
+        tab.addEventListener('click', () => {
+          const data = costData[tab.dataset.cost]
+          document
+            .querySelectorAll('[data-cost]')
+            .forEach((item) => item.setAttribute('aria-selected', String(item === tab)))
+          document.querySelector('#cost-index').textContent = data.index
+          document.querySelector('#cost-title').textContent = data.title
+          document.querySelector('#cost-copy').textContent = data.copy
+          document.querySelector('#cost-proof').textContent = data.proof
+          const image = document.querySelector('#cost-image')
+          image.src = data.image
+          image.alt = data.alt
+        }),
+      )
+      document.querySelectorAll('[data-step]').forEach((tab) =>
+        tab.addEventListener('click', () => {
+          const data = workflowData[tab.dataset.step]
+          document
+            .querySelectorAll('[data-step]')
+            .forEach((item) => item.setAttribute('aria-selected', String(item === tab)))
+          const image = document.querySelector('#workflow-image')
+          image.src = data.image
+          image.alt = data.alt
+          document.querySelector('#workflow-caption').textContent = data.caption
+        }),
+      )
+
+      const menuToggle = document.querySelector('.menu-toggle')
+      const navLinks = document.querySelector('#nav-links')
+      menuToggle.addEventListener('click', () => {
+        const open = navLinks.classList.toggle('open')
+        menuToggle.setAttribute('aria-expanded', String(open))
+      })
+      navLinks.querySelectorAll('a').forEach((link) =>
+        link.addEventListener('click', () => {
+          navLinks.classList.remove('open')
+          menuToggle.setAttribute('aria-expanded', 'false')
+        }),
+      )
+
+      document.querySelectorAll('[data-open-dialog]').forEach((button) =>
+        button.addEventListener('click', () => {
+          const dialog = document.querySelector(`#${button.dataset.openDialog}`)
+          dialog.showModal()
+          document.body.classList.add('modal-open')
+        }),
+      )
+      document.querySelectorAll('dialog').forEach((dialog) => {
+        dialog.querySelector('.dialog-close').addEventListener('click', () => dialog.close())
+        dialog.addEventListener('click', (event) => {
+          if (event.target === dialog) dialog.close()
+        })
+        dialog.addEventListener('close', () => {
+          document.body.classList.remove('modal-open')
+          const video = dialog.querySelector('video')
+          if (video) video.pause()
+        })
+      })
+    </script>
+  </body>
+</html>

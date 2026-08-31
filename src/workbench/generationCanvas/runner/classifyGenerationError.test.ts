@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest'
+import { APICallError, RetryError } from 'ai'
 import { classifyGenerationError } from './generationRunController'
+import { parseVendorErrorFromMessage, stripVendorErrorMarker } from './vendorErrorIpc'
+import { desktopT } from '../../../../electron/i18n'
+import { describeAgentError } from '../../../../electron/ai/agentError'
+import { vendorStallError } from '../../../../electron/ai/aiSdkVendorError'
+import i18n from '../../../i18n'
 
 describe('classifyGenerationError — 已知分类', () => {
+  it('localizes the local missing-reference guard in English', async () => {
+    await i18n.changeLanguage('en')
+    try {
+      const r = classifyGenerationError('图生图缺少参考图：这次请求里没有任何图片可以发给模型。')
+      expect(r.reason).toBe('Image-to-image requires a reference image. Connect an image node, add a reference, or switch back to text-to-image')
+      expect(r.reason).not.toMatch(/图生图|参考图/)
+    } finally {
+      await i18n.changeLanguage('zh-CN')
+    }
+  })
+
   it('API Key 无效', () => {
     const r = classifyGenerationError('Error: 401 Unauthorized — invalid api key')
     expect(r.reason).toBe('API Key 无效')
@@ -13,9 +30,32 @@ describe('classifyGenerationError — 已知分类', () => {
     expect(r.reason).toBe('配额或限流')
   })
 
-  it('网络超时', () => {
+  it('超时归「连不上服务商」', () => {
     const r = classifyGenerationError('request failed: ETIMEDOUT')
-    expect(r.reason).toBe('网络超时')
+    expect(r.reason).toBe('连不上服务商')
+  })
+
+  // 2026-08-12：network 桶原先只认 timeout 一族，「压根没连上」那半边全落 unknown，拿到
+  // 「服务商临时故障或额度问题，建议稍等重试」——甩锅给没被请求到的服务商，且重试必再撞。
+  // 每条都是真实来源，不是造的：undici / 浏览器 / DNS / 我们自己的代理兜底文案。
+  it.each([
+    ['Node/undici 主进程断网', 'TypeError: fetch failed'],
+    ['浏览器 fetch 被掐断（群反馈网页版原文）', 'TypeError: Failed to fetch'],
+    ['端口没人听', 'connect ECONNREFUSED 127.0.0.1:8188'],
+    ['DNS 解析不到', 'getaddrinfo ENOTFOUND api.apimart.ai'],
+    ['DNS 临时失败', 'getaddrinfo EAI_AGAIN api.apimart.ai'],
+    ['连接被中途掐断', 'Error: socket hang up'],
+    ['我们自己的代理兜底文案（中文，匹配不到 network）', '网络请求失败：无法连接到该地址。'],
+  ])('连不上归「连不上服务商」并指向网络/代理，不甩锅额度：%s', (_label, message) => {
+    const r = classifyGenerationError(message)
+    expect(r.reason).toBe('连不上服务商')
+    expect(r.hint).toMatch(/代理/)
+    expect(r.hint).not.toMatch(/临时故障|额度问题/)
+  })
+
+  it('ENOTFOUND 不吞「model not found」（中间有空格，两条签名互不误伤）', () => {
+    const r = classifyGenerationError('Error: model not found: seedream-9')
+    expect(r.reason).toBe('模型未配置')
   })
 
   it('余额不足（中文）与限流区分开', () => {
@@ -194,6 +234,36 @@ describe('classifyGenerationError — 已知分类', () => {
     expect(r.providerMessage).toMatch(/litterbox/)
   })
 
+  // 2026-08-20 用户真机截图：本机 mp4 → 直连通道（非匿名链）抛裸 `素材上传失败(HTTP 413)`。
+  // 旧行为落 unknown → 「可能是服务商临时故障或额度问题，建议稍等重试」，逐字如此。
+  // 413 = 文件超过该 host 的 body 上限，是**确定性**失败：同一个文件重试一万次都是同一堵墙，
+  // 而且每次都要把整个文件完整传上去再被拒。必须说「去压缩」，不能说「稍等重试」。
+  it('素材超上传上限（413）→ 说清是文件太大，不说「稍等重试」', () => {
+    const bare = classifyGenerationError(
+      "Error invoking remote method 'nomi:tasks:run': Error: 素材上传失败(HTTP 413)：(无详情)",
+    )
+    expect(bare.kind).toBe('asset-too-large')
+    expect(bare.hint).not.toMatch(/稍等重试|临时故障|额度问题/)
+    expect(bare.hint).toMatch(/压缩|裁短/)
+    // 换通道全挂后的汇总形态（带素材名 + 大小）同样归到这一类。
+    const summarized = classifyGenerationError(
+      'Error: 视频「clip.mp4（180.0MB）」超过了所有可用上传通道的大小上限，传不上去。详情：small: 素材上传失败(HTTP 413)：(无详情)',
+    )
+    expect(summarized.kind).toBe('asset-too-large')
+    // 具体是哪个素材、多大，必须在技术详情里留得住（用户据此判断压到多少）。
+    expect(summarized.raw).toMatch(/clip\.mp4/)
+    expect(summarized.raw).toMatch(/180\.0MB/)
+  })
+
+  // 直连通道（KIE/apimart）抛的裸上传失败，不带匿名链那句包装 → 此前也会落 unknown 甩锅服务商。
+  it('直连通道的上传失败（非 413）也归到「没送到服务商」，不落 unknown', () => {
+    const r = classifyGenerationError(
+      "Error invoking remote method 'nomi:tasks:run': Error: 素材上传失败(HTTP 401)：invalid key",
+    )
+    expect(r.kind).toBe('asset-upload-failed')
+    expect(r.kind).not.toBe('unknown')
+  })
+
   it('未识别错误的首行不再顶着 Electron IPC 包装前缀（对用户零信息）', () => {
     const r = classifyGenerationError(
       "Error invoking remote method 'nomi:tasks:run': Error: 上游返回了一个我们没见过的形状",
@@ -248,6 +318,14 @@ describe('classifyGenerationError — 未识别兜底（方案 B 改进）', () 
 describe('structured 路径(S4-2:VendorRequestError 经 IPC 标记穿透)', () => {
   const encode = (structured: Record<string, unknown>, tail = 'Provider request failed (code 402) at kie POST https://x: 余额不足') =>
     `Error invoking remote method 'nomi:tasks:run': Error: NOMI_VENDOR_ERR_B64::${Buffer.from(JSON.stringify(structured), 'utf8').toString('base64')}:: ${tail}`
+
+  it('uses the stable timeout category without depending on English timeout keywords', () => {
+    const result = classifyGenerationError(encode(
+      { category: 'timeout', reasonCode: 'response_timeout', upstreamMsg: '读取响应超时（120s）' },
+      'Provider request failed: 读取响应超时（120s）',
+    ))
+    expect(result.reason).toBe('连不上服务商')
+  })
 
   it('balance 类别直读 structured,不靠正则;raw 剥掉标记段', () => {
     const r = classifyGenerationError(encode({ category: 'balance', upstreamMsg: '余额不足', vendorKey: 'kie' }))
@@ -386,5 +464,188 @@ describe('模型已下线 ≠ 模型被停用（删模型不能变成坑换坑�
     const report = classifyGenerationError('Model is not enabled: some-model')
     expect(report.reason).not.toBe('这个模型已经下线了')
     expect(report.primary).toBe('open-model-access')
+  })
+})
+
+// 眼见链末端：未登记状态动词的根因修复（electron/tasks/taskResultQuery）把上游原始动词写进
+// TaskResult.error，而错误卡显示的是 classifyGenerationError(...).reason（NodeErrorReport 里的
+// 加粗大标题）。若哪天有分类器把这条消息吃掉、替换成自己的人话文案，用户就又看不到 "failure"
+// 这个原始动词了——那正是这次修复要送到用户眼前的东西。这里把它钉死。
+// 文案真相源：electron/i18n.ts 的 tasks.unrecognizedStatus / tasks.pollTimedOut。
+describe('未登记状态动词：原始动词必须原样送到错误卡标题', () => {
+  const UNRECOGNIZED =
+    '上游返回了无法识别的任务状态：「failure」。连续查询 4 次、持续 160 秒都是这个状态，Nomi 按失败处理。该任务也可能仍在供应商侧运行——请到供应商后台核对。'
+
+  it('分类不吞掉消息，reason 原样带着上游动词', () => {
+    const report = classifyGenerationError(UNRECOGNIZED)
+    expect(report.reason).toContain('failure')
+    expect(report.reason).toBe(UNRECOGNIZED)
+  })
+
+  it('不被别的分类器误抢（消息里的数字不该被当成余额/限流码）', () => {
+    const report = classifyGenerationError(UNRECOGNIZED)
+    expect(report.reason).not.toBe('余额不足')
+    expect(report.reason).not.toBe('配额或限流')
+    expect(report.reason).not.toBe('这个模型已经下线了')
+  })
+
+  it('轮询超时文案同样不被吞（含「超时」二字，别被网络超时抢走原文）', () => {
+    const report = classifyGenerationError(
+      '等待生成结果超时（已等 240 秒，最后状态：queued）。任务可能仍在供应商侧运行——请到供应商后台核对，或稍后重新拉取结果。',
+    )
+    expect(report.reason).toContain('仍在供应商侧运行')
+  })
+})
+
+// 眼见链末端 ②：「没有 query op」的根因修复（同上一条的姊妹路径）。这里**直接读 electron/i18n
+// 的真串**而不是抄一份——抄的那份会跟着源漂移，测试就变成自说自话。
+// 钉的是两件事，都是实测踩到过的：
+//  ① 长度：错误卡大标题走 truncateLine，**超 100 字截尾**，而被截掉的恰是「该怎么办」那半句。
+//     初版文案 110 字，用户看到的结尾是「…确认这次调用是否真的出…」——行动指引整段丢失。
+//  ② 不被别的分类器抢走（文案里有「配置」「失败处理」这类高频关键词）。
+describe('无 query op：诚实失败文案要完整送到错误卡标题', () => {
+  const NO_QUERY = desktopT('tasks.noQueryOperation')
+
+  it('短到不会被标题截断（含上游原话时也要留得下）', () => {
+    const report = classifyGenerationError(NO_QUERY)
+    expect(report.reason).toBe(NO_QUERY)
+    expect(report.reason).not.toContain('…')
+    // 留出上游原话的余量：中转的「no available channel」一类要能跟着一起显示。
+    const withDetail = NO_QUERY + desktopT('tasks.upstreamSaid', { detail: 'no available channel' })
+    expect(classifyGenerationError(withDetail).reason).toContain('no available channel')
+  })
+
+  it('「该怎么办」那半句必须活着到用户眼前（被截掉就等于没说）', () => {
+    expect(classifyGenerationError(NO_QUERY).reason).toContain('接入配置')
+  })
+
+  it('不被别的分类器误抢（「配置」「失败」都是高频词）', () => {
+    const report = classifyGenerationError(NO_QUERY)
+    expect(report.reason).not.toBe('模型未配置')
+    expect(report.reason).not.toBe('生成失败')
+    expect(report.reason).not.toBe('余额不足')
+  })
+
+  it('上游原话里有真因时让真因赢——余额不足要给「去充值」而不是我们的通用文案', () => {
+    const report = classifyGenerationError(NO_QUERY + desktopT('tasks.upstreamSaid', { detail: 'insufficient balance' }))
+    expect(report.reason).toBe('余额不足')
+    expect(report.primary).toBe('open-model-access')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 文本侧（AI SDK）真实错误形态 —— 与图/视频侧同一条结构化契约
+// ---------------------------------------------------------------------------
+// 病根（2026-08-12）：图/视频侧的失败在抛出那一刻就带 category（vendorHttp 查表），穿 IPC 到这里
+// 被优先采信；文本侧走 AI SDK，失败被压成一句裸字符串，这里只能用 detectLegacyErrorKind 的关键词
+// 正则去猜。猜就按类漏——上面那串注释里已记着 5 次同型补丁，每次都是「撞到一种没被枚举的措辞 →
+// 落 unknown → 拿到『可能是服务商临时故障或额度问题，建议稍等重试』」。
+//
+// 这组测试**不手搓字符串**：直接喂 electron 侧 describeAgentError() 的真实产物，钉住整条契约
+// （AI SDK 错误 → VendorRequestError → base64 标记 → 这里的 structured 分支）任一环断了都红。
+describe('文本侧 AI SDK 错误：走 structured 分支，不靠关键词猜', () => {
+  const VENDOR = { vendorKey: 'apimart' }
+
+  const apiError = (opts: { statusCode?: number; responseBody?: string; message?: string }): APICallError =>
+    new APICallError({
+      message: opts.message ?? 'Bad Request',
+      url: 'https://api.apimart.ai/v1/chat/completions',
+      requestBodyValues: {},
+      ...(opts.statusCode != null ? { statusCode: opts.statusCode } : {}),
+      ...(opts.responseBody != null ? { responseBody: opts.responseBody } : {}),
+    })
+
+  /** maxRetries 打光后 SDK 抛的套壳形态——429/5xx/网络失败在真机上就长这样。 */
+  const retryWrapped = (last: APICallError): RetryError =>
+    new RetryError({
+      message: `Failed after 4 attempts. Last error: ${last.message}`,
+      reason: 'maxRetriesExceeded',
+      errors: [last, last, last, last],
+    })
+
+  it.each([
+    ['401 鉴权', 401, 'auth'],
+    ['402 欠费', 402, 'balance'],
+    ['429 限流', 429, 'quota'],
+    ['400 参数', 400, 'input'],
+    ['500 服务商故障', 500, 'server'],
+  ] as const)('%s → kind=%s，且 category 来自源头而不是正则', (_label, statusCode, kind) => {
+    const message = describeAgentError(apiError({ statusCode }), VENDOR)
+    // ① 结构化载荷确实穿过来了（这一条断了就说明 electron 侧没编码）
+    expect(parseVendorErrorFromMessage(message)?.category).toBe(kind)
+    // ② 分类结果就是它（这一条断了就说明 classifyError 没采信 structured）
+    expect(classifyGenerationError(message).kind).toBe(kind)
+  })
+
+  // 决定性证据：把标记剥掉再分类 = 模拟「没有结构化时」的老路。答案不同 ⇒ 上面走的确实是
+  // structured 分支，不是碰巧被关键词猜中。500/400 是关键词表**永远猜不到**的两类
+  // （报文里没有 'quota'/'balance'/'timeout' 这些词，只有一个状态码）。
+  it('500 关键词表猜不到——剥掉结构化就退回 unknown 的「稍等重试」误导', () => {
+    const message = describeAgentError(retryWrapped(apiError({ statusCode: 500, message: 'Internal Server Error' })), VENDOR)
+    expect(classifyGenerationError(message).kind).toBe('server')
+    // 老路（无结构化）在同一条报错上给的是 unknown
+    expect(classifyGenerationError(stripVendorErrorMarker(message)).kind).toBe('unknown')
+  })
+
+  it('400 同理——参数被拒不该落进「可能是额度问题」', () => {
+    const message = describeAgentError(apiError({ statusCode: 400, message: 'Bad Request' }), VENDOR)
+    expect(classifyGenerationError(message).kind).toBe('input')
+    expect(classifyGenerationError(stripVendorErrorMarker(message)).kind).toBe('unknown')
+  })
+
+  it('连不上服务商（断网/代理不通）：不甩锅给没被请求到的服务商', () => {
+    // provider-utils 在 `TypeError: fetch failed` 且带 cause 时造的正是这个形状（无 statusCode），
+    // 可重试 → 打光 3 次重试后套 RetryError 抛出。用户拆镜头时断网撞的就是这条。
+    const message = describeAgentError(
+      retryWrapped(
+        new APICallError({
+          message: 'Cannot connect to API: connect ECONNREFUSED 127.0.0.1:443',
+          url: 'https://api.apimart.ai/v1/chat/completions',
+          requestBodyValues: {},
+          isRetryable: true,
+        }),
+      ),
+      VENDOR,
+    )
+    const report = classifyGenerationError(message)
+    expect(parseVendorErrorFromMessage(message)?.category).toBe('network')
+    expect(report.kind).toBe('network')
+    expect(report.reason).toBe('连不上服务商')
+    // 这句才是当初的病：把用户自己的网络问题说成服务商的额度/故障，还劝他重试（必再撞）。
+    expect(report.hint).not.toMatch(/临时故障|额度问题/)
+  })
+
+  it('上游人话（中转只把真原因放在 responseBody）跟着一起到错误卡', () => {
+    const message = describeAgentError(
+      apiError({ statusCode: 400, responseBody: JSON.stringify({ error: { message: '官方算力限制，请等待一段时间后再进行使用' } }) }),
+      VENDOR,
+    )
+    expect(classifyGenerationError(message).providerMessage).toContain('官方算力限制')
+  })
+
+  it('文案信号仍压过状态码——火山「模型未开通」走 404，别被派生成 unknown', () => {
+    // detectModelNotOpen 一族在 structured 分支之前判，接上文本侧后这条链才真正通：
+    // 以前文本侧根本没有 upstreamMsg 可给它读。
+    const message = describeAgentError(
+      apiError({
+        statusCode: 404,
+        responseBody: JSON.stringify({
+          error: { message: 'Your account has not activated the model doubao-seedance. Please activate the model service in the Ark Console.' },
+        }),
+      }),
+      VENDOR,
+    )
+    expect(classifyGenerationError(message).kind).toBe('model-not-open')
+  })
+
+  it('流式超时（我们自己按下的 abort）归 network，而不是一句正则匹配不上的中文裸串', () => {
+    const message = describeAgentError(vendorStallError('模型 90s 内无响应（端点慢或挂起）', VENDOR), VENDOR)
+    expect(classifyGenerationError(message).kind).toBe('network')
+  })
+
+  it('不是厂商请求失败的照旧走 legacy——空响应截断仍是 output-truncated，没被结构化抢走', () => {
+    const message = describeAgentError(new Error('模型「Mimo v2.5」这一轮达到了输出长度上限，内容被截断，没能完整返回。'))
+    expect(parseVendorErrorFromMessage(message)).toBeNull()
+    expect(classifyGenerationError(message).kind).toBe('output-truncated')
   })
 })

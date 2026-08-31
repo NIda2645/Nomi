@@ -3,19 +3,17 @@
 // 任一断言失败即抛错、非零退出（CI-ready）。不触发真实 AI 生成/导出（不花额度）。
 //
 // 用法：pnpm run build && pnpm run test:e2e
-import { _electron as electron } from "playwright";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { launchNomiApp } from "./_launchApp.mjs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), "nomi-smoke-e2e-"));
 const userDataDir = path.join(tempRoot, "user-data");
 const projectsDir = path.join(tempRoot, "projects");
+const evidenceDir = path.resolve("outputs/canvas-smoke");
 mkdirSync(projectsDir, { recursive: true });
+mkdirSync(evidenceDir, { recursive: true });
 
 let passed = 0;
 function assert(cond, label) {
@@ -24,25 +22,24 @@ function assert(cond, label) {
   console.log(`  ✓ ${label}`);
 }
 
-const app = await electron.launch({
-  executablePath: require("electron"),
-  args: [".", `--user-data-dir=${userDataDir}`],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: "1",
-    NOMI_E2E_SMOKE: "1",
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: "1",
-    NOMI_ELECTRON_USER_DATA_DIR: userDataDir,
-    NOMI_SETTINGS_DIR: userDataDir,
-    NOMI_PROJECTS_DIR: projectsDir,
-  },
+const { app, win } = await launchNomiApp({
+  name: "smoke",
+  userDataDir: userDataDir,
+  settingsDir: userDataDir,
+  projectsDir: projectsDir,
+  env: { NOMI_E2E_SMOKE: "1" },
+});
+const rendererDiagnostics = [];
+win.on("console", (message) => {
+  if (["error", "warning"].includes(message.type())) {
+    rendererDiagnostics.push({ type: `console.${message.type()}`, text: message.text() });
+  }
+});
+win.on("pageerror", (error) => {
+  rendererDiagnostics.push({ type: "pageerror", text: error?.stack || error?.message || String(error) });
 });
 
 try {
-  const win = await app.firstWindow();
-  await win.waitForLoadState("domcontentloaded");
-  await win.waitForTimeout(1500);
 
   // 1) 主进程启动 + 渲染层加载（runtime.ts 拆分后的回归底线）
   assert((await win.title()).toLowerCase().includes("nomi"), "窗口标题含 Nomi");
@@ -89,6 +86,32 @@ try {
   await win.getByRole("button", { name: "生成", exact: false }).first().click();
   await win.waitForTimeout(800);
   await win.locator('button[aria-label="添加图片节点"]').first().click();
+  const flowNode = win.locator('.react-flow__node[data-id]').last();
+  await flowNode.waitFor({ timeout: 5000 });
+  const flowNodeId = await flowNode.getAttribute('data-id');
+  await win.waitForFunction((nodeId) => {
+    const outer = Array.from(document.querySelectorAll('.react-flow__node[data-id]'))
+      .find((candidate) => candidate.getAttribute('data-id') === nodeId);
+    const card = outer?.querySelector('.generation-canvas-v2-node');
+    return Boolean(card && !card.hasAttribute('data-appear'));
+  }, flowNodeId, { timeout: 2000 });
+  const nodeGeometry = await flowNode.evaluate((outer) => {
+    const inner = outer.querySelector('.generation-canvas-v2-node');
+    const outerRect = outer.getBoundingClientRect();
+    const innerRect = inner?.getBoundingClientRect();
+    return {
+      outer: { left: outerRect.left, top: outerRect.top, width: outerRect.width, height: outerRect.height },
+      inner: innerRect ? { left: innerRect.left, top: innerRect.top, width: innerRect.width, height: innerRect.height } : null,
+      innerInlineTransform: inner instanceof HTMLElement ? inner.style.transform : null,
+    };
+  });
+  assert(Boolean(nodeGeometry.inner), "新增图片节点挂载真实业务卡片");
+  assert(
+    Math.abs(nodeGeometry.inner.left - nodeGeometry.outer.left) < 2 &&
+      Math.abs(nodeGeometry.inner.top - nodeGeometry.outer.top) < 2 &&
+      !nodeGeometry.innerInlineTransform,
+    "React Flow 节点弹入结束后只定位一次（业务卡片与外层左上角对齐）",
+  );
   const composer = win.locator(".generation-canvas-v2-node__composer-card").first();
   await composer.waitFor({ timeout: 5000 });
   const longPrompt = Array.from({ length: 14 }, (_, i) => `第${i + 1}段：超长提示词溢出回归压测，逐行填满编辑区直到超过卡片高度上限，验证底栏不被盖住。`).join("\n");
@@ -170,6 +193,25 @@ try {
   console.log(`\nSMOKE PASS: ${passed} assertions`);
   await finishAndExit(0);
 } catch (error) {
+  const diagnostic = {
+    error: error?.stack || error?.message || String(error),
+    url: win.url(),
+    rendererDiagnostics,
+    alerts: await win.getByRole("alert").allTextContents().catch(() => []),
+    nodes: await win.locator('.react-flow__node[data-id]').evaluateAll((nodes) => nodes.map((node) => {
+      const inner = node.querySelector('.generation-canvas-v2-node');
+      const outerRect = node.getBoundingClientRect();
+      const innerRect = inner?.getBoundingClientRect();
+      return {
+        id: node.getAttribute('data-id'),
+        outer: { left: outerRect.left, top: outerRect.top, width: outerRect.width, height: outerRect.height },
+        inner: innerRect ? { left: innerRect.left, top: innerRect.top, width: innerRect.width, height: innerRect.height } : null,
+        innerTransform: inner instanceof HTMLElement ? inner.style.transform : null,
+      };
+    })).catch(() => []),
+  };
+  writeFileSync(path.join(evidenceDir, "failure.json"), JSON.stringify(diagnostic, null, 2));
+  await win.screenshot({ path: path.join(evidenceDir, "failure.png") }).catch(() => undefined);
   console.error(`\n${error?.message || error}`);
   await finishAndExit(1);
 }

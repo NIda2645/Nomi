@@ -2,13 +2,11 @@
 // 真旅程 = 新建项目 → 写故事 → 拆镜头 → 动作卡选「图片+视频」→ 真 planner 拆镜 →
 // 方案编辑器（首帧图提示词框）→ 确认落画布 → 画布镜号硬断言（首帧图与视频共号、视频 1..N 连续）。
 // 截图进 .pr53-walk/ 人眼判断。用法：node scripts/pr53-image-video-mode-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.pr53-walk')
 mkdirSync(outDir, { recursive: true })
@@ -27,27 +25,18 @@ if (existsSync(realCatalog)) copyFileSync(realCatalog, path.join(isolatedSetting
 
 const STORY = '深夜的天文台里，研究员苏芮盯着屏幕上突然出现的规律信号。她摘下眼镜揉了揉眼睛，又戴上，信号还在。她抓起内线电话，手指悬在按键上停了三秒，又放下——上一个上报异常信号的同事，第二天工位就空了。窗外，雪落在射电望远镜巨大的天线上。她把信号数据拷进私人硬盘，塞进大衣内袋，走向停车场。'
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_SETTINGS_DIR: isolatedSettings,
-    NOMI_PROJECTS_DIR: isolatedProjects,
-  },
+const { app, win } = await launchNomiApp({
+  name: 'pr53-image-video-mode',
+  settingsDir: isolatedSettings,
+  projectsDir: isolatedProjects,
 })
 const errors = []
 let failed = false
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
   // E2E 桥开关：画布 store 挂 window（镜号硬断言用）
   await win.evaluate(() => window.localStorage.setItem('__nomiE2E', '1'))
   await win.waitForTimeout(1800)

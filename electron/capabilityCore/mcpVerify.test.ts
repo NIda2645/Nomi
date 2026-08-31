@@ -19,6 +19,7 @@ vi.mock('node:os', async (importOriginal) => {
 })
 
 import { verifyMcp } from './mcpVerify'
+import { MCP_CONFIG_VERSION, MCP_CONFIG_VERSION_ENV } from './mcpConfig'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
@@ -38,6 +39,7 @@ function tempHome(): string {
 function signedEnv(client: AuthenticatedMcpClient): Record<string, string> {
   return {
     NOMI_MCP_STDIO: '1',
+    [MCP_CONFIG_VERSION_ENV]: MCP_CONFIG_VERSION,
     [MCP_CLIENT_ENV]: client,
     [MCP_CLIENT_PROOF_ENV]: signMcpClient(client)!,
   }
@@ -59,6 +61,24 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const m = JSON.parse(line)
   if (m.method === 'initialize') process.stdout.write(JSON.stringify({ jsonrpc:'2.0', id: m.id, result: { protocolVersion: m.params.protocolVersion, capabilities: {}, serverInfo: { name: 'fake', version: '1' } } }) + '\\n')
   else if (m.method === 'tools/list') process.stdout.write(JSON.stringify({ jsonrpc:'2.0', id: m.id, result: { tools } }) + '\\n')
+})
+`,
+  )
+  return file
+}
+
+/**
+ * 造一个「回完 initialize 立刻死」的 server：真实世界的「server 崩在握手中途」。
+ * 探针收到应答时子进程多半已死，仍会回写 initialized + tools/list 两帧——练的就是
+ * stdout 处理器在子进程死后继续 send 那条路（写死管道在源头必须无害）。
+ */
+function replyThenDieServerScript(): string {
+  const file = path.join(homeDir, 'reply-then-die-server.mjs')
+  fs.writeFileSync(
+    file,
+    `process.stdin.once('data', () => {
+  process.stdout.write(JSON.stringify({ jsonrpc:'2.0', id: 1, result: { protocolVersion: 'x', capabilities: {}, serverInfo: { name: 'half', version: '1' } } }) + '\\n')
+  process.exit(7)
 })
 `,
   )
@@ -89,10 +109,27 @@ describe('capabilityCore/mcpVerify', () => {
     expect(res.stale).toBe(true)
   })
 
+  it('真实历史格式 node + 已删除 args 脚本 → argument-missing，先于旧签名诊断', async () => {
+    writeClaudeEntry('node', [path.join(homeDir, 'Nomi', 'scripts', 'nomi-mcp.mjs')], {})
+    const res = await verifyMcp('claude')
+    expect(res).toMatchObject({ ok: false, reason: 'argument-missing', stale: true })
+  })
+
   it('命令在但握不上手 → handshake-failed（不许因为文件存在就报「已接入」）', async () => {
     const dud = path.join(homeDir, 'dud.mjs')
     fs.writeFileSync(dud, 'process.exit(3)')
     writeClaudeEntry(process.execPath, [dud])
+    const res = await verifyMcp('claude')
+    expect(res.ok).toBe(false)
+    expect(res.reason).toBe('handshake-failed')
+  })
+
+  // 「server 答完第一帧就崩」：探针会在子进程死后继续回写两帧。平时小包写走同步快路静默无事，
+  // 并行负载下这笔写会落进 libuv 异步队列 → 完成时对端已死 → EPIPE 在 stdin 流上异步 emit
+  // （2026-08-25 真实现场，确定性复现见 mcpVerify.stdinError.test.ts）。无论哪条路，
+  // 结论都必须是 handshake-failed，且不许有任何东西升级成 unhandled error。
+  it('server 回完 initialize 立刻崩掉 → handshake-failed（死后回写必须无害）', async () => {
+    writeClaudeEntry(process.execPath, [replyThenDieServerScript()])
     const res = await verifyMcp('claude')
     expect(res.ok).toBe(false)
     expect(res.reason).toBe('handshake-failed')
@@ -135,7 +172,7 @@ describe('capabilityCore/mcpVerify', () => {
     fs.mkdirSync(path.join(homeDir, '.codex'), { recursive: true })
     fs.writeFileSync(
       path.join(homeDir, '.codex', 'config.toml'),
-      `[mcp_servers.other]\ncommand = "x"\n\n[mcp_servers.nomi]\ncommand = "${process.execPath}"\nargs = ["${script}"]\nstartup_timeout_sec = 60\ntool_timeout_sec = 600\ndefault_tools_approval_mode = "writes"\nenv = { NOMI_MCP_STDIO = "1", ${MCP_CLIENT_ENV} = "codex", ${MCP_CLIENT_PROOF_ENV} = "${signMcpClient('codex')}" }\n`,
+      `[mcp_servers.other]\ncommand = "x"\n\n[mcp_servers.nomi]\ncommand = "${process.execPath}"\nargs = ["${script}"]\nstartup_timeout_sec = 60\ntool_timeout_sec = 600\ndefault_tools_approval_mode = "writes"\nenv = { NOMI_MCP_STDIO = "1", ${MCP_CONFIG_VERSION_ENV} = "${MCP_CONFIG_VERSION}", ${MCP_CLIENT_ENV} = "codex", ${MCP_CLIENT_PROOF_ENV} = "${signMcpClient('codex')}" }\n`,
     )
     const res = await verifyMcp('codex')
     expect(res.ok).toBe(true)

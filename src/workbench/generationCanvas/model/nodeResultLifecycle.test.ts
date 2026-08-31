@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GenerationCanvasNode, GenerationNodeResult } from './generationCanvasTypes'
-import { listNodeMediaResults, promoteNodeResult, removeNodeResult, resultIdentity } from './nodeResultLifecycle'
+import { listNodeMediaResults, listStableNodeMediaResults, removeNodeResult, resultIdentity } from './nodeResultLifecycle'
 
 const image = (id: string, url: string): GenerationNodeResult => ({
   id,
@@ -26,22 +26,24 @@ describe('node result lifecycle', () => {
     expect(listNodeMediaResults(node(a, [a, b])).map(resultIdentity)).toEqual(['a', 'b'])
   })
 
-  it('promotes one result without losing the former primary', () => {
-    const a = image('a', 'a.png')
-    const b = image('b', 'b.png')
-    const patch = promoteNodeResult(node(a, [a, b]), 'b')
-    expect(patch?.result?.id).toBe('b')
-    expect(patch?.history?.map(resultIdentity)).toEqual(['b', 'a'])
+  it('publishes audio and 3D results to assets without adding them to the visual version tray', () => {
+    const audio = { id: 'audio', type: 'audio', url: 'audio.mp3', createdAt: 1 } as GenerationNodeResult
+    const model = { id: 'mesh', type: 'model3d', url: 'mesh.glb', createdAt: 2 } as GenerationNodeResult
+    const mixed = node(model, [audio, model])
+
+    expect(listNodeMediaResults(mixed).map(resultIdentity)).toEqual(['mesh', 'audio'])
+    expect(listStableNodeMediaResults(mixed)).toEqual([])
   })
 
-  it('preserves non-media history while promoting an image', () => {
+  it('keeps the tray order stable when the current result pointer changes', () => {
     const a = image('a', 'a.png')
     const b = image('b', 'b.png')
-    const text = { id: 'text-1', type: 'text', text: '保留这段历史' } as GenerationNodeResult
-    const patch = promoteNodeResult(node(a, [a, text, b]), 'b')
+    const c = image('c', 'c.png')
+    const original = node(c, [c, b, a])
+    const switched = { ...original, result: a }
 
-    expect(patch?.result).toBe(b)
-    expect(patch?.history).toEqual([b, a, text])
+    expect(listStableNodeMediaResults(original).map(resultIdentity)).toEqual(['c', 'b', 'a'])
+    expect(listStableNodeMediaResults(switched).map(resultIdentity)).toEqual(['c', 'b', 'a'])
   })
 
   it('removes only the requested result and promotes the next result when needed', () => {

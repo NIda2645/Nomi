@@ -299,9 +299,19 @@ export default {
       title: "词表内运镜走 enum 精确路（推近→push_in）",
       async act(ctx) {
         ctx._inVocabBaseline = countCameraMoveProposals(ctx.events());
-        const baselineTurnCount = countFinishedTurns(ctx.events());
+        let baselineTurnCount = countFinishedTurns(ctx.events());
         await sendAgentMessage(ctx.win, "给画布上那个视频镜头加一个缓慢推近的运镜。");
         await approveLoop(ctx.win, ctx.projectDir, { timeoutMs: 180_000, baselineTurnCount, approveSet: new Set() });
+        // Agent models occasionally answer the explicit move request in prose without calling a
+        // tool. Retry once only when no proposal was made; wrong proposals still fail unchanged.
+        if (countCameraMoveProposals(ctx.events()) === ctx._inVocabBaseline) {
+          baselineTurnCount = countFinishedTurns(ctx.events());
+          await sendAgentMessage(
+            ctx.win,
+            "这是明确的相机缓慢推近，不是人物向前移动。请给现有视频镜头设置这个运镜。",
+          );
+          await approveLoop(ctx.win, ctx.projectDir, { timeoutMs: 180_000, baselineTurnCount, approveSet: new Set() });
+        }
       },
       verify(ctx) {
         // approveUntilTurnEnds 已在确认卡上拒绝 create_camera_move（写盘工具不在白名单）= 捕获后拒。

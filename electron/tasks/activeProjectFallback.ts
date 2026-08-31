@@ -21,7 +21,7 @@ export function activeTaskProjectFallback(): string {
  * 让播放/参考侧的 url→providerUrl 兜底链有链可退、渲染层的补救本地化认得出它。
  */
 export function unlocalizedTaskAsset(
-  type: "image" | "video" | "model3d",
+  type: "image" | "video" | "audio" | "model3d",
   url: string,
 ): { type: typeof type; url: string; thumbnailUrl: string | null; providerUrl: string | null } {
   return {

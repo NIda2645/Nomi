@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nomi · MCP 制作任务归位样张（看片台 + 兜底）</title>
+<style>
+  /* 真实 Nomi 暗色 token（nomi-tokens.css 照抄；走查截图即此模式） */
+  :root {
+    --bg: oklch(0.18 0.006 80);
+    --paper: oklch(0.235 0.007 80);
+    --ink: oklch(0.93 0.006 85);
+    --ink-80: oklch(0.84 0.006 85);
+    --ink-60: oklch(0.70 0.006 85);
+    --ink-40: oklch(0.62 0.006 85);
+    --ink-30: oklch(0.50 0.006 85);
+    --ink-10: oklch(0.34 0.006 85);
+    --ink-05: oklch(0.30 0.006 85);
+    --line: oklch(0.36 0.007 80);
+    --line-soft: oklch(0.31 0.007 80);
+    --accent: oklch(0.70 0.13 250);
+    --accent-soft: color-mix(in srgb, var(--accent) 26%, var(--paper));
+    --warning: oklch(0.78 0.13 75);
+    --warning-soft: color-mix(in srgb, var(--warning) 22%, var(--paper));
+    --success: #34c759; --success-soft: rgba(52,199,89,.16);
+    --danger: #ff3b30;
+    --r-sm: 6px; --r: 10px; --r-lg: 14px;
+    --sans: Inter, -apple-system, "PingFang SC", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --fast: 140ms cubic-bezier(.2,.7,.3,1);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:14px; }
+  button { font:inherit; color:inherit; cursor:pointer; }
+  .page { width:min(1220px, calc(100% - 40px)); margin:0 auto; padding-bottom:56px; }
+
+  .hero { padding:42px 0 18px; }
+  .eyebrow { display:inline-flex; align-items:center; gap:8px; color:var(--ink-60); font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:13px; }
+  .eyebrow::before { content:""; width:26px; height:1px; background:var(--accent); }
+  h1 { margin:0; font-size:30px; font-weight:600; letter-spacing:-.02em; }
+  h1 em { color:var(--accent); font-style:normal; }
+  .lede { max-width:800px; margin:12px 0 0; color:var(--ink-60); font-size:14px; line-height:1.75; }
+  .lede b { color:var(--ink); font-weight:600; }
+  .rule { display:grid; grid-template-columns:auto 1fr; gap:12px; max-width:800px; margin-top:16px; padding:12px 14px; border-left:2px solid var(--accent); background:var(--ink-05); font-size:12.5px; color:var(--ink-60); line-height:1.7; }
+  .rule b { color:var(--ink); font-family:var(--mono); font-size:10px; letter-spacing:.08em; white-space:nowrap; }
+
+  .bar { position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:12px; padding:12px 0; background:color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter:blur(12px); flex-wrap:wrap; }
+  .seg { display:flex; gap:3px; padding:3px; border-radius:999px; background:var(--ink-05); }
+  .seg button { min-height:32px; padding:0 13px; border:0; border-radius:999px; background:transparent; color:var(--ink-60); font-size:13px; }
+  .seg button[aria-selected="true"] { background:var(--paper); color:var(--ink); font-weight:600; }
+  .bar .hint { color:var(--ink-40); font-family:var(--mono); font-size:10px; }
+
+  .stage { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+  .col-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:12px; }
+  .tag { padding:2px 8px; border-radius:999px; font-family:var(--mono); font-size:10px; }
+  .tag.before { background:rgba(255,59,48,.14); color:var(--danger); }
+  .tag.after { background:var(--success-soft); color:var(--success); }
+  .col-head .note { color:var(--ink-40); font-size:11px; }
+
+  /* 顶栏（真实：项目名 · 三段切换 · 任务 badge） */
+  .topbar { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--line); border-bottom:0; border-radius:var(--r) var(--r) 0 0; background:var(--paper); font-size:11px; color:var(--ink-60); }
+  .mark { position:relative; width:16px; height:16px; border-radius:4px; background:var(--ink); flex:none; }
+  .mark::before, .mark::after, .mark i { content:""; position:absolute; top:3.5px; bottom:3.5px; width:1.8px; border-radius:2px; background:var(--paper); }
+  .mark::before { left:3.5px; } .mark::after { right:3.5px; } .mark i { left:6.8px; transform:rotate(-31deg); }
+  .steps { margin-left:auto; display:flex; gap:2px; padding:2px; border-radius:999px; background:var(--ink-05); }
+  .steps span { padding:3px 9px; border-radius:999px; font-size:10.5px; }
+  .steps span.on { background:var(--paper); color:var(--ink); font-weight:600; }
+  .taskbtn { display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border-radius:var(--r-sm); background:var(--accent-soft); color:var(--accent); font-size:11px; font-weight:600; }
+  .taskbtn .n { min-width:15px; height:15px; border-radius:999px; background:var(--accent); color:var(--paper); display:grid; place-items:center; font-size:9.5px; }
+
+  /* 工作区：画布 + 助手面板 */
+  .work { display:grid; grid-template-columns:1fr 232px; border:1px solid var(--line); border-radius:0 0 var(--r) var(--r); background:var(--bg); min-height:420px; position:relative; overflow:hidden; }
+  .canvas { border-right:1px solid var(--line); background:radial-gradient(var(--ink-10) 1px, transparent 1px); background-size:20px 20px; display:grid; place-items:center; color:var(--ink-40); font-size:11px; }
+  .assist { display:flex; flex-direction:column; background:var(--paper); }
+  .assist-head { display:flex; align-items:center; gap:7px; padding:7px 10px; border-bottom:1px solid var(--line-soft); font-size:12px; font-weight:600; }
+  .assist-head .x { margin-left:auto; color:var(--ink-40); font-size:11px; font-weight:400; }
+  .assist-body { flex:1; padding:10px; display:grid; align-content:start; gap:8px; }
+  .assist-empty { text-align:center; color:var(--ink-40); font-size:10.5px; padding:12px 4px; line-height:1.6; }
+  .assist-empty b { display:block; color:var(--ink-80); font-size:12px; margin-bottom:4px; }
+  .sugg { display:grid; gap:5px; margin-top:7px; }
+  .sugg div { border:1px solid var(--line-soft); border-radius:var(--r-sm); padding:6px 8px; font-size:10px; color:var(--ink-60); text-align:left; }
+  .composer { border-top:1px solid var(--line-soft); padding:8px 10px; }
+  .composer div { min-height:32px; border:1px solid var(--line); border-radius:var(--r-sm); padding:7px 8px; color:var(--ink-40); font-size:10.5px; }
+
+  /* 现状：助手面板里的制作块（照真实实现复刻） */
+  .oldprod { display:grid; gap:9px; padding:10px; border-bottom:1px solid var(--line-soft); }
+  .oldprod .st { display:flex; align-items:center; justify-content:space-between; font-size:10.5px; color:var(--ink-80); }
+  .dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px; }
+  .dot.attention { background:var(--warning); } .dot.working { background:var(--accent); } .dot.success { background:var(--success); }
+  .oldprod .t { font-size:11.5px; font-weight:600; }
+  .oldprod .d { font-size:10.5px; color:var(--ink-60); line-height:1.5; }
+  .oldprod .fig { border:1px solid var(--line-soft); border-radius:var(--r-sm); background:var(--ink-05); overflow:hidden; }
+  .oldprod .fig .ph { aspect-ratio:16/9; display:grid; place-items:center; text-align:center; padding:0 10px; color:var(--ink-40); font-size:10px; }
+  .oldprod .fig .cap { display:flex; justify-content:space-between; padding:5px 7px; font-size:10px; color:var(--ink-40); }
+  .oldprod .btn { width:100%; min-height:28px; border:1px solid var(--line); border-radius:999px; background:var(--ink); color:var(--paper); font-size:11px; }
+  .oldprod .ctrl { display:flex; gap:5px; }
+  .oldprod .ctrl button { flex:1; min-height:25px; border:1px solid var(--line); border-radius:999px; background:transparent; font-size:10px; }
+  .oldprod .det { border-top:1px solid var(--line-soft); padding-top:6px; font-size:10px; color:var(--ink-60); }
+
+  /* 任务中心浮层（真实：380px 顶栏下拉，圆角 lg，阴影） */
+  .tc { position:absolute; top:8px; right:8px; width:300px; border:1px solid var(--line); border-radius:var(--r-lg); background:var(--paper); box-shadow:0 18px 48px rgba(0,0,0,.45); overflow:hidden; z-index:5; }
+  .tc-head { display:flex; align-items:center; gap:7px; padding:9px 11px 8px; border-bottom:1px solid var(--line); }
+  .tc-head b { font-size:13px; }
+  .tc-head .x { margin-left:auto; color:var(--ink-60); font-size:12px; }
+  .tc-sum { padding:6px 11px; background:var(--ink-05); font-size:10.5px; color:var(--ink-60); }
+  .tc-sec { display:flex; align-items:center; gap:5px; padding:6px 11px 3px; font-size:10px; color:var(--ink-60); }
+  /* 现状的干巴行 */
+  .tc-row { padding:6px 11px 9px; }
+  .tc-row .t { font-size:11.5px; color:var(--ink-80); }
+  .tc-row .s { font-size:10px; color:var(--ink-60); margin-top:2px; }
+  /* 优化后的制作卡 */
+  .card { margin:6px 9px 9px; border:1px solid var(--line-soft); border-radius:var(--r); background:var(--bg); overflow:hidden; }
+  .card-in { display:grid; gap:8px; padding:10px; }
+  .idbar { display:flex; align-items:center; gap:6px; }
+  .idbar .who { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--ink-60); }
+  .idbar .who b { color:var(--ink-80); font-weight:600; }
+  .pill { margin-left:auto; display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:600; white-space:nowrap; }
+  .pill.attention { background:var(--warning-soft); color:var(--warning); }
+  .pill.working { background:var(--accent-soft); color:var(--accent); }
+  .pill.success { background:var(--success-soft); color:var(--success); }
+  .pill .sp { width:9px; height:9px; border-radius:2px; background:currentColor; animation:sp 1.4s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .lead { margin:0; font-size:12.5px; font-weight:600; line-height:1.4; }
+  .sub { margin:2px 0 0; font-size:11px; color:var(--ink-60); line-height:1.55; }
+  /* 指路条：门在 CLI 那边，这里只指路 + 次级兜底 */
+  .route { display:grid; gap:5px; padding:8px 9px; border-radius:var(--r-sm); background:var(--warning-soft); }
+  .route .m { font-size:11px; color:var(--ink); line-height:1.5; }
+  .route .m b { font-weight:600; }
+  .route .f { font-size:10.5px; color:var(--ink-60); }
+  .route .f u { cursor:pointer; text-underline-offset:2px; }
+  .facts { display:flex; flex-wrap:wrap; gap:4px; }
+  .fact { padding:2px 7px; border-radius:999px; background:var(--ink-05); color:var(--ink-60); font-size:10px; font-family:var(--mono); }
+  .fact b { color:var(--ink-80); font-weight:600; }
+  .prev { border:1px solid var(--line-soft); border-radius:var(--r-sm); overflow:hidden; cursor:pointer; position:relative; }
+  .prev .media { aspect-ratio:16/9; display:grid; place-items:center; }
+  .prev .media.video { background:linear-gradient(140deg, color-mix(in srgb, var(--accent) 30%, var(--paper)), color-mix(in srgb, var(--warning) 26%, var(--paper))); }
+  .prev .media.image { background:linear-gradient(140deg, color-mix(in srgb, var(--ink) 22%, var(--paper)), color-mix(in srgb, var(--accent) 22%, var(--paper))); }
+  .prev .play { width:30px; height:30px; border-radius:50%; background:color-mix(in srgb, var(--paper) 88%, transparent); display:grid; place-items:center; font-size:11px; color:var(--ink); border:0; }
+  .prev .chips { position:absolute; left:6px; bottom:6px; display:flex; gap:4px; }
+  .prev .chip { padding:2px 6px; border-radius:999px; background:color-mix(in srgb, var(--bg) 76%, transparent); backdrop-filter:blur(6px); font-size:9.5px; color:var(--ink-80); font-family:var(--mono); }
+  .acts { display:flex; align-items:center; gap:8px; }
+  .acts .main { flex:1; min-height:30px; border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--ink-80); font-size:11.5px; }
+  .acts .main:hover { background:var(--ink-05); }
+  .acts .main.solid { background:var(--ink); border-color:var(--ink); color:var(--paper); font-weight:600; }
+  .acts .quiet { border:0; background:transparent; color:var(--ink-40); font-size:11px; white-space:nowrap; }
+  .acts .quiet:hover { color:var(--danger); }
+  .det { font-size:10.5px; color:var(--ink-60); }
+
+  .fixes { margin-top:26px; }
+  .fixes h2 { font-size:18px; margin:0 0 12px; }
+  .fix-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
+  .fix { border-left:2px solid var(--accent); background:var(--ink-05); border-radius:0 var(--r-sm) var(--r-sm) 0; padding:11px 13px; }
+  .fix .no { font-family:var(--mono); font-size:9.5px; color:var(--accent); letter-spacing:.05em; }
+  .fix b { display:block; font-size:12.5px; margin:3px 0; }
+  .fix p { margin:0; font-size:11.5px; color:var(--ink-60); line-height:1.6; }
+  .fix.hard { border-left-color:var(--danger); } .fix.hard .no { color:var(--danger); }
+  .fix.cut { border-left-color:var(--ink-30); } .fix.cut .no { color:var(--ink-40); }
+  footer { margin-top:28px; padding-top:14px; border-top:1px solid var(--line-soft); color:var(--ink-40); font-family:var(--mono); font-size:9.5px; text-align:center; }
+  @media (max-width:960px) { .stage { grid-template-columns:1fr; } .fix-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <section class="hero">
+    <div class="eyebrow">Nomi-side scope · 看片台 + 兜底 · 2026-08-11</div>
+    <h1>制作任务<em>归位</em>：住进任务中心，Nomi 只做 CLI 做不到的事</h1>
+    <p class="lede">Claude Code / Codex 里已经能就地选方向、批预算、喊停——在 Nomi 再造一套等价入口是<b>重复建设</b>，还制造「两个地方能操作、容易误点」。Nomi 真正不可替代的只有三件：<b>看像素</b>（终端渲染不了图）、<b>深度编辑</b>、<b>兜底与自主发起</b>。</p>
+    <div class="rule"><b>总规则</b><span>门首选发起端（谁起的谁决定）；发起端超时 / 不支持 / 用户不在 → Nomi 兜底 + 系统通知。Nomi 侧呈现从「主决策面」降级为「看片台 + 兜底面」，并从助手面板搬进<b>任务中心</b>——它顶栏常驻、任何视图都能开，助手面板只在生成区有。</span></div>
+  </section>
+
+  <div class="bar">
+    <div class="seg" role="tablist">
+      <button role="tab" aria-selected="true" data-s="gate">等你在 CLI 决定</button>
+      <button role="tab" aria-selected="false" data-s="running">制作中</button>
+      <button role="tab" aria-selected="false" data-s="sample">样片可看</button>
+      <button role="tab" aria-selected="false" data-s="done">已完成</button>
+    </div>
+    <span class="hint">左=现状（照真实截图复刻）· 右=优化后</span>
+  </div>
+
+  <div class="stage">
+    <div>
+      <div class="col-head"><span class="tag before">现状</span><span class="note">任务中心一行干巴 + 助手面板里另一套操作</span></div>
+      <div class="topbar">
+        <span class="mark"><i></i></span><span>未命名项目</span>
+        <span class="steps"><span>创作</span><span class="on">生成</span><span>预览</span></span>
+        <span class="taskbtn"><span class="n">1</span>任务</span>
+      </div>
+      <div class="work">
+        <div class="canvas">画布</div>
+        <aside class="assist">
+          <div class="assist-head"><span class="mark"><i></i></span>生成助手<span class="x">✕</span></div>
+          <div class="oldprod" id="old"></div>
+          <div class="assist-body">
+            <div class="assist-empty"><b>我帮你搭画布</b>铺镜头、改提示词、连节点都交给我。
+              <div class="sugg"><div>列 3 个镜头铺到画布 ↵</div><div>给选中的镜头写一版提示词 ↵</div></div>
+            </div>
+          </div>
+          <div class="composer"><div>告诉我画布上想怎么搭…</div></div>
+        </aside>
+        <div class="tc">
+          <div class="tc-head"><span>◷</span><b>任务</b><span class="x">✕</span></div>
+          <div class="tc-sum">1 进行中</div>
+          <div class="tc-sec">⟳ 进行中 1</div>
+          <div class="tc-row"><div class="t">Nomi 制作 · brand.promo</div><div class="s" id="old-tc-status">等待确认方向</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="col-head"><span class="tag after">优化后</span><span class="note">任务中心=完整看片台 · 助手面板纯聊画布</span></div>
+      <div class="topbar">
+        <span class="mark"><i></i></span><span>未命名项目</span>
+        <span class="steps"><span>创作</span><span class="on">生成</span><span>预览</span></span>
+        <span class="taskbtn"><span class="n">1</span>任务</span>
+      </div>
+      <div class="work">
+        <div class="canvas">画布</div>
+        <aside class="assist">
+          <div class="assist-head"><span class="mark"><i></i></span>生成助手<span class="x">✕</span></div>
+          <div class="assist-body">
+            <div class="assist-empty"><b>我帮你搭画布</b>铺镜头、改提示词、连节点都交给我。
+              <div class="sugg"><div>列 3 个镜头铺到画布 ↵</div><div>给选中的镜头写一版提示词 ↵</div></div>
+            </div>
+          </div>
+          <div class="composer"><div>告诉我画布上想怎么搭…</div></div>
+        </aside>
+        <div class="tc">
+          <div class="tc-head"><span>◷</span><b>任务</b><span class="x">✕</span></div>
+          <div class="tc-sum" id="new-sum">1 进行中</div>
+          <div class="tc-sec" id="new-sec">⟳ 进行中 1</div>
+          <div class="card"><div class="card-in" id="new"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="fixes">
+    <h2>范围与逐处修复</h2>
+    <div class="fix-grid">
+      <div class="fix" style="grid-column:1/-1">
+        <span class="no">★ 归位（用户两刀）· 一功能一个家 §1.5.2</span>
+        <b>制作任务从助手面板搬进任务中心；Nomi 侧只留「看片台 + 兜底」</b>
+        <p>① 助手面板不再挂制作块——两套操作不再相邻，误点消失，助手回归「只和 Nomi 聊画布」。<br>
+        ② 任务中心本来就在列这个 run（现状只有一行「brand.promo / 等待确认方向」，点了却跳去助手面板操作 = 一半住这、一半住那）。现在它就地长成完整制作卡。<br>
+        ③ 任务中心<b>顶栏常驻、任何视图都能开</b>（创作/生成/预览都在）；助手面板只在生成区有——任务本来就该住全局可达的地方。</p>
+      </div>
+      <div class="fix cut">
+        <span class="no">砍 · 重复建设</span>
+        <b>不在 Nomi 复刻方向候选/样片批准的主入口</b>
+        <p>CLI 里一个回车 10 秒完事，用户人就在那边。Nomi 侧只显示<b>「Codex 那边等你选方向」</b>指路 + 一个收在次级的「也可以在这里决定」兜底键（打开现有弹窗）。两处文案不再需要同步。</p>
+      </div>
+      <div class="fix">
+        <span class="no">留 · CLI 给不了的</span>
+        <b>产物可看可播 + 点击直达</b>
+        <p>终端渲染不了图——样片/粗剪/成片的预览是 Nomi 唯一不可替代的价值，放在卡里最显眼处，点击跳到画布对应节点/预览页。</p>
+      </div>
+      <div class="fix hard">
+        <span class="no">内容硬伤 · productionRunView.ts:159</span>
+        <b>四种门共用一套文案 → 按门类分</b>
+        <p>方向门/样片门都在说「请核对<b>支出边界</b>；批准前不会调用<b>付费模型</b>」——方向门根本不花钱。改成每类门自己的一句话（中英齐）。</p>
+      </div>
+      <div class="fix hard">
+        <span class="no">设计系统违规 · ProductionStatusPanel.tsx:33</span>
+        <b>IconLoader2 + animate-spin → NomiLoadingMark</b>
+        <p>§3.9.1：全仓唯一加载动画是旋转 logo。这处是本轮 MCP 工作新引入的违规。</p>
+      </div>
+      <div class="fix">
+        <span class="no">空间 · 最丑一处</span>
+        <b>空预览 220px 大灰框 → 无产物不渲染</b>
+        <p>顺带干掉「没有产物」被三个控件各报一遍（框内文案 + 「最近产物」+「等待产物」）。</p>
+      </div>
+      <div class="fix">
+        <span class="no">语义 + 媒体</span>
+        <b>主按钮不挂警告三角；视频改封面+播放键</b>
+        <p>正向操作用 ⚠ 图标语义错。原生 <code>&lt;video controls&gt;</code> 的三点菜单/全屏在窄卡里又挤又脏，且 <code>bg-black</code> 是硬编码非 token。</p>
+      </div>
+      <div class="fix">
+        <span class="no">权重 · 破坏性动作</span>
+        <b>暂停/取消不再等宽并排</b>
+        <p>取消不可逆，现在和暂停长得一样。改：暂停=次级按钮，取消=弱化文字键、hover 转危险色。</p>
+      </div>
+      <div class="fix">
+        <span class="no">保留 · 兜底不能砍</span>
+        <b>用户不在生成区 / CLI 断线 → 全屏弹窗 + 系统通知</b>
+        <p>历史教训：只盖画布层的确认曾造成「外部生成到非当前项目的静默黑洞」。兜底路径（elicitation 超时 → Nomi 接管）Phase A 已建成，保留不动。</p>
+      </div>
+      <div class="fix">
+        <span class="no">保留 · origin=nomi</span>
+        <b>用户在 Nomi 内自主发起时，门是主路径</b>
+        <p>那时没有 CLI 可用，方向/样片/预算门都在 Nomi 里做，走同一套弹窗机制（不另造并行版 P1）。</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>NOMI MCP · 制作任务归位样张 · 依据真实走查截图 tests/ux/shots/production-mcp/00-task-center.png（2026-08-11 19:57）· token 取自 nomi-tokens.css 暗色真值</footer>
+</main>
+
+<script>
+const S = {
+  gate: {
+    oldStatus:'等待确认方向',
+    old:{ tone:'attention', st:'等待确认', t:'继续制作前需要你的确认', d:'请核对当前制作范围和支出边界；批准前不会继续调用付费模型。', media:null, btn:'⚠ 核对并确认', ctrl:[] },
+    sum:'1 进行中', sec:'⟳ 进行中 1',
+    new:{ tone:'attention', pill:'等你确认', who:'Codex 驱动',
+      lead:'Nomi 制作 · brand.promo', sub:'方向定了我再拟分镜。这一步不花钱。',
+      route:{ m:'<b>Codex 那边等你选方向</b> —— 三个候选已经发过去了', f:'也可以 <u>在这里决定</u>' },
+      facts:['镜 0/16','未花费'], media:null, main:null, quiet:'取消制作' } },
+  running: {
+    oldStatus:'制作进行中',
+    old:{ tone:'working', st:'制作中', t:'制作正在进行', d:'后台状态会在这里持续更新；供应商没有提供进度时不会显示虚假百分比。', media:'image', btn:'◴ 查看当前阶段', ctrl:['暂停','取消制作'] },
+    sum:'1 进行中', sec:'⟳ 进行中 1',
+    new:{ tone:'working', pill:'制作中', spin:true, who:'Codex 驱动',
+      lead:'正在生成镜头 03', sub:'点预览跳到该镜头。想停就在 Codex 里说「先停一下」。',
+      facts:['镜 3/16','已用 <b>01:42</b>','已花 <b>¥23.40</b>'], media:'image', chips:['图片 · 镜 02'],
+      main:'暂停', quiet:'取消制作' } },
+  sample: {
+    oldStatus:'等待确认',
+    old:{ tone:'attention', st:'等待确认', t:'继续制作前需要你的确认', d:'请核对当前制作范围和支出边界；批准前不会继续调用付费模型。', media:'video', btn:'⚠ 核对并确认', ctrl:[] },
+    sum:'1 进行中', sec:'⟳ 进行中 1',
+    new:{ tone:'attention', pill:'等你确认', who:'Codex 驱动',
+      lead:'样片好了 · 首镜 5 秒', sub:'点开看大图；满意与否在 Codex 里回一句。',
+      route:{ m:'<b>Codex 那边等你决定</b> —— 满意就继续剩下 15 镜', f:'也可以 <u>在这里决定</u>' },
+      facts:['镜 1/16','已花 <b>¥6.20</b>','上限 ¥99.74'], media:'video', chips:['视频 · 5s','镜 01'],
+      main:null, quiet:'取消制作' } },
+  done: {
+    oldStatus:'已完成',
+    old:{ tone:'success', st:'已完成', t:'制作完成', d:'所有已批准阶段均已完成，产物仍保存在当前本地项目中。', media:'video', btn:null, ctrl:[] },
+    sum:'1 已完成', sec:'✓ 已完成 1',
+    new:{ tone:'success', pill:'已完成', who:'Codex 驱动 · 用时 08:24',
+      lead:'成片好了 · 60 秒', sub:'镜头 07 口播与画面稍有出入，建议重看。',
+      facts:['16/16 镜','实花 <b>¥86.20</b>','上限 ¥99.74'], media:'video', chips:['成片 · 60s'],
+      main:'播放成片', mainSolid:true, quiet:'打开项目' } },
+}
+
+function renderOld(v) {
+  const media = v.media
+    ? `<div class="ph" style="padding:0;background:${v.media==='video'
+        ? 'linear-gradient(140deg,color-mix(in srgb,var(--accent) 30%,var(--paper)),color-mix(in srgb,var(--warning) 26%,var(--paper)))'
+        : 'linear-gradient(140deg,color-mix(in srgb,var(--ink) 22%,var(--paper)),color-mix(in srgb,var(--accent) 22%,var(--paper)))'}">
+        ${v.media==='video'?'<div style="width:100%;height:20px;background:color-mix(in srgb,var(--bg) 70%,transparent);align-self:end;display:flex;align-items:center;gap:6px;padding:0 6px;font-size:8.5px;color:var(--ink-60)">▶ 0:00/0:02 ▁▁▁ 🔊 ⛶ ⋮</div>':''}
+      </div>`
+    : `<div class="ph">首个可预览产物生成后会出现在这里</div>`
+  return `
+    <div class="st"><span><span class="dot ${v.tone}"></span>${v.st}</span><span style="color:var(--ink-40);font-size:9.5px">来自 Codex</span></div>
+    <div><div class="t">${v.t}</div><div class="d">${v.d}</div></div>
+    <div class="fig">${media}<div class="cap"><span style="color:var(--ink-80)">最近产物</span><span>${v.media?(v.media==='video'?'视频':'图片'):'等待产物'}</span></div></div>
+    ${v.btn?`<button class="btn">${v.btn}</button>`:''}
+    ${v.ctrl.length?`<div class="ctrl">${v.ctrl.map(c=>`<button>${c}</button>`).join('')}</div>`:''}
+    <div class="det">› 制作详情</div>`
+}
+
+function renderNew(v) {
+  const media = v.media ? `
+    <div class="prev"><div class="media ${v.media}">${v.media==='video'?'<button class="play">▶</button>':''}
+      <div class="chips">${(v.chips||[]).map(c=>`<span class="chip">${c}</span>`).join('')}</div></div></div>` : ''
+  const route = v.route ? `<div class="route"><div class="m">${v.route.m}</div><div class="f">${v.route.f}</div></div>` : ''
+  return `
+    <div class="idbar"><span class="who"><span class="mark" style="width:14px;height:14px"><i></i></span><b>${v.who}</b></span>
+      <span class="pill ${v.tone}">${v.spin?'<span class="sp"></span>':''}${v.pill}</span></div>
+    <div><p class="lead">${v.lead}</p><p class="sub">${v.sub}</p></div>
+    <div class="facts">${v.facts.map(f=>`<span class="fact">${f}</span>`).join('')}</div>
+    ${route}
+    ${media}
+    <div class="acts">
+      ${v.main?`<button class="main ${v.mainSolid?'solid':''}">${v.main}</button>`:'<span style="flex:1"></span>'}
+      <button class="quiet">${v.quiet}</button>
+    </div>
+    <div class="det">› 制作详情</div>`
+}
+
+function render(key) {
+  const s = S[key]
+  document.querySelectorAll('[data-s]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.s === key)))
+  document.getElementById('old').innerHTML = renderOld(s.old)
+  document.getElementById('old-tc-status').textContent = s.oldStatus
+  document.getElementById('new').innerHTML = renderNew(s.new)
+  document.getElementById('new-sum').textContent = s.sum
+  document.getElementById('new-sec').textContent = s.sec
+}
+document.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => render(b.dataset.s)))
+render('gate')
+</script>
+</body>
+</html>

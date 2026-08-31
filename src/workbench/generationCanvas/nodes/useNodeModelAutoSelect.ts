@@ -4,7 +4,12 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ModelOption } from '../../../config/models'
+import {
+  parseCustomCapabilityContract,
+  replaceCustomCapabilityContractMeta,
+} from '../../../config/modelArchetypes'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
+import { projectParameterReferenceSlots } from '../model/parameterReferenceSlots'
 import { buildModelControls, defaultPatchForControls, readMeta } from './controls/parameterControlModel'
 import {
   applyArchetypeModeSwitch,
@@ -14,9 +19,21 @@ import {
 } from './controls/archetypeMeta'
 import { resolveModeForConnectedReferences } from '../agent/referenceEdgeCapability'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import type { CanvasMutationOptions } from '../store/canvasGuards'
 import { remapArchetypeMode } from '../runner/usableVendorModel'
 import { showInfoToast } from '../../../utils/showInfoToast'
 import { chooseDefaultModelOption, resolveArchetypeForOption } from './nodeModelArchetype'
+import {
+  generationModelDefaultsLoaded,
+  getGenerationModelDefaults,
+  loadGenerationModelDefaults,
+  subscribeGenerationModelDefaults,
+} from '../model/generationModelDefaults'
+import {
+  deriveGenerationDefaultTaskKind,
+  nodeHasImageReference,
+  resolveDefaultModelOption,
+} from './defaultNodeModelSelection'
 
 type UseNodeModelAutoSelectArgs = {
   node: GenerationCanvasNode
@@ -28,7 +45,7 @@ type UseNodeModelAutoSelectArgs = {
   isGenerationNode: boolean
   isImageLike: boolean
   isVideoLike: boolean
-  updateNode: (nodeId: string, patch: Partial<GenerationCanvasNode>) => void
+  updateNode: (nodeId: string, patch: Partial<GenerationCanvasNode>, options?: CanvasMutationOptions) => void
 }
 
 export function useNodeModelAutoSelect({
@@ -44,15 +61,37 @@ export function useNodeModelAutoSelect({
   updateNode,
 }: UseNodeModelAutoSelectArgs): void {
   const { t } = useTranslation()
+  // 「新建卡片默认模型」偏好装好没有。装好前**不能**挑模型：此刻偏好是空的，
+  // 挑出来的是「自动选择」的结果并会写进节点 meta，偏好随后才到——
+  // 用户看到的就是「我明明设了默认模型，新建的卡还是别的」。装好后订阅会触发重跑。
+  const defaultsReady = React.useSyncExternalStore(
+    subscribeGenerationModelDefaults,
+    generationModelDefaultsLoaded,
+    generationModelDefaultsLoaded,
+  )
+  React.useEffect(() => {
+    void loadGenerationModelDefaults()
+  }, [])
+
   React.useEffect(() => {
     if (!isGenerationNode) return
     if (selectedModelValue) return
-    const firstOption = chooseDefaultModelOption(modelOptions, isImageLike, isVideoLike)
+    if (!defaultsReady) return
+    const taskKind = deriveGenerationDefaultTaskKind({
+      isImageLike,
+      isVideoLike,
+      hasImageReference: nodeHasImageReference(node.meta as Record<string, unknown> | undefined),
+    })
+    // 用户设过就用他的；没设、或设的那个此刻不可用（供应商删了/模型禁用了），
+    // 就让位给原有的健康挑选策略——绝不把卡片钉在一个跑不了的模型上。
+    const preferred = resolveDefaultModelOption(modelOptions, getGenerationModelDefaults(), taskKind)
+    const firstOption = preferred ?? chooseDefaultModelOption(modelOptions, isImageLike, isVideoLike)
     if (!firstOption?.value) return
     const defaultPatch = defaultPatchForControls(buildModelControls(firstOption.meta, isImageLike, isVideoLike))
+    const modelMeta = replaceCustomCapabilityContractMeta(node.meta || {}, firstOption.meta)
     updateNode(node.id, {
-      meta: {
-        ...(node.meta || {}),
+      meta: projectParameterReferenceSlots({
+        ...modelMeta,
         modelKey: firstOption.modelKey || firstOption.value,
         modelAlias: firstOption.modelAlias || firstOption.value,
         modelVendor: firstOption.vendor || null,
@@ -62,9 +101,9 @@ export function useNodeModelAutoSelect({
         ...(isVideoLike
           ? { videoModel: firstOption.value, videoModelVendor: firstOption.vendor || null }
           : { imageModel: firstOption.value, imageModelVendor: firstOption.vendor || null }),
-      },
-    })
-  }, [isGenerationNode, isVideoLike, modelOptions, node.id, node.meta, selectedModelValue, updateNode])
+      }, firstOption.meta),
+    }, { history: false })
+  }, [defaultsReady, isGenerationNode, isImageLike, isVideoLike, modelOptions, node.id, node.meta, selectedModelValue, updateNode])
 
   React.useEffect(() => {
     if (!isGenerationNode || !selectedModelOption) return
@@ -73,20 +112,24 @@ export function useNodeModelAutoSelect({
       readMeta(meta, 'modelVendor') ||
       readMeta(meta, 'vendor') ||
       readMeta(meta, isVideoLike ? 'videoModelVendor' : 'imageModelVendor')
-    if (!optionVendor || currentVendor === optionVendor) return
-    updateNode(node.id, {
-      meta: {
-        ...(node.meta || {}),
-        modelKey: selectedModelOption.modelKey || selectedModelOption.value,
-        modelAlias: selectedModelOption.modelAlias || selectedModelOption.value,
-        modelVendor: optionVendor,
-        vendor: optionVendor,
-        modelLabel: selectedModelOption.label,
-        ...(isVideoLike
-          ? { videoModel: selectedModelOption.value, videoModelVendor: optionVendor }
-          : { imageModel: selectedModelOption.value, imageModelVendor: optionVendor }),
-      },
-    })
+    if (!optionVendor) return
+    const contractChanged = JSON.stringify(parseCustomCapabilityContract(node.meta))
+      !== JSON.stringify(parseCustomCapabilityContract(selectedModelOption.meta))
+    const modelMeta = replaceCustomCapabilityContractMeta(node.meta || {}, selectedModelOption.meta)
+    const nextMeta = projectParameterReferenceSlots({
+      ...modelMeta,
+      modelKey: selectedModelOption.modelKey || selectedModelOption.value,
+      modelAlias: selectedModelOption.modelAlias || selectedModelOption.value,
+      modelVendor: optionVendor,
+      vendor: optionVendor,
+      modelLabel: selectedModelOption.label,
+      ...(isVideoLike
+        ? { videoModel: selectedModelOption.value, videoModelVendor: optionVendor }
+        : { imageModel: selectedModelOption.value, imageModelVendor: optionVendor }),
+    }, selectedModelOption.meta)
+    const declarationsChanged = JSON.stringify(node.meta?.parameterReferenceSlots) !== JSON.stringify(nextMeta.parameterReferenceSlots)
+    if (currentVendor === optionVendor && !contractChanged && !declarationsChanged) return
+    updateNode(node.id, { meta: nextMeta }, { history: false })
   }, [isGenerationNode, isVideoLike, meta, node.id, node.meta, selectedModelOption, updateNode])
 
   // ★变体合并迁移（2026-06-16，最大风险点）：旧项目 node.meta.modelKey 钉的是具体变体串
@@ -113,7 +156,7 @@ export function useNodeModelAutoSelect({
         modelAlias: patch.modelKey,
         ...(isVideoLike ? { videoModel: patch.modelKey } : { imageModel: patch.modelKey }),
       },
-    })
+    }, { history: false })
   }, [isGenerationNode, isVideoLike, meta, node.id, node.meta, selectedModelValue, updateNode])
 
   // 供应商断开后，节点钉死的旧模型已从下拉移除（selectedModelOption===null，但 selectedModelValue 仍在）。
@@ -143,7 +186,7 @@ export function useNodeModelAutoSelect({
       : null
     updateNode(node.id, {
       meta: {
-        ...(node.meta || {}),
+        ...replaceCustomCapabilityContractMeta(node.meta || {}, target.meta),
         modelKey: target.modelKey || target.value,
         modelAlias: target.modelAlias || target.value,
         modelVendor: optionVendor,
@@ -154,7 +197,7 @@ export function useNodeModelAutoSelect({
           ? { videoModel: target.value, videoModelVendor: optionVendor }
           : { imageModel: target.value, imageModelVendor: optionVendor }),
       },
-    })
+    }, { history: false })
     showInfoToast(t('generationCommon.node.providerDisconnectedSwitched', { model: target.label }))
   }, [
     isGenerationNode,
@@ -181,6 +224,10 @@ export function useNodeModelAutoSelect({
     if (!patch) return
     const state = useGenerationCanvasStore.getState()
     const promotedModeId = resolveModeForConnectedReferences({ ...node, meta: patch }, state.nodes, state.edges)
-    updateNode(node.id, { meta: promotedModeId ? applyArchetypeModeSwitch(patch, archetype, promotedModeId) : patch })
+    updateNode(
+      node.id,
+      { meta: promotedModeId ? applyArchetypeModeSwitch(patch, archetype, promotedModeId) : patch },
+      { history: false },
+    )
   }, [isGenerationNode, archetype, node, node.id, node.meta, updateNode])
 }

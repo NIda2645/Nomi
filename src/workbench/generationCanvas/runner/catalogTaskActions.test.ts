@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildCatalogTaskRequest,
   isRateLimitedPollError,
@@ -11,9 +11,15 @@ import {
 } from './catalogTaskActions'
 import { resolveGenerationReferences } from './generationReferenceResolver'
 import { MODEL_ARCHETYPES } from '../../../config/modelArchetypes'
+import { encodeMention } from '../../assets/promptMentions'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { TaskRequestDto, TaskResultDto } from '../../api/taskApi'
 import type { ModelCatalogModelDto, ModelCatalogVendorDto } from '../../api/modelCatalogApi'
+import * as localTaskControl from './localTaskControl'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function textNode(): GenerationCanvasNode {
   return { id: 'n1', kind: 'text', title: '', position: { x: 0, y: 0 }, meta: { modelKey: 'gpt-x' } }
@@ -163,6 +169,19 @@ describe('buildCatalogTaskRequest — 档案驱动 input（extras.archetypeInput
     expect(ai.reference_video_urls).toEqual(['v1.mp4'])
     expect(ai.first_frame_url).toBeUndefined()
   })
+
+  it('全能参考模式：连入的视频引用在最终请求提示词中投影为 @video1', () => {
+    const videoUrl = 'nomi-local://asset/project/drone-reference.mp4'
+    const node = seedanceVideoNode('omni', {})
+    node.prompt = `镜头运动参考 ${encodeMention(videoUrl)}`
+
+    const request = buildCatalogTaskRequest(node, {
+      references: { referenceVideos: [videoUrl] },
+    }).request
+
+    expect(request.prompt).toBe('镜头运动参考 @video1')
+    expect((request.extras?.archetypeInput as Record<string, unknown>).reference_video_urls).toEqual([videoUrl])
+  })
 })
 
 describe('buildCatalogTaskRequest — 档案 mapping 桶由 transportTaskKind 显式决定（修 omni 误路由）', () => {
@@ -304,11 +323,11 @@ describe('buildCatalogTaskRequest — 标准参考面与档案投影并存（中
   })
 })
 
-// 根因回归（2026-06-08）：断开 kie、连 apimart 后，钉死在 kie 的老节点运行时必须自动迁到
-// apimart 的同款模型，而不是抛 `API key missing: kie`。
-describe('runCatalogGenerationTask — 断开 kie 后老节点自动迁移到已连接供应商', () => {
-  const vendorDto = (key: string, hasApiKey: boolean): ModelCatalogVendorDto => ({ key, name: key, enabled: true, hasApiKey, createdAt: '', updatedAt: '' })
-  const apimartSeedream: ModelCatalogModelDto = { modelKey: 'doubao-seedream-4.5', vendorKey: 'apimart', labelZh: 'Seedream 4.5', kind: 'image', enabled: true, meta: { archetypeId: 'seedream' }, createdAt: '', updatedAt: '' }
+// 已持久化 vendor 的节点只能沿候选 revision lineage 迁移；独立供应商即便同名/同 archetype 也不能
+// 被静默选中，否则一次 credential repair 会把旧节点送到完全无关的端点并产生付费请求。
+describe('runCatalogGenerationTask — 旧节点只沿 catalog lineage 迁移', () => {
+  const vendorDto = (key: string, hasApiKey: boolean, meta?: unknown): ModelCatalogVendorDto => ({ key, name: key, enabled: true, hasApiKey, ...(meta ? { meta } : {}), createdAt: '', updatedAt: '' })
+  const apimartSeedream: ModelCatalogModelDto = { modelKey: 'doubao-seedream-4.5', vendorKey: 'apimart', labelZh: 'Seedream 4.5', kind: 'image', enabled: true, published: true, publishedModes: ['text_to_image'], meta: { archetypeId: 'seedream' }, createdAt: '', updatedAt: '' }
 
   const staleKieNode: GenerationCanvasNode = {
     id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫',
@@ -328,13 +347,64 @@ describe('runCatalogGenerationTask — 断开 kie 后老节点自动迁移到已
     return { calls, options }
   }
 
-  it('请求打到 apimart，modelKey 改写成 doubao-seedream-4.5（不再要 kie 的 key）', async () => {
+  it('无 lineage 的 legacy vendor 不再按 archetype 静默请求 apimart', async () => {
     const { calls, options } = harness()
-    const result = await runCatalogGenerationTask(staleKieNode, options)
+    await expect(runCatalogGenerationTask(staleKieNode, options)).rejects.toThrow(/没有已连接的供应商提供/)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('无关同名模型排前时，真实 resolve→run 调用链只请求同 lineage active successor', async () => {
+    const calls: Array<{ vendor: string; request: TaskRequestDto }> = []
+    const candidate = {
+      ...apimartSeedream,
+      modelKey: 'seedream',
+      vendorKey: 'kie--candidate-revision-2',
+    }
+    const candidateMeta = {
+      adapterCandidateRootVendorKey: 'kie',
+      adapterCandidateSourceVendorKey: 'kie',
+      adapterCandidatePromotionPredecessors: {
+        seedream: { vendorKey: 'kie', publishedModes: ['text_to_image'] },
+      },
+    }
+
+    await runCatalogGenerationTask(staleKieNode, {
+      listCatalogVendors: async () => [
+        vendorDto('kie', true),
+        vendorDto('unrelated', true),
+        vendorDto('kie--candidate-revision-2', true, candidateMeta),
+      ],
+      // enabled:true 的真实 DTO 不含已停用 source model；source vendor 仍因另一个兄弟模型可执行。
+      listCatalogModels: async () => [
+        { ...candidate, vendorKey: 'unrelated' },
+        candidate,
+      ],
+      runTask: async (vendor: string, request: TaskRequestDto) => {
+        calls.push({ vendor, request })
+        return { id: 't-candidate', kind: request.kind, status: 'succeeded', assets: [{ type: 'image', url: 'https://x/candidate.png' }], raw: {} }
+      },
+    })
+
     expect(calls).toHaveLength(1)
-    expect(calls[0].vendor).toBe('apimart')
-    expect(calls[0].request.extras?.modelKey).toBe('doubao-seedream-4.5')
-    expect(result.url).toBe('https://x/out.png')
+    expect(calls[0].vendor).toBe('kie--candidate-revision-2')
+    expect(calls[0].request.extras?.modelKey).toBe('seedream')
+  })
+
+  it('同 lineage successor disabled 时不向无关同名供应商提交请求', async () => {
+    const runTask = vi.fn()
+    await expect(runCatalogGenerationTask(staleKieNode, {
+      listCatalogVendors: async () => [
+        vendorDto('kie', true),
+        vendorDto('unrelated', true),
+        vendorDto('kie--candidate-disabled', false, {
+          adapterCandidateRootVendorKey: 'kie',
+          adapterCandidateSourceVendorKey: 'kie',
+        }),
+      ],
+      listCatalogModels: async () => [{ ...apimartSeedream, modelKey: 'seedream', vendorKey: 'unrelated' }],
+      runTask,
+    })).rejects.toThrow(/没有已连接的供应商提供/)
+    expect(runTask).not.toHaveBeenCalled()
   })
 
   it('没有任何已连接供应商提供该款 → 抛清晰可行动错误，而非 cryptic key missing', async () => {
@@ -345,6 +415,78 @@ describe('runCatalogGenerationTask — 断开 kie 后老节点自动迁移到已
   })
 })
 
+describe('runCatalogGenerationTask — ComfyUI 提交时序与 prompt UUID', () => {
+  const comfyNode: GenerationCanvasNode = {
+    id: 'comfy-node',
+    kind: 'image',
+    title: '',
+    position: { x: 0, y: 0 },
+    prompt: '画一个红色立方体',
+    meta: { modelKey: 'my-comfy-workflow', modelVendor: 'comfyui-local', vendor: 'comfyui-local' },
+  }
+
+  function stubComfyBridge(events: string[], watched: Array<Record<string, unknown>>) {
+    vi.stubGlobal('window', {
+      nomiDesktop: {
+        tasks: {
+          comfyuiWatch: async (payload: Record<string, unknown>) => {
+            events.push('watch:start')
+            watched.push(payload)
+            await Promise.resolve()
+            events.push('watch:ready')
+            return { ok: true }
+          },
+          comfyuiUnwatch: async (promptId: string) => {
+            events.push(`unwatch:${promptId}`)
+          },
+        },
+      },
+    })
+  }
+
+  it('先等 watcher 就绪再提交，且客户端 UUID 原样穿透给 runTask', async () => {
+    const events: string[] = []
+    const watched: Array<Record<string, unknown>> = []
+    stubComfyBridge(events, watched)
+
+    const result = await runCatalogGenerationTask(comfyNode, {
+      runTask: async (_vendor, request) => {
+        events.push('run')
+        const promptId = String(request.extras?.comfyPromptId || '')
+        expect(promptId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+        expect(promptId).toBe(watched[0]?.promptId)
+        return {
+          id: promptId,
+          kind: request.kind,
+          status: 'succeeded',
+          assets: [{ type: 'image', url: 'nomi-local://comfy-output.png' }],
+          raw: {},
+        }
+      },
+    })
+
+    const promptId = String(watched[0]?.promptId)
+    expect(events).toEqual(['watch:start', 'watch:ready', 'run', `unwatch:${promptId}`])
+    expect(result.url).toBe('nomi-local://comfy-output.png')
+  })
+
+  it('提交失败时立即注销预登记 watcher', async () => {
+    const events: string[] = []
+    const watched: Array<Record<string, unknown>> = []
+    stubComfyBridge(events, watched)
+
+    await expect(runCatalogGenerationTask(comfyNode, {
+      runTask: async () => {
+        events.push('run')
+        throw new Error('submit failed')
+      },
+    })).rejects.toThrow('submit failed')
+
+    const promptId = String(watched[0]?.promptId)
+    expect(events).toEqual(['watch:start', 'watch:ready', 'run', `unwatch:${promptId}`])
+  })
+})
+
 describe('runCatalogGenerationTask — 轮询硬超时抛 RecoverableTimeoutError（可找回，非普通失败）', () => {
   const videoNode: GenerationCanvasNode = {
     id: 'v1', kind: 'video', title: '', position: { x: 0, y: 0 }, prompt: '一只猫跑过草地',
@@ -352,7 +494,7 @@ describe('runCatalogGenerationTask — 轮询硬超时抛 RecoverableTimeoutErro
   }
 
   it('超时抛 RecoverableTimeoutError，detail 带 taskId/vendor/taskKind，且软超时后回报 still-generating', async () => {
-    const { isRecoverableTimeoutError, RecoverableTimeoutError } = await import('./recoverableTimeout')
+    const { isRecoverableTimeoutError } = await import('./recoverableTimeout')
     const phases: string[] = []
     const error = await runCatalogGenerationTask(videoNode, {
       // 首发拿到 taskId、非终态 → 进轮询
@@ -365,9 +507,38 @@ describe('runCatalogGenerationTask — 轮询硬超时抛 RecoverableTimeoutErro
     }).catch((e) => e)
 
     expect(isRecoverableTimeoutError(error)).toBe(true)
-    expect((error as InstanceType<typeof RecoverableTimeoutError>).detail).toMatchObject({
+    if (!isRecoverableTimeoutError(error)) throw error
+    expect(error.detail).toMatchObject({
       taskId: 'up-task-9', vendor: 'asyncv', taskKind: 'text_to_video', modelKey: 'vid',
     })
+  })
+})
+
+describe('runCatalogGenerationTask — confirmed local cancellation wins over polling', () => {
+  const node: GenerationCanvasNode = {
+    id: 'local-image-node', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: 'a crane',
+    meta: { modelKey: 'generate_image', vendor: 'antigravity-cli' },
+  }
+  it.each(['before-query', 'during-query'])('does not publish a late success when cancelled %s', async (moment) => {
+    let cancelled = false
+    const cancelFlag = vi.spyOn(localTaskControl, 'isTaskCancelRequested').mockImplementation((id) => id === node.id && cancelled)
+    const runTask = vi.fn(async (_vendor: string, request: TaskRequestDto): Promise<TaskResultDto> => {
+      if (moment === 'before-query') cancelled = true
+      return { id: 'local-job', kind: request.kind, status: 'queued', assets: [], raw: {} }
+    })
+    const fetchTaskResult = vi.fn(async () => {
+      await Promise.resolve()
+      cancelled = true // Models a cancellation acknowledgement arriving while the query was in flight.
+      return { vendor: 'antigravity-cli', result: {
+        id: 'local-job', kind: 'text_to_image' as const, status: 'succeeded' as const,
+        assets: [{ type: 'image' as const, url: 'nomi-local://late-output.jpg' }], raw: {},
+      } }
+    })
+    try {
+      await expect(runCatalogGenerationTask(node, { runTask, fetchTaskResult, pollIntervalMs: 1 })).rejects.toMatchObject({ name: 'LocalTaskCancelledError' })
+      expect(runTask).toHaveBeenCalledOnce()
+      expect(fetchTaskResult).toHaveBeenCalledTimes(moment === 'before-query' ? 0 : 1)
+    } finally { cancelFlag.mockRestore() }
   })
 })
 
@@ -490,10 +661,34 @@ describe('buildCatalogTaskRequest — idempotencyKey 穿透到 request.extras', 
     const built = buildCatalogTaskRequest(node, { idempotencyKey: 'run-abc-123' })
     expect((built.request.extras as Record<string, unknown>).idempotencyKey).toBe('run-abc-123')
   })
+
+  it('anonymous upload consent 穿透到 request.extras', () => {
+    const built = buildCatalogTaskRequest({ ...imageNode(), prompt: 'a cat', meta: { modelKey: 'sd', modelVendor: 'openai' } }, { anonymousAssetHostingConsent: 'allow' })
+    expect((built.request.extras as Record<string, unknown>).anonymousAssetHostingConsent).toBe('allow')
+  })
+
+  it('把当前请求实际引用的本地素材作为上传 allowlist 传给主进程', () => {
+    const built = buildCatalogTaskRequest(
+      {
+        ...imageNode(),
+        prompt: 'a cat',
+        meta: { modelKey: 'sd', modelVendor: 'openai', referenceImageUrls: ['nomi-local://asset/active.png'] },
+      },
+      { references: { referenceImages: ['nomi-local://asset/active.png'] } },
+    )
+    expect((built.request.extras as Record<string, unknown>).activeAssetUrls).toEqual(['nomi-local://asset/active.png'])
+  })
   it('未给 idempotencyKey → extras 不带该键（无键时 runTask 不介入，向后兼容）', () => {
     const node: GenerationCanvasNode = { id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', archetype: { id: 'gpt-image-2', modeId: 't2i' } } }
     const built = buildCatalogTaskRequest(node, {})
     expect((built.request.extras as Record<string, unknown>).idempotencyKey).toBeUndefined()
+  })
+  it('production QA 的 promptSuffix 只追加到本次请求，不改写节点原始 prompt', () => {
+    const node: GenerationCanvasNode = { id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '保持雨夜窗边构图', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', archetype: { id: 'gpt-image-2', modeId: 't2i' } } }
+    const built = buildCatalogTaskRequest(node, { promptSuffix: '只修正：主体身份，不改变背景。' })
+    expect(built.request.prompt).toContain('保持雨夜窗边构图')
+    expect(built.request.prompt).toContain('只修正：主体身份，不改变背景。')
+    expect(node.prompt).toBe('保持雨夜窗边构图')
   })
 })
 

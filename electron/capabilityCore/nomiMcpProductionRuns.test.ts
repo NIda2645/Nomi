@@ -1,6 +1,9 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createMcpProtocol, type McpTransport } from './mcpProtocol'
+import { listProductionPlaybookNames } from '../productionRun/productionPlaybooks'
+import { createMcpProtocol, MCP_TOOL_NAMES, type McpTransport } from './mcpProtocol'
 
 type RpcMessage = {
   jsonrpc?: string
@@ -79,7 +82,7 @@ class ProductionHarness {
 }
 
 describe('production run MCP tools', () => {
-  it('exposes draft start plus three read-only observation tools, and no control tools', async () => {
+  it('exposes the exact catalog contract with truthful read-only annotations', async () => {
     const harness = new ProductionHarness()
     const response = await harness.call(1, 'tools/list')
     const tools = (response.result as {
@@ -90,15 +93,8 @@ describe('production run MCP tools', () => {
       }>
     }).tools
     const names = tools.map((tool) => tool.name)
-    expect(names).toEqual(expect.arrayContaining([
-      'nomi_start_playbook',
-      'nomi_get_run',
-      'nomi_subscribe_run',
-      'nomi_get_artifact',
-    ]))
-    expect(names).not.toEqual(expect.arrayContaining([
-      'nomi_review_gate', 'nomi_approve_run', 'nomi_publish', 'nomi_cancel_run', 'nomi_export_run',
-    ]))
+    expect(names).toEqual([...MCP_TOOL_NAMES])
+    expect(names).toHaveLength(MCP_TOOL_NAMES.length)
     expect(tools.find((tool) => tool.name === 'nomi_start_playbook')?.annotations?.readOnlyHint).toBeUndefined()
     for (const name of ['nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
       expect(tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(true)
@@ -106,6 +102,36 @@ describe('production run MCP tools', () => {
     const subscribe = tools.find((tool) => tool.name === 'nomi_subscribe_run')
     expect(subscribe?.inputSchema.properties?.waitMs?.maximum).toBe(25_000)
     expect(subscribe?.inputSchema.required).toEqual(['projectId', 'runId'])
+  })
+
+  // 2026-08-18：描述原先写「制作 playbook，例如 brand.promo」——「例如」暗示还有别的名字可传，
+  // 实际只实现了一个，传别的会静默建出永远推不动的坏 Run。schema 层就把可选值钉死在注册表上，
+  // 且描述必须由注册表 derive，不容许再手写一份会漂移的名单。
+  it('constrains the playbook argument to the implemented registry instead of hinting at more', async () => {
+    const harness = new ProductionHarness()
+    const response = await harness.call(1, 'tools/list')
+    const tools = (response.result as {
+      tools: Array<{ name: string; inputSchema: { properties?: Record<string, { enum?: string[]; description?: string }> } }>
+    }).tools
+    const playbook = tools.find((tool) => tool.name === 'nomi_start_playbook')?.inputSchema.properties?.playbook
+
+    expect(playbook?.enum).toEqual(listProductionPlaybookNames())
+    expect(playbook?.enum).toContain('brand.promo')
+    expect(playbook?.description).not.toContain('例如')
+    for (const name of listProductionPlaybookNames()) expect(playbook?.description).toContain(name)
+  })
+
+  it('keeps the current README count and guide table aligned with the exported catalog', () => {
+    const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8')
+    const guide = fs.readFileSync(path.join(process.cwd(), 'docs/guide/capability-core-cli-mcp.md'), 'utf8')
+    expect(readme).toContain('Thirty-three MCP tools')
+    expect(guide).toContain('33 个工具')
+    // The public guide is updated in the release-docs task; this contract test only
+    // requires the pre-existing catalog entries to remain documented while Task 4
+    // adds the versioned artifact business tools.
+    for (const name of MCP_TOOL_NAMES.filter((name) => ![
+      'nomi_read_artifact', 'nomi_request_script_revision', 'nomi_request_storyboard_revision', 'nomi_review_artifact',
+    ].includes(name))) expect(guide).toContain(`\`${name}\``)
   })
 
   it('keeps initialize clientInfo as an audit label and starts only a draft', async () => {

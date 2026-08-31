@@ -3,12 +3,13 @@
 //
 // 这一项最要命的不是「弹层里多了几行」，而是**选中之后有没有真的建立引用**。
 // 所以核心断言是：@ 一个画布节点 → 画布上**真的多一条边** + chip 编号对得上，不是只在文本里留一句话。
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
+import { screenshotSettled } from './_assert.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -29,7 +30,7 @@ function check(name, ok, detail) {
 }
 async function snap(win, name, clip) {
   n += 1
-  await win.screenshot({ path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`), ...(clip ? { clip } : {}) })
+  await screenshotSettled(win, { path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`), ...(clip ? { clip } : {}) })
   console.log(`  · shot ${String(n).padStart(2, '0')}-${name}`)
 }
 
@@ -47,14 +48,12 @@ for (const [name, color] of [['ref-red', 'red'], ['ref-blue', 'blue']]) {
 }
 console.log('  → 素材图:', pics.map((p) => path.basename(p)).join(', '))
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${userData}`, '--no-proxy-server'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
+const { app, win } = await launchNomiApp({
+  name: 'mention-scope',
+  userDataDir: userData,
+  args: ['--no-proxy-server'],
+  settleMs: 0,
 })
-const win = await app.firstWindow()
-await win.waitForLoadState('domcontentloaded')
 await win.evaluate(() => {
   window.localStorage.setItem('__nomiE2E', '1')
   for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) {

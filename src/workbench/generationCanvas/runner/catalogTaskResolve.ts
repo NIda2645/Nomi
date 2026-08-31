@@ -10,7 +10,8 @@ import {
   type TaskRequestDto,
   type TaskResultDto,
 } from '../../api/taskApi'
-import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
+import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
+import { projectParameterReferenceSlots } from '../model/parameterReferenceSlots'
 import type { GenerationProgressPhase } from '../../observability/narrate'
 import {
   getGenerationNodeCatalogKind,
@@ -18,16 +19,28 @@ import {
   isVideoLikeGenerationNodeKind,
 } from '../model/generationNodeKinds'
 import type { ResolvedGenerationReferences } from './generationReferenceResolver'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import {
+  replaceCustomCapabilityContractMeta,
+  resolveArchetypeForModel,
+} from '../../../config/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
-import { loadUsableVendorKeys, remapArchetypeMode, resolveUsableModelForNode } from './usableVendorModel'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
+import { resolveComfyWorkflowTaskKind } from '../../../../electron/catalog/comfyuiWorkflowTaskContract'
+import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
+import { remapArchetypeMode, resolveUsableModelForNode, usableVendorKeys } from './usableVendorModel'
 
 export type CatalogTaskActionOptions = {
   references?: Partial<ResolvedGenerationReferences>
+  /** Re-resolve declared inputs against the freshly selected catalog model, without persisting URLs. */
+  referenceContext?: { nodes?: GenerationCanvasNode[]; edges?: GenerationCanvasEdge[] }
+  /** Optional bounded QA retry instruction appended to the model prompt for this one run. */
+  promptSuffix?: string
   /** 付费守卫令牌：真人确认后铸的 grantId，随 request.extras 下到主进程 runTask 核验消费。 */
   grantId?: string
   /** 提交幂等键（= node run.id）：随 request.extras 下到主进程，让同一次意图提交 at-most-once（不二次下单）。 */
   idempotencyKey?: string
+  /** Renderer disclosure gate for a public temporary-host fallback. */
+  anonymousAssetHostingConsent?: 'allow'
   runTask?: (vendor: string, request: TaskRequestDto) => Promise<TaskResultDto>
   listCatalogModels?: (params: { kind: BillingModelKind; enabled: true }) => Promise<ModelCatalogModelDto[]>
   listCatalogVendors?: () => Promise<ModelCatalogVendorDto[]>
@@ -77,7 +90,9 @@ export function resolveTaskArchetype(meta: Record<string, unknown>) {
   const modelKey = asTrimmedString(meta.modelKey) || asTrimmedString(meta.modelAlias)
   // 本地 ComfyUI workflow 是用户导入的通用图，不是内置档案模型。旧节点可能残留上一模型的
   // meta.archetype，若继续信它，参考图会被投到 archetypeInput 而不是 workflow 的 flat 参数。
-  if (vendor === 'comfyui-local') return null
+  // 判据必须用前缀判据而非字面量：第 2+ 台实例的 key 是 `comfyui-local-{slug}`（见
+  // AddComfyuiInstanceButton），硬比 'comfyui-local' 只保得住第一台。
+  if (isComfyuiVendorKey(vendor)) return null
   return resolveArchetypeForModel({
     modelKey,
     modelAlias: asTrimmedString(meta.modelAlias),
@@ -123,33 +138,52 @@ export async function resolveExecutableNodeFromCatalog(
   // 「可用供应商」需要 catalog runtime；非 Electron 上下文（单测/Web）拿不到 → 退回旧行为：信任钉死的
   // 供应商（无法重解析，但也不该误抛）。能拿到时才进入「断开→自动迁移」新逻辑。
   const listVendors = options.listCatalogVendors || listWorkbenchModelCatalogVendors
-  let usable: Set<string> | null = null
+  let vendors: ModelCatalogVendorDto[]
+  let usable: Set<string>
   try {
-    usable = await loadUsableVendorKeys(listVendors)
+    vendors = await listVendors()
+    usable = usableVendorKeys(vendors)
   } catch {
-    usable = null
+    return node
   }
-  if (!usable) return node
+  const listCatalogModels = options.listCatalogModels || listWorkbenchModelCatalogModels
+  let models: ModelCatalogModelDto[] | null = null
 
-  // Happy path：钉死的供应商现在仍可用 → 原样执行（绝大多数情况）。
-  if (vendor && usable.has(vendor)) return node
+  // Even an available vendor can have an updated parameter declaration. Refresh from the actual catalog.
+  // Vendor availability is not proof that this exact model is executable: a sibling can keep the source
+  // vendor alive after this model has migrated to a candidate revision. A missing exact row therefore
+  // continues into the same whole-catalog lineage resolver used for disconnected vendors.
+  if (vendor && usable.has(vendor)) {
+    try {
+      models = await listCatalogModels({ kind: catalogKindForNode(node), enabled: true })
+      const match = models.find((model) =>
+        model.published && model.vendorKey === vendor && [model.modelKey, model.modelAlias].includes(modelKey),
+      )
+      if (match) return { ...node, meta: projectParameterReferenceSlots(node.meta || {}, match.meta) }
+    } catch {
+      // Non-desktop/test callers may have no model catalog bridge; retain their already validated declaration.
+      return node
+    }
+  }
   // 钉了供应商但它现在不可用、却又没有 modelKey 可据以重解析 → 直接报清晰错误。
   if (!modelKey) {
     throw new Error(`供应商「${vendor}」已断开，且该节点未记录模型。请重新连接，或在该节点上改选已连接供应商的模型。`)
   }
 
-  const listCatalogModels = options.listCatalogModels || listWorkbenchModelCatalogModels
-  let models: ModelCatalogModelDto[]
-  try {
-    models = await listCatalogModels({ kind: catalogKindForNode(node), enabled: true })
-  } catch (error: unknown) {
-    const message = error instanceof Error && error.message ? error.message : String(error)
-    throw new Error(`模型目录解析失败：${message}`)
+  if (!models) {
+    try {
+      models = await listCatalogModels({ kind: catalogKindForNode(node), enabled: true })
+    } catch (error: unknown) {
+      const message = error instanceof Error && error.message ? error.message : String(error)
+      const catalogError = new Error(`模型目录解析失败：${message}`) as Error & { cause?: unknown }
+      catalogError.cause = error
+      throw catalogError
+    }
   }
 
   const meta = node.meta || {}
   const modelAlias = asTrimmedString(meta.modelAlias)
-  const match = resolveUsableModelForNode({ modelKey, modelAlias, vendor, meta, models, usable })
+  const match = resolveUsableModelForNode({ modelKey, modelAlias, vendor, meta, models, vendors, usable })
   if (!match) {
     const sourceArchetype = resolveArchetypeForModel({ modelKey, modelAlias, vendorKey: vendor, meta })
     const brand = sourceArchetype?.label || asTrimmedString(meta.modelLabel) || modelKey
@@ -165,11 +199,12 @@ export async function resolveExecutableNodeFromCatalog(
   const remappedArchetype = targetArchetype
     ? remapArchetypeMode(sourceArchetype, asTrimmedString((meta.archetype as { modeId?: unknown } | undefined)?.modeId) || undefined, targetArchetype)
     : null
+  const migratedMeta = replaceCustomCapabilityContractMeta(meta, match.meta)
 
   return {
     ...node,
-    meta: {
-      ...meta,
+    meta: projectParameterReferenceSlots({
+      ...migratedMeta,
       modelKey: asTrimmedString(match.modelKey) || modelKey,
       modelAlias: asTrimmedString(match.modelAlias) || modelKey,
       modelVendor: resolvedVendor,
@@ -179,7 +214,7 @@ export async function resolveExecutableNodeFromCatalog(
       ...(isVideoLikeGenerationNodeKind(node.kind)
         ? { videoModel: asTrimmedString(match.modelKey) || modelKey, videoModelVendor: resolvedVendor }
         : { imageModel: asTrimmedString(match.modelKey) || modelKey, imageModelVendor: resolvedVendor }),
-    },
+    }, match.meta),
   }
 }
 
@@ -192,6 +227,11 @@ export function resolveTaskKind(node: GenerationCanvasNode, references: Partial<
   if (executionKind === 'video' || executionKind === 'image' || executionKind === 'audio') {
     const archetype = resolveTaskArchetype(meta)
     if (archetype) return currentArchetypeMode(archetype, meta).transportTaskKind ?? archetype.transportTaskKind
+  }
+  const parameterContract = readParameterReferenceContract(meta)
+  if (isComfyuiVendorKey(selectedVendor(node)) && parameterContract && isComfyuiVendorKey(parameterContract.vendorKey)
+    && (executionKind === 'image' || executionKind === 'video' || executionKind === 'model3d')) {
+    return resolveComfyWorkflowTaskKind(executionKind, parameterContract.slots)
   }
   if (executionKind === 'video') {
     const hasFrame = Boolean(

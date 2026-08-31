@@ -41,7 +41,7 @@ export function initComfyuiProgressBridge(): void {
     const node = store.nodes.find((n) => n.id === nodeId)
     // 迟到帧（已取消/已终态）直接丢，别把 idle 节点又抬回 running。
     if (!node || (node.status !== 'running' && node.status !== 'queued')) return
-    // setNodeProgress 是整体替换：必须带回 taskId(=prompt_id)，遮罩取消按钮靠它打 /interrupt。
+    // setNodeProgress 是整体替换：必须带回 taskId(=prompt_id)，遮罩取消按钮靠它做定向取消。
     const taskId = (event.promptId || node.progress?.taskId || '').trim()
     if (event.kind === 'queue') {
       store.setNodeProgress(nodeId, {

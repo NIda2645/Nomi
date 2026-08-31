@@ -1,22 +1,45 @@
 // R13 走查：从目标节点左输入端拖到两图编组，编组成员应成为目标参考，而不是反向连边。
 // 用法：node tests/ux/group-reference-direction.walk.mjs
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-
-const require = createRequire(import.meta.url)
+import { screenshotSettled } from './_assert.mjs'
 const repoRoot = process.cwd()
 const port = 5287
 const baseUrl = `http://127.0.0.1:${port}`
 const tempRoot = path.join(repoRoot, '.tmp', 'nomi-group-reference-direction')
+const settingsDir = path.join(tempRoot, 'settings')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/group-reference-direction')
-for (const dir of [tempRoot, shotsDir]) {
+for (const dir of [tempRoot, settingsDir, shotsDir]) {
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(dir, { recursive: true })
 }
+const catalogNow = '2026-08-29T00:00:00.000Z'
+fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), JSON.stringify({
+  version: 8,
+  vendors: [{
+    key: 'ux-local', name: 'UX Local', enabled: true, authType: 'none', providerKind: 'openai-compatible',
+    createdAt: catalogNow, updatedAt: catalogNow,
+  }],
+  models: [{
+    vendorKey: 'ux-local', modelKey: 'nano-banana', labelZh: 'Nano Banana', kind: 'image', enabled: true,
+    createdAt: catalogNow, updatedAt: catalogNow,
+    meta: {
+      archetypeId: 'nano-banana',
+      adapter: {
+        state: 'verified', activeRevision: 'ux-revision', publicationModes: ['text_to_image', 'image_edit'],
+        modes: [
+          { taskKind: 'text_to_image', state: 'verified' },
+          { taskKind: 'image_edit', state: 'verified' },
+        ],
+      },
+    },
+  }],
+  mappings: [],
+  apiKeysByVendor: {},
+}, null, 2))
 
 const failures = []
 const check = (name, ok, detail = '') => {
@@ -41,22 +64,18 @@ const vite = spawn('node', ['node_modules/vite/bin/vite.js', '--host', '127.0.0.
 let app
 try {
   await waitForUrl(baseUrl)
-  app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.', `--user-data-dir=${path.join(tempRoot, 'user-data')}`],
-    cwd: repoRoot,
+  let win
+  ;({ app, win } = await launchNomiApp({
+    name: 'group-reference-direction',
+    userDataDir: path.join(tempRoot, 'user-data'),
+    settingsDir,
+    projectsDir: path.join(tempRoot, 'projects'),
     env: {
-      ...process.env,
       NOMI_DESKTOP_DEV: '1',
       VITE_DEV_SERVER_URL: baseUrl,
-      NOMI_E2E: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_PROJECTS_DIR: path.join(tempRoot, 'projects'),
-      NOMI_SETTINGS_DIR: path.join(tempRoot, 'settings'),
     },
-  })
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
+    settleMs: 0,
+  }))
   await win.evaluate(() => {
     localStorage.setItem('__nomiE2E', '1')
     localStorage.setItem('nomi-color-scheme', 'dark')
@@ -86,11 +105,11 @@ try {
   const catalogSeeded = await win.evaluate(async () => {
     const desktop = window.nomiDesktop
     if (!desktop?.modelCatalog) return { error: '模型目录 bridge 不存在' }
-    desktop.modelCatalog.upsertVendor({ key: 'ux-local', name: 'UX Local', enabled: true, authType: 'none' })
-    desktop.modelCatalog.upsertModel({
-      vendorKey: 'ux-local', modelKey: 'nano-banana', labelZh: 'Nano Banana', kind: 'image', enabled: true,
-      meta: { archetypeId: 'nano-banana' },
-    })
+    const model = desktop.modelCatalog.listModels({ vendorKey: 'ux-local' })
+      .find((candidate) => candidate.modelKey === 'nano-banana')
+    if (!model?.publishedModes?.includes('text_to_image') || !model.publishedModes.includes('image_edit')) {
+      return { error: `验证发布模式不完整：${JSON.stringify(model?.publishedModes || [])}` }
+    }
     const { notifyModelOptionsRefresh } = await import('/src/config/modelCatalogCache.ts')
     notifyModelOptionsRefresh('all')
     return { ok: true }
@@ -130,9 +149,9 @@ try {
   const fit = win.getByLabel('适应视图').first()
   if (await fit.count()) await fit.click()
   await win.waitForTimeout(900)
-  await win.screenshot({ path: path.join(shotsDir, '01-before.png') })
+  await screenshotSettled(win, { path: path.join(shotsDir, '01-before.png') })
 
-  const handle = win.locator('[data-node-id="target"] [data-side="left"]').first()
+  const handle = win.locator('.react-flow__node[data-id="target"] .generation-canvas-react-flow__handle[data-side="left"]').last()
   const handleBox = await handle.boundingBox()
   const groupBox = await win.locator('[data-group-id="reference-group"]').first().boundingBox()
   check('目标左输入端和编组框均可见', Boolean(handleBox && groupBox))
@@ -155,7 +174,7 @@ try {
   await win.waitForTimeout(350)
   const pendingAria = await win.locator('[data-group-id="reference-group"]').first().getAttribute('aria-label')
   check('左输入端待连提示说明“将编组作为输入”', /作为输入/.test(pendingAria || ''), pendingAria || '')
-  await win.screenshot({ path: path.join(shotsDir, '02-group-as-input.png') })
+  await screenshotSettled(win, { path: path.join(shotsDir, '02-group-as-input.png') })
   await win.mouse.up()
   await win.waitForTimeout(1200)
 
@@ -183,10 +202,12 @@ try {
 
   const targetNode = win.locator('[data-node-id="target"]').first()
   const referenceImages = targetNode.locator('.generation-canvas-v2-node__ref-section img')
-  check('目标顶部真实显示两张参考缩略图', await referenceImages.count() === 2, String(await referenceImages.count()))
+  await referenceImages.nth(1).waitFor({ state: 'visible', timeout: 10_000 })
+  const referenceImageCount = await referenceImages.count()
+  check('目标顶部真实显示两张参考缩略图', referenceImageCount === 2, String(referenceImageCount))
   const activeMode = await targetNode.locator('[aria-label="生成方式"] [data-active="true"]').first().textContent().catch(() => '')
   check('界面模式同步显示“改图”', /改图/.test(activeMode || ''), activeMode || '')
-  await win.screenshot({ path: path.join(shotsDir, '03-after-connected.png') })
+  await screenshotSettled(win, { path: path.join(shotsDir, '03-after-connected.png') })
 
   const clickableEdgePoint = await win.evaluate(() => {
     const groupRect = document.querySelector('[data-group-id="reference-group"]')?.getBoundingClientRect()
@@ -233,7 +254,7 @@ try {
     return useGenerationCanvasStore.getState().edges.map((edge) => edge.mode)
   })
   check('真实点标签可切换，且只改命中的一条边', modesAfterEdit.filter((mode) => mode === 'style_ref').length === 1, JSON.stringify(modesAfterEdit))
-  await win.screenshot({ path: path.join(shotsDir, '04-edge-label-changed.png') })
+  await screenshotSettled(win, { path: path.join(shotsDir, '04-edge-label-changed.png') })
 
   const styleTag = win.getByRole('button', { name: /修改连接语义：当前为风格/ }).first()
   await styleTag.click()
@@ -249,8 +270,10 @@ try {
   })
   check('断开编组连接会撤掉全部展开边', disconnected.edgeCount === 0, JSON.stringify(disconnected))
   check('断开同时清掉编组声明，不会后续复活', disconnected.outputLinks == null, JSON.stringify(disconnected.outputLinks))
-  check('目标顶部参考图随断开实时清空', await referenceImages.count() === 0, String(await referenceImages.count()))
-  await win.screenshot({ path: path.join(shotsDir, '05-after-disconnected.png') })
+  await referenceImages.first().waitFor({ state: 'detached', timeout: 10_000 })
+  const disconnectedReferenceImageCount = await referenceImages.count()
+  check('目标顶部参考图随断开实时清空', disconnectedReferenceImageCount === 0, String(disconnectedReferenceImageCount))
+  await screenshotSettled(win, { path: path.join(shotsDir, '05-after-disconnected.png') })
 } catch (error) {
   failures.push(String(error))
   console.error(error)

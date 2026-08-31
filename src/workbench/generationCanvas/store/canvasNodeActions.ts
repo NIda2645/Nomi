@@ -1,16 +1,22 @@
-import { createGenerationNode, removeNodes, upsertNode } from '../model/graphOps'
+import { createEdgeId, createGenerationNode, removeNodes, upsertNode } from '../model/graphOps'
+import { normalizeParameterEdges } from '../model/parameterReferenceSlots'
 import { resolveInsertionPosition } from './resolveInsertionPosition'
 import { tidyCanvasLayout } from './tidyCanvasLayout'
 import { getDefaultCategoryForNodeKind, type GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { getNodeSize } from '../model/generationNodeKinds'
+import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { isShotNumberedNode, nextShotIndex } from '../model/shotNumbering'
+import { buildCanvasNode } from '../../../../electron/capabilityCore/canvasNodeFactory'
+import { RENDERER_NODE_FACTORY_DEPS } from './rendererNodeFactoryDeps'
 import { CLIPBOARD_OFFSET, createClipboardNodeId, createNodeId } from './canvasIds'
 import { bumpPersistRevision, isCategoryId, shouldEmitCanvasMutation, shouldPersistCanvasMutation } from './canvasGuards'
-import { getHistoryFlags, pushUndoSnapshot } from '../events/canvasUndoJournal'
+import { getHistoryFlags, getUndoJournalGeneration, pushUndoSnapshot } from '../events/canvasUndoJournal'
+import { getActiveCanvasGestureContext } from '../events/canvasGestureContext'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { useWorkbenchStore } from '../../workbenchStore'
 import type { CanvasNodeActions, CanvasSliceCreator } from './canvasStoreTypes'
 import i18n from '../../../i18n'
+import { canvasPluginRegistry } from '../plugins/defaultCanvasPluginRegistry'
+import { captureCanvasWorkflowTemplate, instantiateCanvasWorkflowTemplate } from '../plugins/canvasWorkflowTemplates'
 
 // 删节点 → 时间轴对账(数据一致性):clip 创建时把节点产物 url 快照冻结、无 node→clip 同步,
 // 删了节点时间轴仍引用悬空/过期素材(导出会渲染已删节点的旧帧)。删完节点单向通知 workbenchStore
@@ -25,19 +31,29 @@ function reconcileTimelineForDeletedNodes(nodeIds: readonly string[]): void {
 // Cmd+Z 一撤直接跳回上一个结构操作,把整段输入连带丢掉(「回退不到我之前的地方」,
 // 2026-06-12 用户复现)。同一节点的连续编辑算一步;换节点或停顿 >3s 开新一步。
 const EDIT_BURST_WINDOW_MS = 3000
-let lastEditBurst = { nodeId: '', at: 0 }
+let lastEditBurst = { nodeId: '', at: 0, generation: -1 }
 
 function pushEditBurstBarrier(nodeId: string, state: unknown): void {
+  // Agent edits/compensation own a transaction barrier. They must not start or
+  // prolong a user's typing burst and swallow the next manual edit's Undo.
+  if (getActiveCanvasGestureContext()?.suppressUndoBarriers) return
   const now = Date.now()
-  if (lastEditBurst.nodeId !== nodeId || now - lastEditBurst.at > EDIT_BURST_WINDOW_MS) {
+  const generation = getUndoJournalGeneration()
+  if (lastEditBurst.generation !== generation || lastEditBurst.nodeId !== nodeId || now - lastEditBurst.at > EDIT_BURST_WINDOW_MS) {
     pushUndoSnapshot(state)
   }
-  lastEditBurst = { nodeId, at: now }
+  lastEditBurst = { nodeId, at: now, generation }
 }
 
 export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (set, get) => ({
   addNode: (input) => {
     const currentState = get()
+    if (input.typeId && !canvasPluginRegistry.resolve(input.typeId)) {
+      throw new Error(`canvas plugin node is not registered: ${input.typeId}`)
+    }
+    if (input.pluginState && input.typeId !== input.pluginState.typeId) {
+      throw new Error('canvas plugin node state type does not match node type')
+    }
     // 节点出生必带 categoryId：调用方没给就按 kind 推断（与迁移共用同一映射）。
     // 这是「无分类节点」的总闸——漏传 categoryId 的创建入口曾在下次打开项目时
     // 触发 legacy 迁移 toast 甚至删节点（审计 A4 的入口集）。
@@ -53,24 +69,26 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     const position = input.exactPosition && input.position
       ? input.position
       : resolveInsertionPosition(input.kind, input.position ?? { x: 120, y: 360 }, siblings)
-    const baseNode = createGenerationNode({
-      id: createNodeId(input.kind),
-      kind: input.kind,
-      title: input.title,
-      prompt: input.prompt,
-      x: position.x,
-      y: position.y,
-    })
-    // 镜头编号是出生即分配的存储身份（max+1），之后移动/加无关节点不再改号（审计 A2）。
-    const nextNode = {
-      ...baseNode,
-      ...(input.meta ? { meta: { ...input.meta } } : {}),
-      ...(input.size ? { size: { ...input.size } } : {}),
-      categoryId,
-      ...(isShotNumberedNode({ kind: input.kind, categoryId, meta: input.meta })
-        ? { shotIndex: nextShotIndex(currentState.nodes) }
-        : {}),
-    }
+    // 节点构造经**共用工厂**（与 electron 能力核/MCP 同一份纯函数）：title/size/prompt/references/history/
+    // status/meta/categoryId/shotIndex 全由工厂按 UI 同款规则补齐。store 只留 store 关注点
+    // （落点避让、撤销点、set、事件）。镜号 = 出生即分配的存储身份（max+1，审计 A2）——工厂据传入的
+    // currentState.nodes 算 max+1；categoryId 已在上面定好，显式传入让工厂与 store 一致。
+    const nextNode = buildCanvasNode(
+      {
+        kind: input.kind,
+        title: input.title,
+        prompt: input.prompt,
+        x: position.x,
+        y: position.y,
+        categoryId,
+        ...(input.meta ? { meta: input.meta } : {}),
+        ...(input.size ? { size: input.size } : {}),
+      },
+      currentState.nodes,
+      RENDERER_NODE_FACTORY_DEPS,
+    ) as GenerationCanvasNode
+    if (input.typeId) nextNode.typeId = input.typeId
+    if (input.pluginState) nextNode.pluginState = input.pluginState
     pushUndoSnapshot(currentState)
     set((state) => {
       state.nodes = upsertNode(state.nodes, nextNode)
@@ -91,15 +109,24 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
   },
   updateNode: (nodeId, patch, options) => {
     if (!get().nodes.some((candidate) => candidate.id === nodeId)) return
-    // 用户态内容编辑(prompt/meta/标题)按 burst 打撤销点;其余 patch(状态机等)不打。
-    if ('prompt' in patch || 'meta' in patch || 'title' in patch) pushEditBurstBarrier(nodeId, get())
+    // 用户态内容与插件 envelope 编辑按统一撤销边界落点；状态机等运行态 patch 不打。
+    // 插件只能通过这个 action 请求 state patch，因此不会产生绕过 undo 的第二条写路径。
+    if (options?.history !== false && ('prompt' in patch || 'meta' in patch || 'title' in patch)) {
+      pushEditBurstBarrier(nodeId, get())
+    } else if (options?.history !== false && 'pluginState' in patch) {
+      pushUndoSnapshot(get())
+    }
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
+      const declarationChanged = 'meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots
       Object.assign(node, patch)
+      if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       if (shouldPersistCanvasMutation(options)) bumpPersistRevision(state)
     })
-    emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
+    if (shouldEmitCanvasMutation(options)) {
+      emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
+    }
   },
   updateNodes: (updates) => {
     const currentState = get()
@@ -109,10 +136,15 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     pushUndoSnapshot(currentState)
     set((state) => {
       const patches = new Map(applicable.map((update) => [update.nodeId, update.patch]))
+      let declarationChanged = false
       for (const node of state.nodes) {
         const patch = patches.get(node.id)
-        if (patch) Object.assign(node, patch)
+        if (patch) {
+          if ('meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots) declarationChanged = true
+          Object.assign(node, patch)
+        }
       }
+      if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       bumpPersistRevision(state)
       Object.assign(state, getHistoryFlags())
     })
@@ -277,7 +309,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     set((state) => {
       const hits = state.nodes.filter((node) => {
         if (categoryId && (node.categoryId || 'shots') !== categoryId) return false
-        const { width: w, height: h } = getNodeSize(node)
+        const { width: w, height: h } = resolveNodeVisualSize(node)
         return node.position.x + w >= left && node.position.x <= right &&
           node.position.y + h >= top && node.position.y <= bottom
       }).map((node) => node.id)
@@ -296,7 +328,18 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     if (!node) return null
     // 变体落点经同分类避让：默认贴在原卡右下 +40，被占则螺旋挪开，不压住原卡或邻卡。
     const dupSiblings = state.nodes.filter((candidate) => (candidate.categoryId || 'shots') === (node.categoryId || 'shots'))
-    const dupPosition = resolveInsertionPosition(node.kind, { x: node.position.x + 40, y: node.position.y + 40 }, dupSiblings)
+    const preferredDupPosition = { x: node.position.x + 40, y: node.position.y + 40 }
+    let dupPosition = resolveInsertionPosition(node.kind, preferredDupPosition, dupSiblings)
+    // Keep a duplicate in the usable canvas when the first free spiral slot
+    // happens to be above/left of the origin. The below-source fallback still
+    // goes through the shared collision resolver and preserves spacing.
+    if (dupPosition.x < 0 || dupPosition.y < 0) {
+      dupPosition = resolveInsertionPosition(
+        node.kind,
+        { x: node.position.x, y: node.position.y + resolveNodeVisualSize(node).height + 48 },
+        dupSiblings,
+      )
+    }
     const nextNode = createGenerationNode({
       id: createNodeId(node.kind),
       kind: node.kind,
@@ -305,29 +348,32 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       x: dupPosition.x,
       y: dupPosition.y,
     })
-    const history = node.history ? [...node.history] : []
-    const result = node.result
-    if (result && !history.some((entry) => entry.id === result.id)) {
-      history.unshift(result)
-    }
     const copiedNode: GenerationCanvasNode = {
       ...nextNode,
-      history,
-      references: node.references ? [...node.references] : [],
-      meta: node.meta ? { ...node.meta } : {},
+      history: [],
+      references: structuredClone(node.references ?? []),
+      meta: structuredClone(node.meta ?? {}),
       size: node.size ? { ...node.size } : nextNode.size,
       prompt: node.prompt || '',
       categoryId: node.categoryId,
       groupId: node.groupId,
       derivedFrom: node.id,
+      runs: [],
+      status: 'idle',
       // 变体是新身份：领自己的镜头编号，不继承原节点的号。
       ...(isShotNumberedNode(node) ? { shotIndex: nextShotIndex(state.nodes) } : {}),
     }
+    const incomingEdges = state.edges
+      .filter((edge) => edge.target === nodeId)
+      .map((edge, index) => ({
+        ...structuredClone(edge),
+        id: createEdgeId(edge.source, copiedNode.id, edge.order ?? index),
+        target: copiedNode.id,
+      }))
     pushUndoSnapshot(state)
     set((current) => {
-      const original = current.nodes.find((candidate) => candidate.id === nodeId)
-      if (original && history.length) original.history = history
       current.nodes.push(copiedNode)
+      current.edges.push(...incomingEdges)
       if (copiedNode.groupId) {
         const group = current.groups.find((candidate) => candidate.id === copiedNode.groupId)
         if (group && !group.nodeIds.includes(copiedNode.id)) {
@@ -339,11 +385,11 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       bumpPersistRevision(current)
       Object.assign(current, getHistoryFlags())
     })
-    // 一笔手势三件事如实记账:原节点补 history、新节点诞生、组成员变化(后态)
+    // 一笔手势写完新节点、继承的入边与组成员变化；旧产物/运行态不进入变体。
     const touchedGroup = copiedNode.groupId ? get().groups.find((group) => group.id === copiedNode.groupId) : undefined
     emitCanvasGesture([
-      ...(history.length ? [{ type: 'canvas.node.updated', payload: { nodeId, patch: { history } } }] : []),
       { type: 'canvas.node.added', payload: { node: copiedNode } },
+      ...incomingEdges.map((edge) => ({ type: 'canvas.edge.added' as const, payload: { edge } })),
       ...(touchedGroup ? [{ type: 'canvas.group.updated', payload: { group: touchedGroup } }] : []),
     ])
     return copiedNode
@@ -442,5 +488,49 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       ...touchedGroups.map((group) => ({ type: 'canvas.group.updated', payload: { group } })),
     ])
     reconcileTimelineForDeletedNodes([nodeId])
+  },
+  saveSelectedAsWorkflowTemplate: (name) => {
+    const currentState = get()
+    const template = captureCanvasWorkflowTemplate(
+      currentState.nodes,
+      currentState.edges,
+      currentState.selectedNodeIds,
+      name || '',
+      `workflow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      currentState.groups,
+    )
+    if (!template) return null
+    set((state) => {
+      state.workflowTemplates = [...state.workflowTemplates, template]
+      bumpPersistRevision(state)
+    })
+    return template
+  },
+  instantiateWorkflowTemplate: (templateId, position) => {
+    const template = get().workflowTemplates.find((candidate) => candidate.id === templateId)
+    if (!template) return []
+    return get().instantiateWorkflowTemplateSnapshot(template, position)
+  },
+  instantiateWorkflowTemplateSnapshot: (template, position) => {
+    const currentState = get()
+    const instantiated = instantiateCanvasWorkflowTemplate(template, position, createNodeId, createEdgeId)
+    if (!instantiated.nodes.length) return []
+    pushUndoSnapshot(currentState)
+    set((state) => {
+      state.nodes = [...state.nodes, ...instantiated.nodes]
+      state.edges = [...state.edges, ...instantiated.edges]
+      state.groups = [...state.groups, ...instantiated.groups]
+      state.selectedNodeIds = instantiated.nodes.map((node) => node.id)
+      state.pendingConnectionSourceId = ''
+      state.pendingConnectionSourceSide = 'right'
+      bumpPersistRevision(state)
+      Object.assign(state, getHistoryFlags())
+    })
+    emitCanvasGesture([
+      ...instantiated.nodes.map((node) => ({ type: 'canvas.node.added' as const, payload: { node } })),
+      ...instantiated.edges.map((edge) => ({ type: 'canvas.edge.added' as const, payload: { edge } })),
+      ...instantiated.groups.map((group) => ({ type: 'canvas.group.created' as const, payload: { group } })),
+    ])
+    return instantiated.nodes
   },
 })

@@ -3,14 +3,12 @@
 //  ② 预览播放能听到（<audio> 元素挂载 + 播放中 currentTime 推进）
 //  ③ 真实 ffmpeg 导出 mp4 带 aac 音轨（ffprobe 实证 = 终极证明）
 // 用法: node tests/ux/audio-timeline.walk.mjs （先 .tmp/probe-tone-3s.mp3 必须存在）
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { createRequire } from 'node:module'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = process.cwd()
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/audio-timeline')
 fs.mkdirSync(shotsDir, { recursive: true })
@@ -30,14 +28,13 @@ const results = []
 let n = 0
 function check(name, ok, detail) { results.push({ name, ok }); console.log(`  ${ok ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`) }
 
-const app = await electron.launch({ executablePath: require('electron'), args: ['.', `--user-data-dir=${userData}`], cwd: repoRoot, env: { ...process.env, NOMI_PROJECTS_DIR: projectsDir } })
-let win = await app.firstWindow()
+let { app, win } = await launchNomiApp({ name: 'audio-timeline', userDataDir: userData, projectsDir })
 const getWin = () => {
   const live = app.windows().filter((w) => !w.isClosed())
   win = live.find((w) => { try { return /projectId=/.test(w.url()) } catch { return false } }) || live[live.length - 1] || win
   return win
 }
-async function snap(name) { n += 1; try { await getWin().screenshot({ path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`) }) } catch { /* */ } }
+async function snap(name) { n += 1; try { await screenshotSettled(getWin(), { path: path.join(shotsDir, `${String(n).padStart(2, '0')}-${name}.png`) }) } catch { /* */ } }
 async function dismiss() {
   for (let i = 0; i < 6; i++) {
     const skip = getWin().locator('button, [role="button"], a', { hasText: /跳过|完成|知道了|开始创作|稍后|关闭/ }).first()
@@ -53,8 +50,6 @@ async function clickText(sel, text, ms = 1400) {
 }
 
 try {
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
   await win.evaluate(() => { localStorage.setItem('nomi-color-scheme', 'light') })
   await win.reload(); await win.waitForTimeout(1600)
   await dismiss()

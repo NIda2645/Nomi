@@ -3,13 +3,11 @@
 // 产出: tests/ux/shots/pick-confirm/*.png —— 人眼判断：来源名称字段 / 模型空态 / 第二屏分组勾选 /
 //        手填 id 自动按 文本·图片·视频·配音 归类 / 回表单「已选 N 个」摘要。
 // 不需要真 relay：手填 id 走的是 candidate→picker→summary 同一条管线，guessKinds 本机纯启发式。
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
+import { screenshotSettled } from './_assert.mjs'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/pick-confirm')
 fs.mkdirSync(shotsDir, { recursive: true })
@@ -21,19 +19,14 @@ let n = 0
 async function snap(win, name) {
   n += 1
   const tag = `${String(n).padStart(2, '0')}-${name}`
-  await win.screenshot({ path: path.join(shotsDir, `${tag}.png`) })
+  await screenshotSettled(win, { path: path.join(shotsDir, `${tag}.png`) })
   console.log(`  · shot ${tag}`)
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${userData}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1' },
+const { app, win } = await launchNomiApp({
+  name: 'model-pick-confirm',
+  userDataDir: userData,
 })
-const win = await app.firstWindow()
-await win.waitForLoadState('domcontentloaded')
-await win.waitForTimeout(1500)
 
 await win.evaluate(() => {
   for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) {

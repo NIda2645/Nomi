@@ -3,35 +3,30 @@
 //     ② 点「添加」弹菜单（几何/假人/灯光/相机）；③ 点「几何模型」级联出子菜单；
 //     ④ 点菜单外收起。零额度纯本地渲染。
 // 用法：pnpm run build && node tests/ux/scene3d-toolbar-fit.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.scene3d-toolbar-lab')
 mkdirSync(outDir, { recursive: true })
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-toolbar-walk-'))
 const projectsDir = path.join(tmp, 'projects')
 mkdirSync(projectsDir, { recursive: true })
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-toolbar-fit',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const log = (m) => console.log(m)
 const pass = { editorOpen: false, noScroll: false, menuOpen: false, cascadeOpen: false, closedOutside: false }
 
 try {
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   // 窄窗压测：复现用户那种左右面板挤掉中间画布的窄场景
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0]
@@ -66,7 +61,7 @@ try {
   await win.waitForTimeout(4000)
   const editor = win.locator('[aria-label="3D 场景编辑器"]')
   pass.editorOpen = (await editor.count()) > 0
-  await win.screenshot({ path: path.join(outDir, '01-editor-default.png') })
+  await screenshotSettled(win, { path: path.join(outDir, '01-editor-default.png') })
   log(`  ${pass.editorOpen ? '✓' : '✗'} 编辑器打开`)
 
   // ① 底部条不溢出
@@ -83,7 +78,7 @@ try {
   await win.waitForTimeout(400)
   const addMenu = win.locator('[role="menu"][aria-label="添加 3D 节点"]')
   pass.menuOpen = (await addMenu.count()) > 0
-  await win.screenshot({ path: path.join(outDir, '02-add-menu.png') })
+  await screenshotSettled(win, { path: path.join(outDir, '02-add-menu.png') })
   log(`  ${pass.menuOpen ? '✓' : '✗'} 添加菜单弹出`)
 
   // ③ 级联「几何模型」
@@ -92,14 +87,14 @@ try {
   await win.waitForTimeout(400)
   const geoMenu = win.locator('[role="menu"][aria-label="添加几何模型"]')
   pass.cascadeOpen = (await geoMenu.count()) > 0
-  await win.screenshot({ path: path.join(outDir, '03-geometry-cascade.png') })
+  await screenshotSettled(win, { path: path.join(outDir, '03-geometry-cascade.png') })
   log(`  ${pass.cascadeOpen ? '✓' : '✗'} 几何模型级联`)
 
   // ④ 点菜单外收起
   await win.mouse.click(550, 300)
   await win.waitForTimeout(400)
   pass.closedOutside = (await win.locator('[role="menu"][aria-label="添加 3D 节点"]').count()) === 0
-  await win.screenshot({ path: path.join(outDir, '04-closed.png') })
+  await screenshotSettled(win, { path: path.join(outDir, '04-closed.png') })
   log(`  ${pass.closedOutside ? '✓' : '✗'} 点外收起`)
 } catch (e) {
   log(`✗ 异常：${String(e)}`)

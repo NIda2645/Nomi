@@ -2,6 +2,9 @@
 //   ① 取消排队中的条目 = **零 vendor 调用**（这是「取消不产生费用」的唯一凭据，不能靠嘴说）
 //   ② 连续失败 3 个 → 队列暂停，剩下的不再提交；「上游连带失败」不该触发误停
 //   ③ batchId 不传时行为与接队列前完全一致（退化路径，回滚保险）
+//
+// 各处 assetUploadConsent:'not-needed'（F16b 起必填）：本文件测的是队列机制，节点都不带本地素材，
+// 压根不碰公共临时托管——'not-needed' 就是这批节点的诚实答案，不是为了过类型随手填的占位。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runGenerationNodesBatch, runGenerationNodesByPlan } from './generationRunController'
 import { QUEUE_BRAKE_THRESHOLD, useGenerationQueueStore } from './generationQueueStore'
@@ -47,6 +50,7 @@ describe('生成队列外化', () => {
     const plan = planOf([[ids[0], ids[1]], [ids[2], ids[3]]])
     let seenQueuedInSecondWave = 0
     await runGenerationNodesByPlan(plan, {
+      assetUploadConsent: 'not-needed',
       concurrency: 2,
       executor: async () => {
         // 第一波跑的时候，第二波必须已经在队列里挂着「queued」——这正是用户以前看不见的那部分。
@@ -63,6 +67,7 @@ describe('生成队列外化', () => {
     const executed: string[] = []
     const plan = planOf([ids])
     const runPromise = runGenerationNodesByPlan(plan, {
+      assetUploadConsent: 'not-needed',
       concurrency: 1,
       executor: async (node) => {
         executed.push(node.id)
@@ -86,6 +91,7 @@ describe('生成队列外化', () => {
     let attempts = 0
     const plan = planOf([ids])
     const runPromise = runGenerationNodesByPlan(plan, {
+      assetUploadConsent: 'not-needed',
       concurrency: 1,
       retry: { maxAttempts: 1 },
       executor: async () => {
@@ -122,6 +128,7 @@ describe('生成队列外化', () => {
     const ids = addImageNodes(3)
     const executed: string[] = []
     const result = await runGenerationNodesBatch(ids, {
+      assetUploadConsent: 'not-needed',
       concurrency: 3,
       executor: async (node) => {
         executed.push(node.id)
@@ -141,5 +148,43 @@ describe('生成队列外化', () => {
     useGenerationQueueStore.getState().markSettled(batchId, 'd', 'error')
     expect(useGenerationQueueStore.getState().batches[batchId]?.paused).toBe(false)
     expect(useGenerationQueueStore.getState().batches[batchId]?.consecutiveFailures).toBe(1)
+  })
+
+  // F15：等待态不许穿红衣——unfrozen-anchor / missing-upstream 是「在等前置」，不是失败。
+  describe('blocked 分「等待」与「失败」两桶', () => {
+    function planWithBlocked(
+      waves: string[][],
+      blocked: DependencyWavePlan['blocked'],
+    ): DependencyWavePlan {
+      return { waves, blocked, edgesUsed: [] } as unknown as DependencyWavePlan
+    }
+
+    it('unfrozen-anchor 被拦的镜头 → 留 idle（不画红错误卡）、不进 failures', async () => {
+      const [shotId] = addImageNodes(1)
+      const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'unfrozen-anchor', detail: '在等参考卡「便利店」定妆——在卡上点「定妆」' }])
+      const result = await runGenerationNodesByPlan(plan, { assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
+      const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
+      expect(node?.status ?? 'idle').toBe('idle') // 不是 'error'——等待态去红
+      expect(node?.error).toBeFalsy()
+      expect(result.failures.map((f) => f.nodeId)).not.toContain(shotId) // 不进「重试失败」
+    })
+
+    it('missing-upstream 同样走等待桶（留 idle，不进 failures）', async () => {
+      const [shotId] = addImageNodes(1)
+      const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'missing-upstream', detail: '上游「前置镜」还没有生成结果' }])
+      const result = await runGenerationNodesByPlan(plan, { assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
+      const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
+      expect(node?.status ?? 'idle').toBe('idle')
+      expect(result.failures.map((f) => f.nodeId)).not.toContain(shotId)
+    })
+
+    it('cycle（结构错误）仍走失败桶（红 error + 进 failures，可单独处理）', async () => {
+      const [shotId] = addImageNodes(1)
+      const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'cycle', detail: '与其他节点构成循环引用' }])
+      const result = await runGenerationNodesByPlan(plan, { assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
+      const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
+      expect(node?.status).toBe('error')
+      expect(result.failures.map((f) => f.nodeId)).toContain(shotId)
+    })
   })
 })

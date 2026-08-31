@@ -4,30 +4,19 @@
 // B 档 modifier-zoom（走真设置 UI 切过去）：⑤ 滚轮 = 平移且倍率不变；⑥ ⌘+滚轮 = 缩放；⑦ 提示卡文案跟着换。
 // 截图人眼判断 + 程序断言（节点位移/锚点漂移/选中数）双保险。
 // 用法：node scripts/canvas-gestures-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import os from 'node:os'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.canvas-gestures-walk')
 mkdirSync(outDir, { recursive: true })
 const shot = async (win, name) => { await win.screenshot({ path: path.join(outDir, name) }); console.log('  📸 ' + name) }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    NOMI_E2E: '1',
-    NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-    NOMI_SETTINGS_DIR: mkdtempSync(path.join(os.tmpdir(), 'canvas-gestures-settings-')),
-    NOMI_PROJECTS_DIR: mkdtempSync(path.join(os.tmpdir(), 'canvas-gestures-proj-')),
-  },
+const { app, win } = await launchNomiApp({
+  name: 'canvas-gestures',
+  settingsDir: mkdtempSync(path.join(os.tmpdir(), 'canvas-gestures-settings-')),
+  projectsDir: mkdtempSync(path.join(os.tmpdir(), 'canvas-gestures-proj-')),
 })
 const errors = []
 let failed = false
@@ -37,13 +26,10 @@ const check = (ok, label) => {
 }
 
 try {
-  const win = await app.firstWindow()
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
   win.on('pageerror', (e) => errors.push(String(e)))
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
 
   await win.getByText('新建空白项目', { exact: false }).first().click()
   await win.waitForTimeout(2500)

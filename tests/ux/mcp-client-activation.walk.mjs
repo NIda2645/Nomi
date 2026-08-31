@@ -1,17 +1,34 @@
 // R13/R16 installed-app journey for truthful MCP client activation.
 //
 // Default: isolated HOME/settings/projects, safe to rerun.
+// Build selection: `--app-path=/path/to/Nomi.app` or `--app-path=/path/to/electron`.
 // Real upgrade: `node tests/ux/mcp-client-activation.walk.mjs --real-connect`
 // reconnects stale `nomi` entries through Nomi's UI, verifies current entries in place, and enables Cursor in Nomi.
-import { _electron as electron } from 'playwright'
+import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { chromium } from 'playwright'
 import { fileURLToPath } from 'node:url'
+import { screenshotSettled } from './_assert.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const appBundle = process.env.NOMI_APP_PATH || '/Applications/Nomi.app'
-const executablePath = path.join(appBundle, 'Contents', 'MacOS', 'Nomi')
+const helpRequested = process.argv.includes('--help') || process.argv.includes('-h')
+if (helpRequested) {
+  console.log(`Usage: node tests/ux/mcp-client-activation.walk.mjs [options]
+
+Options:
+  --app-path=<path>  Nomi.app bundle or Electron/Nomi executable (default: /Applications/Nomi.app)
+  --cdp-url=<url>    Attach to a Nomi instance opened by macOS instead of launching it directly
+  --real-connect     Use and update the real HOME, settings, projects, and MCP client configs
+  -h, --help         Show this help`)
+  process.exit(0)
+}
+
+const appPathArg = process.argv.find((arg) => arg.startsWith('--app-path='))?.slice('--app-path='.length)
+const cdpUrl = process.argv.find((arg) => arg.startsWith('--cdp-url='))?.slice('--cdp-url='.length) || null
+const appPath = appPathArg || process.env.NOMI_APP_PATH || '/Applications/Nomi.app'
+const executablePath = appPath.endsWith('.app') ? path.join(appPath, 'Contents', 'MacOS', 'Nomi') : appPath
 const realConnect = process.argv.includes('--real-connect')
 const shotsDir = path.join(repoRoot, 'tests', 'ux', 'shots', 'mcp-client-activation')
 fs.mkdirSync(shotsDir, { recursive: true })
@@ -27,20 +44,16 @@ for (const dir of [testHome, settingsDir, projectsDir, capabilityDir]) {
   if (dir) fs.mkdirSync(dir, { recursive: true })
 }
 
-const launchEnv = {
-  ...process.env,
-  NOMI_E2E: '1',
-  NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-  ...(tempRoot
-    ? {
-        HOME: testHome,
-        NOMI_ELECTRON_USER_DATA_DIR: settingsDir,
-        NOMI_SETTINGS_DIR: settingsDir,
-        NOMI_PROJECTS_DIR: projectsDir,
-        NOMI_CAPABILITY_DIR: capabilityDir,
-      }
-    : {}),
-}
+// 隔离模式把 HOME/能力目录也换掉（MCP 配置写在 HOME 下，不能污染真机）；--real-connect 要的
+// 就是真 HOME 与真配置，故走 isolate:false。NOMI_E2E 那两条由启动器强制，这里不再重复。
+const launchOptions = tempRoot
+  ? {
+      userDataDir: settingsDir,
+      settingsDir,
+      projectsDir,
+      env: { HOME: testHome, NOMI_CAPABILITY_DIR: capabilityDir },
+    }
+  : { isolate: false }
 
 function assert(condition, message) {
   if (!condition) throw new Error(`MCP ACTIVATION WALK FAIL: ${message}`)
@@ -48,7 +61,7 @@ function assert(condition, message) {
 
 async function snap(win, name) {
   const target = path.join(shotsDir, `${realConnect ? 'real' : 'isolated'}-${name}.png`)
-  await win.screenshot({ path: target })
+  await screenshotSettled(win, { path: target })
   console.log(`shot ${target}`)
   return target
 }
@@ -85,9 +98,29 @@ async function prepareWindow(win) {
   }
 }
 
+async function ensureWorkbench(win) {
+  const settings = win.locator('[data-settings-overlay="true"]')
+  if (await settings.count()) {
+    const close = settings.getByRole('button', { name: /关闭|Close/ }).last()
+    if (await close.count()) await close.click()
+  }
+  const blankProject = win.getByRole('button', { name: /新建空白项目|New blank project/ }).first()
+  if (await blankProject.count()) {
+    await blankProject.click({ noWaitAfter: true })
+    await win.getByText(/创作助手|Creative assistant/).first().waitFor({ state: 'visible', timeout: 8_000 })
+  }
+}
+
 async function openModelPanel(win) {
-  await win.evaluate(() => window.dispatchEvent(new CustomEvent('nomi-open-model-catalog')))
-  const panel = win.locator('[data-nomi-right-panel="model"]')
+  await win.evaluate(() => window.dispatchEvent(new CustomEvent('nomi-open-settings', {
+    detail: { tab: 'automation', section: 'automation' },
+  })))
+  const settings = win.locator('[data-settings-overlay="true"]')
+  await settings.waitFor({ state: 'visible', timeout: 8_000 })
+  const manage = settings.locator('[data-settings-action="manage-mcp-connections"]')
+  await manage.waitFor({ state: 'visible', timeout: 8_000 })
+  await manage.click()
+  const panel = settings.locator('[data-settings-section="mcp-assistant-connections"]')
   await panel.waitFor({ state: 'visible', timeout: 8_000 })
   await win.waitForTimeout(800)
   return panel
@@ -107,6 +140,9 @@ async function assistantHeader(win, panel) {
     }
   }
   if ((await matches.count()) === 0) {
+    matches = panel.locator('button').filter({ hasText: name })
+  }
+  if ((await matches.count()) === 0) {
     const buttons = await panel.locator('button').allInnerTexts()
     throw new Error(`MCP ACTIVATION WALK FAIL: assistant card is missing; buttons=${buttons.join(' | ')}`)
   }
@@ -116,7 +152,8 @@ async function assistantHeader(win, panel) {
 async function expandAssistant(win, panel) {
   const header = await assistantHeader(win, panel)
   await header.scrollIntoViewIfNeeded()
-  if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click()
+  const expanded = await header.getAttribute('aria-expanded')
+  if (expanded !== null && expanded !== 'true') await header.click()
   await win.waitForTimeout(250)
 }
 
@@ -131,7 +168,7 @@ async function installOrReconnect(win, panel, clientKey, label) {
   await expandAssistant(win, panel)
   await selectClient(win, panel, label)
   const action = panel.locator('button').filter({
-    hasText: new RegExp(`重新接入 ${label}|Reconnect ${label}|一键接入 ${label}|Connect ${label}`),
+    hasText: new RegExp(`重新接入 ${label}|升级接入 ${label}|修复接入 ${label}|Reconnect ${label}|Upgrade ${label} connection|Repair ${label} connection|一键接入 ${label}|Connect ${label}`),
   }).first()
   if (await action.count()) {
     await action.click()
@@ -141,7 +178,7 @@ async function installOrReconnect(win, panel, clientKey, label) {
   }
   const verified = await win.evaluate(async (key) => window.nomiDesktop?.capability?.verifyMcp?.(key), clientKey)
   assert(verified?.ok === true, `${label} did not pass a real handshake after reconnect (${verified?.reason || 'no result'})`)
-  assert(verified.toolCount === 13, `${label} exposed ${verified.toolCount ?? 'unknown'} tools instead of 13`)
+  assert(verified.toolCount === 15, `${label} exposed ${verified.toolCount ?? 'unknown'} tools instead of 15`)
   console.log(`${label}: verified ${verified.toolCount} tools`)
 }
 
@@ -171,11 +208,21 @@ async function allowCursor(win, dialog, input) {
     const value = await window.nomiDesktop?.settings?.automationPolicy?.get?.()
     return value?.trustedHosts?.includes('cursor') === true
   }, undefined, { timeout: 5_000 })
+  const manage = dialog.locator('[data-settings-action="manage-mcp-connections"]')
+  if (await manage.count()) {
+    await manage.click()
+    const panel = dialog.locator('[data-settings-section="mcp-assistant-connections"]')
+    await panel.waitFor({ state: 'visible', timeout: 5_000 })
+    await selectClient(win, panel, 'Cursor')
+    await win.waitForTimeout(500)
+    return panel
+  }
   const close = dialog.getByRole('button', { name: /关闭设置|Close settings|关闭|Close/ }).first()
   if (await close.count()) await close.click()
   else await win.keyboard.press('Escape')
   await dialog.waitFor({ state: 'hidden', timeout: 5_000 })
   await win.waitForTimeout(500)
+  return null
 }
 
 async function verifyCardUpdated(panel) {
@@ -210,19 +257,32 @@ async function assertNoCompactOverflow(panel) {
   assert(overflowing.length === 0, `compact layout has clipped text: ${overflowing.join(' | ')}`)
 }
 
-const app = await electron.launch({
-  executablePath,
-  args: tempRoot ? [`--user-data-dir=${settingsDir}`] : [],
-  env: launchEnv,
-})
+let app = null
+let browser = null
+let win = null
+if (cdpUrl) {
+  browser = await chromium.connectOverCDP(cdpUrl)
+  win = browser.contexts().flatMap((context) => context.pages())[0] || null
+  assert(win, `no renderer page exposed at ${cdpUrl}`)
+} else {
+  const launched = await launchNomiApp({
+    name: 'mcp-client-activation',
+    executablePath,
+    settleMs: 0,
+    ...launchOptions,
+  })
+  app = launched.app
+  win = launched.win
+}
 
 let passed = false
 try {
-  const win = await app.firstWindow()
   console.log('window ready')
   if (!realConnect) await win.setViewportSize({ width: 1180, height: 780 })
   await prepareWindow(win)
   console.log('window prepared')
+  await ensureWorkbench(win)
+  console.log('workbench ready')
   let panel = await openModelPanel(win)
   console.log('model panel opened')
   await expandAssistant(win, panel)
@@ -243,7 +303,7 @@ try {
     await snap(win, 'zh-light-cursor-needs-permission')
     const { dialog, input } = await openCursorPermissions(win, panel)
     await snap(win, 'zh-light-cursor-settings-focused')
-    await allowCursor(win, dialog, input)
+    panel = await allowCursor(win, dialog, input) || panel
     await verifyCardUpdated(panel)
     await snap(win, 'zh-light-cursor-allowed')
   }
@@ -259,15 +319,18 @@ try {
     const englishSettings = await openCursorPermissions(win, panel)
     await assertNoCompactOverflow(englishSettings.dialog)
     await snap(win, 'en-dark-narrow-settings-focused')
-    await allowCursor(win, englishSettings.dialog, englishSettings.input)
+    panel = await allowCursor(win, englishSettings.dialog, englishSettings.input) || panel
     await verifyCardUpdated(panel)
   }
 
   passed = true
   console.log(`MCP CLIENT ACTIVATION WALK PASS (${realConnect ? 'real connect' : 'isolated'})`)
 } finally {
-  await closeApp(app)
+  if (browser) {
+    try { browser._connection.close() } catch {}
+  } else if (app) await closeApp(app)
   if (tempRoot) fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
 }
 
 if (!passed) process.exitCode = 1
+else if (cdpUrl) process.exit(0)

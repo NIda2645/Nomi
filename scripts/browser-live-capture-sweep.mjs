@@ -3,14 +3,9 @@
 // 与生产同路：真 UI 开浏览器 → sendInputEvent 悬停（bridge 冻结候选）→ overlay Ctrl/Cmd+C →
 // 会话下载/诚实降级 → assets/imported 落盘 + magic + captureQuality 标注。
 // 用法：pnpm build && node scripts/browser-live-capture-sweep.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from '../tests/ux/_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.browser-live-sweep')
 fs.rmSync(outDir, { recursive: true, force: true })
 fs.mkdirSync(outDir, { recursive: true })
@@ -76,24 +71,14 @@ const listImported = () => (fs.existsSync(importedDir)
   : [])
 
 const results = []
-let app = null
+const { app, win } = await launchNomiApp({
+  name: 'browser-live-capture-sweep',
+  settingsDir,
+  projectsDir,
+  userDataDir: path.join(base, 'udata'),
+  env: { NOMI_E2E_SMOKE: '1' },
+})
 try {
-  app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.', `--user-data-dir=${path.join(base, 'udata')}`],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      NOMI_E2E: '1',
-      NOMI_E2E_SMOKE: '1',
-      NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
-      NOMI_PROJECTS_DIR: projectsDir,
-      NOMI_SETTINGS_DIR: settingsDir,
-    },
-  })
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1500)
   await win.evaluate(() => {
     for (const k of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) window.localStorage.setItem(k, 'seen')
     window.localStorage.setItem('__nomiE2E', '1')

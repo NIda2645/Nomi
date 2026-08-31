@@ -78,28 +78,60 @@ export function collectAssetUrls(value: unknown): string[] {
   return [];
 }
 
-export function taskStatusFromResponse(response: unknown, responseMapping: JsonRecord | null, statusMapping: Record<string, string[]> | undefined, assetUrls: string[]): TaskStatus {
+/**
+ * 状态归一的完整结论。
+ *
+ * `unrecognizedStatus` 是本类型存在的理由：旧版只返回 `TaskStatus`，于是「上游说排队中」和
+ * 「上游说了个我们不认得的词」**被压成同一个 `queued`**。而 `queued` 对三条轮询循环都是
+ * 「再查一次」的指令 —— 上游已经返回 `failure`/`rejected` 时，系统读成「还在排队」，
+ * 把预算烧完也没把真因报给用户（用户看到的就是「永远转圈」）。
+ * 分出这个字段 = 让「不知道」不再冒充「排队中」，判定交给 tasks/taskResultQuery 的有界容忍规则。
+ */
+export type TaskStatusResolution = {
+  status: TaskStatus;
+  /**
+   * 上游确实给了、但所有映射表 + 通用词表都不认得的**原始动词**（保留大小写原样，供诊断与报错）。
+   * 空串 = 认得，**或**上游压根没给状态（后者是正常的排队，例如 create 只回 task_id ——
+   * 这两者必须分开，否则每个同步/首调响应都会被误计为「未知」，是不误伤的第一道保险）。
+   */
+  unrecognizedStatus: string;
+};
+
+/** 归一状态的**唯一实现**（`taskStatusFromResponse` 只是它的取值投影，不是第二套）。 */
+export function resolveTaskStatus(response: unknown, responseMapping: JsonRecord | null, statusMapping: Record<string, string[]> | undefined, assetUrls: string[]): TaskStatusResolution {
   const mappedStatus = firstMappedString(response, responseMapping, "status");
-  const fallbackStatus = firstString(
+  const rawStatus = firstString(
     mappedStatus,
     isJsonRecord(response) ? response.status : "",
     isJsonRecord(response) ? readNestedRecord(response, ["data", "status"]) : "",
     isJsonRecord(response) ? readNestedRecord(response, ["choices", "0", "finish_reason"]) : "",
-  ).toLowerCase();
+  );
+  const fallbackStatus = rawStatus.toLowerCase();
+  const recognized = (status: TaskStatus): TaskStatusResolution => ({ status, unrecognizedStatus: "" });
   const sm = statusMapping || {};
   for (const status of ["queued", "running", "succeeded", "failed"] as const) {
     const values = Array.isArray(sm[status]) ? sm[status] : [];
-    if (values.map((item) => String(item).toLowerCase()).includes(fallbackStatus)) return status;
+    if (values.map((item) => String(item).toLowerCase()).includes(fallbackStatus)) return recognized(status);
   }
   // 通用状态词表（供应商无关）。kie 用 waiting/generating/fail，故并入默认 —— 让所有走这套
   // 动词的供应商无需各自声明 statusMapping（避免每家一份并行映射）。
-  if (["queued", "queuing", "pending", "waiting", "in_queue", "starting"].includes(fallbackStatus)) return "queued";
-  if (["running", "processing", "in_progress", "generating"].includes(fallbackStatus)) return "running";
-  if (["succeeded", "success", "completed", "complete", "done", "stop", "length"].includes(fallbackStatus)) return "succeeded";
-  if (["failed", "fail", "error", "timeout", "expired", "canceled", "cancelled"].includes(fallbackStatus)) return "failed";
-  if (assetUrls.length > 0) return "succeeded";
-  if (isJsonRecord(response) && (response.error || readNestedRecord(response, ["data", "error"]))) return "failed";
-  return "queued";
+  if (["queued", "queuing", "pending", "waiting", "in_queue", "starting"].includes(fallbackStatus)) return recognized("queued");
+  if (["running", "processing", "in_progress", "generating"].includes(fallbackStatus)) return recognized("running");
+  if (["succeeded", "success", "completed", "complete", "done", "stop", "length"].includes(fallbackStatus)) return recognized("succeeded");
+  if (["failed", "fail", "error", "timeout", "expired", "canceled", "cancelled"].includes(fallbackStatus)) return recognized("failed");
+  // 词表都没认出来 → 先看有没有**硬证据**能定案（有产物=成了、有 error 字段=挂了）。
+  // 硬证据比动词可信，且能定案就不算「不知道」，故不标 unrecognizedStatus。
+  if (assetUrls.length > 0) return recognized("succeeded");
+  if (isJsonRecord(response) && (response.error || readNestedRecord(response, ["data", "error"]))) return recognized("failed");
+  // 真·不知道。仍返回 queued（保持「继续轮询」的乐观行为，绝不一见未知就判死 —— 未知动词
+  // 也可能表示「进行中」，立刻判死会误杀**已付费**的生成）。但把原始动词带出去，让
+  // taskResultQuery 能在「连续多次 + 超过宽限期」后判失败并如实报出这个词。
+  return { status: "queued", unrecognizedStatus: rawStatus };
+}
+
+/** 只要状态、不关心动词是否认得时的取值投影（解析逻辑单一真相在 `resolveTaskStatus`）。 */
+export function taskStatusFromResponse(response: unknown, responseMapping: JsonRecord | null, statusMapping: Record<string, string[]> | undefined, assetUrls: string[]): TaskStatus {
+  return resolveTaskStatus(response, responseMapping, statusMapping, assetUrls).status;
 }
 
 /** 各家把失败原因塞进的字段名（无序扫描用）。含 kie 的 failMsg、runninghub 的 errorMessage。 */

@@ -3,10 +3,14 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 import { contentTypeFromPath } from '../assets/assetPaths'
-import { setArtifactPreviewHttpOrigin } from './artifactProjection'
+import { getArtifactPreviewSecret, resolveAssetPreviewFile, setArtifactPreviewHttpOrigin } from './artifactProjection'
 import type { ProductionRunService } from './productionRunService'
 
-type PreviewService = Pick<ProductionRunService, 'resolveArtifactPreview'>
+// 交付④：同一 server 既解 production run-artifact token（resolveArtifactPreview），也解 canvas-asset token
+// （resolveAssetPreview，可选注入——App 层用 resolveProjectRelativePath 提供）。绝不新起第二个 server。
+type PreviewService = Pick<ProductionRunService, 'resolveArtifactPreview'> & {
+  resolveAssetPreview?: (token: string) => { filePath: string; expiresAt: string }
+}
 
 function previewHeaders(filePath: string, extra: Record<string, string> = {}): Record<string, string> {
   return {
@@ -44,7 +48,15 @@ export async function handleArtifactPreviewHttpRequest(
     if (!['GET', 'HEAD'].includes(req.method || '')) throw new Error('Method not allowed')
     const keys = [...parsed.searchParams.keys()]
     if (keys.length !== 1 || keys[0] !== 'preview') throw new Error('Invalid preview query')
-    const resolved = service.resolveArtifactPreview(parsed.searchParams.get('preview') || '')
+    const token = parsed.searchParams.get('preview') || ''
+    // 先按 production run-artifact 解；它对 asset token 抛（kind 不符）→ 退到 asset 解析器。两者都拒才 404。
+    let resolved: { filePath: string; expiresAt: string }
+    try {
+      resolved = service.resolveArtifactPreview(token)
+    } catch (productionError) {
+      if (!service.resolveAssetPreview) throw productionError
+      resolved = service.resolveAssetPreview(token)
+    }
     const stat = fs.statSync(resolved.filePath)
     if (!stat.isFile()) throw new Error('Preview is not a file')
     const rangeValue = Array.isArray(req.headers.range) ? req.headers.range[0] : req.headers.range
@@ -71,6 +83,20 @@ export async function handleArtifactPreviewHttpRequest(
     res.end('Production preview not found')
   }
   return true
+}
+
+/**
+ * 给一个 production 预览 service 补上 canvas-asset 解析能力（交付④），共用同一 server / 同一 HMAC secret。
+ * projectRootFor 注入（真实 = resolveWorkspaceProjectDir），故本模块不硬依赖 workspace/runtimePaths、保持可测。
+ */
+export function withAssetPreview(
+  service: Pick<ProductionRunService, 'resolveArtifactPreview'>,
+  projectRootFor: (projectId: string) => string | null,
+): PreviewService {
+  return {
+    resolveArtifactPreview: service.resolveArtifactPreview,
+    resolveAssetPreview: (token: string) => resolveAssetPreviewFile({ token, secret: getArtifactPreviewSecret(), projectRootFor }),
+  }
 }
 
 export function startArtifactPreviewHttpServer(service: PreviewService): Promise<{ port: number; close: () => Promise<void> }> {

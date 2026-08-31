@@ -4,14 +4,36 @@ import { findNonHeaderSafeChar, isJsonRecord, nowIso, type JsonRecord } from "..
 import { sanitizeName } from "../projects/repository";
 import { writeJsonFileAtomic } from "../jsonFile";
 import { CATALOG_FILE, getSettingsRoot, readJson } from "../runtimePaths";
-import { type ApiKeyRecord, decryptApiKeyRecord, isSafeStorageAvailable, makeApiKeyRecordFromPlain } from "./secrets";
+import { apiKeyDecryptStatus, type ApiKeyRecord, decryptApiKeyRecord, makeApiKeyRecordFromPlain } from "./secrets";
 import { humanizeModelKey } from "./modelLabel";
 import { applyBuiltinSeeds } from "./seedBuiltins";
 import { migrateRelayImageEditProtocols } from "./relayImageEditMigration";
 import { migrateRelayVideoImageToVideo } from "./relayVideoI2vMigration";
+import { migrateComfyWorkflowOutputs } from "./comfyuiWorkflowOutputMigration";
+import { migrateCatalogMediaContracts } from "./catalogMediaContractMigration";
 import { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayLegacyMigrations";
 import type { AiSdkProviderKind, BillingModelKind, CatalogState, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./types";
 import { CURRENT_CATALOG_VERSION } from "./types";
+import { normalizeCustomCall } from "./customCallMode";
+import { derivePublishedExecution, modelHasPublishedExecution } from "../shared/modelPublication";
+import { deriveModelCatalogHealth } from "./catalogHealth";
+import { deleteVendorLineageAndRestore, removeVendorLineage } from "./vendorLineageLifecycle";
+import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
+import { antigravityConnection } from "../ai/antigravityConnection";
+import { extractLegacyStages, normalizeLegacyMappings } from "./legacyMappingMigration";
+import {
+  applyPlainCustomConfig,
+  hasLegacyCustomConfigField,
+  legacyCustomConfig,
+  migrateLegacyCustomConfigSecrets,
+  normalizedCustomConfig,
+  publicVendor,
+  replaceCustomCallConfig,
+  withoutLegacyCustomConfig,
+  type CustomCallConfigPublicEntry,
+} from "./customConfigStore";
+
+export type { CustomCallConfigPatchEntry, CustomCallConfigPublicEntry } from "./customConfigStore";
 
 // 各版 relay 迁移各住独立模块（R9 分层：迁移与读写盘/事务无关）。这里只做接线 + 再导出，
 // 测试与既有调用方按原路径 import 不变。
@@ -43,8 +65,8 @@ export function readCatalog(): CatalogState {
     return initial;
   }
 
-  // Migrate forward. v1 → v2: tag pre-existing keys as plaintext-encoded; M5.2
-  // will lazy-upgrade them to safeStorage on first read once that lands.
+  // Migrate forward. v1 → v2 tags pre-existing keys as plaintext-encoded;
+  // reads preserve those records so catalog access never opens the OS keychain.
   const migrated = migrateCatalogForward(parsed);
 
   const apiKeysByVendor = migrated.apiKeysByVendor || {};
@@ -53,7 +75,7 @@ export function readCatalog(): CatalogState {
     vendors: migrated.vendors.map((vendor) => ({
       ...vendor,
       providerKind: normalizeProviderKind(vendor.providerKind),
-      hasApiKey: Boolean(apiKeysByVendor[vendor.key]?.apiKey && apiKeysByVendor[vendor.key]?.enabled !== false),
+      hasApiKey: apiKeyDecryptStatus(apiKeysByVendor[vendor.key]) === "ok",
     })),
     apiKeysByVendor,
   };
@@ -72,94 +94,9 @@ export function ensureBuiltinModelSeeds(): void {
 }
 
 /**
- * Convert one legacy mapping payload into a `{create, query}` pair, handling:
- *  - bare op: `{method, path, headers, body}` → treat as create
- *  - v2 envelope: `{version: "v2", create: {default: op}, query: {default: op}}`
- *    → unwrap both stages
- * Returns whatever is recognizable; the caller merges across rows.
- */
-function extractLegacyStages(raw: unknown): { create?: HttpOperation; query?: HttpOperation; statusMapping?: Record<string, string[]> } {
-  if (!isJsonRecord(raw)) return {};
-  const out: { create?: HttpOperation; query?: HttpOperation; statusMapping?: Record<string, string[]> } = {};
-  const opFrom = (v: unknown): HttpOperation | undefined => {
-    if (!isJsonRecord(v)) return undefined;
-    const inner = isJsonRecord(v.default) ? v.default : v;
-    if (typeof inner.method === "string" && typeof inner.path === "string") return inner as unknown as HttpOperation;
-    return undefined;
-  };
-  // Bare op first — a legacy {method, path, headers, body, query} row has its
-  // own `query` field (HTTP query params), so envelope detection by the
-  // presence of `raw.query` is wrong. Only unwrap an envelope when the marker
-  // `version === "v2"` is present or `raw.create` is itself an op.
-  if (typeof raw.method === "string" && typeof raw.path === "string") {
-    out.create = raw as unknown as HttpOperation;
-  } else if (raw.version === "v2" || opFrom(raw.create) || opFrom(raw.query)) {
-    const c = opFrom(raw.create);
-    const q = opFrom(raw.query);
-    if (c) out.create = c;
-    if (q) out.query = q;
-    if (isJsonRecord(raw.status_mapping)) out.statusMapping = raw.status_mapping as Record<string, string[]>;
-  }
-  return out;
-}
-
-function normalizeLegacyMappings(rawMappings: unknown): Mapping[] {
-  const list = Array.isArray(rawMappings) ? rawMappings : [];
-  const grouped = new Map<string, Mapping>();
-  for (const item of list) {
-    if (!isJsonRecord(item)) continue;
-    const vendorKey = String(item.vendorKey || "").trim();
-    const taskKind = (item.taskKind as ProfileKind) || "chat";
-    if (!vendorKey) continue;
-    const key = `${vendorKey}|${taskKind}`;
-    const existing = grouped.get(key);
-    const name = String(item.name || "");
-    const isQueryRow = /\bquery\b/i.test(name);
-    const fromRequest = extractLegacyStages(item.requestMapping);
-    const fromResponse = extractLegacyStages(item.responseMapping);
-    // If the row's name says "query" but the legacy op landed in `create`,
-    // promote it to `query` — those old rows stored a single op regardless of stage.
-    const stages: { create?: HttpOperation; query?: HttpOperation; statusMapping?: Record<string, string[]> } = {};
-    for (const stage of [fromRequest, fromResponse]) {
-      if (stage.create && isQueryRow && !stage.query) {
-        stages.query = stages.query || stage.create;
-      } else {
-        if (stage.create) stages.create = stages.create || stage.create;
-        if (stage.query) stages.query = stages.query || stage.query;
-      }
-      if (stage.statusMapping) stages.statusMapping = { ...(stages.statusMapping || {}), ...stage.statusMapping };
-    }
-    const baseName = name.replace(/\s*\((create|query)\)\s*$/i, "").trim() || taskKind;
-    const id = String(item.id || "").trim() || `mapping-${crypto.randomUUID()}`;
-    const createdAt = String(item.createdAt || nowIso());
-    if (!existing) {
-      if (!stages.create && !stages.query) continue; // unsalvageable
-      grouped.set(key, {
-        id,
-        vendorKey,
-        taskKind,
-        name: baseName,
-        enabled: normalizeEnabled(item.enabled, true),
-        create: stages.create || (stages.query as HttpOperation), // create is required; fall back if only query was salvageable
-        ...(stages.query ? { query: stages.query } : {}),
-        ...(stages.statusMapping ? { statusMapping: stages.statusMapping } : {}),
-        createdAt,
-        updatedAt: nowIso(),
-      });
-    } else {
-      // Merge: keep first row's create, fill in query from any later row.
-      if (!existing.query && stages.query) existing.query = stages.query;
-      if (!existing.query && stages.create && isQueryRow) existing.query = stages.create;
-      if (stages.statusMapping) existing.statusMapping = { ...(existing.statusMapping || {}), ...stages.statusMapping };
-      existing.updatedAt = nowIso();
-    }
-  }
-  return Array.from(grouped.values());
-}
-
-/**
- * In-place forward migration. Unknown future versions fall back to defaults.
- * Always returns a state at CURRENT_CATALOG_VERSION.
+ * In-place forward migration. Unknown future versions stay untouched. A v8
+ * catalog carrying legacy plaintext custom config intentionally stays at v8
+ * until an explicit credential write can migrate every secret atomically.
  */
 function migrateCatalogForward(state: CatalogState): CatalogState {
   let s = state;
@@ -230,31 +167,35 @@ function migrateCatalogForward(state: CatalogState): CatalogState {
     writeCatalog(s);
   }
 
+  if (s.version === 8) {
+    const hasLegacyCustomConfig = s.vendors.some(hasLegacyCustomConfigField);
+    if (!hasLegacyCustomConfig) {
+      s = { ...s, version: 9 };
+      writeCatalog(s);
+    }
+  }
+
+  if (s.version === 9) {
+    s = { ...migrateComfyWorkflowOutputs(s), version: 10 };
+    writeCatalog(s);
+  }
+
+  if (s.version === 10) {
+    const before = s;
+    const migrated = migrateCatalogMediaContracts(s);
+    s = migrated.unresolved ? migrated.state : { ...migrated.state, version: 11 };
+    if (!migrated.unresolved || migrated.state !== before) writeCatalog(s);
+    if (migrated.unresolved) console.warn("[catalog] v11 media migration has unresolved ambiguous bindings; catalog remains v10 for retry");
+  }
+
   if ((s.version as number) > CURRENT_CATALOG_VERSION) {
     // Newer file than this app understands — return it untouched so it stays
     // readable, and let `writeCatalog` REFUSE any write back (read-only guard).
     // This actually enforces "don't downgrade" instead of only warning about it.
-    console.warn(`[catalog] file version ${s.version} > app version ${CURRENT_CATALOG_VERSION}; read-only (writes refused)`);
+    console.warn(
+      `[catalog] file version ${s.version} > app version ${CURRENT_CATALOG_VERSION}; read-only (writes refused)`,
+    );
     return s;
-  }
-
-  // Lazy upgrade: any plaintext keys get re-encrypted on first read once safeStorage is up.
-  // This handles both legacy v1 keys post-migration and import-from-export scenarios.
-  if (isSafeStorageAvailable()) {
-    let dirty = false;
-    const upgraded: Record<string, ApiKeyRecord> = {};
-    for (const [k, rec] of Object.entries(s.apiKeysByVendor || {})) {
-      if (rec.enc !== "safeStorage" && rec.apiKey) {
-        upgraded[k] = makeApiKeyRecordFromPlain(rec.apiKey, rec.vendorKey, rec.enabled, rec.createdAt, rec.updatedAt);
-        dirty = true;
-      } else {
-        upgraded[k] = rec;
-      }
-    }
-    if (dirty) {
-      s = { ...s, apiKeysByVendor: upgraded };
-      writeCatalog(s);
-    }
   }
 
   return s;
@@ -287,14 +228,16 @@ function normalizeEnabled(value: unknown, fallback = true): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-export function normalizeProviderKind(value: unknown, fallback: AiSdkProviderKind = "openai-compatible"): AiSdkProviderKind {
+export function normalizeProviderKind(
+  value: unknown,
+  fallback: AiSdkProviderKind = "openai-compatible",
+): AiSdkProviderKind {
   return value === "anthropic" || value === "openai-compatible" || value === "openai-responses" ? value : fallback;
 }
 
-function filterByParams<T extends { vendorKey?: string; kind?: BillingModelKind; enabled?: boolean; taskKind?: ProfileKind }>(
-  items: T[],
-  params: unknown,
-): T[] {
+function filterByParams<
+  T extends { vendorKey?: string; kind?: BillingModelKind; enabled?: boolean; taskKind?: ProfileKind },
+>(items: T[], params: unknown): T[] {
   if (!params || typeof params !== "object") return items;
   const raw = params as JsonRecord;
   return items.filter((item) => {
@@ -307,15 +250,63 @@ function filterByParams<T extends { vendorKey?: string; kind?: BillingModelKind;
 }
 
 export function listModelCatalogVendors(): Vendor[] {
-  return readCatalog().vendors;
+  return readCatalog().vendors.map(publicVendor);
 }
-
-export function listModelCatalogModels(params?: unknown): Model[] {
-  return filterByParams(readCatalog().models, params);
+export function listModelCatalogModels(params?: unknown): Array<Model & { published: boolean; publishedModes: ProfileKind[] }> {
+  const state = readCatalog();
+  return filterByParams(state.models, params).map((model) => ({
+    ...model, ...derivePublishedExecution(model, { mappings: state.mappings }),
+  })) as Array<Model & { published: boolean; publishedModes: ProfileKind[] }>;
 }
-
 export function listModelCatalogMappings(params?: unknown): Mapping[] {
   return filterByParams(readCatalog().mappings, params);
+}
+
+/** 单个可用 text「语言大脑」候选的解出形（onboarding 文档读取 / 审片环 judge 共用）。 */
+export type OnboardingAgent = {
+  providerKind: AiSdkProviderKind;
+  baseUrl: string;
+  /** 选中 text 模型所属 vendor 的 key。审片环 judge 走 runTask 需要它（runTask 按 vendorKey 解模型）。 */
+  vendorKey: string;
+  modelId: string;
+  apiKey: string;
+  extraHeaders?: Record<string, string>;
+};
+
+/**
+ * List **all** usable text-model "language brain" candidates from the catalog, in
+ * catalog order (same filters as {@link resolveOnboardingAgentFromCatalog}: kind
+ * text + enabled, vendor enabled + baseUrlHint, decryptable key). This is the
+ * source of truth for candidate selection — {@link resolveOnboardingAgentFromCatalog}
+ * is `candidates[0] ?? null`, so existing callers keep exact semantics.
+ *
+ * 审片环 judge 用它做**候选回退**（L3 实跑抓出的韧性缺陷）：单点依赖「目录第一个 text 模型」太脆——
+ * 用户真实目录里它是经中转的 claude-fable-5，对 chat 调用连续 500。judge 首调失败 → 顺移下一候选。
+ * 排序与既有一致（catalog 顺序），不引入任何环境变量开关（P1），选择逻辑纯 derive 自目录数据。
+ */
+export function listOnboardingAgentCandidates(): OnboardingAgent[] {
+  const state = readCatalog();
+  const out: OnboardingAgent[] = [];
+  for (const model of state.models) {
+    if (model.kind !== "text" || !modelHasPublishedExecution(model, { mappings: state.mappings })) continue;
+    const vendor = state.vendors.find((v) => v.key === model.vendorKey && v.enabled);
+    if (!vendor || !vendor.baseUrlHint) continue;
+    // Auth-free local gateways are executable without a credential. Do not
+    // probe or require a stale/legacy key record for them; credentialed
+    // providers remain fail-closed and must have a decryptable safeStorage key.
+    const apiKey = vendor.authType === "none" ? "" : decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);
+    if (vendor.authType !== "none" && !apiKey) continue;
+    const extraHeaders = extractVendorExtraHeaders(vendor);
+    out.push({
+      providerKind: normalizeProviderKind(vendor.providerKind),
+      baseUrl: vendor.baseUrlHint,
+      vendorKey: vendor.key,
+      modelId: model.modelKey,
+      apiKey,
+      ...(extraHeaders ? { extraHeaders } : {}),
+    });
+  }
+  return out;
 }
 
 /**
@@ -326,101 +317,73 @@ export function listModelCatalogMappings(params?: unknown): Mapping[] {
  * leaves the process. Returns null when no usable text model is configured (the
  * caller then surfaces a "add a text model first" message). Bearer/none-auth
  * vendors only — query/x-api-key auth isn't a chat-completions shape.
+ *
+ * = `listOnboardingAgentCandidates()[0] ?? null`（第一个可用 text 模型，语义与既往逐字一致，
+ * 现有调用方不受影响）。审片环 judge 改用**全候选序列**做回退，见 listOnboardingAgentCandidates。
  */
-export function resolveOnboardingAgentFromCatalog():
-  | {
-      providerKind: AiSdkProviderKind;
-      baseUrl: string;
-      modelId: string;
-      apiKey: string;
-      extraHeaders?: Record<string, string>;
-    }
-  | null {
-  const state = readCatalog();
-  for (const model of state.models) {
-    if (model.kind !== "text" || !model.enabled) continue;
-    const vendor = state.vendors.find((v) => v.key === model.vendorKey && v.enabled);
-    if (!vendor || !vendor.baseUrlHint) continue;
-    const apiKey = decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]);
-    if (!apiKey) continue;
-    const extraHeaders = extractVendorExtraHeaders(vendor);
-    return {
-      providerKind: normalizeProviderKind(vendor.providerKind),
-      baseUrl: vendor.baseUrlHint,
-      modelId: model.modelKey,
-      apiKey,
-      ...(extraHeaders ? { extraHeaders } : {}),
-    };
-  }
-  return null;
+export function resolveOnboardingAgentFromCatalog(): OnboardingAgent | null {
+  return listOnboardingAgentCandidates()[0] ?? null;
 }
 
 export function getModelCatalogHealth(): unknown {
-  const state = readCatalog();
-  const enabledVendors = state.vendors.filter((vendor) => vendor.enabled);
-  const enabledModels = state.models.filter((model) => model.enabled);
-  const enabledApiKeys = Object.values(state.apiKeysByVendor).filter((key) => key.enabled && key.apiKey).length;
-  const executableModels = enabledModels.filter((model) => {
-    const vendor = state.vendors.find((item) => item.key === model.vendorKey);
-    const apiKey = state.apiKeysByVendor[model.vendorKey];
-    return Boolean(vendor?.enabled && (vendor.authType === "none" || (apiKey?.enabled && apiKey.apiKey)));
-  });
-  const byKind = (["text", "image", "video", "audio"] as BillingModelKind[]).map((kind) => ({
-    kind,
-    enabledModels: enabledModels.filter((model) => model.kind === kind).length,
-    executableModels: executableModels.filter((model) => model.kind === kind).length,
-  }));
-  const issues = [];
-  if (state.vendors.length === 0 || state.models.length === 0) {
-    issues.push({ code: "catalog_empty", severity: "error", message: "Local model catalog is empty" });
-  }
-  for (const model of enabledModels) {
-    const vendor = state.vendors.find((item) => item.key === model.vendorKey);
-    const apiKey = state.apiKeysByVendor[model.vendorKey];
-    if (!vendor?.enabled) {
-      issues.push({ code: "vendor_disabled", severity: "error", message: `Vendor disabled: ${model.vendorKey}`, vendorKey: model.vendorKey, modelKey: model.modelKey, kind: model.kind });
-    } else if (vendor.authType !== "none" && !apiKey?.apiKey) {
-      issues.push({ code: "vendor_api_key_missing", severity: "error", message: `API key missing: ${model.vendorKey}`, vendorKey: model.vendorKey, modelKey: model.modelKey, kind: model.kind });
-    }
-  }
-  return {
-    ok: issues.every((issue) => issue.severity !== "error"),
-    counts: {
-      vendors: state.vendors.length,
-      enabledVendors: enabledVendors.length,
-      models: state.models.length,
-      enabledModels: enabledModels.length,
-      mappings: state.mappings.length,
-      enabledMappings: state.mappings.filter((mapping) => mapping.enabled).length,
-      enabledApiKeys,
-    },
-    byKind,
-    issues,
-  };
+  return deriveModelCatalogHealth(readCatalog());
 }
 
 /**
- * 纯函数:把一次 vendor upsert 应用到**内存中的** state(原地改 state.vendors),返回产出的 vendor。
- * 不读盘不写盘——读盘/写盘归调用方。事务化导入(importModelCatalogPackage)与单条公开 upsert
- * 共用它,避免两份合并逻辑漂移(P1)。
+ * 明确的 custom-config 凭据写边界：先加密，再从 vendor.meta 移除旧明文。
+ * 全部 legacy 字段都清理完后，才在同一内存事务中升到 v9。
+ */
+function applyPlainCustomConfigWrite(state: CatalogState, vendorKey: string, config: Record<string, string>): void {
+  applyPlainCustomConfig(state, vendorKey, config);
+  state.vendors = state.vendors.map((vendor) =>
+    vendor.key === vendorKey ? { ...vendor, meta: withoutLegacyCustomConfig(vendor.meta) } : vendor,
+  );
+  if (state.version === 8 && !state.vendors.some(hasLegacyCustomConfigField)) state.version = 9;
+}
+
+/**
+ * 把一次 vendor upsert 应用到内存 state，不读盘不写盘。
+ * 事务化导入与单条公开 upsert 共用它，避免两份合并逻辑漂移。
  */
 function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
   const raw = payload as JsonRecord;
   const key = sanitizeName(raw.key, "").toLowerCase().replace(/\s+/g, "-");
   if (!key) throw new Error("vendor key is required");
   const existing = state.vendors.find((vendor) => vendor.key === key);
+  guardAntigravityVendorWrite({ ...raw, key, enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true) }, existing,
+    (request) => antigravityConnection.canEnable(request));
   const t = nowIso();
+  const existingMeta = isJsonRecord(existing?.meta) ? existing.meta : null;
+  const hasIncomingCustomConfig = Boolean(
+    isJsonRecord(raw.meta) && Object.prototype.hasOwnProperty.call(raw.meta, "customConfig"),
+  );
+  let incomingMeta: unknown;
+  if (hasIncomingCustomConfig) {
+    applyPlainCustomConfigWrite(state, key, normalizedCustomConfig((raw.meta as JsonRecord).customConfig));
+    incomingMeta = withoutLegacyCustomConfig(raw.meta);
+  } else {
+    incomingMeta = raw.meta !== undefined ? raw.meta : existing?.meta;
+  }
+  if (!hasIncomingCustomConfig && hasLegacyCustomConfigField(existing) && raw.meta !== undefined) {
+    incomingMeta = isJsonRecord(raw.meta)
+      ? {
+          ...raw.meta,
+          customConfig: existingMeta?.customConfig,
+        }
+      : { customConfig: existingMeta?.customConfig };
+  }
   const vendor: Vendor = {
     key,
     name: String(raw.name || existing?.name || key).trim(),
     enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true),
     hasApiKey: existing?.hasApiKey ?? false,
-    baseUrlHint: typeof raw.baseUrlHint === "string" ? raw.baseUrlHint.trim() || null : existing?.baseUrlHint ?? null,
+    baseUrlHint: typeof raw.baseUrlHint === "string" ? raw.baseUrlHint.trim() || null : (existing?.baseUrlHint ?? null),
     authType: (raw.authType as Vendor["authType"]) || existing?.authType || "bearer",
-    authHeader: typeof raw.authHeader === "string" ? raw.authHeader.trim() || null : existing?.authHeader ?? null,
-    authQueryParam: typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : existing?.authQueryParam ?? null,
+    authHeader: typeof raw.authHeader === "string" ? raw.authHeader.trim() || null : (existing?.authHeader ?? null),
+    authQueryParam:
+      typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
     providerKind: normalizeProviderKind(raw.providerKind, existing?.providerKind ?? "openai-compatible"),
-    meta: raw.meta ?? existing?.meta,
+    meta: incomingMeta,
     createdAt: existing?.createdAt || t,
     updatedAt: t,
   };
@@ -432,15 +395,12 @@ export function upsertModelCatalogVendor(payload: unknown): Vendor {
   const state = readCatalog();
   const vendor = applyVendorUpsert(state, payload);
   writeCatalog(state);
-  return { ...vendor, hasApiKey: Boolean(state.apiKeysByVendor[vendor.key]?.apiKey) };
+  return publicVendor({ ...vendor, hasApiKey: apiKeyDecryptStatus(state.apiKeysByVendor[vendor.key]) === "ok" });
 }
 
 export function deleteModelCatalogVendor(key: string): void {
   const state = readCatalog();
-  state.vendors = state.vendors.filter((vendor) => vendor.key !== key);
-  state.models = state.models.filter((model) => model.vendorKey !== key);
-  state.mappings = state.mappings.filter((mapping) => mapping.vendorKey !== key);
-  delete state.apiKeysByVendor[key];
+  deleteVendorLineageAndRestore(state, key);
   writeCatalog(state);
 }
 
@@ -460,13 +420,16 @@ function applyApiKeyUpsert(state: CatalogState, vendorKey: string, payload: unkn
   }
   const t = nowIso();
   const existing = state.apiKeysByVendor[key];
-  state.apiKeysByVendor[key] = makeApiKeyRecordFromPlain(
-    apiKey,
-    key,
-    normalizeEnabled((payload as JsonRecord)?.enabled, true),
-    existing?.createdAt || t,
-    t,
-  );
+  state.apiKeysByVendor[key] = {
+    ...makeApiKeyRecordFromPlain(
+      apiKey,
+      key,
+      normalizeEnabled((payload as JsonRecord)?.enabled, true),
+      existing?.createdAt || t,
+      t,
+    ),
+    ...(existing?.customConfig ? { customConfig: existing.customConfig } : {}),
+  };
 }
 
 export function upsertModelCatalogVendorApiKey(vendorKey: string, payload: unknown): unknown {
@@ -482,42 +445,72 @@ export function clearModelCatalogVendorApiKey(vendorKey: string): unknown {
   const state = readCatalog();
   const key = String(vendorKey || "").trim();
   const t = nowIso();
-  delete state.apiKeysByVendor[key];
+  const existing = state.apiKeysByVendor[key];
+  if (existing?.customConfig && Object.keys(existing.customConfig).length > 0) {
+    state.apiKeysByVendor[key] = { ...existing, apiKey: "", enc: "plain", enabled: false, updatedAt: t };
+  } else {
+    delete state.apiKeysByVendor[key];
+  }
   writeCatalog(state);
   return { vendorKey: key, hasApiKey: false, enabled: false, createdAt: t, updatedAt: t };
 }
 
-/** 纯函数:把一次 model upsert 应用到内存 state(原地改 state.models)。见 applyVendorUpsert 同理。 */
-/** customCall 三态归一：undefined=保留既有；null=删除；{script} 非空=覆写（空串脚本视同删除）。 */
-function normalizeCustomCall(
-  raw: unknown,
-  existing: Model["customCall"] | undefined,
-): Model["customCall"] | undefined {
-  if (raw === null) return undefined;
-  if (raw === undefined) return existing;
-  const script = isJsonRecord(raw) && typeof raw.script === "string" ? raw.script.trim() : "";
-  if (!script) return undefined;
-  return { script, updatedAt: nowIso() };
+/** Renderer projection: names are public, values and ciphertext never cross IPC. */
+export function listModelCatalogCustomCallConfig(vendorKey: string): CustomCallConfigPublicEntry[] {
+  const key = String(vendorKey || "").trim();
+  const state = readCatalog();
+  const vendor = state.vendors.find((item) => item.key === key);
+  if (!vendor) throw new Error(`供应商不存在：${key}`);
+  const names = new Set([
+    ...Object.keys(state.apiKeysByVendor[key]?.customConfig || {}),
+    ...Object.keys(legacyCustomConfig(vendor)),
+  ]);
+  return [...names].sort((left, right) => left.localeCompare(right)).map((name) => ({ name, hasValue: true }));
 }
 
+function migrateLegacyCustomConfigForWrite(state: CatalogState): CatalogState {
+  const hasLegacyCustomConfig = state.vendors.some(hasLegacyCustomConfigField);
+  if (!hasLegacyCustomConfig) return state;
+  const migrated = migrateLegacyCustomConfigSecrets(state);
+  if (!migrated) {
+    throw new Error("系统安全存储不可用，无法迁移旧版自定义配置；目录未写入。请解锁系统钥匙串后重试。");
+  }
+  return migrated;
+}
+
+/**
+ * Replace the named secret set atomically. `keepFrom` copies an existing
+ * ciphertext (also covering a rename); only entries carrying `value` encrypt
+ * new plaintext. Missing rows are explicit deletions.
+ */
+export function upsertModelCatalogCustomCallConfig(vendorKey: string, payload: unknown): CustomCallConfigPublicEntry[] {
+  const state = migrateLegacyCustomConfigForWrite(readCatalog());
+  const result = replaceCustomCallConfig(state, vendorKey, payload);
+  writeCatalog(state);
+  return result;
+}
+
+/** 纯函数:把一次 model upsert 应用到内存 state(原地改 state.models)。见 applyVendorUpsert 同理。 */
 function applyModelUpsert(state: CatalogState, payload: unknown): Model {
   const raw = payload as JsonRecord;
   const modelKey = String(raw.modelKey || "").trim();
   const vendorKey = String(raw.vendorKey || "").trim();
   if (!modelKey || !vendorKey) throw new Error("modelKey and vendorKey are required");
   const existing = state.models.find((model) => model.vendorKey === vendorKey && model.modelKey === modelKey);
+  guardAntigravityModelWrite({ ...raw, vendorKey, modelKey, enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true) }, existing,
+    (request) => antigravityConnection.canEnable(request));
   const t = nowIso();
   const customCall = normalizeCustomCall(raw.customCall, existing?.customCall);
   const model: Model = {
     modelKey,
     vendorKey,
-    modelAlias: typeof raw.modelAlias === "string" ? raw.modelAlias.trim() || null : existing?.modelAlias ?? null,
+    modelAlias: typeof raw.modelAlias === "string" ? raw.modelAlias.trim() || null : (existing?.modelAlias ?? null),
     // 显示名兜底不落裸 id（审计 A13）：没给 labelZh 时人话化 modelKey 排版。
     labelZh: String(raw.labelZh || existing?.labelZh || "").trim() || humanizeModelKey(modelKey),
     kind: (raw.kind as BillingModelKind) || existing?.kind || "text",
     enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true),
     meta: raw.meta ?? existing?.meta,
-    pricing: raw.pricing as Model["pricing"] || existing?.pricing,
+    pricing: (raw.pricing as Model["pricing"]) || existing?.pricing,
     onboarding: (raw.onboarding as Model["onboarding"]) ?? existing?.onboarding,
     // 自定义调用脚本三态：undefined=保留既有（拉取/重接入流程不 clobber 用户脚本）；
     // null=显式删除（编辑器「删除脚本恢复默认」）；对象=覆写。
@@ -525,7 +518,10 @@ function applyModelUpsert(state: CatalogState, payload: unknown): Model {
     createdAt: existing?.createdAt || t,
     updatedAt: t,
   };
-  state.models = [model, ...state.models.filter((item) => !(item.vendorKey === vendorKey && item.modelKey === modelKey))];
+  state.models = [
+    model,
+    ...state.models.filter((item) => !(item.vendorKey === vendorKey && item.modelKey === modelKey)),
+  ];
   return model;
 }
 
@@ -539,7 +535,9 @@ export function upsertModelCatalogModel(payload: unknown): Model {
 export function deleteModelCatalogModel(vendorKey: string, modelKey: string): void {
   const state = readCatalog();
   state.models = state.models.filter((model) => !(model.vendorKey === vendorKey && model.modelKey === modelKey));
-  state.mappings = state.mappings.filter((mapping) => !(mapping.vendorKey === vendorKey && mapping.modelKey === modelKey));
+  state.mappings = state.mappings.filter(
+    (mapping) => !(mapping.vendorKey === vendorKey && mapping.modelKey === modelKey),
+  );
   writeCatalog(state);
 }
 
@@ -550,10 +548,12 @@ export function deleteModelCatalogModel(vendorKey: string, modelKey: string): vo
 export function deleteModelCatalogModels(targets: Array<{ vendorKey: string; modelKey: string }>): void {
   const list = Array.isArray(targets) ? targets : [];
   if (list.length === 0) return;
-  const keySet = new Set(list.map((t) => `${String(t?.vendorKey ?? "")} ${String(t?.modelKey ?? "")}`));
+  const keySet = new Set(list.map((t) => `${String(t?.vendorKey ?? "")}\0${String(t?.modelKey ?? "")}`));
   const state = readCatalog();
-  state.models = state.models.filter((model) => !keySet.has(`${model.vendorKey} ${model.modelKey}`));
-  state.mappings = state.mappings.filter((mapping) => !mapping.modelKey || !keySet.has(`${mapping.vendorKey} ${mapping.modelKey}`));
+  state.models = state.models.filter((model) => !keySet.has(`${model.vendorKey}\0${model.modelKey}`));
+  state.mappings = state.mappings.filter(
+    (mapping) => !mapping.modelKey || !keySet.has(`${mapping.vendorKey}\0${mapping.modelKey}`),
+  );
   writeCatalog(state);
 }
 
@@ -566,35 +566,45 @@ function applyMappingUpsert(state: CatalogState, payload: unknown): Mapping {
   // 可选 modelKey：把 mapping 绑到特定模型。本地 ComfyUI 导入的每条 workflow 各一 mapping——同 vendor 同 taskKind
   // 靠 modelKey 区分、不互相覆盖（selectTaskMapping：精确 modelKey > generic）。缺省=generic 桶模板（老行为不变）。
   const modelKey = typeof raw.modelKey === "string" && raw.modelKey.trim() ? raw.modelKey.trim() : undefined;
-  // 定位既有行：给了 id 按 id；否则按 (vendor, taskKind, modelKey)——让调用方无需追 id 也能精确 upsert，
+  const modeId = typeof raw.modeId === "string" && raw.modeId.trim() ? raw.modeId.trim() : undefined;
+  // 定位既有行：给了 id 按 id；否则按 (vendor, taskKind, modelKey, modeId)——让调用方无需追 id 也能精确 upsert，
   // 且带 modelKey 的与 generic 的、以及不同 modelKey 的互不覆盖。
   const existing = state.mappings.find((m) =>
-    raw.id ? m.id === raw.id : m.vendorKey === vendorKey && m.taskKind === taskKind && (m.modelKey || undefined) === modelKey,
+    raw.id
+      ? m.id === raw.id
+      : m.vendorKey === vendorKey && m.taskKind === taskKind && (m.modelKey || undefined) === modelKey && (m.modeId || undefined) === modeId,
   );
   const id = String(raw.id || existing?.id || `mapping-${crypto.randomUUID()}`);
   const t = nowIso();
-  // Accept new shape (create/query) directly, or legacy {requestMapping,...}
+  // Accept new shape (create/query/result) directly, or legacy {requestMapping,...}
   // (e.g. via the unchanged import path) and normalize on the way in.
   const legacy = extractLegacyStages(raw.requestMapping ?? raw.requestProfile);
   const legacyResp = extractLegacyStages(raw.responseMapping);
   const create = (raw.create as HttpOperation | undefined) || legacy.create || legacyResp.create || existing?.create;
   const query = (raw.query as HttpOperation | undefined) || legacy.query || legacyResp.query || existing?.query;
+  const result = (raw.result as HttpOperation | undefined) || existing?.result;
   if (!create) throw new Error("create operation is required (method + path)");
   const mapping: Mapping = {
     id,
     vendorKey,
     taskKind,
     ...(modelKey ? { modelKey } : {}),
+    ...(modeId ? { modeId } : {}),
     name: String(raw.name || existing?.name || taskKind).trim(),
     enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true),
     create,
     ...(query ? { query } : {}),
+    ...(result ? { result } : {}),
     ...(raw.statusMapping || legacy.statusMapping || existing?.statusMapping
-      ? { statusMapping: (raw.statusMapping as Record<string, string[]>) || legacy.statusMapping || existing?.statusMapping }
+      ? {
+          statusMapping:
+            (raw.statusMapping as Record<string, string[]>) || legacy.statusMapping || existing?.statusMapping,
+        }
       : {}),
     createdAt: existing?.createdAt || t,
     updatedAt: t,
   };
+  guardAntigravityMappingWrite(mapping, (request) => Boolean(request && antigravityConnection.hasPassed(request)));
   state.mappings = [mapping, ...state.mappings.filter((item) => item.id !== id)];
   return mapping;
 }
@@ -619,10 +629,15 @@ export function exportModelCatalogPackage(params?: unknown): unknown {
     version: "desktop-local-v1",
     exportedAt: nowIso(),
     vendors: state.vendors.map((vendor) => ({
-      vendor,
+      vendor: publicVendor(vendor),
       // Export carries plaintext keys for portability; re-import will re-encrypt on the target machine.
-      ...(includeApiKeys && state.apiKeysByVendor[vendor.key]?.apiKey
-        ? { apiKey: { apiKey: decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]), enabled: state.apiKeysByVendor[vendor.key].enabled } }
+      ...(includeApiKeys && state.apiKeysByVendor[vendor.key]
+        ? {
+            apiKey: {
+              apiKey: decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]),
+              enabled: state.apiKeysByVendor[vendor.key].enabled,
+            },
+          }
         : {}),
       models: state.models.filter((model) => model.vendorKey === vendor.key),
       mappings: state.mappings.filter((mapping) => mapping.vendorKey === vendor.key),
@@ -640,7 +655,9 @@ export function exportModelCatalogPackage(params?: unknown): unknown {
  * 这类 bug 整类消失，而不是逐 upsert 补偿。`apply*` 纯函数与单条公开 upsert 共用（无第二份逻辑）。
  */
 export function importModelCatalogPackage(payload: unknown): unknown {
-  const raw = payload as { vendors?: Array<{ vendor?: unknown; apiKey?: unknown; models?: unknown[]; mappings?: unknown[] }> };
+  const raw = payload as {
+    vendors?: Array<{ vendor?: unknown; apiKey?: unknown; models?: unknown[]; mappings?: unknown[] }>;
+  };
   const state = readCatalog();
   let vendors = 0;
   let models = 0;
@@ -651,18 +668,27 @@ export function importModelCatalogPackage(payload: unknown): unknown {
       vendors += 1;
       const apiKey = bundle.apiKey as JsonRecord | undefined;
       if (apiKey?.apiKey) applyApiKeyUpsert(state, vendor.key, apiKey);
+      if (isJsonRecord(apiKey?.customConfig)) {
+        applyPlainCustomConfigWrite(state, vendor.key, normalizedCustomConfig(apiKey.customConfig));
+      }
       for (const model of bundle.models || []) {
         applyModelUpsert(state, { ...(model as JsonRecord), vendorKey: (model as JsonRecord).vendorKey || vendor.key });
         models += 1;
       }
       for (const mapping of bundle.mappings || []) {
-        applyMappingUpsert(state, { ...(mapping as JsonRecord), vendorKey: (mapping as JsonRecord).vendorKey || vendor.key });
+        applyMappingUpsert(state, {
+          ...(mapping as JsonRecord),
+          vendorKey: (mapping as JsonRecord).vendorKey || vendor.key,
+        });
         mappings += 1;
       }
     }
   } catch (error) {
     // 整体回滚：不写盘（磁盘还是导入前的 state），返回 0 计数 + 清晰错误。
-    return { imported: { vendors: 0, models: 0, mappings: 0 }, errors: [error instanceof Error ? error.message : String(error)] };
+    return {
+      imported: { vendors: 0, models: 0, mappings: 0 },
+      errors: [error instanceof Error ? error.message : String(error)],
+    };
   }
   // 全部成功 → 一次性提交。空包也安全（无变更则写回等值 state）。
   writeCatalog(state);
@@ -672,6 +698,8 @@ export function importModelCatalogPackage(payload: unknown): unknown {
 export type CatalogMutation = {
   upsertVendor: (payload: unknown) => Vendor;
   upsertApiKey: (vendorKey: string, payload: unknown) => void;
+  deleteApiKey: (vendorKey: string) => void;
+  deleteVendor: (vendorKey: string) => void;
   upsertModel: (payload: unknown) => Model;
   upsertMapping: (payload: unknown) => Mapping;
   deleteModelMappings: (vendorKey: string, modelKey: string) => void;
@@ -688,10 +716,16 @@ export function mutateCatalog<T>(fn: (tx: CatalogMutation) => T): T {
   const tx: CatalogMutation = {
     upsertVendor: (payload) => applyVendorUpsert(state, payload),
     upsertApiKey: (vendorKey, payload) => applyApiKeyUpsert(state, vendorKey, payload),
+    deleteApiKey: (vendorKey) => {
+      delete state.apiKeysByVendor[String(vendorKey || "").trim()];
+    },
+    deleteVendor: (vendorKey) => removeVendorLineage(state, String(vendorKey || "").trim()),
     upsertModel: (payload) => applyModelUpsert(state, payload),
     upsertMapping: (payload) => applyMappingUpsert(state, payload),
     deleteModelMappings: (vendorKey, modelKey) => {
-      state.mappings = state.mappings.filter((mapping) => !(mapping.vendorKey === vendorKey && mapping.modelKey === modelKey));
+      state.mappings = state.mappings.filter(
+        (mapping) => !(mapping.vendorKey === vendorKey && mapping.modelKey === modelKey),
+      );
     },
   };
   const result = fn(tx);

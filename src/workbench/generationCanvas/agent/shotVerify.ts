@@ -47,6 +47,17 @@ export const SHOT_VERIFY_DIMENSIONS: readonly ShotVerifyDimension[] = [
 /** 任一轴低于此档即判该镜画面有偏差(进对账卡)。 */
 export const SHOT_VERIFY_PASS_THRESHOLD = 3
 
+/**
+ * 「该镜别根本判不了这一轴」的哨兵档（0）——**不是低分，不算偏差，不触发重试**。
+ *
+ * 为什么必须有（2026-08-20 L3 真额度实测抓出）：同一个锚喂 5 个不同景别，identity 打分成了
+ * 「脸在画面里占多大」的函数而非一致性的函数——中景 5 档（确实同一个人）、远景 3 档（脸几十像素）、
+ * **眼部微距 1 档并标红**（画面里根本没有可比对的脸部结构）。原 prompt 的「拿不准给偏低分」把
+ * 「看不到」误当成「不像」，于是：① 误报红标；② 触发一轮永远救不回来的定向重试（重滚一张眼睛微距
+ * 不会让眼睛变得更可辨认）——白烧额度。故给判分器一条正路：看不到就报 0，我们据此跳过该轴。
+ */
+export const SHOT_VERIFY_NOT_ASSESSABLE = 0
+
 /** 一镜校验所需的上下文(由 runner 层从节点+锚+前一镜组装,纯数据)。 */
 export type ShotVerifyContext = {
   /** 被校验的镜头节点 id(偏差回指用)。 */
@@ -59,6 +70,22 @@ export type ShotVerifyContext = {
   anchorDescriptions: string[]
   /** 前一镜提示词(连贯轴对照);无前一镜则不传。 */
   previousShotPrompt?: string
+  /**
+   * 喂进来的图是不是「首帧+尾帧」的横向拼图（视频镜专用）。
+   * 影响 rubric 措辞：不告诉判分器它看的是两帧，拼图只会让它更困惑（把右半当成穿帮）。
+   */
+  framePair?: boolean
+  /**
+   * 判官写 `reason` 用哪种语言（= 用户界面语言）。缺省 'zh-CN'（旧行为）。
+   *
+   * 为什么只切 reason 不翻整份 rubric：rubric 是调过的提示词工程（档位锚点、0 哨兵、首尾帧那几条铁律
+   * 都是踩坑换来的），翻译它等于换一套判官行为，得重新验分档准确度。而用户在对账卡上**只看得到
+   * reason 这一句**——它原样显示、渲染时无从回译，所以让判官直接用界面语言写它。
+   *
+   * 走 ctx 而不是在函数里读全局 locale：本核两份实现（src / electron capabilityCore）由等价性单测钉死
+   * 逐字节相同，必须保持「同入参恒同结果」的纯函数；locale 由各自的编排层注入。
+   */
+  reasonLanguage?: 'zh-CN' | 'en'
 }
 
 function hasPreviousShot(ctx: ShotVerifyContext): boolean {
@@ -71,9 +98,18 @@ export function activeDimensions(ctx: ShotVerifyContext): ShotVerifyDimension[] 
   return SHOT_VERIFY_DIMENSIONS.filter((d) => (d.requiresPreviousShot ? prev : true))
 }
 
+/**
+ * 档位归一。**0 是「无法判定」哨兵**，不是低分——原样保留（见 SHOT_VERIFY_NOT_ASSESSABLE）。
+ * 其余夹进 1-5；非数字按最保守的 1 处理（判不出就别放行）。
+ */
 function clampScore(value: unknown): number {
   const n = Number(value)
   if (!Number.isFinite(n)) return 1
+  // 「无法判定」只认**判分器真的写了个 0**。不这么卡的话 Number(null)/Number('')/Number(false) 全是 0,
+  // 于是判分器漏字段或给 null 会被读成「这题没法答」而静默出均分分母——正是本档最怕的注水路径。
+  // 拿不准一律落最保守的 1（判不出别放行），只有明确的数字 0 才是哨兵。
+  const explicitlyNumeric = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')
+  if (explicitlyNumeric && Math.round(n) === SHOT_VERIFY_NOT_ASSESSABLE) return SHOT_VERIFY_NOT_ASSESSABLE
   return Math.max(1, Math.min(5, Math.round(n)))
 }
 
@@ -94,7 +130,9 @@ export function buildShotVerifyPrompt(ctx: ShotVerifyContext): string {
     .join('\n')
   const anchorBlock = ctx.anchorDescriptions.map((s) => s.trim()).filter(Boolean)
   return [
-    '你是资深影视分镜审片。下面这张图是某个镜头实际生成出来的画面，按 Rubric 逐维度对着锚点判它该打第几档(1-5)。',
+    ctx.framePair
+      ? '你是资深影视分镜审片。下面这张图是某个镜头的**首帧(左)与尾帧(右)横向拼在一起**，按 Rubric 逐维度对着锚点判它该打第几档(1-5)。'
+      : '你是资深影视分镜审片。下面这张图是某个镜头实际生成出来的画面，按 Rubric 逐维度对着锚点判它该打第几档(1-5)。',
     '',
     `镜头：《${ctx.shotTitle.trim()}》`,
     `镜头意图(提示词)：${ctx.shotPrompt.trim() || '(无)'}`,
@@ -106,7 +144,19 @@ export function buildShotVerifyPrompt(ctx: ShotVerifyContext): string {
     '</Rubric>',
     '',
     `不要调用任何工具，只输出 JSON：{"reason": string, "scores": {${keys.map((k) => `"${k}": 1-5`).join(', ')}}}。`,
-    'reason 简短(每轴一句、整体不超过 100 字)。打分铁律：拿不准给保守(偏低)分；不要因为图清晰就给高分，主体对不上/机位错就低分。',
+    'reason 简短(每轴一句、整体不超过 100 字)。',
+    // 用条件展开而不是 `? … : null`：null 经 join 会给中文 prompt 多出一个空行,
+    // 那等于顺手改了判官在中文下的输入。展开成空数组 → 中文侧逐字节不变。
+    ...(ctx.reasonLanguage === 'en'
+      ? ['reason 必须用**英文**写(用户界面是英文,这句会原样显示给用户看);scores 与 JSON 键名保持不变。']
+      : []),
+    '打分铁律：① 主体对不上/机位错就低分，不要因为图清晰就给高分；② 拿不准（看得见但吃不准像不像）给保守的偏低分；',
+    `③ **但如果这个镜别根本看不到可比对的依据**（如眼部或手部微距、极远景主体只有几十像素、纯背影），该轴请给 ${SHOT_VERIFY_NOT_ASSESSABLE} 表示「无法判定」——${SHOT_VERIFY_NOT_ASSESSABLE} 不是低分，我们会跳过该轴；把「看不到」打成低分会触发一轮永远救不回来的重做。`,
+    ctx.framePair
+      ? '④ **这是首尾两帧，镜头内容随时间展开是正常的**：像「逐渐显出/由暗转亮/缓缓推近」这类设计，'
+        + '左边空、右边才出现要的东西——那是**做对了**，按两帧合起来是否兑现镜头意图打分，不要只看左边就判不达标。'
+        + '⑤ identity 轴请**同时比较左右两帧是不是同一个人**：中途变脸是视频最常见的崩坏，只看一帧查不出来。'
+      : null,
   ].join('\n')
 }
 
@@ -160,6 +210,8 @@ export function deviationsFromVerdict(
   for (const d of SHOT_VERIFY_DIMENSIONS) {
     if (!active.has(d.key)) continue
     const score = clampScore(verdict.scores[d.key])
+    // 0 = 该镜别判不了这一轴（眼部微距/极远景/背影）→ 不算偏差、不红标、不重试（重做也救不回来）。
+    if (score === SHOT_VERIFY_NOT_ASSESSABLE) continue
     if (score >= SHOT_VERIFY_PASS_THRESHOLD) continue
     out.push({
       shotNodeId: ctx.shotNodeId,

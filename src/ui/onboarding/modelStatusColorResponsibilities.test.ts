@@ -8,8 +8,11 @@ const read = (file: string): string => fs.readFileSync(path.join(dir, file), 'ut
 
 describe('模型设置颜色职责', () => {
   it('能力与启用态使用 Nomi accent，不把可用性冒充验证成功', () => {
-    expect(read('OnboardingDrawer.tsx')).toContain("on ? 'bg-nomi-accent-soft text-nomi-accent'")
+    const home = read('ModelSettingsHome.tsx')
+    expect(home).toContain("working: 'bg-nomi-accent'")
+    expect(home).toContain("verified: 'bg-workbench-success'")
     expect(read('ModelChipGroups.tsx')).toContain("connected && m.enabled ? 'bg-nomi-accent'")
+    expect(read('ModelChipGroups.tsx')).toContain('border-nomi-accent-soft bg-nomi-accent-soft')
     expect(read('CodexLocalImageCard.tsx')).toContain('bg-nomi-accent-soft')
     expect(read('ComfyuiTemplateLibrary.tsx')).toContain('text-micro text-nomi-accent bg-nomi-accent-soft')
     expect(read('ComfyuiPresetSection.tsx')).toContain('text-micro text-nomi-accent bg-nomi-accent-soft')

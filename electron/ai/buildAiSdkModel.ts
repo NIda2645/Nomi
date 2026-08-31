@@ -17,14 +17,17 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { LanguageModelV1 } from "ai";
 import { applyProfileToRequestBody, getModelProfile } from "./modelProfiles";
+import { appFetch } from "../appFetch";
 // 单一真相源：provider-kind 联合定义在 catalog/types，这里只 re-export，避免并行定义漂移（规则 1）。
-import type { AiSdkProviderKind } from "../catalog/types";
+import type { AiSdkProviderKind, Vendor } from "../catalog/types";
 export type { AiSdkProviderKind };
 
 export interface BuildAiSdkModelInput {
   kind: AiSdkProviderKind;
   baseURL: string;
   apiKey: string;
+  /** `none` is supported by OpenAI-compatible gateways and omits Authorization entirely. */
+  authType?: Vendor["authType"];
   modelId: string;
   /**
    * Extra HTTP headers sent on every request to the provider. Lets users add
@@ -35,7 +38,7 @@ export interface BuildAiSdkModelInput {
 }
 
 /**
- * Wrap the global fetch so each request body gets profile-driven adjustments
+ * Wrap the app transport so each request body gets profile-driven adjustments
  * (forced temperature, default max_tokens, extra body fields).
  *
  * Optional debug: set LAB_DEBUG_REQUESTS=1 to dump each request body to /tmp.
@@ -65,7 +68,7 @@ function buildProfiledFetch(modelId: string): typeof fetch {
     // 见 docs/workflow/2026-06-06-real-generation-e2e-loop.md「主进程埋点」）。成功不打，避免噪音。
     const urlStr = typeof url === "string" ? url : ((url as { url?: string })?.url || String(url));
     try {
-      const res = await fetch(url as any, init);
+      const res = await appFetch(url as any, init);
       if (!res.ok) {
         let snippet = "";
         try { snippet = (await res.clone().text()).replace(/\s+/g, " ").slice(0, 300); } catch { /* body unreadable */ }
@@ -96,9 +99,16 @@ function sanitizeHeaders(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** Catalogs store an Anthropic host root; the SDK appends only `/messages`. */
+export function anthropicBaseUrl(baseURL: string): string {
+  const trimmed = baseURL.trim().replace(/\/+$/, "");
+  return /\/v\d+$/i.test(trimmed) ? trimmed : `${trimmed}/v1`;
+}
+
 export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   const apiKey = (input.apiKey || "").trim();
-  if (!apiKey) {
+  const unauthenticated = input.authType === "none";
+  if (!apiKey && !unauthenticated) {
     throw new Error("buildAiSdkModel: apiKey is required");
   }
   const modelId = (input.modelId || "").trim();
@@ -109,9 +119,11 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   const headers = sanitizeHeaders(input.headers);
 
   if (input.kind === "anthropic") {
+    if (unauthenticated) throw new Error("buildAiSdkModel: authType none requires an openai-compatible provider");
     const provider = createAnthropic({
       apiKey,
-      ...(baseURL ? { baseURL } : {}),
+      fetch: appFetch,
+      ...(baseURL ? { baseURL: anthropicBaseUrl(baseURL) } : {}),
       ...(headers ? { headers } : {}),
     });
     return provider.languageModel(modelId);
@@ -120,6 +132,7 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   // OpenAI Responses API（/responses）：中转如 foxcode codex 渠道 wire_api=responses，只认 /responses，
   // 走 chat/completions 会 502（2026-06-06 实测根因）。用官方 @ai-sdk/openai 的 .responses()。
   if (input.kind === "openai-responses") {
+    if (unauthenticated) throw new Error("buildAiSdkModel: authType none requires an openai-compatible provider");
     if (!baseURL) throw new Error("buildAiSdkModel: baseURL is required for openai-responses");
     const provider = createOpenAI({
       apiKey,
@@ -136,7 +149,7 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   const provider = createOpenAICompatible({
     name: "nomi",
     baseURL,
-    apiKey,
+    ...(apiKey ? { apiKey } : {}),
     ...(headers ? { headers } : {}),
     fetch: buildProfiledFetch(modelId),
   });

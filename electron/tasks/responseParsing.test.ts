@@ -6,6 +6,7 @@ import {
   maybeParseJsonString,
   pathValues,
   providerMetaFromResponse,
+  resolveTaskStatus,
   taskFailureMessageFromResponse,
   taskStatusFromResponse,
   valuesFromMapping,
@@ -101,6 +102,54 @@ describe("taskStatusFromResponse", () => {
   });
   it("defaults to queued when nothing matches", () => {
     expect(taskStatusFromResponse({}, null, undefined, [])).toBe("queued");
+  });
+});
+
+// 病根回归：不认得的动词曾被静默压成 queued（= 继续轮询的指令），于是上游已经失败的任务
+// 在用户眼里永远转圈。这里钉死「不知道」不再冒充「排队中」——它必须留下原始动词。
+// 判定何时把它翻成失败是 taskResultQuery 的事（见 unrecognizedTaskStatus.test.ts）。
+describe("resolveTaskStatus：未登记动词必须留痕，而不是静默乐观", () => {
+  it("认得的动词不留痕（各档都要，含 statusMapping 与通用词表）", () => {
+    expect(resolveTaskStatus({ status: "pending" }, null, undefined, [])).toEqual({ status: "queued", unrecognizedStatus: "" });
+    expect(resolveTaskStatus({ status: "processing" }, null, undefined, [])).toEqual({ status: "running", unrecognizedStatus: "" });
+    expect(resolveTaskStatus({ state: "DONE" }, { status: ["state"] }, { succeeded: ["DONE"] }, [])).toEqual({
+      status: "succeeded",
+      unrecognizedStatus: "",
+    });
+  });
+
+  it("不认得的动词 → 仍返回 queued（不误杀），但带出原始动词（大小写原样）", () => {
+    // "failure"/"rejected" 就是 2026-08-11 真实往返测试里把任务变成「永远转圈」的那两个词。
+    expect(resolveTaskStatus({ status: "failure" }, null, undefined, [])).toEqual({
+      status: "queued",
+      unrecognizedStatus: "failure",
+    });
+    expect(resolveTaskStatus({ status: "Rejected" }, null, undefined, [])).toEqual({
+      status: "queued",
+      unrecognizedStatus: "Rejected",
+    });
+  });
+
+  it("上游压根没给状态 ≠ 未知动词（否则每个只回 task_id 的 create 响应都会被误计）", () => {
+    expect(resolveTaskStatus({}, null, undefined, [])).toEqual({ status: "queued", unrecognizedStatus: "" });
+    expect(resolveTaskStatus({ task_id: "t-1" }, null, undefined, [])).toEqual({ status: "queued", unrecognizedStatus: "" });
+  });
+
+  it("有硬证据就定案，不算未知（有产物=成了 / 有 error 字段=挂了）", () => {
+    expect(resolveTaskStatus({ status: "cooking" }, null, undefined, ["https://x/a.mp4"])).toEqual({
+      status: "succeeded",
+      unrecognizedStatus: "",
+    });
+    expect(resolveTaskStatus({ status: "cooking", error: "boom" }, null, undefined, [])).toEqual({
+      status: "failed",
+      unrecognizedStatus: "",
+    });
+  });
+
+  it("taskStatusFromResponse 与 resolveTaskStatus 同源（投影，不是第二套实现）", () => {
+    for (const response of [{ status: "failure" }, { status: "pending" }, {}, { error: "x" }]) {
+      expect(taskStatusFromResponse(response, null, undefined, [])).toBe(resolveTaskStatus(response, null, undefined, []).status);
+    }
   });
 });
 

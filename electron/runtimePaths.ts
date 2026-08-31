@@ -17,6 +17,12 @@ export const SKILLS_ROOT_ENV = "NOMI_SKILLS_DIR";
 export type ProjectLocationSource = "environment" | "custom" | "default";
 export type ProjectLocationState = { path: string; source: ProjectLocationSource };
 
+export function defaultProjectsFolderName(appName: string): string {
+  const normalized = String(appName || "").trim();
+  if (!normalized || normalized.toLowerCase() === "nomi") return "Nomi Projects";
+  return `${normalized} Projects`;
+}
+
 export function getProjectLocationState(): ProjectLocationState {
   const configured = String(process.env[PROJECT_ROOT_ENV] || "").trim();
   if (configured) return { path: configured, source: "environment" };
@@ -24,7 +30,8 @@ export function getProjectLocationState(): ProjectLocationState {
   const customRoot = readProjectLocationSettings().projectsRoot;
   if (customRoot) return { path: customRoot, source: "custom" };
 
-  return { path: path.join(app.getPath("documents"), "Nomi Projects"), source: "default" };
+  const appName = typeof app.getName === "function" ? app.getName() : "Nomi";
+  return { path: path.join(app.getPath("documents"), defaultProjectsFolderName(appName)), source: "default" };
 }
 
 export function getProjectsRoot(): string {

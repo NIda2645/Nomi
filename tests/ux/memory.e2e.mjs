@@ -15,6 +15,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { WebSocket } from "undici";
+import { withLinuxNoSandbox } from "./_launchApp.mjs";
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -313,7 +314,7 @@ const childEnv = {
   NOMI_DESKTOP_REMOTE_DEBUGGING_PORT: String(debugPort),
 };
 delete childEnv.ELECTRON_RUN_AS_NODE;
-const electronProcess = spawn(require("electron"), ["."], {
+const electronProcess = spawn(require("electron"), withLinuxNoSandbox(["."]), {
   cwd: repoRoot,
   env: childEnv,
   stdio: ["ignore", "ignore", "pipe"],

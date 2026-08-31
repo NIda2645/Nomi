@@ -1,40 +1,11 @@
+// 对象几何/摆位纯函数的**单一真相源**（占位 footprint / 视觉半高 / 变换锚点 / 避让摆位 / 群众排布）。
+// 直驱盖章、导出采样、安全框、对焦、渲染层全部从这里取——别在组件文件里再抄一份
+// （2026-08-04 曾在 scene3dObjects.tsx 抄出分叉：prop 分支只补了一份，导出采样把道具错抬半高）。
 import * as THREE from 'three'
 import type { Scene3DObject, Scene3DVector3 } from './scene3dTypes'
-import type { CrowdAddOptions } from './scene3dSharedTypes'
-import {
-  CROWD_MAX_AXIS,
-  MANNEQUIN_LABEL_BASE_HEIGHT,
-  ROLE_COLOR_SEQUENCE,
-} from './scene3dConstants'
-import { vectorFromArray, vectorToArray } from './scene3dMath'
-
-export function roleColorForIndex(index: number): string {
-  return ROLE_COLOR_SEQUENCE[index % ROLE_COLOR_SEQUENCE.length]
-}
-
-export function clampCrowdOptions(options: CrowdAddOptions): CrowdAddOptions {
-  return {
-    rows: Math.min(CROWD_MAX_AXIS, Math.max(1, Math.round(options.rows))),
-    columns: Math.min(CROWD_MAX_AXIS, Math.max(1, Math.round(options.columns))),
-    spacing: Math.min(10, Math.max(0.2, Number(options.spacing.toFixed(2)))),
-  }
-}
-
-export function crowdRows(object: Scene3DObject): number {
-  return Math.min(CROWD_MAX_AXIS, Math.max(1, Math.round(object.crowdRows || 1)))
-}
-
-export function crowdColumns(object: Scene3DObject): number {
-  return Math.min(CROWD_MAX_AXIS, Math.max(1, Math.round(object.crowdColumns || 1)))
-}
-
-export function crowdSpacing(object: Scene3DObject): number {
-  return Math.min(10, Math.max(0.2, object.crowdSpacing || 1.2))
-}
-
-export function crowdCount(object: Scene3DObject): number {
-  return object.type === 'mannequinCrowd' ? crowdRows(object) * crowdColumns(object) : 1
-}
+import { MANNEQUIN_LABEL_BASE_HEIGHT } from './scene3dConstants'
+import { crowdColumns, crowdCount, crowdRows, crowdSpacing, vectorFromArray, vectorToArray } from './scene3dMath'
+import { propGroundFootprint } from './scene3dPropSpecs'
 
 export function mannequinFootRingRadius(object: Scene3DObject): number {
   const scaleX = Math.max(0.08, Math.abs(object.scale[0] || 1))
@@ -65,11 +36,6 @@ export function crowdLocalOffsets(object: Scene3DObject): THREE.Vector3[] {
   return Array.from({ length: crowdCount(object) }, (_, index) => crowdLocalOffset(object, index))
 }
 
-export function mannequinRoleLabel(index: number): string {
-  if (index < 26) return `角色${String.fromCharCode(65 + index)}`
-  return `角色A${index - 25}`
-}
-
 export function mannequinLabelHeight(object: Scene3DObject): number {
   return Math.max(0.8, Math.abs(object.scale[1] || 1) * MANNEQUIN_LABEL_BASE_HEIGHT)
 }
@@ -89,6 +55,10 @@ export function objectGroundFootprint(object: Scene3DObject): { width: number; d
     }
   }
   if (object.type === 'mannequin') return { width: 0.78 * scaleX, depth: 0.54 * scaleZ }
+  if (object.type === 'prop' && object.propKind) {
+    const footprint = propGroundFootprint(object.propKind)
+    return { width: footprint.width * scaleX, depth: footprint.depth * scaleZ }
+  }
   if (object.type === 'model' || object.type === 'group') return { width: 1 * scaleX, depth: 1 * scaleZ }
   if (object.geometry === 'sphere') return { width: 1.1 * scaleX, depth: 1.1 * scaleZ }
   if (object.geometry === 'cylinder') return { width: 0.92 * scaleX, depth: 0.92 * scaleZ }
@@ -99,6 +69,7 @@ export function objectGroundFootprint(object: Scene3DObject): { width: number; d
 export function objectVisualHalfHeight(object: Scene3DObject, scale: Scene3DVector3 = object.scale): number {
   const scaleY = Math.max(0.08, Math.abs(scale[1] || 1))
   if (object.type === 'light') return 0.12 * scaleY
+  if (object.type === 'prop') return 0 // origin 在地面中心：绑轨迹/落地时底面直接贴着走
   if (object.type === 'mannequin' || object.type === 'mannequinCrowd') return 0.5 * scaleY
   if (object.geometry === 'sphere') return 0.55 * scaleY
   if (object.geometry === 'cylinder') return 0.55 * scaleY

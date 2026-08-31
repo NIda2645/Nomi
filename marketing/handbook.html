@@ -4,10 +4,26 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Nomi 一页上手</title>
-<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<!-- Icon font loads non-render-blocking (media=print flipped to all onload) so a slow or blocked
-     jsdelivr (common in mainland China) can't blank first paint. Every icon below sits next to a
-     text label, so the page reads fine even if the icon font never arrives. -->
+<meta name="description" content="本地优先的 AI 视频创作台 · 从一句话到一条成片 按照安装、模型接入、分镜、生成、时间线与导出顺序，快速完成 Nomi 的第一条 AI 视频。" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#faf9f6" />
+<link rel="canonical" href="https://nomiaqm.com/handbook.html" />
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Nomi" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:title" content="Nomi 一页上手" />
+<meta property="og:description" content="本地优先的 AI 视频创作台 · 从一句话到一条成片 按照安装、模型接入、分镜、生成、时间线与导出顺序，快速完成 Nomi 的第一条 AI 视频。" />
+<meta property="og:url" content="https://nomiaqm.com/handbook.html" />
+<meta property="og:image" content="https://nomiaqm.com/assets/social-preview-zh.jpg" />
+<meta property="og:image:alt" content="Nomi 一页上手" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Nomi 一页上手" />
+<meta name="twitter:description" content="本地优先的 AI 视频创作台 · 从一句话到一条成片 按照安装、模型接入、分镜、生成、时间线与导出顺序，快速完成 Nomi 的第一条 AI 视频。" />
+<meta name="twitter:image" content="https://nomiaqm.com/assets/social-preview-zh.jpg" />
+<meta name="twitter:image:alt" content="Nomi 一页上手" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/handbook.html","url":"https://nomiaqm.com/handbook.html","name":"Nomi 一页上手","description":"本地优先的 AI 视频创作台 · 从一句话到一条成片 按照安装、模型接入、分镜、生成、时间线与导出顺序，快速完成 Nomi 的第一条 AI 视频。","inLanguage":"zh-CN","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","softwareVersion":"0.21.0","url":"https://nomiaqm.com/","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"}]}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<!-- Icon font loads non-render-blocking so a slow or blocked jsdelivr cannot blank first paint. -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" media="print" onload="this.media='all'" />
 <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" /></noscript>
 <style>
@@ -63,7 +79,7 @@
 
   <h2>90 秒先尝到甜头</h2>
   <p class="note">不用读完手册——先看一条片自己跑出来，再上手做你自己的。</p>
-  <div class="grid"><div class="card"><div class="card-h"><span class="num">1</span><span class="card-t">看回放</span></div><p class="card-b">首页点「60 秒看 Nomi 怎么出片」，零额度看整条流水线跑一遍。</p></div><div class="card"><div class="card-h"><span class="num">2</span><span class="card-t">接一个模型</span></div><p class="card-b">用自己的 Key，或接 Agnes 免费网关（文 / 图 / 视全解锁）。</p></div><div class="card"><div class="card-h"><span class="num">3</span><span class="card-t">写一句 + 拆镜</span></div><p class="card-b">在创作区写下故事，说「拆成镜头」——可选图片分镜（先定画面，满意再转视频）或视频分镜，一键铺成画布。</p></div><div class="card"><div class="card-h"><span class="num">4</span><span class="card-t">生成 + 导出</span></div><p class="card-b">点镜头卡的生成出图，排进时间轴，右上导出 MP4。</p></div></div>
+  <div class="grid"><div class="card"><div class="card-h"><span class="num">1</span><span class="card-t">看回放</span></div><p class="card-b">首页点「60 秒看 Nomi 怎么出片」，零额度看整条流水线跑一遍。</p></div><div class="card"><div class="card-h"><span class="num">2</span><span class="card-t">接一个模型</span></div><p class="card-b">用自己的 Key，或接 Agnes 免费网关（文 / 图 / 视全解锁）。</p></div><div class="card"><div class="card-h"><span class="num">3</span><span class="card-t">写一句 + 拆镜</span></div><p class="card-b">在创作区写下故事，说「拆成镜头」——先生成镜头方案，再在每个镜头里选择图片或视频，一键铺成画布。</p></div><div class="card"><div class="card-h"><span class="num">4</span><span class="card-t">生成 + 导出</span></div><p class="card-b">点镜头卡的生成出图，排进时间轴，右上导出 MP4。</p></div></div>
 
   <h2>我想做 X → 走这条路</h2>
   <p class="note">能做的指清楚路径，做不到的当场标，不让你撞墙找半天。</p>

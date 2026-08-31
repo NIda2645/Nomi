@@ -1,0 +1,23 @@
+name: Feature request / 功能建议
+description: Suggest a capability or an improvement. / 提出一个能力或改进建议。
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write in English or 中文 — both are fine.
+        中英文皆可。
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do / 你想完成什么
+      description: Describe the task you got stuck on, not the solution you have in mind — it usually leads to a better fix. / 描述你卡住的那件事，而不是你想到的方案，这样往往能得到更好的解法。
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: What would good look like / 你期望它是什么样
+    validations:
+      required: false

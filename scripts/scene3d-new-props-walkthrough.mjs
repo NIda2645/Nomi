@@ -1,13 +1,11 @@
 // R13 真机走查：3D 导演台新增 11 种道具（3d-director-desk 收编批次 1）。
 // 断言：① 道具菜单 16 项全渲染（截图）② 逐个添加 11 新道具全部成功（场景树行数）③ 看全场截图人眼验几何/比例。
 // 用法：pnpm build 后 node scripts/scene3d-new-props-walkthrough.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 
-const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(repoRoot, '.scene3d-new-props-walk')
 mkdirSync(outDir, { recursive: true })
@@ -17,18 +15,12 @@ const NEW_PROPS = ['SUV', '公交车', '自行车', '电动踏板车', '沙发',
 let failed = false
 const fail = (m) => { failed = true; console.error('  ❌ ' + m) }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.'],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_ALLOW_MULTI_INSTANCE: '1' },
-})
+// isolate:false：本脚本今天就跑在真实 profile 上（真 key / 真项目库），隔离会让它「跑得起来但结果全错」。
+const { app, win } = await launchNomiApp({ name: 'scene3d-new-props', isolate: false })
 try {
-  const win = await app.firstWindow()
   const shot = async (n) => { await win.screenshot({ path: path.join(outDir, n) }); console.log('  📸 ' + n) }
   const bw = await app.browserWindow(win)
   await bw.evaluate((w) => w.setBounds({ x: 0, y: 0, width: 1680, height: 1020 })).catch(() => {})
-  await win.waitForLoadState('domcontentloaded')
   await win.evaluate(() => {
     window.localStorage.setItem('__nomiE2E', '1')
     window.localStorage.setItem('nomi.onboarding.scene3dCoach.v1', '1')

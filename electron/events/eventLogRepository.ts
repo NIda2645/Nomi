@@ -19,6 +19,21 @@ const MAX_EVENT_BYTES = 4096;
 const SEGMENT_MAX_EVENTS = 5000;
 const SEGMENT_MAX_BYTES = 5 * 1024 * 1024;
 const HEAD_CHARS = 256;
+/**
+ * 单字段硬上限：超过它的字符串**当场丢内容**，只留体积——不脱敏扫、不算 sha256、不落 sidecar。
+ *
+ * 为什么必须有（2026-08-20 用户报「九宫格切图卡了半个小时」的主项）：本模块整条写路径是
+ * **同步**跑在主进程里的。当年切图把 9 段 PNG base64 塞进 store，每次 updateNode 的 patch
+ * 就带着十几 MB 字符串进来，于是每条事件都要：redactDeep 对着 11MB base64 逐个已知密钥
+ * split/join + 两遍全局正则、sha256 整串、再 writeFileSync 一份 11MB sidecar。十条事件 =
+ * 上百 MB 同步 IO + 正则——主进程被占死，整个 app（窗口、IPC、菜单）全冻。Windows 上再叠一层
+ * 杀软扫新文件，就是用户体感的「半小时」。
+ *
+ * 本文件头注释写着「事件落盘是旁路观察，绝不打断产品主流程」——没有这条上限，那句话不成立：
+ * 旁路观察能把主进程拖死。产品侧已经改成不再往 store 塞 base64（见 persistNodeImageBlob），
+ * 这里是结构保证：以后**任何**路径再塞大字段进来，日志层也只是少记一点，绝不拖垮 app。
+ */
+const MAX_FIELD_BYTES = 256 * 1024;
 
 type LogState = {
   dir: string;
@@ -48,7 +63,7 @@ export function setEventLogSecretsProvider(provider: () => readonly string[]): v
  * 从 sessionKey 解析 projectId;local/空 → null(不落盘)。
  * sessionKey 形如 `nomi:workbench:<projectId>[:<area>]`,area ∈ {creation, generation}(cdc433c 起按 area 隔离)。
  * 必须先剥 area 后缀再取 projectId——否则贪婪匹配会把 `proj:creation` 整体当 id,致 trace 全线丢盘(I1/I2)。
- * 全仓唯一的 sessionKey→projectId 解析点(agentSessionStore 等消费者一律 import 此函数,不另写正则)。
+ * 全仓唯一的 sessionKey→projectId 解析点（Agent context 等消费者 import 此函数，不另写正则）。
  */
 export function projectIdFromSessionKey(sessionKey: string | undefined): string | null {
   const key = String(sessionKey || "").trim();
@@ -146,6 +161,35 @@ function sha256(text: string): string {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
+/**
+ * 递归把「大到不该进日志」的字符串换成体积标记。**必须跑在 redactDeep / sha256 / sidecar 之前**：
+ * 那三步的成本都随字符串长度线性涨，而这一步只看 length，不复制内容。
+ * 数组/对象照常递归（大字符串通常藏在 patch.result.url 这种深处，不是顶层字段）。
+ */
+export function stripOversizeStrings<T>(value: T, limit: number = MAX_FIELD_BYTES): T {
+  if (typeof value === "string") {
+    if (value.length <= limit) return value;
+    const field: TruncatedPayloadField = {
+      truncated: true,
+      head: value.slice(0, HEAD_CHARS),
+      byteSize: Buffer.byteLength(value),
+      sha256: "",
+      valueKind: "string",
+      oversize: true,
+    };
+    return field as unknown as T;
+  }
+  if (Array.isArray(value)) return value.map((item) => stripOversizeStrings(item, limit)) as unknown as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = stripOversizeStrings(item, limit);
+    }
+    return out as unknown as T;
+  }
+  return value;
+}
+
 /** 超限 payload 逐字段截断;全文落 sidecar(失败则只截断不留引用)。 */
 function capPayload(dir: string, seq: number, payload: Record<string, unknown>): Record<string, unknown> {
   if (JSON.stringify(payload).length <= MAX_EVENT_BYTES) return payload;
@@ -181,7 +225,8 @@ export function appendEvents(projectId: string, newEvents: readonly NewNomiEvent
     let buffer = "";
     for (const raw of newEvents) {
       state.seq += 1;
-      const payload = capPayload(state.dir, state.seq, redactDeep(raw.payload, secrets));
+      // 顺序有讲究:先砍超大字段(只看 length),再脱敏,最后才 sidecar —— 后两步的成本都随长度涨。
+      const payload = capPayload(state.dir, state.seq, redactDeep(stripOversizeStrings(raw.payload), secrets));
       const event: NomiEvent = { v: 1, ...raw, payload, seq: state.seq, ts: new Date().toISOString() };
       const line = `${JSON.stringify(event)}\n`;
       buffer += line;

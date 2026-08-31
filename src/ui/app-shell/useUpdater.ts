@@ -25,10 +25,12 @@ export type Updater = {
   supported: boolean
   /** 能否就地自动安装；未签名 mac 为 false → UI 走「前往下载」手动兜底（真相源在主进程 appInfo）。 */
   canAutoInstall: boolean
+  /** Preview/RC side-by-side builds do not subscribe to the stable updater feed. */
+  canCheckUpdates: boolean
   check: () => void
   download: () => void
   install: () => void
-  openRelease: () => void
+  openDownload: () => void
   reset: () => void
 }
 
@@ -106,14 +108,15 @@ export function useUpdater(): Updater {
     void update?.install().catch(() => undefined)
   }, [update])
 
-  const openRelease = React.useCallback(() => {
-    void update?.openRelease().catch(() => undefined)
+  const openDownload = React.useCallback(() => {
+    void update?.openDownload().catch(() => undefined)
   }, [update])
 
   const reset = React.useCallback(() => setState(INITIAL), [])
 
   // 未签名 mac 无法就地装；appInfo 未到位时按桌面默认（true），到位后以主进程口径为准。
   const canAutoInstall = appInfo?.canAutoInstall ?? true
+  const canCheckUpdates = appInfo?.canCheckUpdates ?? true
 
   return {
     phase: state.phase,
@@ -124,10 +127,11 @@ export function useUpdater(): Updater {
     errorMessage: state.errorMessage,
     supported,
     canAutoInstall,
+    canCheckUpdates,
     check,
     download,
     install,
-    openRelease,
+    openDownload,
     reset,
   }
 }

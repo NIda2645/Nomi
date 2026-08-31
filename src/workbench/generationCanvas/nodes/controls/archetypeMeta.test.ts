@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getArchetypeById, specializeArchetypeForVariant, type ModelArchetype } from '../../../../config/modelArchetypes'
-import { archetypeModeModelEnum } from './archetypeMeta'
+import { archetypeModeModelEnum, type ResolvedReferenceValues } from './archetypeMeta'
 import {
   type ArchetypeArraySlot,
   appendArchetypeArrayValue,
@@ -14,11 +14,12 @@ import {
   currentArchetypeMode,
   currentArchetypeVariant,
   ensureArchetypeNodeMeta,
-  hasArchetypeArrayReferences,
+  hasAnyArchetypeReference,
   mergeOrderedReferenceImageUrls,
   modeHasCharacterSlot,
   normalizeArchetypeVariantMeta,
   orderedSentImageReferenceUrls,
+  orderedSentMediaReferenceUrls,
 } from './archetypeMeta'
 
 // C2b：模式分段切换 + 命名空间 meta + flat 帧键投影（M2 互斥）的核心逻辑钉死。
@@ -102,6 +103,37 @@ describe('applyArchetypeModeSwitch — 只改 modeId，参考值全局保留', (
     expect(meta.lastFrameUrl).toBe('L.png')
     expect(meta.lastFrameRef).toBe('n2')
   })
+
+  // 2026-08-26 走查实测到的真 bug：模式收窄了 select 的**选项**，却没收窄**已存的值**。
+  // 火山 Seedance 2.5 的首帧/首尾帧模式官方硬约束 ratio 只能 adaptive（违反 = 任务已创建才异步报
+  // InvalidParameter.TaskTypeConstraint，额度已排队）。从文生视频带着 16:9 切过去时，UI 上一个选中项
+  // 都没有，而 meta 里的 16:9 照发。变体路径（applyArchetypeVariantSwitch）一直有夹值，模式路径漏了。
+  // 通用坑：任何「某模式收窄某 select」的档案都会中招，不是 Seedance 专属。
+  it('切到收窄了选项的模式时，把越界的存量值夹回该模式默认（不留下发得出去的幽灵值）', () => {
+    const V25 = getArchetypeById('volcengine-seedance-2-5')!
+    const ratioOptionsOf = (modeId: string) =>
+      V25.modes.find((m) => m.id === modeId)!.params.find((p) => p.key === 'ratio')!.options.map((o) => o.value)
+    // 前提坐实：t2v 宽、first 只剩 adaptive。前提不成立的话这条测试就测了个寂寞。
+    expect(ratioOptionsOf('t2v').length).toBeGreaterThan(1)
+    expect(ratioOptionsOf('first')).toEqual(['adaptive'])
+
+    let meta: Record<string, unknown> = ensureArchetypeNodeMeta({}, V25)!
+    meta = applyArchetypeModeSwitch(meta, V25, 't2v')
+    meta = { ...meta, ratio: '16:9' } // 用户在文生视频里选了 16:9
+    expect(meta.ratio).toBe('16:9')
+
+    meta = applyArchetypeModeSwitch(meta, V25, 'first')
+    expect((meta.archetype as { modeId: string }).modeId).toBe('first')
+    // 关键断言：16:9 不许活到首帧模式里。
+    expect(meta.ratio).toBe('adaptive')
+
+    // 反向：模式没收窄的参数不受影响（别夹过头把用户的正常选择也清了）。
+    let keep: Record<string, unknown> = ensureArchetypeNodeMeta({}, V25)!
+    keep = applyArchetypeModeSwitch(keep, V25, 't2v')
+    keep = { ...keep, resolution: '1080p' }
+    keep = applyArchetypeModeSwitch(keep, V25, 'first')
+    expect(keep.resolution).toBe('1080p')
+  })
 })
 
 describe('buildArchetypeInputParams — M2 互斥发生在档案驱动的 input 构建（snake 键）', () => {
@@ -121,6 +153,23 @@ describe('buildArchetypeInputParams — M2 互斥发生在档案驱动的 input 
     const meta = { archetype: { id: 'seedance-2', modeId: 'firstlast' }, firstFrameUrl: '  ' }
     expect(buildArchetypeInputParams(meta, SEEDANCE)).toEqual({ model: 'bytedance/seedance-2' })
   })
+  // 2026-08-20：source_video 单值槽此前只认 meta.sourceVideoUrl，连线来的源视频取不到值 →
+  // video_url 键根本不发（HappyHorse 视频编辑「拖一段视频进去」等于白拖）。
+  it('source_video 槽：连线来的源视频也要上线（不只认手动上传）', () => {
+    const happyhorse = getArchetypeById('happyhorse')!
+    const editMode = happyhorse.modes.find((m) => m.id === 'edit')!
+    expect(editMode.slots.some((s) => s.kind === 'source_video')).toBe(true)
+    const meta = { archetype: { id: happyhorse.id, modeId: 'edit' } }
+    const out = buildArchetypeInputParams(meta, happyhorse, { referenceVideos: ['https://cdn/src.mp4'] })
+    expect(out.video_url).toBe('https://cdn/src.mp4')
+  })
+  // 「不冒充首帧」不变量：首帧槽连的是视频（尾帧接力）时，抽帧前**不能**把视频 URL 当首帧发出去。
+  it('relayFromVideoUrl 永不上线当首帧（抽帧由 relayFrameResolver 在提交前填 firstFrameUrl）', () => {
+    const meta = { archetype: { id: 'seedance-2', modeId: 'first' } }
+    const refs: ResolvedReferenceValues = { relayFromVideoUrl: 'https://cdn/prev.mp4' }
+    const out = buildArchetypeInputParams(meta, SEEDANCE, refs)
+    expect(out.first_frame_url).toBeUndefined()
+  })
 })
 
 // ───────────────────────── C3：全能参考数组槽 ─────────────────────────
@@ -131,7 +180,9 @@ describe('C3 全能参考 — 数组槽声明', () => {
     expect(OMNI.slots).toEqual([
       { kind: 'image_ref', label: '角色参考', min: 0, max: 9, characterIndexed: true },
       { kind: 'video_ref', label: '参考视频', min: 0, max: 3 },
-      { kind: 'audio_ref', label: '参考音频', min: 0, max: 3 },
+      // requiresAnyOf：Seedance 2.0 的参考音频不能单独用（三家官方文档一致，2026-08-20 核实；
+      // 2.5 已解除）。判定见 referenceDependency.ts，契约见 seedance20Contract.test.ts。
+      { kind: 'audio_ref', label: '参考音频', min: 0, max: 3, requiresAnyOf: ['image_ref', 'video_ref'] },
     ])
     const arr = archetypeModeArraySlots(OMNI)
     expect(arr.map((s) => [s.metaKey, s.max, s.numbered])).toEqual([
@@ -149,17 +200,33 @@ describe('C3 全能参考 — 数组槽声明', () => {
     expect(modeHasCharacterSlot(OMNI)).toBe(true)
     expect(modeHasCharacterSlot(SEEDANCE.modes.find((m) => m.id === 'first')!)).toBe(false)
   })
-  it('hasArchetypeArrayReferences：omni 放了参考数组 → true（修复 omni 误判"需要首帧"锁死生成）', () => {
+  it('hasAnyArchetypeReference：omni 放了参考数组 → true（修复 omni 误判"需要首帧"锁死生成）', () => {
     const empty = { archetype: { id: 'seedance-2', modeId: 'omni' } }
-    expect(hasArchetypeArrayReferences(empty, SEEDANCE)).toBe(false)
+    expect(hasAnyArchetypeReference(empty, SEEDANCE)).toBe(false)
     const withImg = { ...empty, referenceImageUrls: ['c1.png'] }
-    expect(hasArchetypeArrayReferences(withImg, SEEDANCE)).toBe(true)
+    expect(hasAnyArchetypeReference(withImg, SEEDANCE)).toBe(true)
     // nomi-local:// 也算「有参考」（传输前 R1 本地化），不做 http 过滤
     const withLocal = { ...empty, referenceVideoUrls: ['nomi-local://asset/p/v.mp4'] }
-    expect(hasArchetypeArrayReferences(withLocal, SEEDANCE)).toBe(true)
+    expect(hasAnyArchetypeReference(withLocal, SEEDANCE)).toBe(true)
     // 首帧模式无数组槽 → 即便 meta 残留 referenceImageUrls 也不算（互斥）
     const firstMode = { archetype: { id: 'seedance-2', modeId: 'first' }, referenceImageUrls: ['c1.png'] }
-    expect(hasArchetypeArrayReferences(firstMode, SEEDANCE)).toBe(false)
+    expect(hasAnyArchetypeReference(firstMode, SEEDANCE)).toBe(false)
+  })
+  // 2026-08-20 用户反馈：参考只从画布边来（没走手动上传）时，判定必须照样看得见。
+  it('hasAnyArchetypeReference：连线来的参考（meta 全空）也算——三种槽都要覆盖', () => {
+    const omni = { archetype: { id: 'seedance-2', modeId: 'omni' } }
+    // 只连了一段参考视频 → 可生成（此前只读 meta，这里恒 false → ↑ 按钮锁死）
+    expect(hasAnyArchetypeReference(omni, SEEDANCE, { referenceVideos: ['nomi-local://asset/p/v.mp4'] })).toBe(true)
+    expect(hasAnyArchetypeReference(omni, SEEDANCE, { referenceImages: ['https://cdn/a.png'] })).toBe(true)
+    expect(hasAnyArchetypeReference(omni, SEEDANCE, { referenceAudios: ['https://cdn/a.mp3'] })).toBe(true)
+    // 空 references 仍然是 false（别把「有对象」当成「有参考」）
+    expect(hasAnyArchetypeReference(omni, SEEDANCE, { referenceVideos: [], referenceImages: [] })).toBe(false)
+    // 资产类型要对上槽：首帧模式只有 first_frame 槽，喂一串参考视频不算「有首帧」
+    const first = { archetype: { id: 'seedance-2', modeId: 'first' } }
+    expect(hasAnyArchetypeReference(first, SEEDANCE, { referenceVideos: ['https://cdn/v.mp4'] })).toBe(false)
+    expect(hasAnyArchetypeReference(first, SEEDANCE, { firstFrameUrl: 'https://cdn/f.png' })).toBe(true)
+    // 尾帧接力：首帧槽连的是视频，抽帧要等提交时才跑 → 判定阶段也得算「已放参考」
+    expect(hasAnyArchetypeReference(first, SEEDANCE, { relayFromVideoUrl: 'https://cdn/prev.mp4' })).toBe(true)
   })
 })
 
@@ -262,6 +329,27 @@ describe('option 2 单源 — 「有序参考图」连线在前、上传在后�
   it('当前模式无 image 数组槽（首帧模式）→ []（@ 投影回退 no-op）', () => {
     const meta = { archetype: { id: 'seedance-2', modeId: 'first' }, firstFrameUrl: 'F.png' }
     expect(orderedSentImageReferenceUrls(meta, SEEDANCE, ['e1.png'])).toEqual([])
+  })
+
+  it('omni 的图/视频/音频分别按各自槽顺序编号，顺序与发送输入一致', () => {
+    const meta = {
+      archetype: { id: 'seedance-2', modeId: 'omni' },
+      referenceImageUrls: ['u-image.png'],
+      referenceVideoUrls: ['u-video.mp4'],
+      referenceAudioUrls: ['u-audio.mp3'],
+    }
+    expect(orderedSentMediaReferenceUrls(meta, SEEDANCE, {
+      image: ['e-image.png'],
+      video: ['e-video.mp4'],
+      audio: ['e-audio.mp3'],
+    })).toEqual([
+      { url: 'e-image.png', kind: 'image', index: 1 },
+      { url: 'u-image.png', kind: 'image', index: 2 },
+      { url: 'e-video.mp4', kind: 'video', index: 1 },
+      { url: 'u-video.mp4', kind: 'video', index: 2 },
+      { url: 'e-audio.mp3', kind: 'audio', index: 1 },
+      { url: 'u-audio.mp3', kind: 'audio', index: 2 },
+    ])
   })
 })
 
@@ -703,9 +791,11 @@ describe('火山方舟 Seedance — 档案投影', () => {
       volcengine_first_image_content: { type: 'image_url', image_url: { url: 'F.png' }, role: 'first_frame' },
       model: 'doubao-seedance-2-0-260128',
     })
-    // seed 在官方字段表里、同族 apimart 档案也有——参数由模型身份决定与渠道无关，
-    // 换个渠道少一个控件就是 bug（2026-07-31 拿到交付文档对账时补齐）。
-    expect(VOLC.modes[0].params.map((p) => p.key)).toEqual(['ratio', 'resolution', 'duration', 'seed', 'generate_audio'])
+    // **刻意没有 seed**：2026-08-26 照官方一手文档（doc 1520757 参数表）逐项对账，seed / camera_fixed
+    // 的支持列只有 1.5 pro / 1.0 pro / 1.0 pro fast，2.0 系列与 2.5 都不支持。
+    // 这条推翻了 2026-07-31 那次「补齐 seed」——那次对的是**中转的交付文档**，它把全 family 的字段
+    // 并成了一张表，看不出逐模型差异。一手出处才算数（R5）。
+    expect(VOLC.modes[0].params.map((p) => p.key)).toEqual(['ratio', 'resolution', 'duration', 'generate_audio'])
   })
 
   it('fast 变体：out.model 发 fast Model ID', () => {

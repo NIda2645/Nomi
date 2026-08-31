@@ -61,12 +61,57 @@ function isInfraTurn(turn) {
   return turn.status === "error" && INFRA_ERROR_PATTERN.test(String(turn.errorMessage || ""));
 }
 
+function evidenceFileName(journeyId, trial, milestoneId) {
+  const safe = (value) => String(value || "unknown").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return `${safe(journeyId)}-t${trial}-${safe(milestoneId)}.png`;
+}
+
+async function captureEvidence(win, repoRoot, evidenceDir, journeyId, trial, milestoneId) {
+  if (!evidenceDir || !win) return null;
+  fs.mkdirSync(evidenceDir, { recursive: true });
+  const outputPath = path.join(evidenceDir, evidenceFileName(journeyId, trial, milestoneId));
+  await win.screenshot({ path: outputPath });
+  return {
+    milestoneId,
+    path: path.relative(repoRoot, outputPath),
+    bytes: fs.statSync(outputPath).size,
+  };
+}
+
+async function resizeForEvidence(app, win) {
+  try {
+    const browserWindow = await app.browserWindow(win);
+    await browserWindow.evaluate((window) => {
+      window.setBounds({ width: 1680, height: 1050 });
+      window.center();
+    });
+    await win.waitForTimeout(300);
+  } catch {
+    // Headless/CI window managers may reject bounds changes; screenshots still remain usable.
+  }
+}
+
+async function closeElectronApp(app, log) {
+  const closed = await Promise.race([
+    app.close().then(() => true).catch(() => false),
+    new Promise((resolve) => setTimeout(() => resolve(false), 8_000)),
+  ]);
+  if (closed) return;
+  log("  ! Electron graceful close timed out; terminating isolated main process");
+  app.process().kill("SIGKILL");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+}
+
 /**
  * 跑一条旅程一次(一个 trial)。返回 {journeyId, trial, milestones:[...], pass, score, metrics, failureReason}。
  * milestones 里每个含 {id, title, checks:[{label,pass,reason,dimension}], pass, turn?}。
  * 任一里程碑 infra 错误 → 该里程碑标 infra、终止后续(整轮记 failureReason=error,可重试)。
  */
-export async function runJourneyTrial(repoRoot, journey, { trial = 1, modelPref = null, log = () => {} } = {}) {
+export async function runJourneyTrial(
+  repoRoot,
+  journey,
+  { trial = 1, modelPref = null, evidenceDir = null, log = () => {} } = {},
+) {
   const isoDir = path.join(os.tmpdir(), "nomi-journey", `${journey.id}-t${trial}`);
   const result = {
     journeyId: journey.id,
@@ -76,26 +121,36 @@ export async function runJourneyTrial(repoRoot, journey, { trial = 1, modelPref 
     pass: false,
     score: 0,
     metrics: { latencyMs: 0, tokensTotal: 0 },
+    evidence: [],
     failureReason: null,
   };
   const t0 = Date.now();
   let app = null;
+  let win = null;
   try {
     // needsAgent 的旅程要真实 catalog;纯 UI 旅程(needsAgent=false)不需要 key。
     const iso = prepareIsolation(isoDir, { requireCatalog: Boolean(journey.needsAgent) });
+    // Existing-project/upgrade journeys must seed disk state before Electron's main process
+    // performs its first project scan. setup remains the user-visible interaction phase.
+    const prepared = journey.prepare
+      ? await journey.prepare({ iso, repoRoot, log })
+      : null;
     const launched = await launchIsolatedApp(repoRoot, iso);
     app = launched.app;
-    const win = launched.win;
+    win = launched.win;
+    await resizeForEvidence(app, win);
 
     // setup:返回 projectDir(各旅程自定义:新建空白 / 点示例 / 打开已有)。
-    const projectDir = await journey.setup({ win, iso, repoRoot, log });
-    const baselineRecord = await waitForPersistedCanvas(win, projectDir, { settleMs: 500, timeoutMs: 8000 });
-    const baselineNodeIds = (baselineRecord?.payload?.generationCanvas?.nodes || []).map((n) => n.id);
+    const projectDir = await journey.setup({ win, iso, repoRoot, prepared, log });
     if (journey.needsAgent) {
       await openGenerationAiPanel(win);
       if (modelPref) await setAssistantModelPref(win, modelPref);
       result.assistantModel = await readAssistantModelLabel(win);
     }
+    // openGenerationAiPanel may create the first empty board so the panel has a canvas host.
+    // Treat that infrastructure node as baseline, not as an agent-created journey outcome.
+    const baselineRecord = await waitForPersistedCanvas(win, projectDir, { settleMs: 500, timeoutMs: 8000 });
+    const baselineNodeIds = (baselineRecord?.payload?.generationCanvas?.nodes || []).map((n) => n.id);
     const ctx = buildCtx(win, projectDir, iso, baselineNodeIds, repoRoot, app);
 
     for (const milestone of journey.milestones) {
@@ -123,6 +178,23 @@ export async function runJourneyTrial(repoRoot, journey, { trial = 1, modelPref 
         await win.waitForTimeout(800);
       }
 
+      if (milestone.beforeEvidence) {
+        await milestone.beforeEvidence(ctx);
+        await win.waitForTimeout(300);
+      }
+
+      const evidence = await captureEvidence(
+        win,
+        repoRoot,
+        evidenceDir,
+        journey.id,
+        trial,
+        milestone.id,
+      );
+      if (evidence) {
+        mResult.evidence = evidence;
+        result.evidence.push(evidence);
+      }
       const checks = (await milestone.verify(ctx)) || [];
       mResult.checks = checks;
       mResult.pass = checks.length > 0 && checks.every((c) => c.pass);
@@ -145,8 +217,14 @@ export async function runJourneyTrial(repoRoot, journey, { trial = 1, modelPref 
     result.failureReason = "error";
     result.error = error instanceof Error ? error.message : String(error);
     log(`  ✗ infra error: ${result.error}`);
+    try {
+      const evidence = await captureEvidence(win, repoRoot, evidenceDir, journey.id, trial, "error");
+      if (evidence) result.evidence.push(evidence);
+    } catch {
+      // Keep the original journey error as the primary failure.
+    }
   } finally {
-    if (app) await app.close().catch(() => {});
+    if (app) await closeElectronApp(app, log);
     fs.rmSync(isoDir, { recursive: true, force: true });
   }
 

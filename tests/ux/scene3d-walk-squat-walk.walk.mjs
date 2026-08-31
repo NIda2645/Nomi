@@ -4,16 +4,13 @@
 // 还断言持久化 poseTrack ≥3 关键帧（base 起点 + squat + base 恢复）。
 // 零额度：纯本地 3D 离屏渲染 + 系统 ffmpeg 抽帧，不碰生成 API。
 // 用法：pnpm run build && node tests/ux/scene3d-walk-squat-walk.walk.mjs
-import { _electron as electron } from 'playwright'
-import { createRequire } from 'node:module'
+import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, mkdirSync, readdirSync, statSync, readFileSync, copyFileSync, existsSync } from 'node:fs'
+import { screenshotSettled } from './_assert.mjs'
 
-const require = createRequire(import.meta.url)
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = path.join(repoRoot, '.walk-squat-walk-lab')
 mkdirSync(outDir, { recursive: true })
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nomi-wsw-'))
@@ -78,11 +75,12 @@ function poseTrackInfo() {
   return { ok: false, keys: [], count: 0, resumedAfterSquat: false }
 }
 
-const app = await electron.launch({
-  executablePath: require('electron'),
-  args: ['.', `--user-data-dir=${path.join(tmp, 'udata')}`],
-  cwd: repoRoot,
-  env: { ...process.env, NOMI_E2E: '1', NOMI_E2E_SMOKE: '1', NOMI_PROJECTS_DIR: projectsDir },
+const { app, win } = await launchNomiApp({
+  name: 'scene3d-walk-squat-walk',
+  userDataDir: path.join(tmp, 'udata'),
+  projectsDir,
+  env: { NOMI_E2E_SMOKE: '1' },
+  settleMs: 1800,
 })
 
 const errors = []
@@ -90,11 +88,8 @@ const log = (m) => console.log(m)
 const pass = { editorOpen: false, possessed: false, recStarted: false, walkSquatWalk: false, recStopped: false, poseTrackOk: false, resumedKeyframe: false, mp4Made: false, framesExtracted: false }
 
 try {
-  const win = await app.firstWindow()
   win.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   win.on('pageerror', (e) => errors.push(String(e)))
-  await win.waitForLoadState('domcontentloaded')
-  await win.waitForTimeout(1800)
   const splashSkip = win.locator('[data-splash-skip="true"]').first()
   if ((await splashSkip.count()) > 0) await splashSkip.click().catch(() => {})
   await win.keyboard.press('Escape').catch(() => {})
@@ -138,13 +133,13 @@ try {
 
   // 走 → 蹲 → 再走（#4 的核心序列：第二段走必须把角色从蹲恢复到走）。
   await win.keyboard.down('KeyW'); await win.waitForTimeout(1400); await win.keyboard.up('KeyW')
-  await win.screenshot({ path: path.join(outDir, 'wsw-01-walk.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'wsw-01-walk.png') })
   const squat = win.getByRole('button', { name: '下蹲', exact: false }).first()
   if ((await squat.count()) > 0) { await squat.click(); await win.waitForTimeout(500) }
-  await win.screenshot({ path: path.join(outDir, 'wsw-02-squat.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'wsw-02-squat.png') })
   // 再按 W 恢复走路（修复点：此刻应往 poseTrack 补 base 关键帧，腿重新迈）。
   await win.keyboard.down('KeyW'); await win.waitForTimeout(1600); await win.keyboard.up('KeyW')
-  await win.screenshot({ path: path.join(outDir, 'wsw-03-walk-again.png') })
+  await screenshotSettled(win, { path: path.join(outDir, 'wsw-03-walk-again.png') })
   pass.walkSquatWalk = (await squat.count()) > 0
   log(`  ${pass.walkSquatWalk ? '✓' : '✗'} 录制中执行 走→蹲→再走`)
 

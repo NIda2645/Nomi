@@ -45,7 +45,7 @@ export const IconActionButton = forwardRef<HTMLButtonElement, IconActionButtonPr
 
 export type DesignButtonProps = ButtonProps & ComponentPropsWithoutRef<'button'>
 
-export function DesignButton({
+export const DesignButton = forwardRef<HTMLButtonElement, DesignButtonProps>(function DesignButton({
   children,
   className,
   disabled,
@@ -54,7 +54,7 @@ export function DesignButton({
   radius = 'sm',
   variant = 'light',
   ...props
-}: DesignButtonProps): JSX.Element {
+}, ref): JSX.Element {
   const rootClassName = cn(
     'tc-design-button',
     'inline-flex items-center justify-center gap-1.5',
@@ -69,6 +69,7 @@ export function DesignButton({
   return (
     <Button
       {...props}
+      ref={ref}
       className={rootClassName}
       disabled={disabled || isLoading}
       leftSection={isLoading ? <NomiLoadingMark size={14} /> : leftSection}
@@ -80,24 +81,33 @@ export function DesignButton({
       {children}
     </Button>
   )
-}
+})
 
 export type WorkbenchIconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   icon: ReactNode
   label: string
+  /** md = 32px (default), sm = 28px for compact canvas/tool surfaces. */
+  size?: 'sm' | 'md'
 }
 
-export function WorkbenchIconButton({
+const WORKBENCH_ICON_BUTTON_SIZE = {
+  md: 'size-8',
+  sm: 'size-7',
+} as const
+
+export const WorkbenchIconButton = forwardRef<HTMLButtonElement, WorkbenchIconButtonProps>(function WorkbenchIconButton({
   icon,
   label,
+  size = 'md',
   className,
   type = 'button',
   ...props
-}: WorkbenchIconButtonProps): JSX.Element {
+}, ref): JSX.Element {
   const rootClassName = cn(
     'tc-workbench-icon-button',
     'inline-grid place-items-center',
-    'size-8 rounded-workbench-control border-0',
+    WORKBENCH_ICON_BUTTON_SIZE[size],
+    'rounded-workbench-control border-0',
     'bg-transparent text-workbench-muted',
     'cursor-pointer',
     'transition-[background,color] duration-150 ease-out',
@@ -110,6 +120,7 @@ export function WorkbenchIconButton({
   return (
     <button
       {...props}
+      ref={ref}
       className={rootClassName}
       type={type}
       aria-label={props['aria-label'] ?? label}
@@ -118,7 +129,7 @@ export function WorkbenchIconButton({
       {icon}
     </button>
   )
-}
+})
 
 export type ActionCardProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   icon: ReactNode
@@ -132,7 +143,7 @@ export type ActionCardProps = ButtonHTMLAttributes<HTMLButtonElement> & {
  * 比按钮大一个量级（280×88），用尺寸/形态/位置三重区隔承载页面级主操作；
  * 一页至多一张 primary。低频操作不要用它（用 WorkbenchButton）。
  */
-export function ActionCard({
+export const ActionCard = forwardRef<HTMLButtonElement, ActionCardProps>(function ActionCard({
   icon,
   title,
   description,
@@ -140,11 +151,12 @@ export function ActionCard({
   className,
   type = 'button',
   ...props
-}: ActionCardProps): JSX.Element {
+}, ref): JSX.Element {
   const isPrimary = variant === 'primary'
   return (
     <button
       {...props}
+      ref={ref}
       type={type}
       data-variant={variant}
       className={cn(
@@ -186,7 +198,7 @@ export function ActionCard({
       </span>
     </button>
   )
-}
+})
 
 // 变体/尺寸 = 工作区按钮的唯一真相源:卡片动作(确认/拒绝/整笔撤销/撤销这次改动/让AI修…)
 // 一律走 variant+size,不再各处 ad-hoc className 各覆写一套(那是「明显不是一个设计风格」的根因)。
@@ -221,7 +233,7 @@ export type WorkbenchButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: keyof typeof WORKBENCH_BUTTON_SIZE
 }
 
-export function WorkbenchButton({
+export const WorkbenchButton = forwardRef<HTMLButtonElement, WorkbenchButtonProps>(function WorkbenchButton({
   children,
   className,
   type = 'button',
@@ -230,7 +242,7 @@ export function WorkbenchButton({
   variant = 'default',
   size = 'md',
   ...props
-}: WorkbenchButtonProps): JSX.Element {
+}, ref): JSX.Element {
   const rootClassName = cn(
     'tc-workbench-button',
     // whitespace-nowrap:按钮文字永不逐字折行(根因治本)——窄容器里被挤压时宁可溢出/由
@@ -248,6 +260,7 @@ export function WorkbenchButton({
   return (
     <button
       {...props}
+      ref={ref}
       className={rootClassName}
       type={type}
       disabled={disabled || loading}
@@ -257,4 +270,4 @@ export function WorkbenchButton({
       {children}
     </button>
   )
-}
+})

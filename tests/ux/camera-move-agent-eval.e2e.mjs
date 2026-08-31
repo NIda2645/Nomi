@@ -4,7 +4,7 @@
 // 结构上根本点不出工具——运镜的触发规则住在渲染层 system prompt（generationCanvasAgentClient）
 // 与工具自身 schema 描述里，RAW 路径两者皆无，且画布没有可指的视频节点 → 8/8 误判 0 调用。
 //
-// 这版走「真·应用内 agent 路径」：隔离真 Electron 实例 + 真 catalog（apimart key + deepseek-v4-pro）
+// 这版走「真·应用内 agent 路径」：隔离真 Electron 实例 + 真 catalog（apimart key + DeepSeek V4 Pro）
 // → 新建项目 → 先用一轮 agent 建出一个 kind=video 的镜头节点当靶子（create_canvas_nodes 在
 // 白名单内，自动批准、零额度）→ 落盘确认视频节点存在 → 再逐条发运镜请求，经真实 UI 面板
 // （openGenerationAiPanel + sendAgentMessage）让 agent 拿到带触发规则的真 system prompt。
