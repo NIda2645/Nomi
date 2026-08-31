@@ -45,14 +45,14 @@ export const BUILTIN_VENDOR_SEEDS: readonly VendorSeed[] = [
   DREAMINA_VENDOR_SEED,
   RUNNINGHUB_VENDOR_SEED, // RunningHub aggregator（先接 3D 混元文生3D）
   REPLICATE_VENDOR_SEED, // Replicate（元素拆解 qwen-image-layered，按量付费）
+  FAL_VENDOR_SEED, // fal.ai CDN upload（模型 endpoint 由用户配置）
+  RUNWAY_VENDOR_SEED, // Runway ephemeral upload（模型 endpoint 由用户配置）
   COMFYUI_VENDOR_SEED, // 本地 ComfyUI（无鉴权本地后端，默认关、用户显式启用）
   CODEX_LOCAL_VENDOR_SEED, // Codex 本地生图（实验，默认关）
   ANTIGRAVITY_VENDOR_SEED, // 官方本机 CLI；完整能力验证前默认关闭
   MINIMAX_VENDOR_SEED,
   ELEVENLABS_VENDOR_SEED,
   MESHY_VENDOR_SEED,
-  FAL_VENDOR_SEED,
-  RUNWAY_VENDOR_SEED,
 ];
 
 /**

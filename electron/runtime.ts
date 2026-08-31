@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { assertLocalAssetTransportReady, localizeAssetsForVendor, trustedLocalOutputOrigin } from "./catalog/assetLocalization";
 import { assetIngestionResolver, assetLocalizationOptions } from "./catalog/assetTransportRuntime";
-import { readNomiLocalAsset, postJsonForAssetUpload, postMultipartForAssetUpload } from "./assets/localAssetFile";
+import { readNomiLocalAsset, postJsonForAssetUpload, postMultipartForAssetUpload, putBinaryForAssetUpload } from "./assets/localAssetFile";
 import { importRemoteAsset, writeAsset, writeDeterministicAsset } from "./assets/projectAssetStore";
 import { endpoint } from "./vendorEndpoint";
 import { requestJson, requestMultipart, vendorResponseLimitForKind } from "./vendor/vendorHttp";
@@ -260,7 +260,6 @@ export async function executeProfileOperation(input: {
     });
   }
   if (input.operation.multipart) return runMultipartProfileOperation(input, (u, h, q, f) => requestMultipart(input.vendor, input.apiKey, u, h, q, f, input.signal, { maxResponseBytes: vendorResponseLimitForKind(input.model.kind) }));
-
   const uploadCatalog = readCatalog();
   const localized = await localizeAssetsForVendor(
     input.request.extras,
@@ -269,6 +268,7 @@ export async function executeProfileOperation(input: {
     postJsonForAssetUpload,
     postMultipartForAssetUpload,
     assetLocalizationOptions(input.request.extras),
+    putBinaryForAssetUpload,
   );
   const effectiveInput =
     localized.uploaded > 0

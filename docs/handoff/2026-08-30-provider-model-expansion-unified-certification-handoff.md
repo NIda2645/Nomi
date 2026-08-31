@@ -1,6 +1,6 @@
 # Nomi 供应商、旗舰模型与统一认证流程交接
 
-> 状态：代码与验证已完成，PR #241 等待最终检查后合并；外部阻塞项仍按账本诚实保留
+> 状态：核心代码与合并前验证已完成；最新 `origin/main` 的本地合并冲突已解决但尚未创建 merge commit，合并后验证仍待复跑；外部阻塞项仍按账本诚实保留
 >
 > 交接日期：2026-08-30
 >
@@ -11,6 +11,8 @@
 > 当前任务分支：`codex/provider-model-expansion-20260830`（最终提交以合并前推送为准）
 >
 > 远端基线：已在本轮复核 `origin/main`；PR：`https://github.com/aqm857886159/Nomi/pull/241`
+
+本轮执行结果和接手步骤见：[2026-08-31-provider-model-expansion-execution-summary.md](./2026-08-31-provider-model-expansion-execution-summary.md)。
 
 ## 0.1 2026-08-31 续接结果
 

@@ -518,6 +518,20 @@ export const zhOnboardingProviders = {
         'Replicate 托管 qwen-image-layered（开源 Apache 2.0），把一张图拆成前景/背景/元素多个可编辑图层。注册后在 Account 里拿 API token，按量付费。',
       promoCta: '去 Replicate 拿 token',
     },
+    fal: {
+      tagline: '海外常用 · CDN 上传图片、视频和音频',
+      credentialPlaceholder: '粘贴 fal.ai Key',
+      credentialHint: '在 fal.ai Dashboard 创建 Key。上传走 fal CDN，URL 有生命周期；模型额度、可用区域和价格以当前账户为准。凭证本地加密存储。',
+      promoText: 'fal.ai 提供模型 API 与 CDN 文件上传。配置一个 Key 后，Nomi 可以把本地参考素材交给 fal 或其他支持公网 URL 的模型。',
+      promoCta: '去 fal.ai 创建 Key',
+    },
+    runway: {
+      tagline: '海外视频 · 临时素材上传（需账户额度）',
+      credentialPlaceholder: '粘贴 Runway API Key',
+      credentialHint: '在 Runway Developer 控制台创建 API Key。临时上传最多 200MB、有效期约 24 小时，并要求账户有可用 credits。凭证本地加密存储。',
+      promoText: 'Runway 的 ephemeral upload 直接返回 Runway 专用 URI，适合 Runway 自己的图像/视频生成链路；上传不等于模型额度免费。',
+      promoCta: '去 Runway Developer',
+    },
   },
   vendorCard: {
     defaultKeyPlaceholder: '粘贴你的 API Key（sk-…）',
@@ -1716,6 +1730,20 @@ export const enOnboardingProviders = {
       promoText:
         'Replicate hosts the Apache 2.0 qwen-image-layered model, which separates an image into editable foreground, background, and element layers. Get a pay-as-you-go token from Account.',
       promoCta: 'Get a Replicate token',
+    },
+    fal: {
+      tagline: 'Common overseas route · CDN upload for image, video, and audio',
+      credentialPlaceholder: 'Paste your fal.ai Key',
+      credentialHint: 'Create a Key in the fal.ai Dashboard. Uploads use fal CDN and have a lifecycle; model access, regions, and pricing depend on your account. Credentials are encrypted locally.',
+      promoText: 'fal.ai provides model APIs and CDN file uploads. With one Key, Nomi can make local reference media reachable to fal or another model that accepts public URLs.',
+      promoCta: 'Create a fal.ai Key',
+    },
+    runway: {
+      tagline: 'Overseas video · Ephemeral asset upload (credits required)',
+      credentialPlaceholder: 'Paste your Runway API Key',
+      credentialHint: 'Create an API Key in the Runway Developer console. Ephemeral uploads are limited to 200MB, last about 24 hours, and require available credits. Credentials are encrypted locally.',
+      promoText: 'Runway ephemeral uploads return a Runway-only URI for Runway image/video workflows; upload access does not make model generation free.',
+      promoCta: 'Open Runway Developer',
     },
   },
   vendorCard: {
