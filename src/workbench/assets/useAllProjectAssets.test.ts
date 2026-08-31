@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DesktopAssetDto } from '../../desktop/bridge'
-import { assetRefFromDesktopAsset, parseProjectNames } from './useAllProjectAssets'
+import { assetRefFromDesktopAsset, kindFromDesktopAsset, parseProjectNames } from './useAllProjectAssets'
 
 function desktopAsset(overrides: Partial<DesktopAssetDto> = {}): DesktopAssetDto {
   return {
@@ -18,6 +18,18 @@ function desktopAsset(overrides: Partial<DesktopAssetDto> = {}): DesktopAssetDto
       imageHeight: 1200,
     },
     ...overrides,
+  }
+}
+
+function classificationAsset(name: string, data: Record<string, unknown>): DesktopAssetDto {
+  return {
+    id: name,
+    name,
+    userId: 'user',
+    projectId: 'project',
+    createdAt: '2026-08-30T00:00:00.000Z',
+    updatedAt: '2026-08-30T00:00:00.000Z',
+    data,
   }
 }
 
@@ -54,5 +66,16 @@ describe('useAllProjectAssets display metadata', () => {
       null,
     ])
     expect([...names.entries()]).toEqual([['p1', 'One']])
+  })
+})
+
+describe('all-project asset classification', () => {
+  it('recognizes GLB by declared media type and MIME type', () => {
+    expect(kindFromDesktopAsset(classificationAsset('declared.bin', { mediaType: 'model3d' }))).toBe('model3d')
+    expect(kindFromDesktopAsset(classificationAsset('typed.bin', { contentType: 'model/gltf-binary' }))).toBe('model3d')
+  })
+
+  it('falls back to the GLB extension for older persisted records', () => {
+    expect(kindFromDesktopAsset(classificationAsset('legacy.GLB', {}))).toBe('model3d')
   })
 })
