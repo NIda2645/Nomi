@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// Single-shot has no durable lifecycle; feature attribution is not storage.
+// Single-shot is still one-step, but its conversation binding is durable.
 const clearOrder: string[] = []
 
 vi.mock('./workbenchAiClient', () => ({
@@ -39,7 +39,7 @@ describe('runSingleShotAgent —— 单次循环模式的显式入口（B1d）',
     expect(AGENT_LOOP_MODE.multiTurn).toBe('multi-turn')
   })
 
-  it('单次任务显式 ephemeral，不读写或清理任一持久会话', async () => {
+  it('单次任务绑定到 durable project/thread，避免重启分叉 owner', async () => {
     await runSingleShotAgent({
       featureKey: 'nomi:production-directions:p1',
       prompt: 'hi',
@@ -49,10 +49,10 @@ describe('runSingleShotAgent —— 单次循环模式的显式入口（B1d）',
     })
     expect(mockClear).not.toHaveBeenCalled()
     expect(clearOrder).toEqual(['send'])
-    expect(mockSend.mock.calls[0][0]).toMatchObject({ capability: 'single-shot', history: { kind: 'ephemeral' } })
+    expect(mockSend.mock.calls[0][0]).toMatchObject({ capability: 'single-shot', history: { kind: 'persistent', binding: { threadId: 'nomi:production-directions:p1' } } })
   })
 
-  it('追踪 feature key 与 ephemeral 生命周期分离，其余请求字段保留', async () => {
+  it('追踪 feature key 并保留 durable binding，其余请求字段保留', async () => {
     await runSingleShotAgent({
       featureKey: 'nomi:shot-verify:p2',
       prompt: 'judge this',
@@ -71,7 +71,7 @@ describe('runSingleShotAgent —— 单次循环模式的显式入口（B1d）',
       skillName: '镜级画面校验',
       mode: 'chat',
       capability: 'single-shot',
-      history: { kind: 'ephemeral' },
+      history: { kind: 'persistent', binding: { sessionKey: 'nomi:workbench:p2:creation', threadId: 'nomi:shot-verify:p2' } },
     })
     expect(req).not.toHaveProperty('sessionKey')
     // 空 handlers（单次流不订阅流事件，与现状一致）

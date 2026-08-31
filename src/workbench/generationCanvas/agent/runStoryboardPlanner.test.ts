@@ -38,12 +38,12 @@ describe('storyboard planner scope and projection', () => {
       await vi.waitFor(() => expect(confirm).toHaveBeenCalled())
       return { response: { text: 'my plan', status: 'finished' } }
     })
-    const input = { ...base(), target: 'production' as const, history: { kind: 'ephemeral' as const }, snapshot: { nodes: [], edges: [], groups: [] }, featureKey: 'nomi:production-planner:A:run-1:plan' }
+  const input = { ...base(), target: 'production' as const, history: { kind: 'persistent' as const, binding: { sessionKey: 'nomi:workbench:A:generation', threadId: 'nomi:production-planner:A:run-1:plan' } }, snapshot: { nodes: [], edges: [], groups: [] }, featureKey: 'nomi:production-planner:A:run-1:plan' }
     const result = await runStoryboardPlanner(input)
     expect(result).toEqual({ text: 'my plan', status: 'finished', plan })
     expect(deps.apply).not.toHaveBeenCalled()
     expect(deps.uiTitle).toBe('project B after async switch')
-    expect(deps.send.mock.calls[0][0]).toMatchObject({ history: { kind: 'ephemeral' }, capability: 'storyboard', featureKey: input.featureKey })
+    expect(deps.send.mock.calls[0][0]).toMatchObject({ history: { kind: 'persistent' }, capability: 'storyboard', featureKey: input.featureKey })
     expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ ok: true, silent: true }))
   })
 

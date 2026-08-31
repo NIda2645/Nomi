@@ -124,7 +124,7 @@ export async function sendGenerationCanvasAgentMessage(
     ...request,
     history: request.history.kind === 'persistent'
       ? { kind: 'persistent', binding: { ...request.history.binding } }
-      : { kind: 'ephemeral' },
+      : { kind: 'persistent', binding: { sessionKey: `nomi:workbench:${request.projectId || 'local'}:generation`, threadId: request.featureKey || 'generation' } },
     selectedNodes: request.selectedNodes.slice(),
     skill: request.skill ? { ...request.skill } : undefined,
     attachments: request.attachments?.map((attachment) => ({ ...attachment })),

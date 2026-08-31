@@ -411,7 +411,7 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
         : {}
       const result = await runStoryboardPlanner({
         target: 'production',
-        history: { kind: 'ephemeral' },
+        history: { kind: 'persistent', binding: { sessionKey: `nomi:workbench:${projectId}:generation`, threadId: plannerFeatureKey } },
         projectId,
         featureKey: plannerFeatureKey,
         snapshot: plannerSnapshot!,

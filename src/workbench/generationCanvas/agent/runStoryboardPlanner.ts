@@ -27,7 +27,7 @@ type StoryboardPlannerInput = {
   onCancelReady?: (cancel: () => void) => void
 } & (
   | { target: 'creation'; history: Extract<AgentChatHistory, { kind: 'persistent' }> }
-  | { target: 'production'; history: Extract<AgentChatHistory, { kind: 'ephemeral' }>; snapshot: GenerationCanvasSnapshot }
+  | { target: 'production'; history: Extract<AgentChatHistory, { kind: 'persistent' }>; snapshot: GenerationCanvasSnapshot }
 )
 
 /** Same planner capability for inline and production. Only the inline caller

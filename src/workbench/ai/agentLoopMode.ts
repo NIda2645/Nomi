@@ -16,16 +16,17 @@ export type SingleShotAgentRequest = {
   attachments?: AgentAttachmentPayload[]
 }
 
-/** One step and zero tools. Ephemeral scope bypasses every persistent lifecycle
- * operation, including clear; it cannot erase an archived UI conversation. */
+/** One step and zero tools. The feature key is mapped to a durable project/thread
+ * binding so a restart cannot silently fork the conversation owner. */
 export async function runSingleShotAgent(request: SingleShotAgentRequest): Promise<AgentsChatResponseDto> {
   const pref = getAssistantModelPref()
+  const durableProject = request.projectId || request.featureKey.replace(/[^A-Za-z0-9._-]/g, '_')
   return sendWorkbenchAiMessage({
     prompt: request.prompt,
     displayPrompt: request.displayPrompt,
     featureKey: request.featureKey,
     capability: 'single-shot',
-    history: { kind: 'ephemeral' },
+    history: { kind: 'persistent', binding: { sessionKey: `nomi:workbench:${durableProject}:creation`, threadId: request.featureKey } },
     ...(request.projectId ? { projectId: request.projectId } : {}),
     skillKey: request.skillKey,
     skillName: request.skillName,
