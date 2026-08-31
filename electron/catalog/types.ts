@@ -3,25 +3,23 @@
 // 渲染层不消费这些（electron 专用；渲染层有自己的 DTO，经 desktopClient 单源）。
 import type { ApiKeyRecord } from "./secrets";
 import type { ParamMap } from "./paramTranslate";
+import {
+  AI_SDK_PROVIDER_KINDS,
+  ASSET_MEDIA_KINDS,
+  BILLING_MODEL_KINDS,
+  PROFILE_KINDS,
+  VENDOR_AUTH_TYPES,
+} from "../shared/modelAccessCapabilities";
 
-export type BillingModelKind = "text" | "image" | "video" | "audio" | "model3d";
-export type ProfileKind =
-  | "chat"
-  | "prompt_refine"
-  | "text_to_image"
-  | "image_to_prompt"
-  | "image_to_video"
-  | "text_to_video"
-  | "image_edit"
-  | "text_to_audio"
-  | "image_to_audio"
-  | "transcribe"
-  | "text_to_3d"
-  | "image_to_3d";
+// 这些值的单一真相源是 electron/shared/modelAccessCapabilities（可枚举、可被旅程门岗读取）；
+// 运行时类型从常量反推，避免手写 union 落后于真实能力面。
+export { AI_SDK_PROVIDER_KINDS, ASSET_MEDIA_KINDS, BILLING_MODEL_KINDS, PROFILE_KINDS, VENDOR_AUTH_TYPES };
+export type BillingModelKind = (typeof BILLING_MODEL_KINDS)[number];
+export type ProfileKind = (typeof PROFILE_KINDS)[number];
 
 // openai-responses：OpenAI Responses API（/responses，非 /chat/completions）。
 // 中转（如 foxcode codex 渠道 wire_api=responses）只认 Responses → chat/completions 会 502（2026-06-06 实测根因）。
-export type AiSdkProviderKind = "openai-compatible" | "anthropic" | "openai-responses";
+export type AiSdkProviderKind = (typeof AI_SDK_PROVIDER_KINDS)[number];
 
 /**
  * 供应商「怎么吞本地素材」的声明(R1,通用第一)。本地素材(nomi-local://)只有 app 自己能读,
@@ -38,7 +36,8 @@ export type AiSdkProviderKind = "openai-compatible" | "anthropic" | "openai-resp
  * `accepts`：该通道接受的媒体类型(image/video/audio)。缺省视为 ['image']——今天的通道都面向图片
  * (apimart 的 /uploads/images 仅图片)。视频素材必须路由到声明 'video' 的通道(如 KIE 通用文件托管)。
  */
-export type AssetMediaKind = "image" | "video" | "audio";
+export type AssetMediaKind = (typeof ASSET_MEDIA_KINDS)[number];
+export type VendorAuthType = (typeof VENDOR_AUTH_TYPES)[number];
 
 export type AssetIngestion =
   | { strategy: "inline-base64"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
@@ -234,7 +233,7 @@ export type Vendor = {
   enabled: boolean;
   hasApiKey?: boolean;
   baseUrlHint?: string | null;
-  authType?: "none" | "bearer" | "x-api-key" | "query";
+  authType?: VendorAuthType;
   authHeader?: string | null;
   authQueryParam?: string | null;
   /**

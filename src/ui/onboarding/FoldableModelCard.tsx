@@ -9,6 +9,9 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
+import type { MODEL_ACCESS_ENTRY } from '../../../electron/shared/modelAccessCapabilities'
+
+type ModelAccessEntryId = (typeof MODEL_ACCESS_ENTRY)[keyof typeof MODEL_ACCESS_ENTRY]
 
 type FoldableModelCardProps = {
   /** logo 内容：字形（如 'A'）、Tabler 图标或 <img> brand logo。 */
@@ -31,6 +34,8 @@ type FoldableModelCardProps = {
   onOpenDetails?: () => void
   /** 连接详情页使用：复用同一张卡的真实控制区，但固定展开且不再显示折叠按钮。 */
   detailMode?: boolean
+  /** Stable, non-visual user-entry contract used by real Electron journeys. */
+  dataAccessEntry?: ModelAccessEntryId | `${ModelAccessEntryId} ${string}`
   children: React.ReactNode
 }
 
@@ -46,6 +51,7 @@ export function FoldableModelCard({
   defaultExpanded = false,
   onOpenDetails,
   detailMode = false,
+  dataAccessEntry,
   children,
 }: FoldableModelCardProps): JSX.Element {
   const { t } = useTranslation()
@@ -54,7 +60,7 @@ export function FoldableModelCard({
   const bodyId = React.useId()
 
   return (
-    <div className="border border-nomi-line rounded-nomi bg-nomi-paper overflow-hidden">
+    <div data-model-access-entry={dataAccessEntry} className="border border-nomi-line rounded-nomi bg-nomi-paper overflow-hidden">
       {/* header 行：展开 toggle（flex-1 button）+ 可选动作槽（兄弟节点，非嵌套）。 */}
       <div className={cn('flex items-center', visible && 'bg-nomi-ink-05')}>
       <button

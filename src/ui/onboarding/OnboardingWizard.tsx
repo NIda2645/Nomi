@@ -1,4 +1,5 @@
 import React from 'react'
+import { MODEL_ACCESS_ENTRY_ONBOARDING } from '../../../electron/shared/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { Stack, Group, Text, PasswordInput, Anchor } from '@mantine/core'
 import { IconCheck, IconX, IconChevronDown } from '@tabler/icons-react'
@@ -467,7 +468,7 @@ export function OnboardingWizard({
   const showBaseUrlField = !isNamedPreset || editBaseUrl
 
   const content = (
-    <Stack gap="md">
+    <Stack gap="md" data-model-access-entry={MODEL_ACCESS_ENTRY_ONBOARDING}>
       {phase === 'input' && screen === 'form' && !existingVendorKey && (
         <Stack gap={12}>
                   {!isCustomGatewayEntry ? (

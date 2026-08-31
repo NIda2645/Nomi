@@ -1,5 +1,6 @@
 /** 自定义调用编辑器：材料辅助生成，脚本与供应商配置才是持久化内容。 */
 import React from 'react'
+import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconCheck, IconCopy, IconPlayerPlay, IconPlayerStop, IconPlus, IconSparkles, IconTrash } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
@@ -454,7 +455,7 @@ export function CustomCallEditor({
   ) : null
 
   const content = target ? (
-        <div data-settings-unsaved={dirty ? 'true' : undefined} className={cn('flex w-full flex-col gap-3', presentation === 'page' && 'min-h-0 flex-1')}>
+        <div data-model-access-entry={MODEL_ACCESS_ENTRY.customCallScript} data-settings-unsaved={dirty ? 'true' : undefined} className={cn('flex w-full flex-col gap-3', presentation === 'page' && 'min-h-0 flex-1')}>
           <div className="text-caption text-nomi-ink-60 -mt-1">
             {t(target.draft ? 'onboardingProviders.customCall.draftSubtitle' : 'onboardingProviders.customCall.subtitle')}
           </div>
