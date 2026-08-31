@@ -9,7 +9,7 @@
 
 ---
 
-## 现役欠账（11）
+## 现役欠账（12）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
@@ -24,6 +24,7 @@
 | 🚧 进行中 | [2026-08-27-release-media-pack-skill.md](superpowers/plans/2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan |
 | 🚧 进行中 | [2026-08-28-conversational-model-integration.md](superpowers/plans/2026-08-28-conversational-model-integration.md) | Conversational Model Integration Implementation Plan |
 | 🚧 进行中 | [2026-08-30-canvas-workflow-plugin.md](superpowers/plans/2026-08-30-canvas-workflow-plugin.md) | Nomi 固定流程与原生画布插件计划 |
+| 🚧 进行中 | [2026-09-01-agent-architecture-test-system.md](superpowers/plans/2026-09-01-agent-architecture-test-system.md) | Agent Architecture Test System Implementation Plan |
 
 ## 远期 / 暂缓（6）
 
@@ -55,7 +56,7 @@
 
 </details>
 
-- 合计扫描：472 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：473 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 

@@ -1,0 +1,18 @@
+{
+  "extends": "../../electron/tsconfig.pi.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "../../.tmp/agent-system-tests"
+  },
+  "include": [
+    "schema.mts",
+    "schema.node-test.mts",
+    "harness/eventLedgerHarness.mts",
+    "harness/fakeMcpClient.mts",
+    "harness/fakeProvider.mts",
+    "harness/fakeSkillRegistry.mts",
+    "harness/scriptedModel.mts",
+    "contracts/l1-replay.node-test.mts"
+  ],
+  "exclude": []
+}
