@@ -2,7 +2,7 @@
 
 来源是 #223 ref `46066ed0` 的 `electron/harness/tools/*Descriptors.ts` 和 capability registry。目标语义工具来自根因总稿 §6.1：`project_context`、`document_read`、`document_edit`、`canvas_read`、`canvas_plan`、`canvas_edit`、`canvas_maintenance`、`media_query`、`timeline_read`、`timeline_edit`、`export_job`、`generation_plan`、`generation_status`、`production_run`、`skill_load`。
 
-去向含义：`keep` = 作为语义工具本体保留；`merge` = 合并进目标语义工具；`host-only` = 仍是 canonical capability/Host transition，但不投影给模型；`delete` = 旧 model descriptor 在迁移提交中删除且无 fallback。编号 1–49 是当前 catalog 的可枚举 descriptor；第 50 行是 wire-level gate（不在 Pi catalog，但在 generation dispatcher/既有规格中出现），用于解释“50”口径差异。
+去向含义：`keep` = 作为语义工具本体保留；`merge` = 合并进目标语义工具；`host-only` = 仍是 canonical capability/Host transition，但不投影给模型；`delete` = 旧 model descriptor 在迁移提交中删除且无 fallback。编号 1–50 逐行列出 #223 `agentToolCatalog` 的 50 个 descriptor；`nomi_decide_generation_gate` 是额外的 wire-level 入口，单独在表后列为 OPEN QUESTION，不冒充 catalog descriptor。
 
 | # | 当前 descriptor | 去向 | 目标语义工具 / 理由 |
 |---:|---|---|---|
@@ -54,10 +54,13 @@
 | 46 | `nomi_request_generation_gate` | host-only | 请求确认卡由 Host/UI 发起，模型只能提出 proposal |
 | 47 | `nomi_start_generation` | host-only | 用户确认后的 Host event 才能启动付费 effect |
 | 48 | `nomi_operation_read` | keep | `generation_status(read)`；计划/task/artifact 状态 |
-| 49 | `nomi_cancel_generation` / `nomi_reconcile_generation` | merge | `generation_status(cancel/reconcile)`；未知结果只能核账 |
-| 50 | `nomi_decide_generation_gate`（wire-level） | host-only | dispatcher/规格已有 receipt consumer，但 #223 Pi catalog 明确不投影；计数口径 OPEN QUESTION |
+| 49 | `nomi_cancel_generation` | merge | `generation_status(cancel)`；取消是状态工具的一个受控 operation |
+| 50 | `nomi_reconcile_generation` | merge | `generation_status(reconcile)`；未知结果只能核账 |
+
+## 第 50 行的口径说明
+
+`nomi_decide_generation_gate` 是 #223 generation dispatcher/规格中的 wire-level 入口，Pi catalog 注释明确“不投影”；若维护者所谓“50 个现有模型工具”只指 `agentToolCatalog` 可枚举对象，则实数是 49，且该入口应另列为 Host-only transition。这个计数差异保持 OPEN QUESTION，不把 `nomi_session_open` 或旧 alias 填成不存在的 descriptor。
 
 ## 核账结论
 
-按 `agentToolCatalog` 可枚举对象实数是 49（document 6 + canvas 10 + timeline 14 + production 9 + skill 1 + generation 9）。研究稿写“约 50”与 wire catalog 的第 50 行一致；在维护者裁决正文不可访问前，不把 `nomi_session_open` 或任何旧 alias 伪造为现有 descriptor。
-
+按 `agentToolCatalog` 可枚举对象实数是 50（document 6 + canvas 10 + timeline 14 + production 10 + skill 1 + generation 9）。额外的 `nomi_decide_generation_gate` 只存在于 dispatcher/规格并被注释为“不投影”，因此不计入 50；是否应在维护者裁决中作为 Host-only wire contract 单列仍是 OPEN QUESTION。
