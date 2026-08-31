@@ -15,6 +15,8 @@ import {
   TMPFILES_INGESTION,
   ANON_UPLOAD_CHAIN,
   assertLocalAssetMediaBytes,
+  nomiAssetRelayCandidateFromEnvironment,
+  nomiPublicAssetRelayCandidate,
   type LocalAsset,
 } from "./assetLocalization";
 import type { AssetIngestion } from "./types";
@@ -108,6 +110,39 @@ describe("resolveLocalAsset (per strategy)", () => {
 
   it("none throws a clear error", async () => {
     await expect(resolveLocalAsset(localUrl("a.png"), { strategy: "none" }, "k", read, noPost, noMultipart)).rejects.toThrow(/不支持本地素材/);
+  });
+
+  it("fal initiate + signed PUT sends the provider key only to initialization", async () => {
+    const post = vi.fn().mockResolvedValue({ upload_url: "https://signed.example/put", file_url: "https://cdn.fal.example/a.png" });
+    const put = vi.fn().mockResolvedValue({});
+    const out = await resolveLocalAsset(
+      localUrl("a.png"),
+      { strategy: "upload-initiate-put", endpoint: "https://rest.fal.example/init", uploadUrlPath: "upload_url", urlPath: "file_url", authType: "key", accepts: ["image"] },
+      "fal-secret",
+      read,
+      post,
+      noMultipart,
+      put,
+    );
+    expect(out).toBe("https://cdn.fal.example/a.png");
+    expect(post).toHaveBeenCalledWith("https://rest.fal.example/init", { "Content-Type": "application/json", Authorization: "Key fal-secret" }, { file_name: "a.png", content_type: "image/png" });
+    expect(put).toHaveBeenCalledWith("https://signed.example/put", { "Content-Type": "image/png" }, expect.any(Buffer), "image/png");
+  });
+
+  it("Runway initiate + multipart returns its provider-only URI", async () => {
+    const post = vi.fn().mockResolvedValue({ uploadUrl: "https://signed.runway.example/form", fields: { Policy: "p", key: "k" }, runwayUri: "runway://asset/123" });
+    const upload = vi.fn().mockResolvedValue({});
+    const out = await resolveLocalAsset(
+      localUrl("clip.mp4"),
+      { strategy: "upload-initiate-multipart", endpoint: "https://api.runway.example/v1/uploads", uploadUrlPath: "uploadUrl", fieldsPath: "fields", uriPath: "runwayUri", authType: "bearer", accepts: ["video"] },
+      "runway-secret",
+      () => ({ bytes: MP4_BYTES, contentType: "video/mp4", fileName: "clip.mp4" }),
+      post,
+      upload,
+    );
+    expect(out).toBe("runway://asset/123");
+    expect(post).toHaveBeenCalledWith("https://api.runway.example/v1/uploads", { "Content-Type": "application/json", Authorization: "Bearer runway-secret" }, { filename: "clip.mp4", type: "ephemeral" });
+    expect(upload).toHaveBeenCalledWith("https://signed.runway.example/form", {}, expect.any(Buffer), "clip.mp4", "video/mp4", { Policy: "p", key: "k" }, "file");
   });
 
   it("does not call an upload endpoint when image bytes are actually an HTML page", async () => {
@@ -516,6 +551,50 @@ describe("resolveAssetIngestionWithFallback (跨 vendor 上传优先级链)", ()
   // getApiKey 工厂：用一组「已配置 key 的 vendor」构造查询函数
   const keysOf = (...vendorKeys: string[]) => (k: string) => (vendorKeys.includes(k) ? `key-${k}` : null);
 
+  it("配置 Nomi relay 时，它排在已配置供应商之后、匿名链之前", () => {
+    const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
+    const beforeToken = process.env.NOMI_ASSET_RELAY_TOKEN;
+    process.env.NOMI_ASSET_RELAY_URL = "https://assets.nomi.example/v1/assets";
+    process.env.NOMI_ASSET_RELAY_TOKEN = "relay-secret";
+    try {
+      const out = resolveAssetIngestionWithFallback(
+        { key: "openai" },
+        [{ key: "openai" }, { key: "kie" }],
+        keysOf("kie"),
+        "video",
+      );
+      expect(out[0]?.vendorKey).toBe("kie");
+      expect(out.findIndex((candidate) => candidate.vendorKey === "nomi-relay")).toBe(1);
+      expect(out.at(-1)?.ingestion.strategy).toBe("anon-chain");
+      expect(out.find((candidate) => candidate.vendorKey === "nomi-relay")?.uploadApiKey).toBe("relay-secret");
+    } finally {
+      if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl;
+      if (beforeToken === undefined) delete process.env.NOMI_ASSET_RELAY_TOKEN; else process.env.NOMI_ASSET_RELAY_TOKEN = beforeToken;
+    }
+  });
+
+  it("invalid custom Nomi relay config is not advertised as a candidate", () => {
+    const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
+    process.env.NOMI_ASSET_RELAY_URL = "http://public.example/assets";
+    try { expect(nomiAssetRelayCandidateFromEnvironment()).toBeNull(); }
+    finally { if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl; }
+  });
+
+  it("Nomi public relay does not require a client token", () => {
+    const beforeUrl = process.env.NOMI_ASSET_RELAY_URL;
+    const beforeToken = process.env.NOMI_ASSET_RELAY_TOKEN;
+    process.env.NOMI_ASSET_RELAY_URL = "https://assets.nomi.example/v1/assets";
+    delete process.env.NOMI_ASSET_RELAY_TOKEN;
+    try {
+      expect(nomiAssetRelayCandidateFromEnvironment()?.uploadApiKey).toBe("");
+      expect(nomiPublicAssetRelayCandidate()?.uploadApiKey).toBe("");
+    }
+    finally {
+      if (beforeUrl === undefined) delete process.env.NOMI_ASSET_RELAY_URL; else process.env.NOMI_ASSET_RELAY_URL = beforeUrl;
+      if (beforeToken === undefined) delete process.env.NOMI_ASSET_RELAY_TOKEN; else process.env.NOMI_ASSET_RELAY_TOKEN = beforeToken;
+    }
+  });
+
   it("① 目标 vendor 自己有上传能力 → 用目标 + 目标的 key", () => {
     const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"));
     expect(out?.ingestion.strategy).toBe("upload-multipart");
@@ -549,21 +628,21 @@ describe("resolveAssetIngestionWithFallback (跨 vendor 上传优先级链)", ()
   it("inline-base64 的 vendor 不算「有上传能力」，不被选作中转 → 落到匿名链零配置兜底", () => {
     const inlineVendor = { key: "inliner", assetIngestion: { strategy: "inline-base64" } as AssetIngestion };
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, inlineVendor], keysOf("openai", "inliner"));
-    // 没有真正能产出公网 URL 的供应商通道 → 匿名链（零配置）接住
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    // 没有供应商上传通道 → Nomi 公共 Relay 接住，匿名链仍是最后一跳
+    expect(out?.vendorKey).toBe("nomi-relay");
     expect(out?.uploadApiKey).toBe("");
   });
 
   it("⑤ 无任何供应商上传通道 → 匿名链零配置兜底（不再返回 null）", () => {
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }], keysOf("openai"));
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
     expect(out?.uploadApiKey).toBe("");
   });
 
   it("配了 KIE 但没填 key → 不选 KIE，落到匿名链（key 缺失视为不可用）", () => {
     // vendor 列表里有 kie，但 getApiKey('kie') 返回 null
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, { key: "kie" }], keysOf("openai"));
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
   });
 });
 
@@ -578,7 +657,7 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
 
   it("video asset + only apimart configured → anon chain (apimart image-only, zero-config fallback)", () => {
     const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
     expect(out?.uploadApiKey).toBe("");
   });
 
@@ -604,20 +683,13 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
     const out = firstIngestion({ key: "apimart" }, [{ key: "apimart" }], keysOf("apimart"), "video");
     expect(out).not.toBeNull();
     expect(out?.uploadApiKey).toBe(""); // anonymous, no key needed
-    if (out?.ingestion.strategy === "anon-chain") {
-      // 链头是 litterbox，链尾是 tmpfiles —— 两个免 key host
-      const heads = out.ingestion.chain.map((h) => (h.strategy === "upload-multipart" ? h.endpoint : ""));
-      expect(heads[0]).toBe("https://litterbox.catbox.moe/resources/internals/api.php");
-      expect(heads[1]).toBe("https://tmpfiles.org/api/v1/upload");
-    } else {
-      throw new Error("expected anon-chain");
-    }
+    expect(out?.vendorKey).toBe("nomi-relay");
   });
 
   it("video asset + nothing configured at all → still anon chain (zero user config)", () => {
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }], keysOf("openai"), "video");
     expect(out?.uploadApiKey).toBe("");
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
   });
 
   it("video asset + KIE present → KIE wins over anon chain (upgrade when key available)", () => {
@@ -636,7 +708,7 @@ describe("resolveAssetIngestionWithFallback (内容类型感知路由)", () => {
   it("rejects a custom base64/upload-url declaration for video", () => {
     const unsafe = { key: "custom", assetIngestion: { strategy: "upload-url", endpoint: "https://c/up", base64Field: "b", urlPath: "url", accepts: ["video"] } as AssetIngestion };
     const out = firstIngestion({ key: "openai" }, [{ key: "openai" }, unsafe], keysOf("openai", "custom"), "video");
-    expect(out?.ingestion.strategy).toBe("anon-chain");
+    expect(out?.vendorKey).toBe("nomi-relay");
   });
 });
 
