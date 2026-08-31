@@ -42,6 +42,8 @@
 | 文件 | 一句话 | 状态 |
 |---|---|---|
 | [2026-08-13-video-deconstruction-storyboard-table.md](2026-08-13-video-deconstruction-storyboard-table.md) | **视频拆解→分镜表→复刻生成**（表格=节点组的视图，非新数据模型；含 gemini/whisper 实测契约） | 📋 |
+| [2026-08-09-canvas-ux-feedback-round.md](2026-08-09-canvas-ux-feedback-round.md) | 画布体验反馈第 1 轮迭代（Windows 顶栏/视频工具栏并排等，样张阶段） | |
+| [2026-08-26-hyperframes-canvas-motion-node.md](2026-08-26-hyperframes-canvas-motion-node.md) | HyperFrames 画布节点集成研究（动效/字幕节点抽象，研究稿） | |
 | [2026-06-06-composable-node-execution-plan.md](2026-06-06-composable-node-execution-plan.md) | **生成节点→「档案声明+通用原语组装」执行计划**（C0–C4 已落地） | ✅ |
 | [2026-06-06-composable-node-roadmap.md](2026-06-06-composable-node-roadmap.md) | 同上的路线图+现状盘点(带 file:line) | ✅ |
 | [2026-06-06-HANDOFF.md](2026-06-06-HANDOFF.md) | 生成节点「通用化」项目交接 | 📎 |
@@ -135,6 +137,7 @@
 | 文件 | 一句话 | 状态 |
 |---|---|---|
 | [marketing-gsap-seo.md](marketing-gsap-seo.md) | 落地页 GSAP 轻量动画 + SEO 修补 | 🚧 |
+| [2026-08-14-community-qr-refresh.md](2026-08-14-community-qr-refresh.md) | 用户群二维码刷新（版本化缓存文件名，同步 README 与中英文官网） | |
 
 ## 版本执行 / 交接（跨主题）
 
