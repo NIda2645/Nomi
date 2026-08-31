@@ -1,0 +1,127 @@
+- document
+- button:
+- button:
+- heading "飞书云文档" [level=1]
+- generic: 小
+- generic: 小云雀
+- generic: 搜索
+- button "目录（暂无内容）":
+  - generic: 目录（暂无内容）
+- button "与我分享":
+  - generic: 与我分享
+- list:
+  - generic: 📷
+  - button "小云雀运镜库功能介绍":
+    - generic: 小云雀运镜库功能介绍
+- generic: 分享知识库
+- generic: 回收站
+- button "小":
+  - generic: 小
+- generic: ByteDance
+- generic: 小云雀
+- generic: 📷
+- generic: 小云雀运镜库功能介绍
+- generic: 外部
+- button:
+- generic: "最近修改: 6月18日 16:35"
+- button "分享":
+  - generic: 分享
+- button:
+- button:
+- button:
+- generic: 问问豆包
+- list:
+  - link "📷 小云雀运镜库功能介绍":
+    - /url: "#JKnudw35go0HLJxeZHrca48An5g"
+    - generic: 📷
+    - text: 小云雀运镜库功能介绍
+  - link "设计亮点":
+    - /url: "#OpHAdJsxtoHHYWxlNXPchz5znZg"
+    - text: 设计亮点
+  - link "Showcase":
+    - /url: "#F1CKd9bt2opEdSxYf4jc9jh2nPe"
+    - text: Showcase
+  - link "使用方法":
+    - /url: "#LyUgdClPWofTtSxI601c3CNWnFf"
+    - text: 使用方法
+- heading "📷 小云雀运镜库功能介绍" [level=1]:
+  - generic: 📷
+  - generic: 小云雀运镜库功能介绍
+- generic: 张洋瑞
+- generic: 6月18日修改
+- button "AI 速览 试用":
+  - generic: AI 速览
+  - generic: 试用
+- generic: Showcase
+- generic: 60%
+- generic: showcase_downpan
+- generic: 00:05
+- generic: 镜头下摇
+- generic: 60%
+- generic: showcase_fixed
+- generic: 00:05
+- generic: 固定镜头
+- generic: 60%
+- generic: showcase_follow
+- generic: 00:05
+- generic: 跟随拍摄
+- generic: 60%
+- generic: showcase_fpv
+- generic: 00:05
+- generic: 第一视角
+- generic: 60%
+- generic: showcase_dollyzoom
+- generic: 00:05
+- generic: 柯克变焦
+- generic: 60%
+- generic: showcase_through
+- generic: 00:05
+- generic: 穿越
+- generic: 60%
+- generic: showcase_reveal
+- generic: 00:05
+- generic: 横滑揭示
+- generic: 60%
+- generic: showcase_whip
+- generic: 00:05
+- generic: 甩摇
+- generic: 使用方法
+- generic: "1."
+- generic: 入口：
+- generic: 在画布中的视频输入框中找到 「📷 运镜」，已预设33种运镜。
+- text: 60%
+- generic: 20260618163240_rec_
+- generic: 00:18
+- generic: "2."
+- generic: 点击某个运镜 chip，可进行：
+- generic: ◦
+- generic: 替换：从列表中更换为其他运镜
+- generic: ◦
+- generic: 删除：移除不需要的运镜
+- generic: ◦
+- generic: 你可以根据剧情节奏，自由组合不同的运镜，让成片更加丰富
+- text: 60%
+- generic: 20260618163341_rec_
+- generic: 00:11
+- generic: 评论（0）
+- button:
+- generic: "1"
+- generic: "1"
+- generic: "1"
+- text: 人点赞
+- button
+- generic: 输入评论
+- button:
+- menu:
+  - menuitem "上传日志":
+    - generic: 上传日志
+  - menuitem "联系客服":
+    - generic: 联系客服
+  - menuitem "功能更新":
+    - generic: 功能更新
+  - menuitem "帮助中心":
+    - generic: 帮助中心
+  - menuitem "效率指南":
+    - generic: 效率指南
+- textbox
+- region "Notifications alt+T"

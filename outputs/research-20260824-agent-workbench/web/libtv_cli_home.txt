@@ -1,0 +1,138 @@
+💥 Seedance 系列 & MiniMax H3 多模型限时折扣｜Seedance 2.5 低至 0.4 元/秒，年会员最低 4 折
+限时抢购
+新建项目
+首页
+项目
+LibTV Agent
+创作者挑战赛
+SD2.5畅享卡上线
+积分超市限时抢购
+帮助
+Blender 插件
+积分超市
+开通会员
+限时 40 折
+20
+LibTV CLI
+CLI
+LibTV CLI -
+一行指令，让 LibTV 进入你的 Agent 工作流
+通过 AI Agent 安装
+手动安装
+
+将下面这段话直接发给你的 AI 助手（Kimi Code/Claw、MiniMax Agent、Trae 等），
+
+它会自动帮你完成安装和初始化。
+
+提示词
+
+请帮我安装 LibTV CLI Skill：https://liblibai-web-static.liblib.cloud/cli/1.1.3/libtv-cli-skill.zip
+
+复制
+配置完成后，重启你的 AI Agent 即可开始使用
+使用指南
+查看原
+LibTV Skills
+探索 LibTV Skill
+目录
+commands
+account.md
+group.md
+image.md
+login.md
+logout.md
+model.md
+node.md
+project.md
+script.md
+upload.md
+workspace.md
+examples
+node-types
+pipes
+workflow
+README.md
+model-schema
+schema.md
+node-types
+audio.md
+image.md
+README.md
+script.md
+storyboard.md
+text.md
+video-clip.md
+video.md
+scripts
+install-libtv-cli.bat
+install-libtv-cli.ps1
+install-libtv-cli.sh
+install.md
+SKILL.md
+SKILL.md
+Metadata
+name	libtv-cli
+description	LibTV 官方 CLI（libtv）：在命令行里完整操作 / 运行 LibTV 画布。 凡是和 LibTV 画布 / 项目 / 节点 / 模型 / 素材相关的操作，一律通过 libtv CLI 完成， 不要自己捏造 HTTP 请求或绕到网页端步骤。本 skill 内即包含完整的 CLI 命令操作手册； 常见场景见 examples/，安装/更新见 scripts/install.md。
+LibTV CLI（libtv）
+
+libtv 的文档地图。子命令与选项权威文案以 libtv --help 与 libtv <子命令> --help 为准；当文档与 --help 不一致时，以 CLI 实际输出为准并修订本 skill。
+
+术语：本 CLI 里 画布（project） 是真正的画布文件，项目（workspace）= 工作区 是装画布的容器，一个项目下可放多张画布。
+
+画布 / 分组范围：在画布所在工作目录执行 libtv project use <画布UUID>，写入 .libtv/project.json 的 projectUuid；之后大多数子命令（libtv node / libtv upload / libtv group）在省略 -p / --project 时即使用该画布。需要限定到某个普通分组时，再执行 libtv group use <分组> 写入 groupNodeKey。详见 commands/project.md、commands/group.md。
+
+项目（工作区）绑定：用 libtv workspace use <项目ID> 把目录绑定到一个项目（工作区），写入 .libtv/project.json 的 workspaceId，用于 project create / project list 的默认项目范围。workspace use 不设置默认画布，会清掉原 projectUuid / groupNodeKey；project use 会写入画布，并把该画布实际所属的 workspaceId / teamId 同步进本地状态。详见 commands/workspace.md。
+
+文档地图
+主题	文件
+一键安装 / 指定版本安装	scripts/install.md（脚本与本文件同目录）
+管道（NDJSON）、stdout/stderr、嵌套 case	examples/pipes/README.md
+常见案例（场景化可复制命令集，每个 case 一文件）	examples/README.md
+libtv login web / libtv login phone	commands/login.md
+libtv logout	commands/logout.md
+libtv account（含 info / list / use）	commands/account.md
+libtv workspace（项目/工作区，含 create / list / update / use / unuse）	commands/workspace.md
+libtv project（画布，含 create / list / update / use / unuse / 默认摘要）	commands/project.md
+libtv node（含 create / list / delete / 默认用法）	commands/node.md
+libtv group（含 list / create / use / unuse / 默认用法）	commands/group.md
+libtv upload	commands/upload.md
+libtv image（shortcut list / shortcut <scene label> -n <node>）	commands/image.md
+libtv script（含 storyboard：从脚本节点生成分镜图组）	commands/script.md
+libtv model（含 search / 默认完整 schema）	commands/model.md
+画布节点类型（-t 枚举、对应 -s / -u 字段）	node-types/README.md
+模型 schema 字段（properties / config / rules / modeType）	model-schema/schema.md
+支持主流 AI Agent 工具
+
+Kimi Code/Claw
+
+Mini Max
+
+小龙虾
+
+Trae
+
+腾讯云代码助手
+
+通义灵码
+
+文心快码
+
+只需几秒即可将 Kimi Code/Claw、MiniMax Agent、小龙虾或 Trae 连接到 LibTV
+
+视频、图像、角色——随需而至
+
+前往详细教程
+CLI
+热门链接
+Liblib AI
+Liblib TV
+帮助与支持
+关于我们
+联系客服
+法律与合规
+用户协议
+隐私政策
+Copyright by LiblibAI© 2026
+上海哩布哩布科技有限公司(上海市徐汇区丰谷路315弄24号1-3层)
+沪ICP备2025147903号-7
+立即抢购

@@ -1,0 +1,54 @@
+[
+  {
+    "source": "/Users/aoqimin/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/wxid_7o1037tpajg222_7781/temp/drag/MiniMax Design - 手册与指南.docx",
+    "size_bytes": 52119230,
+    "mtime": 1787520866.2370355,
+    "title": "",
+    "author": "Apache POI",
+    "created": "2026-08-23 21:33:50+00:00",
+    "modified": "None",
+    "paragraph_count": 128,
+    "table_count": 54,
+    "media_count": 59,
+    "elapsed_sec": 0.19
+  },
+  {
+    "source": "/Users/aoqimin/Downloads/LibTV使用指南.docx",
+    "size_bytes": 225399024,
+    "mtime": 1787520772.4877238,
+    "title": "",
+    "author": "Apache POI",
+    "created": "2026-08-23 21:31:07+00:00",
+    "modified": "None",
+    "paragraph_count": 536,
+    "table_count": 81,
+    "media_count": 204,
+    "elapsed_sec": 0.74
+  },
+  {
+    "source": "/Users/aoqimin/Downloads/🔧LibTV skill  使用指南.docx",
+    "size_bytes": 13189014,
+    "mtime": 1787520658.7916598,
+    "title": "",
+    "author": "Apache POI",
+    "created": "2026-08-23 21:30:46+00:00",
+    "modified": "None",
+    "paragraph_count": 66,
+    "table_count": 6,
+    "media_count": 9,
+    "elapsed_sec": 0.05
+  },
+  {
+    "source": "/Users/aoqimin/Downloads/LibTV CLI 使用指南.docx",
+    "size_bytes": 428139,
+    "mtime": 1787520641.8309124,
+    "title": "",
+    "author": "Apache POI",
+    "created": "2026-08-23 21:30:36+00:00",
+    "modified": "None",
+    "paragraph_count": 130,
+    "table_count": 14,
+    "media_count": 4,
+    "elapsed_sec": 0.01
+  }
+]
