@@ -74,7 +74,7 @@
       "live": {
         "status": "blocked",
         "providerReceipt": "KIE createTask accepted a 4-second 360p text-to-video request on 2026-08-31; result polling reached the provider task.",
-        "blocker": "KIE returned a result URL whose DNS resolves to the local proxy's RFC 2544 address (198.18.0.0/15); Nomi's safe asset fetch refused to localize it. Re-run in a public-DNS environment before live certification."
+        "blocker": "This canary ran before the application-proxy route fix and was refused when the result URL resolved to the proxy's RFC 2544 address (198.18.0.0/15). The fix is now covered by hardenedFetch and Runway live certification; this KIE mapping was not rerun post-fix under the minimum-spend budget."
       },
       "status": "blocked"
     },
@@ -276,7 +276,7 @@
       "live": {
         "status": "blocked",
         "providerReceipt": "fal queue accepted request 01a0545c-6794-76e0-85c8-9f77c76a723b on 2026-08-31; direct provider status was COMPLETED and returned images[*].",
-        "blocker": "fal returned a result URL on v3b.fal.media, but this machine's proxy resolves that public hostname to RFC 2544 address 198.18.0.93; Nomi's safe asset fetch refused to localize the managed artifact. Re-run in a public-DNS environment before live certification."
+        "blocker": "This canary ran before the application-proxy route fix and was refused when v3b.fal.media resolved to RFC 2544 address 198.18.0.93. The fix is now covered by hardenedFetch and Runway live certification; this fal mapping was not rerun post-fix under the minimum-spend budget."
       },
       "status": "blocked"
     },
@@ -821,7 +821,7 @@
         "status": "blocked",
         "providerReceipt": "Runway text_to_image accepted task e4940841-5f4f-4241-8ba2-900cb1f05df6 with ratio=1024:1024 on 2026-08-31.",
         "uploadReceipt": "POST /v1/uploads initialization returned 200 and signed multipart upload returned 204; runway:// URI was issued for the ephemeral asset.",
-        "blocker": "Runway result localization was refused because the generated URL resolves to a private/loopback address under this machine's proxy. The provider-owned upload path itself is live-verified; re-run generation in a public-DNS environment for managed-artifact certification."
+        "blocker": "This image canary ran before the application-proxy route fix and result localization was refused by the proxy's synthetic private address. The Runway upload path is live-verified; the image mapping was not rerun post-fix under the minimum-spend budget."
       },
       "status": "blocked"
     },
