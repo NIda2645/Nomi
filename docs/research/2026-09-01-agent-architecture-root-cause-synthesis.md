@@ -378,6 +378,13 @@ Host 可以借 Pi 的 loop、hook、steering、compaction 机制，但不得把 
 
 ## 8. 下一轮实施顺序
 
+### 8.0 评审裁决：deviated 恒为 false 的根因记录
+
+代码扫描确认 `projectAgentExecutionCoordinator` + `projectAgentExecutionHelpers` 共 9 处
+把 `deviated` 硬编码为 `false`；这些调用点只有读取，没有任何写入点能将其置真。类根因是
+偏差状态没有共享 owner 和发布边界，而不是某个单独的投影文案。该缺口必须进入后续状态模型、
+持久化和类级测试的验收；本轮不修改生产 Agent，也不以现有字段证明偏差处理已完成。
+
 ### Phase 0：冻结现有 PR
 
 - 以最新 `origin/main` 重建干净分支；不要在冲突树上继续加功能；

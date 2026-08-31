@@ -582,6 +582,19 @@ PR #223 当前约 767 文件差异，merge-tree 存在跨域冲突，且 coordin
 
 ## 6. 实施里程碑与停止条件
 
+### 6.0 本轮里程碑验收门的实测阻塞项（I-1）
+
+在进入下一里程碑前，必须把以下两个已复现病点作为硬门，而不是只写“待补测试”：
+
+- **productionRun 门编排破坏**：`budget-approval → shot-gates-never-open`，共 18 个测试受影响；
+  实测记录为 `pr223-finish@46066ed0`。在门编排恢复并有持久化/零副作用证据前，M1 不得宣称通过。
+- **canvasRead 挂死**：`canvasReadCapturedSnapshotFlow.test.ts:467` 出现挂起；必须先定位等待/快照
+  生命周期的共享根因并记录可复现结果，不能用延长超时掩盖。
+
+另有一项状态模型缺口：`projectAgentExecutionCoordinator` 与
+`projectAgentExecutionHelpers` 共 9 处将 `deviated` 写死为 `false`，只有读取、没有置真路径。
+该事实必须在状态 owner、持久化和类级测试中闭合；本计划当前只记录并阻止过早推进，不改生产 Agent。
+
 ### M0：基线冻结（1 个短迭代）
 
 交付：owner map、PR 切片、代码/文档索引、schema-v3 contracts 草案。  

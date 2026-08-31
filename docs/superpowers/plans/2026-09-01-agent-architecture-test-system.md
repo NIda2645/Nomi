@@ -470,6 +470,21 @@ contracts 永远先跑；unit/desktop/journey/canvas/performance/package 仍按�
 
 ## 9. Execution phases after user confirmation
 
+### M0–M5 编排验收自查（每个里程碑都必须回答）
+
+除各阶段自己的状态、成本和安全硬门外，每次编排验收都要用真实轨迹/确定性夹具逐条自查：
+
+1. **多模态回合不能坍缩成纯文本捷径**：有图像、画布或时间轴事实时，轨迹必须证明 Agent
+   读取并使用对应模态的结构化输入，而不是只生成一段看似合理的文字。来源：ClawArena，
+   arXiv:2606.31174。
+2. **阶段更新后复查旧信念**：项目状态、审批、Provider 或上下文 revision 变化后，必须重新
+   校验先前的计划/假设；不得沿用陈旧事实直接继续 effect。来源：OrchBench，arXiv:2607.25656。
+3. **保关键信息优于堆并行度**：在并行或压缩取舍中，优先保留目标、约束、审批、精确 ID、
+   失败原因和下一步等关键上下文；不能用增加并行 worker/round trips 掩盖信息丢失。来源：
+   ClawArena arXiv:2606.31174 与 OrchBench arXiv:2607.25656。
+
+这些自查是 M0–M5 的共同验收门；任一项没有轨迹证据，阶段只能记为未通过/未证实。
+
 ### Task 1 — M0: Freeze contract and test charter
 
 1. 在 `tests/agent-system/schema.mts` 固化 case/trace/evidence/verdict schema 和版本策略。

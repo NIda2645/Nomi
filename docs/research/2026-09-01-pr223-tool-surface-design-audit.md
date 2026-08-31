@@ -217,6 +217,13 @@ skill 1
 
 ## 6. 对 PR #223 现有实现的具体优化顺序
 
+### 6.0 评审裁决：deviated 不是已实现的结果状态
+
+`projectAgentExecutionCoordinator` 与 `projectAgentExecutionHelpers` 中共有 9 处将
+`deviated` 写死为 `false`；当前代码只读/投影该值，从未把它置为 `true`。工具面或结果投影
+不得把这个字段当成真实偏差检测证据。后续切片须在共享状态边界补齐写入、持久化与类级测试；
+本 PR 仅登记该事实，不为 M2 提前实现生产逻辑。
+
 ### Step 1：先做工具面盘点，不改 runtime
 
 建立一张机器可读的 `modelToolSurfaceManifest`，每条记录：

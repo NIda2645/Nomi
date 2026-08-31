@@ -9,6 +9,7 @@ export type FakeMcpCallRecord = {
   name: string
   input: unknown
   output: unknown
+  error?: string
 }
 
 export type FakeMcpClient = {
@@ -41,14 +42,26 @@ export function createFakeMcpClient(initialTools: readonly FakeMcpToolDefinition
     assertConnected()
     const tool = tools.get(name)
     if (!tool) throw new Error(`Unknown fake MCP tool: ${name}`)
-    const output = await tool.handler(structuredClone(input))
-    calls.push({
-      callId: `mcp-call-${++callSequence}`,
-      name,
-      input: structuredClone(input),
-      output: structuredClone(output),
-    })
-    return output
+    const callId = `mcp-call-${++callSequence}`
+    try {
+      const output = await tool.handler(structuredClone(input))
+      calls.push({
+        callId,
+        name,
+        input: structuredClone(input),
+        output: structuredClone(output),
+      })
+      return output
+    } catch (error) {
+      calls.push({
+        callId,
+        name,
+        input: structuredClone(input),
+        output: undefined,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
   }
 
   return {

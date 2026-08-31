@@ -10,12 +10,12 @@ import {
   deserializeAgentSystemVerdict,
   serializeAgentSystemTrace,
   serializeAgentSystemVerdict,
-} from '../schema.mts'
-import { createEventLedgerHarness } from '../harness/eventLedgerHarness.mts'
-import { createFakeMcpClient } from '../harness/fakeMcpClient.mts'
-import { createFakeProvider } from '../harness/fakeProvider.mts'
-import { createFakeSkillRegistry } from '../harness/fakeSkillRegistry.mts'
-import { createScriptedModel } from '../harness/scriptedModel.mts'
+} from '../schema.mjs'
+import { createEventLedgerHarness } from '../harness/eventLedgerHarness.mjs'
+import { createFakeMcpClient } from '../harness/fakeMcpClient.mjs'
+import { createFakeProvider } from '../harness/fakeProvider.mjs'
+import { createFakeSkillRegistry } from '../harness/fakeSkillRegistry.mjs'
+import { createScriptedModel } from '../harness/scriptedModel.mjs'
 
 function creatorHarnessCase() {
   const caseData = AGENT_SYSTEM_CASES.find((candidate) => candidate.caseId === 'J3')
@@ -276,6 +276,70 @@ test('fake provider reconcile recovers an unknown submission without duplicating
   const settleResult = provider.settle(prepared.operationId)
   assert.equal(settleResult.effectCount, 1)
   assert.equal(settleResult.billingCount, 1)
+  assert.equal(provider.operations()[0]?.effectCount, 1)
+  assert.equal(provider.operations()[0]?.billingCount, 1)
+})
+
+test('fake provider reuses the same operation for the same idempotency key', async () => {
+  const registry = createModuleRegistry([
+    {
+      moduleId: 'creator.plan',
+      version: '1.0.0',
+      inputKinds: ['text'],
+      outputKinds: ['text'],
+      modes: ['draft'],
+      parameterSchema: {},
+      assetInputSchema: {},
+      providers: [
+        {
+          providerId: 'fake-provider',
+          models: [
+            {
+              modelId: 'fake-model',
+              modes: ['draft'],
+              parameterSchema: {},
+              capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true },
+            },
+          ],
+        },
+      ],
+    },
+  ])
+  const contract = compileExecutionContract(
+    {
+      candidateId: 'candidate-idempotent',
+      revision: 1,
+      moduleId: 'creator.plan',
+      providerId: 'fake-provider',
+      modelId: 'fake-model',
+      mode: 'draft',
+      prompt: 'Reuse the same provider request.',
+      parameters: {},
+      references: [],
+    },
+    registry,
+  )
+  const provider = createFakeProvider('fake-provider')
+  const first = provider.prepare({
+    contract,
+    providerIdempotencyKey: 'idem-reuse',
+    account: 'test-account',
+    profile: 'fixture',
+    endpoint: 'fixture://provider',
+    outcome: 'success',
+  })
+  const second = provider.prepare({
+    contract,
+    providerIdempotencyKey: 'idem-reuse',
+    account: 'test-account',
+    profile: 'fixture',
+    endpoint: 'fixture://provider',
+    outcome: 'success',
+  })
+
+  assert.equal(first.operationId, second.operationId)
+  assert.equal(provider.operations().length, 1)
+  assert.equal(provider.submit(first.operationId).state, 'success')
   assert.equal(provider.operations()[0]?.effectCount, 1)
   assert.equal(provider.operations()[0]?.billingCount, 1)
 })

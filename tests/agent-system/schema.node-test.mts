@@ -18,7 +18,7 @@ import {
   serializeAgentSystemEvidence,
   serializeAgentSystemTrace,
   serializeAgentSystemVerdict,
-} from './schema.mts'
+} from './schema.mjs'
 
 test('creator cases round-trip through JSON and stay answer-free', () => {
   for (const creatorCase of AGENT_SYSTEM_CASES) {

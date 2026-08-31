@@ -256,6 +256,14 @@ openQuestions / recentTurns / discardedTurnsDigest
 
 ## 6. 分阶段执行计划
 
+### 6.0 评审裁决：deviated 状态仍未闭合
+
+实测发现 `deviated` 在 `projectAgentExecutionCoordinator` 与
+`projectAgentExecutionHelpers` 共 9 处被硬编码为 `false`；这些位置只有读取/投影，
+没有任何写入路径把它置为 `true`。因此“偏差已被检测/呈现”不能作为当前能力或验收结论。
+后续实现必须先定义共享状态 owner、真实写入时机和类级回归，再把该字段纳入恢复与用户可见证据；
+本轮只记录缺口，不改生产 Agent。
+
 ### Phase 0：冻结合并与收窄 PR
 
 - 用最新 `origin/main` 建干净任务分支，先解决 merge-tree 冲突。

@@ -102,6 +102,7 @@ function defaultFingerprint(contract: ExecutionContractV1): string {
 
 export function createFakeProvider(providerId = 'fake-provider'): FakeProvider {
   const operations = new Map<string, FakeProviderOperation>()
+  const idempotencyKeys = new Map<string, string>()
   const taskIds = new Map<string, string>()
   let operationSequence = 0
 
@@ -274,6 +275,23 @@ export function createFakeProvider(providerId = 'fake-provider'): FakeProvider {
   }
 
   function prepare(input: FakeProviderPrepareInput): FakeProviderOperation {
+    const existingOperationId = idempotencyKeys.get(input.providerIdempotencyKey)
+    if (existingOperationId) {
+      const existing = operations.get(existingOperationId)
+      if (!existing)
+        throw new Error(`Missing fake provider operation for idempotency key: ${input.providerIdempotencyKey}`)
+      if (
+        existing.contractHash !== input.contract.contractHash ||
+        existing.providerId !== input.contract.providerId ||
+        existing.modelId !== input.contract.modelId ||
+        existing.account !== input.account ||
+        existing.profile !== input.profile ||
+        existing.endpoint !== input.endpoint
+      ) {
+        throw new Error(`Conflicting fake provider prepare for idempotency key: ${input.providerIdempotencyKey}`)
+      }
+      return structuredClone(existing)
+    }
     const operationId = `op-${++operationSequence}`
     const operation: FakeProviderOperation = {
       operationId,
@@ -294,6 +312,7 @@ export function createFakeProvider(providerId = 'fake-provider'): FakeProvider {
       billingEvents: [],
     }
     operations.set(operationId, operation)
+    idempotencyKeys.set(input.providerIdempotencyKey, operationId)
     return structuredClone(operation)
   }
 

@@ -1,4 +1,4 @@
-import { AGENT_SYSTEM_SCHEMA_VERSION } from '../schema.mts'
+import { AGENT_SYSTEM_SCHEMA_VERSION } from '../schema.mjs'
 
 export type AgentSystemLedgerPhase = 'plan' | 'approval' | 'effect' | 'settle'
 export type AgentSystemLedgerStatus = 'pending' | 'consumed' | 'missing' | 'skipped'
