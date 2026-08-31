@@ -8,7 +8,6 @@ import {
 } from './productionRunRepository'
 import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { getWorkspaceRepositoryDeps } from '../runtimePaths'
-import { desktopT } from '../i18n'
 import {
   createArtifactProjection,
   getArtifactPreviewSecret,
@@ -256,7 +255,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   const reconciliationInFlight = new Set<string>()
   const directionsInFlight = new Set<string>()
   const reconcileProviderTask = deps.reconcileProviderTask ?? (async (job) => {
-    if (!job.providerTaskId) throw new Error(desktopT('production.reconcile.noTaskId'))
+    if (!job.providerTaskId) throw new Error('供应商任务标识尚未收到，不能自动对账')
     const runtime = await import('../runtime')
     const response = await runtime.fetchTaskResult({
       taskId: job.providerTaskId,
@@ -339,16 +338,16 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     const relativePath = typeof rawPath === 'string' ? rawPath.trim() : ''
     const root = projectRootResolver(projectId)
     if (!root || !relativePath || relativePath.includes('\0') || relativePath.startsWith('/') || relativePath.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(relativePath) || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(relativePath) || relativePath.split(/[\\/]+/).includes('..')) {
-      throw new Error(desktopT('production.export.mustBeRelative'))
+      throw new Error('导出必须返回项目目录内的相对路径')
     }
     const target = path.resolve(root, relativePath)
     const rootPath = path.resolve(root)
     const rootWithSep = `${rootPath}${path.sep}`
-    if (target !== rootPath && !target.startsWith(rootWithSep)) throw new Error(desktopT('production.export.escapesProject'))
+    if (target !== rootPath && !target.startsWith(rootWithSep)) throw new Error('导出路径不能离开项目目录')
     if (options.requireFile) {
       let stat: fs.Stats
-      try { stat = fs.statSync(target) } catch { throw new Error(desktopT('production.export.fileMissing')) }
-      if (!stat.isFile()) throw new Error(desktopT('production.export.notAFile'))
+      try { stat = fs.statSync(target) } catch { throw new Error('导出文件不存在') }
+      if (!stat.isFile()) throw new Error('导出结果不是文件')
     }
     return relativePath.replace(/\\/g, '/')
   }
@@ -404,7 +403,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         })
       }
       if (outcome !== 'found') throw new Error('Invalid production reconciliation outcome')
-      if (!job.providerTaskId) throw new Error(desktopT('production.resume.noTaskId'))
+      if (!job.providerTaskId) throw new Error('尚未收到供应商任务标识，不能自动恢复；请保持暂停并联系供应商核对')
       const result = repository.execute(safeProjectId, safeRunId, {
         ...runCommand,
         type: 'job.status',
@@ -540,7 +539,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       const gateId = typeof runCommand.payload.gateId === 'string' ? runCommand.payload.gateId.trim() : ''
       const gate = current.gates.find((item) => item.gateId === gateId)
       if (gate?.scope === 'export' && current.status !== 'awaiting_export') {
-        throw new Error(desktopT('production.approve.roughCutFirst'))
+        throw new Error('请先完成粗剪审看，再单独批准导出')
       }
       if (gate?.scope === 'budget_envelope' && gate.jobIds.length > 0) {
         const jobs = gate.jobIds
