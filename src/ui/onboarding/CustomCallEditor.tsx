@@ -1,6 +1,6 @@
 /** 自定义调用编辑器：材料辅助生成，脚本与供应商配置才是持久化内容。 */
 import React from 'react'
-import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/modelAccessCapabilities'
+import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconCheck, IconCopy, IconPlayerPlay, IconPlayerStop, IconPlus, IconSparkles, IconTrash } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

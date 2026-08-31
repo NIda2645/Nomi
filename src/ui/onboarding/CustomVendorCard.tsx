@@ -8,7 +8,7 @@
  * 地址/key 通不了也生成不出东西，所以 unreachable 时红字覆盖 adapter 状态。
  */
 import React from 'react'
-import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/modelAccessCapabilities'
+import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { IconStack2 } from '@tabler/icons-react'
 import { FoldableModelCard } from './FoldableModelCard'

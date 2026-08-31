@@ -1,7 +1,7 @@
 /**
  * Harness-only contract for the model-access journeys.
  *
- * The journey fact source is manifest.mjs (+ electron/shared/modelAccessCapabilities.ts).
+ * The journey fact source is manifest.mjs (+ electron/shared/contracts/modelAccessCapabilities.ts).
  * This file holds only what the *test harness* needs on top of that fact source
  * and that the manifest deliberately does not carry:
  *   - which onboarding-drawer component each journey drives (used to prove every

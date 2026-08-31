@@ -9,9 +9,9 @@ import {
   BILLING_MODEL_KINDS,
   PROFILE_KINDS,
   VENDOR_AUTH_TYPES,
-} from "../shared/modelAccessCapabilities";
+} from "../shared/contracts/modelAccessCapabilities";
 
-// 这些值的单一真相源是 electron/shared/modelAccessCapabilities（可枚举、可被旅程门岗读取）；
+// 这些值的单一真相源是 electron/shared/contracts/modelAccessCapabilities（可枚举、可被旅程门岗读取）；
 // 运行时类型从常量反推，避免手写 union 落后于真实能力面。
 export { AI_SDK_PROVIDER_KINDS, ASSET_MEDIA_KINDS, BILLING_MODEL_KINDS, PROFILE_KINDS, VENDOR_AUTH_TYPES };
 export type BillingModelKind = (typeof BILLING_MODEL_KINDS)[number];

@@ -42,7 +42,7 @@ function propertyStringLiterals(node, propertyName) {
 
 // Reads the string members of an exported `const NAME = [...] as const` array.
 // The model-access enums that runtime types now derive from live as these
-// const arrays in electron/shared/modelAccessCapabilities.ts, so the inventory
+// const arrays in electron/shared/contracts/modelAccessCapabilities.ts, so the inventory
 // reads them from that production owner instead of a handwritten union.
 function exportedConstArrayLiterals(ast, exportName) {
   let target = null
@@ -130,7 +130,7 @@ function archetypeModeShapes(repoRoot) {
 
 export function scanProductionInventory(repoRoot) {
   const catalog = sourceFile(repoRoot, 'electron/catalog/types.ts')
-  const capabilities = sourceFile(repoRoot, 'electron/shared/modelAccessCapabilities.ts')
+  const capabilities = sourceFile(repoRoot, 'electron/shared/contracts/modelAccessCapabilities.ts')
   const videoCaps = sourceFile(repoRoot, 'electron/shared/videoCapabilities/types.ts')
   const results = sourceFile(repoRoot, 'src/workbench/generationCanvas/model/generationCanvasTypes.ts')
   const drawer = sourceFile(repoRoot, 'src/ui/onboarding/OnboardingDrawer.tsx')
@@ -138,7 +138,7 @@ export function scanProductionInventory(repoRoot) {
 
   return Object.freeze({
     // billing/task/provider/auth runtime unions now derive from these const
-    // arrays (electron/shared/modelAccessCapabilities.ts); read them there.
+    // arrays (electron/shared/contracts/modelAccessCapabilities.ts); read them there.
     billingKinds: exportedConstArrayLiterals(capabilities.ast, 'BILLING_MODEL_KINDS'),
     taskKinds: exportedConstArrayLiterals(capabilities.ast, 'PROFILE_KINDS'),
     providers: exportedConstArrayLiterals(capabilities.ast, 'AI_SDK_PROVIDER_KINDS'),

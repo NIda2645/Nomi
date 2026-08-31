@@ -9,7 +9,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
-import type { MODEL_ACCESS_ENTRY } from '../../../electron/shared/modelAccessCapabilities'
+import type { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 
 type ModelAccessEntryId = (typeof MODEL_ACCESS_ENTRY)[keyof typeof MODEL_ACCESS_ENTRY]
 

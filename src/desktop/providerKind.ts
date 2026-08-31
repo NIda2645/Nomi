@@ -1,5 +1,5 @@
 /**
- * 渲染层 providerKind 类型。值的单一真相源在 electron/shared/modelAccessCapabilities，
+ * 渲染层 providerKind 类型。值的单一真相源在 electron/shared/contracts/modelAccessCapabilities，
  * Electron 与 renderer 都从同一常量反推，避免跨层漂移（该模块是纯 type/const，无 electron
  * 运行时依赖，与 modelArchetypes/types.ts 复用 videoCapabilities/types 同一惯例）。
  *
@@ -11,7 +11,7 @@
  *  - openai-responses ：OpenAI Responses（/responses）。codex 类中转（如 foxcode）。
  *  - anthropic        ：Anthropic Messages（/v1/messages，x-api-key）。
  */
-import { AI_SDK_PROVIDER_KINDS } from '../../electron/shared/modelAccessCapabilities'
+import { AI_SDK_PROVIDER_KINDS } from '../../electron/shared/contracts/modelAccessCapabilities'
 
 export { AI_SDK_PROVIDER_KINDS as PROVIDER_KINDS }
 export type ProviderKind = (typeof AI_SDK_PROVIDER_KINDS)[number]

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { MODEL_ACCESS_CAPABILITIES, MODEL_ACCESS_REQUIRED_PROFILES } from '../../../electron/shared/modelAccessCapabilities.ts'
+import { MODEL_ACCESS_CAPABILITIES, MODEL_ACCESS_REQUIRED_PROFILES } from '../../../electron/shared/contracts/modelAccessCapabilities.ts'
 import { MODEL_ACCESS_JOURNEYS, STABLE_ROUNDTRIP_JOURNEYS } from './manifest.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')

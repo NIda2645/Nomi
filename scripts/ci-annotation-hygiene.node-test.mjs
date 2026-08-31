@@ -19,7 +19,7 @@ test('collects annotations only from completed jobs in the exact workflow run', 
       return response({
         jobs: [
           { id: 10, name: 'Contracts', status: 'completed', conclusion: 'success' },
-          { id: 11, name: 'Desktop Linux', status: 'completed', conclusion: 'success' },
+          { id: 11, name: 'E2E Walkthroughs (Linux)', status: 'completed', conclusion: 'success' },
           { id: 12, name: 'Quality Gate', status: 'in_progress', conclusion: null },
         ],
       })
@@ -40,7 +40,7 @@ test('collects annotations only from completed jobs in the exact workflow run', 
 
   assert.deepEqual(result.jobs, [
     { id: 10, name: 'Contracts', conclusion: 'success' },
-    { id: 11, name: 'Desktop Linux', conclusion: 'success' },
+    { id: 11, name: 'E2E Walkthroughs (Linux)', conclusion: 'success' },
   ])
   assert.equal(result.annotations[0].message, 'deprecated action')
   assert.ok(requested.every((request) => request.authorization === 'Bearer test-token'))

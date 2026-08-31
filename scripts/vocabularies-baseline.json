@@ -173,7 +173,7 @@
       "reason": "ADAPTER_RUN_STAGES 是 Provider Adapter 跨主进程、IPC 与 renderer 的中立运行阶段合同；reconciling 明确表示远端提交结果不确定且只能查询，所有 DTO、终态判断和持久化解析必须从该 owner 派生，禁止再维护平行字符串集合。"
     },
     {
-      "site": "electron/shared/modelAccessCapabilities.ts::variable:MODEL_ACCESS_LIFECYCLES/as-const",
+      "site": "electron/shared/contracts/modelAccessCapabilities.ts::variable:MODEL_ACCESS_LIFECYCLES/as-const",
       "members": ["binary", "create-poll", "create-status-result", "http-websocket", "multipart", "ndjson", "process", "sse", "sync-json"],
       "reason": "MODEL_ACCESS_LIFECYCLES 是模型接入「不留死路」旅程门岗的传输生命周期覆盖面（sync-json / sse / create-poll / create-status-result / multipart / binary / ndjson / process / http-websocket），描述接入协议的响应形态而非生成任务状态；manifest.test 用它保证每种传输形态都有真实 UI 往返，禁止在旅程矩阵外另立平行集合。"
     },

@@ -10,7 +10,7 @@
  * error rather than a second source of truth.
  */
 
-import type { ArchetypeReferenceSlotKind } from './videoCapabilities/types'
+import type { ArchetypeReferenceSlotKind } from '../videoCapabilities/types'
 
 export const BILLING_MODEL_KINDS = ['text', 'image', 'video', 'audio', 'model3d'] as const
 
