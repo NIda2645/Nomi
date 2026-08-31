@@ -42,4 +42,15 @@ describe("MiniMax 官方合同", () => {
       MINIMAX_OFFICIAL_MODELS.flatMap((model) => model.mappings.map((mapping) => mapping.id)).sort(),
     );
   });
+
+  // MiniMax 的文本/对话「大脑」是 MiniMax-M3（2026-06-01 官方发布，多模态 chat；M3 取代已废弃的
+  // M1，见 docs/plan/2026-08-30-provider-model-expansion-and-runtime.md）。M3 是 OpenAI 兼容 chat，
+  // 故**无 create/query mapping**——agent 走 buildLanguageModelForVendor 直连 /v1/chat/completions，
+  // modelKey 即 chat model id。这条断言把「文本模型仍在册且仍是无 mapping 的 chat 形状」钉住，
+  // 防止有人误加 mapping（那会把它错当异步任务模型）或悄悄删掉它。
+  it("declares MiniMax-M3 as the openai-compatible chat brain (no async mapping)", () => {
+    const text = MINIMAX_OFFICIAL_MODELS.filter((model) => model.kind === "text");
+    expect(text.map((model) => model.modelKey)).toEqual(["MiniMax-M3"]);
+    expect(text.every((model) => model.mappings.length === 0)).toBe(true);
+  });
 });
