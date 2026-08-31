@@ -120,6 +120,12 @@
 | [2026-05-31-library-search-cost-fixes.md](2026-05-31-library-search-cost-fixes.md) | 30秒体验/假搜索/花费徽章 三处修复 | 🚧 |
 | [2026-06-08-custom-categories-and-chat-polish.md](2026-06-08-custom-categories-and-chat-polish.md) | 自定义分类+聊天气泡统一+右键菜单瘦身 | 🚧 |
 
+## 应用壳 / 反馈与社区
+
+| 文件 | 一句话 | 状态 |
+|---|---|---|
+| [2026-09-01-feedback-share-center.md](2026-09-01-feedback-share-center.md) | v0.21 低摩擦反馈与分享中心：私密 Tally 表单、公开 GitHub、自动带入安全运行时上下文 | 🚧 |
+
 ## 性能 / 技术地基 / 巨壳拆分 / 管线
 
 | 文件 | 一句话 | 状态 |
