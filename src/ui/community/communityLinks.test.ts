@@ -23,6 +23,7 @@ describe('community links', () => {
 
   it('passes only safe runtime context to the private form', () => {
     const url = new URL(buildPrivateFeedbackUrl({
+      version: 1,
       app: { version: '0.21.0', platform: 'darwin', arch: 'arm64', locale: 'en' },
       context: { intent: 'problem', stage: 'model', provider: 'Ollama', model: 'llama3' },
     }))
