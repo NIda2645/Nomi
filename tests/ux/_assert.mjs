@@ -202,6 +202,89 @@ export function stripCommentsAndStrings(source) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EN-DOM 断言网（2026-09-01）
+//
+// 抓的是 check:i18n-key-parity 抓不到的那一半漏译:parity 证的是「en 词典每个键都有值」,
+// 但证不了「这个键真的被用上了」——组件里一句硬编码中文、或走了错分支拿到中文串,parity 照样绿,
+// 只有真把界面切到 en、真走到那条 UI,才看得见一句中文。
+//
+// 于是在 en 局部走查跑完、界面确实是英文之后,直接断言**整页可见文本里没有 CJK**。
+// 这是运行时的兜底网:任何漏译的中文只要出现在 en 界面上就当场报红,不管它从哪条缝里漏的。
+//
+// 白名单 [data-user-content]:用户自己写的内容(项目名、提示词、素材文件名…)本就该是用户的语言,
+// 中文素材名出现在 en 界面上是对的,不是漏译。这类节点整棵子树豁免(innerText 会把子树文本并进来,
+// 所以必须在遍历时**整棵跳过**,不能只跳这一个节点)。参 _assert.mjs:184 scopedText 那条教训:
+// document.body.innerText 会把 seed 数据也算进来——这里用白名单把「用户内容」那一类系统性摘掉。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** CJK 统一表意文字(含扩展 A 起始)。够覆盖 UI 文案里的中文;不纠结日文假名(我们不支持日文)。 */
+const CJK_RE = /[㐀-鿿]/
+
+/**
+ * 断言 en 界面上没有漏译的中文。**只在界面确实已切到 en 之后调**(否则必然满屏中文报红)。
+ *
+ * 判据是「用户所见的可见文本」:隐藏元素、[data-user-content] 子树都排除。命中就把那几段中文
+ * 连同最近的可定位祖先一起报出来,让人一眼看到是哪块漏了。
+ *
+ * 为什么不直接 `document.body.innerText` 再 test CJK:innerText 会把 [data-user-content] 里的
+ * 用户中文(项目名/提示词)并进来,恒假红;必须在 DOM 遍历时整棵跳过白名单子树。
+ */
+export async function expectNoCjkInEnglishDom(win, { message, allowSelectors = [] } = {}) {
+  const offenders = await win.evaluate(
+    ({ cjkSource, allow }) => {
+      const cjk = new RegExp(cjkSource)
+      const skipSelectors = ['[data-user-content]', 'style', 'script', 'noscript', ...allow]
+      const isSkipped = (el) => skipSelectors.some((sel) => el.matches?.(sel))
+      const isHidden = (el) => {
+        const style = getComputedStyle(el)
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0.01) return true
+        const r = el.getBoundingClientRect()
+        return r.width < 1 || r.height < 1
+      }
+      const describe = (el) => {
+        const id = el.id ? `#${el.id}` : ''
+        const testid = el.getAttribute?.('data-testid')
+        const cls = typeof el.className === 'string' && el.className ? `.${el.className.split(/\s+/).slice(0, 2).join('.')}` : ''
+        return `${el.tagName.toLowerCase()}${id}${testid ? `[data-testid=${testid}]` : ''}${cls}`
+      }
+      const hits = []
+      const walk = (el) => {
+        if (isSkipped(el) || isHidden(el)) return
+        // 只看**直接**文本子节点的中文(子元素各自递归判,避免把整棵子树的文本重复归到父节点)。
+        for (const node of el.childNodes) {
+          if (node.nodeType === Node.TEXT_NODE && cjk.test(node.nodeValue || '')) {
+            const text = (node.nodeValue || '').replace(/\s+/g, ' ').trim()
+            if (text) hits.push({ where: describe(el), text: text.slice(0, 60) })
+          }
+        }
+        for (const child of el.children) walk(child)
+      }
+      if (document.body) walk(document.body)
+      // 还要查 title/aria-label/placeholder 这类可见但不在文本节点里的字。
+      for (const el of document.querySelectorAll('[title],[aria-label],[placeholder]')) {
+        if (isSkipped(el) || isHidden(el)) continue
+        for (const attr of ['title', 'aria-label', 'placeholder']) {
+          const v = el.getAttribute(attr)
+          if (v && cjk.test(v)) hits.push({ where: `${describe(el)}@${attr}`, text: v.replace(/\s+/g, ' ').trim().slice(0, 60) })
+        }
+      }
+      // 去重(同一段中文可能被多个祖先命中)。
+      const seen = new Set()
+      return hits.filter((h) => { const k = `${h.where} ${h.text}`; if (seen.has(k)) return false; seen.add(k); return true })
+    },
+    { cjkSource: CJK_RE.source, allow: allowSelectors },
+  )
+  if (offenders.length > 0) {
+    const lines = offenders.slice(0, 20).map((o) => `  · ${o.where}  “${o.text}”`).join('\n')
+    throw new Error(
+      `${message || 'en 界面上出现了未翻译的中文'}（EN-DOM 断言网）：找到 ${offenders.length} 处 CJK 文本。\n${lines}\n`
+        + '  → 界面已切到 en,这些中文就是漏译(硬编码中文 / 走错分支拿到中文串 / 键缺 en 值)。\n'
+        + '  用户自己写的内容(项目名/提示词/素材名)应包在 [data-user-content] 里豁免——如果上面是这类,给它加这个标记。',
+    )
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 截图证据的安定门（2026-08-26）
 //
 // 三起事故同一个根因：**在被测物安顿之前就把证据拍下来了**。截图这一族有三个变种：

@@ -58,6 +58,10 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   '纯文字描述生成视频，无需参考图': 'Generate video from text only, with no reference image',
   '纯文字生成 6–30 秒视频': 'Generate a 6–30 second video from text',
   纯文字生成视频: 'Generate video from text',
+  '当前模型目录声明的视频生成入口；高级参考能力尚未对账':
+    'Video generation entry declared by the current model catalog; advanced reference capabilities are not yet reconciled',
+  '单张参考图驱动；其他参考角色尚未对账':
+    'Driven by a single reference image; other reference characters are not yet reconciled',
   纯文字生成图像: 'Generate an image from text',
   '纯文字生成图像（仅支持文生图）': 'Generate an image from text (text-to-image only)',
   '单张参考图驱动（比例随图自动决定）': 'Use one reference image (aspect ratio follows the image automatically)',
