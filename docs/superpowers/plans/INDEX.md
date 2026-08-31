@@ -52,3 +52,4 @@
 | [2026-08-28-quality-gate-parallel-orchestration.md](2026-08-28-quality-gate-parallel-orchestration.md) | Quality Gate Parallel Orchestration Implementation Plan | ✅ 已交付 |
 | [2026-08-30-canvas-workflow-plugin.md](2026-08-30-canvas-workflow-plugin.md) | Nomi 固定流程与原生画布插件计划 | 🚧 进行中 |
 | [2026-08-31-asset-relay-routing.md](2026-08-31-asset-relay-routing.md) | Asset Relay Routing Implementation Plan | ✅ 已交付 |
+| [2026-08-31-provider-model-expansion-certification.md](2026-08-31-provider-model-expansion-certification.md) | Provider and Flagship Model Expansion Certification Implementation Plan | ✅ 已交付 |
