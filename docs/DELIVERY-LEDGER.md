@@ -21,9 +21,16 @@
 | 🚧 进行中 | [2026-08-27-release-media-pack-skill.md](superpowers/plans/2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan |
 | 🚧 进行中 | [2026-08-28-conversational-model-integration.md](superpowers/plans/2026-08-28-conversational-model-integration.md) | Conversational Model Integration Implementation Plan |
 
-## 远期 / 暂缓（0）
+## 远期 / 暂缓（6）
 
-_没有标记为远期的方案。_
+| 状态 | 文档 | 标题 |
+|---|---|---|
+| 🧊 暂缓/远期 | [2026-08-09-canvas-ux-feedback-round.md](plan/2026-08-09-canvas-ux-feedback-round.md) | 画布体验反馈第 1 轮迭代计划 |
+| 🧊 暂缓/远期 | [2026-08-14-community-qr-refresh.md](plan/2026-08-14-community-qr-refresh.md) | 2026-08-14 用户群二维码刷新 |
+| 🧊 暂缓/远期 | [2026-08-26-hyperframes-canvas-motion-node.md](plan/2026-08-26-hyperframes-canvas-motion-node.md) | HyperFrames 画布节点集成方案研究 |
+| 🧊 暂缓/远期 | [2026-08-14-clip-node-infinite-timeline.md](superpowers/plans/2026-08-14-clip-node-infinite-timeline.md) | 剪辑节点无限时间轴样章 Implementation Plan |
+| 🧊 暂缓/远期 | [2026-08-20-storyboard-execution-contract-v2.md](superpowers/plans/2026-08-20-storyboard-execution-contract-v2.md) | Storyboard Execution Contract v2 Implementation Plan |
+| 🧊 暂缓/远期 | [2026-08-21-agent-editor-workbench.md](superpowers/plans/2026-08-21-agent-editor-workbench.md) | Agent Editor Workbench Implementation Plan |
 
 ## 其余
 
@@ -44,7 +51,7 @@ _没有标记为远期的方案。_
 
 </details>
 
-- 合计扫描：457 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：463 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 
