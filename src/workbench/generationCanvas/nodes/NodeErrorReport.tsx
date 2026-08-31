@@ -1,5 +1,5 @@
 import React from 'react'
-import { MODEL_ACCESS_ENTRY } from '../../../../electron/shared/modelAccessCapabilities'
+import { MODEL_ACCESS_ENTRY } from '../../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconRefresh, IconReplace, IconSettings, IconWand, IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'

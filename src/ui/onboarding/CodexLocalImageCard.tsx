@@ -12,7 +12,7 @@
  * 不探测 codex 是否已装/已登录（无该 IPC）：如实在卡里写明前提，别假装知道（D4 诚实交付）。
  */
 import React from 'react'
-import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/modelAccessCapabilities'
+import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { IconSparkles, IconCircleCheck } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

@@ -1,7 +1,7 @@
 /**
  * Model-access journey script: recovery-roundtrip
  *
- * Placeholder wired to the manifest (electron/shared/modelAccessCapabilities.ts +
+ * Placeholder wired to the manifest (electron/shared/contracts/modelAccessCapabilities.ts +
  * manifest.mjs is the fact source). The executable roundtrip harness
  * (fixture-server / ui-driver / run-journeys / journey-cases) is delivered by the
  * model-access exhaustive-journeys change and replaces this body in place — this

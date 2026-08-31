@@ -1,5 +1,5 @@
 import React from 'react'
-import { MODEL_ACCESS_ENTRY_ONBOARDING } from '../../../electron/shared/modelAccessCapabilities'
+import { MODEL_ACCESS_ENTRY_ONBOARDING } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { Stack, Group, Text, PasswordInput, Anchor } from '@mantine/core'
 import { IconCheck, IconX, IconChevronDown } from '@tabler/icons-react'
