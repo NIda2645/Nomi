@@ -115,7 +115,7 @@ Nomi 不做一个把所有东西混在一起的“超级资源库”，也不新
 3. 搜技能 → 看能力缺口 → 在创作区启用；
 4. 切全部项目 → 按素材名找 → 居中预览；切项目素材 → 拖入当前画布/时间轴，写入携带既有来源线索。
 
-现有 `asset-surface-convergence.walk.mjs` 和 `prompt-picker.walk.mjs` 继续作为回归入口；若环境 fixture 失败，记录根因，不降低断言、不扩大超时、不跳过测试。素材库未改变生成/导出性能路径，因此不机械运行 canvas performance 基准。
+现有 `asset-surface-convergence.walk.mjs` 和 `prompt-picker.walk.mjs` 继续作为回归入口；若环境 fixture 失败，记录根因，不降低断言、不扩大超时、不跳过测试。本次只在 React Flow 的 drop 边界传入已有 `activeProjectId`，没有改渲染/拖拽热路径；但该文件路径会按仓库策略触发 canvas performance 分类，因此保留 CI 结果并与既有 Linux 基线对账，不修改阈值来制造通过。
 
 ### 7.3 Ponytail 规则与 hook 验收
 
