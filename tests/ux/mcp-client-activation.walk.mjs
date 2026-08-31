@@ -10,7 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { chromium } from 'playwright'
 import { fileURLToPath } from 'node:url'
-import { screenshotSettled } from './_assert.mjs'
+import { screenshotSettled, expectNoCjkInEnglishDom } from './_assert.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const helpRequested = process.argv.includes('--help') || process.argv.includes('-h')
@@ -315,6 +315,8 @@ try {
     await expandAssistant(win, panel)
     await selectClient(win, panel, 'Cursor')
     await assertNoCompactOverflow(panel)
+    // EN-DOM 断言网:界面已切到 en,整页可见文本不该再有中文(漏译会当场报红)。
+    await expectNoCjkInEnglishDom(win, { message: 'MCP 客户端激活面板在 en 下出现中文' })
     await snap(win, 'en-dark-narrow-cursor-needs-permission')
     const englishSettings = await openCursorPermissions(win, panel)
     await assertNoCompactOverflow(englishSettings.dialog)
