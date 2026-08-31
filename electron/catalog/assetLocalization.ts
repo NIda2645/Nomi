@@ -23,6 +23,7 @@ import {
   unreachableAssetValueError,
 } from "./assetValueScheme";
 import { contentTypeFromMagicBytes } from "../assets/mediaTypes";
+import { tagNomiError } from "../shared/nomiErrorCodes";
 import {
   ingestionAccepts,
   resolveAssetIngestionForKind,
@@ -540,13 +541,18 @@ const MEDIA_LABEL: Record<AssetMediaKind, string> = { image: "图片", video: "�
 function allChannelsFailedError(asset: LocalAsset | null, mediaKind: AssetMediaKind, failures: string[]): Error {
   const what = asset ? `${asset.fileName}（${humanSize(asset.bytes.length)}）` : "这个素材";
   const detail = failures.join("；") || "(无候选通道)";
+  // 码标记(NOMI_ERR::)让渲染层 classifyError 按**码**归类,而不是 include 这句中文人话——
+  // 人话将来 i18n 化/改词都不影响分类(root-cause,替换脆弱的按文案匹配)。
   if (failures.some((line) => line.includes("HTTP 413"))) {
     return new Error(
-      `${MEDIA_LABEL[mediaKind]}「${what}」超过了所有可用上传通道的大小上限，传不上去。` +
-        `请把它压缩 / 裁短后再放进来，或在「模型接入」配置一个上传上限更高的通道。详情：${detail}`,
+      tagNomiError(
+        "asset-too-large",
+        `${MEDIA_LABEL[mediaKind]}「${what}」超过了所有可用上传通道的大小上限，传不上去。` +
+          `请把它压缩 / 裁短后再放进来，或在「模型接入」配置一个上传上限更高的通道。详情：${detail}`,
+      ),
     );
   }
-  return new Error(`素材上传失败：${what} 的所有上传通道都没成功。详情：${detail}`);
+  return new Error(tagNomiError("asset-upload-failed", `素材上传失败：${what} 的所有上传通道都没成功。详情：${detail}`));
 }
 
 /**

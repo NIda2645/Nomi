@@ -10,6 +10,7 @@ import {
   type GenerationErrorKind,
 } from './narrate'
 import { parseVendorErrorFromMessage, stripVendorErrorMarker } from '../generationCanvas/runner/vendorErrorIpc'
+import { matchNomiErrorCode, stripNomiErrorCode } from '../../../electron/shared/nomiErrorCodes'
 import i18n from '../../i18n'
 
 export type GenerationErrorReport = {
@@ -85,10 +86,11 @@ function jsonErrorMessage(source: string): string | null {
  * message/error 字段，否则取第一行非空文本并截断。抠不出可读内容才返回 ''。
  */
 function extractReadableErrorLine(raw: string): string {
-  const source = String(raw || '')
-    .trim()
-    .replace(IPC_WRAPPER_PREFIX, '')
-    .trim()
+  const source = stripNomiErrorCode(
+    String(raw || '')
+      .trim()
+      .replace(IPC_WRAPPER_PREFIX, ''),
+  ).trim()
   if (!source) return ''
   // 1) provider 常把报错塞进 JSON（与 pickProviderMessage 共用同一个剥壳器，两处不许各写一份）
   const fromJson = jsonErrorMessage(source)
@@ -335,6 +337,7 @@ function detectAssetUploadFailed(raw: string): boolean {
   // ① 匿名链包出来的；② 逐条候选通道都挂的汇总；③ 某条通道直接抛的裸 `素材上传失败(HTTP 4xx)`。
   // 只认 ① 的时候，直连通道（KIE/apimart）抛的 413 落进 unknown → 用户看到「可能是服务商临时故障
   // 或额度问题，建议稍等重试」（2026-08-20 用户截图逐字如此），于是不停重试一个必然再撞的上限。
+  if (matchNomiErrorCode(raw) === 'asset-upload-failed') return true
   return (
     raw.includes('所有免配置上传 host 都失败') ||
     raw.includes('的所有上传通道都没成功') ||
@@ -342,8 +345,16 @@ function detectAssetUploadFailed(raw: string): boolean {
   )
 }
 
-/** 素材大到所有上传通道都装不下（HTTP 413）——重试永远不会成，得让用户去压缩，不能说「稍等重试」。 */
+/**
+ * 素材大到所有上传通道都装不下（HTTP 413）——重试永远不会成，得让用户去压缩，不能说「稍等重试」。
+ *
+ * 2026-09-01 root-cause:主判据改成**机器码**（assetLocalization 通过 tagNomiError('asset-too-large')
+ * 附的 NOMI_ERR:: 标记），不再靠 include 那句中文人话——人话将来 i18n 化/改词都不影响分类。
+ * 保留两条 legacy 兜底:① `HTTP 413`(英文、非 CJK,直连通道抛的裸 413);② 那句中文串——为的是
+ * 认出**本次改动前**已经 persist 进 node.error 的旧错误(它们没有码标记)。两条都不脆弱地依赖新文案。
+ */
 function detectAssetTooLarge(raw: string): boolean {
+  if (matchNomiErrorCode(raw) === 'asset-too-large') return true
   return raw.includes('超过了所有可用上传通道的大小上限') || raw.includes('HTTP 413')
 }
 
@@ -423,7 +434,8 @@ function reportFor(
 ): GenerationErrorReport {
   const { reason, hint } = narrateGenerationError(kind, params)
   const providerMessage = pickProviderMessage(upstream ?? extractReadableErrorLine(raw), reason)
-  return { kind, reason, hint, raw, ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
+  // 存进技术详情的 raw 也把 NOMI_ERR:: 码标记剥掉——那是给分类器读的机器标记,不是给人看的。
+  return { kind, reason, hint, raw: stripNomiErrorCode(raw), ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
 }
 
 export function classifyGenerationError(message: string): GenerationErrorReport {

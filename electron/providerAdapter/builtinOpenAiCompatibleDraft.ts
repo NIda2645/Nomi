@@ -29,6 +29,12 @@ const OPENAI_COMPATIBLE_CHAT_OP: HttpOperation = {
   },
 };
 
+/**
+ * Anthropic Messages contract (same line as onboardingIpc's protocol probe and buildAiSdkModel's
+ * runtime): `POST {base}/v1/messages`, `x-api-key` + `anthropic-version`, and max_tokens is
+ * required — omit it and Anthropic returns 400, it is not optional. The auth header is added by
+ * withAuthHeader per authType; here we only declare the version header.
+ */
 const ANTHROPIC_CHAT_OP: HttpOperation = {
   method: "POST",
   path: "/v1/messages",
@@ -86,6 +92,10 @@ function modesForKind(
   // 没有文档出处就诚实留空——这张卡来自内置标准契约，不是从某个页面读出来的（D4 缺口明着标）。
   const noSources = { sourceUrls: [] as string[] };
   const auth = (operation: HttpOperation) => withAuthHeader(operation, authType);
+  // 文字模型的验证通道必须**随协议 derive**，不能一律按 OpenAI 发。
+  // anthropic 的聊天端点是 /v1/messages（不是 /chat/completions）且 max_tokens 必填，
+  // 照 OpenAI 那份发过去只会 404 → 验证卡在 testing 直到 90s 超时，界面报「没有能力通过验证」，
+  // 而连接检查本身是通的（那条路自己拼对了 /v1/messages）。2026-08-28 用户接 Claude 实测。
   if (kind === "text") {
     const operation = providerKind === "anthropic" ? ANTHROPIC_CHAT_OP : OPENAI_COMPATIBLE_CHAT_OP;
     return [{ taskKind: "chat", create: auth(operation), ...noSources }];

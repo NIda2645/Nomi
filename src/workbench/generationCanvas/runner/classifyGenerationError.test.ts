@@ -5,6 +5,7 @@ import { parseVendorErrorFromMessage, stripVendorErrorMarker } from './vendorErr
 import { desktopT } from '../../../../electron/i18n'
 import { describeAgentError } from '../../../../electron/ai/agentError'
 import { vendorStallError } from '../../../../electron/ai/aiSdkVendorError'
+import { tagNomiError, stripNomiErrorCode } from '../../../../electron/shared/nomiErrorCodes'
 import i18n from '../../../i18n'
 
 describe('classifyGenerationError — 已知分类', () => {
@@ -253,6 +254,40 @@ describe('classifyGenerationError — 已知分类', () => {
     // 具体是哪个素材、多大，必须在技术详情里留得住（用户据此判断压到多少）。
     expect(summarized.raw).toMatch(/clip\.mp4/)
     expect(summarized.raw).toMatch(/180\.0MB/)
+  })
+
+  // 行为等价:root-cause 后主判据是 NOMI_ERR:: 码,不再靠中文人话子串。带码的新错误必须归到同一类,
+  // 且**不依赖那句中文**——把人话整段换成英文（模拟将来 i18n 化）后,分类结果不变。
+  it('素材超上限:带 NOMI_ERR 码的新错误归到 asset-too-large（与旧文案路径行为等价）', () => {
+    const coded = classifyGenerationError(
+      tagNomiError('asset-too-large', '视频「clip.mp4（180.0MB）」超过了所有可用上传通道的大小上限，传不上去。'),
+    )
+    expect(coded.kind).toBe('asset-too-large')
+    expect(coded.hint).toMatch(/压缩|裁短/)
+    // 码标记是给分类器读的机器信号,绝不能漏进用户可见的 raw/reason/hint。
+    expect(coded.raw).not.toMatch(/NOMI_ERR/)
+    expect(coded.reason).not.toMatch(/NOMI_ERR/)
+    expect(coded.raw).toMatch(/clip\.mp4/)
+
+    // 关键:人话换成英文后,分类**仍**成立（证明不再脆弱地绑在中文串上）。
+    const translated = classifyGenerationError(
+      tagNomiError('asset-too-large', 'The video “clip.mp4 (180.0MB)” exceeds the size limit of every available upload channel.'),
+    )
+    expect(translated.kind).toBe('asset-too-large')
+    expect(translated.raw).not.toMatch(/NOMI_ERR/)
+  })
+
+  it('素材上传失败（非 413）:带 NOMI_ERR 码同样归到 asset-upload-failed，且英文人话不影响分类', () => {
+    const coded = classifyGenerationError(tagNomiError('asset-upload-failed', '素材上传失败：所有上传通道都没成功。'))
+    expect(coded.kind).toBe('asset-upload-failed')
+    const translated = classifyGenerationError(tagNomiError('asset-upload-failed', 'Asset upload failed: none of the upload channels succeeded.'))
+    expect(translated.kind).toBe('asset-upload-failed')
+    expect(translated.raw).not.toMatch(/NOMI_ERR/)
+  })
+
+  it('stripNomiErrorCode:剥掉码标记后只留人话（展示端不泄露机器信号）', () => {
+    expect(stripNomiErrorCode(tagNomiError('asset-too-large', '文件太大了'))).toBe('文件太大了')
+    expect(stripNomiErrorCode('没有标记的普通错误')).toBe('没有标记的普通错误')
   })
 
   // 直连通道（KIE/apimart）抛的裸上传失败，不带匿名链那句包装 → 此前也会落 unknown 甩锅服务商。
