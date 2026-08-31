@@ -1,5 +1,0 @@
-{
-  "model": "agnes-video-2.5",
-  "http_status": 403,
-  "error": "{\"code\":\"insufficient_user_quota\",\"message\":\"预扣费额度失败, 用户剩余额度: ＄0.099776, 需要预扣费额度: ＄0.100000\",\"data\":null}"
-}
