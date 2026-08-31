@@ -60,18 +60,18 @@ import {
   type ModelSettingsPage,
 } from './modelSettingsNavigation'
 import { useModelPageRequest, type ModelPageRequest } from './useModelPageRequest'
- import { CertificationIntentKey } from './certificationIntentKey'
+import { CertificationIntentKey } from './certificationIntentKey'
 import { CertificationUiError, certificationFailureMessage } from './certificationFailureMessage'
 import { IntegrationConfirmationPanel, type IntegrationVerificationHandoff } from './IntegrationConfirmationPanel'
- type IntegrationHandoff = {
+type IntegrationHandoff = {
   requestId: string
   target: 'credential' | 'connection' | 'workflow' | 'verification'
   sessionId: string
   revision: number
   ownerClientId: string
   display?: { name?: string; origin?: string; authType?: string; runId?: string; challengeId?: string }
- }
- import { translateModelDisplayText } from '../../i18n/modelDisplayText'
+}
+import { translateModelDisplayText } from '../../i18n/modelDisplayText'
 
 export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPageRequest } = {}): JSX.Element {
   const { t } = useTranslation()
