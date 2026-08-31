@@ -13,7 +13,7 @@
 1. [唯一 owner map](../architecture/agent-m0-owner-map.md)：三种状态逐项指定 owner，并记录 Host、Pi runtime、ProductionRun、Artifact 的精确 ref。
 2. [50 项工具映射](../architecture/agent-m0-tool-mapping.md)：`keep / merge / host-only / delete` 去向、理由和 15 个语义目标对照；49 个当前 catalog descriptor 加 1 个 wire-level gate 计数差异显式标注。
 3. [旧路径清单](../architecture/agent-m0-legacy-paths.md)：按 M1–M5 里程碑列出删除时点和不得保留的 fallback。
-4. [schema-v3 根因合同草案](../fixes/2026-09-01-rc-01-durable-owner.root-cause.json)、[RC-02](../fixes/2026-09-01-rc-02-semantic-tool-surface.root-cause.json)、[RC-05](../fixes/2026-09-01-rc-05-typed-output-projection.root-cause.json)、[RC-06](../fixes/2026-09-01-rc-06-settlement-barrier.root-cause.json)。
+4. [schema-v3 根因合同草案](../fixes/2026-09-01-rc-01-durable-owner.root-cause.draft.json)、[RC-02](../fixes/2026-09-01-rc-02-semantic-tool-surface.root-cause.draft.json)、[RC-05](../fixes/2026-09-01-rc-05-typed-output-projection.root-cause.draft.json)、[RC-06](../fixes/2026-09-01-rc-06-settlement-barrier.root-cause.draft.json)。四份以 `.root-cause.draft.json` 命名（而非 `.root-cause.json`）：它们是 M0 草案，其 `prevention.enforcement_path` 等指向的 `#223` 生产路径不在当前工作树、本 PR 也不写生产代码，因此还不是可执行合同；`check:root-cause-contracts` 门岗只认 `docs/fixes/*.root-cause.json`（非递归、按后缀），草案后缀让门岗正确略过它们。M1–M4 各切片把对应生产路径带回 changed diff 时，再把草案重命名为 `.root-cause.json` 并使其可执行。
 5. [M1 测试红灯清单](../qa/2026-09-01-agent-m0-red-lights.md)：门编排 18 测、canvas snapshot 挂起、`deviated` 恒 false 均有复现命令/当前状态/验收断言。
 6. [PR #223 切片方案](../architecture/agent-m0-pr-slices.md)：Host/runtime → semantic projection → context/compaction → UI/真实旅程。
 
@@ -26,12 +26,12 @@
 
 ## 维护者裁决可见性
 
-本轮两次尝试 `gh pr view 272 --comments`（代理与无代理）均无法连接 GitHub API，未取得评论正文。因此评论裁决没有被猜写；PR 正文和本冻结包把它列为 OPEN QUESTION，待网络可达后补原文链接/结论。
+Codex 本轮两次尝试 `gh pr view 272 --comments`（代理与无代理）均无法连接 GitHub API，未取得评论正文，因此当时把裁决列为 OPEN QUESTION。**跨池收尾班已在网络可达环境取得两条评论并落仓**：全部裁决见 [agent-m-line-rulings.md](../architecture/agent-m-line-rulings.md)（出处 PR #272 的 issuecomment-5484766923 与 issuecomment-5485265252）。冻结包各处原先的“裁决读不到”OPEN QUESTION 已改为指向该文件。
 
 ## 本轮验证收据
 
 - `pnpm run gen:ledger`：通过（生成 DELIVERY-LEDGER 与 superpowers plans 索引）。
 - `pnpm run check:docs-index`：通过（无新增未收录方案）。
 - `pnpm run check:doc-status`：通过（无新增状态违规）。
-- `pnpm run typecheck`：阻塞；当前 checkout 无 `node_modules`，`tsc: command not found`。
-- `pnpm run check:root-cause-contracts`：内置 18 项 checker tests 通过；正式校验拒绝四份草案，因为 #223 的 Host/runtime/测试路径不在当前 `c1f6b385` 工作树且本 PR 不得写生产代码。M1 实现切片必须在那些路径回到 changed diff 后重新使合同可执行。
+- `pnpm run typecheck`：通过（收尾班装好依赖后实跑，三个 tsconfig 全绿）。
+- `pnpm run check:root-cause-contracts`：内置 18 项 checker tests 通过（checker 自身逻辑健全）。四份合同以 `.root-cause.draft.json` 命名，门岗按后缀正确略过它们——因为其 `prevention.enforcement_path` 等指向的 #223 Host/runtime/测试路径不在当前 `c1f6b385` 工作树、本 PR 也不写生产代码，此时它们是草案而非可执行合同。M1–M4 各切片把对应生产路径带回 changed diff 时，再改回 `.root-cause.json` 后缀并使其可执行。

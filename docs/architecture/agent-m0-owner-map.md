@@ -26,5 +26,5 @@ Conversation state  --refs-->  Execution state  --refs-->  Domain state
         └────── model/UI projection ───┴──── capability adapter ─┘
 ```
 
-当前必须停下的 OPEN QUESTION：维护者裁决正文不可从 GitHub API 取得；因此“哪些字段在裁决中被指定为例外 owner”尚未有可引用证据，M1 前不能自行补齐。
+裁决已落仓：维护者对 M 线的全部裁决见 [agent-m-line-rulings.md](./agent-m-line-rulings.md)（出处 PR #272 两条评论）。approval / proposal receipt 的档位语义见该文件 R-M-4，`deviated` 收编与 I-1/I-2 硬前置见 R-M-1；本 owner map 未被裁决指定额外的例外 owner。
 

@@ -59,7 +59,7 @@
 
 ## 第 50 行的口径说明
 
-`nomi_decide_generation_gate` 是 #223 generation dispatcher/规格中的 wire-level 入口，Pi catalog 注释明确“不投影”；若维护者所谓“50 个现有模型工具”只指 `agentToolCatalog` 可枚举对象，则实数是 49，且该入口应另列为 Host-only transition。这个计数差异保持 OPEN QUESTION，不把 `nomi_session_open` 或旧 alias 填成不存在的 descriptor。
+`nomi_decide_generation_gate` 是 #223 generation dispatcher/规格中的 wire-level 入口，Pi catalog 注释明确“不投影”。**裁决已落仓**（[agent-m-line-rulings.md](./agent-m-line-rulings.md) R-M-5）：catalog 可枚举 descriptor 数 = 50，该 wire-level 入口单列为 Host-only wire 契约、**不计入**这 50；不把 `nomi_session_open` 或旧 alias 填成不存在的 descriptor。
 
 ## 核账结论
 
