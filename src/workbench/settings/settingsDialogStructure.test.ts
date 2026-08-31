@@ -13,6 +13,7 @@ const aiModelsSource = readCode(path.join(process.cwd(), 'src/workbench/settings
 const taskCenterSource = readCode(path.join(process.cwd(), 'src/workbench/taskCenter/TaskCenterPanel.tsx'))
 const studioSource = readCode(path.join(process.cwd(), 'src/workbench/NomiStudioApp.tsx'))
 const controllerSource = readCode(path.join(process.cwd(), 'src/workbench/settings/useSettingsDialogController.ts'))
+const aboutSource = readCode(path.join(process.cwd(), 'src/workbench/settings/AboutSection.tsx'))
 const settingsDirectory = path.join(process.cwd(), 'src/workbench/settings')
 
 // 这张表锁的是「别无意间改动了这几块」。**有意的、已拍板的改动就该更新基线**，
@@ -23,12 +24,14 @@ const settingsDirectory = path.join(process.cwd(), 'src/workbench/settings')
 // 2026-08-26：CanvasGestureSection 仅将 import 改为共享 utils 模块；下方锁定设置与两个画布同源。
 // 2026-08-31：上传通道可见性同步覆盖 Nomi relay 的 public-provider 标记，更新 AiModelsSection 基线；
 //             对应正向断言仍锁定实际渲染条件，避免只挪哈希掩盖配置入口变化。
+// 2026-09-01：AboutSection 增加反馈与分享入口，更新其基线；对应正向断言见 AboutSection 自身的
+//             dispatch 逻辑，避免把用户已拍板的入口误报为意外漂移。
 const MAIN_NON_MODEL_SECTION_SHA256 = {
   'ProjectLocationSection.tsx': 'ad37c2f07c403b60cf42385f4d93fce8e2ff494c934467c670a7ae4b8c8d5523',
   'AiModelsSection.tsx': '50e253177108dfda44128f7b002d22d5d769fbc4ac12eeeb3e376fc0757e64b7',
   'AutomationPermissionsSection.tsx': 'a0ea704afb1a31c33ffa3e00821658d8696cc15d5069e6361032b194e638b352',
   'CanvasGestureSection.tsx': '3cf19ee35f686e76b54497ff668bb91245b00a6593bc5d5d6162a0d30c476c95',
-  'AboutSection.tsx': '7fb3e4bee88cf77f6df1217424a4b6130e27581b97de3c58f3c2e7b5bf4a545b',
+  'AboutSection.tsx': 'cb63a71cb582ebe9390b6b6487a68ffbe7d03d00f0c4fba0d091d29f05b86d0b',
 } as const
 
 describe('settings dialog structure', () => {
@@ -70,6 +73,12 @@ describe('settings dialog structure', () => {
     expect(settingsSource).toContain('onOpenModelCatalog={(vendorKey) => {')
     expect(settingsSource).toContain("selectTab('models')")
     expect(settingsSource).toContain('setModelPageRequest((current) => ({ vendorKey, token: (current?.token ?? 0) + 1 }))')
+  })
+
+  it('keeps feedback and sharing in the About section entry point', () => {
+    expect(aboutSource).toContain("t('about.feedbackShare')")
+    expect(aboutSource).toContain("window.dispatchEvent(new CustomEvent('nomi-open-feedback-share'))")
+    expect(aboutSource).toContain('onClose()')
   })
 
   it('keeps the origin/main frame and sidebar for every settings tab', () => {
