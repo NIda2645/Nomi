@@ -339,13 +339,18 @@ Runway-only defect, so the repair is deliberately provider-neutral:
   git diff --stat origin/main...HEAD
   ```
 
-- [ ] **Step 2: Integrate only necessary non-conflicting `origin/main` changes.**
+- [x] **Step 2: Integrate only necessary non-conflicting `origin/main` changes.**
 
-  Preserve all user worktree changes; if a conflict affects a provider contract or ledger, stop and resolve from the authoritative file owner rather than choosing a side blindly.
+  `origin/main` had no commits absent from this branch, so no integration or
+  conflict resolution was necessary. User worktree changes were preserved.
 
-- [ ] **Step 3: Run the complete verification set again after integration.**
+- [x] **Step 3: Run the complete verification set again after integration.**
 
-- [ ] **Step 4: Commit only scoped files.**
+  `gates:contracts`, full tests, model-integration zero-cost journeys, MCP
+  journey, build, dist, packaged media binary, and packaged MCP smoke all pass
+  on the post-fix tree.
+
+- [x] **Step 4: Commit only scoped files.**
 
   ```bash
   git add docs/integration-certification/model-certification-ledger.json \
@@ -357,17 +362,24 @@ Runway-only defect, so the repair is deliberately provider-neutral:
     electron/catalog/seedBuiltins.ts electron/catalog/seedBuiltins.test.ts \
     scripts/check-model-certification-coverage.mjs \
     docs/superpowers/plans/2026-08-31-provider-model-expansion-certification.md
-  git commit -m "fix: certify flagship provider model contracts"
+  git commit -m "fix: close provider result retrieval boundaries"
   ```
 
-- [ ] **Step 5: Push the task branch and update PR #241 without merging.**
+  Commit: `17f9de6f20df3a89f10c08a4142c8abbd7602a12`.
+
+- [x] **Step 5: Push the task branch and update PR #241 without merging.**
 
   ```bash
   git push origin codex/provider-model-expansion-20260830
   gh pr view 241 --json url,state,headRefName,baseRefName
   ```
 
-- [ ] **Step 6: Report branch, commit, PR URL, verification evidence, observed spend, and every mapping's final certification state.**
+  Remote head is `17f9de6f`; PR #241 remains open and unmerged.
+
+- [x] **Step 6: Report branch, commit, PR URL, verification evidence, observed spend, and every mapping's final certification state.**
+
+  The final handoff reports the 65-entry ledger, honest status vocabulary, and
+  observed provider-cost evidence without exposing credentials.
 
 ## Self-review checklist
 
