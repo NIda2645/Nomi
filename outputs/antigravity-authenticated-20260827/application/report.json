@@ -1,0 +1,88 @@
+{
+  "tempRoot": "/tmp/nomi-antigravity-application-20260827",
+  "build": "945c6a6878241dac7c5de6bcc7dd8603dec5080ab414788b3db896a615c1e815",
+  "actions": [
+    {
+      "command": {
+        "action": "click",
+        "selector": "[aria-label=\"设置\"]"
+      },
+      "result": {
+        "clicked": "[aria-label=\"设置\"]"
+      }
+    },
+    {
+      "command": {
+        "action": "textClick",
+        "text": "模型"
+      },
+      "result": {
+        "clicked": "模型"
+      }
+    },
+    {
+      "command": {
+        "action": "click",
+        "selector": "[data-model-home-connection=\"antigravity-cli\"]"
+      },
+      "result": {
+        "clicked": "[data-model-home-connection=\"antigravity-cli\"]"
+      }
+    },
+    {
+      "command": {
+        "action": "verifyGroups"
+      },
+      "result": {
+        "families": 7,
+        "labels": [
+          "GPT-OSS 120B",
+          "Claude Opus 4.6",
+          "Claude Sonnet 4.6",
+          "Gemini 3.1 Pro",
+          "Gemini 3.5 Flash",
+          "Gemini 3.6 Flash",
+          "Gemini 3.7 Flash",
+          "图像工具 · generate_image",
+          "自动选择（auto）"
+        ]
+      }
+    },
+    {
+      "command": {
+        "action": "screenshot",
+        "name": "34-final-grouped-models"
+      },
+      "result": "/Users/aoqimin/Desktop/Nomi-agnes-gemini-20260826/outputs/antigravity-authenticated-20260827/application/34-final-grouped-models.png"
+    },
+    {
+      "command": {
+        "action": "textClick",
+        "text": "Gemini 3.7 Flash"
+      },
+      "result": {
+        "clicked": "Gemini 3.7 Flash"
+      }
+    },
+    {
+      "command": {
+        "action": "verifyDetail",
+        "modelId": "gemini-3.7-flash-low",
+        "variant": "Low",
+        "enabled": true
+      },
+      "result": {
+        "modelId": "gemini-3.7-flash-low",
+        "verified": true
+      }
+    },
+    {
+      "command": {
+        "action": "screenshot",
+        "name": "35-final-model-detail"
+      },
+      "result": "/Users/aoqimin/Desktop/Nomi-agnes-gemini-20260826/outputs/antigravity-authenticated-20260827/application/35-final-model-detail.png"
+    }
+  ],
+  "errors": []
+}

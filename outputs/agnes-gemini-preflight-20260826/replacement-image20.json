@@ -1,0 +1,15 @@
+{
+  "model": "agnes-image-2.0-flash",
+  "http_status": 200,
+  "response": {
+    "data": [
+      {
+        "url": "https://platform-outputs.agnes-ai.space/images/t2i/task_YjtT9xK2vAzuxEpXcNBILZ30I5xxN1EP/output_4f2b1bce539c45eabc4efc42248ddebc.png",
+        "b64_json": "",
+        "revised_prompt": ""
+      }
+    ],
+    "created": 1787753431,
+    "task_id": "task_YjtT9xK2vAzuxEpXcNBILZ30I5xxN1EP"
+  }
+}

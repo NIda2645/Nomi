@@ -1,0 +1,28 @@
+[
+  {
+    "model": "agnes-video-2.5",
+    "http_status": 429,
+    "error": "{\"error\":{\"message\":\"video generation rate limit exceeded: allows 1 requests per 1 minute(s) (request id: 202608261358395432933173euoPAs4)\",\"type\":\"AgnesAI_error\",\"param\":\"\",\"code\":\"rate_limit_exceeded\"}}"
+  },
+  {
+    "model": "agnes-video-2.5-flash",
+    "http_status": 429,
+    "error": "{\"error\":{\"message\":\"video generation rate limit exceeded: allows 1 requests per 1 minute(s) (request id: 20260826135840467946286JVbRO8zI)\",\"type\":\"AgnesAI_error\",\"param\":\"\",\"code\":\"rate_limit_exceeded\"}}"
+  },
+  {
+    "model": "agnes-image-2.0-flash",
+    "http_status": 200,
+    "seconds": 17.87,
+    "response": {
+      "data": [
+        {
+          "url": "https://platform-outputs.agnes-ai.space/images/t2i/task_tmcYPdEMYDUd9nCwcIKmQRRhNRkl2Klt/output_502207dbcdcb4bbca2c8761de937afed.png",
+          "b64_json": "",
+          "revised_prompt": ""
+        }
+      ],
+      "created": 1787752738,
+      "task_id": "task_tmcYPdEMYDUd9nCwcIKmQRRhNRkl2Klt"
+    }
+  }
+]

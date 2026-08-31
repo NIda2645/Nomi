@@ -1,0 +1,221 @@
+{
+  "tempRoot": "/tmp/nomi-antigravity-application-20260827",
+  "build": "945c6a6878241dac7c5de6bcc7dd8603dec5080ab414788b3db896a615c1e815",
+  "actions": [
+    {
+      "command": {
+        "action": "matrix"
+      },
+      "result": [
+        {
+          "modelId": "gemini-3.7-flash-high",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768646984
+        },
+        {
+          "modelId": "gemini-3.7-flash-high",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768671862
+        },
+        {
+          "modelId": "gemini-3.7-flash-medium",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768686058
+        },
+        {
+          "modelId": "gemini-3.7-flash-medium",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768706055
+        },
+        {
+          "modelId": "gemini-3.7-flash-low",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768725654
+        },
+        {
+          "modelId": "gemini-3.7-flash-low",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768741636
+        },
+        {
+          "modelId": "gemini-3.6-flash-high",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768753572
+        },
+        {
+          "modelId": "gemini-3.6-flash-high",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768767853
+        },
+        {
+          "modelId": "gemini-3.6-flash-medium",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768780110
+        },
+        {
+          "modelId": "gemini-3.6-flash-medium",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768794858
+        },
+        {
+          "modelId": "gemini-3.6-flash-low",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768806206
+        },
+        {
+          "modelId": "gemini-3.6-flash-low",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768820594
+        },
+        {
+          "modelId": "gemini-3.5-flash-high",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768832083
+        },
+        {
+          "modelId": "gemini-3.5-flash-high",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768846083
+        },
+        {
+          "modelId": "gemini-3.5-flash-medium",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768858277
+        },
+        {
+          "modelId": "gemini-3.5-flash-medium",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768874372
+        },
+        {
+          "modelId": "gemini-3.5-flash-low",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768886416
+        },
+        {
+          "modelId": "gemini-3.5-flash-low",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768900651
+        },
+        {
+          "modelId": "gemini-3.1-pro-high",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787768916791
+        },
+        {
+          "modelId": "gemini-3.1-pro-high",
+          "capability": "vision",
+          "state": "failed",
+          "version": "1.1.21",
+          "checkedAt": 1787769166052,
+          "code": "ANTIGRAVITY_TIMEOUT"
+        },
+        {
+          "modelId": "gemini-3.1-pro-low",
+          "capability": "text",
+          "state": "failed",
+          "version": "1.1.21",
+          "checkedAt": 1787769187163,
+          "code": "ANTIGRAVITY_TEST_ASSERTION_FAILED"
+        },
+        {
+          "modelId": "gemini-3.1-pro-low",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787769264561
+        },
+        {
+          "modelId": "claude-sonnet-4-6",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787769277045
+        },
+        {
+          "modelId": "claude-sonnet-4-6",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787769297899
+        },
+        {
+          "modelId": "claude-opus-4-6-thinking",
+          "capability": "text",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787769311479
+        },
+        {
+          "modelId": "claude-opus-4-6-thinking",
+          "capability": "vision",
+          "state": "passed",
+          "version": "1.1.21",
+          "checkedAt": 1787769333741
+        },
+        {
+          "modelId": "gpt-oss-120b-medium",
+          "capability": "text",
+          "state": "failed",
+          "version": "1.1.21",
+          "checkedAt": 1787769346030,
+          "code": "ANTIGRAVITY_INVALID_STEP"
+        },
+        {
+          "modelId": "gpt-oss-120b-medium",
+          "capability": "vision",
+          "state": "failed",
+          "version": "1.1.21",
+          "checkedAt": 1787769357972,
+          "code": "ANTIGRAVITY_HOOK_UNVERIFIED"
+        }
+      ]
+    },
+    {
+      "command": {
+        "action": "screenshot",
+        "name": "26-matrix-complete-canvas"
+      },
+      "result": "/Users/aoqimin/Desktop/Nomi-agnes-gemini-20260826/outputs/antigravity-authenticated-20260827/application/26-matrix-complete-canvas.png"
+    }
+  ],
+  "errors": []
+}

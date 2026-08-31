@@ -1,0 +1,56 @@
+[
+  {
+    "id": "gemini-3.1-pro-high",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 4245,
+      "output_tokens": 62,
+      "thinking_tokens": 60,
+      "cache_read_tokens": 0,
+      "total_tokens": 4307
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.1-pro-low",
+    "status": "ERROR",
+    "exit_code": 1,
+    "timed_out": true,
+    "model_matches": true,
+    "response_matches": false,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 0
+    },
+    "error": "timeout waiting for response",
+    "passed": false
+  },
+  {
+    "id": "gpt-oss-120b-medium",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 3580,
+      "output_tokens": 32,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 3612
+    },
+    "error": "",
+    "passed": true
+  }
+]

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN" data-mantine-color-scheme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nomi · Antigravity CLI 接入样张</title>
+  <link rel="stylesheet" href="../../../src/theme/nomi-tokens.css">
+  <style>
+    *{box-sizing:border-box} body{margin:0;color:var(--nomi-ink);font:13px/1.6 var(--nomi-font-sans)}
+    button,select{font:inherit;color:inherit} button,a,select{touch-action:manipulation} button{cursor:pointer}
+    button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid var(--nomi-accent);outline-offset:3px}
+    .review{max-width:880px;margin:24px auto 16px;padding:0 16px}.review h1{font-size:20px;margin:0 0 4px}
+    .muted{color:var(--nomi-ink-60)}.subtle{color:var(--nomi-ink-40)}.small{font-size:11px}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.controls button{border:1px solid var(--nomi-line);border-radius:var(--nomi-radius-sm);padding:4px 12px;background:var(--nomi-paper)}
+    .controls button[aria-pressed=true]{background:var(--nomi-accent-soft);border-color:var(--nomi-accent);color:var(--nomi-accent)}
+    .dialog{width:min(880px,calc(100% - 32px));height:640px;max-height:calc(100svh - 180px);min-height:480px;margin:0 auto 24px;border:1px solid var(--nomi-line);border-radius:var(--nomi-radius-lg);background:var(--nomi-paper);box-shadow:var(--nomi-shadow-lg);overflow:hidden;display:flex;flex-direction:column}
+    .header{min-height:56px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--nomi-line);padding:8px 16px}
+    .icon{width:32px;height:32px;display:grid;place-items:center;border:0;background:transparent;border-radius:var(--nomi-radius-sm)}
+    .icon:hover{background:var(--nomi-ink-05)}.header h2{font-size:14px;margin:0}.grow{flex:1}.body{padding:20px;overflow:auto;flex:1}
+    .content{max-width:760px;margin:auto}.section{margin:20px 0 8px;font-size:12px;font-weight:600;color:var(--nomi-ink-60)}
+    .group{background:var(--nomi-ink-05);border-radius:var(--nomi-radius-sm);overflow:hidden}.row{min-height:52px;width:100%;display:flex;gap:12px;align-items:center;text-align:left;padding:8px 12px;border:0;border-bottom:1px solid var(--nomi-line-soft);background:transparent}.row:last-child{border-bottom:0}.row:hover{background:var(--nomi-ink-10)}
+    .glyph{width:28px;height:28px;display:grid;place-items:center;border-radius:var(--nomi-radius-sm);font-size:12px;font-weight:600;background:var(--nomi-ink-10);flex-shrink:0}.glyph.strong{background:var(--nomi-ink);color:var(--nomi-paper)}
+    .card{border:1px solid var(--nomi-line);border-radius:var(--nomi-radius);overflow:hidden}.card-header{display:flex;align-items:center;gap:12px;padding:12px;background:var(--nomi-ink-05)}
+    .card-body{padding:12px;border-top:1px solid var(--nomi-line-soft);display:flex;flex-direction:column;gap:12px}.status{display:inline-flex;gap:6px;align-items:center;font-size:11px;padding:3px 8px;border-radius:999px;background:var(--nomi-ink-10);white-space:nowrap}.dot{width:6px;height:6px;display:inline-block;background:var(--nomi-ink-30);border-radius:50%}.ready .dot{background:var(--nomi-accent)}.error .dot{background:var(--nomi-warning)}
+    .notice{border-radius:var(--nomi-radius-sm);background:var(--nomi-ink-05);padding:12px}.notice.ready{background:var(--nomi-accent-soft)}.notice.error{border-left:2px solid var(--nomi-warning)}
+    .actions{display:flex;align-items:center;gap:12px}.primary{height:36px;padding:0 16px;border:0;border-radius:var(--nomi-radius-sm);background:var(--nomi-ink);color:var(--nomi-paper);font-weight:600}.primary:hover{background:var(--nomi-accent)}.secondary{height:32px;padding:0 12px;background:var(--nomi-paper);border:1px solid var(--nomi-line);border-radius:var(--nomi-radius-sm)}
+    a,.link{color:var(--nomi-accent);text-decoration:none}.link{padding:0;border:0;background:none;font-size:12px}.chips{display:flex;gap:8px;flex-wrap:wrap}.chip{border:1px solid var(--nomi-line);border-radius:999px;padding:4px 10px;font-size:12px;display:flex;align-items:center;gap:6px}.chip.active{background:var(--nomi-accent-soft);border-color:var(--nomi-accent-soft)}
+    details{border-top:1px solid var(--nomi-line-soft);padding-top:12px}summary{cursor:pointer;font-size:12px;color:var(--nomi-ink-60)}.kv{display:flex;justify-content:space-between;gap:16px;margin-top:8px}.foot{margin-top:16px;color:var(--nomi-ink-40);font-size:11px}.hidden{display:none!important}
+    .grow{min-width:0}.card-header .small{overflow-wrap:anywhere}.capability-section .section{margin:0 0 8px}.capability-section+.capability-section{margin-top:16px}.capability{gap:12px;min-height:48px}.capability .grow{display:flex;flex-direction:column;line-height:1.4}.capability strong{font-size:12px;font-weight:500}.capability[aria-pressed=true]{background:var(--nomi-accent-soft)}.selection{width:12px;height:12px;border:1px solid var(--nomi-ink-30);border-radius:50%;flex-shrink:0}.capability[aria-pressed=true] .selection{border:4px solid var(--nomi-accent)}.capability-status{font-size:11px;color:var(--nomi-ink-60);white-space:nowrap}.capability-status.ready{color:var(--nomi-accent)}.capability-status.limited{color:var(--nomi-warning)}.test-area{border-top:1px solid var(--nomi-line-soft);padding-top:12px}.test-area .small{margin-top:8px}.actions{flex-wrap:wrap;gap:8px 12px}.primary:disabled{opacity:.5;cursor:not-allowed}.kv>span:last-child{text-align:right;max-width:70%;overflow-wrap:anywhere}.primary:focus-visible{outline-offset:4px}
+    @media(max-width:600px){.review{margin-top:12px}.dialog{width:calc(100% - 16px);min-height:540px;max-height:none}.body{padding:12px}.status{font-size:10px}.card-header{gap:8px}.review h1{font-size:18px}.capability{gap:8px;padding:8px}.card-header .small{font-size:10px}.card-body{padding:12px}.actions{gap:12px}.primary{padding:0 12px}.capability-status{font-size:10px}}
+  </style>
+</head>
+<body>
+  <section class="review">
+    <h1>Antigravity CLI · 文字、看图、生图、改图</h1>
+    <div class="muted">2026-08-27 · 四项 CLI 能力已实测。下方是 Nomi 界面提案，按钮仅模拟，不调用模型。</div>
+    <div class="controls" aria-label="样张状态">
+      <button data-state="current" aria-pressed="true">当前实测记录</button><button data-state="login" aria-pressed="false">待登录 · 模拟</button><button data-state="unverified" aria-pressed="false">待验证 · 模拟</button><button data-state="partial" aria-pressed="false">文字通过 · 模拟</button><button data-state="image" aria-pressed="false">生图通过 · 模拟</button><button data-state="limited" aria-pressed="false">图像受限 · 模拟</button><button data-state="missing" aria-pressed="false">未安装 · 模拟</button>
+      <button id="theme" aria-pressed="false">切换明暗</button><button id="home-button">查看现有入口</button>
+    </div>
+  </section>
+  <main class="dialog" aria-label="模型设置样张">
+    <header class="header"><button class="icon" id="back" aria-label="返回模型设置">←</button><div class="grow"><h2 id="page-title">Antigravity CLI</h2><div id="breadcrumb" class="small subtle">模型设置 / 本地与会员</div></div></header>
+    <div class="body"><div class="content">
+      <section id="home" class="hidden">
+        <div class="section">已接入</div>
+        <div class="group"><button class="row" id="agnes-open"><span class="glyph">A</span><span class="grow"><strong>Agnes AI</strong><span class="small subtle" style="display:block">文字、图像与视频</span></span><span class="small muted">查看模型</span><span>›</span></button></div>
+        <div class="section">添加服务</div>
+        <div class="group"><button class="row" data-explain="现有 API 接入流程保持不变"><span class="glyph">API</span><span class="grow"><strong>自定义 API</strong><span class="small subtle" style="display:block">使用已有地址和 API Key</span></span><span>›</span></button></div>
+        <div class="section">其他方式</div>
+        <div class="group"><button class="row" id="local-toggle" aria-expanded="true"><span class="glyph">⌘</span><span class="grow"><strong>本地与会员</strong><span class="small subtle" style="display:block">使用本机工具与已登录账号</span></span><span>⌄</span></button><div id="local-rows"><button class="row" data-explain="既有 Codex 本地生图入口保持不变"><span class="glyph">C</span><span class="grow">Codex 本地生图</span><span>›</span></button><button class="row" id="agy-open"><span class="glyph">AG</span><span class="grow"><strong>Antigravity CLI</strong><span class="small subtle" style="display:block">本机 Google 登录 · 文字与图像能力</span></span><span id="home-status" class="small muted">待登录</span><span>›</span></button></div></div>
+      </section>
+      <section id="detail">
+        <div class="card">
+          <div class="card-header"><span class="glyph strong">AG</span><span class="grow"><strong>Antigravity CLI</strong><span class="small subtle" style="display:block">使用本机 Google 登录，无需 API Key</span></span><span id="status" class="status"><span class="dot"></span><span id="status-label">接入进行中</span></span></div>
+          <div class="card-body">
+            <div id="notice" class="notice"><strong id="notice-title">四项 CLI 能力通过，Nomi 接入进行中</strong><div id="notice-body" class="muted">文字、看图、生图和改图均已实测。Nomi 的媒体入库、任务入口和正式界面尚未接通。</div></div>
+            <div class="capability-groups" aria-label="选择要验证的能力">
+              <section class="capability-section" aria-labelledby="text-heading">
+                <h3 class="section" id="text-heading">文字与理解</h3>
+                <div class="group">
+                  <button class="capability row" data-capability="text" aria-pressed="true"><span class="selection" aria-hidden="true"></span><span class="grow"><strong>文字生成</strong><span class="small muted">文案、拆镜与提示词</span></span><span class="capability-status" data-capability-status="text">CLI 已实测</span></button>
+                  <button class="capability row" data-capability="vision" aria-pressed="false"><span class="selection" aria-hidden="true"></span><span class="grow"><strong>看图理解</strong><span class="small muted">图片输入 → 文字回复</span></span><span class="capability-status" data-capability-status="vision">未验证</span></button>
+                </div>
+              </section>
+              <section class="capability-section" aria-labelledby="image-heading">
+                <h3 class="section" id="image-heading">图像生成与编辑</h3>
+                <div class="group">
+                  <button class="capability row" data-capability="image" aria-pressed="false"><span class="selection" aria-hidden="true"></span><span class="grow"><strong>生成图片</strong><span class="small muted">文字描述 → 项目图片素材</span></span><span class="capability-status" data-capability-status="image">未验证</span></button>
+                  <button class="capability row" data-capability="edit" aria-pressed="false"><span class="selection" aria-hidden="true"></span><span class="grow"><strong>编辑图片</strong><span class="small muted">参考图片 + 修改要求 → 新图片</span></span><span class="capability-status" data-capability-status="edit">未验证</span></button>
+                </div>
+              </section>
+            </div>
+            <div class="test-area">
+              <div class="actions"><button id="primary" class="primary">复制登录命令</button><button id="recheck" class="link">重新检测</button><a href="https://www.antigravity.google/docs/cli/install/" target="_blank" rel="noopener noreferrer" class="link">安装与登录说明 ↗</a></div>
+              <div id="selected-hint" class="small muted">登录后，先试跑「文字生成」。每项能力分别验证，不会一起标为可用。</div>
+            </div>
+            <details id="connection-details"><summary>连接详情</summary>
+              <div class="kv"><span class="subtle">执行程序</span><code>agy</code></div>
+              <div class="kv"><span class="subtle">本机模型记录</span><span>14 个模型 / 档位；13 项文字试跑通过，Pro Low 仍超时</span></div>
+              <div class="kv"><span class="subtle">官方图像工具</span><span>generate_image · 生图和参考图编辑已实测</span></div>
+              <p class="small muted">2026-08-27 实测记录，不是实时状态。模型清单不代表每项模型都支持图像；图片已生成并解码验证，但 Nomi 的媒体权限接线、素材入库与重开仍未完成。</p>
+              <div class="kv"><span class="subtle">视频与音频</span><span>尚无通过验证的 CLI 生成通道，不显示可用入口</span></div>
+              <div class="kv"><span class="subtle">网络</span><span>使用 Nomi 全局网络设置；CLI 兼容性待验证</span></div>
+              <div class="kv"><span class="subtle">本机配置</span><span>CLI 启动会加载用户自己的全局配置</span></div>
+              <div class="kv"><span class="subtle">用量</span><span>以 Google 账号实际额度为准</span></div>
+              <p class="small subtle">各项能力通过试跑后才能启用。CLI 媒体工具不等于 Nomi 助手工具；画布、素材与时间轴工具执行须另行验证。Nomi 不读取或复制 Google 登录 token，不自动改用付费 API；授权仍以 Google 条款为准。</p>
+            </details>
+          </div>
+        </div>
+      </section>
+      <section id="agnes" class="hidden"><div class="card"><div class="card-header"><span class="glyph strong">A</span><span class="grow"><strong>Agnes AI</strong><span class="small subtle" style="display:block">沿用已有 Key 与通用模型分组</span></span><span class="status">目录 10 款</span></div><div class="card-body"><div class="notice"><strong>此 Key 返回 6 款模型</strong><div class="muted">完整目录与当前套餐权限分开显示；未列出的模型不自动启用。</div></div><div class="section" style="margin-top:0">文字 · 2 / 5</div><div class="chips"><span class="chip active">Agnes 2.0 Flash</span><span class="chip active">Agnes 2.5 Flash</span><span class="chip subtle">2.5 Pro Alpha</span><span class="chip subtle">2.5 Pro Beta</span><span class="chip subtle">2.5 Pro</span></div><div class="section" style="margin-top:0">图像 · 2 / 2</div><div class="chips"><span class="chip active">Agnes Image 2.0 Flash</span><span class="chip active">Agnes Image 2.1 Flash</span></div><div class="section" style="margin-top:0">视频 · 2 / 3</div><div class="chips"><span class="chip active">Agnes Video V2.0</span><span class="chip active">Agnes Video 2.5 Flash</span><span class="chip subtle">Agnes Video 2.5</span></div><div class="small subtle">这里只展示分组与状态提案，不代表已在 Nomi 完成新增模型接入。具体模式仍使用现有生成参数面板。</div></div></div></section>
+      <div id="feedback" class="foot" aria-live="polite">CLI 实测记录来自 2026-08-27；界面仍为设计提案，按钮只模拟，不代表 Nomi 已完成接入。</div>
+    </div></div>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    let state = 'current';
+    let selected = 'text';
+    let testing = false;
+    const labels = {text:'文字生成', vision:'看图理解', image:'生成图片', edit:'编辑图片'};
+    const states = {
+      current: {label:'接入进行中',title:'四项 CLI 能力通过，Nomi 接入进行中',body:'文字、看图、生图和改图均已实测。Nomi 的媒体入库、任务入口和正式界面尚未接通。',capabilities:{text:'ready',vision:'ready',image:'ready',edit:'ready'}},
+      login: {label:'待登录 · 示例',title:'CLI 已安装，先完成 Google 登录 · 模拟',body:'示例状态：在终端运行 agy，由你本人登录。回来后分别验证文字、看图、生图和改图。',capabilities:{}},
+      missing: {label:'未安装 · 示例',title:'先安装官方 CLI',body:'按官方说明安装后运行 agy 登录；安装本身不代表任何能力已经通过验证。',capabilities:{}},
+      unverified: {label:'待验证 · 示例',title:'选择一项能力试跑',body:'模拟已登录：文字、看图、生图和改图各测一次，只启用通过的能力。',capabilities:{}},
+      partial: {label:'部分通过 · 示例',title:'文字已验证，图像能力还未验证',body:'模拟结果：文字回复通过；看图、生成图片和编辑图片仍需分别试跑。',capabilities:{text:'ready'}},
+      image: {label:'部分通过 · 示例',title:'文字和生图通过，其余待验证',body:'模拟结果：已收到文字和图片产物。生图通过不会替代看图或改图验证。',capabilities:{text:'ready',image:'ready'}},
+      limited: {label:'部分受限 · 示例',title:'图像额度受限，文字状态独立保留',body:'模拟结果：图片任务收到额度限制；不自动重试，不切换其他付费接口。',capabilities:{text:'ready',image:'limited',edit:'limited'}},
+    };
+    function render() {
+      const value = states[state];
+      $('status-label').textContent = value.label;
+      $('home-status').textContent = value.label;
+      $('notice-title').textContent = testing ? '正在试跑「'+labels[selected]+'」· 模拟' : value.title;
+      $('notice-body').textContent = testing ? '这里只演示取消操作，没有启动 CLI 或调用模型。' : value.body;
+      $('status').className = 'status '+(state === 'limited' ? 'error' : '');
+      $('notice').className = 'notice '+(state === 'limited' ? 'error' : '');
+      document.querySelectorAll('[data-state]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.state === state)));
+      document.querySelectorAll('[data-capability]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.capability === selected));
+        button.disabled = testing;
+      });
+      document.querySelectorAll('[data-capability-status]').forEach(element => {
+        const status = value.capabilities[element.dataset.capabilityStatus] || 'unverified';
+        element.className = 'capability-status '+status;
+        element.textContent = status === 'ready' ? (state === 'current' ? 'CLI 已实测' : '已验证 · 示例') : status === 'limited' ? '受限 · 示例' : '未验证';
+      });
+      $('primary').textContent = testing ? '取消试跑（模拟）' : state === 'missing' ? '查看安装方法' : state === 'login' ? '复制登录命令' : (value.capabilities[selected] === 'ready' ? '重新试跑' : '试跑')+'「'+labels[selected]+'」（模拟）';
+      $('recheck').disabled = testing;
+      $('selected-hint').textContent = state === 'login' ? '登录后，先试跑「'+labels[selected]+'」。每项能力分别验证，不会一起标为可用。' : testing ? '取消后保留先前验证记录；本次未完成的试跑不计成功。' : state === 'current' ? '当前选择：'+labels[selected]+'。CLI 实测通过；此按钮仅演示，不会执行任务或启用 Nomi 能力。' : '当前选择：'+labels[selected]+'。验证会使用账号额度；本样张不会发起调用。';
+    }
+    function page(name) {
+      ['home','detail','agnes'].forEach(id => $(id).classList.toggle('hidden', id !== name));
+      $('page-title').textContent = name === 'home' ? '模型设置' : name === 'agnes' ? 'Agnes AI' : 'Antigravity CLI';
+      $('breadcrumb').textContent = name === 'home' ? '连接与模型' : name === 'agnes' ? '模型设置 / Agnes AI' : '模型设置 / 本地与会员';
+      $('back').classList.toggle('hidden', name === 'home');
+      document.querySelector('.body').scrollTop = 0;
+    }
+    document.querySelectorAll('[data-state]').forEach(button => button.onclick = () => {
+      state = button.dataset.state;
+      testing = false;
+      selected = ['image','limited'].includes(state) ? 'image' : 'text';
+      $('feedback').textContent = state === 'current' ? 'CLI 实测记录来自 2026-08-27；界面仍为设计提案，按钮只模拟，不代表 Nomi 已完成接入。' : '完整能力设计提案 · 当前成功和受限状态均为模拟，不是本机真实验证结果。';
+      render(); page('detail');
+    });
+    document.querySelectorAll('[data-capability]').forEach(button => button.onclick = () => { selected = button.dataset.capability; render(); });
+    $('theme').onclick = () => {
+      const dark = document.documentElement.dataset.mantineColorScheme !== 'dark';
+      document.documentElement.dataset.mantineColorScheme = dark ? 'dark' : 'light';
+      $('theme').setAttribute('aria-pressed', String(dark));
+    };
+    $('back').onclick = $('home-button').onclick = () => { testing = false; render(); page('home'); };
+    $('agy-open').onclick = () => page('detail');
+    $('agnes-open').onclick = () => page('agnes');
+    $('local-toggle').onclick = () => {
+      const hide = $('local-rows').classList.toggle('hidden');
+      $('local-toggle').setAttribute('aria-expanded', String(!hide));
+    };
+    $('recheck').onclick = () => { $('feedback').textContent = '样张：重新检测只检查 CLI 状态，不调用模型，也不把未验证的能力改为可用。'; };
+    $('primary').onclick = async () => {
+      if (state === 'missing') { window.open('https://www.antigravity.google/docs/cli/install/', '_blank', 'noopener'); return; }
+      if (state === 'login') {
+        try { await navigator.clipboard.writeText('agy'); $('feedback').textContent = '已复制 agy。请在终端运行并由你本人完成 Google 登录；样张不会执行命令。'; }
+        catch { $('feedback').textContent = '请在终端输入 agy 完成登录。当前浏览器未允许复制。'; }
+        return;
+      }
+      testing = !testing;
+      $('feedback').textContent = testing ? '模拟试跑已展开。未执行 CLI、未消耗额度；可以取消。' : '模拟试跑已取消，没有新增成功记录。';
+      render();
+    };
+    document.querySelectorAll('[data-explain]').forEach(button => button.onclick = () => { $('feedback').textContent = button.dataset.explain; });
+    render();
+  </script>
+</body>
+</html>

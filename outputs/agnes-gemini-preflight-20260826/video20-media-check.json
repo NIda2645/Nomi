@@ -1,0 +1,68 @@
+[
+  {
+    "case": "t2v",
+    "status": "completed",
+    "urls": [
+      [
+        ".url",
+        "https://platform-outputs.agnes-ai.space/videos/agnes-video-v2.0/video_94df569edac44e508c2cf2315942035c.mp4"
+      ]
+    ],
+    "downloaded_bytes": 1009320,
+    "ffprobe_exit": 0,
+    "media": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 832,
+          "height": 448
+        },
+        {
+          "codec_name": "aac"
+        }
+      ],
+      "format": {
+        "duration": "3.041667"
+      }
+    }
+  },
+  {
+    "case": "i2v",
+    "status": "completed",
+    "urls": [
+      [
+        ".request_params.image",
+        "https://picsum.photos/seed/nomi-agnes/1024/1024"
+      ],
+      [
+        ".request_params.image_list.0",
+        "https://picsum.photos/seed/nomi-agnes/1024/1024"
+      ],
+      [
+        ".url",
+        "https://cos-platform-outputs.agnes-ai.cn/videos/agnes-video-v2.0/video_f6d8dd67d4cf46d8bbc173d9a1879842.mp4"
+      ]
+    ],
+    "downloaded_bytes": 859326,
+    "ffprobe_exit": 0,
+    "media": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 832,
+          "height": 448
+        },
+        {
+          "codec_name": "aac"
+        }
+      ],
+      "format": {
+        "duration": "3.041667"
+      }
+    }
+  }
+]

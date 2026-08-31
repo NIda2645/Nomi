@@ -1,0 +1,14 @@
+{
+  "completed_at": 1787753020,
+  "created_at": 1787752968,
+  "error": null,
+  "id": "task_SkaBzoZeDqT5mC6k2k1dnDodYep0VqgQ",
+  "object": "video",
+  "progress": 100,
+  "quality": "standard",
+  "seconds": "4",
+  "size": "720P",
+  "started_at": 1787752969,
+  "status": "completed",
+  "url": "https://platform-outputs.agnes-ai.space/videos/agnes-video-2.5/task_SkaBzoZeDqT5mC6k2k1dnDodYep0VqgQ.mp4"
+}

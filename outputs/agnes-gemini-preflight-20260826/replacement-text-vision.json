@@ -1,0 +1,18 @@
+{
+  "model": "agnes-2.5-flash",
+  "http_status": 200,
+  "content": "\n\nThe main object is a red origami crane.",
+  "usage": {
+    "completion_tokens": 122,
+    "prompt_tokens": 1325,
+    "total_tokens": 1447,
+    "completion_tokens_details": {
+      "reasoning_tokens": 110,
+      "text_tokens": 12
+    },
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "image_tokens": 1024
+    }
+  }
+}

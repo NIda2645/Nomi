@@ -1,0 +1,1387 @@
+{
+  "tempRoot": "/tmp/nomi-antigravity-application-20260827",
+  "build": "945c6a6878241dac7c5de6bcc7dd8603dec5080ab414788b3db896a615c1e815",
+  "actions": [
+    {
+      "command": {
+        "action": "inspect"
+      },
+      "result": {
+        "pages": [],
+        "buttons": [
+          {
+            "text": "浏览器",
+            "aria": "打开浏览器",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "设置",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "新建空白项目从一段文字或想法开始",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "打开已有文件夹把素材文件夹变成项目",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "重看一遍引导60 秒预览，从一句话到成片",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "连接助手模型",
+            "aria": null,
+            "testid": "open-model-settings",
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "全部 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "本地新建 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "外部文件夹 0",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作未命名项目 08/27 02:128 分钟前",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null
+          },
+          {
+            "text": "",
+            "aria": "删除项目 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "打开项目文件夹 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          }
+        ],
+        "nodes": [],
+        "images": [
+          {
+            "alt": "",
+            "loaded": true,
+            "width": 1024,
+            "height": 1024
+          }
+        ]
+      }
+    },
+    {
+      "command": {
+        "action": "click",
+        "selector": "[aria-label=\"设置\"]"
+      },
+      "result": {
+        "clicked": "[aria-label=\"设置\"]"
+      }
+    },
+    {
+      "command": {
+        "action": "inspect"
+      },
+      "result": {
+        "pages": [],
+        "buttons": [
+          {
+            "text": "浏览器",
+            "aria": "打开浏览器",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "设置",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "新建空白项目从一段文字或想法开始",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "打开已有文件夹把素材文件夹变成项目",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "重看一遍引导60 秒预览，从一句话到成片",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "连接助手模型",
+            "aria": null,
+            "testid": "open-model-settings",
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "全部 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "本地新建 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "外部文件夹 0",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作未命名项目 08/27 02:128 分钟前",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null
+          },
+          {
+            "text": "",
+            "aria": "删除项目 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "打开项目文件夹 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "文件与保存",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "模型",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "AI 策略",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "自动化与权限",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "通用",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "关于",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "关闭",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "选择",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": true
+          },
+          {
+            "text": "更改…",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": true
+          },
+          {
+            "text": "打开文件夹",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          }
+        ],
+        "nodes": [],
+        "images": [
+          {
+            "alt": "",
+            "loaded": true,
+            "width": 1024,
+            "height": 1024
+          }
+        ]
+      }
+    },
+    {
+      "command": {
+        "action": "textClick",
+        "text": "模型"
+      },
+      "result": {
+        "clicked": "模型"
+      }
+    },
+    {
+      "command": {
+        "action": "inspect"
+      },
+      "result": {
+        "pages": [
+          "home"
+        ],
+        "buttons": [
+          {
+            "text": "浏览器",
+            "aria": "打开浏览器",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "设置",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "新建空白项目从一段文字或想法开始",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "打开已有文件夹把素材文件夹变成项目",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "重看一遍引导60 秒预览，从一句话到成片",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "连接助手模型",
+            "aria": null,
+            "testid": "open-model-settings",
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "全部 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "本地新建 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "外部文件夹 0",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作未命名项目 08/27 02:128 分钟前",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null
+          },
+          {
+            "text": "",
+            "aria": "删除项目 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "打开项目文件夹 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "文件与保存",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "模型",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "AI 策略",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "自动化与权限",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "通用",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "关于",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "关闭",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "AGAntigravity CLI7 个模型 · 1 个工具 · 1 个自动路由6 个可使用",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": "antigravity-cli",
+            "disabled": false
+          },
+          {
+            "text": "接入 APIMart推荐一个 Key，接入预置文本、图片、视频与音频模型填写 Key",
+            "aria": null,
+            "testid": null,
+            "available": "apimart",
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "接入 Kie.ai一个 Key，接入预置图片与视频模型；上传通道也一并免费解锁填写 Key",
+            "aria": null,
+            "testid": null,
+            "available": "kie",
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "更多已适配平台Agnes AI、魔搭、火山方舟等查看全部",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "自定义 API / 中转站先保存地址与 Key，再获取列表或手动输入模型",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "本地运行时与即梦会员不使用平台 API Key 的接入方式3 类",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "我已有调用脚本高级自定义普通 HTTP 请求；模型输入项仍需单独设置",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          }
+        ],
+        "nodes": [],
+        "images": [
+          {
+            "alt": "",
+            "loaded": true,
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "alt": "",
+            "loaded": true,
+            "width": 96,
+            "height": 96
+          },
+          {
+            "alt": "",
+            "loaded": true,
+            "width": 96,
+            "height": 96
+          }
+        ]
+      }
+    },
+    {
+      "command": {
+        "action": "click",
+        "selector": "[data-model-home-connection=\"antigravity-cli\"]"
+      },
+      "result": {
+        "clicked": "[data-model-home-connection=\"antigravity-cli\"]"
+      }
+    },
+    {
+      "command": {
+        "action": "verifyGroups"
+      },
+      "result": {
+        "families": 7,
+        "labels": [
+          "GPT-OSS 120B",
+          "Claude Opus 4.6",
+          "Claude Sonnet 4.6",
+          "Gemini 3.1 Pro",
+          "Gemini 3.5 Flash",
+          "Gemini 3.6 Flash",
+          "Gemini 3.7 Flash",
+          "图像工具 · generate_image",
+          "自动选择（auto）"
+        ]
+      }
+    },
+    {
+      "command": {
+        "action": "screenshot",
+        "name": "27-final-grouped-models-light"
+      },
+      "result": "/Users/aoqimin/Desktop/Nomi-agnes-gemini-20260826/outputs/antigravity-authenticated-20260827/application/27-final-grouped-models-light.png"
+    },
+    {
+      "command": {
+        "action": "textClick",
+        "text": "Gemini 3.7 Flash"
+      },
+      "result": {
+        "clicked": "Gemini 3.7 Flash"
+      }
+    },
+    {
+      "command": {
+        "action": "verifyDetail",
+        "modelId": "gemini-3.7-flash-medium",
+        "variant": "Medium",
+        "enabled": true
+      },
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'gemini-3.7-flash-low'\n- 'gemini-3.7-flash-medium'\n                    ^\n"
+    },
+    {
+      "command": {
+        "action": "screenshot",
+        "name": "28-final-model-detail-medium"
+      },
+      "result": "/Users/aoqimin/Desktop/Nomi-agnes-gemini-20260826/outputs/antigravity-authenticated-20260827/application/28-final-model-detail-medium.png"
+    },
+    {
+      "command": {
+        "action": "inspect"
+      },
+      "result": {
+        "pages": [
+          "connection",
+          "model"
+        ],
+        "buttons": [
+          {
+            "text": "浏览器",
+            "aria": "打开浏览器",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "设置",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "新建空白项目从一段文字或想法开始",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "打开已有文件夹把素材文件夹变成项目",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "重看一遍引导60 秒预览，从一句话到成片",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "连接助手模型",
+            "aria": null,
+            "testid": "open-model-settings",
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "全部 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "本地新建 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "外部文件夹 0",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作未命名项目 08/27 02:128 分钟前",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null
+          },
+          {
+            "text": "",
+            "aria": "删除项目 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "打开项目文件夹 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "文件与保存",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "模型",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "AI 策略",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "自动化与权限",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "通用",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "关于",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "关闭",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "返回",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Antigravity CLI使用本机 Google 登录，无需 API Key已启用",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": true
+          },
+          {
+            "text": "重新检测",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "GPT-OSS 120B",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Claude Opus 4.6",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Claude Sonnet 4.6",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Gemini 3.1 Pro",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Gemini 3.5 Flash",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Gemini 3.6 Flash",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Gemini 3.7 Flash",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "图像工具 · generate_image",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "自动选择（auto）",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "连接详情",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null
+          },
+          {
+            "text": "停用此连接",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "关闭",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "返回",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "文字生成",
+            "aria": "测试能力",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "重新试跑「文字生成」",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Low",
+            "aria": "思考档位",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          }
+        ],
+        "nodes": [],
+        "images": [
+          {
+            "alt": "",
+            "loaded": true,
+            "width": 1024,
+            "height": 1024
+          }
+        ]
+      }
+    },
+    {
+      "command": {
+        "action": "click",
+        "selector": "[aria-label=\"思考档位\"]"
+      },
+      "result": {
+        "clicked": "[aria-label=\"思考档位\"]"
+      }
+    },
+    {
+      "command": {
+        "action": "inspect"
+      },
+      "result": {
+        "pages": [
+          "connection",
+          "model"
+        ],
+        "buttons": [
+          {
+            "text": "浏览器",
+            "aria": "打开浏览器",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "设置",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "新建空白项目从一段文字或想法开始",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "打开已有文件夹把素材文件夹变成项目",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "重看一遍引导60 秒预览，从一句话到成片",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "连接助手模型",
+            "aria": null,
+            "testid": "open-model-settings",
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "全部 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "本地新建 1",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "外部文件夹 0",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作未命名项目 08/27 02:128 分钟前",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null
+          },
+          {
+            "text": "",
+            "aria": "删除项目 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "继续创作",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "打开项目文件夹 未命名项目 08/27 02:12",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "文件与保存",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "模型",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "AI 策略",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "自动化与权限",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "通用",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "关于",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "关闭",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "返回",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Antigravity CLI使用本机 Google 登录，无需 API Key已启用",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": true
+          },
+          {
+            "text": "重新检测",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "GPT-OSS 120B",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Claude Opus 4.6",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Claude Sonnet 4.6",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Gemini 3.1 Pro",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Gemini 3.5 Flash",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Gemini 3.6 Flash",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Gemini 3.7 Flash",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "图像工具 · generate_image",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "自动选择（auto）",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "连接详情",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null
+          },
+          {
+            "text": "停用此连接",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "关闭",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "",
+            "aria": "返回",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "文字生成",
+            "aria": "测试能力",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "重新试跑「文字生成」",
+            "aria": null,
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          },
+          {
+            "text": "Low",
+            "aria": "思考档位",
+            "testid": null,
+            "available": null,
+            "connection": null,
+            "disabled": false
+          }
+        ],
+        "nodes": [],
+        "images": [
+          {
+            "alt": "",
+            "loaded": true,
+            "width": 1024,
+            "height": 1024
+          }
+        ]
+      }
+    },
+    {
+      "command": {
+        "action": "key",
+        "key": "ArrowDown"
+      },
+      "result": {
+        "key": "ArrowDown"
+      }
+    },
+    {
+      "command": {
+        "action": "key",
+        "key": "Enter"
+      },
+      "result": {
+        "key": "Enter"
+      }
+    },
+    {
+      "command": {
+        "action": "verifyDetail",
+        "modelId": "gemini-3.7-flash-medium",
+        "variant": "Medium",
+        "enabled": true
+      },
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'gemini-3.7-flash-low'\n- 'gemini-3.7-flash-medium'\n                    ^\n"
+    },
+    {
+      "command": {
+        "action": "screenshot",
+        "name": "29-final-model-detail-medium"
+      },
+      "result": "/Users/aoqimin/Desktop/Nomi-agnes-gemini-20260826/outputs/antigravity-authenticated-20260827/application/29-final-model-detail-medium.png"
+    },
+    {
+      "command": {
+        "action": "textClick",
+        "text": "Medium"
+      },
+      "error": "locator.click: Timeout 8000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('Medium', { exact: true }).first()\u001b[22m\n\u001b[2m    - locator resolved to <span class=\"min-w-0 truncate text-caption text-nomi-ink-80\">Medium</span>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    16 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not visible\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+    },
+    {
+      "command": {
+        "action": "verifyDetail",
+        "modelId": "gemini-3.7-flash-medium",
+        "variant": "Medium",
+        "enabled": true
+      },
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'gemini-3.7-flash-low'\n- 'gemini-3.7-flash-medium'\n                    ^\n"
+    },
+    {
+      "command": {
+        "action": "screenshot",
+        "name": "30-final-model-detail-medium"
+      },
+      "result": "/Users/aoqimin/Desktop/Nomi-agnes-gemini-20260826/outputs/antigravity-authenticated-20260827/application/30-final-model-detail-medium.png"
+    }
+  ],
+  "errors": []
+}
