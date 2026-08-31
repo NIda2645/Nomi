@@ -1,5 +1,9 @@
 # Agent 视频工作台竞品提取与 Nomi 对账
 
+> **策展说明（2026-09-01）**：本报告原随一个 525 文件证据包提交（PR #268）。已按裁决策展：留一手文本、删媒体副产物。
+> 索引 + 现状对账 + 回捞 SHA 见 [2026-08-24-agent-workbench-index.md](./2026-08-24-agent-workbench-index.md)；留存的竞品手册全文与页面 DOM 文本见 [`2026-08-24-agent-workbench/`](./2026-08-24-agent-workbench/)。
+> 下文提到的 `docx-media/`、`docx-render/`、`screenshots/*.png`、`source-manifest.json`、`*.json` 等**已删除**，永久保存在 git 历史提交 `ba838b77` 的 `outputs/research-20260824-agent-workbench/` 下（`git show ba838b77:<路径>` 回捞）。
+
 日期：2026-08-24  
 范围：用户提供的 4 份 DOCX、11 个网页/飞书链接，并补充检查了当前可访问的产品首页、画布和 TapNow Brainstorm 页面。  
 原则：把“页面上实际看见的事实”“Nomi 当前代码事实”“建议/推断”分开；没有登录、权限或接口授权的内容不做猜测，也不把营销页的能力描述当成已验证的运行能力。
