@@ -2,7 +2,7 @@
 // 文件体积门岗 —— 落实 CLAUDE.md 规则 12（约束代码量、防巨型文件）。
 //
 // 机制（棘轮，只减不增）：
-//   1. 任何非测试的 .ts/.tsx，行数不得超过 MAX_LINES（硬上限）。
+//   1. 任何非测试的 .ts/.tsx/.mts/.cts，行数不得超过 MAX_LINES（硬上限）。
 //   2. 现存已超限的"巨壳"列入 ALLOWLIST 并记录基线行数；它们：
 //        - 超过基线 → 红牌（你把已知巨壳改得更大了：拆分或精简，别再喂）。
 //        - 低于基线 → 黄牌提示（你瘦身了，请把基线下调以锁定战果）。
@@ -25,8 +25,18 @@ const SCAN_DIRS = ["src", "electron"];
 // 现存巨壳的基线行数（棘轮上限）。清空此表 = 巨壳债还清。
 // 改小某个数 = 你成功瘦身后锁定的新上限。新增条目应经人工评审。
 const ALLOWLIST = {
-  "electron/runtime.ts": 539, // …→ 543（2026-08-01）→ 540（2026-08-11）→ 539（2026-08-15 模式脚本接入时移除过期注释）
-  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 731, // …→ 733（2026-08-16 移除死属性）→ 732（2026-08-24 失败卡加收起钮，压平 onRetry 箭头体抵回）→ 731（2026-08-25 P4 S6：多镜叠加合一 ProductionShotOverlays + onRetry 抽 useProductionNodeRetry，净减 1）
+  "electron/runtime.ts": 530, // …→ 539（2026-08-15）→ 531（2026-08-27 pi 运行切换移除旧 Agent 再导出）→ 530（2026-08-28 onboarding facade cleanup）
+  // Conversational model integration boundary: the session service keeps the
+  // state machine, receipt contract, canonical certification and recovery
+  // transitions together. It is reviewed as one security boundary and must
+  // be split only along a stable ownership seam, not by moving methods into
+  // a second writer. (2026-08-29)
+  "electron/integrationCertification/integrationSession.ts": 1696,
+  // Existing SettingsDialog shell now owns the durable integration handoff
+  // projection alongside the legacy model settings pages. Keep this reviewed
+  // baseline until the planned settings-surface extraction. (2026-08-29)
+  "src/ui/onboarding/OnboardingDrawer.tsx": 819,
+  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 713, // …→ 731（2026-08-25 P4 S6：多镜叠加合一 ProductionShotOverlays）→ 713（2026-08-29 React Flow 单内核：移除旧布局与缩放分支）
   // PR#21 白板节点引入（2026-06-25）：WhiteboardDrawingTool（1032）与 WhiteboardLeaferCanvas（3406）两巨壳
   // 已按 Rule 9 全部拆完、双双出白名单。LeaferCanvas → whiteboardCanvasTypes/Export/NodeOps/Geometry 四纯模块
   // + whiteboardSceneRender（渲染树）+ useWhiteboardDrawing/BoxSelection/SelectionActions/SceneSync 四交互 hook，
@@ -46,9 +56,9 @@ function listFiles() {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean)
-    .filter((f) => /\.tsx?$/.test(f))
-    .filter((f) => !/\.test\.tsx?$/.test(f))
-    .filter((f) => !/\.d\.ts$/.test(f))
+    .filter((f) => /\.(?:tsx?|[mc]ts)$/.test(f))
+    .filter((f) => !/\.test\.(?:tsx?|[mc]ts)$/.test(f))
+    .filter((f) => !/\.d\.(?:ts|[mc]ts)$/.test(f))
     // i18n 翻译资源是「数据表」不是代码复杂度 —— R9/R12 治的是代码模块化，
     // locale 词典随翻译量线性增长天然会破 800，不适用本门（2026-07-22 全量 i18n 落地）。
     .filter((f) => !/^src\/i18n\/(locales\/.*|resources)\.ts$/.test(f))

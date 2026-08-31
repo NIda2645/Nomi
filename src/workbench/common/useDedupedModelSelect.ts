@@ -10,6 +10,7 @@ import type { NomiSelectOption } from '../../design'
 import i18n from '../../i18n'
 import { dedupeModelOptions, resolveBestProvider, type DedupedModel } from '../../config/modelIdentity'
 import { isModelRecentlyAiling } from '../generationCanvas/runner/modelHealthMemory'
+import { translateModelDisplayText } from '../../i18n/modelDisplayText'
 
 import type { ModelProviderRef } from '../../config/modelIdentity'
 
@@ -30,12 +31,12 @@ const VENDOR_LABELS: Record<string, string> = {
 /** 厂商显示名：内置短名映射（下拉附注要短）> option.vendorName（自定义中转的真名）> key 原样。
  *  短名优先：catalog 里内置家的 name 是接入卡全称（如「即梦会员（本地 CLI）」），当 trailing 太啰嗦。 */
 function providerLabel(provider?: ModelProviderRef | null): string {
-  if (!provider) return '默认'
+  if (!provider) return translateModelDisplayText('默认')
   const short = provider.vendor ? VENDOR_LABELS[provider.vendor.toLowerCase()] : undefined
-  if (short) return short
+  if (short) return translateModelDisplayText(short)
   const fromCatalog = provider.option.vendorName?.trim()
-  if (fromCatalog) return fromCatalog
-  return provider.vendor || '默认'
+  if (fromCatalog) return translateModelDisplayText(fromCatalog)
+  return translateModelDisplayText(provider.vendor || '默认')
 }
 
 /** 该模型是否「病」了：**每一家**供应商都在避让期才算。注入判据便于纯函数单测。 */
@@ -57,7 +58,8 @@ function isModelAiling(model: DedupedModel, isAiling: AilingProbe): boolean {
 export function buildModelSelectOptions(deduped: readonly DedupedModel[], isAiling: AilingProbe): NomiSelectOption[] {
   const toOption = (m: DedupedModel): NomiSelectOption => {
     // 厂商标注（用户 2026-07-17：模型来自哪家要看得见）：多家=「N 家」，单家=厂商短名。
-    const origin = m.providers.length > 1 ? `${m.providers.length} 家` : providerLabel(m.providers[0])
+    const providerCount = new Set(m.providers.map((p) => p.vendor || p.option.value)).size
+    const origin = providerCount > 1 ? `${providerCount} 家` : providerLabel(m.providers[0])
     if (!isModelAiling(m, isAiling)) return { value: m.canonicalId, label: m.label, trailing: origin }
     return {
       value: m.canonicalId,
@@ -197,6 +199,10 @@ export interface DedupedModelSelectView {
   providerValue: string
   /** 锁定某家供应商：解析寻址串后回写该家 (option.value, vendor)。 */
   onProviderPick: (addressValue: string) => void
+  /** Exact enabled catalog variants for the selected supplier; no synthetic model IDs. */
+  variantOptions: NomiSelectOption[]
+  variantValue: string
+  onVariantPick: (addressValue: string) => void
   /** 当前选中的去重模型（供上层取档案/变体等）。 */
   selectedModel: DedupedModel | null
 }
@@ -216,8 +222,8 @@ export function useDedupedModelSelect(
   const deduped = React.useMemo(() => dedupeModelOptions([...modelOptions]), [modelOptions])
 
   const selectedModel = React.useMemo(
-    () => deduped.find((m) => m.providers.some((p) => p.option.value === value)) || null,
-    [deduped, value],
+    () => deduped.find((m) => m.providers.some((p) => p.option.value === value && (!vendor || p.vendor === vendor))) || null,
+    [deduped, value, vendor],
   )
 
   const modelOptionsView = React.useMemo<NomiSelectOption[]>(
@@ -230,10 +236,14 @@ export function useDedupedModelSelect(
     (canonicalId: string) => {
       const model = deduped.find((m) => m.canonicalId === canonicalId)
       if (!model) return
+      // Reopening/reselecting the family must not reset a saved reasoning tier.
+      const current = model.providers.find((p) => p.option.value === value && (!vendor || p.vendor === vendor))
+      if (current) { onChange(current.option.value, current.vendor); return }
       const best = pickHealthiestProvider(model, isModelRecentlyAiling)
-      if (best) onChange(best.option.value, best.vendor)
+      const preferred = model.providers.find((p) => p.vendor === best?.vendor && p.option.variant?.defaultVariant) || best
+      if (preferred) onChange(preferred.option.value, preferred.vendor)
     },
-    [deduped, onChange],
+    [deduped, onChange, value, vendor],
   )
 
   const providerOptionsView = React.useMemo<NomiSelectOption[]>(
@@ -245,18 +255,31 @@ export function useDedupedModelSelect(
     (addressValue: string) => {
       const picked = selectedModel?.providers.find((p) => providerAddress(p) === addressValue)
       if (picked) onChange(picked.option.value, picked.vendor)
-      else if (addressValue) onChange(addressValue)
     },
     [selectedModel, onChange],
   )
+
+  const providerValue = resolveProviderSelectValue(selectedModel, value, vendor)
+  const selectedProvider = selectedModel?.providers.find((p) => providerAddress(p) === providerValue)
+  const variantOptions = selectedProvider?.option.variant
+    ? (selectedModel?.providers || [])
+        .filter((p) => p.vendor === selectedProvider.vendor && p.option.variant)
+        .map((p) => ({ value: providerAddress(p), label: p.option.variant!.variantLabel }))
+    : []
+  const onVariantPick = (addressValue: string): void => {
+    if (variantOptions.some((option) => option.value === addressValue)) onProviderPick(addressValue)
+  }
 
   return {
     modelOptions: modelOptionsView,
     modelValue: selectedModel?.canonicalId || '',
     onModelPick,
     providerOptions: providerOptionsView,
-    providerValue: resolveProviderSelectValue(selectedModel, value, vendor),
+    providerValue,
     onProviderPick,
+    variantOptions,
+    variantValue: selectedProvider ? providerAddress(selectedProvider) : '',
+    onVariantPick,
     selectedModel,
   }
 }

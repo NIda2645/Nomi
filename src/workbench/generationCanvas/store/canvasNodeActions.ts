@@ -1,14 +1,16 @@
-import { createGenerationNode, removeNodes, upsertNode } from '../model/graphOps'
+import { createEdgeId, createGenerationNode, removeNodes, upsertNode } from '../model/graphOps'
+import { normalizeParameterEdges } from '../model/parameterReferenceSlots'
 import { resolveInsertionPosition } from './resolveInsertionPosition'
 import { tidyCanvasLayout } from './tidyCanvasLayout'
 import { getDefaultCategoryForNodeKind, type GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { getNodeSize } from '../model/generationNodeKinds'
+import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { isShotNumberedNode, nextShotIndex } from '../model/shotNumbering'
 import { buildCanvasNode } from '../../../../electron/capabilityCore/canvasNodeFactory'
 import { RENDERER_NODE_FACTORY_DEPS } from './rendererNodeFactoryDeps'
 import { CLIPBOARD_OFFSET, createClipboardNodeId, createNodeId } from './canvasIds'
 import { bumpPersistRevision, isCategoryId, shouldEmitCanvasMutation, shouldPersistCanvasMutation } from './canvasGuards'
-import { getHistoryFlags, pushUndoSnapshot } from '../events/canvasUndoJournal'
+import { getHistoryFlags, getUndoJournalGeneration, pushUndoSnapshot } from '../events/canvasUndoJournal'
+import { getActiveCanvasGestureContext } from '../events/canvasGestureContext'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { useWorkbenchStore } from '../../workbenchStore'
 import type { CanvasNodeActions, CanvasSliceCreator } from './canvasStoreTypes'
@@ -27,14 +29,18 @@ function reconcileTimelineForDeletedNodes(nodeIds: readonly string[]): void {
 // Cmd+Z 一撤直接跳回上一个结构操作,把整段输入连带丢掉(「回退不到我之前的地方」,
 // 2026-06-12 用户复现)。同一节点的连续编辑算一步;换节点或停顿 >3s 开新一步。
 const EDIT_BURST_WINDOW_MS = 3000
-let lastEditBurst = { nodeId: '', at: 0 }
+let lastEditBurst = { nodeId: '', at: 0, generation: -1 }
 
 function pushEditBurstBarrier(nodeId: string, state: unknown): void {
+  // Agent edits/compensation own a transaction barrier. They must not start or
+  // prolong a user's typing burst and swallow the next manual edit's Undo.
+  if (getActiveCanvasGestureContext()?.suppressUndoBarriers) return
   const now = Date.now()
-  if (lastEditBurst.nodeId !== nodeId || now - lastEditBurst.at > EDIT_BURST_WINDOW_MS) {
+  const generation = getUndoJournalGeneration()
+  if (lastEditBurst.generation !== generation || lastEditBurst.nodeId !== nodeId || now - lastEditBurst.at > EDIT_BURST_WINDOW_MS) {
     pushUndoSnapshot(state)
   }
-  lastEditBurst = { nodeId, at: now }
+  lastEditBurst = { nodeId, at: now, generation }
 }
 
 export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (set, get) => ({
@@ -98,10 +104,14 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
+      const declarationChanged = 'meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots
       Object.assign(node, patch)
+      if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       if (shouldPersistCanvasMutation(options)) bumpPersistRevision(state)
     })
-    emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
+    if (shouldEmitCanvasMutation(options)) {
+      emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
+    }
   },
   updateNodes: (updates) => {
     const currentState = get()
@@ -111,10 +121,15 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     pushUndoSnapshot(currentState)
     set((state) => {
       const patches = new Map(applicable.map((update) => [update.nodeId, update.patch]))
+      let declarationChanged = false
       for (const node of state.nodes) {
         const patch = patches.get(node.id)
-        if (patch) Object.assign(node, patch)
+        if (patch) {
+          if ('meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots) declarationChanged = true
+          Object.assign(node, patch)
+        }
       }
+      if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       bumpPersistRevision(state)
       Object.assign(state, getHistoryFlags())
     })
@@ -279,7 +294,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     set((state) => {
       const hits = state.nodes.filter((node) => {
         if (categoryId && (node.categoryId || 'shots') !== categoryId) return false
-        const { width: w, height: h } = getNodeSize(node)
+        const { width: w, height: h } = resolveNodeVisualSize(node)
         return node.position.x + w >= left && node.position.x <= right &&
           node.position.y + h >= top && node.position.y <= bottom
       }).map((node) => node.id)
@@ -298,7 +313,18 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     if (!node) return null
     // 变体落点经同分类避让：默认贴在原卡右下 +40，被占则螺旋挪开，不压住原卡或邻卡。
     const dupSiblings = state.nodes.filter((candidate) => (candidate.categoryId || 'shots') === (node.categoryId || 'shots'))
-    const dupPosition = resolveInsertionPosition(node.kind, { x: node.position.x + 40, y: node.position.y + 40 }, dupSiblings)
+    const preferredDupPosition = { x: node.position.x + 40, y: node.position.y + 40 }
+    let dupPosition = resolveInsertionPosition(node.kind, preferredDupPosition, dupSiblings)
+    // Keep a duplicate in the usable canvas when the first free spiral slot
+    // happens to be above/left of the origin. The below-source fallback still
+    // goes through the shared collision resolver and preserves spacing.
+    if (dupPosition.x < 0 || dupPosition.y < 0) {
+      dupPosition = resolveInsertionPosition(
+        node.kind,
+        { x: node.position.x, y: node.position.y + resolveNodeVisualSize(node).height + 48 },
+        dupSiblings,
+      )
+    }
     const nextNode = createGenerationNode({
       id: createNodeId(node.kind),
       kind: node.kind,
@@ -307,29 +333,32 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       x: dupPosition.x,
       y: dupPosition.y,
     })
-    const history = node.history ? [...node.history] : []
-    const result = node.result
-    if (result && !history.some((entry) => entry.id === result.id)) {
-      history.unshift(result)
-    }
     const copiedNode: GenerationCanvasNode = {
       ...nextNode,
-      history,
-      references: node.references ? [...node.references] : [],
-      meta: node.meta ? { ...node.meta } : {},
+      history: [],
+      references: structuredClone(node.references ?? []),
+      meta: structuredClone(node.meta ?? {}),
       size: node.size ? { ...node.size } : nextNode.size,
       prompt: node.prompt || '',
       categoryId: node.categoryId,
       groupId: node.groupId,
       derivedFrom: node.id,
+      runs: [],
+      status: 'idle',
       // 变体是新身份：领自己的镜头编号，不继承原节点的号。
       ...(isShotNumberedNode(node) ? { shotIndex: nextShotIndex(state.nodes) } : {}),
     }
+    const incomingEdges = state.edges
+      .filter((edge) => edge.target === nodeId)
+      .map((edge, index) => ({
+        ...structuredClone(edge),
+        id: createEdgeId(edge.source, copiedNode.id, edge.order ?? index),
+        target: copiedNode.id,
+      }))
     pushUndoSnapshot(state)
     set((current) => {
-      const original = current.nodes.find((candidate) => candidate.id === nodeId)
-      if (original && history.length) original.history = history
       current.nodes.push(copiedNode)
+      current.edges.push(...incomingEdges)
       if (copiedNode.groupId) {
         const group = current.groups.find((candidate) => candidate.id === copiedNode.groupId)
         if (group && !group.nodeIds.includes(copiedNode.id)) {
@@ -341,11 +370,11 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       bumpPersistRevision(current)
       Object.assign(current, getHistoryFlags())
     })
-    // 一笔手势三件事如实记账:原节点补 history、新节点诞生、组成员变化(后态)
+    // 一笔手势写完新节点、继承的入边与组成员变化；旧产物/运行态不进入变体。
     const touchedGroup = copiedNode.groupId ? get().groups.find((group) => group.id === copiedNode.groupId) : undefined
     emitCanvasGesture([
-      ...(history.length ? [{ type: 'canvas.node.updated', payload: { nodeId, patch: { history } } }] : []),
       { type: 'canvas.node.added', payload: { node: copiedNode } },
+      ...incomingEdges.map((edge) => ({ type: 'canvas.edge.added' as const, payload: { edge } })),
       ...(touchedGroup ? [{ type: 'canvas.group.updated', payload: { group: touchedGroup } }] : []),
     ])
     return copiedNode

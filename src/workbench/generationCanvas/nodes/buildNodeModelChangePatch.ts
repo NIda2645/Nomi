@@ -14,6 +14,7 @@ import {
 import { applyArchetypeModeSwitch } from './controls/archetypeMeta'
 import { resolveArchetypeForOption, resolveRenderedControls } from './nodeModelArchetype'
 import { collectInputAspectRatios, preferredVideoAspect } from './aspectRatio'
+import { projectParameterReferenceSlots } from '../model/parameterReferenceSlots'
 
 export type BuildNodeModelChangePatchInput = {
   node: GenerationCanvasNode
@@ -69,6 +70,7 @@ export function buildNodeModelChangePatch({
       : { imageModel: nextOption?.value || value || null, imageModelVendor: nextOption?.vendor || null }),
   }
 
+  nextMeta = projectParameterReferenceSlots(nextMeta, nextOption?.meta)
   if (!nextArchetype) {
     delete nextMeta.archetype
   } else {

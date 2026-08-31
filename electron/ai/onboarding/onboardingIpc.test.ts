@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>() }));
 vi.mock("electron", () => ({
-  app: { getPath: () => process.cwd(), getAppPath: () => process.cwd() },
+  app: { getPath: () => process.cwd(), getAppPath: () => process.cwd(), on: vi.fn(), quit: vi.fn() },
   ipcMain: { handle: (channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler) },
 }));
 vi.mock("../../ipcSenderGuard", () => ({ assertTrustedSender: vi.fn() }));
@@ -17,6 +17,9 @@ beforeEach(() => { handlers.clear(); registerOnboardingIpc(); });
 afterEach(() => vi.unstubAllGlobals());
 
 describe("onboarding discovery IPC preserves the shared result contract", () => {
+  it("does not register the removed raw manual Catalog commit bypass", () => {
+    expect(handlers.has("nomi:onboarding:manual-commit")).toBe(false);
+  });
   it.each(["list-models", "test-connection"])("forwards HTTP200 auth errors through %s", async (channel) => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ code: 401, data: [], message: "expired" }), { status: 200 })));
     const result = await handlers.get(`nomi:onboarding:${channel}`)?.({}, {

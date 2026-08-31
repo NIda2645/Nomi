@@ -7,6 +7,8 @@ import type { DesktopSettingsBridge } from './settingsBridge'
 import type { DesktopOnboardingBridge } from './onboardingBridgeTypes'
 import type { DesktopProductionRunBridge } from './productionRunBridgeTypes'
 import type { CustomCallBridge } from './modelCatalogBridgeTypes'
+import type { AgentChatStartRequest, AgentChatHistoryRequest, AgentChatToolDecision, AgentChatWireEvent } from '../../electron/harness/agentChatContracts'
+import type { ComfyCandidateTestPayload, ComfyCandidateTestResult, ComfyWorkflowMutationResult } from './comfyCandidateContracts'
 export type { ProviderKind }
 export type {
   DesktopAdapterModeResult,
@@ -14,7 +16,6 @@ export type {
   DesktopProviderRegistration,
 } from './onboardingBridgeTypes'
 export type { ScreenshotHotkeyStatus } from './bridgeMedia'
-
 /** 落盘的对话消息(conversation 域;draft/附件是 session 域不落盘)。 */
 export type PersistedAiMessage = {
   id: string
@@ -52,7 +53,7 @@ export type AssetTransportChannelView = {
   vendorKey: string | null
   /** 真正收文件的主机名；无端点策略为 null。 */
   host: string | null
-  visibility: 'provider-private' | 'public-anonymous'
+  visibility: 'provider-private' | 'public-provider' | 'public-anonymous'
   ttlSeconds: number | null
 }
 
@@ -544,8 +545,11 @@ export type DesktopBridge = DesktopMediaBridge & {
     showInFolder: (payload: { projectId: string; relativePath: string }) => Promise<{ ok: boolean }>
   }
   tasks: {
+    cancel?: (taskId: string) => Promise<{ ok: boolean }>
     run: (payload: unknown) => Promise<unknown>
     result: (payload: unknown) => Promise<unknown>
+    runComfyCandidateTest?: (payload: ComfyCandidateTestPayload) => Promise<ComfyCandidateTestResult>
+    cancelComfyCandidateTest?: (payload: { revisionId: string; modelKey: string; taskKind: string }) => Promise<{ ok: boolean }>
     grantSpend: (payload: { nodeIds: string[]; maxAttemptsPerNode?: number }) => Promise<{ grantId: string }>
     runTextStream: (payload: unknown) => Promise<{ streamId: string }>
     cancelTextStream: (streamId: string) => Promise<unknown>
@@ -557,22 +561,19 @@ export type DesktopBridge = DesktopMediaBridge & {
     onComfyuiProgress?: (callback: (event: unknown) => void) => () => void
   }
   agents: {
-    chatV2Start: (payload: unknown) => Promise<{ sessionId: string }>
+    chatV2Start: (payload: AgentChatStartRequest) => Promise<{ sessionId: string }>
     confirmTool: (
       sessionId: string,
       toolCallId: string,
-      decision: { ok: true; result?: unknown } | { ok: false; message?: string },
+      decision: AgentChatToolDecision,
     ) => Promise<{ ok: boolean; error?: string }>
     cancelChatV2: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
-    clearChatV2Session: (sessionKey: string) => Promise<{ ok: boolean; error?: string }>
-    /** 会话历史:从线程气泡重建模型工作缓存(翻回旧对话接着聊)。 */
-    seedChatV2Session?: (
-      sessionKey: string,
-      messages: Array<{ role: string; content: string }>,
-    ) => Promise<{ ok: boolean }>
+    clearChatV2Session: (request: AgentChatHistoryRequest) => Promise<{ ok: boolean; error?: string }>
+    /** Ensure only: an existing full snapshot or cleared tombstone always wins. */
+    seedChatV2Session: (request: AgentChatHistoryRequest) => Promise<{ ok: boolean }>
     /** S1b 诚实探针:LLM 是否还记得这个会话(气泡在而记忆空 → 必须画「新会话」分隔线)。 */
-    chatV2SessionAlive?: (sessionKey: string) => Promise<{ alive: boolean }>
-    onChatV2Event: (sessionId: string, callback: (event: unknown) => void) => () => void
+    chatV2SessionAlive: (request: AgentChatHistoryRequest) => Promise<{ alive: boolean }>
+    onChatV2Event: (sessionId: string, callback: (event: AgentChatWireEvent) => void) => () => void
   }
   /** S5-a/b 画布事件 → 单写者日志仓库(seq/脱敏/截断在主进程单点);read 供 hydrate 尾部重放与轨迹。 */
   events?: {
@@ -594,7 +595,7 @@ export type DesktopBridge = DesktopMediaBridge & {
    *  textBrain=节点提示词优化用的文本大脑键(不含 apiKey,渲染层据此走现成文本流式)。 */
   promptLibrary?: {
     list: () => Promise<{ ok: boolean; prompts: unknown[]; error?: string }>
-    textBrain: () => Promise<{ ok: boolean; brain: { vendor: string; modelKey: string } | null; status: 'ok' | 'locked' | 'missing' }>
+    textBrain: () => Promise<{ ok: boolean; brain: { vendor: string; modelKey: string } | null; status: 'ok' | 'missing' }>
     /** 我的库(用户级·跨项目):手写攒的提示词 CRUD,返回全量供渲染层本地过滤。 */
     userList: () => Promise<{ ok: boolean; prompts: unknown[]; error?: string }>
     userAdd: (input: {
@@ -739,10 +740,10 @@ export type DesktopBridge = DesktopMediaBridge & {
     }>
     /** 按绑定落库为用户自有 model+mapping（同步）。enumOptions 可选 = combo 参数烤成真实文件下拉。 */
     importComfyWorkflow: (payload: { text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
-      { ok: true; modelKey: string; kind: string; taskKind: string } | { ok: false; error: string }
+      ComfyWorkflowMutationResult
     /** 用同一 modelKey 更新已导入 workflow（同步）。 */
     updateComfyWorkflow?: (payload: { modelKey: string; text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
-      { ok: true; modelKey: string; kind: string; taskKind: string } | { ok: false; error: string }
+      ComfyWorkflowMutationResult
   }
   skill: {
     list: () => unknown[]

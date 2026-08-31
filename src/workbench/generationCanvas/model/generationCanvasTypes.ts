@@ -183,6 +183,7 @@ export type NodeGroup = {
   name: string
   categoryId: CategoryId
   nodeIds: string[]
+  /** @deprecated Kept only for persisted-project compatibility; group chrome is design-system neutral. */
   color?: string
   frameBounds?: { x: number; y: number; w: number; h: number }
   collapsed?: boolean
@@ -211,6 +212,8 @@ export type GenerationCanvasEdge = {
   source: string
   target: string
   mode?: GenerationCanvasEdgeMode
+  /** Explicit destination parameter identity, independent of the reference semantic. */
+  targetParamKey?: string
   /**
    * 落入同一 target 的放入顺序（0,1,2…）。数组参考槽（image_ref，characterIndexed）按它对应
    * prompt 的 character1..N；保住「谁是 character1」。建边时由 connectNodes 按「该 target 现有边数」

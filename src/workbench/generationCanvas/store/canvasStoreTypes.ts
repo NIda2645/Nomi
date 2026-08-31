@@ -15,6 +15,7 @@ import type { CanvasMutationOptions } from './canvasGuards'
 import type { NodeProgressInput, NodeRunRecordInput, NodeRunRecordPatch } from './runRecordHelpers'
 
 export type ConnectionAnchorSide = 'left' | 'right'
+export type ConnectionEndpointKind = 'node' | 'group'
 
 /** 「连到组」的结果：给 UI 出人话用（跳过多少个必须说清，不许静默丢）。 */
 export type GroupConnectResult = {
@@ -69,22 +70,25 @@ export type CanvasNodeActions = {
 
 export type CanvasGraphActions = {
   startConnection: (nodeId: string, side?: ConnectionAnchorSide) => void
+  startGroupConnection: (groupId: string, side?: ConnectionAnchorSide) => void
   cancelConnection: () => void
   // 返回连边能力校验结果:ok=已连;否则带 reason(手动连线总闸,UI 据此提示)。
-  connectToNode: (targetNodeId: string) => EdgeCapabilityResult
-  connectNodes: (sourceNodeId: string, targetNodeId: string, mode?: GenerationCanvasEdge['mode']) => void
+  connectToNode: (targetNodeId: string) => EdgeCapabilityResult | GroupConnectResult
+  connectNodes: (sourceNodeId: string, targetNodeId: string, mode?: GenerationCanvasEdge['mode'], targetParamKey?: string) => void
   /**
    * 把待连的线落到**一个组**上：给组内每个成员各连一根真边，并记下组入参
    * （以后新进组的成员自动补一根）。图结构不变——组只是输入手势的语法糖，见 model/groupInputLinks.ts。
    */
   connectToGroup: (groupId: string) => GroupConnectResult
   updateEdgeMode: (edgeId: string, mode: GenerationCanvasEdge['mode']) => void
-  disconnectEdge: (edgeId: string) => void
+  /** 单槽编辑解除该编组输入关系、保留其它槽；缺省仍按线菜单语义整组断开。 */
+  disconnectEdge: (edgeId: string, options?: { scope: 'parameter' }) => void
   moveGroupNodes: (groupId: string, delta: { x: number; y: number }, options?: CanvasMutationOptions) => void
   createGroup: (categoryId: string, name?: string, options?: { materializationOperationId?: string; nodeIds?: string[] }) => NodeGroup | null
   groupSelectedNodes: (categoryId: string, name?: string) => NodeGroup | null
   renameGroup: (groupId: string, name: string) => void
   setGroupColor: (groupId: string, color: string) => void
+  setGroupCollapsed: (groupId: string, collapsed: boolean) => void
   ungroup: (groupId: string) => void
   ungroupGroups: (groupIds: string[]) => void
   deleteGroup: (groupId: string, deleteNodes?: boolean) => void
@@ -115,6 +119,7 @@ export type GenerationCanvasState = {
   selectedNodeIds: string[]
   pendingConnectionSourceId: string
   pendingConnectionSourceSide: ConnectionAnchorSide
+  pendingConnectionSourceKind: ConnectionEndpointKind
   canvasZoom: number
   canvasOffset: { x: number; y: number }
   generationAiDraft: string

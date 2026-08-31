@@ -2,11 +2,13 @@ import { decryptApiKeyRecord } from "../catalog/secrets";
 import { readCatalog } from "../catalog/catalogStore";
 import type { CatalogState } from "../catalog/types";
 import type { GenerationProvider } from "./generationRuntimeAdapter";
-import { createApimartGenerationProvider } from "./apimartGenerationProvider";
+import { createApimartGenerationProvider, type ApimartGenerationProviderOptions } from "./apimartGenerationProvider";
 import type { GenerationProviderReadiness, GenerationProviderReadinessMap } from "./moduleCatalogBootstrap";
+import { modelHasPublishedExecution } from "../shared/modelPublication";
 
 export type GenerationProviderBootstrapOptions = {
-  apiKeyResolver?: (vendorKey: string) => string;
+  connectionResolver?: (vendorKey: string) => ReturnType<ApimartGenerationProviderOptions["resolveConnection"]>;
+  catalogReader?: () => CatalogState;
   fetchImpl?: typeof fetch;
 };
 
@@ -23,8 +25,9 @@ function readiness(providerReady: boolean, capabilities: GenerationProviderReadi
 
 /**
  * The only main-process boundary that turns a saved credential into a
- * semantic generation provider. Catalog entries remain visible even when the
- * key is missing or locked; they simply have no executable submit readiness.
+ * semantic generation provider. Bootstrap only checks that an enabled record
+ * exists; OS-backed resolution happens inside the provider's first real
+ * request, where a locked value becomes a structured provider error.
  */
 export function createGenerationProviderBootstrap(
   state: CatalogState = readCatalog(),
@@ -34,9 +37,30 @@ export function createGenerationProviderBootstrap(
   for (const vendor of state.vendors) readinessByProvider[vendor.key] = readiness(false, noRecovery, ["configured_provider"]);
   const providers: GenerationProvider[] = [];
   const apimart = state.vendors.find((vendor) => vendor.key === "apimart" && vendor.enabled);
-  const apiKey = options.apiKeyResolver?.("apimart") ?? decryptApiKeyRecord(state.apiKeysByVendor.apimart);
-  if (apimart && apiKey.trim()) {
-    const provider = createApimartGenerationProvider({ apiKey, baseUrl: apimart.baseUrlHint || undefined, fetchImpl: options.fetchImpl });
+  const hasPublishedModel = state.models.some((model) => model.vendorKey === "apimart"
+    && modelHasPublishedExecution(model, { mappings: state.mappings }));
+  const apimartCredential = state.apiKeysByVendor.apimart;
+  const hasEnabledCredential = Boolean(
+    typeof apimartCredential?.apiKey === "string"
+      && apimartCredential.apiKey.trim()
+      && apimartCredential.enabled !== false,
+  );
+  if (apimart && hasEnabledCredential && hasPublishedModel) {
+    const connectionResolver = options.connectionResolver;
+    const catalogReader = options.catalogReader ?? readCatalog;
+    const resolveConnection = connectionResolver
+      ? () => connectionResolver("apimart")
+      : () => {
+        const current = catalogReader();
+        const vendor = current.vendors.find((candidate) => candidate.key === "apimart" && candidate.enabled);
+        const credential = current.apiKeysByVendor.apimart;
+        if (!vendor || typeof credential?.apiKey !== "string" || !credential.apiKey.trim() || credential.enabled === false) {
+          return null;
+        }
+        const apiKey = decryptApiKeyRecord(credential).trim();
+        return apiKey ? { apiKey, baseUrl: vendor.baseUrlHint || undefined } : null;
+      };
+    const provider = createApimartGenerationProvider({ resolveConnection, fetchImpl: options.fetchImpl });
     providers.push(provider);
     readinessByProvider.apimart = readiness(true, provider.capabilities);
   }

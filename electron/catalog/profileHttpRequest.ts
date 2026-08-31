@@ -21,7 +21,8 @@ export function templateContext(
 ): JsonRecord {
   return buildTemplateContext({
     request: request as unknown as JsonRecord,
-    params: applyParamMap(paramMap, taskTemplateParams(request)),
+    params: applyParamMap(paramMap, taskTemplateParams(request,
+      { vendorKey: model.vendorKey, modelKey: model.modelKey })),
     model: model as unknown as JsonRecord,
     modelKey: model.modelAlias || model.modelKey,
     apiKey,
@@ -53,6 +54,7 @@ export function buildProfileHttpRequest(input: {
       : String(input.vendor.baseUrlHint || ""),
     authType: input.vendor.authType as AuthType,
     authHeaderName: input.vendor.authHeader ?? undefined,
+    authQueryParam: input.vendor.authQueryParam ?? undefined,
     apiKey: input.apiKey,
     context: templateContext(input.request, input.model, input.apiKey, input.providerMeta || {}, input.operation.paramMap),
     operation: input.operation,

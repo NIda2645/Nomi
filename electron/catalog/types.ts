@@ -53,7 +53,7 @@ export type AssetIngestion =
       /** 响应里公网 URL 的点路径(如 KIE 的 "data.downloadUrl")。 */
       urlPath: string;
       /** 鉴权:复用 vendor 的 api key(默认 bearer)。 */
-      authType?: "bearer";
+      authType?: "bearer" | "key";
       /** 该通道接受的媒体类型;缺省 ['image']。 */
       accepts?: ReadonlyArray<AssetMediaKind>;
       visibility?: "provider-private";
@@ -78,7 +78,7 @@ export type AssetIngestion =
       /** 响应里公网 URL 的点路径(如 kie 的 "data.downloadUrl")。 */
       urlPath: string;
       /** 鉴权:复用 vendor 的 api key(默认 bearer)。 */
-      authType?: "bearer";
+      authType?: "bearer" | "key";
       visibility?: "provider-private";
       ttlSeconds?: number;
       requiresConsent?: false;
@@ -110,12 +110,49 @@ export type AssetIngestion =
        */
       urlTransform?: { search: string; replace: string };
       /** 鉴权:复用 vendor 的 api key(默认 bearer)。无 key 时不发 Authorization。 */
-      authType?: "bearer";
+      authType?: "bearer" | "key";
       /** 该通道接受的媒体类型;缺省 ['image']。 */
       accepts?: ReadonlyArray<AssetMediaKind>;
-      visibility?: "provider-private" | "public-anonymous";
+      visibility?: "provider-private" | "public-provider" | "public-anonymous";
       ttlSeconds?: number;
       requiresConsent?: boolean;
+    }
+  | {
+      /**
+       * 两阶段上传：先用 JSON 初始化，再把本地字节 PUT 到供应商返回的 signed URL。
+       * fal CDN 使用此形状；signed URL 本身不带供应商 API key。
+       */
+      strategy: "upload-initiate-put";
+      endpoint: string;
+      initFileNameField?: string;
+      initContentTypeField?: string;
+      uploadUrlPath: string;
+      urlPath: string;
+      authType?: "bearer" | "key";
+      accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "provider-private" | "public-provider";
+      ttlSeconds?: number;
+      requiresConsent?: false;
+    }
+  | {
+      /**
+       * 两阶段上传：先初始化 multipart 表单，再把初始化返回的 fields + file POST 到 signed URL。
+       * Runway ephemeral upload 使用此形状，并返回只能给 Runway 使用的 runway:// URI。
+       */
+      strategy: "upload-initiate-multipart";
+      endpoint: string;
+      uploadUrlPath: string;
+      fieldsPath: string;
+      uriPath: string;
+      fileField?: string;
+      initFileNameField?: string;
+      initTypeField?: string;
+      initType?: string;
+      authType?: "bearer" | "key";
+      accepts?: ReadonlyArray<AssetMediaKind>;
+      visibility?: "provider-private" | "public-provider";
+      ttlSeconds?: number;
+      requiresConsent?: false;
     }
   | {
       /**
@@ -313,7 +350,7 @@ export type HttpOperation = {
   process?: {
     bin: string;
     args: string[];
-    parser: "dreamina-cli" | "codex-cli-image";
+    parser: "dreamina-cli" | "codex-cli-image" | "antigravity-cli-image";
     appendDownloadDir?: boolean;
     /**
      * 特殊 arg 构建器（声明驱动分派）。缺省=用 `args` 模板渲染。"multiframe"=多帧按图数变形（2 图 shorthand /
@@ -471,8 +508,10 @@ export function billingKindForTaskKind(kind: ProfileKind): BillingModelKind {
  *  路径，已同 commit 修）。只碰非内置 vendor + /video/generations 形状。 */
 /*  v9 moves custom-call named configuration out of vendor.meta and into the
  *  existing safeStorage-backed vendor credential record. */
-export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-export const CURRENT_CATALOG_VERSION: CatalogVersion = 9;
+/* v10 corrects stored ComfyUI model/output/task contracts from the selected file output. */
+/* v11 repairs provable stored ComfyUI media-role violations: image placeholders in numeric widgets. */
+export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+export const CURRENT_CATALOG_VERSION: CatalogVersion = 11;
 
 export type CatalogState = {
   version: CatalogVersion;

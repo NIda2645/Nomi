@@ -66,6 +66,7 @@ describe('onboarding drawer derivations', () => {
       ['gateway', vendor({ hasApiKey: false, authType: 'none' })],
       ['codex-local', vendor()],
       ['comfyui-local', vendor()],
+      ['antigravity-cli', vendor({ hasApiKey: false, authType: 'none' })],
     ])
 
     expect(buildExistingConnectionSummary('gateway', 'Gateway', models, meta)).toEqual({
@@ -77,5 +78,6 @@ describe('onboarding drawer derivations', () => {
     expect(canAddModelsToConnection('gateway', meta)).toBe(true)
     expect(canAddModelsToConnection('codex-local', meta)).toBe(false)
     expect(canAddModelsToConnection('comfyui-local', meta)).toBe(false)
+    expect(canAddModelsToConnection('antigravity-cli', meta)).toBe(false)
   })
 })

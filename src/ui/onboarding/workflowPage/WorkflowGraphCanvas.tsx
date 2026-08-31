@@ -2,8 +2,8 @@
  * 只读节点图画布：SVG 连线层 + 绝对定位的节点卡 + 缩放/适应 + 拖动平移。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md
  *
- * 不引图库（P1）：仓库零图库依赖，生成画布本身就是 CSS transform + 绝对定位 div + SVG 连线层
- * 自研的（src/workbench/generationCanvas/components/CanvasEdgeLayer.tsx）。手法照搬那份：
+ * 这是 onboarding 独立的只读工作流图，不复用生成画布的交互状态或渲染器；它使用 CSS
+ * transform + 绝对定位 div + SVG 连线层保持静态拓扑和节点卡对齐：
  * 一层 transform: translate() scale() 包住「连线 svg + 节点 div」，两者共用同一套内容坐标，
  * 于是缩放/平移只动一个 transform，连线和节点永远对得齐。
  *
@@ -15,7 +15,10 @@ import { useTranslation } from 'react-i18next'
 // 图/列表这对图标取「同一份东西的两个视图」的隐喻（board ↔ list），且都已在
 // src/vendor/tablerIcons.ts 那份精选清单里——不为一个切换钮往控包体的白名单里加新图标。
 import { IconLayoutBoard, IconLayoutList, IconMaximize, IconMinus, IconPlus } from '@tabler/icons-react'
+import { resolveWheelIntent, useCanvasGestureScheme } from '../../../utils/canvasGesturePreference'
 import { cn } from '../../../utils/cn'
+import { translateModelDisplayText } from '../../../i18n/modelDisplayText'
+import { getWheelZoomFactor } from '../../../utils/wheelZoom'
 import {
   buildGraphGeometry,
   clampZoom,
@@ -24,6 +27,7 @@ import {
   MAX_ZOOM,
   MIN_ZOOM,
   NODE_HEIGHT,
+  zoomGraphAtPoint,
   type PositionedNode,
 } from '../comfyuiGraphGeometry'
 import type { GraphView } from '../comfyuiWorkflowGraphView'
@@ -55,9 +59,9 @@ export function WorkflowGraphCanvas({
   onToggleField,
 }: WorkflowGraphCanvasProps): JSX.Element {
   const { t } = useTranslation()
+  const gestureScheme = useCanvasGestureScheme()
   const viewportRef = React.useRef<HTMLDivElement>(null)
-  const [zoom, setZoom] = React.useState(1)
-  const [offset, setOffset] = React.useState({ x: 0, y: 0 })
+  const [{ zoom, offset }, setViewport] = React.useState({ zoom: 1, offset: { x: 0, y: 0 } })
   const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null)
   const [asList, setAsList] = React.useState(view.nodes.length > LIST_DEFAULT_NODE_COUNT)
 
@@ -75,20 +79,51 @@ export function WorkflowGraphCanvas({
     if (!box) return
     const viewport = { width: box.width, height: box.height }
     const next = fitZoom(geometry, viewport)
-    setZoom(next)
-    setOffset(fitOffset(geometry, viewport, next))
+    setViewport({ zoom: next, offset: fitOffset(geometry, viewport, next) })
   }, [geometry])
 
   // 换一条工作流 / 图变了 → 重新适应一次。否则上一条图的缩放位移留在这儿，新图可能整个在视口外。
   React.useEffect(() => {
     setSelectedNodeId(null)
     setAsList(view.nodes.length > LIST_DEFAULT_NODE_COUNT)
+  }, [geometry, view.nodes.length])
+
+  // The list unmounts the viewport. Fit only after the graph is actually mounted.
+  React.useEffect(() => {
+    if (asList) return
     const frame = window.requestAnimationFrame(fit)
     return () => window.cancelAnimationFrame(frame)
-  }, [fit, view.nodes.length])
+  }, [asList, fit])
+
+  const hasNodes = view.nodes.length > 0
+  React.useEffect(() => {
+    const element = viewportRef.current
+    if (!element) return
+    const onWheel = (event: WheelEvent): void => {
+      // Node cards are buttons: don't exclude buttons generally. Menus/fields own their scrolling.
+      if (event.target instanceof Element && event.target.closest('[role="menu"], [role="listbox"], input, textarea, select, [contenteditable="true"]')) return
+      event.preventDefault()
+      if (resolveWheelIntent(gestureScheme, event) === 'pan') {
+        const dx = event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX
+        const dy = event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY
+        if (!dx && !dy) return
+        setSelectedNodeId(null)
+        setViewport((current) => ({ ...current, offset: { x: current.offset.x - dx, y: current.offset.y - dy } }))
+        return
+      }
+      if (!event.deltaY) return
+      const rect = element.getBoundingClientRect()
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+      const factor = getWheelZoomFactor(event)
+      setSelectedNodeId(null)
+      setViewport((current) => zoomGraphAtPoint(current, current.zoom * factor, point))
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => element.removeEventListener('wheel', onWheel)
+  }, [asList, gestureScheme, hasNodes])
 
   const zoomBy = (delta: number): void => {
-    setZoom((current) => clampZoom(Number((current + delta).toFixed(2))))
+    setViewport((current) => ({ ...current, zoom: clampZoom(Number((current.zoom + delta).toFixed(2))) }))
   }
 
   // 拖动平移：pointer capture，指针出界也不掉。
@@ -97,23 +132,28 @@ export function WorkflowGraphCanvas({
   // 于是起手点上那颗按钮的 click 根本不触发——表现是「点节点完全没反应」（走查实锤抓到）。
   // 守卫放在这里而不是让每个子元素自己 stopPropagation：那样每加一个可交互元素就要记得加一次，
   // 漏一个就复现同一个 bug。这里一次判定，覆盖以后加进画布的任何控件（P2 修在根因层）。
-  const drag = React.useRef<{ id: number; x: number; y: number; ox: number; oy: number } | null>(null)
+  const drag = React.useRef<{ id: number; x: number; y: number } | null>(null)
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
     if ((event.target as HTMLElement | null)?.closest('button, a, input, textarea, select, [role="menu"]')) return
     setSelectedNodeId(null)
-    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y }
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
     const state = drag.current
     if (!state || state.id !== event.pointerId) return
-    setOffset({ x: state.ox + (event.clientX - state.x), y: state.oy + (event.clientY - state.y) })
+    // Incremental pan composes with wheel zoom; an absolute drag baseline would undo its anchor.
+    const dx = event.clientX - state.x
+    const dy = event.clientY - state.y
+    state.x = event.clientX
+    state.y = event.clientY
+    setViewport((current) => ({ ...current, offset: { x: current.offset.x + dx, y: current.offset.y + dy } }))
   }
   const endDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (drag.current?.id !== event.pointerId) return
     drag.current = null
-    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
   const selectedNode = selectedNodeId ? geometry.nodes.find((n) => n.nodeId === selectedNodeId) ?? null : null
@@ -167,6 +207,7 @@ export function WorkflowGraphCanvas({
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
+          onLostPointerCapture={endDrag}
         >
           <div
             className="relative origin-top-left"
@@ -293,7 +334,7 @@ function NodeList({
           const row = (
             <>
               <span className="w-14 shrink-0 font-nomi-mono text-micro text-nomi-ink-40">#{node.nodeId}</span>
-              <span className="min-w-0 flex-1 truncate text-caption text-nomi-ink">{node.title}</span>
+              <span className="min-w-0 flex-1 truncate text-caption text-nomi-ink">{translateModelDisplayText(node.title)}</span>
               <span className="hidden min-w-0 shrink-[2] truncate font-nomi-mono text-micro text-nomi-ink-40 sm:block">{node.classType}</span>
               {node.exposedCount > 0 ? (
                 <span className="shrink-0 rounded-full bg-nomi-accent-soft px-1.5 text-micro font-semibold text-nomi-accent">

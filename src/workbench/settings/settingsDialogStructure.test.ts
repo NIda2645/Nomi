@@ -3,11 +3,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const settingsSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/SettingsDialog.tsx'), 'utf8')
-const aiModelsSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/AiModelsSection.tsx'), 'utf8')
-const taskCenterSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/taskCenter/TaskCenterPanel.tsx'), 'utf8')
-const studioSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/NomiStudioApp.tsx'), 'utf8')
-const controllerSource = fs.readFileSync(path.join(process.cwd(), 'src/workbench/settings/useSettingsDialogController.ts'), 'utf8')
+// Structural assertions inspect code, not examples of the old implementation in comments.
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+const readCode = (file: string): string => stripComments(fs.readFileSync(file, 'utf8'))
+const settingsSource = readCode(path.join(process.cwd(), 'src/workbench/settings/SettingsDialog.tsx'))
+const aiModelsSource = readCode(path.join(process.cwd(), 'src/workbench/settings/AiModelsSection.tsx'))
+const taskCenterSource = readCode(path.join(process.cwd(), 'src/workbench/taskCenter/TaskCenterPanel.tsx'))
+const studioSource = readCode(path.join(process.cwd(), 'src/workbench/NomiStudioApp.tsx'))
+const controllerSource = readCode(path.join(process.cwd(), 'src/workbench/settings/useSettingsDialogController.ts'))
 const settingsDirectory = path.join(process.cwd(), 'src/workbench/settings')
 
 // 这张表锁的是「别无意间改动了这几块」。**有意的、已拍板的改动就该更新基线**，
@@ -15,11 +20,14 @@ const settingsDirectory = path.join(process.cwd(), 'src/workbench/settings')
 // 2026-08-21：AiModelsSection 增加上传边界说明（KIE 视频优先、公共托管先提醒），故更新其哈希。
 // 2026-08-25：同一块从「推销 KIE」改成「逐媒体类型说出当前真实通道 + 配置直达」，再次更新哈希；
 //             对应正向断言见下面 reports the live upload channel per media kind 那条。
+// 2026-08-26：CanvasGestureSection 仅将 import 改为共享 utils 模块；下方锁定设置与两个画布同源。
+// 2026-08-31：上传通道可见性同步覆盖 Nomi relay 的 public-provider 标记，更新 AiModelsSection 基线；
+//             对应正向断言仍锁定实际渲染条件，避免只挪哈希掩盖配置入口变化。
 const MAIN_NON_MODEL_SECTION_SHA256 = {
   'ProjectLocationSection.tsx': 'ad37c2f07c403b60cf42385f4d93fce8e2ff494c934467c670a7ae4b8c8d5523',
-  'AiModelsSection.tsx': '0ace652b36fe3a898ebd0cd7f1361b86e8f229af4d5599c95222d931cabf9ce9',
+  'AiModelsSection.tsx': '50e253177108dfda44128f7b002d22d5d769fbc4ac12eeeb3e376fc0757e64b7',
   'AutomationPermissionsSection.tsx': 'a0ea704afb1a31c33ffa3e00821658d8696cc15d5069e6361032b194e638b352',
-  'CanvasGestureSection.tsx': '51c9806c303e5a02a09c9184a38835b4d2d8cad3cd6bb3f56a2408c96264c571',
+  'CanvasGestureSection.tsx': '3cf19ee35f686e76b54497ff668bb91245b00a6593bc5d5d6162a0d30c476c95',
   'AboutSection.tsx': '7fb3e4bee88cf77f6df1217424a4b6130e27581b97de3c58f3c2e7b5bf4a545b',
 } as const
 
@@ -110,15 +118,35 @@ describe('settings dialog structure', () => {
     // 「已接入」按它是否真的在收文件判，不按 key 存不存在判——否则徽章和下面的通道行会互相打架。
     expect(aiModelsSource).toContain("channels.some((channel) => channel.vendorKey === 'kie')")
     // 公开可访问的通道必须走警示样式，不能和私有链接长一样。
-    expect(aiModelsSource).toContain("channel.visibility === 'public-anonymous'")
+    expect(aiModelsSource).toContain(
+      "channel.visibility === 'public-anonymous' || channel.visibility === 'public-provider'",
+    )
     expect(aiModelsSource).not.toContain('settings.ai.upload.kieTitle')
   })
 
   it('keeps all five non-model sections byte-for-byte at the origin/main baseline', () => {
     for (const [fileName, expectedHash] of Object.entries(MAIN_NON_MODEL_SECTION_SHA256)) {
-      const source = fs.readFileSync(path.join(settingsDirectory, fileName))
+      const source = fs.readFileSync(path.join(settingsDirectory, fileName), 'utf8').replaceAll('\r\n', '\n')
       expect(createHash('sha256').update(source).digest('hex'), fileName).toBe(expectedHash)
     }
+  })
+
+  it('shares one gesture preference between settings and both canvases', () => {
+    const sharedModule = path.join(process.cwd(), 'src/utils/canvasGesturePreference.ts')
+    const consumers = [
+      'src/workbench/settings/CanvasGestureSection.tsx',
+      'src/ui/onboarding/workflowPage/WorkflowGraphCanvas.tsx',
+      'src/workbench/generationCanvas/components/useCanvasViewportGestures.ts',
+    ]
+    for (const consumer of consumers) {
+      const file = path.join(process.cwd(), consumer)
+      const source = readCode(file)
+      const preferenceImport = source.match(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]*canvasGesturePreference)['"]/)
+      expect(preferenceImport?.[1], consumer).toContain('useCanvasGestureScheme')
+      expect(path.resolve(path.dirname(file), `${preferenceImport?.[2]}.ts`), consumer).toBe(sharedModule)
+    }
+    expect(fs.existsSync(sharedModule)).toBe(true)
+    expect(fs.existsSync(path.join(process.cwd(), 'src/workbench/generationCanvas/components/canvasGesturePreference.ts'))).toBe(false)
   })
 
   it('lets model subpages own their header without colliding with the dialog close action', () => {

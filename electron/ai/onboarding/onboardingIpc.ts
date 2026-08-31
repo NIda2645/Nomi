@@ -1,4 +1,5 @@
 import { ipcMain } from "electron";
+import { appFetch } from "../../appFetch";
 import type { AiSdkProviderKind } from "../../catalog/types";
 import { describeIllegalHeader, findIllegalHeader, findNonHeaderSafeChar, mergeHeadersCaseInsensitive } from "../../jsonUtils";
 import { guessModelKind, type GuessableModelKind } from "../../catalog/modelKindHeuristic";
@@ -13,6 +14,7 @@ import { normalizeProviderKind } from "../../catalog/catalogStore";
 import { checkVendorHealth } from "./vendorHealth";
 
 import { assertTrustedSender } from "../../ipcSenderGuard";
+import { registerAntigravityIpc } from "../antigravityIpc";
 // ---------------------------------------------------------------------------
 // Onboarding — 中转拉取式接入 IPC（手填地址+key → 拉模型 → 按 id 分类 → 保存）。
 // 「AI 读文档」子系统已下线（Issue #8：各家中转参数不一，读文档抠参数不可靠）。
@@ -50,7 +52,7 @@ async function probeOneProtocol(
     body = { model: modelId || "gpt-3.5-turbo", messages: [{ role: "user", content: "ping" }], max_tokens: 1 };
   }
   try {
-    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal });
+    const res = await appFetch(url, { method: "POST", headers, body: JSON.stringify(body), signal });
     if (res.ok) return { ok: true, status: res.status };
     const text = await res.text().catch(() => "");
     // 404/405/501/502/503 多为「路由/协议不对」→ 换下一个协议；401/403/400 多为鉴权/请求问题（不是协议错）。
@@ -60,8 +62,8 @@ async function probeOneProtocol(
     return { ok: false, error: await describeNetworkErrorLazy(error), mismatch: true };
   }
 }
-
 export function registerOnboardingIpc(): void {
+  registerAntigravityIpc();
   // 「AI 读文档」接入路径已下线（Issue #8：改为中转拉取式接入图片/视频/文本）。
 
   // 供应商连接健康：模型面板每次打开时按家自查「现在能不能用」。凭证由主进程自取——
@@ -71,88 +73,6 @@ export function registerOnboardingIpc(): void {
     const vendorKey = String(payload?.vendorKey || "").trim();
     if (!vendorKey) return { vendorKey: "", state: "unsupported" as const, checkedAt: Date.now() };
     return checkVendorHealth(vendorKey, payload?.force === true);
-  });
-
-  // PRIMARY model-adding path — manual provider entry (BaseURL + key + models).
-  // Deterministic openai-compatible text commit; reuses the single catalog write
-  // path. No forced connectivity test (aligns with opencode; see test-connection).
-  ipcMain.handle("nomi:onboarding:manual-commit", async (event, payload: Record<string, unknown>) => {
-    assertTrustedSender(event);
-    try {
-      // R1：走唯一 normalizeProviderKind（接受 openai-responses），不再 2 值 clamp。
-      const providerKind = normalizeProviderKind(payload?.providerKind);
-      const { commitManualOpenAiCompatibleModels } = await import("../../catalog/catalogCommit");
-      const { smartDefaultImageEditProtocol } = await import("../../catalog/newapiTransport");
-      const { probeImageEditProtocol } = await import("../../catalog/imageEditProbe");
-      const headers: Record<string, string> = {};
-      if (payload?.headers && typeof payload.headers === "object") {
-        for (const [k, v] of Object.entries(payload.headers as Record<string, unknown>)) {
-          headers[String(k)] = String(v ?? "");
-        }
-      }
-      const baseUrl = String(payload?.baseUrl || "").trim();
-      const apiKey = String(payload?.apiKey || "").trim();
-      const rawModels = Array.isArray(payload?.models) ? (payload.models as Array<Record<string, unknown>>) : [];
-      // 改图协议判定（探测优先 → 智能默认 → chat 兜底）。只对**图片模型且智能默认落 chat（歧义）**的做免费
-      // 探测（gpt-image/dall-e/grok 已由智能默认判定、无需探）；用户/UI 显式给了 imageEditProtocol 则直接用。
-      // 探测发 multipart 缺 image 的请求读报错形状，**不触发付费生成**；带超时兜底，永不阻塞保存。
-      // 原生报文探测（每个 probePath 只探一次，结果在本次提交内复用）：模型命中内置档案且这家中转
-      // 真提供该档案的原生端点 → 用那份完整报文而不是通用最小模板。探测只发 GET、不建任务、不计费。
-      const { archetypeIdForModel } = await import("../../catalog/archetypeIdentity");
-      const { nativeWireProfileForArchetype } = await import("../../catalog/nativeWireProfiles");
-      const { probeNativeEndpoint } = await import("../../catalog/nativeEndpointProbe");
-      const nativeProbeCache = new Map<string, Promise<boolean>>();
-      const nativeArchetypeIdFor = async (id: string): Promise<string | undefined> => {
-        const archetypeId = archetypeIdForModel(id);
-        const profile = nativeWireProfileForArchetype(archetypeId);
-        if (!profile) return undefined;
-        let pending = nativeProbeCache.get(profile.probePath);
-        if (!pending) {
-          pending = probeNativeEndpoint(baseUrl, profile.probePath, apiKey).then((r) => r.exists).catch(() => false);
-          nativeProbeCache.set(profile.probePath, pending);
-        }
-        return (await pending) ? profile.archetypeId : undefined;
-      };
-      const models = await Promise.all(rawModels.map(async (m) => {
-        const id = String(m?.id || "");
-        const k = m?.kind;
-        const kind = (k === "image" || k === "video" || k === "text" || k === "audio" || k === "model3d" ? k : undefined) as GuessableModelKind | undefined;
-        const displayName = m?.displayName ? String(m.displayName) : undefined;
-        const explicit = typeof m?.imageEditProtocol === "string" ? (m.imageEditProtocol as "chat-completions-image-url" | "xai-json-edits" | "openai-multipart-edits") : undefined;
-        const effectiveKind = kind || (id ? guessModelKind(id) : undefined);
-        if (effectiveKind === "video" && id) {
-          const nativeWireArchetypeId = await nativeArchetypeIdFor(id);
-          return { id, displayName, kind, ...(nativeWireArchetypeId ? { nativeWireArchetypeId } : {}) };
-        }
-        if (effectiveKind !== "image" || !id) return { id, displayName, kind };
-        // 图像同样探原生报文。命中就直接用，**并跳过改图协议探测**——原生自带 image_edit op，而
-        // chat/completions 那条路对 Seedream 这类非聊天模型本来就是错的（改图不按原图甚至直接失败）。
-        const nativeImageArchetypeId = await nativeArchetypeIdFor(id);
-        if (nativeImageArchetypeId) return { id, displayName, kind, nativeWireArchetypeId: nativeImageArchetypeId };
-        if (explicit) return { id, displayName, kind, imageEditProtocol: explicit };
-        if (smartDefaultImageEditProtocol(id) !== "chat-completions-image-url") return { id, displayName, kind };
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 6000);
-        try {
-          const probed = await probeImageEditProtocol({ baseUrl, apiKey, modelKey: id, headers, signal: controller.signal });
-          return probed ? { id, displayName, kind, imageEditProtocol: probed } : { id, displayName, kind };
-        } finally {
-          clearTimeout(timer);
-        }
-      }));
-      const result = commitManualOpenAiCompatibleModels({
-        vendorName: String(payload?.vendorName || ""),
-        baseUrl,
-        apiKey,
-        providerKind,
-        headers,
-        models,
-      });
-      return { ok: true, vendorKey: result.vendorKey, committed: result.committed };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, error: message };
-    }
   });
 
   // 类型启发式（Issue #8）：从 /v1/models 拉到/手填的模型 id 没带类型，主进程按关键词猜
