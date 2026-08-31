@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Nomi MCP 运行可见性、媒体预览与任务控制体验蓝图。" />
+  <title>Nomi MCP 体验蓝图</title>
+  <style>
+    @font-face {
+      font-family: "Inter Variable";
+      src: url("../../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Fraunces Variable";
+      src: url("../../../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2") format("woff2");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      color-scheme: light;
+      --bg: oklch(0.985 0.003 90);
+      --paper: oklch(1 0 0);
+      --ink: oklch(0.22 0.01 80);
+      --ink-80: oklch(0.32 0.01 80);
+      --ink-60: oklch(0.50 0.01 80);
+      --ink-40: oklch(0.68 0.01 80);
+      --ink-20: oklch(0.88 0.005 80);
+      --ink-10: oklch(0.94 0.003 80);
+      --ink-05: oklch(0.97 0.003 80);
+      --line: oklch(0.91 0.004 80);
+      --line-soft: oklch(0.95 0.003 80);
+      --accent: oklch(0.55 0.13 250);
+      --accent-soft: color-mix(in oklch, var(--accent) 12%, var(--paper));
+      --success: oklch(0.58 0.14 150);
+      --success-soft: color-mix(in oklch, var(--success) 11%, var(--paper));
+      --warning: oklch(0.62 0.14 75);
+      --warning-soft: color-mix(in oklch, var(--warning) 12%, var(--paper));
+      --danger: oklch(0.58 0.18 28);
+      --danger-soft: color-mix(in oklch, var(--danger) 10%, var(--paper));
+      --radius-sm: 6px;
+      --radius: 10px;
+      --radius-lg: 14px;
+      --shadow-sm: 0 8px 24px color-mix(in oklch, var(--ink) 8%, transparent);
+      --shadow-md: 0 18px 56px color-mix(in oklch, var(--ink) 12%, transparent);
+      --fast: 140ms cubic-bezier(.2, .7, .3, 1);
+      --sans: "Inter Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --display: "Fraunces Variable", "Songti SC", serif;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 10% 8%, var(--accent-soft), transparent 28rem),
+        radial-gradient(circle at 94% 35%, var(--warning-soft), transparent 24rem),
+        var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    button, a { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; }
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid color-mix(in oklch, var(--accent) 58%, var(--paper));
+      outline-offset: 3px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 0 max(24px, calc((100vw - 1180px) / 2));
+      border-bottom: 1px solid color-mix(in oklch, var(--line) 78%, transparent);
+      background: color-mix(in oklch, var(--bg) 86%, transparent);
+      backdrop-filter: blur(18px);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; white-space: nowrap; }
+    .brand-mark {
+      position: relative;
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--ink);
+    }
+    .brand-mark::before, .brand-mark::after, .brand-mark i {
+      content: "";
+      position: absolute;
+      top: 7px;
+      bottom: 7px;
+      width: 3px;
+      border-radius: 2px;
+      background: var(--paper);
+    }
+    .brand-mark::before { left: 7px; }
+    .brand-mark::after { right: 7px; }
+    .brand-mark i { left: 12.5px; transform: rotate(-31deg); }
+    .wordmark { font-family: var(--display); font-size: 18px; font-variation-settings: "SOFT" 70; }
+    .wordmark em { color: var(--accent); font-style: normal; }
+    .topnav { display: flex; align-items: center; gap: 22px; color: var(--ink-60); font-size: 12px; }
+    .topnav a { text-decoration: none; transition: color var(--fast); }
+    .topnav a:hover { color: var(--ink); }
+
+    .page { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
+    .hero { padding: 92px 0 72px; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 22px;
+      color: var(--ink-60);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 28px; height: 1px; background: var(--accent); }
+    .hero-grid { display: grid; grid-template-columns: 1.08fr .92fr; gap: 68px; align-items: center; }
+    h1 {
+      max-width: 700px;
+      margin: 0;
+      font-family: var(--display);
+      font-size: clamp(46px, 6.4vw, 82px);
+      line-height: .98;
+      font-weight: 580;
+      letter-spacing: -.045em;
+      font-variation-settings: "SOFT" 75, "WONK" 1;
+    }
+    h1 .accent { color: var(--accent); }
+    .hero-copy { max-width: 620px; margin: 26px 0 0; color: var(--ink-60); font-size: 17px; line-height: 1.8; }
+    .hero-copy strong { color: var(--ink); font-weight: 650; }
+    .hero-note {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      margin-top: 28px;
+      padding: 14px 16px;
+      border-left: 2px solid var(--accent);
+      background: color-mix(in oklch, var(--paper) 78%, transparent);
+      color: var(--ink-60);
+      font-size: 12px;
+    }
+    .hero-note b { color: var(--ink); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; }
+
+    .media-lane {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 18px auto 10px;
+      max-width: 430px;
+    }
+    .media-card {
+      min-width: 0;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow-sm);
+    }
+    .media-card.video {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .media-thumb {
+      position: relative;
+      min-height: 104px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid color-mix(in oklch, var(--ink) 8%, transparent);
+      background: linear-gradient(160deg, color-mix(in oklch, var(--accent) 16%, var(--paper)), color-mix(in oklch, var(--warning) 16%, var(--paper)));
+    }
+    .media-thumb::before {
+      content: "";
+      position: absolute;
+      inset: 14px 14px auto 14px;
+      height: 16px;
+      border-radius: 999px;
+      background: color-mix(in oklch, var(--paper) 74%, transparent);
+      box-shadow: 0 34px 0 color-mix(in oklch, var(--paper) 52%, transparent), 0 66px 0 color-mix(in oklch, var(--paper) 34%, transparent);
+      opacity: .9;
+    }
+    .media-thumb::after {
+      content: attr(data-label);
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      padding: 4px 7px;
+      border-radius: 999px;
+      background: color-mix(in oklch, var(--paper) 86%, transparent);
+      color: var(--ink-80);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .08em;
+    }
+    .media-thumb.image-2 {
+      background: linear-gradient(160deg, color-mix(in oklch, var(--ink) 12%, var(--paper)), color-mix(in oklch, var(--accent) 12%, var(--paper)));
+    }
+    .media-thumb.video {
+      min-height: 116px;
+      background: linear-gradient(160deg, color-mix(in oklch, var(--ink) 18%, var(--paper)), color-mix(in oklch, var(--accent) 18%, var(--paper)));
+    }
+    .media-thumb.video::before {
+      inset: 50% auto auto 50%;
+      width: 36px;
+      height: 36px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: var(--paper);
+      box-shadow: 0 0 0 8px color-mix(in oklch, var(--paper) 18%, transparent);
+      opacity: 1;
+    }
+    .media-thumb.video::after {
+      content: "▶";
+      left: 50%;
+      top: 50%;
+      bottom: auto;
+      transform: translate(-38%, -50%);
+      padding: 0;
+      background: transparent;
+      color: var(--ink);
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+    .media-meta {
+      min-width: 0;
+      padding: 1px 1px 0;
+    }
+    .media-meta b {
+      display: block;
+      margin-top: 8px;
+      font-size: 12px;
+    }
+    .media-meta span {
+      display: block;
+      margin-top: 4px;
+      color: var(--ink-60);
+      font-size: 10px;
+      line-height: 1.5;
+    }
+    .media-note {
+      max-width: 430px;
+      margin: 0 auto 14px;
+      color: var(--ink-60);
+      font-size: 10px;
+      line-height: 1.5;
+    }
+
+    .blackbox {
+      position: relative;
+      min-height: 430px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: color-mix(in oklch, var(--paper) 88%, transparent);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+    .blackbox::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(var(--line) .8px, transparent .8px);
+      background-size: 18px 18px;
+      opacity: .48;
+      pointer-events: none;
+    }
+    .panel-caption { position: relative; display: flex; justify-content: space-between; color: var(--ink-60); font-family: var(--mono); font-size: 10px; }
+    .bad-state { color: var(--danger); }
+    .client-pair { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 46px; }
+    .client-chip { padding: 13px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); box-shadow: var(--shadow-sm); }
+    .client-chip span { display: block; color: var(--ink-40); font-size: 10px; }
+    .client-chip strong { display: block; margin-top: 3px; font-size: 12px; }
+    .broken-line { position: relative; height: 80px; }
+    .broken-line::before, .broken-line::after {
+      content: "";
+      position: absolute;
+      top: 18px;
+      width: 1px;
+      height: 42px;
+      border-left: 1px dashed var(--ink-40);
+    }
+    .broken-line::before { left: 27%; }
+    .broken-line::after { right: 27%; }
+    .gap-label { position: absolute; inset: 26px 0 auto; text-align: center; color: var(--danger); font-family: var(--mono); font-size: 10px; }
+    .hidden-nomi { position: relative; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--ink); color: var(--paper); }
+    .hidden-nomi header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .hidden-nomi small { color: color-mix(in oklch, var(--paper) 58%, transparent); }
+    .hidden-nomi .waiting { margin-top: 16px; padding: 12px; border-radius: var(--radius-sm); background: color-mix(in oklch, var(--warning) 20%, var(--ink)); color: var(--paper); font-size: 12px; }
+    .offscreen { position: absolute; right: 12px; bottom: 10px; color: var(--warning); font-family: var(--mono); font-size: 9px; }
+
+    .evidence {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      margin-bottom: 100px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .evidence-item { min-height: 116px; padding: 22px 20px; border-left: 1px solid var(--line); }
+    .evidence-item:first-child { border-left: 0; }
+    .evidence-item b { display: block; font-family: var(--display); font-size: 27px; font-weight: 560; }
+    .evidence-item span { display: block; margin-top: 7px; color: var(--ink-60); font-size: 11px; line-height: 1.55; }
+    .evidence-item.alert b { color: var(--danger); }
+
+    section.block { padding: 88px 0; border-top: 1px solid var(--line-soft); }
+    .section-head { display: grid; grid-template-columns: 150px 1fr; gap: 30px; margin-bottom: 48px; }
+    .section-no { color: var(--accent); font-family: var(--mono); font-size: 11px; letter-spacing: .08em; }
+    h2 { max-width: 740px; margin: 0; font-family: var(--display); font-size: clamp(32px, 4vw, 52px); line-height: 1.08; font-weight: 570; letter-spacing: -.025em; }
+    .section-intro { max-width: 660px; margin: 18px 0 0; color: var(--ink-60); font-size: 15px; line-height: 1.75; }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 1fr 90px 1.2fr 90px 1fr;
+      align-items: stretch;
+      gap: 0;
+    }
+    .arch-group { display: grid; gap: 12px; align-content: center; }
+    .arch-card { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: var(--shadow-sm); }
+    .arch-card .kicker { color: var(--ink-40); font-family: var(--mono); font-size: 9px; letter-spacing: .08em; }
+    .arch-card strong { display: block; margin-top: 6px; font-size: 13px; }
+    .arch-card p { margin: 6px 0 0; color: var(--ink-60); font-size: 11px; line-height: 1.55; }
+    .hub { position: relative; padding: 28px; border: 1px solid color-mix(in oklch, var(--accent) 42%, var(--line)); background: var(--ink); color: var(--paper); }
+    .hub::before { content: "ONE SOURCE OF TRUTH"; display: block; color: color-mix(in oklch, var(--paper) 45%, transparent); font-family: var(--mono); font-size: 9px; letter-spacing: .1em; }
+    .hub h3 { margin: 12px 0 0; font-family: var(--display); font-size: 28px; font-weight: 560; }
+    .hub p { margin: 9px 0 20px; color: color-mix(in oklch, var(--paper) 62%, transparent); font-size: 12px; }
+    .event-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .event-list span { padding: 8px 9px; border: 1px solid color-mix(in oklch, var(--paper) 14%, transparent); border-radius: var(--radius-sm); color: color-mix(in oklch, var(--paper) 78%, transparent); font-family: var(--mono); font-size: 9px; }
+    .connector { position: relative; min-height: 180px; }
+    .connector::before { content: ""; position: absolute; top: 50%; left: 14px; right: 14px; height: 1px; border-top: 1px dashed var(--ink-40); }
+    .connector::after { content: "›"; position: absolute; top: calc(50% - 13px); right: 8px; color: var(--accent); font-size: 24px; }
+    .architecture > .connector:nth-of-type(4)::after { content: "›"; }
+
+    .principle-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; }
+    .principle { padding: 15px 16px; border-left: 2px solid var(--accent); background: var(--ink-05); }
+    .principle b { display: block; font-size: 12px; }
+    .principle span { display: block; margin-top: 4px; color: var(--ink-60); font-size: 10px; }
+
+    .demo-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+    .segmented { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--ink-10); }
+    .segmented button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-60); cursor: pointer; transition: background var(--fast), color var(--fast), box-shadow var(--fast); }
+    .segmented button[aria-selected="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 2px 8px color-mix(in oklch, var(--ink) 8%, transparent); font-weight: 650; }
+    .demo-hint { color: var(--ink-40); font-family: var(--mono); font-size: 10px; }
+    .surface-pair { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); box-shadow: var(--shadow-md); overflow: hidden; }
+    .surface { min-width: 0; min-height: 590px; padding: 24px; }
+    .surface + .surface { border-left: 1px solid var(--line); background: var(--ink-05); }
+    .surface-title { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 24px; }
+    .surface-title b { font-size: 13px; }
+    .surface-title span { color: var(--ink-40); font-family: var(--mono); font-size: 9px; }
+    .chat-window { max-width: 430px; margin: 42px auto 0; }
+    .user-line { width: 72%; margin-left: auto; padding: 10px 12px; border-radius: 12px 12px 3px 12px; background: var(--ink); color: var(--paper); font-size: 12px; }
+    .assistant-line { display: flex; align-items: center; gap: 8px; margin: 22px 0 10px; color: var(--ink-60); font-size: 11px; }
+    .mini-mark { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; background: var(--ink); color: var(--paper); font-family: var(--display); font-size: 11px; }
+    .run-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: var(--shadow-sm); overflow: hidden; }
+    .run-head { display: flex; justify-content: space-between; gap: 14px; padding: 15px 16px 12px; }
+    .run-head small { display: block; color: var(--ink-40); font-family: var(--mono); font-size: 9px; }
+    .run-head strong { display: block; margin-top: 4px; font-size: 13px; }
+    .status { height: fit-content; padding: 5px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 10px; white-space: nowrap; }
+    .status.approval { background: var(--warning-soft); color: color-mix(in oklch, var(--warning) 88%, var(--ink)); }
+    .status.error { background: var(--danger-soft); color: var(--danger); }
+    .status.complete { background: var(--success-soft); color: color-mix(in oklch, var(--success) 78%, var(--ink)); }
+    .stage-track { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 0 16px 15px; }
+    .stage { height: 3px; border-radius: 2px; background: var(--ink-10); }
+    .stage.done { background: var(--success); }
+    .stage.now { background: var(--accent); }
+    .run-body { padding: 14px 16px; border-top: 1px solid var(--line-soft); }
+    .current-line { font-size: 12px; font-weight: 620; }
+    .next-line { margin-top: 5px; color: var(--ink-60); font-size: 11px; }
+    .run-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
+    .meta-box { padding: 9px 10px; border-radius: var(--radius-sm); background: var(--ink-05); }
+    .meta-box span { display: block; color: var(--ink-40); font-size: 9px; }
+    .meta-box b { display: block; margin-top: 3px; font-family: var(--mono); font-size: 10px; }
+    .run-actions { display: flex; gap: 8px; padding: 12px 16px 15px; border-top: 1px solid var(--line-soft); }
+    .button { min-height: 38px; border: 1px solid var(--line); border-radius: 999px; padding: 0 14px; background: var(--paper); cursor: pointer; transition: background var(--fast), transform var(--fast); }
+    .button:hover { background: var(--ink-05); }
+    .button:active { transform: translateY(1px); }
+    .button.primary { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+    .button.primary:hover { background: var(--accent); border-color: var(--accent); }
+    .drawer { width: min(390px, 100%); margin-left: auto; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); box-shadow: var(--shadow-sm); overflow: hidden; }
+    .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .drawer-head b { font-size: 13px; }
+    .close { width: 36px; height: 36px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-60); cursor: pointer; }
+    .close:hover { background: var(--ink-05); }
+    .drawer-body { padding: 16px; }
+    .origin { display: flex; align-items: center; gap: 7px; color: var(--ink-60); font-size: 10px; }
+    .origin-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+    .drawer h3 { margin: 11px 0 4px; font-size: 15px; }
+    .drawer-copy { margin: 0; color: var(--ink-60); font-size: 11px; }
+    .drawer-hint { margin-top: 8px; color: var(--ink-40); font-size: 10px; line-height: 1.55; }
+    .step-list { display: grid; gap: 0; margin: 18px 0; }
+    .step-row { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; min-height: 38px; border-top: 1px solid var(--line-soft); font-size: 11px; }
+    .step-row:first-child { border-top: 0; }
+    .step-icon { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--ink-10); color: var(--ink-60); font-size: 9px; }
+    .step-row.done .step-icon { background: var(--success-soft); color: var(--success); }
+    .step-row.now .step-icon { background: var(--accent-soft); color: var(--accent); }
+    .step-row small { color: var(--ink-40); }
+    .budget-box { display: flex; align-items: end; justify-content: space-between; gap: 14px; padding: 13px; border-radius: var(--radius-sm); background: var(--warning-soft); }
+    .budget-box span { display: block; color: var(--ink-60); font-size: 9px; }
+    .budget-box b { display: block; margin-top: 2px; font-size: 12px; }
+    .budget-box strong { font-family: var(--display); font-size: 23px; font-weight: 580; }
+    .details { margin-top: 12px; border-top: 1px solid var(--line-soft); }
+    .details summary { min-height: 42px; display: flex; align-items: center; color: var(--ink-60); font-size: 11px; cursor: pointer; }
+    .details p { margin: 0 0 12px; color: var(--ink-60); font-family: var(--mono); font-size: 9px; }
+    .drawer-actions { display: grid; grid-template-columns: auto 1fr; gap: 8px; padding-top: 12px; }
+
+    .doctor-grid { display: grid; grid-template-columns: .72fr 1.28fr; gap: 28px; align-items: start; }
+    .diagnosis { padding: 24px; border-radius: var(--radius-lg); background: var(--ink); color: var(--paper); }
+    .diagnosis .big { font-family: var(--display); font-size: 32px; line-height: 1.1; }
+    .diagnosis p { color: color-mix(in oklch, var(--paper) 62%, transparent); font-size: 12px; }
+    .diagnosis code { display: block; margin-top: 18px; color: var(--warning); font-family: var(--mono); font-size: 10px; overflow-wrap: anywhere; }
+    .connection-panel { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); box-shadow: var(--shadow-sm); overflow: hidden; }
+    .connection-head { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .connection-head b { font-size: 13px; }
+    .connection-head p { margin: 3px 0 0; color: var(--ink-60); font-size: 10px; }
+    .connection-row { display: grid; grid-template-columns: 1fr 1.2fr auto; align-items: center; gap: 14px; min-height: 66px; padding: 10px 18px; border-top: 1px solid var(--line-soft); }
+    .connection-row:first-of-type { border-top: 0; }
+    .connection-row b { font-size: 12px; }
+    .connection-state { display: flex; align-items: center; gap: 7px; color: var(--ink-60); font-size: 10px; }
+    .state-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-40); }
+    .state-dot.bad { background: var(--danger); }
+    .state-dot.warn { background: var(--warning); }
+    .state-dot.good { background: var(--success); }
+    .repair-note { display: none; padding: 10px 18px; border-top: 1px solid var(--line-soft); background: var(--success-soft); color: color-mix(in oklch, var(--success) 72%, var(--ink)); font-size: 10px; }
+    .connection-panel.repaired .repair-note { display: block; }
+
+    .roadmap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .phase { position: relative; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); }
+    .phase:first-child { border-color: color-mix(in oklch, var(--accent) 40%, var(--line)); box-shadow: var(--shadow-sm); }
+    .phase-no { display: flex; align-items: center; justify-content: space-between; color: var(--ink-40); font-family: var(--mono); font-size: 9px; }
+    .phase:first-child .phase-no { color: var(--accent); }
+    .phase h3 { margin: 20px 0 6px; font-family: var(--display); font-size: 23px; font-weight: 570; }
+    .phase > p { min-height: 42px; margin: 0 0 18px; color: var(--ink-60); font-size: 11px; }
+    .phase ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .phase li { position: relative; padding-left: 17px; color: var(--ink-80); font-size: 11px; }
+    .phase li::before { content: ""; position: absolute; left: 0; top: .55em; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-20); }
+    .phase:first-child li::before { background: var(--accent); }
+
+    .acceptance { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 24px; }
+    .check { display: grid; grid-template-columns: 24px 1fr; gap: 10px; padding: 13px 14px; border-radius: var(--radius-sm); background: var(--ink-05); font-size: 11px; }
+    .check i { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--success-soft); color: var(--success); font-style: normal; }
+
+    .closing { padding: 92px 0 110px; border-top: 1px solid var(--line); text-align: center; }
+    .closing h2 { margin-inline: auto; }
+    .closing p { max-width: 590px; margin: 18px auto 28px; color: var(--ink-60); }
+    .source-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+    .source-links a { padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-60); font-size: 10px; text-decoration: none; }
+    .source-links a:hover { border-color: var(--accent); color: var(--accent); }
+    footer { padding: 22px 0 34px; border-top: 1px solid var(--line-soft); color: var(--ink-40); font-family: var(--mono); font-size: 9px; text-align: center; }
+
+    @media (max-width: 900px) {
+      .topnav { display: none; }
+      .hero-grid, .section-head, .doctor-grid { grid-template-columns: 1fr; }
+      .hero-grid { gap: 44px; }
+      .section-head { gap: 12px; }
+      .architecture { grid-template-columns: 1fr; gap: 12px; }
+      .connector { min-height: 42px; }
+      .connector::before { top: 8px; bottom: 8px; left: 50%; right: auto; width: 1px; height: auto; border-top: 0; border-left: 1px dashed var(--ink-40); }
+      .connector::after { content: "⌄"; top: auto; bottom: 0; left: calc(50% - 7px); right: auto; font-size: 18px; }
+      .surface-pair { grid-template-columns: 1fr; }
+      .surface + .surface { border-left: 0; border-top: 1px solid var(--line); }
+      .surface { min-height: auto; }
+      .roadmap { grid-template-columns: 1fr; }
+      .phase > p { min-height: 0; }
+    }
+    @media (max-width: 680px) {
+      .page { width: min(100% - 28px, 1180px); }
+      .topbar { padding: 0 14px; }
+      .hero { padding: 58px 0 48px; }
+      h1 { font-size: clamp(42px, 15vw, 60px); }
+      .hero-copy { font-size: 15px; }
+      .blackbox { min-height: 420px; padding: 16px; }
+      .evidence { grid-template-columns: 1fr 1fr; margin-bottom: 60px; }
+      .evidence-item:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
+      .evidence-item:nth-child(4) { border-top: 1px solid var(--line); }
+      section.block { padding: 64px 0; }
+      .principle-strip, .acceptance { grid-template-columns: 1fr; }
+      .demo-toolbar { align-items: flex-start; flex-direction: column; }
+      .segmented { width: 100%; overflow-x: auto; border-radius: var(--radius); }
+      .segmented button { flex: 1 0 auto; }
+      .surface { padding: 16px; }
+      .chat-window { margin-top: 20px; }
+      .media-lane { grid-template-columns: 1fr; }
+      .media-card.video { grid-template-columns: 1fr; }
+      .connection-row { grid-template-columns: 1fr auto; }
+      .connection-state { grid-column: 1 / -1; grid-row: 2; }
+      .drawer-actions, .run-meta { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i></span><span class="wordmark">No<em>m</em>i</span><span>MCP 蓝图</span></div>
+    <nav class="topnav" aria-label="页面导航">
+      <a href="#problem">问题</a><a href="#architecture">架构</a><a href="#experience">交互</a><a href="#delivery">落地</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <section class="hero" aria-labelledby="page-title">
+      <div class="eyebrow">MCP experience blueprint · 2026.08</div>
+      <div class="hero-grid">
+        <div>
+          <h1 id="page-title">MCP 不该是<span class="accent">黑盒。</span></h1>
+          <p class="hero-copy">用户在 Codex 或 Claude 发起任务后，应该一直知道：<strong>接住没有、跑到哪、为什么停、下一步做什么。</strong> 图片和视频要先回到发起端，Nomi 负责深度控制，但不能成为唯一能看到真相的地方。</p>
+          <div class="hero-note"><b>核心取舍</b><span>聊天端做驾驶舱，直接看预览和原地确认；Nomi 做控制室，只在放大查看、预算复核和恢复时介入。</span></div>
+        </div>
+
+        <aside class="blackbox" aria-label="当前 MCP 黑盒问题示意">
+          <div class="panel-caption"><span>CURRENT EXPERIENCE</span><span class="bad-state">VISIBILITY GAP</span></div>
+          <div class="client-pair">
+            <div class="client-chip"><span>CODEX</span><strong>工具已调用……然后呢？</strong></div>
+            <div class="client-chip"><span>CLAUDE</span><strong>正在等待……等什么？</strong></div>
+          </div>
+          <div class="broken-line"><span class="gap-label">状态没有回到对话</span></div>
+          <div class="hidden-nomi">
+            <header><strong>Nomi · 任务 1</strong><small>应用在后台</small></header>
+            <div class="waiting">⚠ 正在等待预算确认，但用户没有看到</div>
+            <span class="offscreen">ONLY VISIBLE IN APP</span>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <div class="evidence" aria-label="实测结论">
+      <div class="evidence-item"><b>26 / 26</b><span>完整制作链路断言通过，执行底座已经成立。</span></div>
+      <div class="evidence-item"><b>13 + 24</b><span>打包应用包含 13 个工具与 24 个 MCP 资源。</span></div>
+      <div class="evidence-item alert"><b>连接失效</b><span>真实 Codex / Claude 配置仍指向已删除的旧入口。</span></div>
+      <div class="evidence-item alert"><b>并发风险</b><span>两个审批同时出现时，后一个可能覆盖前一个。</span></div>
+    </div>
+
+    <section class="block" id="problem" aria-labelledby="problem-title">
+      <div class="section-head">
+        <div class="section-no">01 / REAL FRICTION</div>
+        <div><h2 id="problem-title">问题不是“少一个进度条”，而是没有统一回执。</h2><p class="section-intro">现在的 Nomi、MCP 工具结果、任务中心各自只掌握一部分信息。用户一旦离开 Nomi，就不知道任务是在运行、等审批、失败，还是已经断线；也不知道媒体产物到底有没有真正可见。</p></div>
+      </div>
+      <div class="principle-strip">
+        <div class="principle"><b>连接 ≠ 配置存在</b><span>必须真实启动、握手、验证轻量调用。</span></div>
+        <div class="principle"><b>运行 ≠ 假百分比</b><span>没有真实总量时，只报阶段和已用时间。</span></div>
+        <div class="principle"><b>失败 ≠ 一个错误码</b><span>必须说明原因、下一步和诊断编号。</span></div>
+      </div>
+    </section>
+
+    <section class="block" id="architecture" aria-labelledby="architecture-title">
+      <div class="section-head">
+        <div class="section-no">02 / ONE RUN HUB</div>
+        <div><h2 id="architecture-title">一个事件主干，服务所有客户端。</h2><p class="section-intro">每次 MCP 调用都生成 invocationId 和 runId。生成服务只向 Run Event Hub 写真实事件，Codex、Claude、Nomi 和系统通知从这里读取同一份状态，并按客户端能力展示图片、视频和确认动作。</p></div>
+      </div>
+
+      <div class="architecture" aria-label="MCP 事件架构图">
+        <div class="arch-group">
+          <div class="arch-card"><span class="kicker">INPUT</span><strong>Codex / Claude</strong><p>发起任务，携带客户端、会话和调用标识。</p></div>
+          <div class="arch-card"><span class="kicker">EXECUTION</span><strong>模型与生成服务</strong><p>提交、服务处理、下载、校验都发真实阶段事件。</p></div>
+        </div>
+        <div class="connector" aria-hidden="true"></div>
+        <div class="hub">
+          <h3>Run Event Hub</h3>
+          <p>任务状态的唯一真相源，持久保存并允许断线恢复。</p>
+          <div class="event-list"><span>origin</span><span>phase</span><span>nextAction</span><span>artifact</span><span>error</span><span>idempotency</span></div>
+        </div>
+        <div class="connector" aria-hidden="true"></div>
+        <div class="arch-group">
+          <div class="arch-card"><span class="kicker">CHAT FEEDBACK</span><strong>MCP 状态回执</strong><p>原生 progress、图片缩略图和视频首帧；不支持时退回文字与可点击资源。</p></div>
+          <div class="arch-card"><span class="kicker">CONTROL ROOM</span><strong>Nomi 任务抽屉</strong><p>审批、放大预览、视觉检查、技术详情、取消与恢复。</p></div>
+          <div class="arch-card"><span class="kicker">ATTENTION</span><strong>系统通知</strong><p>只提醒等待确认、失败和完成，不制造噪音。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="experience" aria-labelledby="experience-title">
+      <div class="section-head">
+        <div class="section-no">03 / SHARED EXPERIENCE</div>
+        <div><h2 id="experience-title">同一个 Run，在聊天里可理解、可预览、可确认，在 Nomi 里可深度控制。</h2><p class="section-intro">切换状态看两端如何同步变化。富卡片不是基础依赖：不支持卡片的客户端必须收到等价纯文本和资源链接。</p></div>
+      </div>
+
+      <div class="demo-toolbar">
+        <div class="segmented" role="tablist" aria-label="任务状态演示">
+          <button type="button" role="tab" aria-selected="true" data-state="running">制作中</button>
+          <button type="button" role="tab" aria-selected="false" data-state="approval">等你确认</button>
+          <button type="button" role="tab" aria-selected="false" data-state="error">需要处理</button>
+          <button type="button" role="tab" aria-selected="false" data-state="complete">已完成</button>
+        </div>
+        <span class="demo-hint">点击切换运行状态</span>
+      </div>
+
+      <div class="surface-pair">
+        <article class="surface" aria-label="Codex 或 Claude 中的状态卡">
+          <div class="surface-title"><b>Codex / Claude</b><span>驾驶舱 · 及时反馈</span></div>
+          <div class="chat-window">
+            <div class="user-line">帮我生成一条 60 秒的品牌宣传片。</div>
+            <div class="assistant-line"><span class="mini-mark">N</span><span>Nomi 接住了这个任务</span></div>
+            <div class="media-lane" aria-label="产物预览">
+              <div class="media-card">
+                <div class="media-thumb image-1" data-label="IMG 01" aria-hidden="true"></div>
+                <div class="media-meta"><b>关键帧预览</b><span>封面、主视觉和首帧直接回到聊天端。</span></div>
+              </div>
+              <div class="media-card">
+                <div class="media-thumb image-2" data-label="IMG 02" aria-hidden="true"></div>
+                <div class="media-meta"><b>替代帧预览</b><span>如果一张不满意，可以直接换，不必进 Nomi。</span></div>
+              </div>
+              <div class="media-card video">
+                <div class="media-thumb video" data-label="VID 01" aria-hidden="true"></div>
+                <div class="media-meta"><b>视频预览</b><span>先显示首帧和播放入口，宿主不支持时降级为链接。</span></div>
+              </div>
+            </div>
+            <div class="media-note" data-copy="mediaNote">图片直接内嵌，视频先给首帧和播放入口；不支持富卡片时只退回文字和资源链接。</div>
+            <div class="run-card" aria-live="polite">
+              <div class="run-head"><div><small>NOMI · RUN_7F32</small><strong data-copy="title">品牌宣传片</strong></div><span class="status" data-copy="badge">● 制作中</span></div>
+              <div class="stage-track" aria-label="任务阶段"><span class="stage done"></span><span class="stage done"></span><span class="stage now"></span><span class="stage"></span><span class="stage"></span></div>
+              <div class="run-body"><div class="current-line" data-copy="current">正在生成镜头 3 · 阶段 2/5</div><div class="next-line" data-copy="next">图片和视频会直接显示；需要确认时，你可以在这里完成。</div><div class="run-meta"><div class="meta-box"><span>已运行</span><b data-copy="elapsed">01:42</b></div><div class="meta-box"><span>来源</span><b>Codex · 当前会话</b></div></div></div>
+              <div class="run-actions"><button class="button" type="button" data-copy="chatSecondary">在 Nomi 深度检查</button><button class="button primary" type="button" data-copy="primary">查看预览</button></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="surface" aria-label="Nomi 中的任务抽屉">
+          <div class="surface-title"><b>Nomi</b><span>控制室 · 深度操作（可选）</span></div>
+          <div class="drawer">
+            <div class="drawer-head"><b>制作任务</b><button class="close" type="button" aria-label="关闭任务抽屉">×</button></div>
+            <div class="drawer-body">
+              <div class="origin"><span class="origin-dot"></span><span data-copy="origin">制作中 · 来自 Codex · 刚刚</span></div>
+              <h3>品牌宣传片</h3><p class="drawer-copy" data-copy="drawerCopy">产物已分发到聊天端和 Nomi；图片可直接看，视频可直接播。</p>
+              <p class="drawer-hint" data-copy="drawerHint">简单确认留在聊天端；Nomi 只在你要放大查看、复核预算或恢复任务时使用。</p>
+              <div class="step-list">
+                <div class="step-row done"><span class="step-icon">✓</span><span>方向</span><small>已确认</small></div>
+                <div class="step-row done"><span class="step-icon">✓</span><span>分镜</span><small>16 镜头</small></div>
+                <div class="step-row now"><span class="step-icon">●</span><span data-copy="step">生成媒体</span><small data-copy="stepMeta">镜头 3</small></div>
+                <div class="step-row"><span class="step-icon">4</span><span>合成</span><small>未开始</small></div>
+              </div>
+              <div class="budget-box"><div><span>本次支出上限</span><b>API Mart · gpt-image-2</b></div><strong>¥99.74</strong></div>
+              <details class="details"><summary>技术详情</summary><p>invocation: inv_8e2a · run: run_7f32<br />last_event: material.generating</p></details>
+              <div class="drawer-actions"><button class="button" type="button" data-copy="secondary">暂停</button><button class="button primary" type="button" data-copy="drawerPrimary">打开全部产物</button></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="doctor-title">
+      <div class="section-head">
+        <div class="section-no">04 / CONNECTION DOCTOR</div>
+        <div><h2 id="doctor-title">先证明“真的连得上”，再谈体验。</h2><p class="section-intro">当前机器上的真实问题是：配置看起来存在，但入口文件已经删除。连接中心需要把“已配置”和“已验证”分开。</p></div>
+      </div>
+      <div class="doctor-grid">
+        <div class="diagnosis"><div class="big">假性已安装</div><p>客户端列表显示 Nomi enabled，不代表 MCP 能完成握手。旧路径必须被识别并迁移到打包应用入口。</p><code>旧入口：scripts/nomi-mcp.mjs → 文件不存在</code></div>
+        <div class="connection-panel" id="connection-panel">
+          <div class="connection-head"><b>MCP 连接</b><p>每次验证都真实启动服务并执行轻量健康检查。</p></div>
+          <div class="connection-row"><b>Claude Code</b><span class="connection-state"><i class="state-dot bad"></i><span data-connection="claude">配置已失效</span></span><button class="button" type="button" data-repair>一键修复</button></div>
+          <div class="connection-row"><b>Codex</b><span class="connection-state"><i class="state-dot warn"></i><span data-connection="codex">已配置，未验证</span></span><button class="button" type="button" data-verify>验证</button></div>
+          <div class="connection-row"><b>Cursor</b><span class="connection-state"><i class="state-dot"></i><span>尚未连接</span></span><button class="button" type="button">连接</button></div>
+          <div class="repair-note">✓ 已迁移到 Nomi.app 自带 MCP 入口，并完成握手、工具列表与健康检查。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="delivery" aria-labelledby="delivery-title">
+      <div class="section-head">
+        <div class="section-no">05 / DELIVERY ORDER</div>
+        <div><h2 id="delivery-title">先让它可靠、可见、可确认，再做高级富交互。</h2><p class="section-intro">Higgsfield 值得借鉴的是“对话是驾驶舱、workspace 是归档与编辑处”，不是照抄某张卡片。Nomi 还需要补上连接修复、媒体回执、原地确认、并发审批和真实恢复能力。</p></div>
+      </div>
+      <div class="roadmap">
+        <article class="phase"><div class="phase-no"><span>P0</span><span>先做</span></div><h3>可用且看得见</h3><p>修复真实连接、媒体回执和原地确认，这是发布门槛。</p><ul><li>连接诊断与一键修复</li><li>统一 runId、来源和下一步动作</li><li>图片缩略图、视频首帧与资源链接</li><li>聊天端原地确认，Nomi 只做深度复核</li><li>错误原因、恢复动作、诊断编号</li></ul></article>
+        <article class="phase"><div class="phase-no"><span>P1</span><span>随后</span></div><h3>真实进度与恢复</h3><p>把底层真实阶段写回来，避免重复付费和失控重试。</p><ul><li>提交/处理/下载/校验事件</li><li>providerTaskId 与幂等键持久化</li><li>取消、重试、未知提交恢复</li><li>统一任务抽屉与精简审批</li></ul></article>
+        <article class="phase"><div class="phase-no"><span>P2</span><span>增强</span></div><h3>富交互与反馈</h3><p>客户端能力允许时再增强，始终保留通用路径。</p><ul><li>MCP Apps 状态卡</li><li>内嵌播放器与批量审片</li><li>脱敏诊断包与报告问题</li><li>跨客户端任务历史</li></ul></article>
+      </div>
+      <div class="acceptance" aria-label="关键验收标准">
+        <div class="check"><i>✓</i><span>Codex 和 Claude 均完成真实握手，不再以配置存在冒充可用。</span></div>
+        <div class="check"><i>✓</i><span>图片缩略图、视频首帧和资源链接能回到发起端。</span></div>
+        <div class="check"><i>✓</i><span>简单批准、拒绝和重试可以在 Codex / Claude 原地完成。</span></div>
+        <div class="check"><i>✓</i><span>任何阻塞状态都说明：在等谁、为什么、用户下一步做什么。</span></div>
+        <div class="check"><i>✓</i><span>两个并发审批都能独立完成，没有全局 pending 覆盖。</span></div>
+        <div class="check"><i>✓</i><span>断线、超时和重连不会重复提交付费任务。</span></div>
+        <div class="check"><i>✓</i><span>无真实总量时不展示虚假百分比或 ETA。</span></div>
+        <div class="check"><i>✓</i><span>Nomi 在后台时，等待确认、失败和完成能够被看见。</span></div>
+      </div>
+    </section>
+
+    <section class="closing">
+      <div class="eyebrow">Decision</div>
+      <h2>我的建议：直接从 P0 开始。</h2>
+      <p>因为当前最大的产品风险不是卡片不够漂亮，而是用户可能根本没有连上，或者任务卡住却不知道。P0 做完，MCP 才算真正可交付。</p>
+      <div class="source-links">
+        <a href="https://higgsfield.ai/blog/Generate-AI-Videos-From-Claude-with-Higgsfield-MCP" target="_blank" rel="noreferrer">Higgsfield MCP</a>
+        <a href="https://github.com/higgsfield-ai/cli/blob/main/README.md" target="_blank" rel="noreferrer">Higgsfield CLI</a>
+        <a href="https://modelcontextprotocol.io/specification/2024-11-05/basic/utilities/progress" target="_blank" rel="noreferrer">MCP Progress</a>
+        <a href="https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation" target="_blank" rel="noreferrer">MCP Elicitation</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>NOMI MCP EXPERIENCE BLUEPRINT · INTERACTIVE HTML MOCKUP · 2026-08-10</footer>
+
+  <script>
+    const states = {
+      running: {
+        badge: "● 制作中", badgeClass: "", current: "正在渲染 2 张图 · 1 条视频", next: "图片和视频会直接显示；Nomi 只用于放大查看和深度检查。", elapsed: "01:42", primary: "查看预览", chatSecondary: "在 Nomi 深度检查", origin: "制作中 · 来自 Codex · 刚刚", drawerCopy: "产物已分发到聊天端和 Nomi；图片可直接看，视频可直接播。", drawerHint: "Nomi 只负责放大查看、时间线和恢复，不是唯一入口。", step: "生成媒体", stepMeta: "镜头 3", secondary: "暂停", drawerPrimary: "打开全部产物", mediaNote: "图片直接内嵌，视频先给首帧和播放入口；不支持富卡片时只退回文字和资源链接。", track: ["done", "done", "now", "", ""]
+      },
+      approval: {
+        badge: "⚠ 等你确认", badgeClass: "approval", current: "16 个镜头 · 2 张图待确认", next: "你可以直接在这里批准；Nomi 只在你要复核预算时使用。", elapsed: "等待 00:38", primary: "原地确认", chatSecondary: "在 Nomi 复核", origin: "等待确认 · 来自 Codex · 38 秒前", drawerCopy: "制作合同已准备好。如果只是批准，可以留在这里；如果要看预算、替换素材或批量审阅，再打开 Nomi。", drawerHint: "简单确认留在聊天端；Nomi 只在你要复核预算或批量审批时使用。", step: "合同与预算", stepMeta: "等你确认", secondary: "暂不批准", drawerPrimary: "批准并开始 · ¥99.74", mediaNote: "图片直接内嵌，视频先给首帧和播放入口；不支持富卡片时只退回文字和资源链接。", track: ["done", "done", "now", "", ""]
+      },
+      error: {
+        badge: "! 需要处理", badgeClass: "error", current: "模型服务连接失败 · NOMI-P402", next: "检查 API Key 后，可从当前镜头继续，不会重做已完成内容。", elapsed: "失败于 02:17", primary: "修复并重试", chatSecondary: "查看诊断", origin: "需要处理 · 来自 Codex · 1 分钟前", drawerCopy: "镜头 3 提交失败，已完成内容仍然安全。", drawerHint: "保留诊断编号和恢复点，避免重复提交付费任务。", step: "生成素材", stepMeta: "服务失败", secondary: "复制诊断", drawerPrimary: "修复并重试", mediaNote: "媒体已缓存；修复后会从当前进度继续，不重做已完成素材。", track: ["done", "done", "now", "", ""]
+      },
+      complete: {
+        badge: "✓ 已完成", badgeClass: "complete", current: "品牌宣传片已完成 · 60 秒", next: "图片、视频和成片都已保存，可继续修改或导出。", elapsed: "总用时 08:24", primary: "播放成片", chatSecondary: "打开项目", origin: "已完成 · 来自 Codex · 刚刚", drawerCopy: "素材、时间轴和成片均已保存到本地项目。", drawerHint: "可以回到任一产物继续修改，不需要重新走确认流程。", step: "合成与校验", stepMeta: "已完成", secondary: "打开项目", drawerPrimary: "播放成片", mediaNote: "图片、视频和成片都已保存到项目历史。", track: ["done", "done", "done", "done", "done"]
+      }
+    };
+
+    const stateButtons = [...document.querySelectorAll("[data-state]")];
+    function renderState(name) {
+      const value = states[name];
+      stateButtons.forEach((button) => button.setAttribute("aria-selected", String(button.dataset.state === name)));
+      document.querySelectorAll("[data-copy]").forEach((node) => {
+        const key = node.dataset.copy;
+        if (key === "badge") node.className = `status ${value.badgeClass}`.trim();
+        if (value[key] !== undefined) node.textContent = value[key];
+      });
+      document.querySelectorAll(".stage-track .stage").forEach((node, index) => node.className = `stage ${value.track[index]}`.trim());
+      const now = document.querySelector(".step-row.now");
+      now.querySelector(".step-icon").textContent = name === "complete" ? "✓" : name === "error" ? "!" : "●";
+    }
+    stateButtons.forEach((button) => button.addEventListener("click", () => renderState(button.dataset.state)));
+    renderState("running");
+
+    function setConnected(target, textValue) {
+      const row = target.closest(".connection-row");
+      const dot = row.querySelector(".state-dot");
+      dot.className = "state-dot good";
+      row.querySelector("[data-connection]").textContent = textValue;
+      target.textContent = "已验证";
+      target.disabled = true;
+      document.querySelector("#connection-panel").classList.add("repaired");
+    }
+    document.querySelector("[data-repair]").addEventListener("click", (event) => setConnected(event.currentTarget, "已连接 · 握手通过"));
+    document.querySelector("[data-verify]").addEventListener("click", (event) => setConnected(event.currentTarget, "已连接 · 健康检查通过"));
+  </script>
+</body>
+</html>

@@ -8,12 +8,41 @@ describe("extractAssetUrl — 既有 images 端点口径（不回归）", () => 
   it("data[0].url", () => {
     expect(extractAssetUrl({ data: [{ url: "https://x/b.png" }] })).toBe("https://x/b.png");
   });
+  it("audio_url at the top level or inside result", () => {
+    expect(extractAssetUrl({ audio_url: "https://x/a.mp3" })).toBe("https://x/a.mp3");
+    expect(extractAssetUrl({ result: { audio_url: "https://x/b.wav" } })).toBe("https://x/b.wav");
+  });
   it("data[0].b64_json → data URL", () => {
     expect(extractAssetUrl({ data: [{ b64_json: "AAAA" }] })).toBe("data:image/png;base64,AAAA");
   });
   it("非对象 → 空", () => {
     expect(extractAssetUrl(null)).toBe("");
     expect(extractAssetUrl("nope")).toBe("");
+  });
+});
+
+describe("b64_json 的 data URL 类型取自字节，不写死 image/png", () => {
+  // 火山方舟 / kie 的 b64_json 常是 JPEG。写死 image/png 会让这段 JPEG 顶着假身份
+  // 一路走到落盘层，产物被命名成 .png（2026-08-26）。
+  const jpegBase64 = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]),
+    Buffer.from("JFIF\0", "latin1"),
+    Buffer.alloc(16),
+  ]).toString("base64");
+
+  it("JPEG 字节 → data:image/jpeg", () => {
+    expect(extractAssetUrl({ data: [{ b64_json: jpegBase64 }] })).toBe(`data:image/jpeg;base64,${jpegBase64}`);
+  });
+  it("chat/completions 的两条 b64_json 支路同样按字节判", () => {
+    expect(extractChatImageUrl({ choices: [{ message: { images: [{ b64_json: jpegBase64 }] } }] })).toBe(
+      `data:image/jpeg;base64,${jpegBase64}`,
+    );
+    expect(extractChatImageUrl({ choices: [{ message: { content: [{ b64_json: jpegBase64 }] } }] })).toBe(
+      `data:image/jpeg;base64,${jpegBase64}`,
+    );
+  });
+  it("认不出的字节仍回退 image/png（既有口径不回归）", () => {
+    expect(extractAssetUrl({ data: [{ b64_json: "AAAA" }] })).toBe("data:image/png;base64,AAAA");
   });
 });
 

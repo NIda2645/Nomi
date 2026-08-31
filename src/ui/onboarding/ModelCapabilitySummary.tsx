@@ -46,12 +46,16 @@ export function ModelCapabilitySummary({
   canUseScript,
   onEdit,
   onEditRequest,
+  inputSummaryOverride,
+  requestSummaryOverride,
 }: {
   model: ChipModel
   mappings: readonly Mapping[]
   canUseScript: boolean
   onEdit?: () => void
   onEditRequest?: () => void
+  inputSummaryOverride?: string
+  requestSummaryOverride?: string
 }): JSX.Element {
   const { t } = useTranslation()
   const projection = React.useMemo(
@@ -77,13 +81,13 @@ export function ModelCapabilitySummary({
     <section aria-label={t('onboardingProviders.workspace.capability.summaryAria')} className="border-y border-nomi-line">
       <SummaryRow
         title={t('onboardingProviders.workspace.capability.inputSummaryTitle')}
-        value={inputSummary}
+        value={inputSummaryOverride ?? inputSummary}
         onOpen={canEditInput ? onEdit : undefined}
         ariaLabel={t('onboardingProviders.workspace.capability.openInput', { name: model.labelZh })}
       />
       <SummaryRow
         title={t('onboardingProviders.workspace.capability.requestSummaryTitle')}
-        value={requestSummary}
+        value={requestSummaryOverride ?? requestSummary}
         onOpen={canUseScript ? onEditRequest : undefined}
         ariaLabel={t('onboardingProviders.workspace.capability.openRequest', { name: model.labelZh })}
       />

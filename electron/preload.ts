@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { importNativeFileFromPreload } from "./assets/nativeFileBridge";
+import type { AgentChatStartRequest, AgentChatHistoryRequest, AgentChatToolDecision, AgentChatWireEvent } from './harness/agentChatContracts';
 
 type SyncResult<T> = { ok: true; value: T } | { ok: false; error: string };
 type ProductionDeepLinkPayload = { projectId: string; runId?: string; nodeId?: string; artifactId?: string };
@@ -85,6 +86,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       get: () => ipcRenderer.invoke("nomi:settings:automation-policy-get"),
       set: (payload: unknown) => ipcRenderer.invoke("nomi:settings:automation-policy-set", payload),
     },
+    assetRelay: {
+      get: () => ipcRenderer.invoke("nomi:settings:asset-relay-get"),
+      set: (payload: unknown) => ipcRenderer.invoke("nomi:settings:asset-relay-set", payload),
+    },
     systemPrompts: {
       get: () => ipcRenderer.invoke("nomi:settings:system-prompts-get"),
       set: (payload: unknown) => ipcRenderer.invoke("nomi:settings:system-prompts-set", payload),
@@ -168,6 +173,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       invoke: (channel, request) => ipcRenderer.invoke(channel, request),
     }),
     copyFiles: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-files", payload),
+    copyProjectAsset: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-project-asset", payload),
     // 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 主进程转码出新 MP4 资产。
     ensurePlayable: (payload: unknown) => ipcRenderer.invoke("nomi:assets:ensure-playable", payload),
     // 引导示例项目：把随包成图落成项目资产，回 clientId → nomi-local URL（渲染侧算不出稳定地址）。
@@ -334,8 +340,11 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     showInFolder: (payload: unknown) => ipcRenderer.invoke("nomi:exports:show-in-folder", payload),
   },
   tasks: {
+    cancel: (taskId: string) => ipcRenderer.invoke("nomi:tasks:cancel", taskId) as Promise<{ ok: boolean }>,
     run: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:run", payload),
     result: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:result", payload),
+    runComfyCandidateTest: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:comfy-candidate-test", payload),
+    cancelComfyCandidateTest: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:comfy-candidate-cancel", payload),
     // 付费守卫：真人确认后铸一次性令牌（绑 nodeIds），返回不透明 grantId 随生成请求下传。
     grantSpend: (payload: unknown) =>
       ipcRenderer.invoke("nomi:tasks:grant-spend", payload) as Promise<{ grantId: string }>,
@@ -434,18 +443,17 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:conversations:write", { projectId, ...payload }),
   },
   agents: {
-    chatV2Start: (payload: unknown) =>
+    chatV2Start: (payload: AgentChatStartRequest) =>
       ipcRenderer.invoke("nomi:agents:chatV2:start", payload) as Promise<{ sessionId: string }>,
-    confirmTool: (sessionId: string, toolCallId: string, decision: unknown) =>
+    confirmTool: (sessionId: string, toolCallId: string, decision: AgentChatToolDecision) =>
       ipcRenderer.invoke("nomi:agents:chatV2:confirmTool", { sessionId, toolCallId, decision }),
     cancelChatV2: (sessionId: string) => ipcRenderer.invoke("nomi:agents:chatV2:cancel", { sessionId }),
-    clearChatV2Session: (sessionKey: string) => ipcRenderer.invoke("nomi:agents:chatV2:clearSession", { sessionKey }),
-    seedChatV2Session: (sessionKey: string, messages: Array<{ role: string; content: string }>) =>
-      ipcRenderer.invoke("nomi:agents:chatV2:seedSession", { sessionKey, messages }),
-    chatV2SessionAlive: (sessionKey: string) =>
-      ipcRenderer.invoke("nomi:agents:chatV2:sessionAlive", { sessionKey }) as Promise<{ alive: boolean }>,
-    onChatV2Event: (sessionId: string, callback: (event: unknown) => void) => {
-      const listener = (_event: unknown, payload: { sessionId: string; event: unknown }) => {
+    clearChatV2Session: (request: AgentChatHistoryRequest) => ipcRenderer.invoke("nomi:agents:chatV2:clearSession", request),
+    seedChatV2Session: (request: AgentChatHistoryRequest) => ipcRenderer.invoke("nomi:agents:chatV2:seedSession", request),
+    chatV2SessionAlive: (request: AgentChatHistoryRequest) =>
+      ipcRenderer.invoke("nomi:agents:chatV2:sessionAlive", request) as Promise<{ alive: boolean }>,
+    onChatV2Event: (sessionId: string, callback: (event: AgentChatWireEvent) => void) => {
+      const listener = (_event: unknown, payload: { sessionId: string; event: AgentChatWireEvent }) => {
         if (payload && payload.sessionId === sessionId) callback(payload.event);
       };
       ipcRenderer.on("nomi:agents:chatV2:event", listener as never);
@@ -455,35 +463,42 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     },
   },
   onboarding: {
-    adapterRegister: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:register", payload),
-    adapterStart: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:start", payload),
-    adapterGet: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:get", payload),
-    adapterLatest: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:latest", payload),
-    adapterCancel: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:cancel", payload),
-    adapterList: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:list", payload),
-    existingConnectionListModels: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:existing:list-models", payload),
-    adapterRegisterExisting: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:existing:register", payload),
-    adapterStartExisting: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:existing:start", payload),
-    adapterAdaptExisting: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:existing:adapt", payload),
-    adapterRetry: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:provider-adapter:retry", payload),
-    manualCommit: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:onboarding:manual-commit", payload) as Promise<{
-        ok: boolean;
-        vendorKey?: string;
-        committed?: Array<{ modelKey: string; displayName: string }>;
-        error?: string;
-      }>,
+    integrationHandoffList: () => ipcRenderer.invoke("nomi:integration-handoff:list"),
+    integrationHandoffAck: (requestId: string) => ipcRenderer.invoke("nomi:integration-handoff:ack", requestId),
+    integrationHandoffSubscribe: (callback: (entry: unknown) => void) => {
+      const listener = (_event: unknown, entry: unknown) => callback(entry)
+      ipcRenderer.on("nomi:integration-handoff:changed", listener as never)
+      ipcRenderer.send("nomi:integration-handoff:subscribe")
+      return () => ipcRenderer.removeListener("nomi:integration-handoff:changed", listener as never)
+    },
+    integrationSessionSaveCredential: (payload: { sessionId: string; expectedRevision: number; apiKey: string }) =>
+      ipcRenderer.invoke("nomi:integration-session:credential", payload),
+    integrationSessionPrepareComfy: (payload: {
+      vendorKey: string; name: string; workflow: string; binding: unknown; modelKey?: string;
+      enumOptions?: unknown; uiWorkflow?: string;
+    }) => ipcRenderer.invoke("nomi:integration-session:comfyui:prepare", payload),
+    integrationSessionConfirm: (payload: { sessionId: string; expectedRevision: number; challengeId: string }) =>
+      ipcRenderer.invoke("nomi:integration-session:confirm", payload),
+    integrationSessionGet: (sessionId: string) => ipcRenderer.invoke("nomi:integration-session:get", { sessionId }),
+    antigravityStatus: () => ipcRenderer.invoke("nomi:antigravity:status"),
+    antigravityTest: (payload?: unknown) => ipcRenderer.invoke("nomi:antigravity:test", payload),
+    antigravityCancel: () => ipcRenderer.invoke("nomi:antigravity:cancel"),
+    httpConnectionConfigure: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:configure", payload),
+    httpCertificationStart: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:start", payload),
+    certificationGet: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:get", payload),
+    certificationCancel: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:cancel", payload),
+    certificationList: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:list", payload),
+    httpConnectionListModels: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:existing:list-models", payload),
+    httpCertificationStartExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:existing:start", payload),
+    httpCertificationRetry: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:retry", payload),
     guessKinds: (payload: unknown) =>
       ipcRenderer.invoke("nomi:onboarding:guess-kinds", payload) as Promise<{
         kinds: Record<string, "text" | "image" | "video" | "audio">;

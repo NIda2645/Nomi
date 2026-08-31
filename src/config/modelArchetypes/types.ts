@@ -22,7 +22,8 @@ export type ArchetypeReferenceSlot = {
   kind: ArchetypeReferenceSlotKind;
   label: string;
   min: number;
-  max: number;
+  /** Absent when the provider has not published a reference count limit. */
+  max?: number;
   /**
    * 该模型 API 的输入参数名（模型契约，供应商无关）。缺省时由 kind 推断（见 archetypeMeta
    * SLOT_DEFAULTS）。例：Seedance 全能参考的角色图 = `reference_image_urls`；HappyHorse 角色参考
@@ -174,6 +175,8 @@ export type ModelArchetypeVariant = {
 export type ArchetypeSource = SharedArchetypeSource;
 
 export type ModelArchetype = {
+  /** Older shared profile IDs accepted only when model identity matches this profile. */
+  legacyIds?: string[];
   id: string; // 'seedance-2'
   family: string; // 'seedance'
   label: string; // 'Seedance 2.0'

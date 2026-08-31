@@ -19,6 +19,19 @@ const SRC_ROOT = path.join(process.cwd(), 'src')
 const HOOK_NAME = 'useDedupedModelSelect'
 const HOOK_FILE = path.join(SRC_ROOT, 'workbench/common/useDedupedModelSelect.ts')
 
+/**
+ * 剥掉注释再断言——本文件所有断言都扫**代码**而非原文。否则记录该 bug 的注释里正好会提到
+ * `BulkModelPicker` / `useDedupedModelSelect`（如共享组件顶上的说明），会让 toContain 命中注释、
+ * not.toContain 被注释误伤：语义反噬文档。也满足 check:walkthroughs 的「扫源码结构测试必须剥注释」门岗。
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+
+function readCode(relative: string): string {
+  return stripComments(fs.readFileSync(path.join(process.cwd(), relative), 'utf8'))
+}
+
 function listSourceFiles(dir: string): string[] {
   const out: string[] = []
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -38,7 +51,7 @@ function listSourceFiles(dir: string): string[] {
 function filesImportingHook(): string[] {
   return listSourceFiles(SRC_ROOT).filter((file) => {
     if (path.resolve(file) === path.resolve(HOOK_FILE)) return false
-    const source = fs.readFileSync(file, 'utf8')
+    const source = stripComments(fs.readFileSync(file, 'utf8'))
     return new RegExp(`import\\s*\\{[^}]*\\b${HOOK_NAME}\\b[^}]*\\}\\s*from`).test(source)
   })
 }
@@ -46,7 +59,7 @@ function filesImportingHook(): string[] {
 describe('model select structure — 选了模型就必须选得了供应商', () => {
   it('每个用 useDedupedModelSelect 的文件都渲染了供应商那一段（onProviderPick）', () => {
     const offenders = filesImportingHook().filter(
-      (file) => !fs.readFileSync(file, 'utf8').includes('onProviderPick'),
+      (file) => !stripComments(fs.readFileSync(file, 'utf8')).includes('onProviderPick'),
     )
 
     expect(
@@ -65,28 +78,45 @@ describe('model select structure — 选了模型就必须选得了供应商', (
     ).toEqual([])
   })
 
-  it('批量选模型只有一份实现：两个批量调用点都走 BulkModelPicker，不各写各的', () => {
-    const bulkCallSites = [
-      'src/workbench/generationCanvas/components/CanvasSelectionToolbar.tsx',
-      'src/workbench/creation/storyboard/StoryboardBulkBar.tsx',
-    ]
-    for (const relative of bulkCallSites) {
-      const source = fs.readFileSync(path.join(process.cwd(), relative), 'utf8')
+  it('批量选模型只有一份实现：所有批量调用点都走同一份 BulkModelPicker，不各写各的', () => {
+    // 画布两个批量入口（框选工具条 + 底部「生成全部」坞）实现共同住进 CanvasBulkModelSelect —
+    // 那份薄封装内部用 BulkModelPicker（PR #157：抽共享组件防两入口漂移）。分镜批量条直接用 BulkModelPicker。
+    const sharedCanvasPicker = 'src/workbench/generationCanvas/components/CanvasBulkModelSelect.tsx'
+    const bulkPickerImplementations = [sharedCanvasPicker, 'src/workbench/creation/storyboard/StoryboardBulkBar.tsx']
+    for (const relative of bulkPickerImplementations) {
+      const source = readCode(relative)
       expect(source, `${relative} 应使用共享的 BulkModelPicker`).toContain('BulkModelPicker')
       // P1 无并行版：批量调用点不许再自己调那个两段式 hook（调了就又会退化成「选不了家」）。
       expect(source, `${relative} 不该再直接用 ${HOOK_NAME}`).not.toContain(HOOK_NAME)
     }
+
+    // 画布两个入口都必须复用共享组件、不许各自内联再实现一遍（否则又会漂移）。
+    const canvasBulkEntryPoints = [
+      'src/workbench/generationCanvas/components/CanvasSelectionToolbar.tsx',
+      'src/workbench/generationCanvas/components/CanvasBatchGenerateDock.tsx',
+    ]
+    for (const relative of canvasBulkEntryPoints) {
+      const source = readCode(relative)
+      expect(source, `${relative} 应复用共享的 CanvasBulkModelSelect`).toContain('CanvasBulkModelSelect')
+      expect(source, `${relative} 必须把完整同级组交给共享选择器，才能区分同类不同执行模式`).toContain(
+        'peerGroups=',
+      )
+      expect(source, `${relative} 不该再直接用 ${HOOK_NAME}`).not.toContain(HOOK_NAME)
+      expect(source, `${relative} 不该再自己内联 BulkModelPicker（要走共享组件）`).not.toContain(
+        "from '../../common/BulkModelPicker'",
+      )
+    }
   })
 
   it('BulkModelPicker 选中后把 vendor 一起交出去（只写 modelKey 就等于没修）', () => {
-    const picker = fs.readFileSync(path.join(SRC_ROOT, 'workbench/common/BulkModelPicker.tsx'), 'utf8')
+    const picker = readCode('src/workbench/common/BulkModelPicker.tsx')
     expect(picker).toContain('resolveProviderByAddress')
     expect(picker).toContain('onPick(provider.option.value, provider.vendor)')
 
-    const toolbar = fs.readFileSync(
-      path.join(SRC_ROOT, 'workbench/generationCanvas/components/CanvasSelectionToolbar.tsx'),
-      'utf8',
+    // 画布共享封装把 (value, vendor) 一起回抛给 onApplyModel（vendor 丢了 = 又锁不了家）。
+    const sharedCanvasPicker = readCode('src/workbench/generationCanvas/components/CanvasBulkModelSelect.tsx')
+    expect(sharedCanvasPicker).toContain(
+      'onApplyModel({ executionKind: group.executionKind, requiredMode: group.requiredMode, value, vendor',
     )
-    expect(toolbar).toContain('onApplyModel({ executionKind: group.executionKind, value, vendor')
   })
 })

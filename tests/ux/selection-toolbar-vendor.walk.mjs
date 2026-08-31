@@ -1,7 +1,7 @@
 // 看清「框选多选浮条」的真实样子：用户报「框选没办法选择不同供应商的模型，导致一直生成失败」。
 // 这份只做取证——不断言对错，就是把浮条真实渲染出来给人眼看：模型下拉有、供应商下拉有没有。
 import { launchNomiApp } from './_launchApp.mjs'
-import { expectVisible, expectAbsent, proveProbe } from './_assert.mjs'
+import { expectVisible, expectAbsent, proveProbe, screenshotSettled } from './_assert.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -19,16 +19,16 @@ fs.mkdirSync(settingsDir, { recursive: true })
 // 在那种现场跑「没有『N 家』折叠行」等于什么都没验（空洞的绿）——必须造出多家现场。
 const now = '2026-08-18T00:00:00.000Z'
 const vendors = [
-  { key: 'apimart', name: 'APIMart' },
-  { key: 'kie', name: 'Kie' },
+  { key: 'ux-apimart', name: 'APIMart' },
+  { key: 'ux-kie', name: 'Kie' },
 ]
 fs.writeFileSync(
   path.join(settingsDir, 'model-catalog.json'),
   JSON.stringify({
-    version: 1,
+    version: 8,
     vendors: vendors.map((v) => ({
       key: v.key, name: v.name, enabled: true,
-      baseUrlHint: `https://${v.key}.example/v1`, authType: 'bearer',
+      baseUrlHint: `https://${v.key}.example/v1`, authType: 'none',
       providerKind: 'openai-compatible', meta: {}, createdAt: now, updatedAt: now,
     })),
     models: [
@@ -36,20 +36,27 @@ fs.writeFileSync(
       ...vendors.map((v) => ({
         vendorKey: v.key, modelKey: `nano-banana-${v.key}`, labelZh: 'Nano Banana', kind: 'image',
         enabled: true, createdAt: now, updatedAt: now,
-        meta: { adapter: { state: 'verified', runId: 'run-x', updatedAt: now } },
+        meta: {
+          adapter: {
+            state: 'verified', activeRevision: 'revision-x', publicationModes: ['text_to_image'],
+            modes: [{ taskKind: 'text_to_image', state: 'verified' }], runId: 'run-x', updatedAt: now,
+          },
+        },
       })),
       // 单家对照组：它应该仍是一行。
       {
-        vendorKey: 'apimart', modelKey: 'gpt-image-2', labelZh: 'GPT Image 2', kind: 'image',
+        vendorKey: 'ux-apimart', modelKey: 'gpt-image-2', labelZh: 'GPT Image 2', kind: 'image',
         enabled: true, createdAt: now, updatedAt: now,
-        meta: { adapter: { state: 'verified', runId: 'run-x', updatedAt: now } },
+        meta: {
+          adapter: {
+            state: 'verified', activeRevision: 'revision-x', publicationModes: ['text_to_image'],
+            modes: [{ taskKind: 'text_to_image', state: 'verified' }], runId: 'run-x', updatedAt: now,
+          },
+        },
       },
     ],
     mappings: [],
-    apiKeysByVendor: Object.fromEntries(vendors.map((v) => [
-      v.key,
-      { vendorKey: v.key, apiKey: 'sk-walkthrough', enc: 'plain', enabled: true, createdAt: now, updatedAt: now },
-    ])),
+    apiKeysByVendor: {},
   }, null, 2),
 )
 
@@ -91,7 +98,7 @@ const { app, win } = await launchNomiApp({
 })
 
 const snap = async (name) => {
-  await win.screenshot({ path: path.join(shotsDir, `${name}.png`) })
+  await screenshotSettled(win, { path: path.join(shotsDir, `${name}.png`) })
   console.log(`  · shot ${name}`)
 }
 async function closeApp() {
@@ -140,7 +147,7 @@ try {
 
   const box = await bar.boundingBox().catch(() => null)
   if (box) {
-    await win.screenshot({
+    await screenshotSettled(win, {
       path: path.join(shotsDir, '03-toolbar-closeup.png'),
       clip: { x: Math.max(0, box.x - 12), y: Math.max(0, box.y - 12), width: box.width + 24, height: box.height + 24 },
     })

@@ -6,7 +6,7 @@
 //   4 设置页能新建自定义提示词 → 它出现在选择器的「我的」组里 → 选得中
 //   5 选中自定义后，带「镜头」的话不被拆分镜劫走（承接 08-17 的 dedicatedJob）
 import { launchNomiApp } from './_launchApp.mjs'
-import { expectVisible, expectCount, expectAbsent, proveProbe, scopedText } from './_assert.mjs'
+import { expectVisible, expectCount, expectAbsent, proveProbe, scopedText, screenshotSettled } from './_assert.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -48,7 +48,7 @@ const record = (name, ok, detail) => {
   findings.push({ name, ok, detail })
   console.log(`${ok ? '✅' : '❌'} ${name} — ${detail}`)
 }
-const snap = async (n) => { await win.screenshot({ path: path.join(shotsDir, `${n}.png`) }) }
+const snap = async (n) => { await screenshotSettled(win, { path: path.join(shotsDir, `${n}.png`) }) }
 async function closeApp() {
   const child = app.process()
   await Promise.race([app.close().catch(() => undefined), new Promise((r) => setTimeout(r, 8000))])
@@ -138,7 +138,10 @@ try {
   // 设置面板异步挂载：等标题出现，不拿 sleep 赌（赌短了「新建」读不到，④ 直接假红）。
   await expectVisible(heading, '设置 → AI 里找不到「系统提示词」区').catch(() => {})
   await heading.scrollIntoViewIfNeeded().catch(() => {})
-  const newChip = win.getByRole('button', { name: /新建/ }).first()
+  // Scope the action to the settings prompt section. A generic "新建" query
+  // can resolve to the always-mounted creation toolbar behind the modal and
+  // make Playwright report a false interaction failure.
+  const newChip = win.locator('[data-settings-prompt-create]').first()
   const canCreate = await expectVisible(newChip, '设置页里找不到「新建」自定义提示词的入口')
     .then(() => true).catch(() => false)
   if (canCreate) {

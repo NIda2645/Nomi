@@ -21,7 +21,7 @@ import {
   resolveArchetypeForModel,
   specializeArchetypeForVariant,
 } from '../../../../config/modelArchetypes'
-import type { ImageUrlSlot } from './parameterControlModel'
+import type { ImageUrlSlot } from '../../model/parameterReferenceSlots'
 import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
 import { DEFAULT_SLOT_INPUT_KEY, modeSlotReach, type SlotReach } from '../../../../../electron/catalog/referenceReachability'
 
@@ -88,7 +88,7 @@ export function currentArchetypeMode(
   meta: Record<string, unknown> | undefined,
 ): ArchetypeMode {
   const stored = readArchetypeNodeMeta(meta)
-  const modeId = stored?.id === archetype.id ? stored.modeId : ''
+  const modeId = stored && (stored.id === archetype.id || archetype.legacyIds?.includes(stored.id)) ? stored.modeId : ''
   return (
     archetype.modes.find((m) => m.id === modeId) ??
     archetype.modes.find((m) => m.id === archetype.defaultModeId) ??
@@ -146,7 +146,7 @@ export type ArchetypeArraySlot = {
   metaKey: string
   label: string
   min: number
-  max: number
+  max?: number
   accept: 'image' | 'video' | 'audio'
   /** 角色图按序标 ①②③ = prompt 的 character1..N（U2）；视频/音频不编号。 */
   numbered: boolean
@@ -313,7 +313,7 @@ export type ArchetypeArrayAppend =
   | { status: 'added'; next: string[] }
   | { status: 'empty' }
   | { status: 'duplicate' }
-  | { status: 'full' }
+  | { status: 'full'; max: number }
 
 /**
  * 往数组参考槽追加一个 URL 的**纯**单源逻辑（去重 + 上限判定）。**仅 meta-only 上传路径**用它：
@@ -330,7 +330,7 @@ export function appendArchetypeArrayValue(
   if (!trimmed) return { status: 'empty' }
   const current = readArchetypeArray(meta, slot.metaKey)
   if (current.includes(trimmed)) return { status: 'duplicate' }
-  if (current.length >= slot.max) return { status: 'full' }
+  if (slot.max !== undefined && current.length >= slot.max) return { status: 'full', max: slot.max }
   return { status: 'added', next: [...current, trimmed] }
 }
 
@@ -378,18 +378,28 @@ function preservedVariantId(meta: Record<string, unknown>, archetype: ModelArche
 }
 
 /**
- * 切到 nextModeId：只改 node.meta.archetype.modeId（参考值全局保留，不搬不清）。返回**整份新 meta**。
+ * 切到 nextModeId：改 node.meta.archetype.modeId，并把**存量越界的 select 值夹回新模式的默认**
+ * （参考值/照片全局保留，不搬不清）。返回**整份新 meta**。
  * 互斥不在这里发生——发生在 buildArchetypeInputParams（只发当前模式声明的槽键）。这样切回时照片还在。
  * variantId 跟随保留（切 mode 不动变体）；无变体档案则不写 variantId 键。
+ *
+ * ⚠️ 这里必须和 applyArchetypeVariantSwitch 一样调 clampMetaToModeParams —— **模式和变体一样会收窄参数**。
+ * 2026-08-26 走查实测：火山 Seedance 2.5 在「文生视频」选了 16:9，切到「首帧」（官方硬约束 ratio 只能
+ * adaptive，档案已把选项收窄成一项）后，UI 上一个选中项都没有，而 meta 里那个 16:9 原封不动留着并照发
+ * —— 正好触发档案注释说要防的 InvalidParameter.TaskTypeConstraint（任务已创建才异步报错、额度已排队）。
+ * 收窄了「选项」却不收窄「已存的值」= UI 与发送不一致。通用坑，不是 Seedance 专属。
  */
 export function applyArchetypeModeSwitch(
   meta: Record<string, unknown>,
   archetype: ModelArchetype,
   nextModeId: string,
 ): Record<string, unknown> {
-  const nextMode = archetype.modes.find((m) => m.id === nextModeId) ?? archetype.modes[0]
   const variantId = preservedVariantId(meta, archetype)
-  return { ...meta, archetype: { id: archetype.id, modeId: nextMode.id, ...(variantId ? { variantId } : {}) } }
+  // 按当前变体特化后再取模式参数：变体与模式**都**可能收窄同一个 select，夹的必须是两层叠加后的选项集。
+  const specialized = specializeArchetypeForVariant(archetype, variantId)
+  const nextMode = specialized.modes.find((m) => m.id === nextModeId) ?? specialized.modes[0]
+  const clamped = nextMode ? clampMetaToModeParams(meta, nextMode.params) : meta
+  return { ...clamped, archetype: { id: archetype.id, modeId: nextMode.id, ...(variantId ? { variantId } : {}) } }
 }
 
 /**
@@ -504,6 +514,10 @@ export function ensureArchetypeNodeMeta(
   archetype: ModelArchetype,
 ): Record<string, unknown> | null {
   const stored = readArchetypeNodeMeta(meta)
+  if (stored && archetype.legacyIds?.includes(stored.id)) {
+    const mode = currentArchetypeMode(archetype, meta)
+    return applyArchetypeModeSwitch(preserveLegacyPixelRatio(meta, mode), archetype, mode.id)
+  }
   // 已是该档案：若有变体但 variantId 缺/失效 → 补默认变体（旧 meta 升级）；否则幂等 null。
   if (stored?.id === archetype.id) {
     if (!(archetype.variants?.length ?? 0)) return null
@@ -512,6 +526,23 @@ export function ensureArchetypeNodeMeta(
     return applyArchetypeVariantSwitch(meta, archetype, canonicalStoredId || defaultVariantIdOf(archetype))
   }
   return applyArchetypeModeSwitch(meta, archetype, archetype.defaultModeId)
+}
+
+/** Split legacy pixel size into the new profile's ratio before its size is clamped.
+ * Only declared legacy-profile migrations use this; explicit ratio choices win. */
+function preserveLegacyPixelRatio(meta: Record<string, unknown>, mode: ArchetypeMode): Record<string, unknown> {
+  const pixels = typeof meta.size === 'string' ? /^(\d+)x(\d+)$/.exec(meta.size) : null
+  const size = mode.params.find((param) => param.key === 'size')
+  const ratio = mode.params.find((param) => param.key === 'ratio' || param.key === 'aspect_ratio')
+  if (!pixels || !size || size.options?.some((option) => option.value === meta.size)
+    || !ratio || meta[ratio.key] !== undefined) return meta
+  const width = Number(pixels[1]); const height = Number(pixels[2])
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return meta
+  const matching = ratio.options?.find((option) => {
+    const parts = /^(\d+):(\d+)$/.exec(String(option.value))
+    return parts && width * Number(parts[2]) === height * Number(parts[1])
+  })
+  return matching ? { ...meta, [ratio.key]: matching.value } : meta
 }
 
 /** 单图 frame 槽（含 source_video）在 meta 里的存储键。source_video UI 本轮从简（meta 直存）。 */
@@ -596,14 +627,14 @@ function volcengineContentItem(inputKey: string, url: string): Record<string, un
 export function mergeOrderedReferenceImageUrls(
   edgeImageUrls: readonly string[],
   uploadUrls: readonly string[],
-  maxCap: number,
+  maxCap?: number,
 ): string[] {
   const merged: string[] = []
   for (const candidate of [...edgeImageUrls, ...uploadUrls]) {
     const url = typeof candidate === 'string' ? candidate.trim() : ''
     if (url && !merged.includes(url)) merged.push(url)
   }
-  return maxCap > 0 ? merged.slice(0, maxCap) : merged
+  return maxCap !== undefined && maxCap > 0 ? merged.slice(0, maxCap) : merged
 }
 
 /**
@@ -621,6 +652,33 @@ export function orderedSentImageReferenceUrls(
   const route = slot ? ARRAY_SLOT_ROUTE[slot.kind] : undefined
   if (!slot || !route) return []
   return mergeOrderedReferenceImageUrls(edgeImageUrls, readArchetypeArray(meta, route.metaKey), slot.max)
+}
+
+/** 当前模式所有数组媒体参考的发送顺序 + 类型编号，供 @imageN/@videoN/@audioN 共用。 */
+export function orderedSentMediaReferenceUrls(
+  meta: Record<string, unknown>,
+  archetype: ModelArchetype,
+  edgeReferences: {
+    image?: readonly string[]
+    video?: readonly string[]
+    audio?: readonly string[]
+  },
+): Array<{ url: string; kind: 'image' | 'video' | 'audio'; index: number }> {
+  const mode = currentArchetypeMode(archetype, meta)
+  const counts: Record<'image' | 'video' | 'audio', number> = { image: 0, video: 0, audio: 0 }
+  const out: Array<{ url: string; kind: 'image' | 'video' | 'audio'; index: number }> = []
+  for (const slot of mode.slots) {
+    const route = ARRAY_SLOT_ROUTE[slot.kind]
+    if (!route) continue
+    const kind = route.accept
+    const edgeUrls = edgeReferences[kind] ?? []
+    const urls = mergeOrderedReferenceImageUrls(edgeUrls, readArchetypeArray(meta, route.metaKey), slot.max)
+    for (const url of urls) {
+      counts[kind] += 1
+      out.push({ url, kind, index: counts[kind] })
+    }
+  }
+  return out
 }
 
 /**

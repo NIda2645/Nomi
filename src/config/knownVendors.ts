@@ -86,17 +86,16 @@ export const KNOWN_VENDORS: readonly KnownVendor[] = [
     },
   },
   {
-    // Agnes AI（Sapiens AI，新加坡）：全模态 OpenAI 兼容网关，文本/图片/视频**无限期免费**
-    // （2026-06-01 起，免费层 RPM 20）。一个 key 解锁三模态、邮箱注册不绑卡 → 新手零成本起点。
+    // Agnes AI: public model coverage and account eligibility are separate (checked 2026-08-26).
     vendorKey: 'agnes',
     glyph: 'Ag',
-    tagline: '全模态免费 · 一个 key 解锁文本/图片/视频',
+    tagline: '文本、图片与视频 · 可用模型以当前账户为准',
     credentialPlaceholder: '粘贴 Agnes API Key',
     credentialHint:
-      '免费：去 platform.agnes-ai.com 邮箱注册（不绑卡）→ 创建 API Key。免费层有速率上限（RPM 20），个人/原型够用。凭证本地加密存储。',
+      '在 Agnes 官方平台创建 API Key。部分模型需付费或单独开通；可用模型、价格和限额以当前账户为准。凭证本地加密存储。',
     promo: {
-      text: 'Agnes AI（新加坡 Sapiens AI）把文本/图片/视频三模态 API 无限期免费开放，OpenAI 兼容。邮箱注册不绑卡即可拿 Key。',
-      ctaLabel: '去 Agnes 注册（免费）',
+      text: 'Agnes AI 提供 OpenAI 兼容的文本、图片与视频 API。公开模型清单不代表当前套餐均可调用。',
+      ctaLabel: '打开 Agnes 平台',
       url: 'https://agnes-ai.com',
     },
   },
@@ -131,6 +130,66 @@ export const KNOWN_VENDORS: readonly KnownVendor[] = [
       text: '火山方舟（字节跳动）官方。需先在 Ark 控制台「开通管理」激活模型（Seedream/Seedance），再拿 API Key。',
       ctaLabel: '去火山方舟',
       url: 'https://console.volcengine.com/ark',
+    },
+  },
+  {
+    vendorKey: 'minimax',
+    logo: new URL('../assets/vendor-logos/minimax.png', import.meta.url).href,
+    glyph: 'M',
+    tagline: '官方原生 · M3 文本、H3 视频与 Speech 2.8',
+    credentialPlaceholder: '粘贴 MiniMax API Key',
+    promo: {
+      text: 'MiniMax 官方 API，提供 M3 文本与 Agent、H3 多模态视频和 Speech 2.8 高保真配音。',
+      ctaLabel: '打开 MiniMax 平台',
+      url: 'https://platform.minimax.io',
+    },
+  },
+  {
+    vendorKey: 'elevenlabs',
+    logo: new URL('../assets/vendor-logos/elevenlabs.png', import.meta.url).href,
+    glyph: 'E',
+    tagline: '官方原生 · 配音、音乐、音效与转写',
+    credentialPlaceholder: '粘贴 ElevenLabs API Key',
+    promo: {
+      text: 'ElevenLabs 官方 API，覆盖 Eleven v3、Music v2、Sound Effects v2 与 Scribe v2。',
+      ctaLabel: '打开 ElevenLabs',
+      url: 'https://elevenlabs.io/app/developers/api-keys',
+    },
+  },
+  {
+    vendorKey: 'meshy',
+    logo: new URL('../assets/vendor-logos/meshy.png', import.meta.url).href,
+    glyph: 'M',
+    tagline: '官方原生 · Meshy 7 单图生成带纹理 3D',
+    credentialPlaceholder: '粘贴 Meshy API Key',
+    promo: {
+      text: 'Meshy 官方 API，可从单张物体图生成带 PBR 材质的 GLB 资产。',
+      ctaLabel: '打开 Meshy 控制台',
+      url: 'https://www.meshy.ai/settings/api',
+    },
+  },
+  {
+    vendorKey: 'fal',
+    glyph: 'F',
+    tagline: '官方队列 · 图片、视频、音频与 3D 模型',
+    credentialPlaceholder: '粘贴 fal.ai API Key',
+    credentialHint: '在 fal.ai Dashboard 创建 API Key。不同模型的价格、限额和可用区域以当前账户为准。凭证本地加密存储。',
+    promo: {
+      text: 'fal.ai 官方队列，统一提交、状态和结果生命周期；本目录只保留已对账的旗舰模型。',
+      ctaLabel: '打开 fal.ai',
+      url: 'https://fal.ai/dashboard/keys',
+    },
+  },
+  {
+    vendorKey: 'runway',
+    glyph: 'R',
+    tagline: '官方原生 · Gen-4.5 与 Gen-4 Turbo 视频',
+    credentialPlaceholder: '粘贴 Runway API Key',
+    credentialHint: '在 Runway Dev 创建 API Key。生成会消耗 credits；凭证本地加密存储。',
+    promo: {
+      text: 'Runway Dev 官方 API，提供 Gen-4.5 文生/图生视频与 Gen-4 Turbo 图生视频。',
+      ctaLabel: '打开 Runway Dev',
+      url: 'https://dev.runwayml.com',
     },
   },
   {

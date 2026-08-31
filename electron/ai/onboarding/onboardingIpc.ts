@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
+import { appFetch } from "../../appFetch";
 import type { AiSdkProviderKind } from "../../catalog/types";
-import { describeIllegalHeader, findIllegalHeader, findNonHeaderSafeChar } from "../../jsonUtils";
+import { describeIllegalHeader, findIllegalHeader, findNonHeaderSafeChar, mergeHeadersCaseInsensitive } from "../../jsonUtils";
 import { guessModelKind, type GuessableModelKind } from "../../catalog/modelKindHeuristic";
 import {
   buildAuthHeaders,
@@ -12,6 +13,8 @@ import {
 import { normalizeProviderKind } from "../../catalog/catalogStore";
 import { checkVendorHealth } from "./vendorHealth";
 
+import { assertTrustedSender } from "../../ipcSenderGuard";
+import { registerAntigravityIpc } from "../antigravityIpc";
 // ---------------------------------------------------------------------------
 // Onboarding — 中转拉取式接入 IPC（手填地址+key → 拉模型 → 按 id 分类 → 保存）。
 // 「AI 读文档」子系统已下线（Issue #8：各家中转参数不一，读文档抠参数不可靠）。
@@ -35,29 +38,21 @@ async function probeOneProtocol(
   signal: AbortSignal,
 ): Promise<ProtocolProbe> {
   let url: string;
-  let headers: Record<string, string>;
+  const headers = mergeHeadersCaseInsensitive({ "content-type": "application/json" }, buildAuthHeaders(kind, apiKey, extraHeaders));
   let body: Record<string, unknown>;
   if (kind === "anthropic") {
     const root = (rawBaseUrl || "https://api.anthropic.com").replace(/\/v1$/i, "");
     url = `${root}/v1/messages`;
-    headers = {
-      "content-type": "application/json",
-      "anthropic-version": "2023-06-01",
-      ...(apiKey ? { "x-api-key": apiKey } : {}),
-      ...extraHeaders,
-    };
     body = { model: modelId || "claude-3-5-haiku-latest", max_tokens: 1, messages: [{ role: "user", content: "ping" }] };
   } else if (kind === "openai-responses") {
     url = `${rawBaseUrl}/responses`;
-    headers = { "content-type": "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}), ...extraHeaders };
     body = { model: modelId || "gpt-4o-mini", input: "ping", max_output_tokens: 16 };
   } else {
     url = `${rawBaseUrl}/chat/completions`;
-    headers = { "content-type": "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}), ...extraHeaders };
     body = { model: modelId || "gpt-3.5-turbo", messages: [{ role: "user", content: "ping" }], max_tokens: 1 };
   }
   try {
-    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal });
+    const res = await appFetch(url, { method: "POST", headers, body: JSON.stringify(body), signal });
     if (res.ok) return { ok: true, status: res.status };
     const text = await res.text().catch(() => "");
     // 404/405/501/502/503 多为「路由/协议不对」→ 换下一个协议；401/403/400 多为鉴权/请求问题（不是协议错）。
@@ -67,102 +62,23 @@ async function probeOneProtocol(
     return { ok: false, error: await describeNetworkErrorLazy(error), mismatch: true };
   }
 }
-
 export function registerOnboardingIpc(): void {
+  registerAntigravityIpc();
   // 「AI 读文档」接入路径已下线（Issue #8：改为中转拉取式接入图片/视频/文本）。
 
   // 供应商连接健康：模型面板每次打开时按家自查「现在能不能用」。凭证由主进程自取——
   // renderer 只有 hasApiKey 布尔，这也是旧实现「只在粘贴 key 那一刻能测」的根因。
-  ipcMain.handle("nomi:onboarding:vendor-health", async (_event, payload: Record<string, unknown>) => {
+  ipcMain.handle("nomi:onboarding:vendor-health", async (event, payload: Record<string, unknown>) => {
+    assertTrustedSender(event);
     const vendorKey = String(payload?.vendorKey || "").trim();
     if (!vendorKey) return { vendorKey: "", state: "unsupported" as const, checkedAt: Date.now() };
     return checkVendorHealth(vendorKey, payload?.force === true);
   });
 
-  // PRIMARY model-adding path — manual provider entry (BaseURL + key + models).
-  // Deterministic openai-compatible text commit; reuses the single catalog write
-  // path. No forced connectivity test (aligns with opencode; see test-connection).
-  ipcMain.handle("nomi:onboarding:manual-commit", async (_event, payload: Record<string, unknown>) => {
-    try {
-      // R1：走唯一 normalizeProviderKind（接受 openai-responses），不再 2 值 clamp。
-      const providerKind = normalizeProviderKind(payload?.providerKind);
-      const { commitManualOpenAiCompatibleModels } = await import("../../catalog/catalogCommit");
-      const { smartDefaultImageEditProtocol } = await import("../../catalog/newapiTransport");
-      const { probeImageEditProtocol } = await import("../../catalog/imageEditProbe");
-      const headers: Record<string, string> = {};
-      if (payload?.headers && typeof payload.headers === "object") {
-        for (const [k, v] of Object.entries(payload.headers as Record<string, unknown>)) {
-          headers[String(k)] = String(v ?? "");
-        }
-      }
-      const baseUrl = String(payload?.baseUrl || "").trim();
-      const apiKey = String(payload?.apiKey || "").trim();
-      const rawModels = Array.isArray(payload?.models) ? (payload.models as Array<Record<string, unknown>>) : [];
-      // 改图协议判定（探测优先 → 智能默认 → chat 兜底）。只对**图片模型且智能默认落 chat（歧义）**的做免费
-      // 探测（gpt-image/dall-e/grok 已由智能默认判定、无需探）；用户/UI 显式给了 imageEditProtocol 则直接用。
-      // 探测发 multipart 缺 image 的请求读报错形状，**不触发付费生成**；带超时兜底，永不阻塞保存。
-      // 原生报文探测（每个 probePath 只探一次，结果在本次提交内复用）：模型命中内置档案且这家中转
-      // 真提供该档案的原生端点 → 用那份完整报文而不是通用最小模板。探测只发 GET、不建任务、不计费。
-      const { archetypeIdForModel } = await import("../../catalog/archetypeIdentity");
-      const { nativeWireProfileForArchetype } = await import("../../catalog/nativeWireProfiles");
-      const { probeNativeEndpoint } = await import("../../catalog/nativeEndpointProbe");
-      const nativeProbeCache = new Map<string, Promise<boolean>>();
-      const nativeArchetypeIdFor = async (id: string): Promise<string | undefined> => {
-        const archetypeId = archetypeIdForModel(id);
-        const profile = nativeWireProfileForArchetype(archetypeId);
-        if (!profile) return undefined;
-        let pending = nativeProbeCache.get(profile.probePath);
-        if (!pending) {
-          pending = probeNativeEndpoint(baseUrl, profile.probePath, apiKey).then((r) => r.exists).catch(() => false);
-          nativeProbeCache.set(profile.probePath, pending);
-        }
-        return (await pending) ? profile.archetypeId : undefined;
-      };
-      const models = await Promise.all(rawModels.map(async (m) => {
-        const id = String(m?.id || "");
-        const k = m?.kind;
-        const kind = (k === "image" || k === "video" || k === "text" || k === "audio" || k === "model3d" ? k : undefined) as GuessableModelKind | undefined;
-        const displayName = m?.displayName ? String(m.displayName) : undefined;
-        const explicit = typeof m?.imageEditProtocol === "string" ? (m.imageEditProtocol as "chat-completions-image-url" | "xai-json-edits" | "openai-multipart-edits") : undefined;
-        const effectiveKind = kind || (id ? guessModelKind(id) : undefined);
-        if (effectiveKind === "video" && id) {
-          const nativeWireArchetypeId = await nativeArchetypeIdFor(id);
-          return { id, displayName, kind, ...(nativeWireArchetypeId ? { nativeWireArchetypeId } : {}) };
-        }
-        if (effectiveKind !== "image" || !id) return { id, displayName, kind };
-        // 图像同样探原生报文。命中就直接用，**并跳过改图协议探测**——原生自带 image_edit op，而
-        // chat/completions 那条路对 Seedream 这类非聊天模型本来就是错的（改图不按原图甚至直接失败）。
-        const nativeImageArchetypeId = await nativeArchetypeIdFor(id);
-        if (nativeImageArchetypeId) return { id, displayName, kind, nativeWireArchetypeId: nativeImageArchetypeId };
-        if (explicit) return { id, displayName, kind, imageEditProtocol: explicit };
-        if (smartDefaultImageEditProtocol(id) !== "chat-completions-image-url") return { id, displayName, kind };
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 6000);
-        try {
-          const probed = await probeImageEditProtocol({ baseUrl, apiKey, modelKey: id, headers, signal: controller.signal });
-          return probed ? { id, displayName, kind, imageEditProtocol: probed } : { id, displayName, kind };
-        } finally {
-          clearTimeout(timer);
-        }
-      }));
-      const result = commitManualOpenAiCompatibleModels({
-        vendorName: String(payload?.vendorName || ""),
-        baseUrl,
-        apiKey,
-        providerKind,
-        headers,
-        models,
-      });
-      return { ok: true, vendorKey: result.vendorKey, committed: result.committed };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, error: message };
-    }
-  });
-
   // 类型启发式（Issue #8）：从 /v1/models 拉到/手填的模型 id 没带类型，主进程按关键词猜
   // 图片/视频/文本/配音/3D（单一真相源 guessModelKind），返回给 UI 标在每行上，用户可就地改。
-  ipcMain.handle("nomi:onboarding:guess-kinds", async (_event, payload: Record<string, unknown>) => {
+  ipcMain.handle("nomi:onboarding:guess-kinds", async (event, payload: Record<string, unknown>) => {
+    assertTrustedSender(event);
     const ids = Array.isArray(payload?.ids) ? (payload.ids as unknown[]).map((x) => String(x || "")) : [];
     const kinds: Record<string, GuessableModelKind> = {};
     for (const id of ids) if (id) kinds[id] = guessModelKind(id);
@@ -174,7 +90,8 @@ export function registerOnboardingIpc(): void {
   // chat↔responses 共享 /v1 baseURL + bearer，只 path/body 不同，挨个发极小请求探测；
   // anthropic（host root + x-api-key）仅当 hostname 像 anthropic 或地址留空时纳入。
   // 专家在表单展开「接口协议」强制指定时，payload.providerKind 给定 → 只测那一个。
-  ipcMain.handle("nomi:onboarding:test-connection", async (_event, payload: Record<string, unknown>) => {
+  ipcMain.handle("nomi:onboarding:test-connection", async (event, payload: Record<string, unknown>) => {
+    assertTrustedSender(event);
     const rawBaseUrl = String(payload?.baseUrl || "").trim().replace(/\/+$/, "");
     const apiKey = String(payload?.apiKey || "").trim();
     const modelId = String(payload?.modelId || "").trim();
@@ -192,12 +109,12 @@ export function registerOnboardingIpc(): void {
     // 不经发送闸——脏 key（含中文/全角）会让 fetch 同步抛原始 ByteString，被 describeNetworkError
     // 误判网络。先识别、说人话、根本不发 fetch（治本，避免「连不上：Cannot convert…」）。
     const keyProblem = apiKey ? findNonHeaderSafeChar(apiKey) : null;
-    if (keyProblem) return { ok: false, error: describeIllegalHeader({ name: "API Key", ...keyProblem }).message };
+    if (keyProblem) return { ok: false, failureKind: "auth", error: describeIllegalHeader({ name: "API Key", ...keyProblem }).message };
     const headerProblem = findIllegalHeader(extraHeaders);
-    if (headerProblem) return { ok: false, error: describeIllegalHeader(headerProblem).message };
+    if (headerProblem) return { ok: false, failureKind: "auth", error: describeIllegalHeader(headerProblem).message };
     // 纯图片/视频上游：不探协议（探了也白探，它们不走 providerKind），只探地址+Key 通不通。
     if (reachabilityOnly) {
-      if (!/^https?:\/\//i.test(rawBaseUrl)) return { ok: false, error: "接入地址需以 http:// 或 https:// 开头" };
+      if (!/^https?:\/\//i.test(rawBaseUrl)) return { ok: false, failureKind: "invalid_response", error: "接入地址需以 http:// 或 https:// 开头" };
       const kind = forcedKind ?? "openai-compatible";
       const headers = buildAuthHeaders(kind, apiKey, extraHeaders);
       const controller = new AbortController();
@@ -206,7 +123,7 @@ export function registerOnboardingIpc(): void {
         const listed = await fetchModelList(kind, rawBaseUrl, headers, controller.signal);
         return listed.ok
           ? { ok: true, reachabilityOnly: true }
-          : { ok: false, status: listed.status, error: listed.error };
+          : { ok: false, status: listed.status, failureKind: listed.failureKind, error: listed.error };
       } finally {
         clearTimeout(timeout);
       }
@@ -254,19 +171,20 @@ export function registerOnboardingIpc(): void {
   // user picks from real model ids instead of guessing/typing. Relays are usually
   // OpenAI-compatible and expose this; when they don't, the UI falls back to manual
   // id entry (this just returns ok:false and nothing is blocked).
-  ipcMain.handle("nomi:onboarding:list-models", async (_event, payload: Record<string, unknown>) => {
+  ipcMain.handle("nomi:onboarding:list-models", async (event, payload: Record<string, unknown>) => {
+    assertTrustedSender(event);
     // R1：唯一归一化器。openai-responses 与 openai-compatible 一样走 GET {baseUrl}/models。
     const providerKind = normalizeProviderKind(payload?.providerKind);
     const rawBaseUrl = String(payload?.baseUrl || "").trim().replace(/\/+$/, "");
     const baseUrl =
       providerKind === "anthropic" && !rawBaseUrl ? "https://api.anthropic.com" : rawBaseUrl;
     const apiKey = String(payload?.apiKey || "").trim();
-    if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, error: "接入地址需以 http:// 或 https:// 开头" };
+    if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, failureKind: "invalid_response", error: "接入地址需以 http:// 或 https:// 开头" };
     const extraHeaders = readExtraHeaders(payload?.headers);
     const headers = buildAuthHeaders(providerKind, apiKey, extraHeaders);
     // 发送前请求头守卫（同 test-connection）：自带裸 fetch 绕过发送闸，脏 key 先拦+说人话，不发 fetch。
     const headerProblem = findIllegalHeader(headers);
-    if (headerProblem) return { ok: false, error: describeIllegalHeader(headerProblem).message };
+    if (headerProblem) return { ok: false, failureKind: "auth", error: describeIllegalHeader(headerProblem).message };
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12_000);
     try {

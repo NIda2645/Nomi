@@ -146,8 +146,11 @@ export type SkillSummary = {
  * 这是从阿泽导演台整过来、供内外 agent 按需调用的电影方法论库；workbench.* 等内部编排技能不外暴露。
  */
 const CRAFT_SKILL_PREFIXES = ["director-", "writer-"] as const;
+/** Explicitly shipped operational skill. Unlike craft packs it is safe for every external MCP host. */
+const EXTERNAL_SKILL_DIRECTORIES = new Set(["model-integration"]);
 function isCraftSkill(directoryName: string): boolean {
-  return CRAFT_SKILL_PREFIXES.some((prefix) => directoryName.startsWith(prefix));
+  return CRAFT_SKILL_PREFIXES.some((prefix) => directoryName.startsWith(prefix))
+    || EXTERNAL_SKILL_DIRECTORIES.has(directoryName);
 }
 
 /** 技能元数据清单（渐进披露：只给 name+描述，不含正文）。默认只列导演/编剧技能库。 */

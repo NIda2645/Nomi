@@ -114,23 +114,60 @@ export function agnesVideoHeight(values: Array<string | undefined>): number | un
   return dims ? dims[1] : undefined;
 }
 
-/** 时长(秒) → num_frames（@24fps，贴最近 8n+1，clamp 9~441）。返回数字(AGNES int,见上)。 */
+/** 时长(秒) + 帧率 → 最近的 8n+1。越界拒绝，不能把18秒悄悄改成7秒。 */
 export function agnesVideoNumFrames(values: Array<string | undefined>): number | undefined {
   const seconds = Number((values[0] || "").trim());
   if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
-  const target = seconds * 24;
-  const n = Math.max(1, Math.round((target - 1) / 8));
-  return Math.min(441, 8 * n + 1);
+  const fps = values[1] === undefined ? 24 : Number(values[1]);
+  if (!Number.isFinite(fps) || fps < 1 || fps > 60) return undefined;
+  const target = seconds * fps;
+  if (target < 1 || target > 441) {
+    throw new Error("Agnes Video V2.0: duration × frame_rate must be between 1 and 441; reduce duration or frame_rate.");
+  }
+  const n = Math.max(0, Math.round((target - 1) / 8));
+  return 8 * n + 1;
+}
+
+/** Case-sensitive resolution enums such as 720P and 4K. Missing aliases do not replace UI values. */
+export function toUpperCase(values: Array<string | undefined>): string | undefined {
+  const value = values[0]?.trim();
+  return value ? value.toUpperCase() : undefined;
+}
+
+/** Strict providers that declare a numeric-looking enum as a JSON string (KIE Gemini duration). */
+export function toString(values: Array<string | undefined>): string | undefined {
+  const value = values[0];
+  return value === undefined ? undefined : String(value);
+}
+
+/** Canonical sound type is a readable one-shot/loop enum; KIE's wire field is boolean. */
+export function soundTypeToLoop(values: Array<string | undefined>): boolean | undefined {
+  const value = values[0]?.trim().toLowerCase();
+  if (!value) return undefined;
+  if (value === "loop") return true;
+  if (value === "one-shot") return false;
+  return undefined;
+}
+
+/** Canonical duration is shown in seconds; Eleven Music accepts integer milliseconds. */
+export function secondsToMilliseconds(values: Array<string | undefined>): number | undefined {
+  const seconds = Number(values[0]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+  return Math.round(seconds * 1000);
 }
 
 /** 命名转换注册表。新增一种转换在此登记，op 用其 id 引用。值转换可返回 string 或 number
  *  （number 用于严格类型的 wire 字段,如 AGNES Go 后端的 int width/height/num_frames）。 */
-export const PARAM_TRANSFORMS: Record<string, (values: Array<string | undefined>) => string | number | undefined> = {
+export const PARAM_TRANSFORMS: Record<string, (values: Array<string | undefined>) => string | number | boolean | undefined> = {
   ratioResToOpenAiSize,
   toLowerCase,
+  toUpperCase,
+  toString,
   agnesVideoWidth,
   agnesVideoHeight,
   agnesVideoNumFrames,
+  soundTypeToLoop,
+  secondsToMilliseconds,
 };
 
 // ── 应用翻译：渲染 body 前把 canonical 参数翻译成 wire 字段注入 params ───────────────

@@ -1,11 +1,12 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
-import { IconCoin, IconFileText, IconRobot, IconMovie, IconPhoto } from '@tabler/icons-react'
-import { WorkbenchButton } from '../../../design'
+import { IconCloud, IconCoin, IconFileText, IconRobot, IconMovie, IconPhoto, IconUser } from '@tabler/icons-react'
+import { BodyPortal, NOMI_OVERLAY_Z_INDEX, WorkbenchButton } from '../../../design'
 import { useSpendConfirmStore } from './spendConfirm'
 import { ProductionContractSummary } from './ProductionContractSummary'
 import { MultiShotContractSummary } from './MultiShotContractSummary'
+import { AnchorCheckpointCard } from './AnchorCheckpointCard'
 import type { MultiShotContractProjection } from './productionContractView'
 
 // 付费生成确认对话框（单一收口，挂一次于工作区根）。极简：标题 + 一句人话 + 取消/确认。
@@ -18,6 +19,7 @@ export function SpendConfirmDialog() {
   const pending = useSpendConfirmStore((state) => state.pending)
   const resolvePending = useSpendConfirmStore((state) => state.resolvePending)
   const [suppress, setSuppress] = React.useState(false)
+  const [rememberHosting, setRememberHosting] = React.useState(false)
   const [remainingMs, setRemainingMs] = React.useState(0)
   // P4 S3a：多镜确认卡「交互即暂停」——用户一旦在卡上动一下（点/移入/聚焦），倒计时停在原地，
   // 文案切「已暂停 · 你正在查看」。换 pending 时重置。只对多镜卡生效（外部单发确认仍到点自动返回）。
@@ -27,12 +29,16 @@ export function SpendConfirmDialog() {
   const [choiceKey, setChoiceKey] = React.useState<string | null>(null)
 
   const isMultiShot = pending?.kind === 'contract' && Boolean(pending.contract?.shotList)
+  // P4 §3.2 形象确认卡：与多镜卡同款「滚动内容区 + 固定 footer」布局（~560px），自渲染 footer（先不拍/开拍/重拍）。
+  const isAnchorCheckpoint = pending?.kind === 'anchorCheckpoint' && Boolean(pending.anchorCheckpoint)
+  const flexShell = isMultiShot || isAnchorCheckpoint
   const countdownPaused = isMultiShot && interacted
 
   React.useEffect(() => {
     if (!pending) setSuppress(false)
     setChoiceKey(pending?.directionCandidates?.[0]?.key ?? null)
     setInteracted(false)
+    setRememberHosting(false)
   }, [pending])
 
   // 倒计时：设了 countdownMs 才跑。每 200ms 收敛，到点自动按「未确认」返回（不死等——外部调用方那头在等）。
@@ -73,26 +79,33 @@ export function SpendConfirmDialog() {
       ? IconMovie
       : pending.kind === 'reference'
         ? IconPhoto
-        : isAgent ? IconRobot : IconCoin
+        : pending.kind === 'anchorCheckpoint'
+          ? IconUser
+          : isAgent ? IconRobot : IconCoin
   const countdownTotal = pending.countdownMs || 0
   const remainingSec = countdownTotal ? Math.ceil(remainingMs / 1000) : 0
   const remainingPct = countdownTotal ? Math.max(0, Math.min(100, (remainingMs / countdownTotal) * 100)) : 0
 
   return (
+    // BodyPortal + 中央 z 层级（overlayLayers 契约：全局浮层都 portal 到 body 消费统一层级）——
+    // 之前裸 z-[3500] 挂在 app 树里，被 body 级任务中心 Portal（floatingPanel:4000）盖住裁掉半张卡
+    // （门确认卡多半从任务中心 run 卡点开，680px 合同卡 / 560px 形象卡尤其明显，2026-08-25 走查抓出）。
+    // 用 dialog(9100)：高过任务中心，低过破坏性 confirmation(9300) 好让它能叠在本卡之上。
+    <BodyPortal>
     <div
-      // 全屏固定模态：付费确认是全局阻断性动作，要盖住整窗（含顶栏/侧栏），任意视图（库/studio）都能弹。
-      // 之前 absolute 只盖画布层 → 只在 studio 可见，是「外部生成到非当前项目静默黑洞」的放大器之一。
-      className={cn('fixed inset-0 z-[3500] flex items-center justify-center bg-nomi-ink/20 pointer-events-auto')}
+      // 全屏固定模态：付费/确认是全局阻断性动作，要盖住整窗（含顶栏/侧栏/任务中心），任意视图（库/studio）都能弹。
+      className={cn('fixed inset-0 flex items-center justify-center bg-nomi-ink/20 pointer-events-auto')}
+      style={{ zIndex: NOMI_OVERLAY_Z_INDEX.dialog }}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) resolvePending(false)
       }}
     >
       <div
         className={cn(
-          pending.kind === 'contract' ? 'w-[680px]' : 'w-[380px]',
+          pending.kind === 'contract' ? 'w-[680px]' : isAnchorCheckpoint ? 'w-[560px]' : 'w-[380px]',
           'max-h-[88vh] max-w-[88%] rounded-nomi-lg border border-nomi-line bg-nomi-paper p-4 shadow-nomi-md',
-          // 多镜卡：flex 列 + footer shrink-0，内容区滚动、footer 恒在（逐镜清单另有 ~40vh 内滚）。
-          isMultiShot ? 'flex flex-col overflow-hidden' : 'overflow-y-auto',
+          // 多镜卡 / 形象卡：flex 列 + footer shrink-0，内容区滚动、footer 恒在（清单/网格另有内滚）。
+          flexShell ? 'flex flex-col overflow-hidden' : 'overflow-y-auto',
         )}
         // 多镜卡「交互即暂停」：任意鼠标/键盘触达即冻结倒计时。
         {...(isMultiShot
@@ -103,7 +116,7 @@ export function SpendConfirmDialog() {
             }
           : {})}
       >
-        <div className={cn('flex items-center gap-2.5 mb-2', isMultiShot ? 'shrink-0' : '')}>
+        <div className={cn('flex items-center gap-2.5 mb-2', flexShell ? 'shrink-0' : '')}>
           <span
             className={cn(
               'shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-nomi',
@@ -123,7 +136,20 @@ export function SpendConfirmDialog() {
           </div>
         </div>
 
-        {isMultiShot && pending.contract?.shotList ? (
+        {isAnchorCheckpoint && pending.anchorCheckpoint ? (
+          // 形象确认卡：自渲染 flex-1 滚动内容区（网格 + 承诺）+ shrink-0 固定 footer（先不拍/开拍/重拍），
+          // 与 MultiShotCardBody 同款 fragment，由这个 flex 列直接摊开（不再外包滚动容器）。
+          <AnchorCheckpointCard
+            model={pending.anchorCheckpoint}
+            onApprove={() => resolvePending(true, false)}
+            onDefer={() => resolvePending(false)}
+            onRework={(shotIds) => {
+              const cb = pending.onRework
+              resolvePending(false)
+              cb?.(shotIds)
+            }}
+          />
+        ) : isMultiShot && pending.contract?.shotList ? (
           <MultiShotCardBody
             view={pending.contract}
             list={pending.contract.shotList}
@@ -150,6 +176,35 @@ export function SpendConfirmDialog() {
         ) : (
         <>
         <p className={cn('text-body-sm text-nomi-ink-80 leading-relaxed mb-3')}>{pending.message}</p>
+
+        {pending.hostingDisclosure ? (
+          // 「记住我的选择」住在披露块**内部**，不和下面「本次会话不再提示」并排。
+          // 起因（2026-08-26 用户拍板）：两个勾选框曾贴在一起、长得一模一样，但管的是两件事、
+          // 两种作用域——一个管这张花钱卡（本会话），一个把 anonymousAssetHosting 永久设成 allow。
+          // 并排时得逐字读标签才分得清，误勾的代价是「以后本机素材静默上传公共托管」。
+          // 按 §1.5.3「先分组」：把勾选框搬进它作用的那个对象里，作用域一眼可见（也是「一功能一个家」的视觉版）。
+          <div
+            data-hosting-disclosure="true"
+            className={cn('mb-3 flex gap-2 rounded-nomi-sm bg-nomi-ink-05 px-3 py-2.5 text-caption leading-relaxed text-nomi-ink-80')}
+          >
+            <IconCloud size={17} stroke={1.7} className={cn('mt-0.5 shrink-0 text-nomi-ink-60')} aria-hidden="true" />
+            <div className={cn('min-w-0 grid gap-2')}>
+              <div className={cn('min-w-0')}>{pending.hostingDisclosure.message}</div>
+              {/* 细分隔线：让「说明」与「这条说明对应的选择」分段，但仍同属一张托管卡（§1.5.3 分段要有边界）。 */}
+              <label
+                data-hosting-remember="true"
+                className={cn('flex items-center gap-2 border-t border-nomi-line-soft pt-2 cursor-pointer select-none text-nomi-ink-60')}
+              >
+                <input
+                  type="checkbox"
+                  checked={rememberHosting}
+                  onChange={(event) => setRememberHosting(event.currentTarget.checked)}
+                />
+                {pending.hostingDisclosure.rememberLabel}
+              </label>
+            </div>
+          </div>
+        ) : null}
 
         {directionCandidates.length ? (
           <div className={cn('mb-3 grid gap-1.5')} role="radiogroup" data-direction-candidates>
@@ -267,7 +322,7 @@ export function SpendConfirmDialog() {
               onClick={() => {
                 // B1：方向门确认时先回传选中候选（沿用 onOpenPolicySettings 的回调模式），再 resolve。
                 if (directionCandidates.length) pending.onDirectionDecision?.(choiceKey)
-                resolvePending(true, suppress)
+                resolvePending(true, suppress, rememberHosting)
               }}
             >
               {pending.confirmLabel || t('generationCommon.spend.confirm')}
@@ -278,6 +333,7 @@ export function SpendConfirmDialog() {
         )}
       </div>
     </div>
+    </BodyPortal>
   )
 }
 

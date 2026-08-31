@@ -26,7 +26,7 @@ vi.mock("electron", () => ({
     getAppPath: () => process.cwd(),
   },
   safeStorage: {
-    isEncryptionAvailable: () => false,
+    isEncryptionAvailable: () => true,
     encryptString: (s: string) => Buffer.from(s),
     decryptString: (b: Buffer) => b.toString(),
   },
@@ -69,7 +69,10 @@ async function seedFallbackImageVendor(): Promise<void> {
     meta: { extraHeaders: { "HTTP-Referer": "https://nomi.app", "X-Title": "Nomi" } },
   });
   store.upsertModelCatalogVendorApiKey("relay", { apiKey: "sk-relay" });
-  store.upsertModelCatalogModel({ vendorKey: "relay", modelKey: "some-image-model", kind: "image", enabled: true });
+  store.upsertModelCatalogModel({
+    vendorKey: "relay", modelKey: "some-image-model", kind: "image", enabled: true,
+    meta: { adapter: { state: "verified", activeRevision: "fallback-certified", modes: [{ taskKind: "text_to_image", state: "verified" }] } },
+  });
 }
 
 describe("runTask fallback 路径 — 结构化错误 + extraHeaders", () => {
@@ -203,5 +206,18 @@ describe("fetchTaskResult — 缓存 miss 无状态重建续查（重启/驱逐�
     const miss = await fetchTaskResult({ vendor: "asyncv", taskId: "no-context-id", taskKind: "text_to_video" });
     expect(miss.result.status).toBe("failed");
     expect((miss.result.raw as { code?: string }).code).toBe("task_unknown");
+  });
+
+  it("重启后重建查询遇到网络/上游错误必须冒泡为可重试错误，不能伪装 task_tracking_lost", async () => {
+    await seedAsyncVideoVendorWithMapping();
+    const upstreamError = new Error("proxy connection reset");
+    stubFetch(() => Promise.reject(upstreamError));
+    const { fetchTaskResult } = await import("./runtime");
+    await expect(fetchTaskResult({
+      vendor: "asyncv",
+      taskId: "upstream-retryable-123",
+      taskKind: "text_to_video",
+      modelKey: "vid-model",
+    })).rejects.toThrow("proxy connection reset");
   });
 });

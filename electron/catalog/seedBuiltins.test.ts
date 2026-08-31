@@ -10,6 +10,14 @@ function emptyCatalog(): CatalogState {
 const NOW = "2026-06-05T00:00:00.000Z";
 
 describe("applyBuiltinSeeds", () => {
+  it("adds an opt-in local CLI text connection without granting Agent tools or replacing user state", () => {
+    const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
+    const vendor = state.vendors.find((v) => v.key === "antigravity-cli");
+    expect(vendor).toMatchObject({ authType: "none", enabled: false });
+    expect(state.models.filter((m) => m.vendorKey === "antigravity-cli")).toEqual([]);
+    vendor!.enabled = true;
+    expect(applyBuiltinSeeds(state, NOW).state.vendors.find((v) => v.key === "antigravity-cli")?.enabled).toBe(true);
+  });
   it("空目录：补齐 kie vendor + Seedance 模型 + 首帧 mapping", () => {
     const { state, changed } = applyBuiltinSeeds(emptyCatalog(), NOW);
     expect(changed).toBe(true);
@@ -56,6 +64,56 @@ describe("applyBuiltinSeeds", () => {
     const count = (s: typeof second.state, tk: string) => s.mappings.filter((mp) => mp.vendorKey === "kie" && mp.taskKind === tk).length;
     expect(count(second.state, "image_to_video")).toBe(count(first.state, "image_to_video"));
     expect(count(second.state, "text_to_video")).toBe(count(first.state, "text_to_video"));
+  });
+
+  it("播种 MiniMax、ElevenLabs 与 Meshy 的官方旗舰模型和精确 mapping", () => {
+    const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
+    expect(state.vendors.find((vendor) => vendor.key === "minimax")).toMatchObject({ authType: "bearer" });
+    expect(state.vendors.find((vendor) => vendor.key === "elevenlabs")).toMatchObject({ authHeader: "xi-api-key" });
+    expect(state.vendors.find((vendor) => vendor.key === "meshy")).toMatchObject({ authType: "bearer" });
+
+    expect(state.models.find((model) => model.vendorKey === "minimax" && model.modelKey === "MiniMax-H3"))
+      .toMatchObject({ kind: "video", meta: { archetypeId: "minimax-h3", catalogLifecycle: "flagship" } });
+    expect(state.models.find((model) => model.vendorKey === "minimax" && model.modelKey === "speech-2.8-turbo"))
+      .toMatchObject({ kind: "audio", meta: { catalogLifecycle: "value" } });
+    expect(state.models.find((model) => model.vendorKey === "elevenlabs" && model.modelKey === "music_v2"))
+      .toMatchObject({ kind: "audio", meta: { archetypeId: "eleven-music-v2", catalogLifecycle: "flagship" } });
+    expect(state.models.find((model) => model.vendorKey === "minimax" && model.modelKey === "MiniMax-M3"))
+      .toMatchObject({ kind: "text", meta: { supportsImageInput: true, catalogLifecycle: "flagship" } });
+    expect(state.mappings.some((mapping) => mapping.vendorKey === "minimax" && mapping.modelKey === "MiniMax-M3"))
+      .toBe(false);
+    expect(state.models.find((model) => model.vendorKey === "meshy" && model.modelKey === "meshy-7"))
+      .toMatchObject({ kind: "model3d", meta: { archetypeId: "meshy-7", catalogLifecycle: "flagship" } });
+
+    expect(selectTaskMapping(state.mappings, "elevenlabs", "text_to_audio", "music_v2")?.create)
+      .toMatchObject({ path: "/v1/music", paramMap: { rules: [{ wire: "music_length_ms" }] } });
+    expect(selectTaskMapping(state.mappings, "meshy", "image_to_3d", "meshy-7")?.query?.response_mapping)
+      .toMatchObject({ model_url: "model_urls.glb" });
+  });
+
+  it("只迁移 MiniMax 的旧官方 host，不覆盖用户自定义中转地址", () => {
+    const stale = emptyCatalog();
+    stale.vendors.push({
+      key: "minimax", name: "MiniMax", enabled: true,
+      baseUrlHint: "https://api.minimax.io", authType: "bearer", authHeader: "Authorization",
+      createdAt: "old", updatedAt: "old",
+    });
+    const migrated = applyBuiltinSeeds(stale, "2026-08-31T00:00:00.000Z");
+    expect(migrated.changed).toBe(true);
+    expect(migrated.state.vendors.find((vendor) => vendor.key === "minimax")).toMatchObject({
+      baseUrlHint: "https://api.minimaxi.com", updatedAt: "2026-08-31T00:00:00.000Z",
+    });
+
+    const custom = emptyCatalog();
+    custom.vendors.push({
+      key: "minimax", name: "我的中转", enabled: false,
+      baseUrlHint: "https://minimax.example.invalid/v1", authType: "bearer", authHeader: "Authorization",
+      createdAt: "old", updatedAt: "old",
+    });
+    const preserved = applyBuiltinSeeds(custom, "2026-08-31T00:00:00.000Z");
+    expect(preserved.state.vendors.find((vendor) => vendor.key === "minimax")).toMatchObject({
+      name: "我的中转", enabled: false, baseUrlHint: "https://minimax.example.invalid/v1", updatedAt: "old",
+    });
   });
 
   it("re-sync：旧装机里早先种的 Seedance mapping 缺 omni 字段 → 刷新到当前代码（含 reference_image_urls + generate_audio）", () => {
@@ -112,6 +170,30 @@ describe("applyBuiltinSeeds", () => {
     expect((m?.meta as { archetypeId?: string })?.archetypeId).toBe("seedance-2"); // 能力指针修回
     expect(m?.labelZh).toBe("我改名的 Seedance"); // 用户改名保留
     expect(m?.enabled).toBe(false); // 用户开关保留
+  });
+
+  it("给每条内置模型写入显式生命周期，并在老装机上对账自愈", () => {
+    const fresh = applyBuiltinSeeds(emptyCatalog(), NOW).state;
+    expect(fresh.models.length).toBeGreaterThan(0);
+    expect(fresh.models.every((model) =>
+      ["flagship", "value", "companion", "legacy"].includes(
+        String((model.meta as { catalogLifecycle?: string } | undefined)?.catalogLifecycle),
+      ),
+    )).toBe(true);
+
+    expect((fresh.models.find((model) => model.modelKey === "seedream/5-pro-text-to-image")?.meta as Record<string, unknown>))
+      .toMatchObject({ catalogLifecycle: "flagship" });
+    expect((fresh.models.find((model) => model.modelKey === "nano-banana-2-lite")?.meta as Record<string, unknown>))
+      .toMatchObject({ catalogLifecycle: "value" });
+    expect((fresh.models.find((model) => model.modelKey === "seedream")?.meta as Record<string, unknown>))
+      .toMatchObject({ catalogLifecycle: "legacy" });
+
+    const staleIndex = fresh.models.findIndex((model) => model.modelKey === "seedream");
+    fresh.models[staleIndex] = { ...fresh.models[staleIndex], meta: { archetypeId: "seedream" } };
+    const reconciled = applyBuiltinSeeds(fresh, "2026-08-30T00:00:00.000Z");
+    expect(reconciled.changed).toBe(true);
+    expect((reconciled.state.models[staleIndex].meta as Record<string, unknown>))
+      .toMatchObject({ archetypeId: "seedream", catalogLifecycle: "legacy" });
   });
 
   it("re-sync（model）：meta 里用户自加的其它键不被对账抹掉（只覆盖 archetypeId）", () => {
@@ -396,5 +478,34 @@ describe("Imagen 4 退役（2026-07-30：上游 Google 确定性 404，用户拍
     let state = applyBuiltinSeeds(emptyCatalog(), NOW).state;
     for (let i = 0; i < 3; i += 1) state = applyBuiltinSeeds(state, NOW).state;
     expect(state.models.filter((m) => m.modelKey === "imagen-4.0-apimart")).toHaveLength(0);
+  });
+});
+
+
+describe("Agnes complete catalog upgrade", () => {
+  it("adds ten public models, keeps user state, and preserves image attachments through explicit metadata", async () => {
+    const { modelSupportsImageInput, buildAgentUserContent } = await import("../ai/agentUserContent");
+    const stale = applyBuiltinSeeds(emptyCatalog(), NOW).state;
+    const old = stale.models.find((m) => m.vendorKey === "agnes" && m.modelKey === "agnes-2.0-flash")!;
+    old.enabled = false; old.labelZh = "My Agnes"; old.meta = { note: "keep" };
+    const mapping = stale.mappings.find((m) => m.id === "seed-agnes-video-v2-image_to_video")!;
+    mapping.enabled = false; mapping.name = "My video";
+    stale.apiKeysByVendor.agnes = { vendorKey: "agnes", apiKey: "synthetic-encrypted-fixture", enc: "safeStorage", enabled: false, createdAt: NOW, updatedAt: NOW };
+    const savedKeys = structuredClone(stale.apiKeysByVendor);
+    const { state } = applyBuiltinSeeds(stale, "2026-08-26T00:00:00.000Z");
+    expect(state.models.filter((m) => m.vendorKey === "agnes")).toHaveLength(10);
+    expect(state.models.find((m) => m === old) ?? state.models.find((m) => m.modelKey === old.modelKey)).toMatchObject({ enabled: false, labelZh: "My Agnes", meta: { note: "keep", supportsImageInput: true } });
+    expect(state.mappings.find((m) => m.id === mapping.id)).toMatchObject({ enabled: false, name: "My video" });
+    expect(state.apiKeysByVendor).toEqual(savedKeys);
+    for (const model of state.models.filter((m) => m.vendorKey === "agnes" && m.kind === "text")) {
+      const supportsImageInput = modelSupportsImageInput(model.modelKey, model.modelAlias, model.meta);
+      const content = await buildAgentUserContent({ prompt: "Describe it", supportsImageInput, supportsPdfInput: false, attachments: [{ url: "nomi-local://test.png", fileName: "test.png", contentType: "image/png", kind: "image" }], resolveBytes: () => new Uint8Array([1]), extractText: async () => null });
+      expect(content).toContainEqual({ type: "image", image: new Uint8Array([1]), mimeType: "image/png" });
+    }
+    expect(applyBuiltinSeeds(state, "2026-08-27T00:00:00.000Z").changed).toBe(false);
+    for (const modelKey of ["agnes-video-2.5", "agnes-video-2.5-flash"]) {
+      const query = state.mappings.find((m) => m.vendorKey === "agnes" && m.modelKey === modelKey)?.query;
+      expect(query?.query).toEqual({ video_id: "{{providerMeta.video_id}}", model_name: "{{model.modelKey}}" });
+    }
   });
 });

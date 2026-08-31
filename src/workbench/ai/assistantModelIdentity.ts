@@ -8,6 +8,7 @@
 //   · 选中时 find(m => m.modelKey === next) 也只找第一条 → 静默绑到**另一个供应商**去。
 // 身份从 derive 而来、不再用半截 key 凑合，这类「显示/绑定张冠李戴」才不会换个入口又复发。
 
+import { modelSupportsToolCalls } from '../../../electron/shared/textModelCapabilities'
 export type ModelIdentity = { vendorKey: string; modelKey: string };
 
 export type AssistantCatalogModelLike = {
@@ -15,6 +16,7 @@ export type AssistantCatalogModelLike = {
   modelKey: string;
   kind: string;
   enabled: boolean;
+  published: boolean;
   meta?: unknown;
 };
 
@@ -54,7 +56,9 @@ export function filterUsableAssistantTextModels<T extends AssistantCatalogModelL
     const vendorKey = model.vendorKey.trim().toLowerCase()
     return model.kind === 'text'
       && model.enabled
+      && model.published
       && !isPromptRefineOnly(model.meta)
+      && modelSupportsToolCalls(model.meta)
       && Boolean(vendorKey)
       && Boolean(model.modelKey.trim())
       && usableVendorKeys.has(vendorKey)

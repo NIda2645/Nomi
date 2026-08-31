@@ -14,6 +14,7 @@ import {
   type AssetLibraryDragPayload,
 } from '../../assets/assetLibraryDrag'
 import { importLocalMediaFilesToGenerationCanvas } from '../adapters/assetImportAdapter'
+import { assetBelongsToProject } from '../../assets/assetLibraryUsage'
 import { getGenerationNodeDefaultSize, getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
 import { dropKindFromFile } from '../model/nodeAssetDrop'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
@@ -27,6 +28,8 @@ export const LEGACY_BROWSER_ASSET_DRAG_MIME = 'application/x-nomi-browser-assets
 
 export type CanvasStageDropContext = {
   readOnly: boolean
+  /** Active project boundary for asset-library references. */
+  activeProjectId: string | null
   offset: { x: number; y: number }
   zoom: number
   activeCategoryId?: string
@@ -84,6 +87,14 @@ function cleanBrowserAssetPrompt(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+/** Structural guard shared by the drop handler and its contract tests. */
+export function isAssetLibraryDropAllowed(
+  asset: Pick<AssetLibraryDragPayload, 'origin'>,
+  activeProjectId: string | null,
+): boolean {
+  return assetBelongsToProject(asset, activeProjectId)
+}
+
 function tiptapDocFromPlainText(text: string): TiptapDocJson {
   const lines = text ? text.split(/\r?\n/) : ['']
   return {
@@ -113,7 +124,13 @@ function normalizeBrowserAssetCanvasItem(item: unknown): BrowserAssetCanvasItem 
   if (!type) return null
   const title = cleanBrowserAssetTitle(
     asset.title,
-    type === 'video' ? '参考视频' : type === 'image' ? '参考图片' : '提示词',
+    i18n.t(
+      type === 'video'
+        ? 'generationCommon.defaultTitles.referenceVideo'
+        : type === 'image'
+          ? 'generationCommon.defaultTitles.referenceImage'
+          : 'generationCommon.defaultTitles.prompt',
+    ),
   )
   if (type === 'prompt') {
     const prompt =
@@ -181,7 +198,7 @@ export function importBrowserAssetsToGenerationCanvas(
       const prompt = asset.prompt || asset.title
       const node = store.addNode({
         kind: 'text',
-        title: asset.title.replace(/\.[^.]+$/, '') || '提示词',
+        title: asset.title.replace(/\.[^.]+$/, '') || i18n.t('generationCommon.defaultTitles.prompt'),
         prompt,
         position: positions[index],
         categoryId: options.categoryId,
@@ -269,12 +286,18 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
     return
   }
 
-  // 2) 素材库拖入：素材已在池里（画布产出/项目文件），直接引用 renderUrl 建 asset 节点（图片/视频）。
+  // 2) 素材库拖入：只接受当前项目/当前画布的来源。跨项目卡片是浏览态，
+  // 不能靠伪造 drag payload 绕过当前项目写入边界。
   const assetDragItems = parseAssetLibraryDragItems(event.dataTransfer.getData(ASSET_LIBRARY_DRAG_MIME))
   if (assetDragItems.length) {
     event.preventDefault()
     event.stopPropagation()
-    const mediaItems = assetDragItems.filter((asset) => asset.kind !== 'audio')
+    const allowedItems = assetDragItems.filter((asset) => isAssetLibraryDropAllowed(asset, ctx.activeProjectId))
+    if (allowedItems.length < assetDragItems.length) {
+      toast(i18n.t('assetLibrary.externalAssetHint'), 'info')
+    }
+    if (!allowedItems.length) return
+    const mediaItems = allowedItems.filter((asset) => asset.kind !== 'audio')
     if (!mediaItems.length) {
       toast(i18n.t('generationCommon.canvas.audioToTimeline'), 'info')
       return

@@ -144,6 +144,32 @@ describe('production run service projection boundary', () => {
     expect(projection.artifacts[0]).toHaveProperty('nomiUri', 'nomi://project/project-1/run/run-1/artifact/artifact-1')
   })
 
+  it('carries shot lineage and the project-relative artifact path so a local agent can verify its own batch', () => {
+    // 这两格是「agent 自己传进来的 id」和「项目内相对路径」——扣着不发，agent 读回来认不出哪个 job 是哪一镜、
+    // 也找不到产物文件（S6.5 付费验收就因此 ffprobe 腿降级、返工腿恒失败）。发，但都按值校验后再发。
+    const lineageRun: ProductionRun = {
+      ...run,
+      jobs: [
+        { ...run.jobs[0], jobId: 'job-shot-1', metadata: { shotId: 'shot-1', dialogue: '不该外发的台词长文本' } },
+        { ...run.jobs[0], jobId: 'job-hostile', metadata: { shotId: '/Users/private/../../etc/passwd' } },
+        { ...run.jobs[0], jobId: 'job-legacy' },
+      ],
+      artifacts: [
+        { ...run.artifacts[0], artifactId: 'artifact-video', kind: 'video', projectRelativePath: '.nomi/out/shot-1.mp4' },
+        { ...run.artifacts[0], artifactId: 'artifact-absolute', kind: 'video', projectRelativePath: '/Users/private/leak.mp4' },
+      ],
+    }
+    const repository = { read: vi.fn(() => lineageRun), readEvents: vi.fn(() => []) }
+    const projection = createProductionRunService({ repository: repository as never, projectRootResolver: () => null }).readProjection('project-1', 'run-1')
+
+    expect(projection.jobs[0].metadata).toEqual({ shotId: 'shot-1' }) // 只 shotId 一格，台词没跟着漏出来
+    expect(projection.jobs[1]).not.toHaveProperty('metadata') // 不合法 id 宁可缺，不外发未校验串
+    expect(projection.jobs[2]).not.toHaveProperty('metadata') // 单镜/老 run 无谱系 → 不发
+    expect(projection.artifacts[0]).toHaveProperty('projectRelativePath', '.nomi/out/shot-1.mp4')
+    expect(projection.artifacts[1]).not.toHaveProperty('projectRelativePath') // 绝对路径一律省略
+    expect(JSON.stringify(projection)).not.toContain('/Users/private')
+  })
+
   it('omits hostile URLs and absolute paths from every nested external text field', () => {
     const hostile = '/Users/alice/My Secret/file.mp4 https://provider.example/private?id=secret C:\\Users\\alice\\secret.mp4'
     const hostileRun: ProductionRun = {

@@ -32,12 +32,12 @@ import type { Vec2 } from './timeline/overlayTransform'
 import { createDefaultTimeline, normalizeTimeline } from './timeline/timelineMath'
 import { readPreviewSourceCollapsed, writePreviewSourceCollapsed } from './preview/previewSourcePanelPreference'
 import type { TimelineClip, TimelineState, TimelineTextStyle, TimelineTrackType } from './timeline/timelineTypes'
-import { createDefaultWorkbenchDocument, normalizeWorkbenchDocument, type CreationDocumentTools, type PreviewAspectRatio, type WorkbenchDocument } from './workbenchTypes'
+import { normalizeWorkbenchDocument, type CreationDocumentTools, type PreviewAspectRatio, type WorkbenchDocument } from './workbenchTypes'
 import type { WorkbenchAiMessage } from './ai/workbenchAiTypes'
-import type { StoryboardPlan } from './generationCanvas/agent/storyboardPlan'
 import type { ComposerAttachment } from './ai/composer/composerAttachmentTypes'
 import { createConversationBuckets } from './aiConversationBuckets'
 import { abandonCreationTurn } from './creation/creationTurnController'
+import { createWorkbenchDocumentSlice, type WorkbenchDocumentSlice } from './workbenchDocumentSlice'
 
 // 创作面板会话「会话域」per-project 桶(S1 治串台)。
 // 注:messages 已迁出本桶,改由 conversationThreads 模型按项目寻址(会话历史,2026-06-14);
@@ -70,13 +70,13 @@ function pushTimelineUndo(stack: TimelineState[], previous: TimelineState): Time
   return next
 }
 
-export const WORKSPACE_MODES = ['creation', 'generation', 'preview'] as const
+export const WORKSPACE_MODES = ['creation', 'storyboard', 'generation', 'preview'] as const
 
 export type WorkspaceMode = (typeof WORKSPACE_MODES)[number]
 
 type GraphViewport = { zoom: number; offset: { x: number; y: number } }
 
-type WorkbenchState = {
+type WorkbenchState = WorkbenchDocumentSlice & {
   persistRevision: number
   workspaceMode: WorkspaceMode
   /** 生成/预览区右侧助手侧栏宽度（px，可拖宽）。 */
@@ -104,9 +104,8 @@ type WorkbenchState = {
   toggleSidebarCollapsed: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   rememberCategoryViewport: (categoryId: string, viewport: GraphViewport) => void
-  workbenchDocument: WorkbenchDocument
   creationDocumentTools: CreationDocumentTools | null
-  creationSelectionText: string
+  creationSelectionText: string; storyboardPlannerLauncher: ((displayPrompt?: string) => void) | null
   creationAiModeId: string
   /** 手动锁定的 active skill（覆盖 mode 推导的 skillKey）。null = 自动（用创作模式默认）。 */
   creationActiveSkill: { key: string; name: string } | null
@@ -114,12 +113,6 @@ type WorkbenchState = {
   creationAiMessages: WorkbenchAiMessage[]
   creationAiAttachments: ComposerAttachment[]
   creationAiError: string
-  /** 分镜方案对象（planner 产出，创作区审/改后确认落画布）。null=本项目暂无方案。随项目持久化。 */
-  storyboardPlan: StoryboardPlan | null
-  /** 方案是否已落画布：false=草稿，true=已落画布（落后卡片留痕，不再即焚）。随项目持久化。 */
-  storyboardPlanCommitted: boolean
-  /** 主列是否展开全宽编辑器（UI 瞬态，不持久化；重开项目默认收起成卡片）。 */
-  storyboardEditorOpen: boolean
   /**
    * 「请画布适应视图」一次性信号（nonce，仿 createCategoryNonce）。bump 一次 = 请生成画布
    * 平滑 fit 到全部节点一次。用于落画布等「批量加节点到已加载画布」的场景——useAutoFitOnLoad
@@ -159,27 +152,16 @@ type WorkbenchState = {
   setWorkspaceMode: (mode: unknown) => void
   setAssistantWidth: (width: number) => void
   setProjectSidebarWidth: (width: number) => void
-  setWorkbenchDocument: (document: WorkbenchDocument) => void
   setCreationDocumentTools: (tools: CreationDocumentTools | null) => void
-  setCreationSelectionText: (text: string) => void
+  setCreationSelectionText: (text: string) => void; setStoryboardPlannerLauncher: (launcher: ((displayPrompt?: string) => void) | null) => void
   setCreationAiModeId: (modeId: string) => void
   setCreationActiveSkill: (skill: { key: string; name: string } | null) => void
   setCreationAiDraft: (draft: string) => void
   setCreationAiMessages: (messages: WorkbenchAiMessage[] | ((messages: WorkbenchAiMessage[]) => WorkbenchAiMessage[])) => void
   setCreationAiAttachments: (attachments: ComposerAttachment[] | ((attachments: ComposerAttachment[]) => ComposerAttachment[])) => void
   setCreationAiError: (error: string) => void
-  /** 写入/改写分镜方案对象（planner 落库、编辑器逐字段编辑）：置草稿态；editorOpen 由调用方管。 */
-  setStoryboardPlan: (plan: StoryboardPlan | null) => void
-  /** 卡片「打开编辑」/「收起」：仅切主列编辑器显隐，不动方案。 */
-  setStoryboardEditorOpen: (open: boolean) => void
-  /** 确认落画布后：方案保留、转「已落画布」、收起编辑器（卡片留痕）。 */
-  commitStoryboardPlan: () => void
   /** 请生成画布平滑 fit 一次；可显式切到并绑定目标分类。 */
   requestCanvasFit: (categoryId?: string) => void
-  /** 丢弃方案：清空 plan + 收起编辑器（卡片随之消失）。 */
-  discardStoryboardPlan: () => void
-  /** 项目载入专用：恢复 plan + committed，编辑器收起、不标脏（区别于用户动作 setStoryboardPlan）。 */
-  hydrateStoryboardPlan: (plan: StoryboardPlan | null, committed: boolean) => void
   /** 切项目时交换对话桶(S1 治串台):存旧项目的对话,载入新项目的(没有则空)。 */
   swapCreationAiProject: (prevId: string | null, nextId: string | null) => void
   /** 一次性信号：打开示例/新项目时请求创作助手默认展开（让「拆镜头」CTA 一眼可见），消费后清掉。 */
@@ -240,12 +222,12 @@ type WorkbenchState = {
   /** 文字 clip 换字体（id，见 textFonts.ts）。 */
   updateTimelineTextClipFont: (id: string, fontId: string) => void
 }
-
 export function isWorkspaceMode(value: unknown): value is WorkspaceMode {
   return typeof value === 'string' && WORKSPACE_MODES.includes(value as WorkspaceMode)
 }
 
-export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector((set, get) => ({
+export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector((set, get, store) => ({
+  ...createWorkbenchDocumentSlice(set, get, store),
   persistRevision: 0,
   workspaceMode: 'generation',
   assistantWidth: 340,
@@ -315,18 +297,14 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
       },
     }))
   },
-  workbenchDocument: createDefaultWorkbenchDocument(),
   creationDocumentTools: null,
-  creationSelectionText: '',
+  creationSelectionText: '', storyboardPlannerLauncher: null,
   creationAiModeId: 'general',
   creationActiveSkill: null,
   creationAiDraft: '',
   creationAiMessages: [],
   creationAiAttachments: [],
   creationAiError: '',
-  storyboardPlan: null,
-  storyboardPlanCommitted: false,
-  storyboardEditorOpen: false,
   canvasFitNonce: 0,
   canvasFitCategoryId: null,
   creationAssistantAutoOpen: false,
@@ -353,18 +331,13 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
   },
   setAssistantWidth: (width) => set({ assistantWidth: Math.max(300, Math.min(600, Math.round(width))) }),
   setProjectSidebarWidth: (width) => set({ projectSidebarWidth: Math.max(240, Math.min(720, Math.round(width))) }),
-  setWorkbenchDocument: (workbenchDocument) => {
-    set((state) => ({
-      workbenchDocument: normalizeWorkbenchDocument(workbenchDocument),
-      persistRevision: state.persistRevision + 1,
-    }))
-  },
   setCreationDocumentTools: (creationDocumentTools) => {
     set({ creationDocumentTools })
   },
   setCreationSelectionText: (text) => {
     set({ creationSelectionText: typeof text === 'string' ? text.trim() : '' })
   },
+  setStoryboardPlannerLauncher: (storyboardPlannerLauncher) => set({ storyboardPlannerLauncher }),
   setCreationAiModeId: (creationAiModeId) => {
     set({ creationAiModeId })
   },
@@ -387,46 +360,12 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
   setCreationAiError: (creationAiError) => {
     set({ creationAiError })
   },
-  setStoryboardPlan: (storyboardPlan) => {
-    // P0-6:方案是 per-project 持久化产物 → bump persistRevision 触发防抖落盘(否则用户手改的方案不保存)。
-    // 写/改方案一律置草稿态(被编辑即与画布上旧节点不一致)。editorOpen 不在此强制开 —— 它既被
-    // planner 产出后显式打开、也被编辑器内逐字段编辑频繁调用,强制开会打架;由调用方管。置 null 时顺手收起。
-    set((state) => ({
-      storyboardPlan,
-      storyboardPlanCommitted: false,
-      ...(storyboardPlan === null ? { storyboardEditorOpen: false } : {}),
-      persistRevision: state.persistRevision + 1,
-    }))
-  },
-  setStoryboardEditorOpen: (storyboardEditorOpen) => {
-    set({ storyboardEditorOpen })
-  },
-  commitStoryboardPlan: () => {
-    // 确认落画布:方案保留(卡片留痕)、转已落画布、收起编辑器。bump 落盘 committed 状态。
-    set((state) => ({
-      storyboardPlanCommitted: true,
-      storyboardEditorOpen: false,
-      persistRevision: state.persistRevision + 1,
-    }))
-  },
-  discardStoryboardPlan: () => {
-    set((state) => ({
-      storyboardPlan: null,
-      storyboardPlanCommitted: false,
-      storyboardEditorOpen: false,
-      persistRevision: state.persistRevision + 1,
-    }))
-  },
   requestCanvasFit: (categoryId) => {
     // 一次性信号：目标分类与 nonce 原子更新。显式目标立即切过去，延迟消费时若用户又手动切走则跳过。
     set((state) => {
       const target = typeof categoryId === 'string' && categoryId.trim() ? categoryId.trim() : state.activeCategoryId
       return { activeCategoryId: target, canvasFitCategoryId: target, canvasFitNonce: state.canvasFitNonce + 1 }
     })
-  },
-  hydrateStoryboardPlan: (storyboardPlan, storyboardPlanCommitted) => {
-    // 载入态:一次性设三字段、编辑器收起、不 bump persistRevision(restore 非用户编辑,别标脏触发回存)。
-    set({ storyboardPlan, storyboardPlanCommitted: storyboardPlan ? storyboardPlanCommitted : false, storyboardEditorOpen: false })
   },
   setCreationAssistantAutoOpen: (creationAssistantAutoOpen) => {
     set({ creationAssistantAutoOpen })
@@ -447,8 +386,6 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
       }),
       // messages 由 conversationThreads 模型按项目持有;切项目先清空,载入由 loadProjectConversations 投影回。
       creationAiMessages: [],
-      // 编辑器展开态(UI 瞬态,不持久化)切项目复位为收起:重开项目以「卡片·收起」休息态出现。
-      storyboardEditorOpen: false,
       // 方案(storyboardPlan)与 committed 不在此清:随项目持久化(P0-6),hydrate restore 先于本 swap 跑、
       // 已按新项目 payload 载入(无则 null/false)。此处再清会清掉刚 restore 的 → 切项目即丢。防串台职责移交 restore。
     })
@@ -460,8 +397,14 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
     }))
   },
   restoreProjectWorkbenchState: ({ workbenchDocument, timeline }) => {
+    // 兼容旧调用方：单文档包装成集合。activeDocumentId 指向它。
+    const doc = normalizeWorkbenchDocument(workbenchDocument)
     set({
-      workbenchDocument: normalizeWorkbenchDocument(workbenchDocument),
+      workbenchDocuments: [doc],
+      activeDocumentId: doc.id,
+      storyboardPlans: {},
+      storyboardDesignsByDocumentId: {},
+      activeStoryboardId: null,
       timeline: normalizeTimeline(timeline),
       timelinePlaying: false,
       selectedTimelineClipIds: [],

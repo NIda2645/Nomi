@@ -85,9 +85,9 @@ describe('model settings workspace structure', () => {
   it('restores persisted background work and exposes a real main-process cancel action', () => {
     const tasks = read('src/ui/onboarding/useProviderAdapterTasks.ts')
     const drawer = read('src/ui/onboarding/OnboardingDrawer.tsx')
-    expect(tasks).toContain('adapterList')
-    expect(tasks).toContain('adapterCancel')
-    expect(tasks).toContain('adapterRetry({ runId: run.id, ...(modelKey ? { modelKey } : {}) })')
+    expect(tasks).toContain('certificationList')
+    expect(tasks).toContain('certificationCancel')
+    expect(tasks).toContain('httpCertificationRetry')
     expect(tasks).toContain('recordRun(result.run)')
     expect(tasks).toContain('setInterval')
     expect(drawer).toContain('<AdapterTaskList')
@@ -114,7 +114,7 @@ describe('model settings workspace structure', () => {
     const status = read('src/ui/onboarding/ModelAdapterStatusSection.tsx')
 
     expect(workspace).toContain('<ModelAdapterStatusSection')
-    expect(drawer).toContain('adapterAdaptExisting')
+    expect(drawer).toContain('httpCertificationStartExisting')
     expect(drawer).toContain("t('onboardingProviders.workspace.adapter.consentMessage')")
     expect(drawer).toContain('selectedModelKeys.includes(model.modelKey)')
     expect(status).toContain("primaryAction === 'openTask'")
@@ -237,8 +237,10 @@ describe('model settings workspace structure', () => {
     expect(home).not.toContain('useVendorHealthMap')
     expect(home).toContain('data-model-home-unreachable')
     // 探测要的入参得真的从 drawer 传下来，否则 hook 拿到空 baseUrl 永远探不出结果。
-    expect(drawer).toContain('hasApiKey: meta?.hasApiKey ?? true')
-    expect(drawer).toContain('baseUrl: card.meta.baseUrl')
+    expect(drawer).toContain('projectOnboardingConnections({')
+    const connections = read('src/ui/onboarding/onboardingDrawerConnections.ts')
+    expect(connections).toContain('hasApiKey: meta?.hasApiKey ?? true')
+    expect(connections).toContain('baseUrl: card.meta.baseUrl')
     // 区块标题不许在有家连不上时还写「N 个可使用」（与行内红字打架）。
     expect(home).toContain('unreachableAside ?? (hasAttention')
   })

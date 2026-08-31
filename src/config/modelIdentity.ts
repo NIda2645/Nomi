@@ -25,8 +25,46 @@ export interface DedupedModel {
   label: string
   /** 是否有内置档案身份（archetype）——认得的进主列表，认不出的沉「其他」。 */
   recognized: boolean
-  /** 所有能调用此模型的供应商（去重相同 vendor+modelKey）。length>1 = 多家可用。 */
+  /** 所有精确调用身份（去重相同 vendor+modelKey）；同一家可有多个明确变体。 */
   providers: ModelProviderRef[]
+}
+
+export type CatalogLifecycle = 'flagship' | 'value' | 'legacy' | 'companion'
+
+const CATALOG_LIFECYCLE_RANK: Record<CatalogLifecycle, number> = {
+  flagship: 0,
+  value: 1,
+  companion: 2,
+  legacy: 3,
+}
+
+function explicitCatalogLifecycle(option: ModelOption): CatalogLifecycle | null {
+  const value = readMeta(option).catalogLifecycle
+  return value === 'flagship' || value === 'value' || value === 'legacy' || value === 'companion' ? value : null
+}
+
+/** A merged model uses its strongest explicit curated route. Unknown/custom names are never classified heuristically. */
+export function modelCatalogLifecycle(model: DedupedModel): CatalogLifecycle | null {
+  let lifecycle: CatalogLifecycle | null = null
+  for (const provider of model.providers) {
+    const candidate = explicitCatalogLifecycle(provider.option)
+    if (candidate && (!lifecycle || CATALOG_LIFECYCLE_RANK[candidate] < CATALOG_LIFECYCLE_RANK[lifecycle])) {
+      lifecycle = candidate
+    }
+  }
+  return lifecycle
+}
+
+export function sortModelsByCatalogLifecycle(models: readonly DedupedModel[]): DedupedModel[] {
+  return models
+    .map((model, index) => ({ model, index, lifecycle: modelCatalogLifecycle(model) }))
+    .sort((left, right) => {
+      // Unclassified user models stay with companion routes. Stable index keeps their own order intact.
+      const leftRank = left.lifecycle ? CATALOG_LIFECYCLE_RANK[left.lifecycle] : CATALOG_LIFECYCLE_RANK.companion
+      const rightRank = right.lifecycle ? CATALOG_LIFECYCLE_RANK[right.lifecycle] : CATALOG_LIFECYCLE_RANK.companion
+      return leftRank - rightRank || left.index - right.index
+    })
+    .map(({ model }) => model)
 }
 
 // 能力后缀：kie 把 GPT Image 2 拆成「· 文生图」「· 图生图」两行——去掉后缀让它们与
@@ -121,11 +159,11 @@ export function dedupeModelOptions(options: ModelOption[]): DedupedModel[] {
       canonicalId,
       // 展示名去能力后缀（kie 把 GPT Image 2 拆「· 文生图/· 图生图」两行，合并成一条后
       // 不该带着首家的后缀当组名）；无后缀的 label 原样。
-      label: (option.label || canonicalId).replace(CAPABILITY_SUFFIX_RE, '').trim() || canonicalId,
+      label: option.variant?.familyLabel || (option.label || canonicalId).replace(CAPABILITY_SUFFIX_RE, '').trim() || canonicalId,
       recognized: isRecognizedModel(option),
       providers: [ref],
     })
     order.push(canonicalId)
   }
-  return order.map((id) => byId.get(id) as DedupedModel)
+  return sortModelsByCatalogLifecycle(order.map((id) => byId.get(id) as DedupedModel))
 }

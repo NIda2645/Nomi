@@ -1,11 +1,18 @@
 import React from 'react'
 import { getDesktopBridge, type DesktopAssetDto } from '../../desktop/bridge'
 import { buildWorkspaceFileUrl } from '../explorer/workspaceFileDrag'
-import type { AssetKind, AssetRef } from './assetTypes'
+import {
+  assetAspectRatioFromMetadata,
+  assetDimensionsFromMetadata,
+  type AssetKind,
+  type AssetRef,
+} from './assetTypes'
 
 type AllProjectAssetsState = {
   assets: AssetRef[]
   loading: boolean
+  /** True when at least one project/page could not be read; visible results are partial. */
+  partial: boolean
   refresh: () => void
 }
 
@@ -22,20 +29,35 @@ function parseProjectIds(records: unknown): string[] {
   return [...ids]
 }
 
-function kindFromDesktopAsset(asset: DesktopAssetDto): AssetKind | null {
+/** Project names are display-only provenance; never fold them into AssetOrigin. */
+export function parseProjectNames(records: unknown): Map<string, string> {
+  if (!Array.isArray(records)) return new Map()
+  const names = new Map<string, string>()
+  for (const record of records) {
+    if (!record || typeof record !== 'object') continue
+    const id = String((record as { id?: unknown }).id || '').trim()
+    const name = String((record as { name?: unknown }).name || '').trim()
+    if (id && name) names.set(id, name)
+  }
+  return names
+}
+
+export function kindFromDesktopAsset(asset: DesktopAssetDto): AssetKind | null {
   const mediaType = typeof asset.data.mediaType === 'string' ? asset.data.mediaType.toLowerCase() : ''
-  if (mediaType === 'image' || mediaType === 'video' || mediaType === 'audio') return mediaType
+  if (mediaType === 'image' || mediaType === 'video' || mediaType === 'audio' || mediaType === 'model3d') return mediaType
   const contentType = typeof asset.data.contentType === 'string' ? asset.data.contentType.toLowerCase() : ''
   if (contentType.startsWith('image/')) return 'image'
   if (contentType.startsWith('video/')) return 'video'
   if (contentType.startsWith('audio/')) return 'audio'
+  if (contentType === 'model/gltf-binary') return 'model3d'
   if (/\.(png|jpe?g|webp|gif|avif)$/i.test(asset.name)) return 'image'
   if (/\.(mp4|webm|mov|m4v)$/i.test(asset.name)) return 'video'
   if (/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(asset.name)) return 'audio'
+  if (/\.glb$/i.test(asset.name)) return 'model3d'
   return null
 }
 
-function assetRefFromDesktopAsset(asset: DesktopAssetDto): AssetRef | null {
+export function assetRefFromDesktopAsset(asset: DesktopAssetDto, sourceProjectName?: string): AssetRef | null {
   if (asset.name.endsWith('.meta')) return null
   const kind = kindFromDesktopAsset(asset)
   if (!kind) return null
@@ -45,6 +67,10 @@ function assetRefFromDesktopAsset(asset: DesktopAssetDto): AssetRef | null {
   const url = typeof asset.data.url === 'string' && asset.data.url.trim()
     ? asset.data.url.trim()
     : buildWorkspaceFileUrl(projectId, relativePath)
+  const dimensions = assetDimensionsFromMetadata(asset.data, kind)
+  const aspectRatio = dimensions
+    ? dimensions.width / dimensions.height
+    : assetAspectRatioFromMetadata(asset.data, kind)
   return {
     id: `${projectId}:${relativePath}`,
     kind,
@@ -52,6 +78,9 @@ function assetRefFromDesktopAsset(asset: DesktopAssetDto): AssetRef | null {
     createdAt: asset.createdAt,
     updatedAt: asset.updatedAt,
     renderUrl: url,
+    ...(dimensions ? { dimensions } : {}),
+    ...(aspectRatio !== undefined ? { aspectRatio } : {}),
+    ...(sourceProjectName?.trim() ? { sourceProjectName: sourceProjectName.trim() } : {}),
     ownerNodeId: typeof asset.data.ownerNodeId === 'string' && asset.data.ownerNodeId.trim()
       ? asset.data.ownerNodeId.trim()
       : undefined,
@@ -88,7 +117,10 @@ export function mergeAssetRefs(...groups: readonly (readonly AssetRef[])[]): Ass
 
 export function useAllProjectAssets(): AllProjectAssetsState {
   const [assets, setAssets] = React.useState<AssetRef[]>([])
-  const [loading, setLoading] = React.useState(false)
+  // Start busy so the first render cannot mislabel the async all-project scan
+  // as an empty library for one frame.
+  const [loading, setLoading] = React.useState(true)
+  const [partial, setPartial] = React.useState(false)
   const [version, setVersion] = React.useState(0)
   const refresh = React.useCallback(() => setVersion((value) => value + 1), [])
 
@@ -99,11 +131,21 @@ export function useAllProjectAssets(): AllProjectAssetsState {
       if (!desktop?.projects || !desktop.assets?.list) {
         setAssets([])
         setLoading(false)
+        setPartial(false)
         return
       }
       setLoading(true)
-      const projectRecords = desktop.projects.listAsync ? await desktop.projects.listAsync() : desktop.projects.list()
+      setPartial(false)
+      let hasPartialResults = false
+      let projectRecords: unknown
+      try {
+        projectRecords = desktop.projects.listAsync ? await desktop.projects.listAsync() : desktop.projects.list()
+      } catch {
+        projectRecords = []
+        hasPartialResults = true
+      }
       const projectIds = parseProjectIds(projectRecords)
+      const projectNames = parseProjectNames(projectRecords)
       const loaded: AssetRef[] = []
       for (const projectId of projectIds) {
         let cursor: string | null = null
@@ -111,11 +153,12 @@ export function useAllProjectAssets(): AllProjectAssetsState {
           try {
             const page = await desktop.assets.list({ projectId, cursor, limit: ASSET_PAGE_LIMIT })
             for (const asset of page.items) {
-              const ref = assetRefFromDesktopAsset(asset)
+              const ref = assetRefFromDesktopAsset(asset, projectNames.get(projectId))
               if (ref) loaded.push(ref)
             }
             cursor = page.cursor
           } catch {
+            hasPartialResults = true
             cursor = null
           }
         } while (cursor && !cancelled)
@@ -123,12 +166,14 @@ export function useAllProjectAssets(): AllProjectAssetsState {
       }
       if (!cancelled) {
         setAssets(mergeAssetRefs(loaded))
+        setPartial(hasPartialResults)
         setLoading(false)
       }
     }
     void loadAssets().catch(() => {
       if (!cancelled) {
         setAssets([])
+        setPartial(true)
         setLoading(false)
       }
     })
@@ -137,5 +182,5 @@ export function useAllProjectAssets(): AllProjectAssetsState {
     }
   }, [version])
 
-  return { assets, loading, refresh }
+  return { assets, loading, partial, refresh }
 }

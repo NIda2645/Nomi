@@ -19,7 +19,7 @@ import { buildProductionDeepLink } from './productionDeepLink'
 import { applyRunControl } from './productionRunControl'
 import { createDriverOps, isShotGate } from './productionRunDriverOps'
 import { withEventTap } from './productionRunEventTap'
-import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
+import { safeExternalText, safeProductionContract, safeShotId } from './productionRunProjectionSanitizer'
 import { assertStoryboardSourceFresh, createArtifactOperations } from './productionRunArtifactOperations'
 import { assertStoryboardSourceApproved } from './productionRunReducer'
 import { MEANINGFUL_EVENT_TYPES } from './productionRunMeaningfulEvents'
@@ -29,6 +29,7 @@ import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
 import { approvalReceiptForGate } from './productionRunApprovalReceipt'
 import { isAnchorCheckpointGate } from './anchorCheckpoint'
 import { kickBatchSchedulerForRun } from './batchSchedulerKick'
+import { recoverStoryboardContentHashes } from './productionRunStoryboardHashRecovery'
 import type { ApprovalReceiptAuthority } from '../capabilityCore/approvalReceipt'
 import {
   metadataProjection,
@@ -47,6 +48,9 @@ type SafeProductionGate = Omit<ProductionRun['gates'][number], 'planHash' | 'con
   contract?: ReturnType<typeof safeProductionContract>
 }
 type SafeProductionJob = Pick<ProductionRun['jobs'][number], 'jobId' | 'stageId' | 'status' | 'attempt' | 'provider' | 'model' | 'nodeId' | 'parentJobId' | 'retryCount' | 'retryReason' | 'progressPercent' | 'lastPollAt' | 'lastVendorStateChangeAt' | 'createdAt' | 'updatedAt' | 'errorCode'>
+  // metadata 只投影 shotId 这一格，故显式写死形状——不 Pick 整个 metadata：那是 Record<string, unknown> 袋子
+  // （还装着 ffDesc/dialogue/retryDirective 等未脱敏长文本），类型上承诺全量、实际只发一格 = 类型说谎。
+  & { metadata?: { shotId: string } }
 export type ProductionRunProjection = {
   schemaVersion: number
   runId: string
@@ -152,19 +156,25 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
       ...(gate.directionCandidates ? { directionCandidates: gate.directionCandidates.map((candidate) => ({ key: candidate.key, title: safeExternalText(candidate.title), oneLiner: safeExternalText(candidate.oneLiner) })) } : {}),
       ...(gate.decidedChoiceKey ? { decidedChoiceKey: gate.decidedChoiceKey } : {}),
     })),
-    jobs: run.jobs.map((job) => ({
-      jobId: job.jobId, stageId: job.stageId, status: job.status, attempt: job.attempt,
-      provider: job.provider, model: job.model, ...(job.nodeId ? { nodeId: job.nodeId } : {}),
-      ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}),
-      ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
-      ...(job.retryReason ? { retryReason: safeExternalText(job.retryReason) } : {}),
-      ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
-      ...(job.providerStatus ? { providerStatus: safeExternalText(job.providerStatus) } : {}),
-      ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
-      ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
-      ...(job.errorCode ? { errorCode: job.errorCode } : {}),
-      createdAt: job.createdAt, updatedAt: job.updatedAt,
-    })),
+    jobs: run.jobs.map((job) => {
+      // 多镜批次里 job↔镜头的对应关系（agent 建批时自己传的 shotId）。没有它，读回来的 jobs 只能按 status
+      // 计数、认不出哪个 job 是哪一镜——返工/对账全瞎。老 run / 单镜链无此字段 → 不发（等价「默认镜」）。
+      const shotId = safeShotId(job.metadata?.shotId)
+      return {
+        jobId: job.jobId, stageId: job.stageId, status: job.status, attempt: job.attempt,
+        provider: job.provider, model: job.model, ...(job.nodeId ? { nodeId: job.nodeId } : {}),
+        ...(shotId ? { metadata: { shotId } } : {}),
+        ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}),
+        ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
+        ...(job.retryReason ? { retryReason: safeExternalText(job.retryReason) } : {}),
+        ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
+        ...(job.providerStatus ? { providerStatus: safeExternalText(job.providerStatus) } : {}),
+        ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
+        ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
+        ...(job.errorCode ? { errorCode: job.errorCode } : {}),
+        createdAt: job.createdAt, updatedAt: job.updatedAt,
+      }
+    }),
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
   }
@@ -706,7 +716,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function readFull(projectId: string, runId: string): ProductionRun {
-    return requireRun(projectId, runId)
+    const run = requireRun(projectId, runId)
+    return recoverStoryboardContentHashes(run, projectRootResolver(run.projectId))
   }
 
   const artifactOperations = createArtifactOperations({
