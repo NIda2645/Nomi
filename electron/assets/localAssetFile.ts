@@ -225,3 +225,25 @@ export async function postMultipartForAssetUpload(
     { onNetworkError: async (error) => { await maybeResolveVendorBase(wireUrl, error); } },
   );
 }
+
+/** 两阶段上传的 signed PUT（例如 fal CDN）。signed URL 已经包含授权，不带供应商 key。 */
+export async function putBinaryForAssetUpload(
+  url: string,
+  headers: Record<string, string>,
+  file: Buffer,
+  contentType: string,
+): Promise<unknown> {
+  const arrayBuffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
+  let wireUrl = url;
+  return postWithUploadRetry(
+    () => {
+      wireUrl = rewriteVendorUrl(url);
+      return appFetch(wireUrl, {
+        method: "PUT",
+        headers: { "Content-Type": contentType, ...headers },
+        body: new Uint8Array(arrayBuffer),
+      });
+    },
+    { onNetworkError: async (error) => { await maybeResolveVendorBase(wireUrl, error); } },
+  );
+}

@@ -47,6 +47,7 @@ import { useComposerViewportPlacement } from './useComposerViewportPlacement'
 import { COMPOSER_MIN_USABLE_HEIGHT } from './nodeSizing'
 import {
   findModelOptionByIdentifier,
+  requiredModeForGenerationNode,
   useGenerationModelOptionsState,
 } from '../adapters/modelOptionsAdapter'
 import { nodeSelectedModelAddress } from './controls/parameterControlModel'
@@ -257,7 +258,10 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
   const isGenerating = status === 'queued' || status === 'running'
   const hasResult = Boolean(node.result?.url)
   const nodeExecutionKind = getGenerationNodeExecutionKind(node.kind)
-  const modelOptions = useGenerationModelOptionsState(node.kind).options
+  const nodes = useGenerationCanvasStore((state) => state.nodes)
+  const edges = useGenerationCanvasStore((state) => state.edges)
+  const requiredMode = requiredModeForGenerationNode(node, { nodes, edges })
+  const modelOptions = useGenerationModelOptionsState(node.kind, requiredMode).options
   const selectedModelAddress = nodeSelectedModelAddress(node.meta || {})
   const selectedModelOption = findModelOptionByIdentifier(
     modelOptions,
@@ -328,17 +332,17 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
   const { assets: projectAssets } = useAllProjectAssets()
   const mentionLibraryAssets = React.useMemo(
     () => projectAssets
-      .filter((asset) => asset.kind === 'image' && asset.renderUrl)
-      .map((asset) => ({ id: asset.id, name: asset.name, url: asset.renderUrl })),
+      .filter((asset) => (asset.kind === 'image' || asset.kind === 'video' || asset.kind === 'audio') && asset.renderUrl)
+      .map((asset) => ({ id: asset.id, name: asset.name, url: asset.renderUrl, kind: asset.kind })),
     [projectAssets],
   )
-  const { orderedReferenceUrls: mentionCandidates, mentionSearch, onMentionSelect } =
+  const { orderedReferenceUrls: mentionCandidates, orderedMediaReferences, mentionSearch, onMentionSelect } =
     useNodeMentionSource(node, mentionLibraryAssets)
   const insertMention = React.useCallback((url: string) => {
     if (!promptEditor || promptEditor.isDestroyed) return
-    const index = mentionCandidates.indexOf(url)
-    promptEditor.commands.insertAssetMention(url, index >= 0 ? index + 1 : undefined)
-  }, [mentionCandidates, promptEditor])
+    const reference = orderedMediaReferences.find((candidate) => candidate.url === url)
+    promptEditor.commands.insertAssetMention(url, reference?.index, reference?.kind)
+  }, [orderedMediaReferences, promptEditor])
 
   /**
    * 描述框 placeholder：**这张卡已经有参考图时**才在尾巴上挂一句「打 @ 可引用参考图」。
@@ -615,20 +619,27 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
         <div className={cn('h-px bg-nomi-line-soft')} />
       ) : null}
       {isTextKind ? (
-        <div className={cn('flex items-center gap-1')} role="group" aria-label={t('generationCommon.composer.generationMode')}>
+        <div
+          className={cn('flex items-center gap-1')}
+          role="group"
+          aria-label={t('generationCommon.composer.generationMode')}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           {TEXT_GEN_MODES.map((option) => (
             <button
               key={option.value}
               type="button"
+              aria-pressed={textGenMode === option.value}
               data-active={textGenMode === option.value ? 'true' : 'false'}
+              title={t(`generationCommon.${option.labelKey}`)}
               onClick={(event) => {
                 event.stopPropagation()
                 updateNode(node.id, { meta: { ...(node.meta || {}), textGenMode: option.value } })
               }}
               className={cn(
-                'h-[22px] rounded-full px-2.5 text-micro font-medium',
+                'min-h-7 rounded-nomi-sm px-2.5 py-1 text-caption font-medium leading-none',
                 'text-nomi-ink-60 hover:bg-nomi-ink-05',
-                'data-[active=true]:bg-nomi-accent-soft data-[active=true]:text-nomi-accent',
+                'data-[active=true]:bg-nomi-paper data-[active=true]:text-nomi-ink data-[active=true]:shadow-nomi-sm',
               )}
             >
               {t(`generationCommon.${option.labelKey}`)}
@@ -660,6 +671,7 @@ export default function NodeGenerationComposer({ node, visualSize }: Props): JSX
             onBlur={() => { void persistActiveWorkbenchProjectNow().catch(() => {}) }}
             onReady={setPromptEditor}
             mentionCandidates={mentionCandidates}
+            mentionReferences={orderedMediaReferences}
             mentionSearch={mentionSearch}
             onMentionSelect={onMentionSelect}
           />

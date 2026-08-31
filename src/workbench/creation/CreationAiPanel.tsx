@@ -59,7 +59,12 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
   }, [sending])
   const [expanded, setExpanded] = React.useState(false)
   const messagesScrollRef = useTransientScrollingClass<HTMLDivElement>('workbench-scrollbar-visible')
-  const workbenchDocument = useWorkbenchStore((state) => state.workbenchDocument)
+  const workbenchDocuments = useWorkbenchStore((state) => state.workbenchDocuments)
+  const activeDocumentId = useWorkbenchStore((state) => state.activeDocumentId)
+  const workbenchDocument = React.useMemo(
+    () => workbenchDocuments.find((d) => d.id === activeDocumentId) ?? workbenchDocuments[0],
+    [workbenchDocuments, activeDocumentId],
+  )
   const documentTools = useWorkbenchStore((state) => state.creationDocumentTools)
   const selectedText = useWorkbenchStore((state) => state.creationSelectionText)
   const modeId = useWorkbenchStore((state) => state.creationAiModeId)
@@ -74,14 +79,23 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
   //   ① 老项目：方案早于本次改动产生，消息上没有标；
   //   ② 用户点了「新对话」：消息清空但方案是项目级的，仍在。
   // 这时把卡片放在列表**顶部**当常驻产物，而不是放回尾部——放尾部就是把这个 bug 又请回来了。
-  const storyboardPlan = useWorkbenchStore((state) => state.storyboardPlan)
-  const storyboardAnchorId = React.useMemo(() => {
+  const storyboardPlans = useWorkbenchStore((state) => state.storyboardPlans)
+  const storyboardDesigns = useWorkbenchStore((state) => state.storyboardDesignsByDocumentId)
+  // 当前文档的分镜方案条目（P4：按 documentId 取，切文档切方案）。
+  const storyboardEntry = activeDocumentId ? storyboardPlans[activeDocumentId] : undefined
+  const storyboardPlan = storyboardEntry?.plan ?? null
+  const storyboardAnchor = React.useMemo(() => {
     if (!storyboardPlan) return null
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messages[index].storyboardPlan) return messages[index].id
+      const message = messages[index]
+      if (!message.storyboardPlan) continue
+      if (message.storyboardDocumentId && message.storyboardDocumentId !== activeDocumentId) continue
+      if (message.storyboardDesignId
+        && !storyboardDesigns[activeDocumentId]?.some((design) => design.id === message.storyboardDesignId)) continue
+      return message
     }
     return null
-  }, [messages, storyboardPlan])
+  }, [activeDocumentId, messages, storyboardDesigns, storyboardPlan])
   // Issue #9：agent 报错且目录里没有 enabled 文本模型 → 报错气泡换成「缺大脑」恢复卡（判真实状态非匹配串）。
   // recoveryShownIds：某条报错已进入恢复卡后「黏住」——一键启用使 hasTextModel 翻 true 也不卸载卡片，
   // 让它能展示自己的「大脑已就位」done 态，而不是露出旧报错文本。
@@ -157,8 +171,16 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     const history = captureConversationHistory('creation', projectId)
     // P0-9 Slice 3：已有未落画布的方案 + 用户给了修改要求 → 进「改方案」模式（基于现方案改，不从头拆）。
     const store = useWorkbenchStore.getState()
-    const currentPlan = store.storyboardPlan
-    const isRevision = Boolean(currentPlan && !store.storyboardPlanCommitted && revisionRequest?.trim())
+    // Capture both identities before the first await. Switching resources while
+    // planning must never redirect the result into another draft or design.
+    const documentId = store.activeDocumentId
+    const storyboardId = store.activeStoryboardId ?? undefined
+    const currentDesign = storyboardId
+      ? store.storyboardDesignsByDocumentId[documentId]?.find((design) => design.id === storyboardId)
+      : undefined
+    const currentPlan = currentDesign?.plan ?? null
+    const isRevision = Boolean(currentPlan && !currentDesign?.committed && revisionRequest?.trim())
+    const revisionStoryboardId = isRevision ? storyboardId : undefined
     const liveDocumentText = documentToolsRef.current?.readFullText() || documentText
     const docStory = (selectedText || liveDocumentText).trim()
     // 编辑器为空但用户把故事打在了对话里 → 用对话正文，并补写进文稿（单一真相源），别让他把已经敲过的故事再搬一遍。
@@ -191,9 +213,6 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
         role: 'assistant',
         content: isRevision ? t('creationAi.revisingPlan') : t('creationAi.planningStoryboard'),
         status: 'pending' as const,
-        // 方案卡锚在这条消息上（不再常驻对话流尾部跟着用户说话跑）。改方案同样打标 →
-        // 卡片自动移到最新那条，旧的那条不再是「最后一条带标的」，天然只显示一张。
-        storyboardPlan: true as const,
       },
     ])
     setDraft('')
@@ -203,8 +222,10 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     const handle = turn.getState().begin()
     void (async () => {
       try {
-        const { text, status } = await runStoryboardPlanner({
+        const { text, status, application } = await runStoryboardPlanner({
           target: 'creation', history, projectId: projectId ?? undefined, canWrite: handle.canWrite,
+          documentId,
+          ...(revisionStoryboardId ? { storyboardId: revisionStoryboardId } : {}),
           // 首拆带分镜模式（图片/视频，动作卡上选，默认图片）；改方案不带——保留现方案每镜已定的 shotKind。
           ...(isRevision ? { currentPlan, revisionRequest } : { storyText, shotMode }),
           onContent: (streamed) => {
@@ -216,11 +237,22 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
           onCancelReady: (cancel) => turn.getState().attachCancel(handle.id, cancel),
         })
         if (!handle.isCurrent()) return // 轮次已被切项目/新对话作废:别把旧项目内容写进新项目
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, content: text || (status === 'cancelled' ? t('creationAi.stopped') : isRevision ? t('creationAi.revisionComplete') : t('creationAi.planComplete')), status: status === 'cancelled' ? 'cancelled' as const : 'done' as const } : m,
-          ),
-        )
+        setMessages((prev) => prev.map((message) => {
+          if (message.id !== assistantId) return message
+          if (application?.status === 'obsolete') {
+            return { ...message, content: t('creationAi.storyboardResultObsolete'), status: 'cancelled' as const }
+          }
+          return {
+            ...message,
+            content: text || (status === 'cancelled' ? t('creationAi.stopped') : isRevision ? t('creationAi.revisionComplete') : t('creationAi.planComplete')),
+            status: status === 'cancelled' ? 'cancelled' as const : 'done' as const,
+            ...(application?.status === 'applied' ? {
+              storyboardPlan: true as const,
+              storyboardDocumentId: application.documentId,
+              storyboardDesignId: application.storyboardDesignId,
+            } : {}),
+          }
+        }))
       } catch (error: unknown) {
         if (!handle.isCurrent()) return
         // 存**原始**错误串（不再包一层中文前缀）——错误态统一由 AssistantErrorCard /
@@ -282,9 +314,14 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
     }
     const readyAttachments = attachments.filter((item) => item.status === 'ready' && item.url)
     if (!userRequest && !selectedText && !documentText && !readyAttachments.length) return
-    // P0-9 Slice 3：方案审阅中（编辑器替换了文档编辑器，用户正盯着方案）→ 输入即视为对现方案的
-    // 修改要求（「全部加负面词 / 统一冷调 / 第 3 镜改特写」等），交规划师基于现方案改、保留其余。
-    if (useWorkbenchStore.getState().storyboardEditorOpen && userRequest) {
+    // P0-9 Slice 3：有未落画布的方案 + 用户给了自然语言要求 → 视为对现方案的修改要求
+    // （「全部加负面词 / 统一冷调 / 第 3 镜改特写」等），交规划师基于现方案改、保留其余。
+    // P4：按当前文档取方案，避免切文档后误改别篇的方案。send 内直读 store，保持依赖稳定。
+    const liveStore = useWorkbenchStore.getState()
+    const selectedDesign = liveStore.activeStoryboardId
+      ? liveStore.storyboardDesignsByDocumentId[liveStore.activeDocumentId]?.find((design) => design.id === liveStore.activeStoryboardId)
+      : undefined
+    if (selectedDesign && !selectedDesign.committed && userRequest) {
       launchStoryboardPlanning(userRequest, userRequest)
       return
     }
@@ -525,7 +562,7 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
         aria-live="polite"
       >
         {/* 方案在本线程里没有锚（老项目 / 点过「新对话」）→ 当常驻产物钉在顶部，不放回尾部。 */}
-        {storyboardPlan && !storyboardAnchorId ? <StoryboardPlanCard /> : null}
+        {storyboardPlan && !storyboardAnchor ? <StoryboardPlanCard documentId={activeDocumentId} /> : null}
         {messages.length === 0 && pendingToolCalls.length === 0 && !storyboardPlan ? (
           <div className={cn(
             'flex h-full flex-col items-center justify-center gap-2',
@@ -595,7 +632,12 @@ export default function CreationAiPanel({ onCollapse }: { onCollapse?: () => voi
                   cancelled={message.status === 'cancelled'}
                 />
               )}
-              {message.id === storyboardAnchorId ? <StoryboardPlanCard /> : null}
+              {message.id === storyboardAnchor?.id ? (
+                <StoryboardPlanCard
+                  documentId={message.storyboardDocumentId}
+                  storyboardId={message.storyboardDesignId}
+                />
+              ) : null}
               {message.id === staleBoundaryId ? <StaleConversationDivider /> : null}
             </React.Fragment>
           ))
