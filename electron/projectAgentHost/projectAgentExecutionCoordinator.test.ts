@@ -602,13 +602,13 @@ describe("ProjectAgentExecutionCoordinator", () => {
         ...base.mutation,
         payload: {
           ...base.mutation.payload,
-          turn: { ...base.mutation.payload.turn, workMode: "guided" },
-          queueItem: { ...base.mutation.payload.queueItem, workMode: "guided" },
+          turn: { ...base.mutation.payload.turn, workMode: "editSelection" },
+          queueItem: { ...base.mutation.payload.queueItem, workMode: "editSelection" },
         },
       },
       request: {
         ...base.request,
-        workMode: "auto",
+        workMode: "agent",
         approvalPolicy: { mode: "project", spend: "within-budget" },
       } as AgentChatRequest,
     };
@@ -616,7 +616,7 @@ describe("ProjectAgentExecutionCoordinator", () => {
     await coordinator.enqueue(opened.subscriptionId, input);
     await coordinator.waitForTurn(opened.subscriptionId, input.mutation.payload.turn.turnId);
 
-    expect(observedRequest?.workMode).toBe("guided");
+    expect(observedRequest?.workMode).toBe("editSelection");
     expect((observedRequest as AgentChatRequest & { approvalPolicy?: unknown }).approvalPolicy).toBeUndefined();
   });
 

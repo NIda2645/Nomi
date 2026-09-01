@@ -197,11 +197,11 @@ export function readSkillDirFiles(absDir: string): Record<string, string> {
       }
       fileCount += 1;
       if (fileCount > SKILL_PACKAGE_MAX_FILES) {
-        throw new Error(`skill 包文件数超过 ${SKILL_PACKAGE_MAX_FILES}`);
+        throw new Error(`Skill package exceeds the file-count limit (${SKILL_PACKAGE_MAX_FILES})`);
       }
-      if (stat.size > SKILL_PACKAGE_MAX_FILE_BYTES) throw new Error(`文件 ${relativePath} 超过大小限制`);
+      if (stat.size > SKILL_PACKAGE_MAX_FILE_BYTES) throw new Error(`Skill package file exceeds the size limit: ${relativePath}`);
       totalBytes += stat.size;
-      if (totalBytes > SKILL_PACKAGE_MAX_TOTAL_BYTES) throw new Error("skill 包超过总大小限制");
+      if (totalBytes > SKILL_PACKAGE_MAX_TOTAL_BYTES) throw new Error("Skill package exceeds the total size limit");
       const bytes = fs.readFileSync(absolutePath);
       let content: string;
       try {

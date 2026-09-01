@@ -25,6 +25,7 @@ import { probeMediaMetadata } from "./mediaProbe";
 import { appendExportTempInputChunk, finishExportTempInput as finishExportTempInputFile, removeExportTempInput } from "./exportTempInput";
 import { ensureProjectFolders, projectDirById, resolveProjectRelativePath } from "../projects/repository";
 import { ensureWorkspaceProjectIdentity } from "../workspace/workspaceProjectIdentity";
+import { desktopT } from "../i18n";
 
 type TimelineMp4ExportRequest = {
   projectId?: string;
@@ -66,7 +67,7 @@ function bufferFromExportBytes(input: TimelineMp4ExportRequest["webmBytes"]): Bu
   if (input instanceof ArrayBuffer) return Buffer.from(input);
   if (ArrayBuffer.isView(input)) return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   if (Array.isArray(input)) return Buffer.from(input);
-  throw new Error("导出失败：缺少 WebM 输入数据");
+  throw new Error(desktopT("export.missingWebmInput"));
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -535,9 +536,9 @@ export function subscribeExportJobEvents(listener: (event: ExportJobEvent) => vo
 export async function startTimelineMp4Export(payload: unknown): Promise<unknown> {
   const raw = (payload || {}) as TimelineMp4ExportRequest;
   const projectId = String(raw.projectId || "").trim();
-  if (!projectId) throw new Error("导出失败：缺少项目 ID");
+  if (!projectId) throw new Error(desktopT("export.missingProjectId"));
   const projectDir = projectDirById(projectId);
-  if (!projectDir) throw new Error("导出失败：Project not found");
+  if (!projectDir) throw new Error(desktopT("export.projectNotFound"));
   ensureProjectFolders(projectDir);
   return transcodeWebmToMp4({
     projectDir,
@@ -554,16 +555,16 @@ export function showExportInFolder(payload: unknown): { ok: true } {
   const raw = (payload || {}) as ShowExportInFolderRequest;
   const projectId = String(raw.projectId || "").trim();
   const relativePath = String(raw.relativePath || "").trim();
-  if (!projectId) throw new Error("打开导出位置失败：缺少项目 ID");
-  if (!relativePath) throw new Error("打开导出位置失败：缺少导出文件路径");
+  if (!projectId) throw new Error(desktopT("export.reveal.missingProjectId"));
+  if (!relativePath) throw new Error(desktopT("export.reveal.missingPath"));
   let normalized: string;
   try {
     normalized = assertProjectExportRelativePath(relativePath);
   } catch {
-    throw new Error("打开导出位置失败：只能打开当前项目 exports 文件夹内的文件");
+    throw new Error(desktopT("export.reveal.outsideExports"));
   }
   const resolved = resolveProjectRelativePath(projectId, normalized);
-  if (!fs.existsSync(resolved)) throw new Error("打开导出位置失败：导出文件不存在");
+  if (!fs.existsSync(resolved)) throw new Error(desktopT("export.reveal.fileMissing"));
   // Lazy require keeps runtime.ts usable in tests that do not initialize Electron shell.
   const { shell } = require("electron") as typeof import("electron");
   shell.showItemInFolder(resolved);

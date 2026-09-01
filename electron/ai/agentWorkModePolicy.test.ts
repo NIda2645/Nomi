@@ -3,13 +3,12 @@ import { workModeInstruction } from "./agentWorkModePolicy";
 
 describe("work mode instructions", () => {
   it("gives every mode a distinct, explicit boundary", () => {
-    expect(workModeInstruction("ask")).toContain("不要擅自写入");
-    expect(workModeInstruction("guided")).toContain("关键阶段");
-    expect(workModeInstruction("balanced")).toContain("可撤销步骤");
-    expect(workModeInstruction("auto")).toContain("状态未知");
+    expect(workModeInstruction("ask")).toContain("不要写入");
+    expect(workModeInstruction("editSelection")).toContain("选中范围");
+    expect(workModeInstruction("agent")).toContain("跨对象");
   });
 
-  it("falls back to the safe balanced posture", () => {
-    expect(workModeInstruction(undefined)).toBe(workModeInstruction("balanced"));
+  it("falls back to the Agent posture", () => {
+    expect(workModeInstruction(undefined)).toBe(workModeInstruction("agent"));
   });
 });

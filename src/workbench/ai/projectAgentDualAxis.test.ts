@@ -47,7 +47,7 @@ beforeEach(() => {
 })
 
 describe('Project Agent dual-axis policy contract', () => {
-  it('defaults legacy records to a balanced work mode and step/confirm approval without coupling the axes', () => {
+  it('defaults legacy records to the Agent work mode and step/confirm approval without coupling the axes', () => {
     expect(projectAgentWorkModeOf(undefined)).toBe(DEFAULT_PROJECT_AGENT_WORK_MODE)
     expect(projectAgentApprovalPolicyOf(undefined)).toEqual(DEFAULT_PROJECT_AGENT_APPROVAL_POLICY)
   })
@@ -62,18 +62,18 @@ describe('Project Agent dual-axis policy contract', () => {
         projectId: binding.projectId,
       },
       displayPrompt: 'make a draft',
-      workMode: 'guided',
+      workMode: 'editSelection',
       approvalPolicy,
       target: { kind: 'document', documentId: 'document-1', anchor: { kind: 'whole-document' } },
       originSurface: { surfaceId: 'creation', kind: 'document' },
     })
 
     const command = deps.command.mock.calls[0][0]
-    expect(command.payload.turn.workMode).toBe('guided')
-    expect(command.payload.queueItem.workMode).toBe('guided')
+    expect(command.payload.turn.workMode).toBe('editSelection')
+    expect(command.payload.queueItem.workMode).toBe('editSelection')
     expect(command.payload.turn.approvalPolicy).toEqual(approvalPolicy)
     expect(command.payload.queueItem.approvalPolicy).toEqual(approvalPolicy)
-    expect(command.payload.request.workMode).toBe('guided')
+    expect(command.payload.request.workMode).toBe('editSelection')
   })
 
   it('keeps the IPC request projection from carrying approval authority or drifting work mode', async () => {
@@ -83,7 +83,7 @@ describe('Project Agent dual-axis policy contract', () => {
         capability: 'creation-editor',
         history: { kind: 'ephemeral' },
         projectId: binding.projectId,
-        workMode: 'auto',
+        workMode: 'legacy-auto',
         approvalPolicy: { mode: 'project', spend: 'within-budget' },
       } as never,
       displayPrompt: 'safe draft',

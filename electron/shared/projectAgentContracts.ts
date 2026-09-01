@@ -19,15 +19,20 @@ export const PROJECT_AGENT_STATUSES = [
 export type ProjectAgentStatus = (typeof PROJECT_AGENT_STATUSES)[number];
 
 /**
- * User-facing execution posture. This axis describes how much initiative the
- * Agent should take while shaping a task; it is intentionally independent
- * from approval/spend policy, which remains an explicit Host-owned snapshot.
+ * User-facing execution posture (#194 §14.1 三档：Ask / 编辑选中 / Agent). This
+ * axis describes what surface of the project the Agent may touch while shaping a
+ * task — read-only advice, only the frozen selection, or cross-object planning —
+ * and is intentionally independent from approval/spend policy, which remains an
+ * explicit Host-owned snapshot. Changing the work mode never widens approval.
+ *   - `ask`           解释/比较/建议，不写项目
+ *   - `editSelection` 只对当前冻结的选中范围提修改（受选区约束的编辑模式）
+ *   - `agent`         跨对象规划并执行允许的多步任务
  */
-export const PROJECT_AGENT_WORK_MODES = ["ask", "guided", "balanced", "auto"] as const;
+export const PROJECT_AGENT_WORK_MODES = ["ask", "editSelection", "agent"] as const;
 export type ProjectAgentWorkMode = (typeof PROJECT_AGENT_WORK_MODES)[number];
 
 /** Safe default for legacy turns that predate the resident work-mode picker. */
-export const DEFAULT_PROJECT_AGENT_WORK_MODE: ProjectAgentWorkMode = "balanced";
+export const DEFAULT_PROJECT_AGENT_WORK_MODE: ProjectAgentWorkMode = "agent";
 
 export function projectAgentWorkModeOf(value: ProjectAgentWorkMode | undefined): ProjectAgentWorkMode {
   return value ?? DEFAULT_PROJECT_AGENT_WORK_MODE;
