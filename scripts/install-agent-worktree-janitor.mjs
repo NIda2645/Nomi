@@ -6,7 +6,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 export function buildStopHookCommand() {
-  return 'node "$CLAUDE_PROJECT_DIR/scripts/agent-worktree-janitor.mjs" stop "$CLAUDE_PROJECT_DIR" --apply'
+  return 'if [ -f "$CLAUDE_PROJECT_DIR/scripts/agent-worktree-janitor.mjs" ]; then node "$CLAUDE_PROJECT_DIR/scripts/agent-worktree-janitor.mjs" stop "$CLAUDE_PROJECT_DIR" --apply; fi'
 }
 
 function hasJanitorCommand(command) {

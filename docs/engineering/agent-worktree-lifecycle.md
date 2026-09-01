@@ -10,7 +10,7 @@ From a Nomi checkout, run:
 pnpm run install:agent-worktree-janitor
 ```
 
-The installer adds an idempotent Claude `Stop` hook to the user's `~/.claude/settings.json`. The hook resolves the script through `$CLAUDE_PROJECT_DIR`, so it does not contain a machine-specific Nomi path. Re-run it after cloning a newer Nomi version if the script contract changes.
+The installer adds an idempotent Claude `Stop` hook to the user's `~/.claude/settings.json`. The hook first checks that the current checkout contains the Nomi script, then resolves it through `$CLAUDE_PROJECT_DIR`; it does not contain a machine-specific Nomi path and stays quiet for unrelated projects. Re-run it after cloning a newer Nomi version if the script contract changes.
 
 ## Policy
 

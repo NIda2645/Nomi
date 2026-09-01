@@ -106,6 +106,7 @@ test('installs an idempotent repository-relative Stop hook', () => {
   const installed = mergeStopHook({})
   const installedAgain = mergeStopHook(installed)
   assert.match(command, /\$CLAUDE_PROJECT_DIR\/scripts\/agent-worktree-janitor\.mjs/)
+  assert.match(command, /if \[ -f "\$CLAUDE_PROJECT_DIR\/scripts\/agent-worktree-janitor\.mjs" \]; then/)
   assert.equal(installed.hooks.Stop[0].hooks[0].command, command)
   assert.deepEqual(installedAgain, installed)
 })
