@@ -70,6 +70,40 @@ export const OFF_CANVAS_RENDER_TARGETS = Object.freeze([
 ])
 
 /**
+ * Cross-commit render tracker — the probe's ONE counting rule, extracted as a
+ * real function so it is both (a) unit-testable against synthetic fiber trees
+ * and (b) the single source injected verbatim into the browser init script
+ * (via `.toString()` below). See the file header for why a cross-commit diff is
+ * the only correct signal (subtree-inclusive / stale-on-bailout durations and
+ * within-commit alternate comparisons all over-count).
+ *
+ * Returns `{ detect(fiber) -> boolean }`: true iff this fiber's own body
+ * re-rendered since the previous commit (its memoizedProps or memoizedState
+ * changed). A bailed fiber keeps both frozen → false. React double-buffers a
+ * fiber with its `alternate`, so the memory is keyed on whichever buffer we saw
+ * last and both are looked up / written each commit.
+ *
+ * Must be self-contained (no closure over module scope) so its `.toString()`
+ * runs correctly in the page realm.
+ */
+export function createOffCanvasRenderTracker() {
+  const lastSeen = new WeakMap() // fiber (or its alternate) -> { props, state }
+  return {
+    detect(fiber) {
+      const alt = fiber.alternate
+      const prior = lastSeen.get(fiber) || (alt ? lastSeen.get(alt) : undefined)
+      const props = fiber.memoizedProps
+      const st = fiber.memoizedState
+      const entry = { props, state: st }
+      lastSeen.set(fiber, entry)
+      if (alt) lastSeen.set(alt, entry)
+      if (prior === undefined) return true // first time we see this instance
+      return prior.props !== props || prior.state !== st
+    },
+  }
+}
+
+/**
  * The init script body, stringified. Runs in the page (renderer) context before
  * React loads. Installs `__REACT_DEVTOOLS_GLOBAL_HOOK__` if absent and records
  * per-component commit counts on `window.__offCanvasRenderProbe`.
@@ -80,6 +114,9 @@ export const OFF_CANVAS_RENDER_TARGETS = Object.freeze([
  */
 function buildInitScript(targets) {
   const targetLiteral = JSON.stringify(targets)
+  // Inject the tracker factory verbatim so the browser realm uses the exact
+  // same counting rule the unit test pins (single source of truth).
+  const trackerSource = createOffCanvasRenderTracker.toString()
   return `(() => {
   if (window.__offCanvasRenderProbeInstalled) return
   window.__offCanvasRenderProbeInstalled = true
@@ -129,36 +166,16 @@ function buildInitScript(targets) {
     return null
   }
 
-  // TEMPORAL render tracker. A within-commit comparison (fiber vs its alternate)
-  // does NOT work: the probe re-walks root.current every commit, and for a
-  // subtree that bailed (e.g. the app-bar cluster while only the canvas
-  // re-renders), React neither re-clones those fibers nor updates their
-  // memoizedProps/State/actualDuration — the fiber object AND its frozen
-  // alternate relationship persist unchanged across many commits. So every
-  // duration- or alternate-based within-commit signal reports a stale positive
-  // for a component that rendered once long ago and has bailed since (S3
-  // ground-truthed: OnboardingChecklist body ran 0x during a drag yet all those
-  // signals reported ~65-266).
-  //
-  // The only correct signal is a diff ACROSS commits maintained by the probe:
-  // remember each target instance's last-seen (memoizedProps, memoizedState) and
-  // count a render only when that pair changes. A bailed fiber keeps the same
-  // pair (frozen) → not counted; a real render swaps at least one → counted.
-  // React double-buffers each fiber (a fiber and its alternate), so we key the
-  // memory on whichever of the two we recorded before, looking up both.
-  const lastSeen = new WeakMap() // fiber (or its alternate) -> { props, state }
-  const recordAndDetectRender = (fiber) => {
-    const alt = fiber.alternate
-    const prior = lastSeen.get(fiber) || (alt ? lastSeen.get(alt) : undefined)
-    const props = fiber.memoizedProps
-    const st = fiber.memoizedState
-    // Store under both buffers so the next commit finds us regardless of flip.
-    const entry = { props, state: st }
-    lastSeen.set(fiber, entry)
-    if (alt) lastSeen.set(alt, entry)
-    if (prior === undefined) return true // first time we see this instance
-    return prior.props !== props || prior.state !== st
-  }
+  // Cross-commit render tracker (the ONE counting rule, injected verbatim from
+  // the module so a unit test pins it — see createOffCanvasRenderTracker). A
+  // within-commit fiber-vs-alternate comparison does NOT work: the probe
+  // re-walks root.current every commit, and a bailed subtree's fibers plus their
+  // frozen alternate relationship persist unchanged across many commits, so
+  // every duration- or alternate-based within-commit signal reports a stale
+  // positive (S3 ground-truthed: OnboardingChecklist body ran 0x during a drag
+  // yet those signals reported ~65-266).
+  const __tracker = (${trackerSource})()
+  const recordAndDetectRender = (fiber) => __tracker.detect(fiber)
 
   const walkRoot = (root) => {
     // A commit's finishedWork tree hangs off root.current after commit.
