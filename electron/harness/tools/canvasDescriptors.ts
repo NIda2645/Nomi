@@ -80,6 +80,11 @@ const storyboardAnchorSchema = z.object({
 
 const storyboardShotSchema = z.object({
   index: z.number().int().describe("1-based shot number in script order."),
+  sceneId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Scene/group id this shot belongs to (e.g. 'scene-1'). Shots of the same scene must be contiguous and share the id; omit when the story has no scene grouping."),
   shotKind: z
     .enum(["image", "video"])
     .optional()
@@ -94,6 +99,15 @@ const storyboardShotSchema = z.object({
   modelKey: z.string().optional().describe("Video model key for this shot, chosen from the 「可用模型」 list in the user message. Omit to use the default video model."),
   modeId: z.string().optional().describe("Model mode/variant id (paired with modelKey), from the same list. Omit to use the model's default mode."),
   params: z.record(z.unknown()).optional().describe("Per-shot generation params keyed exactly as the chosen model exposes them in the 「可用模型」 list (e.g. aspect_ratio, resolution, and negative_prompt where the model supports it). Only use param keys that model actually lists; omit unknowns."),
+  subtitle: z.string().optional().describe("On-screen caption/subtitle text for this shot, carried verbatim to canvas metadata and timeline assembly."),
+  dialogue: z.string().optional().describe("Spoken dialogue for this shot (speaker + line), carried verbatim to canvas metadata and timeline assembly."),
+  transition: z
+    .object({
+      type: z.enum(["cut", "dissolve", "fade", "match_cut", "whip_pan"]),
+      durationFrames: z.number().int().positive().optional(),
+    })
+    .optional()
+    .describe("Explicit editorial transition into the next shot; emit cut for an intentional hard cut, omit when no transition is authored."),
   keyframe: z
     .object({
       enabled: z.boolean().optional().describe("Set true only for 图片+视频 mode: create a first-frame image before the video."),
