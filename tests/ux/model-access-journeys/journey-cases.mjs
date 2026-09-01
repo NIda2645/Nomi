@@ -144,20 +144,28 @@ async function relayImageVideo(journey, ui, fixture, recorder) {
 
 async function adapterModeRepair(journey, ui, fixture, recorder) {
   await configureRelay(ui, fixture, recorder, ['fixture-image-gen', 'fixture-video-gen'], 'Mode Repair Fixture')
-  await recorder.step('executed', '等待逐模型逐模式验证结果出现', async () => {
-    const action = ui.win.getByRole('button', { name: /自己接入|自定义调用/ }).first()
-    await requireVisible(action, 'per-mode-repair-action-missing', '某个模式失败后，验证页没有可继续修复该模型的动作', 35_000)
+  await recorder.step('executed', '逐模型逐模式验证在某模式失败后仍给出继续修复的动作', async () => {
+    // Real repair CTA on the verification screen is "继续手动配置" (action.manualSetup /
+    // onSelfConnect) — surfaces once the run is terminal. The old "/自己接入|自定义调用/"
+    // anchor never existed on this screen (probed 2026-09-01); "自定义调用" is one step
+    // deeper, inside the model detail's request-method editor.
+    const action = await ui.waitForModeRepairAction(35_000)
+    await ui.screenshot('mode-repair-action-visible')
     return { action: await action.textContent() }
   })
   await recorder.step('rendered', '失败模式与已通过模式不互相覆盖', async () => {
-    const body = await ui.win.getByRole('dialog').last().textContent()
-    if (!/失败|未通过/.test(body || '')) throw new JourneyFailure('mode-failure-not-visible', '验证页没有展示失败模式')
-    return { visibleFailure: true }
+    // The verification page is a settings page, not a role=dialog; assert against it.
+    const body = await ui.win.locator('[data-model-settings-page="verification"]').last().textContent()
+    // 视频模式因 500 被注错而失败（"没通过自检"），图片模式仍部分可用（"部分可用"）——两者并存。
+    if (!/没通过自检|未通过/.test(body || '')) throw new JourneyFailure('mode-failure-not-visible', '验证页没有展示失败模式')
+    if (!/部分可用|已验证/.test(body || '')) throw new JourneyFailure('passing-mode-overwritten', '通过的模式被失败模式覆盖，验证页看不到已可用能力')
+    return { visibleFailure: true, passingRetained: true }
   })
   await recorder.step('recovered', '从失败模式进入自定义调用继续修复', async () => {
-    const action = ui.win.getByRole('button', { name: /自己接入|自定义调用/ }).first()
-    await action.click()
-    await requireVisible(ui.win.getByText('自定义调用', { exact: true }), 'custom-call-not-opened', '失败模式的继续动作没有打开自定义调用')
+    // 继续手动配置 → 模型详情「请求方式」→ 请求脚本编辑器（自定义调用）。真实产品路径（探针 2026-09-01）。
+    // 编辑器标题是「请求脚本」（customCall.title），不是「自定义调用」——后者只是模型列表里那一行的名字。
+    const editor = await ui.openCustomCallFromRepair()
+    await requireVisible(editor.getByText('请求脚本', { exact: true }), 'custom-call-not-opened', '失败模式的继续动作没有打开自定义调用（请求脚本）编辑器')
     return { opened: true }
   })
 }
@@ -266,46 +274,78 @@ async function threeTextProtocols(journey, ui, fixture, recorder) {
 
 async function openCustomCall(ui, fixture, recorder) {
   await configureRelay(ui, fixture, recorder, ['fixture-video-gen'], 'Custom Call Fixture')
-  const action = ui.win.getByRole('button', { name: /自己接入|自定义调用/ }).first()
-  await requireVisible(action, 'custom-call-entry-missing', '模型验证失败后没有自定义调用入口', 35_000)
-  await action.click()
-  await requireVisible(ui.win.getByText('自定义调用', { exact: true }), 'custom-call-editor-missing', '自定义调用编辑器没有打开')
+  // 视频模式被注入 500 → 验证失败 → 验证页给出「继续手动配置」逃生口 → 模型详情「请求方式」
+  // → 请求脚本（自定义调用）编辑器。旧代码找 "/自己接入|自定义调用/" 按钮，那个锚点在验证页
+  // 从不存在（探针 2026-09-01：journeyAnchorCount=0，真实按钮是「继续手动配置」，几何可见未被裁剪）；
+  // 编辑器标题是「请求脚本」，不是「自定义调用」。返回编辑器容器（script 页）供后续步骤操作。
+  const editor = await ui.openCustomCallFromRepair().catch((error) => {
+    throw new JourneyFailure('custom-call-entry-missing', `模型验证失败后没能进入自定义调用（请求脚本）编辑器：${error?.message || error}`)
+  })
+  await requireVisible(editor.getByText('请求脚本', { exact: true }), 'custom-call-editor-missing', '自定义调用（请求脚本）编辑器没有打开')
+  return editor
 }
 
 async function customCurlQueue(journey, ui, fixture, recorder) {
-  await openCustomCall(ui, fixture, recorder)
+  const editor = await openCustomCall(ui, fixture, recorder)
   await recorder.step('executed', '检查脚本旁的可用变量和返回要求', async () => {
-    const editor = ui.win.getByRole('dialog').filter({ hasText: '自定义调用' }).last()
+    // Editor container is the script page (data-model-settings-page="script"); its
+    // CustomCallContractSidebar holds the available variables + return contract.
     const text = await editor.textContent()
     const hasVariables = /prompt.*params.*references.*model.*baseUrl/s.test(text || '')
-    const hasReturnContract = /返回要求|返回值约定|必须.*return|return.*URL/i.test(text || '')
+    const hasReturnContract = /返回要求|返回值约定|必须.*return|return.*URL|脚本返回值|返回\s*\{/i.test(text || '')
     await ui.screenshot('custom-call-contract')
     if (!hasVariables) throw new JourneyFailure('available-variables-missing', '脚本编辑器没有把实际可用变量展示给用户')
     if (!hasReturnContract) throw new JourneyFailure('return-contract-missing', '脚本编辑器展示了变量，但没有展示脚本必须返回什么；用户无法判断图片/视频/文本结果形状')
     return { hasVariables, hasReturnContract }
   })
+  await recorder.step('rendered', '用文档里的变量写一段队列脚本并试跑拿到真实产物', async () => {
+    // Prove the contract is actually usable: write a create→poll→result script using the
+    // documented variables (http/poll/model/prompt) and confirm a successful try-run.
+    // Same "接口材料 vs main script" caveat as J07 — target the main script textarea by aria.
+    const script = editor.getByRole('textbox', { name: /自定义调用脚本/ }).first()
+    await script.fill("const task = await http.post('/v1/video/generations', { model, prompt })\nreturn await poll(() => http.get('/v1/video/generations/' + task.task_id), (s) => s.status === 'succeeded' ? s.data[0].url : null, { intervalMs: 500, timeoutMs: 5000 })")
+    await editor.getByRole('button', { name: /发送测试请求|停止试跑/ }).first().click()
+    await requireVisible(editor.getByText(/试跑成功|个产物|测试成功/).first(), 'custom-call-queue-no-product', '用文档里的变量写的队列脚本试跑没有拿到产物', 20_000)
+    await ui.screenshot('custom-call-queue-product')
+    return { assetTaskObserved: fixture.requests.some((request) => request.path.endsWith('fixture-video-task')) }
+  })
 }
 
 async function customCallRepair(journey, ui, fixture, recorder) {
-  await openCustomCall(ui, fixture, recorder)
-  const editor = ui.win.getByRole('dialog').filter({ hasText: '自定义调用' }).last()
-  const script = editor.locator('textarea').filter({ has: undefined }).last()
+  // Editor container is the request-script page (data-model-settings-page="script")
+  // returned by openCustomCall — its title is "请求脚本", not "自定义调用".
+  const editor = await openCustomCall(ui, fixture, recorder)
+  // The script editor has TWO textareas: the main script (aria "… 的自定义调用脚本") and
+  // a hidden AI-help "接口材料" (materialLabel) one. Target the main script by its aria
+  // (the "接口材料" textarea is collapsed/hidden, so .last() picks the wrong, invisible one).
+  const script = editor.getByRole('textbox', { name: /自定义调用脚本/ }).first()
+  // Real button labels (probed 2026-09-01): the run button is "发送测试请求" (testRun);
+  // while running it becomes "停止试跑". The old "/试跑/" anchor only matched the stop
+  // state, never the run button. The save button appears only AFTER a passing try-run,
+  // labelled "保存「视频」" (saveScope) / "保存并启用" (saveAndEnable) — never bare "保存".
+  const runTest = () => editor.getByRole('button', { name: /发送测试请求|停止试跑/ }).first()
   await recorder.step('executed', '用错误字段试跑并查看实际请求和上游错误', async () => {
     await script.fill("const task = await http.post('/v1/video/generations', { wrong_prompt: prompt })\nreturn task.missing")
-    await editor.getByRole('button', { name: /试跑/ }).click()
-    await requireVisible(editor.getByText(/没有返回产物|试跑失败/).first(), 'custom-call-failure-not-visible', '错误脚本试跑后没有展示可诊断失败', 15_000)
+    await runTest().click()
+    // Diagnosable failure copy: testFailed "试跑失败" / footerTestFailed "测试失败…" /
+    // testMissingResult "…没有返回可读取的结果". Any of these means the run surfaced a
+    // problem the user can act on.
+    await requireVisible(editor.getByText(/试跑失败|测试失败|没有返回可读取的结果|没有返回产物/).first(), 'custom-call-failure-not-visible', '错误脚本试跑后没有展示可诊断失败', 20_000)
     const text = await editor.textContent()
-    if (!/POST.*video\/generations|请求 1/i.test(text || '')) throw new JourneyFailure('custom-call-transcript-missing', '试跑失败没有展示实际请求 transcript')
+    // Transcript row format is "请求 {index}：{METHOD} {url}" (transcriptRequest).
+    if (!/POST.*video\/generations|请求\s*1[:：]/i.test(text || '')) throw new JourneyFailure('custom-call-transcript-missing', '试跑失败没有展示实际请求 transcript')
     return { failedAsExpected: true }
   })
   await recorder.step('rendered', '修正脚本后试跑得到真实视频 URL', async () => {
     await script.fill("const task = await http.post('/v1/video/generations', { model, prompt })\nreturn await poll(() => http.get('/v1/video/generations/' + task.task_id), (s) => s.status === 'succeeded' ? s.data[0].url : null, { intervalMs: 500, timeoutMs: 5000 })")
-    await editor.getByRole('button', { name: /试跑/ }).click()
-    await requireVisible(editor.getByText(/试跑成功|个产物/).first(), 'custom-call-repair-failed', '修正脚本后试跑仍未成功', 15_000)
+    await runTest().click()
+    // Success copy: testOk "试跑成功 · N 个产物 · …" / footerTestSuccess "测试成功，可以保存".
+    await requireVisible(editor.getByText(/试跑成功|个产物|测试成功/).first(), 'custom-call-repair-failed', '修正脚本后试跑仍未成功', 20_000)
     return { assetUrlObserved: fixture.requests.some((request) => request.path.endsWith('fixture-video-task')) }
   })
   await recorder.step('recovered', '保存修正脚本并回到同一模型', async () => {
-    await editor.getByRole('button', { name: '保存', exact: true }).click()
+    // Save button surfaces only after the passing run above; match any 保存* variant.
+    await editor.getByRole('button', { name: /保存/ }).last().click()
     const snapshot = ui.catalogSnapshot()
     const model = snapshot.models.find((item) => item.modelKey === 'fixture-video-gen')
     if (!model?.customCall?.script?.includes('poll')) throw new JourneyFailure('custom-call-not-saved', 'UI 说已保存，但模型磁盘快照没有修正脚本')

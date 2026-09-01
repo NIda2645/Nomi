@@ -36,12 +36,21 @@ function fixtureFault(journeyId) {
     }
   }
   // J05/J06/J07 are the "auto-adaptation guessed a mode wrong, keep going" journeys:
-  // they need the video model's certification to FAIL so the per-model "自己接入 /
-  // 自定义调用" repair entry surfaces. Fail the video create endpoint (a 500 the
-  // adapter can't recover) while leaving discovery and image intact.
+  // they need the video model's certification to FAIL so the per-model repair entry
+  // surfaces on the verification screen (real CTA "继续手动配置" → model detail
+  // "请求方式" → request-script editor; there is NO "自己接入 / 自定义调用" button on
+  // the verification screen — probed 2026-09-01). Fail the video create endpoint (a
+  // 500 the adapter can't recover) while leaving discovery and image intact.
+  //
+  // J07 additionally repairs a custom-call script and re-runs it against this same
+  // endpoint, which must SUCCEED for the fixed script. Certification issues exactly 2
+  // create attempts (initial + one repair) before the user ever opens the editor
+  // (measured 2026-09-01), so scope the fault to those attempts: the later in-editor
+  // try-run gets a fresh 200. J05/J06 never re-hit this endpoint, so the bound is inert
+  // for them (certification's 2 attempts still fail → repair entry still surfaces).
   if (['J05', 'J06', 'J07'].includes(journeyId)) {
     return {
-      '/v1/video/generations': { status: 500, message: 'fixture video mode unavailable' },
+      '/v1/video/generations': { status: 500, message: 'fixture video mode unavailable', times: 2 },
     }
   }
   return {}
