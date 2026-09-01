@@ -25,15 +25,17 @@ describe('community links', () => {
     const url = new URL(buildPrivateFeedbackUrl({
       version: 1,
       app: { version: '0.21.0', platform: 'darwin', arch: 'arm64', locale: 'en' },
-      context: { intent: 'problem', stage: 'model', provider: 'Ollama', model: 'llama3' },
+      // Built-in vendor identity (as it survives the buildFeedbackDiagnostics boundary):
+      // vendorKey/modelKey are stable catalog literals, never user input.
+      context: { intent: 'problem', stage: 'model', provider: 'apimart', model: 'seedance-2.5' },
     }))
     expect(url.origin + url.pathname).toBe(PRIVATE_FEEDBACK_URL)
     expect(url.searchParams.get('nomi_version')).toBe('0.21.0')
     expect(url.searchParams.get('nomi_platform')).toBe('macOS')
     expect(url.searchParams.get('nomi_arch')).toBe('arm64')
     expect(url.searchParams.get('nomi_stage')).toBe('model')
-    expect(url.searchParams.get('nomi_provider')).toBe('Ollama / llama3')
-    expect(url.searchParams.get('nomi_model')).toBe('llama3')
+    expect(url.searchParams.get('nomi_provider')).toBe('apimart / seedance-2.5')
+    expect(url.searchParams.get('nomi_model')).toBe('seedance-2.5')
     expect(url.search).not.toContain('secret')
     expect(url.search).not.toContain('summary')
     expect(url.search).not.toContain('details')
