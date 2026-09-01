@@ -52,17 +52,22 @@ export type ModelSettingsHomeConnection = {
   onOpen: () => void
 }
 
+// 品牌标：有 logo 显图，无 logo 显首字母徽标。两者共用同一个「白底描边框」——
+// 关键（2026-09-01 用户反馈「logo 参差」）：旧版徽标底色 = bg-nomi-ink-05，与整组行背景同色，
+// 框子隐形、只剩两个悬空灰字，和带白框的 logo 排在一起明显不齐。统一成同一框即对齐。
 function ConnectionMark({ connection }: { connection: ModelSettingsHomeConnection }): JSX.Element {
-  if (connection.logo) {
-    return (
-      <span className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-nomi-sm border border-nomi-line bg-nomi-paper">
-        <img src={connection.logo} alt="" className="size-full object-contain" />
-      </span>
-    )
-  }
   return (
-    <span className="grid size-7 shrink-0 place-items-center rounded-nomi-sm bg-nomi-ink-05 text-micro font-semibold text-nomi-ink-60">
-      {(connection.glyph || translateModelDisplayText(connection.name)).trim().slice(0, 2).toUpperCase()}
+    <span
+      data-connection-mark={connection.logo ? 'logo' : 'monogram'}
+      className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-nomi-sm border border-nomi-line bg-nomi-paper"
+    >
+      {connection.logo ? (
+        <img src={connection.logo} alt="" className="size-full object-contain" />
+      ) : (
+        <span className="text-caption font-semibold leading-none text-nomi-ink-60">
+          {(connection.glyph || translateModelDisplayText(connection.name)).trim().slice(0, 2).toUpperCase()}
+        </span>
+      )}
     </span>
   )
 }
@@ -313,6 +318,7 @@ export function ModelSettingsHome({
   taskContent,
   diagnostic,
   networkContent,
+  dataSourceContent,
   availableFooter,
   onReload,
   onCustomApi,
@@ -327,6 +333,8 @@ export function ModelSettingsHome({
   taskContent?: React.ReactNode
   diagnostic?: React.ReactNode
   networkContent?: React.ReactNode
+  /** 数据源 connector（BYO-key，产出的是「素材数据」不是「可调用模型」，故独立成组、不混进模型家清单）。 */
+  dataSourceContent?: React.ReactNode
   availableFooter?: React.ReactNode
   onReload: () => void
   onCustomApi: () => void
@@ -535,6 +543,15 @@ export function ModelSettingsHome({
             {connectedSection}
             {adaptedSection}
             {otherMethodsSection}
+
+            {/* 数据源：抖音/TikTok 分享链接 → 无水印素材（BYO-key connector）。独立成组因为它产出的是
+                「素材数据」不是「可调用模型」——归进模型家清单会错配（P4）。这是它在设置区的唯一家。 */}
+            {dataSourceContent ? (
+              <section className="mt-5" data-model-home-data-sources>
+                <SectionHeading title={t('onboardingProviders.drawer.home.dataSources')} />
+                {dataSourceContent}
+              </section>
+            ) : null}
 
             <section className="mt-6 border-t border-nomi-line pt-4" data-model-home-advanced>
               <SectionHeading title={t('onboardingProviders.drawer.home.advanced')} />

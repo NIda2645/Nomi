@@ -59,7 +59,8 @@ export const PromptCard = React.memo(function PromptCard({ prompt, onSelect }: P
           <span
             className={cn(
               'absolute top-1.5 left-1.5 inline-flex items-center gap-1 px-1.5 py-px rounded-full text-micro leading-none',
-              'bg-nomi-overlay-chip-strong border border-nomi-paper/20 text-nomi-paper shadow-nomi-sm backdrop-blur-sm',
+              // 描边加到 /35：暗色卡顶常压在深色媒体上（深发/暗景），深徽标+弱边=黑底黑字看不见（用户反馈）。
+              'bg-nomi-overlay-chip-strong border border-nomi-paper/35 text-nomi-paper shadow-nomi-sm backdrop-blur-sm',
             )}
           >
             {isVideo ? <IconPlayerPlayFilled size={9} /> : null}
@@ -68,12 +69,14 @@ export const PromptCard = React.memo(function PromptCard({ prompt, onSelect }: P
 
           <span
             className={cn(
-              'absolute left-0 right-0 bottom-0 px-2 pt-3 pb-1.5',
-              'bg-gradient-to-t from-nomi-media-veil to-transparent',
+              // 遮罩加高（pt-3→pt-6）并加中段停靠色，确保标题+来源两行始终坐在足够深的 scrim 上；
+              // 卡底若是亮区（白衬衫）白字才不会糊掉（用户反馈「标题与背景融合」）。
+              'absolute left-0 right-0 bottom-0 px-2 pt-6 pb-1.5',
+              'bg-gradient-to-t from-nomi-media-veil via-nomi-media-veil/70 to-transparent',
             )}
           >
-            <span className={cn('block text-caption text-nomi-paper font-medium truncate')}>{promptDisplayTitle(prompt)}</span>
-            <span className={cn('block text-micro text-nomi-paper/70 truncate')}>{promptSourceLabel(prompt)}</span>
+            <span className={cn('block text-caption text-nomi-paper font-semibold truncate drop-shadow-[0_1px_2px_var(--nomi-scrim)]')}>{promptDisplayTitle(prompt)}</span>
+            <span className={cn('block text-micro text-nomi-paper/80 truncate')}>{promptSourceLabel(prompt)}</span>
           </span>
         </button>
       </TooltipTrigger>

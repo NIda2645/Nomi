@@ -319,7 +319,8 @@ export function AssetLibraryContent({
         refreshAllProjectAssets()
       },
       onNeedKey: () => {
-        window.dispatchEvent(new CustomEvent('nomi-open-settings', { detail: { tab: 'ai', section: 'tikhub-connector' } }))
+        // TikHub 卡的家在设置「模型」tab 的「数据源」区（2026-09-01 归位：它是数据源接入，不是 AI 策略）。
+        window.dispatchEvent(new CustomEvent('nomi-open-settings', { detail: { tab: 'models', section: 'tikhub-connector' } }))
       },
     })
   }, [projectId, refreshAllProjectAssets, refreshProjectAssets, t])

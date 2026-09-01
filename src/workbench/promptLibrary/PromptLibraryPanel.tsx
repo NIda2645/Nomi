@@ -11,7 +11,7 @@ import { cn } from '../../utils/cn'
 import { NomiLoadingMark, NomiWordmark, DesignEmptyState, TooltipProvider } from '../../design'
 import { showUndoToast } from '../../utils/showUndoToast'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
-import { filterPrompts, type LibraryPrompt, type PromptCategory } from '../api/promptLibraryApi'
+import { filterPrompts, promptSourceOptions, PROMPT_SOURCE_ALL, type LibraryPrompt, type PromptCategory } from '../api/promptLibraryApi'
 import { usePromptLibrary } from './usePromptLibrary'
 import { useUserPrompts } from './useUserPrompts'
 import { PromptCard } from './PromptCard'
@@ -60,6 +60,8 @@ export function PromptLibraryContent({
   const { t } = useTranslation()
   const [source, setSource] = React.useState<Source>('nomi')
   const [category, setCategory] = React.useState<PromptCategory>('all')
+  // 精选条目按「来源」分类导航（GPT Image 2 / Sora 2…）——治「一大片无分类难找」。默认「全部来源」。
+  const [sourceFilter, setSourceFilter] = React.useState<string>(PROMPT_SOURCE_ALL)
   const [query, setQuery] = React.useState('')
   const [selected, setSelected] = React.useState<Selected | null>(null)
   const [scrollEl, setScrollEl] = React.useState<HTMLDivElement | null>(null)
@@ -83,7 +85,21 @@ export function PromptLibraryContent({
     },
     [isMine, items, user.items, usageVersion],
   )
-  const visible = React.useMemo(() => filterPrompts(activeItems, category, query), [activeItems, category, query])
+  // 来源分类只对精选列表有意义（我的库来源统一为「我的」）；按当前类型筛选后的集合派生来源项，
+  // 这样切「视频」时来源行只列出真有视频的来源，不出空类。
+  const sourceOptions = React.useMemo(
+    () => (isMine ? [] : promptSourceOptions(activeItems.filter((p) => category === 'all' || p.promptType === category))),
+    [isMine, activeItems, category],
+  )
+  // 当前来源筛选若因切类型/切来源不再存在，回落到「全部来源」，避免筛出空列表还高亮着不存在的项。
+  React.useEffect(() => {
+    if (sourceFilter !== PROMPT_SOURCE_ALL && !sourceOptions.includes(sourceFilter)) setSourceFilter(PROMPT_SOURCE_ALL)
+  }, [sourceOptions, sourceFilter])
+  const effectiveSource = isMine ? PROMPT_SOURCE_ALL : sourceFilter
+  const visible = React.useMemo(
+    () => filterPrompts(activeItems, category, query, effectiveSource),
+    [activeItems, category, query, effectiveSource],
+  )
 
   // 响应式列数 + 由实际卡宽推出的行高（替代写死的 grid-cols-4 / 188），窄窗也不挤压、滚动不跳。
   const [contentWidth, setContentWidth] = React.useState(0)
@@ -127,9 +143,10 @@ export function PromptLibraryContent({
     return () => window.removeEventListener('keydown', handler)
   }, [active, onClose, selected])
 
-  // 切来源时收起编辑/新建态(避免在 Nomi 精选上下文里残留我的库表单)。
+  // 切来源时收起编辑/新建态(避免在 Nomi 精选上下文里残留我的库表单)，并重置来源分类筛选。
   const switchSource = React.useCallback((next: Source) => {
     setSource(next)
+    setSourceFilter(PROMPT_SOURCE_ALL)
     if (next !== 'mine') { setComposing(false); setEditing(null) }
   }, [])
 
@@ -227,6 +244,38 @@ export function PromptLibraryContent({
     </div>
   )
 
+  // 来源分类导航（仅精选、且来源多于一个时才显）：横向可滚动的 chip 行，「全部来源」+ 各真实来源名。
+  const sourceChips = !isMine && sourceOptions.length > 1 ? (
+    <div
+      className={cn('flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden', compact ? 'px-3 pb-2 -mt-0.5' : 'px-5 pb-2 -mt-1')}
+      role="tablist"
+      aria-label={t('libraries.prompt.sourceFilterAria')}
+    >
+      {[PROMPT_SOURCE_ALL, ...sourceOptions].map((value) => {
+        const activeChip = sourceFilter === value
+        const label = value === PROMPT_SOURCE_ALL ? t('libraries.prompt.allSources') : value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={activeChip}
+            className={cn(
+              'shrink-0 rounded-full text-caption cursor-pointer border px-2.5 py-0.5 whitespace-nowrap',
+              'transition-[background,color,border-color] duration-[var(--nomi-transition-fast)]',
+              activeChip
+                ? 'bg-nomi-ink text-nomi-paper border-nomi-ink font-medium'
+                : 'bg-transparent text-nomi-ink-60 border-nomi-line hover:text-nomi-ink hover:border-nomi-ink-20',
+            )}
+            onClick={() => setSourceFilter(value)}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  ) : null
+
   return (
     <TooltipProvider delayDuration={180} skipDelayDuration={80}>
       <>
@@ -262,6 +311,9 @@ export function PromptLibraryContent({
             ariaLabel={t('libraries.prompt.searchAria')}
             leading={<>{sourceTabs}{categoryTabs}</>}
           />
+
+          {/* 来源分类导航（精选）：治「一大片无分类难找」，按数据里的来源分类。 */}
+          {sourceChips}
 
           {/* 网格 / 状态 */}
           <div ref={setScrollEl} className={cn('flex-1 overflow-y-auto', compact ? 'px-3 pb-3' : 'px-5 pb-5')}>

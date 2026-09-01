@@ -5,6 +5,16 @@ import type { AdapterRunStage } from '../../electron/shared/providerAdapterContr
 import type { CertificationSubmissionState } from '../../electron/integrationCertification/types'
 export type { AntigravityConnectionStatus } from '../../electron/shared/antigravity'
 
+/** 集成握手 DTO（integrationHandoffList/subscribe 的投影形状；跨凭据/连接/工作流/验证四类目标）。 */
+export type IntegrationHandoff = {
+  requestId: string
+  target: 'credential' | 'connection' | 'workflow' | 'verification'
+  sessionId: string
+  revision: number
+  ownerClientId: string
+  display?: { name?: string; origin?: string; authType?: string; runId?: string; challengeId?: string }
+}
+
 export type DesktopAdapterModeResult = {
   taskKind: string
   state: 'queued' | 'testing' | 'repairing' | 'verified' | 'failed'
