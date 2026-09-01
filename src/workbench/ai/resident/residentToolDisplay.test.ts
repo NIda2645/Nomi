@@ -53,10 +53,12 @@ describe('resident tool display projection', () => {
     const detailRows = readableToolDetailRows(translate, 'nomi_operation_create', {
       patch: { prompt: 'replace the third shot', modelId: 'provider/video-cheap', parameters: { duration: 6 } },
     })
+    // ResidentApprovalDetail 每行都带 kind 判别符（同上 proposal.fields 断言、partitionResidentProposalFields
+    // 都依赖它）——故用 objectContaining 匹配语义字段，不锁死其余行（target/estimate 等）与 kind 之外的形状。
     expect(detailRows).toEqual(expect.arrayContaining([
-      { label: 'agentResident.toolPromptLabel', value: 'replace the third shot' },
-      { label: 'agentResident.toolModelLabel', value: 'provider/video-cheap' },
-      { label: 'agentResident.toolParametersLabel', value: 'agentResident.toolParameterDuration: 6' },
+      expect.objectContaining({ label: 'agentResident.toolPromptLabel', value: 'replace the third shot', kind: 'prompt' }),
+      expect.objectContaining({ label: 'agentResident.toolModelLabel', value: 'provider/video-cheap', kind: 'model' }),
+      expect.objectContaining({ label: 'agentResident.toolParametersLabel', value: 'agentResident.toolParameterDuration: 6', kind: 'parameters' }),
     ]))
   })
 
