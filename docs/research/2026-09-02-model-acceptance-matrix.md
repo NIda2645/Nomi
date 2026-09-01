@@ -62,8 +62,8 @@ APIMart 视频：**全 15 模型识别探测确认在架，0 下线**。族代�
 | 模型 | 模式 | 结果 | 证据 |
 |---|---|---|---|
 | nano-banana-2 | t2i·edit | ✅ | 1.1MB PNG |
-| **gpt-image-2** | t2i·edit | 🔧 **BUG-1 已修** | `image_size` 须 fal 枚举（`square`…），非 `"1024x1024"` 串（422）。修后 ✅ 804KB |
-| **seedream-5-pro** | t2i·edit | 🔧 **BUG-2 已修** | 轮询路径须收敛到 app 根（`bytedance/seedream`）；旧路径 405。修后 ✅ 1.67MB |
+| **gpt-image-2** | t2i·edit | 🔧 **BUG-1 已修** | `image_size` 须 fal 枚举（`square`…），非 `"1024x1024"` 串（422）。修后 ✅ 804KB。[DOCCHECK ✓ `fal.ai/models/openai/gpt-image-2/api`：`ImageSize\|Enum`，枚举名/`{w,h}`对象皆可、WxH串非法 — 与修法一致] |
+| **seedream-5-pro** | t2i·edit | 🔧 **BUG-2 已修** | 轮询路径须收敛到 app 根（`bytedance/seedream`）；旧路径 405。修后 ✅ 1.67MB。[DOCCHECK ⚠️→✓ `docs.fal.ai/model-endpoints/queue` 印全路径但**实测网关收敛前两段**（含文档自身 flux/schnell 例），以实测为准 — 修法证实] |
 | **eleven-sfx-v2** | sfx | 🔧 **BUG-2 已修** | 同上（`fal-ai/elevenlabs` 根）。修后 ✅ 49KB |
 | minimax-music-3 | music | ✅ | 5.3MB mp3 |
 | **seedance-2.5** | t2v·i2v | 🔧 **BUG-2 已修** | 深端点轮询 405→修后 ✅ 真出 mp4（202KB，dur 须 ≥4）|
@@ -74,7 +74,7 @@ APIMart 视频：**全 15 模型识别探测确认在架，0 下线**。族代�
 | 模型 | 模式 | 结果 | 证据 |
 |---|---|---|---|
 | grok_imagine_image_2 / seedream5_pro / gen4_image / gemini_image3_pro / gemini_image3.1_flash / gemini_2.5_flash | t2i | ✅×6 | 全下载亲验 |
-| **muse_image / gpt_image_2 / seedream5_lite** | t2i | 🔧 **BUG-3 已修** | 这三个的 ratio 枚举**不含**共享默认 `1024:1024`（muse 最小 1600 系、gpt 最小 2048 系、seedream5_lite freeform ≥3.68M px）→ 用默认恒 400。修后 ✅（muse 2.6MB / seedream5_lite 3.6MB / gpt 4.2MB，亲验红苹果）|
+| **muse_image / gpt_image_2 / seedream5_lite** | t2i | 🔧 **BUG-3 已修** | 这三个的 ratio 枚举**不含**共享默认 `1024:1024`（muse 最小 1600 系、gpt 最小 2048 系、seedream5_lite ≥3.68M px）→ 用默认恒 400。修后 ✅（muse 2.6MB / seedream5_lite 3.6MB / gpt 4.2MB，亲验红苹果）。[DOCCHECK ✓/改 一手 spec `runwayml/openapi` 逐模型 `ratio.enum`：muse/gpt 映射值全在 enum — 一致；**seedream5_lite 横/竖原 `2720:1530` 不在 enum → 改正为 spec 值 `2848:1600`/`1600:2848`**（真发均 ACCEPTED）] |
 | gen4_image_turbo | i2i | 🟡 | 强制要参考图（i2i-only），契约在架 |
 | gen4.5 / seedance2_5 / seedance2 / seedance2_fast / seedance2_mini / wan3 / grok_imagine_1_5 / hailuo3 / veo3.1 / veo3.1_fast / happyhorse_1_0 / gemini_omni_flash | t2v | 🟡×12（wan3 代表 ✅ 真出 mp4）| 12 全探测确认在架（8 提交带估价即取消，4 返"credits 不足"=在架）；wan3 480p·5s 真出 mp4 帧亲验 |
 | gen4_turbo | i2v | 🟡 | i2v-only（gen4_turbo 无 t2v）|
@@ -86,10 +86,13 @@ APIMart 视频：**全 15 模型识别探测确认在架，0 下线**。族代�
 
 1. **BUG-1 · fal `openai/gpt-image-2` 的 `image_size` 发错类型** —— 我们 `ratioResToOpenAiSize` 产出 `"1024x1024"` WxH 串，但 fal 的 `ImageSize` 只认枚举（`square`/`portrait_16_9`…）或 `{width,height}` 对象，发串直接 422 `model_attributes_type`。该转换器对 newapi/OpenAI 的 `size` 字段是对的（那个要 WxH），所以修法是**新增 fal 专用转换器**，不改共享的。
    - 修：`electron/catalog/paramTranslate.ts` 加 `ratioResToFalImageSize`（按朝向出 fal 枚举）；`electron/catalog/falOfficial.ts:65-66` 两处 gpt-image-2 mapping 改用它。
+   - **官方出处**（DOCCHECK 2026-09-01 核实 → 与原修法**一致**）：`https://fal.ai/models/openai/gpt-image-2/api`（目录实发端点）原文 `image_size` 类型 = `ImageSize | Enum`，「one of the presets, `{width, height}`, or 'auto' … **Possible enum values: square_hd, square, portrait_4_3, portrait_16_9, landscape_4_3, landscape_16_9, auto**. Default value: landscape_4_3. Note: For custom image sizes, you can pass the width and height as an object.」→ 枚举名/对象皆可、WxH 串非法，原修法（走枚举名）正确。
 2. **BUG-2 · fal 队列轮询路径没收敛到 app 根** —— fal 提交用完整子路径端点，但 status/result 只挂在 `owner/app`（前两段）上；深子路径端点轮询完整路径恒 **405**。影响 **fal Seedance 2.5 / Kling V3 Pro / Gemini Omni / MiniMax H3-Max / Seedream 5 Pro / ElevenLabs SFX**（凡端点 > 2 段）。loopback 测试用 `pathname.includes("/requests/")` 宽松匹配，遮住了这个漂移。
    - 修：`electron/catalog/falOfficial.ts` `queueOperations` 加 `falAppRoot()`，query/result 用收敛根；create 仍用完整端点。
-3. **BUG-3 · Runway 图像 ratio 未按模型判别** —— `runway-image` archetype 用一份 ratio 列表喂全部 10 个 Runway 图像模型，但 Runway 是**按模型判别的 union**：`muse_image`/`gpt_image_2` 的枚举不含共享默认 `1024:1024`（含 `auto` + 更大档），`seedream5_lite` 是 freeform 要 ≥3.68M px。用默认发这三个 → 恒 400 `Validation of body failed`。视频侧早有 `normalizeRunwayVideoContract` 的 ratioFamilies 解此类，图像侧一直漏了。
+   - **官方出处 ⚠️ 文档与实际不符，以实测为准**（DOCCHECK 2026-09-01 核实 → 原修法**一致/已证实**）：官方 `https://docs.fal.ai/model-endpoints/queue` 示例用 `fal-ai/flux/schnell`，写 `status_url` **保留完整端点**（`…/fal-ai/flux/schnell/requests/{id}/status`），与本修法相反。但真发实测（3 端点提交即取消）证伪——fal 网关自己就收敛到前两段：`fal-ai/flux/schnell`（**即文档那例**）读回 `…/fal-ai/flux/…`(202)，而文档写的全路径反而 **405**；`bytedance/seedance-2.5/text-to-video`、`fal-ai/kling-video/v3/pro/text-to-video` 同样收敛到前两段。故文档此点已陈旧，`slice(0,2)` 修法与现役网关一致（result 端点回**裸** `.../requests/{id}` 无 `/response`，未完成时返 400=未就绪、非 405，证明端点对）。
+3. **BUG-3 · Runway 图像 ratio 未按模型判别** —— `runway-image` archetype 用一份 ratio 列表喂全部 10 个 Runway 图像模型，但 Runway 是**按模型判别的 union**：`muse_image`/`gpt_image_2` 的枚举不含共享默认 `1024:1024`（含 `auto` + 更大档），`seedream5_lite` 要 ≥3.68M px。用默认发这三个 → 恒 400 `Validation of body failed`。视频侧早有 `normalizeRunwayVideoContract` 的 ratioFamilies 解此类，图像侧一直漏了。
    - 修：`electron/catalog/runwayOfficial.ts` `normalizeRunwayImageReferences` 加按模型判别的 ratio 重映射（视频 ratioFamilies 的图像对偶）；并让**每条**图像 mapping 都挂这个 transform（纯 t2i 过去不挂它，正是这三个模型文生图挂掉的根因）。
+   - **官方出处**（DOCCHECK 2026-09-01 核实 → muse/gpt **一致**；seedream5_lite **已改正**）：一手机读 spec `https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json` 的 `/v1/text_to_image` oneOf 逐模型 `ratio.enum` 确认——muse_image/gpt_image_2 均**不含 1024:1024**，原映射值（1600:1600·2016:1152·1152:2016 / 1920:1920·2560:1440·1440:2560）**全在各自 enum 内**，一致。**seedream5_lite 原修法用 `2720:1530`/`1530:2720` 不在 spec enum**（那是 seedream5_**pro** 的值）→ 已改正为 spec 列出的 `2848:1600`/`1600:2848`（横/竖，方仍 2048:2048）。真发实测：三模型发 1024:1024 全 400、发各自映射值全 ACCEPTED（seedream5_lite 亦容忍 enum 外自由值如 2720:1530，但仍取 spec 值 fail-safe）。
 4. **BUG-4 · KIE `kling-3.0/video` 缺 `multi_shots` 布尔** —— KIE 现在**要求显式传** `multi_shots`（不传 → 422 `multi_shots cannot be empty`；传数组 → 500 `must be a boolean`；传 `false` → 通过）。官方文档（docs.kie.ai/market/kling）：`multi_shots` 是布尔开关，true 切到 `multi_prompt[]` 多镜头，false=单镜头走 prompt。我们目录只发 prompt、漏了这个字段 → KIE kling t2v/i2v 全 422。
    - 修：`electron/catalog/kieKling.ts` `KLING_3_CREATE_OP` input 加 `multi_shots: false`（单镜头默认；多镜头作后续增强）。
 

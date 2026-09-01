@@ -66,11 +66,18 @@ export function ratioResToOpenAiSize(values: Array<string | undefined>): string 
 }
 
 /**
- * 中性比例 → fal `openai/gpt-image-2` 的 `image_size` **枚举**（fal 契约 2026-09-01 实测：只认
- * `square_hd|square|portrait_4_3|portrait_16_9|landscape_4_3|landscape_16_9|auto`，**不认** `"1024x1024"`
- * 这种 WxH 串——发串会 422 `model_attributes_type`）。fal 侧清晰度由 `quality` 参数单独承载，故这里只按
- * **朝向**取枚举、不编码像素档位。fal 枚举比 16 档 canonical 粗 → 按长短边归到最近的横/竖/方：
- *   a==b → square；宽幅按长短比 ≥ 1.5 归 16:9 否则 4:3；竖幅同理。auto/空 → undefined（省略，由 fal 默认）。
+ * 中性比例 → fal `openai/gpt-image-2` 的 `image_size` **枚举**。
+ * 官方文档（2026-09-01 照 https://fal.ai/models/openai/gpt-image-2/api 对账，即目录实际发的那个端点；
+ * `fal-ai/gpt-image-2` 同 schema）：`image_size` 类型是 **`ImageSize | Enum`**——原文
+ *   「one of the presets, `{width, height}`, or 'auto' … Default value: landscape_4_3.
+ *    Possible enum values: square_hd, square, portrait_4_3, portrait_16_9, landscape_4_3, landscape_16_9, auto.
+ *    Note: For custom image sizes, you can pass the width and height as an object.」
+ *   （自定义档还须 dims 为 16 的倍数、max edge 3840、aspect ≤ 3:1、总像素 655,360–8,294,400。）
+ * 即：枚举名或 `{width,height}` 对象**皆可**，但**不认** `"1024x1024"` 这种 WxH 串——2026-09-01 真发实测 422
+ * `model_attributes_type`（BUG-1）。我们走「枚举名」这条：清晰度由 `quality` 参数单独承载，故只按**朝向**取
+ * 枚举、不编码像素档位。fal 枚举比 16 档 canonical 粗 → 按长短边归到最近的横/竖/方：
+ *   a==b → square；宽幅按长短比 ≥ 1.5 归 16:9 否则 4:3；竖幅同理。
+ *   auto/空 → undefined（省略字段，由 fal 落到文档默认 landscape_4_3；若要「模型自选」得显式发 "auto"，此处不发）。
  * ⚠️ **fal 专用**：OpenAI/new-api 的 `size` 字段要的是 WxH 串（用 ratioResToOpenAiSize），别混用。
  */
 export function ratioResToFalImageSize(values: Array<string | undefined>): string | undefined {

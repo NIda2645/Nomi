@@ -82,8 +82,12 @@ describe("BUG-1: fal openai/gpt-image-2 image_size must be a fal enum, not a WxH
 });
 
 describe("BUG-3: runway image ratio must be per-model; shared default 1024:1024 is invalid for some", () => {
-  // Live runway (2026-09-01): muse_image / gpt_image_2 enums exclude 1024:1024 (accept `auto`
-  // + larger); seedream5_lite is freeform requiring ≥3.68M px. Shared default → 400 for those.
+  // Source of truth = Runway official OpenAPI spec, /v1/text_to_image oneOf per-model ratio.enum
+  // (checked 2026-09-01 against raw.githubusercontent.com/runwayml/openapi/main/openapi.json):
+  //   muse_image / gpt_image_2 enums exclude 1024:1024 (2048-class + `auto`); seedream5_lite enum is
+  //   the ≥3.68M-px set (2048:2048 / 2848:1600 / …). Live-API probe confirmed shared default 1024:1024
+  //   → 400 for these three, and every remap value below → ACCEPTED (seedream5_lite also tolerates
+  //   free <w>:<h> off-enum, but we deliberately keep spec-listed values, fail-safe for future tightening).
   // Fix: every image mapping carries runway-image-references, which now remaps ratio per model.
   it("every runway image t2i/i2i mapping carries the ratio-aware transform", () => {
     const imageModels = RUNWAY_OFFICIAL_MODELS.filter((m) => m.kind === "image");
@@ -116,6 +120,9 @@ describe("BUG-3: runway image ratio must be per-model; shared default 1024:1024 
     // orientation is preserved (landscape / portrait pick the right family member)
     expect((await runwayImageBody("gpt_image_2", "1280:720")).ratio).toBe("2560:1440");
     expect((await runwayImageBody("muse_image", "720:1280")).ratio).toBe("1152:2016");
+    // seedream5_lite landscape/portrait use spec-listed enum values (both verified ACCEPTED live).
+    expect((await runwayImageBody("seedream5_lite", "1280:720")).ratio).toBe("2848:1600");
+    expect((await runwayImageBody("seedream5_lite", "720:1280")).ratio).toBe("1600:2848");
   });
 
   it("models whose enum already includes 1024:1024 are left untouched", async () => {

@@ -218,19 +218,30 @@ registerRequestTransform("runway-video-contract", normalizeRunwayVideoContract, 
 /**
  * Runway 的 `/v1/text_to_image` 是**按模型判别的 union**：每个 image 模型有各自的 `ratio` 枚举，
  * 共享 archetype 的比例列表（1024:1024 / 1280:720 / …）**只是其中一部分模型的合法值**。
- * 2026-09-01 实测：`muse_image` / `gpt_image_2` 的枚举**不含 1024:1024**（muse 最小 1600 系、gpt 最小 2048 系，
- * 都含 `auto`）；`seedream5_lite` 是 freeform、要求总像素 3.68M–16.7M（1024²=1M 直接 400）。用共享默认发这三个
- * 模型 → 恒 400 `Validation of body failed`（视频侧同类问题早已由 normalizeRunwayVideoContract 的 ratioFamilies 解，
- * 图像侧一直漏了）。这里按**朝向**把共享比例映射到各模型枚举里的合法值（视频侧 ratioFamilies 的图像对偶）。
- * 只处理会 400 的三个模型；其余模型（含 1024:1024 的）原样透传。
+ * 依据 = Runway 官方 OpenAPI 规范（一手、机读，2026-09-01 照
+ *   https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json 对账；`/v1/text_to_image` 为 10-变体
+ *   `oneOf`，discriminator=`model`，各变体 `properties.ratio.enum` 逐一列出）：
+ *     muse_image  → ["2352:1008","2016:1152","1920:1280","1792:1344","1600:1600","1344:1792","1280:1920","1152:2016","auto"]（**无 1024:1024**）
+ *     gpt_image_2 → ["2048:880","1920:1088",…,"1920:1920",…,"2560:1440",…,"1440:2560",…,"auto"]（**无 1024:1024**，2048 系起）
+ *     seedream5_lite → ["2048:2048","2304:1728","1728:2304","2848:1600","1600:2848","2496:1664","1664:2496",…]（**无 1024:1024**，全 ≥ 400 万像素）
+ *   （反例：seedream5_pro / grok_imagine_image_2 / gen4_image 的 enum **含** 1024:1024 → 不 remap，原样透传。）
+ * 2026-09-01 真发 t2i 实测复核（提交即 DELETE，见 /tmp/runway-ratio-probe.mjs）：这三个模型发共享默认 `1024:1024`
+ * 全 400 `Validation of body failed`；发下方各自映射值全 ACCEPTED（含 seedream5_pro/grok/gen4 发 1024:1024 仍 ACCEPTED，
+ * 证明只该动这三个）。视频侧同类问题早已由 normalizeRunwayVideoContract 的 ratioFamilies 解，图像侧一直漏了。
+ * 这里按**朝向**把共享比例映射到各模型 enum 里的合法值（视频侧 ratioFamilies 的图像对偶）。
+ *
+ * 注·seedream5_lite「freeform」：OpenAPI 把它的 ratio 标成**严格 enum**（上列），但 2026-09-01 实测该模型
+ *   **也接受 enum 外的自由 `<w>:<h>`**（如 `2720:1530` 亦 ACCEPTED，只要满足 ~3.68M–16.7M 像素窗）——即活网关比
+ *   spec 宽松。**此处仍取 spec 列出的 `2848:1600`/`1600:2848`**（既在 enum、又实测通过），对未来收严 fail-safe，
+ *   不押注未文档化的宽松行为。
  */
 const RUNWAY_IMAGE_RATIO_REMAP: Record<string, { square: string; landscape: string; portrait: string }> = {
-  // muse_image 枚举（含 auto）：方=1600:1600、横=2016:1152、竖=1152:2016。
+  // muse_image enum：方=1600:1600、横=2016:1152、竖=1152:2016（均 spec 列出 + 实测 ACCEPTED）。
   muse_image: { square: "1600:1600", landscape: "2016:1152", portrait: "1152:2016" },
-  // gpt_image_2 枚举（含 auto，最小 2048 系）：方=1920:1920、横=2560:1440、竖=1440:2560。
+  // gpt_image_2 enum（2048 系起）：方=1920:1920、横=2560:1440、竖=1440:2560（均 spec 列出 + 实测 ACCEPTED）。
   gpt_image_2: { square: "1920:1920", landscape: "2560:1440", portrait: "1440:2560" },
-  // seedream5_lite freeform：任一档都要 ≥3.68M 像素。方=2048:2048、横=2720:1530、竖=1530:2720（各在窗内）。
-  seedream5_lite: { square: "2048:2048", landscape: "2720:1530", portrait: "1530:2720" },
+  // seedream5_lite enum（全 ≥3.68M px）：方=2048:2048、横=2848:1600、竖=1600:2848（均 spec 列出 + 实测 ACCEPTED）。
+  seedream5_lite: { square: "2048:2048", landscape: "2848:1600", portrait: "1600:2848" },
 };
 
 /** 从共享 ratio（"1024:1024" / "1280:720" / "auto_1k"…）判朝向。auto_* 视为方形。 */
