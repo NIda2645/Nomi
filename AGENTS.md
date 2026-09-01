@@ -84,7 +84,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R2 | 用户视角 + 极简 | 每条信息问「有行动价值吗」，没有删；好产品不靠文字解释 |
 | R3 | 决策对比表 | 涉及取舍先给用户对比表（方案/用户看到/代价），不单方面开干 |
 | R4 | 执行前写文档 | 多文件/多步改动先写 `docs/plan`：范围/不动项/回滚/验收门 |
-| R5 | 查官方文档 | 碰第三方库必先 Context7；**选型/引入新框架·新技术栈先 Context7+web 查当前最现役框架**，不凭记忆判断能力/新旧/是否被取代；**接入/改任何模型前必先抓到该模型真实官方 API 文档逐项对账端点/鉴权/变体/模式/参数，禁凭记忆瞎编（每次都控制住）**；不查就写 = 工作错误 |
+| R5 | 查官方文档 | 碰第三方库必先 Context7；**选型/引入新框架·新技术栈先 Context7+web 查当前最现役框架**，不凭记忆判断能力/新旧/是否被取代；**接入/改任何模型前必先抓到该模型真实官方 API 文档逐项对账端点/鉴权/变体/模式/参数，禁凭记忆瞎编（每次都控制住）**；**判断 CLI/SDK「支不支持 X」以官方现役文档/更新日志为准——本机已装旧构建的 help 不算实查**；不查就写 = 工作错误 |
 | R6 | 近邻开源优先 | 做方案先读与 Nomi **同用户任务 + 同创作媒介 + 同交互载体**的开源近邻；再看闭源直接竞品，最后才用跨领域类比。读真实代码并给出 file:line |
 | R7 | 6 角色评审 | 项目方案定稿前：CTO / 设计 / PM / 前端 / 后端 / 真实用户各审一遍 |
 | R8 | 先出样张 | 用户可见改动先出 mockup + 用户拍板；实现后必须与样张逐项对账 |
@@ -105,6 +105,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R23 | React Flow 生成画布单内核与迁移等价 | 生产画布只允许 React Flow 一个交互/变换内核，Zustand 是业务与持久化真相源；迁移必须逐项保留既有几何、交互、视觉和反馈，并用 adapter/结构测试 + 真实 Electron 走查证明 |
 | R25 | 提交/推送前 Ponytail 评审 | pre-commit/pre-push 自动调用只读、限时 `/ponytail-review` 适配器；失败或缺少结果 fail-closed |
 | R26 | 分层边界不许反向/循环 | 渲染层（src/）禁直捅主进程（走 bridge/中立契约层）、主进程禁反向 import 渲染层、禁新增完全静态循环；`check:boundaries` 棘轮（`boundaries-baseline.json` 只减不增），加规则先验会红（R17）。归属地图 `docs/architecture/module-ownership-map.md`，详见 L2 |
+| R27 | 多智能体编排手册 | 派工 / 收货 / 接力的机器化纪律：谁的方案谁实施·验收必跨池、任务书发行权独占 + 开工三行头、收货三查（behind 数 / 两点回滚 / 套件失败 delta=0）、等待用 sleep 轮询 + 哨兵法（禁 --watch/Monitor/交卷）、判活看外部面 + 盘上现场接力、远落后分支走 `gh pr update-branch`、验收锚固定复现命令防移靶、Codex 用 full clone + 结构护栏。详见 L2 `docs/engineering/agent-orchestration-playbook.md` |
 
 ## 决策自治
 
@@ -138,6 +139,6 @@ Nomi：本地优先 AI 视频创作工作台。
 
 主仓库：`/Users/aoqimin/Desktop/Nomi/`。操作文件用绝对路径；新建 worktree 放仓库目录**同级**（非嵌套），分支从最新 `origin/main` 创建。
 
-**并行纪律（这台机器常有 20+ worktree）**：① 在独立 sibling worktree 的干净任务分支运行 `pnpm run delivery:preflight` 后再动手；② 不在共享主仓里切分支、commit 或解决任务冲突；③ push 前在任务分支整合最新 `origin/main`，按 R22 验证后只 push 任务分支并创建 PR；④ 不 force-push `main`，不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
+**并行纪律（这台机器常有 20+ worktree）**：① 在独立 sibling worktree 的干净任务分支运行 `pnpm run delivery:preflight` 后再动手，**新 worktree 先 `pnpm install` 装齐提交钩子再 commit/push**（先推后装=推送裸奔，栽过）；② 不在共享主仓里切分支、commit 或解决任务冲突；③ push 前在任务分支整合最新 `origin/main`，按 R22 验证后只 push 任务分支并创建 PR；④ 不 force-push `main`，**不向已存在的远端分支 force-push 重建内容**（评审钩子按远端旧 tip→新 tip 算全量 diff 必超限，重建一律走新分支，见 R25），不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件；⑥ **评审/对账/打捞任何分支先算 merge-base**——对 main 两点视图里的大片删除多半是「main 前进了」的落后假象，不是分支真要删（见 R22）。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
 
 ---
