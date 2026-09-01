@@ -1,4 +1,5 @@
 import React from 'react'
+import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { Group, Stack, Text } from '@mantine/core'
 import { IconAlertTriangle, IconCheck, IconRefresh } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
@@ -81,7 +82,7 @@ export function AdapterVerificationScreen({
   const allPassed = completed && progress.total > 0 && progress.verified === progress.total && needsAttentionCount === 0
 
   return (
-    <Stack gap={12}>
+    <Stack gap={12} data-model-access-entry={MODEL_ACCESS_ENTRY.providerAdapter}>
       <Group gap={10} wrap="nowrap" align="center">
         <span
           className={cn(
