@@ -11,6 +11,7 @@ import { ComfyuiLocalCard } from './ComfyuiLocalCard'
 import { AddComfyuiInstanceButton } from './AddComfyuiInstanceButton'
 import { isComfyuiVendorKey } from '../../workbench/generationCanvas/model/comfyuiVendor'
 import { NetworkSection } from './NetworkSection'
+import { TikhubConnectorCard } from '../../workbench/settings/TikhubConnectorCard'
 import { CODEX_LOCAL_VENDOR_KEY } from './codexLocalProvider'
 import { CodexLocalImageCard } from './CodexLocalImageCard'
 import { LOCAL_TEXT_VENDOR_KEY, LocalModelCard } from './LocalModelCard'
@@ -21,7 +22,7 @@ import { getAntigravityModelVariant } from '../../../electron/shared/antigravity
 import { ANTIGRAVITY_VENDOR_KEY } from '../../../electron/shared/antigravity'
 import { projectOnboardingConnections } from './onboardingDrawerConnections'
 import { getDesktopBridge } from '../../desktop/bridge'
-import type { DesktopHttpCertificationRun } from '../../desktop/onboardingBridgeTypes'
+import type { DesktopHttpCertificationRun, IntegrationHandoff } from '../../desktop/onboardingBridgeTypes'
 import { alertDialog, confirmDialog } from '../../design'
 import {
   ConnectionWorkspacePage,
@@ -64,14 +65,6 @@ import { useModelPageRequest, type ModelPageRequest } from './useModelPageReques
 import { CertificationIntentKey } from './certificationIntentKey'
 import { CertificationUiError, certificationFailureMessage } from './certificationFailureMessage'
 import { IntegrationConfirmationPanel, type IntegrationVerificationHandoff } from './IntegrationConfirmationPanel'
-type IntegrationHandoff = {
-  requestId: string
-  target: 'credential' | 'connection' | 'workflow' | 'verification'
-  sessionId: string
-  revision: number
-  ownerClientId: string
-  display?: { name?: string; origin?: string; authType?: string; runId?: string; challengeId?: string }
-}
 import { translateModelDisplayText } from '../../i18n/modelDisplayText'
 
 export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPageRequest } = {}): JSX.Element {
@@ -808,6 +801,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         ) : undefined
       }
       networkContent={<NetworkSection />}
+      dataSourceContent={<TikhubConnectorCard />}
       availableFooter={comfyuiConnected.length > 0 ? <AddComfyuiInstanceButton onAdded={refresh} /> : undefined}
       onReload={reloadFromError}
       onCustomApi={() => openWizard('newapi')}

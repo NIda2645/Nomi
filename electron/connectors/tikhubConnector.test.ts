@@ -4,6 +4,7 @@ import {
   extractShareUrl,
   extractPlayUrlFromAweme,
   resolveShareVideo,
+  verifyTikhubApiKey,
   TIKHUB_CONNECTOR,
   TIKHUB_HOSTS,
   TikhubConnectorError,
@@ -181,5 +182,77 @@ describe("错误分类（三段式失败态的 kind 源）", () => {
       }),
     ).rejects.toMatchObject({ kind: "auth", status: 401 });
     expect(failoverCalls).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// verifyTikhubApiKey —— 保存前的真实 key 校验（治「乱填也显示已连接」的假成功根因）。
+// 打鉴权账户端点 GET /api/v1/tikhub/user/get_user_info（一手 openapi.json：security 要 Bearer、
+// 无参、免费账户端点）。fetchJson 桩，不发真网络、不烧额度。
+// ---------------------------------------------------------------------------
+describe("verifyTikhubApiKey — 保存前真实校验", () => {
+  it("空 key = missing-key（不发请求）", async () => {
+    let calls = 0;
+    await expect(
+      verifyTikhubApiKey("", { ...routeToPrimary, fetchJson: async () => { calls += 1; return envelope({}); } }),
+    ).rejects.toMatchObject({ kind: "missing-key" });
+    expect(calls).toBe(0);
+  });
+
+  it("有效 key：命中鉴权账户端点、带 apiKey、无参，2xx → 通过（resolve）", async () => {
+    const calls: Array<{ path: string; query: Record<string, string>; apiKey: string }> = [];
+    await expect(
+      verifyTikhubApiKey("good-key", {
+        ...routeToPrimary,
+        fetchJson: async (path, query, apiKey) => {
+          calls.push({ path, query, apiKey });
+          return envelope({ email: "u@x.com", balance: 3.2 });
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(calls).toHaveLength(1);
+    // 用的是鉴权账户端点（不是无鉴权的 /health/check），且把 key 传下去、无 query 参数。
+    expect(calls[0].path).toBe("/api/v1/tikhub/user/get_user_info");
+    expect(calls[0].query).toEqual({});
+    expect(calls[0].apiKey).toBe("good-key");
+  });
+
+  it("无效 key（401→auth）：抛 auth、不切域、不落盘", async () => {
+    let failoverCalls = 0;
+    await expect(
+      verifyTikhubApiKey("bad-key", {
+        ...routeToPrimary,
+        failover: async () => { failoverCalls += 1; return null; },
+        fetchJson: async () => {
+          throw new TikhubConnectorError("auth", "无效密钥", 401);
+        },
+      }),
+    ).rejects.toMatchObject({ kind: "auth", status: 401 });
+    expect(failoverCalls).toBe(0); // auth 是业务错，切域没意义
+  });
+
+  it("两域都选不出 host → no-route（区分「线路不通」而非「key 无效」）", async () => {
+    await expect(
+      verifyTikhubApiKey("key", {
+        resolveHost: async () => null,
+        fetchJson: async () => envelope({}),
+      }),
+    ).rejects.toMatchObject({ kind: "no-route" });
+  });
+
+  it("主选域线路层失败（upstream）→ 自动切备域重试一次；备域 2xx → 通过", async () => {
+    const hosts: string[] = [];
+    await expect(
+      verifyTikhubApiKey("key", {
+        resolveHost: async () => "api.tikhub.io",
+        failover: async (failed) => (failed === "api.tikhub.io" ? "api.tikhub.dev" : null),
+        fetchJson: async (_path, _query, _apiKey, host) => {
+          hosts.push(host);
+          if (host === "api.tikhub.io") throw new TikhubConnectorError("upstream", "网络波动");
+          return envelope({ email: "u@x.com" });
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(hosts).toEqual(["api.tikhub.io", "api.tikhub.dev"]); // 主域 upstream → 切备域重试
   });
 });
