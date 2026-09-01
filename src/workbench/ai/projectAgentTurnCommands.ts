@@ -1,4 +1,4 @@
-import type { AgentChatRequest, AgentChatToolDecision } from '../../../electron/harness/agentChatContracts'
+import type { AgentChatRequest, AgentChatToolDecision } from '../../../electron/shared/contracts/agentChatContracts'
 import type {
   ProjectAgentExecutionEvent,
   ProjectAgentAttachmentClaim,
@@ -19,7 +19,7 @@ import {
   DEFAULT_PROJECT_AGENT_WORK_MODE,
   isProjectAgentLiveStatus,
 } from '../../../electron/shared/projectAgentContracts'
-import { createProjectAgentContextBinding } from '../../../electron/projectAgentHost/projectAgentContextBinding'
+import { createProjectAgentContextBinding } from '../../../electron/shared/contracts/projectAgentContextBinding'
 import { projectAgentClient } from './projectAgentClient'
 import { projectAgentProjectionStore } from './projectAgentProjectionStore'
 import type { ProjectAgentProjectionState } from './projectAgentProjectionStore'

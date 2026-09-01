@@ -1,4 +1,4 @@
-import type { AgentChatToolDecision } from '../../../electron/harness/agentChatContracts'
+import type { AgentChatToolDecision } from '../../../electron/shared/contracts/agentChatContracts'
 import type { AgentTurnHandle } from '../ai/agentTurnLifecycle'
 
 export const WRITE_TOOL_NAMES = ['insert_at_cursor', 'replace_selection', 'append_to_end'] as const

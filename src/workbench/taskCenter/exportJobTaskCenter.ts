@@ -1,5 +1,5 @@
-import type { ExportJobSnapshot } from '../../../electron/export/exportJobManager'
-import type { ExportJobStatus } from '../../../electron/export/exportTypes'
+import type { ExportJobSnapshot } from '../../../electron/shared/contracts/exportJobManager'
+import type { ExportJobStatus } from '../../../electron/shared/contracts/exportTypes'
 import type { ExportJobTaskCenterProjection } from './taskCenterProjection'
 
 type Labels = {
