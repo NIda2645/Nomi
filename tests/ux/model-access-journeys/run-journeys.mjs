@@ -10,6 +10,15 @@ import { launchJourneyUi } from './ui-driver.mjs'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../../..')
 
+// Journeys this runner drives via JOURNEY_CASES. A journey whose `script` lives
+// outside model-access-journeys/ (e.g. J16's standalone tests/ux/local-model-
+// connect.walk.mjs, which brings its own HTTP stub and does not import this
+// runner) is owned by that walk, not here — including it would make
+// assertCaseRegistry demand a JOURNEY_CASES entry that intentionally does not
+// exist. Scope both the registry check and `--all` to the owned set.
+const RUNNER_OWNED_JOURNEYS = MODEL_ACCESS_JOURNEYS.filter((journey) =>
+  path.dirname(journey.script).split(path.sep).join('/').endsWith('model-access-journeys'))
+
 function timestamp() {
   return new Date().toISOString().replaceAll(/[:.]/g, '-').replace('T', '_').replace('Z', '')
 }
@@ -53,7 +62,7 @@ function validateCompletion(recorder) {
 }
 
 export async function runJourneys(journeys, { root = outputRoot() } = {}) {
-  assertCaseRegistry(MODEL_ACCESS_JOURNEYS)
+  assertCaseRegistry(RUNNER_OWNED_JOURNEYS)
   fs.mkdirSync(root, { recursive: true })
   const reports = []
   for (const journey of journeys) {
@@ -116,8 +125,8 @@ export async function runJourneyFile(fileName) {
 
 function selectedJourneys(args) {
   const requested = args.filter((arg) => /^J\d+$/i.test(arg)).map((arg) => arg.toUpperCase())
-  if (requested.length === 0 || args.includes('--all')) return MODEL_ACCESS_JOURNEYS
-  const selected = MODEL_ACCESS_JOURNEYS.filter((journey) => requested.includes(journey.id))
+  if (requested.length === 0 || args.includes('--all')) return RUNNER_OWNED_JOURNEYS
+  const selected = RUNNER_OWNED_JOURNEYS.filter((journey) => requested.includes(journey.id))
   const unknown = requested.filter((id) => !selected.some((journey) => journey.id === id))
   if (unknown.length) throw new Error(`Unknown journey ids: ${unknown.join(', ')}`)
   return selected
