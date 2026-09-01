@@ -159,6 +159,13 @@ function rememberProxyState(route: CommittedRoute): void {
 function classifyProxyString(raw: string, source: ProxySource): ProxyResolution {
   const value = raw.trim();
   if (!value) return { kind: "none" };
+  const explicitScheme = value.match(/^([a-z][a-z\d+.-]*):/i)?.[1]?.toLowerCase();
+  if (explicitScheme && !["http", "https", "socks", "socks4", "socks5"].includes(explicitScheme)) {
+    // 内部不变量：这条 detail 只喂 normalizeExplicitProxyUrl 抛出的英文前缀
+    // "Invalid provider proxy URL:"（renderer 的 ProviderProxyField 先用自己的 i18n
+    // invalidProxyUrl 兜住，用户读不到这条），故不进 desktopT，用英文保持内部错误码风格。
+    return { kind: "unsupported", detail: `unsupported scheme ${explicitScheme}`, source };
+  }
   if (/^socks/i.test(value)) {
     // socks 从 2026-08-01 起真支持（见 socksDispatcher）。解析不出主机/端口才算 unsupported——
     // 绝不静默按直连跑，那会让用户以为代理生效了。
@@ -176,6 +183,32 @@ function classifyProxyString(raw: string, source: ProxySource): ProxyResolution 
   } catch {
     return { kind: "unsupported", detail: `无法解析的代理地址（${value}）`, source };
   }
+}
+
+/** 为单个供应商创建显式出口，复用应用级代理对 http/https/SOCKS 的同一解析语义。 */
+export function normalizeExplicitProxyUrl(raw: string | null | undefined): string {
+  const resolution = classifyProxyString(String(raw ?? ""), "custom");
+  if (resolution.kind === "none") return "";
+  if (resolution.kind === "unsupported") throw new Error(`Invalid provider proxy URL: ${resolution.detail}`);
+  return resolution.url;
+}
+
+/**
+ * 单连接显式代理的 dispatcher。**与应用级 dispatcher 同一私网语义**：包一层
+ * SelectiveProxyDispatcher，私网/回环 origin 每次 dispatch 都走直连、公网才走代理。
+ * 否则裸 ProxyAgent 作为 suppliedDispatcher 传给 appFetch 会绕过 appDispatcher 的
+ * isPrivateTarget 检查（见 appFetch.ts），让私网 URL 302 跳公网继承代理/被代理掉本地服务。
+ */
+export function createExplicitProxyDispatcher(raw: string): Dispatcher {
+  const normalized = normalizeExplicitProxyUrl(raw);
+  if (!normalized) throw new Error("Provider proxy URL is empty");
+  const resolution = classifyProxyString(normalized, "custom");
+  if (resolution.kind === "http") return new SelectiveProxyDispatcher(new ProxyAgent(resolution.url), new Agent());
+  if (resolution.kind === "socks") {
+    const socks = parseSocksProxyUrl(resolution.url);
+    if (socks) return new SelectiveProxyDispatcher(createSocksDispatcher(socks), new Agent());
+  }
+  throw new Error("Invalid provider proxy URL");
 }
 
 /** 从环境变量读代理（HTTPS 优先，其次 HTTP，再 ALL）。GUI 从 Finder 启动时这些通常为空。 */
