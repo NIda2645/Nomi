@@ -10,6 +10,15 @@ import { launchJourneyUi } from './ui-driver.mjs'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../../..')
 
+// Journeys this runner drives via JOURNEY_CASES. A journey whose `script` lives
+// outside model-access-journeys/ (e.g. J16's standalone tests/ux/local-model-
+// connect.walk.mjs, which brings its own HTTP stub and does not import this
+// runner) is owned by that walk, not here — including it would make
+// assertCaseRegistry demand a JOURNEY_CASES entry that intentionally does not
+// exist. Scope both the registry check and `--all` to the owned set.
+const RUNNER_OWNED_JOURNEYS = MODEL_ACCESS_JOURNEYS.filter((journey) =>
+  path.dirname(journey.script).split(path.sep).join('/').endsWith('model-access-journeys'))
+
 function timestamp() {
   return new Date().toISOString().replaceAll(/[:.]/g, '-').replace('T', '_').replace('Z', '')
 }
@@ -19,12 +28,23 @@ function outputRoot() {
 }
 
 function fixtureFault(journeyId) {
-  if (journeyId !== 'J15') return {}
-  const html = '<!doctype html><title>gateway dashboard</title><h1>not a model list</h1>'
-  return {
-    '/models': { status: 200, raw: html, contentType: 'text/html' },
-    '/v1/models': { status: 200, raw: html, contentType: 'text/html' },
+  if (journeyId === 'J15') {
+    const html = '<!doctype html><title>gateway dashboard</title><h1>not a model list</h1>'
+    return {
+      '/models': { status: 200, raw: html, contentType: 'text/html' },
+      '/v1/models': { status: 200, raw: html, contentType: 'text/html' },
+    }
   }
+  // J05/J06/J07 are the "auto-adaptation guessed a mode wrong, keep going" journeys:
+  // they need the video model's certification to FAIL so the per-model "自己接入 /
+  // 自定义调用" repair entry surfaces. Fail the video create endpoint (a 500 the
+  // adapter can't recover) while leaving discovery and image intact.
+  if (['J05', 'J06', 'J07'].includes(journeyId)) {
+    return {
+      '/v1/video/generations': { status: 500, message: 'fixture video mode unavailable' },
+    }
+  }
+  return {}
 }
 
 function requiredPhases(journeyId) {
@@ -42,7 +62,7 @@ function validateCompletion(recorder) {
 }
 
 export async function runJourneys(journeys, { root = outputRoot() } = {}) {
-  assertCaseRegistry(MODEL_ACCESS_JOURNEYS)
+  assertCaseRegistry(RUNNER_OWNED_JOURNEYS)
   fs.mkdirSync(root, { recursive: true })
   const reports = []
   for (const journey of journeys) {
@@ -105,8 +125,8 @@ export async function runJourneyFile(fileName) {
 
 function selectedJourneys(args) {
   const requested = args.filter((arg) => /^J\d+$/i.test(arg)).map((arg) => arg.toUpperCase())
-  if (requested.length === 0 || args.includes('--all')) return MODEL_ACCESS_JOURNEYS
-  const selected = MODEL_ACCESS_JOURNEYS.filter((journey) => requested.includes(journey.id))
+  if (requested.length === 0 || args.includes('--all')) return RUNNER_OWNED_JOURNEYS
+  const selected = RUNNER_OWNED_JOURNEYS.filter((journey) => requested.includes(journey.id))
   const unknown = requested.filter((id) => !selected.some((journey) => journey.id === id))
   if (unknown.length) throw new Error(`Unknown journey ids: ${unknown.join(', ')}`)
   return selected

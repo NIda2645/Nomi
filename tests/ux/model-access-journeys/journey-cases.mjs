@@ -55,6 +55,14 @@ async function runCanvasNode(ui, recorder, { kind, modelId, prompt }) {
   await add.click()
   const composer = ui.win.locator('.generation-canvas-v2-node__composer-card').last()
   await requireVisible(composer, 'composer-missing', `${labels[kind]}节点没有生成编辑器`)
+  // Anchor the node by its stable data-node-id captured now: once generation
+  // completes the floating composer can be replaced by the result view, so a
+  // composer-relative ancestor locator goes stale mid-poll and the rendered
+  // assertion never resolves (probed 2026-09-01). The node id does not move.
+  const nodeId = await composer.evaluate((element) =>
+    element.closest('.generation-canvas-v2-node')?.getAttribute('data-node-id') || '')
+  if (!nodeId) throw new JourneyFailure('node-id-missing', `${labels[kind]}节点没有可定位的节点 id`)
+  const node = ui.win.locator(`.generation-canvas-v2-node[data-node-id="${nodeId}"]`)
   await chooseNodeModel(composer, ui.win, modelId)
   const promptInput = composer.locator('.generation-canvas-v2-node__prompt-input').first()
   await requireVisible(promptInput, 'prompt-input-missing', `${labels[kind]}节点没有可填写提示词`)
@@ -62,8 +70,29 @@ async function runCanvasNode(ui, recorder, { kind, modelId, prompt }) {
   const generate = composer.getByRole('button', { name: /生成素材|生成/ }).last()
   if (await generate.isDisabled()) throw new JourneyFailure('generate-disabled', `${labels[kind]}节点材料齐全后生成按钮仍不可用`)
   await generate.click()
+  // User-direct generation opens the spend-confirmation gate ("开始生成…会消耗模型
+  // 额度", buttons 取消/生成). It must be confirmed to mint the grant and dispatch;
+  // without this the node stays idle and never renders (probed 2026-09-01). The
+  // gate is a real product step every journey's operator would hit, not a mock.
+  await confirmSpendGate(ui.win)
   await recorder.screenshot(ui.win, `${kind}-node-submitted`)
-  return { composer, node: composer.locator('xpath=ancestor::*[contains(@class,"generation-canvas-v2-node")][1]') }
+  return { composer, node }
+}
+
+// The spend-confirm dialog is a full-screen modal (div.fixed.inset-0) whose
+// primary action reads 生成. On repeat generations within a session the user may
+// have suppressed it ("本次会话不再提示") — so its absence is expected, not a
+// failure. Bounded wait: only treat a visible gate as actionable.
+async function confirmSpendGate(page, timeoutMs = 4000) {
+  const gate = page.locator('div.fixed.inset-0').filter({ hasText: /开始生成|会消耗模型额度|将生成/ }).first()
+  try {
+    await gate.waitFor({ state: 'visible', timeout: timeoutMs })
+  } catch {
+    return false
+  }
+  await gate.getByRole('button', { name: '生成', exact: true }).last().click()
+  await gate.waitFor({ state: 'hidden', timeout: 8000 }).catch(() => {})
+  return true
 }
 
 async function assertRenderedNode(ui, recorder, { kind, node, expectedText }) {
@@ -146,7 +175,7 @@ async function manualKindRepair(journey, ui, fixture, recorder) {
     await select.click()
     await ui.win.getByText('3D', { exact: false }).last().click()
     await ui.win.getByText('fixture-meshy-3d', { exact: true }).click()
-    await ui.win.getByRole('button', { name: /添加\s*1\s*个模型/ }).click()
+    await ui.win.getByRole('button', { name: /验证\s*1\s*个模型/ }).click()
     const catalog = await ui.waitForCatalogModels(['fixture-meshy-3d'])
     const saved = catalog.models.find((model) => model.modelKey === 'fixture-meshy-3d')
     if (saved?.kind !== 'model3d') throw new JourneyFailure('kind-not-persisted', 'UI 显示已改成 3D，但磁盘仍是其它类型', { savedKind: saved?.kind })
@@ -185,30 +214,41 @@ async function knownSingleKey(journey, ui, fixture, recorder) {
 async function multiCredentialAudio(journey, ui, fixture, recorder) {
   await recorder.step('entry', '展开复合凭证音频平台卡', async () => {
     await ui.openModels(); await ui.expandGenerationProviders()
-    const card = ui.win.getByRole('button', { name: /火山豆包语音/ }).first()
-    await requireVisible(card, 'audio-provider-card-missing', '音频平台卡不存在')
-    await card.click()
-    const inputs = ui.win.getByRole('dialog', { name: '设置', exact: true }).locator('input:visible')
+    // 火山豆包语音 is an adapted platform under "更多已适配平台"; its home row opens a
+    // connect page carrying the two-credential (App ID + Access Token) form.
+    await ui.openHomeConnection('volcengine-speech')
+    const page = ui.win.locator('[data-model-settings-page]').filter({ hasText: '火山豆包语音' }).last()
+    await requireVisible(page, 'audio-provider-card-missing', '音频平台卡不存在')
+    const inputs = ui.win.locator('[data-settings-section="models"] input:visible')
     const count = await inputs.count()
     await ui.screenshot('multi-credential-audio-form')
     if (count < 2) throw new JourneyFailure('multi-credential-ui-missing', '用户有 App ID + Access Token，但卡片只提供一个凭证字段', { visibleCredentialInputs: count })
     return { visibleCredentialInputs: count }
   })
+  // The two-credential entry (App ID + Access Token) is verified above. Completing
+  // the audio round-trip needs real 火山豆包语音 credentials + a live speech
+  // endpoint, which a zero-credit fixture must not impersonate — same honest stop
+  // as J02's known-vendor canary.
+  const appId = process.env.VOLCENGINE_SPEECH_APP_ID
+  const token = process.env.VOLCENGINE_SPEECH_ACCESS_TOKEN
+  if (!appId || !token) throw new JourneyBlocked('real-audio-credentials-missing', 'J03 需要真实火山豆包语音 App ID + Access Token；已验证复合凭证 UI 入口，但不能用 fixture 冒充真实语音端点')
 }
 
 async function threeTextProtocols(journey, ui, fixture, recorder) {
   await recorder.step('entry', '打开高级设置并看到三个文本协议', async () => {
     await ui.openModels(); await ui.openRelayWizard(); await ui.fillRelay({ name: 'Protocol Fixture', baseUrl: fixture.origin })
-    await ui.win.getByText('高级设置', { exact: true }).click()
-    await ui.win.getByText(/手动指定协议|手动选择/).click()
-    for (const label of ['Chat Completions', 'Responses', 'Anthropic']) await requireVisible(ui.win.getByText(label, { exact: true }), 'protocol-option-missing', `高级设置缺少 ${label}`)
+    // The advanced disclosure is "高级设置（接口协议 / 自定义请求头）"; inside it a
+    // "手动指定" toggle surfaces the three protocol choices.
+    await ui.win.getByText(/高级设置/).first().click()
+    await ui.win.getByText(/手动指定/).first().click()
+    for (const label of ['Chat Completions', 'Responses', 'Anthropic']) await requireVisible(ui.win.getByText(label, { exact: true }).first(), 'protocol-option-missing', `高级设置缺少 ${label}`)
     return { protocols: ['openai-compatible', 'openai-responses', 'anthropic'] }
   })
   await recorder.step('observed', '逐一从真实测试连接按钮发出三种协议请求', async () => {
     for (const label of ['Chat Completions', 'Responses', 'Anthropic']) {
-      await ui.win.getByText(label, { exact: true }).click()
-      await ui.win.getByRole('button', { name: '测试连接', exact: true }).click()
-      await ui.win.waitForTimeout(500)
+      await ui.win.getByText(label, { exact: true }).first().click()
+      await ui.clickTestConnection()
+      await ui.win.waitForTimeout(800)
     }
     const paths = fixture.requests.filter((request) => request.method === 'POST').map((request) => request.path)
     for (const path of ['/chat/completions', '/responses', '/v1/messages']) {
@@ -274,14 +314,19 @@ async function customCallRepair(journey, ui, fixture, recorder) {
 }
 
 async function localRuntime(journey, ui, fixture, recorder) {
-  const groupLabel = journey.id === 'J08' ? /有本地 ComfyUI/ : journey.id === 'J09' ? /有即梦会员/ : /用 Codex 出图/
+  // Local/membership runtimes are home rows keyed by vendor: comfyui-local,
+  // dreamina-member, codex-local. On an empty profile they are flat under
+  // 其他接入方式; openHomeConnection reveals+opens them regardless of grouping.
+  const vendorKey = journey.id === 'J08' ? 'comfyui-local' : journey.id === 'J09' ? 'dreamina-member' : 'codex-local'
   await recorder.step('entry', '从真实模型面板展开本地运行时入口', async () => {
     await ui.openModels()
-    const group = ui.win.getByRole('button', { name: groupLabel }).first()
-    await requireVisible(group, 'local-runtime-entry-missing', `${journey.title} 的入口不存在`)
-    await group.click()
+    const row = ui.win.locator(`[data-model-home-available="${vendorKey}"]`)
+    if (!(await row.isVisible().catch(() => false))) await ui.expandHomeGroup('other-ways')
+    await requireVisible(row.first(), 'local-runtime-entry-missing', `${journey.title} 的入口不存在`)
+    const entry = await row.first().textContent()
+    await ui.openHomeConnection(vendorKey)
     await ui.screenshot(`${journey.id.toLowerCase()}-runtime-card`)
-    return { entry: await group.textContent() }
+    return { entry }
   })
   if (journey.id === 'J08') {
     const reachable = await new Promise((resolve) => {
@@ -308,15 +353,20 @@ async function errorRecovery(journey, ui, fixture, recorder) {
       return { materials: ['url', 'key', 'model-id'] }
     })
     await recorder.step('observed', '模型列表探测收到无法解析的真实响应', async () => {
-      await ui.win.getByRole('button', { name: '拉取模型', exact: true }).click()
-      await ui.win.waitForTimeout(800)
+      // Save the connection first (that is what unlocks 获取模型列表 in the current
+      // wizard), then probe. The injected fault returns HTML, not a model list.
+      const save = ui.win.getByRole('button', { name: '保存连接', exact: true })
+      if (await save.isVisible().catch(() => false)) await save.first().click()
+      await requireVisible(ui.win.getByRole('button', { name: /获取模型列表|获取可用模型/ }).first(), 'fetch-entry-missing', '保存连接后没有出现获取模型列表入口', 15_000)
+      await ui.win.getByRole('button', { name: /获取模型列表|获取可用模型/ }).first().click()
+      await ui.win.waitForTimeout(1500)
       return { requests: fixture.requests.filter((request) => request.path.endsWith('/models')).length }
     })
     await recorder.step('rendered', '界面诚实停在可操作状态而非宣称已验证', async () => {
-      const dialog = ui.win.getByRole('dialog').filter({ hasText: '添加一个 AI 模型' }).last()
-      const text = await dialog.textContent()
+      const surface = ui.win.locator('[data-settings-section="models"]')
+      const text = await surface.textContent()
       if (/验证通过|连接成功|已经可用/.test(text || '')) throw new JourneyFailure('minimal-material-false-success', '无法解析任何上游证据时，界面仍宣称连接或验证成功')
-      if (!/手动|未列出|不是模型列表|填写/.test(text || '')) throw new JourneyFailure('minimal-material-no-action', '探测失败后没有给用户手填或继续配置动作')
+      if (!/手动|未列出|不是模型列表|填写|没自动|手填/.test(text || '')) throw new JourneyFailure('minimal-material-no-action', '探测失败后没有给用户手填或继续配置动作')
       await ui.screenshot('minimal-material-honest-stop')
       return { honestStop: true }
     })
@@ -324,18 +374,28 @@ async function errorRecovery(journey, ui, fixture, recorder) {
   }
   await recorder.step('entry', '用错误地址从真实测试连接按钮触发失败', async () => {
     await ui.openModels(); await ui.openRelayWizard(); await ui.fillRelay({ name: 'Recovery Fixture', baseUrl: 'http://127.0.0.1:1' })
-    await ui.win.getByRole('button', { name: '测试连接', exact: true }).click()
-    await requireVisible(ui.win.getByText(/连接失败|无法|检查地址/).first(), 'connection-error-not-visible', '错误地址没有在接入界面展示可理解失败', 15_000)
+    // 测试连接 lives inside the 高级设置 disclosure and is not exposed to getByRole;
+    // clickTestConnection opens the disclosure and clicks the real <button>.
+    await ui.clickTestConnection()
+    await requireVisible(ui.win.getByText(/连接失败|无法|检查地址|未完成|请检查/).first(), 'connection-error-not-visible', '错误地址没有在接入界面展示可理解失败', 15_000)
     return { badUrl: true }
   })
   await recorder.step('recovered', '在原表单改回正确地址并测试成功', async () => {
     await ui.win.getByPlaceholder('https://api.openai.com/v1').fill(fixture.origin)
-    await ui.win.getByRole('button', { name: '测试连接', exact: true }).click()
-    await requireVisible(ui.win.getByText(/连接成功|已连通|已连接/).first(), 'connection-retry-failed', '修正地址后原表单仍不能恢复', 15_000)
+    await ui.clickTestConnection()
+    // Success copy for a reachable relay is "地址和 Key 没问题 · …" (probed
+    // 2026-09-01); image/video relays honestly add "要真跑一次才知道".
+    await requireVisible(ui.win.getByText(/没问题|连接成功|已连通|已连接/).first(), 'connection-retry-failed', '修正地址后原表单仍不能恢复', 15_000)
     return { recoveredInPlace: true }
   })
+  await recorder.step('observed', '恢复后从可见按钮拉取上游模型列表', async () => {
+    await ui.fetchModels()
+    const listRequests = fixture.requests.filter((request) => request.method === 'GET' && request.path.endsWith('/models'))
+    if (listRequests.length === 0) throw new JourneyFailure('model-list-not-observed', '恢复后拉取模型，但 fixture 没收到 GET /models')
+    return { requests: listRequests.map((request) => ({ method: request.method, path: request.path })) }
+  })
   await recorder.step('persisted', '恢复后选择模型并保存', async () => {
-    await ui.fetchModels(); await ui.chooseModels(['fixture-image-gen']); await ui.waitForCatalogModels(['fixture-image-gen']); return { saved: true }
+    await ui.chooseModels(['fixture-image-gen']); await ui.waitForCatalogModels(['fixture-image-gen']); return { saved: true }
   })
   const run = await recorder.step('executed', '从真实节点生成并保留错误恢复上下文', () => runCanvasNode(ui, recorder, { kind: 'image', modelId: 'fixture-image-gen', prompt: 'recovered fixture' }))
   await recorder.step('rendered', '恢复后的同一模型显示图片像素', () => assertRenderedNode(ui, recorder, { kind: 'image', node: run.node }))
