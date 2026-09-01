@@ -3,15 +3,7 @@
     {
       "vendor": "kie",
       "total": 142,
-      "added": [
-        {
-          "vendor": "kie",
-          "category": "video",
-          "slug": "google/gemini-omni-flash-1-1",
-          "title": "Gemini Omni 1.1 Flash",
-          "url": "https://docs.kie.ai/market/google/gemini-omni-flash-1-1.md"
-        }
-      ],
+      "added": [],
       "removed": [],
       "uncovered": [
         {
@@ -550,8 +542,16 @@
     },
     {
       "vendor": "apimart",
-      "total": 127,
-      "added": [],
+      "total": 128,
+      "added": [
+        {
+          "vendor": "apimart",
+          "category": "video",
+          "slug": "minimax-h3/max",
+          "title": "MiniMax-H3-Max Video Generation",
+          "url": "https://docs.apimart.ai/en/api-reference/videos/minimax-h3/max.md"
+        }
+      ],
       "removed": [],
       "uncovered": [
         {
