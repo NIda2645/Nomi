@@ -1,5 +1,7 @@
 # M1 round-2 Host/runtime delivery
 
+> 状态：🚧 进行中（Host/runtime 切片已移植进 M1 终装分支；红灯重验与全量 gates 见 docs/qa/2026-09-01-agent-m0-red-lights.md）
+
 ## Scope
 
 - Transplant the Host/runtime slice from local ref `46066ed0` into the task branch,

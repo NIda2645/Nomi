@@ -54,6 +54,41 @@ export function executionPrompt(snapshot: ProjectAgentHostState, turnId: string,
   return `此前同一项目线程：\n${prior}\n\n本轮请求：\n${request.prompt}`;
 }
 
+/** Fold the user's latest steering instruction into the execution prompt (appended, never rewriting a committed effect). */
+export function steeredExecutionPrompt(
+  snapshot: ProjectAgentHostState,
+  turnId: string,
+  request: AgentChatRequest,
+  steering: string | undefined,
+): string {
+  const base = executionPrompt(snapshot, turnId, request);
+  return steering ? `${base}\n用户对当前任务的最新修正：${steering}` : base;
+}
+
+/** Steerable turn statuses: only an in-flight or pending turn may take a direction change. */
+const STEERABLE_STATUSES: readonly ProjectAgentStatus[] = ["queued", "running", "proposed"];
+
+/** Validate a steering instruction and confirm the turn is steerable; returns the normalized instruction. */
+export function validateSteering(
+  snapshot: ProjectAgentHostState,
+  turnId: string,
+  instruction: string,
+  onInvalid: (message: string) => never,
+): string {
+  const normalized = instruction.trim();
+  if (!normalized || normalized.length > 8_000) onInvalid("Project Agent steering instruction is invalid");
+  const turn = snapshot.turns.find((candidate) => candidate.turnId === turnId);
+  if (!turn || !STEERABLE_STATUSES.includes(turn.status)) onInvalid("Project Agent turn is not steerable");
+  return normalized;
+}
+
+/** Whether an interrupt should proceed: the turn exists and is still queued/proposed/running. */
+export function turnIsInterruptible(snapshot: ProjectAgentHostState, turnId: string, onMissing: () => never): boolean {
+  const turn = snapshot.turns.find((candidate) => candidate.turnId === turnId);
+  if (!turn) onMissing();
+  return STEERABLE_STATUSES.includes(turn!.status);
+}
+
 export function toolItem(
   binding: ProjectBinding,
   turn: ProjectAgentTurn,

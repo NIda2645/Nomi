@@ -58,6 +58,9 @@ import { committedProjectAgentReceiptMatchesApproval } from "./projectAgentPropo
 import {
   digest,
   executionPrompt,
+  steeredExecutionPrompt,
+  validateSteering,
+  turnIsInterruptible,
   exportJobTaskItems,
   productionRunTaskItems,
   stableJson,
@@ -903,170 +906,56 @@ export function createProjectAgentExecutionCoordinator(
     });
   }
 
+  // Shared adapter selection: prefer the requesting subscription's own adapter, else
+  // the newest-epoch adapter still bound to this partition. Every per-domain resolver
+  // (document/canvas/timeline/phase4/skill read+write) is this same policy over its own map.
+  function mostRecentAdapterFor<A>(
+    partition: ExecutionPartition,
+    preferredSubscriptionId: string,
+    adapters: Map<string, A>,
+  ): A | undefined {
+    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
+      ? adapters.get(preferredSubscriptionId)
+      : undefined;
+    if (currentPreferred) return currentPreferred;
+    let selected: A | undefined;
+    let selectedEpoch = -1;
+    for (const subscriptionId of partition.subscriptionIds) {
+      const subscription = subscriptions.get(subscriptionId);
+      const adapter = adapters.get(subscriptionId);
+      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
+        selected = adapter;
+        selectedEpoch = subscription.subscriptionEpoch;
+      }
+    }
+    return selected;
+  }
+
   function canvasReadFor(
     partition: ExecutionPartition,
     preferredSubscriptionId: string,
     turnCanvasRead?: PiCanvasReadTransportAdapter,
   ) {
     if (turnCanvasRead) return turnCanvasRead;
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? canvasReads.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiCanvasReadTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = canvasReads.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
+    return mostRecentAdapterFor(partition, preferredSubscriptionId, canvasReads);
   }
 
-  function documentReadFor(partition: ExecutionPartition, preferredSubscriptionId: string) {
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? documentReads.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiDocumentReadTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = documentReads.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
-  }
-
-  function documentWriteFor(partition: ExecutionPartition, preferredSubscriptionId: string) {
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? documentWrites.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiDocumentWriteTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = documentWrites.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
-  }
-
-  function canvasWriteFor(partition: ExecutionPartition, preferredSubscriptionId: string) {
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? canvasWrites.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiCanvasWriteTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = canvasWrites.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
-  }
-
-  function timelineReadFor(partition: ExecutionPartition, preferredSubscriptionId: string) {
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? timelineReads.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiTimelineReadTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = timelineReads.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
-  }
-
-  function timelineWriteFor(partition: ExecutionPartition, preferredSubscriptionId: string) {
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? timelineWrites.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiTimelineWriteTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = timelineWrites.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
-  }
-
-  function phase4SurfaceFor(partition: ExecutionPartition, preferredSubscriptionId: string) {
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? phase4Surfaces.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiPhase4SurfaceTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = phase4Surfaces.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
-  }
-  function skillReadFor(partition: ExecutionPartition, preferredSubscriptionId: string) {
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? skillReads.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiSkillReadTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = skillReads.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
-  }
-  function skillWriteFor(partition: ExecutionPartition, preferredSubscriptionId: string) {
-    const currentPreferred = partition.subscriptionIds.has(preferredSubscriptionId)
-      ? skillWrites.get(preferredSubscriptionId)
-      : undefined;
-    if (currentPreferred) return currentPreferred;
-    let selected: PiSkillWriteTransportAdapter | undefined;
-    let selectedEpoch = -1;
-    for (const subscriptionId of partition.subscriptionIds) {
-      const subscription = subscriptions.get(subscriptionId);
-      const adapter = skillWrites.get(subscriptionId);
-      if (subscription && adapter && subscription.subscriptionEpoch > selectedEpoch) {
-        selected = adapter;
-        selectedEpoch = subscription.subscriptionEpoch;
-      }
-    }
-    return selected;
-  }
+  const documentReadFor = (partition: ExecutionPartition, preferredSubscriptionId: string) =>
+    mostRecentAdapterFor(partition, preferredSubscriptionId, documentReads);
+  const documentWriteFor = (partition: ExecutionPartition, preferredSubscriptionId: string) =>
+    mostRecentAdapterFor(partition, preferredSubscriptionId, documentWrites);
+  const canvasWriteFor = (partition: ExecutionPartition, preferredSubscriptionId: string) =>
+    mostRecentAdapterFor(partition, preferredSubscriptionId, canvasWrites);
+  const timelineReadFor = (partition: ExecutionPartition, preferredSubscriptionId: string) =>
+    mostRecentAdapterFor(partition, preferredSubscriptionId, timelineReads);
+  const timelineWriteFor = (partition: ExecutionPartition, preferredSubscriptionId: string) =>
+    mostRecentAdapterFor(partition, preferredSubscriptionId, timelineWrites);
+  const phase4SurfaceFor = (partition: ExecutionPartition, preferredSubscriptionId: string) =>
+    mostRecentAdapterFor(partition, preferredSubscriptionId, phase4Surfaces);
+  const skillReadFor = (partition: ExecutionPartition, preferredSubscriptionId: string) =>
+    mostRecentAdapterFor(partition, preferredSubscriptionId, skillReads);
+  const skillWriteFor = (partition: ExecutionPartition, preferredSubscriptionId: string) =>
+    mostRecentAdapterFor(partition, preferredSubscriptionId, skillWrites);
   function productionRunFor(partition: ExecutionPartition): PiProductionRunTransportAdapter | undefined {
     const existing = productionRuns.get(partition.partitionKey);
     if (existing || !deps.productionRun) return existing;
@@ -1172,10 +1061,7 @@ export function createProjectAgentExecutionCoordinator(
         history: { kind: "ephemeral" as const },
         projectId: execution.request.projectId ?? partition.binding.projectId,
         canvasProjectId: execution.request.canvasProjectId ?? partition.binding.projectId,
-        prompt: [
-          executionPrompt(partition.host.getSnapshot(partition.binding), execution.turn.turnId, execution.request),
-          ...(execution.steering ? [`\n用户对当前任务的最新修正：${execution.steering}`] : []),
-        ].join(''),
+        prompt: steeredExecutionPrompt(partition.host.getSnapshot(partition.binding), execution.turn.turnId, execution.request, execution.steering),
       };
       const response = await runAgent(request, {
         abortSignal: execution.controller.signal,
@@ -1881,16 +1767,9 @@ export function createProjectAgentExecutionCoordinator(
   }
 
   async function steer(subscriptionId: string, turnId: string, instruction: string): Promise<void> {
-    const subscription = requireSubscription(subscriptionId);
-    const partition = requirePartition(subscription);
-    const normalized = instruction.trim();
-    if (!normalized || normalized.length > 8_000) {
-      throw new ProjectAgentSubscriptionError("Project Agent steering instruction is invalid");
-    }
-    const turn = partition.host.getSnapshot(partition.binding).turns.find((candidate) => candidate.turnId === turnId);
-    if (!turn || !["queued", "running", "proposed"].includes(turn.status)) {
-      throw new ProjectAgentSubscriptionError("Project Agent turn is not steerable");
-    }
+    const partition = requirePartition(requireSubscription(subscriptionId));
+    const fail = (message: string): never => { throw new ProjectAgentSubscriptionError(message); };
+    const normalized = validateSteering(partition.host.getSnapshot(partition.binding), turnId, instruction, fail);
     const active = partition.active.get(turnId);
     if (active) {
       // Steering is deliberately non-aborting: the current tool/effect settles
@@ -1898,21 +1777,17 @@ export function createProjectAgentExecutionCoordinator(
       active.steering = normalized;
       return;
     }
-    if (!partition.requests.has(turnId)) {
-      throw new ProjectAgentSubscriptionError("Project Agent turn is not steerable");
-    }
+    if (!partition.requests.has(turnId)) fail("Project Agent turn is not steerable");
     partition.steering.set(turnId, normalized);
   }
 
   async function interrupt(subscriptionId: string, turnId: string): Promise<void> {
-    const subscription = requireSubscription(subscriptionId);
-    const partition = requirePartition(subscription);
+    const partition = requirePartition(requireSubscription(subscriptionId));
     const current = partition.host.getSnapshot(partition.binding);
     const turn = current.turns.find((candidate) => candidate.turnId === turnId);
-    if (!turn) throw new ProjectAgentSubscriptionError("Project Agent turn is unavailable");
-    if (!["queued", "proposed", "running"].includes(turn.status)) return;
+    if (!turnIsInterruptible(current, turnId, () => { throw new ProjectAgentSubscriptionError("Project Agent turn is unavailable"); })) return;
     await dispatchFresh(partition, (state) => ({
-      commandId: `turn-interrupt-${turn.executionToken}-${state.hostRevision}`,
+      commandId: `turn-interrupt-${turn!.executionToken}-${state.hostRevision}`,
       expectedRevision: state.hostRevision,
       binding: partition.binding,
       sender: { kind: "internal", senderId: subscriptionId },
