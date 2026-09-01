@@ -9,8 +9,6 @@
 
 ---
 
-## 现役欠账（23）
-## 现役欠账（24）
 ## 现役欠账（26）
 ## 现役欠账（28）
 
@@ -59,6 +57,7 @@
 
 ## 其余
 
+- **已结案**：38 篇（✅ 已交付 / ⛔ 已废弃 / 📎 交接日志）
 - **已结案**：36 篇（✅ 已交付 / ⛔ 已废弃 / 📎 交接日志）
 - **已结案**：37 篇（✅ 已交付 / ⛔ 已废弃 / 📎 交接日志）
 - **已结案**：39 篇（✅ 已交付 / ⛔ 已废弃 / 📎 交接日志）
@@ -78,6 +77,7 @@
 
 </details>
 
+- 合计扫描：493 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 - 合计扫描：488 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 - 合计扫描：492 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 - 合计扫描：496 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
