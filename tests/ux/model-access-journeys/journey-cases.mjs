@@ -64,9 +64,21 @@ async function runCanvasNode(ui, recorder, { kind, modelId, prompt }) {
   if (!nodeId) throw new JourneyFailure('node-id-missing', `${labels[kind]}节点没有可定位的节点 id`)
   const node = ui.win.locator(`.generation-canvas-v2-node[data-node-id="${nodeId}"]`)
   await chooseNodeModel(composer, ui.win, modelId)
-  const promptInput = composer.locator('.generation-canvas-v2-node__prompt-input').first()
+  // 文本节点的输入不在 composer（isTextKind 分支刻意隐藏 PromptEditor，见
+  // NodeGenerationComposer.tsx:660）：正文是节点卡自己的富文本 body（TextDocumentNode）。
+  const promptInput = kind === 'text'
+    ? node.locator('[contenteditable="true"]').first()
+    : composer.locator('.generation-canvas-v2-node__prompt-input').first()
   await requireVisible(promptInput, 'prompt-input-missing', `${labels[kind]}节点没有可填写提示词`)
-  await promptInput.fill(prompt)
+  if (kind === 'text') {
+    await promptInput.click()
+    await ui.win.waitForTimeout(300)
+    await ui.win.keyboard.type(prompt, { delay: 15 })
+    const took = (await node.textContent().catch(() => '')) || ''
+    if (!took.includes(prompt)) throw new JourneyFailure('prompt-not-typed', '文本节点正文没有吃进输入', { seen: took.slice(0, 200) })
+  } else {
+    await promptInput.fill(prompt)
+  }
   const generate = composer.getByRole('button', { name: /生成素材|生成/ }).last()
   if (await generate.isDisabled()) throw new JourneyFailure('generate-disabled', `${labels[kind]}节点材料齐全后生成按钮仍不可用`)
   await generate.click()
@@ -98,7 +110,9 @@ async function confirmSpendGate(page, timeoutMs = 4000) {
 async function assertRenderedNode(ui, recorder, { kind, node, expectedText }) {
   const deadline = Date.now() + (kind === 'video' ? 35_000 : 20_000)
   while (Date.now() < deadline) {
-    const proof = await node.evaluate((element, type) => {
+    // expectedText 必须作为参数传进 evaluate：页面上下文里没有 Node 侧闭包，直接引用是
+    // ReferenceError（潜伏缺陷——旧 J04 从没跑到 rendered，2026-09-02 首次触发后修复）。
+    const proof = await node.evaluate((element, { type, expected }) => {
       if (type === 'image') {
         const image = element.querySelector('img')
         return image && image.naturalWidth > 0 && image.naturalHeight > 0 ? { width: image.naturalWidth, height: image.naturalHeight } : null
@@ -111,10 +125,10 @@ async function assertRenderedNode(ui, recorder, { kind, node, expectedText }) {
         const audio = element.querySelector('audio')
         return audio && audio.readyState >= 1 ? { duration: audio.duration } : null
       }
-      if (type === 'text') return element.textContent?.includes(String(expectedText || 'fixture text')) ? { text: expectedText || 'fixture text' } : null
+      if (type === 'text') return element.textContent?.includes(expected) ? { text: expected } : null
       if (type === 'model3d') return element.querySelector('canvas') ? { canvas: true } : null
       return null
-    }, kind)
+    }, { type: kind, expected: String(expectedText || 'fixture text') })
     if (proof) {
       await recorder.screenshot(ui.win, `${kind}-node-rendered`)
       recorder.artifact(`${kind}-proof`, proof)
@@ -252,24 +266,53 @@ async function threeTextProtocols(journey, ui, fixture, recorder) {
     for (const label of ['Chat Completions', 'Responses', 'Anthropic']) await requireVisible(ui.win.getByText(label, { exact: true }).first(), 'protocol-option-missing', `高级设置缺少 ${label}`)
     return { protocols: ['openai-compatible', 'openai-responses', 'anthropic'] }
   })
-  await recorder.step('observed', '逐一从真实测试连接按钮发出三种协议请求', async () => {
+  await recorder.step('observed', '每种协议下测试连接都只发零额度 /models 探测并诚实提示', async () => {
+    // 中转「测试连接」在还没选文本模型时**只探模型列表**，这是明示设计，不是缺陷：
+    //   - src/ui/onboarding/useOnboardingConnectionTest.ts —— 没有文本模型 → probe:'reachability'；
+    //   - electron/ai/onboarding/modelListProbe.ts:6 —— 「接入向导『测试连接』的可达性探测」；
+    //   - i18n modelSetup.connectedReachabilityOnly —— 成功文案自己就承认边界：
+    //     「地址和 Key 没问题 · …能不能出片要真跑一次才知道」。
+    // 旧断言以为三个协议各自发 POST /chat/completions|/responses|/v1/messages——那从来不是
+    // 这个按钮的职责（2026-09-02 探针实测：三种协议下按钮均只发 GET /models 或 /v1/models）。
+    // 真正的协议 wire 由本旅程 rendered 步骤的真实生成发出并在那里断言。
+    const results = []
     for (const label of ['Chat Completions', 'Responses', 'Anthropic']) {
       await ui.win.getByText(label, { exact: true }).first().click()
+      const before = fixture.requests.length
       await ui.clickTestConnection()
-      await ui.win.waitForTimeout(800)
+      // 诚实提示语义：成功但明说「要真跑一次才知道」（探针 2026-09-02 实测文案）。
+      await requireVisible(
+        ui.win.locator('[data-model-connection-diagnostics]').getByText(/没问题|真跑一次才知道|连接正常|已连上/).first(),
+        'probe-honesty-missing', `${label} 下测试连接没有给出「探测成功 + 诚实边界」提示`, 15_000,
+      )
+      const seen = fixture.requests.slice(before)
+      const probes = seen.filter((request) => request.method === 'GET' && request.path.endsWith('/models'))
+      if (probes.length === 0) throw new JourneyFailure('probe-wire-missing', `${label} 下测试连接没有发出 GET /models 可达性探测`, { seen: seen.map((r) => `${r.method} ${r.path}`) })
+      // 「零额度」负向断言：探测窗口内不许出现协议 POST。这个探针的“会红”由本旅程自身证明——
+      // rendered 步骤用同一份 fixture.requests、同一个路径匹配去**要求** POST /chat/completions
+      // 出现；仪器和谓词是活的，不是永真断言。
+      const protocolPosts = seen.filter((request) => request.method === 'POST' && /(\/chat\/completions|\/responses|\/v1\/messages)$/.test(request.path))
+      if (protocolPosts.length > 0) throw new JourneyFailure('probe-not-zero-cost', `${label} 下测试连接发出了协议请求，不再是零额度探测`, { protocolPosts: protocolPosts.map((r) => r.path) })
+      results.push({ protocol: label, probeRequests: probes.map((r) => `${r.method} ${r.path}`) })
     }
-    const paths = fixture.requests.filter((request) => request.method === 'POST').map((request) => request.path)
-    for (const path of ['/chat/completions', '/responses', '/v1/messages']) {
-      if (!paths.some((seen) => seen.endsWith(path))) throw new JourneyFailure('protocol-wire-missing', `${path} 没有从真实 UI 发出`, { paths })
-    }
-    return { paths }
+    return { results }
   })
   await recorder.step('persisted', '选择文本模型并保存探测出的协议', async () => {
+    // 上面探测按钮把协议留在 Anthropic；显式选回 Chat Completions 再保存，让 rendered 的
+    // 真实生成走 openai-compatible（fixture 的 /chat/completions 返回 'fixture text'）。
+    await ui.win.getByText('Chat Completions', { exact: true }).first().click()
     await ui.fetchModels(); await ui.chooseModels(['fixture-text-chat']); await ui.waitForCatalogModels(['fixture-text-chat'])
-    return { model: 'fixture-text-chat' }
+    return { model: 'fixture-text-chat', savedProtocol: 'openai-compatible' }
   })
   const run = await recorder.step('executed', '从真实文本节点执行', () => runCanvasNode(ui, recorder, { kind: 'text', modelId: 'fixture-text-chat', prompt: 'say fixture text' }))
-  await recorder.step('rendered', '文本节点显示上游返回文本', () => assertRenderedNode(ui, recorder, { kind: 'text', node: run.node, expectedText: 'fixture text' }))
+  await recorder.step('rendered', '文本节点显示上游返回文本（真跑一次，协议 wire 在此发出）', async () => {
+    const proof = await assertRenderedNode(ui, recorder, { kind: 'text', node: run.node, expectedText: 'fixture text' })
+    // 「要真跑一次才知道」的那一次真跑：协议请求必须真实出现（同一仪器证明 observed 的负向断言会红）。
+    if (!fixture.requests.some((request) => request.method === 'POST' && request.path.endsWith('/chat/completions'))) {
+      throw new JourneyFailure('protocol-wire-missing', '文本出现了，但 fixture 没收到 /chat/completions 协议请求')
+    }
+    return proof
+  })
 }
 
 async function openCustomCall(ui, fixture, recorder) {
