@@ -3,6 +3,13 @@ import { useTranslation } from 'react-i18next'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { cn } from '../../../utils/cn'
 
+/** Trim trailing zeros from a credits amount (8.50 → "8.5", 8.00 → "8"). Local to the
+ *  provenance viewer so it does not depend on the estimate module. */
+function formatCredits(amount: number): string {
+  if (!Number.isFinite(amount) || amount < 0) return ''
+  return amount.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+}
+
 /**
  * Phase E Task E11 — Provenance viewer.
  *
@@ -78,6 +85,13 @@ export default function ProvenancePanel({ node, open, onClose }: Props): JSX.Ele
           <div className="space-y-3 text-caption">
             <ProvenanceRow label={t('generationCommon.provenance.provider')} value={provenance.provider || '—'} />
             <ProvenanceRow label={t('generationCommon.provenance.model')} value={provenance.modelKey || '—'} />
+            {provenance.cost?.unit === 'actual' ? (
+              <ProvenanceRow
+                label={t('generationCommon.provenance.actualCost')}
+                value={`${formatCredits(provenance.cost.amount)} ${provenance.cost.currency}`}
+                mono
+              />
+            ) : null}
             <ProvenanceRow
               label={t('generationCommon.provenance.time')}
               value={new Date(provenance.timestamp).toLocaleString(i18n.resolvedLanguage || i18n.language)}

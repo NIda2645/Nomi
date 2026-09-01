@@ -557,6 +557,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     testMapping: (id: string, payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:mapping:test", id, payload),
     fetchDocs: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:docs:fetch", payload),
     probeComfyui: (baseUrl?: string) => ipcRenderer.invoke("nomi:model-catalog:comfyui:probe", baseUrl),
+    // 本地文本模型（Ollama / LM Studio / LocalAI）：探端口 + 能力预检。旧 preload 无此口 → UI 兜住 undefined。
+    probeLocalTextEndpoints: () => ipcRenderer.invoke("nomi:local-text:probe"),
+    probeLocalTextCapability: (payload: { baseUrl: string; modelId: string }) =>
+      ipcRenderer.invoke("nomi:local-text:capability", payload),
     analyzeComfyWorkflow: (text: string) => invokeSync("nomi:model-catalog:comfyui:analyze-workflow", text),
     reconcileComfyWorkflow: (text: string, vendorKey?: string) =>
       ipcRenderer.invoke("nomi:model-catalog:comfyui:reconcile-workflow", text, vendorKey),

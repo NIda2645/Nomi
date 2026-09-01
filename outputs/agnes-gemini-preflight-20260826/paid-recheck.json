@@ -1,0 +1,12 @@
+[
+  {
+    "model": "agnes-2.5-pro-beta",
+    "http_status": 403,
+    "error": "{\"error\":{\"message\":\"team not allowed to access model. This team can only access models=['agnes-2.0-flash', 'agnes-image-2.0-flash', 'agnes-video-v2.0', 'agnes-image-2.1-flash', 'agnes-2.5-flash', 'agnes-2.5-pro', 'agnes-2.5-pro-alpha']. Tried to access agnes-2.5-pro-beta\",\"type\":\"team_model_access_denied\",\"param\":\"model\",\"code\":\"403\"}}"
+  },
+  {
+    "model": "agnes-video-2.5",
+    "http_status": 403,
+    "error": "{\"code\":\"insufficient_user_quota\",\"message\":\"预扣费额度失败, 用户剩余额度: ＄0.009776, 需要预扣费额度: ＄0.100000\",\"data\":null}"
+  }
+]

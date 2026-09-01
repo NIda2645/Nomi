@@ -5,6 +5,7 @@
 import crypto from "node:crypto";
 import { classifyAssetValue, humanSize, inlineAssetByteLength, inlineAssetMime } from "../catalog/assetValueScheme";
 import type { Model, Vendor } from "../catalog/types";
+import type { ProviderCostActual } from "./cost";
 
 /** 与 runtime.TaskResult["provenance"] 结构兼容(该类型为 runtime 私有,这里结构化对齐)。 */
 export type TaskProvenance = {
@@ -15,6 +16,7 @@ export type TaskProvenance = {
   seed?: number;
   params?: Record<string, unknown>;
   vendorRequestId?: string;
+  cost?: { amount: number; currency: "credits"; unit: "actual" };
   timestamp: number;
 };
 
@@ -114,6 +116,7 @@ export function buildTaskProvenance(input: {
   model: Model;
   request: RecipeRequestFields;
   vendorRequestId: string;
+  actualCost?: ProviderCostActual;
 }): TaskProvenance {
   const { request } = input;
   return {
@@ -131,6 +134,9 @@ export function buildTaskProvenance(input: {
       ...(request.extras ? { extras: digestInlineAssets(request.extras) } : {}),
     },
     vendorRequestId: input.vendorRequestId,
+    ...(input.actualCost
+      ? { cost: { amount: input.actualCost.amount, currency: input.actualCost.unit, unit: "actual" as const } }
+      : {}),
     timestamp: Date.now(),
   };
 }

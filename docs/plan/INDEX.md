@@ -12,12 +12,16 @@
 | 文件 | 一句话 | 状态 |
 |---|---|---|
 | [2026-06-07-model-onboarding-final-plan.md](2026-06-07-model-onboarding-final-plan.md) | **模型接入最终方案**（R7 定稿，审计+设计+计划）— 本簇主文档 | ✅ |
+| [2026-08-15-model-integration-no-dead-end-master-plan.md](2026-08-15-model-integration-no-dead-end-master-plan.md) | 模型接入「不留死路」总纲：事实源 manifest + 能力契约 + 旅程矩阵 | 🚧 |
+| [2026-08-15-model-access-exhaustive-user-journeys.md](2026-08-15-model-access-exhaustive-user-journeys.md) | 模型接入全集用户旅途测试：能力面逐维度真实 UI 往返旅程矩阵 | 🚧 |
 | [2026-08-28-conversational-model-integration-verification.md](2026-08-28-conversational-model-integration-verification.md) | 对话式模型接入与认证闭环：J0–J5 真实验收和发布记录 | 🚧 |
 | [2026-08-30-unified-model-integration-certification.md](2026-08-30-unified-model-integration-certification.md) | 旗舰供应商、模型扩充与统一认证流程（官方合同→零费用仿真→认证账本） | 🚧 |
 | [2026-08-31-provider-model-expansion-certification.md](../superpowers/plans/2026-08-31-provider-model-expansion-certification.md) | Superpowers 执行计划：旗舰模型合同、Runway/KIE/fal、生产 canary 与 PR 交付 | 🚧 |
 | [2026-08-30-provider-model-expansion-and-runtime.md](2026-08-30-provider-model-expansion-and-runtime.md) | 旗舰供应商与统一运行时扩充的早期范围（已被统一认证计划取代） | ⛔ |
 | [2026-08-30-issue-237-onboarding.md](2026-08-30-issue-237-onboarding.md) | Issue #237：OpenAI-compatible 图片请求根因修复、匿名上传分诊与英文接入入口 | 🚧 |
 | [2026-08-31-asset-upload-routing.md](2026-08-31-asset-upload-routing.md) | 本地图片/视频/音频统一上传路由、供应商上传 API 与可选 R2 relay | 🚧 |
+| [2026-09-01-provider-proxy-and-onboarding-hardening.md](2026-09-01-provider-proxy-and-onboarding-hardening.md) | #258 拆项①③：per-connection provider proxy（全局默认+单点覆盖，私网 bypass+凭据脱敏）+ onboarding 加固（抽 useOnboardingConnectionTest、CodexLocalImageCard 静默失败修复） | 🚧 |
+| [2026-09-01-credential-config-at-rest-encryption.md](2026-09-01-credential-config-at-rest-encryption.md) | 可携带凭据的连接配置（proxyUrl 的 user:pass、extraHeaders 的 Authorization）升到与 API key 同级的 safeStorage 加密落盘层 + 字段分级守卫（P2 类级修） | 🚧 |
 | [2026-06-07-apimart-curated-onboarding.md](2026-06-07-apimart-curated-onboarding.md) | 策展两家(kie+apimart)一键接入；战略从「通用接入」转向 | ✅ |
 | [2026-06-06-universal-model-onboarding.md](2026-06-06-universal-model-onboarding.md) | 「描述符+通用解释器接长尾」研究稿 | ⛔ |
 | [2026-05-30-onboarding-schema-first-extraction.md](2026-05-30-onboarding-schema-first-extraction.md) | 参数抽取从 curl-only 升级为 schema-first | 🚧 |
@@ -98,6 +102,8 @@
 | [2026-06-07-assistant-consolidation-plan.md](2026-06-07-assistant-consolidation-plan.md) | 助手面板收敛（双面板→单上下文助手） | 🚧 |
 | [2026-06-07-assistant-mockup-implementation.md](2026-06-07-assistant-mockup-implementation.md) | 助手面板对齐样张（R8 实现规范） | 🚧 |
 | [2026-06-09-创作AI附件与对话体验.md](2026-06-09-创作AI附件与对话体验.md) | 创作 AI 助手：多格式附件+对话升级 | 📋 |
+| [2026-08-27-skills-knowledge-distribution.md](2026-08-27-skills-knowledge-distribution.md) | **Skills 知识分发**：导入对齐 Agent Skills 标准（Phase 0 已交付）+ 渐进披露从「只给外部」接给内嵌 agent；实测每轮固定开销 ≈9,000 tokens 且不参与预算 | 🚧 |
+| [2026-08-27-unified-tool-surface.md](2026-08-27-unified-tool-surface.md) | **内外工具面统一**：对外 22 个 `nomi_*` vs 内嵌 17 个，6 处同事两名、确认面两套——违反 master plan「不造第二套」北极星；三方案待拍板 | 📋 |
 | [2026-08-30-agent-canvas-interaction-expansion.md](2026-08-30-agent-canvas-interaction-expansion.md) | #194 补全画布引用、多媒体、双轴模式与结果回画布（方案与样张完成，待生产实现） | ✅ |
 
 ## 时间轴 / 预览 / 导出

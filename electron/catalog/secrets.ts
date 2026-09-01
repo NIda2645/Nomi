@@ -21,6 +21,17 @@ export type ApiKeyRecord = {
    * deletion boundary. Values are never exposed through the vendor DTO.
    */
   customConfig?: Record<string, EncryptedSecretValue>;
+  /**
+   * Credential-bearing connection network config — the proxy URL (may carry
+   * `user:pass@`) and custom request headers (may carry Authorization). Rides the
+   * same encrypted tier / deletion boundary as apiKey and customConfig so no
+   * credential-bearing vendor field lands as plaintext. Shape/encoding owned by
+   * electron/catalog/networkConfigStore.ts; never exposed through the vendor DTO.
+   */
+  networkConfig?: {
+    proxyUrl?: EncryptedSecretValue;
+    extraHeaders?: Record<string, EncryptedSecretValue>;
+  };
 };
 
 export type EncryptedSecretValue = {

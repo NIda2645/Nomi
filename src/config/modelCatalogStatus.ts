@@ -12,6 +12,11 @@ export function resolveCatalogKind(kind?: NodeKind): BillingModelKind {
   if (kind === 'audio') {
     return 'audio'
   }
+  // 3D 模型节点：其目录桶就是 'model3d'（catalog 按 kind 拉取时才拉得到已接入的 3D 模型，
+  // 否则落回 'text' 桶 → 3D 节点的模型选择器永远空 → 生成路径断在选型）。
+  if (kind === 'model3d') {
+    return 'model3d'
+  }
   return 'text'
 }
 

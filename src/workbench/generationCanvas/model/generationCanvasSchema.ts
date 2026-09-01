@@ -29,6 +29,11 @@ export const generationProvenanceSchema = z.object({
   seed: z.number().optional(),
   params: z.record(z.unknown()).optional(),
   vendorRequestId: z.string().optional(),
+  cost: z.object({
+    amount: z.number().finite().nonnegative(),
+    currency: z.string(),
+    unit: z.enum(['estimate', 'actual']),
+  }).optional(),
   timestamp: z.number(),
   agentRunId: z.string().optional(),
 }).strict()
