@@ -20,6 +20,12 @@ export const ANCHOR_KINDS: readonly PlanAnchorKind[] = ['character', 'scene', 'p
 /** 时长预设（秒）。落画布时由 S4 钳到所选模型上限——这里只给常用档，不提前解析每模型时长表。 */
 export const DURATION_OPTIONS_SEC: readonly number[] = [4, 5, 6, 8, 10, 12, 15]
 
+/**
+ * 画幅预设（批量条「画幅」，v5）。行级画幅由该镜模型档案的 aspect_ratio 控件给全集；
+ * 批量条跨模型，只列各档案交集里的通用档（与时长预设同理，不提前解析每模型画幅表）。
+ */
+export const BULK_ASPECT_OPTIONS: readonly string[] = ['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3']
+
 /** 切到视频档/空方案首镜的兜底时长（秒）。 */
 const DEFAULT_VIDEO_DURATION_SEC = 5
 

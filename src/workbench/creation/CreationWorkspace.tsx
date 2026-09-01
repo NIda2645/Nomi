@@ -4,7 +4,7 @@ import { cn } from '../../utils/cn'
 import CreationAiPanel from './CreationAiPanel'
 import WorkbenchEditor from './WorkbenchEditor'
 import DocumentListSidebar from './DocumentListSidebar'
-import StoryboardPlanEditor from './storyboard/StoryboardPlanEditor'
+import StoryboardPlanCard from './storyboard/StoryboardPlanCard'
 import { NomiAILabel, WorkbenchButton } from '../../design'
 import { useWorkbenchStore } from '../workbenchStore'
 
@@ -24,14 +24,6 @@ export default function CreationWorkspace(): JSX.Element {
       ? s.storyboardDesignsByDocumentId[activeDocumentId]?.find((design) => design.id === activeStoryboardId)
       : undefined
   ))
-  const workspaceMode = useWorkbenchStore((s) => s.workspaceMode)
-  const designsForActiveDocument = useWorkbenchStore((s) => s.storyboardDesignsByDocumentId[s.activeDocumentId] ?? [])
-  const setActiveStoryboardId = useWorkbenchStore((s) => s.setActiveStoryboardId)
-  React.useEffect(() => {
-    if (workspaceMode === 'storyboard' && !activeStoryboardId && designsForActiveDocument[0]) {
-      setActiveStoryboardId(designsForActiveDocument[0].id, activeDocumentId)
-    }
-  }, [activeDocumentId, activeStoryboardId, designsForActiveDocument, setActiveStoryboardId, workspaceMode])
   React.useEffect(() => {
     if (autoOpen) {
       setCollapsed(false)
@@ -69,7 +61,17 @@ export default function CreationWorkspace(): JSX.Element {
         <DocumentListSidebar />
       <div className="min-w-0 min-h-0 flex flex-col gap-2">
         <div className="min-h-0 flex-1" data-creation-surface={activeStoryboard ? 'storyboard' : 'source'}>
-          {activeStoryboard ? <StoryboardPlanEditor /> : <WorkbenchEditor />}
+          {/* v5 C3：完整编辑器只住分镜页（§3.7 一个实现一个家）。中列 856px 塞不下全宽表，
+              激活方案时这里只给方案卡摘要，卡上「打开分镜」跳 storyboard 工作区。 */}
+          {activeStoryboard ? (
+            <div className="h-full min-h-0 overflow-y-auto grid place-items-center">
+              <div className="w-full max-w-[400px]">
+                <StoryboardPlanCard documentId={activeDocumentId} storyboardId={activeStoryboard.id} />
+              </div>
+            </div>
+          ) : (
+            <WorkbenchEditor />
+          )}
         </div>
       </div>
       {collapsed ? (

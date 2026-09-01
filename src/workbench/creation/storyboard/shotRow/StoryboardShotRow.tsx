@@ -221,7 +221,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
           {aspectControl ? (
             <NomiSelect
               ariaLabel={t('storyboardEditor.row.aspectAria')}
-              leadingLabel={t('storyboardEditor.row.aspect')}
+              leadingLabel={t('storyboardEditor.aspect')}
               size="xs"
               value={aspectValue}
               options={aspectControl.options.map((o) => ({ value: String(o.value), label: translateModelDisplayText(o.label) }))}

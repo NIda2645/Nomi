@@ -21,7 +21,6 @@ export const zhStoryboardEditor = {
     slotRequired: '必填',
     noRefAccepted: '此模型不吃参考',
     refIntakeCap: '加参考',
-    aspect: '画幅',
     aspectAria: '这一镜的画幅',
     stayPill: '停留',
     stayHint: '图片镜的时长 = 进时间轴/顺播时这张图停留几秒',
@@ -48,6 +47,8 @@ export const zhStoryboardEditor = {
     typeAria: '全部镜头的类型',
     modelAria: '全部镜头的模型',
     durationAria: '全部镜头的时长',
+    aspectAria: '全部镜头的画幅',
+    aspectDefault: '按模型默认',
     hint: '改这里 = {{count}} 个镜头一起改',
   },
   issue: {
@@ -90,6 +91,7 @@ export const zhStoryboardEditor = {
   video: '视频',
   imageVideo: '图片+视频',
   duration: '时长',
+  aspect: '画幅',
   imageModel: '图片模型',
   videoModel: '视频模型',
   model: '模型',
@@ -129,7 +131,6 @@ export const zhStoryboardEditor = {
   },
   planCard: {
     defaultTitle: '分镜方案',
-    imageStoryboard: '图片分镜',
     duration: '约 {{seconds}}s',
     meta: '{{shots}} 个镜头 · {{anchors}} 张参考卡 · {{duration}}',
     discardMessage: '方案和你的修改会清空，可以重新让 AI 拆镜头。',
@@ -145,7 +146,7 @@ export const zhStoryboardEditor = {
     goGeneration: '去生成区',
     emptyPrompt: '（未写提示词）',
     moreShots: '还有 {{count}} 个镜头',
-    openEditor: '打开编辑',
+    openStoryboard: '打开分镜',
   },
   action: {
     storyboardLead: '看起来你想把故事拆成镜头。',
@@ -193,7 +194,6 @@ export const enStoryboardEditor = {
     slotRequired: 'Required',
     noRefAccepted: 'This model takes no references',
     refIntakeCap: 'References',
-    aspect: 'Aspect',
     aspectAria: 'Aspect ratio for this shot',
     stayPill: 'Hold',
     stayHint: 'For image shots, duration = how long this frame holds on the timeline / in sequence playback',
@@ -220,6 +220,8 @@ export const enStoryboardEditor = {
     typeAria: 'Type for all shots',
     modelAria: 'Model for all shots',
     durationAria: 'Duration for all shots',
+    aspectAria: 'Aspect ratio for all shots',
+    aspectDefault: 'Model default',
     hint: 'Changes here apply to all {{count}} shots',
   },
   issue: {
@@ -262,6 +264,7 @@ export const enStoryboardEditor = {
   video: 'Video',
   imageVideo: 'Image+Video',
   duration: 'Duration',
+  aspect: 'Aspect',
   imageModel: 'Image model',
   videoModel: 'Video model',
   model: 'Model',
@@ -305,7 +308,6 @@ export const enStoryboardEditor = {
   },
   planCard: {
     defaultTitle: 'Storyboard plan',
-    imageStoryboard: 'Image storyboard',
     duration: 'about {{seconds}}s',
     meta: '{{shots}} shots · {{anchors}} reference cards · {{duration}}',
     discardMessage: 'The plan and your edits will be cleared. You can ask AI to split the story into shots again.',
@@ -321,7 +323,7 @@ export const enStoryboardEditor = {
     goGeneration: 'Go to Generation',
     emptyPrompt: '(No prompt)',
     moreShots: '{{count}} more shots',
-    openEditor: 'Open editor',
+    openStoryboard: 'Open storyboard',
   },
   action: {
     storyboardLead: 'It looks like you want to split the story into shots.',
