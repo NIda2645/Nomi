@@ -2,8 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+
 function source(relativePath: string): string {
-  return fs.readFileSync(path.join(process.cwd(), relativePath), 'utf8')
+  return stripComments(fs.readFileSync(path.join(process.cwd(), relativePath), 'utf8'))
 }
 
 describe('resident prompt library wiring contract', () => {

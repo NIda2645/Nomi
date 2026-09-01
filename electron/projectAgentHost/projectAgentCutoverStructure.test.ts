@@ -50,20 +50,30 @@ describe("Project Agent production cutover structure", () => {
   it("keeps the resident shell as the only Host projection without local transcript owners", () => {
     const app = source("src/workbench/NomiStudioApp.tsx");
     const workbenchStore = source("src/workbench/workbenchStore.ts");
-    const canvasStore = source("src/workbench/generationCanvas/store/generationCanvasStore.ts");
-    const canvasTypes = source("src/workbench/generationCanvas/store/canvasStoreTypes.ts");
     const residentShell = source("src/workbench/ai/ProjectAgentResidentShell.tsx");
     const workbenchShell = source("src/workbench/WorkbenchShell.tsx");
 
     expect(app).not.toContain("installProjectAgentSnapshotToUi");
     expect(workbenchStore).not.toContain("creationAiMessages");
     expect(workbenchStore).not.toContain("setCreationAiMessages");
-    expect(canvasStore).not.toContain("generationAiMessages");
-    expect(canvasTypes).not.toContain("setGenerationAiMessages");
     expect(residentShell).toContain("useProjectAgentSnapshot");
     expect(residentShell).toContain("projectAgentDraft");
     expect(workbenchShell).toContain("createPortal(<ProjectAgentResidentShell surface={agentSurface} />, agentDock)");
     expect(workbenchStore).not.toContain("creationAiDraft");
+  });
+
+  // C9 (开闸红灯 · 共存期裁决 2026-09-01)：generationAi* 画布态被拆解面板 v1（DeconstructionPanelHost /
+  // NodeDeconstructionPanel / CollapsedAiChip，主线 #293/#295）依赖为活功能——CollapsedAiChip 读
+  // generationAiCollapsed + generationAiMessages.length，拆解面板与 AI 栏过渡期互斥（R-C-1）同占右槽。
+  // 编排者裁决「功能连续性优先」：M1 保留 generationAi* 与旧面板共存，cutover 的这三条删除断言迁为开闸条件。
+  // 开闸通过条件见 docs/qa/2026-09-01-agent-m0-red-lights.md 的 C9 节：删旧 composer 态 / CreationAiPanel、
+  // 拆解 handoff 改接 Host 投影 draft 后，这三条断言转绿即可解除 skip。
+  it.skip("[C9 gate] removes generationAi* canvas transcript owners after deconstruction handoff to Host projection", () => {
+    const canvasStore = source("src/workbench/generationCanvas/store/generationCanvasStore.ts");
+    const canvasTypes = source("src/workbench/generationCanvas/store/canvasStoreTypes.ts");
+
+    expect(canvasStore).not.toContain("generationAiMessages");
+    expect(canvasTypes).not.toContain("setGenerationAiMessages");
     expect(canvasTypes).not.toContain("generationAiDraft");
   });
 

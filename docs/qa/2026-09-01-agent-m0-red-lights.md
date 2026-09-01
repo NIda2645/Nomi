@@ -92,3 +92,21 @@ RL2 是本轮唯一从红转绿的红灯，直接证明 Codex r3 的 canvasRead 
 **已过的门**：`check:filesize`（修后）、`check:e2e-launch`、`check:site`、`typecheck`（三配置全绿）、**`lint:ci` 现为 82 problems（0 error / 82 warning）= 恰在 `--max-warnings=82` 棘轮上，绿**（M1 修复班当时报的 99>82 继承 lint 债，经其 9 簇修复 + 后续 main 合流已降到 82，此债已清）。
 
 **结论/需编排者裁决**：red-lights 三清 + delta=0 两大 M1 核心交付**已验证为真**（可独立对账）。但 `pnpm run gates` 全绿被 3 项 cutover 引入的门禁回归挡住，其中 `check:vocabularies` 的 19 处 cutover 词表登记是横跨安全敏感子系统的**语义判断工作**（非机械），且与 fork-report 已升级的「cutover 607 文件 WIP transplant 自带跨子系统债」同源同类。按决策自治纪律（架构岔路/影响大/安全敏感核心路径/无 landed plan），**停下上报**，不擅自 mass-register 迁就（会是对 cutover 意图的橡皮图章判断）、不缩 baseline 迁就（棘轮只减不增）、不 partial-fix 本班 3 处（不解锁 gates）。未盖 `.claude/.gates-ok`、未 push、未开 PR。
+
+## 开闸红灯 · C9：generationAi 画布态 cutover 删除（共存期裁决 2026-09-01）
+
+编排者裁决 generationAi fork：**功能连续性优先——M1 保留 `generationAi*` 画布态与旧面板共存，cutover 的删除迁为开闸条件（本红灯 C9）。** 起因：合流最新 `origin/main` 引入拆解视频面板 v1（#293/#295，`DeconstructionPanelHost` / `NodeDeconstructionPanel` / `DeconstructionShotRow` / `CollapsedAiChip` / `deconstructionTypes` / `extractDeconstructionShotsToNodes` / `generationAiConversation` 一批新文件），拆解面板与 AI 栏在过渡期**互斥同占右槽**（R-C-1），`CollapsedAiChip` 读 `generationAiCollapsed` + `generationAiMessages.length` 渲顶栏角标——都是活功能，直接依赖 `generationAi*` store 字段。cutover 基座（HEAD）本要删这批 generationAi 态；按裁决合流时 `generationCanvasStore.ts` / `canvasStoreTypes.ts` 取 **theirs**（保留 `generationAi*` 全套字段 + `WorkbenchAiMessage` import + 全套 setter），`canvasWriteBoundary.ts` 的 `documentActions` 分类表取含 generationAi/videoDeconstruction 键的 origin/main 侧（否则 `satisfies Record<ActionName, boolean>` 少键失败），`releaseWorkbenchProjectSession.ts` 取会重置这些字段的 origin/main 侧（否则跨项目泄漏残留态）。
+
+- **复现命令（三断言原文）**：
+  ```ts
+  const canvasStore = source("src/workbench/generationCanvas/store/generationCanvasStore.ts");
+  const canvasTypes = source("src/workbench/generationCanvas/store/canvasStoreTypes.ts");
+  expect(canvasStore).not.toContain("generationAiMessages");   // projectAgentCutoverStructure.test.ts 原 :61
+  expect(canvasTypes).not.toContain("setGenerationAiMessages"); // 原 :62
+  expect(canvasTypes).not.toContain("generationAiDraft");       // 原 :67
+  ```
+  已迁至 `electron/projectAgentHost/projectAgentCutoverStructure.test.ts` 的独立 `it.skip("[C9 gate] …")` 用例（原 `it` 里同断言删除，保留的 `installProjectAgentSnapshotToUi` / `creation*` 断言仍活跃常绿）。
+- **当前状态（共存期）**：三断言**红**（`generationAi*` 按裁决保留）。理由 = 拆解面板 v1 依赖（`CollapsedAiChip` 直读 generationAi 态、过渡期互斥占槽）+ 旧 AI 面板是活功能；skip 是**声明式记账**而非掩盖失败——其余 5 条 cutover 结构断言（`registerConversationsIpc` / `nomi:conversations:` / `CreationAiPanel.tsx` / `workbench-ai.css` 等文件与 IPC 的删除）**照常绿**，`generationAiConversation.ts`（旧会话系统的 project-swap 助手）虽被 #293 带回 main，但合流保 HEAD 删除态且全树无悬空 importer（唯一 importer 是 origin/main 的 `NomiStudioApp`，其被 HEAD 版本取代不再引用它），故共存范围精确锁在「store 字段」层，未把整套旧会话系统复活。
+- **开闸通过断言（cutover 收尾时）**：① 删旧 composer 态 / `CreationAiPanel` 等剩余旧 AI 面板（本红灯只保 store 字段，面板层删除仍是目标）；② 拆解面板 handoff 从直读 `generationAi*` 改接 **Host 投影 draft**（`useProjectAgentSnapshot` / `projectAgentDraft`），`CollapsedAiChip` 角标数据源迁到 Host 投影；③ 三断言转绿后解除 `it.skip`（去掉 `.skip`），并入 `same_class_entry_points`。届时 generationAi 态可随 cutover 收尾一并删除，与其余 5 条结构断言归一。
+
+> 附：合流时若 cutover 还删了 `CreationAiPanel` 等**活面板文件**而 main 侧存在，同理取 theirs 保留、删除动作记入本 C9。实测本次合流该批文件（`CreationAiPanel.tsx` / `CanvasAssistantEntry.tsx` / `CanvasAssistantPanel.tsx` / `aiConversationBuckets.ts` / `conversationPersistence.ts` / `conversationThreads.ts` / `desktopAgentsChatStream.ts` / `workbenchAiClient.ts` / `workbench-ai.css`）**在合流后均仍不存在**（cutover 删除与 main 无内容冲突，git 静默保删除态），故本次无需额外取 theirs 保留任何活面板文件；C9 共存范围就是上述 `generationAi*` store 字段这一层。
