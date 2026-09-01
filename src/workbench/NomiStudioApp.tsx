@@ -72,9 +72,7 @@ import { runProjectAssetHealthCheck } from './generationCanvas/runner/projectAss
 import { abandonPendingCanvasWrite } from './generationCanvas/events/canvasWriteBoundary'
 import { SurfacePortWireError } from '../../electron/shared/surfacePortBinding'
 import { FeedbackShareHost } from '../ui/community/FeedbackShareHost'
-
 type AppView = 'library' | 'studio'
-
 // 项目创建规格：所有创建入口拼装项目的单一真相源（P1）。
 // 各入口各自决定 workspaceMode / seedKey / 创建+刷新+hydrate 的编排时约定不统一——
 // 「落地视图不确定」「新建空白被当 legacy 迁移删默认节点」根子都在分头拼装。

@@ -143,7 +143,6 @@ type ActiveExecution = {
   /** Latest user steering instruction, consumed before the next model request. */
   steering?: string;
 };
-
 function recordProposalSettlement(
   execution: ActiveExecution,
   approvalId: string,
