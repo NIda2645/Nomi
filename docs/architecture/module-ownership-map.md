@@ -75,11 +75,16 @@
   （`modelArchetypes/index.ts → videoCapabilities/index.ts`，即渲染 barrel 从 canonical 家的 barrel 取值），
   `check:boundaries` 基线 143 → 110（棘轮下调）。纯搬迁、全量测试 delta = 0。
 
-- **残留（未来可再收敛）**：video 档案在 `videoCapabilities/registry.ts::SOURCE_BACKED_PROFILES`
-  与渲染层 `MODEL_ARCHETYPES` 里各登记一份（当前 35 个完全同集）。要让「接一个 video 模型」
-  连渲染 barrel 都不必碰（触达面再降），需让渲染层的 video 子集从 `sourceBackedVideoProfiles()`
-  **派生**而非手列——但那会改动 `MODEL_ARCHETYPES` 的构造顺序（现为 video/非 video 交错 10 段），
-  牵涉 `resolveArchetypeForModel` 末段匹配的顺序敏感性，属**行为可能变**的重构，不在本期「纯搬迁」范围。
+- **✅ 已清（二期单元 2）：video 双登记**。渲染层 `MODEL_ARCHETYPES` 的 video 块改为从
+  `sourceBackedVideoProfiles()` **整块派生**（35 项手列 + 35 具名 import 删净），登记点唯一
+  = `registry.ts::SOURCE_BACKED_PROFILES`。顺序敏感性用证据处理：全 pattern 语料（1042 条，
+  raw/大小写/前缀/末段变形）在新旧数组序上跑三趟匹配逐一对比，渲染层与主进程身份表两侧均
+  diffs=0；唯一同串反序对 `"veo3.1"`（Runway 平台判别串 vs Veo 家族键）由
+  `LEGACY_RESOLUTION_ORDER_PINS` 钉住渲染层存量赢家。跨档案同串的全部存量赢家锁在
+  `src/config/modelArchetypes/resolutionOrder.test.ts`（重排/新增翻转赢家即红）。
+  ⚠️ 已记录存量分裂：裸 `"veo3.1"` 渲染层解析 runway-video、registry 平局判据出 veo-3.1，
+  两侧本就相反——修它属行为变更，单独立项裁决（契约：
+  `docs/fixes/2026-09-02-archetype-video-registry-derivation.root-cause.json`）。
 
 - **原则（新代码即刻生效）**：迁移文件时，re-export 壳必须与迁移**同 commit 删除**，
   不留垫片。新增壳 = 违反 P1，评审直接打回。
