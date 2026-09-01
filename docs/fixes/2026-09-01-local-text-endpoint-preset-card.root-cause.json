@@ -1,0 +1,53 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-local-text-endpoint-preset-card",
+  "problem_type": "discoverability gap for no-auth local text endpoints (capability present, no user-reachable entry)",
+  "symptom": "Users running a local OpenAI-compatible text runtime (Ollama on 11434, LM Studio on 1234, LocalAI on 8080) had no way to discover or connect it from Nomi. The runtime primitive already existed — buildAiSdkModel builds createOpenAICompatible with authType 'none' — but the only entry was the generic 'custom vendor' card, which assumes a documented cloud host with a pasted API key. A user could not tell (a) that a local endpoint is connectable at all, (b) which port to point at, or (c) whether a given local model can actually drive the Agent tool loop versus only chat. This is the same class as vendor-manage-is-a-discoverability-problem.md: the ability shipped long ago, the reachable entry did not.",
+  "direct_cause": "There was no preset card that (1) port-scans the three common local runtimes, (2) lists /v1/models on a hit, (3) runs a minimal function-calling probe to classify Agent-ready vs chat-only, and (4) builds the model through the existing OpenAI-compatible no-auth path. Registering that card requires the 'local-text' vendor to appear in listVendors so the onboarding home can bucket it under 'available' — which means adding one seed to the single builtin-vendor list (electron/catalog/builtinVendorSeeds.ts). That file is the sole source of truth for which builtin vendors exist; there is intentionally no second registration site.",
+  "class_root": "The connect surface was shaped around the cloud case (documented host + pasted key). No-auth local endpoints are a distinct, first-class case that needs discovery (port scan) and honesty about capability (function-calling precheck), not a key field. The fix surfaces the already-present OpenAI-compatible primitive behind a dedicated card and routes build/connect through the existing custom-vendor/OpenAI-compatible path — no new runtime, no vendor-specific code, all three runtimes on one generic path. Only text is handled; local image/video already belong to ComfyUI (no parallel version).",
+  "affected_population": [
+    "Every user running Ollama / LM Studio / LocalAI who wants Nomi's Agent to use their local model to save credits or keep data local, but cannot find how to connect it.",
+    "Users who connect a local model and cannot tell whether it can drive the Agent tool loop (small local models often cannot) until they hit a silent failure mid-task.",
+    "Any future local OpenAI-compatible runtime on a different default port: it rides the same generic port-scan + capability-probe path with no new code."
+  ],
+  "scope_paths": [
+    "electron/catalog/builtinVendorSeeds.ts",
+    "electron/localRuntime/localTextVendorSeed.ts",
+    "electron/localRuntime/localTextEndpoints.ts",
+    "electron/localRuntime/localTextCapabilityProbe.ts",
+    "electron/localRuntime/localTextEndpointHandlers.ts"
+  ],
+  "entry_points": [
+    "BUILTIN_VENDOR_SEEDS — the single builtin-vendor list; adding LOCAL_TEXT_VENDOR_SEED here is what makes the 'local-text' vendor appear (disabled) in listVendors so the onboarding home can offer it under 'available'.",
+    "probeLocalTextEndpoints — port-scans the injectable candidate list and returns only runtimes whose /v1/models parses to a real model list (HTTP 200 alone is not a hit; a SPA can 200 an HTML page).",
+    "probeLocalTextCapability — sends one minimal tool-call request and classifies agent / chat-only / unknown; only a request that actually completes yields agent/chat-only, otherwise unknown (never guesses).",
+    "LocalModelCard.handleConnect — points the local-text vendor at the probed baseUrl with authType 'none', builds a text model via the existing upsertVendor/upsertModel path, then runs the capability precheck."
+  ],
+  "internal_only_reason": "No external provider API is contracted or newly integrated. All three runtimes are consumed through the OpenAI-compatible chat/completions and /v1/models surfaces already used by the existing onboarding model-list probe and buildAiSdkModel; this change only assembles those existing internal primitives behind a discovery card. The no-auth header rule (do not send an empty Authorization on local endpoints) reuses the existing decision recorded at electron/providerAdapter/builtinOpenAiCompatibleDraft.ts.",
+  "invariants": [
+    "The local-text vendor seed ships disabled with authType 'none' and a non-http placeholder baseUrl (local://text) so it never participates in host aliasing; the real endpoint is written to baseUrlHint only after the card probes a live runtime.",
+    "Endpoint detection accepts a runtime only when /v1/models parses to a real model list, not on HTTP 200 alone, so a SPA returning HTML is never treated as a running runtime.",
+    "Capability is reported honestly: a model is badged Agent-ready only when a real tool-call request returns tool_calls; a request that does not complete is 'unknown', never silently assumed to work.",
+    "No Authorization header is sent to a local endpoint, because some local servers reject an empty bearer.",
+    "Only text models are handled here; local image/video remain owned by ComfyUI with no parallel path."
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "This is an additive discovery surface over existing primitives, not a defect class with multiple live entry points to converge. The single high-risk touch is one seed row in the single builtin-vendor list; the rest lives in new, self-contained localRuntime modules with injectable dependencies. No reusable machine-enforced boundary is introduced (prevention is intentionally omitted) because there is no invariant that another call site could violate — the port list, capability verdict, and no-auth rule are all owned in one place each and pinned by tests.",
+    "same_class_scan": [
+      "Confirmed BUILTIN_VENDOR_SEEDS is the sole builtin-vendor registration site (builtinVendorKeyForHostname derives from the same list), so the seed is added once and not duplicated.",
+      "Confirmed the connect/build path reuses the existing OpenAI-compatible no-auth path (buildAiSdkModel createOpenAICompatible + authType 'none' via vendorModelConnection), so no second runtime or vendor-specific branch is created.",
+      "Confirmed local image/video are owned by ComfyUI (comfyuiLocal.ts) and this card is text-only, so no parallel local-media path is opened.",
+      "Confirmed the port candidate list is a single injectable constant (LOCAL_TEXT_RUNTIME_CANDIDATES) consumed only by probeLocalTextEndpoints, so adding a runtime is a data change on one owner, not a code fork."
+    ]
+  },
+  "regression_tests": [
+    "electron/localRuntime/localTextEndpoints.test.ts"
+  ],
+  "migration": "No stored data is rewritten. The new seed is reconciled into existing catalogs on read like every other builtin vendor: it appears disabled under 'available' and only becomes active when the user connects a probed runtime. Users with no local runtime see a quiet 'not detected' state and no change to any existing connection.",
+  "residual_risks": [
+    "The capability precheck classifies from one tool-call probe; a model that supports tools but declined on this specific prompt would be badged chat-only. The badge is advisory and re-runnable, and connection is never blocked by it.",
+    "Port detection targets the three common default ports; a runtime bound to a non-default port is not auto-discovered (the user would use the generic custom-vendor card). The candidate list is a single injectable constant so adding a port is a one-line data change.",
+    "Detection uses the app transport that ignores the system proxy so it reaches 127.0.0.1 directly; a user who deliberately fronts a local runtime through a proxy on a different origin is out of scope for auto-detection."
+  ]
+}

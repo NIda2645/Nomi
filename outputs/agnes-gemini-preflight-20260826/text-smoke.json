@@ -1,0 +1,66 @@
+[
+  {
+    "model": "agnes-2.0-flash",
+    "status": 200,
+    "seconds": 12.56,
+    "finish_reason": "stop",
+    "content": "\n\nNOMI_OK",
+    "usage": {
+      "completion_tokens": 23,
+      "prompt_tokens": 293,
+      "total_tokens": 316,
+      "completion_tokens_details": {
+        "reasoning_tokens": 17,
+        "text_tokens": 6
+      }
+    }
+  },
+  {
+    "model": "agnes-2.5-flash",
+    "status": 200,
+    "seconds": 2.43,
+    "finish_reason": "stop",
+    "content": "\n\nNOMI_OK",
+    "usage": {
+      "completion_tokens": 22,
+      "prompt_tokens": 293,
+      "total_tokens": 315,
+      "completion_tokens_details": {
+        "reasoning_tokens": 16,
+        "text_tokens": 6
+      },
+      "prompt_tokens_details": {
+        "cached_tokens": 256
+      }
+    }
+  },
+  {
+    "model": "agnes-2.5-pro-alpha",
+    "status": 200,
+    "seconds": 8.72,
+    "finish_reason": "stop",
+    "content": "\n\nNOMI_OK",
+    "usage": {
+      "completion_tokens": 41,
+      "prompt_tokens": 168,
+      "total_tokens": 209
+    }
+  },
+  {
+    "model": "agnes-2.5-pro-beta",
+    "status": 403,
+    "error": "{\"error\":{\"message\":\"team not allowed to access model. This team can only access models=['agnes-2.0-flash', 'agnes-image-2.0-flash', 'agnes-video-v2.0', 'agnes-image-2.1-flash', 'agnes-2.5-flash', 'agnes-2.5-pro', 'agnes-2.5-pro-alpha']. Tried to access agnes-2.5-pro-beta\",\"type\":\"team_model_access_denied\",\"param\":\"model\",\"code\":\"403\"}}"
+  },
+  {
+    "model": "agnes-2.5-pro",
+    "status": 200,
+    "seconds": 19.93,
+    "finish_reason": "stop",
+    "content": "\n\nNOMI_OK",
+    "usage": {
+      "completion_tokens": 41,
+      "prompt_tokens": 168,
+      "total_tokens": 209
+    }
+  }
+]
