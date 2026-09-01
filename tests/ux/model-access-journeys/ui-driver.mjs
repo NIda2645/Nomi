@@ -204,6 +204,42 @@ export async function launchJourneyUi({ journey, recorder }) {
     }
   }
 
+  // ── Verification-failure repair path (probed 2026-09-01 against a real build) ──
+  // When auto-adaptation guesses a mode wrong, the verification screen
+  // (AdapterVerificationScreen) surfaces a per-model recovery block *once the whole
+  // run is terminal* (stage failed/partial/needs_ai — a per-mode "没通过自检" badge
+  // alone is NOT terminal, the run keeps testing the other models). The repair CTA
+  // is category-driven by adapterFailureAdvice: a 5xx maps to category "server" →
+  // primary "重新验证" plus the universal escape hatch "继续手动配置" (onSelfConnect).
+  // There is NO "自己接入 / 自定义调用" button on this screen — that anchor never
+  // existed here; "自定义调用" is the CustomCallEditor reached one step deeper. This
+  // helper waits for the terminal repair action and returns its text.
+  async function waitForModeRepairAction(timeoutMs = 40_000) {
+    const action = win.getByRole('button', { name: '继续手动配置', exact: true }).first()
+    await action.waitFor({ state: 'visible', timeout: timeoutMs })
+    return action
+  }
+
+  // Drive the real failure→custom-call path (probed 2026-09-01 against a real build):
+  //   继续手动配置 → model detail page (data-model-settings-page="model") whose
+  //   "请求方式" summary row (aria "设置 … 的请求方式") opens the request-script editor.
+  // NOTE: the editor's own title is "请求脚本" (customCall.title), NOT "自定义调用" —
+  // "自定义调用" is only the label of the *entry row* in the model list. The editor page
+  // is data-model-settings-page="script" with data-model-access-entry="custom-call-script".
+  // Returns the editor's script page (the stable container J06/J07 assert within).
+  async function openCustomCallFromRepair() {
+    const action = await waitForModeRepairAction()
+    await action.click()
+    // Land on the model detail page (rendered on top of the connection workspace).
+    await win.locator('[data-model-settings-page="model"]').first().waitFor({ state: 'visible', timeout: 8000 })
+    const requestRow = win.getByRole('button', { name: /设置.*的请求方式/ }).first()
+    await requestRow.waitFor({ state: 'visible', timeout: 8000 })
+    await requestRow.click()
+    const editor = win.locator('[data-model-settings-page="script"]').first()
+    await editor.waitFor({ state: 'visible', timeout: 8000 })
+    return editor
+  }
+
   async function openCanvas() {
     // Idempotent: a journey opens the canvas once for the image step and again
     // for the video/recovery step. If the generation-canvas toolbar is already
@@ -242,6 +278,8 @@ export async function launchJourneyUi({ journey, recorder }) {
     catalogSnapshot,
     closeAccessModal,
     closeSettings,
+    waitForModeRepairAction,
+    openCustomCallFromRepair,
     openCanvas,
     screenshot: (name) => recorder.screenshot(win, name),
   }
