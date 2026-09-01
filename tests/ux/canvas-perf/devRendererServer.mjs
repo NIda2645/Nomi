@@ -61,8 +61,11 @@ function canConnect(host, port) {
  *   url ends with /index.html so electron/main.ts appends the #/studio route.
  */
 export async function startDevRendererServer(options = {}) {
-  const preferredPort = options.preferredPort || 5399
-  const readyTimeoutMs = options.readyTimeoutMs || 60_000
+  // Default to 5273 (the port the dev CSP in electron/main.ts:662 whitelists) so
+  // the dev-leg origin matches the CSP allowance exactly. Falls back upward if
+  // taken (e.g. a real `pnpm dev` is already running).
+  const preferredPort = options.preferredPort || 5273
+  const readyTimeoutMs = options.readyTimeoutMs || 90_000
   const port = await findPort(preferredPort)
   const viteBin = path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js')
 

@@ -71,7 +71,9 @@ const sampleCount = Math.max(1, Number(argValue('--runs') || process.env.NOMI_CA
 const warmupCount = Math.max(0, Number(argValue('--warmup') || process.env.NOMI_CANVAS_PERF_WARMUP || 1))
 const launchTimeoutMs = Math.max(
   5_000,
-  Number(argValue('--launch-timeout') || process.env.NOMI_CANVAS_PERF_LAUNCH_TIMEOUT_MS || 45_000),
+  // Dev-server leg boots the unminified dev bundle (slower first paint), so it
+  // gets a longer default launch window than the built-dist legs.
+  Number(argValue('--launch-timeout') || process.env.NOMI_CANVAS_PERF_LAUNCH_TIMEOUT_MS || (useDevServer ? 90_000 : 45_000)),
 )
 const allScenarios = [
   'cold-open',
@@ -369,7 +371,22 @@ async function installProbe(page) {
 }
 
 function pageWindows(app) {
-  return app.windows().filter((candidate) => !candidate.isClosed())
+  // Exclude DevTools windows. The dev leg sets NOMI_DESKTOP_DEV=1, which makes
+  // electron/main.ts:361 auto-open detached DevTools; that window shows up in
+  // app.windows() with a `devtools://` URL. Without this filter getTargetWindow
+  // falls back to live[last] and picks DevTools, so openProject waits for
+  // [data-project-card] inside DevTools and times out (root cause of the dev-leg
+  // blocker). Harmless on the prod/throttle legs where DevTools never opens.
+  return app
+    .windows()
+    .filter((candidate) => !candidate.isClosed())
+    .filter((candidate) => {
+      try {
+        return !/^devtools:\/\//.test(candidate.url())
+      } catch {
+        return true
+      }
+    })
 }
 
 function getTargetWindow(app, fallback) {
@@ -522,9 +539,13 @@ async function readNodeIdentity(page, targetNodeId = null) {
 
 async function openProject(app, page, fixture) {
   const startedAt = Date.now()
+  // The dev bundle transforms ~2MB of app modules on demand at first open, so
+  // the library card and canvas take much longer to paint than the built dist.
+  // Scale the open-path waits (not the interaction sampling) for the dev leg.
+  const openScale = useDevServer ? 4 : 1
   if (!/projectId=/.test(page.url())) {
     const card = page.locator('[data-project-card]', { hasText: fixture.record.name }).first()
-    await card.waitFor({ timeout: 12_000 })
+    await card.waitFor({ timeout: 12_000 * openScale })
     await card.click()
     await sleep(page, 1000)
     page = getTargetWindow(app, page)
@@ -535,7 +556,7 @@ async function openProject(app, page, fixture) {
     if (await continueButton.count().catch(() => 0)) await continueButton.click().catch(() => {})
   }
   page = getTargetWindow(app, page)
-  await page.locator('.generation-canvas-v2__stage').waitFor({ timeout: 20_000 })
+  await page.locator('.generation-canvas-v2__stage').waitFor({ timeout: 20_000 * openScale })
   const firstCanvasMs = Date.now() - startedAt
   const settleStartedAt = Date.now()
   await page.waitForFunction(
@@ -546,7 +567,7 @@ async function openProject(app, page, fixture) {
       return nodesReady && virtualizationReady
     },
     { nodeCount: fixture.summary.nodes },
-    { timeout: 20_000 },
+    { timeout: 20_000 * openScale },
   )
   await waitForVisibleMediaSettlement(page, {
     expectMedia: fixture.summary.imageNodes + fixture.summary.videoNodes > 0,
@@ -980,8 +1001,14 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
         NOMI_DISABLE_CAPABILITY_CORE: process.env.NOMI_DISABLE_CAPABILITY_CORE || '1',
         // eval v2 dev leg: load the running Vite dev server (dev bundle +
         // StrictMode) instead of the built dist renderer. electron/main.ts:227
-        // reads NOMI_RENDERER_URL. Unset otherwise → normal dist behaviour.
-        ...(useDevServer && devRendererUrl ? { NOMI_RENDERER_URL: devRendererUrl } : {}),
+        // reads NOMI_RENDERER_URL; NOMI_DESKTOP_DEV=1 flips isDev so the dev CSP
+        // (electron/main.ts:657-663) allows the React Fast Refresh inline
+        // preamble — without it the production CSP blocks the preamble and React
+        // never mounts (observed: "@vitejs/plugin-react can't detect preamble").
+        // Unset otherwise → normal dist behaviour.
+        ...(useDevServer && devRendererUrl
+          ? { NOMI_RENDERER_URL: devRendererUrl, NOMI_DESKTOP_DEV: '1' }
+          : {}),
       },
     }))
     attachDiagnostics(page)
@@ -994,7 +1021,9 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
     if (useDevServer) {
       await installOffCanvasRenderProbe(page)
       await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
-      await sleep(page, 900)
+      // Dev bundle transforms modules on demand → first paint is slower than the
+      // built dist. Give it room before openProject looks for the project card.
+      await sleep(page, 2500)
       page = getTargetWindow(app, page)
     }
     const browserWindow = await app.browserWindow(page)
