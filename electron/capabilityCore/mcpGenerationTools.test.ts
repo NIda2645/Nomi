@@ -397,12 +397,12 @@ describe("semantic MCP generation tools", () => {
     // Approval is intentionally owned by the Run/gate seam in production. This
     // fixture only projects the result of that seam back through `read`; it
     // must not add an `approve` method to the production operation store.
-    const approvedReceiptId: string | undefined = undefined;
+    const approval = { receiptId: undefined as string | undefined };
     const operations = {
       ...baseOperations,
       read(projectId: string, operationId: string) {
         const operation = baseOperations.read(projectId, operationId);
-        return operation && approvedReceiptId ? { ...operation, approvedReceiptId } : operation;
+        return operation && approval.receiptId ? { ...operation, approvedReceiptId: approval.receiptId } : operation;
       },
     };
     const start = async (operation: GenerationOperation) => ({
@@ -415,7 +415,7 @@ describe("semantic MCP generation tools", () => {
     const operationId = (created as { operation: { operationId: string } }).operation.operationId;
     const preview = await handler({ capability: "preview", params: { operationId }, lease });
     operations.seal("project-1", operationId, (preview as { contract: never }).contract, "2026-08-23T00:00:00.000Z");
-    approvedReceiptId = "receipt-1";
+    approval.receiptId = "receipt-1";
     await expect(handler({ capability: "start", params: { operationId }, lease })).resolves.toMatchObject({ nextAction: "provider_not_configured" });
   });
 

@@ -87,7 +87,7 @@ describe("ExportJobManager", () => {
     const projectDir = makeTempDir();
     const manager = new ExportJobManager({ idGenerator: () => "job-1", clock: () => "2026-05-24T01:00:00.000Z" });
 
-    manager.createJob({ projectIdentity, projectDir, manifest: makeManifest() });
+    const job = manager.createJob({ projectIdentity, projectDir, manifest: makeManifest() });
 
     expect(job).toMatchObject({
       id: "job-1",
@@ -129,7 +129,7 @@ describe("ExportJobManager", () => {
   it("emits event on status update", () => {
     const projectDir = makeTempDir();
     const manager = new ExportJobManager({ idGenerator: () => "job-1", clock: () => "2026-05-24T01:00:00.000Z" });
-    manager.createJob({ projectIdentity, projectDir, manifest: makeManifest() });
+    const job = manager.createJob({ projectIdentity, projectDir, manifest: makeManifest() });
     const events: ExportJobEvent[] = [];
     const unsubscribe = manager.onEvent((event) => events.push(event));
 
@@ -315,7 +315,7 @@ describe("ExportJobManager", () => {
   it("stores failure message", () => {
     const projectDir = makeTempDir();
     const manager = new ExportJobManager({ idGenerator: () => "job-1", clock: () => "2026-05-24T01:00:00.000Z" });
-    const job = manager.createJob({ projectIdentity, projectDir, manifest: makeManifest() });
+    manager.createJob({ projectIdentity, projectDir, manifest: makeManifest() });
 
     const failed = manager.failJob("job-1", new Error("ffmpeg crashed"));
 
