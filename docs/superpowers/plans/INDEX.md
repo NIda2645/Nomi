@@ -43,6 +43,7 @@
 | [2026-08-25-canvas-batch-model-picker.md](2026-08-25-canvas-batch-model-picker.md) | Canvas Batch Model Picker Implementation Plan | — |
 | [2026-08-25-comfyui-workflow-matrix.md](2026-08-25-comfyui-workflow-matrix.md) | ComfyUI 通用工作流矩阵验证 Implementation Plan | — |
 | [2026-08-25-foundation-replacement-plan.md](2026-08-25-foundation-replacement-plan.md) | Foundation Replacement and Isolation Plan | — |
+| [2026-08-25-generation-credit-estimation.md](2026-08-25-generation-credit-estimation.md) | 生成积分估算与实际记录实施计划（2026-09-01 返工：仅落实际扣费证据增量） | 🚧 进行中 |
 | [2026-08-25-video-node-audio-playback.md](2026-08-25-video-node-audio-playback.md) | Video Node Audio Playback Implementation Plan | — |
 | [2026-08-27-electron-install-identity.md](2026-08-27-electron-install-identity.md) | Electron 安装身份执行计划 | ✅ 已交付 |
 | [2026-08-27-marketing-github-hero.md](2026-08-27-marketing-github-hero.md) | Marketing GitHub Hero Implementation Plan | — |

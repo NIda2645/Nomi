@@ -64,6 +64,7 @@ export type GenerationProvenance = {
   seed?: number
   params?: Record<string, unknown>
   vendorRequestId?: string
+  cost?: { amount: number; currency: string; unit: 'estimate' | 'actual' }
   timestamp: number
   agentRunId?: string
 }
