@@ -1,10 +1,14 @@
-// 2026-09-01 · 反馈与分享中心（PR #271）真机走查。
+// 2026-09-01 · 反馈与分享中心（PR #271 → 内嵌 placement 修复）真机走查。
 //
-// 锁两件用户看得见的事：
-//   ① 规范入口（设置→关于→「反馈与分享」）与情境入口（生成失败卡上「反馈此问题」）都能打开同一个对话框；
-//   ② 对话框构造的外发 URL（私密 Tally / 公开 GitHub）只带**有界字段**，
-//      且**永不携带用户自定义供应商的字符串**——失败卡的 vendorKey 由用户 base-url 派生
-//      （deriveVendorKeyFromBaseUrl → 主机名 slug，可能是内网地址），必须在信封边界被映射成字面量 "custom"。
+// 锁三件用户看得见的事：
+//   ① PLACEMENT（本次事故的正解）：规范入口（设置→关于→「反馈与分享」）点开后，反馈主体**内嵌在设置弹窗内**，
+//      不是脱离设置的独立浮层——获批样张画的就是它长在设置右栏。上一版只验「对话框可见」（存在≠位置），
+//      于是交付漂成独立框还全绿；这里断言反馈主体是 [data-settings-dialog] 的后代、设置没被关、屏上无另开的反馈 dialog。
+//   ② 分享给朋友拿到的是**一段可直接转发的话**（推荐语 + 真实链接）并能一键复制到剪贴板，不是一条裸 URL（问题 #2）。
+//   ③ 情境入口（生成失败卡上「反馈此问题」）仍能打开反馈（画布里无设置外壳，走独立 DesignModal 是对的），
+//      且其构造的外发 URL（私密 Tally / 公开 GitHub）只带**有界字段**，**永不携带用户自定义供应商的字符串**——
+//      失败卡的 vendorKey 由用户 base-url 派生（deriveVendorKeyFromBaseUrl → 主机名 slug，可能是内网地址），
+//      必须在信封边界被映射成字面量 "custom"。
 //
 // 为什么用真 Electron + 隔离 profile：这条路径跨「设置弹窗外壳 / About 区块 / 画布失败卡 /
 // 全局 FeedbackShareHost / feedbackDiagnostics 信封 / communityLinks URL 构造」六处，
@@ -173,13 +177,62 @@ fs.writeFileSync(projectFile, `${JSON.stringify(project, null, 2)}\n`)
     '关于页「反馈与分享」入口',
   )
 
-  // 对话框按稳定标题定位（内容会在 home/feedback/success 之间切，别绑页面专属文案）。
-  const feedbackDialog = win.getByRole('dialog', { name: '反馈与分享' })
-  await expectVisible(feedbackDialog, '反馈对话框没从 About 入口打开')
-  await expectVisible(win.getByText('告诉我们哪里卡住了', { exact: false }), '反馈对话框 home 页没渲染')
-  await shot(feedbackDialog, 'A02-feedback-home.png')
+  // ── PLACEMENT 断言（本次事故的正解）─────────────────────────────────────────
+  // 用户反馈：「反馈与分享点开变成独立框，不在设置页面里」。获批样张画的是它**长在设置弹窗右栏**。
+  // 上一版走查只验「反馈对话框可见」——存在≠位置，那个洞正是让这次交付漂了还全绿的原因。
+  // 这里把位置焊死：① 反馈主体必须是设置弹窗的**后代**（DOM 内嵌）；② 设置弹窗**没被关掉**
+  // （旧 bug 里入口会 onClose 设置）；③ 屏上**没有**另开一个 role=dialog 的反馈浮层。
+  const feedbackContent = win.locator('[data-feedback-share-content]')
+  await expectVisible(feedbackContent, '反馈主体没渲染（从 About 入口点进去后）')
+  await expectVisible(win.getByText('告诉我们哪里卡住了', { exact: false }), '反馈 home 页没渲染')
 
-  // 进「告诉我们一件事」表单。
+  // ① 内嵌：反馈主体在 [data-settings-dialog] 之内（用同一节点同时命中两个选择器来证明祖先关系）。
+  const embeddedInSettings = await win
+    .locator('[data-settings-dialog] [data-feedback-share-content]')
+    .count()
+  if (embeddedInSettings < 1) {
+    throw new Error(
+      '反馈主体没长在设置弹窗内（[data-settings-dialog] 里找不到 [data-feedback-share-content]）——\n'
+        + '  这正是用户反馈的「点开变成独立框」：它应当内嵌在设置右栏，不是脱离设置的浮层。',
+    )
+  }
+  // ② 设置弹窗仍在（入口没把设置关掉）。
+  await expectVisible(settingsDialog, '点反馈入口后设置弹窗被关掉了——内嵌形态下设置必须仍在')
+  // ③ 没有另开一个反馈浮层：反馈**不再**是独立 role=dialog。先证探针活着（设置弹窗这个 dialog 找得到），
+  //    再断言「名为反馈与分享的 dialog」不存在——这才是「独立框」bug 的反向对照。
+  const dialogProbe = await proveProbe(win.getByRole('dialog'), '页面上至少有一个 role=dialog（设置弹窗）')
+  await expectAbsent(win.getByRole('dialog', { name: '反馈与分享' }), {
+    provenBy: dialogProbe,
+    message: '反馈与分享不该是独立浮层（role=dialog）——它必须内嵌在设置弹窗里',
+  })
+  await shot(settingsDialog, 'A02-feedback-embedded-in-settings.png')
+  console.log('  ✓ A 路径 PLACEMENT：反馈主体内嵌在设置弹窗内，非独立浮层')
+
+  // ── 分享子流：一段可直接转发的话 + 一键复制（问题 #2 的验证）───────────────────
+  await clickOrFail(settingsDialog.getByText('分享 Nomi', { exact: true }).first(), '反馈首页「分享 Nomi」')
+  const shareMessageBox = settingsDialog.locator('[data-share-message]')
+  await expectVisible(shareMessageBox, '分享页没渲染可转发文案框')
+  const shareText = await shareMessageBox.innerText()
+  // 不是裸 URL：既有真实链接，又有一句人话（长度足以承载推荐语，且含产品名）。
+  if (!shareText.includes('nomiaqm.com') || !shareText.includes('github.com/aqm857886159/Nomi')) {
+    throw new Error(`分享文案没带上真实链接：\n${shareText}`)
+  }
+  if (!shareText.includes('Nomi') || shareText.replace(/https?:\/\/\S+/g, '').trim().length < 20) {
+    throw new Error(`分享文案像是裸链接、没有可转发的人话推荐语：\n${shareText}`)
+  }
+  // 一键复制：点按后剪贴板里就是这段话。
+  await win.evaluate(() => navigator.clipboard.writeText('__cleared__').catch(() => {}))
+  await clickOrFail(settingsDialog.locator('[data-share-copy]'), '复制分享文案按钮')
+  await expectVisible(settingsDialog.getByText('已复制，去粘给朋友吧', { exact: false }), '复制后没给出已复制反馈')
+  const clip = await win.evaluate(() => navigator.clipboard.readText().catch(() => '')).catch(() => '')
+  if (clip && !clip.includes('nomiaqm.com')) {
+    throw new Error(`点复制后剪贴板里不是那段可转发的话（拿到：${JSON.stringify(clip.slice(0, 60))}）`)
+  }
+  await shot(settingsDialog, 'A03-share-message-copied.png')
+  console.log('  ✓ A 路径 分享：可转发文案 + 一键复制到剪贴板，非裸 URL')
+
+  // 回反馈首页，进「告诉我们一件事」表单。
+  await clickOrFail(settingsDialog.getByText('返回', { exact: true }).first(), '分享页返回')
   await clickOrFail(win.getByText('告诉我们一件事', { exact: true }).first(), '反馈首页「告诉我们一件事」')
   await expectVisible(win.getByText('一句话说说发生了什么', { exact: true }), '反馈表单没出现（缺 summary 字段）')
 
@@ -191,7 +244,7 @@ fs.writeFileSync(projectFile, `${JSON.stringify(project, null, 2)}\n`)
   const diagPre = win.locator('details pre').first()
   await expectVisible(diagPre, '脱敏诊断预览没展开')
   const diagText = await diagPre.innerText()
-  await shot(feedbackDialog, 'A03-feedback-diagnostics-expanded.png')
+  await shot(settingsDialog, 'A04-feedback-diagnostics-expanded.png')
 
   // About 入口无 vendor 上下文 → 诊断包里根本不该出现 provider/model 键，更不该有任何私有串。
   for (const needle of [PRIVATE_VENDOR_KEY, PRIVATE_MODEL_KEY, 'corp-local']) {
@@ -206,7 +259,9 @@ fs.writeFileSync(projectFile, `${JSON.stringify(project, null, 2)}\n`)
   // 私密提交 → 记录外发 URL。
   await clickOrFail(win.getByRole('button', { name: '私密提交' }).first(), '私密提交')
   await expectVisible(win.getByText('反馈草稿已保存在本机，浏览器页面会继续提交', { exact: false }), '提交后没到 success 屏')
-  await shot(feedbackDialog, 'A04-feedback-success.png')
+  // 成功屏仍应在设置弹窗内（内嵌形态贯穿 home→feedback→success，不会中途冒出独立浮层）。
+  await expectVisible(settingsDialog.locator('[data-feedback-share-content]'), '成功屏脱离了设置弹窗')
+  await shot(settingsDialog, 'A05-feedback-success.png')
 
   const openedA = await drainOpenLog(win)
   const tallyUrlA = openedA.find((u) => u.includes('tally.so'))

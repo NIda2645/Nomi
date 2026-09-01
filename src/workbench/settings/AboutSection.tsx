@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconChevronRight, IconCircleCheck, IconMap, IconMessage, IconPlayerPlay } from '@tabler/icons-react'
 import { DesignProgress, NomiLoadingMark, NomiLogoMark, NomiWordmark, WorkbenchButton } from '../../design'
 import { useUpdater } from '../../ui/app-shell/useUpdater'
+import { FeedbackShareContent } from '../../ui/community/FeedbackShareContent'
 
 // 设置「关于」分区（2026-08-02 控件分层法 §1.5「归位」）。
 // 这一整块原先住在品牌钮的 AboutNomiPopover 里——那个弹窗一钮四用（品牌 + 手册 + 明暗 + 更新），
@@ -57,6 +58,18 @@ function AboutActionRow({
 export function AboutSection({ onClose, onReplaySplash }: AboutSectionProps): JSX.Element {
   const { t } = useTranslation()
   const updater = useUpdater()
+  // 反馈与分享**内嵌**在「关于」区块里（获批样张：docs/design/mockups/2026-09-01-feedback-share-center*.png
+  // 画的是它长在设置弹窗右栏、左侧 tab 始终在）。此前它 dispatch 全局事件 + 关掉设置，
+  // 结果冒成一个脱离设置的独立浮层——那正是「反馈与分享点开变成独立框」这个反馈的根因。
+  // 改法：在 About 区块内切视图（about ↔ feedback），复用 FeedbackShareContent，**不**再关设置。
+  // 全局 FeedbackShareHost + FeedbackShareDialog 保留，只服务画布失败卡那条无设置外壳的情境入口。
+  const [view, setView] = React.useState<'about' | 'feedback'>('about')
+
+  if (view === 'feedback') {
+    return (
+      <FeedbackShareContent variant="embedded" onBackToAbout={() => setView('about')} />
+    )
+  }
 
   return (
     <div>
@@ -77,10 +90,8 @@ export function AboutSection({ onClose, onReplaySplash }: AboutSectionProps): JS
           icon={<IconMessage size={18} stroke={1.6} aria-hidden="true" />}
           title={t('about.feedbackShare')}
           description={t('about.feedbackShareDescription')}
-          onClick={() => {
-            window.dispatchEvent(new CustomEvent('nomi-open-feedback-share'))
-            onClose()
-          }}
+          // 内嵌切视图，不 dispatch 全局事件、不关设置——反馈就长在设置弹窗里（样张形态）。
+          onClick={() => setView('feedback')}
         />
         <AboutActionRow
           icon={<IconMap size={18} stroke={1.6} aria-hidden="true" />}
