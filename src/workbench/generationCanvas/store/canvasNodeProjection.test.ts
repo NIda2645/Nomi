@@ -109,7 +109,7 @@ describe('selectStableCanvasNodes — off-canvas subscription boundary', () => {
     const before = project()
     useGenerationCanvasStore
       .getState()
-      .updateNode('a', { result: { type: 'image', url: 'nomi-local://x.png' } }, { persist: false, emit: false })
+      .updateNode('a', { result: { id: 'r-a', createdAt: 0, type: 'image', url: 'nomi-local://x.png' } }, { persist: false, emit: false })
     const after = project()
     expect(after).not.toBe(before)
     expect(after.find((entry) => entry.id === 'a')?.result?.url).toBe('nomi-local://x.png')
