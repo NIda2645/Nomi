@@ -54,6 +54,7 @@ import { createMainWindowGuard } from "./mainWindowPresence";
 import { assertTrustedSender } from "./ipcSenderGuard";
 import { registerTrustedSyncIpc } from "./trustedSyncIpc";
 import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
+import { registerVideoIpc } from "./video/videoIpc";
 import { desktopT, registerI18nIpc, setDesktopLocale } from "./i18n";
 import { registerSettingsIpc } from "./settings/registerSettingsIpc";
 import { registerIntegrationHandoffIpc } from "./integrationCertification/handoffQueue";
@@ -590,22 +591,8 @@ function registerIpc(): void {
   });
   registerAssetsIpc();
   registerSettingsIpc();
-  ipcMain.handle("nomi:video:extract-frame", async (event, payload) => {
-    assertTrustedSender(event);
-    const { extractVideoFrameToAsset } = await import("./video/extractVideoFrame");
-    return extractVideoFrameToAsset(payload);
-  });
-  ipcMain.handle("nomi:video:extract-filmstrip", async (event, payload) => {
-    assertTrustedSender(event);
-    const { extractVideoFilmstripToAsset } = await import("./video/extractVideoFrame");
-    return extractVideoFilmstripToAsset(payload);
-  });
+  registerVideoIpc();
   registerScreenshotIpc();
-  ipcMain.handle("nomi:video:detect-shot-cuts", async (event, payload) => {
-    assertTrustedSender(event);
-    const { detectShotCuts } = await import("./video/detectShotCuts");
-    return detectShotCuts(payload);
-  });
   ipcMain.handle("nomi:image:decompose-layers", async (event, payload) => {
     assertTrustedSender(event);
     const { decomposeLayers } = await import("./image/decomposeLayers");
