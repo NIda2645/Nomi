@@ -1,6 +1,8 @@
 // 渲染层要的 skill 列表 DTO（主进程组装）。按「路 A」：这里只把 manifest 原样给渲染层，
 // 能力比对（缺哪个 provider）放渲染层用 getCatalogHealth 做，catalog 一变实时刷新、不耦合。
 import { deriveSkillNeeds } from "./skillCapability";
+import { ipcMain } from "electron";
+import { assertTrustedSender } from "../ipcSenderGuard";
 import type { SkillProviderKind } from "./skillManifestSchema";
 import { readSkillRecords } from "./skillStore";
 
@@ -47,5 +49,16 @@ export function listSkillsForRenderer(): SkillListItem[] {
       manifestError: r.manifestError ?? null,
       origin: r.origin,
     };
+  });
+}
+
+type RegisterSyncIpc = (channel: string, handler: (...args: unknown[]) => unknown) => void;
+
+/** Register the renderer-facing skill list boundary used by the ref Host wiring. */
+export function registerSkillIpc(registerSyncIpc: RegisterSyncIpc): void {
+  registerSyncIpc("nomi:skill:list", () => listSkillsForRenderer());
+  ipcMain.handle("nomi:skill:list-secure", async (event) => {
+    assertTrustedSender(event);
+    return listSkillsForRenderer();
   });
 }

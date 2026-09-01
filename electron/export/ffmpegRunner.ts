@@ -8,7 +8,6 @@ import { buildWebmToMp4Args } from "./ffmpegCommandBuilder";
 import { parseFfmpegProgressChunk, progressFromOutTime } from "./ffmpegProgress";
 import type { ExportProfile } from "./exportTypes";
 import type { FfmpegFiltergraphPlan } from "./ffmpegFiltergraph";
-import { desktopT } from "../i18n";
 
 export type FfmpegProcessResult = {
   code: number | null;
@@ -256,16 +255,16 @@ function defaultRunProcess(command: string, args: string[], options: RunFfmpegPr
 export async function transcodeWebmFileToMp4(options: TranscodeWebmFileToMp4Options): Promise<TimelineMp4ExportResult> {
   const ffmpegPath = resolveFfmpegPath(options.ffmpegPath);
   if (!ffmpegPath) {
-    throw new Error(desktopT("export.codecMissing"));
+    throw new Error("导出失败：MP4 编码组件缺失，请重新安装 Nomi。你不需要单独安装 FFmpeg。");
   }
 
   const inputPath = path.resolve(options.inputPath);
   if (!fs.existsSync(inputPath)) {
-    throw new Error(desktopT("export.inputMissing"));
+    throw new Error("导出失败：输入视频不存在");
   }
   const inputStat = fs.statSync(inputPath);
   if (!inputStat.isFile() || inputStat.size <= 0) {
-    throw new Error(desktopT("export.inputEmpty"));
+    throw new Error("导出失败：输入视频为空");
   }
 
   const projectDir = path.resolve(options.projectDir);
@@ -305,12 +304,12 @@ export async function transcodeWebmFileToMp4(options: TranscodeWebmFileToMp4Opti
     }
     if (result.code !== 0) {
       const detail = stderrSummaryForError(stderrSummary) || `ffmpeg exited with code ${result.code}`;
-      throw new Error(desktopT("export.detail", { detail }));
+      throw new Error(`导出失败：${detail}`);
     }
     if (options.signal?.aborted) throw new ExportCancelledError();
-    if (!fs.existsSync(partialOutputPath)) throw new Error(desktopT("export.mp4NotProduced"));
+    if (!fs.existsSync(partialOutputPath)) throw new Error("导出失败：MP4 文件未生成");
     const stat = fs.statSync(partialOutputPath);
-    if (stat.size <= 0) throw new Error(desktopT("export.mp4Empty"));
+    if (stat.size <= 0) throw new Error("导出失败：MP4 文件为空");
     // Windows：旧导出 MP4 被播放器/资源管理器预览持有会 EPERM，共享重试收口（P2）。
     renameSyncWithRetry(partialOutputPath, outputPath);
     const finalStat = fs.statSync(outputPath);
@@ -351,7 +350,7 @@ export type RenderFiltergraphToMp4Options = {
 export async function renderFiltergraphToMp4(options: RenderFiltergraphToMp4Options): Promise<TimelineMp4ExportResult> {
   const ffmpegPath = resolveFfmpegPath(options.ffmpegPath);
   if (!ffmpegPath) {
-    throw new Error(desktopT("export.codecMissing"));
+    throw new Error("导出失败：MP4 编码组件缺失，请重新安装 Nomi。你不需要单独安装 FFmpeg。");
   }
 
   const projectDir = path.resolve(options.projectDir);
@@ -392,12 +391,12 @@ export async function renderFiltergraphToMp4(options: RenderFiltergraphToMp4Opti
     }
     if (result.code !== 0) {
       const detail = stderrSummaryForError(stderrSummary) || `ffmpeg exited with code ${result.code}`;
-      throw new Error(desktopT("export.detail", { detail }));
+      throw new Error(`导出失败：${detail}`);
     }
     if (options.signal?.aborted) throw new ExportCancelledError();
-    if (!fs.existsSync(partialOutputPath)) throw new Error(desktopT("export.mp4NotProduced"));
+    if (!fs.existsSync(partialOutputPath)) throw new Error("导出失败：MP4 文件未生成");
     const stat = fs.statSync(partialOutputPath);
-    if (stat.size <= 0) throw new Error(desktopT("export.mp4Empty"));
+    if (stat.size <= 0) throw new Error("导出失败：MP4 文件为空");
     // Windows：旧导出 MP4 被播放器/资源管理器预览持有会 EPERM，共享重试收口（P2）。
     renameSyncWithRetry(partialOutputPath, outputPath);
     const finalStat = fs.statSync(outputPath);
@@ -418,7 +417,7 @@ export async function renderFiltergraphToMp4(options: RenderFiltergraphToMp4Opti
 
 export async function transcodeWebmToMp4(options: TranscodeWebmToMp4Options): Promise<TimelineMp4ExportResult> {
   if (!options.inputBytes || options.inputBytes.byteLength <= 0) {
-    throw new Error(desktopT("export.inputEmpty"));
+    throw new Error("导出失败：输入视频为空");
   }
 
   const projectDir = path.resolve(options.projectDir);

@@ -25,6 +25,10 @@ import { validateGlbStructure } from "./model3dValidation";
 import { resolveFfmpegPath } from "../export/ffmpegRunner";
 import { MEDIA_DECODER_PROTOCOL_WHITELIST } from "../export/mediaProbe";
 import type { CertificationMediaEvidence } from "../providerAdapter/certificationMedia";
+import type {
+  ProjectAgentAttachmentClaim,
+  ProjectAgentAttachmentRef,
+} from "../shared/projectAgentContracts";
 
 type LocalAssetRecord = {
   id: string;
@@ -232,6 +236,12 @@ function stableLocalReferenceId(projectId: string, url: string): string {
   return stableStoredAssetId(projectId, url);
 }
 
+async function contentHashForFile(filePath: string): Promise<string> {
+  const hash = crypto.createHash("sha256");
+  for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk as Buffer);
+  return hash.digest("hex");
+}
+
 export function writeAsset(
   projectId: string,
   bytes: Buffer,
@@ -249,6 +259,7 @@ export function writeAsset(
   writeAssetSidecarMeta(absolutePath, meta);
   broadcastAssetsUpdated(projectId);
   const url = localAssetUrl(projectId, relativePath);
+  const contentHash = crypto.createHash("sha256").update(bytes).digest("hex");
   const t = nowIso();
   return {
     id: stableStoredAssetId(projectId, relativePath),
@@ -264,6 +275,7 @@ export function writeAsset(
       absolutePath,
       contentType: actualContentType,
       size: bytes.byteLength,
+      contentHash,
     },
   };
 }
@@ -291,11 +303,11 @@ export function writeDeterministicAsset(
   const bucket = assetBucketFromMeta(meta);
   const relativePath = path.posix.join("assets", bucket, "materialized", `${parsed.name || "asset"}-${keyHash}${parsed.ext || ".bin"}`);
   const absolutePath = path.join(projectDir, relativePath);
+  const contentHash = crypto.createHash("sha256").update(bytes).digest("hex");
   ensureDir(path.dirname(absolutePath));
   if (fs.existsSync(absolutePath)) {
     const existingHash = crypto.createHash("sha256").update(fs.readFileSync(absolutePath)).digest("hex");
-    const nextHash = crypto.createHash("sha256").update(bytes).digest("hex");
-    if (existingHash !== nextHash) throw new Error("Deterministic materialization key maps to different bytes");
+    if (existingHash !== contentHash) throw new Error("Deterministic materialization key maps to different bytes");
   } else {
     fs.writeFileSync(absolutePath, bytes);
   }
@@ -319,6 +331,7 @@ export function writeDeterministicAsset(
       absolutePath,
       contentType: actualContentType,
       size: bytes.byteLength,
+      contentHash,
     },
   };
 }
@@ -350,6 +363,7 @@ export async function copyAssetFile(
   const { absolutePath, relativePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
   await fs.promises.copyFile(sourcePath, absolutePath);
   const stat = await fs.promises.stat(absolutePath);
+  const contentHash = await contentHashForFile(absolutePath);
   await writeAssetSidecarMetaAsync(absolutePath, meta);
   broadcastAssetsUpdated(projectId);
   const url = localAssetUrl(projectId, relativePath);
@@ -368,6 +382,7 @@ export async function copyAssetFile(
       absolutePath,
       contentType: actualContentType,
       size: stat.size,
+      contentHash,
     },
   };
 }
@@ -474,7 +489,6 @@ export function moveAssetFile(
 type RemoteAssetImportOptions = {
   /** 仅供 main 进程内部已配置的本地生成服务使用；renderer IPC 无法注入第二参数。 */
   trustedPrivateOrigin?: string;
-  certificationEvidence?: CertificationMediaEvidence;
 };
 
 export async function importRemoteAsset(payload: unknown, options: RemoteAssetImportOptions = {}): Promise<unknown> {
@@ -501,8 +515,8 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
       projectId,
       parsed.bytes,
       String(raw.fileName || `asset-${Date.now()}.${ext}`),
-      options.certificationEvidence?.contentType || parsed.contentType,
-      { kind: raw.kind || "generated", originalUrl: null, ...(options.certificationEvidence ? { certificationEvidence: options.certificationEvidence } : {}) },
+      parsed.contentType,
+      { kind: raw.kind || "generated", originalUrl: null },
     );
   }
   if (!/^https?:\/\//i.test(url)) throw new Error("Only http(s), data, and nomi-local assets are supported");
@@ -515,16 +529,15 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
   const bytes = fetched.bytes;
   const hintedContentType = fetched.contentType || "application/octet-stream";
   const rawFileName = String(raw.fileName || path.basename(new URL(url).pathname) || "").trim();
-  const contentType = options.certificationEvidence?.contentType || (hintedContentType.toLowerCase().split(";")[0] === "application/octet-stream"
+  const contentType = hintedContentType.toLowerCase().split(";")[0] === "application/octet-stream"
     ? resolveContentType(rawFileName || url, bytes)
-    : hintedContentType);
+    : hintedContentType;
   const ext = extensionFromMime(contentType, extensionFromUrl(url));
   const fileName = rawFileName || `asset-${Date.now()}.${ext}`;
   return writeAsset(projectId, bytes, fileName.includes(".") ? fileName : `${fileName}.${ext}`, contentType, {
     kind: raw.kind || "generated",
     originalUrl: url,
     ownerNodeId: raw.ownerNodeId || null,
-    ...(options.certificationEvidence ? { certificationEvidence: options.certificationEvidence } : {}),
   });
 }
 
@@ -590,4 +603,65 @@ export function listProjectAssets(payload: unknown): { items: LocalAssetRecord[]
     items,
     cursor: nextOffset < records.length ? String(nextOffset) : null,
   };
+}
+
+function projectAgentAttachmentClaim(value: unknown): ProjectAgentAttachmentClaim {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("project_agent_attachment_invalid");
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).some((key) => key !== "assetId" && key !== "version") ||
+    typeof record.assetId !== "string" ||
+    !record.assetId.trim() ||
+    record.version !== 1
+  ) {
+    throw new Error("project_agent_attachment_invalid");
+  }
+  return Object.freeze({ assetId: record.assetId, version: 1 });
+}
+
+/** Resolve untrusted renderer claims against the exact main-owned project asset index. */
+export function resolveProjectAgentAttachmentClaims(
+  projectId: string,
+  rawClaims: readonly unknown[],
+): readonly ProjectAgentAttachmentRef[] {
+  if (!Array.isArray(rawClaims)) throw new Error("project_agent_attachment_invalid");
+  const claims = rawClaims.map(projectAgentAttachmentClaim);
+  const claimedIds = new Set<string>();
+  const assets = listProjectAssets({ projectId, limit: 500 }).items;
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  return Object.freeze(claims.map((claim) => {
+    if (claimedIds.has(claim.assetId)) throw new Error("project_agent_attachment_invalid");
+    claimedIds.add(claim.assetId);
+    const asset = byId.get(claim.assetId);
+    if (!asset || asset.projectId !== projectId) throw new Error("project_agent_attachment_invalid");
+    const absolutePath = asset.data.absolutePath;
+    const relativePath = asset.data.relativePath;
+    if (
+      typeof absolutePath !== "string" ||
+      typeof relativePath !== "string" ||
+      !fs.existsSync(absolutePath)
+    ) {
+      throw new Error("project_agent_attachment_invalid");
+    }
+    const contentHash = crypto.createHash("sha256").update(fs.readFileSync(absolutePath)).digest("hex");
+    const contentType = asset.data.contentType;
+    const size = asset.data.size;
+    if (typeof contentType !== "string" || !Number.isSafeInteger(size) || (size as number) < 0) {
+      throw new Error("project_agent_attachment_invalid");
+    }
+    return Object.freeze({
+      assetId: asset.id,
+      contentHash,
+      version: 1,
+      display: Object.freeze({
+        url: localAssetUrl(projectId, relativePath),
+        fileName: path.basename(absolutePath),
+        contentType,
+        sizeBytes: size as number,
+        kind: contentType.startsWith("image/") ? "image" as const : "file" as const,
+      }),
+    });
+  }));
 }

@@ -11,7 +11,7 @@
     "Canvas, generation, ProductionRun, and artifact outputs"
   ],
   "scope_paths": [
-    "electron/projectAgentHost/hostLifecycle.ts",
+    "electron/projectAgentHost/projectAgentHost.ts",
     "electron/projectAgentHost/hostLifecycle.test.ts"
   ],
   "entry_points": [
@@ -29,14 +29,14 @@
   "generality_proof": "All capability and MCP adapters return through the runtime port before model context insertion; one projection enforces schema, redaction, size, and provenance for every provider and caller.",
   "shared_boundaries": [
     {
-      "path": "electron/projectAgentHost/hostLifecycle.ts",
+      "path": "electron/projectAgentHost/projectAgentHost.ts",
       "symbol": "addItem",
       "responsibility": "All Host outputs are stored as typed ledger items before projection."
     }
   ],
   "same_class_entry_points": [
     {
-      "path": "electron/projectAgentHost/hostLifecycle.ts",
+      "path": "electron/projectAgentHost/projectAgentHost.ts",
       "entry_point": "addItem",
       "disposition": "enforced",
       "evidence": "Unknown loop outputs cannot bypass the ledger item boundary."
@@ -59,13 +59,13 @@
   },
   "prevention": {
     "kind": "centralized-boundary",
-    "enforcement_path": "electron/projectAgentHost/hostLifecycle.ts",
+    "enforcement_path": "electron/projectAgentHost/projectAgentHost.ts",
     "invariant": "Only safeParse/redact/size-capped/provenance-bearing output may become a model item.",
     "failure_mode": "Schema violation, sensitive path/credential, or size overflow becomes a typed error projection and never raw model text.",
     "exception_policy": "none",
     "strategy": "Replace modelText(unknown) with one safe output projector owned by runtime and require every adapter result to pass it.",
     "artifacts": [
-      "electron/projectAgentHost/hostLifecycle.ts",
+      "electron/projectAgentHost/projectAgentHost.ts",
       "electron/projectAgentHost/hostLifecycle.test.ts"
     ]
   },

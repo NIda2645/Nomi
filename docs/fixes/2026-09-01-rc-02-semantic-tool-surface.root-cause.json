@@ -11,7 +11,7 @@
     "All paid or approval-bearing generation/ProductionRun transitions"
   ],
   "scope_paths": [
-    "electron/projectAgentHost/hostLifecycle.ts",
+    "electron/projectAgentHost/projectAgentHost.ts",
     "electron/projectAgentHost/hostLifecycle.test.ts"
   ],
   "entry_points": [
@@ -29,14 +29,14 @@
   "generality_proof": "All six descriptor groups and registry aliases pass through the manifest boundary; new capabilities must declare intent, risk, phase, and projection before becoming model-visible.",
   "shared_boundaries": [
     {
-      "path": "electron/projectAgentHost/hostLifecycle.ts",
+      "path": "electron/projectAgentHost/projectAgentHost.ts",
       "symbol": "ProjectAgentHost",
       "responsibility": "Host policy and effect authorization stay outside model projections."
     }
   ],
   "same_class_entry_points": [
     {
-      "path": "electron/projectAgentHost/hostLifecycle.ts",
+      "path": "electron/projectAgentHost/projectAgentHost.ts",
       "entry_point": "setPolicy",
       "disposition": "enforced",
       "evidence": "Policy changes are validated at the Host boundary."
@@ -59,13 +59,13 @@
   },
   "prevention": {
     "kind": "centralized-boundary",
-    "enforcement_path": "electron/projectAgentHost/hostLifecycle.ts",
+    "enforcement_path": "electron/projectAgentHost/projectAgentHost.ts",
     "invariant": "Only versioned semantic descriptors are model-visible; canonical aliases and Host transitions cannot leak through profile filtering.",
     "failure_mode": "A descriptor without intent/risk/capabilityRefs is rejected from the manifest; Host-only entries are omitted rather than silently downgraded.",
     "exception_policy": "none",
     "strategy": "Generate one manifest from canonical registry, merge aliases by user intent, and delete the old model projection in the same commit.",
     "artifacts": [
-      "electron/projectAgentHost/hostLifecycle.ts",
+      "electron/projectAgentHost/projectAgentHost.ts",
       "electron/projectAgentHost/hostLifecycle.test.ts"
     ]
   },
