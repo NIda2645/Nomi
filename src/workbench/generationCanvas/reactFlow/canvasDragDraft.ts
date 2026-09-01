@@ -1,6 +1,14 @@
-import { applyNodeChanges, type NodeChange } from '@xyflow/react'
-import type { GenerationFlowNode } from './generationCanvasReactFlowAdapter'
+import { applyNodeChanges, type InternalNode, type NodeChange, type ReactFlowState } from '@xyflow/react'
+import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 
+type CanvasDragKernelState = ReactFlowState<GenerationFlowNode, GenerationFlowEdge>
+type CanvasDragKernelStore = {
+  getState: () => CanvasDragKernelState
+  setState: (partial: Partial<CanvasDragKernelState>) => void
+}
+
+// Keep the store shape local so the hot path uses the public React Flow store
+// API while leaving the application nodes array untouched.
 /**
  * Keeps high-frequency node geometry in React Flow's interaction layer.
  * The domain nodes are never passed to applyNodeChanges.
@@ -32,4 +40,49 @@ export function overlayCanvasDragDraft(
       position: { ...draft.position },
     }
   })
+}
+
+export function applyCanvasDragKernelPositionChanges(
+  store: CanvasDragKernelStore,
+  changes: readonly NodeChange<GenerationFlowNode>[],
+): void {
+  const positionChanges = changes.filter((change): change is Extract<NodeChange<GenerationFlowNode>, { type: 'position' }> => (
+    change.type === 'position' && Boolean(change.position)
+  ))
+  if (positionChanges.length === 0) return
+
+  const state = store.getState()
+  const nodeLookup = new Map(state.nodeLookup)
+  const parentLookup = new Map(state.parentLookup)
+  for (const change of positionChanges) {
+    const node = nodeLookup.get(change.id) as InternalNode<GenerationFlowNode> | undefined
+    if (!node || !change.position) continue
+    const previousPosition = node.position
+    const previousAbsolute = node.internals.positionAbsolute
+    const nextPosition = { ...change.position }
+    const nextNode = {
+      ...node,
+      position: nextPosition,
+      dragging: change.dragging,
+      internals: {
+        ...node.internals,
+        positionAbsolute: {
+          x: previousAbsolute.x + nextPosition.x - previousPosition.x,
+          y: previousAbsolute.y + nextPosition.y - previousPosition.y,
+        },
+        userNode: {
+          ...node.internals.userNode,
+          position: nextPosition,
+          dragging: change.dragging,
+        },
+      },
+    }
+    nodeLookup.set(change.id, nextNode)
+    if (node.parentId) {
+      const children = new Map(parentLookup.get(node.parentId) || [])
+      children.set(change.id, nextNode)
+      parentLookup.set(node.parentId, children)
+    }
+  }
+  store.setState({ nodeLookup, parentLookup, hasDefaultNodes: false })
 }

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { NodeChange } from '@xyflow/react'
+import type { InternalNode, NodeChange, ReactFlowState } from '@xyflow/react'
 import type { GenerationFlowNode } from './generationCanvasReactFlowAdapter'
-import { applyCanvasDragPositionChanges, overlayCanvasDragDraft } from './canvasDragDraft'
+import {
+  applyCanvasDragKernelPositionChanges,
+  applyCanvasDragPositionChanges,
+  overlayCanvasDragDraft,
+} from './canvasDragDraft'
 
 function flowNode(id: string, x: number, y = 0): GenerationFlowNode {
   return {
@@ -64,5 +68,39 @@ describe('canvas drag draft', () => {
     expect(rendered[1]).not.toBe(projected[1])
     expect(rendered[1].position).toEqual({ x: 230, y: 12 })
     expect(rendered[2]).toBe(projected[2])
+  })
+
+  it('updates only React Flow kernel geometry while preserving the business nodes reference', () => {
+    const storeNodes = [flowNode('a', 10), flowNode('b', 200)]
+    const businessNodes = storeNodes
+    const internal = (node: GenerationFlowNode): InternalNode<GenerationFlowNode> => ({
+      ...node,
+      measured: { width: 240, height: 120 },
+      internals: {
+        positionAbsolute: { ...node.position },
+        z: 0,
+        userNode: node,
+      },
+    })
+    const state = {
+      nodes: storeNodes,
+      nodeLookup: new Map(storeNodes.map((node) => [node.id, internal(node)])),
+      parentLookup: new Map(),
+      hasDefaultNodes: false,
+    } as unknown as Pick<ReactFlowState<GenerationFlowNode>, 'nodes' | 'nodeLookup' | 'parentLookup' | 'hasDefaultNodes'>
+    const setState = vi.fn((partial: Partial<typeof state>) => Object.assign(state, partial))
+
+    applyCanvasDragKernelPositionChanges({ getState: () => state, setState }, [{
+      type: 'position',
+      id: 'a',
+      position: { x: 42, y: 18 },
+      dragging: true,
+    }] as NodeChange<GenerationFlowNode>[])
+
+    expect(businessNodes).toBe(storeNodes)
+    expect(state.nodes).toBe(businessNodes)
+    expect(state.nodeLookup.get('a')?.internals.positionAbsolute).toEqual({ x: 42, y: 18 })
+    expect(state.nodeLookup.get('b')).toBeDefined()
+    expect(setState).toHaveBeenCalledWith(expect.objectContaining({ hasDefaultNodes: false }))
   })
 })

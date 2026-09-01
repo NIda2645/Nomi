@@ -1,6 +1,7 @@
 import React from 'react'
 import {
   ReactFlowProvider,
+  useStoreApi,
   useReactFlow,
   type OnNodeDrag,
   type OnEdgesDelete,
@@ -61,7 +62,11 @@ import {
   type GenerationFlowEdge,
   type GenerationFlowNode,
 } from './generationCanvasReactFlowAdapter'
-import { applyCanvasDragPositionChanges, overlayCanvasDragDraft } from './canvasDragDraft'
+import {
+  applyCanvasDragKernelPositionChanges,
+  applyCanvasDragPositionChanges,
+  overlayCanvasDragDraft,
+} from './canvasDragDraft'
 import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOverlays'
 import { GenerationCanvasReactFlowViewport } from './GenerationCanvasReactFlowViewport'
 import { useGenerationCanvasReactFlowPointer } from './useGenerationCanvasReactFlowPointer'
@@ -82,10 +87,10 @@ type GenerationCanvasReactFlowProps = { readOnly?: boolean }
 function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasReactFlowProps): JSX.Element {
   const { t } = useTranslation()
   const flow = useReactFlow<GenerationFlowNode, GenerationFlowEdge>()
+  const flowStore = useStoreApi<GenerationFlowNode, GenerationFlowEdge>()
   const hostRef = React.useRef<HTMLDivElement>(null)
   const draggingRef = React.useRef(false)
   const dragDraftNodesRef = React.useRef<GenerationFlowNode[]>([])
-  const [dragDraftRevision, setDragDraftRevision] = React.useState(0)
   const dragStartPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map())
   const connectionStartRef = React.useRef<{ nodeId: string; side: 'left' | 'right' } | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null)
@@ -204,7 +209,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const renderedFlowNodes = React.useMemo(() => {
     if (!draggingRef.current || dragDraftNodesRef.current.length === 0) return flowNodes
     return overlayCanvasDragDraft(flowNodes, dragDraftNodesRef.current)
-  }, [dragDraftRevision, flowNodes])
+  }, [flowNodes])
   const groupBoxes = React.useMemo(
     () => getCanvasGroupBoxes(visibleGroups.filter((group) => !group.collapsed), collapsedProjection.visibleNodes),
     [collapsedProjection.visibleNodes, visibleGroups],
@@ -456,7 +461,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     if (positionChanges.length) {
       const draftNodes = dragDraftNodesRef.current.length ? dragDraftNodesRef.current : flowNodes
       dragDraftNodesRef.current = applyCanvasDragPositionChanges(draftNodes, changes)
-      setDragDraftRevision((revision) => revision + 1)
+      applyCanvasDragKernelPositionChanges(flowStore, changes)
     }
 
     const selectionChanges = collectFlowSelectionChanges(changes)
@@ -473,7 +478,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       nextSelection.every((nodeId, index) => nodeId === currentSelection[index])
     ) return
     selectNodes(nextSelection)
-  }, [flowNodes, selectNodes])
+  }, [flowNodes, flowStore, selectNodes])
 
   // React Flow's selection store is internal while the persisted selection lives
   // in Zustand. Syncing on every internal selection notification causes a
@@ -506,6 +511,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     if (readOnly) return
     draggingRef.current = true
     dragDraftNodesRef.current = flowNodes
+    flowStore.setState({ hasDefaultNodes: false })
     setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowNode)
     captureHistory()
     const state = useGenerationCanvasStore.getState()
@@ -516,7 +522,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         return node ? [[nodeId, { ...node.position }] as const] : []
       }),
     )
-  }, [captureHistory, flowNodes, readOnly, selectedNodeIds, selectedSet])
+  }, [captureHistory, flowNodes, flowStore, readOnly, selectedNodeIds, selectedSet])
 
   const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode, draggedNodes) => {
     if (readOnly || !draggingRef.current) return
@@ -536,7 +542,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         commitPersistedChange()
         dragStartPositionsRef.current.clear()
         dragDraftNodesRef.current = []
-        setDragDraftRevision((revision) => revision + 1)
         return
       }
       toast(t('generationCommon.node.generateBeforeTimeline'), 'info')
@@ -556,8 +561,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     commitPersistedChange()
     dragStartPositionsRef.current.clear()
     dragDraftNodesRef.current = []
-    setDragDraftRevision((revision) => revision + 1)
-  }, [commitPersistedChange, flowNodes, moveNode, readOnly, t])
+  }, [commitPersistedChange, moveNode, readOnly, t])
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return
