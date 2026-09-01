@@ -1,0 +1,104 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-creation-prosemirror-single-instance",
+  "problem_type": "dev-mode module-graph integrity: a shared library (ProseMirror) got split into two instances across the Vite optimizeDeps pre-bundle boundary, breaking cross-instance `instanceof` and corrupting decoration merging",
+  "symptom": "In `pnpm dev`, clicking the 创作 (Creation) tab crashed the entire Creation workspace into its chunk-boundary fallback (\"创作区加载失败\"). The renderer threw `TypeError: Cannot read properties of undefined (reading 'localsInner')` then `(reading 'eq')` inside prosemirror-view while the editor's decorations were being merged/updated (n.locals → DecorationGroup / matchesNode → Decoration.eq). Reproduced deterministically in a fresh worktree + fresh install (not environment-specific): opening the Creation editor mounts a Tiptap/ProseMirror EditorView whose decoration sources come from two module instances of prosemirror-view, so one instance's DecorationSet fails the other instance's `instanceof DecorationSet` check and an `undefined` member is spliced into the DecorationGroup. Production build was never affected because rollup's `manualChunks` routes all `/node_modules/prosemirror-*` into one `prosemirror-vendor` chunk; the split was purely a dev optimizeDeps artifact.",
+  "direct_cause": "Vite `optimizeDeps.include` pre-bundled `@tiptap/starter-kit` (and it inlines prosemirror-view/state/model into the optimized chunk = instance A), but did NOT include the `@tiptap/pm/*` sub-paths that `src/workbench/common/persistentSelection.ts` imports (`@tiptap/pm/view`, `@tiptap/pm/state`). With `optimizeDeps.noDiscovery: true`, those un-listed sub-paths were served as separate on-demand ESM modules = instance B of prosemirror-view. The Creation editor is the only surface that mounts the persistentSelection plugin (it passes `persistentSelection: true`; the canvas text node omits it), so it is the only place where instance-B decorations meet instance-A decorations. In `DecorationGroup.from`, `m instanceof DecorationSet` is false across the two instances, so the code falls to `m.members` (undefined on a plain DecorationSet) and pushes `undefined` into the group; prosemirror-view then dereferences `.localsInner`/`.eq` on that undefined and throws.",
+  "class_root": "This is a class, not a one-off: any renderer module that imports ProseMirror through a `@tiptap/pm/*` sub-path (or any prosemirror-* package) that is NOT in the same Vite pre-bundle set as `@tiptap/starter-kit` will resolve to a second instance in dev, and ProseMirror's identity-sensitive machinery (DecorationSet/Node/Mark/Selection `instanceof` and `.eq`) breaks silently across instances. The failure only surfaces at runtime when a real EditorView merges decorations from both instances, so unit tests (which never build an EditorView or merge multiple decoration sources) cannot see it, and production (single prosemirror-vendor chunk) is immune — which is exactly why it slipped past 21 PRs of CI. The remedy is to force ALL of the editor's ProseMirror entry paths through one shared pre-bundle graph so esbuild dedupes prosemirror-* to a single instance, and to add a dev-mode journey that actually opens the Creation editor so any future re-split is caught.",
+  "affected_population": [
+    "Every developer/user running `pnpm dev` who opens the Creation (创作) tab: the rich-text editor is the primary creation surface and it crashed on mount, taking the whole Creation workspace down to the load-failed fallback.",
+    "Any future renderer code that imports ProseMirror via a `@tiptap/pm/*` sub-path or a prosemirror-* package outside the pre-bundle set: it would re-split the instance and reintroduce the identical decoration-merge crash on any editor that combines its decorations with another source.",
+    "Any surface that opts a custom ProseMirror plugin with decorations into the shared rich-text kernel (persistentSelection today; more tomorrow): its DecorationSet must be the same instance the rest of the editor uses."
+  ],
+  "scope_paths": [
+    "vite.config.ts",
+    "src/dev/optimizeDepsEntry.ts",
+    "src/workbench/common/persistentSelection.ts",
+    "tests/ux/creation-editor-mount.walk.mjs"
+  ],
+  "entry_points": [
+    "vite.config.ts optimizeDeps.include — now lists `@tiptap/pm/view`, `@tiptap/pm/state`, `@tiptap/pm/model` alongside `@tiptap/starter-kit`/`@tiptap/react`/feature extensions, so a single esbuild pass pre-bundles them together and dedupes prosemirror-* to one instance (noDiscovery:true makes this list authoritative).",
+    "src/dev/optimizeDepsEntry.ts — the explicit dev pre-bundle entry mirrors the include list (imports the same `@tiptap/pm/*` sub-paths and feature extensions) so the pre-bundle surface is enumerated in one visible place.",
+    "src/workbench/common/persistentSelection.ts — the only custom ProseMirror plugin with a `decorations` prop; it imports Decoration/DecorationSet from `@tiptap/pm/view`, which must resolve to the same instance StarterKit uses.",
+    "tests/ux/creation-editor-mount.walk.mjs — dev-mode journey that opens the Creation editor and asserts it mounts, is editable, accepts input, and shows no chunk-boundary fallback; it spawns its own Vite dev server so it exercises the exact optimizeDeps path where the split lives."
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://vite.dev/config/dep-optimization-options",
+      "checked_at": "2026-09-01",
+      "purpose": "Confirm optimizeDeps.include semantics for deep/sub-path entries and that included deps are pre-bundled together by esbuild (deduping shared transitive deps), which is the mechanism that collapses prosemirror-* to a single instance in dev; and that optimizeDeps is dev/serve-only (ignored by the rollup production build), which is why the fix is dev-scoped and cannot affect the prod bundle."
+    }
+  ],
+  "invariants": [
+    "In dev, ProseMirror resolves to exactly one module instance across every editor entry path: whether reached via `@tiptap/starter-kit`, `@tiptap/react`, the feature extensions, or the `@tiptap/pm/*` sub-paths, DecorationSet/Node/Mark/Selection are the same classes, so `instanceof` and `.eq` hold and decoration merging never splices an undefined member.",
+    "Every `@tiptap/pm/*` sub-path the renderer imports is present in the same Vite pre-bundle set as `@tiptap/starter-kit` (both in optimizeDeps.include and mirrored in optimizeDepsEntry.ts); no editor ProseMirror import is left to be served as a separate un-optimized ESM module.",
+    "Opening the Creation editor mounts a working, editable ProseMirror surface (`.workbench-editor__content[contenteditable=true]`) and never falls back to the `[data-chunk-boundary=\"创作区\"]` load-failed panel — asserted by a dev-mode journey, not just unit tests."
+  ],
+  "generality_proof": "The fix is a single shared boundary, not a persistentSelection-local patch: the crash locus is prosemirror-view's decoration merge, which every decoration source in the editor flows through, and the cure is to make the Vite pre-bundle graph itself single-instance so ANY current or future ProseMirror import path (StarterKit, feature extensions, persistentSelection's pm/view, a plugin added tomorrow) dedupes to one instance. It is enforced at the module-graph layer in vite.config.ts (mirrored in the explicit optimizeDepsEntry.ts), so no per-plugin or per-import guard is needed and a second custom plugin importing `@tiptap/pm/*` inherits single-instance resolution for free. The production build already had this property via the prosemirror-vendor manualChunks; this change gives dev the same guarantee, closing the dev-vs-prod divergence.",
+  "shared_boundaries": [
+    {
+      "path": "vite.config.ts",
+      "symbol": "optimizeDeps.include (the @tiptap + @tiptap/pm pre-bundle set)",
+      "responsibility": "The single dev-mode module-graph boundary that decides which packages are pre-bundled together by esbuild. Listing `@tiptap/pm/view`/`state`/`model` next to `@tiptap/starter-kit` forces prosemirror-* to be deduped into one instance in the optimized graph, so every editor ProseMirror entry path shares one DecorationSet/Node/Mark identity. With noDiscovery:true this list is authoritative for the dev pre-bundle surface."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/common/persistentSelection.ts",
+      "entry_point": "createPersistentSelectionPlugin decorations prop — Decoration/DecorationSet imported from @tiptap/pm/view",
+      "disposition": "enforced",
+      "evidence": "This is the decoration source that was on the second instance. After adding `@tiptap/pm/view`/`state`/`model` to optimizeDeps.include (and mirroring in optimizeDepsEntry.ts), it pre-bundles into the same optimized graph as StarterKit, so its DecorationSet is instance-identical. Proven by the dev-mode journey creation-editor-mount.walk.mjs: with the fix the editor mounts and is editable with zero eq/localsInner errors; reverting the include entries turns the same journey red with the exact `reading 'localsInner'`/`reading 'eq'` fingerprint and the surface probe finding 0 elements."
+    },
+    {
+      "path": "src/workbench/common/useNomiRichTextEditor.ts",
+      "entry_point": "useEditor extensions: StarterKit + feature extensions (the editor's other decoration sources)",
+      "disposition": "enforced",
+      "evidence": "StarterKit (and gapcursor/dropcursor/placeholder it composes) is the instance-A decoration source that persistentSelection's decorations were being merged against in DecorationGroup.from. It has always been in optimizeDeps.include; the fix brings the persistentSelection pm/view import onto the same instance so the merge no longer splices an undefined member. The canvas text node reuses this same kernel with persistentSelection:false, so it never combined the two instances and never crashed — consistent with the single-instance diagnosis."
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "vite.config.ts",
+    "invariant": "In dev, all of the editor's ProseMirror entry paths pre-bundle into one esbuild graph, so prosemirror-* is a single instance and decoration merging is identity-consistent.",
+    "failure_mode": "If a `@tiptap/pm/*` sub-path (or a prosemirror-* package) used by the renderer is left out of the pre-bundle set, dev serves it as a separate ESM instance; the next editor that merges its decorations with another source splices an undefined member into a DecorationGroup and crashes the whole surface into its chunk-boundary fallback.",
+    "exception_policy": "none",
+    "strategy": "Keep the `@tiptap/pm/*` sub-paths in optimizeDeps.include together with `@tiptap/starter-kit` so esbuild dedupes prosemirror-* to one instance, and mirror the set in the explicit optimizeDepsEntry.ts; back it with a dev-mode journey that opens the Creation editor so any future re-split is caught red.",
+    "artifacts": [
+      "vite.config.ts",
+      "src/dev/optimizeDepsEntry.ts",
+      "tests/ux/creation-editor-mount.walk.mjs"
+    ]
+  },
+  "class_regression_tests": [
+    "tests/ux/creation-editor-mount.walk.mjs"
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Single-instance-across-a-bundler-boundary is a recurring class: every time the renderer imports ProseMirror through a new `@tiptap/pm/*` sub-path or a prosemirror-* package not already in the pre-bundle set, dev can re-split the instance and reintroduce the identical identity-sensitive crash. The remedy is structural (make the pre-bundle graph single-instance) plus a journey that exercises the real editor, not a per-import fix.",
+    "same_class_scan": [
+      "Enumerated every `@tiptap/pm/*` import in src/: `@tiptap/pm/view`, `@tiptap/pm/state` (persistentSelection.ts + its test), `@tiptap/pm/model` (its test). All three sub-paths are now in optimizeDeps.include and mirrored in optimizeDepsEntry.ts, so none is served as a separate instance.",
+      "Enumerated every `@tiptap/extension-*` import in src/: highlight, list, table, placeholder — the feature extensions the creation kernel composes; added highlight/list/table to optimizeDeps.include (placeholder was already present) so all editor extensions pre-bundle in the same pass.",
+      "Confirmed the only ProseMirror surface that combines a custom decoration plugin with StarterKit is the Creation editor (persistentSelection:true); the canvas TextDocumentNode reuses the same kernel with persistentSelection:false and never merged two instances — so no other surface was silently affected.",
+      "Confirmed the production build is immune independently: createManualChunks in vite.config.ts routes all `/node_modules/prosemirror-*` into one prosemirror-vendor chunk, so rollup keeps a single instance regardless; the fix only brings dev to parity and does not touch the prod chunking."
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/creation-editor-mount.walk.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No prior implementation is being replaced or removed. persistentSelection.ts is unchanged; the fix only widens the Vite dev pre-bundle set (optimizeDeps.include) and mirrors it in optimizeDepsEntry.ts. There is no parallel/legacy resolution path to delete — the second instance was an accidental omission from the pre-bundle list, not a deliberate alternate path."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency is added, upgraded, or retained. ProseMirror and Tiptap versions are unchanged (single versions already in the pnpm store: prosemirror-model@1.25.7, state@1.4.4, view@1.41.8, transform@1.12.0; @tiptap/* all 3.23.5). The fix is purely a bundler-configuration change that governs how the existing single versions are pre-bundled in dev.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data is rewritten and no runtime behavior changes for users beyond the Creation editor now mounting in dev instead of crashing. The change is dev-only: optimizeDeps and optimizeDepsEntry affect only Vite's dev pre-bundle; the production rollup build (which already single-instances prosemirror via manualChunks) is untouched and was re-verified green. Developers may need one forced dep re-optimization (`NOMI_FORCE_VITE_OPTIMIZE_DEPS=1`, or clearing `.tmp/vite`) for the new include set to take effect on an existing cache.",
+  "residual_risks": [
+    "The invariant is enforced by an allow-list in optimizeDeps.include (mirrored in optimizeDepsEntry.ts), not by an automated gate: a future ProseMirror-consuming `@tiptap/pm/*` import added without extending both lists could re-split the instance in dev. The creation-editor-mount.walk.mjs journey is the backstop — it opens the real editor in dev and turns red on the exact crash fingerprint — but it must be kept in the walkthrough set for that backstop to hold.",
+    "The journey guards the Creation editor specifically (the only surface that merges a custom decoration plugin with StarterKit today). A future second surface that mounts a decoration plugin on a different chunk would need its own dev-mode mount check to be equally protected."
+  ]
+}
