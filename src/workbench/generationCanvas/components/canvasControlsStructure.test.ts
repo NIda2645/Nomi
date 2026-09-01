@@ -44,9 +44,10 @@ describe('generation canvas control structure', () => {
 
   it('keeps node drag ticks in React Flow draft geometry until drag stop', () => {
     const generationCanvas = source('../reactFlow/GenerationCanvasReactFlow.tsx')
+    const dragDraft = source('../reactFlow/canvasDragDraft.ts')
     const dragHandler = generationCanvas.match(/const handleNodesChange:[\s\S]*?\n  }, \[[^\n]+\]\)/)?.[0] || ''
 
-    expect(generationCanvas).toContain('applyNodeChanges')
+    expect(dragDraft).toContain('applyNodeChanges')
     expect(dragHandler).toContain('dragDraft')
     expect(dragHandler).not.toContain('moveNode(')
   })
