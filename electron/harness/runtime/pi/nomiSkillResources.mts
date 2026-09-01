@@ -7,6 +7,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { SKILL_PACKAGE_VERSION } from '../../../skills/skillPackage.js';
 import * as skillStore from '../../../skills/skillStore.js';
 import type { SkillDiscoveryRoot, SkillRecord } from '../../../skills/skillStore.js';
+export { formatNomiSkillIndex } from '../../skillIndex.js';
 
 export type NomiSkillRoot = {
   path: string;
@@ -26,9 +27,6 @@ export type NomiSkillResourceCatalog = {
   reload(): Promise<void>;
 };
 
-const DEFAULT_SKILL_INDEX_LIMIT = 24;
-const SKILL_DESCRIPTION_LIMIT = 180;
-
 /**
  * Some compatibility tests mock the legacy Skill facade with only
  * `findSkillRecord`. Read optional canonical exports defensively so the Pi
@@ -42,45 +40,6 @@ function optionalSkillStoreFunction<T extends (...args: never[]) => unknown>(nam
   } catch {
     return undefined;
   }
-}
-
-function skillIndexOrder(left: NomiLoadedSkill, right: NomiLoadedSkill): number {
-  const byName = left.name.localeCompare(right.name, 'en', { sensitivity: 'base' });
-  return byName || left.contentHash.localeCompare(right.contentHash);
-}
-
-function compactDescription(value: string): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= SKILL_DESCRIPTION_LIMIT) return normalized;
-  return `${normalized.slice(0, SKILL_DESCRIPTION_LIMIT - 1).trimEnd()}…`;
-}
-
-/**
- * Keep the model-facing index bounded and deterministic.  The full catalog is
- * still available to the Workbench and `load_skill`; only the first stable
- * page of descriptions enters every turn's prompt.  Remaining names stay
- * discoverable without paying the token/KV-cache cost of their full metadata.
- */
-export function formatNomiSkillIndex(
-  skills: readonly NomiLoadedSkill[],
-  options: { limit?: number } = {},
-): string {
-  if (skills.length === 0) return 'Nomi Skill catalog: no skills are currently available.';
-  const requestedLimit = options.limit ?? DEFAULT_SKILL_INDEX_LIMIT;
-  const limit = Number.isFinite(requestedLimit)
-    ? Math.max(1, Math.min(Math.floor(requestedLimit), skills.length))
-    : DEFAULT_SKILL_INDEX_LIMIT;
-  const ordered = [...skills].sort(skillIndexOrder);
-  const visible = ordered.slice(0, limit);
-  const overflow = ordered.slice(limit);
-  const rows = visible.map((skill) => `- ${skill.name}: ${compactDescription(skill.description || 'No description provided.')}`);
-  return [
-    `Nomi Skill catalog (showing ${visible.length} of ${ordered.length}; metadata only; call load_skill with the exact name to load one body):`,
-    ...rows,
-    ...(overflow.length > 0
-      ? [`More skill names are available: ${overflow.map((skill) => skill.name).join(', ')}.`]
-      : []),
-  ].join('\n');
 }
 
 function normalizeRoots(roots: readonly NomiSkillRoot[]): NomiSkillRoot[] {

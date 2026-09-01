@@ -16,7 +16,7 @@ import { trim, type JsonRecord } from '../jsonUtils';
 import { readNomiLocalAsset } from '../assets/localAssetFile';
 import { extractTextFromLocalAsset } from '../files/extractText';
 import { buildAgentUserContent, modelSupportsImageInput, modelSupportsPdfInput } from './agentUserContent';
-import { createNomiSkillResourceCatalog, formatNomiSkillIndex } from '../harness/runtime/pi/nomiSkillResources.mjs';
+import { formatNomiSkillIndex, listNomiSkillIndexEntries } from '../harness/skillIndex.js';
 import { formatAgentContextSnapshot } from '../shared/agentContextSnapshot';
 import { workModeInstruction } from './agentWorkModePolicy';
 
@@ -53,7 +53,6 @@ export async function runAgentChatV2(input: AgentChatRequest, hooks: AgentChatV2
   const runtimeTools = agentToolsForRequest(payload, requestedCapabilities);
   const resolvedToolProfile = resolveAgentToolProfile(payload);
   const maxSteps = payload.capability === 'storyboard' || resolvedToolProfile === 'production' ? 24 as const : 8 as const;
-  const skillCatalog = createNomiSkillResourceCatalog();
   let selectedModel: { id: string; label: string; vendorKey: string } | undefined;
   const runtimeHooks: RuntimeTurnHooks = {
     signal: hooks.abortSignal,
@@ -95,7 +94,7 @@ export async function runAgentChatV2(input: AgentChatRequest, hooks: AgentChatV2
       // Keep the per-turn prompt/KV prefix stable and bounded; the full
       // repository/user catalog remains available through the Workbench and
       // exact-name load_skill calls.
-      formatNomiSkillIndex(skillCatalog.list().skills, { limit: 24 }),
+      formatNomiSkillIndex(listNomiSkillIndexEntries(), { limit: 24 }),
       buildSkillSystemPrompt(payload as unknown as JsonRecord, requestedSkill),
     ].filter(Boolean).join('\n\n');
     const systemPrompt = composeAgentSystemPrompt({ identity: NOMI_AGENT_IDENTITY,
