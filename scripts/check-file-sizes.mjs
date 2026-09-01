@@ -40,15 +40,16 @@ const ALLOWLIST = {
   // Project Agent Host 迁移巨壳（M1 transplant：electron 切片随 r2 入库、renderer 切片随
   // 本次 cutover 入库；上游 pr223 原型已人工评审同一批 owner，数字按本分支实际行数锁棘轮，
   // 只减不增，下一个分解批次按稳定 ownership seam 拆分后逐个出表）。
-  "electron/main.ts": 847,
+  "electron/main.ts": 834,
   "electron/capabilityCore/mcpGenerationTools.ts": 803,
   "electron/capabilityCore/verifiedCapabilityInvocation.ts": 1257,
   "electron/productionRun/productionRunService.ts": 816,
   "electron/projectAgentHost/projectAgentExecutionCoordinator.ts": 1840,
   "electron/projectAgentHost/projectAgentReducer.ts": 936,
   "electron/projectAgentHost/projectAgentState.ts": 809,
-  // Phase 6 常驻壳成为唯一 Agent UI 后的应用外壳（pr223 评审基线同为 908）。
-  "src/workbench/NomiStudioApp.tsx": 908,
+  // Phase 6 常驻壳成为唯一 Agent UI 后的应用外壳（pr223 评审基线曾为 908；并 origin/main 拆解面板宿主后
+  // 折叠一行多名 import，实际 907，锁棘轮只减不增）。
+  "src/workbench/NomiStudioApp.tsx": 907,
   // PR#21 白板节点引入（2026-06-25）：WhiteboardDrawingTool（1032）与 WhiteboardLeaferCanvas（3406）两巨壳
   // 已按 Rule 9 全部拆完、双双出白名单。LeaferCanvas → whiteboardCanvasTypes/Export/NodeOps/Geometry 四纯模块
   // + whiteboardSceneRender（渲染树）+ useWhiteboardDrawing/BoxSelection/SelectionActions/SceneSync 四交互 hook，

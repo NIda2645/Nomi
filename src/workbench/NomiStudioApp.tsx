@@ -62,11 +62,7 @@ import { useSpendConfirmStore } from './generationCanvas/spend/spendConfirm'
 import { runAssetSurfaceMigrations } from './assets/assetSurfaceMigration'
 import { useProductionRunStore } from './production/productionRunStore'
 import { ProductionCanvasLandingHost } from './production/ProductionCanvasLandingHost'
-import {
-  ProjectHydrationSupersededError,
-  createProjectCanvasReadSurfaceCoordinator,
-  registerProjectCanvasReadSurface,
-} from './project/projectCanvasReadSurface'
+import { ProjectHydrationSupersededError, createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurface } from './project/projectCanvasReadSurface'
 import { hydrateWorkbenchProjectWithRecovery } from './project/projectHydrationRecovery'
 import { runProjectAssetHealthCheck } from './generationCanvas/runner/projectAssetHealthCheck'
 import { abandonPendingCanvasWrite } from './generationCanvas/events/canvasWriteBoundary'
