@@ -117,10 +117,35 @@ export async function getTextBrain(): Promise<{ vendor: string; modelKey: string
 
 export type PromptCategory = 'all' | 'image' | 'video'
 
-/** 平凡过滤:分类(全部/图片/视频)+ 关键词(标题/正文/来源/已有标签)。 */
-export function filterPrompts(items: LibraryPrompt[], category: PromptCategory, keyword: string): LibraryPrompt[] {
+/** 「全部来源」哨兵：来源筛选的默认值（不按来源过滤）。用常量避免和真实来源名撞。 */
+export const PROMPT_SOURCE_ALL = '__all__'
+
+/**
+ * 站外精选条目按「来源」（GPT Image 2 / Nano Banana Pro / Sora 2…）分组——这是数据里现成的字段，
+ * 不硬造词表。返回按出现顺序去重的来源名列表，供 UI 渲染分类导航；空来源忽略。
+ */
+export function promptSourceOptions(items: LibraryPrompt[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of items) {
+    const source = item.source.trim()
+    if (!source || seen.has(source)) continue
+    seen.add(source)
+    out.push(source)
+  }
+  return out
+}
+
+/** 平凡过滤:分类(全部/图片/视频)+ 来源(全部/某来源)+ 关键词(标题/正文/来源/已有标签)。 */
+export function filterPrompts(
+  items: LibraryPrompt[],
+  category: PromptCategory,
+  keyword: string,
+  source: string = PROMPT_SOURCE_ALL,
+): LibraryPrompt[] {
   const byCategory = items.filter((item) => category === 'all' || item.promptType === category)
-  return byCategory.filter((item) => matchesLibraryQuery(
+  const bySource = source === PROMPT_SOURCE_ALL ? byCategory : byCategory.filter((item) => item.source.trim() === source)
+  return bySource.filter((item) => matchesLibraryQuery(
     { title: item.title, description: item.prompt, keywords: [item.source, ...item.tags] },
     keyword,
   ))
