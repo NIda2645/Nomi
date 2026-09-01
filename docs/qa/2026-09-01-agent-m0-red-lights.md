@@ -62,3 +62,11 @@ RL2 是本轮唯一从红转绿的红灯，直接证明 Codex r3 的 canvasRead 
 - **agent-runtime-wiring（1）**：pi（NodeNext 岛）构建隔离——`agentChatV2.ts:19` 直 import pi 源 `.mjs`（解析到 `.mts`）把 1 个 pi 文件拖进 CommonJS 宿主程序，破坏「岛不入宿主」断言。需给 pi 模块设计 `.d.mts` 声明或改消费边界，非一行改。
 
 **门禁现状**：typecheck 三配置全绿；lint:ci **红但非本班引入**——cutover 基座自带 99 warning（>82 棘轮 17 条，session 起点 0cb4b887 同为 99，本班 9 修 warning delta=0），属继承债；test 门因上述 12 失败红。**gates 全绿 + delta=0 需先裁决 ProductionRun fork**（决定退役还是保留 legacy 生成路），再据裁决完成剩余 3 簇 + 清继承 lint 债。9 簇修复本身已验证独立可对账。
+
+### M2 红灯：ProductionRun legacy-playbook writer retirement（M1 明确保留现役）
+
+编排者裁决：`brand.promo` 的 ProductionRun legacy-playbook 生成路是活产品功能，M1 保留 shipped 的 `production.generate-node` / `production.export` 行为；替代生成管线与 legacy writer 退役属于 M2，不在本分支通过改写生产契约完成。
+
+- **复现命令**：`pnpm exec vitest run electron/productionRun/productionRunDriver.test.ts electron/productionRun/productionSampleGate.test.ts electron/productionRun/productionTrustLevel.test.ts electron/productionRun/productionQaVerify.test.ts electron/productionRun/productionRunPauseSemantics.test.ts --reporter=verbose`
+- **当前红态（M2）**：该命令在 M1 已全绿，但 M2 退役断言仍为红灯：legacy job 在合同/样片/信任/QA/暂停语义下仍会调用 `production.generate-node`，并可落地视频；M1 不把这组断言伪装成已完成，也不删除现役行为。
+- **M2 通过断言**：替代管线 shipped 后，恢复并通过迁出的 retired-writer assertions：legacy `submit_intent_persisted` 不再进入 `production.generate-node`，job 持久化为 `needs_attention` + `legacy_generation_writer_retired`，无 video artifact、arrange 或 export；冻结/非冻结两条路径与 sampleGate、pauseSemantics、QA verify 的退役行为均有类级覆盖，并确认新管线承担等价生成、落地、编排和导出闭环。

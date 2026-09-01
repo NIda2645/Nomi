@@ -98,6 +98,44 @@ export function isShotGate(gate: Pick<ProductionRun['gates'][number], 'gateId' |
   return gate.scope === 'job_set' && gate.gateId.startsWith('gate-shot-')
 }
 
+function sampleGateId(planVersion: number): string {
+  return `gate-sample-v${planVersion}`
+}
+
+function freezeGateId(planVersion: number): string {
+  return `gate-freeze-v${planVersion}`
+}
+
+function hasApprovedFreezeGate(run: ProductionRun): boolean {
+  return run.gates.some((gate) => gate.gateId === freezeGateId(run.planVersion) && gate.status === 'approved')
+}
+
+function hasWaitingFreezeGate(run: ProductionRun): boolean {
+  return run.gates.some((gate) => gate.gateId === freezeGateId(run.planVersion) && gate.status === 'waiting')
+}
+
+async function readUnfrozenAnchors(
+  requestRenderer: DriverOpsDeps['requestRenderer'],
+  projectId: string,
+  runId: string,
+): Promise<Array<{ nodeId: string; title?: string }>> {
+  try {
+    const response = await requestRenderer('production.check-frozen', { projectId, runId }, 60_000) as
+      | { unfrozenAnchors?: Array<{ nodeId?: unknown; title?: unknown }> }
+      | null
+    const raw = Array.isArray(response?.unfrozenAnchors) ? response.unfrozenAnchors : []
+    return raw
+      .map((item) => ({
+        nodeId: typeof item?.nodeId === 'string' ? item.nodeId.trim() : '',
+        ...(typeof item?.title === 'string' && item.title.trim() ? { title: item.title.trim() } : {}),
+      }))
+      .filter((item): item is { nodeId: string; title?: string } => item.nodeId.length > 0)
+  } catch (error) {
+    console.error('[nomi:production] freeze check failed (freeze gate skipped):', error instanceof Error ? error.message : String(error))
+    return []
+  }
+}
+
 /**
  * Semantic multi-shot runs are the only runs that may continue from the batch
  * scheduler into QA/assembly.  The legacy playbook writer never creates a
@@ -106,10 +144,6 @@ export function isShotGate(gate: Pick<ProductionRun['gates'][number], 'gateId' |
  */
 export function isSemanticMultiShotRun(run: Pick<ProductionRun, 'playbook' | 'generationPlan'>): boolean {
   return run.playbook.name === 'generation.single-shot' && (run.generationPlan?.shots?.length ?? 0) > 0
-}
-
-function trustRequiresPerShotApproval(run: Pick<ProductionRun, 'policy'>): boolean {
-  return trustLevelOf(run.policy) === 'confirm_all'
 }
 
 /**
@@ -132,6 +166,14 @@ export function semanticGenerationReadiness(run: Pick<ProductionRun, 'jobs' | 'a
     if (!artifact) return { ready: false, reason: desktopT('production.generationMissingArtifact', { jobId: job.jobId }) }
   }
   return { ready: true }
+}
+
+function hasWaitingSampleGate(run: ProductionRun): boolean {
+  return run.gates.some((gate) => gate.gateId === sampleGateId(run.planVersion) && gate.status === 'waiting')
+}
+
+export function shouldSampleGate(run: ProductionRun): boolean {
+  return trustLevelOf(run.policy) !== 'budget_only'
 }
 
 export type DriverOps = {
@@ -421,124 +463,125 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       if (current.status === 'ready') {
         current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'running' }, `driver-${run.runId}-generation-start`).run
       }
-      // `authorized`/`submit_intent_persisted` are retired only on the old
-      // production.* writer path.  Semantic scheduler jobs are intentionally
-      // in those states immediately before dispatch and must be allowed to
-      // reach the provider.
-      const retiredWriterJobs = semanticMultiShot
-        ? []
-        : current.jobs.filter((job) => job.status === 'submit_intent_persisted')
-      if (retiredWriterJobs.length > 0) {
-        for (const job of retiredWriterJobs) {
-          current = executeInternal(run.projectId, run.runId, current, 'job.status', {
-            jobId: job.jobId,
-            status: 'needs_attention',
-            patch: {
-              errorCode: 'legacy_generation_writer_retired',
-              errorMessage: 'This legacy generation job was interrupted by the Agent Host upgrade and was not submitted. Re-plan it through the current generation flow.',
-            },
-          }, `driver-${job.jobId}-writer-retired`).run
+      current = settlePauseIfQuiet(repository, run.projectId, run.runId, requireRun(run.projectId, run.runId))
+      if (current.status !== 'running') return
+      if (!semanticMultiShot) {
+        if (current.status === 'running' && !hasApprovedFreezeGate(current)) {
+          const pendingJobs = current.jobs.filter((job) => job.status === 'authorized' || job.status === 'submit_intent_persisted')
+          if (hasWaitingFreezeGate(current)) return
+          if (pendingJobs.length > 0) {
+            const unfrozen = await readUnfrozenAnchors(requestRenderer, run.projectId, run.runId)
+            current = requireRun(run.projectId, run.runId)
+            if (unfrozen.length > 0 && current.status === 'running'
+              && !current.gates.some((gate) => gate.gateId === freezeGateId(current.planVersion))) {
+              const gateId = freezeGateId(current.planVersion)
+              const anchorList = unfrozen.map((item) => item.title || item.nodeId).join('、')
+              const freezeGate = {
+                gateId,
+                scope: 'stage' as const,
+                status: 'waiting' as const,
+                planHash: crypto.createHash('sha256').update(`${current.planVersion}:freeze:${unfrozen.map((item) => item.nodeId).sort().join(',')}`).digest('hex'),
+                jobIds: [],
+                title: 'Freeze character and scene cards before the batch',
+                summary: `Freeze ${unfrozen.length} reference card(s) in Nomi before Nomi generates the shots that reference them: ${anchorList}. No provider call occurs before you freeze and approve.`,
+                createdAt: new Date().toISOString(),
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              }
+              executeInternal(run.projectId, run.runId, current, 'gate.add', { gate: freezeGate }, `driver-${gateId}`)
+              return
+            }
+          }
         }
-        if (current.status !== 'needs_attention') {
-          current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention' }, `driver-${run.runId}-writer-retired`).run
+        const jobs = current.jobs.filter((job) => job.status === 'authorized' || job.status === 'submit_intent_persisted')
+        for (const job of jobs) {
+          current = requireRun(run.projectId, run.runId)
+          if (current.status !== 'running') break
+          if (hasWaitingSampleGate(current)) break
+          const shotGates = current.gates.filter((gate) => isShotGate(gate)
+            && gate.gateId.startsWith(`gate-shot-v${current.planVersion}-`)
+            && gate.jobIds.includes(job.jobId))
+          if (shotGates.some((gate) => gate.status === 'waiting')) return
+          const approvedShotGate = shotGates.some((gate) => gate.status === 'approved')
+          if (trustLevelOf(current.policy) === 'confirm_all' && !approvedShotGate) {
+            const gateId = shotGateId(current.planVersion, job.jobId, shotGates.length + 1)
+            const shotGate = {
+              gateId,
+              scope: 'job_set' as const,
+              status: 'waiting' as const,
+              planHash: crypto.createHash('sha256').update(`${current.planVersion}:${job.jobId}:${job.provider}:${job.model}`).digest('hex'),
+              jobIds: [job.jobId],
+              title: 'Approve shot before provider submission',
+              summary: `${job.nodeId || job.jobId} will be submitted to ${job.provider} using ${job.model}. No provider call occurs before approval.`,
+              createdAt: new Date().toISOString(),
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            }
+            executeInternal(run.projectId, run.runId, current, 'gate.add', { gate: shotGate }, `driver-${gateId}`)
+            return
+          }
+          if (job.status === 'authorized') current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submit_intent_persisted' }, `driver-${job.jobId}-intent`).run
+          current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submitting' }, `driver-${job.jobId}-submit`).run
+          try {
+            const result = await requestRenderer('production.generate-node', {
+              projectId: run.projectId,
+              runId: run.runId,
+              jobId: job.jobId,
+              nodeId: job.nodeId,
+              maxAttemptsPerJob: current.policy.maxAttemptsPerJob,
+              idempotencyKey: job.idempotencyKey,
+              ...(typeof job.retryCount === 'number' ? { retryCount: job.retryCount } : {}),
+              ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}),
+              ...(typeof job.retryReason === 'string' && job.retryReason.trim() ? { retryReason: job.retryReason } : {}),
+              ...(typeof job.metadata?.retryDirective === 'string' && job.metadata.retryDirective.trim()
+                ? { retryDirective: job.metadata.retryDirective.trim() } : {}),
+            }, 30 * 60_000) as { assets?: Array<{ type?: string; url?: string; thumbnailUrl?: string }> }
+            for (const status of ['provider_accepted', 'polling', 'downloading', 'validating_technical', 'validating_content'] as const) {
+              current = requireRun(run.projectId, run.runId)
+              current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status }, `driver-${job.jobId}-${status}`).run
+            }
+            const asset = result?.assets?.[0]
+            const relativePath = localAssetPath(run.projectId, asset?.url)
+            const thumbnailRelativePath = localAssetPath(run.projectId, asset?.thumbnailUrl)
+            current = requireRun(run.projectId, run.runId)
+            if (asset?.url && relativePath) {
+              current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'ready' }, `driver-${job.jobId}-ready`).run
+              const kind = asset.type === 'video' ? 'video' : asset.type === 'audio' ? 'audio' : 'image'
+              const sampleArtifactId = artifactIdentifierForJob(job.jobId)
+              current = executeInternal(run.projectId, run.runId, current, 'artifact.add', { artifact: { artifactId: sampleArtifactId, stageId: 'generate', jobId: job.jobId, kind, status: 'adopted', ...(job.parentJobId ? { parentArtifactId: artifactIdentifierForJob(job.parentJobId) } : {}), ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}), ...(job.retryReason ? { retryReason: job.retryReason } : {}), projectRelativePath: relativePath, ...(thumbnailRelativePath ? { thumbnailRelativePath } : {}), createdAt: new Date().toISOString(), adoptedAt: new Date().toISOString() } }, `driver-${job.jobId}-artifact`).run
+              current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'adopted' }, `driver-${job.jobId}-adopted`).run
+              const adoptedGenerateCount = current.jobs.filter((candidate) => candidate.stageId === 'generate' && candidate.status === 'adopted').length
+              if (current.status === 'running' && adoptedGenerateCount === 1 && shouldSampleGate(current) && !current.gates.some((gate) => gate.gateId === sampleGateId(current.planVersion))) {
+                const sampleGate = {
+                  gateId: sampleGateId(current.planVersion),
+                  scope: 'stage' as const,
+                  status: 'waiting' as const,
+                  planHash: crypto.createHash('sha256').update(sampleArtifactId).digest('hex'),
+                  jobIds: [],
+                  title: 'Review the sample before the full batch',
+                  summary: `Look at the first shot (${sampleArtifactId}) in Nomi before Nomi generates the remaining shots. Approve to continue, or pause to adjust.`,
+                  createdAt: new Date().toISOString(),
+                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                }
+                current = executeInternal(run.projectId, run.runId, current, 'gate.add', { gate: sampleGate }, `driver-${run.runId}-sample-gate`).run
+                return
+              }
+            } else {
+              current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'needs_attention', patch: { errorCode: 'asset_not_localized', errorMessage: '生成已返回，但项目内没有可预览的本地素材' } }, `driver-${job.jobId}-asset-attention`).run
+              if (current.status !== 'needs_attention') current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention' }, `driver-${run.runId}-asset-attention-${current.revision}`).run
+              return
+            }
+          } catch (error) {
+            current = requireRun(run.projectId, run.runId)
+            if (current.jobs.find((candidate) => candidate.jobId === job.jobId)?.status === 'submitting') current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submission_unknown', patch: { errorCode: 'renderer_or_provider_unknown', errorMessage: '生成提交结果无法确认' } }, `driver-${job.jobId}-unknown-${current.revision}`).run
+            if (current.status !== 'needs_attention') {
+              try { current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention' }, `driver-${run.runId}-generation-attention-${current.revision}`).run } catch { /* preserve unknown job state */ }
+            }
+            console.error('[nomi:production] generation driver stopped:', error instanceof Error ? error.message : String(error))
+            return
+          }
         }
-        return
       }
       current = settlePauseIfQuiet(repository, run.projectId, run.runId, requireRun(run.projectId, run.runId))
       if (current.status !== 'running') return
-
-      // Legacy playbook jobs still enter through the ProductionRun owner.  The
-      // round-1 coordinator stopped here with `authorization_required`, which
-      // left the real per-shot approval boundary unwired.  Materialize one
-      // durable job-set gate at this shared driver boundary; approval changes
-      // the job to `authorized`, and only then may this same driver submit it.
-      if (!semanticMultiShot) {
-        const waitingShotGate = current.gates.find((gate) => isShotGate(gate) && gate.status === 'waiting')
-        if (waitingShotGate) return
-        const nextAuthorization = current.jobs.find((job) => job.status === 'authorization_required')
-        const authorized = current.jobs.find((job) => job.status === 'authorized')
-        const nextShot = nextAuthorization ?? authorized
-        if (nextShot && trustRequiresPerShotApproval(current)) {
-          const priorApproval = current.gates.some((gate) => isShotGate(gate) && gate.jobIds.includes(nextShot.jobId) && gate.status === 'approved')
-          if (priorApproval) {
-            // The shot gate has already been approved; fall through to the
-            // provider submission below.
-          } else {
-            const priorShotGates = current.gates.filter((gate) => isShotGate(gate) && gate.jobIds.includes(nextShot.jobId))
-            const gateId = shotGateId(current.planVersion, nextShot.jobId, priorShotGates.length + 1)
-            if (!current.gates.some((gate) => gate.gateId === gateId)) {
-              current = executeInternal(run.projectId, run.runId, current, 'gate.add', {
-                gate: {
-                  gateId,
-                  scope: 'job_set',
-                  status: 'waiting',
-                  planHash: crypto.createHash('sha256').update(nextShot.idempotencyKey).digest('hex'),
-                  jobIds: [nextShot.jobId],
-                  title: 'Review and approve this shot',
-                  summary: `Review ${nextShot.nodeId || nextShot.jobId} before submitting it to the provider.`,
-                  createdAt: new Date().toISOString(),
-                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                },
-              }, `driver-${run.runId}-${gateId}`).run
-            }
-            return
-          }
-        }
-        if (nextAuthorization) {
-          return
-        }
-        if (authorized) {
-          const payload = {
-            projectId: run.projectId,
-            runId: run.runId,
-            jobId: authorized.jobId,
-            nodeId: authorized.nodeId,
-            provider: authorized.provider,
-            model: authorized.model,
-            prompt: authorized.metadata?.prompt,
-          }
-          current = executeInternal(run.projectId, run.runId, current, 'job.status', {
-            jobId: authorized.jobId,
-            status: 'submit_intent_persisted',
-          }, `driver-${run.runId}-${authorized.jobId}-intent`).run
-          current = executeInternal(run.projectId, run.runId, current, 'job.status', {
-            jobId: authorized.jobId,
-            status: 'submitting',
-          }, `driver-${run.runId}-${authorized.jobId}-submitting`).run
-          const generated = await requestRenderer('production.generate-node', payload, 10 * 60_000) as Record<string, unknown>
-          current = requireRun(run.projectId, run.runId)
-          current = executeInternal(run.projectId, run.runId, current, 'job.status', {
-            jobId: authorized.jobId,
-            status: 'provider_accepted',
-          }, `driver-${run.runId}-${authorized.jobId}-accepted`).run
-          current = executeInternal(run.projectId, run.runId, current, 'job.status', {
-            jobId: authorized.jobId,
-            status: 'ready',
-            patch: { result: generated },
-          }, `driver-${run.runId}-${authorized.jobId}-ready`).run
-          current = executeInternal(run.projectId, run.runId, current, 'job.status', {
-            jobId: authorized.jobId,
-            status: 'adopted',
-          }, `driver-${run.runId}-${authorized.jobId}-adopted`).run
-          const remaining = current.jobs.some((job) => job.status === 'authorization_required' || job.status === 'authorized')
-          if (remaining && !current.gates.some((gate) => gate.gateId.startsWith('gate-sample-') && gate.status === 'waiting')) {
-            current = executeInternal(run.projectId, run.runId, current, 'gate.add', {
-              gate: {
-                gateId: `gate-sample-v${current.planVersion}`,
-                scope: 'stage',
-                status: 'waiting',
-                planHash: crypto.createHash('sha256').update(authorized.jobId).digest('hex'),
-                jobIds: [authorized.jobId],
-                title: 'Review the first shot',
-                summary: 'Review the generated sample before continuing with the remaining shots.',
-                createdAt: new Date().toISOString(),
-                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-              },
-            }, `driver-${run.runId}-sample-gate`).run
-            return
-          }
-        }
-      }
       if (semanticMultiShot) {
         // Materialization deliberately leaves a job `ready`: the artifact is
         // durable, while adoption is the ProductionRun owner's explicit
@@ -631,7 +674,9 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     try {
       let current = requireRun(run.projectId, run.runId)
       current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'exporting' }, `driver-${run.runId}-export-start`).run
-      const result = await executeProductionExport({ projectId: run.projectId, runId: run.runId, outputName: `nomi-${run.runId}.mp4` })
+      const result = isSemanticMultiShotRun(current)
+        ? await executeProductionExport({ projectId: run.projectId, runId: run.runId, outputName: `nomi-${run.runId}.mp4` })
+        : await requestRenderer('production.export', { projectId: run.projectId, runId: run.runId, outputName: `nomi-${run.runId}.mp4` }, 30 * 60_000) as { relativePath?: string; size?: number }
       const relativePath = projectRelativePath(run.projectId, result?.relativePath, { requireFile: true })
       current = requireRun(run.projectId, run.runId)
       current = executeInternal(run.projectId, run.runId, current, 'artifact.add', { artifact: { artifactId: `artifact-export-v${current.planVersion}`, stageId: 'export', kind: 'export', status: 'adopted', projectRelativePath: relativePath, createdAt: new Date().toISOString(), adoptedAt: new Date().toISOString() } }, `driver-${run.runId}-export-artifact`).run
