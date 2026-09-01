@@ -66,6 +66,8 @@
 
 **接入 / 修改任何模型 = 必查真实官方 API 文档，禁凭记忆瞎编（2026-06-30 用户再次要求固化 · 已挂 `model-doc-check.sh` hook）**：接入或修改**任何**模型（新模型、新变体、改参数、改端点、改鉴权），**动手前必须先拿到该模型 / 该 vendor 的真实官方 API 文档**——WebFetch 官方文档站 / vendor 文档门户（如 apimart `docs.apimart.ai`、kie `docs.kie.ai`、即梦官方、火山引擎、ModelScope）/ Context7。照文档**逐项对账**：① 端点路径 + HTTP 方法；② 鉴权方式（bearer / header 名 / OAuth / CLI 登录态）；③ 全部变体（fast/face/lite/quality…）；④ 全部生成模式（t2v/i2v/首尾帧/参考…）；⑤ 全部参数（名字、类型、合法枚举值、默认值、上下限）。**禁止凭记忆或凭印象瞎编**端点、参数名、枚举、模式组合——「记得大概是这样」「应该是这个字段」= 工作错误，必须实查文档原文。这条**每次都要控制住**，不是接一次就免检：每次碰模型接入文件（`electron/catalog/*Vendor.ts` / `*Images.ts` / `*Videos.ts` / `*Texts.ts` / `*Audios.ts` / `*Codec.ts` / `kie*.ts` 等）hook 都会顶提醒。流程固定：抓全官方文档 → 列 {变体×模式×参数} 全表 → 对账现有 catalog/archetype → 补齐/修正缺口 → 真实生成 E2E 验一条（见「固化的工作纪律」接入即验证 + [[model-onboarding-must-cover-full-api-doc]] 记忆）。用户原话：「都要去真实的查到官方文档才去接入，而不是自己去瞎编」。
 
+**实查对象必须是「现役」不是「本机」（2026-09-01 用户抓错后固化）**：判断第三方 CLI / SDK / 模型「支不支持某能力」时，**本机已装版本的 `-h` / 实际行为不算实查**——那是安装那天的旧事实。实翻车：拿本机 2026-06-18 的 dreamina CLI build 断言「CLI 给不了 seedance2.5 / 图片5pro」，被用户甩官方文档当场纠正——官方 v1.4.15（08-01）视频全线已支持 2.5、v1.4.16（08-14）已有 seedream 5.0 pro。正确姿势：先读**官方现役文档 / 更新日志**，或先把工具升到最新版再取证；写下「不支持 X」前自问「我看的是最新版吗」。另注意第三方 CLI 有自己的破坏性变更节奏（dreamina v1.4.14 起图片必填 `--resolution_type`、视频必填 `--video_resolution`）——接入停在旧面貌可能不止缺模型，是**发不出合法请求**。
+
 **出处必须可追、接入必须一次接完（2026-08-12 用户要求固化 · 已挂门岗 `pnpm run check:archetype-sources`）**：
 上面那条「必查官方文档逐项对账」**早就存在、还挂着 hook，仍然失效了**——2026-08-12 复核 Seedance 2.5 档案，
 参考图/视频/音频上限写的是 9/3/3、比例默认 16:9，而 kie 与 apimart 官方文档都是 30/10/10、默认 adaptive：
@@ -490,6 +492,8 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 
 本地 Agent hook 只负责提前提醒，可能不存在；已提交的 `CLAUDE.md`、生成的 `AGENTS.md`、skill 和 CI 才是跨 Agent 的执行链。合同字段和完整步骤不在本节重复，避免规则再次膨胀和分叉。
 
+**派工/自验清单必须显式点名本闸（2026-09-01 教训）**：凡改动触及 electron/ 高风险 pattern（`*ipc.ts` / `*store.ts` / `runtime.ts` / catalog 核心 / validator 等），任务 brief 与自验清单必须写明「跑 `pnpm run check:root-cause-contracts`、改动作者自写契约」——不点名就会漏：曾有 4 个返工 PR 因 brief 验证档只列 typecheck/lint/focused，集体被本闸拦下返场补契约（同批次里自写了契约的 2 个 PR 一次过闸）。
+
 ## R22 验证分层与测试预算
 
 > 2026-08-29 用户拍板建立测试预算；2026-08-30 从 `fast/full` 两档升级为独立风险面。目标不是少测，而是把反馈成本花在真正可能受影响的地方：小改动尽快反馈，高风险绝不降级，也不把无关性能或打包成本强加给每个 PR。
@@ -519,6 +523,8 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 
 一个逻辑批次先完成实现、审计、规则和测试，再跑一次定向验证；全部本地问题收敛后按共享 policy 统一 push。只有测试基础设施自身、删除/重命名、无法分类或手动 release 才跑显式全维度；小阻塞不得打断主流程反复重启全套测试。
 
+**分支定性先算 merge-base（2026-09-01 一日三撞的「落后假象」固化）**：评审、对账或打捞任何分支前，先 `git merge-base origin/main <branch>`；真实 authored delta = `MB..branch`。直接对 main tip 的两点视图里出现的大片删除或陌生文件，**第一假设是「main 在分支落后期间前进了」**，不是分支真要删它们；GitHub 页面的 +/- 数字与 behind 红字同理不可直接采信（实例：某评估把三点视图 +1416 当真实贡献，两点实测是 272 文件混合物；另一分支两点视图「删 14.6 万行」实为落后 1500+ commit 的反转幻影）。远落后分支的并线一律 `gh pr update-branch` 服务端做——本地 merge 后 push 的追平 diff 会撞 R25 的评审上限（15-88MB 实测）。
+
 最终交付不再本地跑第三遍：在真实 merged-main SHA 上运行 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`。命令仍用有界 Git fetch 证明 `HEAD`、远端主线和 expected SHA/tree 身份，然后等待该 exact SHA 的 `Quality Gate` 与 `Mac Package` check run。GitHub required-check 语义中的 success/skipped/neutral 可写入 Git common dir 的 per-SHA `ci-evidence.json`；missing、pending、failure 或错误 SHA 都不能生成成功收据。同一 SHA 再调用直接复用收据，不启动 repository tests。
 
 ## R23 React Flow 生成画布单内核与迁移等价
@@ -544,6 +550,14 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 3. 评审只看过度工程化（delete/stdlib/native/yagni/shrink）。有发现时 hook 只报告状态和字节数摘要，不替用户判断功能正确性；需要逐条意见时另行运行 `@ponytail-review`。没有合法结果、Codex 缺失、插件未启用、异常或超时都 fail closed，必须处理环境后重试。
 4. 运行器固定为只读、临时、限时调用，报告写入系统临时目录，不进项目和 Git index；评审结束后立即删除唯一临时目录，清理失败也 fail closed。hook/返回值只保留状态、diff hash 和 report/stdout/stderr 字节数，绝不把报告正文或进程输出复制到终端、CI 日志或错误对象。报告读取上限为 256 KB；`pre-commit` 先执行既有敏感数据扫描，避免把明显凭据送入模型；`pre-push` 只审 outgoing diff。单次送审 diff 上限为 1.5 MB、push ref-update 上限为 32 条，超限直接 fail closed。
 5. 只接受 `--output-last-message` 报告的严格、报告-only 合同：适配器形式要求唯一一条 `net: -N lines possible.` 后紧跟唯一最终行 `PONYTAIL_REVIEW: PASS|FINDINGS`；同时兼容 Ponytail 原生的精确 clean 行 `Lean already. Ship.` 和以 `net: -N lines possible.` 收尾的 findings 报告。stdout/stderr、prompt 回显、重复 marker 和不完整报告一律不算通过。
+
+### 推送形态与 diff 上限的实操后果（2026-09-01 实测源码后固化）
+
+上面第 2/4 条的机制决定了三条铁律，违反任何一条都会在 push 时 fail closed：
+
+- **已存在的远端分支禁止 force-push 重建内容**：pre-push 对已有 ref 的评审 diff = `remoteSha..localSha` 两端点树差——把远古分支重置成「fresh main + 新内容」再强推，diff 会包含 main 全部演化、必超 1.5 MB 上限。**重建一律走全新分支**（新 ref 按与远端默认分支的 merge-base 算基线，diff = 真实 delta），旧 PR 关闭换新（带指针）。
+- **大删除拆批分推**：瘦身/清理类改动把删除拆成多个 commit **分多次 push**，单次评审 diff 控制在 ~1 MB 内（实测 178 文件 2.4 万行的瘦身拆 3 批全过）。
+- **新 worktree 先 `pnpm install` 再 commit/push**：hook 由 `postinstall`（`scripts/install-git-hooks.cjs`）安装——先推后装 = 推送完全未过本地评审与敏感数据闸（实翻车：18 批删除 push 全部裸奔，靠 CI 补拦）。
 
 ### 为什么不把它做成收据或第二套 Agent
 

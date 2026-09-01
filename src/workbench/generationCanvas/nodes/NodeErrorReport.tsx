@@ -12,6 +12,7 @@ import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { nodeSelectedModelAddress } from './controls/parameterControlModel'
 import { classifyGenerationError } from '../runner/generationRunController'
 import { narrateErrorActionLabel, narrateModelKind, type GenerationErrorAction } from '../../observability/narrate'
+import { stageForGenerationError } from '../../../ui/community/feedbackTypes'
 
 const ACTION_ICON: Record<GenerationErrorAction, typeof IconRefresh> = {
   retry: IconRefresh,
@@ -175,6 +176,20 @@ export function NodeErrorReport({
     [report.raw],
   )
 
+  const handleFeedback = React.useCallback((event: React.MouseEvent) => {
+    event.stopPropagation()
+    const { vendorKey, modelKey } = nodeSelectedModelAddress(meta)
+    window.dispatchEvent(new CustomEvent('nomi-open-feedback-share', {
+      detail: {
+        intent: 'problem',
+        stage: stageForGenerationError(report.kind),
+        errorKind: report.kind,
+        provider: vendorKey,
+        model: modelKey,
+      },
+    }))
+  }, [meta, report.kind])
+
   return (
     <div
       ref={rootRef}
@@ -288,6 +303,9 @@ export function NodeErrorReport({
         ) : null}
         <button type="button" onClick={handleCopy} className="shrink-0 whitespace-nowrap text-caption text-nomi-ink-40 hover:text-nomi-ink">
           {copied ? t('generationCommon.error.copied') : t('generationCommon.error.copyDetails')}
+        </button>
+        <button type="button" onClick={handleFeedback} className="shrink-0 whitespace-nowrap text-caption text-nomi-ink-40 hover:text-nomi-ink">
+          {t('generationCommon.error.feedback')}
         </button>
         <div className="min-w-0 flex-1" />
         <button

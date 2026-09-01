@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nomi 反馈与分享中心 · v0.21.0</title>
+    <style>
+      :root {
+        --bg: oklch(0.985 0.003 90); --paper: oklch(1 0 0); --ink: oklch(0.22 0.01 80);
+        --ink-80: oklch(0.32 0.01 80); --ink-60: oklch(0.5 0.01 80); --ink-40: oklch(0.68 0.01 80);
+        --ink-20: oklch(0.88 0.005 80); --ink-10: oklch(0.94 0.003 80); --ink-05: oklch(0.97 0.003 80);
+        --line: oklch(0.91 0.004 80); --accent: oklch(0.55 0.13 250);
+        --accent-soft: color-mix(in oklch, var(--accent) 10%, var(--paper));
+        --shadow-lg: 0 18px 48px color-mix(in oklch, var(--ink) 17%, transparent);
+        --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
+        --font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --font-display: "Fraunces Variable", Fraunces, Georgia, serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: var(--font-sans); font-size: 14px; }
+      button, a, textarea { font: inherit; } button { cursor: pointer; }
+      .app-shell { min-height: 100vh; padding: 38px 48px; }
+      .app-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+      .brand { display: inline-flex; align-items: center; gap: 12px; }
+      .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--ink); color: var(--paper); font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+      .brand-word { font-family: var(--font-display); font-size: 25px; letter-spacing: -0.03em; }
+      .brand-word em, .identity-name em { color: var(--accent); font-style: normal; }
+      .header-actions { display: inline-flex; align-items: center; gap: 20px; color: var(--ink-60); font-size: 13px; }
+      .library-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; max-width: 1060px; margin-top: 30px; }
+      .library-card { min-height: 102px; padding: 19px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); }
+      .library-card.primary { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+      .library-card strong { display: block; font-size: 16px; }
+      .library-card p { margin: 7px 0 0; color: var(--ink-60); font-size: 12px; }
+      .library-card.primary p { color: color-mix(in oklch, var(--paper) 68%, transparent); }
+      .scrim { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: color-mix(in oklch, var(--ink) 44%, transparent); }
+      .settings { display: flex; width: min(760px, 100%); height: min(560px, calc(100vh - 48px)); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); box-shadow: var(--shadow-lg); }
+      .settings-nav { width: 196px; flex: 0 0 196px; padding: 21px 14px; background: var(--ink-05); border-right: 1px solid var(--line); }
+      .settings-title { padding: 0 12px 18px; font-size: 14px; font-weight: 600; }
+      .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 8px 12px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-60); text-align: left; }
+      .nav-item.active { background: var(--ink); color: var(--paper); }
+      .nav-item + .nav-item { margin-top: 3px; }
+      .nav-icon { width: 16px; color: var(--accent); text-align: center; }
+      .nav-item.active .nav-icon { color: var(--paper); }
+      .settings-content { position: relative; min-width: 0; flex: 1; overflow: auto; padding: 24px 30px; }
+      .close { position: absolute; top: 15px; right: 16px; width: 32px; height: 32px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-40); font-size: 21px; line-height: 1; }
+      .close:hover { background: var(--ink-05); color: var(--ink); }
+      .page { display: none; }
+      .page.active { display: block; }
+      .identity { display: flex; align-items: center; gap: 13px; margin-bottom: 20px; }
+      .identity .brand-mark { width: 40px; height: 40px; border-radius: 9px; font-size: 25px; }
+      .identity-name { font-family: var(--font-display); font-size: 19px; }
+      .identity-meta { margin-top: 4px; color: var(--ink-60); font-size: 11px; }
+      .action-list { display: grid; gap: 8px; }
+      .action-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 9px 12px; border: 0; border-radius: var(--radius-sm); background: var(--ink-05); color: var(--ink); text-align: left; }
+      .action-row:hover { background: var(--ink-10); }
+      .action-row .row-icon { width: 20px; color: var(--accent); text-align: center; }
+      .action-row .row-copy { min-width: 0; flex: 1; }
+      .action-row strong { display: block; font-size: 13px; font-weight: 500; }
+      .action-row small { display: block; margin-top: 3px; color: var(--ink-40); font-size: 11px; }
+      .chevron { color: var(--ink-40); font-size: 18px; }
+      .rule { height: 1px; margin: 20px 0; background: var(--line); }
+      .update-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--ink-60); }
+      .primary-btn { min-height: 36px; padding: 8px 14px; border: 0; border-radius: var(--radius-sm); background: var(--ink); color: var(--paper); font-weight: 600; }
+      .back-link { display: inline-flex; align-items: center; gap: 5px; margin: -4px 0 14px; padding: 3px 0; border: 0; background: transparent; color: var(--ink-60); font-size: 12px; }
+      .back-link:hover { color: var(--ink); }
+      .page-heading { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
+      .page-lede { max-width: 440px; margin: 7px 0 18px; color: var(--ink-60); font-size: 12px; line-height: 1.55; }
+      .choice-list { display: grid; gap: 8px; }
+      .choice { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 62px; padding: 12px 13px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); color: var(--ink); text-align: left; }
+      .choice:hover { border-color: var(--accent); background: var(--accent-soft); }
+      .choice-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--ink-05); color: var(--accent); font-weight: 700; }
+      .choice-copy { min-width: 0; flex: 1; }
+      .choice strong { display: block; font-size: 13px; font-weight: 600; }
+      .choice small { display: block; margin-top: 4px; color: var(--ink-60); font-size: 11px; }
+      .trust-line { display: flex; gap: 8px; margin-top: 17px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--ink-40); font-size: 11px; line-height: 1.5; }
+      .field-label { display: block; margin: 17px 0 7px; color: var(--ink-80); font-size: 12px; font-weight: 600; }
+      .stage-list { display: flex; flex-wrap: wrap; gap: 6px; }
+      .stage { min-height: 30px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--ink-60); font-size: 11px; }
+      .stage.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+      textarea { display: block; width: 100%; min-height: 82px; resize: vertical; padding: 10px 11px; border: 1px solid var(--line); border-radius: var(--radius-sm); outline: none; background: var(--paper); color: var(--ink); font-size: 12px; line-height: 1.5; }
+      textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 13%, transparent); }
+      .attachment { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border: 1px dashed var(--ink-20); border-radius: var(--radius-sm); background: var(--ink-05); }
+      .attachment-thumb { width: 46px; height: 34px; border-radius: 4px; background: linear-gradient(135deg, var(--ink-20), var(--ink-10)); }
+      .attachment-copy { min-width: 0; flex: 1; }
+      .attachment strong { display: block; font-size: 11px; font-weight: 500; }
+      .attachment small { display: block; margin-top: 2px; color: var(--ink-40); font-size: 10px; }
+      .attachment button { border: 0; background: transparent; color: var(--ink-60); font-size: 12px; }
+      details { margin-top: 12px; color: var(--ink-60); font-size: 11px; }
+      summary { cursor: pointer; color: var(--ink-60); }
+      .details-body { margin-top: 8px; padding: 9px 10px; border-radius: var(--radius-sm); background: var(--ink-05); line-height: 1.5; }
+      .form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+      .submit-note { color: var(--ink-40); font-size: 10px; line-height: 1.45; }
+      .share-list { display: grid; gap: 8px; }
+      .share-row { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); color: var(--ink); text-decoration: none; }
+      .share-row:hover { border-color: var(--accent); background: var(--accent-soft); }
+      .share-row .share-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--ink-05); color: var(--accent); font-weight: 700; }
+      .share-row strong { display: block; font-size: 13px; }
+      .share-row small { display: block; margin-top: 3px; color: var(--ink-60); font-size: 11px; }
+      .share-url { margin-top: 14px; padding: 9px 11px; border-radius: var(--radius-sm); background: var(--ink-05); color: var(--ink-60); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
+      @media (max-width: 700px) {
+        .app-shell { padding: 18px; } .library-grid { grid-template-columns: 1fr; }
+        .scrim { padding: 8px; } .settings { height: calc(100vh - 16px); flex-direction: column; }
+        .settings-nav { display: flex; width: 100%; flex: 0 0 auto; overflow-x: auto; padding: 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+        .settings-title { display: none; } .nav-item { width: auto; white-space: nowrap; } .nav-item + .nav-item { margin-top: 0; margin-left: 3px; }
+        .settings-content { padding: 22px 18px; } .form-footer { align-items: flex-start; flex-direction: column; } .primary-btn { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell" aria-label="Nomi 项目库背景">
+      <header class="app-header"><div class="brand"><span class="brand-mark">N</span><span class="brand-word">No<em>m</em>i 项目库</span></div><div class="header-actions"><span>⌘ 接入模型</span><span>▣ 浏览器</span><span>⚙</span></div></header>
+      <section class="library-grid"><article class="library-card primary"><strong>新建空白项目</strong><p>从一段文字或想法开始</p></article><article class="library-card"><strong>打开已有文件夹</strong><p>把素材文件夹变成项目</p></article><article class="library-card"><strong>重看一遍引导</strong><p>60 秒预览，从一句话到成片</p></article></section>
+    </main>
+    <div class="scrim">
+      <section class="settings" role="dialog" aria-label="设置 · 反馈与分享">
+        <nav class="settings-nav" aria-label="设置导航"><div class="settings-title">设置</div><button class="nav-item"><span class="nav-icon">□</span>文件与保存</button><button class="nav-item"><span class="nav-icon">⌘</span>通用</button><button class="nav-item active"><span class="nav-icon">ⓘ</span>关于</button></nav>
+        <div class="settings-content">
+          <button class="close" aria-label="关闭">×</button>
+          <div id="about-page" class="page active">
+            <div class="identity"><span class="brand-mark">N</span><div><div class="identity-name">No<em>m</em>i</div><div class="identity-meta">当前版本 0.21.0 · macOS · arm64</div></div></div>
+            <div class="action-list"><button class="action-row"><span class="row-icon">◇</span><span class="row-copy"><strong>上手手册</strong><small>流水线 · 90 秒首胜 · 能力对照 · 自查</small></span><span class="chevron">›</span></button><button class="action-row"><span class="row-icon">▷</span><span class="row-copy"><strong>重看开屏动画</strong><small>Nomi 启动时那段品牌开场，再放一遍</small></span><span class="chevron">›</span></button><button class="action-row" onclick="showPage('hub')"><span class="row-icon">✦</span><span class="row-copy"><strong>反馈与分享</strong><small>遇到问题、提建议，或把 Nomi 分享给朋友</small></span><span class="chevron">›</span></button></div>
+            <div class="rule"></div><div class="update-line"><span>检查是否有新版本可用</span><button class="primary-btn">检查更新</button></div>
+          </div>
+          <div id="hub-page" class="page">
+            <button class="back-link" onclick="showPage('about')">‹ 关于</button><h1 class="page-heading">反馈与分享</h1><p class="page-lede">先选你要做的事。提交前你会看到具体发送内容；Nomi 不会在后台收集。</p>
+            <div class="choice-list"><button class="choice" onclick="showPage('report')"><span class="choice-icon">!</span><span class="choice-copy"><strong>告诉我们一件事</strong><small>问题或建议，模型接入、上传、生成、导出都可以</small></span><span class="chevron">›</span></button><button class="choice" onclick="showPage('share')"><span class="choice-icon">↗</span><span class="choice-copy"><strong>分享 Nomi</strong><small>官网、GitHub 和项目介绍</small></span><span class="chevron">›</span></button></div>
+            <div class="trust-line"><span>ⓘ</span><span>只有你点击提交，Nomi 才会准备反馈信息。截图、对话和素材都不会默认附带。</span></div>
+          </div>
+          <div id="report-page" class="page">
+            <button class="back-link" onclick="showPage('hub')">‹ 反馈与分享</button><h1 class="page-heading">告诉我们一件事</h1><p class="page-lede">不用写完整报告，告诉我们哪里不顺手就够。</p>
+            <label class="field-label">这是问题还是建议？</label><div class="stage-list"><button class="stage selected">问题</button><button class="stage">建议</button></div>
+            <label class="field-label">哪一步？ <span style="color:var(--ink-40);font-weight:400">（可选）</span></label><div class="stage-list"><button class="stage selected">模型接入</button><button class="stage">上传</button><button class="stage">生成</button><button class="stage">导出</button><button class="stage">其他</button></div>
+            <label class="field-label" for="description">发生了什么？ <span style="color:var(--ink-40);font-weight:400">（可简短描述）</span></label><textarea id="description" placeholder="例如：填好 API Key 后，测试一直没有返回结果。"></textarea>
+            <div class="attachment"><span class="attachment-thumb"></span><span class="attachment-copy"><strong>截图在下一页上传（可选）</strong><small>不会后台上传；私密表单或 GitHub 会再次让你选择</small></span></div>
+            <details><summary>查看会附带的诊断信息</summary><div class="details-body">版本、系统、功能阶段、Provider/模型类别、错误分类和错误指纹。不会附带 API Key、完整对话、项目路径或原始素材。</div></details>
+            <div class="form-footer"><div class="submit-note"><b>选择提交方式</b><br />私密表单支持截图；GitHub 适合公开讨论</div><div style="display:flex;gap:8px"><button class="primary-btn">私密提交</button><button class="secondary-btn">公开到 GitHub</button></div></div>
+          </div>
+          <div id="share-page" class="page">
+            <button class="back-link" onclick="showPage('hub')">‹ 反馈与分享</button><h1 class="page-heading">分享 Nomi</h1><p class="page-lede">把 Nomi 介绍给正在做视频、又不想被复杂工具拖慢的人。</p>
+            <div class="share-list"><a class="share-row" href="https://nomiaqm.com/" target="_blank"><span class="share-icon">↗</span><span><strong>Nomi 官网</strong><small>本地优先的 AI 视频创作工作台</small></span><span class="chevron">›</span></a><a class="share-row" href="https://github.com/aqm857886159/Nomi" target="_blank"><span class="share-icon">◒</span><span><strong>GitHub 仓库</strong><small>代码、Issue、路线和贡献方式</small></span><span class="chevron">›</span></a></div><div class="share-url">https://nomiaqm.com/ · github.com/aqm857886159/Nomi</div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      function showPage(name) { document.querySelectorAll('.page').forEach((page) => page.classList.toggle('active', page.id === name + '-page')); }
+      document.querySelectorAll('.stage').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.stage').forEach((item) => item.classList.remove('selected')); button.classList.add('selected'); }));
+    </script>
+  </body>
+</html>

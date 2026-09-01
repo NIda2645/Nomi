@@ -1,0 +1,75 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-video-deconstruction-engine",
+  "problem_type": "engine capability port across a long-stale branch (video deconstruction: local video -> structured shot table)",
+  "symptom": "Nomi had no engine that turns one local video into a structured shot table (per-shot size/mood/visual/on-screen-text plus time-aligned dialogue). The capability existed only on branch feat/apimart-gemini-vision, which was 1040 commits behind main and could not be hard-merged; ported naively it would silently break, because the multimodal image path, the text-brain resolver, the reference-image accessor, and the IPC sender-binding rule had all drifted on main.",
+  "direct_cause": "The pipeline depends on four surfaces that moved or hardened during the 1040-commit gap: (1) frame URLs handed to the vision model are nomi-local:// project assets, which the AI SDK cannot parse — main already inlines them as bytes in streamTextTask.toImagePart, but that path only accepted a single image, so a per-shot 3-frame request had no way through; (2) chooseTextModel/resolveTextBrainKeys were extracted from agentChatV2 into ai/textBrainResolver.ts, and resolveTextBrainKeys did not thread preferImageInput, so 'give me a text brain that can read images' silently fell back to the default text-only brain (deepseek) which cannot see frames; (3) firstReferenceImage grew ComfyUI-reference-contract awareness and a (vendorKey, modelKey) selection argument, so a naive multi-image accessor would drop that contract; (4) every ipcMain.handle on main must call assertTrustedSender (check:ipc-sender-binding), which the branch's deconstruct handler predated.",
+  "class_root": "A feature written against an old snapshot assumes the snapshot's contracts. The class failure is porting by blind copy: reusing the branch's own versions of shared surfaces (streamTextTask, textBrainResolver, taskParams, the IPC registration) instead of reading main's current version and threading only the missing capability through it. Done blind, each drifted surface fails silently — the model answers without seeing the image, or the wrong brain is chosen, or a reference contract is dropped — with no error at the call site.",
+  "affected_population": [
+    "Any user who runs video deconstruction: without the multi-image + nomi-local byte-inline path the vision model receives no frames and hallucinates, and without preferImageInput threading the default brain cannot read images at all",
+    "The existing browser 'frame replication' (image_to_prompt single-image) caller, whose behavior must remain byte-for-byte identical after the accessor becomes plural",
+    "The main-window IPC trust boundary, which must reject non-trusted senders for the new nomi:video:deconstruct channel exactly as for its sibling video channels"
+  ],
+  "scope_paths": [
+    "electron/video/videoIpc.ts",
+    "electron/video/deconstructVideo.ts",
+    "electron/video/shotTimeline.ts",
+    "electron/video/extractAudioTrack.ts",
+    "electron/catalog/taskParams.ts",
+    "electron/assets/projectCacheFile.ts",
+    "electron/ai/streamTextTask.ts",
+    "electron/ai/textBrainResolver.ts",
+    "electron/textTaskRunner.ts",
+    "electron/jsonUtils.ts"
+  ],
+  "entry_points": [
+    "registerVideoIpc (electron/video/videoIpc.ts) — extracted from main.ts so the four nomi:video:* handlers, including the new deconstruct handler, share one assertTrustedSender-guarded registration and keep main.ts under the 800-line cap",
+    "deconstructVideo (electron/video/deconstructVideo.ts) — orchestrates detectShotCuts -> per-shot multi-frame extraction -> image_to_prompt vision analysis -> extractAudioTrack -> whisper transcription -> assignSegmentsToShots; imports resolveTextBrainKeys from ai/textBrainResolver (main's home), not the branch's stale agentChatV2 path",
+    "resolveTextBrainKeys (electron/ai/textBrainResolver.ts) — now accepts { preferImageInput } and threads it through resolveConfiguredTextBrain -> selectTextModelCandidates so a frame-reading request selects gemini-3.5-flash (meta.supportsImageInput) over the default text-only brain",
+    "allReferenceImages (electron/catalog/taskParams.ts) — plural sibling of firstReferenceImage that reuses the same ComfyUI-reference-contract path and (vendorKey, modelKey) selection, so multi-image callers keep the contract and single-image callers are unchanged",
+    "streamTextTask (electron/ai/streamTextTask.ts) — gains imageUrls[] while preserving main's single-image toImagePart error contract; if images are requested but none resolve it throws rather than letting the model answer blind"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://docs.apimart.ai/en/api-reference/texts/gemini/quickstart.md",
+      "checked_at": "2026-09-01",
+      "purpose": "R5 live re-check of the APIMart Gemini model list against the 8-month-stale branch. Confirmed gemini-3.5-flash is still listed and available; gemini-3.0-flash/gemini-3-flash are not (do not use). Endpoint is POST https://api.apimart.ai/v1/chat/completions with Authorization: Bearer, synchronous with stream:false."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://docs.apimart.ai/en/api-reference/texts/general/chat-completions.md",
+      "checked_at": "2026-09-01",
+      "purpose": "Confirm the chat-completions endpoint path, method, auth header, and that stream:false returns a synchronous OpenAI-shaped body. The page does not explicitly document OpenAI-style image_url multimodal content on this endpoint; that OpenAI-compatible multimodal path is instead proven live by the real APIMart smoke (image_to_prompt on gemini-3.5-flash returns text that matches the image), since docs under-document what the endpoint accepts."
+    }
+  ],
+  "invariants": [
+    "Frame URLs (nomi-local:// project assets) reach the vision model as inlined bytes; if a caller requests images and none can be resolved, streamTextTask throws rather than sending a text-only request that the model answers by hallucinating.",
+    "A frame-reading request selects a text brain that declares meta.supportsImageInput; the default text-only brain is never silently used for image_to_prompt with frames.",
+    "firstReferenceImage and allReferenceImages share one reference-resolution path: single-image callers see identical behavior (including the ComfyUI reference contract and the (vendorKey, modelKey) selection), and the plural accessor only widens the count.",
+    "Every nomi:video:* IPC handler, including nomi:video:deconstruct, rejects non-trusted senders via assertTrustedSender, matching its sibling channels.",
+    "A failed shot (vision analysis or a missing frame) degrades to visionFailed for that shot and is reported in failedShotIndexes; it never aborts the whole batch, and a missing audio track leaves dialogue empty rather than failing the run."
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "This is a feature port to a known set of named surfaces, not a class of recurring runtime failures needing a new machine-enforced invariant. The genuine silent-failure defenses it depends on already exist as structural gates on main — assertTrustedSender is enforced by check:ipc-sender-binding, the nomi-local byte-inline + throw-on-unresolvable contract already lives in streamTextTask.toImagePart and its test, and the size cap is enforced by check:filesize. The port reuses those existing boundaries and threads the one missing capability (multi-image, preferImageInput) through main's current code; no new reusable ratchet is introduced, so prevention is omitted. The regression tests pin each ported nuance (timestamp attribution, sampling, prompt schema, ffmpeg args, and the single-image error contract).",
+    "same_class_scan": [
+      "Enumerated every consumer of the text-brain resolver: resolveTextBrainKeys (threaded preferImageInput here), resolveTextBrainStatus and resolveConfiguredTextBrain (readiness probes, correctly left image-agnostic), and chooseTextModel (already accepts preferImageInput on main). Confirmed promptLibraryIpc on main uses resolveTextBrainStatus from textBrainResolver, so the branch's stale agentChatV2 import was not ported.",
+      "Enumerated every image_to_prompt caller through executeTextTask: the browser single-image 'frame replication' path and the new video multi-frame path both flow through allReferenceImages, and the single-image case reduces to one element (unchanged). taskParams.test.ts still passes, proving the ComfyUI reference contract on firstReferenceImage is intact.",
+      "Enumerated every nomi:video:* IPC handler: extract-frame, extract-filmstrip, detect-shot-cuts, and deconstruct all now register through registerVideoIpc with assertTrustedSender; verified assertTrustedSender remains imported and used elsewhere in main.ts and that check:ipc-sender-binding passes.",
+      "Confirmed streamTextTask's single-image path preserves main's exact 'Local image attachment is missing or unreadable' error (re-thrown as the first underlying error when all requested images fail) so the existing streamTextTask.test.ts contract is unchanged, and the Antigravity vendor branch now honors imageUrls as well as imageUrl.",
+      "Confirmed the image_to_prompt (billing kind text) and transcribe (billing kind audio) paths return before any generation grant check, so the engine reuses already-certified runtime paths and needs no new modelAccessCapabilities entry."
+    ]
+  },
+  "regression_tests": [
+    "electron/video/deconstructVideo.test.ts",
+    "electron/video/shotTimeline.test.ts",
+    "electron/video/extractAudioTrack.test.ts"
+  ],
+  "migration": "No stored data is rewritten and no UI is added (engine-only port; the panel shell awaits mockup sign-off). New capability is additive: a new nomi:video:deconstruct IPC channel and bridge method, a new audio-track project cache bucket, a plural allReferenceImages accessor, and a preferImageInput option on resolveTextBrainKeys. Existing single-image callers, existing video IPC channels, and the default text-brain selection are unchanged. main.ts video handlers were extracted verbatim into registerVideoIpc to stay under the 800-line file-size cap without whitelisting.",
+  "residual_risks": [
+    "The APIMart chat-completions docs page does not explicitly document OpenAI-style image_url multimodal content; the OpenAI-compatible multimodal path is proven by the real smoke rather than by the doc. If APIMart later removes OpenAI-shaped multimodal from /v1/chat/completions, gemini-3.5-flash frame reading would need the native generateContent shape (/v1beta/models/{model}:generateContent with inlineData) instead.",
+    "gemini-3.5-flash is a thinking model: with maxTokens set too low the visible body can be empty with finishReason=length. The engine sets maxTokens to 4000 for deconstruction; a caller that lowers it could reintroduce empty-body shots that look like model failure.",
+    "The end-to-end walkthrough (tests/ux/video-deconstruct.e2e.mjs) and the paid APIMart smoke are credit-gated and not run in CI; the shot-attribution, sampling, prompt-schema, and ffmpeg-arg unit tests run in CI but do not prove the full local-video-to-table chain, which requires a real video and real credits."
+  ]
+}

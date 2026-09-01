@@ -2,6 +2,11 @@
   "debtCap": 80,
   "registered": [
     {
+      "site": "src/ui/community/feedbackTypes.ts::type:FeedbackStage/type-union",
+      "members": ["export", "generation", "model", "other", "upload"],
+      "reason": "FeedbackStage 是反馈中心让用户定位摩擦发生阶段的本地 view model；它只服务反馈草稿与诊断 envelope，不代表生成任务或导出流水线状态，故保持独立并由表单阶段列表复用。"
+    },
+    {
       "site": "electron/ai/antigravityProtocol.ts::type:AntigravityToolStep/property:state/type-union",
       "members": ["ACTIVE", "DONE"],
       "reason": "AntigravityToolStep.state 是浏览器工具调用步骤的协议状态：ACTIVE 表示远端步骤仍在执行，DONE 表示步骤已结束。acceptTool 只构造这份导出协议，同文件的局部 state 必须从 AntigravityToolStep['state'] derive。"
