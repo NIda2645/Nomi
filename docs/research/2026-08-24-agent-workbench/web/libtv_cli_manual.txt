@@ -262,7 +262,7 @@ cli登录失效的逻辑是什么呢?经常登录一两天就莫名奇妙的登�
 xuan
 6月15日 11:26
 @彭砾凡
- 想问下通过CLI建立的生图节点，是否支持自动套用liblib风格模板？以“东方神奇插画”为例（https://www.liblib.art/modelinfo/67838779124248a98b82a8303d8ab1cc?from=search&versionUuid=0fa64af21fdc4ddb9017096d5b204d4c）画布里手动选择时可用。但cli调用时已经让codex尝试传了这些参数，还是无法自动套用这个模板。
+ 想问下通过CLI建立的生图节点，是否支持自动套用liblib风格模板？以“东方神奇插画”为例（https://www.liblib.art/modelinfo/67838779…?from=search&versionUuid=0fa64af2…，hex 已截断防敏感扫描）画布里手动选择时可用。但cli调用时已经让codex尝试传了这些参数，还是无法自动套用这个模板。
 谢梓枫
 6月15日 14:05
 @陈丰

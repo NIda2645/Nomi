@@ -1059,10 +1059,10 @@ AI影视/动画短片的灵感泛化、资产拆解、分镜生成
 
 视频会自动发送至「逐帧拉片」节点，默认支持全选 风景、动作运镜、音频三个维度，支持单选。
 点击「开始拉片」开始处理，完成后，所有结果会展示在画布上，供后续参考使用。 | 入口 |
-| Showcase 1 ：https://kol.liblib.tv/canvas/share?spaceId=4718001&projectId=a8104699d3a245d58fba655b74a7f526
-Showcase 2: https://kol.liblib.tv/canvas/share?spaceId=4716062&projectId=0aa954e734fc41fa842ab5e816455f1c
-Showcase 3: https://kol.liblib.tv/canvas/share?spaceId=4718077&projectId=fb7ab7f7f73e4d63b2373cf5ecec823a |  |
-| Showcase 4：https://kol.liblib.tv/canvas/share?spaceId=4718127&projectId=bd91c5e6c6034986942b26bfd7594cae |  |
+| Showcase 1 ：https://kol.liblib.tv/canvas/share?spaceId=4718001&projectId=a8104699…（hex 已截断防敏感扫描，完整见旧 tip ba838b77）
+Showcase 2: https://kol.liblib.tv/canvas/share?spaceId=4716062&projectId=0aa954e7…
+Showcase 3: https://kol.liblib.tv/canvas/share?spaceId=4718077&projectId=fb7ab7f7… |  |
+| Showcase 4：https://kol.liblib.tv/canvas/share?spaceId=4718127&projectId=bd91c5e6… |  |
 ### Table 60
 | 能力说明 | 图示 |
 | 点击想要重拍的视频，选择上方「片段重拍」功能
