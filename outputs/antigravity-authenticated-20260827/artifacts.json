@@ -1,0 +1,24 @@
+[
+  {
+    "artifact": "generated-crane.jpg",
+    "sha256": "96cf683264da1a6945569357389c117d6887b84f1bf93d138e9155a4c1050641",
+    "bytes": 457616,
+    "decode": "pass",
+    "media": {
+      "codec_name": "mjpeg",
+      "width": 1024,
+      "height": 1024
+    }
+  },
+  {
+    "artifact": "edited-crane.jpg",
+    "sha256": "f03e24e8d79a25c70a4d2c0dca92b6030ca4d1f6f8fc435e66c7d1f326bd34e8",
+    "bytes": 467698,
+    "decode": "pass",
+    "media": {
+      "codec_name": "mjpeg",
+      "width": 1024,
+      "height": 1024
+    }
+  }
+]

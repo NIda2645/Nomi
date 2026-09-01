@@ -1,0 +1,33 @@
+{
+  "designOnly": true,
+  "realCliVerified": false,
+  "productionUiVerified": false,
+  "checks": [
+    "default installed/login-required record",
+    "all default capabilities unverified",
+    "four independent capabilities only",
+    "no Key or network input",
+    "one main action",
+    "login main action copies command",
+    "desktop default exposes connection-details entry",
+    "01-current-login-light: no horizontal overflow",
+    "text-only simulated success",
+    "text success does not validate image",
+    "02-text-only-verified-light: no horizontal overflow",
+    "image success does not validate edit",
+    "03-text-image-verified-light: no horizontal overflow",
+    "selected capability controls primary action",
+    "running action becomes cancel",
+    "cancel never creates success",
+    "image limit preserves separate text record",
+    "04-image-limited-dark: no horizontal overflow",
+    "existing home route opens",
+    "existing local entry opens connection detail",
+    "05-mobile-current-login-dark: no horizontal overflow",
+    "video and audio remain unverified details only",
+    "06-mobile-details-dark: no horizontal overflow",
+    "missing CLI directs to official installation",
+    "no page errors"
+  ],
+  "errors": []
+}

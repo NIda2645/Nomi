@@ -676,6 +676,9 @@ export type DesktopBridge = DesktopMediaBridge & {
     probeComfyui: (baseUrl?: string) => Promise<
       { ok: true; summary: string; version?: string; protocol?: 'enhanced' | 'compatibility' } | { ok: false; error: string }
     >
+    /** 本地文本端口探测（Ollama 11434 / LM Studio 1234 / LocalAI 8080）+ 能力预检（判「支持 Agent / 仅对话 / 探不出」）。旧 preload 可能没有 → 可选。 */
+    probeLocalTextEndpoints?: () => Promise<{ hits: Array<{ id: 'ollama' | 'lmstudio' | 'localai'; label: string; baseUrl: string; models: string[] }> }>
+    probeLocalTextCapability?: (payload: { baseUrl: string; modelId: string }) => Promise<{ verdict: 'agent' | 'chat-only' | 'unknown'; detail?: string }>
     /** 校验 + 识别 workflow_api.json 可绑定节点（同步）。analysis 结构见 comfyuiWorkflowImport.WorkflowAnalysis。 */
     analyzeComfyWorkflow: (text: string) => { ok: true; analysis: unknown } | { ok: false; error: string }
     /** 缺件对账（异步问本机 /object_info）：缺节点类 + 引用了本机没有的模型文件 + combo 可选值。旧 preload 可能没有 → 可选。 */

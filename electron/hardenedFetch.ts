@@ -45,6 +45,8 @@ export type HardenedFetchOptions = {
    * 不得从 renderer/Agent 原样透传；当前只由已配置的本地 ComfyUI 产物回收使用。
    */
   allowedPrivateOrigins?: readonly string[];
+  /** Optional explicit provider route. Destination SSRF checks remain active. */
+  dispatcher?: Dispatcher;
 };
 
 export type ResolvedHostAddress = { address: string; family: 4 | 6 };
@@ -221,14 +223,20 @@ export async function hardenedFetch(
       const privateAllowed = isPrivateHost(currentUrl.hostname)
         && isExplicitlyAllowedPrivateOrigin(currentUrl, allowedPrivateOrigins);
       let dispatcher: Dispatcher | undefined;
-      if (!privateAllowed && (usesApplicationFetch || dependencies.waitForApplicationRoute)) {
-        await waitForApplicationRoute(controller.signal, currentUrl);
-      }
-      if (!privateAllowed && !applicationProxyActive()) {
-        const hostname = connectionHostname(currentUrl.hostname);
-        const addresses = await resolvePublicAddresses(hostname, resolveHost);
-        dispatcher = makeDispatcher(hostname, addresses);
-        dispatchers.push(dispatcher);
+      if (options.dispatcher) {
+        // An explicit provider route is already selected by the caller. Keep
+        // the application proxy wait and direct DNS pinning out of this path.
+        dispatcher = options.dispatcher;
+      } else {
+        if (!privateAllowed && (usesApplicationFetch || dependencies.waitForApplicationRoute)) {
+          await waitForApplicationRoute(controller.signal, currentUrl);
+        }
+        if (!privateAllowed && !applicationProxyActive()) {
+          const hostname = connectionHostname(currentUrl.hostname);
+          const addresses = await resolvePublicAddresses(hostname, resolveHost);
+          dispatcher = makeDispatcher(hostname, addresses);
+          dispatchers.push(dispatcher);
+        }
       }
       response = await fetchImpl(currentUrl, {
         method,

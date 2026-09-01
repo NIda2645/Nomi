@@ -1,0 +1,51 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-model-access-capability-registry",
+  "problem_type": "model-access ability面缺少可枚举、可被旅程门岗读取的单一事实源（运行时 union 手写、易落后于真实能力）",
+  "symptom": "「模型接入旅程」这一事实源分散在多处手写的 TypeScript union 上：catalog/types.ts 里 BillingModelKind / ProfileKind / AiSdkProviderKind / AssetMediaKind / authType 各写一份字面量联合，providerAdapter/validator.ts 里 profileKinds / billingKinds 又抄一份 as-const 数组喂给 z.enum。同一批能力（计费类目、任务档、SDK 协议、鉴权类型、媒体类型）没有一个可枚举的运行时清单，旅程测试矩阵无法机器读取到「生产上到底声明了哪些能力维度」，只能凭人肉对照——新增一个 profile 或 auth 类型时，validator 的 zod 枚举、catalog 的 union、旅程覆盖矩阵三处各自漂移，看起来都编译通过却互相不咬合。",
+  "direct_cause": "catalog/types.ts 与 validator.ts 各自内联维护能力枚举，没有共享的运行时常量。旅程门岗（manifest.test.mjs）需要一个既能被 electron 运行时消费、又能被测试 import 的可枚举清单来校验「每个声明维度都有稳定真实 UI 往返覆盖」，而当时不存在这样的清单。",
+  "class_root": "model-access 的能力面被表达在两个高度（catalog 的类型 union + validator 的 zod 数组），且都是手写字面量。正确的形状是：把这批能力收敛成一个可枚举的运行时注册表，作为「模型接入旅程事实源」的单一语义 owner，运行时类型从该注册表反推（typeof[number]），zod 枚举直接消费该注册表，旅程矩阵 import 该注册表做覆盖校验——三处从此共用一份真相，新增能力只改一处。owner = electron/shared/contracts/modelAccessCapabilities.ts（MODEL_ACCESS_CAPABILITIES 及其成员常量 BILLING_MODEL_KINDS / PROFILE_KINDS / AI_SDK_PROVIDER_KINDS / VENDOR_AUTH_TYPES / ASSET_MEDIA_KINDS）。这是纯功能性恢复（把散落的能力声明归拢到事实源），不是修某个线上 bug。",
+  "affected_population": [
+    "任何新增/调整一个模型接入能力（新 profile、新 auth 类型、新计费类目、新 SDK 协议）的开发者：此前必须同时手改 catalog union、validator zod 枚举、旅程覆盖矩阵三处且无门岗兜底，现在只改 owner 一处，其余反推。",
+    "模型接入旅程测试系统：此前无法机器读取「生产声明了哪些能力维度」，只能人肉列举；现在 manifest.test.mjs 直接 import MODEL_ACCESS_CAPABILITIES 作为唯一必测宇宙，能力面与覆盖矩阵不咬合会红。",
+    "未来任何需要按能力维度枚举生成 UI / 校验 / 文档的通用系统：都能读同一注册表，不必再各自维护平行清单（P4 通用第一）。"
+  ],
+  "scope_paths": [
+    "electron/shared/contracts/modelAccessCapabilities.ts",
+    "electron/catalog/types.ts",
+    "electron/providerAdapter/validator.ts"
+  ],
+  "entry_points": [
+    "electron/shared/contracts/modelAccessCapabilities.ts — MODEL_ACCESS_CAPABILITIES（第163行）及成员常量 BILLING_MODEL_KINDS/PROFILE_KINDS/AI_SDK_PROVIDER_KINDS/VENDOR_AUTH_TYPES/ASSET_MEDIA_KINDS（第15-34行）：能力面的单一 owner，其它两处从这里反推/消费。",
+    "electron/catalog/types.ts — 第4-12行 import owner 常量并 re-export（第14行注释说明单一真相源），第17-40行 BillingModelKind/ProfileKind/AiSdkProviderKind/AssetMediaKind/VendorAuthType 全部 (typeof CONST)[number] 反推，Vendor.authType（第236行）改用 VendorAuthType。",
+    "electron/providerAdapter/validator.ts — 第3行 import BILLING_MODEL_KINDS/PROFILE_KINDS，第100行 taskKind: z.enum(PROFILE_KINDS)、第150行 kind: z.enum(BILLING_MODEL_KINDS)：zod 枚举直接消费 owner，删去原内联的 profileKinds/billingKinds 数组。",
+    "tests/ux/model-access-journeys/manifest.test.mjs — import MODEL_ACCESS_CAPABILITIES/MODEL_ACCESS_REQUIRED_PROFILES，把注册表当作唯一必测能力宇宙校验旅程覆盖。"
+  ],
+  "internal_only_reason": "没有新接入或重新契约任何外部供应商 API。本次只是把已经存在的能力声明（计费类目/任务档/SDK 协议/鉴权/媒体类型）从散落的手写 union 归拢成一个可枚举的内部运行时注册表，运行时类型从常量反推、zod 枚举消费同一常量、旅程矩阵读取同一常量。所有取值均为 Nomi 自有的内部语义，无第三方端点/鉴权/参数被引入或改动。",
+  "invariants": [
+    "model-access 能力枚举（计费类目/任务档/SDK 协议/鉴权类型/媒体类型）只有 electron/shared/contracts/modelAccessCapabilities.ts 一处 owner；catalog/types.ts 与 validator.ts 只反推或消费，禁止再内联第二份字面量清单。",
+    "catalog 的运行时类型全部由 (typeof OWNER_CONST)[number] 反推，保证类型永远等于 owner 的真实成员，不会手写落后。",
+    "validator 的 zod 枚举直接传入 owner 常量（z.enum(PROFILE_KINDS) / z.enum(BILLING_MODEL_KINDS)），校验面与 catalog 类型面同源。",
+    "旅程覆盖矩阵以 MODEL_ACCESS_CAPABILITIES 为唯一必测宇宙：任一声明维度缺稳定真实 UI 往返覆盖即门岗红。",
+    "纯加法：无并行版、无 fallback。原 #254 涉及的 modelArchetypes/types.ts 改动已裁掉，避免出现第二个能力 owner（双 owner）。"
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "这是一次把散落能力声明归拢到单一事实源的功能性恢复，不是有多个活跃入口需要收敛的缺陷类。收敛完成后 owner 只有一处，catalog/validator 都从它反推/消费，不存在「另一个调用点还能违反同一不变量」的场景——因此按 schema 要求 one_off 不写 prevention（没有需要机器强制的可复用边界，注册表本身即边界，由 manifest.test.mjs 钉住）。同类入口=各 onboarding 卡：均已在本 PR 逐卡钉了旅程锚点（tests/ux/model-access-journeys/*.walk.mjs），从 UI 侧消费同一能力面。",
+    "same_class_scan": [
+      "确认 electron/shared/contracts/modelAccessCapabilities.ts 是能力枚举的唯一 owner：catalog/types.ts 第4-12行 import 并 re-export、validator.ts 第3行 import，无第三处内联字面量（原 validator 内联的 profileKinds/billingKinds 数组已删除）。",
+      "确认运行时类型全部反推自 owner 常量（catalog/types.ts 第17-40行 (typeof CONST)[number]），不存在手写 union 与 owner 漂移的可能。",
+      "确认 modelArchetypes/types.ts 未被本 PR 触碰（git diff 名单无 archetype），原 #254 的 modelArchetypes/types.ts 改动已裁掉，杜绝第二个能力 owner。",
+      "确认各 onboarding 卡（CustomVendorCard/DreaminaMemberCard/ComfyuiLocalCard/CodexLocalImageCard/VendorOnboardCard 等）已逐卡钉旅程锚点，均从同一能力面消费，无 UI 侧平行枚举。"
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/model-access-journeys/manifest.test.mjs"
+  ],
+  "migration": "无存储数据被改写。能力注册表是纯代码事实源，catalog 类型与 validator 校验在读时从它反推/消费；既有 Vendor/adapter 记录的取值集合不变（union 成员相同，只是来源从手写改为反推），因此不涉及任何持久化迁移或用户可见行为变化。",
+  "residual_risks": [
+    "owner 常量与旅程覆盖矩阵解耦成两份数据（能力清单 vs 覆盖声明）：新增一个能力值若忘了在旅程矩阵补覆盖，manifest.test.mjs 会红——这是有意的兜底，不是风险，但要求新增能力时同 PR 补旅程覆盖。",
+    "本次只归拢了 catalog/validator 两处消费点；若未来有新的运行时消费点（如新的校验器）忘了 import owner 而再内联一份字面量，机器门岗（check:vocabularies）覆盖词表 owner 但不覆盖任意 union 内联——需靠评审与本契约不变量约束。",
+    "Vendor.authType 仍保留可选（authType?），未收窄为必填；这是既有形状，本次不改，避免牵动存量记录的读路径。"
+  ]
+}

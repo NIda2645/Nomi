@@ -1,0 +1,429 @@
+- document
+- generic: 💥 Seedance 系列 & MiniMax H3 多模型限时折扣｜Seedance 2.5 低至 0.4 元/秒，年会员最低 4 折
+- generic: 限时抢购
+- button "关闭":
+- complementary "侧边导航":
+  - button "首页":
+  - button "收起侧边栏":
+  - button "新建项目":
+    - generic: 新建项目
+  - navigation:
+    - button "首页":
+      - generic: 首页
+    - button "项目":
+      - generic: 项目
+    - button "LibTV Agent":
+      - generic: LibTV Agent
+    - button "创作者挑战赛":
+      - generic: 创作者挑战赛
+  - button "SD2.5畅享卡上线 积分超市限时抢购":
+    - generic: SD2.5畅享卡上线
+    - generic: 积分超市限时抢购
+  - button "帮助":
+    - generic: 帮助
+- main:
+  - button "Blender 插件":
+    - generic: Blender 插件
+  - button "积分超市":
+    - generic: 积分超市
+  - text: 开通会员
+  - generic: 限时 40 折
+  - button "20":
+    - generic: "20"
+  - img "avatar"
+  - generic: LibTV CLI
+  - generic: CLI
+  - heading "LibTV CLI - 一行指令，让 LibTV 进入你的 Agent 工作流" [level=1]:
+    - generic: LibTV CLI -
+    - text: 一行指令，让 LibTV 进入你的 Agent 工作流
+  - button "通过 AI Agent 安装"
+  - button "手动安装"
+  - paragraph: 将下面这段话直接发给你的 AI 助手（Kimi Code/Claw、MiniMax Agent、Trae 等），
+  - paragraph: 它会自动帮你完成安装和初始化。
+  - paragraph: 提示词
+  - paragraph: 请帮我安装 LibTV CLI Skill：https://liblibai-web-static.liblib.cloud/cli/1.1.3/libtv-cli-skill.zip
+  - button "复制":
+    - generic: 复制
+  - generic: 配置完成后，重启你的 AI Agent 即可开始使用
+  - link "使用指南":
+    - /url: https://resonate.feishu.cn/wiki/RjelwT2UoidnTMka2nCc2chGnud
+  - generic: 查看原
+  - link "LibTV Skills":
+    - /url: https://resonate.feishu.cn/wiki/OwYKwl4xoiywU5kklrrcAyVDn7d
+  - heading "探索 LibTV Skill" [level=2]
+  - generic: 目录
+  - button "commands":
+    - generic: commands
+  - button "account.md":
+    - generic: account.md
+  - button "group.md":
+    - generic: group.md
+  - button "image.md":
+    - generic: image.md
+  - button "login.md":
+    - generic: login.md
+  - button "logout.md":
+    - generic: logout.md
+  - button "model.md":
+    - generic: model.md
+  - button "node.md":
+    - generic: node.md
+  - button "project.md":
+    - generic: project.md
+  - button "script.md":
+    - generic: script.md
+  - button "upload.md":
+    - generic: upload.md
+  - button "workspace.md":
+    - generic: workspace.md
+  - button "examples":
+    - generic: examples
+  - button "node-types":
+    - generic: node-types
+  - button "pipes":
+    - generic: pipes
+  - button "workflow":
+    - generic: workflow
+  - button "README.md":
+    - generic: README.md
+  - button "model-schema":
+    - generic: model-schema
+  - button "schema.md":
+    - generic: schema.md
+  - button "node-types":
+    - generic: node-types
+  - button "audio.md":
+    - generic: audio.md
+  - button "image.md":
+    - generic: image.md
+  - button "README.md":
+    - generic: README.md
+  - button "script.md":
+    - generic: script.md
+  - button "storyboard.md":
+    - generic: storyboard.md
+  - button "text.md":
+    - generic: text.md
+  - button "video-clip.md":
+    - generic: video-clip.md
+  - button "video.md":
+    - generic: video.md
+  - button "scripts":
+    - generic: scripts
+  - button "install-libtv-cli.bat":
+    - generic: install-libtv-cli.bat
+  - button "install-libtv-cli.ps1":
+    - generic: install-libtv-cli.ps1
+  - button "install-libtv-cli.sh":
+    - generic: install-libtv-cli.sh
+  - button "install.md":
+    - generic: install.md
+  - button "SKILL.md":
+    - generic: SKILL.md
+  - generic: SKILL.md
+  - table:
+    - rowgroup:
+      - row "Metadata":
+        - columnheader "Metadata"
+    - rowgroup:
+      - row "name libtv-cli":
+        - rowheader "name"
+        - cell "libtv-cli"
+      - row "description LibTV 官方 CLI（libtv）：在命令行里完整操作 / 运行 LibTV 画布。 凡是和 LibTV 画布 / 项目 / 节点 / 模型 / 素材相关的操作，一律通过 libtv CLI 完成， 不要自己捏造 HTTP 请求或绕到网页端步骤。本 skill 内即包含完整的 CLI 命令操作手册； 常见场景见 examples/，安装/更新见 scripts/install.md。":
+        - rowheader "description"
+        - cell "LibTV 官方 CLI（libtv）：在命令行里完整操作 / 运行 LibTV 画布。 凡是和 LibTV 画布 / 项目 / 节点 / 模型 / 素材相关的操作，一律通过 libtv CLI 完成， 不要自己捏造 HTTP 请求或绕到网页端步骤。本 skill 内即包含完整的 CLI 命令操作手册； 常见场景见 examples/，安装/更新见 scripts/install.md。"
+  - heading "LibTV CLI（libtv）" [level=1]:
+    - text: LibTV CLI（
+    - code: libtv
+    - text: ）
+  - paragraph:
+    - code: libtv
+    - text: 的文档地图。子命令与选项权威文案以
+    - code: libtv --help
+    - text: 与
+    - code: libtv <子命令> --help
+    - text: 为准；当文档与
+    - code: "--help"
+    - text: 不一致时，以 CLI 实际输出为准并修订本 skill。
+  - paragraph:
+    - strong: 术语
+    - text: ：本 CLI 里
+    - strong: 画布（project）
+    - text: 是真正的画布文件，
+    - strong: 项目（workspace）= 工作区
+    - text: 是装画布的容器，一个项目下可放多张画布。
+  - paragraph:
+    - strong: 画布 / 分组范围
+    - text: ：在画布所在工作目录执行
+    - code: libtv project use <画布UUID>
+    - text: ，写入
+    - code: .libtv/project.json
+    - text: 的
+    - code: projectUuid
+    - text: ；之后大多数子命令（
+    - code: libtv node
+    - text: /
+    - code: libtv upload
+    - text: /
+    - code: libtv group
+    - text: ）在省略
+    - code: "-p"
+    - text: /
+    - code: "--project"
+    - text: 时即使用该画布。需要限定到某个普通分组时，再执行
+    - code: libtv group use <分组>
+    - text: 写入
+    - code: groupNodeKey
+    - text: 。详见
+    - link "commands/project.md":
+      - /url: ./commands/project.md
+    - text: 、
+    - link "commands/group.md":
+      - /url: ./commands/group.md
+    - text: 。
+  - paragraph:
+    - strong: 项目（工作区）绑定
+    - text: ：用
+    - code: libtv workspace use <项目ID>
+    - text: 把目录绑定到一个项目（工作区），写入
+    - code: .libtv/project.json
+    - text: 的
+    - code: workspaceId
+    - text: ，用于
+    - code: project create
+    - text: /
+    - code: project list
+    - text: 的默认项目范围。
+    - code: workspace use
+    - text: 不设置默认画布，会清掉原
+    - code: projectUuid
+    - text: /
+    - code: groupNodeKey
+    - text: ；
+    - code: project use
+    - text: 会写入画布，并把该画布实际所属的
+    - code: workspaceId
+    - text: /
+    - code: teamId
+    - text: 同步进本地状态。详见
+    - link "commands/workspace.md":
+      - /url: ./commands/workspace.md
+    - text: 。
+  - heading "文档地图" [level=2]
+  - table:
+    - rowgroup:
+      - row "主题 文件":
+        - columnheader "主题"
+        - columnheader "文件"
+    - rowgroup:
+      - row "一键安装 / 指定版本安装 scripts/install.md（脚本与本文件同目录）":
+        - cell "一键安装 / 指定版本安装"
+        - cell "scripts/install.md（脚本与本文件同目录）":
+          - link "scripts/install.md":
+            - /url: ./scripts/install.md
+          - text: （脚本与本文件同目录）
+      - row "管道（NDJSON）、stdout/stderr、嵌套 case examples/pipes/README.md":
+        - cell "管道（NDJSON）、stdout/stderr、嵌套 case"
+        - cell "examples/pipes/README.md":
+          - link "examples/pipes/README.md":
+            - /url: ./examples/pipes/README.md
+      - row "常见案例（场景化可复制命令集，每个 case 一文件） examples/README.md":
+        - cell "常见案例（场景化可复制命令集，每个 case 一文件）":
+          - text: 常见案例（场景化可复制命令集，
+          - strong: 每个 case 一文件
+          - text: ）
+        - cell "examples/README.md":
+          - link "examples/README.md":
+            - /url: ./examples/README.md
+      - row "libtv login web / libtv login phone commands/login.md":
+        - cell "libtv login web / libtv login phone":
+          - code: libtv login web
+          - text: /
+          - code: libtv login phone
+        - cell "commands/login.md":
+          - link "commands/login.md":
+            - /url: ./commands/login.md
+      - row "libtv logout commands/logout.md":
+        - cell "libtv logout":
+          - code: libtv logout
+        - cell "commands/logout.md":
+          - link "commands/logout.md":
+            - /url: ./commands/logout.md
+      - row "libtv account（含 info / list / use） commands/account.md":
+        - cell "libtv account（含 info / list / use）":
+          - code: libtv account
+          - text: （含
+          - code: info
+          - text: /
+          - code: list
+          - text: /
+          - code: use
+          - text: ）
+        - cell "commands/account.md":
+          - link "commands/account.md":
+            - /url: ./commands/account.md
+      - row "libtv workspace（项目/工作区，含 create / list / update / use / unuse） commands/workspace.md":
+        - cell "libtv workspace（项目/工作区，含 create / list / update / use / unuse）":
+          - code: libtv workspace
+          - text: （项目/工作区，含
+          - code: create
+          - text: /
+          - code: list
+          - text: /
+          - code: update
+          - text: /
+          - code: use
+          - text: /
+          - code: unuse
+          - text: ）
+        - cell "commands/workspace.md":
+          - link "commands/workspace.md":
+            - /url: ./commands/workspace.md
+      - row "libtv project（画布，含 create / list / update / use / unuse / 默认摘要） commands/project.md":
+        - cell "libtv project（画布，含 create / list / update / use / unuse / 默认摘要）":
+          - code: libtv project
+          - text: （画布，含
+          - code: create
+          - text: /
+          - code: list
+          - text: /
+          - code: update
+          - text: /
+          - code: use
+          - text: /
+          - code: unuse
+          - text: / 默认摘要）
+        - cell "commands/project.md":
+          - link "commands/project.md":
+            - /url: ./commands/project.md
+      - row "libtv node（含 create / list / delete / 默认用法） commands/node.md":
+        - cell "libtv node（含 create / list / delete / 默认用法）":
+          - code: libtv node
+          - text: （含
+          - code: create
+          - text: /
+          - code: list
+          - text: /
+          - code: delete
+          - text: / 默认用法）
+        - cell "commands/node.md":
+          - link "commands/node.md":
+            - /url: ./commands/node.md
+      - row "libtv group（含 list / create / use / unuse / 默认用法） commands/group.md":
+        - cell "libtv group（含 list / create / use / unuse / 默认用法）":
+          - code: libtv group
+          - text: （含
+          - code: list
+          - text: /
+          - code: create
+          - text: /
+          - code: use
+          - text: /
+          - code: unuse
+          - text: / 默认用法）
+        - cell "commands/group.md":
+          - link "commands/group.md":
+            - /url: ./commands/group.md
+      - row "libtv upload commands/upload.md":
+        - cell "libtv upload":
+          - code: libtv upload
+        - cell "commands/upload.md":
+          - link "commands/upload.md":
+            - /url: ./commands/upload.md
+      - row "libtv image（shortcut list / shortcut <scene label> -n <node>） commands/image.md":
+        - cell "libtv image（shortcut list / shortcut <scene label> -n <node>）":
+          - code: libtv image
+          - text: （
+          - code: shortcut list
+          - text: /
+          - code: shortcut <scene label> -n <node>
+          - text: ）
+        - cell "commands/image.md":
+          - link "commands/image.md":
+            - /url: ./commands/image.md
+      - row "libtv script（含 storyboard：从脚本节点生成分镜图组） commands/script.md":
+        - cell "libtv script（含 storyboard：从脚本节点生成分镜图组）":
+          - code: libtv script
+          - text: （含
+          - code: storyboard
+          - text: ：从脚本节点生成分镜图组）
+        - cell "commands/script.md":
+          - link "commands/script.md":
+            - /url: ./commands/script.md
+      - row "libtv model（含 search / 默认完整 schema） commands/model.md":
+        - cell "libtv model（含 search / 默认完整 schema）":
+          - code: libtv model
+          - text: （含
+          - code: search
+          - text: / 默认完整 schema）
+        - cell "commands/model.md":
+          - link "commands/model.md":
+            - /url: ./commands/model.md
+      - row "画布节点类型（-t 枚举、对应 -s / -u 字段） node-types/README.md":
+        - cell "画布节点类型（-t 枚举、对应 -s / -u 字段）":
+          - text: 画布节点类型（
+          - code: "-t"
+          - text: 枚举、对应
+          - code: "-s"
+          - text: /
+          - code: "-u"
+          - text: 字段）
+        - cell "node-types/README.md":
+          - link "node-types/README.md":
+            - /url: ./node-types/README.md
+      - row "模型 schema 字段（properties / config / rules / modeType） model-schema/schema.md":
+        - cell "模型 schema 字段（properties / config / rules / modeType）":
+          - text: 模型 schema 字段（
+          - code: properties
+          - text: /
+          - code: config
+          - text: /
+          - code: rules
+          - text: /
+          - code: modeType
+          - text: ）
+        - cell "model-schema/schema.md":
+          - link "model-schema/schema.md":
+            - /url: ./model-schema/schema.md
+  - heading "支持主流 AI Agent 工具" [level=2]
+  - img "Kimi Code/Claw"
+  - paragraph: Kimi Code/Claw
+  - img "Mini Max"
+  - paragraph: Mini Max
+  - img "小龙虾"
+  - paragraph: 小龙虾
+  - img "Trae"
+  - paragraph: Trae
+  - img "腾讯云代码助手"
+  - paragraph: 腾讯云代码助手
+  - img "通义灵码"
+  - paragraph: 通义灵码
+  - img "文心快码"
+  - paragraph: 文心快码
+  - paragraph: 只需几秒即可将 Kimi Code/Claw、MiniMax Agent、小龙虾或 Trae 连接到 LibTV
+  - paragraph: 视频、图像、角色——随需而至
+  - link "前往详细教程":
+    - /url: https://resonate.feishu.cn/wiki/RjelwT2UoidnTMka2nCc2chGnud
+    - generic: 前往详细教程
+  - generic: CLI
+  - heading "热门链接" [level=3]
+  - link "Liblib AI":
+    - /url: https://www.liblib.art/
+  - link "Liblib TV":
+    - /url: https://www.liblib.tv/
+  - heading "帮助与支持" [level=3]
+  - link "关于我们":
+    - /url: https://www.liblib.art/us/About-Liblibai
+  - generic: 联系客服
+  - heading "法律与合规" [level=3]
+  - link "用户协议":
+    - /url: https://www.liblib.art/activities/468ad794ccc7408d81757fd91be003ec
+  - link "隐私政策":
+    - /url: https://www.liblib.art/activities/7a354f41ead34f719eb49576e5292d00
+  - generic: Copyright by LiblibAI© 2026
+  - generic: 上海哩布哩布科技有限公司(上海市徐汇区丰谷路315弄24号1-3层)
+  - generic: 沪ICP备2025147903号-7
+- region "Notifications alt+T"
+- dialog [active]:
+  - generic: 立即抢购
+- alert

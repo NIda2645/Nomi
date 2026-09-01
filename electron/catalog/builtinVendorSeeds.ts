@@ -8,6 +8,7 @@ import { RUNNINGHUB_VENDOR_SEED } from "./runninghub3d";
 import { REPLICATE_VENDOR_SEED } from "./replicate";
 import { COMFYUI_VENDOR_SEED } from "./comfyuiLocal";
 import { CODEX_LOCAL_VENDOR_SEED } from "./codexImages";
+import { LOCAL_TEXT_VENDOR_SEED } from "../localRuntime/localTextVendorSeed";
 import { ANTIGRAVITY_VENDOR_SEED } from "./antigravityTexts";
 import { MINIMAX_VENDOR_SEED } from "./minimaxOfficial";
 import { ELEVENLABS_VENDOR_SEED } from "./elevenlabs";
@@ -48,6 +49,7 @@ export const BUILTIN_VENDOR_SEEDS: readonly VendorSeed[] = [
   FAL_VENDOR_SEED, // fal.ai CDN upload（模型 endpoint 由用户配置）
   RUNWAY_VENDOR_SEED, // Runway ephemeral upload（模型 endpoint 由用户配置）
   COMFYUI_VENDOR_SEED, // 本地 ComfyUI（无鉴权本地后端，默认关、用户显式启用）
+  LOCAL_TEXT_VENDOR_SEED, // 本地文本模型（Ollama / LM Studio / LocalAI，无鉴权，默认关、用户显式连）
   CODEX_LOCAL_VENDOR_SEED, // Codex 本地生图（实验，默认关）
   ANTIGRAVITY_VENDOR_SEED, // 官方本机 CLI；完整能力验证前默认关闭
   MINIMAX_VENDOR_SEED,
