@@ -1,0 +1,69 @@
+- document
+- button:
+- button:
+- heading "飞书云文档" [level=1]
+- generic: 朗
+- generic: 朗姆的云文档
+- generic: 搜索
+- button "与我分享":
+  - generic: 与我分享
+- list:
+  - button "MiniMax Design - 手册与指南":
+    - generic: MiniMax Design - 手册与指南
+- button:
+- generic: 朗姆
+- generic: MiniMax Design - 手册与指南
+- button:
+- generic: "最近修改: 8月21日 10:31"
+- button
+- button
+- button
+- button
+- button
+- generic: "+61"
+- button "分享":
+  - generic: 分享
+- button:
+- button:
+- button:
+- generic: 问问豆包
+- heading "MiniMax Design - 手册与指南" [level=1]:
+  - generic: MiniMax Design - 手册与指南
+- generic: Jins
+- generic: Rhea
+- generic: Eric
+- generic: 8月21日修改
+- generic: •
+- generic: 官网地址：
+- text: 国内版：
+- link "https://design.minimaxi.com/":
+  - /url: https://design.minimaxi.com/
+- text: 海外版：
+- link "https://design.minimax.io/":
+  - /url: https://design.minimax.io/
+- img "飞书文档 - 图片"
+- generic: 产品更新公告
+- iframe [name="{\"blockTypeId\":\"blk_6358a421bca0001c22536e4c\",\"channel\":\"853ec7d6-f320-4606-be41-995f282d7cd4\"}"]:
+  - textbox "输入标题": 🎉MiniMax Design v3.0版本更新
+  - textbox "输入详情": 🧠 Agent 创作效果全面提升 • Agent 对需求、上下文和工作语言的理解更准确，Skill 与模型匹配更合理，复杂创作执行更顺畅 • MV、品牌广告、TVC 和 KOC 创作流程全面优化，角色与音色跨镜一致性、参考素材衔接、分镜规划和视觉包装效果进一步提升 🎬 Agent进入导演台和剪辑 • Agent 正式进入3D导演台。通过自然语言即可完成角色站位、姿态调整、场景布局、镜头构图、人物运动与运镜规划。支持随时通过对话继续调整，快速产出静态分镜和动态预演参考 • 通过剪辑 Agent 调整视频片段、字幕、转场和画面效果，并支持导出剪映继续创作 🎨 ComfyUI 本地部署工作流（Beta） • 支持本地部署（当前为Beta版，正在快速优化中） • 新增精选工作流库，支持 H3 轻量版和 H3 满血版等多种工作流 • 覆盖文生视频、图生视频、首尾帧、多参考、官方超清及扩写、fal LoRA 等创作方式 • 工作流既可以在画布中使用，也可以在会话里直接交给 Agent 执行。支持导入和管理个人工作流 📄 文档与项目体验 • 文本文档支持全屏编辑、批注、文本助理，以及历史版本对比与恢复 • 新建创作时可直接创建并进入新项目 🛠️ 稳定性 • 修复大量已知问题，提升 Agent、画布与生成任务的整体稳定性和使用体验 💡 温馨提示：如线上更新失败，可前往官网下载最新版本手动更新 官网：https://hub.minimaxi.com/
+  - textbox "输入时间": 2026.8.20
+  - textbox "输入标题": 持续更新中
+  - textbox "输入时间": Coming soon
+- generic: MiniMax Design介绍
+- generic: 评论（0）
+- button:
+- menu:
+  - menuitem "上传日志":
+    - generic: 上传日志
+  - menuitem "联系客服":
+    - generic: 联系客服
+  - menuitem "功能更新":
+    - generic: 功能更新
+  - menuitem "帮助中心":
+    - generic: 帮助中心
+  - menuitem "效率指南":
+    - generic: 效率指南
+- textbox [active]
+- region "Notifications alt+T"
+- textbox
+- iframe
