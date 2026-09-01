@@ -1,6 +1,6 @@
 # Skills 知识分发系统 —— 对齐标准 · 渐进披露接给内部
 
-> **状态**：Phase 0 已交付（导入格式对齐，PR 待开）；Phase 1-3 待执行。
+> 🚧 **状态**：Phase 0 已交付（导入格式对齐，本 PR）；Phase 1-3 待执行。
 > **缘起**：用户群反馈「正常用 hermes 或 workbuddy 都是导入一个 zip 包就行，包里有 skill.md 就行了 / 现在都导入技能都必须是 json 格式」。挖下去发现这不是一个导入 bug，是**整条知识分发链**都只认我们自造的那套。
 > **上位方案**：`docs/superpowers/plans/2026-08-24-unified-agent-master-plan.md` §2.9「SKILL.md 渐进披露」。本文把那一行展开成可执行的。
 

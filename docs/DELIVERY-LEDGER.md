@@ -9,12 +9,14 @@
 
 ---
 
-## 现役欠账（14）
+## 现役欠账（16）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
 | 📋 方案待拍板 | [2026-08-13-video-deconstruction-storyboard-table.md](plan/2026-08-13-video-deconstruction-storyboard-table.md) | 视频拆解 → 分镜表 → 复刻生成（方案已拍板，待实施） |
+| 📋 方案待拍板 | [2026-08-27-unified-tool-surface.md](plan/2026-08-27-unified-tool-surface.md) | 内外工具面统一 —— 我们造了第二套 |
 | ⏳ 已拍板·未开工 | [2026-09-01-agent-m0-baseline-freeze.md](plan/2026-09-01-agent-m0-baseline-freeze.md) | M0：Agent 架构基线冻结 |
+| 🚧 进行中 | [2026-08-27-skills-knowledge-distribution.md](plan/2026-08-27-skills-knowledge-distribution.md) | Skills 知识分发系统 —— 对齐标准 · 渐进披露接给内部 |
 | 🚧 进行中 | [2026-08-28-conversational-model-integration-verification.md](plan/2026-08-28-conversational-model-integration-verification.md) | 对话式模型接入与认证闭环验收记录 |
 | 🚧 进行中 | [2026-08-28-editing-engine-uplift.md](plan/2026-08-28-editing-engine-uplift.md) | Nomi Editing Engine Uplift |
 | 🚧 进行中 | [2026-08-29-root-cause-contract-v2.md](plan/2026-08-29-root-cause-contract-v2.md) | 根因合同 v2 与规则收敛 |
@@ -42,16 +44,16 @@
 ## 其余
 
 - **已结案**：32 篇（✅ 已交付 / ⛔ 已废弃 / 📎 交接日志）
-- **未登记存量**：425 篇。这些是历史文件，**有意不进现役区**——其中很多离得很远、或已经不需要做。
+- **未登记存量**：423 篇。这些是历史文件，**有意不进现役区**——其中很多离得很远、或已经不需要做。
   想分诊就挑一篇加状态标记；不分诊也不会有人催。`check:doc-status` 只拦**新增**文档缺标记，不逼你清存量。
 
 <details>
-<summary>按月份看这 425 篇存量（点开，便于分批分诊）</summary>
+<summary>按月份看这 423 篇存量（点开，便于分批分诊）</summary>
 
 | 月份 | 篇数 |
 |---|---:|
 | 无日期 | 14 |
-| 2026-08 | 188 |
+| 2026-08 | 186 |
 | 2026-07 | 51 |
 | 2026-06 | 161 |
 | 2026-05 | 11 |
