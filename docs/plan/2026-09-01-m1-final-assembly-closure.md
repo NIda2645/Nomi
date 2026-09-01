@@ -1,5 +1,7 @@
 # M1 final assembly closure
 
+> 状态：✅ 已交付
+
 ## Scope
 
 - Keep the shipped ProductionRun legacy-playbook generation route active and restore its main-branch driver contract.
