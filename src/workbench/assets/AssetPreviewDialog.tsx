@@ -62,8 +62,11 @@ export function AssetPreviewDialog({ asset, onClose }: { asset: AssetRef; onClos
       <button
         type="button"
         className={cn(
-          'absolute right-4 top-4 z-[3] grid size-9 place-items-center rounded-full border-0 cursor-pointer',
-          'bg-nomi-overlay-chip text-nomi-paper hover:bg-nomi-overlay-chip-strong',
+          'absolute right-4 top-4 z-[3] grid size-9 place-items-center rounded-full cursor-pointer',
+          // 边框 + 强 scrim：预览背景是 bg-black/60，无边框的深色徽标钮会和暗背景融为一体（用户反馈
+          // 「找不到关闭钮」）。给一圈 paper/25 描边把边缘钉出来、并用 chip-strong 提对比，光暗都读得清。
+          'border border-nomi-paper/25 bg-nomi-overlay-chip-strong text-nomi-paper shadow-nomi-md backdrop-blur-sm',
+          'hover:bg-nomi-paper hover:text-nomi-ink hover:border-transparent',
           'focus-visible:outline-2 focus-visible:outline-nomi-paper focus-visible:outline-offset-2',
         )}
         aria-label={t('assetLibrary.previewClose')}
@@ -89,8 +92,9 @@ export function AssetPreviewDialog({ asset, onClose }: { asset: AssetRef; onClos
         <button
           type="button"
           className={cn(
-            'absolute right-16 top-4 z-[3] grid size-9 place-items-center rounded-full border-0 cursor-pointer',
-            'bg-nomi-overlay-chip text-nomi-paper hover:bg-nomi-overlay-chip-strong disabled:cursor-wait disabled:opacity-60',
+            'absolute right-16 top-4 z-[3] grid size-9 place-items-center rounded-full cursor-pointer',
+            'border border-nomi-paper/25 bg-nomi-overlay-chip-strong text-nomi-paper shadow-nomi-md backdrop-blur-sm',
+            'hover:bg-nomi-paper hover:text-nomi-ink hover:border-transparent disabled:cursor-wait disabled:opacity-60',
             'focus-visible:outline-2 focus-visible:outline-nomi-paper focus-visible:outline-offset-2',
           )}
           aria-label={t('assetLibrary.downloadModel3d')}

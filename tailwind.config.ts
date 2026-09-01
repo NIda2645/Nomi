@@ -77,9 +77,11 @@ const workbenchBasePlugin = plugin(({ addBase, addUtilities }) => {
       // 媒体浮层（图上 scrim / 徽章 / 底部标题渐变）。此前仅存于未加载的 nomi-tokens.css → 运行时 undefined，
       // 现补进真源（live = 本 addBase），消费点：提示词库/技能库/库页 scrim、引导旅途背景。
       '--nomi-scrim': 'oklch(0.2 0.01 80 / 0.42)',
-      '--nomi-overlay-chip': 'oklch(0.2 0.01 80 / 0.55)',
-      '--nomi-overlay-chip-strong': 'oklch(0.2 0.01 80 / 0.7)',
-      '--nomi-media-veil': 'oklch(0.15 0.01 80 / 0.62)',
+      // 图上徽章/标题遮罩承载白字，压在任意亮度媒体上（暗色卡底常是白衬衫等亮区）——opacity 提到稳定托住白字。
+      // 2026-09-01 用户反馈「徽标黑底黑字 / 标题融背景」；镜像见 src/theme/nomi-tokens.css。
+      '--nomi-overlay-chip': 'oklch(0.18 0.01 80 / 0.64)',
+      '--nomi-overlay-chip-strong': 'oklch(0.16 0.01 80 / 0.82)',
+      '--nomi-media-veil': 'oklch(0.12 0.01 80 / 0.74)',
       '--nomi-shadow-sm': '0 1px 2px oklch(0 0 0 / 0.04), 0 1px 1px oklch(0 0 0 / 0.03)',
       '--nomi-shadow-md': '0 2px 4px oklch(0 0 0 / 0.04), 0 8px 24px oklch(0 0 0 / 0.06)',
       '--nomi-shadow-lg': '0 4px 8px oklch(0 0 0 / 0.05), 0 20px 50px oklch(0 0 0 / 0.08)',
@@ -265,9 +267,10 @@ const workbenchBasePlugin = plugin(({ addBase, addUtilities }) => {
       '--nomi-snap-tag': 'oklch(0.62 0.18 30)',
       '--nomi-logo-ground': 'oklch(0.30 0.01 80)',
       '--nomi-scrim': 'oklch(0.08 0.004 80 / 0.58)',
-      '--nomi-overlay-chip': 'oklch(0.08 0.004 80 / 0.68)',
-      '--nomi-overlay-chip-strong': 'oklch(0.08 0.004 80 / 0.78)',
-      '--nomi-media-veil': 'oklch(0.08 0.004 80 / 0.76)',
+      // 媒体浮层在暗色主题下同样承载白字，且卡底媒体可能是亮区——opacity 提到托得住白字（镜像见 nomi-tokens.css）。
+      '--nomi-overlay-chip': 'oklch(0.06 0.004 80 / 0.78)',
+      '--nomi-overlay-chip-strong': 'oklch(0.05 0.004 80 / 0.88)',
+      '--nomi-media-veil': 'oklch(0.05 0.004 80 / 0.86)',
       '--nomi-shadow-sm': '0 1px 2px oklch(0 0 0 / 0.32), 0 1px 1px oklch(0 0 0 / 0.22)',
       '--nomi-shadow-md': '0 2px 5px oklch(0 0 0 / 0.30), 0 14px 34px oklch(0 0 0 / 0.32)',
       '--nomi-shadow-lg': '0 4px 10px oklch(0 0 0 / 0.30), 0 24px 64px oklch(0 0 0 / 0.40)',
