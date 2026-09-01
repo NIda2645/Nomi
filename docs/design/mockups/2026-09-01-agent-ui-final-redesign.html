@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nomi Agent 界面最终版重做 · 4 屏样张 v3（2026-09-02 · 照九条整改令重修）</title>
+<title>Nomi Agent 界面最终版重做 · 4 屏样张 v3.1（2026-09-02 · 九条整改 + 两条快修）</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
 <style>
 :root{
@@ -105,15 +105,19 @@ h1{font-size:18px;font-weight:600;margin:0}
 .ctx-pop .cp-row .n{color:var(--ink80);font-variant-numeric:tabular-nums}
 .ctx-pop .cp-foot{border-top:1px solid var(--lineS);margin-top:5px;padding-top:6px;display:flex;justify-content:space-between;font-size:11px;color:var(--ink80);font-weight:500}
 
-/* 固定结果卡（屏 D · 不随聊天滚走，卡头一枚 pin 说明一切，无区域标签） */
-.resultzone{flex:none;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--ink05) 60%,var(--paper));padding:8px 10px}
+/* 固定结果卡（屏 D · 不随聊天滚走 · v3.1：默认收成一根细条 📌+摘要，点开才见全表；展开封顶≈视口 45%，表内滚动） */
+.resultzone{flex:none;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--ink05) 60%,var(--paper));padding:6px 10px}
 .result-card{border:1px solid var(--line);border-radius:8px;background:var(--paper);overflow:hidden}
-.result-card .rc-head{height:34px;display:flex;align-items:center;gap:8px;padding:0 9px;cursor:pointer;font-size:12px}
-.result-card .rc-head .ic{color:var(--ac);font-size:15px}
+.result-card .rc-head{height:28px;display:flex;align-items:center;gap:7px;padding:0 9px;cursor:pointer;font-size:12px}
+.result-card .rc-head:hover{background:var(--ink05)}
+.result-card .rc-head .pin{color:var(--ac);font-size:13px;display:inline-grid;place-items:center}
 .result-card .rc-head b{font-weight:600}
 .result-card .rc-head .cnt{color:var(--ink40);font-size:11px}
-.result-card .rc-head .pin{margin-left:auto;color:var(--ink30);font-size:13px}
-.result-card .rc-head .chev{color:var(--ink40);font-size:15px}
+.result-card .rc-head .chev{margin-left:auto;color:var(--ink40);font-size:14px;transition:transform var(--t-tap) var(--ease)}
+.result-card.open .rc-head .chev{transform:rotate(180deg)}
+.result-card .rc-body{display:none;padding:0 9px 9px}
+.result-card.open .rc-body{display:block}
+.result-card .rc-body .shot-table{max-height:194px} /* 头 28 + 表 194 + 脚 ≈ 270px ≈ 600px 壳的 45%，超出表内滚 */
 
 .flow{flex:1;overflow-y:auto;padding:12px 12px 8px;position:relative;scrollbar-width:thin}
 .flow::-webkit-scrollbar{width:6px}.flow::-webkit-scrollbar-thumb{background:var(--ink10);border-radius:3px}
@@ -186,12 +190,17 @@ body.dark .userbubble{color:var(--bg)}
 .at{display:inline-flex;align-items:center;padding:0 6px;border-radius:5px;background:var(--acS);color:var(--ac);font-size:11.5px;line-height:18px}
 .at.stale{background:var(--warnBg);color:var(--warn)}
 .cbar{display:flex;align-items:center;gap:5px;margin-top:7px}
-.cbtn{height:28px;min-width:28px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink60);display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.cbtn{position:relative;height:28px;min-width:28px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink60);display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;font-family:inherit}
 .cbtn:hover{border-color:var(--ink20);color:var(--ink80)}
-.cbtn.ico{width:28px;padding:0}
+.cbtn.ico{width:28px}
 .cbtn i{font-size:15px}
-.cbtn .lb{font-size:11px}
-.cbtn .caret{font-size:12px;color:var(--ink40)}
+/* v3.1：底排全 icon —— hover 冒完整含义（tooltip 常驻零文字），注意态 = 图标右上角小红点 */
+.cbtn[data-tip]::after{content:attr(data-tip);position:absolute;bottom:33px;left:50%;transform:translateX(-50%);
+  white-space:nowrap;background:var(--ink);color:var(--paper);font-size:11px;line-height:1;padding:6px 8px;border-radius:6px;
+  box-shadow:0 4px 14px rgba(20,18,16,.18);opacity:0;pointer-events:none;transition:opacity var(--t-tap) var(--ease);z-index:40}
+.cbtn[data-tip]:hover::after{opacity:1}
+body.dark .cbtn[data-tip]::after{color:var(--bg)}
+.cbtn .reddot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--dg);box-shadow:0 0 0 1.5px var(--paper)}
 .send{margin-left:auto;width:30px;height:30px;border-radius:999px;background:var(--ink);color:var(--paper);border:0;display:grid;place-items:center;font-size:15px;cursor:pointer}
 body.dark .send{color:var(--bg)}
 
@@ -323,7 +332,7 @@ body.dark .btn.pri{color:var(--bg)}
 .badge-corner .dot{width:6px;height:6px;border-radius:50%;background:var(--ac);animation:breathe var(--t-breathe) ease-in-out infinite}
 
 /* 标尺 */
-body.rule .cbtn,body.rule .btn,body.rule .pick,body.rule .send,body.rule .chip-jump,body.rule .at,body.rule .rico,body.rule .qx,body.rule .opt{outline:1px dashed var(--ac);outline-offset:1px}
+body.rule .cbtn,body.rule .btn,body.rule .pick,body.rule .send,body.rule .chip-jump,body.rule .at,body.rule .rico,body.rule .qx,body.rule .opt,body.rule .rc-head{outline:1px dashed var(--ac);outline-offset:1px}
 body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 
 /* 动效（极简：屏 A 只有进行中那一行在动） */
@@ -335,14 +344,14 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 </head>
 <body>
 <div class="topbar">
-  <h1>Nomi Agent · 最终版重做样张 v3</h1>
+  <h1>Nomi Agent · 最终版重做样张 v3.1</h1>
   <div class="tabs" id="tabs">
     <button class="tab on" data-s="A">屏 A · 主对话流</button>
     <button class="tab" data-s="B">屏 B · 审批 + 付费 + 有出入</button>
     <button class="tab" data-s="C">屏 C · 右槽互斥切换</button>
     <button class="tab" data-s="D">屏 D · 结果卡区并存</button>
   </div>
-  <div class="meta">v3 · 照九条整改令重修：一切事件进对话流 · 常驻栏最薄 · 词汇全走人话 · <a href="../2026-09-02-agent-ui-v3-walkthrough.md">逐屏走读</a> · <a href="../2026-09-01-agent-ui-final-redesign.md">设计定稿</a></div>
+  <div class="meta">v3.1 · 九条整改 + 两条快修：结果卡默认细条 · 底排全 icon（悬停冒含义）· <a href="../2026-09-02-agent-ui-v3-walkthrough.md">逐屏走读</a> · <a href="../2026-09-01-agent-ui-final-redesign.md">设计定稿</a></div>
   <button class="toggle" id="darkT"><i class="ti ti-moon"></i><span>暗色</span></button>
   <button class="toggle" id="ruleT"><i class="ti ti-ruler-2"></i><span>标尺</span></button>
 </div>
@@ -351,7 +360,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 
 <!-- ══════════════════ 屏 A · 主对话流 ══════════════════ -->
 <section class="screen on" data-screen="A">
-  <p class="caption"><b>屏 A · 主对话流（v3 = 住在对话里的 Claude Code）。</b>整改落点：<b>①②</b> header 技能 pill、composer 技能 chip 全删——技能只在载入那刻在流里出一行灰字小事件；<b>③</b> 参考图/定妆不再有对话外专用槽，输入框里 <code>@</code> 直接引（token 内嵌句中，引用后素材变过 = token 变黄）；<b>④</b> 排队 = 浅色行贴输入框上沿（无卡无边框，右侧小 × 撤回，轮到它自动进对话）；<b>⑤</b> 工具 = 一行 + 行尾 ▾（点头可展开明细，样张里真的可点）；<b>⑦</b> 撤销收成 icon；<b>⑧</b> header 删「· 雨夜追逐」「当前现场」——只剩 Nomi + 用量 + 两个 icon 一行。<span class="audit">常驻可点 <s>19</s> → <b>10</b></span></p>
+  <p class="caption"><b>屏 A · 主对话流（v3 = 住在对话里的 Claude Code）。</b>整改落点：<b>①②</b> header 技能 pill、composer 技能 chip 全删——技能只在载入那刻在流里出一行灰字小事件；<b>③</b> 参考图/定妆不再有对话外专用槽，输入框里 <code>@</code> 直接引（token 内嵌句中，引用后素材变过 = token 变黄）；<b>④</b> 排队 = 浅色行贴输入框上沿（无卡无边框，右侧小 × 撤回，轮到它自动进对话）；<b>⑤</b> 工具 = 一行 + 行尾 ▾（点头可展开明细，样张里真的可点）；<b>⑦</b> 撤销收成 icon；<b>⑧</b> header 删「· 雨夜追逐」「当前现场」——只剩 Nomi + 用量 + 两个 icon 一行；<b>v3.1</b> 底排全 icon 化——悬停冒完整含义，模型未选 = 🤖 右上角小红点。<span class="audit">常驻可点 <s>19</s> → <b>10</b></span> <span class="audit">底排常驻文字 <s>2 句</s> → <b>0</b></span></p>
   <div class="app">
     <div class="appbar">
       <div class="brand"><span class="logo">N</span>Nomi</div>
@@ -482,10 +491,10 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
           <div class="cbox">
             <div class="cprompt">第 5 镜也按 <span class="at">@阿青定妆</span> 的造型，接 <span class="at stale" title="引用之后这段素材改过，发送时按现在的版本">@街道 02:10</span> 那段的雨势</div>
             <div class="cbar">
-              <button class="cbtn ico" title="附件"><i class="ti ti-paperclip"></i></button>
-              <button class="cbtn" title="Nomi 能动多少：动什么 + 问多少"><i class="ti ti-bolt"></i><span class="lb">Agent · 安全自动</span><i class="ti ti-chevron-up caret"></i></button>
-              <button class="cbtn" title="Nomi 用哪个文本模型来理解和规划"><i class="ti ti-robot"></i><span class="lb">去选文本模型</span><i class="ti ti-chevron-up caret"></i></button>
-              <button class="cbtn ico" title="提示词模板"><i class="ti ti-file-pencil"></i></button>
+              <button class="cbtn ico" data-tip="附件"><i class="ti ti-paperclip"></i></button>
+              <button class="cbtn ico" data-tip="Agent · 安全自动"><i class="ti ti-bolt"></i></button>
+              <button class="cbtn ico" data-tip="去选文本模型"><i class="ti ti-robot"></i><span class="reddot"></span></button>
+              <button class="cbtn ico" data-tip="提示词模板"><i class="ti ti-file-pencil"></i></button>
               <button class="send" title="发送"><i class="ti ti-arrow-up"></i></button>
             </div>
           </div>
@@ -493,7 +502,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
       </div>
     </div>
   </div>
-  <p class="caption" style="margin-top:14px"><b>底栏仍是 5 簇</b>：📎附件 · ⚡执行方式（动什么 3 档 + 问多少 3 档，同一入口两段）· 🤖文本模型 · ✏️提示词 · ↑发送；模型空态用真文案「去选文本模型」（修 C4）。<b>@ 是唯一的引用手势</b>：素材、定妆、片段、技能都从输入框 @ 出来，选完变成句中的小 token（可删可点）；引用后素材变过 → token 变黄提醒，发送时用当下版本。<b>排队行为</b>：Nomi 忙时输入框不禁用，回车即排一行在输入框上沿；轮到它自动进对话，点 × 撤回。技能载入那行灰字过后不驻留——当前生效的约束，点开那行随时能看。</p>
+  <p class="caption" style="margin-top:14px"><b>底栏仍是 5 簇、v3.1 起全 icon</b>：📎附件 · ⚡执行方式（动什么 3 档 + 问多少 3 档，同一入口两段）· 🤖文本模型 · ✏️提示词 · ↑发送——常驻零文字，悬停 tooltip 给完整含义（「Agent · 安全自动」「文本模型 · Kimi K2」）；模型没选时不再摆一句常驻提示，改 🤖 右上角一颗小红点 + tooltip「去选文本模型」（修 C4 的 v3.1 形态）。<b>@ 是唯一的引用手势</b>：素材、定妆、片段、技能都从输入框 @ 出来，选完变成句中的小 token（可删可点）；引用后素材变过 → token 变黄提醒，发送时用当下版本。<b>排队行为</b>：Nomi 忙时输入框不禁用，回车即排一行在输入框上沿；轮到它自动进对话，点 × 撤回。技能载入那行灰字过后不驻留——当前生效的约束，点开那行随时能看。</p>
 </section>
 
 <!-- ══════════════════ 屏 B · 卡片 ══════════════════ -->
@@ -728,7 +737,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 
 <!-- ══════════════════ 屏 D · 结果卡区并存 ══════════════════ -->
 <section class="screen" data-screen="D">
-  <p class="caption"><b>屏 D · 结果卡固定 + 对话并存（③合流最终态）。</b>双区外壳落地后互斥消失：需要反复对照操作的工件（拆解分镜表）<b>固定在对话上方、不随聊天滚走</b>（卡头一枚 📌，没有任何区域标签——整改⑧）；过程都在下方对话里滚。TapNow 手册同证：「随时回到画布查看已确认内容，不需要在很长的聊天记录里重新寻找」。header 同屏 A 一行到底；对话里的拆解工具事件 = 屏 A 同款一行式。<span class="audit">常驻可点 <s>12</s> → <b>10</b></span></p>
+  <p class="caption"><b>屏 D · 结果卡固定 + 对话并存（③合流最终态）。</b>双区外壳落地后互斥消失：需要反复对照操作的工件（拆解分镜表）<b>固定在对话上方、不随聊天滚走</b>（卡头一枚 📌，没有任何区域标签——整改⑧）；过程都在下方对话里滚。<b>v3.1：固定卡默认收成一根细条</b>「📌 拆解结果 · 5 镜 · 已选 2 ▾」——常驻脚印一行、状态摘要常在；点细条展开全表（封顶约视口 45%，表内滚动），再点收回，<b>样张里真的可点</b>。TapNow 手册同证：「随时回到画布查看已确认内容，不需要在很长的聊天记录里重新寻找」。header 同屏 A 一行到底。<span class="audit">常驻可点 <s>12</s> → <s>10</s> → <b>9</b></span></p>
   <div class="app">
     <div class="appbar">
       <div class="brand"><span class="logo">N</span>Nomi</div>
@@ -774,12 +783,12 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
           <span class="hico" title="收起"><i class="ti ti-layout-sidebar-right-collapse"></i></span>
         </div>
 
-        <!-- 固定结果卡（不随聊天滚走 · 收起只是收起不清空） -->
+        <!-- 固定结果卡（不随聊天滚走 · v3.1 默认收成细条：📌+摘要一行，点开全表，再点收回；收起只是收起不清空） -->
         <div class="resultzone">
-          <div class="result-card">
-            <div class="rc-head"><i class="ti ti-table ic"></i><b>拆解结果</b><span class="cnt">· 5 镜</span><span class="pin" title="固定在这里，不随聊天滚走"><i class="ti ti-pin"></i></span><span class="chev"><i class="ti ti-chevron-down"></i></span></div>
-            <div style="padding:0 9px 9px">
-              <div class="shot-table" style="max-height:150px">
+          <div class="result-card" data-pinfold>
+            <div class="rc-head"><span class="pin" title="固定在这里，不随聊天滚走"><i class="ti ti-pin"></i></span><b>拆解结果</b><span class="cnt">· 5 镜 · 已选 2</span><span class="chev"><i class="ti ti-chevron-down"></i></span></div>
+            <div class="rc-body">
+              <div class="shot-table">
                 <div class="shot-row">
                   <input type="checkbox" checked>
                   <div class="shot-thumb" style="--h:40"></div>
@@ -829,7 +838,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
               <div class="sub"><i class="ti ti-check"></i>拆成 5 镜，写好每镜的字幕和画面描述</div>
             </div>
           </div>
-          <div class="asstext">拆好了，结果固定在上方，勾选后可以直接加入画布。镜 3 画面没读出来，你可以单独重试那一镜。</div>
+          <div class="asstext">拆好了，结果钉在上方那根细条里，点开勾选就能加入画布。镜 3 画面没读出来，你可以单独重试那一镜。</div>
         </div>
 
         <!-- composer -->
@@ -837,10 +846,10 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
           <div class="cbox">
             <div class="cprompt ph">继续告诉 Nomi 要改什么… 输入 @ 可以引素材或技能</div>
             <div class="cbar">
-              <button class="cbtn ico" title="附件"><i class="ti ti-paperclip"></i></button>
-              <button class="cbtn" title="Nomi 能动多少：动什么 + 问多少"><i class="ti ti-bolt"></i><span class="lb">Agent · 安全自动</span><i class="ti ti-chevron-up caret"></i></button>
-              <button class="cbtn" title="Nomi 用哪个文本模型来理解和规划"><i class="ti ti-robot"></i><span class="lb">Kimi K2</span><i class="ti ti-chevron-up caret"></i></button>
-              <button class="cbtn ico" title="提示词模板"><i class="ti ti-file-pencil"></i></button>
+              <button class="cbtn ico" data-tip="附件"><i class="ti ti-paperclip"></i></button>
+              <button class="cbtn ico" data-tip="Agent · 安全自动"><i class="ti ti-bolt"></i></button>
+              <button class="cbtn ico" data-tip="文本模型 · Kimi K2"><i class="ti ti-robot"></i></button>
+              <button class="cbtn ico" data-tip="提示词模板"><i class="ti ti-file-pencil"></i></button>
               <button class="send" title="发送"><i class="ti ti-arrow-up"></i></button>
             </div>
           </div>
@@ -848,7 +857,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
       </div>
     </div>
   </div>
-  <p class="caption" style="margin-top:14px"><b>开闸删旧（C9 / 决策 D5）：</b>最终态固定结果卡 + 对话并存 → 过渡版的互斥标志作废、4 档工作方式契约删净（P1 加新必删旧无并行版）。节点浮条和对话里的工具行都指向同一张固定结果卡，绝不各开一张。</p>
+  <p class="caption" style="margin-top:14px"><b>细条的规矩（v3.1）：</b>收起只是收起——勾选、滚动位置全保持，摘要「5 镜 · 已选 2」跟着勾选实时变；展开态封顶约视口 45%，表格内部滚，绝不把对话挤没。<b>开闸删旧（C9 / 决策 D5）：</b>最终态固定结果卡 + 对话并存 → 过渡版的互斥标志作废、4 档工作方式契约删净（P1 加新必删旧无并行版）。节点浮条和对话里的工具行都指向同一张固定结果卡，绝不各开一张。</p>
 </section>
 
 </div>
@@ -871,6 +880,10 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
   });
   /* 整改⑤：工具行 行尾 ▾ 真可点 — 点头展开/收起明细 */
   document.querySelectorAll('[data-fold] .toolline').forEach(function(h){
+    h.addEventListener('click',function(){h.parentElement.classList.toggle('open')});
+  });
+  /* v3.1：固定结果卡默认细条 — 点卡头展开全表 / 再点收回（收起只是收起，勾选不清空） */
+  document.querySelectorAll('[data-pinfold] .rc-head').forEach(function(h){
     h.addEventListener('click',function(){h.parentElement.classList.toggle('open')});
   });
   /* 对话流底部锚定（role=log · 回到最新）：载入与切屏都停在最新一轮 */
