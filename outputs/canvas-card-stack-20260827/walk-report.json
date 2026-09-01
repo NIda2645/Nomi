@@ -93,7 +93,7 @@
     {
       "name": "键盘左键精确回退一秒",
       "ok": true,
-      "detail": "45.071999999999996 -> 44.081147"
+      "detail": "45.071999999999996 -> 44.080852"
     },
     {
       "name": "离开历史视频后播放暂停并回到起点",
@@ -186,5 +186,5 @@
       "detail": ""
     }
   ],
-  "projectRoot": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-card-stack-walk-0mgVxG/projects/canvas-card-stack-walk"
+  "projectRoot": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-card-stack-walk-BuC2Mk/projects/canvas-card-stack-walk"
 }

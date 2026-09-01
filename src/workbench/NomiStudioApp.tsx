@@ -416,29 +416,16 @@ export default function NomiStudioApp(): JSX.Element {
         clearCommittedProposal()
         const { module, service } = await ensureProjectPersistenceService()
         surfaceEpoch.assertCurrent()
-        const hydrated = await hydrateWorkbenchProjectWithRecovery({
-          projectId,
-          service,
-          guard: surfaceEpoch,
-          t,
-        })
+        const hydrated = await hydrateWorkbenchProjectWithRecovery({ projectId, service, guard: surfaceEpoch, t })
         if (!hydrated) {
           surfaceEpoch.assertCurrent()
           refreshProjects()
           return false
         }
         surfaceEpoch.assertCurrent()
-        // Reset at the project-open boundary so a remounted sidebar cannot inherit
-        // the previous project's expanded state. The cutover flow flips view to
-        // 'library' mid-hydration (line ~405), which unmounts/remounts the sidebar;
-        // its in-component transition effect therefore always looks like a first
-        // mount and can no longer detect the switch on its own. This imperative
-        // reset — keyed on the real prev→next project change — is the sole home for
-        // the "switching projects collapses the left rail" behavior.
-        const prevProjectId = activeProjectIdRef.current ?? null
-        if (prevProjectId !== hydrated.id) {
-          useWorkbenchStore.getState().setSidebarCollapsed(true)
-        }
+        // Sole home for "switching projects collapses the left rail": cutover flips view to 'library'
+        // mid-hydration (above), remounting the sidebar so its transition effect can't see the switch.
+        if ((activeProjectIdRef.current ?? null) !== hydrated.id) useWorkbenchStore.getState().setSidebarCollapsed(true)
         activeProjectIdRef.current = hydrated.id
         // 同步喂全局（不等 effect 滞后一拍）：切项目瞬间拖图上传时 resolveProjectId 取的就是新项目，
         // 不再误写进旧项目目录 / 编错 projectId 致渲染 404（C2 修，对齐 activeProjectIdRef 同步口径）。
@@ -459,9 +446,7 @@ export default function NomiStudioApp(): JSX.Element {
         }
         surfaceEpoch.assertCurrent()
         setView('studio')
-        navigate(buildStudioUrl(hydrated.id), {
-          replace: options.replaceUrl ?? false,
-        })
+        navigate(buildStudioUrl(hydrated.id), { replace: options.replaceUrl ?? false })
         // Only start background repairs after main has acknowledged the exact
         // committed Surface; the guard prevents any late write after a switch.
         void runProjectAssetHealthCheck(hydrated.id, surfaceEpoch).catch(() => {})
