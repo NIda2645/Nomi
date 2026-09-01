@@ -45,6 +45,8 @@ export function releaseWorkbenchProjectRuntimeState(): void {
     generationAiDraft: '',
     generationAiMessages: [],
     generationAiCollapsed: true,
+    videoDeconstructions: {},
+    videoDeconstructionOpenNodeId: null,
     canUndo: false,
     canRedo: false,
     hasClipboard: false,

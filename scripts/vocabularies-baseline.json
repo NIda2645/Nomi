@@ -2,6 +2,11 @@
   "debtCap": 80,
   "registered": [
     {
+      "site": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts::type:DeconstructionEntry/property:status/type-union",
+      "members": ["failed", "idle", "ready", "running"],
+      "reason": "DeconstructionEntry.status 是「一条源视频拆解成分镜表」这个动作的四态本地 view model（idle 未拆 / running 拆解中 / ready 结果 / failed 整次拆解抛错）。它按源视频节点身份建槽、驱动就近拆解面板的四态渲染，语义是拆解流水线状态，不等同于 ShotVerifyStatus（单镜画面校验的 verifying/…）也不等同于生成任务/导出状态；逐镜画面失败由 DeconstructionShot.visionFailed 单独表达、不进本 union。故保持独立。"
+    },
+    {
       "site": "src/ui/community/feedbackTypes.ts::type:FeedbackStage/type-union",
       "members": ["export", "generation", "model", "other", "upload"],
       "reason": "FeedbackStage 是反馈中心让用户定位摩擦发生阶段的本地 view model；它只服务反馈草稿与诊断 envelope，不代表生成任务或导出流水线状态，故保持独立并由表单阶段列表复用。"

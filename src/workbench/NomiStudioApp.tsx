@@ -44,6 +44,7 @@ import { useSpendConfirmStore } from './generationCanvas/spend/spendConfirm'
 import { runAssetSurfaceMigrations } from './assets/assetSurfaceMigration'
 import { useProductionRunStore } from './production/productionRunStore'
 import { ProductionCanvasLandingHost } from './production/ProductionCanvasLandingHost'
+import DeconstructionPanelHost from './generationCanvas/nodes/DeconstructionPanelHost'
 import { FeedbackShareHost } from '../ui/community/FeedbackShareHost'
 
 type AppView = 'library' | 'studio'
@@ -732,6 +733,8 @@ export default function NomiStudioApp(): JSX.Element {
                 <GenerationCanvas />
                 {/* P4 S5 画布落地 host（跟着画布常驻）：poll 活跃多镜 Run 喂占位三态 + 进度通知 + 删节点上报 detach。 */}
                 <ProductionCanvasLandingHost projectId={activeProject?.id ?? null} />
+                {/* 拆解面板宿主：为占着右槽的源视频渲染就近停靠面板（互斥共占，收起态状态留槽不丢）。 */}
+                <DeconstructionPanelHost />
               </div>
             </React.Suspense>
           }
