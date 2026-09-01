@@ -9,13 +9,16 @@
 
 ---
 
-## 现役欠账（16）
+## 现役欠账（19）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
 | 📋 方案待拍板 | [2026-08-13-video-deconstruction-storyboard-table.md](plan/2026-08-13-video-deconstruction-storyboard-table.md) | 视频拆解 → 分镜表 → 复刻生成（方案已拍板，待实施） |
+| 📋 方案待拍板 | [2026-08-27-unified-tool-surface.md](plan/2026-08-27-unified-tool-surface.md) | 内外工具面统一 —— 我们造了第二套 |
 | ⏳ 已拍板·未开工 | [2026-09-01-agent-m0-baseline-freeze.md](plan/2026-09-01-agent-m0-baseline-freeze.md) | M0：Agent 架构基线冻结 |
+| 🚧 进行中 | [2026-08-15-model-access-exhaustive-user-journeys.md](plan/2026-08-15-model-access-exhaustive-user-journeys.md) | 模型接入全集用户旅途测试 |
 | 🚧 进行中 | [2026-08-15-model-integration-no-dead-end-master-plan.md](plan/2026-08-15-model-integration-no-dead-end-master-plan.md) | 模型接入“无死路”架构与全集验证执行总方案 |
+| 🚧 进行中 | [2026-08-27-skills-knowledge-distribution.md](plan/2026-08-27-skills-knowledge-distribution.md) | Skills 知识分发系统 —— 对齐标准 · 渐进披露接给内部 |
 | 🚧 进行中 | [2026-08-28-conversational-model-integration-verification.md](plan/2026-08-28-conversational-model-integration-verification.md) | 对话式模型接入与认证闭环验收记录 |
 | 🚧 进行中 | [2026-08-28-editing-engine-uplift.md](plan/2026-08-28-editing-engine-uplift.md) | Nomi Editing Engine Uplift |
 | 🚧 进行中 | [2026-08-29-root-cause-contract-v2.md](plan/2026-08-29-root-cause-contract-v2.md) | 根因合同 v2 与规则收敛 |
@@ -60,7 +63,7 @@
 
 </details>
 
-- 合计扫描：477 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：480 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 
