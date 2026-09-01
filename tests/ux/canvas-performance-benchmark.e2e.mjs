@@ -49,6 +49,17 @@ const captureScreenshots = hasArg('--screenshots')
 // measurement configurations — they never touch product code or budgets.
 const useDevServer = hasArg('--dev-server')
 const cpuThrottleRate = Math.max(1, Number(argValue('--throttle') || 1))
+// PERFORMANCE_BUDGETS are calibrated against the *prod* dist on darwin (see the
+// NON_DARWIN_TIMING_CALIBRATION note). The dev leg (StrictMode double-render +
+// unminified + immer dev-freeze) and the throttle leg (4x slower CPU) are
+// deliberately heavier configurations whose latency ceilings were never
+// calibrated — so on those legs the budget checks are ADVISORY: still computed,
+// recorded and printed, but they do not force pass=false (mirrors the
+// ADVISORY_ONLY_SCENARIOS posture and the #264 "don't gate un-calibrated
+// ceilings" lesson). Correctness hard-failures (errors, anchor/step drift,
+// selection integrity) keep gating on every leg. Only the prod leg gates on
+// budgets, byte-for-byte as before.
+const budgetsAreCalibratedForLeg = !useDevServer && cpuThrottleRate === 1
 if (hasArg('--help') || hasArg('-h')) {
   console.log('用法：node tests/ux/canvas-performance-benchmark.e2e.mjs <label> [--scale L] [--runs 5]')
   console.log(`scale：${Object.keys(CANVAS_PERF_SCALES).join(' / ')}`)
@@ -981,8 +992,17 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
   const attachDiagnostics = (candidate) => {
     candidate.on('pageerror', (error) => pageErrors.push(String(error)))
     candidate.on('console', (message) => {
-      const expectedMissingFixture = scenario === 'media-error' && message.text().includes('404 (Not Found)')
-      if (message.type() === 'error' && !expectedMissingFixture) consoleErrors.push(message.text())
+      if (message.type() !== 'error') return
+      const text = message.text()
+      const expectedMissingFixture = scenario === 'media-error' && text.includes('404 (Not Found)')
+      // Dev leg only: NOMI_DESKTOP_DEV=1 makes electron/main.ts:361 open DevTools,
+      // whose frontend probes CDP domains (Autofill.enable / Autofill.setAddresses)
+      // this Chromium build does not implement, emitting `-32601 method wasn't
+      // found` console errors. Pure DevTools-frontend noise, unrelated to Nomi's
+      // renderer — filtering it keeps the (byte-for-byte unchanged) console-error
+      // hard-failure gate honest instead of failing the dev leg on a tooling quirk.
+      const devtoolsAutofillNoise = useDevServer && /Request Autofill\.\w+ failed/.test(text)
+      if (!expectedMissingFixture && !devtoolsAutofillNoise) consoleErrors.push(text)
     })
   }
   const startedAt = Date.now()
@@ -1295,9 +1315,20 @@ function summarizeScenario(samples, panControl = null) {
     metrics,
     advisory,
     verdict: {
-      // advisoryOnly scenarios record their checks but never gate this round.
-      pass: advisoryOnly ? true : hardFailures.length === 0 && budgetChecks.every((check) => check.pass),
+      // Original prod-leg gate, preserved byte-for-byte:
+      //   advisoryOnly ? true : hardFailures === 0 && budgets all pass.
+      // Change only affects the non-prod legs (dev / throttle): there the latency
+      // ceilings are not calibrated for the slower bundle/CPU, so budgetChecks
+      // become advisory (recorded, printed, but not gating) while correctness
+      // hard-failures keep gating. advisoryOnly scenarios still never gate,
+      // exactly as before.
+      pass: advisoryOnly
+        ? true
+        : budgetsAreCalibratedForLeg
+          ? hardFailures.length === 0 && budgetChecks.every((check) => check.pass)
+          : hardFailures.length === 0,
       advisoryOnly,
+      budgetsAdvisory: !advisoryOnly && !budgetsAreCalibratedForLeg,
       hardFailures,
       budgetChecks,
     },
