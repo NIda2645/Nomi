@@ -26,6 +26,8 @@ export type SkillListItem = {
   manifestError: string | null;
   /** 来源：'user'=可写用户目录（可删/可导出）；'builtin'=安装随附（只读、禁删）。 */
   origin: "builtin" | "user";
+  packageVersion: string;
+  contentHash: string;
 };
 
 export function listSkillsForRenderer(): SkillListItem[] {
@@ -48,6 +50,8 @@ export function listSkillsForRenderer(): SkillListItem[] {
       neededProviders: needs?.providers ?? [],
       manifestError: r.manifestError ?? null,
       origin: r.origin,
+      packageVersion: r.packageVersion,
+      contentHash: r.contentHash,
     };
   });
 }

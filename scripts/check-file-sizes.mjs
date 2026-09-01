@@ -37,6 +37,18 @@ const ALLOWLIST = {
   // baseline until the planned settings-surface extraction. (2026-08-29)
   "src/ui/onboarding/OnboardingDrawer.tsx": 819,
   "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 713, // …→ 731（2026-08-25 P4 S6：多镜叠加合一 ProductionShotOverlays）→ 713（2026-08-29 React Flow 单内核：移除旧布局与缩放分支）
+  // Project Agent Host 迁移巨壳（M1 transplant：electron 切片随 r2 入库、renderer 切片随
+  // 本次 cutover 入库；上游 pr223 原型已人工评审同一批 owner，数字按本分支实际行数锁棘轮，
+  // 只减不增，下一个分解批次按稳定 ownership seam 拆分后逐个出表）。
+  "electron/main.ts": 846,
+  "electron/capabilityCore/mcpGenerationTools.ts": 803,
+  "electron/capabilityCore/verifiedCapabilityInvocation.ts": 1257,
+  "electron/productionRun/productionRunService.ts": 816,
+  "electron/projectAgentHost/projectAgentExecutionCoordinator.ts": 1908,
+  "electron/projectAgentHost/projectAgentReducer.ts": 936,
+  "electron/projectAgentHost/projectAgentState.ts": 809,
+  // Phase 6 常驻壳成为唯一 Agent UI 后的应用外壳（pr223 评审基线同为 908）。
+  "src/workbench/NomiStudioApp.tsx": 908,
   // PR#21 白板节点引入（2026-06-25）：WhiteboardDrawingTool（1032）与 WhiteboardLeaferCanvas（3406）两巨壳
   // 已按 Rule 9 全部拆完、双双出白名单。LeaferCanvas → whiteboardCanvasTypes/Export/NodeOps/Geometry 四纯模块
   // + whiteboardSceneRender（渲染树）+ useWhiteboardDrawing/BoxSelection/SelectionActions/SceneSync 四交互 hook，
