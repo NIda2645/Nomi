@@ -139,7 +139,8 @@
 
 ### 9.1 额度阻断与探针事故收据
 
-- Runway `seedance2_5`、`seedance2`、`veo3.1` 的最小 t2v 请求（4–5 秒、最小 ratio、audio=false）均 HTTP 400：`You do not have enough credits to run this task.` 服务端仅返回错误和官方 API 文档 URL，**没有 current/required credits，因此精确差额不可得**；无 task id、无产物、无封印，不重试。
+- Runway `seedance2_5`、`seedance2`、`seedance2_fast`、`veo3.1` 的最小 t2v 请求（4–5 秒、最小 ratio、audio=false）均 HTTP 400：`You do not have enough credits to run this task.` 服务端仅返回错误和官方 API 文档 URL，**没有 current/required credits，因此精确差额不可得**；无 task id、无产物、无封印。
+- 2026-09-02 续跑验证：`seedance2_fast` 参考图模式（4 秒、1280:720、audio=false）仍为 ⛔ 余额不足；`veo3.1_fast` 先以 4 秒 t2v/audio=false 返回 task `estimatedCost=40 credits`，立即 DELETE，未留计费产物；再用官方 `/v1/uploads`（init 200、multipart 204）得到 `runway://` 参考 URI，图生请求通过 wire 校验但同样 HTTP 400 余额不足。Runway OpenAPI 只有 `estimatedCost`/usage，没有余额端点或短缺值，故 ⛔ 的**精确差额不可观测**，不伪造金额。
 - fal 前置空体探针的三个 request id 都进入 `COMPLETED`，结果分别 HTTP 422 缺少 `prompt`（H3 另含 duration 超上限），无产物；取消已来不及，fal API 未返回 cost/charge 字段，故台账将它们标为“探针失败、非封印”，不编造金额。
 - ElevenLabs `GET /v1/user` 返回 `payg` 且账户可用；四个 mapping 的最小请求均 HTTP 200。该 API 只回账户计数/限制，不回本次美元或人民币扣费；本轮账面花销按**供应商未披露**记录，不能声称一个未经账单确认的精确人民币总额。已停止继续付费，预算上限为 ¥35，待 provider billing 明细才能把“未披露”换成精确数。
 
