@@ -48,11 +48,13 @@ describe("catalog v10 -> v11 wiring", () => {
     const { CURRENT_CATALOG_VERSION } = await import("./types");
     const state = readCatalog();
 
-    expect(CURRENT_CATALOG_VERSION).toBe(11);
-    expect(state.version).toBe(11);
+    // No vendors ⇒ no legacy network config, so the v11→v12 step advances to current.
+    // The point of this test — the v10→v11 media step does not rewrite the customCall
+    // script — still holds through to the current version.
+    expect(state.version).toBe(CURRENT_CATALOG_VERSION);
     expect(state.models[0].customCall?.script).toBe("const firstFrame = references.firstFrame || references.images?.[0];\nconst images = references.images.filter((url) => url !== firstFrame);\nreturn { firstFrame, images };");
     expect(state.models[0].customCall?.modes?.firstlast?.script).toBe("const firstFrame = references.firstFrame || references.images?.[0];\nreturn firstFrame;");
-    expect(JSON.parse(fs.readFileSync(file, "utf8")).version).toBe(11);
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).version).toBe(CURRENT_CATALOG_VERSION);
   });
 
   it("keeps v10 and preserves the stored prompt when a stale binding has no unique media target", async () => {

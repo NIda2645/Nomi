@@ -68,7 +68,25 @@ export function applyPlainCustomConfig(
 }
 
 export function publicVendor(vendor: Vendor): Vendor {
-  return { ...vendor, meta: withoutLegacyCustomConfig(vendor.meta) };
+  // Strip every credential-bearing config from the renderer/export DTO: the legacy
+  // customConfig blob, the proxy URL (may carry user:pass), and custom request
+  // headers (may carry Authorization). Their values live only in the encrypted
+  // credential record; the DTO never carries a credential-bearing value.
+  const meta = withoutExtraHeaders(withoutLegacyCustomConfig(vendor.meta));
+  const next: Vendor = { ...vendor, meta };
+  if (next.network && typeof next.network === "object") {
+    const rest = { ...next.network };
+    delete rest.proxyUrl;
+    next.network = Object.keys(rest).length > 0 ? rest : undefined;
+  }
+  return next;
+}
+
+function withoutExtraHeaders(meta: unknown): unknown {
+  if (!isJsonRecord(meta) || !Object.prototype.hasOwnProperty.call(meta, "extraHeaders")) return meta;
+  const clean = { ...meta };
+  delete clean.extraHeaders;
+  return Object.keys(clean).length > 0 ? clean : undefined;
 }
 
 /** Returns null while OS safe storage is unavailable so an explicit write can fail without touching disk. */

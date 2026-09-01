@@ -580,8 +580,12 @@ export function billingKindForTaskKind(kind: ProfileKind): BillingModelKind {
  *  existing safeStorage-backed vendor credential record. */
 /* v10 corrects stored ComfyUI model/output/task contracts from the selected file output. */
 /* v11 repairs provable stored ComfyUI media-role violations: image placeholders in numeric widgets. */
-export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
-export const CURRENT_CATALOG_VERSION: CatalogVersion = 11;
+/* v12 moves credential-bearing connection network config (proxyUrl, which may carry user:pass, and
+ *  extraHeaders, which may carry Authorization) out of the plaintext vendor row into the existing
+ *  safeStorage-backed vendor credential record. Legacy plaintext stays readable until an explicit
+ *  vendor write migrates every secret atomically (mirrors the v8→v9 customConfig deferral). */
+export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+export const CURRENT_CATALOG_VERSION: CatalogVersion = 12;
 
 export type CatalogState = {
   version: CatalogVersion;

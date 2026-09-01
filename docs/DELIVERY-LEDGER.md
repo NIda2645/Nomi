@@ -9,7 +9,7 @@
 
 ---
 
-## 现役欠账（19）
+## 现役欠账（20）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
@@ -26,6 +26,7 @@
 | 🚧 进行中 | [2026-08-30-library-discovery-optimization.md](plan/2026-08-30-library-discovery-optimization.md) | Nomi 资源库发现与检索统一方案 |
 | 🚧 进行中 | [2026-08-30-unified-model-integration-certification.md](plan/2026-08-30-unified-model-integration-certification.md) | Unified Provider And Model Integration Certification |
 | 🚧 进行中 | [2026-08-31-library-discovery-slice.md](plan/2026-08-31-library-discovery-slice.md) | Nomi 资源库发现优化方案与交付 |
+| 🚧 进行中 | [2026-09-01-credential-config-at-rest-encryption.md](plan/2026-09-01-credential-config-at-rest-encryption.md) | Credential-bearing connection config → encrypted at rest (P2 class fix) |
 | 🚧 进行中 | [2026-09-01-provider-proxy-and-onboarding-hardening.md](plan/2026-09-01-provider-proxy-and-onboarding-hardening.md) | 计划：per-connection provider proxy + onboarding 加固（#258 拆项①③） |
 | 🚧 进行中 | [2026-08-25-generation-credit-estimation.md](superpowers/plans/2026-08-25-generation-credit-estimation.md) | 生成积分估算与实际记录实施计划 |
 | 🚧 进行中 | [2026-08-27-release-media-pack-skill.md](superpowers/plans/2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan |
@@ -63,7 +64,7 @@
 
 </details>
 
-- 合计扫描：480 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：481 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 
