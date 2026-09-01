@@ -1,7 +1,10 @@
 import { applyNodeChanges, type InternalNode, type NodeChange, type ReactFlowState } from '@xyflow/react'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 
-type CanvasDragKernelState = ReactFlowState<GenerationFlowNode, GenerationFlowEdge>
+type CanvasDragKernelState = Pick<
+  ReactFlowState<GenerationFlowNode, GenerationFlowEdge>,
+  'nodes' | 'nodeLookup' | 'parentLookup' | 'hasDefaultNodes'
+>
 type CanvasDragKernelStore = {
   getState: () => CanvasDragKernelState
   setState: (partial: Partial<CanvasDragKernelState>) => void
