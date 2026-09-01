@@ -1,6 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconCut, IconDownload, IconMaximize, IconPlayerTrackNext, IconPlayerTrackPrev } from '@tabler/icons-react'
+import { IconCut, IconDownload, IconMaximize, IconPlayerTrackNext, IconPlayerTrackPrev, IconScissors } from '@tabler/icons-react'
 import {
   FloatingToolbarShell,
   TOOLBAR_ICON as I,
@@ -12,6 +12,7 @@ import {
 } from './NodeFloatingToolbar'
 import { extractVideoFrameToNode } from './extractVideoFrameToNode'
 import NodeShotCutPanel from './NodeShotCutPanel'
+import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 // 视频节点浮条（按「创作优先级」排左→右，与图片工具栏一致）：左·创作：抽首帧 / 抽尾帧 ｜ 右·工具：全屏 · 下载。
@@ -32,6 +33,8 @@ export default function NodeVideoFrameToolbar({ node, downloading, onDownload, o
   const { t } = useTranslation()
   const [busy, setBusy] = React.useState<'first' | 'last' | null>(null)
   const [shotCutOpen, setShotCutOpen] = React.useState(false)
+  const openDeconstruction = useGenerationCanvasStore((state) => state.openVideoDeconstruction)
+  const deconstructOpen = useGenerationCanvasStore((state) => state.videoDeconstructionOpenNodeId === node.id)
   const extract = (which: 'first' | 'last') => {
     if (busy) return
     setBusy(which)
@@ -67,6 +70,14 @@ export default function NodeVideoFrameToolbar({ node, downloading, onDownload, o
         title={t('generationCommon.videoToolbar.shotCutsHint')}
         disabled={busy !== null}
         onClick={() => setShotCutOpen(true)}
+      />
+      <ToolbarButton
+        icon={<IconScissors size={I.size} stroke={I.stroke} />}
+        label={t('generationCommon.videoToolbar.deconstruct')}
+        title={t('generationCommon.videoToolbar.deconstructHint')}
+        accent={deconstructOpen}
+        disabled={busy !== null}
+        onClick={() => openDeconstruction(node.id, { title: node.title || '', videoUrl: node.result?.url || '' })}
       />
       <ToolbarDuplicateVariantButton nodeId={node.id} />
       <ToolbarDivider />

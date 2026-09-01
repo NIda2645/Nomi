@@ -5,6 +5,7 @@ import ProvenancePanel from './ProvenancePanel'
 import { ShotPreviewOverlays } from './ConvertShotToVideoButton'
 import { resolveNodeRenderKind, isCardRenderKind } from './resolveRenderKind'
 import ShotMountBadges from './render/ShotMountBadges'
+import NodeDeconstructionBadge from './NodeDeconstructionBadge'
 import { getBuiltinCategoryById } from '../../project/projectCategories'
 import { NodeCardBody } from './render/NodeCardBody'
 import ImageCropGridOverlay from './render/ImageCropGridOverlay'
@@ -445,6 +446,8 @@ function BaseGenerationNodeImpl({
           </span>
         ) : null}
         <TechnicalReviewBadge meta={node.meta} />
+        {/* 拆解收起态（视图 07）：视频节点有拆解结果且面板未占槽时，挂「已拆解 · N 镜」角标 + 可点回浮条。 */}
+        <NodeDeconstructionBadge node={node} />
         {/* 锁徽标已移到 NodeGenerationComposer 底栏（编辑面板），卡片预览保持干净（用户反馈②）。 */}
         {/* E.2C-25 副本角标：跨分类独立副本永久显示（derivedFrom 仅承载此语义；同分类重生成在 regeneratedFrom）。 */}
         {node.derivedFrom ? (
@@ -465,10 +468,7 @@ function BaseGenerationNodeImpl({
             <span>{t('generationCommon.node.independentCopy')}</span>
           </button>
         ) : null}
-        {/* 卡片右上原有两颗半透明常驻按钮（放大 · 生成记录），条件是 hasResult ——
-            跟选中/hover 都无关，只要出了图就一直压在画面上。设计系统 §1.5：动作不许压在内容上。
-            2026-08-04 撤离：「放大」和浮条的「全屏」本就重复（还是两套不同实现），直接去重；
-            「生成记录」是 ProvenancePanel 唯一入口，迁进浮动工具栏（浮卡片上方不遮画面，门是 selected 不是 hover）。 */}
+        {/* 2026-08-04 撤离卡片右上两颗常驻按钮（放大＝浮条「全屏」去重；生成记录迁进浮动工具栏，门是 selected 非 hover）——动作不压内容（§1.5）。 */}
       </header>
 
       {/* 切片2：镜头挂载的设定卡徽章——不选中也能一眼看「挂了谁」（卡节点不显，组件空挂载自返 null）。 */}

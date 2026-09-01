@@ -162,6 +162,8 @@ export const zhCN = {
     openModelAccess: '打开模型设置',
     windowTitleBar: '窗口标题栏',
     projectQuickActions: '项目快捷操作',
+    generationCollapsedChip: '生成',
+    generationCollapsedRestore: '展开生成 AI 栏（拆解占用右栏时暂收于此）',
   },
   window: {
     controls: '窗口控制',
@@ -539,6 +541,8 @@ export const en = {
     openModelAccess: 'Open model setup',
     windowTitleBar: 'Window title bar',
     projectQuickActions: 'Project quick actions',
+    generationCollapsedChip: 'Generate',
+    generationCollapsedRestore: 'Reopen the generation AI panel (tucked here while deconstruction uses the right dock)',
   },
   window: {
     controls: 'Window controls',

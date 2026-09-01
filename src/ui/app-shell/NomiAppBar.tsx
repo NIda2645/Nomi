@@ -13,6 +13,7 @@ import {
 } from '../../design'
 import { OnboardingChecklist } from '../../workbench/onboarding/OnboardingChecklist'
 import { TaskCenterButton } from '../../workbench/taskCenter/TaskCenterButton'
+import CollapsedAiChip from './CollapsedAiChip'
 import { useGenerationCanvasStore } from '../../workbench/generationCanvas/store/generationCanvasStore'
 import { cn } from '../../utils/cn'
 import { APP_BAR_ACTION_GROUPS } from './appBarActionGroups'
@@ -267,6 +268,10 @@ export default function NomiAppBar({
           </span>
           <span className={cn('nomi-appbar__divider', 'w-px h-[18px] bg-workbench-border')} aria-hidden="true" />
         </span>
+
+        {/* 右槽互斥（视图 06）：拆解面板占槽时，让位的「生成」AI 栏收成此角标；点它还原右栏。
+            只在生成区 + 拆解占槽 + AI 收起时出现，其余情况自返 null（不常驻）。 */}
+        <CollapsedAiChip workspaceMode={workspaceMode} />
 
         {/* 配置：系统设置与模型快捷入口归在一起；二者最终落到同一张设置对话框。 */}
         <span
