@@ -18,6 +18,20 @@ import {
   defaultPerfTempRoot,
 } from './fixtures/canvas-performance-fixture.mjs'
 import { applyPerformanceVerdict } from '../../scripts/canvas-performance-verdict.mjs'
+import {
+  runMultiNodeDrag,
+  runDragAtLowZoom,
+  runDragOverDenseEdges,
+  zoomOutTo,
+} from './canvas-perf/dragScenarios.mjs'
+import {
+  installOffCanvasRenderProbe,
+  startOffCanvasRenderWindow,
+  stopOffCanvasRenderWindow,
+  OFF_CANVAS_RENDER_TARGETS,
+} from './canvas-perf/offCanvasRenderProbe.mjs'
+import { buildScenarioAdvisory } from './canvas-perf/advisoryMetrics.mjs'
+import { startDevRendererServer } from './canvas-perf/devRendererServer.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const outputDir = path.join(repoRoot, 'tests/ux/perf-results')
@@ -29,12 +43,19 @@ const argValue = (name) => {
 }
 const hasArg = (name) => args.includes(name)
 const captureScreenshots = hasArg('--screenshots')
+// eval v2 (U3): dev leg loads a real Vite dev server (dev React bundle +
+// StrictMode double-render, readable component names) via NOMI_RENDERER_URL;
+// throttle leg applies CDP CPU throttling to model a median machine. Both are
+// measurement configurations — they never touch product code or budgets.
+const useDevServer = hasArg('--dev-server')
+const cpuThrottleRate = Math.max(1, Number(argValue('--throttle') || 1))
 if (hasArg('--help') || hasArg('-h')) {
   console.log('用法：node tests/ux/canvas-performance-benchmark.e2e.mjs <label> [--scale L] [--runs 5]')
   console.log(`scale：${Object.keys(CANVAS_PERF_SCALES).join(' / ')}`)
   console.log(
-    'scenario：all / cold-open / blank-pan / node-drag-image / node-drag-video / marquee-select / click-select / wheel-zoom / pan-zoom-mix / resize / media-reveal / low-zoom-preview / media-error / video-hover / reload-heavy',
+    'scenario：all / cold-open / blank-pan / node-drag-image / node-drag-video / multi-node-drag / drag-at-low-zoom / drag-over-dense-edges / marquee-select / click-select / wheel-zoom / pan-zoom-mix / resize / media-reveal / low-zoom-preview / media-error / video-hover / reload-heavy',
   )
+  console.log('eval v2 腿：--dev-server（dev bundle+StrictMode 腿）/ --throttle 4（CPU 节流腿，模拟慢机器）')
   process.exit(0)
 }
 
@@ -57,6 +78,10 @@ const allScenarios = [
   'blank-pan',
   'node-drag-image',
   'node-drag-video',
+  // eval v2 (U1): variable-speed + multi-select + LOD + dense-edge drag coverage.
+  'multi-node-drag',
+  'drag-at-low-zoom',
+  'drag-over-dense-edges',
   'marquee-select',
   'click-select',
   'wheel-zoom',
@@ -428,6 +453,18 @@ async function dragPath(page, start, end, steps = 60, interval = 16) {
   await page.mouse.up()
 }
 
+// action_latency (advisory): the benchmark probe records the first stage/edge
+// mutation relative to probe start. Started immediately before pointerdown, that
+// is the pointerdown→first-visual-feedback interval. Returns null when no
+// mutation was observed. dragScenarios.mjs reads the same field for its runners.
+async function readFirstFeedbackMs(page) {
+  return page.evaluate(() => {
+    const probe = window.__canvasPerformanceProbe
+    const rec = probe && probe._record
+    return rec && rec.firstMutationMs != null ? rec.firstMutationMs : null
+  })
+}
+
 async function visibleNodeBox(page, kind) {
   const candidates = page.locator(`.generation-canvas-v2-node[data-kind="${kind}"]`)
   const count = await candidates.count()
@@ -578,7 +615,8 @@ async function runAction(page, scenario, fixture) {
     const start = await findBlank(page)
     if (!start) throw new Error('找不到可用于平移的画布空白点')
     await dragPath(page, start, { x: start.x - 260, y: start.y - 140 })
-    return null
+    // 60 steps at 16ms in dragPath; record for the drag/pan ratio denominator.
+    return { moves: 60, firstFeedbackMs: await readFirstFeedbackMs(page) }
   }
   if (scenario === 'node-drag-image' || scenario === 'node-drag-video') {
     const kind = scenario.endsWith('image') ? 'image' : 'video'
@@ -586,7 +624,15 @@ async function runAction(page, scenario, fixture) {
     if (!node) throw new Error(`没有可见的 ${kind} 节点`)
     const start = { x: node.box.x + node.box.width * 0.5, y: node.box.y + 14 }
     await dragPath(page, start, { x: start.x + 180, y: start.y + 90 })
-    return { nodeId: await node.locator.getAttribute('data-node-id') }
+    return { nodeId: await node.locator.getAttribute('data-node-id'), moves: 60, firstFeedbackMs: await readFirstFeedbackMs(page) }
+  }
+  if (scenario === 'multi-node-drag') return runMultiNodeDrag(page)
+  if (scenario === 'drag-over-dense-edges') return runDragOverDenseEdges(page)
+  if (scenario === 'drag-at-low-zoom') {
+    // Only >80-node fixtures cross the lightweight threshold; the harness wires
+    // this scenario to a scale that does. Zoom out first so LOD can engage.
+    await zoomOutTo(page, 0.45)
+    return runDragAtLowZoom(page)
   }
   if (scenario === 'marquee-select') {
     const boxes = []
@@ -922,11 +968,25 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
         // Capability core is orthogonal to canvas rendering and can add a
         // local RPC process during startup; keep it out of interaction samples.
         NOMI_DISABLE_CAPABILITY_CORE: process.env.NOMI_DISABLE_CAPABILITY_CORE || '1',
+        // eval v2 dev leg: load the running Vite dev server (dev bundle +
+        // StrictMode) instead of the built dist renderer. electron/main.ts:227
+        // reads NOMI_RENDERER_URL. Unset otherwise → normal dist behaviour.
+        ...(useDevServer && devRendererUrl ? { NOMI_RENDERER_URL: devRendererUrl } : {}),
       },
     }))
     attachDiagnostics(page)
     app.on('window', attachDiagnostics)
     page = getTargetWindow(app, page)
+    // Off-canvas render probe (advisory + U4 positive control) only reads
+    // meaningfully on the dev bundle where component names survive. Register it
+    // as an init script and reload once so the hook is present before React's
+    // first commit on a fresh document. Prod bundle: skip (names are mangled).
+    if (useDevServer) {
+      await installOffCanvasRenderProbe(page)
+      await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
+      await sleep(page, 900)
+      page = getTargetWindow(app, page)
+    }
     const browserWindow = await app.browserWindow(page)
     await browserWindow.evaluate((target) => {
       target.setBounds({ x: 0, y: 0, width: 1600, height: 1000 })
@@ -942,6 +1002,11 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
     const cdp = await app.context().newCDPSession(page)
     await cdp.send('Performance.enable').catch(() => {})
     await cdp.send('Memory.enable').catch(() => {})
+    // eval v2 throttle leg: model a median machine. Same CDP call and shape used
+    // by scripts/scene3d-drag-jitter-walkthrough.mjs on this Electron build.
+    if (cpuThrottleRate > 1) {
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuThrottleRate }).catch(() => {})
+    }
     await installProbe(page)
     if (scenario !== 'cold-open') await sleep(page, 500)
     await prepareScenario(page, scenario)
@@ -974,7 +1039,11 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
       await captureNodeIdentity(page)
       await page.evaluate(() => window.__canvasPerformanceProbe.start())
     }
+    // Record off-canvas re-renders for this action window (advisory / positive
+    // control). No-op unless the dev-leg probe installed.
+    const offCanvasStarted = useDevServer && probeSurvivesAction ? await startOffCanvasRenderWindow(page) : false
     const actionDetails = await runAction(page, scenario, fixture)
+    const offCanvasRender = offCanvasStarted ? await stopOffCanvasRenderWindow(page) : null
     await sleep(page, 250)
     const probe = probeSurvivesAction
       ? await page.evaluate(() => window.__canvasPerformanceProbe.stop())
@@ -999,6 +1068,7 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
       beforePage,
       page: afterPage,
       actionDetails,
+      offCanvasRender,
       nodeIdentity,
       appMetrics: await getAppMetrics(app),
       runtimeVersions: await getRuntimeVersions(app),
@@ -1071,6 +1141,24 @@ function sampleHardFailures(sample) {
     sample.actionDetails.selected < 12
   )
     failures.push(`marquee selected only ${sample.actionDetails.selected} nodes`)
+  // eval v2 scenario integrity guards (correctness, not perf budgets): if a new
+  // scenario silently degenerated (grabbed too few nodes / no dense band), the
+  // sample would look "clean" for the wrong reason. Fail it explicitly so the
+  // baseline is not built on a mis-measured window.
+  if (
+    sample.scenario === 'multi-node-drag' &&
+    !sample.error &&
+    Number.isFinite(sample.actionDetails?.selected) &&
+    sample.actionDetails.selected < 2
+  )
+    failures.push(`multi-node-drag selected only ${sample.actionDetails.selected} nodes (needs ≥2)`)
+  if (
+    sample.scenario === 'drag-over-dense-edges' &&
+    !sample.error &&
+    Number.isFinite(sample.actionDetails?.connectedEdges) &&
+    sample.actionDetails.connectedEdges < 1
+  )
+    failures.push('drag-over-dense-edges dragged a node with 0 connected edges')
   if (sample.nodeIdentity?.commonIdentityPreserved === false) failures.push('mounted node DOM identity changed')
   if (sample.nodeIdentity?.targetIdentityPreserved === false)
     failures.push(`target node DOM identity changed: ${sample.nodeIdentity.targetNodeId}`)
@@ -1104,7 +1192,7 @@ function sampleHardFailures(sample) {
   return failures
 }
 
-function summarizeScenario(samples) {
+function summarizeScenario(samples, panControl = null) {
   const metricPaths = [
     ['coldFirstCanvasMs', (sample) => sample.cold?.firstCanvasMs],
     ['coldMediaSettledMs', (sample) => sample.cold?.mediaSettledMs],
@@ -1150,16 +1238,40 @@ function summarizeScenario(samples) {
     max,
     pass: metrics[metric].p95 <= max,
   }))
+  // eval v2 advisory block (U2): per-move amortization, drag/pan ratios, action
+  // latency, off-canvas render counts. Attached alongside — NOT inside — the
+  // verdict. The verdict below is byte-for-byte the original logic; advisory
+  // numbers never flip pass/fail this round (#264 lesson).
+  const advisory = buildScenarioAdvisory({
+    samples,
+    panControl,
+    offCanvasComponents: OFF_CANVAS_RENDER_TARGETS,
+  })
   return {
     samples: samples.length,
     errors: samples.filter((sample) => sample.error || sample.pageErrors?.length || sample.consoleErrors?.length)
       .length,
     metrics,
+    advisory,
     verdict: {
       pass: hardFailures.length === 0 && budgetChecks.every((check) => check.pass),
       hardFailures,
       budgetChecks,
     },
+  }
+}
+
+// Aggregate a run's blank-pan samples into the { scriptDurationMs, layoutCount }
+// control used for drag/pan ratios. Uses the median so a single noisy pan does
+// not distort the denominator. Returns null when no pan sample exists in the run
+// (ratios then degrade to null — advisory, so that is acceptable).
+function blankPanControl(samples) {
+  const script = samples.map((s) => s?.cdpDelta?.ScriptDurationMs).filter((v) => Number.isFinite(v))
+  const layout = samples.map((s) => s?.cdpDelta?.LayoutCount).filter((v) => Number.isFinite(v))
+  if (!script.length && !layout.length) return null
+  return {
+    scriptDurationMs: script.length ? quantile(script.sort((a, b) => a - b), 0.5) : null,
+    layoutCount: layout.length ? quantile(layout.sort((a, b) => a - b), 0.5) : null,
   }
 }
 
@@ -1193,8 +1305,26 @@ const results = {
   warmupCount,
   scales: requestedScales,
   scenarios,
+  // eval v2 leg configuration, recorded so a baseline JSON self-documents which
+  // measurement configuration produced it (prod / dev / throttle).
+  leg: {
+    devServer: useDevServer,
+    cpuThrottleRate,
+    kind: useDevServer ? 'dev-strictmode' : cpuThrottleRate > 1 ? `throttle-${cpuThrottleRate}x` : 'prod',
+  },
   results: [],
   warmupFailures: [],
+}
+
+// eval v2 dev leg: bring up the Vite dev server once for the whole run; every
+// isolated Electron instance then loads it via NOMI_RENDERER_URL.
+let devRendererUrl = null
+let devServer = null
+if (useDevServer) {
+  console.log('▶ 启动 Vite dev server（dev bundle + StrictMode 腿）…')
+  devServer = await startDevRendererServer()
+  devRendererUrl = devServer.url
+  console.log(`  dev renderer: ${devRendererUrl}`)
 }
 
 try {
@@ -1224,8 +1354,17 @@ try {
     list.push(sample)
     grouped.set(key, list)
   }
+  // Pan control is per-scale: drag/pan ratios must divide by the same-machine,
+  // same-scale blank-pan cost. Keyed by scale so a multi-scale run stays honest.
+  const panControlByScale = new Map()
+  for (const [key, samples] of grouped.entries()) {
+    if (key.endsWith('/blank-pan')) panControlByScale.set(key.split('/')[0], blankPanControl(samples))
+  }
   results.summary = Object.fromEntries(
-    [...grouped.entries()].map(([key, samples]) => [key, summarizeScenario(samples)]),
+    [...grouped.entries()].map(([key, samples]) => [
+      key,
+      summarizeScenario(samples, panControlByScale.get(key.split('/')[0]) || null),
+    ]),
   )
   results.runtimeVersions = results.results.find((sample) => sample.runtimeVersions)?.runtimeVersions || null
   results.pass =
@@ -1235,5 +1374,6 @@ try {
   if (results.warmupFailures.length) console.log(`⚠ warmup 失败 ${results.warmupFailures.length} 次，结果标记为不可靠`)
   if (!applyPerformanceVerdict(results)) console.error('❌ 画布性能 benchmark 未通过预算或可靠性门槛')
 } finally {
+  await devServer?.close().catch(() => {})
   fs.rmSync(tempRoot, { recursive: true, force: true })
 }
