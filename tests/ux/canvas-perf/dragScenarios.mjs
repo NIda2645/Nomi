@@ -99,29 +99,54 @@ async function readFirstFeedbackMs(page) {
 }
 
 /**
- * multi-node-drag: shift-click N nodes to select them, then drag the primary.
- * React Flow emits a position change per selected node each tick → N store
- * writes/tick (leg-b §9 "multi-select path"). Returns actionDetails with the
- * realized selection count and move count.
+ * Is a node box safely clickable for selection: fully inside the stage and clear
+ * of the minimap (bottom-right) so the shift-click lands on the card, not an
+ * overlay. Probed ground truth: nodes hugging the right stage edge (x≈1454 in a
+ * 1600px stage) or under the minimap don't register the click.
+ */
+function isSafelyClickable(box, stage) {
+  const margin = 8
+  const insideStage =
+    box.x >= stage.x + margin &&
+    box.y >= stage.y + margin &&
+    box.x + box.width * 0.5 <= stage.x + stage.width - margin &&
+    box.y + 20 <= stage.y + stage.height - margin
+  // Keep clear of the bottom-right minimap zone (~220x160 inset).
+  const clickX = box.x + box.width * 0.45
+  const clickY = box.y + 14
+  const nearMinimap = clickX > stage.x + stage.width - 240 && clickY > stage.y + stage.height - 180
+  return insideStage && !nearMinimap
+}
+
+/**
+ * multi-node-drag: shift-click N safely-clickable nodes to select them, then
+ * drag the primary. React Flow emits a position change per selected node each
+ * tick → N store writes/tick (leg-b §9 "multi-select path"). Uses the proven
+ * selection coordinates (x*0.45, y+14) that the click-select scenario relies on,
+ * and skips nodes off the stage edge / under the minimap that would silently not
+ * select. Returns actionDetails with the realized selection count and move count.
  * @param {import('playwright').Page} page
  */
 export async function runMultiNodeDrag(page) {
+  const stage = await page.locator('.generation-canvas-v2__stage').boundingBox()
+  if (!stage) throw new Error('画布 stage 不存在')
   const nodes = page.locator('.generation-canvas-v2-node')
   const total = await nodes.count()
-  const targetCount = Math.min(MULTI_DRAG_NODE_COUNT, total)
-  // Collect boxes for the first N nodes with a usable box.
   const picks = []
-  for (let index = 0; index < total && picks.length < targetCount; index += 1) {
+  for (let index = 0; index < total && picks.length < MULTI_DRAG_NODE_COUNT; index += 1) {
     const box = await nodes.nth(index).boundingBox().catch(() => null)
-    if (box && box.width > 20 && box.height > 20) picks.push({ locator: nodes.nth(index), box })
+    if (box && box.width > 20 && box.height > 20 && isSafelyClickable(box, stage)) {
+      picks.push({ locator: nodes.nth(index), box })
+    }
   }
-  if (picks.length < 2) throw new Error(`multi-node-drag 需要至少 2 个可见节点，仅有 ${picks.length}`)
+  if (picks.length < 2) throw new Error(`multi-node-drag 需要至少 2 个可安全点击的节点，仅有 ${picks.length}`)
   await page.keyboard.down('Shift')
   try {
     for (const pick of picks) {
-      // Click near the top so we grab the card body, not a media double-click.
-      await page.mouse.click(pick.box.x + pick.box.width * 0.5, pick.box.y + 12)
-      await sleep(page, 20)
+      // x*0.45,y+14 = the click-select scenario's proven selection target;
+      // shiftKey propagates to the card pointerdown → additive selection.
+      await page.mouse.click(pick.box.x + pick.box.width * 0.45, pick.box.y + 14)
+      await sleep(page, 40)
     }
   } finally {
     await page.keyboard.up('Shift')
@@ -130,9 +155,15 @@ export async function runMultiNodeDrag(page) {
   const selected = await page.locator('.generation-canvas-v2-node[data-selected="true"]').count()
   // Drag the primary (first pick) with a variable-speed gesture; the rest follow.
   const primary = picks[0]
-  const start = { x: primary.box.x + primary.box.width * 0.5, y: primary.box.y + 14 }
-  const moves = await variableSpeedDragPath(page, start, { x: start.x + 160, y: start.y + 80 })
-  return { selected, requested: targetCount, moves, firstFeedbackMs: await readFirstFeedbackMs(page), nodeId: await primary.locator.getAttribute('data-node-id') }
+  const start = { x: primary.box.x + primary.box.width * 0.45, y: primary.box.y + 14 }
+  const moves = await variableSpeedDragPath(page, start, { x: start.x + 150, y: start.y + 80 })
+  return {
+    selected,
+    requested: picks.length,
+    moves,
+    firstFeedbackMs: await readFirstFeedbackMs(page),
+    nodeId: await primary.locator.getAttribute('data-node-id'),
+  }
 }
 
 /**
@@ -164,49 +195,47 @@ export async function runDragAtLowZoom(page) {
 }
 
 /**
- * drag-over-dense-edges: pick the node with the most connected edges currently
- * mounted and drag it — each tick recomputes the path of every connected edge
- * (adapter resolveHandleIds by geometry). We measure connected-edge count so the
- * sample records the density it actually exercised.
- * @param {import('playwright').Page} page
+ * Rank node ids by edge degree from a fixture edge list. RF edge DOM only
+ * carries data-testid="rf__edge-<edgeId>" (endpoints are not on the DOM), so we
+ * derive degree from the fixture the harness already passes into runAction
+ * rather than trying to read it back from the page.
+ * @param {ReadonlyArray<{source:string,target:string}>} edges
+ * @returns {Array<[string, number]>} [nodeId, degree] sorted desc
  */
-export async function runDragOverDenseEdges(page) {
-  // Rank mounted nodes by how many rendered edges touch them. React Flow tags
-  // edges with data-source/data-target = node id via the edge wrapper; when not
-  // present we fall back to the node with the most edges in the store via a DOM
-  // count of edge paths whose id encodes endpoints.
-  const ranked = await page.evaluate(() => {
-    const nodeEls = Array.from(document.querySelectorAll('.react-flow__node[data-id]'))
-    const edgeEls = Array.from(document.querySelectorAll('.react-flow__edge[data-source][data-target]'))
-    const degree = new Map()
-    for (const edge of edgeEls) {
-      const s = edge.getAttribute('data-source')
-      const t = edge.getAttribute('data-target')
-      if (s) degree.set(s, (degree.get(s) || 0) + 1)
-      if (t) degree.set(t, (degree.get(t) || 0) + 1)
-    }
-    let best = null
-    for (const el of nodeEls) {
-      const id = el.getAttribute('data-id')
-      const d = degree.get(id) || 0
-      if (!best || d > best.degree) {
-        const rect = el.getBoundingClientRect()
-        if (rect.width > 20 && rect.height > 20) best = { id, degree: d, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } }
-      }
-    }
-    return { best, edgeCount: edgeEls.length }
-  })
-  if (!ranked.best) throw new Error('drag-over-dense-edges 找不到可拖的已连边节点')
-  const box = ranked.best.rect
-  const start = { x: box.x + box.width * 0.5, y: box.y + 12 }
-  const moves = await variableSpeedDragPath(page, start, { x: start.x + 150, y: start.y + 85 })
-  return {
-    nodeId: ranked.best.id,
-    connectedEdges: ranked.best.degree,
-    renderedEdges: ranked.edgeCount,
-    moves,
-    firstFeedbackMs: await readFirstFeedbackMs(page),
+export function rankNodesByDegree(edges) {
+  const degree = new Map()
+  for (const edge of edges || []) {
+    if (edge?.source) degree.set(edge.source, (degree.get(edge.source) || 0) + 1)
+    if (edge?.target) degree.set(edge.target, (degree.get(edge.target) || 0) + 1)
   }
+  return [...degree.entries()].sort((a, b) => b[1] - a[1])
+}
+
+/**
+ * drag-over-dense-edges: drag the highest edge-degree node that is currently
+ * mounted, so every tick recomputes the path of the maximum number of connected
+ * edges (adapter resolveHandleIds by geometry). Degree comes from the fixture
+ * edge list; density actually exercised is recorded on the sample.
+ * @param {import('playwright').Page} page
+ * @param {ReadonlyArray<{source:string,target:string}>} fixtureEdges
+ */
+export async function runDragOverDenseEdges(page, fixtureEdges) {
+  const ranked = rankNodesByDegree(fixtureEdges)
+  if (!ranked.length) throw new Error('drag-over-dense-edges 夹具没有边')
+  const renderedEdges = await page.locator('.react-flow__edge').count()
+  // Walk from highest degree down to the first node that is mounted with a box.
+  for (const [nodeId, degree] of ranked) {
+    const box = await page
+      .locator(`.react-flow__node[data-id="${nodeId}"]`)
+      .boundingBox()
+      .catch(() => null)
+    if (box && box.width > 20 && box.height > 20) {
+      const start = { x: box.x + box.width * 0.45, y: box.y + 14 }
+      const moves = await variableSpeedDragPath(page, start, { x: start.x + 150, y: start.y + 85 })
+      return { nodeId, connectedEdges: degree, renderedEdges, moves, firstFeedbackMs: await readFirstFeedbackMs(page) }
+    }
+  }
+  throw new Error('drag-over-dense-edges 高连边节点都未挂载，无法拖动')
 }
 
 /**

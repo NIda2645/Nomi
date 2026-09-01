@@ -94,6 +94,14 @@ const allScenarios = [
   'reload-heavy',
 ]
 const scenarios = requestedScenarios.includes('all') ? allScenarios : requestedScenarios
+
+// eval v2 (U2 打分策略): the newly added drag scenarios are advisory-only THIS
+// round. Their budget/hard-failure detail is still computed and recorded for
+// visibility, but they do NOT contribute to the run's pass/fail — same posture
+// as the new advisory metrics (#264 lesson: harden un-calibrated ceilings only
+// after cross-platform data exists). The pre-existing 14 scenarios keep their
+// budgets and hard-failure clauses byte-for-byte and remain gating.
+const ADVISORY_ONLY_SCENARIOS = new Set(['multi-node-drag', 'drag-at-low-zoom', 'drag-over-dense-edges'])
 for (const scale of requestedScales) {
   if (!CANVAS_PERF_SCALES[scale]) throw new Error(`未知 scale「${scale}」`)
 }
@@ -627,7 +635,9 @@ async function runAction(page, scenario, fixture) {
     return { nodeId: await node.locator.getAttribute('data-node-id'), moves: 60, firstFeedbackMs: await readFirstFeedbackMs(page) }
   }
   if (scenario === 'multi-node-drag') return runMultiNodeDrag(page)
-  if (scenario === 'drag-over-dense-edges') return runDragOverDenseEdges(page)
+  if (scenario === 'drag-over-dense-edges') {
+    return runDragOverDenseEdges(page, fixture.record.payload.generationCanvas.edges)
+  }
   if (scenario === 'drag-at-low-zoom') {
     // Only >80-node fixtures cross the lightweight threshold; the harness wires
     // this scenario to a scale that does. Zoom out first so LOD can engage.
@@ -1247,6 +1257,8 @@ function summarizeScenario(samples, panControl = null) {
     panControl,
     offCanvasComponents: OFF_CANVAS_RENDER_TARGETS,
   })
+  const scenarioName = samples[0]?.scenario
+  const advisoryOnly = ADVISORY_ONLY_SCENARIOS.has(scenarioName)
   return {
     samples: samples.length,
     errors: samples.filter((sample) => sample.error || sample.pageErrors?.length || sample.consoleErrors?.length)
@@ -1254,7 +1266,9 @@ function summarizeScenario(samples, panControl = null) {
     metrics,
     advisory,
     verdict: {
-      pass: hardFailures.length === 0 && budgetChecks.every((check) => check.pass),
+      // advisoryOnly scenarios record their checks but never gate this round.
+      pass: advisoryOnly ? true : hardFailures.length === 0 && budgetChecks.every((check) => check.pass),
+      advisoryOnly,
       hardFailures,
       budgetChecks,
     },
@@ -1339,7 +1353,16 @@ try {
         )
         if (warmup) {
           const failures = sampleHardFailures(sample)
-          if (failures.length) results.warmupFailures.push({ scale, scenario, runIndex: index, failures })
+          // Advisory-only scenarios record warmup issues for visibility but do
+          // not gate the run (their budgets/hard-failures are not calibrated).
+          if (failures.length)
+            results.warmupFailures.push({
+              scale,
+              scenario,
+              runIndex: index,
+              failures,
+              advisoryOnly: ADVISORY_ONLY_SCENARIOS.has(scenario),
+            })
         } else {
           results.results.push(sample)
         }
@@ -1367,11 +1390,19 @@ try {
     ]),
   )
   results.runtimeVersions = results.results.find((sample) => sample.runtimeVersions)?.runtimeVersions || null
+  // Only gating (non-advisory) warmup failures block the run; advisory-only
+  // scenario warmup issues are recorded but excluded here. Per-scenario verdicts
+  // already return pass:true for advisory-only scenarios.
+  const gatingWarmupFailures = results.warmupFailures.filter((failure) => !failure.advisoryOnly)
   results.pass =
-    results.warmupFailures.length === 0 && Object.values(results.summary).every((summary) => summary.verdict.pass)
+    gatingWarmupFailures.length === 0 && Object.values(results.summary).every((summary) => summary.verdict.pass)
   const outputPath = writeResults(results, label)
   console.log(`\n✅ 画布性能 benchmark 完成：${outputPath}`)
-  if (results.warmupFailures.length) console.log(`⚠ warmup 失败 ${results.warmupFailures.length} 次，结果标记为不可靠`)
+  if (gatingWarmupFailures.length)
+    console.log(`⚠ warmup 失败 ${gatingWarmupFailures.length} 次（gating 场景），结果标记为不可靠`)
+  const advisoryWarmupFailures = results.warmupFailures.length - gatingWarmupFailures.length
+  if (advisoryWarmupFailures)
+    console.log(`ℹ advisory-only 场景 warmup 提示 ${advisoryWarmupFailures} 条（不影响判定，仅记录）`)
   if (!applyPerformanceVerdict(results)) console.error('❌ 画布性能 benchmark 未通过预算或可靠性门槛')
 } finally {
   await devServer?.close().catch(() => {})

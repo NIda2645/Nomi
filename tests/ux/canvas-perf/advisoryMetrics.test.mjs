@@ -10,7 +10,7 @@ import {
   buildScenarioAdvisory,
   quantile,
 } from './advisoryMetrics.mjs'
-import { LIGHTWEIGHT_ZOOM_CEILING } from './dragScenarios.mjs'
+import { LIGHTWEIGHT_ZOOM_CEILING, rankNodesByDegree } from './dragScenarios.mjs'
 import { LIGHTWEIGHT_NODE_ZOOM_THRESHOLD } from '../../../src/workbench/generationCanvas/components/canvasNodeLevelOfDetail.ts'
 import { OFF_CANVAS_RENDER_TARGETS } from './offCanvasRenderProbe.mjs'
 
@@ -108,6 +108,25 @@ describe('LOD ceiling stays in sync with the source of truth', () => {
     // If the product changes the lightweight zoom trigger, this fails loudly so
     // drag-at-low-zoom does not silently measure full-content drag instead.
     expect(LIGHTWEIGHT_ZOOM_CEILING).toBe(LIGHTWEIGHT_NODE_ZOOM_THRESHOLD)
+  })
+})
+
+describe('rankNodesByDegree (dense-edge target selection)', () => {
+  it('ranks node ids by fixture edge degree, highest first', () => {
+    // Mirrors the S-scale fixture head: video-0 touches 3 edges, image-0 touches 2.
+    const edges = [
+      { source: 'image-0', target: 'video-0' },
+      { source: 'video-0', target: 'video-1' },
+      { source: 'image-0', target: 'video-2' },
+      { source: 'x', target: 'video-0' },
+    ]
+    const ranked = rankNodesByDegree(edges)
+    expect(ranked[0]).toEqual(['video-0', 3])
+    expect(ranked.find(([id]) => id === 'image-0')[1]).toBe(2)
+  })
+  it('is empty-safe', () => {
+    expect(rankNodesByDegree([])).toEqual([])
+    expect(rankNodesByDegree(undefined)).toEqual([])
   })
 })
 
