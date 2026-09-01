@@ -208,13 +208,23 @@ export function chooseTextModel(
  * 解析默认文本大脑的 vendor/model 键（**不含 apiKey**）。这是只读的“已配置”探测：
  * enabled 的免鉴权 vendor，或 enabled/nonempty 的 safeStorage 凭据记录即可；启动与首屏绝不为 readiness
  * 触碰系统钥匙串。真正执行文本请求时由 chooseTextModel 解密并验证凭据。
+ *
+ * `preferImageInput`：本轮要喂图时传 true，把**能读图**的模型排到第一位（imageInputRank →
+ * meta.supportsImageInput，如 gemini-3.5-flash）。默认 false，既有调用方行为完全不变——无偏好时仍按
+ * 「像不像通用对话模型」排序，把 vision/preview 降到末尾（它们常发不可靠的 tool_use，agent 主控要避开）。
+ * 视频拆解读帧、浏览器「画面复刻」都要靠这个偏好选到读图脑（否则默认脑是 deepseek，读不了图）。
  */
-export function resolveTextBrainKeys(): { vendor: string; modelKey: string } | null {
-  return resolveConfiguredTextBrain(readCatalog());
+export function resolveTextBrainKeys(
+  options: { preferImageInput?: boolean } = {},
+): { vendor: string; modelKey: string } | null {
+  return resolveConfiguredTextBrain(readCatalog(), options.preferImageInput === true);
 }
 
-function resolveConfiguredTextBrain(state: CatalogState): { vendor: string; modelKey: string } | null {
-  const configured = selectTextModelCandidates(state).find(({ vendor }) =>
+function resolveConfiguredTextBrain(
+  state: CatalogState,
+  preferImageInput = false,
+): { vendor: string; modelKey: string } | null {
+  const configured = selectTextModelCandidates(state, undefined, preferImageInput).find(({ vendor }) =>
     vendor.authType === "none" || configuredCredential(state.apiKeysByVendor[vendor.key]));
   return configured ? { vendor: configured.vendor.key, modelKey: configured.model.modelKey } : null;
 }
