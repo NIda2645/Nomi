@@ -1,0 +1,127 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-dreamina-cli-v1417-alignment",
+  "problem_type": "Nomi's declarative 即梦 (Dreamina) archetype/codec surface silently drifts from the official local CLI's evolving contract",
+  "symptom": "The official dreamina CLI advanced to v1.4.17 (required --video_resolution/--resolution_type since v1.4.14; Seedance 2.5 across all video commands since v1.4.15 with 1080p added in v1.4.17; Seedream 5.0Pro gaining 1.5k and losing 1k in v1.4.16), but Nomi's catalog was frozen at the Seedance 2.0 shape. Concretely: (1) multiframe2video submissions hard-failed with `required flag(s) \"video_resolution\" not set` because the multiframe archetype declared no video_resolution param and buildMultiframeArgs never emitted the flag; (2) users could not select seedance2.5 (the model the community explicitly asked for) or Seedream 5.0Pro; (3) the codec carried a now-false `normalizeDreaminaVideoResolution` heuristic (\"1080p only for vip, else 720p\") that contradicts 2.5 (480p and non-vip 1080p).",
+  "direct_cause": "The 即梦 model surface is expressed as declarative archetype params + a CLI-arg builder, but those declarations were authored against the 2026-06 CLI help and never re-derived when the CLI shipped v1.4.14–v1.4.17. The multiframe arg builder omitted a flag that later became required; the video/image variant lists and resolution/duration enums lagged the current model set.",
+  "class_root": "The 即梦 integration's single source of truth for \"what the CLI accepts\" was implicit and manually copied, with no versioned matrix pinning (command × model_version × resolution × duration × required params) and no contract test making illegal combinations unreachable before request construction. Any CLI evolution — a newly required flag, a new model_version, a removed resolution enum — can therefore silently desync any of the four video commands, the two image commands, the multiframe command, or the codec's parameter normalization.",
+  "affected_population": [
+    "Every user of 即梦 多帧视频 (multiframe2video): each submission hard-failed on the missing required --video_resolution (P0, live before this fix)",
+    "Users who wanted Seedance 2.5 via 即梦 会员积分 (the community-requested model) — previously not selectable",
+    "Users who wanted Seedream 5.0Pro image generation — previously not selectable, and the removed 1k enum could be sent",
+    "Any future 即梦 command/param that the CLI changes again (new required flag, new model_version, removed enum)"
+  ],
+  "scope_paths": [
+    "electron/catalog/dreaminaCodec.ts",
+    "electron/catalog/dreaminaVideos.ts",
+    "electron/catalog/processOperation.ts",
+    "electron/catalog/archetypeWireDefaults.video.generated.ts",
+    "electron/catalog/archetypeIdentifiers.generated.ts",
+    "electron/shared/videoCapabilities/dreaminaSeedance.ts",
+    "electron/shared/videoCapabilities/dreaminaMultiframe.ts",
+    "src/config/modelArchetypes/dreaminaImage.ts",
+    "electron/catalog/dreaminaCodec.test.ts",
+    "electron/catalog/dreaminaMultiframe.test.ts",
+    "electron/catalog/dreaminaSeed.test.ts",
+    "src/config/modelArchetypes/index.test.ts",
+    "docs/research/2026-09-01-dreamina-cli-v1417-matrix.md"
+  ],
+  "entry_points": [
+    "生成画布 → 即梦 Seedance（会员）→ 文生视频/图生视频/首尾帧/全能参考 (text2video/image2video/frames2video/multimodal2video) with VariantBar model_version",
+    "生成画布 → 即梦多帧视频（会员）→ multiframe2video (2-20 关键帧)",
+    "生成画布 → 即梦图片 → 文生图/改图 with VariantBar model_version (incl. 5.0Pro)",
+    "CLI arg construction in electron/catalog/processOperation.ts (process transport) via dreaminaVideos.ts mappings and dreaminaCodec.ts buildMultiframeArgs"
+  ],
+  "internal_only_reason": "The authoritative contract for this integration is the official 即梦 local CLI itself. It is a locally installed binary (~/.local/bin/dreamina), not an HTTP API with published OpenAPI. The matrix was re-derived on 2026-09-01 by updating the CLI to v1.4.17 (official `curl -fsSL https://jimeng.jianying.com/cli | bash`, version.json = 1.4.17 / release_date 2026-08-18) and dumping every subcommand's `-h`; the required-flag behavior was confirmed with real pre-auth probes against the updated binary (`required flag(s) \"video_resolution\" not set`). This CLI help + version.json IS the official source of record for a local-CLI transport.",
+  "invariants": [
+    "multiframe2video always emits --video_resolution (720p or 1080p) regardless of image count; an absent/illegal request value falls back to 720p, never to an empty flag that the CLI would reject.",
+    "For every video command, the selectable video_resolution set equals exactly the current CLI's supported set for the chosen model_version: seedance2.5 -> {480p,720p,1080p}; non-vip 2.0 (fast/standard/mini) -> {720p}; vip/fast_vip -> {720p,1080p}.",
+    "For every video command, the duration bounds equal the current CLI's: seedance2.5 -> [4,30]; all other 2.0-family variants -> [4,15].",
+    "For every image command, the selectable resolution_type set equals the current CLI's per-model set: 3.0/3.1 -> {1k,2k}; 4.0/4.1/4.5/4.6/4.7/5.0 -> {2k,4k}; 5.0Pro -> {1.5k,2k,4k} (never 1k).",
+    "The model_version strings sent to the CLI are exactly the current help spellings: `seedance2.5` (dot, not `seedance-3`) and `5.0Pro`.",
+    "Required flags (--video_resolution for video, --resolution_type for image) are always populated from archetype default values seeded into request.params, so the normal UI and agent-planned paths never omit them."
+  ],
+  "generality_proof": "All illegal combinations are made unreachable before request construction by the declarative archetype params, which are the single boundary the CLI-arg templates read. The matrix-lock tests in src/config/modelArchetypes/index.test.ts specialize each variant (specializeArchetypeForVariant) and assert the exact resolution/duration option sets and model_version strings, so a future drift in dreaminaSeedance.ts / dreaminaMultiframe.ts / dreaminaImage.ts fails a test. The one flag that is not a select-option constraint — the multiframe required --video_resolution, which is built imperatively — is enforced at the single shared boundary electron/catalog/dreaminaCodec.ts (normalizeMultiframeResolution + buildMultiframeArgs), and its test electron/catalog/dreaminaMultiframe.test.ts asserts the flag is present for every image count with default/illegal fallback to 720p. The versioned matrix doc (docs/research/2026-09-01-dreamina-cli-v1417-matrix.md) pins CLI version + checkedAt as the SOURCE all three archetypes cite.",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/dreaminaCodec.ts",
+      "symbol": "buildMultiframeArgs",
+      "responsibility": "The single constructor of multiframe2video CLI args; always emits --video_resolution via normalizeMultiframeResolution (720p/1080p, illegal->720p) so the v1.4.14 required flag can never be dropped, independent of image count or transition shape."
+    },
+    {
+      "path": "electron/catalog/dreaminaCodec.ts",
+      "symbol": "normalizeMultiframeResolution",
+      "responsibility": "Clamps any inbound resolution to the multiframe-supported set {720p,1080p} (case-normalized), falling back to the archetype default 720p; the one place multiframe resolution legality is decided."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/catalog/dreaminaVideos.ts",
+      "entry_point": "text2video / image2video / frames2video / multimodal2video arg templates",
+      "disposition": "enforced",
+      "evidence": "Templates read {{request.params.video_resolution}} / {{request.params.model}} / {{request.params.duration}}, all populated from archetype defaults; the seedance archetype's per-variant paramOverrides constrain each to the CLI-legal set, verified by index.test.ts matrix tests. Illegal values are unreachable because the select options are the legal set."
+    },
+    {
+      "path": "electron/catalog/processOperation.ts",
+      "entry_point": "multiframe build branch passing request params to buildMultiframeArgs",
+      "disposition": "enforced",
+      "evidence": "The build=multiframe branch now threads reqParams.video_resolution into buildMultiframeArgs, which guarantees the required flag; other commands keep the empty-value-drop that is safe because required flags are always populated from archetype defaults."
+    },
+    {
+      "path": "src/config/modelArchetypes/dreaminaImage.ts",
+      "entry_point": "text2image / image2image resolution_type selection",
+      "disposition": "enforced",
+      "evidence": "Per-variant paramOverrides narrow resolution_type to each model's CLI-legal set (5.0Pro -> 1.5k/2k/4k with 1k removed; 3.0/3.1 -> 1k/2k; 4.x/5.0 -> 2k/4k), asserted in index.test.ts. resolution_type is required and always seeded from the archetype default."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The official 即梦 CLI evolves on its own cadence (v1.4.14 made two flags required; v1.4.15/1.4.17 added Seedance 2.5 and 1080p; v1.4.16 changed Seedream 5.0Pro resolutions). Each release can silently desync any command/param, so legality must be pinned to a versioned matrix and enforced by contract tests rather than re-copied by hand each time.",
+    "same_class_scan": [
+      "Updated the local CLI to v1.4.17 and dumped -h for all seven surfaces (text2video/image2video/frames2video/multimodal2video/multiframe2video/text2image/image2image) plus query_result/image_upscale; recorded the full matrix in docs/research/2026-09-01-dreamina-cli-v1417-matrix.md as the SOURCE.",
+      "Audited every 即梦 model_version string literal in the tree (git grep) and confirmed the only place they live is the dreaminaSeedance.ts variants; no hidden hardcodes in productionRun/MCP/other call sites.",
+      "Confirmed the required flags (--video_resolution, --resolution_type) fire pre-auth in the CLI and that the normal UI + agent-planned paths both seed archetype defaults into request.params (parameterControlModel defaultPatchForParameterControl; plannedNodeMeta), so the required flags are always populated.",
+      "Removed the dead, now-false codec heuristics (normalizeDreaminaVideoResolution/normalizeDreaminaRatio/DREAMINA_VIDEO_RATIOS) that were never called in production and would contradict the 2.5 matrix, eliminating a second, drifting source of truth."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/dreaminaCodec.ts",
+    "invariant": "multiframe2video CLI args are produced only by buildMultiframeArgs, which always appends --video_resolution via normalizeMultiframeResolution (720p/1080p, illegal or missing -> 720p); the required flag cannot be omitted for any image count or transition shape.",
+    "failure_mode": "A missing or out-of-range resolution can no longer reach the CLI as an empty/absent flag: it is normalized to 720p and always emitted, so the v1.4.14 `required flag(s) \"video_resolution\" not set` hard failure is structurally prevented.",
+    "exception_policy": "none",
+    "strategy": "Keep one CLI-arg constructor per command and derive every legality constraint from the versioned matrix via declarative archetype params + contract tests; never re-copy the CLI contract by hand at a call site.",
+    "artifacts": [
+      "electron/catalog/dreaminaCodec.ts",
+      "electron/catalog/dreaminaMultiframe.test.ts",
+      "electron/catalog/dreaminaCodec.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/dreaminaMultiframe.test.ts",
+    "electron/catalog/dreaminaCodec.test.ts",
+    "electron/catalog/dreaminaSeed.test.ts",
+    "src/config/modelArchetypes/index.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/config/modelArchetypes/index.test.ts",
+    "electron/catalog/dreaminaMultiframe.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/catalog/dreaminaCodec.ts"
+    ],
+    "rationale": "Three codec helpers inside electron/catalog/dreaminaCodec.ts were removed: normalizeDreaminaVideoResolution, normalizeDreaminaRatio, and the DREAMINA_VIDEO_RATIOS constant. They were never called in the production path (only referenced by their own tests). normalizeDreaminaVideoResolution encoded a now-false rule (\"1080p only for vip, else 720p\") that contradicts Seedance 2.5 (480p and non-vip 1080p). Keeping them would be a second, drifting source of truth beside the declarative archetype params, so they and their tests were removed (P1: no parallel version). The one still-used helper (clampDreaminaDuration, consumed by buildMultiframeArgs) is retained; the file itself remains and is changed in this diff."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No new dependency is introduced. The integration continues to spawn the official 即梦 dreamina CLI binary the user installs via the official install command; only the CLI-arg construction and declarative archetype params were realigned to the current version.",
+    "exit_criteria": []
+  },
+  "migration": "Existing 即梦 nodes keep their stable catalog modelKeys (dreamina-seedance-2.0 / dreamina-multiframe / dreamina-image). New variants (seedance2.5, 5.0Pro) appear in the VariantBar; existing selections are unaffected. Multiframe nodes now carry a video_resolution param defaulting to 720p, seeded on model select and threaded to the CLI. Out-of-range stored select values are clamped to the archetype default on variant switch (clampMetaToModeParams).",
+  "residual_risks": [
+    "Real generation smoke for 即梦 requires an active 即梦 高级会员 (maestro vip) login; this machine has none (未检测到有效登录态), so end-to-end generation with seedance2.5/5.0Pro is left to community/maintainer verification. The CLI's required-flag behavior was verified by real pre-auth probes; the specific illegal model×resolution×duration rejections are unreachable without a VIP login and are therefore pinned by the matrix + contract tests rather than a live run.",
+    "The 即梦 multimodal2video 全能参考 slot keeps the 2.0-family requiresAnyOf constraint (audio must accompany image/video) even for the seedance2.5 variant, because requiresAnyOf is a slot-level declaration with no per-variant override axis. This is conservative-safe: it only withholds the 2.5-only audio-only case at the composer gate; it never sends an invalid request. Adding a per-variant slot-override axis to relax it for 2.5 is deferred."
+  ]
+}

@@ -340,10 +340,12 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "seedance2.0",
     "seedance2.0_vip",
     "seedance2.0fast_vip",
-    "seedance2.0mini"
+    "seedance2.0mini",
+    "seedance2.5"
   ],
   "dreamina-image": [
     "dreamina-image",
+    "5.0Pro",
     "5.0",
     "4.7",
     "4.6",

@@ -61,13 +61,14 @@ describe("即梦 dreamina 全量接线", () => {
     expect(upscale?.create.process?.fileParams?.[0]).toMatchObject({ param: "input_image", mode: "single" });
   });
 
-  it("档案：seedance 4 模式（fixedParams 选子命令）+ 5 变体", () => {
+  it("档案：seedance 4 模式（fixedParams 选子命令）+ 6 变体（含 2.5）", () => {
     const arch = getArchetypeById("dreamina-seedance-2");
     expect(arch?.kind).toBe("video");
     const cmds = (arch?.modes || []).map((m) => m.fixedParams?.dreamina_cmd);
     expect(cmds).toEqual(["text2video", "image2video", "frames2video", "multimodal2video"]);
+    // 命名裁决（matrix §5）：2.5 的 model_version 现役 -h 原文写作 `seedance2.5`（小数点、无「3」）。
     expect(arch?.variants?.map((v) => v.modelKey)).toEqual([
-      "seedance2.0fast", "seedance2.0", "seedance2.0_vip", "seedance2.0fast_vip", "seedance2.0mini",
+      "seedance2.0fast", "seedance2.0", "seedance2.0_vip", "seedance2.0fast_vip", "seedance2.0mini", "seedance2.5",
     ]);
   });
 
@@ -82,10 +83,11 @@ describe("即梦 dreamina 全量接线", () => {
     expect(getArchetypeById("dreamina-multiframe")?.modes?.[0]?.slots?.[0]).toMatchObject({ min: 2, max: 20 });
   });
 
-  it("档案：图片 t2i+i2i 模式 + 8 模型变体", () => {
+  it("档案：图片 t2i+i2i 模式 + 9 模型变体（含 5.0Pro）", () => {
     const arch = getArchetypeById("dreamina-image");
     expect(arch?.kind).toBe("image");
     expect((arch?.modes || []).map((m) => m.id)).toEqual(["t2i", "i2i"]);
-    expect(arch?.variants).toHaveLength(8); // 3.0/3.1/4.0/4.1/4.5/4.6/4.7/5.0
+    expect(arch?.variants).toHaveLength(9); // 3.0/3.1/4.0/4.1/4.5/4.6/4.7/5.0/5.0Pro
+    expect(arch?.variants?.map((v) => v.modelKey)).toContain("5.0Pro"); // v1.4.16 起（matrix §2）
   });
 });

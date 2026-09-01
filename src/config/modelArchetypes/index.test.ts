@@ -121,6 +121,72 @@ describe("resolveArchetypeForModel — 供应商无关的识别桥", () => {
     expect(resOf("mini")).toEqual(["480p", "720p"]);
   });
 
+  // ── 即梦官方 CLI 矩阵锁（SOURCE：docs/research/2026-09-01-dreamina-cli-v1417-matrix.md，CLI v1.4.17）──
+  // 目的：非法组合在请求构造前就不可达（select 选项即合法集）。真实生成 smoke 需即梦高级会员登录态，本机无 → 契约级兜底。
+  describe("即梦 dreamina CLI v1.4.17 矩阵", () => {
+    const seedance = getArchetypeById("dreamina-seedance-2")!;
+    const modeIds = seedance.modes.map((mm) => mm.id); // t2v/i2v/firstlast/multimodal
+    const resOf = (variantId: string, modeId: string) => {
+      const spec = specializeArchetypeForVariant(seedance, variantId);
+      const mode = spec.modes.find((mm) => mm.id === modeId)!;
+      return mode.params.find((p) => p.key === "video_resolution")!.options.map((o) => o.value);
+    };
+    const durOf = (variantId: string, modeId: string) => {
+      const spec = specializeArchetypeForVariant(seedance, variantId);
+      const mode = spec.modes.find((mm) => mm.id === modeId)!;
+      const d = mode.params.find((p) => p.key === "duration")!;
+      return { min: d.min, max: d.max };
+    };
+
+    it("seedance2.5 变体：全模式清晰度 480/720/1080 + 时长 4-30（v1.4.15/1.4.17）", () => {
+      for (const modeId of modeIds) {
+        expect(resOf("v2_5", modeId)).toEqual(["480p", "720p", "1080p"]);
+        expect(durOf("v2_5", modeId)).toEqual({ min: 4, max: 30 });
+      }
+      // 命名裁决（matrix §5）：现役 -h 原文是 `seedance2.5`（小数点、无「3」）。
+      expect(seedance.variants?.find((v) => v.id === "v2_5")?.modelKey).toBe("seedance2.5");
+    });
+
+    it("非 vip 2.0 档（fast/standard/mini）清晰度锁 720p、时长 4-15（官方 -h：其余所有→720p）", () => {
+      for (const variantId of ["fast", "standard", "mini"]) {
+        for (const modeId of modeIds) {
+          expect(resOf(variantId, modeId)).toEqual(["720p"]);
+          expect(durOf(variantId, modeId)).toEqual({ min: 4, max: 15 });
+        }
+      }
+    });
+
+    it("vip / fast_vip 档：清晰度 720/1080（不含 480，2.0_vip 的 4k 本档未开放）", () => {
+      for (const variantId of ["vip", "fast_vip"]) {
+        expect(resOf(variantId, "t2v")).toEqual(["720p", "1080p"]);
+      }
+    });
+
+    it("多帧档 multiframe2video：video_resolution required、仅 720/1080（无 480/4k）", () => {
+      const mf = getArchetypeById("dreamina-multiframe")!;
+      const res = mf.modes[0].params.find((p) => p.key === "video_resolution");
+      expect(res).toBeTruthy();
+      expect(res!.options.map((o) => o.value)).toEqual(["720p", "1080p"]);
+      expect(res!.defaultValue).toBe("720p"); // 默认随档案写入 request.params → CLI 收到 required flag
+    });
+
+    it("图片档：5.0Pro 清晰度 1.5k/2k/4k（无 1k，v1.4.16）；3.0/3.1 → 1k/2k；4.x/5.0 → 2k/4k", () => {
+      const img = getArchetypeById("dreamina-image")!;
+      const imgResOf = (variantId: string, modeId: string) => {
+        const spec = specializeArchetypeForVariant(img, variantId);
+        const mode = spec.modes.find((mm) => mm.id === modeId)!;
+        return mode.params.find((p) => p.key === "resolution_type")!.options.map((o) => o.value);
+      };
+      expect(imgResOf("v5_0pro", "t2i")).toEqual(["1.5k", "2k", "4k"]);
+      expect(imgResOf("v5_0pro", "t2i")).not.toContain("1k"); // 1k 已被 v1.4.16 移除
+      expect(imgResOf("v3_0", "t2i")).toEqual(["1k", "2k"]);
+      expect(imgResOf("v3_1", "t2i")).toEqual(["1k", "2k"]);
+      expect(imgResOf("v5_0", "t2i")).toEqual(["2k", "4k"]);
+      expect(imgResOf("v4_7", "i2i")).toEqual(["2k", "4k"]);
+      expect(imgResOf("v5_0pro", "i2i")).toEqual(["1.5k", "2k", "4k"]);
+    });
+  });
+
   it("认不出的模型 → null（渲染层走通用回退）", () => {
     expect(resolveArchetypeForModel(m({ modelKey: "acme/some-unknown-video-model" }))).toBeNull();
     expect(resolveArchetypeForModel(null)).toBeNull();

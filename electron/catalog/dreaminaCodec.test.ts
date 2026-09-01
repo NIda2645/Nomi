@@ -9,8 +9,8 @@ import {
   collectDreaminaMedia,
   normalizeDreaminaOutput,
   clampDreaminaDuration,
-  normalizeDreaminaRatio,
-  normalizeDreaminaVideoResolution,
+  normalizeMultiframeResolution,
+  buildMultiframeArgs,
   parseDeviceFlow,
   parseAccountStatus,
   isNotMaestroVip,
@@ -174,16 +174,13 @@ describe("命令参数校验/归一", () => {
     expect(clampDreaminaDuration(7, 3, 10)).toBe(7);
   });
 
-  it("normalizeDreaminaRatio 非法回落空串", () => {
-    expect(normalizeDreaminaRatio("16:9")).toBe("16:9");
-    expect(normalizeDreaminaRatio("5:7")).toBe("");
-    expect(normalizeDreaminaRatio(undefined)).toBe("");
-  });
-
-  it("normalizeDreaminaVideoResolution：1080p 仅 vip", () => {
-    expect(normalizeDreaminaVideoResolution("seedance2.0_vip", "1080p")).toBe("1080p");
-    expect(normalizeDreaminaVideoResolution("seedance2.0fast", "1080p")).toBe("720p");
-    expect(normalizeDreaminaVideoResolution("seedance2.0", "720p")).toBe("720p");
+  it("normalizeMultiframeResolution：仅 720p/1080p，非法回落 720p（官方 -h）", () => {
+    expect(normalizeMultiframeResolution("720p")).toBe("720p");
+    expect(normalizeMultiframeResolution("1080p")).toBe("1080p");
+    expect(normalizeMultiframeResolution("1080P")).toBe("1080p"); // 大小写归一
+    expect(normalizeMultiframeResolution("480p")).toBe("720p"); // 多帧不支持 480p
+    expect(normalizeMultiframeResolution("4k")).toBe("720p");
+    expect(normalizeMultiframeResolution(undefined)).toBe("720p");
   });
 });
 

@@ -102,7 +102,8 @@ export async function executeProcessOperation(input: ProcessOperationInput): Pro
     const imagePaths = Array.isArray(reqParams.mf_image_paths) ? (reqParams.mf_image_paths as unknown[]).map(String) : [];
     const prompt = String((input.context.request as JsonRecord)?.prompt ?? "");
     // 过渡描述用节点提示词（本就是多行 textarea）：2 图用整段当主提示；3+ 图按行拆，每行一句相邻图过渡。
-    args = buildMultiframeArgs({ imagePaths, prompt, transitionLines: splitTransitionLines(prompt), duration: reqParams.duration });
+    // video_resolution 必发（v1.4.14 required）：从档案默认写入的 request.params.video_resolution 取，非法回落 720p。
+    args = buildMultiframeArgs({ imagePaths, prompt, transitionLines: splitTransitionLines(prompt), duration: reqParams.duration, videoResolution: reqParams.video_resolution });
   } else {
     // 渲染参数（与 HTTP body 同一套 renderTemplateValue）；空值参数（`--flag=`）丢弃 → dreamina 回落该项默认。
     // 数组结果（repeat-flag 模式：`["--image=/a","--image=/b"]`）展开成多参数。
