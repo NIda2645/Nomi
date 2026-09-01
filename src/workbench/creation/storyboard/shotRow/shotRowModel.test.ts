@@ -11,9 +11,16 @@ const shotOf = (over: Partial<PlanShot> = {}): PlanShot => ({
   ...over,
 })
 
+/**
+ * 前 carrier 时代的旧持久化方案没有 carrier 字段（持久化再水化不过 zod），
+ * 运行时靠 referencedVisualAnchors 的 `?? defaultCarrierForKind(kind)` 分支按 kind 推断。
+ * 夹具刻意保持缺省形态来测这条腿，故用断言建模「旧数据以 PlanAnchor 身份进入运行时」。
+ */
+const legacyAnchor = (anchor: Omit<PlanAnchor, 'carrier'>): PlanAnchor => anchor as PlanAnchor
+
 const ANCHORS: PlanAnchor[] = [
-  { id: 'a-hero', kind: 'character', name: '林薇', description: '' }, // carrier 缺省 → visual
-  { id: 'a-style', kind: 'style', name: '全片风格', description: '' }, // carrier 缺省 → text
+  legacyAnchor({ id: 'a-hero', kind: 'character', name: '林薇', description: '' }), // carrier 缺省 → visual
+  legacyAnchor({ id: 'a-style', kind: 'style', name: '全片风格', description: '' }), // carrier 缺省 → text
   { id: 'a-prop', kind: 'prop', name: '怀表', description: '', carrier: 'text' }, // 显式 text
 ]
 
