@@ -137,6 +137,6 @@ Nomi：本地优先 AI 视频创作工作台。
 
 主仓库：`/Users/aoqimin/Desktop/Nomi/`。操作文件用绝对路径；新建 worktree 放仓库目录**同级**（非嵌套），分支从最新 `origin/main` 创建。
 
-**并行纪律（这台机器常有 20+ worktree）**：① 在独立 sibling worktree 的干净任务分支运行 `pnpm run delivery:preflight` 后再动手，**新 worktree 先 `pnpm install` 装齐提交钩子再 commit/push**（先推后装=推送裸奔，栽过）；② 不在共享主仓里切分支、commit 或解决任务冲突；③ push 前在任务分支整合最新 `origin/main`，按 R22 验证后只 push 任务分支并创建 PR；④ 不 force-push `main`，**不向已存在的远端分支 force-push 重建内容**（评审钩子按远端旧 tip→新 tip 算全量 diff 必超限，重建一律走新分支，见 R25），不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件；⑥ **评审/对账/打捞任何分支先算 merge-base**——对 main 两点视图里的大片删除多半是「main 前进了」的落后假象，不是分支真要删（见 R22）。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
+**并行纪律（这台机器常有 20+ worktree）**：① 在独立 sibling worktree 的干净任务分支运行 `pnpm run delivery:preflight` 后再动手，**新 worktree 先 `pnpm install` 装齐提交钩子再 commit/push**（先推后装=推送裸奔，栽过）；② 不在共享主仓里切分支、commit 或解决任务冲突；③ push 前在任务分支整合最新 `origin/main`，按 R22 验证后只 push 任务分支并创建 PR；④ 不 force-push `main`，**不向已存在的远端分支 force-push 重建内容**（评审钩子按远端旧 tip→新 tip 算全量**文本** diff，重建含大量代码/文档的远古分支必超限——二进制内容已不计入、一行摘要代替，故此约束只针对大文本演化；重建一律走新分支，见 R25），不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件；⑥ **评审/对账/打捞任何分支先算 merge-base**——对 main 两点视图里的大片删除多半是「main 前进了」的落后假象，不是分支真要删（见 R22）。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
 
 ---
