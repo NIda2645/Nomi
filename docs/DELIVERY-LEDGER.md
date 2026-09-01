@@ -9,12 +9,13 @@
 
 ---
 
-## 现役欠账（20）
+## 现役欠账（21）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
 | 📋 方案待拍板 | [2026-08-13-video-deconstruction-storyboard-table.md](plan/2026-08-13-video-deconstruction-storyboard-table.md) | 视频拆解 → 分镜表 → 复刻生成（方案已拍板，待实施） |
 | 📋 方案待拍板 | [2026-08-27-unified-tool-surface.md](plan/2026-08-27-unified-tool-surface.md) | 内外工具面统一 —— 我们造了第二套 |
+| 📋 方案待拍板 | [2026-08-31-agent-material-channels-and-local-endpoints.md](plan/2026-08-31-agent-material-channels-and-local-endpoints.md) | 执行计划：Pi Agent 的素材获取三通道 + 本地文本模型通用端点 |
 | ⏳ 已拍板·未开工 | [2026-09-01-agent-m0-baseline-freeze.md](plan/2026-09-01-agent-m0-baseline-freeze.md) | M0：Agent 架构基线冻结 |
 | 🚧 进行中 | [2026-08-15-model-access-exhaustive-user-journeys.md](plan/2026-08-15-model-access-exhaustive-user-journeys.md) | 模型接入全集用户旅途测试 |
 | 🚧 进行中 | [2026-08-15-model-integration-no-dead-end-master-plan.md](plan/2026-08-15-model-integration-no-dead-end-master-plan.md) | 模型接入“无死路”架构与全集验证执行总方案 |
@@ -47,7 +48,7 @@
 
 ## 其余
 
-- **已结案**：33 篇（✅ 已交付 / ⛔ 已废弃 / 📎 交接日志）
+- **已结案**：35 篇（✅ 已交付 / ⛔ 已废弃 / 📎 交接日志）
 - **未登记存量**：423 篇。这些是历史文件，**有意不进现役区**——其中很多离得很远、或已经不需要做。
   想分诊就挑一篇加状态标记；不分诊也不会有人催。`check:doc-status` 只拦**新增**文档缺标记，不逼你清存量。
 
@@ -64,7 +65,7 @@
 
 </details>
 
-- 合计扫描：482 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：485 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 
