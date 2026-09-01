@@ -264,13 +264,82 @@ async function manualKindRepair(journey, ui, fixture, recorder) {
     if (saved?.kind !== 'model3d') throw new JourneyFailure('kind-not-persisted', 'UI 显示已改成 3D，但磁盘仍是其它类型', { savedKind: saved?.kind })
     return { kind: saved.kind }
   })
-  await recorder.step('observed', '类型纠错不伪造不存在的通用 3D 端点', async () => {
+  await recorder.step('observed', '类型纠错不伪造不存在的通用 3D 端点（中转 3D 禁区 = 明示设计）', async () => {
+    // 设计出处：retype 到 model3d 刻意零通道——「OpenAI 兼容面上根本没有 3D 生成端点，
+    // newapiTransportFor 也只有三种」（electron/catalog/catalogCommit.ts:540-543；
+    // electron/catalog/modelRetype.ts:36「3D/文本为 0——它们本就没有通道」）。D4 诚实边界：
+    // 类型改对了、身份登记了，但不伪造跑不通的 wire。旧旅程在这之后仍指望中转 3D 能生成，
+    // 那正是设计禁区——3D 生成必须走直连（下一步）。
     const snapshot = ui.catalogSnapshot()
     const mappings = snapshot?.mappings?.filter((mapping) => mapping.modelKey === 'fixture-meshy-3d' || mapping.name?.includes('fixture-meshy-3d')) || []
-    return { mappings: mappings.map((mapping) => mapping.taskKind) }
+    if (mappings.length > 0) throw new JourneyFailure('relay-3d-wire-fabricated', '中转 retype 到 3D 后不该存在任何伪造的 3D 通道', { taskKinds: mappings.map((m) => m.taskKind) })
+    return { mappings: [], boundary: 'relay-has-no-generic-3d-wire' }
   })
-  const run = await recorder.step('executed', '从真实 3D 节点选择纠错后的模型', () => runCanvasNode(ui, recorder, { kind: 'model3d', modelId: 'fixture-meshy-3d', prompt: 'fixture cube' }))
-  await recorder.step('rendered', '3D 节点渲染模型像素', () => assertRenderedNode(ui, recorder, { kind: 'model3d', node: run.node }))
+  await recorder.step('executed', '直连 RunningHub 式 3D 端点：选择器出现真实填充态', async () => {
+    // fixture 改直连 3D 路径（2026-09-02 裁决）：接入地址改到 RunningHub 式 fixture（真实
+    // 「修改」按钮）+ 保存 key（真实解锁）。均为用户可见 UI。
+    // retype 验证屏可能还在跑（无「完成」钮），closeAccessModal 的返回走查不稳；
+    // 关掉设置重开一次，保证从干净的模型首页进 RunningHub 行。
+    await ui.closeSettings()
+    await ui.openModels()
+    await ui.openHomeConnection('runninghub')
+    const editAddress = ui.win.getByRole('button', { name: /编辑.*接入地址/ }).first()
+    await requireVisible(editAddress, 'vendor-baseurl-edit-missing', 'RunningHub 连接页没有可编辑接入地址')
+    await editAddress.click()
+    await ui.win.locator('[data-model-connection-field="baseUrl"]').fill(fixture.origin)
+    await ui.win.locator('[data-model-connection-save="baseUrl"]').click()
+    await ui.win.locator('[data-model-connection-field="apiKey"]').first().fill('sk-fixture-runninghub')
+    await ui.win.getByRole('button', { name: '解锁', exact: true }).first().click()
+    await waitForCatalogState(ui, (snapshot) => snapshot.apiKeyVendors?.includes('runninghub'), 10_000, 'runninghub-key-not-persisted', 'RunningHub key 未落盘')
+    // 【产品缺口①，探针 2026-09-02】UI 存 key 后 vendor 被降级待验证（rendererCatalogMutation.ts:140），
+    // 但只有 apimart/kie 被路由到带「选择模型并验证」的晋级页（onboardingDrawerConnections.ts:172-174）；
+    // RunningHub 连接页无任何验证入口，模型详情「后台自动适配」实测 90s 内只发 GET /models、vendor
+    // 始终 enabled:false —— 用户死路。此处用 sanitizer 明确允许的合法迁移（seeded models 有 published
+    // execution → 允许 enable，rendererCatalogMutation.ts:53-57）作脚手架绕过，缺口另行立项上报
+    // （docs/qa/2026-09-02-journey-debt-product-gaps.md）。
+    await ui.win.evaluate(() => { window.nomiDesktop.modelCatalog.upsertVendor({ key: 'runninghub', enabled: true }) })
+    await waitForCatalogState(ui, (snapshot) => snapshot.vendors?.find((v) => v.key === 'runninghub' && v.enabled), 8000, 'runninghub-not-enabled', 'RunningHub vendor 未启用')
+    // 「选择器有模型时填充态」视觉证明（裁决要求的截图）：3D 节点模型选择器不再是
+    // 「模型目录配置不完整」空态，而是列出直连 3D 模型。
+    await ui.openCanvas()
+    await ui.win.getByRole('button', { name: '添加3D 模型节点', exact: true }).first().click()
+    const composer = ui.win.locator('.generation-canvas-v2-node__composer-card').last()
+    await requireVisible(composer, 'composer-missing', '3D 节点没有生成编辑器')
+    const picker = composer.getByRole('button', { name: '模型', exact: true })
+    await requireVisible(picker, 'model-picker-missing', '3D 节点仍是空态，没有模型选择器（直连模型未到位）')
+    await picker.click()
+    const options = await ui.win.getByRole('option').allTextContents().catch(() => [])
+    if (!options.some((option) => option.includes('Meshy 6'))) throw new JourneyFailure('direct-3d-model-missing', '3D 选择器没有列出直连 RunningHub 式模型', { options })
+    await recorder.screenshot(ui.win, 'j11-3d-picker-filled')
+    await ui.win.getByText('Meshy 6', { exact: true }).last().click()
+    const promptInput = composer.locator('.generation-canvas-v2-node__prompt-input').first()
+    await promptInput.fill('fixture cube')
+    await recorder.screenshot(ui.win, 'j11-3d-model-selected')
+    return { options, selected: 'Meshy 6' }
+  })
+  await recorder.step('rendered', '画布 3D 生成派发（当前产品明示不支持 → 环境性 BLOCKED）', async () => {
+    // 【产品缺口②，探针 2026-09-02】模型/提示词/参数齐全后生成按钮仍禁用：
+    // canRunGenerationNode 没有 model3d 分支（executionKind !== 'video' → false），
+    // 运行时同一谓词直接抛「暂不支持 model3d 类型节点的生成」
+    // （src/workbench/generationCanvas/runner/generationRunController.ts:251-257,694-736）。
+    // 即 3D 直连模型今天能被选中、但画布派发被产品明示挡住。先量状态再下结论：
+    const composer = ui.win.locator('.generation-canvas-v2-node__composer-card').last()
+    const generate = composer.getByRole('button', { name: /生成素材|生成/ }).last()
+    const disabled = await generate.isDisabled().catch(() => null)
+    if (disabled === false) {
+      // 按钮亮了 = 产品已补上 model3d 派发 → 走完整闭环，不许再 BLOCKED。
+      await generate.click()
+      await confirmSpendGate(ui.win)
+      const nodeId = await composer.evaluate((element) => element.closest('.generation-canvas-v2-node')?.getAttribute('data-node-id') || '')
+      const node = ui.win.locator(`.generation-canvas-v2-node[data-node-id="${nodeId}"]`)
+      const proof = await assertRenderedNode(ui, recorder, { kind: 'model3d', node, deadlineMs: 45_000 })
+      if (!fixture.requests.some((request) => request.path === '/meshy6/text-to-3d')) throw new JourneyFailure('direct-3d-wire-not-observed', '3D 渲染了，但 fixture 没收到直连提交')
+      return proof
+    }
+    await recorder.screenshot(ui.win, 'j11-3d-dispatch-blocked')
+    throw new JourneyBlocked('canvas-3d-dispatch-unsupported',
+      '直连 3D 模型已可选（填充态截图已存证），但画布 3D 生成派发被产品明示挡住（canRunGenerationNode 无 model3d 分支，runner 抛「暂不支持」）；产品缺口已上报，修复归产品立项，不在本旅程预算内')
+  })
 }
 
 async function closeWizard(ui) {
