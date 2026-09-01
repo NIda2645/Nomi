@@ -143,18 +143,16 @@ export const FOCUS_GENERATION_NODE_EVENT = "nomi-focus-generation-node";
 export const ENSURE_COMPOSER_VISIBLE_EVENT = "nomi-ensure-composer-visible";
 
 /**
- * composer 的「最小可用高度」：参考槽行 + 提示词 3 行(72) + 底栏 + 内边距/间距。
+ * composer 的「最小可用高度」：提示词 3 行(72) + 底栏 + 内边距/间距。
  *
- * 低于它卡片虽然还在，但提示词区（flex-1 min-h-0 的滚动壳）被压到 0——contenteditable 溢出
- * 0 高壳、渲染到底栏上方与「生成参数」按钮重叠，提示词区一个点都点不到（2026-08-26 win32 走查
- * 塌陷同族；2026-09-01 并 cutover 后 image 节点带 66px 参考槽行时，150 的旧值只给提示词留 ~24px
- * → 壳塌成 0、prompt 中心命中底栏按钮，smoke click 恒被拦）。旧值 150 只算了「提示词+底栏+内边距」
- * 漏了参考槽行；实测 image 节点参考行 66 + 3 行编辑器 72 + 底栏 36 + 内边距/间距 ≈ 216，取 216 兜住。
+ * 低于它卡片虽然还在，但提示词区被压到 0、底栏被 `overflow-hidden` 裁到卡外——
+ * 看着像还有个控件，其实一个也点不到（2026-08-26 win32 走查塌陷即此，卡片只剩 26px =
+ * padding 12+12 + border 1+1，content box 归零）。
  *
  * 因此它同时是三处的**单一真相源**：卡片 CSS 的 min-height、「这一侧装不装得下」的判定下限、
  * 以及 maxHeight 的兜底下限。改这里三处一起动，别再各写各的魔数。
  */
-export const COMPOSER_MIN_USABLE_HEIGHT = 216;
+export const COMPOSER_MIN_USABLE_HEIGHT = 150;
 
 export function clampNumber(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
