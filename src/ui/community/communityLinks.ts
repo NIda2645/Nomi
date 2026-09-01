@@ -37,6 +37,18 @@ export function buildPrivateFeedbackUrl(diagnostics: FeedbackDiagnostics): strin
   return `${PRIVATE_FEEDBACK_URL}?${params.toString()}`
 }
 
+/**
+ * The forwardable share message = a human recommendation line + the two canonical links.
+ * The i18n template ({{website}}/{{github}} placeholders) is filled here so the exact URLs
+ * live in one place (NOMI_COMMUNITY_LINKS) and can never drift from the copied text.
+ * This is the fix for "sharing gave a bare URL": friends get a paste-ready sentence, not a link.
+ */
+export function buildShareMessage(template: string): string {
+  return template
+    .replace(/\{\{website\}\}/g, NOMI_COMMUNITY_LINKS.website)
+    .replace(/\{\{github\}\}/g, NOMI_COMMUNITY_LINKS.github)
+}
+
 export function buildGitHubIssueUrl(input: { intent: 'problem' | 'suggestion'; stage: string; errorKind?: string }): string {
   const kind = input.errorKind ? ` · ${input.errorKind.slice(0, 40)}` : ''
   const title = `${input.intent === 'problem' ? '[Bug]' : '[Idea]'} ${input.stage}${kind}`
