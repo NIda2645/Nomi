@@ -266,35 +266,39 @@ describe("custom-call custom config secure persistence", () => {
     warn.mockRestore();
   });
 
-  it("preserves hidden legacy customConfig when a public vendor DTO is written back", async () => {
+  it("preserves hidden legacy customConfig when a public vendor DTO is written back (extraHeaders now encrypted)", async () => {
     const signingKey = "hidden-round-trip-secret";
     writeCatalog({
       version: 8,
+      // 'x-tenant' rides extraHeaders, which is now a credential-bearing field: a public
+      // DTO masks it and a write encrypts it into the credential record, not the vendor row.
       vendors: [vendor({ customConfig: { signingKey }, extraHeaders: { "x-tenant": "tenant-a" } })],
       models: [],
       mappings: [],
       apiKeysByVendor: {},
     });
     const store = await import("./catalogStore");
+    const network = await import("./networkConfigStore");
 
     const publicDto = store.listModelCatalogVendors()[0];
-    expect(publicDto.meta).toEqual({ extraHeaders: { "x-tenant": "tenant-a" } });
+    // The DTO no longer carries the (credential-bearing) extraHeaders in plaintext.
+    expect(publicDto.meta).toBeUndefined();
     store.upsertModelCatalogVendor({ ...publicDto, name: "Renamed relay" });
 
     const disk = JSON.parse(fs.readFileSync(catalogFile(), "utf8"));
-    expect(disk.version).toBe(8);
     expect(disk.vendors[0].name).toBe("Renamed relay");
-    expect(disk.vendors[0].meta).toEqual({
-      customConfig: { signingKey },
-      extraHeaders: { "x-tenant": "tenant-a" },
-    });
+    // customConfig stays hidden; extraHeaders left the plaintext vendor row entirely.
+    expect(disk.vendors[0].meta).toEqual({ customConfig: { signingKey } });
     expect(store.listModelCatalogCustomCallConfig("signed-relay")).toEqual([
       { name: "signingKey", hasValue: true },
     ]);
-    expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
+    // The header value is now in the encrypted credential record and still resolves.
+    expect(network.decryptExtraHeaders(store.readCatalog().apiKeysByVendor["signed-relay"].networkConfig)).toEqual({
+      "x-tenant": "tenant-a",
+    });
   });
 
-  it("preserves hidden legacy customConfig on ordinary vendor edits with meta omitted", async () => {
+  it("migrates legacy extraHeaders into the encrypted record on an ordinary vendor edit with meta omitted", async () => {
     const signingKey = "hidden-ordinary-edit-secret";
     writeCatalog({
       version: 8,
@@ -304,6 +308,7 @@ describe("custom-call custom config secure persistence", () => {
       apiKeysByVendor: {},
     });
     const store = await import("./catalogStore");
+    const network = await import("./networkConfigStore");
 
     store.upsertModelCatalogVendor({
       key: "signed-relay",
@@ -313,27 +318,28 @@ describe("custom-call custom config secure persistence", () => {
     });
 
     const disk = JSON.parse(fs.readFileSync(catalogFile(), "utf8"));
-    expect(disk.version).toBe(8);
     expect(disk.vendors[0]).toMatchObject({
       name: "Ordinary edit",
       enabled: false,
       baseUrlHint: "https://relay-edited.example/v1",
     });
-    expect(disk.vendors[0].meta).toEqual({
-      customConfig: { signingKey },
-      extraHeaders: { "x-tenant": "tenant-a" },
-    });
+    // extraHeaders no longer persists as plaintext; only the still-legacy customConfig remains.
+    expect(disk.vendors[0].meta).toEqual({ customConfig: { signingKey } });
+    expect(disk).not.toContain("tenant-a");
     expect(store.listModelCatalogCustomCallConfig("signed-relay")).toEqual([
       { name: "signingKey", hasValue: true },
     ]);
-    expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
+    expect(network.decryptExtraHeaders(store.readCatalog().apiKeysByVendor["signed-relay"].networkConfig)).toEqual({
+      "x-tenant": "tenant-a",
+    });
   });
 
-  it("encrypts an explicitly supplied vendor meta.customConfig instead of persisting plaintext", async () => {
+  it("encrypts an explicitly supplied vendor meta.customConfig and extraHeaders instead of persisting plaintext", async () => {
     const signingKey = "direct-vendor-write-secret";
-    writeCatalog({ version: 9, vendors: [], models: [], mappings: [], apiKeysByVendor: {} });
+    writeCatalog({ version: CURRENT_CATALOG_VERSION, vendors: [], models: [], mappings: [], apiKeysByVendor: {} });
     const store = await import("./catalogStore");
     const secrets = await import("./secrets");
+    const network = await import("./networkConfigStore");
 
     const projected = store.upsertModelCatalogVendor({
       ...vendor(),
@@ -343,9 +349,17 @@ describe("custom-call custom config secure persistence", () => {
     const disk = fs.readFileSync(catalogFile(), "utf8");
     const state = store.readCatalog();
     expect(disk).not.toContain(signingKey);
-    expect(projected.meta).toEqual({ extraHeaders: { "x-tenant": "tenant-a" } });
-    expect(state.vendors[0].meta).toEqual({ extraHeaders: { "x-tenant": "tenant-a" } });
+    expect(disk).not.toContain("tenant-a");
+    // Both credential-bearing configs left the projected DTO and the on-disk vendor row.
+    expect(projected.meta).toBeUndefined();
+    expect(JSON.parse(disk).vendors[0].meta).toBeUndefined();
+    expect(store.listModelCatalogVendors()[0].meta).toBeUndefined();
+    // readCatalog's INTERNAL vendor carries the decrypted overlay for outbound consumers.
+    expect((state.vendors[0].meta as { extraHeaders?: unknown }).extraHeaders).toEqual({ "x-tenant": "tenant-a" });
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({ signingKey });
+    expect(network.decryptExtraHeaders(state.apiKeysByVendor["signed-relay"].networkConfig)).toEqual({
+      "x-tenant": "tenant-a",
+    });
   });
 
   it("atomically replaces legacy config during catalog import and removes all plaintext", async () => {
