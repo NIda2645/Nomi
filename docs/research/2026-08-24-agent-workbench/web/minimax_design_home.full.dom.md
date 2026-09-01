@@ -1,0 +1,355 @@
+- document
+- text: MiniMax H3 正式发布｜所有用户均可免费试用，新用户下载再获 3000 免费积分！
+- strong: 8月26日前购买年卡，年卡有效期内H3消耗永久降低20%
+- time:
+  - generic: "2"
+  - generic: 天
+  - generic: ：
+  - generic: "13"
+  - generic: 时
+  - generic: ：
+  - generic: "05"
+  - generic: 分
+- banner:
+  - link "MiniMax Design":
+    - /url: "#home"
+  - link "查看价格":
+    - /url: /media-plan/subscribe
+    - generic: 查看价格
+  - link "使用指南":
+    - /url: https://my.feishu.cn/wiki/VEoVwpfCKiTHvHkAGQ7cQJxCncf
+    - generic: 使用指南
+  - button "飞书群":
+    - generic: 飞书群
+  - link "下载桌面端":
+    - /url: https://filecdn.minimax.chat/public/minimax-hub/release/domestic/MiniMax%20Design-3.0.2-arm64.dmg
+    - generic: 下载桌面端
+- heading "MiniMax Design：从操作像素到操作语义和表达意图。AI Agent 驱动的商业内容生产平台，让多模态模型真正成为内容生产力。" [level=1]:
+  - generic: 从
+- generic "桌面客户端下载":
+  - button "下载 macOS 版 macOS 13 及以上":
+    - generic: 下载 macOS 版
+    - generic: macOS 13 及以上
+  - link "下载 Windows 版 Windows 10 及以上 x64":
+    - /url: https://filecdn.minimax.chat/public/minimax-hub/release/domestic/MiniMax%20Design-3.0.2-x64-Setup.exe
+    - generic: 下载 Windows 版
+    - generic: Windows 10 及以上 x64
+- img "MiniMax Design interface"
+- region "把创意，真正做出来":
+  - heading "把创意，真正做出来" [level=2]:
+    - generic: 把创意，真正做出来
+    - generic: 把
+    - generic: 创
+    - generic: 意，
+    - generic: 真
+    - generic: 正
+    - generic: 做
+    - generic: 出
+    - generic: 来
+  - paragraph: 从灵感梳理、Agent 执行到审核交付，五个关键步骤在同一条连续创作链路中协同推进。
+  - generic "五步创作工作流":
+    - button "上一张":
+    - button "下一张":
+  - region "五步创作工作流":
+    - article:
+      - img "描述你的灵感，启动 Agent 执行":
+      - generic: 01 / 05
+      - generic: / 灵感输入 · AGENT MODE
+      - heading "描述你的灵感，启动 Agent 执行" [level=3]
+      - paragraph: 说出想法，或直接丢进一份策划文档——主 Agent 理解意图后，自动拆解任务分配，自动（也可手动）适配最优模型，开始执行。
+      - generic: 创意简报
+      - generic: 任务拆解
+      - generic: 查看详情
+    - article:
+      - img "搭建画布工作流，创作内容统一":
+      - generic: 02 / 05
+      - generic: / 画布编排 · CANVAS FLOW
+      - heading "搭建画布工作流，创作内容统一" [level=3]
+      - paragraph: 脚本、分镜、图片、视频、音乐、剪辑全在一块画布上——节点自动连线；从调研到成片，告别工具割裂。
+      - generic: 多模态画布
+      - generic: 节点连接
+      - generic: 查看详情
+    - article:
+      - img "专属 Skill 与专业插件，让经验无限复用":
+      - generic: 03 / 05
+      - generic: / 方法复用 · SKILL READY
+      - heading "专属 Skill 与专业插件，让经验无限复用" [level=3]
+      - paragraph: 对话生成专属 Skill，或一键调用广场成熟工作流。搭配专业级插件，一键解锁影视级特效，让复杂创作化繁为简
+      - generic: 专属 Skill
+      - generic: 插件调用
+      - generic: 查看详情
+    - article:
+      - img "打通本地文件与专业工具，打造全能资产中心":
+      - generic: 04 / 05
+      - generic: / 本地衔接 · LOCAL INDEX
+      - heading "打通本地文件与专业工具，打造全能资产中心" [level=3]
+      - paragraph: 画布资料自动本地化存储，图片与工作流一键沉淀至资产中心，全面提升安全性与管理效率。Agent 无缝调用本地文件，支持一键直连专业剪辑软件，实现真正的创作闭环。
+      - generic: 本地素材
+      - generic: 专业工具
+      - generic: 查看详情
+    - article:
+      - img "审核把控，交付优质成片":
+      - generic: 05 / 05
+      - generic: / 审核节点 · OUTPUT SYNC
+      - heading "审核把控，交付优质成片" [level=3]
+      - paragraph: 在关键节点，Agent 会主动询问你的核心方向；Agent + Harness 后台调用专业知识库、多轮校验质量。适合场景包括但不限于：短剧全流程 · 电商批量出图出视频 · 品牌 TVC · 投放素材。
+      - generic: 方向确认
+      - generic: 交付整理
+      - generic: 查看详情
+    - article:
+      - generic: 01 / 05
+      - generic: / 灵感输入 · AGENT MODE
+      - heading [level=3]: 描述你的灵感，启动 Agent 执行
+      - paragraph: 说出想法，或直接丢进一份策划文档——主 Agent 理解意图后，自动拆解任务分配，自动（也可手动）适配最优模型，开始执行。
+      - generic: 创意简报
+      - generic: 任务拆解
+      - generic: 查看详情
+    - article:
+      - generic: 02 / 05
+      - generic: / 画布编排 · CANVAS FLOW
+      - heading [level=3]: 搭建画布工作流，创作内容统一
+      - paragraph: 脚本、分镜、图片、视频、音乐、剪辑全在一块画布上——节点自动连线；从调研到成片，告别工具割裂。
+      - generic: 多模态画布
+      - generic: 节点连接
+      - generic: 查看详情
+    - article:
+      - generic: 03 / 05
+      - generic: / 方法复用 · SKILL READY
+      - heading [level=3]: 专属 Skill 与专业插件，让经验无限复用
+      - paragraph: 对话生成专属 Skill，或一键调用广场成熟工作流。搭配专业级插件，一键解锁影视级特效，让复杂创作化繁为简
+      - generic: 专属 Skill
+      - generic: 插件调用
+      - generic: 查看详情
+    - article:
+      - generic: 04 / 05
+      - generic: / 本地衔接 · LOCAL INDEX
+      - heading [level=3]: 打通本地文件与专业工具，打造全能资产中心
+      - paragraph: 画布资料自动本地化存储，图片与工作流一键沉淀至资产中心，全面提升安全性与管理效率。Agent 无缝调用本地文件，支持一键直连专业剪辑软件，实现真正的创作闭环。
+      - generic: 本地素材
+      - generic: 专业工具
+      - generic: 查看详情
+    - article:
+      - generic: 05 / 05
+      - generic: / 审核节点 · OUTPUT SYNC
+      - heading [level=3]: 审核把控，交付优质成片
+      - paragraph: 在关键节点，Agent 会主动询问你的核心方向；Agent + Harness 后台调用专业知识库、多轮校验质量。适合场景包括但不限于：短剧全流程 · 电商批量出图出视频 · 品牌 TVC · 投放素材。
+      - generic: 方向确认
+      - generic: 交付整理
+      - generic: 查看详情
+- region "中文 UGC 带货":
+  - complementary:
+    - paragraph: / CREATIVE SHOWCASE
+    - paragraph: 01 / 07
+    - heading "中文 UGC 带货" [level=2]
+    - paragraph: 从卖点理解到口播、场景化内容与多版本投放素材，直接面向转化。
+    - list "视频属性":
+      - listitem: 电商带货
+      - listitem: UGC
+      - listitem: 真人口播
+    - heading [level=2]: MiniMax 工服街头上身
+    - paragraph: 把品牌工服拍成一支自然、有态度的街头穿搭带货短片。
+    - list:
+      - listitem: 电商带货
+      - listitem: KOC
+      - listitem: 服装穿搭
+    - heading [level=2]: 山间有令
+    - paragraph: 脚本、视觉、声音与剪辑在同一条链路中完成。
+    - list:
+      - listitem: 影视广告
+      - listitem: 品牌片
+      - listitem: 电影感
+    - heading [level=2]: 极速之境
+    - paragraph: 脚本、视觉、声音与剪辑在同一条链路中完成。
+    - list:
+      - listitem: 影视广告
+      - listitem: 汽车
+      - listitem: 电影感
+    - heading [level=2]: 妹妹说紫色很有韵味
+    - paragraph: 保持角色和画风一致，快速完成分镜、配音与连续内容。
+    - list:
+      - listitem: 漫剧
+      - listitem: 动漫
+      - listitem: 连载
+    - heading [level=2]: 真千金归来
+    - paragraph: 从设定、剧本和分镜推进到成片与宣发素材。
+    - list:
+      - listitem: 短剧
+      - listitem: 剧情
+      - listitem: 竖屏
+    - heading [level=2]: 灵堂逼嫁
+    - paragraph: 从设定、剧本和分镜推进到成片与宣发素材。
+    - list:
+      - listitem: 短剧
+      - listitem: 剧情
+      - listitem: 竖屏
+    - navigation "创意作品案例展示":
+      - list:
+        - button "01 / 电商带货 / 中文 UGC 带货"
+        - button "02 / 电商带货 / MiniMax 工服街头上身"
+        - button "03 / 影视广告 / 山间有令"
+        - button "04 / 影视广告 / 极速之境"
+        - button "05 / 漫剧 / 妹妹说紫色很有韵味"
+        - button "06 / 短剧 / 真千金归来"
+        - button "07 / 短剧 / 灵堂逼嫁"
+  - region "创意作品案例展示":
+    - generic "播放中文 UGC 带货"
+    - button "开启视频声音":
+    - button "继续播放案例视频与轮播":
+- generic: / SKILL ECOSYSTEM
+- heading "Skill：开箱即用的方法沉淀" [level=2]:
+  - generic: Skill：开箱即用的方法沉淀
+  - generic: Skill：
+  - generic: 开
+  - generic: 箱
+  - generic: 即
+  - generic: 用
+  - generic: 的
+  - generic: 方
+  - generic: 法
+  - generic: 沉
+  - generic: 淀
+- paragraph: 安装来自各个行业工作者的 Skill，或者制作你的 Skill，MiniMax Design 越用越好用。
+- paragraph: 覆盖创作全链路的多种 Skill 类型
+- generic "覆盖创作全链路的多种 Skill 类型":
+  - generic: 短剧漫剧
+  - generic: 动画分镜
+  - generic: 商业广告
+  - generic: 电商内容
+  - generic: 音频音乐
+  - generic: 平台工具
+- article:
+  - heading "3D动画短片" [level=3]
+  - generic: / SKILL_01 / v1.1.15
+  - generic: ▸ /skills/3d-animation-short-generator
+  - generic: 动画
+  - generic: 动画 / 计划制定
+  - generic: 动画 / 创作生成
+  - generic: 动画 / 后期处理
+  - generic: / 简介
+  - generic: 根据故事创意完成角色场景设定、镜头规划、分镜生成与视频合成，输出风格统一的3D动画短片。
+  - button "■ 查看详情 →"
+- article:
+  - heading "品牌宣传短片生成器" [level=3]
+  - generic: / SKILL_02 / v0.1.13
+  - generic: ▸ /skills/brand-promo-video-generator
+  - generic: 商业广告
+  - generic: 商业广告 / 计划制定
+  - generic: 商业广告 / 创作生成
+  - generic: 商业广告 / 后期处理
+  - generic: / 简介
+  - generic: 基于品牌素材与推广目标，完成事实核验、创意方向、分镜和音画合成，输出可展示的品牌宣传短片。
+  - button "■ 查看详情 →"
+- article:
+  - heading "极简产品广告生成器" [level=3]
+  - generic: / SKILL_03 / v0.5.12
+  - generic: ▸ /skills/minimalist-product-ad-generator
+  - generic: 商业广告
+  - generic: 商业广告 / 计划制定
+  - generic: 商业广告 / 创作生成
+  - generic: 电商 / 创作生成
+  - generic: / 简介
+  - generic: 基于产品图片和广告需求，完成卖点提炼、英文文案与节拍分镜设计，输出极简产品广告短片，适用于电商推广与新品发布。
+  - button "■ 查看详情 →"
+- article:
+  - heading "纸拼贴讲解动画" [level=3]
+  - generic: / SKILL_04 / v0.3.9
+  - generic: ▸ /skills/paper-collage-explainer-generator
+  - generic: 教育
+  - generic: 教育 / 创作生成
+  - generic: 动画 / 创作生成
+  - generic: 创意实验 / 创作生成
+  - generic: / 简介
+  - generic: 将文案、故事节点或抽象概念转成可确认的纸拼贴讲解动画，并保留触感音效。
+  - button "■ 查看详情 →"
+- article:
+  - heading "音乐MV动态字幕生成器" [level=3]
+  - generic: / SKILL_05 / v0.6.10
+  - generic: ▸ /skills/music-video-subtitle-generator
+  - generic: 音频音乐
+  - generic: 音频音乐 / 计划制定
+  - generic: 音频音乐 / 创作生成
+  - generic: 创意实验 / 创作生成
+  - generic: / 简介
+  - generic: 基于音乐和歌词完成节奏拆解、镜头设计与动态字幕方案，适用于人工智能音乐视频创作。
+  - button "■ 查看详情 →"
+- article:
+  - heading "人物微表情视频生成" [level=3]
+  - generic: / SKILL_06 / v1.0.0
+  - generic: ▸ /skills/micro-expression-video-generator
+  - generic: 专业影视
+  - generic: 专业影视 / 计划制定
+  - generic: / 简介
+  - generic: 根据角色图、剧本或情绪短语设计分时微表情提示词，用于塑造自然可信的角色表演。
+  - button "■ 查看详情 →"
+- article:
+  - heading "手绘实拍融合视频生成器" [level=3]
+  - generic: / SKILL_07 / v1.0.8
+  - generic: ▸ /skills/handdrawn-live-video-generator
+  - generic: 创意实验
+  - generic: 创意实验 / 创作生成
+  - generic: 动画 / 创作生成
+  - generic: / 简介
+  - generic: 基于场景创意，生成手绘动画与实拍接触变形的15秒视频，适用于创意短片制作。
+  - button "■ 查看详情 →"
+- article:
+  - heading "第一视角 FPV 穿越生成" [level=3]
+  - generic: / SKILL_08 / v1.0.0
+  - generic: ▸ /skills/fpv-tour-video-generator
+  - generic: 专业影视
+  - generic: 专业影视 / 创作生成
+  - generic: / 简介
+  - generic: 先确认时长和画幅，再按场景空间决定路线几何，生成连续沉浸的第一人称 FPV 一镜到底穿越视频。
+  - button "■ 查看详情 →"
+- link "下载并查看更多 Skill →":
+  - /url: minimax-hub-cn://navigate?url=%2Fskills
+  - generic: 下载并查看更多 Skill →
+- text: ■ > ■ > ■ > ■ ■ ■ ■
+- heading "下载 MiniMax Design 组建你的 Agent 团队" [level=2]:
+  - generic: 下载 MiniMax Design 组建你的 Agent 团队
+  - generic: 下
+  - generic: 载
+  - generic: MiniMax
+  - generic: Design
+  - generic: 组
+  - generic: 建
+  - generic: 你
+  - generic: 的
+  - generic: Agent
+  - generic: 团
+  - generic: 队
+- paragraph: 安装桌面指挥中心，连接本地素材，几分钟内开始调度并行 Agent。
+- generic "桌面客户端下载":
+  - button "下载 macOS 版 macOS 13 及以上":
+    - generic: 下载 macOS 版
+    - generic: macOS 13 及以上
+  - link "下载 Windows 版 Windows 10 及以上 x64":
+    - /url: https://filecdn.minimax.chat/public/minimax-hub/release/domestic/MiniMax%20Design-3.0.2-x64-Setup.exe
+    - generic: 下载 Windows 版
+    - generic: Windows 10 及以上 x64
+- contentinfo:
+  - paragraph: MiniMax Design — 属于你自己的本地化 Agent 团队。
+  - generic: / 区域
+  - generic: 国内
+  - navigation "Footer":
+    - generic: / 产品
+    - link "MiniMax Design 使用教程":
+      - /url: https://my.feishu.cn/wiki/VEoVwpfCKiTHvHkAGQ7cQJxCncf
+    - generic: / 友情链接
+    - link "海螺AI":
+      - /url: https://hailuoai.com/
+    - generic: / 公司
+    - link "MiniMax":
+      - /url: https://www.minimaxi.com/
+    - link "API":
+      - /url: https://platform.minimaxi.com/docs/api-reference/api-overview
+    - link "Media Plan":
+      - /url: /media-plan/subscribe
+  - generic: © 2026 上海稀宇科技有限公司
+  - link "沪ICP备2023003282号-38":
+    - /url: https://beian.miit.gov.cn/
+  - link "沪公网安备 沪公网安备 31010402010179号":
+    - /url: https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=31010402010179
+    - img "沪公网安备"
+    - text: 沪公网安备 31010402010179号
+- alert
+- region "Notifications alt+T"
