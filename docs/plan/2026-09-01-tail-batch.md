@@ -1,5 +1,7 @@
 # 尾巴批交付计划（2026-09-01）
 
+日期：2026-09-01 · 状态：🚧 三件已在分支 `chore/tail-batch-20260901`（PR #309）实现，待合入
+
 ## 范围
 
 1. 从 `check:i18n` 的 electron 收缩基线清除至少 60 处用户可见的 throw/dialog 中文文案，统一走 `electron/i18n.ts` 的 `desktopT`。
