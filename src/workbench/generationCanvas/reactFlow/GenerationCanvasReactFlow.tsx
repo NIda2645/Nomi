@@ -20,14 +20,8 @@ import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
 import { ASSET_LIBRARY_DRAG_MIME } from '../../assets/assetLibraryDrag'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
-import { clientXToFrame } from '../../timeline/timelineEdit'
-import { adoptGenerationNode } from '../../adoption/adoptGenerationNode'
-import { reportAdoptionOutcome } from '../../adoption/adoptionReceipt'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
-import { findTimelineDropTarget } from '../nodes/nodeSizing'
-import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { getCanvasGroupBoxes, getSelectedBounds } from '../components/generationCanvasGeometry'
 import { useCollapsedGroupConnectionSource } from '../components/useCollapsedGroupConnectionSource'
 import { projectCollapsedGroups } from '../model/canvasCardStackModel'
@@ -67,6 +61,7 @@ import {
   applyCanvasDragPositionChanges,
   overlayCanvasDragDraft,
 } from './canvasDragDraft'
+import { commitCanvasNodeDragStop } from './canvasDragWriteback'
 import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOverlays'
 import { GenerationCanvasReactFlowViewport } from './GenerationCanvasReactFlowViewport'
 import { useGenerationCanvasReactFlowPointer } from './useGenerationCanvasReactFlowPointer'
@@ -525,42 +520,19 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [captureHistory, flowNodes, flowStore, readOnly, selectedNodeIds, selectedSet])
 
   const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode, draggedNodes) => {
-    if (readOnly || !draggingRef.current) return
-    draggingRef.current = false
-    setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowNode)
-    const pointer = 'changedTouches' in event ? event.changedTouches[0] : event
-    const timelineDropTarget = pointer ? findTimelineDropTarget(pointer.clientX, pointer.clientY) : null
-    if (timelineDropTarget) {
-      const liveNode = useGenerationCanvasStore.getState().nodes.find((node) => node.id === draggedNode.id)
-      if (liveNode?.result?.url) {
-        const timeline = useWorkbenchStore.getState().timeline
-        const rect = timelineDropTarget.getBoundingClientRect()
-        const startFrame = clientXToFrame(pointer.clientX, rect.left, timeline.scale)
-        void adoptGenerationNode(liveNode, { placement: { kind: 'frame', startFrame } }).then((outcome) => {
-          reportAdoptionOutcome(outcome, { revealTimeline: false })
-        })
-        commitPersistedChange()
-        dragStartPositionsRef.current.clear()
-        dragDraftNodesRef.current = []
-        return
-      }
-      toast(t('generationCommon.node.generateBeforeTimeline'), 'info')
-    }
-    for (const flowNode of draggedNodes) {
-      const originalPosition = dragStartPositionsRef.current.get(flowNode.id)
-      if (!originalPosition) continue
-      if (originalPosition.x === flowNode.position.x && originalPosition.y === flowNode.position.y) continue
-      moveNode(flowNode.id, flowNode.position, { persist: false, emit: false })
-    }
-    const state = useGenerationCanvasStore.getState()
-    const movedEvents = draggedNodes
-      .map((flowNode) => state.nodes.find((node) => node.id === flowNode.id))
-      .filter((node): node is GenerationCanvasNode => Boolean(node))
-      .map((node) => ({ type: 'canvas.node.moved' as const, payload: { nodeId: node.id, position: node.position } }))
-    if (movedEvents.length) emitCanvasGesture(movedEvents)
-    commitPersistedChange()
-    dragStartPositionsRef.current.clear()
-    dragDraftNodesRef.current = []
+    commitCanvasNodeDragStop({
+      event,
+      draggedNode,
+      draggedNodes,
+      readOnly,
+      t,
+      hostRef,
+      draggingRef,
+      dragStartPositionsRef,
+      dragDraftNodesRef,
+      moveNode,
+      commitPersistedChange,
+    })
   }, [commitPersistedChange, moveNode, readOnly, t])
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {

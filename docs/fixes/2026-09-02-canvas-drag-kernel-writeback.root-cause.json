@@ -13,6 +13,7 @@
   "scope_paths": [
     "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
     "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
+    "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
     "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts"
   ],
   "entry_points": [
@@ -39,6 +40,11 @@
       "path": "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
       "symbol": "applyCanvasDragPositionChanges / overlayCanvasDragDraft",
       "responsibility": "以 applyNodeChanges 产生只替换被拖节点的局部 Flow 几何，并叠加在最新业务投影上。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+      "symbol": "commitCanvasNodeDragStop",
+      "responsibility": "集中处理 drag stop 的批量 moveNode、事件发射和持久化收尾，保证瞬态 tick 不进入业务写入。"
     }
   ],
   "same_class_entry_points": [
@@ -52,7 +58,13 @@
       "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
       "entry_point": "handleNodeDragStop",
       "disposition": "enforced",
-      "evidence": "同一节点拖动的最终 draggedNodes 位置在 stop 统一调用 moveNode，再复用 commitPersistedChange 和 emitCanvasGesture。"
+      "evidence": "同一节点拖动的最终 draggedNodes 位置在 stop 委托给 commitCanvasNodeDragStop，统一调用 moveNode，再复用 commitPersistedChange 和 emitCanvasGesture。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+      "entry_point": "commitCanvasNodeDragStop",
+      "disposition": "enforced",
+      "evidence": "唯一 stop 写回实现按 dragStart 快照批量调用 moveNode，并在一次 emitCanvasGesture 后调用一次 commitPersistedChange。"
     },
     {
       "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
@@ -85,7 +97,8 @@
     "strategy": "在唯一 React Flow 节点拖动适配边界隔离瞬态几何，所有节点与多选拖动共享 draft，避免调用方自行选择是否写业务 store。",
     "artifacts": [
       "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
-      "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts"
+      "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
+      "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts"
     ]
   },
   "regression_tests": [
