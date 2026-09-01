@@ -1,0 +1,62 @@
+[
+  {
+    "case": "deny",
+    "hook_marker": true,
+    "denied": true,
+    "tool_errors": [
+      "tool call denied by pre-tool hook: Nomi verification: do not read canary"
+    ],
+    "usage": {
+      "input_tokens": 9384,
+      "output_tokens": 90,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 9474
+    }
+  },
+  {
+    "case": "exit1",
+    "hook_marker": true,
+    "denied": true,
+    "tool_errors": [
+      "JSON hook \"jsonhook__nomi-task-gate_PreToolUse_0_0\" failed: command failed: exit status 1, stderr:"
+    ],
+    "usage": {
+      "input_tokens": 9528,
+      "output_tokens": 266,
+      "thinking_tokens": 173,
+      "cache_read_tokens": 0,
+      "total_tokens": 9794
+    }
+  },
+  {
+    "case": "timeout",
+    "hook_marker": true,
+    "denied": true,
+    "tool_errors": [
+      "JSON hook \"jsonhook__nomi-task-gate_PreToolUse_0_0\" failed: command failed: signal: killed, stderr:"
+    ],
+    "usage": {
+      "input_tokens": 9407,
+      "output_tokens": 93,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 9500
+    }
+  },
+  {
+    "case": "malformed",
+    "hook_marker": true,
+    "denied": true,
+    "tool_errors": [
+      "failed to unmarshal result from hook jsonhook__nomi-task-gate_PreToolUse_0_0 via protojson: NOT_JSON: proto: syntax error (line 1:1): invalid value NOT_JSON"
+    ],
+    "usage": {
+      "input_tokens": 9424,
+      "output_tokens": 91,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 9515
+    }
+  }
+]

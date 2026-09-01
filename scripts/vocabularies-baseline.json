@@ -383,9 +383,9 @@
       "reason": "**网络连通性检测**结果，ok/partial/fail 是探测结论不是执行状态。"
     },
     {
-      "site": "src/ui/onboarding/OnboardingWizard.tsx::function:OnboardingWizard/variable:0/type-union",
+      "site": "src/ui/onboarding/useOnboardingConnectionTest.ts::type:ConnectionTestState/type-union",
       "members": ["fail", "idle", "ok", "testing", "unsupported"],
-      "reason": "模型接入 UI 的视图状态/语气（fail / idle / ok / testing / unsupported），用于表达配置或检测结论，不直接承载任务事实。"
+      "reason": "模型接入 UI 的连接测试视图状态/语气（fail / idle / ok / testing / unsupported），用于表达配置或检测结论，不直接承载任务事实。2026-09-01 从 OnboardingWizard 内联块抽取为 useOnboardingConnectionTest hook（P1），语义 owner 随之搬到具名 ConnectionTestState 类型。"
     },
     {
       "site": "src/ui/onboarding/OnboardingWizard.tsx::type:Phase/type-union",

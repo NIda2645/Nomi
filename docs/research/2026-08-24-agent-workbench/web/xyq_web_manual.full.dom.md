@@ -1,0 +1,484 @@
+- document
+- button:
+- button:
+- heading "飞书云文档" [level=1]
+- generic: 小
+- generic: 小云雀
+- generic: 搜索
+- button "目录（暂无内容）":
+  - generic: 目录（暂无内容）
+- button "与我分享":
+  - generic: 与我分享
+- list:
+  - button "【产品手册】小云雀Web":
+    - generic: 【产品手册】小云雀Web
+- generic: 分享知识库
+- generic: 回收站
+- button "小":
+  - generic: 小
+- generic: ByteDance
+- generic: 小云雀
+- generic: 【产品手册】小云雀Web
+- generic: 外部
+- button:
+- generic: "最近修改: 8月20日 17:24"
+- button
+- button
+- button
+- button
+- button
+- generic: "+5"
+- button "分享":
+  - generic: 分享
+- button:
+- button:
+- button:
+- generic: 问问豆包
+- list:
+  - link "【产品手册】小云雀Web":
+    - /url: "#HCmddAp57oYfyRxd9kwcvR6unqe"
+    - text: 【产品手册】小云雀Web
+  - link "🔮 更新公告":
+    - /url: "#NHrgdr5NOoo3PMxWti6c5Gkhnwy"
+    - text: 🔮 更新公告
+  - link "一、小云雀Web是什么？":
+    - /url: "#N7KtdpItLo29V3xAyBacbiYhnwh"
+    - text: 一、小云雀Web是什么？
+  - link "二、如何使用小云雀Web创作":
+    - /url: "#RYPPdFqtPoWjHlxE8rUcmXlOnYg"
+    - text: 二、如何使用小云雀Web创作
+  - link "1. 短剧&漫剧Agent":
+    - /url: "#WrycdQQkdomwCvxYvK5cUHPongh"
+    - text: 1. 短剧&漫剧Agent
+  - link "1.1 短剧Agent2.0新增能力":
+    - /url: "#MdJIdCFkgo0BdgxWpxXclzMnnmd"
+    - text: 1.1 短剧Agent2.0新增能力
+  - link "1.2 小云雀短剧获奖作品":
+    - /url: "#TSCbdY7KVoNEcQx2lQzc8TB5n5f"
+    - text: 1.2 小云雀短剧获奖作品
+  - link "1.3 详细操作步骤":
+    - /url: "#XUU1dQ8vmoBdMzxYItbcQtIpn4g"
+    - text: 1.3 详细操作步骤
+  - link "2. 通用视频 / 图片创作":
+    - /url: "#HfTddndBDoSzofxOpfZc4vjInTg"
+    - text: 2. 通用视频 / 图片创作
+  - link "2.1 Agent模式 - 你的对话式创作搭子":
+    - /url: "#FraUdAzTJokqHnxtyA3cpO7gnRf"
+    - text: 2.1 Agent模式 - 你的对话式创作搭子
+  - link "2.2 沉浸式短片 - 输入指令一键直出":
+    - /url: "#K5yidrD4Goc1QUxgDtIcOVI2nSC"
+    - text: 2.2 沉浸式短片 - 输入指令一键直出
+  - link "2.3 图片创作":
+    - /url: "#IFEAdFkLdoG87oxEBg5cxa71neg"
+    - text: 2.3 图片创作
+  - link "2.4 画布模式 - 全新上线":
+    - /url: "#ZGNadzt0foflPzxLW7jcCup8nTe"
+    - text: 2.4 画布模式 - 全新上线
+  - link "3. 一镜到底":
+    - /url: "#Eq4TdPprkosez9xjBujcWOQhnmf"
+    - text: 3. 一镜到底
+  - link "4. 不知道做什么？来这里！":
+    - /url: "#MIG5djdaio6sqWxcSl2cVpgqnWs"
+    - text: 4. 不知道做什么？来这里！
+  - link "4.1 爆款复刻":
+    - /url: "#W9T9dGDeNoUK46xriRwc2Unkn0d"
+    - text: 4.1 爆款复刻
+  - link "💗在这里联系我们💗":
+    - /url: "#XUOqdRJtWoC3nJxJ4S5cVpUTnDd"
+    - text: 💗在这里联系我们💗
+- heading "【产品手册】小云雀Web" [level=1]:
+  - generic: 【产品手册】小云雀Web
+- generic: 熊雨欣
+- generic: 王家祺
+- generic: 赵文赫
+- generic: 李紫燕
+- generic: 冯世豪
+- generic: 8月20日修改
+- button "AI 速览 试用":
+  - generic: AI 速览
+  - generic: 试用
+- table:
+  - row:
+    - cell
+    - cell
+    - cell
+- table:
+  - rowgroup:
+    - row "scene_one_005_c 00:15 scene_one_006 00:32":
+      - cell
+      - cell "scene_one_005_c 00:15":
+        - generic: 60%
+        - generic: scene_one_005_c
+        - generic: 00:15
+      - cell "scene_one_006 00:32":
+        - generic: 60%
+        - generic: scene_one_006
+        - generic: 00:32
+    - row "scene_long_002_c 01:00 scene_long_009 00:37":
+      - cell
+      - cell "scene_long_002_c 01:00":
+        - generic: 60%
+        - generic: scene_long_002_c
+        - generic: 01:00
+      - cell "scene_long_009 00:37":
+        - generic: 60%
+        - generic: scene_long_009
+        - generic: 00:37
+    - row "scene_ref_001 00:15 scene_ref_031 00:33":
+      - cell
+      - cell "scene_ref_001 00:15":
+        - generic: 60%
+        - generic: scene_ref_001
+        - generic: 00:15
+      - cell "scene_ref_031 00:33":
+        - generic: 60%
+        - generic: scene_ref_031
+        - generic: 00:33
+- table:
+  - row "内容分类 案例1 案例2 案例3":
+    - cell "内容分类":
+      - generic: 内容分类
+    - cell "案例1":
+      - generic: 案例1
+    - cell "案例2":
+      - generic: 案例2
+    - cell "案例3":
+      - generic: 案例3
+- table:
+  - rowgroup:
+    - row "case004 00:06 case016_v2 00:15 case017_v2 00:15":
+      - cell
+      - cell "case004 00:06":
+        - generic: 60%
+        - generic: case004
+        - generic: 00:06
+      - cell "case016_v2 00:15":
+        - generic: 60%
+        - generic: case016_v2
+        - generic: 00:15
+      - cell "case017_v2 00:15":
+        - generic: 60%
+        - generic: case017_v2
+        - generic: 00:15
+    - row "case007_v2 00:51 case025 00:10 case088 00:15":
+      - cell
+      - cell "case007_v2 00:51":
+        - generic: 60%
+        - generic: case007_v2
+        - generic: 00:51
+      - cell "case025 00:10":
+        - generic: 60%
+        - generic: case025
+        - generic: 00:10
+      - cell "case088 00:15":
+        - generic: 60%
+        - generic: case088
+        - generic: 00:15
+    - row "case008 00:47 case030 00:18":
+      - cell
+      - cell "case008 00:47":
+        - generic: 60%
+        - generic: case008
+        - generic: 00:47
+      - cell "case030 00:18":
+        - generic: 60%
+        - generic: case030
+        - generic: 00:18
+      - cell
+    - row "case011 00:54 case068_v2 00:44 case115_v2 00:38":
+      - cell
+      - cell "case011 00:54":
+        - generic: 60%
+        - generic: case011
+        - generic: 00:54
+      - cell "case068_v2 00:44":
+        - generic: 60%
+        - generic: case068_v2
+        - generic: 00:44
+      - cell "case115_v2 00:38":
+        - generic: 60%
+        - generic: case115_v2
+        - generic: 00:38
+    - row "case015 00:15 case051 00:21 case048_v2 00:15":
+      - cell
+      - cell "case015 00:15":
+        - generic: 60%
+        - generic: case015
+        - generic: 00:15
+      - cell "case051 00:21":
+        - generic: 60%
+        - generic: case051
+        - generic: 00:21
+      - cell "case048_v2 00:15":
+        - generic: 60%
+        - generic: case048_v2
+        - generic: 00:15
+    - row "case033 00:22 case108 00:15 case037 00:30":
+      - cell
+      - cell "case033 00:22":
+        - generic: 60%
+        - generic: case033
+        - generic: 00:22
+      - cell "case108 00:15":
+        - generic: 60%
+        - generic: case108
+        - generic: 00:15
+      - cell "case037 00:30":
+        - generic: 60%
+        - generic: case037
+        - generic: 00:30
+- img "画布功能"
+- generic: 画布功能
+- generic: "3."
+- generic: 一镜到底
+- generic: 👍
+- generic: 无需复杂运镜或剪辑技巧，只要有素材，人人都能创作大片，Get丝滑转场！
+- generic: 支持上传2-10张图片，小云雀Al模型自动识别图像内容，补足转场画面，一键生成连贯长镜头，轻松制作空
+- generic: 间连续、运镜流畅、节奏合理的一镜到底的视频～
+- generic: 看小云雀的生成案例吧！
+- table:
+  - row "分类 视频效果 用户输入 参考素材":
+    - cell "分类":
+      - generic: 分类
+    - cell "视频效果":
+      - generic: 视频效果
+    - cell "用户输入":
+      - generic: 用户输入
+    - cell "参考素材":
+      - generic: 参考素材
+- table:
+  - rowgroup:
+    - row "广告营销 case-1 00:16 1. 镜头魔幻的螺旋变化，中心的固定 2. 雕塑缓缓变化姿势，除手臂之外的位置均不变 3. 许多橙色的水晶扑面而来占据整个画面，水晶的发散放射中心显露出一个巨大的XX产品，非常精致华丽 4. 产品落到博物馆的桌子上，很多游客围着它，穹顶尾帧人物伸手拿起产品 5. 人物拿起产品，快速转向空中，而后把产品垂直放置于沙漠中的的溪水上 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片":
+      - cell "广告营销":
+        - generic: 广告营销
+      - cell "case-1 00:16":
+        - generic: 60%
+        - generic: case-1
+        - generic: 00:16
+      - cell "1. 镜头魔幻的螺旋变化，中心的固定 2. 雕塑缓缓变化姿势，除手臂之外的位置均不变 3. 许多橙色的水晶扑面而来占据整个画面，水晶的发散放射中心显露出一个巨大的XX产品，非常精致华丽 4. 产品落到博物馆的桌子上，很多游客围着它，穹顶尾帧人物伸手拿起产品 5. 人物拿起产品，快速转向空中，而后把产品垂直放置于沙漠中的的溪水上":
+        - generic: "1."
+        - generic: 镜头魔幻的螺旋变化，中心的固定
+        - generic: "2."
+        - generic: 雕塑缓缓变化姿势，除手臂之外的位置均不变
+        - generic: "3."
+        - generic: 许多橙色的水晶扑面而来占据整个画面，水晶的发散放射中心显露出一个巨大的XX产品，非常精致华丽
+        - generic: "4."
+        - generic: 产品落到博物馆的桌子上，很多游客围着它，穹顶尾帧人物伸手拿起产品
+        - generic: "5."
+        - generic: 人物拿起产品，快速转向空中，而后把产品垂直放置于沙漠中的的溪水上
+      - cell "飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片":
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+    - row "长安场景 01 00:35 无 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片":
+      - cell "长安场景":
+        - generic: 长安场景
+      - cell "01 00:35":
+        - generic: 60%
+        - generic: "01"
+        - generic: 00:35
+      - cell "无":
+        - generic: 无
+      - cell "飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片 飞书文档 - 图片":
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+    - row "特效转场 20251125-175552 00:05 图片：微仰拍镜头，浪漫剪影摄影风格，中景构图，强烈的暖调逆光（夕阳的光线塑造出主体的剪影与天空的橙黄渐变色彩）。图中人物的剪影，保持头饰与发型服装不变，倚靠在一颗巨大的樱花树下，右手持一朵玫瑰，低头闻着玫瑰花香，电影级光影效果，逆光，人物剪影。黄昏。场景中有些许零散的粉色花瓣飘落，浪漫氛围，极致细节，电影感氛围。 飞书文档 - 图片 飞书文档 - 图片":
+      - cell "特效转场":
+        - generic: 特效转场
+      - cell "20251125-175552 00:05":
+        - generic: 60%
+        - generic: 20251125-175552
+        - generic: 00:05
+      - cell "图片：微仰拍镜头，浪漫剪影摄影风格，中景构图，强烈的暖调逆光（夕阳的光线塑造出主体的剪影与天空的橙黄渐变色彩）。图中人物的剪影，保持头饰与发型服装不变，倚靠在一颗巨大的樱花树下，右手持一朵玫瑰，低头闻着玫瑰花香，电影级光影效果，逆光，人物剪影。黄昏。场景中有些许零散的粉色花瓣飘落，浪漫氛围，极致细节，电影感氛围。":
+        - generic: 图片：微仰拍镜头，浪漫剪影摄影风格，中景构图，强烈的暖调逆光（夕阳的光线塑造出主体的剪影与天空的橙黄渐变色彩）。图中人物的剪影，保持头饰与发型服装不变，倚靠在一颗巨大的樱花树下，右手持一朵玫瑰，低头闻着玫瑰花香，电影级光影效果，逆光，人物剪影。黄昏。场景中有些许零散的粉色花瓣飘落，浪漫氛围，极致细节，电影感氛围。
+      - cell "飞书文档 - 图片 飞书文档 - 图片":
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+    - row "地球缩小 20251121-150814 00:07 用户输入： Plain Text 1 图片： 2 不要换脸,人物脸部不能有任何改变!请将图1的主体和图2的主体融合成合照,画面构图紧凑,二位主体靠得很近,头部略微上仰,眼神直视镜头,营造出强烈的视觉冲击力。左侧人物站得略靠前,需要保持人脸相似度;需要保持人脸相似度,略微内扣身体,拍摄角度为高角度俯拍,使头部比例被夸张放大,符合典型的日韩视觉自拍风格。简洁干净,进步凸显人物主体。画面风格偏向日系视觉系,整体画面清晰度高,用iphone前置自拍,最终呈现出精致、时尚、略带的合影效果。要求人物实现无缝融进画面,视觉过渡自然,整体画面光线明亮且均匀,背景为超大电影院坐满了观众,两人背对银幕,银幕显示参考图3的《疯狂动物城2》电影精美海报填满屏幕,画面比例3:4。 3 视频： 4 镜头从太空推向地球，快速靠近蓝色大气层与云层，穿过云海后视角无缝转入《疯狂动物城》的城市世界，高楼林立、动物居民穿梭其中，色彩明亮、充满动画质感；镜头继续向前穿街走巷，从城市中心飞跃而过，光影真实、速度流畅；随后画面自然过渡到现实中的电影院内部，镜头从影厅入口推入观众席上方，最终来到前排，出现疯狂动物城角色和小女孩面对镜头的合照画面，以银幕反射光照亮两人。整体为一镜到底、动态景深、真实光影、4K写实动画混合风格。 飞书文档 - 图片 飞书文档 - 图片":
+      - cell "地球缩小":
+        - generic: 地球缩小
+      - cell "20251121-150814 00:07":
+        - generic: 60%
+        - generic: 20251121-150814
+        - generic: 00:07
+      - cell "用户输入： Plain Text 1 图片： 2 不要换脸,人物脸部不能有任何改变!请将图1的主体和图2的主体融合成合照,画面构图紧凑,二位主体靠得很近,头部略微上仰,眼神直视镜头,营造出强烈的视觉冲击力。左侧人物站得略靠前,需要保持人脸相似度;需要保持人脸相似度,略微内扣身体,拍摄角度为高角度俯拍,使头部比例被夸张放大,符合典型的日韩视觉自拍风格。简洁干净,进步凸显人物主体。画面风格偏向日系视觉系,整体画面清晰度高,用iphone前置自拍,最终呈现出精致、时尚、略带的合影效果。要求人物实现无缝融进画面,视觉过渡自然,整体画面光线明亮且均匀,背景为超大电影院坐满了观众,两人背对银幕,银幕显示参考图3的《疯狂动物城2》电影精美海报填满屏幕,画面比例3:4。 3 视频： 4 镜头从太空推向地球，快速靠近蓝色大气层与云层，穿过云海后视角无缝转入《疯狂动物城》的城市世界，高楼林立、动物居民穿梭其中，色彩明亮、充满动画质感；镜头继续向前穿街走巷，从城市中心飞跃而过，光影真实、速度流畅；随后画面自然过渡到现实中的电影院内部，镜头从影厅入口推入观众席上方，最终来到前排，出现疯狂动物城角色和小女孩面对镜头的合照画面，以银幕反射光照亮两人。整体为一镜到底、动态景深、真实光影、4K写实动画混合风格。":
+        - generic: 用户输入：
+        - button "Plain Text":
+          - generic: Plain Text
+        - generic: 1 图片：
+        - generic: 2 不要换脸,人物脸部不能有任何改变!请将图1的主体和图2的主体融合成合照,画面构图紧凑,二位主体靠得很近,头部略微上仰,眼神直视镜头,营造出强烈的视觉冲击力。左侧人物站得略靠前,需要保持人脸相似度;需要保持人脸相似度,略微内扣身体,拍摄角度为高角度俯拍,使头部比例被夸张放大,符合典型的日韩视觉自拍风格。简洁干净,进步凸显人物主体。画面风格偏向日系视觉系,整体画面清晰度高,用iphone前置自拍,最终呈现出精致、时尚、略带的合影效果。要求人物实现无缝融进画面,视觉过渡自然,整体画面光线明亮且均匀,背景为超大电影院坐满了观众,两人背对银幕,银幕显示参考图3的《疯狂动物城2》电影精美海报填满屏幕,画面比例3:4。
+        - generic: 3 视频：
+        - generic: 4 镜头从太空推向地球，快速靠近蓝色大气层与云层，穿过云海后视角无缝转入《疯狂动物城》的城市世界，高楼林立、动物居民穿梭其中，色彩明亮、充满动画质感；镜头继续向前穿街走巷，从城市中心飞跃而过，光影真实、速度流畅；随后画面自然过渡到现实中的电影院内部，镜头从影厅入口推入观众席上方，最终来到前排，出现疯狂动物城角色和小女孩面对镜头的合照画面，以银幕反射光照亮两人。整体为一镜到底、动态景深、真实光影、4K写实动画混合风格。
+      - cell "飞书文档 - 图片 飞书文档 - 图片":
+        - img "飞书文档 - 图片"
+        - img "飞书文档 - 图片"
+- generic: 看看核心步骤吧！
+- table:
+  - rowgroup:
+    - row "步骤 具体操作和概述 示例演示":
+      - cell "步骤":
+        - generic: 步骤
+      - cell "具体操作和概述":
+        - generic: 具体操作和概述
+      - cell "示例演示":
+        - generic: 示例演示
+    - row "Step1 进入工具，输入主题和素材 • 快速定位入口：在首页中选择【一镜到底】，进入创作环节 • 上传素材，完成设置：依次上传所要制作的图片，然后设置中间的转场，即可提交生成！ （点击素材间的箭头即可设置转场，可设置转场时间、描述转场方式） ◦ 支持几张图片？ ▪ 支持上传2～10张图片 ◦ 转场怎么设置 ▪ ✍️自己输入内容：想让镜头推进、拉远？都可以在这里描述 ▪ 当然，也可以只设置转场时长，也可以让小云雀自己发挥画面～ 设置完后，点击生成按钮，就可以等待奇迹视频产出啦！ 进入工具 飞书文档 - 图片 上传素材 飞书文档 - 图片 转场设置 飞书文档 - 图片":
+      - cell "Step1 进入工具，输入主题和素材":
+        - generic: Step1
+        - generic: 进入工具，输入主题和素材
+      - cell "• 快速定位入口：在首页中选择【一镜到底】，进入创作环节 • 上传素材，完成设置：依次上传所要制作的图片，然后设置中间的转场，即可提交生成！ （点击素材间的箭头即可设置转场，可设置转场时间、描述转场方式） ◦ 支持几张图片？ ▪ 支持上传2～10张图片 ◦ 转场怎么设置 ▪ ✍️自己输入内容：想让镜头推进、拉远？都可以在这里描述 ▪ 当然，也可以只设置转场时长，也可以让小云雀自己发挥画面～ 设置完后，点击生成按钮，就可以等待奇迹视频产出啦！":
+        - generic: •
+        - generic: 快速定位入口：在首页中选择【一镜到底】，进入创作环节
+        - generic: •
+        - generic: 上传素材，完成设置：依次上传所要制作的图片，然后设置中间的转场，即可提交生成！
+        - generic: （点击素材间的箭头即可设置转场，可设置转场时间、描述转场方式）
+        - generic: ◦
+        - generic: 支持几张图片？
+        - generic: ▪
+        - generic: 支持上传2～10张图片
+        - generic: ◦
+        - generic: 转场怎么设置
+        - generic: ▪
+        - generic: ✍️自己输入内容：想让镜头推进、拉远？都可以在这里描述
+        - generic: ▪
+        - generic: 当然，也可以只设置转场时长，也可以让小云雀自己发挥画面～
+        - generic: 设置完后，点击生成按钮，就可以等待奇迹视频产出啦！
+      - cell "进入工具 飞书文档 - 图片 上传素材 飞书文档 - 图片 转场设置 飞书文档 - 图片":
+        - generic: 进入工具
+        - img "飞书文档 - 图片"
+        - generic: 上传素材
+        - img "飞书文档 - 图片"
+        - generic: 转场设置
+        - img "飞书文档 - 图片"
+- table:
+  - rowgroup:
+    - row:
+      - cell
+      - cell
+      - cell
+      - cell
+      - cell
+      - cell
+      - cell
+    - row "20260203-170323 00:10 参考【@视频1】的快速运镜方式以及创作手法，将【@视频1】的主体更换为【@图片1】创作成一个类似的娃娃车创意拍摄剪辑视频 00:15 20260203-170228 786687…[id截断]":
+      - cell
+      - cell
+      - cell "20260203-170323 00:10":
+        - generic: 60%
+        - generic: 20260203-170323
+        - generic: 00:10
+      - cell "参考【@视频1】的快速运镜方式以及创作手法，将【@视频1】的主体更换为【@图片1】创作成一个类似的娃娃车创意拍摄剪辑视频 00:15":
+        - generic: 60%
+        - generic: 参考【@视频1】的快速运镜方式以及创作手法，将【@视频1】的主体更换为【@图片1】创作成一个类似的娃娃车创意拍摄剪辑视频
+        - generic: 00:15
+      - cell
+      - cell "20260203-170228":
+        - generic: 60%
+        - generic: 20260203-170228
+      - cell "786687…[id截断]":
+        - generic: 60%
+        - generic: "786687…[id截断]"
+    - row "ecf871a4…[hex截断] 8a879a79…[hex截断] 案例3原片 00:12 案例3复刻结构 00:11":
+      - cell
+      - cell
+      - cell "ecf871a4…[hex截断]":
+        - generic: 60%
+        - generic: ecf871a4…[hex截断]
+      - cell "8a879a79…[hex截断]":
+        - generic: 60%
+        - generic: 8a879a79…[hex截断]
+      - cell
+      - cell "案例3原片 00:12":
+        - generic: 60%
+        - generic: 案例3原片
+        - generic: 00:12
+      - cell "案例3复刻结构 00:11":
+        - generic: 60%
+        - generic: 案例3复刻结构
+        - generic: 00:11
+    - row "一只猫和一只狗在用四川话对话，对话内容是吐槽主人的行为，猫嫌弃的说“主人总是在我玩的很开心的时候掏出手机拍照”，狗赞同的说“对，人类就是这样，然后你怎么做的？” 两个人用上海话对话 飞书20251211-173434 00:05":
+      - cell
+      - cell
+      - cell "一只猫和一只狗在用四川话对话，对话内容是吐槽主人的行为，猫嫌弃的说“主人总是在我玩的很开心的时候掏出手机拍照”，狗赞同的说“对，人类就是这样，然后你怎么做的？”":
+        - generic: 60%
+        - generic: 一只猫和一只狗在用四川话对话，对话内容是吐槽主人的行为，猫嫌弃的说“主人总是在我玩的很开心的时候掏出手机拍照”，狗赞同的说“对，人类就是这样，然后你怎么做的？”
+      - cell "两个人用上海话对话":
+        - generic: 60%
+        - generic: 两个人用上海话对话
+      - cell
+      - cell
+      - cell "飞书20251211-173434 00:05":
+        - generic: 60%
+        - generic: 飞书20251211-173434
+        - generic: 00:05
+    - row "下载 - 2025-12-11T184402.850 00:05 video_220b845c7242e394c7cf5b6d5c3d69a8 00:12 下载 - 2025-12-11T184612.484 00:10":
+      - cell
+      - cell
+      - cell
+      - cell "下载 - 2025-12-11T184402.850 00:05":
+        - generic: 60%
+        - generic: 下载 - 2025-12-11T184402.850
+        - generic: 00:05
+      - cell
+      - cell "video_220b845c7242e394c7cf5b6d5c3d69a8 00:12":
+        - generic: 60%
+        - generic: video_220b845c7242e394c7cf5b6d5c3d69a8
+        - generic: 00:12
+      - cell "下载 - 2025-12-11T184612.484 00:10":
+        - generic: 60%
+        - generic: 下载 - 2025-12-11T184612.484
+        - generic: 00:10
+- generic: 评论（0）
+- button:
+- button "反向引用 (0)":
+  - generic: 反向引用 (0)
+- button:
+- button "本文引用 (7)":
+  - generic: 本文引用 (7)
+- button "关系图":
+  - generic: 关系图
+- generic: 推荐内容由 AI 生成
+- generic: 本文暂未被其它文档引用
+- list:
+  - generic: 📜
+  - generic: 小云雀网页版 更新日志
+  - generic: ✍️
+  - generic: 小云雀短剧Agent剧本助手
+  - generic: 短剧「重制转绘」使用手册
+  - generic: 🖼️
+  - generic: 小云雀短剧Agent画布使用手册
+  - generic: 🤖
+  - generic: 3D导演台使用手册
+  - generic: 小云雀短剧Agent智能预演体验指南
+  - generic: 🎨
+  - generic: 小云雀创作Agent画布使用手册
+- generic: "13"
+- generic: "13"
+- generic: "13"
+- text: 人点赞
+- button
+- button
+- button
+- button
+- menu:
+  - menuitem "上传日志":
+    - generic: 上传日志
+  - menuitem "联系客服":
+    - generic: 联系客服
+  - menuitem "功能更新":
+    - generic: 功能更新
+  - menuitem "帮助中心":
+    - generic: 帮助中心
+  - menuitem "效率指南":
+    - generic: 效率指南
+- region "Notifications alt+T"
+- textbox [active]

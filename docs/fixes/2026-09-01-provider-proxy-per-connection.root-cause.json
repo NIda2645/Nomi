@@ -1,0 +1,142 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-provider-proxy-per-connection",
+  "problem_type": "single global egress route cannot satisfy per-provider proxy needs",
+  "symptom": "A provider that only works through a local proxy (e.g. APIMart: direct fetch fails, only a local proxy connects) forces the user to flip the one global proxy switch, which then routes every other provider through the same proxy and makes official endpoints slower or blocked.",
+  "direct_cause": "Outbound code used only the application-level dispatcher (systemProxy appDispatcher / getAppDispatcher), so there was no durable per-connection egress declaration; the proxy could only be set globally.",
+  "class_root": "Provider egress was expressed at exactly one altitude (application-global). Any single connection that needs a different route had no represented, normalized, per-connection network field flowing through discovery, connection test, adapter registration, production requests, SDK construction and doc discovery.",
+  "affected_population": [
+    "Users of a relay/provider that requires a local proxy while other providers must stay direct (APIMart is the confirmed case)",
+    "Any manual HTTP connection whose outbound path differs from the application-global proxy",
+    "Future outbound call sites that must honor a connection's own route without inheriting or leaking it to other vendors or local CLIs"
+  ],
+  "scope_paths": [
+    "electron/providerNetwork.ts",
+    "electron/systemProxy.ts",
+    "electron/hardenedFetch.ts",
+    "electron/ai/buildAiSdkModel.ts",
+    "electron/ai/onboarding/modelListProbe.ts",
+    "electron/ai/onboarding/onboardingIpc.ts",
+    "electron/catalog/types.ts",
+    "electron/providerAdapter/docsDiscovery.ts",
+    "electron/providerAdapter/existingConnection.ts",
+    "electron/providerAdapter/ipc.ts",
+    "electron/providerAdapter/registration.ts",
+    "electron/providerAdapter/service.ts",
+    "electron/providerAdapter/serviceCatalog.ts",
+    "electron/providerAdapter/store.ts",
+    "electron/providerAdapter/types.ts",
+    "electron/vendor/vendorHttp.ts",
+    "src/desktop/onboardingBridgeTypes.ts",
+    "src/i18n/locales/modelSetup.ts",
+    "src/ui/onboarding/OnboardingWizard.tsx",
+    "src/ui/onboarding/OnboardingWizardAdvancedFields.tsx",
+    "src/ui/onboarding/ProviderProxyField.tsx",
+    "src/ui/onboarding/useOnboardingConnectionTest.ts"
+  ],
+  "entry_points": [
+    "Model settings → custom gateway → Advanced → 'Proxy for this API (optional)'",
+    "Onboarding connection test / model discovery IPC (nomi:onboarding:test-connection, nomi:onboarding:list-models)",
+    "Provider adapter register / certify / discover-docs (nomi:integration-certification:http:configure / :start)",
+    "Production vendor HTTP requests and artifact downloads (vendorHttp.requestVendor)",
+    "AI SDK model construction (buildAiSdkModel)"
+  ],
+  "internal_only_reason": "The per-connection route and its normalization/redaction are Nomi's own network contract layered over undici; no external provider controls this selection.",
+  "invariants": [
+    "An empty or absent per-connection proxy preserves the exact application-level route behavior that existed before this feature.",
+    "A configured per-connection proxy is used only for that vendor's own outbound calls and is never inherited by other vendors or by local CLIs (Dreamina/ComfyUI).",
+    "A per-connection proxy dispatcher applies the same private-host policy as the application dispatcher: private/loopback origins go direct on every dispatch, so a redirect cannot smuggle a local target through the proxy or a proxy through a local service.",
+    "Proxy URL credentials (user:pass) never appear in any log or diagnostic output; endpoints are reduced to protocol//host before surfacing.",
+    "An unsupported proxy scheme is rejected before any request I/O (normalizeExplicitProxyUrl throws)."
+  ],
+  "generality_proof": "Every per-connection outbound path builds its dispatcher through the single shared boundary electron/systemProxy.ts createExplicitProxyDispatcher (surfaced to callers via electron/providerNetwork.ts providerDispatcher/providerProxyUrl). That boundary wraps the ProxyAgent/SOCKS dispatcher in SelectiveProxyDispatcher, so the private-host bypass and scheme validation are enforced identically for onboarding discovery/test, adapter registration/certification, doc discovery, vendor HTTP, and AI SDK construction. redactNetworkMessage/safeNetworkUrl (unchanged shared redaction) covers credential leakage for every path.",
+  "shared_boundaries": [
+    {
+      "path": "electron/systemProxy.ts",
+      "symbol": "createExplicitProxyDispatcher",
+      "responsibility": "Validate the scheme, then return a SelectiveProxyDispatcher so a per-connection proxy inherits the application dispatcher's private-host bypass on every dispatch."
+    },
+    {
+      "path": "electron/providerNetwork.ts",
+      "symbol": "providerDispatcher",
+      "responsibility": "Derive a per-connection dispatcher from vendor.network.proxyUrl (undefined when absent), the single reader of the stored route for vendor HTTP. (Credential redaction reuses the pre-existing, unchanged electron/networkErrorDetails.ts redactNetworkMessage/safeNetworkUrl.)"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/vendor/vendorHttp.ts",
+      "entry_point": "Production vendor HTTP + artifact download",
+      "disposition": "enforced",
+      "evidence": "requestVendor builds providerDispatcher(vendor) and passes it to the fetch; the dispatcher is closed on every exit path (leak fixed relative to the source draft)."
+    },
+    {
+      "path": "electron/ai/onboarding/onboardingIpc.ts",
+      "entry_point": "Connection test + model discovery IPC",
+      "disposition": "enforced",
+      "evidence": "probeOneProtocol and both list/test handlers thread payload.proxyUrl into createExplicitProxyDispatcher / fetchModelList; onboardingIpc.test.ts asserts the dispatcher flows to fetch without replacing the app route."
+    },
+    {
+      "path": "electron/providerAdapter/docsDiscovery.ts",
+      "entry_point": "Provider documentation crawl (SSRF-sensitive)",
+      "disposition": "enforced",
+      "evidence": "discoverProviderDocs builds the dispatcher through the same boundary and passes it via hardenedFetch's dispatcher option; destination SSRF checks (assertSafeUrl/isProviderSite) remain active and the dispatcher is closed in a finally."
+    },
+    {
+      "path": "electron/ai/buildAiSdkModel.ts",
+      "entry_point": "AI SDK model construction",
+      "disposition": "enforced",
+      "evidence": "anthropic/openai/openai-compatible providers wrap appFetch to inject the per-connection dispatcher when input.proxyUrl is set."
+    },
+    {
+      "path": "electron/providerAdapter/serviceCatalog.ts",
+      "entry_point": "Connection persistence",
+      "disposition": "enforced",
+      "evidence": "register normalizes proxyUrl and writes vendor.network.proxyUrl only when non-empty; connectionIdentity and connectionFingerprint include it so a route change re-stages the connection."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "New outbound call sites are added over time; each must honor a connection's own route without leaking it, so the selection must live behind one boundary rather than being re-implemented per call site.",
+    "same_class_scan": [
+      "Enumerated every outbound path that accepts a per-connection proxy and confirmed each builds its dispatcher through createExplicitProxyDispatcher/providerDispatcher, not a bare ProxyAgent.",
+      "Confirmed appFetch treats a supplied dispatcher as authoritative (bypasses getAppDispatcher), which is why the per-connection dispatcher itself must carry the private-host bypass.",
+      "Confirmed local CLIs (Dreamina/ComfyUI) do not read vendor.network and therefore never inherit the HTTP proxy.",
+      "Confirmed proxy credentials pass through redactNetworkMessage/safeNetworkUrl on every diagnostic path."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/systemProxy.ts",
+    "invariant": "Any per-connection proxy dispatcher is produced only by createExplicitProxyDispatcher, which validates the scheme and wraps the route in SelectiveProxyDispatcher so private/loopback origins stay direct on every dispatch.",
+    "failure_mode": "Invalid routes fail before network I/O; valid routes stay scoped to the owning provider; private origins never traverse the proxy and the proxy never captures a local service.",
+    "exception_policy": "none",
+    "strategy": "Keep one shared dispatcher factory and one shared redaction path; every outbound site consumes them instead of constructing its own proxy agent.",
+    "artifacts": [
+      "electron/systemProxy.ts",
+      "electron/providerNetwork.ts",
+      "electron/providerNetwork.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/providerNetwork.test.ts",
+    "electron/ai/onboarding/onboardingIpc.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/providerNetwork.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "This is additive: an optional per-connection route layered over the unchanged application-global dispatcher. No prior implementation is replaced; empty routes keep the exact prior behavior."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Reuses the in-tree undici ProxyAgent/Agent and the existing SOCKS dispatcher; no new dependency is introduced.",
+    "exit_criteria": []
+  },
+  "migration": "Existing catalog entries without network.proxyUrl are read exactly as before. New or re-saved connections may store a normalized proxy URL on the vendor record (same catalog-config tier as extraHeaders); the API key remains in safeStorage. Users configure a per-API proxy under the custom-gateway Advanced section.",
+  "residual_risks": [
+    "Real end-to-end proxy egress is validated by unit tests for dispatcher selection and redaction; live paid-account egress beyond APIMart is left to the integrator/community (no other paid account available).",
+    "The proxy URL rides the catalog-config tier (like extraHeaders), which can carry credentials; it is protected against log leakage but is not in safeStorage. Raising both to the encrypted customConfig tier would require decrypting the secret at every synchronous outbound read site and is intentionally deferred."
+  ]
+}

@@ -1,0 +1,374 @@
+- document
+- button:
+- button:
+- heading "飞书云文档" [level=1]
+- generic: 夏
+- generic: 夏花生的云文档
+- generic: 搜索
+- button "与我分享":
+  - generic: 与我分享
+- list:
+  - generic: 🎬
+  - button "LibTV使用指南":
+    - generic: LibTV使用指南
+- button:
+- generic: Resonate
+- generic: 夏花生
+- generic: 🎬
+- generic: LibTV使用指南
+- button:
+- generic: "最近修改: 8月21日 18:01"
+- button
+- button
+- button
+- button
+- button
+- generic: "+85"
+- button "分享":
+  - generic: 分享
+- button:
+- button:
+- button:
+- generic: 问问豆包
+- list:
+  - link "🎬 LibTV使用指南":
+    - /url: "#IZk9dLx0goM05zxabfPcfyMCnZe"
+    - generic: 🎬
+    - text: LibTV使用指南
+  - link "📅 更新公告：":
+    - /url: "#QTMmdYWidok08GxyDcZcdGB4nEg"
+    - text: 📅 更新公告：
+  - link "📖 指南目录（点击标题可直接跳转到对应内容）":
+    - /url: "#QvqZdvNMiopl8sxCweFcEeHBnsb"
+    - text: 📖 指南目录（点击标题可直接跳转到对应内容）
+  - link "1. 无限画布":
+    - /url: "#PGPvdEDVAo63jtxyP8HcvL9WnBR"
+    - text: 1. 无限画布
+  - link "1.1 新建画布":
+    - /url: "#Vo3wdUInyoo5Axxx1XncJsGhnLe"
+    - text: 1.1 新建画布
+  - link "1.2 五大基础节点 🔥":
+    - /url: "#FhDMdLMKnoApVoxFgQYcci31nsd"
+    - text: 1.2 五大基础节点 🔥
+  - link "1.2.1 新建节点":
+    - /url: "#S0nqdutGLoY7b6x15wdcYCHGnDa"
+    - text: 1.2.1 新建节点
+  - link "1.2.2 文本节点 📝":
+    - /url: "#Vu6Rd1onBotH6PxNc3QcYc2QnNb"
+    - text: 1.2.2 文本节点 📝
+  - link "1.2.3 图片节点 🖼️":
+    - /url: "#VxrwdUZ2VoaHhqxAHbocMgvmnCg"
+    - text: 1.2.3 图片节点 🖼️
+  - link "1.2.4 视频节点 🎥":
+    - /url: "#UsjudZSwSoXfaJxJrVDcLGOwn4e"
+    - text: 1.2.4 视频节点 🎥
+  - link "1.2.5 音频节点 🎵":
+    - /url: "#OHLxdCZ41ooIEWxh0Aqc6X2xnwg"
+    - text: 1.2.5 音频节点 🎵
+  - link "1.2.6 脚本节点 🎬":
+    - /url: "#GrFvd4snWoqAe3xjVpBcDwUmncb"
+    - text: 1.2.6 脚本节点 🎬
+  - link "脚本功能（新版）":
+    - /url: "#Gp7IdiGn5oIWygxc9xecnVzPnfb"
+    - text: 脚本功能（新版）
+  - link "脚本Beta🚮（旧版）":
+    - /url: "#ZIQRdSjNHog1GFxZdJJcL407n5e"
+    - text: 脚本Beta🚮（旧版）
+  - link "1.2.7 常用节点操作":
+    - /url: "#JAOodR8yboab9dx1YtEcDYhNnbg"
+    - text: 1.2.7 常用节点操作
+  - link "1.3 工作流搭建 🔥":
+    - /url: "#H7DPdp6nDodkjixAolmc9XEDnBe"
+    - text: 1.3 工作流搭建 🔥
+  - link "1.3.1 基础工作流 Showcase":
+    - /url: "#XMTnd5rUXoWDTFxRX4jcEqPXn1d"
+    - text: 1.3.1 基础工作流 Showcase
+  - link "1.3.2 工作流操作":
+    - /url: "#HIqddpR4zoDhWhxN8NqcjUgNngb"
+    - text: 1.3.2 工作流操作
+  - link "1.4 四大画布功能":
+    - /url: "#CW9Vdmn2BoKPEoxC4KJc0lDynyh"
+    - text: 1.4 四大画布功能
+  - link "1.4.1 项目菜单栏":
+    - /url: "#V0jSdoveUoUpvAxcUBAciyUnnsh"
+    - text: 1.4.1 项目菜单栏
+  - link "1.4.2 画布左侧栏":
+    - /url: "#SCcYdvXHootGx7xRGvbc7fivnud"
+    - text: 1.4.2 画布左侧栏
+  - link "1.4.3 个人中心":
+    - /url: "#QwMPdE9wHobv8bxtgZkczE7AnOc"
+    - text: 1.4.3 个人中心
+  - link "1.4.4 小地图导航":
+    - /url: "#K7sddNrrDolIHCx1bdIcq9d7nsf"
+    - text: 1.4.4 小地图导航
+  - link "1.4.5 智能引用 AutoLink 🔥":
+    - /url: "#VVOAdTJGmoEt41xhesXcsLzfnRd"
+    - text: 1.4.5 智能引用 AutoLink 🔥
+  - link "2. 画布实用工具":
+    - /url: "#Zd1td6T2Mo907hxy9wrcaY7Vnwf"
+    - text: 2. 画布实用工具
+  - link "2.1 Slash 快捷功能 全面升级🚩":
+    - /url: "#Xb5idJO2foqZApxY2z8ciTCtn1R"
+    - text: 2.1 Slash 快捷功能 全面升级🚩
+  - link "2.1.1 多机位九宫格 💖":
+    - /url: "#RQWOduhszoGh3OxFojmcI5vsnjf"
+    - text: 2.1.1 多机位九宫格 💖
+  - link "2.1.2 剧情推演四宫格 💖":
+    - /url: "#SAaTdqj1Uo3Efux3s4kc4lhIndh"
+    - text: 2.1.2 剧情推演四宫格 💖
+  - link "2.1.3 25宫格连贯分镜 💖":
+    - /url: "#ACnndbsKbouYTAxkg5uczggXnye"
+    - text: 2.1.3 25宫格连贯分镜 💖
+  - link "2.1.4 电影级光影矫正":
+    - /url: "#XsBLdyHlRodkCYxs9xTcaICSnGe"
+    - text: 2.1.4 电影级光影矫正
+  - link "2.1.5 角色三视图生成 💖":
+    - /url: "#QMnRdGsGTogFTQxZMqMcolg5njd"
+    - text: 2.1.5 角色三视图生成 💖
+  - link "2.1.6 画面推演-3秒后":
+    - /url: "#T7qId8VrPoa8xQxIdC1cg0asnKg"
+    - text: 2.1.6 画面推演-3秒后
+  - link "2.1.7 画面推演-5秒前":
+    - /url: "#JMLtdH7L8oQJwbx0sWMcKG8Bnjh"
+    - text: 2.1.7 画面推演-5秒前
+  - link "2.1.8 角色设定图🆕🌟":
+    - /url: "#PIqUdL5Bbowb2jx7L2kcv3YLnRd"
+    - text: 2.1.8 角色设定图🆕🌟
+  - link "2.1.9 🔥故事板":
+    - /url: "#SBvrdPd4NoJIq0xoEh1cshLCnoz"
+    - text: 2.1.9 🔥故事板
+  - link "2.1.10 🔥调度故事板":
+    - /url: "#EEzddPKkjo0tEGxwp8ecDjWmngh"
+    - text: 2.1.10 🔥调度故事板
+  - link "2.1.11 人像调节🤩":
+    - /url: "#Ypxhdl7mjod0o6xOG7kcpAhjnWg"
+    - text: 2.1.11 人像调节🤩
+  - link "2.1.12 「情绪调节」":
+    - /url: "#MgpqdU1fmoxPKexZ815cqP5PnOh"
+    - text: 2.1.12 「情绪调节」
+  - link "2.2 图像工具":
+    - /url: "#VuB4dIxG4oR6UDxLgZnccRrKnYg"
+    - text: 2.2 图像工具
+  - link "2.2.1 全景720°🔥":
+    - /url: "#RiSKdGnT5oKlm5xz8y6c9P5Pnvd"
+    - text: 2.2.1 全景720°🔥
+  - link "2.2.2 多角度":
+    - /url: "#PjvqdFMzjoUjJAx7MHtclgVmnmd"
+    - text: 2.2.2 多角度
+  - link "2.2.3 打光":
+    - /url: "#Kll1dinCSotkdCxvMwZc2JI3nKg"
+    - text: 2.2.3 打光
+  - link "2.2.4 九宫格":
+    - /url: "#MTshdYEQaoDYGBxqox3cYIk4nZc"
+    - text: 2.2.4 九宫格
+  - link "2.2.5 图像基础编辑":
+    - /url: "#WujBdY5UwoYEroxGRCTcG87Hn8f"
+    - text: 2.2.5 图像基础编辑
+  - link "2.2.6 宫格切分":
+    - /url: "#ZNqjdljTPoaOPzx4st8cdaRkn4c"
+    - text: 2.2.6 宫格切分
+  - link "2.2.7 标注":
+    - /url: "#JFf3dFfKOoNl0OxfHEAcn5tbnEG"
+    - text: 2.2.7 标注
+- heading "🎬 LibTV使用指南" [level=1]:
+  - generic: 🎬
+  - generic: LibTV使用指南
+- generic: 8月21日修改
+- generic: "344876"
+- generic: "543812"
+- generic: 🔥
+- text: LibTV 官网直达：
+- link "https://www.liblib.tv/":
+  - /url: https://www.liblib.tv/
+- text: （推荐使用Chrome/Edge浏览器，更稳定）
+- text: LibTV CLI直达：
+- link "https://www.liblib.tv/cli":
+  - /url: https://www.liblib.tv/cli
+- text: 最新CLI指南：
+- link "LibTV CLI 使用指南":
+  - /url: https://resonate.feishu.cn/wiki/RjelwT2UoidnTMka2nCc2chGnud
+  - text: LibTV CLI 使用指南
+- generic: 🔥
+- generic: 🌈 【最新功能直达】：
+- generic: "1."
+- link "片段重拍":
+  - /url: https://resonate.feishu.cn/wiki/Loxfw6XHziYRk0kKzdjcFfp9nhb?contentTheme=DARK&last_doc_message_id=7673418612472548340&preview_comment_id=7673418969558125747&sourceType=feed&theme=light#share-JzEld3iBPo8GAFxpuYnc9uMDn4c
+- generic: "2."
+- link "智能引用 AutoLink":
+  - /url: https://resonate.feishu.cn/wiki/Loxfw6XHziYRk0kKzdjcFfp9nhb?contentTheme=DARK&last_doc_message_id=7673418612472548340&preview_comment_id=7673418969558125747&sourceType=feed&theme=light#share-DxgqdVsrYoOVqyxRtdqcfWbdntb
+- generic: "3."
+- link "逐帧拉片":
+  - /url: https://resonate.feishu.cn/wiki/Loxfw6XHziYRk0kKzdjcFfp9nhb?contentTheme=DARK&last_doc_message_id=7673418612472548340&preview_comment_id=7673418969558125747&sourceType=feed&theme=light#share-KJwEdzHMuo47muxgI1BcBE8xncd
+- generic: "4."
+- link "智能剪辑":
+  - /url: https://resonate.feishu.cn/wiki/Loxfw6XHziYRk0kKzdjcFfp9nhb?contentTheme=DARK&last_doc_message_id=7673418612472548340&preview_comment_id=7673418969558125747&sourceType=feed&theme=light#share-UQvMdznu9ozMlBxijjscLUUlntg
+- generic: "5."
+- link "超长 5min 视频直出":
+  - /url: https://resonate.feishu.cn/wiki/Loxfw6XHziYRk0kKzdjcFfp9nhb?contentTheme=DARK&last_doc_message_id=7673418612472548340&preview_comment_id=7673418969558125747&sourceType=feed&theme=light#share-GvDWdNpdZopT6yxe753cnbJPnFr
+- generic: 👩🏻‍💼 【在线客服】问题反馈 / 功能建议 / 产品咨询
+- generic: LibTV 首页 → 左下角「帮助」→ 联系客服
+- img "飞书文档 - 图片"
+- generic: 📅 更新公告：
+- iframe [name="{\"blockTypeId\":\"blk_6358a421bca0001c22536e4c\",\"channel\":\"053e7db0-0452-41c4-8262-9811c5398fdd\"}"]:
+  - textbox "输入标题": 【独家】LibTV 上线视频「片段重拍」功能
+  - textbox "输入详情": "- 支持毫秒级时间戳精准定位，通过时间轴预览自由选择一个或多个片段进行重拍 - 可用文字描述每段需要修改的具体内容"
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": LibTV 上线视频「智能续写」功能
+  - textbox "输入详情": "- 支持从视频任意时间点开始续写。选择续写起点，输入后续内容描述 - 可添加新的参考图/视频"
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": 【独家】LibTV上线「智能引用 AutoLink」功能
+  - textbox "输入详情": 输入提示词后，实时将相关参考素材进行智能@引用到对应的提示词后面，让你更便捷高效利用 Seedance 2.5 的多参功能。
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": 【独家】LibTV上线「逐帧拉片」功能
+  - textbox "输入详情": "- 支持从多个维度（叙事分镜、精彩运镜、动作片段、音频参考）分析视频， - 输出准确、多样的素材供 Seedane 20/2.5 使用。"
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": 【独家】LibTV 上线「智能剪辑」功能
+  - textbox "输入详情": 1. 支持不同剪辑场景（口播视频、批量广告、智能混剪、无人出镜解说视频），用智能剪辑代替繁琐重复的人工剪辑。 2. 智能分析、编排多轨素材，自动匹配画面元素动效、卡点、布局等，一键剪辑。 - 详细教程：左侧目录【2.3.7】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": LibTV上线 Blender 插件
+  - textbox "输入详情": 安装后，可以直接录制界面上的3D白模视频或截取画面，一键发送到 LibTV 详细教程：左侧目录【2.4.7】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": 【独家】Seedance 2.5 超出5min视频直出
+  - textbox "输入详情": "- 一键直出 5 分钟 成片，成片完成度极高 - 支持 查看过程片段 ，画布剪辑等精细化调优"
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": LibTV上线「智能音频切分」功能
+  - textbox "输入详情": 支持「按歌词切分」等智能切分方式，根据歌词结构、语义断句和自然换气点自动划分音频，并为每段保留适当的前后余量，确保发音完整，更适合驱动视频口型生成
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": LibTV上线「音频自定义切分」功能
+  - textbox "输入详情": 试听音频后，输入需要删除的片段或切分时间点，即可一键生成多个音频片段
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": Seedance 2.5 上线 LibTV
+  - textbox "输入详情": "- 30 秒长视频直出，最多支持 50 个多模态参考(图片/视频/音频) - 全面强化指令理解、多模态还原与精准编辑 - 5大配套功能同时发布： 1️⃣ 直出 5 分钟长片，突破时长上限； 2️⃣ 片段重拍哪里不满意改哪里，无需整条返工； 3️⃣ 逐帧拉片、智能引用与素材混剪，进一步提升参考拆解、素材匹配和后期剪辑效率，让生成更准； 4️⃣ 叠加更优惠的价格，成本更省。"
+  - textbox "输入时间": 26-08-07
+  - textbox "输入标题": 顶尖风格模型 Style Image V8.2 上线
+  - textbox "输入详情": "- 画面质感明显提升，材质 & 光影更细腻，整体更高级、更稳定；接近 V7 时代审美回归 - 在创意风格、时尚灵感、色彩、情绪表达等方面表现极佳"
+  - textbox "输入时间": 26-08-04
+  - textbox "输入标题": MiniMax H3 首发上线LibTV
+  - textbox "输入详情": 新一代开放通用多模态视频模型，支持全能参考、视频编辑； 在UI与文字动态、创意特效、视频精准编辑、多国语言本地化支持上有独特优势
+  - textbox "输入时间": 26-07-31
+  - textbox "输入标题": 🎨视频编辑能力上线
+  - textbox "输入详情": 通过“画面标记 + 文字描述”的方式，精准选择视频中需要修改的对象或区域，并明确修改意图。系统将选区和文本转化为 AI 可理解的编辑指令，实现更准确、可控的视频二次调整
+  - textbox "输入时间": 26-7-17
+  - textbox "输入标题": 🎬3D导演台-运动运镜动画上线
+  - textbox "输入详情": 角色怎么走，镜头怎么拍，一次搞定 支持手绘运动轨迹，让主体运动更可控
+  - textbox "输入时间": 26-7-10
+  - textbox "输入标题": ⏰Seedream 5 Pro正式上线
+  - textbox "输入详情": 从局部到图层，真正实现所见即所改 功能介绍：精准交互式编辑 · 图层级内容掌控 · 原生多语言排版
+  - textbox "输入时间": 26-7-7
+  - textbox "输入标题": 🏷️生成器优化
+  - textbox "输入详情": 生成器整体改造+连线显隐 1. 生成器按钮布局位置修改。 2. 增加画布连线显示和隐藏功能。 3.增加双击图片/视频/音频定位到对应节点的功能
+  - textbox "输入时间": 26-7-7
+  - textbox "输入标题": 🎭「人像质感调节+高质感官方角色库」
+  - textbox "输入详情": 主要解决 AI 人像在生成或编辑后常见的“不真实、不自然、不融合”问题，让图片在保留人物身份和画面主体的基础上，更接近真实拍摄效果 1️⃣「人像调节」： 降低 AI 感、 优化人像质感、 提升人景融合度、优化光影融合 2️⃣「情绪调节」：在保留人物身份、五官特征和原图构图的基础上，精准控制眼神、眉眼、嘴角、脸颊等关键面部细节，让情绪变化符合真实面部肌肉运动，呈现自然、不突兀的表情效果 3️⃣「官方角色库」-虚拟角色主要覆盖 短剧场景核心主角、配角，涉及小孩-年轻人-老年人；广告时尚模特 -亚洲人、欧美人
+  - textbox "输入时间": 26-6-24
+  - textbox "输入标题": 🚀 Slash能力全面升级，拿捏每一个分镜！
+  - textbox "输入详情": 1️⃣入口更直接 ：生成器底部点「预设」或生成器输入「/」即可一键召唤面板 2️⃣生成的视频更听话：多数能力支持【文+图】双向输入，给AI一个画面参考，再加一句细节描述，彻底告别盲盒生成 3️⃣功能升级 新功能： 新增「故事板」+「人物设定图」+「场景设定图」，高效率搞定视频前期世界观搭建 人物细节更稳： 人物三视图新增【面部表情图】，视频里人物做大表情再也不怕脸崩 细节更顶： 三视图升级为【细节产品设计图】，视频中道具产品细节再也不怕出现生成偏移 详细教程：左侧目录【2.1】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-6-16
+  - textbox "输入标题": 💡脚本节点v2
+  - textbox "输入详情": 从“基础脚本工具”升级到“分镜故事板脚本工具”。 1️⃣新版脚本不只是把剧本拆成表格，而是把剧本拆解、剧本资产管理、分镜头调整、提示词合成、批量生图、批量生视频串成一条完整流程。 2️⃣ 适合流水漫、AI 短剧、动画短片、故事分镜等内容创作场景，可以更快完成：剧本拆解 → 角色/场景/道具资产提取 → 分镜脚本调整 → 批量生成分镜图 → 批量生成视频片段。
+  - textbox "输入时间": 26-6-12
+  - textbox "输入标题": 📌Seedance2.0模型提示词优化功能上线
+  - textbox "输入详情": 把输入的提示词按官优化改写为 Seedance 2.0 更容易执行的结构化 提示词，从而减少“模型不听指令”的问题 入口：视频节点生成器下方「提示词优化」按钮 详细教程：左侧目录【5.2】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-6-9
+  - textbox "输入标题": 🎵音频新增「截取」&「变速」功能
+  - textbox "输入详情": 1️⃣ 自由截取：支持音频片段精准裁剪，保留最精彩的声音 2️⃣ 灵活变速：支持声音快慢调节，完美匹配视频节奏
+  - textbox "输入时间": 26-5-31
+  - textbox "输入标题": 🔥 LibTV「导演台」功能上线
+  - textbox "输入详情": 1️⃣ 基于多样的3D人体素模和几何模型，快速搭建所需的场景 2️⃣ 多机位视角设置，一键截图导出 3️⃣ 精准控制画面/视频构图 入口：双击空白画布-新建「导演台」节点 详细教程：左侧目录【2.4】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-05-25
+  - textbox "输入标题": 🙈 新增 CVLM 5.5 文本大模型
+  - textbox "输入详情": 1. 最新最强的大语言模型 2. 支持文本、图像的解析处理
+  - textbox "输入时间": 26-05-20
+  - textbox "输入标题": 🎬 视频合成新增「多轨道」和「变速」功能
+  - textbox "输入详情": 1. 多条轨道剪辑功能：可内置多条视频和音频轨道，完成更丰富的视频剪辑（如画中画、三分屏视频等） 2.增加视频和音频的变速功能。
+  - textbox "输入时间": 26-05-19
+  - textbox "输入标题": 💖 Seedream4.6 模型上线
+  - textbox "输入详情": 1. 基于Seedream4.0基础模型训练的生图版本 2. 聚焦提升了大众修图垂类场景的效果 3. 包含人像写真、平面设计和图片风格化
+  - textbox "输入时间": 26-05-09
+  - textbox "输入标题": 🔥 视频「字幕擦除」功能上线！
+  - textbox "输入详情": 入口：视频节点「顶部编辑」栏-字幕擦除
+  - textbox "输入时间": 26-05-09
+  - textbox "输入标题": 🎬 LibTV 新功能「分镜组」上线！
+  - textbox "输入详情": ✅ 规整管理：将多张图片收纳进整齐宫格，画布瞬间清爽 ✅ 智能排序：自动从左到右、从上到下智能排列 ✅ 一键合成：支持一键导出带序号的4K大图 入口：多选节点-顶部点击打组-合并分镜组 详细教程：左侧目录【2.2.9】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-05-08
+  - textbox "输入标题": 💖 「素材库」内容将支持拖拽到画布指定位置
+  - textbox "输入详情": 入口：画布左侧工具栏-我的素材-拖动需要素材到画布
+  - textbox "输入时间": 26-05-08
+  - textbox "输入标题": LibTV上线「音色克隆」功能！
+  - textbox "输入详情": 录制声音样本，创建专属音色。后续可用这个音色持续生成新的配音内容。 详细教程：左侧目录【5.4.1】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-04-30
+  - textbox "输入标题": 🎵「音视频 / 人声背景音分离」功能上线！
+  - textbox "输入详情": ✅ 音视频秒级拆分：快速分离视频与音频轨道，素材取用更自由 ✅ AI 智能定向剥离：支持「仅保留人声 / 仅保留背景音」，一键获取干净素材 详细教程：左侧目录【2.3.5】【2.3.6】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-04-29
+  - textbox "输入标题": 🐴 全网首发！HappyHorse 1.0 上线LibTV！
+  - textbox "输入详情": 1️⃣ 支持文生、图生、参考图生成视频，3-15秒时长任选 2️⃣ 支持最多9张图像参考图，智能多镜头调度与分镜编排 3️⃣ 动作自然度、微表情刻画、对白真实感三方面显著提升
+  - textbox "输入时间": 26-04-27
+  - textbox "输入标题": 🔥 最新最强图像模型 Lib Image 已上线！！
+  - textbox "输入详情": ✅ 顶级中文字符渲染能力，超长文本、超小字体稳定渲染 ✅ 版式设计 TOP 1，专业级海报、表格、PPT、 详情页轻松出 ✅ 支持4张参考图，超强一致性
+  - textbox "输入时间": 26-04-21
+  - textbox "输入标题": 🎤 LibTV 上线语音模型 Minimax Speech 2.8 hd & 2.8turbo
+  - textbox "输入详情": ✅ 300+专业音色，覆盖多语种、男女老少及各类风格 ✅ 精准还原开心、温柔、严肃等多种情绪，自带呼吸、停顿、语气起伏等人声细节 ✅ 高保真与强可控：音质清晰细腻，支持语速、音高等细粒度调节，适配虚拟人、智能交互、内容创作等场景。
+  - textbox "输入时间": 26-04-21
+  - textbox "输入标题": 📑 支持生成中节点支持创建副本
+  - textbox "输入详情": 发送生成后，点击新节点右键「创建副本」，即可复制一份 「包含生成前参数信息和连线状态」的节点，方便大家快速进行微调生成
+  - textbox "输入时间": 26-04-20
+  - textbox "输入标题": Seedance 2.0 支持生成 1080P 高清视频
+  - textbox "输入时间": 26-04-16
+  - textbox "输入标题": 「720°全景」功能上线！
+  - textbox "输入详情": ✅ 支持通过文本/参考图生成720°全景图；可实时预览+一键多角度截图 1. 图像节点-工具顶bar：基于当前图像场景直接生成全景图 2.图像节点-生成器：通过文本/参考图生成全景图 3. 图像节点-右键：一键预览720°全景图 详细教程：左侧目录【2.2.1】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-04-15
+  - textbox "输入标题": 新增「画布整理」功能
+  - textbox "输入详情": ✅ 一键优化当前【 画布/工作流】 节点布局 1. 画布左下角「整理画布」按钮，或快捷键 shift+option+f 2. 选中工作流中的任一节点-右键「优化工作流布局」
+  - textbox "输入时间": 26-04-10
+  - textbox "输入标题": Seedance 2.0「真人生成」功能上线！
+  - textbox "输入详情": 全网首发，“真人生成”功能率先登陆 LibTV - 详细教程：左侧目录【5.2】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-04-09
+  - textbox "输入标题": ☀️ 「白天模式」上线！！！
+  - textbox "输入详情": 入口：点击右上角头像-倒数第三项「模式切换」
+  - textbox "输入时间": 26-04-08
+  - textbox "输入标题": 视频「首尾帧」截取
+  - textbox "输入详情": 方式：视频节点右下角「小相机」图标
+  - textbox "输入时间": 26-04-06
+  - textbox "输入标题": 「视频合成」功能上线
+  - textbox "输入详情": 1. 素材片段自由拖拽、精准裁切 2. 剪辑效果实时播放预览 3. 支持最长 20min 的视频合成导出 - 入口：框选多个视频片段-向右拉取节点-选择「视频合成」 - 详细教程：左侧目录【2.3.4】或 Ctrl/Command+F 搜索定位
+  - textbox "输入时间": 26-03-24
+- generic: 欢迎使用 LibTV！
+- generic: LibTV 是 LiblibAI 推出的首款专业 AI 视频创作产品，也是目前唯一一个同时为人类创作者和 Agent 设计的视频创作系统。
+- generic: 作为一款诞生在 2026 年的产品，LibTV 理所当然地拥有两个同样重要的入口：
+- generic: "5"
+- generic: 评论（42）
+- generic: 跳转至首条评论
+- generic: "[时间轴]"
+- generic: 用户694581
+- generic: 6月3日 13:56
+- generic: 1.image的自适应生图不能像香蕉那样保持图片原来尺寸，都是1：1
+- generic: 2.后续是否会升级自定义尺寸出图
+- generic: 王心怡
+- generic: 6月9日 17:18
+- generic: 1、image自适应是按照原图尺寸出的哦，如果您遇到问题可以联系客服发送下失败的case
+- generic: 用户694581
+- generic: 6月10日 11:10
+- generic: "@王心怡"
+- text: iamge2自适应它不是按原比例出图，麻烦你们后台验证下，我这边尝试了自适应，全部都是按1：1出的
+- generic: 用户694581
+- generic: 6月10日 11:11
+- generic: "@王心怡"
+- text: 香蕉的自适应是按原图比例出，image的不是
+- generic: 王心怡
+- generic: 6月10日 17:33 （编辑过）
+- generic: "@用户694581"
+- text: 老师，做了批量测试最终出图结果都是原尺寸比例，您可以将您出错的相关case报给客服，查下问题呀
+- button:
+- menu:
+  - menuitem "上传日志":
+    - generic: 上传日志
+  - menuitem "联系客服":
+    - generic: 联系客服
+  - menuitem "功能更新":
+    - generic: 功能更新
+  - menuitem "帮助中心":
+    - generic: 帮助中心
+  - menuitem "效率指南":
+    - generic: 效率指南
+- textbox [active]
+- region "Notifications alt+T"

@@ -15,6 +15,7 @@ import { fetchVendorWithBaseFallback } from "./vendorBaseFallback";
 import type { Vendor } from "../catalog/types";
 import { networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
 import { BoundedResponseError, readBoundedResponseBytes } from "./boundedResponse";
+import { providerDispatcher } from "../providerNetwork";
 
 export type VendorErrorCategory = "auth" | "balance" | "quota" | "input" | "server" | "network" | "timeout" | "unknown";
 
@@ -165,6 +166,7 @@ async function requestVendor(
   if (signal?.aborted) relayAbort();
   else signal?.addEventListener("abort", relayAbort, { once: true });
   const timer = setTimeout(() => controller.abort(new DOMException("Provider response timeout", "TimeoutError")), timeoutMs);
+  const dispatcher = providerDispatcher(vendor);
   let response: Response;
   try {
     // 经 vendorBaseFallback：主域被墙（连接从未建立）→ 零额度探测官方备用域 → 换线重发一次。
@@ -173,11 +175,13 @@ async function requestVendor(
       method: upperMethod,
       headers,
       signal: controller.signal,
+      ...(dispatcher ? { dispatcher } : {}),
       ...(hasBody ? { body: bodyInit } : {}),
     });
   } catch (error: unknown) {
     clearTimeout(timer);
     signal?.removeEventListener("abort", relayAbort);
+    if (dispatcher) void dispatcher.close().catch(() => undefined);
     const cancellation = callerCancellation(signal);
     if (cancellation) throw cancellation;
     // abort = 我们的超时，给一条说人话的 timeout 错误（仍归 network 类、可重试），而不是裸 "aborted"。
@@ -240,6 +244,8 @@ async function requestVendor(
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", relayAbort);
+    // per-connection dispatcher 的连接池只属于本次请求；body 已缓冲读完，可安全退休。
+    if (dispatcher) void dispatcher.close().catch(() => undefined);
   }
   const contentType = String(response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
   const looksJson = contentType === "application/json"
