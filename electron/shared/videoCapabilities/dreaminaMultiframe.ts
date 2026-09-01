@@ -1,5 +1,8 @@
-// 即梦官方 dreamina CLI 的多帧视频档案（multiframe2video）。官方 `-h`：2-20 张图，无 model_version/清晰度。
-//   - 2 图：shorthand --prompt + --duration（段时长）
+// 即梦官方 dreamina CLI 的多帧视频档案（multiframe2video）。SOURCE：docs/research/2026-09-01-dreamina-cli-v1417-matrix.md
+// （CLI v1.4.17，checkedAt 2026-09-01）。官方 `-h`：2-20 张图，无 model_version（固定模型）。
+//   - video_resolution：720p 或 1080p，**required**（v1.4.14 破坏性变更；本机 pre-auth 探针实测
+//     `required flag(s) "video_resolution" not set`）——此前档案漏声明此参数、buildMultiframeArgs 也不发它 → 每次多帧提交必被 CLI 硬拒（已修）。
+//   - 2 图：shorthand --prompt + --duration（段时长 1-8）
 //   - 3+ 图：N-1 句 --transition-prompt（每段一句过渡），比例随首图
 // 过渡描述用**节点提示词**（本就是多行 textarea）：2 图整段当主提示；3+ 图按行拆，每行一句相邻图过渡——
 // 无需新 UI 控件（用户拍板「多行文本，每行一句」即用现有提示框）。无 model_version → 单列无变体模型，
@@ -7,7 +10,11 @@
 import type { ModelParameterControl } from "./types";
 import type { ModelArchetype } from "./types";
 
+const opt = (values: Array<string | number>): ModelParameterControl["options"] => values.map((value) => ({ value, label: String(value) }));
+
 const PARAMS: ModelParameterControl[] = [
+  // required（官方 -h）：多帧只支持 720p/1080p（无 480p、无 4k）。默认 720p 随档案默认写入 request.params → CLI 收到 --video_resolution。
+  { key: "video_resolution", label: "清晰度", type: "select", options: opt(["720p", "1080p"]), defaultValue: "720p" },
   { key: "duration", label: "段时长(秒,仅2图)", type: "number", options: [], min: 1, max: 8, step: 1, defaultValue: 3 },
 ];
 

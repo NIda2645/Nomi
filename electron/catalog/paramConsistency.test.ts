@@ -30,8 +30,9 @@ function coveredWireKeys(create: { body?: unknown; process?: { args?: string[]; 
     // ——它们确实经 argv 发出去，不是静默丢弃。bodyReferencedParamKeys 能直接扫字符串数组。
     ...bodyReferencedParamKeys(create.process?.args),
     // 多帧（build="multiframe"）的 args 由 buildMultiframeArgs 按图数变形构建（非模板），它确实消费 duration
-    // （2 图档发 --duration）——声明在此，让不变量认它是真覆盖而非静默丢弃。
-    ...(create.process?.build === "multiframe" ? ["duration"] : []),
+    // （2 图档发 --duration）与 video_resolution（v1.4.14 起 required，任何图数都发 --video_resolution）——
+    // 声明在此，让不变量认它们是真覆盖而非静默丢弃。
+    ...(create.process?.build === "multiframe" ? ["duration", "video_resolution"] : []),
     ...consumedCanonicalKeys(map),
     ...(map?.drops ?? []),
   ]);

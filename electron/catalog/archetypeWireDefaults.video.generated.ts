@@ -479,6 +479,7 @@ export const ARCHETYPE_WIRE_DEFAULTS_VIDEO: Record<string, Record<string, Record
   "dreamina-multiframe": {
     "image_to_video": {
       "*": {
+        "video_resolution": "720p",
         "duration": 3
       }
     }
