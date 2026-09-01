@@ -428,6 +428,17 @@ export default function NomiStudioApp(): JSX.Element {
           return false
         }
         surfaceEpoch.assertCurrent()
+        // Reset at the project-open boundary so a remounted sidebar cannot inherit
+        // the previous project's expanded state. The cutover flow flips view to
+        // 'library' mid-hydration (line ~405), which unmounts/remounts the sidebar;
+        // its in-component transition effect therefore always looks like a first
+        // mount and can no longer detect the switch on its own. This imperative
+        // reset — keyed on the real prev→next project change — is the sole home for
+        // the "switching projects collapses the left rail" behavior.
+        const prevProjectId = activeProjectIdRef.current ?? null
+        if (prevProjectId !== hydrated.id) {
+          useWorkbenchStore.getState().setSidebarCollapsed(true)
+        }
         activeProjectIdRef.current = hydrated.id
         // 同步喂全局（不等 effect 滞后一拍）：切项目瞬间拖图上传时 resolveProjectId 取的就是新项目，
         // 不再误写进旧项目目录 / 编错 projectId 致渲染 404（C2 修，对齐 activeProjectIdRef 同步口径）。
