@@ -28,4 +28,15 @@ RL2 是本轮唯一从红转绿的红灯，直接证明 Codex r3 的 canvasRead 
 
 ## M1 终装班复核（2026-09-01，分支 `m1/final-assembly-20260901`，cutover 合流）
 
-终装分支从 `rescue/m1-cutover-d270d34e`（Host/runtime + resident-shell transport transplant）起。cutover 基座**已自带**更成熟的 captured-canvasRead sealing（`CapturedCanvasReadSnapshotHandleWire` 一等 wire 类型，贯穿 `capabilityApplyHandler`/`runStoryboardPlanner`/`generationCanvasAgentClient`），因此 consolidation r3 的 canvasRead 切片在此**已被超集实现取代、无需移植**；只移植 r3 中 cutover 尚无的部分：coordinator `steer`/`interrupt` + IPC `turn.steer`/`turn.interrupt` handler + `agent.processInterrupted` i18n key + 2 条 coordinator 测试。三条红灯原命令在本终装分支重验的逐字输出见下方「终装分支红灯重验」小节（步骤 3 追加）。
+终装分支从 `rescue/m1-cutover-d270d34e`（Host/runtime + resident-shell transport transplant）起。cutover 基座**已自带**更成熟的 captured-canvasRead sealing（`CapturedCanvasReadSnapshotHandleWire` 一等 wire 类型，贯穿 `capabilityApplyHandler`/`runStoryboardPlanner`/`generationCanvasAgentClient`），因此 consolidation r3 的 canvasRead 切片在此**已被超集实现取代、无需移植**；只移植 r3 中 cutover 尚无的部分：coordinator `steer`/`interrupt` + IPC `turn.steer`/`turn.interrupt` handler + `agent.processInterrupted` i18n key + 2 条 coordinator 测试。
+
+### ⚠️ 阻塞发现：cutover 基座自带 ~47 个测试回归 + RL2 挂起（非本终装工作引入）
+
+装依赖后在**合流前的干净 source-1 commit** 与**合流后**分别跑全量 `vitest run`，逐条比对：
+
+- **本终装的 step1（合流三源）/step2（三档回正）/i18n 修复引入的新失败 = 0**（`comm -13` 干净比对：合流前 51 失败、合流后 47 失败，差集仅一条 antigravity flake 抖动）。RL1 16/16 绿、RL3 10/10 绿。
+- **cutover 基座本身携带 ~47 个测试红**，分布：`mcpSpendTrust`(7·elicitation 路返回 undefined)、`generationProviderBootstrap`(4)、`apimartGenerationProvider`(3)、`productionRunCore`/`productionRunDriver`/`productionSampleGate`/`productionTrustLevel`/`productionQaVerify`/`productionRunPauseSemantics`(共 ~11)、`mcpLauncherLocale`、`residentToolDisplay`、`runGenerationBatchTool`、`nomiSkillResources` 等。
+- **根因不是「旧基线 delta」，合流 origin/main 修不掉**：cutover（`d270d34e`）落在 98 commit 前的旧 main（merge-base `7bf7e27f`）上，且是 **607 文件的近全树 transplant**；上列失败源文件逐一验证均为 **[CUTOVER-MODIFIED][main=base]**——即 cutover 自己改动这些源、改坏了它们的测试，而 main 从没动过这些文件（合流无内容可并）。已按纪律合入最新 `origin/main`（59e1f6c0，解 3 冲突），失败从 49→47（只修掉了 skillPackage/exportJobIpc 这类 main 侧确有演进的少数）。
+- **RL2 挂起**：RL2 命令匹配 2 测——`sealed A…rejects replay` 绿；`…one canonical snapshot after selection and project switch` **30s 超时挂起**（隔离单跑也挂）。该测 `canvasReadCapturedSnapshotFlow.test.ts` 为 **cutover-new**、其源（`canvasReadPortResolver`/`canvasReadSurfaceIpc`/`agentChatV2Ipc`/`canvasReadCapturedSnapshotRegistry`）全为 [CUTOVER-MODIFIED][main=base]——cutover 自身 canvasRead 实现的死锁/未 settle bug。故 consolidation 证据表的「RL2 绿 2/2」在 cutover 基座上**不成立**（consolidation 走的是 r3 的 canvasRead 路径、cutover 走的是另一套，后者这条挂）。
+
+**结论/需编排者裁决**：cutover 基座是一份 607 文件的 WIP transplant，自带 ~47 个自身回归 + RL2 死锁，横跨 MCP-elicitation / 生成供应商安全 / ProductionRun 门 / 常驻 UI 投影多个子系统——**超出「三源合流 + r3 重接 + 三档回正 + 红灯重验」的既定范围**，且这些修复涉及安全敏感逻辑（付费信任、供应商引导）与核心流程门，逐个需要「Codex transplant 意图 vs main」的对账，不是机械修。合理解分歧巨大（① 就地修 47 回归；② 在**当前 main** 上只重接真正新增的 M1 Host/runtime 文件、避开 344 处宽泛 revert；③ 对非核心-M1 的 cutover 改动做外科式回 main）。按决策自治纪律（架构岔路、影响大、多个分歧巨大合理解）**停下上报**，不擅自选一条烧数轮。step1–3 的 M1 交付本身已完成且零新增失败，可独立对账。
