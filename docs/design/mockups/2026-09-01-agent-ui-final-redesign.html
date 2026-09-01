@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nomi Agent 界面最终版重做 · 4 屏样张 v3.1（2026-09-02 · 九条整改 + 两条快修）</title>
+<title>Nomi Agent 界面最终版重做 · 5 屏样张 v3.2（2026-09-02 · 九条整改 + 两条快修 + 布局补全）</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
 <style>
 :root{
@@ -331,6 +331,61 @@ body.dark .btn.pri{color:var(--bg)}
 .badge-corner{margin-left:auto;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--line);background:var(--paper);display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--ink80);cursor:pointer;position:relative}
 .badge-corner .dot{width:6px;height:6px;border-radius:50%;background:var(--ac);animation:breathe var(--t-breathe) ease-in-out infinite}
 
+/* ── 屏 E · 布局（v3.2 补全）── */
+.ly-h{font-size:13px;font-weight:600;margin:28px 0 4px;display:flex;align-items:center;gap:8px;color:var(--ink)}
+.ly-h .bdg{height:18px;padding:0 7px;border-radius:999px;background:var(--ink);color:var(--paper);display:inline-grid;place-items:center;font-size:10px;font-weight:600}
+.ly-h + .caption{margin-top:4px}
+.ly-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px;align-items:start}
+.ly-card{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--paper);padding:12px 12px 11px}
+.ly-card .t{font-size:12px;font-weight:600;color:var(--ink)}
+.ly-card .t .sub{font-weight:400;color:var(--ink40);font-size:10.5px;margin-left:5px}
+.ly-win{border:1px solid var(--ink20);border-radius:8px;overflow:hidden;background:var(--canvas);margin-top:8px}
+.ly-top{height:20px;background:var(--paper);border-bottom:1px solid var(--lineS);display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:8.5px;color:var(--ink40)}
+.ly-top .ct{color:var(--ink60)}
+.ly-row{display:flex;min-height:112px;position:relative}
+.ly-col{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:9.5px;color:var(--ink60);position:relative;padding:6px 4px;text-align:center;line-height:1.35}
+.ly-col.rail{background:var(--paper);border-right:1px solid var(--lineS)}
+.ly-col.main{flex:1;background-image:radial-gradient(var(--ink10) 1px,transparent 1px);background-size:14px 14px;background-color:var(--canvas)}
+.ly-col.plain{flex:1;background:var(--canvas)}
+.ly-col.agent{background:var(--acBg);border-left:1.5px solid var(--ac);color:var(--ac);font-weight:600}
+.ly-bottom{min-height:24px;background:var(--paper);border-top:1px solid var(--lineS);display:flex;align-items:center;justify-content:center;gap:6px;font-size:9px;color:var(--ink40);padding:2px 6px}
+.ly-num{display:inline-flex;align-items:center;height:15px;padding:0 6px;border-radius:999px;background:var(--paper);border:1px solid var(--line);color:var(--ink60);font-size:8.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ly-col.agent .ly-num{border-color:color-mix(in srgb,var(--ac) 40%,var(--line));color:var(--ac);background:var(--paper)}
+.ly-note{display:flex;gap:6px;align-items:flex-start;font-size:10.5px;color:var(--ink60);margin-top:7px;line-height:1.5}
+.ly-note i{color:var(--ac);font-size:12px;margin-top:1px;flex:none}
+.ly-note b{color:var(--ink80);font-weight:600}
+/* 收起态顶栏条 */
+.ly-appbar{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;background:var(--paper);height:42px;padding:0 12px;margin-top:8px;font-size:10px;color:var(--ink40);overflow-x:auto}
+.ly-appbar .seg{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:6px;white-space:nowrap;flex:none}
+.ly-appbar .seg i{font-size:11px}
+.ly-appbar .chip{position:relative;border:1.5px dashed var(--ac);color:var(--ac);font-weight:600;background:var(--acBg)}
+.ly-appbar .chip .dot{position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:var(--ac);box-shadow:0 0 0 1.5px var(--paper)}
+.ly-appbar .div{width:1px;height:14px;background:var(--line);flex:none}
+.ly-appbar .sp{flex:1;min-width:8px}
+/* 断点表 */
+.ly-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+.ly-table th{color:var(--ink40);font-weight:500;text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);font-size:10px}
+.ly-table td{padding:6px 8px;border-bottom:1px solid var(--lineS);color:var(--ink80);line-height:1.45}
+.ly-table td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.ly-table td .dim{color:var(--ink40);font-size:10px}
+/* 三能力标注图 */
+.ly-cap{position:relative}
+.ly-cap .grip-zone{position:absolute;top:0;bottom:0;left:-4px;width:8px;background:color-mix(in srgb,var(--ac) 24%,transparent);display:grid;place-items:center;cursor:col-resize}
+.ly-cap .grip-zone .bar{width:3px;height:32px;border-radius:99px;background:var(--ac)}
+.ly-mark{width:15px;height:15px;flex:none;border-radius:50%;background:var(--ac);color:#fff;display:inline-grid;place-items:center;font-size:9px;font-weight:700}
+.ly-mark.abs{position:absolute;z-index:5}
+.ly-head-demo{height:26px;background:var(--paper);border-bottom:1px solid var(--lineS);display:flex;align-items:center;gap:4px;padding:0 7px;font-size:9px;color:var(--ink60)}
+.ly-head-demo .dragzone{flex:1;height:16px;border:1.5px dashed color-mix(in srgb,var(--ac) 55%,transparent);border-radius:4px;display:grid;place-items:center;color:var(--ac);font-size:8px;cursor:grab}
+.ly-head-demo .hbtn{width:17px;height:17px;border-radius:4px;display:grid;place-items:center;color:var(--ink40);font-size:10px;flex:none}
+.ly-head-demo .hbtn.hl{border:1.5px dashed var(--ac);color:var(--ac)}
+.ly-float{position:absolute;right:64px;top:26px;width:132px;border:1.5px dashed var(--ac);border-radius:8px;background:color-mix(in srgb,var(--paper) 82%,transparent);box-shadow:0 8px 24px rgba(20,18,16,.14);z-index:4;overflow:hidden}
+.ly-float .fh{height:18px;border-bottom:1px solid var(--lineS);display:flex;align-items:center;gap:3px;padding:0 6px;font-size:8px;color:var(--ink60)}
+.ly-float .fb{height:64px;display:grid;place-items:center;font-size:8.5px;color:var(--ink40);text-align:center;line-height:1.4}
+.ly-snap{position:absolute;right:0;top:0;bottom:0;width:22px;border-left:1.5px dashed var(--ac);background:color-mix(in srgb,var(--ac) 12%,transparent);display:grid;place-items:center;z-index:3}
+.ly-snap span{writing-mode:vertical-rl;font-size:8px;color:var(--ac)}
+.ly-legend{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+.ly-legend .lg{display:flex;gap:7px;align-items:flex-start;font-size:11px;color:var(--ink60);line-height:1.55}
+.ly-legend .lg b{color:var(--ink80)}
 /* 标尺 */
 body.rule .cbtn,body.rule .btn,body.rule .pick,body.rule .send,body.rule .chip-jump,body.rule .at,body.rule .rico,body.rule .qx,body.rule .opt,body.rule .rc-head{outline:1px dashed var(--ac);outline-offset:1px}
 body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
@@ -344,14 +399,15 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 </head>
 <body>
 <div class="topbar">
-  <h1>Nomi Agent · 最终版重做样张 v3.1</h1>
+  <h1>Nomi Agent · 最终版重做样张 v3.2</h1>
   <div class="tabs" id="tabs">
     <button class="tab on" data-s="A">屏 A · 主对话流</button>
     <button class="tab" data-s="B">屏 B · 审批 + 付费 + 有出入</button>
     <button class="tab" data-s="C">屏 C · 右槽互斥切换</button>
     <button class="tab" data-s="D">屏 D · 结果卡区并存</button>
+    <button class="tab" data-s="E">屏 E · 布局</button>
   </div>
-  <div class="meta">v3.1 · 九条整改 + 两条快修：结果卡默认细条 · 底排全 icon（悬停冒含义）· <a href="../2026-09-02-agent-ui-v3-walkthrough.md">逐屏走读</a> · <a href="../2026-09-01-agent-ui-final-redesign.md">设计定稿</a></div>
+  <div class="meta">v3.2 · 九条整改 + 两条快修 + 布局补全：面板在四个面 + 浏览器的落位 · 缩小三档 · 拖宽/放大/拖走 · <a href="../2026-09-02-agent-ui-v3-walkthrough.md">逐屏走读</a> · <a href="../2026-09-01-agent-ui-final-redesign.md">设计定稿</a></div>
   <button class="toggle" id="darkT"><i class="ti ti-moon"></i><span>暗色</span></button>
   <button class="toggle" id="ruleT"><i class="ti ti-ruler-2"></i><span>标尺</span></button>
 </div>
@@ -858,6 +914,201 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
     </div>
   </div>
   <p class="caption" style="margin-top:14px"><b>细条的规矩（v3.1）：</b>收起只是收起——勾选、滚动位置全保持，摘要「5 镜 · 已选 2」跟着勾选实时变；展开态封顶约视口 45%，表格内部滚，绝不把对话挤没。<b>开闸删旧（C9 / 决策 D5）：</b>最终态固定结果卡 + 对话并存 → 过渡版的互斥标志作废、4 档工作方式契约删净（P1 加新必删旧无并行版）。节点浮条和对话里的工具行都指向同一张固定结果卡，绝不各开一张。</p>
+</section>
+
+<!-- ══════════════════ 屏 E · 布局（v3.2 补全） ══════════════════ -->
+<section class="screen" data-screen="E">
+  <p class="caption"><b>屏 E · 面板住在哪（v3.2 布局补全）。</b>三条布局总则：<b>① 一个家</b>——面板在所有页面都停靠<b>视口右缘</b>，切页不挪窝（空间记忆最省脑）；<b>② 一个宽度</b>——全页面共用 <code>assistantWidth</code>（默认 340，拖拽 300–600，单一真相源，拆解表/结果卡区同源）；<b>③ 让位不悬浮</b>——停靠态是 in-flow 列，主内容被挤窄而不是被盖住（动作不压内容）。以下每张图的数字都来自真实外壳代码，非脑补。</p>
+
+  <div class="ly-h"><span class="bdg">A</span>四个面 + 浏览器的落位</div>
+  <div class="ly-grid">
+
+    <!-- E1 创作 -->
+    <div class="ly-card">
+      <div class="t">① 创作<span class="sub">creation · 面板全高</span></div>
+      <div class="ly-win">
+        <div class="ly-top"><span>顶栏 <b class="ct">56px</b></span><span>创作 · <b class="ct">生成 · 预览</b></span></div>
+        <div class="ly-row" style="min-height:124px">
+          <div class="ly-col rail" style="width:64px">文稿列表<span class="ly-num">240 / 窄时 200</span></div>
+          <div class="ly-col plain">正文编辑器<span class="ly-num">内容区内居中 · max 1480</span></div>
+          <div class="ly-col agent" style="width:86px">Agent<span class="ly-num">340</span><span style="font-weight:400;font-size:8.5px">顶栏下沿→窗底</span></div>
+        </div>
+      </div>
+      <div class="ly-note"><i class="ti ti-replace"></i><span><b>取代原网格内 344px 助手栏</b>（P1 加新删旧）：现役创作助手是居中网格里的一列，统一后面板改停视口右缘、宽度归一到 340；「常驻右栏」的拍板（2026-07-25）不变，变的只是从「内容列」升为「全局 chrome」。创作没有时间轴，面板独享整个右缘高度。</span></div>
+    </div>
+
+    <!-- E2 分镜 -->
+    <div class="ly-card">
+      <div class="t">② 分镜<span class="sub">storyboard · 与创作同壳</span></div>
+      <div class="ly-win">
+        <div class="ly-top"><span>顶栏 <b class="ct">56px</b></span><span>创作(亮) · 生成 · 预览</span></div>
+        <div class="ly-row" style="min-height:124px">
+          <div class="ly-col rail" style="width:64px">文稿列表<span class="ly-num">240</span></div>
+          <div class="ly-col plain">分镜表编辑器<span class="ly-num">同创作居中网格</span></div>
+          <div class="ly-col agent" style="width:86px">Agent<span class="ly-num">340</span></div>
+        </div>
+      </div>
+      <div class="ly-note"><i class="ti ti-info-circle"></i><span><b>分镜不是独立页签</b>：顶栏步进器只有创作/生成/预览三格，分镜模式亮在「创作」上（identity.tsx:137）；它就是创作面把中栏换成分镜表（CreationWorkspace.tsx:72）。所以面板<b>可用且布局与创作完全一致</b>——不另画规则，切进分镜对话不断。</span></div>
+    </div>
+
+    <!-- E3 生成 -->
+    <div class="ly-card">
+      <div class="t">③ 画布<span class="sub">generation · 面板停在时间轴上沿</span></div>
+      <div class="ly-win">
+        <div class="ly-top"><span>顶栏 <b class="ct">56px</b></span><span>创作 · 生成(亮) · 预览</span></div>
+        <div class="ly-row">
+          <div class="ly-col rail" style="width:34px;font-size:8.5px">树<span class="ly-num" style="padding:0 4px">60/300</span></div>
+          <div class="ly-col main">生成画布<span class="ly-num">≥700 底线</span></div>
+          <div class="ly-col agent" style="width:86px">Agent 或 拆解表<span class="ly-num">340 同源</span></div>
+        </div>
+        <div class="ly-bottom">时间轴 · 通栏 <span class="ly-num">188</span><span style="color:var(--ink30)">收起时面板落到窗底</span></div>
+      </div>
+      <div class="ly-note"><i class="ti ti-arrows-left-right"></i><span><b>右槽互斥的页面级落位</b>：拆解表与 Agent 用的是<b>同一列、同一宽度变量</b>（`--generation-assistant-target-width`，R-C-4）——过渡期二选一换班（屏 C），终局同壳并存（屏 D），页面骨架一行代码不用动。时间轴永远通栏在下（用户拍板：主时间观入口在底部中间），面板底 = 时间轴顶。</span></div>
+    </div>
+
+    <!-- E4 预览 -->
+    <div class="ly-card">
+      <div class="t">④ 预览<span class="sub">preview · 同画布规则</span></div>
+      <div class="ly-win">
+        <div class="ly-top"><span>顶栏 <b class="ct">56px</b>（本页无「去出片」钮）</span><span>创作 · 生成 · 预览(亮)</span></div>
+        <div class="ly-row">
+          <div class="ly-col rail" style="width:52px;font-size:8.5px">素材源<span class="ly-num" style="padding:0 4px">268</span></div>
+          <div class="ly-col plain">播放器</div>
+          <div class="ly-col agent" style="width:86px">Agent<span class="ly-num">340</span></div>
+        </div>
+        <div class="ly-bottom">剪辑时间轴 · 通栏 <span class="ly-num">222</span></div>
+      </div>
+      <div class="ly-note"><i class="ti ti-scissors"></i><span>预览的时间轴是<b>全密度剪辑面</b>（222px 通栏、不可收起），面板同样停在它上沿。在这个面对 Nomi 说的是剪辑话（「把镜 3 换成第 2 版」「字幕提前半秒」），产物直接落时间轴——所以面板必须和播放器 + 时间轴同屏，不能盖任何一个。</span></div>
+    </div>
+
+    <!-- E5 浏览器 -->
+    <div class="ly-card" style="grid-column:1/-1">
+      <div class="t">⑤ 浏览器对话框打开时<span class="sub">NomiBrowserDialog · 全屏接管，面板不并存</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+        <div class="ly-win">
+          <div class="ly-top" style="background:var(--ink05)"><span>浏览器接管层 z-520 · <b class="ct">mac 从 y=0 全盖 / win32 从窗控条(32px)下起</b></span><span>ESC / × 关闭</span></div>
+          <div class="ly-row" style="min-height:96px">
+            <div class="ly-col plain" style="border-right:1.5px dashed var(--line)">网页内容<br><span style="font-size:8.5px;color:var(--ink30)">原生 WebContentsView<br>浮在所有 DOM 之上</span></div>
+            <div class="ly-col rail" style="width:96px;border-right:0;border-left:1px solid var(--lineS)">捕捞坞（已有）<span class="ly-num">默认 500 · 拖 220–75%</span><span style="font-weight:400;font-size:8.5px">悬停素材 Ctrl+C 入库</span></div>
+          </div>
+          <div class="ly-bottom" style="justify-content:flex-start">页签行 ~44 + 地址行 ~48 是对话框自己的 chrome；下层工作台（含 Agent 面板）被完全盖住</div>
+        </div>
+        <div>
+          <div class="ly-note" style="margin-top:2px"><i class="ti ti-eye-off"></i><span><b>不压暗、不并用——是接管</b>：对话框是不透明纸面（无半透明 backdrop 可言），mac 上连顶栏都在它底下（NomiBrowserDialogModel.tsx:304 的锚点在 mac 量出 0）。网页画面是<b>原生视图</b>，浮在一切 DOM 之上——想并排塞一条 Agent 栏，只能再挤网页（右缘已有 500px 捕捞坞），两个输入焦点抢一个屏 = 认知过载。所以：<b>浏览器开着时面板不可见、不可用，也不装可用</b>。</span></div>
+          <div class="ly-note"><i class="ti ti-fish-hook"></i><span><b>@ 回填走素材桥，不走并屏</b>：浏览器里悬停图/视频按 Ctrl+C → 捕捞坞收进项目素材（现役链路）。关掉浏览器回到工作台，composer 打 <code>@</code> 时选择器<b>置顶「刚从浏览器捞的」组</b>（本会话内的捕捞，含缩略图）——「捞完就能 @」，桥在素材库，不在窗口叠窗口。</span></div>
+          <div class="ly-note"><i class="ti ti-bell"></i><span><b>Nomi 干着活你去捞素材</b>：任务不中断；浏览器关上那一刻，顶栏角标的蓝点/未读数（见下）告诉你它这段时间干完了什么。浏览时不弹任何 Agent 通知——一次一个焦点面。</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ly-h"><span class="bdg">B</span>缩小三档</div>
+  <div class="ly-grid">
+
+    <!-- B1 收起态 -->
+    <div class="ly-card" style="grid-column:1/-1">
+      <div class="t">① 收起态<span class="sub">面板 → 顶栏角标，四个面同一位置</span></div>
+      <div class="ly-appbar">
+        <span class="seg" style="padding-left:0"><i class="ti ti-brand-apple" style="opacity:0"></i>N Nomi</span>
+        <span class="seg" style="border:1px solid var(--lineS);border-radius:7px">项目库 › 雨夜追逐</span>
+        <span class="sp"></span>
+        <span class="seg" style="background:var(--ink05);border-radius:999px">创作 · 生成 · 预览</span>
+        <span class="sp"></span>
+        <span class="seg"><i class="ti ti-list-check"></i>任务</span>
+        <span class="div"></span>
+        <span class="seg"><i class="ti ti-browser"></i>浏览器</span>
+        <span class="div"></span>
+        <span class="seg chip"><span style="font-weight:700">N</span>Nomi<span class="dot"></span></span>
+        <span class="div"></span>
+        <span class="seg"><i class="ti ti-settings"></i></span>
+        <span class="seg"><i class="ti ti-plug-connected"></i></span>
+        <span class="div"></span>
+        <span class="seg" style="background:var(--ink);color:var(--paper);border-radius:7px"><i class="ti ti-arrow-right"></i>去出片</span>
+      </div>
+      <div class="ly-legend">
+        <div class="lg"><span class="ly-mark">1</span><span><b>落位固定：右簇「浏览器」与「设置」之间</b>——就是现役互斥角标 CollapsedAiChip 住的那格（NomiAppBar.tsx:274，紧挨配置组左侧）。顶栏是唯一跨创作/分镜/生成/预览常驻的 chrome，所以四个面收起后角标都在这一格，win32 也一样（NomiAppBar 两平台都渲染）。收起入口 = 面板头右侧「收起」icon；点角标 = 原宽度、原状态还原（collapse≠unmount）。</span></div>
+        <div class="lg"><span class="ly-mark">2</span><span><b>蓝点 = 有新动静</b>（收起期间有新回复/工具跑完，settle 420ms 单次脉冲，不常闪）；<b>数字徽标 = 未读条数</b>（语法复刻 TaskCenterButton 徽标与 CollapsedAiChip 计数：min-w-4 rounded-pill accent）。没动静就安安静静一颗角标，不制造假紧迫。过渡期拆解互斥的「● 进行中」角标（屏 C）与收起角标是<b>同一格只出一颗</b>——面板不在右槽，原因不同、家相同。</span></div>
+      </div>
+    </div>
+
+    <!-- B2 窄窗态 -->
+    <div class="ly-card">
+      <div class="t">② 窄窗态<span class="sub">挤压规则 + 断点</span></div>
+      <table class="ly-table">
+        <tr><th>视口宽</th><th>发生什么</th></tr>
+        <tr><td class="n">≤1600</td><td>顶栏动作钮文字隐藏，收成 30px 图标方块（现役断点，NomiAppBar `max-[1600px]`）——面板不受影响</td></tr>
+        <tr><td class="n">&lt;1360</td><td>面板<b>拖宽上限开始缩水</b>：max = 视口 − 760（1280→520、1200→440）；已拖到超限的宽度被钳回，默认 340 不动</td></tr>
+        <tr><td class="n">1100（最小）</td><td>上限 = 340 = 默认宽：拖宽手柄到头、「放大」钮置灰。面板<b>仍可停靠</b>，不强制收起</td></tr>
+      </table>
+      <div class="ly-note"><i class="ti ti-lock"></i><span><b>面板宽度从不背着人自动变</b>——窄窗只收「上限」，不偷改当前宽。760 的出处：探索栏最窄轨 60 + 画布底线 700（= 最小窗默认布局的实际画布宽，见右图）。内容区自己的断点（创作文稿列 240→200 等）改按<b>内容区宽度</b>（视口−面板）评估，不再看裸视口。</span></div>
+    </div>
+
+    <!-- B3 最小窗态 -->
+    <div class="ly-card">
+      <div class="t">③ 最小窗态<span class="sub">1100 × 720 · electron/main.ts:295 锁死</span></div>
+      <div class="ly-win">
+        <div class="ly-top"><span>顶栏 <b class="ct">56</b></span><span>1100 × 720（min-window 走查同尺寸：creation-work-surfaces.e2e.mjs:226）</span></div>
+        <div class="ly-row" style="min-height:86px">
+          <div class="ly-col rail" style="width:26px;font-size:8px"><span class="ly-num" style="padding:0 3px">60</span></div>
+          <div class="ly-col main">画布<span class="ly-num">700</span></div>
+          <div class="ly-col agent" style="width:76px">Agent<span class="ly-num">340</span><span style="font-weight:400;font-size:8.5px">高 476</span></div>
+        </div>
+        <div class="ly-bottom">时间轴 <span class="ly-num">188</span><span style="color:var(--ink30)">一键收起 → 面板高回 664</span></div>
+      </div>
+      <div class="ly-note"><i class="ti ti-ruler-measure"></i><span>最小窗下各面实数：<b>生成</b> 60+700+340（面板高 476，时间轴收起 664）；<b>创作/分镜</b> 内容区 760 → 文稿列 200 + 编辑器 ~490（紧但可写，一键收起面板回 812）；<b>预览</b> 268+492+340。走查以这套数为锚。</span></div>
+    </div>
+  </div>
+
+  <div class="ly-h"><span class="bdg">C</span>面板操控三能力</div>
+  <div class="ly-grid">
+
+    <!-- C 停靠态标注 -->
+    <div class="ly-card">
+      <div class="t">停靠态：拖宽 ① + 放大 ②<span class="sub">手柄/热区/光标</span></div>
+      <div class="ly-win ly-cap">
+        <div class="ly-top"><span>顶栏 56</span><span>生成</span></div>
+        <div class="ly-row" style="min-height:150px">
+          <div class="ly-col main">画布</div>
+          <div style="width:150px;position:relative;background:var(--paper);border-left:1.5px solid var(--ac);display:flex;flex-direction:column">
+            <span class="ly-mark abs" style="left:-8px;top:46px">1</span>
+            <div class="grip-zone" style="position:absolute;top:0;bottom:0;left:-4px;width:8px;background:color-mix(in srgb,var(--ac) 24%,transparent);display:grid;place-items:center;cursor:col-resize;z-index:2"><span style="width:3px;height:32px;border-radius:99px;background:var(--ac)"></span></div>
+            <div class="ly-head-demo">
+              <span style="font-weight:700">N</span>
+              <span class="dragzone">拖走热区 ③</span>
+              <span class="hbtn hl" title="放大/还原"><i class="ti ti-arrows-diagonal"></i></span><span class="ly-mark" style="width:13px;height:13px;font-size:8px">2</span>
+              <span class="hbtn"><i class="ti ti-layout-sidebar-right-collapse"></i></span>
+            </div>
+            <div style="flex:1;display:grid;place-items:center;font-size:9px;color:var(--ink40);text-align:center;line-height:1.5">对话流<br><span style="font-size:8.5px;color:var(--ink30)">340 默认 · 拖 300–600</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="ly-legend">
+        <div class="lg"><span class="ly-mark">1</span><span><b>左缘拖宽</b>：热区 <b>8px</b> 竖条骑在边线上（左右各 4px，≥6px 达标）、hover 变<b>列宽光标</b>（col-resize）+ 3×32px accent 竖粒——整套解剖复用现役生成区手柄（GenerationWorkspace.tsx:157-173），不发明第二种手柄。<b>min 300 / 默认 340 / max = min(600, 视口−760)</b>（workbenchStore.ts:332 的 clamp + 窄窗动态上限）；拖动实时生效、松手落库记住；<b>双击手柄回 340</b>。</span></div>
+        <div class="lg"><span class="ly-mark">2</span><span><b>放大 = 一键到拖宽上限，不盖画布</b>：头部 ⤢ 钮在 340↔上限（宽屏即 600）间切换，还原回放大前的记忆宽。<b>为什么不全屏盖</b>：面板产物全在画布上（去画布/对照/勾镜），盖住画布 = 蒙眼批准，违背结果卡区「对着改」的整个存在理由；600px 已够拆解全表/计划卡完整可读。<b>为什么不另做分屏态</b>：放大只是拖宽的快捷键，全程只有 assistantWidth 一个变量——没有第二种布局模式要学。最小窗时上限=340，钮置灰 + tooltip「窗口太窄」。</span></div>
+      </div>
+    </div>
+
+    <!-- C3 拖走 -->
+    <div class="ly-card">
+      <div class="t">拖走 ③：浮动窗（推荐）<span class="sub">重停靠语义</span></div>
+      <div class="ly-win ly-cap">
+        <div class="ly-top"><span>顶栏 56</span><span>生成</span></div>
+        <div class="ly-row" style="min-height:150px">
+          <div class="ly-col main" style="align-items:flex-start;justify-content:flex-start;padding:8px">画布（回满宽）</div>
+          <div class="ly-float">
+            <div class="fh"><span style="font-weight:700">N</span>Nomi<span style="margin-left:auto"><i class="ti ti-arrow-bar-to-right"></i></span></div>
+            <div class="fb">浮动窗 380×620 起<br>min 320×420 · 记住位置尺寸</div>
+          </div>
+          <div class="ly-snap"><span>右缘 30px 吸附回停</span></div>
+        </div>
+      </div>
+      <div class="ly-legend">
+        <div class="lg"><span class="ly-mark">3</span><span><b>从头部空白区抓着拖</b>（grab 光标），拖离右缘 &gt;40px 出槽变浮动窗；拖回右缘 30px 热区亮出停靠预览、松手归位；头部「⇥ 回停靠」钮一键回家。浮窗<b>只此一个</b>、默认落右下、跨页跟随，位置尺寸记忆；收起角标对浮动态同样生效。</span></div>
+        <div class="lg" style="color:var(--ink40)"><span class="ly-mark" style="background:var(--ink30)">✕</span><span><b>为什么不做左右换边（考虑过，否决）</b>：三个面的左缘全被占着——生成是探索栏(60/300)、创作是文稿列(240)、预览是素材源(268)，Agent 靠左 = 一边叠两条栏，而且各页左栏宽度不同，切页面板会左右横跳，把「一个家」拆了。浮动才有真用例（超宽屏/双屏把对话挪开、画布全宽），机构也是现成的（捕捞坞同款 useResizableFloatingWindow）。浮窗盖到节点是用户自己拖的选择，不属于「系统把动作压在内容上」。</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="caption" style="margin-top:14px"><b>数字一页账</b>：停靠宽 <code>340</code> 默认 · 拖 <code>300–600</code> · 窄窗上限 <code>min(600, 视口−760)</code> · 拖宽热区 <code>8px</code>/竖粒 <code>3×32</code> · 双击回 <code>340</code> · 出槽阈值 <code>40px</code> · 回停热区 <code>30px</code> · 浮窗 <code>380×620</code> 起（min <code>320×420</code>）· 最小窗 <code>1100×720</code> 画布底线 <code>700</code> · 收起角标高 <code>30px</code> 蓝点 <code>8px</code>。宽度真相源唯一：<code>assistantWidth</code>（拆解表/结果卡区/浮窗回停共用）。</p>
 </section>
 
 </div>
