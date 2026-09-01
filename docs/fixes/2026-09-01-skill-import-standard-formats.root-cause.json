@@ -1,0 +1,57 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-skill-import-standard-formats",
+  "problem_type": "技能导入只认自家 JSON 信封（标准 SKILL.md / zip 进不来），且「对外暴露」与「导入变易」耦合成安全隐患",
+  "symptom": "用户从生态（hermes / workbuddy 等）拿到的技能通常是「文件夹 + SKILL.md + YAML frontmatter」或一个含 SKILL.md 的 zip，但 Nomi 的技能库导入只认自己导出的 `.nomiskill.json` 信封：文件选择框 accept 只放 `.json,.nomiskill,application/json`，标准 SKILL.md / zip 连选都选不了；即便选进来也只会 JSON.parse 失败报「无效包」。2026-08-27 真机走查还抓到两个连带问题：① 没有 skill.json 的技能（31 本内置里只有 7 本带 manifest，用户导入的标准技能全中招）卡片一律显示「暂无说明」，哪怕 frontmatter 里写着标准 description；② 一旦放开导入，「用户随手导入一本叫 director-xxx 的技能」会因为旧的「只判目录名前缀」规则被自动暴露给外部 Claude Code / Codex，用户全程不知情——把导入变容易的同时，暴露却也跟着变容易了。",
+  "direct_cause": "技能导入的格式集只有一条实现（`.nomiskill.json` 信封），且文件 accept 过滤把这条假设硬编码成「单一 JSON 包格式」，容不下标准 SKILL.md / zip。渲染层卡片描述只取 manifest.description、不回落到 skillStore 已算好的 frontmatter description。对外暴露判定（isCraftSkill）只看目录名前缀，没有把「是否随安装包分发（origin==='builtin'）」当条件，于是导入放开后目录名可被用户技能冒用。",
+  "class_root": "支持的导入格式没有单一语义 owner：格式判定散在 accept 过滤与解析实现两处，各写各的。正确形状：把「一个文件如何被识别、归一成 {dirName, files}」收敛成单一 owner parseSkillImportFile（src/workbench/skillLibrary/parseSkillImport.ts），它是格式集的唯一权威——按扩展名分派 zip / SKILL.md / 信封三路径，任何未覆盖类型在此 fail-closed 返回 unsupportedType；文件 accept 只是镜像该 owner 支持的扩展名，且即使有文件绕过 accept，最终仍由 owner 兜底拒绝。这是「标准对齐」功能补缺（让 Nomi 吃生态标准技能格式），内嵌一条真修复（accept 的单一 JSON 假设）与一条安全边界收紧（导入放开后的对外暴露必须与目录名解耦）。",
+  "affected_population": [
+    "所有想把生态标准技能（裸 SKILL.md 或含 SKILL.md 的 zip）导入 Nomi 的用户：此前根本选不进来，现在三种形态都能导入并如实报跳过的文件。",
+    "导入了没有 skill.json 只有标准 frontmatter 的技能的用户：此前卡片显示「暂无说明」，现在回落到 frontmatter description 正常显示。",
+    "所有本机用户的私有方法论安全：此前导入放开后，一本叫 director-*/writer-* 的用户技能会被自动暴露给外部 MCP 客户端；现在用户导入技能默认只在本机内部可见，与它叫什么名字无关。",
+    "未来新增导入格式：只需在 parseSkillImportFile 这一 owner 加一条分派并同步 accept 镜像，不必改多处。"
+  ],
+  "scope_paths": [
+    "electron/skills/skillIpc.ts",
+    "electron/skills/skillStore.ts",
+    "electron/skills/skillPackage.ts",
+    "src/workbench/skillLibrary/parseSkillImport.ts",
+    "src/workbench/skillLibrary/SkillLibraryPanel.tsx"
+  ],
+  "entry_points": [
+    "src/workbench/skillLibrary/parseSkillImport.ts — parseSkillImportFile（第108行）：支持格式集的单一 owner，按扩展名分派 zip（第112行）/ SKILL.md（第122行）/ 信封（第126行）三条解析路径，归一成 {dirName, files}，未覆盖类型 fail-closed 返回 unsupportedType（第134行）；MAX_BYTES 上限先拦超大文件。",
+    "src/workbench/skillLibrary/SkillLibraryPanel.tsx — 文件 input 的 accept（第281行）改为 `.md,.markdown,.zip,.json,.nomiskill`，镜像 owner 支持的扩展名；handleImportFile 调 parseSkillImportFile 归一后交主进程校验，如实报跳过文件数（导入唯一入口）。",
+    "electron/skills/skillStore.ts — isCraftSkill（第162行）新增 origin==='builtin' 前置条件（第163行，安全边界不是优化），origin 字段由落盘目录是否等于 userRoot 判定（第80行）；readSkillContent（第181行）新增同一把 isCraftSkill 过滤（第190行），使「读」与「列」用同一把尺子。",
+    "electron/skills/skillIpc.ts — listSkillsForRenderer 的 description（第46行）回落 r.description || r.manifest?.description || null（r.description 已是 skillStore 算好的 manifest∥frontmatter 单一真相源）。",
+    "electron/skills/skillPackage.ts — 主进程按 version 走既有版本戳/形状/路径安全校验（渲染层解析一律不可信，真正的落盘校验在此）。"
+  ],
+  "internal_only_reason": "没有新接入或重新契约任何外部供应商 API。技能导入是纯本地行为：渲染层把用户选中的本地文件（SKILL.md / zip / .nomiskill.json）归一成 {dirName, files}，再交主进程 skillPackage.ts 走既有版本/形状/路径安全校验落盘。所谓「标准格式」是社区约定的「文件夹 + SKILL.md + YAML frontmatter」文件布局，不涉及任何网络端点/鉴权/请求参数；因此无需 external_sources。",
+  "invariants": [
+    "支持的导入格式只有 parseSkillImportFile 一处语义 owner；文件 accept 镜像它，任何绕过 accept 的文件仍由 owner fail-closed 拒绝（unsupportedType），不存在第二处格式判定各说各话。",
+    "对外暴露是安全边界：isCraftSkill 只对 origin==='builtin'（随安装包分发）的技能可能返回 true；用户导入的技能一律不对外暴露，与目录名（含 director-/writer- 前缀、含白名单 model-integration）无关。",
+    "「读」与「列」用同一把尺子：readSkillContent 与 listSkillSummaries 都过 isCraftSkill，外部 MCP 客户端不能靠报目录名绕过「看不见」去「拿全文」；内嵌 agent 走 findSkillRecord 不受影响。",
+    "EXTERNAL_SKILL_DIRECTORIES 白名单（model-integration）保留，仅对 builtin 生效。",
+    "卡片描述回落到 skillStore 已算好的 manifest∥frontmatter 单一真相源，没有 skill.json 的标准技能不再显示「暂无说明」；跳过的文件如实报数，不静默丢。"
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "主体是一次标准对齐的功能补缺：把导入从「只认自家 JSON 信封」扩到「吃生态标准 SKILL.md / zip」，格式集收敛到 parseSkillImportFile 单一 owner。内嵌的安全边界（对外暴露与目录名解耦）虽然涉及两个消费点（列 listSkillSummaries / 读 readSkillContent），但两者都调用同一个 isCraftSkill 判定，收敛后不存在「另一个暴露点还能用不同规则判定」的可复用边界需要机器强制——因此按 schema 要求 one_off 不写 prevention（isCraftSkill 与 parseSkillImportFile 两个 owner 函数即边界，由 skillStore.test.ts / parseSkillImport.test.ts 钉住）。同类入口=技能库面板的导入按钮，是唯一导入入口。",
+    "same_class_scan": [
+      "确认 parseSkillImportFile（src/workbench/skillLibrary/parseSkillImport.ts:108）是支持格式集的唯一 owner：SkillLibraryPanel 的 accept（:281）只镜像它，无第二处格式分派；任何绕过 accept 的类型在 owner fail-closed（:134 unsupportedType）。",
+      "确认对外暴露的两个消费点（listSkillSummaries:171 与 readSkillContent:190）都调用同一 isCraftSkill（skillStore.ts:162），且都受 origin==='builtin' 前置条件约束——列与读同尺子，无第三处暴露判定。",
+      "确认内嵌 agent 走 findSkillRecord 直取、不经 isCraftSkill，故安全收紧不回归内部功能（skillStore.ts 注释与 skillStore.test.ts 覆盖）。",
+      "确认卡片描述只有 skillIpc.listSkillsForRenderer(:46) 一处回落，且回落源 r.description 是 skillStore 算好的 manifest∥frontmatter 单一真相源，无 UI 侧平行拼描述。"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/skillLibrary/parseSkillImport.test.ts",
+    "electron/skills/skillStore.test.ts",
+    "electron/skills/skillPackage.test.ts"
+  ],
+  "migration": "无存储数据被改写。既有已落盘技能读时照旧；origin 字段是读时按目录判定（等于 userRoot 即 user），不写盘不迁移。放开的 accept 与新解析路径只影响「新导入」这一动作；对外暴露收紧使既有「用户导入且叫 director-*」的技能从对外可见变为仅本机可见——这是有意的安全默认收紧，不是回归。卡片描述回落使原本显示「暂无说明」的标准技能改为显示 frontmatter description。",
+  "residual_risks": [
+    "accept 扩展名清单与 parseSkillImportFile 的分派靠约定保持一致（accept 是镜像、非程序化派生）；若未来加格式只改了 owner 忘了同步 accept，用户会选不到该类型文件（但绕过 accept 的文件仍被 owner 兜底拒绝，不会误入库）——加格式时需同 PR 改两处。",
+    "对外暴露改为 origin==='builtin' 默认收紧后，用户导入的技能要对外需等技能自身的 audience 字段（docs/plan/2026-08-27-skills-knowledge-distribution.md §2.3 Phase 1b）显式声明；在那之前宁可少暴露几本，不替用户决定把私有方法论发出去。",
+    "zip 解析在渲染层做（unzipSync），主进程仍做版本/形状/路径安全校验；渲染层判断一律不可信，真正的落盘安全边界在 skillPackage.ts，超深路径/二进制文件由解析层跳过并如实报数。"
+  ]
+}
