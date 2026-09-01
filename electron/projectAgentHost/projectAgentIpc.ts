@@ -65,7 +65,7 @@ type WireCommand = Readonly<{
   subscriptionId: string;
   clientCommandId: string;
   knownRevision: number;
-  type: ProjectAgentMutation["type"] | "tool.decision";
+  type: ProjectAgentMutation["type"] | "tool.decision" | "turn.steer" | "turn.interrupt";
   payload: unknown;
 }>;
 
@@ -122,6 +122,15 @@ function toolDecisionField(
     turnId: stringField(record.turnId, "turnId"),
     toolCallId: stringField(record.toolCallId, "toolCallId"),
     decision: record.decision as AgentChatToolDecision,
+  });
+}
+
+function turnControlField(value: unknown, type: "turn.steer" | "turn.interrupt"): Readonly<{ turnId: string; instruction?: string }> {
+  const record = asRecord(value);
+  exactKeys(record, type === "turn.steer" ? ["turnId", "instruction"] : ["turnId"]);
+  return Object.freeze({
+    turnId: stringField(record.turnId, "turnId"),
+    ...(type === "turn.steer" ? { instruction: stringField(record.instruction, "instruction") } : {}),
   });
 }
 
@@ -514,6 +523,19 @@ export function registerProjectAgentIpc(
   registerHandler(PROJECT_AGENT_COMMAND_CHANNEL, async (event, raw) => {
     const command = commandField(raw);
     assertSubscriptionOwner(event, command.subscriptionId);
+    if (command.type === "turn.steer" || command.type === "turn.interrupt") {
+      const control = turnControlField(command.payload, command.type);
+      if (command.type === "turn.steer") {
+        await input.runtime.executionCoordinator.steer(command.subscriptionId, control.turnId, control.instruction!);
+      } else {
+        await input.runtime.executionCoordinator.interrupt(command.subscriptionId, control.turnId);
+      }
+      return {
+        state: input.runtime.executionCoordinator.snapshot(command.subscriptionId),
+        patch: null,
+        replayed: false,
+      };
+    }
     if (command.type === "tool.decision") {
       const decision = toolDecisionField(command.payload);
       return input.runtime.executionCoordinator

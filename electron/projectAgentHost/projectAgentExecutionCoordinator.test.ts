@@ -3697,4 +3697,54 @@ describe("ProjectAgentExecutionCoordinator", () => {
       selectedNodeIds: ["canonical-node"],
     });
   });
+
+  it("applies a queued steer before the next model request", async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-project-agent-steer-"));
+    let observedPrompt = "";
+    const coordinator = createProjectAgentExecutionCoordinator(createProjectAgentRepositoryRouter({ rootDir: root }), () => "subscription-steer", {
+      runAgent: async (request) => {
+        observedPrompt = request.prompt;
+        return { id: "steer-result", status: "finished", text: "done", finishReason: "stop", artifacts: [], toolCalls: [], usage: { promptTokens: 0, completionTokens: 1, cachedPromptTokens: 0, totalTokens: 1 } };
+      },
+    });
+    const opened = await coordinator.open(binding);
+    const base = executionInput("steer", 0);
+    const input: ExecutionInput = { ...base, mutation: { ...base.mutation, payload: { ...base.mutation.payload, queueItem: { ...base.mutation.payload.queueItem, paused: true } } } };
+    await coordinator.enqueue(opened.subscriptionId, input);
+    await coordinator.steer(opened.subscriptionId, input.mutation.payload.turn.turnId, "改成更近的镜头");
+    const beforeResume = coordinator.snapshot(opened.subscriptionId);
+    await coordinator.dispatch(opened.subscriptionId, {
+      commandId: "resume-steer",
+      expectedRevision: beforeResume.hostRevision,
+      binding,
+      sender: { kind: "renderer", senderId: opened.subscriptionId },
+      type: "queue.resume",
+      payload: { queueItemId: input.mutation.payload.queueItem.queueItemId, occurredAt: "2026-08-28T00:00:01.000Z" },
+    });
+    await coordinator.waitForTurn(opened.subscriptionId, input.mutation.payload.turn.turnId);
+    expect(observedPrompt).toContain("改成更近的镜头");
+  });
+
+  it("interrupts a partially published turn and settles it as stopped", async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-project-agent-interrupt-"));
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => { started = resolve; });
+    const coordinator = createProjectAgentExecutionCoordinator(createProjectAgentRepositoryRouter({ rootDir: root }), () => "subscription-interrupt", {
+      runAgent: async (_request, hooks) => {
+        hooks.emit({ type: "content-delta", delta: "partial" });
+        started();
+        return new Promise<AgentChatResponse>((_resolve, reject) => {
+          hooks.abortSignal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), { once: true });
+        });
+      },
+    });
+    const opened = await coordinator.open(binding);
+    const input = executionInput("interrupt", 0);
+    await coordinator.enqueue(opened.subscriptionId, input);
+    await startedPromise;
+    await coordinator.interrupt(opened.subscriptionId, input.mutation.payload.turn.turnId);
+    const final = await coordinator.waitForTurn(opened.subscriptionId, input.mutation.payload.turn.turnId);
+    expect(final.turns.find((turn) => turn.turnId === input.mutation.payload.turn.turnId)?.status).toBe("stopped");
+    expect(final.items.find((item) => item.kind === "assistant" && item.turnId === input.mutation.payload.turn.turnId)).toMatchObject({ text: "partial" });
+  });
 });

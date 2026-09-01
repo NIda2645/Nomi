@@ -66,6 +66,7 @@ import {
 } from "./projectAgentExecutionHelpers";
 import { projectAgentWorkModeOf } from "../shared/projectAgentContracts";
 import { projectAgentExecutionRisk, projectAgentMayReuseSafeApproval } from "./projectAgentExecutionPolicy";
+import { desktopT } from "../i18n";
 export type ProjectAgentSubscription = Readonly<{
   subscriptionId: string;
   subscriptionEpoch: number;
@@ -137,6 +138,8 @@ type ActiveExecution = {
   /** Latched only after the user approves one reversible write in this turn. */
   safeApprovalGranted?: boolean;
   canvasRead?: PiCanvasReadTransportAdapter;
+  /** Latest user steering instruction, consumed before the next model request. */
+  steering?: string;
 };
 
 function recordProposalSettlement(
@@ -279,6 +282,7 @@ type ExecutionPartition = {
   completions: Map<string, Deferred<ProjectAgentHostState>>;
   initialization: Promise<void>;
   drain?: Promise<void>;
+  steering: Map<string, string>;
 };
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
@@ -306,6 +310,10 @@ export type ProjectAgentExecutionCoordinator = Readonly<{
     toolCallId: string,
     decision: AgentChatToolDecision,
   ) => Promise<void>;
+  /** Queue a direction change for the current turn; it never rewrites a committed effect. */
+  steer: (subscriptionId: string, turnId: string, instruction: string) => Promise<void>;
+  /** Interrupt a turn through the Host transition and abort the replaceable loop. */
+  interrupt: (subscriptionId: string, turnId: string) => Promise<void>;
   waitForTurn: (subscriptionId: string, turnId: string) => Promise<ProjectAgentHostState>;
   release: (subscriptionId: string) => void;
   setGenerationAdapterFactory: (factory: ((binding: ProjectBinding) => PiGenerationTransportAdapter) | undefined) => void;
@@ -507,7 +515,7 @@ export function createProjectAgentExecutionCoordinator(
             turnId: turn.turnId,
             kind: "failure" as const,
             code: "execution_recovery_required",
-            message: "The previous Agent process ended before this turn completed.",
+            message: desktopT("agent.processInterrupted"),
             status: "failed" as const,
             retryable: true,
             deviated: false,
@@ -537,6 +545,7 @@ export function createProjectAgentExecutionCoordinator(
         active: new Map(),
         completions: new Map(),
         initialization: Promise.resolve(),
+        steering: new Map(),
       };
       partitions.set(partitionKey, partition);
       partition.initialization = recoverOrphanedExecutions(partition, options.proposalReceipt);
@@ -1163,7 +1172,10 @@ export function createProjectAgentExecutionCoordinator(
         history: { kind: "ephemeral" as const },
         projectId: execution.request.projectId ?? partition.binding.projectId,
         canvasProjectId: execution.request.canvasProjectId ?? partition.binding.projectId,
-        prompt: executionPrompt(partition.host.getSnapshot(partition.binding), execution.turn.turnId, execution.request),
+        prompt: [
+          executionPrompt(partition.host.getSnapshot(partition.binding), execution.turn.turnId, execution.request),
+          ...(execution.steering ? [`\n用户对当前任务的最新修正：${execution.steering}`] : []),
+        ].join(''),
       };
       const response = await runAgent(request, {
         abortSignal: execution.controller.signal,
@@ -1780,7 +1792,9 @@ export function createProjectAgentExecutionCoordinator(
             pending: new Map(),
             publicationTail: Promise.resolve(),
             canvasRead: frozenRequest.canvasRead,
+            steering: partition.steering.get(turn.turnId),
           };
+          partition.steering.delete(turn.turnId);
           partition.active.set(turn.turnId, execution);
           if ((await executeTurn(partition, execution)) === "stop") return;
         }
@@ -1866,6 +1880,47 @@ export function createProjectAgentExecutionCoordinator(
     pending.resolve(decision);
   }
 
+  async function steer(subscriptionId: string, turnId: string, instruction: string): Promise<void> {
+    const subscription = requireSubscription(subscriptionId);
+    const partition = requirePartition(subscription);
+    const normalized = instruction.trim();
+    if (!normalized || normalized.length > 8_000) {
+      throw new ProjectAgentSubscriptionError("Project Agent steering instruction is invalid");
+    }
+    const turn = partition.host.getSnapshot(partition.binding).turns.find((candidate) => candidate.turnId === turnId);
+    if (!turn || !["queued", "running", "proposed"].includes(turn.status)) {
+      throw new ProjectAgentSubscriptionError("Project Agent turn is not steerable");
+    }
+    const active = partition.active.get(turnId);
+    if (active) {
+      // Steering is deliberately non-aborting: the current tool/effect settles
+      // first, then the instruction is included in the next model request.
+      active.steering = normalized;
+      return;
+    }
+    if (!partition.requests.has(turnId)) {
+      throw new ProjectAgentSubscriptionError("Project Agent turn is not steerable");
+    }
+    partition.steering.set(turnId, normalized);
+  }
+
+  async function interrupt(subscriptionId: string, turnId: string): Promise<void> {
+    const subscription = requireSubscription(subscriptionId);
+    const partition = requirePartition(subscription);
+    const current = partition.host.getSnapshot(partition.binding);
+    const turn = current.turns.find((candidate) => candidate.turnId === turnId);
+    if (!turn) throw new ProjectAgentSubscriptionError("Project Agent turn is unavailable");
+    if (!["queued", "proposed", "running"].includes(turn.status)) return;
+    await dispatchFresh(partition, (state) => ({
+      commandId: `turn-interrupt-${turn.executionToken}-${state.hostRevision}`,
+      expectedRevision: state.hostRevision,
+      binding: partition.binding,
+      sender: { kind: "internal", senderId: subscriptionId },
+      type: "turn.transition",
+      payload: { turnId, status: "stopped", retryable: true, updatedAt: now() },
+    }));
+  }
+
   return Object.freeze({
     open,
     snapshot,
@@ -1873,6 +1928,8 @@ export function createProjectAgentExecutionCoordinator(
     enqueue,
     subscribe,
     resolveToolDecision,
+    steer,
+    interrupt,
     waitForTurn: completionFor,
     release: (subscriptionId: string) => {
       const subscription = subscriptions.get(subscriptionId);
