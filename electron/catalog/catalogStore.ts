@@ -32,6 +32,14 @@ import {
   withoutLegacyCustomConfig,
   type CustomCallConfigPublicEntry,
 } from "./customConfigStore";
+import {
+  applyPlainNetworkConfig,
+  exportableVendorWithNetworkConfig,
+  hasLegacyNetworkConfigField,
+  metaWithoutExtraHeaders,
+  overlayDecryptedNetworkConfig,
+  resolveNetworkConfigForWrite,
+} from "./networkConfigStore";
 
 export type { CustomCallConfigPatchEntry, CustomCallConfigPublicEntry } from "./customConfigStore";
 
@@ -72,11 +80,20 @@ export function readCatalog(): CatalogState {
   const apiKeysByVendor = migrated.apiKeysByVendor || {};
   return {
     ...migrated,
-    vendors: migrated.vendors.map((vendor) => ({
-      ...vendor,
-      providerKind: normalizeProviderKind(vendor.providerKind),
-      hasApiKey: apiKeyDecryptStatus(apiKeysByVendor[vendor.key]) === "ok",
-    })),
+    vendors: migrated.vendors.map((vendor) => {
+      const base: Vendor = {
+        ...vendor,
+        providerKind: normalizeProviderKind(vendor.providerKind),
+        hasApiKey: apiKeyDecryptStatus(apiKeysByVendor[vendor.key]) === "ok",
+      };
+      // Overlay the DECRYPTED proxy/header credentials onto the INTERNAL vendor at
+      // this single read choke point so every outbound consumer keeps reading them
+      // synchronously. readCatalog already decrypts the apiKey here (for hasApiKey),
+      // so this opens no new keychain access on read. Legacy plaintext is left in
+      // place under the overlay so a later write can still migrate it; publicVendor
+      // strips both the overlay and any legacy plaintext from every renderer/export DTO.
+      return overlayDecryptedNetworkConfig(base, apiKeysByVendor[vendor.key]);
+    }),
     apiKeysByVendor,
   };
 }
@@ -186,6 +203,18 @@ function migrateCatalogForward(state: CatalogState): CatalogState {
     s = migrated.unresolved ? migrated.state : { ...migrated.state, version: 11 };
     if (!migrated.unresolved || migrated.state !== before) writeCatalog(s);
     if (migrated.unresolved) console.warn("[catalog] v11 media migration has unresolved ambiguous bindings; catalog remains v10 for retry");
+  }
+
+  if (s.version === 11) {
+    // v11 → v12: credential-bearing network config (proxyUrl / extraHeaders) moves to the
+    // encrypted credential record. Like v8→v9 customConfig, defer the secret encryption until
+    // an explicit vendor write can migrate every secret atomically — a plain forward read must
+    // not open the keychain to re-encrypt. Advance the version only when nothing legacy remains.
+    const hasLegacyNetworkConfig = s.vendors.some(hasLegacyNetworkConfigField);
+    if (!hasLegacyNetworkConfig) {
+      s = { ...s, version: 12 };
+      writeCatalog(s);
+    }
   }
 
   if ((s.version as number) > CURRENT_CATALOG_VERSION) {
@@ -372,6 +401,15 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
         }
       : { customConfig: existingMeta?.customConfig };
   }
+  // Credential-bearing network config (proxyUrl / extraHeaders) is encrypted into the
+  // vendor's ApiKeyRecord and never persisted as plaintext on the vendor. A field the
+  // upsert actually supplies is encrypted; a field it omits falls back to the existing
+  // vendor's legacy plaintext so a re-save migrates (never drops) pre-v12 secrets. The
+  // plaintext is stripped off the meta/network written to the vendor row below.
+  const networkIncoming = resolveNetworkConfigForWrite(raw, incomingMeta, existing, state.apiKeysByVendor[key]);
+  if (networkIncoming.proxyUrl !== undefined || networkIncoming.extraHeaders !== undefined) {
+    applyPlainNetworkConfig(state, key, networkIncoming);
+  }
   const vendor: Vendor = {
     key,
     name: String(raw.name || existing?.name || key).trim(),
@@ -383,11 +421,14 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
     authQueryParam:
       typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
     providerKind: normalizeProviderKind(raw.providerKind, existing?.providerKind ?? "openai-compatible"),
-    meta: incomingMeta,
+    meta: metaWithoutExtraHeaders(incomingMeta),
     createdAt: existing?.createdAt || t,
     updatedAt: t,
   };
   state.vendors = [vendor, ...state.vendors.filter((item) => item.key !== key)];
+  // Advance v11→v12 once no vendor still carries legacy plaintext network config
+  // (mirrors the v8→v9 customConfig version bump on the explicit write boundary).
+  if ((state.version as number) === 11 && !state.vendors.some(hasLegacyNetworkConfigField)) state.version = 12;
   return vendor;
 }
 
@@ -629,7 +670,13 @@ export function exportModelCatalogPackage(params?: unknown): unknown {
     version: "desktop-local-v1",
     exportedAt: nowIso(),
     vendors: state.vendors.map((vendor) => ({
-      vendor: publicVendor(vendor),
+      // The exported vendor is public (no credential-bearing values) UNLESS keys are
+      // included for portability, in which case the effective (decrypted) proxy/headers
+      // ride the vendor plaintext exactly like the API key does, and re-import re-encrypts
+      // them on the target machine. Without includeApiKeys, no credential leaves the box.
+      vendor: includeApiKeys
+        ? exportableVendorWithNetworkConfig(publicVendor(vendor), state.apiKeysByVendor[vendor.key])
+        : publicVendor(vendor),
       // Export carries plaintext keys for portability; re-import will re-encrypt on the target machine.
       ...(includeApiKeys && state.apiKeysByVendor[vendor.key]
         ? {

@@ -6,7 +6,8 @@
 // 验收点（评估文档 + 用户点名）：ProviderProxyField 是可见 UI，按 §1.5 是低频高级字段，
 // 归到 Advanced 折叠区（参考 OnboardingWizardAdvancedFields 先例），不抢 L1 常驻位。
 // 断言（不是空点）：① 折叠区默认收起时代理字段不常驻；② 展开后代理字段出现；
-// ③ 非法值出错误提示；④ 合法值提示消失；⑤ 相邻截图必须有可见变化。
+// ③ 非法值出错误提示；④ 合法值提示消失；⑤ 代理提示与自定义请求头标题如实说明「加密保存」
+//   （凭据加密落盘改动的上屏证明）；⑥ 相邻截图必须有可见变化。
 import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -120,6 +121,25 @@ try {
   await proxyInput.fill('http://127.0.0.1:7897')
   await expectHidden(win.getByText(invalidText, { exact: true }), '合法代理地址后错误提示应消失')
   await snap(win, 'valid-proxy-error-cleared')
+
+  // ④ 凭据加密文案上屏（本次改动）：代理提示与自定义请求头标题都要如实说明「加密保存」，
+  //    与 API Key 的「加密保存」承诺对齐——因为 proxyUrl 的 user:pass 与 extraHeaders 的 Authorization
+  //    现已升到同一 safeStorage 加密落盘层。断言真实文案在屏，不是空点。
+  console.log('— 代理提示应含「加密保存」文案 —')
+  await expectVisible(
+    win.getByText('只影响这个 API，不会改变其他厂商；支持 HTTP / HTTPS / SOCKS。只存在你的电脑上，加密保存', { exact: true }),
+    '代理字段提示应说明加密保存',
+  )
+  // 加一行自定义请求头 → 标题「自定义请求头（…加密保存）」应出现。
+  console.log('— 加一行自定义请求头，标题应含「加密保存」文案 —')
+  const addHeader = win.locator('button, [role="button"], a', { hasText: /添加请求头/ }).first()
+  await clickOrFail(addHeader, '添加请求头按钮')
+  await win.waitForTimeout(400)
+  await expectVisible(
+    win.getByText('自定义请求头（只存在你的电脑上，加密保存）', { exact: true }),
+    '自定义请求头标题应说明加密保存',
+  )
+  await snap(win, 'credential-config-encrypted-copy')
 
   console.log(`\nDone. ${n} shots → ${path.relative(repoRoot, shotsDir)}`)
   if (failures.length) {
