@@ -557,3 +557,26 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 - `PONYTAIL_REVIEW_CODEX_BIN` 可在本机明确指定 Codex 可执行文件；`PONYTAIL_REVIEW_REPORT_DIR` 仅用于调试报告目录。缺失配置不会放行。
 
 **验证**：`scripts/ponytail-review-hook.node-test.mjs` 覆盖 hook 生成顺序、staged/outgoing diff 范围、结果分类、Codex 失败/超时、真实 fake-runner 调用和 linked-worktree 隔离；改动本规则或 hook 时必须运行该测试与 contracts gate。
+
+## R26 分层边界不许反向/循环
+
+**问题**（2026-08-31 架构耦合审计，`docs/audit/2026-08-31-architecture-coupling-audit.md`）：用户痛点「改一点动一大堆、改一个事得找半天、东西很乱」的结构根因之一，是**边界画在了进程线两侧**——渲染层（`src/`）被迫直捅主进程（`electron/`）拿类型/常量（存量 136 处，其中 81 条 value import 把主进程码打进渲染 bundle），加上供应商目录管线里 6 个完全静态循环（真·加载顺序风险）。这类越界**当场能编译**，靠自觉记不住，只能靠机器每次拦（P2 通用性判定）。
+
+**规则**：
+
+| 违规方向 | 处置 |
+|---|---|
+| `src/` → `electron/`（渲染层直捅主进程 value/type import） | 存量 136 进 baseline 冻结、只减不增；走 `src/desktop/bridge.ts`（IPC）或中立契约层 `electron/shared/contracts/`（待建） |
+| `electron/` → `src/`（主进程反向 import 渲染层） | 硬零，无 baseline |
+| `src/` → `scripts/`（UI 捅门岗脚本） | 硬零，无 baseline |
+| 新增**完全静态**循环（每条环边都非 `dynamic-import`、非 `type-only`） | 存量 6 个静态硬环进 baseline 冻结、只减不增 |
+
+**软/硬环之分**（R17 教训：被忽略的门岗等于不存在）：全仓约 495 个 distinct 循环，绝大多数经由**故意的懒加载 `import()`** 边（`generationCanvas/nodes/registry.ts` 把节点类型 lazy-map 到 `BaseGenerationNode`），运行期不是硬环，属「认知耦合」不属「加载顺序炸弹」。把这些也拦会让门岗永红被无视，故规则用 `viaOnly.dependencyTypesNot: ['dynamic-import','type-only']` 只认静态硬环。
+
+**门岗**：`check:boundaries`（`scripts/check-boundaries.mjs`）。工具 = `dependency-cruiser@18.2.0`（唯一一个「出循环 + fan-in/out 且能把分层规则写成 `forbidden`、导出机读 JSON」的现役工具，一把兼审计+门岗）。规则住 `.dependency-cruiser.mjs`（`forbidden` 数组），存量身份冻结在 `scripts/boundaries-baseline.json`（**存身份不存裸数字**：裸数字放过「修一条旧的、同 commit 加一条」蒙混）。位置在 `check:heavy-path` 与 `lint:ci` 之间。加规则前**必须先验它会红**（造一个新越界 import 确认报红、且不在 baseline 里；再验修掉一条 baseline 违规后要求同步删行）。
+
+**中立契约层 `electron/shared/contracts/`**（第二期建）：让 renderer 和 main 都能合法 import 的中立层，把 55 条 type-only 越界的目标类型迁进去 → 消掉大半 `src→electron`。规则里已对该路径预留豁免（`pathNot: '^electron/shared/contracts/'`）。
+
+**清零路线**（分期，搬迁类须等在途大线合入，见审计分析六）：第一期纯加门岗+地图（零搬迁，本次）；第二期（#241 后）建中立契约层 + 清 29 个 re-export 壳（配 P1）；第三期（#223 后）解 `providerAdapter ↔ catalog ↔ integrationCertification` 硬环。
+
+**归属地图**：`docs/architecture/module-ownership-map.md`（一功能一个家 + 依赖方向铁律）。
