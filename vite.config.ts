@@ -240,9 +240,19 @@ export default defineConfig(async ({ command, mode }: ConfigEnv): Promise<UserCo
         '@tanstack/react-virtual',
         '@tiptap/core',
         '@tiptap/extension-placeholder',
+        '@tiptap/extension-highlight',
+        '@tiptap/extension-list',
+        '@tiptap/extension-table',
         '@tiptap/react',
         '@tiptap/starter-kit',
         '@tiptap/suggestion',
+        // 富文本内核直接从这些 @tiptap/pm 子路径引 ProseMirror（persistentSelection.ts 用 pm/view+pm/state，
+        // 内核 model 归一用 pm/model）。必须与上面的 @tiptap/starter-kit 一起进同一次 esbuild 预打包，
+        // 让 prosemirror-* 在优化图里被去重成单实例；漏掉任一条都会让该子路径走未优化的独立 ESM，
+        // 与预打包里的实例分裂，触发创作区 Decoration 崩溃（见 resolve.dedupe 注释）。
+        '@tiptap/pm/view',
+        '@tiptap/pm/state',
+        '@tiptap/pm/model',
         '@xmldom/xmldom',
         'clsx',
         'framer-motion',

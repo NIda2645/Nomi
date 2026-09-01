@@ -26,12 +26,15 @@ const settingsDirectory = path.join(process.cwd(), 'src/workbench/settings')
 //             对应正向断言仍锁定实际渲染条件，避免只挪哈希掩盖配置入口变化。
 // 2026-09-01：AboutSection 增加反馈与分享入口，更新其基线；对应正向断言见 AboutSection 自身的
 //             dispatch 逻辑，避免把用户已拍板的入口误报为意外漂移。
+// 2026-09-01（二）：反馈与分享改为**内嵌在设置弹窗内**（原 dispatch+关设置 会冒成独立浮层，
+//             用户反馈「点开变成独立框」）。AboutSection 现在切内嵌视图并渲染 FeedbackShareContent，
+//             故再次更新其基线；对应正向断言见下方 embeds feedback and sharing inside the About section。
 const MAIN_NON_MODEL_SECTION_SHA256 = {
   'ProjectLocationSection.tsx': 'ad37c2f07c403b60cf42385f4d93fce8e2ff494c934467c670a7ae4b8c8d5523',
   'AiModelsSection.tsx': '50e253177108dfda44128f7b002d22d5d769fbc4ac12eeeb3e376fc0757e64b7',
   'AutomationPermissionsSection.tsx': 'a0ea704afb1a31c33ffa3e00821658d8696cc15d5069e6361032b194e638b352',
   'CanvasGestureSection.tsx': '3cf19ee35f686e76b54497ff668bb91245b00a6593bc5d5d6162a0d30c476c95',
-  'AboutSection.tsx': 'cb63a71cb582ebe9390b6b6487a68ffbe7d03d00f0c4fba0d091d29f05b86d0b',
+  'AboutSection.tsx': 'b38e0e2265f29ca56da53595e4bb5886bd14799ea3a7f7f36797b33d46eda57f',
 } as const
 
 describe('settings dialog structure', () => {
@@ -75,10 +78,16 @@ describe('settings dialog structure', () => {
     expect(settingsSource).toContain('setModelPageRequest((current) => ({ vendorKey, token: (current?.token ?? 0) + 1 }))')
   })
 
-  it('keeps feedback and sharing in the About section entry point', () => {
+  // 2026-09-01：反馈与分享从「dispatch 全局事件 + 关设置 → 冒出独立浮层」改为**内嵌在设置弹窗内**
+  // （获批样张 docs/design/mockups/2026-09-01-feedback-share-center*.png 画的就是它长在设置右栏里）。
+  // 旧形态为什么是 bug：用户反馈「点开变成独立框，不在设置页面里」——那正是 dispatch+onClose 的产物。
+  // 现在 About 区块在 about↔feedback 之间切视图、直接渲染 FeedbackShareContent，不再关设置、不再 dispatch。
+  it('embeds feedback and sharing inside the About section instead of a detached dialog', () => {
     expect(aboutSource).toContain("t('about.feedbackShare')")
-    expect(aboutSource).toContain("window.dispatchEvent(new CustomEvent('nomi-open-feedback-share'))")
-    expect(aboutSource).toContain('onClose()')
+    // 入口切内嵌视图，不再 dispatch 全局事件、不再关掉设置弹窗。
+    expect(aboutSource).toContain("setView('feedback')")
+    expect(aboutSource).toContain('<FeedbackShareContent variant="embedded"')
+    expect(aboutSource).not.toContain("window.dispatchEvent(new CustomEvent('nomi-open-feedback-share'))")
   })
 
   it('keeps the origin/main frame and sidebar for every settings tab', () => {
