@@ -1,5 +1,7 @@
 # 模型接入全集用户旅途测试
 
+> 状态：🚧 进行中（旅途矩阵随生产能力逐条钉旅程，经 PR #277 分支 `rework/pr248-journeys-20260901` 增量落地）｜日期：2026-08-15
+
 日期：2026-08-15
 基线：`origin/main@452df94d`
 分支：`codex/model-access-exhaustive-journeys-20260815`

@@ -332,6 +332,28 @@ export const MODEL_ACCESS_JOURNEYS = Object.freeze([
       modeShapes: [],
     }),
   },
+  {
+    id: 'J16',
+    title: '本地文本模型发现与一键连',
+    statement: '我本机跑着 Ollama / LM Studio / LocalAI，要被探到、一键连上、看到模型列表和「带不带得动 Agent」的诚实预检，没开服务时也不打扰。',
+    mode: 'stable',
+    level: 'roundtrip',
+    script: 'tests/ux/local-model-connect.walk.mjs',
+    profiles: ['local-text-connect-agent-precheck'],
+    covers: covers({
+      entries: ['local-text-connect'],
+      billingKinds: ['text'],
+      taskKinds: ['chat'],
+      auth: ['none'],
+      providers: ['openai-compatible'],
+      lifecycles: ['sync-json'],
+      ingestion: ['none'],
+      slots: [],
+      outputs: ['text'],
+      recoveries: [],
+      modeShapes: [],
+    }),
+  },
 ])
 
 export const STABLE_ROUNDTRIP_JOURNEYS = Object.freeze(
