@@ -307,7 +307,13 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
     : method.startsWith('production.')
       ? method
       : null
-  if (legacyRoute) guardLegacyGenerationRoute(generationPolicy, legacyRoute, params)
+  // production.decide-gate 是**免费可逆质量门表态**（方向/样片/冻结/锚定妆照检查点），不是单次付费生成。
+  // 它经 assertOnlyFields 只收 {projectId,runId,gateId,decision,choiceKey}——结构上就带不了任何真实生成绑定
+  //（leaseHandle/receiptId/contractHash…全被拒），其授权边界是本 case 自己的 scope 校验（只放行可逆门、
+  // 付费门仍 403 回 Nomi）。generationBindingGuard 把通用字段 `gateId` 也列作 marker（防生成路夹带），于是
+  // 这条只带 gateId 的门表态被 legacy 防火墙误伤（legacy_path_forbidden）。故此路显式豁免：marker 集不动
+  //（生成路仍拦），仅把「决门」这条正当可逆路径放行到它自己的 case 守卫。
+  if (legacyRoute && legacyRoute !== 'production.decide-gate') guardLegacyGenerationRoute(generationPolicy, legacyRoute, params)
   if (isSemanticGenerationRoute(method)) return dispatchSemanticGeneration(method, params, ctx)
 
   switch (method) {
