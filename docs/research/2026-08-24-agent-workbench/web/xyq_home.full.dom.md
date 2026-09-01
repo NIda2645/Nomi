@@ -1,0 +1,344 @@
+- document
+- 'button "03 : 13 : 03 : 01 会员限时6折，Seedeance 2.0 Fast VIP 720P单秒触底￥0.24闭眼入 关闭"':
+  - generic: "03"
+  - generic: ":"
+  - generic: "13"
+  - generic: ":"
+  - generic: "03"
+  - generic: ":"
+  - generic: "01"
+  - generic "会员限时6折，Seedeance 2.0 Fast VIP 720P单秒触底￥0.24闭眼入"
+  - button "关闭":
+- complementary "主导航":
+  - img "小云雀"
+  - button "收起导航栏":
+  - navigation "主导航":
+    - button "创作":
+      - generic: 创作
+    - button "短剧 Agent":
+      - generic: 短剧 Agent
+    - button "营销 Agent":
+      - generic: 营销 Agent
+    - button "自由画布":
+      - generic: 自由画布
+    - button "资产":
+      - generic: 资产
+    - button "学习中心":
+      - generic: 学习中心
+  - generic: 创作历史
+  - button "查看全部创作历史"
+  - generic: 本月
+  - generic: 爆点解析与借鉴
+  - button
+  - generic: 更早
+  - generic: 热门创作选题推荐
+  - button
+  - generic: 未命名
+  - button
+  - generic: 未命名
+  - button
+  - generic: 玄幻修仙小说
+  - button
+  - button "打开个人导航":
+    - img "用户头像"
+    - text: user9384633656
+    - generic: 9384633656 号用户
+- banner:
+  - status:
+    - button "Seedance 2.5 首发上线1080P，抢先体验！":
+      - generic "Seedance 2.5 首发上线1080P，抢先体验！"
+    - button "查看使用手册"
+    - button "关闭顶部公告"
+  - button "40":
+    - generic: "40"
+  - button "会员6折":
+    - generic: 会员6折
+  - button "打开在线客服":
+- main:
+  - heading "和 Agent 类型 Agent一起聊聊创作想法" [level=1]:
+    - generic: 和
+    - tablist "Agent 类型":
+      - tab "创作" [selected]
+      - tab "短剧"
+      - tab "营销"
+    - generic: Agent一起聊聊创作想法
+  - paragraph: 开始创作前，先和助手把需求聊清楚，生成的结果会更符合预期。
+  - button "上传参考素材":
+  - button "@引用角色与素材":
+  - button "技能":
+    - text: 技能
+  - button "Choose File"
+  - button "模型选择和偏好设置：智能匹配、创作偏好":
+    - generic: 智能匹配
+    - generic: 创作偏好
+  - generic: 画布
+  - switch "画布" [checked]
+  - button "开始生成" [disabled]:
+  - region "推荐技能":
+    - generic: 推荐技能
+    - button "全部"
+    - button "沉浸式短片":
+      - generic: 沉浸式短片
+    - button "爆款复刻 SD 2.5":
+      - text: 爆款复刻
+      - generic: SD 2.5
+      - generic: SD 2.5
+      - generic: SD 2.5
+    - button "营销视频":
+      - generic: 营销视频
+    - button "视频本地化":
+      - generic: 视频本地化
+    - button "白模渲染 SD 2.5":
+      - text: 白模渲染
+      - generic: SD 2.5
+      - generic: SD 2.5
+      - generic: SD 2.5
+    - button "万物皆可X来":
+      - generic: 万物皆可X来
+  - region "亮点功能":
+    - heading "亮点功能" [level=2]
+    - region:
+      - button "Seedance 2.5 使用手册":
+        - generic: Seedance 2.5 使用手册
+      - button "SD2.5，片段重拍":
+        - generic: SD2.5
+        - generic: 片段重拍
+      - button "分钟级视频生成":
+        - generic: 分钟级视频生成
+      - button "超分能力":
+        - generic: 超分能力
+  - tablist "精选作品":
+    - tab "精选作品" [selected]
+    - tab "创作课程"
+  - button "小云雀出海机构合伙人计划 | 重磅加码，现金积分奖励等你拿！":
+    - generic: 出海机构扶持
+    - button "查看第 1 个运营活动"
+    - button "查看第 2 个运营活动"
+    - generic: 小云雀出海机构合伙人计划 | 重磅加码，现金积分奖励等你拿！
+  - button "舞台找光，来做个萌态图片！"
+  - button "皮划艇钓巨物，来做个视频吧"
+  - button "父女老照片，来做个图片～"
+  - generic: 猜你喜欢
+  - button "舞台找光，来做个萌态图片！":
+    - strong: 舞台找光，来做个萌态图片！
+  - button "查看脑洞":
+  - paragraph:
+    - generic: 前方高能！今日爆款全在这
+  - article:
+    - button "百匠：纸契灵":
+      - img "百匠：纸契灵"
+      - generic: 阿生的ai
+    - generic: 百匠：纸契灵
+  - article:
+    - button "丧尸清道夫":
+      - img "丧尸清道夫"
+      - generic: Mx-Shell
+    - button "查看创作模版":
+      - generic: 查看创作模版
+    - generic: 丧尸清道夫
+  - article:
+    - button "归墟08":
+      - img "归墟08"
+      - generic: 泫九
+    - generic: 归墟08
+  - article:
+    - button "她骗了我两次":
+      - img "她骗了我两次"
+      - generic: Kim根鸠
+    - generic: 她骗了我两次
+  - article:
+    - button "拓妖录":
+      - img "拓妖录"
+      - generic: 傩时NUOVRA
+    - generic: 拓妖录
+  - article:
+    - button "相骨预告片":
+      - img "相骨预告片"
+      - generic: 提示炼金师
+    - generic: 相骨预告片
+  - article:
+    - button "胜利协议":
+      - img "胜利协议"
+      - generic: 何止维
+    - generic: 胜利协议
+  - article:
+    - button "美人心计之西施":
+      - img "美人心计之西施"
+      - generic: 欢娱影视x小笼包
+    - generic: 美人心计之西施
+  - article:
+    - button "超级英雄是社畜":
+      - img "超级英雄是社畜"
+      - generic: 许立展
+    - generic: 超级英雄是社畜
+  - article:
+    - button "光会照亮后来人":
+      - img "光会照亮后来人"
+      - generic: loop
+    - generic: 光会照亮后来人
+  - article:
+    - button "海空卫士 虽迟但到":
+      - img "海空卫士 虽迟但到"
+      - generic: AIGC 十三
+    - generic: 海空卫士 虽迟但到
+  - article:
+    - button "异常收容局04":
+      - img "异常收容局04"
+      - generic: 道奇总督
+    - generic: 异常收容局04
+  - article:
+    - button "我有一把木头枪":
+      - img "我有一把木头枪"
+      - generic: 民办电影制片厂
+    - generic: 我有一把木头枪
+  - article:
+    - button "飞驰人生33":
+      - img "飞驰人生33"
+      - generic: 泫九
+    - generic: 飞驰人生33
+  - article:
+    - button "一世冲动 七世不详":
+      - img "一世冲动 七世不详"
+      - generic: 雾恩
+    - generic: 一世冲动 七世不详
+  - article:
+    - button "血潮":
+      - img "血潮"
+      - generic: Eyoung
+    - generic: 血潮
+  - article:
+    - button "一般调查":
+      - img "一般调查"
+      - generic: 宁同学
+    - generic: 一般调查
+  - article:
+    - button "纸袋猫的故事07":
+      - img "纸袋猫的故事07"
+      - generic: 纸袋猫
+    - generic: 纸袋猫的故事07
+  - article:
+    - button "国产公益广告":
+      - img "国产公益广告"
+      - generic: AI山竹
+    - generic: 国产公益广告
+  - article:
+    - button "与倭一战":
+      - img "与倭一战"
+      - generic: 导演阿雷
+    - generic: 与倭一战
+  - article:
+    - button "人头气球":
+      - img "人头气球"
+      - generic: 肉包
+    - generic: 人头气球
+  - article:
+    - button "向年而归":
+      - img "向年而归"
+      - generic: 程跃在进化
+    - generic: 向年而归
+  - article:
+    - button "镜花缘：两面国":
+      - img "镜花缘：两面国"
+      - generic: 奇AI哥的世界
+    - generic: 镜花缘：两面国
+  - article:
+    - button "第八个":
+      - img "第八个"
+      - generic: 宁同学
+    - generic: 第八个
+  - article:
+    - button "错焦":
+      - img "错焦"
+      - generic: Kesynuj
+    - generic: 错焦
+  - article:
+    - button "莫名其妙的广告":
+      - img "莫名其妙的广告"
+      - generic: 希希叔叔
+    - generic: 莫名其妙的广告
+  - article:
+    - button "一城三镜":
+      - img "一城三镜"
+      - generic: PandaAI
+    - generic: 一城三镜
+  - article:
+    - button "天枢防线01":
+      - img "天枢防线01"
+      - generic: AIGC 十三
+    - generic: 天枢防线01
+  - article:
+    - button "傩戏":
+      - img "傩戏"
+      - generic: ALEX乐顿
+    - generic: 傩戏
+  - article:
+    - button "遇神02":
+      - img "遇神02"
+      - generic: 李永勤AIGC
+    - generic: 遇神02
+  - article:
+    - button "桃花渡":
+      - img "桃花渡"
+      - generic: 似翁
+    - generic: 桃花渡
+  - article:
+    - button "窗台里的张桂美":
+      - img "窗台里的张桂美"
+      - generic: 民办青年电影制片厂
+    - generic: 窗台里的张桂美
+  - article:
+    - button "小师妹们 欣喜贺新春":
+      - img "小师妹们 欣喜贺新春"
+      - generic: 虚妄
+    - generic: 小师妹们 欣喜贺新春
+  - article:
+    - button "被爱会长出新的血肉":
+      - img "被爱会长出新的血肉"
+      - generic: 提示炼金师
+    - generic: 被爱会长出新的血肉
+  - article:
+    - button "当郑和遇到黑胡子":
+      - img "当郑和遇到黑胡子"
+      - generic: 瓜皮有点皮
+    - generic: 当郑和遇到黑胡子
+  - article:
+    - button "人间席":
+      - img "人间席"
+      - generic: LOCO沐辰
+    - generic: 人间席
+  - article:
+    - button "崂山道士":
+      - img "崂山道士"
+      - generic: 奇AI哥的视界
+    - generic: 崂山道士
+  - article:
+    - button "三角龙和奇虾":
+      - img "三角龙和奇虾"
+      - generic: 黄浦江三文鱼
+    - generic: 三角龙和奇虾
+  - article:
+    - button "戏台2：天空之眼":
+      - img "戏台2：天空之眼"
+      - generic: 翰游纪AI
+    - generic: 戏台2：天空之眼
+- region "Notifications alt+T"
+- region "团队操作提示 alt+E"
+- region "Notifications alt+T"
+- region "Notifications alt+T"
+- region "Notifications alt+T"
+- region "Notifications alt+T"
+- region "Notifications alt+T"
+- region "Notifications alt+T"
+- region "Notifications alt+T"
+- region "Notifications alt+T"
+- region "Notifications alt+T"
+- dialog:
+  - button "会员限时6折，无需比价闭眼入" [active]:
+  - heading "会员限时6折，无需比价闭眼入" [level=2]
+  - paragraph:
+    - generic: 6折直降！让每一秒省在刀刃上
+    - generic: 最高省下￥1.7万元！
+    - text: Seedance 2.0 Fast VIP 720P单秒触底低至￥0.24
+    - generic: Seedance 2.0 Fast VIP 720P 单秒触底低至￥0.24
+    - generic: 极速推理按秒计费，大批量创作不焦虑。
+  - button "立即抢购"

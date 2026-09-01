@@ -1,0 +1,6 @@
+{
+  "reference_count": 1,
+  "exact_task_reference_match": true,
+  "source": "owned conversation transcript_full.jsonl",
+  "stream_omits_reference_field": true
+}

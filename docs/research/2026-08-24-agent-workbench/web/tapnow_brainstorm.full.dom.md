@@ -1,0 +1,293 @@
+- document
+- navigation:
+  - link "TapNow":
+    - /url: /zh
+    - img "TapNow"
+  - combobox "搜索文档..."
+  - generic: K
+  - button "切换语言":
+  - link "开始使用":
+    - /url: https://app.tapnow.ai/
+    - text: 开始使用
+- main:
+  - complementary:
+    - navigation "Documentation":
+      - button "先认识 TapNow" [expanded]:
+        - heading "先认识 TapNow" [level=4]
+      - link "Creative OS 文档":
+        - /url: /zh/docs
+      - link "更新日志":
+        - /url: /zh/docs/changelog
+      - link "认识 TapNow Creative OS":
+        - /url: /zh/docs/start/what-is-tapnow-creative-os
+      - button "与 Agent 共创" [expanded]:
+        - heading "与 Agent 共创" [level=4]
+      - link "认识 TapNow Agent":
+        - /url: /zh/docs/agent/tapnow-agent
+      - link "和 Agent 对话":
+        - /url: /zh/docs/agent/chat-with-agent
+      - link "选择生成模式":
+        - /url: /zh/docs/agent/choose-a-generation-mode
+      - link "管理对话":
+        - /url: /zh/docs/agent/manage-conversations
+      - link "Apps":
+        - /url: /zh/docs/agent/apps
+      - link "用 Brainstorm 找方向":
+        - /url: /zh/docs/agent/find-ideas-with-brainstorm
+      - link "网络搜索":
+        - /url: /zh/docs/agent/web-search
+      - link "管理 Agent 产物":
+        - /url: /zh/docs/agent/manage-agent-outputs
+      - button "在画布中制作" [expanded]:
+        - heading "在画布中制作" [level=4]
+      - link "认识画布":
+        - /url: /zh/docs/canvas/explore-the-canvas
+      - link "认识节点与连接":
+        - /url: /zh/docs/canvas/understand-nodes-and-connections
+      - link "上传文件并放入画布":
+        - /url: /zh/docs/canvas/upload-files-to-the-canvas
+      - link "生成和编辑图片":
+        - /url: /zh/docs/canvas/generate-and-edit-images
+      - link "生成和编辑视频":
+        - /url: /zh/docs/canvas/generate-and-edit-video
+      - link "生成和编辑音频":
+        - /url: /zh/docs/canvas/generate-and-edit-audio
+      - link "创作文本与 3D":
+        - /url: /zh/docs/canvas/create-text-and-3d
+      - link "使用播放列表":
+        - /url: /zh/docs/canvas/use-playlists
+      - link "批量下载":
+        - /url: /zh/docs/canvas/download-in-batches
+      - link "整理画布内容":
+        - /url: /zh/docs/canvas/organize-your-canvas
+      - button "画布、资产与协作" [expanded]:
+        - heading "画布、资产与协作" [level=4]
+      - link "管理画布":
+        - /url: /zh/docs/projects/manage-canvases
+      - link "使用素材库与模板":
+        - /url: /zh/docs/canvas/use-library-and-templates
+      - link "创建和使用主体":
+        - /url: /zh/docs/canvas/create-and-use-elements
+      - link "分享、查看与克隆":
+        - /url: /zh/docs/projects/share-view-and-clone
+      - link "和团队一起创作":
+        - /url: /zh/docs/projects/create-with-your-team
+      - link "评论并反馈问题":
+        - /url: /zh/docs/projects/comment-and-send-feedback
+      - button "发布与发现" [expanded]:
+        - heading "发布与发现" [level=4]
+      - link "发布到 TapTV":
+        - /url: /zh/docs/publish/publish-to-taptv
+      - link "参加 Arena 比赛":
+        - /url: /zh/docs/publish/join-an-arena-event
+      - button "账户与费用" [expanded]:
+        - heading "账户与费用" [level=4]
+      - link "管理 Tapies 与套餐":
+        - /url: /zh/docs/account/manage-tapies-and-plans
+      - link "续订与优惠":
+        - /url: /zh/docs/help-center/renewal-and-discounts
+      - link "本地货币预估价格":
+        - /url: /zh/docs/local-currency-price-estimates
+      - link "商业发票":
+        - /url: /zh/docs/help-center/commercial-invoices
+      - link "增值税发票":
+        - /url: /zh/docs/help-center/mainland-china-vat-invoices
+      - link "查看站内信":
+        - /url: /zh/docs/account/view-notifications
+      - link "设置语言":
+        - /url: /zh/docs/account/set-your-language
+      - link "管理团队与权限":
+        - /url: /zh/docs/account/manage-teams-and-permissions
+      - link "无限狂欢节":
+        - /url: /zh/docs/account/the-infinite-fest
+      - button "帮助" [expanded]:
+        - heading "帮助" [level=4]
+      - link "使用快捷键":
+        - /url: /zh/docs/account/use-shortcuts
+      - link "排查故障":
+        - /url: /zh/docs/account/troubleshoot-issues
+  - article:
+    - heading "用 Brainstorm 找方向" [level=1]
+    - paragraph: TapNow Creative OS 的生成前创意开发入口，帮助你通过对话发展剧本、角色、世界观和广告方案。
+    - paragraph: 头脑风暴是 TapNow Creative OS 的创意开发入口，适合生成前的阶段。你可以从一句模糊想法、一份客户 Brief 或一张参考图开始，通过和 Agent 对话，把剧本、角色、世界观、广告方案和视觉方向一步步发展清楚。
+    - paragraph: 这个过程更像共同推进一场创作游戏：Agent 提问或给出候选，你直接选择、否定或组合，Agent 再沿着你的选择继续推演。聊天用来激发创意，Agent 负责整理创意，画布则保存已经确认的人物、设定、参考和故事节点。
+    - paragraph: 每次对话都会补充后续制作需要的上下文。方向确认后，Agent 可以继续整理剧本、HTML 页面、Pitch Deck 等成果，也可以把画布上的内容交给后续图片和视频制作。
+    - iframe:
+      - generic "哔哩哔哩播放器":
+        - generic: 全新登场，TapNow Creative OS 头脑风暴
+        - generic: TapNow
+        - generic: 关注
+        - generic: 重播
+        - generic: 1.7万
+        - generic: "143"
+        - generic: 06:36
+        - generic: 6分钟玩转TapNow！一个画布搞定创作全流程
+        - generic: 00:44
+        - generic: TapNow X 影视飓风「AI实战课」正式上线
+        - generic: 09:01
+        - generic: 电影级工作流！全网最全的TapNow使用教程！
+        - generic: 30:57
+        - generic: 保姆级Tapnow上集｜小白也能轻松上手的初体验
+        - text: 下载哔哩哔哩客户端
+        - text: 进入哔哩哔哩观看
+        - text: 进入哔哩哔哩，观看更高清
+    - heading "头脑风暴是怎么工作的？" [level=2]
+    - paragraph: 一轮完整的头脑风暴通常包含四步：
+    - list:
+      - strong: 给出起点
+      - text: ：告诉 Agent 现有想法、Brief、参考素材或需要解决的问题；
+      - strong: 一起推演
+      - text: ：Agent 持续提问并给出候选，你直接选择，或按需要补充限制；
+      - strong: 同步到画布
+      - text: ：角色、世界观、剧情节点、视觉参考和关键决定被整理成画布节点；
+      - strong: 整理成果
+      - text: ：把确认的内容转成剧本、分镜、HTML 页面、Pitch Deck 或后续生成任务。
+    - paragraph: 你随时可以回到画布查看已经确认的内容，不需要在很长的聊天记录里重新寻找。后续生成偏离方向时，也能直接引用对应节点继续修改。
+    - heading "头脑风暴可以用来做什么？" [level=2]
+    - list:
+      - strong: 剧本开发
+      - text: ：发展故事起点、人物关系、剧情结构和关键场景；
+      - strong: 角色与世界观
+      - text: ：定义人物背景、行为动机、世界规则和视觉基调；
+      - strong: 广告方案
+      - text: ：从客户 Brief 出发，比较创意路线、受众角度和表现形式；
+      - strong: 网络搜集与灵感参考
+      - text: ：查找公开资料、案例、视觉风格和创作线索；
+      - strong: 影视拆解与镜头研究
+      - text: ：分析作品结构、镜头语言、节奏和场面调度；
+      - strong: 场景美术布局
+      - text: ：规划空间关系、主体位置、光线和环境元素；
+      - strong: 网页 Demo
+      - text: ：把创意整理成可以打开预览的 HTML 页面或互动原型。
+    - paragraph: 如果脚本、镜头和参考已经全部确定，直接让 Agent 进入制作会更快。
+    - heading "头脑风暴会留下什么？" [level=2]
+    - paragraph: 头脑风暴不会只留下一段聊天记录。它会把过程中确认的信息整理到画布，并根据任务生成：
+    - list:
+      - listitem: 创意简报、故事大纲和完整剧本；
+      - listitem: 人物设定、关系图和世界观说明；
+      - listitem: 镜头研究、场景布局和视觉参考；
+      - listitem: 分镜、镜头表和后续制作任务；
+      - listitem: 可预览的 HTML 页面或网页 Demo；
+      - listitem: 面向团队或客户的 Pitch Deck。
+    - paragraph: 不同账户能生成的文件类型可能不同，以当前页面显示的按钮为准。
+    - heading "1. 先说清目标" [level=2]
+    - paragraph: 先告诉 Agent：
+    - list:
+      - listitem: 最终要交付什么；
+      - listitem: 面向谁；
+      - listitem: 必须保留的内容；
+      - listitem: 不想出现的方向；
+      - listitem: 希望比较几个候选。
+    - paragraph: 复制这个指令给 TapNow Agent 试试
+    - button "复制 Prompt":
+      - generic: 复制
+    - generic "Brainstorm 模式":
+      - generic: Brainstorm
+    - paragraph: 我要为一款户外音箱做 15 秒广告，我会发产品参考图给你，我需要给喜欢露营的年轻人看。必须让人看出它防水、方便携带。先给我 3 个明显不同的方向，每个方向写清一句话点子、主要场景、观众会感受到什么、产品怎么出现，以及 4 个镜头。先不要生成视频。
+    - heading "2. 和Agent一问一答地推进" [level=2]
+    - paragraph: 头脑风暴适合一问一答地往前推进：
+    - list:
+      - listitem: Agent 提出一个关键问题或少量候选；
+      - listitem: 你直接选择、否定或组合；
+      - listitem: Agent 根据你的选择继续问细节；
+      - listitem: 把选定的内容写入画布；
+      - listitem: 当方向足够清楚时，再转入制作。
+    - paragraph: 如果问题太多或偏离目标，可以直接使用：
+    - generic "Brainstorm 模式":
+      - generic: Brainstorm
+    - paragraph: 先暂停追问。请汇总目前已经确认的内容、仍未确认的问题，以及你建议的下一步。不要继续扩展新方向。
+    - button "复制 Prompt":
+      - generic: 复制
+    - paragraph: 好的追问应该帮助你做决定，例如“先突出防水还是便携”，而不是让你补写一份完整策划案。如果 Agent 连续追问已经写在 Brief 里的信息，重新引用 Brief，并让它先列出已知条件。
+    - heading "3. 让候选方向真正不同" [level=2]
+    - paragraph: 如果三个方向只是换了颜色，可以让 Agent 从下面几处重新拉开差异：
+    - list:
+      - listitem: 是朋友聚会、雨天露营，还是一个人放松；
+      - listitem: 是讲一个小故事，还是直接展示卖点；
+      - listitem: 是实拍质感、动画，还是口播讲解；
+      - listitem: 节奏是轻快、紧张，还是安静；
+      - listitem: 产品是自然出现在故事里，还是作为主角被展示。
+    - paragraph: 不要一次要求十几个方向。先得到少量、可比较的候选，再深入。
+    - heading "4. 把决定留在画布上" [level=2]
+    - paragraph: 让 Agent 把已确认内容分别写成：
+    - list:
+      - listitem: 创意简报；
+      - listitem: 脚本或镜头表；
+      - listitem: 角色、产品和场景规则；
+      - listitem: 视觉参考；
+      - listitem: 待生成的图片或视频任务。
+    - paragraph: 画布上只保留会继续使用的内容。还要比较的放在“待确认”区，已经放弃的方向移到一边，别让 Agent 后面误用。
+    - paragraph: 建议给确认内容加上能说明状态的标题，例如“已确认｜户外音箱夜间方向”和“待确认｜结尾产品特写”。以后新建对话时，只需要引用这些节点，就能从已做出的决定继续。
+    - heading "5. 方向确定后再生成" [level=2]
+    - paragraph: 让 Agent 根据已确认方向输出一份制作计划，至少包含：
+    - list:
+      - listitem: 先在画布上创建哪些节点；
+      - listitem: 每个节点要使用哪张图、哪段文字；
+      - listitem: 图片和视频分别准备使用哪个模型；
+      - listitem: 哪些步骤会消耗 Tapies；
+      - listitem: 运行到哪里先停下来让你确认。
+    - paragraph: 可以直接说：
+    - generic "Brainstorm 模式":
+      - generic: Brainstorm
+    - paragraph: 基于画布上已确认的方向，整理一份制作计划。先生成角色标准、场景参考和 4 个静态分镜；我确认后再生成视频。不要继续使用已放弃的方向。
+    - button "复制 Prompt":
+      - generic: 复制
+    - heading "头脑风暴偏离方向时怎么办？" [level=2]
+    - list:
+      - listitem: 候选越来越相似：要求从受众动机、叙事结构或媒介形式拉开差异；
+      - listitem: 内容越来越多：让 Agent 只保留与交付目标有关的决定；
+      - listitem: 旧方向持续干扰：新建对话，并只引用已确认的画布节点；
+      - listitem: 无法选择：先定义 3—5 个评价标准，再让 Agent 按标准比较；
+      - listitem: 太早开始生成：切回手动确认，先完成脚本和视觉标准。
+    - heading "哪些内容仍然需要你决定？" [level=2]
+    - paragraph: 头脑风暴可以补充选项和推演结果，但下面几项最好由你明确确认：
+    - list:
+      - listitem: 哪个方向最符合真实受众，画面也能支持这个方向；
+      - listitem: 产品卖点有没有被夸大或错误表达；
+      - listitem: 候选使用的参考素材是否可以继续使用；
+      - listitem: 方向是否能在当前时间、预算和交付规格内完成；
+      - listitem: 哪些结论已经定稿，哪些仍然允许变化。
+    - heading "什么时候可以进入制作？" [level=2]
+    - list:
+      - listitem: 只有一个明确的主方向；
+      - listitem: 画布上有脚本或镜头结构；
+      - listitem: 必须保持的产品、角色和风格规则已经写清；
+      - listitem: 下一步要生成的内容和验收方式明确。
+    - paragraph:
+      - text: 下一步：
+      - link "网络搜索":
+        - /url: /zh/docs/agent/web-search
+    - link "上一页 Apps":
+      - /url: /zh/docs/agent/apps
+      - text: 上一页
+      - generic: Apps
+    - link "下一页 网络搜索":
+      - /url: /zh/docs/agent/web-search
+      - text: 下一页
+      - generic: 网络搜索
+  - complementary:
+    - heading "本页内容" [level=3]
+    - link "头脑风暴是怎么工作的？":
+      - /url: "#头脑风暴是怎么工作的"
+    - link "头脑风暴可以用来做什么？":
+      - /url: "#头脑风暴可以用来做什么"
+    - link "头脑风暴会留下什么？":
+      - /url: "#头脑风暴会留下什么"
+    - link "1. 先说清目标":
+      - /url: "#1-先说清目标"
+    - link "2. 和Agent一问一答地推进":
+      - /url: "#2-和agent一问一答地推进"
+    - link "3. 让候选方向真正不同":
+      - /url: "#3-让候选方向真正不同"
+    - link "4. 把决定留在画布上":
+      - /url: "#4-把决定留在画布上"
+    - link "5. 方向确定后再生成":
+      - /url: "#5-方向确定后再生成"
+    - link "头脑风暴偏离方向时怎么办？":
+      - /url: "#头脑风暴偏离方向时怎么办"
+    - link "哪些内容仍然需要你决定？":
+      - /url: "#哪些内容仍然需要你决定"
+    - link "什么时候可以进入制作？":
+      - /url: "#什么时候可以进入制作"
+- region "Notifications alt+T"
+- alert

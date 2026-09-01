@@ -1,0 +1,312 @@
+- document
+- generic: 💥 Seedance 系列 & MiniMax H3 多模型限时折扣｜Seedance 2.5 低至 0.4 元/秒，年会员最低 4 折
+- generic: 限时抢购
+- button "关闭":
+- complementary "侧边导航":
+  - button "首页":
+  - button "收起侧边栏":
+  - button "新建项目":
+    - generic: 新建项目
+  - navigation:
+    - button "首页":
+      - generic: 首页
+    - button "项目":
+      - generic: 项目
+    - button "LibTV Agent":
+      - generic: LibTV Agent
+    - button "创作者挑战赛":
+      - generic: 创作者挑战赛
+  - button "SD2.5畅享卡上线 积分超市限时抢购":
+    - generic: SD2.5畅享卡上线
+    - generic: 积分超市限时抢购
+  - button "帮助":
+    - generic: 帮助
+- main:
+  - button "Blender 插件":
+    - generic: Blender 插件
+  - button "积分超市":
+    - generic: 积分超市
+  - text: 开通会员
+  - generic: 限时 40 折
+  - button "20":
+    - generic: "20"
+  - img "avatar"
+  - button
+  - button
+  - button
+  - button
+  - button
+  - button
+  - button
+  - button
+  - button
+  - button "上一张":
+  - button "下一张":
+  - button "新建画布创作":
+    - generic: 新建画布创作
+  - button "Seedance 2.5 全新上线 全新视频模型，音视频直出 30s":
+    - generic: Seedance 2.5
+    - generic: 全新上线
+    - generic: Seedance 2.5
+    - generic: 全新上线
+    - generic: 全新视频模型，音视频直出 30s
+  - button "Minimax H3 高性价比 高性价比视频模型，游戏等场景适配度高":
+    - generic: Minimax H3
+    - generic: 高性价比
+    - generic: Minimax H3
+    - generic: 高性价比
+    - generic: 高性价比视频模型，游戏等场景适配度高
+  - button "导演台 虚拟现实 3D 场景，空间精准控制":
+    - generic: 导演台
+    - generic: 导演台
+    - generic: 虚拟现实 3D 场景，空间精准控制
+  - button "逐帧拉片 独家 上传参考视频，逐帧拉片快捷参考":
+    - generic: 逐帧拉片
+    - generic: 独家
+    - generic: 逐帧拉片
+    - generic: 独家
+    - generic: 上传参考视频，逐帧拉片快捷参考
+  - heading "最近项目" [level=2]
+  - button "查看全部":
+    - generic: 查看全部
+  - button "未命名项目"
+  - generic: 未命名项目
+  - button "更多":
+  - generic: 2026-08-23
+  - button "未命名"
+  - generic: 未命名
+  - button "更多":
+  - generic: 2026-07-30
+  - button "未命名项目"
+  - generic: 未命名项目
+  - button "更多":
+  - generic: 2026-08-19
+  - button "《iPhone air》极简纯净风产品展示- 副本"
+  - generic: 《iPhone air》极简纯净风产品展示- 副本
+  - button "更多":
+  - generic: 2026-08-03
+  - region "LibTV Agent":
+    - button "添加附件":
+    - button
+    - textbox "说出你的创意，或者从一个 skill 开始创作":
+      - paragraph: 说出你的创意，或者从一个 skill 开始创作
+    - button:
+    - button:
+    - button:
+    - button "发送" [disabled]:
+    - button "使用 Skill POP MV":
+      - generic: POP MV
+      - generic: 音乐MV
+    - button "使用 Skill 日系剧情镜头导演":
+      - generic: 日系剧情镜头导演
+      - generic: 专业影视
+    - button "使用 Skill 真人感美妆UGC产品测评":
+      - generic: 真人感美妆UGC产品测评
+      - generic: 商业广告
+    - button "全部Skill":
+  - generic: TV Show
+  - button "向左滚动":
+  - generic: 全部
+  - generic: Seedance 2.5
+  - generic: 无畏契约觉醒计划
+  - generic: 精选画布
+  - generic: 专业影视
+  - generic: 短剧漫剧
+  - generic: 商业广告
+  - generic: 动漫游戏
+  - generic: 教育生活
+  - generic: TV工具箱
+  - button "向右滚动":
+  - textbox "请输入搜索内容"
+  - button "搜索":
+  - list:
+    - img "末世无限流剧集《墟境》第一集"
+    - generic: "36"
+    - img "福见映画"
+    - generic: 福见映画
+    - paragraph: 末世无限流剧集《墟境》第一集
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "记忆招领处"
+    - generic: "25"
+    - img "鄧小毛"
+    - generic: 鄧小毛
+    - img "先锋"
+    - paragraph: 记忆招领处
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "《与之同在》 To Be With"
+    - generic: "28"
+    - img "啊嘛鲸"
+    - generic: 啊嘛鲸
+    - img "先锋"
+    - paragraph: 《与之同在》 To Be With
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "以防你没见识过DDL的威力💪"
+    - generic: "13"
+    - img "文野Bot"
+    - generic: 文野Bot
+    - img "先锋"
+    - paragraph: 以防你没见识过DDL的威力💪
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "CHOICE™"
+    - generic: "357"
+    - img "eeriesherin"
+    - generic: eeriesherin
+    - img "荣誉"
+    - paragraph: CHOICE™
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "【镇关】| AIGC非遗特别短片"
+    - generic: "996"
+    - img "JIOJIO焦焦"
+    - generic: JIOJIO焦焦
+    - img "专业"
+    - paragraph: 【镇关】| AIGC非遗特别短片
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "一键生成数码科技产品类模板"
+    - generic: "57"
+    - img "郭同学AIGC"
+    - generic: 郭同学AIGC
+    - img "先锋"
+    - paragraph: 一键生成数码科技产品类模板
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "《百鬼游神》"
+    - generic: "315"
+    - img "Carmanker"
+    - generic: Carmanker
+    - paragraph: 《百鬼游神》
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "大疆360全景运动相机TVC广告"
+    - generic: "12"
+    - img "AIGC野生包"
+    - generic: AIGC野生包
+    - img "先锋"
+    - paragraph: 大疆360全景运动相机TVC广告
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "她在寻常的夏日死去"
+    - generic: "473"
+    - img "yoimachigusa"
+    - generic: yoimachigusa
+    - img "先锋"
+    - paragraph: 她在寻常的夏日死去
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "一键生成耳机数码科技产品类模板"
+    - generic: "121"
+    - img "郭同学AIGC"
+    - generic: 郭同学AIGC
+    - img "先锋"
+    - paragraph: 一键生成耳机数码科技产品类模板
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "只有一个角色如何输出多主题场景图(教程)"
+    - generic: "6"
+    - img "Pino单手建模"
+    - generic: Pino单手建模
+    - img "先锋"
+    - paragraph: 只有一个角色如何输出多主题场景图(教程)
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "Sd2.5丨1.5小时做完VEYRA原创手机TVC"
+    - generic: "20"
+    - img "像素农夫DESIGN"
+    - generic: 像素农夫DESIGN
+    - img "专业"
+    - paragraph: Sd2.5丨1.5小时做完VEYRA原创手机TVC
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "《赛博废土武侠录》你还记得手中的剑吗？"
+    - generic: "907"
+    - img "阿浪Alang"
+    - generic: 阿浪Alang
+    - img "专业"
+    - paragraph: 《赛博废土武侠录》你还记得手中的剑吗？
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "入户门产品宣传视频-新标门窗"
+    - generic: "4"
+    - img "Bigsean大海"
+    - generic: Bigsean大海
+    - paragraph: 入户门产品宣传视频-新标门窗
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "LIBTV Agent一站式 自制UI网站风格宣传视频"
+    - generic: "1"
+    - img "粿条"
+    - generic: 粿条
+    - img "专业"
+    - paragraph: LIBTV Agent一站式 自制UI网站风格宣传视频
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "《 iPad air 》 纯黑极客风产品展示"
+    - generic: "436"
+    - img "Dave"
+    - generic: Dave
+    - img "专业"
+    - paragraph: 《 iPad air 》 纯黑极客风产品展示
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "电影节获奖作品《球场哪吒》"
+    - generic: "208"
+    - img "一个李枭影"
+    - generic: 一个李枭影
+    - img "专业"
+    - paragraph: 电影节获奖作品《球场哪吒》
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "《绿色末日x赛博武侠》概念片"
+    - generic: "510"
+    - img "先锋薄荷"
+    - generic: 先锋薄荷
+    - img "先锋"
+    - paragraph: 《绿色末日x赛博武侠》概念片
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "大龙凤Trailer｜龙船漂移"
+    - generic: "586"
+    - generic: AI漫剧精卫计划 - S+级项目
+    - img "哈镜_荣浩"
+    - generic: 哈镜_荣浩
+    - paragraph: 大龙凤Trailer｜龙船漂移
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "万物生变 | EP02：末日开端"
+    - generic: "73"
+    - img "ZeroJ"
+    - generic: ZeroJ
+    - img "先锋"
+    - paragraph: 万物生变 | EP02：末日开端
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "异星拾荒指南第13集"
+    - generic: "37"
+    - img "异星拾荒"
+    - generic: 异星拾荒
+    - paragraph: 异星拾荒指南第13集
+    - button "查看创作过程":
+      - text: 查看创作过程
+    - img "Dissolution消融"
+    - generic: "16"
+    - img "tattva"
+    - generic: tattva
+    - img "专业"
+    - paragraph: Dissolution消融
+    - button "查看创作过程" [disabled]:
+      - text: 查看创作过程
+    - img "大眼镇选择：第三集"
+    - generic: "44"
+    - img "宁同学"
+    - generic: 宁同学
+    - img "先锋"
+    - paragraph: 大眼镇选择：第三集
+    - button "查看创作过程":
+      - text: 查看创作过程
+- region "Notifications alt+T"
+- alert

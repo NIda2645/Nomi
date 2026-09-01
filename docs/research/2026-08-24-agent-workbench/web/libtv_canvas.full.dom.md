@@ -1,0 +1,56 @@
+- document
+- navigation:
+  - textbox "项目名称": 未命名项目
+  - button "画布 1":
+    - generic: 画布 1
+  - button "工作流" [pressed]:
+  - button "故事板":
+  - button "发布与分享":
+  - button "积分超市":
+  - text: 开通会员
+  - generic: 限时 40 折
+  - button "20":
+    - generic: "20"
+  - img "avatar"
+  - button "打开 Agent":
+    - text: Agent
+- button "添加节点":
+- button "移动":
+- button "打开工具箱":
+- button "素材库":
+- button "角色库":
+- button "历史记录":
+- button "快捷键":
+- button "教程":
+- application:
+  - generic "角色 1"
+  - img "角色参考图 1"
+  - button:
+  - generic "角色 2"
+  - img "角色参考图 2"
+  - button:
+  - generic "脚本生成器"
+  - generic "分镜组01｜少年登场·骑行→停车→凝望"
+  - generic "分镜组02｜入境感受·戴耳机→走入稻田→触碰风"
+  - generic "S07｜全景·背面逆光｜走入稻田·沉浸自然"
+  - img "S07｜全景·背面逆光｜走入稻田·沉浸自然"
+  - button:
+  - generic "S03｜中景·侧面固定｜停车凝望田野·人物登场"
+  - img "S03｜中景·侧面固定｜停车凝望田野·人物登场"
+  - button:
+  - generic "S05｜大特写·侧面｜戴耳机动作·进入内心"
+  - img "S05｜大特写·侧面｜戴耳机动作·进入内心"
+  - button:
+  - status
+  - button "资产管理":
+    - generic: 资产管理
+  - button "整理画布，Option+Shift+F":
+  - button "切换小地图":
+  - button "隐藏节点连线":
+  - button "网格吸附":
+  - button "缩放选项": 88%
+- region "Notifications alt+T"
+- alert
+- generic: 正在跟随
+- button: 取消ESC
+- tooltip: 按 ESC 退出

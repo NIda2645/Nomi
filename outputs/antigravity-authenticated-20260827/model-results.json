@@ -1,0 +1,254 @@
+[
+  {
+    "id": "gemini-3.7-flash-high",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 3966,
+      "output_tokens": 62,
+      "thinking_tokens": 56,
+      "cache_read_tokens": 0,
+      "total_tokens": 4028
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.7-flash-medium",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 3967,
+      "output_tokens": 52,
+      "thinking_tokens": 46,
+      "cache_read_tokens": 0,
+      "total_tokens": 4019
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.7-flash-low",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 3967,
+      "output_tokens": 28,
+      "thinking_tokens": 22,
+      "cache_read_tokens": 0,
+      "total_tokens": 3995
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.6-flash-high",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 5236,
+      "output_tokens": 64,
+      "thinking_tokens": 58,
+      "cache_read_tokens": 0,
+      "total_tokens": 5300
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.6-flash-medium",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 5237,
+      "output_tokens": 65,
+      "thinking_tokens": 59,
+      "cache_read_tokens": 0,
+      "total_tokens": 5302
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.6-flash-low",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 5227,
+      "output_tokens": 6,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 5233
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.5-flash-high",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 3968,
+      "output_tokens": 65,
+      "thinking_tokens": 59,
+      "cache_read_tokens": 0,
+      "total_tokens": 4033
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.5-flash-medium",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 3965,
+      "output_tokens": 151,
+      "thinking_tokens": 145,
+      "cache_read_tokens": 0,
+      "total_tokens": 4116
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.5-flash-low",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 3967,
+      "output_tokens": 6,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 3973
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gemini-3.1-pro-high",
+    "status": "ERROR",
+    "exit_code": 1,
+    "timed_out": true,
+    "model_matches": true,
+    "response_matches": false,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 0
+    },
+    "error": "timeout waiting for response",
+    "passed": false
+  },
+  {
+    "id": "gemini-3.1-pro-low",
+    "status": "ERROR",
+    "exit_code": 1,
+    "timed_out": true,
+    "model_matches": true,
+    "response_matches": false,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 0
+    },
+    "error": "timeout waiting for response",
+    "passed": false
+  },
+  {
+    "id": "claude-sonnet-4-6",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 4867,
+      "output_tokens": 25,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 4892
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "claude-opus-4-6-thinking",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": true,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 4864,
+      "output_tokens": 25,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 4889
+    },
+    "error": "",
+    "passed": true
+  },
+  {
+    "id": "gpt-oss-120b-medium",
+    "status": "SUCCESS",
+    "exit_code": 0,
+    "timed_out": false,
+    "model_matches": true,
+    "response_matches": false,
+    "tools": 0,
+    "usage": {
+      "input_tokens": 3580,
+      "output_tokens": 35,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 3615
+    },
+    "error": "",
+    "passed": false
+  }
+]
