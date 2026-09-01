@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nomi Agent 界面最终版重做 · 4 屏样张（2026-09-01）</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:oklch(0.985 0.003 90);--paper:#fff;--canvas:oklch(0.975 0.004 85);
+  --ink:oklch(0.22 0.01 80);--ink80:oklch(0.32 0.01 80);--ink60:oklch(0.50 0.01 80);
+  --ink40:oklch(0.68 0.01 80);--ink30:oklch(0.78 0.01 80);--ink20:oklch(0.88 0.005 80);
+  --ink10:oklch(0.94 0.003 80);--ink05:oklch(0.97 0.003 80);
+  --line:oklch(0.91 0.004 80);--lineS:oklch(0.95 0.003 80);
+  --ac:oklch(0.55 0.13 250);--acS:oklch(0.955 0.018 250);--acBg:oklch(0.965 0.014 250);
+  --warn:oklch(0.62 0.14 75);--warnBg:oklch(0.965 0.03 75);
+  --ok:#248a3d;--okBg:rgba(52,199,89,.10);
+  --dg:#b3241c;--dgBg:rgba(255,59,48,.05);
+  --snap:oklch(0.45 0.18 30);
+  --r-ctl:7px;--r-panel:10px;--r-lg:14px;
+  --t-tap:140ms;--t-enter:260ms;--t-settle:420ms;--t-breathe:1.8s;--t-sweep:2.2s;--t-develop:900ms;
+  --ease:cubic-bezier(.2,.7,.3,1);
+  --asst:340px;
+}
+body.dark{
+  --bg:oklch(0.19 0.008 85);--paper:oklch(0.235 0.008 85);--canvas:oklch(0.21 0.008 85);
+  --ink:oklch(0.93 0.006 85);--ink80:oklch(0.84 0.008 85);--ink60:oklch(0.7 0.01 85);
+  --ink40:oklch(0.62 0.012 85);--ink30:oklch(0.5 0.012 85);--ink20:oklch(0.36 0.01 85);
+  --ink10:oklch(0.3 0.009 85);--ink05:oklch(0.27 0.008 85);
+  --line:oklch(0.34 0.009 85);--lineS:oklch(0.3 0.008 85);
+  --ac:oklch(0.7 0.12 250);--acS:oklch(0.32 0.05 250);--acBg:oklch(0.29 0.04 250);
+  --warn:oklch(0.78 0.13 75);--warnBg:oklch(0.32 0.05 75);
+  --ok:#7ee8aa;--okBg:rgba(126,232,170,.13);
+  --dg:#ff6961;--dgBg:rgba(255,105,97,.11);
+  --snap:oklch(0.62 0.18 30);
+}
+*{box-sizing:border-box}
+body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+h1{font-size:18px;font-weight:600;margin:0}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;padding:12px 20px;
+  background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--lineS)}
+.topbar .meta{font-size:11px;color:var(--ink40);flex:1;line-height:1.4}
+.topbar .meta a{color:var(--ac)}
+.tabs{display:flex;gap:4px;background:var(--ink05);border-radius:999px;padding:3px}
+.tab{height:28px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:var(--ink60);
+  font:500 12px/1 inherit;cursor:pointer;font-family:inherit}
+.tab.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(20,18,16,.08)}
+.toggle{height:28px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);
+  color:var(--ink80);font:12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:inherit}
+.toggle:hover{border-color:var(--ink20)}
+.stage{padding:22px 20px 60px;max-width:1240px;margin:0 auto}
+.screen{display:none}.screen.on{display:block}
+.caption{font-size:12px;color:var(--ink60);margin:0 0 14px;line-height:1.6;max-width:960px}
+.caption b{color:var(--ink);font-weight:600}
+.caption code{background:var(--ink05);padding:1px 5px;border-radius:4px;font-size:11px}
+
+/* ── App 外壳（复刻真机布局：顶栏 + 三栏，右栏=Agent 工作区 340px）── */
+.app{border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--paper);box-shadow:0 6px 30px rgba(20,18,16,.06)}
+.appbar{height:52px;display:flex;align-items:center;gap:0;padding:0 14px;border-bottom:1px solid var(--lineS);background:var(--paper)}
+.appbar .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+.appbar .logo{width:26px;height:26px;border-radius:7px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-weight:700;font-size:13px}
+.appbar .crumb{margin-left:12px;padding-left:12px;border-left:1px solid var(--line);color:var(--ink60);font-size:12px;display:flex;gap:6px;align-items:center}
+.appbar .crumb b{color:var(--ink);font-weight:600}
+.appbar .stepper{margin:0 auto;display:flex;gap:2px;background:var(--ink05);border-radius:999px;padding:3px}
+.appbar .stepper .st{height:26px;padding:0 14px;border-radius:999px;font-size:12px;color:var(--ink60);display:grid;place-items:center}
+.appbar .stepper .st.on{background:var(--paper);color:var(--ink);font-weight:500}
+.appbar .rgrp{display:flex;align-items:center;gap:6px}
+.appbar .ico{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--ink60);font-size:16px;cursor:pointer}
+.appbar .ico:hover{background:var(--ink05);color:var(--ink)}
+.appbar .badge-agent{height:30px;padding:0 9px;border-radius:999px;border:1px solid var(--line);background:var(--paper);
+  display:inline-flex;align-items:center;gap:6px;color:var(--ink80);font-size:11px;cursor:pointer;position:relative}
+.appbar .badge-agent:hover{border-color:var(--ink20)}
+.appbar .badge-agent .dot{width:7px;height:7px;border-radius:50%;background:var(--ac);animation:breathe var(--t-breathe) ease-in-out infinite}
+.appbar .badge-agent .pill{min-width:16px;height:16px;padding:0 5px;border-radius:999px;background:var(--acS);color:var(--ac);font-size:10px;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.appbar .go{width:34px;height:34px;border-radius:8px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-size:17px}
+
+.body{display:flex;height:600px}
+.rail{width:150px;flex:none;border-right:1px solid var(--lineS);padding:14px 10px;background:var(--paper)}
+.rail .rh{font-size:12px;font-weight:600;margin-bottom:2px}.rail .rs{font-size:10px;color:var(--ink40);margin-bottom:12px}
+.rail .item{height:30px;border-radius:7px;padding:0 8px;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink80)}
+.rail .item.on{background:var(--acBg);color:var(--ac)}
+.rail .item.sub{color:var(--ink40);font-size:11px;padding-left:20px}
+.center{flex:1;min-width:0;background:var(--canvas);position:relative;display:flex;align-items:center;justify-content:center}
+.center .hint{font-size:11px;color:var(--ink30);position:absolute;top:12px;left:14px}
+/* 画布网格 */
+.center.grid{background-image:radial-gradient(var(--ink10) 1px,transparent 1px);background-size:22px 22px;background-color:var(--canvas)}
+.vnode{width:150px;border:2px solid var(--ac);border-radius:10px;overflow:hidden;background:var(--paper);position:relative}
+.vnode .vh{height:22px;background:var(--acBg);display:flex;align-items:center;gap:5px;padding:0 7px;font-size:10px;color:var(--ac)}
+.vnode .vthumb{height:180px;background:linear-gradient(135deg,oklch(0.55 0.09 40),oklch(0.4 0.06 250))}
+.vnode .vfoot{position:absolute;bottom:6px;right:8px;font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.node-badge{position:absolute;top:-9px;left:8px;height:18px;padding:0 7px;border-radius:999px;background:var(--ac);color:#fff;font-size:10px;display:inline-flex;align-items:center;gap:4px}
+.decon-stub{position:absolute;bottom:6px;left:8px;height:22px;padding:0 8px;border-radius:999px;background:var(--paper);border:1px solid var(--line);color:var(--ink80);font-size:10px;display:inline-flex;align-items:center;gap:5px;cursor:pointer;box-shadow:0 2px 8px rgba(20,18,16,.1)}
+.decon-stub i{color:var(--ac)}
+
+/* ── Agent 工作区（右槽 340px）── */
+.asst{width:var(--asst);flex:none;border-left:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;min-width:0}
+.asst-head{flex:none;padding:9px 12px 8px;border-bottom:1px solid var(--lineS)}
+.asst-head .r1{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:11px}
+.asst-head .nm{display:flex;align-items:center;gap:6px;font-weight:600;font-size:12px;color:var(--ink)}
+.asst-head .nlogo{width:20px;height:20px;border-radius:6px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-weight:700;font-size:10px}
+.asst-head .thread{color:var(--ink40)}
+.asst-head .usage{color:var(--ink40);font-variant-numeric:tabular-nums}
+.asst-head .usage b{color:var(--ink60);font-weight:500}
+.asst-head .skill-tag{color:var(--ac);display:inline-flex;align-items:center;gap:3px}
+.asst-head .fee{margin-left:auto;color:var(--ink40)}
+.asst-head .hico{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--ink40);cursor:pointer}
+.asst-head .hico:hover{background:var(--ink05);color:var(--ink)}
+.asst-head .r2{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11px;color:var(--ink60)}
+.asst-head .r2 .surface{background:var(--ink05);border-radius:6px;padding:2px 8px;display:inline-flex;gap:5px;align-items:center}
+.asst-head .r2 .surface b{color:var(--ink80);font-weight:500}
+
+/* 结果卡区（固定） */
+.resultzone{flex:none;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--ink05) 60%,var(--paper));padding:8px 10px}
+.resultzone .rz-lbl{font-size:10px;color:var(--ink40);margin-bottom:6px;letter-spacing:.02em;display:flex;align-items:center;gap:5px}
+.result-card{border:1px solid var(--line);border-radius:8px;background:var(--paper);overflow:hidden}
+.result-card .rc-head{height:34px;display:flex;align-items:center;gap:8px;padding:0 9px;cursor:pointer;font-size:12px}
+.result-card .rc-head .ic{color:var(--ac);font-size:15px}
+.result-card .rc-head b{font-weight:600}
+.result-card .rc-head .chev{margin-left:auto;color:var(--ink40);font-size:15px}
+.result-card .rc-head .cnt{color:var(--ink40);font-size:11px}
+
+.flow{flex:1;overflow-y:auto;padding:12px 12px 8px;position:relative;scrollbar-width:thin}
+.flow::-webkit-scrollbar{width:6px}.flow::-webkit-scrollbar-thumb{background:var(--ink10);border-radius:3px}
+.empty{text-align:center;padding:60px 20px;color:var(--ink40)}
+.empty b{display:block;color:var(--ink);font-weight:600;margin-bottom:5px;font-size:14px}
+
+/* 会话流条目 */
+.divider{display:flex;align-items:center;gap:8px;margin:14px 0;color:var(--ink40);font-size:11px}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--lineS)}
+.divider.stage-line{color:var(--ink60)}
+.divider .lk{color:var(--ink40);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.divider .lk:hover{color:var(--ink)}
+.divider .stage-ic{width:16px;height:16px;color:var(--ac)}
+
+.line{display:flex;align-items:flex-start;gap:8px;margin:9px 0;font-size:12px;color:var(--ink80);line-height:1.5}
+.line .li{width:16px;flex:none;text-align:center;color:var(--ink40);font-size:14px;margin-top:1px}
+.line.expandable{cursor:pointer}
+.line.expandable:hover{color:var(--ink)}
+.line .chev{margin-left:auto;color:var(--ink30);font-size:14px;flex:none}
+.line.settled{color:var(--ink40)}
+.line.settled .li{color:var(--ok)}
+.tool-done .li{color:var(--ok)}
+.elapsed{color:var(--ink30);font-variant-numeric:tabular-nums;font-size:11px}
+
+/* 思考条进行态 + 工序图示 */
+.thinking{border:1px solid var(--lineS);border-radius:8px;background:var(--ink05);padding:7px 9px;margin:9px 0}
+.thinking .tr{display:flex;align-items:center;gap:8px;font-size:12px}
+.thinking .stagefig{width:18px;height:18px;flex:none;color:var(--ac)}
+.thinking .say{color:var(--ink60)}
+.thinking .chev{margin-left:auto;color:var(--ink30);font-size:14px}
+
+.userbubble{max-width:82%;margin:12px 0 12px auto;background:var(--ink);color:var(--paper);border-radius:12px;padding:8px 12px;font-size:12px;line-height:1.5}
+body.dark .userbubble{color:var(--bg)}
+.asstext{margin:10px 0;font-size:12px;line-height:1.55;color:var(--ink80)}
+.asstext .cursor{display:inline-block;width:7px;height:14px;background:var(--ac);vertical-align:text-bottom;margin-left:2px;position:relative;overflow:hidden}
+.asstext .cursor::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);background-size:200% 100%;animation:sweep var(--t-sweep) linear infinite}
+
+/* 工具组折叠 */
+.toolgroup{border:1px solid var(--lineS);border-radius:8px;margin:9px 0;overflow:hidden}
+.toolgroup .tg-head{height:30px;display:flex;align-items:center;gap:7px;padding:0 9px;font-size:12px;color:var(--ink60);cursor:pointer;background:var(--ink05)}
+.toolgroup .tg-head .chev{margin-left:auto;font-size:14px;color:var(--ink40)}
+.toolgroup .tg-body{padding:4px 9px 7px}
+.toolgroup .tg-body .line{margin:6px 0}
+
+/* 回执 */
+.receipt{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12px;color:var(--ok)}
+.receipt .li{color:var(--ok)}
+.receipt .lk{margin-left:auto;color:var(--ink60);cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-size:11px}
+.lost-edits{border:1px solid var(--warn);border-radius:8px;background:var(--warnBg);padding:8px 10px;margin:8px 0;font-size:11px;color:var(--ink80)}
+.lost-edits b{color:var(--warn)}
+.chip-jump{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink60);font-size:10px;margin-top:5px;cursor:pointer}
+
+/* 排队/进度 同一行三态 */
+.progress-demo{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;margin:10px 0;background:var(--ink05)}
+.progress-demo .pd-lbl{font-size:10px;color:var(--ink40);margin-bottom:6px}
+.progress-demo .pstate{display:flex;align-items:center;gap:8px;font-size:12px;margin:4px 0;color:var(--ink60)}
+.progress-demo .pstate .sw{position:relative;overflow:hidden;flex:1;height:4px;border-radius:999px;background:var(--ink10)}
+.progress-demo .pstate .sw::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--ac) 55%,transparent),transparent);background-size:38% 100%;background-repeat:no-repeat;animation:sweep var(--t-sweep) linear infinite}
+.progress-demo .pstate.q .sw::after,.progress-demo .pstate.d .sw{display:none}
+.progress-demo .pstate.d{color:var(--ok)}.progress-demo .pstate.d .li{color:var(--ok)}
+.progress-demo .arrow{color:var(--ink30);font-size:11px;text-align:center;margin:2px 0}
+.numroll{font-variant-numeric:tabular-nums;color:var(--ac);font-weight:600}
+
+/* 队列 */
+.queue{flex:none;border-top:1px solid var(--lineS);background:var(--ink05)}
+.queue .qh{height:30px;display:flex;align-items:center;gap:7px;padding:0 11px;font-size:11px;color:var(--ink60)}
+.queue .qh .stop{margin-left:auto;color:var(--dg);cursor:pointer;display:inline-flex;align-items:center;gap:3px}
+.queue .qrow{display:flex;align-items:center;gap:8px;padding:6px 11px;border-top:1px solid var(--lineS);font-size:11px}
+.queue .qrow .qtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink80)}
+.queue .qrow .qmeta{display:inline-flex;gap:5px;color:var(--ink40);font-size:10px}
+.queue .qrow .qacts{display:inline-flex;gap:2px}
+.queue .qrow .qacts .qi{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--ink40);cursor:pointer;font-size:13px}
+.queue .qrow .qacts .qi:hover{background:var(--ink10);color:var(--ink80)}
+
+/* composer */
+.composer{flex:none;border-top:1px solid var(--lineS);padding:8px 10px 9px}
+.ctxshelf{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px}
+.ctxchip{height:30px;max-width:100%;border:1px solid var(--line);border-radius:999px;background:var(--ink05);color:var(--ink80);padding:0 9px;display:inline-flex;align-items:center;gap:6px;font-size:11px}
+.ctxchip .ci{font-size:14px}.ctxchip.subj .ci{color:var(--ac)}.ctxchip.style .ci{color:var(--warn)}
+.ctxchip .role{color:var(--ink40);font-size:10px}
+.ctxchip .x{color:var(--ink40);cursor:pointer;margin-left:2px;font-size:13px}
+.ctxchip.skill{border-color:color-mix(in srgb,var(--ac) 40%,var(--line));background:var(--acS);color:var(--ac)}
+.ctxchip.changed{border-color:var(--warn);background:var(--warnBg)}
+.ctxchip.changed .role{color:var(--warn)}
+.ctxadd{height:30px;padding:0 10px;border:1px dashed var(--line);border-radius:999px;background:transparent;color:var(--ink40);font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:inherit}
+.ctxadd:hover{border-color:var(--ink20);color:var(--ink60)}
+.cbox{border:1px solid var(--line);border-radius:var(--r-panel);background:var(--paper);padding:8px 10px}
+.cbox:focus-within{border-color:color-mix(in srgb,var(--ac) 46%,var(--line))}
+.cprompt{min-height:34px;color:var(--ink80);font-size:12px;outline:0}
+.cprompt.ph{color:var(--ink40)}
+.cbar{display:flex;align-items:center;gap:5px;margin-top:7px}
+.cbtn{height:28px;min-width:28px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink60);display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.cbtn:hover{border-color:var(--ink20);color:var(--ink80)}
+.cbtn.ico{width:28px;padding:0}
+.cbtn i{font-size:15px}
+.cbtn .lb{font-size:11px}
+.cbtn .caret{font-size:12px;color:var(--ink40)}
+.send{margin-left:auto;width:30px;height:30px;border-radius:999px;background:var(--ink);color:var(--paper);border:0;display:grid;place-items:center;font-size:15px;cursor:pointer}
+body.dark .send{color:var(--bg)}
+
+/* ── 卡片（屏 B）── */
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px;align-items:start}
+.cardframe{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--paper);overflow:hidden}
+.cardframe .cf-lbl{font-size:11px;color:var(--ink40);padding:8px 12px 0}
+.cardframe .cf-lbl b{color:var(--ink80);font-weight:600}
+.cardframe .cf-body{padding:12px}
+
+/* 通用卡 */
+.card{border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow:hidden}
+.card.accent{border-color:color-mix(in srgb,var(--ac) 42%,var(--line))}
+.card.warn{border-color:var(--warn)}
+.card.danger{border-color:var(--dg)}
+.card .chd{display:flex;align-items:center;gap:7px;padding:9px 11px;font-size:12px;font-weight:600;border-bottom:1px solid var(--lineS)}
+.card .chd .ic{font-size:18px}
+.card.accent .chd .ic{color:var(--ac)}.card.warn .chd .ic{color:var(--warn)}.card.danger .chd .ic{color:var(--dg)}
+.card .cbd{padding:10px 11px}
+.card .tag-you{margin-left:auto;height:20px;padding:0 8px;border-radius:999px;background:var(--acS);color:var(--ac);font-size:10px;display:inline-flex;align-items:center;font-weight:500}
+
+/* 参数条 */
+.parambar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0}
+.pick{height:28px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink80);padding:0 9px 0 11px;display:inline-flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;white-space:nowrap}
+.pick:hover{border-color:var(--ink20)}
+.pick .caret{color:var(--ink40);font-size:12px}
+.pick.you{border-color:color-mix(in srgb,var(--ac) 40%,var(--line));background:var(--acS);color:var(--ac)}
+.pick.summary{min-width:150px;justify-content:space-between;background:var(--ink05)}
+.prompt-area{border:1px solid var(--lineS);border-radius:8px;background:var(--ink05);padding:8px 10px;font-size:12px;color:var(--ink80);line-height:1.55;margin-bottom:4px}
+.prompt-area .plabel{font-size:10px;color:var(--ink40);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+
+/* 计划行 */
+.planrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--lineS);font-size:12px}
+.planrow .num{width:18px;height:18px;flex:none;border-radius:999px;background:var(--ink05);color:var(--ink60);display:grid;place-items:center;font-size:10px}
+.planrow input[type=checkbox]{accent-color:var(--ac)}
+.planrow .ptitle{color:var(--ink80)}
+.planrow .ppreview{color:var(--ink40);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.planrow .same{margin-left:auto;color:var(--ink40);font-size:10px}
+.planrow .same.mod{color:var(--ac)}
+
+/* 按钮组 */
+.grp{display:flex;gap:7px;margin-top:10px}
+.grp .btn{flex:1}
+.btn{height:28px;padding:0 12px;min-width:72px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink80);
+  font:12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-family:inherit}
+.btn:hover{background:var(--ink05)}
+.btn.pri{border-color:transparent;background:var(--ink);color:var(--paper)}
+body.dark .btn.pri{color:var(--bg)}
+.btn.pri:hover{background:var(--ac);color:#fff}
+.btn.acc{color:var(--ac);border-color:color-mix(in srgb,var(--ac) 35%,var(--line))}
+
+/* 付费卡 */
+.priceline{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--ink80)}
+.priceline.total{border-top:1px solid var(--line);margin-top:4px;padding-top:7px;font-weight:600;color:var(--ink)}
+.priceline .n{font-variant-numeric:tabular-nums}
+.frozen{background:var(--ink05);border-radius:7px;padding:7px 9px;font-size:11px;color:var(--ink60);margin:8px 0;line-height:1.5}
+.frozen b{color:var(--ink80);font-weight:500}
+.paused{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ac);margin-bottom:6px}
+.paused .dot{width:6px;height:6px;border-radius:50%;background:var(--ac)}
+.opt-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink60);margin-top:8px}
+.opt-row input{accent-color:var(--ac)}
+
+/* 有出入卡 */
+.deviation{background:var(--ink05);border-radius:7px;padding:8px 10px;margin:7px 0;font-size:11px}
+.deviation .dw{color:var(--ink80);font-weight:500;display:flex;align-items:center;gap:5px;margin-bottom:3px}
+.deviation .dw .arr{color:var(--ink40)}
+.deviation .dd{color:var(--ink60);line-height:1.5}
+.deviation .df{display:inline-block;background:var(--warnBg);color:var(--warn);padding:0 6px;border-radius:4px;font-size:10px;margin-right:5px}
+
+/* 多候选 */
+.candidates{display:flex;gap:8px}
+.cand{flex:1;border:1px solid var(--line);border-radius:8px;overflow:hidden;position:relative}
+.cand.sel{border-color:var(--ac);box-shadow:0 0 0 1px var(--ac)}
+.cand .cthumb{height:88px;background:linear-gradient(135deg,oklch(0.6 0.1 var(--h,40)),oklch(0.45 0.07 calc(var(--h,40) + 60)))}
+.cand .cft{padding:5px 7px;font-size:10px;color:var(--ink60);display:flex;align-items:center;gap:4px}
+.cand .selmark{position:absolute;top:5px;right:5px;width:18px;height:18px;border-radius:50%;background:var(--ac);color:#fff;display:grid;place-items:center;font-size:11px}
+.cand-fold{width:24px;flex:none;border:1px dashed var(--line);border-radius:8px;display:grid;place-items:center;color:var(--ink40);font-size:11px;writing-mode:vertical-rl}
+
+/* 产物缩略卡 */
+.artifact .athumb{height:120px;border-radius:8px;background:linear-gradient(135deg,oklch(0.55 0.09 40),oklch(0.4 0.06 250));position:relative;margin-bottom:8px}
+.artifact .ameta{position:absolute;bottom:6px;left:8px;font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.artifact .actrow{display:flex;gap:7px}
+.artifact .actrow .btn{flex:1}
+
+/* 拆解表（结果卡区 / 屏 C/D） */
+.shot-table{max-height:320px;overflow-y:auto}
+.shot-row{display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--lineS);font-size:11px}
+.shot-row input[type=checkbox]{accent-color:var(--ac);margin-top:2px}
+.shot-thumb{width:44px;height:34px;flex:none;border-radius:5px;background:linear-gradient(135deg,oklch(0.55 0.08 var(--h,40)),oklch(0.4 0.05 250))}
+.shot-meta{min-width:0;flex:1}
+.shot-meta .sm-top{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.shot-meta .sm-num{width:16px;height:16px;border-radius:999px;background:var(--ink05);color:var(--ink60);display:inline-grid;place-items:center;font-size:9px;flex:none}
+.shot-meta .sm-tag{color:var(--ink80);font-weight:500}
+.shot-meta .sm-emo{color:var(--ink40)}
+.shot-meta .sm-time{margin-left:auto;color:var(--ink30);font-variant-numeric:tabular-nums}
+.shot-meta .sm-desc{color:var(--ink60);line-height:1.45}
+.shot-meta .sm-field{color:var(--ink40);font-size:10px;margin-top:2px}
+.shot-meta .sm-field b{color:var(--ink60);font-weight:500}
+.shot-fail{color:var(--dg);font-size:10px}
+.disclosure{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--ink40);margin:6px 0}
+.disclosure .chip{height:20px;padding:0 7px;border-radius:999px;background:var(--ink05);color:var(--ink60);display:inline-flex;align-items:center;font-size:10px}
+.decon-foot{display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.decon-foot .sel-cnt{font-size:11px;color:var(--ink40);margin-left:auto}
+
+/* 屏 C 布局 */
+.split{display:grid;grid-template-columns:1fr 40px 1fr;gap:0;align-items:center}
+.split .arrow-mid{display:grid;place-items:center;color:var(--ink30);font-size:22px}
+.mini-app{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--paper)}
+.mini-app .m-bar{height:40px;display:flex;align-items:center;padding:0 10px;border-bottom:1px solid var(--lineS);gap:6px;font-size:11px}
+.mini-app .m-bar .m-logo{width:20px;height:20px;border-radius:6px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-size:10px;font-weight:700}
+.mini-app .m-bar .m-step{margin:0 auto;font-size:11px;color:var(--ink40)}
+.mini-app .m-body{display:flex;height:340px}
+.mini-app .m-canvas{flex:1;background:radial-gradient(var(--ink10) 1px,transparent 1px);background-size:20px 20px;background-color:var(--canvas);position:relative;display:grid;place-items:center}
+.mini-app .m-slot{width:190px;flex:none;border-left:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column}
+.mini-app .m-slot .msh{height:36px;border-bottom:1px solid var(--lineS);display:flex;align-items:center;gap:6px;padding:0 10px;font-size:11px;font-weight:600}
+.mini-app .m-slot .msh .ic{color:var(--ac)}
+.mini-app .m-slot .msb{flex:1;padding:9px 10px;font-size:10px;color:var(--ink60);overflow:hidden}
+.mvnode{width:96px;border:2px solid var(--ac);border-radius:8px;overflow:hidden;position:relative;background:var(--paper)}
+.mvnode .mvt{height:90px;background:linear-gradient(135deg,oklch(0.55 0.09 40),oklch(0.4 0.06 250))}
+.mvnode .mv-badge{position:absolute;top:-8px;left:5px;height:15px;padding:0 5px;border-radius:999px;background:var(--ac);color:#fff;font-size:8px;display:inline-flex;align-items:center;gap:2px}
+.mvnode .mv-stub{position:absolute;bottom:4px;left:4px;right:4px;height:18px;border-radius:5px;background:var(--paper);border:1px solid var(--line);font-size:8px;color:var(--ink80);display:flex;align-items:center;gap:3px;padding:0 4px}
+.mvnode .mv-stub i{color:var(--ac);font-size:10px}
+.toolcard{border:1px solid var(--lineS);border-radius:7px;background:var(--ink05);padding:7px 8px;margin-top:8px;font-size:10px;line-height:1.5}
+.toolcard .tc-h{display:flex;align-items:center;gap:5px;color:var(--ok);font-weight:500;margin-bottom:3px}
+.toolcard .tc-lk{color:var(--ac);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.badge-corner{margin-left:auto;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--line);background:var(--paper);display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--ink80);cursor:pointer;position:relative}
+.badge-corner .dot{width:6px;height:6px;border-radius:50%;background:var(--ac);animation:breathe var(--t-breathe) ease-in-out infinite}
+
+/* 标尺 */
+body.rule .cbtn,body.rule .btn,body.rule .pick,body.rule .ctxchip,body.rule .ctxadd,body.rule .send,body.rule .chip-jump{outline:1px dashed var(--ac);outline-offset:1px}
+body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
+
+/* 动效 */
+@keyframes sweep{0%{background-position:-42% 0}100%{background-position:142% 0}}
+@keyframes breathe{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.12)}}
+.stagefig .L1{animation:lw 1.9s ease-in-out infinite}.stagefig .L2{animation:lw 1.9s ease-in-out .28s infinite}.stagefig .L3{animation:lw 1.9s ease-in-out .56s infinite}
+@keyframes lw{0%,100%{opacity:.3}42%{opacity:1}}
+.stagefig .B1{animation:bx 2.1s var(--ease) infinite}.stagefig .B2{animation:bx 2.1s var(--ease) .22s infinite}.stagefig .B3{animation:bx 2.1s var(--ease) .44s infinite}
+@keyframes bx{0%{opacity:.25;transform:translateX(-3px)}30%,80%{opacity:1;transform:translateX(0)}100%{opacity:.25;transform:translateX(-3px)}}
+.stagefig .FC{animation:fz 2.4s ease-in-out infinite;transform-origin:center}
+@keyframes fz{0%,100%{transform:scale(1)}50%{transform:scale(.84)}}
+.ck{stroke-dasharray:20;stroke-dashoffset:20;animation:ckd var(--t-settle) var(--ease) forwards}
+@keyframes ckd{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>Nomi Agent · 最终版重做样张</h1>
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-s="A">屏 A · 主对话流</button>
+    <button class="tab" data-s="B">屏 B · 审批 + 付费 + 有出入</button>
+    <button class="tab" data-s="C">屏 C · 右槽互斥切换</button>
+    <button class="tab" data-s="D">屏 D · 结果卡区并存</button>
+  </div>
+  <div class="meta">以 11 张过渡版真机截图实际布局为底 · 只画改动 · <a href="../2026-09-01-agent-ui-final-redesign.md">设计定稿</a></div>
+  <button class="toggle" id="darkT"><i class="ti ti-moon"></i><span>暗色</span></button>
+  <button class="toggle" id="ruleT"><i class="ti ti-ruler-2"></i><span>标尺</span></button>
+</div>
+
+<div class="stage">
+
+<!-- ══════════════════ 屏 A · 主对话流 ══════════════════ -->
+<section class="screen on" data-screen="A">
+  <p class="caption"><b>屏 A · 主对话流。</b>补齐过渡版缺的 <b>压缩分隔线(2)</b>、<b>阶段分隔线(5)+工序图示</b>、<b>思考条结束落定不消失(4)</b>、<b>常驻技能标记(21)</b>；composer 底栏 <b>7→5 簇</b>（@/技能归位到上下文架、工作方式+审批合成「执行方式」二段面板）。同一行「排队→进行中→完成」三态演示原位更新不刷屏。</p>
+  <div class="app">
+    <div class="appbar">
+      <div class="brand"><span class="logo">N</span>Nomi</div>
+      <div class="crumb">项目库 <i class="ti ti-chevron-right" style="font-size:13px"></i> <b>雨夜追逐</b></div>
+      <div class="stepper"><span class="st">创作</span><span class="st on">生成</span><span class="st">预览</span></div>
+      <div class="rgrp">
+        <span class="ico"><i class="ti ti-layout-grid"></i></span>
+        <span class="ico"><i class="ti ti-list-check"></i></span>
+        <span class="ico"><i class="ti ti-settings"></i></span>
+        <span class="go"><i class="ti ti-arrow-right"></i></span>
+      </div>
+    </div>
+    <div class="body">
+      <div class="rail">
+        <div class="rh">镜头</div><div class="rs">素材</div>
+        <div class="item on"><i class="ti ti-photo"></i>咖啡馆入物镜头</div>
+        <div class="item sub"><i class="ti ti-plus"></i>新建分镜方案</div>
+      </div>
+      <div class="center grid">
+        <div class="hint">生成画布</div>
+        <div class="vnode">
+          <div class="vh"><i class="ti ti-movie"></i>咖啡馆入物镜头</div>
+          <div class="vthumb"></div>
+          <div class="vfoot">00:15</div>
+        </div>
+      </div>
+      <!-- Agent 工作区 -->
+      <div class="asst">
+        <div class="asst-head">
+          <div class="r1">
+            <span class="nm"><span class="nlogo">N</span>Nomi</span>
+            <span class="thread">· 雨夜追逐</span>
+            <span class="hico" title="历史"><i class="ti ti-history"></i></span>
+            <span class="hico" title="折叠右栏"><i class="ti ti-layout-sidebar-right-collapse"></i></span>
+          </div>
+          <div class="r1" style="margin-top:5px">
+            <span class="usage"><b>本轮 1.2k</b> · 累计 8.4k · 还能聊 ~40 轮</span>
+            <span class="skill-tag"><i class="ti ti-book" style="font-size:12px"></i>按 编剧·Kasdan</span>
+            <span class="fee">费用 ¥0.00</span>
+          </div>
+          <div class="r2">
+            <span class="surface"><i class="ti ti-file-text" style="font-size:13px"></i>当前现场 · <b>文稿</b> · 当前文稿</span>
+          </div>
+        </div>
+
+        <div class="flow">
+          <!-- 压缩分隔线 (形态 2) -->
+          <div class="divider">前面 24 轮已折叠 · <span class="lk">展开</span></div>
+
+          <!-- 阶段分隔线 + 工序图示 (形态 5) -->
+          <div class="divider stage-line">
+            <span class="stagefig" title="拆镜头">
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4">
+                <rect class="B1" x="1" y="2" width="13" height="3" rx="1"/><rect class="B2" x="1" y="6.5" width="13" height="3" rx="1"/><rect class="B3" x="1" y="11" width="13" height="3" rx="1"/>
+              </svg>
+            </span>
+            进入 · 生产段
+          </div>
+
+          <!-- 用户气泡 (形态 3) -->
+          <div class="userbubble">把这段雨夜追逐拆成 5 个镜头，第 2、4 镜生成参考图。</div>
+
+          <!-- 思考条：结束落定不消失 (形态 4) -->
+          <div class="line settled expandable">
+            <span class="li"><i class="ti ti-bulb"></i></span>
+            想了 4 秒 · 拆成 5 镜，2 镜要站位参考
+            <span class="chev"><i class="ti ti-chevron-right"></i></span>
+          </div>
+
+          <!-- 普通回复 (形态 7) -->
+          <div class="asstext">好的。我先通读这段、拆成 5 个镜头，并给第 2、4 镜准备参考图。<span class="cursor"></span></div>
+
+          <!-- 工具组折叠 (形态 6 + 20) -->
+          <div class="toolgroup">
+            <div class="tg-head"><i class="ti ti-tool" style="font-size:14px"></i>工具调用 3<span class="chev"><i class="ti ti-chevron-down"></i></span></div>
+            <div class="tg-body">
+              <div class="line tool-done"><span class="li"><i class="ti ti-check"></i></span>读了剧本 · 2400 字 <span class="elapsed" style="margin-left:auto">&lt;1s</span></div>
+              <div class="line tool-done"><span class="li"><i class="ti ti-check"></i></span>载入了 镜头语言与摄影技法 <span class="chev"><i class="ti ti-chevron-right"></i></span></div>
+              <div class="line"><span class="li"><i class="ti ti-loader-2"></i></span><span style="color:var(--ink60)">生成素材 · 执行中</span><span class="elapsed" style="margin-left:auto">0:12</span></div>
+            </div>
+          </div>
+
+          <!-- 排队/进度 同一行三态 (形态 11/12) -->
+          <div class="progress-demo">
+            <div class="pd-lbl">同一条 id 原位更新（不是刷屏三条）· 同屏最多 1 处扫光：</div>
+            <div class="pstate q"><span class="li" style="width:16px;text-align:center;color:var(--ink40)"><i class="ti ti-clock"></i></span>排队中 · 前面还有 <span class="numroll">3</span> 个</div>
+            <div class="arrow">↓ 位次前移，数字滚动</div>
+            <div class="pstate"><span style="color:var(--ink60)">进行中 · 生成 3/5</span><span class="sw"></span></div>
+            <div class="arrow">↓ 完成落定</div>
+            <div class="pstate d"><span class="li" style="width:16px;text-align:center"><i class="ti ti-check"></i></span>完成 · 5 镜</div>
+          </div>
+
+          <!-- 写入回执 + lost-edits 双确认 (形态 10) -->
+          <div class="receipt"><span class="li"><i class="ti ti-circle-check"></i></span>已加 5 个节点<span class="lk">撤销</span></div>
+          <div class="lost-edits">
+            <b>⚠ 撤销会丢失你的修改</b>：镜 3 的提示词你手动改过「暖光→冷调」。确认撤销这一整笔？
+            <div class="grp" style="margin-top:8px">
+              <button class="btn">再想想</button>
+              <button class="btn acc">确认撤销</button>
+            </div>
+          </div>
+          <div><span class="chip-jump"><i class="ti ti-arrow-up-right"></i>3 个落进「参考」分类 · 去看</span></div>
+        </div>
+
+        <!-- 队列 (形态 18) -->
+        <div class="queue">
+          <div class="qh"><i class="ti ti-stack-2" style="font-size:14px"></i>队列 · 排队 1<span class="stop"><i class="ti ti-player-stop-filled" style="font-size:12px"></i>停止</span></div>
+          <div class="qrow">
+            <span class="qtext">再给第 5 镜换个更冷的色调</span>
+            <span class="qmeta"><i class="ti ti-paperclip"></i>1 <i class="ti ti-robot"></i></span>
+            <span class="qacts">
+              <span class="qi" title="编辑"><i class="ti ti-pencil"></i></span>
+              <span class="qi" title="上移"><i class="ti ti-arrow-up"></i></span>
+              <span class="qi" title="暂停"><i class="ti ti-player-pause"></i></span>
+              <span class="qi" title="删除"><i class="ti ti-x"></i></span>
+            </span>
+          </div>
+        </div>
+
+        <!-- composer 收簇后 -->
+        <div class="composer">
+          <!-- 上下文架：画布选中 + intentRole + 技能 chip + @ 引用 + 引用后已变化 -->
+          <div class="ctxshelf">
+            <span class="ctxchip subj"><i class="ti ti-photo ci"></i>阿青定妆<span class="role">主体·角色定妆</span><i class="ti ti-x x"></i></span>
+            <span class="ctxchip changed"><i class="ti ti-clock-exclamation ci"></i>街道 02:10–02:14<span class="role">引用后已变化</span><i class="ti ti-x x"></i></span>
+            <span class="ctxchip skill"><i class="ti ti-book ci"></i>按 编剧·Kasdan<i class="ti ti-x x"></i></span>
+            <button class="ctxadd"><i class="ti ti-at"></i>加引用</button>
+            <button class="ctxadd"><i class="ti ti-book"></i>技能</button>
+          </div>
+          <div class="cbox">
+            <div class="cprompt ph">继续告诉 Nomi 要改什么…</div>
+            <div class="cbar">
+              <button class="cbtn ico" title="附件"><i class="ti ti-paperclip"></i></button>
+              <button class="cbtn" title="执行方式：工作方式 + 批准策略"><i class="ti ti-bolt"></i><span class="lb">Agent · 安全自动</span><i class="ti ti-chevron-up caret"></i></button>
+              <button class="cbtn" title="Agent 文本模型"><i class="ti ti-robot"></i><span class="lb">去选文本模型</span><i class="ti ti-chevron-up caret"></i></button>
+              <button class="cbtn ico" title="提示词模板"><i class="ti ti-file-pencil"></i></button>
+              <button class="send"><i class="ti ti-arrow-up"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption" style="margin-top:14px"><b>收簇账（7→5）：</b>底栏 5 簇 = 📎附件 · ⚡执行方式(工作方式 3 档 + 批准策略 3 档，同一入口两段) · 🤖Agent 模型 · ✏️提示词 · ↑发送。<b>@引用 / 技能归位到上下文架那一行</b>（§13.2「L1 输入反馈不另占工具栏入口」，0 代价的归位而非收纳）。模型菜单空态用真文案「去选文本模型」——<b>不露原始 i18n key</b>（修 C4）。</p>
+</section>
+
+<!-- ══════════════════ 屏 B · 卡片 ══════════════════ -->
+<section class="screen" data-screen="B">
+  <p class="caption"><b>屏 B · 审批 + 付费卡 + 有出入卡。</b>补齐 <b>付费富卡(9)</b>（对话内第二宿主，明标单价+合计+冻结项+交互即暂停）、<b>有出入卡(16 · Nomi 独有护城河)</b>、<b>反问卡(17 · ≤3 问)</b>；升级 <b>计划卡(8)</b>（批级+单镜+待你看 chip）、<b>产物缩略卡(13)</b>、<b>多候选组(14)</b>。所有卡在会话流内随流（决定一次就完），不进结果卡区。控件统一 28px 高、同排等宽均分、主次只用颜色。</p>
+  <div class="grid2">
+
+    <!-- 计划卡 (形态 8) -->
+    <div class="cardframe">
+      <div class="cf-lbl"><b>形态 8 · 计划卡</b>（批级 + 单镜两层 · 复用 AgentPlanCard）</div>
+      <div class="cf-body">
+        <div class="card accent">
+          <div class="chd"><i class="ti ti-list-details ic"></i>拆成 5 镜 · 生成计划</div>
+          <div class="cbd">
+            <div style="font-size:10px;color:var(--ink40);margin-bottom:5px">这批用（默认）</div>
+            <div class="parambar">
+              <span class="pick you">seedream 4.0 <i class="ti ti-chevron-down caret"></i></span>
+              <span class="pick you">竖版 <i class="ti ti-chevron-down caret"></i></span>
+              <span class="pick summary">16:9 · 1K · 竖版 <i class="ti ti-chevron-down caret"></i></span>
+            </div>
+            <div class="planrow"><span class="num">1</span><input type="checkbox" checked><span class="ptitle">特写</span><span class="ppreview">咖啡杯从暗处推入画面中心</span><span class="same">同上</span></div>
+            <div class="planrow"><span class="num">2</span><input type="checkbox" checked><span class="ptitle">中景</span><span class="ppreview">女主坐在窗边，侧脸自然光</span><span class="same mod">已改 · 还原</span></div>
+            <div class="planrow"><span class="num">3</span><input type="checkbox"><span class="ptitle">近景</span><span class="ppreview">指尖搅动拉花，奶泡纹路清晰</span><span class="same">同上</span></div>
+            <div class="grp">
+              <button class="btn">全不选</button>
+              <button class="btn pri">确认全部（2 镜）</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 付费富卡 (形态 9) -->
+    <div class="cardframe">
+      <div class="cf-lbl"><b>形态 9 · 付费确认卡</b>（对话内第二宿主 · 与 SpendConfirmDialog 同明细组件）</div>
+      <div class="cf-body">
+        <div class="card accent">
+          <div class="chd"><i class="ti ti-coin ic"></i>确认生成 · 会花钱</div>
+          <div class="cbd">
+            <div class="paused"><span class="dot"></span>已暂停 · 你正在查看（移开后继续倒计时 0:08）</div>
+            <div class="priceline"><span>镜 1 特写 · seedream 4.0</span><span class="n">¥0.42</span></div>
+            <div class="priceline"><span>镜 2 中景 · seedream 4.0</span><span class="n">¥0.42</span></div>
+            <div class="priceline"><span>镜 4 近景 · seedream 4.0</span><span class="n">¥0.42</span></div>
+            <div class="priceline total"><span>合计 3 镜</span><span class="n">¥1.26</span></div>
+            <div class="frozen">过闸后不能再改：<b>镜头数、模型、时长、清晰度</b>。提示词仍可改。</div>
+            <div class="grp">
+              <button class="btn">取消</button>
+              <button class="btn pri">确认并生成</button>
+            </div>
+            <div class="opt-row"><input type="checkbox" id="np"><label for="np">本会话不再提示（仅用户直发档；agent 受理档每次必确认 — 见决策 D4）</label></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 有出入卡 (形态 16) -->
+    <div class="cardframe">
+      <div class="cf-lbl"><b>形态 16 · 有出入卡</b>（批准 ≠ 执行 · Nomi 独有 · 复用 ReconcileDeviationCard）</div>
+      <div class="cf-body">
+        <div class="card warn">
+          <div class="chd"><i class="ti ti-git-compare ic"></i>做完了，但和批准的有出入</div>
+          <div class="cbd">
+            <div style="font-size:11px;color:var(--ink60);margin-bottom:6px">正常一致时这张卡永不出现。以下 2 处没按计划生效：</div>
+            <div class="deviation">
+              <div class="dw">镜 3 <span class="arr">→</span> 参考图连线</div>
+              <div class="dd"><span class="df">结构 · 尾帧接力</span>镜 2 的尾帧没接到镜 3——生成时那条边丢了。</div>
+            </div>
+            <div class="deviation">
+              <div class="dw">镜 4 <span class="arr">→</span> 主体一致性</div>
+              <div class="dd"><span class="df">画面 · 角色定妆</span>阿青的发色跑偏成棕色（校验分 0.62，低于阈值）。</div>
+            </div>
+            <div class="grp">
+              <button class="btn acc">让 AI 修</button>
+              <button class="btn">撤销这一步</button>
+              <button class="btn">知道了</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 反问卡 (形态 17) -->
+    <div class="cardframe">
+      <div class="cf-lbl"><b>形态 17 · 反问卡</b>（≤3 问合并 · 选项 chips）</div>
+      <div class="cf-body">
+        <div class="card accent">
+          <div class="chd"><i class="ti ti-help-circle ic"></i>开始前先确认两件</div>
+          <div class="cbd">
+            <div style="font-size:12px;color:var(--ink80);margin-bottom:6px">整体走什么调性？</div>
+            <div class="parambar">
+              <span class="pick you">冷调雨夜</span><span class="pick">暖调怀旧</span><span class="pick">高对比黑白</span>
+            </div>
+            <div style="font-size:12px;color:var(--ink80);margin:10px 0 6px">参考图按谁的定妆？</div>
+            <div class="parambar">
+              <span class="pick you">阿青</span><span class="pick">路人甲</span>
+            </div>
+            <div class="grp"><button class="btn pri">按这个继续</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 多候选组 (形态 14) -->
+    <div class="cardframe">
+      <div class="cf-lbl"><b>形态 14 · 多候选组</b>（同一请求多结果 · 并排≤3 · accept 才转正）</div>
+      <div class="cf-body">
+        <div class="card">
+          <div class="chd"><i class="ti ti-layout-grid ic" style="color:var(--ink60)"></i>镜 1 · 3 个候选</div>
+          <div class="cbd">
+            <div class="candidates">
+              <div class="cand sel" style="--h:40"><div class="cthumb"></div><div class="selmark"><i class="ti ti-check"></i></div><div class="cft">A · 采用中</div></div>
+              <div class="cand" style="--h:210"><div class="cthumb"></div><div class="cft">B</div></div>
+              <div class="cand" style="--h:120"><div class="cthumb"></div><div class="cft">C</div></div>
+            </div>
+            <div class="grp">
+              <button class="btn">上一个</button>
+              <button class="btn">下一个</button>
+              <button class="btn pri">采用 A 版</button>
+            </div>
+            <div style="font-size:10px;color:var(--ink40);margin-top:6px">采用前只是暂存 · 不改画布；批量卡翻输入镜头 ≠ 本卡翻同一请求的结果</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 产物缩略卡 (形态 13) + 失败卡 (形态 15) -->
+    <div class="cardframe">
+      <div class="cf-lbl"><b>形态 13 · 产物缩略卡</b> + <b>形态 15 · 失败卡</b>（动作外置不盖图 · 明标是否计费）</div>
+      <div class="cf-body">
+        <div class="card artifact">
+          <div class="cbd">
+            <div class="athumb"><div class="ameta">镜 1 · 1024×1792 · v2</div></div>
+            <div class="actrow"><button class="btn">改</button><button class="btn">重跑</button><button class="btn acc">去画布</button></div>
+          </div>
+        </div>
+        <div class="card danger" style="margin-top:12px">
+          <div class="chd"><i class="ti ti-alert-triangle ic"></i>镜 4 生成失败</div>
+          <div class="cbd">
+            <div style="font-size:11px;color:var(--ink60);line-height:1.5">当前模型未配置，无法执行。<b style="color:var(--ok)">本次未计费。</b>你可以换模型重试，或改提示词后重发。</div>
+            <div class="grp">
+              <button class="btn">换模型重试</button>
+              <button class="btn">改提示词</button>
+              <button class="btn">看日志</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════ 屏 C · 右槽互斥切换 ══════════════════ -->
+<section class="screen" data-screen="C">
+  <p class="caption"><b>屏 C · 右槽互斥切换（过渡期）。</b>交互 epic 双区外壳落地前走互斥（<code>video-deconstruction-v1.md</code> R-C-1~2 标「过渡行为，落地后自然消失」）。<b>左</b>：Agent 进驻右槽 → 拆解收成源节点浮条「拆解结果·5 镜」（视图 07 态，会话流里 Agent 调拆解工具的内嵌卡指回同一张表）。<b>右</b>：拆解进驻右槽 → Agent 收成顶栏角标「● 进行中」（视图 06 态，有新动静冒 accent 圆点/数字）。切换动效：进驻 260ms 滑入、让位者淡出成角标/浮条；<b>收起 = collapse ≠ unmount</b>，勾选/滚动/Run 状态保持。</p>
+  <div class="split">
+
+    <!-- 左：Agent 进驻，拆解收节点浮条 -->
+    <div class="mini-app">
+      <div class="m-bar">
+        <span class="m-logo">N</span><b style="font-size:11px">Nomi</b>
+        <span class="m-step">创作 · <b style="color:var(--ink)">生成</b> · 预览</span>
+      </div>
+      <div class="m-body">
+        <div class="m-canvas">
+          <div class="mvnode">
+            <span class="mv-badge"><i class="ti ti-check" style="font-size:9px"></i>已拆解·5 镜</span>
+            <div class="mvt"></div>
+            <div class="mv-stub"><i class="ti ti-table"></i>拆解结果·5 镜</div>
+          </div>
+        </div>
+        <div class="m-slot">
+          <div class="msh"><span class="m-logo" style="width:18px;height:18px">N</span>Nomi · 生成</div>
+          <div class="msb">
+            <div style="color:var(--ink80)">帮我把这条视频拆成分镜，我想照着做一版。</div>
+            <div class="toolcard">
+              <div class="tc-h"><i class="ti ti-check" style="font-size:11px"></i>调用工具 · 视频拆解（M 线后）</div>
+              拆 5 个镜头，其中 1 镜画面未读出（可单独重试）。结果已写回拆解面板。
+              <div style="margin-top:4px"><span class="tc-lk">查看拆解结果 →</span></div>
+            </div>
+            <div style="color:var(--ink60);margin-top:8px">你想让我先拆成 5 版草稿，还是先挑保留镜？</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-mid"><i class="ti ti-arrows-left-right"></i></div>
+
+    <!-- 右：拆解进驻，Agent 收顶栏角标 -->
+    <div class="mini-app">
+      <div class="m-bar">
+        <span class="m-logo">N</span><b style="font-size:11px">Nomi</b>
+        <span class="m-step">创作 · <b style="color:var(--ink)">生成</b> · 预览</span>
+        <span class="badge-corner"><span class="dot"></span>进行中<i class="ti ti-chevron-left" style="font-size:11px"></i></span>
+      </div>
+      <div class="m-body">
+        <div class="m-canvas">
+          <div class="mvnode"><div class="mvt"></div></div>
+        </div>
+        <div class="m-slot">
+          <div class="msh"><i class="ti ti-table ic"></i>视频拆解 · 00:15</div>
+          <div class="msb" style="overflow-y:auto">
+            <div class="disclosure"><span class="chip">本地取证据</span><span class="chip">有对照</span></div>
+            <div style="display:flex;gap:6px;padding:6px 0;border-top:1px solid var(--lineS)">
+              <input type="checkbox" checked style="accent-color:var(--ac);margin-top:2px">
+              <div class="shot-thumb" style="--h:40;width:38px;height:28px"></div>
+              <div class="shot-meta">
+                <div class="sm-top"><span class="sm-num">1</span><span class="sm-tag" style="font-size:10px">特写</span><span class="sm-time" style="font-size:9px">2.1s</span></div>
+                <div class="sm-desc" style="font-size:10px">咖啡杯从暗处推入画面中心</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;padding:6px 0;border-top:1px solid var(--lineS)">
+              <input type="checkbox" checked style="accent-color:var(--ac);margin-top:2px">
+              <div class="shot-thumb" style="--h:210;width:38px;height:28px"></div>
+              <div class="shot-meta">
+                <div class="sm-top"><span class="sm-num">2</span><span class="sm-tag" style="font-size:10px">中景</span><span class="sm-time" style="font-size:9px">2.7s</span></div>
+                <div class="sm-desc" style="font-size:10px">女主坐在窗边，侧脸自然光</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;padding:6px 0;border-top:1px solid var(--lineS)">
+              <input type="checkbox" style="accent-color:var(--ac);margin-top:2px">
+              <div class="shot-thumb" style="--h:120;width:38px;height:28px;opacity:.5"></div>
+              <div class="shot-meta">
+                <div class="sm-top"><span class="sm-num">3</span><span class="shot-fail">这镜没读出来·可单独重试</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption" style="margin-top:14px"><b>宽度单一真相源：</b>两个住户共享槽宽 <code>assistantWidth</code> 340（clamp 300–600）→ <code>--generation-assistant-target-width</code>；<b>#251 的 520px 作废</b>。角标落顶栏因为它是唯一跨创作/生成/预览常驻的 chrome；浮条落源节点因为拆解结果本就属那条视频（一功能一个家）。</p>
+</section>
+
+<!-- ══════════════════ 屏 D · 结果卡区并存 ══════════════════ -->
+<section class="screen" data-screen="D">
+  <p class="caption"><b>屏 D · 结果卡区并存（③合流最终态）。</b>交互 epic 双区外壳落地后互斥消失：右槽 = Agent 工作区双区——<b>结果卡区（固定 · 不随聊天滚走）</b>停拆解卡 + 下方<b>会话流</b>并存。这是 C9 的结构答案。<b>新功能 = 新卡片，不再新立面板（单壳）</b>；两个入口（节点浮条 A / Agent 会话工具卡 B）汇聚同一张卡（订阅工件状态 <code>videoUrl/nodeId</code>，不绑面板 open 布尔 → 平移不返工）。</p>
+  <div class="app">
+    <div class="appbar">
+      <div class="brand"><span class="logo">N</span>Nomi</div>
+      <div class="crumb">项目库 <i class="ti ti-chevron-right" style="font-size:13px"></i> <b>咖啡馆短片</b></div>
+      <div class="stepper"><span class="st">创作</span><span class="st on">生成</span><span class="st">预览</span></div>
+      <div class="rgrp">
+        <span class="ico"><i class="ti ti-layout-grid"></i></span>
+        <span class="ico"><i class="ti ti-settings"></i></span>
+        <span class="go"><i class="ti ti-arrow-right"></i></span>
+      </div>
+    </div>
+    <div class="body">
+      <div class="rail">
+        <div class="rh">镜头</div><div class="rs">素材</div>
+        <div class="item on"><i class="ti ti-photo"></i>咖啡馆入物镜头</div>
+        <div class="item sub"><i class="ti ti-plus"></i>新建分镜方案</div>
+      </div>
+      <div class="center grid">
+        <div class="hint">生成画布</div>
+        <div class="vnode">
+          <div class="vh"><i class="ti ti-movie"></i>咖啡馆入物镜头</div>
+          <div class="vthumb"></div>
+          <div class="vfoot">00:15</div>
+          <span class="node-badge"><i class="ti ti-check" style="font-size:9px"></i>已拆解 · 5 镜</span>
+        </div>
+      </div>
+
+      <!-- Agent 工作区：双区 -->
+      <div class="asst">
+        <div class="asst-head">
+          <div class="r1">
+            <span class="nm"><span class="nlogo">N</span>Nomi</span>
+            <span class="thread">· 咖啡馆短片</span>
+            <span class="hico"><i class="ti ti-history"></i></span>
+            <span class="hico"><i class="ti ti-layout-sidebar-right-collapse"></i></span>
+          </div>
+          <div class="r1" style="margin-top:5px">
+            <span class="usage"><b>本轮 0.8k</b> · 累计 3.1k · 还能聊 ~52 轮</span>
+            <span class="fee">费用 ¥1.26</span>
+          </div>
+          <div class="r2"><span class="surface"><i class="ti ti-movie" style="font-size:13px"></i>当前现场 · <b>视频</b> · 咖啡馆入物镜头</span></div>
+        </div>
+
+        <!-- 结果卡区（固定） -->
+        <div class="resultzone">
+          <div class="rz-lbl"><i class="ti ti-pin" style="font-size:12px"></i>结果卡区 · 固定 · 不随聊天滚走</div>
+          <div class="result-card">
+            <div class="rc-head"><i class="ti ti-table ic"></i><b>拆解结果</b><span class="cnt">· 5 镜</span><span class="chev"><i class="ti ti-chevron-down"></i></span></div>
+            <div style="padding:0 9px 9px">
+              <div class="disclosure"><span class="chip">本地取证据</span><span class="chip">有对照 · Gemini 3.5 Flash</span></div>
+              <div class="shot-table" style="max-height:150px">
+                <div class="shot-row">
+                  <input type="checkbox" checked>
+                  <div class="shot-thumb" style="--h:40"></div>
+                  <div class="shot-meta">
+                    <div class="sm-top"><span class="sm-num">1</span><span class="sm-tag">特写</span><span class="sm-emo">· 温暖</span><span class="sm-time">0.0–2.1s</span></div>
+                    <div class="sm-desc">咖啡杯从暗处缓缓推入画面中心，暖色顶光打在瓶身与热气。</div>
+                    <div class="sm-field"><b>字幕</b> 熬夜救星 · <b>图片</b> 特写咖啡杯，暖光</div>
+                  </div>
+                </div>
+                <div class="shot-row">
+                  <input type="checkbox" checked>
+                  <div class="shot-thumb" style="--h:210"></div>
+                  <div class="shot-meta">
+                    <div class="sm-top"><span class="sm-num">2</span><span class="sm-tag">中景</span><span class="sm-emo">· 明净</span><span class="sm-time">2.1–4.8s</span></div>
+                    <div class="sm-desc">女主坐在窗边喝咖啡，自然侧光，背景轻微虚化。</div>
+                    <div class="sm-field"><b>字幕</b> 限时 3 折（第 3 秒才跳出来）</div>
+                  </div>
+                </div>
+                <div class="shot-row">
+                  <input type="checkbox">
+                  <div class="shot-thumb" style="--h:120;opacity:.5"></div>
+                  <div class="shot-meta">
+                    <div class="sm-top"><span class="sm-num">3</span><span class="shot-fail"><i class="ti ti-alert-circle" style="font-size:10px"></i>这镜没读出来·可单独重试</span><span class="sm-time">4.8–7.0s</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="decon-foot">
+                <button class="btn acc" style="flex:none">用这套结构起稿</button>
+                <span class="sel-cnt">已选 2/5</span>
+                <button class="btn pri" style="flex:none">加入画布 (2)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 会话流 -->
+        <div class="flow">
+          <div class="userbubble">帮我把这条咖啡馆视频拆成分镜，我想照着做一版。</div>
+          <div class="asstext">好的，我把这条 00:15 拆成 5 镜、放进上面的结果卡。镜 3 画面没读出来，你可以单独重试那一镜。</div>
+          <!-- Agent 调拆解工具的内嵌卡 = 入口 B，指回同一张结果卡 -->
+          <div class="toolgroup">
+            <div class="tg-head"><i class="ti ti-table" style="font-size:14px;color:var(--ac)"></i>调用工具 · 视频拆解<span class="chev"><i class="ti ti-chevron-right"></i></span></div>
+            <div class="tg-body">
+              <div class="line tool-done"><span class="li"><i class="ti ti-check"></i></span>拆 5 镜 · 1 镜未读出 · <span class="chip-jump" style="margin-left:auto"><i class="ti ti-arrow-up"></i>看结果卡</span></div>
+            </div>
+          </div>
+          <div class="receipt"><span class="li"><i class="ti ti-circle-check"></i></span>结果已写回结果卡 · 两入口同一张<span class="lk">去画布</span></div>
+        </div>
+
+        <!-- composer -->
+        <div class="composer">
+          <div class="ctxshelf">
+            <span class="ctxchip subj"><i class="ti ti-movie ci"></i>咖啡馆入物镜头<span class="role">source·源视频</span><i class="ti ti-x x"></i></span>
+            <button class="ctxadd"><i class="ti ti-at"></i>加引用</button>
+          </div>
+          <div class="cbox">
+            <div class="cprompt ph">继续告诉 Nomi 要改什么…</div>
+            <div class="cbar">
+              <button class="cbtn ico"><i class="ti ti-paperclip"></i></button>
+              <button class="cbtn"><i class="ti ti-bolt"></i><span class="lb">Agent · 安全自动</span><i class="ti ti-chevron-up caret"></i></button>
+              <button class="cbtn"><i class="ti ti-robot"></i><span class="lb">Kimi K2</span><i class="ti ti-chevron-up caret"></i></button>
+              <button class="cbtn ico"><i class="ti ti-file-pencil"></i></button>
+              <button class="send"><i class="ti ti-arrow-up"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption" style="margin-top:14px"><b>开闸删旧（C9 / 决策 D5）：</b>最终态右槽双区并存 → 过渡版的互斥标志（<code>generationAiCollapsed</code>↔<code>videoDeconstructionCollapsed</code> 互翻）作废、4 档工作方式契约删净（P1 加新必删旧无并行版）。拆解卡靠工件状态键从「互斥面板」平移进「结果卡区」，不返工。</p>
+</section>
+
+</div>
+
+<script>
+(function(){
+  var tabs=document.getElementById('tabs');
+  tabs.addEventListener('click',function(e){
+    var b=e.target.closest('.tab');if(!b)return;
+    tabs.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('on',t===b)});
+    document.querySelectorAll('.screen').forEach(function(s){s.classList.toggle('on',s.dataset.screen===b.dataset.s)});
+  });
+  document.getElementById('darkT').addEventListener('click',function(){
+    document.body.classList.toggle('dark');
+    this.querySelector('span').textContent=document.body.classList.contains('dark')?'亮色':'暗色';
+    this.querySelector('i').className=document.body.classList.contains('dark')?'ti ti-sun':'ti ti-moon';
+  });
+  document.getElementById('ruleT').addEventListener('click',function(){
+    document.body.classList.toggle('rule');
+  });
+})();
+</script>
+</body>
+</html>
