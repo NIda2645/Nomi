@@ -65,6 +65,30 @@ export function ratioResToOpenAiSize(values: Array<string | undefined>): string 
   return `${width}x${height}`;
 }
 
+/**
+ * 中性比例 → fal `openai/gpt-image-2` 的 `image_size` **枚举**（fal 契约 2026-09-01 实测：只认
+ * `square_hd|square|portrait_4_3|portrait_16_9|landscape_4_3|landscape_16_9|auto`，**不认** `"1024x1024"`
+ * 这种 WxH 串——发串会 422 `model_attributes_type`）。fal 侧清晰度由 `quality` 参数单独承载，故这里只按
+ * **朝向**取枚举、不编码像素档位。fal 枚举比 16 档 canonical 粗 → 按长短边归到最近的横/竖/方：
+ *   a==b → square；宽幅按长短比 ≥ 1.5 归 16:9 否则 4:3；竖幅同理。auto/空 → undefined（省略，由 fal 默认）。
+ * ⚠️ **fal 专用**：OpenAI/new-api 的 `size` 字段要的是 WxH 串（用 ratioResToOpenAiSize），别混用。
+ */
+export function ratioResToFalImageSize(values: Array<string | undefined>): string | undefined {
+  const ratio = (values[0] || "").trim().toLowerCase();
+  if (!ratio || ratio === "auto") return undefined;
+  const m = ratio.match(/^(\d+)\s*[:x]\s*(\d+)$/);
+  if (!m) return undefined;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  if (!a || !b) return undefined;
+  if (a === b) return "square";
+  const longOverShort = Math.max(a, b) / Math.min(a, b);
+  const wide = a > b;
+  const tall = longOverShort >= 1.5; // ≥3:2 走 16:9 档，否则 4:3 档
+  if (wide) return tall ? "landscape_16_9" : "landscape_4_3";
+  return tall ? "portrait_16_9" : "portrait_4_3";
+}
+
 /** 小写归一（某站字段值要小写，如 apimart 历史用 1k/2k/4k；中性 canonical 用 1K/2K/4K）。 */
 export function toLowerCase(values: Array<string | undefined>): string | undefined {
   const v = (values[0] || "").trim();
@@ -160,6 +184,7 @@ export function secondsToMilliseconds(values: Array<string | undefined>): number
  *  （number 用于严格类型的 wire 字段,如 AGNES Go 后端的 int width/height/num_frames）。 */
 export const PARAM_TRANSFORMS: Record<string, (values: Array<string | undefined>) => string | number | boolean | undefined> = {
   ratioResToOpenAiSize,
+  ratioResToFalImageSize,
   toLowerCase,
   toUpperCase,
   toString,

@@ -215,6 +215,34 @@ registerRequestTransform("runway-video-contract", normalizeRunwayVideoContract, 
   normalizeRunwayVideoContract(body);
 });
 
+/**
+ * Runway 的 `/v1/text_to_image` 是**按模型判别的 union**：每个 image 模型有各自的 `ratio` 枚举，
+ * 共享 archetype 的比例列表（1024:1024 / 1280:720 / …）**只是其中一部分模型的合法值**。
+ * 2026-09-01 实测：`muse_image` / `gpt_image_2` 的枚举**不含 1024:1024**（muse 最小 1600 系、gpt 最小 2048 系，
+ * 都含 `auto`）；`seedream5_lite` 是 freeform、要求总像素 3.68M–16.7M（1024²=1M 直接 400）。用共享默认发这三个
+ * 模型 → 恒 400 `Validation of body failed`（视频侧同类问题早已由 normalizeRunwayVideoContract 的 ratioFamilies 解，
+ * 图像侧一直漏了）。这里按**朝向**把共享比例映射到各模型枚举里的合法值（视频侧 ratioFamilies 的图像对偶）。
+ * 只处理会 400 的三个模型；其余模型（含 1024:1024 的）原样透传。
+ */
+const RUNWAY_IMAGE_RATIO_REMAP: Record<string, { square: string; landscape: string; portrait: string }> = {
+  // muse_image 枚举（含 auto）：方=1600:1600、横=2016:1152、竖=1152:2016。
+  muse_image: { square: "1600:1600", landscape: "2016:1152", portrait: "1152:2016" },
+  // gpt_image_2 枚举（含 auto，最小 2048 系）：方=1920:1920、横=2560:1440、竖=1440:2560。
+  gpt_image_2: { square: "1920:1920", landscape: "2560:1440", portrait: "1440:2560" },
+  // seedream5_lite freeform：任一档都要 ≥3.68M 像素。方=2048:2048、横=2720:1530、竖=1530:2720（各在窗内）。
+  seedream5_lite: { square: "2048:2048", landscape: "2720:1530", portrait: "1530:2720" },
+};
+
+/** 从共享 ratio（"1024:1024" / "1280:720" / "auto_1k"…）判朝向。auto_* 视为方形。 */
+function runwayRatioOrientation(ratio: string): "square" | "landscape" | "portrait" {
+  const m = ratio.match(/^(\d+)\s*[:x]\s*(\d+)$/);
+  if (!m) return "square"; // auto_1k / auto_2k / 未知 → 方
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!w || !h || w === h) return "square";
+  return w > h ? "landscape" : "portrait";
+}
+
 function normalizeRunwayImageReferences(body: unknown): unknown {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Runway 图像请求体必须是 JSON 对象");
   const input = body as Record<string, unknown>;
@@ -225,6 +253,11 @@ function normalizeRunwayImageReferences(body: unknown): unknown {
   if (images.length > 3) throw new Error("Runway 图像模型最多 3 张参考图");
   delete input.reference_image_urls;
   if (images.length) input.referenceImages = images.map((uri) => ({ uri }));
+
+  // 按模型判别把共享比例映射到该模型合法的 ratio（只对枚举不含共享默认的模型动手）。
+  const remap = RUNWAY_IMAGE_RATIO_REMAP[String(input.model || "")];
+  const ratio = typeof input.ratio === "string" ? input.ratio.trim() : "";
+  if (remap && ratio) input.ratio = remap[runwayRatioOrientation(ratio)];
   return input;
 }
 
@@ -581,7 +614,9 @@ function runwayImageModel(spec: RunwayImageSpec): RunwayModel {
       ...(withReferences || spec.requiresReferences ? { reference_image_urls: "{{request.params.reference_image_urls}}" } : {}),
       model: spec.modelKey,
     },
-    ...((withReferences || spec.requiresReferences) ? { request_transform: "runway-image-references" } : {}),
+    // 始终挂 runway-image-references：它现在同时承载**按模型判别的 ratio 重映射**（muse/gpt/seedream5_lite
+    // 的枚举不含共享默认比例 → 不映射就恒 400）。纯 t2i（无参考）过去不挂它，正是这三个模型文生图挂掉的原因。
+    request_transform: "runway-image-references",
     ...(!spec.outputCount ? { paramMap: { drops: ["output_count"], rules: [] } } : {}),
     response_mapping: { task_id: "id" },
     provider_meta_mapping: { task_id: "id" },

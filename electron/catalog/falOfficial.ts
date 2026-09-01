@@ -31,12 +31,31 @@ function normalizeFalKlingV3Body(body: unknown, _context?: RequestTransformConte
 
 registerRequestTransform("fal-kling-v3-image-slots", normalizeFalKlingV3Body, (body) => { normalizeFalKlingV3Body(body); });
 
+/**
+ * fal 的 queue **提交**用完整子路径端点（`owner/app[/sub/path]`），但**状态/结果**只挂在
+ * `owner/app`（app 根，前两段）上——深子路径的 status/result URL 会 405（提交返回的
+ * `status_url`/`response_url` 也是收敛到前两段，2026-09-01 对 5 个真实端点实测：
+ *   `bytedance/seedance-2.5/text-to-video` → status 根 `bytedance/seedance-2.5`
+ *   `fal-ai/kling-video/v3/pro/text-to-video` → `fal-ai/kling-video`
+ *   `google/gemini-omni-flash/v1.1/text-to-video` → `google/gemini-omni-flash`
+ *   `bytedance/seedream/v5/pro/text-to-image` → `bytedance/seedream`
+ *   `openai/gpt-image-2`（已 2 段）→ `openai/gpt-image-2`
+ * ）。以前 query/result 直接拼完整端点 → 凡端点 > 2 段（Seedance 2.5 / Kling V3 Pro / Gemini Omni /
+ * H3-Max / Seedream 5 Pro）轮询恒 405、永远拿不到状态。loopback 测试用 `pathname.includes("/requests/")`
+ * 宽松匹配，遮住了这个漂移，本地看不出。
+ */
+function falAppRoot(endpoint: string): string {
+  const segments = endpoint.split("/").filter(Boolean);
+  return segments.slice(0, 2).join("/");
+}
+
 function queueOperations(endpoint: string, body: Body, assetPath: string): { create: HttpOperation; query: HttpOperation; result: HttpOperation } {
   const root = `/${endpoint}`;
+  const statusRoot = `/${falAppRoot(endpoint)}`;
   return {
     create: { method: "POST", path: root, headers: FAL_HEADERS, body, response_mapping: { task_id: "request_id", status: "status" }, provider_meta_mapping: { task_id: "request_id" } },
-    query: { method: "GET", path: `${root}/requests/{{providerMeta.task_id}}/status`, headers: { Authorization: "Key {{user_api_key}}" }, response_mapping: { task_id: "request_id", status: "status" } },
-    result: { method: "GET", path: `${root}/requests/{{providerMeta.task_id}}`, headers: { Authorization: "Key {{user_api_key}}" }, response_mapping: { assets: assetPath } },
+    query: { method: "GET", path: `${statusRoot}/requests/{{providerMeta.task_id}}/status`, headers: { Authorization: "Key {{user_api_key}}" }, response_mapping: { task_id: "request_id", status: "status" } },
+    result: { method: "GET", path: `${statusRoot}/requests/{{providerMeta.task_id}}`, headers: { Authorization: "Key {{user_api_key}}" }, response_mapping: { assets: assetPath } },
   };
 }
 
@@ -62,8 +81,8 @@ export const FAL_OFFICIAL_MODELS: FalModel[] = [
   {
     modelKey: "openai/gpt-image-2", labelZh: "GPT Image 2 · fal", kind: "image", archetypeId: "gpt-image-2",
     mappings: [
-      withCreateOptions(mapping("openai/gpt-image-2", "text_to_image", "t2i", "GPT Image 2 · 文生图", "openai/gpt-image-2", { prompt: "{{request.prompt}}", image_size: p("image_size"), background: p("background"), quality: p("quality"), num_images: p("num_images"), output_format: p("output_format") }, "images[*]"), { paramMap: { rules: [{ wire: "image_size", fromMany: ["aspect_ratio", "resolution"], transform: "ratioResToOpenAiSize" }] } }),
-      withCreateOptions(mapping("openai/gpt-image-2", "image_edit", "edit", "GPT Image 2 · 改图", "openai/gpt-image-2/edit", { prompt: "{{request.prompt}}", image_urls: p("image_urls"), image_size: p("image_size"), background: p("background"), quality: p("quality"), num_images: p("num_images"), output_format: p("output_format"), mask_url: p("mask_url") }, "images[*]"), { paramMap: { rules: [{ wire: "image_size", fromMany: ["aspect_ratio", "resolution"], transform: "ratioResToOpenAiSize" }] } }),
+      withCreateOptions(mapping("openai/gpt-image-2", "text_to_image", "t2i", "GPT Image 2 · 文生图", "openai/gpt-image-2", { prompt: "{{request.prompt}}", image_size: p("image_size"), background: p("background"), quality: p("quality"), num_images: p("num_images"), output_format: p("output_format") }, "images[*]"), { paramMap: { rules: [{ wire: "image_size", fromMany: ["aspect_ratio", "resolution"], transform: "ratioResToFalImageSize" }] } }),
+      withCreateOptions(mapping("openai/gpt-image-2", "image_edit", "edit", "GPT Image 2 · 改图", "openai/gpt-image-2/edit", { prompt: "{{request.prompt}}", image_urls: p("image_urls"), image_size: p("image_size"), background: p("background"), quality: p("quality"), num_images: p("num_images"), output_format: p("output_format"), mask_url: p("mask_url") }, "images[*]"), { paramMap: { rules: [{ wire: "image_size", fromMany: ["aspect_ratio", "resolution"], transform: "ratioResToFalImageSize" }] } }),
     ],
   },
   {
