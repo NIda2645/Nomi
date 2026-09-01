@@ -1,4 +1,5 @@
 import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { normalizeProviderProxyUrl } from "../providerNetwork";
 import type { ProviderAdapterCatalogPort } from "./serviceCatalog";
 import type {
   ProviderAdapterConnectionInput,
@@ -15,6 +16,7 @@ export function normalizeProviderAdapterInput<T extends ProviderAdapterConnectio
   const baseUrl = String(rawInput.baseUrl || "").trim().replace(/\/+$/, "");
   if (!/^https?:\/\//i.test(baseUrl)) throw new Error("Provider base URL must begin with http:// or https://");
   const apiKey = String(rawInput.apiKey || "").trim();
+  const proxyUrl = normalizeProviderProxyUrl(rawInput.proxyUrl);
   const mayKeepCredential = purpose === "register" &&
     (rawInput as ProviderAdapterRegisterInput).preserveExistingCredential === true;
   if (rawInput.authType !== "none" && !apiKey && !mayKeepCredential) throw new Error("API key is required");
@@ -27,7 +29,7 @@ export function normalizeProviderAdapterInput<T extends ProviderAdapterConnectio
     }))
     .filter((model) => model.modelKey && !seen.has(model.modelKey) && seen.add(model.modelKey));
   if (purpose === "verify" && models.length === 0) throw new Error("Select at least one model to verify");
-  return { ...rawInput, baseUrl, apiKey, models };
+  return { ...rawInput, baseUrl, apiKey, ...(proxyUrl ? { proxyUrl } : {}), models };
 }
 
 export function registerProviderConnection(input: {

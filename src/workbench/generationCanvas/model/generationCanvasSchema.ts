@@ -28,6 +28,11 @@ export const generationProvenanceSchema = z.object({
   seed: z.number().optional(),
   params: z.record(z.unknown()).optional(),
   vendorRequestId: z.string().optional(),
+  cost: z.object({
+    amount: z.number().finite().nonnegative(),
+    currency: z.string(),
+    unit: z.enum(['estimate', 'actual']),
+  }).optional(),
   timestamp: z.number(),
   agentRunId: z.string().optional(),
 }).strict()
@@ -69,6 +74,14 @@ export const generationNodeRunRecordSchema = z.object({
 export const generationCanvasNodeSchema = z.object({
   id: z.string().min(1),
   kind: generationNodeKindSchema,
+  typeId: z.string().min(1).optional(),
+  pluginState: z.object({
+    pluginId: z.string().min(1),
+    pluginVersion: z.string().min(1),
+    typeId: z.string().min(1),
+    schemaVersion: z.number().int().positive(),
+    state: z.record(z.unknown()),
+  }).optional(),
   title: z.string(),
   position: z.object({
     x: z.number(),

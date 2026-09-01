@@ -1,0 +1,50 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-error-code-classification-boundary",
+  "problem_type": "cross-language-fragile error classification (renderer classifies our own thrown errors by matching a Chinese human-readable substring)",
+  "symptom": "The renderer's generation-error classifier decided whether an upload failure was 'asset too large (HTTP 413, do not retry, must compress)' versus 'upload failed (retry may help)' by substring-matching the exact Chinese sentence the main process threw (for example '超过了所有可用上传通道的大小上限'). Unit tests stayed green because they fed that same hardcoded Chinese string, so the coupling was invisible in source; only once the i18n work translates or rewords that sentence would classification silently fall through to 'unknown' and show the user 'the provider may be temporarily down, wait and retry' for a deterministic failure that can never succeed on retry.",
+  "direct_cause": "assetLocalization.ts threw a plain Chinese Error message and classifyError.ts's detectAssetTooLarge/detectAssetUploadFailed used raw.includes('<that Chinese sentence>') as the primary discriminator. Two modules used the same human sentence as a de facto wire protocol, which breaks the moment the sentence is localized or reworded.",
+  "class_root": "Classification was keyed on presentation text instead of a machine-readable signal. Any classifier that branches on a human-readable message is coupled to that exact wording across language, provider rewording, and future edits; the correct discriminator is a stable code that does not change when the human text is translated. Provider errors already carry a structured category (VendorRequestError.structured); our own thrown errors had no equivalent stable tag, so the renderer had nothing to match but the words.",
+  "affected_population": [
+    "Every user hitting a deterministic asset-too-large (HTTP 413) failure on a direct upload channel once any Nomi build localizes or rewords the thrown message: they would be told to 'wait and retry' instead of to compress, and would retry an upload that can never succeed.",
+    "Any future Nomi-owned error category that the renderer must classify: without a stable code, each would repeat the fragile 'match our own Chinese sentence' coupling.",
+    "The i18n effort itself, which cannot safely translate main-process throw messages while classification silently depends on their exact wording."
+  ],
+  "scope_paths": [
+    "electron/catalog/assetLocalization.ts",
+    "electron/shared/nomiErrorCodes.ts",
+    "src/workbench/observability/classifyError.ts"
+  ],
+  "entry_points": [
+    "assetLocalization.allChannelsFailedError — the throw site that now tags its human message with a stable NOMI_ERR:: code via tagNomiError before it reaches the renderer over IPC.",
+    "classifyError.detectAssetTooLarge / detectAssetUploadFailed — the classification site that now matches the machine code (matchNomiErrorCode) as the primary discriminator, with the old Chinese/HTTP substrings kept only as legacy fallbacks for errors persisted before this change.",
+    "classifyError.extractReadableErrorLine / reportFor — the display path that strips the code marker (stripNomiErrorCode) so the machine tag never reaches user-visible reason/hint/raw."
+  ],
+  "external_sources": [],
+  "internal_only_reason": "This is an internal cross-module contract between a Nomi main-process throw site and the Nomi renderer classifier passed over Nomi's own IPC. It mirrors the pre-existing VENDOR_ERROR_IPC_MARKER pattern in electron/providerAdapter/vendorErrorIpc; no third-party API, wire format, or external documentation governs the marker shape, so there is no official doc to check.",
+  "invariants": [
+    "The renderer classifies Nomi-owned thrown errors by a stable machine code (NOMI_ERR:: marker), never by the human-readable message, so translating or rewording the message cannot change the classification.",
+    "The machine code marker travels inside the Error message string, so it survives Electron IPC rejection (which preserves only message), exactly like the existing vendor error marker.",
+    "The code marker is never shown to the user: display-facing reason, hint, and raw are stripped of the marker; only the human message remains.",
+    "Legacy substring fallbacks are non-fragile: they match either a non-CJK token (HTTP 413) or a pre-change Chinese string retained solely to recognize errors already persisted into node.error before this change, and are not depended on for newly thrown errors."
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "The fragile coupling existed at the two named asset-upload error categories (asset-too-large, asset-upload-failed) between one throw site and one classifier. The fix introduces a small stable-code contract (electron/shared/nomiErrorCodes.ts) modeled on the pre-existing vendor marker, tags those two categories at the throw site, and matches the code at the classifier; each corrected path is pinned by an equivalence test that reclassifies after the human text is swapped to English. No new machine-enforced gate is added, and the 'classify by Chinese substring' pattern class as a whole is already guarded by the separate check:i18n-fragile-match ratchet, so this contract documents the two-site correction rather than promoting a reusable structural boundary here.",
+    "same_class_scan": [
+      "Enumerated the discriminators in classifyError.ts and confirmed the two asset-upload branches (detectAssetTooLarge, detectAssetUploadFailed) were the ones keyed on a Nomi-owned Chinese sentence; provider-side branches already use VendorRequestError.structured category rather than words.",
+      "Introduced check:i18n-fragile-match (scripts/check-i18n-fragile-match.mjs) as a shrink-only ratchet over all product source so any NEW '.includes(<CJK>)' classification is caught at CI time; the existing 43 occurrences are baselined for incremental cleanup.",
+      "Verified the code marker is stripped everywhere it could surface to the user (reason, hint, raw) via classifyGenerationError.test.ts assertions that no NOMI_ERR token leaks.",
+      "Confirmed behavioral equivalence: the same input classified identically before and after, and — critically — still classifies correctly when the human message is replaced with English, proving the branch no longer depends on the Chinese wording."
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts"
+  ],
+  "migration": "No stored data is rewritten. Errors thrown after this change carry the NOMI_ERR:: code and classify by code. Errors already persisted into a node's error field before this change have no code marker; the retained legacy substring fallbacks (the pre-change Chinese sentence and the non-CJK 'HTTP 413' token) still recognize them, so historical nodes classify exactly as before. The marker is stripped from all display fields, so no user-visible text changes for either old or new errors.",
+  "residual_risks": [
+    "The two legacy Chinese-substring fallbacks remain in classifyError.ts to recognize pre-change persisted errors; they are counted in the check:i18n-fragile-match baseline and are safe to remove only once no pre-change node.error values remain in the wild, which cannot be proven from the codebase.",
+    "Only the two asset-upload categories are code-tagged in this change; other Nomi-owned thrown errors that the renderer may classify are not yet migrated to NOMI_ERR:: codes and would still rely on message text if a classifier branched on them.",
+    "The NOMI_ERR:: marker and the vendor marker are two parallel in-band conventions; a future third marker should reuse this shape rather than inventing another, but that convergence is not enforced by a gate."
+  ]
+}

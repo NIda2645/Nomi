@@ -238,6 +238,65 @@ describe("certifyMediaArtifact", () => {
     expect(evidence).toMatchObject({ kind, contentType });
   });
 
+  // A multi-megabyte `data:` URL (b64_json video/3D from vendors) once threw a raw
+  // "Maximum call stack size exceeded" from the base64-syntax gate's stack-recursive
+  // `(?:...{4})*` regex, so the model self-certification failed with an unreadable error
+  // and stuck at enabled:false. The gate is now a linear scan; large payloads either
+  // certify (within limit) or fail with an honest reason code — never a stack overflow.
+  it("certifies a within-limit multi-megabyte audio data URL without overflowing the base64 gate", async () => {
+    // Runtime-generated real PCM WAV (~4MB, inside the 25MB audio limit); no MB-sized
+    // literal lives in source. 48kHz * 2ch * 2 bytes * 11s ≈ 4.05MB of decodable audio.
+    const generated = spawnSync(
+      resolveFfmpegPath(),
+      ["-hide_banner", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=22",
+        "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", "-f", "wav", "pipe:1"],
+      { maxBuffer: 64 * 1024 * 1024 },
+    );
+    if (generated.status !== 0) throw new Error("test WAV generation failed");
+    const bytes = generated.stdout;
+    expect(bytes.byteLength).toBeGreaterThan(3.4 * 1024 * 1024);
+    const evidence = await certifyMediaArtifact(
+      { source: dataUrl("audio/wav", bytes), expectedKind: "audio" },
+      deps(),
+    );
+    expect(evidence.kind).toBe("audio");
+    expect(evidence.byteLength).toBe(bytes.byteLength);
+  });
+
+  it("rejects an over-limit base64 data URL with media_too_large instead of a stack overflow", async () => {
+    // ~26MB of valid canonical base64 (length a multiple of 4) decodes to > the 25MB
+    // video limit; the size guard must fire before the syntax scan and before any decode.
+    const overBytes = 26 * 1024 * 1024;
+    const encoded = "A".repeat(Math.ceil((overBytes * 4) / 3 / 4) * 4);
+    const error = await reasonOf(certifyMediaArtifact(
+      { source: `data:video/mp4;base64,${encoded}`, expectedKind: "video" },
+      deps(),
+    ));
+    expect(error.reasonCode).toBe("media_too_large" satisfies CertificationMediaReasonCode);
+    expect(error.message).not.toMatch(/Maximum call stack/i);
+  });
+
+  it("passes a multi-megabyte video data URL through the base64 gate without a stack overflow", async () => {
+    // The original crash shape: a real MP4 header repeated to ~5.4MB, base64-encoded.
+    // Its length forces the old `(?:...{4})*` regex to backtrack until the stack overflows.
+    // The exact certification outcome (accept or an honest reason code) is irrelevant here;
+    // the invariant under test is that the byte-syntax gate never throws a raw stack overflow.
+    const seed = fixture("valid.mp4");
+    const copies = Math.ceil((4 * 1024 * 1024) / seed.byteLength);
+    const big = Buffer.concat(Array.from({ length: copies }, () => seed));
+    expect(big.byteLength).toBeGreaterThan(3.4 * 1024 * 1024);
+    let caught: unknown;
+    try {
+      await certifyMediaArtifact({ source: dataUrl("video/mp4", big), expectedKind: "video" }, deps());
+    } catch (error) {
+      caught = error;
+    }
+    if (caught !== undefined) {
+      expect(caught).toBeInstanceOf(CertificationMediaError);
+      expect((caught as Error).message).not.toMatch(/Maximum call stack/i);
+    }
+  });
+
   it("accepts the current stable 3D boundary: a structurally valid binary GLB", async () => {
     const evidence = await certifyMediaArtifact(
       { source: { bytes: minimalGlb(), contentType: "model/gltf-binary" }, expectedKind: "model3d" },

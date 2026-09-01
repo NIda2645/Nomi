@@ -161,6 +161,9 @@ export default function NomiAppBar({
                 'text-[var(--nomi-ink)] font-inherit text-body-sm',
                 'outline-none min-w-[80px] max-w-[240px]',
               )}
+              // 项目名是用户自己起的、按创建那刻的界面语言存进磁盘的内容(en 用户建的项目也可能带中文,
+              // 反之亦然)——它不是 UI 文案、不该被 EN-DOM 断言网当漏译。标 data-user-content 让走查整棵豁免。
+              data-user-content
               value={projectTitle}
               autoFocus
               aria-label={t('appBar.projectName')}
@@ -183,6 +186,9 @@ export default function NomiAppBar({
                 'transition-[background,color] duration-[var(--nomi-transition-fast)]',
                 'hover:bg-[var(--nomi-ink-05)] hover:text-[var(--nomi-ink)]',
               )}
+              // 见上:项目名是用户内容(持久化的项目名),不是 UI 文案。文本与 title 都可能非当前界面语言,
+              // 标 data-user-content 让 EN-DOM 断言网整棵豁免(否则 en 下一个中文项目名会被误报成漏译)。
+              data-user-content
               title={projectTitle}
               onClick={() => setEditingProjectName(true)}
             >

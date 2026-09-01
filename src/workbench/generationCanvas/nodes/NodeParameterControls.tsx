@@ -18,6 +18,7 @@ import {
   getGenerationNodeExecutionKind,
   isAudioLikeGenerationNodeKind,
   isImageLikeGenerationNodeKind,
+  isModel3dLikeGenerationNodeKind,
   isVideoLikeGenerationNodeKind,
 } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
@@ -118,7 +119,10 @@ export default function NodeParameterControls({
   const isTextLike = getGenerationNodeExecutionKind(node.kind) === 'text'
   // 声音节点同为可生成节点：要走模型自动选择(选到「声音」档案)→ ModeBar(配音/转写)+ 参数才显现。
   const isAudioLike = isAudioLikeGenerationNodeKind(node.kind)
-  const isGenerationNode = isImageLike || isVideoLike || isTextLike || isAudioLike
+  // 3D 模型节点同为可生成节点(executionKind:'model3d')：与图片/视频共用同一套模型选择器/自动选择/参数机制，
+  // 只是 catalogKind→'model3d'、requiredMode→'text_to_3d'(见 modelOptionsAdapter)把候选过滤到已接入的 3D 模型。
+  const isModel3dLike = isModel3dLikeGenerationNodeKind(node.kind)
+  const isGenerationNode = isImageLike || isVideoLike || isTextLike || isAudioLike || isModel3dLike
   const requiredMode = requiredModeForGenerationNode(node, { nodes, edges })
   const modelOptionsState = useGenerationModelOptionsState(node.kind, requiredMode)
   const modelOptions = modelOptionsState.options
@@ -483,7 +487,7 @@ export default function NodeParameterControls({
     ...arraySlots.map(
       (s): AssetSlot => ({
         key: s.metaKey,
-        label: s.label,
+        label: translateModelDisplayText(s.label),
         accept: s.accept,
         form: 'array',
         persistAsEdge: false,
@@ -496,7 +500,7 @@ export default function NodeParameterControls({
       ? [
           {
             key: sourceVideoSlot.metaKey,
-            label: sourceVideoSlot.label,
+            label: translateModelDisplayText(sourceVideoSlot.label),
             accept: 'video',
             form: 'single',
             persistAsEdge: false,

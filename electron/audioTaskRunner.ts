@@ -19,6 +19,7 @@ import { taskTemplateParams } from "./catalog/taskParams";
 import { buildDoubaoReqParams, decodeDoubaoNdjsonAudio, splitDoubaoCredential } from "./catalog/doubaoTtsCodec";
 import type { TaskRequest, TaskResult } from "./runtime";
 import { importLocalFile } from "./assets/localFileImport";
+import { desktopT } from "./i18n";
 import { executeMultipartOperation } from "./catalog/multipartOperation";
 import { buildProfileHttpRequest, templateContext } from "./catalog/profileHttpRequest";
 import { firstMappedString } from "./tasks/responseParsing";
@@ -71,7 +72,7 @@ async function runTextToSpeech(input: AudioTaskInput): Promise<TaskResult> {
     kind: "generated",
   })) as { id?: string; name?: string; data?: { url?: string } };
   const url = String(saved.data?.url || "");
-  if (!url) throw new Error("配音生成失败：音频落盘异常");
+  if (!url) throw new Error(desktopT("dubbing.diskWriteFailed"));
   return {
     id: taskId, kind, status: "succeeded",
     assets: [{ type: "audio", url, thumbnailUrl: null, assetId: saved.id || null, assetName: saved.name || null }],
@@ -86,9 +87,9 @@ async function runDoubaoUnidirectionalTts(input: AudioTaskInput, op: HttpOperati
   const { vendor, model, apiKey, request, kind, taskId, projectId } = input;
   const params = taskTemplateParams(request, { vendorKey: vendor.key, modelKey: model.modelKey });
   const text = trim(request.prompt) || firstString(params.text);
-  if (!text) throw new Error("配音生成失败：没有台词文本");
+  if (!text) throw new Error(desktopT("dubbing.noText"));
   const voice = firstString(params.voice);
-  if (!voice) throw new Error("配音生成失败：未选择音色");
+  if (!voice) throw new Error(desktopT("dubbing.noVoice"));
   const emotion = firstString(params.emotion);
   const [appId, accessKey] = splitDoubaoCredential(apiKey);
   const resourceId = firstString(op.headers?.["X-Api-Resource-Id"]) || "seed-tts-2.0";
@@ -113,19 +114,19 @@ async function runDoubaoUnidirectionalTts(input: AudioTaskInput, op: HttpOperati
       body,
     });
   } catch (error: unknown) {
-    throw new Error(`配音生成失败（${vendor.key} 网络错误）：${(error instanceof Error ? error.message : String(error)).slice(0, 256)}`);
+    throw new Error(desktopT("dubbing.networkError", { vendor: vendor.key, detail: (error instanceof Error ? error.message : String(error)).slice(0, 256) }));
   }
   if (!response.ok) {
-    throw new Error(`配音生成失败（${vendor.key} HTTP ${response.status}）：${(await safeText(response)).slice(0, 300) || "(无详情)"}`);
+    throw new Error(desktopT("dubbing.httpError", { vendor: vendor.key, status: response.status, detail: (await safeText(response)).slice(0, 300) || desktopT("common.noDetail") }));
   }
   const audio = decodeDoubaoNdjsonAudio(await response.text());
-  if (audio.byteLength === 0) throw new Error("配音生成失败：供应商返回空音频");
+  if (audio.byteLength === 0) throw new Error(desktopT("dubbing.emptyAudio"));
   const ab = audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) as ArrayBuffer;
   const saved = (await importLocalFile({
     projectId, bytes: ab, contentType: "audio/mpeg", fileName: `tts-${taskId}.mp3`, kind: "generated",
   })) as { id?: string; name?: string; data?: { url?: string } };
   const url2 = String(saved.data?.url || "");
-  if (!url2) throw new Error("配音生成失败：音频落盘异常");
+  if (!url2) throw new Error(desktopT("dubbing.diskWriteFailed"));
   return {
     id: taskId, kind, status: "succeeded",
     assets: [{ type: "audio", url: url2, thumbnailUrl: null, assetId: saved.id || null, assetName: saved.name || null }],
@@ -138,7 +139,7 @@ async function runTranscribe(input: AudioTaskInput): Promise<TaskResult> {
   const { vendor, model, apiKey, request, kind, taskId } = input;
   const params = taskTemplateParams(request, { vendorKey: vendor.key, modelKey: model.modelKey });
   const audioUrl = resolveAudioSource(request, params);
-  if (!audioUrl) throw new Error("转写失败：未提供音频（请先连接或上传一个音频）");
+  if (!audioUrl) throw new Error(desktopT("transcribe.noAudio"));
   const audio = await readAudioBytes(audioUrl);
   const language = firstString(params.language);
   const op: HttpOperation = input.mapping?.create ?? {
@@ -170,10 +171,10 @@ async function runTranscribe(input: AudioTaskInput): Promise<TaskResult> {
       try {
         response = await appFetch(appendQueryParams(built.url, built.query), { method: built.method, headers, body: form });
       } catch (error: unknown) {
-        throw new Error(`转写失败（${vendor.key} 网络错误）：${(error instanceof Error ? error.message : String(error)).slice(0, 256)}`);
+        throw new Error(desktopT("transcribe.networkError", { vendor: vendor.key, detail: (error instanceof Error ? error.message : String(error)).slice(0, 256) }));
       }
       if (!response.ok) {
-        throw new Error(`转写失败（${vendor.key} HTTP ${response.status}）：${(await safeText(response)).slice(0, 300) || "(无详情)"}`);
+        throw new Error(desktopT("transcribe.httpError", { vendor: vendor.key, status: response.status, detail: (await safeText(response)).slice(0, 300) || desktopT("common.noDetail") }));
       }
       return safeJson(response);
     },
@@ -181,7 +182,7 @@ async function runTranscribe(input: AudioTaskInput): Promise<TaskResult> {
   const json = executed.response;
   const text = firstMappedString(json, (op.response_mapping || null) as JsonRecord | null, "text")
     || firstString(isJsonRecord(json) ? json.text : undefined);
-  if (!text) throw new Error("转写失败：供应商未返回文本");
+  if (!text) throw new Error(desktopT("transcribe.noText"));
   return { id: taskId, kind, status: "succeeded", assets: [], raw: json };
 }
 
@@ -205,7 +206,7 @@ async function readAudioBytes(url: string): Promise<AudioBytes> {
     const parsed = parseDataUrl(url);
     return { bytes: parsed.bytes, contentType: parsed.contentType || "audio/mpeg", fileName: `audio.${(parsed.contentType.split("/")[1] || "mp3")}` };
   }
-  if (!/^https?:\/\//i.test(url)) throw new Error("转写失败：音频地址无法访问");
+  if (!/^https?:\/\//i.test(url)) throw new Error(desktopT("transcribe.unreachable"));
   const fetched = await hardenedFetch(url, {
     timeoutMs: 60_000, maxBytes: MAX_AUDIO_BYTES,
     allowContentTypes: ["audio/", "video/", "application/octet-stream"],

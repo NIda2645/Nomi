@@ -20,6 +20,7 @@ import { applyProfileToRequestBody, getModelProfile } from "./modelProfiles";
 import { appFetch } from "../appFetch";
 // 单一真相源：provider-kind 联合定义在 catalog/types，这里只 re-export，避免并行定义漂移（规则 1）。
 import type { AiSdkProviderKind, Vendor } from "../catalog/types";
+import { createExplicitProxyDispatcher } from "../systemProxy";
 export type { AiSdkProviderKind };
 
 export interface BuildAiSdkModelInput {
@@ -35,6 +36,8 @@ export interface BuildAiSdkModelInput {
    * custom gateway token) without us hardcoding per-provider knowledge.
    */
   headers?: Record<string, string>;
+  /** Optional per-connection proxy; empty/absent keeps the application route. */
+  proxyUrl?: string;
 }
 
 /**
@@ -43,9 +46,10 @@ export interface BuildAiSdkModelInput {
  *
  * Optional debug: set LAB_DEBUG_REQUESTS=1 to dump each request body to /tmp.
  */
-function buildProfiledFetch(modelId: string): typeof fetch {
+function buildProfiledFetch(modelId: string, proxyUrl?: string): typeof fetch {
   const profile = getModelProfile(modelId);
   const debug = process.env.LAB_DEBUG_REQUESTS === "1";
+  const dispatcher = proxyUrl ? createExplicitProxyDispatcher(proxyUrl) : undefined;
 
   return (async (url: any, init?: any) => {
     if (init?.body && typeof init.body === "string") {
@@ -68,7 +72,7 @@ function buildProfiledFetch(modelId: string): typeof fetch {
     // 见 docs/workflow/2026-06-06-real-generation-e2e-loop.md「主进程埋点」）。成功不打，避免噪音。
     const urlStr = typeof url === "string" ? url : ((url as { url?: string })?.url || String(url));
     try {
-      const res = await appFetch(url as any, init);
+      const res = await appFetch(url as any, { ...init, ...(dispatcher ? { dispatcher } : {}) });
       if (!res.ok) {
         let snippet = "";
         try { snippet = (await res.clone().text()).replace(/\s+/g, " ").slice(0, 300); } catch { /* body unreadable */ }
@@ -99,7 +103,20 @@ function sanitizeHeaders(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/** Catalogs store an Anthropic host root; the SDK appends only `/messages`. */
+/**
+ * Anthropic base URLs must carry the version segment: `@ai-sdk/anthropic` defaults to
+ * `https://api.anthropic.com/v1` and only appends `/messages` after that base.
+ *
+ * We persist a host root instead — onboarding probing (onboardingIpc.probeOneProtocol) strips a
+ * trailing `/v1` (to avoid double-joining its own `/v1/messages`), so the stored baseUrl is
+ * `https://api.anthropic.com`. The two paths hold opposite conventions for the same stored value:
+ * the probe side treats it as a root and adds `/v1`; the runtime side needs `/v1` already present.
+ *
+ * Without this, the runtime POSTs to `{root}/messages` → 404 Not Found, while onboarding probing
+ * still succeeds — surfacing as "connection passes, canvas 404s" (2026-08-28: connecting Claude
+ * made the agent HTTP 404 on every request). Normalizing on read (not in storage) rescues both
+ * legacy libraries already stored as roots and new connections.
+ */
 export function anthropicBaseUrl(baseURL: string): string {
   const trimmed = baseURL.trim().replace(/\/+$/, "");
   return /\/v\d+$/i.test(trimmed) ? trimmed : `${trimmed}/v1`;
@@ -117,12 +134,13 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
   }
   const baseURL = (input.baseURL || "").trim().replace(/\/+$/, "");
   const headers = sanitizeHeaders(input.headers);
+  const dispatcher = input.proxyUrl ? createExplicitProxyDispatcher(input.proxyUrl) : undefined;
 
   if (input.kind === "anthropic") {
     if (unauthenticated) throw new Error("buildAiSdkModel: authType none requires an openai-compatible provider");
     const provider = createAnthropic({
       apiKey,
-      fetch: appFetch,
+      fetch: async (url, init) => appFetch(url, { ...init, ...(dispatcher ? { dispatcher } : {}) }),
       ...(baseURL ? { baseURL: anthropicBaseUrl(baseURL) } : {}),
       ...(headers ? { headers } : {}),
     });
@@ -138,7 +156,7 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
       apiKey,
       baseURL,
       ...(headers ? { headers } : {}),
-      fetch: buildProfiledFetch(modelId),
+      fetch: buildProfiledFetch(modelId, input.proxyUrl),
     });
     return provider.responses(modelId);
   }
@@ -151,7 +169,7 @@ export function buildAiSdkModel(input: BuildAiSdkModelInput): LanguageModelV1 {
     baseURL,
     ...(apiKey ? { apiKey } : {}),
     ...(headers ? { headers } : {}),
-    fetch: buildProfiledFetch(modelId),
+    fetch: buildProfiledFetch(modelId, input.proxyUrl),
   });
   return provider.chatModel(modelId);
 }

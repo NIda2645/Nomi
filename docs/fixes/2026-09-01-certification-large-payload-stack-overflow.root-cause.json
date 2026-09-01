@@ -1,0 +1,107 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-certification-large-payload-stack-overflow",
+  "problem_type": "canonical base64 validation of a full multi-megabyte payload with a stack-recursive regex overflows the engine stack",
+  "symptom": "Certifying a model's media artifact whose source is a multi-megabyte `data:` URL (b64_json video or 3D, e.g. 3.4MB+) threw a raw 'Maximum call stack size exceeded'. The model self-certification failed with an unreadable error and the model stayed enabled:false; the user saw the generic 'this error we did not recognize'. A ~21KB data URL certified normally, so the failure was purely payload-size driven.",
+  "direct_cause": "strictDataUrl validated the base64 body with `^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$`. V8's Irregexp compiles a fixed-length group repeated by `*` into a recursive backtracking structure, pushing one native stack frame per 4-character group. A multi-megabyte base64 body has on the order of a million such groups, so RegExp.test overflowed the regex stack before decoding ever began.",
+  "class_root": "The certification byte-syntax boundary expressed 'is this a canonical base64 body?' as a regex whose stack cost grows with payload length. Every media kind (image/video/audio/model3d) and every producer that hands a `data:` URL to certification flows through this single gate, so any large embedded payload could trip the same recursion. The missing invariant is that full-payload base64 syntax validation must run in bounded stack space (a linear scan), independent of length.",
+  "affected_population": [
+    "Any model whose vendor returns a media artifact as an inline base64 `data:` URL (b64_json) above roughly a few hundred KB — confirmed for video and 3D (GLB) payloads",
+    "All four production callers of certification: adapter self-verification (verifier.verifyAdapterMode), task-output certification (taskResultCertification.certifyTaskOutputUrls), and the ComfyUI connector/candidate lifecycle",
+    "Future certification callers passing large inline data URLs for image or audio kinds"
+  ],
+  "scope_paths": [
+    "electron/providerAdapter/base64.ts",
+    "electron/providerAdapter/certificationMedia.ts"
+  ],
+  "entry_points": [
+    "Model adapter self-certification (nomi:integration-certification:http:* → verifyAdapterMode → certifyMediaArtifact)",
+    "Task output certification (certifyTaskOutputUrls → certifyMediaArtifact) for image/video/audio/model3d",
+    "ComfyUI connector and candidate lifecycle certification (comfyuiConnector / comfyuiCandidateLifecycle → certifyMediaArtifact / certifyTaskOutputUrls)"
+  ],
+  "internal_only_reason": "The canonical base64 grammar and its stack-safe recognition are Nomi's own certification byte-boundary invariant; no external provider or specification dictates the validation implementation. Equivalence to the standard base64 grammar was proven against the prior regex, not read from a third-party doc.",
+  "invariants": [
+    "Full-payload base64 syntax validation runs in bounded stack space (a linear character scan), so payload length can never overflow the regex/engine stack.",
+    "The syntax check accepts exactly the canonical standard-alphabet base64 grammar it replaced: length a multiple of 4, characters in [A-Za-z0-9+/], and '=' padding only as the final one or two characters.",
+    "An over-limit base64 payload fails as media_too_large before the syntax scan and before any decode; an invalid-but-in-limit payload fails as media_invalid_source. Neither surfaces a stack-overflow.",
+    "The empty body remains canonical at the syntax layer; non-empty bytes are enforced separately after decoding, preserving prior behavior."
+  ],
+  "generality_proof": "Every certification caller converges on certifyMediaArtifact → acquireBytes → strictDataUrl, which is now the only path that validates an inline base64 body and does so exclusively through electron/providerAdapter/base64.ts isCanonicalBase64Body. That helper is a linear scan with no quantified-group recursion, so the bounded-stack invariant holds for every media kind and every producer regardless of payload size. A repository scan confirmed strictDataUrl held the only grouped-repeat-in-star base64 regex; the remaining base64 gates use flat character-class quantifiers, which V8 compiles to non-recursive loops and which were shown not to overflow on the same 5.4MB payload.",
+  "shared_boundaries": [
+    {
+      "path": "electron/providerAdapter/base64.ts",
+      "symbol": "isCanonicalBase64Body",
+      "responsibility": "Own the single, stack-safe recognizer for canonical standard-alphabet base64 bodies; any certification/boundary layer that must judge base64 syntax calls this instead of hand-rolling a length-recursive regex."
+    },
+    {
+      "path": "electron/providerAdapter/certificationMedia.ts",
+      "symbol": "strictDataUrl",
+      "responsibility": "Enforce the size limit before syntax, then validate the base64 body only through isCanonicalBase64Body, so large inline data URLs fail with an honest reason code or certify, never with a stack overflow."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/providerAdapter/verifier.ts",
+      "entry_point": "verifyAdapterMode (model self-certification)",
+      "disposition": "enforced",
+      "evidence": "certifyMedia defaults to certifyMediaArtifact, whose only inline-base64 path is strictDataUrl; the model-certification flow that produced the reported symptom now runs the linear scan."
+    },
+    {
+      "path": "electron/tasks/taskResultCertification.ts",
+      "entry_point": "certifyTaskOutputUrls (image/video/audio/model3d)",
+      "disposition": "enforced",
+      "evidence": "Maps every source URL through certifyMediaArtifact, so any large b64_json data URL from any vendor is validated by isCanonicalBase64Body at the shared boundary."
+    },
+    {
+      "path": "electron/assets/model3dValidation.ts",
+      "entry_point": "decodeBase64 / strictImageDataUri (embedded GLB buffers and images)",
+      "disposition": "not-affected",
+      "evidence": "These decode embedded base64 via a flat character-class regex plus a length%4/maxBytes guard and Uint8Array.from(atob(...), fn) (iterator, no spread). Empirically the flat regex does not overflow on a 5.4MB payload, and the length guard bounds atob input; they are outside the grouped-repeat class."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same certification gate is reached by four distinct production callers carrying different media kinds and vendor payload shapes, and any of them with a large inline data URL hit the identical mechanism. The structural anti-pattern (a length-recursive base64 regex) can also reappear if a future gate re-implements base64 syntax by hand, so the invariant must live behind one shared recognizer.",
+    "same_class_scan": [
+      "grep -rnE '\\(\\?:[^)]*\\{[0-9]+\\}[^)]*\\)\\*' over electron/ and src/ returned only certificationMedia.ts:267 as a grouped-repeat-in-star regex; no other production site shares the recursion.",
+      "Empirically ran each base64 validation regex (certificationMedia:267, synchronousAudioResponse:47, antigravityTask:23, model3dValidation:62/98, assetUrlExtract:99) against the real 5.4MB fixture-derived base64: only the grouped `(?:...{4})*` pattern threw 'Maximum call stack size exceeded'; the flat character-class patterns did not.",
+      "Confirmed the String.fromCharCode(...subarray) and ascii() call sites in mediaTypes.ts and model3dValidation.ts are all bounded to 4-byte (<=4096 for ftyp box) literal windows, so the spread family is not on the large-payload path.",
+      "Enumerated the four certification callers (verifier, taskResultCertification, comfyuiConnector, comfyuiCandidateLifecycle) and confirmed each converges on certifyMediaArtifact → strictDataUrl for inline data URLs."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/providerAdapter/base64.ts",
+    "invariant": "Canonical base64 body recognition is performed only by isCanonicalBase64Body, a linear scan whose stack cost is O(1) in payload length.",
+    "failure_mode": "Over-limit payloads fail as media_too_large before the scan; malformed in-limit payloads fail as media_invalid_source; no input path can produce a stack overflow.",
+    "exception_policy": "none",
+    "strategy": "Replace the length-recursive regex with a single shared, non-recursive recognizer and route the certification byte-syntax gate through it, so every caller and future gate inherits the bounded-stack invariant instead of re-deriving a regex.",
+    "artifacts": [
+      "electron/providerAdapter/base64.ts",
+      "electron/providerAdapter/certificationMedia.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/providerAdapter/base64.test.ts",
+    "electron/providerAdapter/certificationMedia.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/providerAdapter/base64.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/providerAdapter/certificationMedia.ts"
+    ],
+    "rationale": "The stack-recursive `(?:[A-Za-z0-9+/]{4})*(?:...)?` regex in strictDataUrl is deleted in the same change and replaced by the shared isCanonicalBase64Body call; no fallback to the old regex remains."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The defect is in Nomi's own validation code, not a third-party runtime. V8's regex engine behaves correctly; the fix removes the pathological pattern rather than changing any dependency.",
+    "exit_criteria": []
+  },
+  "migration": "No data or state migration. Behavior for previously accepted small data URLs is unchanged (the recognizer is grammar-equivalent to the prior regex). Previously crashing large payloads now certify when valid and within limit, or fail with an honest reason code when not.",
+  "residual_risks": [
+    "Certification decode of a genuinely large valid video still relies on the bundled ffmpeg/ffprobe within the decoder timeout; a real >limit valid video is rejected by size before decode, which is the intended honest failure and not covered by an end-to-end paid generation here."
+  ]
+}

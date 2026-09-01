@@ -3,7 +3,7 @@
 > **怎么读这份文件（3 层，按访问频率分，每层只活一次，别重复 —— 这套分层本身是为了「文件再长注意力也不消散」）**：
 > - **L0 每轮** = `.claude/hooks/self-check.sh`（hook，每条消息自动注入「三闸 + 核心原则 + 近期坑」）——salience 层，本文件**不再复述它**。
 > - **L1 always 加载** = 本文件：项目事实 + 命令 + **P1–P5** + **D1–D5** + 规则索引。**每次 session 读完再动手。**保持精简（一屏左右）。
-> - **L2 触发才查** = `docs/engineering-rules.md`：R1–R23 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
+> - **L2 触发才查** = `docs/engineering-rules.md`：R1–R25 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
 > - **查现状（动手前）** = `docs/ARCHITECTURE-NOW.md`：每个子系统**现在真正跑的是什么**（带 file:line）+「常见误解」列。**读任何 `docs/plan/` 之前先过一眼**——方案文档会过期且不带过期标记。搜不到东西时查 `docs/GLOSSARY.md`（同一个东西的多个叫法：自动剪辑=AI 剪辑=EditPlan=E2…）。（2026-08-27 加：有人把 6 月的 agent 方案当现状，整份调研建立在「引擎是 `runAgentChatV2`」这个已被 pi SDK 取代的前提上；同一轮还因搜「自动剪辑」搜不到而重新发明了已批准的 E1/E2/E3 总纲。）
 >
 > **维护纪律（防它再胖回来 —— 治本）**：本文件是**策展的，不是 append 的**。新踩的坑/教训**默认进记忆**（`memory/`，按相关性召回）或 hook 的 `violations.log`，**不塞这里**；只有「反复出现 + 永远相关」的原则才提升进 L1、细节进 L2；每隔一阵压实一次。**加规则前先问「这条非得 always 加载吗」——不是，就别进 L1。**
@@ -44,9 +44,11 @@ Nomi：本地优先 AI 视频创作工作台。
 
 **交付身份只走统一命令**：任务开始先跑 `delivery:preflight`；PR 合并后只在 Git fetch 得到的真实 merge SHA 上跑 `delivery:verify-merged`。任务 commit、PR head、merge commit 与 tree 分开报告；禁止用 REST compare 文件列表重建 Git tree/commit，禁止把 `same-tree-different-commit` 叫成代码不匹配。
 
+**提交/推送前的 Ponytail 闸门（R25，R24 由 PR #223 保留）**：每次成功的 commit 或 push 前都必须由版本化 `pre-commit` / `pre-push` hook 调用只读、限时的 Ponytail Codex 适配器，对准确的 staged 或 outgoing ref diff 运行 `/ponytail-review`（Codex 中是 `@ponytail-review`）；pre-commit 先通过敏感数据扫描，扫描已阻止的提交不会继续调用模型。缺少 Codex/插件、超时、异常或无合法结果标记就 fail-closed。发现过度工程化时只记录阻断状态；逐条删除清单需另行运行 `@ponytail-review` 后处理。`--no-verify`、网页/API 和未安装 hook 的环境仍需 CI/分支保护补强，不能把本地 hook 当成不可绕过的服务器门岗。
+
 ## 五条核心原则
 
-**P1 加新必删旧** — 引入新实现时同 commit 删旧实现，无并行版、无 fallback、无逃生口。CSS 同理：新样式只写组件 `className`，迁 Tailwind 即删旧 CSS；全局 CSS 只可减不可增。
+**P1 加新必删旧** — 引入新实现时同 commit 删旧实现，无并行版、无 fallback、无逃生口。CSS 同理：新样式只写组件 `className`，迁 Tailwind 即删旧 CSS；全局 CSS 只可减不可增。**搬家不留转发壳**：迁移文件时同 commit 改所有 import site，re-export 壳必须同 commit 删（现存 29 个 `src/config/modelArchetypes` 壳即反例）。
 
 **P2 修根因不修症状** — 任何 bug、回归、CI/平台失败、性能/安全问题或审计发现，动生产代码前必须执行 `.agents/skills/root-cause-remediation/SKILL.md`。详细流程只住在该 skill；L1 只保留判断闸：分清症状/直接原因/类根因，判断 `one_off`/`recurring`，实扫同类入口，修在最早共享边界。自检：「同类问题还能从另一个调用者、供应商、版本、平台或旧数据回来吗？」答不出“不能” = 没解决。`recurring` 与高风险路径另受 R21 schema-v3 合同硬拦。
 
@@ -80,7 +82,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R2 | 用户视角 + 极简 | 每条信息问「有行动价值吗」，没有删；好产品不靠文字解释 |
 | R3 | 决策对比表 | 涉及取舍先给用户对比表（方案/用户看到/代价），不单方面开干 |
 | R4 | 执行前写文档 | 多文件/多步改动先写 `docs/plan`：范围/不动项/回滚/验收门 |
-| R5 | 查官方文档 | 碰第三方库必先 Context7；**选型/引入新框架·新技术栈先 Context7+web 查当前最现役框架**，不凭记忆判断能力/新旧/是否被取代；**接入/改任何模型前必先抓到该模型真实官方 API 文档逐项对账端点/鉴权/变体/模式/参数，禁凭记忆瞎编（每次都控制住）**；不查就写 = 工作错误 |
+| R5 | 查官方文档 | 碰第三方库必先 Context7；**选型/引入新框架·新技术栈先 Context7+web 查当前最现役框架**，不凭记忆判断能力/新旧/是否被取代；**接入/改任何模型前必先抓到该模型真实官方 API 文档逐项对账端点/鉴权/变体/模式/参数，禁凭记忆瞎编（每次都控制住）**；**判断 CLI/SDK「支不支持 X」以官方现役文档/更新日志为准——本机已装旧构建的 help 不算实查**；不查就写 = 工作错误 |
 | R6 | 近邻开源优先 | 做方案先读与 Nomi **同用户任务 + 同创作媒介 + 同交互载体**的开源近邻；再看闭源直接竞品，最后才用跨领域类比。读真实代码并给出 file:line |
 | R7 | 6 角色评审 | 项目方案定稿前：CTO / 设计 / PM / 前端 / 后端 / 真实用户各审一遍 |
 | R8 | 先出样张 | 用户可见改动先出 mockup + 用户拍板；实现后必须与样张逐项对账 |
@@ -99,6 +101,9 @@ Nomi：本地优先 AI 视频创作工作台。
 | R21 | 修复必须走根因流程；可复发/高风险交 v3 合同 | 所有纠正性改动强制走 `root-cause-remediation`；`recurring` 或高风险生产路径提交 schema-v3 `docs/fixes/*.root-cause.json`，旧 v1/v2 只读；`check:root-cause-contracts` 核验共享边界、结构预防、同类入口、类级测试、旧路径和依赖生命周期 |
 | R22 | 验证分层与测试预算 | contracts 常跑；unit/desktop/journey/canvas/performance/package 按真实风险独立触发；不删安全/持久化/认证边界覆盖 |
 | R23 | React Flow 生成画布单内核与迁移等价 | 生产画布只允许 React Flow 一个交互/变换内核，Zustand 是业务与持久化真相源；迁移必须逐项保留既有几何、交互、视觉和反馈，并用 adapter/结构测试 + 真实 Electron 走查证明 |
+| R25 | 提交/推送前 Ponytail 评审 | pre-commit/pre-push 自动调用只读、限时 `/ponytail-review` 适配器；失败或缺少结果 fail-closed |
+| R26 | 分层边界不许反向/循环 | 渲染层（src/）禁直捅主进程（走 bridge/中立契约层）、主进程禁反向 import 渲染层、禁新增完全静态循环；`check:boundaries` 棘轮（`boundaries-baseline.json` 只减不增），加规则先验会红（R17）。归属地图 `docs/architecture/module-ownership-map.md`，详见 L2 |
+| R27 | 多智能体编排手册 | 派工 / 收货 / 接力的机器化纪律：谁的方案谁实施·验收必跨池、任务书发行权独占 + 开工三行头、收货三查（behind 数 / 两点回滚 / 套件失败 delta=0）、等待用 sleep 轮询 + 哨兵法（禁 --watch/Monitor/交卷）、判活看外部面 + 盘上现场接力、远落后分支走 `gh pr update-branch`、验收锚固定复现命令防移靶、Codex 用 full clone + 结构护栏。详见 L2 `docs/engineering/agent-orchestration-playbook.md` |
 
 ## 决策自治
 
@@ -132,6 +137,6 @@ Nomi：本地优先 AI 视频创作工作台。
 
 主仓库：`/Users/aoqimin/Desktop/Nomi/`。操作文件用绝对路径；新建 worktree 放仓库目录**同级**（非嵌套），分支从最新 `origin/main` 创建。
 
-**并行纪律（这台机器常有 20+ worktree）**：① 在独立 sibling worktree 的干净任务分支运行 `pnpm run delivery:preflight` 后再动手；② 不在共享主仓里切分支、commit 或解决任务冲突；③ push 前在任务分支整合最新 `origin/main`，按 R22 验证后只 push 任务分支并创建 PR；④ 不 force-push `main`，不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
+**并行纪律（这台机器常有 20+ worktree）**：① 在独立 sibling worktree 的干净任务分支运行 `pnpm run delivery:preflight` 后再动手，**新 worktree 先 `pnpm install` 装齐提交钩子再 commit/push**（先推后装=推送裸奔，栽过）；② 不在共享主仓里切分支、commit 或解决任务冲突；③ push 前在任务分支整合最新 `origin/main`，按 R22 验证后只 push 任务分支并创建 PR；④ 不 force-push `main`，**不向已存在的远端分支 force-push 重建内容**（评审钩子按远端旧 tip→新 tip 算全量 diff 必超限，重建一律走新分支，见 R25），不从混合 worktree 挑文件发版；⑤ e2e/测试 hook 放低争用子系统文件；⑥ **评审/对账/打捞任何分支先算 merge-base**——对 main 两点视图里的大片删除多半是「main 前进了」的落后假象，不是分支真要删（见 R22）。桌面预览、RC 与正式晋级见 `docs/release-process.md`。
 
 ---

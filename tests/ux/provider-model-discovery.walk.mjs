@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { launchNomiApp } from './_launchApp.mjs'
-import { clickOrFail, expect, screenshotSettled } from './_assert.mjs'
+import { clickOrFail, expect, screenshotSettled, expectNoCjkInEnglishDom } from './_assert.mjs'
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-model-discovery-'))
 const shots = path.join(tempRoot, 'shots')
@@ -271,6 +271,8 @@ try {
   await clickOrFail(refetch(), 'Cold-start catalog discovery')
   await expect(status()).toContainText('not the provider’s full catalog')
   await expect.poll(() => win.evaluate(() => document.documentElement.dataset.nomiColorScheme)).toBe('light')
+  // EN-DOM 断言网:此刻界面确实是英文(上面刚断言过 catalog 文案的英文原文),整页不该再有中文。
+  await expectNoCjkInEnglishDom(win, { message: '模型发现冷启动页在 en 下出现中文' })
   await snap('06-cold-start-english-light')
   expect(requests.every(r => r.method === 'GET')).toBe(true)
   expect(requests.every(r => r.authorization === (r.path === '/relay/v1/models'

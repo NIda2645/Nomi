@@ -173,6 +173,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       invoke: (channel, request) => ipcRenderer.invoke(channel, request),
     }),
     copyFiles: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-files", payload),
+    copyProjectAsset: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-project-asset", payload),
     // 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 主进程转码出新 MP4 资产。
     ensurePlayable: (payload: unknown) => ipcRenderer.invoke("nomi:assets:ensure-playable", payload),
     // 引导示例项目：把随包成图落成项目资产，回 clientId → nomi-local URL（渲染侧算不出稳定地址）。
@@ -578,6 +579,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     testMapping: (id: string, payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:mapping:test", id, payload),
     fetchDocs: (payload: unknown) => ipcRenderer.invoke("nomi:model-catalog:docs:fetch", payload),
     probeComfyui: (baseUrl?: string) => ipcRenderer.invoke("nomi:model-catalog:comfyui:probe", baseUrl),
+    // 本地文本模型（Ollama / LM Studio / LocalAI）：探端口 + 能力预检。旧 preload 无此口 → UI 兜住 undefined。
+    probeLocalTextEndpoints: () => ipcRenderer.invoke("nomi:local-text:probe"),
+    probeLocalTextCapability: (payload: { baseUrl: string; modelId: string }) =>
+      ipcRenderer.invoke("nomi:local-text:capability", payload),
     analyzeComfyWorkflow: (text: string) => invokeSync("nomi:model-catalog:comfyui:analyze-workflow", text),
     reconcileComfyWorkflow: (text: string, vendorKey?: string) =>
       ipcRenderer.invoke("nomi:model-catalog:comfyui:reconcile-workflow", text, vendorKey),

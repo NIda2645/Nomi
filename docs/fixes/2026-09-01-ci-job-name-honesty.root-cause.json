@@ -1,0 +1,53 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-ci-job-name-honesty",
+  "problem_type": "CI job display name misrepresents what the job actually runs",
+  "symptom": "The quality-gate workflow job labelled \"Desktop Linux\" runs Electron smoke, CI-safe user journeys, critical and full canvas acceptance, and the canvas performance budget under xvfb, then uploads walkthrough screenshots and output.jsonl — i.e. it is the Linux end-to-end walkthrough lane, not a generic \"desktop\" build. The label read as a platform/build stage and hid that a red here is a user-journey/walkthrough failure.",
+  "direct_cause": "When the quality gate was parallelized into Ubuntu jobs (docs/superpowers/plans/2026-08-28-quality-gate-parallel-orchestration.md), the end-to-end lane inherited the generic name \"Desktop Linux\" instead of naming the behavior it verifies.",
+  "class_root": "A CI job's display name is free text with no contract tying it to the steps it runs, so a name can drift from behavior without any signal. This is the CI-surface sibling of the architecture audit's broader finding that names (dead code, stale job labels) diverge from what code does.",
+  "affected_population": [
+    "Maintainers reading a failed Quality Gate run who must guess whether \"Desktop Linux\" failed on a build, a smoke test, or a canvas walkthrough",
+    "Anyone triaging CI who relies on the job label to jump to the right evidence artifact (linux-walkthrough-evidence)"
+  ],
+  "scope_paths": [
+    ".github/workflows/quality-gate.yml",
+    "scripts/ci-annotation-hygiene.node-test.mjs"
+  ],
+  "entry_points": [
+    "GitHub Actions run summary job list (the label shown next to each job)",
+    "CI annotation hygiene collector, which surfaces per-job names in its output"
+  ],
+  "invariants": [
+    "The Linux end-to-end lane is named for the behavior it verifies (E2E walkthroughs), not for a platform build stage.",
+    "The job id remains desktop-linux, so branch protection and the require-all Quality Gate job (which reference the id, not the display name) are unaffected.",
+    "Branch protection required status checks stay Quality Gate and Mac Package; no protection context references the renamed display name."
+  ],
+  "regression_tests": [
+    "scripts/ci-annotation-hygiene.node-test.mjs"
+  ],
+  "residual_risks": [
+    "Job display names are still free text with no gate asserting name-to-behavior fidelity; a future job could again be misnamed. This is accepted as low blast-radius (a label, not executable behavior) and out of scope for this cosmetic rename.",
+    "The renamed lane runs more than walkthroughs (smoke + journeys + canvas acceptance + performance); \"E2E Walkthroughs (Linux)\" is a best-effort umbrella, not an exhaustive enumeration."
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "This is a single mislabeled job corrected to match its steps, not a defect class that regenerates. There is no code path that manufactures job names, so no structural prevention is warranted; inventing a name-fidelity gate would be over-engineering for a display-string change.",
+    "same_class_scan": [
+      "Grepped the repository for the literal string \"Desktop Linux\": the only production reference was .github/workflows/quality-gate.yml (the job name) plus two mock fixtures in scripts/ci-annotation-hygiene.node-test.mjs; the remaining hits are immutable historical plan/spec records that describe the past state and are intentionally left unchanged.",
+      "Confirmed no other quality-gate.yml job label misrepresents its steps: Contracts, Unit, Mac Package, and Quality Gate each name what they run.",
+      "Verified via gh api that branch protection required status checks reference only \"Quality Gate\" and \"Mac Package\", and that both the require-all job and the workflow structure tests reference the desktop-linux job id (not its display name), so the rename cannot silently drop a required check."
+    ]
+  },
+  "internal_only_reason": "This is an internal CI job-label correction; there is no external API or third-party documentation contract involved. The relevant facts (job steps, job id vs display name, branch protection contexts) were verified directly against the repository workflow and the live GitHub branch-protection API.",
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No parallel or legacy path is introduced or removed; the job id and its steps are unchanged and only the human-readable display name is corrected."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "A CI display-name correction involves no dependency version or runtime lifecycle change.",
+    "exit_criteria": []
+  },
+  "migration": "The job id desktop-linux is unchanged, so no downstream reference (branch protection, needs graph, workflow structure tests) requires migration. Only the display name changes from \"Desktop Linux\" to \"E2E Walkthroughs (Linux)\"; the two ci-annotation-hygiene mock fixtures are updated to the new name so the sample data stays representative."
+}

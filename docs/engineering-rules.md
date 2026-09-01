@@ -1,9 +1,9 @@
 # Nomi 工程纪律 — 详细规则（L2 · 触发才查）
 
-> 这是 `CLAUDE.md` 的「按需查阅」层。`CLAUDE.md`（always 加载）= 精简核心：项目事实 + P1–P5 + D1–D5 + 规则索引 + 三闸。本文件存**触发某条规则后才查的细节**：R1–R23 详解、工作流框架、技能库映射、固化的工作纪律。
+> 这是 `CLAUDE.md` 的「按需查阅」层。`CLAUDE.md`（always 加载）= 精简核心：项目事实 + P1–P5 + D1–D5 + 规则索引 + 三闸。本文件存**触发某条规则后才查的细节**：R1–R25 详解、工作流框架、技能库映射、固化的工作纪律。
 > 真相源仍单一：`CLAUDE.md` 的规则索引指明每条住哪；冲突一律以 `CLAUDE.md` 的 P1–P5 / D1–D5 为准。改触发清单同步 `.claude/hooks/self-check.sh`，规则细节只改本文件。
 
-# 详细规则 R1–R23
+# 详细规则 R1–R25
 
 > `CLAUDE.md` 的规则索引触发某个编号后，到这里查它的细节。
 
@@ -65,6 +65,8 @@
 **核对时间点 · 只吃近期（2026-06-21 用户纠）**：搜资料 / 搜开源项目时**必须看发布/更新时间**——AI 半年换一轮，去年的「最新」今年可能已过时。默认加时间过滤（近 6–12 个月）、按时间排序、**每条结论标来源日期**；论断里写「最新/SOTA」前先确认它现在还是不是。别吃老本（连自己上一轮的调研也要意识到会过期，重大判断重查）。
 
 **接入 / 修改任何模型 = 必查真实官方 API 文档，禁凭记忆瞎编（2026-06-30 用户再次要求固化 · 已挂 `model-doc-check.sh` hook）**：接入或修改**任何**模型（新模型、新变体、改参数、改端点、改鉴权），**动手前必须先拿到该模型 / 该 vendor 的真实官方 API 文档**——WebFetch 官方文档站 / vendor 文档门户（如 apimart `docs.apimart.ai`、kie `docs.kie.ai`、即梦官方、火山引擎、ModelScope）/ Context7。照文档**逐项对账**：① 端点路径 + HTTP 方法；② 鉴权方式（bearer / header 名 / OAuth / CLI 登录态）；③ 全部变体（fast/face/lite/quality…）；④ 全部生成模式（t2v/i2v/首尾帧/参考…）；⑤ 全部参数（名字、类型、合法枚举值、默认值、上下限）。**禁止凭记忆或凭印象瞎编**端点、参数名、枚举、模式组合——「记得大概是这样」「应该是这个字段」= 工作错误，必须实查文档原文。这条**每次都要控制住**，不是接一次就免检：每次碰模型接入文件（`electron/catalog/*Vendor.ts` / `*Images.ts` / `*Videos.ts` / `*Texts.ts` / `*Audios.ts` / `*Codec.ts` / `kie*.ts` 等）hook 都会顶提醒。流程固定：抓全官方文档 → 列 {变体×模式×参数} 全表 → 对账现有 catalog/archetype → 补齐/修正缺口 → 真实生成 E2E 验一条（见「固化的工作纪律」接入即验证 + [[model-onboarding-must-cover-full-api-doc]] 记忆）。用户原话：「都要去真实的查到官方文档才去接入，而不是自己去瞎编」。
+
+**实查对象必须是「现役」不是「本机」（2026-09-01 用户抓错后固化）**：判断第三方 CLI / SDK / 模型「支不支持某能力」时，**本机已装版本的 `-h` / 实际行为不算实查**——那是安装那天的旧事实。实翻车：拿本机 2026-06-18 的 dreamina CLI build 断言「CLI 给不了 seedance2.5 / 图片5pro」，被用户甩官方文档当场纠正——官方 v1.4.15（08-01）视频全线已支持 2.5、v1.4.16（08-14）已有 seedream 5.0 pro。正确姿势：先读**官方现役文档 / 更新日志**，或先把工具升到最新版再取证；写下「不支持 X」前自问「我看的是最新版吗」。另注意第三方 CLI 有自己的破坏性变更节奏（dreamina v1.4.14 起图片必填 `--resolution_type`、视频必填 `--video_resolution`）——接入停在旧面貌可能不止缺模型，是**发不出合法请求**。
 
 **出处必须可追、接入必须一次接完（2026-08-12 用户要求固化 · 已挂门岗 `pnpm run check:archetype-sources`）**：
 上面那条「必查官方文档逐项对账」**早就存在、还挂着 hook，仍然失效了**——2026-08-12 复核 Seedance 2.5 档案，
@@ -490,6 +492,8 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 
 本地 Agent hook 只负责提前提醒，可能不存在；已提交的 `CLAUDE.md`、生成的 `AGENTS.md`、skill 和 CI 才是跨 Agent 的执行链。合同字段和完整步骤不在本节重复，避免规则再次膨胀和分叉。
 
+**派工/自验清单必须显式点名本闸（2026-09-01 教训）**：凡改动触及 electron/ 高风险 pattern（`*ipc.ts` / `*store.ts` / `runtime.ts` / catalog 核心 / validator 等），任务 brief 与自验清单必须写明「跑 `pnpm run check:root-cause-contracts`、改动作者自写契约」——不点名就会漏：曾有 4 个返工 PR 因 brief 验证档只列 typecheck/lint/focused，集体被本闸拦下返场补契约（同批次里自写了契约的 2 个 PR 一次过闸）。
+
 ## R22 验证分层与测试预算
 
 > 2026-08-29 用户拍板建立测试预算；2026-08-30 从 `fast/full` 两档升级为独立风险面。目标不是少测，而是把反馈成本花在真正可能受影响的地方：小改动尽快反馈，高风险绝不降级，也不把无关性能或打包成本强加给每个 PR。
@@ -519,6 +523,8 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 
 一个逻辑批次先完成实现、审计、规则和测试，再跑一次定向验证；全部本地问题收敛后按共享 policy 统一 push。只有测试基础设施自身、删除/重命名、无法分类或手动 release 才跑显式全维度；小阻塞不得打断主流程反复重启全套测试。
 
+**分支定性先算 merge-base（2026-09-01 一日三撞的「落后假象」固化）**：评审、对账或打捞任何分支前，先 `git merge-base origin/main <branch>`；真实 authored delta = `MB..branch`。直接对 main tip 的两点视图里出现的大片删除或陌生文件，**第一假设是「main 在分支落后期间前进了」**，不是分支真要删它们；GitHub 页面的 +/- 数字与 behind 红字同理不可直接采信（实例：某评估把三点视图 +1416 当真实贡献，两点实测是 272 文件混合物；另一分支两点视图「删 14.6 万行」实为落后 1500+ commit 的反转幻影）。远落后分支的并线一律 `gh pr update-branch` 服务端做——本地 merge 后 push 的追平 diff 会撞 R25 的评审上限（15-88MB 实测）。
+
 最终交付不再本地跑第三遍：在真实 merged-main SHA 上运行 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`。命令仍用有界 Git fetch 证明 `HEAD`、远端主线和 expected SHA/tree 身份，然后等待该 exact SHA 的 `Quality Gate` 与 `Mac Package` check run。GitHub required-check 语义中的 success/skipped/neutral 可写入 Git common dir 的 per-SHA `ci-evidence.json`；missing、pending、failure 或错误 SHA 都不能生成成功收据。同一 SHA 再调用直接复用收据，不启动 repository tests。
 
 ## R23 React Flow 生成画布单内核与迁移等价
@@ -530,3 +536,61 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 **迁移等价清单**：换内核不是重新设计。迁移或升级 React Flow 时，逐项盘点并保留旧画布的节点真实尺寸、fit/focus/虚拟化几何、连接入口与端点贴边、磁吸/hover/selection affordance、resize 命中区与可见反馈、边颜色/粗细/标签/菜单、出现与聚焦动画、拖动期间浮层、右键/键盘/触控协议；删除旧实现前必须证明新内核覆盖对应能力。产品明确要求改变的项目另走 R8，不得借迁移顺手改掉。
 
 **证据**：纯映射与状态复用写 adapter/contract 测试；旧内核不存在、入口唯一和写边界写结构门禁；用户能看到或操作的项目进入现有真实 Electron 旅程，用计算样式、SVG/DOM 几何和截图共同验证。不得以“React Flow 默认如此”替代 Nomi 的产品合同，也不得只查元素存在而不验证用户实际看见和点到的状态。
+
+> 规则编号说明：R24 由 PR #223 的能力完整性合同保留；本分支不定义或复制 R24，避免与 Agent/Project Agent Host 规则形成第二套旁路。
+
+## R25 提交/推送前 Ponytail 评审
+
+**触发**：任何 `git commit` 或 `git push`，包括文档、配置和脚本的小改动。目标是让过度工程化评审发生在变更离开工作树前，而不是把它误当成正确性、安全或 CI 评审的替代品。
+
+### 合规流程
+
+1. 版本化 `pre-commit` / `pre-push` hook 自动调用 `scripts/ponytail-review-hook.mjs`。Codex 适配器以 `--ask-for-approval never --ignore-rules --sandbox read-only` 启动只读、临时会话，并触发 `@ponytail-review`（宿主 slash 名是 `/ponytail-review`）。
+2. `pre-commit` 只把 `git diff --cached` 交给评审；`pre-push` 解析 Git 传入的四列 ref-update，逐个评审实际 outgoing range。新建远端 ref 没有旧 SHA 时，以远端 HEAD 的 merge-base 为基线，拒绝退化成整仓 diff；无法确定基线就 fail closed。不会把无关的未暂存改动或其他分支混进上下文。
+3. 评审只看过度工程化（delete/stdlib/native/yagni/shrink）。有发现时 hook 只报告状态和字节数摘要，不替用户判断功能正确性；需要逐条意见时另行运行 `@ponytail-review`。没有合法结果、Codex 缺失、插件未启用、异常或超时都 fail closed，必须处理环境后重试。
+4. 运行器固定为只读、临时、限时调用，报告写入系统临时目录，不进项目和 Git index；评审结束后立即删除唯一临时目录，清理失败也 fail closed。hook/返回值只保留状态、diff hash 和 report/stdout/stderr 字节数，绝不把报告正文或进程输出复制到终端、CI 日志或错误对象。报告读取上限为 256 KB；`pre-commit` 先执行既有敏感数据扫描，避免把明显凭据送入模型；`pre-push` 只审 outgoing diff。单次送审 diff 上限为 1.5 MB、push ref-update 上限为 32 条，超限直接 fail closed。
+5. 只接受 `--output-last-message` 报告的严格、报告-only 合同：适配器形式要求唯一一条 `net: -N lines possible.` 后紧跟唯一最终行 `PONYTAIL_REVIEW: PASS|FINDINGS`；同时兼容 Ponytail 原生的精确 clean 行 `Lean already. Ship.` 和以 `net: -N lines possible.` 收尾的 findings 报告。stdout/stderr、prompt 回显、重复 marker 和不完整报告一律不算通过。
+
+### 推送形态与 diff 上限的实操后果（2026-09-01 实测源码后固化）
+
+上面第 2/4 条的机制决定了三条铁律，违反任何一条都会在 push 时 fail closed：
+
+- **已存在的远端分支禁止 force-push 重建内容**：pre-push 对已有 ref 的评审 diff = `remoteSha..localSha` 两端点树差——把远古分支重置成「fresh main + 新内容」再强推，diff 会包含 main 全部演化、必超 1.5 MB 上限。**重建一律走全新分支**（新 ref 按与远端默认分支的 merge-base 算基线，diff = 真实 delta），旧 PR 关闭换新（带指针）。
+- **大删除拆批分推**：瘦身/清理类改动把删除拆成多个 commit **分多次 push**，单次评审 diff 控制在 ~1 MB 内（实测 178 文件 2.4 万行的瘦身拆 3 批全过）。
+- **新 worktree 先 `pnpm install` 再 commit/push**：hook 由 `postinstall`（`scripts/install-git-hooks.cjs`）安装——先推后装 = 推送完全未过本地评审与敏感数据闸（实翻车：18 批删除 push 全部裸奔，靠 CI 补拦）。
+
+### 为什么不把它做成收据或第二套 Agent
+
+`/ponytail-review` 是宿主 Agent skill，不是可移植的 shell 可执行文件；因此仓库只保留一个版本化 Codex 适配器，不再另设“手工 ACK 收据”旁路，也不接入 Nomi 的 Agent/Canvas 能力链。hook 内不执行修改、测试、commit 或 push，避免递归和工作树污染。
+
+`--no-verify`、GitHub 网页/API 和未安装 hook 的环境仍可绕过本地 Git hook；若要对所有入口强制，需在 CI/分支保护中复用同一只读评审合同。不得把本地 hook 通过写成“代码正确”或“已经合入”。
+
+### 环境与并行 worktree
+
+- `scripts/install-git-hooks.cjs` 由 `postinstall` 调用，保留既有 `commit-msg` 和敏感数据扫描顺序，并新增 `pre-push`。普通 worktree 使用 configured hooks 路径；linked worktree 只有在 Git `extensions.worktreeConfig=true` 时才写入专属目录，无法隔离则跳过并警告，避免一个分支改坏并行 worktree。
+- `PONYTAIL_REVIEW_CODEX_BIN` 可在本机明确指定 Codex 可执行文件；`PONYTAIL_REVIEW_REPORT_DIR` 仅用于调试报告目录。缺失配置不会放行。
+
+**验证**：`scripts/ponytail-review-hook.node-test.mjs` 覆盖 hook 生成顺序、staged/outgoing diff 范围、结果分类、Codex 失败/超时、真实 fake-runner 调用和 linked-worktree 隔离；改动本规则或 hook 时必须运行该测试与 contracts gate。
+
+## R26 分层边界不许反向/循环
+
+**问题**（2026-08-31 架构耦合审计，`docs/audit/2026-08-31-architecture-coupling-audit.md`）：用户痛点「改一点动一大堆、改一个事得找半天、东西很乱」的结构根因之一，是**边界画在了进程线两侧**——渲染层（`src/`）被迫直捅主进程（`electron/`）拿类型/常量（存量 136 处，其中 81 条 value import 把主进程码打进渲染 bundle），加上供应商目录管线里 6 个完全静态循环（真·加载顺序风险）。这类越界**当场能编译**，靠自觉记不住，只能靠机器每次拦（P2 通用性判定）。
+
+**规则**：
+
+| 违规方向 | 处置 |
+|---|---|
+| `src/` → `electron/`（渲染层直捅主进程 value/type import） | 存量 136 进 baseline 冻结、只减不增；走 `src/desktop/bridge.ts`（IPC）或中立契约层 `electron/shared/contracts/`（待建） |
+| `electron/` → `src/`（主进程反向 import 渲染层） | 硬零，无 baseline |
+| `src/` → `scripts/`（UI 捅门岗脚本） | 硬零，无 baseline |
+| 新增**完全静态**循环（每条环边都非 `dynamic-import`、非 `type-only`） | 存量 6 个静态硬环进 baseline 冻结、只减不增 |
+
+**软/硬环之分**（R17 教训：被忽略的门岗等于不存在）：全仓约 495 个 distinct 循环，绝大多数经由**故意的懒加载 `import()`** 边（`generationCanvas/nodes/registry.ts` 把节点类型 lazy-map 到 `BaseGenerationNode`），运行期不是硬环，属「认知耦合」不属「加载顺序炸弹」。把这些也拦会让门岗永红被无视，故规则用 `viaOnly.dependencyTypesNot: ['dynamic-import','type-only']` 只认静态硬环。
+
+**门岗**：`check:boundaries`（`scripts/check-boundaries.mjs`）。工具 = `dependency-cruiser@18.2.0`（唯一一个「出循环 + fan-in/out 且能把分层规则写成 `forbidden`、导出机读 JSON」的现役工具，一把兼审计+门岗）。规则住 `.dependency-cruiser.mjs`（`forbidden` 数组），存量身份冻结在 `scripts/boundaries-baseline.json`（**存身份不存裸数字**：裸数字放过「修一条旧的、同 commit 加一条」蒙混）。位置在 `check:heavy-path` 与 `lint:ci` 之间。加规则前**必须先验它会红**（造一个新越界 import 确认报红、且不在 baseline 里；再验修掉一条 baseline 违规后要求同步删行）。
+
+**中立契约层 `electron/shared/contracts/`**（第二期建）：让 renderer 和 main 都能合法 import 的中立层，把 55 条 type-only 越界的目标类型迁进去 → 消掉大半 `src→electron`。规则里已对该路径预留豁免（`pathNot: '^electron/shared/contracts/'`）。
+
+**清零路线**（分期，搬迁类须等在途大线合入，见审计分析六）：第一期纯加门岗+地图（零搬迁，本次）；第二期（#241 后）建中立契约层 + 清 29 个 re-export 壳（配 P1）；第三期（#223 后）解 `providerAdapter ↔ catalog ↔ integrationCertification` 硬环。
+
+**归属地图**：`docs/architecture/module-ownership-map.md`（一功能一个家 + 依赖方向铁律）。

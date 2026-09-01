@@ -1,4 +1,5 @@
 import { hardenedFetchText } from "../hardenedFetch";
+import { createExplicitProxyDispatcher } from "../systemProxy";
 
 export type DocsFetchText = typeof hardenedFetchText;
 
@@ -143,6 +144,7 @@ export async function discoverProviderDocs(options: {
   baseUrl: string;
   modelKeys: readonly string[];
   signal?: AbortSignal;
+  proxyUrl?: string;
   fetchText?: DocsFetchText;
   maxPages?: number;
   maxCorpusBytes?: number;
@@ -153,6 +155,7 @@ export async function discoverProviderDocs(options: {
   if (!canHostPublicDocs(baseUrl.hostname)) return { sources: [], corpus: "" };
   const domain = registrableDomain(baseUrl.hostname);
   const fetchText = options.fetchText || hardenedFetchText;
+  const dispatcher = options.proxyUrl ? createExplicitProxyDispatcher(options.proxyUrl) : undefined;
   const maxPages = options.maxPages ?? 16;
   const maxCorpusBytes = options.maxCorpusBytes ?? 160_000;
   const queue = seedUrls(baseUrl, domain, options.modelKeys);
@@ -163,6 +166,7 @@ export async function discoverProviderDocs(options: {
   let attempts = 0;
   const maxAttempts = Math.max(maxPages * 4, maxPages + 8);
 
+  try {
   while (queue.length > 0 && sources.length < maxPages && attempts < maxAttempts && Buffer.byteLength(corpus) < maxCorpusBytes) {
     if (options.signal?.aborted) {
       throw options.signal.reason instanceof Error ? options.signal.reason : new Error("Document discovery cancelled");
@@ -179,6 +183,7 @@ export async function discoverProviderDocs(options: {
         timeoutMs: 8_000,
         signal: options.signal,
         allowContentTypes: ["text/", "application/json", "application/xml", "application/yaml"],
+        ...(dispatcher ? { dispatcher } : {}),
       });
       const finalUrl = normalizedUrl(result.finalUrl || current);
       if (!isProviderSite(new URL(finalUrl), domain)) continue;
@@ -205,4 +210,7 @@ export async function discoverProviderDocs(options: {
   }
 
   return { sources, corpus };
+  } finally {
+    if (dispatcher) await dispatcher.close().catch(() => undefined);
+  }
 }

@@ -1,3 +1,4 @@
+import type React from 'react'
 import { ActionIcon, Anchor, Collapse, Group, Stack, Text } from '@mantine/core'
 import { IconCheck, IconChevronDown, IconChevronRight, IconPlus, IconTrash } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
@@ -5,6 +6,7 @@ import type { ProviderKind } from '../../desktop/providerKind'
 import { DesignButton, DesignSegmentedControl, DesignTextInput } from '../../design'
 import { cn } from '../../utils/cn'
 import { PROVIDER_KIND_LABEL } from './onboardingProviderKindLabels'
+import { ProviderProxyField } from './ProviderProxyField'
 import { Field } from './onboardingWizardSupport'
 import { PROVIDER_PRESETS } from './providerPresets'
 
@@ -76,6 +78,9 @@ export function OnboardingWizardAdvancedFields({
   onUpdateHeader,
   onRemoveHeaderRow,
   onAddHeaderRow,
+  proxyUrl,
+  proxyUrlValid,
+  onProxyUrlChange,
 }: {
   providerKind: ProviderKind
   kindForced: boolean
@@ -89,6 +94,10 @@ export function OnboardingWizardAdvancedFields({
   onUpdateHeader: (index: number, patch: Partial<HeaderRow>) => void
   onRemoveHeaderRow: (index: number) => void
   onAddHeaderRow: () => void
+  /** 低频高级字段：这个连接单独走的代理（可选）。 */
+  proxyUrl: string
+  proxyUrlValid: boolean
+  onProxyUrlChange: (event: React.ChangeEvent<HTMLInputElement>) => void
 }): JSX.Element {
   const { t } = useTranslation()
   return (
@@ -107,6 +116,7 @@ export function OnboardingWizardAdvancedFields({
 
       <Collapse in={showAdvanced}>
         <Stack gap={12}>
+          <ProviderProxyField value={proxyUrl} valid={proxyUrlValid} onChange={onProxyUrlChange} />
           {!showKindOverride ? (
             <Text size="xs" c="var(--nomi-ink-60)">
               {t('modelSetup.protocolSummary', {

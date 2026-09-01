@@ -13,6 +13,7 @@ import { isComfyuiVendorKey } from '../../workbench/generationCanvas/model/comfy
 import { NetworkSection } from './NetworkSection'
 import { CODEX_LOCAL_VENDOR_KEY } from './codexLocalProvider'
 import { CodexLocalImageCard } from './CodexLocalImageCard'
+import { LOCAL_TEXT_VENDOR_KEY, LocalModelCard } from './LocalModelCard'
 import { AntigravityConnectionCard } from './AntigravityConnectionCard'
 import { useAntigravitySettings } from './useAntigravitySettings'
 import { useAntigravityModelWorkspace } from './useAntigravityModelWorkspace'
@@ -60,18 +61,18 @@ import {
   type ModelSettingsPage,
 } from './modelSettingsNavigation'
 import { useModelPageRequest, type ModelPageRequest } from './useModelPageRequest'
- import { CertificationIntentKey } from './certificationIntentKey'
+import { CertificationIntentKey } from './certificationIntentKey'
 import { CertificationUiError, certificationFailureMessage } from './certificationFailureMessage'
 import { IntegrationConfirmationPanel, type IntegrationVerificationHandoff } from './IntegrationConfirmationPanel'
- type IntegrationHandoff = {
+type IntegrationHandoff = {
   requestId: string
   target: 'credential' | 'connection' | 'workflow' | 'verification'
   sessionId: string
   revision: number
   ownerClientId: string
   display?: { name?: string; origin?: string; authType?: string; runId?: string; challengeId?: string }
- }
- import { translateModelDisplayText } from '../../i18n/modelDisplayText'
+}
+import { translateModelDisplayText } from '../../i18n/modelDisplayText'
 
 export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPageRequest } = {}): JSX.Element {
   const { t } = useTranslation()
@@ -502,12 +503,9 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         />
       )
     }
-    if (vendorKey === DREAMINA_CONNECTION_KEY) {
-      return <DreaminaMemberCard status={dreaminaStatus} onChanged={refresh} detailMode />
-    }
-    if (vendorKey === CODEX_LOCAL_VENDOR_KEY) {
-      return <CodexLocalImageCard enabled={codexImageEnabled} onChanged={refresh} detailMode />
-    }
+    if (vendorKey === DREAMINA_CONNECTION_KEY) return <DreaminaMemberCard status={dreaminaStatus} onChanged={refresh} detailMode />
+    if (vendorKey === CODEX_LOCAL_VENDOR_KEY) return <CodexLocalImageCard enabled={codexImageEnabled} onChanged={refresh} detailMode />
+    if (vendorKey === LOCAL_TEXT_VENDOR_KEY) return <LocalModelCard enabled={vendorMeta.get(LOCAL_TEXT_VENDOR_KEY)?.enabled ?? false} models={models.filter((m) => m.vendorKey === LOCAL_TEXT_VENDOR_KEY)} onChanged={refresh} detailMode />
     if (vendorKey === ANTIGRAVITY_VENDOR_KEY) {
       return (
         <AntigravityConnectionCard
