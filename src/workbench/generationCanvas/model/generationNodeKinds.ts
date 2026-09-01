@@ -109,6 +109,12 @@ export function isAudioLikeGenerationNodeKind(kind: GenerationNodeKind): boolean
   return getGenerationNodeExecutionKind(kind) === 'audio'
 }
 
+// 3D 模型节点同为可生成节点（executionKind:'model3d'，走通用 catalog 任务路径 generate3D）——
+// 要渲染模型选择器 + 自动选默认，否则接了 3D 模型（meshy/混元…）也没处在节点上选它、生成路径断在选型。
+export function isModel3dLikeGenerationNodeKind(kind: GenerationNodeKind): boolean {
+  return getGenerationNodeExecutionKind(kind) === 'model3d'
+}
+
 // kind→分类映射的实现已下沉到 generationCanvasTypes（纯模型层，迁移与创建共用，
 // 不拖 nodes/registry 的 UI 依赖链）。此处保留导出面，既有调用方 import 路径不变。
 export { getDefaultCategoryForNodeKind } from './generationCanvasTypes'
