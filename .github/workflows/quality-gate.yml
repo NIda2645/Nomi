@@ -107,7 +107,7 @@ jobs:
         run: pnpm run test:system:focused
 
   desktop-linux:
-    name: Desktop Linux
+    name: E2E Walkthroughs (Linux)
     needs: scope
     if: >-
       needs.scope.outputs.desktop == 'true' ||

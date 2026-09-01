@@ -1,0 +1,265 @@
+- document
+- button:
+- button:
+- heading "飞书云文档" [level=1]
+- generic: 小
+- generic: 小云雀
+- generic: 搜索
+- button "目录（暂无内容）":
+  - generic: 目录（暂无内容）
+- button "与我分享":
+  - generic: 与我分享
+- list:
+  - generic: 🎨
+  - button "小云雀创作Agent-画布使用手册":
+    - generic: 小云雀创作Agent-画布使用手册
+- generic: 分享知识库
+- generic: 回收站
+- button "小":
+  - generic: 小
+- generic: ByteDance
+- generic: 小云雀
+- generic: 🎨
+- generic: 小云雀创作Agent-画布使用手册
+- generic: 外部
+- button:
+- generic: "最近修改: 7月27日 13:30"
+- button
+- button
+- button
+- button
+- button "分享":
+  - generic: 分享
+- button [expanded]:
+- button:
+- button:
+- generic: 问问豆包
+- list:
+  - link "🎨 小云雀创作Agent-画布使用手册":
+    - /url: "#D9Q3dU9aboF5MbxkhtgcliVanJc"
+    - generic: 🎨
+    - text: 小云雀创作Agent-画布使用手册
+  - link "一、什么是创作Agent画布":
+    - /url: "#doxcnEqahL4hmTkZoGuV9Yzukjg"
+    - text: 一、什么是创作Agent画布
+  - link "二、核心概念说明":
+    - /url: "#doxcneRftQDIpCd4RlsI5tVmH76"
+    - text: 二、核心概念说明
+  - link "三、主要功能介绍":
+    - /url: "#doxcn7JzWdjuZONlAwpyWaDQOBd"
+    - text: 三、主要功能介绍
+  - link "1. 如何进入创作Agent画布":
+    - /url: "#doxcnAHKGCf4Ub2TZnQh0tZRNpd"
+    - text: 1. 如何进入创作Agent画布
+  - link "2. 初次进入画布":
+    - /url: "#doxcno5cvH627klhVlNxqEBvp2g"
+    - text: 2. 初次进入画布
+  - link "3. Agent对话与创意助手":
+    - /url: "#doxcn1huN7CCiwFaLXmjJo0dwNc"
+    - text: 3. Agent对话与创意助手
+  - link "4. 使用「@」引用资产作为参考":
+    - /url: "#UoTud3k4CoxwsHx5U80cQWSAnyf"
+    - text: 4. 使用「@」引用资产作为参考
+  - link "5. 创建新节点":
+    - /url: "#doxcn5RuLyCX7oDxlP4ivq8fdKg"
+    - text: 5. 创建新节点
+  - link "6. 画布节点编辑工具":
+    - /url: "#doxcnBTcaUq6DGrLEUjwRpdJ0Kf"
+    - text: 6. 画布节点编辑工具
+  - link "全景图":
+    - /url: "#F1aod2kpVoJuqqx1MoCcngKlnNb"
+    - text: 全景图
+  - link "提示词反解析":
+    - /url: "#CgjVdls8AoMM1qxIHi5cjXXlnnf"
+    - text: 提示词反解析
+  - link "智能打光":
+    - /url: "#WMaTdh24MoohJBxyff4cMiFAn1c"
+    - text: 智能打光
+  - link "镜头调节":
+    - /url: "#Jd08dIuycoGoeYxz9W9cpHyOnhb"
+    - text: 镜头调节
+  - link "涂鸦画笔":
+    - /url: "#LizedOyCyobTSBxv0EmcIz9mnBc"
+    - text: 涂鸦画笔
+  - link "智能运镜库":
+    - /url: "#Zyg4dnCM9opRtTxHR9wcKEbnnvb"
+    - text: 智能运镜库
+  - link "拼图/拼视频":
+    - /url: "#VdrNdUvSHoLFEoxy8b6ciLMPnYe"
+    - text: 拼图/拼视频
+  - link "抽卡记录":
+    - /url: "#WZ8WdTJgWoX0w7xXH27cLRxqnHc"
+    - text: 抽卡记录
+  - link "7. 打组批量管理资产":
+    - /url: "#doxcnY3BZdFk6n5kizwvsKno25f"
+    - text: 7. 打组批量管理资产
+  - link "8. 左下角菜单栏":
+    - /url: "#doxcnMJdJmbGuAnU2gNbQTpHuif"
+    - text: 8. 左下角菜单栏
+  - link "9. 画布快捷键":
+    - /url: "#doxcnb5FxawFmpDxlKN8nzUJNLe"
+    - text: 9. 画布快捷键
+  - link "10. 分享创作记录":
+    - /url: "#FNG5d7jOgolHNsxG1PPc2BjHnmb"
+    - text: 10. 分享创作记录
+  - link "11. 深色模式":
+    - /url: "#Hod4dX4Nuof7HexTzrPck2Vfnkc"
+    - text: 11. 深色模式
+- heading "🎨 小云雀创作Agent-画布使用手册" [level=1]:
+  - generic: 🎨
+  - generic: 小云雀创作Agent-画布使用手册
+- generic: 7月27日修改
+- button "AI 速览 试用":
+  - generic: AI 速览
+  - generic: 试用
+- generic: 本文讨论了小云雀创作Agent-画布的使用相关内容，涵盖其定位、核心能力、操作方法、功能特性等信息，关键要点包括：
+- generic: "1."
+- generic: 核心定位与核心亮点：是小云雀创作Agent的配套功能，支持边对话找灵感边调整创作效果，核心亮点为多会话并行处理、可自定义创作工作流、资产库-画布-对话窗口全链路资源同步。
+- generic: "2."
+- generic: 核心概念说明：画布包含对话、节点、连线、资产库四类核心要素，节点为画布内容单元，连线代表节点间的引用上下文关系，资产库可留存所有历史生成、上传的内容。
+- generic: "3."
+- generic: 画布入口与初始状态：可通过创作Agent模式开关、沉浸式短片模式、输入框下方「自由画布」入口三类路径进入，初次进入默认左侧为画布、右侧为Agent对话，生成内容会自动添加至画布。
+- generic: "4."
+- generic: 核心功能特性：支持@引用全画布/资产库素材、4种途径新建节点、多类节点编辑功能，内置33种预设运镜，支持图片/视频拼接、抽卡记录选最优结果、资产打组批量管理。
+- generic: "5."
+- generic: 配套辅助能力：单画布可开启多个并行会话处理不同任务，创意助手可实现7天内dy热点检索、爆款视频解析、差异化选题推荐、完整创意方案输出。
+- generic: "6."
+- generic: 其他实用功能：支持画布布局整理、快捷键操作、画布/对话历史单独分享、右上角设置切换深色模式。
+- button "展开"
+- button:
+- generic: 一、什么是创作Agent画布
+- generic: 🖼️
+- generic: 在使用小云雀的创作Agent时，可以开启画布模式，一边对话寻找创作灵感，一边在画布上调整效果
+- img "画布入口"
+- generic: 画布入口
+- img "画布功能"
+- generic: 画布功能
+- generic: 核心亮点能力：
+- generic: •
+- generic: 对话：支持@引用全画布的资产作为参考，可用于检索创意、生成/润色提示词，也可以通过对话直接创作视频图片，并且支持开启多个会话并行完成任务
+- generic: •
+- generic: 画布：可以自由发挥建立自己的创作工作流，支持精细编辑，帮你完成创作的最后一公里
+- generic: •
+- generic: 全链路资产同步：资产库 - 画布 - 对话窗口资源同步联动，上下文更丰富，agent对话更聪明
+- generic: 在创作Agent画布中，你可以完成以下工作：
+- generic: "1."
+- generic: 添加创作素材：补充文本、图片、音视频等素材，作为参考输入或灵感来源
+- generic: "2."
+- generic: 编辑核心资产：可以将已有素材平铺在画布，支持截取/抽帧/抠像/超清等编辑功能
+- generic: "3."
+- generic: 并行推进创作：多个生成任务可以同时进行，无需切换窗口等待。视频生成中可以新建节点创作下一个视频，或者开启新会话聊聊新想法
+- generic: "4."
+- generic: 沉淀创作过程：不仅保留最终结果，也保留中间过程和参考依据，便于后续修改、复用和协作
+- generic: 二、核心概念说明
+- generic: "1."
+- generic: 对话：在画布上可通过指令与Agent交流完成创作任务，例如检索创意、生成/润色提示词、生成视频图片。每个画布上都可以开启多个对话
+- img "对话"
+- generic: 对话
+- generic: "2."
+- generic: 节点：画布上的每一个内容单元都为一个节点，不同节点类型承载不同内容
+- generic: 例如：文本节点-主要用于暂存提示词、故事线、分镜描述等；图片/视频节点 - 可上传本地文件，或在空节点上使用模型生成
+- img "节点"
+- generic: 节点
+- generic: "3."
+- generic: 连线：节点之间的连线关系，代表引用上下文关系。以一个节点为中心，左侧连接的是当前节点的参考输入，右侧连接的是以当前节点为参考输出
+- generic: 例如：文本节点可向右连接至视频图片节点，即：引用当前文本作为提示词进行生成创作；图片可以向右连接至视频节点，即：引用当前图片作为参考生成视频
+- img "连线"
+- generic: 连线
+- generic: 60%
+- generic: showcase_downpan
+- generic: 00:05
+- text: 60%
+- generic: showcase_fixed
+- generic: 60%
+- generic: showcase_follow
+- generic: 00:05
+- generic: 60%
+- generic: showcase_fpv
+- generic: 00:05
+- generic: 60%
+- generic: showcase_dollyzoom
+- generic: 00:05
+- text: 60%
+- generic: showcase_through
+- generic: 60%
+- generic: showcase_reveal
+- generic: 00:05
+- generic: 60%
+- generic: showcase_whip
+- generic: 00:05
+- generic: 60%
+- generic: 20260618163240_rec_
+- generic: 00:18
+- generic: 评论（1）
+- generic: 跳转至首条评论
+- button:
+- button "反向引用 (0)":
+  - generic: 反向引用 (0)
+- button:
+- button "本文引用 (1)":
+  - generic: 本文引用 (1)
+- button "关系图":
+  - generic: 关系图
+- generic: 推荐内容由 AI 生成
+- generic: 本文暂未被其它文档引用
+- list:
+  - generic: 📷
+  - generic: 小云雀运镜库功能介绍
+- generic: "8"
+- generic: "8"
+- generic: "8"
+- text: 人点赞
+- button
+- button
+- button
+- button
+- generic: 输入评论
+- button:
+- menu:
+  - menuitem "上传日志":
+    - generic: 上传日志
+  - menuitem "联系客服":
+    - generic: 联系客服
+  - menuitem "功能更新":
+    - generic: 功能更新
+  - menuitem "帮助中心":
+    - generic: 帮助中心
+  - menuitem "效率指南":
+    - generic: 效率指南
+- region "Notifications alt+T"
+- textbox
+- dialog [active]:
+  - tooltip:
+    - menu:
+      - menuitem "申请编辑权限":
+        - generic: 申请编辑权限
+      - menuitem "页宽设置":
+        - generic: 页宽设置
+      - menuitem "演示模式":
+        - generic: 演示模式
+      - menuitem "关注文档更新":
+        - generic: 关注文档更新
+        - switch
+      - menuitem "关注文档评论":
+        - generic: 关注文档评论
+        - switch
+      - menuitem "查找":
+        - generic: 查找
+      - menuitem "添加快捷方式到":
+        - generic: 添加快捷方式到
+      - menuitem "移动到":
+        - generic: 移动到
+      - menuitem "添加到“置顶”":
+        - generic: 添加到“置顶”
+      - menuitem "添加到收藏":
+        - generic: 添加到收藏
+      - menuitem "翻译为英语" [expanded]:
+        - generic: 翻译为英语
+      - menuitem "查看已存版本":
+        - generic: 查看已存版本
+      - menuitem "文档小组件":
+        - generic: 文档小组件
+      - menuitem "文档信息":
+        - generic: 文档信息
+      - menuitem "更多":
+        - generic: 更多
