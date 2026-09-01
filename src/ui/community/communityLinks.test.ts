@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildGitHubIssueUrl, buildPrivateFeedbackUrl, NOMI_COMMUNITY_LINKS, PRIVATE_FEEDBACK_URL } from './communityLinks'
+import { buildGitHubIssueUrl, buildPrivateFeedbackUrl, buildShareMessage, NOMI_COMMUNITY_LINKS, PRIVATE_FEEDBACK_URL } from './communityLinks'
+import { enCommunity, zhCommunity } from '../../i18n/locales/community'
 
 describe('community links', () => {
   it('keeps public destinations on the real Nomi properties', () => {
@@ -19,6 +20,22 @@ describe('community links', () => {
     expect(url.searchParams.get('title')).toBe('[Bug] model · model-config')
     expect(url.search).not.toContain('prompt')
     expect(url.search).not.toContain('details')
+  })
+
+  // 问题 #2：分享给朋友要的是「一段可直接转发的话」，不是裸 URL。这段话由 i18n 模板 + 真实链接拼出，
+  // 链接只有一份真相源（NOMI_COMMUNITY_LINKS），拼出来的文本永远和它一致。
+  it('builds a forwardable share message with a human line and both real links', () => {
+    for (const [label, template] of [['zh', zhCommunity.shareMessage], ['en', enCommunity.shareMessage]] as const) {
+      const message = buildShareMessage(template)
+      // 真实链接被填进去了，占位符没有残留。
+      expect(message, label).toContain(NOMI_COMMUNITY_LINKS.website)
+      expect(message, label).toContain(NOMI_COMMUNITY_LINKS.github)
+      expect(message, label).not.toContain('{{website}}')
+      expect(message, label).not.toContain('{{github}}')
+      // 不是一条裸链接：除了 URL，还有一句人话推荐（长度 + 换行足以承载多行推荐语）。
+      expect(message.length, label).toBeGreaterThan(NOMI_COMMUNITY_LINKS.website.length + 40)
+      expect(message, label).toContain('Nomi')
+    }
   })
 
   it('passes only safe runtime context to the private form', () => {

@@ -27,6 +27,7 @@ function stubBridge(projectsOverride: Partial<DesktopBridge['projects']>): Deskt
     exports: {} as DesktopBridge['exports'],
     tasks: {} as DesktopBridge['tasks'],
     modelCatalog: {} as DesktopBridge['modelCatalog'],
+    connector: {} as DesktopBridge['connector'],
   }
 }
 

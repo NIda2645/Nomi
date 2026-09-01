@@ -548,15 +548,15 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 1. 版本化 `pre-commit` / `pre-push` hook 自动调用 `scripts/ponytail-review-hook.mjs`。Codex 适配器以 `--ask-for-approval never --ignore-rules --sandbox read-only` 启动只读、临时会话，并触发 `@ponytail-review`（宿主 slash 名是 `/ponytail-review`）。
 2. `pre-commit` 只把 `git diff --cached` 交给评审；`pre-push` 解析 Git 传入的四列 ref-update，逐个评审实际 outgoing range。新建远端 ref 没有旧 SHA 时，以远端 HEAD 的 merge-base 为基线，拒绝退化成整仓 diff；无法确定基线就 fail closed。不会把无关的未暂存改动或其他分支混进上下文。
 3. 评审只看过度工程化（delete/stdlib/native/yagni/shrink）。有发现时 hook 只报告状态和字节数摘要，不替用户判断功能正确性；需要逐条意见时另行运行 `@ponytail-review`。没有合法结果、Codex 缺失、插件未启用、异常或超时都 fail closed，必须处理环境后重试。
-4. 运行器固定为只读、临时、限时调用，报告写入系统临时目录，不进项目和 Git index；评审结束后立即删除唯一临时目录，清理失败也 fail closed。hook/返回值只保留状态、diff hash 和 report/stdout/stderr 字节数，绝不把报告正文或进程输出复制到终端、CI 日志或错误对象。报告读取上限为 256 KB；`pre-commit` 先执行既有敏感数据扫描，避免把明显凭据送入模型；`pre-push` 只审 outgoing diff。单次送审 diff 上限为 1.5 MB、push ref-update 上限为 32 条，超限直接 fail closed。
+4. 运行器固定为只读、临时、限时调用，报告写入系统临时目录，不进项目和 Git index；评审结束后立即删除唯一临时目录，清理失败也 fail closed。hook/返回值只保留状态、diff hash 和 report/stdout/stderr 字节数，绝不把报告正文或进程输出复制到终端、CI 日志或错误对象。报告读取上限为 256 KB；`pre-commit` 先执行既有敏感数据扫描，避免把明显凭据送入模型；`pre-push` 只审 outgoing diff。**二进制文件内容不进评审 diff**（`collectReviewDiff` 去掉 `--binary`，Git 自然降级为一行 `Binary files … differ`），改附一段 `BINARY: <added/modified/deleted> <path> (<size>)` 摘要——图片字节对精简代码评审是 100% 噪音，base85 blob 曾反复顶爆上限；摘要保留「仓库变肥」信号供评审当 lean 发现提出。单次送审 diff 上限为 1.5 MB（**自此只约束文本 diff + 二进制摘要**）、push ref-update 上限为 32 条，超限直接 fail closed。
 5. 只接受 `--output-last-message` 报告的严格、报告-only 合同：适配器形式要求唯一一条 `net: -N lines possible.` 后紧跟唯一最终行 `PONYTAIL_REVIEW: PASS|FINDINGS`；同时兼容 Ponytail 原生的精确 clean 行 `Lean already. Ship.` 和以 `net: -N lines possible.` 收尾的 findings 报告。stdout/stderr、prompt 回显、重复 marker 和不完整报告一律不算通过。
 
 ### 推送形态与 diff 上限的实操后果（2026-09-01 实测源码后固化）
 
 上面第 2/4 条的机制决定了三条铁律，违反任何一条都会在 push 时 fail closed：
 
-- **已存在的远端分支禁止 force-push 重建内容**：pre-push 对已有 ref 的评审 diff = `remoteSha..localSha` 两端点树差——把远古分支重置成「fresh main + 新内容」再强推，diff 会包含 main 全部演化、必超 1.5 MB 上限。**重建一律走全新分支**（新 ref 按与远端默认分支的 merge-base 算基线，diff = 真实 delta），旧 PR 关闭换新（带指针）。
-- **大删除拆批分推**：瘦身/清理类改动把删除拆成多个 commit **分多次 push**，单次评审 diff 控制在 ~1 MB 内（实测 178 文件 2.4 万行的瘦身拆 3 批全过）。
+- **已存在的远端分支禁止 force-push 重建内容**：pre-push 对已有 ref 的评审 diff = `remoteSha..localSha` 两端点树差——把远古分支重置成「fresh main + 新内容」再强推，diff 会包含 main 全部演化、必超 1.5 MB 上限。**重建一律走全新分支**（新 ref 按与远端默认分支的 merge-base 算基线，diff = 真实 delta），旧 PR 关闭换新（带指针）。（2026-09-01 补：二进制内容已不计入评审 diff（一行摘要代替），本条自此只约束**文本 diff**；对**大文本演化**——重建含万行代码/文档的远古分支——force-push 重建仍会顶爆上限，照旧禁止走新分支。）
+- **大删除拆批分推**：瘦身/清理类改动把删除拆成多个 commit **分多次 push**，单次评审 diff 控制在 ~1 MB 内（实测 178 文件 2.4 万行的瘦身拆 3 批全过）。（2026-09-01 补：二进制内容已不计入评审 diff（一行摘要代替），本条自此只约束**文本 diff**；**样张/截图类提交不再需要拆批/降采样**——PNG 字节不再进 diff，一行 `BINARY:` 摘要代替。）
 - **新 worktree 先 `pnpm install` 再 commit/push**：hook 由 `postinstall`（`scripts/install-git-hooks.cjs`）安装——先推后装 = 推送完全未过本地评审与敏感数据闸（实翻车：18 批删除 push 全部裸奔，靠 CI 补拦）。
 
 ### 为什么不把它做成收据或第二套 Agent

@@ -52,6 +52,7 @@ import { createMainWindowGuard } from "./mainWindowPresence";
 import { assertTrustedSender } from "./ipcSenderGuard";
 import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
 import { registerVideoIpc } from "./video/videoIpc";
+import { registerTikhubConnectorIpc } from "./connectors/tikhubConnectorIpc";
 import { desktopT, registerI18nIpc, setDesktopLocale } from "./i18n";
 import { registerSettingsIpc } from "./settings/registerSettingsIpc";
 import { registerProductionRunIpc } from "./productionRun/productionRunIpc";
@@ -706,6 +707,7 @@ function registerIpc(): void {
   registerSettingsIpc();
   registerVideoIpc();
   registerScreenshotIpc();
+  registerTikhubConnectorIpc();
   ipcMain.handle("nomi:image:decompose-layers", async (event, payload) => {
     assertTrustedSender(event);
     const { decomposeLayers } = await import("./image/decomposeLayers");

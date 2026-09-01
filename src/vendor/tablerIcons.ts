@@ -49,6 +49,7 @@ export { default as IconBooks } from '@tabler/icons-react/dist/esm/icons/IconBoo
 export { default as IconBox } from '@tabler/icons-react/dist/esm/icons/IconBox.mjs'
 export { default as IconBoxMultiple } from '@tabler/icons-react/dist/esm/icons/IconBoxMultiple.mjs'
 export { default as IconBrain } from '@tabler/icons-react/dist/esm/icons/IconBrain.mjs'
+export { default as IconBrandGithub } from '@tabler/icons-react/dist/esm/icons/IconBrandGithub.mjs'
 export { default as IconBrowser } from '@tabler/icons-react/dist/esm/icons/IconBrowser.mjs'
 export { default as IconBrush } from '@tabler/icons-react/dist/esm/icons/IconBrush.mjs'
 export { default as IconBulb } from '@tabler/icons-react/dist/esm/icons/IconBulb.mjs'

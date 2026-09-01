@@ -489,7 +489,30 @@ export function moveAssetFile(
 type RemoteAssetImportOptions = {
   /** 仅供 main 进程内部已配置的本地生成服务使用；renderer IPC 无法注入第二参数。 */
   trustedPrivateOrigin?: string;
+  certificationEvidence?: CertificationMediaEvidence;
 };
+
+/**
+ * Sanitize a caller-supplied source-evidence record into the connector provenance
+ * shape (docs/plan/2026-09-01-tikhub-connector-v1.md). Only whitelisted fields
+ * survive so an untrusted payload cannot smuggle arbitrary metadata into the
+ * sidecar. rightsStatus is pinned to 'unknown': connector-ingested media is never
+ * inferred to be commercially usable.
+ */
+export function sanitizeSourceEvidence(raw: unknown): JsonRecord | undefined {
+  if (!isJsonRecord(raw) || raw.source !== "connector") return undefined;
+  const connectorId = String(raw.connectorId || "").trim();
+  if (!connectorId) return undefined;
+  return {
+    source: "connector",
+    connectorId,
+    originalUrl: String(raw.originalUrl || "").trim(),
+    resolvedUrl: String(raw.resolvedUrl || "").trim(),
+    platform: String(raw.platform || "").trim(),
+    rightsStatus: "unknown",
+    fetchedAt: String(raw.fetchedAt || "").trim() || nowIso(),
+  };
+}
 
 export async function importRemoteAsset(payload: unknown, options: RemoteAssetImportOptions = {}): Promise<unknown> {
   const raw = payload as JsonRecord;
@@ -497,6 +520,7 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
   const url = String(raw.url || "").trim();
   if (!projectId) throw new Error("projectId is required");
   if (!url) throw new Error("url is required");
+  const sourceEvidence = sanitizeSourceEvidence(raw.sourceEvidence);
   if (url.startsWith("nomi-local://")) {
     return {
       id: stableLocalReferenceId(projectId, url),
@@ -515,8 +539,8 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
       projectId,
       parsed.bytes,
       String(raw.fileName || `asset-${Date.now()}.${ext}`),
-      parsed.contentType,
-      { kind: raw.kind || "generated", originalUrl: null },
+      options.certificationEvidence?.contentType || parsed.contentType,
+      { kind: raw.kind || "generated", originalUrl: null, ...(sourceEvidence ? { sourceEvidence } : {}), ...(options.certificationEvidence ? { certificationEvidence: options.certificationEvidence } : {}) },
     );
   }
   if (!/^https?:\/\//i.test(url)) throw new Error("Only http(s), data, and nomi-local assets are supported");
@@ -529,15 +553,17 @@ export async function importRemoteAsset(payload: unknown, options: RemoteAssetIm
   const bytes = fetched.bytes;
   const hintedContentType = fetched.contentType || "application/octet-stream";
   const rawFileName = String(raw.fileName || path.basename(new URL(url).pathname) || "").trim();
-  const contentType = hintedContentType.toLowerCase().split(";")[0] === "application/octet-stream"
+  const contentType = options.certificationEvidence?.contentType || (hintedContentType.toLowerCase().split(";")[0] === "application/octet-stream"
     ? resolveContentType(rawFileName || url, bytes)
-    : hintedContentType;
+    : hintedContentType);
   const ext = extensionFromMime(contentType, extensionFromUrl(url));
   const fileName = rawFileName || `asset-${Date.now()}.${ext}`;
   return writeAsset(projectId, bytes, fileName.includes(".") ? fileName : `${fileName}.${ext}`, contentType, {
     kind: raw.kind || "generated",
     originalUrl: url,
     ownerNodeId: raw.ownerNodeId || null,
+    ...(sourceEvidence ? { sourceEvidence } : {}),
+    ...(options.certificationEvidence ? { certificationEvidence: options.certificationEvidence } : {}),
   });
 }
 

@@ -112,13 +112,75 @@ function resolveNewRefBase({ repoRoot, remoteName = '', localSha, runGit: git = 
   throw new Error('cannot determine a remote tracking base for a new ref; refusing an unbounded whole-repository review')
 }
 
+function formatBinaryBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return 'unknown size'
+  if (bytes < 1024) return `${bytes} B`
+  const kib = bytes / 1024
+  if (kib < 1024) return `${Math.round(kib)} KB`
+  return `${(kib / 1024).toFixed(1)} MB`
+}
+
+/**
+ * Binary payloads are dropped from the reviewed diff (a lean-code review never
+ * needs image bytes, and base85 blobs were blocking commits under the text
+ * cap). Emit a one-line-per-file summary instead so the model still sees the
+ * repository-weight signal and can flag it as a lean finding. Derived from
+ * `--numstat` (the `-\t-` marker is Git's canonical binary flag) cross-checked
+ * against `--raw` for status and the blob SHA whose size we resolve.
+ */
+function summarizeBinaryChanges({ repoRoot, git, selector }) {
+  const numstat = String(git(repoRoot, ['diff', ...selector, '--no-ext-diff', '--numstat', '-z', '--']) || '')
+  const binaryPaths = []
+  for (const record of numstat.split('\0')) {
+    if (!record) continue
+    const [added, deleted, ...rest] = record.split('\t')
+    if (added === '-' && deleted === '-' && rest.length > 0) binaryPaths.push(rest.join('\t'))
+  }
+  if (binaryPaths.length === 0) return ''
+
+  const raw = String(git(repoRoot, ['diff', ...selector, '--no-ext-diff', '--raw', '-z', '--']) || '')
+  const fields = raw.split('\0')
+  const metaByPath = new Map()
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const meta = fields[i]
+    const changePath = fields[i + 1]
+    if (!meta.startsWith(':')) continue
+    const columns = meta.slice(1).split(' ')
+    metaByPath.set(changePath, { srcSha: columns[2], dstSha: columns[3], status: columns[4] || '' })
+  }
+
+  const verbByStatus = { A: 'added', M: 'modified', D: 'deleted', T: 'changed' }
+  const lines = binaryPaths.map((changePath) => {
+    const meta = metaByPath.get(changePath) || {}
+    const status = (meta.status || '').charAt(0).toUpperCase()
+    const verb = verbByStatus[status] || 'changed'
+    const blobSha = status === 'D' ? meta.srcSha : meta.dstSha
+    let size = 'unknown size'
+    if (blobSha && !/^0+$/.test(blobSha)) {
+      const bytes = Number.parseInt(String(git(repoRoot, ['cat-file', '-s', blobSha]) || '').trim(), 10)
+      size = formatBinaryBytes(bytes)
+    }
+    return `BINARY: ${verb} ${changePath} (${size})`
+  })
+  return `--- BINARY CHANGES (bytes omitted from diff) ---\n${lines.join('\n')}`
+}
+
+/** Join a text diff and its binary summary, keeping either side optional. */
+function withBinarySummary(diff, binarySummary) {
+  return [diff, binarySummary].filter(Boolean).join('\n')
+}
+
 /**
  * Collect only the state represented by the hook event: staged files for a
  * commit, or each outgoing ref range for a push. Never send unrelated edits.
+ * Binary file contents are excluded (see summarizeBinaryChanges); the text diff
+ * plus a binary summary is what the size cap now bounds.
  */
 export function collectReviewDiff({ repoRoot, scope, pushInput = '', remoteName = '', runGit: git = runGit }) {
   if (scope === 'staged') {
-    const diff = git(repoRoot, ['diff', '--cached', '--no-ext-diff', '--binary', '--unified=80', '--'])
+    const textDiff = git(repoRoot, ['diff', '--cached', '--no-ext-diff', '--unified=80', '--'])
+    const binarySummary = summarizeBinaryChanges({ repoRoot, git, selector: ['--cached'] })
+    const diff = withBinarySummary(textDiff, binarySummary)
     assertReviewDiffSize(diff)
     return { diff, ranges: [], description: 'staged changes (`git diff --cached`)' }
   }
@@ -136,7 +198,10 @@ export function collectReviewDiff({ repoRoot, scope, pushInput = '', remoteName 
       baselineDescription = `; new ref baseline ${resolved.symbolic} (${resolved.base})`
     }
     const to = ZERO_SHA.test(localSha) ? EMPTY_TREE_SHA : localSha
-    const diff = git(repoRoot, ['diff', '--no-ext-diff', '--binary', '--unified=80', `${from}..${to}`, '--'])
+    const range = `${from}..${to}`
+    const textDiff = git(repoRoot, ['diff', '--no-ext-diff', '--unified=80', range, '--'])
+    const binarySummary = summarizeBinaryChanges({ repoRoot, git, selector: [range] })
+    const diff = withBinarySummary(textDiff, binarySummary)
     assertReviewDiffSize(diff)
     return `### ${localRef} (${localSha}) → ${remoteRef} (${remoteSha})${baselineDescription}\n${diff}`
   })

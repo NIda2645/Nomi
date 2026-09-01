@@ -26,6 +26,7 @@
 | [2026-09-01-pr258-derived-directions-eval.md](2026-09-01-pr258-derived-directions-eval.md) | #258 拆项评估定稿：①provider proxy 🟢（已随 #282 落地）②即梦 CLI 模型面 🟡（后被 v1.4.17 对齐 #291 取代其结论）③onboarding 加固 🟢（已随 #282 落地） | 📎 |
 | [2026-09-01-pr271-feedback-share-center-eval.md](2026-09-01-pr271-feedback-share-center-eval.md) | #271 反馈分享中心拆项评估：三方向全 🟢、外发面克制可辩护；按四步收口后已合入（provider 泄露路径证实并修复） | 📎 |
 | [2026-09-01-video-deconstruction-v1.md](2026-09-01-video-deconstruction-v1.md) | 拆解视频 v1 面板方案：一条参考视频→结构化分镜表→勾选镜头逐个落画布+自动编组→用这套结构起稿；含与 Agent 面板的右槽共存契约（③合流终局+过渡期互斥 R-C-1~7） | 🚧 |
+| [2026-09-01-tikhub-connector-v1.md](2026-09-01-tikhub-connector-v1.md) | TikHub 数据 connector v1：分享链接→无水印直链→喂现有拆解引擎（native-api / BYO-key / effect=spend / AssetSourceEvidence） | 🚧 |
 | [2026-06-07-apimart-curated-onboarding.md](2026-06-07-apimart-curated-onboarding.md) | 策展两家(kie+apimart)一键接入；战略从「通用接入」转向 | ✅ |
 | [2026-06-06-universal-model-onboarding.md](2026-06-06-universal-model-onboarding.md) | 「描述符+通用解释器接长尾」研究稿 | ⛔ |
 | [2026-05-30-onboarding-schema-first-extraction.md](2026-05-30-onboarding-schema-first-extraction.md) | 参数抽取从 curl-only 升级为 schema-first | 🚧 |

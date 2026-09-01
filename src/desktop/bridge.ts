@@ -2,6 +2,7 @@ import type { ExportJobEvent, ExportJobSnapshot, ExportJobVerification } from '.
 import type { WorkspaceFileListResult } from '../../electron/workspace/workspaceFileIndex'
 import type { ProviderKind } from './providerKind'
 import type { DesktopMediaBridge } from './bridgeMedia'
+import type { DesktopConnectorBridge } from './bridgeConnector'
 import type { McpInfo, McpVerifyResult } from './mcpBridgeTypes'
 import type { DesktopSettingsBridge } from './settingsBridge'
 import type { DesktopOnboardingBridge } from './onboardingBridgeTypes'
@@ -12,11 +13,7 @@ import type { CanvasReadSurfaceBridge } from '../../electron/shared/surfacePortB
 import type { ProjectAgentBridge } from './projectAgentBridgeTypes'
 export type { ProjectAgentBridge, ProjectAgentCommandWire } from './projectAgentBridgeTypes'
 export type { ProviderKind }
-export type {
-  DesktopAdapterModeResult,
-  DesktopProviderAdapterRun,
-  DesktopProviderRegistration,
-} from './onboardingBridgeTypes'
+export type { DesktopAdapterModeResult, DesktopProviderAdapterRun, DesktopProviderRegistration } from './onboardingBridgeTypes'
 export type { ScreenshotHotkeyStatus } from './bridgeMedia'
 
 /** 落盘的对话消息(conversation 域;draft/附件是 session 域不落盘)。 */
@@ -318,7 +315,7 @@ export type DesktopUpdateEvent =
   | { type: 'downloaded'; version: string }
   | { type: 'error'; message: string }
 
-export type DesktopBridge = DesktopMediaBridge & {
+export type DesktopBridge = DesktopMediaBridge & DesktopConnectorBridge & {
   platform: string
   i18n?: {
     setLocale: (locale: 'zh-CN' | 'en') => void
