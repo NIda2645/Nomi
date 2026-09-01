@@ -9,6 +9,7 @@ import { runMultipartProfileOperation } from "./catalog/multipartOperation";
 import { templateContext, buildProfileHttpRequest, validateProfileRequestBeforeSpend } from "./catalog/profileHttpRequest";
 import { chatImageFallbackOperation } from "./catalog/imageRouteFallback";
 import { buildNormalizedRecipe, buildTaskProvenance } from "./vendor/provenance";
+import { extractProviderCostActual, type ProviderCostActual } from "./vendor/cost";
 import { traceVendorCompleted, traceVendorRequested } from "./events/vendorCallTrace";
 import { scheduleTechnicalReview } from "./review/reviewTrace";
 import { localizedTaskAssetFileName, probeLocalizedDurationSeconds } from "./assets/localizedAsset";
@@ -139,6 +140,7 @@ export type TaskResult = {
     seed?: number;
     params?: Record<string, unknown>;
     vendorRequestId?: string;
+    cost?: { amount: number; currency: "credits"; unit: "actual" | "estimate" };
     timestamp: number;
   };
 };
@@ -293,7 +295,7 @@ export async function buildProfileTaskResult(input: {
   /** S4-1:provenance 统一在本出口写(修主路径漏写根因),需要 vendor/model。 */
   vendor?: Vendor;
   model?: Model;
-}): Promise<{ result: TaskResult; providerMeta: JsonRecord; unrecognizedStatus: string }> {
+}): Promise<{ result: TaskResult; providerMeta: JsonRecord; unrecognizedStatus: string; actualCost?: ProviderCostActual }> {
   const response = applyResponseTransform(input.operation.response_transform, input.response, {
     baseUrl: String(input.vendor?.baseUrlHint || ""),
   });
@@ -318,9 +320,11 @@ export async function buildProfileTaskResult(input: {
     materialize: (url, index) => input.projectId
       ? localizeTaskAsset(input.projectId, url, type, input.nodeId, input.vendor, certification.evidence[index])
       : Promise.resolve(unlocalizedTaskAsset(type, url)) });
+  const actualCost = extractProviderCostActual(input.vendor?.key || "", input.response);
   return {
     providerMeta,
     unrecognizedStatus,
+    ...(actualCost ? { actualCost } : {}),
     result: {
       id: taskId,
       kind: input.request.kind,
@@ -329,14 +333,7 @@ export async function buildProfileTaskResult(input: {
       raw: input.response,
       ...(status === "failed" ? { error: taskFailureMessageFromResponse(response, responseMapping) } : {}),
       ...(status === "succeeded" && input.vendor && input.model
-        ? {
-            provenance: buildTaskProvenance({
-              vendor: input.vendor,
-              model: input.model,
-              request: input.request,
-              vendorRequestId: taskId,
-            }),
-          }
+        ? { provenance: buildTaskProvenance({ vendor: input.vendor, model: input.model, request: input.request, vendorRequestId: taskId, actualCost }) }
         : {}),
     },
   };
@@ -428,12 +425,7 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
     }
     traceVendorRequested(projectId, { runId: normalized.result.id, nodeId, recipe });
     if (["succeeded", "failed"].includes(normalized.result.status)) {
-      traceVendorCompleted(projectId, {
-        runId: normalized.result.id,
-        nodeId,
-        status: normalized.result.status as "succeeded" | "failed",
-        assetCount: normalized.result.assets.length,
-      });
+      traceVendorCompleted(projectId, { runId: normalized.result.id, nodeId, status: normalized.result.status as "succeeded" | "failed", assetCount: normalized.result.assets.length, ...(normalized.actualCost ? { cost: normalized.actualCost } : {}) });
       rememberTaskResult(projectId, fingerprint, normalized.result);
     }
     if (!["succeeded", "failed"].includes(normalized.result.status)) {
@@ -509,8 +501,9 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
     wantedKind === "video" ? "video" : wantedKind === "audio" ? "audio" : wantedKind === "model3d" ? "model3d" : "image";
   const asset: TaskResult["assets"][number] = projectId
     ? await localizeTaskAsset(projectId, assetUrl, type, nodeId, vendor) : unlocalizedTaskAsset(type, assetUrl);
-  const provenance = buildTaskProvenance({ vendor, model, request, vendorRequestId: upstreamTaskId });
-  traceVendorCompleted(projectId, { runId: upstreamTaskId, nodeId, status: "succeeded", assetCount: 1 });
+  const actualCost = extractProviderCostActual(vendor.key, providerResponse);
+  const provenance = buildTaskProvenance({ vendor, model, request, vendorRequestId: upstreamTaskId, actualCost });
+  traceVendorCompleted(projectId, { runId: upstreamTaskId, nodeId, status: "succeeded", assetCount: 1, ...(actualCost ? { cost: actualCost } : {}) });
   const finalResult: TaskResult = {
     id: upstreamTaskId,
     kind,

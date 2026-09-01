@@ -75,6 +75,11 @@ export const MODEL_ACCESS_ENTRY = {
   comfyuiMultiInstance: 'comfyui-multi-instance',
   dreaminaOauth: 'dreamina-oauth',
   codexLocal: 'codex-local',
+  // Local OpenAI-compatible text runtimes (Ollama / LM Studio / LocalAI): probe
+  // common ports → connect → list models → capability precheck (agent vs
+  // chat-only) → seed a `local-text` vendor. Same discovery-and-connect shape as
+  // codexLocal / comfyuiPreset, so it is one more entry surface, not a protocol.
+  localTextConnect: 'local-text-connect',
   manualModelRetype: 'manual-model-retype',
   failureRecovery: 'failure-recovery',
   minimalMaterialProbe: 'minimal-material-probe',
@@ -196,6 +201,11 @@ export const MODEL_ACCESS_REQUIRED_PROFILES = [
   { id: 'comfyui-workflow-video', requires: { entries: ['comfyui-workflow-import', 'comfyui-multi-instance'], auth: ['none'], providers: ['comfyui'], lifecycles: ['http-websocket'], ingestion: ['comfyui-upload'], taskKinds: ['image_to_video'] }, resultProof: 'video-frame' },
   { id: 'dreamina-reference-process', requires: { entries: ['dreamina-oauth'], auth: ['oauth-session'], providers: ['process'], lifecycles: ['process'], ingestion: ['process-local-file'], slots: ['first_frame', 'last_frame', 'image_ref', 'video_ref', 'audio_ref'], outputs: ['local-file'] }, resultProof: 'video-frame' },
   { id: 'codex-local-process', requires: { entries: ['codex-local'], auth: ['none'], providers: ['process'], lifecycles: ['process'], taskKinds: ['text_to_image'], outputs: ['local-file'] }, resultProof: 'image-pixels' },
+  // Local text runtime: the seed is authType:'none' + OpenAI-compatible, the card
+  // lists models via /v1/models and the capability precheck fires one /v1/chat/completions
+  // (sync-json) tool-call probe to split agent vs chat-only. Derived from
+  // localTextVendorSeed.ts + localTextCapabilityProbe.ts, not invented here.
+  { id: 'local-text-connect-agent-precheck', requires: { entries: ['local-text-connect'], auth: ['none'], providers: ['openai-compatible'], billingKinds: ['text'], taskKinds: ['chat'], lifecycles: ['sync-json'], outputs: ['text'] }, resultProof: 'visible-text' },
   { id: 'manual-kind-repair', requires: { entries: ['manual-model-retype'], recoveries: ['model-kind'], taskKinds: ['text_to_3d'], outputs: ['url'] }, resultProof: 'model3d-pixels' },
   { id: 'auth-url-timeout-repair', requires: { entries: ['failure-recovery'], recoveries: ['auth', 'url', 'rate-limit', 'server', 'timeout', 'invalid-response', 'empty-output'] }, resultProof: 'same-node-retried' },
   { id: 'ordered-multimodal-wire', requires: { entries: ['custom-call-script'], taskKinds: ['image_to_video'], lifecycles: ['multipart'], ingestion: ['upload-stream'], slots: ['first_frame', 'last_frame', 'image_ref', 'video_ref', 'audio_ref', 'source_video', 'mask'], modeShapes: ['input-key', 'single-value', 'array-value', 'character-indexed', 'vendor-params', 'model-enum', 'combine-role-array', 'combine-flat-array', 'fixed-params', 'variant'] }, resultProof: 'ordered-wire-and-video-frame' },

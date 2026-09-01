@@ -1,0 +1,55 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-provider-actual-cost-capture",
+  "problem_type": "只有前端目录估价、缺「供应商实际扣费」捕获（终态响应里带了真实积分却无处收，只能永远估算）",
+  "symptom": "Nomi 只从目录定价做估算（渲染层按 catalog pricing 估、生产侧 productionRun/shotPricing 估），从来没有捕获「供应商这次实际扣了多少积分」。APIMart 的完成响应里带 data.credits_cost、KIE 带 data.creditsConsumed，这些真实扣费落在终态响应里却无人提取——provenance 里没有实际成本字段，vendorCallTrace 的终态事件也不带成本，渲染层拿不到真实扣费。结果：用户看到的永远是估算数字，无法与账单对账；供应商已经明确告诉我们扣了多少，这份可靠证据被丢弃。",
+  "direct_cause": "缺一个从终态响应里按供应商提取实际扣费的提取器，也没有把它接进既有的 provenance / vendorCallTrace / taskResultQuery 三条终态出口。buildTaskProvenance 没有 cost 字段，runTask/buildProfileTaskResult 的终态出口不读实际成本，taskResultQuery 的异步/迟到失败路径也不读，catalogTaskResultParse 的 provenance 投影里没有 cost 通道。",
+  "class_root": "生产侧只有「估算」一个高度，缺「实际扣费」这一等价但独立的事实源。正确形状：把「从供应商终态响应提取实际扣费」收敛成单一 owner，接进已有的终态证据链（provenance + vendorCallTrace + taskResultQuery），而不是另起一套与 shotPricing 同构的估算器。owner = electron/vendor/cost.ts（extractProviderCostActual / ProviderCostActual / COST_FIELDS_BY_PROVIDER）：按 providerKey 从终态响应读实际积分，字段缺失=诚实 unknown（never 伪造 0），非法/未知供应商=undefined（never 猜）。这是能力补缺（补上一直缺的实际扣费捕获），不是修某个线上崩溃。与 shotPricing 同构的 generationCost 估算器在本次已裁掉，避免开第二套估算。",
+  "affected_population": [
+    "所有用 APIMart / KIE 生成并想把真实积分与账单对账的用户：此前只看得到估算，现在终态 provenance 与 trace 带上供应商给出的实际扣费。",
+    "任何消费终态证据链的下游（ProvenancePanel 渲染、vendorCallTrace 事件、成本审计）：从此能读到 { amount, currency:'credits', unit:'actual' } 的可靠实际扣费，与 unit:'estimate' 的估算清楚区分。",
+    "未来接入的、在终态响应里带实际扣费字段的新供应商：只需在单一 owner 的 COST_FIELDS_BY_PROVIDER 加一行字段路径，三条终态出口自动带上，无需各自改。"
+  ],
+  "scope_paths": [
+    "electron/vendor/cost.ts",
+    "electron/vendor/provenance.ts",
+    "electron/tasks/taskResultQuery.ts",
+    "electron/runtime.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts"
+  ],
+  "entry_points": [
+    "electron/vendor/cost.ts — extractProviderCostActual（第65行）：唯一的实际扣费提取 owner，按 providerKey 走 COST_FIELDS_BY_PROVIDER（第17行）读终态响应；isFiniteNonNegative 守住 0 是已知、字符串/负数/未知供应商是 undefined。",
+    "electron/vendor/provenance.ts — buildTaskProvenance（第114行）新增可选 actualCost 入参（第119行），仅在有可靠证据时把 cost:{amount,currency:'credits',unit:'actual'} 写进 provenance（第137-138行）；TaskProvenance.cost 字段第19行。",
+    "electron/runtime.ts — buildProfileTaskResult（第286行）在统一出口调用 extractProviderCostActual（第323行）、把 actualCost 透传给 buildTaskProvenance（第336行）并回传给调用方（第298/327行）；runTask 的两条终态出口（第428、504-506行）把成本带进 traceVendorCompleted，原先两处内联的终态 trace 收成单行（净-删，check:file-sizes 基线 526→519）。",
+    "electron/tasks/taskResultQuery.ts — 异步完成（第242-247行）复用 normalized.actualCost、迟到失败路径（第306行）直接调 extractProviderCostActual(cached.vendor, cached.raw) 把成本带进 traceVendorCompleted，补齐 runtime 主路径之外的终态出口。",
+    "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts — extractProvenanceFromTaskResult（第159行）新增 cost 投影通道（第174-179行），严格校验 amount 有限、currency 是串、unit∈{actual,estimate} 才透出，渲染层据此展示实际扣费。"
+  ],
+  "internal_only_reason": "没有新接入或重新契约外部供应商 API。APIMart / KIE 的完成响应本就由既有生产链发起与接收，本次只是从这些已经在手的终态响应里读取供应商自己写明的积分字段（credits_cost / creditsConsumed），并把它接进 Nomi 自有的 provenance / vendorCallTrace / taskResultQuery 终态证据链。字段路径是对既有响应形状的读取，不新增任何端点/鉴权/请求参数；因此无需 external_sources。",
+  "invariants": [
+    "实际扣费提取只有 electron/vendor/cost.ts 一处 owner（extractProviderCostActual + COST_FIELDS_BY_PROVIDER）；provenance/runtime/taskResultQuery 都调用它，禁止各自内联第二套字段提取。",
+    "字段缺失=诚实 unknown（返回 undefined），never 伪造 0；供应商真给了 0（如 data.credits_cost=0）才记为已知 0。",
+    "非法值（字符串 '8.52'、负数）与未知供应商一律 undefined，never 猜测。",
+    "provenance/trace 里的实际扣费一律标 unit:'actual'，与估算 unit:'estimate' 清楚区分；渲染层投影严格校验 amount/currency/unit 才透出。",
+    "净加法+净瘦身：不新增第二套估算器（与 shotPricing 同构的 generationCost 已裁），runtime 两处内联终态 trace 收成单行（P1，基线 526→519 只减不增）。"
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "这是一次能力补缺：补上一直缺失的「供应商实际扣费捕获」，把它接进已有的三条终态出口。收敛后提取逻辑只有 cost.ts 一处 owner，其余出口都调用它、不各自实现——不存在「另一个调用点还能违反同一提取不变量」的可复用边界需要机器强制，因此按 schema 要求 one_off 不写 prevention（owner 函数本身即边界，由 cost.test.ts + provenance.test.ts 钉住）。同类入口=所有终态出口：runtime 主路径（succeeded/failed）、runtime fallback 出口、taskResultQuery 异步完成、taskResultQuery 迟到失败——均已逐一接上同一 owner。",
+    "same_class_scan": [
+      "确认 extractProviderCostActual（electron/vendor/cost.ts:65）是实际扣费提取的唯一 owner：runtime.ts:12、taskResultQuery.ts:12、provenance.ts 经 runtime 透传，均 import/调用它，无第二处内联字段提取。",
+      "确认四条终态出口全部接上成本：runtime buildProfileTaskResult 统一出口（:323）、runTask succeeded/failed（:428）、runTask fallback（:504-506）、taskResultQuery 异步完成（:247）与迟到失败（:306）。",
+      "确认未新增与 shotPricing 同构的第二套估算器：git diff 名单无 shotPricing/generationCost/pricing 文件改动，只加了实际扣费捕获这一独立事实源。",
+      "确认渲染层只有 catalogTaskResultParse.extractProvenanceFromTaskResult（:159）一处消费 cost 投影，严格校验后透出，无 UI 侧平行解析。"
+    ]
+  },
+  "regression_tests": [
+    "electron/vendor/cost.test.ts",
+    "electron/vendor/provenance.test.ts"
+  ],
+  "migration": "无存储数据被改写。cost 是 provenance 上的新可选字段：既有已完成记录没有它（读时缺省即无实际扣费，照旧显示估算），新完成的生成若供应商给出可靠积分才带上 unit:'actual'。vendorCallTrace 事件的 cost 同为可选新增，旧事件不受影响。渲染投影对缺失/非法 cost 一律跳过，无用户可见回归。",
+  "residual_risks": [
+    "实际扣费只覆盖当前 COST_FIELDS_BY_PROVIDER 声明的供应商（APIMart credits_cost、KIE creditsConsumed）；其它供应商暂无实际扣费字段声明，继续只显示估算——新增供应商是单一 owner 里加一行字段路径的数据改动，非代码分叉。",
+    "字段路径按供应商终态响应形状硬编码；供应商若改响应结构，提取会退回 undefined（诚实 unknown）而非报错，需靠付费验收与响应快照发现漂移。",
+    "本次实际扣费的端到端付费真机验收依赖 APIMart（用户无即梦账号、KIE 余额为负），其它付费账户的实际扣费提取靠 cost.test.ts 的字段级用例覆盖，真实 egress 留给集成方/社区。"
+  ]
+}
