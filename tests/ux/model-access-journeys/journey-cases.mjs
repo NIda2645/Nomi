@@ -756,21 +756,31 @@ async function referenceModes(journey, ui, fixture, recorder) {
   })
 }
 
+/**
+ * J14 —— 配音与 3D 产物回环（j14 债务返工，2026-09-02）。
+ *
+ * 旧实现只查「节点入口存在 + 下拉有选项」（切片验证，requiredPhases 恒缺 → HARNESS_ERROR）。
+ * 升级为 J01 式回环：接入配音模型（entry/observed/persisted 由 configureRelay 出证）→
+ * 声音节点真实生成（executed）→ 可解码音频 + 二进制 wire + 产物落库 + 项目文档状态回读
+ * （rendered）。3D 产物走直连 RunningHub 式端点（中转刻意无 3D 通道，见 J11 注释）。
+ */
 async function mediaOutputs(journey, ui, fixture, recorder) {
-  await recorder.step('entry', '从真实画布检查声音和 3D 生成节点入口', async () => {
-    await ui.openModels(); await ui.closeSettings(); await ui.openCanvas()
-    for (const label of ['添加声音节点', '添加3D 模型节点']) await requireVisible(ui.win.getByRole('button', { name: label, exact: true }), 'media-node-entry-missing', `画布缺少 ${label}`)
-    return { nodes: ['audio', 'model3d'] }
-  })
-  await recorder.step('executed', '声音节点选择可执行配音模型', async () => {
-    await ui.win.getByRole('button', { name: '添加声音节点', exact: true }).click()
-    const composer = ui.win.locator('.generation-canvas-v2-node__composer-card').last()
-    const model = composer.getByRole('button', { name: '模型', exact: true })
-    await requireVisible(model, 'audio-model-picker-missing', '声音节点没有模型选择器')
-    await model.click()
-    const options = await ui.win.getByRole('option').allTextContents().catch(() => [])
-    if (options.length === 0) throw new JourneyFailure('no-executable-audio-model', '声音节点没有可执行模型，无法证明二进制/NDJSON 音频可解码')
-    return { options }
+  await configureRelay(ui, fixture, recorder, ['fixture-audio-tts'], 'Media Roundtrip Fixture')
+  const audioRun = await recorder.step('executed', '声音节点选择配音模型并真实生成', () =>
+    runCanvasNode(ui, recorder, { kind: 'audio', modelId: 'fixture-audio-tts', prompt: 'fixture voice line' }))
+  await recorder.step('rendered', '声音可解码 + 二进制 wire + 落库与状态回读', async () => {
+    const proof = await assertRenderedNode(ui, recorder, { kind: 'audio', node: audioRun.node })
+    if (!fixture.requests.some((request) => request.method === 'POST' && request.path === '/v1/audio/speech')) {
+      throw new JourneyFailure('audio-wire-not-observed', '声音出现了，但 fixture 没收到 /v1/audio/speech 请求')
+    }
+    // 落库 + 状态回读（回环收尾）：二进制音频写进项目资产、持久化文档回读到 success。
+    const localFile = findProjectFile(ui.projectsDir, /\.(wav|mp3|m4a|ogg)$/i)
+    if (!localFile) throw new JourneyFailure('audio-asset-missing', '声音渲染了，但项目资产目录里没有音频文件')
+    const readBack = await waitForProjectDoc(ui, (project) => {
+      const nodes = project?.payload?.generationCanvas?.nodes || []
+      return nodes.find((n) => n.kind === 'audio' && n.status === 'success' && n.result?.url) || null
+    })
+    return { ...proof, localAsset: path.basename(localFile), readBackStatus: readBack.hit.status }
   })
 }
 
