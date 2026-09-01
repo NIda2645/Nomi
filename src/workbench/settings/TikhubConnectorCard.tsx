@@ -1,4 +1,6 @@
-// 设置 → AI → TikHub 数据源（分享链接直拆）。小 UI，照 CustomVendorManage 的凭证卡先例。
+// 设置 → 模型 → 数据源 → TikHub（分享链接直拆）。小 UI，照 CustomVendorManage 的凭证卡先例。
+// 2026-09-01 归位：从「AI 策略」tab 搬到「模型」tab 的数据源区——它是数据源接入（换来一路素材），
+// 不是 AI 策略（在已接入能力上定规则）。判据见 docs/design/nomi-design-system.md §1.7.2。
 //
 // 这是一个「数据 connector」的 BYO-key 配置卡：用户填自己的 TikHub key，Nomi 就能把
 // 抖音/TikTok 分享链接解析成无水印直链、落成项目视频素材再用现有节点拆解。
@@ -11,6 +13,7 @@ import { IconKey, IconExternalLink, IconChevronDown } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { TikhubKeyStatus, TikhubRouteMode, TikhubRouteStatus } from '../../desktop/bridgeConnector'
+import { tikhubErrorKindOf } from '../../../electron/shared/contracts/tikhubErrorKinds'
 
 const ROUTE_MODES: readonly TikhubRouteMode[] = ['auto', 'io', 'dev']
 
@@ -156,6 +159,16 @@ export function TikhubConnectorCard(): JSX.Element {
     refresh()
   }, [refresh])
 
+  // 保存失败态：connector kind → 诚实文案。核心是把「假成功」变成三段式真话——
+  // auth=Key 无效（别再说「已连接」）；no-route/upstream=网络/线路不通（是网的事，不是 key 的事，让用户会去检查网络而非狂换 key）。
+  const describeSaveError = React.useCallback((err: unknown): string => {
+    const kind = tikhubErrorKindOf(err)
+    if (kind === 'auth') return t('settings.ai.tikhub.keyInvalid')
+    if (kind === 'quota') return t('settings.ai.tikhub.keyQuota')
+    if (kind === 'no-route' || kind === 'upstream') return t('settings.ai.tikhub.verifyNetwork')
+    return t('settings.ai.tikhub.saveFailed')
+  }, [t])
+
   const handleSaveKey = React.useCallback(() => {
     const apiKey = keyDraft.trim()
     if (!apiKey) {
@@ -167,19 +180,25 @@ export function TikhubConnectorCard(): JSX.Element {
     setBusy(true)
     setError('')
     void bridge.connector.tikhub
+      // saveKey 现在会**先真实校验再落盘**：成功回来即代表这把 key 真能用（不再是乱填也「已连接」）。
       .saveKey({ apiKey })
       .then((next) => {
         const value = next as TikhubKeyStatus
         setStatus(value.status)
-        setKeyDraft('')
-        setKeyEditing(value.status !== 'ok')
-        if (value.status !== 'ok') setError(t('settings.ai.tikhub.saveFailed'))
+        // 只有真存进去（status:'ok'）才清草稿、收起输入；否则留住输入让用户改。
+        if (value.status === 'ok') {
+          setKeyDraft('')
+          setKeyEditing(false)
+        } else {
+          setError(t('settings.ai.tikhub.saveFailed'))
+        }
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : t('settings.ai.tikhub.saveFailed'))
+        // 校验失败在这里落地（auth/quota/no-route/…）：坏 key 没落盘，据 kind 给诚实文案。
+        setError(describeSaveError(err))
       })
       .finally(() => setBusy(false))
-  }, [keyDraft, t])
+  }, [keyDraft, t, describeSaveError])
 
   const handleDisconnect = React.useCallback(() => {
     const bridge = getDesktopBridge()
@@ -194,13 +213,15 @@ export function TikhubConnectorCard(): JSX.Element {
         setKeyEditing(true)
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : t('settings.ai.tikhub.saveFailed'))
+        // 走同一条诚实映射（也顺带剥掉 message 里的机读 kind 前缀，绝不把 [tikhub:…] 露给用户）。
+        setError(describeSaveError(err))
       })
       .finally(() => setBusy(false))
-  }, [t])
+  }, [describeSaveError])
 
   return (
-    <section className="mt-6 flex flex-col gap-2" data-settings-section="tikhub-connector">
+    // 家在设置「模型」tab 的「数据源」区（ModelSettingsHome 已给了 SectionHeading + 区块间距），故这里 mt-0。
+    <section className="flex flex-col gap-2" data-settings-section="tikhub-connector">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-body font-medium text-nomi-ink">{t('settings.ai.tikhub.title')}</h3>
         <a
@@ -245,7 +266,8 @@ export function TikhubConnectorCard(): JSX.Element {
                   )}
                 >
                   <IconKey size={14} stroke={1.6} aria-hidden="true" />
-                  {t('settings.ai.tikhub.save')}
+                  {/* busy 时说「验证中…」——诚实告诉用户点保存后我们真的在打一发验 key，不是空转。 */}
+                  {busy ? t('settings.ai.tikhub.verifying') : t('settings.ai.tikhub.save')}
                 </button>
               </div>
               {hasKey ? (

@@ -13,6 +13,7 @@
 //   · fetch_one_video_by_share_url（抖音/TikTok）返回原始 aweme，直链要在 aweme 里按候选路径找。
 import { hardenedFetch } from "../hardenedFetch";
 import { firstString, isJsonRecord, trim, type JsonRecord } from "../jsonUtils";
+import { formatTikhubErrorMessage, type TikhubErrorKind } from "../shared/contracts/tikhubErrorKinds";
 import type { ConnectorDefinition } from "./connectorDefinition";
 import { TIKHUB_CONNECTOR_ID, TIKHUB_HOST_PRIMARY, TIKHUB_HOSTS } from "./tikhubHosts";
 import { resolveTikhubHost, failoverTikhubHost } from "./tikhubRoute";
@@ -65,24 +66,18 @@ export const TIKHUB_CONNECTOR: ConnectorDefinition = {
 
 export type ShareUrlPlatform = "douyin" | "tiktok";
 
-/** connector 层错误分类——供 UI 三段式失败态按 kind 给对应「下一步」。 */
-export type TikhubErrorKind =
-  | "missing-key" // 没配 key
-  | "auth" // 401：key 无效/过期
-  | "quota" // 403：额度不足/权限
-  | "not-found" // 404：链接解析不到作品
-  | "unsupported-platform" // 不是抖音/TikTok 链接
-  | "no-play-url" // 拿到作品但抽不出直链
-  | "upstream" // 5xx / 风控波动 / 网络
-  | "no-route" // 两个候选域（主 api.tikhub.io + 加速 api.tikhub.dev）都探测不通
-  | "bad-response"; // 非 JSON / 信封异常
+// connector 层错误分类单一 owner 在中立契约层（renderer+main 共用 + 唯一一份 kind 提取器）：
+export type { TikhubErrorKind };
 
 export class TikhubConnectorError extends Error {
   kind: TikhubErrorKind;
   /** 上游 http status（若有），仅供日志/诊断。 */
   status?: number;
   constructor(kind: TikhubErrorKind, message: string, status?: number) {
-    super(message);
+    // ⚠️ Electron IPC 只序列化 Error.message（自定义字段 .kind 会被剥掉），所以把 kind 做成
+    // 机读前缀 [tikhub:<kind>] 嵌进 message——这样跨 IPC 后渲染层仍能从 message 里稳定还原 kind，
+    // 不再退化成通用「保存失败」。formatTikhubErrorMessage 是单一 owner（渲染层剥前缀只留人话）。
+    super(formatTikhubErrorMessage(kind, message));
     this.name = "TikhubConnectorError";
     this.kind = kind;
     this.status = status;
@@ -301,6 +296,53 @@ async function resolveOnHost(
     throw new TikhubConnectorError("no-play-url", "解析到作品，但取不到可下载的视频直链。");
   }
   return { platform, playUrl, videoId: extractVideoId(detail.data) };
+}
+
+/** 鉴权校验端点（一手 openapi.json，checkedAt 2026-09-01）：
+ *  GET /api/v1/tikhub/user/get_user_info —— `security:[{HTTPBearer:[]}]`（**必须**带 Bearer），无参，
+ *  是查「当前账号信息」的免费账户端点（非按次计费的抓取端点）。无效 key → 401 → 本层归为 `auth`。
+ *  选它做 saveKey 的真实校验：既能区分「key 无效(401)」与「线路不通(no-route/upstream)」，又不烧抓取额度。
+ *  ⚠️ 不能用 /api/v1/health/check 校验 key——它无鉴权，任何字符串都会「通过」（正是假成功的根因）。 */
+const VERIFY_KEY_PATH = "/api/v1/tikhub/user/get_user_info";
+
+/**
+ * 真实校验一把 TikHub key（保存前调用，杜绝「乱填也显示已连接」）。
+ * 走与解析同一条边界：实测选路挑生效 host → 对鉴权账户端点发一次带 Bearer 的请求。
+ *   · 2xx 且信封 code<400 → key 有效（resolve 成功）。
+ *   · 401 → `auth`（key 无效/过期）；403 → `quota`；其余 http/信封错按 fetchTikhubJson 的分类冒泡。
+ *   · 主选 host 像线路层网络失败（upstream）→ 自动切备域重试一次；两域都不通 → `no-route`。
+ * 空 key 直接 `missing-key`。locale 只影响探测顺序，绝不决定结果。
+ */
+export async function verifyTikhubApiKey(apiKey: string, deps: TikhubDeps = {}): Promise<void> {
+  if (!trim(apiKey)) {
+    throw new TikhubConnectorError("missing-key", "尚未配置 TikHub API Key。");
+  }
+  const fetchJson = deps.fetchJson || fetchTikhubJson;
+  const resolveHost = deps.resolveHost || resolveTikhubHost;
+  const failover = deps.failover || failoverTikhubHost;
+
+  const host = await resolveHost();
+  if (!host) {
+    throw new TikhubConnectorError(
+      "no-route",
+      "连不上 TikHub：主线路和大陆加速线路都探测不通。请换个网络或代理后重试；也可在高级设置里手动指定线路。",
+    );
+  }
+
+  try {
+    // 成功即代表鉴权通过（信封已由 fetchTikhubJson 校验 code<400，401/403 已在其中抛出）。
+    await fetchJson(VERIFY_KEY_PATH, {}, apiKey, host);
+  } catch (error) {
+    if (!isRoutableFailure(error)) throw error;
+    const alternate = await failover(host);
+    if (!alternate) {
+      throw new TikhubConnectorError(
+        "no-route",
+        "连不上 TikHub：主线路和大陆加速线路都探测不通。请换个网络或代理后重试；也可在高级设置里手动指定线路。",
+      );
+    }
+    await fetchJson(VERIFY_KEY_PATH, {}, apiKey, alternate);
+  }
 }
 
 /**
