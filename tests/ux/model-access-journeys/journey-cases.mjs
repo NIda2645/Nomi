@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import net from 'node:net'
+import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { JourneyBlocked, JourneyFailure } from './evidence.mjs'
 
@@ -107,8 +108,8 @@ async function confirmSpendGate(page, timeoutMs = 4000) {
   return true
 }
 
-async function assertRenderedNode(ui, recorder, { kind, node, expectedText }) {
-  const deadline = Date.now() + (kind === 'video' ? 35_000 : 20_000)
+async function assertRenderedNode(ui, recorder, { kind, node, expectedText, deadlineMs }) {
+  const deadline = Date.now() + (deadlineMs ?? (kind === 'video' ? 35_000 : 20_000))
   while (Date.now() < deadline) {
     // expectedText 必须作为参数传进 evaluate：页面上下文里没有 Node 侧闭包，直接引用是
     // ReferenceError（潜伏缺陷——旧 J04 从没跑到 rendered，2026-09-02 首次触发后修复）。
@@ -138,6 +139,66 @@ async function assertRenderedNode(ui, recorder, { kind, node, expectedText }) {
   }
   const errorText = await node.textContent().catch(() => '')
   throw new JourneyFailure('result-not-rendered', `${kind} 节点没有渲染可消费结果`, { nodeText: errorText?.slice(0, 800) })
+}
+
+/** 递归找项目资产（落库证明用）。返回首个命中文件的绝对路径，找不到返回 ''。 */
+function findProjectFile(rootDir, matcher) {
+  if (!rootDir || !fs.existsSync(rootDir)) return ''
+  const queue = [rootDir]
+  while (queue.length) {
+    const dir = queue.shift()
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) queue.push(full)
+      else if (matcher.test(entry.name)) return full
+    }
+  }
+  return ''
+}
+
+/** 等磁盘上的项目文档（.nomi/project.json）满足谓词——「状态回读」的真源是持久化存储，不是内存。 */
+async function waitForProjectDoc(ui, predicate, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  let lastSeen = null
+  while (Date.now() < deadline) {
+    const docs = []
+    if (ui.projectsDir && fs.existsSync(ui.projectsDir)) {
+      const queue = [ui.projectsDir]
+      while (queue.length) {
+        const dir = queue.shift()
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name)
+          if (entry.isDirectory()) queue.push(full)
+          else if (entry.name === 'project.json') docs.push(full)
+        }
+      }
+    }
+    for (const doc of docs) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(doc, 'utf8'))
+        lastSeen = parsed
+        const hit = predicate(parsed)
+        if (hit) return { doc, project: parsed, hit }
+      } catch { /* autosave 写一半时 JSON 可能不完整，下一轮再读 */ }
+    }
+    await ui.win.waitForTimeout(400)
+  }
+  throw new JourneyFailure('project-doc-state-missing', `项目文档 ${timeoutMs}ms 内没有回读到期望状态`, {
+    nodes: lastSeen?.payload?.generationCanvas?.nodes?.map((node) => ({ kind: node.kind, status: node.status })) || [],
+  })
+}
+
+/** 等 catalog 落盘状态满足谓词（如 vendor.enabled 翻转）。 */
+async function waitForCatalogState(ui, predicate, timeoutMs = 15_000, failCode = 'catalog-state-missing', failMessage = 'catalog 未达到期望状态') {
+  const deadline = Date.now() + timeoutMs
+  let snapshot = null
+  while (Date.now() < deadline) {
+    snapshot = ui.catalogSnapshot()
+    const hit = snapshot ? predicate(snapshot) : null
+    if (hit) return hit
+    await ui.win.waitForTimeout(300)
+  }
+  throw new JourneyFailure(failCode, failMessage, { vendors: snapshot?.vendors?.map((v) => ({ key: v.key, enabled: v.enabled })) })
 }
 
 async function relayImageVideo(journey, ui, fixture, recorder) {
@@ -398,9 +459,12 @@ async function customCallRepair(journey, ui, fixture, recorder) {
 
 async function localRuntime(journey, ui, fixture, recorder) {
   // Local/membership runtimes are home rows keyed by vendor: comfyui-local,
-  // dreamina-member, codex-local. On an empty profile they are flat under
-  // 其他接入方式; openHomeConnection reveals+opens them regardless of grouping.
-  const vendorKey = journey.id === 'J08' ? 'comfyui-local' : journey.id === 'J09' ? 'dreamina-member' : 'codex-local'
+  // dreamina-member. On an empty profile they are flat under 其他接入方式;
+  // openHomeConnection reveals+opens them regardless of grouping.
+  // (codex-local was split out into codexLocalImage: its runtime exists on dev
+  //  machines, so the shared "environmental roundtrip not completed" throw made
+  //  J10 a permanent FAIL instead of a completable journey — j10 debt rework.)
+  const vendorKey = journey.id === 'J08' ? 'comfyui-local' : 'dreamina-member'
   await recorder.step('entry', '从真实模型面板展开本地运行时入口', async () => {
     await ui.openModels()
     const row = ui.win.locator(`[data-model-home-available="${vendorKey}"]`)
@@ -422,11 +486,59 @@ async function localRuntime(journey, ui, fixture, recorder) {
     const text = await ui.win.getByRole('dialog', { name: '设置', exact: true }).textContent()
     if (!/已登录/.test(text || '')) throw new JourneyBlocked('dreamina-login-missing', '本机 Dreamina 未处于已登录状态；登录态旅途不能用 HTTP fixture 代替')
   }
-  if (journey.id === 'J10') {
-    const codex = spawnSync('which', ['codex'], { encoding: 'utf8' })
-    if (codex.status !== 0) throw new JourneyBlocked('codex-runtime-missing', '本机没有可执行 codex CLI')
-  }
   throw new JourneyFailure('environmental-roundtrip-not-completed', '运行时存在，但本次旅途没有得到最终媒体证据')
+}
+
+/**
+ * J10 —— Codex 本地生图 roundtrip（j10 债务返工，2026-09-02）。
+ *
+ * 旧实现把 J10 塞在 localRuntime 里：`which codex` 通过后仍无条件
+ * `throw JourneyFailure('environmental-roundtrip-not-completed')` —— 那不是过期选择器，
+ * 而是 M1 期的「诚实未完成」占位；在装有 codex 的机器上它把 J10 钉成永久 FAIL。
+ * 返工按 manifest 的要求真跑完整闭环：启用（persisted）→ 运行时探测（observed）→
+ * 真实图片节点用本机 codex CLI 生成（executed，烧用户已登录的 ChatGPT 额度）→
+ * 渲染像素 + 本地文件落库（rendered，outputs:['local-file'] 的字面证明）。
+ */
+async function codexLocalImage(journey, ui, fixture, recorder) {
+  await recorder.step('entry', '从真实模型面板打开 Codex 本地生图卡', async () => {
+    await ui.openModels()
+    const row = ui.win.locator('[data-model-home-available="codex-local"]')
+    if (!(await row.isVisible().catch(() => false))) await ui.expandHomeGroup('other-ways')
+    await requireVisible(row.first(), 'local-runtime-entry-missing', `${journey.title} 的入口不存在`)
+    const entry = await row.first().textContent()
+    await ui.openHomeConnection('codex-local')
+    await ui.screenshot('j10-runtime-card')
+    return { entry }
+  })
+  await recorder.step('observed', '本机存在可运行的 codex CLI（真实运行时探测）', async () => {
+    // 卡片按设计不探测 codex 装没装（D4：如实写前提），所以旅途自己测真实运行时：
+    // 没装 = 环境性 BLOCKED（同 J08 ComfyUI 的口径），不是产品失败。
+    const codex = spawnSync('codex', ['--version'], { encoding: 'utf8' })
+    if (codex.status !== 0) throw new JourneyBlocked('codex-runtime-missing', '本机没有可执行 codex CLI；Codex 本地生图旅程需要真实运行时')
+    return { version: (codex.stdout || '').trim().slice(0, 80) }
+  })
+  await recorder.step('persisted', '在卡上开启 Codex 本地生图并等待 vendor 落盘', async () => {
+    // 真实开关（CodexLocalImageCard turnOn）：接入 = 种子 vendor enabled 翻 true。
+    await ui.win.getByRole('button', { name: '开启 Codex 本地生图', exact: true }).click()
+    const vendor = await waitForCatalogState(
+      ui,
+      (snapshot) => snapshot.vendors?.find((v) => v.key === 'codex-local' && v.enabled),
+      15_000, 'codex-vendor-not-persisted', 'UI 已点开启，但磁盘 catalog 里 codex-local 仍未启用',
+    )
+    await ui.screenshot('j10-codex-enabled')
+    return { vendorKey: vendor.key, enabled: vendor.enabled }
+  })
+  const run = await recorder.step('executed', '从真实图片节点用本机 Codex 生成（真实登录额度）', () =>
+    runCanvasNode(ui, recorder, { kind: 'image', modelId: 'Codex 生图（登录额度）', prompt: 'a plain solid red square, flat color, no text' }))
+  await recorder.step('rendered', '图片节点渲染真实像素且本地文件落进项目资产', async () => {
+    // 真 codex exec 生图通常 1~3 分钟；给足上限，渲染即返回（轮询不是墙钟当完成信号）。
+    const proof = await assertRenderedNode(ui, recorder, { kind: 'image', node: run.node, deadlineMs: 300_000 })
+    // outputs:['local-file'] 的落库证明：codex 产物由 importCodexImage 以
+    // codex-image-<thread>.png 写进项目资产（electron/catalog/codexCli.ts）。
+    const localFile = findProjectFile(ui.projectsDir, /^codex-image-.*\.(png|jpe?g|webp)$/i)
+    if (!localFile) throw new JourneyFailure('local-asset-missing', '图片渲染了，但项目资产目录里没有 codex-image-* 本地文件')
+    return { ...proof, localAsset: path.basename(localFile) }
+  })
 }
 
 async function errorRecovery(journey, ui, fixture, recorder) {
@@ -527,7 +639,7 @@ export const JOURNEY_CASES = Object.freeze({
   J07: customCallRepair,
   J08: localRuntime,
   J09: localRuntime,
-  J10: localRuntime,
+  J10: codexLocalImage,
   J11: manualKindRepair,
   J12: errorRecovery,
   J13: referenceModes,
