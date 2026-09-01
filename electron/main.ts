@@ -640,6 +640,7 @@ function registerIpc(): void {
   registerProxyIpc();
   registerBrowserViewIpc(getRendererUrl);
   registerOnboardingIpc();
+  (require("./localRuntime/localTextEndpointHandlers") as typeof import("./localRuntime/localTextEndpointHandlers")).registerLocalTextEndpointIpc();
   registerProviderAdapterIpc();
   registerExistingConnectionIpc();
   registerProductionRunIpc();

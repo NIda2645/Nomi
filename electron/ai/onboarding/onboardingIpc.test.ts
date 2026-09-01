@@ -74,4 +74,20 @@ describe("onboarding discovery IPC preserves the shared result contract", () => 
         : { model: "model", messages: [{ role: "user", content: "ping" }], max_tokens: 1 });
     },
   );
+
+  it("uses the provider-specific proxy for discovery and reachability without replacing the app route", async () => {
+    const fetchSpy = vi.fn(async (_url: string, _init: RequestInit & { dispatcher?: unknown }) =>
+      new Response(JSON.stringify({ data: [{ id: "model" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    expect(await handlers.get("nomi:onboarding:list-models")?.({}, {
+      baseUrl: "https://gateway.test/v1",
+      apiKey: "stored",
+      proxyUrl: "http://127.0.0.1:7897",
+    })).toMatchObject({ ok: true });
+
+    // per-connection 代理作为显式 dispatcher 流到 appFetch（不改全局路由）；
+    // 它是 SelectiveProxyDispatcher（私网走直连、公网走代理），满足 { dispatch } 形状。
+    expect(fetchSpy.mock.calls[0][1].dispatcher).toEqual(expect.objectContaining({ dispatch: expect.any(Function) }));
+  });
 });
