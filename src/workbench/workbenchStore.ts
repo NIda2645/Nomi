@@ -60,7 +60,11 @@ export type TimelineSnapGuide = { frame: number; label: string }
 /** Shared timeline layout bounds; this is UI state, not timeline data. */
 export const TIMELINE_PANEL_MIN = 140
 export const TIMELINE_PANEL_MAX = 300
-export const TIMELINE_PANEL_DEFAULT = 206
+// 188 = origin/main 的固定 --workbench-timeline-height。cutover 把时间轴改成可拖拽面板
+// （timelinePanelHeight），展开态默认高度对齐 main 的 188（比 cutover 原来的 206 少 18px、多还画布
+// stage 18px；可拖拽特性不变，用户仍可拉高/降低）。默认折叠态（timelinePanelCollapsed=true）下
+// gridTemplateRows 走 0px、stage 拿满高，本值不参与；只有加片段展开时间轴后此值决定 stage 底边。
+export const TIMELINE_PANEL_DEFAULT = 188
 
 export function clampTimelinePanelHeight(value: number): number {
   if (!Number.isFinite(value)) return TIMELINE_PANEL_DEFAULT
@@ -343,7 +347,10 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
   selectedTextClipId: '',
   timelineSnapGuide: null,
   timelineSplitMode: false,
-  timelinePanelCollapsed: false,
+  // 默认折叠（对齐 origin/main）：展开态时间轴要吃掉画布 stage 底部 ~188px，在 720 最小窗口下
+  // 会把 stage 压到装不下靠底节点的 composer 下挂（j5 composer-usable-at-min-window 红）。cutover 把它
+  // 翻成 false（默认展开）是本回归的根因——恢复 true，可拖拽面板特性不变，用户仍可随时展开/拉高。
+  timelinePanelCollapsed: true,
   setTimelinePanelCollapsed: (collapsed) => set({ timelinePanelCollapsed: Boolean(collapsed) }),
   timelinePanelHeight: TIMELINE_PANEL_DEFAULT,
   setTimelinePanelHeight: (height) => set({ timelinePanelHeight: clampTimelinePanelHeight(height) }),

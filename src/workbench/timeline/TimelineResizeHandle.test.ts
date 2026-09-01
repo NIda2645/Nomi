@@ -27,12 +27,13 @@ describe('TimelineResizeHandle contract', () => {
     expect(source).toContain('onDoubleClick={() => adjust(TIMELINE_PANEL_DEFAULT)}')
   })
 
-  it('keeps every input inside the 140–300px contract and restores 206px', () => {
+  it('keeps every input inside the 140–300px contract and restores the 188px default', () => {
     expect(clampTimelinePanelHeight(-1)).toBe(TIMELINE_PANEL_MIN)
     expect(clampTimelinePanelHeight(999)).toBe(TIMELINE_PANEL_MAX)
     expect(clampTimelinePanelHeight(206.4)).toBe(206)
     expect(clampTimelinePanelHeight(Number.NaN)).toBe(TIMELINE_PANEL_DEFAULT)
-    expect(TIMELINE_PANEL_DEFAULT).toBe(206)
+    // Default expanded-timeline height aligns with origin/main's fixed 188px stage allocation.
+    expect(TIMELINE_PANEL_DEFAULT).toBe(188)
   })
 
   it('derives the expected keyboard transitions before the store clamps them', () => {
