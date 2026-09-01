@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CatalogState } from "./types";
 import {
   sanitizeRendererMappingMutation,
@@ -6,7 +6,19 @@ import {
   sanitizeRendererVendorMutation,
   sanitizeRendererVendorApiKeyMutation,
   sanitizeRendererCatalogImport,
+  upsertRendererCatalogVendorApiKey,
 } from "./rendererCatalogMutation";
+import * as store from "./catalogStore";
+
+vi.mock("./catalogStore", async (importActual) => {
+  const actual = await importActual<typeof import("./catalogStore")>();
+  return {
+    ...actual,
+    readCatalog: vi.fn(),
+    upsertModelCatalogVendorApiKey: vi.fn((vendorKey: string, payload: unknown) => ({ vendorKey, payload })),
+    upsertModelCatalogVendor: vi.fn((payload: unknown) => payload),
+  };
+});
 
 function state(): CatalogState {
   return {
@@ -31,6 +43,12 @@ function state(): CatalogState {
 }
 
 describe("renderer Catalog mutation boundary", () => {
+  afterEach(() => {
+    vi.mocked(store.upsertModelCatalogVendorApiKey).mockClear();
+    vi.mocked(store.upsertModelCatalogVendor).mockClear();
+    vi.mocked(store.readCatalog).mockReset();
+  });
+
   it("cannot raw-enable or forge publication for an uncertified adapter vendor/model/mapping", () => {
     const catalog = state();
     const vendor = sanitizeRendererVendorMutation(
@@ -112,6 +130,33 @@ describe("renderer Catalog mutation boundary", () => {
         },
       ],
     });
+  });
+
+  it("de-publishes an enabled vendor in the same operation as a renderer credential write", () => {
+    // The reported honesty gap: a bare credential write left vendor.enabled === true while the
+    // credential landed disabled-pending-certification, so the model home showed the vendor as
+    // 已接入 / N 个可使用 even though resolveTextBrainKeys (needs an enabled credential) returned null.
+    const catalog = state();
+    catalog.vendors[0] = { ...catalog.vendors[0], enabled: true } as never;
+    vi.mocked(store.readCatalog).mockReturnValue(catalog);
+
+    upsertRendererCatalogVendorApiKey("relay", { apiKey: "sk-test", enabled: true });
+
+    // credential written disabled-pending-certification …
+    expect(store.upsertModelCatalogVendorApiKey).toHaveBeenCalledWith("relay", { apiKey: "sk-test", enabled: false });
+    // … and the vendor dropped out of the executable/connected projection atomically.
+    expect(store.upsertModelCatalogVendor).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(store.upsertModelCatalogVendor).mock.calls[0][0]).toMatchObject({ key: "relay", enabled: false });
+  });
+
+  it("does not rewrite an already-disabled staging vendor on a renderer credential write", () => {
+    const catalog = state(); // relay seeded enabled:false
+    vi.mocked(store.readCatalog).mockReturnValue(catalog);
+
+    upsertRendererCatalogVendorApiKey("relay", { apiKey: "sk-test", enabled: true });
+
+    expect(store.upsertModelCatalogVendorApiKey).toHaveBeenCalledWith("relay", { apiKey: "sk-test", enabled: false });
+    expect(store.upsertModelCatalogVendor).not.toHaveBeenCalled();
   });
 
   it("rejects security-scope edits on certification-owned connections", () => {
