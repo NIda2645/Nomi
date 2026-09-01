@@ -9,6 +9,7 @@ import type { OnboardingVendorMeta } from './useOnboardingDrawerCatalog'
 import type { DreaminaStatus } from './DreaminaMemberCard'
 import { COMFYUI_VENDOR_KEY } from './ComfyuiLocalCard'
 import { CODEX_LOCAL_VENDOR_KEY } from './codexLocalProvider'
+import { LOCAL_TEXT_VENDOR_KEY } from './LocalModelCard'
 import { DREAMINA_CONNECTION_KEY } from './onboardingDrawerConstants'
 import { groupOtherVendorModels } from './onboardingDrawerDerivations'
 
@@ -38,6 +39,7 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
     m.vendorKey !== 'dreamina' &&
     m.vendorKey !== COMFYUI_VENDOR_KEY &&
     m.vendorKey !== CODEX_LOCAL_VENDOR_KEY &&
+    m.vendorKey !== LOCAL_TEXT_VENDOR_KEY &&
     m.vendorKey !== ANTIGRAVITY_VENDOR_KEY,
   )
   const otherVendorKeys = [...vendorMeta.keys()].filter((vendorKey) => (
@@ -46,6 +48,7 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
     vendorKey !== DREAMINA_CONNECTION_KEY &&
     !isComfyuiVendorKey(vendorKey) &&
     vendorKey !== CODEX_LOCAL_VENDOR_KEY &&
+    vendorKey !== LOCAL_TEXT_VENDOR_KEY &&
     vendorKey !== ANTIGRAVITY_VENDOR_KEY
   ))
 
@@ -61,6 +64,11 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
   const codexImageMeta = vendorMeta.get(CODEX_LOCAL_VENDOR_KEY)
   const codexImageAvailable = codexImageMeta !== undefined
   const codexImageEnabled = codexImageMeta?.enabled === true
+  const localTextMeta = vendorMeta.get(LOCAL_TEXT_VENDOR_KEY)
+  const localTextAvailable = localTextMeta !== undefined
+  const localTextModels = models.filter((model) => model.vendorKey === LOCAL_TEXT_VENDOR_KEY)
+  // 「已连」= vendor 开着且名下真有建档模型（种子默认 enabled:false；只翻 enabled 不建档不算连上）。
+  const localTextConnected = localTextMeta?.enabled === true && localTextModels.length > 0
 
   const otherVendorGroups = groupOtherVendorModels(otherModels, vendorMeta, otherVendorKeys)
   const antigravityEnabled = vendorMeta.get(ANTIGRAVITY_VENDOR_KEY)?.enabled === true
@@ -75,6 +83,8 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
     if (comfy) return comfy.meta.name
     if (vendorKey === DREAMINA_CONNECTION_KEY) return localNames.dreamina
     if (vendorKey === CODEX_LOCAL_VENDOR_KEY) return localNames.codex
+    // 本地模型走 vendor 自己的 name（种子里是「本地模型」），不另建 localName 键。
+    if (vendorKey === LOCAL_TEXT_VENDOR_KEY) return localTextMeta?.name ?? vendorKey
     if (vendorKey === ANTIGRAVITY_VENDOR_KEY) return localNames.antigravity
     return vendorKey
   }
@@ -133,6 +143,13 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
       models: models.filter((model) => model.vendorKey === CODEX_LOCAL_VENDOR_KEY),
       glyph: 'C',
     })] : []),
+    ...(localTextConnected ? [homeConnection({
+      vendorKey: LOCAL_TEXT_VENDOR_KEY,
+      name: connectionTitle(LOCAL_TEXT_VENDOR_KEY),
+      kind: 'local',
+      models: localTextModels,
+      glyph: 'L',
+    })] : []),
     ...(antigravityEnabled ? [homeConnection({
       vendorKey: ANTIGRAVITY_VENDOR_KEY,
       name: connectionTitle(ANTIGRAVITY_VENDOR_KEY),
@@ -175,6 +192,13 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
       kind: 'local',
       models: [],
       glyph: 'C',
+    })] : []),
+    ...(localTextAvailable && !localTextConnected ? [homeConnection({
+      vendorKey: LOCAL_TEXT_VENDOR_KEY,
+      name: connectionTitle(LOCAL_TEXT_VENDOR_KEY),
+      kind: 'local',
+      models: [],
+      glyph: 'L',
     })] : []),
     ...(vendorMeta.has(ANTIGRAVITY_VENDOR_KEY) && !antigravityEnabled ? [homeConnection({
       vendorKey: ANTIGRAVITY_VENDOR_KEY,

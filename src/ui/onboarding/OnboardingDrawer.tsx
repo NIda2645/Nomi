@@ -13,6 +13,7 @@ import { isComfyuiVendorKey } from '../../workbench/generationCanvas/model/comfy
 import { NetworkSection } from './NetworkSection'
 import { CODEX_LOCAL_VENDOR_KEY } from './codexLocalProvider'
 import { CodexLocalImageCard } from './CodexLocalImageCard'
+import { LOCAL_TEXT_VENDOR_KEY, LocalModelCard } from './LocalModelCard'
 import { AntigravityConnectionCard } from './AntigravityConnectionCard'
 import { useAntigravitySettings } from './useAntigravitySettings'
 import { useAntigravityModelWorkspace } from './useAntigravityModelWorkspace'
@@ -502,12 +503,9 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         />
       )
     }
-    if (vendorKey === DREAMINA_CONNECTION_KEY) {
-      return <DreaminaMemberCard status={dreaminaStatus} onChanged={refresh} detailMode />
-    }
-    if (vendorKey === CODEX_LOCAL_VENDOR_KEY) {
-      return <CodexLocalImageCard enabled={codexImageEnabled} onChanged={refresh} detailMode />
-    }
+    if (vendorKey === DREAMINA_CONNECTION_KEY) return <DreaminaMemberCard status={dreaminaStatus} onChanged={refresh} detailMode />
+    if (vendorKey === CODEX_LOCAL_VENDOR_KEY) return <CodexLocalImageCard enabled={codexImageEnabled} onChanged={refresh} detailMode />
+    if (vendorKey === LOCAL_TEXT_VENDOR_KEY) return <LocalModelCard enabled={vendorMeta.get(LOCAL_TEXT_VENDOR_KEY)?.enabled ?? false} models={models.filter((m) => m.vendorKey === LOCAL_TEXT_VENDOR_KEY)} onChanged={refresh} detailMode />
     if (vendorKey === ANTIGRAVITY_VENDOR_KEY) {
       return (
         <AntigravityConnectionCard

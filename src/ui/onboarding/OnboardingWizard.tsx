@@ -21,9 +21,9 @@ import { ExistingConnectionModelPicker } from './ExistingConnectionModelPicker'
 import { OnboardingWizardResult } from './OnboardingWizardResult'
 import { DirectScriptDraftForm } from './DirectScriptDraftForm'
 import { OnboardingWizardAdvancedFields, ProviderPresetGroups } from './OnboardingWizardAdvancedFields'
-import { PROVIDER_KIND_LABEL } from './onboardingProviderKindLabels'
 import { modelDiscoveryMessage } from './modelDiscovery'
 import { useModelDiscovery } from './useModelDiscovery'
+import { useOnboardingConnectionTest } from './useOnboardingConnectionTest'
 import { CertificationIntentKey } from './certificationIntentKey'
 import { certificationFailureMessage } from './certificationFailureMessage'
 
@@ -89,6 +89,8 @@ export function OnboardingWizard({
   // 「高级设置」整段（接口协议 + 自定义请求头）是否展开。
   const [showAdvanced, setShowAdvanced] = React.useState(false)
   const [baseUrl, setBaseUrl] = React.useState('')
+  // 低频高级字段：给这个连接单独指定代理（多在高级折叠区，见 §1.5 控件层级）。
+  const [proxyUrl, setProxyUrl] = React.useState('')
   // Selected models are confirmed on the picker screen before certification.
   const [models, setModels] = React.useState<Array<{ id: string; kind: ModelKind }>>([])
   const [screen, setScreen] = React.useState<'form' | 'select' | 'scriptDraft'>(
@@ -99,14 +101,42 @@ export function OnboardingWizard({
   const [saving, setSaving] = React.useState(false)
   const [savedConnection, setSavedConnection] = React.useState<DesktopProviderRegistration | null>(null)
   const [connectionSaveError, setConnectionSaveError] = React.useState('')
-  const [testState, setTestState] = React.useState<'idle' | 'testing' | 'ok' | 'fail' | 'unsupported'>('idle')
-  const [testMessage, setTestMessage] = React.useState('')
   const [resultLabel, setResultLabel] = React.useState('')
   const [errorReason, setErrorReason] = React.useState('')
   const [errorHint, setErrorHint] = React.useState('')
   const requestAuth = resolveOnboardingAuth(providerKind, userApiKey, noApiKey)
   const effectiveBaseUrl =
     providerKind === 'anthropic' && !baseUrl.trim() ? 'https://api.anthropic.com' : baseUrl.trim()
+
+  // Collapse header rows into a clean map (also fed into the connection-test hook).
+  const buildHeadersObject = React.useCallback((): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const h of headerRows) {
+      const k = h.key.trim()
+      const v = h.value.trim()
+      if (k && v) out[k] = v
+    }
+    return out
+  }, [headerRows])
+
+  // 连接测试探测逻辑抽成 hook（P1：旧内联块同 commit 删除，无并行版）。proxyUrl 一并贯穿。
+  const { testState, testMessage, handleTestConnection, resetTest } = useOnboardingConnectionTest({
+    bridge,
+    baseUrl: effectiveBaseUrl,
+    apiKey: requestAuth.apiKey,
+    models,
+    providerKind,
+    kindForced,
+    noApiKey,
+    proxyUrl,
+    buildHeadersObject,
+    onDetectedKind: setProviderKind,
+    onProtocolFallback: () => {
+      // 失败指路（设计/真实用户评审）：展开高级区+协议覆盖区当逃生口。
+      setShowAdvanced(true)
+      setShowKindOverride(true)
+    },
+  })
 
   React.useEffect(() => {
     if (!opened || !integrationSessionId || !bridge?.onboarding?.integrationSessionGet) return
@@ -120,6 +150,7 @@ export function OnboardingWizard({
           session.config && typeof session.config === 'object' ? (session.config as Record<string, unknown>) : {}
         if (typeof config.name === 'string') setVendorName(config.name)
         if (typeof config.baseUrl === 'string') setBaseUrl(config.baseUrl)
+        if (typeof config.proxyUrl === 'string') setProxyUrl(config.proxyUrl)
         if (
           config.providerKind === 'anthropic' ||
           config.providerKind === 'openai-compatible' ||
@@ -143,31 +174,20 @@ export function OnboardingWizard({
     // Existing-connection retry keeps the candidate pool and selections.
     if (existingVendorKey) setScreen('select')
     else setScreen('form')
-    setTestState('idle')
-    setTestMessage('')
-  }, [existingVendorKey])
+    resetTest()
+  }, [existingVendorKey, resetTest])
 
   const updateHeader = React.useCallback((index: number, patch: Partial<{ key: string; value: string }>) => {
     setHeaderRows((prev) => prev.map((h, i) => (i === index ? { ...h, ...patch } : h)))
-    setTestState('idle')
-  }, [])
+    resetTest()
+  }, [resetTest])
   const addHeaderRow = React.useCallback(() => {
     setHeaderRows((prev) => [...prev, { key: '', value: '' }])
   }, [])
   const removeHeaderRow = React.useCallback((index: number) => {
     setHeaderRows((prev) => prev.filter((_, i) => i !== index))
-    setTestState('idle')
-  }, [])
-  // Collapse header rows into a clean map.
-  const buildHeadersObject = React.useCallback((): Record<string, string> => {
-    const out: Record<string, string> = {}
-    for (const h of headerRows) {
-      const k = h.key.trim()
-      const v = h.value.trim()
-      if (k && v) out[k] = v
-    }
-    return out
-  }, [headerRows])
+    resetTest()
+  }, [resetTest])
 
   const loadModels = React.useCallback(async () => {
     const savedVendorKey = existingVendorKey ?? savedConnection?.vendorKey
@@ -180,6 +200,7 @@ export function OnboardingWizard({
       apiKey: requestAuth.apiKey,
       providerKind,
       headers: buildHeadersObject(),
+      ...(proxyUrl.trim() ? { proxyUrl: proxyUrl.trim() } : {}),
     })
   }, [
     bridge,
@@ -189,9 +210,10 @@ export function OnboardingWizard({
     requestAuth.apiKey,
     providerKind,
     buildHeadersObject,
+    proxyUrl,
     t,
   ])
-  const discoveryScope = JSON.stringify([effectiveBaseUrl, requestAuth.apiKey, providerKind, headerRows])
+  const discoveryScope = JSON.stringify([effectiveBaseUrl, requestAuth.apiKey, providerKind, headerRows, proxyUrl])
   const {
     candidates: candidateModels,
     fetching: fetchingModels,
@@ -209,6 +231,7 @@ export function OnboardingWizard({
     setPresetId(id)
     setProviderKind(preset.providerKind)
     setBaseUrl(preset.baseUrl)
+    setProxyUrl('')
     setVendorName(preset.custom ? '' : preset.label)
     setEditBaseUrl(false)
     // 切预设 = 重置协议判断：具名预设内置协议；自定义中转使用本地默认值，
@@ -219,8 +242,8 @@ export function OnboardingWizard({
     setNoApiKey(false)
     // Endpoint changed → previously fetched candidates / test result no longer apply.
     setScreen('form')
-    setTestState('idle')
-  }, [])
+    resetTest()
+  }, [resetTest])
 
   // Apply the preset when the panel opens.
   React.useEffect(() => {
@@ -340,6 +363,7 @@ export function OnboardingWizard({
         authType: requestAuth.authType,
         providerKind,
         headers: buildHeadersObject(),
+        ...(proxyUrl.trim() ? { proxyUrl: proxyUrl.trim() } : {}),
         models: [],
       })
       if (!res.ok || !res.registration) {
@@ -361,6 +385,7 @@ export function OnboardingWizard({
     requestAuth.authType,
     providerKind,
     buildHeadersObject,
+    proxyUrl,
     onConnectionConfigured,
     integrationSessionId,
     integrationHandoffRequestId,
@@ -382,84 +407,15 @@ export function OnboardingWizard({
     if (result?.ok && result.models?.length) setScreen('select')
   }, [fetchModels])
 
-  const handleTestConnection = React.useCallback(async () => {
-    if (!bridge?.onboarding?.testConnection) return
-    setTestState('testing')
-    setTestMessage('')
-    // 协议探测发的是**文字聊天**请求，所以只能拿文本模型去探。上游只接了图片/视频模型时
-    // （中转接 Seedance/可灵 很常见），拿视频模型 id 发 chat/completions 必被上游拒 → 旧实现
-    // 一律报「连不上」，把「我们探错了」说成「你接不通」。此时改探「地址+Key 通不通」。
-    const firstTextModelId = models
-      .filter((m) => m.kind === 'text')
-      .map((m) => m.id.trim())
-      .find(Boolean)
-    const reachabilityOnly = !firstTextModelId
-    try {
-      const res = await bridge.onboarding.testConnection({
-        baseUrl: effectiveBaseUrl,
-        apiKey: requestAuth.apiKey,
-        modelId: firstTextModelId,
-        ...(reachabilityOnly ? { probe: 'reachability' as const } : {}),
-        // 专家锁定 → 强制走该协议；否则在这次显式测试里自动探测。
-        ...(kindForced ? { providerKind } : { autoProbe: true }),
-        headers: buildHeadersObject(),
-      })
-      if (res.ok) {
-        // 探测出的协议存回 state → 保存时就用它；并显式告诉用户「替你选对了哪个」。
-        if (res.detectedKind) setProviderKind(res.detectedKind)
-        setTestState('ok')
-        setTestMessage(
-          res.reachabilityOnly
-            ? t(noApiKey ? 'modelSetup.connectedReachabilityOnlyNoApiKey' : 'modelSetup.connectedReachabilityOnly')
-            : res.detectedKind
-              ? t('modelSetup.connectedProtocol', { protocol: PROVIDER_KIND_LABEL[res.detectedKind] })
-              : t('modelSetup.connected'),
-        )
-      } else {
-        setTestState('fail')
-        if (reachabilityOnly) {
-          if (res.failureKind === 'unsupported' || res.failureKind === 'invalid_response') {
-            setTestState('unsupported')
-            setTestMessage(t('modelSetup.discoveryCannotVerifyConnection'))
-            return
-          }
-          // 纯图片/视频上游：协议跟它无关，别把用户往「换个协议试试」上引（那是错误指路）。
-          setTestMessage(
-            res.error
-              ? t(noApiKey ? 'modelSetup.connectionFailedCheckUrl' : 'modelSetup.connectionFailedCheckUrlKey', {
-                  error: res.error,
-                })
-              : t(
-                  noApiKey ? 'modelSetup.connectionFailedCheckUrlPlain' : 'modelSetup.connectionFailedCheckUrlKeyPlain',
-                ),
-          )
-          return
-        }
-        // 失败指路（设计/真实用户评审）：把「可能是协议不对，手动指定」摆出来，展开高级区+覆盖区当逃生口。
-        setShowAdvanced(true)
-        setShowKindOverride(true)
-        setTestMessage(
-          res.error
-            ? t('modelSetup.connectionFailedWithReason', { error: res.error })
-            : t(noApiKey ? 'modelSetup.connectionFailedNoApiKey' : 'modelSetup.connectionFailed'),
-        )
-      }
-    } catch (error) {
-      setTestState('fail')
-      setTestMessage(
-        t(noApiKey ? 'modelSetup.connectionFailedCheckUrl' : 'modelSetup.connectionFailedCheckUrlKey', {
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      )
-    }
-  }, [bridge, effectiveBaseUrl, requestAuth.apiKey, models, providerKind, kindForced, buildHeadersObject, t, noApiKey])
-
   const baseUrlTrimmed = effectiveBaseUrl
+  const proxyUrlTrimmed = proxyUrl.trim()
   const baseUrlValid =
     providerKind === 'anthropic'
       ? baseUrlTrimmed === '' || /^https?:\/\//i.test(baseUrlTrimmed)
       : /^https?:\/\//i.test(baseUrlTrimmed)
-  const canTest = baseUrlValid && (providerKind === 'anthropic' || baseUrlTrimmed.length > 0)
+  // 渲染侧只做「像不像合法代理地址」的即时提示；权威校验在主进程 normalizeExplicitProxyUrl。
+  const proxyUrlValid = !proxyUrlTrimmed || /^(?:https?|socks(?:4|5)?):\/\//i.test(proxyUrlTrimmed)
+  const canTest = baseUrlValid && proxyUrlValid && (providerKind === 'anthropic' || baseUrlTrimmed.length > 0)
   const connectionFieldsReady = canTest && isOnboardingApiKeyReady(userApiKey, noApiKey)
   const selectedPreset = PROVIDER_PRESETS.find((p) => p.id === presetId)
   const isNamedPreset = Boolean(selectedPreset && !selectedPreset.custom)
@@ -533,7 +489,7 @@ export function OnboardingWizard({
                         onChange={(e) => {
                           const v = e.currentTarget.value
                           setBaseUrl(v)
-                          setTestState('idle')
+                          resetTest()
                           // hostname 仅作「初始猜测」：anthropic-native 网关 host 带 anthropic。
                           // 一旦专家手选过协议（kindForced），就不再覆盖——否则手选会被下次输入吞掉。
                           // chat vs responses 无法靠 hostname 区分；用户可显式测试或在高级设置手选。
@@ -574,7 +530,7 @@ export function OnboardingWizard({
                       checked={noApiKey}
                       onChange={(event) => {
                         setNoApiKey(event.currentTarget.checked)
-                        setTestState('idle')
+                        resetTest()
                       }}
                       label={t('modelSetup.noApiKey')}
                       description={t('modelSetup.noApiKeyHint')}
@@ -586,7 +542,7 @@ export function OnboardingWizard({
                         value={userApiKey}
                         onChange={(e) => {
                           setUserApiKey(e.currentTarget.value)
-                          setTestState('idle')
+                          resetTest()
                         }}
                         placeholder={t('modelSetup.apiKeyPlaceholder')}
                         autoFocus
@@ -617,16 +573,22 @@ export function OnboardingWizard({
                       onProviderKindChange={(value) => {
                         setProviderKind(value)
                         setKindForced(true)
-                        setTestState('idle')
+                        resetTest()
                       }}
                       onRestoreAutoDetect={() => {
                         setKindForced(false)
                         setShowKindOverride(false)
-                        setTestState('idle')
+                        resetTest()
                       }}
                       onUpdateHeader={updateHeader}
                       onRemoveHeaderRow={removeHeaderRow}
                       onAddHeaderRow={addHeaderRow}
+                      proxyUrl={proxyUrl}
+                      proxyUrlValid={proxyUrlValid}
+                      onProxyUrlChange={(e) => {
+                        setProxyUrl(e.currentTarget.value)
+                        resetTest()
+                      }}
                     />
                   )}
 
