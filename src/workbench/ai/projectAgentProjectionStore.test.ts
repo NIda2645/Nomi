@@ -30,6 +30,18 @@ describe('ProjectAgent shared projection', () => {
     expect(store.getState().snapshot?.hostRevision).toBe(0)
   })
 
+  it('does not let an older command snapshot roll back newer host patches', () => {
+    const store = createProjectAgentProjectionStore()
+    const initial = state()
+    store.install('sub-a', 1, initial)
+    const newer = { ...initial, hostRevision: 2, commandLedgerHighWater: 2 }
+    expect(store.applyPatch({ binding, previousRevision: 0, hostRevision: 2, changes: [] })).toBe(true)
+
+    store.applySnapshot({ ...newer, hostRevision: 1, commandLedgerHighWater: 1 })
+
+    expect(store.getState().snapshot?.hostRevision).toBe(2)
+  })
+
   it('applies an atomic active-thread and assistant append patch', () => {
     const store = createProjectAgentProjectionStore()
     const initial = state()

@@ -127,6 +127,7 @@ export function createProjectAgentProjectionStore(): ProjectAgentProjectionStore
     },
     applySnapshot(snapshot) {
       if (!sameBinding(state.binding, snapshot.binding)) return
+      if (state.snapshot && snapshot.hostRevision < state.snapshot.hostRevision) return
       publish({ ...state, binding: snapshot.binding, snapshot, lastError: null })
     },
     applyPatch(patch) {

@@ -57,7 +57,6 @@ import type { ProjectAgentProposalReceiptView } from "../shared/projectAgentProp
 import { committedProjectAgentReceiptMatchesApproval } from "./projectAgentProposalReceiptCorrelation";
 import {
   digest,
-  executionPrompt,
   steeredExecutionPrompt,
   validateSteering,
   turnIsInterruptible,
@@ -1073,6 +1072,8 @@ export function createProjectAgentExecutionCoordinator(
           const canonicalCapability = resolveCapabilityAlias(call.toolName)?.contract;
           const isCanvasMutation = canonicalCapability?.id === CANVAS_WRITE_CAPABILITY.id
             || canonicalCapability?.id === CANVAS_DELETE_CAPABILITY.id;
+          const isRendererHandledStoryboardProposal =
+            canonicalCapability?.id === CANVAS_WRITE_CAPABILITY.id && call.toolName === "propose_storyboard_plan";
           if (isCanvasMutation && execution.blockedCanvasWriteDecision) {
             return execution.blockedCanvasWriteDecision;
           }
@@ -1310,7 +1311,7 @@ export function createProjectAgentExecutionCoordinator(
               );
             }
           }
-          if (isCanvasMutation) {
+          if (isCanvasMutation && !isRendererHandledStoryboardProposal) {
             return rememberCanvasWriteOutcome(
               execution,
               call.toolCallId,
