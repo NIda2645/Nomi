@@ -1,0 +1,116 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-01-tikhub-key-validation-before-connected",
+  "problem_type": "fake success / false-positive connection state: a BYO-key connector reported 'Connected' on save without ever validating the key against the provider, so an arbitrary string was accepted and surfaced as a working connection",
+  "symptom": "A real user pasted a made-up string into the TikHub settings card and it displayed '已连接 / Connected'. Root cause: saveTikhubApiKey wrote the key to the credential store and then returned getTikhubKeyStatus(), whose status:'ok' means only that the stored key DECRYPTS (apiKeyDecryptStatus) — it never checked the key against TikHub. Any non-empty string encrypts and decrypts fine, so it read back as 'ok' and the renderer rendered 'Connected'. This is a D4 honesty defect: the UI asserted a capability (a working data source) it had not verified. The remedy makes saveTikhubApiKey verify-before-persist: it awaits verifyTikhubApiKey, which makes ONE authenticated request to the free TikHub account endpoint GET /api/v1/tikhub/user/get_user_info (OpenAPI security:[{HTTPBearer:[]}], no query params, an account-info query rather than a per-call scraping endpoint) through the same route-resolve/failover and the same hardenedFetch outbound boundary as the resolve/import path. Only on success is the credential upserted; an invalid key (401→auth) or an unreachable route (no-route/upstream) throws and leaves the credential store untouched. The renderer maps the connector error kind to an honest message (invalid key vs. cannot-reach-to-verify vs. quota) instead of a generic 'saved'. Validation deliberately never uses an unauthenticated endpoint like /api/v1/health/check, because that would 'pass' for any string and re-open the exact fake success.",
+  "direct_cause": "getTikhubKeyStatus()/apiKeyDecryptStatus report decryptability, not validity, and saveTikhubApiKey persisted first and reported that status directly, with no verification call between the paste and the 'Connected' render. The connector already had an authenticated outbound path (fetchTikhubJson) and route resolution (resolveTikhubHost/failoverTikhubHost) but the save path did not use them to prove the key.",
+  "class_root": "Asserting a connection/capability as ready without a real check against the dependency is a recurring class across BYO-key connectors: the safe design is that persisting the credential and reporting 'connected' must be strictly downstream of a successful authenticated probe, and that probe must hit an endpoint that actually requires the credential (never a free/unauthenticated liveness endpoint). Doing it per-card invites each new card to skip the check and re-introduce a fake success. The remedy routes the credential write through a single service choke point (saveTikhubApiKey) that verifies first, and reuses the existing outbound boundary so the check inherits the SSRF/allowlist/failover protections rather than opening a parallel path.",
+  "affected_population": [
+    "Every user who configures the TikHub data source: an invalid or mistyped key must be reported as invalid, never as 'Connected', and a network/route failure must be reported as a connectivity problem distinct from an invalid key",
+    "Every future BYO-key connector card that reports a connected state on save: it inherits the same obligation to verify against an authenticated endpoint before persisting/claiming connected, reusing the connector's outbound boundary rather than trusting decryptability"
+  ],
+  "scope_paths": [
+    "electron/connectors/tikhubConnector.ts",
+    "electron/connectors/tikhubConnectorService.ts",
+    "electron/shared/contracts/tikhubErrorKinds.ts"
+  ],
+  "entry_points": [
+    "saveTikhubApiKey (electron/connectors/tikhubConnectorService.ts) — the single credential-save choke point; awaits verifyTikhubApiKey BEFORE upsertModelCatalogVendorApiKey, so status:'ok' (rendered 'Connected') can only ever reflect a key just proven valid; an invalid/unverifiable key throws and the credential store is untouched",
+    "verifyTikhubApiKey (electron/connectors/tikhubConnector.ts) — resolves the outbound host via resolveTikhubHost/failoverTikhubHost and hits the authenticated free account endpoint GET /api/v1/tikhub/user/get_user_info (no params) through fetchTikhubJson, inheriting the hardenedFetch + two-host allowlist + redirects-disabled + Authorization-sensitive boundary; 401→auth (no failover), resolveHost→null→no-route, primary upstream→failover to the alternate host",
+    "tikhubErrorKindOf (electron/shared/contracts/tikhubErrorKinds.ts) — the single neutral extractor that recovers the connector error kind across the IPC boundary (from .kind, falling back to sniffing the serialized message) so the renderer can map auth/no-route/quota to honest, kind-specific copy instead of a generic 'saved'"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://api.tikhub.io/openapi.json",
+      "checked_at": "2026-09-01",
+      "purpose": "Pick the validation endpoint. Confirmed GET /api/v1/tikhub/user/get_user_info declares security:[{HTTPBearer:[]}] (requires the Bearer key) with no query parameters and is an account-info query (free account endpoint), so an invalid key returns 401 while a valid key returns the account record — the correct signal for key validity. Also confirmed GET /api/v1/health/check has NO security requirement, which is why it cannot validate a key (it would accept any string)."
+    }
+  ],
+  "invariants": [
+    "The TikHub BYO key is persisted ONLY after a successful authenticated verification: saveTikhubApiKey awaits verifyTikhubApiKey before the credential upsert, and any auth (401) / quota (403) / no-route / upstream outcome throws so upsertModelCatalogVendorApiKey is never reached. A key that merely decrypts is never reported as connected.",
+    "Key validation hits an endpoint that REQUIRES the key (GET /api/v1/tikhub/user/get_user_info, HTTPBearer) and never an unauthenticated endpoint; it goes through the same fetchTikhubJson boundary (two-host allowlist, redirects disabled, Authorization declared sensitive) and the same resolve/failover routing as the resolve/import path — no parallel outbound path.",
+    "The renderer distinguishes 'invalid key' from 'cannot reach TikHub to verify' from 'quota': the connector error kind is recovered by the single tikhubErrorKindOf extractor and mapped to kind-specific honest copy, so a network failure never masquerades as an invalid key and neither is ever reported as 'Connected'."
+  ],
+  "generality_proof": "The verify-before-persist invariant is enforced at one service choke point, not per UI card: saveTikhubApiKey is the only path the renderer (and any caller) uses to store the TikHub key, and it awaits verifyTikhubApiKey before the credential upsert. verifyTikhubApiKey reuses the existing fetchTikhubJson outbound boundary and resolveTikhubHost/failoverTikhubHost routing, so the check automatically inherits the SSRF/allowlist/redirect/failover protections that the resolve/import path already has — a future connector that copies this shape gets the same guarantees without a new outbound path. The connector error kind list and its cross-IPC extractor live in one neutral contract owner (tikhubErrorKindOf in electron/shared/contracts/tikhubErrorKinds.ts) consumed by both the settings card and the asset-library paste flow, so honest failure mapping is single-sourced rather than re-implemented per consumer.",
+  "shared_boundaries": [
+    {
+      "path": "electron/connectors/tikhubConnectorService.ts",
+      "symbol": "saveTikhubApiKey",
+      "responsibility": "Single credential-save choke point for the TikHub connector: awaits verifyTikhubApiKey and only calls the safeStorage credential upsert on success, so 'Connected' can never be reported for an unverified key and an invalid/unverifiable key never persists. Every renderer save path goes through it."
+    },
+    {
+      "path": "electron/shared/contracts/tikhubErrorKinds.ts",
+      "symbol": "tikhubErrorKindOf",
+      "responsibility": "Single neutral extractor (renderer+main) that recovers the connector error kind across IPC serialization, so honest, kind-specific failure copy is derived from one source rather than re-sniffed per consumer."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/connectors/tikhubConnectorService.ts",
+      "entry_point": "saveTikhubApiKey verify-before-persist",
+      "disposition": "enforced",
+      "evidence": "tikhubConnectorService.test.ts asserts: a valid key verifies then upserts and returns status:'ok'; an auth(401) outcome throws AND upsertModelCatalogVendorApiKey is never called; a no-route outcome throws AND never upserts; an empty key is missing-key with neither verify nor upsert. So the invalid key never persists and 'Connected' cannot be reported without a passing verification."
+    },
+    {
+      "path": "electron/connectors/tikhubConnector.ts",
+      "entry_point": "verifyTikhubApiKey authenticated probe via fetchTikhubJson",
+      "disposition": "enforced",
+      "evidence": "tikhubConnector.test.ts pins that verifyTikhubApiKey hits /api/v1/tikhub/user/get_user_info with no query params and the key, resolves undefined on 2xx, maps 401→auth without triggering failover, maps resolveHost→null to no-route, and on a primary upstream failure fails over to the alternate host — i.e. it inherits the same routing/hardenedFetch boundary as resolve/import and never uses an unauthenticated endpoint."
+    },
+    {
+      "path": "electron/shared/contracts/tikhubErrorKinds.ts",
+      "entry_point": "tikhubErrorKindOf cross-IPC kind recovery",
+      "disposition": "enforced",
+      "evidence": "tikhubErrorKinds.test.ts asserts kind is read from .kind when present, sniffed from a serialized prefixed message when the field is stripped, returns null for unrelated/illegal values, and covers all nine kinds — so the renderer's honest auth/no-route/quota mapping has a single reliable source."
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/connectors/tikhubConnectorService.ts",
+    "invariant": "The TikHub credential is written only downstream of a successful authenticated verification; status:'ok'/'Connected' cannot be produced for a key that was not just proven valid against TikHub.",
+    "failure_mode": "Without the single verify-before-persist choke point, the save path reports decryptability as connectivity, so any non-empty string is stored and shown as 'Connected' — a fake success that misleads the user into thinking the data source works.",
+    "exception_policy": "none",
+    "strategy": "Route every TikHub credential save through saveTikhubApiKey, which awaits verifyTikhubApiKey (an authenticated probe over the existing outbound boundary) before the credential upsert, so verification structurally precedes persistence and the connected state for every current and future save path.",
+    "artifacts": [
+      "electron/connectors/tikhubConnectorService.ts",
+      "electron/connectors/tikhubConnector.ts",
+      "electron/connectors/tikhubConnectorService.test.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/connectors/tikhubConnector.test.ts",
+    "electron/connectors/tikhubConnectorService.test.ts",
+    "electron/shared/contracts/tikhubErrorKinds.test.ts"
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Reporting a connection/capability as ready without a real authenticated check is a recurring class across BYO-key connectors. Rather than re-checking per card, the credential write goes through one service choke point that verifies first and reuses the connector's existing outbound boundary, and the error-kind mapping is single-sourced, so a future connector inherits the guarantee.",
+    "same_class_scan": [
+      "Enumerated every BYO-key settings card that can report a connected/verified state on save: the TikHub card was the only one asserting 'Connected' directly on save. The model-vendor cards were cross-checked — CustomVendorManage saves with enabled:false and shows 'credential saved' with a SEPARATE health probe (VendorConnectionNotice/useVendorHealth) gating connectivity; AntigravityConnectionCard defaults to 'unverified' and gates the enabled/connected label on an explicit check state machine; the custom upload Relay shows a descriptive 'saved (fallback only)', not a 'connected/verified' claim. None persist-and-claim-connected without a check, so no parallel fake-success path remains after this fix.",
+      "Enumerated the TikHub outbound calls to ensure the new validation reuses the boundary: verifyTikhubApiKey goes through fetchTikhubJson (same two-host allowlist, redirects disabled, Authorization sensitive) and resolveTikhubHost/failoverTikhubHost, and hits an authenticated endpoint (get_user_info); it does NOT add a bare fetch and does NOT use the unauthenticated health probe for key validation.",
+      "Enumerated the renderer consumers of connector error kinds: the settings card and the asset-library paste flow both use the single tikhubErrorKindOf extractor from the neutral contract, so honest failure copy is single-sourced and the paste flow's 'no-route' now maps to the network message rather than falling through to a generic bad-response."
+    ]
+  },
+  "regression_tests": [
+    "electron/connectors/tikhubConnector.test.ts",
+    "electron/connectors/tikhubConnectorService.test.ts",
+    "electron/shared/contracts/tikhubErrorKinds.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No parallel or legacy save path is removed. saveTikhubApiKey remains the single save entry point; it changes from persist-then-report to verify-then-persist. The status type (ApiKeyDecryptStatus) and credential store are unchanged — the fix inserts a verification step before the existing upsert, it does not replace an implementation."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency is added, upgraded, or retained. Validation reaches TikHub over plain HTTPS through the existing hardenedFetch client; there is no SDK or new package.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data is rewritten and no schema changes. Existing stored keys keep working: getTikhubKeyStatus still reports decryptability for an already-saved key, and only the SAVE path gains the verification step, so previously-saved valid keys continue to read as 'ok'. A key saved before this change that happens to be invalid is unaffected at rest; the next time the user re-saves it, verification runs and reports the truth. The renderer only gains kind-specific failure copy; the success path is unchanged.",
+  "residual_risks": [
+    "get_user_info is documented as a free account endpoint, but TikHub is a third-party service; if they ever start billing or rate-limiting it, key validation could incur a tiny cost or transiently fail as no-route — the honest failure copy still tells the user it is a connectivity/verification problem, not an invalid key.",
+    "Validation proves the key is accepted by TikHub at save time; it cannot guarantee the key stays valid later (revocation/expiry). Downstream resolve/import already classifies a later 401 as auth and surfaces it, so a key that goes invalid after saving is reported honestly at use time.",
+    "The cross-IPC kind recovery falls back to sniffing the serialized message when Electron strips the custom .kind field; if a future Electron version changes error serialization such that neither the field nor the kind substring survives, the renderer degrades to the generic failure copy (still honest, just less specific), never to a false 'Connected'."
+  ]
+}

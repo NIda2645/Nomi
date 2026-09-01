@@ -11,6 +11,7 @@ import {
   TIKHUB_CONNECTOR_ID,
   TikhubConnectorError,
   resolveShareVideo,
+  verifyTikhubApiKey,
   type ResolvedShareVideo,
 } from "./tikhubConnector";
 import { getTikhubRouteStatus, setTikhubRouteMode, type TikhubRouteStatus } from "./tikhubRoute";
@@ -34,10 +35,16 @@ export function getTikhubKeyStatus(): TikhubKeyStatus {
   return { status, hasKey: status === "ok" };
 }
 
-/** 存 TikHub key（走 catalog 唯一写入口，含非法字符守门 + safeStorage 加密）。 */
-export function saveTikhubApiKey(payload: unknown): TikhubKeyStatus {
+/**
+ * 存 TikHub key —— **先真实校验再落盘**（杜绝「乱填也显示已连接」的假成功，D4）。
+ * 顺序 load-bearing：先对鉴权账户端点打一发验 key，**通过了才**写进凭据库；
+ * 无效 key(401→auth) / 线路不通(no-route/upstream) 直接抛，绝不落盘一个坏 key。
+ * 这样返回 status:'ok' 时，凭据库里躺的一定是刚校验过的有效 key（渲染层据此显示「已连接」才诚实）。
+ */
+export async function saveTikhubApiKey(payload: unknown): Promise<TikhubKeyStatus> {
   const apiKey = trim((payload as JsonRecord)?.apiKey);
   if (!apiKey) throw new TikhubConnectorError("missing-key", "API Key 不能为空。");
+  await verifyTikhubApiKey(apiKey); // 校验失败在此抛出（auth/quota/no-route/…），下面的落盘不会执行
   upsertModelCatalogVendorApiKey(TIKHUB_CONNECTOR_ID, { apiKey, enabled: true });
   return getTikhubKeyStatus();
 }

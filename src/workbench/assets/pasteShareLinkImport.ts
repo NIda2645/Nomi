@@ -7,9 +7,10 @@ import type { TFunction } from 'i18next'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { toast as toastFn } from '../../ui/toast'
 import type { TikhubImportResult, TikhubKeyStatus } from '../../desktop/bridgeConnector'
+import { tikhubErrorKindOf, type TikhubErrorKind } from '../../../electron/shared/contracts/tikhubErrorKinds'
 
-/** connector 错误 kind → i18n 键（三段式失败态的「为什么 + 下一步」）。 */
-const ERROR_KIND_KEY: Record<string, string> = {
+/** connector 错误 kind → i18n 键（三段式失败态的「为什么 + 下一步」）。kind 提取器单一 owner 在中立契约层。 */
+const ERROR_KIND_KEY: Partial<Record<TikhubErrorKind, string>> = {
   'missing-key': 'assetLibrary.pasteLink.errMissingKey',
   auth: 'assetLibrary.pasteLink.errAuth',
   quota: 'assetLibrary.pasteLink.errQuota',
@@ -17,28 +18,15 @@ const ERROR_KIND_KEY: Record<string, string> = {
   'unsupported-platform': 'assetLibrary.pasteLink.errUnsupported',
   'no-play-url': 'assetLibrary.pasteLink.errNoPlayUrl',
   upstream: 'assetLibrary.pasteLink.errUpstream',
+  'no-route': 'assetLibrary.pasteLink.errUpstream',
   'bad-response': 'assetLibrary.pasteLink.errBadResponse',
-}
-
-/** 从桥抛出的错误里取 connector kind（主进程 TikhubConnectorError 的 kind 会随序列化过来）。 */
-function errorKindOf(error: unknown): string | null {
-  if (error && typeof error === 'object') {
-    const kind = (error as { kind?: unknown }).kind
-    if (typeof kind === 'string' && kind in ERROR_KIND_KEY) return kind
-    // Electron 会把主进程 Error 序列化成带前缀的 message；兜底从 message 里嗅 kind。
-    const message = String((error as { message?: unknown }).message || '')
-    for (const kind of Object.keys(ERROR_KIND_KEY)) {
-      if (message.includes(kind)) return kind
-    }
-  }
-  return null
 }
 
 /** 把任意错误翻成一句人话（带三段式的「为什么 + 下一步」）。 */
 export function describeShareLinkError(error: unknown, t: TFunction): string {
-  const kind = errorKindOf(error)
-  if (kind) return t(ERROR_KIND_KEY[kind])
-  return t('assetLibrary.pasteLink.errBadResponse')
+  const kind = tikhubErrorKindOf(error)
+  const key = kind ? ERROR_KIND_KEY[kind] : undefined
+  return t(key ?? 'assetLibrary.pasteLink.errBadResponse')
 }
 
 export type PasteShareLinkDeps = {
