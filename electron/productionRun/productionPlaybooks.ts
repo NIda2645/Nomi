@@ -65,7 +65,11 @@ let REGISTRY: readonly ProductionPlaybookDefinition[] = [BRAND_PROMO].map(valida
 /** Register a playbook and wake active MCP clients so they refresh tools/list. */
 export function registerProductionPlaybook(definition: ProductionPlaybookDefinition): void {
   const next = validated(definition);
-  if (REGISTRY.some((entry) => entry.name === next.name)) throw new Error(`playbook「${next.name}」已登记`);
+  if (REGISTRY.some((entry) => entry.name === next.name)) {
+    throw Object.assign(new Error("production_playbook_already_registered"), {
+      code: "production_playbook_already_registered",
+    });
+  }
   REGISTRY = [...REGISTRY, next];
   emitMcpToolCatalogChanged();
 }
