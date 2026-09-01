@@ -596,18 +596,94 @@ async function errorRecovery(journey, ui, fixture, recorder) {
   await recorder.step('rendered', '恢复后的同一模型显示图片像素', () => assertRenderedNode(ui, recorder, { kind: 'image', node: run.node }))
 }
 
+/**
+ * J13 —— 参考素材回环（j13 债务返工，2026-09-02）。
+ *
+ * 旧实现只做到「视频节点的模型下拉里有选项」就返回——切片验证，连 requiredPhases
+ * 都凑不齐（恒 HARNESS_ERROR）。按裁决升级为 J01 式全链回环：接入（entry/observed/
+ * persisted 由 configureRelay 出证）→ 先真实生成一张参考图、再用 @ 引用把它连进
+ * 视频节点（executed；@ 候选锚点与真实参考边的证明方式取自 at-mention-edge.walk.mjs
+ * 的已验证探针）→ 视频渲染 + 参考素材真实进 wire + 产物落库 + 项目文档状态回读（rendered）。
+ */
 async function referenceModes(journey, ui, fixture, recorder) {
-  await recorder.step('entry', '在真实视频节点打开模型和模式控件', async () => {
-    await ui.openModels(); await ui.closeSettings(); await ui.openCanvas()
+  await configureRelay(ui, fixture, recorder, ['fixture-image-gen', 'fixture-video-gen'], 'Reference Wire Fixture')
+  const videoRun = await recorder.step('executed', '先生成参考素材，再用 @ 连进视频节点并生成', async () => {
+    // ① 参考素材：真实图片节点先出图（这张图就是用户要连接的素材）。
+    const imageRun = await runCanvasNode(ui, recorder, { kind: 'image', modelId: 'fixture-image-gen', prompt: 'reference base square' })
+    await assertRenderedNode(ui, recorder, { kind: 'image', node: imageRun.node })
+    // ② 视频节点：@ 引用已出图节点 → 建立真实参考边（不是文本装饰）。
+    await ui.openCanvas()
     await ui.win.getByRole('button', { name: '添加视频节点', exact: true }).click()
     const composer = ui.win.locator('.generation-canvas-v2-node__composer-card').last()
-    await requireVisible(composer, 'video-composer-missing', '视频节点未创建')
-    const model = composer.getByRole('button', { name: '模型', exact: true })
-    await requireVisible(model, 'reference-model-picker-missing', '视频节点没有模型入口')
-    await model.click()
-    const options = await ui.win.getByRole('option').allTextContents().catch(() => [])
-    if (options.length === 0) throw new JourneyFailure('no-executable-reference-model', '真实节点没有任何可执行多参考模型；无法验证首尾帧、全能参考和多参考图 wire')
-    return { options }
+    await requireVisible(composer, 'video-composer-missing', '视频节点没有生成编辑器')
+    const nodeId = await composer.evaluate((element) =>
+      element.closest('.generation-canvas-v2-node')?.getAttribute('data-node-id') || '')
+    if (!nodeId) throw new JourneyFailure('node-id-missing', '视频节点没有可定位的节点 id')
+    const node = ui.win.locator(`.generation-canvas-v2-node[data-node-id="${nodeId}"]`)
+    await chooseNodeModel(composer, ui.win, 'fixture-video-gen')
+    const promptInput = composer.locator('.generation-canvas-v2-node__prompt-input').first()
+    await requireVisible(promptInput, 'prompt-input-missing', '视频节点没有可填写提示词')
+    // 探针先量状态：@ 之前的真实边数；选择候选后必须 +1（同 at-mention-edge 的证明法）。
+    const edgesBefore = await ui.win.locator('.generation-canvas-v2__edge-path').count()
+    await promptInput.click()
+    await ui.win.waitForTimeout(400)
+    await ui.win.keyboard.type('@', { delay: 80 })
+    // 画布已出图节点的候选 key 前缀是 canvas:<nodeId>（AssetMentionSuggestionList
+    // data-mention-item={item.key}），选它才走 connect 计划、建真实参考边；library 组是 attach。
+    const candidate = ui.win.locator('[data-mention-item^="canvas:"]').first()
+    try {
+      await candidate.waitFor({ state: 'visible', timeout: 5000 })
+    } catch {
+      // TipTap 聚焦后立刻输入偶发吞键（探针 2026-09-02）：存证后原地重试一次。
+      await recorder.screenshot(ui.win, 'j13-mention-panel-retry')
+      await promptInput.click()
+      await ui.win.waitForTimeout(500)
+      await ui.win.keyboard.press('End')
+      await ui.win.keyboard.type(' @', { delay: 150 })
+      await requireVisible(candidate, 'mention-candidate-missing', '@ 面板没有列出已出图节点作为参考候选', 8000)
+    }
+    // 浮层项会随输入重渲/瞬时关闭，直接 click 偶发等不到 actionable（run2 实测 30s 超时）。
+    // 首选键盘确认（suggestion 高亮首项 = canvas 候选），失败再退回点击；真正的断言是参考边 +1。
+    await ui.win.keyboard.press('Enter')
+    await ui.win.waitForTimeout(700)
+    let edgesAfter = await ui.win.locator('.generation-canvas-v2__edge-path').count()
+    if (edgesAfter !== edgesBefore + 1 && (await candidate.isVisible().catch(() => false))) {
+      await candidate.click({ timeout: 5000 }).catch(() => {})
+      await ui.win.waitForTimeout(700)
+      edgesAfter = await ui.win.locator('.generation-canvas-v2__edge-path').count()
+    }
+    if (edgesAfter !== edgesBefore + 1) throw new JourneyFailure('reference-edge-missing', '@ 选择候选后没有建立真实参考边', { edgesBefore, edgesAfter })
+    // 引用 chip（[data-asset-mention]）是 @ 主路径的可见反馈；此处记录 + 截图供人眼走查
+    // （R13），承重断言是上面的真实边与下面 rendered 的 wire 语义——chip 与边在键盘选择路径
+    // 上是否同步渲染由截图证据裁决，不让 UI 细节抖动掩盖回环本身。
+    const chipVisible = await ui.win.locator('[data-asset-mention]').first().isVisible().catch(() => false)
+    await recorder.screenshot(ui.win, 'j13-reference-connected')
+    await ui.win.keyboard.type(' fixture camera pan', { delay: 20 })
+    const generate = composer.getByRole('button', { name: /生成素材|生成/ }).last()
+    if (await generate.isDisabled()) throw new JourneyFailure('generate-disabled', '视频节点素材齐全后生成按钮仍不可用')
+    await generate.click()
+    await confirmSpendGate(ui.win)
+    await recorder.screenshot(ui.win, 'j13-video-submitted')
+    return { node, nodeId, edgesBefore, edgesAfter, chipVisible }
+  })
+  await recorder.step('rendered', '视频渲染 + 参考真实进 wire + 落库与状态回读', async () => {
+    const proof = await assertRenderedNode(ui, recorder, { kind: 'video', node: videoRun.node })
+    // wire：提交体必须真的带上参考素材（图生视频的 image 字段），顺序即语义（首帧）。
+    const creates = fixture.requests.filter((request) => request.method === 'POST' && request.path === '/v1/video/generations')
+    if (creates.length === 0) throw new JourneyFailure('video-wire-not-observed', '视频出现了，但 fixture 没收到提交请求')
+    let submitted = {}
+    try { submitted = JSON.parse(creates[creates.length - 1].body || '{}') } catch {}
+    const imageValue = typeof submitted.image === 'string' ? submitted.image : ''
+    if (!imageValue) throw new JourneyFailure('reference-not-on-wire', '参考图连了线，但提交体里没有 image 首帧字段', { bodyKeys: Object.keys(submitted) })
+    // 产物落库：结果视频必须真实写进项目资产目录。
+    const localFile = findProjectFile(ui.projectsDir, /\.mp4$/i)
+    if (!localFile) throw new JourneyFailure('video-asset-missing', '视频渲染了，但项目资产目录里没有 mp4 文件')
+    // 状态回读：持久化的项目文档（.nomi/project.json）里该节点 status=success 且带结果。
+    const readBack = await waitForProjectDoc(ui, (project) => {
+      const nodes = project?.payload?.generationCanvas?.nodes || []
+      return nodes.find((n) => n.kind === 'video' && n.status === 'success' && n.result?.url) || null
+    })
+    return { ...proof, imageFieldPrefix: imageValue.slice(0, 24), localAsset: path.basename(localFile), readBackStatus: readBack.hit.status }
   })
 }
 
