@@ -48,7 +48,7 @@ Nomi：本地优先 AI 视频创作工作台。
 
 ## 五条核心原则
 
-**P1 加新必删旧** — 引入新实现时同 commit 删旧实现，无并行版、无 fallback、无逃生口。CSS 同理：新样式只写组件 `className`，迁 Tailwind 即删旧 CSS；全局 CSS 只可减不可增。
+**P1 加新必删旧** — 引入新实现时同 commit 删旧实现，无并行版、无 fallback、无逃生口。CSS 同理：新样式只写组件 `className`，迁 Tailwind 即删旧 CSS；全局 CSS 只可减不可增。**搬家不留转发壳**：迁移文件时同 commit 改所有 import site，re-export 壳必须同 commit 删（现存 29 个 `src/config/modelArchetypes` 壳即反例）。
 
 **P2 修根因不修症状** — 任何 bug、回归、CI/平台失败、性能/安全问题或审计发现，动生产代码前必须执行 `.agents/skills/root-cause-remediation/SKILL.md`。详细流程只住在该 skill；L1 只保留判断闸：分清症状/直接原因/类根因，判断 `one_off`/`recurring`，实扫同类入口，修在最早共享边界。自检：「同类问题还能从另一个调用者、供应商、版本、平台或旧数据回来吗？」答不出“不能” = 没解决。`recurring` 与高风险路径另受 R21 schema-v3 合同硬拦。
 
@@ -102,6 +102,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R22 | 验证分层与测试预算 | contracts 常跑；unit/desktop/journey/canvas/performance/package 按真实风险独立触发；不删安全/持久化/认证边界覆盖 |
 | R23 | React Flow 生成画布单内核与迁移等价 | 生产画布只允许 React Flow 一个交互/变换内核，Zustand 是业务与持久化真相源；迁移必须逐项保留既有几何、交互、视觉和反馈，并用 adapter/结构测试 + 真实 Electron 走查证明 |
 | R25 | 提交/推送前 Ponytail 评审 | pre-commit/pre-push 自动调用只读、限时 `/ponytail-review` 适配器；失败或缺少结果 fail-closed |
+| R26 | 分层边界不许反向/循环 | 渲染层（src/）禁直捅主进程（走 bridge/中立契约层）、主进程禁反向 import 渲染层、禁新增完全静态循环；`check:boundaries` 棘轮（`boundaries-baseline.json` 只减不增），加规则先验会红（R17）。归属地图 `docs/architecture/module-ownership-map.md`，详见 L2 |
 
 ## 决策自治
 
