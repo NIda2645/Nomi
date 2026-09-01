@@ -6,6 +6,7 @@ import { DesignEmptyState } from '../../design'
 import { lazyWithChunkBoundary } from '../../ui/chunkBoundary'
 import { useWorkbenchStore } from '../workbenchStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
+import { selectStableCanvasNodes } from '../generationCanvas/store/canvasNodeProjection'
 import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
 import { encodeTimelineGenerationNodeDragPayload, TIMELINE_GENERATION_NODE_DRAG_MIME } from '../timeline/timelineDragPayload'
 import { addGenerationNodeToTimelineEnd } from '../timeline/addNodeToTimelineEnd'
@@ -54,7 +55,9 @@ function ShotCover({ source }: { source: CanvasShotSource }): JSX.Element {
 
 function ShotGrid(): JSX.Element {
   const { t } = useTranslation()
-  const nodes = useGenerationCanvasStore((state) => state.nodes)
+  // 镜头栏按 result/shotIndex 派生已出片镜头，position 只当「无号节点」的排序兜底 →
+  // 订位置稳定投影：拖动期不重建镜头格；无号节点排序在拖动结束落盘后归位（suspect #1）。
+  const nodes = useGenerationCanvasStore(selectStableCanvasNodes)
   const sources = React.useMemo(() => selectCanvasShotSources(nodes), [nodes])
 
   if (sources.length === 0) {

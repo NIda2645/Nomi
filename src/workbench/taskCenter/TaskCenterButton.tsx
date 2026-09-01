@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, WorkbenchButt
 import { getDesktopBridge } from '../../desktop/bridge'
 import { cn } from '../../utils/cn'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
+import { selectStableCanvasNodes } from '../generationCanvas/store/canvasNodeProjection'
 import { useGenerationQueueStore } from '../generationCanvas/runner/generationQueueStore'
 import { useProductionRunStore } from '../production/productionRunStore'
 import { useWorkbenchStore } from '../workbenchStore'
@@ -30,7 +31,8 @@ export function TaskCenterButton({ projectId, onRevealNode }: Props): JSX.Elemen
   const [opened, setOpened] = React.useState(false)
   const entries = useGenerationQueueStore((state) => state.entries)
   const batches = useGenerationQueueStore((state) => state.batches)
-  const nodes = useGenerationCanvasStore((state) => state.nodes)
+  // 任务中心只按 id 取标题/状态/进度合成任务行，不读 position → 位置稳定投影（suspect #1）。
+  const nodes = useGenerationCanvasStore(selectStableCanvasNodes)
   const [productionRuns, setProductionRuns] = React.useState<ProductionRunSummary[]>([])
   const detailedProductionRun = useProductionRunStore((state) => (
     state.projectId === projectId ? state.run : null

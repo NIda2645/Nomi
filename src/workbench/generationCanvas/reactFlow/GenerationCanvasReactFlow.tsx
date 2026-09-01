@@ -24,6 +24,7 @@ import { adoptGenerationNode } from '../../adoption/adoptGenerationNode'
 import { reportAdoptionOutcome } from '../../adoption/adoptionReceipt'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import { filterNodesStable } from '../store/canvasNodeProjection'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { findTimelineDropTarget } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
@@ -89,6 +90,10 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const [focusFlashNodeId, setFocusFlashNodeId] = React.useState<string | null>(null)
   const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 })
   const [minimapVisible, setMinimapVisible] = React.useState(true)
+  // #5 minimap 拖动中冻结：拖节点时 minimap 不必逐帧重画全部 rect（O(n)/tick）。这个纯渲染门
+  // 只翻两次（拖始/拖止各一次），不碰 RF 写入路径；拖动中 minimap 拿冻结的 nodes 引用 → React.memo
+  // 短路 → 每帧零重画，松手落一次真实位置。
+  const [nodeDragActive, setNodeDragActive] = React.useState(false)
   const [connectionCreateMenu, setConnectionCreateMenu] = React.useState<{
     sourceNodeId: string
     sourceSide: 'left' | 'right'
@@ -137,11 +142,28 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     saveWorkflowFromCurrentProject(template); toast(t('generationCommon.selection.workflowSaved', { name: template.name }), 'success')
   }, [saveSelectedAsWorkflowTemplate, selectedNodeIds.length, t])
 
+  // #4 引用稳定过滤：allNodes 每 tick 换引用，但只要本分类的成员集与顺序没变（如动的是别的
+  // 分类的节点、或本视图之外的字段变了）就返回上次数组引用，掐住投影链在此不再级联重算。
+  // 本分类里有节点真变了（含拖动改 position → immer 换对象引用）时才发新数组，position 不会漏。
+  const categoryNodesRef = React.useRef<GenerationCanvasNode[]>([])
   const nodes = React.useMemo(
-    () => allNodes.filter((node) => (node.categoryId || 'shots') === activeCategoryId),
+    () => {
+      const filtered = filterNodesStable(
+        categoryNodesRef.current,
+        allNodes,
+        (node) => (node.categoryId || 'shots') === activeCategoryId,
+      )
+      categoryNodesRef.current = filtered
+      return filtered
+    },
     [activeCategoryId, allNodes],
   )
   const visibleNodeIds = React.useMemo(() => new Set(nodes.map((node) => node.id)), [nodes])
+  // #5 minimap 冻结源：拖动中锁住上一帧非拖动的 nodes 引用喂给 minimap（其它 chrome 不受影响，
+  // 仍拿实时 nodes）。ref 存冻结值，拖动结束用最新 nodes 归位。
+  const frozenMinimapNodesRef = React.useRef<GenerationCanvasNode[]>(nodes)
+  if (!nodeDragActive) frozenMinimapNodesRef.current = nodes
+  const minimapNodes = nodeDragActive ? frozenMinimapNodesRef.current : nodes
   const edges = React.useMemo(
     () => allEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
     [allEdges, visibleNodeIds],
@@ -495,6 +517,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const handleNodeDragStart: OnNodeDrag<GenerationFlowNode> = React.useCallback((_event, draggedNode) => {
     if (readOnly) return
     draggingRef.current = true
+    setNodeDragActive(true) // #5：冻结 minimap（纯渲染门，不碰写入路径）
     setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowNode)
     captureHistory()
     const state = useGenerationCanvasStore.getState()
@@ -510,6 +533,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode, draggedNodes) => {
     if (readOnly || !draggingRef.current) return
     draggingRef.current = false
+    setNodeDragActive(false) // #5：解冻 minimap（在所有退出路径之前，含时间轴投放早退）
     setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowNode)
     const pointer = 'changedTouches' in event ? event.changedTouches[0] : event
     const timelineDropTarget = pointer ? findTimelineDropTarget(pointer.clientX, pointer.clientY) : null
@@ -748,7 +772,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       <GenerationCanvasReactFlowOverlays
         readOnly={readOnly}
         activeCategoryId={activeCategoryId}
-        nodes={nodes}
+        // #5：overlays 里唯一逐帧敏感的消费者是 minimap；empty-state 只看 length（拖动中不变）。
+        // 拖动期传冻结引用 → minimap 不重画；空态判定不受影响（成员与 length 一致）。
+        nodes={minimapNodes}
         allNodes={allNodes}
         selectedNodeIds={selectedNodeIds}
         selectedSet={selectedSet}
