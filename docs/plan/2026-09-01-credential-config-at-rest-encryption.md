@@ -1,5 +1,7 @@
 # Credential-bearing connection config → encrypted at rest (P2 class fix)
 
+**状态：🚧 进行中**
+
 **Date:** 2026-09-01
 **Branch:** feat/credential-config-encryption-20260901
 **Base:** origin/main @ 10baed5a (includes #282 per-connection proxy 6a0c3ca2, #276/#278)
