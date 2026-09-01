@@ -147,7 +147,6 @@ export const zhLibraries = {
       prop: '道具',
       audio: '声音',
     },
-    resize: '拖拽调整侧栏宽度',
     copiedTo: '已复制到 {{target}}',
     copiedToGroup: '已复制到 {{target}} · {{group}}',
     deleteCategoryTitle: '删除分组',
@@ -179,8 +178,6 @@ export const zhLibraries = {
       panorama: '全',
       fallback: '节',
     },
-    workflowLibrary: '流程库',
-    workflows: '流程',
   },
 } as const
 
@@ -338,7 +335,6 @@ export const enLibraries = {
       prop: 'Props',
       audio: 'Audio',
     },
-    resize: 'Drag to resize sidebar',
     copiedTo: 'Copied to {{target}}',
     copiedToGroup: 'Copied to {{target}} · {{group}}',
     deleteCategoryTitle: 'Delete category',
@@ -370,7 +366,5 @@ export const enLibraries = {
       panorama: 'P',
       fallback: 'N',
     },
-    workflowLibrary: 'Workflow library',
-    workflows: 'Workflows',
   },
 } satisfies TranslationShape<typeof zhLibraries>
