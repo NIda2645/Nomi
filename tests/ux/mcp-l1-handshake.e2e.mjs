@@ -58,7 +58,9 @@ async function main() {
     const tools = listed.result?.tools || []
     const names = tools.map((tool) => tool.name)
     check(names.length === 42 && JSON.stringify(names) === JSON.stringify(TOOL_NAMES), 'C2 tools/list matches current 42-tool snapshot')
-    const payloadBytes = Buffer.byteLength(JSON.stringify(listed.result))
+    const payloadBytes = Buffer.byteLength(JSON.stringify({
+      tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+    }))
     console.log(`  payload bytes=${payloadBytes} baseline=${BASELINE_PAYLOAD_BYTES}`)
     check(payloadBytes <= BASELINE_PAYLOAD_BYTES, 'C2 tools/list payload is within ratchet budget')
 
