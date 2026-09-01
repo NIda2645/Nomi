@@ -40,3 +40,25 @@ RL2 是本轮唯一从红转绿的红灯，直接证明 Codex r3 的 canvasRead 
 - **RL2 挂起**：RL2 命令匹配 2 测——`sealed A…rejects replay` 绿；`…one canonical snapshot after selection and project switch` **30s 超时挂起**（隔离单跑也挂）。该测 `canvasReadCapturedSnapshotFlow.test.ts` 为 **cutover-new**、其源（`canvasReadPortResolver`/`canvasReadSurfaceIpc`/`agentChatV2Ipc`/`canvasReadCapturedSnapshotRegistry`）全为 [CUTOVER-MODIFIED][main=base]——cutover 自身 canvasRead 实现的死锁/未 settle bug。故 consolidation 证据表的「RL2 绿 2/2」在 cutover 基座上**不成立**（consolidation 走的是 r3 的 canvasRead 路径、cutover 走的是另一套，后者这条挂）。
 
 **结论/需编排者裁决**：cutover 基座是一份 607 文件的 WIP transplant，自带 ~47 个自身回归 + RL2 死锁，横跨 MCP-elicitation / 生成供应商安全 / ProductionRun 门 / 常驻 UI 投影多个子系统——**超出「三源合流 + r3 重接 + 三档回正 + 红灯重验」的既定范围**，且这些修复涉及安全敏感逻辑（付费信任、供应商引导）与核心流程门，逐个需要「Codex transplant 意图 vs main」的对账，不是机械修。合理解分歧巨大（① 就地修 47 回归；② 在**当前 main** 上只重接真正新增的 M1 Host/runtime 文件、避开 344 处宽泛 revert；③ 对非核心-M1 的 cutover 改动做外科式回 main）。按决策自治纪律（架构岔路、影响大、多个分歧巨大合理解）**停下上报**，不擅自选一条烧数轮。step1–3 的 M1 交付本身已完成且零新增失败，可独立对账。
+
+## M1 修复班（改判路线① · 2026-09-01，分支 `m1/final-assembly-20260901`）
+
+编排者改判走路线①「就地根修回归」。基线锚点确证：**origin/main 全量 vitest 全绿（9095 通过 / 0 失败）**，故 delta 目标 = tip 也须 0 失败；cutover 基座每一条失败都是相对 main 的回归。合流最新 origin/main（0cb4b887）后逐簇根修：
+
+**已根修 9 簇（47→12 失败，各一 commit，均附全仓实扫 + 无 collateral 验证）：**
+| 簇 | 失败数 | 根因（一句） | commit |
+|---|---|---|---|
+| mcpSpendTrust | 7 | 测退役路 nomi_generate（cutover 成体系退役 + 写了退役测试锁意图），过时测试 + 孤儿模块 → 删 | `5df73eff` |
+| apimart + generationProviderBootstrap | 7 | cutover 新增 direct-key/cert 凭据模型但漏给 APIMART_VENDOR_SEED 设 credentialMode:"direct-key" → cert 占用守卫哑火 | `bf59cde9` |
+| productionRunCore + anchorCheckpoint e2e | 5 | cutover 把通用字段 gateId 列进 GENERATION_BINDING_MARKERS，legacy 防火墙误伤免费可逆门 decide-gate → 豁免该路径 | `0cbbb706` |
+| launcherLocale + residentToolDisplay + runGenerationBatchTool | 3 | ①cutover 驮回 pre-08-28 旧 locale 测试期望 ②kind 判别符测试不一致 ③退役 run_generation_batch 漏清 gate.ts | `6eaa2a83` |
+| exportJobIpc | 6 | cutover 新增 listExportJobs 调用方但漏在 runtime 桶再导出 → 首测崩溃级联 5 条 | `87683498` |
+| nomiSkillResources | 1 | 损坏包（正文含 NUL）占 seenDirs 遮蔽同目录合法包 → 加控制字符校验跳过不占坑 | `7dcc5a24` |
+| composeAgentSystemPrompt | 6 | cutover 回退两条已发布用户可见修复（机器串闸 + locale 感知语言规则）→ 外科恢复，保留 cutover 正当新增 | `05f9f4ec` |
+
+**剩 12 失败 = 3 簇，其一为真架构岔路需编排者裁决：**
+- **ProductionRun legacy-playbook 生成路（10 失败：driver 4 / sampleGate 2 / trustLevel 2 / qa 1 / pause 1）= 不可调和的 fork**。同一 `brand.promo` playbook 合约门批准后：cutover 的 `productionRunDriver.test.ts`「interrupts unsubmitted legacy jobs」断言**不得调 production.generate-node**、job 落 needs_attention（`legacy_generation_writer_retired`）、**无视频产物**；而 shipped 的 `productionSampleGate`/`productionRunPauseSemantics`/`productionQaVerify`（与 main 逐字一致、main 全绿）断言**必须调 generate-node**、镜 1 adopt 出视频产物、样片门 waiting。**没有单一实现能同时满足**——cutover 想退役 brand.promo 整条 legacy 生成、shipped 契约要它照常工作。这是产品级不可逆取舍（退役核心 production 生成路 or 保留），落在**付费/生成关键代码**上，无 landed plan 文档。按纪律停下上报，不擅自选边（选边即改一批安全敏感测试期望迁就另一批）。
+- **RL2 `canvasReadCapturedSnapshotFlow`（1）**：cutover-new 子系统的 async 死锁（surface-a 等待非注册 surface 就绪 30s 挂），非 fork、可修但需深挖 cutover 新 canvasRead 编排。
+- **agent-runtime-wiring（1）**：pi（NodeNext 岛）构建隔离——`agentChatV2.ts:19` 直 import pi 源 `.mjs`（解析到 `.mts`）把 1 个 pi 文件拖进 CommonJS 宿主程序，破坏「岛不入宿主」断言。需给 pi 模块设计 `.d.mts` 声明或改消费边界，非一行改。
+
+**门禁现状**：typecheck 三配置全绿；lint:ci **红但非本班引入**——cutover 基座自带 99 warning（>82 棘轮 17 条，session 起点 0cb4b887 同为 99，本班 9 修 warning delta=0），属继承债；test 门因上述 12 失败红。**gates 全绿 + delta=0 需先裁决 ProductionRun fork**（决定退役还是保留 legacy 生成路），再据裁决完成剩余 3 簇 + 清继承 lint 债。9 簇修复本身已验证独立可对账。
