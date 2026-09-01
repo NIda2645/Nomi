@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import type { CapabilityContract } from "./capabilityContract";
 
-const canonicalIdSchema = z.string().trim().min(1).max(512);
 const revisionSchema = z.string().trim().min(1).max(64);
 const exportJobIdSchema = z.string().trim().min(1).max(160);
 const exportStatusSchema = z.enum([

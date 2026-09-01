@@ -101,7 +101,7 @@ function setup(approve = true) {
     resolveShotPrice: () => ({ known: true, amount: 6 }),
     now: NOW,
   });
-  let run = repository.execute("project-1", "op-1", {
+  const sealed = repository.execute("project-1", "op-1", {
     commandId: "seal-authorized",
     expectedRevision: 0,
     type: "generation.seal",
@@ -109,9 +109,9 @@ function setup(approve = true) {
     issuedAt: NOW,
   }).run;
   if (approve) {
-    run = repository.execute("project-1", "op-1", {
+    repository.execute("project-1", "op-1", {
       commandId: "decide-authorized",
-      expectedRevision: run.revision,
+      expectedRevision: sealed.revision,
       type: "gate.decide",
       payload: {
         gateId: authorization.envelope.gateId,
@@ -120,7 +120,7 @@ function setup(approve = true) {
         authorizationDigest: authorization.authorizationDigest,
       },
       issuedAt: NOW,
-    }).run;
+    });
   }
   const submission = createProductionGenerationSubmission({
     repository,

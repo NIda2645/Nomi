@@ -397,7 +397,7 @@ describe("semantic MCP generation tools", () => {
     // Approval is intentionally owned by the Run/gate seam in production. This
     // fixture only projects the result of that seam back through `read`; it
     // must not add an `approve` method to the production operation store.
-    let approvedReceiptId: string | undefined;
+    const approvedReceiptId: string | undefined = undefined;
     const operations = {
       ...baseOperations,
       read(projectId: string, operationId: string) {

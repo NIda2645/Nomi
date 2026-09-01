@@ -35,10 +35,6 @@ function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-function record(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-}
-
 function parseTool(name: string, args: unknown): Record<string, unknown> | null {
   const descriptor = productionRunToolDescriptors[name as keyof typeof productionRunToolDescriptors];
   if (!descriptor) return null;
