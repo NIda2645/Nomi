@@ -70,3 +70,25 @@ RL2 是本轮唯一从红转绿的红灯，直接证明 Codex r3 的 canvasRead 
 - **复现命令**：`pnpm exec vitest run electron/productionRun/productionRunDriver.test.ts electron/productionRun/productionSampleGate.test.ts electron/productionRun/productionTrustLevel.test.ts electron/productionRun/productionQaVerify.test.ts electron/productionRun/productionRunPauseSemantics.test.ts --reporter=verbose`
 - **当前红态（M2）**：该命令在 M1 已全绿，但 M2 退役断言仍为红灯：legacy job 在合同/样片/信任/QA/暂停语义下仍会调用 `production.generate-node`，并可落地视频；M1 不把这组断言伪装成已完成，也不删除现役行为。
 - **M2 通过断言**：替代管线 shipped 后，恢复并通过迁出的 retired-writer assertions：legacy `submit_intent_persisted` 不再进入 `production.generate-node`，job 持久化为 `needs_attention` + `legacy_generation_writer_retired`，无 video artifact、arrange 或 export；冻结/非冻结两条路径与 sampleGate、pauseSemantics、QA verify 的退役行为均有类级覆盖，并确认新管线承担等价生成、落地、编排和导出闭环。
+
+## M1 终验推送班（2026-09-01，分支 `m1/final-assembly-20260901`，tip `474e1fc4`）
+
+基线锚点：**origin/main `d2ebdacc` 全量 vitest 全绿（9138 passed / 1 skipped / 0 failed）**，实测复核过（非沿用文档旧数 9095）。
+
+**① 11 项未提交残余处置**：全部属上一班的 dedup 收尾（单一真相源：`EXPORT_JOB_STATUSES`/`ExportJobStatus`+`isExportJobTerminalStatus` 收进 `shared/contracts/exportTypes.ts`；`REWORKABLE/UNSUBMITTED` 授权状态集去重到 `prepareProductionGenerationAuthorization.ts`；`ARTIFACT_REVIEW_DECISIONS`/`GENERATION_RECONCILE_OUTCOMES` 从 owner 导出复用）。electron typecheck 净、13 触达测试绿 → commit `474e1fc4`。committing 后 `check:filesize` 报 `mcpGenerationTools.ts` 804>803（dedup 加了 1 行 const 撞巨壳天花板），已就地根修（inline schema 改引用该 const 去重字面量 + 收回 1 空行）回到 803，非 bump baseline。
+
+**② 红灯三清（原命令一字不改逐条复核，均绿，未改测试/未放宽断言/未调 timeout）**：
+- RL1 门编排：`pnpm exec vitest run electron/productionRun/productionGenerationAuthorizationFlow.test.ts electron/productionRun/productionShotGate.test.ts electron/productionRun/productionRunE2eFixture.test.ts --reporter=verbose` → **16/16 绿**。
+- RL2 captured snapshot：`pnpm exec vitest run electron/capabilityCore/canvasReadCapturedSnapshotFlow.test.ts --testNamePattern "sealed A|captured" --reporter=verbose` → **2/2 绿**；关键：consolidation-fork 报告里 30s 挂起的 `…one canonical snapshot after selection and project switch` **在本 tip 91ms 通过**，RL2 死锁已随 cutover 演进消解。
+- RL3 hostLifecycle：`pnpm exec vitest run electron/projectAgentHost/hostLifecycle.test.ts --reporter=verbose` → **10/10 绿**。
+
+**③ delta=0 终验**：`pnpm exec vitest run` 全量 tip **9980 passed / 1 skipped / 0 failed**；origin/main 基线 **0 failed**；**delta = 0**（tip 比 main 多 ~842 测=M1 Host/ResidentShell/dedup 新增覆盖，失败集差=0）。M1 修复班的 12 失败已全部消解：ProductionRun fork 组按编排者裁决保留现役后转绿、RL2 async 死锁随 cutover 演进消解、agent-runtime-wiring 亦不在 `vitest run` 失败集。
+
+**④ ⚠️ 阻塞：`pnpm run gates` 无法全绿——三项 cutover 引入的门禁回归（均已实测 origin/main 全绿，为分支债非 main 债）**：
+1. **`check:vocabularies` 未通过（22 处：18 未登记新 owner + 4 stale baseline owner）**。其中仅 **3 处来自本班 dedup**（`GENERATION_RECONCILE_OUTCOMES` as-const——baseline line 628/1019 本已登记该 `[found,not_found]` 债且 reason 明确「应定义 as const tuple 单源」正是本班所做，只是 site 串从旧 union 变为新 const；`REWORKABLE_JOB_STATUSES`/`UNSUBMITTED_AUTHORIZATION_STATUSES` 系搬家换 site），**其余 19 处系 cutover 引入**：`projectAgentContracts`/`canvasReadSurfaceRegistry`/`projectAgentExecutionCoordinator`/`ResidentUiPrimitives` 等 **main 上不存在的 cutover-only 文件**新增状态词表未登记，`productionGenerationSubmission` 的 `PROVIDER_STATUS_CLASSES`/`ProviderPollStatusClass` 亦被 cutover 重构成新 owner。登记每条需对该词表写「为何独立 vs 复用现有 owner」的语义 reason，横跨 agent-host 生命周期/供应商提交等**安全敏感子系统**，是判断不是机械修。分支还改了 `check-vocabularies.mjs`(+27) 且删了 baseline JSON 5 行（相对 main）。
+2. **`check:test-types` 未通过**：cutover 新增 `electron/shared/agentCapabilities/skillRead.ts` 并给 `SkillRecord` 加了 `audience/packageVersion/contentHash` 必填字段，但 `electron/harness/context/agentContext.test.ts` 内联 fixture 仍是旧 shape（TS2739/TS2345）。该测试文件与 main 逐字节相同——回归源自 cutover 改了类型、没改 fixture。
+3. **`check:walkthroughs` 未通过**：`productionBudgetUxStructure.test.ts`/`productionStatusStructure.test.ts` 等被判「readFileSync 结构断言=报绿但没验到」；这些文件几乎与 main 相同（`productionBudgetUxStructure.test.ts`/`agentContext.test.ts` 字节相同、`productionStatusStructure.test.ts` 差 1 行），故根因是分支侧走查 baseline/类型漂移。
+
+**已过的门**：`check:filesize`（修后）、`check:e2e-launch`、`check:site`、`typecheck`（三配置全绿）、**`lint:ci` 现为 82 problems（0 error / 82 warning）= 恰在 `--max-warnings=82` 棘轮上，绿**（M1 修复班当时报的 99>82 继承 lint 债，经其 9 簇修复 + 后续 main 合流已降到 82，此债已清）。
+
+**结论/需编排者裁决**：red-lights 三清 + delta=0 两大 M1 核心交付**已验证为真**（可独立对账）。但 `pnpm run gates` 全绿被 3 项 cutover 引入的门禁回归挡住，其中 `check:vocabularies` 的 19 处 cutover 词表登记是横跨安全敏感子系统的**语义判断工作**（非机械），且与 fork-report 已升级的「cutover 607 文件 WIP transplant 自带跨子系统债」同源同类。按决策自治纪律（架构岔路/影响大/安全敏感核心路径/无 landed plan），**停下上报**，不擅自 mass-register 迁就（会是对 cutover 意图的橡皮图章判断）、不缩 baseline 迁就（棘轮只减不增）、不 partial-fix 本班 3 处（不解锁 gates）。未盖 `.claude/.gates-ok`、未 push、未开 PR。
