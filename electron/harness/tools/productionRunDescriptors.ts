@@ -4,6 +4,7 @@ import {
   PRODUCTION_RUN_READ_CAPABILITY,
   PRODUCTION_RUN_WRITE_CAPABILITY,
 } from "../../shared/agentCapabilities/productionRun";
+import { ARTIFACT_REVIEW_DECISIONS } from "../../productionRun/productionRunReducer";
 
 const runId = z.string().trim().min(1).max(160).describe("The run id returned by start_production_run.");
 const artifactId = z.string().trim().min(1).max(160).describe("The artifact id from the run projection.");
@@ -62,7 +63,7 @@ const descriptors = {
     parameters: z.object({
       runId,
       gateId: z.string().trim().min(1).max(160),
-      decision: z.enum(["approved", "rejected"]),
+      decision: z.enum(ARTIFACT_REVIEW_DECISIONS).exclude(["changes_requested"]),
       choiceKey: z.string().trim().min(1).max(40).optional(),
     }).strict(),
   },
@@ -84,7 +85,7 @@ const descriptors = {
       runId,
       artifactId,
       expectedVersion: z.number().int().min(1),
-      decision: z.enum(["approved", "changes_requested", "rejected"]),
+      decision: z.enum(ARTIFACT_REVIEW_DECISIONS),
     }).strict(),
   },
   materialize_production_storyboard: {

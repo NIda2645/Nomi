@@ -1,21 +1,11 @@
 import { z } from "zod";
 
 import type { CapabilityContract } from "./capabilityContract";
+import { EXPORT_JOB_STATUSES } from "../contracts/exportTypes";
 
 const revisionSchema = z.string().trim().min(1).max(64);
 const exportJobIdSchema = z.string().trim().min(1).max(160);
-const exportStatusSchema = z.enum([
-  "queued",
-  "preparing",
-  "planning",
-  "rendering",
-  "encoding",
-  "muxing",
-  "finalizing",
-  "succeeded",
-  "failed",
-  "cancelled",
-]);
+const exportStatusSchema = z.enum(EXPORT_JOB_STATUSES);
 
 const exportTimelinePiInputSchema = z
   .object({

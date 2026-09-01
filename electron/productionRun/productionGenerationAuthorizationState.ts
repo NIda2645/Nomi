@@ -14,6 +14,10 @@ import type {
   ProductionJob,
   ProductionRun,
 } from "./productionRunTypes";
+import {
+  REWORKABLE_JOB_STATUSES,
+  UNSUBMITTED_AUTHORIZATION_STATUSES,
+} from "./prepareProductionGenerationAuthorization";
 
 type AuthorizationPreparation = Readonly<{
   envelope: ProductionGenerationAuthorizationEnvelopeV1;
@@ -53,21 +57,6 @@ export type ContinuedGenerationState = Readonly<{
   gate: ProductionGate;
   policyMaxSpend: number;
 }>;
-
-const REWORKABLE_JOB_STATUSES = new Set<ProductionJob["status"]>([
-  "ready",
-  "adopted",
-  "needs_attention",
-  "cancelled_remote",
-  "detached",
-  "too_late",
-]);
-
-const UNSUBMITTED_AUTHORIZATION_STATUSES = new Set<ProductionJob["status"]>([
-  "authorization_required",
-  "authorized",
-  "submit_intent_persisted",
-]);
 
 function preparationFrom(value: unknown): AuthorizationPreparation {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

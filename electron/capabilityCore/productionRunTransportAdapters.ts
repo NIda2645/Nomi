@@ -10,6 +10,7 @@ import type { ProjectBinding } from "../shared/projectBinding";
 import type { PreconditionSet, TargetRef } from "../shared/capabilityTargeting";
 import type { ProductionRunService } from "../productionRun/productionRunService";
 import { isAnchorCheckpointGate } from "../productionRun/anchorCheckpoint";
+import type { ArtifactReviewDecision } from "../productionRun/productionRunReducer";
 
 const PUBLIC_FAILURE_CODES = new Set([
   "capability_input_invalid",
@@ -214,7 +215,7 @@ export function createPiProductionRunTransportAdapter(input: Readonly<{
           const result = await input.service.reviewArtifact({
             projectId: input.binding.projectId, runId, artifactId: requiredString(args, "artifactId"),
             expectedVersion: args.expectedVersion as number,
-            decision: args.decision as "approved" | "changes_requested" | "rejected",
+            decision: args.decision as ArtifactReviewDecision,
           });
           return { ok: true, result, silent: true, proposalId: approval.receiptProposalId };
         } else if (call.toolName === "materialize_production_storyboard") {

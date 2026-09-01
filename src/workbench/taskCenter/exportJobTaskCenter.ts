@@ -1,5 +1,6 @@
 import type { ExportJobSnapshot } from '../../../electron/shared/contracts/exportJobManager'
 import type { ExportJobStatus } from '../../../electron/shared/contracts/exportTypes'
+import { isExportJobTerminalStatus } from '../../../electron/shared/contracts/exportTypes'
 import type { ExportJobTaskCenterProjection } from './taskCenterProjection'
 
 type Labels = {
@@ -8,14 +9,12 @@ type Labels = {
   statuses: Record<ExportJobStatus, string>
 }
 
-const TERMINAL = new Set<ExportJobStatus>(['succeeded', 'failed', 'cancelled'])
-
 export function buildExportJobTaskRows(
   jobs: readonly ExportJobSnapshot[],
   labels: Labels,
 ): ExportJobTaskCenterProjection[] {
   return jobs.map((job) => {
-    const terminal = TERMINAL.has(job.status)
+    const terminal = isExportJobTerminalStatus(job.status)
     const queued = job.status === 'queued'
     return {
       id: `export-job:${job.id}`,

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AgentToolDescriptor } from "./agentToolCatalog";
+import { GENERATION_RECONCILE_OUTCOMES } from "../../capabilityCore/mcpGenerationTools";
 
 const reference = z.object({
   assetId: z.string().trim().min(1),
@@ -53,7 +54,7 @@ const operationCreate = z.object({
 
 const operationId = z.object({ operationId: z.string().trim().min(1) }).strict();
 const plan = operationId.extend({ patch: candidatePatch });
-const reconcile = operationId.extend({ outcome: z.enum(["found", "not_found"]) });
+const reconcile = operationId.extend({ outcome: z.enum(GENERATION_RECONCILE_OUTCOMES) });
 
 /**
  * Model-facing generation vocabulary. Project and lease fields deliberately

@@ -48,6 +48,7 @@ import { effectiveVideoModes } from "../shared/videoCapabilities/recommendation"
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import { semanticCandidateFromParams } from "./semanticGenerationCandidate";
 import { projectGenerationOperationPreview } from "./mcpGenerationPreview";
+export const GENERATION_RECONCILE_OUTCOMES = ["found", "not_found"] as const;
 /**
  * The semantic MCP surface is deliberately data-only.  These tools are the
  * same vocabulary a GUI adapter uses; neither the catalog nor this handler
@@ -215,7 +216,7 @@ export const MCP_GENERATION_TOOL_CATALOG = [
     description: "核对提交状态；未知结果不会盲目再次提交。",
     inputSchema: {
       type: "object",
-      properties: { projectId: { type: "string" }, leaseHandle: { type: "string" }, operationId: { type: "string" }, outcome: { type: "string", enum: ["found", "not_found"] } },
+      properties: { projectId: { type: "string" }, leaseHandle: { type: "string" }, operationId: { type: "string" }, outcome: { type: "string", enum: [...GENERATION_RECONCILE_OUTCOMES] } },
       required: ["leaseHandle", "operationId", "outcome"],
       additionalProperties: false,
     },
@@ -223,7 +224,6 @@ export const MCP_GENERATION_TOOL_CATALOG = [
     build: (args: Record<string, unknown>) => ({ projectId: args.projectId, leaseHandle: args.leaseHandle, operationId: args.operationId, outcome: args.outcome }),
   },
 ] as const;
-
 export type GenerationOperationState = "draft" | "sealed" | "cancelled" | "submitted";
 
 /**
