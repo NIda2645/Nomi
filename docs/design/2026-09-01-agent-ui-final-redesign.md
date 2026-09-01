@@ -1,6 +1,7 @@
 # Agent 界面最终版重做设计 —— 样张裁决包（纯设计）
 
-> 日期：2026-09-01 · 状态：📋 设计定稿提案 + 可体验样张，**样张门待用户拍板**（拍板前不写生产代码）
+> 日期：2026-09-01 · **v2 修订 2026-09-02** · 状态：📋 设计定稿提案 + 可体验样张，**样张门待用户拍板**（拍板前不写生产代码）
+> **v2 = 照用户 2026-09-02 四条总方向重做**：① 组件**整件复用**成熟库——Beautiful UI（beautifului.dev，用户偏向）优先、AI Elements（elements.ai-sdk.dev）次之，我们只做设计系统适配（尺寸/Tabler icon/token）；② 两库覆盖不了的**独有件走竞品还原**（证据 file:line，禁脑补）；③ **最高原则=认知负荷最低**（每屏数可见选择数并压到最少，取舍冲突以此裁）；④ 反馈动效要有但**极简披露**。21 形态逐个过四步流水线（分类→找证据→还原解剖→套设计系统+负荷审计），映射表见 §4.0。
 > 分支：`docs/agent-ui-redesign-20260901`（从 `origin/main@f9107740` 起）
 > 前提：用户裁定当前 `ProjectAgentResidentShell`（742 行）只是**过渡载具**，最终交互**必须按资料重新设计**、另过样张门才开闸（`RESIDENT-SHELL-DECISION.md` 的「B 档带条件收」）。
 > 本包 = 那道样张门的裁决物：把过渡版的现状、最终版的目标态、逐条改动理由（引用来源）落成单一文档，配 4 屏 HTML 可体验样张，并把要用户拍板的分歧点收成 ≤5 条决策表。
@@ -99,10 +100,41 @@
 
 > 图例：现状判定沿用 `RESIDENT-SHELL-DECISION.md` 对账（✅ 已实现/🟡 部分/❌ 缺失）。「样张」列指向 §6 哪一屏能看到。
 
+### 4.0 v2 映射表（21 形态 × 源 × v2 改了什么 · 用户四条裁决的落账）
+
+> 源分布：**Beautiful UI 9 件 · AI Elements 6 件 · 竞品还原 2 件 · 自家整件复用 3 件 · 自造 1 件**（另：composer 整体解剖=Beautiful UI Prompt Bar、拆解表=竞品还原，见表尾）。库解剖抓自现役页面（2026-09-02 WebFetch），竞品证据 file:line 全在仓内。
+
+| # | 形态 | 源（复用到的解剖细节） | v2 改了什么 |
+|---|---|---|---|
+| 1 | 上下文用量 | **AI Elements · Context**：trigger=百分比 pill，popover=环形进度+input/output 分项+费用 footer | header 三段文字（本轮/累计/费用）收成一颗「还能聊 ~N 轮」pill，明细与费用悬停才出——header 常驻信息 7 段→4 段 |
+| 2 | 压缩分隔线 | **AI Elements · Checkpoint**：icon+触发钮+分隔线，内联于会话流 | 结构不变；「展开」= Checkpoint 触发钮位 |
+| 3 | 用户气泡 | **AI Elements · Message** | 不动 |
+| 4 | 思考条 | **Beautiful UI · Thinking**（可展开推理迹）+ **Loading State** 的 elapsed 计时「0.0s」 | 落定句保持；进行态计时「已等 0:04」对齐 BUI elapsed counter |
+| 5 | 阶段分隔线 | **自造**（工序图示=受管动效资产，Playbook 5 阶段词表 Nomi 独有；线骨架承形态 2；LibTV.md:80-81 P83-84「拆解→资产→分镜→批量生图→批量生视频」印证流程分段心智） | 不动。自造理由：两库无「生产阶段」概念，竞品只有流程文字无阶段线控件 |
+| 6 | 工具条 | **Beautiful UI · Tool Chips**：折叠 chip=计数+摘要（"4 tool calls, 2 messages"） | 折叠头改计数摘要语法「工具 3 · 1 在跑 · 0:12」 |
+| 7 | 普通回复 | **Beautiful UI · Streaming Text** | 扫光光标保持；BUI 的 follow-up suggestions **不引入**——裁决③（每屏可见选择最少）压裁决①（整件复用），suggestion 行是+2 个常驻选择 |
+| 8 | 计划卡 | **自家 `AgentPlanCard`（396 行）整件复用** · AI Elements Plan 交叉核结构 | 不动 |
+| 9 | 付费确认卡 | **竞品还原·反着做**：LibTV_CLI.md:115（P98 连「失败是否扣积分」都不承诺）→我们单价+合计+冻结项全明示；明细复用 `SpendConfirmDialog` | 「不再提示」说明缩短一半 |
+| 10 | 写入回执 | **自家 `CommittedProposalCard`**（lost-edits 中间态）；LibTV_CLI.md:186-187 印证「结果写回画布节点」 | 不动 |
+| 11 | 排队 | **Beautiful UI · Task Rows**：leading 状态徽标 + title + trailing 计量 | 行解剖对齐（与 12 同源同行） |
+| 12 | 进度条目 | **Beautiful UI · Task Rows** running 态（数字进度） | 同一行三态原位更新保持；无百分比不画条不变 |
+| 13 | 产物缩略卡 | **AI Elements · Artifact**：header=标题+描述+动作组，content=纯内容 | 动作行从卡底挪进 header 右侧（改/重跑=icon+tooltip、去画布=accent 文字钮）；缩略图永不被盖（§8.3 顺带更稳） |
+| 14 | 多候选组 | **竞品还原**：InvokeAI staging 合同（accept 才转正）+ XYQ `xyq_canvas_manual.full.dom.md:258`（版本管理只给「查看已存版本」单入口） | 砍「上一个/下一个」（点缩略图即选）：可见选择 6→4 |
+| 15 | 失败条 | **Beautiful UI · Task Rows** failed 态 + 是否计费明示（竞品反证同 9） | 不动 |
+| 16 | 有出入卡 | **自家 `ReconcileDeviationCard`（233 行）整件复用**；竞品 19 项能力对账矩阵均无此形态（`2026-08-24-agent-workbench-comparison.md` §3）＝护城河 | 不动 |
+| 17 | 反问卡 | **Beautiful UI · Approval Card**：问题在顶、选项竖排成钮、分页「1 / 3」、底部 Skip+Continue；TapNow `tapnow_brainstorm.full.dom.md:190`「Agent 提出**一个**关键问题或少量候选」同心智 | **整件重构**：2 问同屏→一次一问分页 1/2；chips→竖排选项钮；加「跳过」；同屏要想的问题 2→1、可见选择 6→5 |
+| 18 | 指令队列 | **AI Elements · Queue**：section trigger=icon+计数+label；item=indicator+content+描述+**hover-revealed actions**+attachment | 行动作 hover 才显（常驻可见控件 5→0）；加待办 indicator 圆点 |
+| 19 | 技能 chip | **Beautiful UI · Prompt Bar** top chips zone（@ sources 归架） | 归位保持；架上两个虚线加号并成一个「+ 引用/技能」（2→1，@ 键入仍直达） |
+| 20 | 技能载入条 | **Beautiful UI · Tool Chips**（工具条一员，专属文案） | 不动 |
+| 21 | 常驻技能标记 | **AI Elements · Context** 的 trigger/popover 语法移植 | 裸文字改 pill+悬停说明（约束范围/作用阶段/版本/怎么停用） |
+
+**表尾（非 21 编号件）**：composer 整体 = **Beautiful UI · Prompt Bar** 双区解剖（top chips zone + bottom controls：@ sources / commands / model picker——对位我们的上下文架 + 5 簇配置行）；拆解表 = **竞品还原**：LibTV.md:86（P90 生成范围自由选「单个/部分/全部」→勾选列）+ LibTV.md:107（P116「先检查 shot 信息再批量」→表格先审后跑）+ TapNow `tapnow_brainstorm.full.dom.md:145`（「回到画布查看已确认内容，不需要在很长的聊天记录里重新寻找」→结果卡区固定不随聊天滚走）。
+
 ### 形态 1 · 上下文用量（一行 · header）
 - **过渡版**：✅ header 显「本轮 0 · 累计 0 tokens」（`ProjectAgentResidentShell.tsx:698` 读 `agentUsageStore`，#194 点名「白记无人读」已补）。
 - **最终版**：保留在 header 第一行，与常驻技能标记（形态 21）**同排**：`Nomi · 未命名线程 │ 本轮 1.2k · 累计 8.4k · 还能聊 ~40 轮 │ 按 编剧·Kasdan │ 费用 ¥0.00`。数字用 `tabular-nums`，接近上限时「还能聊」变 warning 色。
 - **改动理由**：#194 §4 形态 1 要求「用了多少 / 还能聊多久」——过渡版只有「用了多少」，最终版补「还能聊 ~N 轮」的余量投影（承 S8）。样张：屏 A header。
+- **v2**：照 AI Elements Context 解剖收成**一颗 pill**（环形进度 + 「还能聊 ~40 轮」），本轮/累计/费用全部进悬停 popover（footer=费用，同 Context 的 cost footer）——header 常驻信息 7 段→4 段，负荷最低裁决③。
 
 ### 形态 2 · 压缩分隔线（一行）❌→✅
 - **过渡版**：❌ 全 resident 无 compaction 渲染（自动压缩时用户会觉得 AI 突然失忆，`RESIDENT-SHELL-DECISION.md` 形态 2）。
@@ -164,11 +196,13 @@
 - **过渡版**：🟡 artifact/task 行 + 「去画布/打开」钮，是**行**不是带缩略图的**卡**（`RESIDENT-SHELL-DECISION.md` 形态 13）。
 - **最终版**：升级成**带缩略图的卡**：缩略图（图片 tile / 视频 poster+时长 / 音频波形+时长 / 文档类型+页数/字数 / 3D 相机截图+视角名）+ 尺寸/版本副行 + 缩略图**外部就近动作行**「改 · 重跑 · 去画布」（**动作不覆盖内容**，禁半透明按钮盖图，#194 §8.3）。「去画布」实际执行：定位+缩放到可读+短暂高亮，保留对话滚动位置。
 - **改动理由**：#194 形态 13 + §17.1 多媒体回显矩阵 + §8.3「动作不许压在内容上」。样张：屏 B（图片产物卡 + 外部动作行）。
+- **v2**：照 AI Elements Artifact 解剖重构——**header 一行 = 标题 + 尺寸/版本描述 + 右侧动作组**（改/重跑 icon+tooltip、去画布 accent 文字钮），缩略图是纯 content。动作离开卡底、更近标题，图面永不被盖。
 
 ### 形态 14 · 多候选组（卡片 · select/accept/discard）🟡→✅
 - **过渡版**：🟡 `ResidentBatchStack` 做了 §9.4 批量**输入**镜横向三页堆叠；同一请求多**结果**候选暂存(accept 才转正)未见（`RESIDENT-SHELL-DECISION.md` 形态 14）。
 - **最终版**：同一生成请求多结果先进**暂存组**：并排最多 3 版（多的折叠），每版 `select/previous/next`，组底「采用这版」= `accept`（accept 后才成正式画布版本，复刻 InvokeAI staging 合同）。**批量卡（翻多个输入镜头）≠多候选卡（翻同一请求多结果）**——视觉区分：批量卡右上角「3/8」翻页、多候选卡是并排缩略图（状态源/确认语义/去画布目标分开，#194 §9.4）。
 - **改动理由**：#194 形态 14 + §17.2 候选暂存 + S9。样张：屏 B（多候选组 3 版并排 + 采用）。
+- **v2**：砍掉「上一个/下一个」两钮——3 版并排时点缩略图即选，翻页钮与之重复（可见选择 6→4，裁决③）；XYQ 同场景也只给「查看已存版本」单入口（`xyq_canvas_manual.full.dom.md:258`）。`previous/next` 语义保留给 >3 版折叠时的键盘/折叠导航，不做常驻钮。
 
 ### 形态 15 · 失败条（卡片）
 - **过渡版**：✅ 人话原因 + 是否计费隐含 + 3 等宽下一步钮（`:713`，屏 07 已示范「换模型重试/改提示词/看日志」）。
@@ -183,12 +217,14 @@
 ### 形态 17 · 反问卡（卡片 · ≤3 问 chips）❌→✅
 - **过渡版**：❌ 无 clarification/反问卡渲染分支（`RESIDENT-SHELL-DECISION.md` 形态 17 + C7）。
 - **最终版**：会话内卡片，每问一行 + 选项 chips（药丸、同组等高等圆角）。**≤3 问合并**（TapNow 是 4，我们更克制）。chip 是**内容**（按内容定宽），选完点「继续」。要你动手 = accent 色。
-- **改动理由**：#194 形态 17 + S11 + C7 + TapNow「合并提问≤4，我们≤3」（synthesis 节 2A）。样张：屏 B（反问卡 2 问）。
+- **改动理由**：#194 形态 17 + S11 + C7 + TapNow「合并提问≤4，我们≤3」（synthesis 节 2A）。样张：屏 B（反问卡分页）。
+- **v2**：照 Beautiful UI Approval Card **整件重构**——一次只显一问（问题在顶）、选项**竖排成钮**（带序号，可键盘 1/2/3）、分页「1 / 2」、底部「跳过 + 继续」。同屏要想的问题 2→1、可见选择 6→5；TapNow 同心智「Agent 提出**一个**关键问题或少量候选」（`tapnow_brainstorm.full.dom.md:190`）。仍 ≤3 问合并、答完一次性继续。
 
 ### 形态 18 · 指令队列（一行 · 输入框上方 · 完整 TurnDraft）
 - **过渡版**：✅ `ResidentTaskRows`（编辑/删除/上移/下移/暂停，折叠显数量+是否暂停，`:726`；屏 09 已示范）。
 - **最终版**：保留。忙时输入框**不禁用**、回车入队（P0，不静默丢弃）；队列项 = 完整 `TurnDraft`（text + attachments + context 快照 + workMode + approvalPolicy + agentModelId），行内编辑/删除/上移/下移/暂停，附件/引用/模式/权限用图标+数量回显；折叠显「队列 · 排队 1」+ 是否暂停。区分 steer（纠正当前）vs nextTurn（下一条）。
 - **改动理由**：#194 形态 18 + §4.1/§16 P0 + S20 + `main-session` 无关。过渡版已对。样张：屏 A（队列展开）。
+- **v2**：照 AI Elements Queue 解剖——行 = indicator 圆点 + 内容 + 图标计量，**编辑/上移/暂停/删除 hover 才显**（Queue 的「hover-revealed actions」）：常驻可见控件 5→0，行扫一眼只剩「排的是什么」。
 
 ### 形态 19 · 技能 chip（composer 上方 · 持续可见）
 - **过渡版**：✅ accent 药丸 + 可摘（`:727` `data-agent-reference=skill:*`）。
@@ -235,12 +271,12 @@
 
 以 11 张过渡版真机截图的**实际布局**为基版（右栏 340px 停靠画布右缘、header 三行、会话流、composer 底栏），只画改动。四屏：
 
-| 屏 | 覆盖 | 关键改动点（相对过渡版）|
-|---|---|---|
-| **屏 A · 主对话流** | header（上下文用量+常驻技能）· 上下文架（画布选中+技能chip+@引用，intentRole 副标题）· 会话流（压缩线2/阶段线5+工序图示/思考条落定4/工具条6/普通回复7/写入回执10+撤销/排队12同一行三态）· 队列18 · composer 收簇底栏(≤5) | 补 2/5/21，思考落定4，composer 7→5 |
-| **屏 B · 审批 + 付费卡 + 有出入卡** | 计划卡8（批级+单镜+待你看chip）· 付费富卡9（单价+合计+冻结项+交互即暂停）· 有出入卡16（where·field+人话+门类动作）· 反问卡17· 多候选组14· 产物缩略卡13· 失败卡15（明标是否计费）| 补 9/16/17，升级 8/13/14 |
-| **屏 C · 右槽互斥切换** | 左半：Agent 进驻右槽 + 拆解收成源节点浮条「拆解结果·5镜」（视图07态）；右半：拆解进驻右槽 + Agent 收成顶栏角标「●进行中」（视图06态）；中间箭头示意切换动效（260ms enter/leave + 角标新动静脉冲）| ③合流过渡期互斥态的动效规格 |
-| **屏 D · 结果卡区并存（最终态）** | ③合流落地态：右槽双区——结果卡区固定停「拆解结果·5镜▾」（collapse≠unmount）+ 下方会话流并存；演示「新功能=新卡片不新立面板」+ 两入口汇聚同一张卡 | C9 结构答案 + 互斥消失后的终局 |
+| 屏 | 覆盖 | 关键改动点（相对过渡版）| v2 认知负荷账 |
+|---|---|---|---|
+| **屏 A · 主对话流** | header（上下文用量+常驻技能）· 上下文架（画布选中+技能chip+@引用，intentRole 副标题）· 会话流（压缩线2/阶段线5+工序图示/思考条落定4/工具条6/普通回复7/写入回执10+撤销/排队12同一行三态）· 队列18 · composer 收簇底栏(≤5) | 补 2/5/21，思考落定4，composer 7→5；v2：用量收 pill(1)、队列动作 hover 显(18)、工具头计数摘要(6)、架上加号 2→1(19) | 屏内常驻可点 **26→19**（header −2 · 队列 −4 · 架 −1）|
+| **屏 B · 审批 + 付费卡 + 有出入卡** | 计划卡8（批级+单镜+待你看chip）· 付费富卡9（单价+合计+冻结项+交互即暂停）· 有出入卡16（where·field+人话+门类动作）· 反问卡17· 多候选组14· 产物缩略卡13· 失败卡15（明标是否计费）| 补 9/16/17，升级 8/13/14；v2：反问卡照 Approval Card 分页重构(17)、产物卡动作进 header(13)、多候选砍翻页钮(14) | 反问卡同屏问题 **2→1**、选择 6→5；多候选 **6→4**；卡均可见选择 **5.2→4.3** |
+| **屏 C · 右槽互斥切换** | 左半：Agent 进驻右槽 + 拆解收成源节点浮条「拆解结果·5镜」（视图07态）；右半：拆解进驻右槽 + Agent 收成顶栏角标「●进行中」（视图06态）；中间箭头示意切换动效（260ms enter/leave + 角标新动静脉冲）| ③合流过渡期互斥态的动效规格（v2 不动）| 不变（过渡态规格）|
+| **屏 D · 结果卡区并存（最终态）** | ③合流落地态：右槽双区——结果卡区固定停「拆解结果·5镜▾」（collapse≠unmount）+ 下方会话流并存；演示「新功能=新卡片不新立面板」+ 两入口汇聚同一张卡 | C9 结构答案 + 互斥消失后的终局；v2：header 同 pill 化、竞品证据上屏（TapNow「不在长聊天记录里重新寻找」）| header 常驻 **5→3** |
 
 样张硬约束（synthesis 节 6 逐条 + 本文）：状态色只 5 组；控件统一 28px 高·同排等宽均分·主次只用颜色·无自造 xs(24px)；不画假下拉 ▾；没百分比不画进度条；原位更新不刷屏·同屏 1 处扫光；上下文架不占工具栏入口；工作方式只 3 档；忙时队列不静默丢弃；付费卡两宿主明细一致；暗色单独验（过渡版「只验亮色」缺口本轮补）。
 
@@ -324,3 +360,5 @@
 - 控件预算：`docs/design/nomi-design-system.md` §1.5（L1≤5 · 一功能一个家 · 先分组→去重→归位→收纳）
 - QA：`docs/qa/2026-09-01-agent-m0-red-lights.md`（C9 侧：开闸删旧 + handoff 重接）
 - 自家复用件（synthesis 节 3，全 `/Users/aoqimin/Desktop/Nomi/`）：`AgentPlanCard.tsx`(396) · `CommittedProposalCard.tsx`(137) · `ReconcileDeviationCard.tsx`(233) · `SpendConfirmDialog.tsx`(474) · `TaskCenterPanel.tsx`(422) · `AttachmentRail.tsx`(148) · `CardStackPeeks.tsx` · `CanvasSelectionToolbar.tsx`(108) · `agentUsageStore.ts` · `staleConversationDivider.tsx`
+- **v2 库解剖源（2026-09-02 WebFetch 现役页面）**：Beautiful UI https://www.beautifului.dev/ （20 组件单页展柜：Loading/Thinking/Streaming Text/Approval Card/Tool Chips/Task Rows/Chat/Prompt Bar/…/Selection Actions）· AI Elements https://elements.ai-sdk.dev/ （Context/Checkpoint/Message/Plan/Queue/Artifact/… 组件 docs 子页）
+- **v2 竞品证据（file:line，全在 `docs/research/2026-08-24-agent-workbench/`）**：LibTV.md:80-81(P83-84 流程分段)/:86(P90 批量范围单个·部分·全部)/:107(P116 先检查 shot 再批量) · LibTV_CLI.md:115(P98 失败是否扣积分不承诺)/:186-187(结果写回画布节点) · web/tapnow_brainstorm.full.dom.md:145(确认物落画布不翻长聊天记录)/:190(一次一个关键问题) · web/xyq_canvas_manual.full.dom.md:258(查看已存版本单入口) · 对账矩阵 `2026-08-24-agent-workbench-comparison.md` §3（19 项能力均无「有出入」形态）

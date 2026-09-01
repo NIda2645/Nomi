@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nomi Agent 界面最终版重做 · 4 屏样张（2026-09-01）</title>
+<title>Nomi Agent 界面最终版重做 · 4 屏样张 v2（2026-09-02 · 照四条裁决重修）</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
 <style>
 :root{
@@ -100,15 +100,31 @@ h1{font-size:18px;font-weight:600;margin:0}
 .asst-head .nm{display:flex;align-items:center;gap:6px;font-weight:600;font-size:12px;color:var(--ink)}
 .asst-head .nlogo{width:20px;height:20px;border-radius:6px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-weight:700;font-size:10px}
 .asst-head .thread{color:var(--ink40)}
-.asst-head .usage{color:var(--ink40);font-variant-numeric:tabular-nums}
-.asst-head .usage b{color:var(--ink60);font-weight:500}
-.asst-head .skill-tag{color:var(--ac);display:inline-flex;align-items:center;gap:3px}
-.asst-head .fee{margin-left:auto;color:var(--ink40)}
 .asst-head .hico{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--ink40);cursor:pointer}
 .asst-head .hico:hover{background:var(--ink05);color:var(--ink)}
 .asst-head .r2{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11px;color:var(--ink60)}
 .asst-head .r2 .surface{background:var(--ink05);border-radius:6px;padding:2px 8px;display:inline-flex;gap:5px;align-items:center}
 .asst-head .r2 .surface b{color:var(--ink80);font-weight:500}
+
+/* 用量 pill + 悬停明细（AI Elements Context 解剖：trigger=百分比 pill，popover=环形进度+分项+费用 footer） */
+.usage-pill{position:relative;height:22px;padding:0 8px;border:1px solid var(--line);border-radius:999px;background:var(--paper);
+  display:inline-flex;align-items:center;gap:5px;color:var(--ink60);font-size:11px;cursor:default;font-variant-numeric:tabular-nums}
+.usage-pill svg{flex:none}
+.usage-pill .ring-bg{stroke:var(--ink10)}
+.usage-pill .ring-fg{stroke:var(--ac);stroke-linecap:round}
+.usage-pill:hover{border-color:var(--ink20);color:var(--ink80)}
+.ctx-pop{position:absolute;top:26px;right:0;z-index:30;width:210px;border:1px solid var(--line);border-radius:10px;background:var(--paper);
+  box-shadow:0 8px 30px rgba(20,18,16,.12);padding:10px 12px;display:none;text-align:left;cursor:default}
+.usage-pill .ctx-pop{left:0;right:auto}
+.usage-pill:hover .ctx-pop{display:block}
+.ctx-pop .cp-h{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink);font-weight:600;margin-bottom:6px}
+.ctx-pop .cp-row{display:flex;justify-content:space-between;font-size:11px;color:var(--ink60);padding:3px 0}
+.ctx-pop .cp-row .n{color:var(--ink80);font-variant-numeric:tabular-nums}
+.ctx-pop .cp-foot{border-top:1px solid var(--lineS);margin-top:5px;padding-top:6px;display:flex;justify-content:space-between;font-size:11px;color:var(--ink80);font-weight:500}
+.skill-pill{position:relative;height:22px;padding:0 8px;border:1px solid color-mix(in srgb,var(--ac) 40%,var(--line));border-radius:999px;
+  background:var(--acS);display:inline-flex;align-items:center;gap:4px;color:var(--ac);font-size:11px;cursor:default}
+.skill-pill:hover .ctx-pop{display:block}
+.skill-pill .ctx-pop{color:var(--ink60);font-size:11px;font-weight:400;line-height:1.5}
 
 /* 结果卡区（固定） */
 .resultzone{flex:none;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--ink05) 60%,var(--paper));padding:8px 10px}
@@ -189,9 +205,11 @@ body.dark .userbubble{color:var(--bg)}
 .queue .qrow{display:flex;align-items:center;gap:8px;padding:6px 11px;border-top:1px solid var(--lineS);font-size:11px}
 .queue .qrow .qtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink80)}
 .queue .qrow .qmeta{display:inline-flex;gap:5px;color:var(--ink40);font-size:10px}
-.queue .qrow .qacts{display:inline-flex;gap:2px}
+.queue .qrow .qacts{display:inline-flex;gap:2px;opacity:0;transition:opacity var(--t-tap) var(--ease)}
+.queue .qrow:hover .qacts{opacity:1}
 .queue .qrow .qacts .qi{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--ink40);cursor:pointer;font-size:13px}
 .queue .qrow .qacts .qi:hover{background:var(--ink10);color:var(--ink80)}
+.queue .qrow .qdot{width:6px;height:6px;flex:none;border-radius:50%;border:1.5px solid var(--ink30);background:transparent}
 
 /* composer */
 .composer{flex:none;border-top:1px solid var(--lineS);padding:8px 10px 9px}
@@ -278,6 +296,32 @@ body.dark .btn.pri{color:var(--bg)}
 .opt-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink60);margin-top:8px}
 .opt-row input{accent-color:var(--ac)}
 
+/* 反问卡（Beautiful UI Approval Card 解剖：一次一问 · 选项竖排 · 分页 1/N · 跳过/继续） */
+.opt-stack{display:flex;flex-direction:column;gap:6px;margin:8px 0 2px}
+.opt-stack .opt{height:28px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink80);
+  display:flex;align-items:center;gap:7px;padding:0 10px;font-size:12px;cursor:pointer;text-align:left}
+.opt-stack .opt:hover{border-color:var(--ink20);background:var(--ink05)}
+.opt-stack .opt.sel{border-color:var(--ac);background:var(--acS);color:var(--ac)}
+.opt-stack .opt .ord{width:14px;color:var(--ink30);font-size:10px;font-variant-numeric:tabular-nums}
+.opt-stack .opt.sel .ord{color:var(--ac)}
+.appr-foot{display:flex;align-items:center;gap:7px;margin-top:10px}
+.appr-foot .pg{font-size:11px;color:var(--ink40);font-variant-numeric:tabular-nums}
+.appr-foot .btn.skip{flex:none;min-width:0;border-color:transparent;color:var(--ink40)}
+.appr-foot .btn.next{flex:1}
+
+/* 产物卡（AI Elements Artifact 解剖：header=标题+描述+右侧动作组 · content=缩略图 · 动作永不盖图） */
+.artifact .a-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.artifact .a-head .a-title{font-size:12px;font-weight:600;color:var(--ink)}
+.artifact .a-head .a-desc{font-size:10px;color:var(--ink40);font-variant-numeric:tabular-nums}
+.artifact .a-head .a-acts{margin-left:auto;display:inline-flex;gap:3px;align-items:center}
+.artifact .a-head .a-acts .ai{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--ink60);cursor:pointer;font-size:14px}
+.artifact .a-head .a-acts .ai:hover{background:var(--ink05);color:var(--ink)}
+
+/* 认知负荷角标（每屏审计 before/after） */
+.audit{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;background:var(--ink05);
+  color:var(--ink60);font-size:10px;font-variant-numeric:tabular-nums;vertical-align:1px}
+.audit b{color:var(--ok);font-weight:600}.audit s{color:var(--ink40)}
+
 /* 有出入卡 */
 .deviation{background:var(--ink05);border-radius:7px;padding:8px 10px;margin:7px 0;font-size:11px}
 .deviation .dw{color:var(--ink80);font-weight:500;display:flex;align-items:center;gap:5px;margin-bottom:3px}
@@ -297,8 +341,6 @@ body.dark .btn.pri{color:var(--bg)}
 /* 产物缩略卡 */
 .artifact .athumb{height:120px;border-radius:8px;background:linear-gradient(135deg,oklch(0.55 0.09 40),oklch(0.4 0.06 250));position:relative;margin-bottom:8px}
 .artifact .ameta{position:absolute;bottom:6px;left:8px;font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)}
-.artifact .actrow{display:flex;gap:7px}
-.artifact .actrow .btn{flex:1}
 
 /* 拆解表（结果卡区 / 屏 C/D） */
 .shot-table{max-height:320px;overflow-y:auto}
@@ -364,14 +406,14 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 </head>
 <body>
 <div class="topbar">
-  <h1>Nomi Agent · 最终版重做样张</h1>
+  <h1>Nomi Agent · 最终版重做样张 v2</h1>
   <div class="tabs" id="tabs">
     <button class="tab on" data-s="A">屏 A · 主对话流</button>
     <button class="tab" data-s="B">屏 B · 审批 + 付费 + 有出入</button>
     <button class="tab" data-s="C">屏 C · 右槽互斥切换</button>
     <button class="tab" data-s="D">屏 D · 结果卡区并存</button>
   </div>
-  <div class="meta">以 11 张过渡版真机截图实际布局为底 · 只画改动 · <a href="../2026-09-01-agent-ui-final-redesign.md">设计定稿</a></div>
+  <div class="meta">v2 · 照四条裁决重修：组件整件复用（Beautiful UI 优先 / AI Elements 次之）· 独有件走竞品还原 · 认知负荷最低 · 反馈动效极简 · <a href="../2026-09-01-agent-ui-final-redesign.md">设计定稿（含 21 形态映射表）</a></div>
   <button class="toggle" id="darkT"><i class="ti ti-moon"></i><span>暗色</span></button>
   <button class="toggle" id="ruleT"><i class="ti ti-ruler-2"></i><span>标尺</span></button>
 </div>
@@ -380,7 +422,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 
 <!-- ══════════════════ 屏 A · 主对话流 ══════════════════ -->
 <section class="screen on" data-screen="A">
-  <p class="caption"><b>屏 A · 主对话流。</b>补齐过渡版缺的 <b>压缩分隔线(2)</b>、<b>阶段分隔线(5)+工序图示</b>、<b>思考条结束落定不消失(4)</b>、<b>常驻技能标记(21)</b>；composer 底栏 <b>7→5 簇</b>（@/技能归位到上下文架、工作方式+审批合成「执行方式」二段面板）。同一行「排队→进行中→完成」三态演示原位更新不刷屏。</p>
+  <p class="caption"><b>屏 A · 主对话流。</b>v2 改动：<b>header 用量收成一颗 pill</b>（AI Elements Context 解剖：百分比+环形进度 trigger，悬停才见 本轮/累计/费用 明细——header 常驻信息 7 段→4 段）；<b>队列行动作 hover 才显</b>（AI Elements Queue「hover-revealed actions」——常驻 5 控件→0）；<b>工具组折叠头 = 计数 chip</b>（Beautiful UI Tool Chips「4 tool calls, 2 messages」语法）；上下文架加号收成一个。压缩线(2)/阶段线(5)/思考落定(4)/常驻技能(21)/收簇 7→5 保持 v1 定稿。<span class="audit">屏内常驻可点 <s>26</s> → <b>19</b></span></p>
   <div class="app">
     <div class="appbar">
       <div class="brand"><span class="logo">N</span>Nomi</div>
@@ -417,9 +459,19 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
             <span class="hico" title="折叠右栏"><i class="ti ti-layout-sidebar-right-collapse"></i></span>
           </div>
           <div class="r1" style="margin-top:5px">
-            <span class="usage"><b>本轮 1.2k</b> · 累计 8.4k · 还能聊 ~40 轮</span>
-            <span class="skill-tag"><i class="ti ti-book" style="font-size:12px"></i>按 编剧·Kasdan</span>
-            <span class="fee">费用 ¥0.00</span>
+            <span class="usage-pill">
+              <svg width="12" height="12" viewBox="0 0 12 12"><circle class="ring-bg" cx="6" cy="6" r="4.6" fill="none" stroke-width="1.6"/><circle class="ring-fg" cx="6" cy="6" r="4.6" fill="none" stroke-width="1.6" stroke-dasharray="28.9" stroke-dashoffset="24.9" transform="rotate(-90 6 6)"/></svg>
+              还能聊 ~40 轮
+              <span class="ctx-pop">
+                <span class="cp-h"><svg width="16" height="16" viewBox="0 0 12 12"><circle class="ring-bg" cx="6" cy="6" r="4.6" fill="none" stroke-width="1.6"/><circle class="ring-fg" cx="6" cy="6" r="4.6" fill="none" stroke-width="1.6" stroke-dasharray="28.9" stroke-dashoffset="24.9" transform="rotate(-90 6 6)"/></svg>上下文 · 已用 14%</span>
+                <span class="cp-row"><span>本轮</span><span class="n">1.2k tokens</span></span>
+                <span class="cp-row"><span>累计</span><span class="n">8.4k tokens</span></span>
+                <span class="cp-foot"><span>本线程费用</span><span class="n">¥0.00</span></span>
+              </span>
+            </span>
+            <span class="skill-pill"><i class="ti ti-book" style="font-size:12px"></i>按 编剧·Kasdan
+              <span class="ctx-pop">常驻技能 · 约束后面所有输出<br>作用阶段：剧本段 · v3 · 点 chip 可停用</span>
+            </span>
           </div>
           <div class="r2">
             <span class="surface"><i class="ti ti-file-text" style="font-size:13px"></i>当前现场 · <b>文稿</b> · 当前文稿</span>
@@ -455,7 +507,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 
           <!-- 工具组折叠 (形态 6 + 20) -->
           <div class="toolgroup">
-            <div class="tg-head"><i class="ti ti-tool" style="font-size:14px"></i>工具调用 3<span class="chev"><i class="ti ti-chevron-down"></i></span></div>
+            <div class="tg-head"><i class="ti ti-tool" style="font-size:14px"></i>工具 3 · 1 在跑<span class="elapsed" style="margin-left:6px">0:12</span><span class="chev"><i class="ti ti-chevron-down"></i></span></div>
             <div class="tg-body">
               <div class="line tool-done"><span class="li"><i class="ti ti-check"></i></span>读了剧本 · 2400 字 <span class="elapsed" style="margin-left:auto">&lt;1s</span></div>
               <div class="line tool-done"><span class="li"><i class="ti ti-check"></i></span>载入了 镜头语言与摄影技法 <span class="chev"><i class="ti ti-chevron-right"></i></span></div>
@@ -489,6 +541,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
         <div class="queue">
           <div class="qh"><i class="ti ti-stack-2" style="font-size:14px"></i>队列 · 排队 1<span class="stop"><i class="ti ti-player-stop-filled" style="font-size:12px"></i>停止</span></div>
           <div class="qrow">
+            <span class="qdot"></span>
             <span class="qtext">再给第 5 镜换个更冷的色调</span>
             <span class="qmeta"><i class="ti ti-paperclip"></i>1 <i class="ti ti-robot"></i></span>
             <span class="qacts">
@@ -507,8 +560,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
             <span class="ctxchip subj"><i class="ti ti-photo ci"></i>阿青定妆<span class="role">主体·角色定妆</span><i class="ti ti-x x"></i></span>
             <span class="ctxchip changed"><i class="ti ti-clock-exclamation ci"></i>街道 02:10–02:14<span class="role">引用后已变化</span><i class="ti ti-x x"></i></span>
             <span class="ctxchip skill"><i class="ti ti-book ci"></i>按 编剧·Kasdan<i class="ti ti-x x"></i></span>
-            <button class="ctxadd"><i class="ti ti-at"></i>加引用</button>
-            <button class="ctxadd"><i class="ti ti-book"></i>技能</button>
+            <button class="ctxadd" title="加引用（@）或技能"><i class="ti ti-plus"></i>引用 / 技能</button>
           </div>
           <div class="cbox">
             <div class="cprompt ph">继续告诉 Nomi 要改什么…</div>
@@ -524,17 +576,17 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
       </div>
     </div>
   </div>
-  <p class="caption" style="margin-top:14px"><b>收簇账（7→5）：</b>底栏 5 簇 = 📎附件 · ⚡执行方式(工作方式 3 档 + 批准策略 3 档，同一入口两段) · 🤖Agent 模型 · ✏️提示词 · ↑发送。<b>@引用 / 技能归位到上下文架那一行</b>（§13.2「L1 输入反馈不另占工具栏入口」，0 代价的归位而非收纳）。模型菜单空态用真文案「去选文本模型」——<b>不露原始 i18n key</b>（修 C4）。</p>
+  <p class="caption" style="margin-top:14px"><b>收簇账（7→5）：</b>底栏 5 簇 = 📎附件 · ⚡执行方式(工作方式 3 档 + 批准策略 3 档，同一入口两段) · 🤖Agent 模型 · ✏️提示词 · ↑发送——composer 双区解剖（上=chips 架、下=配置行）对齐 Beautiful UI Prompt Bar（top chips zone + bottom controls：@ sources / commands / model picker）。<b>@引用 / 技能归位到上下文架那一行</b>（§13.2），v2 把两个虚线加号并成一个「+ 引用 / 技能」（可见入口 2→1，@ 键入仍直达）。模型菜单空态用真文案「去选文本模型」——不露原始 i18n key（修 C4）。</p>
 </section>
 
 <!-- ══════════════════ 屏 B · 卡片 ══════════════════ -->
 <section class="screen" data-screen="B">
-  <p class="caption"><b>屏 B · 审批 + 付费卡 + 有出入卡。</b>补齐 <b>付费富卡(9)</b>（对话内第二宿主，明标单价+合计+冻结项+交互即暂停）、<b>有出入卡(16 · Nomi 独有护城河)</b>、<b>反问卡(17 · ≤3 问)</b>；升级 <b>计划卡(8)</b>（批级+单镜+待你看 chip）、<b>产物缩略卡(13)</b>、<b>多候选组(14)</b>。所有卡在会话流内随流（决定一次就完），不进结果卡区。控件统一 28px 高、同排等宽均分、主次只用颜色。</p>
+  <p class="caption"><b>屏 B · 审批 + 付费卡 + 有出入卡。</b>v2 改动：<b>反问卡(17) 照 Beautiful UI Approval Card 整件重构</b>——一次只问一问、选项竖排、分页 1/2、跳过+继续（同屏要想的问题 2→1，可见选择 6→5）；<b>产物卡(13) 照 AI Elements Artifact 重构</b>——动作组挪进 header 右侧（title+desc+actions 一行，缩略图纯内容，永不被盖）；<b>多候选(14) 砍掉 上一个/下一个</b>（点缩略图即选，可见选择 6→4；竞品 XYQ 同场景也只给「查看已存版本」单入口）。计划卡(8)/付费卡(9)/有出入卡(16)/失败卡(15) 保持 v1 定稿。所有卡随会话流（决定一次就完），不进结果卡区。<span class="audit">卡均可见选择 <s>5.2</s> → <b>4.3</b></span></p>
   <div class="grid2">
 
     <!-- 计划卡 (形态 8) -->
     <div class="cardframe">
-      <div class="cf-lbl"><b>形态 8 · 计划卡</b>（批级 + 单镜两层 · 复用 AgentPlanCard）</div>
+      <div class="cf-lbl"><b>形态 8 · 计划卡</b>（源：自家 AgentPlanCard 396 行整件复用 · AI Elements Plan 交叉核结构）</div>
       <div class="cf-body">
         <div class="card accent">
           <div class="chd"><i class="ti ti-list-details ic"></i>拆成 5 镜 · 生成计划</div>
@@ -559,7 +611,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 
     <!-- 付费富卡 (形态 9) -->
     <div class="cardframe">
-      <div class="cf-lbl"><b>形态 9 · 付费确认卡</b>（对话内第二宿主 · 与 SpendConfirmDialog 同明细组件）</div>
+      <div class="cf-lbl"><b>形态 9 · 付费确认卡</b>(竞品还原反着做：LibTV 连「失败是否扣积分」都不承诺 → 我们单价+合计+冻结项全明示 · 复用 SpendConfirmDialog 明细)</div>
       <div class="cf-body">
         <div class="card accent">
           <div class="chd"><i class="ti ti-coin ic"></i>确认生成 · 会花钱</div>
@@ -574,7 +626,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
               <button class="btn">取消</button>
               <button class="btn pri">确认并生成</button>
             </div>
-            <div class="opt-row"><input type="checkbox" id="np"><label for="np">本会话不再提示（仅用户直发档；agent 受理档每次必确认 — 见决策 D4）</label></div>
+            <div class="opt-row"><input type="checkbox" id="np"><label for="np">本会话不再提示 · 仅用户直发档（agent 受理档每次必确认，D4）</label></div>
           </div>
         </div>
       </div>
@@ -582,7 +634,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 
     <!-- 有出入卡 (形态 16) -->
     <div class="cardframe">
-      <div class="cf-lbl"><b>形态 16 · 有出入卡</b>（批准 ≠ 执行 · Nomi 独有 · 复用 ReconcileDeviationCard）</div>
+      <div class="cf-lbl"><b>形态 16 · 有出入卡</b>（源：自家 ReconcileDeviationCard 233 行整件复用 · 竞品 19 项能力矩阵均无此形态=护城河）</div>
       <div class="cf-body">
         <div class="card warn">
           <div class="chd"><i class="ti ti-git-compare ic"></i>做完了，但和批准的有出入</div>
@@ -606,58 +658,66 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
       </div>
     </div>
 
-    <!-- 反问卡 (形态 17) -->
+    <!-- 反问卡 (形态 17) · v2 照 Beautiful UI Approval Card 整件重构 -->
     <div class="cardframe">
-      <div class="cf-lbl"><b>形态 17 · 反问卡</b>（≤3 问合并 · 选项 chips）</div>
+      <div class="cf-lbl"><b>形态 17 · 反问卡</b>（源：Beautiful UI · Approval Card——一次一问 · 选项竖排 · 分页 · 跳过/继续）</div>
       <div class="cf-body">
         <div class="card accent">
-          <div class="chd"><i class="ti ti-help-circle ic"></i>开始前先确认两件</div>
+          <div class="chd"><i class="ti ti-help-circle ic"></i>开始前先确认两件<span class="tag-you">要你选</span></div>
           <div class="cbd">
-            <div style="font-size:12px;color:var(--ink80);margin-bottom:6px">整体走什么调性？</div>
-            <div class="parambar">
-              <span class="pick you">冷调雨夜</span><span class="pick">暖调怀旧</span><span class="pick">高对比黑白</span>
+            <div style="font-size:12px;color:var(--ink80)">整体走什么调性？</div>
+            <div class="opt-stack">
+              <button class="opt sel"><span class="ord">1</span>冷调雨夜<i class="ti ti-check" style="margin-left:auto;font-size:13px"></i></button>
+              <button class="opt"><span class="ord">2</span>暖调怀旧</button>
+              <button class="opt"><span class="ord">3</span>高对比黑白</button>
             </div>
-            <div style="font-size:12px;color:var(--ink80);margin:10px 0 6px">参考图按谁的定妆？</div>
-            <div class="parambar">
-              <span class="pick you">阿青</span><span class="pick">路人甲</span>
+            <div class="appr-foot">
+              <span class="pg">1 / 2</span>
+              <button class="btn skip">跳过</button>
+              <button class="btn pri next">继续</button>
             </div>
-            <div class="grp"><button class="btn pri">按这个继续</button></div>
+            <div style="font-size:10px;color:var(--ink40);margin-top:6px">下一问「参考图按谁的定妆」翻页再答 · 最多合并 ≤3 问，答完一次性继续</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 多候选组 (形态 14) -->
+    <!-- 多候选组 (形态 14) · v2 砍掉 上一个/下一个（点缩略图即选） -->
     <div class="cardframe">
-      <div class="cf-lbl"><b>形态 14 · 多候选组</b>（同一请求多结果 · 并排≤3 · accept 才转正）</div>
+      <div class="cf-lbl"><b>形态 14 · 多候选组</b>（竞品还原：InvokeAI 暂存合同 + XYQ「查看已存版本」单入口 · accept 才转正）</div>
       <div class="cf-body">
         <div class="card">
           <div class="chd"><i class="ti ti-layout-grid ic" style="color:var(--ink60)"></i>镜 1 · 3 个候选</div>
           <div class="cbd">
             <div class="candidates">
-              <div class="cand sel" style="--h:40"><div class="cthumb"></div><div class="selmark"><i class="ti ti-check"></i></div><div class="cft">A · 采用中</div></div>
+              <div class="cand sel" style="--h:40"><div class="cthumb"></div><div class="selmark"><i class="ti ti-check"></i></div><div class="cft">A · 选中</div></div>
               <div class="cand" style="--h:210"><div class="cthumb"></div><div class="cft">B</div></div>
               <div class="cand" style="--h:120"><div class="cthumb"></div><div class="cft">C</div></div>
             </div>
             <div class="grp">
-              <button class="btn">上一个</button>
-              <button class="btn">下一个</button>
               <button class="btn pri">采用 A 版</button>
             </div>
-            <div style="font-size:10px;color:var(--ink40);margin-top:6px">采用前只是暂存 · 不改画布；批量卡翻输入镜头 ≠ 本卡翻同一请求的结果</div>
+            <div style="font-size:10px;color:var(--ink40);margin-top:6px">点缩略图即切选（不设 上一个/下一个）· 采用前只是暂存不改画布 · 批量卡翻输入镜头 ≠ 本卡翻同一请求的结果 · 多于 3 版折叠</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 产物缩略卡 (形态 13) + 失败卡 (形态 15) -->
+    <!-- 产物缩略卡 (形态 13 · AI Elements Artifact 解剖) + 失败卡 (形态 15) -->
     <div class="cardframe">
-      <div class="cf-lbl"><b>形态 13 · 产物缩略卡</b> + <b>形态 15 · 失败卡</b>（动作外置不盖图 · 明标是否计费）</div>
+      <div class="cf-lbl"><b>形态 13 · 产物缩略卡</b>（源：AI Elements · Artifact——header=标题+描述+动作组，content=纯内容）+ <b>形态 15 · 失败卡</b>（明标是否计费）</div>
       <div class="cf-body">
         <div class="card artifact">
           <div class="cbd">
-            <div class="athumb"><div class="ameta">镜 1 · 1024×1792 · v2</div></div>
-            <div class="actrow"><button class="btn">改</button><button class="btn">重跑</button><button class="btn acc">去画布</button></div>
+            <div class="a-head">
+              <span class="a-title">镜 1</span><span class="a-desc">1024×1792 · v2</span>
+              <span class="a-acts">
+                <span class="ai" title="改提示词"><i class="ti ti-pencil"></i></span>
+                <span class="ai" title="重跑"><i class="ti ti-refresh"></i></span>
+                <button class="btn acc" style="height:24px;min-width:0;padding:0 9px">去画布</button>
+              </span>
+            </div>
+            <div class="athumb" style="margin-bottom:0"><div class="ameta">镜 1 · 特写 · 暖光</div></div>
           </div>
         </div>
         <div class="card danger" style="margin-top:12px">
@@ -761,7 +821,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
 
 <!-- ══════════════════ 屏 D · 结果卡区并存 ══════════════════ -->
 <section class="screen" data-screen="D">
-  <p class="caption"><b>屏 D · 结果卡区并存（③合流最终态）。</b>交互 epic 双区外壳落地后互斥消失：右槽 = Agent 工作区双区——<b>结果卡区（固定 · 不随聊天滚走）</b>停拆解卡 + 下方<b>会话流</b>并存。这是 C9 的结构答案。<b>新功能 = 新卡片，不再新立面板（单壳）</b>；两个入口（节点浮条 A / Agent 会话工具卡 B）汇聚同一张卡（订阅工件状态 <code>videoUrl/nodeId</code>，不绑面板 open 布尔 → 平移不返工）。</p>
+  <p class="caption"><b>屏 D · 结果卡区并存（③合流最终态）。</b>交互 epic 双区外壳落地后互斥消失：右槽 = Agent 工作区双区——<b>结果卡区（固定 · 不随聊天滚走）</b>停拆解卡 + 下方<b>会话流</b>并存。竞品同证：TapNow 手册「随时回到画布查看已确认内容，<b>不需要在很长的聊天记录里重新寻找</b>」——确认物固定、过程滚走，同一判据。拆解表勾选=批量范围自由选（LibTV「单个/部分/全部」）。<b>新功能 = 新卡片，不再新立面板（单壳）</b>；两个入口（节点浮条 A / Agent 会话工具卡 B）汇聚同一张卡（订阅工件状态 <code>videoUrl/nodeId</code>，不绑面板 open 布尔 → 平移不返工）。</p>
   <div class="app">
     <div class="appbar">
       <div class="brand"><span class="logo">N</span>Nomi</div>
@@ -799,8 +859,16 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
             <span class="hico"><i class="ti ti-layout-sidebar-right-collapse"></i></span>
           </div>
           <div class="r1" style="margin-top:5px">
-            <span class="usage"><b>本轮 0.8k</b> · 累计 3.1k · 还能聊 ~52 轮</span>
-            <span class="fee">费用 ¥1.26</span>
+            <span class="usage-pill">
+              <svg width="12" height="12" viewBox="0 0 12 12"><circle class="ring-bg" cx="6" cy="6" r="4.6" fill="none" stroke-width="1.6"/><circle class="ring-fg" cx="6" cy="6" r="4.6" fill="none" stroke-width="1.6" stroke-dasharray="28.9" stroke-dashoffset="27" transform="rotate(-90 6 6)"/></svg>
+              还能聊 ~52 轮
+              <span class="ctx-pop">
+                <span class="cp-h">上下文 · 已用 6%</span>
+                <span class="cp-row"><span>本轮</span><span class="n">0.8k tokens</span></span>
+                <span class="cp-row"><span>累计</span><span class="n">3.1k tokens</span></span>
+                <span class="cp-foot"><span>本线程费用</span><span class="n">¥1.26</span></span>
+              </span>
+            </span>
           </div>
           <div class="r2"><span class="surface"><i class="ti ti-movie" style="font-size:13px"></i>当前现场 · <b>视频</b> · 咖啡馆入物镜头</span></div>
         </div>
@@ -866,7 +934,7 @@ body.rule .divider .lk{outline:1px dashed var(--warn);outline-offset:2px}
         <div class="composer">
           <div class="ctxshelf">
             <span class="ctxchip subj"><i class="ti ti-movie ci"></i>咖啡馆入物镜头<span class="role">source·源视频</span><i class="ti ti-x x"></i></span>
-            <button class="ctxadd"><i class="ti ti-at"></i>加引用</button>
+            <button class="ctxadd" title="加引用（@）或技能"><i class="ti ti-plus"></i>引用 / 技能</button>
           </div>
           <div class="cbox">
             <div class="cprompt ph">继续告诉 Nomi 要改什么…</div>
