@@ -1,9 +1,10 @@
 // 即梦官方 dreamina CLI 输出的纯解析逻辑（无 electron/IO 依赖 → 可裸 Node 单测，仿 doubaoTtsCodec.ts）。
 // processOperation 的 spawn 分支调用这里把 CLI stdout 归一成稳定形状，喂给现有 buildProfileTaskResult。
 //
-// 契约来源：官方 dreamina CLI v1.4.8 的 `-h` + SKILL.md + 真机 user_credit/错误信封（2026-06-24 实测），
-// 以及参考实现 Infinite-Canvas(hero8152) main.py 的实战解析逻辑——仅借「dreamina 输出长什么样」这层
-// **事实性契约知识**（字段名/结构不受版权保护），全部 TS 重写，不抄其代码（该项目禁止商用）。
+// 契约来源：官方 dreamina CLI 的 `-h` + SKILL.md + 真机 user_credit/错误信封（2026-06-24 首建；2026-09-01
+// 于 CLI v1.4.17 复核输出解析仍成立——stdout 形状与版本无关），以及参考实现 Infinite-Canvas(hero8152) main.py
+// 的实战解析逻辑——仅借「dreamina 输出长什么样」这层**事实性契约知识**（字段名/结构不受版权保护），全部 TS 重写，
+// 不抄其代码（该项目禁止商用）。命令参数矩阵见 docs/research/2026-09-01-dreamina-cli-v1417-matrix.md。
 //
 // dreamina 输出的两个坑（都来自实战契约）：
 //  ① 输出常是「人类可读文本 + JSON」混合，不是干净 JSON → 要从文本里抠出最像结果的那个 JSON 对象。
@@ -303,11 +304,15 @@ export function normalizeDreaminaOutput(stdout: string, stderr = ""): DreaminaNo
   };
 }
 
-// ── 命令参数的纯校验/归一（官方 -h 的「supported combinations」，按模型 derive，不 hardcode 钉死）──
+// ── 命令参数的纯校验/归一 ──
+// 视频/图片的**变体、分辨率枚举、时长边界、必填参数**现在全部从档案（dreaminaSeedance.ts / dreaminaImage.ts /
+// dreaminaMultiframe.ts）声明式派生（模板引擎读 request.params，档案默认值随之写入）——这是单一真相源。
+// 此处只保留 multiframe2video 专用的**段时长整数化夹取**（buildMultiframeArgs 用）；ratio/video_resolution 的
+// 校验不在这（正常路径由档案 select 选项限死；multiframe 的 video_resolution 走 normalizeMultiframeResolution）。
+// （旧的 normalizeDreaminaVideoResolution/normalizeDreaminaRatio/DREAMINA_VIDEO_RATIOS 已删：从不被生产调用，
+//  且「1080p 仅 vip」在 seedance2.5 时已factually 错误——避免留下与档案打架的第二套真相。）
 
-export const DREAMINA_VIDEO_RATIOS = ["1:1", "3:4", "16:9", "4:3", "9:16", "21:9"] as const;
-
-/** 时长按模型区间夹取（seedance 4-15s；缺省 5）。非法输入回落区间内默认。 */
+/** 段时长按区间整数化夹取（multiframe2video 每段 1-8s；缺省 5）。非法输入回落区间内默认。 */
 export function clampDreaminaDuration(duration: unknown, low = 4, high = 15): number {
   const fallback = Math.max(low, Math.min(high, 5));
   const n = typeof duration === "number" ? duration : parseInt(String(duration ?? "").trim(), 10);
@@ -315,27 +320,22 @@ export function clampDreaminaDuration(duration: unknown, low = 4, high = 15): nu
   return Math.max(low, Math.min(high, Math.trunc(n)));
 }
 
-/** 校验比例；非法回落空串（让 CLI 用模型默认）。 */
-export function normalizeDreaminaRatio(ratio: unknown): string {
-  const v = String(ratio ?? "").trim();
-  return (DREAMINA_VIDEO_RATIOS as readonly string[]).includes(v) ? v : "";
-}
-
-/** 1080p 仅 vip 档支持，其余一律 720p。 */
-export function normalizeDreaminaVideoResolution(model: string, resolution: unknown): string {
-  const requested = String(resolution ?? "").trim().toUpperCase();
-  const isVip = /vip/i.test(String(model || ""));
-  if (requested === "1080P" && isVip) return "1080p";
-  return "720p";
-}
-
 /** 把多行文本按行拆成非空过渡描述列表。 */
 export function splitTransitionLines(text: unknown): string[] {
   return String(text ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
 }
 
+/** multiframe2video 只支持 720p/1080p（官方 -h，SOURCE：2026-09-01-dreamina-cli-v1417-matrix.md）。非法回落 720p（档案默认）。 */
+export const DREAMINA_MULTIFRAME_RESOLUTIONS = ["720p", "1080p"] as const;
+export function normalizeMultiframeResolution(resolution: unknown): string {
+  const v = String(resolution ?? "").trim().toLowerCase();
+  return (DREAMINA_MULTIFRAME_RESOLUTIONS as readonly string[]).includes(v) ? v : "720p";
+}
+
 /**
- * multiframe2video 的**按图数变形**参数构建（纯函数）。官方 -h：
+ * multiframe2video 的**按图数变形**参数构建（纯函数）。官方 -h（v1.4.17）：
+ *  - `--video_resolution` **required**（720p/1080p）——v1.4.14 破坏性变更，必须显式发，否则 CLI 硬拒
+ *    `required flag(s) "video_resolution" not set`。
  *  - 2 图：`--images a,b --prompt <主提示> [--duration <秒>]`（shorthand）
  *  - 3+ 图：`--images a,b,c --transition-prompt <P1> --transition-prompt <P2> …`（N 图要 N-1 句；此时不发 --prompt）
  * 过渡行不足 N-1 时用「最后一句 / 主提示」补齐；多出则截断。3+ 时长走后端默认每段 3s（不发 --duration）。
@@ -345,9 +345,12 @@ export function buildMultiframeArgs(input: {
   prompt: string;
   transitionLines: string[];
   duration?: unknown;
+  videoResolution?: unknown;
 }): string[] {
   const images = input.imagePaths.filter(Boolean);
   const args = ["multiframe2video", `--images=${images.join(",")}`];
+  // required（v1.4.14）：无论几图都必须带 --video_resolution。放在 --images 后、变形段前，位置无关但保证一定发出。
+  args.push(`--video_resolution=${normalizeMultiframeResolution(input.videoResolution)}`);
   if (images.length <= 2) {
     const prompt = String(input.prompt || "").trim();
     if (prompt) args.push(`--prompt=${prompt}`);
@@ -433,8 +436,8 @@ export function isNotMaestroVip(text: string): boolean {
 
 /**
  * 是否命中「首次使用需在 Dreamina Web 端完成内容安全授权」闸。
- * 现役 CLI（build 2026-06-18）每个生成子命令的 -h 都警告：部分高内容安全风险模型首次使用前，
- * 需先在 Dreamina Web 端授权；若返回 AigcComplianceConfirmationRequired，请先完成授权后重试。
+ * 现役 CLI（v1.4.17，2026-09-01 复核）每个生成子命令的 -h 都警告：部分模型首次使用前需先在 Dreamina Web
+ * 端完成一次生成；若提交后返回 AigcComplianceConfirmationRequired，请先在网页端完成后重试。
  */
 export function isComplianceConfirmationRequired(text: string): boolean {
   return /AigcComplianceConfirmationRequired|ComplianceConfirmationRequired|内容安全.*授权|授权确认/i.test(String(text || ""));

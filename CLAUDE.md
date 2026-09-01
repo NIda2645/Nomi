@@ -103,6 +103,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R23 | React Flow 生成画布单内核与迁移等价 | 生产画布只允许 React Flow 一个交互/变换内核，Zustand 是业务与持久化真相源；迁移必须逐项保留既有几何、交互、视觉和反馈，并用 adapter/结构测试 + 真实 Electron 走查证明 |
 | R25 | 提交/推送前 Ponytail 评审 | pre-commit/pre-push 自动调用只读、限时 `/ponytail-review` 适配器；失败或缺少结果 fail-closed |
 | R26 | 分层边界不许反向/循环 | 渲染层（src/）禁直捅主进程（走 bridge/中立契约层）、主进程禁反向 import 渲染层、禁新增完全静态循环；`check:boundaries` 棘轮（`boundaries-baseline.json` 只减不增），加规则先验会红（R17）。归属地图 `docs/architecture/module-ownership-map.md`，详见 L2 |
+| R27 | 多智能体编排手册 | 派工 / 收货 / 接力的机器化纪律：谁的方案谁实施·验收必跨池、任务书发行权独占 + 开工三行头、收货三查（behind 数 / 两点回滚 / 套件失败 delta=0）、等待用 sleep 轮询 + 哨兵法（禁 --watch/Monitor/交卷）、判活看外部面 + 盘上现场接力、远落后分支走 `gh pr update-branch`、验收锚固定复现命令防移靶、Codex 用 full clone + 结构护栏。详见 L2 `docs/engineering/agent-orchestration-playbook.md` |
 
 ## 决策自治
 

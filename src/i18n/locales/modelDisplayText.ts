@@ -77,6 +77,8 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   '多模态参考；最多 9 角色 / 3 视频 / 3 音频': 'Multimodal references: up to 9 characters, 3 videos, and 3 audio clips',
   '多模态参考；最多 9 图 / 3 视频 / 3 音频': 'Multimodal references: up to 9 images, 3 videos, and 3 audio clips',
   '多模态参考：最多 9 图 / 3 视频 / 3 音频': 'Multimodal references: up to 9 images, 3 videos, and 3 audio clips',
+  '多模态参考：2.0 最多 9 图 / 3 视频 / 3 音频；2.5 最多 30 图 / 10 视频 / 10 音频（可纯音频）':
+    'Multimodal references: 2.0 up to 9 images / 3 videos / 3 audio; 2.5 up to 30 images / 10 videos / 10 audio (audio-only allowed)',
   多帧叙事: 'Multi-frame story',
   风格: 'Style',
   负向提示: 'Negative prompt',
@@ -97,6 +99,7 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   '混元3D v3.1': 'Hunyuan3D v3.1',
   '火山 Seedream 高清文生图': 'Volcengine Seedream high-resolution text-to-image',
   '即梦 Seedance 2.0': 'Dreamina Seedance 2.0',
+  '即梦 Seedance': 'Dreamina Seedance',
   即梦多帧视频: 'Dreamina multi-frame video',
   即梦图片: 'Dreamina Image',
   '即梦图片（会员）': 'Dreamina Image (membership)',
@@ -183,6 +186,8 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
     'Describe the delivery naturally, such as “sweet and playful” or “calm, like a bedtime story”',
   '用即梦会员积分，纯文字生成 Seedance 2.0 视频':
     'Generate Seedance 2.0 video from text using Dreamina membership credits',
+  '用即梦会员积分，纯文字生成 Seedance 视频':
+    'Generate Seedance video from text using Dreamina membership credits',
   '用即梦会员积分，纯文字生成图像': 'Generate images from text using Dreamina membership credits',
   语速: 'Speed',
   语言: 'Language',

@@ -19,6 +19,7 @@
 | **某版本改了什么** | [`release-notes/`](release-notes/) |
 | **会话之间的交接（冷启动接手）** | [`handoff/`](handoff/) ｜ plan 里 `*-handoff.md` / `*-HANDOFF.md` 也是交接 |
 | **工作流方法论（如何走查/E2E/自主测试）** | [`workflow/`](workflow/) |
+| **多智能体编排（如何派工/收货/接力多个 Codex/Opus 执行体）** | [`engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)（CLAUDE.md R27 的 L2 详解）|
 | **模型接入实测产物（mapping/试验记录）** | [`onboarding-trials/`](onboarding-trials/) → 见其 `README.md` |
 | **QA / 测试记录** | [`qa/`](qa/) |
 | **架构定义** | [`architecture/`](architecture/) ｜ Agent Harness 架构在 `plan/2026-06-09-agent-harness-architecture.md` |
@@ -39,6 +40,7 @@
 | `mockups/` | HTML 样张 |
 | `qa/` | 测试记录 |
 | `workflow/` | 工作流方法论 |
+| `engineering/` | 工程手册（多智能体编排等，CLAUDE.md 规则索引的 L2 详解）|
 | `handoff/` | 会话交接 |
 | `architecture/` `marketing/` `media/` `product/` `ui-designs/` | 其它专题目录 |
 

@@ -71,6 +71,7 @@ import { hydrateWorkbenchProjectWithRecovery } from './project/projectHydrationR
 import { runProjectAssetHealthCheck } from './generationCanvas/runner/projectAssetHealthCheck'
 import { abandonPendingCanvasWrite } from './generationCanvas/events/canvasWriteBoundary'
 import { SurfacePortWireError } from '../../electron/shared/surfacePortBinding'
+import { FeedbackShareHost } from '../ui/community/FeedbackShareHost'
 
 type AppView = 'library' | 'studio'
 
@@ -885,6 +886,7 @@ export default function NomiStudioApp(): JSX.Element {
     <>
       {globalBrowserDialog}
       {viewContent}
+      <FeedbackShareHost />
       {/* 付费确认卡挂在公共根：制作任务的家是任务中心（顶栏常驻、创作/生成/预览都能开），
           门的兜底决策必须在任一视图都弹得出来。原先库页一处、生成区插槽内一处——创作/预览视图
           下根本没挂载，在那儿点确认永远没反应（本轮走查实测抓出）。单一挂载，不留并行版（P1）。 */}

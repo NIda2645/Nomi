@@ -38,6 +38,29 @@ export function firstReferenceImage(request: TaskParamsInput, selected?: Paramet
 }
 
 /**
+ * 全部参考图（多模态理解用）。数据本来就是数组，只是 firstReferenceImage 按单图语义截了第 0 张。
+ * 视频拆解要一次喂一镜的 3 帧，故补一个复数入口；单图调用方继续用 firstReferenceImage 不受影响。
+ *
+ * 与 firstReferenceImage 同一套取值优先级（**含 ComfyUI 参考契约**，1040 commit 间 firstReferenceImage
+ * 已升级为契约感知——这里跟着走同一条缝，别退回旧的裸 referenceImages[0] 语义，否则 comfy 输入被吞）：
+ *   有 comfy 契约 → 取契约声明的全部 image 槽；否则 → referenceImages 全集（缺省再兜单图别名）。
+ */
+export function allReferenceImages(request: TaskParamsInput, selected?: ParameterReferenceSelection): string[] {
+  const extras = request.extras || {};
+  if (comfyReferenceContract(extras, selected)) {
+    return declaredComfyReferences(extras, selected)
+      .filter((reference) => reference.family === "image")
+      .map((reference) => reference.url)
+      .filter((url) => url.length > 0);
+  }
+  const referenceImages = Array.isArray(extras.referenceImages) ? extras.referenceImages : [];
+  const urls = referenceImages.map((item) => firstString(item)).filter((url) => url.length > 0);
+  if (urls.length) return urls;
+  const single = firstReferenceImage(request, selected);
+  return single ? [single] : [];
+}
+
+/**
  * wire 必填参数兜底（headless/MCP 路）：UI 经 NodeGenerationComposer 按档案填好 size/voice/model 等；
  * 但 MCP/CLI 的 generate 不经 UI、也不暴露 params，缺必填参 vendor 直接拒（火山缺 size→400 / apimart 缺
  * model→500 / 豆包缺 voice→「未选择音色」）。把 mapping.create.defaultParams 合并到 extras **之下**

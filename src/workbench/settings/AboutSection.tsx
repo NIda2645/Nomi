@@ -1,6 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconChevronRight, IconCircleCheck, IconMap, IconPlayerPlay } from '@tabler/icons-react'
+import { IconAlertTriangle, IconChevronRight, IconCircleCheck, IconMap, IconMessage, IconPlayerPlay } from '@tabler/icons-react'
 import { DesignProgress, NomiLoadingMark, NomiLogoMark, NomiWordmark, WorkbenchButton } from '../../design'
 import { useUpdater } from '../../ui/app-shell/useUpdater'
 
@@ -73,6 +73,15 @@ export function AboutSection({ onClose, onReplaySplash }: AboutSectionProps): JS
       </div>
 
       <div className="mb-4 flex flex-col gap-2">
+        <AboutActionRow
+          icon={<IconMessage size={18} stroke={1.6} aria-hidden="true" />}
+          title={t('about.feedbackShare')}
+          description={t('about.feedbackShareDescription')}
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('nomi-open-feedback-share'))
+            onClose()
+          }}
+        />
         <AboutActionRow
           icon={<IconMap size={18} stroke={1.6} aria-hidden="true" />}
           title={t('about.handbook')}

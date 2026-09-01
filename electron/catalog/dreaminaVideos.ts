@@ -5,8 +5,9 @@
 // 后三个同 image_to_video 桶，靠**一条 mapping** + dreamina_cmd（mode.fixedParams 注入）选子命令 + per-mode params
 // 控制 flag（空值自动丢，避开子命令 flag 差异）。multiframe2video（多帧/transition）留下一切片。
 //
-// 模型 = 一条 catalog 行 + 档案 5 变体（model_version：seedance2.0fast/2.0/_vip/fast_vip/mini，见 dreaminaSeedance 档案），
-// 用户经 VariantBar 切换；args 的 --model_version 取 {{request.params.model}}（= 当前变体 modelKey）。
+// 模型 = 一条 catalog 行 + 档案 6 变体（model_version：seedance2.0fast/2.0/_vip/fast_vip/mini/2.5，见 dreaminaSeedance 档案；
+// SOURCE：docs/research/2026-09-01-dreamina-cli-v1417-matrix.md），用户经 VariantBar 切换；args 的 --model_version 取
+// {{request.params.model}}（= 当前变体 modelKey）。video_resolution/duration 必填且严格校验（v1.4.14）——由档案默认写入 request.params。
 // 输入图/视频/音频经 fileParams 物化成本地路径（dreamina 收 --image=<本地路径>，见 dreaminaInputFiles.ts）。
 
 import type { HttpOperation } from "./types";
@@ -115,7 +116,8 @@ const DREAMINA_VIDEO_STATUS: Record<string, string[]> = {
 export const DREAMINA_MULTIFRAME_MODEL_KEY = "dreamina-multiframe";
 
 export const DREAMINA_CURATED_MODELS = [
-  { modelKey: DREAMINA_VIDEO_MODEL_KEY, labelZh: "即梦 Seedance 2.0（会员）", kind: "video" as const, archetypeId: DREAMINA_ARCHETYPE_ID },
+  // labelZh 是展示名（含 2.0 家族 + 2.5，变体经 VariantBar 切换）；modelKey 是稳定 catalog 键/迁移锚点，勿改。
+  { modelKey: DREAMINA_VIDEO_MODEL_KEY, labelZh: "即梦 Seedance（会员）", kind: "video" as const, archetypeId: DREAMINA_ARCHETYPE_ID },
   { modelKey: DREAMINA_MULTIFRAME_MODEL_KEY, labelZh: "即梦多帧视频（会员）", kind: "video" as const, archetypeId: "dreamina-multiframe" },
 ];
 
@@ -124,7 +126,7 @@ export const DREAMINA_CURATED_MAPPINGS = [
     id: "seed-dreamina-seedance-2-text_to_video",
     taskKind: "text_to_video" as const,
     modelKey: DREAMINA_VIDEO_MODEL_KEY,
-    name: "即梦 Seedance 2.0 · 文生视频",
+    name: "即梦 Seedance · 文生视频",
     create: TEXT2VIDEO_CREATE,
     query: QUERY_RESULT,
     statusMapping: DREAMINA_VIDEO_STATUS,
@@ -133,7 +135,7 @@ export const DREAMINA_CURATED_MAPPINGS = [
     id: "seed-dreamina-seedance-2-image_to_video",
     taskKind: "image_to_video" as const,
     modelKey: DREAMINA_VIDEO_MODEL_KEY,
-    name: "即梦 Seedance 2.0 · 图生/首尾帧/全能参考",
+    name: "即梦 Seedance · 图生/首尾帧/全能参考",
     create: IMAGE_TO_VIDEO_CREATE,
     query: QUERY_RESULT,
     statusMapping: DREAMINA_VIDEO_STATUS,

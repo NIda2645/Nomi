@@ -16,6 +16,7 @@ import { enStoryboardEditor, zhStoryboardEditor } from './locales/storyboardEdit
 import { enGenerationCommon, zhGenerationCommon } from './locales/generationCommon'
 import { enRuntime, zhRuntime } from './locales/runtime'
 import { enAgentResident, zhAgentResident } from './locales/agentResident'
+import { enCommunity, zhCommunity } from './locales/community'
 
 export const zhCN = {
   common: {
@@ -80,6 +81,8 @@ export const zhCN = {
     updateError: '更新出错',
     checkAvailable: '检查是否有新版本可用',
     checkUpdate: '检查更新',
+    feedbackShare: '反馈与分享',
+    feedbackShareDescription: '遇到问题或想分享 Nomi？从这里开始',
   },
   taskCenter: {
     title: '任务',
@@ -393,6 +396,7 @@ export const zhCN = {
   generationCommon: zhGenerationCommon,
   runtime: zhRuntime,
   agentResident: zhAgentResident,
+  community: zhCommunity,
 } as const
 
 type TranslationShape<T> = {
@@ -463,6 +467,8 @@ export const en = {
     updateError: 'Update failed',
     checkAvailable: 'Check whether a new version is available',
     checkUpdate: 'Check for updates',
+    feedbackShare: 'Feedback & share',
+    feedbackShareDescription: 'Report a problem or share Nomi',
   },
   taskCenter: {
     title: 'Tasks',
@@ -780,6 +786,7 @@ export const en = {
   generationCommon: enGenerationCommon,
   runtime: enRuntime,
   agentResident: enAgentResident,
+  community: enCommunity,
 } satisfies TranslationShape<typeof zhCN>
 
 export const resources = {
