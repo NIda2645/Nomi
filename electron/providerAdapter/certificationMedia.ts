@@ -8,6 +8,7 @@ import { Model3DValidationError, validateGlbStructure } from "../assets/model3dV
 import { contentTypeFromMagicBytes, extensionFromContentType, isCertifiableMediaContentType, MEDIA_TYPES } from "../assets/mediaTypes";
 import { decodeMediaBytes, decodeMediaFile, probeMediaBytes, probeMediaMetadata, type MediaProbeMetadata } from "../export/mediaProbe";
 import { hardenedFetch, type HardenedFetchResult } from "../hardenedFetch";
+import { isCanonicalBase64Body } from "./base64";
 import {
   completeCertificationCleanupLease,
   recordCertificationCleanupFailure,
@@ -264,11 +265,14 @@ function strictDataUrl(source: string, maxBytes: number): { bytes: Buffer; conte
   const encoded = match[3] || "";
   let bytes: Buffer;
   if (match[2]) {
-    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
-      throw new CertificationMediaError("media_invalid_source");
-    }
+    // Size first: an oversized payload fails honestly as media_too_large before any
+    // full-string scan touches it. isCanonicalBase64Body is a linear scan (never the
+    // stack-recursive `(?:...{4})*` regex), so multi-MB base64 cannot overflow the stack.
     if (Math.floor((encoded.length * 3) / 4) > maxBytes) {
       throw new CertificationMediaError("media_too_large", { limitBytes: maxBytes });
+    }
+    if (!isCanonicalBase64Body(encoded)) {
+      throw new CertificationMediaError("media_invalid_source");
     }
     bytes = Buffer.from(encoded, "base64");
   } else {
