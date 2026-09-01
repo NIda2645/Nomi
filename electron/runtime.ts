@@ -66,6 +66,7 @@ export type {
 export {
   startExportJob,
   getExportJobStatus,
+  listExportJobs,
   cancelExportJob,
   writeExportTempInput,
   finishExportTempInput,
