@@ -38,8 +38,33 @@ export async function startFixtureServer({ repoRoot, fault = {} } = {}) {
   let origin = ''
   const assets = {
     image: path.join(repoRoot, 'tests/ux/fixtures/test-upload.png'),
-    video: path.join(repoRoot, 'marketing/assets/demo.mp4'),
+    // Small (~21KB) 320x240 2s clip, not marketing/assets/demo.mp4 (3.4MB): results
+    // are delivered as inline data: URLs (see below), and a multi-MB base64 video
+    // blows the stack ("Maximum call stack size exceeded") in the certification
+    // media path — the model then never certifies and stays unselectable. A small
+    // clip keeps the data URL well under that limit. (Product note filed
+    // separately: large data: video URLs should degrade, not overflow.)
+    video: path.join(repoRoot, 'tests/ux/fixtures/fixture-video.mp4'),
     model3d: path.join(repoRoot, 'src/assets/x-bot.glb'),
+  }
+  // Generation results are delivered as inline `data:` URLs, not loopback
+  // `${origin}/assets/*` links. Reason (probed 2026-09-01): the renderer can load
+  // a 127.0.0.1 URL into <img>/<video>, but the main-process result localizer
+  // (electron/runtime.ts localizeTaskAsset → importRemoteAsset → hardenedFetch)
+  // refuses to *download* a private/loopback host for any non-ComfyUI vendor
+  // (SSRF defense — correct production behavior). importRemoteAsset short-circuits
+  // `data:` URLs via parseDataUrl before hardenedFetch, so a data URL localizes
+  // inline with no network fetch — the same shape real vendors use when they
+  // return b64_json. The `/assets/*` routes stay for the certification/adapter
+  // path, which explicitly allow-lists the vendor origin.
+  const MIME = { image: 'image/png', video: 'video/mp4', model3d: 'model/gltf-binary' }
+  const dataUrlCache = new Map()
+  const dataUrl = (kind) => {
+    if (!dataUrlCache.has(kind)) {
+      const base64 = fs.readFileSync(assets[kind]).toString('base64')
+      dataUrlCache.set(kind, `data:${MIME[kind]};base64,${base64}`)
+    }
+    return dataUrlCache.get(kind)
   }
 
   const server = http.createServer(async (request, response) => {
@@ -102,7 +127,7 @@ export async function startFixtureServer({ repoRoot, fault = {} } = {}) {
     }
 
     if (request.method === 'POST' && /\/v1\/images\/(generations|edits)$/.test(url.pathname)) {
-      json(response, 200, { created: Date.now(), data: [{ url: `${origin}/assets/image.png` }] })
+      json(response, 200, { created: Date.now(), data: [{ url: dataUrl('image') }] })
       return
     }
 
@@ -112,7 +137,7 @@ export async function startFixtureServer({ repoRoot, fault = {} } = {}) {
     }
 
     if (request.method === 'GET' && url.pathname === '/v1/video/generations/fixture-video-task') {
-      json(response, 200, { task_id: 'fixture-video-task', status: 'succeeded', data: [{ url: `${origin}/assets/video.mp4` }] })
+      json(response, 200, { task_id: 'fixture-video-task', status: 'succeeded', data: [{ url: dataUrl('video') }] })
       return
     }
 

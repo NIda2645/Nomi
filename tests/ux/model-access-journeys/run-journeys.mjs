@@ -19,12 +19,23 @@ function outputRoot() {
 }
 
 function fixtureFault(journeyId) {
-  if (journeyId !== 'J15') return {}
-  const html = '<!doctype html><title>gateway dashboard</title><h1>not a model list</h1>'
-  return {
-    '/models': { status: 200, raw: html, contentType: 'text/html' },
-    '/v1/models': { status: 200, raw: html, contentType: 'text/html' },
+  if (journeyId === 'J15') {
+    const html = '<!doctype html><title>gateway dashboard</title><h1>not a model list</h1>'
+    return {
+      '/models': { status: 200, raw: html, contentType: 'text/html' },
+      '/v1/models': { status: 200, raw: html, contentType: 'text/html' },
+    }
   }
+  // J05/J06/J07 are the "auto-adaptation guessed a mode wrong, keep going" journeys:
+  // they need the video model's certification to FAIL so the per-model "自己接入 /
+  // 自定义调用" repair entry surfaces. Fail the video create endpoint (a 500 the
+  // adapter can't recover) while leaving discovery and image intact.
+  if (['J05', 'J06', 'J07'].includes(journeyId)) {
+    return {
+      '/v1/video/generations': { status: 500, message: 'fixture video mode unavailable' },
+    }
+  }
+  return {}
 }
 
 function requiredPhases(journeyId) {
