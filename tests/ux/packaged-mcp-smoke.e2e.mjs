@@ -143,7 +143,10 @@ async function smokeClient(client, { signed = true } = {}) {
     }
 
     const resources = (await rpc('resources/list')).result?.resources || []
-    const director = resources.find((resource) => resource.uri === 'nomi-skill://director-cinematography')
+    // Host cutover content-addresses skill resources: nomi-skill://<dir>/<packageVersion>/<contentHash>
+    // (integrity contract asserted in electron/capabilityCore/nomiMcpSkills.test.ts). Match by the
+    // directory-name prefix and read via the returned uri rather than the pre-cutover bare uri.
+    const director = resources.find((resource) => resource.uri.startsWith('nomi-skill://director-cinematography/'))
     assert(director, `${client} director cinematography resource is missing`)
     const body = (await rpc('resources/read', { uri: director.uri })).result?.contents?.[0]?.text || ''
     assert(body.includes('镜头语言') && body.length > 1_000, `${client} director cinematography body is incomplete`)
