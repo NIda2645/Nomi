@@ -48,6 +48,14 @@ function hook(name) {
   return definition
 }
 
+/** A deterministic, incompressible PNG-signed blob of the requested size. */
+function pngBytes(size) {
+  const buffer = Buffer.allocUnsafe(size)
+  for (let i = 0; i < size; i += 1) buffer[i] = (i * 1103515245 + 12345) & 0xff
+  buffer.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
+  return buffer
+}
+
 test('pre-push input validates ref ranges, including create and delete', () => {
   assert.deepEqual(parsePushInput(`refs/heads/task ${SHA_B} refs/heads/task ${SHA_A}\n`), [
     { localRef: 'refs/heads/task', localSha: SHA_B, remoteRef: 'refs/heads/task', remoteSha: SHA_A },
@@ -62,13 +70,17 @@ test('pre-push input validates ref ranges, including create and delete', () => {
 
 test('review diff is restricted to staged changes or outgoing ranges', () => {
   const calls = []
+  // The binary summary issues its own numstat/raw/cat-file probes; return empty
+  // so a text-only fixture keeps producing exactly the text diff.
   const fakeGit = (_root, args) => {
     calls.push(args)
+    if (args.includes('--numstat') || args.includes('--raw') || args[0] === 'cat-file') return ''
     return args.includes('--cached') ? 'staged patch' : 'outgoing patch'
   }
   const staged = collectReviewDiff({ repoRoot: '/repo', scope: 'staged', runGit: fakeGit })
   assert.equal(staged.diff, 'staged patch')
   assert.match(calls[0].join(' '), /--cached/)
+  assert.ok(!calls.some((args) => args.includes('--binary')), 'binary payloads must not be requested')
 
   const pushed = collectReviewDiff({
     repoRoot: '/repo',
@@ -83,7 +95,8 @@ test('review diff is restricted to staged changes or outgoing ranges', () => {
   })
   assert.match(pushed.diff, new RegExp(`^### refs/heads/task \\(${SHA_B}\\) → refs/heads/task \\(${ZERO}\\); new ref baseline origin/main \\(${SHA_A}\\)`))
   assert.match(pushed.diff, /outgoing patch$/)
-  assert.equal(calls.at(-1)[4], `${SHA_A}..${SHA_B}`)
+  const rangeCall = calls.find((args) => args.includes(`${SHA_A}..${SHA_B}`) && args.includes('--unified=80'))
+  assert.ok(rangeCall, 'range text diff must be requested over from..to')
 })
 
 test('review input is bounded and rejects excessive push updates', () => {
@@ -95,6 +108,68 @@ test('review input is bounded and rejects excessive push updates', () => {
     `refs/heads/task-${index} ${SHA_A} refs/heads/task-${index} ${ZERO}`,
   ).join('\n')
   assert.throws(() => parsePushInput(updates), /update count exceeds/)
+})
+
+test('staged binary diff omits base85 payload and carries a byte summary', (t) => {
+  const root = makeRepository(t)
+  fs.writeFileSync(path.join(root, 'poster.png'), pngBytes(823 * 1024))
+  git(root, ['add', 'poster.png'])
+  const collected = collectReviewDiff({ repoRoot: root, scope: 'staged' })
+  // A real base85 hunk begins with `GIT binary patch` / `literal`; assert neither leaks.
+  assert.doesNotMatch(collected.diff, /GIT binary patch/)
+  assert.doesNotMatch(collected.diff, /^literal \d+/m)
+  assert.match(collected.diff, /Binary files \/dev\/null and b\/poster\.png differ/)
+  assert.match(collected.diff, /^BINARY: added poster\.png \(823 KB\)$/m)
+  // The size assertion counts the text diff + summary, not the raw image bytes.
+  assert.ok(Buffer.byteLength(collected.diff, 'utf8') < 4096, 'binary payload must not inflate the reviewed diff')
+})
+
+test('push-range binary diff omits base85 payload and carries a byte summary', (t) => {
+  const root = makeRepository(t)
+  const base = git(root, ['rev-parse', 'HEAD'])
+  fs.writeFileSync(path.join(root, 'clip.png'), pngBytes(512 * 1024))
+  git(root, ['add', 'clip.png'])
+  git(root, ['commit', '--quiet', '--no-verify', '-m', 'add clip'])
+  const head = git(root, ['rev-parse', 'HEAD'])
+  const collected = collectReviewDiff({
+    repoRoot: root,
+    scope: 'push',
+    pushInput: `refs/heads/main ${head} refs/heads/main ${base}`,
+  })
+  assert.doesNotMatch(collected.diff, /GIT binary patch/)
+  assert.doesNotMatch(collected.diff, /^literal \d+/m)
+  assert.match(collected.diff, /Binary files \/dev\/null and b\/clip\.png differ/)
+  assert.match(collected.diff, /^BINARY: added clip\.png \(512 KB\)$/m)
+})
+
+test('a binary file larger than the text cap no longer fails closed on commit or push', (t) => {
+  const root = makeRepository(t)
+  const base = git(root, ['rev-parse', 'HEAD'])
+  fs.writeFileSync(path.join(root, 'huge.png'), pngBytes(2 * 1024 * 1024))
+  git(root, ['add', 'huge.png'])
+  const staged = collectReviewDiff({ repoRoot: root, scope: 'staged' })
+  assert.match(staged.diff, /^BINARY: added huge\.png \(2\.0 MB\)$/m)
+  assert.ok(Buffer.byteLength(staged.diff, 'utf8') <= MAX_REVIEW_DIFF_BYTES, 'pure binary must stay under the text cap')
+
+  git(root, ['commit', '--quiet', '--no-verify', '-m', 'add huge'])
+  const head = git(root, ['rev-parse', 'HEAD'])
+  const pushed = collectReviewDiff({
+    repoRoot: root,
+    scope: 'push',
+    pushInput: `refs/heads/main ${head} refs/heads/main ${base}`,
+  })
+  assert.match(pushed.diff, /^BINARY: added huge\.png \(2\.0 MB\)$/m)
+  assert.ok(Buffer.byteLength(pushed.diff, 'utf8') <= MAX_REVIEW_DIFF_BYTES)
+})
+
+test('an oversized text diff still fails closed (discipline regression lock)', (t) => {
+  const root = makeRepository(t)
+  // One long line whose staged diff clears the 1.5 MB text cap but stays under
+  // runGit's maxBuffer, so the size assertion (not an ENOBUFS) is what rejects
+  // it — the same guard that still stops giant code diffs from being pushed.
+  fs.writeFileSync(path.join(root, 'huge.txt'), `${'x'.repeat(MAX_REVIEW_DIFF_BYTES + 20_000)}\n`)
+  git(root, ['add', 'huge.txt'])
+  assert.throws(() => collectReviewDiff({ repoRoot: root, scope: 'staged' }), /review diff .* limit/)
 })
 
 test('prompt carries the skill trigger, exact scope, and diff delimiter', () => {
