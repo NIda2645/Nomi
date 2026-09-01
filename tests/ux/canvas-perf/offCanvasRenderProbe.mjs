@@ -18,11 +18,35 @@
 // hook BEFORE the renderer bundle loads (verified contract:
 // react-devtools-facade "call installFacade before React initializes"), and on
 // each committed root we walk the fiber tree counting fibers that (1) carry a
-// target component display name and (2) actually committed work this pass
-// (`fiber.actualDuration > 0`, populated because we advertise
-// `supportsProfiling`). Component display names are only readable in the DEV
-// bundle (production mangles them) — this probe is meaningful on the dev leg,
-// which is exactly the leg that reproduces the user's felt lag.
+// target component display name and (2) ACTUALLY RE-RENDERED THEIR OWN BODY
+// this commit. Component display names are only readable in the DEV bundle
+// (production mangles them) — this probe is meaningful on the dev leg, which is
+// exactly the leg that reproduces the user's felt lag.
+//
+// COUNTING SIGNAL: own render, not subtree, not stale (2026-09-02 correction)
+// `fiber.actualDuration` is subtree-INCLUSIVE and, on the committed tree,
+// persists across bailouts (React only zeroes it in createWorkInProgress when a
+// fiber is actually worked on). So a naive `actualDuration > 0` walk counts (a)
+// every ancestor of anything that rendered and (b) any component that rendered
+// once and then bailed forever after — massively over-counting. A self-time
+// refinement (actualDuration minus children) fails for the SAME reason: the
+// stale committed value is read on bailout commits. S3 ground-truthed this with
+// a component-level render counter plus an opposite-direction positive control
+// (flipping one target to a raw `s.nodes` subscription): OnboardingChecklist
+// re-rendered its own body 0 times during a drag while both duration-based
+// walks reported ~69/261 (see the 2026-09-02 root-cause contract).
+//
+// A within-commit fiber-vs-alternate comparison ALSO fails, because the probe
+// re-walks root.current every commit and a bailed subtree's fibers (plus their
+// frozen alternate relationship) persist unchanged across many commits. We
+// therefore keep a cross-commit memory: the probe remembers each target
+// instance's last-seen (memoizedProps, memoizedState) and counts a render only
+// when that pair changes between commits. A bailed fiber keeps the pair frozen
+// (not counted); a real render swaps at least one (counted). This matches the
+// ground-truth component-level counter exactly, in both directions (a positive
+// control that flips a target to a raw s.nodes subscription makes both the
+// counter and this probe spike together), restoring off-canvas quiet-render as
+// a trustworthy advisory + U4 positive control rather than a broken gauge.
 //
 // The hook must be installed on the page's `window` before any React module
 // evaluates. We inject it via Playwright `addInitScript` (runs on every
@@ -105,9 +129,39 @@ function buildInitScript(targets) {
     return null
   }
 
+  // TEMPORAL render tracker. A within-commit comparison (fiber vs its alternate)
+  // does NOT work: the probe re-walks root.current every commit, and for a
+  // subtree that bailed (e.g. the app-bar cluster while only the canvas
+  // re-renders), React neither re-clones those fibers nor updates their
+  // memoizedProps/State/actualDuration — the fiber object AND its frozen
+  // alternate relationship persist unchanged across many commits. So every
+  // duration- or alternate-based within-commit signal reports a stale positive
+  // for a component that rendered once long ago and has bailed since (S3
+  // ground-truthed: OnboardingChecklist body ran 0x during a drag yet all those
+  // signals reported ~65-266).
+  //
+  // The only correct signal is a diff ACROSS commits maintained by the probe:
+  // remember each target instance's last-seen (memoizedProps, memoizedState) and
+  // count a render only when that pair changes. A bailed fiber keeps the same
+  // pair (frozen) → not counted; a real render swaps at least one → counted.
+  // React double-buffers each fiber (a fiber and its alternate), so we key the
+  // memory on whichever of the two we recorded before, looking up both.
+  const lastSeen = new WeakMap() // fiber (or its alternate) -> { props, state }
+  const recordAndDetectRender = (fiber) => {
+    const alt = fiber.alternate
+    const prior = lastSeen.get(fiber) || (alt ? lastSeen.get(alt) : undefined)
+    const props = fiber.memoizedProps
+    const st = fiber.memoizedState
+    // Store under both buffers so the next commit finds us regardless of flip.
+    const entry = { props, state: st }
+    lastSeen.set(fiber, entry)
+    if (alt) lastSeen.set(alt, entry)
+    if (prior === undefined) return true // first time we see this instance
+    return prior.props !== props || prior.state !== st
+  }
+
   const walkRoot = (root) => {
-    // A commit's finishedWork tree hangs off root.current.alternate (the tree
-    // just committed) when available, else root.current.
+    // A commit's finishedWork tree hangs off root.current after commit.
     const start = (root && root.current) || root
     if (!start) return
     const stack = [start]
@@ -116,12 +170,13 @@ function buildInitScript(targets) {
       const fiber = stack.pop()
       if (!fiber || seen.has(fiber)) continue
       seen.add(fiber)
-      // actualDuration > 0 marks a fiber that performed work in this commit
-      // (profiling must be advertised — see hook.supportsFiber below). We treat
-      // any positive duration as "re-rendered this commit".
-      if (fiber.actualDuration && fiber.actualDuration > 0) {
-        const name = fiberName(fiber)
-        if (name && TARGETS.has(name)) {
+      // Count a REAL own-body re-render via the cross-commit diff (see above +
+      // file header). A naive actualDuration>0 walk over-counts by ~17-40x
+      // because that value is subtree-inclusive and persists across bailouts.
+      const name = fiberName(fiber)
+      if (name && TARGETS.has(name)) {
+        const rendered = recordAndDetectRender(fiber)
+        if (rendered) {
           state.counts[name] = (state.counts[name] || 0) + 1
           if (state.recording) state.windowCounts[name] = (state.windowCounts[name] || 0) + 1
         }
