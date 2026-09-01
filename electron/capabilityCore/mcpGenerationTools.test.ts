@@ -3,8 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createModuleRegistry } from "./moduleRegistry";
 import { createGenerationPlanningHandler, createInMemoryGenerationOperationStore, MCP_GENERATION_TOOL_CATALOG } from "./mcpGenerationTools";
 import { PROJECT_LEASE_ALGORITHM, PROJECT_LEASE_AUDIENCE, PROJECT_LEASE_VERSION, type ProjectLeaseV1 } from "./projectLease";
-import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "../../src/config/modelArchetypes/seedance25Apimart";
-import { buildVideoModelCandidates, recommendVideoGeneration } from "../shared/videoCapabilities";
+import { buildVideoModelCandidates, recommendVideoGeneration, SEEDANCE_2_5_APIMART_ARCHETYPE } from "../shared/videoCapabilities";
 
 const videoModelCandidates = buildVideoModelCandidates([
   { provider: "apimart", modelKey: "doubao-seedance-2.0", label: "Seedance 2.0" },
