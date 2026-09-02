@@ -700,6 +700,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       {!readOnly ? <CanvasToolbar getInsertionPosition={getInsertionPosition} categoryId={activeCategoryId} /> : null}
       <GenerationCanvasReactFlowViewport
         flowNodes={renderedFlowNodes}
+        isNodeDragging={nodeDragActive}
         flowEdges={flowEdges}
         viewport={liveViewport}
         stageSize={stageSize}
