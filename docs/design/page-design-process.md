@@ -351,14 +351,18 @@ Nomi 最贵的一课：「九宫格切图卡死半小时」。根因是三种写
 
 ### 串成一条命令
 
-把所有门岗串成一条 `gates` 脚本，**push 前必须全过**。Nomi 的 `gates` 跑完会写一个 `.gates-ok` 时间戳文件，push 钩子检查它——**没跑门岗就 push 会被拦住**。
+把所有门岗串成一条 `gates` 脚本，**push 前必须全过**。Nomi 的 `gates` 跑完会盖一枚**五门戳**，push 钩子检查它——**没跑门岗就 push 会被拦住**。
 
 ```
 gates = check:filesize && check:tokens && check:dangling-tokens && check:i18n
       && check:heavy-path && check:controls && check:walkthroughs
       && lint:ci && typecheck && test && build
-      && 写 .gates-ok 时间戳
+      && node ./scripts/stamp-gates-ok.mjs   # 盖五门戳
 ```
+
+戳只有一个书写者（`scripts/stamp-gates-ok.mjs`），落在**本棵 worktree 自己的 gitdir** 下（`$(git rev-parse --absolute-git-dir)/nomi-gates-ok`），内容带 `sha=` 与 `worktree=`。这三点缺一不可：只认时间的戳会在 20+ 棵并行 worktree 上**既误放也误杀**（拿 A 树的戳给 B 树的推送背书；或盖完戳又提交了代码却照样放行）。
+
+戳的路径和字段名同时被写戳方（`gates`）和读戳方（`scripts/claude-hooks/pre-push-check.sh`）依赖，而两边分处 JSON 与 shell、不可能互相 import——所以由 `check:gates-stamp` 把「两边仍然一致」钉成门岗。这是补一类**两边都不报错**的失效：2026-09-02 只升级了读戳方，写戳方仍写老的 `.gates-ok`，于是 `gates` 全过也推不上去，而 gates 说盖好了、hook 说没有戳，谁都没报错。
 
 `lint:ci` 也是棘轮：`eslint . --max-warnings=98`——**新增 1 个 warning 就红**。
 

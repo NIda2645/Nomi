@@ -1,0 +1,114 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-02-gates-stamp-contract-drift",
+  "problem_type": "五门戳的写方与读方各自演进，没有任何机制强迫两边一致（两侧都不报错的静默失效）",
+  "symptom": "在任意 worktree 里 `pnpm run gates` 全过之后，`git push` 仍被 pre-push 闸以「本次有代码改动，但这棵 worktree 没有五门刚过的戳」拦下；必须手写 `$(git rev-parse --absolute-git-dir)/nomi-gates-ok` 才能推送。闸门给出的补救命令 `node ./scripts/stamp-gates-ok.mjs` 指向一个不存在的文件。",
+  "direct_cause": "`package.json` 的 `gates` 用一段内联 node 写 `.claude/.gates-ok`（只有一个 ISO 时间戳），而 2026-09-02 升级后的读戳方读的是 `$(git rev-parse --absolute-git-dir)/nomi-gates-ok` 并要求解析出 `sha=` 与 `worktree=` 两个身份字段。两个文件名与两套字段互不相干，读戳方因此永远判定「无戳」。",
+  "class_root": "五门戳的路径与字段名没有单一 owner。它被三处各自独立写死——写戳方（package.json 内联 node）、读戳方（pre-push hook 的 shell 解析）、以及读戳方拦人时推荐的手动补盖命令——三者分处 JSON、shell 与文件系统，无法互相 import，也没有任何门岗校验它们仍然指同一枚戳。因此任一方单独演进都会静默失效：两边各自看都「正确」，gates 说盖好了戳、hook 说没有戳，谁都不报错。",
+  "affected_population": [
+    "这台机器上 20+ 棵并行 worktree 的每一次含代码改动的 push",
+    "任何执行 `pnpm run gates` 后尝试推送的协作者或 agent 会话",
+    "读到闸门提示、按提示运行 `node ./scripts/stamp-gates-ok.mjs` 的所有调用方（该文件此前不存在）"
+  ],
+  "scope_paths": [
+    "package.json",
+    "scripts/stamp-gates-ok.mjs",
+    "scripts/check-gates-stamp.mjs",
+    "scripts/claude-hooks/pre-push-check.sh"
+  ],
+  "entry_points": [
+    "package.json 的 `gates` 脚本尾部（写戳方，五门全过后盖戳）",
+    "scripts/claude-hooks/pre-push-check.sh（读戳方，PreToolUse 命中 git push 时验戳）",
+    "读戳方 block() 提示里的手动补盖命令 `node ./scripts/stamp-gates-ok.mjs`"
+  ],
+  "internal_only_reason": "戳的路径与字段名是 Nomi 自己的 push 闸门内部合同，不由任何第三方 API、SDK 或依赖行为决定；`git rev-parse --absolute-git-dir` 的一树一份语义已由本仓库 worktree 实测确认。",
+  "invariants": [
+    "五门戳的文件名与字段名只有一个定义处：scripts/stamp-gates-ok.mjs。",
+    "写戳方（gates）必须调用该唯一书写者，且不得内联写入任何其他戳文件。",
+    "读戳方读的文件名、定位方式（--absolute-git-dir）与解析的字段必须与书写者写的逐项一致。",
+    "读戳方在拦人时推荐的补盖命令，指向的脚本必须真实存在于仓库中。",
+    "戳落在本棵 worktree 自己的 gitdir 下，携带盖戳时的 HEAD sha 与树根路径。"
+  ],
+  "generality_proof": "戳的路径与字段名收敛到 scripts/stamp-gates-ok.mjs 一个定义处后，写戳方通过直接调用它消除了第二份定义；读戳方是 shell 无法 import，因此由 scripts/check-gates-stamp.mjs 在 gates 链上把「读戳方仍与书写者一致」钉成静态门岗——它同时校验文件名、--absolute-git-dir 定位方式、每一个 keyed 字段的解析，以及 hook 推荐的补盖脚本是否存在。任一方将来单独漂移都会在 push 之前变红，而不是像本次一样两边静默地各说各话。",
+  "shared_boundaries": [
+    {
+      "path": "scripts/stamp-gates-ok.mjs",
+      "symbol": "MARKER_BASENAME / STAMP_KEYED_FIELDS / writeStamp",
+      "responsibility": "唯一定义五门戳的文件名、落点与字段名，并负责实际盖戳；写戳方与门岗都以它为准。"
+    },
+    {
+      "path": "scripts/check-gates-stamp.mjs",
+      "symbol": "checkGatesStamp",
+      "responsibility": "在 gates 链上校验写戳方与读戳方仍指向同一枚戳（文件名、定位方式、字段解析、补盖脚本存在性），把跨语言无法 import 的那一侧钉死。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "package.json",
+      "entry_point": "scripts.gates 尾部的盖戳步骤",
+      "disposition": "enforced",
+      "evidence": "内联 node 写 .claude/.gates-ok 的那段已删除，改为调用 scripts/stamp-gates-ok.mjs；check-gates-stamp 同时断言 gates 必须引用该书写者且不得再出现 .gates-ok 字样，老戳复活会立刻变红。"
+    },
+    {
+      "path": "scripts/claude-hooks/pre-push-check.sh",
+      "entry_point": "MARKER 定位与 sha=/worktree= 解析",
+      "disposition": "enforced",
+      "evidence": "此前修好的读戳方只存在于 gitignore 的 .claude/hooks/ 安装副本中，未提交回版本化真相源；已将其移入 scripts/claude-hooks/，因此 postinstall 的 install-claude-hooks.cjs 会向所有 worktree 传播它而不是把它覆盖回旧版。check-gates-stamp 逐字段校验它与书写者一致。"
+    },
+    {
+      "path": "scripts/install-claude-hooks.cjs",
+      "entry_point": "installScripts / check",
+      "disposition": "not-affected",
+      "evidence": "该安装器与漂移门岗（check:claude-hooks）本身工作正常，且已在 gates 链内；它比对的是「安装副本 vs 版本化源」，而本次失效发生在「写戳方 vs 读戳方」这条正交的轴上，两者互不覆盖，故本修复新增独立门岗而非扩展它。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "写戳方与读戳方分处 package.json 的 JSON 字符串与 shell 脚本，永远无法互相 import；push 闸门又在持续演进（本次的三维戳本身就是当天刚加的第三次迭代）。只要契约仍靠两处各自写死的字面量维系，下一次单边修改就会再次制造同一类静默失效，且代价是每棵 worktree 的每次 push。",
+    "same_class_scan": [
+      "`git grep -n gates-ok origin/main` 找出全部提及处，确认写戳方只有 package.json 一处、读戳方只有 pre-push-check.sh 一处，其余均为 docs/plan 与 docs/audit 的历史记录。",
+      "`node -e` 枚举 package.json scripts，确认没有第二个脚本写入或读取任何 gates 戳文件（只有 gates 一处写）。",
+      "对比 scripts/claude-hooks/pre-push-check.sh 与 .claude/hooks/pre-push-check.sh，发现修好的读戳方只活在 gitignore 的安装副本里、从未提交回版本化源——即「一个 pnpm install 就会被覆盖回旧版」的第二个同类入口。",
+      "运行 scripts/check-gates-chain.mjs 确认 check:claude-hooks 已在链上，从而排除「漂移门岗缺失」这一假设，把根因定位到写读双方的契约本身而非安装机制。"
+    ]
+  },
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/check-gates-stamp.mjs",
+    "invariant": "package.json 的 gates 调用唯一书写者且不写老戳；读戳方读同一文件名、用 --absolute-git-dir 定位、解析书写者写出的每一个 keyed 字段；读戳方推荐的补盖脚本真实存在。",
+    "failure_mode": "任一条不满足即 exit 1，在 gates:contracts 阶段变红并逐条打印哪一侧漂了；认不出的写法一律判红（宁可假红不可假绿）。",
+    "exception_policy": "none",
+    "strategy": "把契约的两个维度分别用最强可用手段固定：能 import 的一侧（写戳方）直接调用唯一书写者，消灭第二份定义；不能 import 的一侧（shell 读戳方）用静态门岗在 push 之前校验它仍与书写者逐项一致。门岗自身入 gates 链，由 check:gates-chain 保证不会被合并冲突静默吞掉。",
+    "artifacts": [
+      "scripts/stamp-gates-ok.mjs",
+      "scripts/check-gates-stamp.mjs",
+      "package.json",
+      "scripts/claude-hooks/pre-push-check.sh"
+    ]
+  },
+  "regression_tests": [
+    "scripts/check-gates-stamp.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/check-gates-stamp.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "package.json",
+      "scripts/claude-hooks/pre-push-check.sh"
+    ],
+    "rationale": "package.json 中写 .claude/.gates-ok 的内联 node 已整段删除（没有任何读戳方读它，留着即是平行戳，违反 P1）；scripts/claude-hooks/pre-push-check.sh 中读固定路径 .claude/.gates-ok 的旧实现已被三维戳实现整体替换，未保留 fallback 分支。check-gates-stamp 断言 gates 中不得再出现 .gates-ok，防止老路径复活。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "修复只涉及仓库内的 npm 脚本、node 脚本与版本化 shell hook，不由任何第三方运行时或依赖版本决定。",
+    "exit_criteria": []
+  },
+  "migration": "无需数据迁移。老的 `.claude/.gates-ok` 文件位于 gitignore 的 `.claude/` 下、且已无任何读方，可留在原地自然失效，不影响任何判定。已有 worktree 在下次 `pnpm install` 时由 postinstall 的 install-claude-hooks.cjs 收到版本化的读戳方；在此之前，安装副本已是同一份实现，行为一致。",
+  "residual_risks": [
+    "`--no-verify`、网页/API 端推送，以及未安装 .claude/hooks 的环境仍绕得过本地 hook；服务器侧仍需 CI 与分支保护补强，本修复不改变这一边界（与 R25 既有结论一致）。",
+    "check-gates-stamp 校验的是读戳方的**文本特征**（文件名、--absolute-git-dir、`s/^field=//p` 解析），而非执行 shell 语义；若将来有人用等价但写法不同的解析重写 hook，门岗会给出假红，需要同步更新门岗而不是绕过它。",
+    "戳的 30 分钟新鲜度阈值仍只写在读戳方一侧，书写者不感知；本次未把它纳入契约校验，因为它不影响写读双方是否指向同一枚戳。"
+  ]
+}
