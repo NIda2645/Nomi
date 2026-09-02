@@ -51,10 +51,10 @@ export type { GenerationGateChallengeProjection, GenerationGateConfirmation, Gen
 
 // 挂活 widget（MCP Apps）的工具：面收敛后 = nomi_run_start（建 Run）+ nomi_read 且 target∈{run,run_events,artifact}。
 // nomi_read 的 canvas/projects/models 等 target 不挂 widget，故不能只按 name 判——见 widgetUriFor（按 name + target）。
-const WIDGET_READ_TARGETS = new Set(READ_RUN_DATA_TARGETS)
+// 判据用 mcpToolCatalog 导出的 READ_RUN_DATA_TARGETS（真相单一）；懒读避免 catalog↔protocol 循环 import 的 TDZ。
 function widgetUriFor(toolName: string, args: Record<string, unknown>): string | undefined {
   if (toolName === 'nomi_run_start') return NOMI_LIVE_DRAFT_UI_URI
-  if (toolName === 'nomi_read' && typeof args.target === 'string' && WIDGET_READ_TARGETS.has(args.target)) return NOMI_LIVE_DRAFT_UI_URI
+  if (toolName === 'nomi_read' && typeof args.target === 'string' && READ_RUN_DATA_TARGETS.includes(args.target)) return NOMI_LIVE_DRAFT_UI_URI
   return undefined
 }
 /** tools/list 预声明 _meta.ui 的工具（name 级；nomi_read 整体广告，运行时按 target 决定是否真挂 widget frame）。 */
