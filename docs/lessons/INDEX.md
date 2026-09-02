@@ -87,7 +87,7 @@
 ## E. 产品判断与对外表达
 
 - [分镜表 = 画布节点的表格表示版](shot-table-is-a-projection-of-canvas-nodes.md) — 不是落画布前的临时物；两半列各有各的 derive 来源
-- [参考槽已是声明式数据，别重造](nomi-reference-slots-are-already-declarative.md) — archetype + AssetReference 已是拍板过的渲染器
+- [参考槽：声明上限不是有效上限，锚→槽是语义绑定](nomi-reference-slots-are-already-declarative.md) — 别渲染 `slot.max`、别按下标推语义、Agent 建完只能改 prompt（结构本身见 `ARCHITECTURE-NOW.md`）
 - [批量产出要逐步冒出来 + 自动编组](batch-output-appears-progressively-and-grouped.md) — 一个动作产出多个节点时的既定交互
 - [「改不了 / 没有按钮」是可发现性问题](vendor-manage-is-a-discoverability-problem.md) — 功能一直在，根因是控件被 overflow 裁出视口
 - [用户说「坏了」多半是「找不到」](group-says-broken-usually-means-undiscoverable.md) — 先真机实测再信；扫到真 bug ≠ 那就是他的 bug
