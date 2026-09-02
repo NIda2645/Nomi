@@ -22,7 +22,6 @@ import {
 import { canvasToolDescriptors } from "./canvasDescriptors";
 import { documentToolDescriptors } from "./documentDescriptors";
 import { productionRunToolDescriptors } from "./productionRunDescriptors";
-import { timelineToolDescriptors } from "./timelineDescriptors";
 import { skillToolDescriptors } from "./skillDescriptors";
 import { modelToolSurfaceManifest } from "./modelToolSurfaceManifest";
 
@@ -36,7 +35,7 @@ function runtimeDescriptor(descriptor: AgentToolDescriptor): RuntimeToolDescript
   return { name: descriptor.name, description: descriptor.description, schema: descriptor.parameters };
 }
 
-function semanticDescriptor(descriptor: (typeof modelToolSurfaceManifest.generation)[number]): AgentToolDescriptor {
+function semanticDescriptor(descriptor: (typeof modelToolSurfaceManifest.generation)[number] | (typeof modelToolSurfaceManifest.editing)[number]): AgentToolDescriptor {
   return {
     name: descriptor.name,
     description: descriptor.intent,
@@ -120,7 +119,7 @@ export const agentToolCatalog = Object.freeze({
     ...canvasWriteCoreDescriptors,
     canvasDeleteDescriptor,
   ]),
-  timeline: Object.freeze(Object.values(timelineToolDescriptors)),
+  timeline: Object.freeze(modelToolSurfaceManifest.editing.map(semanticDescriptor)),
   production: Object.freeze(Object.values(productionRunToolDescriptors)),
   skills: Object.freeze(Object.values(skillToolDescriptors)),
   generation: Object.freeze(modelToolSurfaceManifest.generation.map(semanticDescriptor)),
