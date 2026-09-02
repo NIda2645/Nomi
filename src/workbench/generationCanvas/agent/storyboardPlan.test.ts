@@ -549,6 +549,9 @@ describe('视觉锚的身份特征拼进镜头 prompt', () => {
 
   it('没有身份 DNA 的视觉锚 → 镜头 prompt 一个字不变（旧方案向后兼容）', () => {
     expect(shotPromptOf(1)).toBe('火柴盒静物')
+  })
+})
+
 describe('v5 IR 扩展（sceneId / scenes / profileKey / 图片镜停留时长）', () => {
   const V5_PLAN: StoryboardPlan = {
     title: '夜风',
