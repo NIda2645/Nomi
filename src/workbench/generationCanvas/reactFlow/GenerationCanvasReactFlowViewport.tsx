@@ -119,7 +119,7 @@ export function GenerationCanvasReactFlowViewport({
     : null
   return (
     <ReactFlow
-      nodes={flowNodes}
+      defaultNodes={flowNodes}
       edges={flowEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}

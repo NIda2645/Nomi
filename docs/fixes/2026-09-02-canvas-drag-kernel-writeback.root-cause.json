@@ -1,0 +1,129 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-02-canvas-drag-kernel-writeback",
+  "problem_type": "高频瞬态几何进入业务状态",
+  "symptom": "React Flow 画布拖动节点时，每个 pointer move 都触发业务 store 更新和全量投影，生产 node-drag-image 的 layout/move 为 2.40、script drag/pan 比值为 5.14x，4x throttle 的 frameGapP95 为 49.3ms。",
+  "direct_cause": "GenerationCanvasReactFlow.handleNodesChange 对每个 position change 调用 moveNode，Zustand 每 tick 替换 nodes 数组并触发投影、边和画布外订阅者重算。",
+  "class_root": "拖动中的瞬态位置没有在 React Flow 交互/变换内核与 Zustand 业务持久化真相源之间建立隔离边界。",
+  "affected_population": [
+    "单节点、多选节点、低缩放和高边密度区域的 React Flow 拖动用户",
+    "生产构建、开发 StrictMode 和 4x CPU throttle 评测腿",
+    "拖动期间所有依赖画布节点业务状态的画布内外消费者"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+    "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
+    "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+    "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts"
+  ],
+  "entry_points": [
+    "React Flow 节点拖动的 onNodesChange position 事件",
+    "React Flow 节点拖动结束的 onNodeDragStop 批量写回",
+    "组框拖动的 moveGroupNodes 路径（同一类高频几何但由独立手势边界负责）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是 Nomi 自身 React Flow 适配器与 Zustand 业务状态之间的内部生命周期不变量；评测基线、现状代码和本仓库结构测试足以决定边界。",
+  "invariants": [
+    "节点拖动 position tick 只能更新 React Flow draft 几何，不能调用 moveNode 或替换 Zustand nodes 引用。",
+    "drag stop 才按最终 draggedNodes 位置调用现有 moveNode 写回，并只调用一次 commitPersistedChange。",
+    "拖动 draft 只替换被拖节点的 Flow node 对象，未被拖节点保持投影对象身份不变。",
+    "拖动中 Agent、MCP 和画布外读者继续读取未提交的旧业务位置；事件与持久化仍只在 stop 发生。"
+  ],
+  "generality_proof": "所有 React Flow 节点拖动 position change 都汇入 handleNodesChange；draft 层在这个唯一适配边界承接 position changes，stop 再统一走 moveNode，因此单节点和多选节点共享同一隔离规则。组框拖动不是该入口，已由 moveGroupNodes 的独立手势边界处理并列为同类入口核查。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "handleNodesChange / handleNodeDragStop",
+      "responsibility": "把 React Flow 的瞬态位置变更留在 draft，把最终位置和事件/持久化收尾集中到 drag stop。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
+      "symbol": "applyCanvasDragPositionChanges / overlayCanvasDragDraft",
+      "responsibility": "以 applyNodeChanges 产生只替换被拖节点的局部 Flow 几何，并叠加在最新业务投影上。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+      "symbol": "commitCanvasNodeDragStop",
+      "responsibility": "集中处理 drag stop 的批量 moveNode、事件发射和持久化收尾，保证瞬态 tick 不进入业务写入。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "entry_point": "handleNodesChange",
+      "disposition": "enforced",
+      "evidence": "React Flow 所有节点 position tick 均由该 handler 收到；结构测试禁止其中出现 moveNode 调用并要求 applyNodeChanges draft。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "entry_point": "handleNodeDragStop",
+      "disposition": "enforced",
+      "evidence": "同一节点拖动的最终 draggedNodes 位置在 stop 委托给 commitCanvasNodeDragStop，统一调用 moveNode，再复用 commitPersistedChange 和 emitCanvasGesture。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+      "entry_point": "commitCanvasNodeDragStop",
+      "disposition": "enforced",
+      "evidence": "唯一 stop 写回实现按 dragStart 快照批量调用 moveNode，并在一次 emitCanvasGesture 后调用一次 commitPersistedChange。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "entry_point": "moveNode",
+      "disposition": "not-affected",
+      "evidence": "moveNode 是通用业务写入边界，仍服务调整大小、回放和其他非 React Flow 拖动调用者；本修复不改变其语义，只移除节点拖动 tick 对它的调用。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "entry_point": "handleGroupFramePointerDown",
+      "disposition": "not-affected",
+      "evidence": "组框拖动使用独立 moveGroupNodes 手势，并非 React Flow onNodesChange position 入口；其既有高频语义和 commit 边界不由本次改动承接。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "任何 React Flow 节点拖动、单选或多选拖动都会产生相同的 position tick；只修单一节点或提高节流不能阻止该类瞬态状态广播再次出现。",
+    "same_class_scan": [
+      "rg -n 'moveNode\\(|onNodesChange|collectFlowPositionChanges' src/workbench/generationCanvas：核对 React Flow tick、stop 收尾、通用 moveNode 消费者。",
+      "检查 GenerationCanvasReactFlow.tsx 的 handleNodesChange：当前旧路径逐 tick 调 moveNode，新边界改为 draft。",
+      "检查 useCanvasSelectionDrag.ts 的 moveGroupNodes：确认组框是独立入口，不伪装成 React Flow 节点拖动路径。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+    "invariant": "React Flow position tick 不得进入 Zustand；最终位置只在 drag stop 统一写回。",
+    "failure_mode": "结构测试在 handleNodesChange 恢复 moveNode 或移除 draft/applyNodeChanges 时失败；运行时不提供旧的逐 tick fallback。",
+    "exception_policy": "none",
+    "strategy": "在唯一 React Flow 节点拖动适配边界隔离瞬态几何，所有节点与多选拖动共享 draft，避免调用方自行选择是否写业务 store。",
+    "artifacts": [
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
+      "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
+    "src/workbench/generationCanvas/reactFlow/canvasDragDraft.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
+    "src/workbench/generationCanvas/reactFlow/canvasDragDraft.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx"
+    ],
+    "rationale": "同一组件中的逐 tick moveNode 路径会在本次改动中删除；不保留 flag、fallback 或并行实现。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "@xyflow/react 的 applyNodeChanges 是已安装依赖提供的纯变换工具；本次不依赖版本缺陷，也不改变依赖版本。",
+    "exit_criteria": []
+  },
+  "migration": "无需数据迁移；业务节点 position 结构不变，拖动中继续读取旧业务位置，drag stop 使用现有 moveNode 写回最终位置。",
+  "residual_risks": [
+    "真实 Electron 与 benchmark 仍需证明边几何、多选、组框/选择工具条语义以及性能三腿没有回归。",
+    "drag stop 依赖 React Flow 提供的 draggedNodes 最终位置，需由生产构建验收确认受控 nodes 下单节点和多选均完整回写。"
+  ]
+}
