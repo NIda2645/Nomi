@@ -107,8 +107,15 @@ export const ARCHETYPE_WIRE_DEFAULTS_VIDEO: Record<string, Record<string, Record
       }
     }
   },
-  "runway-video-t2v": {
+  "runway-video-basic": {
     "text_to_video": {
+      "*": {
+        "aspect_ratio": "1280:720",
+        "duration": 5,
+        "generate_audio": true
+      }
+    },
+    "image_to_video": {
       "*": {
         "aspect_ratio": "1280:720",
         "duration": 5,
@@ -332,6 +339,26 @@ export const ARCHETYPE_WIRE_DEFAULTS_VIDEO: Record<string, Record<string, Record
       "*": {
         "size": "adaptive",
         "resolution": "720p",
+        "duration": 5,
+        "generate_audio": true,
+        "return_last_frame": false
+      }
+    }
+  },
+  "seedance-2.5-runway": {
+    "text_to_video": {
+      "*": {
+        "resolution": "720p",
+        "aspect_ratio": "adaptive",
+        "duration": 5,
+        "generate_audio": true,
+        "return_last_frame": false
+      }
+    },
+    "image_to_video": {
+      "*": {
+        "resolution": "720p",
+        "aspect_ratio": "adaptive",
         "duration": 5,
         "generate_audio": true,
         "return_last_frame": false

@@ -76,14 +76,13 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "seedance2_mini",
     "wan3",
     "grok_imagine_1_5",
-    "hailuo3",
+    "hailuo3"
+  ],
+  "runway-video-basic": [
     "veo3.1",
     "veo3.1_fast",
     "happyhorse_1_0",
     "gemini_omni_flash"
-  ],
-  "runway-video-t2v": [
-    "happyhorse_1_0"
   ],
   "runway-image-reference": [
     "gen4_image_turbo"
@@ -249,6 +248,9 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "seedance-2.5-apimart": [
     "doubao-seedance-2.5",
     "doubao-seedance-2-5"
+  ],
+  "seedance-2.5-runway": [
+    "seedance2_5"
   ],
   "minimax-h3-apimart": [
     "MiniMax-H3"

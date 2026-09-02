@@ -493,10 +493,10 @@ const RUNWAY_VIDEO_SPECS: RunwayVideoSpec[] = [
   { modelKey: "wan3", labelZh: "Runway Wan 3", archetypeId: "runway-video", fields: "wan" },
   { modelKey: "grok_imagine_1_5", labelZh: "Runway Grok Imagine 1.5", archetypeId: "runway-video", fields: "grok" },
   { modelKey: "hailuo3", labelZh: "Runway Hailuo 3", archetypeId: "runway-video", fields: "hailuo" },
-  { modelKey: "veo3.1", labelZh: "Runway Veo 3.1", archetypeId: "runway-video", fields: "veo", modes: ["t2v", "i2v"] },
-  { modelKey: "veo3.1_fast", labelZh: "Runway Veo 3.1 Fast", archetypeId: "runway-video", fields: "veo", modes: ["t2v", "i2v"] },
-  { modelKey: "happyhorse_1_0", labelZh: "Runway HappyHorse 1.0", archetypeId: "runway-video", fields: "happyhorse", modes: ["t2v", "i2v"] },
-  { modelKey: "gemini_omni_flash", labelZh: "Runway Gemini Omni Flash", archetypeId: "runway-video", fields: "gemini", modes: ["t2v", "i2v"] },
+  { modelKey: "veo3.1", labelZh: "Runway Veo 3.1", archetypeId: "runway-video-basic", fields: "veo", modes: ["t2v", "i2v"] },
+  { modelKey: "veo3.1_fast", labelZh: "Runway Veo 3.1 Fast", archetypeId: "runway-video-basic", fields: "veo", modes: ["t2v", "i2v"] },
+  { modelKey: "happyhorse_1_0", labelZh: "Runway HappyHorse 1.0", archetypeId: "runway-video-basic", fields: "happyhorse", modes: ["t2v", "i2v"] },
+  { modelKey: "gemini_omni_flash", labelZh: "Runway Gemini Omni Flash", archetypeId: "runway-video-basic", fields: "gemini", modes: ["t2v", "i2v"] },
 ];
 
 type RunwayVideoMode = "t2v" | "i2v" | "reference";
@@ -630,7 +630,7 @@ export const RUNWAY_OFFICIAL_MODELS: RunwayModel[] = [
     modelKey: "seedance2_5",
     labelZh: "Runway Seedance 2.5",
     kind: "video",
-    archetypeId: "seedance-2.5",
+    archetypeId: "seedance-2.5-runway",
     mappings: [
       mapping(SEEDANCE25_T2V_ID, "t2v", "text_to_video", "Runway Seedance 2.5 · 文生视频", SEEDANCE25_T2V),
       mapping(SEEDANCE25_FIRST_ID, "first", "image_to_video", "Runway Seedance 2.5 · 首帧", SEEDANCE25_FIRST),

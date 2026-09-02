@@ -14,7 +14,10 @@
     "electron/catalog/archetypeModes.generated.ts",
     "electron/shared/videoCapabilities/runwayVideo.ts",
     "electron/catalog/vendorWireDriftFixes.test.ts",
-    "electron/catalog/flagshipAudioVideoContracts.test.ts"
+    "electron/catalog/flagshipAudioVideoContracts.test.ts",
+    "electron/shared/videoCapabilities/seedance25Runway.ts",
+    "electron/catalog/archetypeIdentifiers.generated.ts",
+    "electron/catalog/archetypeWireDefaults.video.generated.ts"
   ],
   "entry_points": [
     "Runway generated video catalog reference mode",

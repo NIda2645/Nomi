@@ -9,7 +9,7 @@ const PARAMS: ModelParameterControl[] = [
 
 export const RUNWAY_VIDEO_ARCHETYPE: ModelArchetype = {
   id: "runway-video", family: "runway", label: "Runway 视频模型", kind: "video", defaultModeId: "t2v", transportTaskKind: "text_to_video",
-  identifierPatterns: ["seedance2", "seedance2_fast", "seedance2_mini", "wan3", "grok_imagine_1_5", "hailuo3", "veo3.1", "veo3.1_fast", "happyhorse_1_0", "gemini_omni_flash"],
+  identifierPatterns: ["seedance2", "seedance2_fast", "seedance2_mini", "wan3", "grok_imagine_1_5", "hailuo3"],
   sources: [
     { url: "https://raw.githubusercontent.com/runwayml/openapi/main/openapi.json", checkedAt: "2026-08-30", vendorKey: "runway", covers: "Runway OpenAPI current video discriminators: seedance2/2.5/fast/mini, wan3, grok_imagine_1_5, hailuo3, veo3.1/fast, happyhorse_1_0, gemini_omni_flash; text_to_video and image_to_video lifecycle" },
     { url: "https://docs.dev.runwayml.com/guides/models/", checkedAt: "2026-08-30", vendorKey: "runway", covers: "官方模型目录与当前可用的视频模型族；旧模型不在本档案中新增" },
@@ -21,7 +21,12 @@ export const RUNWAY_VIDEO_ARCHETYPE: ModelArchetype = {
   ],
 };
 
-export const RUNWAY_VIDEO_T2V_ARCHETYPE: ModelArchetype = {
+// 官方 OpenAPI 无 reference 联合体的 Runway 变体（veo3.1/veo3.1_fast/happyhorse_1_0/gemini_omni_flash）：
+// 只有 t2v+i2v 两面。此前的 runway-video-t2v 变体被 runway-video 的 pattern 影子匹配、从未生效（死变体），
+// 按 P1 由本变体取代。
+export const RUNWAY_VIDEO_BASIC_ARCHETYPE: ModelArchetype = {
   ...RUNWAY_VIDEO_ARCHETYPE,
-  id: "runway-video-t2v", label: "Runway 文生视频模型", identifierPatterns: ["happyhorse_1_0"], modes: [RUNWAY_VIDEO_ARCHETYPE.modes[0]],
+  id: "runway-video-basic", label: "Runway 基础视频模型",
+  identifierPatterns: ["veo3.1", "veo3.1_fast", "happyhorse_1_0", "gemini_omni_flash"],
+  modes: [RUNWAY_VIDEO_ARCHETYPE.modes[0]!, RUNWAY_VIDEO_ARCHETYPE.modes[1]!],
 };

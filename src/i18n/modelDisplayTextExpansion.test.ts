@@ -30,7 +30,7 @@ describe('model display-text expansion (English rendering)', () => {
 
     it('renders Runway vendor terms and mode hints in English', () => {
       expect(translateModelDisplayText('Runway 图像模型')).toBe('Runway image model')
-      expect(translateModelDisplayText('Runway 文生视频模型')).toBe('Runway text-to-video model')
+      expect(translateModelDisplayText('Runway 基础视频模型')).toBe('Runway basic video model')
       expect(translateModelDisplayText('用文字生成视频')).toBe('Generate a video from text')
     })
 

@@ -353,6 +353,6 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   'Runway 图像模型': 'Runway image model',
   'Runway 参考图模型': 'Runway reference-image model',
   'Runway 视频模型': 'Runway video model',
-  'Runway 文生视频模型': 'Runway text-to-video model',
+  'Runway 基础视频模型': 'Runway basic video model',
   'Runway 音频模型': 'Runway audio model',
 }

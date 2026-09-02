@@ -25,6 +25,7 @@ import { RUNNINGHUB_VIDEO_ARCHETYPES } from "./runninghubVideoArchetypes";
 import { SEEDANCE_2_ARCHETYPE } from "./seedance";
 import { SEEDANCE_2_5_ARCHETYPE } from "./seedance25";
 import { SEEDANCE_2_5_APIMART_ARCHETYPE } from "./seedance25Apimart";
+import { SEEDANCE_2_5_RUNWAY_ARCHETYPE } from "./seedance25Runway";
 import { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
 import { SEEDANCE_VOLCENGINE_ARCHETYPE } from "./seedanceVolcengine";
 import { SEEDANCE_VOLCENGINE_2_5_ARCHETYPE } from "./seedanceVolcengine25";
@@ -33,7 +34,7 @@ import { VEO_3_1_ARCHETYPE } from "./veo31";
 import { GEMINI_OMNI_11_ARCHETYPE } from "./geminiOmni11";
 import { RUNWAY_GEN45_ARCHETYPE } from "./runwayGen45";
 import { RUNWAY_GEN4_TURBO_ARCHETYPE } from "./runwayGen4Turbo";
-import { RUNWAY_VIDEO_ARCHETYPE, RUNWAY_VIDEO_T2V_ARCHETYPE } from "./runwayVideo";
+import { RUNWAY_VIDEO_ARCHETYPE, RUNWAY_VIDEO_BASIC_ARCHETYPE } from "./runwayVideo";
 import { VIDU_Q3_ARCHETYPE } from "./viduQ3";
 import { WAN_2_7_ARCHETYPE } from "./wan27";
 import { WAN_3_0_ARCHETYPE } from "./wan30";
@@ -74,10 +75,11 @@ const SOURCE_BACKED_PROFILES: readonly ModelArchetype[] = [
   RUNWAY_GEN45_ARCHETYPE,
   RUNWAY_GEN4_TURBO_ARCHETYPE,
   RUNWAY_VIDEO_ARCHETYPE,
-  RUNWAY_VIDEO_T2V_ARCHETYPE,
+  RUNWAY_VIDEO_BASIC_ARCHETYPE,
   KLING_3_ARCHETYPE,
   SEEDANCE_2_APIMART_ARCHETYPE,
   SEEDANCE_2_5_APIMART_ARCHETYPE,
+  SEEDANCE_2_5_RUNWAY_ARCHETYPE,
   MINIMAX_H3_APIMART_ARCHETYPE,
   WAN_2_7_ARCHETYPE,
   WAN_3_0_ARCHETYPE,
