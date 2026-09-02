@@ -147,6 +147,7 @@
 | 文件 | 一句话 | 状态 |
 |---|---|---|
 | [2026-09-01-feedback-share-center.md](2026-09-01-feedback-share-center.md) | v0.21 低摩擦反馈与分享中心：私密 Tally 表单、公开 GitHub、自动带入安全运行时上下文 | 🚧 |
+| [2026-09-02-walkthrough-catalog-seed-version.md](2026-09-02-walkthrough-catalog-seed-version.md) | 隔离走查 catalog 种子按被测 app 版本校验：future seed quarantine + 版本真源单一化，终结「切模型静默失效」假绿 | ✅ |
 
 ## 性能 / 技术地基 / 巨壳拆分 / 管线
 
