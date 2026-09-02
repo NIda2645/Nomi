@@ -48,6 +48,23 @@
 // counter and this probe spike together), restoring off-canvas quiet-render as
 // a trustworthy advisory + U4 positive control rather than a broken gauge.
 //
+// KNOWN BLIND SPOT (F4 · advisory-only, accepted). The counting signal is a
+// change in (memoizedProps, memoizedState). A component that re-renders purely
+// because a React Context value it consumes changed — with NO change to its own
+// props and NO useState/useReducer/store-hook state — would keep both memoized
+// slots frozen and be UNDER-counted (its context-driven render is invisible to
+// this diff). We accept this because: (1) the metric this probe backs is the
+// drag-tick off-canvas re-render count, and the leak it guards (immer swapping
+// `state.nodes`) reaches consumers through Zustand store hooks, which DO write
+// fiber memoizedState — so the drag path we care about is fully observed; a
+// pure context-only consumer is not a plausible carrier of per-mousemove churn
+// here (no high-frequency context sits above these targets). (2) The probe is an
+// advisory + positive-control gauge, not a hard budget — a missed context-only
+// render would understate, never fabricate, waste. If a future target starts
+// taking live drag data via context rather than a store hook, this probe would
+// silently read low for it; re-derive the signal (e.g. an explicit render
+// counter in that component) before trusting the number for it.
+//
 // The hook must be installed on the page's `window` before any React module
 // evaluates. We inject it via Playwright `addInitScript` (runs on every
 // document before page scripts) — see installOffCanvasRenderProbe below.
