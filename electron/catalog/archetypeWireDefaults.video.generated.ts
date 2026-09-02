@@ -107,15 +107,8 @@ export const ARCHETYPE_WIRE_DEFAULTS_VIDEO: Record<string, Record<string, Record
       }
     }
   },
-  "runway-video-basic": {
+  "runway-video-t2v": {
     "text_to_video": {
-      "*": {
-        "aspect_ratio": "1280:720",
-        "duration": 5,
-        "generate_audio": true
-      }
-    },
-    "image_to_video": {
       "*": {
         "aspect_ratio": "1280:720",
         "duration": 5,

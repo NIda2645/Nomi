@@ -188,10 +188,4 @@ describe("Runway reference modes use the text-to-video reference union", () => {
     expect(mapping).toMatchObject({ taskKind: "text_to_video", create: { path: "/v1/text_to_video" } });
   });
 
-  it("does not publish reference mappings for Runway variants without a reference union", () => {
-    for (const modelKey of ["veo3.1", "veo3.1_fast", "gemini_omni_flash"]) {
-      const model = RUNWAY_OFFICIAL_MODELS.find((item) => item.modelKey === modelKey);
-      expect(model?.mappings.some((mapping) => mapping.modeId === "reference")).toBe(false);
-    }
-  });
 });

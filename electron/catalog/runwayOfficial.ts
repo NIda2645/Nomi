@@ -462,9 +462,9 @@ export const RUNWAY_VIDEO_MAPPING_IDS = [
   "seed-runway-wan3-t2v", "seed-runway-wan3-i2v", "seed-runway-wan3-reference",
   "seed-runway-grok_imagine_1_5-t2v", "seed-runway-grok_imagine_1_5-i2v", "seed-runway-grok_imagine_1_5-reference",
   "seed-runway-hailuo3-t2v", "seed-runway-hailuo3-i2v", "seed-runway-hailuo3-reference",
-  "seed-runway-veo3-1-t2v", "seed-runway-veo3-1-i2v",
-  "seed-runway-veo3-1_fast-t2v", "seed-runway-veo3-1_fast-i2v",
-  "seed-runway-happyhorse_1_0-t2v", "seed-runway-gemini_omni_flash-t2v", "seed-runway-gemini_omni_flash-i2v",
+  "seed-runway-veo3-1-t2v", "seed-runway-veo3-1-i2v", "seed-runway-veo3-1-reference",
+  "seed-runway-veo3-1_fast-t2v", "seed-runway-veo3-1_fast-i2v", "seed-runway-veo3-1_fast-reference",
+  "seed-runway-happyhorse_1_0-t2v", "seed-runway-gemini_omni_flash-t2v", "seed-runway-gemini_omni_flash-i2v", "seed-runway-gemini_omni_flash-reference",
 ] as const;
 
 export const RUNWAY_IMAGE_MAPPING_IDS = [
@@ -493,10 +493,10 @@ const RUNWAY_VIDEO_SPECS: RunwayVideoSpec[] = [
   { modelKey: "wan3", labelZh: "Runway Wan 3", archetypeId: "runway-video", fields: "wan" },
   { modelKey: "grok_imagine_1_5", labelZh: "Runway Grok Imagine 1.5", archetypeId: "runway-video", fields: "grok" },
   { modelKey: "hailuo3", labelZh: "Runway Hailuo 3", archetypeId: "runway-video", fields: "hailuo" },
-  { modelKey: "veo3.1", labelZh: "Runway Veo 3.1", archetypeId: "runway-video-basic", fields: "veo", modes: ["t2v", "i2v"] },
-  { modelKey: "veo3.1_fast", labelZh: "Runway Veo 3.1 Fast", archetypeId: "runway-video-basic", fields: "veo", modes: ["t2v", "i2v"] },
-  { modelKey: "happyhorse_1_0", labelZh: "Runway HappyHorse 1.0", archetypeId: "runway-video-basic", fields: "happyhorse", modes: ["t2v", "i2v"] },
-  { modelKey: "gemini_omni_flash", labelZh: "Runway Gemini Omni Flash", archetypeId: "runway-video-basic", fields: "gemini", modes: ["t2v", "i2v"] },
+  { modelKey: "veo3.1", labelZh: "Runway Veo 3.1", archetypeId: "runway-video", fields: "veo" },
+  { modelKey: "veo3.1_fast", labelZh: "Runway Veo 3.1 Fast", archetypeId: "runway-video", fields: "veo" },
+  { modelKey: "happyhorse_1_0", labelZh: "Runway HappyHorse 1.0", archetypeId: "runway-video", fields: "happyhorse", modes: ["t2v", "i2v"] },
+  { modelKey: "gemini_omni_flash", labelZh: "Runway Gemini Omni Flash", archetypeId: "runway-video", fields: "gemini" },
 ];
 
 type RunwayVideoMode = "t2v" | "i2v" | "reference";
@@ -517,11 +517,13 @@ function runwayVideoCreate(spec: RunwayVideoSpec, modeId: RunwayVideoMode): Http
   if (spec.fields === "happyhorse") Object.assign(body, { duration: "{{request.params.duration}}", ...(withImage ? {} : { ratio: "{{request.params.aspect_ratio}}" }) });
   if (spec.fields === "gemini") Object.assign(body, { ratio: "{{request.params.aspect_ratio}}", duration: "{{request.params.duration}}" });
   if (withReferences) {
-    if (spec.fields === "seedance" || spec.fields === "wan" || spec.fields === "hailuo" || spec.fields === "grok") {
+    // veo/gemini：OpenAPI 未印 reference 联合体，但 2026-09-02 实测（B 班）参考图上传 wire 校验通过
+    // （文档与实测冲突以实测为准并注明日期）；仅开图参考键，视频/音频参考仍限文档确认过的族。
+    if (spec.fields === "seedance" || spec.fields === "wan" || spec.fields === "hailuo" || spec.fields === "grok" || spec.fields === "veo" || spec.fields === "gemini") {
       Object.assign(body, {
         reference_image_urls: "{{request.params.reference_image_urls}}",
         ...(spec.fields === "seedance" || spec.fields === "wan" || spec.fields === "hailuo" ? { reference_video_urls: "{{request.params.reference_video_urls}}" } : {}),
-        reference_audio_urls: "{{request.params.reference_audio_urls}}",
+        ...(spec.fields === "veo" || spec.fields === "gemini" ? {} : { reference_audio_urls: "{{request.params.reference_audio_urls}}" }),
       });
     }
   }

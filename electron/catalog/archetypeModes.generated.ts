@@ -97,11 +97,10 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "reference": "text_to_video"
     }
   },
-  "runway-video-basic": {
+  "runway-video-t2v": {
     "defaultModeId": "t2v",
     "modes": {
-      "t2v": "text_to_video",
-      "i2v": "image_to_video"
+      "t2v": "text_to_video"
     }
   },
   "runway-image-reference": {
