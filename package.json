@@ -56,7 +56,7 @@
     "check:e2e-launch": "node ./scripts/check-e2e-launch.mjs",
     "check:docs-index": "node ./scripts/check-docs-index.mjs",
     "check:doc-status": "node ./scripts/check-doc-status.mjs",
-    "check:ledger": "node ./scripts/build-delivery-ledger.mjs --check",
+    "check:ledger": "node --test ./scripts/build-delivery-ledger.node-test.mjs && node ./scripts/build-delivery-ledger.mjs --check",
     "check:handoff": "node ./scripts/check-handoff.mjs",
     "gen:ledger": "node ./scripts/build-delivery-ledger.mjs",
     "ledger:brief": "node ./scripts/build-delivery-ledger.mjs --brief",
