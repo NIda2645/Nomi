@@ -1,0 +1,27 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-02-quality-gate-merge-group-trigger",
+  "problem_type": "CI reachability gap for queued merges",
+  "symptom": "With a GitHub merge queue enabled, queued PRs would wait forever: the required Quality Gate / Mac Package checks never start on merge_group refs, so no merge group can ever turn green.",
+  "direct_cause": "quality-gate.yml only listened to push/pull_request/workflow_dispatch; merge queue builds fire the merge_group event, which matched no trigger.",
+  "class_root": "The workflow's event surface and its diff-anchored gates (ratchet/vocab/root-cause base refs) were designed around exactly two delivery paths (PR round, main push) and hard-coded their payload shapes; any new GitHub delivery event class silently falls outside both the trigger list and every base-sha fallback chain.",
+  "affected_population": [
+    "every PR merged through the merge queue once the ruleset is active",
+    "any future GitHub event class added to the delivery path without a matching trigger and base-sha fallback"
+  ],
+  "scope_paths": [
+    ".github/workflows/quality-gate.yml",
+    "scripts/check-quality-gate-workflow.node-test.mjs"
+  ],
+  "entry_points": [
+    "merge queue merge_group CI builds",
+    "pull request rounds and main pushes (unchanged behaviour)"
+  ],
+  "internal_only_reason": "CI configuration invariant; behaviour is fully determined by the workflow file and its shape-guard test, with no product code involved.",
+  "structural_guarantee": "scripts/check-quality-gate-workflow.node-test.mjs pins the exact trigger set including merge_group and the full base-sha fallback expressions (pull_request.base.sha || merge_group.base_sha || event.before || fallback); any future edit to the event surface or diff anchors fails the Contracts job until the guard is consciously co-updated.",
+  "verification": [
+    "node --test scripts/check-quality-gate-workflow.node-test.mjs passes 9/9 with the new shape",
+    "first queued merge group after ruleset activation shows a merge_group-event Quality Gate run in gh run list --event merge_group"
+  ],
+  "recurring": true
+}
