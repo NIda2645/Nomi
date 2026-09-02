@@ -110,6 +110,7 @@ test('Linux builds once and runs only selected desktop, journey, canvas, and per
     [
       selectedSteps['Electron smoke'].run,
       selectedSteps['CI-safe user journeys'].run,
+      selectedSteps['MCP L1 handshake journey'].run,
       selectedSteps['Critical canvas acceptance'].run,
       selectedSteps['Full functional canvas acceptance'].run,
       selectedSteps['Canvas performance budget'].run,
@@ -117,6 +118,7 @@ test('Linux builds once and runs only selected desktop, journey, canvas, and per
     [
       'xvfb-run -a pnpm run test:e2e',
       'xvfb-run -a pnpm run test:journeys',
+      'xvfb-run -a pnpm run test:mcp-journey',
       'xvfb-run -a pnpm run test:canvas:critical',
       'xvfb-run -a pnpm run test:canvas:acceptance',
       'xvfb-run -a pnpm run test:canvas:performance',

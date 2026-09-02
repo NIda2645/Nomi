@@ -89,6 +89,7 @@
 
 | 文件 | 一句话 | 状态 |
 |---|---|---|
+| [2026-09-02-mcp-testnet-l1-handshake.md](2026-09-02-mcp-testnet-l1-handshake.md) | MCP 测试网第 1 片：真实 stdio L1 握手六条回归、tools/list payload 棘轮与 listChanged A1 | 🚧 |
 | [2026-09-01-agent-m0-baseline-freeze.md](2026-09-01-agent-m0-baseline-freeze.md) | M0 基线冻结：owner map、50 项工具映射、旧路径、schema-v3 草案、红灯与 PR 切片 | ⏳ |
 | [2026-09-02-m2-generation-semantic-slice-1.md](2026-09-02-m2-generation-semantic-slice-1.md) | M2 第一片：generation plan/status 语义模型面与 Host-only 闸门排除 | 🚧 |
 | [2026-09-01-m1-round2-host-runtime.md](2026-09-01-m1-round2-host-runtime.md) | M1 round-2：Host/runtime 切片移植计划（Project Agent 执行协调器 + 常驻壳 transport） | ⏳ |
