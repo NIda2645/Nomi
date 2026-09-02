@@ -123,6 +123,9 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "doubao-seedance-2.5",
     "doubao-seedance-2-5"
   ],
+  "seedance-2.5-runway": [
+    "seedance2_5"
+  ],
   "minimax-h3-apimart": [
     "MiniMax-H3"
   ],
