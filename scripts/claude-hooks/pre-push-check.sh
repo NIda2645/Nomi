@@ -19,16 +19,18 @@
 set +e
 
 INPUT="$(cat)"
-CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;
+# 一次 python3 取两个字段。这段**每条 Bash 命令都要跑**（push 过滤在它后面），
+# 解释器冷启动是所有命令共担的交互延迟——此前这里起了两次 python3，等于白付一次。
+# cwd 先输出（单行、不含换行），command 放后面（可能是多行命令，取剩下全部）。
+PARSED="$(printf '%s' "$INPUT" | python3 -c 'import sys,json
 try:
-    d=json.load(sys.stdin); print(d.get("tool_input",{}).get("command",""))
+    d=json.load(sys.stdin)
+    print(d.get("cwd",""))
+    print(d.get("tool_input",{}).get("command",""))
 except Exception:
-    print("")' 2>/dev/null)"
-HOOK_CWD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;
-try:
-    d=json.load(sys.stdin); print(d.get("cwd",""))
-except Exception:
-    print("")' 2>/dev/null)"
+    print(""); print("")' 2>/dev/null)"
+HOOK_CWD="$(printf '%s\n' "$PARSED" | sed -n '1p')"
+CMD="$(printf '%s\n' "$PARSED" | sed -n '2,$p')"
 
 # 只管 git push；其余一律放行。
 printf '%s' "$CMD" | grep -Eq 'git[[:space:]]+push' || exit 0
