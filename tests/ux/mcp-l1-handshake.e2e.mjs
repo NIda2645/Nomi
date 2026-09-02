@@ -8,8 +8,9 @@ import { makeIsolatedDirs, spawnMcpStdioClient, parseToolResult } from './_mcpJo
 // 面收敛（surface-16-collapse）：拉分支时存在的 42 个 API 镜像塌成 15 个按对象归并的工具。nomi_intake_brief 从
 // MCP 目录移除（无外部 MCP 消费者，内部 capability 保留）。并线 main 后 **+4 个 M2 语义编辑工具**
 // （nomi_timeline_read/edit · nomi_export_job · nomi_media_query，main #16290f6e 收敛后新增的独立对象，原样保留、
-// 未并入 nomi_read/collapse，续裁见 PR body）→ 面数 15+4=19。payload 从 22,941B（收敛前）实测降到下方值。
-const BASELINE_PAYLOAD_BYTES = 21_290
+// 未并入 nomi_read/collapse，续裁见 PR body）→ 面数 15+4=19。payload 从 22,941B（收敛前）实测降到 17,799B
+// （真机 tools/list 实测，与 scripts/mcp-payload-baseline.json 同一真相；ratchet 只减不增）。
+const BASELINE_PAYLOAD_BYTES = 17_799
 const TOOL_NAMES = [
   'nomi_session_open', 'nomi_read', 'nomi_canvas_edit', 'nomi_asset_import', 'nomi_operation_plan',
   'nomi_operation_preview', 'nomi_operation_gate', 'nomi_operation_execute', 'nomi_operation_control',
@@ -21,8 +22,6 @@ const TOOL_NAMES = [
 // 整体只读的工具（annotations.readOnlyHint 真相收进 catalog）——宿主据此免确认。
 // nomi_read + nomi_operation_preview（收敛读侧）+ M2 三个只读编辑工具（timeline_read/export_job/media_query）。
 const READ_ONLY_TOOL_NAMES = ['nomi_read', 'nomi_operation_preview', 'nomi_timeline_read', 'nomi_export_job', 'nomi_media_query']
-// 整体只读的工具（annotations.readOnlyHint 真相收进 catalog）——宿主据此免确认。
-const READ_ONLY_TOOL_NAMES = ['nomi_read', 'nomi_operation_preview']
 
 function check(condition, message) {
   if (!condition) throw new Error(`MCP-L1 FAIL: ${message}`)
