@@ -95,12 +95,6 @@
       "evidence": "normalizeRunwayImageReferences 挂满每条图像 mapping；seedream5_lite 按官方 openapi.json 枚举改正后真 API 复测出图。"
     },
     {
-      "path": "electron/catalog/runwayRatio.ts",
-      "entry_point": "Runway 比例几何（per-model 枚举表 + 朝向归一化的视频/图像对偶，2026-09-02 自 runwayOfficial.ts 按 R9 体积门拆出）",
-      "disposition": "enforced",
-      "evidence": "拆出前 grep 证零外部引用；normalizeRunwayVideoRatio / RUNWAY_IMAGE_RATIO_REMAP / runwayRatioOrientation 仍由 runwayOfficial.ts 唯一消费，出口不变；vendorWireDriftFixes.test.ts 32/32 覆盖拆分后路径。"
-    },
-    {
       "path": "electron/catalog/paramTranslate.ts",
       "entry_point": "newapi 方言的 ratioResToOpenAiSize 调用方",
       "disposition": "not-affected",
@@ -134,7 +128,6 @@
       "electron/catalog/falOfficial.ts",
       "electron/catalog/paramTranslate.ts",
       "electron/catalog/runwayOfficial.ts",
-      "electron/catalog/runwayRatio.ts",
       "electron/catalog/kieKling.ts",
       "electron/catalog/vendorWireDriftFixes.test.ts"
     ]
