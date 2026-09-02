@@ -178,8 +178,7 @@ export const MCP_GENERATION_TOOL_CATALOG = [
       additionalProperties: false,
     },
     method: "nomi_request_generation_gate",
-    resolveMethod: (args: Record<string, unknown>): string =>
-      gstr(args.phase) === "decide" ? "nomi_decide_generation_gate" : "nomi_request_generation_gate",
+    resolveMethod: (args: Record<string, unknown>): string => (gstr(args.phase) === "decide" ? "nomi_decide_generation_gate" : "nomi_request_generation_gate"),
     build: (args: Record<string, unknown>) =>
       gstr(args.phase) === "decide"
         ? { projectId: args.projectId, leaseHandle: args.leaseHandle, operationId: args.operationId, attempt: args.attempt, receiptId: args.receiptId, receiptToken: args.receiptToken }
