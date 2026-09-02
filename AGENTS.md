@@ -6,9 +6,10 @@
 > - **L0 每轮** = `.Codex/hooks/self-check.sh`（hook，每条消息自动注入「三闸 + 核心原则 + 近期坑」）——salience 层，本文件**不再复述它**。
 > - **L1 always 加载** = 本文件：项目事实 + 命令 + **P1–P5** + **D1–D5** + 规则索引。**每次 session 读完再动手。**保持精简（一屏左右）。
 > - **L2 触发才查** = `docs/engineering-rules.md`：R1–R25 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
+> - **L2 触发才查（教训面）** = `docs/lessons/INDEX.md`：本仓踩过且**换个人还会再踩**的坑，一条一个文件，按触发场景分 A 走查 / B 测试红绿 / C 分支交付 / D 平台排查 / E 产品判断 / F 编排。写走查、判 CI 红绿、动分支合并、排查平台故障前各查一眼对应区，别通读。
 > - **查现状（动手前）** = `docs/ARCHITECTURE-NOW.md`：每个子系统**现在真正跑的是什么**（带 file:line）+「常见误解」列。**读任何 `docs/plan/` 之前先过一眼**——方案文档会过期且不带过期标记。搜不到东西时查 `docs/GLOSSARY.md`（同一个东西的多个叫法：自动剪辑=AI 剪辑=EditPlan=E2…）。（2026-08-27 加：有人把 6 月的 agent 方案当现状，整份调研建立在「引擎是 `runAgentChatV2`」这个已被 pi SDK 取代的前提上；同一轮还因搜「自动剪辑」搜不到而重新发明了已批准的 E1/E2/E3 总纲。）
 >
-> **维护纪律（防它再胖回来 —— 治本）**：本文件是**策展的，不是 append 的**。新踩的坑/教训**默认进记忆**（`memory/`，按相关性召回）或 hook 的 `violations.log`，**不塞这里**；只有「反复出现 + 永远相关」的原则才提升进 L1、细节进 L2；每隔一阵压实一次。**加规则前先问「这条非得 always 加载吗」——不是，就别进 L1。**
+> **维护纪律（防它再胖回来 —— 治本）**：本文件是**策展的，不是 append 的**。新踩的坑/教训**默认进 `docs/lessons/`**（2026-09-02 起真相源在仓库，一条一个文件、新增必挂 `INDEX.md`；本机记忆里只留一行指针，改教训只改仓库那份）或 hook 的 `violations.log`，**不塞这里**；只有「反复出现 + 永远相关」的原则才提升进 L1、细节进 L2；每隔一阵压实一次。**加规则前先问「这条非得 always 加载吗」——不是，就别进 L1。**
 > 真相源仍单一：规则索引 + 各处指针指明每条住哪，不另立第二份。改触发清单同步 `self-check.sh`，规则细节只改 L2。注：`.Codex/` 被 gitignore，hook 不随 git 走，换机/新 worktree 需手动复制 `.Codex/hooks/` 与 settings.json 的 hooks 块。
 > **Codex 侧镜像 `AGENTS.md` 由 `scripts/gen-agents-md.mjs` 从 `CLAUDE.md` 生成，禁止手改**：改纪律只改 `CLAUDE.md`，再跑 `pnpm run gen:agents`；`check:agents-sync` 在 gates 链里拦漂移。（2026-08-25 加：此前两份手工维护，08-15 Codex 只写自己那份、08-20 我只写自己那份，双方都以为 R16 是末号，**双双取名 R17**，`engineering-rules.md` 一度两个 `## R17`，漂了 10 天。）
 
