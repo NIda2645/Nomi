@@ -169,7 +169,7 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     }, { timeout: 3000 })
 
     // 候选进转述：模型据此把「三选一 + 都不要」列给真人（elicitation 的原材料）。
-    const withOptions = await call(3, 'nomi_get_run', { projectId: 'project-1', runId })
+    const withOptions = await call(3, 'nomi_read', { target: 'run', projectId: 'project-1', runId })
     expect(text(withOptions)).toContain('城市烟火气')
     expect(text(withOptions)).toContain('都不要，我来描述')
     expect(outcome(withOptions).nextActions).toEqual(['decide_direction'])
@@ -177,7 +177,7 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     expect(optionKeys).toEqual(['street', 'studio', 'montage'])
 
     // nomi_decide_gate 自己发服务端 elicitation；测试客户端明确 accept 后，协议层才调用 dispatcher。
-    const decided = await call(4, 'nomi_decide_gate', { projectId: 'project-1', runId, gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio' })
+    const decided = await call(4, 'nomi_run_gate', { action: 'decide', projectId: 'project-1', runId, gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'studio' })
     expect(frames.some((frame) => frame.method === 'elicitation/create')).toBe(true)
     expect(text(decided)).toContain('✓ 方向已定')
     expect(text(decided)).toContain('极简产品美学')
@@ -190,17 +190,17 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
 
     // ── 剧本审阅点：先看剧本并批准，批准后才会拟分镜 ─────────────────────────
     const scriptCandidate = service.readFull('project-1', runId)!.artifacts.find((item) => item.kind === 'script')!
-    const scriptStatus = await call(5, 'nomi_get_run', { projectId: 'project-1', runId })
+    const scriptStatus = await call(5, 'nomi_read', { target: 'run', projectId: 'project-1', runId })
     expect(text(scriptStatus)).toContain('剧本')
     expect(outcome(scriptStatus).nextActions).toEqual(['review_script'])
-    const scriptReview = await call(6, 'nomi_review_artifact', {
-      projectId: 'project-1', runId, artifactId: scriptCandidate.artifactId, expectedVersion: scriptCandidate.version || 1, decision: 'approved',
+    const scriptReview = await call(6, 'nomi_artifact_review', {
+      action: 'approve', projectId: 'project-1', runId, artifactId: scriptCandidate.artifactId, expectedVersion: scriptCandidate.version || 1,
     })
     expect(text(scriptReview)).toContain('产物版本已批准')
     await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_storyboard_review') }, { timeout: 3000 })
 
     // ── 状态可转述：分镜等审阅 → 人话 + 下一步 ──────────────────────────────
-    const status = await call(7, 'nomi_get_run', { projectId: 'project-1', runId })
+    const status = await call(7, 'nomi_read', { target: 'run', projectId: 'project-1', runId })
     expect(text(status)).toContain('分镜等你审阅')
     expect(outcome(status).nextActions).toEqual(['review_storyboard'])
 
@@ -217,7 +217,7 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     expect(service.readFull('project-1', runId)!.status).toBe('cancelled')
 
     // ── 事件流：durable cursor 把整段旅程逐行透出（含方向候选事件）────────────
-    const events = await call(10, 'nomi_subscribe_run', { projectId: 'project-1', runId, afterCursor: 0 })
+    const events = await call(10, 'nomi_read', { target: 'run_events', projectId: 'project-1', runId, afterCursor: 0 })
     expect(text(events)).toContain('[Nomi] run.created')
     expect(text(events)).toContain('gate.candidates')
     expect(text(events)).toContain('gate.decided')
@@ -237,16 +237,16 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     await vi.waitFor(() => {
       expect(service.readFull('project-1', runId)!.gates.find((gate) => gate.gateId === 'gate-direction-v1')?.directionCandidates?.length).toBe(3)
     }, { timeout: 3000 })
-    await call(22, 'nomi_decide_gate', { projectId: 'project-1', runId, gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'street' })
+    await call(22, 'nomi_run_gate', { action: 'decide', projectId: 'project-1', runId, gateId: 'gate-direction-v1', decision: 'approved', choiceKey: 'street' })
     await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_script_review') }, { timeout: 3000 })
     const runWithScript = service.readFull('project-1', runId)!
     const script = runWithScript.artifacts.find((item) => item.kind === 'script')!
-    await call(23, 'nomi_review_artifact', { projectId: 'project-1', runId, artifactId: script.artifactId, expectedVersion: script.version || 1, decision: 'approved' })
+    await call(23, 'nomi_artifact_review', { action: 'approve', projectId: 'project-1', runId, artifactId: script.artifactId, expectedVersion: script.version || 1 })
     await vi.waitFor(() => { expect(service.readFull('project-1', runId)!.status).toBe('awaiting_storyboard_review') }, { timeout: 3000 })
     const runWithStoryboard = service.readFull('project-1', runId)!
     const storyboard = runWithStoryboard.artifacts.find((item) => item.kind === 'storyboard')!
-    await call(24, 'nomi_review_artifact', { projectId: 'project-1', runId, artifactId: storyboard.artifactId, expectedVersion: storyboard.version || 1, decision: 'approved' })
-    const materialized = await call(25, 'nomi_materialize_storyboard', { projectId: 'project-1', runId, artifactId: storyboard.artifactId, expectedVersion: storyboard.version || 1 })
+    await call(24, 'nomi_artifact_review', { action: 'approve', projectId: 'project-1', runId, artifactId: storyboard.artifactId, expectedVersion: storyboard.version || 1 })
+    const materialized = await call(25, 'nomi_run_gate', { action: 'materialize', projectId: 'project-1', runId, artifactId: storyboard.artifactId, expectedVersion: storyboard.version || 1 })
     expect(text(materialized)).toContain('分镜已落到 Nomi 画布')
     expect(text(materialized)).toContain('canvas-shot-1')
     expect(outcome(materialized)).toMatchObject({ kind: 'storyboard_materialized', bindingCount: 1 })

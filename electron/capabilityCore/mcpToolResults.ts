@@ -129,7 +129,7 @@ function buildArtifactBodyOutcome(
   const head = isRevision
     ? L(ctx, '✓ 修订候选已创建', '✓ Revision candidate created')
     : isReview
-      ? (status === 'adopted' || str(args.decision) === 'approved'
+      ? (status === 'adopted' || str(args.action) === 'approve'
           ? L(ctx, '✓ 产物版本已批准', '✓ Artifact version approved')
           : L(ctx, '✓ 产物审阅决定已记录', '✓ Artifact review decision recorded'))
       : `[Nomi] ${kind} · ${status}`

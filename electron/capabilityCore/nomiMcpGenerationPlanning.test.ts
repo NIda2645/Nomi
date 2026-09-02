@@ -252,17 +252,18 @@ describe("MCP semantic generation planning journey", () => {
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
 
     await harness.call(1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "Codex" } });
-    const created = await harness.call(2, "tools/call", { name: "nomi_operation_create", arguments: { leaseHandle: lease, candidate: makeCandidate() } });
+    const created = await harness.call(2, "tools/call", { name: "nomi_operation_plan", arguments: { leaseHandle: lease, candidate: makeCandidate() } });
     expect(created.result).toBeTruthy();
     const operationId = [...(await repository.list("project-1"))][0]?.runId;
     expect(operationId).toMatch(/^op-/);
 
-    await harness.call(3, "tools/call", { name: "nomi_submit_generation_plan", arguments: { leaseHandle: lease, operationId, patch: { mode: "image-to-image", references: [{ assetId: "asset-1", contentHash: "hash-1", version: 1 }], parameters: { aspectRatio: "16:9", seed: 9 } } } });
+    await harness.call(3, "tools/call", { name: "nomi_operation_plan", arguments: { leaseHandle: lease, operationId, patch: { mode: "image-to-image", references: [{ assetId: "asset-1", contentHash: "hash-1", version: 1 }], parameters: { aspectRatio: "16:9", seed: 9 } } } });
     const preview = await harness.call(4, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     expect(preview.result).toBeTruthy();
     expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "image-to-image" } });
     expect(runTask).not.toHaveBeenCalled();
-    expect(harness.invoke).toHaveBeenCalledWith("nomi_operation_preview", expect.objectContaining({ operationId }));
+    // 面收敛：nomi_operation_preview 工具在 catalog 层路由到原内部 method 字面量 nomi_preview_execution（handler 不变）。
+    expect(harness.invoke).toHaveBeenCalledWith("nomi_preview_execution", expect.objectContaining({ operationId }));
   });
 
   it("keeps real-page freedom across provider/model/mode/parameter/reference edits", async () => {
@@ -286,7 +287,7 @@ describe("MCP semantic generation planning journey", () => {
     };
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
     await harness.call(11, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "Codex" } });
-    const created = await harness.call(12, "tools/call", { name: "nomi_operation_create", arguments: { leaseHandle: lease, candidate: makeEditableCandidate() } });
+    const created = await harness.call(12, "tools/call", { name: "nomi_operation_plan", arguments: { leaseHandle: lease, candidate: makeEditableCandidate() } });
     expect(created.result).toBeTruthy();
     const operationId = [...(await repository.list("project-1"))][0]?.runId;
     expect(operationId).toMatch(/^op-/);
@@ -296,7 +297,7 @@ describe("MCP semantic generation planning journey", () => {
       { providerId: "provider-video", modelId: "model-video-b", mode: "image-to-video", parameters: { duration: 5 }, references: [{ assetId: "asset-c", contentHash: "hash-c", version: 1 }] },
     ];
     for (const [index, patch] of edits.entries()) {
-      await harness.call(13 + index * 2, "tools/call", { name: "nomi_submit_generation_plan", arguments: { leaseHandle: lease, operationId, patch } });
+      await harness.call(13 + index * 2, "tools/call", { name: "nomi_operation_plan", arguments: { leaseHandle: lease, operationId, patch } });
       const preview = await harness.call(14 + index * 2, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
       expect(preview.result).toBeTruthy();
       expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: patch });
@@ -337,7 +338,7 @@ describe("MCP semantic generation planning journey", () => {
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
     await harness.call(21, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "Codex" } });
     const created = await harness.call(22, "tools/call", {
-      name: "nomi_operation_create",
+      name: "nomi_operation_plan",
       arguments: {
         leaseHandle: lease,
         candidate: {
@@ -363,7 +364,7 @@ describe("MCP semantic generation planning journey", () => {
     const firstHash = firstPayload.contract.contractHash;
 
     await harness.call(24, "tools/call", {
-      name: "nomi_submit_generation_plan",
+      name: "nomi_operation_plan",
       arguments: {
         leaseHandle: lease,
         operationId,
@@ -415,7 +416,7 @@ describe("MCP semantic generation planning journey", () => {
     };
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
     await harness.call(31, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "Codex" } });
-    const contextResponse = await harness.call(315, "tools/call", { name: "nomi_get_generation_context", arguments: { leaseHandle: lease } });
+    const contextResponse = await harness.call(315, "tools/call", { name: "nomi_read", arguments: { target: "generation_context", leaseHandle: lease } });
     const contextPayload = JSON.parse((contextResponse.result as { content: Array<{ text: string }> }).content[0]!.text) as {
       videoModels?: Array<{
         modelId: string;
@@ -432,7 +433,7 @@ describe("MCP semantic generation planning journey", () => {
     expect(resolutionOptions(seedanceContext?.variants.find((variant) => variant.id === "standard")?.modes ?? [])).toEqual(["480p", "720p", "1080p", "4k"]);
     expect(resolutionOptions(seedanceContext?.variants.find((variant) => variant.id === "fast")?.modes ?? [])).toEqual(["480p", "720p"]);
     const created = await harness.call(32, "tools/call", {
-      name: "nomi_operation_create",
+      name: "nomi_operation_plan",
       arguments: {
         leaseHandle: lease,
         candidate: {
@@ -468,7 +469,7 @@ describe("MCP semantic generation planning journey", () => {
     expect(seedance.recommendation?.recommendations?.every((item) => item.modelKey === "doubao-seedance-2.0" && item.variantId === "standard")).toBe(true);
 
     await harness.call(335, "tools/call", {
-      name: "nomi_submit_generation_plan",
+      name: "nomi_operation_plan",
       arguments: { leaseHandle: lease, operationId, patch: { variantId: "fast-face", parameters: { duration: 6, resolution: "720p" } } },
     });
     const seedanceFast = await preview(336);
@@ -476,7 +477,7 @@ describe("MCP semantic generation planning journey", () => {
     expect(seedanceFast.recommendation?.recommendations?.every((item) => item.modelKey === "doubao-seedance-2.0" && item.variantId === "fast")).toBe(true);
 
     await harness.call(3365, "tools/call", {
-      name: "nomi_submit_generation_plan",
+      name: "nomi_operation_plan",
       arguments: { leaseHandle: lease, operationId, patch: { modelId: "doubao-seedance-2.0", parameters: { duration: 7, resolution: "720p" } } },
     });
     const sameModelFast = await preview(3366);
@@ -485,14 +486,14 @@ describe("MCP semantic generation planning journey", () => {
     await expect(handler({ capability: "plan", params: { operationId, patch: { variantId: "ghost" } }, lease: verifiedLease }))
       .rejects.toThrow("Unknown video variant");
     await harness.call(337, "tools/call", {
-      name: "nomi_submit_generation_plan",
+      name: "nomi_operation_plan",
       arguments: { leaseHandle: lease, operationId, patch: { variantId: "fast", parameters: { duration: 6, resolution: "1080p" } } },
     });
     await expect(handler({ capability: "preview", params: { operationId }, lease: verifiedLease }))
       .rejects.toThrow("parameters.resolution");
 
     await harness.call(338, "tools/call", {
-      name: "nomi_submit_generation_plan",
+      name: "nomi_operation_plan",
       arguments: { leaseHandle: lease, operationId, patch: { variantId: "mini", parameters: { duration: 6, resolution: "720p" } } },
     });
     const seedanceMini = await preview(339);
@@ -500,7 +501,7 @@ describe("MCP semantic generation planning journey", () => {
     expect(seedanceMini.recommendation?.recommendations?.every((item) => item.modelKey === "doubao-seedance-2.0" && item.variantId === "mini")).toBe(true);
 
     await harness.call(34, "tools/call", {
-      name: "nomi_submit_generation_plan",
+      name: "nomi_operation_plan",
       arguments: {
         leaseHandle: lease,
         operationId,
@@ -521,7 +522,7 @@ describe("MCP semantic generation planning journey", () => {
     expect(veo.contract.contractHash).not.toBe(seedance.contract.contractHash);
 
     await harness.call(36, "tools/call", {
-      name: "nomi_submit_generation_plan",
+      name: "nomi_operation_plan",
       arguments: {
         leaseHandle: lease,
         operationId,
