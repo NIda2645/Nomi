@@ -83,7 +83,7 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
     "modes": {
       "t2v": "text_to_video",
       "i2v": "image_to_video",
-      "reference": "image_to_video"
+      "reference": "text_to_video"
     }
   },
   "veo-3.1": {
@@ -144,6 +144,15 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "first": "image_to_video",
       "firstlast": "image_to_video",
       "omni": "image_to_video"
+    }
+  },
+  "seedance-2.5-runway": {
+    "defaultModeId": "t2v",
+    "modes": {
+      "t2v": "text_to_video",
+      "first": "image_to_video",
+      "firstlast": "image_to_video",
+      "omni": "text_to_video"
     }
   },
   "minimax-h3-apimart": {
