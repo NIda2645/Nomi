@@ -153,6 +153,94 @@ describe('selectStableCanvasNodes — off-canvas subscription boundary', () => {
   })
 })
 
+// F3 · Full-field parameterization: EVERY field that participates in the
+// projection signature must, when changed, yield a fresh projected reference
+// (so its off-canvas consumer re-renders), while a position-only change must
+// keep the reference (so drag ticks don't). The original suite spot-checked
+// title/status/result; this closes the gap for prompt/references/history/
+// progress/runs/meta/size/pluginState/contentJson and the remaining primitives.
+describe('selectStableCanvasNodes — every signature field is a change signal (F3)', () => {
+  type FieldCase = { name: string; patch: Partial<GenerationCanvasNode> }
+  // `base` seeds the field with a value distinct from each case's patch so the
+  // patch is always a real change. Object fields must be swapped for a NEW
+  // reference (immer would keep an unchanged ref → not a change) — the patches
+  // below all pass fresh objects.
+  const base: Partial<GenerationCanvasNode> = {
+    kind: 'image',
+    typeId: 'base-type',
+    title: 'base-title',
+    status: 'idle',
+    error: 'base-error',
+    categoryId: 'shots',
+    groupId: 'g-base',
+    locked: false,
+    derivedFrom: 'src-a',
+    regeneratedFrom: 'src-b',
+    shotIndex: 1,
+    renderKind: 'shot-frame',
+    prompt: 'base-prompt',
+    references: ['ref-1'],
+    result: { id: 'r0', type: 'image', url: 'nomi-local://0.png', createdAt: 0 },
+    history: [{ id: 'h0', type: 'image', url: 'nomi-local://h0.png', createdAt: 0 }],
+    progress: { updatedAt: 0, percent: 0 },
+    runs: [{ id: 'run0', status: 'queued', startedAt: 0 }],
+    meta: { seed: 1 },
+    size: { width: 200, height: 200 },
+    pluginState: { pluginId: 'p', pluginVersion: '1', typeId: 't', schemaVersion: 1, state: { a: 1 } },
+    contentJson: { type: 'doc', content: [] },
+  }
+
+  const cases: FieldCase[] = [
+    { name: 'kind', patch: { kind: 'video' } },
+    { name: 'typeId', patch: { typeId: 'other-type' } },
+    { name: 'title', patch: { title: 'renamed' } },
+    { name: 'status', patch: { status: 'success' } },
+    { name: 'error', patch: { error: 'boom' } },
+    { name: 'categoryId', patch: { categoryId: 'characters' } },
+    { name: 'groupId', patch: { groupId: 'g-2' } },
+    { name: 'locked', patch: { locked: true } },
+    { name: 'derivedFrom', patch: { derivedFrom: 'src-z' } },
+    { name: 'regeneratedFrom', patch: { regeneratedFrom: 'src-z' } },
+    { name: 'shotIndex', patch: { shotIndex: 9 } },
+    { name: 'renderKind', patch: { renderKind: 'character-card' } },
+    { name: 'prompt', patch: { prompt: 'new-prompt' } },
+    { name: 'references', patch: { references: ['ref-2', 'ref-3'] } },
+    { name: 'result', patch: { result: { id: 'r1', type: 'image', url: 'nomi-local://1.png', createdAt: 1 } } },
+    { name: 'history', patch: { history: [{ id: 'h1', type: 'image', url: 'nomi-local://h1.png', createdAt: 1 }] } },
+    { name: 'progress', patch: { progress: { updatedAt: 1, percent: 42 } } },
+    { name: 'runs', patch: { runs: [{ id: 'run1', status: 'running', startedAt: 1 }] } },
+    { name: 'meta', patch: { meta: { seed: 2 } } },
+    { name: 'size', patch: { size: { width: 320, height: 240 } } },
+    { name: 'pluginState', patch: { pluginState: { pluginId: 'p', pluginVersion: '2', typeId: 't', schemaVersion: 1, state: { a: 2 } } } },
+    { name: 'contentJson', patch: { contentJson: { type: 'doc', content: [{ type: 'paragraph' }] } } },
+  ]
+
+  it.each(cases)('a change to `$name` yields a fresh projected reference', ({ patch }) => {
+    __resetStableCanvasNodesCacheForTests()
+    seed([node('a', base), node('b', { ...base, position: { x: 999, y: 999 } })])
+    const before = project()
+    const beforeA = before.find((entry) => entry.id === 'a')
+    const beforeB = before.find((entry) => entry.id === 'b')
+
+    useGenerationCanvasStore.getState().updateNode('a', patch, { persist: false, emit: false })
+    const after = project()
+
+    // The array + the edited node's entry are fresh (subscribers see the change)…
+    expect(after).not.toBe(before)
+    expect(after.find((entry) => entry.id === 'a')).not.toBe(beforeA)
+    // …while the untouched sibling keeps its reference (maximal reuse).
+    expect(after.find((entry) => entry.id === 'b')).toBe(beforeB)
+  })
+
+  it('a position-only change to ANY of those seeded nodes keeps the reference', () => {
+    __resetStableCanvasNodesCacheForTests()
+    seed([node('a', base), node('b', { ...base, position: { x: 999, y: 999 } })])
+    const before = project()
+    useGenerationCanvasStore.getState().moveNode('a', { x: -50, y: -60 }, { persist: false, emit: false })
+    expect(project()).toBe(before)
+  })
+})
+
 describe('filterNodesStable — suspect #4 amplification gate', () => {
   const a = node('a')
   const b = node('b', { categoryId: 'characters' })
