@@ -10,7 +10,7 @@
 // 每棵 worktree 都得手写一次戳才能推。20+ 棵并行的机器上这是天天复发的摩擦。
 //
 // 形状：戳的路径与字段名只在这里定义一次，写戳方（gates）以它为准；读戳方是 shell、
-// import 不了它，所以由 `scripts/check-gates-stamp.mjs` **实际运行读戳方**来证明两边仍然一致。
+// import 不了它，所以由 `scripts/check-hook-behavior.mjs` **实际运行读戳方**来证明两边仍然一致。
 //
 // 为什么戳落在 `git rev-parse --absolute-git-dir` 而不是工作区里的固定路径：
 // git worktree 的 gitdir 一树一份（主仓 `.git/`，worktree 是 `.git/worktrees/<name>/`），
@@ -20,7 +20,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** 戳的文件名。改这里 = 改契约，`check:gates-stamp` 会实际跑读戳方来验它跟得上。 */
+/** 戳的文件名。改这里 = 改契约，`check:hook-behavior` 会实际跑读戳方来验它跟得上。 */
 export const MARKER_BASENAME = 'nomi-gates-ok'
 
 /**
@@ -30,7 +30,7 @@ export const MARKER_BASENAME = 'nomi-gates-ok'
  * 谁都不许另起一份字面量（此前 writeStamp 用的是硬编码模板，等于在同一个文件里
  * 又开了第二个真相源；那正是本文件要消灭的那类漂移，只是缩到了 17 行之内）。
  *
- * 往这里加字段，`check:gates-stamp` 会要求你同时给出一个「篡改该字段 → 读戳方必须拦」的
+ * 往这里加字段，`check:hook-behavior` 会要求你同时给出一个「篡改该字段 → 读戳方必须拦」的
  * 用例；给不出就报红。也就是说：新增的身份维度**必须被证明真的在把关**，不能只是写进文件里。
  */
 export const STAMP_KEYED_FIELDS = ['sha', 'worktree']

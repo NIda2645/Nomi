@@ -3,7 +3,7 @@
 // 报告到的那一例是「gates 写 .claude/.gates-ok、hook 读 <gitdir>/nomi-gates-ok」，
 // 但真正的类是**写戳方与读戳方各自演进、没有任何东西强迫它们一致**。
 //
-// 这里额外钉住门岗自己的两个方向（第一版两边都栽过，见 check-gates-stamp.mjs 的注释）：
+// 这里额外钉住门岗自己的两个方向（第一版两边都栽过，见 check-hook-behavior.mjs 的注释）：
 //   · 不许假绿——把 hook 里可执行那行改回老戳、注释原样留着，必须报红；
 //   · 不许假红——把 sed 换成等价的 awk，行为没变，必须照样绿。
 import { execFileSync } from 'node:child_process'
@@ -14,7 +14,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { checkGatesStamp } from './check-gates-stamp.mjs'
+import { checkHookBehavior } from './check-hook-behavior.mjs'
 import {
   MARKER_BASENAME,
   STAMP_KEYED_FIELDS,
@@ -25,10 +25,12 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const HOOK_REL = 'scripts/claude-hooks/pre-push-check.sh'
+const GUARD_REL = 'scripts/claude-hooks/secret-guard.sh'
+const LIB_REL = 'scripts/claude-hooks/_bash-command-analysis.sh'
 
 /** 造一棵一次性 git 仓库，避免动到真仓库的戳。 */
 function makeTempRepo(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-gates-stamp-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-push-gate-'))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
   const run = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' })
   run('init', '-q')
@@ -44,13 +46,19 @@ function makeTempRepo(t) {
  * 复制一份仓库的契约面到临时目录，供「单边漂移」用例改写。
  * 注意 hook 必须是真文件——门岗会**实际执行**它。
  */
-function makeContractFixture(t, { mutateHook } = {}) {
+function makeContractFixture(t, { mutateHook, mutateLib } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-gates-contract-'))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
   fs.mkdirSync(path.join(dir, 'scripts', 'claude-hooks'), { recursive: true })
   fs.copyFileSync(path.join(repoRoot, 'scripts/stamp-gates-ok.mjs'), path.join(dir, 'scripts/stamp-gates-ok.mjs'))
   const hook = fs.readFileSync(path.join(repoRoot, HOOK_REL), 'utf8')
   fs.writeFileSync(path.join(dir, HOOK_REL), mutateHook ? mutateHook(hook) : hook)
+  // 两个闸门共用的命令理解层：必须一起复制，否则 hook 会走「理解层缺失」的 fail 分支，
+  // 测出来的红就不是我们想验的那个原因了。
+  for (const rel of [LIB_REL, GUARD_REL]) {
+    const src = fs.readFileSync(path.join(repoRoot, rel), 'utf8')
+    fs.writeFileSync(path.join(dir, rel), rel === LIB_REL && mutateLib ? mutateLib(src) : src)
+  }
   const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { gates: pkg.scripts.gates } }, null, 2))
   return dir
@@ -94,9 +102,9 @@ test('戳落在本树自己的 gitdir 下（多 worktree 不互相顶用）', (t
   assert.equal(resolveMarkerPath(dir), path.join(gitDir, MARKER_BASENAME))
 })
 
-test('真仓库当前状态：写戳方与读戳方一致（实跑读戳方）', () => {
-  assert.deepEqual(checkGatesStamp(repoRoot), [])
-})
+// 「真仓库当前状态是否合格」不在这里断言：`check:hook-behavior` 紧接着就会跑
+// `node ./scripts/check-hook-behavior.mjs` 做同一件事，而且它的报错是逐条人话，
+// 比这里 deepEqual 吐一个中文数组好读。重复跑一遍只是白花约 4 秒。
 
 test('写戳方漂移（退回老的内联 .gates-ok）→ 门岗报红', (t) => {
   const dir = makeContractFixture(t)
@@ -105,7 +113,7 @@ test('写戳方漂移（退回老的内联 .gates-ok）→ 门岗报红', (t) =>
   pkg.scripts.gates = 'pnpm run gates:contracts && node -e "require(\'fs\').writeFileSync(\'.claude/.gates-ok\',\'x\')"'
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2))
 
-  const problems = checkGatesStamp(dir)
+  const problems = checkHookBehavior(dir, { only: ['writer'] })
   assert.ok(problems.some((p) => p.includes('没有调用 scripts/stamp-gates-ok.mjs')), '应指出 gates 不再调用唯一书写者')
   assert.ok(problems.some((p) => p.includes('.gates-ok')), '应指出老戳复活')
 })
@@ -120,7 +128,7 @@ test('读戳方漂移：可执行那行改回老戳、注释原样保留 → 必
       return next
     },
   })
-  const problems = checkGatesStamp(dir)
+  const problems = checkHookBehavior(dir, { only: ['stamp'] })
   assert.ok(problems.length > 0, '注释里有正确字符串不代表 hook 行为正确；必须实跑才拦得住')
   assert.ok(problems.some((p) => p.includes('不认')), '应指出读戳方不认书写者盖出的戳')
 })
@@ -139,9 +147,37 @@ test('读戳方等价改写（sed → awk）行为不变 → 必须照样绿（�
     },
   })
   assert.deepEqual(
-    checkGatesStamp(dir),
+    checkHookBehavior(dir, { only: ['stamp'] }),
     [],
     '等价的 shell 写法必须被接受——会误报的门岗三次之后就会被人绕过（见 docs/design/page-design-process.md）',
+  )
+})
+
+test('共用理解层不再消费 git 全局选项 → 两个闸门同时报漏判（证明确实共用一份理解）', (t) => {
+  const dir = makeContractFixture(t, {
+    mutateLib: (lib) => {
+      // 拿掉「带参数的 git 全局选项」这一支，`git -c k=v <子命令>` 就退化成认不出子命令。
+      // 这正是 2026-09-02 实测到的那类洞：git 与子命令之间隔了全局选项，闸门整个不运行。
+      const next = lib.replace(
+        `                if t in GLOBAL_TAKES_ARG and j + 1 < n:
+                    j += 2; continue
+`,
+        '',
+      )
+      assert.notEqual(next, lib, '替换必须真的命中，否则这条测试是空转')
+      return next
+    },
+  })
+  const problems = checkHookBehavior(dir, { only: ['push-commands', 'secret-guard'] })
+  // 关键：同一处退化必须在**两个闸门**都报出来——这就是「共用一份理解」的可证伪形式。
+  // 2026-09-02 的教训正是：两份各自的正则让同一个洞要在两处分别被发现、分别被修。
+  assert.ok(
+    problems.some((p) => p.includes('命令识别漏判') && p.includes('git -c')),
+    'pre-push 应报 `git -c k=v push` 被漏判',
+  )
+  assert.ok(
+    problems.some((p) => p.includes('secret-guard 漏判') && p.includes('git -c')),
+    'secret-guard 应同时报 `git -c k=v commit --no-verify` 被漏判',
   )
 })
 
@@ -153,7 +189,7 @@ test('读戳方推荐了不存在的补盖脚本 → 门岗报红（报告到的
       return next
     },
   })
-  const problems = checkGatesStamp(dir)
+  const problems = checkHookBehavior(dir, { only: ['suggestion'] })
   assert.ok(
     problems.some((p) => p.includes('stamp-gates-ok-typo.mjs') && p.includes('不存在')),
     '应指出 hook 让人运行一个不存在的脚本',
