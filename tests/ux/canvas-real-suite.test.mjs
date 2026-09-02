@@ -73,6 +73,8 @@ describe('real canvas acceptance suite', () => {
     expect(() => scenariosForProfile('critical', { shard: { index: 1, total: 2 } })).toThrow('only supported for the full profile')
     expect(() => scenariosForProfile('performance', { shard: { index: 1, total: 2 } })).toThrow('only supported for the full profile')
     expect(parseCanvasSuiteArgv(['full', '--shard', '1/2'])).toEqual({ profile: 'full', shard: { index: 1, total: 2 } })
+    // pnpm 会把 `--` 分隔符原样转发给脚本（CI 实际到达的 argv 形状），npm 则吃掉它；两种都必须可解析。
+    expect(parseCanvasSuiteArgv(['full', '--', '--shard', '2/2'])).toEqual({ profile: 'full', shard: { index: 2, total: 2 } })
     expect(parseCanvasSuiteArgv(['critical'])).toEqual({ profile: 'critical', shard: null })
     expect(() => parseCanvasSuiteArgv(['full', '--shards', '1/2'])).toThrow('unknown canvas suite argument')
   })

@@ -198,6 +198,10 @@ export function parseCanvasSuiteArgv(argv) {
   const [profile = 'critical', ...rest] = argv
   let shard = null
   for (let index = 0; index < rest.length; index += 1) {
+    // npm 吃掉 `--` 分隔符，pnpm 会原样转发（CI 实测：`pnpm run … -- --shard 1/2`
+    // 到达脚本时是 `full -- --shard 1/2`）。按 CLI 惯例把独立的 `--` 当作
+    // 选项结束符跳过；其余未知参数照旧 fail-closed。
+    if (rest[index] === '--') continue
     if (rest[index] === '--shard') {
       shard = parseCanvasShard(rest[index + 1])
       index += 1
