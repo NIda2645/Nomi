@@ -23,5 +23,15 @@
     "node --test scripts/check-quality-gate-workflow.node-test.mjs passes 9/9 with the new shape",
     "first queued merge group after ruleset activation shows a merge_group-event Quality Gate run in gh run list --event merge_group"
   ],
-  "recurring": true
+  "regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs (trigger set + base-sha fallback expressions pinned, 9 tests)"
+  ],
+  "residual_risks": [
+    "Other workflows (win-gate, desktop-preview) do not run on merge_group; acceptable while only Quality Gate / Mac Package are required checks — revisit if the required set grows."
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new GitHub delivery event class (as merge_group was) will again fall outside hard-coded trigger lists and base-sha fallbacks unless the shape guard forces conscious co-update.",
+    "same_class_scan": "grep -l 'pull_request' .github/workflows/*.yml reviewed 2026-09-02: only quality-gate.yml produces required checks; desktop-preview/win-gate are optional surfaces and stay PR-only by design."
+  }
 }
