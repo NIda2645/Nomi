@@ -122,6 +122,35 @@ describe('selectStableCanvasNodes — off-canvas subscription boundary', () => {
     expect(afterAdd).not.toBe(before)
     expect(afterAdd.length).toBe(before.length + 1)
   })
+
+  // F2 root-cause guard: the signature now joins fields with a plain SPACE (the
+  // file used a raw NUL separator, which made it a binary blob to git/ripgrep).
+  // Space stays collision-free only because the free-text fields (title/prompt)
+  // are JSON-quoted — so a rename that merely REDISTRIBUTES spaces between title
+  // and prompt (a "…a b c…" ⇄ "…a b c…" hazard under a naive raw-space join if the
+  // two ever sat adjacent) is still detected. Locks the quoting against a future
+  // field-reorder that would put two space-capable fields side by side.
+  it('a title⇄prompt space redistribution is detected as a change (quoting holds)', () => {
+    seed([node('a', { title: 'shot a', prompt: 'b' })])
+    const before = project()
+    useGenerationCanvasStore.getState().updateNode('a', { title: 'shot', prompt: 'a b' }, { persist: false, emit: false })
+    const after = project()
+    expect(after).not.toBe(before)
+    const entry = after.find((candidate) => candidate.id === 'a')
+    expect(entry?.title).toBe('shot')
+    expect(entry?.prompt).toBe('a b')
+  })
+
+  // And a title containing a double-quote must not corrupt the signature (JSON
+  // escaping): renaming to/from such a value still registers cleanly.
+  it('a title containing a double-quote is handled (JSON escaping)', () => {
+    seed([node('a', { title: 'plain' })])
+    const before = project()
+    useGenerationCanvasStore.getState().updateNode('a', { title: 'say "hi"' }, { persist: false, emit: false })
+    const after = project()
+    expect(after).not.toBe(before)
+    expect(after.find((candidate) => candidate.id === 'a')?.title).toBe('say "hi"')
+  })
 })
 
 describe('filterNodesStable — suspect #4 amplification gate', () => {
