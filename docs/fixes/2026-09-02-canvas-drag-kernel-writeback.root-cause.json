@@ -47,7 +47,8 @@
     "React Flow 使用非受控 defaultNodes 时，所有 mount 后业务投影变化必须经唯一同步边界按 id+引用推进内部 nodes store。",
     "投影同步不得在拖动期间覆盖已有节点的内核 position；drag stop 写回后业务投影才重新接管最终位置。",
     "投影未变化的节点不得调用 setNodes；新增、删除和 data/状态/结果引用变化必须可见。",
-    "拖动中 Agent、MCP 和画布外读者继续读取未提交的旧业务位置；事件与持久化仍只在 stop 发生。"
+    "拖动中 Agent、MCP 和画布外读者继续读取未提交的旧业务位置；事件与持久化仍只在 stop 发生。",
+    "拖动内核为避免二次 apply 位移而关闭的 hasDefaultNodes，必须在 drag stop 还原为 true：否则 React Flow 的 triggerNodeChanges 与 BatchProvider 的 useReactFlow().setNodes 都会因该标志为 false 停止自应用变更，令投影同步（含选择/primarySelection）在此后每次拖动后静默变空操作。"
   ],
   "generality_proof": "所有业务节点增删和 data/结果/状态投影都汇入 GenerationCanvasReactFlow 的 flowNodes，再由唯一的 ReactFlow 子树同步边界进入非受控内核；所有 React Flow 节点拖动 position change 都汇入 handleNodesChange，draft 层承接瞬态位置，stop 再统一走 moveNode。因此单节点、多选节点、结果异步更新和空白项目新增节点都覆盖同一类边界，组框拖动也作为独立手势入口核查。",
   "shared_boundaries": [
@@ -64,12 +65,12 @@
     {
       "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
       "symbol": "handleNodesChange / handleNodeDragStop",
-      "responsibility": "把 React Flow 的瞬态位置变更留在 draft，把最终位置和事件/持久化收尾集中到 drag stop。"
+      "responsibility": "把 React Flow 的瞬态位置变更留在 draft，把最终位置和事件/持久化收尾集中到 drag stop，并在 stop 调用 restoreCanvasDragKernelOwnership 还原 hasDefaultNodes，让内核恢复自应用选择/投影变更。"
     },
     {
       "path": "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
-      "symbol": "applyCanvasDragPositionChanges / overlayCanvasDragDraft",
-      "responsibility": "以 applyNodeChanges 产生只替换被拖节点的局部 Flow 几何，并叠加在最新业务投影上。"
+      "symbol": "applyCanvasDragPositionChanges / overlayCanvasDragDraft / restoreCanvasDragKernelOwnership",
+      "responsibility": "以 applyNodeChanges 产生只替换被拖节点的局部 Flow 几何并叠加在最新业务投影上；配对的 restoreCanvasDragKernelOwnership 在 stop 把 hasDefaultNodes 还原为 true，保证「关闭内核自应用」与「还原」成对出现，不留永久冻结。"
     },
     {
       "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",

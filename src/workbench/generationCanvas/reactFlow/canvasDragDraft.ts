@@ -45,6 +45,22 @@ export function overlayCanvasDragDraft(
   })
 }
 
+/**
+ * Re-arms React Flow's ownership after a drag ends. The kernel path
+ * (applyCanvasDragKernelPositionChanges / drag-start) turns `hasDefaultNodes`
+ * off so React Flow does not double-apply drag geometry it never received via
+ * setNodes. That flag also gates React Flow's own change self-application:
+ * while it is false both `store.triggerNodeChanges` and the batched
+ * `useReactFlow().setNodes` stop writing back to the internal store, so
+ * selection changes (and the projection sync) silently no-op. Restoring it to
+ * true on drag-stop is what keeps post-drag click/marquee selection — and the
+ * primary-selection-gated magnetic handles — working.
+ */
+export function restoreCanvasDragKernelOwnership(store: CanvasDragKernelStore): void {
+  if (store.getState().hasDefaultNodes) return
+  store.setState({ hasDefaultNodes: true })
+}
+
 export function applyCanvasDragKernelPositionChanges(
   store: CanvasDragKernelStore,
   changes: readonly NodeChange<GenerationFlowNode>[],

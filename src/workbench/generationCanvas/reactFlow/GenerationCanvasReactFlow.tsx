@@ -61,6 +61,7 @@ import {
   applyCanvasDragKernelPositionChanges,
   applyCanvasDragPositionChanges,
   overlayCanvasDragDraft,
+  restoreCanvasDragKernelOwnership,
 } from './canvasDragDraft'
 import { commitCanvasNodeDragStop } from './canvasDragWriteback'
 import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOverlays'
@@ -537,7 +538,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       moveNode,
       commitPersistedChange,
     })
-  }, [commitPersistedChange, moveNode, readOnly, t])
+    // 还原拖动内核关掉的 hasDefaultNodes，恢复 RF 对选择/投影变更的自应用（机制见 helper JSDoc）。
+    restoreCanvasDragKernelOwnership(flowStore)
+  }, [commitPersistedChange, flowStore, moveNode, readOnly, t])
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return
