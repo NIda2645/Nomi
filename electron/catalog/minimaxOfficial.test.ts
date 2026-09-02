@@ -15,7 +15,7 @@ describe("MiniMax 官方合同", () => {
   });
 
   it("points H3-Max at the current official video guide", () => {
-    expect(MINIMAX_H3_MAX_ARCHETYPE.sources[0]).toMatchObject({
+    expect(MINIMAX_H3_MAX_ARCHETYPE.sources?.[0]).toMatchObject({
       url: "https://platform.minimaxi.com/docs/guides/video-generation",
       checkedAt: "2026-09-02",
     });
