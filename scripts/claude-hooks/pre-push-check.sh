@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# PreToolUse hook（命中 Bash 的 `git push`）= push 前的**真闸门**（R11 + P3 决策点强制）。
+# PreToolUse hook（命中 Bash 里的推送命令）= push 前的**真闸门**（R11 + P3 决策点强制）。
 # 设计见 docs/plan/2026-06-17-discipline-system-overhaul.md（杠杆 1）。
 #
 # 规则：
-#  · 非 git push → 放行（exit 0）。
+#  · 命令里没有推送 → 放行（exit 0）。
 #  · outgoing 改动全是 doc/hook（.md / docs/ / .claude/）→ 放行（这类不需五门，R11 例外）。
 #  · 本 worktree 自己的五门戳（`$GIT_DIR/nomi-gates-ok`，`pnpm run gates` 全过时盖）**三项全对** → 放行：
 #      ① 30 分钟内盖的  ② 盖戳的 worktree 就是这棵  ③ 盖戳时的 HEAD 就是现在的 HEAD
@@ -16,39 +16,64 @@
 # 根因同一个：戳**不认树、也不认提交**，只认一个固定路径和时间。所以戳落进
 # `git rev-parse --absolute-git-dir`——git worktree 的 gitdir 一树一份（主仓 `.git/`，
 # worktree 是 `.git/worktrees/<name>/`），物理上不可能互相顶用——再带上树路径与 HEAD 两维身份。
+#
+# 2026-09-02 第二轮：**判「是不是推送、推的哪棵树」不再用正则猜命令字符串**。
+# 旧写法用 `grep -E 'git[[:space:]]+push'` 加一段 sed 抓第一个 `cd`，四个方向实测全漏：
+#   · `git -C <另一棵树> push` —— git 与 push 之间隔了全局选项，正则匹配不到，闸门**根本不运行**；
+#     于是本树那枚有效戳给另一棵**没过五门**的树背了书（这正是闸门要防的误放）；
+#   · `git -c k=v push` / `git --no-pager push` —— 同上，匹配不到；
+#   · `cd A && cd B && git push` —— sed 取的是**第一个** cd，而推送发生在 B，拿 A 的戳判 B 的推送；
+#   · 反向误伤：`echo "git push"` / `grep -rn "git push" docs/` 这类只读命令被当成推送拦下
+#     （开发中真实撞到两次）——而会误报的闸门用不了几次就会被人绕过。
+# 根因是**用正则去理解 shell 语法**。改成让已有的那次 python3 顺手做词法分析（`shlex`）：
+# 引号内的内容成为单个 token（所以 echo/grep 里的词组不再命中）、只在**命令位置**认 git、
+# 认全局选项后再判 push、`cd`/`pushd` 按顺序累积（末个 cd 才是推送发生地）、`-C` 优先。
+# 没加进程：JSON 解析本来就要跑这一次 python3。
 set +e
 
 INPUT="$(cat)"
-CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;
-try:
-    d=json.load(sys.stdin); print(d.get("tool_input",{}).get("command",""))
-except Exception:
-    print("")' 2>/dev/null)"
-HOOK_CWD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;
-try:
-    d=json.load(sys.stdin); print(d.get("cwd",""))
-except Exception:
-    print("")' 2>/dev/null)"
 
-# 只管 git push；其余一律放行。
-printf '%s' "$CMD" | grep -Eq 'git[[:space:]]+push' || exit 0
+# 命令怎么理解，交给两个 Bash 闸门共用的那一层（见 _bash-command-analysis.sh 的抬头注释：
+# 此前两个闸门各用一套正则，犯的是同一类错）。这段**每条 Bash 命令都要跑**，
+# 所以进程数是所有命令共担的交互延迟：保持恰好一次 python3。
+ANALYSIS_LIB="$(dirname "$0")/_bash-command-analysis.sh"
+# 共用层缺失 = 我们失去了理解命令的能力。不猜：只要命令里出现 push 就拦（fail-closed）。
+if [ ! -f "$ANALYSIS_LIB" ]; then
+  printf '%s' "$INPUT" | grep -q 'push' && {
+    printf '⛔ push 闸门：命令理解层 %s 缺失（跑 `pnpm install` 重装 hook），不允许在读不懂的情况下放行。\n' \
+      "$ANALYSIS_LIB" >&2
+    exit 2
+  }
+  exit 0
+fi
+# shellcheck source=/dev/null
+. "$ANALYSIS_LIB"
 
-# **推送发生在哪棵树，就查哪棵树**：命令形如 `cd <path> && git push ...` 时以那个目录为准；
-# 没写 cd 就用 hook 报的 cwd，再退到会话目录。
-# 为什么不能只信 CLAUDE_PROJECT_DIR：它固定指向**会话**那棵 worktree，而这台机器常有 20+ 棵并行。
-CD_TARGET="$(printf '%s' "$CMD" | sed -n 's/^[[:space:]]*cd[[:space:]]\{1,\}\([^&;|]*\).*/\1/p' | head -1 | sed 's/[[:space:]]*$//' | tr -d "\"'")"
-ROOT=""
-for CANDIDATE in "$CD_TARGET" "$HOOK_CWD" "$CLAUDE_PROJECT_DIR" "$PWD"; do
-  [ -n "$CANDIDATE" ] && [ -d "$CANDIDATE" ] || continue
-  ROOT="$(cd "$CANDIDATE" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)"
-  [ -n "$ROOT" ] && break
-done
-[ -z "$ROOT" ] && exit 0   # 拿不到根 → 放行
+PARSED="$(printf '%s' "$INPUT" | analyse_bash_command)"
+STATUS="$(printf '%s\n' "$PARSED" | sed -n '1p')"
+HOOK_CWD="$(printf '%s\n' "$PARSED" | sed -n '2p')"
+# 只取 push 那些行的目录列（第 2 列）。
+TARGETS="$(printf '%s\n' "$PARSED" | sed -n '3,$p' | awk -F'\t' '$1=="push"{print $2}' | sed '/^$/d')"
 
-cd "$ROOT" 2>/dev/null || exit 0
-GITDIR="$(git rev-parse --absolute-git-dir 2>/dev/null)"
-[ -z "$GITDIR" ] && exit 0
-MARKER="$GITDIR/nomi-gates-ok"
+block_plain() {
+  cat >&2 <<EOF
+⛔ push 闸门（R11 + P3）：$1
+
+push 前必须先在**推送发生的那棵树里**跑 \`pnpm run gates\`（全过自动盖戳放行）。
+若确已过五门只是没走 gates 脚本：\`node ./scripts/stamp-gates-ok.mjs\`。
+EOF
+  exit 2
+}
+
+# 词法分析失败 = 我们读不懂这条命令。**不猜**：只要它里面出现 push 就拦（fail-closed）。
+if [ "$STATUS" != "ok" ]; then
+  printf '%s' "$INPUT" | grep -q 'push' &&
+    block_plain "这条命令无法可靠解析（引号不配对？），但里面出现了 push——不允许在读不懂的情况下放行。"
+  exit 0
+fi
+
+# 没检测到推送 → 放行。引号里的词组不算（`echo \"git push\"` 不会走到这里）。
+[ -n "$TARGETS" ] || exit 0
 
 # 一组文件是否**全是** doc/hook（这类不需五门）。空列表 → 判不了 → 不放行。
 is_docs_only() {
@@ -75,32 +100,58 @@ EOF
   exit 2
 }
 
-# 没有 outgoing commits（已同步/无新提交）→ push 是 no-op，放行。
-git rev-parse origin/main >/dev/null 2>&1 && [ -z "$(git log origin/main..HEAD --oneline 2>/dev/null)" ] && exit 0
+# 逐棵校验：一条命令可以推多棵树（`cd A && git push && cd B && git push`），
+# 任意一棵不合格就拦——闸门的判据是「每一棵被推的树都过了五门」。
+while IFS= read -r TARGET; do
+  [ -n "$TARGET" ] || continue
 
-# outgoing 改动全是 doc/hook → 放行。拿不到文件列表就继续往下验戳（不放行也不误杀）。
-is_docs_only "$(git diff --name-only origin/main...HEAD 2>/dev/null)" && exit 0
+  [ "$TARGET" = "?" ] &&
+    block_plain "命令用 --git-dir/--work-tree 指定了推送目标，无法可靠还原是哪棵树——请直接在目标树里推送。"
 
-# —— 到这里 = 有代码改动，开始验戳：三项全对才放行 ——
-[ -f "$MARKER" ] || block "本次有代码改动，但**这棵 worktree** 没有「五门刚过」的戳。"
+  ROOT=""
+  for CANDIDATE in "$TARGET" "$HOOK_CWD" "$CLAUDE_PROJECT_DIR" "$PWD"; do
+    [ -n "$CANDIDATE" ] && [ -d "$CANDIDATE" ] || continue
+    ROOT="$(cd "$CANDIDATE" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)"
+    [ -n "$ROOT" ] && break
+  done
+  [ -z "$ROOT" ] && continue   # 连仓库根都拿不到 → 唯一的 fail-open
 
-# ① 新鲜度
-[ -n "$(find "$MARKER" -mmin -30 2>/dev/null)" ] || block "五门戳超过 30 分钟，已过期。"
+  cd "$ROOT" 2>/dev/null || continue
+  GITDIR="$(git rev-parse --absolute-git-dir 2>/dev/null)"
+  [ -z "$GITDIR" ] && continue
+  MARKER="$GITDIR/nomi-gates-ok"
 
-STAMP_SHA="$(sed -n 's/^sha=//p' "$MARKER" | head -1)"
-STAMP_WT="$(sed -n 's/^worktree=//p' "$MARKER" | head -1)"
-[ -n "$STAMP_SHA" ] && [ -n "$STAMP_WT" ] || block "五门戳格式不认识（旧版那个只有时间的空文件？），不能作为凭据。"
+  # 没有 outgoing commits（已同步/无新提交）→ 这棵树的推送是 no-op，看下一棵。
+  if git rev-parse origin/main >/dev/null 2>&1 && [ -z "$(git log origin/main..HEAD --oneline 2>/dev/null)" ]; then
+    continue
+  fi
 
-# ② 认树：戳被拷贝/继承过来的一律不作数
-[ "$STAMP_WT" = "$ROOT" ] || block "这枚戳盖的是另一棵 worktree（$STAMP_WT），不能给本次推送背书。"
+  # outgoing 改动全是 doc/hook → 放行这棵。拿不到文件列表就继续往下验戳（不放行也不误杀）。
+  is_docs_only "$(git diff --name-only origin/main...HEAD 2>/dev/null)" && continue
 
-# ③ 认提交：盖完戳又提交了代码 = 那份代码没过门
-HEAD_SHA="$(git rev-parse HEAD 2>/dev/null)"
-if [ "$STAMP_SHA" != "$HEAD_SHA" ]; then
-  DELTA=""
-  git merge-base --is-ancestor "$STAMP_SHA" HEAD 2>/dev/null && DELTA="$(git diff --name-only "$STAMP_SHA"..HEAD 2>/dev/null)"
-  # 盖戳后只补了 doc/hook → 用与上面同一把尺放行；只要沾代码就得重新过门。
-  is_docs_only "$DELTA" || block "戳盖在 ${STAMP_SHA:0:12}，现在的 HEAD 是 ${HEAD_SHA:0:12} —— 盖戳之后又动了代码，这份没过门。"
-fi
+  # —— 到这里 = 这棵树有代码改动，开始验戳：三项全对才放行 ——
+  [ -f "$MARKER" ] || block "本次有代码改动，但**这棵 worktree** 没有「五门刚过」的戳。"
+
+  # ① 新鲜度
+  [ -n "$(find "$MARKER" -mmin -30 2>/dev/null)" ] || block "五门戳超过 30 分钟，已过期。"
+
+  STAMP_SHA="$(sed -n 's/^sha=//p' "$MARKER" | head -1)"
+  STAMP_WT="$(sed -n 's/^worktree=//p' "$MARKER" | head -1)"
+  [ -n "$STAMP_SHA" ] && [ -n "$STAMP_WT" ] || block "五门戳格式不认识（旧版那个只有时间的空文件？），不能作为凭据。"
+
+  # ② 认树：戳被拷贝/继承过来的一律不作数
+  [ "$STAMP_WT" = "$ROOT" ] || block "这枚戳盖的是另一棵 worktree（$STAMP_WT），不能给本次推送背书。"
+
+  # ③ 认提交：盖完戳又提交了代码 = 那份代码没过门
+  HEAD_SHA="$(git rev-parse HEAD 2>/dev/null)"
+  if [ "$STAMP_SHA" != "$HEAD_SHA" ]; then
+    DELTA=""
+    git merge-base --is-ancestor "$STAMP_SHA" HEAD 2>/dev/null && DELTA="$(git diff --name-only "$STAMP_SHA"..HEAD 2>/dev/null)"
+    # 盖戳后只补了 doc/hook → 用与上面同一把尺放行；只要沾代码就得重新过门。
+    is_docs_only "$DELTA" || block "戳盖在 ${STAMP_SHA:0:12}，现在的 HEAD 是 ${HEAD_SHA:0:12} —— 盖戳之后又动了代码，这份没过门。"
+  fi
+done <<EOF
+$TARGETS
+EOF
 
 exit 0
