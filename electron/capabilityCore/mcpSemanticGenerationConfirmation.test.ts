@@ -217,7 +217,7 @@ describe("semantic MCP one-confirmation journey", () => {
     expect(created.result).toBeTruthy();
     const operationId = createdOperationId;
     expect(operationId).toMatch(/^op-/);
-    await call(3, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+    await call(3, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     const gate = await call(4, "tools/call", { name: "nomi_request_generation_gate", arguments: { leaseHandle: lease, operationId } });
     expect(gate.result).toBeTruthy();
     expect(start).toHaveBeenCalledWith(expect.objectContaining({ operationId, approvedReceiptId: expect.stringMatching(/^receipt-/) }), expect.anything());

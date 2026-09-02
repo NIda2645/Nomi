@@ -144,7 +144,7 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     protocol.handleIncoming({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: { elicitation: {} }, clientInfo: { name: 'claude-code' } } })
 
     // ── 壹 · 接住：进度起始帧 + 结构化回执 + 参数回显 ────────────────────────────
-    const started = await call(2, 'nomi_start_playbook', {
+    const started = await call(2, 'nomi_run_start', {
       projectId: 'project-1',
       playbook: 'brand.promo',
       brief: { goal: '一条 60 秒品牌宣传片', durationSeconds: 60 },
@@ -205,12 +205,12 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     expect(outcome(status).nextActions).toEqual(['review_storyboard'])
 
     // ── 陆 · 掌控与错误契约：非法暂停给人话拒绝，取消合法且不计费 ─────────────
-    const illegalPause = await call(8, 'nomi_control_run', { projectId: 'project-1', runId, action: 'pause' })
+    const illegalPause = await call(8, 'nomi_run_control', { projectId: 'project-1', runId, action: 'pause' })
     expect(illegalPause.result?.isError).toBe(true)
     expect(text(illegalPause)).toContain('✗')
     expect(text(illegalPause)).toContain('无法暂停')
 
-    const cancelled = await call(9, 'nomi_control_run', { projectId: 'project-1', runId, action: 'cancel' })
+    const cancelled = await call(9, 'nomi_run_control', { projectId: 'project-1', runId, action: 'cancel' })
     expect(text(cancelled)).toContain('✓ 已取消')
     expect(text(cancelled)).toContain('已完成的产物保留在项目里')
     expect(outcome(cancelled).kind).toBe('run_control')
@@ -224,7 +224,7 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
     expect(text(events)).toMatch(/next cursor \d+/)
 
     // ── 错误契约：不存在的 run 返回人话 isError ─────────────────────────────
-    const missing = await call(11, 'nomi_control_run', { projectId: 'project-1', runId: 'run-missing', action: 'pause' })
+    const missing = await call(11, 'nomi_run_control', { projectId: 'project-1', runId: 'run-missing', action: 'pause' })
     expect(missing.result?.isError).toBe(true)
     expect(text(missing)).toContain('✗')
   })
@@ -232,7 +232,7 @@ describe('MCP conversation journey (A7 · 真 service 全链路)', () => {
   it('剧本和分镜都批准后，外部 Agent 可通过 MCP 把同一份分镜物化到 Nomi 项目', async () => {
     const { service, protocol, call } = makeJourney()
     protocol.handleIncoming({ jsonrpc: '2.0', id: 20, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: { elicitation: {} }, clientInfo: { name: 'codex' } } })
-    const started = await call(21, 'nomi_start_playbook', { projectId: 'project-1', playbook: 'brand.promo', brief: { goal: '雨夜找猫', durationSeconds: 30 } })
+    const started = await call(21, 'nomi_run_start', { projectId: 'project-1', playbook: 'brand.promo', brief: { goal: '雨夜找猫', durationSeconds: 30 } })
     const runId = String(outcome(started).runId)
     await vi.waitFor(() => {
       expect(service.readFull('project-1', runId)!.gates.find((gate) => gate.gateId === 'gate-direction-v1')?.directionCandidates?.length).toBe(3)

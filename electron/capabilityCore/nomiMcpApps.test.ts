@@ -78,7 +78,7 @@ describe('nomi-mcp · MCP Apps ProductionRun widget serving', () => {
     const res = await h.call(2, 'tools/list')
     const tools = (res.result as { tools: Array<{ name: string; _meta?: Record<string, unknown> }> }).tools
     expect(tools.some((tool) => tool.name === 'nomi_generate')).toBe(false)
-    for (const name of ['nomi_start_playbook', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
+    for (const name of ['nomi_run_start', 'nomi_get_run', 'nomi_subscribe_run', 'nomi_get_artifact']) {
       const meta = tools.find((tool) => tool.name === name)?._meta as {
         ui?: { resourceUri?: string }
         'openai/outputTemplate'?: string

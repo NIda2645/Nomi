@@ -258,11 +258,11 @@ describe("MCP semantic generation planning journey", () => {
     expect(operationId).toMatch(/^op-/);
 
     await harness.call(3, "tools/call", { name: "nomi_submit_generation_plan", arguments: { leaseHandle: lease, operationId, patch: { mode: "image-to-image", references: [{ assetId: "asset-1", contentHash: "hash-1", version: 1 }], parameters: { aspectRatio: "16:9", seed: 9 } } } });
-    const preview = await harness.call(4, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+    const preview = await harness.call(4, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     expect(preview.result).toBeTruthy();
     expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "image-to-image" } });
     expect(runTask).not.toHaveBeenCalled();
-    expect(harness.invoke).toHaveBeenCalledWith("nomi_preview_execution", expect.objectContaining({ operationId }));
+    expect(harness.invoke).toHaveBeenCalledWith("nomi_operation_preview", expect.objectContaining({ operationId }));
   });
 
   it("keeps real-page freedom across provider/model/mode/parameter/reference edits", async () => {
@@ -297,7 +297,7 @@ describe("MCP semantic generation planning journey", () => {
     ];
     for (const [index, patch] of edits.entries()) {
       await harness.call(13 + index * 2, "tools/call", { name: "nomi_submit_generation_plan", arguments: { leaseHandle: lease, operationId, patch } });
-      const preview = await harness.call(14 + index * 2, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+      const preview = await harness.call(14 + index * 2, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
       expect(preview.result).toBeTruthy();
       expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: patch });
       const previewText = (preview.result as { content?: Array<{ text?: string }> }).content?.[0]?.text;
@@ -357,7 +357,7 @@ describe("MCP semantic generation planning journey", () => {
     expect(created.result).toBeTruthy();
     expect(operationId).toMatch(/^op-/);
 
-    const firstPreview = await harness.call(23, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+    const firstPreview = await harness.call(23, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     const firstPayload = JSON.parse((firstPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string } };
     expect(firstPayload.recommendation.recommendations[0]?.modeId).toBe("omni");
     const firstHash = firstPayload.contract.contractHash;
@@ -377,7 +377,7 @@ describe("MCP semantic generation planning journey", () => {
         },
       },
     });
-    const secondPreview = await harness.call(25, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+    const secondPreview = await harness.call(25, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     const secondPayload = JSON.parse((secondPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string; droppedFields: Array<{ path: string }> } };
     expect(secondPayload.recommendation.recommendations[0]?.modeId).toBe("firstlast");
     expect(secondPayload.contract.contractHash).not.toBe(firstHash);
@@ -454,7 +454,7 @@ describe("MCP semantic generation planning journey", () => {
     expect(operationId).toMatch(/^op-/);
 
     const preview = async (id: number) => {
-      const response = await harness.call(id, "tools/call", { name: "nomi_preview_execution", arguments: { leaseHandle: lease, operationId } });
+      const response = await harness.call(id, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
       return JSON.parse((response.result as { content: Array<{ text: string }> }).content[0]!.text) as {
         recommendation?: { recommendations?: Array<{ modelKey: string; variantId?: string; modeId: string; params: Record<string, unknown> }> };
         contract: { providerId: string; modelId: string; variantId?: string; mode: string; contractHash: string };
