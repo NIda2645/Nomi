@@ -64,7 +64,7 @@
     "check:test-waits": "node ./scripts/check-test-waits.mjs",
     "check:ipc-sender-binding": "node ./scripts/check-ipc-sender-binding.mjs",
     "check:agents-sync": "node ./scripts/gen-agents-md.mjs --check",
-    "check:claude-hooks": "node ./scripts/install-claude-hooks.cjs --check",
+    "check:claude-hooks": "node --test ./scripts/pre-push-check.node-test.mjs && node ./scripts/install-claude-hooks.cjs --check",
     "check:vocabularies": "node --test ./scripts/check-vocabularies*.node-test.mjs && node ./scripts/check-vocabularies.mjs",
     "gen:agents": "node ./scripts/gen-agents-md.mjs",
     "gen:archetype-defaults": "tsx scripts/gen-archetype-wire-defaults.ts",
