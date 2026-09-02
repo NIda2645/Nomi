@@ -22,13 +22,16 @@ const RETIRED_OLD_NAMES = [
   // session_open 保留原名（唯一 1→1），不在退役表。
 ]
 
-// 收敛后的 15 个工具名。
-const NEW_TOOL_NAMES = [
+// 收敛后的 15 个工具名 + 并线 main 带入的 4 个 M2 语义编辑工具（收敛后新增的独立对象，catalog 末尾原样保留）。
+const COLLAPSED_TOOL_NAMES = [
   'nomi_session_open', 'nomi_read', 'nomi_canvas_edit', 'nomi_asset_import', 'nomi_operation_plan',
   'nomi_operation_preview', 'nomi_operation_gate', 'nomi_operation_execute', 'nomi_operation_control',
   'nomi_run_start', 'nomi_run_control', 'nomi_artifact_review', 'nomi_run_gate', 'nomi_integration',
   'nomi_project_create',
 ]
+// M2 语义编辑（main #16290f6e，非本次 42→15 收敛的一员；此处只断言「原样保留、不被误删」）。
+const M2_EDITING_TOOL_NAMES = ['nomi_timeline_read', 'nomi_timeline_edit', 'nomi_export_job', 'nomi_media_query']
+const NEW_TOOL_NAMES = [...COLLAPSED_TOOL_NAMES, ...M2_EDITING_TOOL_NAMES]
 
 function tool(name: string): McpToolDefinition {
   const resolved = MCP_TOOL_RESOLVER.resolve(name)
@@ -57,17 +60,19 @@ describe('MCP surface collapse 42→15 · P1 retirement', () => {
     expect(MCP_TOOL_RESOLVER.resolve('nomi_generate')).toBeUndefined()
   })
 
-  it('exposes exactly the 15 collapsed tools, each with a title', () => {
+  it('exposes exactly the 15 collapsed tools + 4 preserved M2 editing tools', () => {
     const listed = MCP_TOOL_RESOLVER.list()
     expect(listed.map((t) => t.name)).toEqual(NEW_TOOL_NAMES)
-    for (const t of listed) {
+    // 收敛的 15 个带人读 title；M2 语义编辑工具沿用 main 已发布形态（暂无 title，续裁时补）。
+    for (const t of listed.filter((t) => COLLAPSED_TOOL_NAMES.includes(t.name))) {
       expect(typeof (t as { title?: unknown }).title, `${t.name} carries a title`).toBe('string')
     }
   })
 
-  it('marks exactly nomi_read + nomi_operation_preview read-only (annotations, not a name set)', () => {
+  it('marks read-only via annotations (not a name set): nomi_read + nomi_operation_preview + M2 read tools', () => {
     const readOnly = MCP_TOOL_RESOLVER.list().filter((t) => (t as { annotations?: { readOnlyHint?: boolean } }).annotations?.readOnlyHint).map((t) => t.name)
-    expect(readOnly).toEqual(['nomi_read', 'nomi_operation_preview'])
+    // timeline_edit 是写（reversible_write），不在只读集；timeline_read/export_job/media_query 是读。
+    expect(readOnly).toEqual(['nomi_read', 'nomi_operation_preview', 'nomi_timeline_read', 'nomi_export_job', 'nomi_media_query'])
   })
 })
 

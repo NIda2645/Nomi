@@ -123,11 +123,12 @@ describe('production run MCP tools', () => {
   })
 
   it('keeps the current README count and guide table aligned with the exported catalog', () => {
-    // 面收敛（surface-16-collapse）：42 → 15 个工具。README/guide 计数同步降到 15，每个新 name 在 guide 有条目。
+    // 面收敛（surface-16-collapse）：拉分支时 42 个塌成 15 个；并线 main 后 +4 个 M2 语义编辑工具 = 19。
+    // README/guide 计数同步到 19，且每个导出 name（含 4 个 M2 工具）在 guide 都有条目——公开契约不许漏面。
     const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8')
     const guide = fs.readFileSync(path.join(process.cwd(), 'docs/guide/capability-core-cli-mcp.md'), 'utf8')
-    expect(readme).toContain('Fifteen MCP tools')
-    expect(guide).toContain('15 个工具')
+    expect(readme).toContain('Nineteen MCP tools')
+    expect(guide).toContain('15+4=19')
     for (const name of MCP_TOOL_NAMES) expect(guide).toContain(`\`${name}\``)
   })
 

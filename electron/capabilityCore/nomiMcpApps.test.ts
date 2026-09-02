@@ -100,9 +100,13 @@ describe('nomi-mcp · MCP Apps ProductionRun widget serving', () => {
     const tools = (res.result as { tools: Array<{ name: string; annotations?: { readOnlyHint?: boolean } }> }).tools
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name).sort()
     // 面收敛：读侧全部并入 nomi_read（整体只读）；nomi_operation_preview 编译预演无状态写，也只读。
+    // 并线 main 后 + 3 个 M2 只读语义编辑工具（export_job / media_query / timeline_read）。sorted。
     expect(readOnly).toEqual([
+      'nomi_export_job',
+      'nomi_media_query',
       'nomi_operation_preview',
       'nomi_read',
+      'nomi_timeline_read',
     ])
     expect(tools.some((tool) => tool.name === 'nomi_generate')).toBe(false)
   })

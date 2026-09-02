@@ -25,6 +25,15 @@ if (!CANVAS_READ_ADAPTER_TOOL) throw new Error('canvas.read MCP adapter is not r
 /** target=canvas 的内部路由键（= CANVAS_READ_CAPABILITY.id）；nomi_read 借它走 canvas.read 传输适配器。 */
 export const CANVAS_READ_METHOD = CANVAS_READ_ADAPTER_TOOL.method
 
+// M2 语义编辑工具（main #16290f6e：nomi_timeline_read/edit · nomi_export_job · nomi_media_query）——
+// 独立能力投影（timeline/export/asset 端口，走 MCP_EDITING_METHODS + rpcServer 分派，非本次 42→15 收敛的一员）。
+// 面收敛只塌了拉分支时存在的 42 个「一动词一工具」；这 4 个是收敛后 main 新增的独立对象，此处**原样保留**其
+// main 已发布形态（读工具带 annotations.readOnlyHint），不替它们发明 nomi_read target/collapse 归并——那是
+// 未经设计稿裁定的新面设计，留给编排者续裁（见 PR body「main 已长到 46 面」段）。canvas.read 已进 nomi_read
+// (target=canvas)，故从投影里排除以免与 nomi_read 撞名。
+const SEMANTIC_EDITING_TOOLS = MCP_CAPABILITY_RESOLVER.list().filter((tool) => tool.name !== 'nomi_read_canvas')
+if (SEMANTIC_EDITING_TOOLS.length === 0) throw new Error('M2 semantic editing MCP adapters are not registered')
+
 // ── T2 · nomi_read：读侧统一入口（多态只读，整体 readOnlyHint） ───────────────────────────────
 // 每个旧读工具 = 一个 target 值；get/read 双读（get_artifact vs read_artifact）= artifact vs artifact_content
 // 两个 target（投影深浅不同）；subscribe 长轮询 = run_events + waitMs/afterCursor。必填由 handler 按 target 断言
@@ -338,6 +347,7 @@ export const MCP_TOOL_CATALOG = [
   RUN_GATE_TOOL, // T13（吸收 decide_gate + materialize）
   MCP_INTEGRATION_TOOL, // T14（接入状态机 9→5 action）
   PROJECT_CREATE_TOOL, // T15
+  ...SEMANTIC_EDITING_TOOLS, // M2 语义编辑（timeline_read/edit · export_job · media_query）——main 新增，原样保留待续裁
 ] as const
 
 export type McpToolDefinition = (typeof MCP_TOOL_CATALOG)[number] & {

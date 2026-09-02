@@ -189,7 +189,7 @@ Claude Code 会依次调 `nomi_project_create` → `nomi_read`（target=models�
 
 ### MCP 工具
 
-面收敛（2026-09-02，surface-16-collapse）：42 个「一动词一工具」的 API 镜像塌成 15 个按对象归并、贴任务的工具。读侧全收进 `nomi_read`（整体只读，宿主免确认），写侧按对象 + action/phase 枚举归并；付费两相（确认/执行）保留分家，不合成一步。
+面收敛（2026-09-02，surface-16-collapse）：拉分支时存在的 42 个「一动词一工具」的 API 镜像塌成 15 个按对象归并、贴任务的工具。读侧全收进 `nomi_read`（整体只读，宿主免确认），写侧按对象 + action/phase 枚举归并；付费两相（确认/执行）保留分家，不合成一步。并线 main 后另有 4 个 M2 语义编辑工具（timeline/export/media）为收敛后新增的独立对象，原样保留、暂未并入 `nomi_read`（续裁），合计 15+4=19。
 
 | 工具 | 对应 |
 |---|---|
@@ -208,6 +208,10 @@ Claude Code 会依次调 `nomi_project_create` → `nomi_read`（target=models�
 | `nomi_run_gate` | Run 的确认门（`action`=decide 表态可逆创意门 / materialize 把已批分镜落画布并登记 jobs+预算）；服务端会再次向真人确认，不能决定预算、逐镜头付费、导出或发布 |
 | `nomi_integration` | 模型 / ComfyUI 接入会话状态机（`action`=begin/open_credentials/discover/select/confirm/submit_workflow/resolve_input/start/cancel；只接收公开连接资料，密钥不经 Agent，confirm/start 是付费两相不合成一步） |
 | `nomi_project_create` | 新建一个空白 Nomi 项目，返回项目 id |
+| `nomi_timeline_read` | 读取时间轴快照或指定范围（只读） |
+| `nomi_timeline_edit` | 预览、申请或撤销时间轴编辑；apply/undo 必须回到 Nomi 宿主确认 |
+| `nomi_export_job` | 查询导出状态或验证渲染结果；启动/取消导出仍是宿主专属 |
+| `nomi_media_query` | 查询项目媒体、素材范围或波形信息（只读） |
 
 ---
 
