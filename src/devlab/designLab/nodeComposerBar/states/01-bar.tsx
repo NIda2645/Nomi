@@ -15,7 +15,7 @@ const SOURCE = 'docs/design/2026-09-10-node-composer-bar-v1.md §v1.1（摘要 p
 const CHIPS_SOURCE = 'docs/design/2026-09-10-node-composer-bar-v1.md §B（逐参数下拉 · 只给付费确认卡）'
 const FLAT_SOURCE = 'docs/design/2026-09-10-node-composer-bar-v1.md §v1.2（面板里选项摊开 · 单参数直出）'
 const MIRRORS = [
-  'src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:109',
+  'src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:166',
   'src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx:414',
   'src/workbench/generationCanvas/nodes/NodePromptToolCluster.tsx:22',
   'src/workbench/generationCanvas/nodes/NodeFloatingToolbar.tsx:26',

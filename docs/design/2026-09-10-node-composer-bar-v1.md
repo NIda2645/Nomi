@@ -162,7 +162,8 @@ i18n `parameters.workflowParams`）**在 04:30 的纠正里全部恢复**——�
 不是遗留物。恢复用的是 `git show d0cc83163^`，不是凭记忆重写。
 
 没有并行版：`chips` 那一支不再有自己的面板、自己的摘要、自己的控件渲染函数，
-它和 `summary` 共用 `renderParameterPanel` / `renderPanelGroup`（单测直接数这两处只有一个定义）。
+它和 `summary` 共用 `renderParameterPanel`（壳里）/ `ParameterPanelGroup`（`controls/ParameterControlBody.tsx`）
+（单测直接数这两处只有一个定义）。
 
 ### 走查怎么守（各守各的形态）
 
@@ -392,9 +393,9 @@ tests/ux/shots/node-composer-placement/06-video-param-panel.png  ← 点摘要 p
 
 | # | 拍板 | 落点 |
 |---|---|---|
-| 1 | **面板里不再套下拉**：枚举参数的选项直接摊成可点项、当前值高亮；≤8 项一律摊平，>8 才带搜索框且**列表默认就展开**。数值 / 滑杆 / 开关不动 | `parameterOptionPresentation.ts:66`（三种摆法）+ `InlineParameterBar.tsx:212`（`ParameterOptionList`） |
+| 1 | **面板里不再套下拉**：枚举参数的选项直接摊成可点项、当前值高亮；≤8 项一律摊平，>8 才带搜索框且**列表默认就展开**。数值 / 滑杆 / 开关不动 | `parameterOptionPresentation.ts:66`（三种摆法）+ `controls/ParameterControlBody.tsx:114`（`ParameterOptionList`） |
 | 2 | **付费卡 ⚙ 的长尾面板一起变**（同一块渲染）；chips 自己那颗下拉不动 | 结构上自动成立：⚙ 走的就是 `renderParameterPanel`。走查对那一格单独断一次，防它以后被岔开 |
-| 3 | **只有一个参数时 pill 直接出列表**，没有面板壳，点一项即写入并关闭 | `parameterOptionPresentation.ts:86`（`soloOptionControl`）+ `InlineParameterBar.tsx:615` |
+| 3 | **只有一个参数时 pill 直接出列表**，没有面板壳，点一项即写入并关闭 | `parameterOptionPresentation.ts:86`（`soloOptionControl`）+ `InlineParameterBar.tsx:341` |
 
 ### 三种摆法怎么选（判据从**选项本身**来，不点名任何参数）
 
@@ -431,8 +432,11 @@ tests/ux/shots/node-composer-placement/06-video-param-panel.png  ← 点摘要 p
   （面板里的下拉必须把浮层 portal 进面板自己，否则点外面会把面板关掉）。单测直接守这个字符串
   不再出现——守的是那条路真的被删了，不是又长回来一份「短候选摊开、长候选下拉」的并行版。
 - `parameterOptionLayout` 的 `'select'` 返回值整条删除。
-- **没有**给单参数另写一套渲染：它和面板共用 `renderControlBody`（`InlineParameterBar.tsx:499`），
-  差别只有外面套不套那行小标题。
+- **没有**给单参数另写一套渲染：它和面板共用 `ParameterControlBody`
+  （`controls/ParameterControlBody.tsx:237`），差别只有外面套不套那行小标题。
+- 壳里那 5 个控件渲染函数（`renderOptions` / `renderControlBody` / `renderPanelGroup` 与
+  `ParameterOptionList` / `ParameterTextInput` 两个私有组件）随 R9 拆巨壳**整体搬进**
+  `controls/ParameterControlBody.tsx`——搬不是抄，单测断壳里一份副本都不留。
 
 ### 与 §1.5 / 按钮图标规则对账
 

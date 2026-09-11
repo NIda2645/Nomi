@@ -57,9 +57,10 @@
 | `src/workbench/generationCanvas/nodes/parameterOptionPresentation.ts:66` | `parameterOptionLayout` 从「分段 / 下拉」二选一改成**三种都摊开**的 `chips-row` / `chips-column` / `searchable-list`；上限常量 `FLAT_OPTION_LIMIT = 8`（`:59`） | 旧的 `'select'` 分支（面板内下拉那条路）整条删除 |
 | `src/workbench/generationCanvas/nodes/parameterOptionPresentation.ts:86` | 新增 `soloOptionControl`：判「pill 能不能直出」，四个条件（无第二参数 / 无供应商 / 无生成方式 / 非 chips 形态）缺一不可 | — |
 | `src/workbench/generationCanvas/nodes/controls/parameterControlModel.ts:300` | 新增 `hasFlatOptions`：判据就是「它有没有候选项」，滑杆 / 数字框 / 开关脱了小标题读不出在调什么，不走直出 | — |
-| `src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:212` | 新增 `ParameterOptionList`：搜索框 + **默认展开**的一列可点项；搜索不自动抢焦点（用户多半点一下就走，抢焦点会把键盘从画布上偷走）；当前值恒在列表里（被搜索过滤掉就没地方读得出当前选的是哪个） | 面板里那颗 `NomiSelect`（连同 `portalTarget={panelRef}` 这条只属于「面板内下拉」的签名） |
-| `src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:499` | 抽出 `renderControlBody`：**面板与单参数直出共用这一处**，差别只有外面套不套那行小标题 | 给单参数另写一套渲染的可能（那就是并行版） |
-| `src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:615` | 单参数直出：浮层里只有那组选项，`aria-label` 说实话（用参数名，不叫「参数面板」），选完即关 | — |
+| `src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx:114` | 新增 `ParameterOptionList`：搜索框 + **默认展开**的一列可点项；搜索不自动抢焦点（用户多半点一下就走，抢焦点会把键盘从画布上偷走）；当前值恒在列表里（被搜索过滤掉就没地方读得出当前选的是哪个） | 面板里那颗 `NomiSelect`（连同 `portalTarget={panelRef}` 这条只属于「面板内下拉」的签名） |
+| `src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx:237` | 抽出 `ParameterControlBody`：**面板与单参数直出共用这一处**，差别只有外面套不套那行小标题 | 给单参数另写一套渲染的可能（那就是并行版） |
+| `src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx` | **整个控件渲染层搬出编排壳**（R9）：`ParameterOptionGroup` / `ParameterControlBody` / `ParameterPanelGroup` 连同 `ParameterOptionList`、`ParameterTextInput` 住进 `controls/`，`InlineParameterBar.tsx` 885 → 612 行，只留编排（谁打开这块面、面里还摆不摆供应商/生成方式、pill 上印什么） | 壳里那 5 个渲染函数（**搬走不是复制**：单测数「只有一处定义」并断壳里一份副本都不留） |
+| `src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:341` | 单参数直出：浮层里只有那组选项，`aria-label` 说实话（用参数名，不叫「参数面板」），选完即关 | — |
 | `src/design/NomiSegmented.tsx:48` | `fit` 加第三档 `'column'`：一项一行、左对齐、`overflowWrap: anywhere` | — |
 
 付费卡 ⚙ 走的是同一个 `renderParameterPanel`，所以第 2 条是**结构上自动成立**的，不是另改一处；
@@ -78,8 +79,10 @@ i18n（R15）：搜索框那两句**复用现成词条**、一条新词条都没
 ## 验收门
 
 - 单测：`parameterOptionPresentation.test.ts`（三种摆法的分界、solo 的四个条件）、
-  `InlineParameterBar.test.ts`（源码级守「面板里没有 `portalTarget={panelRef}`」「`renderControlBody`
-  只有一个定义」——守的是这条路真的被删了，不是又长回来一份并行版）。
+  `InlineParameterBar.test.ts`（源码级守「面板里没有 `portalTarget={panelRef}`」「`ParameterControlBody`
+  只有一个定义、壳里一份副本都不留」——守的是这条路真的被删了，不是又长回来一份并行版；
+  拆巨壳之后每条不变量都断在**它真正归属的那层**，断错层就是假绿）。
+- 巨壳门岗：`pnpm run check:filesize`（`InlineParameterBar.tsx` 612 < 800，不进白名单）。
 - 设计实验室：`node-composer-bar` 新增两格 `composer-bar-panel-flat-options`（多参数 → 面板）与
   `composer-bar-panel-solo-direct`（Agnes Image 只声明「尺寸」→ pill 直出）。两格的展开态由取景台
   **真的点一下那颗 pill** 得到，不是另画一份展开的样子；点不到就当场抛错（静默截一张收起态是假证据）。

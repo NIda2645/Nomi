@@ -78,7 +78,11 @@ const MODEL_OPTIONS: NomiSelectOption[] = [
   },
 ]
 
-/** 长枚举候选：`searchable` 的**唯一**生产用途是这一族（LoRA 文件名、长模型枚举）。 */
+/**
+ * 长枚举候选（LoRA 文件名、长模型枚举）。`searchable` 曾经的唯一生产用途就是这一族——
+ * 2026-09-11 v1.2「面板里不再套下拉」之后生产不再走它（那条路换成了默认展开的
+ * `ParameterOptionList`），这格只剩能力展示，见上面 mirrors 的 `none`。
+ */
 const LONG_ENUM_OPTIONS: NomiSelectOption[] = [
   { value: 'none', label: '不使用' },
   { value: 'film-grain-v3', label: 'film_grain_v3_fp16.safetensors' },
@@ -101,7 +105,7 @@ const RAW_RATIO_OPTIONS: { value: string; text: string }[] = [
 ]
 
 /**
- * 比例分段选项 = **生产那条链原样跑一遍**（`InlineParameterBar.tsx` 的 `renderOptions`）：
+ * 比例分段选项 = **生产那条链原样跑一遍**（`controls/ParameterControlBody.tsx` 的 `ParameterOptionGroup`）：
  * `localizeAutoOption` 收敛自动语义 → `commonRatioSortKey` 排常用序 →
  * `ratioShape` 出宽高比小图形 → `shapedGroupLabel` 竖排成「18px 图形槽 + 文字」双行 →
  * `title` 挂原文。夹具只提供上面那份数据，一行渲染逻辑都不重写。
@@ -140,7 +144,7 @@ export const SELECTION_STATES: readonly LabState[] = [
     name: 'DesignSegmentedControl（Mantine）vs NomiSegmented（原生）· 同轴两套并排',
     source: SOURCE_SEGMENTED,
     mirrors: [
-      'src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:400',
+      'src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx:166',
       'src/workbench/settings/AutomationPermissionsSection.tsx:183',
       'src/ui/onboarding/ConnectAssistantCard.tsx:248',
     ],
@@ -322,10 +326,10 @@ export const SELECTION_STATES: readonly LabState[] = [
     id: 'pf-09-nomi-select-searchable',
     name: 'NomiSelect · searchable 展开态（长枚举走搜索 + 长文件名换行）',
     source: SOURCE_SELECT,
-    mirrors: ['src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:383'],
+    mirrors: ['none — 零采纳件：唯一生产调用点（参数面板里那颗下拉）随 2026-09-11 v1.2「面板里不再套下拉」删除'],
     coverage: 'shell',
-    // `searchable` 全仓**只有一个**调用点，这一格逐项照抄它：
-    // `className="w-full justify-between"`（面板里的整宽字段，不是自适应宽的 pill）
+    // 这一格照抄的是 `searchable` 曾经那个唯一调用点（参数面板里的整宽字段）：
+    // `className="w-full justify-between"`（不是自适应宽的 pill）
     // + 纯 `{value,label}` 候选（无图标、无附注）+ 长文件名。
     // 此前那版拿 5 个带图标的模型行当搜索对象，搜索框看着是个摆设，
     // 而 `searchable` 存在的**理由**——长文件名的 `whitespace-normal break-all` 换行分支
