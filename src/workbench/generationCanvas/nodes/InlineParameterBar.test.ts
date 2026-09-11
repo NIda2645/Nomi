@@ -21,6 +21,7 @@ vi.mock('../../../design', () => ({
   },
   NomiSegmented: () => null,
   DesignSwitch: () => null,
+  DesignSearchInput: () => null,
 }))
 
 describe('InlineParameterBar catalog variant control', () => {
@@ -179,5 +180,23 @@ describe('InlineParameterBar semantic option presentation wiring', () => {
     expect(source.match(/const renderParameterPanel = /g) ?? []).toHaveLength(1)
     expect(source.match(/const renderPanelGroup = /g) ?? []).toHaveLength(1)
     expect(source).toContain("parameterLayout = 'summary'")
+  })
+
+  // 2026-09-11 13:00 用户拍板：**面板里不再套下拉**。这条守的是那条路真的被删了，
+  // 不是又长回来一份「短候选摊开、长候选下拉」的并行版（P1）。
+  // 判据取 `portalTarget={panelRef}`：面板里的下拉必须把浮层 portal 进面板自己
+  // （否则点外面会把面板关掉），所以它是「面板内下拉」独有的签名；底栏那几颗 chip 的
+  // 下拉用的是调用方给的 `portalTarget`，不碰 panelRef。
+  it('面板里没有下拉：选项一律摊开（chip 一排/一列，或默认展开的搜索列表）', () => {
+    expect(source).not.toContain('portalTarget={panelRef}')
+    expect(source).toContain('<ParameterOptionList')
+    expect(source).toContain("optionLayout === 'chips-column' ? 'column' : 'fill'")
+  })
+
+  // 单参数直出与面板走的是**同一个** renderControlBody：给单参数另写一套渲染就是并行版。
+  it('单参数直出与面板共用同一处控件渲染（renderControlBody 只有一个定义）', () => {
+    expect(source.match(/const renderControlBody = /g) ?? []).toHaveLength(1)
+    expect(source).toContain('renderControlBody(soloControl, closePanel)')
+    expect(source).toContain('{renderControlBody(control)}')
   })
 })

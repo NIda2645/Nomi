@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Slider } from '@mantine/core'
 import { IconAdjustmentsHorizontal, IconChevronDown } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
-import { DesignSwitch, NomiSegmented, NomiSelect, WorkbenchIconButton, type NomiSegmentedOption } from '../../../design'
+import { DesignSearchInput, DesignSwitch, NomiSegmented, NomiSelect, WorkbenchIconButton, type NomiSegmentedOption } from '../../../design'
 import { formatVideoOptionLabel, type ModelParameterControl } from '../../../config/modelCatalogMeta'
 import type { ModelOption } from '../../../config/models'
 import {
@@ -35,6 +35,7 @@ import {
   localizeAutoOption,
   parameterOptionLayout,
   resolveParameterOptionPurpose,
+  soloOptionControl,
   type ParameterOptionPurpose,
 } from './parameterOptionPresentation'
 import { translateModelDisplayText } from '../../../i18n/modelDisplayText'
@@ -196,6 +197,61 @@ function ParameterTextInput({
         onBlur={() => setDraft(null)}
       />
     </label>
+  )
+}
+
+/**
+ * 长枚举的「默认就展开」列表：搜索框 + 一列可点项（当前值高亮）。
+ *
+ * 它替掉的是面板里那颗下拉。**换的不是外观，是步数**：面板本身已经是用户点开的那一次结果，
+ * 里面再套一个要点开的下拉，改一个参数就成了「pill → 面板 → 下拉 → 列表 → 选」四步
+ * （2026-09-11 13:00 用户真机反馈「点好几次」）。摊开之后是两步。
+ *
+ * 搜索框在这里的职责是**缩短**这条列表（导入工作流的模型文件名能有几十条），不是藏起它——
+ * 所以它不自动抢焦点：用户多半是来点一下就走的，抢焦点会把键盘从画布上偷走。
+ */
+function ParameterOptionList({
+  ariaLabel,
+  value,
+  entries,
+  onChange,
+}: {
+  ariaLabel: string
+  value: string
+  entries: readonly { value: string; text: string }[]
+  onChange: (value: string) => void
+}): JSX.Element {
+  const { t } = useTranslation()
+  const [query, setQuery] = React.useState('')
+  const needle = query.trim().toLocaleLowerCase()
+  // 当前值恒在列表里：搜索把它过滤掉之后，「当前选的是哪个」就没有任何地方还说得出来了。
+  const visible = needle
+    ? entries.filter((entry) => entry.text.toLocaleLowerCase().includes(needle) || entry.value === value)
+    : entries
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5" data-parameter-option-list="true">
+      <DesignSearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder={t('common.searchOptions')}
+        ariaLabel={t('common.searchOptions')}
+        className="w-full"
+      />
+      {visible.length === 0 ? (
+        <div className="px-2 py-1.5 text-caption text-nomi-ink-40">{t('common.noMatchingOptions')}</div>
+      ) : (
+        <div className="max-h-[220px] overflow-y-auto overscroll-contain">
+          <NomiSegmented
+            ariaLabel={ariaLabel}
+            value={value}
+            options={visible.map((entry) => ({ value: entry.value, label: entry.text, title: entry.text }))}
+            density="compact"
+            fit="column"
+            onChange={onChange}
+          />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -374,6 +430,9 @@ export default function InlineParameterBar({
   // 分段组（组级图形对齐）：先解析每项图形，任一有 → 整组统一双行等高（无图形项留空占位），
   // 全无 → 纯文字单行。修「有/无图形混排项目高低参差」（2026-07-17 用户截图）。
   // 比例组按常用序重排（16:9、9:16 领头，auto 类恒最前，未知保声明序殿后——用户拍板）。
+  //
+  // **面板里没有下拉这条路**（2026-09-11 13:00 用户真机拍板）：三种摆法都是摊开的可点项，
+  // 选哪一种由 `parameterOptionLayout` 从**选项本身**判（几个 / 标签多长），不在这里点名任何参数。
   const renderOptions = (
     label: string,
     value: string,
@@ -395,16 +454,16 @@ export default function InlineParameterBar({
           : null,
       }
     })
-    if (parameterOptionLayout(entries, purpose) === 'select') {
+    const optionLayout = parameterOptionLayout(entries, purpose)
+    if (optionLayout === 'searchable-list') {
+      // 长枚举（导入工作流的模型文件名这类）也**默认就展开**：搜索框是用来缩短这条列表的，
+      // 不是用来把它藏起来的。
       return (
-        <NomiSelect
+        <ParameterOptionList
           ariaLabel={label}
           value={value}
-          options={entries.map((entry) => ({ value: entry.value, label: entry.text }))}
+          entries={entries.map((entry) => ({ value: entry.value, text: entry.text }))}
           onChange={onChange}
-          searchable
-          portalTarget={panelRef}
-          className="w-full justify-between"
         />
       )
     }
@@ -425,29 +484,24 @@ export default function InlineParameterBar({
         options={options}
         // 双行组无需再撑最小高：每项都带 18px 图形槽（含空占位）→ 内容自然等高。
         density="compact"
+        fit={optionLayout === 'chips-column' ? 'column' : 'fill'}
         onChange={onChange}
       />
     )
   }
 
-  // 面板参数组：少量短候选 → 分段；长/多候选 → 搜索列表；其余控件保持原交互。
-  const renderPanelGroup = (control: DynamicModelControl): JSX.Element => {
+  /**
+   * 控件本体（一组摊开的选项 / 滑杆 / 输入框）——**面板与「单参数直出」共用这一处**。
+   * 差的只有外面套不套那行小标题；给单参数另写一套渲染就是并行版（P1）。
+   *
+   * `onPicked` 只有单参数直出那条路会传：那时这组选项就是弹出来的全部内容，选完即关（共 2 步）。
+   * 面板里**不传**——面板的价值正是「一次打开连改多项」，选一下就关掉等于把它变回下拉。
+   */
+  const renderControlBody = (control: DynamicModelControl, onPicked?: () => void): JSX.Element => {
     const label = translateModelDisplayText(control.label)
-    // boolean → Switch 行（label 左、开关右，2026-07-17 用户拍板）；组标题即行标题，不再另起。
-    if (isParameterControl(control) && control.type === 'boolean') {
-      const on = (controlInitialValue(control, meta) || 'false') === 'true'
-      return (
-        <div key={control.key} className="flex items-center justify-between gap-2" style={{ minHeight: 26 }}>
-          <div className="text-micro font-semibold leading-none text-nomi-ink-40">{label}</div>
-          <DesignSwitch
-            size="sm"
-            color="var(--nomi-accent)"
-            aria-label={label}
-            checked={on}
-            onChange={(e) => onParameterControlChange(control, e.currentTarget.checked ? 'true' : 'false')}
-          />
-        </div>
-      )
+    const pick = (commit: (value: string) => void) => (value: string): void => {
+      commit(value)
+      onPicked?.()
     }
     const body = ((): JSX.Element => {
       if (!isParameterControl(control)) {
@@ -455,7 +509,7 @@ export default function InlineParameterBar({
           label,
           catalogControlInitialValue(control, meta),
           control.options.map((o) => ({ value: optionValue(o), text: optionLabel(o) })),
-          (v) => onCatalogControlChange(control, v),
+          pick((v) => onCatalogControlChange(control, v)),
         )
       }
       if (control.options.length > 0) {
@@ -466,7 +520,7 @@ export default function InlineParameterBar({
             value: controlValueToString(o.value),
             text: formatVideoOptionLabel(o.label, o.priceLabel),
           })),
-          (v) => onParameterControlChange(control, v),
+          pick((v) => onParameterControlChange(control, v)),
         )
       }
       // 数值 + min/max（时长秒数这类连续档）→ 滑杆 + 当前值（2026-07-17 用户拍板）。
@@ -511,10 +565,32 @@ export default function InlineParameterBar({
         />
       )
     })()
+    return body
+  }
+
+  // 面板参数组 = 小标题 + 控件本体。
+  const renderPanelGroup = (control: DynamicModelControl): JSX.Element => {
+    const label = translateModelDisplayText(control.label)
+    // boolean → Switch 行（label 左、开关右，2026-07-17 用户拍板）；组标题即行标题，不再另起。
+    if (isParameterControl(control) && control.type === 'boolean') {
+      const on = (controlInitialValue(control, meta) || 'false') === 'true'
+      return (
+        <div key={control.key} className="flex items-center justify-between gap-2" style={{ minHeight: 26 }}>
+          <div className="text-micro font-semibold leading-none text-nomi-ink-40">{label}</div>
+          <DesignSwitch
+            size="sm"
+            color="var(--nomi-accent)"
+            aria-label={label}
+            checked={on}
+            onChange={(e) => onParameterControlChange(control, e.currentTarget.checked ? 'true' : 'false')}
+          />
+        </div>
+      )
+    }
     return (
       <div key={control.key} className="flex flex-col gap-1.5" data-agent-parameter-control={control.key}>
         <div className="text-micro font-semibold leading-none text-nomi-ink-40">{label}</div>
-        {body}
+        {renderControlBody(control)}
       </div>
     )
   }
@@ -530,8 +606,35 @@ export default function InlineParameterBar({
     ? modelSelect.variantOptions
     : (variantChoices || []).map((variant) => ({ value: variant.id, label: variant.label }))
 
+  /**
+   * **只有一个参数时，pill 点开直接就是那个参数的选项列表**（没有面板壳）——2026-09-11 13:00 用户拍板。
+   *
+   * 面板的价值是「一次打开连改多项」。只剩一个参数时它没有那个价值，只剩一层壳：
+   * 图片节点只有尺寸，却要 pill → 面板 → 下拉 → 列表 → 选（四步）。直出之后是两步，选完即关。
+   * 条件写全（供应商、生成方式也算参数组）——少算一个，面板里就会有东西被这条路吞掉。
+   */
+  const soloControl = soloOptionControl({
+    controls: panelControls,
+    hasProvider,
+    hasModeChoices: Boolean(modeChoices?.length && onModeSelect),
+    chipsMode,
+  })
+
   const renderParameterPanel = (surface: 'portal' | 'inline'): JSX.Element => {
-    const content = (
+    // 浮层的名字得说实话：单参数直出时它就是那个参数的选项列表，不是「参数面板」。
+    const surfaceLabel = soloControl
+      ? translateModelDisplayText(soloControl.label)
+      : t('generationCommon.parameters.panel')
+    const content = soloControl ? (
+      <div
+        className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'overflow-y-auto overscroll-contain rounded-nomi-lg p-2')}
+        style={{ maxHeight: surface === 'portal' ? panelInit?.maxHeight : 320 }}
+        data-parameter-solo={soloControl.key}
+        data-agent-parameter-control={soloControl.key}
+      >
+        {renderControlBody(soloControl, closePanel)}
+      </div>
+    ) : (
       <div className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'flex flex-col gap-3 overflow-y-auto overscroll-contain rounded-nomi-lg p-3')} style={{ maxHeight: surface === 'portal' ? panelInit?.maxHeight : 320 }}>
         {modeChoices?.length && onModeSelect ? (
           <div className="flex flex-col gap-1.5" data-agent-generation-mode="true">
@@ -571,7 +674,7 @@ export default function InlineParameterBar({
         <div
           ref={panelRef}
           role="group"
-          aria-label={t('generationCommon.parameters.panel')}
+          aria-label={surfaceLabel}
           data-agent-parameter-panel="true"
           className="w-full rounded-nomi-lg border border-nomi-line bg-nomi-paper"
           style={{ boxShadow: 'var(--workbench-shadow-pop)' }}
@@ -584,7 +687,7 @@ export default function InlineParameterBar({
       <div
         ref={panelRef}
         role="group"
-        aria-label={t('generationCommon.parameters.panel')}
+        aria-label={surfaceLabel}
         data-agent-parameter-panel="true"
         className="fixed rounded-nomi-lg border border-nomi-line bg-nomi-paper"
         style={{
