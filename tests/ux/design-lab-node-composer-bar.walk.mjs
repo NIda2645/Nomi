@@ -83,6 +83,44 @@ await walkDesignLabScreen({
   cellWidth: 900,
   columns: 2,
   async assertState(page, state, record) {
+    // ── v1.2 两格：点开之后那一层（用户 2026-09-11 13:00 真机拍板「点好几次」）。
+    // 它们证的是两句话，而这两句都不是截图看得出来的：
+    //   ① 面板里**一个下拉都没有**——选项本身就是可点的项；
+    //   ② 只有一个参数时**没有面板壳**——点 pill 直出那组项，点一项即写入并关闭（共 2 步）。
+    if (state.id.startsWith('composer-bar-panel-')) {
+      const solo = state.id.endsWith('-solo-direct')
+      const shape = await page.evaluate(() => {
+        const panel = document.querySelector('[data-agent-parameter-panel="true"]')
+        if (!panel) return null
+        return {
+          // Mantine Combobox 给每个下拉触发器加 aria-haspopup="listbox"：按属性数，换实现照样拦得住。
+          selects: panel.querySelectorAll('[aria-haspopup="listbox"]').length,
+          options: panel.querySelectorAll('[role="radio"]').length,
+          groups: panel.querySelectorAll('[data-agent-parameter-control]').length,
+          soloKey: panel.querySelector('[data-parameter-solo]')?.getAttribute('data-parameter-solo') ?? null,
+          checked: [...panel.querySelectorAll('[role="radio"]')].findIndex((radio) => radio.getAttribute('aria-checked') === 'true'),
+        }
+      })
+      if (!shape) { record(`${state.id} 参数浮层没打开（取景台那一下点空了），这一格什么都没证`); return }
+      // 基线在前：先证「确实摊着可点项」，后面那句「没有下拉」才不是废话。
+      if (shape.options < 2) record(`${state.id} 浮层里应摊开多个可点选项，实际 ${shape.options} 个`)
+      if (shape.selects) record(`${state.id} 浮层里不该有下拉（数到 ${shape.selects} 个）——选项必须摊开`)
+      if (shape.checked < 0) record(`${state.id} 摊开的选项里没有任何一项是选中态（当前值读不出来）`)
+      if (solo) {
+        if (!shape.soloKey) record(`${state.id} 只有一个参数时应直出选项（找不到 [data-parameter-solo]）`)
+        if (shape.groups > 1) record(`${state.id} 单参数直出不该套面板壳，却数到 ${shape.groups} 组参数`)
+        // 「点一项即关」只能真点一次才知道。截图已在这之前拍完，这里点不会影响基线。
+        const before = await page.locator('[data-parameter-solo] [role="radio"][aria-checked="true"]').count()
+        const target = page.locator('[data-parameter-solo] [role="radio"]').nth(shape.checked === 0 ? 1 : 0)
+        await target.click()
+        const stillOpen = await page.locator('[data-agent-parameter-panel="true"]').count()
+        if (before !== 1) record(`${state.id} 点之前应恰好一项选中，实际 ${before} 项`)
+        if (stillOpen) record(`${state.id} 单参数直出选完必须自己关掉（它不是面板，没有连改多项这回事）`)
+      } else if (shape.groups < 2) {
+        record(`${state.id} 多参数那一格应有多组参数，实际 ${shape.groups} 组`)
+      }
+      return
+    }
     // ── chips 陈列格：没有节点卡、没有 B 簇、没有锁，下面那一整套画布断言对它一条都不成立。
     // 它只需回答一句话：`parameterLayout="chips"` 真的把参数摆成了**可点的下拉**（一步到位）。
     if (state.id === 'composer-bar-chips-mode') {
