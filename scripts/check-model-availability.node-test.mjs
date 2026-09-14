@@ -4,8 +4,15 @@
 // 少了后者，一个「什么都判红」的规则也能通过，而假红的下场是有人把门岗关掉。
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import fs from 'node:fs'
 
 import { READERS, VENDOR_CONNECTION_PREDICATES, scanSource } from './check-model-availability.mjs'
+
+test('availability gate is executable and wired into contracts', () => {
+  const { scripts } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.match(scripts['check:model-availability'] || '', /node .*check-model-availability\.mjs/)
+  assert.ok(scripts['gates:contracts'].split(/\s+/).includes('check:model-availability'))
+})
 
 test('阳性对照：三种真实写过的「第二份判据」都被抓到', () => {
   const cases = [

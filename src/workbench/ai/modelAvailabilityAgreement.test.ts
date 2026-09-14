@@ -99,11 +99,11 @@ function askEverySurface(state: CatalogState): {
 
 describe("同一份目录 · 三个界面一个答案（P0-10 类级回归）", () => {
   it("真实验收现场：MCP 接进来但认证没走完的文本模型，三处一致说「不能用」", async () => {
-    // 这就是 2026-09-12 那两个 DeepSeek 模型的形状：启用着、钥匙也在，
-    // 但 `meta.adapter` 没有 activeRevision（认证卡在 needs_spend_confirmation 没走完）。
+    // 当前发布契约用显式空 publicationModes 表示未发布；缺 activeRevision
+    // 本身不能下架已可执行的文本模型（自检失败不下架）。
     const uncertified = [
-      model({ modelKey: "deepseek-flash", meta: { adapter: { modes: [] } } }),
-      model({ modelKey: "deepseek-v4-pro", meta: { adapter: { modes: [] } } }),
+      model({ modelKey: "deepseek-flash", meta: { adapter: { modes: [], publicationModes: [] } } }),
+      model({ modelKey: "deepseek-v4-pro", meta: { adapter: { modes: [], publicationModes: [] } } }),
     ];
     const { readCatalog } = await import("../../../electron/catalog/catalogStore");
     const state = catalog(uncertified);
@@ -112,6 +112,12 @@ describe("同一份目录 · 三个界面一个答案（P0-10 类级回归）", 
     const answers = askEverySurface(state);
     // 修复前这一行是 `settingsReadyCount: 2` 配 `agentDropdown: false` —— 就是那张对不上的表。
     expect(answers).toEqual({ homeBanner: false, agentDropdown: false, settingsReadyCount: 0, canvasRows: 0 });
+  });
+
+  it("自检失败不下架：没有发布限制的已配置文本模型，各入口仍一致可用", () => {
+    const state = catalog([model({ meta: { adapter: { state: "failed", modes: [] } } })]);
+    expect(askEverySurface(state))
+      .toEqual({ homeBanner: true, agentDropdown: true, settingsReadyCount: 1, canvasRows: 1 });
   });
 
   it("走完认证的文本模型：三处一致说「能用」", async () => {

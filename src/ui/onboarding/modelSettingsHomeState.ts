@@ -26,8 +26,8 @@ export function resolveModelHomeStatus(model: ChipModel, mappings: readonly Mapp
   const transportAvailable = model.kind === 'text' || capability.customCall.enabled || capability.transport.mappings.length > 0
   if (!capabilityKnown || !transportAvailable) return 'needsSetup'
   const availability = model.availability
-  // 形状缺失（旧缓存/实验室夹具没喂）时退回 `enabled`——不可用绝不会被悄悄读成可用。
-  if (!availability) return model.enabled ? (model.adapterState === 'verified' ? 'verified' : 'ready') : 'disabled'
+  // 缺少主进程结论的旧缓存不能自己推断为可用。
+  if (!availability) return model.enabled ? 'needsSetup' : 'disabled'
   if (availability.usable) return model.adapterState === 'verified' ? 'verified' : 'ready'
   // 「你自己关掉的」和「还差点什么」要分开：前者一键就能开回来，后者得去做点事。
   return availability.reason === 'model_disabled' || availability.reason === 'vendor_disabled'
@@ -46,7 +46,8 @@ export function summarizeModelHomeConnection(
   disabled: number
 } {
   const statuses = models.map((model) => resolveModelHomeStatus(model, mappings))
-  const ready = statuses.filter((status) => status === 'ready' || status === 'verified').length
+  // 自检诊断与可用性是不同维度：失败/进行中的自检不会下架已有模型。
+  const ready = models.filter((model) => model.availability?.usable === true).length
   const working = statuses.filter((status) => status === 'working').length
   const needsSetup = statuses.filter((status) => status === 'needsSetup' || status === 'failed').length
   const disabled = statuses.filter((status) => status === 'disabled').length

@@ -170,3 +170,10 @@
 - `pnpm run gates`（contracts + unit + build）全绿，含新门岗 `check:model-availability`。
 - `node tests/ux/model-availability-agreement.walk.mjs` 通过（需要先 `pnpm run build`）。
 - 根因合同 `docs/fixes/2026-09-12-model-availability-single-owner.root-cause.json`（schema-v3，recurring）。
+
+## 2026-09-13 合并后复核
+
+- 门岗脚本曾在普通合并中失去 package.json 接线；恢复 contracts 接线，并以脚本可执行/链可达回归测试保护。
+- modelPublication 的现行规则允许已配置文本模型在自检失败后继续使用；明确空 publicationModes 才是发布限制。跨入口测试分别覆盖这两个状态。
+- 新对照复现：availability.usable=true 且 adapterState=failed 时，设置页把 ready 计为零，其他入口可用。summary.ready 必须直接计数 availability，诊断状态仍保留 failed/working，避免丢掉自检失败提示；缺少 availability 的缓存不得计为可用。
+- 回滚为本次修复提交的单点 revert；验收包含跨入口测试、设置页状态测试、contracts、C7-C12 协议回归和独立 Electron 四阶段走查。协议夹具不代替真实供应商验收。

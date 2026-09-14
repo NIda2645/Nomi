@@ -3,7 +3,7 @@
   "id": "2026-09-12-model-availability-single-owner",
   "problem_type": "同一条不变量在五个读者里各写一份判据（R14.1 同语义两份定义）：「这个模型现在能不能用」没有 owner，每个界面自己算",
   "symptom": "2026-09-12 真实付费验收（docs/research/2026-09-12-real-onboarding-acceptance/README.md §6 P0-10）：外部 AI 经 MCP 接入 DeepSeek 的两个文本模型并重启之后，同一时刻设置 → 模型说「1 个连接 · 2 个模型」「2 个可使用」，项目库首页横幅说「创作助手尚未连接模型」，项目里创作助手的模型下拉说「目录里没有可用的」。用户按任何一处行动都会撞上另一处的否定；这一整趟接入因此没能真的产出任何东西。",
-  "direct_cause": "五份各自独立的判据：src/ui/onboarding/modelSettingsHomeState.ts 的 resolveModelHomeStatus 只看 model.enabled 与能力投影，从不看发布资格也从不看钥匙，于是两个未走完认证的模型被算成 ready；electron/ai/textBrainResolver.ts 的 isExecutableTextModel 要 published 且「有一条 safeStorage 记录」（configuredCredential），于是同一批模型被算成没接上；src/workbench/ai/assistantModelIdentity.ts 的 filterUsableAssistantTextModels 自己拼 vendor.enabled && (authType==='none' || hasApiKey) && model.published；src/config/modelCatalogCache.ts 的 getRunnableVendorKeys 是第三份「能跑的家」；src/workbench/settings/defaultGenerationModelOptions.ts 最宽，只看 model.enabled，Agent 面板的图片/视频默认行因此能列出根本跑不了的模型。",
+  "direct_cause": "五份各自独立的判据：src/ui/onboarding/modelSettingsHomeState.ts 的 resolveModelHomeStatus 只看 model.enabled 与能力投影，从不看发布资格也从不看钥匙，于是两个未走完认证的模型被算成 ready；electron/ai/textBrainResolver.ts 的 isExecutableTextModel 要 published 且「有一条 safeStorage 记录」（configuredCredential），于是同一批模型被算成没接上；src/workbench/ai/assistantModelIdentity.ts 的 filterUsableAssistantTextModels 自己拼 vendor.enabled && (authType==='none' || hasApiKey) && model.published；src/config/modelCatalogCache.ts 的 getRunnableVendorKeys 是第三份「能跑的家」；src/workbench/settings/defaultGenerationModelOptions.ts 最宽，只看 model.enabled，Agent 面板的图片/视频默认行因此能列出根本跑不了的模型。；合并后复核发现 package.json 丢失门岗接线，且 summarizeModelHomeConnection 将自检 failed/working 状态当作不可用计数，违反 main 的自检失败不下架规则。",
   "class_root": "「这个模型现在能不能用」是一条跨进程、跨界面的不变量，而仓库从来没有给它一个 owner：每个新界面落地时都在自己那一层重新拼一次「启用 + 发布 + 钥匙」的合取，拼漏一项就是一个新的答案。判据是复制出来的，它们就只能靠人去同步；同步一次漏一次，用户看到的就是同一时刻的两个答案。缺的不变量是：这个问题只许有一处回答，结论随数据下发，任何读者都不得重算——角色（文本/图片/视频、能不能发工具调用）是压在它之上的过滤器，不是第二份真相。",
   "migration": "新增唯一 owner electron/shared/modelAvailability.ts（deriveModelAvailability + 封闭 reason 枚举）与主进程接线 electron/catalog/catalogModelAvailability.ts；listModelCatalogModels 随每行模型下发 availability。同 commit 删掉全部旧判据：usableVendorModel.ts 的 vendorIsUsable/usableVendorKeys/loadUsableVendorKeys、modelCatalogCache.ts 的 getRunnableVendorKeys/keepRunnableVendorOptions、assistantModelIdentity.ts 的 AssistantCatalogVendorLike 与自拼合取、textBrainResolver.ts 的 configuredCredential、generationDefaultModelResolver.ts 的 credentialReady、catalogHealth.ts 的内联合取。无并行版、无开关、无 fallback：渲染层缺 availability 的行一律 fail-closed 当作不可用。",
   "affected_population": [
@@ -56,7 +56,8 @@
     "角色（text/image/video、能不能发工具调用、是不是只给 prompt_refine）是压在可用性之上的过滤器，只对已可用的模型生效",
     "不可用必带一个封闭枚举里的 reason，且每一档都对应一个用户当场做得了的动作",
     "答案不取决于钥匙时绝不去开钥匙串；一次批量派生里每家最多探一次，且同一份 memo 同时服务「能不能用」与「钥匙什么态」",
-    "渲染层拿到缺 availability 的行时 fail-closed 当作不可用，绝不默认可用"
+    "渲染层拿到缺 availability 的行时 fail-closed 当作不可用，绝不默认可用",
+    "设置页 ready 数量只计主进程 availability.usable；自检 failed/working 仍单独显示，但不得改变已可用模型数量；缺 availability 不计入 ready。"
   ],
   "regression_tests": [
     "electron/shared/modelAvailability.test.ts",
@@ -67,7 +68,8 @@
     "src/config/modelCatalogCache.test.ts",
     "src/workbench/ai/assistantModelIdentity.test.ts",
     "src/ui/onboarding/onboardingDrawerDerivations.test.ts",
-    "src/workbench/common/modelSelectStructure.test.ts"
+    "src/workbench/common/modelSelectStructure.test.ts",
+    "src/ui/onboarding/modelSettingsHome.test.ts"
   ],
   "residual_risks": [
     "AST 棘轮只认「凭据词 && 启用/发布词」这一个形状。纯运行时写法（例如用一个布尔数组或 Map 绕开合取）抓不住——门岗绿 ≠ 这一类不会再发生，类级证据是 modelAvailabilityAgreement.test.ts",
@@ -196,7 +198,8 @@
   "class_regression_tests": [
     "src/workbench/ai/modelAvailabilityAgreement.test.ts",
     "electron/shared/modelAvailability.test.ts",
-    "scripts/check-model-availability.node-test.mjs"
+    "scripts/check-model-availability.node-test.mjs",
+    "src/ui/onboarding/modelSettingsHome.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",

@@ -459,10 +459,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       <KnownVendorKeyConnectPage
         directory={card.directory}
         vendorName={translateModelDisplayText(card.meta.name)}
-        // 「这家的模型此刻在不在可用列表里」只问可用性 owner（主进程算好、随行下发的 availability）。
-        // 这里曾用 `vendor.enabled && hasApiKey` 近似——那是 2026-09-12 真实验收 P0-10 的同一族：
-        // 钥匙在、这家也启用着，但模型没走完认证，于是这一屏说「N 个模型已上线」而下拉里一个都没有。
-        // 报数也跟着只数可用的那几个，别把「目录里有」说成「能用了」。
+        // 发布提示与数量都读取主进程 availability，与模型选择器保持一致。
         modelCount={card.vendorModels.filter((model) => model.availability?.usable === true).length}
         hasApiKey={card.meta.hasApiKey} credentialVerificationPending={card.meta.credentialVerificationPending}
         curatedModelsPublished={card.vendorModels.some((model) => model.availability?.usable === true)}
